@@ -491,7 +491,7 @@ _ISO2022Open(UConverter *cnv, UConverterLoadArgs *pArgs, UErrorCode *errorCode){
 
         uprv_memset(myConverterData, 0, sizeof(UConverterDataISO2022));
         myConverterData->currentType = ASCII1;
-        cnv->fromUnicodeStatus =FALSE;
+        cnv->fromUnicodeStatus =false;
         if(pArgs->locale){
             uprv_strncpy(myLocale, pArgs->locale, sizeof(myLocale)-1);
         }
@@ -527,7 +527,7 @@ _ISO2022Open(UConverter *cnv, UConverterLoadArgs *pArgs, UErrorCode *errorCode){
                     ucnv_loadSharedData("ksc_5601", &stackPieces, &stackArgs, errorCode);
             }
 
-            /* set the function pointers to appropriate funtions */
+            /* set the function pointers to appropriate functions */
             cnv->sharedData=(UConverterSharedData*)(&_ISO2022JPData);
             uprv_strcpy(myConverterData->locale,"ja");
 
@@ -578,7 +578,7 @@ _ISO2022Open(UConverter *cnv, UConverterLoadArgs *pArgs, UErrorCode *errorCode){
                 setInitialStateToUnicodeKR(cnv, myConverterData);
                 setInitialStateFromUnicodeKR(cnv, myConverterData);
 
-                /* set the function pointers to appropriate funtions */
+                /* set the function pointers to appropriate functions */
                 cnv->sharedData=(UConverterSharedData*)&_ISO2022KRData;
                 uprv_strcpy(myConverterData->locale,"ko");
             }
@@ -605,7 +605,7 @@ _ISO2022Open(UConverter *cnv, UConverterLoadArgs *pArgs, UErrorCode *errorCode){
                 ucnv_loadSharedData("cns-11643-1992", &stackPieces, &stackArgs, errorCode);
 
 
-            /* set the function pointers to appropriate funtions */
+            /* set the function pointers to appropriate functions */
             cnv->sharedData=(UConverterSharedData*)&_ISO2022CNData;
             uprv_strcpy(myConverterData->locale,"cn");
 
@@ -623,7 +623,7 @@ _ISO2022Open(UConverter *cnv, UConverterLoadArgs *pArgs, UErrorCode *errorCode){
 #endif  // !UCONFIG_ONLY_HTML_CONVERSION
         else{
 #ifdef U_ENABLE_GENERIC_ISO_2022
-            myConverterData->isFirstBuffer = TRUE;
+            myConverterData->isFirstBuffer = true;
 
             /* append the UTF-8 escape sequence */
             cnv->charErrorBufferLength = 3;
@@ -682,7 +682,7 @@ _ISO2022Reset(UConverter *converter, UConverterResetChoice choice) {
     if(choice<=UCNV_RESET_TO_UNICODE) {
         uprv_memset(&myConverterData->toU2022State, 0, sizeof(ISO2022State));
         myConverterData->key = 0;
-        myConverterData->isEmptySegment = FALSE;
+        myConverterData->isEmptySegment = false;
     }
     if(choice!=UCNV_RESET_TO_UNICODE) {
         uprv_memset(&myConverterData->fromU2022State, 0, sizeof(ISO2022State));
@@ -690,7 +690,7 @@ _ISO2022Reset(UConverter *converter, UConverterResetChoice choice) {
 #ifdef U_ENABLE_GENERIC_ISO_2022
     if(myConverterData->locale[0] == 0){
         if(choice<=UCNV_RESET_TO_UNICODE) {
-            myConverterData->isFirstBuffer = TRUE;
+            myConverterData->isFirstBuffer = true;
             myConverterData->key = 0;
             if (converter->mode == UCNV_SO){
                 ucnv_close (myConverterData->currentConverter);
@@ -820,7 +820,7 @@ getKey_2022(char c,int32_t* key,int32_t* offset){
     return INVALID_2022;
 }
 
-/*runs through a state machine to determine the escape sequence - codepage correspondance
+/*runs through a state machine to determine the escape sequence - codepage correspondence
  */
 static void
 changeState_2022(UConverter* _this,
@@ -1285,7 +1285,7 @@ T_UConverter_toUnicode_ISO_2022_OFFSETS_LOGIC(UConverterToUnicodeArgs* args,
                 }
 
                 /* convert to before the ESC or until the end of the buffer */
-                myData->isFirstBuffer=FALSE;
+                myData->isFirstBuffer=false;
                 sourceStart = args->source;
                 myTargetStart = args->target;
                 args->converter = myData->currentConverter;
@@ -1424,7 +1424,7 @@ toUnicodeCallback(UConverter *cnv,
 *          KSC5601 : alias to ibm-949 mapping table
 *          GB2312 : alias to ibm-1386 mapping table
 *          ISO-8859-1 : Algorithmic implemented as LATIN1 case
-*          ISO-8859-7 : alisas to ibm-9409 mapping table
+*          ISO-8859-7 : alias to ibm-9409 mapping table
 */
 
 /* preference order of JP charsets */
@@ -1775,7 +1775,7 @@ getTrail:
                         len = 1;
                         cs = cs0;
                         g = 0;
-                        useFallback = FALSE;
+                        useFallback = false;
                     }
                     break;
                 case JISX208:
@@ -1796,7 +1796,7 @@ getTrail:
                             len = len2;
                             cs = cs0;
                             g = 0;
-                            useFallback = FALSE;
+                            useFallback = false;
                         }
                     } else if(len == 0 && useFallback &&
                               (uint32_t)(sourceChar - HWKANA_START) <= (HWKANA_END - HWKANA_START)) {
@@ -1804,7 +1804,7 @@ getTrail:
                         len = -2;
                         cs = cs0;
                         g = 0;
-                        useFallback = FALSE;
+                        useFallback = false;
                     }
                     break;
                 case ISO8859_7:
@@ -1818,7 +1818,7 @@ getTrail:
                         len = len2;
                         cs = cs0;
                         g = 2;
-                        useFallback = FALSE;
+                        useFallback = false;
                     }
                     break;
                 default:
@@ -1843,7 +1843,7 @@ getTrail:
                         len = len2;
                         cs = cs0;
                         g = 0;
-                        useFallback = FALSE;
+                        useFallback = false;
                     }
                     break;
                 }
@@ -2053,7 +2053,7 @@ UConverter_toUnicode_ISO_2022_JP_OFFSETS_LOGIC(UConverterToUnicodeArgs *args,
                     continue;
                 } else {
                     /* only JIS7 uses SI/SO, not ISO-2022-JP-x */
-                    myData->isEmptySegment = FALSE;	/* reset this, we have a different error */
+                    myData->isEmptySegment = false;	/* reset this, we have a different error */
                     break;
                 }
 
@@ -2065,7 +2065,7 @@ UConverter_toUnicode_ISO_2022_JP_OFFSETS_LOGIC(UConverterToUnicodeArgs *args,
                     continue;
                 } else {
                     /* only JIS7 uses SI/SO, not ISO-2022-JP-x */
-                    myData->isEmptySegment = FALSE;	/* reset this, we have a different error */
+                    myData->isEmptySegment = false;	/* reset this, we have a different error */
                     break;
                 }
 
@@ -2079,7 +2079,7 @@ escape:
                     changeState_2022(args->converter,&(mySource),
                         mySourceLimit, ISO_2022_JP,err);
 
-                    /* If in ISO-2022-JP only and we successully completed an escape sequence, but previous segment was empty, create an error */
+                    /* If in ISO-2022-JP only and we successfully completed an escape sequence, but previous segment was empty, create an error */
                     if(myData->version==0 && myData->key==0 && U_SUCCESS(*err) && myData->isEmptySegment) {
                         *err = U_ILLEGAL_ESCAPE_SEQUENCE;
                         args->converter->toUCallbackReason = UCNV_IRREGULAR;
@@ -2091,12 +2091,12 @@ escape:
                 if(U_FAILURE(*err)){
                     args->target = myTarget;
                     args->source = mySource;
-                    myData->isEmptySegment = FALSE;	/* Reset to avoid future spurious errors */
+                    myData->isEmptySegment = false;	/* Reset to avoid future spurious errors */
                     return;
                 }
                 /* If we successfully completed an escape sequence, we begin a new segment, empty so far */
                 if(myData->key==0) {
-                    myData->isEmptySegment = TRUE;
+                    myData->isEmptySegment = true;
                 }
                 continue;
 
@@ -2113,7 +2113,7 @@ escape:
                 U_FALLTHROUGH;
             default:
                 /* convert one or two bytes */
-                myData->isEmptySegment = FALSE;
+                myData->isEmptySegment = false;
                 cs = (StateEnum)pToU2022State->cs[pToU2022State->g];
                 if( (uint8_t)(mySourceChar - 0xa1) <= (0xdf - 0xa1) && myData->version==4 &&
                     !IS_JP_DBCS(cs)
@@ -2189,7 +2189,7 @@ getTrailByte:
                             }
                             tempBuf[0] = (char)(tmpSourceChar >> 8);
                             tempBuf[1] = (char)(tmpSourceChar);
-                            targetUniChar = ucnv_MBCSSimpleGetNextUChar(myData->myConverterArray[cs], tempBuf, 2, FALSE);
+                            targetUniChar = ucnv_MBCSSimpleGetNextUChar(myData->myConverterArray[cs], tempBuf, 2, false);
                         } else if (!(trailIsOk || IS_2022_CONTROL(trailByte))) {
                             /* report a pair of illegal bytes if the second byte is not a DBCS starter */
                             ++mySource;
@@ -2251,7 +2251,7 @@ endloop:
 /***************************************************************
 *   Rules for ISO-2022-KR encoding
 *   i) The KSC5601 designator sequence should appear only once in a file,
-*      at the begining of a line before any KSC5601 characters. This usually
+*      at the beginning of a line before any KSC5601 characters. This usually
 *      means that it appears by itself on the first line of the file
 *  ii) There are only 2 shifting sequences SO to shift into double byte mode
 *      and SI to shift into single byte mode
@@ -2461,7 +2461,7 @@ getTrail:
         int32_t sourceIndex;
 
         /* we are switching to ASCII */
-        isTargetByteDBCS=FALSE;
+        isTargetByteDBCS=false;
 
         /* get the source index of the last input character */
         /*
@@ -2639,7 +2639,7 @@ UConverter_toUnicode_ISO_2022_KR_OFFSETS_LOGIC(UConverterToUnicodeArgs *args,
             if(mySourceChar==UCNV_SI){
                 myData->toU2022State.g = 0;
                 if (myData->isEmptySegment) {
-                    myData->isEmptySegment = FALSE;	/* we are handling it, reset to avoid future spurious errors */
+                    myData->isEmptySegment = false;	/* we are handling it, reset to avoid future spurious errors */
                     *err = U_ILLEGAL_ESCAPE_SEQUENCE;
                     args->converter->toUCallbackReason = UCNV_IRREGULAR;
                     args->converter->toUBytes[0] = (uint8_t)mySourceChar;
@@ -2652,13 +2652,13 @@ UConverter_toUnicode_ISO_2022_KR_OFFSETS_LOGIC(UConverterToUnicodeArgs *args,
                 continue;
             }else if(mySourceChar==UCNV_SO){
                 myData->toU2022State.g = 1;
-                myData->isEmptySegment = TRUE;	/* Begin a new segment, empty so far */
+                myData->isEmptySegment = true;	/* Begin a new segment, empty so far */
                 /*consume the source */
                 continue;
             }else if(mySourceChar==ESC_2022){
                 mySource--;
 escape:
-                myData->isEmptySegment = FALSE;	/* Any invalid ESC sequences will be detected separately, so just reset this */
+                myData->isEmptySegment = false;	/* Any invalid ESC sequences will be detected separately, so just reset this */
                 changeState_2022(args->converter,&(mySource),
                                 mySourceLimit, ISO_2022_KR, err);
                 if(U_FAILURE(*err)){
@@ -2669,7 +2669,7 @@ escape:
                 continue;
             }
 
-            myData->isEmptySegment = FALSE;	/* Any invalid char errors will be detected separately, so just reset this */
+            myData->isEmptySegment = false;	/* Any invalid char errors will be detected separately, so just reset this */
             if(myData->toU2022State.g == 1) {
                 if(mySource < mySourceLimit) {
                     int leadIsOk, trailIsOk;
@@ -2776,21 +2776,21 @@ getTrailByte:
 *       SS2 is a Chinese character as defined in CNS
 *       11643-plane-2, until another SS2designation
 *       appears
-*       (Meaning <ESC>N must preceed every 2 byte
+*       (Meaning <ESC>N must precede every 2 byte
 *        sequence.)
 *
 *      ESC $ + I       Indicates the immediate two bytes following SS3
 *       is a Chinese character as defined in CNS
 *       11643-plane-3, until another SS3designation
 *       appears
-*       (Meaning <ESC>O must preceed every 2 byte
+*       (Meaning <ESC>O must precede every 2 byte
 *        sequence.)
 *
 *      ESC $ + J       Indicates the immediate two bytes following SS3
 *       is a Chinese character as defined in CNS
 *       11643-plane-4, until another SS3designation
 *       appears
-*       (In English: <ESC>O must preceed every 2 byte
+*       (In English: <ESC>O must precede every 2 byte
 *        sequence.)
 *
 *      ESC $ + K       Indicates the immediate two bytes following SS3
@@ -3019,7 +3019,7 @@ getTrail:
                                     len = 2;
                                 } else {
                                     len = -2;
-                                    useFallback = FALSE;
+                                    useFallback = false;
                                 }
                                 if(cs == CNS_11643_1) {
                                     g = 1;
@@ -3046,7 +3046,7 @@ getTrail:
                                 len = len2;
                                 cs = cs0;
                                 g = 1;
-                                useFallback = FALSE;
+                                useFallback = false;
                             }
                         }
                     }
@@ -3228,7 +3228,7 @@ UConverter_toUnicode_ISO_2022_CN_OFFSETS_LOGIC(UConverterToUnicodeArgs *args,
             case UCNV_SI:
                 pToU2022State->g=0;
                 if (myData->isEmptySegment) {
-                    myData->isEmptySegment = FALSE;	/* we are handling it, reset to avoid future spurious errors */
+                    myData->isEmptySegment = false;	/* we are handling it, reset to avoid future spurious errors */
                     *err = U_ILLEGAL_ESCAPE_SEQUENCE;
                     args->converter->toUCallbackReason = UCNV_IRREGULAR;
                     args->converter->toUBytes[0] = static_cast<uint8_t>(mySourceChar);
@@ -3242,11 +3242,11 @@ UConverter_toUnicode_ISO_2022_CN_OFFSETS_LOGIC(UConverterToUnicodeArgs *args,
             case UCNV_SO:
                 if(pToU2022State->cs[1] != 0) {
                     pToU2022State->g=1;
-                    myData->isEmptySegment = TRUE;	/* Begin a new segment, empty so far */
+                    myData->isEmptySegment = true;	/* Begin a new segment, empty so far */
                     continue;
                 } else {
                     /* illegal to have SO before a matching designator */
-                    myData->isEmptySegment = FALSE;	/* Handling a different error, reset this to avoid future spurious errs */
+                    myData->isEmptySegment = false;	/* Handling a different error, reset this to avoid future spurious errs */
                     break;
                 }
 
@@ -3272,7 +3272,7 @@ escape:
                 if(U_FAILURE(*err)){
                     args->target = myTarget;
                     args->source = mySource;
-                    myData->isEmptySegment = FALSE;	/* Reset to avoid future spurious errors */
+                    myData->isEmptySegment = false;	/* Reset to avoid future spurious errors */
                     return;
                 }
                 continue;
@@ -3285,7 +3285,7 @@ escape:
                 U_FALLTHROUGH;
             default:
                 /* convert one or two bytes */
-                myData->isEmptySegment = FALSE;
+                myData->isEmptySegment = false;
                 if(pToU2022State->g != 0) {
                     if(mySource < mySourceLimit) {
                         UConverterSharedData *cnv;
@@ -3324,7 +3324,7 @@ getTrailByte:
                                 tempBuf[1] = (char) trailByte;
                                 tempBufLen = 2;
                             }
-                            targetUniChar = ucnv_MBCSSimpleGetNextUChar(cnv, tempBuf, tempBufLen, FALSE);
+                            targetUniChar = ucnv_MBCSSimpleGetNextUChar(cnv, tempBuf, tempBufLen, false);
                             mySourceChar = (mySourceChar << 8) | trailByte;
                         } else if (!(trailIsOk || IS_2022_CONTROL(trailByte))) {
                             /* report a pair of illegal bytes if the second byte is not a DBCS starter */
@@ -3536,7 +3536,7 @@ _ISO_2022_SafeClone(
 
     uprv_memcpy(&localClone->mydata, cnvData, sizeof(UConverterDataISO2022));
     localClone->cnv.extraInfo = &localClone->mydata; /* set pointer to extra data */
-    localClone->cnv.isExtraLocal = TRUE;
+    localClone->cnv.isExtraLocal = true;
 
     /* share the subconverters */
 
@@ -3735,8 +3735,8 @@ static const UConverterStaticData _ISO2022StaticData={
     3, /* max 3 bytes per UChar from UTF-8 (4 bytes from surrogate _pair_) */
     { 0x1a, 0, 0, 0 },
     1,
-    FALSE,
-    FALSE,
+    false,
+    false,
     0,
     0,
     { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } /* reserved */
@@ -3780,8 +3780,8 @@ static const UConverterStaticData _ISO2022JPStaticData={
     6, /* max 6 bytes per UChar: 4-byte escape sequence + DBCS */
     { 0x1a, 0, 0, 0 },
     1,
-    FALSE,
-    FALSE,
+    false,
+    false,
     0,
     0,
     { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } /* reserved */
@@ -3831,8 +3831,8 @@ static const UConverterStaticData _ISO2022KRStaticData={
     8, /* max 8 bytes per UChar */
     { 0x1a, 0, 0, 0 },
     1,
-    FALSE,
-    FALSE,
+    false,
+    false,
     0,
     0,
     { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } /* reserved */
@@ -3882,8 +3882,8 @@ static const UConverterStaticData _ISO2022CNStaticData={
     8, /* max 8 bytes per UChar: 4-byte CNS designator + 2 bytes for SS2/SS3 + DBCS */
     { 0x1a, 0, 0, 0 },
     1,
-    FALSE,
-    FALSE,
+    false,
+    false,
     0,
     0,
     { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } /* reserved */

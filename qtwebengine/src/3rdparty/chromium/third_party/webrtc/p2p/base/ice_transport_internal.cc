@@ -10,9 +10,54 @@
 
 #include "p2p/base/ice_transport_internal.h"
 
+#include "absl/strings/string_view.h"
 #include "p2p/base/p2p_constants.h"
 
 namespace cricket {
+
+using webrtc::RTCError;
+using webrtc::RTCErrorType;
+
+RTCError VerifyCandidate(const Candidate& cand) {
+  // No address zero.
+  if (cand.address().IsNil() || cand.address().IsAnyIP()) {
+    return RTCError(RTCErrorType::INVALID_PARAMETER,
+                    "candidate has address of zero");
+  }
+
+  // Disallow all ports below 1024, except for 80 and 443 on public addresses.
+  int port = cand.address().port();
+  if (cand.protocol() == cricket::TCP_PROTOCOL_NAME &&
+      (cand.tcptype() == cricket::TCPTYPE_ACTIVE_STR || port == 0)) {
+    // Expected for active-only candidates per
+    // http://tools.ietf.org/html/rfc6544#section-4.5 so no error.
+    // Libjingle clients emit port 0, in "active" mode.
+    return RTCError::OK();
+  }
+  if (port < 1024) {
+    if ((port != 80) && (port != 443)) {
+      return RTCError(RTCErrorType::INVALID_PARAMETER,
+                      "candidate has port below 1024, but not 80 or 443");
+    }
+
+    if (cand.address().IsPrivateIP()) {
+      return RTCError(
+          RTCErrorType::INVALID_PARAMETER,
+          "candidate has port of 80 or 443 with private IP address");
+    }
+  }
+
+  return RTCError::OK();
+}
+
+RTCError VerifyCandidates(const Candidates& candidates) {
+  for (const Candidate& candidate : candidates) {
+    RTCError error = VerifyCandidate(candidate);
+    if (!error.ok())
+      return error;
+  }
+  return RTCError::OK();
+}
 
 IceConfig::IceConfig() = default;
 
@@ -82,13 +127,13 @@ IceTransportInternal::IceTransportInternal() = default;
 
 IceTransportInternal::~IceTransportInternal() = default;
 
-void IceTransportInternal::SetIceCredentials(const std::string& ice_ufrag,
-                                             const std::string& ice_pwd) {
+void IceTransportInternal::SetIceCredentials(absl::string_view ice_ufrag,
+                                             absl::string_view ice_pwd) {
   SetIceParameters(IceParameters(ice_ufrag, ice_pwd, false));
 }
 
-void IceTransportInternal::SetRemoteIceCredentials(const std::string& ice_ufrag,
-                                                   const std::string& ice_pwd) {
+void IceTransportInternal::SetRemoteIceCredentials(absl::string_view ice_ufrag,
+                                                   absl::string_view ice_pwd) {
   SetRemoteIceParameters(IceParameters(ice_ufrag, ice_pwd, false));
 }
 

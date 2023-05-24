@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 
 #include <string>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/threading/thread_local.h"  // For testing purposes only.
 #include "ppapi/c/pp_instance.h"
 #include "ppapi/c/pp_module.h"
@@ -45,6 +44,9 @@ class PPAPI_SHARED_EXPORT PpapiGlobals {
   // using this method. See SetPpapiGlobalsOnThreadForTest for more information.
   struct PerThreadForTest {};
   explicit PpapiGlobals(PerThreadForTest);
+
+  PpapiGlobals(const PpapiGlobals&) = delete;
+  PpapiGlobals& operator=(const PpapiGlobals&) = delete;
 
   virtual ~PpapiGlobals();
 
@@ -117,14 +119,6 @@ class PPAPI_SHARED_EXPORT PpapiGlobals {
   // in-process plugins.
   virtual base::TaskRunner* GetFileTaskRunner() = 0;
 
-  // Returns the command line for the process.
-  virtual std::string GetCmdLine() = 0;
-
-  // Preloads the font on Windows, does nothing on other platforms.
-  // TODO(brettw) remove this by passing the instance into the API so we don't
-  // have to have it on the globals.
-  virtual void PreCacheFontForFlash(const void* logfontw) = 0;
-
   virtual bool IsHostGlobals() const;
   virtual bool IsPluginGlobals() const;
 
@@ -135,8 +129,6 @@ class PPAPI_SHARED_EXPORT PpapiGlobals {
   static PpapiGlobals* GetThreadLocalPointer();
 
   scoped_refptr<base::SingleThreadTaskRunner> main_task_runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(PpapiGlobals);
 };
 
 }  // namespace ppapi

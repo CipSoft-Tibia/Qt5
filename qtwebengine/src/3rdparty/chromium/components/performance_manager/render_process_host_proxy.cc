@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,7 +22,7 @@ content::RenderProcessHost* RenderProcessHostProxy::Get() const {
 RenderProcessHostProxy::RenderProcessHostProxy(
     RenderProcessHostId render_process_host_id)
     : render_process_host_id_(render_process_host_id) {
-  DCHECK(render_process_host_id_.value() >= 0);
+  DCHECK_GE(render_process_host_id_.value(), 0);
 }
 
 // static

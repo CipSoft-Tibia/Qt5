@@ -1,37 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \title Scalability
     \page scalability.html
     \brief How to develop applications that scale well on devices with different
     screen configurations and UI conventions.
-
-    \ingroup best-practices
+    \ingroup explanations-accessibility
 
     When you develop applications for several different mobile device platforms,
     you face the following challenges:
@@ -116,9 +91,8 @@
 
     In addition to controls that define standard parts of application windows,
     controls are provided for creating views and menus, as well as presenting or
-    receiving input from users. You can use \l{Qt Quick Controls 1 Styles} to
-    apply custom styling to the predefined controls. For examples of using the
-    styles, see \l{Qt Quick Controls 1 - Touch Gallery}.
+    receiving input from users. You can use \l {Using Styles in Qt Quick Controls}{Qt Quick Controls Styles} to
+    apply custom styling to the predefined controls.
 
     Qt Quick Controls, such as the ToolBar, do not provide a layout
     of their own, but require you to position their contents. For this, you can
@@ -131,8 +105,8 @@
     types. The properties for these QML types hold their layout direction and
     spacing between the cells.
 
-    You can use the \l{Layout} QML type to attach additional properties to the
-    items pushed to the layouts. For example, you can specify mininum, maximum,
+    You can use the \l{Qt Quick Layouts} QML types to attach additional properties to the
+    items pushed to the layouts. For example, you can specify minimum, maximum,
     and preferred values for item height, width, and size.
 
     The layouts ensure that your UIs are scaled properly when windows and
@@ -227,17 +201,17 @@
     evaluating JavaScript expressions comes with a performance cost.
 
     You can use bindings to handle low and high pixel density on platforms that
-    do not have automatic support for it (like \macos and iOS do).
-    The following code snippet uses the \l{Screen}{Screen.PixelDensity}
+    do not have automatic support for it (like Android, \macos and iOS do).
+    The following code snippet uses the \l{Screen}{Screen.pixelDensity}
     attached property to specify different images to display on screens with
     low, high, or normal pixel density:
 
     \code
     Image {
         source: {
-            if (Screen.PixelDensity < 40)
+            if (Screen.pixelDensity < 40)
             "image_low_dpi.png"
-            else if (Screen.PixelDensity > 300)
+            else if (Screen.pixelDensity > 300)
             "image_high_dpi.png"
             else
             "image.png"
@@ -245,9 +219,11 @@
         }
     \endcode
 
-    On \macos and iOS, you can provide alternative resources with double the size
-    and the \e @2x identifier for icons and images and place them in the
-    resource file. On Retina displays, the @2x versions are used automatically.
+    On Android, \macos and iOS, you can provide alternative resources with higher
+    resolutions by using the corresponding identifier (e.g. \e @2x, \e @3x,
+    or \e @4x) for icons and images, and place them in the resource file. The
+    version that matches the pixel density of the screen is automatically selected
+    for use.
 
     For example, the following code snippet will try to load \e artwork@2x.png
     on Retina displays:
@@ -288,7 +264,7 @@
     different approaches to scaling screen contents on high DPI displays.
 
     For more information about high DPI support in Qt and the supported
-    platforms, see \l{High DPI Displays}.
+    platforms, see \l{High DPI}.
 
     \section2 High DPI Scaling on \macos and iOS
 
@@ -299,7 +275,7 @@
     that is used to scale graphics output: allocate larger buffers and set a
     scaling transform.
 
-    The advantage of this approach is that that vector graphics and fonts scale
+    The advantage of this approach is that vector graphics and fonts scale
     automatically and existing applications tend to work unmodified. For raster
     content, high-resolution alternative resources are needed, however.
 
@@ -423,7 +399,7 @@
     \section1 Loading Files Depending on Platform
 
     You can use the QQmlFileSelector to apply a QFileSelector to QML file
-    loading. This enables you to load altenative resources depending on the
+    loading. This enables you to load alternative resources depending on the
     platform on which the application is run. For example, you can use the
     \c +android file selector to load different image files
     when run on Android devices.
@@ -437,12 +413,12 @@
     you can use a Loader.
 
     The target platforms might automate the loading of alternative resources for
-    different display densities in various ways. On iOS, the \e @2x filename
-    suffix is used to indicate high DPI versions of images. The \l Image QML
-    type and the QIcon class automatically load @2x versions of images and icons
-    if they are provided. The QImage and QPixmap classes automatically set the
-    \c devicePixelRatio of @2x versions of images to \c 2, but you need to add
-    code to actually use the @2x versions:
+    different display densities in various ways. On Android and iOS, the \e @2x
+    filename suffix is used to indicate high DPI versions of images. The \l Image
+    QML type and the QIcon class automatically load @2x versions of images and
+    icons if they are provided. The QImage and QPixmap classes automatically set
+    the \c devicePixelRatio of @2x versions of images to \c 2, but you need to
+    add code to actually use the @2x versions:
 
     \code
     if ( QGuiApplication::primaryScreen()->devicePixelRatio() >= 2 ) {

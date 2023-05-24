@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,8 @@
 #include <utility>
 #include <vector>
 
-#include "base/stl_util.h"
+#include "base/containers/contains.h"
+#include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -28,7 +29,7 @@ struct IntTraits {
     freed_ints->push_back(value);
   }
 
-  std::vector<int>* freed_ints;
+  raw_ptr<std::vector<int>> freed_ints;
 };
 
 using ScopedInt = ScopedGeneric<int, IntTraits>;
@@ -75,21 +76,6 @@ TEST(ScopedGenericTest, ScopedGeneric) {
   }
   ASSERT_EQ(2u, values_freed.size());
   ASSERT_EQ(kSecond, values_freed[1]);
-  values_freed.clear();
-
-  // Swap.
-  {
-    ScopedInt a(kFirst, traits);
-    ScopedInt b(kSecond, traits);
-    a.swap(b);
-    EXPECT_TRUE(values_freed.empty());  // Nothing should be freed.
-    EXPECT_EQ(kSecond, a.get());
-    EXPECT_EQ(kFirst, b.get());
-  }
-  // Values should be deleted in the opposite order.
-  ASSERT_EQ(2u, values_freed.size());
-  EXPECT_EQ(kFirst, values_freed[0]);
-  EXPECT_EQ(kSecond, values_freed[1]);
   values_freed.clear();
 
   // Move constructor.
@@ -202,8 +188,8 @@ struct TrackedIntTraits : public ScopedGenericOwnershipTracking {
     owners->erase(it);
   }
 
-  std::unordered_set<int>* freed;
-  OwnerMap* owners;
+  raw_ptr<std::unordered_set<int>> freed;
+  raw_ptr<OwnerMap> owners;
 };
 
 using ScopedTrackedInt = ScopedGeneric<int, TrackedIntTraits>;
@@ -295,24 +281,6 @@ TEST(ScopedGenericTest, OwnershipTracking) {
       ASSERT_OWNED(1, a);
       ASSERT_FREED(0);
     }
-    ASSERT_FREED(1);
-  }
-
-  owners.clear();
-  freed.clear();
-
-  // Swap.
-  {
-    {
-      ScopedTrackedInt a(0, traits);
-      ScopedTrackedInt b(1, traits);
-      ASSERT_OWNED(0, a);
-      ASSERT_OWNED(1, b);
-      a.swap(b);
-      ASSERT_OWNED(1, a);
-      ASSERT_OWNED(0, b);
-    }
-    ASSERT_FREED(0);
     ASSERT_FREED(1);
   }
 

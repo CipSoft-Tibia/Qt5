@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKSPRITE_P_H
 #define QQUICKSPRITE_P_H
@@ -69,24 +33,25 @@ QT_BEGIN_NAMESPACE
 class Q_QUICK_EXPORT QQuickSprite : public QQuickStochasticState
 {
     Q_OBJECT
-    Q_PROPERTY(QUrl source READ source WRITE setSource NOTIFY sourceChanged)
+    Q_PROPERTY(QUrl source READ source WRITE setSource NOTIFY sourceChanged FINAL)
     //Renderers have to query this hint when advancing frames
-    Q_PROPERTY(bool reverse READ reverse WRITE setReverse NOTIFY reverseChanged)
-    Q_PROPERTY(bool frameSync READ frameSync WRITE setFrameSync NOTIFY frameSyncChanged)
-    Q_PROPERTY(int frames READ frames WRITE setFrames NOTIFY frameCountChanged)
-    Q_PROPERTY(int frameCount READ frameCount WRITE setFrameCount NOTIFY frameCountChanged)
+    Q_PROPERTY(bool reverse READ reverse WRITE setReverse NOTIFY reverseChanged FINAL)
+    Q_PROPERTY(bool frameSync READ frameSync WRITE setFrameSync NOTIFY frameSyncChanged FINAL)
+    Q_PROPERTY(int frames READ frames WRITE setFrames NOTIFY frameCountChanged FINAL)
+    Q_PROPERTY(int frameCount READ frameCount WRITE setFrameCount NOTIFY frameCountChanged FINAL)
     //If frame height or width is not specified, it is assumed to be a single long row of square frames.
     //Otherwise, it can be multiple contiguous rows, when one row runs out the next will be used.
-    Q_PROPERTY(int frameHeight READ frameHeight WRITE setFrameHeight NOTIFY frameHeightChanged)
-    Q_PROPERTY(int frameWidth READ frameWidth WRITE setFrameWidth NOTIFY frameWidthChanged)
-    Q_PROPERTY(int frameX READ frameX WRITE setFrameX NOTIFY frameXChanged)
-    Q_PROPERTY(int frameY READ frameY WRITE setFrameY NOTIFY frameYChanged)
+    Q_PROPERTY(int frameHeight READ frameHeight WRITE setFrameHeight NOTIFY frameHeightChanged FINAL)
+    Q_PROPERTY(int frameWidth READ frameWidth WRITE setFrameWidth NOTIFY frameWidthChanged FINAL)
+    Q_PROPERTY(int frameX READ frameX WRITE setFrameX NOTIFY frameXChanged FINAL)
+    Q_PROPERTY(int frameY READ frameY WRITE setFrameY NOTIFY frameYChanged FINAL)
     //Precedence order: frameRate, frameDuration, duration
-    Q_PROPERTY(qreal frameRate READ frameRate WRITE setFrameRate NOTIFY frameRateChanged RESET resetFrameRate)
-    Q_PROPERTY(qreal frameRateVariation READ frameRateVariation WRITE setFrameRateVariation NOTIFY frameRateVariationChanged)
-    Q_PROPERTY(int frameDuration READ frameDuration WRITE setFrameDuration NOTIFY frameDurationChanged RESET resetFrameDuration)
-    Q_PROPERTY(int frameDurationVariation READ frameDurationVariation WRITE setFrameDurationVariation NOTIFY frameDurationVariationChanged)
+    Q_PROPERTY(qreal frameRate READ frameRate WRITE setFrameRate NOTIFY frameRateChanged RESET resetFrameRate FINAL)
+    Q_PROPERTY(qreal frameRateVariation READ frameRateVariation WRITE setFrameRateVariation NOTIFY frameRateVariationChanged FINAL)
+    Q_PROPERTY(int frameDuration READ frameDuration WRITE setFrameDuration NOTIFY frameDurationChanged RESET resetFrameDuration FINAL)
+    Q_PROPERTY(int frameDurationVariation READ frameDurationVariation WRITE setFrameDurationVariation NOTIFY frameDurationVariationChanged FINAL)
     QML_NAMED_ELEMENT(Sprite)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     explicit QQuickSprite(QObject *parent = nullptr);

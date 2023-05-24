@@ -1,16 +1,16 @@
-project(test_plugins)
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
-cmake_minimum_required(VERSION 2.8)
-if (POLICY CMP0056)
-    cmake_policy(SET CMP0056 NEW)
-endif()
+cmake_minimum_required(VERSION 3.16)
 
-find_package(Qt5Qml REQUIRED)
+project(check_for_existence_of_plugin_targets)
+
+find_package(Qt6 COMPONENTS REQUIRED Qml)
 
 # See QTBUG-43438
-if (NOT TARGET Qt5::QTcpServerConnectionFactory)
-    message(SEND_ERROR "Qt5::QTcpServerConnectionFactory does not exist")
+if(NOT TARGET Qt6::QTcpServerConnectionFactoryPlugin)
+    message(FATAL_ERROR "Qt6::QTcpServerConnectionFactoryPlugin does not exist")
 endif()
-if (NOT TARGET Qt5::QLocalClientConnectionFactory)
-    message(SEND_ERROR "Qt5::QLocalClientConnectionFactory does not exist")
+if(NOT TARGET Qt6::QLocalClientConnectionFactoryPlugin)
+    message(FATAL_ERROR "Qt6::QLocalClientConnectionFactoryPlugin does not exist")
 endif()

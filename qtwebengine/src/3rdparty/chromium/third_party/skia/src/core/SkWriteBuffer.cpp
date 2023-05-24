@@ -7,16 +7,31 @@
 
 #include "src/core/SkWriteBuffer.h"
 
-#include "include/core/SkBitmap.h"
+#include "include/core/SkAlphaType.h"
 #include "include/core/SkData.h"
-#include "include/core/SkM44.h"
-#include "include/core/SkStream.h"
+#include "include/core/SkFlattenable.h"
+#include "include/core/SkImage.h"
+#include "include/core/SkPoint.h"
+#include "include/core/SkPoint3.h"
+#include "include/core/SkRect.h"
 #include "include/core/SkTypeface.h"
-#include "include/private/SkTo.h"
-#include "src/core/SkImagePriv.h"
+#include "include/private/base/SkAssert.h"
+#include "include/private/base/SkTFitsIn.h"
+#include "include/private/base/SkTo.h"
 #include "src/core/SkMatrixPriv.h"
+#include "src/core/SkMipmap.h"
 #include "src/core/SkPaintPriv.h"
 #include "src/core/SkPtrRecorder.h"
+#include "src/image/SkImage_Base.h"
+
+#include <cstring>
+#include <utility>
+
+class SkMatrix;
+class SkPaint;
+class SkRegion;
+class SkStream;
+class SkWStream;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -68,8 +83,8 @@ void SkBinaryWriteBuffer::writeUInt(uint32_t value) {
     fWriter.write32(value);
 }
 
-void SkBinaryWriteBuffer::writeString(const char* value) {
-    fWriter.writeString(value);
+void SkBinaryWriteBuffer::writeString(std::string_view value) {
+    fWriter.writeString(value.data(), value.size());
 }
 
 void SkBinaryWriteBuffer::writeColor(SkColor color) {
@@ -124,6 +139,10 @@ void SkBinaryWriteBuffer::writeRegion(const SkRegion& region) {
     fWriter.writeRegion(region);
 }
 
+void SkBinaryWriteBuffer::writeSampling(const SkSamplingOptions& sampling) {
+    fWriter.writeSampling(sampling);
+}
+
 void SkBinaryWriteBuffer::writePath(const SkPath& path) {
     fWriter.writePath(path);
 }
@@ -141,8 +160,6 @@ bool SkBinaryWriteBuffer::writeToStream(SkWStream* stream) const {
     return fWriter.writeToStream(stream);
 }
 
-#include "src/image/SkImage_Base.h"
-
 /*  Format:
  *      flags: U32
  *      encoded : size_32 + data[]
@@ -154,6 +171,9 @@ void SkBinaryWriteBuffer::writeImage(const SkImage* image) {
     const SkMipmap* mips = as_IB(image)->onPeekMips();
     if (mips) {
         flags |= SkWriteBufferImageFlags::kHasMipmap;
+    }
+    if (image->alphaType() == kUnpremul_SkAlphaType) {
+        flags |= SkWriteBufferImageFlags::kUnpremul;
     }
 
     this->write32(flags);
@@ -229,8 +249,7 @@ void SkBinaryWriteBuffer::writeFlattenable(const SkFlattenable* flattenable) {
      *     compression, if we have already written the string, we write its index instead.
      */
 
-    SkFlattenable::Factory factory = flattenable->getFactory();
-    if (factory && fFactorySet) {
+    if (SkFlattenable::Factory factory = flattenable->getFactory(); factory && fFactorySet) {
         this->write32(fFactorySet->add(factory));
     } else {
         const char* name = flattenable->getTypeName();

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,10 @@
 #include <stdint.h>
 
 #include "base/files/file.h"
-#include "base/macros.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/shared_remote.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
-
-namespace base {
-class SingleThreadTaskRunner;
-}
 
 namespace blink {
 
@@ -38,6 +33,9 @@ class WebDatabaseHost {
  public:
   static WebDatabaseHost& GetInstance();
 
+  WebDatabaseHost(const WebDatabaseHost&) = delete;
+  WebDatabaseHost& operator=(const WebDatabaseHost&) = delete;
+
   // Should be called once before trying to use this class, so that we make sure
   // the remote interface binding is done from the main thread before the first
   // time GetInstance() is invoked (which will happen from the Database thread).
@@ -47,14 +45,12 @@ class WebDatabaseHost {
   base::File OpenFile(const String& vfs_file_name, int desired_flags);
   int DeleteFile(const String& vfs_file_name, bool sync_dir);
   int32_t GetFileAttributes(const String& vfs_file_name);
-  int64_t GetFileSize(const String& vfs_file_name);
   bool SetFileSize(const String& vfs_file_name, int64_t size);
   int64_t GetSpaceAvailableForOrigin(const SecurityOrigin& origin);
 
   void DatabaseOpened(const SecurityOrigin& origin,
                       const String& database_name,
-                      const String& database_display_name,
-                      uint32_t estimated_size);
+                      const String& database_display_name);
   void DatabaseModified(const SecurityOrigin& origin,
                         const String& database_name);
   void DatabaseClosed(const SecurityOrigin& origin,
@@ -76,14 +72,6 @@ class WebDatabaseHost {
 
   // Need a SharedRemote as method calls will happen from the Database thread.
   mojo::SharedRemote<mojom::blink::WebDatabaseHost> shared_remote_;
-
-  // Used to ensure that the database gets opened from the main thread, but that
-  // other database-related event is reported from the database thread instead.
-  scoped_refptr<base::SingleThreadTaskRunner> main_thread_task_runner_;
-
-  static WebDatabaseHost* instance_;
-
-  DISALLOW_COPY_AND_ASSIGN(WebDatabaseHost);
 };
 
 }  // namespace blink

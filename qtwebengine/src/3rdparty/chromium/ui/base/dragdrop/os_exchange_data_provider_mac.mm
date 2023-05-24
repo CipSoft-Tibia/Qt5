@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,18 +7,20 @@
 #import <Cocoa/Cocoa.h>
 
 #include "base/check_op.h"
+#include "base/mac/foundation_util.h"
 #include "base/memory/ptr_util.h"
 #include "base/notreached.h"
 #include "base/pickle.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/strings/utf_string_conversions.h"
-#import "third_party/mozilla/NSPasteboard+Utils.h"
+#include "net/base/filename_util.h"
 #include "ui/base/clipboard/clipboard_constants.h"
 #include "ui/base/clipboard/clipboard_format_type.h"
 #import "ui/base/clipboard/clipboard_util_mac.h"
 #include "ui/base/clipboard/custom_data_helper.h"
-#import "ui/base/dragdrop/cocoa_dnd_util.h"
-#include "ui/base/dragdrop/file_info/file_info.h"
+#include "ui/base/clipboard/file_info.h"
+#include "ui/base/data_transfer_policy/data_transfer_policy_controller.h"
 #include "url/gurl.h"
 
 @interface CrPasteboardItemWrapper : NSObject <NSPasteboardWriting>
@@ -44,12 +46,12 @@
   // was added implicitly by adding flavors to the owned pasteboard of
   // OwningProvider, so call -types to actually get data.
   //
-  // Merge in the ui::kChromeDragDummyPboardType type, so that all of Chromium
+  // Merge in the ui::kUTTypeChromiumInitiatedDrag type, so that all of Chromium
   // is marked to receive the drags. TODO(avi): Wire up MacViews so that
   // BridgedContentView properly registers the result of View::GetDropFormats()
   // rather than OSExchangeDataProviderMac::SupportedPasteboardTypes().
   return [[_pasteboardItem types]
-      arrayByAddingObject:ui::kChromeDragDummyPboardType];
+      arrayByAddingObject:ui::kUTTypeChromiumInitiatedDrag];
 }
 
 - (NSPasteboardWritingOptions)writingOptionsForType:(NSString*)type
@@ -63,7 +65,7 @@
 }
 
 - (id)pasteboardPropertyListForType:(NSString*)type {
-  if ([type isEqual:ui::kChromeDragDummyPboardType])
+  if ([type isEqual:ui::kUTTypeChromiumInitiatedDrag])
     return [NSData data];
 
   // Like above, an NSPasteboardItem added to a pasteboard will return nil from
@@ -79,8 +81,7 @@ namespace {
 
 class OwningProvider : public OSExchangeDataProviderMac {
  public:
-  OwningProvider()
-      : OSExchangeDataProviderMac(), owned_pasteboard_(new UniquePasteboard) {}
+  OwningProvider() : owned_pasteboard_(new UniquePasteboard) {}
   OwningProvider(const OwningProvider& provider) = default;
 
   std::unique_ptr<OSExchangeDataProvider> Clone() const override {
@@ -97,8 +98,8 @@ class OwningProvider : public OSExchangeDataProviderMac {
 
 class WrappingProvider : public OSExchangeDataProviderMac {
  public:
-  WrappingProvider(NSPasteboard* pasteboard)
-      : OSExchangeDataProviderMac(), wrapped_pasteboard_([pasteboard retain]) {}
+  explicit WrappingProvider(NSPasteboard* pasteboard)
+      : wrapped_pasteboard_([pasteboard retain]) {}
   WrappingProvider(const WrappingProvider& provider) = default;
 
   std::unique_ptr<OSExchangeDataProvider> Clone() const override {
@@ -135,44 +136,46 @@ OSExchangeDataProviderMac::CreateProviderWrappingPasteboard(
 }
 
 void OSExchangeDataProviderMac::MarkOriginatedFromRenderer() {
-  NOTIMPLEMENTED();
+  [GetPasteboard() setData:[NSData data]
+                   forType:kUTTypeChromiumRendererInitiatedDrag];
 }
 
 bool OSExchangeDataProviderMac::DidOriginateFromRenderer() const {
-  NOTIMPLEMENTED();
-  return false;
+  return [GetPasteboard().types
+      containsObject:kUTTypeChromiumRendererInitiatedDrag];
 }
 
-void OSExchangeDataProviderMac::SetString(const base::string16& string) {
+void OSExchangeDataProviderMac::MarkAsFromPrivileged() {
+  [GetPasteboard() setData:[NSData data]
+                   forType:kUTTypeChromiumPrivilegedInitiatedDrag];
+}
+
+bool OSExchangeDataProviderMac::IsFromPrivileged() const {
+  return [GetPasteboard().types
+      containsObject:kUTTypeChromiumPrivilegedInitiatedDrag];
+}
+
+void OSExchangeDataProviderMac::SetString(const std::u16string& string) {
   [GetPasteboard() setString:base::SysUTF16ToNSString(string)
                      forType:NSPasteboardTypeString];
 }
 
 void OSExchangeDataProviderMac::SetURL(const GURL& url,
-                                       const base::string16& title) {
-  base::scoped_nsobject<NSPasteboardItem> item =
-      ClipboardUtil::PasteboardItemFromUrl(base::SysUTF8ToNSString(url.spec()),
-                                           base::SysUTF16ToNSString(title));
-  ClipboardUtil::AddDataToPasteboard(GetPasteboard(), item);
+                                       const std::u16string& title) {
+  NSArray<NSPasteboardItem*>* items = ClipboardUtil::PasteboardItemsFromUrls(
+      @[ base::SysUTF8ToNSString(url.spec()) ],
+      @[ base::SysUTF16ToNSString(title) ]);
+  ClipboardUtil::AddDataToPasteboard(GetPasteboard(), items.firstObject);
 }
 
 void OSExchangeDataProviderMac::SetFilename(const base::FilePath& path) {
-  [GetPasteboard() setPropertyList:@[ base::SysUTF8ToNSString(path.value()) ]
-                           forType:NSFilenamesPboardType];
+  std::vector<FileInfo> filenames(1, FileInfo(path, base::FilePath()));
+  ClipboardUtil::WriteFilesToPasteboard(GetPasteboard(), filenames);
 }
 
 void OSExchangeDataProviderMac::SetFilenames(
     const std::vector<FileInfo>& filenames) {
-  if (filenames.empty())
-    return;
-
-  NSMutableArray* paths = [NSMutableArray arrayWithCapacity:filenames.size()];
-
-  for (const auto& filename : filenames) {
-    NSString* path = base::SysUTF8ToNSString(filename.path.value());
-    [paths addObject:path];
-  }
-  [GetPasteboard() setPropertyList:paths forType:NSFilenamesPboardType];
+  ClipboardUtil::WriteFilesToPasteboard(GetPasteboard(), filenames);
 }
 
 void OSExchangeDataProviderMac::SetPickledData(
@@ -182,7 +185,7 @@ void OSExchangeDataProviderMac::SetPickledData(
   [GetPasteboard() setData:ns_data forType:format.ToNSString()];
 }
 
-bool OSExchangeDataProviderMac::GetString(base::string16* data) const {
+bool OSExchangeDataProviderMac::GetString(std::u16string* data) const {
   DCHECK(data);
   NSString* item = [GetPasteboard() stringForType:NSPasteboardTypeString];
   if (item) {
@@ -192,7 +195,7 @@ bool OSExchangeDataProviderMac::GetString(base::string16* data) const {
 
   // There was no NSString, check for an NSURL.
   GURL url;
-  base::string16 title;
+  std::u16string title;
   bool result = GetURLAndTitle(FilenameToURLPolicy::DO_NOT_CONVERT_FILENAMES,
                                &url, &title);
   if (result)
@@ -203,28 +206,34 @@ bool OSExchangeDataProviderMac::GetString(base::string16* data) const {
 
 bool OSExchangeDataProviderMac::GetURLAndTitle(FilenameToURLPolicy policy,
                                                GURL* url,
-                                               base::string16* title) const {
+                                               std::u16string* title) const {
   DCHECK(url);
   DCHECK(title);
 
-  if (PopulateURLAndTitleFromPasteboard(url, title, GetPasteboard(), false)) {
+  NSArray<NSString*>* urls;
+  NSArray<NSString*>* titles;
+  if (ClipboardUtil::URLsAndTitlesFromPasteboard(
+          GetPasteboard(), /*include_files=*/false, &urls, &titles)) {
+    *url = GURL(base::SysNSStringToUTF8(urls.firstObject));
+    *title = base::SysNSStringToUTF16(titles.firstObject);
     return true;
   }
 
   // If there are no URLs, try to convert a filename to a URL if the policy
   // allows it. The title remains blank.
   //
-  // This could be done in the call to PopulateURLAndTitleFromPasteboard above
-  // if |true| were passed in as the last parameter, but that function strips
-  // the trailing slashes off of paths and always returns the last path element
-  // as the title whereas no path conversion nor title is wanted.
+  // This could be done in the call to `URLsAndTitlesFromPasteboard` above if
+  // `true` were passed in for the `include_files` parameter, but that function
+  // strips the trailing slashes off of paths and always returns the last path
+  // element as the title whereas no path conversion nor title is wanted.
+  //
+  // TODO(avi): What is going on here? This comment and code was written for the
+  // old pasteboard code; is this still true with the new pasteboard code? What
+  // uses this, and why does it care about titles or path conversion?
   base::FilePath path;
   if (policy != FilenameToURLPolicy::DO_NOT_CONVERT_FILENAMES &&
       GetFilename(&path)) {
-    NSURL* fileUrl =
-        [NSURL fileURLWithPath:base::SysUTF8ToNSString(path.value())];
-    *url =
-        GURL([[fileUrl absoluteString] stringByStandardizingPath].UTF8String);
+    *url = net::FilePathToFileURL(path);
     return true;
   }
 
@@ -232,25 +241,23 @@ bool OSExchangeDataProviderMac::GetURLAndTitle(FilenameToURLPolicy policy,
 }
 
 bool OSExchangeDataProviderMac::GetFilename(base::FilePath* path) const {
-  NSArray* paths = [GetPasteboard() propertyListForType:NSFilenamesPboardType];
-  if ([paths count] == 0)
+  std::vector<FileInfo> files =
+      ClipboardUtil::FilesFromPasteboard(GetPasteboard());
+  if (files.empty()) {
     return false;
+  }
 
-  *path = base::FilePath(base::SysNSStringToUTF8(paths[0]));
+  *path = files[0].path;
   return true;
 }
 
 bool OSExchangeDataProviderMac::GetFilenames(
     std::vector<FileInfo>* filenames) const {
-  NSArray* paths = [GetPasteboard() propertyListForType:NSFilenamesPboardType];
-  if ([paths count] == 0)
-    return false;
-
-  for (NSString* path in paths)
-    filenames->push_back(
-        {base::FilePath(base::SysNSStringToUTF8(path)), base::FilePath()});
-
-  return true;
+  std::vector<FileInfo> files =
+      ClipboardUtil::FilesFromPasteboard(GetPasteboard());
+  bool result = !files.empty();
+  base::ranges::move(files, std::back_inserter(*filenames));
+  return result;
 }
 
 bool OSExchangeDataProviderMac::GetPickledData(
@@ -267,23 +274,41 @@ bool OSExchangeDataProviderMac::GetPickledData(
 }
 
 bool OSExchangeDataProviderMac::HasString() const {
-  base::string16 string;
+  std::u16string string;
   return GetString(&string);
 }
 
 bool OSExchangeDataProviderMac::HasURL(FilenameToURLPolicy policy) const {
   GURL url;
-  base::string16 title;
+  std::u16string title;
   return GetURLAndTitle(policy, &url, &title);
 }
 
 bool OSExchangeDataProviderMac::HasFile() const {
-  return [[GetPasteboard() types] containsObject:NSFilenamesPboardType];
+  return [GetPasteboard().types containsObject:NSPasteboardTypeFileURL];
 }
 
 bool OSExchangeDataProviderMac::HasCustomFormat(
     const ClipboardFormatType& format) const {
-  return [[GetPasteboard() types] containsObject:format.ToNSString()];
+  return [GetPasteboard().types containsObject:format.ToNSString()];
+}
+
+void OSExchangeDataProviderMac::SetFileContents(
+    const base::FilePath& filename,
+    const std::string& file_contents) {
+  NOTIMPLEMENTED();
+}
+
+bool OSExchangeDataProviderMac::GetFileContents(
+    base::FilePath* filename,
+    std::string* file_contents) const {
+  NOTIMPLEMENTED();
+  return false;
+}
+
+bool OSExchangeDataProviderMac::HasFileContents() const {
+  NOTIMPLEMENTED();
+  return false;
 }
 
 void OSExchangeDataProviderMac::SetDragImage(
@@ -301,40 +326,48 @@ gfx::Vector2d OSExchangeDataProviderMac::GetDragImageOffset() const {
   return cursor_offset_;
 }
 
-NSDraggingItem* OSExchangeDataProviderMac::GetDraggingItem() const {
+NSArray<NSDraggingItem*>* OSExchangeDataProviderMac::GetDraggingItems() const {
   // What's going on here is that initiating a drag (-[NSView
   // beginDraggingSessionWithItems...]) requires a dragging item. Even though
   // pasteboard items are NSPasteboardWriters, they are locked to their
   // pasteboard and cannot be used to initiate a drag with another pasteboard
   // (hello https://crbug.com/928684). Therefore, wrap them.
-  //
-  // OSExchangeDataProviderMac was written to the old NSPasteboard APIs that
-  // didn't account for more than one item. This kinda matches Views which also
-  // assumes that only one drag item can exist at a time. TODO(avi): Fix all of
-  // Views to be able to handle drags of more than one item. Then rewrite
-  // OSExchangeDataProviderMac to the new NSPasteboard item API.
 
-  NSArray* pasteboardItems = [GetPasteboard() pasteboardItems];
-  DCHECK(pasteboardItems);
-  DCHECK_EQ(1u, [pasteboardItems count]);
+  NSArray<NSPasteboardItem*>* pasteboard_items =
+      GetPasteboard().pasteboardItems;
+  if (!pasteboard_items) {
+    return nil;
+  }
 
-  CrPasteboardItemWrapper* wrapper = [[[CrPasteboardItemWrapper alloc]
-      initWithPasteboardItem:[pasteboardItems firstObject]] autorelease];
+  NSMutableArray<NSDraggingItem*>* drag_items = [NSMutableArray array];
+  for (NSPasteboardItem* item in pasteboard_items) {
+    CrPasteboardItemWrapper* wrapper = [[[CrPasteboardItemWrapper alloc]
+        initWithPasteboardItem:item] autorelease];
+    NSDraggingItem* drag_item =
+        [[[NSDraggingItem alloc] initWithPasteboardWriter:wrapper] autorelease];
 
-  NSDraggingItem* drag_item =
-      [[[NSDraggingItem alloc] initWithPasteboardWriter:wrapper] autorelease];
+    [drag_items addObject:drag_item];
+  }
 
-  return drag_item;
+  return drag_items;
 }
 
 // static
 NSArray* OSExchangeDataProviderMac::SupportedPasteboardTypes() {
   return @[
-    kWebCustomDataPboardType, ClipboardUtil::UTIForWebURLsAndTitles(),
-    NSURLPboardType, NSFilenamesPboardType, kChromeDragDummyPboardType,
-    NSStringPboardType, NSHTMLPboardType, NSRTFPboardType,
-    NSFilenamesPboardType, kWebCustomDataPboardType, NSPasteboardTypeString
+    kUTTypeChromiumInitiatedDrag, kUTTypeChromiumPrivilegedInitiatedDrag,
+    kUTTypeChromiumRendererInitiatedDrag, kUTTypeChromiumWebCustomData,
+    kUTTypeWebKitWebURLsWithTitles, NSPasteboardTypeFileURL,
+    NSPasteboardTypeHTML, NSPasteboardTypeRTF, NSPasteboardTypeString,
+    NSPasteboardTypeURL
   ];
+}
+
+void OSExchangeDataProviderMac::SetSource(
+    std::unique_ptr<DataTransferEndpoint> data_source) {}
+
+DataTransferEndpoint* OSExchangeDataProviderMac::GetSource() const {
+  return nullptr;
 }
 
 }  // namespace ui

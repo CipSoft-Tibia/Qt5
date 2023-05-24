@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <private/chartpresenter_p.h>
 #include <QtCharts/QChart>
 #include <private/chartitem_p.h>
@@ -47,7 +21,7 @@
 #include <QtWidgets/QGraphicsScene>
 #include <QtWidgets/QGraphicsView>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 ChartPresenter::ChartPresenter(QChart *chart, QChart::ChartType type)
     : QObject(chart),
@@ -138,7 +112,7 @@ void ChartPresenter::handleAxisAdded(QAbstractAxis *axis)
 
 void ChartPresenter::handleAxisRemoved(QAbstractAxis *axis)
 {
-    ChartAxisElement *item = axis->d_ptr->m_item.take();
+    ChartAxisElement *item = axis->d_ptr->m_item.release();
     if (item->animation())
         item->animation()->stopAndDestroyLater();
     item->hide();
@@ -169,7 +143,7 @@ void ChartPresenter::handleSeriesAdded(QAbstractSeries *series)
 
 void ChartPresenter::handleSeriesRemoved(QAbstractSeries *series)
 {
-    ChartItem *chart  = series->d_ptr->m_item.take();
+    ChartItem *chart = series->d_ptr->m_item.release();
     chart->hide();
     chart->cleanup();
     series->disconnect(chart);
@@ -253,6 +227,7 @@ void ChartPresenter::createPlotAreaBackgroundItem()
             m_plotAreaBackground = new QGraphicsEllipseItem(rootItem());
         // Use transparent pen instead of Qt::NoPen, as Qt::NoPen causes
         // antialising artifacts with axis lines for some reason.
+        m_plotAreaBackground->setAcceptedMouseButtons({});
         m_plotAreaBackground->setPen(QPen(Qt::transparent));
         m_plotAreaBackground->setBrush(Qt::NoBrush);
         m_plotAreaBackground->setZValue(ChartPresenter::PlotAreaZValue);
@@ -554,16 +529,16 @@ QString ChartPresenter::truncatedText(const QFont &font, const QString &text, qr
         // to try.
         static QRegularExpression truncateMatcher(QStringLiteral("&#?[0-9a-zA-Z]*;$"));
 
-        QVector<QString> testStrings(text.length());
+        QList<QString> testStrings(text.size());
         int count(0);
         static QLatin1Char closeTag('>');
         static QLatin1Char openTag('<');
         static QLatin1Char semiColon(';');
         static QLatin1String ellipsis("...");
-        while (truncatedString.length() > 1) {
+        while (truncatedString.size() > 1) {
             int chopIndex(-1);
             int chopCount(1);
-            QChar lastChar(truncatedString.at(truncatedString.length() - 1));
+            QChar lastChar(truncatedString.at(truncatedString.size() - 1));
 
             if (lastChar == closeTag)
                 chopIndex = truncatedString.lastIndexOf(openTag);
@@ -571,7 +546,7 @@ QString ChartPresenter::truncatedText(const QFont &font, const QString &text, qr
                 chopIndex = truncatedString.indexOf(truncateMatcher);
 
             if (chopIndex != -1)
-                chopCount = truncatedString.length() - chopIndex;
+                chopCount = truncatedString.size() - chopIndex;
             truncatedString.chop(chopCount);
             testStrings[count] = truncatedString + ellipsis;
             count++;
@@ -652,6 +627,6 @@ void ChartPresenter::updateGLWidget()
 #endif
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_chartpresenter_p.cpp"

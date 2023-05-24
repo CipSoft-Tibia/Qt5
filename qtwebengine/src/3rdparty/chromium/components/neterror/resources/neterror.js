@@ -1,13 +1,14 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 /**
  * @typedef {{
  *   downloadButtonClick: function(),
- *   reloadButtonClick: function(),
+ *   reloadButtonClick: function(string),
  *   detailsButtonClick: function(),
  *   diagnoseErrorsButtonClick: function(),
+ *   portalSigninsButtonClick: function(),
  *   trackEasterEgg: function(),
  *   updateEasterEggHighScore: function(number),
  *   resetEasterEggHighScore: function(),
@@ -56,26 +57,25 @@ function toggleHelpBox() {
 }
 
 function diagnoseErrors() {
-// <if expr="not chromeos">
-if (window.errorPageController) {
-  errorPageController.diagnoseErrorsButtonClick();
+  if (window.errorPageController) {
+    errorPageController.diagnoseErrorsButtonClick();
+  }
 }
-// </if>
-// <if expr="chromeos">
-  const extensionId = 'idddmepepmjcgiedknnmlbadcokidhoa';
-  const diagnoseFrame = document.getElementById('diagnose-frame');
-  diagnoseFrame.innerHTML =
-      '<iframe src="chrome-extension://' + extensionId +
-      '/index.html"></iframe>';
-// </if>
+
+function portalSignin() {
+  if (window.errorPageController) {
+    errorPageController.portalSigninButtonClick();
+  }
 }
 
 // Subframes use a different layout but the same html file.  This is to make it
 // easier to support platforms that load the error page via different
 // mechanisms (Currently just iOS). We also use the subframe style for portals
 // as they are embedded like subframes and can't be interacted with by the user.
+let isSubFrame = false;
 if (window.top.location !== window.location || window.portalHost) {
   document.documentElement.setAttribute('subframe', '');
+  isSubFrame = true;
 }
 
 // Re-renders the error page using |strings| as the dictionary of values.
@@ -86,46 +86,29 @@ function updateForDnsProbe(strings) {
   onDocumentLoadOrUpdate();
 }
 
-// Given the classList property of an element, adds an icon class to the list
-// and removes the previously-
-function updateIconClass(classList, newClass) {
-  let oldClass;
+// Adds an icon class to the list and removes classes previously set.
+function updateIconClass(newClass) {
+  const frameSelector = isSubFrame ? '#sub-frame-error' : '#main-frame-error';
+  const iconEl = document.querySelector(frameSelector + ' .icon');
 
-  if (classList.hasOwnProperty('last_icon_class')) {
-    oldClass = classList['last_icon_class'];
-    if (oldClass === newClass) {
-      return;
-    }
+  if (iconEl.classList.contains(newClass)) {
+    return;
   }
 
-  classList.add(newClass);
-  if (oldClass !== undefined) {
-    classList.remove(oldClass);
-  }
-
-  classList['last_icon_class'] = newClass;
-
-  if (newClass === 'icon-offline') {
-    document.firstElementChild.classList.add('offline');
-    new Runner('.interstitial-wrapper');
-  } else {
-    document.body.classList.add('neterror');
-  }
-}
-
-// Does a search using |baseSearchUrl| and the text in the search box.
-function search(baseSearchUrl) {
-  const searchTextNode = document.getElementById('search-box');
-  document.location = baseSearchUrl + searchTextNode.value;
-  return false;
+  iconEl.className = 'icon ' + newClass;
 }
 
 // Implements button clicks.  This function is needed during the transition
-// between implementing these in trunk chromium and implementing them in
-// iOS.
+// between implementing these in trunk chromium and implementing them in iOS.
 function reloadButtonClick(url) {
   if (window.errorPageController) {
+    // <if expr="is_ios">
+    errorPageController.reloadButtonClick(url);
+    // </if>
+
+    // <if expr="not is_ios">
     errorPageController.reloadButtonClick();
+    // </if>
   } else {
     window.location = url;
   }
@@ -153,7 +136,9 @@ function detailsButtonClick() {
 }
 
 let primaryControlOnLeft = true;
-// <if expr="is_macosx or is_ios or is_linux or is_android">
+// clang-format off
+// <if expr="is_macosx or is_ios or is_linux or is_chromeos or is_android">
+// clang-format on
 primaryControlOnLeft = false;
 // </if>
 
@@ -373,6 +358,16 @@ function onDocumentLoadOrUpdate() {
   const controlButtonDiv = document.getElementById('control-buttons');
   controlButtonDiv.hidden =
       offlineContentVisible || !(reloadButtonVisible || downloadButtonVisible);
+
+  const iconClass = loadTimeData.valueExists('iconClass') &&
+      loadTimeData.getValue('iconClass');
+
+  updateIconClass(iconClass);
+
+  if (!isSubFrame && iconClass === 'icon-offline') {
+    document.documentElement.classList.add('offline');
+    new Runner('.interstitial-wrapper');
+  }
 }
 
 function onDocumentLoad() {

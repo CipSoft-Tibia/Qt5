@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,8 @@
 
 #include <string>
 
-#include "base/optional.h"
-#include "base/strings/string16.h"
 #include "base/time/time.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 class GURL;
 
@@ -38,8 +37,8 @@ void LogNotificationScheduledEventToDevTools(
 void LogNotificationClickedEventToDevTools(
     BrowserContext* browser_context,
     const NotificationDatabaseData& data,
-    const base::Optional<int>& action_index,
-    const base::Optional<base::string16>& reply);
+    const absl::optional<int>& action_index,
+    const absl::optional<std::u16string>& reply);
 
 }  // namespace notifications
 }  // namespace content

@@ -23,13 +23,16 @@
 
 #include "third_party/blink/renderer/core/svg/svg_element.h"
 #include "third_party/blink/renderer/core/svg/svg_unit_types.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+
+namespace gfx {
+class RectF;
+}
 
 namespace blink {
 
 class Filter;
 class FilterEffect;
-class FloatRect;
 class SVGAnimatedLength;
 class SVGAnimatedString;
 class SVGFilterBuilder;
@@ -41,7 +44,7 @@ class SVGFilterPrimitiveStandardAttributes : public SVGElement {
  public:
   void SetStandardAttributes(FilterEffect*,
                              SVGUnitTypes::SVGUnitType,
-                             const FloatRect& reference_box) const;
+                             const gfx::RectF& reference_box) const;
 
   virtual FilterEffect* Build(SVGFilterBuilder*, Filter*) = 0;
   // Returns true, if the new value is different from the old one.
@@ -64,14 +67,14 @@ class SVGFilterPrimitiveStandardAttributes : public SVGElement {
  protected:
   SVGFilterPrimitiveStandardAttributes(const QualifiedName&, Document&);
 
-  void SvgAttributeChanged(const QualifiedName&) override;
+  void SvgAttributeChanged(const SvgAttributeChangedParams&) override;
   void ChildrenChanged(const ChildrenChange&) override;
 
  private:
   bool IsFilterEffect() const final { return true; }
 
   LayoutObject* CreateLayoutObject(const ComputedStyle&, LegacyLayout) override;
-  bool LayoutObjectIsNeeded(const ComputedStyle&) const final;
+  bool LayoutObjectIsNeeded(const DisplayStyle&) const final;
 
   Member<SVGAnimatedLength> x_;
   Member<SVGAnimatedLength> y_;

@@ -1,39 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Copyright (C) 2020 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// Copyright (C) 2020 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qstandardpaths.h>
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QOperatingSystemVersion>
 #include <qdebug.h>
 #include <qfileinfo.h>
 #include <qplatformdefs.h>
 #include <qregularexpression.h>
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#include <qsysinfo.h>
+#if defined(Q_OS_WIN)
 #  include <qt_windows.h>
 #endif
 
@@ -43,12 +20,49 @@
 #include <pwd.h>
 #endif
 
-#if defined(Q_OS_UNIX) && !defined(Q_OS_MAC) && !defined(Q_OS_ANDROID)
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS) && !defined(Q_OS_ANDROID)
 #define Q_XDG_PLATFORM
 #endif
 
+using namespace Qt::StringLiterals;
+
 // Update this when adding new enum values; update enumNames too
 static const int MaxStandardLocation = QStandardPaths::AppConfigLocation;
+
+static QString genericCacheLoc()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation);
+}
+static QString cacheLoc()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+}
+
+static QString genericDataLoc()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+}
+static QString appDataLoc()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+}
+static QString appLocalDataLoc()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+}
+
+static QString genericConfigLoc()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+}
+static QString configLoc()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+}
+static QString appConfigLoc()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+}
 
 class tst_qstandardpaths : public QObject
 {
@@ -57,6 +71,7 @@ class tst_qstandardpaths : public QObject
 private slots:
     void initTestCase();
     void dump();
+    void init();
     void testDefaultLocations();
     void testCustomLocations();
     void enableTestMode();
@@ -87,10 +102,10 @@ private:
         qputenv("XDG_DATA_DIRS", QFile::encodeName(m_globalAppDir));
     }
     void setDefaultLocations() {
-        qputenv("XDG_CONFIG_HOME", QByteArray());
-        qputenv("XDG_CONFIG_DIRS", QByteArray());
-        qputenv("XDG_DATA_HOME", QByteArray());
-        qputenv("XDG_DATA_DIRS", QByteArray());
+        qputenv("XDG_CONFIG_HOME", nullptr);
+        qputenv("XDG_CONFIG_DIRS", nullptr);
+        qputenv("XDG_DATA_HOME", nullptr);
+        qputenv("XDG_DATA_DIRS", nullptr);
     }
 #endif
 
@@ -117,7 +132,7 @@ static const char * const enumNames[MaxStandardLocation + 1 - int(QStandardPaths
     "PicturesLocation",
     "TempLocation",
     "HomeLocation",
-    "DataLocation",
+    "AppLocalDataLocation",
     "CacheLocation",
     "GenericDataLocation",
     "RuntimeLocation",
@@ -131,7 +146,7 @@ static const char * const enumNames[MaxStandardLocation + 1 - int(QStandardPaths
 
 void tst_qstandardpaths::initTestCase()
 {
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
     // Disable WOW64 redirection, see testFindExecutable()
     if (QSysInfo::buildCpuArchitecture() != QSysInfo::currentCpuArchitecture()) {
         void *oldMode;
@@ -140,7 +155,7 @@ void tst_qstandardpaths::initTestCase()
             qErrnoWarning("Wow64DisableWow64FsRedirection() failed");
         QVERIFY(disabledDisableWow64FsRedirection);
     }
-#endif // Q_OS_WIN && !Q_OS_WINRT
+#endif // Q_OS_WIN
     QVERIFY2(m_localConfigTempDir.isValid(), qPrintable(m_localConfigTempDir.errorString()));
     QVERIFY2(m_globalConfigTempDir.isValid(), qPrintable(m_globalConfigTempDir.errorString()));
     QVERIFY2(m_localAppTempDir.isValid(), qPrintable(m_localAppTempDir.errorString()));
@@ -161,21 +176,31 @@ void tst_qstandardpaths::dump()
     }
 }
 
+void tst_qstandardpaths::init()
+{
+    // Some unittests set a custom org/app names, restore the original ones
+    // before each unittest is run
+    static const QString org = QCoreApplication::organizationName();
+    static const QString app = QCoreApplication::applicationName();
+    QCoreApplication::setOrganizationName(org);
+    QCoreApplication::setApplicationName(app);
+}
+
 void tst_qstandardpaths::testDefaultLocations()
 {
 #ifdef Q_XDG_PLATFORM
     setDefaultLocations();
 
     const QString expectedConfHome = QDir::homePath() + QString::fromLatin1("/.config");
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation), expectedConfHome);
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation), expectedConfHome);
+    QCOMPARE(configLoc(), expectedConfHome);
+    QCOMPARE(genericConfigLoc(), expectedConfHome);
     const QStringList confDirs = QStandardPaths::standardLocations(QStandardPaths::ConfigLocation);
-    QCOMPARE(confDirs.count(), 2);
+    QCOMPARE(confDirs.size(), 2);
     QVERIFY(confDirs.contains(expectedConfHome));
     QCOMPARE(QStandardPaths::standardLocations(QStandardPaths::GenericConfigLocation), confDirs);
 
     const QStringList genericDataDirs = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
-    QCOMPARE(genericDataDirs.count(), 3);
+    QCOMPARE(genericDataDirs.size(), 3);
     const QString expectedDataHome = QDir::homePath() + QString::fromLatin1("/.local/share");
     QCOMPARE(genericDataDirs.at(0), expectedDataHome);
     QCOMPARE(genericDataDirs.at(1), QString::fromLatin1("/usr/local/share"));
@@ -198,8 +223,8 @@ void tst_qstandardpaths::testCustomLocations()
     setCustomLocations();
 
     // test writableLocation()
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation), m_localConfigDir);
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation), m_localConfigDir);
+    QCOMPARE(configLoc(), m_localConfigDir);
+    QCOMPARE(genericConfigLoc(), m_localConfigDir);
 
     // test locate()
     const QString thisFileName = QString::fromLatin1("aFile");
@@ -231,37 +256,65 @@ void tst_qstandardpaths::enableTestMode()
     setCustomLocations(); // for the global config dir
     const QString qttestDir = QDir::homePath() + QLatin1String("/.qttest");
 
-    // ConfigLocation
+    // *Config*Location
     const QString configDir = qttestDir + QLatin1String("/config");
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation), configDir);
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation), configDir);
+    QCOMPARE(configLoc(), configDir);
+    QCOMPARE(genericConfigLoc(), configDir);
     const QStringList confDirs = QStandardPaths::standardLocations(QStandardPaths::ConfigLocation);
     QCOMPARE(confDirs, QStringList() << configDir << m_globalConfigDir);
+    // AppConfigLocation should be "GenericConfigLocation/organization-name/app-name"
+    QCOMPARE(appConfigLoc(), configDir + "/tst_qstandardpaths"_L1);
 
-    // GenericDataLocation
+    // *Data*Location
     const QString dataDir = qttestDir + QLatin1String("/share");
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation), dataDir);
+    QCOMPARE(genericDataLoc(), dataDir);
     const QStringList gdDirs = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
     QCOMPARE(gdDirs, QStringList() << dataDir << m_globalAppDir);
+    // AppDataLocation/AppLocalDataLocation should be
+    // "GenericDataLocation/organization-name/app-name"
+    QCOMPARE(appDataLoc(), dataDir + "/tst_qstandardpaths"_L1);
+    QCOMPARE(appLocalDataLoc(), dataDir + "/tst_qstandardpaths"_L1);
 
-    // GenericCacheLocation
+    // *CacheLocation
     const QString cacheDir = qttestDir + QLatin1String("/cache");
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation), cacheDir);
+    QCOMPARE(genericCacheLoc(), cacheDir);
     const QStringList cacheDirs = QStandardPaths::standardLocations(QStandardPaths::GenericCacheLocation);
     QCOMPARE(cacheDirs, QStringList() << cacheDir);
+    // CacheLocation should be "GenericCacheLocation/organization-name/app-name"
+    QCOMPARE(cacheLoc(), cacheDir + "/tst_qstandardpaths"_L1);
+
+    QCoreApplication::setOrganizationName("Qt");
+    QCOMPARE(appConfigLoc(), configDir + "/Qt/tst_qstandardpaths"_L1);
+    QCOMPARE(appDataLoc(), dataDir + "/Qt/tst_qstandardpaths"_L1);
+    QCOMPARE(appLocalDataLoc(), dataDir + "/Qt/tst_qstandardpaths"_L1);
+    QCOMPARE(cacheLoc(), cacheDir + "/Qt/tst_qstandardpaths"_L1);
+    QCOMPARE(cacheLoc(), cacheDir + "/Qt/tst_qstandardpaths"_L1);
+
+    QCoreApplication::setApplicationName("QtTest");
+    QCOMPARE(appConfigLoc(), configDir + "/Qt/QtTest"_L1);
+    QCOMPARE(appDataLoc(), dataDir + "/Qt/QtTest"_L1);
+    QCOMPARE(appLocalDataLoc(), dataDir + "/Qt/QtTest"_L1);
+    QCoreApplication::setApplicationName("QtTest");
+    QCOMPARE(cacheLoc(), cacheDir + "/Qt/QtTest"_L1);
+
+    // Check these are unaffected by org/app names
+    QCOMPARE(genericConfigLoc(), configDir);
+    QCOMPARE(configLoc(), configDir);
+    QCOMPARE(genericDataLoc(), dataDir);
+    QCOMPARE(genericCacheLoc(), cacheDir);
 #endif
 
     // On all platforms, we want to ensure that the writableLocation is different in test mode and real mode.
     // Check this for locations where test programs typically write. Not desktop, download, music etc...
     typedef QHash<QStandardPaths::StandardLocation, QString> LocationHash;
     LocationHash testLocations;
-    testLocations.insert(QStandardPaths::AppDataLocation, QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
-    testLocations.insert(QStandardPaths::AppLocalDataLocation, QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
-    testLocations.insert(QStandardPaths::GenericDataLocation, QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation));
-    testLocations.insert(QStandardPaths::ConfigLocation, QStandardPaths::writableLocation(QStandardPaths::ConfigLocation));
-    testLocations.insert(QStandardPaths::GenericConfigLocation, QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation));
-    testLocations.insert(QStandardPaths::CacheLocation, QStandardPaths::writableLocation(QStandardPaths::CacheLocation));
-    testLocations.insert(QStandardPaths::GenericCacheLocation, QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation));
+    testLocations.insert(QStandardPaths::AppDataLocation, appDataLoc());
+    testLocations.insert(QStandardPaths::AppLocalDataLocation, appLocalDataLoc());
+    testLocations.insert(QStandardPaths::GenericDataLocation, genericDataLoc());
+    testLocations.insert(QStandardPaths::ConfigLocation, configLoc());
+    testLocations.insert(QStandardPaths::GenericConfigLocation, genericConfigLoc());
+    testLocations.insert(QStandardPaths::CacheLocation, cacheLoc());
+    testLocations.insert(QStandardPaths::GenericCacheLocation, genericCacheLoc());
     // On Windows, what should "Program Files" become, in test mode?
     //testLocations.insert(QStandardPaths::ApplicationsLocation, QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation));
 
@@ -283,7 +336,7 @@ void tst_qstandardpaths::testLocateAll()
 #ifdef Q_XDG_PLATFORM
     setCustomLocations();
     const QStringList appsDirs = QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, "applications", QStandardPaths::LocateDirectory);
-    QCOMPARE(appsDirs.count(), 0); // they don't exist yet
+    QCOMPARE(appsDirs.size(), 0); // they don't exist yet
     const QStringList expectedAppsDirs = QStringList() << m_localAppDir + QLatin1String("/applications")
                                                        << m_globalAppDir + QLatin1String("/applications");
     QDir().mkdir(expectedAppsDirs.at(0));
@@ -306,49 +359,42 @@ void tst_qstandardpaths::testLocateAll()
 
 void tst_qstandardpaths::testDataLocation()
 {
-    // On all platforms, DataLocation should be GenericDataLocation / organization name / app name
+    // On all platforms, AppLocalDataLocation should be GenericDataLocation / organization name / app name
     // This allows one app to access the data of another app.
-    // Android and WinRT are an exception to this case, owing to the fact that
+    // Android is an exception to this case, owing to the fact that
     // applications are sandboxed.
-#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WINRT)
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation), base + "/tst_qstandardpaths");
+#if !defined(Q_OS_ANDROID)
+    const QString base = genericDataLoc();
+    QCOMPARE(appLocalDataLoc(), base + "/tst_qstandardpaths");
     QCoreApplication::instance()->setOrganizationName("Qt");
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation), base + "/Qt/tst_qstandardpaths");
+    QCOMPARE(appLocalDataLoc(), base + "/Qt/tst_qstandardpaths");
     QCoreApplication::instance()->setApplicationName("QtTest");
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation), base + "/Qt/QtTest");
+    QCOMPARE(appLocalDataLoc(), base + "/Qt/QtTest");
 #endif
 
 #ifdef Q_XDG_PLATFORM
     setDefaultLocations();
     const QString expectedAppDataDir = QDir::homePath() + QString::fromLatin1("/.local/share/Qt/QtTest");
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation), expectedAppDataDir);
+    QCOMPARE(appLocalDataLoc(), expectedAppDataDir);
     const QStringList appDataDirs = QStandardPaths::standardLocations(QStandardPaths::AppLocalDataLocation);
-    QCOMPARE(appDataDirs.count(), 3);
+    QCOMPARE(appDataDirs.size(), 3);
     QCOMPARE(appDataDirs.at(0), expectedAppDataDir);
     QCOMPARE(appDataDirs.at(1), QString::fromLatin1("/usr/local/share/Qt/QtTest"));
     QCOMPARE(appDataDirs.at(2), QString::fromLatin1("/usr/share/Qt/QtTest"));
 #endif
-
-    // reset for other tests
-    QCoreApplication::setOrganizationName(QString());
-    QCoreApplication::setApplicationName(QString());
 }
 
 void tst_qstandardpaths::testAppConfigLocation()
 {
     // On all platforms where applications are not sandboxed,
     // AppConfigLocation should be GenericConfigLocation / organization name / app name
-#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WINRT)
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation), base + "/tst_qstandardpaths");
+#if !defined(Q_OS_ANDROID)
+    const QString base = genericConfigLoc();
+    QCOMPARE(appConfigLoc(), base + "/tst_qstandardpaths");
     QCoreApplication::setOrganizationName("Qt");
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation), base + "/Qt/tst_qstandardpaths");
+    QCOMPARE(appConfigLoc(), base + "/Qt/tst_qstandardpaths");
     QCoreApplication::setApplicationName("QtTest");
-    QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation), base + "/Qt/QtTest");
-    // reset for other tests
-    QCoreApplication::setOrganizationName(QString());
-    QCoreApplication::setApplicationName(QString());
+    QCOMPARE(appConfigLoc(), base + "/Qt/QtTest");
 #endif
 }
 
@@ -363,7 +409,7 @@ static inline QFileInfo findSh()
     const QStringList rawPaths = QString::fromLocal8Bit(pEnv.constData()).split(pathSep, Qt::SkipEmptyParts);
     foreach (const QString &path, rawPaths) {
         if (QFile::exists(path + sh))
-            return path + sh;
+            return QFileInfo(path + sh);
     }
     return QFileInfo();
 }
@@ -381,7 +427,6 @@ void tst_qstandardpaths::testFindExecutable_data()
     QTest::addColumn<QString>("needle");
     QTest::addColumn<QString>("expected");
 #ifdef Q_OS_WIN
-# ifndef Q_OS_WINRT
     const QFileInfo cmdFi = QFileInfo(QDir::cleanPath(QString::fromLocal8Bit(qgetenv("COMSPEC"))));
     const QString cmdPath = cmdFi.absoluteFilePath();
 
@@ -406,7 +451,6 @@ void tst_qstandardpaths::testFindExecutable_data()
         QTest::newRow("win8-logo-nosuffix")
             << QString() << logo << logoPath;
     }
-# endif // Q_OS_WINRT
 #else
     const QFileInfo shFi = findSh();
     Q_ASSERT(shFi.exists());
@@ -448,8 +492,6 @@ void tst_qstandardpaths::testFindExecutable()
 
 void tst_qstandardpaths::testFindExecutableLinkToDirectory()
 {
-    // WinRT has no link support
-#ifndef Q_OS_WINRT
     // link to directory
     const QString target = QDir::tempPath() + QDir::separator() + QLatin1String("link.lnk");
     QFile::remove(target);
@@ -457,7 +499,6 @@ void tst_qstandardpaths::testFindExecutableLinkToDirectory()
     QVERIFY(appFile.link(target));
     QVERIFY(QStandardPaths::findExecutable(target).isEmpty());
     QFile::remove(target);
-#endif
 }
 
 using RuntimeDirSetup = QString (*)(QDir &);
@@ -471,7 +512,9 @@ void tst_qstandardpaths::testRuntimeDirectory()
 #endif
 }
 
-#ifdef Q_XDG_PLATFORM
+// INTEGRITY PJF System doesn't support user ID related APIs. getpwuid is not defined.
+// testCustomRuntimeDirectory_data test will always FAIL for INTEGRITY.
+#if defined(Q_XDG_PLATFORM) && !defined(Q_OS_INTEGRITY)
 static QString fallbackXdgRuntimeDir()
 {
     static QString username = [] {
@@ -484,17 +527,17 @@ static QString fallbackXdgRuntimeDir()
 }
 #endif
 
-static QString updateRuntimeDir(const QString &path)
+[[maybe_unused]] static QString updateRuntimeDir(const QString &path)
 {
     qputenv("XDG_RUNTIME_DIR", QFile::encodeName(path));
     return path;
 }
 
-static void clearRuntimeDir()
+[[maybe_unused]] static void clearRuntimeDir()
 {
     qunsetenv("XDG_RUNTIME_DIR");
 #ifdef Q_XDG_PLATFORM
-#ifndef Q_OS_WASM
+#if !defined(Q_OS_WASM) && !defined(Q_OS_INTEGRITY)
     QTest::ignoreMessage(QtWarningMsg,
                          qPrintable("QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '"
                                     + fallbackXdgRuntimeDir() + '\''));
@@ -504,7 +547,9 @@ static void clearRuntimeDir()
 
 void tst_qstandardpaths::testCustomRuntimeDirectory_data()
 {
-#if defined(Q_XDG_PLATFORM)
+#ifdef Q_OS_INTEGRITY
+    QSKIP("Test requires getgid/getpwuid API that are not available on INTEGRITY");
+#elif defined(Q_XDG_PLATFORM)
     QTest::addColumn<RuntimeDirSetup>("setup");
     auto addRow = [](const char *name, RuntimeDirSetup f) {
         QTest::newRow(name) << f;
@@ -748,6 +793,31 @@ void tst_qstandardpaths::testXdgPathCleanup()
     QVERIFY(!appsDirs.contains("/applications"));
     QVERIFY(!appsDirs.contains(uncleanGlobalAppDir + "/applications"));
     QVERIFY(!appsDirs.contains("relative/path/applications"));
+
+    const QString uncleanGlobalConfigDir = "/./" + QFile::encodeName(m_globalConfigDir);
+    qputenv("XDG_CONFIG_DIRS", QFile::encodeName(uncleanGlobalConfigDir) + "::relative/path");
+    const QStringList configDirs = QStandardPaths::standardLocations(QStandardPaths::ConfigLocation);
+    QVERIFY(!configDirs.contains("relative/path"_L1));
+    QVERIFY(!configDirs.contains(""_L1));
+
+    // Relative paths in XDG_* env vars are ignored
+    const QString relative("./someRelativeDir");
+
+    qputenv("XDG_CACHE_HOME", relative.toLatin1());
+    const QString cacheDir = cacheLoc();
+    QCOMPARE_NE(cacheDir, relative);
+
+    qputenv("XDG_DATA_HOME", relative.toLatin1());
+    const QString localDataDir = genericDataLoc();
+    QCOMPARE_NE(localDataDir, relative);
+
+    qputenv("XDG_CONFIG_HOME", relative.toLatin1());
+    const QString localConfig = configLoc();
+    QCOMPARE_NE(localConfig, relative);
+
+    qputenv("XDG_RUNTIME_DIR", relative.toLatin1());
+    const QString runtimeDir = genericDataLoc();
+    QCOMPARE_NE(runtimeDir, relative);
 #endif
 }
 

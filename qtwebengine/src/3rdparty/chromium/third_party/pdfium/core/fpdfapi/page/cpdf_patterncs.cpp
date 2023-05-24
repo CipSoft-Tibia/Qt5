@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,9 @@
 #include "core/fpdfapi/page/cpdf_docpagedata.h"
 #include "core/fpdfapi/parser/cpdf_array.h"
 #include "core/fpdfapi/parser/cpdf_document.h"
+#include "third_party/base/notreached.h"
 
-CPDF_PatternCS::CPDF_PatternCS(CPDF_Document* pDoc)
-    : CPDF_ColorSpace(pDoc, PDFCS_PATTERN) {}
+CPDF_PatternCS::CPDF_PatternCS() : CPDF_BasedCS(Family::kPattern) {}
 
 CPDF_PatternCS::~CPDF_PatternCS() = default;
 
@@ -22,16 +22,17 @@ void CPDF_PatternCS::InitializeStockPattern() {
 uint32_t CPDF_PatternCS::v_Load(CPDF_Document* pDoc,
                                 const CPDF_Array* pArray,
                                 std::set<const CPDF_Object*>* pVisited) {
-  const CPDF_Object* pBaseCS = pArray->GetDirectObjectAt(1);
-  if (pBaseCS == m_pArray)
+  RetainPtr<const CPDF_Object> pBaseCS = pArray->GetDirectObjectAt(1);
+  if (HasSameArray(pBaseCS.Get()))
     return 0;
 
   auto* pDocPageData = CPDF_DocPageData::FromDocument(pDoc);
-  m_pBaseCS = pDocPageData->GetColorSpaceGuarded(pBaseCS, nullptr, pVisited);
+  m_pBaseCS =
+      pDocPageData->GetColorSpaceGuarded(pBaseCS.Get(), nullptr, pVisited);
   if (!m_pBaseCS)
     return 1;
 
-  if (m_pBaseCS->GetFamily() == PDFCS_PATTERN)
+  if (m_pBaseCS->GetFamily() == Family::kPattern)
     return 0;
 
   if (m_pBaseCS->CountComponents() > kMaxPatternColorComps)
@@ -40,16 +41,12 @@ uint32_t CPDF_PatternCS::v_Load(CPDF_Document* pDoc,
   return m_pBaseCS->CountComponents() + 1;
 }
 
-bool CPDF_PatternCS::GetRGB(const float* pBuf,
+bool CPDF_PatternCS::GetRGB(pdfium::span<const float> pBuf,
                             float* R,
                             float* G,
                             float* B) const {
   NOTREACHED();
   return false;
-}
-
-CPDF_PatternCS* CPDF_PatternCS::AsPatternCS() {
-  return this;
 }
 
 const CPDF_PatternCS* CPDF_PatternCS::AsPatternCS() const {
@@ -60,7 +57,7 @@ bool CPDF_PatternCS::GetPatternRGB(const PatternValue& value,
                                    float* R,
                                    float* G,
                                    float* B) const {
-  if (m_pBaseCS && m_pBaseCS->GetRGB(value.GetComps().data(), R, G, B))
+  if (m_pBaseCS && m_pBaseCS->GetRGB(value.GetComps(), R, G, B))
     return true;
 
   *R = 0.75f;

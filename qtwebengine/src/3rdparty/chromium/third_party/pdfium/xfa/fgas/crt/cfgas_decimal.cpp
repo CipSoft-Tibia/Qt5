@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,14 @@
 
 #include "xfa/fgas/crt/cfgas_decimal.h"
 
+#include <math.h>
+
 #include <algorithm>
 #include <limits>
 #include <utility>
 
 #include "core/fxcrt/fx_extension.h"
+#include "third_party/base/check.h"
 
 #define FXMATH_DECIMAL_SCALELIMIT 0x1c
 #define FXMATH_DECIMAL_RSHIFT32BIT(x) ((x) >> 0x10 >> 0x10)
@@ -118,7 +121,7 @@ inline void decimal_helper_raw_mul(uint64_t a[],
                                    uint8_t bl,
                                    uint64_t c[],
                                    uint8_t cl) {
-  ASSERT(al + bl <= cl);
+  DCHECK(al + bl <= cl);
   for (int i = 0; i < cl; i++)
     c[i] = 0;
 
@@ -295,13 +298,10 @@ CFGAS_Decimal::CFGAS_Decimal(WideStringView strObj) {
   bool pointmet = false;
   bool negmet = false;
   uint8_t scale = 0;
-  m_uHi = 0;
-  m_uMid = 0;
-  m_uLo = 0;
   while (str != strBound && *str == ' ')
     str++;
   if (str != strBound && *str == '-') {
-    negmet = 1;
+    negmet = true;
     str++;
   } else if (str != strBound && *str == '+') {
     str++;
@@ -311,7 +311,7 @@ CFGAS_Decimal::CFGAS_Decimal(WideStringView strObj) {
          scale < FXMATH_DECIMAL_SCALELIMIT) {
     if (*str == '.') {
       if (!pointmet)
-        pointmet = 1;
+        pointmet = true;
     } else {
       m_uHi = m_uHi * 0xA + FXMATH_DECIMAL_RSHIFT32BIT((uint64_t)m_uMid * 0xA);
       m_uMid = m_uMid * 0xA + FXMATH_DECIMAL_RSHIFT32BIT((uint64_t)m_uLo * 0xA);
@@ -434,7 +434,7 @@ CFGAS_Decimal CFGAS_Decimal::operator/(const CFGAS_Decimal& val) const {
 
   uint8_t minscale = scale;
   if (!IsNotZero())
-    return CFGAS_Decimal(0, 0, 0, 0, minscale);
+    return CFGAS_Decimal(0, 0, 0, false, minscale);
 
   while (!a[6]) {
     decimal_helper_mul10_any(a, 7);

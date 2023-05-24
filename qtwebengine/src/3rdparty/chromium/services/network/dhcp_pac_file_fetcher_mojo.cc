@@ -1,10 +1,10 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/network/dhcp_pac_file_fetcher_mojo.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "net/proxy_resolution/pac_file_fetcher.h"
 #include "net/proxy_resolution/pac_file_fetcher_impl.h"
@@ -25,7 +25,7 @@ DhcpPacFileFetcherMojo::DhcpPacFileFetcherMojo(
 DhcpPacFileFetcherMojo::~DhcpPacFileFetcherMojo() = default;
 
 int DhcpPacFileFetcherMojo::Fetch(
-    base::string16* utf16_text,
+    std::u16string* utf16_text,
     net::CompletionOnceCallback callback,
     const net::NetLogWithSource& net_log,
     const net::NetworkTrafficAnnotationTag traffic_annotation) {
@@ -68,7 +68,7 @@ void DhcpPacFileFetcherMojo::SetPacFileFetcherForTesting(
   pac_file_fetcher_ = std::move(pac_file_fetcher);
 }
 void DhcpPacFileFetcherMojo::ContinueFetch(
-    base::string16* utf16_text,
+    std::u16string* utf16_text,
     const net::NetworkTrafficAnnotationTag traffic_annotation,
     std::string pac_url) {
   pac_url_ = GURL(pac_url);

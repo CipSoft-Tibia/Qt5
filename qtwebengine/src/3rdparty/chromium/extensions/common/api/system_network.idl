@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,6 +25,7 @@ namespace system.network {
   interface Functions {
     // Retrieves information about local adapters on this system.
     // |callback| : Called when local adapter information is available.
-    static void getNetworkInterfaces(GetNetworkInterfacesCallback callback);
+    [supportsPromises] static void getNetworkInterfaces(
+        GetNetworkInterfacesCallback callback);
   };
 };

@@ -16,8 +16,8 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Build;
-import android.support.annotation.Nullable;
 import android.util.Log;
+import androidx.annotation.Nullable;
 import org.appspot.apprtc.util.AppRTCUtils;
 import org.webrtc.ThreadUtils;
 
@@ -34,8 +34,8 @@ public class AppRTCProximitySensor implements SensorEventListener {
   private static final String TAG = "AppRTCProximitySensor";
 
   // This class should be created, started and stopped on one thread
-  // (e.g. the main thread). We use |nonThreadSafe| to ensure that this is
-  // the case. Only active when |DEBUG| is set to true.
+  // (e.g. the main thread). We use `nonThreadSafe` to ensure that this is
+  // the case. Only active when `DEBUG` is set to true.
   private final ThreadUtils.ThreadChecker threadChecker = new ThreadUtils.ThreadChecker();
 
   private final Runnable onSensorStateListener;
@@ -149,16 +149,10 @@ public class AppRTCProximitySensor implements SensorEventListener {
     info.append(", resolution: ").append(proximitySensor.getResolution());
     info.append(", max range: ").append(proximitySensor.getMaximumRange());
     info.append(", min delay: ").append(proximitySensor.getMinDelay());
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
-      // Added in API level 20.
-      info.append(", type: ").append(proximitySensor.getStringType());
-    }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-      // Added in API level 21.
-      info.append(", max delay: ").append(proximitySensor.getMaxDelay());
-      info.append(", reporting mode: ").append(proximitySensor.getReportingMode());
-      info.append(", isWakeUpSensor: ").append(proximitySensor.isWakeUpSensor());
-    }
+    info.append(", type: ").append(proximitySensor.getStringType());
+    info.append(", max delay: ").append(proximitySensor.getMaxDelay());
+    info.append(", reporting mode: ").append(proximitySensor.getReportingMode());
+    info.append(", isWakeUpSensor: ").append(proximitySensor.isWakeUpSensor());
     Log.d(TAG, info.toString());
   }
 }

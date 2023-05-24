@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -70,6 +70,7 @@ if (is_android) {
       "//media/base",
       "//media/cdm",
       "//media/formats",
+      "//net",
       "//third_party/widevine/cdm:headers",
       "//ui/gl",
       "//url",
@@ -96,6 +97,7 @@ if (is_android) {
     deps = [
       "//base/test:test_support",
       "//media:test_support",
+      "//net",
       "//testing/gmock",
       "//testing/gtest",
       "//third_party/libyuv",
@@ -139,6 +141,7 @@ if (is_android) {
       "java/src/org/chromium/media/MediaPlayerBridge.java",
       "java/src/org/chromium/media/MediaPlayerListener.java",
       "java/src/org/chromium/media/MediaServerCrashListener.java",
+      "java/src/org/chromium/media/VideoAcceleratorUtil.java",
     ]
   }
 
@@ -164,7 +167,8 @@ if (is_android) {
       ":media_java_resources",
       "//base:base_java",
       "//base:jni_java",
-      "//third_party/android_deps:androidx_annotation_annotation_java",
+      "//build/android:build_java",
+      "//third_party/androidx:androidx_annotation_annotation_java",
     ]
     annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
     srcjar_deps = [
@@ -174,6 +178,10 @@ if (is_android) {
     ]
     resources_package = "org.chromium.media"
     sources = [
+      "java/src/org/chromium/media/AudioDeviceListener.java",
+      "java/src/org/chromium/media/AudioDeviceSelector.java",
+      "java/src/org/chromium/media/AudioDeviceSelectorPostS.java",
+      "java/src/org/chromium/media/AudioDeviceSelectorPreS.java",
       "java/src/org/chromium/media/AudioManagerAndroid.java",
       "java/src/org/chromium/media/AudioTrackOutputStream.java",
       "java/src/org/chromium/media/BitrateAdjuster.java",
@@ -192,6 +200,7 @@ if (is_android) {
       "java/src/org/chromium/media/MediaPlayerListener.java",
       "java/src/org/chromium/media/MediaServerCrashListener.java",
       "java/src/org/chromium/media/ScreenResolutionUtil.java",
+      "java/src/org/chromium/media/VideoAcceleratorUtil.java",
     ]
   }
 
@@ -199,10 +208,10 @@ if (is_android) {
   android_library("display_java") {
     sources = [ "java/src/org/chromium/media/DisplayCompat.java" ]
 
-    deps = [ "//third_party/android_deps:androidx_annotation_annotation_java" ]
+    deps = [ "//third_party/androidx:androidx_annotation_annotation_java" ]
   }
 
-  junit_binary("media_base_junit_tests") {
+  robolectric_binary("media_base_junit_tests") {
     sources = [
       "java/src/test/org/chromium/media/AudioTrackOutputStreamTest.java",
       "java/src/test/org/chromium/media/BitrateAdjusterTest.java",
@@ -212,7 +221,7 @@ if (is_android) {
       ":media_java",
       "//base:base_java",
       "//base:base_java_test_support",
-      "//third_party/android_deps:androidx_test_runner_java",
+      "//third_party/androidx:androidx_test_runner_java",
       "//third_party/junit",
     ]
   }

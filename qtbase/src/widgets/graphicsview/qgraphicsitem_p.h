@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGRAPHICSITEM_P_H
 #define QGRAPHICSITEM_P_H
@@ -67,63 +31,6 @@ QT_BEGIN_NAMESPACE
 
 class QGraphicsItemPrivate;
 
-#ifndef QDECLARATIVELISTPROPERTY
-#define QDECLARATIVELISTPROPERTY
-template<typename T>
-class QDeclarativeListProperty {
-public:
-    typedef void (*AppendFunction)(QDeclarativeListProperty<T> *, T*);
-    typedef int (*CountFunction)(QDeclarativeListProperty<T> *);
-    typedef T *(*AtFunction)(QDeclarativeListProperty<T> *, int);
-    typedef void (*ClearFunction)(QDeclarativeListProperty<T> *);
-
-    QDeclarativeListProperty()
-        : object(nullptr), data(nullptr), append(nullptr), count(nullptr), at(nullptr), clear(nullptr), dummy1(nullptr), dummy2(nullptr) {}
-    QDeclarativeListProperty(QObject *o, QList<T *> &list)
-        : object(o), data(&list), append(qlist_append), count(qlist_count), at(qlist_at),
-          clear(qlist_clear), dummy1(nullptr), dummy2(nullptr) {}
-    QDeclarativeListProperty(QObject *o, void *d, AppendFunction a, CountFunction c = 0, AtFunction t = 0,
-                    ClearFunction r = 0)
-        : object(o), data(d), append(a), count(c), at(t), clear(r), dummy1(nullptr), dummy2(nullptr) {}
-
-    bool operator==(const QDeclarativeListProperty &o) const {
-        return object == o.object &&
-               data == o.data &&
-               append == o.append &&
-               count == o.count &&
-               at == o.at &&
-               clear == o.clear;
-    }
-
-    QObject *object;
-    void *data;
-
-    AppendFunction append;
-
-    CountFunction count;
-    AtFunction at;
-
-    ClearFunction clear;
-
-    void *dummy1;
-    void *dummy2;
-
-private:
-    static void qlist_append(QDeclarativeListProperty *p, T *v) {
-        ((QList<T *> *)p->data)->append(v);
-    }
-    static int qlist_count(QDeclarativeListProperty *p) {
-        return ((QList<T *> *)p->data)->count();
-    }
-    static T *qlist_at(QDeclarativeListProperty *p, int idx) {
-        return ((QList<T *> *)p->data)->at(idx);
-    }
-    static void qlist_clear(QDeclarativeListProperty *p) {
-        return ((QList<T *> *)p->data)->clear();
-    }
-};
-#endif
-
 class QGraphicsItemCache
 {
 public:
@@ -144,7 +51,7 @@ public:
     QHash<QPaintDevice *, DeviceData> deviceData;
 
     // List of logical exposed rects
-    QVector<QRectF> exposed;
+    QList<QRectF> exposed;
     bool allExposed;
 
     // Empty cache
@@ -226,7 +133,6 @@ public:
     void resolveDepth();
     void addChild(QGraphicsItem *child);
     void removeChild(QGraphicsItem *child);
-    QDeclarativeListProperty<QGraphicsObject> childrenList();
     void setParentItemHelper(QGraphicsItem *parent, const QVariant *newParentVariant,
                              const QVariant *thisPointerVariant);
     void childrenBoundingRectHelper(QTransform *x, QRectF *rect, QGraphicsItem *topMostEffectItem);
@@ -289,7 +195,7 @@ public:
     }
 
     struct ExtraStruct {
-        ExtraStruct() {} // for QVector, don't use
+        ExtraStruct() { } // for QList, don't use
         ExtraStruct(Extra type, const QVariant &value)
             : type(type), value(value)
         { }
@@ -301,7 +207,7 @@ public:
         { return type < extra; }
     };
 
-    QVector<ExtraStruct> extras;
+    QList<ExtraStruct> extras;
 
     QGraphicsItemCache *maybeExtraItemCache() const;
     QGraphicsItemCache *extraItemCache() const;
@@ -414,11 +320,6 @@ public:
     virtual void subFocusItemChange();
     virtual void focusScopeItemChange(bool isSubFocusItem);
 
-    static void children_append(QDeclarativeListProperty<QGraphicsObject> *list, QGraphicsObject *item);
-    static int children_count(QDeclarativeListProperty<QGraphicsObject> *list);
-    static QGraphicsObject *children_at(QDeclarativeListProperty<QGraphicsObject> *list, int);
-    static void children_clear(QDeclarativeListProperty<QGraphicsObject> *list);
-
     inline QTransform transformToParent() const;
     inline void ensureSortedChildren();
     static inline bool insertionOrder(QGraphicsItem *a, QGraphicsItem *b);
@@ -514,16 +415,15 @@ public:
     quint32 scenePosDescendants : 1;
     quint32 pendingPolish : 1;
     quint32 mayHaveChildWithGraphicsEffect : 1;
-    quint32 isDeclarativeItem : 1;
     quint32 sendParentChangeNotification : 1;
     quint32 dirtyChildrenBoundingRect : 1;
-    quint32 padding : 19;
+    quint32 padding : 20;
 
     // Optional stacking order
     int globalStackingOrder;
     QGraphicsItem *q_ptr;
 };
-Q_DECLARE_TYPEINFO(QGraphicsItemPrivate::ExtraStruct, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QGraphicsItemPrivate::ExtraStruct, Q_RELOCATABLE_TYPE);
 
 struct QGraphicsItemPrivate::TransformData
 {
@@ -624,7 +524,6 @@ public:
         return item->type() == QGraphicsPixmapItem::Type
                && !(item->flags() & QGraphicsItem::ItemIsSelectable)
                && item->d_ptr->children.size() == 0;
-            //|| (item->d_ptr->isObject && qobject_cast<QDeclarativeImage *>(q_func()));
     }
 
     const QStyleOption *styleOption() const override

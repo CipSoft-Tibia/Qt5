@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSGTEXTURE_P_H
 #define QSGTEXTURE_P_H
@@ -68,28 +32,74 @@ struct QSGSamplerDescription
     static QSGSamplerDescription fromTexture(QSGTexture *t);
 };
 
-Q_DECLARE_TYPEINFO(QSGSamplerDescription, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QSGSamplerDescription, Q_RELOCATABLE_TYPE);
 
-bool operator==(const QSGSamplerDescription &a, const QSGSamplerDescription &b) Q_DECL_NOTHROW;
-bool operator!=(const QSGSamplerDescription &a, const QSGSamplerDescription &b) Q_DECL_NOTHROW;
-uint qHash(const QSGSamplerDescription &s, uint seed = 0) Q_DECL_NOTHROW;
+bool operator==(const QSGSamplerDescription &a, const QSGSamplerDescription &b) noexcept;
+bool operator!=(const QSGSamplerDescription &a, const QSGSamplerDescription &b) noexcept;
+size_t qHash(const QSGSamplerDescription &s, size_t seed = 0) noexcept;
+
+#if QT_CONFIG(opengl)
+class Q_QUICK_PRIVATE_EXPORT QSGTexturePlatformOpenGL : public QNativeInterface::QSGOpenGLTexture
+{
+public:
+    QSGTexturePlatformOpenGL(QSGTexture *t) : m_texture(t) { }
+    QSGTexture *m_texture;
+
+    GLuint nativeTexture() const override;
+};
+#endif
+
+#ifdef Q_OS_WIN
+class Q_QUICK_PRIVATE_EXPORT QSGTexturePlatformD3D11 : public QNativeInterface::QSGD3D11Texture
+{
+public:
+    QSGTexturePlatformD3D11(QSGTexture *t) : m_texture(t) { }
+    QSGTexture *m_texture;
+
+    void *nativeTexture() const override;
+};
+class Q_QUICK_PRIVATE_EXPORT QSGTexturePlatformD3D12 : public QNativeInterface::QSGD3D12Texture
+{
+public:
+    QSGTexturePlatformD3D12(QSGTexture *t) : m_texture(t) { }
+    QSGTexture *m_texture;
+
+    int nativeResourceState() const override;
+    void *nativeTexture() const override;
+};
+#endif
+
+#if defined(__OBJC__)
+class Q_QUICK_PRIVATE_EXPORT QSGTexturePlatformMetal : public QNativeInterface::QSGMetalTexture
+{
+public:
+    QSGTexturePlatformMetal(QSGTexture *t) : m_texture(t) { }
+    QSGTexture *m_texture;
+
+    id<MTLTexture> nativeTexture() const override;
+};
+#endif
+
+#if QT_CONFIG(vulkan)
+class Q_QUICK_PRIVATE_EXPORT QSGTexturePlatformVulkan : public QNativeInterface::QSGVulkanTexture
+{
+public:
+    QSGTexturePlatformVulkan(QSGTexture *t) : m_texture(t) { }
+    QSGTexture *m_texture;
+
+    VkImage nativeImage() const override;
+    VkImageLayout nativeImageLayout() const override;
+};
+#endif
 
 class Q_QUICK_PRIVATE_EXPORT QSGTexturePrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QSGTexture)
 public:
-    QSGTexturePrivate();
+    QSGTexturePrivate(QSGTexture *t);
     static QSGTexturePrivate *get(QSGTexture *t) { return t->d_func(); }
     void resetDirtySamplerOptions();
     bool hasDirtySamplerOptions() const;
-
-    virtual QRhiTexture *rhiTexture() const;
-
-    // ### Qt 6: these should be virtuals in the public class instead
-    virtual int comparisonKey() const; // ### Qt 6: pure virtual
-    virtual void updateRhiTexture(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates);
-
-    QRhiResourceUpdateBatch *workResourceUpdateBatch = nullptr; // ### Qt 6: remove
 
     uint wrapChanged : 1;
     uint filteringChanged : 1;
@@ -100,6 +110,23 @@ public:
     uint mipmapMode : 2;
     uint filterMode : 2;
     uint anisotropyLevel: 3;
+
+    // While we could make QSGTexturePrivate implement all the interfaces, we
+    // rather choose to use separate objects to avoid clashes in the function
+    // names and signatures.
+#if QT_CONFIG(opengl)
+    QSGTexturePlatformOpenGL m_openglTextureAccessor;
+#endif
+#ifdef Q_OS_WIN
+    QSGTexturePlatformD3D11 m_d3d11TextureAccessor;
+    QSGTexturePlatformD3D12 m_d3d12TextureAccessor;
+#endif
+#if defined(__OBJC__)
+    QSGTexturePlatformMetal m_metalTextureAccessor;
+#endif
+#if QT_CONFIG(vulkan)
+    QSGTexturePlatformVulkan m_vulkanTextureAccessor;
+#endif
 };
 
 Q_QUICK_PRIVATE_EXPORT bool qsg_safeguard_texture(QSGTexture *);

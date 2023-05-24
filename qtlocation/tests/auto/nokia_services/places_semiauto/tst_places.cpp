@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QCoreApplication>
 #include <QString>
@@ -33,14 +8,22 @@
 #if QT_CONFIG(process)
 #include <QtCore/QProcessEnvironment>
 #endif
+#include <QtPositioning/QGeoAddress>
 #include <QtPositioning/QGeoCircle>
+#include <QtPositioning/QGeoLocation>
 #include <QtLocation/QGeoServiceProvider>
-#include <QtLocation/QPlaceEditorial>
-#include <QtLocation/QPlaceImage>
+#include <QtLocation/QPlace>
+#include <QtLocation/QPlaceAttribute>
+#include <QtLocation/QPlaceCategory>
+#include <QtLocation/QPlaceContactDetail>
+#include <QtLocation/QPlaceContentReply>
+#include <QtLocation/QPlaceContentRequest>
+#include <QtLocation/QPlaceIcon>
 #include <QtLocation/QPlaceManager>
+#include <QtLocation/QPlaceRatings>
 #include <QtLocation/QPlaceResult>
-#include <QtLocation/QPlaceReview>
 #include <QtLocation/QPlaceSearchReply>
+#include <QtLocation/QPlaceSearchRequest>
 #include "../../placemanager_utils/placemanager_utils.h"
 
 QT_USE_NAMESPACE
@@ -380,12 +363,12 @@ void tst_QPlaceManagerNokia::details()
     QVERIFY(doFetchDetails(ValidKnownPlaceId, &place));
     QVERIFY(!place.name().isEmpty());
     QVERIFY(!place.icon().url().isEmpty());
-    QStringList contactTypes = place.contactTypes();
+    const QStringList contactTypes = place.contactTypes();
     QVERIFY(!contactTypes.isEmpty());
-    foreach (const QString &contactType, contactTypes) {
-        QList<QPlaceContactDetail> details = place.contactDetails(contactType);
+    for (const QString &contactType : contactTypes) {
+        const QList<QPlaceContactDetail> details = place.contactDetails(contactType);
         QVERIFY(details.count() > 0);
-        foreach (const QPlaceContactDetail &detail, details) {
+        for (const QPlaceContactDetail &detail : details) {
             QVERIFY(!detail.label().isEmpty());
             QVERIFY(!detail.value().isEmpty());
         }
@@ -401,7 +384,7 @@ void tst_QPlaceManagerNokia::details()
     QVERIFY(place.ratings().count() >  0);
 
     QVERIFY(place.categories().count() > 0);
-    foreach (const QPlaceCategory &category, place.categories()) {
+    for (const QPlaceCategory &category : place.categories()) {
         QVERIFY(!category.name().isEmpty());
         QVERIFY(!category.categoryId().isEmpty());
         QVERIFY(!category.icon().url().isEmpty());
@@ -424,7 +407,7 @@ void tst_QPlaceManagerNokia::categories()
 
     QList<QPlaceCategory> categories = placeManager->childCategories();
     QVERIFY(categories.count() > 0);
-    foreach (const QPlaceCategory &category, categories) {
+    for (const QPlaceCategory &category : categories) {
         //check that we have valid fields
         QVERIFY(!category.categoryId().isEmpty());
         QVERIFY(!category.name().isEmpty());
@@ -438,7 +421,7 @@ void tst_QPlaceManagerNokia::categories()
         const QList<QPlaceCategory> childCats =
                 placeManager->childCategories(category.categoryId());
         if (!childCats.isEmpty()) {
-            foreach (const QPlaceCategory &child, childCats) {
+            for (const QPlaceCategory &child : childCats) {
                 // only two levels of categories hence 2.nd level has no further children
                 QVERIFY(placeManager->childCategories(child.categoryId()).isEmpty());
                 QVERIFY(placeManager->parentCategoryId(child.categoryId()) == category.categoryId());
@@ -562,15 +545,15 @@ void tst_QPlaceManagerNokia::locale()
     //check that we can set different locales for the categories
     placeManager->setLocale(QLocale("en"));
     QVERIFY(doInitializeCategories());
-    QList<QPlaceCategory> enCategories = placeManager->childCategories();
+    const QList<QPlaceCategory> enCategories = placeManager->childCategories();
     QVERIFY(enCategories.count() > 0);
 
     placeManager->setLocale(QLocale("fi"));
     QVERIFY(doInitializeCategories());
-    QList<QPlaceCategory> fiCategories = placeManager->childCategories();
+    const QList<QPlaceCategory> fiCategories = placeManager->childCategories();
 
-    foreach (const QPlaceCategory enCat, enCategories) {
-        foreach (const QPlaceCategory fiCat, fiCategories) {
+    for (const QPlaceCategory &enCat : enCategories) {
+        for (const QPlaceCategory &fiCat : fiCategories) {
             if (enCat.categoryId() == fiCat.categoryId()) {
                 QVERIFY(fiCat.name() != enCat.name());
                 QVERIFY(fiCat == placeManager->category(fiCat.categoryId()));
@@ -610,30 +593,27 @@ void tst_QPlaceManagerNokia::content()
 
     QVERIFY(results.count() > 0);
 
-    for (auto iter = results.cbegin(), end = results.cend(); iter != end; ++iter) {
+    for (const auto &content : std::as_const(results)) {
         switch (type) {
-        case (QPlaceContent::ImageType): {
-            QPlaceImage image = iter.value();
-            QVERIFY(!image.url().isEmpty());
+        case QPlaceContent::ImageType:
+            QVERIFY(!content.value(QPlaceContent::ImageUrl).value<QUrl>().isEmpty());
             break;
-        } case (QPlaceContent::ReviewType) : {
-            QPlaceReview review = iter.value();
-            QVERIFY(!review.dateTime().isValid());
-            QVERIFY(!review.text().isEmpty());
-            QVERIFY(review.rating() >= 1 && review.rating() <= 5);
-
-            //title and language fields are optional and thus have not been
+        case QPlaceContent::ReviewType:
+            //review title and language fields are optional and thus have not been
             //explicitly tested
+            QVERIFY(!content.value(QPlaceContent::ReviewDateTime).value<QDateTime>().isValid());
+            QVERIFY(!content.value(QPlaceContent::ReviewText).value<QString>().isEmpty());
+            QVERIFY(content.value(QPlaceContent::ReviewRating).toReal() >= 1 &&
+                    content.value(QPlaceContent::ReviewRating).toReal() <= 5);
             break;
-        } case (QPlaceContent::EditorialType): {
-            QPlaceEditorial editorial = iter.value();
-            QVERIFY(!editorial.text().isEmpty());
-
-            //The language field is optional and thus has not been
+        case QPlaceContent::EditorialType:
+            //The editorial language field is optional and thus has not been
             //explicitly tested.
+            QVERIFY(!content.value(QPlaceContent::EditorialText).value<QString>().isEmpty());
             break;
-        } default:
-            QFAIL("Unknown content type");
+        default:
+            QVERIFY2(false, "Unexpected content type");
+            break;
         }
     }
 

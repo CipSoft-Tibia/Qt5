@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -61,6 +61,7 @@ android_library("system_impl_java") {
   deps = [
     "//base:base_java",
     "//base:jni_java",
+    "//build/android:build_java",
     "//mojo/public/java:system_java",
   ]
   annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
@@ -69,10 +70,12 @@ android_library("system_impl_java") {
 # Targets should also depend on :test_support for the native side.
 android_library("test_support_java") {
   testonly = true
+  annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
   sources = [ "javatests/src/org/chromium/mojo/MojoTestRule.java" ]
   deps = [
     "//base:base_java",
-    "//third_party/android_deps:androidx_annotation_annotation_java",
+    "//base:jni_java",
+    "//third_party/androidx:androidx_annotation_annotation_java",
     "//third_party/junit",
   ]
 }
@@ -114,19 +117,20 @@ android_library("mojo_javatests") {
     "javatests/src/org/chromium/mojo/system/impl/CoreImplTest.java",
     "javatests/src/org/chromium/mojo/system/impl/WatcherImplTest.java",
   ]
+  annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
 
   deps = [
     ":system_impl_java",
     ":test_support_java",
-    "//base:base_java",
     "//base:base_java_test_support",
+    "//base:jni_java",
     "//mojo/public/interfaces/bindings/tests:test_interfaces_java",
     "//mojo/public/interfaces/bindings/tests:test_mojom_import2_java",
     "//mojo/public/interfaces/bindings/tests:test_mojom_import_java",
     "//mojo/public/java:bindings_java",
     "//mojo/public/java:system_java",
-    "//third_party/android_deps:androidx_test_monitor_java",
-    "//third_party/android_deps:androidx_test_runner_java",
+    "//third_party/androidx:androidx_test_monitor_java",
+    "//third_party/androidx:androidx_test_runner_java",
     "//third_party/junit",
   ]
 
@@ -158,16 +162,15 @@ shared_library("mojo_java_unittests") {
 }
 
 instrumentation_test_apk("mojo_test_apk") {
+  apk_name = "MojoTest"
+  android_manifest = "javatests/AndroidManifest.xml"
   deps = [
     ":mojo_javatests",
     ":system_impl_java",
-    "//base:base_java",
     "//mojo/public/interfaces/bindings/tests:test_interfaces",
     "//mojo/public/java:bindings_java",
-    "//third_party/android_deps:androidx_test_monitor_java",
-    "//third_party/android_deps:androidx_test_runner_java",
+    "//third_party/androidx:androidx_test_monitor_java",
+    "//third_party/androidx:androidx_test_runner_java",
   ]
   shared_libraries = [ ":mojo_java_unittests" ]
-  apk_name = "MojoTest"
-  android_manifest = "javatests/AndroidManifest.xml"
 }

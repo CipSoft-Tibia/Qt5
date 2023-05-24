@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,20 +8,21 @@
 
 #include <algorithm>
 #include <functional>
+#include <sstream>
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
+#include "base/containers/contains.h"
 #include "base/files/file_util.h"
 #include "base/files/important_file_writer.h"
+#include "base/functional/bind.h"
 #include "base/hash/md5.h"
+#include "base/observer_list.h"
 #include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
-#include "base/task/post_task.h"
 #include "base/task/thread_pool.h"
-#include "base/task_runner_util.h"
 #include "base/threading/scoped_blocking_call.h"
 #ifndef TOOLKIT_QT
 #include "chrome/common/chrome_constants.h"
@@ -31,8 +32,8 @@
 #ifndef TOOLKIT_QT
 #include "components/sync/model/sync_change.h"
 #include "components/sync/model/sync_change_processor.h"
-#include "components/sync/model/sync_error_factory.h"
-#include "components/sync/protocol/sync.pb.h"
+#include "components/sync/protocol/dictionary_specifics.pb.h"
+#include "components/sync/protocol/entity_specifics.pb.h"
 #endif
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -171,7 +172,14 @@ void SaveDictionaryFileReliably(const base::FilePath& path,
   {
     base::ScopedBlockingCall scoped_blocking_call(
         FROM_HERE, base::BlockingType::MAY_BLOCK);
-    base::CopyFile(path, path.AddExtension(BACKUP_EXTENSION));
+    base::FilePath backup_path = path.AddExtension(BACKUP_EXTENSION);
+    if (!custom_words.empty()) {
+      base::CopyFile(path, backup_path);
+    } else {
+      // The wordlist was just cleared, clean up the .backup file for privacy
+      // reasons.
+      base::DeleteFile(backup_path);
+    }
     base::ImportantFileWriter::WriteFileAtomically(path, content.str());
   }
 }
@@ -219,6 +227,10 @@ void SpellcheckCustomDictionary::Change::AddWords(
 
 void SpellcheckCustomDictionary::Change::RemoveWord(const std::string& word) {
   to_remove_.insert(word);
+}
+
+void SpellcheckCustomDictionary::Change::Clear() {
+  clear_ = true;
 }
 
 int SpellcheckCustomDictionary::Change::Sanitize(
@@ -279,6 +291,14 @@ bool SpellcheckCustomDictionary::HasWord(const std::string& word) const {
   return base::Contains(words_, word);
 }
 
+void SpellcheckCustomDictionary::Clear() {
+  std::unique_ptr<Change> dictionary_change(new Change);
+  dictionary_change->Clear();
+  Apply(*dictionary_change);
+  Notify(*dictionary_change);
+  Save(std::move(dictionary_change));
+}
+
 void SpellcheckCustomDictionary::AddObserver(Observer* observer) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   DCHECK(observer);
@@ -305,8 +325,8 @@ bool SpellcheckCustomDictionary::IsSyncing() {
 
 void SpellcheckCustomDictionary::Load() {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  base::PostTaskAndReplyWithResult(
-      task_runner_.get(), FROM_HERE,
+  task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(&SpellcheckCustomDictionary::LoadDictionaryFile,
                      custom_dictionary_path_),
       base::BindOnce(&SpellcheckCustomDictionary::OnLoaded,
@@ -322,20 +342,16 @@ void SpellcheckCustomDictionary::WaitUntilReadyToSync(base::OnceClosure done) {
     wait_until_ready_to_sync_cb_ = std::move(done);
 }
 
-base::Optional<syncer::ModelError>
+absl::optional<syncer::ModelError>
 SpellcheckCustomDictionary::MergeDataAndStartSyncing(
     syncer::ModelType type,
     const syncer::SyncDataList& initial_sync_data,
-    std::unique_ptr<syncer::SyncChangeProcessor> sync_processor,
-    std::unique_ptr<syncer::SyncErrorFactory> sync_error_handler) {
+    std::unique_ptr<syncer::SyncChangeProcessor> sync_processor) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   DCHECK(!sync_processor_.get());
-  DCHECK(!sync_error_handler_.get());
   DCHECK(sync_processor.get());
-  DCHECK(sync_error_handler.get());
   DCHECK_EQ(syncer::DICTIONARY, type);
   sync_processor_ = std::move(sync_processor);
-  sync_error_handler_ = std::move(sync_error_handler);
 
   // Build a list of words to add locally.
   std::unique_ptr<Change> to_change_locally(new Change);
@@ -362,7 +378,6 @@ void SpellcheckCustomDictionary::StopSyncing(syncer::ModelType type) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   DCHECK_EQ(syncer::DICTIONARY, type);
   sync_processor_.reset();
-  sync_error_handler_.reset();
 }
 
 syncer::SyncDataList SpellcheckCustomDictionary::GetAllSyncDataForTesting(
@@ -381,14 +396,13 @@ syncer::SyncDataList SpellcheckCustomDictionary::GetAllSyncDataForTesting(
   return data;
 }
 
-base::Optional<syncer::ModelError>
+absl::optional<syncer::ModelError>
 SpellcheckCustomDictionary::ProcessSyncChanges(
     const base::Location& from_here,
     const syncer::SyncChangeList& change_list) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   std::unique_ptr<Change> dictionary_change(new Change);
   for (const syncer::SyncChange& change : change_list) {
-    DCHECK(change.IsValid());
     const std::string& word =
         change.sync_data().GetSpecifics().dictionary().word();
     switch (change.change_type()) {
@@ -399,13 +413,10 @@ SpellcheckCustomDictionary::ProcessSyncChanges(
         dictionary_change->RemoveWord(word);
         break;
       case syncer::SyncChange::ACTION_UPDATE:
-        // Intentionally fall through.
-      case syncer::SyncChange::ACTION_INVALID:
-        return syncer::ConvertToModelError(
-            sync_error_handler_->CreateAndUploadError(
-                FROM_HERE, "Processing sync changes failed on change type " +
-                               syncer::SyncChange::ChangeTypeToString(
-                                   change.change_type())));
+        return syncer::ModelError(
+            FROM_HERE,
+            "Processing sync changes failed on change type " +
+                syncer::SyncChange::ChangeTypeToString(change.change_type()));
     }
   }
 
@@ -414,7 +425,7 @@ SpellcheckCustomDictionary::ProcessSyncChanges(
   Notify(*dictionary_change);
   Save(std::move(dictionary_change));
 
-  return base::nullopt;
+  return absl::nullopt;
 }
 #endif
 
@@ -441,6 +452,10 @@ void SpellcheckCustomDictionary::UpdateDictionaryFile(
     return;
 
   std::unique_ptr<LoadFileResult> result = LoadDictionaryFileReliably(path);
+
+  // Clear.
+  if (dictionary_change->clear())
+    result->words.clear();
 
   // Add words.
   result->words.insert(dictionary_change->to_add().begin(),
@@ -480,6 +495,8 @@ void SpellcheckCustomDictionary::OnLoaded(
 
 void SpellcheckCustomDictionary::Apply(const Change& dictionary_change) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  if (dictionary_change.clear())
+    words_.clear();
   if (!dictionary_change.to_add().empty()) {
     words_.insert(dictionary_change.to_add().begin(),
                   dictionary_change.to_add().end());
@@ -508,11 +525,11 @@ void SpellcheckCustomDictionary::Save(
 }
 
 #ifndef TOOLKIT_QT
-base::Optional<syncer::ModelError> SpellcheckCustomDictionary::Sync(
+absl::optional<syncer::ModelError> SpellcheckCustomDictionary::Sync(
     const Change& dictionary_change) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   if (!IsSyncing() || dictionary_change.empty())
-    return base::nullopt;
+    return absl::nullopt;
 
   // The number of words on the sync server should not exceed the limits.
   int server_size = static_cast<int>(words_.size()) -
@@ -547,7 +564,7 @@ base::Optional<syncer::ModelError> SpellcheckCustomDictionary::Sync(
   }
 
   // Send the changes to the sync processor.
-  base::Optional<syncer::ModelError> error =
+  absl::optional<syncer::ModelError> error =
       sync_processor_->ProcessSyncChanges(FROM_HERE, sync_change_list);
   if (error.has_value())
     return error;
@@ -557,7 +574,7 @@ base::Optional<syncer::ModelError> SpellcheckCustomDictionary::Sync(
   if (words_.size() > spellcheck::kMaxSyncableDictionaryWords)
     StopSyncing(syncer::DICTIONARY);
 
-  return base::nullopt;
+  return absl::nullopt;
 }
 #endif
 

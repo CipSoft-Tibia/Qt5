@@ -21,11 +21,15 @@
 project(
   'libdrm',
   ['c'],
-  version : '2.4.100',
+  version : '2.4.114',
   license : 'MIT',
-  meson_version : '>= 0.43',
-  default_options : ['buildtype=debugoptimized', 'c_std=gnu99'],
+  meson_version : '>= 0.53',
+  default_options : ['buildtype=debugoptimized', 'c_std=c11'],
 )
+
+if ['windows', 'darwin'].contains(host_machine.system())
+  error('unsupported OS: @0@'.format(host_machine.system()))
+endif
 
 pkg = import('pkgconfig')
 
@@ -34,6 +38,7 @@ config = configuration_data()
 config.set10('UDEV', get_option('udev'))
 with_freedreno_kgsl = get_option('freedreno-kgsl')
 with_install_tests = get_option('install-test-programs')
+with_tests = get_option('tests')
 
 if ['freebsd', 'dragonfly', 'netbsd'].contains(host_machine.system())
   dep_pthread_stubs = dependency('pthread-stubs', version : '>= 0.4')
@@ -44,14 +49,27 @@ dep_threads = dependency('threads')
 
 cc = meson.get_compiler('c')
 
+android = cc.compiles('''int func() { return __ANDROID__; }''')
+
+symbols_check = find_program('symbols-check.py')
+prog_nm = find_program('nm')
+
 # Check for atomics
 intel_atomics = false
 lib_atomics = false
 
+python3 = import('python').find_installation()
+format_mod_static_table = custom_target(
+  'format_mod_static_table',
+  output : 'generated_static_table_fourcc.h',
+  input : 'include/drm/drm_fourcc.h',
+  command : [python3, files('gen_table_fourcc.py'), '@INPUT@', '@OUTPUT@'])
+
 dep_atomic_ops = dependency('atomic_ops', required : false)
-if cc.compiles('''
+if cc.links('''
     int atomic_add(int *i) { return __sync_add_and_fetch (i, 1); }
     int atomic_cmpxchg(int *i, int j, int k) { return __sync_val_compare_and_swap (i, j, k); }
+    int main() { }
     ''',
     name : 'Intel Atomics')
   intel_atomics = true
@@ -69,101 +87,112 @@ endif
 config.set10('HAVE_LIBDRM_ATOMIC_PRIMITIVES', intel_atomics)
 config.set10('HAVE_LIB_ATOMIC_OPS', lib_atomics)
 
+dep_pciaccess = dependency('pciaccess', version : '>= 0.10', required : get_option('intel'))
+
 with_intel = false
 _intel = get_option('intel')
-if _intel != 'false'
-  if _intel == 'true' and not with_atomics
+if not _intel.disabled()
+  if _intel.enabled() and not with_atomics
     error('libdrm_intel requires atomics.')
   else
-    with_intel = _intel == 'true' or host_machine.cpu_family().startswith('x86')
+    with_intel = (_intel.enabled() or host_machine.cpu_family().startswith('x86')) and with_atomics and dep_pciaccess.found()
   endif
 endif
+summary('Intel', with_intel)
 
 with_radeon = false
 _radeon = get_option('radeon')
-if _radeon != 'false'
-  if _radeon == 'true' and not with_atomics
+if not _radeon.disabled()
+  if _radeon.enabled() and not with_atomics
     error('libdrm_radeon requires atomics.')
   endif
-  with_radeon = true
+  with_radeon = with_atomics
 endif
+summary('Radeon', with_radeon)
 
 with_amdgpu = false
 _amdgpu = get_option('amdgpu')
-if _amdgpu != 'false'
-  if _amdgpu == 'true' and not with_atomics
+if not _amdgpu.disabled()
+  if _amdgpu.enabled() and not with_atomics
     error('libdrm_amdgpu requires atomics.')
   endif
-  with_amdgpu = true
+  with_amdgpu = with_atomics
 endif
+summary('AMDGPU', with_amdgpu)
 
 with_nouveau = false
 _nouveau = get_option('nouveau')
-if _nouveau != 'false'
-  if _nouveau == 'true' and not with_atomics
+if not _nouveau.disabled()
+  if _nouveau.enabled() and not with_atomics
     error('libdrm_nouveau requires atomics.')
   endif
-  with_nouveau = true
+  with_nouveau = with_atomics
 endif
+summary('Nouveau', with_nouveau)
 
 with_vmwgfx = false
 _vmwgfx = get_option('vmwgfx')
-if _vmwgfx != 'false'
+if not _vmwgfx.disabled()
   with_vmwgfx = true
 endif
+summary('vmwgfx', with_vmwgfx)
 
 with_omap = false
 _omap = get_option('omap')
-if _omap == 'true'
+if _omap.enabled()
   if not with_atomics
     error('libdrm_omap requires atomics.')
   endif
   with_omap = true
 endif
+summary('OMAP', with_omap)
 
 with_freedreno = false
 _freedreno = get_option('freedreno')
-if _freedreno != 'false'
-  if _freedreno == 'true' and not with_atomics
+if not _freedreno.disabled()
+  if _freedreno.enabled() and not with_atomics
     error('libdrm_freedreno requires atomics.')
   else
-    with_freedreno = _freedreno == 'true' or ['arm', 'aarch64'].contains(host_machine.cpu_family())
+    with_freedreno = (_freedreno.enabled() or ['arm', 'aarch64'].contains(host_machine.cpu_family())) and with_atomics
   endif
 endif
+summary('Freedreno', with_freedreno)
+summary('Freedreon-kgsl', with_freedreno_kgsl)
 
 with_tegra = false
 _tegra = get_option('tegra')
-if _tegra == 'true'
+if _tegra.enabled()
   if not with_atomics
     error('libdrm_tegra requires atomics.')
   endif
   with_tegra = true
 endif
+summary('Tegra', with_tegra)
 
 with_etnaviv = false
 _etnaviv = get_option('etnaviv')
-if _etnaviv == 'true'
-  if not with_atomics
+if not _etnaviv.disabled()
+  if _etnaviv.enabled() and not with_atomics
     error('libdrm_etnaviv requires atomics.')
   endif
-  with_etnaviv = true
+  with_etnaviv = _etnaviv.enabled() or (
+    with_atomics and [
+      'loongarch64', 'mips', 'mips64',
+      'arm', 'aarch64', 'arc',
+    ].contains(host_machine.cpu_family())
+  )
 endif
+summary('Etnaviv', with_etnaviv)
 
-with_exynos = get_option('exynos') == 'true'
+with_exynos = get_option('exynos').enabled()
+summary('EXYNOS', with_exynos)
 
 with_vc4 = false
 _vc4 = get_option('vc4')
-if _vc4 != 'false'
-  with_vc4 = _vc4 == 'true' or ['arm', 'aarch64'].contains(host_machine.cpu_family())
+if not _vc4.disabled()
+  with_vc4 = _vc4.enabled() or ['arm', 'aarch64'].contains(host_machine.cpu_family())
 endif
-
-# XXX: Apparently only freebsd and dragonfly bsd actually need this (and
-# gnu/kfreebsd), not openbsd and netbsd
-with_libkms = false
-_libkms = get_option('libkms')
-if _libkms != 'false'
-  with_libkms = _libkms == 'true' or ['linux', 'freebsd', 'dragonfly'].contains(host_machine.system())
-endif
+summary('VC4', with_vc4)
 
 # Among others FreeBSD does not have a separate dl library.
 if not cc.has_function('dlsym')
@@ -179,13 +208,22 @@ else
   dep_rt = []
 endif
 dep_m = cc.find_library('m', required : false)
-# From Niclas Zeising:
-# FreeBSD requires sys/types.h for sys/sysctl.h, add it as part of the
-# includes when checking for headers.
-foreach header : ['sys/sysctl.h', 'sys/select.h', 'alloca.h']
-  config.set('HAVE_' + header.underscorify().to_upper(),
-    cc.compiles('#include <sys/types.h>\n#include <@0@>'.format(header), name : '@0@ works'.format(header)))
+
+# The header is not required on Linux, and is in fact deprecated in glibc 2.30+
+if ['linux'].contains(host_machine.system())
+  config.set10('HAVE_SYS_SYSCTL_H', false)
+else
+  # From Niclas Zeising:
+  # FreeBSD requires sys/types.h for sys/sysctl.h, so add it as part of
+  # the includes when checking for headers.
+  config.set10('HAVE_SYS_SYSCTL_H',
+    cc.compiles('#include <sys/types.h>\n#include <sys/sysctl.h>', name : 'sys/sysctl.h works'))
+endif
+
+foreach header : ['sys/select.h', 'alloca.h']
+  config.set10('HAVE_' + header.underscorify().to_upper(), cc.check_header(header))
 endforeach
+
 if (cc.has_header_symbol('sys/sysmacros.h', 'major') and
   cc.has_header_symbol('sys/sysmacros.h', 'minor') and
   cc.has_header_symbol('sys/sysmacros.h', 'makedev'))
@@ -198,67 +236,31 @@ if (cc.has_header_symbol('sys/mkdev.h', 'major') and
 endif
 config.set10('HAVE_OPEN_MEMSTREAM', cc.has_function('open_memstream'))
 
-warn_c_args = []
-foreach a : ['-Wall', '-Wextra', '-Wsign-compare', '-Werror=undef',
-             '-Werror=implicit-function-declaration', '-Wpointer-arith',
-             '-Wwrite-strings', '-Wstrict-prototypes', '-Wmissing-prototypes',
-             '-Wmissing-declarations', '-Wnested-externs', '-Wpacked',
-             '-Wswitch-enum', '-Wmissing-format-attribute',
-             '-Wstrict-aliasing=2', '-Winit-self', '-Winline', '-Wshadow',
-             '-Wdeclaration-after-statement', '-Wold-style-definition']
-  if cc.has_argument(a)
-    warn_c_args += a
-  endif
-endforeach
-# GCC will never error for -Wno-*, so check for -W* then add -Wno-* to the list
-# of options
-foreach a : ['unused-parameter', 'attributes', 'long-long',
-             'missing-field-initializers']
-  if cc.has_argument('-W@0@'.format(a))
-    warn_c_args += '-Wno-@0@'.format(a)
-  endif
-endforeach
+libdrm_c_args = cc.get_supported_arguments([
+  '-Wsign-compare', '-Werror=undef', '-Werror=implicit-function-declaration',
+  '-Wpointer-arith', '-Wwrite-strings', '-Wstrict-prototypes',
+  '-Wmissing-prototypes', '-Wmissing-declarations', '-Wnested-externs',
+  '-Wpacked', '-Wswitch-enum', '-Wmissing-format-attribute',
+  '-Wstrict-aliasing=2', '-Winit-self', '-Winline', '-Wshadow',
+  '-Wdeclaration-after-statement', '-Wold-style-definition',
+  '-Wno-unused-parameter', '-Wno-attributes', '-Wno-long-long',
+  '-Wno-missing-field-initializers'])
 
-# all c args:
-libdrm_c_args = warn_c_args + ['-fvisibility=hidden']
-
-
-dep_pciaccess = dependency('pciaccess', version : '>= 0.10', required : with_intel)
 dep_cunit = dependency('cunit', version : '>= 2.1', required : false)
-_cairo_tests = get_option('cairo-tests')
-if _cairo_tests != 'false'
-  dep_cairo = dependency('cairo', required : _cairo_tests == 'true')
-  with_cairo_tests = dep_cairo.found()
-else
-  dep_cairo = []
-  with_cairo_tests = false
-endif
-_valgrind = get_option('valgrind')
-if _valgrind != 'false'
-  dep_valgrind = dependency('valgrind', required : _valgrind == 'true')
-  with_valgrind = dep_valgrind.found()
-else
-  dep_valgrind = []
-  with_valgrind = false
-endif
+dep_cairo = dependency('cairo', required : get_option('cairo-tests'))
+with_cairo_tests = dep_cairo.found()
 
-with_man_pages = get_option('man-pages')
-prog_xslt = find_program('xsltproc', required : with_man_pages == 'true')
-prog_sed = find_program('sed', required : with_man_pages == 'true')
-manpage_style = 'http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl'
-if prog_xslt.found()
-  if run_command(prog_xslt, '--nonet', manpage_style).returncode() != 0
-    if with_man_pages == 'true'
-      error('Manpage style sheet cannot be found')
-    endif
-    with_man_pages = 'false'
-  endif
+valgrind_version = []
+if with_freedreno
+  valgrind_version = '>=3.10.0'
 endif
-with_man_pages = with_man_pages != 'false' and prog_xslt.found() and prog_sed.found()
+dep_valgrind = dependency('valgrind', required : get_option('valgrind'), version : valgrind_version)
+with_valgrind = dep_valgrind.found()
 
-config.set10('HAVE_VISIBILITY',
-  cc.compiles('''int foo_hidden(void) __attribute__((visibility(("hidden"))));''',
-              name : 'compiler supports __attribute__(("hidden"))'))
+prog_rst2man = find_program('rst2man', 'rst2man.py', required: get_option('man-pages'))
+with_man_pages = prog_rst2man.found()
+
+config.set10('HAVE_VISIBILITY', cc.has_function_attribute('visibility:hidden'))
 
 foreach t : [
              [with_exynos, 'EXYNOS'],
@@ -281,30 +283,54 @@ config_file = configure_file(
   configuration : config,
   output : 'config.h',
 )
-add_project_arguments('-include', 'config.h', language : 'c')
+add_project_arguments('-include', '@0@'.format(config_file), language : 'c')
 
 inc_root = include_directories('.')
 inc_drm = include_directories('include/drm')
 
-libdrm = shared_library(
+libdrm_files = [files(
+   'xf86drm.c', 'xf86drmHash.c', 'xf86drmRandom.c', 'xf86drmSL.c',
+   'xf86drmMode.c'
+  ),
+  config_file, format_mod_static_table
+]
+
+# Build an unversioned so on android
+if android
+  libdrm_kw = {}
+else
+  libdrm_kw = {'version' : '2.4.0'}
+endif
+
+libdrm = library(
   'drm',
-  [files(
-     'xf86drm.c', 'xf86drmHash.c', 'xf86drmRandom.c', 'xf86drmSL.c',
-     'xf86drmMode.c'
-   ),
-   config_file,
-  ],
+  libdrm_files,
   c_args : libdrm_c_args,
   dependencies : [dep_valgrind, dep_rt, dep_m],
   include_directories : inc_drm,
-  version : '2.4.0',
   install : true,
+  kwargs : libdrm_kw,
+  gnu_symbol_visibility : 'hidden',
+)
+
+test(
+  'core-symbols-check',
+  symbols_check,
+  args : [
+    '--lib', libdrm,
+    '--symbols-file', files('core-symbols.txt'),
+    '--nm', prog_nm.path(),
+  ],
 )
 
 ext_libdrm = declare_dependency(
   link_with : libdrm,
   include_directories : [inc_root, inc_drm],
 )
+
+if meson.version().version_compare('>= 0.54.0')
+  meson.override_dependency('libdrm', ext_libdrm)
+endif
 
 install_headers('libsync.h', 'xf86drm.h', 'xf86drmMode.h')
 install_headers(
@@ -324,19 +350,12 @@ if with_vmwgfx
 endif
 
 pkg.generate(
+  libdrm,
   name : 'libdrm',
-  libraries : libdrm,
   subdirs : ['.', 'libdrm'],
-  version : meson.project_version(),
   description : 'Userspace interface to kernel DRM services',
 )
 
-env_test = environment()
-env_test.set('NM', find_program('nm').path())
-
-if with_libkms
-  subdir('libkms')
-endif
 if with_intel
   subdir('intel')
 endif
@@ -371,21 +390,6 @@ if with_man_pages
   subdir('man')
 endif
 subdir('data')
-subdir('tests')
-
-message('')
-message('@0@ will be compiled with:'.format(meson.project_name()))
-message('')
-message('  libkms         @0@'.format(with_libkms))
-message('  Intel API      @0@'.format(with_intel))
-message('  vmwgfx API     @0@'.format(with_vmwgfx))
-message('  Radeon API     @0@'.format(with_radeon))
-message('  AMDGPU API     @0@'.format(with_amdgpu))
-message('  Nouveau API    @0@'.format(with_nouveau))
-message('  OMAP API       @0@'.format(with_omap))
-message('  EXYNOS API     @0@'.format(with_exynos))
-message('  Freedreno API  @0@ (kgsl: @1@)'.format(with_freedreno, with_freedreno_kgsl))
-message('  Tegra API      @0@'.format(with_tegra))
-message('  VC4 API        @0@'.format(with_vc4))
-message('  Etnaviv API    @0@'.format(with_etnaviv))
-message('')
+if with_tests
+  subdir('tests')
+endif

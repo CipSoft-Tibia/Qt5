@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,12 @@
 #include <memory>
 #include <utility>
 
+#include "base/memory/raw_ptr.h"
 #include "base/power_monitor/power_monitor.h"
 #include "base/power_monitor/power_monitor_source.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
+#include "components/viz/service/performance_hint/hint_session.h"
 #include "gpu/config/gpu_info.h"
 #include "gpu/ipc/service/gpu_init.h"
 #include "services/metrics/public/cpp/mojo_ukm_recorder.h"
@@ -50,18 +53,16 @@ class MockVizCompositorThreadRunner : public VizCompositorThreadRunner {
       : VizCompositorThreadRunner(), task_runner_(task_runner) {}
 
   base::SingleThreadTaskRunner* task_runner() override { return task_runner_; }
-  MOCK_METHOD1(CreateFrameSinkManager, void(mojom::FrameSinkManagerParamsPtr));
-  MOCK_METHOD3(CreateFrameSinkManager,
-               void(mojom::FrameSinkManagerParamsPtr,
-                    gpu::CommandBufferTaskExecutor*,
-                    GpuServiceImpl*));
-#if BUILDFLAG(USE_VIZ_DEVTOOLS)
-  MOCK_METHOD1(CreateVizDevTools, void(mojom::VizDevToolsParamsPtr));
-#endif
-  MOCK_METHOD1(CleanupForShutdown, void(base::OnceClosure));
+  bool CreateHintSessionFactory(
+      base::flat_set<base::PlatformThreadId> thread_ids,
+      base::RepeatingClosure* wake_up_closure) override {
+    return false;
+  }
+  MOCK_METHOD2(CreateFrameSinkManager,
+               void(mojom::FrameSinkManagerParamsPtr, GpuServiceImpl*));
 
  private:
-  base::SingleThreadTaskRunner* const task_runner_;
+  const raw_ptr<base::SingleThreadTaskRunner> task_runner_;
 };
 
 class MockPowerMonitorSource : public base::PowerMonitorSource {
@@ -73,18 +74,18 @@ class MockPowerMonitorSource : public base::PowerMonitorSource {
 
   ~MockPowerMonitorSource() override { *leak_guard_ = false; }
 
-  bool IsOnBatteryPowerImpl() override { return false; }
+  bool IsOnBatteryPower() override { return false; }
 
  private:
   // An external flag to signal as to whether or not this object is still
   // alive.
-  bool* leak_guard_;
+  raw_ptr<bool> leak_guard_;
 };
 
 TEST(VizMainImplTest, OopVizDependencyInjection) {
   VizMainImpl::ExternalDependencies external_deps;
   scoped_refptr<base::SingleThreadTaskRunner> task_runner =
-      base::ThreadTaskRunnerHandle::Get();
+      base::SingleThreadTaskRunner::GetCurrentDefault();
 
   // |VizMainImpl| is supposed to use the |UkmRecorder| injected through
   // |ExternalDependencies|.

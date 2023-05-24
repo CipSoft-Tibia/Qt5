@@ -1,37 +1,14 @@
 /*
-*********************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the autotests of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-*********************************************************************
+
+* Copyright (C) 2016 The Qt Company Ltd.
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
 */
 
 /********************************************************************************
 ** Form generated from reading UI file 'orderdialog.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -40,6 +17,7 @@
 #define ORDERDIALOG_H
 
 #include <QtCore/QVariant>
+#include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
@@ -70,18 +48,18 @@ public:
     void setupUi(QDialog *qdesigner_internal__OrderDialog)
     {
         if (qdesigner_internal__OrderDialog->objectName().isEmpty())
-            qdesigner_internal__OrderDialog->setObjectName(QString::fromUtf8("qdesigner_internal__OrderDialog"));
+            qdesigner_internal__OrderDialog->setObjectName("qdesigner_internal__OrderDialog");
         qdesigner_internal__OrderDialog->resize(467, 310);
         vboxLayout = new QVBoxLayout(qdesigner_internal__OrderDialog);
-        vboxLayout->setObjectName(QString::fromUtf8("vboxLayout"));
+        vboxLayout->setObjectName("vboxLayout");
         groupBox = new QGroupBox(qdesigner_internal__OrderDialog);
-        groupBox->setObjectName(QString::fromUtf8("groupBox"));
+        groupBox->setObjectName("groupBox");
         hboxLayout = new QHBoxLayout(groupBox);
         hboxLayout->setSpacing(6);
-        hboxLayout->setObjectName(QString::fromUtf8("hboxLayout"));
+        hboxLayout->setObjectName("hboxLayout");
         hboxLayout->setContentsMargins(9, 9, 9, 9);
         pageList = new QListWidget(groupBox);
-        pageList->setObjectName(QString::fromUtf8("pageList"));
+        pageList->setObjectName("pageList");
         pageList->setMinimumSize(QSize(344, 0));
         pageList->setDragDropMode(QAbstractItemView::InternalMove);
         pageList->setSelectionMode(QAbstractItemView::ContiguousSelection);
@@ -91,19 +69,19 @@ public:
 
         vboxLayout1 = new QVBoxLayout();
         vboxLayout1->setSpacing(6);
-        vboxLayout1->setObjectName(QString::fromUtf8("vboxLayout1"));
+        vboxLayout1->setObjectName("vboxLayout1");
         vboxLayout1->setContentsMargins(0, 0, 0, 0);
         upButton = new QToolButton(groupBox);
-        upButton->setObjectName(QString::fromUtf8("upButton"));
+        upButton->setObjectName("upButton");
 
         vboxLayout1->addWidget(upButton);
 
         downButton = new QToolButton(groupBox);
-        downButton->setObjectName(QString::fromUtf8("downButton"));
+        downButton->setObjectName("downButton");
 
         vboxLayout1->addWidget(downButton);
 
-        spacerItem = new QSpacerItem(20, 99, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem = new QSpacerItem(20, 99, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         vboxLayout1->addItem(spacerItem);
 
@@ -114,7 +92,7 @@ public:
         vboxLayout->addWidget(groupBox);
 
         buttonBox = new QDialogButtonBox(qdesigner_internal__OrderDialog);
-        buttonBox->setObjectName(QString::fromUtf8("buttonBox"));
+        buttonBox->setObjectName("buttonBox");
         buttonBox->setOrientation(Qt::Horizontal);
         buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok|QDialogButtonBox::Reset);
 
@@ -122,8 +100,8 @@ public:
 
 
         retranslateUi(qdesigner_internal__OrderDialog);
-        QObject::connect(buttonBox, SIGNAL(accepted()), qdesigner_internal__OrderDialog, SLOT(accept()));
-        QObject::connect(buttonBox, SIGNAL(rejected()), qdesigner_internal__OrderDialog, SLOT(reject()));
+        QObject::connect(buttonBox, &QDialogButtonBox::accepted, qdesigner_internal__OrderDialog, qOverload<>(&QDialog::accept));
+        QObject::connect(buttonBox, &QDialogButtonBox::rejected, qdesigner_internal__OrderDialog, qOverload<>(&QDialog::reject));
 
         QMetaObject::connectSlotsByName(qdesigner_internal__OrderDialog);
     } // setupUi

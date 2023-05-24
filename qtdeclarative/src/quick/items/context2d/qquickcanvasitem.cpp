@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <private/qsgadaptationlayer_p.h>
 #include "qquickcanvasitem_p.h"
@@ -59,6 +23,7 @@
 #include <private/qv4scopedvalue_p.h>
 #include <private/qv4jscall_p.h>
 #include <private/qv4qobjectwrapper_p.h>
+#include <private/qjsvalue_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -245,21 +210,12 @@ QQuickCanvasItemPrivate::~QQuickCanvasItemPrivate()
 
     \section1 Threaded Rendering and Render Target
 
-    The Canvas item supports two render targets: \c Canvas.Image and
-    \c Canvas.FramebufferObject.
+    In Qt 6.0 the Canvas item supports one render target: \c Canvas.Image.
 
     The \c Canvas.Image render target is a \a QImage object. This render target
     supports background thread rendering, allowing complex or long running
     painting to be executed without blocking the UI. This is the only render
     target that is supported by all Qt Quick backends.
-
-    The Canvas.FramebufferObject render target utilizes OpenGL hardware
-    acceleration rather than rendering into system memory, which in many cases
-    results in faster rendering. Canvas.FramebufferObject relies on the OpenGL
-    extensions \c GL_EXT_framebuffer_multisample and \c GL_EXT_framebuffer_blit
-    for antialiasing. It will also use more graphics memory when rendering
-    strategy is anything other than Canvas.Cooperative. Framebuffer objects may
-    not be available with Qt Quick backends other than OpenGL.
 
     The default render target is Canvas.Image and the default renderStrategy is
     Canvas.Immediate.
@@ -267,12 +223,7 @@ QQuickCanvasItemPrivate::~QQuickCanvasItemPrivate()
     \section1 Pixel Operations
     All HTML5 2D context pixel operations are supported. In order to ensure
     improved pixel reading/writing performance the \a Canvas.Image render
-    target should be chosen. The \a Canvas.FramebufferObject render target
-    requires the pixel data to be exchanged between the system memory and the
-    graphic card, which is significantly more expensive.  Rendering may also be
-    synchronized with the V-sync signal (to avoid
-    \l{http://en.wikipedia.org/wiki/Screen_tearing}{screen tearing}) which will further
-    impact pixel operations with \c Canvas.FrambufferObject render target.
+    target should be chosen.
 
     \section1 Tips for Porting Existing HTML5 Canvas Applications
 
@@ -301,7 +252,7 @@ QQuickCanvasItemPrivate::~QQuickCanvasItemPrivate()
     QPainter instead of the more expensive and likely less performing
     JavaScript and Context2D approach.
 
-    \sa Context2D QQuickPaintedItem
+    \sa Context2D, QQuickPaintedItem, {Qt Quick Examples - Pointer Handlers}
 */
 
 QQuickCanvasItem::QQuickCanvasItem(QQuickItem *parent)
@@ -381,7 +332,7 @@ void QQuickCanvasItem::setContextType(const QString &contextType)
 QJSValue QQuickCanvasItem::context() const
 {
     Q_D(const QQuickCanvasItem);
-    return d->context ? QJSValue(d->context->v4Engine(), d->context->v4value()) : QJSValue();
+    return d->context ? QJSValuePrivate::fromReturnedValue(d->context->v4value()) : QJSValue();
 }
 
 /*!
@@ -430,7 +381,7 @@ void QQuickCanvasItem::setCanvasSize(const QSizeF & size)
 
     By default the tileSize is the same as the canvasSize.
 
-    \obsolete This feature is incomplete. For details, see QTBUG-33129.
+    \deprecated This feature is incomplete. For details, see QTBUG-33129.
 
     \sa canvasSize, canvasWindow
 */
@@ -465,7 +416,7 @@ void QQuickCanvasItem::setTileSize(const QSize & size)
      can display different visible areas by changing the canvas windowSize
      and/or position.
 
-    \obsolete This feature is incomplete. For details, see QTBUG-33129
+    \deprecated This feature is incomplete. For details, see QTBUG-33129.
 
     \sa canvasSize, tileSize
 */
@@ -493,10 +444,8 @@ void QQuickCanvasItem::setCanvasWindow(const QRectF& rect)
     \qmlproperty enumeration QtQuick::Canvas::renderTarget
     Holds the current canvas render target.
 
-    \list
-    \li Canvas.Image  - render to an in memory image buffer.
-    \li Canvas.FramebufferObject - render to an OpenGL frame buffer
-    \endlist
+    \value Canvas.Image                 Render to an in-memory image buffer.
+    \value Canvas.FramebufferObject     As of Qt 6.0, this value is ignored.
 
     This hint is supplied along with renderStrategy to the graphics context to
     determine the method of rendering. A renderStrategy, renderTarget or a
@@ -530,11 +479,9 @@ void QQuickCanvasItem::setRenderTarget(QQuickCanvasItem::RenderTarget target)
     \qmlproperty enumeration QtQuick::Canvas::renderStrategy
     Holds the current canvas rendering strategy.
 
-    \list
-    \li Canvas.Immediate - context will perform graphics commands immediately in the main UI thread.
-    \li Canvas.Threaded - context will defer graphics commands to a private rendering thread.
-    \li Canvas.Cooperative - context will defer graphics commands to the applications global render thread.
-    \endlist
+    \value Canvas.Immediate     context will perform graphics commands immediately in the main UI thread.
+    \value Canvas.Threaded      context will defer graphics commands to a private rendering thread.
+    \value Canvas.Cooperative   context will defer graphics commands to the applications global render thread.
 
     This hint is supplied along with renderTarget to the graphics context to
     determine the method of rendering. A renderStrategy, renderTarget or a
@@ -593,11 +540,11 @@ void QQuickCanvasItem::sceneGraphInitialized()
         QMetaObject::invokeMethod(this, "requestPaint", Qt::QueuedConnection);
 }
 
-void QQuickCanvasItem::geometryChanged(const QRectF &newGeometry, const QRectF &oldGeometry)
+void QQuickCanvasItem::geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry)
 {
     Q_D(QQuickCanvasItem);
 
-    QQuickItem::geometryChanged(newGeometry, oldGeometry);
+    QQuickItem::geometryChange(newGeometry, oldGeometry);
 
     // Due to indirect recursion, newGeometry may be outdated
     // after this call, so we use width and height instead.
@@ -666,6 +613,10 @@ void QQuickCanvasItem::invalidateSceneGraph()
     d->textureProvider = nullptr;
     delete d->nodeTexture;
     d->nodeTexture = nullptr;
+
+    // As we can expect(/hope) that the SG will be "good again", we can requestPaint ( which does 'markDirty(canvasWindow);' )
+    // Otherwise this Canvas will be "blank" when SG comes back
+    requestPaint();
 }
 
 void QQuickCanvasItem::schedulePolish()
@@ -727,12 +678,12 @@ void QQuickCanvasItem::updatePolish()
         QV4::ExecutionEngine *v4 = qmlEngine(this)->handle();
         QV4::Scope scope(v4);
         QV4::ScopedFunctionObject function(scope);
-        QV4::JSCallData jsCall(scope, 1);
-        *jsCall->thisObject = QV4::QObjectWrapper::wrap(v4, this);
+        QV4::JSCallArguments jsCall(scope, 1);
+        *jsCall.thisObject = QV4::QObjectWrapper::wrap(v4, this);
 
         for (auto it = animationCallbacks.cbegin(), end = animationCallbacks.cend(); it != end; ++it) {
             function = it.value().value();
-            jsCall->args[0] = QV4::Value::fromUInt32(QDateTime::currentMSecsSinceEpoch());
+            jsCall.args[0] = QV4::Value::fromUInt32(QDateTime::currentMSecsSinceEpoch());
             function->call(jsCall);
         }
     }
@@ -826,14 +777,14 @@ QSGTextureProvider *QQuickCanvasItem::textureProvider() const
         return QQuickItem::textureProvider();
 
     Q_D(const QQuickCanvasItem);
-#if QT_CONFIG(opengl)
+
     QQuickWindow *w = window();
     if (!w || !w->isSceneGraphInitialized()
             || QThread::currentThread() != QQuickWindowPrivate::get(w)->context->thread()) {
         qWarning("QQuickCanvasItem::textureProvider: can only be queried on the rendering thread of an exposed window");
         return nullptr;
     }
-#endif
+
     if (!d->textureProvider)
         d->textureProvider = new QQuickCanvasTextureProvider;
     d->textureProvider->tex = d->nodeTexture;
@@ -986,22 +937,25 @@ void QQuickCanvasItem::checkAnimationCallbacks()
 }
 
 /*!
-    \qmlmethod bool QtQuick::Canvas::save(string filename)
+    \qmlmethod bool QtQuick::Canvas::save(string filename, size imageSize = undefined)
 
     Saves the current canvas content into an image file \a filename.
-    The saved image format is automatically decided by the \a filename's
-    suffix. Returns \c true on success.
+    The saved image format is automatically decided by the \a filename's suffix.
+    Returns \c true on success. If \a imageSize is specified, the resulting
+    image will have this size, and will have a devicePixelRatio of \c 1.0.
+    Otherwise, the \l {QQuickWindow::}{devicePixelRatio()} of the window in
+    which the canvas is displayed is applied to the saved image.
 
     \note Calling this method will force painting the whole canvas, not just the
     current canvas visible window.
 
     \sa canvasWindow, canvasSize, toDataURL()
 */
-bool QQuickCanvasItem::save(const QString &filename) const
+bool QQuickCanvasItem::save(const QString &filename, const QSizeF &imageSize) const
 {
     Q_D(const QQuickCanvasItem);
     QUrl url = d->baseUrl.resolved(QUrl::fromLocalFile(filename));
-    return toImage().save(url.toLocalFile());
+    return toImage(QRectF(QPointF(0, 0), imageSize)).save(url.toLocalFile());
 }
 
 QQmlRefPointer<QQuickCanvasPixmap> QQuickCanvasItem::loadedPixmap(const QUrl& url)
@@ -1111,6 +1065,12 @@ bool QQuickCanvasItem::isImageLoaded(const QUrl& url) const
         && d->pixmaps.value(fullPathUrl)->pixmap()->isReady();
 }
 
+/*!
+    \internal
+    Returns a QImage representing the requested \a rect which is in device independent pixels of the item.
+    If \a rect is empty, then it will use the whole item's rect by default.
+*/
+
 QImage QQuickCanvasItem::toImage(const QRectF& rect) const
 {
     Q_D(const QQuickCanvasItem);
@@ -1119,7 +1079,7 @@ QImage QQuickCanvasItem::toImage(const QRectF& rect) const
         return QImage();
 
     const QRectF &rectSource = rect.isEmpty() ? canvasWindow() : rect;
-    const qreal dpr = window() ? window()->effectiveDevicePixelRatio() : qreal(1);
+    const qreal dpr = window() && rect.isEmpty() ? window()->effectiveDevicePixelRatio() : qreal(1);
     const QRectF rectScaled(rectSource.topLeft() * dpr, rectSource.size() * dpr);
 
     QImage image = d->context->toImage(rectScaled);
@@ -1132,7 +1092,7 @@ static const char* mimeToType(const QString &mime)
     const QLatin1String imagePrefix("image/");
     if (!mime.startsWith(imagePrefix))
         return nullptr;
-    const QStringRef mimeExt = mime.midRef(imagePrefix.size());
+    const QStringView mimeExt = QStringView{mime}.mid(imagePrefix.size());
     if (mimeExt == QLatin1String("png"))
         return "png";
     else if (mimeExt == QLatin1String("bmp"))

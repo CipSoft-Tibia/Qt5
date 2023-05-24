@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -48,11 +48,6 @@ class PLATFORM_EXPORT SubresourceIntegrity final {
     Vector<String> console_error_messages_;
   };
 
-  enum IntegrityParseResult {
-    kIntegrityParseValidResult,
-    kIntegrityParseNoValidResult
-  };
-
   // Determine which SRI features to support when parsing integrity attributes.
   enum class IntegrityFeatures {
     kDefault,    // Default: All sha* hash codes.
@@ -77,32 +72,26 @@ class PLATFORM_EXPORT SubresourceIntegrity final {
 
   // The IntegrityMetadataSet arguments are out parameters which contain the
   // set of all valid, parsed metadata from |attribute|.
-  static IntegrityParseResult ParseIntegrityAttribute(
-      const WTF::String& attribute,
-      IntegrityFeatures,
-      IntegrityMetadataSet&);
-  static IntegrityParseResult ParseIntegrityAttribute(
-      const WTF::String& attribute,
-      IntegrityFeatures,
-      IntegrityMetadataSet&,
-      ReportInfo*);
+  static void ParseIntegrityAttribute(const WTF::String& attribute,
+                                      IntegrityFeatures,
+                                      IntegrityMetadataSet&);
+  static void ParseIntegrityAttribute(const WTF::String& attribute,
+                                      IntegrityFeatures,
+                                      IntegrityMetadataSet&,
+                                      ReportInfo*);
 
  private:
   friend class SubresourceIntegrityTest;
   FRIEND_TEST_ALL_PREFIXES(SubresourceIntegrityTest, Parsing);
   FRIEND_TEST_ALL_PREFIXES(SubresourceIntegrityTest, ParseAlgorithm);
-  FRIEND_TEST_ALL_PREFIXES(SubresourceIntegrityTest, ParseHeader);
   FRIEND_TEST_ALL_PREFIXES(SubresourceIntegrityTest, Prioritization);
   FRIEND_TEST_ALL_PREFIXES(SubresourceIntegrityTest, FindBestAlgorithm);
-  FRIEND_TEST_ALL_PREFIXES(SubresourceIntegrityTest,
-                           GetCheckFunctionForAlgorithm);
 
   // The core implementation for all CheckSubresoureIntegrity functions.
   static bool CheckSubresourceIntegrityImpl(const IntegrityMetadataSet&,
                                             const char*,
                                             size_t,
                                             const KURL& resource_url,
-                                            const String integrity_header,
                                             ReportInfo&);
 
   enum AlgorithmParseResult {
@@ -117,26 +106,18 @@ class PLATFORM_EXPORT SubresourceIntegrity final {
                                 const char*,
                                 size_t,
                                 const String&);
-  static CheckFunction GetCheckFunctionForAlgorithm(IntegrityAlgorithm);
 
   static bool CheckSubresourceIntegrityDigest(const IntegrityMetadata&,
                                               const char*,
-                                              size_t,
-                                              const String& integrity_header);
-  static bool CheckSubresourceIntegritySignature(
-      const IntegrityMetadata&,
-      const char*,
-      size_t,
-      const String& integrity_header);
+                                              size_t);
+  static bool CheckSubresourceIntegritySignature(const IntegrityMetadata&,
+                                                 const char*,
+                                                 size_t);
 
   static AlgorithmParseResult ParseAttributeAlgorithm(const UChar*& begin,
                                                       const UChar* end,
                                                       IntegrityFeatures,
                                                       IntegrityAlgorithm&);
-  static AlgorithmParseResult ParseIntegrityHeaderAlgorithm(
-      const UChar*& begin,
-      const UChar* end,
-      IntegrityAlgorithm&);
   typedef std::pair<const char*, IntegrityAlgorithm> AlgorithmPrefixPair;
   static AlgorithmParseResult ParseAlgorithmPrefix(
       const UChar*& string_position,
@@ -151,4 +132,4 @@ class PLATFORM_EXPORT SubresourceIntegrity final {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_SUBRESOURCE_INTEGRITY_H_

@@ -1,11 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cc/raster/paint_worklet_image_provider.h"
 
 #include <utility>
-#include "base/bind_helpers.h"
+#include "base/functional/callback_helpers.h"
 
 namespace cc {
 
@@ -23,10 +23,13 @@ PaintWorkletImageProvider& PaintWorkletImageProvider::operator=(
 
 ImageProvider::ScopedResult PaintWorkletImageProvider::GetPaintRecordResult(
     scoped_refptr<PaintWorkletInput> input) {
-  // The |records_| contains all known PaintWorkletInputs, whether they are
-  // painted or not, so |input| should always exist in it.
   auto it = records_.find(input);
-  DCHECK(it != records_.end());
+  // In the DiscardableImageMap::GatherDiscardableImages(), a DrawImageRect can
+  // early exit the for loop if its paint rect is empty. In that case, the
+  // |records_| will not contain that PaintWorkletInput, and we should return
+  // an empty result.
+  if (it == records_.end())
+    return ImageProvider::ScopedResult();
   return ImageProvider::ScopedResult(it->second.second);
 }
 

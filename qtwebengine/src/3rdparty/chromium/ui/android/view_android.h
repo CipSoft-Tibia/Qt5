@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,17 +10,19 @@
 
 #include "base/android/jni_array.h"
 #include "base/android/jni_weak_ref.h"
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/observer_list.h"
-#include "base/optional.h"
 #include "base/time/time.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/android/ui_android_export.h"
 #include "ui/android/view_android_observer.h"
 #include "ui/gfx/geometry/rect_f.h"
 
-namespace cc {
+namespace cc::slim {
 class Layer;
 }
 
@@ -105,6 +107,10 @@ class UI_ANDROID_EXPORT ViewAndroid {
   explicit ViewAndroid(LayoutType layout_type);
 
   ViewAndroid();
+
+  ViewAndroid(const ViewAndroid&) = delete;
+  ViewAndroid& operator=(const ViewAndroid&) = delete;
+
   virtual ~ViewAndroid();
 
   void UpdateFrameInfo(const FrameInfo& frame_info);
@@ -119,9 +125,8 @@ class UI_ANDROID_EXPORT ViewAndroid {
   // Virtual for testing.
   virtual float GetDipScale();
 
-  // Used to return and set the layer for this view. May be |null|.
-  cc::Layer* GetLayer() const;
-  void SetLayer(scoped_refptr<cc::Layer> layer);
+  cc::slim::Layer* GetLayer() const;
+  void SetLayer(scoped_refptr<cc::slim::Layer> layer);
 
   void SetDelegate(const base::android::JavaRef<jobject>& delegate);
 
@@ -146,8 +151,21 @@ class UI_ANDROID_EXPORT ViewAndroid {
   bool HasFocus();
   void RequestFocus();
 
-  bool StartDragAndDrop(const base::android::JavaRef<jstring>& jtext,
-                        const base::android::JavaRef<jobject>& jimage);
+  // Pass necessary |jdrop_data| to build Android ClipData for drag and drop.
+  // |jshadow_image| is a bitmap presentation of the shadow image to be used
+  // for dragging.
+  // |cursor_offset_x| is the x offset of the cursor w.r.t. to top-left corner
+  // of the drag-image.
+  // |cursor_offset_y| is the y offset of the cursor w.r.t. to top-left corner
+  // of the drag-image.
+  // |drag_obj_rect_width| is the width of the drag object.
+  // |drag_obj_rect_height| is the height of the drag object.
+  bool StartDragAndDrop(const base::android::JavaRef<jobject>& jshadow_image,
+                        const base::android::JavaRef<jobject>& jdrop_data,
+                        jint cursor_offset_x,
+                        jint cursor_offset_y,
+                        jint drag_obj_rect_width,
+                        jint drag_obj_rect_height);
 
   gfx::Size GetPhysicalBackingSize() const;
   gfx::Size GetSize() const;
@@ -158,8 +176,9 @@ class UI_ANDROID_EXPORT ViewAndroid {
   // timeout for this resize.
   void OnPhysicalBackingSizeChanged(
       const gfx::Size& size,
-      base::Optional<base::TimeDelta> deadline_override = base::nullopt);
+      absl::optional<base::TimeDelta> deadline_override = absl::nullopt);
   void OnCursorChanged(const Cursor& cursor);
+  void NotifyHoverActionStylusWritable(bool stylus_writable);
   void OnBackgroundColorChanged(unsigned int color);
   void OnTopControlsChanged(float top_controls_offset,
                             float top_content_offset,
@@ -173,7 +192,6 @@ class UI_ANDROID_EXPORT ViewAndroid {
   void OnVerticalScrollDirectionChanged(bool direction_up,
                                         float current_scroll_ratio);
   void OnControlsResizeViewChanged(bool controls_resize_view);
-  bool ControlsResizeView();
 
   // Gets the Visual Viewport inset to apply in physical pixels.
   int GetViewportInsetBottom();
@@ -209,14 +227,22 @@ class UI_ANDROID_EXPORT ViewAndroid {
 
   ViewAndroid* parent() const { return parent_; }
 
+  absl::optional<gfx::Rect> GetDisplayFeature();
+
   bool OnTouchEventForTesting(const MotionEventAndroid& event) {
     return OnTouchEvent(event);
   }
 
+  void NotifyVirtualKeyboardOverlayRect(const gfx::Rect& keyboard_rect);
+
+  void SetLayoutForTesting(int x, int y, int width, int height);
+
+  EventForwarder* event_forwarder() { return event_forwarder_.get(); }
+
  protected:
   void RemoveAllChildren(bool attached_to_window);
 
-  ViewAndroid* parent_;
+  raw_ptr<ViewAndroid> parent_;
 
  private:
   FRIEND_TEST_ALL_PREFIXES(ViewAndroidBoundsTest, MatchesViewInFront);
@@ -244,8 +270,6 @@ class UI_ANDROID_EXPORT ViewAndroid {
 
   void OnAttachedToWindow();
   void OnDetachedFromWindow();
-
-  void SetLayoutForTesting(int x, int y, int width, int height);
 
   template <typename E>
   using EventHandlerCallback =
@@ -288,10 +312,10 @@ class UI_ANDROID_EXPORT ViewAndroid {
 
   std::list<ViewAndroid*> children_;
   base::ObserverList<ViewAndroidObserver>::Unchecked observer_list_;
-  scoped_refptr<cc::Layer> layer_;
+  scoped_refptr<cc::slim::Layer> layer_;
   JavaObjectWeakGlobalRef delegate_;
 
-  EventHandlerAndroid* event_handler_ = nullptr;  // Not owned
+  raw_ptr<EventHandlerAndroid> event_handler_ = nullptr;  // Not owned
 
   // Basic view layout information. Used to do hit testing deciding whether
   // the passed events should be processed by the view. Unit in DIP.
@@ -309,8 +333,6 @@ class UI_ANDROID_EXPORT ViewAndroid {
   CopyViewCallback copy_view_callback_;
 
   bool controls_resize_view_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(ViewAndroid);
 };
 
 }  // namespace ui

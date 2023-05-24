@@ -1,41 +1,5 @@
-/***************************************************************************
-**
-** Copyright (C) 2013 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqnxglobal.h"
 
@@ -106,24 +70,26 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 QQnxIntegration *QQnxIntegration::ms_instance;
 
 static inline QQnxIntegration::Options parseOptions(const QStringList &paramList)
 {
     QQnxIntegration::Options options = QQnxIntegration::NoOptions;
-    if (!paramList.contains(QLatin1String("no-fullscreen"))) {
+    if (!paramList.contains("no-fullscreen"_L1)) {
         options |= QQnxIntegration::FullScreenApplication;
     }
 
-    if (paramList.contains(QLatin1String("flush-screen-context"))) {
+    if (paramList.contains("flush-screen-context"_L1)) {
         options |= QQnxIntegration::AlwaysFlushScreenContext;
     }
 
-    if (paramList.contains(QLatin1String("rootwindow"))) {
+    if (paramList.contains("rootwindow"_L1)) {
         options |= QQnxIntegration::RootWindow;
     }
 
-    if (!paramList.contains(QLatin1String("disable-EGL_KHR_surfaceless_context"))) {
+    if (!paramList.contains("disable-EGL_KHR_surfaceless_context"_L1)) {
         options |= QQnxIntegration::SurfacelessEGLContext;
     }
 
@@ -136,7 +102,7 @@ static inline int getContextCapabilities(const QStringList &paramList)
     int contextCapabilities = SCREEN_APPLICATION_CONTEXT;
     for (const QString &param : paramList) {
         if (param.startsWith(contextCapabilitiesPrefix)) {
-            QStringRef value = param.midRef(contextCapabilitiesPrefix.length());
+            auto value = QStringView{param}.mid(contextCapabilitiesPrefix.length());
             bool ok = false;
             contextCapabilities = value.toInt(&ok, 0);
             if (!ok)
@@ -427,6 +393,7 @@ QPlatformOpenGLContext *QQnxIntegration::createPlatformOpenGLContext(QOpenGLCont
 }
 #endif
 
+#if QT_CONFIG(qqnx_pps)
 QPlatformInputContext *QQnxIntegration::inputContext() const
 {
     qIntegrationDebug();
@@ -434,6 +401,7 @@ QPlatformInputContext *QQnxIntegration::inputContext() const
         return m_qpaInputContext;
     return m_inputContext;
 }
+#endif
 
 void QQnxIntegration::moveToScreen(QWindow *window, int screen)
 {
@@ -568,7 +536,7 @@ static bool getRequestedDisplays(QJsonArray &requestedDisplays)
 
     // Read the requested display order
     const QJsonObject object = doc.object();
-    requestedDisplays = object.value(QLatin1String("displayOrder")).toArray();
+    requestedDisplays = object.value("displayOrder"_L1).toArray();
 
     return true;
 }
@@ -603,7 +571,7 @@ QList<screen_display_t *> QQnxIntegration::sortDisplays(screen_display_t *availa
 
     // Go through all the requested displays IDs
     QList<screen_display_t *> orderedDisplays;
-    for (const QJsonValue &value : qAsConst(requestedDisplays)) {
+    for (const QJsonValue &value : std::as_const(requestedDisplays)) {
         int requestedValue = value.toInt();
 
         // Move all displays with matching ID from the intermediate list

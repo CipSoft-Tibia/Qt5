@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,9 @@
 #include <limits>
 #include <utility>
 
+#include "base/format_macros.h"
 #include "base/memory/ptr_util.h"
-#include "base/stl_util.h"
+#include "base/strings/stringprintf.h"
 #include "services/device/public/cpp/hid/hid_item_state_table.h"
 
 namespace device {
@@ -79,7 +80,7 @@ std::vector<std::unique_ptr<HidCollection>> HidCollection::BuildCollections(
         // Changes to input, output, and feature reports are propagated to all
         // ancestor collections.
         if (state.collection) {
-          auto* collection = state.collection;
+          auto* collection = state.collection.get();
           while (collection) {
             collection->AddReportItem(current_item->tag(),
                                       current_item->GetShortData(), state);
@@ -107,7 +108,7 @@ std::vector<std::unique_ptr<HidCollection>> HidCollection::BuildCollections(
         // all ancestor collections.
         if (state.collection) {
           state.report_id = current_item->GetShortData();
-          auto* collection = state.collection;
+          auto* collection = state.collection.get();
           while (collection) {
             collection->report_ids_.push_back(state.report_id);
             collection = collection->parent_;
@@ -135,7 +136,8 @@ std::vector<std::unique_ptr<HidCollection>> HidCollection::BuildCollections(
       case HidReportDescriptorItem::kTagDelimiter:
         // Update the value associated with a local or global item in the item
         // state table.
-        state.SetItemValue(current_item->tag(), current_item->GetShortData());
+        state.SetItemValue(current_item->tag(), current_item->GetShortData(),
+                           current_item->payload_size());
         break;
       default:
         break;
@@ -230,10 +232,14 @@ void HidCollection::GetMaxReportSizes(size_t* max_input_report_bits,
       uint64_t report_bits = 0;
       for (const auto& item : report.second) {
         uint64_t report_size = item->GetReportSize();
-        // Skip reports with items that have invalid report sizes.
+        // Report size can be at most 32 bits, but some devices specify larger
+        // sizes. Warn if the size is too large, but still allow the report to
+        // affect the maximum report size.
         if (report_size > kMaxItemReportSizeBits) {
-          report_bits = 0;
-          break;
+          LOG(WARNING) << base::StringPrintf(
+              "encountered report item with invalid report size (%" PRIu64
+              ">%u)",
+              report_size, kMaxItemReportSizeBits);
         }
         // Report size and report count are both 32-bit values. A 64-bit integer
         // type is needed to avoid overflow when computing the product.
@@ -250,7 +256,7 @@ void HidCollection::GetMaxReportSizes(size_t* max_input_report_bits,
       }
       DCHECK_LE(report_bits, kMaxReasonableReportLengthBits);
       entry.max_report_bits =
-          std::max(entry.max_report_bits, size_t(report_bits));
+          std::max(entry.max_report_bits, static_cast<size_t>(report_bits));
     }
   }
 }

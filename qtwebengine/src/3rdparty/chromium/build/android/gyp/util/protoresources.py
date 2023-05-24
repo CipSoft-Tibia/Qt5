@@ -1,10 +1,10 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Functions that modify resources in protobuf format.
 
 Format reference:
-https://cs.android.com/android/platform/superproject/+/master:frameworks/base/tools/aapt2/Resources.proto
+https://cs.android.com/search?q=f:aapt2.*Resources.proto
 """
 
 import logging
@@ -28,12 +28,12 @@ from proto import Resources_pb2
 
 # First bytes in an .flat.arsc file.
 # uint32: Magic ("ARSC"), version (1), num_entries (1), type (0)
-_FLAT_ARSC_HEADER = 'AAPT\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00'
+_FLAT_ARSC_HEADER = b'AAPT\x01\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00'
 
 # The package ID hardcoded for shared libraries. See
 # _HardcodeSharedLibraryDynamicAttributes() for more details. If this value
 # changes make sure to change REQUIRED_PACKAGE_IDENTIFIER in WebLayerImpl.java.
-SHARED_LIBRARY_HARDCODED_ID = 12
+SHARED_LIBRARY_HARDCODED_ID = 36
 
 
 def _ProcessZip(zip_path, process_func):
@@ -211,7 +211,7 @@ def HardcodeSharedLibraryDynamicAttributes(zip_path,
   _ProcessZip(zip_path, process_func)
 
 
-class _ResourceStripper(object):
+class _ResourceStripper:
   def __init__(self, partial_path, keep_predicate):
     self.partial_path = partial_path
     self.keep_predicate = keep_predicate
@@ -231,12 +231,12 @@ class _ResourceStripper(object):
     for style in self._IterStyles(entry):
       entries = style.entry
       new_entries = []
-      for entry in entries:
-        full_name = '{}/{}'.format(type_and_name, entry.key.name)
+      for e in entries:
+        full_name = '{}/{}'.format(type_and_name, e.key.name)
         if not self.keep_predicate(full_name):
           logging.debug('Stripped %s/%s', self.partial_path, full_name)
         else:
-          new_entries.append(entry)
+          new_entries.append(e)
 
       if len(new_entries) != len(entries):
         self._has_changes = True
@@ -267,7 +267,7 @@ class _ResourceStripper(object):
 
 
 def _TableFromFlatBytes(data):
-  # https://cs.android.com/android/platform/superproject/+/master:frameworks/base/tools/aapt2/format/Container.cpp
+  # https://cs.android.com/search?q=f:aapt2.*Container.cpp
   size_idx = len(_FLAT_ARSC_HEADER)
   proto_idx = size_idx + 8
   if data[:size_idx] != _FLAT_ARSC_HEADER:
@@ -284,8 +284,8 @@ def _FlatBytesFromTable(table):
   proto_bytes = table.SerializeToString()
   size = struct.pack('<Q', len(proto_bytes))
   overage = len(proto_bytes) % 4
-  padding = '\0' * (4 - overage) if overage else ''
-  return ''.join((_FLAT_ARSC_HEADER, size, proto_bytes, padding))
+  padding = b'\0' * (4 - overage) if overage else b''
+  return b''.join((_FLAT_ARSC_HEADER, size, proto_bytes, padding))
 
 
 def StripUnwantedResources(partial_path, keep_predicate):

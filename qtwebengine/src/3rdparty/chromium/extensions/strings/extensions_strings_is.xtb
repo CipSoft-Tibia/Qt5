@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">Pakkinn er ógildur: „<ph name="ERROR_CODE" />“.</translation>
 <translation id="1140871961407805696">Snýr að umhverfi</translation>
 <translation id="1196338895211115272">Mistókst að flytja út einkalykil.</translation>
+<translation id="132960226125594336">Ekki tókst að hlaða skránni „<ph name="RELATIVE_PATH" />“ fyrir efnisskriftu vegna þess að hún myndi fara yfir hámarksstærð skrifta eða hámarksheildarstærð efnisskriftu viðbótarinnar.</translation>
 <translation id="1420684932347524586">Jæks! Það mistókst að útbúa RSA-einkalykil af handahófi.</translation>
 <translation id="1445572445564823378">Þessi viðbót hægir á <ph name="PRODUCT_NAME" />. Þú ættir að slökkva á henni til að <ph name="PRODUCT_NAME" /> starfi betur.</translation>
 <translation id="1468038450257740950">WebGL er ekki stutt.</translation>
@@ -61,6 +62,7 @@
 <translation id="8636666366616799973">Pakkinn er ógildur. Upplýsingar: „<ph name="ERROR_MESSAGE" />“.</translation>
 <translation id="8761756413268424715">„<ph name="APP_NAME" />“ biður um aðgang að einu af tækjunum þínum:</translation>
 <translation id="8885905466771744233">Einkalykill fyrir tilgreinda viðbót er þegar fyrir hendi. Endurnýttu þann lykil eða eyddu honum fyrst.</translation>
+<translation id="9039223174332979184">Kerfisstjóri vélarinnar krefst þess að upplýsingaskrá fyrir <ph name="EXTENSION_NAME" /> sé að minnsta kosti í útgáfu 3.</translation>
 <translation id="907841381057066561">Mistókst að búa til tímabundna zip-skrá við pökkun.</translation>
 <translation id="941543339607623937">Ógildur einkalykill.</translation>
 </translationbundle>

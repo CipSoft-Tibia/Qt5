@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the utils of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "lalr.h"
 
@@ -39,16 +14,18 @@
 #define QLALR_NO_DEBUG_INCLUDES
 #define QLALR_NO_DEBUG_LOOKAHEADS
 
+using namespace Qt::StringLiterals;
+
 QT_BEGIN_NAMESPACE
 QTextStream &qerr()
 {
-    static QTextStream result(stderr, QIODevice::WriteOnly);
+    static QTextStream result(stderr, QTextStream::WriteOnly);
     return result;
 }
 
 QTextStream &qout()
 {
-    static QTextStream result(stdout, QIODevice::WriteOnly);
+    static QTextStream result(stdout, QTextStream::WriteOnly);
     return result;
 }
 QT_END_NAMESPACE
@@ -194,11 +171,11 @@ Grammar::Grammar ():
   current_prec = 0;
   current_assoc = NonAssoc;
 
-  table_name = QLatin1String ("parser_table");
+  table_name = "parser_table"_L1;
 
   tk_end = intern ("$end");
   terminals.insert (tk_end);
-  spells.insert (tk_end, QLatin1String("end of file"));
+  spells.insert (tk_end, "end of file"_L1);
 
   /*tk_error= terminals.insert (intern ("error"))*/;
 }
@@ -374,7 +351,7 @@ void Automaton::closure (StatePointer state)
 
       if (_M_grammar->isNonTerminal (*item->dot))
         {
-          const auto range = qAsConst(_M_grammar->rule_map).equal_range(*item->dot);
+          const auto range = std::as_const(_M_grammar->rule_map).equal_range(*item->dot);
           for (auto it = range.first; it != range.second; ++it)
             {
               const RulePointer &rule = *it;
@@ -422,7 +399,7 @@ void Automaton::buildLookbackSets ()
           if (! _M_grammar->isNonTerminal (A))
             continue;
 
-          const auto range = qAsConst(_M_grammar->rule_map).equal_range(A);
+          const auto range = std::as_const(_M_grammar->rule_map).equal_range(A);
           for (auto it = range.first; it != range.second; ++it)
             {
               const RulePointer &rule = *it;
@@ -617,7 +594,7 @@ void Automaton::buildIncludesDigraph ()
           if (! _M_grammar->isNonTerminal (name))
             continue;
 
-          const auto range = qAsConst(_M_grammar->rule_map).equal_range(name);
+          const auto range = std::as_const(_M_grammar->rule_map).equal_range(name);
           for (auto it = range.first; it != range.second; ++it)
             {
               const RulePointer &rule = *it;
@@ -719,7 +696,7 @@ void Automaton::buildLookaheads ()
     {
       for (ItemPointer item = p->closure.begin (); item != p->closure.end (); ++item)
         {
-          const auto range = qAsConst(lookbacks).equal_range(item);
+          const auto range = std::as_const(lookbacks).equal_range(item);
           for (auto it = range.first; it != range.second; ++it)
             {
               const Lookback &lookback = *it;

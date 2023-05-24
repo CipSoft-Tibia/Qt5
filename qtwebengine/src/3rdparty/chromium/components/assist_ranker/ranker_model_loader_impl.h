@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,8 @@
 #include <memory>
 #include <string>
 
-#include "base/callback.h"
 #include "base/files/file_path.h"
+#include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
@@ -58,6 +58,9 @@ class RankerModelLoaderImpl : public RankerModelLoader {
       base::FilePath model_path,
       GURL model_url,
       std::string uma_prefix);
+
+  RankerModelLoaderImpl(const RankerModelLoaderImpl&) = delete;
+  RankerModelLoaderImpl& operator=(const RankerModelLoaderImpl&) = delete;
 
   ~RankerModelLoaderImpl() override;
 
@@ -154,17 +157,11 @@ class RankerModelLoaderImpl : public RankerModelLoader {
   // attempted.
   base::TimeTicks next_earliest_download_time_;
 
-  // Tracks the last time of the last attempt to load a model, either from file
-  // of from URL. Used for UMA reporting of load durations.
-  base::TimeTicks load_start_time_;
-
   // The current state of the loader.
   LoaderState state_ = LoaderState::NOT_STARTED;
 
   // Creates weak pointer references to the loader.
   base::WeakPtrFactory<RankerModelLoaderImpl> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(RankerModelLoaderImpl);
 };
 
 }  // namespace assist_ranker

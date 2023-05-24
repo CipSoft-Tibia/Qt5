@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -108,6 +108,37 @@ struct MapTraits<std::unordered_map<K, V>> {
   }
 
   static void SetToEmpty(std::unordered_map<K, V>* output) { output->clear(); }
+};
+
+// Note: this is only used for serialization.
+template <typename K, typename V>
+struct MapTraits<std::vector<std::pair<K, V>>> {
+  using Key = K;
+  using Value = V;
+  using Container = std::vector<std::pair<K, V>>;
+  using ConstIterator = typename Container::const_iterator;
+
+  static bool IsNull(const Container& input) {
+    // std::vector<> has no built-in concept of nullness.
+    // TODO(dcheng): Why are we even calling this?
+    return false;
+  }
+
+  static size_t GetSize(const Container& input) { return input.size(); }
+
+  static ConstIterator GetBegin(const Container& input) {
+    return input.begin();
+  }
+
+  static void AdvanceIterator(ConstIterator& iterator) { iterator++; }
+
+  static const K& GetKey(const ConstIterator& iterator) {
+    return iterator->first;
+  }
+
+  static const V& GetValue(const ConstIterator& iterator) {
+    return iterator->second;
+  }
 };
 
 }  // namespace mojo

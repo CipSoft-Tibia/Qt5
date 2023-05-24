@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,9 +31,6 @@ class BLINK_PLATFORM_EXPORT WebFrameRequestBlocker
 
   // Resumes any blocked subresource requests.
   virtual void Resume() = 0;
-
-  // Cancels any blocked subresource requests.
-  virtual void Cancel() = 0;
 
   virtual std::unique_ptr<URLLoaderThrottle> GetThrottleIfRequestsBlocked() = 0;
 };

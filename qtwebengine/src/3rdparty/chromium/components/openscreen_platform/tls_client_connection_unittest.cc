@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,10 +10,9 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
-#include "base/sequenced_task_runner.h"
-#include "base/task/post_task.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/test/task_environment.h"
 #include "components/openscreen_platform/task_runner.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -51,9 +50,9 @@ class FakeSocketStreams {
     options.element_num_bytes = 1;
     options.capacity_num_bytes = kDataPipeCapacity;
     MojoResult result =
-        CreateDataPipe(&options, &inbound_stream_, &receive_stream_);
+        CreateDataPipe(&options, inbound_stream_, receive_stream_);
     CHECK_EQ(result, MOJO_RESULT_OK);
-    result = CreateDataPipe(&options, &send_stream_, &outbound_stream_);
+    result = CreateDataPipe(&options, send_stream_, outbound_stream_);
     CHECK_EQ(result, MOJO_RESULT_OK);
 
     outbound_stream_watcher_.Watch(
@@ -268,7 +267,6 @@ TEST_F(TlsClientConnectionTest,
 }
 
 TEST_F(TlsClientConnectionTest, CanRetrieveAddresses) {
-  EXPECT_EQ(kValidEndpointOne, connection()->GetLocalEndpoint());
   EXPECT_EQ(kValidEndpointTwo, connection()->GetRemoteEndpoint());
 }
 

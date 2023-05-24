@@ -168,6 +168,9 @@ config("ffmpeg_warnings") {
       # video_enc_params.c has a condition that is always false when size_t is
       # 64 bits.
       "-Wno-tautological-constant-out-of-range-compare",
+
+      # Various files convert MAX_INT to double and similar without casting.
+      "-Wno-implicit-int-float-conversion",
     ]
 
     if (target_cpu == "arm" || target_cpu == "arm64") {
@@ -259,7 +262,7 @@ target(link_target_type, "ffmpeg_internal") {
   configs -= [ "//build/config/compiler:default_optimization" ]
   configs += [ "//build/config/compiler:optimize_max" ]
 
-  if (ffmpeg_use_atomics_fallback) {
+  if (ffmpeg_use_unsafe_atomics) {
     if (is_posix || is_fuchsia) {
       include_dirs += [ "compat/atomics/gcc" ]
     } else if (is_win) {
@@ -363,7 +366,7 @@ target(link_target_type, "ffmpeg_internal") {
       configs += [ "//build/config/gcc:symbol_visibility_default" ]
     }
   }
-  if (is_mac) {
+  if (is_apple) {
     if (is_component_ffmpeg) {
       # Export all symbols when building as component.
       configs -= [ "//build/config/gcc:symbol_visibility_hidden" ]
@@ -371,6 +374,11 @@ target(link_target_type, "ffmpeg_internal") {
     }
 
     defines += [ "_DARWIN_C_SOURCE" ]
+    if (is_ios) {
+      libs -= [
+        "rt",
+      ]
+    }
   } else if (is_win) {
     defines += [
       "_ISOC99_SOURCE",
@@ -493,8 +501,14 @@ if (is_component_ffmpeg) {
       ]
     }
 
-    if (is_mac && !is_component_build) {
-      ldflags += [ "-Wl,-install_name,@rpath/libffmpeg.dylib" ]
+    if (!is_component_build) {
+      if (is_mac) {
+        ldflags += [ "-Wl,-install_name,@rpath/libffmpeg.dylib" ]
+      } else if (is_linux) {
+        all_dependent_configs = [
+          "//build/config/gcc:rpath_for_built_shared_libraries",
+        ]
+      }
     }
   }
 } else {

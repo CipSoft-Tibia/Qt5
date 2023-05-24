@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2014 by Southwest Research Institute (R)
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2014 by Southwest Research Institute (R)
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qbytearraylist.h>
 
@@ -103,16 +67,18 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn QByteArray QByteArrayList::join() const
-
-    Joins all the byte arrays into a single byte array.
-*/
-
-/*!
     \fn QByteArray QByteArrayList::join(const QByteArray &separator) const
 
     Joins all the byte arrays into a single byte array with each
     element separated by the given \a separator.
+*/
+
+/*!
+    \fn QByteArray QByteArrayList::join(QByteArrayView separator) const
+    \since 6.3
+
+    Joins all the byte arrays into a single byte array with each
+    element separated by the given \a separator, if any.
 */
 
 /*!
@@ -122,12 +88,12 @@ QT_BEGIN_NAMESPACE
     element separated by the given \a separator.
 */
 
-static int QByteArrayList_joinedSize(const QByteArrayList *that, int seplen)
+static qsizetype QByteArrayList_joinedSize(const QByteArrayList *that, qsizetype seplen)
 {
-    int totalLength = 0;
-    const int size = that->size();
+    qsizetype totalLength = 0;
+    const qsizetype size = that->size();
 
-    for (int i = 0; i < size; ++i)
+    for (qsizetype i = 0; i < size; ++i)
         totalLength += that->at(i).size();
 
     if (size > 0)
@@ -136,40 +102,18 @@ static int QByteArrayList_joinedSize(const QByteArrayList *that, int seplen)
     return totalLength;
 }
 
-QByteArray QtPrivate::QByteArrayList_join(const QByteArrayList *that, const char *sep, int seplen)
+QByteArray QtPrivate::QByteArrayList_join(const QByteArrayList *that, const char *sep, qsizetype seplen)
 {
     QByteArray res;
-    if (const int joinedSize = QByteArrayList_joinedSize(that, seplen))
+    if (const qsizetype joinedSize = QByteArrayList_joinedSize(that, seplen))
         res.reserve(joinedSize); // don't call reserve(0) - it allocates one byte for the NUL
-    const int size = that->size();
-    for (int i = 0; i < size; ++i) {
+    const qsizetype size = that->size();
+    for (qsizetype i = 0; i < size; ++i) {
         if (i)
             res.append(sep, seplen);
         res += that->at(i);
     }
     return res;
-}
-
-/*!
-    \fn int QByteArrayList::indexOf(const char *needle, int from) const
-
-    Returns the index position of the first occurrence of \a needle in
-    the list, searching forward from index position \a from. Returns
-    -1 if no item matched.
-
-    \a needle must be NUL-terminated.
-
-    This overload doesn't require creating a QByteArray, thus saving a
-    memory allocation and some CPU time.
-
-    \since 5.13
-    \overload
-*/
-
-int QtPrivate::QByteArrayList_indexOf(const QByteArrayList *that, const char *needle, int from)
-{
-    const auto it = std::find_if(that->begin() + from, that->end(), [needle](const QByteArray &item) { return item == needle; });
-    return it == that->end() ? -1 : int(std::distance(that->begin(), it));
 }
 
 QT_END_NAMESPACE

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,29 +8,39 @@
 #include <gtest/gtest.h>
 #include "base/test/scoped_feature_list.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/renderer/bindings/core/v8/script_evaluation_result.h"
+#include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "v8/include/v8.h"
 
 namespace blink {
 
-// Helper used to enable or disable top-level await in parametrized tests.
-class ParametrizedModuleTest : public testing::WithParamInterface<bool> {
- protected:
-  void SetUp();
-  void TearDown();
+class ModuleTestBase {
+ public:
+  void SetUp() {}
+  void TearDown() {}
 
-  bool UseTopLevelAwait() { return GetParam(); }
-  base::test::ScopedFeatureList feature_list_;
+  // Get the results of a ScriptEvaluationResult from a module.
+  // If top-level await is enabled, the method will wait for the result
+  // Promise to be resolved.
+  v8::Local<v8::Value> GetResult(ScriptState* script_state,
+                                 ScriptEvaluationResult result);
+  // Get the exception of a ScriptEvaluationResult from a module.
+  // If top-level await is enabled, the method will wait for the result
+  // Promise to be rejected.
+  v8::Local<v8::Value> GetException(ScriptState* script_state,
+                                    ScriptEvaluationResult result);
 
- private:
-  void SetV8Flags(bool use_top_level_await);
-};
-
-// Used in INSTANTIATE_TEST_SUITE_P for returning more readable test names.
-struct ParametrizedModuleTestParamName {
-  std::string operator()(
-      const testing::TestParamInfo<ParametrizedModuleTest::ParamType>& info) {
-    return info.param ? "TopLevelAwait" : "noTopLevelAwait";
-  }
+  static v8::Local<v8::Module> CompileModule(
+      ScriptState*,
+      const char*,
+      const KURL&,
+      ExceptionState& state = DummyExceptionStateForTesting().ReturnThis());
+  static v8::Local<v8::Module> CompileModule(
+      ScriptState*,
+      String,
+      const KURL&,
+      ExceptionState& state = DummyExceptionStateForTesting().ReturnThis());
 };
 
 }  // namespace blink

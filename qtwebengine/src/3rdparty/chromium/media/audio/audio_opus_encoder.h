@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,10 +11,13 @@
 #include "media/base/audio_bus.h"
 #include "media/base/audio_converter.h"
 #include "media/base/audio_encoder.h"
-#include "media/base/audio_push_fifo.h"
+#include "media/base/audio_timestamp_helper.h"
 #include "third_party/opus/src/include/opus.h"
 
 namespace media {
+
+class ChannelMixer;
+class ConvertingAudioFifo;
 
 using OpusEncoderDeleterType = void (*)(OpusEncoder* encoder_ptr);
 using OwnedOpusEncoder = std::unique_ptr<OpusEncoder, OpusEncoderDeleterType>;
@@ -24,45 +27,50 @@ using OwnedOpusEncoder = std::unique_ptr<OpusEncoder, OpusEncoderDeleterType>;
 // instance to do the actual encoding.
 class MEDIA_EXPORT AudioOpusEncoder : public AudioEncoder {
  public:
-  AudioOpusEncoder(const AudioParameters& input_params,
-                   EncodeCB encode_callback,
-                   StatusCB status_callback,
-                   int32_t opus_bitrate);
+  AudioOpusEncoder();
   AudioOpusEncoder(const AudioOpusEncoder&) = delete;
   AudioOpusEncoder& operator=(const AudioOpusEncoder&) = delete;
   ~AudioOpusEncoder() override;
 
- protected:
   // AudioEncoder:
-  void EncodeAudioImpl(const AudioBus& audio_bus,
-                       base::TimeTicks capture_time) override;
+  void Initialize(const Options& options,
+                  OutputCB output_callback,
+                  EncoderStatusCB done_cb) override;
+
+  void Encode(std::unique_ptr<AudioBus> audio_bus,
+              base::TimeTicks capture_time,
+              EncoderStatusCB done_cb) override;
+
+  void Flush(EncoderStatusCB done_cb) override;
+
+  static constexpr int kMinBitrate = 6000;
 
  private:
-  // Called synchronously by |fifo_| once enough audio frames have been
-  // buffered.
-  void OnFifoOutput(const AudioBus& output_bus, int frame_delay);
+  friend class AudioEncodersTest;
 
-  // Target bitrate for Opus. If 0, Opus-provided automatic bitrate is used.
-  // Note: As of 2013-10-31, the encoder in "auto bitrate" mode would use a
-  // variable bitrate up to 102 kbps for 2-channel, 48 kHz audio and a 10 ms
-  // buffer duration. The Opus library authors may, of course, adjust this in
-  // later versions.
-  const int32_t bits_per_second_;
+  // Called synchronously by |fifo_| once enough audio frames have been
+  // buffered in |fifo_|. Calls libopus to do actual encoding.
+  void OnFifoOutput(AudioBus* audio_bus);
+
+  CodecDescription PrepareExtraData();
+
+  EncoderStatus::Or<OwnedOpusEncoder> CreateOpusEncoder(
+      const absl::optional<AudioEncoder::OpusOptions>& opus_options);
+
+  AudioParameters input_params_;
 
   // Output parameters after audio conversion. This may differ from the input
   // params in the number of channels, sample rate, and the frames per buffer.
   // (See CreateOpusInputParams() in the .cc file for details).
   AudioParameters converted_params_;
 
-  // Sample rate adapter from the input audio to what OpusEncoder desires.
-  AudioConverter converter_;
+  std::unique_ptr<ConvertingAudioFifo> fifo_;
+  bool fifo_has_data_ = false;
 
-  // Buffer for holding the original input audio before it goes to the
-  // converter.
-  AudioPushFifo fifo_;
-
-  // This is the destination AudioBus where the |converter_| teh audio into.
-  std::unique_ptr<AudioBus> converted_audio_bus_;
+  // Used to mix incoming Encode() buffers to match the expect input channel
+  // count.
+  std::unique_ptr<ChannelMixer> mixer_;
+  AudioParameters mixer_input_params_;
 
   // Buffer for passing AudioBus data from the converter to the encoder.
   std::vector<float> buffer_;
@@ -70,6 +78,16 @@ class MEDIA_EXPORT AudioOpusEncoder : public AudioEncoder {
   // The actual libopus encoder instance. This is nullptr if creating the
   // encoder fails.
   OwnedOpusEncoder opus_encoder_;
+
+  // Keeps track of the timestamps for the each |output_callback_|
+  std::unique_ptr<AudioTimestampHelper> timestamp_tracker_;
+
+  // Callback for reporting completion and status of the current Flush() or
+  // Encoder()
+  EncoderStatusCB current_done_cb_;
+
+  // True if the next output needs to have extra_data in it, only happens once.
+  bool need_to_emit_extra_data_ = true;
 };
 
 }  // namespace media

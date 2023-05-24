@@ -1,58 +1,116 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuite errors="17" failures="4" tests="6" name="tst_Warnings">
+<testsuite name="tst_Warnings" timestamp="@TEST_START_TIME@" hostname="@HOSTNAME@" tests="16" failures="11" errors="0" skipped="0" time="@TEST_DURATION@">
   <properties>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QTestVersion"/>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QtVersion"/>
-    <property value="" name="QtBuild"/>
+    <property name="QTestVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtBuild" value=""/>
   </properties>
-  <testcase result="pass" name="initTestCase"/>
-  <testcase result="pass" name="testWarnings">
-    <!-- message="Warning" type="qwarn" -->
-    <!-- message="Warning" type="qwarn" -->
-    <!-- message="Debug" type="qdebug" -->
-    <!-- message="Debug" type="qdebug" -->
-    <!-- message="Info" type="qinfo" -->
-    <!-- message="Info" type="qinfo" -->
-    <!-- message="Baba" type="qdebug" -->
-    <!-- message="Baba" type="qdebug" -->
-    <!-- message="Bubublabla" type="qdebug" -->
-    <!-- message="Babablabla" type="qwarn" -->
+  <testcase name="initTestCase" classname="tst_Warnings" time="@TEST_DURATION@"/>
+  <testcase name="testWarnings" classname="tst_Warnings" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[Debug]]>
+      <![CDATA[Debug]]>
+      <![CDATA[Info]]>
+      <![CDATA[Info]]>
+      <![CDATA[Baba]]>
+      <![CDATA[Baba]]>
+      <![CDATA[Bubublabla]]>
+    </system-out>
+    <system-err>
+      <![CDATA[Warning]]>
+      <![CDATA[Warning]]>
+      <![CDATA[Babablabla]]>
+    </system-err>
   </testcase>
-  <testcase result="fail" name="testMissingWarnings">
-    <!-- message="Did not receive message: &quot;Warning0&quot;" type="info" -->
-    <!-- message="Did not receive message: &quot;Warning1&quot;" type="info" -->
-    <failure message="Not all expected messages were received" result="fail"/>
+  <testcase name="testMissingWarnings" classname="tst_Warnings" time="@TEST_DURATION@">
+    <failure type="fail" message="Not all expected messages were received"/>
+    <system-out>
+      <![CDATA[Did not receive message: "Warning0"]]>
+      <![CDATA[Did not receive message: "Warning1"]]>
+    </system-out>
   </testcase>
-  <testcase result="fail" name="testMissingWarningsRegularExpression">
-    <!-- message="Did not receive any message matching: &quot;Warning\s\d&quot;" type="info" -->
-    <failure message="Not all expected messages were received" result="fail"/>
+  <testcase name="testMissingWarningsRegularExpression" classname="tst_Warnings" time="@TEST_DURATION@">
+    <failure type="fail" message="Not all expected messages were received"/>
+    <system-out>
+      <![CDATA[Did not receive any message matching: "Warning\s\d"]]>
+    </system-out>
   </testcase>
-  <testcase result="fail" name="testMissingWarningsWithData">
-    <!-- tag="first row" message="Did not receive message: &quot;Warning0&quot;" type="info" -->
-    <!-- tag="first row" message="Did not receive message: &quot;Warning1&quot;" type="info" -->
-    <failure tag="first row" message="Not all expected messages were received" result="fail"/>
-    <!-- tag="second row" message="Did not receive message: &quot;Warning0&quot;" type="info" -->
-    <!-- tag="second row" message="Did not receive message: &quot;Warning1&quot;" type="info" -->
-    <failure tag="second row" message="Not all expected messages were received" result="fail"/>
+  <testcase name="testMissingWarningsWithData(first row)" classname="tst_Warnings" time="@TEST_DURATION@">
+    <failure type="fail" message="Not all expected messages were received"/>
+    <system-out>
+      <![CDATA[Did not receive message: "Warning0"]]>
+      <![CDATA[Did not receive message: "Warning1"]]>
+    </system-out>
   </testcase>
-  <testcase result="pass" name="cleanupTestCase"/>
-  <system-err>
-<![CDATA[Warning]]>
-<![CDATA[Warning]]>
-<![CDATA[Debug]]>
-<![CDATA[Debug]]>
-<![CDATA[Info]]>
-<![CDATA[Info]]>
-<![CDATA[Baba]]>
-<![CDATA[Baba]]>
-<![CDATA[Bubublabla]]>
-<![CDATA[Babablabla]]>
-<![CDATA[Did not receive message: "Warning0"]]>
-<![CDATA[Did not receive message: "Warning1"]]>
-<![CDATA[Did not receive any message matching: "Warning\s\d"]]>
-<![CDATA[Did not receive message: "Warning0"]]>
-<![CDATA[Did not receive message: "Warning1"]]>
-<![CDATA[Did not receive message: "Warning0"]]>
-<![CDATA[Did not receive message: "Warning1"]]>
-  </system-err>
+  <testcase name="testMissingWarningsWithData(second row)" classname="tst_Warnings" time="@TEST_DURATION@">
+    <failure type="fail" message="Not all expected messages were received"/>
+    <system-out>
+      <![CDATA[Did not receive message: "Warning0"]]>
+      <![CDATA[Did not receive message: "Warning1"]]>
+    </system-out>
+  </testcase>
+  <testcase name="testFailOnWarnings" classname="tst_Warnings" time="@TEST_DURATION@">
+    <failure type="fail" message="Received a warning that resulted in a failure:">
+      <![CDATA[Ran out of cabbage!]]>
+    </failure>
+    <system-out>
+      <![CDATA[Ran out of tortillas!]]>
+      <![CDATA[Ran out of oil!]]>
+      <![CDATA[Running low on toothpaste!]]>
+      <![CDATA[Running low on toothpaste!]]>
+    </system-out>
+    <system-err>
+      <![CDATA[Ran out of space!]]>
+      <![CDATA[nope]]>
+      <![CDATA[Running low on flour!]]>
+    </system-err>
+  </testcase>
+  <testcase name="testFailOnWarningsCleared" classname="tst_Warnings" time="@TEST_DURATION@">
+    <system-err>
+      <![CDATA[Ran out of muffins!]]>
+    </system-err>
+  </testcase>
+  <testcase name="testFailOnWarningsWithData(warning1)" classname="tst_Warnings" time="@TEST_DURATION@">
+    <failure type="fail" message="Received a warning that resulted in a failure:">
+      <![CDATA[warning1]]>
+    </failure>
+    <system-err>
+      <![CDATA[warning2]]>
+      <![CDATA[warning3]]>
+    </system-err>
+  </testcase>
+  <testcase name="testFailOnWarningsWithData(warning2)" classname="tst_Warnings" time="@TEST_DURATION@">
+    <failure type="fail" message="Received a warning that resulted in a failure:">
+      <![CDATA[warning2]]>
+    </failure>
+    <system-err>
+      <![CDATA[warning1]]>
+      <![CDATA[warning3]]>
+    </system-err>
+  </testcase>
+  <testcase name="testFailOnWarningsWithData(warning3)" classname="tst_Warnings" time="@TEST_DURATION@">
+    <failure type="fail" message="Received a warning that resulted in a failure:">
+      <![CDATA[warning3]]>
+    </failure>
+    <system-err>
+      <![CDATA[warning1]]>
+      <![CDATA[warning2]]>
+    </system-err>
+  </testcase>
+  <testcase name="testFailOnWarningsFailInHelper" classname="tst_Warnings" time="@TEST_DURATION@">
+    <failure type="fail" message="This failure message should be printed but not cause the test to abort"/>
+  </testcase>
+  <testcase name="testFailOnWarningsThenSkip" classname="tst_Warnings" time="@TEST_DURATION@">
+    <failure type="fail" message="Received a warning that resulted in a failure:">
+      <![CDATA[Ran out of cabbage!]]>
+    </failure>
+    <skipped message="My cabbage! :("/>
+  </testcase>
+  <testcase name="testFailOnWarningsAndIgnoreWarnings" classname="tst_Warnings" time="@TEST_DURATION@"/>
+  <testcase name="testFailOnTemporaryObjectDestruction" classname="tst_Warnings" time="@TEST_DURATION@">
+    <failure type="fail" message="Received a warning that resulted in a failure:">
+      <![CDATA[Running low on toothpaste!]]>
+    </failure>
+  </testcase>
+  <testcase name="cleanupTestCase" classname="tst_Warnings" time="@TEST_DURATION@"/>
 </testsuite>

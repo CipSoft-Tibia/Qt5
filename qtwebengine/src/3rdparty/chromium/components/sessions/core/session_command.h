@@ -1,4 +1,4 @@
-// Copyright 2006 The Chromium Authors. All rights reserved.
+// Copyright 2006 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
+#include "base/strings/string_piece.h"
 #include "components/sessions/core/sessions_export.h"
 
 namespace base {
@@ -47,10 +47,15 @@ class SESSIONS_EXPORT SessionCommand {
   // id whose contents is populated from the contents of pickle.
   SessionCommand(id_type id, const base::Pickle& pickle);
 
+  SessionCommand(const SessionCommand&) = delete;
+  SessionCommand& operator=(const SessionCommand&) = delete;
+
   // The contents of the command.
   char* contents() { return const_cast<char*>(contents_.c_str()); }
   const char* contents() const { return contents_.c_str(); }
-
+  base::StringPiece contents_as_string_piece() const {
+    return base::StringPiece(contents_);
+  }
   // Identifier for the command.
   id_type id() const { return id_; }
 
@@ -73,8 +78,6 @@ class SESSIONS_EXPORT SessionCommand {
  private:
   const id_type id_;
   std::string contents_;
-
-  DISALLOW_COPY_AND_ASSIGN(SessionCommand);
 };
 
 }  // namespace sessions

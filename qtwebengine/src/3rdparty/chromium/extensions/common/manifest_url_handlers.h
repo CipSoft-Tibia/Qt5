@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,13 +8,8 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/manifest_handler.h"
-
-namespace base {
-class DictionaryValue;
-}
 
 namespace extensions {
 
@@ -52,7 +47,6 @@ struct ManifestURL : public Extension::ManifestData {
 
   // Returns true if this extension's update URL is the extension gallery.
   static bool UpdatesFromGallery(const Extension* extension);
-  static bool UpdatesFromGallery(const base::DictionaryValue* manifest);
 
   // Returns the About Page for this extension.
   static const GURL& GetAboutPage(const Extension* extension);
@@ -65,28 +59,32 @@ struct ManifestURL : public Extension::ManifestData {
 class HomepageURLHandler : public ManifestHandler {
  public:
   HomepageURLHandler();
+
+  HomepageURLHandler(const HomepageURLHandler&) = delete;
+  HomepageURLHandler& operator=(const HomepageURLHandler&) = delete;
+
   ~HomepageURLHandler() override;
 
-  bool Parse(Extension* extension, base::string16* error) override;
+  bool Parse(Extension* extension, std::u16string* error) override;
 
  private:
   base::span<const char* const> Keys() const override;
-
-  DISALLOW_COPY_AND_ASSIGN(HomepageURLHandler);
 };
 
 // Parses the "update_url" manifest key.
 class UpdateURLHandler : public ManifestHandler {
  public:
   UpdateURLHandler();
+
+  UpdateURLHandler(const UpdateURLHandler&) = delete;
+  UpdateURLHandler& operator=(const UpdateURLHandler&) = delete;
+
   ~UpdateURLHandler() override;
 
-  bool Parse(Extension* extension, base::string16* error) override;
+  bool Parse(Extension* extension, std::u16string* error) override;
 
  private:
   base::span<const char* const> Keys() const override;
-
-  DISALLOW_COPY_AND_ASSIGN(UpdateURLHandler);
 };
 
 // Parses the "about_page" manifest key.
@@ -97,17 +95,19 @@ class UpdateURLHandler : public ManifestHandler {
 class AboutPageHandler : public ManifestHandler {
  public:
   AboutPageHandler();
+
+  AboutPageHandler(const AboutPageHandler&) = delete;
+  AboutPageHandler& operator=(const AboutPageHandler&) = delete;
+
   ~AboutPageHandler() override;
 
-  bool Parse(Extension* extension, base::string16* error) override;
+  bool Parse(Extension* extension, std::u16string* error) override;
   bool Validate(const Extension* extension,
                 std::string* error,
                 std::vector<InstallWarning>* warnings) const override;
 
  private:
   base::span<const char* const> Keys() const override;
-
-  DISALLOW_COPY_AND_ASSIGN(AboutPageHandler);
 };
 
 }  // namespace extensions

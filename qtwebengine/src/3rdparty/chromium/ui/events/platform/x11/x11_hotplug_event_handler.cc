@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,27 +13,25 @@
 #include <string>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/check.h"
 #include "base/command_line.h"
 #include "base/files/file_path.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/process/launch.h"
-#include "base/single_thread_task_runner.h"
 #include "base/strings/string_util.h"
 #include "base/system/sys_info.h"
-#include "base/task/post_task.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "ui/events/devices/device_data_manager.h"
 #include "ui/events/devices/device_hotplug_event_observer.h"
 #include "ui/events/devices/device_util_linux.h"
 #include "ui/events/devices/input_device.h"
 #include "ui/events/devices/touchscreen_device.h"
+#include "ui/gfx/x/connection.h"
 #include "ui/gfx/x/extension_manager.h"
-#include "ui/gfx/x/x11.h"
+#include "ui/gfx/x/future.h"
 #include "ui/gfx/x/x11_atom_cache.h"
-#include "ui/gfx/x/x11_types.h"
 
 namespace ui {
 
@@ -185,14 +183,15 @@ base::FilePath GetDevicePath(x11::Connection* connection,
 
   // Input device has a property "Device Node" pointing to its dev input node,
   // e.g.   Device Node (250): "/dev/input/event8"
-  x11::Atom device_node = gfx::GetAtom("Device Node");
+  x11::Atom device_node = x11::GetAtom("Device Node");
   if (device_node == x11::Atom::None)
     return base::FilePath();
 
   auto deviceid = static_cast<uint16_t>(device.deviceid);
   if (deviceid > std::numeric_limits<uint8_t>::max())
     return base::FilePath();
-  if (connection->xinput().OpenDevice({deviceid}).Sync().error)
+  uint8_t deviceid_u8 = static_cast<uint8_t>(deviceid);
+  if (connection->xinput().OpenDevice({deviceid_u8}).Sync().error)
     return base::FilePath();
 
   x11::Input::GetDevicePropertyRequest req{
@@ -200,19 +199,19 @@ base::FilePath GetDevicePath(x11::Connection* connection,
       .type = x11::Atom::Any,
       .offset = 0,
       .len = std::numeric_limits<uint32_t>::max(),
-      .device_id = deviceid,
+      .device_id = deviceid_u8,
       .c_delete = false,
   };
   auto reply = connection->xinput().GetDeviceProperty(req).Sync();
   if (!reply || reply->type != x11::Atom::STRING || !reply->data8.has_value()) {
-    connection->xinput().CloseDevice({deviceid});
+    connection->xinput().CloseDevice({deviceid_u8});
     return base::FilePath();
   }
 
   std::string path(reinterpret_cast<char*>(reply->data8->data()),
                    reply->data8->size());
 
-  connection->xinput().CloseDevice({deviceid});
+  connection->xinput().CloseDevice({deviceid_u8});
 
   return base::FilePath(path);
 }
@@ -408,15 +407,26 @@ void X11HotplugEventHandler::OnHotplugEvent() {
     if (id >= kMaxDeviceNum)
       continue;
 
+    // In XWayland, physical devices are not exposed to X Server, but
+    // rather X11 and Wayland uses wayland protocol to communicate
+    // devices.
+
+    // So, xinput that Chromium uses to enumerate devices prepends
+    // "xwayland-" to each device name. Though, Wayland doesn't expose TOUCHPAD
+    // directly. Instead, it's part of xwayland-pointer.
     x11::Atom type = device.device_type;
-    if (type == gfx::GetAtom("KEYBOARD"))
+    if (type == x11::GetAtom("KEYBOARD") ||
+        type == x11::GetAtom("xwayland-keyboard")) {
       device_types[id] = DEVICE_TYPE_KEYBOARD;
-    else if (type == gfx::GetAtom("MOUSE"))
+    } else if (type == x11::GetAtom("MOUSE") ||
+               type == x11::GetAtom("xwayland-pointer")) {
       device_types[id] = DEVICE_TYPE_MOUSE;
-    else if (type == gfx::GetAtom("TOUCHPAD"))
+    } else if (type == x11::GetAtom("TOUCHPAD")) {
       device_types[id] = DEVICE_TYPE_TOUCHPAD;
-    else if (type == gfx::GetAtom("TOUCHSCREEN"))
+    } else if (type == x11::GetAtom("TOUCHSCREEN") ||
+               type == x11::GetAtom("xwayland-touch")) {
       device_types[id] = DEVICE_TYPE_TOUCHSCREEN;
+    }
   }
 
   std::vector<DeviceInfo> device_infos;
@@ -433,8 +443,8 @@ void X11HotplugEventHandler::OnHotplugEvent() {
 
   // X11 is not thread safe, so first get all the required state.
   DisplayState display_state;
-  display_state.mt_position_x = gfx::GetAtom("Abs MT Position X");
-  display_state.mt_position_y = gfx::GetAtom("Abs MT Position Y");
+  display_state.mt_position_x = x11::GetAtom("Abs MT Position X");
+  display_state.mt_position_y = x11::GetAtom("Abs MT Position Y");
 
   UiCallbacks callbacks;
   callbacks.keyboard_callback = base::BindOnce(&OnKeyboardDevices);
@@ -450,7 +460,7 @@ void X11HotplugEventHandler::OnHotplugEvent() {
       FROM_HERE,
       {base::MayBlock(), base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN},
       base::BindOnce(&HandleHotplugEventInWorker, device_infos, display_state,
-                     base::ThreadTaskRunnerHandle::Get(),
+                     base::SingleThreadTaskRunner::GetCurrentDefault(),
                      std::move(callbacks)));
 }
 

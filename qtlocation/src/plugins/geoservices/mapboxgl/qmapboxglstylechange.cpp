@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Mapbox, Inc.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Mapbox, Inc.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmapboxglstylechange_p.h"
 
@@ -94,14 +61,14 @@ QMapbox::Feature featureFromMapCircle(QDeclarativeCircleMapItem *mapItem)
     const QGeoProjectionWebMercator &p = static_cast<const QGeoProjectionWebMercator&>(mapItem->map()->geoProjection());
     QList<QGeoCoordinate> path;
     QGeoCoordinate leftBound;
-    QDeclarativeCircleMapItemPrivateCPU::calculatePeripheralPoints(path, mapItem->center(), mapItem->radius(), circleSamples, leftBound);
+    QDeclarativeCircleMapItemPrivate::calculatePeripheralPoints(path, mapItem->center(), mapItem->radius(), circleSamples, leftBound);
     QList<QDoubleVector2D> pathProjected;
-    for (const QGeoCoordinate &c : qAsConst(path))
+    for (const QGeoCoordinate &c : std::as_const(path))
         pathProjected << p.geoToMapProjection(c);
     if (QDeclarativeCircleMapItemPrivateCPU::crossEarthPole(mapItem->center(), mapItem->radius()))
         QDeclarativeCircleMapItemPrivateCPU::preserveCircleGeometry(pathProjected, mapItem->center(), mapItem->radius(), p);
     path.clear();
-    for (const QDoubleVector2D &c : qAsConst(pathProjected))
+    for (const QDoubleVector2D &c : std::as_const(pathProjected))
         path << p.mapProjectionToGeo(c);
 
 
@@ -135,7 +102,7 @@ QMapbox::Feature featureFromMapPolygon(QDeclarativePolygonMapItem *mapItem)
     const bool crossesDateline = geoRectangleCrossesDateLine(polygon->boundingGeoRectangle());
     QMapbox::CoordinatesCollections geometry;
     QMapbox::CoordinatesCollection poly;
-    QMapbox::Coordinates coordinates = qgeocoordinate2mapboxcoordinate(polygon->path(), crossesDateline, true);
+    QMapbox::Coordinates coordinates = qgeocoordinate2mapboxcoordinate(polygon->perimeter(), crossesDateline, true);
     poly.push_back(coordinates);
     for (int i = 0; i < polygon->holesCount(); ++i) {
         coordinates = qgeocoordinate2mapboxcoordinate(polygon->holePath(i), crossesDateline, true);
@@ -193,43 +160,6 @@ QList<QByteArray> getAllPropertyNamesList(QObject *object)
 } // namespace
 
 
-// QMapboxGLStyleChange
-
-QList<QSharedPointer<QMapboxGLStyleChange>> QMapboxGLStyleChange::addMapParameter(QGeoMapParameter *param)
-{
-    static const QStringList acceptedParameterTypes = QStringList()
-        << QStringLiteral("paint") << QStringLiteral("layout") << QStringLiteral("filter")
-        << QStringLiteral("layer") << QStringLiteral("source") << QStringLiteral("image");
-
-    QList<QSharedPointer<QMapboxGLStyleChange>> changes;
-
-    switch (acceptedParameterTypes.indexOf(param->type())) {
-    case -1:
-        qWarning() << "Invalid value for property 'type': " + param->type();
-        break;
-    case 0: // paint
-        changes << QMapboxGLStyleSetPaintProperty::fromMapParameter(param);
-        break;
-    case 1: // layout
-        changes << QMapboxGLStyleSetLayoutProperty::fromMapParameter(param);
-        break;
-    case 2: // filter
-        changes << QMapboxGLStyleSetFilter::fromMapParameter(param);
-        break;
-    case 3: // layer
-        changes << QMapboxGLStyleAddLayer::fromMapParameter(param);
-        break;
-    case 4: // source
-        changes << QMapboxGLStyleAddSource::fromMapParameter(param);
-        break;
-    case 5: // image
-        changes << QMapboxGLStyleAddImage::fromMapParameter(param);
-        break;
-    }
-
-    return changes;
-}
-
 QList<QSharedPointer<QMapboxGLStyleChange>> QMapboxGLStyleChange::addMapItem(QDeclarativeGeoMapItemBase *item, const QString &before)
 {
     QList<QSharedPointer<QMapboxGLStyleChange>> changes;
@@ -255,35 +185,6 @@ QList<QSharedPointer<QMapboxGLStyleChange>> QMapboxGLStyleChange::addMapItem(QDe
     return changes;
 }
 
-QList<QSharedPointer<QMapboxGLStyleChange>> QMapboxGLStyleChange::removeMapParameter(QGeoMapParameter *param)
-{
-    static const QStringList acceptedParameterTypes = QStringList()
-        << QStringLiteral("paint") << QStringLiteral("layout") << QStringLiteral("filter")
-        << QStringLiteral("layer") << QStringLiteral("source") << QStringLiteral("image");
-
-    QList<QSharedPointer<QMapboxGLStyleChange>> changes;
-
-    switch (acceptedParameterTypes.indexOf(param->type())) {
-    case -1:
-        qWarning() << "Invalid value for property 'type': " + param->type();
-        break;
-    case 0: // paint
-    case 1: // layout
-    case 2: // filter
-        break;
-    case 3: // layer
-        changes << QSharedPointer<QMapboxGLStyleChange>(new QMapboxGLStyleRemoveLayer(param->property("name").toString()));
-        break;
-    case 4: // source
-        changes << QSharedPointer<QMapboxGLStyleChange>(new QMapboxGLStyleRemoveSource(param->property("name").toString()));
-        break;
-    case 5: // image
-        break;
-    }
-
-    return changes;
-}
-
 QList<QSharedPointer<QMapboxGLStyleChange>> QMapboxGLStyleChange::removeMapItem(QDeclarativeGeoMapItemBase *item)
 {
     QList<QSharedPointer<QMapboxGLStyleChange>> changes;
@@ -301,33 +202,6 @@ QList<QSharedPointer<QMapboxGLStyleChange>> QMapboxGLStyleChange::removeMapItem(
 void QMapboxGLStyleSetLayoutProperty::apply(QMapboxGL *map)
 {
     map->setLayoutProperty(m_layer, m_property, m_value);
-}
-
-QList<QSharedPointer<QMapboxGLStyleChange>> QMapboxGLStyleSetLayoutProperty::fromMapParameter(QGeoMapParameter *param)
-{
-    Q_ASSERT(param->type() == "layout");
-
-    QList<QSharedPointer<QMapboxGLStyleChange>> changes;
-
-    QList<QByteArray> propertyNames = getAllPropertyNamesList(param);
-    for (const QByteArray &propertyName : propertyNames) {
-        if (isImmutableProperty(propertyName))
-            continue;
-
-        auto layout = new QMapboxGLStyleSetLayoutProperty();
-
-        layout->m_value = param->property(propertyName);
-        if (layout->m_value.canConvert<QJSValue>()) {
-            layout->m_value = layout->m_value.value<QJSValue>().toVariant();
-        }
-
-        layout->m_layer = param->property("layer").toString();
-        layout->m_property = formatPropertyName(propertyName);
-
-        changes << QSharedPointer<QMapboxGLStyleChange>(layout);
-    }
-
-    return changes;
 }
 
 QList<QSharedPointer<QMapboxGLStyleChange>> QMapboxGLStyleSetLayoutProperty::fromMapItem(QDeclarativeGeoMapItemBase *item)
@@ -378,33 +252,6 @@ QMapboxGLStyleSetPaintProperty::QMapboxGLStyleSetPaintProperty(const QString& la
 void QMapboxGLStyleSetPaintProperty::apply(QMapboxGL *map)
 {
     map->setPaintProperty(m_layer, m_property, m_value);
-}
-
-QList<QSharedPointer<QMapboxGLStyleChange>> QMapboxGLStyleSetPaintProperty::fromMapParameter(QGeoMapParameter *param)
-{
-    Q_ASSERT(param->type() == "paint");
-
-    QList<QSharedPointer<QMapboxGLStyleChange>> changes;
-
-    QList<QByteArray> propertyNames = getAllPropertyNamesList(param);
-    for (const QByteArray &propertyName : propertyNames) {
-        if (isImmutableProperty(propertyName))
-            continue;
-
-        auto paint = new QMapboxGLStyleSetPaintProperty();
-
-        paint->m_value = param->property(propertyName);
-        if (paint->m_value.canConvert<QJSValue>()) {
-            paint->m_value = paint->m_value.value<QJSValue>().toVariant();
-        }
-
-        paint->m_layer = param->property("layer").toString();
-        paint->m_property = formatPropertyName(propertyName);
-
-        changes << QSharedPointer<QMapboxGLStyleChange>(paint);
-    }
-
-    return changes;
 }
 
 QList<QSharedPointer<QMapboxGLStyleChange>> QMapboxGLStyleSetPaintProperty::fromMapItem(QDeclarativeGeoMapItemBase *item)
@@ -499,41 +346,6 @@ void QMapboxGLStyleAddLayer::apply(QMapboxGL *map)
     map->addLayer(m_params, m_before);
 }
 
-QSharedPointer<QMapboxGLStyleChange> QMapboxGLStyleAddLayer::fromMapParameter(QGeoMapParameter *param)
-{
-    Q_ASSERT(param->type() == "layer");
-
-    auto layer = new QMapboxGLStyleAddLayer();
-
-    static const QStringList layerProperties = QStringList()
-        << QStringLiteral("name") << QStringLiteral("layerType") << QStringLiteral("before");
-
-    QList<QByteArray> propertyNames = getAllPropertyNamesList(param);
-    for (const QByteArray &propertyName : propertyNames) {
-        if (isImmutableProperty(propertyName))
-            continue;
-
-        const QVariant value = param->property(propertyName);
-
-        switch (layerProperties.indexOf(propertyName)) {
-        case -1:
-            layer->m_params[formatPropertyName(propertyName)] = value;
-            break;
-        case 0: // name
-            layer->m_params[QStringLiteral("id")] = value;
-            break;
-        case 1: // layerType
-            layer->m_params[QStringLiteral("type")] = value;
-            break;
-        case 2: // before
-            layer->m_before = value.toString();
-            break;
-        }
-    }
-
-    return QSharedPointer<QMapboxGLStyleChange>(layer);
-}
-
 QSharedPointer<QMapboxGLStyleChange> QMapboxGLStyleAddLayer::fromFeature(const QMapbox::Feature &feature, const QString &before)
 {
     auto layer = new QMapboxGLStyleAddLayer();
@@ -577,47 +389,6 @@ void QMapboxGLStyleAddSource::apply(QMapboxGL *map)
     map->updateSource(m_id, m_params);
 }
 
-QSharedPointer<QMapboxGLStyleChange> QMapboxGLStyleAddSource::fromMapParameter(QGeoMapParameter *param)
-{
-    Q_ASSERT(param->type() == "source");
-
-    static const QStringList acceptedSourceTypes = QStringList()
-        << QStringLiteral("vector") << QStringLiteral("raster") << QStringLiteral("raster-dem") << QStringLiteral("geojson") << QStringLiteral("image");
-
-    QString sourceType = param->property("sourceType").toString();
-
-    auto source = new QMapboxGLStyleAddSource();
-    source->m_id = param->property("name").toString();
-    source->m_params[QStringLiteral("type")] = sourceType;
-
-    switch (acceptedSourceTypes.indexOf(sourceType)) {
-    case -1:
-        qWarning() << "Invalid value for property 'sourceType': " + sourceType;
-        break;
-    case 0: // vector
-    case 1: // raster
-    case 2: // raster-dem
-        source->m_params[QStringLiteral("url")] = param->property("url");
-        break;
-    case 3: { // geojson
-        auto data = param->property("data").toString();
-        if (data.startsWith(':')) {
-            QFile geojson(data);
-            geojson.open(QIODevice::ReadOnly);
-            source->m_params[QStringLiteral("data")] = geojson.readAll();
-        } else {
-            source->m_params[QStringLiteral("data")] = data.toUtf8();
-        }
-    } break;
-    case 4: { // image
-        source->m_params[QStringLiteral("url")] = param->property("url");
-        source->m_params[QStringLiteral("coordinates")] = param->property("coordinates");
-    } break;
-    }
-
-    return QSharedPointer<QMapboxGLStyleChange>(source);
-}
-
 QSharedPointer<QMapboxGLStyleChange> QMapboxGLStyleAddSource::fromFeature(const QMapbox::Feature &feature)
 {
     auto source = new QMapboxGLStyleAddSource();
@@ -654,32 +425,9 @@ void QMapboxGLStyleSetFilter::apply(QMapboxGL *map)
     map->setFilter(m_layer, m_filter);
 }
 
-QSharedPointer<QMapboxGLStyleChange> QMapboxGLStyleSetFilter::fromMapParameter(QGeoMapParameter *param)
-{
-    Q_ASSERT(param->type() == "filter");
-
-    auto filter = new QMapboxGLStyleSetFilter();
-    filter->m_layer = param->property("layer").toString();
-    filter->m_filter = param->property("filter");
-
-    return QSharedPointer<QMapboxGLStyleChange>(filter);
-}
-
-
 // QMapboxGLStyleAddImage
 
 void QMapboxGLStyleAddImage::apply(QMapboxGL *map)
 {
     map->addImage(m_name, m_sprite);
-}
-
-QSharedPointer<QMapboxGLStyleChange> QMapboxGLStyleAddImage::fromMapParameter(QGeoMapParameter *param)
-{
-    Q_ASSERT(param->type() == "image");
-
-    auto image = new QMapboxGLStyleAddImage();
-    image->m_name = param->property("name").toString();
-    image->m_sprite = QImage(param->property("sprite").toString());
-
-    return QSharedPointer<QMapboxGLStyleChange>(image);
 }

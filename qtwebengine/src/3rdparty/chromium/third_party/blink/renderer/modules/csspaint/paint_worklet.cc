@@ -1,10 +1,9 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/csspaint/paint_worklet.h"
 
-#include "base/atomic_sequence_num.h"
 #include "base/rand_util.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/core/css/cssom/prepopulated_computed_style_property_map.h"
@@ -16,19 +15,12 @@
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/modules/csspaint/css_paint_definition.h"
 #include "third_party/blink/renderer/modules/csspaint/paint_worklet_global_scope.h"
+#include "third_party/blink/renderer/modules/csspaint/paint_worklet_id_generator.h"
 #include "third_party/blink/renderer/modules/csspaint/paint_worklet_messaging_proxy.h"
+#include "third_party/blink/renderer/platform/bindings/script_forbidden_scope.h"
 #include "third_party/blink/renderer/platform/graphics/paint_generated_image.h"
 
 namespace blink {
-
-namespace {
-base::AtomicSequenceNumber g_next_worklet_id;
-int NextId() {
-  // Start id from 1. This way it safe to use it as key in hashmap with default
-  // key traits.
-  return g_next_worklet_id.GetNext() + 1;
-}
-}  // namespace
 
 const wtf_size_t PaintWorklet::kNumGlobalScopesPerThread = 2u;
 const size_t kMaxPaintCountToSwitch = 30u;
@@ -49,7 +41,7 @@ PaintWorklet::PaintWorklet(LocalDOMWindow& window)
       Supplement<LocalDOMWindow>(window),
       pending_generator_registry_(
           MakeGarbageCollected<PaintWorkletPendingGeneratorRegistry>()),
-      worklet_id_(NextId()),
+      worklet_id_(PaintWorkletIdGenerator::NextId()),
       is_paint_off_thread_(
           RuntimeEnabledFeatures::OffMainThreadCSSPaintEnabled() &&
           Thread::CompositorThread()) {}
@@ -71,7 +63,8 @@ void PaintWorklet::ResetIsPaintOffThreadForTesting() {
 // This approach ensures non-deterministic of global scope selecting, and that
 // there is a max of one switching within one frame.
 wtf_size_t PaintWorklet::SelectGlobalScope() {
-  size_t current_paint_frame_count = GetFrame()->View()->PaintFrameCount();
+  size_t current_paint_frame_count =
+      DomWindow()->GetFrame()->View()->PaintFrameCount();
   // Whether a new frame starts or not.
   bool frame_changed = current_paint_frame_count != active_frame_count_;
   if (frame_changed) {
@@ -107,9 +100,8 @@ wtf_size_t PaintWorklet::SelectNewGlobalScope() {
 
 scoped_refptr<Image> PaintWorklet::Paint(const String& name,
                                          const ImageResourceObserver& observer,
-                                         const FloatSize& container_size,
-                                         const CSSStyleValueVector* data,
-                                         float device_scale_factor) {
+                                         const gfx::SizeF& container_size,
+                                         const CSSStyleValueVector* data) {
   if (!document_definition_map_.Contains(name))
     return nullptr;
 
@@ -134,11 +126,16 @@ scoped_refptr<Image> PaintWorklet::Paint(const String& name,
           layout_object.GetDocument(), layout_object.StyleRef(),
           paint_definition->NativeInvalidationProperties(),
           paint_definition->CustomInvalidationProperties());
-  sk_sp<PaintRecord> paint_record = paint_definition->Paint(
-      container_size, zoom, style_map, data, device_scale_factor);
-  if (!paint_record)
+  // The PaintWorkletGlobalScope is sufficiently isolated that it is safe to
+  // run during the lifecycle update without concern for it causing
+  // invalidations to the lifecycle.
+  ScriptForbiddenScope::AllowUserAgentScript allow_script;
+  PaintRecord paint_record =
+      paint_definition->Paint(container_size, zoom, style_map, data);
+  if (paint_record.empty()) {
     return nullptr;
-  return PaintGeneratedImage::Create(paint_record, container_size);
+  }
+  return PaintGeneratedImage::Create(std::move(paint_record), container_size);
 }
 
 // static

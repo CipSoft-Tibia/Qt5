@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,12 +9,14 @@
 
 namespace blink {
 
-// LayoutNGTextControlSingleLine is a LayoutObject for <textarea>.
+// LayoutNGTextControlMultiLine is a LayoutObject for <textarea>.
 class LayoutNGTextControlMultiLine final : public LayoutNGBlockFlow {
  public:
   explicit LayoutNGTextControlMultiLine(Element* element);
 
  private:
+  HTMLElement* InnerEditorElement() const;
+
   bool IsOfType(LayoutObjectType) const override;
 
   const char* GetName() const override {
@@ -26,6 +28,13 @@ class LayoutNGTextControlMultiLine final : public LayoutNGBlockFlow {
     NOT_DESTROYED();
     return true;
   }
+
+  void StyleDidChange(StyleDifference, const ComputedStyle* old_style) override;
+
+  bool NodeAtPoint(HitTestResult& result,
+                   const HitTestLocation& hit_test_location,
+                   const PhysicalOffset& accumulated_offset,
+                   HitTestPhase phase) override;
 };
 
 }  // namespace blink

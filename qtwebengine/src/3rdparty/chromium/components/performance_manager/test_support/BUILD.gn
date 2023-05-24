@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -10,11 +10,10 @@ source_set("test_support_common") {
 
   sources = [
     "decorators_utils.h",
-    "frame_priority.cc",
-    "frame_priority.h",
     "graph_impl.h",
     "test_harness_helper.cc",
     "test_harness_helper.h",
+    "voting.h",
   ]
 
   deps = [
@@ -35,6 +34,8 @@ source_set("test_support") {
     "mock_graphs.h",
     "performance_manager_test_harness.cc",
     "performance_manager_test_harness.h",
+    "test_worker_node_factory.cc",
+    "test_worker_node_factory.h",
   ]
 
   deps = [
@@ -61,6 +62,7 @@ source_set("browsertest_support") {
     "//components/performance_manager",
     "//content/shell:content_shell_lib",
     "//content/test:browsertest_support",
+    "//content/test:test_support",
     "//net:test_support",
     "//testing/gmock",
     "//testing/gtest",

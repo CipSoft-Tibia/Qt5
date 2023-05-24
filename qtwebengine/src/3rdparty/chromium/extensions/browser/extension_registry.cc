@@ -1,9 +1,10 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/browser/extension_registry.h"
 
+#include "base/observer_list.h"
 #include "base/strings/string_util.h"
 #include "extensions/browser/extension_registry_factory.h"
 #include "extensions/browser/extension_registry_observer.h"
@@ -12,7 +13,7 @@ namespace extensions {
 
 ExtensionRegistry::ExtensionRegistry(content::BrowserContext* browser_context)
     : browser_context_(browser_context) {}
-ExtensionRegistry::~ExtensionRegistry() {}
+ExtensionRegistry::~ExtensionRegistry() = default;
 
 // static
 ExtensionRegistry* ExtensionRegistry::Get(content::BrowserContext* context) {
@@ -107,6 +108,14 @@ void ExtensionRegistry::TriggerOnUninstalled(const Extension* extension,
     observer.OnExtensionUninstalled(browser_context_, extension, reason);
 }
 
+void ExtensionRegistry::TriggerOnUninstallationDenied(
+    const Extension* extension) {
+  CHECK(extension);
+  DCHECK(GenerateInstalledExtensionsSet()->Contains(extension->id()));
+  for (auto& observer : observers_)
+    observer.OnExtensionUninstallationDenied(browser_context_, extension);
+}
+
 const Extension* ExtensionRegistry::GetExtensionById(const std::string& id,
                                                      int include_mask) const {
   std::string lowercase_id = base::ToLowerASCII(id);
@@ -135,7 +144,7 @@ const Extension* ExtensionRegistry::GetExtensionById(const std::string& id,
     if (extension)
       return extension;
   }
-  return NULL;
+  return nullptr;
 }
 
 const Extension* ExtensionRegistry::GetInstalledExtension(

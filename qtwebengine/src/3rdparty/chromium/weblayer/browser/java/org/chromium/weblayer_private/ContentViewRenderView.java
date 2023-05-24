@@ -1,4 +1,4 @@
-// Copyright 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,56 +9,38 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
-import android.graphics.SurfaceTexture;
 import android.os.SystemClock;
 import android.util.Size;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
-import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
-import android.webkit.ValueCallback;
 import android.widget.FrameLayout;
 import android.widget.RelativeLayout;
-
-import androidx.annotation.IntDef;
 
 import org.chromium.base.annotations.CalledByNative;
 import org.chromium.base.annotations.JNINamespace;
 import org.chromium.base.annotations.NativeMethods;
-import org.chromium.base.task.PostTask;
 import org.chromium.components.browser_ui.widget.InsetObserverView;
-import org.chromium.content_public.browser.UiThreadTaskTraits;
 import org.chromium.content_public.browser.WebContents;
 import org.chromium.ui.base.WindowAndroid;
 import org.chromium.ui.display.DisplayAndroid;
 import org.chromium.ui.resources.ResourceManager;
 
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 
 /**
  * This class manages the chromium compositor and the Surface that is used by
  * the chromium compositor. Note it can be used to display only one WebContents.
- * This allows switching between SurfaceView and TextureView as the source of
- * the Surface used by chromium compositor, and attempts to make the switch
- * visually seamless.
  */
 @JNINamespace("weblayer")
 public class ContentViewRenderView
         extends RelativeLayout implements WindowAndroid.SelectionHandlesObserver {
-    @Retention(RetentionPolicy.SOURCE)
-    @IntDef({MODE_SURFACE_VIEW, MODE_TEXTURE_VIEW})
-    public @interface Mode {}
-    public static final int MODE_SURFACE_VIEW = 0;
-    public static final int MODE_TEXTURE_VIEW = 1;
-
     private static final int CONFIG_TIMEOUT_MS = 1000;
 
-    // A child view of this class. Parent of SurfaceView/TextureView.
+    // A child view of this class. Parent of SurfaceView.
     // Needed to support not resizing the surface when soft keyboard is showing.
     private final SurfaceParent mSurfaceParent;
 
@@ -71,6 +53,12 @@ public class ContentViewRenderView
     // The native side of this object.
     private long mNativeContentViewRenderView;
 
+    private Surface mLastSurface;
+    private boolean mLastCanBeUsedWithSurfaceControl;
+
+    private int mMinimumSurfaceWidth;
+    private int mMinimumSurfaceHeight;
+
     // An invisible view that notifies observers of changes to window insets and safe area.
     private InsetObserverView mInsetObserverView;
 
@@ -81,7 +69,7 @@ public class ContentViewRenderView
 
     // This is the size of the surfaces, so the "physical" size for the compositor.
     // This is the size of the |mSurfaceParent| view, which is the immediate parent
-    // of the SurfaceView/TextureView. Note this does not always match the size of
+    // of the SurfaceView. Note this does not always match the size of
     // this ContentViewRenderView; when the soft keyboard is displayed,
     // ContentViewRenderView will shrink in height, but |mSurfaceParent| will not.
     private int mPhysicalWidth;
@@ -95,20 +83,13 @@ public class ContentViewRenderView
 
     private boolean mSelectionHandlesActive;
 
+    private boolean mRequiresAlphaChannel;
+    private boolean mZOrderMediaOverlay;
+
     // The time stamp when a configuration was detected (if any).
     // This is used along with a timeout to determine if a resize surface resize
     // is due to screen rotation.
     private long mConfigurationChangedTimestamp;
-
-    // Common interface to listen to surface related events.
-    private interface SurfaceEventListener {
-        void surfaceCreated();
-        void surfaceChanged(Surface surface, boolean canBeUsedWithSurfaceControl, int format,
-                int width, int height);
-        // |cacheBackBuffer| will delay destroying the EGLSurface until after the next swap.
-        void surfaceDestroyed(boolean cacheBackBuffer);
-        void surfaceRedrawNeededAsync(Runnable drawingFinished);
-    }
 
     private final ArrayList<TrackedRunnable> mPendingRunnables = new ArrayList<>();
 
@@ -136,9 +117,9 @@ public class ContentViewRenderView
         protected abstract void doRun();
     }
 
-    // Non-static implementation of SurfaceEventListener that forward calls to native Compositor.
+    // Non-static class that forward calls to native Compositor.
     // It is also responsible for updating |mRequested| and |mCurrent|.
-    private class SurfaceEventListenerImpl implements SurfaceEventListener {
+    private class SurfaceEventListener {
         private SurfaceData mSurfaceData;
 
         public void setRequestData(SurfaceData surfaceData) {
@@ -146,7 +127,6 @@ public class ContentViewRenderView
             mSurfaceData = surfaceData;
         }
 
-        @Override
         public void surfaceCreated() {
             assert mNativeContentViewRenderView != 0;
             assert mSurfaceData == ContentViewRenderView.this.mRequested
@@ -157,61 +137,48 @@ public class ContentViewRenderView
                 mSurfaceData.setSurfaceDataNeedsDestroy(ContentViewRenderView.this.mCurrent);
             }
             ContentViewRenderView.this.mCurrent = mSurfaceData;
+            updateNeedsDidSwapBuffersCallback();
             ContentViewRenderViewJni.get().surfaceCreated(mNativeContentViewRenderView);
         }
 
-        @Override
-        public void surfaceChanged(Surface surface, boolean canBeUsedWithSurfaceControl, int format,
-                int width, int height) {
+        public void surfaceChanged(Surface surface, boolean canBeUsedWithSurfaceControl, int width,
+                int height, boolean transparentBackground) {
             assert mNativeContentViewRenderView != 0;
             assert mSurfaceData == ContentViewRenderView.this.mCurrent;
+            if (mLastSurface == surface
+                    && mLastCanBeUsedWithSurfaceControl == canBeUsedWithSurfaceControl) {
+                surface = null;
+            } else {
+                mLastSurface = surface;
+                mLastCanBeUsedWithSurfaceControl = canBeUsedWithSurfaceControl;
+            }
             ContentViewRenderViewJni.get().surfaceChanged(mNativeContentViewRenderView,
-                    canBeUsedWithSurfaceControl, format, width, height, surface);
-            mCompositorHasSurface = surface != null;
+                    canBeUsedWithSurfaceControl, width, height, transparentBackground, surface);
+            mCompositorHasSurface = mLastSurface != null;
             maybeUpdatePhysicalBackingSize(width, height);
+            updateBackgroundColor();
         }
 
-        @Override
         public void surfaceDestroyed(boolean cacheBackBuffer) {
             assert mNativeContentViewRenderView != 0;
             assert mSurfaceData == ContentViewRenderView.this.mCurrent;
             ContentViewRenderViewJni.get().surfaceDestroyed(
                     mNativeContentViewRenderView, cacheBackBuffer);
             mCompositorHasSurface = false;
-        }
-
-        @Override
-        public void surfaceRedrawNeededAsync(Runnable drawingFinished) {
-            assert false; // NOTREACHED.
+            mLastSurface = null;
+            mLastCanBeUsedWithSurfaceControl = false;
         }
     }
 
-    // Abstract differences between SurfaceView and TextureView behind this class.
-    // Also responsible for holding and calling callbacks.
-    private class SurfaceData implements SurfaceEventListener {
-        private class TextureViewWithInvalidate extends TextureView {
-            public TextureViewWithInvalidate(Context context) {
-                super(context);
-            }
-
-            @Override
-            public void invalidate() {
-                // TextureView is invalidated when it receives a new frame from its SurfaceTexture.
-                // This is a safe place to indicate that this TextureView now has content and is
-                // ready to be shown.
-                super.invalidate();
-                destroyPreviousData();
-            }
-        }
-
-        @Mode
-        private final int mMode;
+    // Abstract lifetime of one SurfaceView.
+    private class SurfaceData implements SurfaceHolder.Callback2 {
         private final SurfaceEventListener mListener;
         private final FrameLayout mParent;
         private final boolean mAllowSurfaceControl;
+        private final boolean mRequiresAlphaChannel;
+        private final boolean mZOrderMediaOverlay;
         private final Runnable mEvict;
 
-        private boolean mRanCallbacks;
         private boolean mMarkedForDestroy;
         private boolean mCachedSurfaceNeedsEviction;
 
@@ -225,68 +192,43 @@ public class ContentViewRenderView
         //    new Surface. |markForDestroy| is called on the previous SurfaceData, and the two
         //    SurfaceDatas are linked through these two variables.
         //    Note at this point the existing view is still visible.
-        // 3) Wait until new SurfaceData decides that it has content and is ready to be shown
-        //    * For TextureView, wait until TextureView.invalidate is called
-        //    * For SurfaceView, wait for two swaps from the chromium compositor
-        // 4) New SurfaceData calls |destroy| on previous SurfaceData.
-        //    * For TextureView, it is simply detached immediately from the view tree
-        //    * For SurfaceView, to avoid flicker, move it to the back first before and wait
-        //      two frames before detaching.
-        // 5) Previous SurfaceData runs callbacks on the new SurfaceData to signal the completion
-        //    of the transition.
+        // 3) Wait wait for two swaps from the chromium compositor so it has content and is ready to
+        //    be shown.
+        // 4) New SurfaceData calls |destroy| on previous SurfaceData. To avoid flicker, move it to
+        //    the back first before and wait two frames before detaching.
         private SurfaceData mPrevSurfaceDataNeedsDestroy;
-        private SurfaceData mNextSurfaceDataNeedsRunCallback;
 
-        private final SurfaceHolderCallback mSurfaceCallback;
         private final SurfaceView mSurfaceView;
         private int mNumSurfaceViewSwapsUntilVisible;
 
-        private final TextureView mTextureView;
-        private final TextureViewSurfaceTextureListener mSurfaceTextureListener;
-
-        private final ArrayList<ValueCallback<Boolean>> mModeCallbacks = new ArrayList<>();
         private ArrayList<Runnable> mSurfaceRedrawNeededCallbacks;
 
-        public SurfaceData(@Mode int mode, FrameLayout parent, SurfaceEventListener listener,
-                int backgroundColor, boolean allowSurfaceControl, Runnable evict) {
-            mMode = mode;
+        public SurfaceData(FrameLayout parent, SurfaceEventListener listener, int backgroundColor,
+                boolean allowSurfaceControl, boolean requiresAlphaChannel,
+                boolean zOrderMediaOverlay, Runnable evict) {
             mListener = listener;
             mParent = parent;
             mAllowSurfaceControl = allowSurfaceControl;
+            mRequiresAlphaChannel = requiresAlphaChannel;
+            mZOrderMediaOverlay = zOrderMediaOverlay;
             mEvict = evict;
-            if (mode == MODE_SURFACE_VIEW) {
-                mSurfaceView = new SurfaceView(parent.getContext());
-                mSurfaceView.setZOrderMediaOverlay(true);
-                mSurfaceView.setBackgroundColor(backgroundColor);
+            mSurfaceView = new SurfaceView(parent.getContext());
+            mSurfaceView.setZOrderMediaOverlay(mZOrderMediaOverlay);
+            mSurfaceView.setBackgroundColor(backgroundColor);
 
-                mSurfaceCallback = new SurfaceHolderCallback(this);
-                mSurfaceView.getHolder().addCallback(mSurfaceCallback);
-                mSurfaceView.setVisibility(View.VISIBLE);
+            mSurfaceView.getHolder().addCallback(this);
+            mSurfaceView.setVisibility(View.VISIBLE);
 
-                // TODO(boliu): This is only needed when video is lifted into a separate surface.
-                // Keeping this constantly will use one more byte per pixel constantly.
-                mSurfaceView.getHolder().setFormat(PixelFormat.TRANSLUCENT);
-
-                mTextureView = null;
-                mSurfaceTextureListener = null;
-            } else if (mode == MODE_TEXTURE_VIEW) {
-                mTextureView = new TextureViewWithInvalidate(parent.getContext());
-                mSurfaceTextureListener = new TextureViewSurfaceTextureListener(this);
-                mTextureView.setSurfaceTextureListener(mSurfaceTextureListener);
-                mTextureView.setVisibility(VISIBLE);
-
-                mSurfaceView = null;
-                mSurfaceCallback = null;
-            } else {
-                throw new RuntimeException("Illegal mode: " + mode);
-            }
+            // TODO(boliu): This is only needed when video is lifted into a separate
+            // surface. Keeping this constantly will use one more byte per pixel constantly.
+            mSurfaceView.getHolder().setFormat(PixelFormat.TRANSLUCENT);
 
             // This postOnAnimation is to avoid manipulating the view tree inside layout or draw.
             parent.postOnAnimation(new TrackedRunnable() {
                 @Override
                 protected void doRun() {
                     if (mMarkedForDestroy) return;
-                    View view = (mMode == MODE_SURFACE_VIEW) ? mSurfaceView : mTextureView;
+                    View view = mSurfaceView;
                     assert view != null;
                     // Always insert view for new surface below the existing view to avoid artifacts
                     // during surface swaps. Index 0 is the lowest child.
@@ -302,21 +244,18 @@ public class ContentViewRenderView
             assert !mMarkedForDestroy;
             assert mPrevSurfaceDataNeedsDestroy == null;
             mPrevSurfaceDataNeedsDestroy = surfaceData;
-            mPrevSurfaceDataNeedsDestroy.mNextSurfaceDataNeedsRunCallback = this;
-        }
-
-        public @Mode int getMode() {
-            return mMode;
         }
 
         public boolean getAllowSurfaceControl() {
             return mAllowSurfaceControl;
         }
 
-        public void addCallback(ValueCallback<Boolean> callback) {
-            assert !mMarkedForDestroy;
-            mModeCallbacks.add(callback);
-            if (mRanCallbacks) runCallbacks();
+        public boolean getRequiresAlphaChannel() {
+            return mRequiresAlphaChannel;
+        }
+
+        public boolean getZOrderMediaOverlay() {
+            return mZOrderMediaOverlay;
         }
 
         // Tearing down is separated into markForDestroy and destroy. After markForDestroy
@@ -329,62 +268,47 @@ public class ContentViewRenderView
                 // SurfaceView being used with SurfaceControl need to cache the back buffer
                 // (EGLSurface). Otherwise the surface is destroyed immediate before the
                 // SurfaceView is detached.
-                mCachedSurfaceNeedsEviction = hasNextSurface && mMode == MODE_SURFACE_VIEW;
+                mCachedSurfaceNeedsEviction = hasNextSurface;
                 mListener.surfaceDestroyed(mCachedSurfaceNeedsEviction);
                 mNeedsOnSurfaceDestroyed = false;
             }
             runSurfaceRedrawNeededCallbacks();
 
-            if (mMode == MODE_SURFACE_VIEW) {
-                mSurfaceView.getHolder().removeCallback(mSurfaceCallback);
-            } else if (mMode == MODE_TEXTURE_VIEW) {
-                mTextureView.setSurfaceTextureListener(null);
-            } else {
-                assert false;
-            }
+            mSurfaceView.getHolder().removeCallback(this);
         }
 
         // Remove view from parent hierarchy.
         public void destroy() {
             assert mMarkedForDestroy;
-            runCallbacks();
             // This postOnAnimation is to avoid manipulating the view tree inside layout or draw.
             mParent.postOnAnimation(new TrackedRunnable() {
                 @Override
                 protected void doRun() {
-                    if (mMode == MODE_SURFACE_VIEW) {
-                        // Detaching a SurfaceView causes a flicker because the SurfaceView tears
-                        // down the Surface in SurfaceFlinger before removing its hole in the view
-                        // tree. This is a complicated heuristics to avoid this. It first moves the
-                        // SurfaceView behind the new View. Then wait two frames before detaching
-                        // the SurfaceView. Waiting for a single frame still causes flickers on
-                        // high end devices like Pixel 3.
-                        moveChildToBackWithoutDetach(mParent, mSurfaceView);
-                        TrackedRunnable inner = new TrackedRunnable() {
-                            @Override
-                            public void doRun() {
-                                mParent.removeView(mSurfaceView);
-                                mParent.invalidate();
-                                if (mCachedSurfaceNeedsEviction) {
-                                    mEvict.run();
-                                    mCachedSurfaceNeedsEviction = false;
-                                }
-                                runCallbackOnNextSurfaceData();
+                    // Detaching a SurfaceView causes a flicker because the SurfaceView
+                    // tears down the Surface in SurfaceFlinger before removing its hole in
+                    // the view tree. This is a complicated heuristics to avoid this. It
+                    // first moves the SurfaceView behind the new View. Then wait two frames
+                    // before detaching the SurfaceView. Waiting for a single frame still
+                    // causes flickers on high end devices like Pixel 3.
+                    moveChildToBackWithoutDetach(mParent, mSurfaceView);
+                    TrackedRunnable inner = new TrackedRunnable() {
+                        @Override
+                        public void doRun() {
+                            mParent.removeView(mSurfaceView);
+                            mParent.invalidate();
+                            if (mCachedSurfaceNeedsEviction) {
+                                mEvict.run();
+                                mCachedSurfaceNeedsEviction = false;
                             }
-                        };
-                        TrackedRunnable outer = new TrackedRunnable() {
-                            @Override
-                            public void doRun() {
-                                mParent.postOnAnimation(inner);
-                            }
-                        };
-                        mParent.postOnAnimation(outer);
-                    } else if (mMode == MODE_TEXTURE_VIEW) {
-                        mParent.removeView(mTextureView);
-                        runCallbackOnNextSurfaceData();
-                    } else {
-                        assert false;
-                    }
+                        }
+                    };
+                    TrackedRunnable outer = new TrackedRunnable() {
+                        @Override
+                        public void doRun() {
+                            mParent.postOnAnimation(inner);
+                        }
+                    };
+                    mParent.postOnAnimation(outer);
                 }
             });
         }
@@ -405,9 +329,7 @@ public class ContentViewRenderView
 
         public void setBackgroundColor(int color) {
             assert !mMarkedForDestroy;
-            if (mMode == MODE_SURFACE_VIEW) {
-                mSurfaceView.setBackgroundColor(color);
-            }
+            mSurfaceView.setBackgroundColor(color);
         }
 
         /** @return true if should keep swapping frames */
@@ -420,19 +342,16 @@ public class ContentViewRenderView
                     }
                 });
             }
-            if (mMode == MODE_SURFACE_VIEW) {
-                // We have no reliable signal for when to show a SurfaceView. This is a heuristic
-                // (used by chrome as well) is to wait for 2 swaps from the chromium comopsitor
-                // as a signal that the SurfaceView has content and is ready to be displayed.
-                if (mNumSurfaceViewSwapsUntilVisible > 0) {
-                    mNumSurfaceViewSwapsUntilVisible--;
-                }
-                if (mNumSurfaceViewSwapsUntilVisible == 0) {
-                    destroyPreviousData();
-                }
-                return mNumSurfaceViewSwapsUntilVisible > 0;
+            // We have no reliable signal for when to show a SurfaceView. This is a heuristic
+            // (used by chrome as well) is to wait for 2 swaps from the chromium comopsitor
+            // as a signal that the SurfaceView has content and is ready to be displayed.
+            if (mNumSurfaceViewSwapsUntilVisible > 0) {
+                mNumSurfaceViewSwapsUntilVisible--;
             }
-            return false;
+            if (mNumSurfaceViewSwapsUntilVisible == 0) {
+                destroyPreviousData();
+            }
+            return mNumSurfaceViewSwapsUntilVisible > 0;
         }
 
         public void runSurfaceRedrawNeededCallbacks() {
@@ -442,10 +361,16 @@ public class ContentViewRenderView
             for (Runnable r : callbacks) {
                 r.run();
             }
+            updateNeedsDidSwapBuffersCallback();
+        }
+
+        public boolean hasSurfaceRedrawNeededCallbacks() {
+            return mSurfaceRedrawNeededCallbacks != null
+                    && !mSurfaceRedrawNeededCallbacks.isEmpty();
         }
 
         public View getView() {
-            return mMode == MODE_SURFACE_VIEW ? mSurfaceView : mTextureView;
+            return mSurfaceView;
         }
 
         private void destroyPreviousData() {
@@ -456,7 +381,7 @@ public class ContentViewRenderView
         }
 
         @Override
-        public void surfaceCreated() {
+        public void surfaceCreated(SurfaceHolder holder) {
             if (mMarkedForDestroy) return;
 
             // On pre-M Android, layers start in the hidden state until a relayout happens.
@@ -468,35 +393,36 @@ public class ContentViewRenderView
                 mSurfaceView.setVisibility(mSurfaceView.getVisibility());
             }
             mListener.surfaceCreated();
-
-            if (!mRanCallbacks && mPrevSurfaceDataNeedsDestroy == null) {
-                runCallbacks();
-            }
-
             mNeedsOnSurfaceDestroyed = true;
         }
 
         @Override
-        public void surfaceChanged(Surface surface, boolean canBeUsedWithSurfaceControl, int format,
-                int width, int height) {
+        public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+            // Surface surface, boolean canBeUsedWithSurfaceControl, int width,
+            // int height, boolean transparentBackground) {
             if (mMarkedForDestroy) return;
             // Selection magnifier does not work with surface control enabled.
-            mListener.surfaceChanged(surface, canBeUsedWithSurfaceControl && mAllowSurfaceControl,
-                    format, width, height);
+            mListener.surfaceChanged(holder.getSurface(), mAllowSurfaceControl, width, height,
+                    /*transparentBackground=*/false);
             mNumSurfaceViewSwapsUntilVisible = 2;
         }
 
         @Override
-        public void surfaceDestroyed(boolean cacheBackBuffer) {
+        public void surfaceDestroyed(SurfaceHolder holder) {
             if (mMarkedForDestroy) return;
             assert mNeedsOnSurfaceDestroyed;
-            mListener.surfaceDestroyed(cacheBackBuffer);
+            mListener.surfaceDestroyed(/*cacheBackBuffer=*/false);
             mNeedsOnSurfaceDestroyed = false;
             runSurfaceRedrawNeededCallbacks();
         }
 
         @Override
-        public void surfaceRedrawNeededAsync(Runnable drawingFinished) {
+        public void surfaceRedrawNeeded(SurfaceHolder holder) {
+            // Intentionally not implemented.
+        }
+
+        @Override
+        public void surfaceRedrawNeededAsync(SurfaceHolder holder, Runnable drawingFinished) {
             if (mMarkedForDestroy) {
                 drawingFinished.run();
                 return;
@@ -507,130 +433,86 @@ public class ContentViewRenderView
                 mSurfaceRedrawNeededCallbacks = new ArrayList<>();
             }
             mSurfaceRedrawNeededCallbacks.add(drawingFinished);
+            updateNeedsDidSwapBuffersCallback();
             ContentViewRenderViewJni.get().setNeedsRedraw(mNativeContentViewRenderView);
         }
-
-        private void runCallbacks() {
-            mRanCallbacks = true;
-            if (mModeCallbacks.isEmpty()) return;
-            // PostTask to avoid possible reentrancy problems with embedder code.
-            PostTask.postTask(UiThreadTaskTraits.DEFAULT, () -> {
-                ArrayList<ValueCallback<Boolean>> clone =
-                        (ArrayList<ValueCallback<Boolean>>) mModeCallbacks.clone();
-                mModeCallbacks.clear();
-                for (ValueCallback<Boolean> run : clone) {
-                    run.onReceiveValue(!mMarkedForDestroy);
-                }
-            });
-        }
-
-        private void runCallbackOnNextSurfaceData() {
-            if (mNextSurfaceDataNeedsRunCallback != null) {
-                mNextSurfaceDataNeedsRunCallback.runCallbacks();
-                mNextSurfaceDataNeedsRunCallback = null;
-            }
-        }
     }
 
-    // Adapter for SurfaceHoolder.Callback.
-    private static class SurfaceHolderCallback implements SurfaceHolder.Callback2 {
-        private final SurfaceEventListener mListener;
-
-        public SurfaceHolderCallback(SurfaceEventListener listener) {
-            mListener = listener;
-        }
-
-        @Override
-        public void surfaceCreated(SurfaceHolder holder) {
-            mListener.surfaceCreated();
-        }
-
-        @Override
-        public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-            mListener.surfaceChanged(holder.getSurface(), true, format, width, height);
-        }
-
-        @Override
-        public void surfaceDestroyed(SurfaceHolder holder) {
-            mListener.surfaceDestroyed(false /* cacheBackBuffer */);
-        }
-
-        @Override
-        public void surfaceRedrawNeeded(SurfaceHolder holder) {
-            // Intentionally not implemented.
-        }
-
-        @Override
-        public void surfaceRedrawNeededAsync(SurfaceHolder holder, Runnable drawingFinished) {
-            mListener.surfaceRedrawNeededAsync(drawingFinished);
-        }
-    }
-
-    // Adapter for TextureView.SurfaceTextureListener.
-    private static class TextureViewSurfaceTextureListener
-            implements TextureView.SurfaceTextureListener {
-        private final SurfaceEventListener mListener;
-
-        private SurfaceTexture mCurrentSurfaceTexture;
-        private Surface mCurrentSurface;
-
-        public TextureViewSurfaceTextureListener(SurfaceEventListener listener) {
-            mListener = listener;
-        }
-
-        @Override
-        public void onSurfaceTextureAvailable(
-                SurfaceTexture surfaceTexture, int width, int height) {
-            mListener.surfaceCreated();
-            onSurfaceTextureSizeChanged(surfaceTexture, width, height);
-        }
-
-        @Override
-        public boolean onSurfaceTextureDestroyed(SurfaceTexture surfaceTexture) {
-            mListener.surfaceDestroyed(false /* cacheBackBuffer */);
-            return true;
-        }
-
-        @Override
-        public void onSurfaceTextureSizeChanged(
-                SurfaceTexture surfaceTexture, int width, int height) {
-            if (mCurrentSurfaceTexture != surfaceTexture) {
-                mCurrentSurfaceTexture = surfaceTexture;
-                mCurrentSurface = new Surface(mCurrentSurfaceTexture);
-            }
-            mListener.surfaceChanged(mCurrentSurface, false, PixelFormat.OPAQUE, width, height);
-        }
-
-        @Override
-        public void onSurfaceTextureUpdated(SurfaceTexture surfaceTexture) {}
-    }
-
-    // This is a child of ContentViewRenderView and parent of SurfaceView/TextureView.
-    // This exists to avoid resizing SurfaceView/TextureView when the soft keyboard is displayed.
+    // This is a child of ContentViewRenderView and parent of SurfaceView.
+    // This exists to avoid resizing SurfaceView when the soft keyboard is displayed.
+    // Also has workaround for SurfaceView `onAttachedToWindow` visual glitch.
     private class SurfaceParent extends FrameLayout {
+        // This view is used to cover up any SurfaceView for a few frames immediately
+        // after `onAttachedToWindow`. This is the workaround a bug in SurfaceView (on some versions
+        // of android) which punches a hole before the surface below has any content, resulting in
+        // black for a few frames. `mCoverView` is a workaround for this bug. It covers up
+        // SurfaceView with the background color, and is removed after a few swaps.
+        private final View mCoverView;
+        private int mNumSwapsUntilHideCover;
+
         public SurfaceParent(Context context) {
             super(context);
+            mCoverView = new View(context);
         }
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int existingHeight = getMeasuredHeight();
+            int width = MeasureSpec.getSize(widthMeasureSpec);
+            int height = MeasureSpec.getSize(heightMeasureSpec);
+
+            if (width <= mMinimumSurfaceWidth && height <= mMinimumSurfaceHeight) {
+                width = mMinimumSurfaceWidth;
+                height = mMinimumSurfaceHeight;
+            }
+
             // If width is the same and height shrinks, then check if we should
             // avoid this resize for displaying the soft keyboard.
-            if (getMeasuredWidth() == MeasureSpec.getSize(widthMeasureSpec)
-                    && existingHeight > MeasureSpec.getSize(heightMeasureSpec)
+            if (getMeasuredWidth() == width && existingHeight > height
                     && shouldAvoidSurfaceResizeForSoftKeyboard()) {
                 // Just set the height to the current height.
-                heightMeasureSpec =
-                        MeasureSpec.makeMeasureSpec(existingHeight, MeasureSpec.EXACTLY);
+                height = existingHeight;
             }
-            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
         }
 
         @Override
         protected void onSizeChanged(int w, int h, int oldw, int oldh) {
             mPhysicalWidth = w;
             mPhysicalHeight = h;
+        }
+
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            mNumSwapsUntilHideCover = 2;
+            // Add as the top child covering up any other children.
+            addView(mCoverView,
+                    new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT));
+            if (mNativeContentViewRenderView != 0) {
+                ContentViewRenderViewJni.get().setNeedsRedraw(mNativeContentViewRenderView);
+            }
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            mNumSwapsUntilHideCover = 0;
+            removeView(mCoverView);
+        }
+
+        /** @return true if should keep swapping frames */
+        public boolean didSwapFrame() {
+            if (mNumSwapsUntilHideCover <= 0) return false;
+            mNumSwapsUntilHideCover--;
+            if (mNumSwapsUntilHideCover == 0) removeView(mCoverView);
+            return mNumSwapsUntilHideCover > 0;
+        }
+
+        public void updateCoverViewColor(int color) {
+            mCoverView.setBackgroundColor(color);
         }
     }
 
@@ -671,13 +553,13 @@ public class ContentViewRenderView
      * Native code should add/remove the layers to be rendered through the ContentViewLayerRenderer.
      * @param rootWindow The {@link WindowAndroid} this render view should be linked to.
      */
-    public void onNativeLibraryLoaded(WindowAndroid rootWindow, @Mode int mode) {
+    public void onNativeLibraryLoaded(WindowAndroid rootWindow) {
         assert rootWindow != null;
         mNativeContentViewRenderView =
                 ContentViewRenderViewJni.get().init(ContentViewRenderView.this, rootWindow);
         assert mNativeContentViewRenderView != 0;
         mWindowAndroid = rootWindow;
-        requestMode(mode, (Boolean result) -> {});
+        maybeRecreateSurfaceView();
         mDisplayAndroidObserver = new DisplayAndroid.DisplayAndroidObserver() {
             @Override
             public void onRotationChanged(int rotation) {
@@ -689,13 +571,12 @@ public class ContentViewRenderView
         updateBackgroundColor();
     }
 
-    public void requestMode(@Mode int mode, ValueCallback<Boolean> callback) {
-        boolean allowSurfaceControl = !mSelectionHandlesActive;
-        assert mode == MODE_SURFACE_VIEW || mode == MODE_TEXTURE_VIEW;
-        assert callback != null;
+    public void maybeRecreateSurfaceView() {
+        boolean allowSurfaceControl = !mSelectionHandlesActive && !mRequiresAlphaChannel;
         if (mRequested != null
-                && (mRequested.getMode() != mode
-                        || mRequested.getAllowSurfaceControl() != allowSurfaceControl)) {
+                && (mRequested.getAllowSurfaceControl() != allowSurfaceControl
+                        || mRequested.getRequiresAlphaChannel() != mRequiresAlphaChannel
+                        || mRequested.getZOrderMediaOverlay() != mZOrderMediaOverlay)) {
             if (mRequested != mCurrent) {
                 mRequested.markForDestroy(false /* hasNextSurface */);
                 mRequested.destroy();
@@ -704,13 +585,17 @@ public class ContentViewRenderView
         }
 
         if (mRequested == null) {
-            SurfaceEventListenerImpl listener = new SurfaceEventListenerImpl();
-            mRequested = new SurfaceData(mode, mSurfaceParent, listener, mBackgroundColor,
-                    allowSurfaceControl, this::evictCachedSurface);
+            SurfaceEventListener listener = new SurfaceEventListener();
+            mRequested =
+                    new SurfaceData(mSurfaceParent, listener, mBackgroundColor, allowSurfaceControl,
+                            mRequiresAlphaChannel, mZOrderMediaOverlay, this::evictCachedSurface);
             listener.setRequestData(mRequested);
         }
-        assert mRequested.getMode() == mode;
-        mRequested.addCallback(callback);
+    }
+
+    public void setMinimumSurfaceSize(int width, int height) {
+        mMinimumSurfaceWidth = width;
+        mMinimumSurfaceHeight = height;
     }
 
     /**
@@ -751,7 +636,11 @@ public class ContentViewRenderView
 
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        if (mWebContents == null) return;
         updateWebContentsSize();
+        Size viewportSize = getViewportSize();
+        ContentViewRenderViewJni.get().onViewportSizeChanged(
+                mNativeContentViewRenderView, viewportSize.getWidth(), viewportSize.getHeight());
     }
 
     /**
@@ -784,8 +673,11 @@ public class ContentViewRenderView
      */
     @Override
     public void setBackgroundColor(int color) {
-        super.setBackgroundColor(color);
+        if (mBackgroundColor == color) return;
+
         mBackgroundColor = color;
+        super.setBackgroundColor(color);
+        mSurfaceParent.updateCoverViewColor(color);
         if (mRequested != null) {
             mRequested.setBackgroundColor(color);
         }
@@ -801,15 +693,29 @@ public class ContentViewRenderView
         if (mSelectionHandlesActive == active) return;
         mSelectionHandlesActive = active;
         if (mCurrent == null) return;
-        if (mCurrent.getMode() == MODE_TEXTURE_VIEW) return;
 
-        // requestMode will take into account the updated |mSelectionHandlesActive|
+        // maybeRecreateSurfaceView will take into account the updated |mSelectionHandlesActive|
         // and respond appropriately, even if mode is the same.
-        requestMode(mCurrent.getMode(), (Boolean result) -> {});
+        maybeRecreateSurfaceView();
     }
 
     public InsetObserverView getInsetObserverView() {
         return mInsetObserverView;
+    }
+
+    public void setSurfaceProperties(boolean requiresAlphaChannel, boolean zOrderMediaOverlay) {
+        if (mRequiresAlphaChannel == requiresAlphaChannel
+                && mZOrderMediaOverlay == zOrderMediaOverlay) {
+            return;
+        }
+        mRequiresAlphaChannel = requiresAlphaChannel;
+        mZOrderMediaOverlay = zOrderMediaOverlay;
+
+        if (mCurrent == null) return;
+        maybeRecreateSurfaceView();
+
+        ContentViewRenderViewJni.get().setRequiresAlphaChannel(
+                mNativeContentViewRenderView, requiresAlphaChannel);
     }
 
     /**
@@ -837,7 +743,7 @@ public class ContentViewRenderView
 
         while (!mPendingRunnables.isEmpty()) {
             TrackedRunnable runnable = mPendingRunnables.get(0);
-            removeCallbacks(runnable);
+            mSurfaceParent.removeCallbacks(runnable);
             runnable.run();
             assert !mPendingRunnables.contains(runnable);
         }
@@ -868,7 +774,9 @@ public class ContentViewRenderView
     @CalledByNative
     private boolean didSwapFrame() {
         assert mCurrent != null;
-        return mCurrent.didSwapFrame();
+        boolean ret = mCurrent.didSwapFrame();
+        ret = ret || mSurfaceParent.didSwapFrame();
+        return ret;
     }
 
     @CalledByNative
@@ -876,6 +784,14 @@ public class ContentViewRenderView
         assert mCurrent != null;
         if (!sizeMatches) return;
         mCurrent.runSurfaceRedrawNeededCallbacks();
+    }
+
+    // Should be called any time inputs used to compute `needsDidSwapBuffersCallback` change.
+    private void updateNeedsDidSwapBuffersCallback() {
+        boolean needsDidSwapBuffersCallback =
+                mCurrent != null && mCurrent.hasSurfaceRedrawNeededCallbacks();
+        ContentViewRenderViewJni.get().setDidSwapBuffersCallbackEnabled(
+                mNativeContentViewRenderView, needsDidSwapBuffersCallback);
     }
 
     private void evictCachedSurface() {
@@ -891,7 +807,13 @@ public class ContentViewRenderView
         int uiMode = getContext().getResources().getConfiguration().uiMode;
         boolean darkThemeEnabled =
                 (uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        setBackgroundColor(darkThemeEnabled ? Color.BLACK : Color.WHITE);
+        int color;
+        if (darkThemeEnabled) {
+            color = Color.BLACK;
+        } else {
+            color = Color.WHITE;
+        }
+        setBackgroundColor(color);
     }
 
     @CalledByNative
@@ -900,10 +822,6 @@ public class ContentViewRenderView
     }
 
     private boolean shouldAvoidSurfaceResizeForSoftKeyboard() {
-        // TextureView is more common with embedding use cases that should lead to resize.
-        boolean usingSurfaceView = mCurrent != null && mCurrent.getMode() == MODE_SURFACE_VIEW;
-        if (!usingSurfaceView) return false;
-
         boolean isFullWidth = isAttachedToWindow() && getWidth() == getRootView().getWidth();
         if (!isFullWidth) return false;
 
@@ -931,13 +849,17 @@ public class ContentViewRenderView
         void setCurrentWebContents(long nativeContentViewRenderView, WebContents webContents);
         void onPhysicalBackingSizeChanged(long nativeContentViewRenderView, WebContents webContents,
                 int width, int height, boolean forConfigChange);
+        void onViewportSizeChanged(long nativeContentViewRenderView, int width, int height);
         void surfaceCreated(long nativeContentViewRenderView);
         void surfaceDestroyed(long nativeContentViewRenderView, boolean cacheBackBuffer);
         void surfaceChanged(long nativeContentViewRenderView, boolean canBeUsedWithSurfaceControl,
-                int format, int width, int height, Surface surface);
+                int width, int height, boolean transparentBackground, Surface newSurface);
         void setNeedsRedraw(long nativeContentViewRenderView);
         void evictCachedSurface(long nativeContentViewRenderView);
         ResourceManager getResourceManager(long nativeContentViewRenderView);
         void updateBackgroundColor(long nativeContentViewRenderView);
+        void setRequiresAlphaChannel(
+                long nativeContentViewRenderView, boolean requiresAlphaChannel);
+        void setDidSwapBuffersCallbackEnabled(long nativeContentViewRenderView, boolean enabled);
     }
 }

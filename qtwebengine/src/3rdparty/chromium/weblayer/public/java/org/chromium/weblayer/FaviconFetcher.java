@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,10 +17,8 @@ import org.chromium.weblayer_private.interfaces.ITab;
 /**
  * {@link FaviconFetcher} is responsible for downloading a favicon for the current navigation.
  * {@link FaviconFetcher} maintains an on disk cache of favicons downloading favicons as necessary.
- *
- * @since 86
  */
-public class FaviconFetcher {
+class FaviconFetcher {
     private final FaviconCallback mCallback;
     private IFaviconFetcher mImpl;
     private @Nullable Bitmap mBitmap;

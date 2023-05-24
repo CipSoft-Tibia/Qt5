@@ -1,8 +1,6 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-
-from __future__ import print_function
 
 import argparse
 import copy
@@ -10,20 +8,22 @@ from datetime import datetime
 from functools import partial
 import json
 import os
+import posixpath
 import re
 import sys
 
-from code import Code
+from code_util import Code
 import json_parse
 
 # The template for the header file of the generated FeatureProvider.
 HEADER_FILE_TEMPLATE = """
-// Copyright %(year)s The Chromium Authors. All rights reserved.
+// Copyright %(year)s The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // GENERATED FROM THE FEATURES FILE:
 //   %(source_files)s
+// by tools/json_schema_compiler.
 // DO NOT EDIT.
 
 #ifndef %(header_guard)s
@@ -41,12 +41,13 @@ void %(method_name)s(FeatureProvider* provider);
 
 # The beginning of the .cc file for the generated FeatureProvider.
 CC_FILE_BEGIN = """
-// Copyright %(year)s The Chromium Authors. All rights reserved.
+// Copyright %(year)s The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // GENERATED FROM THE FEATURES FILE:
 //   %(source_files)s
+// by tools/json_schema_compiler.
 // DO NOT EDIT.
 
 #include "%(header_file_path)s"
@@ -55,6 +56,7 @@ CC_FILE_BEGIN = """
 #include "extensions/common/features/feature_provider.h"
 #include "extensions/common/features/manifest_feature.h"
 #include "extensions/common/features/permission_feature.h"
+#include "extensions/common/mojom/feature_session_type.mojom.h"
 
 namespace extensions {
 
@@ -68,9 +70,12 @@ CC_FILE_END = """
 }  // namespace extensions
 """
 
-# Legacy keys for the allow and blocklists.
-LEGACY_ALLOWLIST_KEY = 'whitelist'
-LEGACY_BLOCKLIST_KEY = 'blacklist'
+def ToPosixPath(path):
+  """Returns |path| with separator converted to POSIX style.
+
+  This is needed to generate C++ #include paths.
+  """
+  return path.replace(os.path.sep, posixpath.sep)
 
 # Returns true if the list 'l' only contains strings that are a hex-encoded SHA1
 # hashes.
@@ -124,7 +129,16 @@ FEATURE_GRAMMAR = ({
         str: {},
         'shared': True
     },
-    LEGACY_BLOCKLIST_KEY: {
+    'allowlist': {
+        list: {
+            'subtype':
+            str,
+            'validators':
+            [(ListContainsOnlySha1Hashes,
+              'list should only have hex-encoded SHA1 hashes of extension ids')]
+        }
+    },
+    'blocklist': {
         list: {
             'subtype':
             str,
@@ -158,6 +172,7 @@ FEATURE_GRAMMAR = ({
                 'content_script': 'Feature::CONTENT_SCRIPT_CONTEXT',
                 'lock_screen_extension':
                 'Feature::LOCK_SCREEN_EXTENSION_CONTEXT',
+                'offscreen_extension': 'Feature::OFFSCREEN_EXTENSION_CONTEXT',
                 'web_page': 'Feature::WEB_PAGE_CONTEXT',
                 'webui': 'Feature::WEBUI_CONTEXT',
                 'webui_untrusted': 'Feature::WEBUI_UNTRUSTED_CONTEXT',
@@ -180,6 +195,9 @@ FEATURE_GRAMMAR = ({
             'subtype': str
         }
     },
+    'developer_mode_only': {
+        bool: {}
+    },
     'disallow_for_service_workers': {
         bool: {}
     },
@@ -194,6 +212,8 @@ FEATURE_GRAMMAR = ({
                 'theme': 'Manifest::TYPE_THEME',
                 'login_screen_extension':
                 'Manifest::TYPE_LOGIN_SCREEN_EXTENSION',
+                'chromeos_system_extension':
+                'Manifest::TYPE_CHROMEOS_SYSTEM_EXTENSION',
             },
             'allow_all': True
         },
@@ -232,6 +252,11 @@ FEATURE_GRAMMAR = ({
             'values': [2, 3]
         }
     },
+    'requires_delegated_availability_check': {
+      bool: {
+            'values': [True]
+      }
+    },
     'noparent': {
         bool: {
             'values': [True]
@@ -241,6 +266,7 @@ FEATURE_GRAMMAR = ({
         list: {
             'enum_map': {
                 'chromeos': 'Feature::CHROMEOS_PLATFORM',
+                'fuchsia': 'Feature::FUCHSIA_PLATFORM',
                 'lacros': 'Feature::LACROS_PLATFORM',
                 'linux': 'Feature::LINUX_PLATFORM',
                 'mac': 'Feature::MACOSX_PLATFORM',
@@ -251,24 +277,16 @@ FEATURE_GRAMMAR = ({
     'session_types': {
         list: {
             'enum_map': {
-                'regular': 'FeatureSessionType::REGULAR',
-                'kiosk': 'FeatureSessionType::KIOSK',
-                'kiosk.autolaunched': 'FeatureSessionType::AUTOLAUNCHED_KIOSK',
+                'regular': 'mojom::FeatureSessionType::kRegular',
+                'kiosk': 'mojom::FeatureSessionType::kKiosk',
+                'kiosk.autolaunched':
+                  'mojom::FeatureSessionType::kAutolaunchedKiosk',
             }
         }
     },
     'source': {
         str: {},
         'shared': True
-    },
-    LEGACY_ALLOWLIST_KEY: {
-        list: {
-            'subtype':
-            str,
-            'validators':
-            [(ListContainsOnlySha1Hashes,
-              'list should only have hex-encoded SHA1 hashes of extension ids')]
-        }
     },
 })
 
@@ -341,7 +359,7 @@ def IsFeatureCrossReference(property_name, reverse_property_name, feature,
 # Verifies that a feature with an allowlist is not available to hosted apps,
 # returning true on success.
 def DoesNotHaveAllowlistForHostedApps(value):
-  if not LEGACY_ALLOWLIST_KEY in value:
+  if not 'allowlist' in value:
     return True
 
   # Hack Alert: |value| here has the code for the generated C++ feature. Since
@@ -371,8 +389,8 @@ def DoesNotHaveAllowlistForHostedApps(value):
   # what the allowlist looks like) to a python list of strings.
   def cpp_list_to_list(cpp_list):
     assert type(cpp_list) is str
-    assert cpp_list[0] is '{'
-    assert cpp_list[-1] is '}'
+    assert cpp_list[0] == '{'
+    assert cpp_list[-1] == '}'
     new_list = json.loads('[%s]' % cpp_list[1:-1])
     assert type(new_list) is list
     return new_list
@@ -380,12 +398,10 @@ def DoesNotHaveAllowlistForHostedApps(value):
   # Exceptions (see the feature files).
   # DO NOT ADD MORE.
   HOSTED_APP_EXCEPTIONS = [
-      '99060B01DE911EB85FD630C8BA6320C9186CA3AB',
       'B44D08FD98F1523ED5837D78D0A606EA9D6206E5',
-      '2653F6F6C39BC6EEBD36A09AFB92A19782FF7EB4',
   ]
 
-  allowlist = cpp_list_to_list(value[LEGACY_ALLOWLIST_KEY])
+  allowlist = cpp_list_to_list(value['allowlist'])
   for entry in allowlist:
     if entry not in HOSTED_APP_EXCEPTIONS:
       return False
@@ -473,14 +489,7 @@ def GetCodeForFeatureValues(feature_values):
     if key in IGNORED_KEYS:
       continue;
 
-    # TODO(devlin): Remove this hack as part of 842387.
-    set_key = key
-    if key == LEGACY_ALLOWLIST_KEY:
-      set_key = 'allowlist'
-    elif key == LEGACY_BLOCKLIST_KEY:
-      set_key = 'blocklist'
-
-    c.Append('feature->set_%s(%s);' % (set_key, feature_values[key]))
+    c.Append('feature->set_%s(%s);' % (key, feature_values[key]))
   return c
 
 class Feature(object):
@@ -493,16 +502,6 @@ class Feature(object):
     self.errors = []
     self.feature_values = {}
     self.shared_values = {}
-
-  def _GetType(self, value):
-    """Returns the type of the given value.
-    """
-    # For Py3 compatibility we use str in the grammar and treat unicode as str
-    # in Py2.
-    if sys.version_info.major == 2 and type(value) is unicode:
-      return str
-
-    return type(value)
 
   def AddError(self, error):
     """Adds an error to the feature. If ENABLE_ASSERTIONS is active, this will
@@ -539,7 +538,7 @@ class Feature(object):
       self._AddKeyError(key, 'Illegal value: "%s"' % value)
       valid = False
 
-    t = self._GetType(value)
+    t = type(value)
     if expected_type and t is not expected_type:
       self._AddKeyError(key, 'Illegal value: "%s"' % value)
       valid = False
@@ -580,7 +579,7 @@ class Feature(object):
       self._AddKeyError(key, 'Key can be set at most once per feature.')
       return
 
-    value_type = self._GetType(v)
+    value_type = type(v)
     if value_type not in grammar:
       self._AddKeyError(key, 'Illegal value: "%s"' % v)
       return
@@ -830,6 +829,13 @@ class FeatureCompiler(object):
 
     # Handle complex features, which are lists of simple features.
     if type(feature_value) is list:
+      assert len(feature_value) > 1, (
+          'Error parsing feature "%s": A complex feature ' % feature_name +
+          'definition is only needed when there are multiple objects ' +
+          'specifying different groups of properties for feature ' +
+          'availability. You can reduce it down to a single object on the ' +
+          'feature key instead of a list.')
+
       feature = ComplexFeature(feature_name)
 
       # This doesn't handle nested complex features. I think that's probably for
@@ -896,7 +902,7 @@ class FeatureCompiler(object):
         'header_guard': (header_file_path.replace('/', '_').
                              replace('.', '_').upper()),
         'method_name': self._method_name,
-        'source_files': str(self._source_files),
+        'source_files': str([ToPosixPath(f) for f in self._source_files]),
         'year': str(datetime.now().year)
     })
     if not os.path.exists(self._out_root):

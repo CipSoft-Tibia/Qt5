@@ -1,48 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 // Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE.Chromium file.
 
 #include "renderer/web_channel_ipc_transport.h"
-
-#include "common/qt_messages.h"
 
 #include "content/public/renderer/render_frame.h"
 #include "gin/arguments.h"
@@ -54,10 +16,7 @@
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
 #include "v8/include/v8.h"
-#include "services/service_manager/public/cpp/interface_provider.h"
 #include "qtwebengine/browser/qtwebchannel.mojom.h"
-
-#include <QJsonDocument>
 
 namespace QtWebEngineCore {
 
@@ -76,7 +35,6 @@ private:
     gin::ObjectTemplateBuilder GetObjectTemplateBuilder(v8::Isolate *isolate) override;
     mojo::AssociatedRemote<qtwebchannel::mojom::WebChannelTransportHost> m_remote;
     content::RenderFrame *m_renderFrame = nullptr;
-    DISALLOW_COPY_AND_ASSIGN(WebChannelTransport);
 };
 
 gin::WrapperInfo WebChannelTransport::kWrapperInfo = { gin::kEmbedderNativeGin };
@@ -90,23 +48,23 @@ void WebChannelTransport::Install(blink::WebLocalFrame *frame, uint worldId)
         context = frame->MainWorldScriptContext();
     else
         context = frame->IsolatedWorldScriptContext(worldId);
+    if (context.IsEmpty())
+        return;
     v8::Context::Scope contextScope(context);
 
     gin::Handle<WebChannelTransport> transport = gin::CreateHandle(isolate, new WebChannelTransport);
+    if (transport.IsEmpty())
+        return;
 
     v8::Local<v8::Object> global = context->Global();
-    v8::MaybeLocal<v8::Value> qtObjectValue = global->Get(context, gin::StringToV8(isolate, "qt"));
     v8::Local<v8::Object> qtObject;
-    if (qtObjectValue.IsEmpty() || !qtObjectValue.ToLocalChecked()->IsObject()) {
-        qtObject = v8::Object::New(isolate);
-        auto whocares = global->Set(context, gin::StringToV8(isolate, "qt"), qtObject);
-        // FIXME: Perhaps error out, but the return value is V8 internal...
-        Q_UNUSED(whocares);
-    } else {
-        qtObject = v8::Local<v8::Object>::Cast(qtObjectValue.ToLocalChecked());
-    }
-    auto whocares = qtObject->Set(context, gin::StringToV8(isolate, "webChannelTransport"), transport.ToV8());
-    Q_UNUSED(whocares);
+    qtObject = v8::Object::New(isolate);
+    global->CreateDataProperty(context,
+                               gin::StringToSymbol(isolate, "qt"),
+                               qtObject).Check();
+    qtObject->CreateDataProperty(context,
+                                 gin::StringToSymbol(isolate, "webChannelTransport"),
+                                 transport.ToV8()).Check();
 }
 
 void WebChannelTransport::Uninstall(blink::WebLocalFrame *frame, uint worldId)
@@ -118,16 +76,16 @@ void WebChannelTransport::Uninstall(blink::WebLocalFrame *frame, uint worldId)
         context = frame->MainWorldScriptContext();
     else
         context = frame->IsolatedWorldScriptContext(worldId);
+    if (context.IsEmpty())
+        return;
     v8::Context::Scope contextScope(context);
 
     v8::Local<v8::Object> global(context->Global());
-    v8::MaybeLocal<v8::Value> qtObjectValue = global->Get(context, gin::StringToV8(isolate, "qt"));
-    if (qtObjectValue.IsEmpty() || !qtObjectValue.ToLocalChecked()->IsObject())
+    v8::Local<v8::Value> qtObjectValue;
+    if (!global->Get(context, gin::StringToV8(isolate, "qt")).ToLocal(&qtObjectValue) || !qtObjectValue->IsObject())
         return;
-    v8::Local<v8::Object> qtObject = v8::Local<v8::Object>::Cast(qtObjectValue.ToLocalChecked());
-    // FIXME: We can't do anything about a failure, so why the .. is it nodiscard?
-    auto whocares = qtObject->Delete(context, gin::StringToV8(isolate, "webChannelTransport"));
-    Q_UNUSED(whocares);
+    v8::Local<v8::Object> qtObject = v8::Local<v8::Object>::Cast(qtObjectValue);
+    qtObject->Delete(context, gin::StringToV8(isolate, "webChannelTransport")).Check();
 }
 
 void WebChannelTransport::NativeQtSendMessage(gin::Arguments *args)
@@ -153,19 +111,9 @@ void WebChannelTransport::NativeQtSendMessage(gin::Arguments *args)
         return;
     }
     v8::Local<v8::String> jsonString = v8::Local<v8::String>::Cast(jsonValue);
-
-    QByteArray json(jsonString->Utf8Length(isolate), 0);
-    jsonString->WriteUtf8(isolate, json.data(), json.size(), nullptr, v8::String::REPLACE_INVALID_UTF8);
-
-    QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(json, &error);
-    if (error.error != QJsonParseError::NoError) {
-        args->ThrowTypeError("Invalid JSON");
-        return;
-    }
-
-    int size = 0;
-    const char *rawData = doc.rawData(&size);
+    std::vector<uint8_t> json(jsonString->Utf8Length(isolate), 0);
+    jsonString->WriteUtf8(isolate, reinterpret_cast<char *>(json.data()), json.size(), nullptr,
+                          v8::String::REPLACE_INVALID_UTF8);
 
     if (!m_remote) {
         renderFrame->GetRemoteAssociatedInterfaces()->GetInterface(&m_remote);
@@ -173,7 +121,7 @@ void WebChannelTransport::NativeQtSendMessage(gin::Arguments *args)
     }
     DCHECK(renderFrame == m_renderFrame);
 
-    m_remote->DispatchWebChannelMessage(std::vector<uint8_t>(rawData, rawData + size));
+    m_remote->DispatchWebChannelMessage(json);
 }
 
 gin::ObjectTemplateBuilder WebChannelTransport::GetObjectTemplateBuilder(v8::Isolate *isolate)
@@ -188,7 +136,7 @@ WebChannelIPCTransport::WebChannelIPCTransport(content::RenderFrame *renderFrame
     , m_worldInitialized(false)
     , m_binding(this)
 {
-    renderFrame->GetAssociatedInterfaceRegistry()->AddInterface(
+    renderFrame->GetAssociatedInterfaceRegistry()->AddInterface<qtwebchannel::mojom::WebChannelTransportRender>(
             base::BindRepeating(&WebChannelIPCTransport::BindReceiver, base::Unretained(this)));
 }
 
@@ -222,17 +170,13 @@ void WebChannelIPCTransport::ResetWorldId()
     m_worldId = 0;
 }
 
-void WebChannelIPCTransport::DispatchWebChannelMessage(const std::vector<uint8_t> &binaryJson, uint32_t worldId)
+void WebChannelIPCTransport::DispatchWebChannelMessage(const std::vector<uint8_t> &json,
+                                                       uint32_t worldId)
 {
     DCHECK(m_worldId == worldId);
 
     if (!m_canUseContext)
         return;
-
-    QJsonDocument doc = QJsonDocument::fromRawData(reinterpret_cast<const char *>(binaryJson.data()), binaryJson.size(),
-                                                   QJsonDocument::BypassValidation);
-    DCHECK(doc.isObject());
-    QByteArray json = doc.toJson(QJsonDocument::Compact);
 
     blink::WebLocalFrame *frame = render_frame()->GetWebFrame();
     v8::Isolate *isolate = blink::MainThreadIsolate();
@@ -245,17 +189,18 @@ void WebChannelIPCTransport::DispatchWebChannelMessage(const std::vector<uint8_t
     v8::Context::Scope contextScope(context);
 
     v8::Local<v8::Object> global(context->Global());
-    v8::MaybeLocal<v8::Value> qtObjectValue(global->Get(context, gin::StringToV8(isolate, "qt")));
-    if (qtObjectValue.IsEmpty() || !qtObjectValue.ToLocalChecked()->IsObject())
+    v8::Local<v8::Value> qtObjectValue;
+    if (!global->Get(context, gin::StringToV8(isolate, "qt")).ToLocal(&qtObjectValue) || !qtObjectValue->IsObject())
         return;
-    v8::Local<v8::Object> qtObject = v8::Local<v8::Object>::Cast(qtObjectValue.ToLocalChecked());
-    v8::MaybeLocal<v8::Value> webChannelObjectValue(
-            qtObject->Get(context, gin::StringToV8(isolate, "webChannelTransport")));
-    if (webChannelObjectValue.IsEmpty() || !webChannelObjectValue.ToLocalChecked()->IsObject())
+    v8::Local<v8::Object> qtObject = v8::Local<v8::Object>::Cast(qtObjectValue);
+    v8::Local<v8::Value> webChannelObjectValue;
+    if (!qtObject->Get(context, gin::StringToV8(isolate, "webChannelTransport")).ToLocal(&webChannelObjectValue)
+            || !webChannelObjectValue->IsObject())
         return;
-    v8::Local<v8::Object> webChannelObject = v8::Local<v8::Object>::Cast(webChannelObjectValue.ToLocalChecked());
-    v8::MaybeLocal<v8::Value> callbackValue(webChannelObject->Get(context, gin::StringToV8(isolate, "onmessage")));
-    if (callbackValue.IsEmpty() || !callbackValue.ToLocalChecked()->IsFunction()) {
+    v8::Local<v8::Object> webChannelObject = v8::Local<v8::Object>::Cast(webChannelObjectValue);
+    v8::Local<v8::Value> callbackValue;
+    if (!webChannelObject->Get(context, gin::StringToV8(isolate, "onmessage")).ToLocal(&callbackValue)
+            || !callbackValue->IsFunction()) {
         LOG(WARNING) << "onmessage is not a callable property of qt.webChannelTransport. Some things might not work as "
                         "expected.";
         return;
@@ -264,28 +209,30 @@ void WebChannelIPCTransport::DispatchWebChannelMessage(const std::vector<uint8_t
     v8::Local<v8::Object> messageObject(v8::Object::New(isolate));
     v8::Maybe<bool> wasSet = messageObject->DefineOwnProperty(
             context, v8::String::NewFromUtf8(isolate, "data").ToLocalChecked(),
-            v8::String::NewFromUtf8(isolate, json.constData(), v8::NewStringType::kNormal, json.size()).ToLocalChecked(),
+            v8::String::NewFromUtf8(isolate, reinterpret_cast<const char *>(json.data()),
+                                    v8::NewStringType::kNormal, json.size())
+                    .ToLocalChecked(),
             v8::PropertyAttribute(v8::ReadOnly | v8::DontDelete));
     DCHECK(!wasSet.IsNothing() && wasSet.FromJust());
 
-    v8::Local<v8::Function> callback = v8::Local<v8::Function>::Cast(callbackValue.ToLocalChecked());
+    v8::Local<v8::Function> callback = v8::Local<v8::Function>::Cast(callbackValue);
     v8::Local<v8::Value> argv[] = { messageObject };
     frame->CallFunctionEvenIfScriptDisabled(callback, webChannelObject, 1, argv);
+}
+
+void WebChannelIPCTransport::DidCreateScriptContext(v8::Local<v8::Context> context, int32_t worldId)
+{
+    if (static_cast<uint>(worldId) == m_worldId && !m_canUseContext) {
+        m_canUseContext = true;
+        if (m_worldInitialized)
+            WebChannelTransport::Install(render_frame()->GetWebFrame(), m_worldId);
+    }
 }
 
 void WebChannelIPCTransport::WillReleaseScriptContext(v8::Local<v8::Context> context, int worldId)
 {
     if (static_cast<uint>(worldId) == m_worldId)
         m_canUseContext = false;
-}
-
-void WebChannelIPCTransport::DidClearWindowObject()
-{
-    if (!m_canUseContext) {
-        m_canUseContext = true;
-        if (m_worldInitialized)
-            WebChannelTransport::Install(render_frame()->GetWebFrame(), m_worldId);
-    }
 }
 
 void WebChannelIPCTransport::OnDestruct()

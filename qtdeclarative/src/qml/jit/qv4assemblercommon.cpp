@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QBuffer>
 #include <QFile>
@@ -59,7 +23,7 @@ QT_BEGIN_NAMESPACE
 namespace QV4 {
 namespace JIT {
 
-Q_LOGGING_CATEGORY(lcAsm, "qt.v4.asm")
+Q_LOGGING_CATEGORY(lcAsm, "qt.qml.v4.asm")
 
 namespace {
 class QIODevicePrintStream: public FilePrintStream
@@ -78,7 +42,7 @@ public:
     ~QIODevicePrintStream()
     {}
 
-    void vprintf(const char* format, va_list argList) WTF_ATTRIBUTE_PRINTF(2, 0)
+    void vprintf(const char* format, va_list argList) override WTF_ATTRIBUTE_PRINTF(2, 0)
     {
         const int written = qvsnprintf(buf.data(), buf.size(), format, argList);
         if (written > 0)
@@ -86,7 +50,7 @@ public:
         memset(buf.data(), 0, qMin(written, buf.size()));
     }
 
-    void flush()
+    void flush() override
     {}
 
 private:
@@ -112,7 +76,8 @@ static void printDisassembledOutputWithCalls(QByteArray processedOutput,
                 break;
             const char *functionName = it.value();
             processedOutput = processedOutput.insert(
-                    idx, padding + QByteArray(functionName ? functionName : symbols[it.key()]));
+                    idx, QByteArray(padding + QByteArray(
+                                        functionName ? functionName : symbols[it.key()])));
         }
     }
 
@@ -180,7 +145,7 @@ void PlatformAssemblerCommon::prepareCallWithArgCount(int argc)
 
 void PlatformAssemblerCommon::storeInstructionPointer(int instructionOffset)
 {
-    Address addr(CppStackFrameRegister, offsetof(QV4::CppStackFrame, instructionPointer));
+    Address addr(CppStackFrameRegister, offsetof(QV4::JSTypesStackFrame, instructionPointer));
     store32(TrustedImm32(instructionOffset), addr);
 }
 

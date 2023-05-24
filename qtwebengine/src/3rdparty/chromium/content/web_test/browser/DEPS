@@ -3,6 +3,7 @@ include_rules = [
   "+components/download",
   "+components/keyed_service/core",
   "+components/network_session_configurator/common",
+  "+components/origin_trials",
   "+components/viz/common",
   "+content/public/browser",
   "+content/public/common",
@@ -13,7 +14,10 @@ include_rules = [
   "+services/device/public/cpp/test",
   "+services/network/public/cpp",
   "+services/network/public/mojom",
+  "+services/proxy_resolver",
   "+services/service_manager/public/cpp",
+  "+services/service_manager/public/mojom",
+  "+third_party/test_fonts",
   "+ui/aura",
   "+ui/base/resource",
 ]

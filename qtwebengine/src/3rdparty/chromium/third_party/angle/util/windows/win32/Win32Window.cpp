@@ -277,6 +277,9 @@ LRESULT CALLBACK Win32Window::WndProc(HWND hWnd, UINT message, WPARAM wParam, LP
 
             case WM_SIZE:
             {
+                if (window->mIgnoreSizeEvents)
+                    break;
+
                 RECT winRect;
                 GetClientRect(hWnd, &winRect);
 
@@ -616,7 +619,7 @@ bool Win32Window::takeScreenshot(uint8_t *pixelData)
     // for a while before issuing screenshot if window was just made visible.
     {
         static const double WAIT_WINDOW_VISIBLE_MS = 0.5;  // Half a second for the animation
-        double timeSinceVisible                    = mSetVisibleTimer.getElapsedTime();
+        double timeSinceVisible                    = mSetVisibleTimer.getElapsedWallClockTime();
 
         if (timeSinceVisible < WAIT_WINDOW_VISIBLE_MS)
         {

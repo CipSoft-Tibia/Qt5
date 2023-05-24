@@ -1,56 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "helpgenerator.h"
 #include "qhelpprojectdata_p.h"
 #include <qhelp_global.h>
 
 #include <QtCore/QtMath>
+#include <QtCore/QMap>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
 #include <QtCore/QDir>
 #include <QtCore/QDebug>
-#include <QtCore/QRegExp>
+#include <QtCore/QRegularExpression>
 #include <QtCore/QSet>
+#include <QtCore/QMap>
 #include <QtCore/QVariant>
 #include <QtCore/QDateTime>
-#include <QtCore/QTextCodec>
+#include <QtCore/QStringConverter>
 #include <QtCore/QDataStream>
 #include <QtSql/QSqlQuery>
 
@@ -191,7 +157,7 @@ bool HelpGeneratorPrivate::generate(QHelpProjectData *helpData,
     int i = 1;
     for (const QHelpDataFilterSection &fs : helpData->filterSections()) {
         emit statusChanged(tr("Insert help data for filter section (%1 of %2)...")
-            .arg(i++).arg(helpData->filterSections().count()));
+            .arg(i++).arg(helpData->filterSections().size()));
         insertFilterAttributes(fs.filterAttributes());
         QByteArray ba;
         QDataStream s(&ba, QIODevice::WriteOnly);
@@ -219,15 +185,15 @@ void HelpGeneratorPrivate::setupProgress(QHelpProjectData *helpData)
     int numberOfFiles = 0;
     int numberOfIndices = 0;
     for (const QHelpDataFilterSection &fs : helpData->filterSections()) {
-        numberOfFiles += fs.files().count();
-        numberOfIndices += fs.indices().count();
+        numberOfFiles += fs.files().size();
+        numberOfIndices += fs.indices().size();
     }
     // init      2%
     // filters   1%
     // contents 10%
     // files    60%
     // indices  27%
-    m_contentStep = 10.0 / qMax(helpData->customFilters().count(), 1);
+    m_contentStep = 10.0 / qMax(helpData->customFilters().size(), 1);
     m_fileStep = 60.0 / qMax(numberOfFiles, 1);
     m_indexStep = 27.0 / qMax(numberOfIndices, 1);
 }
@@ -447,7 +413,7 @@ bool HelpGeneratorPrivate::insertFiles(const QStringList &files, const QString &
     ++filterSetId;
     QList<int> attValues = filterAtts.values();
     std::sort(attValues.begin(), attValues.end());
-    for (int attId : qAsConst(attValues)) {
+    for (int attId : std::as_const(attValues)) {
         m_query->prepare(QLatin1String("INSERT INTO FileAttributeSetTable "
             "VALUES(?, ?)"));
         m_query->bindValue(0, filterSetId);
@@ -486,10 +452,10 @@ bool HelpGeneratorPrivate::insertFiles(const QStringList &files, const QString &
         QByteArray data = fi.readAll();
         if (fileName.endsWith(QLatin1String(".html"))
             || fileName.endsWith(QLatin1String(".htm"))) {
-                charSet = QHelpGlobal::codecFromData(data);
-                QTextStream stream(&data);
-                stream.setCodec(QTextCodec::codecForName(charSet.toLatin1().constData()));
-                title = QHelpGlobal::documentTitle(stream.readAll());
+            auto encoding = QStringDecoder::encodingForHtml(data);
+            if (!encoding)
+                encoding = QStringDecoder::Utf8;
+            title = QHelpGlobal::documentTitle(QStringDecoder(*encoding)(data));
         } else {
             title = fileName.mid(fileName.lastIndexOf(QLatin1Char('/')) + 1);
         }
@@ -514,7 +480,7 @@ bool HelpGeneratorPrivate::insertFiles(const QStringList &files, const QString &
             fileId = it.value();
             QSet<int> &fileFilterSet = m_fileFilterMap[fileId];
             QSet<int> &tmpFileFilterSet = tmpFileFilterMap[fileId];
-            for (int filter : qAsConst(filterAtts)) {
+            for (int filter : std::as_const(filterAtts)) {
                 if (!fileFilterSet.contains(filter)
                     && !tmpFileFilterSet.contains(filter)) {
                     fileFilterSet.insert(filter);
@@ -529,7 +495,7 @@ bool HelpGeneratorPrivate::insertFiles(const QStringList &files, const QString &
         for (auto it = tmpFileFilterMap.cbegin(), end = tmpFileFilterMap.cend(); it != end; ++it) {
             QList<int> filterValues = it.value().values();
             std::sort(filterValues.begin(), filterValues.end());
-            for (int fv : qAsConst(filterValues)) {
+            for (int fv : std::as_const(filterValues)) {
                 m_query->prepare(QLatin1String("INSERT INTO FileFilterTable "
                     "VALUES(?, ?)"));
                 m_query->bindValue(0, fv);
@@ -538,7 +504,7 @@ bool HelpGeneratorPrivate::insertFiles(const QStringList &files, const QString &
             }
         }
 
-        for (const QByteArray &fileData : qAsConst(fileDataList)) {
+        for (const QByteArray &fileData : std::as_const(fileDataList)) {
             m_query->prepare(QLatin1String("INSERT INTO FileDataTable VALUES "
                 "(Null, ?)"));
             m_query->bindValue(0, fileData);
@@ -547,7 +513,7 @@ bool HelpGeneratorPrivate::insertFiles(const QStringList &files, const QString &
                 addProgress(m_fileStep * 20.0);
         }
 
-        for (const FileNameTableData &fnd : qAsConst(fileNameDataList)) {
+        for (const FileNameTableData &fnd : std::as_const(fileNameDataList)) {
             m_query->prepare(QLatin1String("INSERT INTO FileNameTable "
                 "(FolderId, Name, FileId, Title) VALUES (?, ?, ?, ?)"));
             m_query->bindValue(0, 1);
@@ -583,7 +549,7 @@ bool HelpGeneratorPrivate::registerCustomFilter(const QString &filterName,
         idsToInsert.removeAll(m_query->value(1).toString());
     }
 
-    for (const QString &id : qAsConst(idsToInsert)) {
+    for (const QString &id : std::as_const(idsToInsert)) {
         m_query->prepare(QLatin1String("INSERT INTO FilterAttributeTable VALUES(NULL, ?)"));
         m_query->bindValue(0, id);
         m_query->exec();
@@ -690,8 +656,8 @@ bool HelpGeneratorPrivate::insertKeywords(const QList<QHelpDataIndexItem> &keywo
     m_query->exec(QLatin1String("COMMIT"));
 
     m_query->exec(QLatin1String("BEGIN"));
-    for (int idx : qAsConst(indexFilterTable)) {
-        for (int a : qAsConst(filterAtts)) {
+    for (int idx : std::as_const(indexFilterTable)) {
+        for (int a : std::as_const(filterAtts)) {
             m_query->prepare(QLatin1String("INSERT INTO IndexFilterTable (FilterAttributeId, IndexId) "
                 "VALUES(?, ?)"));
             m_query->bindValue(0, a);
@@ -702,7 +668,7 @@ bool HelpGeneratorPrivate::insertKeywords(const QList<QHelpDataIndexItem> &keywo
     m_query->exec(QLatin1String("COMMIT"));
 
     m_query->exec(QLatin1String("SELECT COUNT(Id) FROM IndexTable"));
-    if (m_query->next() && m_query->value(0).toInt() >= indices.count())
+    if (m_query->next() && m_query->value(0).toInt() >= indices.size())
         return true;
     return false;
 }
@@ -800,7 +766,7 @@ bool HelpGeneratorPrivate::checkLinks(const QHelpProjectData &helpData)
      *         commented out can cause false warning.
      */
     bool allLinksOk = true;
-    for (const QString &fileName : qAsConst(files)) {
+    for (const QString &fileName : std::as_const(files)) {
         if (!fileName.endsWith(QLatin1String("html"))
             && !fileName.endsWith(QLatin1String("htm")))
             continue;
@@ -809,15 +775,18 @@ bool HelpGeneratorPrivate::checkLinks(const QHelpProjectData &helpData)
             emit warning(tr("File \"%1\" cannot be opened.").arg(fileName));
             continue;
         }
-        const QRegExp linkPattern(QLatin1String("<(?:a href|img src)=\"?([^#\">]+)[#\">]"));
-        QTextStream stream(&htmlFile);
-        const QString codec = QHelpGlobal::codecFromData(htmlFile.read(1000));
-        stream.setCodec(QTextCodec::codecForName(codec.toLatin1().constData()));
-        const QString &content = stream.readAll();
+        const QRegularExpression linkPattern(QLatin1String("<(?:a href|img src)=\"?([^#\">]+)[#\">]"));
+        QByteArray data = htmlFile.readAll();
+        auto encoding = QStringDecoder::encodingForHtml(data);
+        if (!encoding)
+            encoding = QStringDecoder::Utf8;
+        const QString &content = QStringDecoder(*encoding)(data);
         QStringList invalidLinks;
-        for (int pos = linkPattern.indexIn(content); pos != -1;
-             pos = linkPattern.indexIn(content, pos + 1)) {
-            const QString &linkedFileName = linkPattern.cap(1);
+        QRegularExpressionMatch match;
+        int pos = 0;
+        while ((match = linkPattern.match(content, pos)).hasMatch()) {
+            pos = match.capturedEnd();
+            const QString &linkedFileName = match.captured(1);
             if (linkedFileName.contains(QLatin1String("://")))
                 continue;
             const QString &curDir = QFileInfo(fileName).dir().path();

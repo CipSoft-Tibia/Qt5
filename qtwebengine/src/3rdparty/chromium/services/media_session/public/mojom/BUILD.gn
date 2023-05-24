@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -11,7 +11,6 @@ mojom("mojom") {
     "constants.mojom",
     "media_controller.mojom",
     "media_session.mojom",
-    "media_session_service.mojom",
   ]
 
   public_deps = [
@@ -19,6 +18,12 @@ mojom("mojom") {
     "//ui/gfx/geometry/mojom",
     "//url/mojom:url_mojom_gurl",
   ]
+
+  webui_module_path = "/"
+  use_typescript_sources = true
+
+  # Blink requires legacy JS bindings.
+  generate_legacy_js_bindings = true
 
   # The blink variant of the Device Service mojom are depended on by the
   # blink platform target. All blink variant mojoms use WTF types, which are

@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,11 @@
 
 #include <map>
 
-#include "core/fxcrt/timerhandler_iface.h"
+#include "core/fxcrt/cfx_timer.h"
 #include "fxjs/cjs_app.h"
+#include "third_party/base/check.h"
+#include "third_party/base/containers/contains.h"
 #include "third_party/base/no_destructor.h"
-#include "third_party/base/stl_util.h"
 
 namespace {
 
@@ -36,7 +37,7 @@ GlobalTimer::GlobalTimer(CJS_App* pObj,
       m_pRuntime(pRuntime),
       m_pEmbedApp(pObj) {
   if (HasValidID()) {
-    ASSERT(!pdfium::Contains(GetGlobalTimerMap(), m_nTimerID));
+    DCHECK(!pdfium::Contains(GetGlobalTimerMap(), m_nTimerID));
     GetGlobalTimerMap()[m_nTimerID] = this;
   }
 }
@@ -48,7 +49,7 @@ GlobalTimer::~GlobalTimer() {
   if (m_pRuntime && m_pRuntime->GetTimerHandler())
     m_pRuntime->GetTimerHandler()->KillTimer(m_nTimerID);
 
-  ASSERT(pdfium::Contains(GetGlobalTimerMap(), m_nTimerID));
+  DCHECK(pdfium::Contains(GetGlobalTimerMap(), m_nTimerID));
   GetGlobalTimerMap().erase(m_nTimerID);
 }
 
@@ -88,5 +89,5 @@ void GlobalTimer::Cancel(int32_t nTimerID) {
 }
 
 bool GlobalTimer::HasValidID() const {
-  return m_nTimerID != TimerHandlerIface::kInvalidTimerID;
+  return m_nTimerID != CFX_Timer::HandlerIface::kInvalidTimerID;
 }

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -73,7 +73,7 @@ class MimeTypesHandlerParser : public extensions::ManifestHandler {
   MimeTypesHandlerParser();
   ~MimeTypesHandlerParser() override;
 
-  bool Parse(extensions::Extension* extension, base::string16* error) override;
+  bool Parse(extensions::Extension* extension, std::u16string* error) override;
 
  private:
   base::span<const char* const> Keys() const override;

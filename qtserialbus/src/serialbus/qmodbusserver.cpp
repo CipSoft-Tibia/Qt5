@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmodbusdeviceidentification.h"
 #include "qmodbusserver.h"
@@ -41,8 +8,8 @@
 
 #include <QtCore/qbitarray.h>
 #include <QtCore/qdebug.h>
+#include <QtCore/qlist.h>
 #include <QtCore/qloggingcategory.h>
-#include <QtCore/qvector.h>
 
 #include <algorithm>
 
@@ -139,7 +106,7 @@ void QModbusServer::setServerAddress(int serverAddress)
 }
 
 /*!
-    Returns the address of this Mobus server instance.
+    Returns the address of this Modbus server instance.
 
     \sa setServerAddress()
 */
@@ -311,7 +278,7 @@ bool QModbusServer::setValue(int option, const QVariant &newValue)
 {
 #define CHECK_INT_OR_UINT(val) \
     do { \
-        if ((val.type() != QVariant::Int) && (val.type() != QVariant::UInt)) \
+        if ((val.typeId() != QMetaType::Type::Int) && (val.typeId() != QMetaType::Type::UInt)) \
             return false; \
     } while (0)
 
@@ -347,7 +314,7 @@ bool QModbusServer::setValue(int option, const QVariant &newValue)
         return true;
     }
     case ListenOnlyMode: {
-        if (newValue.type() != QVariant::Bool)
+        if (newValue.typeId() != QMetaType::Type::Bool)
             return false;
         d->m_serverOptions.insert(option, newValue);
         return true;
@@ -365,7 +332,7 @@ bool QModbusServer::setValue(int option, const QVariant &newValue)
         return true;
     }
     case AdditionalData: {
-        if (newValue.type() != QVariant::ByteArray)
+        if (newValue.typeId() != QMetaType::Type::QByteArray)
             return false;
         const QByteArray additionalData = newValue.toByteArray();
         if (additionalData.size() > 249)
@@ -448,7 +415,7 @@ bool QModbusServer::data(QModbusDataUnit *newData) const
 */
 bool QModbusServer::setData(QModbusDataUnit::RegisterType table, quint16 address, quint16 data)
 {
-    return writeData(QModbusDataUnit(table, address, QVector<quint16>() << data));
+    return writeData(QModbusDataUnit(table, address, QList<quint16> { data }));
 }
 
 /*!
@@ -502,9 +469,9 @@ bool QModbusServer::writeData(const QModbusDataUnit &newData)
         return false;
 
     bool changeRequired = false;
-    for (uint i = 0; i < newData.valueCount(); i++) {
+    for (qsizetype i = 0; i < newData.valueCount(); i++) {
         const quint16 newValue = newData.value(i);
-        const int translatedIndex = newData.startAddress() - current.startAddress() + i;
+        const qsizetype translatedIndex = newData.startAddress() - current.startAddress() + i;
         changeRequired |= (current.value(translatedIndex) != newValue);
         current.setValue(translatedIndex, newValue);
     }
@@ -725,7 +692,7 @@ QModbusResponse QModbusServerPrivate::readBits(const QModbusPdu &request,
             QModbusExceptionResponse::IllegalDataAddress);
     }
 
-    quint8 byteCount = count / 8;
+    quint8 byteCount = quint8(count / 8);
     if ((count % 8) != 0) {
         byteCount += 1;
         // If the range is not a multiple of 8, resize.
@@ -829,7 +796,7 @@ QModbusResponse QModbusServerPrivate::processReadExceptionStatusRequest(const QM
                                         QModbusExceptionResponse::IllegalDataAddress);
     }
 
-    quint16 address = 0;
+    qsizetype address = 0;
     quint8 byte = 0;
     for (int currentBit = 0; currentBit < 8; ++currentBit)
         if (coils.value(address++)) // The padding happens inside value().
@@ -946,7 +913,7 @@ QModbusResponse QModbusServerPrivate::processGetCommEventLogRequest(const QModbu
     }
     const quint16 deviceBusy = tmp.value<quint16>();
 
-    QVector<quint8> eventLog(int(m_commEventLog.size()));
+    QList<quint8> eventLog(int(m_commEventLog.size()));
     std::copy(m_commEventLog.cbegin(), m_commEventLog.cend(), eventLog.begin());
 
     // 6 -> 3 x 2 Bytes (Status, Event Count and Message Count)
@@ -983,7 +950,7 @@ QModbusResponse QModbusServerPrivate::processWriteMultipleCoilsRequest(const QMo
             QModbusExceptionResponse::IllegalDataAddress);
     }
 
-    QVector<quint8> bytes;
+    QList<quint8> bytes;
     const QByteArray payload = request.data().mid(5);
     for (qint32 i = payload.size() - 1; i >= 0; --i)
         bytes.append(quint8(payload[i]));
@@ -992,7 +959,7 @@ QModbusResponse QModbusServerPrivate::processWriteMultipleCoilsRequest(const QMo
     // range is numberOfCoils and therefore index too.
     quint16 coil = numberOfCoils;
     qint32 currentBit = 8 - ((byteCount * 8) - numberOfCoils);
-    for (quint8 currentByte : qAsConst(bytes)) {
+    for (quint8 currentByte : std::as_const(bytes)) {
         for (currentBit -= 1; currentBit >= 0; --currentBit)
             coils.setValue(--coil, currentByte & (1U << currentBit) ? 1 : 0);
         currentBit = 8;
@@ -1035,7 +1002,7 @@ QModbusResponse QModbusServerPrivate::processWriteMultipleRegistersRequest(
     const QByteArray pduData = request.data().remove(0,5);
     QDataStream stream(pduData);
 
-    QVector<quint16> values;
+    QList<quint16> values;
     quint16 tmp;
     for (int i = 0; i < numberOfRegisters; i++) {
         stream >> tmp;
@@ -1134,7 +1101,7 @@ QModbusResponse QModbusServerPrivate::processReadWriteMultipleRegistersRequest(
     const QByteArray pduData = request.data().remove(0,9);
     QDataStream stream(pduData);
 
-    QVector<quint16> values;
+    QList<quint16> values;
     quint16 tmp;
     for (int i = 0; i < writeQuantity; i++) {
         stream >> tmp;
@@ -1286,7 +1253,7 @@ QModbusResponse QModbusServerPrivate::processEncapsulatedInterfaceTransportReque
                 header[4] = quint8(0x00); // next object id
                 header[5] = quint8(0x01); // number of objects
                 header[6] = objectId;
-                header[7] = quint8(object.length());
+                header[7] = quint8(object.size());
                 return QModbusResponse(request.functionCode(), QByteArray(header + object));
             }
             default:

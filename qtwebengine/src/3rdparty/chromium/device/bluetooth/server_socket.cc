@@ -1,11 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "device/bluetooth/server_socket.h"
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ptr_util.h"
 #include "device/bluetooth/bluetooth_device.h"
 #include "device/bluetooth/bluetooth_socket.h"
@@ -18,22 +18,40 @@
 #include "net/base/io_buffer.h"
 
 namespace bluetooth {
+namespace {
+// TODO(b/269348144) - BluetoothSocket is constructed in UI thread and must also
+// be destructed in UI thread. We must keep this reference until disconnect
+// completes so that the destructor does not run in the socket thread.
+void HoldReferenceUntilDisconnected(
+    scoped_refptr<device::BluetoothSocket> server_socket,
+    mojom::ServerSocket::DisconnectCallback callback) {
+  std::move(callback).Run();
+}
+}  // namespace
 
 ServerSocket::ServerSocket(
     scoped_refptr<device::BluetoothSocket> bluetooth_socket)
     : server_socket_(std::move(bluetooth_socket)) {}
 
 ServerSocket::~ServerSocket() {
-  server_socket_->Close();
+  server_socket_->Disconnect(base::BindOnce(&HoldReferenceUntilDisconnected,
+                                            server_socket_, base::DoNothing()));
 }
 
 void ServerSocket::Accept(AcceptCallback callback) {
-  auto copyable_callback = base::AdaptCallbackForRepeating(std::move(callback));
+  auto split_callback = base::SplitOnceCallback(std::move(callback));
   server_socket_->Accept(
       base::BindOnce(&ServerSocket::OnAccept, weak_ptr_factory_.GetWeakPtr(),
-                     copyable_callback),
+                     std::move(split_callback.first)),
       base::BindOnce(&ServerSocket::OnAcceptError,
-                     weak_ptr_factory_.GetWeakPtr(), copyable_callback));
+                     weak_ptr_factory_.GetWeakPtr(),
+                     std::move(split_callback.second)));
+}
+
+void ServerSocket::Disconnect(DisconnectCallback callback) {
+  DCHECK(server_socket_);
+  server_socket_->Disconnect(base::BindOnce(
+      &HoldReferenceUntilDisconnected, server_socket_, std::move(callback)));
 }
 
 void ServerSocket::OnAccept(
@@ -43,21 +61,23 @@ void ServerSocket::OnAccept(
   mojo::ScopedDataPipeProducerHandle receive_pipe_producer_handle;
   mojo::ScopedDataPipeConsumerHandle receive_pipe_consumer_handle;
   MojoResult result =
-      mojo::CreateDataPipe(/*options=*/nullptr, &receive_pipe_producer_handle,
-                           &receive_pipe_consumer_handle);
+      mojo::CreateDataPipe(/*options=*/nullptr, receive_pipe_producer_handle,
+                           receive_pipe_consumer_handle);
   if (result != MOJO_RESULT_OK) {
-    bluetooth_socket->Close();
-    OnAcceptError(std::move(callback), "Failed to create receiving DataPipe.");
+    bluetooth_socket->Disconnect(base::BindOnce(
+        &ServerSocket::OnAcceptError, weak_ptr_factory_.GetWeakPtr(),
+        std::move(callback), "Failed to create receiving DataPipe."));
     return;
   }
 
   mojo::ScopedDataPipeProducerHandle send_pipe_producer_handle;
   mojo::ScopedDataPipeConsumerHandle send_pipe_consumer_handle;
-  result = mojo::CreateDataPipe(/*options=*/nullptr, &send_pipe_producer_handle,
-                                &send_pipe_consumer_handle);
+  result = mojo::CreateDataPipe(/*options=*/nullptr, send_pipe_producer_handle,
+                                send_pipe_consumer_handle);
   if (result != MOJO_RESULT_OK) {
-    bluetooth_socket->Close();
-    OnAcceptError(std::move(callback), "Failed to create sending DataPipe.");
+    bluetooth_socket->Disconnect(base::BindOnce(
+        &ServerSocket::OnAcceptError, weak_ptr_factory_.GetWeakPtr(),
+        std::move(callback), "Failed to create sending DataPipe."));
     return;
   }
 

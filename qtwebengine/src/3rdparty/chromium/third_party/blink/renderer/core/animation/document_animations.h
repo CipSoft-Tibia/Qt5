@@ -31,8 +31,12 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_DOCUMENT_ANIMATIONS_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_DOCUMENT_ANIMATIONS_H_
 
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/core/animation/animation.h"
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/document_lifecycle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
 #include "third_party/blink/renderer/platform/heap/member.h"
 
 namespace blink {
@@ -63,15 +67,25 @@ class CORE_EXPORT DocumentAnimations final
   // both composited and non-composited animations.
   void UpdateAnimations(
       DocumentLifecycle::LifecycleState required_lifecycle_state,
-      const PaintArtifactCompositor* paint_artifact_compositor);
+      const PaintArtifactCompositor*,
+      bool compositor_properties_updated);
+
+  size_t GetAnimationsCount();
 
   void MarkAnimationsCompositorPending();
 
   HeapVector<Member<Animation>> getAnimations(const TreeScope&);
+
+  // Detach compositor timelines to prevent further ticking of any animations
+  // associated with the timelines.  Detached timelines may be subsequently
+  // reattached if needed.
+  void DetachCompositorTimelines();
+
   const HeapHashSet<WeakMember<AnimationTimeline>>& GetTimelinesForTesting()
       const {
     return timelines_;
   }
+
   uint64_t current_transition_generation_;
   void Trace(Visitor*) const;
 
@@ -81,10 +95,13 @@ class CORE_EXPORT DocumentAnimations final
   void RemoveReplacedAnimations(ReplaceableAnimationsMap*);
 
  private:
+  void MarkPendingIfCompositorPropertyAnimationChanges(
+      const PaintArtifactCompositor*);
+
   Member<Document> document_;
   HeapHashSet<WeakMember<AnimationTimeline>> timelines_;
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_DOCUMENT_ANIMATIONS_H_

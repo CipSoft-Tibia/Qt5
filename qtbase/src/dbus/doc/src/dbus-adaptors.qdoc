@@ -1,36 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page usingadaptors.html
     \title Using Qt D-Bus Adaptors
     \brief How to create and use DBus adaptors in Qt.
 
-    \ingroup best-practices
+    \ingroup how-to
 
     Adaptors are special classes that are attached to any QObject-derived class
     and provide the interface to the external world using D-Bus. Adaptors are
@@ -68,7 +44,7 @@
       \li \l{Declaring Slots in D-Bus Adaptors}
       \li \l{Declaring Signals in D-Bus Adaptors}
       \li \l{The Qt D-Bus Type System}
-      \li In the \l{D-Bus Complex Ping Pong Example}, \c complexpong.h and
+      \li In the \l{D-Bus Complex Ping Pong} example, \c complexpong.h and
           \c complexpong.cpp show an implementation of QDBusAbstractAdaptor.
     \endlist
 
@@ -111,15 +87,15 @@
 
     Asynchronous slots are marked by the keyword \l Q_NOREPLY in the method
     signature, before the \c void return type and the slot name. The \c quit()
-    slot in the \l {D-Bus Complex Ping Pong Example} is an example of this.
+    slot in the \l {D-Bus Complex Ping Pong} example is an example of this.
 
     \section1 Input-Only Slots
 
     Input-only slots are normal slots that take parameters passed by value or
     by constant reference. However, unlike asynchronous slots, the caller is
     usually waiting for completion of the callee before resuming operation.
-    Therefore, non-asynchronous slots should not block or should state it its
-    documentation that they may do so.
+    Therefore, non-asynchronous slots should not block or should explicitly
+    state it will block in its documentation that they may do so.
 
     Input-only slots have no special marking in their signature, except that
     they take only parameters passed by value or by constant reference.
@@ -173,9 +149,6 @@
 
     \snippet code/doc_src_qdbusadaptors.cpp 10
 
-    The use of
-    \l{QDBusConnection::send()}{QDBusConnection::sessionBus().send(data->reply)}
-    is needed to explicitly inform the caller that the response will be delayed.
     In this case, the return value is unimportant; we return an arbitrary value
     to satisfy the compiler.
 
@@ -193,7 +166,7 @@
 
     The delayed reply itself is requested from Qt D-Bus by calling
     QDBusMessage::reply() on the original message. It then becomes the
-    resposibility of the called code to eventually send a reply to the
+    responsibility of the called code to eventually send a reply to the
     caller.
 
     \warning When a caller places a method call and waits for a reply, it will
@@ -220,8 +193,8 @@
     However, signals must still be emitted. The easiest way to emit an adaptor
     signal is to connect another signal to it, so that Qt's signals and slots
     mechanism automatically emits the adaptor signal, too. This can be done in
-    the adaptor's constructor, as you can see in the \l {D-Bus Complex Ping
-    Pong Example}.
+    the adaptor's constructor, as you can see in the \l {D-Bus Complex Ping Pong}
+    example.
 
     The QDBusAbstractAdaptor::setAutoRelaySignals() convenience function can also
     be used to make and break connections between signals in the real object and

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,6 +12,7 @@
 #include "components/url_matcher/url_matcher_constants.h"
 #include "extensions/browser/api/declarative_webrequest/webrequest_constants.h"
 #include "extensions/browser/api/web_request/web_request_info.h"
+#include "services/network/public/mojom/fetch_api.mojom-shared.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 using url_matcher::URLMatcher;
@@ -69,7 +70,6 @@ TEST(WebRequestConditionTest, CreateCondition) {
   const GURL http_url("http://www.example.com");
   WebRequestInfoInitParams match_params;
   match_params.url = http_url;
-  match_params.type = blink::mojom::ResourceType::kMainFrame;
   match_params.web_request_type = WebRequestResourceType::MAIN_FRAME;
   WebRequestInfo match_request_info(std::move(match_params));
   WebRequestData data(&match_request_info, ON_BEFORE_REQUEST);
@@ -81,7 +81,6 @@ TEST(WebRequestConditionTest, CreateCondition) {
   const GURL https_url("https://www.example.com");
   WebRequestInfoInitParams wrong_resource_type_params;
   wrong_resource_type_params.url = https_url;
-  wrong_resource_type_params.type = blink::mojom::ResourceType::kSubFrame;
   wrong_resource_type_params.web_request_type =
       WebRequestResourceType::SUB_FRAME;
   WebRequestInfo wrong_resource_type_request_info(
@@ -217,7 +216,7 @@ TEST(WebRequestConditionTest, CreateConditionSet) {
   URLMatcher matcher;
 
   WebRequestConditionSet::Values conditions;
-  conditions.push_back(base::test::ParseJsonDeprecated(
+  conditions.push_back(base::test::ParseJson(
       "{ \n"
       "  \"instanceType\": \"declarativeWebRequest.RequestMatcher\", \n"
       "  \"url\": { \n"
@@ -225,7 +224,7 @@ TEST(WebRequestConditionTest, CreateConditionSet) {
       "    \"schemes\": [\"http\"], \n"
       "  }, \n"
       "}"));
-  conditions.push_back(base::test::ParseJsonDeprecated(
+  conditions.push_back(base::test::ParseJson(
       "{ \n"
       "  \"instanceType\": \"declarativeWebRequest.RequestMatcher\", \n"
       "  \"url\": { \n"
@@ -287,7 +286,7 @@ TEST(WebRequestConditionTest, TestPortFilter) {
   URLMatcher matcher;
 
   WebRequestConditionSet::Values conditions;
-  conditions.push_back(base::test::ParseJsonDeprecated(
+  conditions.push_back(base::test::ParseJson(
       "{ \n"
       "  \"instanceType\": \"declarativeWebRequest.RequestMatcher\", \n"
       "  \"url\": { \n"
@@ -310,7 +309,7 @@ TEST(WebRequestConditionTest, TestPortFilter) {
   result->GetURLMatcherConditionSets(&url_matcher_condition_set);
   matcher.AddConditionSets(url_matcher_condition_set);
 
-  std::set<URLMatcherConditionSet::ID> url_match_ids;
+  std::set<base::MatcherStringPattern::ID> url_match_ids;
 
   // Test various URLs.
   GURL http_url("http://www.example.com");

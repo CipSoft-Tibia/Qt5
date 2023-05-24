@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 
 namespace mojo {
 template <>
-struct COMPONENT_EXPORT(NETWORK_CPP_BASE)
+struct COMPONENT_EXPORT(NETWORK_CPP_IP_ADDRESS)
     StructTraits<network::mojom::IPAddressDataView, net::IPAddress> {
   static base::span<const uint8_t> address_bytes(
       const net::IPAddress& ip_address) {

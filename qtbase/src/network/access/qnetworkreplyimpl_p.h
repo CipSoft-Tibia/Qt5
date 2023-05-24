@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QNETWORKREPLYIMPL_P_H
 #define QNETWORKREPLYIMPL_P_H
@@ -62,7 +26,8 @@
 #include "private/qringbuffer_p.h"
 #include "private/qbytedata_p.h"
 #include <QSharedPointer>
-#include <QtNetwork/QNetworkSession> // ### Qt6: Remove include
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -92,12 +57,6 @@ public:
     Q_PRIVATE_SLOT(d_func(), void _q_copyReadChannelFinished())
     Q_PRIVATE_SLOT(d_func(), void _q_bufferOutgoingData())
     Q_PRIVATE_SLOT(d_func(), void _q_bufferOutgoingDataFinished())
-#ifndef QT_NO_BEARERMANAGEMENT // ### Qt6: Remove section
-    Q_PRIVATE_SLOT(d_func(), void _q_networkSessionConnected())
-    Q_PRIVATE_SLOT(d_func(), void _q_networkSessionFailed())
-    Q_PRIVATE_SLOT(d_func(), void _q_networkSessionStateChanged(QNetworkSession::State))
-    Q_PRIVATE_SLOT(d_func(), void _q_networkSessionUsagePoliciesChanged(QNetworkSession::UsagePolicies))
-#endif
 
 #ifndef QT_NO_SSL
 protected:
@@ -113,8 +72,6 @@ class QNetworkReplyImplPrivate: public QNetworkReplyPrivate
 public:
     enum InternalNotifications {
         NotifyDownstreamReadyWrite,
-        NotifyCloseDownstreamChannel,
-        NotifyCopyFinished
     };
 
     QNetworkReplyImplPrivate();
@@ -124,12 +81,6 @@ public:
     void _q_copyReadChannelFinished();
     void _q_bufferOutgoingData();
     void _q_bufferOutgoingDataFinished();
-#ifndef QT_NO_BEARERMANAGEMENT // ### Qt6: Remove section
-    void _q_networkSessionConnected();
-    void _q_networkSessionFailed();
-    void _q_networkSessionStateChanged(QNetworkSession::State);
-    void _q_networkSessionUsagePoliciesChanged(QNetworkSession::UsagePolicies);
-#endif
 
     void setup(QNetworkAccessManager::Operation op, const QNetworkRequest &request,
                QIODevice *outgoingData);
@@ -152,7 +103,6 @@ public:
     void appendDownstreamDataSignalEmissions();
     void appendDownstreamData(QByteDataBuffer &data);
     void appendDownstreamData(QIODevice *data);
-    void appendDownstreamData(const QByteArray &data);
 
     void setDownloadBuffer(QSharedPointer<char> sp, qint64 size);
     char* getDownloadBuffer(qint64 size);
@@ -165,13 +115,13 @@ public:
     void encrypted();
     void sslErrors(const QList<QSslError> &errors);
 
+    void readFromBackend();
+
     QNetworkAccessBackend *backend;
     QIODevice *outgoingData;
-    QSharedPointer<QRingBuffer> outgoingDataBuffer;
+    std::shared_ptr<QRingBuffer> outgoingDataBuffer;
     QIODevice *copyDevice;
     QAbstractNetworkCache *networkCache() const;
-
-    bool migrateBackend();
 
     bool cacheEnabled;
     QIODevice *cacheSaveDevice;
@@ -186,9 +136,7 @@ public:
 #endif
 
     qint64 bytesDownloaded;
-    qint64 lastBytesDownloaded;
     qint64 bytesUploaded;
-    qint64 preMigrationDownloaded;
 
     QString httpReasonPhrase;
     int httpStatusCode;
@@ -208,7 +156,5 @@ public:
 Q_DECLARE_TYPEINFO(QNetworkReplyImplPrivate::InternalNotifications, Q_PRIMITIVE_TYPE);
 
 QT_END_NAMESPACE
-
-Q_DECLARE_METATYPE(QSharedPointer<char>)
 
 #endif

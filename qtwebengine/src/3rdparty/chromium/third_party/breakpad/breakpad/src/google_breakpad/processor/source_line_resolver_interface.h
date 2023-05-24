@@ -1,7 +1,6 @@
 // -*- mode: C++ -*-
 
-// Copyright (c) 2010 Google Inc.
-// All rights reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -13,7 +12,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -34,7 +33,10 @@
 #ifndef GOOGLE_BREAKPAD_PROCESSOR_SOURCE_LINE_RESOLVER_INTERFACE_H__
 #define GOOGLE_BREAKPAD_PROCESSOR_SOURCE_LINE_RESOLVER_INTERFACE_H__
 
+#include <deque>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "common/using_std_string.h"
 #include "google_breakpad/common/breakpad_types.h"
@@ -91,8 +93,12 @@ class SourceLineResolverInterface {
 
   // Fills in the function_base, function_name, source_file_name,
   // and source_line fields of the StackFrame.  The instruction and
-  // module_name fields must already be filled in.
-  virtual void FillSourceLineInfo(StackFrame* frame) = 0;
+  // module_name fields must already be filled in. If inlined_frames is not
+  // nullptr, it will try to construct inlined frames by adding them into
+  // inlined_frames in an order from outermost frame to inner most frame.
+  virtual void FillSourceLineInfo(
+      StackFrame* frame,
+      std::deque<std::unique_ptr<StackFrame>>* inlined_frames) = 0;
 
   // If Windows stack walking information is available covering
   // FRAME's instruction address, return a WindowsFrameInfo structure

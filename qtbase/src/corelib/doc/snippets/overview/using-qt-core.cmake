@@ -1,2 +1,2 @@
-find_package(Qt5 COMPONENTS Core REQUIRED)
-target_link_libraries(mytarget Qt5::Core)
+find_package(Qt6 REQUIRED COMPONENTS Core)
+target_link_libraries(mytarget PRIVATE Qt6::Core)

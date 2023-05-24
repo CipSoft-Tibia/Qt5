@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qbluetoothserver.h"
 #include "qbluetoothserver_p.h"
@@ -84,11 +48,12 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn void QBluetoothServer::error(QBluetoothServer::Error error)
+    \fn void QBluetoothServer::errorOccurred(QBluetoothServer::Error error)
 
     This signal is emitted when an \a error occurs.
 
     \sa error(), QBluetoothServer::Error
+    \since 6.2
 */
 
 /*!
@@ -110,6 +75,9 @@ QT_BEGIN_NAMESPACE
     \value ServiceAlreadyRegisteredError  The service or port was already registered
     \value UnsupportedProtocolError The \l {QBluetoothServiceInfo::Protocol}{Protocol} is not
                                     supported on this platform.
+    \value [since 6.4] MissingPermissionsError  The operating system requests
+                                                permissions which were not
+                                                granted by the user.
 */
 
 /*!
@@ -212,13 +180,13 @@ QBluetoothServiceInfo QBluetoothServer::listen(const QBluetoothUuid &uuid, const
     QBluetoothServiceInfo serviceInfo;
     serviceInfo.setAttribute(QBluetoothServiceInfo::ServiceName, serviceName);
     QBluetoothServiceInfo::Sequence browseSequence;
-    browseSequence << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::PublicBrowseGroup));
+    browseSequence << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ServiceClassUuid::PublicBrowseGroup));
     serviceInfo.setAttribute(QBluetoothServiceInfo::BrowseGroupList,
                              browseSequence);
 
     QBluetoothServiceInfo::Sequence profileSequence;
     QBluetoothServiceInfo::Sequence classId;
-    classId << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::SerialPort));
+    classId << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ServiceClassUuid::SerialPort));
     classId << QVariant::fromValue(quint16(0x100));
     profileSequence.append(QVariant::fromValue(classId));
     serviceInfo.setAttribute(QBluetoothServiceInfo::BluetoothProfileDescriptorList,
@@ -227,13 +195,13 @@ QBluetoothServiceInfo QBluetoothServer::listen(const QBluetoothUuid &uuid, const
     classId.clear();
     //Android requires custom uuid to be set as service class
     classId << QVariant::fromValue(uuid);
-    classId << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::SerialPort));
+    classId << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ServiceClassUuid::SerialPort));
     serviceInfo.setAttribute(QBluetoothServiceInfo::ServiceClassIds, classId);
     serviceInfo.setServiceUuid(uuid);
 
     QBluetoothServiceInfo::Sequence protocolDescriptorList;
     QBluetoothServiceInfo::Sequence protocol;
-    protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::L2cap));
+    protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ProtocolUuid::L2cap));
     if (d->serverType == QBluetoothServiceInfo::L2capProtocol)
         protocol << QVariant::fromValue(serverPort());
     protocolDescriptorList.append(QVariant::fromValue(protocol));
@@ -241,7 +209,7 @@ QBluetoothServiceInfo QBluetoothServer::listen(const QBluetoothUuid &uuid, const
 //! [listen]
     if (d->serverType == QBluetoothServiceInfo::RfcommProtocol) {
 //! [listen2]
-    protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::Rfcomm))
+    protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ProtocolUuid::Rfcomm))
              << QVariant::fromValue(quint8(serverPort()));
     protocolDescriptorList.append(QVariant::fromValue(protocol));
 //! [listen2]
@@ -269,7 +237,7 @@ bool QBluetoothServer::isListening() const
     return d->isListening();
 #endif
 
-    return d->socket->state() == QBluetoothSocket::ListeningState;
+    return d->socket->state() == QBluetoothSocket::SocketState::ListeningState;
 }
 
 /*!
@@ -286,13 +254,14 @@ int QBluetoothServer::maxPendingConnections() const
 
 /*!
     \fn QBluetoothServer::setSecurityFlags(QBluetooth::SecurityFlags security)
-    Sets the Bluetooth security flags to \a security. This function must be called before calling listen().
-    The Bluetooth link will always be encrypted when using Bluetooth 2.1 devices as encryption is
-    mandatory.
+    Sets the Bluetooth security flags to \a security. This function must be called
+    before calling listen(). The Bluetooth link will always be encrypted when using
+    Bluetooth 2.1 devices as encryption is mandatory.
 
-    Android only supports two levels of security (secure and non-secure). If this flag is set to
-    \l QBluetooth::NoSecurity the server object will not employ any authentication or encryption.
-    Any other security flag combination will trigger a secure Bluetooth connection.
+    Android only supports two levels of security (secure and non-secure). If this flag
+    is set to \l QBluetooth::Security::NoSecurity the server object will not employ
+    any authentication or encryption. Any other security flag combination will
+    trigger a secure Bluetooth connection.
 
     On \macos, security flags are not supported and will be ignored.
 */

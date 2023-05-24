@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,32 +6,16 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_VIRTUALKEYBOARD_VIRTUAL_KEYBOARD_GEOMETRY_CHANGE_EVENT_H_
 
 #include "third_party/blink/renderer/modules/event_modules.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
 
 namespace blink {
-
-class DOMRect;
-class VirtualKeyboardGeometryChangeEventInit;
 
 class VirtualKeyboardGeometryChangeEvent final : public Event {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
-  static VirtualKeyboardGeometryChangeEvent* Create(
-      const AtomicString& type,
-      const VirtualKeyboardGeometryChangeEventInit*);
+  static VirtualKeyboardGeometryChangeEvent* Create(const AtomicString& type);
 
-  VirtualKeyboardGeometryChangeEvent(
-      const AtomicString& type,
-      const VirtualKeyboardGeometryChangeEventInit*);
-  VirtualKeyboardGeometryChangeEvent(const AtomicString& type, DOMRect*);
-
-  DOMRect* boundingRect() const { return bounding_rect_; }
-
-  void Trace(Visitor*) const override;
-
- private:
-  Member<DOMRect> bounding_rect_;
+  explicit VirtualKeyboardGeometryChangeEvent(const AtomicString& type);
 };
 
 }  // namespace blink

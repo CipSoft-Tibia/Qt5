@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,8 @@
 
 #include <vector>
 
-#include "base/bind.h"
 #include "base/files/file_path.h"
+#include "base/functional/bind.h"
 #include "base/hash/hash.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
@@ -45,7 +45,7 @@ bool CanAddUrl(const GURL& url) {
 // of favicon types that are requested for the platform (see
 // FaviconDriverImpl).
 favicon_base::IconTypeSet GetIconTypeSet() {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   return {favicon_base::IconType::kFavicon, favicon_base::IconType::kTouchIcon,
           favicon_base::IconType::kTouchPrecomposedIcon,
           favicon_base::IconType::kWebManifestIcon};
@@ -55,7 +55,7 @@ favicon_base::IconTypeSet GetIconTypeSet() {
 }
 
 int GetDesiredFaviconSizeInDips() {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // This is treatest as the largest available icon.
   return 0;
 #else
@@ -123,6 +123,21 @@ base::CancelableTaskTracker::TaskId FaviconServiceImpl::GetFaviconForPageUrl(
                      GetDesiredFaviconSizesInPixels()),
       base::BindOnce(&OnGotFaviconsForPageUrl, GetDesiredFaviconSizeInDips(),
                      std::move(callback)));
+}
+
+base::CancelableTaskTracker::TaskId
+FaviconServiceImpl::GetLargestRawFaviconForPageURL(
+    const GURL& page_url,
+    const std::vector<favicon_base::IconTypeSet>& icon_types,
+    int minimum_size_in_pixels,
+    favicon_base::FaviconRawBitmapCallback callback,
+    base::CancelableTaskTracker* tracker) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return tracker->PostTaskAndReplyWithResult(
+      backend_task_runner_.get(), FROM_HERE,
+      base::BindOnce(&FaviconBackendWrapper::GetLargestFaviconForUrl, backend_,
+                     page_url, icon_types, minimum_size_in_pixels),
+      std::move(callback));
 }
 
 base::CancelableTaskTracker::TaskId FaviconServiceImpl::GetFaviconForPageURL(

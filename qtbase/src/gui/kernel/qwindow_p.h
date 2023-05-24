@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWINDOW_P_H
 #define QWINDOW_P_H
@@ -58,11 +22,11 @@
 
 #include <QtCore/private/qobject_p.h>
 #include <QtCore/qelapsedtimer.h>
-#include <QtGui/QIcon>
+#include <QtCore/qxpfunctional.h>
+#include <QtGui/qicon.h>
+#include <QtGui/qpalette.h>
 
 QT_BEGIN_NAMESPACE
-
-#define QWINDOWSIZE_MAX ((1<<24)-1)
 
 class Q_GUI_EXPORT QWindowPrivate : public QObjectPrivate
 {
@@ -75,15 +39,11 @@ public:
         WindowFrameExclusive
     };
 
-    QWindowPrivate()
-        : QObjectPrivate()
-    {
-        isWindow = true;
-    }
+    QWindowPrivate();
+    ~QWindowPrivate() override;
 
     void init(QScreen *targetScreen = nullptr);
 
-    void maybeQuitOnLastWindowClosed();
 #ifndef QT_NO_CURSOR
     void setCursor(const QCursor *c = nullptr);
     bool applyCursor();
@@ -93,11 +53,8 @@ public:
 
     QWindow *topLevelWindow(QWindow::AncestorMode mode = QWindow::IncludeTransients) const;
 
-#if QT_CONFIG(opengl)
-    virtual QOpenGLContext *shareContext() const;
-#endif
-
     virtual QWindow *eventReceiver() { Q_Q(QWindow); return q; }
+    virtual QPalette windowPalette() const { return QPalette(); }
 
     virtual void setVisible(bool visible);
     void updateVisibility();
@@ -119,18 +76,24 @@ public:
     virtual void clearFocusObject();
     virtual QRectF closestAcceptableGeometry(const QRectF &rect) const;
 
-    virtual void processSafeAreaMarginsChanged() {};
+    void setMinOrMaxSize(QSize *oldSizeMember, const QSize &size,
+                         qxp::function_ref<void()> funcWidthChanged,
+                         qxp::function_ref<void()> funcHeightChanged);
+
+    virtual void processSafeAreaMarginsChanged() {}
+
+    virtual bool participatesInLastWindowClosed() const;
+    virtual bool treatAsVisible() const;
 
     bool isPopup() const { return (windowFlags & Qt::WindowType_Mask) == Qt::Popup; }
     void setAutomaticPositionAndResizeEnabled(bool a)
     { positionAutomatic = resizeAutomatic = a; }
 
+    bool updateDevicePixelRatio();
+
     static QWindowPrivate *get(QWindow *window) { return window->d_func(); }
 
     static Qt::WindowState effectiveState(Qt::WindowStates);
-
-    // ### Qt6: unused
-    virtual bool allowClickThrough(const QPoint &) const { return true; }
 
     QWindow::SurfaceType surfaceType = QWindow::RasterSurface;
     Qt::WindowFlags windowFlags = Qt::Window;
@@ -139,11 +102,13 @@ public:
     bool visible= false;
     bool visibilityOnDestroy = false;
     bool exposed = false;
+    bool inClose = false;
     QSurfaceFormat requestedFormat;
     QString windowTitle;
     QString windowFilePath;
     QIcon windowIcon;
     QRect geometry;
+    qreal devicePixelRatio = 1.0;
     Qt::WindowStates windowState = Qt::WindowNoState;
     QWindow::Visibility visibility = QWindow::Hidden;
     bool resizeEventPending = true;
@@ -178,7 +143,6 @@ public:
     bool hasCursor = false;
 #endif
 
-    bool compositing = false;
     QElapsedTimer lastComposeTime;
 
 #if QT_CONFIG(vulkan)

@@ -16,7 +16,6 @@ extern "C" {
 #endif
 
 #include "av1/encoder/encoder.h"
-#include "aom_ports/system_state.h"
 
 struct yv12_buffer_config;
 struct AV1_COMP;
@@ -66,7 +65,7 @@ static INLINE uint16_t find_average_highbd(const uint16_t *src, int h_start,
  * \param[in]       sd           Source frame buffer
  * \param[in,out]   cpi          Top-level encoder structure
  *
- * \return Nothing is returned. Instead, chosen restoration filter
+ * \remark Nothing is returned. Instead, chosen restoration filter
  * types and parameters are stored per plane in the \c rst_info structure
  * of type \ref RestorationInfo inside \c cpi->common:
  * \arg \c rst_info[ \c 0 ]: Chosen parameters for Y plane

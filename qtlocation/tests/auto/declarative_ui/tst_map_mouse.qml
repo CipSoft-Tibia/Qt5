@@ -1,40 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-import QtQuick 2.0
-import QtTest 1.0
-import QtLocation 5.6
-import QtPositioning 5.5
+import QtQuick
+import QtTest
+import QtLocation
+import QtPositioning
 
     /*
      MouseArea setup for this test case.
      Map dimensions are 100 * 100
-     Item containing map is 120,120
+     Item containing mapView is 120,120
 
                                          (50,50)
      (0,0)   ---------------------------------------------------- (100,0)
@@ -82,15 +57,15 @@ Item {
         ma.lastAccepted = me.accepted
     }
 
-    Map {
-        id: map;
+    MapView {
+        id: mapView
         x: 0; y: 0; width: 100; height: 100
-        center {
+        map.center {
             latitude: 20
             longitude: 20
         }
 
-        plugin: testPlugin;
+        map.plugin: testPlugin
 
         MouseArea {
             id: mouseUpper
@@ -107,12 +82,12 @@ Item {
 
             preventStealing: true
 
-            onClicked: page.setMouseData(mouseUpper, mouse)
-            onDoubleClicked: page.setMouseData(mouseUpper, mouse)
-            onPressed: page.setMouseData(mouseUpper, mouse)
-            onReleased: page.setMouseData(mouseUpper, mouse)
-            onPositionChanged: page.setMouseData(mouseUpper, mouse)
-            onPressAndHold: page.setMouseData(mouseUpper, mouse)
+            onClicked: (mouse) => page.setMouseData(mouseUpper, mouse)
+            onDoubleClicked: (mouse) => page.setMouseData(mouseUpper, mouse)
+            onPressed: (mouse) => page.setMouseData(mouseUpper, mouse)
+            onReleased: (mouse) => page.setMouseData(mouseUpper, mouse)
+            onPositionChanged: (mouse) => page.setMouseData(mouseUpper, mouse)
+            onPressAndHold: (mouse) => page.setMouseData(mouseUpper, mouse)
         }
         MouseArea {
             id: mouseLower
@@ -127,12 +102,12 @@ Item {
             property bool lastIsClick: false
             property bool lastAccepted: false;
 
-            onClicked: page.setMouseData(mouseLower, mouse)
-            onDoubleClicked: page.setMouseData(mouseLower, mouse)
-            onPressed: page.setMouseData(mouseLower, mouse)
-            onReleased: page.setMouseData(mouseLower, mouse)
-            onPositionChanged: page.setMouseData(mouseLower, mouse)
-            onPressAndHold: page.setMouseData(mouseLower, mouse)
+            onClicked: (mouse) => page.setMouseData(mouseLower, mouse)
+            onDoubleClicked: (mouse) => page.setMouseData(mouseLower, mouse)
+            onPressed: (mouse) => page.setMouseData(mouseLower, mouse)
+            onReleased: (mouse) => page.setMouseData(mouseLower, mouse)
+            onPositionChanged: (mouse) => page.setMouseData(mouseLower, mouse)
+            onPressAndHold: (mouse) => page.setMouseData(mouseLower, mouse)
         }
         MouseArea {
             id: mouseOverlapper
@@ -147,18 +122,18 @@ Item {
             property bool lastIsClick: false
             property bool lastAccepted: false;
 
-            onClicked: page.setMouseData(mouseOverlapper, mouse)
-            onDoubleClicked: page.setMouseData(mouseOverlapper, mouse)
-            onPressed: page.setMouseData(mouseOverlapper, mouse)
-            onReleased: page.setMouseData(mouseOverlapper, mouse)
-            onPositionChanged: page.setMouseData(mouseOverlapper, mouse)
-            onPressAndHold: page.setMouseData(mouseOverlapper, mouse)
+            onClicked: (mouse) => page.setMouseData(mouseOverlapper, mouse)
+            onDoubleClicked: (mouse) => page.setMouseData(mouseOverlapper, mouse)
+            onPressed: (mouse) => page.setMouseData(mouseOverlapper, mouse)
+            onReleased: (mouse) => page.setMouseData(mouseOverlapper, mouse)
+            onPositionChanged: (mouse) => page.setMouseData(mouseOverlapper, mouse)
+            onPressAndHold: (mouse) => page.setMouseData(mouseOverlapper, mouse)
         }
     }
 
     TestCase {
         name: "MouseArea"
-        when: windowShown && map.mapReady
+        when: windowShown && mapView.map.mapReady
         SignalSpy {id: mouseUpperClickedSpy; target: mouseUpper; signalName: "clicked"}
         SignalSpy {id: mouseLowerClickedSpy; target: mouseLower; signalName: "clicked"}
         SignalSpy {id: mouseOverlapperClickedSpy; target: mouseOverlapper; signalName: "clicked"}
@@ -237,11 +212,7 @@ Item {
             mouseRelease(target, x, y)
         }
         function real_double_click (target, x, y) {
-            mousePress(target, x,y)
-            mouseRelease(target, x, y)
-            mousePress(target, x, y)
-            mouseDoubleClick(target, x, y)
-            mouseRelease(target, x, y)
+            mouseDoubleClickSequence(target, x, y)
         }
         function real_press_and_hold(target, x,y) {
             mousePress(target,x,y)
@@ -255,28 +226,28 @@ Item {
             mouseUpper.enabled = false
             compare(mouseUpperEnabledChangedSpy.count, 1)
             compare(mouseUpperClickedSpy.count, 0)
-            mouseClick(map, 5, 25)
+            mouseClick(mapView, 5, 25)
             compare(mouseUpperClickedSpy.count, 0)
             mouseUpper.enabled = true
-            mouseClick(map, 5, 25)
+            mouseClick(mapView, 5, 25)
             tryCompare(mouseUpperClickedSpy, "count", 1)
             compare(mouseUpperEnabledChangedSpy.count, 2)
             // when overlapping are is disabled, the event should flow through
             compare(mouseOverlapperClickedSpy.count, 0)
-            mouseClick(map, 55, 25)
+            mouseClick(mapView, 55, 25)
             tryCompare(mouseUpperClickedSpy, "count", 1)
             compare(mouseOverlapperClickedSpy.count, 1)
             mouseOverlapper.enabled = false
             compare(mouseOverlapperEnabledChangedSpy.count, 1)
             compare(mouseOverlapper.enabled, false)
-            mouseClick(map, 55, 25)
+            mouseClick(mapView, 55, 25)
             tryCompare(mouseOverlapperClickedSpy, "count", 1)
             compare(mouseUpperClickedSpy.count, 2)
             // re-enable and verify that still works
             mouseOverlapper.enabled = true
             compare(mouseOverlapperEnabledChangedSpy.count, 2)
             compare(mouseOverlapper.enabled, true)
-            mouseClick(map, 55, 25)
+            mouseClick(mapView, 55, 25)
             tryCompare(mouseOverlapperClickedSpy, "count", 2) // should consume again
             compare(mouseUpperClickedSpy.count, 2)
         }
@@ -284,30 +255,30 @@ Item {
         function test_wheel() {
             clear_data()
             wait(500);
-            // on map but without mouse area
+            // on mapView but without mouse area
             var startZoomLevel = 6.20
-            map.zoomLevel = startZoomLevel
-            mouseWheel(map, 5, 5, 15, 5, Qt.LeftButton, Qt.NoModifiers)
-            //see QDeclarativeGeoMapGestureArea::handleWheelEvent
-            var endZoomLevel = startZoomLevel + 5 * 0.001
-            compare(map.zoomLevel,endZoomLevel)
+            mapView.map.zoomLevel = startZoomLevel
+            mouseWheel(mapView, 5, 5, 15, 5 /* dy */, Qt.LeftButton, Qt.NoModifiers)
+            // see WheelHandler in MapView.qml
+            var endZoomLevel = startZoomLevel + 5 / 120
+            compare(mapView.map.zoomLevel,endZoomLevel)
 
-            map.zoomLevel = startZoomLevel
-            mouseWheel(map, 5, 5, -15, -5, Qt.LeftButton, Qt.NoModifiers)
-            //see QDeclarativeGeoMapGestureArea::handleWheelEvent
-            endZoomLevel = startZoomLevel - 5 * 0.001
-            compare(map.zoomLevel,endZoomLevel)
+            mapView.map.zoomLevel = startZoomLevel
+            mouseWheel(mapView, 5, 5, -15, -5, Qt.LeftButton, Qt.NoModifiers)
+            // see WheelHandler in MapView.qml
+            endZoomLevel = startZoomLevel - 5 / 120
+            compare(mapView.map.zoomLevel,endZoomLevel)
 
-            // on map on top of mouse area
-            map.zoomLevel = startZoomLevel
-            mouseWheel(map, 55, 75, -30, -2, Qt.LeftButton, Qt.NoModifiers)
-            endZoomLevel = startZoomLevel - 2 * 0.001
-            compare(map.zoomLevel,endZoomLevel)
+            // on mapView on top of mouse area
+            mapView.map.zoomLevel = startZoomLevel
+            mouseWheel(mapView, 55, 75, -30, -2, Qt.LeftButton, Qt.NoModifiers)
+            endZoomLevel = startZoomLevel - 2 / 120
+            compare(mapView.map.zoomLevel,endZoomLevel)
 
-            // outside of map
-            map.zoomLevel = startZoomLevel
-            mouseWheel(map, -100, -100, 40, 4, Qt.LeftButton, Qt.NoModifiers)
-            compare(map.zoomLevel,startZoomLevel)
+            // outside of mapView
+            mapView.map.zoomLevel = startZoomLevel
+            mouseWheel(mapView, -100, -100, 40, 4, Qt.LeftButton, Qt.NoModifiers)
+            compare(mapView.map.zoomLevel,startZoomLevel)
         }
 
         function test_aaa_basic_properties() // _aaa_ to ensure execution first
@@ -325,11 +296,11 @@ Item {
             mouseUpper.acceptedButtons = Qt.RightButton  | Qt.MiddleButton
             compare(mouseUpper.acceptedButtons, Qt.RightButton | Qt.MiddleButton)
             compare(mouseUpperAcceptedButtonsChangedSpy.count, 1)
-            mouseClick(map, 5, 25)
+            mouseClick(mapView, 5, 25)
             compare(mouseUpperClickedSpy.count, 0) // left button not accepted
             mouseUpper.acceptedButtons = Qt.LeftButton
             compare(mouseUpperAcceptedButtonsChangedSpy.count, 2)
-            mouseClick(map, 5, 25)
+            mouseClick(mapView, 5, 25)
             tryCompare(mouseUpperClickedSpy, "count", 1)
         }
 
@@ -337,14 +308,14 @@ Item {
             // tests basic position changed/move when button is being pressed
             clear_data();
             wait(500);
-            mousePress(map, 5, 25)
+            mousePress(mapView, 5, 25)
             compare(mouseUpperPressedSpy.count, 1)
             compare(mouseUpper.lastAccepted, true)
             compare(mouseUpper.lastButton, Qt.LeftButton)
             compare(mouseUpper.lastButtons, Qt.LeftButton)
             compare(mouseUpper.lastModifiers, Qt.NoModifier)
             // moves within the mouse area
-            mouseMove(map, 5, 26, 0, Qt.LeftButton) // '0' is 'delay'
+            mouseMove(mapView, 5, 26, 0, Qt.LeftButton) // '0' is 'delay'
             wait(1) // mouseMove event goes one extra eventloop round in the test lib
             compare(mouseUpperEnteredSpy.count, 1)
             compare(mouseUpperPositionChangedSpy.count, 1)
@@ -358,7 +329,7 @@ Item {
             compare(mouseUpper.lastX, 5)
             compare(mouseUpper.lastY, 6) // remember 20 offset of the mouse area
 
-            mouseMove(map, 6, 27, 0, Qt.LeftButton | Qt.RightButton)
+            mouseMove(mapView, 6, 27, 0, Qt.LeftButton | Qt.RightButton)
             wait(1)
             compare(mouseUpperEnteredSpy.count, 1) // no re-entry
             compare(mouseUpperPositionChangedSpy.count, 2)
@@ -372,15 +343,15 @@ Item {
             compare(mouseUpper.lastX, 6)
             compare(mouseUpper.lastY, 7) // remember 20 offset of the mouse area
 
-            // moves outside of mouse but within map
-            mouseMove(map, 2, 2, 0)
+            // moves outside of mouse but within mapView
+            mouseMove(mapView, 2, 2, 0)
             wait(1)
             compare(mouseUpperExitedSpy.count, 1)
             compare(mouseUpperPositionChangedSpy.count, 3)
             compare(mouseUpper.mouseX, 2)
             compare(mouseUpper.mouseY, -18)
-            // come back to map
-            mouseMove(map, 7, 28, 0)
+            // come back to mapView
+            mouseMove(mapView, 7, 28, 0)
             wait(1)
             compare(mouseUpperEnteredSpy.count, 2)
             compare(mouseUpperExitedSpy.count, 1)
@@ -389,7 +360,7 @@ Item {
             compare(mouseUpper.mouseY, 8)
 
             // move outside of widget area (left). make sure that other mouse areas won't get the events
-            mouseMove(map, -10, 10, 0)
+            mouseMove(mapView, -10, 10, 0)
             wait(1)
             compare(mouseUpperPositionChangedSpy.count, 5)
             compare(mouseUpperExitedSpy.count, 2)
@@ -397,14 +368,14 @@ Item {
             compare(mouseUpper.mouseY, -10)
 
             // back in and then on top of the widget
-            mouseMove(map, 5, 25, 0)
+            mouseMove(mapView, 5, 25, 0)
             wait(1)
             compare(mouseUpperPositionChangedSpy.count, 6)
             compare(mouseUpperExitedSpy.count, 2)
             compare(mouseUpperEnteredSpy.count, 3)
             compare(mouseUpper.mouseX, 5)
             compare(mouseUpper.mouseY, 5)
-            mouseMove(map, 5, -25, 0)
+            mouseMove(mapView, 5, -25, 0)
             wait(1)
             compare(mouseUpperPositionChangedSpy.count, 7)
             compare(mouseUpperExitedSpy.count, 3)
@@ -413,21 +384,21 @@ Item {
             compare(mouseUpper.mouseY, -45)
 
             // back in then float on top of other mouse areas
-            mouseMove(map, 5, 25, 0)
+            mouseMove(mapView, 5, 25, 0)
             wait(1)
             compare(mouseUpperPositionChangedSpy.count, 8)
             compare(mouseUpperExitedSpy.count, 3)
             compare(mouseUpperEnteredSpy.count, 4)
             compare(mouseUpper.mouseX, 5)
             compare(mouseUpper.mouseY, 5)
-            mouseMove(map, 5, 75, 0)
+            mouseMove(mapView, 5, 75, 0)
             wait(1)
             compare(mouseUpperPositionChangedSpy.count, 9)
             compare(mouseUpperExitedSpy.count, 4)
             compare(mouseUpperEnteredSpy.count, 4)
             compare(mouseUpper.mouseX, 5)
             compare(mouseUpper.mouseY, 55) // remember the 20 offset of upper mouse area
-            mouseMove(map, 75, 75, 0)
+            mouseMove(mapView, 75, 75, 0)
             wait(1)
             compare(mouseUpperPositionChangedSpy.count, 10)
             compare(mouseUpperExitedSpy.count, 4)
@@ -435,7 +406,7 @@ Item {
             compare(mouseUpper.mouseX, 75)
             compare(mouseUpper.mouseY, 55)
             // finally back in
-            mouseMove(map, 5, 25, 0)
+            mouseMove(mapView, 5, 25, 0)
             wait(1)
             compare(mouseUpperPositionChangedSpy.count, 11)
             compare(mouseUpperExitedSpy.count, 4)
@@ -449,7 +420,7 @@ Item {
             compare(mouseOverlapperEnteredSpy.count, 0)
             compare(mouseOverlapperPositionChangedSpy.count, 0)
             // release mouse
-            mouseRelease(map, 5, 25)
+            mouseRelease(mapView, 5, 25)
             // TODO enable these!
             compare(mouseUpperEnteredSpy.count, 5)
             compare(mouseUpperExitedSpy.count, 5) // release triggers one more exited()
@@ -459,16 +430,16 @@ Item {
             clear_data()
             wait(500);
             // send to emptiness
-            mousePress(map, 5, 5)
+            mousePress(mapView, 5, 5)
             compare(mouseUpperPressedSpy.count, 0)
             compare(mouseLowerPressedSpy.count, 0)
             compare(mouseOverlapperPressedSpy.count, 0)
-            mouseRelease(map, 5, 5)
+            mouseRelease(mapView, 5, 5)
             compare(mouseUpperReleasedSpy.count, 0)
             compare(mouseLowerReleasedSpy.count, 0)
             compare(mouseOverlapperReleasedSpy.count, 0)
             // send to upper mouse area
-            mousePress(map, 5, 25)
+            mousePress(mapView, 5, 25)
             compare(mouseUpperPressedSpy.count, 1)
             compare(mouseLowerPressedSpy.count, 0)
             compare(mouseOverlapperPressedSpy.count, 0)
@@ -480,18 +451,18 @@ Item {
             compare(mouseUpper.lastX, 5)
             compare(mouseUpper.lastY, 5) // remember 20 offset of the mouse area
 
-            mouseRelease(map, 5, 25)
+            mouseRelease(mapView, 5, 25)
             compare(mouseUpperPressedSpy.count, 1)
             compare(mouseUpperReleasedSpy.count, 1)
             compare(mouseLowerPressedSpy.count, 0)
             compare(mouseLowerReleasedSpy.count, 0)
 
-            mousePress(map, 5, 26)
+            mousePress(mapView, 5, 26)
             compare(mouseUpperPressedSpy.count, 2)
             compare(mouseLowerPressedSpy.count, 0)
             compare(mouseOverlapperPressedSpy.count, 0)
 
-            mouseRelease(map, 5, 26)
+            mouseRelease(mapView, 5, 26)
             compare(mouseUpperPressedSpy.count, 2)
             compare(mouseUpperReleasedSpy.count, 2)
             compare(mouseLowerPressedSpy.count, 0)
@@ -503,7 +474,7 @@ Item {
             compare(mouseUpper.lastX, 5)
             compare(mouseUpper.lastY, 6) // remember 20 offset of the mouse area
 
-            mousePress(map, 5, 75)
+            mousePress(mapView, 5, 75)
             compare(mouseUpperPressedSpy.count, 2)
             compare(mouseLowerPressedSpy.count, 1)
             compare(mouseOverlapperPressedSpy.count, 0)
@@ -514,26 +485,26 @@ Item {
             compare(mouseLower.lastX, 5)
             compare(mouseLower.lastY, 25) // remember 50 offset of the mouse area
 
-            mouseRelease(map, 5, 75)
+            mouseRelease(mapView, 5, 75)
             compare(mouseUpperPressedSpy.count, 2)
             compare(mouseUpperReleasedSpy.count, 2)
             compare(mouseLowerPressedSpy.count, 1)
             compare(mouseLowerReleasedSpy.count, 1)
             compare(mouseOverlapperPressedSpy.count, 0)
 
-            mousePress(map, 55, 75)
+            mousePress(mapView, 55, 75)
             compare(mouseUpperPressedSpy.count, 2)
             compare(mouseLowerPressedSpy.count, 1)
             compare(mouseOverlapperPressedSpy.count, 1)
             compare(mouseOverlapperReleasedSpy.count, 0)
 
-            mouseMove(map, 55, 25)
-            mouseRelease(map, 55, 25)
+            mouseMove(mapView, 55, 25)
+            mouseRelease(mapView, 55, 25)
             compare(mouseUpperPressedSpy.count, 2)
             compare(mouseUpperReleasedSpy.count, 2)
             compare(mouseLowerPressedSpy.count, 1)
             compare(mouseLowerReleasedSpy.count, 1)
-            //this should follow the same logic as Flickable, after the gesture is detected, the map should steal events.
+            //this should follow the same logic as Flickable, after the gesture is detected, the mapView should steal events.
             compare(mouseOverlapperReleasedSpy.count, 0)
         }
 
@@ -541,13 +512,13 @@ Item {
             clear_data();
             wait(500);
 
-            mouseClick(map, 5, 5, Qt.RightButton, Qt.AltModifier)
+            mouseClick(mapView, 5, 5, Qt.RightButton, Qt.AltModifier)
             compare(mouseUpperClickedSpy.count, 0)
             compare(mouseLowerClickedSpy.count, 0)
             compare(mouseOverlapperClickedSpy.count, 0)
             mouseUpper.acceptedButtons = Qt.LeftButton | Qt.RightButton
             // TC sending click event to upper mouse area 5,25
-            mouseClick(map, 5, 25, Qt.RightButton, Qt.AltModifier)
+            mouseClick(mapView, 5, 25, Qt.RightButton, Qt.AltModifier)
             tryCompare(mouseUpperClickedSpy, "count", 1)
             // TC done and clicked was received
             //compare(mouseUpperClickedSpy.count, 1)
@@ -566,40 +537,40 @@ Item {
 
             // mouse click with unaccepted buttons should not cause click
             mouseUpper.acceptedButtons = Qt.LeftButton
-            mouseClick(map, 5, 25, Qt.RightButton, Qt.AltModifier)
+            mouseClick(mapView, 5, 25, Qt.RightButton, Qt.AltModifier)
             tryCompare(mouseUpperClickedSpy, "count", 1)
             compare(mouseLowerClickedSpy.count, 0)
             compare(mouseOverlapperClickedSpy.count, 0)
 
-            mouseClick(map, 5, 25)
+            mouseClick(mapView, 5, 25)
             tryCompare(mouseUpperClickedSpy, "count", 2)
             compare(mouseLowerClickedSpy.count, 0)
             compare(mouseOverlapperClickedSpy.count, 0)
             compare(mouseUpper.lastModifiers, Qt.NoModifier)
             compare(mouseUpper.lastButton, Qt.LeftButton)
-            mouseClick(map, 5, 55)
+            mouseClick(mapView, 5, 55)
             tryCompare(mouseUpperClickedSpy, "count", 2)
             compare(mouseLowerClickedSpy.count, 1)
             compare(mouseOverlapperClickedSpy.count, 0)
-            mouseClick(map, 5, 55)
+            mouseClick(mapView, 5, 55)
             tryCompare(mouseUpperClickedSpy,"count", 2)
             compare(mouseLowerClickedSpy.count, 2)
             compare(mouseOverlapperClickedSpy.count, 0)
             // declaration order counts on overlap case; overlapping area
             // declared later will get the events
-            mouseClick(map, 55, 25)
+            mouseClick(mapView, 55, 25)
             tryCompare(mouseUpperClickedSpy, "count", 2)
             compare(mouseLowerClickedSpy.count, 2)
             compare(mouseOverlapperClickedSpy.count, 1)
-            mouseClick(map, 55, 75)
+            mouseClick(mapView, 55, 75)
             tryCompare(mouseUpperClickedSpy, "count", 2)
             compare(mouseLowerClickedSpy.count, 2)
             compare(mouseOverlapperClickedSpy.count, 2)
-            real_click(map, 55, 25)
+            real_click(mapView, 55, 25)
             tryCompare(mouseUpperClickedSpy, "count", 2)
             compare(mouseLowerClickedSpy.count, 2)
             compare(mouseOverlapperClickedSpy.count, 3)
-            real_click(map, 55, 75)
+            real_click(mapView, 55, 75)
             tryCompare(mouseUpperClickedSpy, "count", 2)
             compare(mouseLowerClickedSpy.count, 2)
             compare(mouseOverlapperClickedSpy.count, 4)
@@ -608,12 +579,12 @@ Item {
         function test_basic_double_click() {
             clear_data();
             wait(500);
-            real_double_click(map, 5, 5)
+            real_double_click(mapView, 5, 5)
 
             compare(mouseUpperDoubleClickedSpy.count, 0)
             compare(mouseLowerDoubleClickedSpy.count, 0)
             compare(mouseOverlapperDoubleClickedSpy.count, 0)
-            real_double_click(map, 5, 25)
+            real_double_click(mapView, 5, 25)
             tryCompare(mouseUpper, "lastAccepted", true)
             compare(mouseUpper.lastButton, Qt.LeftButton)
             compare(mouseUpper.lastModifiers, Qt.NoModifier)
@@ -624,26 +595,26 @@ Item {
             compare(mouseUpperDoubleClickedSpy.count, 1)
             compare(mouseLowerDoubleClickedSpy.count, 0)
             compare(mouseOverlapperDoubleClickedSpy.count, 0)
-            real_double_click(map, 5, 25)
+            real_double_click(mapView, 5, 25)
             tryCompare(mouseUpperDoubleClickedSpy, "count", 2)
             compare(mouseLowerDoubleClickedSpy.count, 0)
             compare(mouseOverlapperDoubleClickedSpy.count, 0)
-            real_double_click(map, 5, 55)
+            real_double_click(mapView, 5, 55)
             tryCompare(mouseUpperDoubleClickedSpy, "count", 2)
             compare(mouseLowerDoubleClickedSpy.count, 1)
             compare(mouseOverlapperDoubleClickedSpy.count, 0)
-            real_double_click(map, 5, 55)
+            real_double_click(mapView, 5, 55)
             tryCompare(mouseUpperDoubleClickedSpy, "count", 2)
             compare(mouseLowerDoubleClickedSpy.count, 2)
             compare(mouseOverlapperDoubleClickedSpy.count, 0)
             // declaration order counts on overlap case; overlapping area declared later will get the events
-            real_double_click(map, 55, 25)
+            real_double_click(mapView, 55, 25)
             tryCompare(mouseUpperDoubleClickedSpy, "count", 2)
             compare(mouseLowerDoubleClickedSpy.count, 2)
             compare(mouseOverlapperDoubleClickedSpy.count, 1)
             compare(mouseOverlapperPressedSpy.count, 2)
             compare(mouseOverlapperReleasedSpy.count, 2)
-            real_double_click(map, 55, 75)
+            real_double_click(mapView, 55, 75)
             tryCompare(mouseUpperDoubleClickedSpy, "count", 2)
             compare(mouseLowerDoubleClickedSpy.count, 2)
             compare(mouseOverlapperDoubleClickedSpy.count, 2)
@@ -651,20 +622,20 @@ Item {
             compare(mouseOverlapperReleasedSpy.count, 4)
             // disable overlapping area and check event is delivered to the ones beneath
             mouseOverlapper.enabled = false
-            real_double_click(map, 55, 25)
+            real_double_click(mapView, 55, 25)
             tryCompare(mouseUpperDoubleClickedSpy, "count", 3)
             compare(mouseLowerDoubleClickedSpy.count, 2)
             compare(mouseOverlapperDoubleClickedSpy.count, 2)
-            real_double_click(map, 55, 75)
+            real_double_click(mapView, 55, 75)
             tryCompare(mouseUpperDoubleClickedSpy, "count", 3)
             compare(mouseLowerDoubleClickedSpy.count, 3)
             compare(mouseOverlapperDoubleClickedSpy.count, 2)
             mouseOverlapper.enabled = true
-            real_double_click(map, 55, 25)
+            real_double_click(mapView, 55, 25)
             tryCompare(mouseUpperDoubleClickedSpy, "count", 3)
             compare(mouseLowerDoubleClickedSpy.count, 3)
             compare(mouseOverlapperDoubleClickedSpy.count, 3)
-            real_double_click(map, 55, 75)
+            real_double_click(mapView, 55, 75)
             tryCompare(mouseUpperDoubleClickedSpy, "count", 3)
             compare(mouseLowerDoubleClickedSpy.count, 3)
             compare(mouseOverlapperDoubleClickedSpy.count, 4)
@@ -672,23 +643,23 @@ Item {
 
         function test_release_does_not_block_clicked() { // QTBUG-66534
             clear_data()
-            mousePress(map, 55, 75)
+            mousePress(mapView, 55, 75)
             compare(mouseOverlapperPressedSpy.count, 1)
-            mouseRelease(map, 55, 25)
+            mouseRelease(mapView, 55, 25)
             compare(mouseOverlapperReleasedSpy.count, 1)
-            mouseClick(map, 25, 25)
+            mouseClick(mapView, 25, 25)
             compare(mouseUpperClickedSpy.count, 1)
         }
 
         function test_zzz_basic_press_and_hold() { // _zzz_ to ensure execution last (takes time)
             clear_data();
             wait(1000);
-            real_press_and_hold(map, 5, 5)
+            real_press_and_hold(mapView, 5, 5)
             compare(mouseUpperPressAndHoldSpy.count, 0)
             compare(mouseLowerPressAndHoldSpy.count, 0)
             compare(mouseOverlapperPressAndHoldSpy.count, 0)
 
-            mousePress(map,5,25)
+            mousePress(mapView,5,25)
             wait(1000) // threshold is 800 ms
             compare(mouseUpperPressAndHoldSpy.count, 1)
             compare(mouseLowerPressAndHoldSpy.count, 0)
@@ -699,12 +670,12 @@ Item {
             compare(mouseUpper.lastWasHeld, true) // notable part
             compare(mouseUpper.lastX, 5)
             compare(mouseUpper.lastY, 5) // remember 20 offset of the mouse area
-            mouseRelease(map,5,25)
-            real_press_and_hold(map, 5, 55)
+            mouseRelease(mapView,5,25)
+            real_press_and_hold(mapView, 5, 55)
             tryCompare(mouseUpperPressAndHoldSpy, "count", 1)
             compare(mouseLowerPressAndHoldSpy.count, 1)
             compare(mouseOverlapperPressAndHoldSpy.count, 0)
-            real_press_and_hold(map, 55, 75)
+            real_press_and_hold(mapView, 55, 75)
             tryCompare(mouseUpperPressAndHoldSpy, "count", 1)
             compare(mouseLowerPressAndHoldSpy.count, 1)
             compare(mouseOverlapperPressAndHoldSpy.count, 1)
@@ -715,14 +686,14 @@ Item {
             compare(mouseOverlapper.lastX, 5)
             compare(mouseOverlapper.lastY, 75)
             // make sure that the wasHeld is cleared
-            mouseClick(map, 55, 75)
+            mouseClick(mapView, 55, 75)
             tryCompare(mouseOverlapper, "lastAccepted", true)
             compare(mouseOverlapper.lastButton, Qt.LeftButton)
             compare(mouseOverlapper.lastModifiers, Qt.NoModifier)
             compare(mouseOverlapper.lastWasHeld, false)
             compare(mouseOverlapper.lastX, 5)
             compare(mouseOverlapper.lastY, 75)
-            real_press_and_hold(map, 55, 25)
+            real_press_and_hold(mapView, 55, 25)
             tryCompare(mouseUpperPressAndHoldSpy, "count", 1)
             compare(mouseLowerPressAndHoldSpy.count, 1)
             compare(mouseOverlapperPressAndHoldSpy.count, 2)

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,12 +8,12 @@
 
 #include "base/check.h"
 #include "base/notreached.h"
-#include "base/stl_util.h"
 #include "device/gamepad/public/cpp/gamepads.h"
 #include "device/vr/openxr/openxr_util.h"
 #include "device/vr/util/xr_standard_gamepad_builder.h"
+#include "ui/gfx/geometry/decomposed_transform.h"
 #include "ui/gfx/geometry/quaternion.h"
-#include "ui/gfx/transform_util.h"
+#include "ui/gfx/geometry/transform.h"
 
 namespace device {
 
@@ -34,6 +34,104 @@ const char* GetStringFromType(OpenXrHandednessType type) {
 std::string GetTopLevelUserPath(OpenXrHandednessType type) {
   return std::string("/user/hand/") + GetStringFromType(type);
 }
+
+static constexpr mojom::XRHandJoint OpenXRHandJointToMojomJoint(
+    XrHandJointEXT openxr_joint) {
+  DCHECK_NE(openxr_joint, XR_HAND_JOINT_PALM_EXT);
+  // The OpenXR joints have palm at 0, but from that point are the same as the
+  // mojom joints. Hence they are offset by 1.
+  return static_cast<mojom::XRHandJoint>(openxr_joint - 1);
+}
+
+// Enforce that the conversion is correct at compilation time.
+// The mojom hand joints must match the WebXR spec. If these are ever out of
+// sync, this mapping will need to be updated.
+static_assert(mojom::XRHandJoint::kWrist ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_WRIST_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(
+    mojom::XRHandJoint::kThumbMetacarpal ==
+        OpenXRHandJointToMojomJoint(XR_HAND_JOINT_THUMB_METACARPAL_EXT),
+    "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kThumbPhalanxProximal ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_THUMB_PROXIMAL_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kThumbPhalanxDistal ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_THUMB_DISTAL_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kThumbTip ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_THUMB_TIP_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(
+    mojom::XRHandJoint::kIndexFingerMetacarpal ==
+        OpenXRHandJointToMojomJoint(XR_HAND_JOINT_INDEX_METACARPAL_EXT),
+    "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kIndexFingerPhalanxProximal ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_INDEX_PROXIMAL_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(
+    mojom::XRHandJoint::kIndexFingerPhalanxIntermediate ==
+        OpenXRHandJointToMojomJoint(XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT),
+    "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kIndexFingerPhalanxDistal ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_INDEX_DISTAL_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kIndexFingerTip ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_INDEX_TIP_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(
+    mojom::XRHandJoint::kMiddleFingerMetacarpal ==
+        OpenXRHandJointToMojomJoint(XR_HAND_JOINT_MIDDLE_METACARPAL_EXT),
+    "WebXR - OpenXR joint enum value mismatch");
+static_assert(
+    mojom::XRHandJoint::kMiddleFingerPhalanxProximal ==
+        OpenXRHandJointToMojomJoint(XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT),
+    "WebXR - OpenXR joint enum value mismatch");
+static_assert(
+    mojom::XRHandJoint::kMiddleFingerPhalanxIntermediate ==
+        OpenXRHandJointToMojomJoint(XR_HAND_JOINT_MIDDLE_INTERMEDIATE_EXT),
+    "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kMiddleFingerPhalanxDistal ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_MIDDLE_DISTAL_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kMiddleFingerTip ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_MIDDLE_TIP_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(
+    mojom::XRHandJoint::kRingFingerMetacarpal ==
+        OpenXRHandJointToMojomJoint(XR_HAND_JOINT_RING_METACARPAL_EXT),
+    "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kRingFingerPhalanxProximal ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_RING_PROXIMAL_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(
+    mojom::XRHandJoint::kRingFingerPhalanxIntermediate ==
+        OpenXRHandJointToMojomJoint(XR_HAND_JOINT_RING_INTERMEDIATE_EXT),
+    "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kRingFingerPhalanxDistal ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_RING_DISTAL_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kRingFingerTip ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_RING_TIP_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(
+    mojom::XRHandJoint::kPinkyFingerMetacarpal ==
+        OpenXRHandJointToMojomJoint(XR_HAND_JOINT_LITTLE_METACARPAL_EXT),
+    "WebXR - OpenXR joint enum value mismatch");
+static_assert(
+    mojom::XRHandJoint::kPinkyFingerPhalanxProximal ==
+        OpenXRHandJointToMojomJoint(XR_HAND_JOINT_LITTLE_PROXIMAL_EXT),
+    "WebXR - OpenXR joint enum value mismatch");
+static_assert(
+    mojom::XRHandJoint::kPinkyFingerPhalanxIntermediate ==
+        OpenXRHandJointToMojomJoint(XR_HAND_JOINT_LITTLE_INTERMEDIATE_EXT),
+    "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kPinkyFingerPhalanxDistal ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_LITTLE_DISTAL_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
+static_assert(mojom::XRHandJoint::kPinkyFingerTip ==
+                  OpenXRHandJointToMojomJoint(XR_HAND_JOINT_LITTLE_TIP_EXT),
+              "WebXR - OpenXR joint enum value mismatch");
 
 }  // namespace
 
@@ -62,6 +160,10 @@ OpenXrController::~OpenXrController() {
   if (pointer_pose_space_ != XR_NULL_HANDLE) {
     xrDestroySpace(pointer_pose_space_);
   }
+  if (hand_tracker_ != XR_NULL_HANDLE) {
+    extension_helper_->ExtensionMethods().xrDestroyHandTrackerEXT(
+        hand_tracker_);
+  }
 }
 XrResult OpenXrController::Initialize(
     OpenXrHandednessType type,
@@ -75,6 +177,7 @@ XrResult OpenXrController::Initialize(
   instance_ = instance;
   session_ = session;
   path_helper_ = path_helper;
+  extension_helper_ = &extension_helper;
 
   std::string action_set_name =
       std::string(GetStringFromType(type_)) + "_action_set";
@@ -83,11 +186,11 @@ XrResult OpenXrController::Initialize(
       XR_TYPE_ACTION_SET_CREATE_INFO};
 
   errno_t error = strcpy_s(action_set_create_info.actionSetName,
-                           base::size(action_set_create_info.actionSetName),
+                           std::size(action_set_create_info.actionSetName),
                            action_set_name.c_str());
   DCHECK(!error);
   error = strcpy_s(action_set_create_info.localizedActionSetName,
-                   base::size(action_set_create_info.localizedActionSetName),
+                   std::size(action_set_create_info.localizedActionSetName),
                    action_set_name.c_str());
   DCHECK(!error);
 
@@ -96,7 +199,7 @@ XrResult OpenXrController::Initialize(
 
   RETURN_IF_XR_FAILED(InitializeControllerActions());
 
-  SuggestBindings(extension_helper, bindings);
+  SuggestBindings(bindings);
   RETURN_IF_XR_FAILED(InitializeControllerSpaces());
 
   return XR_SUCCESS;
@@ -110,6 +213,8 @@ XrResult OpenXrController::InitializeControllerActions() {
   RETURN_IF_XR_FAILED(CreateActionsForButton(OpenXrButtonType::kThumbrest));
   RETURN_IF_XR_FAILED(CreateActionsForButton(OpenXrButtonType::kButton1));
   RETURN_IF_XR_FAILED(CreateActionsForButton(OpenXrButtonType::kButton2));
+  RETURN_IF_XR_FAILED(CreateActionsForButton(OpenXrButtonType::kGrasp));
+  RETURN_IF_XR_FAILED(CreateActionsForButton(OpenXrButtonType::kShoulder));
 
   const std::string type_string = GetStringFromType(type_);
   const std::string name_prefix = type_string + "_controller_";
@@ -132,22 +237,37 @@ XrResult OpenXrController::InitializeControllerActions() {
   return XR_SUCCESS;
 }
 
+XrResult OpenXrController::SuggestBindingsForButtonMaps(
+    std::map<XrPath, std::vector<XrActionSuggestedBinding>>* bindings,
+    const std::vector<OpenXrButtonPathMap>& button_maps,
+    XrPath interaction_profile_path,
+    const std::string& binding_prefix) const {
+  for (const auto& cur_button_map : button_maps) {
+    OpenXrButtonType button_type = cur_button_map.type;
+
+    for (const auto& cur_action_map : cur_button_map.action_maps) {
+      RETURN_IF_XR_FAILED(SuggestActionBinding(
+          bindings, interaction_profile_path,
+          button_action_map_.at(button_type).at(cur_action_map.type),
+          binding_prefix + cur_action_map.path));
+    }
+  }
+
+  return XR_SUCCESS;
+}
+
 XrResult OpenXrController::SuggestBindings(
-    const OpenXrExtensionHelper& extension_helper,
     std::map<XrPath, std::vector<XrActionSuggestedBinding>>* bindings) const {
   const std::string binding_prefix = GetTopLevelUserPath(type_);
 
-  for (auto interaction_profile : kOpenXrControllerInteractionProfiles) {
+  for (const auto& interaction_profile :
+       GetOpenXrControllerInteractionProfiles()) {
     // If the interaction profile is defined by an extension, check it here,
     // otherwise continue
-    const bool extension_required =
-        interaction_profile.required_extension != nullptr;
-    if (extension_required) {
-      const bool extension_enabled = extension_helper.ExtensionSupported(
-          interaction_profile.required_extension);
-      if (!extension_enabled) {
-        continue;
-      }
+    if (!interaction_profile.required_extension.empty() &&
+        !extension_helper_->ExtensionEnumeration()->ExtensionSupported(
+            interaction_profile.required_extension.c_str())) {
+      continue;
     }
 
     XrPath interaction_profile_path =
@@ -159,42 +279,27 @@ XrResult OpenXrController::SuggestBindings(
         bindings, interaction_profile_path, pointer_pose_action_,
         binding_prefix + "/input/aim/pose"));
 
-    const OpenXrButtonPathMap* button_maps;
-    size_t button_map_size;
+    RETURN_IF_XR_FAILED(SuggestBindingsForButtonMaps(
+        bindings, interaction_profile.common_button_maps,
+        interaction_profile_path, binding_prefix));
+
     switch (type_) {
       case OpenXrHandednessType::kLeft:
-        button_maps = interaction_profile.left_button_maps;
-        button_map_size = interaction_profile.left_button_map_size;
+        RETURN_IF_XR_FAILED(SuggestBindingsForButtonMaps(
+            bindings, interaction_profile.left_button_maps,
+            interaction_profile_path, binding_prefix));
         break;
       case OpenXrHandednessType::kRight:
-        button_maps = interaction_profile.right_button_maps;
-        button_map_size = interaction_profile.right_button_map_size;
+        RETURN_IF_XR_FAILED(SuggestBindingsForButtonMaps(
+            bindings, interaction_profile.right_button_maps,
+            interaction_profile_path, binding_prefix));
         break;
       case OpenXrHandednessType::kCount:
         NOTREACHED() << "Controller can only be left or right";
         return XR_ERROR_VALIDATION_FAILURE;
     }
 
-    for (size_t button_map_index = 0; button_map_index < button_map_size;
-         button_map_index++) {
-      const OpenXrButtonPathMap& cur_button_map = button_maps[button_map_index];
-      OpenXrButtonType button_type = cur_button_map.type;
-      for (size_t action_map_index = 0;
-           action_map_index < cur_button_map.action_map_size;
-           action_map_index++) {
-        const OpenXrButtonActionPathMap& cur_action_map =
-            cur_button_map.action_maps[action_map_index];
-        RETURN_IF_XR_FAILED(SuggestActionBinding(
-            bindings, interaction_profile_path,
-            button_action_map_.at(button_type).at(cur_action_map.type),
-            binding_prefix + cur_action_map.path));
-      }
-    }
-
-    for (size_t axis_map_index = 0;
-         axis_map_index < interaction_profile.axis_map_size; axis_map_index++) {
-      const OpenXrAxisPathMap& cur_axis_map =
-          interaction_profile.axis_maps[axis_map_index];
+    for (const auto& cur_axis_map : interaction_profile.axis_maps) {
       RETURN_IF_XR_FAILED(
           SuggestActionBinding(bindings, interaction_profile_path,
                                axis_action_map_.at(cur_axis_map.type),
@@ -212,6 +317,15 @@ XrResult OpenXrController::InitializeControllerSpaces() {
       CreateActionSpace(pointer_pose_action_, &pointer_pose_space_));
 
   return XR_SUCCESS;
+}
+
+XrResult OpenXrController::InitializeHandTracking() {
+  XrHandTrackerCreateInfoEXT create_info{XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT};
+  create_info.hand = type_ == OpenXrHandednessType::kRight ? XR_HAND_RIGHT_EXT
+                                                           : XR_HAND_LEFT_EXT;
+  create_info.handJointSet = XR_HAND_JOINT_SET_DEFAULT_EXT;
+  return extension_helper_->ExtensionMethods().xrCreateHandTrackerEXT(
+      session_, &create_info, &hand_tracker_);
 }
 
 uint32_t OpenXrController::GetId() const {
@@ -256,7 +370,7 @@ mojom::XRInputSourceDescriptionPtr OpenXrController::GetDescription(
   return description_.Clone();
 }
 
-base::Optional<GamepadButton> OpenXrController::GetButton(
+absl::optional<GamepadButton> OpenXrController::GetButton(
     OpenXrButtonType type) const {
   GamepadButton ret;
   // Button should at least have one of the three actions;
@@ -295,7 +409,7 @@ base::Optional<GamepadButton> OpenXrController::GetButton(
   }
 
   if (!has_value) {
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   return ret;
@@ -326,15 +440,72 @@ XrResult OpenXrController::UpdateInteractionProfile() {
       interaction_profile_state.interactionProfile);
 
   if (description_) {
-    // TODO(crbug.com/1006072):
-    // Query USB vendor and product ID From OpenXR.
     description_->profiles =
         path_helper_->GetInputProfiles(interaction_profile_);
   }
   return XR_SUCCESS;
 }
 
-base::Optional<gfx::Transform> OpenXrController::GetMojoFromGripTransform(
+mojom::XRHandTrackingDataPtr OpenXrController::GetHandTrackingData(
+    XrSpace mojo_space,
+    XrTime predicted_display_time) {
+  // Lazy init hand tracking as we only need it if the app requests it.
+  if (hand_tracker_ == XR_NULL_HANDLE) {
+    if (XR_FAILED(InitializeHandTracking())) {
+      return nullptr;
+    }
+  }
+
+  XrHandJointLocationEXT joint_locations_buffer[XR_HAND_JOINT_COUNT_EXT];
+  XrHandJointLocationsEXT locations{XR_TYPE_HAND_JOINT_LOCATIONS_EXT};
+  locations.jointCount = std::extent<decltype(joint_locations_buffer)>::value;
+  locations.jointLocations = joint_locations_buffer;
+
+  XrHandJointsLocateInfoEXT locate_info{XR_TYPE_HAND_JOINTS_LOCATE_INFO_EXT};
+  locate_info.baseSpace = mojo_space;
+  locate_info.time = predicted_display_time;
+
+  if (XR_FAILED(extension_helper_->ExtensionMethods().xrLocateHandJointsEXT(
+          hand_tracker_, &locate_info, &locations)) ||
+      !locations.isActive) {
+    return nullptr;
+  }
+
+  mojom::XRHandTrackingDataPtr hand_tracking_data =
+      device::mojom::XRHandTrackingData::New();
+  hand_tracking_data->hand_joint_data =
+      std::vector<mojom::XRHandJointDataPtr>{};
+
+  constexpr unsigned kNumWebXRJoints =
+      static_cast<unsigned>(mojom::XRHandJoint::kMaxValue) + 1u;
+
+  // WebXR has one less joint than OpenXR. WebXR lacks the PALM joint which is
+  // the first joint in OpenXR
+  DCHECK_EQ(kNumWebXRJoints, XR_HAND_JOINT_COUNT_EXT - 1u);
+  hand_tracking_data->hand_joint_data.reserve(kNumWebXRJoints);
+  for (uint32_t i = 0; i < XR_HAND_JOINT_COUNT_EXT; i++) {
+    // We skip the palm joint as WebXR does not support it. All other joints are
+    // supported
+    if (i == XR_HAND_JOINT_PALM_EXT) {
+      static_assert(XR_HAND_JOINT_PALM_EXT == 0u,
+                    "OpenXR palm joint expected to be the 0th joint");
+      continue;
+    }
+
+    mojom::XRHandJointDataPtr joint_data =
+        device::mojom::XRHandJointData::New();
+    joint_data->joint =
+        OpenXRHandJointToMojomJoint(static_cast<XrHandJointEXT>(i));
+    joint_data->mojo_from_joint =
+        XrPoseToGfxTransform(joint_locations_buffer[i].pose);
+    joint_data->radius = joint_locations_buffer[i].radius;
+    hand_tracking_data->hand_joint_data.push_back(std::move(joint_data));
+  }
+
+  return hand_tracking_data;
+}
+
+absl::optional<gfx::Transform> OpenXrController::GetMojoFromGripTransform(
     XrTime predicted_display_time,
     XrSpace local_space,
     bool* emulated_position) const {
@@ -342,14 +513,14 @@ base::Optional<gfx::Transform> OpenXrController::GetMojoFromGripTransform(
                                 local_space, emulated_position);
 }
 
-base::Optional<gfx::Transform> OpenXrController::GetPointerFromGripTransform(
+absl::optional<gfx::Transform> OpenXrController::GetPointerFromGripTransform(
     XrTime predicted_display_time) const {
   bool emulated_position;
   return GetTransformFromSpaces(predicted_display_time, pointer_pose_space_,
                                 grip_pose_space_, &emulated_position);
 }
 
-base::Optional<gfx::Transform> OpenXrController::GetTransformFromSpaces(
+absl::optional<gfx::Transform> OpenXrController::GetTransformFromSpaces(
     XrTime predicted_display_time,
     XrSpace target,
     XrSpace origin,
@@ -362,11 +533,16 @@ base::Optional<gfx::Transform> OpenXrController::GetTransformFromSpaces(
   // Valid Bit only indicates it's either tracked or emulated, we have to check
   // for XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT to make sure orientation is
   // tracked.
-  if (FAILED(
+  if (XR_FAILED(
           xrLocateSpace(target, origin, predicted_display_time, &location)) ||
       !(location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT) ||
       !(location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)) {
-    return base::nullopt;
+    return absl::nullopt;
+  }
+
+  *emulated_position = true;
+  if (location.locationFlags & XR_SPACE_LOCATION_POSITION_TRACKED_BIT) {
+    *emulated_position = false;
   }
 
   // Convert the orientation and translation given by runtime into a
@@ -384,7 +560,7 @@ base::Optional<gfx::Transform> OpenXrController::GetTransformFromSpaces(
     *emulated_position = false;
   }
 
-  return gfx::ComposeTransform(decomp);
+  return gfx::Transform::Compose(decomp);
 }
 
 XrResult OpenXrController::CreateActionsForButton(
@@ -414,6 +590,12 @@ XrResult OpenXrController::CreateActionsForButton(
     case OpenXrButtonType::kButton2:
       name_prefix += "lower_button_";
       break;
+    case OpenXrButtonType::kGrasp:
+      name_prefix += "grasp_";
+      break;
+    case OpenXrButtonType::kShoulder:
+      name_prefix += "shoulder_";
+      break;
   }
 
   std::unordered_map<OpenXrButtonActionType, XrAction>& cur_button =
@@ -440,10 +622,10 @@ XrResult OpenXrController::CreateAction(XrActionType type,
 
   errno_t error =
       strcpy_s(action_create_info.actionName,
-               base::size(action_create_info.actionName), action_name.data());
+               std::size(action_create_info.actionName), action_name.data());
   DCHECK(error == 0);
   error = strcpy_s(action_create_info.localizedActionName,
-                   base::size(action_create_info.localizedActionName),
+                   std::size(action_create_info.localizedActionName),
                    action_name.data());
   DCHECK(error == 0);
   return xrCreateAction(action_set_, &action_create_info, action);

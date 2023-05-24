@@ -53,7 +53,7 @@ package perfetto.protos;
 // emitted proactively in advance of referring to them in later packets.
 //
 // Next reserved id: 8 (up to 15).
-// Next id: 26.
+// Next id: 30.
 message InternedData {
   // TODO(eseckler): Replace iid fields inside interned messages with
   // map<iid, message> type fields in InternedData.
@@ -68,7 +68,9 @@ message InternedData {
   repeated EventCategory event_categories = 1;
   repeated EventName event_names = 2;
   repeated DebugAnnotationName debug_annotation_names = 3;
+  repeated DebugAnnotationValueTypeName debug_annotation_value_type_names = 27;
   repeated SourceLocation source_locations = 4;
+  repeated UnsymbolizedSourceLocation unsymbolized_source_locations = 28;
   repeated LogMessageBody log_message_body = 20;
   repeated HistogramName histogram_names = 25;
 
@@ -101,4 +103,15 @@ message InternedData {
 
   // Description of a GPU hardware queue or render stage.
   repeated InternedGpuRenderStageSpecification gpu_specifications = 24;
+
+  // This is set when FtraceConfig.symbolize_ksyms = true.
+  // The id of each symbol the number that will be reported in ftrace events
+  // like sched_block_reason.caller and is obtained from a monotonic counter.
+  // The same symbol can have different indexes in different bundles.
+  // This is is NOT the real address. This is to avoid disclosing KASLR through
+  // traces.
+  repeated InternedString kernel_symbols = 26;
+
+  // Interned string values in the DebugAnnotation proto.
+  repeated InternedString debug_annotation_string_values = 29;
 }

@@ -1,47 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "../qxyseries/tst_qxyseries.h"
 #include <QtCharts/QLineSeries>
 
 Q_DECLARE_METATYPE(QList<QPointF>)
-Q_DECLARE_METATYPE(QVector<QPointF>)
 
 class tst_QLineSeries : public tst_QXYSeries
 {
     Q_OBJECT
 
 public slots:
-    void initTestCase();
-    void cleanupTestCase();
-    void init();
-    void cleanup();
+    void initTestCase() override;
+    void cleanupTestCase() override;
+    void init() override;
+    void cleanup() override;
 private slots:
     void qlineseries_data();
     void qlineseries();
@@ -77,17 +50,21 @@ void tst_QLineSeries::cleanup()
 
 void tst_QLineSeries::qlineseries_data()
 {
+    QTest::addColumn<bool>("useOpenGL");
 
+    QTest::addRow("Without OpenGL") << false;
+    QTest::addRow("With OpenGL") << true;
 }
 
 void tst_QLineSeries::qlineseries()
 {
+    QFETCH(const bool, useOpenGL);
     QLineSeries series;
+    series.setUseOpenGL(useOpenGL);
 
     QCOMPARE(series.count(),0);
     QCOMPARE(series.brush(), QBrush());
     QCOMPARE(series.points(), QList<QPointF>());
-    QCOMPARE(series.pointsVector(), QVector<QPointF>());
     QCOMPARE(series.pen(), QPen());
     QCOMPARE(series.pointsVisible(), false);
     QCOMPARE(series.pointLabelsVisible(), false);
@@ -140,7 +117,7 @@ void tst_QLineSeries::pressedSignal()
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, checkPoint.toPoint());
     QCoreApplication::processEvents(QEventLoop::AllEvents, 1000);
 
-    QCOMPARE(seriesSpy.count(), 1);
+    QCOMPARE(seriesSpy.size(), 1);
     QList<QVariant> seriesSpyArg = seriesSpy.takeFirst();
     // checkPoint is QPointF and for the mouseClick it it's changed to QPoint
     // this causes small distinction in decimals so we round it before comparing
@@ -172,7 +149,7 @@ void tst_QLineSeries::releasedSignal()
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, checkPoint.toPoint());
     QCoreApplication::processEvents(QEventLoop::AllEvents, 1000);
 
-    QCOMPARE(seriesSpy.count(), 1);
+    QCOMPARE(seriesSpy.size(), 1);
     QList<QVariant> seriesSpyArg = seriesSpy.takeFirst();
     // checkPoint is QPointF and for the mouseClick it it's changed to QPoint
     // this causes small distinction in decimals so we round it before comparing
@@ -186,7 +163,7 @@ void tst_QLineSeries::insert()
     QLineSeries lineSeries;
     QSignalSpy insertSpy(&lineSeries, &QXYSeries::pointAdded);
     lineSeries.insert(0, QPoint(3, 3));
-    QCOMPARE(insertSpy.count(), 1);
+    QCOMPARE(insertSpy.size(), 1);
     QVariantList arguments = insertSpy.takeFirst();
     QCOMPARE(arguments.first().toInt(), 0);
     lineSeries.insert(0, QPoint(1, 1));
@@ -228,7 +205,7 @@ void tst_QLineSeries::doubleClickedSignal()
     QTest::mouseDClick(view.viewport(), Qt::LeftButton, {}, checkPoint.toPoint());
     QCoreApplication::processEvents(QEventLoop::AllEvents, 1000);
 
-    QCOMPARE(seriesSpy.count(), 1);
+    QCOMPARE(seriesSpy.size(), 1);
     QList<QVariant> seriesSpyArg = seriesSpy.takeFirst();
     // checkPoint is QPointF and for the mouseClick it it's changed to QPoint
     // this causes small distinction in decimals so we round it before comparing

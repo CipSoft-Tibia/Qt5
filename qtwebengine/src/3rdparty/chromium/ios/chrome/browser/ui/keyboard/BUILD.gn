@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -7,27 +7,43 @@ source_set("keyboard") {
   sources = [
     "UIKeyCommand+Chrome.h",
     "UIKeyCommand+Chrome.mm",
+    "key_command_actions.h",
+    "menu_builder.h",
+    "menu_builder.mm",
   ]
   deps = [
     "//base",
-    "//ios/chrome/browser/ui/commands",
+    "//ios/chrome/browser/ui/util",
   ]
+}
+
+source_set("features") {
+  configs += [ "//build/config/compiler:enable_arc" ]
+  sources = [
+    "features.h",
+    "features.mm",
+  ]
+  deps = [ "//base" ]
 }
 
 source_set("unit_tests") {
   configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
-  sources = [ "UIKeyCommand+ChromeTest.mm" ]
+  sources = [
+    "UIKeyCommand+ChromeTest.mm",
+    "menu_builder_unittest.mm",
+  ]
   deps = [
     ":keyboard",
     "//base",
-    "//ios/chrome/browser/ui/commands",
+    "//base:i18n",
+    "//ios/chrome/app/strings",
     "//testing/gtest",
+    "//ui/base",
   ]
 }
 
 source_set("eg2_tests") {
-  defines = [ "CHROME_EARL_GREY_2" ]
   configs += [
     "//build/config/compiler:enable_arc",
     "//build/config/ios:xctest_config",
@@ -35,7 +51,6 @@ source_set("eg2_tests") {
   testonly = true
   sources = [ "keyboard_commands_egtest.mm" ]
   deps = [
-    "//components/strings",
     "//ios/chrome/app/strings",
     "//ios/chrome/browser/ui/bookmarks:constants",
     "//ios/chrome/browser/ui/popup_menu:constants",

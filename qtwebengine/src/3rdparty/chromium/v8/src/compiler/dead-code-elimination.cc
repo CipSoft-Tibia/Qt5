@@ -6,7 +6,6 @@
 
 #include "src/compiler/common-operator.h"
 #include "src/compiler/graph.h"
-#include "src/compiler/js-operator.h"
 #include "src/compiler/node-properties.h"
 #include "src/compiler/operator-properties.h"
 
@@ -46,7 +45,6 @@ Node* FindDeadInput(Node* node) {
 }  // namespace
 
 Reduction DeadCodeElimination::Reduce(Node* node) {
-  DisallowHeapAccess no_heap_access;
   switch (node->opcode()) {
     case IrOpcode::kEnd:
       return ReduceEnd(node);
@@ -249,11 +247,10 @@ Reduction DeadCodeElimination::ReduceEffectPhi(Node* node) {
       // phi nodes.
       Node* control = NodeProperties::GetControlInput(merge, i);
       Node* throw_node = graph_->NewNode(common_->Throw(), effect, control);
-      NodeProperties::MergeControlToEnd(graph_, common_, throw_node);
+      MergeControlToEnd(graph_, common_, throw_node);
       NodeProperties::ReplaceEffectInput(node, dead_, i);
       NodeProperties::ReplaceControlInput(merge, dead_, i);
       Revisit(merge);
-      Revisit(graph_->end());
       reduction = Changed(node);
     }
   }

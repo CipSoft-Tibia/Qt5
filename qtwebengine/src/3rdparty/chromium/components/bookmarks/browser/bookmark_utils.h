@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "base/strings/string16.h"
+#include "base/memory/raw_ptr.h"
 #include "base/strings/utf_offset_string_conversions.h"
 #include "components/bookmarks/browser/bookmark_node_data.h"
 #include "components/prefs/pref_registry_simple.h"
@@ -36,9 +36,23 @@ struct QueryFields {
   QueryFields();
   ~QueryFields();
 
-  std::unique_ptr<base::string16> word_phrase_query;
-  std::unique_ptr<base::string16> url;
-  std::unique_ptr<base::string16> title;
+  std::unique_ptr<std::u16string> word_phrase_query;
+  std::unique_ptr<std::u16string> url;
+  std::unique_ptr<std::u16string> title;
+};
+
+class VectorIterator {
+ public:
+  explicit VectorIterator(std::vector<const BookmarkNode*>* nodes);
+  VectorIterator(const VectorIterator& other) = delete;
+  VectorIterator& operator=(const VectorIterator& other) = delete;
+  ~VectorIterator();
+  bool has_next();
+  const BookmarkNode* Next();
+
+ private:
+  raw_ptr<std::vector<const BookmarkNode*>> nodes_;
+  std::vector<const BookmarkNode*>::iterator current_;
 };
 
 // Clones bookmark node, adding newly created nodes to |parent| starting at
@@ -91,14 +105,14 @@ void GetBookmarksMatchingProperties(BookmarkModel* model,
                                     std::vector<const BookmarkNode*>* nodes);
 
 // Parses the provided query and returns a vector of query words.
-std::vector<base::string16> ParseBookmarkQuery(
+std::vector<std::u16string> ParseBookmarkQuery(
     const bookmarks::QueryFields& query);
 
 // Returns true iff |title| or |url| contains each string in |words|. This is
 // used when searching for bookmarks.
-bool DoesBookmarkContainWords(const base::string16& title,
+bool DoesBookmarkContainWords(const std::u16string& title,
                               const GURL& url,
-                              const std::vector<base::string16>& words);
+                              const std::vector<std::u16string>& words);
 
 // Register user preferences for Bookmarks Bar.
 void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry);
@@ -120,9 +134,9 @@ void DeleteBookmarkFolders(BookmarkModel* model,
                            const std::vector<int64_t>& ids);
 
 // If there are no user bookmarks for url, a bookmark is created.
-void AddIfNotBookmarked(BookmarkModel* model,
-                        const GURL& url,
-                        const base::string16& title);
+const BookmarkNode* AddIfNotBookmarked(BookmarkModel* model,
+                                       const GURL& url,
+                                       const std::u16string& title);
 
 // Removes all bookmarks for the given |url|.
 void RemoveAllBookmarks(BookmarkModel* model, const GURL& url);
@@ -145,13 +159,13 @@ void RemoveAllBookmarks(BookmarkModel* model, const GURL& url);
 // unescaping, an input string of "a&p" would no longer match this URL.  Note
 // that the resulting unescaped URL may not be directly navigable (which is
 // why it was escaped to begin with).
-base::string16 CleanUpUrlForMatching(
+std::u16string CleanUpUrlForMatching(
     const GURL& gurl,
     base::OffsetAdjuster::Adjustments* adjustments);
 
 // Returns the lower-cased title, possibly truncated if the original title
 // is overly-long.
-base::string16 CleanUpTitleForMatching(const base::string16& title);
+std::u16string CleanUpTitleForMatching(const std::u16string& title);
 
 // Returns true if all the |nodes| can be edited by the user,
 // as determined by BookmarkClient::CanBeEditedByUser().
@@ -164,6 +178,10 @@ bool IsBookmarkedByUser(BookmarkModel* model, const GURL& url);
 
 // Returns the node with |id|, or NULL if there is no node with |id|.
 const BookmarkNode* GetBookmarkNodeByID(const BookmarkModel* model, int64_t id);
+
+// Returns the node with |guid|, or NULL if there is no node with |guid|.
+const BookmarkNode* GetBookmarkNodeByGUID(const BookmarkModel* model,
+                                          const base::GUID& guid);
 
 // Returns true if |node| is a descendant of |root|.
 bool IsDescendantOf(const BookmarkNode* node, const BookmarkNode* root);

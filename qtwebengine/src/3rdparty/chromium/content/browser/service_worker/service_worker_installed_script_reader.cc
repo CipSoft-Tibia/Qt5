@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,14 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/ref_counted.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "content/browser/service_worker/service_worker_metrics.h"
 #include "net/http/http_response_headers.h"
 #include "services/network/public/cpp/net_adapters.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
 #include "third_party/blink/public/common/blob/blob_utils.h"
 
 namespace content {
@@ -25,7 +27,7 @@ class ServiceWorkerInstalledScriptReader::MetaDataSender {
         handle_(std::move(handle)),
         watcher_(FROM_HERE,
                  mojo::SimpleWatcher::ArmingPolicy::AUTOMATIC,
-                 base::SequencedTaskRunnerHandle::Get()) {}
+                 base::SequencedTaskRunner::GetCurrentDefault()) {}
 
   void Start(base::OnceCallback<void(bool /* success */)> callback) {
     callback_ = std::move(callback);
@@ -94,12 +96,17 @@ class ServiceWorkerInstalledScriptReader::MetaDataSender {
 ServiceWorkerInstalledScriptReader::ServiceWorkerInstalledScriptReader(
     mojo::Remote<storage::mojom::ServiceWorkerResourceReader> reader,
     Client* client)
-    : reader_(std::move(reader)), client_(client) {}
+    : reader_(std::move(reader)), client_(client) {
+  DCHECK(reader_.is_connected());
+  reader_.set_disconnect_handler(base::BindOnce(
+      &ServiceWorkerInstalledScriptReader::OnReaderDisconnected, AsWeakPtr()));
+}
 
 ServiceWorkerInstalledScriptReader::~ServiceWorkerInstalledScriptReader() {}
 
 void ServiceWorkerInstalledScriptReader::Start() {
   TRACE_EVENT0("ServiceWorker", "ServiceWorkerInstalledScriptReader::Start");
+  DCHECK(reader_.is_connected());
   reader_->ReadResponseHead(base::BindOnce(
       &ServiceWorkerInstalledScriptReader::OnReadResponseHeadComplete,
       AsWeakPtr()));
@@ -108,33 +115,34 @@ void ServiceWorkerInstalledScriptReader::Start() {
 void ServiceWorkerInstalledScriptReader::OnReadResponseHeadComplete(
     int result,
     network::mojom::URLResponseHeadPtr response_head,
-    base::Optional<mojo_base::BigBuffer> metadata) {
+    absl::optional<mojo_base::BigBuffer> metadata) {
   DCHECK(client_);
   TRACE_EVENT0(
       "ServiceWorker",
-      "ServiceWorkerInstalledScriptReader::OnReadResponseInfoComplete");
+      "ServiceWorkerInstalledScriptReader::OnReadResponseHeadComplete");
   if (!response_head) {
     DCHECK_LT(result, 0);
     ServiceWorkerMetrics::CountReadResponseResult(
         ServiceWorkerMetrics::READ_HEADERS_ERROR);
-    CompleteSendIfNeeded(FinishedReason::kNoHttpInfoError);
+    CompleteSendIfNeeded(FinishedReason::kNoResponseHeadError);
     return;
   }
 
   DCHECK_GE(result, 0);
+  DCHECK(reader_.is_connected());
 
   body_size_ = response_head->content_length;
   int64_t content_length = response_head->content_length;
-  reader_->ReadData(
-      content_length, receiver_.BindNewPipeAndPassRemote(),
-      base::BindOnce(&ServiceWorkerInstalledScriptReader::OnReadDataStarted,
+  reader_->PrepareReadData(
+      content_length,
+      base::BindOnce(&ServiceWorkerInstalledScriptReader::OnReadDataPrepared,
                      AsWeakPtr(), std::move(response_head),
                      std::move(metadata)));
 }
 
-void ServiceWorkerInstalledScriptReader::OnReadDataStarted(
+void ServiceWorkerInstalledScriptReader::OnReadDataPrepared(
     network::mojom::URLResponseHeadPtr response_head,
-    base::Optional<mojo_base::BigBuffer> metadata,
+    absl::optional<mojo_base::BigBuffer> metadata,
     mojo::ScopedDataPipeConsumerHandle body_consumer_handle) {
   if (!body_consumer_handle) {
     CompleteSendIfNeeded(FinishedReason::kCreateDataPipeError);
@@ -154,8 +162,8 @@ void ServiceWorkerInstalledScriptReader::OnReadDataStarted(
     options.element_num_bytes = 1;
     options.capacity_num_bytes =
         blink::BlobUtils::GetDataPipeCapacity(metadata->size());
-    int rv = mojo::CreateDataPipe(&options, &meta_producer_handle,
-                                  &meta_data_consumer);
+    int rv = mojo::CreateDataPipe(&options, meta_producer_handle,
+                                  meta_data_consumer);
     if (rv != MOJO_RESULT_OK) {
       CompleteSendIfNeeded(FinishedReason::kCreateDataPipeError);
       return;
@@ -174,6 +182,13 @@ void ServiceWorkerInstalledScriptReader::OnReadDataStarted(
   client_->OnStarted(std::move(response_head), std::move(metadata),
                      std::move(body_consumer_handle),
                      std::move(meta_data_consumer));
+
+  reader_->ReadData(base::BindOnce(
+      &ServiceWorkerInstalledScriptReader::OnComplete, AsWeakPtr()));
+}
+
+void ServiceWorkerInstalledScriptReader::OnReaderDisconnected() {
+  CompleteSendIfNeeded(FinishedReason::kConnectionError);
 }
 
 void ServiceWorkerInstalledScriptReader::OnMetaDataSent(bool success) {

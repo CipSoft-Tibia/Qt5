@@ -150,19 +150,19 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>Navigation Preview Day</source>
-        <translation>Gezinme Önizleme Gün</translation>
+        <translation>Dolaşım Önizleme Gün</translation>
     </message>
     <message>
         <source>Navigation Preview Night</source>
-        <translation>Gezinme Önizleme Gece</translation>
+        <translation>Dolaşım Önizleme Gece</translation>
     </message>
     <message>
         <source>Navigation Guidance Day</source>
-        <translation>Gezinme Rehberi Gün</translation>
+        <translation>Dolaşım Rehberi Gün</translation>
     </message>
     <message>
         <source>Navigation Guidance Night</source>
-        <translation>Gezinme Rehberi Gece</translation>
+        <translation>Dolaşım Rehberi Gece</translation>
     </message>
     <message>
         <source>User provided style</source>
@@ -205,7 +205,7 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>When it is safe to do so, perform a U-turn.</source>
-        <translation>Bunu yapmak güvenli olduğunda, bir U dönüşü gerçekleştirin.</translation>
+        <translation>Güvenliyken bir U dönüşü gerçekleştirin.</translation>
     </message>
     <message>
         <source>Make a sharp left.</source>
@@ -245,7 +245,7 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>Enter the roundabout.</source>
-        <translation>Döner kavşağa giriniz.</translation>
+        <translation>Döner kavşağa girin.</translation>
     </message>
     <message>
         <source>At the roundabout take the first exit.</source>
@@ -552,7 +552,7 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     <message>
         <source>Head %1</source>
         <extracomment>%1 is &quot;North&quot;, &quot;South&quot;, &quot;East&quot; or &quot;West&quot;</extracomment>
-        <translation>%1 Yönünde Gidin</translation>
+        <translation>%1 yönünde gidin</translation>
     </message>
     <message>
         <source>Head %1 onto %2</source>
@@ -620,7 +620,7 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>At the fork, turn left</source>
-        <translation>Çataldan sola dön</translation>
+        <translation>Çataldan sola dönün</translation>
     </message>
     <message>
         <source>At the fork, turn left onto %1</source>
@@ -628,7 +628,7 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>At the fork, keep left</source>
-        <translation>Çatalda, soldan gidin</translation>
+        <translation>Çatalda soldan gidin</translation>
     </message>
     <message>
         <source>At the fork, keep left onto %1</source>
@@ -652,7 +652,7 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>At the fork, keep right</source>
-        <translation>Çatalda, sağdan gidin</translation>
+        <translation>Çatalda sağdan gidin</translation>
     </message>
     <message>
         <source>At the fork, keep right onto %1</source>
@@ -660,15 +660,15 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>At the fork, continue straight ahead</source>
-        <translation>Çatalda, düz devam edin</translation>
+        <translation>Çatalda düz devam edin</translation>
     </message>
     <message>
         <source>At the fork, continue straight ahead onto %1</source>
-        <translation>Çatalda, %1 yönünde düz devam edin</translation>
+        <translation>Çatalda %1 yönünde düz devam edin</translation>
     </message>
     <message>
         <source>At the fork, continue</source>
-        <translation>Çatalda, devam edin</translation>
+        <translation>Çatalda devam edin</translation>
     </message>
     <message>
         <source>At the fork, continue onto %1</source>
@@ -676,11 +676,11 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>Merge sharply left</source>
-        <translation>Keskin sola birleştirin</translation>
+        <translation>Sola keskin bir biçimde birleştirin</translation>
     </message>
     <message>
         <source>Merge sharply left onto %1</source>
-        <translation>%1 yönünde keskin bir şekilde sola birleştirin</translation>
+        <translation>%1 yönünde keskin bir biçimde sola birleştirin</translation>
     </message>
     <message>
         <source>Merge left</source>
@@ -704,7 +704,7 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>Merge sharply right onto %1</source>
-        <translation>%1 yönünde keskin bir şekilde sağa birleştirin</translation>
+        <translation>%1 yönünde keskin bir biçimde sağa birleştirin</translation>
     </message>
     <message>
         <source>Merge right</source>
@@ -724,11 +724,11 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>Merge straight</source>
-        <translation>Düze birleştirin</translation>
+        <translation>Düz birleştirin</translation>
     </message>
     <message>
         <source>Merge straight on %1</source>
-        <translation>%1 üzerinde düze birleştirin</translation>
+        <translation>%1 üzerinde düz birleştirin</translation>
     </message>
     <message>
         <source>Merge</source>
@@ -837,7 +837,7 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     <message>
         <source>Enter the rotary</source>
         <extracomment>This string will be prepended to &quot; and take the &lt;nth&gt; exit [onto &lt;streetname&gt;]</extracomment>
-        <translation>Dönere girin</translation>
+        <translation>Dönele girin</translation>
     </message>
     <message>
         <source>Enter the roundabout</source>
@@ -850,7 +850,7 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>At the roundabout, continue straight on %1</source>
-        <translation>Döner kavşakta, %1 üzerinde düz devam edin</translation>
+        <translation>Döner kavşakta %1 üzerinde düz devam edin</translation>
     </message>
     <message>
         <source>At the roundabout, turn left</source>
@@ -1036,7 +1036,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     <message>
         <source>Wheatpaste</source>
         <extracomment>Noun describing type of a map using wheat paste colors</extracomment>
-        <translation>Buğday unu</translation>
+        <translation>Buğday Unu</translation>
     </message>
     <message>
         <source>Streets Basic</source>
@@ -1087,7 +1087,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Normal map view in daylight mode</source>
-        <translation>Gün ışığı modunda normal harita görünümü</translation>
+        <translation>Gün ışığı kipinde normal harita görünümü</translation>
     </message>
     <message>
         <source>Satellite Map</source>
@@ -1095,7 +1095,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Satellite map view in daylight mode</source>
-        <translation>Gün ışığı modunda uydu haritası görünümü</translation>
+        <translation>Gün ışığı kipinde uydu haritası görünümü</translation>
     </message>
     <message>
         <source>Terrain Map</source>
@@ -1103,7 +1103,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Terrain map view in daylight mode</source>
-        <translation>Gün ışığı modunda arazi haritası görünümü</translation>
+        <translation>Gün ışığı kipinde arazi haritası görünümü</translation>
     </message>
     <message>
         <source>Hybrid Map</source>
@@ -1111,7 +1111,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Satellite map view with streets in daylight mode</source>
-        <translation>Gün ışığı modunda sokaklar ile uydu haritası görünümü</translation>
+        <translation>Gün ışığı kipinde sokaklar ile uydu haritası görünümü</translation>
     </message>
     <message>
         <source>Transit Map</source>
@@ -1119,7 +1119,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Color-reduced map view with public transport scheme in daylight mode</source>
-        <translation>Gün ışığı modunda toplu taşıma düzeni ile renk azaltılmış harita görünümü</translation>
+        <translation>Gün ışığı kipinde toplu taşıma düzeni ile renk azaltılmış harita görünümü</translation>
     </message>
     <message>
         <source>Gray Street Map</source>
@@ -1127,7 +1127,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Color-reduced map view in daylight mode</source>
-        <translation>Gün ışığı modunda renk azaltılmış harita görünümü</translation>
+        <translation>Gün ışığı kipinde renk azaltılmış harita görünümü</translation>
     </message>
     <message>
         <source>Mobile Street Map</source>
@@ -1135,7 +1135,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Mobile normal map view in daylight mode</source>
-        <translation>Gün ışığı modunda gezici normal harita görünümü</translation>
+        <translation>Gün ışığı kipinde gezici normal harita görünümü</translation>
     </message>
     <message>
         <source>Mobile Terrain Map</source>
@@ -1143,7 +1143,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Mobile terrain map view in daylight mode</source>
-        <translation>Gün ışığı modunda gezici arazi haritası görünümü</translation>
+        <translation>Gün ışığı kipinde gezici arazi haritası görünümü</translation>
     </message>
     <message>
         <source>Mobile Hybrid Map</source>
@@ -1151,7 +1151,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Mobile satellite map view with streets in daylight mode</source>
-        <translation>Gün ışığı modunda sokaklar ile gezici uydu haritası görünümü</translation>
+        <translation>Gün ışığı kipinde sokaklar ile gezici uydu haritası görünümü</translation>
     </message>
     <message>
         <source>Mobile Transit Map</source>
@@ -1159,7 +1159,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Mobile color-reduced map view with public transport scheme in daylight mode</source>
-        <translation>Gün ışığı modunda toplu taşıma düzenine sahip gezici renk azaltılmış harita görünümü</translation>
+        <translation>Gün ışığı kipinde toplu taşıma düzenine sahip gezici renk azaltılmış harita görünümü</translation>
     </message>
     <message>
         <source>Mobile Gray Street Map</source>
@@ -1167,7 +1167,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Mobile color-reduced map view in daylight mode</source>
-        <translation>Gün ışığı modunda gezici renk azaltılmış harita görünümü</translation>
+        <translation>Gün ışığı kipinde gezici renk azaltılmış harita görünümü</translation>
     </message>
     <message>
         <source>Custom Street Map</source>
@@ -1179,7 +1179,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Normal map view in night mode</source>
-        <translation>Gece modunda normal harita görünümü</translation>
+        <translation>Gece kipinde normal harita görünümü</translation>
     </message>
     <message>
         <source>Mobile Night Street Map</source>
@@ -1187,7 +1187,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Mobile normal map view in night mode</source>
-        <translation>Gece modunda gezici normal harita görünümü</translation>
+        <translation>Gece kipinde gezici normal harita görünümü</translation>
     </message>
     <message>
         <source>Gray Night Street Map</source>
@@ -1195,7 +1195,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Color-reduced map view in night mode (especially used for background maps)</source>
-        <translation>Gece modunda rengi azaltılmış harita görünümü (özellikle arka plan haritaları için kullanılır)</translation>
+        <translation>Gece kipinde rengi azaltılmış harita görünümü (özellikle arka plan haritaları için kullanılır)</translation>
     </message>
     <message>
         <source>Mobile Gray Night Street Map</source>
@@ -1203,7 +1203,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Mobile color-reduced map view in night mode (especially used for background maps)</source>
-        <translation>Gece modunda gezici renk azaltılmış harita görünümü (özellikle arka plan haritaları için kullanılır)</translation>
+        <translation>Gece kipinde gezici renk azaltılmış harita görünümü (özellikle arka plan haritaları için kullanılır)</translation>
     </message>
     <message>
         <source>Pedestrian Street Map</source>
@@ -1211,7 +1211,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Pedestrian map view in daylight mode</source>
-        <translation>Gün ışığı modunda yaya haritası görünümü</translation>
+        <translation>Gün ışığı kipinde yaya haritası görünümü</translation>
     </message>
     <message>
         <source>Mobile Pedestrian Street Map</source>
@@ -1219,7 +1219,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Mobile pedestrian map view in daylight mode for mobile usage</source>
-        <translation>Hareketli kullanım için gün ışığı modunda gezici yaya haritası görünümü</translation>
+        <translation>Hareketli kullanım için gün ışığı kipinde gezici yaya haritası görünümü</translation>
     </message>
     <message>
         <source>Pedestrian Night Street Map</source>
@@ -1227,7 +1227,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Pedestrian map view in night mode</source>
-        <translation>Gece modunda yaya haritası görünümü</translation>
+        <translation>Gece kipinde yaya haritası görünümü</translation>
     </message>
     <message>
         <source>Mobile Pedestrian Night Street Map</source>
@@ -1235,7 +1235,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Mobile pedestrian map view in night mode for mobile usage</source>
-        <translation>Hareketli kullanım için gece modunda gezici yaya haritası görünümü</translation>
+        <translation>Hareketli kullanım için gece kipinde gezici yaya haritası görünümü</translation>
     </message>
     <message>
         <source>Car Navigation Map</source>
@@ -1243,7 +1243,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Normal map view in daylight mode for car navigation</source>
-        <translation>Araba navigasyonu için gün ışığı modunda normal harita görünümü</translation>
+        <translation>Araba navigasyonu için gün ışığı kipinde normal harita görünümü</translation>
     </message>
 </context>
 <context>
@@ -1254,7 +1254,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Street map view in daylight mode</source>
-        <translation>Gün ışığı modunda sokak haritası görünümü</translation>
+        <translation>Gün ışığı kipinde sokak haritası görünümü</translation>
     </message>
     <message>
         <source>Satellite Map</source>
@@ -1262,7 +1262,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Satellite map view in daylight mode</source>
-        <translation>Gün ışığı modunda uydu haritası görünümü</translation>
+        <translation>Gün ışığı kipinde uydu haritası görünümü</translation>
     </message>
     <message>
         <source>Cycle Map</source>
@@ -1270,7 +1270,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Cycle map view in daylight mode</source>
-        <translation>Gün ışığı modunda çevrim haritası görünümü</translation>
+        <translation>Gün ışığı kipinde çevrim haritası görünümü</translation>
     </message>
     <message>
         <source>Transit Map</source>
@@ -1278,7 +1278,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Public transit map view in daylight mode</source>
-        <translation>Gün ışığı modunda toplu taşıma harita görünümü</translation>
+        <translation>Gün ışığı kipinde toplu taşıma harita görünümü</translation>
     </message>
     <message>
         <source>Night Transit Map</source>
@@ -1286,7 +1286,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Public transit map view in night mode</source>
-        <translation>Gece modunda toplu taşıma haritası görünümü</translation>
+        <translation>Gece kipinde toplu taşıma haritası görünümü</translation>
     </message>
     <message>
         <source>Terrain Map</source>

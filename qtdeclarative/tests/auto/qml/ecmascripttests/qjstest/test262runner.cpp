@@ -1,30 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the V4VM module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
 #include "test262runner.h"
 
 #include <qfile.h>
@@ -38,6 +14,7 @@
 #include "private/qv4globalobject_p.h"
 #include "private/qqmlbuiltinfunctions_p.h"
 #include "private/qv4arraybuffer_p.h"
+#include <QtCore/QLoggingCategory>
 
 #include "qrunnable.h"
 
@@ -87,10 +64,10 @@ static ReturnedValue method_detachArrayBuffer(const FunctionObject *f, const Val
     if (!a)
         return scope.engine->throwTypeError();
 
-    if (a->isShared())
+    if (a->hasSharedArrayData())
         return scope.engine->throwTypeError();
 
-    a->d()->detachArrayBuffer();
+    a->d()->detachArrayData();
 
     return Encode::null();
 }
@@ -110,8 +87,11 @@ static void initD262(ExecutionEngine *e)
 
 QT_END_NAMESPACE
 
-Test262Runner::Test262Runner(const QString &command, const QString &dir)
-    : command(command), testDir(dir)
+Q_DECLARE_LOGGING_CATEGORY(lcJsTest);
+Q_LOGGING_CATEGORY(lcJsTest, "qt.v4.ecma262.tests", QtWarningMsg);
+
+Test262Runner::Test262Runner(const QString &command, const QString &dir, const QString &expectationsFile)
+    : command(command), testDir(dir), expectationsFile(expectationsFile)
 {
     if (testDir.endsWith(QLatin1Char('/')))
         testDir = testDir.chopped(1);
@@ -184,14 +164,16 @@ bool Test262Runner::report()
     QStringList unexpectedPasses;
     for (auto it = testCases.constBegin(); it != testCases.constEnd(); ++it) {
         const auto c = it.value();
-        if (c.strictResult == c.strictExpectation && c.sloppyResult == c.sloppyExpectation)
+        if (c.strictResult.state == c.strictExpectation.state
+            && c.sloppyResult.state == c.sloppyExpectation.state)
             continue;
-        auto report = [&] (TestCase::Result expected, TestCase::Result result, const char *s) {
-            if (result == TestCase::Crashes)
+        auto report = [&](TestCase::Result expected, TestCase::Result result, const char *s) {
+            if (result.state == TestCase::Crashes)
                 crashes << (it.key() + " crashed in " + s + " mode");
-            if (result == TestCase::Fails && expected == TestCase::Passes)
-                unexpectedFailures << (it.key() + " failed in " + s + " mode");
-            if (result == TestCase::Passes && expected == TestCase::Fails)
+            if (result.state == TestCase::Fails && expected.state == TestCase::Passes)
+                unexpectedFailures << (it.key() + " failed in " + s
+                                       + " mode with error message: " + result.errorMessage);
+            if (result.state == TestCase::Passes && expected.state == TestCase::Fails)
                 unexpectedPasses << (it.key() + " unexpectedly passed in " + s + " mode");
         };
         report(c.strictExpectation, c.strictResult, "strict");
@@ -199,17 +181,17 @@ bool Test262Runner::report()
     }
     if (!crashes.isEmpty()) {
         qDebug() << "    Encountered" << crashes.size() << "crashes in the following files:";
-        for (const QString &f : qAsConst(crashes))
+        for (const QString &f : std::as_const(crashes))
             qDebug() << "        " << f;
     }
     if (!unexpectedFailures.isEmpty()) {
         qDebug() << "    Encountered" << unexpectedFailures.size() << "unexpected failures in the following files:";
-        for (const QString &f : qAsConst(unexpectedFailures))
+        for (const QString &f : std::as_const(unexpectedFailures))
             qDebug() << "        " << f;
     }
     if (!unexpectedPasses.isEmpty()) {
         qDebug() << "    Encountered" << unexpectedPasses.size() << "unexpected passes in the following files:";
-        for (const QString &f : qAsConst(unexpectedPasses))
+        for (const QString &f : std::as_const(unexpectedPasses))
             qDebug() << "        " << f;
     }
     return crashes.isEmpty() && unexpectedFailures.isEmpty() && unexpectedPasses.isEmpty();
@@ -227,7 +209,7 @@ bool Test262Runner::loadTests()
     QString harness = "harness";
     QString intl402 = "intl402";
 
-    int pathlen = dir.path().length() + 1;
+    int pathlen = dir.path().size() + 1;
     QDirIterator it(dir, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         QString file = it.next().mid(pathlen);
@@ -373,8 +355,10 @@ TestExpectationLine::State TestExpectationLine::stateFromTestCase(const TestCase
     if (testCase.skipTestCase)
         return Skip;
 
-    bool strictFails = (testCase.strictResult == TestCase::Crashes || testCase.strictResult == TestCase::Fails);
-    bool sloppyFails = (testCase.sloppyResult == TestCase::Crashes || testCase.sloppyResult == TestCase::Fails);
+    bool strictFails = (testCase.strictResult.state == TestCase::Crashes
+                        || testCase.strictResult.state == TestCase::Fails);
+    bool sloppyFails = (testCase.sloppyResult.state == TestCase::Crashes
+                        || testCase.sloppyResult.state == TestCase::Fails);
     if (strictFails && sloppyFails)
         return Fails;
     if (strictFails)
@@ -387,15 +371,13 @@ TestExpectationLine::State TestExpectationLine::stateFromTestCase(const TestCase
 
 void Test262Runner::loadTestExpectations()
 {
-    QFile file("TestExpectations");
+    QFile file(expectationsFile);
     if (!file.open(QFile::ReadOnly)) {
-        qWarning() << "Could not open TestExpectations file.";
+        qWarning() << "Could not open TestExpectations file at" << expectationsFile;
         return;
     }
 
-    int line = 0;
     while (!file.atEnd()) {
-        ++line;
         QByteArray line = file.readLine().trimmed();
         if (line.startsWith('#') || line.isEmpty())
             continue;
@@ -409,16 +391,16 @@ void Test262Runner::loadTestExpectations()
         TestCase &s = testCases[expectation.testCase];
         switch (expectation.state) {
         case TestExpectationLine::Fails:
-            s.strictExpectation = TestCase::Fails;
-            s.sloppyExpectation = TestCase::Fails;
+            s.strictExpectation.state = TestCase::Fails;
+            s.sloppyExpectation.state = TestCase::Fails;
             break;
         case TestExpectationLine::SloppyFails:
-            s.strictExpectation = TestCase::Passes;
-            s.sloppyExpectation = TestCase::Fails;
+            s.strictExpectation.state = TestCase::Passes;
+            s.sloppyExpectation.state = TestCase::Fails;
             break;
         case TestExpectationLine::StrictFails:
-            s.strictExpectation = TestCase::Fails;
-            s.sloppyExpectation = TestCase::Passes;
+            s.strictExpectation.state = TestCase::Fails;
+            s.sloppyExpectation.state = TestCase::Passes;
             break;
         case TestExpectationLine::Skip:
             s.skipTestCase = true;
@@ -431,18 +413,16 @@ void Test262Runner::loadTestExpectations()
 
 void Test262Runner::updateTestExpectations()
 {
-    QFile file("TestExpectations");
+    QFile file(expectationsFile);
     if (!file.open(QFile::ReadOnly)) {
-        qWarning() << "Could not open TestExpectations file.";
+        qWarning() << "Could not open TestExpectations file at" << expectationsFile;
         return;
     }
 
     QTemporaryFile updatedExpectations;
     updatedExpectations.open();
 
-    int line = 0;
     while (!file.atEnd()) {
-        ++line;
         QByteArray originalLine = file.readLine();
         QByteArray line = originalLine.trimmed();
         if (line.startsWith('#') || line.isEmpty()) {
@@ -465,34 +445,38 @@ void Test262Runner::updateTestExpectations()
     }
     file.close();
     updatedExpectations.close();
-    file.remove();
-    qDebug() << updatedExpectations.fileName() << file.fileName();
-    updatedExpectations.copy(file.fileName());
-    qDebug() << "Updated TestExpectations file written!";
+    if (!file.remove())
+        qWarning() << "Could not remove old TestExpectations file at" << expectationsFile;
+    if (updatedExpectations.copy(file.fileName()))
+        qDebug() << "Updated TestExpectations file written!";
+    else
+        qWarning() << "Could not write new TestExpectations file at" << expectationsFile;
 }
 
 void Test262Runner::writeTestExpectations()
 {
-    QFile file("TestExpectations");
+    QFile file(expectationsFile);
 
     QTemporaryFile expectations;
     expectations.open();
 
-    for (auto c : qAsConst(testCases)) {
+    for (auto c : std::as_const(testCases)) {
         TestExpectationLine line = TestExpectationLine::fromTestCase(c);
         expectations.write(line.toLine());
     }
 
     expectations.close();
-    if (file.exists())
-        file.remove();
-    qDebug() << expectations.fileName() << file.fileName();
-    expectations.copy(file.fileName());
-    qDebug() << "new TestExpectations file written!";
-
+    if (file.exists() && !file.remove())
+        qWarning() << "Could not remove old TestExpectations file at" << expectationsFile;
+    if (expectations.copy(file.fileName()))
+        qDebug() << "new TestExpectations file written!";
+    else
+        qWarning() << "Could not write new TestExpectations file at" << expectationsFile;
 }
 
-static bool executeTest(const QByteArray &data, bool runAsModule = false, const QString &testCasePath = QString(), const QByteArray &harnessForModules = QByteArray())
+static TestCase::Result executeTest(const QByteArray &data, bool runAsModule = false,
+                                    const QString &testCasePath = QString(),
+                                    const QByteArray &harnessForModules = QByteArray())
 {
     QString testData = QString::fromUtf8(data.constData(), data.size());
 
@@ -514,10 +498,10 @@ static bool executeTest(const QByteArray &data, bool runAsModule = false, const 
             QFile f(url.toLocalFile());
             if (f.open(QIODevice::ReadOnly)) {
                 QByteArray content = harnessForModules + f.readAll();
-                module = vm.compileModule(url.toString(), QString::fromUtf8(content.constData(), content.length()), QFileInfo(f).lastModified());
+                module = vm.compileModule(url.toString(), QString::fromUtf8(content.constData(), content.size()), QFileInfo(f).lastModified());
                 if (vm.hasException)
                     break;
-                vm.injectModule(module);
+                vm.injectCompiledModule(module);
             } else {
                 vm.throwError(QStringLiteral("Could not load module"));
                 break;
@@ -525,16 +509,16 @@ static bool executeTest(const QByteArray &data, bool runAsModule = false, const 
 
             for (const QString &request: module->moduleRequests()) {
                 const QUrl absoluteRequest = module->finalUrl().resolved(QUrl(request));
-                if (!vm.modules.contains(absoluteRequest))
+                const auto module = vm.moduleForUrl(absoluteRequest);
+                if (module.native == nullptr && module.compiled == nullptr)
                     modulesToLoad << absoluteRequest;
             }
         }
 
         if (!vm.hasException) {
-            if (auto rootModuleUnit = vm.loadModule(rootModuleUrl)) {
-                if (rootModuleUnit->instantiate(&vm))
-                    rootModuleUnit->evaluate();
-            }
+            const auto rootModule = vm.loadModule(rootModuleUrl);
+            if (rootModule.compiled && rootModule.compiled->instantiate(&vm))
+                rootModule.compiled->evaluate();
         }
     } else {
         QV4::ScopedContext ctx(scope, vm.rootContext());
@@ -545,7 +529,13 @@ static bool executeTest(const QByteArray &data, bool runAsModule = false, const 
         if (!vm.hasException)
             script.run();
     }
-    return !vm.hasException;
+
+    if (vm.hasException) {
+        QV4::Scope scope(&vm);
+        QV4::ScopedValue val(scope, vm.catchException());
+        return TestCase::Result(TestCase::Fails, val->toQString());
+    }
+    return TestCase::Result(TestCase::Passes);
 }
 
 class SingleTest : public QRunnable
@@ -556,7 +546,7 @@ public:
     {
         command = runner->command;
     }
-    void run();
+    void run() override;
 
     void runExternalTest();
 
@@ -573,24 +563,24 @@ void SingleTest::run()
     }
 
     if (data.runInSloppyMode) {
-        bool ok = ::executeTest(data.content);
+        TestCase::Result ok = ::executeTest(data.content);
         if (data.negative)
-            ok = !ok;
+            ok.negateResult();
 
-        data.sloppyResult = ok ? TestCase::Passes : TestCase::Fails;
+        data.sloppyResult = ok;
     } else {
-        data.sloppyResult = TestCase::Skipped;
+        data.sloppyResult = TestCase::Result(TestCase::Skipped);
     }
     if (data.runInStrictMode) {
         const QString testCasePath = QFileInfo(runner->testDir + "/test/" + data.test).absoluteFilePath();
         QByteArray c = "'use strict';\n" + data.content;
-        bool ok = ::executeTest(c, data.runAsModuleCode, testCasePath, data.harness);
+        TestCase::Result ok = ::executeTest(c, data.runAsModuleCode, testCasePath, data.harness);
         if (data.negative)
-            ok = !ok;
+            ok.negateResult();
 
-        data.strictResult = ok ? TestCase::Passes : TestCase::Fails;
+        data.strictResult = ok;
     } else {
-        data.strictResult = TestCase::Skipped;
+        data.strictResult = TestCase::Result(TestCase::Skipped);
     }
     runner->addResult(data);
 }
@@ -611,15 +601,16 @@ void SingleTest::runExternalTest()
         process.start(command, QStringList(tempFile.fileName()));
         if (!process.waitForFinished(-1) || process.error() == QProcess::FailedToStart) {
             qWarning() << "Could not execute" << command;
-            *result = TestCase::Crashes;
+            *result = TestCase::Result(TestCase::Crashes);
         }
         if (process.exitStatus() != QProcess::NormalExit) {
-            *result = TestCase::Crashes;
+            *result = TestCase::Result(TestCase::Crashes);
         }
         bool ok = (process.exitCode() == EXIT_SUCCESS);
         if (data.negative)
             ok = !ok;
-        *result = ok ? TestCase::Passes : TestCase::Fails;
+        *result = ok ? TestCase::Result(TestCase::Passes)
+                     : TestCase::Result(TestCase::Fails, process.readAllStandardError());
     };
 
     if (data.runInSloppyMode)
@@ -652,8 +643,8 @@ void Test262Runner::addResult(TestCase result)
 {
     {
         QMutexLocker locker(&mutex);
-        Q_ASSERT(result.strictExpectation == testCases[result.test].strictExpectation);
-        Q_ASSERT(result.sloppyExpectation == testCases[result.test].sloppyExpectation);
+        Q_ASSERT(result.strictExpectation.state == testCases[result.test].strictExpectation.state);
+        Q_ASSERT(result.sloppyExpectation.state == testCases[result.test].sloppyExpectation.state);
         testCases[result.test] = result;
     }
 
@@ -661,30 +652,36 @@ void Test262Runner::addResult(TestCase result)
         return;
 
     QString test = result.test;
-    if (result.strictResult == TestCase::Skipped) {
+    if (result.strictResult.state == TestCase::Skipped) {
         ;
-    } else if (result.strictResult == TestCase::Crashes) {
+    } else if (result.strictResult.state == TestCase::Crashes) {
         qDebug() << "FAIL:" << test << "crashed in strict mode!";
-    } else if ((result.strictResult == TestCase::Fails) && (result.strictExpectation == TestCase::Fails)) {
-        qDebug() << "PASS:" << test << "failed in strict mode as expected";
-    } else if ((result.strictResult == TestCase::Passes) == (result.strictExpectation == TestCase::Passes)) {
-        qDebug() << "PASS:" << test << "passed in strict mode";
-    } else if (!(result.strictExpectation == TestCase::Fails)) {
-        qDebug() << "FAIL:" << test << "failed in strict mode";
+    } else if (result.strictResult.state == TestCase::Fails
+               && result.strictExpectation.state == TestCase::Fails) {
+        qCDebug(lcJsTest) << "PASS:" << test << "failed in strict mode as expected";
+    } else if ((result.strictResult.state == TestCase::Passes)
+               == (result.strictExpectation.state == TestCase::Passes)) {
+        qCDebug(lcJsTest) << "PASS:" << test << "passed in strict mode";
+    } else if (!(result.strictExpectation.state == TestCase::Fails)) {
+        qDebug() << "FAIL:" << test << "failed in strict mode with error message:\n"
+                 << result.strictResult.errorMessage;
     } else {
         qDebug() << "XPASS:" << test << "unexpectedly passed in strict mode";
     }
 
-    if (result.sloppyResult == TestCase::Skipped) {
+    if (result.sloppyResult.state == TestCase::Skipped) {
         ;
-    } else if (result.sloppyResult == TestCase::Crashes) {
+    } else if (result.sloppyResult.state == TestCase::Crashes) {
         qDebug() << "FAIL:" << test << "crashed in sloppy mode!";
-    } else if ((result.sloppyResult == TestCase::Fails) && (result.sloppyExpectation == TestCase::Fails)) {
-        qDebug() << "PASS:" << test << "failed in sloppy mode as expected";
-    } else if ((result.sloppyResult == TestCase::Passes) == (result.sloppyExpectation == TestCase::Passes)) {
-        qDebug() << "PASS:" << test << "passed in sloppy mode";
-    } else if (!(result.sloppyExpectation == TestCase::Fails)) {
-        qDebug() << "FAIL:" << test << "failed in sloppy mode";
+    } else if (result.sloppyResult.state == TestCase::Fails
+               && result.sloppyExpectation.state == TestCase::Fails) {
+        qCDebug(lcJsTest) << "PASS:" << test << "failed in sloppy mode as expected";
+    } else if ((result.sloppyResult.state == TestCase::Passes)
+               == (result.sloppyExpectation.state == TestCase::Passes)) {
+        qCDebug(lcJsTest) << "PASS:" << test << "passed in sloppy mode";
+    } else if (!(result.sloppyExpectation.state == TestCase::Fails)) {
+        qDebug() << "FAIL:" << test << "failed in sloppy mode with error message:\n"
+                 << result.sloppyResult.errorMessage;
     } else {
         qDebug() << "XPASS:" << test << "unexpectedly passed in sloppy mode";
     }
@@ -700,7 +697,7 @@ TestData Test262Runner::getTestData(const TestCase &testCase)
     QByteArray content = testFile.readAll();
     content.replace(QByteArrayLiteral("\r\n"), "\n");
 
-//    qDebug() << "parsing test file" << test;
+    qCDebug(lcJsTest) << "parsing test file" << testCase.test;
 
     TestData data(testCase);
     parseYaml(content, &data);
@@ -708,7 +705,7 @@ TestData Test262Runner::getTestData(const TestCase &testCase)
     data.harness += harness("assert.js");
     data.harness += harness("sta.js");
 
-    for (QByteArray inc : qAsConst(data.includes)) {
+    for (QByteArray inc : std::as_const(data.includes)) {
         inc = inc.trimmed();
         data.harness += harness(inc);
     }
@@ -742,7 +739,7 @@ YamlSection::YamlSection(const QByteArray &yaml, const char *sectionName)
     start += static_cast<int>(strlen(sectionName));
     int end = yaml.indexOf('\n', start + 1);
     if (end < 0)
-        end = yaml.length();
+        end = yaml.size();
 
     int s = yaml.indexOf('[', start);
     if (s > 0 && s < end) {

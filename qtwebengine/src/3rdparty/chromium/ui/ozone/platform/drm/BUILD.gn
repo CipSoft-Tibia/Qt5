@@ -1,11 +1,14 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//build/config/chromecast_build.gni")
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/linux/pkg_config.gni")
+import("//build/config/logging.gni")
+import("//build/config/ozone.gni")
 import("//gpu/vulkan/features.gni")
-import("//ui/ozone/ozone.gni")
+import("//testing/test.gni")
 
 visibility = [ "//ui/ozone/*" ]
 
@@ -23,6 +26,8 @@ source_set("gbm") {
     "common/display_types.h",
     "common/drm_util.cc",
     "common/drm_util.h",
+    "common/drm_wrapper.cc",
+    "common/drm_wrapper.h",
     "common/scoped_drm_types.cc",
     "common/scoped_drm_types.h",
     "gpu/crtc_commit_request.cc",
@@ -87,6 +92,8 @@ source_set("gbm") {
     "gpu/inter_thread_messaging_proxy.h",
     "gpu/page_flip_request.cc",
     "gpu/page_flip_request.h",
+    "gpu/page_flip_watchdog.cc",
+    "gpu/page_flip_watchdog.h",
     "gpu/proxy_helpers.cc",
     "gpu/proxy_helpers.h",
     "gpu/screen_manager.cc",
@@ -95,8 +102,6 @@ source_set("gbm") {
     "host/drm_cursor.h",
     "host/drm_device_connector.cc",
     "host/drm_device_connector.h",
-    "host/drm_device_handle.cc",
-    "host/drm_device_handle.h",
     "host/drm_display_host.cc",
     "host/drm_display_host.h",
     "host/drm_display_host_manager.cc",
@@ -119,9 +124,11 @@ source_set("gbm") {
 
   deps = [
     "//base",
+    "//build:chromeos_buildflags",
     "//build/config/linux/libdrm",
     "//gpu/vulkan:buildflags",
     "//ipc",
+    "//media:media_buildflags",
     "//mojo/public/cpp/system",
     "//services/service_manager/public/cpp",
     "//skia",
@@ -129,7 +136,7 @@ source_set("gbm") {
     "//third_party/minigbm",
     "//ui/base",
     "//ui/base/cursor",
-    "//ui/base/cursor:cursor_base",
+    "//ui/base/cursor/mojom:cursor_type",
     "//ui/base/ime",
     "//ui/display",
     "//ui/display/types",
@@ -147,19 +154,19 @@ source_set("gbm") {
     "//ui/gl",
     "//ui/ozone:ozone_base",
     "//ui/ozone/common",
-    "//ui/ozone/public/mojom",
+    "//ui/ozone/platform/drm/mojom",
     "//ui/platform_window",
   ]
 
-  if (!is_chromecast) {
+  if (!is_castos) {
     data_deps = [
       "//third_party/angle:libEGL",
       "//third_party/angle:libGLESv2",
     ]
   }
 
-  if (is_chromeos) {
-    deps += [ "//ui/base/ime/chromeos" ]
+  if (is_chromeos_ash) {
+    deps += [ "//ui/base/ime/ash" ]
   }
 
   if (enable_vulkan) {
@@ -176,6 +183,11 @@ source_set("gbm") {
 
   if (drm_commit_properties_on_page_flip) {
     defines += [ "COMMIT_PROPERTIES_ON_PAGE_FLIP" ]
+  }
+
+  if (!use_runtime_vlog) {
+    # Enable VLOG(1) when using build time VLOG.
+    defines += [ "ENABLED_VLOG_LEVEL=1" ]
   }
 }
 
@@ -199,10 +211,15 @@ source_set("gbm_unittests") {
   deps = [
     ":gbm",
     "//base/test:test_support",
-    "//build/config/linux/libdrm",
     "//skia",
     "//testing/gtest",
+
+    # We're using this instead of the config to ensure that our tests built for
+    # linux have a controllable dependency instead of relying on whatever is on
+    # the system.
+    "//third_party/libdrm",
     "//ui/base/ime",
+    "//ui/display/fake:fake",
     "//ui/gfx",
     "//ui/gfx/linux:drm",
     "//ui/gfx/linux:gbm",
@@ -214,4 +231,26 @@ source_set("gbm_unittests") {
   if (drm_commit_properties_on_page_flip) {
     defines = [ "COMMIT_PROPERTIES_ON_PAGE_FLIP" ]
   }
+}
+
+source_set("drm_integration_tests") {
+  testonly = true
+
+  sources = [
+    "test/integration_test_helpers.cc",
+    "test/integration_test_helpers.h",
+    "test/vkms_tests.cc",
+  ]
+
+  deps = [
+    ":gbm",
+    "//base/test:test_support",
+    "//build/config/linux/libdrm",
+    "//skia",
+    "//ui/display/types:types",
+    "//ui/gfx/linux:gbm",
+    "//ui/gfx/linux:test_support",
+    "//ui/ozone:platform",
+    "//ui/ozone/common",
+  ]
 }

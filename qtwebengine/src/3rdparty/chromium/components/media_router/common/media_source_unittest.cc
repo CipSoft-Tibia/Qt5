@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,8 @@
 
 #include <string>
 
+#include "media/base/audio_codecs.h"
+#include "media/base/video_codecs.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace media_router {
@@ -26,6 +28,7 @@ TEST(MediaSourceTest, IsValidPresentationUrl) {
   EXPECT_TRUE(IsValidPresentationUrl(GURL("https://google.com")));
   EXPECT_TRUE(IsValidPresentationUrl(GURL("cast://foo")));
   EXPECT_TRUE(IsValidPresentationUrl(GURL("cast:foo")));
+  EXPECT_TRUE(IsValidPresentationUrl(GURL("remote-playback:foo")));
 }
 
 TEST(MediaSourceTest, IsAutoJoinPresentationId) {
@@ -57,33 +60,64 @@ TEST(MediaSourceTest, ConstructorWithURLString) {
 TEST(MediaSourceTest, ForAnyTab) {
   auto source = MediaSource::ForAnyTab();
   EXPECT_EQ("urn:x-org.chromium.media:source:tab:*", source.id());
-  EXPECT_EQ(-1, source.TabId());
+  EXPECT_FALSE(source.TabId().has_value());
   EXPECT_FALSE(source.IsDesktopMirroringSource());
   EXPECT_TRUE(source.IsTabMirroringSource());
-  EXPECT_FALSE(source.IsLocalFileSource());
   EXPECT_FALSE(source.IsCastPresentationUrl());
   EXPECT_FALSE(source.IsDialSource());
+  EXPECT_FALSE(source.IsRemotePlaybackSource());
 }
 
 TEST(MediaSourceTest, ForTab) {
   auto source = MediaSource::ForTab(123);
   EXPECT_EQ("urn:x-org.chromium.media:source:tab:123", source.id());
-  EXPECT_EQ(123, source.TabId());
+  EXPECT_EQ(123, source.TabId().value_or(-1));
   EXPECT_FALSE(source.IsDesktopMirroringSource());
   EXPECT_TRUE(source.IsTabMirroringSource());
-  EXPECT_FALSE(source.IsLocalFileSource());
   EXPECT_FALSE(source.IsCastPresentationUrl());
   EXPECT_FALSE(source.IsDialSource());
+  EXPECT_FALSE(source.IsRemotePlaybackSource());
 }
 
-TEST(MediaSourceTest, ForLocalFile) {
-  auto source = MediaSource::ForLocalFile();
-  EXPECT_EQ("urn:x-org.chromium.media:source:tab:0", source.id());
-  EXPECT_FALSE(source.IsDesktopMirroringSource());
+TEST(MediaSourceTest, TabMirroringSourceTabId) {
+  MediaSource source = MediaSource("");
+  EXPECT_FALSE(source.TabId().has_value());
   EXPECT_FALSE(source.IsTabMirroringSource());
-  EXPECT_TRUE(source.IsLocalFileSource());
-  EXPECT_FALSE(source.IsCastPresentationUrl());
-  EXPECT_FALSE(source.IsDialSource());
+
+  source = MediaSource("urn:x-org.chromium.media:source:invalid:123");
+  EXPECT_FALSE(source.TabId().has_value());
+  EXPECT_FALSE(source.IsTabMirroringSource());
+
+  source = MediaSource("urn:x-org.chromium.media:source:tab:abc");
+  EXPECT_FALSE(source.TabId().has_value());
+  EXPECT_FALSE(source.IsTabMirroringSource());
+
+  source = MediaSource("urn:x-org.chromium.media:source:tab:123");
+  EXPECT_EQ(123, source.TabId().value_or(-1));
+  EXPECT_TRUE(source.IsTabMirroringSource());
+}
+
+TEST(MediaSourceTest, RemotePlaybackSourceTabId) {
+  MediaSource source = MediaSource("");
+  EXPECT_FALSE(source.TabIdFromRemotePlaybackSource().has_value());
+  EXPECT_FALSE(source.IsRemotePlaybackSource());
+
+  source = MediaSource(
+      "remote-playback:media-session?&video_codec=vp8&audio_codec=aac");
+  EXPECT_FALSE(source.TabIdFromRemotePlaybackSource().has_value());
+  EXPECT_TRUE(source.IsRemotePlaybackSource());
+
+  source = MediaSource(
+      "remote-playback:media-session?tab_id=abc&video_codec=vp8&audio_codec="
+      "aac");
+  EXPECT_FALSE(source.TabIdFromRemotePlaybackSource().has_value());
+  EXPECT_TRUE(source.IsRemotePlaybackSource());
+
+  source = MediaSource(
+      "remote-playback:media-session?tab_id=123&video_codec=vp8&audio_codec="
+      "aac");
+  EXPECT_EQ(123, source.TabIdFromRemotePlaybackSource().value_or(-1));
+  EXPECT_TRUE(source.IsRemotePlaybackSource());
 }
 
 TEST(MediaSourceTest, ForDesktopWithoutAudio) {
@@ -94,9 +128,9 @@ TEST(MediaSourceTest, ForDesktopWithoutAudio) {
   EXPECT_EQ(media_id, source.DesktopStreamId());
   EXPECT_FALSE(source.IsDesktopSourceWithAudio());
   EXPECT_FALSE(source.IsTabMirroringSource());
-  EXPECT_FALSE(source.IsLocalFileSource());
   EXPECT_FALSE(source.IsCastPresentationUrl());
   EXPECT_FALSE(source.IsDialSource());
+  EXPECT_FALSE(source.IsRemotePlaybackSource());
 }
 
 TEST(MediaSourceTest, ForDesktopWithAudio) {
@@ -109,9 +143,9 @@ TEST(MediaSourceTest, ForDesktopWithAudio) {
   EXPECT_EQ(media_id, source.DesktopStreamId());
   EXPECT_TRUE(source.IsDesktopSourceWithAudio());
   EXPECT_FALSE(source.IsTabMirroringSource());
-  EXPECT_FALSE(source.IsLocalFileSource());
   EXPECT_FALSE(source.IsCastPresentationUrl());
   EXPECT_FALSE(source.IsDialSource());
+  EXPECT_FALSE(source.IsRemotePlaybackSource());
 }
 
 TEST(MediaSourceTest, ForPresentationUrl) {
@@ -121,9 +155,23 @@ TEST(MediaSourceTest, ForPresentationUrl) {
   EXPECT_EQ(kPresentationUrl, source.id());
   EXPECT_FALSE(source.IsDesktopMirroringSource());
   EXPECT_FALSE(source.IsTabMirroringSource());
-  EXPECT_FALSE(source.IsLocalFileSource());
   EXPECT_FALSE(source.IsCastPresentationUrl());
   EXPECT_FALSE(source.IsDialSource());
+  EXPECT_FALSE(source.IsRemotePlaybackSource());
+}
+
+TEST(MediaSourceTest, ForRemotePlayback) {
+  constexpr char kRemotePlaybackUrl[] =
+      "remote-playback:media-session?tab_id=1&video_codec=vp8&audio_codec=aac";
+  auto source = MediaSource::ForRemotePlayback(1, media::VideoCodec::kVP8,
+                                               media::AudioCodec::kAAC);
+  EXPECT_EQ(kRemotePlaybackUrl, source.id());
+  EXPECT_EQ(1, source.TabIdFromRemotePlaybackSource());
+  EXPECT_FALSE(source.IsDesktopMirroringSource());
+  EXPECT_FALSE(source.IsTabMirroringSource());
+  EXPECT_FALSE(source.IsCastPresentationUrl());
+  EXPECT_FALSE(source.IsDialSource());
+  EXPECT_TRUE(source.IsRemotePlaybackSource());
 }
 
 TEST(MediaSourceTest, IsCastPresentationUrl) {

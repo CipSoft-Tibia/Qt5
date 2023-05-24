@@ -1,7 +1,8 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 
 extensions_api_schema_files_ = [
@@ -17,26 +18,27 @@ extensions_api_schema_files_ = [
   "bluetooth_low_energy.idl",
   "bluetooth_private.idl",
   "bluetooth_socket.idl",
-  "cast_channel.idl",
   "cec_private.idl",
   "clipboard.idl",
   "declarative_net_request.idl",
-  "display_source.idl",
   "dns.idl",
   "events.json",
   "extension_options_internal.idl",
   "extension_types.json",
   "feedback_private.idl",
+  "file_handlers.idl",
   "file_system.idl",
   "guest_view_internal.json",
   "management.json",
   "hid.idl",
+  "i18n.json",
   "idle.json",
   "metrics_private.json",
   "mime_handler_private.idl",
   "mime_handler_view_guest_internal.json",
   "mojo_private.idl",
   "networking_private.idl",
+  "offscreen.idl",
   "power.idl",
   "printer_provider.idl",
   "printer_provider_internal.idl",
@@ -51,7 +53,6 @@ extensions_api_schema_files_ = [
   "system_display.idl",
   "system_memory.idl",
   "system_network.idl",
-  "system_power_source.idl",
   "system_storage.idl",
   "test.json",
   "usb.idl",
@@ -62,29 +63,35 @@ extensions_api_schema_files_ = [
 ]
 
 extensions_manifest_only_schema_files_ = [
+  "content_scripts.idl",
+  "cross_origin_isolation.idl",
   "extensions_manifest_types.json",
   "incognito.json",
+  "oauth2.idl",
+  "requirements.json",
+  "shared_module.idl",
+  "web_accessible_resources.idl",
+  "web_accessible_resources_mv2.idl",
 ]
 
-if (is_chromeos) {
+if (is_chromeos_ash) {
   extensions_api_schema_files_ += [
-    "crash_report_private.idl",
     "diagnostics.idl",
     "lock_screen_data.idl",
     "media_perception_private.idl",
-    "networking_config.idl",
-    "vpn_provider.idl",
-    "webcam_private.idl",
   ]
 }
 
-if (use_qt) {
+if (is_chromeos) {
+  extensions_api_schema_files_ += [ "webcam_private.idl" ]
+}
+
+if (is_qtwebengine) {
   extensions_api_schema_files_ -= [
     "bluetooth.idl",
     "bluetooth_low_energy.idl",
     "bluetooth_private.idl",
     "bluetooth_socket.idl",
-    "cast_channel.idl",
     "feedback_private.idl",
   ]
 }

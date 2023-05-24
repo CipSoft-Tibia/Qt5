@@ -16,7 +16,7 @@
 namespace webrtc {
 
 /** Converts a single value to a suitable NSNumber, NSString or NSArray containing NSNumbers
-    or NSStrings.*/
+    or NSStrings, or NSDictionary of NSString keys to NSNumber values.*/
 NSObject *ValueFromStatsMember(const RTCStatsMemberInterface *member) {
   if (member->is_defined()) {
     switch (member->type()) {
@@ -37,7 +37,7 @@ NSObject *ValueFromStatsMember(const RTCStatsMemberInterface *member) {
       case RTCStatsMemberInterface::kSequenceBool: {
         std::vector<bool> sequence = *member->cast_to<RTCStatsMember<std::vector<bool>>>();
         NSMutableArray *array = [NSMutableArray arrayWithCapacity:sequence.size()];
-        for (const auto &item : sequence) {
+        for (auto item : sequence) {
           [array addObject:[NSNumber numberWithBool:item]];
         }
         return [array copy];
@@ -91,8 +91,28 @@ NSObject *ValueFromStatsMember(const RTCStatsMemberInterface *member) {
         }
         return [array copy];
       }
+      case RTCStatsMemberInterface::kMapStringUint64: {
+        std::map<std::string, uint64_t> map =
+            *member->cast_to<RTCStatsMember<std::map<std::string, uint64_t>>>();
+        NSMutableDictionary<NSString *, NSNumber *> *dictionary =
+            [NSMutableDictionary dictionaryWithCapacity:map.size()];
+        for (const auto &item : map) {
+          dictionary[[NSString stringForStdString:item.first]] = @(item.second);
+        }
+        return [dictionary copy];
+      }
+      case RTCStatsMemberInterface::kMapStringDouble: {
+        std::map<std::string, double> map =
+            *member->cast_to<RTCStatsMember<std::map<std::string, double>>>();
+        NSMutableDictionary<NSString *, NSNumber *> *dictionary =
+            [NSMutableDictionary dictionaryWithCapacity:map.size()];
+        for (const auto &item : map) {
+          dictionary[[NSString stringForStdString:item.first]] = @(item.second);
+        }
+        return [dictionary copy];
+      }
       default:
-        RTC_NOTREACHED();
+        RTC_DCHECK_NOTREACHED();
     }
   }
 
@@ -110,7 +130,7 @@ NSObject *ValueFromStatsMember(const RTCStatsMemberInterface *member) {
 - (instancetype)initWithStatistics:(const webrtc::RTCStats &)statistics {
   if (self = [super init]) {
     _id = [NSString stringForStdString:statistics.id()];
-    _timestamp_us = statistics.timestamp_us();
+    _timestamp_us = statistics.timestamp().us();
     _type = [NSString stringWithCString:statistics.type() encoding:NSUTF8StringEncoding];
 
     NSMutableDictionary<NSString *, NSObject *> *values = [NSMutableDictionary dictionary];
@@ -155,7 +175,7 @@ NSObject *ValueFromStatsMember(const RTCStatsMemberInterface *member) {
 
 - (instancetype)initWithReport : (const webrtc::RTCStatsReport &)report {
   if (self = [super init]) {
-    _timestamp_us = report.timestamp_us();
+    _timestamp_us = report.timestamp().us();
 
     NSMutableDictionary *statisticsById =
         [NSMutableDictionary dictionaryWithCapacity:report.size()];

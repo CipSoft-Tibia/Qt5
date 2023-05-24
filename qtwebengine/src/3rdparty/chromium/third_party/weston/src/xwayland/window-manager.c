@@ -45,7 +45,7 @@
 #include "xwayland.h"
 #include "xwayland-internal-interface.h"
 
-#include "cairo-util.h"
+#include "shared/cairo-util.h"
 #include "hash.h"
 #include "shared/helpers.h"
 
@@ -174,6 +174,9 @@ struct weston_wm_window {
 	struct motif_wm_hints motif_hints;
 	struct wl_list link;
 };
+
+static void
+weston_wm_window_set_allow_commits(struct weston_wm_window *window, bool allow);
 
 static struct weston_wm_window *
 get_wm_window(struct weston_surface *surface);
@@ -401,7 +404,6 @@ dump_cardinal_array(FILE *fp, xcb_get_property_reply_t *reply)
 {
 	unsigned i = 0;
 	void *arr;
-	char *str = NULL;
 
 	assert(reply->type == XCB_ATOM_CARDINAL);
 
@@ -412,8 +414,6 @@ dump_cardinal_array(FILE *fp, xcb_get_property_reply_t *reply)
 		i = dump_cardinal_array_elem(fp, reply->format,
 					     arr, reply->value_len, i);
 	fprintf(fp, "]");
-
-	free(str);
 }
 
 void
@@ -466,6 +466,7 @@ dump_property(FILE *fp, struct weston_wm *wm,
 		fprintf(fp, "\n");
 	} else if (reply->type == XCB_ATOM_CARDINAL) {
 		dump_cardinal_array(fp, reply);
+		fprintf(fp, "\n");
 	} else if (reply->type == XCB_ATOM_WINDOW && reply->format == 32) {
 		window_value = xcb_get_property_value(reply);
 		fprintf(fp, "win %u\n", *window_value);
@@ -713,13 +714,73 @@ weston_wm_window_send_configure_notify(struct weston_wm_window *window)
 }
 
 static void
+weston_wm_configure_window(struct weston_wm *wm, xcb_window_t window_id,
+			   uint16_t mask, const uint32_t *values)
+{
+	static const struct {
+		xcb_config_window_t bitmask;
+		const char *name;
+	} names[] = {
+		{ XCB_CONFIG_WINDOW_X, "x" },
+		{ XCB_CONFIG_WINDOW_Y, "y" },
+		{ XCB_CONFIG_WINDOW_WIDTH, "width" },
+		{ XCB_CONFIG_WINDOW_HEIGHT, "height" },
+		{ XCB_CONFIG_WINDOW_BORDER_WIDTH, "border_width" },
+		{ XCB_CONFIG_WINDOW_SIBLING, "sibling" },
+		{ XCB_CONFIG_WINDOW_STACK_MODE, "stack_mode" },
+	};
+	char *buf = NULL;
+	size_t sz = 0;
+	FILE *fp;
+	unsigned i, v;
+
+	xcb_configure_window(wm->conn, window_id, mask, values);
+
+	if (!wm_debug_is_enabled(wm))
+		return;
+
+	fp = open_memstream(&buf, &sz);
+	if (!fp)
+		return;
+
+	fprintf(fp, "XWM: configure window %d:", window_id);
+	for (i = 0, v = 0; i < ARRAY_LENGTH(names); i++) {
+		if (mask & names[i].bitmask)
+			fprintf(fp, " %s=%d", names[i].name, values[v++]);
+	}
+	fclose(fp);
+
+	wm_printf(wm, "%s\n", buf);
+	free(buf);
+}
+
+static void
+weston_wm_window_configure_frame(struct weston_wm_window *window)
+{
+	uint16_t mask;
+	uint32_t values[2];
+	int width, height;
+
+	if (!window->frame_id)
+		return;
+
+	weston_wm_window_get_frame_size(window, &width, &height);
+	values[0] = width;
+	values[1] = height;
+	mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+	weston_wm_configure_window(window->wm, window->frame_id, mask, values);
+}
+
+static void
 weston_wm_handle_configure_request(struct weston_wm *wm, xcb_generic_event_t *event)
 {
 	xcb_configure_request_event_t *configure_request =
 		(xcb_configure_request_event_t *) event;
 	struct weston_wm_window *window;
-	uint32_t mask, values[16];
-	int x, y, width, height, i = 0;
+	uint32_t values[16];
+	uint16_t mask;
+	int x, y;
+	int i = 0;
 
 	wm_printf(wm, "XCB_CONFIGURE_REQUEST (window %d) %d,%d @ %dx%d\n",
 		  configure_request->window,
@@ -739,8 +800,10 @@ weston_wm_handle_configure_request(struct weston_wm *wm, xcb_generic_event_t *ev
 	if (configure_request->value_mask & XCB_CONFIG_WINDOW_HEIGHT)
 		window->height = configure_request->height;
 
-	if (window->frame)
+	if (window->frame) {
+		weston_wm_window_set_allow_commits(window, false);
 		frame_resize_inside(window->frame, window->width, window->height);
+	}
 
 	weston_wm_window_get_child_position(window, &x, &y);
 	values[i++] = x;
@@ -760,14 +823,8 @@ weston_wm_handle_configure_request(struct weston_wm *wm, xcb_generic_event_t *ev
 		mask |= XCB_CONFIG_WINDOW_STACK_MODE;
 	}
 
-	xcb_configure_window(wm->conn, window->id, mask, values);
-
-	weston_wm_window_get_frame_size(window, &width, &height);
-	values[0] = width;
-	values[1] = height;
-	mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
-	xcb_configure_window(wm->conn, window->frame_id, mask, values);
-
+	weston_wm_configure_window(wm, window->id, mask, values);
+	weston_wm_window_configure_frame(window);
 	weston_wm_window_schedule_repaint(window);
 }
 
@@ -882,8 +939,9 @@ weston_wm_send_focus_window(struct weston_wm *wm,
 				     window->id, XCB_TIME_CURRENT_TIME);
 
 		values[0] = XCB_STACK_MODE_ABOVE;
-		xcb_configure_window (wm->conn, window->frame_id,
-				      XCB_CONFIG_WINDOW_STACK_MODE, values);
+		weston_wm_configure_window(wm, window->frame_id,
+					   XCB_CONFIG_WINDOW_STACK_MODE,
+					   values);
 	} else {
 		xcb_set_input_focus (wm->conn,
 				     XCB_INPUT_FOCUS_POINTER_ROOT,
@@ -949,6 +1007,9 @@ weston_wm_window_set_allow_commits(struct weston_wm_window *window, bool allow)
 
 	assert(window->frame_id != XCB_WINDOW_NONE);
 
+	wm_printf(wm, "XWM: window %d set _XWAYLAND_ALLOW_COMMITS = %s\n",
+		  window->id, allow ? "true" : "false");
+
 	property[0] = allow ? 1 : 0;
 
 	xcb_change_property(wm->conn,
@@ -958,6 +1019,7 @@ weston_wm_window_set_allow_commits(struct weston_wm_window *window, bool allow)
 			    XCB_ATOM_CARDINAL,
 			    32, /* format */
 			    1, property);
+	xcb_flush(wm->conn);
 }
 
 #define ICCCM_WITHDRAWN_STATE	0
@@ -1020,6 +1082,10 @@ weston_wm_window_create_frame(struct weston_wm_window *window)
 	window->frame = frame_create(window->wm->theme,
 				     window->width, window->height,
 				     buttons, window->name, NULL);
+
+	if (!window->frame)
+		return;
+
 	frame_resize_inside(window->frame, window->width, window->height);
 
 	weston_wm_window_get_frame_size(window, &width, &height);
@@ -1055,8 +1121,8 @@ weston_wm_window_create_frame(struct weston_wm_window *window)
 	xcb_reparent_window(wm->conn, window->id, window->frame_id, x, y);
 
 	values[0] = 0;
-	xcb_configure_window(wm->conn, window->id,
-			     XCB_CONFIG_WINDOW_BORDER_WIDTH, values);
+	weston_wm_configure_window(wm, window->id,
+				   XCB_CONFIG_WINDOW_BORDER_WIDTH, values);
 
 	window->cairo_surface =
 		cairo_xcb_surface_create_with_xrender_format(wm->conn,
@@ -1219,8 +1285,7 @@ weston_wm_window_draw_decoration(struct weston_wm_window *window)
 {
 	cairo_t *cr;
 	int width, height;
-
-	wm_printf(window->wm, "XWM: draw decoration, win %d\n", window->id);
+	const char *how;
 
 	weston_wm_window_get_frame_size(window, &width, &height);
 
@@ -1228,11 +1293,14 @@ weston_wm_window_draw_decoration(struct weston_wm_window *window)
 	cr = cairo_create(window->cairo_surface);
 
 	if (window->fullscreen) {
+		how = "fullscreen";
 		/* nothing */
 	} else if (window->decorate) {
+		how = "decorate";
 		frame_set_title(window->frame, window->name);
 		frame_repaint(window->frame, cr);
 	} else {
+		how = "shadow";
 		cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 		cairo_set_source_rgba(cr, 0, 0, 0, 0);
 		cairo_paint(cr);
@@ -1240,6 +1308,9 @@ weston_wm_window_draw_decoration(struct weston_wm_window *window)
 		render_shadow(cr, window->wm->theme->shadow,
 			      2, 2, width + 8, height + 8, 64, 64);
 	}
+
+	wm_printf(window->wm, "XWM: draw decoration, win %d, %s\n",
+		  window->id, how);
 
 	cairo_destroy(cr);
 	cairo_surface_flush(window->cairo_surface);
@@ -1306,10 +1377,12 @@ weston_wm_window_do_repaint(void *data)
 
 	window->repaint_source = NULL;
 
+	weston_wm_window_set_allow_commits(window, false);
 	weston_wm_window_read_properties(window);
 
 	weston_wm_window_draw_decoration(window);
 	weston_wm_window_set_pending_state(window);
+	weston_wm_window_set_allow_commits(window, true);
 }
 
 static void
@@ -1457,6 +1530,8 @@ weston_wm_window_destroy(struct weston_wm_window *window)
 
 	weston_output_weak_ref_clear(&window->legacy_fullscreen_output);
 
+	if (window->configure_source)
+		wl_event_source_remove(window->configure_source);
 	if (window->repaint_source)
 		wl_event_source_remove(window->repaint_source);
 	if (window->cairo_surface)
@@ -2628,32 +2703,28 @@ weston_wm_window_configure(void *data)
 	struct weston_wm_window *window = data;
 	struct weston_wm *wm = window->wm;
 	uint32_t values[4];
-	int x, y, width, height;
+	int x, y;
+
+	if (window->configure_source) {
+		wl_event_source_remove(window->configure_source);
+		window->configure_source = NULL;
+	}
+
+	weston_wm_window_set_allow_commits(window, false);
 
 	weston_wm_window_get_child_position(window, &x, &y);
 	values[0] = x;
 	values[1] = y;
 	values[2] = window->width;
 	values[3] = window->height;
-	xcb_configure_window(wm->conn,
-			     window->id,
-			     XCB_CONFIG_WINDOW_X |
-			     XCB_CONFIG_WINDOW_Y |
-			     XCB_CONFIG_WINDOW_WIDTH |
-			     XCB_CONFIG_WINDOW_HEIGHT,
-			     values);
+	weston_wm_configure_window(wm, window->id,
+				   XCB_CONFIG_WINDOW_X |
+				   XCB_CONFIG_WINDOW_Y |
+				   XCB_CONFIG_WINDOW_WIDTH |
+				   XCB_CONFIG_WINDOW_HEIGHT,
+				   values);
 
-	weston_wm_window_get_frame_size(window, &width, &height);
-	values[0] = width;
-	values[1] = height;
-	xcb_configure_window(wm->conn,
-			     window->frame_id,
-			     XCB_CONFIG_WINDOW_WIDTH |
-			     XCB_CONFIG_WINDOW_HEIGHT,
-			     values);
-
-	window->configure_source = NULL;
-
+	weston_wm_window_configure_frame(window);
 	weston_wm_window_schedule_repaint(window);
 }
 
@@ -2689,14 +2760,15 @@ send_configure(struct weston_surface *surface, int32_t width, int32_t height)
 	else
 		new_height = 1;
 
-	if (window->width == new_width && window->height == new_height)
-		return;
+	if (window->width != new_width || window->height != new_height) {
+		window->width = new_width;
+		window->height = new_height;
 
-	window->width = new_width;
-	window->height = new_height;
-
-	if (window->frame)
-		frame_resize_inside(window->frame, window->width, window->height);
+		if (window->frame) {
+			frame_resize_inside(window->frame,
+					    window->width, window->height);
+		}
+	}
 
 	if (window->configure_source)
 		return;
@@ -2711,7 +2783,8 @@ send_position(struct weston_surface *surface, int32_t x, int32_t y)
 {
 	struct weston_wm_window *window = get_wm_window(surface);
 	struct weston_wm *wm;
-	uint32_t mask, values[2];
+	uint32_t values[2];
+	uint16_t mask;
 
 	if (!window || !window->wm)
 		return;
@@ -2727,7 +2800,7 @@ send_position(struct weston_surface *surface, int32_t x, int32_t y)
 		values[1] = y;
 		mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
 
-		xcb_configure_window(wm->conn, window->frame_id, mask, values);
+		weston_wm_configure_window(wm, window->frame_id, mask, values);
 		xcb_flush(wm->conn);
 	}
 }
@@ -2867,7 +2940,6 @@ xserver_map_shell_surface(struct weston_wm_window *window,
 		window->saved_height = window->height;
 		xwayland_interface->set_fullscreen(window->shsurf,
 						   window->legacy_fullscreen_output.output);
-		return;
 	} else if (window->override_redirect) {
 		xwayland_interface->set_xwayland(window->shsurf,
 						 window->x, window->y);

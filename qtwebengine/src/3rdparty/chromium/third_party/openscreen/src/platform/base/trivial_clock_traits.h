@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <ostream>
+#include <string>
 
 namespace openscreen {
 
@@ -52,6 +53,24 @@ class TrivialClockTraits {
 // &Clock::now versus something else for testing).
 using ClockNowFunctionPtr = TrivialClockTraits::time_point (*)();
 
+// Convenience for serializing to string, e.g. for tracing. Outputs a string of
+// the form "123µs".
+std::string ToString(const TrivialClockTraits::duration& d);
+
+// Convenience for serializing to string, e.g. for tracing. Outputs a string of
+// the form "123µs-ticks".
+std::string ToString(const TrivialClockTraits::time_point& tp);
+
+// Explicit namespace for inclusion of custom time-related operator<<
+// implementations. These operators may be included in a file for use by adding:
+//     using clock_operators::operator<<;
+//
+// NOTE: in some cases, resolution of these operators may still fail, most
+// notably in Google Test/Mock when attempting to serialize to an EXPECT_*
+// or ASSERT_* call. In this case, the manual "ToString" functions above must
+// be called instead.
+namespace clock_operators {
+
 // Logging convenience for durations. Outputs a string of the form "123µs".
 std::ostream& operator<<(std::ostream& os,
                          const TrivialClockTraits::duration& d);
@@ -62,12 +81,15 @@ std::ostream& operator<<(std::ostream& os,
                          const TrivialClockTraits::time_point& tp);
 
 // Logging (and gtest pretty-printing) for several commonly-used chrono types.
-std::ostream& operator<<(std::ostream& out, const std::chrono::hours&);
-std::ostream& operator<<(std::ostream& out, const std::chrono::minutes&);
-std::ostream& operator<<(std::ostream& out, const std::chrono::seconds&);
-std::ostream& operator<<(std::ostream& out, const std::chrono::milliseconds&);
+std::ostream& operator<<(std::ostream& os, const std::chrono::hours&);
+std::ostream& operator<<(std::ostream& os, const std::chrono::minutes&);
+std::ostream& operator<<(std::ostream& os, const std::chrono::seconds&);
+std::ostream& operator<<(std::ostream& os, const std::chrono::milliseconds&);
+std::ostream& operator<<(std::ostream& os, const std::chrono::microseconds& d);
 // Note: The ostream output operator for std::chrono::microseconds is handled by
 // the one for TrivialClockTraits::duration above since they are the same type.
+
+}  // namespace clock_operators
 
 }  // namespace openscreen
 

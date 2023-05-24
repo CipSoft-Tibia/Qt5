@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,72 +16,39 @@
 
 namespace network {
 
-const uint64_t DataElement::kUnknownSize;
+DataElementBytes::DataElementBytes() = default;
+DataElementBytes::DataElementBytes(std::vector<uint8_t> bytes)
+    : bytes_(std::move(bytes)) {}
+DataElementBytes::DataElementBytes(DataElementBytes&& other) = default;
+DataElementBytes& DataElementBytes::operator=(DataElementBytes&& other) =
+    default;
+DataElementBytes::~DataElementBytes() = default;
 
-DataElement::DataElement()
-    : type_(mojom::DataElementType::kUnknown),
-      offset_(0),
-      length_(std::numeric_limits<uint64_t>::max()) {}
-
-DataElement::~DataElement() = default;
-
-DataElement::DataElement(DataElement&& other) = default;
-DataElement& DataElement::operator=(DataElement&& other) = default;
-
-void DataElement::SetToFilePathRange(
-    const base::FilePath& path,
-    uint64_t offset,
-    uint64_t length,
-    const base::Time& expected_modification_time) {
-  type_ = mojom::DataElementType::kFile;
-  path_ = path;
-  offset_ = offset;
-  length_ = length;
-  expected_modification_time_ = expected_modification_time;
+DataElementBytes DataElementBytes::Clone() const {
+  return DataElementBytes(bytes_);
 }
 
-void DataElement::SetToBlobRange(const std::string& blob_uuid,
-                                 uint64_t offset,
-                                 uint64_t length) {
-  type_ = mojom::DataElementType::kBlob;
-  blob_uuid_ = blob_uuid;
-  offset_ = offset;
-  length_ = length;
+DataElementDataPipe::DataElementDataPipe() = default;
+DataElementDataPipe::DataElementDataPipe(
+    mojo::PendingRemote<mojom::DataPipeGetter> data_pipe_getter)
+    : data_pipe_getter_(std::move(data_pipe_getter)) {
+  DCHECK(data_pipe_getter_);
 }
-
-void DataElement::SetToDataPipe(
-    mojo::PendingRemote<mojom::DataPipeGetter> data_pipe_getter) {
-  DCHECK(data_pipe_getter);
-  type_ = mojom::DataElementType::kDataPipe;
-  data_pipe_getter_ = std::move(data_pipe_getter);
-}
-
-void DataElement::SetToChunkedDataPipe(
-    mojo::PendingRemote<mojom::ChunkedDataPipeGetter>
-        chunked_data_pipe_getter) {
-  type_ = mojom::DataElementType::kChunkedDataPipe;
-  chunked_data_pipe_getter_ = std::move(chunked_data_pipe_getter);
-}
-
-void DataElement::SetToReadOnceStream(
-    mojo::PendingRemote<mojom::ChunkedDataPipeGetter>
-        chunked_data_pipe_getter) {
-  type_ = mojom::DataElementType::kReadOnceStream;
-  chunked_data_pipe_getter_ = std::move(chunked_data_pipe_getter);
-}
+DataElementDataPipe::DataElementDataPipe(DataElementDataPipe&&) = default;
+DataElementDataPipe& DataElementDataPipe::operator=(
+    DataElementDataPipe&& other) = default;
+DataElementDataPipe::~DataElementDataPipe() = default;
 
 mojo::PendingRemote<mojom::DataPipeGetter>
-DataElement::ReleaseDataPipeGetter() {
-  DCHECK_EQ(mojom::DataElementType::kDataPipe, type_);
+DataElementDataPipe::ReleaseDataPipeGetter() {
   DCHECK(data_pipe_getter_.is_valid());
   return std::move(data_pipe_getter_);
 }
 
-mojo::PendingRemote<mojom::DataPipeGetter> DataElement::CloneDataPipeGetter()
-    const {
-  DCHECK_EQ(mojom::DataElementType::kDataPipe, type_);
+mojo::PendingRemote<mojom::DataPipeGetter>
+DataElementDataPipe::CloneDataPipeGetter() const {
   DCHECK(data_pipe_getter_.is_valid());
-  auto* mutable_this = const_cast<DataElement*>(this);
+  auto* mutable_this = const_cast<DataElementDataPipe*>(this);
   mojo::Remote<mojom::DataPipeGetter> owned(
       std::move(mutable_this->data_pipe_getter_));
   mojo::PendingRemote<mojom::DataPipeGetter> clone;
@@ -90,78 +57,65 @@ mojo::PendingRemote<mojom::DataPipeGetter> DataElement::CloneDataPipeGetter()
   return clone;
 }
 
+DataElementDataPipe DataElementDataPipe::Clone() const {
+  return DataElementDataPipe(CloneDataPipeGetter());
+}
+
+DataElementChunkedDataPipe::DataElementChunkedDataPipe() = default;
+DataElementChunkedDataPipe::DataElementChunkedDataPipe(
+    mojo::PendingRemote<mojom::ChunkedDataPipeGetter> chunked_data_pipe_getter,
+    ReadOnlyOnce read_only_once)
+    : chunked_data_pipe_getter_(std::move(chunked_data_pipe_getter)),
+      read_only_once_(read_only_once) {
+  DCHECK(chunked_data_pipe_getter_);
+}
+DataElementChunkedDataPipe::DataElementChunkedDataPipe(
+    DataElementChunkedDataPipe&& other) = default;
+DataElementChunkedDataPipe& DataElementChunkedDataPipe::operator=(
+    DataElementChunkedDataPipe&& other) = default;
+DataElementChunkedDataPipe::~DataElementChunkedDataPipe() = default;
+
 mojo::PendingRemote<mojom::ChunkedDataPipeGetter>
-DataElement::ReleaseChunkedDataPipeGetter() {
-  DCHECK(type_ == mojom::DataElementType::kChunkedDataPipe ||
-         type_ == mojom::DataElementType::kReadOnceStream)
-      << type_;
+DataElementChunkedDataPipe::ReleaseChunkedDataPipeGetter() {
+  DCHECK(chunked_data_pipe_getter_.is_valid());
   return std::move(chunked_data_pipe_getter_);
 }
 
-void PrintTo(const DataElement& x, std::ostream* os) {
-  const uint64_t kMaxDataPrintLength = 40;
-  *os << "<DataElement>{type: ";
-  switch (x.type()) {
-    case mojom::DataElementType::kBytes: {
-      uint64_t length = std::min(x.length(), kMaxDataPrintLength);
-      *os << "TYPE_BYTES, data: ["
-          << base::HexEncode(x.bytes(), static_cast<size_t>(length));
-      if (length < x.length()) {
-        *os << "<...truncated due to length...>";
-      }
-      *os << "]";
-      break;
-    }
-    case mojom::DataElementType::kFile:
-      *os << "TYPE_FILE, path: " << x.path().AsUTF8Unsafe()
-          << ", expected_modification_time: " << x.expected_modification_time();
-      break;
-    case mojom::DataElementType::kBlob:
-      *os << "TYPE_BLOB, uuid: " << x.blob_uuid();
-      break;
-    case mojom::DataElementType::kDataPipe:
-      *os << "TYPE_DATA_PIPE";
-      break;
-    case mojom::DataElementType::kChunkedDataPipe:
-      *os << "TYPE_CHUNKED_DATA_PIPE";
-      break;
-    case mojom::DataElementType::kReadOnceStream:
-      *os << "TYPE_READ_ONCE_STREAM";
-      break;
-    case mojom::DataElementType::kUnknown:
-      *os << "TYPE_UNKNOWN";
-      break;
-  }
-  *os << ", length: " << x.length() << ", offset: " << x.offset() << "}";
-}
+DataElementFile::DataElementFile() = default;
+DataElementFile::DataElementFile(const base::FilePath& path,
+                                 uint64_t offset,
+                                 uint64_t length,
+                                 base::Time expected_modification_time)
+    : path_(path),
+      offset_(offset),
+      length_(length),
+      expected_modification_time_(expected_modification_time) {}
+DataElementFile::DataElementFile(const DataElementFile&) = default;
+DataElementFile& DataElementFile::operator=(const DataElementFile&) = default;
+DataElementFile::DataElementFile(DataElementFile&&) = default;
+DataElementFile& DataElementFile::operator=(DataElementFile&&) = default;
+DataElementFile::~DataElementFile() = default;
 
-bool operator==(const DataElement& a, const DataElement& b) {
-  if (a.type() != b.type() || a.offset() != b.offset() ||
-      a.length() != b.length())
-    return false;
-  switch (a.type()) {
-    case mojom::DataElementType::kBytes:
-      return memcmp(a.bytes(), b.bytes(), b.length()) == 0;
-    case mojom::DataElementType::kFile:
-      return a.path() == b.path() &&
-             a.expected_modification_time() == b.expected_modification_time();
-    case mojom::DataElementType::kBlob:
-      return a.blob_uuid() == b.blob_uuid();
-    case mojom::DataElementType::kDataPipe:
-      return false;
-    case mojom::DataElementType::kChunkedDataPipe:
-      return false;
-    case mojom::DataElementType::kReadOnceStream:
-      return false;
-    case mojom::DataElementType::kUnknown:
-      NOTREACHED();
-      return false;
-  }
-  return false;
-}
+DataElement::DataElement() = default;
+DataElement::DataElement(DataElement&& other) = default;
+DataElement& DataElement::operator=(DataElement&& other) = default;
+DataElement::~DataElement() = default;
 
-bool operator!=(const DataElement& a, const DataElement& b) {
-  return !(a == b);
+DataElement DataElement::Clone() const {
+  switch (type()) {
+    case Tag::kBytes:
+      return DataElement(As<DataElementBytes>().Clone());
+    case network::DataElement::Tag::kDataPipe:
+      return DataElement(As<DataElementDataPipe>().Clone());
+    case network::DataElement::Tag::kFile:
+      return DataElement(As<DataElementFile>());
+    case network::DataElement::Tag::kChunkedDataPipe:
+      // DataElementChunkedDataPipe is not generally copyable, especially if
+      // `read_only_once` is true.
+      // We want to be strict on this case, and use CHECK rather than DCHECK.
+      CHECK(false);
+      return DataElement();
+  }
 }
 
 }  // namespace network

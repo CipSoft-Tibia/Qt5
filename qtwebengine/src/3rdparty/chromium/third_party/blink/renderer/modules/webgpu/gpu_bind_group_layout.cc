@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,11 @@
 
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_bind_group_layout_descriptor.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_bind_group_layout_entry.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_buffer_binding_layout.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_external_texture_binding_layout.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_sampler_binding_layout.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_storage_texture_binding_layout.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_gpu_texture_binding_layout.h"
 #include "third_party/blink/renderer/modules/webgpu/dawn_conversions.h"
 #include "third_party/blink/renderer/modules/webgpu/gpu_device.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
@@ -13,50 +18,81 @@
 namespace blink {
 
 WGPUBindGroupLayoutEntry AsDawnType(
+    GPUDevice* device,
     const GPUBindGroupLayoutEntry* webgpu_binding,
-    GPUDevice* device) {
+    Vector<std::unique_ptr<WGPUExternalTextureBindingLayout>>*
+        externalTextureBindingLayouts,
+    ExceptionState& exception_state) {
   WGPUBindGroupLayoutEntry dawn_binding = {};
 
   dawn_binding.binding = webgpu_binding->binding();
   dawn_binding.visibility =
-      AsDawnEnum<WGPUShaderStage>(webgpu_binding->visibility());
-  dawn_binding.type = AsDawnEnum<WGPUBindingType>(webgpu_binding->type());
+      AsDawnFlags<WGPUShaderStage>(webgpu_binding->visibility());
 
-  dawn_binding.hasDynamicOffset = webgpu_binding->hasDynamicOffset();
-
-  dawn_binding.minBufferBindingSize =
-      webgpu_binding->hasMinBufferBindingSize()
-          ? webgpu_binding->minBufferBindingSize()
-          : 0;
-
-  dawn_binding.viewDimension =
-      AsDawnEnum<WGPUTextureViewDimension>(webgpu_binding->viewDimension());
-
-  dawn_binding.textureComponentType = AsDawnEnum<WGPUTextureComponentType>(
-      webgpu_binding->textureComponentType());
-  dawn_binding.multisampled = webgpu_binding->multisampled();
-
-  if (dawn_binding.multisampled) {
-    device->AddConsoleWarning(
-        "Creating a GPUBindGroupLayoutEntry with entry.multisampled = true is "
-        "deprecated: set entry.type = \"multisampled-texture\" instead.");
+  if (webgpu_binding->hasBuffer()) {
+    dawn_binding.buffer.type = AsDawnEnum(webgpu_binding->buffer()->type());
+    dawn_binding.buffer.hasDynamicOffset =
+        webgpu_binding->buffer()->hasDynamicOffset();
+    dawn_binding.buffer.minBindingSize =
+        webgpu_binding->buffer()->minBindingSize();
   }
 
-  dawn_binding.storageTextureFormat =
-      AsDawnEnum<WGPUTextureFormat>(webgpu_binding->storageTextureFormat());
+  if (webgpu_binding->hasSampler()) {
+    dawn_binding.sampler.type = AsDawnEnum(webgpu_binding->sampler()->type());
+  }
+
+  if (webgpu_binding->hasTexture()) {
+    dawn_binding.texture.sampleType =
+        AsDawnEnum(webgpu_binding->texture()->sampleType());
+    dawn_binding.texture.viewDimension =
+        AsDawnEnum(webgpu_binding->texture()->viewDimension());
+    dawn_binding.texture.multisampled =
+        webgpu_binding->texture()->multisampled();
+  }
+
+  if (webgpu_binding->hasStorageTexture()) {
+    if (!device->ValidateTextureFormatUsage(
+            webgpu_binding->storageTexture()->format(), exception_state)) {
+      return {};
+    }
+
+    dawn_binding.storageTexture.access =
+        AsDawnEnum(webgpu_binding->storageTexture()->access());
+    dawn_binding.storageTexture.format =
+        AsDawnEnum(webgpu_binding->storageTexture()->format());
+    dawn_binding.storageTexture.viewDimension =
+        AsDawnEnum(webgpu_binding->storageTexture()->viewDimension());
+  }
+
+  if (webgpu_binding->hasExternalTexture()) {
+    std::unique_ptr<WGPUExternalTextureBindingLayout>
+        externalTextureBindingLayout =
+            std::make_unique<WGPUExternalTextureBindingLayout>();
+    externalTextureBindingLayout->chain.sType =
+        WGPUSType_ExternalTextureBindingLayout;
+    dawn_binding.nextInChain = reinterpret_cast<WGPUChainedStruct*>(
+        externalTextureBindingLayout.get());
+    externalTextureBindingLayouts->push_back(
+        std::move(externalTextureBindingLayout));
+  }
 
   return dawn_binding;
 }
 
 // TODO(crbug.com/1069302): Remove when unused.
 std::unique_ptr<WGPUBindGroupLayoutEntry[]> AsDawnType(
+    GPUDevice* device,
     const HeapVector<Member<GPUBindGroupLayoutEntry>>& webgpu_objects,
-    GPUDevice* device) {
+    Vector<std::unique_ptr<WGPUExternalTextureBindingLayout>>*
+        externalTextureBindingLayouts,
+    ExceptionState& exception_state) {
   wtf_size_t count = webgpu_objects.size();
   std::unique_ptr<WGPUBindGroupLayoutEntry[]> dawn_objects(
       new WGPUBindGroupLayoutEntry[count]);
   for (wtf_size_t i = 0; i < count; ++i) {
-    dawn_objects[i] = AsDawnType(webgpu_objects[i].Get(), device);
+    dawn_objects[i] =
+        AsDawnType(device, webgpu_objects[i].Get(),
+                   externalTextureBindingLayouts, exception_state);
   }
   return dawn_objects;
 }
@@ -71,9 +107,16 @@ GPUBindGroupLayout* GPUBindGroupLayout::Create(
 
   uint32_t entry_count = 0;
   std::unique_ptr<WGPUBindGroupLayoutEntry[]> entries;
+  Vector<std::unique_ptr<WGPUExternalTextureBindingLayout>>
+      externalTextureBindingLayouts;
   entry_count = static_cast<uint32_t>(webgpu_desc->entries().size());
   if (entry_count > 0) {
-    entries = AsDawnType(webgpu_desc->entries(), device);
+    entries = AsDawnType(device, webgpu_desc->entries(),
+                         &externalTextureBindingLayouts, exception_state);
+  }
+
+  if (exception_state.HadException()) {
+    return nullptr;
   }
 
   std::string label;
@@ -86,20 +129,16 @@ GPUBindGroupLayout* GPUBindGroupLayout::Create(
     dawn_desc.label = label.c_str();
   }
 
-  return MakeGarbageCollected<GPUBindGroupLayout>(
+  GPUBindGroupLayout* layout = MakeGarbageCollected<GPUBindGroupLayout>(
       device, device->GetProcs().deviceCreateBindGroupLayout(
                   device->GetHandle(), &dawn_desc));
+  if (webgpu_desc->hasLabel())
+    layout->setLabel(webgpu_desc->label());
+  return layout;
 }
 
 GPUBindGroupLayout::GPUBindGroupLayout(GPUDevice* device,
                                        WGPUBindGroupLayout bind_group_layout)
     : DawnObject<WGPUBindGroupLayout>(device, bind_group_layout) {}
-
-GPUBindGroupLayout::~GPUBindGroupLayout() {
-  if (IsDawnControlClientDestroyed()) {
-    return;
-  }
-  GetProcs().bindGroupLayoutRelease(GetHandle());
-}
 
 }  // namespace blink

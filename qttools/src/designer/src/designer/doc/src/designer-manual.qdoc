@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtdesigner-manual.html
@@ -33,21 +9,24 @@
     \keyword Qt Designer
 
     \QD is the Qt tool for designing and building graphical user
-    interfaces (GUIs) with \l {Qt Widgets}. You can compose and customize your
-    windows or dialogs in a what-you-see-is-what-you-get (WYSIWYG) manner, and
-    test them using different styles and resolutions.
+    interfaces (GUIs) with \l {Qt Widgets}. For user interface design with
+    \l {Qt Quick}, see \l {Qt Design Studio Manual} {Qt Design Studio}.
 
-    Widgets and forms created with \QD integrate seamlessly with programmed
-    code, using Qt's signals and slots mechanism, so that you can easily assign
-    behavior to graphical elements. All properties set in \QD can be changed
-    dynamically within the code. Furthermore, features like widget promotion
-    and custom plugins allow you to use your own components with \QD.
+    You can compose and customize your windows or dialogs in a
+    what-you-see-is-what-you-get (WYSIWYG) manner, and test them using different
+    styles and resolutions. Widgets and forms created with \QD integrate
+    seamlessly with programmed code, using Qt's signals and slots mechanism, so
+    that you can easily assign behavior to graphical elements. All properties
+    set in \QD can be changed dynamically within the code. Furthermore, features
+    like widget promotion and custom plugins allow you to use your own
+    components with \QD.
 
-    \note You have the option of using \l {Qt Quick} for user interface
+    \note You have the option of using \l {Qt Quick} and
+    \l {Qt Design Studio Manual}{Qt Design Studio} for user interface
     design rather than widgets. It is a much easier way to write many kinds of
     applications. It enables a completely customizable appearance,
-    touch-reactive elements, and smooth animated transitions, backed up by the
-    power of OpenGL graphics acceleration.
+    touch-reactive elements, and smooth animated transitions, taking advantage
+    of hardware acceleration.
 
     If you are new to \QD, you can take a look at the
     \l{Getting To Know Qt Designer} document. For a quick tutorial on how to
@@ -1555,11 +1534,9 @@
 
     \section1 Dock Widgets
 
-    Since dock widgets are \l{Using Containers in Qt Designer}
-    {container widgets}, they can be added to a form in the usual way. Once
-    added to a form, dock widgets are not placed in any particular dock area by
-    default; you need to set the \gui{docked} property to true for each widget
-    and choose an appropriate value for its \gui{dockWidgetArea} property.
+    Dock widgets are \l{Using Containers in Qt Designer}{container widgets}
+    as well. They can be added to a form by dropping them onto the desired
+    dock area.
 
     \target AddingADockWidget
 
@@ -1724,6 +1701,7 @@ pixmap property in the property editor.
     \previouspage Using Stylesheets with Qt Designer
     \nextpage Using a Designer UI File in Your Qt for Python Application
 
+    \keyword Using a Designer UI File in Your Application
     \title Using a Designer UI File in Your C++ Application
 
     Qt Designer UI files represent the widget tree of the form in XML format. The
@@ -1774,7 +1752,7 @@ pixmap property in the property editor.
     \endlist
 
     To demonstrate, we create a simple Calculator Form application. It is based on the
-    original \l{Calculator Form Example}{Calculator Form} example.
+    original \l{Calculator Form} example.
 
     The application consists of one source file, \c main.cpp and a UI
     file.
@@ -1783,10 +1761,19 @@ pixmap property in the property editor.
 
     \image directapproach-calculatorform.png
 
-    We will use \c qmake to build the executable, so we need to write a
-    \c{.pro} file:
+    When using \c CMake to build the executable, a \c{CMakeLists.txt}
+    file is required:
 
-    \snippet calculatorform/calculatorform.pro 0
+    \snippet uitools/calculatorform/CMakeLists.txt 0
+
+    The form is listed among the C++ source files in \c qt_add_executable().
+    The option \c CMAKE_AUTOUIC tells \c CMake to run the \c uic tool
+    to create a \c ui_calculatorform.h file that can be used
+    by the source files.
+
+    When using \c qmake to build the executable, a \c{.pro} file is required:
+
+    \snippet uitools/calculatorform/calculatorform.pro 0
 
     The special feature of this file is the \c FORMS declaration that tells
     \c qmake which files to process with \c uic. In this case, the
@@ -1794,8 +1781,8 @@ pixmap property in the property editor.
     that can be used by any file listed in the \c SOURCES declaration.
 
     \note You can use Qt Creator to create the Calculator Form project. It
-    automatically generates the main.cpp, UI, and .pro files, which you can
-    then modify.
+    automatically generates the main.cpp, UI, and a project file for the
+    desired build tool, which you can modify.
 
     \section2 The Direct Approach
 
@@ -1842,16 +1829,19 @@ pixmap property in the property editor.
     interface and other objects in your application.
     The generated \c{Ui::CalculatorForm} structure is a member of the class.
 
-    This approach is used in the \l{Calculator Form Example}{Calculator Form}
-    example.
+    This approach is used in the \l{Calculator Form} example.
 
     To ensure that we can use the user interface, we need to include the header
     file that \c uic generates before referring to \c{Ui::CalculatorForm}:
 
     \snippet calculatorform/calculatorform.h 0
 
-    This means that the \c{.pro} file must be updated to include
-    \c{calculatorform.h}:
+    The project file must be updated to include \c{calculatorform.h}.
+    For \c CMake:
+
+    \snippet calculatorform/CMakeLists.txt 1
+
+    For \c qmake:
 
     \snippet calculatorform/calculatorform.pro 0
 
@@ -1936,20 +1926,17 @@ pixmap property in the property editor.
     and enables signal and slot connections to be made in the usual way with
     the \l{QObject::connect()}{connect()} function.
 
-    This approach is used in the \l{Multiple Inheritance Example}
-    {Multiple Inheritance} example.
-
     We need to include the header file that \c uic generates from the
     \c calculatorform.ui file, as follows:
 
-    \snippet ../uitools/multipleinheritance/calculatorform.h 0
+    \snippet ../designer/calculatorform_mi/calculatorform.h 0
 
     The class is defined in a similar way to the one used in the
     \l{The Single Inheritance Approach}{single inheritance approach}, except that
     this time we inherit from \e{both} QWidget and \c{Ui::CalculatorForm},
     as follows:
 
-    \snippet ../uitools/multipleinheritance/calculatorform.h 1
+    \snippet ../designer/calculatorform_mi/calculatorform.h 1
 
     We inherit \c{Ui::CalculatorForm} privately to ensure that the user
     interface objects are private in our subclass. We can also inherit it with
@@ -1960,7 +1947,7 @@ pixmap property in the property editor.
     constructor used in the \l{The Single Inheritance Approach}
     {single inheritance} example:
 
-    \snippet ../uitools/multipleinheritance/calculatorform.cpp 0
+    \snippet ../designer/calculatorform_mi/calculatorform.cpp 0
 
     In this case, the widgets used in the user interface can be accessed in the
     same say as a widget created in code by hand. We no longer require the
@@ -1998,9 +1985,14 @@ pixmap property in the property editor.
 
     A resource file containing a UI file is required to process forms at
     run time. Also, the application needs to be configured to use the QtUiTools
-    module. This is done by including the following declaration in a \c qmake
+    module. This is done by including the following declarations in a \c CMake
     project file, ensuring that the application is compiled and linked
     appropriately.
+
+    \snippet ../uitools/textfinder/CMakeLists.txt 0
+    \snippet ../uitools/textfinder/CMakeLists.txt 1
+
+    For \c qmake:
 
     \snippet manual/doc_src_designer-manual.pro 0
 
@@ -2015,7 +2007,7 @@ pixmap property in the property editor.
     \snippet manual/doc_src_designer-manual.cpp 1
 
     The QUiLoader::load() function is invoked as shown in this code from the
-    \l{Text Finder Example}{Text Finder} example:
+    \l{Text Finder} example:
 
     \snippet ../uitools/textfinder/textfinder.cpp 4
 
@@ -2086,13 +2078,17 @@ pixmap property in the property editor.
 
     \snippet manual/doc_src_designer-manual.cpp 2
 
+    \note When renaming widgets in the form, the slot names need to be
+    adapted accordingly, which can become a maintenance problem.
+    For this reason, we recommend against using this in new code.
+
     Using this convention, we can define and implement a slot that responds to
     mouse clicks on the \gui OK button:
 
     \snippet autoconnection/imagedialog.h 0
 
     Another example of automatic signal and slot connection would be the
-    \l{Text Finder Example}{Text Finder} with its \c{on_findButton_clicked()}
+    \l{Text Finder} with its \c{on_findButton_clicked()}
     slot.
 
     We use QMetaObject's system to enable signal and slot connections:
@@ -2197,6 +2193,70 @@ pixmap property in the property editor.
         widget.show()
         sys.exit(app.exec_())
     \endcode
+
+    \section1 Resource imports
+
+    \section2 Single directory usage
+
+    When using icons from \l{The Qt Resource System}{resource files}, say
+    \c resources.qrc, \c uic will generate an import of the form:
+
+    \code
+    import resources_rc
+    \endcode
+
+    This assumes that a file \c resources_rc.py generated by calling the
+    \l {Resource Compiler (rcc)} tool (passing the \c {-g python}
+    command line option) exists in the same directory as the form source.
+
+    \c uic has a command line option \c --rc-prefix causing the \c rc indicator
+    to be prepended:
+
+    \code
+    import rc_resources
+    \endcode
+
+    The command line option \c --from-imports causes the imports to be generated
+    relative to '.':
+
+    \code
+    from . import resources_rc
+    \endcode
+
+    \section2 Directory trees
+
+    Some projects have more complicated directory trees, for example:
+
+    \badcode
+    project
+        resources   (resources.qrc)
+        ui          (.ui files)
+    \endcode
+
+    The resource file is then not in the same directory as the form source
+    and the \c .ui files typically have relative paths to the resource files:
+
+    \badcode
+    <include location="../resources/resources.qrc"/>
+    \endcode
+
+    In this case, the command line option \c --absolute-imports can be used
+    to generate an absolute import in Python, resulting in:
+
+    \code
+    import resources.resources_rc
+    \endcode
+
+    based on the assumption that \c .. is the root directory of the project
+    contained in the Python import path list.
+
+    For more deeply nested trees, it is possible to use the
+    command line option \c {--python-paths <path list>} to pass a Python
+    import path list. \c uic will then try to determine the project root
+    by matching the form file path against the path components.
+
+    If \c {--python-paths} is not given, the environment variable
+    \c PYTHONPATH is by default checked.
 */
 
 /*!
@@ -2331,8 +2391,6 @@ pixmap property in the property editor.
 
     \section2 User Defined Custom Widgets
 
-    \image worldtimeclockplugin-example.png
-
     Custom widgets can be adapted for use with \QD, giving designers the
     opportunity to configure the user interface using the actual widgets that
     will be used in an application rather than placeholder widgets. The process
@@ -2363,8 +2421,6 @@ pixmap property in the property editor.
     design process, custom widgets will appear the same as they do when
     previewed.
 
-    \image worldtimeclockplugin-example.png
-
     The \l QtDesigner module provides you with the ability to create custom
     widgets in \QD.
 
@@ -2372,7 +2428,7 @@ pixmap property in the property editor.
     \section1 Getting Started
 
     To integrate a custom widget with \QD, you require a suitable description
-    for the widget and an appropriate \c{.pro} file.
+    for the widget and an appropriate project file.
 
 
     \section2 Providing an Interface Description
@@ -2613,28 +2669,39 @@ pixmap property in the property editor.
 
     \section2 A Simple Plugin
 
-    The \l{Custom Widget Plugin Example} demonstrates a simple \QD plugin.
+    The \l{Custom Widget Plugin} demonstrates a simple \QD plugin.
 
-    The \c{.pro} file for a plugin must specify the headers and sources for
+    The project file for a plugin must specify the headers and sources for
     both the custom widget and the plugin interface. Typically, this file only
-    has to specify that the plugin's project is to be built as a library, but
-    with specific plugin support for \QD. This is done with the following
-    declarations:
+    has to specify that the plugin's project will be built as a library, but
+    with specific plugin support for \QD. For \c CMake, this is done with
+    the following declarations:
+
+    \snippet customwidgetplugin/CMakeLists.txt 0
+    \snippet customwidgetplugin/CMakeLists.txt 1
+    \snippet customwidgetplugin/CMakeLists.txt 2
+
+    The link libraries list specifies \c Qt::UiPlugin. This indicates that
+    the plugin uses the abstract interfaces QDesignerCustomWidgetInterface
+    and QDesignerCustomWidgetCollectionInterface only and has no linkage
+    to the \QD libraries. When accessing other interfaces of \QD that have
+    linkage, \c Designer should be used instead; this ensures that the plugin
+    dynamically links to the \QD libraries and has a run-time dependency on
+    them.
+
+    It is also necessary to ensure that the plugin is installed together with
+    other \QD widget plugins:
+
+    \snippet customwidgetplugin/CMakeLists.txt 3
+    \snippet customwidgetplugin/CMakeLists.txt 4
+
+    For \c qmake:
 
     \snippet customwidgetplugin/customwidgetplugin.pro 0
     \snippet customwidgetplugin/customwidgetplugin.pro 2
 
-    The \c QT variable contains the keyword \c uiplugin. It indicates that
-    the plugin uses the abstract interfaces QDesignerCustomWidgetInterface
-    and QDesignerCustomWidgetCollectionInterface only and has no linkage
-    to the \QD libraries. When accessing other interfaces of \QD that have
-    linkage, \c designer should be used instead; this ensures that the plugin
-    dynamically links to the \QD libraries and has a run-time dependency on
-    them.
-
-    If plugins are built in a mode that is incompatible with \QD, they will
-    not be loaded and installed. For more information about plugins, see the
-    \l{plugins-howto.html}{Plugins HOWTO} document.
+    The \c QT variable contains the keyword \c uiplugin, which is
+    the equivalent of the \c Qt::UiPlugin library.
 
     It is also necessary to ensure that the plugin is installed together with
     other \QD widget plugins:
@@ -2651,19 +2718,24 @@ pixmap property in the property editor.
     See QCoreApplication::libraryPaths() for more information about customizing
     paths for libraries and plugins with Qt applications.
 
+    If plugins are built in a mode that is incompatible with \QD, they will
+    not be loaded and installed. For more information about plugins, see the
+    \l{plugins-howto.html}{Plugins HOWTO} document.
+
     \section2 Splitting up the Plugin
 
-    In a real world scenario, you do not want to have dependencies of the
-    application making use of the custom widgets to the \QD headers and
-    libraries as introduced by the simple approach explained above.
+    The simple approach explained above introduces a problem particularly
+    when using the other interfaces of \QD that have linkage:
+    The application using the custom widget will then depend on
+    \QD headers and libraries. In a real world scenario, this is not desired.
 
     The following sections describe how to resolve this.
 
     \section3 Linking the Widget into the Application
 
-     The source and header file of the custom widget can be shared
-     between the application and \QD by creating a \c{.pri} file for
-     inclusion:
+     When using \c qmake, the source and header file of the custom widget
+     can be shared between the application and \QD by creating a \c{.pri}
+     file for inclusion:
 
      \code
      INCLUDEPATH += $$PWD
@@ -2677,6 +2749,9 @@ pixmap property in the property editor.
      \code
      include(customwidget.pri)
      \endcode
+
+    When using \c CMake, the source files of the widget can similarly be
+    added to the application project.
 
     \section3 Sharing the Widget Using a Library
 
@@ -2701,7 +2776,7 @@ pixmap property in the property editor.
 
     For more information on using custom widgets in \QD, refer to the
     \l{customwidgetplugin}{Custom Widget Plugin} and
-    \l{worldtimeclockplugin}{World Time Clock Plugin} examples for more
+    \l{taskmenuextension}{Task Menu Extension} examples for more
     information about using custom widgets in \QD. Also, you can use the
     QDesignerCustomWidgetCollectionInterface class to combine several custom
     widgets into a single library.

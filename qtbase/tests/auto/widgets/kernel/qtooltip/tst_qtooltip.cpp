@@ -1,38 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QTimer>
+
 #include <qfont.h>
 #include <qfontmetrics.h>
 #include <qtooltip.h>
 #include <qwhatsthis.h>
 #include <qscreen.h>
+
+#include <QtWidgets/private/qapplication_p.h>
 
 class tst_QToolTip : public QObject
 {
@@ -41,12 +20,13 @@ class tst_QToolTip : public QObject
 private slots:
     void init();
     void cleanup();
-    void task183679_data();
-    void task183679();
+    void keyEvent_data();
+    void keyEvent();
     void whatsThis();
     void setPalette();
     void qtbug64550_stylesheet();
     void dontCrashOutsideScreenGeometry();
+    void marginSetWithStyleSheet();
 };
 
 void tst_QToolTip::init()
@@ -60,11 +40,11 @@ void tst_QToolTip::cleanup()
     qApp->setStyleSheet(QString());
 }
 
-class Widget_task183679 : public QWidget
+class Widget : public QWidget
 {
     Q_OBJECT
 public:
-    Widget_task183679(QWidget *parent = 0) : QWidget(parent) {}
+    Widget(QWidget *parent = nullptr) : QWidget(parent) {}
 
     void showDelayedToolTip(int msecs)
     {
@@ -76,25 +56,32 @@ public:
 private slots:
     void showToolTip()
     {
-        QToolTip::showText(mapToGlobal(QPoint(0, 0)), Widget_task183679::toolTipText(), this);
+        QToolTip::showText(mapToGlobal(QPoint(0, 0)), Widget::toolTipText(), this);
     }
 };
 
 Q_DECLARE_METATYPE(Qt::Key)
 
-void tst_QToolTip::task183679_data()
+void tst_QToolTip::keyEvent_data()
 {
     QTest::addColumn<Qt::Key>("key");
     QTest::addColumn<bool>("visible");
 
-    QTest::newRow("non-modifier") << Qt::Key_A << true;
+    QTest::newRow("non-modifier") << Qt::Key_A <<
+#if defined(Q_OS_MACOS)
+        // macOS natively hides tooltips on non-modifier key events,
+        // so QTipLabel::eventFilter does the same. Match that here.
+        false;
+#else
+        true;
+#endif
     QTest::newRow("Shift") << Qt::Key_Shift << true;
     QTest::newRow("Control") << Qt::Key_Control << true;
     QTest::newRow("Alt") << Qt::Key_Alt << true;
     QTest::newRow("Meta") << Qt::Key_Meta << true;
 }
 
-void tst_QToolTip::task183679()
+void tst_QToolTip::keyEvent()
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Wayland: This fails. Figure out why.");
@@ -102,11 +89,7 @@ void tst_QToolTip::task183679()
     QFETCH(Qt::Key, key);
     QFETCH(bool, visible);
 
-#ifdef Q_OS_MAC
-    QSKIP("This test fails in the CI system, QTBUG-30040");
-#endif
-
-    Widget_task183679 widget;
+    Widget widget;
     widget.move(QGuiApplication::primaryScreen()->availableGeometry().topLeft() + QPoint(50, 50));
     // Ensure cursor is not over tooltip, which causes it to hide
 #ifndef QT_NO_CURSOR
@@ -115,7 +98,7 @@ void tst_QToolTip::task183679()
     widget.setWindowTitle(QLatin1String(QTest::currentTestFunction())
                           + QLatin1Char(' ') + QLatin1String(QTest::currentDataTag()));
     widget.show();
-    QApplication::setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
     widget.showDelayedToolTip(100);
@@ -135,7 +118,8 @@ void tst_QToolTip::task183679()
 
 static QWidget *findWhatsThat()
 {
-    foreach (QWidget *widget, QApplication::topLevelWidgets()) {
+    const auto widgets = QApplication::topLevelWidgets();
+    for (QWidget *widget : widgets) {
         if (widget->inherits("QWhatsThat"))
             return widget;
     }
@@ -206,10 +190,10 @@ void tst_QToolTip::qtbug64550_stylesheet()
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Wayland: This fails. Figure out why.");
 
-    Widget_task183679 widget;
+    Widget widget;
     widget.setStyleSheet(QStringLiteral("* { font-size: 48pt; }\n"));
     widget.show();
-    QApplication::setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
     widget.showDelayedToolTip(100);
@@ -218,7 +202,7 @@ void tst_QToolTip::qtbug64550_stylesheet()
     QVERIFY(toolTip);
     QTRY_VERIFY(toolTip->isVisible());
 
-    const QRect boundingRect = QFontMetrics(widget.font()).boundingRect(Widget_task183679::toolTipText());
+    const QRect boundingRect = QFontMetrics(widget.font()).boundingRect(Widget::toolTipText());
     const QSize toolTipSize = toolTip->size();
     QVERIFY2(toolTipSize.width() >= boundingRect.width()
              && toolTipSize.height() >= boundingRect.height(),
@@ -228,6 +212,31 @@ void tst_QToolTip::qtbug64550_stylesheet()
 void tst_QToolTip::dontCrashOutsideScreenGeometry() {
     QToolTip::showText(QPoint(-10000, -10000), "tip outside monitor", nullptr);
     QTRY_VERIFY(QToolTip::isVisible());
+    QToolTip::hideText();
+}
+
+void tst_QToolTip::marginSetWithStyleSheet()
+{
+    const char *toolTipText = "Test Tool Tip";
+
+    qApp->setStyleSheet("QToolTip {font-size: 8px; margin: 5px;}");
+    QToolTip::showText(QGuiApplication::primaryScreen()->availableGeometry().topLeft(), toolTipText);
+    QTRY_VERIFY(QToolTip::isVisible());
+    QWidget *toolTip = findToolTip();
+    QVERIFY(toolTip);
+    QTRY_VERIFY(toolTip->isVisible());
+    int toolTipHeight = toolTip->size().height();
+    qApp->setStyleSheet(QString());
+    QToolTip::hideText();
+
+    qApp->setStyleSheet("QToolTip {font-size: 8px; margin: 10px;}");
+    QToolTip::showText(QGuiApplication::primaryScreen()->availableGeometry().topLeft(), toolTipText);
+    QTRY_VERIFY(QToolTip::isVisible());
+    toolTip = findToolTip();
+    QVERIFY(toolTip);
+    QTRY_VERIFY(toolTip->isVisible());
+    QCOMPARE_LE(toolTip->size().height(), toolTipHeight + 10);
+    qApp->setStyleSheet(QString());
     QToolTip::hideText();
 }
 

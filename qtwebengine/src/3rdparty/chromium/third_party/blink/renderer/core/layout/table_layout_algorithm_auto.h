@@ -24,18 +24,13 @@
 #include "third_party/blink/renderer/core/layout/table_layout_algorithm.h"
 #include "third_party/blink/renderer/platform/geometry/layout_unit.h"
 #include "third_party/blink/renderer/platform/geometry/length.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
 
 class LayoutTable;
 class LayoutTableCell;
-
-enum CellsToProcess { kAllCells, kNonEmptyCells, kEmptyCells };
-
-enum DistributionMode { kExtraWidth, kInitialWidth, kLeftoverWidth };
-
-enum DistributionDirection { kStartToEnd, kEndToStart };
 
 class TableLayoutAlgorithmAuto final : public TableLayoutAlgorithm {
  public:
@@ -52,7 +47,13 @@ class TableLayoutAlgorithmAuto final : public TableLayoutAlgorithm {
   void UpdateLayout() override;
   void WillChangeTableLayout() override {}
 
+  void Trace(Visitor*) const override;
+
  private:
+  enum CellsToProcess { kAllCells, kNonEmptyCells, kEmptyCells };
+  enum DistributionMode { kExtraWidth, kInitialWidth, kLeftoverWidth };
+  enum DistributionDirection { kStartToEnd, kEndToStart };
+
   void FullRecalc();
   void RecalcColumn(unsigned eff_col);
 
@@ -92,7 +93,7 @@ class TableLayoutAlgorithmAuto final : public TableLayoutAlgorithm {
   };
 
   Vector<Layout, 4> layout_struct_;
-  Vector<LayoutTableCell*, 4> span_cells_;
+  HeapVector<Member<LayoutTableCell>, 4> span_cells_;
   bool has_percent_ : 1;
   mutable bool effective_logical_width_dirty_ : 1;
   LayoutUnit scaled_width_from_percent_columns_;
@@ -100,4 +101,4 @@ class TableLayoutAlgorithmAuto final : public TableLayoutAlgorithm {
 
 }  // namespace blink
 
-#endif  // TableLayoutAlgorithmAuto
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_TABLE_LAYOUT_ALGORITHM_AUTO_H_

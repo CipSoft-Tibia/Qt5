@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusservicewatcher.h"
 #include "qdbusconnection.h"
@@ -43,6 +7,7 @@
 
 #include <QStringList>
 
+#include <private/qproperty_p.h>
 #include <private/qobject_p.h>
 #include <private/qdbusconnection_p.h>
 
@@ -59,15 +24,27 @@ public:
     {
     }
 
-    QStringList servicesWatched;
+    void setWatchedServicesForwardToQ(const QStringList &list)
+    {
+        q_func()->setWatchedServices(list);
+    }
+    Q_OBJECT_COMPAT_PROPERTY(QDBusServiceWatcherPrivate, QStringList, watchedServicesData,
+                             &QDBusServiceWatcherPrivate::setWatchedServicesForwardToQ)
+
     QDBusConnection connection;
-    QDBusServiceWatcher::WatchMode watchMode;
+    void setWatchModeForwardToQ(QDBusServiceWatcher::WatchMode mode)
+    {
+        q_func()->setWatchMode(mode);
+    }
+    Q_OBJECT_COMPAT_PROPERTY(QDBusServiceWatcherPrivate, QDBusServiceWatcher::WatchMode, watchMode,
+                             &QDBusServiceWatcherPrivate::setWatchModeForwardToQ)
 
     void _q_serviceOwnerChanged(const QString &, const QString &, const QString &);
-    void setConnection(const QStringList &services, const QDBusConnection &c, QDBusServiceWatcher::WatchMode watchMode);
+    void setConnection(const QStringList &newServices, const QDBusConnection &newConnection,
+                       QDBusServiceWatcher::WatchMode newMode);
 
-    void addService(const QString &service);
-    void removeService(const QString &service);
+    void addService(const QString &service, QDBusServiceWatcher::WatchMode mode);
+    void removeService(const QString &service, QDBusServiceWatcher::WatchMode mode);
 };
 
 void QDBusServiceWatcherPrivate::_q_serviceOwnerChanged(const QString &service, const QString &oldOwner, const QString &newOwner)
@@ -80,37 +57,43 @@ void QDBusServiceWatcherPrivate::_q_serviceOwnerChanged(const QString &service, 
         emit q->serviceUnregistered(service);
 }
 
-void QDBusServiceWatcherPrivate::setConnection(const QStringList &s, const QDBusConnection &c, QDBusServiceWatcher::WatchMode wm)
+void QDBusServiceWatcherPrivate::setConnection(const QStringList &newServices,
+                                               const QDBusConnection &newConnection,
+                                               QDBusServiceWatcher::WatchMode newMode)
 {
+    const QStringList oldServices = watchedServicesData.valueBypassingBindings();
+    const QDBusServiceWatcher::WatchMode oldMode = watchMode.valueBypassingBindings();
     if (connection.isConnected()) {
         // remove older rules
-        for (const QString &s : qAsConst(servicesWatched))
-            removeService(s);
+        for (const QString &s : oldServices)
+            removeService(s, oldMode);
     }
 
-    connection = c;
-    watchMode = wm;
-    servicesWatched = s;
+    connection = newConnection;
+    watchMode.setValueBypassingBindings(newMode); // caller has to call notify()
+    watchedServicesData.setValueBypassingBindings(newServices); // caller has to call notify()
 
     if (connection.isConnected()) {
         // add new rules
-        for (const QString &s : qAsConst(servicesWatched))
-            addService(s);
+        for (const QString &s : newServices)
+            addService(s, newMode);
     }
 }
 
-void QDBusServiceWatcherPrivate::addService(const QString &service)
+void QDBusServiceWatcherPrivate::addService(const QString &service,
+                                            QDBusServiceWatcher::WatchMode mode)
 {
     QDBusConnectionPrivate *d = QDBusConnectionPrivate::d(connection);
     if (d && d->shouldWatchService(service))
-        d->watchService(service, watchMode, q_func(), SLOT(_q_serviceOwnerChanged(QString,QString,QString)));
+        d->watchService(service, mode, q_func(), SLOT(_q_serviceOwnerChanged(QString,QString,QString)));
 }
 
-void QDBusServiceWatcherPrivate::removeService(const QString &service)
+void QDBusServiceWatcherPrivate::removeService(const QString &service,
+                                               QDBusServiceWatcher::WatchMode mode)
 {
     QDBusConnectionPrivate *d = QDBusConnectionPrivate::d(connection);
     if (d && d->shouldWatchService(service))
-        d->unwatchService(service, watchMode, q_func(), SLOT(_q_serviceOwnerChanged(QString,QString,QString)));
+        d->unwatchService(service, mode, q_func(), SLOT(_q_serviceOwnerChanged(QString,QString,QString)));
 }
 
 /*!
@@ -170,18 +153,17 @@ void QDBusServiceWatcherPrivate::removeService(const QString &service)
 
 /*!
     \property QDBusServiceWatcher::watchMode
+    \brief the current watch mode for this QDBusServiceWatcher object.
 
-    The \c watchMode property holds the current watch mode for this
-    QDBusServiceWatcher object. The default value for this property is
+    The default value for this property is
     QDBusServiceWatcher::WatchForOwnershipChange.
 */
 
 /*!
     \property QDBusServiceWatcher::watchedServices
+    \brief the list of services watched.
 
-    The \c servicesWatched property holds the list of services watched.
-
-    Note that modifying this list with setServicesWatched() is an expensive
+    \note Modifying this list with setServicesWatched() is an expensive
     operation. If you can, prefer to change it by way of addWatchedService()
     and removeWatchedService().
 */
@@ -266,7 +248,7 @@ QDBusServiceWatcher::~QDBusServiceWatcher()
 */
 QStringList QDBusServiceWatcher::watchedServices() const
 {
-    return d_func()->servicesWatched;
+    return d_func()->watchedServicesData;
 }
 
 /*!
@@ -276,27 +258,47 @@ QStringList QDBusServiceWatcher::watchedServices() const
     watching services and adding new ones. This is an expensive operation and
     should be avoided, if possible. Instead, use addWatchedService() and
     removeWatchedService() if you can to manipulate entries in the list.
+
+    Removes any existing binding of watchedServices.
 */
 void QDBusServiceWatcher::setWatchedServices(const QStringList &services)
 {
     Q_D(QDBusServiceWatcher);
-    if (services == d->servicesWatched)
+    d->watchedServicesData.removeBindingUnlessInWrapper();
+    if (services == d->watchedServicesData.valueBypassingBindings())
         return;
+    // trigger watchMode re-evaluation, but only once for the setter
     d->setConnection(services, d->connection, d->watchMode);
+    d->watchedServicesData.notify();
+}
+
+QBindable<QStringList> QDBusServiceWatcher::bindableWatchedServices()
+{
+    Q_D(QDBusServiceWatcher);
+    return &d->watchedServicesData;
 }
 
 /*!
     Adds \a newService to the list of services to be watched by this object.
     This function is more efficient than setWatchedServices() and should be
     used whenever possible to add services.
+
+    Removes any existing binding of watchedServices.
 */
 void QDBusServiceWatcher::addWatchedService(const QString &newService)
 {
     Q_D(QDBusServiceWatcher);
-    if (d->servicesWatched.contains(newService))
+    d->watchedServicesData.removeBindingUnlessInWrapper();
+    auto services = d->watchedServicesData.valueBypassingBindings();
+    if (services.contains(newService))
         return;
-    d->addService(newService);
-    d->servicesWatched << newService;
+    // re-evaluate watch mode
+    d->addService(newService, d->watchMode);
+
+    services << newService;
+    d->watchedServicesData.setValueBypassingBindings(services);
+
+    d->watchedServicesData.notify();
 }
 
 /*!
@@ -305,13 +307,24 @@ void QDBusServiceWatcher::addWatchedService(const QString &newService)
     still be signals pending delivery about \a service. Those signals will
     still be emitted whenever the D-Bus messages are processed.
 
+    Removes any existing binding of watchedServices.
+
     This function returns \c true if any services were removed.
 */
 bool QDBusServiceWatcher::removeWatchedService(const QString &service)
 {
     Q_D(QDBusServiceWatcher);
-    d->removeService(service);
-    return d->servicesWatched.removeOne(service);
+    d->watchedServicesData.removeBindingUnlessInWrapper();
+    auto tempList = d->watchedServicesData.valueBypassingBindings();
+    const bool result = tempList.removeOne(service);
+    if (!result)
+        return false; // nothing changed
+
+    // re-evaluate watch mode
+    d->removeService(service, d->watchMode);
+    d->watchedServicesData.setValueBypassingBindings(tempList);
+    d->watchedServicesData.notify();
+    return true;
 }
 
 QDBusServiceWatcher::WatchMode QDBusServiceWatcher::watchMode() const
@@ -319,12 +332,20 @@ QDBusServiceWatcher::WatchMode QDBusServiceWatcher::watchMode() const
     return d_func()->watchMode;
 }
 
+QBindable<QDBusServiceWatcher::WatchMode> QDBusServiceWatcher::bindableWatchMode()
+{
+    return &d_func()->watchMode;
+}
+
 void QDBusServiceWatcher::setWatchMode(WatchMode mode)
 {
     Q_D(QDBusServiceWatcher);
-    if (mode == d->watchMode)
+    d->watchMode.removeBindingUnlessInWrapper();
+    if (mode == d->watchMode.valueBypassingBindings())
         return;
-    d->setConnection(d->servicesWatched, d->connection, mode);
+    // trigger watchedServicesData re-evaluation, but only once for the setter
+    d->setConnection(d->watchedServicesData, d->connection, mode);
+    d->watchMode.notify();
 }
 
 /*!
@@ -354,7 +375,7 @@ void QDBusServiceWatcher::setConnection(const QDBusConnection &connection)
     Q_D(QDBusServiceWatcher);
     if (connection.name() == d->connection.name())
         return;
-    d->setConnection(d->servicesWatched, connection, d->watchMode);
+    d->setConnection(d->watchedServicesData, connection, d->watchMode);
 }
 
 QT_END_NAMESPACE

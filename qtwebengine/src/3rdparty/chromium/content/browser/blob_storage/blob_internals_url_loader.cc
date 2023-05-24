@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,24 +24,28 @@ void StartBlobInternalsURLLoader(
 
   mojo::Remote<network::mojom::URLLoaderClient> client(
       std::move(client_remote));
-  client->OnReceiveResponse(std::move(resource_response));
 
   std::string output = storage::ViewBlobInternalsJob::GenerateHTML(
       blob_storage_context->context());
-  mojo::DataPipe data_pipe(output.size());
+  mojo::ScopedDataPipeProducerHandle producer_handle;
+  mojo::ScopedDataPipeConsumerHandle consumer_handle;
+  CHECK_EQ(
+      mojo::CreateDataPipe(output.size(), producer_handle, consumer_handle),
+      MOJO_RESULT_OK);
 
   void* buffer = nullptr;
   uint32_t num_bytes = output.size();
-  MojoResult result = data_pipe.producer_handle->BeginWriteData(
-      &buffer, &num_bytes, MOJO_WRITE_DATA_FLAG_NONE);
+  MojoResult result = producer_handle->BeginWriteData(
+      &buffer, &num_bytes, MOJO_BEGIN_WRITE_DATA_FLAG_ALL_OR_NONE);
   CHECK_EQ(result, MOJO_RESULT_OK);
-  CHECK_EQ(num_bytes, output.size());
+  CHECK_GE(num_bytes, output.size());
 
   memcpy(buffer, output.c_str(), output.size());
-  result = data_pipe.producer_handle->EndWriteData(num_bytes);
+  result = producer_handle->EndWriteData(num_bytes);
   CHECK_EQ(result, MOJO_RESULT_OK);
 
-  client->OnStartLoadingResponseBody(std::move(data_pipe.consumer_handle));
+  client->OnReceiveResponse(std::move(resource_response),
+                            std::move(consumer_handle), absl::nullopt);
   network::URLLoaderCompletionStatus status(net::OK);
   status.encoded_data_length = output.size();
   status.encoded_body_length = output.size();

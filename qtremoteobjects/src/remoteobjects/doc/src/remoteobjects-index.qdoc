@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page qtremoteobjects-index.html
@@ -109,21 +85,35 @@ Consider a service that provides access to a printer. In QtRO terms:
         to all Replicas.
 \endlist
 
-\section1 Guides
+\include module-use.qdocinc using qt module
+\snippet cmake-macros/CMakeLists.txt remote_objects_cmake
+
+See also the \l {Build with CMake} overview.
+
+\include module-use.qdocinc building with qmake
+\snippet doc_src_simpleswitch.cpp simpleSwitch_remoteobjectsadd_example1
+
+\section1 Articles and Guides
  \list
     \li \l {Getting Started with Qt Remote Objects}
     \li \l {Qt Remote Objects Nodes}{Nodes}
     \li \l {Qt Remote Objects Source}{Sources}
     \li \l {Qt Remote Objects Replica}{Replicas}
     \li \l {Qt Remote Objects Registry}{Registry}
-    \li \l {Qt Remote Objects - External QIODevices}{External QIODevices}
+    \li Using Custom Transports
+        \list
+        \li \l {Qt Remote Objects - External QIODevices}{External QIODevices}
+        \li \l {APIs for Implementing Custom Transport Backends}
+               {Implementing Custom Transport Backends}
+        \endlist
     \li \l {Qt Remote Objects Compiler}{Compiler}
     \li \l {Remote Object Interaction}
     \li \l {Troubleshooting Qt Remote Objects}{Troubleshooting}
     \li \l {Qt Remote Objects Protocol Versioning}{Protocol Versioning}
+    \li \l {Qt Remote Objects Examples}{Examples}
  \endlist
 
-\section2 Reference
+\section2 API Reference
 
 \list
     \li \l {Qt Remote Objects C++ Classes}

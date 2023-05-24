@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#if QT_CONFIG(process)
+#include <QProcess>
+#endif
 
 #include <qcoreapplication.h>
 #include <quuid.h>
@@ -47,6 +25,8 @@ private slots:
     void fromByteArray();
     void toRfc4122();
     void fromRfc4122();
+    void id128();
+    void uint128();
     void createUuidV3OrV5();
     void check_QDataStream();
     void isNull();
@@ -120,7 +100,7 @@ void tst_QUuid::fromChar()
     QCOMPARE(QUuid(), QUuid("fc69b59e-cc34-"));
     QCOMPARE(QUuid(), QUuid("fc69b59e-cc34"));
     QCOMPARE(QUuid(), QUuid("cc34"));
-    QCOMPARE(QUuid(), QUuid(NULL));
+    QCOMPARE(QUuid(), QUuid(nullptr));
 
     QCOMPARE(uuidB, QUuid(QString("{1ab6e93a-b1cb-4a87-ba47-ec7e99039a7b}")));
 }
@@ -157,7 +137,7 @@ void tst_QUuid::fromString_data()
     ROW(uuidA,   "{fc69b59e-cc34-4436-a43c-ee95d128b8c56"); // too long (not an error!)
     ROW(invalid, "{fc69b59e-cc34-4436-a43c-ee95d128b8c"  ); // premature end (within length limits)
     ROW(invalid, " fc69b59e-cc34-4436-a43c-ee95d128b8c5}"); // leading space
-    ROW(uuidA,   "{fc69b59e-cc34-4436-a43c-ee95d128b8c5 "); // trailing space (not an error!)
+    ROW(uuidB,   "{1ab6e93a-b1cb-4a87-ba47-ec7e99039a7b "); // trailing space (not an error!)
     ROW(invalid, "{gc69b59e-cc34-4436-a43c-ee95d128b8c5}"); // non-hex digit in 1st group
     ROW(invalid, "{fc69b59e-cp34-4436-a43c-ee95d128b8c5}"); // non-hex digit in 2nd group
     ROW(invalid, "{fc69b59e-cc34-44r6-a43c-ee95d128b8c5}"); // non-hex digit in 3rd group
@@ -192,6 +172,11 @@ void tst_QUuid::fromString()
     const auto longerInputL1 = inputL1 + '5'; // the '5' makes the premature end check incorrectly succeed
     const auto inputL1S = QLatin1String(longerInputL1.data(), inputL1.size());
     QCOMPARE(expected, QUuid::fromString(inputL1S));
+
+    // for QUtf8StringView, too:
+    const auto longerInputU8 = inputU8 + '5'; // the '5' makes the premature end check incorrectly succeed
+    const auto inputU8S = QUtf8StringView(longerInputU8.data(), inputU8.size());
+    QCOMPARE(expected, QUuid::fromString(inputU8S));
 }
 
 void tst_QUuid::toByteArray()
@@ -232,6 +217,81 @@ void tst_QUuid::fromRfc4122()
     QCOMPARE(uuidA, QUuid::fromRfc4122(QByteArray::fromHex("fc69b59ecc344436a43cee95d128b8c5")));
 
     QCOMPARE(uuidB, QUuid::fromRfc4122(QByteArray::fromHex("1ab6e93ab1cb4a87ba47ec7e99039a7b")));
+}
+
+void tst_QUuid::id128()
+{
+    constexpr QUuid::Id128Bytes bytesA = { {
+        0xfc, 0x69, 0xb5, 0x9e,
+        0xcc, 0x34,
+        0x44, 0x36,
+        0xa4, 0x3c, 0xee, 0x95, 0xd1, 0x28, 0xb8, 0xc5,
+    } };
+    constexpr QUuid::Id128Bytes bytesB = { {
+        0x1a, 0xb6, 0xe9, 0x3a,
+        0xb1, 0xcb,
+        0x4a, 0x87,
+        0xba, 0x47, 0xec, 0x7e, 0x99, 0x03, 0x9a, 0x7b,
+    } };
+
+    QCOMPARE(QUuid(bytesA), uuidA);
+    QCOMPARE(QUuid(bytesB), uuidB);
+    QVERIFY(memcmp(uuidA.toBytes().data, bytesA.data, sizeof(QUuid::Id128Bytes)) == 0);
+    QVERIFY(memcmp(uuidB.toBytes().data, bytesB.data, sizeof(QUuid::Id128Bytes)) == 0);
+
+    QUuid::Id128Bytes leBytesA = {};
+    for (int i = 0; i < 16; i++)
+        leBytesA.data[15 - i] = bytesA.data[i];
+    QCOMPARE(QUuid(leBytesA, QSysInfo::LittleEndian), uuidA);
+    QVERIFY(memcmp(uuidA.toBytes(QSysInfo::LittleEndian).data, leBytesA.data, sizeof(leBytesA)) == 0);
+
+    // check the new q{To,From}{Big,Little}Endian() overloads
+    QUuid::Id128Bytes roundtrip = qFromLittleEndian(qToLittleEndian(bytesA));
+    QVERIFY(memcmp(roundtrip.data, bytesA.data, sizeof(bytesA)) == 0);
+    roundtrip = qFromBigEndian(qToBigEndian(bytesA));
+    QVERIFY(memcmp(roundtrip.data, bytesA.data, sizeof(bytesA)) == 0);
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+    const QUuid::Id128Bytes beBytesA = qToBigEndian(leBytesA);
+    QVERIFY(memcmp(beBytesA.data, bytesA.data, sizeof(beBytesA)) == 0);
+    const QUuid::Id128Bytes otherLeBytesA = qFromBigEndian(bytesA);
+    QVERIFY(memcmp(otherLeBytesA.data, leBytesA.data, sizeof(leBytesA)) == 0);
+#else // Q_BIG_ENDIAN
+    const QUuid::Id128Bytes otherLeBytesA = qToLittleEndian(bytesA);
+    QVERIFY(memcmp(otherLeBytesA.data, leBytesA.data, sizeof(leBytesA)) == 0);
+    const QUuid::Id128Bytes beBytesA = qFromLittleEndian(leBytesA);
+    QVERIFY(memcmp(beBytesA.data, bytesA.data, sizeof(beBytesA)) == 0);
+#endif // Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+}
+
+void tst_QUuid::uint128()
+{
+#ifdef QT_SUPPORTS_INT128
+    constexpr quint128 u = quint128(Q_UINT64_C(0xfc69b59ecc344436)) << 64
+                            | Q_UINT64_C(0xa43cee95d128b8c5); // This is LE
+    constexpr quint128 be = qToBigEndian(u);
+    constexpr QUuid uuid = QUuid::fromUInt128(be);
+    static_assert(uuid.toUInt128() == be, "Round-trip through QUuid failed");
+
+    QCOMPARE(uuid, uuidA);
+    QCOMPARE(quint64(uuid.toUInt128() >> 64), quint64(be >> 64));
+    QCOMPARE(quint64(uuid.toUInt128()), quint64(be));
+
+    quint128 le = qFromBigEndian(be);
+    QCOMPARE(quint64(uuid.toUInt128(QSysInfo::LittleEndian) >> 64), quint64(le >> 64));
+    QCOMPARE(quint64(uuid.toUInt128(QSysInfo::LittleEndian)), quint64(le));
+    QCOMPARE(QUuid::fromUInt128(le, QSysInfo::LittleEndian), uuidA);
+
+    QUuid::Id128Bytes bytes = { .data128 = { qToBigEndian(u) } };
+    QUuid uuid2(bytes);
+    QCOMPARE(uuid2, uuid);
+
+    // verify that toBytes() and toUInt128() provide bytewise similar result
+    constexpr quint128 val = uuid.toUInt128();
+    bytes = uuid.toBytes();
+    QVERIFY(memcmp(&val, bytes.data, sizeof(val)) == 0);
+#else
+    QSKIP("This platform has no support for 128-bit integer");
+#endif
 }
 
 void tst_QUuid::createUuidV3OrV5()
@@ -302,8 +362,8 @@ void tst_QUuid::notEqual()
 void tst_QUuid::cpp11() {
 #ifdef Q_COMPILER_UNIFORM_INIT
     // "{fc69b59e-cc34-4436-a43c-ee95d128b8c5}" cf, initTestCase
-    Q_DECL_CONSTEXPR QUuid u1{0xfc69b59e, 0xcc34, 0x4436, 0xa4, 0x3c, 0xee, 0x95, 0xd1, 0x28, 0xb8, 0xc5};
-    Q_DECL_CONSTEXPR QUuid u2 = {0xfc69b59e, 0xcc34, 0x4436, 0xa4, 0x3c, 0xee, 0x95, 0xd1, 0x28, 0xb8, 0xc5};
+    constexpr QUuid u1{0xfc69b59e, 0xcc34, 0x4436, 0xa4, 0x3c, 0xee, 0x95, 0xd1, 0x28, 0xb8, 0xc5};
+    constexpr QUuid u2 = {0xfc69b59e, 0xcc34, 0x4436, 0xa4, 0x3c, 0xee, 0x95, 0xd1, 0x28, 0xb8, 0xc5};
     Q_UNUSED(u1);
     Q_UNUSED(u2);
 #else
@@ -358,7 +418,7 @@ void tst_QUuid::variants()
     QVERIFY( uuidA.variant() == QUuid::DCE );
     QVERIFY( uuidB.variant() == QUuid::DCE );
 
-    QUuid NCS = "{3a2f883c-4000-000d-0000-00fb40000000}";
+    QUuid NCS("{3a2f883c-4000-000d-0000-00fb40000000}");
     QVERIFY( NCS.variant() == QUuid::NCS );
 }
 
@@ -368,10 +428,10 @@ void tst_QUuid::versions()
     QVERIFY( uuidA.version() == QUuid::Random );
     QVERIFY( uuidB.version() == QUuid::Random );
 
-    QUuid DCE_time= "{406c45a0-3b7e-11d0-80a3-0000c08810a7}";
+    QUuid DCE_time("{406c45a0-3b7e-11d0-80a3-0000c08810a7}");
     QVERIFY( DCE_time.version() == QUuid::Time );
 
-    QUuid NCS = "{3a2f883c-4000-000d-0000-00fb40000000}";
+    QUuid NCS("{3a2f883c-4000-000d-0000-00fb40000000}");
     QVERIFY( NCS.version() == QUuid::VerUnknown );
 }
 
@@ -380,7 +440,7 @@ class UuidThread : public QThread
 public:
     QUuid uuid;
 
-    void run()
+    void run() override
     {
         uuid = QUuid::createUuid();
     }
@@ -388,14 +448,14 @@ public:
 
 void tst_QUuid::threadUniqueness()
 {
-    QVector<UuidThread *> threads(qMax(2, QThread::idealThreadCount()));
-    for (int i = 0; i < threads.count(); ++i)
+    QList<UuidThread *> threads(qMax(2, QThread::idealThreadCount()));
+    for (int i = 0; i < threads.size(); ++i)
         threads[i] = new UuidThread;
-    for (int i = 0; i < threads.count(); ++i)
+    for (int i = 0; i < threads.size(); ++i)
         threads[i]->start();
-    for (int i = 0; i < threads.count(); ++i)
+    for (int i = 0; i < threads.size(); ++i)
         QVERIFY(threads[i]->wait(1000));
-    for (int i = 1; i < threads.count(); ++i)
+    for (int i = 1; i < threads.size(); ++i)
         QVERIFY(threads[0]->uuid != threads[i]->uuid);
     qDeleteAll(threads);
 }
@@ -413,7 +473,7 @@ void tst_QUuid::processUniqueness()
     QString processTwoOutput;
 
     // Start it once
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
     process.start("testProcessUniqueness/testProcessUniqueness.app");
 #elif defined(Q_OS_ANDROID)
     process.start("libtestProcessUniqueness.so");
@@ -424,7 +484,7 @@ void tst_QUuid::processUniqueness()
     processOneOutput = process.readAllStandardOutput();
 
     // Start it twice
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
     process.start("testProcessUniqueness/testProcessUniqueness.app");
 #elif defined(Q_OS_ANDROID)
     process.start("libtestProcessUniqueness.so");
@@ -441,7 +501,7 @@ void tst_QUuid::processUniqueness()
 
 void tst_QUuid::hash()
 {
-    uint h = qHash(uuidA);
+    size_t h = qHash(uuidA);
     QCOMPARE(qHash(uuidA), h);
     QCOMPARE(qHash(QUuid(uuidA.toString())), h);
 }
@@ -451,7 +511,7 @@ void tst_QUuid::qvariant()
     QUuid uuid = QUuid::createUuid();
     QVariant v = QVariant::fromValue(uuid);
     QVERIFY(!v.isNull());
-    QCOMPARE(v.type(), QVariant::Uuid);
+    QCOMPARE(v.metaType(), QMetaType(QMetaType::QUuid));
 
     QUuid uuid2 = v.value<QUuid>();
     QVERIFY(!uuid2.isNull());
@@ -478,14 +538,14 @@ void tst_QUuid::qvariant_conversion()
 
     // try reverse conversion QString -> QUuid
     QVariant sv = QVariant::fromValue(uuid.toString());
-    QCOMPARE(sv.type(), QVariant::String);
+    QCOMPARE(sv.metaType(), QMetaType(QMetaType::QString));
     QVERIFY(sv.canConvert<QUuid>());
     QCOMPARE(sv.value<QUuid>(), uuid);
 
     // QString -> QUuid
     {
         QVariant sv = QVariant::fromValue(uuid.toByteArray());
-        QCOMPARE(sv.type(), QVariant::ByteArray);
+        QCOMPARE(sv.metaType(), QMetaType(QMetaType::QByteArray));
         QVERIFY(sv.canConvert<QUuid>());
         QCOMPARE(sv.value<QUuid>(), uuid);
     }

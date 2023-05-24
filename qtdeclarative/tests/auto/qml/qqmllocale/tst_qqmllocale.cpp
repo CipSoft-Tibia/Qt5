@@ -1,50 +1,56 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
 #include <qtest.h>
 #include <QDebug>
 
 #include <QtQml/qqmlengine.h>
+#include <QtQml/qqmlexpression.h>
 #include <QtQml/qqmlcomponent.h>
 #include <QtQml/qqmlcontext.h>
 #include <QtCore/QDateTime>
+#include <QtCore/qtimezone.h>
 #include <QtCore/qscopeguard.h>
 #include <QtCore/qscopedpointer.h>
-#include <QtCore/qtimezone.h>
 #include <qcolor.h>
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 #include <time.h>
+
+#undef QT_CAN_CHANGE_SYSTEM_ZONE
+/* See QTBUG-56899. We don't (yet) have a proper way to reset the system zone,
+   Testing Date.timeZoneUpdated() is only possible on systems where we have a
+   way to change the system zone in use.
+*/
+#ifdef Q_OS_ANDROID
+/* Android's time_t-related system functions don't seem to care about the TZ
+   environment variable. If we can find a way to change the zone those functions
+   use, try implementing it here.
+*/
+#elif defined(Q_OS_UNIX)
+static void setTimeZone(const QByteArray &tz)
+{
+    if (tz.isEmpty())
+        qunsetenv("TZ");
+    else
+        qputenv("TZ", tz);
+    ::tzset();
+}
+#define QT_CAN_CHANGE_SYSTEM_ZONE
+#else
+/* On Windows, adjusting the timezone (such that GetTimeZoneInformation() will
+   notice) requires additional privileges that aren't normally enabled for a
+   process. This can be achieved by calling AdjustTokenPrivileges() and then
+   SetTimeZoneInformation(), which will require linking to a different library
+   to access that API.
+*/
+#endif
 
 class tst_qqmllocale : public QQmlDataTest
 {
     Q_OBJECT
 public:
-    tst_qqmllocale() { }
+    tst_qqmllocale() : QQmlDataTest(QT_QMLTEST_DATADIR) { }
 
 private slots:
     void defaultLocale();
@@ -61,6 +67,8 @@ private slots:
     void dayName();
     void standaloneDayName_data();
     void standaloneDayName();
+    void toString_data();
+    void toString();
     void firstDayOfWeek_data();
     void firstDayOfWeek();
     void weekDays_data();
@@ -73,9 +81,11 @@ private slots:
     void dateTimeFormat();
     void timeFormat_data();
     void timeFormat();
-#if defined(Q_OS_UNIX) && QT_CONFIG(timezone)
+#ifdef QT_CAN_CHANGE_SYSTEM_ZONE
     void timeZoneUpdated();
 #endif
+    void formattedDataSize_data();
+    void formattedDataSize();
 
     void dateToLocaleString_data();
     void dateToLocaleString();
@@ -118,6 +128,9 @@ private:
     void addDateTimeFormatData(const QString &l);
     void addDateFormatData(const QString &l);
     void addTimeFormatData(const QString &l);
+    void addFormattedDataSizeDataForLocale(const QString &l);
+    void testFunctionCall();
+    void addTestFunctionCallDataColumns();
     QQmlEngine engine;
 };
 
@@ -125,7 +138,7 @@ void tst_qqmllocale::defaultLocale()
 {
     QQmlComponent c(&engine, testFileUrl("properties.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     QCOMPARE(obj->property("name").toString(), QLocale().name());
@@ -146,7 +159,7 @@ void tst_qqmllocale::addPropertyData(const QString &l)
         LOCALE_PROP(QString,amText),
         LOCALE_PROP(QString,pmText),
         LOCALE_PROP(QString,nativeLanguageName),
-        LOCALE_PROP(QString,nativeCountryName),
+        LOCALE_PROP(QString,nativeTerritoryName),
         LOCALE_PROP(QString,decimalPoint),
         LOCALE_PROP(QString,groupSeparator),
         LOCALE_PROP(QString,percent),
@@ -189,15 +202,13 @@ void tst_qqmllocale::properties()
 
     QQmlComponent c(&engine, testFileUrl("properties.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QCOMPARE(obj->property(property), value);
-
-    delete obj;
 }
 
 void tst_qqmllocale::addCurrencySymbolData(const QString &l)
@@ -233,7 +244,7 @@ void tst_qqmllocale::currencySymbol()
 
     QQmlComponent c(&engine, testFileUrl("functions.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     QLocale l(locale);
@@ -243,16 +254,14 @@ void tst_qqmllocale::currencySymbol()
     if (param >= 0)
         format = QLocale::CurrencySymbolFormat(param);
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
-    QMetaObject::invokeMethod(obj, "currencySymbol", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "currencySymbol", Qt::DirectConnection,
             Q_RETURN_ARG(QVariant, val),
             Q_ARG(QVariant, QVariant(int(format))));
 
     QCOMPARE(val.toString(), l.currencySymbol(format));
-
-    delete obj;
 }
 
 void tst_qqmllocale::addFormatNameData(const QString &l)
@@ -293,7 +302,7 @@ void tst_qqmllocale::monthName()
 
     QQmlComponent c(&engine, testFileUrl("functions.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     QLocale l(locale);
@@ -302,11 +311,11 @@ void tst_qqmllocale::monthName()
     if (param >= 0)
         format = QLocale::FormatType(param);
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     for (int i = 0; i <= 11; ++i) {
-        QMetaObject::invokeMethod(obj, "monthName", Qt::DirectConnection,
+        QMetaObject::invokeMethod(obj.data(), "monthName", Qt::DirectConnection,
             Q_RETURN_ARG(QVariant, val),
             Q_ARG(QVariant, QVariant(i)),
             Q_ARG(QVariant, QVariant(int(format))));
@@ -314,8 +323,6 @@ void tst_qqmllocale::monthName()
         // QLocale January == 1, JS Date January == 0
         QCOMPARE(val.toString(), l.monthName(i+1, format));
     }
-
-    delete obj;
 }
 
 void tst_qqmllocale::standaloneMonthName_data()
@@ -330,7 +337,7 @@ void tst_qqmllocale::standaloneMonthName()
 
     QQmlComponent c(&engine, testFileUrl("functions.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     QLocale l(locale);
@@ -339,11 +346,11 @@ void tst_qqmllocale::standaloneMonthName()
     if (param >= 0)
         format = QLocale::FormatType(param);
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     for (int i = 0; i <= 11; ++i) {
-        QMetaObject::invokeMethod(obj, "standaloneMonthName", Qt::DirectConnection,
+        QMetaObject::invokeMethod(obj.data(), "standaloneMonthName", Qt::DirectConnection,
             Q_RETURN_ARG(QVariant, val),
             Q_ARG(QVariant, QVariant(i)),
             Q_ARG(QVariant, QVariant(int(format))));
@@ -351,8 +358,6 @@ void tst_qqmllocale::standaloneMonthName()
         // QLocale January == 1, JS Date January == 0
         QCOMPARE(val.toString(), l.standaloneMonthName(i+1, format));
     }
-
-    delete obj;
 }
 
 void tst_qqmllocale::dayName_data()
@@ -367,7 +372,7 @@ void tst_qqmllocale::dayName()
 
     QQmlComponent c(&engine, testFileUrl("functions.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     QLocale l(locale);
@@ -376,19 +381,17 @@ void tst_qqmllocale::dayName()
     if (param >= 0)
         format = QLocale::FormatType(param);
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     for (int i = 1; i <= 7; ++i) {
-        QMetaObject::invokeMethod(obj, "dayName", Qt::DirectConnection,
+        QMetaObject::invokeMethod(obj.data(), "dayName", Qt::DirectConnection,
             Q_RETURN_ARG(QVariant, val),
             Q_ARG(QVariant, QVariant(i)),
             Q_ARG(QVariant, QVariant(int(format))));
 
         QCOMPARE(val.toString(), l.dayName(i, format));
     }
-
-    delete obj;
 }
 
 void tst_qqmllocale::standaloneDayName_data()
@@ -403,26 +406,85 @@ void tst_qqmllocale::standaloneDayName()
 
     QQmlComponent c(&engine, testFileUrl("functions.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     QLocale l(locale);
     QVariant val;
     QLocale::FormatType format = param < 0 ? QLocale::LongFormat : QLocale::FormatType(param);
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     for (int i = 1; i <= 7; ++i) {
-        QMetaObject::invokeMethod(obj, "standaloneDayName", Qt::DirectConnection,
+        QMetaObject::invokeMethod(obj.data(), "standaloneDayName", Qt::DirectConnection,
                 Q_RETURN_ARG(QVariant, val),
                 Q_ARG(QVariant, QVariant(i)),
                 Q_ARG(QVariant, QVariant(int(format))));
 
         QCOMPARE(val.toString(), l.standaloneDayName(i, format));
     }
+}
 
-    delete obj;
+void tst_qqmllocale::toString_data()
+{
+    addTestFunctionCallDataColumns();
+
+    // Test general error conditions which aren't overload or locale-specific.
+    QString functionCallScript = "locale.toString()";
+    QTest::newRow(qPrintable(functionCallScript)) << "en_AU" << functionCallScript
+        << "QLocale(English, Latin, Australia)" << QString();
+
+    functionCallScript = "locale.toString(1, 2, 3, 4)";
+    QString errorMessage = ".*Locale: toString\\(\\): Expected 1-3 arguments, but received 4";
+    QTest::newRow(qPrintable(functionCallScript)) << "en_AU" << functionCallScript << QString() << errorMessage;
+
+    // Test toString(int).
+    functionCallScript = "locale.toString(123)";
+    QTest::newRow(qPrintable(functionCallScript)) << "de_DE" << functionCallScript << "123" << QString();
+
+    // Test toString(double[, char][, int]).
+    functionCallScript = "locale.toString(123.456)";
+    QTest::newRow(qPrintable(functionCallScript)) << "de_DE" << functionCallScript << "123,456" << QString();
+
+    functionCallScript = "locale.toString(123.456, 'e')";
+    QTest::newRow(qPrintable(functionCallScript)) << "de_DE" << functionCallScript << "1,234560E+02" << QString();
+
+    functionCallScript = "locale.toString(123.456, 'e', 1)";
+    QTest::newRow(qPrintable(functionCallScript)) << "de_DE" << functionCallScript << "1,2E+02" << QString();
+
+    // Test toString(Date, string) and toString(Date[, FormatType]).
+    const QDateTime midnight2000(QDate(2000, 1, 1), QTime(0, 0));
+    // 12 AM might not exist in this timezone (some timezones have transitions at midnight).
+    if (midnight2000.isValid()) {
+        functionCallScript = "locale.toString(new Date(2000, 0, 1))";
+        const QLocale locale("en_AU");
+        QTest::newRow(qPrintable(functionCallScript)) << locale.name() << functionCallScript
+            << locale.toString(midnight2000, QLocale::LongFormat) << QString();
+    }
+
+    functionCallScript = "locale.toString(new Date(2022, 7, 16), [])";
+    errorMessage = ".*Locale: the second argument to the toString overloads whose "
+        "first argument is a Date should be a string or FormatType";
+    QTest::newRow(qPrintable(functionCallScript)) << "ar" << functionCallScript << QString() << errorMessage;
+
+    functionCallScript = "locale.toString([], 'd')";
+    errorMessage = ".*Locale: toString\\(\\) expects either an int, double, or Date as its first argument";
+    QTest::newRow(qPrintable(functionCallScript)) << "ar" << functionCallScript << QString() << errorMessage;
+
+    functionCallScript = "locale.toString(new Date(2022, 7, 16), 'd')";
+    QTest::newRow(qPrintable(functionCallScript)) << "ar" << functionCallScript << "١٦" << QString();
+
+    functionCallScript = "locale.toString(new Date(2022, 7, 16), Locale.ShortFormat)";
+    QTest::newRow(qPrintable(functionCallScript)) << "en_AU" << functionCallScript << "16/8/22 12:00 AM" << QString();
+
+    functionCallScript = "locale.toString(new Date(2022, 7, 16, 1, 23, 4), Locale.ShortFormat)";
+    QTest::newRow(qPrintable(functionCallScript)) << "en_AU" << functionCallScript << "16/8/22 1:23 AM" << QString();
+}
+
+void tst_qqmllocale::toString()
+{
+    testFunctionCall();
 }
 
 void tst_qqmllocale::firstDayOfWeek_data()
@@ -443,10 +505,10 @@ void tst_qqmllocale::firstDayOfWeek()
 
     QQmlComponent c(&engine, testFileUrl("properties.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QVariant val = obj->property("firstDayOfWeek");
@@ -456,8 +518,6 @@ void tst_qqmllocale::firstDayOfWeek()
     if (day == 7) // JS Date days in range 0(Sunday) to 6(Saturday)
         day = 0;
     QCOMPARE(day, val.toInt());
-
-    delete obj;
 }
 
 void tst_qqmllocale::weekDays_data()
@@ -478,10 +538,10 @@ void tst_qqmllocale::weekDays()
 
     QQmlComponent c(&engine, testFileUrl("properties.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QVariant val = obj->property("weekDays");
@@ -490,16 +550,14 @@ void tst_qqmllocale::weekDays()
     QList<QVariant> qmlDays = val.toList();
     QList<Qt::DayOfWeek> days = QLocale(locale).weekdays();
 
-    QCOMPARE(days.count(), qmlDays.count());
+    QCOMPARE(days.size(), qmlDays.size());
 
-    for (int i = 0; i < days.count(); ++i) {
+    for (int i = 0; i < days.size(); ++i) {
         int day = int(days.at(i));
         if (day == 7) // JS Date days in range 0(Sunday) to 6(Saturday)
             day = 0;
         QCOMPARE(day, qmlDays.at(i).toInt());
     }
-
-    delete obj;
 }
 
 void tst_qqmllocale::uiLanguages_data()
@@ -520,10 +578,10 @@ void tst_qqmllocale::uiLanguages()
 
     QQmlComponent c(&engine, testFileUrl("properties.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QVariant val = obj->property("uiLanguages");
@@ -532,13 +590,11 @@ void tst_qqmllocale::uiLanguages()
     QList<QVariant> qmlLangs = val.toList();
     QStringList langs = QLocale(locale).uiLanguages();
 
-    QCOMPARE(langs.count(), qmlLangs.count());
+    QCOMPARE(langs.size(), qmlLangs.size());
 
-    for (int i = 0; i < langs.count(); ++i) {
+    for (int i = 0; i < langs.size(); ++i) {
         QCOMPARE(langs.at(i), qmlLangs.at(i).toString());
     }
-
-    delete obj;
 }
 
 
@@ -554,17 +610,17 @@ void tst_qqmllocale::dateTimeFormat()
 
     QQmlComponent c(&engine, testFileUrl("functions.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     QLocale l(locale);
     QVariant val;
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QLocale::FormatType format = param < 0 ? QLocale::LongFormat : QLocale::FormatType(param);
-    QMetaObject::invokeMethod(obj, "dateTimeFormat", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "dateTimeFormat", Qt::DirectConnection,
             Q_RETURN_ARG(QVariant, val),
             Q_ARG(QVariant, QVariant(param)));
 
@@ -583,17 +639,17 @@ void tst_qqmllocale::dateFormat()
 
     QQmlComponent c(&engine, testFileUrl("functions.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     QLocale l(locale);
     QVariant val;
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QLocale::FormatType format = param < 0 ? QLocale::LongFormat : QLocale::FormatType(param);
-    QMetaObject::invokeMethod(obj, "dateFormat", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "dateFormat", Qt::DirectConnection,
             Q_RETURN_ARG(QVariant, val),
             Q_ARG(QVariant, QVariant(param)));
 
@@ -612,21 +668,165 @@ void tst_qqmllocale::timeFormat()
 
     QQmlComponent c(&engine, testFileUrl("functions.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     QLocale l(locale);
     QVariant val;
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QLocale::FormatType format = param < 0 ? QLocale::LongFormat : QLocale::FormatType(param);
-    QMetaObject::invokeMethod(obj, "timeFormat", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "timeFormat", Qt::DirectConnection,
             Q_RETURN_ARG(QVariant, val),
             Q_ARG(QVariant, QVariant(param)));
 
     QCOMPARE(val.toString(), l.timeFormat(format));
+}
+
+void tst_qqmllocale::addFormattedDataSizeDataForLocale(const QString &localeStr)
+{
+    const QByteArray localeByteArray = localeStr.toLatin1();
+    QString functionCallScript;
+    QString expectedResult;
+    QString expectedErrorMessage;
+
+    const QLocale locale(localeStr);
+
+    const auto makeTag = [&](){
+        QRegularExpression argRegex("formattedDataSize\\((.*)\\)");
+        QString tag = functionCallScript;
+        const auto match = argRegex.match(functionCallScript);
+        if (match.hasMatch())
+            tag = match.captured(1);
+        return localeStr + QLatin1String(", ") + tag;
+    };
+
+    functionCallScript = QLatin1String("locale.formattedDataSize(1000000)");
+    expectedResult = locale.formattedDataSize(1000000);
+    QTest::newRow(qPrintable(makeTag())) << localeStr << functionCallScript << expectedResult << expectedErrorMessage;
+
+    functionCallScript = QLatin1String("locale.formattedDataSize(1000000, 3)");
+    expectedResult = locale.formattedDataSize(1000000, 3);
+    QTest::newRow(qPrintable(makeTag())) << localeStr << functionCallScript << expectedResult << expectedErrorMessage;
+
+    functionCallScript = QLatin1String("locale.formattedDataSize(1000000, 3, Locale.DataSizeIecFormat)");
+    expectedResult = locale.formattedDataSize(1000000, 3, QLocale::DataSizeIecFormat);
+    QTest::newRow(qPrintable(makeTag())) << localeStr << functionCallScript << expectedResult << expectedErrorMessage;
+
+    functionCallScript = QLatin1String("locale.formattedDataSize(1000000, 3, Locale.DataSizeTraditionalFormat)");
+    expectedResult = locale.formattedDataSize(1000000, 3, QLocale::DataSizeTraditionalFormat);
+    QTest::newRow(qPrintable(makeTag())) << localeStr << functionCallScript << expectedResult << expectedErrorMessage;
+
+    functionCallScript = QLatin1String("locale.formattedDataSize(1000000, 3, Locale.DataSizeSIFormat)");
+    expectedResult = locale.formattedDataSize(1000000, 3, QLocale::DataSizeSIFormat);
+    QTest::newRow(qPrintable(makeTag())) << localeStr << functionCallScript << expectedResult << expectedErrorMessage;
+}
+
+#define STOP_ON_FAILURE \
+    if (QTest::currentTestFailed()) \
+        return;
+
+/*!
+    To simplify the tests, this function calls a function and checks the
+    return value (a string). If it's expected that it fails, it checks
+    that the expected error message was printed.
+*/
+void tst_qqmllocale::testFunctionCall()
+{
+    QFETCH(QString, localeStr);
+    QFETCH(QString, functionCallScript);
+    QFETCH(QString, expectedResult);
+    QFETCH(QString, expectedErrorMessagePattern);
+
+    QQmlComponent component(&engine, testFileUrl("functions.qml"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    STOP_ON_FAILURE
+
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(object);
+    STOP_ON_FAILURE
+
+    QLocale locale(localeStr);
+    QVariant returnValue;
+
+    QVERIFY(QMetaObject::invokeMethod(object.data(), "setLocale", Qt::DirectConnection,
+        Q_ARG(QVariant, QVariant(localeStr))));
+    STOP_ON_FAILURE
+
+    // Make sure that we use the object's context rather than the root context,
+    // so that e.g. enums from the Locale type are available (QTBUG-91747).
+    QQmlExpression qmlExpression(qmlContext(object.data()), object.data(), functionCallScript);
+    const QVariant evaluationResult = qmlExpression.evaluate();
+    if (expectedErrorMessagePattern.isEmpty()) {
+        QVERIFY2(!qmlExpression.hasError(), qPrintable(qmlExpression.error().toString()));
+        STOP_ON_FAILURE
+        QVERIFY(evaluationResult.canConvert<QString>());
+        STOP_ON_FAILURE
+
+        // We're not interested in whether the spaces in the date/time format
+        // are breaking or non-breaking.
+        const QString resultWithBreakingSpaces
+                = evaluationResult.toString().replace(u'\u202f', u' ');
+        const QString expectedWithBreakingSpaces
+                = expectedResult.replace(u'\u202f', u' ');
+
+        QCOMPARE(resultWithBreakingSpaces, expectedWithBreakingSpaces);
+        STOP_ON_FAILURE
+    } else {
+        QVERIFY(qmlExpression.hasError());
+        STOP_ON_FAILURE
+        QRegularExpression errorRegex(expectedErrorMessagePattern);
+        QVERIFY(errorRegex.isValid());
+        STOP_ON_FAILURE
+        QVERIFY2(errorRegex.match(qmlExpression.error().toString()).hasMatch(),
+            qPrintable(QString::fromLatin1("Mismatch in actual vs expected error message:\n   Actual: %1\n Expected: %2")
+                .arg(qmlExpression.error().toString()).arg(expectedErrorMessagePattern)));
+        STOP_ON_FAILURE
+    }
+}
+
+void tst_qqmllocale::addTestFunctionCallDataColumns()
+{
+    QTest::addColumn<QString>("localeStr");
+    QTest::addColumn<QString>("functionCallScript");
+    QTest::addColumn<QString>("expectedResult");
+    QTest::addColumn<QString>("expectedErrorMessagePattern");
+}
+
+void tst_qqmllocale::formattedDataSize_data()
+{
+    addTestFunctionCallDataColumns();
+
+    addFormattedDataSizeDataForLocale("en_US");
+    addFormattedDataSizeDataForLocale("de_DE");
+    addFormattedDataSizeDataForLocale("ar_SA");
+    addFormattedDataSizeDataForLocale("hi_IN");
+    addFormattedDataSizeDataForLocale("zh_CN");
+    addFormattedDataSizeDataForLocale("th_TH");
+
+    // Test error conditions (which aren't locale-specific).
+    QString functionCallScript = "locale.formattedDataSize()";
+    QString errorMessage = ".*Locale: formattedDataSize\\(\\): Expected 1-3 arguments, but received 0";
+    QTest::newRow("too few args") << "en_AU" << functionCallScript << QString() << errorMessage;
+
+    functionCallScript = "locale.formattedDataSize(10, 1, Locale.DataSizeIecFormat, \"foo\")";
+    errorMessage = ".*Locale: formattedDataSize\\(\\): Expected 1-3 arguments, but received 4";
+    QTest::newRow("too many args") << "en_AU" << functionCallScript << QString() << errorMessage;
+
+    functionCallScript = "locale.formattedDataSize(10, \"no\")";
+    errorMessage = ".*Locale: formattedDataSize\\(\\): Invalid argument \\('precision' must be an int\\)";
+    QTest::newRow("precision wrong type") << "en_AU" << functionCallScript << QString() << errorMessage;
+
+    functionCallScript = "locale.formattedDataSize(10, 1, \"no\")";
+    errorMessage = ".*Locale: formattedDataSize\\(\\): Invalid argument \\('format' must be DataSizeFormat\\)";
+    QTest::newRow("format wrong type") << "en_AU" << functionCallScript << QString() << errorMessage;
+}
+
+void tst_qqmllocale::formattedDataSize()
+{
+    testFunctionCall();
 }
 
 void tst_qqmllocale::dateToLocaleString_data()
@@ -641,18 +841,18 @@ void tst_qqmllocale::dateToLocaleString()
 
     QQmlComponent c(&engine, testFileUrl("date.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     const QDateTime dt(QDate(2011, 10, 7), QTime(18, 53, 48, 345));
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QLocale::FormatType format = param < 0 ? QLocale::LongFormat : QLocale::FormatType(param);
 
     QVariant val;
-    QMetaObject::invokeMethod(obj, "toLocaleString", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "toLocaleString", Qt::DirectConnection,
         Q_RETURN_ARG(QVariant, val),
         Q_ARG(QVariant, QVariant(param)));
 
@@ -700,16 +900,16 @@ void tst_qqmllocale::dateToLocaleStringFormatted()
 
     QQmlComponent c(&engine, testFileUrl("date.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     const QDateTime dt(QDate(2011, 10, 7), QTime(18, 53, 48, 345));
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QVariant val;
-    QMetaObject::invokeMethod(obj, "toLocaleString", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "toLocaleString", Qt::DirectConnection,
         Q_RETURN_ARG(QVariant, val),
         Q_ARG(QVariant, QVariant(format)));
 
@@ -729,18 +929,18 @@ void tst_qqmllocale::dateToLocaleDateString()
 
     QQmlComponent c(&engine, testFileUrl("date.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     const QDateTime dt(QDate(2011, 10, 7), QTime(18, 53, 48, 345));
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QLocale::FormatType format = param < 0 ? QLocale::LongFormat : QLocale::FormatType(param);
 
     QVariant val;
-    QMetaObject::invokeMethod(obj, "toLocaleDateString", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "toLocaleDateString", Qt::DirectConnection,
         Q_RETURN_ARG(QVariant, val),
         Q_ARG(QVariant, QVariant(param)));
 
@@ -788,16 +988,16 @@ void tst_qqmllocale::dateToLocaleDateStringFormatted()
 
     QQmlComponent c(&engine, testFileUrl("date.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     const QDateTime dt(QDate(2011, 10, 7), QTime(18, 53, 48, 345));
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QVariant val;
-    QMetaObject::invokeMethod(obj, "toLocaleString", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "toLocaleString", Qt::DirectConnection,
         Q_RETURN_ARG(QVariant, val),
         Q_ARG(QVariant, QVariant(format)));
 
@@ -817,18 +1017,18 @@ void tst_qqmllocale::dateToLocaleTimeString()
 
     QQmlComponent c(&engine, testFileUrl("date.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     const QDateTime dt(QDate(2011, 10, 7), QTime(18, 53, 48, 345));
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QLocale::FormatType format = param < 0 ? QLocale::LongFormat : QLocale::FormatType(param);
 
     QVariant val;
-    QMetaObject::invokeMethod(obj, "toLocaleTimeString", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "toLocaleTimeString", Qt::DirectConnection,
         Q_RETURN_ARG(QVariant, val),
         Q_ARG(QVariant, QVariant(param)));
 
@@ -876,16 +1076,16 @@ void tst_qqmllocale::dateToLocaleTimeStringFormatted()
 
     QQmlComponent c(&engine, testFileUrl("date.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     const QDateTime dt(QDate(2011, 10, 7), QTime(18, 53, 48, 345));
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QVariant val;
-    QMetaObject::invokeMethod(obj, "toLocaleString", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "toLocaleString", Qt::DirectConnection,
         Q_RETURN_ARG(QVariant, val),
         Q_ARG(QVariant, QVariant(format)));
 
@@ -916,18 +1116,18 @@ void tst_qqmllocale::dateFromLocaleString()
 
     QQmlComponent c(&engine, testFileUrl("date.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     const QDateTime dt(QDate(2011, 10, 7), QTime(18, 53, 48, 345));
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QLocale l(locale);
     const QString localeText(l.toString(dt, format));
     QVariant val;
-    QMetaObject::invokeMethod(obj, "fromLocaleString", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "fromLocaleString", Qt::DirectConnection,
         Q_RETURN_ARG(QVariant, val),
         Q_ARG(QVariant, QVariant(localeText)),
         Q_ARG(QVariant, QVariant(format)));
@@ -959,18 +1159,18 @@ void tst_qqmllocale::dateFromLocaleDateString()
 
     QQmlComponent c(&engine, testFileUrl("date.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     const QDateTime dt(QDate(2011, 10, 7), QTime(18, 53, 48, 345));
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QLocale l(locale);
     const QString localeText(l.toString(dt, format));
     QVariant val;
-    QMetaObject::invokeMethod(obj, "fromLocaleDateString", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "fromLocaleDateString", Qt::DirectConnection,
         Q_RETURN_ARG(QVariant, val),
         Q_ARG(QVariant, QVariant(localeText)),
         Q_ARG(QVariant, QVariant(format)));
@@ -1002,18 +1202,18 @@ void tst_qqmllocale::dateFromLocaleTimeString()
 
     QQmlComponent c(&engine, testFileUrl("date.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     const QDateTime dt(QDate(2011, 10, 7), QTime(18, 53, 48, 345));
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QLocale l(locale);
     const QString localeText(l.toString(dt, format));
     QVariant val;
-    QMetaObject::invokeMethod(obj, "fromLocaleTimeString", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "fromLocaleTimeString", Qt::DirectConnection,
         Q_RETURN_ARG(QVariant, val),
         Q_ARG(QVariant, QVariant(localeText)),
         Q_ARG(QVariant, QVariant(format)));
@@ -1046,17 +1246,17 @@ void tst_qqmllocale::numberToLocaleString()
 
     QQmlComponent c(&engine, testFileUrl("number.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     double number = 2344423.3289;
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QLocale l(locale);
     QVariant val;
-    QMetaObject::invokeMethod(obj, "toLocaleString", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "toLocaleString", Qt::DirectConnection,
         Q_RETURN_ARG(QVariant, val),
         Q_ARG(QVariant, QVariant(number)),
         Q_ARG(QVariant, QVariant(QString(format))),
@@ -1087,17 +1287,17 @@ void tst_qqmllocale::numberToLocaleCurrencyString()
 
     QQmlComponent c(&engine, testFileUrl("number.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     double number = 2344423.3289;
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QLocale l(locale);
     QVariant val;
-    QMetaObject::invokeMethod(obj, "toLocaleCurrencyString", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "toLocaleCurrencyString", Qt::DirectConnection,
         Q_RETURN_ARG(QVariant, val),
         Q_ARG(QVariant, QVariant(number)),
         Q_ARG(QVariant, QVariant(symbol)));
@@ -1127,17 +1327,17 @@ void tst_qqmllocale::numberFromLocaleString()
 
     QQmlComponent c(&engine, testFileUrl("number.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     QLocale l(locale);
     QString strNumber = l.toString(number, 'f');
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant(locale)));
 
     QVariant val;
-    QMetaObject::invokeMethod(obj, "fromLocaleString", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "fromLocaleString", Qt::DirectConnection,
         Q_RETURN_ARG(QVariant, val),
         Q_ARG(QVariant, QVariant(strNumber)));
 
@@ -1148,10 +1348,10 @@ void tst_qqmllocale::numberConstToLocaleString()
 {
     QQmlComponent c(&engine, testFileUrl("number.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
-    QMetaObject::invokeMethod(obj, "setLocale", Qt::DirectConnection,
+    QMetaObject::invokeMethod(obj.data(), "setLocale", Qt::DirectConnection,
         Q_ARG(QVariant, QVariant("en_US")));
 
     QLocale l("en_US");
@@ -1179,9 +1379,12 @@ void tst_qqmllocale::numberOptions()
             }
         }
     )", QUrl("testdata"));
-    QTest::ignoreMessage(QtMsgType::QtWarningMsg, "Error: Locale: Number.fromLocaleString(): Invalid format");
+    QTest::ignoreMessage(QtMsgType::QtWarningMsg,
+                         "Error: Locale: Number.fromLocaleString(): Invalid format");
     QScopedPointer<QObject> root {comp.create()};
-    qDebug() << comp.errorString();
+    const auto error = comp.errorString();
+    if (!error.isEmpty())
+        qDebug() << error;
     QVERIFY(root);
     QCOMPARE(root->property("formatted").toString(), QLatin1String("10000,0000"));
     QCOMPARE(root->property("caughtException").toBool(), true);
@@ -1217,7 +1420,7 @@ void tst_qqmllocale::stringLocaleCompare()
 
     QQmlComponent c(&engine, testFileUrl("localeCompare.qml"));
 
-    QObject *obj = c.create();
+    QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
     obj->setProperty("string1", string1);
@@ -1252,7 +1455,8 @@ void tst_qqmllocale::localeAsCppProperty()
     QVERIFY2(!component.isError(), qPrintable(component.errorString()));
     QTRY_VERIFY(component.isReady());
 
-    Calendar *item = qobject_cast<Calendar*>(component.create());
+    QScopedPointer<QObject> obj(component.create());
+    Calendar *item = qobject_cast<Calendar *>(obj.data());
     QCOMPARE(item->property("locale").toLocale().name(), QLatin1String("en_GB"));
 
     QVariant localeVariant(QLocale("nb_NO"));
@@ -1260,6 +1464,7 @@ void tst_qqmllocale::localeAsCppProperty()
     QCOMPARE(item->property("testLocale").toLocale().name(), QLatin1String("nb_NO"));
 }
 
+#ifdef QT_CAN_CHANGE_SYSTEM_ZONE
 class DateFormatter : public QObject
 {
     Q_OBJECT
@@ -1276,49 +1481,21 @@ QString DateFormatter::getLocalizedForm(const QString &isoTimestamp)
     return locale.toString(input);
 }
 
-#if defined(Q_OS_UNIX) && QT_CONFIG(timezone)
-// Currently disabled on Windows as adjusting the timezone
-// requires additional privileges that aren't normally
-// enabled for a process. This can be achieved by calling
-// AdjustTokenPrivileges() and then SetTimeZoneInformation(),
-// which will require linking to a different library to access that API.
-static void setTimeZone(const QByteArray &tz)
-{
-    if (tz.isEmpty())
-        qunsetenv("TZ");
-    else
-        qputenv("TZ", tz);
-    ::tzset();
-
-// following left for future reference, see comment above
-// #if defined(Q_OS_WIN32)
-//     ::_tzset();
-// #endif
-}
-
 void tst_qqmllocale::timeZoneUpdated()
 {
-    // Note: This test may not reliably hit the QEXPECT_FAIL clauses below if the initial
-    //       system time zone is equivalent to either Australia/Brisbane or Asia/Kalkota.
-
-    // Initialize the system time zone, so that we actually _change_ something below.
-    QVERIFY2(QTimeZone::systemTimeZone().isValid(),
-             "You know, Toto, I do believe we're not in Kansas any more.");
-
     QByteArray original(qgetenv("TZ"));
-
-    // Set the timezone to Brisbane time, AEST-10:00
-    setTimeZone(QByteArray("Australia/Brisbane"));
-
     QScopedPointer<QObject> obj;
+
     auto cleanup = qScopeGuard([&original, &obj] {
         // Restore to original time zone
         setTimeZone(original);
         QMetaObject::invokeMethod(obj.data(), "resetTimeZone");
     });
 
-    DateFormatter formatter;
+    // Set the timezone to Brisbane time, AEST-10:00
+    setTimeZone(QByteArray("Australia/Brisbane"));
 
+    DateFormatter formatter;
     QQmlEngine e;
     e.rootContext()->setContextObject(&formatter);
 
@@ -1326,27 +1503,15 @@ void tst_qqmllocale::timeZoneUpdated()
     QVERIFY2(!c.isError(), qPrintable(c.errorString()));
     obj.reset(c.create());
     QVERIFY(obj);
-
-#if !defined(Q_OS_LINUX) || defined(Q_OS_ANDROID)
-    QEXPECT_FAIL("",
-                 "Date.timeZoneUpdated() only works on non-Android Linux with QT_CONFIG(timezone).",
-                 Continue);
-#endif
     QVERIFY(obj->property("success").toBool());
 
     // Change to Indian time, IST-05:30
     setTimeZone(QByteArray("Asia/Kolkata"));
 
     QMetaObject::invokeMethod(obj.data(), "check");
-
-#if !defined(Q_OS_LINUX) || defined(Q_OS_ANDROID)
-    QEXPECT_FAIL("",
-                 "Date.timeZoneUpdated() only works on non-Android Linux with QT_CONFIG(timezone).",
-                 Continue);
-#endif
     QVERIFY(obj->property("success").toBool());
 }
-#endif // Unix && timezone
+#endif // QT_CAN_CHANGE_SYSTEM_ZONE
 
 QTEST_MAIN(tst_qqmllocale)
 

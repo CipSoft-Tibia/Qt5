@@ -1,13 +1,13 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/leveldb_proto/internal/proto_database_impl.h"
 
-#include "base/bind.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
-#include "base/task/post_task.h"
+#include "base/functional/bind.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
@@ -33,6 +33,10 @@ struct ClientStruct {
     id_ = std::move(other.id_);
     data_ = std::move(other.data_);
   }
+
+  ClientStruct(const ClientStruct&) = delete;
+  ClientStruct& operator=(const ClientStruct&) = delete;
+
   ~ClientStruct() = default;
 
   // The methods below are convenience methods to have a similar API as protocol
@@ -43,9 +47,6 @@ struct ClientStruct {
 
   std::string id_;
   std::string data_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ClientStruct);
 };
 
 void CreateData(const std::string& key,
@@ -237,7 +238,7 @@ class ProtoDatabaseImplTest : public testing::Test {
   std::unique_ptr<TestSharedProtoDatabaseProvider> CreateSharedProvider(
       TestProtoDatabaseProvider* db_provider) {
     return std::make_unique<TestSharedProtoDatabaseProvider>(
-        base::SequencedTaskRunnerHandle::Get(),
+        base::SequencedTaskRunner::GetCurrentDefault(),
         db_provider->weak_factory_.GetWeakPtr());
   }
 

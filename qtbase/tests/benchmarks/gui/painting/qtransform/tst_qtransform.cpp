@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QTransform>
@@ -266,7 +241,7 @@ void tst_QTransform::operatorEqual()
     QFETCH(QTransform, x2);
     QTransform x = x1;
     QBENCHMARK {
-        x == x2;
+        [[maybe_unused]] auto r = x == x2;
     }
 }
 
@@ -278,7 +253,7 @@ void tst_QTransform::operatorNotEqual()
     QFETCH(QTransform, x2);
     QTransform x = x1;
     QBENCHMARK {
-        x != x2;
+        [[maybe_unused]] auto r = x != x2;
     }
 }
 
@@ -290,7 +265,7 @@ void tst_QTransform::operatorMultiply()
     QFETCH(QTransform, x2);
     QTransform x = x1;
     QBENCHMARK {
-        x * x2;
+        [[maybe_unused]] auto r = x * x2;
     }
 }
 
@@ -335,7 +310,7 @@ void tst_QTransform::operatorMultiplyEqualScalar()
     QFETCH(QTransform, transform);
     QTransform x = transform;
     QBENCHMARK {
-        x * 3;
+        x *= 3;
     }
 }
 
@@ -357,7 +332,7 @@ void tst_QTransform::mapQPoint()
     QFETCH(QTransform, transform);
     QTransform x = transform;
     QBENCHMARK {
-        x.map(QPoint(3, 3));
+        [[maybe_unused]] auto r = x.map(QPoint(3, 3));
     }
 }
 
@@ -368,7 +343,7 @@ void tst_QTransform::mapQPointF()
     QFETCH(QTransform, transform);
     QTransform x = transform;
     QBENCHMARK {
-        x.map(QPointF(3, 3));
+        [[maybe_unused]] auto r = x.map(QPointF(3, 3));
     }
 }
 
@@ -379,7 +354,7 @@ void tst_QTransform::mapRect()
     QFETCH(QTransform, transform);
     QTransform x = transform;
     QBENCHMARK {
-        x.mapRect(QRect(0, 0, 100, 100));
+        [[maybe_unused]] auto r = x.mapRect(QRect(0, 0, 100, 100));
     }
 }
 
@@ -390,7 +365,7 @@ void tst_QTransform::mapRectF()
     QFETCH(QTransform, transform);
     QTransform x = transform;
     QBENCHMARK {
-        x.mapRect(QRectF(0, 0, 100, 100));
+        [[maybe_unused]] auto r = x.mapRect(QRectF(0, 0, 100, 100));
     }
 }
 
@@ -402,7 +377,7 @@ void tst_QTransform::mapQPolygon()
     QTransform x = transform;
     QPolygon poly = QPolygon(QRect(0, 0, 100, 100));
     QBENCHMARK {
-        x.map(poly);
+        [[maybe_unused]] auto r = x.map(poly);
     }
 }
 
@@ -414,7 +389,7 @@ void tst_QTransform::mapQPolygonF()
     QTransform x = transform;
     QPolygonF poly = QPolygonF(QRectF(0, 0, 100, 100));
     QBENCHMARK {
-        x.map(poly);
+        [[maybe_unused]] auto r = x.map(poly);
     }
 }
 
@@ -428,7 +403,7 @@ void tst_QTransform::mapQRegion()
     for (int i = 0; i < 10; ++i)
         region += QRect(i * 10, i * 10, 100, 100);
     QBENCHMARK {
-        x.map(region);
+        [[maybe_unused]] auto r = x.map(region);
     }
 }
 
@@ -439,7 +414,7 @@ void tst_QTransform::mapToPolygon()
     QFETCH(QTransform, transform);
     QTransform x = transform;
     QBENCHMARK {
-        x.mapToPolygon(QRect(0, 0, 100, 100));
+        [[maybe_unused]] auto r = x.mapToPolygon(QRect(0, 0, 100, 100));
     }
 }
 
@@ -454,7 +429,7 @@ void tst_QTransform::mapQPainterPath()
     for (int i = 0; i < 10; ++i)
         path.addEllipse(i * 10, i * 10, 100, 100);
     QBENCHMARK {
-        x.map(path);
+        [[maybe_unused]] auto r = x.map(path);
     }
 }
 
@@ -464,7 +439,7 @@ void tst_QTransform::isIdentity()
 {
     QFETCH(QTransform, transform);
     QBENCHMARK {
-        transform.isIdentity();
+        [[maybe_unused]] auto r = transform.isIdentity();
     }
 }
 
@@ -474,7 +449,7 @@ void tst_QTransform::isAffine()
 {
     QFETCH(QTransform, transform);
     QBENCHMARK {
-        transform.isAffine();
+        [[maybe_unused]] auto r = transform.isAffine();
     }
 }
 
@@ -484,7 +459,7 @@ void tst_QTransform::isInvertible()
 {
     QFETCH(QTransform, transform);
     QBENCHMARK {
-        transform.isInvertible();
+        [[maybe_unused]] auto r = transform.isInvertible();
     }
 }
 
@@ -494,7 +469,7 @@ void tst_QTransform::isRotating()
 {
     QFETCH(QTransform, transform);
     QBENCHMARK {
-        transform.isRotating();
+        [[maybe_unused]] auto r = transform.isRotating();
     }
 }
 
@@ -504,7 +479,7 @@ void tst_QTransform::isScaling()
 {
     QFETCH(QTransform, transform);
     QBENCHMARK {
-        transform.isScaling();
+        [[maybe_unused]] auto r = transform.isScaling();
     }
 }
 
@@ -514,7 +489,7 @@ void tst_QTransform::isTranslating()
 {
     QFETCH(QTransform, transform);
     QBENCHMARK {
-        transform.isTranslating();
+        [[maybe_unused]] auto r = transform.isTranslating();
     }
 }
 
@@ -524,7 +499,7 @@ void tst_QTransform::type()
 {
     QFETCH(QTransform, transform);
     QBENCHMARK {
-        transform.type();
+        [[maybe_unused]] auto r = transform.type();
     }
 }
 
@@ -534,7 +509,7 @@ void tst_QTransform::determinant()
 {
     QFETCH(QTransform, transform);
     QBENCHMARK {
-        transform.determinant();
+        [[maybe_unused]] auto r = transform.determinant();
     }
 }
 
@@ -544,7 +519,7 @@ void tst_QTransform::adjoint()
 {
     QFETCH(QTransform, transform);
     QBENCHMARK {
-        transform.adjoint();
+        Q_UNUSED(transform.adjoint())
     }
 }
 
@@ -554,7 +529,7 @@ void tst_QTransform::transposed()
 {
     QFETCH(QTransform, transform);
     QBENCHMARK {
-        transform.transposed();
+        Q_UNUSED(transform.transposed())
     }
 }
 
@@ -564,7 +539,7 @@ void tst_QTransform::inverted()
 {
     QFETCH(QTransform, transform);
     QBENCHMARK {
-        transform.inverted();
+        Q_UNUSED(transform.inverted())
     }
 }
 

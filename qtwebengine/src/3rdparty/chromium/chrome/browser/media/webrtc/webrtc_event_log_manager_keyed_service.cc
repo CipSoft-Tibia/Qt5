@@ -1,11 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/media/webrtc/webrtc_event_log_manager_keyed_service.h"
 
-#include "base/callback_forward.h"
 #include "base/check.h"
+#include "base/functional/callback.h"
 #include "chrome/browser/media/webrtc/webrtc_event_log_manager.h"
 #include "content/public/browser/browser_context.h"
 

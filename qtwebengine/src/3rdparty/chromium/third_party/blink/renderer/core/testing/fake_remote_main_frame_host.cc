@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,28 +8,20 @@
 
 namespace blink {
 
-void FakeRemoteMainFrameHost::Init(
-    blink::AssociatedInterfaceProvider* provider) {
-  provider->OverrideBinderForTesting(
-      mojom::blink::RemoteMainFrameHost::Name_,
-      base::BindRepeating(
-          &FakeRemoteMainFrameHost::BindRemoteMainFrameHostReceiver,
-          base::Unretained(this)));
+mojo::PendingAssociatedRemote<mojom::blink::RemoteMainFrameHost>
+FakeRemoteMainFrameHost::BindNewAssociatedRemote() {
+  receiver_.reset();
+  return receiver_.BindNewEndpointAndPassDedicatedRemote();
 }
 
 void FakeRemoteMainFrameHost::FocusPage() {}
+
+void FakeRemoteMainFrameHost::TakeFocus(bool reverse) {}
 
 void FakeRemoteMainFrameHost::UpdateTargetURL(
     const KURL&,
     mojom::blink::RemoteMainFrameHost::UpdateTargetURLCallback) {}
 
 void FakeRemoteMainFrameHost::RouteCloseEvent() {}
-
-void FakeRemoteMainFrameHost::BindRemoteMainFrameHostReceiver(
-    mojo::ScopedInterfaceEndpointHandle handle) {
-  receiver_.Bind(
-      mojo::PendingAssociatedReceiver<mojom::blink::RemoteMainFrameHost>(
-          std::move(handle)));
-}
 
 }  // namespace blink

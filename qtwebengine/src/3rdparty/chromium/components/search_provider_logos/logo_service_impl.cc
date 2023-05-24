@@ -1,23 +1,22 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/search_provider_logos/logo_service_impl.h"
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/task/post_task.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
-#include "base/task_runner_util.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "base/time/default_clock.h"
 #include "build/build_config.h"
 #include "components/image_fetcher/core/image_decoder.h"
@@ -30,8 +29,10 @@
 #include "components/search_provider_logos/switches.h"
 #include "net/http/http_status_code.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
+#include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
 #include "ui/gfx/image/image.h"
 
 namespace search_provider_logos {
@@ -51,40 +52,42 @@ const int kDecodeLogoTimeoutSeconds = 30;
 // out a better way, now that it isn't.
 class ImageDecodedHandlerWithTimeout {
  public:
-  static base::RepeatingCallback<void(const gfx::Image&)> Wrap(
-      const base::RepeatingCallback<void(const SkBitmap&)>&
-          image_decoded_callback) {
-    auto* handler = new ImageDecodedHandlerWithTimeout(image_decoded_callback);
-    base::ThreadTaskRunnerHandle::Get()->PostDelayedTask(
+  ImageDecodedHandlerWithTimeout(const ImageDecodedHandlerWithTimeout&) =
+      delete;
+  ImageDecodedHandlerWithTimeout& operator=(
+      const ImageDecodedHandlerWithTimeout&) = delete;
+
+  static base::OnceCallback<void(const gfx::Image&)> Wrap(
+      base::OnceCallback<void(const SkBitmap&)> image_decoded_callback) {
+    auto* handler =
+        new ImageDecodedHandlerWithTimeout(std::move(image_decoded_callback));
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
         FROM_HERE,
         base::BindOnce(&ImageDecodedHandlerWithTimeout::OnImageDecoded,
                        handler->weak_ptr_factory_.GetWeakPtr(), gfx::Image()),
-        base::TimeDelta::FromSeconds(kDecodeLogoTimeoutSeconds));
-    return base::BindRepeating(&ImageDecodedHandlerWithTimeout::OnImageDecoded,
-                               handler->weak_ptr_factory_.GetWeakPtr());
+        base::Seconds(kDecodeLogoTimeoutSeconds));
+    return base::BindOnce(&ImageDecodedHandlerWithTimeout::OnImageDecoded,
+                          handler->weak_ptr_factory_.GetWeakPtr());
   }
 
  private:
   explicit ImageDecodedHandlerWithTimeout(
-      const base::RepeatingCallback<void(const SkBitmap&)>&
-          image_decoded_callback)
-      : image_decoded_callback_(image_decoded_callback) {}
+      base::OnceCallback<void(const SkBitmap&)> image_decoded_callback)
+      : image_decoded_callback_(std::move(image_decoded_callback)) {}
 
   void OnImageDecoded(const gfx::Image& decoded_image) {
-    image_decoded_callback_.Run(decoded_image.AsBitmap());
+    std::move(image_decoded_callback_).Run(decoded_image.AsBitmap());
     delete this;
   }
 
-  base::RepeatingCallback<void(const SkBitmap&)> image_decoded_callback_;
+  base::OnceCallback<void(const SkBitmap&)> image_decoded_callback_;
   base::WeakPtrFactory<ImageDecodedHandlerWithTimeout> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(ImageDecodedHandlerWithTimeout);
 };
 
 void ObserverOnLogoAvailable(LogoObserver* observer,
                              bool from_cache,
                              LogoCallbackReason type,
-                             const base::Optional<Logo>& logo) {
+                             const absl::optional<Logo>& logo) {
   switch (type) {
     case LogoCallbackReason::DISABLED:
     case LogoCallbackReason::CANCELED:
@@ -92,8 +95,7 @@ void ObserverOnLogoAvailable(LogoObserver* observer,
       break;
 
     case LogoCallbackReason::REVALIDATED:
-      // TODO(sfiera): double-check whether we should inform the observer of the
-      // fresh metadata.
+      observer->OnCachedLogoRevalidated();
       break;
 
     case LogoCallbackReason::DETERMINED:
@@ -108,19 +110,19 @@ void ObserverOnLogoAvailable(LogoObserver* observer,
 void RunCallbacksWithDisabled(LogoCallbacks callbacks) {
   if (callbacks.on_cached_encoded_logo_available) {
     std::move(callbacks.on_cached_encoded_logo_available)
-        .Run(LogoCallbackReason::DISABLED, base::nullopt);
+        .Run(LogoCallbackReason::DISABLED, absl::nullopt);
   }
   if (callbacks.on_cached_decoded_logo_available) {
     std::move(callbacks.on_cached_decoded_logo_available)
-        .Run(LogoCallbackReason::DISABLED, base::nullopt);
+        .Run(LogoCallbackReason::DISABLED, absl::nullopt);
   }
   if (callbacks.on_fresh_encoded_logo_available) {
     std::move(callbacks.on_fresh_encoded_logo_available)
-        .Run(LogoCallbackReason::DISABLED, base::nullopt);
+        .Run(LogoCallbackReason::DISABLED, absl::nullopt);
   }
   if (callbacks.on_fresh_decoded_logo_available) {
     std::move(callbacks.on_fresh_decoded_logo_available)
-        .Run(LogoCallbackReason::DISABLED, base::nullopt);
+        .Run(LogoCallbackReason::DISABLED, absl::nullopt);
   }
 }
 
@@ -128,8 +130,7 @@ void RunCallbacksWithDisabled(LogoCallbacks callbacks) {
 // OK to show, i.e. it's not expired or it's allowed to be shown temporarily
 // after expiration.
 bool IsLogoOkToShow(const LogoMetadata& metadata, base::Time now) {
-  base::TimeDelta offset =
-      base::TimeDelta::FromMilliseconds(kMaxTimeToLiveMS * 3 / 2);
+  base::TimeDelta offset = base::Milliseconds(kMaxTimeToLiveMS * 3 / 2);
   base::Time distant_past = now - offset;
   // Sanity check so logos aren't accidentally cached forever.
   if (metadata.expiration_time < distant_past) {
@@ -161,14 +162,14 @@ void NotifyAndClear(std::vector<EncodedLogoCallback>* encoded_callbacks,
                     const EncodedLogo* encoded_logo,
                     const Logo* decoded_logo) {
   auto opt_encoded_logo =
-      encoded_logo ? base::Optional<EncodedLogo>(*encoded_logo) : base::nullopt;
+      encoded_logo ? absl::optional<EncodedLogo>(*encoded_logo) : absl::nullopt;
   for (EncodedLogoCallback& callback : *encoded_callbacks) {
     std::move(callback).Run(type, opt_encoded_logo);
   }
   encoded_callbacks->clear();
 
   auto opt_decoded_logo =
-      decoded_logo ? base::Optional<Logo>(*decoded_logo) : base::nullopt;
+      decoded_logo ? absl::optional<Logo>(*decoded_logo) : absl::nullopt;
   for (LogoCallback& callback : *decoded_callbacks) {
     std::move(callback).Run(type, opt_decoded_logo);
   }
@@ -239,7 +240,7 @@ void LogoServiceImpl::GetLogo(LogoCallbacks callbacks, bool for_webui_ntp) {
     logo_url = GURL(
         command_line->GetSwitchValueASCII(switches::kSearchProviderLogoURL));
   } else {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
     // Non-Google default search engine logos are currently enabled only on
     // Android (https://crbug.com/737283).
     logo_url = template_url->logo_url();
@@ -262,7 +263,7 @@ void LogoServiceImpl::GetLogo(LogoCallbacks callbacks, bool for_webui_ntp) {
     } else {
       doodle_url = template_url->doodle_url();
     }
-    base_url = doodle_url.GetOrigin();
+    base_url = doodle_url.DeprecatedGetOriginAsURL();
   }
 
   if (!logo_url.is_valid() && !doodle_url.is_valid()) {
@@ -319,8 +320,8 @@ void LogoServiceImpl::GetLogo(LogoCallbacks callbacks, bool for_webui_ntp) {
   if (is_idle_) {
     is_idle_ = false;
 
-    base::PostTaskAndReplyWithResult(
-        cache_task_runner_.get(), FROM_HERE,
+    cache_task_runner_->PostTaskAndReplyWithResult(
+        FROM_HERE,
         base::BindOnce(&GetLogoFromCacheOnFileThread,
                        base::Unretained(logo_cache_.get()), logo_url_,
                        clock_->Now()),
@@ -400,9 +401,10 @@ void LogoServiceImpl::OnCachedLogoRead(
         cached_logo->encoded_image;
     image_decoder_->DecodeImage(
         encoded_image->data(), gfx::Size(),  // No particular size desired.
-        ImageDecodedHandlerWithTimeout::Wrap(base::BindRepeating(
+        /*data_decoder=*/nullptr,
+        ImageDecodedHandlerWithTimeout::Wrap(base::BindOnce(
             &LogoServiceImpl::OnLightCachedImageDecoded,
-            weak_ptr_factory_.GetWeakPtr(), base::Passed(&cached_logo))));
+            weak_ptr_factory_.GetWeakPtr(), std::move(cached_logo))));
   } else if (cached_logo) {
     OnCachedLogoAvailable(std::move(cached_logo), SkBitmap(), SkBitmap());
   } else {
@@ -439,9 +441,10 @@ void LogoServiceImpl::OnLightCachedImageDecoded(
 
   image_decoder_->DecodeImage(
       dark_encoded_image->data(), gfx::Size(),  // No particular size desired.
-      ImageDecodedHandlerWithTimeout::Wrap(base::BindRepeating(
+      /*data_decoder=*/nullptr,
+      ImageDecodedHandlerWithTimeout::Wrap(base::BindOnce(
           &LogoServiceImpl::OnCachedLogoAvailable,
-          weak_ptr_factory_.GetWeakPtr(), base::Passed(&cached_logo), image)));
+          weak_ptr_factory_.GetWeakPtr(), std::move(cached_logo), image)));
 }
 
 void LogoServiceImpl::OnCachedLogoAvailable(
@@ -533,9 +536,10 @@ void LogoServiceImpl::OnFreshLogoParsed(bool* parsing_failed,
 
     image_decoder_->DecodeImage(
         encoded_image->data(), gfx::Size(),  // No particular size desired.
-        ImageDecodedHandlerWithTimeout::Wrap(base::BindRepeating(
+        /*data_decoder=*/nullptr,
+        ImageDecodedHandlerWithTimeout::Wrap(base::BindOnce(
             &LogoServiceImpl::OnLightFreshImageDecoded,
-            weak_ptr_factory_.GetWeakPtr(), base::Passed(&logo),
+            weak_ptr_factory_.GetWeakPtr(), std::move(logo),
             /*download_failed=*/false, *parsing_failed, from_http_cache)));
   }
 }
@@ -560,9 +564,10 @@ void LogoServiceImpl::OnLightFreshImageDecoded(
 
   image_decoder_->DecodeImage(
       dark_encoded_image->data(), gfx::Size(),  // No particular size desired.
-      ImageDecodedHandlerWithTimeout::Wrap(base::BindRepeating(
+      /*data_decoder=*/nullptr,
+      ImageDecodedHandlerWithTimeout::Wrap(base::BindOnce(
           &LogoServiceImpl::OnFreshLogoAvailable,
-          weak_ptr_factory_.GetWeakPtr(), base::Passed(&logo), download_failed,
+          weak_ptr_factory_.GetWeakPtr(), std::move(logo), download_failed,
           parsing_failed, from_http_cache, image)));
 }
 
@@ -599,7 +604,7 @@ void LogoServiceImpl::OnFreshLogoAvailable(
   } else if (encoded_logo && !encoded_logo->encoded_image &&
              encoded_logo->metadata.type != LogoType::INTERACTIVE) {
     download_outcome = DOWNLOAD_OUTCOME_MISSING_REQUIRED_IMAGE;
-#if defined(OS_ANDROID) || defined(OS_IOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   } else if (encoded_logo && !encoded_logo->encoded_image) {
     // On Mobile interactive doodles require a static CTA image, on Desktop the
     // static image is not required as it's handled by the iframed page.
@@ -611,7 +616,7 @@ void LogoServiceImpl::OnFreshLogoAvailable(
       UMA_HISTOGRAM_BOOLEAN("NewTabPage.LogoImageDownloaded", from_http_cache);
 
       DCHECK(!encoded_logo->encoded_image || !image.isNull());
-      logo.reset(new Logo());
+      logo = std::make_unique<Logo>();
       logo->metadata = encoded_logo->metadata;
       logo->image = image;
       logo->dark_image = dark_image;

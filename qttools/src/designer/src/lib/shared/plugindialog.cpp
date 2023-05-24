@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include "plugindialog_p.h"
@@ -37,13 +12,25 @@
 
 #include <QtUiPlugin/customwidget.h>
 
+#include <QtWidgets/qaction.h>
 #include <QtWidgets/qstyle.h>
 #include <QtWidgets/qheaderview.h>
+#include <QtWidgets/qmenu.h>
 #include <QtWidgets/qpushbutton.h>
+
+#if QT_CONFIG(clipboard)
+#  include <QtGui/QClipboard>
+#endif
+
+#include <QtCore/qdir.h>
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qpluginloader.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+enum { ErrorItemRole = Qt::UserRole + 1 };
 
 namespace qdesigner_internal {
 
@@ -64,6 +51,9 @@ PluginDialog::PluginDialog(QDesignerFormEditorInterface *core, QWidget *parent)
     ui.treeWidget->setSelectionMode(QAbstractItemView::NoSelection);
     ui.treeWidget->setHeaderLabels(headerLabels);
     ui.treeWidget->header()->hide();
+    ui.treeWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(ui.treeWidget, &QWidget::customContextMenuRequested,
+            this, &PluginDialog::treeWidgetContextMenu);
 
     interfaceIcon.addPixmap(style()->standardPixmap(QStyle::SP_DirOpenIcon),
                             QIcon::Normal, QIcon::On);
@@ -97,7 +87,7 @@ void PluginDialog::populateTreeWidget()
             QPluginLoader loader(fileName);
             const QFileInfo fileInfo(fileName);
 
-            QTreeWidgetItem *pluginItem = setPluginItem(topLevelItem, fileInfo.fileName(), boldFont);
+            QTreeWidgetItem *pluginItem = setPluginItem(topLevelItem, fileInfo, boldFont);
 
             if (QObject *plugin = loader.instance()) {
                 if (const QDesignerCustomWidgetCollectionInterface *c = qobject_cast<QDesignerCustomWidgetCollectionInterface*>(plugin)) {
@@ -118,8 +108,13 @@ void PluginDialog::populateTreeWidget()
         const QFont boldFont = topLevelItem->font(0);
         for (const QString &plugin : notLoadedPlugins) {
             const QString failureReason = pluginManager->failureReason(plugin);
-            QTreeWidgetItem *pluginItem = setPluginItem(topLevelItem, plugin, boldFont);
-            setItem(pluginItem, failureReason, failureReason, QString(), QIcon());
+            const QString htmlFailureReason = "<html><head/><body><p>"_L1
+                + failureReason.toHtmlEscaped()
+                + "</p></body></html>"_L1;
+            QTreeWidgetItem *pluginItem = setPluginItem(topLevelItem, QFileInfo(plugin), boldFont);
+            auto errorItem = setItem(pluginItem, failureReason,
+                                     htmlFailureReason, QString(), QIcon());
+            errorItem->setData(0, ErrorItemRole, QVariant(true));
         }
     }
 
@@ -146,25 +141,31 @@ QTreeWidgetItem* PluginDialog::setTopLevelItem(const QString &itemName)
 }
 
 QTreeWidgetItem* PluginDialog::setPluginItem(QTreeWidgetItem *topLevelItem,
-                                             const QString &itemName, const QFont &font)
+                                             const QFileInfo &file, const QFont &font)
 {
     QTreeWidgetItem *pluginItem = new QTreeWidgetItem(topLevelItem);
+    QString toolTip = QDir::toNativeSeparators(file.absoluteFilePath());
+    if (file.exists())
+        toolTip += u'\n' + file.lastModified().toString();
     pluginItem->setFont(0, font);
-    pluginItem->setText(0, itemName);
+    pluginItem->setText(0, file.fileName());
+    pluginItem->setToolTip(0, toolTip);
     pluginItem->setExpanded(true);
     pluginItem->setIcon(0, style()->standardPixmap(QStyle::SP_DirOpenIcon));
 
     return pluginItem;
 }
 
-void PluginDialog::setItem(QTreeWidgetItem *pluginItem, const QString &name,
-                           const QString &toolTip, const QString &whatsThis, const QIcon &icon)
+QTreeWidgetItem *PluginDialog::setItem(QTreeWidgetItem *pluginItem, const QString &name,
+                                       const QString &toolTip, const QString &whatsThis,
+                                       const QIcon &icon)
 {
     QTreeWidgetItem *item = new QTreeWidgetItem(pluginItem);
     item->setText(0, name);
     item->setToolTip(0, toolTip);
     item->setWhatsThis(0, whatsThis);
     item->setIcon(0, icon.isNull() ? qtLogoIcon() : icon);
+    return item;
 }
 
 void  PluginDialog::updateCustomWidgetPlugins()
@@ -181,6 +182,27 @@ void  PluginDialog::updateCustomWidgetPlugins()
     populateTreeWidget();
 }
 
+void PluginDialog::treeWidgetContextMenu(const QPoint &pos)
+{
+#if QT_CONFIG(clipboard)
+    const QTreeWidgetItem *item = ui.treeWidget->itemAt(pos);
+    if (item == nullptr || !item->data(0, ErrorItemRole).toBool())
+        return;
+    QMenu menu;
+    //: Copy error text
+    auto copyAction = menu.addAction(tr("Copy"));
+    auto chosenAction = menu.exec(ui.treeWidget->mapToGlobal(pos));
+    if (chosenAction == nullptr)
+        return;
+    if (chosenAction == copyAction)
+        QGuiApplication::clipboard()->setText(item->text(0));
+#else
+    Q_UNUSED(pos);
+#endif
 }
 
+} // namespace qdesigner_internal
+
 QT_END_NAMESPACE
+
+#include "moc_plugindialog_p.cpp"

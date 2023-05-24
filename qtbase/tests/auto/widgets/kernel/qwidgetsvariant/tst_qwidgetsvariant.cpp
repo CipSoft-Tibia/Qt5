@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <qvariant.h>
 
@@ -77,13 +52,13 @@ void tst_QWidgetsVariant::constructor_invalid()
     QFETCH(uint, typeId);
     {
         QTest::ignoreMessage(QtWarningMsg, QRegularExpression("^Trying to construct an instance of an invalid type, type id:"));
-        QVariant variant(static_cast<QVariant::Type>(typeId));
+        QVariant variant{QMetaType(typeId)};
         QVERIFY(!variant.isValid());
         QCOMPARE(variant.userType(), int(QMetaType::UnknownType));
     }
     {
         QTest::ignoreMessage(QtWarningMsg, QRegularExpression("^Trying to construct an instance of an invalid type, type id:"));
-        QVariant variant(typeId, /* copy */ 0);
+        QVariant variant(QMetaType(typeId), nullptr);
         QVERIFY(!variant.isValid());
         QCOMPARE(variant.userType(), int(QMetaType::UnknownType));
     }
@@ -149,7 +124,7 @@ void tst_QWidgetsVariant::writeToReadFromDataStream()
 class CustomQWidget : public QWidget {
     Q_OBJECT
 public:
-    CustomQWidget(QWidget *parent = 0) : QWidget(parent) {}
+    CustomQWidget(QWidget *parent = nullptr) : QWidget(parent) {}
 };
 
 void tst_QWidgetsVariant::qvariant_cast_QObject_data()
@@ -176,24 +151,24 @@ void tst_QWidgetsVariant::qvariant_cast_QObject()
     if (success) {
         QCOMPARE(o->objectName(), QString::fromLatin1("Hello"));
         QVERIFY(data.canConvert<QObject*>());
-        QVERIFY(data.canConvert(QMetaType::QObjectStar));
-        QVERIFY(data.canConvert(::qMetaTypeId<QObject*>()));
+        QVERIFY(data.canConvert(QMetaType(QMetaType::QObjectStar)));
+        QVERIFY(data.canConvert(QMetaType::fromType<QObject*>()));
         QVERIFY(data.value<QObject*>());
-        QVERIFY(data.convert(QMetaType::QObjectStar));
-        QCOMPARE(data.userType(), int(QMetaType::QObjectStar));
+        QVERIFY(data.convert(QMetaType(QMetaType::QObjectStar)));
+        QCOMPARE(data.metaType().id(), int(QMetaType::QObjectStar));
 
         QVERIFY(data.canConvert<QWidget*>());
-        QVERIFY(data.canConvert(::qMetaTypeId<QWidget*>()));
+        QVERIFY(data.canConvert(QMetaType::fromType<QWidget*>()));
         QVERIFY(data.value<QWidget*>());
-        QVERIFY(data.convert(qMetaTypeId<QWidget*>()));
-        QCOMPARE(data.userType(), qMetaTypeId<QWidget*>());
+        QVERIFY(data.convert(QMetaType::fromType<QWidget*>()));
+        QCOMPARE(data.metaType(), QMetaType::fromType<QWidget*>());
     } else {
         QVERIFY(!data.canConvert<QObject*>());
-        QVERIFY(!data.canConvert(QMetaType::QObjectStar));
-        QVERIFY(!data.canConvert(::qMetaTypeId<QObject*>()));
+        QVERIFY(!data.canConvert(QMetaType(QMetaType::QObjectStar)));
+        QVERIFY(!data.canConvert(QMetaType::fromType<QObject*>()));
         QVERIFY(!data.value<QObject*>());
-        QVERIFY(!data.convert(QMetaType::QObjectStar));
-        QVERIFY(data.userType() != QMetaType::QObjectStar);
+        QVERIFY(!data.convert(QMetaType(QMetaType::QObjectStar)));
+        QVERIFY(data.metaType().id() != QMetaType::QObjectStar);
     }
     delete o;
 }
@@ -215,10 +190,10 @@ void tst_QWidgetsVariant::debugStream_data()
     QTest::addColumn<QVariant>("variant");
     QTest::addColumn<int>("typeId");
     for (int id = QMetaType::LastGuiType + 1; id < QMetaType::User; ++id) {
-        const char *tagName = QMetaType::typeName(id);
+        const char *tagName = QMetaType(id).name();
         if (!tagName)
             continue;
-        QTest::newRow(tagName) << QVariant(static_cast<QVariant::Type>(id)) << id;
+        QTest::newRow(tagName) << QVariant(QMetaType(id)) << id;
     }
 }
 

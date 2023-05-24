@@ -1,41 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QTestEventLoop>
 
 #include <QBuffer>
 #include <QByteArray>
+#include <QElapsedTimer>
+
+#include <string>
 
 class tst_QBuffer : public QObject
 {
     Q_OBJECT
 private slots:
     void open();
+    void openWriteOnlyDoesNotTruncate();
     void getSetCheck();
     void readBlock();
     void readBlockPastEnd();
@@ -58,6 +38,7 @@ private slots:
     void readLineBoundaries();
     void getAndUngetChar();
     void writeAfterQByteArrayResize();
+    void writeOfMoreThan2GiB();
     void read_null();
 
 protected slots:
@@ -129,6 +110,29 @@ void tst_QBuffer::open()
     QVERIFY(b.isReadable());
     QVERIFY(b.isWritable());
     b.close();
+}
+
+void tst_QBuffer::openWriteOnlyDoesNotTruncate()
+{
+    QBuffer b;
+    const auto data = QByteArrayLiteral("Hey, presto!");
+
+    {
+        QVERIFY(b.open(QIODevice::WriteOnly));
+        b.write(data);
+        b.close();
+    }
+    {
+        QVERIFY(b.open(QIODevice::ReadOnly));
+        QCOMPARE(b.readAll(), data);
+        b.close();
+    }
+    {
+        QVERIFY(b.open(QIODevice::WriteOnly));
+        QCOMPARE(b.size(), data.size());
+        QCOMPARE(b.pos(), 0);
+        b.close();
+    }
 }
 
 // some status() tests, too
@@ -620,6 +624,55 @@ void tst_QBuffer::writeAfterQByteArrayResize()
 
     buffer.write(QByteArray().fill('b', 1000));
     QCOMPARE(buffer.buffer().size(), 1000);
+}
+
+void tst_QBuffer::writeOfMoreThan2GiB()
+{
+    if constexpr (sizeof(void*) == 4)
+        QSKIP("This is a 64-bit-only test");
+
+    [[maybe_unused]] constexpr size_t GiB = 1024 * 1024 * 1024;
+
+#ifndef QT_NO_EXCEPTIONS
+
+    try {
+        //
+        // GIVEN: an empty QBuffer open for writing
+        //
+        QBuffer buffer;
+        QVERIFY(buffer.open(QIODevice::WriteOnly));
+
+        //
+        // WHEN: writing more than 2GiB in a singe chunk:
+        //
+        QElapsedTimer timer;
+        timer.start();
+
+        const std::string input(2 * GiB + 1, 42);
+
+        qDebug("created dataset in %lld ms", timer.restart());
+
+        const auto inputSize = qint64(input.size());
+
+        QCOMPARE(buffer.write(input.data(), inputSize), inputSize);
+
+        qDebug("performed write in %lld ms", timer.restart());
+
+        //
+        // THEN: the buffer contains the written data
+        //
+        QCOMPARE(buffer.buffer().size(), inputSize);
+        QVERIFY(buffer.buffer() == QByteArrayView{input});
+
+        qDebug("verified result in %lld ms", timer.elapsed());
+
+    } catch (const std::bad_alloc &) {
+        QSKIP("Cannot allocate enough memory for this test");
+    }
+
+#else
+    QSKIP("This test requires exceptions enabled.");
+#endif // QT_NO_EXCEPTIONS
 }
 
 void tst_QBuffer::read_null()

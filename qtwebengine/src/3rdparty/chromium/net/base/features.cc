@@ -1,4 +1,4 @@
-// Copyright (c) 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,179 +6,207 @@
 
 #include <vector>
 
+#include "base/feature_list.h"
 #include "build/build_config.h"
 
-namespace net {
-namespace features {
+namespace net::features {
 
-const base::Feature kAcceptLanguageHeader{"AcceptLanguageHeader",
-                                          base::FEATURE_ENABLED_BY_DEFAULT};
+BASE_FEATURE(kAlpsForHttp2, "AlpsForHttp2", base::FEATURE_ENABLED_BY_DEFAULT);
 
-const base::Feature kCapReferrerToOriginOnCrossOrigin{
-    "CapReferrerToOriginOnCrossOrigin", base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kAvoidH2Reprioritization,
+             "AvoidH2Reprioritization",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kDnsHttpssvc{"DnsHttpssvc",
-                                 base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kCapReferrerToOriginOnCrossOrigin,
+             "CapReferrerToOriginOnCrossOrigin",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::FeatureParam<bool> kDnsHttpssvcUseHttpssvc{
-    &kDnsHttpssvc, "DnsHttpssvcUseHttpssvc", false};
+BASE_FEATURE(kChromeStaticPinning,
+             "ChromeStaticPinning",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
-const base::FeatureParam<bool> kDnsHttpssvcUseIntegrity{
-    &kDnsHttpssvc, "DnsHttpssvcUseIntegrity", false};
+BASE_FEATURE(kDnsTransactionDynamicTimeouts,
+             "DnsTransactionDynamicTimeouts",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::FeatureParam<bool> kDnsHttpssvcEnableQueryOverInsecure{
-    &kDnsHttpssvc, "DnsHttpssvcEnableQueryOverInsecure", false};
+const base::FeatureParam<double> kDnsTransactionTimeoutMultiplier{
+    &kDnsTransactionDynamicTimeouts, "DnsTransactionTimeoutMultiplier", 7.5};
 
-const base::FeatureParam<int> kDnsHttpssvcExtraTimeMs{
-    &kDnsHttpssvc, "DnsHttpssvcExtraTimeMs", 10};
+const base::FeatureParam<base::TimeDelta> kDnsMinTransactionTimeout{
+    &kDnsTransactionDynamicTimeouts, "DnsMinTransactionTimeout",
+    base::Seconds(12)};
 
-const base::FeatureParam<int> kDnsHttpssvcExtraTimePercent{
-    &kDnsHttpssvc, "DnsHttpssvcExtraTimePercent", 5};
+BASE_FEATURE(kUseDnsHttpsSvcb,
+             "UseDnsHttpsSvcb",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
-const base::FeatureParam<std::string> kDnsHttpssvcExperimentDomains{
-    &kDnsHttpssvc, "DnsHttpssvcExperimentDomains", ""};
+const base::FeatureParam<bool> kUseDnsHttpsSvcbEnforceSecureResponse{
+    &kUseDnsHttpsSvcb, "UseDnsHttpsSvcbEnforceSecureResponse", false};
 
-const base::FeatureParam<std::string> kDnsHttpssvcControlDomains{
-    &kDnsHttpssvc, "DnsHttpssvcControlDomains", ""};
+const base::FeatureParam<base::TimeDelta> kUseDnsHttpsSvcbInsecureExtraTimeMax{
+    &kUseDnsHttpsSvcb, "UseDnsHttpsSvcbInsecureExtraTimeMax",
+    base::Milliseconds(50)};
 
-const base::FeatureParam<bool> kDnsHttpssvcControlDomainWildcard{
-    &kDnsHttpssvc, "DnsHttpssvcControlDomainWildcard", false};
+const base::FeatureParam<int> kUseDnsHttpsSvcbInsecureExtraTimePercent{
+    &kUseDnsHttpsSvcb, "UseDnsHttpsSvcbInsecureExtraTimePercent", 20};
 
-const base::Feature kAvoidH2Reprioritization{"AvoidH2Reprioritization",
-                                             base::FEATURE_DISABLED_BY_DEFAULT};
+const base::FeatureParam<base::TimeDelta> kUseDnsHttpsSvcbInsecureExtraTimeMin{
+    &kUseDnsHttpsSvcb, "UseDnsHttpsSvcbInsecureExtraTimeMin",
+    base::Milliseconds(5)};
 
-namespace dns_httpssvc_experiment {
-base::TimeDelta GetExtraTimeAbsolute() {
-  DCHECK(base::FeatureList::IsEnabled(features::kDnsHttpssvc));
-  return base::TimeDelta::FromMilliseconds(kDnsHttpssvcExtraTimeMs.Get());
-}
-}  // namespace dns_httpssvc_experiment
+const base::FeatureParam<base::TimeDelta> kUseDnsHttpsSvcbSecureExtraTimeMax{
+    &kUseDnsHttpsSvcb, "UseDnsHttpsSvcbSecureExtraTimeMax",
+    base::Milliseconds(50)};
 
-const base::Feature kEnableTLS13EarlyData{"EnableTLS13EarlyData",
-                                          base::FEATURE_DISABLED_BY_DEFAULT};
+const base::FeatureParam<int> kUseDnsHttpsSvcbSecureExtraTimePercent{
+    &kUseDnsHttpsSvcb, "UseDnsHttpsSvcbSecureExtraTimePercent", 20};
 
-const base::Feature kNetworkQualityEstimator{"NetworkQualityEstimator",
-                                             base::FEATURE_DISABLED_BY_DEFAULT};
+const base::FeatureParam<base::TimeDelta> kUseDnsHttpsSvcbSecureExtraTimeMin{
+    &kUseDnsHttpsSvcb, "UseDnsHttpsSvcbSecureExtraTimeMin",
+    base::Milliseconds(5)};
 
-const base::Feature kSplitCacheByNetworkIsolationKey{
-    "SplitCacheByNetworkIsolationKey", base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kUseDnsHttpsSvcbAlpn,
+             "UseDnsHttpsSvcbAlpn",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kSplitHostCacheByNetworkIsolationKey{
-    "SplitHostCacheByNetworkIsolationKey", base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kSHA1ServerSignature,
+             "SHA1ServerSignature",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
-const base::Feature kPartitionConnectionsByNetworkIsolationKey{
-    "PartitionConnectionsByNetworkIsolationKey",
-    base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kEnableTLS13EarlyData,
+             "EnableTLS13EarlyData",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kPartitionHttpServerPropertiesByNetworkIsolationKey{
-    "PartitionHttpServerPropertiesByNetworkIsolationKey",
-    base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kEncryptedClientHello,
+             "EncryptedClientHello",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kPartitionSSLSessionsByNetworkIsolationKey{
-    "PartitionSSLSessionsByNetworkIsolationKey",
-    base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kNetworkQualityEstimator,
+             "NetworkQualityEstimator",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kPartitionExpectCTStateByNetworkIsolationKey{
-    "PartitionExpectCTStateByNetworkIsolationKey",
-    base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kSplitCacheByIncludeCredentials,
+             "SplitCacheByIncludeCredentials",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kExpectCTPruning{"ExpectCTPruning",
-                                     base::FEATURE_ENABLED_BY_DEFAULT};
+BASE_FEATURE(kSplitCacheByNetworkIsolationKey,
+             "SplitCacheByNetworkIsolationKey",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-NET_EXPORT extern const base::FeatureParam<int>
-    kExpectCTPruneMax(&kExpectCTPruning, "ExpectCTPruneMax", 2000);
-NET_EXPORT extern const base::FeatureParam<int>
-    kExpectCTPruneMin(&kExpectCTPruning, "ExpectCTPruneMin", 1800);
-NET_EXPORT extern const base::FeatureParam<int> kExpectCTSafeFromPruneDays(
-    &kExpectCTPruning,
-    "ExpectCTSafeFromPruneDays",
-    40);
-NET_EXPORT extern const base::FeatureParam<int> kExpectCTMaxEntriesPerNik(
-    &kExpectCTPruning,
-    "ExpectCTMaxEntriesPerNik",
-    20);
-NET_EXPORT extern const base::FeatureParam<int>
-    kExpectCTPruneDelaySecs(&kExpectCTPruning, "ExpectCTPruneDelaySecs", 60);
+BASE_FEATURE(kSplitHostCacheByNetworkIsolationKey,
+             "SplitHostCacheByNetworkIsolationKey",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kTLS13KeyUpdate{"TLS13KeyUpdate",
-                                    base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kPartitionConnectionsByNetworkIsolationKey,
+             "PartitionConnectionsByNetworkIsolationKey",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kPostQuantumCECPQ2{"PostQuantumCECPQ2",
-                                       base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kPartitionHttpServerPropertiesByNetworkIsolationKey,
+             "PartitionHttpServerPropertiesByNetworkIsolationKey",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kNetUnusedIdleSocketTimeout{
-    "NetUnusedIdleSocketTimeout", base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kPartitionSSLSessionsByNetworkIsolationKey,
+             "PartitionSSLSessionsByNetworkIsolationKey",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kSameSiteByDefaultCookies{"SameSiteByDefaultCookies",
-                                              base::FEATURE_ENABLED_BY_DEFAULT};
+BASE_FEATURE(kPartitionNelAndReportingByNetworkIsolationKey,
+             "PartitionNelAndReportingByNetworkIsolationKey",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kCookiesWithoutSameSiteMustBeSecure{
-    "CookiesWithoutSameSiteMustBeSecure", base::FEATURE_ENABLED_BY_DEFAULT};
+BASE_FEATURE(kEnableCrossSiteFlagNetworkAnonymizationKey,
+             "EnableCrossSiteFlagNetworkAnonymizationKey",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kShortLaxAllowUnsafeThreshold{
-    "ShortLaxAllowUnsafeThreshold", base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kTLS13KeyUpdate,
+             "TLS13KeyUpdate",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kSameSiteDefaultChecksMethodRigorously{
-    "SameSiteDefaultChecksMethodRigorously", base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kPermuteTLSExtensions,
+             "PermuteTLSExtensions",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
-const base::Feature kRecentHttpSameSiteAccessGrantsLegacyCookieSemantics{
-    "RecentHttpSameSiteAccessGrantsLegacyCookieSemantics",
-    base::FEATURE_DISABLED_BY_DEFAULT};
-const base::FeatureParam<int>
-    kRecentHttpSameSiteAccessGrantsLegacyCookieSemanticsMilliseconds{
-        &kRecentHttpSameSiteAccessGrantsLegacyCookieSemantics,
-        "RecentHttpSameSiteAccessGrantsLegacyCookieSemanticsMilliseconds", 0};
+BASE_FEATURE(kPostQuantumKyber,
+             "PostQuantumKyber",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kRecentCreationTimeGrantsLegacyCookieSemantics{
-    "RecentCreationTimeGrantsLegacyCookieSemantics",
-    base::FEATURE_DISABLED_BY_DEFAULT};
-const base::FeatureParam<int>
-    kRecentCreationTimeGrantsLegacyCookieSemanticsMilliseconds{
-        &kRecentCreationTimeGrantsLegacyCookieSemantics,
-        "RecentCreationTimeGrantsLegacyCookieSemanticsMilliseconds", 0};
+BASE_FEATURE(kPostQuantumCECPQ2,
+             "PostQuantumCECPQ2",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kPostQuantumCECPQ2SomeDomains,
+             "PostQuantumCECPQ2SomeDomains",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+const base::FeatureParam<std::string>
+    kPostQuantumCECPQ2Prefix(&kPostQuantumCECPQ2SomeDomains, "prefix", "a");
 
-#if BUILDFLAG(BUILTIN_CERT_VERIFIER_FEATURE_SUPPORTED)
-const base::Feature kCertVerifierBuiltinFeature{
-    "CertVerifierBuiltin", base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kNetUnusedIdleSocketTimeout,
+             "NetUnusedIdleSocketTimeout",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kShortLaxAllowUnsafeThreshold,
+             "ShortLaxAllowUnsafeThreshold",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kSameSiteDefaultChecksMethodRigorously,
+             "SameSiteDefaultChecksMethodRigorously",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+#if BUILDFLAG(TRIAL_COMPARISON_CERT_VERIFIER_SUPPORTED)
+// Enables the dual certificate verification trial feature.
+// https://crbug.com/649026
+BASE_FEATURE(kCertDualVerificationTrialFeature,
+             "CertDualVerificationTrial",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#if BUILDFLAG(IS_MAC)
+const base::FeatureParam<int> kCertDualVerificationTrialImpl{
+    &kCertDualVerificationTrialFeature, "impl", 0};
+#endif /* BUILDFLAG(IS_MAC) */
 #endif
 
-const base::Feature kAppendFrameOriginToNetworkIsolationKey{
-    "AppendFrameOriginToNetworkIsolationKey", base::FEATURE_ENABLED_BY_DEFAULT};
+#if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
+CONSTINIT const base::Feature kChromeRootStoreUsed(
+             "ChromeRootStoreUsed",
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+             base::FEATURE_ENABLED_BY_DEFAULT
+#else
+             base::FEATURE_DISABLED_BY_DEFAULT
+#endif
+);
+#if BUILDFLAG(IS_MAC)
+const base::FeatureParam<int> kChromeRootStoreSysImpl{&kChromeRootStoreUsed,
+                                                      "sysimpl", 0};
+#endif /* BUILDFLAG(IS_MAC) */
+#endif /* BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED) */
 
-const base::Feature kTurnOffStreamingMediaCachingOnBattery{
-    "TurnOffStreamingMediaCachingOnBattery", base::FEATURE_DISABLED_BY_DEFAULT};
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(USE_NSS_CERTS) || BUILDFLAG(IS_WIN)
+BASE_FEATURE(kTrustStoreTrustedLeafSupport,
+             "TrustStoreTrustedLeafSupport",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif
 
-const base::Feature kTurnOffStreamingMediaCachingAlways{
-    "TurnOffStreamingMediaCachingAlways", base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kTurnOffStreamingMediaCachingOnBattery,
+             "TurnOffStreamingMediaCachingOnBattery",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kLegacyTLSEnforced{"LegacyTLSEnforced",
-                                       base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kTurnOffStreamingMediaCachingAlways,
+             "TurnOffStreamingMediaCachingAlways",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::Feature kSchemefulSameSite{"SchemefulSameSite",
-                                       base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kSchemefulSameSite,
+             "SchemefulSameSite",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
-const base::Feature kTLSLegacyCryptoFallbackForMetrics{
-    "TLSLegacyCryptoFallbackForMetrics", base::FEATURE_ENABLED_BY_DEFAULT};
-
-const base::Feature kUseLookalikesForNavigationSuggestions{
-    "UseLookalikesForNavigationSuggestions", base::FEATURE_DISABLED_BY_DEFAULT};
-
-const base::Feature kReportPoorConnectivity{"ReportPoorConnectivity",
-                                            base::FEATURE_DISABLED_BY_DEFAULT};
-
-const base::Feature kPreemptiveMobileNetworkActivation{
-    "PreemptiveMobileNetworkActivation", base::FEATURE_DISABLED_BY_DEFAULT};
-
-const base::Feature kLimitOpenUDPSockets{"LimitOpenUDPSockets",
-                                         base::FEATURE_ENABLED_BY_DEFAULT};
+BASE_FEATURE(kLimitOpenUDPSockets,
+             "LimitOpenUDPSockets",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 extern const base::FeatureParam<int> kLimitOpenUDPSocketsMax(
     &kLimitOpenUDPSockets,
     "LimitOpenUDPSocketsMax",
     6000);
 
-const base::Feature kTimeoutTcpConnectAttempt{
-    "TimeoutTcpConnectAttempt", base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kTimeoutTcpConnectAttempt,
+             "TimeoutTcpConnectAttempt",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 extern const base::FeatureParam<double> kTimeoutTcpConnectAttemptRTTMultiplier(
     &kTimeoutTcpConnectAttempt,
@@ -188,12 +216,122 @@ extern const base::FeatureParam<double> kTimeoutTcpConnectAttemptRTTMultiplier(
 extern const base::FeatureParam<base::TimeDelta> kTimeoutTcpConnectAttemptMin(
     &kTimeoutTcpConnectAttempt,
     "TimeoutTcpConnectAttemptMin",
-    base::TimeDelta::FromSeconds(8));
+    base::Seconds(8));
 
 extern const base::FeatureParam<base::TimeDelta> kTimeoutTcpConnectAttemptMax(
     &kTimeoutTcpConnectAttempt,
     "TimeoutTcpConnectAttemptMax",
-    base::TimeDelta::FromSeconds(30));
+    base::Seconds(30));
 
-}  // namespace features
-}  // namespace net
+#if BUILDFLAG(ENABLE_REPORTING)
+BASE_FEATURE(kDocumentReporting,
+             "DocumentReporting",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(ENABLE_REPORTING)
+
+#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
+BASE_FEATURE(kUdpSocketPosixAlwaysUpdateBytesReceived,
+             "UdpSocketPosixAlwaysUpdateBytesReceived",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
+
+BASE_FEATURE(kCookieSameSiteConsidersRedirectChain,
+             "CookieSameSiteConsidersRedirectChain",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kSamePartyAttributeEnabled,
+             "SamePartyAttributeEnabled",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kPartitionedCookies,
+             "PartitionedCookies",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kNoncedPartitionedCookies,
+             "NoncedPartitionedCookies",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kRecordRadioWakeupTrigger,
+             "RecordRadioWakeupTrigger",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kClampCookieExpiryTo400Days,
+             "ClampCookieExpiryTo400Days",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kStaticKeyPinningEnforcement,
+             "StaticKeyPinningEnforcement",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kCookieDomainRejectNonASCII,
+             "CookieDomainRejectNonASCII",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kBlockSetCookieHeader,
+             "BlockSetCookieHeader",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Run callbacks optimstically for write calls to the blockfile disk cache
+// implementation.
+BASE_FEATURE(kOptimisticBlockfileWrite,
+             "OptimisticBlockfileWrite",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enables partitioning of third party storage (IndexedDB, CacheStorage, etc.)
+// by the top level site to reduce fingerprinting.
+BASE_FEATURE(kThirdPartyStoragePartitioning,
+             "ThirdPartyStoragePartitioning",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+// Whether to use the new code paths needed to support partitioning Blob URLs.
+// This exists as a kill-switch in case an issue is identified with the Blob
+// URL implementation that causes breakage.
+// TODO(https://crbug.com/1407944): Kill-switch activated - investigate cause of
+// increased renderer hangs.
+BASE_FEATURE(kSupportPartitionedBlobUrl,
+             "SupportPartitionedBlobUrl",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAlpsParsing, "AlpsParsing", base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAlpsClientHintParsing,
+             "AlpsClientHintParsing",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kShouldKillSessionOnAcceptChMalformed,
+             "ShouldKillSessionOnAcceptChMalformed",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kCaseInsensitiveCookiePrefix,
+             "CaseInsensitiveCookiePrefix",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kEnableWebsocketsOverHttp3,
+             "EnableWebsocketsOverHttp3",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kUseNAT64ForIPv4Literal,
+             "UseNAT64ForIPv4Literal",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kBlockNewForbiddenHeaders,
+             "BlockNewForbiddenHeaders",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+#if BUILDFLAG(IS_WIN)
+BASE_FEATURE(kPlatformKeyProbeSHA256,
+             "PlatformKeyProbeSHA256",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif
+
+// Enable support for HTTP extensible priorities (RFC 9218)
+BASE_FEATURE(kPriorityIncremental,
+             "PriorityIncremental",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Prefetch to follow normal semantics instead of 5-minute rule
+// https://crbug.com/1345207
+BASE_FEATURE(kPrefetchFollowsNormalCacheSemantics,
+             "PrefetchFollowsNormalCacheSemantics",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+}  // namespace net::features

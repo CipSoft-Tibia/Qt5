@@ -1,4 +1,4 @@
-// Copyright (c) 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 
 #include "base/component_export.h"
 #include "base/files/file_path.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/pickle.h"
 #include "ui/base/dragdrop/os_exchange_data_provider.h"
 #include "ui/base/x/selection_owner.h"
@@ -18,7 +18,6 @@
 #include "ui/base/x/selection_utils.h"
 #include "ui/gfx/geometry/vector2d.h"
 #include "ui/gfx/image/image_skia.h"
-#include "ui/gfx/x/x11.h"
 #include "url/gurl.h"
 
 namespace ui {
@@ -31,9 +30,10 @@ class OSExchangeDataProviderX11Test;
 class COMPONENT_EXPORT(UI_BASE_X) XOSExchangeDataProvider
     : public OSExchangeDataProvider {
  public:
-  // |x_window| is the window the cursor is over, and |selection| is the set of
-  // data being offered.
+  // |x_window| is the window the cursor is over, |source_window| is the window
+  // where the drag started, and |selection| is the set of data being offered.
   XOSExchangeDataProvider(x11::Window x_window,
+                          x11::Window source_window,
                           const SelectionFormatMap& selection);
 
   // Creates a Provider for sending drag information. This creates its own,
@@ -64,16 +64,18 @@ class COMPONENT_EXPORT(UI_BASE_X) XOSExchangeDataProvider
   std::unique_ptr<OSExchangeDataProvider> Clone() const override;
   void MarkOriginatedFromRenderer() override;
   bool DidOriginateFromRenderer() const override;
-  void SetString(const base::string16& data) override;
-  void SetURL(const GURL& url, const base::string16& title) override;
+  void MarkAsFromPrivileged() override;
+  bool IsFromPrivileged() const override;
+  void SetString(const std::u16string& data) override;
+  void SetURL(const GURL& url, const std::u16string& title) override;
   void SetFilename(const base::FilePath& path) override;
   void SetFilenames(const std::vector<FileInfo>& filenames) override;
   void SetPickledData(const ClipboardFormatType& format,
                       const base::Pickle& pickle) override;
-  bool GetString(base::string16* data) const override;
+  bool GetString(std::u16string* data) const override;
   bool GetURLAndTitle(FilenameToURLPolicy policy,
                       GURL* url,
-                      base::string16* title) const override;
+                      std::u16string* title) const override;
   bool GetFilename(base::FilePath* path) const override;
   bool GetFilenames(std::vector<FileInfo>* filenames) const override;
   bool GetPickledData(const ClipboardFormatType& format,
@@ -82,18 +84,22 @@ class COMPONENT_EXPORT(UI_BASE_X) XOSExchangeDataProvider
   bool HasURL(FilenameToURLPolicy policy) const override;
   bool HasFile() const override;
   bool HasCustomFormat(const ClipboardFormatType& format) const override;
-#if defined(USE_X11)
   void SetFileContents(const base::FilePath& filename,
                        const std::string& file_contents) override;
-#endif
+  bool GetFileContents(base::FilePath* filename,
+                       std::string* file_contents) const override;
+  bool HasFileContents() const override;
 
-  void SetHtml(const base::string16& html, const GURL& base_url) override;
-  bool GetHtml(base::string16* html, GURL* base_url) const override;
+  void SetHtml(const std::u16string& html, const GURL& base_url) override;
+  bool GetHtml(std::u16string* html, GURL* base_url) const override;
   bool HasHtml() const override;
   void SetDragImage(const gfx::ImageSkia& image,
                     const gfx::Vector2d& cursor_offset) override;
   gfx::ImageSkia GetDragImage() const override;
   gfx::Vector2d GetDragImageOffset() const override;
+
+  void SetSource(std::unique_ptr<DataTransferEndpoint> data_source) override;
+  DataTransferEndpoint* GetSource() const override;
 
  protected:
   friend class OSExchangeDataProviderX11Test;
@@ -127,7 +133,7 @@ class COMPONENT_EXPORT(UI_BASE_X) XOSExchangeDataProvider
   gfx::Vector2d drag_image_offset_;
 
   // Our X11 state.
-  x11::Connection* connection_;
+  raw_ptr<x11::Connection> connection_;
   x11::Window x_root_window_;
 
   // In X11, because the IPC parts of drag operations are implemented by
@@ -139,6 +145,7 @@ class COMPONENT_EXPORT(UI_BASE_X) XOSExchangeDataProvider
   const bool own_window_;
 
   x11::Window x_window_;
+  x11::Window source_window_;
 
   // A representation of data. This is either passed to us from the other
   // process, or built up through a sequence of Set*() calls. It can be passed
@@ -150,6 +157,8 @@ class COMPONENT_EXPORT(UI_BASE_X) XOSExchangeDataProvider
 
   // Takes a snapshot of |format_map_| and offers it to other windows.
   mutable SelectionOwner selection_owner_;
+
+  bool is_from_privileged_ = false;
 };
 
 }  // namespace ui

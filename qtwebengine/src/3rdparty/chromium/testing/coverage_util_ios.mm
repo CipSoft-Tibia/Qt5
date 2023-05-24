@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -28,8 +28,9 @@ void ConfigureCoverageReportPath() {
             .environment[@"SIMULATOR_SHARED_RESOURCES_DIRECTORY"];
     // UUID ensures that there won't be a conflict when multiple apps are
     // launched in one test suite in EG2. %m enables on-line profile merging.
-    NSString* file_name =
-        [NSString stringWithFormat:@"%@-%%m.profraw", NSUUID.UUID.UUIDString];
+    // %c helps preserve coverage data at crash.
+    NSString* file_name = [NSString
+        stringWithFormat:@"%@-%%m-%%c.profraw", NSUUID.UUID.UUIDString];
     NSString* file_path =
         [shared_resources_path stringByAppendingPathComponent:file_name];
 

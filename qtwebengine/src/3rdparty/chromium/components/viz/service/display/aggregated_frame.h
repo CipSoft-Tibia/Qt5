@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,16 +6,19 @@
 #define COMPONENTS_VIZ_SERVICE_DISPLAY_AGGREGATED_FRAME_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
-#include "base/optional.h"
-#include "components/viz/common/delegated_ink_metadata.h"
 #include "components/viz/common/quads/aggregated_render_pass.h"
 #include "components/viz/service/viz_service_export.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "ui/gfx/delegated_ink_metadata.h"
 #include "ui/gfx/display_color_spaces.h"
 #include "ui/latency/latency_info.h"
 
 namespace viz {
+
+typedef std::vector<gfx::Rect> SurfaceDamageRectList;
 
 class VIZ_SERVICE_EXPORT AggregatedFrame {
  public:
@@ -25,10 +28,13 @@ class VIZ_SERVICE_EXPORT AggregatedFrame {
 
   AggregatedFrame& operator=(AggregatedFrame&& other);
 
+  void AsValueInto(base::trace_event::TracedValue* value) const;
+  std::string ToString() const;
+
   // The visible height of the top-controls. If the value is not set, then the
   // visible height should be the same as in the latest submitted frame with a
   // value set.
-  base::Optional<float> top_controls_visible_height;
+  absl::optional<float> top_controls_visible_height;
 
   // A list of latency info used for this frame.
   std::vector<ui::LatencyInfo> latency_info;
@@ -39,14 +45,16 @@ class VIZ_SERVICE_EXPORT AggregatedFrame {
   // Indicates whether any render passes have a copy output request.
   bool has_copy_requests = false;
 
-  // Indicates whether this frame may contain video.
-  bool may_contain_video = false;
+  // Indicates whether video capture has been enabled for this frame.
+  bool video_capture_enabled = false;
 
-  // This is the final root damage rect produced in
-  // ProcessSurfaceOccludingDamage().
-  // TODO(magchen@): This will be replaced by a damage rect list in the follow
-  // up CL.
-  gfx::Rect occluding_damage_;
+  // Indicates whether this is a page fullscreen mode without Chrome tabs. When
+  // in the page fullscreen mode, the content surface has the same size as the
+  // root render pass |output_rect| (display size) on the root surface.
+  bool page_fullscreen_mode = false;
+
+  // A list of surface damage rects in the current frame, used for overlays.
+  SurfaceDamageRectList surface_damage_rect_list_;
 
   // Contains the metadata required for drawing a delegated ink trail onto the
   // end of a rendered ink stroke. This should only be present when two
@@ -59,7 +67,7 @@ class VIZ_SERVICE_EXPORT AggregatedFrame {
   // The ink trail created with this metadata will only last for a single frame
   // before it disappears, regardless of whether or not the next frame contains
   // delegated ink metadata.
-  std::unique_ptr<DelegatedInkMetadata> delegated_ink_metadata;
+  std::unique_ptr<gfx::DelegatedInkMetadata> delegated_ink_metadata;
 
   AggregatedRenderPassList render_pass_list;
 };

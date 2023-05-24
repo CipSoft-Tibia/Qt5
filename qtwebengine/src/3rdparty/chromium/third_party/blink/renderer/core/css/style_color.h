@@ -31,8 +31,11 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_CSS_STYLE_COLOR_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_STYLE_COLOR_H_
 
-#include "third_party/blink/public/common/css/color_scheme.h"
+#include <memory>
+#include "base/check.h"
+#include "third_party/blink/public/mojom/frame/color_scheme.mojom-blink-forward.h"
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/css/css_color_mix_value.h"
 #include "third_party/blink/renderer/core/css_value_keywords.h"
 #include "third_party/blink/renderer/platform/graphics/color.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
@@ -43,54 +46,139 @@ class CORE_EXPORT StyleColor {
   DISALLOW_NEW();
 
  public:
+  // When color-mix functions contain colors that cannot be resolved until used
+  // value time (such as "currentcolor"), we need to store them here and
+  // resolve them to individual colors later.
+  class UnresolvedColorMix;
+  union ColorOrUnresolvedColorMix {
+    ColorOrUnresolvedColorMix() : color(Color::kTransparent) {}
+    explicit ColorOrUnresolvedColorMix(Color color) : color(color) {}
+    explicit ColorOrUnresolvedColorMix(const StyleColor style_color);
+    explicit ColorOrUnresolvedColorMix(UnresolvedColorMix color_mix);
+    // Since an instance ColorOrUnresolvedColorMix does not know whether it
+    // contains a color or an UnresolvedColorMix, release of
+    // unresolved_color_mix is left to StyleColor::~StyleColor().
+    ~ColorOrUnresolvedColorMix() {}
+
+    Color color;
+    std::unique_ptr<UnresolvedColorMix> unresolved_color_mix;
+  };
+  class UnresolvedColorMix {
+   public:
+    enum class UnderlyingColorType {
+      kColor,
+      kColorMix,
+      kCurrentColor,
+    };
+
+    UnresolvedColorMix(const cssvalue::CSSColorMixValue* in,
+                       const StyleColor& c1,
+                       const StyleColor& c2);
+    UnresolvedColorMix();
+    UnresolvedColorMix(const UnresolvedColorMix& other);
+    UnresolvedColorMix& operator=(const UnresolvedColorMix& other);
+    Color Resolve(const Color& current_color) const;
+
+   private:
+    Color::ColorInterpolationSpace color_interpolation_space_ =
+        Color::ColorInterpolationSpace::kNone;
+    Color::HueInterpolationMethod hue_interpolation_method_ =
+        Color::HueInterpolationMethod::kShorter;
+    ColorOrUnresolvedColorMix color1_;
+    ColorOrUnresolvedColorMix color2_;
+    double percentage_ = 0.0;
+    double alpha_multiplier_ = 1.0;
+    UnderlyingColorType color1_type_ = UnderlyingColorType::kColor;
+    UnderlyingColorType color2_type_ = UnderlyingColorType::kColor;
+  };
+
   StyleColor() = default;
   explicit StyleColor(Color color)
-      : color_(color), color_keyword_(CSSValueID::kInvalid) {}
-  explicit StyleColor(RGBA32 color)
-      : color_(color), color_keyword_(CSSValueID::kInvalid) {}
+      : color_keyword_(CSSValueID::kInvalid),
+        color_or_unresolved_color_mix_(color) {}
   explicit StyleColor(CSSValueID keyword) : color_keyword_(keyword) {}
-  // TODO(1081945): We need to store the color and keyword for system colors
-  // to allow forced colors mode to access system color keywords while the
-  // CSSSystemColorComputeToSelf feature is under development. Once
-  // CSSSystemColorComputeToSelf is enabled, we can remove this ctr and
-  // EffectiveColorKeyword() and use color_keyword_ directly, instead.
+  explicit StyleColor(UnresolvedColorMix color_mix)
+      : color_keyword_(CSSValueID::kColorMix),
+        color_or_unresolved_color_mix_(color_mix) {}
+  // We need to store the color and keyword for system colors to be able to
+  // distinguish system colors from a normal color. System colors won't be
+  // overridden by forced colors mode, even if forced-color-adjust is 'auto'.
   StyleColor(Color color, CSSValueID keyword)
-      : color_(color), color_keyword_(keyword) {}
+      : color_keyword_(keyword), color_or_unresolved_color_mix_(color) {}
+
+  // All copy/move/assignment operators are necessary to handle the potential
+  // unique pointer in color_or_unresolved_color_mix_.
+  StyleColor(const StyleColor& other);
+  StyleColor& operator=(const StyleColor& other);
+  StyleColor& operator=(StyleColor&& other);
+  StyleColor(StyleColor&&);
+  ~StyleColor();
+
   static StyleColor CurrentColor() { return StyleColor(); }
 
   bool IsCurrentColor() const {
     return color_keyword_ == CSSValueID::kCurrentcolor;
   }
-  bool IsSystemColor() const { return IsSystemColor(color_keyword_); }
-  Color GetColor() const {
-    DCHECK(IsNumeric());
-    return color_;
+  bool IsUnresolvedColorMixFunction() const {
+    return color_keyword_ == CSSValueID::kColorMix;
   }
+  bool IsSystemColorIncludingDeprecated() const {
+    return IsSystemColorIncludingDeprecated(color_keyword_);
+  }
+  bool IsSystemColor() const { return IsSystemColor(color_keyword_); }
+  UnresolvedColorMix GetUnresolvedColorMix() const {
+    DCHECK(IsUnresolvedColorMixFunction());
+    return *color_or_unresolved_color_mix_.unresolved_color_mix;
+  }
+  Color GetColor() const;
+
   CSSValueID GetColorKeyword() const {
     DCHECK(!IsNumeric());
     return color_keyword_;
   }
+  bool HasColorKeyword() const {
+    return color_keyword_ != CSSValueID::kInvalid;
+  }
 
-  Color Resolve(Color current_color, ColorScheme color_scheme) const;
+  Color Resolve(const Color& current_color,
+                mojom::blink::ColorScheme color_scheme,
+                bool* is_current_color = nullptr,
+                bool is_forced_color = false) const;
 
   // Resolve and override the resolved color's alpha channel as specified by
   // |alpha|.
   Color ResolveWithAlpha(Color current_color,
-                         ColorScheme color_scheme,
-                         int alpha) const;
+                         mojom::blink::ColorScheme color_scheme,
+                         int alpha,
+                         bool* is_current_color = nullptr,
+                         bool is_forced_color = false) const;
 
   bool IsNumeric() const {
     return EffectiveColorKeyword() == CSSValueID::kInvalid;
   }
 
-  static Color ColorFromKeyword(CSSValueID, ColorScheme color_scheme);
+  static Color ColorFromKeyword(CSSValueID,
+                                mojom::blink::ColorScheme color_scheme);
   static bool IsColorKeyword(CSSValueID);
+  static bool IsSystemColorIncludingDeprecated(CSSValueID);
   static bool IsSystemColor(CSSValueID);
 
   inline bool operator==(const StyleColor& other) const {
-    DCHECK(IsValid());
-    DCHECK(other.IsValid());
-    return color_ == other.color_ && color_keyword_ == other.color_keyword_;
+    if (color_keyword_ != other.color_keyword_) {
+      return false;
+    }
+
+    if (IsCurrentColor() && other.IsCurrentColor()) {
+      return true;
+    }
+
+    if (IsUnresolvedColorMixFunction()) {
+      return color_or_unresolved_color_mix_.unresolved_color_mix ==
+             other.color_or_unresolved_color_mix_.unresolved_color_mix;
+    }
+
+    return color_or_unresolved_color_mix_.color ==
+           other.color_or_unresolved_color_mix_.color;
   }
 
   inline bool operator!=(const StyleColor& other) const {
@@ -98,15 +186,8 @@ class CORE_EXPORT StyleColor {
   }
 
  protected:
-  inline bool IsValid() const {
-    // At least one of color_keyword_ and color_ should retain its default
-    // value.
-    return EffectiveColorKeyword() == CSSValueID::kInvalid ||
-           color_ == Color() || IsSystemColor(EffectiveColorKeyword());
-  }
-
-  Color color_;
   CSSValueID color_keyword_ = CSSValueID::kCurrentcolor;
+  ColorOrUnresolvedColorMix color_or_unresolved_color_mix_;
 
  private:
   CSSValueID EffectiveColorKeyword() const;

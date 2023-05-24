@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdeclarativesearchmodelbase_p.h"
 #include "qdeclarativeplace_p.h"
@@ -41,18 +8,18 @@
 #include <QtCore/QCoreApplication>
 #include <QtQml/QQmlInfo>
 #include <QtLocation/QGeoServiceProvider>
+#include <QtLocation/QPlaceIcon>
 #include <QtLocation/QPlaceManager>
 #include <QtLocation/QPlaceSearchRequest>
 #include <QtLocation/QPlaceSearchReply>
 #include <QtPositioning/QGeoCircle>
 #include <QtPositioning/QGeoPolygon>
-#include <QtLocation/private/qdeclarativegeoroute_p.h>
 #include <QtLocation/private/qplacesearchrequest_p.h>
 
 QT_BEGIN_NAMESPACE
 
 QDeclarativeSearchModelBase::QDeclarativeSearchModelBase(QObject *parent)
-:   QAbstractListModel(parent), m_plugin(0), m_reply(0), m_complete(false), m_status(Null)
+    : QAbstractListModel(parent)
 {
 }
 
@@ -104,17 +71,17 @@ QVariant QDeclarativeSearchModelBase::searchArea() const
 void QDeclarativeSearchModelBase::setSearchArea(const QVariant &searchArea)
 {
     QGeoShape s;
-    QDeclarativeGeoRoute *route = nullptr;
+    QGeoRoute route;
     bool routeSearchArea = false;
-    if (searchArea.userType() == qMetaTypeId<QGeoRectangle>())
+    if (searchArea.userType() == qMetaTypeId<QGeoRectangle>()) {
         s = searchArea.value<QGeoRectangle>();
-    else if (searchArea.userType() == qMetaTypeId<QGeoCircle>())
+    } else if (searchArea.userType() == qMetaTypeId<QGeoCircle>()) {
         s = searchArea.value<QGeoCircle>();
-    else if (searchArea.userType() == qMetaTypeId<QGeoShape>())
+    } else if (searchArea.userType() == qMetaTypeId<QGeoShape>()) {
         s = searchArea.value<QGeoShape>();
-    else if (int(searchArea.type()) == qMetaTypeId<QObject *>()) {
-        route = searchArea.value<QDeclarativeGeoRoute *>();
-        if (!route)
+    } else if (searchArea.typeId() == qMetaTypeId<QGeoRoute>()) {
+        route = searchArea.value<QGeoRoute>();
+        if (route == QGeoRoute())
             return;
         routeSearchArea = true;
     }
@@ -127,11 +94,12 @@ void QDeclarativeSearchModelBase::setSearchArea(const QVariant &searchArea)
         rp->routeSearchArea = QGeoRoute();
 
     if (m_request.searchArea() == s
-            && (!route || rp->routeSearchArea == route->route()))
+        && (route == QGeoRoute() || rp->routeSearchArea == route)) {
         return;
+    }
 
     if (routeSearchArea)
-        rp->routeSearchArea = route->route();
+        rp->routeSearchArea = route;
     else
         m_request.setSearchArea(s);
     emit searchAreaChanged();
@@ -235,8 +203,10 @@ void QDeclarativeSearchModelBase::update()
     }
 
     m_reply->setParent(this);
-    connect(m_reply, SIGNAL(finished()), this, SLOT(queryFinished()));
-    connect(m_reply, SIGNAL(contentUpdated()), this, SLOT(onContentUpdated()));
+    connect(m_reply, &QPlaceReply::finished,
+            this, &QDeclarativeSearchModelBase::queryFinished);
+    connect(m_reply, &QPlaceReply::contentUpdated,
+            this, &QDeclarativeSearchModelBase::onContentUpdated);
 }
 
 /*!
@@ -252,7 +222,7 @@ void QDeclarativeSearchModelBase::cancel()
 
     if (m_reply) {
         m_reply->deleteLater();
-        m_reply = 0;
+        m_reply = nullptr;
     }
 
     setStatus(Ready);
@@ -331,10 +301,14 @@ void QDeclarativeSearchModelBase::initializePlugin(QDeclarativeGeoServiceProvide
 {
     beginResetModel();
     if (plugin != m_plugin) {
-        if (m_plugin)
-            disconnect(m_plugin, SIGNAL(nameChanged(QString)), this, SLOT(pluginNameChanged()));
-        if (plugin)
-            connect(plugin, SIGNAL(nameChanged(QString)), this, SLOT(pluginNameChanged()));
+        if (m_plugin) {
+            disconnect(m_plugin, &QDeclarativeGeoServiceProvider::nameChanged,
+                       this, &QDeclarativeSearchModelBase::pluginNameChanged);
+        }
+        if (plugin) {
+            connect(plugin, &QDeclarativeGeoServiceProvider::nameChanged,
+                    this, &QDeclarativeSearchModelBase::pluginNameChanged);
+        }
         m_plugin = plugin;
     }
 
@@ -345,7 +319,7 @@ void QDeclarativeSearchModelBase::initializePlugin(QDeclarativeGeoServiceProvide
             if (placeManager) {
                 if (placeManager->childCategoryIds().isEmpty()) {
                     QPlaceReply *reply = placeManager->initializeCategories();
-                    connect(reply, SIGNAL(finished()), reply, SLOT(deleteLater()));
+                    connect(reply, &QPlaceReply::finished, reply, &QObject::deleteLater);
                 }
             }
         }

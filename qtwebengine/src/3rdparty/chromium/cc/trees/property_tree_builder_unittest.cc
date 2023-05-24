@@ -1,4 +1,4 @@
-// Copyright 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include <memory>
 #include <utility>
 
-#include "cc/animation/keyframed_animation_curve.h"
+#include "cc/animation/filter_animation_curve.h"
 #include "cc/layers/layer.h"
 #include "cc/layers/layer_impl.h"
 #include "cc/layers/picture_layer.h"
@@ -17,9 +17,11 @@
 #include "cc/test/fake_content_layer_client.h"
 #include "cc/test/layer_tree_impl_test_base.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/gfx/animation/keyframe/keyframed_animation_curve.h"
 #include "ui/gfx/geometry/size_conversions.h"
+#include "ui/gfx/geometry/test/geometry_util.h"
+#include "ui/gfx/geometry/transform.h"
 #include "ui/gfx/geometry/vector2d_conversions.h"
-#include "ui/gfx/transform.h"
 
 namespace cc {
 namespace {
@@ -40,6 +42,9 @@ class PropertyTreeBuilderTest : public LayerTreeImplTestBase,
   RenderSurfaceImpl* GetRenderSurfaceImpl(const scoped_refptr<Layer>& layer) {
     return GetRenderSurface(ImplOf(layer));
   }
+  LayerImpl* GetLayerImpl(const scoped_refptr<Layer>& layer) {
+    return host()->host_impl()->active_tree()->LayerById(layer->id());
+  }
 
   // Updates main thread draw properties, commits main thread tree to
   // impl-side pending tree, and updates pending tree draw properties.
@@ -51,8 +56,8 @@ class PropertyTreeBuilderTest : public LayerTreeImplTestBase,
     // TODO(https://crbug.com/939968) This call should be handled by
     // FakeLayerTreeHost instead of manually pushing the properties from the
     // layer tree host to the pending tree.
-    host()->PushLayerTreePropertiesTo(host_impl()->pending_tree());
-
+    host_impl()->pending_tree()->PullLayerTreePropertiesFrom(
+        *host()->GetPendingCommitState());
     UpdateDrawProperties(host_impl()->pending_tree());
   }
 
@@ -87,7 +92,7 @@ TEST_F(PropertyTreeBuilderTest, EffectTreeTransformIdTest) {
   UpdateMainDrawProperties();
   EffectNode* node = GetEffectNode(child.get());
   const int transform_tree_size =
-      GetPropertyTrees(parent.get())->transform_tree.next_available_id();
+      GetPropertyTrees(parent.get())->transform_tree().next_available_id();
   EXPECT_LT(node->transform_id, transform_tree_size);
 }
 
@@ -356,7 +361,8 @@ TEST_F(PropertyTreeBuilderTest, VisibleRectWithClippingAndFilters) {
   gfx::Transform vertical_flip;
   vertical_flip.Scale(1, -1);
   sk_sp<PaintFilter> flip_filter = sk_make_sp<MatrixPaintFilter>(
-      SkMatrix(vertical_flip.matrix()), kLow_SkFilterQuality, nullptr);
+      gfx::TransformToFlattenedSkMatrix(vertical_flip),
+      PaintFlags::FilterQuality::kLow, nullptr);
   FilterOperations reflection_filter;
   reflection_filter.Append(
       FilterOperation::CreateReferenceFilter(sk_make_sp<XfermodePaintFilter>(
@@ -416,7 +422,8 @@ TEST_F(PropertyTreeBuilderTest, VisibleRectWithScalingClippingAndFilters) {
   gfx::Transform vertical_flip;
   vertical_flip.Scale(1, -1);
   sk_sp<PaintFilter> flip_filter = sk_make_sp<MatrixPaintFilter>(
-      SkMatrix(vertical_flip.matrix()), kLow_SkFilterQuality, nullptr);
+      gfx::TransformToFlattenedSkMatrix(vertical_flip),
+      PaintFlags::FilterQuality::kLow, nullptr);
   FilterOperations reflection_filter;
   reflection_filter.Append(
       FilterOperation::CreateReferenceFilter(sk_make_sp<XfermodePaintFilter>(
@@ -448,9 +455,8 @@ TEST_F(PropertyTreeBuilderTest, TextureLayerSnapping) {
 
   auto child_screen_space_transform = ImplOf(child)->ScreenSpaceTransform();
   EXPECT_NE(child_screen_space_transform, fractional_translate);
-  fractional_translate.RoundTranslationComponents();
-  EXPECT_TRANSFORMATION_MATRIX_EQ(child_screen_space_transform,
-                                  fractional_translate);
+  fractional_translate.Round2dTranslationComponents();
+  EXPECT_TRANSFORM_EQ(child_screen_space_transform, fractional_translate);
   gfx::RectF layer_bounds_in_screen_space = MathUtil::MapClippedRect(
       child_screen_space_transform, gfx::RectF(gfx::SizeF(child->bounds())));
   EXPECT_EQ(layer_bounds_in_screen_space, gfx::RectF(11.f, 20.f, 100.f, 100.f));
@@ -485,8 +491,9 @@ TEST_F(PropertyTreeBuilderTest, AnimatedOpacityCreatesRenderSurface) {
 
 static bool FilterIsAnimating(LayerImpl* layer) {
   MutatorHost* host = layer->layer_tree_impl()->mutator_host();
-  return host->IsAnimatingFilterProperty(layer->element_id(),
-                                         layer->GetElementTypeForAnimation());
+  return host->IsAnimatingProperty(layer->element_id(),
+                                   layer->GetElementTypeForAnimation(),
+                                   TargetProperty::FILTER);
 }
 
 // Verify that having an animated filter (but no current filter, as these
@@ -522,8 +529,9 @@ TEST_F(PropertyTreeBuilderTest, AnimatedFilterCreatesRenderSurface) {
 
 bool HasPotentiallyRunningFilterAnimation(const LayerImpl& layer) {
   MutatorHost* host = layer.layer_tree_impl()->mutator_host();
-  return host->HasPotentiallyRunningFilterAnimation(
-      layer.element_id(), layer.GetElementTypeForAnimation());
+  return host->HasPotentiallyRunningAnimationForProperty(
+      layer.element_id(), layer.GetElementTypeForAnimation(),
+      TargetProperty::FILTER);
 }
 
 // Verify that having a filter animation with a delayed start time creates a
@@ -550,12 +558,13 @@ TEST_F(PropertyTreeBuilderTest, DelayedFilterAnimationCreatesRenderSurface) {
   end_filters.Append(FilterOperation::CreateBrightnessFilter(0.3f));
   curve->AddKeyframe(
       FilterKeyframe::Create(base::TimeDelta(), start_filters, nullptr));
-  curve->AddKeyframe(FilterKeyframe::Create(
-      base::TimeDelta::FromMilliseconds(100), end_filters, nullptr));
-  std::unique_ptr<KeyframeModel> keyframe_model =
-      KeyframeModel::Create(std::move(curve), 0, 1, TargetProperty::FILTER);
+  curve->AddKeyframe(
+      FilterKeyframe::Create(base::Milliseconds(100), end_filters, nullptr));
+  std::unique_ptr<KeyframeModel> keyframe_model = KeyframeModel::Create(
+      std::move(curve), 0, 1,
+      KeyframeModel::TargetPropertyId(TargetProperty::FILTER));
   keyframe_model->set_fill_mode(KeyframeModel::FillMode::NONE);
-  keyframe_model->set_time_offset(base::TimeDelta::FromMilliseconds(-1000));
+  keyframe_model->set_time_offset(base::Milliseconds(-1000));
 
   AddKeyframeModelToElementWithAnimation(child->element_id(), timeline(),
                                          std::move(keyframe_model));
@@ -589,13 +598,13 @@ TEST_F(PropertyTreeBuilderTest, ChangingAxisAlignmentTriggersRebuild) {
   host()->SetRootLayer(root);
 
   UpdateMainDrawProperties();
-  EXPECT_FALSE(host()->property_trees()->needs_rebuild);
+  EXPECT_FALSE(host()->property_trees()->needs_rebuild());
 
   root->SetTransform(translate);
-  EXPECT_FALSE(host()->property_trees()->needs_rebuild);
+  EXPECT_FALSE(host()->property_trees()->needs_rebuild());
 
   root->SetTransform(rotate);
-  EXPECT_TRUE(host()->property_trees()->needs_rebuild);
+  EXPECT_TRUE(host()->property_trees()->needs_rebuild());
 }
 
 TEST_F(PropertyTreeBuilderTest, ResetPropertyTreeIndices) {
@@ -685,7 +694,7 @@ TEST_F(PropertyTreeBuilderTest, PropertyTreesRebuildWithOpacityChanges) {
   // property trees as a new effect node will be created.
   child->SetOpacity(0.5f);
   PropertyTrees* property_trees = host()->property_trees();
-  EXPECT_TRUE(property_trees->needs_rebuild);
+  EXPECT_TRUE(property_trees->needs_rebuild());
 
   UpdateMainDrawProperties();
   EXPECT_NE(child->effect_tree_index(), root->effect_tree_index());
@@ -694,7 +703,7 @@ TEST_F(PropertyTreeBuilderTest, PropertyTreesRebuildWithOpacityChanges) {
   // a property trees rebuild.
   child->SetOpacity(0.8f);
   property_trees = host()->property_trees();
-  EXPECT_FALSE(property_trees->needs_rebuild);
+  EXPECT_FALSE(property_trees->needs_rebuild());
 
   UpdateMainDrawProperties();
   EXPECT_NE(child->effect_tree_index(), root->effect_tree_index());
@@ -703,7 +712,7 @@ TEST_F(PropertyTreeBuilderTest, PropertyTreesRebuildWithOpacityChanges) {
   // property trees as the effect node may no longer be needed.
   child->SetOpacity(1.f);
   property_trees = host()->property_trees();
-  EXPECT_TRUE(property_trees->needs_rebuild);
+  EXPECT_TRUE(property_trees->needs_rebuild());
 
   UpdateMainDrawProperties();
   EXPECT_EQ(child->effect_tree_index(), root->effect_tree_index());
@@ -743,6 +752,254 @@ TEST_F(PropertyTreeBuilderTest, RenderSurfaceListForTrilinearFiltering) {
   // scale matrix to (0,0 25x25).
   EXPECT_EQ(gfx::RectF(0, 0, 25, 25),
             GetRenderSurfaceImpl(parent)->DrawableContentRect());
+}
+
+TEST_F(PropertyTreeBuilderTest, GradientMask) {
+  auto root = Layer::Create();
+  host()->SetRootLayer(root);
+  root->SetBounds(gfx::Size(200, 200));
+  root->SetIsDrawable(true);
+
+  auto child1 = Layer::Create();
+  root->AddChild(child1);
+  child1->SetBounds(gfx::Size(100, 100));
+  child1->SetIsDrawable(true);
+
+  gfx::LinearGradient gradient_mask(45);
+  gradient_mask.AddStep(.5, 0x50);
+  child1->SetGradientMask(gradient_mask);
+
+  // Without render surface.
+  CommitAndActivate();
+  {
+    auto* effect_node1 = GetEffectNode(child1.get());
+    EXPECT_FALSE(effect_node1->mask_filter_info.HasRoundedCorners());
+    EXPECT_EQ(gfx::RectF(100, 100), effect_node1->mask_filter_info.bounds());
+    EXPECT_TRUE(effect_node1->mask_filter_info.HasGradientMask());
+    EXPECT_EQ(gradient_mask, effect_node1->mask_filter_info.gradient_mask());
+    EXPECT_FALSE(effect_node1->HasRenderSurface());
+    auto* layer_impl1 = GetLayerImpl(child1);
+    EXPECT_TRUE(
+        layer_impl1->draw_properties().mask_filter_info.HasGradientMask());
+  }
+
+  // Scale and translate should work.
+  gfx::Transform scale_and_translate_transform;
+  scale_and_translate_transform.Translate({10.f, 10.f});
+  scale_and_translate_transform.Scale(3.f, 2.f);
+  child1->SetTransform(scale_and_translate_transform);
+  CommitAndActivate();
+  {
+    // |mask_info| is in the coordinate space of the transform node associated
+    // with this effect node.
+    auto* effect_node1 = GetEffectNode(child1.get());
+    EXPECT_FALSE(effect_node1->mask_filter_info.HasRoundedCorners());
+    EXPECT_TRUE(effect_node1->mask_filter_info.HasGradientMask());
+    EXPECT_EQ(gfx::RectF(100, 100), effect_node1->mask_filter_info.bounds());
+    EXPECT_EQ(gradient_mask, effect_node1->mask_filter_info.gradient_mask());
+    EXPECT_FALSE(effect_node1->HasRenderSurface());
+
+    // |mask_info| coordinates are in the target space of the layer.
+    auto* layer_impl1 = GetLayerImpl(child1);
+    EXPECT_FALSE(layer_impl1->draw_properties().mask_filter_info.IsEmpty());
+    EXPECT_FALSE(
+        layer_impl1->draw_properties().mask_filter_info.HasRoundedCorners());
+    EXPECT_TRUE(
+        layer_impl1->draw_properties().mask_filter_info.HasGradientMask());
+    EXPECT_EQ(gfx::RectF(10, 10, 300, 200),
+              layer_impl1->draw_properties().mask_filter_info.bounds());
+    // |angle| is updated by the scale transform.
+    EXPECT_EQ(34, layer_impl1->draw_properties()
+                      .mask_filter_info.gradient_mask()
+                      ->angle());
+    EXPECT_EQ(gradient_mask.steps(), layer_impl1->draw_properties()
+                                         .mask_filter_info.gradient_mask()
+                                         ->steps());
+  }
+
+  // Rotate transform eliminates gradient mask.
+  gfx::Transform rotate_transform;
+  rotate_transform.Rotate(45);
+  child1->SetTransform(rotate_transform);
+  CommitAndActivate();
+  {
+    auto* layer_impl1 = GetLayerImpl(child1);
+    EXPECT_EQ(gfx::RRectF::Type::kEmpty,
+              layer_impl1->draw_properties()
+                  .mask_filter_info.rounded_corner_bounds()
+                  .GetType());
+    EXPECT_FALSE(
+        layer_impl1->draw_properties().mask_filter_info.HasGradientMask());
+  }
+
+  // Reset transform
+  child1->SetTransform(gfx::Transform());
+
+  // A child layer will create a render surface.
+  auto grand_child1 = Layer::Create();
+  child1->AddChild(grand_child1);
+  grand_child1->SetBounds(gfx::Size(100, 100));
+  grand_child1->SetIsDrawable(true);
+  CommitAndActivate();
+  EXPECT_TRUE(GetEffectNode(child1.get())->HasRenderSurface());
+  {
+    auto* effect_node1 = GetEffectNode(child1.get());
+    EXPECT_TRUE(effect_node1->mask_filter_info.HasGradientMask());
+    EXPECT_FALSE(effect_node1->mask_filter_info.HasRoundedCorners());
+    EXPECT_EQ(gfx::RectF(100, 100), effect_node1->mask_filter_info.bounds());
+    EXPECT_EQ(gradient_mask, effect_node1->mask_filter_info.gradient_mask());
+    EXPECT_TRUE(effect_node1->HasRenderSurface());
+    auto* render_surface_impl1 = GetRenderSurfaceImpl(child1);
+    EXPECT_FALSE(render_surface_impl1->mask_filter_info().IsEmpty());
+    EXPECT_FALSE(render_surface_impl1->mask_filter_info().HasRoundedCorners());
+    EXPECT_TRUE(render_surface_impl1->mask_filter_info().HasGradientMask());
+    EXPECT_EQ(gfx::RectF(100, 100),
+              render_surface_impl1->mask_filter_info().bounds());
+    EXPECT_EQ(gradient_mask,
+              render_surface_impl1->mask_filter_info().gradient_mask());
+  }
+
+  child1->SetTransform(scale_and_translate_transform);
+  CommitAndActivate();
+  {
+    // |mask_info| is in the coordinate space of the transform node associated
+    // with this effect node.
+    auto* effect_node1 = GetEffectNode(child1.get());
+    EXPECT_TRUE(effect_node1->mask_filter_info.HasGradientMask());
+    EXPECT_FALSE(effect_node1->mask_filter_info.HasRoundedCorners());
+    EXPECT_EQ(gfx::RectF(100, 100), effect_node1->mask_filter_info.bounds());
+    EXPECT_EQ(gradient_mask, effect_node1->mask_filter_info.gradient_mask());
+    EXPECT_TRUE(effect_node1->HasRenderSurface());
+
+    // |mask_info| coordinates are in the target space of the render surface's
+    // layer.
+    auto* render_surface_impl1 = GetRenderSurfaceImpl(child1);
+    EXPECT_FALSE(render_surface_impl1->mask_filter_info().IsEmpty());
+    EXPECT_FALSE(render_surface_impl1->mask_filter_info().HasRoundedCorners());
+    EXPECT_TRUE(render_surface_impl1->mask_filter_info().HasGradientMask());
+    EXPECT_EQ(gfx::RectF(10, 10, 300, 200),
+              render_surface_impl1->mask_filter_info().bounds());
+    // |angle| is updated by the scale transform.
+    EXPECT_EQ(
+        34, render_surface_impl1->mask_filter_info().gradient_mask()->angle());
+    EXPECT_EQ(
+        gradient_mask.steps(),
+        render_surface_impl1->mask_filter_info().gradient_mask()->steps());
+  }
+
+  // Rotate transform eliminates gradient mask.
+  child1->SetTransform(rotate_transform);
+  CommitAndActivate();
+  {
+    auto* render_surface_impl1 = GetRenderSurfaceImpl(child1);
+    EXPECT_EQ(gfx::RRectF::Type::kEmpty,
+              render_surface_impl1->mask_filter_info()
+                  .rounded_corner_bounds()
+                  .GetType());
+    EXPECT_FALSE(render_surface_impl1->mask_filter_info().HasGradientMask());
+  }
+}
+
+TEST_F(PropertyTreeBuilderTest, NestedGradientMask) {
+  auto root = Layer::Create();
+  host()->SetRootLayer(root);
+  root->SetBounds(gfx::Size(200, 200));
+  root->SetIsDrawable(true);
+
+  auto child1 = Layer::Create();
+  root->AddChild(child1);
+  child1->SetBounds(gfx::Size(100, 100));
+  child1->SetIsDrawable(true);
+
+  auto grand_child1 = Layer::Create();
+  child1->AddChild(grand_child1);
+  grand_child1->SetBounds(gfx::Size(50, 50));
+  grand_child1->SetIsDrawable(true);
+
+  gfx::LinearGradient gradient_mask1(30);
+  gradient_mask1.AddStep(.5, 0x50);
+  child1->SetGradientMask(gradient_mask1);
+
+  gfx::LinearGradient gradient_mask2(45);
+  gradient_mask2.AddStep(0, 0xFF);
+  gradient_mask2.AddStep(1, 0x0);
+  grand_child1->SetGradientMask(gradient_mask2);
+
+  CommitAndActivate();
+  EXPECT_TRUE(GetEffectNode(child1.get())->HasRenderSurface());
+  {
+    auto* render_surface_impl1 = GetRenderSurfaceImpl(child1);
+    EXPECT_EQ(gradient_mask1,
+              render_surface_impl1->mask_filter_info().gradient_mask());
+
+    auto* effect_node2 = GetEffectNode(grand_child1.get());
+    EXPECT_FALSE(effect_node2->mask_filter_info.IsEmpty());
+    EXPECT_FALSE(effect_node2->mask_filter_info.HasRoundedCorners());
+    EXPECT_TRUE(effect_node2->mask_filter_info.HasGradientMask());
+    EXPECT_EQ(gfx::RectF(50, 50), effect_node2->mask_filter_info.bounds());
+    EXPECT_EQ(gradient_mask2, effect_node2->mask_filter_info.gradient_mask());
+    EXPECT_FALSE(effect_node2->HasRenderSurface());
+    auto& draw_properties2 = GetLayerImpl(grand_child1)->draw_properties();
+    EXPECT_FALSE(draw_properties2.mask_filter_info.IsEmpty());
+    EXPECT_FALSE(draw_properties2.mask_filter_info.HasRoundedCorners());
+    EXPECT_TRUE(draw_properties2.mask_filter_info.HasGradientMask());
+    EXPECT_EQ(gfx::RectF(50, 50), draw_properties2.mask_filter_info.bounds());
+    EXPECT_EQ(gradient_mask2,
+              draw_properties2.mask_filter_info.gradient_mask());
+  }
+
+  gfx::Transform scale_and_translate_transform1;
+  scale_and_translate_transform1.Translate({10.f, 10.f});
+  scale_and_translate_transform1.Scale(3.f, 2.f);
+  child1->SetTransform(scale_and_translate_transform1);
+  gfx::Transform scale_and_translate_transform2;
+  scale_and_translate_transform2.Translate({10.f, 5.f});
+  scale_and_translate_transform2.Scale(2.f, 1.5f);
+  grand_child1->SetTransform(scale_and_translate_transform2);
+
+  CommitAndActivate();
+  EXPECT_TRUE(GetEffectNode(child1.get())->HasRenderSurface());
+  {
+    // |mask_info| coordinates are in the target space of the render surface's
+    // layer.
+    auto* render_surface_impl1 = GetRenderSurfaceImpl(child1);
+    EXPECT_EQ(
+        gradient_mask1.steps(),
+        render_surface_impl1->mask_filter_info().gradient_mask()->steps());
+    // |angle| is updated by the scale transform.
+    EXPECT_EQ(
+        21, render_surface_impl1->mask_filter_info().gradient_mask()->angle());
+
+    // |mask_info| is in the coordinate space of the transform node associated
+    // with this effect node.
+    auto* effect_node2 = GetEffectNode(grand_child1.get());
+    EXPECT_FALSE(effect_node2->HasRenderSurface());
+
+    // |mask_info| coordinates are in the target space of the layer.
+    auto& draw_properties2 = GetLayerImpl(grand_child1)->draw_properties();
+    EXPECT_FALSE(draw_properties2.mask_filter_info.IsEmpty());
+    EXPECT_FALSE(draw_properties2.mask_filter_info.HasRoundedCorners());
+    EXPECT_TRUE(draw_properties2.mask_filter_info.HasGradientMask());
+    EXPECT_EQ(gfx::RectF(30, 10, 300, 150),
+              draw_properties2.mask_filter_info.bounds());
+    // |angle| is updated by the scale transform.
+    EXPECT_EQ(27, draw_properties2.mask_filter_info.gradient_mask()->angle());
+    EXPECT_EQ(gradient_mask2.steps(),
+              draw_properties2.mask_filter_info.gradient_mask()->steps());
+  }
+
+  gfx::Transform rotate_transform;
+  rotate_transform.Rotate(45);
+  child1->SetTransform(rotate_transform);
+  CommitAndActivate();
+  {
+    auto* render_surface_impl1 = GetRenderSurfaceImpl(child1);
+    EXPECT_EQ(gfx::RRectF::Type::kEmpty,
+              render_surface_impl1->mask_filter_info()
+                  .rounded_corner_bounds()
+                  .GetType());
+    EXPECT_FALSE(render_surface_impl1->mask_filter_info().HasGradientMask());
+  }
 }
 
 TEST_F(PropertyTreeBuilderTest, RoundedCornerBounds) {
@@ -859,7 +1116,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBounds) {
   // Since this effect node has no descendants that draw and no descendant that
   // has a rounded corner, it does not need a render surface.
   const EffectNode* effect_node = GetEffectNode(rounded_corner_layer_1.get());
-  gfx::RRectF rounded_corner_bounds_1 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_1 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_FALSE(effect_node->HasRenderSurface());
   EXPECT_FLOAT_EQ(rounded_corner_bounds_1.GetSimpleRadius(),
                   kRoundedCorner1Radius);
@@ -869,7 +1127,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBounds) {
   // Since this node has descendants with roudned corners, it needs a render
   // surface. It also has 2 descendants that draw.
   effect_node = GetEffectNode(rounded_corner_layer_2.get());
-  gfx::RRectF rounded_corner_bounds_2 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_2 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(effect_node->HasRenderSurface());
   EXPECT_FLOAT_EQ(rounded_corner_bounds_2.GetSimpleRadius(),
                   kRoundedCorner2Radius);
@@ -879,7 +1138,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBounds) {
   // Since this node has a descendant that has a rounded corner, it will trigger
   // the creation of a render surface.
   effect_node = GetEffectNode(rounded_corner_layer_3.get());
-  gfx::RRectF rounded_corner_bounds_3 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_3 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(effect_node->HasRenderSurface());
   EXPECT_FLOAT_EQ(rounded_corner_bounds_3.GetSimpleRadius(),
                   kRoundedCorner3Radius);
@@ -889,7 +1149,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBounds) {
   // Since this node has no descendants that draw nor any descendant that has a
   // rounded corner, it does not need a render surface.
   effect_node = GetEffectNode(rounded_corner_layer_4.get());
-  gfx::RRectF rounded_corner_bounds_4 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_4 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_FALSE(effect_node->HasRenderSurface());
   EXPECT_FLOAT_EQ(rounded_corner_bounds_4.GetSimpleRadius(),
                   kRoundedCorner4Radius);
@@ -918,7 +1179,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBounds) {
   // scale factor is 1.6 thus giving the target space origin of [24, 24]. The
   // corner radius is also scaled by a factor of 1.6.
   const gfx::RRectF actual_rrect_1 =
-      rounded_corner_layer_1_impl->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_1_impl->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   gfx::RectF bounds_in_target_space = kRoundedCornerLayer1Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   EXPECT_EQ(actual_rrect_1.rect(), bounds_in_target_space);
@@ -931,13 +1193,16 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBounds) {
   // scale factor is 1.6 thus giving the target space origin of [64, 64]. The
   // corner radius is also scaled by a factor of 1.6.
   const gfx::RRectF actual_self_rrect_2 =
-      rounded_corner_layer_2_impl->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_2_impl->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(actual_self_rrect_2.IsEmpty());
 
   bounds_in_target_space = kRoundedCornerLayer2Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   const gfx::RRectF actual_render_target_rrect_2 =
-      rounded_corner_layer_2_impl->render_target()->rounded_corner_bounds();
+      rounded_corner_layer_2_impl->render_target()
+          ->mask_filter_info()
+          .rounded_corner_bounds();
   EXPECT_EQ(actual_render_target_rrect_2.rect(), bounds_in_target_space);
   EXPECT_FLOAT_EQ(actual_render_target_rrect_2.GetSimpleRadius(),
                   kRoundedCorner2Radius * kDeviceScale);
@@ -948,7 +1213,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBounds) {
   // device scale factor is 1.6 thus giving the target space origin of [64, 88].
   // The corner radius is also scaled by a factor of 1.6 * transform scale.
   const gfx::RRectF actual_self_rrect_3 =
-      rounded_corner_layer_3_impl->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_3_impl->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(actual_self_rrect_3.IsEmpty());
 
   bounds_in_target_space = kRoundedCornerLayer3Bound;
@@ -960,7 +1226,9 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBounds) {
   bounds_in_target_space.set_size(transformed_size);
 
   const gfx::RRectF actual_render_target_rrect_3 =
-      rounded_corner_layer_3_impl->render_target()->rounded_corner_bounds();
+      rounded_corner_layer_3_impl->render_target()
+          ->mask_filter_info()
+          .rounded_corner_bounds();
   EXPECT_EQ(actual_render_target_rrect_3.rect(), bounds_in_target_space);
   EXPECT_FLOAT_EQ(actual_render_target_rrect_3.GetSimpleRadius(),
                   kRoundedCorner3Radius * kDeviceScale * kRoundedCorner3Scale);
@@ -972,7 +1240,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBounds) {
   // rigin of [3.2, 3.2].
   // The corner radius is also scaled by a factor of 3.2.
   const gfx::RRectF actual_rrect_4 =
-      rounded_corner_layer_4_impl->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_4_impl->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   bounds_in_target_space = kRoundedCornerLayer4Bound;
   bounds_in_target_space.Scale(kDeviceScale * kRoundedCorner3Scale);
   EXPECT_EQ(actual_rrect_4.rect(), bounds_in_target_space);
@@ -1042,7 +1311,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBoundsInterveningRenderTarget) {
   // that has a rounded corner before the render surface, it does not need a
   // render surface.
   const EffectNode* effect_node = GetEffectNode(rounded_corner_layer_1.get());
-  gfx::RRectF rounded_corner_bounds_1 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_1 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_FALSE(effect_node->HasRenderSurface());
   EXPECT_FLOAT_EQ(rounded_corner_bounds_1.GetSimpleRadius(),
                   kRoundedCorner1Radius);
@@ -1052,7 +1322,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBoundsInterveningRenderTarget) {
   // Since this effect node has no descendants that draw and no descendant that
   // has a rounded corner, it does not need a render surface.
   effect_node = GetEffectNode(rounded_corner_layer_2.get());
-  gfx::RRectF rounded_corner_bounds_2 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_2 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_FALSE(effect_node->HasRenderSurface());
   EXPECT_FLOAT_EQ(rounded_corner_bounds_2.GetSimpleRadius(),
                   kRoundedCorner2Radius);
@@ -1077,7 +1348,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBoundsInterveningRenderTarget) {
   // scale factor is 1.6 thus giving the target space origin of [96, 0]. The
   // corner radius is also scaled by a factor of 1.6.
   const gfx::RRectF actual_rrect_1 =
-      rounded_corner_layer_1_impl->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_1_impl->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   gfx::RectF bounds_in_target_space = kRoundedCornerLayer1Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   EXPECT_EQ(actual_rrect_1.rect(), bounds_in_target_space);
@@ -1088,7 +1360,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBoundsInterveningRenderTarget) {
   // The render target for this layer is |render_surface|.
   // The offset from the origin of the render target is [0, 0].
   const gfx::RRectF actual_rrect_2 =
-      rounded_corner_layer_2_impl->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_2_impl->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   bounds_in_target_space = kRoundedCornerLayer2Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   EXPECT_EQ(actual_rrect_2.rect(), bounds_in_target_space);
@@ -1157,7 +1430,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBoundsSiblingRenderTarget) {
   // Since this effect node has 1 descendant with a rounded corner without a
   // render surface along the chain, it need a render surface.
   const EffectNode* effect_node = GetEffectNode(rounded_corner_layer_1.get());
-  gfx::RRectF rounded_corner_bounds_1 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_1 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(effect_node->HasRenderSurface());
   EXPECT_FLOAT_EQ(rounded_corner_bounds_1.GetSimpleRadius(),
                   kRoundedCorner1Radius);
@@ -1167,7 +1441,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBoundsSiblingRenderTarget) {
   // Since this effect node has no descendants that draw and no descendant that
   // has a rounded corner, it does not need a render surface.
   effect_node = GetEffectNode(rounded_corner_layer_2.get());
-  gfx::RRectF rounded_corner_bounds_2 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_2 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_FALSE(effect_node->HasRenderSurface());
   EXPECT_FLOAT_EQ(rounded_corner_bounds_2.GetSimpleRadius(),
                   kRoundedCorner2Radius);
@@ -1192,13 +1467,16 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBoundsSiblingRenderTarget) {
   // scale factor is 1.6 thus giving the target space origin of [0, 96]. The
   // corner radius is also scaled by a factor of 1.6.
   const gfx::RRectF actual_self_rrect_1 =
-      rounded_corner_layer_1_impl->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_1_impl->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(actual_self_rrect_1.IsEmpty());
 
   gfx::RectF bounds_in_target_space = kRoundedCornerLayer1Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   const gfx::RRectF actual_render_target_rrect_1 =
-      rounded_corner_layer_1_impl->render_target()->rounded_corner_bounds();
+      rounded_corner_layer_1_impl->render_target()
+          ->mask_filter_info()
+          .rounded_corner_bounds();
   EXPECT_EQ(actual_render_target_rrect_1.rect(), bounds_in_target_space);
   EXPECT_FLOAT_EQ(actual_render_target_rrect_1.GetSimpleRadius(),
                   kRoundedCorner1Radius * kDeviceScale);
@@ -1207,7 +1485,8 @@ TEST_F(PropertyTreeBuilderTest, RoundedCornerBoundsSiblingRenderTarget) {
   // The render target for this layer is |render_surface|.
   // The offset from the origin of the render target is [0, 0].
   const gfx::RRectF actual_rrect_2 =
-      rounded_corner_layer_2_impl->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_2_impl->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   bounds_in_target_space = kRoundedCornerLayer2Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   EXPECT_EQ(actual_rrect_2.rect(), bounds_in_target_space);
@@ -1297,7 +1576,8 @@ TEST_F(PropertyTreeBuilderTest, FastRoundedCornerDoesNotTriggerRenderSurface) {
   // surface even though it has 2 layers in the subtree that draws content.
   const EffectNode* effect_node =
       GetEffectNode(fast_rounded_corner_layer.get());
-  gfx::RRectF rounded_corner_bounds_1 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_1 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_FALSE(effect_node->HasRenderSurface());
   EXPECT_TRUE(effect_node->is_fast_rounded_corner);
   EXPECT_FLOAT_EQ(rounded_corner_bounds_1.GetSimpleRadius(),
@@ -1307,7 +1587,8 @@ TEST_F(PropertyTreeBuilderTest, FastRoundedCornerDoesNotTriggerRenderSurface) {
 
   // Since this node has 2 descendants that draw, it will have a rounded corner.
   effect_node = GetEffectNode(rounded_corner_layer.get());
-  gfx::RRectF rounded_corner_bounds_2 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_2 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(effect_node->HasRenderSurface());
   EXPECT_FALSE(effect_node->is_fast_rounded_corner);
   EXPECT_FLOAT_EQ(rounded_corner_bounds_2.GetSimpleRadius(),
@@ -1336,7 +1617,8 @@ TEST_F(PropertyTreeBuilderTest, FastRoundedCornerDoesNotTriggerRenderSurface) {
   // The offset from the origin of the render target is [0, 0] and the device
   // scale factor is 1.6.
   const gfx::RRectF actual_rrect_1 =
-      fast_rounded_corner_layer_impl->draw_properties().rounded_corner_bounds;
+      fast_rounded_corner_layer_impl->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   gfx::RectF bounds_in_target_space = kRoundedCornerLayer1Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   EXPECT_EQ(actual_rrect_1.rect(), bounds_in_target_space);
@@ -1347,9 +1629,9 @@ TEST_F(PropertyTreeBuilderTest, FastRoundedCornerDoesNotTriggerRenderSurface) {
   // This should have the same rounded corner boudns as fast rounded corner
   // layer.
   const gfx::RRectF layer_1_rrect =
-      layer_1_impl->draw_properties().rounded_corner_bounds;
+      layer_1_impl->draw_properties().mask_filter_info.rounded_corner_bounds();
   const gfx::RRectF layer_2_rrect =
-      layer_2_impl->draw_properties().rounded_corner_bounds;
+      layer_2_impl->draw_properties().mask_filter_info.rounded_corner_bounds();
   EXPECT_EQ(actual_rrect_1, layer_1_rrect);
   EXPECT_EQ(actual_rrect_1, layer_2_rrect);
 
@@ -1359,13 +1641,16 @@ TEST_F(PropertyTreeBuilderTest, FastRoundedCornerDoesNotTriggerRenderSurface) {
   // scale factor is 1.6 thus giving the target space origin of [64, 64]. The
   // corner radius is also scaled by a factor of 1.6.
   const gfx::RRectF actual_self_rrect_2 =
-      rounded_corner_layer_impl->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_impl->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(actual_self_rrect_2.IsEmpty());
 
   bounds_in_target_space = kRoundedCornerLayer2Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   const gfx::RRectF actual_render_target_rrect_2 =
-      rounded_corner_layer_impl->render_target()->rounded_corner_bounds();
+      rounded_corner_layer_impl->render_target()
+          ->mask_filter_info()
+          .rounded_corner_bounds();
   EXPECT_EQ(actual_render_target_rrect_2.rect(), bounds_in_target_space);
   EXPECT_FLOAT_EQ(actual_render_target_rrect_2.GetSimpleRadius(),
                   kRoundedCorner2Radius * kDeviceScale);
@@ -1373,9 +1658,9 @@ TEST_F(PropertyTreeBuilderTest, FastRoundedCornerDoesNotTriggerRenderSurface) {
   // Layer 3 and layer 4 should have no rounded corner bounds set as their
   // parent is a render surface.
   const gfx::RRectF layer_3_rrect =
-      layer_3_impl->draw_properties().rounded_corner_bounds;
+      layer_3_impl->draw_properties().mask_filter_info.rounded_corner_bounds();
   const gfx::RRectF layer_4_rrect =
-      layer_4_impl->draw_properties().rounded_corner_bounds;
+      layer_4_impl->draw_properties().mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(layer_3_rrect.IsEmpty());
   EXPECT_TRUE(layer_4_rrect.IsEmpty());
 }
@@ -1462,7 +1747,8 @@ TEST_F(PropertyTreeBuilderTest,
   // Since this layer has a descendant that has rounded corner, this node will
   // require a render surface.
   const EffectNode* effect_node = GetEffectNode(rounded_corner_layer_1.get());
-  gfx::RRectF rounded_corner_bounds_1 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_1 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(effect_node->HasRenderSurface());
   EXPECT_FALSE(effect_node->is_fast_rounded_corner);
   EXPECT_FLOAT_EQ(rounded_corner_bounds_1.GetSimpleRadius(),
@@ -1473,7 +1759,8 @@ TEST_F(PropertyTreeBuilderTest,
   // Since this layer has no descendant with rounded corner or drawable, it will
   // not have a render surface.
   effect_node = GetEffectNode(fast_rounded_corner_layer_2.get());
-  gfx::RRectF rounded_corner_bounds_2 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_2 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_FALSE(effect_node->HasRenderSurface());
   EXPECT_TRUE(effect_node->is_fast_rounded_corner);
   EXPECT_FLOAT_EQ(rounded_corner_bounds_2.GetSimpleRadius(),
@@ -1484,7 +1771,8 @@ TEST_F(PropertyTreeBuilderTest,
   // Since this layer has 1 descendant with a rounded corner, it should have a
   // render surface.
   effect_node = GetEffectNode(rounded_corner_layer_3.get());
-  gfx::RRectF rounded_corner_bounds_3 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_3 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(effect_node->HasRenderSurface());
   EXPECT_FALSE(effect_node->is_fast_rounded_corner);
   EXPECT_FLOAT_EQ(rounded_corner_bounds_3.GetSimpleRadius(),
@@ -1494,7 +1782,8 @@ TEST_F(PropertyTreeBuilderTest,
 
   // Since this layer no descendants, it would no thave a render pass.
   effect_node = GetEffectNode(rounded_corner_layer_4.get());
-  gfx::RRectF rounded_corner_bounds_4 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_4 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_FALSE(effect_node->HasRenderSurface());
   EXPECT_FALSE(effect_node->is_fast_rounded_corner);
   EXPECT_FLOAT_EQ(rounded_corner_bounds_4.GetSimpleRadius(),
@@ -1523,13 +1812,16 @@ TEST_F(PropertyTreeBuilderTest,
   // The offset from the origin of the render target is [5, 5] and the device
   // scale factor is 1.6 giving a total offset of [8, 8].
   const gfx::RRectF actual_self_rrect_1 =
-      rounded_corner_layer_impl_1->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_impl_1->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(actual_self_rrect_1.IsEmpty());
 
   gfx::RectF bounds_in_target_space = kRoundedCornerLayer1Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   const gfx::RRectF actual_render_target_rrect_1 =
-      rounded_corner_layer_impl_1->render_target()->rounded_corner_bounds();
+      rounded_corner_layer_impl_1->render_target()
+          ->mask_filter_info()
+          .rounded_corner_bounds();
   EXPECT_EQ(actual_render_target_rrect_1.rect(), bounds_in_target_space);
   EXPECT_FLOAT_EQ(actual_render_target_rrect_1.GetSimpleRadius(),
                   kRoundedCorner1Radius * kDeviceScale);
@@ -1539,7 +1831,8 @@ TEST_F(PropertyTreeBuilderTest,
   // The offset from the origin of the render target is [0, 0] and the device
   // scale factor is 1.6. The corner radius is also scaled by a factor of 1.6.
   const gfx::RRectF actual_self_rrect_2 =
-      fast_rounded_corner_layer_impl_2->draw_properties().rounded_corner_bounds;
+      fast_rounded_corner_layer_impl_2->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   bounds_in_target_space = kRoundedCornerLayer2Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   EXPECT_EQ(actual_self_rrect_2.rect(), bounds_in_target_space);
@@ -1552,13 +1845,16 @@ TEST_F(PropertyTreeBuilderTest,
   // scale factor is 1.6 thus giving the target space origin of [64, 64]. The
   // corner radius is also scaled by a factor of 1.6.
   const gfx::RRectF actual_self_rrect_3 =
-      rounded_corner_layer_impl_3->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_impl_3->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(actual_self_rrect_3.IsEmpty());
 
   bounds_in_target_space = kRoundedCornerLayer3Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   const gfx::RRectF actual_render_target_rrect_3 =
-      rounded_corner_layer_impl_3->render_target()->rounded_corner_bounds();
+      rounded_corner_layer_impl_3->render_target()
+          ->mask_filter_info()
+          .rounded_corner_bounds();
   EXPECT_EQ(actual_render_target_rrect_3.rect(), bounds_in_target_space);
   EXPECT_FLOAT_EQ(actual_render_target_rrect_3.GetSimpleRadius(),
                   kRoundedCorner3Radius * kDeviceScale);
@@ -1569,7 +1865,8 @@ TEST_F(PropertyTreeBuilderTest,
   // scale factor is 1.6 thus giving the target space origin of [48, 0]. The
   // corner radius is also scaled by a factor of 1.6.
   const gfx::RRectF actual_self_rrect_4 =
-      rounded_corner_layer_impl_4->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_impl_4->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   bounds_in_target_space = kRoundedCornerLayer4Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   EXPECT_EQ(actual_self_rrect_4.rect(), bounds_in_target_space);
@@ -1658,7 +1955,8 @@ TEST_F(PropertyTreeBuilderTest,
   // surface.
   const EffectNode* effect_node =
       GetEffectNode(fast_rounded_corner_layer_1.get());
-  gfx::RRectF rounded_corner_bounds_1 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_1 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(effect_node->HasRenderSurface());
   EXPECT_TRUE(effect_node->is_fast_rounded_corner);
   EXPECT_FLOAT_EQ(rounded_corner_bounds_1.GetSimpleRadius(),
@@ -1669,7 +1967,8 @@ TEST_F(PropertyTreeBuilderTest,
   // Since this layer has no descendant with rounded corner or drawable, it will
   // not have a render surface.
   effect_node = GetEffectNode(rounded_corner_layer_1.get());
-  gfx::RRectF rounded_corner_bounds_2 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_2 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_FALSE(effect_node->HasRenderSurface());
   EXPECT_FALSE(effect_node->is_fast_rounded_corner);
   EXPECT_FLOAT_EQ(rounded_corner_bounds_2.GetSimpleRadius(),
@@ -1680,7 +1979,8 @@ TEST_F(PropertyTreeBuilderTest,
   // Since this layer has a descendant with rounded corner, it should have a
   // render surface.
   effect_node = GetEffectNode(rounded_corner_layer_2.get());
-  gfx::RRectF rounded_corner_bounds_3 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_3 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(effect_node->HasRenderSurface());
   EXPECT_FALSE(effect_node->is_fast_rounded_corner);
   EXPECT_FLOAT_EQ(rounded_corner_bounds_3.GetSimpleRadius(),
@@ -1690,7 +1990,8 @@ TEST_F(PropertyTreeBuilderTest,
 
   // Since this layer has no descendant, it does not need a render surface.
   effect_node = GetEffectNode(rounded_corner_layer_3.get());
-  gfx::RRectF rounded_corner_bounds_4 = effect_node->rounded_corner_bounds;
+  gfx::RRectF rounded_corner_bounds_4 =
+      effect_node->mask_filter_info.rounded_corner_bounds();
   EXPECT_FALSE(effect_node->HasRenderSurface());
   EXPECT_FALSE(effect_node->is_fast_rounded_corner);
   EXPECT_FLOAT_EQ(rounded_corner_bounds_4.GetSimpleRadius(),
@@ -1719,14 +2020,16 @@ TEST_F(PropertyTreeBuilderTest,
   // The offset from the origin of the render target is [5, 5] and the device
   // scale factor is 1.6.
   const gfx::RRectF actual_self_rrect_1 =
-      fast_rounded_corner_layer_impl_1->draw_properties().rounded_corner_bounds;
+      fast_rounded_corner_layer_impl_1->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(actual_self_rrect_1.IsEmpty());
 
   gfx::RectF bounds_in_target_space = kRoundedCornerLayer1Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   const gfx::RRectF actual_render_target_rrect_1 =
       fast_rounded_corner_layer_impl_1->render_target()
-          ->rounded_corner_bounds();
+          ->mask_filter_info()
+          .rounded_corner_bounds();
   EXPECT_EQ(actual_render_target_rrect_1.rect(), bounds_in_target_space);
   EXPECT_FLOAT_EQ(actual_render_target_rrect_1.GetSimpleRadius(),
                   kRoundedCorner1Radius * kDeviceScale);
@@ -1736,7 +2039,8 @@ TEST_F(PropertyTreeBuilderTest,
   // The offset from the origin of the render target is [0, 0] and the device
   // scale factor is 1.6. The corner radius is also scaled by a factor of 1.6.
   const gfx::RRectF actual_self_rrect_2 =
-      rounded_corner_layer_impl_1->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_impl_1->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   bounds_in_target_space = kRoundedCornerLayer2Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   EXPECT_EQ(actual_self_rrect_2.rect(), bounds_in_target_space);
@@ -1749,13 +2053,16 @@ TEST_F(PropertyTreeBuilderTest,
   // scale factor is 1.6 thus giving the target space origin of [8, 8]. The
   // corner radius is also scaled by a factor of 1.6.
   const gfx::RRectF actual_self_rrect_3 =
-      rounded_corner_layer_impl_2->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_impl_2->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   EXPECT_TRUE(actual_self_rrect_3.IsEmpty());
 
   bounds_in_target_space = kRoundedCornerLayer3Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   const gfx::RRectF actual_render_target_rrect_3 =
-      rounded_corner_layer_impl_2->render_target()->rounded_corner_bounds();
+      rounded_corner_layer_impl_2->render_target()
+          ->mask_filter_info()
+          .rounded_corner_bounds();
   EXPECT_EQ(actual_render_target_rrect_3.rect(), bounds_in_target_space);
   EXPECT_FLOAT_EQ(actual_render_target_rrect_3.GetSimpleRadius(),
                   kRoundedCorner3Radius * kDeviceScale);
@@ -1766,12 +2073,40 @@ TEST_F(PropertyTreeBuilderTest,
   // scale factor is 1.6 thus giving the target space origin of [0, 8]. The
   // corner radius is also scaled by a factor of 1.6.
   const gfx::RRectF actual_self_rrect_4 =
-      rounded_corner_layer_impl_3->draw_properties().rounded_corner_bounds;
+      rounded_corner_layer_impl_3->draw_properties()
+          .mask_filter_info.rounded_corner_bounds();
   bounds_in_target_space = kRoundedCornerLayer4Bound;
   bounds_in_target_space.Scale(kDeviceScale);
   EXPECT_EQ(actual_self_rrect_4.rect(), bounds_in_target_space);
   EXPECT_FLOAT_EQ(actual_self_rrect_4.GetSimpleRadius(),
                   kRoundedCorner4Radius * kDeviceScale);
+}
+
+TEST_F(PropertyTreeBuilderTest, SubtreeSize) {
+  constexpr viz::SubtreeCaptureId kCaptureId{42};
+
+  auto parent = Layer::Create();
+  host()->SetRootLayer(parent);
+  auto child = Layer::Create();
+  parent->AddChild(child);
+  child->SetSubtreeCaptureId(kCaptureId);
+
+  // Layer has empty bounds.
+  Commit(1.1f);
+  EffectNode* node = GetEffectNode(child.get());
+  EXPECT_EQ((gfx::Size{}), node->subtree_size);
+  EXPECT_EQ(kCaptureId, node->subtree_capture_id);
+
+  // Layer has bounds, scaling is 1.
+  child->SetBounds(gfx::Size{1280, 720});
+  Commit(1.0f);
+  node = GetEffectNode(child.get());
+  EXPECT_EQ((gfx::Size{1280, 720}), node->subtree_size);
+
+  // Layer has bounds, scaling is 2.
+  Commit(2.0f);
+  node = GetEffectNode(child.get());
+  EXPECT_EQ((gfx::Size{2560, 1440}), node->subtree_size);
 }
 
 }  // namespace

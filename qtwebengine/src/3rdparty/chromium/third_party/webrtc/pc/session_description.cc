@@ -10,13 +10,10 @@
 
 #include "pc/session_description.h"
 
-#include <algorithm>
-#include <utility>
-
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
-#include "pc/media_protocol_names.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/strings/string_builder.h"
 
 namespace cricket {
 namespace {
@@ -68,23 +65,35 @@ const std::string* ContentGroup::FirstContentName() const {
   return (!content_names_.empty()) ? &(*content_names_.begin()) : NULL;
 }
 
-bool ContentGroup::HasContentName(const std::string& content_name) const {
+bool ContentGroup::HasContentName(absl::string_view content_name) const {
   return absl::c_linear_search(content_names_, content_name);
 }
 
-void ContentGroup::AddContentName(const std::string& content_name) {
+void ContentGroup::AddContentName(absl::string_view content_name) {
   if (!HasContentName(content_name)) {
-    content_names_.push_back(content_name);
+    content_names_.emplace_back(content_name);
   }
 }
 
-bool ContentGroup::RemoveContentName(const std::string& content_name) {
+bool ContentGroup::RemoveContentName(absl::string_view content_name) {
   ContentNames::iterator iter = absl::c_find(content_names_, content_name);
   if (iter == content_names_.end()) {
     return false;
   }
   content_names_.erase(iter);
   return true;
+}
+
+std::string ContentGroup::ToString() const {
+  rtc::StringBuilder acc;
+  acc << semantics_ << "(";
+  if (!content_names_.empty()) {
+    for (const auto& name : content_names_) {
+      acc << name << " ";
+    }
+  }
+  acc << ")";
+  return acc.Release();
 }
 
 SessionDescription::SessionDescription() = default;
@@ -259,6 +268,17 @@ const ContentGroup* SessionDescription::GetGroupByName(
     }
   }
   return NULL;
+}
+
+std::vector<const ContentGroup*> SessionDescription::GetGroupsByName(
+    const std::string& name) const {
+  std::vector<const ContentGroup*> content_groups;
+  for (const ContentGroup& content_group : content_groups_) {
+    if (content_group.semantics() == name) {
+      content_groups.push_back(&content_group);
+    }
+  }
+  return content_groups;
 }
 
 ContentInfo::~ContentInfo() {

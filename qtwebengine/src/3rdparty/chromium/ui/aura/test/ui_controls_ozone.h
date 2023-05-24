@@ -1,16 +1,15 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_AURA_TEST_UI_CONTROLS_OZONE_H_
 #define UI_AURA_TEST_UI_CONTROLS_OZONE_H_
 
-#include "base/bind.h"
-#include "base/location.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/macros.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/memory/raw_ptr.h"
+#include "base/task/single_thread_task_runner.h"
+#include "build/chromeos_buildflags.h"
 #include "ui/aura/env.h"
 #include "ui/aura/test/aura_test_utils.h"
 #include "ui/aura/test/env_test_helper.h"
@@ -35,19 +34,15 @@ class UIControlsOzone : public ui_controls::UIControlsAura {
 
  private:
   // ui_controls::UIControlsAura:
-  bool SendKeyPress(gfx::NativeWindow window,
-                    ui::KeyboardCode key,
-                    bool control,
-                    bool shift,
-                    bool alt,
-                    bool command) override;
-  bool SendKeyPressNotifyWhenDone(gfx::NativeWindow window,
-                                  ui::KeyboardCode key,
-                                  bool control,
-                                  bool shift,
-                                  bool alt,
-                                  bool command,
-                                  base::OnceClosure closure) override;
+  bool SendKeyEvents(gfx::NativeWindow window,
+                     ui::KeyboardCode key,
+                     int key_event_types,
+                     int accelerator_state) override;
+  bool SendKeyEventsNotifyWhenDone(gfx::NativeWindow window,
+                                   ui::KeyboardCode key,
+                                   int key_event_types,
+                                   base::OnceClosure closure,
+                                   int accelerator_state) override;
   bool SendMouseMove(int screen_x, int screen_y) override;
   bool SendMouseMoveNotifyWhenDone(int screen_x,
                                    int screen_y,
@@ -60,7 +55,7 @@ class UIControlsOzone : public ui_controls::UIControlsAura {
                                      base::OnceClosure closure,
                                      int accelerator_state) override;
   bool SendMouseClick(ui_controls::MouseButton type) override;
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
   bool SendTouchEvents(int action, int id, int x, int y) override;
   bool SendTouchEventsNotifyWhenDone(int action,
                                      int id,
@@ -121,7 +116,7 @@ class UIControlsOzone : public ui_controls::UIControlsAura {
 
   // This is the default host used for events that are not scoped to a window.
   // Events scoped to a window always use the window's host.
-  WindowTreeHost* const host_;
+  const raw_ptr<WindowTreeHost> host_;
 
   // Mask of the mouse buttons currently down. This is static as it needs to
   // track the state globally for all displays. A UIControlsOzone instance is

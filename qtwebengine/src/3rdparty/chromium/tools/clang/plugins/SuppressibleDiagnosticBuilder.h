@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,23 +26,14 @@ class SuppressibleDiagnosticBuilder : public clang::DiagnosticBuilder {
 
   ~SuppressibleDiagnosticBuilder() {
     if (suppressed_) {
-      // Clear the counts and underlying data, so the base class destructor
+      // Clear the underlying data, so the base class destructor
       // doesn't try to emit the diagnostic.
-      FlushCounts();
+
       Clear();
       // Also clear the current diagnostic being processed by the
       // DiagnosticsEngine, since it won't be emitted.
       diagnostics_->Clear();
     }
-  }
-
-  template <typename T>
-  friend const SuppressibleDiagnosticBuilder& operator<<(
-      const SuppressibleDiagnosticBuilder& builder,
-      const T& value) {
-    const DiagnosticBuilder& base_builder = builder;
-    base_builder << value;
-    return builder;
   }
 
  private:

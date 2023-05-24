@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,8 @@
 #include "cc/paint/display_item_list.h"
 #include "cc/paint/paint_op_buffer.h"
 #include "ui/compositor/paint_context.h"
+#include "ui/gfx/geometry/skia_conversions.h"
+#include "ui/gfx/geometry/transform.h"
 
 namespace ui {
 
@@ -17,9 +19,9 @@ TransformRecorder::~TransformRecorder() {
   if (!transformed_)
     return;
 
-  context_.list_->StartPaint();
-  context_.list_->push<cc::RestoreOp>();
-  context_.list_->EndPaintOfPairedEnd();
+  context_->list_->StartPaint();
+  context_->list_->push<cc::RestoreOp>();
+  context_->list_->EndPaintOfPairedEnd();
 }
 
 void TransformRecorder::Transform(const gfx::Transform& transform) {
@@ -27,10 +29,10 @@ void TransformRecorder::Transform(const gfx::Transform& transform) {
   if (transform.IsIdentity())
     return;
 
-  context_.list_->StartPaint();
-  context_.list_->push<cc::SaveOp>();
-  context_.list_->push<cc::ConcatOp>(static_cast<SkMatrix>(transform.matrix()));
-  context_.list_->EndPaintOfPairedBegin();
+  context_->list_->StartPaint();
+  context_->list_->push<cc::SaveOp>();
+  context_->list_->push<cc::ConcatOp>(gfx::TransformToSkM44(transform));
+  context_->list_->EndPaintOfPairedBegin();
 
   transformed_ = true;
 }

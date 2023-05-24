@@ -1,32 +1,40 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QVector2D>
+#include <QVector3D>
+#include <QVector4D>
+#ifdef QVARIANT_H
+# error "This test requires qvector{2,3,4}d.h to not include qvariant.h"
+#endif
+
+// don't assume <type_traits>
+template <typename T, typename U>
+constexpr inline bool my_is_same_v = false;
+template <typename T>
+constexpr inline bool my_is_same_v<T, T> = true;
+
+#define CHECK(cvref) \
+    static_assert(my_is_same_v<decltype(get<0>(std::declval<QVector2D cvref >())), float cvref >); \
+    static_assert(my_is_same_v<decltype(get<1>(std::declval<QVector2D cvref >())), float cvref >); \
+    \
+    static_assert(my_is_same_v<decltype(get<0>(std::declval<QVector3D cvref >())), float cvref >); \
+    static_assert(my_is_same_v<decltype(get<1>(std::declval<QVector3D cvref >())), float cvref >); \
+    static_assert(my_is_same_v<decltype(get<2>(std::declval<QVector3D cvref >())), float cvref >); \
+    \
+    static_assert(my_is_same_v<decltype(get<0>(std::declval<QVector4D cvref >())), float cvref >); \
+    static_assert(my_is_same_v<decltype(get<1>(std::declval<QVector4D cvref >())), float cvref >); \
+    static_assert(my_is_same_v<decltype(get<2>(std::declval<QVector4D cvref >())), float cvref >); \
+    static_assert(my_is_same_v<decltype(get<3>(std::declval<QVector4D cvref >())), float cvref >)
+
+CHECK(&);
+CHECK(const &);
+CHECK(&&);
+CHECK(const &&);
+
+#undef CHECK
+
+#include <QTest>
 #include <QtCore/qmath.h>
 #include <QtGui/qvector2d.h>
 #include <QtGui/qvector3d.h>
@@ -152,6 +160,8 @@ private slots:
 
     void properties();
     void metaTypes();
+
+    void structuredBinding();
 };
 
 // Test the creation of QVector2D objects in various ways:
@@ -2596,7 +2606,7 @@ class tst_QVectorNDProperties : public QObject
     Q_PROPERTY(QVector3D vector3D READ vector3D WRITE setVector3D)
     Q_PROPERTY(QVector4D vector4D READ vector4D WRITE setVector4D)
 public:
-    tst_QVectorNDProperties(QObject *parent = 0) : QObject(parent) {}
+    tst_QVectorNDProperties(QObject *parent = nullptr) : QObject(parent) {}
 
     QVector2D vector2D() const { return v2; }
     void setVector2D(const QVector2D& value) { v2 = value; }
@@ -2662,15 +2672,15 @@ void tst_QVectorND::properties()
 
 void tst_QVectorND::metaTypes()
 {
-    QCOMPARE(QMetaType::type("QVector2D"), int(QMetaType::QVector2D));
-    QCOMPARE(QMetaType::type("QVector3D"), int(QMetaType::QVector3D));
-    QCOMPARE(QMetaType::type("QVector4D"), int(QMetaType::QVector4D));
+    QCOMPARE(QMetaType::fromName("QVector2D").id(), int(QMetaType::QVector2D));
+    QCOMPARE(QMetaType::fromName("QVector3D").id(), int(QMetaType::QVector3D));
+    QCOMPARE(QMetaType::fromName("QVector4D").id(), int(QMetaType::QVector4D));
 
-    QCOMPARE(QByteArray(QMetaType::typeName(QMetaType::QVector2D)),
+    QCOMPARE(QByteArray(QMetaType(QMetaType::QVector2D).name()),
              QByteArray("QVector2D"));
-    QCOMPARE(QByteArray(QMetaType::typeName(QMetaType::QVector3D)),
+    QCOMPARE(QByteArray(QMetaType(QMetaType::QVector3D).name()),
              QByteArray("QVector3D"));
-    QCOMPARE(QByteArray(QMetaType::typeName(QMetaType::QVector4D)),
+    QCOMPARE(QByteArray(QMetaType(QMetaType::QVector4D).name()),
              QByteArray("QVector4D"));
 
     QVERIFY(QMetaType::isRegistered(QMetaType::QVector2D));
@@ -2680,6 +2690,73 @@ void tst_QVectorND::metaTypes()
     QCOMPARE(qMetaTypeId<QVector2D>(), int(QMetaType::QVector2D));
     QCOMPARE(qMetaTypeId<QVector3D>(), int(QMetaType::QVector3D));
     QCOMPARE(qMetaTypeId<QVector4D>(), int(QMetaType::QVector4D));
+}
+
+void tst_QVectorND::structuredBinding()
+{
+    {
+        QVector2D v(1.0f, 2.0f);
+        auto [x, y] = v;
+        QCOMPARE(x, 1.0f);
+        QCOMPARE(y, 2.0f);
+    }
+    {
+        QVector2D v(1.0f, 2.0f);
+        auto &[x, y] = v;
+        QCOMPARE(x, 1.0f);
+        QCOMPARE(y, 2.0f);
+
+        x = 10.0f;
+        y = 20.0f;
+        QCOMPARE(v.x(), 10.0f);
+        QCOMPARE(v.y(), 20.0f);
+    }
+    {
+        QVector3D v(1.0f, 2.0f, 3.0);
+        auto [x, y, z] = v;
+        QCOMPARE(x, 1.0f);
+        QCOMPARE(y, 2.0f);
+        QCOMPARE(z, 3.0f);
+    }
+    {
+        QVector3D v(1.0f, 2.0f, 3.0);
+        auto &[x, y, z] = v;
+        QCOMPARE(x, 1.0f);
+        QCOMPARE(y, 2.0f);
+        QCOMPARE(z, 3.0f);
+
+        x = 10.0f;
+        y = 20.0f;
+        z = 30.0f;
+        QCOMPARE(v.x(), 10.0f);
+        QCOMPARE(v.y(), 20.0f);
+        QCOMPARE(v.z(), 30.0f);
+    }
+    {
+        QVector4D v(1.0f, 2.0f, 3.0, 4.0);
+        auto [x, y, z, w] = v;
+        QCOMPARE(x, 1.0f);
+        QCOMPARE(y, 2.0f);
+        QCOMPARE(z, 3.0f);
+        QCOMPARE(w, 4.0f);
+    }
+    {
+        QVector4D v(1.0f, 2.0f, 3.0, 4.0);
+        auto &[x, y, z, w] = v;
+        QCOMPARE(x, 1.0f);
+        QCOMPARE(y, 2.0f);
+        QCOMPARE(z, 3.0f);
+        QCOMPARE(w, 4.0f);
+
+        x = 10.0f;
+        y = 20.0f;
+        z = 30.0f;
+        w = 40.0f;
+        QCOMPARE(v.x(), 10.0f);
+        QCOMPARE(v.y(), 20.0f);
+        QCOMPARE(v.z(), 30.0f);
+        QCOMPARE(v.w(), 40.0f);
+    }
 }
 
 QTEST_APPLESS_MAIN(tst_QVectorND)

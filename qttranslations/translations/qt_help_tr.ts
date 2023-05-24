@@ -28,19 +28,19 @@
     </message>
     <message>
         <source>Cannot create index tables in file %1.</source>
-        <translation>%1 dosyasında dizin tabloları oluşturulamıyor.</translation>
+        <translation>%1 dosyasında indeks tabloları oluşturulamıyor.</translation>
     </message>
     <message>
         <source>Cannot register index tables in file %1.</source>
-        <translation>%1 dosyasında dizin tabloları kaydedilemiyor.</translation>
+        <translation>%1 dosyasında indeks tabloları kaydedilemiyor.</translation>
     </message>
     <message>
         <source>Cannot unregister index tables in file %1.</source>
-        <translation>%1 dosyasındaki dizin tablolarının kaydı silinemiyor.</translation>
+        <translation>%1 dosyasındaki indeks tablolarının kaydı silinemiyor.</translation>
     </message>
     <message>
         <source>The collection file &quot;%1&quot; already exists.</source>
-        <translation>&quot;%1&quot; koleksiyon dosyası zaten var.</translation>
+        <translation>&quot;%1&quot; koleksiyon dosyası halihazırda var.</translation>
     </message>
     <message>
         <source>Cannot create directory: %1</source>
@@ -60,11 +60,11 @@
     </message>
     <message>
         <source>Cannot open documentation file %1.</source>
-        <translation>%1 belge dosyası açılamıyor.</translation>
+        <translation>%1 belgelendirme dosyası açılamıyor.</translation>
     </message>
     <message>
         <source>Invalid documentation file &quot;%1&quot;.</source>
-        <translation>Geçersiz belge dosyası &quot;%1&quot;.</translation>
+        <translation>Geçersiz belgelendirme dosyası &quot;%1&quot;.</translation>
     </message>
     <message>
         <source>The namespace %1 was not registered.</source>
@@ -72,7 +72,7 @@
     </message>
     <message>
         <source>Namespace %1 already exists.</source>
-        <translation>%1 ad alanı zaten var.</translation>
+        <translation>%1 ad alanı halihazırda var.</translation>
     </message>
     <message>
         <source>Cannot register namespace &quot;%1&quot;.</source>
@@ -119,12 +119,12 @@
     <message numerus="yes">
         <source>%1 - %2 of %n Hits</source>
         <translation>
-            <numerusform>%1 - %n Sonuçtan %2</numerusform>
+            <numerusform>%1 - %2/%n sonuç</numerusform>
         </translation>
     </message>
     <message>
         <source>0 - 0 of 0 Hits</source>
-        <translation>0 - 0 Sonuçtan 0</translation>
+        <translation>0 - 0/0 sonuç</translation>
     </message>
 </context>
 <context>
@@ -139,7 +139,7 @@
     </message>
     <message>
         <source>The search results may not be complete since the documentation is still being indexed.</source>
-        <translation>Belgeler halen dizine eklendiği için arama sonuçları tamamlanmamış olabilir.</translation>
+        <translation>Belgelendirme hâlâ indekslendiğinden arama sonuçları tam olmayabilir.</translation>
     </message>
     <message>
         <source>Your search did not match any documents.</source>
@@ -147,7 +147,7 @@
     </message>
     <message>
         <source>(The reason for this might be that the documentation is still being indexed.)</source>
-        <translation>(Bunun nedeni, belgelerin halen dizine eklenmesidir.)</translation>
+        <translation>(Bunun nedeni, belgelendirmenin hâlâ indekslenmesidir.)</translation>
     </message>
 </context>
 <context>
@@ -155,6 +155,103 @@
     <message>
         <source>Cannot open database &quot;%1&quot; using connection &quot;%2&quot;: %3</source>
         <translation>&quot;%2&quot; bağlantısı kullanılarak &quot;%1&quot; veritabanı açılamıyor: %3</translation>
+    </message>
+</context>
+<context>
+    <name>FilterNameDialogClass</name>
+    <message>
+        <source>Add Filter</source>
+        <translation>Süzgeç Ekle</translation>
+    </message>
+    <message>
+        <source>Filter Name:</source>
+        <translation>Süzgeç adı:</translation>
+    </message>
+</context>
+<context>
+    <name>QHelpFilterSettingsWidget</name>
+    <message>
+        <source>Form</source>
+        <translation>Form</translation>
+    </message>
+    <message>
+        <source>Filter</source>
+        <translation>Süzgeç</translation>
+    </message>
+    <message>
+        <source>Components</source>
+        <translation>Bileşenler</translation>
+    </message>
+    <message>
+        <source>Versions</source>
+        <translation>Sürümler</translation>
+    </message>
+    <message>
+        <source>Add...</source>
+        <translation>Ekle...</translation>
+    </message>
+    <message>
+        <source>Rename...</source>
+        <translation>Yeniden Adlandır...</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Kaldır</translation>
+    </message>
+    <message>
+        <source>Add Filter</source>
+        <translation>Süzgeç Ekle</translation>
+    </message>
+    <message>
+        <source>New Filter</source>
+        <translation>Yeni Süzgeç</translation>
+    </message>
+    <message>
+        <source>Rename Filter</source>
+        <translation>Süzgeci Yeniden Adlandır</translation>
+    </message>
+    <message>
+        <source>Remove Filter</source>
+        <translation>Süzgeci Kaldır</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to remove the &quot;%1&quot; filter?</source>
+        <translation>&quot;%1&quot; süzgecini kaldırmak istediğinizden emin misiniz?</translation>
+    </message>
+    <message>
+        <source>Filter Exists</source>
+        <translation>Süzgeç Var</translation>
+    </message>
+    <message>
+        <source>The filter &quot;%1&quot; already exists.</source>
+        <translation>&quot;%1&quot; süzgeci halihazırda var.</translation>
+    </message>
+    <message>
+        <source>No Component</source>
+        <translation>Bileşen Yok</translation>
+    </message>
+    <message>
+        <source>Invalid Component</source>
+        <translation>Geçersiz Bileşen</translation>
+    </message>
+    <message>
+        <source>No Version</source>
+        <translation>Sürüm Yok</translation>
+    </message>
+    <message>
+        <source>Invalid Version</source>
+        <translation>Geçersiz Sürüm</translation>
+    </message>
+</context>
+<context>
+    <name>QOptionsWidget</name>
+    <message>
+        <source>No Option</source>
+        <translation>Seçenek Yok</translation>
+    </message>
+    <message>
+        <source>Invalid Option</source>
+        <translation>Geçersiz Seçenek</translation>
     </message>
 </context>
 </TS>

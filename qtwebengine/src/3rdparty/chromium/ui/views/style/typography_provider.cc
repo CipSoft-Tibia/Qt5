@@ -1,18 +1,18 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/views/style/typography_provider.h"
 
-#include "base/logging.h"
+#include <string>
+
 #include "build/build_config.h"
 #include "ui/base/default_style.h"
 #include "ui/base/resource/resource_bundle.h"
-#include "ui/native_theme/native_theme.h"
+#include "ui/color/color_id.h"
 #include "ui/views/style/typography.h"
-#include "ui/views/view.h"
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_MAC)
 #include "base/mac/mac_util.h"
 #endif
 
@@ -31,130 +31,147 @@ gfx::Font::Weight GetValueBolderThan(gfx::Font::Weight weight) {
   }
 }
 
-void GetDefaultFont(int context,
-                    int style,
-                    int* size_delta,
-                    gfx::Font::Weight* font_weight) {
-  *font_weight = gfx::Font::Weight::NORMAL;
+ui::ColorId GetDisabledColorId(int context) {
+  switch (context) {
+    case style::CONTEXT_BUTTON_MD:
+      return ui::kColorButtonForegroundDisabled;
+    case style::CONTEXT_TEXTFIELD:
+      return ui::kColorTextfieldForegroundDisabled;
+    case style::CONTEXT_MENU:
+    case style::CONTEXT_TOUCH_MENU:
+      return ui::kColorMenuItemForegroundDisabled;
+    default:
+      return ui::kColorLabelForegroundDisabled;
+  }
+}
+
+ui::ColorId GetMenuColorId(int style) {
+  switch (style) {
+    case style::STYLE_SECONDARY:
+      return ui::kColorMenuItemForegroundSecondary;
+    case style::STYLE_SELECTED:
+      return ui::kColorMenuItemForegroundSelected;
+    case style::STYLE_HIGHLIGHTED:
+      return ui::kColorMenuItemForegroundHighlighted;
+    default:
+      return ui::kColorMenuItemForeground;
+  }
+}
+
+ui::ColorId GetHintColorId(int context) {
+  return (context == style::CONTEXT_TEXTFIELD)
+             ? ui::kColorTextfieldForegroundPlaceholder
+             : ui::kColorLabelForegroundSecondary;
+}
+
+}  // namespace
+
+ui::ResourceBundle::FontDetails TypographyProvider::GetFontDetails(
+    int context,
+    int style) const {
+  DCHECK(StyleAllowedForContext(context, style))
+      << "context: " << context << " style: " << style;
+
+  ui::ResourceBundle::FontDetails details;
 
   switch (context) {
     case style::CONTEXT_BUTTON_MD:
-      *size_delta = ui::kLabelFontSizeDelta;
-      *font_weight = TypographyProvider::MediumWeightForUI();
+      details.size_delta = ui::kLabelFontSizeDelta;
+      details.weight = TypographyProvider::MediumWeightForUI();
       break;
     case style::CONTEXT_DIALOG_TITLE:
-      *size_delta = ui::kTitleFontSizeDelta;
+      details.size_delta = ui::kTitleFontSizeDelta;
       break;
     case style::CONTEXT_TOUCH_MENU:
-      *size_delta = 2;
+      details.size_delta = 2;
       break;
     default:
-      *size_delta = ui::kLabelFontSizeDelta;
+      details.size_delta = ui::kLabelFontSizeDelta;
       break;
   }
 
   switch (style) {
     case style::STYLE_TAB_ACTIVE:
-      *font_weight = gfx::Font::Weight::BOLD;
+      details.weight = gfx::Font::Weight::BOLD;
       break;
     case style::STYLE_DIALOG_BUTTON_DEFAULT:
       // Only non-MD default buttons should "increase" in boldness.
       if (context == style::CONTEXT_BUTTON) {
-        *font_weight = GetValueBolderThan(
-            ui::ResourceBundle::GetSharedInstance()
-                .GetFontListWithDelta(*size_delta, gfx::Font::NORMAL,
-                                      *font_weight)
-                .GetFontWeight());
+        details.weight =
+            GetValueBolderThan(ui::ResourceBundle::GetSharedInstance()
+                                   .GetFontListForDetails(details)
+                                   .GetFontWeight());
       }
       break;
+    case style::STYLE_EMPHASIZED:
+    case style::STYLE_EMPHASIZED_SECONDARY:
+      details.weight = gfx::Font::Weight::SEMIBOLD;
+      break;
   }
-}
 
-ui::NativeTheme::ColorId GetDisabledColorId(int context) {
-  switch (context) {
-    case style::CONTEXT_BUTTON_MD:
-      return ui::NativeTheme::kColorId_ButtonDisabledColor;
-    case style::CONTEXT_TEXTFIELD:
-      return ui::NativeTheme::kColorId_TextfieldReadOnlyColor;
-    case style::CONTEXT_MENU:
-    case style::CONTEXT_TOUCH_MENU:
-      return ui::NativeTheme::kColorId_DisabledMenuItemForegroundColor;
-    default:
-      return ui::NativeTheme::kColorId_LabelDisabledColor;
-  }
+  return details;
 }
-
-ui::NativeTheme::ColorId GetMenuColorId(int style) {
-  switch (style) {
-    case style::STYLE_SECONDARY:
-      return ui::NativeTheme::kColorId_MenuItemMinorTextColor;
-    case style::STYLE_SELECTED:
-      return ui::NativeTheme::kColorId_SelectedMenuItemForegroundColor;
-    case style::STYLE_HIGHLIGHTED:
-      return ui::NativeTheme::kColorId_HighlightedMenuItemForegroundColor;
-    default:
-      return ui::NativeTheme::kColorId_EnabledMenuItemForegroundColor;
-  }
-}
-
-ui::NativeTheme::ColorId GetHintColorId(int context) {
-  return (context == style::CONTEXT_TEXTFIELD)
-             ? ui::NativeTheme::kColorId_TextfieldPlaceholderColor
-             : ui::NativeTheme::kColorId_LabelSecondaryColor;
-}
-
-ui::NativeTheme::ColorId GetColorId(int context, int style) {
-  if (style == style::STYLE_DIALOG_BUTTON_DEFAULT)
-    return ui::NativeTheme::kColorId_TextOnProminentButtonColor;
-  if (style == style::STYLE_DISABLED)
-    return GetDisabledColorId(context);
-  if (style == style::STYLE_LINK)
-    return ui::NativeTheme::kColorId_LinkEnabled;
-  if (style == style::STYLE_HINT)
-    return GetHintColorId(context);
-  if (context == style::CONTEXT_BUTTON_MD)
-    return ui::NativeTheme::kColorId_ButtonEnabledColor;
-  if (context == style::CONTEXT_LABEL && style == style::STYLE_SECONDARY)
-    return ui::NativeTheme::kColorId_LabelSecondaryColor;
-  if (context == style::CONTEXT_DIALOG_BODY_TEXT &&
-      (style == style::STYLE_PRIMARY || style == style::STYLE_SECONDARY))
-    return ui::NativeTheme::kColorId_DialogForeground;
-  if (context == style::CONTEXT_TEXTFIELD)
-    return ui::NativeTheme::kColorId_TextfieldDefaultColor;
-  if (context == style::CONTEXT_MENU || context == style::CONTEXT_TOUCH_MENU)
-    return GetMenuColorId(style);
-  return ui::NativeTheme::kColorId_LabelEnabledColor;
-}
-
-}  // namespace
 
 const gfx::FontList& TypographyProvider::GetFont(int context, int style) const {
-  int size_delta;
-  gfx::Font::Weight font_weight;
-  GetDefaultFont(context, style, &size_delta, &font_weight);
-  return ui::ResourceBundle::GetSharedInstance().GetFontListWithDelta(
-      size_delta, gfx::Font::NORMAL, font_weight);
+  return ui::ResourceBundle::GetSharedInstance().GetFontListForDetails(
+      GetFontDetails(context, style));
 }
 
-SkColor TypographyProvider::GetColor(const View& view,
-                                     int context,
-                                     int style) const {
-  return view.GetNativeTheme()->GetSystemColor(GetColorId(context, style));
+ui::ColorId TypographyProvider::GetColorId(int context, int style) const {
+  switch (style) {
+    case style::STYLE_DIALOG_BUTTON_DEFAULT:
+      return ui::kColorButtonForegroundProminent;
+    case style::STYLE_DIALOG_BUTTON_TONAL:
+      return ui::kColorButtonForegroundTonal;
+    case style::STYLE_DISABLED:
+      return GetDisabledColorId(context);
+    case style::STYLE_LINK:
+      return ui::kColorLinkForeground;
+    case style::STYLE_HINT:
+      return GetHintColorId(context);
+  }
+
+  switch (context) {
+    case style::CONTEXT_BUTTON_MD:
+      return ui::kColorButtonForeground;
+    case style::CONTEXT_LABEL:
+      if (style == style::STYLE_SECONDARY) {
+        return ui::kColorLabelForegroundSecondary;
+      }
+      break;
+    case style::CONTEXT_DIALOG_BODY_TEXT:
+      if (style == style::STYLE_PRIMARY || style == style::STYLE_SECONDARY) {
+        return ui::kColorDialogForeground;
+      }
+      break;
+    case style::CONTEXT_TEXTFIELD:
+      return style == style::STYLE_INVALID
+                 ? ui::kColorTextfieldForegroundInvalid
+                 : ui::kColorTextfieldForeground;
+    case style::CONTEXT_MENU:
+    case style::CONTEXT_TOUCH_MENU:
+      return GetMenuColorId(style);
+  }
+
+  return ui::kColorLabelForeground;
 }
 
 int TypographyProvider::GetLineHeight(int context, int style) const {
   return GetFont(context, style).GetHeight();
 }
 
+bool TypographyProvider::StyleAllowedForContext(int context, int style) const {
+  // TODO(https://crbug.com/1352340): Limit emphasizing text to contexts where
+  // it's obviously correct. chrome_typography_provider.cc implements this
+  // correctly, but that does not cover uses outside of //chrome or //ash.
+  return true;
+}
+
 // static
 gfx::Font::Weight TypographyProvider::MediumWeightForUI() {
-#if defined(OS_APPLE)
-  // System fonts are not user-configurable on Mac, so there's a simpler check.
-  // However, 10.11 do not ship with a MEDIUM weight system font. In that
-  // case, trying to use MEDIUM there will give a bold font, which will look
-  // worse with the surrounding NORMAL text than just using NORMAL.
-  return base::mac::IsOS10_11() ? gfx::Font::Weight::NORMAL
-                                : gfx::Font::Weight::MEDIUM;
+#if BUILDFLAG(IS_MAC)
+  // System fonts are not user-configurable on Mac, so it's simpler.
+  return gfx::Font::Weight::MEDIUM;
 #else
   // NORMAL may already have at least MEDIUM weight. Return NORMAL in that case
   // since trying to return MEDIUM would actually make the font lighter-weight
@@ -162,7 +179,7 @@ gfx::Font::Weight TypographyProvider::MediumWeightForUI() {
   // BOLD font for dialog text; deriving MEDIUM from that would replace the BOLD
   // attribute with something lighter.
   if (ui::ResourceBundle::GetSharedInstance()
-          .GetFontListWithDelta(0, gfx::Font::NORMAL, gfx::Font::Weight::NORMAL)
+          .GetFontListForDetails(ui::ResourceBundle::FontDetails())
           .GetFontWeight() < gfx::Font::Weight::MEDIUM)
     return gfx::Font::Weight::MEDIUM;
   return gfx::Font::Weight::NORMAL;

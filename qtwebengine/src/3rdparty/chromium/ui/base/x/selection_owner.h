@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,19 +9,19 @@
 
 #include <vector>
 
-#include "base/callback.h"
 #include "base/component_export.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "ui/base/x/selection_utils.h"
 #include "ui/gfx/x/event.h"
-#include "ui/gfx/x/x11_types.h"
+
+namespace x11 {
+class XScopedEventSelector;
+}
 
 namespace ui {
-
-class XScopedEventSelector;
 
 COMPONENT_EXPORT(UI_BASE_X) extern const char kIncr[];
 COMPONENT_EXPORT(UI_BASE_X) extern const char kSaveTargets[];
@@ -37,6 +37,10 @@ class COMPONENT_EXPORT(UI_BASE_X) SelectionOwner {
   SelectionOwner(x11::Connection* connection,
                  x11::Window xwindow,
                  x11::Atom selection_name);
+
+  SelectionOwner(const SelectionOwner&) = delete;
+  SelectionOwner& operator=(const SelectionOwner&) = delete;
+
   ~SelectionOwner();
 
   // Returns the current selection data. Useful for fast paths.
@@ -54,25 +58,30 @@ class COMPONENT_EXPORT(UI_BASE_X) SelectionOwner {
   void ClearSelectionOwner();
 
   // It is our owner's responsibility to plumb X11 events on |xwindow_| to us.
-  void OnSelectionRequest(const x11::Event& event);
-  void OnSelectionClear(const x11::Event& event);
+  void OnSelectionRequest(const x11::SelectionRequestEvent& event);
+  void OnSelectionClear(const x11::SelectionClearEvent& event);
 
   // Returns true if SelectionOwner can process the XPropertyEvent event,
   // |event|.
-  bool CanDispatchPropertyEvent(const x11::Event& event);
+  bool CanDispatchPropertyEvent(const x11::PropertyNotifyEvent& event);
 
-  void OnPropertyEvent(const x11::Event& event);
+  void OnPropertyEvent(const x11::PropertyNotifyEvent& event);
 
  private:
   // Holds state related to an incremental data transfer.
   struct IncrementalTransfer {
-    IncrementalTransfer(x11::Window window,
-                        x11::Atom target,
-                        x11::Atom property,
-                        std::unique_ptr<XScopedEventSelector> event_selector,
-                        const scoped_refptr<base::RefCountedMemory>& data,
-                        int offset,
-                        base::TimeTicks timeout);
+    IncrementalTransfer(
+        x11::Window window,
+        x11::Atom target,
+        x11::Atom property,
+        std::unique_ptr<x11::XScopedEventSelector> event_selector,
+        const scoped_refptr<base::RefCountedMemory>& data,
+        int offset,
+        base::TimeTicks timeout);
+
+    IncrementalTransfer(const IncrementalTransfer&) = delete;
+    IncrementalTransfer& operator=(const IncrementalTransfer&) = delete;
+
     ~IncrementalTransfer();
 
     // Move-only class.
@@ -86,7 +95,7 @@ class COMPONENT_EXPORT(UI_BASE_X) SelectionOwner {
     x11::Atom property;
 
     // Selects events on |window|.
-    std::unique_ptr<XScopedEventSelector> event_selector;
+    std::unique_ptr<x11::XScopedEventSelector> event_selector;
 
     // The data to be transferred.
     scoped_refptr<base::RefCountedMemory> data;
@@ -98,9 +107,6 @@ class COMPONENT_EXPORT(UI_BASE_X) SelectionOwner {
     // Time when the transfer should be aborted because the selection requestor
     // is taking too long to notify us that we can send the next chunk.
     base::TimeTicks timeout;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(IncrementalTransfer);
   };
 
   // Attempts to convert the selection to |target|. If the conversion is
@@ -123,7 +129,7 @@ class COMPONENT_EXPORT(UI_BASE_X) SelectionOwner {
   // Returns the incremental data transfer, if any, which was waiting for
   // |event|.
   std::vector<IncrementalTransfer>::iterator FindIncrementalTransferForEvent(
-      const x11::Event& event);
+      const x11::PropertyNotifyEvent& event);
 
   // Our X11 state.
   x11::Window x_window_;
@@ -134,9 +140,6 @@ class COMPONENT_EXPORT(UI_BASE_X) SelectionOwner {
   // The time that this instance took ownership of its selection.
   x11::Time acquired_selection_timestamp_;
 
-  // The maximum size of data we can put in XChangeProperty().
-  size_t max_request_size_;
-
   // The data we are currently serving.
   SelectionFormatMap format_map_;
 
@@ -144,8 +147,6 @@ class COMPONENT_EXPORT(UI_BASE_X) SelectionOwner {
 
   // Used to abort stale incremental data transfers.
   base::RepeatingTimer incremental_transfer_abort_timer_;
-
-  DISALLOW_COPY_AND_ASSIGN(SelectionOwner);
 };
 
 }  // namespace ui

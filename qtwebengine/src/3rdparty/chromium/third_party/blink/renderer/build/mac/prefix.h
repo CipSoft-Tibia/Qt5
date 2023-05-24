@@ -18,13 +18,16 @@
  *
  */
 
+// no-include-guard-because-pch-file
+// no-std-usage-because-pch-file
+
 /* This prefix file is for use on Mac OS X only. This prefix file should contain
  * only files to precompile for faster builds. The project should be able to
  * build without this header, although we rarely test that.
  */
 
 #ifdef THIRD_PARTY_BLINK_RENDERER_BUILD_MAC_PREFIX_H_
-#error You shouldn't include the precompiled header file more than once.
+#error "You shouldn't include the precompiled header file more than once."
 #endif
 
 #define THIRD_PARTY_BLINK_RENDERER_BUILD_MAC_PREFIX_H_
@@ -57,11 +60,4 @@
 
 #ifdef __OBJC__
 #import <Cocoa/Cocoa.h>
-
-/* When C++ exceptions are disabled, the C++ library defines |try| and |catch|
- * to allow C++ code that expects exceptions to build. These definitions
- * interfere with Objective-C++ uses of Objective-C exception handlers, which
- * use |@try| and |@catch|. As a workaround, undefine these macros. */
-#undef try
-#undef catch
 #endif

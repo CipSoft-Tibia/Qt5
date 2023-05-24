@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusmetatype.h"
 #include "qdbusmetatype_p.h"
@@ -45,8 +9,13 @@
 
 #include <qbytearray.h>
 #include <qglobal.h>
+#include <qlist.h>
 #include <qreadwritelock.h>
-#include <qvector.h>
+#include <qdatetime.h>
+#include <qrect.h>
+#include <qsize.h>
+#include <qpoint.h>
+#include <qline.h>
 
 #include "qdbusargument_p.h"
 #include "qdbusutil_p.h"
@@ -77,48 +46,38 @@ public:
     QDBusMetaType::DemarshallFunction demarshall;
 };
 
-template<typename T>
-inline static void registerHelper(T * = nullptr)
-{
-    void (*mf)(QDBusArgument &, const T *) = qDBusMarshallHelper<T>;
-    void (*df)(const QDBusArgument &, T *) = qDBusDemarshallHelper<T>;
-    QDBusMetaType::registerMarshallOperators(qMetaTypeId<T>(),
-        reinterpret_cast<QDBusMetaType::MarshallFunction>(mf),
-        reinterpret_cast<QDBusMetaType::DemarshallFunction>(df));
-}
-
 void QDBusMetaTypeId::init()
 {
-    static QBasicAtomicInt initialized = Q_BASIC_ATOMIC_INITIALIZER(false);
+    Q_CONSTINIT static QBasicAtomicInt initialized = Q_BASIC_ATOMIC_INITIALIZER(false);
 
     // reentrancy is not a problem since everything else is locked on their own
     // set the guard variable at the end
     if (!initialized.loadRelaxed()) {
-        // register our types with Qt Core (calling qMetaTypeId<T>() does this implicitly)
-        (void)message();
-        (void)argument();
-        (void)variant();
-        (void)objectpath();
-        (void)signature();
-        (void)error();
-        (void)unixfd();
+        // register our types with Qt Core
+        message().registerType();
+        argument().registerType();
+        variant().registerType();
+        objectpath().registerType();
+        signature().registerType();
+        error().registerType();
+        unixfd().registerType();
 
 #ifndef QDBUS_NO_SPECIALTYPES
         // and register Qt Core's with us
-        registerHelper<QDate>();
-        registerHelper<QTime>();
-        registerHelper<QDateTime>();
-        registerHelper<QRect>();
-        registerHelper<QRectF>();
-        registerHelper<QSize>();
-        registerHelper<QSizeF>();
-        registerHelper<QPoint>();
-        registerHelper<QPointF>();
-        registerHelper<QLine>();
-        registerHelper<QLineF>();
-        registerHelper<QVariantList>();
-        registerHelper<QVariantMap>();
-        registerHelper<QVariantHash>();
+        qDBusRegisterMetaType<QDate>();
+        qDBusRegisterMetaType<QTime>();
+        qDBusRegisterMetaType<QDateTime>();
+        qDBusRegisterMetaType<QRect>();
+        qDBusRegisterMetaType<QRectF>();
+        qDBusRegisterMetaType<QSize>();
+        qDBusRegisterMetaType<QSizeF>();
+        qDBusRegisterMetaType<QPoint>();
+        qDBusRegisterMetaType<QPointF>();
+        qDBusRegisterMetaType<QLine>();
+        qDBusRegisterMetaType<QLineF>();
+        qDBusRegisterMetaType<QVariantList>();
+        qDBusRegisterMetaType<QVariantMap>();
+        qDBusRegisterMetaType<QVariantHash>();
 
         qDBusRegisterMetaType<QList<bool> >();
         qDBusRegisterMetaType<QList<short> >();
@@ -128,29 +87,25 @@ void QDBusMetaTypeId::init()
         qDBusRegisterMetaType<QList<qlonglong> >();
         qDBusRegisterMetaType<QList<qulonglong> >();
         qDBusRegisterMetaType<QList<double> >();
+
+        // plus lists of our own types
+        qDBusRegisterMetaType<QList<QDBusVariant> >();
         qDBusRegisterMetaType<QList<QDBusObjectPath> >();
         qDBusRegisterMetaType<QList<QDBusSignature> >();
         qDBusRegisterMetaType<QList<QDBusUnixFileDescriptor> >();
-
-        qDBusRegisterMetaType<QVector<bool> >();
-        qDBusRegisterMetaType<QVector<short> >();
-        qDBusRegisterMetaType<QVector<ushort> >();
-        qDBusRegisterMetaType<QVector<int> >();
-        qDBusRegisterMetaType<QVector<uint> >();
-        qDBusRegisterMetaType<QVector<qlonglong> >();
-        qDBusRegisterMetaType<QVector<qulonglong> >();
-        qDBusRegisterMetaType<QVector<double> >();
-        qDBusRegisterMetaType<QVector<QDBusObjectPath> >();
-        qDBusRegisterMetaType<QVector<QDBusSignature> >();
-        qDBusRegisterMetaType<QVector<QDBusUnixFileDescriptor> >();
 #endif
 
         initialized.storeRelaxed(true);
     }
 }
 
-Q_GLOBAL_STATIC(QVector<QDBusCustomTypeInfo>, customTypes)
-Q_GLOBAL_STATIC(QReadWriteLock, customTypesLock)
+struct QDBusCustomTypes
+{
+    QReadWriteLock lock;
+    QHash<int, QDBusCustomTypeInfo> hash;
+};
+
+Q_GLOBAL_STATIC(QDBusCustomTypes, customTypes)
 
 /*!
     \class QDBusMetaType
@@ -187,7 +142,9 @@ Q_GLOBAL_STATIC(QReadWriteLock, customTypesLock)
     Q_DECLARE_METATYPE() macro, and then registered as in the
     following example:
 
-    \snippet code/src_qdbus_qdbusmetatype.cpp 0
+    \snippet code/src_qdbus_qdbusmetatype.cpp 0-0
+    \codeline
+    \snippet code/src_qdbus_qdbusmetatype.cpp 0-1
 
     If \c{T} isn't one of
     Qt's \l{container classes}, the \c{operator<<} and
@@ -223,41 +180,49 @@ Q_GLOBAL_STATIC(QReadWriteLock, customTypesLock)
 /*!
     \internal
     Registers the marshalling and demarshalling functions for meta
-    type \a id.
+    type \a metaType.
 */
-void QDBusMetaType::registerMarshallOperators(int id, MarshallFunction mf,
+void QDBusMetaType::registerMarshallOperators(QMetaType metaType, MarshallFunction mf,
                                               DemarshallFunction df)
 {
-    QVector<QDBusCustomTypeInfo> *ct = customTypes();
-    if (id < 0 || !mf || !df || !ct)
+    int id = metaType.id();
+    if (id < 0 || !mf || !df)
         return;                 // error!
 
-    QWriteLocker locker(customTypesLock());
-    if (id >= ct->size())
-        ct->resize(id + 1);
-    QDBusCustomTypeInfo &info = (*ct)[id];
+    auto *ct = customTypes();
+    if (!ct)
+        return;
+
+    QWriteLocker locker(&ct->lock);
+    QDBusCustomTypeInfo &info = ct->hash[id];
     info.marshall = mf;
     info.demarshall = df;
 }
 
 /*!
     \internal
-    Executes the marshalling of type \a id (whose data is contained in
+    Executes the marshalling of type \a metaType (whose data is contained in
     \a data) to the D-Bus marshalling argument \a arg. Returns \c true if
     the marshalling succeeded, or false if an error occurred.
 */
-bool QDBusMetaType::marshall(QDBusArgument &arg, int id, const void *data)
+bool QDBusMetaType::marshall(QDBusArgument &arg, QMetaType metaType, const void *data)
 {
+    auto *ct = customTypes();
+    if (!ct)
+        return false;
+
+    int id = metaType.id();
     QDBusMetaTypeId::init();
 
     MarshallFunction mf;
     {
-        QReadLocker locker(customTypesLock());
-        QVector<QDBusCustomTypeInfo> *ct = customTypes();
-        if (id >= ct->size())
+        QReadLocker locker(&ct->lock);
+
+        auto it = ct->hash.constFind(id);
+        if (it == ct->hash.cend())
             return false;       // non-existent
 
-        const QDBusCustomTypeInfo &info = (*ct).at(id);
+        const QDBusCustomTypeInfo &info = *it;
         if (!info.marshall) {
             mf = nullptr;       // make gcc happy
             return false;
@@ -271,22 +236,28 @@ bool QDBusMetaType::marshall(QDBusArgument &arg, int id, const void *data)
 
 /*!
     \internal
-    Executes the demarshalling of type \a id (whose data will be placed in
+    Executes the demarshalling of type \a metaType (whose data will be placed in
     \a data) from the D-Bus marshalling argument \a arg. Returns \c true if
     the demarshalling succeeded, or false if an error occurred.
 */
-bool QDBusMetaType::demarshall(const QDBusArgument &arg, int id, void *data)
+bool QDBusMetaType::demarshall(const QDBusArgument &arg, QMetaType metaType, void *data)
 {
+    auto *ct = customTypes();
+    if (!ct)
+        return false;
+
+    int id = metaType.id();
     QDBusMetaTypeId::init();
 
     DemarshallFunction df;
     {
-        QReadLocker locker(customTypesLock());
-        QVector<QDBusCustomTypeInfo> *ct = customTypes();
-        if (id >= ct->size())
+        QReadLocker locker(&ct->lock);
+
+        auto it = ct->hash.constFind(id);
+        if (it == ct->hash.cend())
             return false;       // non-existent
 
-        const QDBusCustomTypeInfo &info = (*ct).at(id);
+        const QDBusCustomTypeInfo &info = *it;
         if (!info.demarshall) {
             df = nullptr;       // make gcc happy
             return false;
@@ -314,45 +285,45 @@ bool QDBusMetaType::demarshall(const QDBusArgument &arg, int id, void *data)
     Note: this function only handles the basic D-Bus types.
 
     \sa QDBusUtil::isValidSingleSignature(), typeToSignature(),
-        QVariant::type(), QVariant::userType()
+        QVariant::metaType()
 */
-int QDBusMetaType::signatureToType(const char *signature)
+QMetaType QDBusMetaType::signatureToMetaType(const char *signature)
 {
     if (!signature)
-        return QMetaType::UnknownType;
+        return QMetaType(QMetaType::UnknownType);
 
     QDBusMetaTypeId::init();
     switch (signature[0])
     {
     case DBUS_TYPE_BOOLEAN:
-        return QMetaType::Bool;
+        return QMetaType(QMetaType::Bool);
 
     case DBUS_TYPE_BYTE:
-        return QMetaType::UChar;
+        return QMetaType(QMetaType::UChar);
 
     case DBUS_TYPE_INT16:
-        return QMetaType::Short;
+        return QMetaType(QMetaType::Short);
 
     case DBUS_TYPE_UINT16:
-        return QMetaType::UShort;
+        return QMetaType(QMetaType::UShort);
 
     case DBUS_TYPE_INT32:
-        return QMetaType::Int;
+        return QMetaType(QMetaType::Int);
 
     case DBUS_TYPE_UINT32:
-        return QMetaType::UInt;
+        return QMetaType(QMetaType::UInt);
 
     case DBUS_TYPE_INT64:
-        return QMetaType::LongLong;
+        return QMetaType(QMetaType::LongLong);
 
     case DBUS_TYPE_UINT64:
-        return QMetaType::ULongLong;
+        return QMetaType(QMetaType::ULongLong);
 
     case DBUS_TYPE_DOUBLE:
-        return QMetaType::Double;
+        return QMetaType(QMetaType::Double);
 
     case DBUS_TYPE_STRING:
-        return QMetaType::QString;
+        return QMetaType(QMetaType::QString);
 
     case DBUS_TYPE_OBJECT_PATH:
         return QDBusMetaTypeId::objectpath();
@@ -369,25 +340,45 @@ int QDBusMetaType::signatureToType(const char *signature)
     case DBUS_TYPE_ARRAY:       // special case
         switch (signature[1]) {
         case DBUS_TYPE_BYTE:
-            return QMetaType::QByteArray;
+            return QMetaType(QMetaType::QByteArray);
 
         case DBUS_TYPE_STRING:
-            return QMetaType::QStringList;
+            return QMetaType(QMetaType::QStringList);
 
         case DBUS_TYPE_VARIANT:
-            return QMetaType::QVariantList;
+            return QMetaType(QMetaType::QVariantList);
 
         case DBUS_TYPE_OBJECT_PATH:
-            return qMetaTypeId<QList<QDBusObjectPath> >();
+            return QMetaType::fromType<QList<QDBusObjectPath> >();
 
         case DBUS_TYPE_SIGNATURE:
-            return qMetaTypeId<QList<QDBusSignature> >();
+            return QMetaType::fromType<QList<QDBusSignature> >();
 
         }
         Q_FALLTHROUGH();
     default:
-        return QMetaType::UnknownType;
+        return QMetaType(QMetaType::UnknownType);
     }
+}
+
+/*!
+    \fn QDBusMetaType::registerCustomType(QMetaType type, const QByteArray &signature)
+    \internal
+
+    Registers the meta type \a type to be represeneted by the given D-Bus \a signature.
+
+    This is used in qdbuscpp2xml for custom types which aren't known to the C++ type system.
+*/
+void QDBusMetaType::registerCustomType(QMetaType type, const QByteArray &signature)
+{
+    auto *ct = customTypes();
+    if (!ct)
+        return;
+
+    QWriteLocker locker(&ct->lock);
+    auto &info = ct->hash[type.id()];
+    info.signature = signature;
+    // note how marshall/demarshall are not set, the type is never used at runtime
 }
 
 /*!
@@ -399,12 +390,12 @@ int QDBusMetaType::signatureToType(const char *signature)
     More types can be registered with the qDBusRegisterMetaType() function.
 
     \sa QDBusUtil::isValidSingleSignature(), signatureToType(),
-        QVariant::type(), QVariant::userType()
+        QVariant::metaType()
 */
-const char *QDBusMetaType::typeToSignature(int type)
+const char *QDBusMetaType::typeToSignature(QMetaType type)
 {
     // check if it's a static type
-    switch (type)
+    switch (type.id())
     {
     case QMetaType::UChar:
         return DBUS_TYPE_BYTE_AS_STRING;
@@ -456,13 +447,17 @@ const char *QDBusMetaType::typeToSignature(int type)
         return DBUS_TYPE_UNIX_FD_AS_STRING;
 
     // try the database
-    QVector<QDBusCustomTypeInfo> *ct = customTypes();
-    {
-        QReadLocker locker(customTypesLock());
-        if (type >= ct->size())
-            return nullptr;           // type not registered with us
+    auto *ct = customTypes();
+    if (!ct)
+        return nullptr;
 
-        const QDBusCustomTypeInfo &info = (*ct).at(type);
+    {
+        QReadLocker locker(&ct->lock);
+        auto it = ct->hash.constFind(type.id());
+        if (it == ct->hash.end())
+            return nullptr;
+
+        const QDBusCustomTypeInfo &info = *it;
 
         if (!info.signature.isNull())
             return info.signature;
@@ -476,11 +471,11 @@ const char *QDBusMetaType::typeToSignature(int type)
     {
         // createSignature will never return a null QByteArray
         // if there was an error, it'll return ""
-        QByteArray signature = QDBusArgumentPrivate::createSignature(type);
+        QByteArray signature = QDBusArgumentPrivate::createSignature(type.id());
 
         // re-acquire lock
-        QWriteLocker locker(customTypesLock());
-        info = &(*ct)[type];
+        QWriteLocker locker(&ct->lock);
+        info = &ct->hash[type.id()];
         info->signature = signature;
     }
     return info->signature;

@@ -1,15 +1,13 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 package org.chromium.weblayer_private;
 
-import android.annotation.TargetApi;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.graphics.drawable.Icon;
-import android.os.Build;
 import android.webkit.WebViewFactory;
 
 import androidx.annotation.NonNull;
@@ -43,11 +41,8 @@ public final class WebLayerNotificationWrapperBuilder extends NotificationWrappe
     public NotificationWrapperBuilder setSmallIcon(int icon) {
         if (WebLayerImpl.isAndroidResource(icon)) {
             super.setSmallIcon(icon);
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            super.setSmallIcon(createIcon(icon));
         } else {
-            // Some fallback is required, or the notification won't appear.
-            super.setSmallIcon(getFallbackAndroidResource(icon));
+            super.setSmallIcon(createIcon(icon));
         }
         return this;
     }
@@ -58,16 +53,13 @@ public final class WebLayerNotificationWrapperBuilder extends NotificationWrappe
             int icon, CharSequence title, PendingIntent intent) {
         if (WebLayerImpl.isAndroidResource(icon)) {
             super.addAction(icon, title, intent);
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        } else {
             super.addAction(
                     new Notification.Action.Builder(createIcon(icon), title, intent).build());
-        } else {
-            super.addAction(getFallbackAndroidResource(icon), title, intent);
         }
         return this;
     }
 
-    @TargetApi(Build.VERSION_CODES.M)
     private Icon createIcon(int resId) {
         return Icon.createWithResource(WebViewFactory.getLoadedPackageInfo().packageName,
                 WebLayerImpl.getResourceIdForSystemUi(resId));
@@ -78,27 +70,27 @@ public final class WebLayerNotificationWrapperBuilder extends NotificationWrappe
      * resources. This is useful when {@link Icon} is not available.
      */
     private int getFallbackAndroidResource(int appResourceId) {
-        if (appResourceId == R.drawable.ic_play_arrow_white_36dp) {
+        if (appResourceId == R.drawable.ic_play_arrow_white_24dp) {
             return android.R.drawable.ic_media_play;
         }
-        if (appResourceId == R.drawable.ic_pause_white_36dp) {
+        if (appResourceId == R.drawable.ic_pause_white_24dp) {
             return android.R.drawable.ic_media_pause;
         }
-        if (appResourceId == R.drawable.ic_stop_white_36dp) {
+        if (appResourceId == R.drawable.ic_stop_white_24dp) {
             // There's no ic_media_stop. This standin is at least a square. In practice this
             // shouldn't ever come up as stop is only used in (Chrome) cast notifications.
             return android.R.drawable.checkbox_off_background;
         }
-        if (appResourceId == R.drawable.ic_skip_previous_white_36dp) {
+        if (appResourceId == R.drawable.ic_skip_previous_white_24dp) {
             return android.R.drawable.ic_media_previous;
         }
-        if (appResourceId == R.drawable.ic_skip_next_white_36dp) {
+        if (appResourceId == R.drawable.ic_skip_next_white_24dp) {
             return android.R.drawable.ic_media_next;
         }
-        if (appResourceId == R.drawable.ic_fast_forward_white_36dp) {
+        if (appResourceId == R.drawable.ic_fast_forward_white_24dp) {
             return android.R.drawable.ic_media_ff;
         }
-        if (appResourceId == R.drawable.ic_fast_rewind_white_36dp) {
+        if (appResourceId == R.drawable.ic_fast_rewind_white_24dp) {
             return android.R.drawable.ic_media_rew;
         }
         if (appResourceId == R.drawable.audio_playing) {

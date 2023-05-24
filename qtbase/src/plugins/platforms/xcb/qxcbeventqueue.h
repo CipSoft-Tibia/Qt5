@@ -1,54 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QXCBEVENTQUEUE_H
 #define QXCBEVENTQUEUE_H
 
 #include <QtCore/QThread>
 #include <QtCore/QHash>
 #include <QtCore/QEventLoop>
-#include <QtCore/QVector>
+#include <QtCore/QList>
 #include <QtCore/QMutex>
 #include <QtCore/QWaitCondition>
 
 #include <xcb/xcb.h>
 
 #include <atomic>
+#include <limits>
 
 QT_BEGIN_NAMESPACE
 
@@ -74,11 +39,24 @@ public:
     enum { PoolSize = 100 }; // 2.4 kB with 100 nodes
 
     enum PeekOption {
-        PeekDefault = 0, // see qx11info_x11.h for docs
+        // See qx11info_x11.cpp in X11 Extras module.
+        PeekDefault = 0,
+        // See qx11info_x11.cpp in X11 Extras module.
         PeekFromCachedIndex = 1,
+        // Used by the event compression algorithms to determine if
+        // the currently processed event (which has been already dequeued)
+        // can be compressed. Returns from the QXcbEventQueue::peek()
+        // on the first match.
         PeekRetainMatch = 2,
-        PeekRemoveMatch = 3,
-        PeekRemoveMatchContinue = 4
+        // Marks the event in the node as "nullptr". The actual
+        // node remains in the queue. The nodes are unlinked only
+        // by dequeueNode(). Returns from the QXcbEventQueue::peek()
+        // on the first match.
+        PeekConsumeMatch = 3,
+        // Same as above, but continues to the next node in the
+        // queue. Repeats this until the flushed tailed node has
+        // been reached.
+        PeekConsumeMatchAndContinue = 4
     };
     Q_DECLARE_FLAGS(PeekOptions, PeekOption)
 
@@ -91,10 +69,11 @@ public:
     void wakeUpDispatcher();
 
     // ### peek() and peekEventQueue() could be unified. Note that peekEventQueue()
-    // is public API exposed via QX11Extras/QX11Info.
+    // is public API exposed via QX11Extras/QX11Info. PeekOption could be reworked to
+    // have values that can be OR-ed together.
     template<typename Peeker>
     xcb_generic_event_t *peek(Peeker &&peeker) {
-        return peek(PeekRemoveMatch, std::forward<Peeker>(peeker));
+        return peek(PeekConsumeMatch, std::forward<Peeker>(peeker));
     }
     template<typename Peeker>
     inline xcb_generic_event_t *peek(PeekOption config, Peeker &&peeker);
@@ -107,7 +86,8 @@ public:
                         PeekOptions option = PeekDefault, qint32 peekerId = -1);
 
     const QXcbEventNode *flushedTail() const { return m_flushedTail; }
-    void waitForNewEvents(const QXcbEventNode *sinceFlushedTail, unsigned long time = ULONG_MAX);
+    void waitForNewEvents(const QXcbEventNode *sinceFlushedTail,
+                          unsigned long time = (std::numeric_limits<unsigned long>::max)());
 
 private:
     QXcbEventNode *qXcbEventNodeFactory(xcb_generic_event_t *event);
@@ -132,7 +112,7 @@ private:
     bool m_peekerIndexCacheDirty = false;
     QHash<qint32, QXcbEventNode *> m_peekerToNode;
 
-    QVector<xcb_generic_event_t *> m_inputEvents;
+    QList<xcb_generic_event_t *> m_inputEvents;
 
     // debug stats
     quint64 m_nodesOnHeap = 0;
@@ -152,9 +132,10 @@ xcb_generic_event_t *QXcbEventQueue::peek(PeekOption option, Peeker &&peeker)
     do {
         xcb_generic_event_t *event = node->event;
         if (event && peeker(event, event->response_type & ~0x80)) {
-            if (option == PeekRemoveMatch || option == PeekRemoveMatchContinue)
+            if (option == PeekConsumeMatch || option == PeekConsumeMatchAndContinue)
                 node->event = nullptr;
-            if (option != PeekRemoveMatchContinue)
+
+            if (option != PeekConsumeMatchAndContinue)
                 return event;
         }
         if (node == m_flushedTail)

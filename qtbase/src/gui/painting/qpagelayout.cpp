@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 John Layt <jlayt@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 John Layt <jlayt@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 #include "qpagelayout.h"
@@ -47,6 +11,10 @@
 #include <qdebug.h>
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN(QPageLayout)
+QT_IMPL_METATYPE_EXTERN_TAGGED(QPageLayout::Unit, QPageLayout__Unit)
+QT_IMPL_METATYPE_EXTERN_TAGGED(QPageLayout::Orientation, QPageLayout__Orientation)
 
 // Multiplier for converting units to points.
 Q_GUI_EXPORT qreal qt_pointMultiplier(QPageLayout::Unit unit)
@@ -71,41 +39,19 @@ Q_GUI_EXPORT qreal qt_pointMultiplier(QPageLayout::Unit unit)
 // Multiplier for converting pixels to points.
 extern qreal qt_pixelMultiplier(int resolution);
 
-QPointF qt_convertPoint(const QPointF &xy, QPageLayout::Unit fromUnits, QPageLayout::Unit toUnits)
-{
-    // If the size have the same units, or are all 0, then don't need to convert
-    if (fromUnits == toUnits || xy.isNull())
-        return xy;
-
-    // If converting to points then convert and round to 0 decimal places
-    if (toUnits == QPageLayout::Point) {
-        const qreal multiplier = qt_pointMultiplier(fromUnits);
-        return QPointF(qRound(xy.x() * multiplier),
-                       qRound(xy.y() * multiplier));
-    }
-
-    // If converting to other units, need to convert to unrounded points first
-    QPointF pointXy = (fromUnits == QPageLayout::Point) ? xy : xy * qt_pointMultiplier(fromUnits);
-
-    // Then convert from points to required units rounded to 2 decimal places
-    const qreal multiplier = qt_pointMultiplier(toUnits);
-    return QPointF(qRound(pointXy.x() * 100 / multiplier) / 100.0,
-                   qRound(pointXy.y() * 100 / multiplier) / 100.0);
-}
-
 Q_GUI_EXPORT QMarginsF qt_convertMargins(const QMarginsF &margins, QPageLayout::Unit fromUnits, QPageLayout::Unit toUnits)
 {
     // If the margins have the same units, or are all 0, then don't need to convert
     if (fromUnits == toUnits || margins.isNull())
         return margins;
 
-    // If converting to points then convert and round to 0 decimal places
+    // If converting to points then convert and round up to 2 decimal places
     if (toUnits == QPageLayout::Point) {
-        const qreal multiplier = qt_pointMultiplier(fromUnits);
-        return QMarginsF(qRound(margins.left() * multiplier),
-                         qRound(margins.top() * multiplier),
-                         qRound(margins.right() * multiplier),
-                         qRound(margins.bottom() * multiplier));
+        const qreal multiplierX100 = qt_pointMultiplier(fromUnits) * 100;
+        return QMarginsF(qCeil(margins.left() * multiplierX100) / 100.0,
+                         qCeil(margins.top() * multiplierX100) / 100.0,
+                         qCeil(margins.right() * multiplierX100) / 100.0,
+                         qCeil(margins.bottom() * multiplierX100) / 100.0);
     }
 
     // If converting to other units, need to convert to unrounded points first
@@ -136,7 +82,7 @@ public:
     void clampMargins(const QMarginsF &margins);
 
     QMarginsF margins(QPageLayout::Unit units) const;
-    QMargins marginsPoints() const;
+    QMarginsF marginsPoints() const;
     QMargins marginsPixels(int resolution) const;
 
     void setDefaultMargins(const QMarginsF &minMargins);
@@ -218,23 +164,23 @@ QMarginsF QPageLayoutPrivate::margins(QPageLayout::Unit units) const
     return qt_convertMargins(m_margins, m_units, units);
 }
 
-QMargins QPageLayoutPrivate::marginsPoints() const
+QMarginsF QPageLayoutPrivate::marginsPoints() const
 {
-    return qt_convertMargins(m_margins, m_units, QPageLayout::Point).toMargins();
+    return qt_convertMargins(m_margins, m_units, QPageLayout::Point);
 }
 
 QMargins QPageLayoutPrivate::marginsPixels(int resolution) const
 {
-    return marginsPoints() / qt_pixelMultiplier(resolution);
+    return QMarginsF(marginsPoints() / qt_pixelMultiplier(resolution)).toMargins();
 }
 
 void QPageLayoutPrivate::setDefaultMargins(const QMarginsF &minMargins)
 {
     m_minMargins = minMargins;
-    m_maxMargins = QMarginsF(m_fullSize.width() - m_minMargins.right(),
-                             m_fullSize.height() - m_minMargins.bottom(),
-                             m_fullSize.width() - m_minMargins.left(),
-                             m_fullSize.height() - m_minMargins.top());
+    m_maxMargins = QMarginsF(qMax(m_fullSize.width() - m_minMargins.right(), qreal(0)),
+                             qMax(m_fullSize.height() - m_minMargins.bottom(), qreal(0)),
+                             qMax(m_fullSize.width() - m_minMargins.left(), qreal(0)),
+                             qMax(m_fullSize.height() - m_minMargins.top(), qreal(0)));
     if (m_mode == QPageLayout::StandardMode)
         clampMargins(m_margins);
 }
@@ -415,7 +361,7 @@ QPageLayout &QPageLayout::operator=(const QPageLayout &other)
 */
 
 /*!
-    \relates QPageLayout
+    \fn bool QPageLayout::operator==(const QPageLayout &lhs, const QPageLayout &rhs)
 
     Returns \c true if page layout \a lhs is equal to page layout \a rhs,
     i.e. if all the attributes are exactly equal.
@@ -427,14 +373,8 @@ QPageLayout &QPageLayout::operator=(const QPageLayout &other)
     \sa QPageLayout::isEquivalentTo()
 */
 
-bool operator==(const QPageLayout &lhs, const QPageLayout &rhs)
-{
-    return lhs.d == rhs.d || *lhs.d == *rhs.d;
-}
-
 /*!
-    \fn bool operator!=(const QPageLayout &lhs, const QPageLayout &rhs)
-    \relates QPageLayout
+    \fn bool QPageLayout::operator!=(const QPageLayout &lhs, const QPageLayout &rhs)
 
     Returns \c true if page layout \a lhs is not equal to page layout \a rhs,
     i.e. if any of the attributes differ.
@@ -445,6 +385,15 @@ bool operator==(const QPageLayout &lhs, const QPageLayout &rhs)
 
     \sa QPageLayout::isEquivalentTo()
 */
+
+/*!
+    \internal
+*/
+bool QPageLayout::equals(const QPageLayout &other) const
+{
+    return d == other.d || *d == *other.d;
+}
+
 
 /*!
     Returns \c true if this page layout is equivalent to the \a other page layout,
@@ -750,7 +699,7 @@ QMarginsF QPageLayout::margins(Unit units) const
 
 QMargins QPageLayout::marginsPoints() const
 {
-    return d->marginsPoints();
+    return d->marginsPoints().toMargins();
 }
 
 /*!
@@ -917,7 +866,7 @@ QRect QPageLayout::paintRectPoints() const
     if (!isValid())
         return QRect();
     return d->m_mode == FullPageMode ? d->fullRectPoints()
-                                                  : d->fullRectPoints() - d->marginsPoints();
+                                                  : d->fullRectPoints() - d->marginsPoints().toMargins();
 }
 
 /*!

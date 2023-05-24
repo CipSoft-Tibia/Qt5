@@ -9,10 +9,32 @@
 #define SkCanvasPriv_DEFINED
 
 #include "include/core/SkCanvas.h"
-#include "include/private/SkNoncopyable.h"
+#include "include/private/base/SkNoncopyable.h"
 
 class SkReadBuffer;
 class SkWriteBuffer;
+
+#if GR_TEST_UTILS
+#if SK_GPU_V1
+namespace skgpu::v1 {
+    class SurfaceDrawContext;
+    class SurfaceFillContext;
+}
+#endif // SK_GPU_V1
+#endif // GR_TEST_UTILS
+
+// This declaration must match the one in SkDeferredDisplayList.h
+#if SK_SUPPORT_GPU
+class GrRenderTargetProxy;
+#else
+using GrRenderTargetProxy = SkRefCnt;
+#endif // SK_SUPPORT_GPU
+
+#if GRAPHITE_TEST_UTILS
+namespace skgpu::graphite {
+    class TextureProxy;
+}
+#endif
 
 class SkAutoCanvasMatrixPaint : SkNoncopyable {
 public:
@@ -26,10 +48,6 @@ private:
 
 class SkCanvasPriv {
 public:
-    enum {
-        kDontClipToLayer_SaveLayerFlag = SkCanvas::kDontClipToLayer_PrivateSaveLayerFlag,
-    };
-
     // The lattice has pointers directly into the readbuffer
     static bool ReadLattice(SkReadBuffer&, SkCanvas::Lattice*);
 
@@ -39,8 +57,6 @@ public:
     // storage must be 4-byte aligned
     static size_t WriteLattice(void* storage, const SkCanvas::Lattice&);
 
-    static SkCanvas::SaveLayerFlags LegacySaveFlagsToSaveLayerFlags(uint32_t legacySaveFlags);
-
     static int SaveBehind(SkCanvas* canvas, const SkRect* subset) {
         return canvas->only_axis_aligned_saveBehind(subset);
     }
@@ -49,9 +65,25 @@ public:
     }
 
     // Exposed for testing on non-Android framework builds
-    static void ReplaceClip(SkCanvas* canvas, const SkIRect& rect) {
-        canvas->androidFramework_replaceClip(rect);
+    static void ResetClip(SkCanvas* canvas) {
+        canvas->internal_private_resetClip();
     }
+
+    static SkBaseDevice* TopDevice(SkCanvas* canvas) {
+        return canvas->topDevice();
+    }
+
+#if GR_TEST_UTILS
+#if SK_GPU_V1
+    static skgpu::v1::SurfaceDrawContext* TopDeviceSurfaceDrawContext(SkCanvas*);
+    static skgpu::v1::SurfaceFillContext* TopDeviceSurfaceFillContext(SkCanvas*);
+#endif
+#endif // GR_TEST_UTILS
+    static GrRenderTargetProxy* TopDeviceTargetProxy(SkCanvas*);
+
+#if GRAPHITE_TEST_UTILS
+    static skgpu::graphite::TextureProxy* TopDeviceGraphiteTargetProxy(SkCanvas*);
+#endif
 
     // The experimental_DrawEdgeAAImageSet API accepts separate dstClips and preViewMatrices arrays,
     // where entries refer into them, but no explicit size is provided. Given a set of entries,
@@ -59,9 +91,21 @@ public:
     static void GetDstClipAndMatrixCounts(const SkCanvas::ImageSetEntry set[], int count,
                                           int* totalDstClipCount, int* totalMatrixCount);
 
-    // Checks that the marker name is an identifier ([a-zA-Z][a-zA-Z0-9_]*)
-    // Identifiers with leading underscores are reserved (not allowed).
-    static bool ValidateMarker(const char*);
+    static SkCanvas::SaveLayerRec ScaledBackdropLayer(const SkRect* bounds,
+                                                      const SkPaint* paint,
+                                                      const SkImageFilter* backdrop,
+                                                      SkScalar backdropScale,
+                                                      SkCanvas::SaveLayerFlags saveLayerFlags) {
+        return SkCanvas::SaveLayerRec(bounds, paint, backdrop, backdropScale, saveLayerFlags);
+    }
+
+    static SkScalar GetBackdropScaleFactor(const SkCanvas::SaveLayerRec& rec) {
+        return rec.fExperimentalBackdropScale;
+    }
+
+    static void SetBackdropScaleFactor(SkCanvas::SaveLayerRec* rec, SkScalar scale) {
+        rec->fExperimentalBackdropScale = scale;
+    }
 };
 
 /**

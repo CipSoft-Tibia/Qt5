@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,13 +8,10 @@
 
 #include "base/check.h"
 #include "base/compiler_specific.h"
-#include "base/macros.h"
-#include "base/stl_util.h"
+#include "base/containers/contains.h"
 #include "base/task/current_thread.h"
-#include "base/win/windows_version.h"
 
-namespace ui {
-namespace tsf_inputscope {
+namespace ui::tsf_inputscope {
 namespace {
 
 void AppendNonTrivialInputScope(std::vector<InputScope>* input_scopes,
@@ -35,6 +32,9 @@ class TSFInputScope final : public ITfInputScope {
   explicit TSFInputScope(const std::vector<InputScope>& input_scopes)
       : input_scopes_(input_scopes),
         ref_count_(0) {}
+
+  TSFInputScope(const TSFInputScope&) = delete;
+  TSFInputScope& operator=(const TSFInputScope&) = delete;
 
   // ITfInputScope:
   IFACEMETHODIMP_(ULONG) AddRef() override {
@@ -98,8 +98,6 @@ class TSFInputScope final : public ITfInputScope {
 
   // The reference count of this instance.
   volatile ULONG ref_count_;
-
-  DISALLOW_COPY_AND_ASSIGN(TSFInputScope);
 };
 
 typedef HRESULT (WINAPI *SetInputScopesFunc)(HWND window_handle,
@@ -189,9 +187,8 @@ ITfInputScope* CreateInputScope(TextInputType text_input_type,
                                 bool should_do_learning) {
   std::vector<InputScope> input_scopes;
   // Should set input scope to IS_PRIVATE if we are in "incognito" or "guest"
-  // mode. Note that the IS_PRIVATE input scope is only support from WIN10.
-  if (!should_do_learning &&
-      (base::win::GetVersion() >= base::win::Version::WIN10)) {
+  // mode.
+  if (!should_do_learning) {
     input_scopes.push_back(IS_PRIVATE);
   } else {
     input_scopes = GetInputScopes(text_input_type, text_input_mode);
@@ -211,5 +208,4 @@ void SetInputScopeForTsfUnawareWindow(HWND window_handle,
                      NULL, 0, NULL, NULL);
 }
 
-}  // namespace tsf_inputscope
-}  // namespace ui
+}  // namespace ui::tsf_inputscope

@@ -13,9 +13,7 @@
 #include "include/libplatform/v8-tracing.h"
 #include "include/v8-platform.h"
 #include "src/base/compiler-specific.h"
-#include "src/base/macros.h"
 #include "src/base/platform/mutex.h"
-#include "src/base/platform/time.h"
 
 namespace v8 {
 namespace platform {
@@ -34,6 +32,9 @@ class V8_PLATFORM_EXPORT DefaultPlatform : public NON_EXPORTED_BASE(Platform) {
       std::unique_ptr<v8::TracingController> tracing_controller = {});
 
   ~DefaultPlatform() override;
+
+  DefaultPlatform(const DefaultPlatform&) = delete;
+  DefaultPlatform& operator=(const DefaultPlatform&) = delete;
 
   void EnsureBackgroundTaskRunnerInitialized();
 
@@ -60,6 +61,8 @@ class V8_PLATFORM_EXPORT DefaultPlatform : public NON_EXPORTED_BASE(Platform) {
   bool IdleTasksEnabled(Isolate* isolate) override;
   std::unique_ptr<JobHandle> PostJob(
       TaskPriority priority, std::unique_ptr<JobTask> job_state) override;
+  std::unique_ptr<JobHandle> CreateJob(
+      TaskPriority priority, std::unique_ptr<JobTask> job_state) override;
   double MonotonicallyIncreasingTime() override;
   double CurrentClockTimeMillis() override;
   v8::TracingController* GetTracingController() override;
@@ -80,7 +83,6 @@ class V8_PLATFORM_EXPORT DefaultPlatform : public NON_EXPORTED_BASE(Platform) {
   std::unique_ptr<PageAllocator> page_allocator_;
 
   TimeFunction time_function_for_testing_ = nullptr;
-  DISALLOW_COPY_AND_ASSIGN(DefaultPlatform);
 };
 
 }  // namespace platform

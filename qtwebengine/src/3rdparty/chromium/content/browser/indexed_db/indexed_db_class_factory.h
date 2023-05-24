@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,13 +9,13 @@
 
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/lazy_instance.h"
-#include "base/memory/ref_counted.h"
-#include "base/strings/string16.h"
-#include "components/services/storage/indexed_db/scopes/scopes_lock_manager.h"
+#include "base/memory/raw_ptr.h"
+#include "components/services/storage/indexed_db/locks/partitioned_lock_manager.h"
 #include "content/browser/indexed_db/indexed_db_backing_store.h"
 #include "content/browser/indexed_db/indexed_db_database.h"
 #include "content/browser/indexed_db/indexed_db_task_helper.h"
@@ -61,13 +61,13 @@ class CONTENT_EXPORT IndexedDBClassFactory {
   // database has tasks to run.
   virtual std::pair<std::unique_ptr<IndexedDBDatabase>, leveldb::Status>
   CreateIndexedDBDatabase(
-      const base::string16& name,
+      const std::u16string& name,
       IndexedDBBackingStore* backing_store,
       IndexedDBFactory* factory,
       TasksAvailableCallback tasks_available_callback,
       std::unique_ptr<IndexedDBMetadataCoding> metadata_coding,
       const IndexedDBDatabase::Identifier& unique_identifier,
-      ScopesLockManager* transaction_lock_manager);
+      PartitionedLockManager* transaction_lock_manager);
 
   // |tasks_available_callback| is called when the transaction has tasks to run.
   virtual std::unique_ptr<IndexedDBTransaction> CreateIndexedDBTransaction(
@@ -89,8 +89,8 @@ class CONTENT_EXPORT IndexedDBClassFactory {
   virtual ~IndexedDBClassFactory() = default;
   friend struct base::LazyInstanceTraitsBase<IndexedDBClassFactory>;
 
-  LevelDBFactory* leveldb_factory_;
-  TransactionalLevelDBFactory* transactional_leveldb_factory_;
+  raw_ptr<LevelDBFactory> leveldb_factory_;
+  raw_ptr<TransactionalLevelDBFactory> transactional_leveldb_factory_;
 };
 
 }  // namespace content

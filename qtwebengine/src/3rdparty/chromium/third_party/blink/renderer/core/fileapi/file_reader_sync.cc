@@ -39,36 +39,11 @@
 #include "third_party/blink/renderer/core/typed_arrays/dom_array_buffer.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
-#include "third_party/blink/renderer/platform/instrumentation/histogram.h"
 
 namespace blink {
 
-namespace {
-// These values are written to logs.  New enum values can be added, but existing
-// enums must never be renumbered or deleted and reused.
-enum class WorkerType {
-  OTHER = 0,
-  DEDICATED_WORKER = 1,
-  SHARED_WORKER = 2,
-  SERVICE_WORKER = 3,
-  MAX
-};
-}  // namespace
-
 FileReaderSync::FileReaderSync(ExecutionContext* context)
-    : task_runner_(context->GetTaskRunner(TaskType::kFileReading)) {
-  WorkerType type = WorkerType::OTHER;
-  if (context->IsDedicatedWorkerGlobalScope())
-    type = WorkerType::DEDICATED_WORKER;
-  else if (context->IsSharedWorkerGlobalScope())
-    type = WorkerType::SHARED_WORKER;
-  else if (context->IsServiceWorkerGlobalScope())
-    type = WorkerType::SERVICE_WORKER;
-  DEFINE_THREAD_SAFE_STATIC_LOCAL(
-      EnumerationHistogram, worker_type_histogram,
-      ("FileReaderSync.WorkerType", static_cast<int>(WorkerType::MAX)));
-  worker_type_histogram.Count(static_cast<int>(type));
-}
+    : task_runner_(context->GetTaskRunner(TaskType::kFileReading)) {}
 
 DOMArrayBuffer* FileReaderSync::readAsArrayBuffer(
     Blob* blob,

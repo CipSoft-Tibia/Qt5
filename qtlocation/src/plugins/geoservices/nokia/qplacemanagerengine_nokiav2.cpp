@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplacemanagerengine_nokiav2.h"
 
@@ -41,7 +8,6 @@
 #include "placesv2/qplacesearchsuggestionreplyimpl.h"
 #include "placesv2/qplacesearchreplyhere.h"
 #include "placesv2/qplacedetailsreplyimpl.h"
-#include "placesv2/qplaceidreplyimpl.h"
 #include "qgeonetworkaccessmanager.h"
 #include "qgeouriprovider.h"
 #include "uri_constants.h"
@@ -58,7 +24,11 @@
 #include <QtNetwork/QNetworkProxy>
 #include <QtNetwork/QNetworkProxyFactory>
 
+#include <QtLocation/QPlace>
 #include <QtLocation/QPlaceContentRequest>
+#include <QtLocation/QPlaceDetailsReply>
+#include <QtLocation/QPlaceIcon>
+#include <QtLocation/QPlaceSearchRequest>
 #include <QtPositioning/QGeoCircle>
 
 QT_BEGIN_NAMESPACE
@@ -208,8 +178,7 @@ QPlaceManagerEngineNokiaV2::QPlaceManagerEngineNokiaV2(
 
     m_locales.append(QLocale());
 
-    m_appId = parameters.value(QStringLiteral("here.app_id")).toString();
-    m_appCode = parameters.value(QStringLiteral("here.token")).toString();
+    m_apiKey = parameters.value(QStringLiteral("here.apiKey")).toString();
 
     m_theme = parameters.value(IconThemeKey, QString()).toString();
 
@@ -237,7 +206,7 @@ QPlaceManagerEngineNokiaV2::~QPlaceManagerEngineNokiaV2() {}
 
 QPlaceDetailsReply *QPlaceManagerEngineNokiaV2::getPlaceDetails(const QString &placeId)
 {
-    QUrl requestUrl(QString::fromLatin1("http://") + m_uriProvider->getCurrentHost() +
+    QUrl requestUrl(QString::fromLatin1("https://") + m_uriProvider->getCurrentHost() +
                     QStringLiteral("/places/v1/places/") + placeId);
 
     QUrlQuery queryItems;
@@ -252,23 +221,24 @@ QPlaceDetailsReply *QPlaceManagerEngineNokiaV2::getPlaceDetails(const QString &p
 
     QPlaceDetailsReplyImpl *reply = new QPlaceDetailsReplyImpl(networkReply, this);
     reply->setPlaceId(placeId);
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-            this, SLOT(replyError(QPlaceReply::Error,QString)));
+    connect(reply, &QPlaceDetailsReplyImpl::finished,
+            this, &QPlaceManagerEngineNokiaV2::replyFinished);
+    connect(reply, &QPlaceDetailsReplyImpl::errorOccurred,
+            this, &QPlaceManagerEngineNokiaV2::replyError);
 
     return reply;
 }
 
 QPlaceContentReply *QPlaceManagerEngineNokiaV2::getPlaceContent(const QPlaceContentRequest &request)
 {
-    QNetworkReply *networkReply = 0;
+    QNetworkReply *networkReply = nullptr;
 
     if (request.contentContext().userType() == qMetaTypeId<QUrl>()) {
         QUrl u = request.contentContext().value<QUrl>();
 
        networkReply = sendRequest(u);
     } else {
-        QUrl requestUrl(QString::fromLatin1("http://") + m_uriProvider->getCurrentHost() +
+        QUrl requestUrl(QString::fromLatin1("https://") + m_uriProvider->getCurrentHost() +
                         QStringLiteral("/places/v1/places/") + request.placeId() +
                         QStringLiteral("/media/"));
 
@@ -320,9 +290,10 @@ QPlaceContentReply *QPlaceManagerEngineNokiaV2::getPlaceContent(const QPlaceCont
     }
 
     QPlaceContentReply *reply = new QPlaceContentReplyImpl(request, networkReply, this);
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-            this, SLOT(replyError(QPlaceReply::Error,QString)));
+    connect(reply, &QPlaceContentReply::finished,
+            this, &QPlaceManagerEngineNokiaV2::replyFinished);
+    connect(reply, &QPlaceContentReply::errorOccurred,
+            this, &QPlaceManagerEngineNokiaV2::replyError);
 
     if (!networkReply) {
         QMetaObject::invokeMethod(reply, "setError", Qt::QueuedConnection,
@@ -364,9 +335,10 @@ QPlaceSearchReply *QPlaceManagerEngineNokiaV2::search(const QPlaceSearchRequest 
 
     if (unsupported) {
         QPlaceSearchReplyHere *reply = new QPlaceSearchReplyHere(query, 0, this);
-        connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-        connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-                this, SLOT(replyError(QPlaceReply::Error,QString)));
+        connect(reply, &QPlaceSearchReplyHere::finished,
+                this, &QPlaceManagerEngineNokiaV2::replyFinished);
+        connect(reply, &QPlaceSearchReplyHere::errorOccurred,
+                this, &QPlaceManagerEngineNokiaV2::replyError);
         QMetaObject::invokeMethod(reply, "setError", Qt::QueuedConnection,
                                   Q_ARG(QPlaceReply::Error, QPlaceReply::BadArgumentError),
                                   Q_ARG(QString, "Unsupported search request options specified."));
@@ -380,9 +352,10 @@ QPlaceSearchReply *QPlaceManagerEngineNokiaV2::search(const QPlaceSearchRequest 
     if (query.recommendationId().isEmpty() && !query.searchContext().isValid()) {
         if (!addAtForBoundingArea(query.searchArea(), &queryItems)) {
             QPlaceSearchReplyHere *reply = new QPlaceSearchReplyHere(query, 0, this);
-            connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-            connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-                    this, SLOT(replyError(QPlaceReply::Error,QString)));
+            connect(reply, &QPlaceSearchReplyHere::finished,
+                    this, &QPlaceManagerEngineNokiaV2::replyFinished);
+            connect(reply, &QPlaceSearchReplyHere::errorOccurred,
+                    this, &QPlaceManagerEngineNokiaV2::replyError);
             QMetaObject::invokeMethod(reply, "setError", Qt::QueuedConnection,
                                       Q_ARG(QPlaceReply::Error, QPlaceReply::BadArgumentError),
                                       Q_ARG(QString, "Invalid search area provided"));
@@ -390,16 +363,16 @@ QPlaceSearchReply *QPlaceManagerEngineNokiaV2::search(const QPlaceSearchRequest 
         }
     }
 
-    QNetworkReply *networkReply = 0;
+    QNetworkReply *networkReply = nullptr;
 
     if (query.searchContext().userType() == qMetaTypeId<QUrl>()) {
         // provided search context
         QUrl u = query.searchContext().value<QUrl>();
 
         typedef QPair<QString, QString> QueryItem;
-        QList<QueryItem> queryItemList = queryItems.queryItems(QUrl::FullyEncoded);
+        const QList<QueryItem> queryItemList = queryItems.queryItems(QUrl::FullyEncoded);
         queryItems = QUrlQuery(u);
-        foreach (const QueryItem &item, queryItemList)
+        for (const QueryItem &item : queryItemList)
             queryItems.addQueryItem(item.first, item.second);
 
         if (query.limit() > 0)
@@ -410,7 +383,7 @@ QPlaceSearchReply *QPlaceManagerEngineNokiaV2::search(const QPlaceSearchRequest 
         networkReply = sendRequest(u);
     } else if (!query.searchTerm().isEmpty()) {
         // search term query
-        QUrl requestUrl(QString::fromLatin1("http://") + m_uriProvider->getCurrentHost() +
+        QUrl requestUrl(QString::fromLatin1("https://") + m_uriProvider->getCurrentHost() +
                         QStringLiteral("/places/v1/discover/search"));
 
         queryItems.addQueryItem(QStringLiteral("q"), query.searchTerm());
@@ -426,13 +399,14 @@ QPlaceSearchReply *QPlaceManagerEngineNokiaV2::search(const QPlaceSearchRequest 
         QNetworkReply *networkReply = sendRequest(requestUrl);
 
         QPlaceSearchReplyHere *reply = new QPlaceSearchReplyHere(query, networkReply, this);
-        connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-        connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-                this, SLOT(replyError(QPlaceReply::Error,QString)));
+        connect(reply, &QPlaceSearchReplyHere::finished,
+                this, &QPlaceManagerEngineNokiaV2::replyFinished);
+        connect(reply, &QPlaceSearchReplyHere::errorOccurred,
+                this, &QPlaceManagerEngineNokiaV2::replyError);
 
         return reply;
     } else if (!query.recommendationId().isEmpty()) {
-        QUrl requestUrl(QString::fromLatin1("http://") + m_uriProvider->getCurrentHost() +
+        QUrl requestUrl(QString::fromLatin1("https://") + m_uriProvider->getCurrentHost() +
                         QStringLiteral("/places/v1/places/") + query.recommendationId() +
                         QStringLiteral("/related/recommended"));
 
@@ -443,11 +417,11 @@ QPlaceSearchReply *QPlaceManagerEngineNokiaV2::search(const QPlaceSearchRequest 
         networkReply = sendRequest(requestUrl);
     } else {
         // category search
-        QUrl requestUrl(QStringLiteral("http://") + m_uriProvider->getCurrentHost() +
+        QUrl requestUrl(QStringLiteral("https://") + m_uriProvider->getCurrentHost() +
              QStringLiteral("/places/v1/discover/explore"));
 
         QStringList ids;
-        foreach (const QPlaceCategory &category, query.categories())
+        for (const QPlaceCategory &category : query.categories())
             ids.append(category.categoryId());
 
         QUrlQuery queryItems;
@@ -470,9 +444,10 @@ QPlaceSearchReply *QPlaceManagerEngineNokiaV2::search(const QPlaceSearchRequest 
     }
 
     QPlaceSearchReplyHere *reply = new QPlaceSearchReplyHere(query, networkReply, this);
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-            this, SLOT(replyError(QPlaceReply::Error,QString)));
+    connect(reply, &QPlaceSearchReplyHere::finished,
+            this, &QPlaceManagerEngineNokiaV2::replyFinished);
+    connect(reply, &QPlaceSearchReplyHere::errorOccurred,
+            this, &QPlaceManagerEngineNokiaV2::replyError);
 
     return reply;
 }
@@ -489,16 +464,17 @@ QPlaceSearchSuggestionReply *QPlaceManagerEngineNokiaV2::searchSuggestions(const
 
     if (unsupported) {
         QPlaceSearchSuggestionReplyImpl *reply = new QPlaceSearchSuggestionReplyImpl(0, this);
-        connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-        connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-                this, SLOT(replyError(QPlaceReply::Error,QString)));
+        connect(reply, &QPlaceSearchSuggestionReplyImpl::finished,
+                this, &QPlaceManagerEngineNokiaV2::replyFinished);
+        connect(reply, &QPlaceSearchSuggestionReplyImpl::errorOccurred,
+                this, &QPlaceManagerEngineNokiaV2::replyError);
         QMetaObject::invokeMethod(reply, "setError", Qt::QueuedConnection,
                                   Q_ARG(QPlaceReply::Error, QPlaceReply::BadArgumentError),
                                   Q_ARG(QString, "Unsupported search request options specified."));
         return reply;
     }
 
-    QUrl requestUrl(QString::fromLatin1("http://") + m_uriProvider->getCurrentHost() +
+    QUrl requestUrl(QString::fromLatin1("https://") + m_uriProvider->getCurrentHost() +
                     QStringLiteral("/places/v1/suggest"));
 
     QUrlQuery queryItems;
@@ -507,9 +483,10 @@ QPlaceSearchSuggestionReply *QPlaceManagerEngineNokiaV2::searchSuggestions(const
 
     if (!addAtForBoundingArea(query.searchArea(), &queryItems)) {
         QPlaceSearchSuggestionReplyImpl *reply = new QPlaceSearchSuggestionReplyImpl(0, this);
-        connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-        connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-                this, SLOT(replyError(QPlaceReply::Error,QString)));
+        connect(reply, &QPlaceSearchSuggestionReplyImpl::finished,
+                this, &QPlaceManagerEngineNokiaV2::replyFinished);
+        connect(reply, &QPlaceSearchSuggestionReplyImpl::errorOccurred,
+                this, &QPlaceManagerEngineNokiaV2::replyError);
         QMetaObject::invokeMethod(reply, "setError", Qt::QueuedConnection,
                                   Q_ARG(QPlaceReply::Error, QPlaceReply::BadArgumentError),
                                   Q_ARG(QString, "Invalid search area provided"));
@@ -521,64 +498,11 @@ QPlaceSearchSuggestionReply *QPlaceManagerEngineNokiaV2::searchSuggestions(const
     QNetworkReply *networkReply = sendRequest(requestUrl);
 
     QPlaceSearchSuggestionReplyImpl *reply = new QPlaceSearchSuggestionReplyImpl(networkReply, this);
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-            this, SLOT(replyError(QPlaceReply::Error,QString)));
+    connect(reply, &QPlaceSearchSuggestionReplyImpl::finished,
+            this, &QPlaceManagerEngineNokiaV2::replyFinished);
+    connect(reply, &QPlaceSearchSuggestionReplyImpl::errorOccurred,
+            this, &QPlaceManagerEngineNokiaV2::replyError);
 
-    return reply;
-}
-
-QPlaceIdReply *QPlaceManagerEngineNokiaV2::savePlace(const QPlace &place)
-{
-    QPlaceIdReplyImpl *reply = new QPlaceIdReplyImpl(QPlaceIdReply::SavePlace, this);
-    reply->setId(place.placeId());
-    QMetaObject::invokeMethod(reply, "setError", Qt::QueuedConnection,
-                              Q_ARG(QPlaceReply::Error, QPlaceReply::UnsupportedError),
-                              Q_ARG(QString, QCoreApplication::translate(NOKIA_PLUGIN_CONTEXT_NAME, SAVING_PLACE_NOT_SUPPORTED)));
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-            this, SLOT(replyError(QPlaceReply::Error,QString)));
-    return reply;
-}
-
-QPlaceIdReply *QPlaceManagerEngineNokiaV2::removePlace(const QString &placeId)
-{
-    QPlaceIdReplyImpl *reply = new QPlaceIdReplyImpl(QPlaceIdReply::RemovePlace, this);
-    reply->setId(placeId);
-    QMetaObject::invokeMethod(reply, "setError", Qt::QueuedConnection,
-                              Q_ARG(QPlaceReply::Error, QPlaceReply::UnsupportedError),
-                              Q_ARG(QString, QCoreApplication::translate(NOKIA_PLUGIN_CONTEXT_NAME, REMOVING_PLACE_NOT_SUPPORTED)));
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-            this, SLOT(replyError(QPlaceReply::Error,QString)));
-    return reply;
-}
-
-QPlaceIdReply *QPlaceManagerEngineNokiaV2::saveCategory(const QPlaceCategory &category, const QString &parentId)
-{
-    Q_UNUSED(parentId);
-
-    QPlaceIdReplyImpl *reply = new QPlaceIdReplyImpl(QPlaceIdReply::SaveCategory, this);
-    reply->setId(category.categoryId());
-    QMetaObject::invokeMethod(reply, "setError", Qt::QueuedConnection,
-                              Q_ARG(QPlaceReply::Error, QPlaceReply::UnsupportedError),
-                              Q_ARG(QString, QCoreApplication::translate(NOKIA_PLUGIN_CONTEXT_NAME, SAVING_CATEGORY_NOT_SUPPORTED)));
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-            this, SLOT(replyError(QPlaceReply::Error,QString)));
-    return reply;
-}
-
-QPlaceIdReply *QPlaceManagerEngineNokiaV2::removeCategory(const QString &categoryId)
-{
-    QPlaceIdReplyImpl *reply = new QPlaceIdReplyImpl(QPlaceIdReply::RemoveCategory, this);
-    reply->setId(categoryId);
-    QMetaObject::invokeMethod(reply, "setError", Qt::QueuedConnection,
-                              Q_ARG(QPlaceReply::Error, QPlaceReply::UnsupportedError),
-                              Q_ARG(QString, QCoreApplication::translate(NOKIA_PLUGIN_CONTEXT_NAME, REMOVING_CATEGORY_NOT_SUPPORTED)));
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-            this, SLOT(replyError(QPlaceReply::Error,QString)));
     return reply;
 }
 
@@ -633,20 +557,22 @@ QPlaceReply *QPlaceManagerEngineNokiaV2::initializeCategories()
     for (auto it = m_tempTree.keyBegin(), end = m_tempTree.keyEnd(); it != end; ++it) {
         if (*it == QString())
             continue;
-        QUrl requestUrl(QString::fromLatin1("http://") + m_uriProvider->getCurrentHost() +
+        QUrl requestUrl(QString::fromLatin1("https://") + m_uriProvider->getCurrentHost() +
                         QStringLiteral("/places/v1/categories/places/") + *it);
         QNetworkReply *networkReply = sendRequest(requestUrl);
-        connect(networkReply, SIGNAL(finished()), this, SLOT(categoryReplyFinished()));
-        connect(networkReply, SIGNAL(errorOccurred(QNetworkReply::NetworkError)),
-                this, SLOT(categoryReplyError()));
+        connect(networkReply, &QNetworkReply::finished,
+                this, &QPlaceManagerEngineNokiaV2::categoryReplyFinished);
+        connect(networkReply, &QNetworkReply::errorOccurred,
+                this, &QPlaceManagerEngineNokiaV2::categoryReplyError);
 
         m_categoryRequests.insert(*it, networkReply);
     }
 
     QPlaceCategoriesReplyHere *reply = new QPlaceCategoriesReplyHere(this);
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-            this, SLOT(replyError(QPlaceReply::Error,QString)));
+    connect(reply, &QPlaceCategoriesReplyHere::finished,
+            this, &QPlaceManagerEngineNokiaV2::replyFinished);
+    connect(reply, &QPlaceCategoriesReplyHere::errorOccurred,
+            this, &QPlaceManagerEngineNokiaV2::replyError);
 
     m_categoryReply = reply;
     return reply;
@@ -670,7 +596,7 @@ QPlaceCategory QPlaceManagerEngineNokiaV2::category(const QString &categoryId) c
 QList<QPlaceCategory> QPlaceManagerEngineNokiaV2::childCategories(const QString &parentId) const
 {
     QList<QPlaceCategory> results;
-    foreach (const QString &childId, m_categoryTree.value(parentId).childIds)
+    for (const QString &childId : m_categoryTree.value(parentId).childIds)
         results.append(m_categoryTree.value(childId).category);
     return results;
 }
@@ -696,7 +622,7 @@ QPlaceIcon QPlaceManagerEngineNokiaV2::icon(const QString &remotePath,
 
     QString iconPrefix;
     QString nokiaIcon;
-    if (match.hasMatch() && !match.capturedRef(1).isEmpty() && !match.capturedRef(2).isEmpty()) {
+    if (match.hasMatch() && !match.capturedView(1).isEmpty() && !match.capturedView(2).isEmpty()) {
             iconPrefix = match.captured(1);
             nokiaIcon = match.captured(2);
 
@@ -706,7 +632,7 @@ QPlaceIcon QPlaceManagerEngineNokiaV2::icon(const QString &remotePath,
         params.insert(NokiaIcon, nokiaIcon);
         params.insert(IconPrefix, iconPrefix);
 
-        foreach (const QPlaceCategory &category, categories) {
+        for (const QPlaceCategory &category : categories) {
             if (category.icon().parameters().value(NokiaIcon) == nokiaIcon) {
                 params.insert(NokiaIconGenerated, true);
                 break;
@@ -766,7 +692,7 @@ void QPlaceManagerEngineNokiaV2::replyError(QPlaceReply::Error error_, const QSt
 {
     QPlaceReply *reply = qobject_cast<QPlaceReply *>(sender());
     if (reply)
-        emit error(reply, error_, errorString);
+        emit errorOccurred(reply, error_, errorString);
 }
 
 void QPlaceManagerEngineNokiaV2::categoryReplyFinished()
@@ -831,8 +757,7 @@ void QPlaceManagerEngineNokiaV2::categoryReplyError()
 QNetworkReply *QPlaceManagerEngineNokiaV2::sendRequest(const QUrl &url)
 {
     QUrlQuery queryItems(url);
-    queryItems.addQueryItem(QStringLiteral("app_id"), m_appId);
-    queryItems.addQueryItem(QStringLiteral("app_code"), m_appCode);
+    queryItems.addQueryItem(QStringLiteral("apiKey"), m_apiKey);
 
     QUrl requestUrl = url;
     requestUrl.setQuery(queryItems);
@@ -854,7 +779,7 @@ QByteArray QPlaceManagerEngineNokiaV2::createLanguageString() const
     if (locales.isEmpty())
         locales << QLocale();
 
-    foreach (const QLocale &loc, locales) {
+    for (const QLocale &loc : std::as_const(locales)) {
         language.append(loc.name().replace(2, 1, QLatin1Char('-')).toLatin1());
         language.append(", ");
     }

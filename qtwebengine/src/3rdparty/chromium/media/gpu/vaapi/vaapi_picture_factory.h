@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 
 #include <stdint.h>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "media/gpu/vaapi/vaapi_picture.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gl/gl_implementation.h"
@@ -17,6 +16,15 @@ namespace media {
 
 class PictureBuffer;
 class VaapiWrapper;
+
+using CreatePictureCB = base::RepeatingCallback<std::unique_ptr<VaapiPicture>(
+    scoped_refptr<VaapiWrapper>,
+    const MakeGLContextCurrentCallback&,
+    const BindGLImageCallback&,
+    const PictureBuffer&,
+    const gfx::Size&,
+    uint32_t,
+    uint32_t)>;
 
 // Factory of platform dependent VaapiPictures.
 class MEDIA_GPU_EXPORT VaapiPictureFactory {
@@ -29,6 +37,10 @@ class MEDIA_GPU_EXPORT VaapiPictureFactory {
   };
 
   VaapiPictureFactory();
+
+  VaapiPictureFactory(const VaapiPictureFactory&) = delete;
+  VaapiPictureFactory& operator=(const VaapiPictureFactory&) = delete;
+
   virtual ~VaapiPictureFactory();
 
   // Creates a VaapiPicture of picture_buffer.size() associated with
@@ -44,6 +56,10 @@ class MEDIA_GPU_EXPORT VaapiPictureFactory {
   // implementation.
   VaapiImplementation GetVaapiImplementation(gl::GLImplementation gl_impl);
 
+  // Determines whether the DownloadFromSurface() method of the VaapiPictures
+  // created by this factory requires a processing pipeline VaapiWrapper.
+  bool NeedsProcessingPipelineForDownloading() const;
+
   // Gets the texture target used to bind EGLImages (either GL_TEXTURE_2D on X11
   // or GL_TEXTURE_EXTERNAL_OES on DRM).
   uint32_t GetGLTextureTarget();
@@ -51,17 +67,6 @@ class MEDIA_GPU_EXPORT VaapiPictureFactory {
   // Buffer format to use for output buffers backing PictureBuffers. This is
   // the format decoded frames in VASurfaces are converted into.
   gfx::BufferFormat GetBufferFormat();
-
-#if defined(USE_OZONE)
-  std::unique_ptr<VaapiPicture> CreateVaapiPictureNativeForOzone(
-      scoped_refptr<VaapiWrapper> vaapi_wrapper,
-      const MakeGLContextCurrentCallback& make_context_current_cb,
-      const BindGLImageCallback& bind_image_cb,
-      const PictureBuffer& picture_buffer,
-      const gfx::Size& visible_size,
-      uint32_t client_texture_id,
-      uint32_t service_texture_id);
-#endif
 
   std::unique_ptr<VaapiPicture> CreateVaapiPictureNative(
       scoped_refptr<VaapiWrapper> vaapi_wrapper,
@@ -76,7 +81,10 @@ class MEDIA_GPU_EXPORT VaapiPictureFactory {
       vaapi_impl_pairs_;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(VaapiPictureFactory);
+  void DeterminePictureCreationAndDownloadingMechanism();
+
+  CreatePictureCB create_picture_cb_;
+  bool needs_vpp_for_downloading_ = false;
 };
 
 }  // namespace media

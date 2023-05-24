@@ -1,30 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include "comutil_p.h"
+#include "testutil_p.h"
+
+#include <qaxtypes_p.h>
+#include <ActiveQt/qaxobject.h>
 
 #include <QtTest/QtTest>
 #include <QtCore/QVariant>
@@ -32,18 +13,11 @@
 #include <QtCore/QMetaType>
 
 #include <qt_windows.h>
+#include <wrl/client.h>
+
+using Microsoft::WRL::ComPtr;
 
 QT_BEGIN_NAMESPACE
-
-// Conversion functions from statically linked library (axtypes.h)
-bool QVariantToVARIANT_container(const QVariant &var, VARIANT &arg,
-                                 const QByteArray &typeName = QByteArray(),
-                                 bool out = false);
-
-QVariant VARIANTToQVariant_container(const VARIANT &arg, const QByteArray &typeName,
-                                     uint type = 0);
-
-QT_END_NAMESPACE
 
 class tst_Conversion : public QObject
 {
@@ -52,6 +26,36 @@ class tst_Conversion : public QObject
 private slots:
     void conversion_data();
     void conversion();
+
+    void VARIANTToQVariant_ReturnsBool_WhenCalledWithVariantBool();
+    void QVariantToVARIANT_ReturnsVariantBool_WhenCalledWithBool();
+
+    void VARIANTToQVariant_ReturnsString_WhenCalledWithString_data();
+    void VARIANTToQVariant_ReturnsString_WhenCalledWithString();
+
+    void QVariantToVARIANT_ReturnsString_WhenCalledWithString_data();
+    void QVariantToVARIANT_ReturnsString_WhenCalledWithString();
+
+    void VARIANTToQVariant_ReturnsCopyOfValue_WhenCalledWithMaxPossibleValueOrPointer_data();
+    void VARIANTToQVariant_ReturnsCopyOfValue_WhenCalledWithMaxPossibleValueOrPointer();
+
+    void QVariantToVARIANT_ReturnsCopyOfValue_WhenCalledWithMaxPossibleValue_data();
+    void QVariantToVARIANT_ReturnsCopyOfValue_WhenCalledWithMaxPossibleValue();
+
+    void VARIANTToQVariant_DoesNotIncreaseRefCount_WhenGivenAnIUnknown();
+    void QVariantToVARIANT_RecoversIUnknown_WhenQVariantHasIUnknown();
+
+    void VARIANTToQVariant_DoesNotIncreaseRefCount_WhenGivenAnIDispatch();
+    void QVariantToVARIANT_RecoversIDispatch_WhenQVariantHasIDispatch();
+
+    void VARIANTToQVariant_IncreasesRefCount_WhenCalledWithQVariantTypeName();
+
+    void ObserveThat_VARIANTToQVariant_ReturnsEmptyQVariant_WhenWrappingIDispatchInQAxObjectPtr();
+    void VARIANTToQVariant_CreatesQAxObject_WhenCalledWithMetaTypeId();
+
+private:
+    template<typename T>
+    static void addScalarMaxValueRow();
 };
 
 enum Mode {
@@ -195,5 +199,267 @@ void tst_Conversion::conversion()
         delete variant.pullVal;
 }
 
+void tst_Conversion::VARIANTToQVariant_ReturnsBool_WhenCalledWithVariantBool()
+{
+    {
+        const ComVariant v = true;
+        const QVariant result = VARIANTToQVariant(v, "canBeAnything");
+        QVERIFY(result == true);
+    }
+
+    {
+        const ComVariant v = false;
+        const QVariant result = VARIANTToQVariant(v, "canBeAnything");
+        QVERIFY(result == false);
+    }
+}
+
+void tst_Conversion::QVariantToVARIANT_ReturnsVariantBool_WhenCalledWithBool()
+{
+    {
+        const QVariant v = true;
+        ComVariant result;
+        QVERIFY(QVariantToVARIANT(v, result));
+        QVERIFY(result.vt == VT_BOOL);
+        QVERIFY(result.boolVal == VARIANT_TRUE);
+    }
+
+    {
+        const QVariant v = false;
+        ComVariant result;
+        QVERIFY(QVariantToVARIANT(v, result));
+        QVERIFY(result.vt == VT_BOOL);
+        QVERIFY(result.boolVal == VARIANT_FALSE);
+    }
+}
+
+void tst_Conversion::VARIANTToQVariant_ReturnsString_WhenCalledWithString_data()
+{
+    QTest::addColumn<QString>("text");
+    QTest::newRow("empty") << QString{ "" };
+    QTest::newRow("nonempty") << QString{ "Some Latin 1 text" };
+}
+
+void tst_Conversion::VARIANTToQVariant_ReturnsString_WhenCalledWithString()
+{
+    QFETCH(QString, text);
+
+    const ComVariant comVariant = text.toStdWString().c_str();
+    const QVariant actual = VARIANTToQVariant(comVariant, {});
+
+    QCOMPARE(actual, text);
+}
+
+void tst_Conversion::QVariantToVARIANT_ReturnsString_WhenCalledWithString_data()
+{
+    QTest::addColumn<QString>("text");
+    QTest::newRow("empty") << QString{ "" };
+    QTest::newRow("nonempty") << QString{ "Some Latin 1 text" };
+}
+
+void tst_Conversion::QVariantToVARIANT_ReturnsString_WhenCalledWithString()
+{
+    QFETCH(QString, text);
+
+    ComVariant comVariant;
+    QVERIFY(QVariantToVARIANT(text, comVariant));
+
+    const QString actual = QString::fromWCharArray(comVariant.bstrVal);
+
+    QCOMPARE(actual, text);
+}
+
+void tst_Conversion::
+        VARIANTToQVariant_ReturnsCopyOfValue_WhenCalledWithMaxPossibleValueOrPointer_data()
+{
+    QTest::addColumn<ComVariant>("comVariant");
+    QTest::addColumn<QVariant>("qvariant");
+
+     addScalarMaxValueRow<char>();
+     addScalarMaxValueRow<unsigned char>();
+     addScalarMaxValueRow<short>();
+     addScalarMaxValueRow<unsigned short>();
+     addScalarMaxValueRow<int>();
+     addScalarMaxValueRow<unsigned int>();
+     addScalarMaxValueRow<long long>();
+     addScalarMaxValueRow<unsigned long long>();
+     addScalarMaxValueRow<float>();
+     addScalarMaxValueRow<double>();
+
+     addScalarMaxValueRow<char *>();
+     addScalarMaxValueRow<unsigned char *>();
+     addScalarMaxValueRow<short *>();
+     addScalarMaxValueRow<unsigned short *>();
+     addScalarMaxValueRow<int *>();
+     addScalarMaxValueRow<unsigned int *>();
+     addScalarMaxValueRow<long long *>();
+     addScalarMaxValueRow<unsigned long long *>();
+     addScalarMaxValueRow<float *>();
+     addScalarMaxValueRow<double *>();
+}
+
+void tst_Conversion::VARIANTToQVariant_ReturnsCopyOfValue_WhenCalledWithMaxPossibleValueOrPointer()
+{
+    QFETCH(ComVariant, comVariant);
+    QFETCH(QVariant, qvariant);
+
+    const QVariant actual = VARIANTToQVariant(comVariant, qvariant.typeName());
+
+    QCOMPARE(actual, qvariant);
+}
+
+void tst_Conversion::QVariantToVARIANT_ReturnsCopyOfValue_WhenCalledWithMaxPossibleValue_data()
+{
+    QTest::addColumn<ComVariant>("comVariant");
+    QTest::addColumn<QVariant>("qvariant");
+
+    addScalarMaxValueRow<int>();
+    addScalarMaxValueRow<unsigned int>();
+    addScalarMaxValueRow<long long>();
+    addScalarMaxValueRow<unsigned long long>();
+    addScalarMaxValueRow<float>();
+    addScalarMaxValueRow<double>();
+}
+
+void tst_Conversion::QVariantToVARIANT_ReturnsCopyOfValue_WhenCalledWithMaxPossibleValue()
+{
+    QFETCH(ComVariant, comVariant);
+    QFETCH(QVariant, qvariant);
+
+    ComVariant actual;
+    QVERIFY(QVariantToVARIANT(qvariant, actual));
+
+    QCOMPARE(actual, comVariant);
+}
+
+void tst_Conversion::VARIANTToQVariant_DoesNotIncreaseRefCount_WhenGivenAnIUnknown()
+{
+    const auto stub = makeComObject<IUnknownStub>();
+
+    const ComVariant value = stub.Get();
+
+    QVERIFY(stub->m_refCount == 2u);
+
+    const QVariant qVariant = VARIANTToQVariant(value, {});
+
+    QVERIFY(stub->m_refCount == 2u);
+
+    Q_UNUSED(qVariant);
+}
+
+void tst_Conversion::QVariantToVARIANT_RecoversIUnknown_WhenQVariantHasIUnknown()
+{
+    const auto stub = makeComObject<IUnknownStub>();
+    const ComVariant value = stub.Get();
+
+    const QVariant qvar = VARIANTToQVariant(value, {});
+
+    ComVariant comVariant;
+    QVERIFY(QVariantToVARIANT(qvar, comVariant));
+
+    QCOMPARE(stub->m_refCount, 3u);
+
+    const ComPtr<IUnknown> recovered = comVariant.punkVal;
+
+    QCOMPARE(recovered, stub);
+}
+
+void tst_Conversion::VARIANTToQVariant_DoesNotIncreaseRefCount_WhenGivenAnIDispatch()
+{
+    const auto stub = makeComObject<IDispatchStub>();
+
+    const ComVariant value = stub.Get();
+
+    QCOMPARE(stub->m_refCount, 2u);
+    const QVariant qVariant = VARIANTToQVariant(value, "IDispatch*");
+
+    QCOMPARE(stub->m_refCount, 2u);
+
+    Q_UNUSED(qVariant);
+}
+
+struct IDispatchFixture
+{
+    const ComPtr<IDispatchStub> m_iDispatchStub = makeComObject<IDispatchStub>();
+    const ComVariant m_comVariant = m_iDispatchStub.Get();
+    const QVariant m_qVariant = VARIANTToQVariant(m_comVariant, "IDispatch*");
+};
+
+void tst_Conversion::QVariantToVARIANT_RecoversIDispatch_WhenQVariantHasIDispatch()
+{
+    const IDispatchFixture testFixture;
+    QCOMPARE(testFixture.m_iDispatchStub->m_refCount, 2u);
+
+    ComVariant comVariant;
+    QVERIFY(QVariantToVARIANT(testFixture.m_qVariant, comVariant));
+
+    QCOMPARE(testFixture.m_iDispatchStub->m_refCount, 3u);
+
+    const ComPtr<IUnknown> recovered = comVariant.pdispVal;
+
+    QCOMPARE(recovered, testFixture.m_iDispatchStub);
+}
+
+void tst_Conversion::VARIANTToQVariant_IncreasesRefCount_WhenCalledWithQVariantTypeName()
+{
+    const IDispatchFixture testFixture;
+    QCOMPARE(testFixture.m_iDispatchStub->m_refCount, 2u);
+
+    QVariant qVariant = VARIANTToQVariant(testFixture.m_comVariant, "QVariant");
+    qVariant = {};
+
+    // Observe that IDispatch interface is leaked here, since
+    // the QVariant destructor does not decrement the refcount
+    QCOMPARE(testFixture.m_iDispatchStub->m_refCount, 3u);
+
+    // Workaround to ensure cleanup
+    testFixture.m_iDispatchStub->Release();
+}
+
+void tst_Conversion::ObserveThat_VARIANTToQVariant_ReturnsEmptyQVariant_WhenWrappingIDispatchInQAxObjectPtr()
+{
+    const IDispatchFixture testFixture;
+    QCOMPARE(testFixture.m_iDispatchStub->m_refCount, 2u);
+
+    qRegisterMetaType<QAxObject *>("QAxObject*");
+    qRegisterMetaType<QAxObject>("QAxObject");
+
+    const QVariant qVariant = VARIANTToQVariant(testFixture.m_comVariant, "QAxObject*");
+    QVERIFY(qVariant.isNull());
+}
+
+void tst_Conversion::VARIANTToQVariant_CreatesQAxObject_WhenCalledWithMetaTypeId()
+{
+    const IDispatchFixture testFixture;
+    QCOMPARE(testFixture.m_iDispatchStub->m_refCount, 2u);
+
+    qRegisterMetaType<QAxObject *>("QAxObject*");
+    qRegisterMetaType<QAxObject>("QAxObject");
+
+    const QVariant qVariant = VARIANTToQVariant(testFixture.m_comVariant, "QAxObject*", QMetaType::fromType<QAxObject*>().id());
+
+    QAxObject *recovered = qVariant.value<QAxObject *>();
+    QVERIFY(recovered != nullptr);
+}
+
+template<typename T>
+void tst_Conversion::addScalarMaxValueRow()
+{
+    using ValueType = std::remove_pointer_t<T>;
+    static ValueType v = std::numeric_limits<ValueType>::max();
+
+    ComVariant comVariant;
+    if constexpr (std::is_pointer_v<T>)
+        comVariant = &v;
+    else
+        comVariant = v;
+
+    const char *typeName = QMetaType::fromType<T>().name();
+    QTest::newRow(typeName) << comVariant << QVariant{ v };
+}
+
 QTEST_MAIN(tst_Conversion)
+
+QT_END_NAMESPACE
+
 #include "tst_conversion.moc"

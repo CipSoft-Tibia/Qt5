@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -96,8 +96,7 @@ void WebFontRenderStyle::OverrideWith(const WebFontRenderStyle& other) {
     use_subpixel_positioning = other.use_subpixel_positioning;
 }
 
-void WebFontRenderStyle::ApplyToSkFont(SkFont* font,
-                                       float device_scale_factor) const {
+void WebFontRenderStyle::ApplyToSkFont(SkFont* font) const {
   auto sk_hint_style = static_cast<SkFontHinting>(hint_style);
   font->setHinting(sk_hint_style);
   font->setEmbeddedBitmaps(use_bitmaps);
@@ -110,11 +109,10 @@ void WebFontRenderStyle::ApplyToSkFont(SkFont* font,
     font->setEdging(SkFont::Edging::kAlias);
   }
 
-  // Force-enable subpixel positioning, except when normal or full hinting is
-  // requested on low-dpi screen or when running web tests.
-  bool force_subpixel_positioning =
-      !WebTestSupport::IsRunningWebTest() &&
-      (sk_hint_style < SkFontHinting::kNormal || device_scale_factor > 1.0f);
+  // Force-enable subpixel positioning, except when normal or full hinting is requested
+  // or when running web tests.
+  bool force_subpixel_positioning = !WebTestSupport::IsRunningWebTest() &&
+                                    sk_hint_style < SkFontHinting::kNormal;
 
   font->setSubpixel(force_subpixel_positioning || use_subpixel_positioning);
 

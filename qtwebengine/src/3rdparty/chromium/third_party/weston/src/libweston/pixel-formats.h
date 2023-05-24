@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016 Collabora, Ltd.
+ * Copyright © 2016, 2019 Collabora, Ltd.
  * Copyright (c) 2018 DisplayLink (UK) Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -100,6 +100,20 @@ struct pixel_format_info {
 		ORDER_LUMA_CHROMA = 0,
 		ORDER_CHROMA_LUMA,
 	} luma_chroma_order;
+
+	/** How many significant bits each channel has, or zero if N/A. */
+	struct {
+		int r;
+		int g;
+		int b;
+		int a;
+	} bits;
+
+	/** How channel bits are interpreted, fixed (uint) or floating-point */
+	enum {
+		PIXEL_COMPONENT_TYPE_FIXED = 0,
+		PIXEL_COMPONENT_TYPE_FLOAT,
+	} component_type;
 };
 
 /**
@@ -190,6 +204,23 @@ pixel_format_is_opaque(const struct pixel_format_info *format);
  */
 const struct pixel_format_info *
 pixel_format_get_opaque_substitute(const struct pixel_format_info *format);
+
+/**
+ * For an opaque format, get the equivalent format with alpha instead of an
+ * ignored channel
+ *
+ * This is the opposite lookup from pixel_format_get_opaque_substitute().
+ * Finds the format whose opaque substitute is the given format.
+ *
+ * If the input format is not opaque or does not have ignored (X) bits, then
+ * the search cannot find a match.
+ *
+ * @param format DRM format code to search for
+ * @returns A pixel format info structure for the pixel format whose opaque
+ * substitute is the argument, or NULL if no match.
+ */
+const struct pixel_format_info *
+pixel_format_get_info_by_opaque_substitute(uint32_t format);
 
 /**
  * Return the effective sampling width for a given plane

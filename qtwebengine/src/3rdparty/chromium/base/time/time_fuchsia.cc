@@ -1,11 +1,14 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/time/time.h"
 
+#include <threads.h>
 #include <zircon/syscalls.h>
+#include <zircon/threads.h>
 
+#include "base/check_op.h"
 #include "base/fuchsia/fuchsia_logging.h"
 #include "base/time/time_override.h"
 
@@ -39,7 +42,7 @@ TimeTicks TimeTicksNowIgnoringOverride() {
 
 // static
 TimeDelta TimeDelta::FromZxDuration(zx_duration_t nanos) {
-  return TimeDelta::FromNanoseconds(nanos);
+  return Nanoseconds(nanos);
 }
 
 zx_duration_t TimeDelta::ToZxDuration() const {
@@ -48,7 +51,7 @@ zx_duration_t TimeDelta::ToZxDuration() const {
 
 // static
 Time Time::FromZxTime(zx_time_t nanos_since_unix_epoch) {
-  return UnixEpoch() + TimeDelta::FromNanoseconds(nanos_since_unix_epoch);
+  return UnixEpoch() + Nanoseconds(nanos_since_unix_epoch);
 }
 
 zx_time_t Time::ToZxTime() const {
@@ -72,7 +75,7 @@ bool TimeTicks::IsConsistentAcrossProcesses() {
 
 // static
 TimeTicks TimeTicks::FromZxTime(zx_time_t nanos_since_boot) {
-  return TimeTicks() + TimeDelta::FromNanoseconds(nanos_since_boot);
+  return TimeTicks() + Nanoseconds(nanos_since_boot);
 }
 
 zx_time_t TimeTicks::ToZxTime() const {
@@ -83,12 +86,12 @@ zx_time_t TimeTicks::ToZxTime() const {
 
 namespace subtle {
 ThreadTicks ThreadTicksNowIgnoringOverride() {
-  zx_time_t nanos_since_thread_started;
-  zx_status_t status =
-      zx_clock_get(ZX_CLOCK_THREAD, &nanos_since_thread_started);
+  zx_info_thread_stats_t info;
+  zx_status_t status = zx_object_get_info(thrd_get_zx_handle(thrd_current()),
+                                          ZX_INFO_THREAD_STATS, &info,
+                                          sizeof(info), nullptr, nullptr);
   ZX_CHECK(status == ZX_OK, status);
-  DCHECK(nanos_since_thread_started != 0);
-  return ThreadTicks() + TimeDelta::FromNanoseconds(nanos_since_thread_started);
+  return ThreadTicks() + Nanoseconds(info.total_runtime);
 }
 }  // namespace subtle
 

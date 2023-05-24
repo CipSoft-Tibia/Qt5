@@ -1,21 +1,22 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 """Contains a set of Chrome-specific size queries."""
 
 import logging
+import re
 
 import models
 
 
-class _Grouper(object):
+class _Grouper:
   def __init__(self):
     self.groups = []
 
   def Add(self, name, group):
     logging.debug('Computed %s (%d syms)', name, len(group))
-    if len(group):
+    if group:
       sorted_group = group.Sorted()
       sorted_group.SetName(name)
       self.groups.append(sorted_group)
@@ -132,10 +133,11 @@ def _CategorizeGenerated(symbols):
       '/protobuf/' in s.object_path or
       s.object_path.endswith('.pbzero.o') or
       s.object_path.endswith('.pb.o'))))
-  symbols = g.Add('Mojo', symbols.Filter(lambda s: (
-      '.mojom' in s.source_path or  # Blink uses .mojom-blink.cc
-      s.source_path.startswith('mojo/') or
-      s.name.startswith('mojo::'))))
+  mojo_pattern = re.compile(r'\bmojom?\b')
+  symbols = g.Add(
+      'Mojo',
+      symbols.Filter(lambda s: (s.full_name.startswith('mojo::') or mojo_pattern
+                                .search(s.source_path))))
   symbols = g.Add('DevTools', symbols.WhereSourcePathMatches(
       r'\b(?:protocol|devtools)\b'))
   symbols = g.Add('Blink (bindings)', symbols.WherePathMatches(
@@ -156,7 +158,7 @@ def _CategorizeGenerated(symbols):
   return g.Finalize(symbols)
 
 
-class CannedQueries(object):
+class CannedQueries:
   """A set of pre-written queries."""
 
   def __init__(self, size_infos):

@@ -1,51 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <private/qdrawhelper_p.h>
 #include <private/qdrawingprimitive_sse2_p.h>
 #include <private/qpaintengine_raster_p.h>
+#include <private/qpixellayout_p.h>
 
 #if defined(QT_COMPILER_SUPPORTS_SSE4_1)
 
 QT_BEGIN_NAMESPACE
 
-#ifndef __AVX2__
+#ifndef __haswell__
 template<bool RGBA>
 static void convertARGBToARGB32PM_sse4(uint *buffer, const uint *src, int count)
 {
@@ -141,7 +106,7 @@ static void convertARGBToRGBA64PM_sse4(QRgba64 *buffer, const uint *src, int cou
         buffer[i] = QRgba64::fromArgb32(s).premultiplied();
     }
 }
-#endif // __AVX2__
+#endif // __haswell__
 
 static inline __m128 Q_DECL_VECTORCALL reciprocal_mul_ps(__m128 a, float mul)
 {
@@ -326,83 +291,167 @@ static inline void convertARGBFromRGBA64PM_sse4(uint *buffer, const QRgba64 *src
     }
 }
 
-#ifndef __AVX2__
-void QT_FASTCALL convertARGB32ToARGB32PM_sse4(uint *buffer, int count, const QVector<QRgb> *)
+template<bool mask>
+static inline void convertRGBA64FromRGBA64PM_sse4(QRgba64 *buffer, const QRgba64 *src, int count)
+{
+    int i = 0;
+    if ((_MM_GET_EXCEPTION_MASK() & _MM_MASK_INVALID) == 0) {
+        for (; i < count; ++i) {
+            QRgba64 v = src[i].unpremultiplied();
+            if (mask)
+                v.setAlpha(65535);
+            buffer[i] = v;
+        }
+        return;
+    }
+    const __m128i alphaMask = _mm_set1_epi64x(qint64(Q_UINT64_C(0xffff) << 48));
+    const __m128i zero = _mm_setzero_si128();
+
+    for (; i < count - 3; i += 4) {
+        __m128i srcVector1 = _mm_loadu_si128((const __m128i *)&src[i + 0]);
+        __m128i srcVector2 = _mm_loadu_si128((const __m128i *)&src[i + 2]);
+        bool transparent1 = _mm_testz_si128(srcVector1, alphaMask);
+        bool opaque1 = _mm_testc_si128(srcVector1, alphaMask);
+        bool transparent2 = _mm_testz_si128(srcVector2, alphaMask);
+        bool opaque2 = _mm_testc_si128(srcVector2, alphaMask);
+
+        if (!(transparent1 && transparent2)) {
+            if (!(opaque1 && opaque2)) {
+                __m128i srcVector1Alpha = _mm_srli_epi64(srcVector1, 48);
+                __m128i srcVector2Alpha = _mm_srli_epi64(srcVector2, 48);
+                __m128i srcVectorAlpha = _mm_packus_epi32(srcVector1Alpha, srcVector2Alpha);
+                const __m128 a = _mm_cvtepi32_ps(srcVectorAlpha);
+                const __m128 ia = reciprocal_mul_ps(a, 65535.0f);
+                __m128i src1 = _mm_unpacklo_epi16(srcVector1, zero);
+                __m128i src2 = _mm_unpackhi_epi16(srcVector1, zero);
+                __m128i src3 = _mm_unpacklo_epi16(srcVector2, zero);
+                __m128i src4 = _mm_unpackhi_epi16(srcVector2, zero);
+                __m128 ia1 = _mm_shuffle_ps(ia, ia, _MM_SHUFFLE(0, 0, 0, 0));
+                __m128 ia2 = _mm_shuffle_ps(ia, ia, _MM_SHUFFLE(1, 1, 1, 1));
+                __m128 ia3 = _mm_shuffle_ps(ia, ia, _MM_SHUFFLE(2, 2, 2, 2));
+                __m128 ia4 = _mm_shuffle_ps(ia, ia, _MM_SHUFFLE(3, 3, 3, 3));
+                src1 = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(src1), ia1));
+                src2 = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(src2), ia2));
+                src3 = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(src3), ia3));
+                src4 = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(src4), ia4));
+                src1 = _mm_packus_epi32(src1, src2);
+                src3 = _mm_packus_epi32(src3, src4);
+                // Handle potential alpha == 0 values:
+                __m128i srcVector1AlphaMask = _mm_cmpeq_epi64(srcVector1Alpha, zero);
+                __m128i srcVector2AlphaMask = _mm_cmpeq_epi64(srcVector2Alpha, zero);
+                src1 = _mm_andnot_si128(srcVector1AlphaMask, src1);
+                src3 = _mm_andnot_si128(srcVector2AlphaMask, src3);
+                // Fixup alpha values:
+                if (mask) {
+                    src1 = _mm_or_si128(src1, alphaMask);
+                    src3 = _mm_or_si128(src3, alphaMask);
+                } else {
+                    src1 = _mm_blendv_epi8(src1, srcVector1, alphaMask);
+                    src3 = _mm_blendv_epi8(src3, srcVector2, alphaMask);
+                }
+                _mm_storeu_si128((__m128i *)&buffer[i + 0], src1);
+                _mm_storeu_si128((__m128i *)&buffer[i + 2], src3);
+            } else {
+                if (mask) {
+                    srcVector1 = _mm_or_si128(srcVector1, alphaMask);
+                    srcVector2 = _mm_or_si128(srcVector2, alphaMask);
+                }
+                if (mask || src != buffer) {
+                    _mm_storeu_si128((__m128i *)&buffer[i + 0], srcVector1);
+                    _mm_storeu_si128((__m128i *)&buffer[i + 2], srcVector2);
+                }
+            }
+        } else {
+            _mm_storeu_si128((__m128i *)&buffer[i + 0], zero);
+            _mm_storeu_si128((__m128i *)&buffer[i + 2], zero);
+        }
+    }
+
+    SIMD_EPILOGUE(i, count, 3) {
+        QRgba64 v = src[i].unpremultiplied();
+        if (mask)
+            v.setAlpha(65535);
+        buffer[i] = v;
+    }
+}
+
+#ifndef __haswell__
+void QT_FASTCALL convertARGB32ToARGB32PM_sse4(uint *buffer, int count, const QList<QRgb> *)
 {
     convertARGBToARGB32PM_sse4<false>(buffer, buffer, count);
 }
 
-void QT_FASTCALL convertRGBA8888ToARGB32PM_sse4(uint *buffer, int count, const QVector<QRgb> *)
+void QT_FASTCALL convertRGBA8888ToARGB32PM_sse4(uint *buffer, int count, const QList<QRgb> *)
 {
     convertARGBToARGB32PM_sse4<true>(buffer, buffer, count);
 }
 
 const QRgba64 * QT_FASTCALL convertARGB32ToRGBA64PM_sse4(QRgba64 *buffer, const uint *src, int count,
-                                                         const QVector<QRgb> *, QDitherInfo *)
+                                                         const QList<QRgb> *, QDitherInfo *)
 {
     convertARGBToRGBA64PM_sse4<false>(buffer, src, count);
     return buffer;
 }
 
 const QRgba64 * QT_FASTCALL convertRGBA8888ToRGBA64PM_sse4(QRgba64 *buffer, const uint *src, int count,
-                                                           const QVector<QRgb> *, QDitherInfo *)
+                                                           const QList<QRgb> *, QDitherInfo *)
 {
     convertARGBToRGBA64PM_sse4<true>(buffer, src, count);
     return buffer;
 }
 
 const uint *QT_FASTCALL fetchARGB32ToARGB32PM_sse4(uint *buffer, const uchar *src, int index, int count,
-                                                  const QVector<QRgb> *, QDitherInfo *)
+                                                  const QList<QRgb> *, QDitherInfo *)
 {
     convertARGBToARGB32PM_sse4<false>(buffer, reinterpret_cast<const uint *>(src) + index, count);
     return buffer;
 }
 
 const uint *QT_FASTCALL fetchRGBA8888ToARGB32PM_sse4(uint *buffer, const uchar *src, int index, int count,
-                                                     const QVector<QRgb> *, QDitherInfo *)
+                                                     const QList<QRgb> *, QDitherInfo *)
 {
     convertARGBToARGB32PM_sse4<true>(buffer, reinterpret_cast<const uint *>(src) + index, count);
     return buffer;
 }
 
 const QRgba64 *QT_FASTCALL fetchARGB32ToRGBA64PM_sse4(QRgba64 *buffer, const uchar *src, int index, int count,
-                                                      const QVector<QRgb> *, QDitherInfo *)
+                                                      const QList<QRgb> *, QDitherInfo *)
 {
     convertARGBToRGBA64PM_sse4<false>(buffer, reinterpret_cast<const uint *>(src) + index, count);
     return buffer;
 }
 
 const QRgba64 *QT_FASTCALL fetchRGBA8888ToRGBA64PM_sse4(QRgba64 *buffer, const uchar *src, int index, int count,
-                                                        const QVector<QRgb> *, QDitherInfo *)
+                                                        const QList<QRgb> *, QDitherInfo *)
 {
     convertARGBToRGBA64PM_sse4<true>(buffer, reinterpret_cast<const uint *>(src) + index, count);
     return buffer;
 }
-#endif // __AVX2__
+#endif // __haswell__
 
 void QT_FASTCALL storeRGB32FromARGB32PM_sse4(uchar *dest, const uint *src, int index, int count,
-                                             const QVector<QRgb> *, QDitherInfo *)
+                                             const QList<QRgb> *, QDitherInfo *)
 {
     uint *d = reinterpret_cast<uint *>(dest) + index;
     convertARGBFromARGB32PM_sse4<false,true>(d, src, count);
 }
 
 void QT_FASTCALL storeARGB32FromARGB32PM_sse4(uchar *dest, const uint *src, int index, int count,
-                                              const QVector<QRgb> *, QDitherInfo *)
+                                              const QList<QRgb> *, QDitherInfo *)
 {
     uint *d = reinterpret_cast<uint *>(dest) + index;
     convertARGBFromARGB32PM_sse4<false,false>(d, src, count);
 }
 
 void QT_FASTCALL storeRGBA8888FromARGB32PM_sse4(uchar *dest, const uint *src, int index, int count,
-                                                const QVector<QRgb> *, QDitherInfo *)
+                                                const QList<QRgb> *, QDitherInfo *)
 {
     uint *d = reinterpret_cast<uint *>(dest) + index;
     convertARGBFromARGB32PM_sse4<true,false>(d, src, count);
 }
 
 void QT_FASTCALL storeRGBXFromARGB32PM_sse4(uchar *dest, const uint *src, int index, int count,
-                                            const QVector<QRgb> *, QDitherInfo *)
+                                            const QList<QRgb> *, QDitherInfo *)
 {
     uint *d = reinterpret_cast<uint *>(dest) + index;
     convertARGBFromARGB32PM_sse4<true,true>(d, src, count);
@@ -410,12 +459,19 @@ void QT_FASTCALL storeRGBXFromARGB32PM_sse4(uchar *dest, const uint *src, int in
 
 template<QtPixelOrder PixelOrder>
 void QT_FASTCALL storeA2RGB30PMFromARGB32PM_sse4(uchar *dest, const uint *src, int index, int count,
-                                                 const QVector<QRgb> *, QDitherInfo *)
+                                                 const QList<QRgb> *, QDitherInfo *)
 {
     uint *d = reinterpret_cast<uint *>(dest) + index;
     for (int i = 0; i < count; ++i)
         d[i] = qConvertArgb32ToA2rgb30_sse4<PixelOrder>(src[i]);
 }
+
+template
+void QT_FASTCALL storeA2RGB30PMFromARGB32PM_sse4<PixelOrderBGR>(uchar *dest, const uint *src, int index, int count,
+                                                                const QList<QRgb> *, QDitherInfo *);
+template
+void QT_FASTCALL storeA2RGB30PMFromARGB32PM_sse4<PixelOrderRGB>(uchar *dest, const uint *src, int index, int count,
+                                                                const QList<QRgb> *, QDitherInfo *);
 
 #if QT_CONFIG(raster_64bit)
 void QT_FASTCALL destStore64ARGB32_sse4(QRasterBuffer *rasterBuffer, int x, int y, const QRgba64 *buffer, int length)
@@ -432,25 +488,95 @@ void QT_FASTCALL destStore64RGBA8888_sse4(QRasterBuffer *rasterBuffer, int x, in
 #endif
 
 void QT_FASTCALL storeARGB32FromRGBA64PM_sse4(uchar *dest, const QRgba64 *src, int index, int count,
-                                              const QVector<QRgb> *, QDitherInfo *)
+                                              const QList<QRgb> *, QDitherInfo *)
 {
     uint *d = (uint*)dest + index;
     convertARGBFromRGBA64PM_sse4<false>(d, src, count);
 }
 
 void QT_FASTCALL storeRGBA8888FromRGBA64PM_sse4(uchar *dest, const QRgba64 *src, int index, int count,
-                                                const QVector<QRgb> *, QDitherInfo *)
+                                                const QList<QRgb> *, QDitherInfo *)
 {
     uint *d = (uint*)dest + index;
     convertARGBFromRGBA64PM_sse4<true>(d, src, count);
 }
 
-template
-void QT_FASTCALL storeA2RGB30PMFromARGB32PM_sse4<PixelOrderBGR>(uchar *dest, const uint *src, int index, int count,
-                                                                const QVector<QRgb> *, QDitherInfo *);
-template
-void QT_FASTCALL storeA2RGB30PMFromARGB32PM_sse4<PixelOrderRGB>(uchar *dest, const uint *src, int index, int count,
-                                                                const QVector<QRgb> *, QDitherInfo *);
+void QT_FASTCALL storeRGBA64FromRGBA64PM_sse4(uchar *dest, const QRgba64 *src, int index, int count,
+                                              const QList<QRgb> *, QDitherInfo *)
+{
+    QRgba64 *d = (QRgba64 *)dest + index;
+    convertRGBA64FromRGBA64PM_sse4<false>(d, src, count);
+}
+
+void QT_FASTCALL storeRGBx64FromRGBA64PM_sse4(uchar *dest, const QRgba64 *src, int index, int count,
+                                              const QList<QRgb> *, QDitherInfo *)
+{
+    QRgba64 *d = (QRgba64 *)dest + index;
+    convertRGBA64FromRGBA64PM_sse4<true>(d, src, count);
+}
+
+#if QT_CONFIG(raster_fp)
+const QRgbaFloat32 *QT_FASTCALL fetchRGBA32FToRGBA32F_sse4(QRgbaFloat32 *buffer, const uchar *src, int index, int count,
+                                                       const QList<QRgb> *, QDitherInfo *)
+{
+    const QRgbaFloat32 *s = reinterpret_cast<const QRgbaFloat32 *>(src) + index;
+    for (int i = 0; i < count; ++i) {
+        __m128 vsf = _mm_load_ps(reinterpret_cast<const float *>(s + i));
+        __m128 vsa = _mm_shuffle_ps(vsf, vsf, _MM_SHUFFLE(3, 3, 3, 3));
+        vsf = _mm_mul_ps(vsf, vsa);
+        vsf = _mm_insert_ps(vsf, vsa, 0x30);
+        _mm_store_ps(reinterpret_cast<float *>(buffer + i), vsf);
+    }
+    return buffer;
+}
+
+void QT_FASTCALL storeRGBX32FFromRGBA32F_sse4(uchar *dest, const QRgbaFloat32 *src, int index, int count,
+                                              const QList<QRgb> *, QDitherInfo *)
+{
+    QRgbaFloat32 *d = reinterpret_cast<QRgbaFloat32 *>(dest) + index;
+    const __m128 zero = _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f);
+    for (int i = 0; i < count; ++i) {
+        __m128 vsf = _mm_load_ps(reinterpret_cast<const float *>(src + i));
+        const __m128 vsa = _mm_shuffle_ps(vsf, vsf, _MM_SHUFFLE(3, 3, 3, 3));
+        const float a = _mm_cvtss_f32(vsa);
+        if (a == 1.0f)
+        { }
+        else if (a == 0.0f)
+            vsf = zero;
+        else {
+            __m128 vsr = _mm_rcp_ps(vsa);
+            vsr = _mm_sub_ps(_mm_add_ps(vsr, vsr), _mm_mul_ps(vsr, _mm_mul_ps(vsr, vsa)));
+            vsf = _mm_mul_ps(vsf, vsr);
+            vsf = _mm_insert_ps(vsf, _mm_set_ss(1.0f), 0x30);
+        }
+        _mm_store_ps(reinterpret_cast<float *>(d + i), vsf);
+    }
+}
+
+void QT_FASTCALL storeRGBA32FFromRGBA32F_sse4(uchar *dest, const QRgbaFloat32 *src, int index, int count,
+                                              const QList<QRgb> *, QDitherInfo *)
+{
+    QRgbaFloat32 *d = reinterpret_cast<QRgbaFloat32 *>(dest) + index;
+    const __m128 zero = _mm_set1_ps(0.0f);
+    for (int i = 0; i < count; ++i) {
+        __m128 vsf = _mm_load_ps(reinterpret_cast<const float *>(src + i));
+        const __m128 vsa = _mm_shuffle_ps(vsf, vsf, _MM_SHUFFLE(3, 3, 3, 3));
+        const float a = _mm_cvtss_f32(vsa);
+        if (a == 1.0f)
+        { }
+        else if (a == 0.0f)
+            vsf = zero;
+        else {
+            __m128 vsr = _mm_rcp_ps(vsa);
+            vsr = _mm_sub_ps(_mm_add_ps(vsr, vsr), _mm_mul_ps(vsr, _mm_mul_ps(vsr, vsa)));
+            vsr = _mm_insert_ps(vsr, _mm_set_ss(1.0f), 0x30);
+            vsf = _mm_mul_ps(vsf, vsr);
+        }
+        _mm_store_ps(reinterpret_cast<float *>(d + i), vsf);
+    }
+}
+#endif
+
 
 QT_END_NAMESPACE
 

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,25 +12,25 @@
 
 namespace blink {
 
-class WebURLLoaderMockFactory;
+class URLLoaderMockFactory;
 
 class FetchTestingPlatformSupport
     : public TestingPlatformSupportWithMockScheduler {
  public:
   FetchTestingPlatformSupport();
+  FetchTestingPlatformSupport(const FetchTestingPlatformSupport&) = delete;
+  FetchTestingPlatformSupport& operator=(const FetchTestingPlatformSupport&) =
+      delete;
   ~FetchTestingPlatformSupport() override;
 
-  WebURLLoaderMockFactory* GetURLLoaderMockFactory();
-  std::unique_ptr<WebURLLoaderFactory> CreateDefaultURLLoaderFactory();
+  URLLoaderMockFactory* GetURLLoaderMockFactory();
 
  private:
-  class FetchTestingWebURLLoaderMockFactory;
+  class FetchTestingURLLoaderMockFactory;
 
-  std::unique_ptr<WebURLLoaderMockFactory> url_loader_mock_factory_;
-
-  DISALLOW_COPY_AND_ASSIGN(FetchTestingPlatformSupport);
+  std::unique_ptr<URLLoaderMockFactory> url_loader_mock_factory_;
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_TESTING_FETCH_TESTING_PLATFORM_SUPPORT_H_

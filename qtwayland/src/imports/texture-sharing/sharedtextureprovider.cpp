@@ -1,44 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
-#include "sharedtextureprovider.h"
+#include "sharedtextureprovider_p.h"
 
 #include <QFile>
 #include <QDebug>
@@ -49,6 +13,7 @@
 #include <QtWaylandClient/private/qwaylandserverbufferintegration_p.h>
 #include <QtGui/QGuiApplication>
 #include <QtGui/private/qguiapplication_p.h>
+#include <QtQuick/private/qsgrhisupport_p.h>
 #include <QtGui/qpa/qplatformnativeinterface.h>
 #include <QtGui/QWindow>
 #include <QOpenGLTexture>
@@ -56,50 +21,9 @@
 
 #include <QTimer>
 
-#include "texturesharingextension.h"
+#include "texturesharingextension_p.h"
 
 QT_BEGIN_NAMESPACE
-
-SharedTexture::SharedTexture(QtWaylandClient::QWaylandServerBuffer *buffer)
-    : m_buffer(buffer), m_tex(nullptr)
-{
-}
-
-int SharedTexture::textureId() const
-{
-    updateGLTexture();
-    return m_tex ? m_tex->textureId() : 0;
-}
-
-QSize SharedTexture::textureSize() const
-{
-    updateGLTexture();
-    return m_tex ? QSize(m_tex->width(), m_tex->height()) : QSize();
-}
-
-bool SharedTexture::hasAlphaChannel() const
-{
-    return true;
-}
-
-bool SharedTexture::hasMipmaps() const
-{
-    updateGLTexture();
-    return m_tex ? (m_tex->mipLevels() > 1) : false;
-}
-
-void SharedTexture::bind()
-{
-    updateGLTexture();
-    if (m_tex)
-        m_tex->bind();
-}
-
-inline void SharedTexture::updateGLTexture() const
-{
-    if (!m_tex && m_buffer)
-        m_tex = m_buffer->toOpenGlTexture();
-}
 
 class SharedTextureFactory : public QQuickTextureFactory
 {
@@ -128,9 +52,16 @@ public:
         return m_buffer ? (m_buffer->size().width() * m_buffer->size().height() * 4) : 0;
     }
 
-    QSGTexture *createTexture(QQuickWindow *) const override
+    QSGTexture *createTexture(QQuickWindow *window) const override
     {
-        return new SharedTexture(const_cast<QtWaylandClient::QWaylandServerBuffer *>(m_buffer));
+        if (m_buffer != nullptr) {
+            QOpenGLTexture *texture = const_cast<QtWaylandClient::QWaylandServerBuffer *>(m_buffer)->toOpenGlTexture();
+            return QNativeInterface::QSGOpenGLTexture::fromNative(texture->textureId(),
+                                                                  window,
+                                                                  m_buffer->size(),
+                                                                  QQuickWindow::TextureHasAlphaChannel);
+        }
+        return nullptr;
     }
 
 private:
@@ -184,6 +115,11 @@ void SharedTextureRegistry::handleExtensionActive()
 
 bool SharedTextureRegistry::preinitialize()
 {
+    if (QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2) {
+        qWarning() << "The shared-texture extension is only supported on OpenGL. Use QQuickWindow::setSceneGraphBackend() to override the default.";
+        return false;
+    }
+
     auto *serverBufferIntegration = QGuiApplicationPrivate::platformIntegration()->nativeInterface()->nativeResourceForIntegration("server_buffer_integration");
 
     if (!serverBufferIntegration) {
@@ -318,5 +254,7 @@ QQuickImageResponse *SharedTextureProvider::requestImageResponse(const QString &
 }
 
 QT_END_NAMESPACE
+
+#include "moc_sharedtextureprovider_p.cpp"
 
 #include "sharedtextureprovider.moc"

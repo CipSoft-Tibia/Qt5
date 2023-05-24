@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,11 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/observer_list.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/task/task_runner.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/network/public/mojom/network_change_manager.mojom.h"
 #include "services/network/public/mojom/network_service.mojom.h"
@@ -39,7 +41,7 @@ static const int32_t kConnectionTypeInvalid = -1;
 
 NetworkConnectionTracker::NetworkConnectionTracker(BindingCallback callback)
     : bind_receiver_callback_(callback),
-      task_runner_(base::ThreadTaskRunnerHandle::Get()),
+      task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
       connection_type_(kConnectionTypeInvalid),
       network_change_observer_list_(
           new base::ObserverListThreadSafe<NetworkConnectionObserver>(
@@ -77,7 +79,7 @@ bool NetworkConnectionTracker::GetConnectionType(
   }
   if (!task_runner_->RunsTasksInCurrentSequence()) {
     connection_type_callbacks_.push_back(base::BindOnce(
-        &OnGetConnectionType, base::SequencedTaskRunnerHandle::Get(),
+        &OnGetConnectionType, base::SequencedTaskRunner::GetCurrentDefault(),
         std::move(callback)));
   } else {
     connection_type_callbacks_.push_back(std::move(callback));

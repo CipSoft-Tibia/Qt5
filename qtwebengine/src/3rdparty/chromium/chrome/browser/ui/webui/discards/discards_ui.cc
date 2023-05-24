@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,18 +7,17 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/check.h"
 #include "base/containers/flat_map.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
 #include "base/notreached.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/engagement/site_engagement_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/resource_coordinator/lifecycle_unit.h"
 #include "chrome/browser/resource_coordinator/lifecycle_unit_state.mojom.h"
-#include "chrome/browser/resource_coordinator/tab_activity_watcher.h"
 #include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
 #include "chrome/browser/resource_coordinator/tab_manager.h"
 #include "chrome/browser/resource_coordinator/time.h"
@@ -27,10 +26,16 @@
 #include "chrome/browser/ui/webui/discards/site_data.mojom-forward.h"
 #include "chrome/browser/ui/webui/discards/site_data_provider_impl.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
+#include "chrome/browser/ui/webui/webui_util.h"
 #include "chrome/common/webui_url_constants.h"
-#include "chrome/grit/browser_resources.h"
+#include "chrome/grit/discards_resources.h"
+#include "chrome/grit/discards_resources_map.h"
 #include "components/favicon_base/favicon_url_parser.h"
+#include "components/performance_manager/public/features.h"
 #include "components/performance_manager/public/performance_manager.h"
+#include "components/performance_manager/public/user_tuning/prefs.h"
+#include "components/prefs/pref_service.h"
+#include "components/site_engagement/content/site_engagement_service.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/url_data_source.h"
@@ -42,6 +47,7 @@
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "services/network/public/mojom/content_security_policy.mojom.h"
 #include "ui/resources/grit/ui_resources.h"
+#include "ui/resources/grit/ui_resources_map.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -84,11 +90,10 @@ double GetSiteEngagementScore(content::WebContents* contents) {
   auto* nav_entry = controller.GetEntryAtIndex(current_entry_index);
   DCHECK(nav_entry);
 
-  auto* engagement_svc = SiteEngagementService::Get(
+  auto* engagement_svc = site_engagement::SiteEngagementService::Get(
       Profile::FromBrowserContext(contents->GetBrowserContext()));
   return engagement_svc->GetDetails(nav_entry->GetURL()).total_score;
 }
-
 
 class DiscardsDetailsProviderImpl : public discards::mojom::DetailsProvider {
  public:
@@ -96,6 +101,10 @@ class DiscardsDetailsProviderImpl : public discards::mojom::DetailsProvider {
   explicit DiscardsDetailsProviderImpl(
       mojo::PendingReceiver<discards::mojom::DetailsProvider> receiver)
       : receiver_(this, std::move(receiver)) {}
+
+  DiscardsDetailsProviderImpl(const DiscardsDetailsProviderImpl&) = delete;
+  DiscardsDetailsProviderImpl& operator=(const DiscardsDetailsProviderImpl&) =
+      delete;
 
   ~DiscardsDetailsProviderImpl() override {}
 
@@ -144,12 +153,6 @@ class DiscardsDetailsProviderImpl : public discards::mojom::DetailsProvider {
       info->is_auto_discardable =
           tab_lifecycle_unit_external->IsAutoDiscardable();
       info->id = lifecycle_unit->GetID();
-      base::Optional<float> reactivation_score =
-          resource_coordinator::TabActivityWatcher::GetInstance()
-              ->CalculateReactivationScore(contents);
-      info->has_reactivation_score = reactivation_score.has_value();
-      if (info->has_reactivation_score)
-        info->reactivation_score = reactivation_score.value();
       info->site_engagement_score = GetSiteEngagementScore(contents);
       info->state_change_time =
           lifecycle_unit->GetStateChangeTime() - base::TimeTicks::UnixEpoch();
@@ -199,56 +202,49 @@ class DiscardsDetailsProviderImpl : public discards::mojom::DetailsProvider {
     std::move(callback).Run();
   }
 
+  void ToggleHighEfficiencyMode() override {
+    if (base::FeatureList::IsEnabled(
+            performance_manager::features::kHighEfficiencyModeAvailable)) {
+      bool enabled = g_browser_process->local_state()->GetBoolean(
+          performance_manager::user_tuning::prefs::kHighEfficiencyModeEnabled);
+      g_browser_process->local_state()->SetBoolean(
+          performance_manager::user_tuning::prefs::kHighEfficiencyModeEnabled,
+          !enabled);
+    }
+  }
+
+  void ToggleBatterySaverMode() override {
+    if (base::FeatureList::IsEnabled(
+            performance_manager::features::kBatterySaverModeAvailable)) {
+      performance_manager::user_tuning::prefs::BatterySaverModeState state =
+          performance_manager::user_tuning::prefs::
+              GetCurrentBatterySaverModeState(g_browser_process->local_state());
+      g_browser_process->local_state()->SetInteger(
+          performance_manager::user_tuning::prefs::kBatterySaverModeState,
+          static_cast<int>(state == performance_manager::user_tuning::prefs::
+                                        BatterySaverModeState::kDisabled
+                               ? performance_manager::user_tuning::prefs::
+                                     BatterySaverModeState::kEnabled
+                               : performance_manager::user_tuning::prefs::
+                                     BatterySaverModeState::kDisabled));
+    }
+  }
+
  private:
   mojo::Receiver<discards::mojom::DetailsProvider> receiver_;
-
-  DISALLOW_COPY_AND_ASSIGN(DiscardsDetailsProviderImpl);
 };
 
 }  // namespace
 
 DiscardsUI::DiscardsUI(content::WebUI* web_ui)
     : ui::MojoWebUIController(web_ui) {
-  std::unique_ptr<content::WebUIDataSource> source(
-      content::WebUIDataSource::Create(chrome::kChromeUIDiscardsHost));
-
-  source->OverrideContentSecurityPolicy(
-      network::mojom::CSPDirectiveName::ScriptSrc,
-      "script-src chrome://resources chrome://test 'self';");
-  source->DisableTrustedTypesCSP();
-
-  source->AddResourcePath("discards.js", IDR_DISCARDS_JS);
-
-  source->AddResourcePath("discards_main.js", IDR_DISCARDS_DISCARDS_MAIN_JS);
-
-  source->AddResourcePath("database_tab.js", IDR_DISCARDS_DATABASE_TAB_JS);
-  source->AddResourcePath("discards_tab.js", IDR_DISCARDS_DISCARDS_TAB_JS);
-  source->AddResourcePath("sorted_table_behavior.js",
-                          IDR_DISCARDS_SORTED_TABLE_BEHAVIOR_JS);
-  source->AddResourcePath("graph_tab.js", IDR_DISCARDS_GRAPH_TAB_JS);
-
-  source->AddResourcePath("mojo_api.js", IDR_DISCARDS_MOJO_API_JS);
-
-  // Full paths (relative to src) are important for Mojom generated files.
-  source->AddResourcePath(
-      "chrome/browser/ui/webui/discards/discards.mojom-lite.js",
-      IDR_DISCARDS_MOJOM_LITE_JS);
-  source->AddResourcePath(
-      "chrome/browser/resource_coordinator/lifecycle_unit_state.mojom-lite.js",
-      IDR_DISCARDS_LIFECYCLE_UNIT_STATE_MOJOM_LITE_JS);
-  source->AddResourcePath(
-      "chrome/browser/ui/webui/discards/site_data.mojom-lite.js",
-      IDR_DISCARDS_SITE_DATA_MOJOM_LITE_JS);
-
-  // Add the mojo base dependency for the WebUI Graph Dump.
-  source->AddResourcePath(
-      "mojo/public/mojom/base/process_id.mojom-lite.js",
-      IDR_DISCARDS_MOJO_PUBLIC_BASE_PROCESS_ID_MOJOM_LITE_JS);
-
-  source->SetDefaultResource(IDR_DISCARDS_HTML);
-
   Profile* profile = Profile::FromWebUI(web_ui);
-  content::WebUIDataSource::Add(profile, source.release());
+  content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
+      profile, chrome::kChromeUIDiscardsHost);
+
+  webui::SetupWebUIDataSource(
+      source, base::make_span(kDiscardsResources, kDiscardsResourcesSize),
+      IDR_DISCARDS_DISCARDS_HTML);
 
   content::URLDataSource::Add(
       profile, std::make_unique<FaviconSource>(

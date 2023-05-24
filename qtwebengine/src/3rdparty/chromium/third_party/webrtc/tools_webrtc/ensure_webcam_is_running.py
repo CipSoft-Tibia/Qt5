@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
+
 # Copyright (c) 2014 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
@@ -6,7 +7,6 @@
 # tree. An additional intellectual property rights grant can be found
 # in the file PATENTS.  All contributing project authors may
 # be found in the AUTHORS file in the root of the source tree.
-
 """Checks if a virtual webcam is running and starts it if not.
 
 Returns a non-zero return code if the webcam could not be started.
@@ -27,11 +27,10 @@ If any command line arguments are passed to the script, it is executed as a
 command in a subprocess.
 """
 
-# psutil is not installed on non-Linux machines by default.
-import psutil  # pylint: disable=F0401
 import subprocess
 import sys
-
+# psutil is not installed on non-Linux machines by default.
+import psutil  # pylint: disable=F0401
 
 WEBCAM_WIN = ('schtasks', '/run', '/tn', 'ManyCam')
 WEBCAM_MAC = ('open', '/Applications/ManyCam/ManyCam.app')
@@ -45,15 +44,15 @@ def IsWebCamRunning():
   elif sys.platform.startswith('linux'):
     # TODO(bugs.webrtc.org/9636): Currently a no-op on Linux: sw webcams no
     # longer in use.
-    print 'Virtual webcam: no-op on Linux'
+    print('Virtual webcam: no-op on Linux')
     return True
   else:
     raise Exception('Unsupported platform: %s' % sys.platform)
   for p in psutil.process_iter():
     try:
       if process_name == p.name:
-        print 'Found a running virtual webcam (%s with PID %s)' % (p.name,
-                                                                   p.pid)
+        print('Found a running virtual webcam (%s with PID %s)' %
+              (p.name, p.pid))
         return True
     except psutil.AccessDenied:
       pass  # This is normal if we query sys processes, etc.
@@ -64,17 +63,17 @@ def StartWebCam():
   try:
     if sys.platform == 'win32':
       subprocess.check_call(WEBCAM_WIN)
-      print 'Successfully launched virtual webcam.'
+      print('Successfully launched virtual webcam.')
     elif sys.platform.startswith('darwin'):
       subprocess.check_call(WEBCAM_MAC)
-      print 'Successfully launched virtual webcam.'
+      print('Successfully launched virtual webcam.')
     elif sys.platform.startswith('linux'):
       # TODO(bugs.webrtc.org/9636): Currently a no-op on Linux: sw webcams no
       # longer in use.
-      print 'Not implemented on Linux'
+      print('Not implemented on Linux')
 
   except Exception as e:
-    print 'Failed to launch virtual webcam: %s' % e
+    print('Failed to launch virtual webcam: %s' % e)
     return False
 
   return True
@@ -83,7 +82,7 @@ def StartWebCam():
 def _ForcePythonInterpreter(cmd):
   """Returns the fixed command line to call the right python executable."""
   out = cmd[:]
-  if out[0] == 'python':
+  if out[0] == 'vpython3':
     out[0] = sys.executable
   elif out[0].endswith('.py'):
     out.insert(0, sys.executable)
@@ -97,8 +96,7 @@ def Main(argv):
 
   if argv:
     return subprocess.call(_ForcePythonInterpreter(argv))
-  else:
-    return 0
+  return 0
 
 
 if __name__ == '__main__':

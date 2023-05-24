@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,19 +8,16 @@
 
 #include <memory>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/command_line.h"
 #include "base/files/file_util.h"
 #include "base/files/important_file_writer.h"
-#include "base/macros.h"
-#include "base/metrics/histogram_macros.h"
-#include "base/sequenced_task_runner.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/metrics/histogram.h"
+#include "base/metrics/histogram_base.h"
 #include "base/strings/string_util.h"
-#include "base/task/post_task.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
-#include "base/task_runner_util.h"
-#include "base/threading/sequenced_task_runner_handle.h"
 #include "components/assist_ranker/proto/ranker_model.pb.h"
 #include "components/assist_ranker/ranker_url_fetcher.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
@@ -32,39 +29,7 @@ namespace {
 constexpr int kMinRetryDelayMins = 3;
 
 // Suffixes for the various histograms produced by the backend.
-const char kWriteTimerHistogram[] = ".Timer.WriteModel";
-const char kReadTimerHistogram[] = ".Timer.ReadModel";
-const char kDownloadTimerHistogram[] = ".Timer.DownloadModel";
-const char kParsetimerHistogram[] = ".Timer.ParseModel";
-const char kModelStatusHistogram[] = ".Model.Status";
-
-// Helper function to UMA log a timer histograms.
-void RecordTimerHistogram(const std::string& name, base::TimeDelta duration) {
-  base::HistogramBase* counter = base::Histogram::FactoryTimeGet(
-      name, base::TimeDelta::FromMilliseconds(10),
-      base::TimeDelta::FromMilliseconds(200000), 100,
-      base::HistogramBase::kUmaTargetedHistogramFlag);
-  DCHECK(counter);
-  counter->AddTime(duration);
-}
-
-// A helper class to produce a scoped timer histogram that supports using a
-// non-static-const name.
-class MyScopedHistogramTimer {
- public:
-  MyScopedHistogramTimer(const base::StringPiece& name)
-      : name_(name.begin(), name.end()), start_(base::TimeTicks::Now()) {}
-
-  ~MyScopedHistogramTimer() {
-    RecordTimerHistogram(name_, base::TimeTicks::Now() - start_);
-  }
-
- private:
-  const std::string name_;
-  const base::TimeTicks start_;
-
-  DISALLOW_COPY_AND_ASSIGN(MyScopedHistogramTimer);
-};
+const char kModelStatusHistogram[] = ".Model.Status2";
 
 std::string LoadFromFile(const base::FilePath& model_path) {
   DCHECK(!model_path.empty());
@@ -83,7 +48,6 @@ void SaveToFile(const GURL& model_url,
                 const std::string& uma_prefix) {
   DVLOG(2) << "Saving model from '" << model_url << "'' to '"
            << model_path.value() << "'.";
-  MyScopedHistogramTimer timer(uma_prefix + kWriteTimerHistogram);
   base::ImportantFileWriter::WriteFileAtomically(model_path, model_data);
 }
 
@@ -122,7 +86,7 @@ void RankerModelLoaderImpl::NotifyOfRankerActivity() {
       // There was no configured model path. Switch the state to IDLE and
       // fall through to consider the URL.
       state_ = LoaderState::IDLE;
-      FALLTHROUGH;
+      [[fallthrough]];
     case LoaderState::IDLE:
       if (model_url_.is_valid()) {
         StartLoadFromURL();
@@ -131,7 +95,7 @@ void RankerModelLoaderImpl::NotifyOfRankerActivity() {
       // There was no configured model URL. Switch the state to FINISHED and
       // fall through.
       state_ = LoaderState::FINISHED;
-      FALLTHROUGH;
+      [[fallthrough]];
     case LoaderState::FINISHED:
     case LoaderState::LOADING_FROM_FILE:
     case LoaderState::LOADING_FROM_URL:
@@ -145,10 +109,8 @@ void RankerModelLoaderImpl::StartLoadFromFile() {
   DCHECK_EQ(state_, LoaderState::NOT_STARTED);
   DCHECK(!model_path_.empty());
   state_ = LoaderState::LOADING_FROM_FILE;
-  load_start_time_ = base::TimeTicks::Now();
-  base::PostTaskAndReplyWithResult(
-      background_task_runner_.get(), FROM_HERE,
-      base::BindOnce(&LoadFromFile, model_path_),
+  background_task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE, base::BindOnce(&LoadFromFile, model_path_),
       base::BindOnce(&RankerModelLoaderImpl::OnFileLoaded,
                      weak_ptr_factory_.GetWeakPtr()));
 }
@@ -156,10 +118,6 @@ void RankerModelLoaderImpl::StartLoadFromFile() {
 void RankerModelLoaderImpl::OnFileLoaded(const std::string& data) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK_EQ(state_, LoaderState::LOADING_FROM_FILE);
-
-  // Record the duration of the download.
-  RecordTimerHistogram(uma_prefix_ + kReadTimerHistogram,
-                       base::TimeTicks::Now() - load_start_time_);
 
   // Empty data means |model_path| wasn't successfully read. Otherwise,
   // parse and validate the model.
@@ -216,9 +174,8 @@ void RankerModelLoaderImpl::StartLoadFromURL() {
   // allowable download attempt.
   DVLOG(2) << "Downloading model from: " << model_url_;
   state_ = LoaderState::LOADING_FROM_URL;
-  load_start_time_ = base::TimeTicks::Now();
   next_earliest_download_time_ =
-      load_start_time_ + base::TimeDelta::FromMinutes(kMinRetryDelayMins);
+      base::TimeTicks::Now() + base::Minutes(kMinRetryDelayMins);
   bool request_started =
       url_fetcher_->Request(model_url_,
                             base::BindOnce(&RankerModelLoaderImpl::OnURLFetched,
@@ -239,10 +196,6 @@ void RankerModelLoaderImpl::OnURLFetched(bool success,
                                          const std::string& data) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK_EQ(state_, LoaderState::LOADING_FROM_URL);
-
-  // Record the duration of the download.
-  RecordTimerHistogram(uma_prefix_ + kDownloadTimerHistogram,
-                       base::TimeTicks::Now() - load_start_time_);
 
   // On request failure, transition back to IDLE. The loader will retry, or
   // enforce the max download attempts, later.
@@ -284,7 +237,6 @@ void RankerModelLoaderImpl::OnURLFetched(bool success,
 std::unique_ptr<RankerModel> RankerModelLoaderImpl::CreateAndValidateModel(
     const std::string& data) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  MyScopedHistogramTimer timer(uma_prefix_ + kParsetimerHistogram);
   auto model = RankerModel::FromString(data);
   if (ReportModelStatus(model ? validate_model_cb_.Run(*model)
                               : RankerModelStatus::PARSE_FAILED) !=

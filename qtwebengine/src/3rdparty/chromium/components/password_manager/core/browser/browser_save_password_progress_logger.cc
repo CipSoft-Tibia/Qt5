@@ -1,10 +1,13 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/password_manager/core/browser/browser_save_password_progress_logger.h"
 
+#include <sstream>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
@@ -16,12 +19,14 @@
 #include "components/autofill/core/browser/logging/log_manager.h"
 #include "components/autofill/core/browser/proto/server.pb.h"
 #include "components/autofill/core/common/signatures.h"
+#include "components/password_manager/core/browser/generation/password_requirements_spec_printer.h"
 #include "components/password_manager/core/browser/password_form.h"
 #include "components/password_manager/core/browser/password_form_metrics_recorder.h"
 #include "components/password_manager/core/browser/password_manager.h"
 
 using autofill::AutofillUploadContents;
 using autofill::FieldPropertiesFlags;
+using autofill::FieldTypeToStringPiece;
 using autofill::FormStructure;
 using autofill::PasswordAttribute;
 using autofill::ServerFieldType;
@@ -112,7 +117,7 @@ BrowserSavePasswordProgressLogger::StringID FormSchemeToStringID(
 }  // namespace
 
 BrowserSavePasswordProgressLogger::BrowserSavePasswordProgressLogger(
-    const autofill::LogManager* log_manager)
+    autofill::LogManager* log_manager)
     : log_manager_(log_manager) {
   DCHECK(log_manager_);
 }
@@ -152,7 +157,7 @@ void BrowserSavePasswordProgressLogger::LogSuccessiveOrigins(
 std::string
 BrowserSavePasswordProgressLogger::FormStructurePasswordAttributesLogString(
     const FormStructure& form) {
-  const base::Optional<std::pair<PasswordAttribute, bool>> attribute_vote =
+  const absl::optional<std::pair<PasswordAttribute, bool>> attribute_vote =
       form.get_password_attributes_vote();
   if (!attribute_vote.has_value())
     return std::string();
@@ -161,9 +166,9 @@ BrowserSavePasswordProgressLogger::FormStructurePasswordAttributesLogString(
   const bool attribute_value = std::get<1>(attribute_vote.value());
 
   switch (attribute) {
-    case PasswordAttribute::kHasLowercaseLetter:
+    case PasswordAttribute::kHasLetter:
       message += BinaryPasswordAttributeLogString(
-          STRING_PASSWORD_REQUIREMENTS_VOTE_FOR_LOWERCASE, attribute_value);
+          STRING_PASSWORD_REQUIREMENTS_VOTE_FOR_LETTER, attribute_value);
       break;
 
     case PasswordAttribute::kHasSpecialSymbol:
@@ -208,16 +213,23 @@ std::string BrowserSavePasswordProgressLogger::FormStructureToFieldsLogString(
           ", autocomplete=" + ScrubElementID(field->autocomplete_attribute);
 
     if (field->server_type() != autofill::NO_SERVER_DATA) {
+      base::StrAppend(
+          &field_info,
+          {", Server Type: ", FieldTypeToStringPiece(field->server_type())});
+
+      std::vector<std::string> all_predictions;
+      for (const auto& p : field->server_predictions()) {
+        all_predictions.emplace_back(
+            FieldTypeToStringPiece(static_cast<ServerFieldType>(p.type())));
+      }
+
       base::StrAppend(&field_info,
-                      {", SERVER_PREDICTION: ",
-                       autofill::AutofillType::ServerFieldTypeToString(
-                           field->server_type())});
+                      {", All Server Predictions: [",
+                       base::JoinString(all_predictions, ", "), "]"});
     }
 
     for (ServerFieldType type : field->possible_types())
-      base::StrAppend(
-          &field_info,
-          {", VOTE: ", autofill::AutofillType::ServerFieldTypeToString(type)});
+      base::StrAppend(&field_info, {", VOTE: ", FieldTypeToStringPiece(type)});
 
     if (field->vote_type())
       field_info += ", vote_type=" + VoteTypeToString(field->vote_type());
@@ -255,6 +267,12 @@ std::string BrowserSavePasswordProgressLogger::FormStructureToFieldsLogString(
     if (field->generated_password_changed())
       field_info += ", generated password changed";
 
+    if (field->password_requirements()) {
+      std::ostringstream s;
+      s << *field->password_requirements();
+      base::StrAppend(&field_info, {", PASSWORD_REQUIREMENTS: ", s.str()});
+    }
+
     result += field_info + "\n";
   }
 
@@ -279,44 +297,61 @@ void BrowserSavePasswordProgressLogger::LogSuccessfulSubmissionIndicatorEvent(
 void BrowserSavePasswordProgressLogger::LogPasswordForm(
     BrowserSavePasswordProgressLogger::StringID label,
     const PasswordForm& form) {
-  base::DictionaryValue log;
-  log.SetString(GetStringFromID(STRING_SCHEME_MESSAGE),
-                GetStringFromID(FormSchemeToStringID(form.scheme)));
-  log.SetString(GetStringFromID(STRING_SCHEME_MESSAGE),
-                GetStringFromID(FormSchemeToStringID(form.scheme)));
-  log.SetString(GetStringFromID(STRING_SIGNON_REALM),
-                ScrubURL(GURL(form.signon_realm)));
-  log.SetString(GetStringFromID(STRING_ORIGIN), ScrubURL(form.url));
-  log.SetString(GetStringFromID(STRING_ACTION), ScrubURL(form.action));
-  log.SetString(GetStringFromID(STRING_USERNAME_ELEMENT),
-                ScrubElementID(form.username_element));
-  log.SetString(GetStringFromID(STRING_USERNAME_ELEMENT_RENDERER_ID),
-                NumberToString(form.username_element_renderer_id.value()));
-  log.SetString(GetStringFromID(STRING_PASSWORD_ELEMENT),
-                ScrubElementID(form.password_element));
-  log.SetString(GetStringFromID(STRING_PASSWORD_ELEMENT_RENDERER_ID),
-                NumberToString(form.password_element_renderer_id.value()));
-  log.SetString(GetStringFromID(STRING_NEW_PASSWORD_ELEMENT),
-                ScrubElementID(form.new_password_element));
-  log.SetString(GetStringFromID(STRING_NEW_PASSWORD_ELEMENT_RENDERER_ID),
-                NumberToString(form.new_password_element_renderer_id.value()));
+  base::Value::Dict log;
+  log.Set(GetStringFromID(STRING_SCHEME_MESSAGE),
+          GetStringFromID(FormSchemeToStringID(form.scheme)));
+  log.Set(GetStringFromID(STRING_SCHEME_MESSAGE),
+          GetStringFromID(FormSchemeToStringID(form.scheme)));
+  log.Set(GetStringFromID(STRING_SIGNON_REALM),
+          ScrubURL(GURL(form.signon_realm)));
+  log.Set(GetStringFromID(STRING_ORIGIN), ScrubURL(form.url));
+  log.Set(GetStringFromID(STRING_ACTION), ScrubURL(form.action));
+  log.Set(GetStringFromID(STRING_USERNAME_ELEMENT),
+          ScrubElementID(form.username_element));
+  log.Set(GetStringFromID(STRING_USERNAME_ELEMENT_RENDERER_ID),
+          NumberToString(form.username_element_renderer_id.value()));
+  log.Set(GetStringFromID(STRING_PASSWORD_ELEMENT),
+          ScrubElementID(form.password_element));
+  log.Set(GetStringFromID(STRING_PASSWORD_ELEMENT_RENDERER_ID),
+          NumberToString(form.password_element_renderer_id.value()));
+  log.Set(GetStringFromID(STRING_NEW_PASSWORD_ELEMENT),
+          ScrubElementID(form.new_password_element));
+  log.Set(GetStringFromID(STRING_NEW_PASSWORD_ELEMENT_RENDERER_ID),
+          NumberToString(form.new_password_element_renderer_id.value()));
   if (!form.confirmation_password_element.empty()) {
-    log.SetString(GetStringFromID(STRING_CONFIRMATION_PASSWORD_ELEMENT),
-                  ScrubElementID(form.confirmation_password_element));
-    log.SetString(
+    log.Set(GetStringFromID(STRING_CONFIRMATION_PASSWORD_ELEMENT),
+            ScrubElementID(form.confirmation_password_element));
+    log.Set(
         GetStringFromID(STRING_CONFIRMATION_PASSWORD_ELEMENT_RENDERER_ID),
         NumberToString(form.confirmation_password_element_renderer_id.value()));
   }
-  log.SetBoolean(GetStringFromID(STRING_PASSWORD_GENERATED),
-                 form.type == PasswordForm::Type::kGenerated);
-  log.SetInteger(GetStringFromID(STRING_TIMES_USED), form.times_used);
-  log.SetBoolean(GetStringFromID(STRING_PSL_MATCH),
-                 form.is_public_suffix_match);
-  LogValue(label, log);
+  log.Set(GetStringFromID(STRING_PASSWORD_GENERATED),
+          form.type == PasswordForm::Type::kGenerated);
+  log.Set(GetStringFromID(STRING_TIMES_USED), form.times_used_in_html_form);
+  log.Set(GetStringFromID(STRING_PSL_MATCH), form.is_public_suffix_match);
+  LogValue(label, base::Value(std::move(log)));
+}
+
+void BrowserSavePasswordProgressLogger::LogPasswordRequirements(
+    const GURL& origin,
+    autofill::FormSignature form_signature,
+    autofill::FieldSignature field_signature,
+    const autofill::PasswordRequirementsSpec& spec) {
+  std::ostringstream s;
+  s << "Joint password requirements: {\n"
+    << GetStringFromID(STRING_ORIGIN) << ": " << ScrubURL(origin) << "\n"
+    << GetStringFromID(STRING_FORM_SIGNATURE) << ": "
+    << FormSignatureToDebugString(form_signature) << "\n"
+    << "Field signature: " << NumberToString(field_signature.value()) << "\n"
+    << "Requirements:" << spec << "\n"
+    << "}";
+  SendLog(s.str());
 }
 
 void BrowserSavePasswordProgressLogger::SendLog(const std::string& log) {
-  log_manager_->LogTextMessage(log);
+  LOG_AF(*log_manager_) << autofill::Tag{"div"}
+                        << autofill::Attrib{"class", "preserve-white-space"}
+                        << log << autofill::CTag{"div"};
 }
 
 std::string BrowserSavePasswordProgressLogger::PasswordAttributeLogString(

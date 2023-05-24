@@ -1,38 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
 #include <qsizepolicy.h>
 
 Q_DECLARE_METATYPE(Qt::Orientations)
 Q_DECLARE_METATYPE(QSizePolicy)
 Q_DECLARE_METATYPE(QSizePolicy::Policy)
 Q_DECLARE_METATYPE(QSizePolicy::ControlType)
+
+#include <QTest>
 
 class tst_QSizePolicy : public QObject
 {
@@ -109,22 +85,22 @@ void tst_QSizePolicy::constExpr()
 {
 /* gcc < 4.8.0 has problems with init'ing variant members in constexpr ctors */
 /* https://gcc.gnu.org/bugzilla/show_bug.cgi?id=54922 */
-#if !defined(Q_CC_GNU) || defined(Q_CC_INTEL) || defined(Q_CC_CLANG) || Q_CC_GNU >= 408
+#if !defined(Q_CC_GNU) || defined(Q_CC_CLANG) || Q_CC_GNU >= 408
     // check that certain ctors are constexpr (compile-only):
-    { Q_CONSTEXPR QSizePolicy sp; Q_UNUSED(sp); }
-    { Q_CONSTEXPR QSizePolicy sp = QSizePolicy(); Q_UNUSED(sp); }
-    { Q_CONSTEXPR QSizePolicy sp = QSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred); Q_UNUSED(sp); }
-    { Q_CONSTEXPR QSizePolicy sp = QSizePolicy(QSizePolicy::Minimum, QSizePolicy::Expanding, QSizePolicy::DefaultType);
-      Q_CONSTEXPR QSizePolicy tp = sp.transposed(); Q_UNUSED(tp); }
+    { constexpr QSizePolicy sp; Q_UNUSED(sp); }
+    { constexpr QSizePolicy sp = QSizePolicy(); Q_UNUSED(sp); }
+    { constexpr QSizePolicy sp = QSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred); Q_UNUSED(sp); }
+    { constexpr QSizePolicy sp = QSizePolicy(QSizePolicy::Minimum, QSizePolicy::Expanding, QSizePolicy::DefaultType);
+      constexpr QSizePolicy tp = sp.transposed(); Q_UNUSED(tp); }
     {
       // QTBUG-69983: For ControlType != QSizePolicy::DefaultType, qCountTrailingZeroBits()
       // is used, which MSVC 15.8.1 does not consider constexpr due to built-ins
-#  if defined(QT_HAS_CONSTEXPR_BUILTINS) && (!defined(Q_CC_MSVC) || _MSC_VER < 1915)
-      Q_RELAXED_CONSTEXPR auto sp = QSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed, QSizePolicy::CheckBox);
+#  if defined(QT_HAS_CONSTEXPR_BITOPS)
+      constexpr auto sp = QSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed, QSizePolicy::CheckBox);
 #  else
-      Q_CONSTEXPR auto sp = QSizePolicy(QSizePolicy::Minimum, QSizePolicy::Expanding, QSizePolicy::DefaultType);
+      constexpr auto sp = QSizePolicy(QSizePolicy::Minimum, QSizePolicy::Expanding, QSizePolicy::DefaultType);
 #  endif
-      Q_RELAXED_CONSTEXPR auto tp = sp.transposed(); Q_UNUSED(tp);
+      constexpr auto tp = sp.transposed(); Q_UNUSED(tp);
     }
 #else
     QSKIP("QSizePolicy cannot be constexpr with this version of the compiler.");

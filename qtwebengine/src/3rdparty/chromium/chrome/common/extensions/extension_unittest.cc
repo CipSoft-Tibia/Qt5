@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,17 +7,16 @@
 #include "base/files/file_util.h"
 #include "base/format_macros.h"
 #include "base/path_service.h"
-#include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "chrome/common/chrome_paths.h"
-#include "chrome/common/extensions/command.h"
 #include "chrome/common/extensions/extension_test_util.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/crx_file/id_util.h"
+#include "extensions/common/command.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_builder.h"
 #include "extensions/common/extension_resource.h"
@@ -36,62 +35,65 @@
 #include "ui/gfx/codec/png_codec.h"
 #include "url/gurl.h"
 
+using base::FilePath;
 using extension_test_util::LoadManifest;
 using extension_test_util::LoadManifestStrict;
-using base::FilePath;
+using extensions::mojom::ManifestLocation;
 
 namespace extensions {
 
 // We persist location values in the preferences, so this is a sanity test that
 // someone doesn't accidentally change them.
 TEST(ExtensionTest, LocationValuesTest) {
-  ASSERT_EQ(0, Manifest::INVALID_LOCATION);
-  ASSERT_EQ(1, Manifest::INTERNAL);
-  ASSERT_EQ(2, Manifest::EXTERNAL_PREF);
-  ASSERT_EQ(3, Manifest::EXTERNAL_REGISTRY);
-  ASSERT_EQ(4, Manifest::UNPACKED);
-  ASSERT_EQ(5, Manifest::COMPONENT);
-  ASSERT_EQ(6, Manifest::EXTERNAL_PREF_DOWNLOAD);
-  ASSERT_EQ(7, Manifest::EXTERNAL_POLICY_DOWNLOAD);
-  ASSERT_EQ(8, Manifest::COMMAND_LINE);
-  ASSERT_EQ(9, Manifest::EXTERNAL_POLICY);
+  ASSERT_EQ(0, static_cast<int>(ManifestLocation::kInvalidLocation));
+  ASSERT_EQ(1, static_cast<int>(ManifestLocation::kInternal));
+  ASSERT_EQ(2, static_cast<int>(ManifestLocation::kExternalPref));
+  ASSERT_EQ(3, static_cast<int>(ManifestLocation::kExternalRegistry));
+  ASSERT_EQ(4, static_cast<int>(ManifestLocation::kUnpacked));
+  ASSERT_EQ(5, static_cast<int>(ManifestLocation::kComponent));
+  ASSERT_EQ(6, static_cast<int>(ManifestLocation::kExternalPrefDownload));
+  ASSERT_EQ(7, static_cast<int>(ManifestLocation::kExternalPolicyDownload));
+  ASSERT_EQ(8, static_cast<int>(ManifestLocation::kCommandLine));
+  ASSERT_EQ(9, static_cast<int>(ManifestLocation::kExternalPolicy));
+  ASSERT_EQ(10, static_cast<int>(ManifestLocation::kExternalComponent));
 }
 
 TEST(ExtensionTest, LocationPriorityTest) {
-  for (int i = 0; i < Manifest::NUM_LOCATIONS; i++) {
-    Manifest::Location loc = static_cast<Manifest::Location>(i);
+  for (int i = 0; i <= static_cast<int>(ManifestLocation::kMaxValue); i++) {
+    ManifestLocation loc = static_cast<ManifestLocation>(i);
 
-    // INVALID is not a valid location.
-    if (loc == Manifest::INVALID_LOCATION)
+    // kInvalidLocation is not a valid location.
+    if (loc == ManifestLocation::kInvalidLocation)
       continue;
 
     // Comparing a location that has no rank will hit a CHECK. Do a
     // compare with every valid location, to be sure each one is covered.
 
     // Check that no install source can override a componenet extension.
-    ASSERT_EQ(Manifest::COMPONENT,
-              Manifest::GetHigherPriorityLocation(Manifest::COMPONENT, loc));
-    ASSERT_EQ(Manifest::COMPONENT,
-              Manifest::GetHigherPriorityLocation(loc, Manifest::COMPONENT));
+    ASSERT_EQ(
+        ManifestLocation::kComponent,
+        Manifest::GetHigherPriorityLocation(ManifestLocation::kComponent, loc));
+    ASSERT_EQ(
+        ManifestLocation::kComponent,
+        Manifest::GetHigherPriorityLocation(loc, ManifestLocation::kComponent));
 
     // Check that any source can override a user install. This might change
     // in the future, in which case this test should be updated.
-    ASSERT_EQ(loc,
-              Manifest::GetHigherPriorityLocation(Manifest::INTERNAL, loc));
-    ASSERT_EQ(loc,
-              Manifest::GetHigherPriorityLocation(loc, Manifest::INTERNAL));
+    ASSERT_EQ(loc, Manifest::GetHigherPriorityLocation(
+                       ManifestLocation::kInternal, loc));
+    ASSERT_EQ(loc, Manifest::GetHigherPriorityLocation(
+                       loc, ManifestLocation::kInternal));
   }
 
   // Check a few interesting cases that we know can happen:
-  ASSERT_EQ(Manifest::EXTERNAL_POLICY_DOWNLOAD,
+  ASSERT_EQ(ManifestLocation::kExternalPolicyDownload,
             Manifest::GetHigherPriorityLocation(
-                Manifest::EXTERNAL_POLICY_DOWNLOAD,
-                Manifest::EXTERNAL_PREF));
+                ManifestLocation::kExternalPolicyDownload,
+                ManifestLocation::kExternalPref));
 
-  ASSERT_EQ(Manifest::EXTERNAL_PREF,
+  ASSERT_EQ(ManifestLocation::kExternalPref,
             Manifest::GetHigherPriorityLocation(
-                Manifest::INTERNAL,
-                Manifest::EXTERNAL_PREF));
+                ManifestLocation::kInternal, ManifestLocation::kExternalPref));
 }
 
 TEST(ExtensionTest, EnsureNewLinesInExtensionNameAreCollapsed) {
@@ -128,34 +130,6 @@ TEST(ExtensionTest, EnsureWhitespacesInExtensionNameAreCollapsed) {
   EXPECT_EQ(unsanitized_name, extension->non_localized_name());
 }
 
-// TODO(crbug.com/794252): Disallow empty extension names from being locally
-// loaded.
-TEST(ExtensionTest, EmptyName) {
-  DictionaryBuilder manifest1;
-  manifest1.Set("name", "")
-      .Set("manifest_version", 2)
-      .Set("description", "some description");
-  scoped_refptr<const Extension> extension =
-      ExtensionBuilder()
-          .SetManifest(manifest1.Build())
-          .MergeManifest(DictionaryBuilder().Set("version", "0.1").Build())
-          .Build();
-  ASSERT_TRUE(extension.get());
-  EXPECT_EQ("", extension->name());
-
-  DictionaryBuilder manifest2;
-  manifest2.Set("name", " ")
-      .Set("manifest_version", 2)
-      .Set("description", "some description");
-  extension =
-      ExtensionBuilder()
-          .SetManifest(manifest2.Build())
-          .MergeManifest(DictionaryBuilder().Set("version", "0.1").Build())
-          .Build();
-  ASSERT_TRUE(extension.get());
-  EXPECT_EQ("", extension->name());
-}
-
 TEST(ExtensionTest, RTLNameInLTRLocale) {
   // Test the case when a directional override is the first character.
   auto run_rtl_test = [](const wchar_t* name, const wchar_t* expected) {
@@ -171,7 +145,7 @@ TEST(ExtensionTest, RTLNameInLTRLocale) {
         ExtensionBuilder().SetManifest(manifest.Build()).Build();
     ASSERT_TRUE(extension);
     const int kResourceId = IDS_EXTENSION_PERMISSIONS_PROMPT_TITLE;
-    const base::string16 expected_utf16 = base::WideToUTF16(expected);
+    const std::u16string expected_utf16 = base::WideToUTF16(expected);
     EXPECT_EQ(l10n_util::GetStringFUTF16(kResourceId, expected_utf16),
               l10n_util::GetStringFUTF16(kResourceId,
                                          base::UTF8ToUTF16(extension->name())));
@@ -184,13 +158,13 @@ TEST(ExtensionTest, RTLNameInLTRLocale) {
   run_rtl_test(L"google\x202e.com", L"google\x202e.com\x202c");
 
   run_rtl_test(L"كبير Google التطبيق",
-#if !defined(OS_WIN)
+#if !BUILDFLAG(IS_WIN)
                L"\x200e\x202bكبير Google التطبيق\x202c\x200e");
 #else
                // On Windows for an LTR locale, no changes to the string are
                // made.
                L"كبير Google التطبيق");
-#endif  // !OS_WIN
+#endif  // !BUILDFLAG(IS_WIN)
 }
 
 TEST(ExtensionTest, GetResourceURLAndPath) {
@@ -271,9 +245,9 @@ TEST(ExtensionTest, GetResource) {
   scoped_refptr<Extension> extension = LoadManifestStrict("empty_manifest",
       "empty.json");
   EXPECT_TRUE(extension.get());
-  for (size_t i = 0; i < base::size(valid_path_test_cases); ++i)
+  for (size_t i = 0; i < std::size(valid_path_test_cases); ++i)
     EXPECT_TRUE(!extension->GetResource(valid_path_test_cases[i]).empty());
-  for (size_t i = 0; i < base::size(invalid_path_test_cases); ++i)
+  for (size_t i = 0; i < std::size(invalid_path_test_cases); ++i)
     EXPECT_TRUE(extension->GetResource(invalid_path_test_cases[i]).empty());
 }
 
@@ -360,7 +334,7 @@ TEST(ExtensionTest, WantsFileAccess) {
   GURL file_url("file:///etc/passwd");
 
   // Ignore the policy delegate for this test.
-  PermissionsData::SetPolicyDelegate(NULL);
+  PermissionsData::SetPolicyDelegate(nullptr);
 
   // <all_urls> permission
   extension = LoadManifest("permissions", "permissions_all_urls.json");
@@ -432,15 +406,11 @@ TEST(ExtensionTest, WantsFileAccess) {
 }
 
 TEST(ExtensionTest, ExtraFlags) {
-  scoped_refptr<Extension> extension;
-  extension = LoadManifest("app", "manifest.json", Extension::FROM_WEBSTORE);
+  scoped_refptr<Extension> extension =
+      LoadManifest("app", "manifest.json", Extension::FROM_WEBSTORE);
   EXPECT_TRUE(extension->from_webstore());
 
-  extension = LoadManifest("app", "manifest.json", Extension::FROM_BOOKMARK);
-  EXPECT_TRUE(extension->from_bookmark());
-
   extension = LoadManifest("app", "manifest.json", Extension::NO_FLAGS);
-  EXPECT_FALSE(extension->from_bookmark());
   EXPECT_FALSE(extension->from_webstore());
 }
 

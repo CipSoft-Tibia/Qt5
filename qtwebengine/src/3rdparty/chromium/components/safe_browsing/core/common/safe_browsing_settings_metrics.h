@@ -1,4 +1,4 @@
-// Copyright (c) 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,7 +23,9 @@ enum class SettingsAccessPoint : int {
   kSurfaceExplorerPromoSlinger = 3,
   // From security interstitial.
   kSecurityInterstitial = 4,
-  kMaxValue = kSurfaceExplorerPromoSlinger
+  // From UX shown due to the Tailored Security setting changing.
+  kTailoredSecurity = 5,
+  kMaxValue = kTailoredSecurity
 };
 
 // Enum representing actions taken by users visiting the
@@ -61,6 +63,10 @@ enum class UserAction : int {
   kDisableSafeBrowsingDialogDenied = 7,
   kMaxValue = kDisableSafeBrowsingDialogDenied
 };
+
+// Records the user action when the user navigates to the Enhanced Protection
+// page.
+void LogShowEnhancedProtectionAction();
 
 }  // namespace safe_browsing
 

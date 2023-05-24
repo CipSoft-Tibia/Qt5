@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 
 #include "CheckFieldsVisitor.h"
 #include "CheckFinalizerVisitor.h"
+#include "CheckForbiddenFieldsVisitor.h"
 #include "CheckGCRootsVisitor.h"
 #include "Config.h"
 #include "clang/AST/AST.h"
@@ -37,6 +38,9 @@ class DiagnosticsReporter {
       const CheckFieldsVisitor::Errors& errors);
   void ClassContainsGCRoots(RecordInfo* info,
                             const CheckGCRootsVisitor::Errors& errors);
+  void ClassContainsForbiddenFields(
+      RecordInfo* info,
+      const CheckForbiddenFieldsVisitor::Errors& errors);
   void FinalizerAccessesFinalizedFields(
       clang::CXXMethodDecl* dtor,
       const CheckFinalizerVisitor::Errors& errors);
@@ -79,9 +83,18 @@ class DiagnosticsReporter {
   void UniquePtrUsedWithGC(const clang::Expr* expr,
                            const clang::FunctionDecl* bad_function,
                            const clang::CXXRecordDecl* gc_type);
-  void OptionalUsedWithGC(const clang::Expr* expr,
-                          const clang::CXXRecordDecl* optional,
-                          const clang::CXXRecordDecl* gc_type);
+  void OptionalFieldUsedWithGC(const clang::FieldDecl* decl,
+                               const clang::CXXRecordDecl* optional,
+                               const clang::CXXRecordDecl* gc_type);
+  void OptionalNewExprUsedWithGC(const clang::Expr* expr,
+                                 const clang::CXXRecordDecl* optional,
+                                 const clang::CXXRecordDecl* gc_type);
+  void VariantUsedWithGC(const clang::Expr* expr,
+                         const clang::CXXRecordDecl* variant,
+                         const clang::CXXRecordDecl* gc_type);
+  void MemberOnStack(const clang::VarDecl* var);
+  void AdditionalPadding(const clang::RecordDecl* var, size_t padding);
+
  private:
   clang::DiagnosticBuilder ReportDiagnostic(
       clang::SourceLocation location,
@@ -136,9 +149,17 @@ class DiagnosticsReporter {
   unsigned diag_iterator_to_gc_managed_collection_note_;
   unsigned diag_trace_method_of_stack_allocated_parent_;
   unsigned diag_member_in_stack_allocated_class_;
+  unsigned diag_member_on_stack_;
+  unsigned diag_additional_padding_;
+  unsigned diag_task_runner_timer_in_gc_class_note;
+  unsigned diag_forbidden_field_part_object_class_note;
+  unsigned diag_mojo_remote_in_gc_class_note;
+  unsigned diag_mojo_receiver_in_gc_class_note;
 
   unsigned diag_unique_ptr_used_with_gc_;
-  unsigned diag_optional_used_with_gc_;
+  unsigned diag_optional_field_used_with_gc_;
+  unsigned diag_optional_new_expr_used_with_gc_;
+  unsigned diag_variant_used_with_gc_;
 };
 
 #endif // TOOLS_BLINK_GC_PLUGIN_DIAGNOSTICS_REPORTER_H_

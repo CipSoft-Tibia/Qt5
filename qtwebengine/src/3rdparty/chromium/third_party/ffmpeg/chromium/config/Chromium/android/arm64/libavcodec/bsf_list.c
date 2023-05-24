@@ -1,3 +1,2 @@
-static const AVBitStreamFilter * const bitstream_filters[] = {
-    &ff_null_bsf,
+static const FFBitStreamFilter * const bitstream_filters[] = {
     NULL };

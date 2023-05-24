@@ -26,7 +26,6 @@
 #include "api/video/video_frame.h"
 #include "api/video_codecs/sdp_video_format.h"
 #include "api/video_codecs/video_encoder.h"
-#include "modules/include/module_common_types.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/include/video_error_codes.h"
 #include "rtc_base/logging.h"
@@ -49,22 +48,24 @@ class ObjCVideoEncoder : public VideoEncoder {
   }
 
   int32_t RegisterEncodeCompleteCallback(EncodedImageCallback *callback) override {
-    [encoder_ setCallback:^BOOL(RTC_OBJC_TYPE(RTCEncodedImage) * _Nonnull frame,
-                                id<RTC_OBJC_TYPE(RTCCodecSpecificInfo)> _Nonnull info,
-                                RTC_OBJC_TYPE(RTCRtpFragmentationHeader) * _Nonnull header) {
-      EncodedImage encodedImage = [frame nativeEncodedImage];
+    if (callback) {
+      [encoder_ setCallback:^BOOL(RTC_OBJC_TYPE(RTCEncodedImage) * _Nonnull frame,
+                                  id<RTC_OBJC_TYPE(RTCCodecSpecificInfo)> _Nonnull info) {
+        EncodedImage encodedImage = [frame nativeEncodedImage];
 
-      // Handle types that can be converted into one of CodecSpecificInfo's hard coded cases.
-      CodecSpecificInfo codecSpecificInfo;
-      if ([info isKindOfClass:[RTC_OBJC_TYPE(RTCCodecSpecificInfoH264) class]]) {
-        codecSpecificInfo =
-            [(RTC_OBJC_TYPE(RTCCodecSpecificInfoH264) *)info nativeCodecSpecificInfo];
-      }
+        // Handle types that can be converted into one of CodecSpecificInfo's hard coded cases.
+        CodecSpecificInfo codecSpecificInfo;
+        if ([info isKindOfClass:[RTC_OBJC_TYPE(RTCCodecSpecificInfoH264) class]]) {
+          codecSpecificInfo =
+              [(RTC_OBJC_TYPE(RTCCodecSpecificInfoH264) *)info nativeCodecSpecificInfo];
+        }
 
-      EncodedImageCallback::Result res = callback->OnEncodedImage(encodedImage, &codecSpecificInfo);
-      return res.error == EncodedImageCallback::Result::OK;
-    }];
-
+        EncodedImageCallback::Result res = callback->OnEncodedImage(encodedImage, &codecSpecificInfo);
+        return res.error == EncodedImageCallback::Result::OK;
+      }];
+    } else {
+      [encoder_ setCallback:nil];
+    }
     return WEBRTC_VIDEO_CODEC_OK;
   }
 
@@ -90,15 +91,16 @@ class ObjCVideoEncoder : public VideoEncoder {
 
   VideoEncoder::EncoderInfo GetEncoderInfo() const override {
     EncoderInfo info;
-    info.supports_native_handle = true;
     info.implementation_name = implementation_name_;
 
     RTC_OBJC_TYPE(RTCVideoEncoderQpThresholds) *qp_thresholds = [encoder_ scalingSettings];
     info.scaling_settings = qp_thresholds ? ScalingSettings(qp_thresholds.low, qp_thresholds.high) :
                                             ScalingSettings::kOff;
 
+    info.requested_resolution_alignment = encoder_.resolutionAlignment > 0 ?: 1;
+    info.apply_alignment_to_all_simulcast_layers = encoder_.applyAlignmentToAllSimulcastLayers;
+    info.supports_native_handle = encoder_.supportsNativeHandle;
     info.is_hardware_accelerated = true;
-    info.has_internal_source = false;
     return info;
   }
 
@@ -128,6 +130,17 @@ class ObjcVideoEncoderSelector : public VideoEncoderFactory::EncoderSelectorInte
     RTC_OBJC_TYPE(RTCVideoCodecInfo) *info = [selector_ encoderForBitrate:rate.kbps<NSInteger>()];
     if (info) {
       return [info nativeSdpVideoFormat];
+    }
+    return absl::nullopt;
+  }
+
+  absl::optional<SdpVideoFormat> OnResolutionChange(const RenderResolution &resolution) override {
+    if ([selector_ respondsToSelector:@selector(encoderForResolutionChangeBySize:)]) {
+      RTC_OBJC_TYPE(RTCVideoCodecInfo) *info = [selector_
+          encoderForResolutionChangeBySize:CGSizeMake(resolution.Width(), resolution.Height())];
+      if (info) {
+        return [info nativeSdpVideoFormat];
+      }
     }
     return absl::nullopt;
   }

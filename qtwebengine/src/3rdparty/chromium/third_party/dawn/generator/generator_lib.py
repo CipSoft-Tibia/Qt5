@@ -156,7 +156,8 @@ _FileOutput = namedtuple('FileOutput', ['name', 'content'])
 
 def _do_renders(renders, template_dir):
     loader = _PreprocessingLoader(template_dir)
-    env = jinja2.Environment(loader=loader,
+    env = jinja2.Environment(extensions=['jinja2.ext.do'],
+                             loader=loader,
                              lstrip_blocks=True,
                              trim_blocks=True,
                              line_comment_prefix='//*')
@@ -201,6 +202,10 @@ def _compute_python_dependencies(root_dir=None):
 
     paths = set()
     for path in module_paths:
+        # Builtin/namespaced modules may return None for the file path.
+        if not path:
+            continue
+
         path = os.path.abspath(path)
 
         if not path.startswith(root_dir):
@@ -253,12 +258,6 @@ def run_generator(generator):
         type=str,
         help=('Optional source root directory for Python dependency '
               'computations'))
-    parser.add_argument(
-        '--allowed-output-dirs-file',
-        default=None,
-        type=str,
-        help=("File containing a list of allowed directories where files "
-              "can be output."))
     parser.add_argument(
         '--print-cmake-dependencies',
         default=False,
@@ -321,32 +320,6 @@ def run_generator(generator):
 
     outputs = _do_renders(renders, args.template_dir)
 
-    # The caller wants to assert that the outputs are only in specific
-    # directories.
-    if args.allowed_output_dirs_file != None:
-        with open(args.allowed_output_dirs_file) as f:
-            allowed_dirs = set([line.strip() for line in f.readlines()])
-
-        for directory in allowed_dirs:
-            if not directory.endswith('/'):
-                print('Allowed directory entry "{}" doesn\'t '
-                      'end with /'.format(directory))
-                return 1
-
-        def check_in_subdirectory(path, directory):
-            return path.startswith(
-                directory) and not '/' in path[len(directory):]
-
-        for render in renders:
-            if not any(
-                    check_in_subdirectory(render.output, directory)
-                    for directory in allowed_dirs):
-                print('Output file "{}" is not in the allowed directory '
-                      'list below:'.format(render.output))
-                for directory in sorted(allowed_dirs):
-                    print('    "{}"'.format(directory))
-                return 1
-
     # Output the JSON tarball
     if args.output_json_tarball != None:
         json_root = {}
@@ -362,8 +335,7 @@ def run_generator(generator):
             output_path = os.path.join(args.output_dir, output.name)
 
             directory = os.path.dirname(output_path)
-            if not os.path.exists(directory):
-                os.makedirs(directory)
+            os.makedirs(directory, exist_ok=True)
 
             with open(output_path, 'w') as outfile:
                 outfile.write(output.content)

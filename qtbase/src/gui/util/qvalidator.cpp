@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qdebug.h>
 
@@ -58,7 +22,7 @@ QT_BEGIN_NAMESPACE
 
     The class itself is abstract. Two subclasses, \l QIntValidator and
     \l QDoubleValidator, provide basic numeric-range checking, and \l
-    QRegExpValidator provides general checking using a custom regular
+    QRegularExpressionValidator provides general checking using a custom regular
     expression.
 
     If the built-in validators aren't sufficient, you can subclass
@@ -114,7 +78,7 @@ QT_BEGIN_NAMESPACE
     QValidator is typically used with QLineEdit, QSpinBox and
     QComboBox.
 
-    \sa QIntValidator, QDoubleValidator, QRegExpValidator, {Line Edits Example}
+    \sa QIntValidator, QDoubleValidator, QRegularExpressionValidator, {Line Edits Example}
 */
 
 
@@ -189,13 +153,6 @@ QT_BEGIN_NAMESPACE
     QDoubleValidator::Notation is not a registered metatype, so for queued connections,
     you will have to register it with Q_DECLARE_METATYPE() and qRegisterMetaType().
 
-    \internal
-*/
-
-/*!
-    \fn void QRegExpValidator::regExpChanged(const QRegExp &regExp)
-
-    This signal is emitted after the regExp property changed.
     \internal
 */
 
@@ -328,7 +285,7 @@ void QValidator::fixup(QString &) const
     is not set by default, the validator will accept group separators. It is thus
     recommended to use QLocale::toInt() to obtain the numeric value.
 
-    \sa QDoubleValidator, QRegExpValidator, QLocale::toInt(), {Line Edits Example}
+    \sa QDoubleValidator, QRegularExpressionValidator, QLocale::toInt(), {Line Edits Example}
 */
 
 /*!
@@ -374,12 +331,12 @@ QIntValidator::~QIntValidator()
     or is a prefix of an integer in the valid range, returns \l Intermediate.
     Otherwise, returns \l Invalid.
 
-    If the valid range consists of just positive integers (e.g., 32 to 100)
-    and \a input is a negative integer, then Invalid is returned. (On the other
-    hand, if the range consists of negative integers (e.g., -100 to -32) and
-    \a input is a positive integer, then Intermediate is returned, because
-    the user might be just about to type the minus (especially for right-to-left
-    languages).
+    If the valid range consists of just positive integers (e.g., 32 to 100) and
+    \a input is a negative integer, then Invalid is returned. (On the other
+    hand, if the range consists of negative integers (e.g., -100 to -32) and \a
+    input is a positive integer without leading plus sign, then Intermediate is
+    returned, because the user might be just about to type the minus (especially
+    for right-to-left languages).
 
     Similarly, if the valid range is between 46 and 53, then 41 and 59 will be
     evaluated as \l Intermediate, as otherwise the user wouldn't be able to
@@ -428,7 +385,7 @@ QValidator::State QIntValidator::validate(QString & input, int&) const
         return Intermediate;
 
     bool ok;
-    qlonglong entered = QLocaleData::bytearrayToLongLong(buff.constData(), 10, &ok);
+    qlonglong entered = QLocaleData::bytearrayToLongLong(buff, 10, &ok);
     if (!ok)
         return Invalid;
 
@@ -463,12 +420,10 @@ void QIntValidator::fixup(QString &input) const
         return;
     }
     bool ok;
-    qlonglong entered = QLocaleData::bytearrayToLongLong(buff.constData(), 10, &ok);
+    qlonglong entered = QLocaleData::bytearrayToLongLong(buff, 10, &ok);
     if (ok)
         input = locale().toString(entered);
 }
-
-// FIXME: Qt 6: Make QIntValidator::setRange() non-virtual
 
 /*!
     Sets the range of the validator to only accept integers between \a
@@ -500,7 +455,7 @@ void QIntValidator::setRange(int bottom, int top)
     \brief the validator's lowest acceptable value
 
     By default, this property's value is derived from the lowest signed
-    integer available (typically -2147483647).
+    integer available (-2147483648).
 
     \sa setRange()
 */
@@ -514,7 +469,7 @@ void QIntValidator::setBottom(int bottom)
     \brief the validator's highest acceptable value
 
     By default, this property's value is derived from the highest signed
-    integer available (typically 2147483647).
+    integer available (2147483647).
 
     \sa setRange()
 */
@@ -539,8 +494,6 @@ QValidator::QValidator(QValidatorPrivate &d, QObject *parent)
 {
 }
 
-#ifndef QT_NO_REGEXP
-
 class QDoubleValidatorPrivate : public QValidatorPrivate
 {
     Q_DECLARE_PUBLIC(QDoubleValidator)
@@ -554,6 +507,8 @@ public:
     QDoubleValidator::Notation notation;
 
     QValidator::State validateWithLocale(QString & input, QLocaleData::NumberMode numMode, const QLocale &locale) const;
+    void fixupWithLocale(QString &input, QLocaleData::NumberMode numMode,
+                         const QLocale &locale) const;
 };
 
 
@@ -565,8 +520,7 @@ public:
     \inmodule QtGui
 
     QDoubleValidator provides an upper bound, a lower bound, and a
-    limit on the number of digits after the decimal point. It does not
-    provide a fixup() function.
+    limit on the number of digits after the decimal point.
 
     You can set the acceptable range in one call with setRange(), or
     with setBottom() and setTop(). Set the number of decimal places
@@ -577,12 +531,13 @@ public:
     in the German locale, "1,234" will be accepted as the fractional number
     1.234. In Arabic locales, QDoubleValidator will accept Arabic digits.
 
-    \note The QLocale::NumberOptions set on the locale() also affect the
-    way the number is interpreted. For example, since QLocale::RejectGroupSeparator
-    is not set by default, the validator will accept group separators. It is thus
-    recommended to use QLocale::toDouble() to obtain the numeric value.
+    \note The QLocale::NumberOptions set on the locale() also affect the way the
+    number is interpreted. For example, since QLocale::RejectGroupSeparator is
+    not set by default (except on the \c "C" locale), the validator will accept
+    group separators. If the string passes validation, pass it to
+    locale().toDouble() to obtain its numeric value.
 
-    \sa QIntValidator, QRegExpValidator, QLocale::toDouble(), {Line Edits Example}
+    \sa QIntValidator, QRegularExpressionValidator, QLocale::toDouble(), {Line Edits Example}
 */
 
  /*!
@@ -590,10 +545,23 @@ public:
     \since 4.3
     This enum defines the allowed notations for entering a double.
 
-    \value StandardNotation      The string is written as a standard number
-                                 (i.e. 0.015).
-    \value ScientificNotation    The string is written in scientific
-                                 form. It may have an exponent part(i.e. 1.5E-2).
+    \value StandardNotation The string is written in the standard format, a
+                            whole number part optionally followed by a separator
+                            and fractional part, for example \c{"0.015"}.
+
+    \value ScientificNotation The string is written in scientific form, which
+                              optionally appends an exponent part to the
+                              standard format, for example \c{"1.5E-2"}.
+
+    The whole number part may, as usual, include a sign. This, along with the
+    separators for fractional part, exponent and any digit-grouping, depend on
+    locale. QDoubleValidator doesn't check the placement (which would also
+    depend on locale) of any digit-grouping separators it finds, but it will
+    reject input that contains them if \l QLocale::RejectGroupSeparator is set
+    in \c locale().numberOptions().
+
+    \sa QLocale::numberOptions(), QLocale::decimalPoint(),
+        QLocale::exponential(), QLocale::negativeSign()
 */
 
 /*!
@@ -601,8 +569,8 @@ public:
     that accepts any double.
 */
 
-QDoubleValidator::QDoubleValidator(QObject * parent)
-    : QDoubleValidator(-HUGE_VAL, HUGE_VAL, 1000, parent)
+QDoubleValidator::QDoubleValidator(QObject *parent)
+    : QDoubleValidator(-HUGE_VAL, HUGE_VAL, -1, parent)
 {
 }
 
@@ -635,14 +603,14 @@ QDoubleValidator::~QDoubleValidator()
 /*!
     \fn QValidator::State QDoubleValidator::validate(QString &input, int &pos) const
 
-    Returns \l Acceptable if the string \a input contains a double
-    that is within the valid range and is in the correct format.
+    Returns \l Acceptable if the string \a input is in the correct format and
+    contains a double within the valid range.
 
-    Returns \l Intermediate if \a input contains a double that is
-    outside the range or is in the wrong format; e.g. is empty.
+    Returns \l Intermediate if \a input is in the wrong format or contains a
+    double outside the range.
 
-    Returns \l Invalid if the \a input is not a double or with too many
-    digits after the decimal point.
+    Returns \l Invalid if the \a input doesn't represent a double or has too
+    many digits after the decimal point.
 
     Note: If the valid range consists of just positive doubles (e.g. 0.0 to 100.0)
     and \a input is a negative double then \l Invalid is returned. If notation()
@@ -694,8 +662,7 @@ QValidator::State QDoubleValidatorPrivate::validateWithLocale(QString &input, QL
 
     bool ok = false;
     double i = locale.toDouble(input, &ok); // returns 0.0 if !ok
-    if (i == qt_qnan())
-        return QValidator::Invalid;
+    Q_ASSERT(!qIsNaN(i)); // Would be caught by validateChars()
     if (!ok)
         return QValidator::Intermediate;
 
@@ -705,7 +672,11 @@ QValidator::State QDoubleValidatorPrivate::validateWithLocale(QString &input, QL
     if (notation == QDoubleValidator::StandardNotation) {
         double max = qMax(qAbs(q->b), qAbs(q->t));
         qlonglong v;
-        if (convertDoubleTo(max, &v)) {
+        // Need a whole number to pass to convertDoubleTo() or it fails. Use
+        // floor, as max is positive so this has the same number of digits
+        // before the decimal point, where qCeil() might take us up to a power
+        // of ten, adding a digit.
+        if (convertDoubleTo(qFloor(max), &v)) {
             qlonglong n = pow10(numDigits(v));
             // In order to get the highest possible number in the intermediate
             // range we need to get 10 to the power of the number of digits
@@ -723,12 +694,98 @@ QValidator::State QDoubleValidatorPrivate::validateWithLocale(QString &input, QL
     return QValidator::Intermediate;
 }
 
-// FIXME: Qt 6: Make QDoubleValidator::setRange() non-virtual
+/*!
+    \since 6.3
+    \overload
+
+    Attempts to fix the \a input string to an \l Acceptable representation of a
+    double.
+
+    The format of the number is determined by \l notation(), \l decimals(),
+    \l locale() and the latter's \l {QLocale::}{numberOptions()}.
+
+    To comply with \l notation(), when \l ScientificNotation is used, the fixed
+    value will be represented in its normalized form, which means that any
+    non-zero value will have one non-zero digit before the decimal point.
+
+    \snippet code/src_gui_util_qvalidator.cpp 7
+
+    To comply with \l decimals(), when it is \c {-1} the number of digits used
+    will be determined by \l QLocale::FloatingPointShortest. Otherwise, the
+    fractional part of the number is truncated (with rounding, as appropriate)
+    if its length exceeds \l decimals(). When \l notation() is
+    \l ScientificNotation this is done after the number has been put into its
+    normalized form.
+
+    \snippet code/src_gui_util_qvalidator.cpp 8
+
+    \note If \l decimals() is set to, and the string provides, more than
+    \c {std::numeric_limits<double>::digits10}, digits beyond that many in the
+    fractional part may be changed. The resulting string shall encode the same
+    floating-point number, when parsed to a \c double.
+*/
+void QDoubleValidator::fixup(QString &input) const
+{
+    Q_D(const QDoubleValidator);
+    const auto numberMode = d->notation == StandardNotation ? QLocaleData::DoubleStandardMode
+                                                            : QLocaleData::DoubleScientificMode;
+
+    d->fixupWithLocale(input, numberMode, locale());
+}
+
+void QDoubleValidatorPrivate::fixupWithLocale(QString &input, QLocaleData::NumberMode numMode,
+                                              const QLocale &locale) const
+{
+    Q_Q(const QDoubleValidator);
+    QByteArray buff;
+    // Passing -1 as the number of decimals, because fixup() exists to improve
+    // an Intermediate value, if it can.
+    if (!locale.d->m_data->validateChars(input, numMode, &buff, -1, locale.numberOptions()))
+        return;
+
+    // buff now contains data in C locale.
+    bool ok = false;
+    const double entered = buff.toDouble(&ok);
+    if (ok) {
+        // Here we need to adjust the output format accordingly
+        char mode;
+        if (numMode == QLocaleData::DoubleStandardMode) {
+            mode = 'f';
+        } else {
+            // scientific mode can be either 'e' or 'E'
+            mode = input.contains(QChar::fromLatin1('E')) ? 'E' : 'e';
+        }
+        int precision;
+        if (q->dec < 0) {
+            precision = QLocale::FloatingPointShortest;
+        } else {
+            if (mode == 'f') {
+                const auto decimalPointIndex = buff.indexOf('.');
+                precision = decimalPointIndex >= 0 ? buff.size() - decimalPointIndex - 1 : 0;
+            } else {
+                auto eIndex = buff.indexOf('e');
+                // No need to check for 'E' because we can get only 'e' after a
+                // call to validateChars()
+                if (eIndex < 0)
+                    eIndex = buff.size();
+                precision = eIndex - (buff.contains('.') ? 1 : 0)
+                        - (buff.startsWith('-') || buff.startsWith('+') ? 1 : 0);
+            }
+            // Use q->dec to limit the number of decimals, because we want the
+            // fixup() result to pass validate().
+            precision = qMin(precision, q->dec);
+        }
+        input = locale.toString(entered, mode, precision);
+    }
+}
 
 /*!
     Sets the validator to accept doubles from \a minimum to \a maximum
     inclusive, with at most \a decimals digits after the decimal
     point.
+
+    \note Setting the number of decimals to -1 effectively sets it to unlimited.
+    This is also the value used by a default-constructed validator.
 */
 
 void QDoubleValidator::setRange(double minimum, double maximum, int decimals)
@@ -753,6 +810,17 @@ void QDoubleValidator::setRange(double minimum, double maximum, int decimals)
     }
     if (rangeChanged)
         emit changed();
+}
+
+/*!
+    \overload
+
+    Sets the validator to accept doubles from \a minimum to \a maximum
+    inclusive without changing the number of digits after the decimal point.
+*/
+void QDoubleValidator::setRange(double minimum, double maximum)
+{
+    setRange(minimum, maximum, decimals());
 }
 
 /*!
@@ -788,7 +856,8 @@ void QDoubleValidator::setTop(double top)
     \property QDoubleValidator::decimals
     \brief the validator's maximum number of digits after the decimal point
 
-    By default, this property contains a value of 1000.
+    By default, this property contains a value of -1, which means any number
+    of digits is accepted.
 
     \sa setRange()
 */
@@ -824,126 +893,11 @@ QDoubleValidator::Notation QDoubleValidator::notation() const
     return d->notation;
 }
 
-/*!
-    \class QRegExpValidator
-    \brief The QRegExpValidator class is used to check a string
-    against a regular expression.
-    \inmodule QtGui
-
-    QRegExpValidator uses a regular expression (regexp) to
-    determine whether an input string is \l Acceptable, \l
-    Intermediate, or \l Invalid. The regexp can either be supplied
-    when the QRegExpValidator is constructed, or at a later time.
-
-    When QRegExpValidator determines whether a string is \l Acceptable
-    or not, the regexp is treated as if it begins with the start of string
-    assertion (\b{^}) and ends with the end of string assertion
-    (\b{$}); the match is against the entire input string, or from
-    the given position if a start position greater than zero is given.
-
-    If a string is a prefix of an \l Acceptable string, it is considered
-    \l Intermediate. For example, "" and "A" are \l Intermediate for the
-    regexp \b{[A-Z][0-9]} (whereas "_" would be \l Invalid).
-
-    For a brief introduction to Qt's regexp engine, see \l QRegExp.
-
-    Example of use:
-    \snippet code/src_gui_util_qvalidator.cpp 3
-
-    Below we present some examples of validators. In practice they would
-    normally be associated with a widget as in the example above.
-
-    \snippet code/src_gui_util_qvalidator.cpp 4
-
-    \sa QRegExp, QIntValidator, QDoubleValidator, {Settings Editor Example}
-*/
-
-/*!
-    Constructs a validator with a \a parent object that accepts
-    any string (including an empty one) as valid.
-*/
-
-QRegExpValidator::QRegExpValidator(QObject *parent)
-    : QRegExpValidator(QRegExp(QString::fromLatin1(".*")), parent)
-{
-}
-
-/*!
-    Constructs a validator with a \a parent object that
-    accepts all strings that match the regular expression \a rx.
-
-    The match is made against the entire string; e.g. if the regexp is
-    \b{[A-Fa-f0-9]+} it will be treated as \b{^[A-Fa-f0-9]+$}.
-*/
-
-QRegExpValidator::QRegExpValidator(const QRegExp& rx, QObject *parent)
-    : QValidator(parent), r(rx)
-{
-}
-
-
-/*!
-    Destroys the validator.
-*/
-
-QRegExpValidator::~QRegExpValidator()
-{
-}
-
-/*!
-    Returns \l Acceptable if \a input is matched by the regular
-    expression for this validator, \l Intermediate if it has matched
-    partially (i.e. could be a valid match if additional valid
-    characters are added), and \l Invalid if \a input is not matched.
-
-    Additionally, if \a input is not matched, the \a pos parameter is set to
-    the length of the \a input parameter.
-
-    For example, if the regular expression is \b{\\w\\d\\d}
-    (word-character, digit, digit) then "A57" is \l Acceptable,
-    "E5" is \l Intermediate, and "+9" is \l Invalid.
-
-    \sa QRegExp::exactMatch()
-*/
-
-QValidator::State QRegExpValidator::validate(QString &input, int& pos) const
-{
-    QRegExp copy = r;
-    if (copy.exactMatch(input)) {
-        return Acceptable;
-    } else {
-        if (copy.matchedLength() == input.size()) {
-            return Intermediate;
-        } else {
-            pos = input.size();
-            return Invalid;
-        }
-    }
-}
-
-/*!
-    \property QRegExpValidator::regExp
-    \brief the regular expression used for validation
-
-    By default, this property contains a regular expression with the pattern \c{.*}
-    that matches any string.
-*/
-
-void QRegExpValidator::setRegExp(const QRegExp& rx)
-{
-    if (r != rx) {
-        r = rx;
-        emit regExpChanged(r);
-        emit changed();
-    }
-}
-
-#endif
-
 #if QT_CONFIG(regularexpression)
 
 /*!
     \class QRegularExpressionValidator
+    \inmodule QtGui
     \brief The QRegularExpressionValidator class is used to check a string
     against a regular expression.
 
@@ -970,7 +924,7 @@ void QRegExpValidator::setRegExp(const QRegExp& rx)
 
     \snippet code/src_gui_util_qvalidator.cpp 6
 
-    \sa QRegularExpression, QIntValidator, QDoubleValidator, QRegExpValidator
+    \sa QRegularExpression, QIntValidator, QDoubleValidator
 */
 
 class QRegularExpressionValidatorPrivate : public QValidatorPrivate
@@ -1094,5 +1048,7 @@ void QRegularExpressionValidatorPrivate::setRegularExpression(const QRegularExpr
 #endif // QT_CONFIG(regularexpression)
 
 QT_END_NAMESPACE
+
+#include "moc_qvalidator.cpp"
 
 #endif // QT_NO_VALIDATOR

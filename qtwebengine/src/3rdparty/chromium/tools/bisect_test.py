@@ -1,9 +1,10 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import unittest
 import subprocess
+import sys
 
 bisect_builds = __import__('bisect-builds')
 
@@ -76,6 +77,8 @@ class BisectTest(unittest.TestCase):
     self.assertEqual(self.bisect(1, 3, lambda *args: 'b', num_runs=10), (1, 2))
     self.assertEqual(FakeProcess.called_num_times, 1)
 
+  @unittest.skipIf(sys.platform == 'win32', 'Test fails on Windows due to '
+                   'https://crbug.com/1393138')
   def testBisectAllRunsWhenAllSucceed(self):
     self.assertEqual(self.bisect(1, 3, lambda *args: 'b', num_runs=10), (1, 2))
     self.assertEqual(FakeProcess.called_num_times, 10)

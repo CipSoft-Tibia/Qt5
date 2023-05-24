@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,6 @@
 
 #include "base/i18n/break_iterator.h"
 #include "base/logging.h"
-#include "base/stl_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "components/spellcheck/renderer/spellcheck.h"
@@ -36,8 +35,8 @@ void SpellcheckCharAttribute::SetDefaultLanguage(const std::string& language) {
 }
 
 bool SpellcheckCharAttribute::IsTextInSameScript(
-    const base::string16& text) const {
-  const base::char16* data = text.data();
+    const std::u16string& text) const {
+  const char16_t* data = text.data();
   const size_t length = text.length();
   for (size_t index = 0; index < length; /* U16_NEXT post-increments */) {
     uint32_t code = 0;
@@ -53,7 +52,7 @@ bool SpellcheckCharAttribute::IsTextInSameScript(
   return true;
 }
 
-base::string16 SpellcheckCharAttribute::GetRuleSet(
+std::u16string SpellcheckCharAttribute::GetRuleSet(
     bool allow_contraction) const {
   return allow_contraction ?
       ruleset_allow_contraction_ : ruleset_disallow_contraction_;
@@ -159,7 +158,7 @@ void SpellcheckCharAttribute::CreateRuleSets(const std::string& language) {
   UErrorCode error = U_ZERO_ERROR;
   UScriptCode script_code[8];
   int scripts = uscript_getCode(language.c_str(), script_code,
-                                base::size(script_code), &error);
+                                std::size(script_code), &error);
   if (U_SUCCESS(error) && scripts >= 1)
     script_code_ = script_code[0];
 
@@ -221,7 +220,7 @@ void SpellcheckCharAttribute::CreateRuleSets(const std::string& language) {
 }
 
 bool SpellcheckCharAttribute::OutputChar(UChar c,
-                                         base::string16* output) const {
+                                         std::u16string* output) const {
   // Call the language-specific function if necessary.
   // Otherwise, we call the default one.
   switch (script_code_) {
@@ -240,7 +239,7 @@ bool SpellcheckCharAttribute::OutputChar(UChar c,
 }
 
 bool SpellcheckCharAttribute::OutputArabic(UChar c,
-                                           base::string16* output) const {
+                                           std::u16string* output) const {
   // Include non-Arabic characters (which should trigger a spelling error)
   // and Arabic characters excluding vowel marks and class "Lm".
   // We filter the latter because, while they are "letters", they are
@@ -251,7 +250,7 @@ bool SpellcheckCharAttribute::OutputArabic(UChar c,
 }
 
 bool SpellcheckCharAttribute::OutputHangul(UChar c,
-                                           base::string16* output) const {
+                                           std::u16string* output) const {
   // Decompose a Hangul character to a Hangul vowel and consonants used by our
   // spellchecker. A Hangul character of Unicode is a ligature consisting of a
   // Hangul vowel and consonants, e.g. U+AC01 "Gag" consists of U+1100 "G",
@@ -299,7 +298,7 @@ bool SpellcheckCharAttribute::OutputHangul(UChar c,
 }
 
 bool SpellcheckCharAttribute::OutputHebrew(UChar c,
-                                           base::string16* output) const {
+                                           std::u16string* output) const {
   // Discard characters except Hebrew alphabets. We also discard Hebrew niqquds
   // to prevent our Hebrew dictionary from marking a Hebrew word including
   // niqquds as misspelled. (Same as Arabic vowel marks, we need to check
@@ -314,7 +313,7 @@ bool SpellcheckCharAttribute::OutputHebrew(UChar c,
 }
 
 bool SpellcheckCharAttribute::OutputDefault(UChar c,
-                                            base::string16* output) const {
+                                            std::u16string* output) const {
   // Check the script code of this character and output only if it is the one
   // used by the spellchecker language.
   UErrorCode status = U_ZERO_ERROR;
@@ -339,14 +338,14 @@ bool SpellcheckWordIterator::Initialize(
   // Create a custom ICU break iterator with empty text used in this object. (We
   // allow setting text later so we can re-use this iterator.)
   DCHECK(attribute);
-  const base::string16 rule(attribute->GetRuleSet(allow_contraction));
+  const std::u16string rule(attribute->GetRuleSet(allow_contraction));
 
   // If there is no rule set, the attributes were invalid.
   if (rule.empty())
     return false;
 
   std::unique_ptr<base::i18n::BreakIterator> iterator(
-      new base::i18n::BreakIterator(base::string16(), rule));
+      new base::i18n::BreakIterator(std::u16string(), rule));
   if (!iterator->Init()) {
     // Since we're not passing in any text, the only reason this could fail
     // is if we fail to parse the rules. Since the rules are hardcoded,
@@ -367,7 +366,7 @@ bool SpellcheckWordIterator::IsInitialized() const {
   return !!iterator_;
 }
 
-bool SpellcheckWordIterator::SetText(const base::char16* text, size_t length) {
+bool SpellcheckWordIterator::SetText(const char16_t* text, size_t length) {
   DCHECK(!!iterator_);
 
   // Set the text to be split by this iterator.
@@ -381,7 +380,7 @@ bool SpellcheckWordIterator::SetText(const base::char16* text, size_t length) {
 }
 
 SpellcheckWordIterator::WordIteratorStatus SpellcheckWordIterator::GetNextWord(
-    base::string16* word_string,
+    std::u16string* word_string,
     size_t* word_start,
     size_t* word_length) {
   DCHECK(!!text_);
@@ -434,7 +433,7 @@ void SpellcheckWordIterator::Reset() {
 
 bool SpellcheckWordIterator::Normalize(size_t input_start,
                                        size_t input_length,
-                                       base::string16* output_string) const {
+                                       std::u16string* output_string) const {
   // We use NFKC (Normalization Form, Compatible decomposition, followed by
   // canonical Composition) defined in Unicode Standard Annex #15 to normalize
   // this token because it it the most suitable normalization algorithm for our

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,16 +10,13 @@
 #include <string>
 #include <utility>
 
+#include "base/values.h"
 #include "extensions/common/event_filter.h"
-
-namespace base {
-class DictionaryValue;
-}
+#include "extensions/common/mojom/event_dispatcher.mojom-forward.h"
 
 namespace extensions {
 class EventFilter;
 class ValueCounter;
-struct EventFilteringInfo;
 
 // A class to track all event listeners across multiple v8::Contexts. Each
 // context has a "context owner", which may be the same across multiple
@@ -28,14 +25,16 @@ struct EventFilteringInfo;
 // tracking when a new listener is added requires looking at more than a
 // single context.
 //
-// TODO(devlin): We should combine this with EventBookkeeper and use it with
-// both native and JS bindings.
 // TODO(devlin): We should incorporate the notifications for newly added/
 // removed listeners into this class, rather than having callers worry about
 // it based on return values.
 class ListenerTracker {
  public:
   ListenerTracker();
+
+  ListenerTracker(const ListenerTracker&) = delete;
+  ListenerTracker& operator=(const ListenerTracker&) = delete;
+
   ~ListenerTracker();
 
   // Adds a record of an unfiltered listener for the given |event_name|,
@@ -66,7 +65,7 @@ class ListenerTracker {
   std::pair<bool, int> AddFilteredListener(
       const std::string& context_owner_id,
       const std::string& event_name,
-      std::unique_ptr<base::DictionaryValue> filter,
+      std::unique_ptr<base::Value::Dict> filter,
       int routing_id);
 
   // Removes a record of a filtered listener for the given |event_name|,
@@ -75,16 +74,17 @@ class ListenerTracker {
   // Returns a pair, with the bool indicating if this was the last listener
   // added for this event and |context_owner_id| with this specific filter, and
   // a copy of the filter value.
-  std::pair<bool, std::unique_ptr<base::DictionaryValue>>
-  RemoveFilteredListener(const std::string& context_owner_id,
-                         const std::string& event_name,
-                         int filter_id);
+  std::pair<bool, std::unique_ptr<base::Value::Dict>> RemoveFilteredListener(
+      const std::string& context_owner_id,
+      const std::string& event_name,
+      int filter_id);
 
   // Returns a set of filter IDs to that correspond to the given |event_name|,
   // |filter|, and |routing_id|.
-  std::set<int> GetMatchingFilteredListeners(const std::string& event_name,
-                                             const EventFilteringInfo& filter,
-                                             int routing_id);
+  std::set<int> GetMatchingFilteredListeners(
+      const std::string& event_name,
+      mojom::EventFilteringInfoPtr filter,
+      int routing_id);
 
   EventFilter* event_filter_for_testing() { return &event_filter_; }
 
@@ -107,8 +107,6 @@ class ListenerTracker {
 
   // The event filter.
   EventFilter event_filter_;
-
-  DISALLOW_COPY_AND_ASSIGN(ListenerTracker);
 };
 
 }  // namespace extensions

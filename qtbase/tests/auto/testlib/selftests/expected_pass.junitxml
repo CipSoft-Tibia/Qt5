@@ -1,14 +1,13 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuite errors="0" failures="0" tests="5" name="tst_Pass">
+<testsuite name="tst_Pass" timestamp="@TEST_START_TIME@" hostname="@HOSTNAME@" tests="5" failures="0" errors="0" skipped="0" time="@TEST_DURATION@">
   <properties>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QTestVersion"/>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QtVersion"/>
-    <property value="" name="QtBuild"/>
+    <property name="QTestVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtBuild" value=""/>
   </properties>
-  <testcase result="pass" name="initTestCase"/>
-  <testcase result="pass" name="testNumber1"/>
-  <testcase result="pass" name="testNumber2"/>
-  <testcase result="pass" name="testNumber3"/>
-  <testcase result="pass" name="cleanupTestCase"/>
-  <system-err/>
+  <testcase name="initTestCase" classname="tst_Pass" time="@TEST_DURATION@"/>
+  <testcase name="testNumber1" classname="tst_Pass" time="@TEST_DURATION@"/>
+  <testcase name="testNumber2" classname="tst_Pass" time="@TEST_DURATION@"/>
+  <testcase name="testNumber3" classname="tst_Pass" time="@TEST_DURATION@"/>
+  <testcase name="cleanupTestCase" classname="tst_Pass" time="@TEST_DURATION@"/>
 </testsuite>

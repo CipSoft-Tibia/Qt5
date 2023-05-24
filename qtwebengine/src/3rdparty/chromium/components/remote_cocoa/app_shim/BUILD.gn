@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -31,6 +31,11 @@ component("app_shim") {
     "color_panel_bridge.h",
     "color_panel_bridge.mm",
     "drag_drop_client.h",
+    "immersive_mode_controller.h",
+    "immersive_mode_controller.mm",
+    "immersive_mode_delegate_mac.h",
+    "immersive_mode_tabbed_controller.h",
+    "immersive_mode_tabbed_controller.mm",
     "mouse_capture.h",
     "mouse_capture.mm",
     "mouse_capture_delegate.h",
@@ -40,6 +45,8 @@ component("app_shim") {
     "native_widget_mac_nswindow.mm",
     "native_widget_ns_window_bridge.h",
     "native_widget_ns_window_bridge.mm",
+    "native_widget_ns_window_fullscreen_controller.h",
+    "native_widget_ns_window_fullscreen_controller.mm",
     "native_widget_ns_window_host_helper.h",
     "ns_view_ids.h",
     "ns_view_ids.mm",
@@ -64,14 +71,20 @@ component("app_shim") {
     "//net",
     "//ui/accelerated_widget_mac",
     "//ui/base",
+    "//ui/base/dragdrop:types",
+    "//ui/base/emoji",
     "//ui/base/ime:ime",
     "//ui/events",
     "//ui/gfx",
+    "//ui/gfx/geometry",
     "//ui/strings:ui_strings_grit",
   ]
   frameworks = [
     "Cocoa.framework",
     "QuartzCore.framework",
     "SecurityInterface.framework",
+  ]
+  weak_frameworks = [
+    "UniformTypeIdentifiers.framework",  # macOS 11
   ]
 }

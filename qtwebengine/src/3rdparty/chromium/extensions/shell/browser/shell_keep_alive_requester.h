@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 
 #include "apps/app_lifetime_monitor.h"
 #include "base/containers/flat_map.h"
-#include "base/macros.h"
-#include "base/scoped_observer.h"
+#include "base/scoped_observation.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_registry_observer.h"
 #include "extensions/common/extension_id.h"
@@ -31,6 +30,10 @@ class ShellKeepAliveRequester : public ExtensionRegistryObserver,
                                 public apps::AppLifetimeMonitor::Observer {
  public:
   explicit ShellKeepAliveRequester(content::BrowserContext* browser_context);
+
+  ShellKeepAliveRequester(const ShellKeepAliveRequester&) = delete;
+  ShellKeepAliveRequester& operator=(const ShellKeepAliveRequester&) = delete;
+
   ~ShellKeepAliveRequester() override;
 
   // Owner should call this before starting to reload an app, so that a
@@ -64,12 +67,11 @@ class ShellKeepAliveRequester : public ExtensionRegistryObserver,
   base::flat_map<ExtensionId, std::unique_ptr<ScopedKeepAlive>>
       app_reloading_keep_alives_;
 
-  ScopedObserver<ExtensionRegistry, ExtensionRegistryObserver>
-      extension_registry_observer_{this};
-  ScopedObserver<apps::AppLifetimeMonitor, apps::AppLifetimeMonitor::Observer>
-      app_lifetime_monitor_observer_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(ShellKeepAliveRequester);
+  base::ScopedObservation<ExtensionRegistry, ExtensionRegistryObserver>
+      extension_registry_observation_{this};
+  base::ScopedObservation<apps::AppLifetimeMonitor,
+                          apps::AppLifetimeMonitor::Observer>
+      app_lifetime_monitor_observation_{this};
 };
 
 }  // namespace extensions

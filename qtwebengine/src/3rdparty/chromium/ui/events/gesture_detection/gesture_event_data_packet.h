@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "base/containers/stack_container.h"
+#include "base/time/time.h"
 #include "ui/events/gesture_detection/gesture_detection_export.h"
 #include "ui/events/gesture_detection/gesture_event_data.h"
 
@@ -61,7 +62,7 @@ class GESTURE_DETECTION_EXPORT GestureEventDataPacket {
 
   // We store the ack with the packet until the packet reaches the
   // head of the queue, and then we handle the ack.
-  void Ack(bool event_consumed, bool is_source_touch_event_set_non_blocking);
+  void Ack(bool event_consumed, bool is_source_touch_event_set_blocking);
   AckState ack_state() { return ack_state_; }
   uint32_t unique_touch_event_id() const { return unique_touch_event_id_; }
 

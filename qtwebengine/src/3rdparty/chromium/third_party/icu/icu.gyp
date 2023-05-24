@@ -40,14 +40,7 @@
         ],
       }],
       ['OS=="win"', {
-        'defines': [
-          'UCHAR_TYPE=wchar_t',
-        ],
-	'cflags': [ '/utf-8' ],
-      },{
-        'defines': [
-          'UCHAR_TYPE=uint16_t',
-        ],
+        'cflags': [ '/utf-8' ],
       }],
       ['(OS=="linux" or OS=="freebsd" or OS=="openbsd" or OS=="solaris" \
          or OS=="netbsd" or OS=="mac" or OS=="android" or OS=="qnx") and \
@@ -517,6 +510,7 @@
               'unicode/datefmt.h',
               'unicode/dcfmtsym.h',
               'unicode/decimfmt.h',
+              'unicode/displayoptions.h',
               'unicode/dtfmtsym.h',
               'unicode/dtitvfmt.h',
               'unicode/dtitvinf.h',
@@ -570,6 +564,7 @@
               'unicode/udateintervalformat.h',
               'unicode/udat.h',
               'unicode/udatpg.h',
+              'unicode/udisplayoptions.h',
               'unicode/ufieldpositer.h',
               'unicode/uformattable.h',
               'unicode/uformattedvalue.h',
@@ -579,6 +574,7 @@
               'unicode/umsg.h',
               'unicode/unirepl.h',
               'unicode/unumberformatter.h',
+              'unicode/unumberrangeformatter.h',
               'unicode/unum.h',
               'unicode/unumsys.h',
               'unicode/upluralrules.h',

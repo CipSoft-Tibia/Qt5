@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // This file is included from qnsview.mm, and only used to organize the code
 
@@ -47,18 +11,17 @@
 
     NSString * const mimeTypeGeneric = @"com.trolltech.qt.MimeTypeName";
     NSMutableArray<NSString *> *supportedTypes = [NSMutableArray<NSString *> arrayWithArray:@[
-                   NSColorPboardType,
-                   NSFilenamesPboardType, NSStringPboardType,
-                   NSFilenamesPboardType, NSPostScriptPboardType, NSTIFFPboardType,
-                   NSRTFPboardType, NSTabularTextPboardType, NSFontPboardType,
-                   NSRulerPboardType, NSFileContentsPboardType, NSColorPboardType,
-                   NSRTFDPboardType, NSHTMLPboardType,
-                   NSURLPboardType, NSPDFPboardType, NSVCardPboardType,
-                   NSFilesPromisePboardType, NSInkTextPboardType,
-                   NSMultipleTextSelectionPboardType, mimeTypeGeneric]];
+                   NSPasteboardTypeColor, NSPasteboardTypeString,
+                   NSPasteboardTypeFileURL, @"com.adobe.encapsulated-postscript", NSPasteboardTypeTIFF,
+                   NSPasteboardTypeRTF, NSPasteboardTypeTabularText, NSPasteboardTypeFont,
+                   NSPasteboardTypeRuler, NSFileContentsPboardType,
+                   NSPasteboardTypeRTFD , NSPasteboardTypeHTML,
+                   NSPasteboardTypeURL, NSPasteboardTypePDF, (NSString *)kUTTypeVCard,
+                   (NSString *)kPasteboardTypeFileURLPromise, (NSString *)kUTTypeInkText,
+                   NSPasteboardTypeMultipleTextSelection, mimeTypeGeneric]];
 
     // Add custom types supported by the application
-    for (const QString &customType : qt_mac_enabledDraggedTypes())
+    for (const QString &customType : QMacMimeRegistry::enabledDraggedTypes())
         [supportedTypes addObject:customType.toNSString()];
 
     [self registerForDraggedTypes:supportedTypes];
@@ -82,8 +45,8 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
 - (NSDragOperation)draggingSession:(NSDraggingSession *)session sourceOperationMaskForDraggingContext:(NSDraggingContext)context
 {
     Q_UNUSED(session);
-    Q_UNUSED(context);
 
+    m_lastSeenContext = context;
     QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
     return qt_mac_mapDropActions(nativeDrag->currentDrag()->supportedActions());
 }
@@ -98,8 +61,11 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
     //
     // Since Qt already takes care of tracking the keyboard modifiers, we
     // don't need (or want) Cocoa to filter anything. Instead, we'll let
-    // the application do the actual filtering.
-    return YES;
+    // the application do the actual filtering. But only while dragging
+    // within application, otherwise ignored modifiers may end up in a
+    // wrong drop operation executed.
+
+    return m_lastSeenContext == NSDraggingContextWithinApplication;
 }
 
 - (BOOL)wantsPeriodicDraggingUpdates
@@ -198,7 +164,7 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
     if (!target)
         return NSDragOperationNone;
 
-    const auto modifiers = [QNSView convertKeyModifiers:NSApp.currentEvent.modifierFlags];
+    const auto modifiers = QAppleKeyMapper::fromCocoaModifiers(NSApp.currentEvent.modifierFlags);
     const auto buttons = currentlyPressedMouseButtons();
     const auto point = mapWindowCoordinates(m_platformWindow->window(), target, windowPoint);
 
@@ -262,7 +228,7 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
 
     QPlatformDropQtResponse response(false, Qt::IgnoreAction);
     QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
-    const auto modifiers = [QNSView convertKeyModifiers:NSApp.currentEvent.modifierFlags];
+    const auto modifiers = QAppleKeyMapper::fromCocoaModifiers(NSApp.currentEvent.modifierFlags);
     const auto buttons = currentlyPressedMouseButtons();
     const auto point = mapWindowCoordinates(m_platformWindow->window(), target, windowPoint);
 
@@ -287,6 +253,8 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
     Q_UNUSED(screenPoint);
     Q_UNUSED(operation);
 
+    m_lastSeenContext = NSDraggingContextWithinApplication;
+
     if (!m_platformWindow)
         return;
 
@@ -305,7 +273,7 @@ static QPoint mapWindowCoordinates(QWindow *source, QWindow *target, QPoint poin
     // this case won't send the matching release event, so we have to
     // synthesize it here.
     m_buttons = currentlyPressedMouseButtons();
-    const auto modifiers = [QNSView convertKeyModifiers:NSApp.currentEvent.modifierFlags];
+    const auto modifiers = QAppleKeyMapper::fromCocoaModifiers(NSApp.currentEvent.modifierFlags);
 
     NSPoint windowPoint = [self.window convertRectFromScreen:NSMakeRect(screenPoint.x, screenPoint.y, 1, 1)].origin;
     NSPoint nsViewPoint = [self convertPoint: windowPoint fromView: nil];

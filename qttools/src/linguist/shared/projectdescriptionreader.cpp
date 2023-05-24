@@ -1,32 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "projectdescriptionreader.h"
+#include "fmt.h"
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qfile.h>
@@ -39,10 +15,6 @@
 #include <functional>
 
 using std::placeholders::_1;
-
-class FMT {
-    Q_DECLARE_TR_FUNCTIONS(Linguist)
-};
 
 class Validator
 {
@@ -70,6 +42,7 @@ private:
                     << QStringLiteral("excluded")
                     << QStringLiteral("includePaths")
                     << QStringLiteral("sources")
+                    << QStringLiteral("compileCommands")
                     << QStringLiteral("subProjects")
                     << QStringLiteral("translations");
         QSet<QString> actualKeys;
@@ -139,7 +112,7 @@ public:
     {
         Projects result;
         result.reserve(rawProjects.size());
-        for (const QJsonValue &rawProject : rawProjects) {
+        for (const QJsonValue rawProject : rawProjects) {
             Project project = convertProject(rawProject);
             if (!m_errorString.isEmpty())
                 break;
@@ -156,12 +129,13 @@ private:
         Project result;
         QJsonObject obj = v.toObject();
         result.filePath = stringValue(obj, QLatin1String("projectFile"));
+        result.compileCommands = stringValue(obj, QLatin1String("compileCommands"));
         result.codec = stringValue(obj, QLatin1String("codec"));
         result.excluded = stringListValue(obj, QLatin1String("excluded"));
         result.includePaths = stringListValue(obj, QLatin1String("includePaths"));
         result.sources = stringListValue(obj, QLatin1String("sources"));
         if (obj.contains(QLatin1String("translations")))
-            result.translations.reset(new QStringList(stringListValue(obj, QLatin1String("translations"))));
+            result.translations = stringListValue(obj, QLatin1String("translations"));
         result.subProjects = convertProjects(obj.value(QLatin1String("subProjects")).toArray());
         return result;
     }
@@ -226,7 +200,7 @@ private:
         QStringList result;
         const QJsonArray a = v.toArray();
         result.reserve(a.count());
-        for (const QJsonValue &v : a) {
+        for (const QJsonValue v : a) {
             if (!v.isString()) {
                 m_errorString = FMT::tr("Unexpected type %1 in string array in key %2.")
                         .arg(jsonTypeName(v.type()), key);

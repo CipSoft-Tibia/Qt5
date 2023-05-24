@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -8,5 +8,12 @@ android_library("java") {
   sources = [
     "src/org/chromium/components/webapk/lib/common/WebApkConstants.java",
     "src/org/chromium/components/webapk/lib/common/WebApkMetaDataKeys.java",
+  ]
+}
+
+android_resources("splash_resources") {
+  sources = [
+    "res_splash/values-sw600dp/common_dimens.xml",
+    "res_splash/values/common_dimens.xml",
   ]
 }

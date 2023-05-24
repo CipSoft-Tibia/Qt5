@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,13 +14,15 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <tuple>
 #include <utility>
 
 #include "base/command_line.h"
 #include "base/files/file_util.h"
+#include "base/files/platform_file.h"
 #include "base/linux_util.h"
 #include "base/logging.h"
-#include "base/macros.h"
+#include "base/notreached.h"
 #include "base/pickle.h"
 #include "base/posix/eintr_wrapper.h"
 #include "base/posix/global_descriptors.h"
@@ -32,6 +34,7 @@
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "content/common/set_process_title.h"
 #include "content/common/zygote/zygote_commands_linux.h"
 #include "content/public/common/content_descriptors.h"
@@ -47,7 +50,7 @@
 #include "third_party/icu/source/i18n/unicode/timezone.h"
 
 // See
-// https://chromium.googlesource.com/chromium/src/+/master/docs/linux/zygote.md
+// https://chromium.googlesource.com/chromium/src/+/main/docs/linux/zygote.md
 
 namespace content {
 
@@ -99,7 +102,7 @@ bool Zygote::ProcessRequests() {
   // browser on it.
   // A SOCK_DGRAM is installed in fd 5. This is the sandbox IPC channel.
   // See
-  // https://chromium.googlesource.com/chromium/src/+/master/docs/linux/sandbox_ipc.md
+  // https://chromium.googlesource.com/chromium/src/+/main/docs/linux/sandbox_ipc.md
 
   // We need to accept SIGCHLD, even though our handler is a no-op because
   // otherwise we cannot wait on children. (According to POSIX 2001.)
@@ -122,7 +125,7 @@ bool Zygote::ProcessRequests() {
     bool r = base::UnixDomainSocket::SendMsg(
         kZygoteSocketPairFd, kZygoteHelloMessage, sizeof(kZygoteHelloMessage),
         std::vector<int>());
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
     LOG_IF(WARNING, !r) << "Sending zygote magic failed";
     // Exit normally on chromeos because session manager may send SIGTERM
     // right after the process starts and it may fail to send zygote magic
@@ -233,7 +236,6 @@ bool Zygote::HandleRequestFromBrowser(int fd) {
     // coverage for the Zygote. Currently it's not possible because of
     // confusion over who is responsible for closing the file descriptor.
     _exit(0);
-    return false;
   }
 
   if (len == -1) {
@@ -270,6 +272,9 @@ bool Zygote::HandleRequestFromBrowser(int fd) {
         // could leave this command pending on the socket.
         LOG(ERROR) << "Unexpected real PID message from browser";
         NOTREACHED();
+        return false;
+      case kZygoteCommandReinitializeLogging:
+        HandleReinitializeLoggingRequest(iter, std::move(fds));
         return false;
       default:
         NOTREACHED();
@@ -390,6 +395,7 @@ void Zygote::HandleGetTerminationStatus(int fd, base::PickleIterator iter) {
 }
 
 int Zygote::ForkWithRealPid(const std::string& process_type,
+                            const std::vector<std::string>& args,
                             const base::GlobalDescriptors::Mapping& fd_mapping,
                             base::ScopedFD pid_oracle,
                             std::string* uma_name,
@@ -411,10 +417,12 @@ int Zygote::ForkWithRealPid(const std::string& process_type,
       DLOG(ERROR) << "Failed to find kMojoIPCChannel in FD mapping";
       return -1;
     }
+    int field_trial_fd = LookUpFd(fd_mapping, kFieldTrialDescriptor);
     std::vector<int> fds;
     fds.push_back(mojo_channel_fd);   // kBrowserFDIndex
     fds.push_back(pid_oracle.get());  // kPIDOracleFDIndex
-    pid = helper->Fork(process_type, fds, /*channel_id=*/std::string());
+    fds.push_back(field_trial_fd);
+    pid = helper->Fork(process_type, args, fds, /*channel_id=*/std::string());
 
     // Helpers should never return in the child process.
     CHECK_NE(pid, 0);
@@ -462,8 +470,11 @@ int Zygote::ForkWithRealPid(const std::string& process_type,
     IPC::Channel::SetGlobalPid(real_pid);
     // Force the real PID so chrome event data have a PID that corresponds
     // to system trace event data.
-    base::trace_event::TraceLog::GetInstance()->SetProcessID(
-        static_cast<int>(real_pid));
+    base::trace_event::TraceLog::GetInstance()->SetProcessID(real_pid);
+#if BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
+    // Tell Perfetto SDK about the real PID too.
+    perfetto::Platform::SetCurrentProcessId(real_pid);
+#endif
     base::InitUniqueIdForProcessInPidNamespace(real_pid);
     return 0;
   }
@@ -553,7 +564,7 @@ base::ProcessId Zygote::ReadArgsAndFork(base::PickleIterator iter,
   // timezone_id is obtained from ICU in zygote host so that it can't be
   // invalid. For an unknown reason, if an invalid ID is passed down here, the
   // worst result would be that timezone would be set to Etc/Unknown.
-  base::string16 timezone_id;
+  std::u16string timezone_id;
   if (!iter.ReadString16(&timezone_id))
     return -1;
   icu::TimeZone::adoptDefault(icu::TimeZone::createTimeZone(
@@ -579,10 +590,14 @@ base::ProcessId Zygote::ReadArgsAndFork(base::PickleIterator iter,
 
   mapping.push_back(ipc_backchannel_);
 
-  // Returns twice, once per process.
+  // Returns at most twice: once with a valid PID (in the parent process,
+  // returning the PID of the new child); and optionally once with a zero PID
+  // in the forked child process. Note that a delegate may spawn the child
+  // process without actually forking the calling process directly, so the
+  // second return path is not guanteed.
   base::ProcessId child_pid =
-      ForkWithRealPid(process_type, mapping, std::move(pid_oracle), uma_name,
-                      uma_sample, uma_boundary_value);
+      ForkWithRealPid(process_type, args, mapping, std::move(pid_oracle),
+                      uma_name, uma_sample, uma_boundary_value);
   if (!child_pid) {
     // This is the child process.
 
@@ -591,7 +606,7 @@ base::ProcessId Zygote::ReadArgsAndFork(base::PickleIterator iter,
 
     // Pass ownership of file descriptors from fds to GlobalDescriptors.
     for (base::ScopedFD& fd : fds)
-      ignore_result(fd.release());
+      std::ignore = fd.release();
     base::GlobalDescriptors::GetInstance()->Reset(mapping);
 
     // Reset the process-wide command line to our new command line.
@@ -647,6 +662,47 @@ bool Zygote::HandleGetSandboxStatus(int fd, base::PickleIterator iter) {
   }
 
   return false;
+}
+
+void Zygote::HandleReinitializeLoggingRequest(base::PickleIterator iter,
+                                              std::vector<base::ScopedFD> fds) {
+#if BUILDFLAG(IS_CHROMEOS)
+  uint32_t logging_dest;
+  if (!iter.ReadUInt32(&logging_dest)) {
+    LOG(ERROR) << "Missing logging_dest parameter";
+    return;
+  }
+
+  if (fds.size() != 1) {
+    LOG(ERROR) << "Wrong number of log fds was passed";
+    return;
+  }
+  base::ScopedFD log_fd(std::move(fds.front()));
+
+  if (logging_dest & logging::LOG_TO_STDERR) {
+    int fd = dup2(log_fd.get(), STDERR_FILENO);
+    if (fd == base::kInvalidPlatformFile)
+      PLOG(ERROR) << "Unable to redirect stderr logging";
+  }
+
+  if (logging_dest & logging::LOG_TO_FILE) {
+    logging::LoggingSettings logging_settings;
+    logging_settings.logging_dest = logging_dest;
+    logging_settings.log_file = fdopen(log_fd.get(), "a");
+    if (!logging_settings.log_file) {
+      PLOG(ERROR) << "Failed to open new log file handle";
+      return;
+    }
+    if (!logging::InitLogging(logging_settings)) {
+      LOG(ERROR) << "Unable to reinitialize logging";
+      return;
+    }
+    std::ignore = log_fd.release();
+  }
+#else
+  // This method should only be used in ChromeOS.
+  NOTREACHED();
+#endif  // BUILDFLAG(IS_CHROMEOS)
 }
 
 }  // namespace content

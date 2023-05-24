@@ -16,12 +16,14 @@
 
 #include "src/ipc/host_impl.h"
 
-#include <inttypes.h>
-
 #include <algorithm>
+#include <cinttypes>
 #include <utility>
 
+#include "perfetto/base/build_config.h"
 #include "perfetto/base/task_runner.h"
+#include "perfetto/base/time.h"
+#include "perfetto/ext/base/crash_keys.h"
 #include "perfetto/ext/base/utils.h"
 #include "perfetto/ext/ipc/service.h"
 #include "perfetto/ext/ipc/service_descriptor.h"
@@ -33,6 +35,36 @@
 namespace perfetto {
 namespace ipc {
 
+namespace {
+
+constexpr base::SockFamily kHostSockFamily =
+    kUseTCPSocket ? base::SockFamily::kInet : base::SockFamily::kUnix;
+
+base::CrashKey g_crash_key_uid("ipc_uid");
+
+uid_t GetPosixPeerUid(base::UnixSocket* sock) {
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN) || \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_FUCHSIA)
+  base::ignore_result(sock);
+  // Unsupported. Must be != kInvalidUid or the PacketValidator will fail.
+  return 0;
+#else
+  return sock->peer_uid_posix();
+#endif
+}
+
+pid_t GetLinuxPeerPid(base::UnixSocket* sock) {
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) || \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
+  return sock->peer_pid_linux();
+#else
+  base::ignore_result(sock);
+  return base::kInvalidPid;  // Unsupported.
+#endif
+}
+
+}  // namespace
+
 // static
 std::unique_ptr<Host> Host::CreateInstance(const char* socket_name,
                                            base::TaskRunner* task_runner) {
@@ -43,7 +75,7 @@ std::unique_ptr<Host> Host::CreateInstance(const char* socket_name,
 }
 
 // static
-std::unique_ptr<Host> Host::CreateInstance(base::ScopedFile socket_fd,
+std::unique_ptr<Host> Host::CreateInstance(base::ScopedSocketHandle socket_fd,
                                            base::TaskRunner* task_runner) {
   std::unique_ptr<HostImpl> host(
       new HostImpl(std::move(socket_fd), task_runner));
@@ -52,20 +84,33 @@ std::unique_ptr<Host> Host::CreateInstance(base::ScopedFile socket_fd,
   return std::unique_ptr<Host>(std::move(host));
 }
 
-HostImpl::HostImpl(base::ScopedFile socket_fd, base::TaskRunner* task_runner)
+// static
+std::unique_ptr<Host> Host::CreateInstance_Fuchsia(
+    base::TaskRunner* task_runner) {
+  return std::unique_ptr<HostImpl>(new HostImpl(task_runner));
+}
+
+HostImpl::HostImpl(base::ScopedSocketHandle socket_fd,
+                   base::TaskRunner* task_runner)
     : task_runner_(task_runner), weak_ptr_factory_(this) {
   PERFETTO_DCHECK_THREAD(thread_checker_);
   sock_ = base::UnixSocket::Listen(std::move(socket_fd), this, task_runner_,
-                                   base::SockFamily::kUnix,
-                                   base::SockType::kStream);
+                                   kHostSockFamily, base::SockType::kStream);
 }
 
 HostImpl::HostImpl(const char* socket_name, base::TaskRunner* task_runner)
     : task_runner_(task_runner), weak_ptr_factory_(this) {
   PERFETTO_DCHECK_THREAD(thread_checker_);
   sock_ = base::UnixSocket::Listen(socket_name, this, task_runner_,
-                                   base::SockFamily::kUnix,
-                                   base::SockType::kStream);
+                                   kHostSockFamily, base::SockType::kStream);
+  if (!sock_) {
+    PERFETTO_PLOG("Failed to create %s", socket_name);
+  }
+}
+
+HostImpl::HostImpl(base::TaskRunner* task_runner)
+    : task_runner_(task_runner), weak_ptr_factory_(this) {
+  PERFETTO_DCHECK_THREAD(thread_checker_);
 }
 
 HostImpl::~HostImpl() = default;
@@ -83,6 +128,25 @@ bool HostImpl::ExposeService(std::unique_ptr<Service> service) {
   return true;
 }
 
+void HostImpl::AdoptConnectedSocket_Fuchsia(
+    base::ScopedSocketHandle connected_socket,
+    std::function<bool(int)> send_fd_cb) {
+  PERFETTO_DCHECK_THREAD(thread_checker_);
+  PERFETTO_DCHECK(connected_socket);
+  // Should not be used in conjunction with listen sockets.
+  PERFETTO_DCHECK(!sock_);
+
+  auto unix_socket = base::UnixSocket::AdoptConnected(
+      std::move(connected_socket), this, task_runner_, kHostSockFamily,
+      base::SockType::kStream);
+
+  auto* unix_socket_ptr = unix_socket.get();
+  OnNewIncomingConnection(nullptr, std::move(unix_socket));
+  ClientConnection* client_connection = clients_by_socket_[unix_socket_ptr];
+  client_connection->send_fd_cb_fuchsia = std::move(send_fd_cb);
+  PERFETTO_DCHECK(client_connection->send_fd_cb_fuchsia);
+}
+
 void HostImpl::OnNewIncomingConnection(
     base::UnixSocket*,
     std::unique_ptr<base::UnixSocket> new_conn) {
@@ -92,6 +156,8 @@ void HostImpl::OnNewIncomingConnection(
   clients_by_socket_[new_conn.get()] = client.get();
   client->id = client_id;
   client->sock = std::move(new_conn);
+  // Watchdog is 30 seconds, so set the socket timeout to 10 seconds.
+  client->sock->SetTxTimeout(10000);
   clients_[client_id] = std::move(client);
 }
 
@@ -102,6 +168,9 @@ void HostImpl::OnDataAvailable(base::UnixSocket* sock) {
     return;
   ClientConnection* client = it->second;
   BufferedFrameDeserializer& frame_deserializer = client->frame_deserializer;
+
+  auto peer_uid = GetPosixPeerUid(client->sock.get());
+  auto scoped_key = g_crash_key_uid.SetScoped(static_cast<int64_t>(peer_uid));
 
   size_t rsize;
   do {
@@ -197,7 +266,10 @@ void HostImpl::OnInvokeMethod(ClientConnection* client,
     });
   }
 
-  service->client_info_ = ClientInfo(client->id, client->sock->peer_uid());
+  auto peer_uid = GetPosixPeerUid(client->sock.get());
+  auto scoped_key = g_crash_key_uid.SetScoped(static_cast<int64_t>(peer_uid));
+  service->client_info_ =
+      ClientInfo(client->id, peer_uid, GetLinuxPeerPid(client->sock.get()));
   service->received_fd_ = &client->received_fd;
   method.invoker(service, *decoded_req_args, std::move(deferred_reply));
   service->received_fd_ = nullptr;
@@ -230,13 +302,31 @@ void HostImpl::ReplyToMethodInvocation(ClientID client_id,
 
 // static
 void HostImpl::SendFrame(ClientConnection* client, const Frame& frame, int fd) {
+  auto peer_uid = GetPosixPeerUid(client->sock.get());
+  auto scoped_key = g_crash_key_uid.SetScoped(static_cast<int64_t>(peer_uid));
+
   std::string buf = BufferedFrameDeserializer::Serialize(frame);
 
-  // TODO(primiano): this should do non-blocking I/O. But then what if the
-  // socket buffer is full? We might want to either drop the request or throttle
-  // the send and PostTask the reply later? Right now we are making Send()
-  // blocking as a workaround. Propagate bakpressure to the caller instead.
+  // On Fuchsia, |send_fd_cb_fuchsia_| is used to send the FD to the client
+  // and therefore must be set.
+  PERFETTO_DCHECK(!PERFETTO_BUILDFLAG(PERFETTO_OS_FUCHSIA) ||
+                  client->send_fd_cb_fuchsia);
+  if (client->send_fd_cb_fuchsia && fd != base::ScopedFile::kInvalid) {
+    if (!client->send_fd_cb_fuchsia(fd)) {
+      client->sock->Shutdown(true);
+      return;
+    }
+    fd = base::ScopedFile::kInvalid;
+  }
+
+  // When a new Client connects in OnNewClientConnection we set a timeout on
+  // Send (see call to SetTxTimeout).
+  //
+  // The old behaviour was to do a blocking I/O call, which caused crashes from
+  // misbehaving producers (see b/169051440).
   bool res = client->sock->Send(buf.data(), buf.size(), fd);
+  // If we timeout |res| will be false, but the UnixSocket will have called
+  // UnixSocket::ShutDown() and thus |is_connected()| is false.
   PERFETTO_CHECK(res || !client->sock->is_connected());
 }
 
@@ -246,7 +336,9 @@ void HostImpl::OnDisconnect(base::UnixSocket* sock) {
   if (it == clients_by_socket_.end())
     return;
   ClientID client_id = it->second->id;
-  ClientInfo client_info(client_id, sock->peer_uid());
+
+  ClientInfo client_info(client_id, GetPosixPeerUid(sock),
+                         GetLinuxPeerPid(sock));
   clients_by_socket_.erase(it);
   PERFETTO_DCHECK(clients_.count(client_id));
   clients_.erase(client_id);

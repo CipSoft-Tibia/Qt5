@@ -81,18 +81,23 @@ class FtraceDataSource : public ProbesDataSource {
   }
 
   FtraceMetadata* mutable_metadata() { return &metadata_; }
+  FtraceSetupErrors* mutable_setup_errors() { return &setup_errors_; }
   TraceWriter* trace_writer() { return writer_.get(); }
 
  private:
+  // Hands out internal pointers to callbacks.
   FtraceDataSource(const FtraceDataSource&) = delete;
   FtraceDataSource& operator=(const FtraceDataSource&) = delete;
+  FtraceDataSource(FtraceDataSource&&) = delete;
+  FtraceDataSource& operator=(FtraceDataSource&&) = delete;
 
   void WriteStats();
   void DumpFtraceStats(FtraceStats*);
 
   const FtraceConfig config_;
   FtraceMetadata metadata_;
-  FtraceStats stats_before_ = {};
+  FtraceStats stats_before_{};
+  FtraceSetupErrors setup_errors_{};
   std::map<FlushRequestID, std::function<void()>> pending_flushes_;
 
   // -- Fields initialized by the Initialize() call:

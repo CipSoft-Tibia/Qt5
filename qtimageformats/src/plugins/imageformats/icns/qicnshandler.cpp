@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Alex Char.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Alex Char.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qicnshandler_p.h"
 
@@ -396,9 +360,9 @@ static inline QByteArray nameForCompressedIcon(quint8 iconNumber)
     return base + QByteArray::number(iconNumber);
 }
 
-static inline QVector<QRgb> getColorTable(ICNSEntry::Depth depth)
+static inline QList<QRgb> getColorTable(ICNSEntry::Depth depth)
 {
-    QVector<QRgb> table;
+    QList<QRgb> table;
     uint n = 1 << depth;
     const QRgb *data;
     switch (depth) {
@@ -541,7 +505,9 @@ static QImage readMask(const ICNSEntry &mask, QDataStream &stream)
     const qint64 oldPos = stream.device()->pos();
     if (!stream.device()->seek(pos))
         return QImage();
-    QImage img(mask.width, mask.height, QImage::Format_RGB32);
+    QImage img;
+    if (!QImageIOHandler::allocateImage(QSize(mask.width, mask.height), QImage::Format_RGB32, &img))
+        return QImage();
     quint8 byte = 0;
     quint32 pixel = 0;
     for (quint32 y = 0; y < mask.height; y++) {
@@ -568,10 +534,12 @@ static QImage readLowDepthIcon(const ICNSEntry &icon, QDataStream &stream)
 
     const bool isMono = depth == ICNSEntry::DepthMono;
     const QImage::Format format = isMono ? QImage::Format_Mono : QImage::Format_Indexed8;
-    const QVector<QRgb> colortable = getColorTable(depth);
+    const QList<QRgb> colortable = getColorTable(depth);
     if (colortable.isEmpty())
         return QImage();
-    QImage img(icon.width, icon.height, format);
+    QImage img;
+    if (!QImageIOHandler::allocateImage(QSize(icon.width, icon.height), format, &img))
+        return QImage();
     img.setColorTable(colortable);
     quint32 pixel = 0;
     quint8 byte = 0;
@@ -602,7 +570,9 @@ static QImage readLowDepthIcon(const ICNSEntry &icon, QDataStream &stream)
 
 static QImage read32bitIcon(const ICNSEntry &icon, QDataStream &stream)
 {
-    QImage img = QImage(icon.width, icon.height, QImage::Format_RGB32);
+    QImage img;
+    if (!QImageIOHandler::allocateImage(QSize(icon.width, icon.height), QImage::Format_RGB32, &img))
+        return QImage();
     if (icon.dataFormat != ICNSEntry::RLE24) {
         for (quint32 y = 0; y < icon.height; y++) {
             QRgb *line = reinterpret_cast<QRgb *>(img.scanLine(y));

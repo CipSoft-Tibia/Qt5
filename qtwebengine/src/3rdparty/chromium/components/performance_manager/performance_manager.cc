@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,15 @@
 
 #include <utility>
 
+#include "base/task/sequenced_task_runner.h"
 #include "components/performance_manager/graph/frame_node_impl.h"
 #include "components/performance_manager/graph/page_node_impl.h"
+#include "components/performance_manager/graph/process_node_impl.h"
 #include "components/performance_manager/performance_manager_impl.h"
 #include "components/performance_manager/performance_manager_registry_impl.h"
 #include "components/performance_manager/performance_manager_tab_helper.h"
 #include "components/performance_manager/public/performance_manager_owned.h"
+#include "content/public/browser/render_process_host.h"
 
 namespace performance_manager {
 
@@ -56,14 +59,29 @@ void PerformanceManager::PassToGraph(const base::Location& from_here,
 }
 
 // static
-base::WeakPtr<PageNode> PerformanceManager::GetPageNodeForWebContents(
+base::WeakPtr<PageNode> PerformanceManager::GetPrimaryPageNodeForWebContents(
     content::WebContents* wc) {
   DCHECK(wc);
   PerformanceManagerTabHelper* helper =
       PerformanceManagerTabHelper::FromWebContents(wc);
   if (!helper)
     return nullptr;
-  return helper->page_node()->GetWeakPtr();
+  return helper->primary_page_node()->GetWeakPtrOnUIThread();
+}
+
+// static
+base::WeakPtr<PageNode> PerformanceManager::GetPageNodeForRenderFrameHost(
+    content::RenderFrameHost* rfh) {
+  auto* wc = content::WebContents::FromRenderFrameHost(rfh);
+  DCHECK(wc);
+  PerformanceManagerTabHelper* helper =
+      PerformanceManagerTabHelper::FromWebContents(wc);
+  if (!helper)
+    return nullptr;
+  auto* page_node = helper->GetPageNodeForRenderFrameHost(rfh);
+  if (!page_node)
+    return nullptr;
+  return page_node->GetWeakPtrOnUIThread();
 }
 
 // static
@@ -75,8 +93,40 @@ base::WeakPtr<FrameNode> PerformanceManager::GetFrameNodeForRenderFrameHost(
       PerformanceManagerTabHelper::FromWebContents(wc);
   if (!helper)
     return nullptr;
+  auto* frame_node = helper->GetFrameNode(rfh);
+  if (!frame_node) {
+    // This should only happen if GetFrameNodeForRenderFrameHost is called
+    // before the RenderFrameCreated notification is dispatched.
+    DCHECK(!rfh->IsRenderFrameLive());
+    return nullptr;
+  }
+  return frame_node->GetWeakPtrOnUIThread();
+}
 
-  return helper->GetFrameNode(rfh)->GetWeakPtr();
+// static
+base::WeakPtr<ProcessNode>
+PerformanceManager::GetProcessNodeForRenderProcessHost(
+    content::RenderProcessHost* rph) {
+  DCHECK(rph);
+  auto* user_data = RenderProcessUserData::GetForRenderProcessHost(rph);
+  // There is a window after a RenderProcessHost is created before
+  // CreateProcessNodeAndExposeInterfacesToRendererProcess is called, during
+  // which time the RenderProcessUserData is not attached to the RPH yet. (It's
+  // called indirectly from RenderProcessHost::Init.)
+  if (!user_data)
+    return nullptr;
+  return user_data->process_node()->GetWeakPtrOnUIThread();
+}
+
+// static
+base::WeakPtr<ProcessNode>
+PerformanceManager::GetProcessNodeForRenderProcessHostId(
+    RenderProcessHostId id) {
+  DCHECK(id);
+  auto* rph = content::RenderProcessHost::FromID(id.value());
+  if (!rph)
+    return nullptr;
+  return GetProcessNodeForRenderProcessHost(rph);
 }
 
 // static

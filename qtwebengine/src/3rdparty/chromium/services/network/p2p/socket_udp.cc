@@ -1,13 +1,15 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/network/p2p/socket_udp.h"
 
-#include "base/bind.h"
+#include <tuple>
+
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/stl_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
@@ -71,7 +73,7 @@ std::unique_ptr<net::DatagramServerSocket> DefaultSocketFactory(
     net::NetLog* net_log) {
   net::UDPServerSocket* socket =
       new net::UDPServerSocket(net_log, net::NetLogSource());
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   socket->UseNonBlockingIO();
 #endif
 
@@ -82,60 +84,64 @@ std::unique_ptr<net::DatagramServerSocket> DefaultSocketFactory(
 
 namespace network {
 
-P2PSocketUdp::PendingPacket::PendingPacket(
-    const net::IPEndPoint& to,
-    const std::vector<int8_t>& content,
-    const rtc::PacketOptions& options,
-    uint64_t id,
-    const net::NetworkTrafficAnnotationTag traffic_annotation)
+P2PSocketUdp::PendingPacket::PendingPacket(const net::IPEndPoint& to,
+                                           base::span<const uint8_t> content,
+                                           const rtc::PacketOptions& options,
+                                           uint64_t id)
     : to(to),
       data(base::MakeRefCounted<net::IOBuffer>(content.size())),
       size(content.size()),
       packet_options(options),
-      id(id),
-      traffic_annotation(traffic_annotation) {
-  memcpy(data->data(), &content[0], size);
+      id(id) {
+  memcpy(data->data(), content.data(), content.size());
 }
 
 P2PSocketUdp::PendingPacket::PendingPacket(const PendingPacket& other) =
     default;
 P2PSocketUdp::PendingPacket::~PendingPacket() = default;
 
-P2PSocketUdp::P2PSocketUdp(Delegate* Delegate,
-                           mojo::PendingRemote<mojom::P2PSocketClient> client,
-                           mojo::PendingReceiver<mojom::P2PSocket> socket,
-                           P2PMessageThrottler* throttler,
-                           net::NetLog* net_log,
-                           const DatagramServerSocketFactory& socket_factory)
+P2PSocketUdp::P2PSocketUdp(
+    Delegate* Delegate,
+    mojo::PendingRemote<mojom::P2PSocketClient> client,
+    mojo::PendingReceiver<mojom::P2PSocket> socket,
+    P2PMessageThrottler* throttler,
+    const net::NetworkTrafficAnnotationTag& traffic_annotation,
+    net::NetLog* net_log,
+    const DatagramServerSocketFactory& socket_factory)
     : P2PSocket(Delegate, std::move(client), std::move(socket), P2PSocket::UDP),
       throttler_(throttler),
+      traffic_annotation_(traffic_annotation),
       net_log_(net_log),
       socket_factory_(socket_factory) {}
 
-P2PSocketUdp::P2PSocketUdp(Delegate* Delegate,
-                           mojo::PendingRemote<mojom::P2PSocketClient> client,
-                           mojo::PendingReceiver<mojom::P2PSocket> socket,
-                           P2PMessageThrottler* throttler,
-                           net::NetLog* net_log)
+P2PSocketUdp::P2PSocketUdp(
+    Delegate* Delegate,
+    mojo::PendingRemote<mojom::P2PSocketClient> client,
+    mojo::PendingReceiver<mojom::P2PSocket> socket,
+    P2PMessageThrottler* throttler,
+    const net::NetworkTrafficAnnotationTag& traffic_annotation,
+    net::NetLog* net_log)
     : P2PSocketUdp(Delegate,
                    std::move(client),
                    std::move(socket),
                    throttler,
+                   traffic_annotation,
                    net_log,
                    base::BindRepeating(&DefaultSocketFactory)) {}
 
 P2PSocketUdp::~P2PSocketUdp() = default;
 
-void P2PSocketUdp::Init(const net::IPEndPoint& local_address,
-                        uint16_t min_port,
-                        uint16_t max_port,
-                        const P2PHostAndIPEndPoint& remote_address,
-                        const net::NetworkIsolationKey& network_isolation_key) {
+void P2PSocketUdp::Init(
+    const net::IPEndPoint& local_address,
+    uint16_t min_port,
+    uint16_t max_port,
+    const P2PHostAndIPEndPoint& remote_address,
+    const net::NetworkAnonymizationKey& network_anonymization_key) {
   DCHECK(!socket_);
   DCHECK((min_port == 0 && max_port == 0) || min_port > 0);
   DCHECK_LE(min_port, max_port);
 
-  socket_ = socket_factory_.Run(net_log_);
+  socket_ = socket_factory_.Run(net_log_.get());
 
   int result = -1;
   if (min_port == 0) {
@@ -144,7 +150,7 @@ void P2PSocketUdp::Init(const net::IPEndPoint& local_address,
     for (unsigned port = min_port; port <= max_port && result < 0; ++port) {
       result = socket_->Listen(net::IPEndPoint(local_address.address(), port));
       if (result < 0 && port != max_port)
-        socket_ = socket_factory_.Run(net_log_);
+        socket_ = socket_factory_.Run(net_log_.get());
     }
   } else if (local_address.port() >= min_port &&
              local_address.port() <= max_port) {
@@ -207,13 +213,13 @@ void P2PSocketUdp::OnRecv(int result) {
 
 bool P2PSocketUdp::HandleReadResult(int result) {
   if (result > 0) {
-    std::vector<int8_t> data(recv_buffer_->data(),
-                             recv_buffer_->data() + result);
+    base::span<const uint8_t> data =
+        base::make_span(reinterpret_cast<const uint8_t*>(recv_buffer_->data()),
+                        static_cast<size_t>(result));
 
     if (!base::Contains(connected_peers_, recv_address_)) {
       P2PSocket::StunMessageType type;
-      bool stun = GetStunPacketType(reinterpret_cast<uint8_t*>(&*data.begin()),
-                                    data.size(), &type);
+      bool stun = GetStunPacketType(data, &type);
       if ((stun && IsRequestOrResponse(type))) {
         connected_peers_.insert(recv_address_);
       } else if (!stun || type == STUN_DATA_INDICATION) {
@@ -226,11 +232,9 @@ bool P2PSocketUdp::HandleReadResult(int result) {
 
     client_->DataReceived(
         recv_address_, data,
-        base::TimeTicks() + base::TimeDelta::FromNanoseconds(rtc::TimeNanos()));
+        base::TimeTicks() + base::Nanoseconds(rtc::TimeNanos()));
 
-    delegate_->DumpPacket(
-        base::make_span(reinterpret_cast<uint8_t*>(&data[0]), data.size()),
-        true);
+    delegate_->DumpPacket(data, true);
   } else if (result < 0 && !IsTransientError(result)) {
     LOG(ERROR) << "Error when reading from UDP socket: " << result;
     OnError();
@@ -250,9 +254,10 @@ bool P2PSocketUdp::DoSend(const PendingPacket& packet) {
   // messages are sent in correct order.
   if (!base::Contains(connected_peers_, packet.to)) {
     P2PSocket::StunMessageType type = P2PSocket::StunMessageType();
-    bool stun =
-        GetStunPacketType(reinterpret_cast<const uint8_t*>(packet.data->data()),
-                          packet.size, &type);
+    bool stun = GetStunPacketType(
+        base::make_span(reinterpret_cast<const uint8_t*>(packet.data->data()),
+                        packet.size),
+        &type);
     if (!stun || type == STUN_DATA_INDICATION) {
       LOG(ERROR) << "Page tried to send a data packet to "
                  << packet.to.ToString() << " before STUN binding is finished.";
@@ -350,7 +355,6 @@ void P2PSocketUdp::OnSend(uint64_t packet_id,
     send_queue_.pop_front();
     if (!DoSend(packet))
       return;
-    DecrementDelayedBytes(packet.size);
   }
 }
 
@@ -361,8 +365,6 @@ bool P2PSocketUdp::HandleSendResult(uint64_t packet_id,
   TRACE_EVENT_NESTABLE_ASYNC_END0("p2p", "UdpAsyncSendTo", packet_id);
   TRACE_EVENT_NESTABLE_ASYNC_END1("p2p", "Send", packet_id, "result", result);
   if (result < 0) {
-    ReportSocketError(result, "WebRTC.ICE.UdpSocketWriteErrorCode");
-
     if (!IsTransientError(result)) {
       LOG(ERROR) << "Error when sending data in UDP socket: " << result;
       OnError();
@@ -373,44 +375,30 @@ bool P2PSocketUdp::HandleSendResult(uint64_t packet_id,
             << GetTransientErrorName(result) << ". Dropping the packet.";
   }
 
-  // UMA to track the histograms from 1ms to 1 sec for how long a packet spends
-  // in the browser process.
-  UMA_HISTOGRAM_TIMES(
-      "WebRTC.SystemSendPacketDuration_UDP" /* name */,
-      base::TimeDelta::FromMilliseconds(rtc::TimeMillis() - send_time_ms));
-
   client_->SendComplete(
       P2PSendPacketMetrics(packet_id, transport_sequence_number, send_time_ms));
 
   return true;
 }
 
-void P2PSocketUdp::Send(
-    const std::vector<int8_t>& data,
-    const P2PPacketInfo& packet_info,
-    const net::MutableNetworkTrafficAnnotationTag& traffic_annotation) {
+void P2PSocketUdp::Send(base::span<const uint8_t> data,
+                        const P2PPacketInfo& packet_info) {
   if (data.size() > kMaximumPacketSize) {
     NOTREACHED();
     OnError();
     return;
   }
 
-  IncrementTotalSentPackets();
-
   if (send_pending_) {
-    send_queue_.push_back(
-        PendingPacket(packet_info.destination, data, packet_info.packet_options,
-                      packet_info.packet_id,
-                      net::NetworkTrafficAnnotationTag(traffic_annotation)));
-    IncrementDelayedBytes(data.size());
-    IncrementDelayedPackets();
+    send_queue_.push_back(PendingPacket(packet_info.destination, data,
+                                        packet_info.packet_options,
+                                        packet_info.packet_id));
   } else {
     PendingPacket packet(packet_info.destination, data,
-                         packet_info.packet_options, packet_info.packet_id,
-                         net::NetworkTrafficAnnotationTag(traffic_annotation));
+                         packet_info.packet_options, packet_info.packet_id);
 
     // We are not going to use |this| again, so it's safe to ignore the result.
-    ignore_result(DoSend(packet));
+    std::ignore = DoSend(packet);
   }
 }
 

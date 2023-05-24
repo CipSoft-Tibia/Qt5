@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,6 @@
 #include <memory>
 
 #include "base/base_export.h"
-#include "base/macros.h"
 
 namespace base {
 namespace win {
@@ -36,13 +35,17 @@ class BASE_EXPORT PeImageReader {
   // |certificate_data_size| bytes). |context| is the value provided by the
   // caller to EnumCertificates(). Implementations must return true to continue
   // the enumeration, or false to abort.
-  typedef bool (*EnumCertificatesCallback)(uint16_t revision,
-                                           uint16_t certificate_type,
-                                           const uint8_t* certificate_data,
-                                           size_t certificate_data_size,
-                                           void* context);
+  using EnumCertificatesCallback = bool (*)(uint16_t revision,
+                                            uint16_t certificate_type,
+                                            const uint8_t* certificate_data,
+                                            size_t certificate_data_size,
+                                            void* context);
 
   PeImageReader();
+
+  PeImageReader(const PeImageReader&) = delete;
+  PeImageReader& operator=(const PeImageReader&) = delete;
+
   ~PeImageReader();
 
   // Returns false if the given data does not appear to be a valid PE image.
@@ -91,7 +94,7 @@ class BASE_EXPORT PeImageReader {
   // An interface to an image's optional header.
   class OptionalHeader {
    public:
-    virtual ~OptionalHeader() {}
+    virtual ~OptionalHeader() = default;
 
     virtual WordSize GetWordSize() = 0;
 
@@ -161,11 +164,10 @@ class BASE_EXPORT PeImageReader {
     return true;
   }
 
-  const uint8_t* image_data_;
-  size_t image_size_;
-  uint32_t validation_state_;
+  const uint8_t* image_data_ = nullptr;
+  size_t image_size_ = 0;
+  uint32_t validation_state_ = 0;
   std::unique_ptr<OptionalHeader> optional_header_;
-  DISALLOW_COPY_AND_ASSIGN(PeImageReader);
 };
 
 }  // namespace win

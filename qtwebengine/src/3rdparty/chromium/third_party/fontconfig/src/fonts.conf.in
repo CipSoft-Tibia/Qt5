@@ -1,11 +1,7 @@
 <?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <!-- /etc/fonts/fonts.conf file to configure system font access -->
 <fontconfig>
-	<its:rules xmlns:its="http://www.w3.org/2005/11/its" version="1.0">
-		<its:translateRule translate="no" selector="/fontconfig/*[not(self::description)]"/>
-	</its:rules>
-
 	<description>Default configuration file</description>
 
 <!--
@@ -16,8 +12,8 @@
 	The intent of this standard configuration file is to be adequate for
 	most environments.  If you have a reasonably normal environment and
 	have found problems with this configuration, they are probably
-	things that others will also want fixed.  Please submit any
-	problems to the fontconfig bugzilla system located at fontconfig.org
+	things that others will also want fixed.  Please submit any problems
+	to the fontconfig issue tracking system located at fontconfig.org
 
 	Note that the normal 'make install' procedure for fontconfig is to
 	replace any existing fonts.conf file with the new version.  Place
@@ -28,7 +24,7 @@
 
 <!-- Font directory list -->
 
-	<dir>@FC_DEFAULT_FONTS@</dir>
+@FC_DEFAULT_FONTS@
 	@FC_FONTPATH@
 	<dir prefix="xdg">fonts</dir>
 	<!-- the following element will be removed in the future -->

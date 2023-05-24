@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 
 #include <string>
 
-#include "base/macros.h"
 #include "base/run_loop.h"
 #include "base/test/gmock_callback_support.h"
 #include "base/time/time.h"
@@ -23,11 +22,14 @@
 #include "third_party/blink/renderer/modules/mediarecorder/fake_encoded_video_frame.h"
 #include "third_party/blink/renderer/modules/mediarecorder/media_recorder.h"
 #include "third_party/blink/renderer/modules/mediarecorder/media_recorder_handler.h"
+#include "third_party/blink/renderer/modules/mediastream/media_stream_track_impl.h"
 #include "third_party/blink/renderer/modules/mediastream/mock_media_stream_registry.h"
 #include "third_party/blink/renderer/modules/mediastream/mock_media_stream_video_source.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/thread_state.h"
+#include "third_party/blink/renderer/platform/mediastream/media_stream_audio_track.h"
+#include "third_party/blink/renderer/platform/mediastream/media_stream_component_impl.h"
 #include "third_party/blink/renderer/platform/testing/io_task_runner_testing_platform_support.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
@@ -46,8 +48,13 @@ using ::testing::ValuesIn;
 
 namespace blink {
 
-static const std::string kTestVideoTrackId = "video_track_id";
-static const std::string kTestAudioTrackId = "audio_track_id";
+static String TestVideoTrackId() {
+  return "video_track_id";
+}
+
+static String TestAudioTrackId() {
+  return "audio_track_id";
+}
 static const int kTestAudioChannels = 2;
 static const int kTestAudioSampleRate = 48000;
 static const int kTestAudioBufferDurationMs = 10;
@@ -68,7 +75,7 @@ struct MediaRecorderTestParams {
 static const MediaRecorderTestParams kMediaRecorderTestParams[] = {
     {true, false, "video/webm", "vp8", true},
     {true, false, "video/webm", "vp9", true},
-#if BUILDFLAG(RTC_USE_H264)
+#if BUILDFLAG(USE_PROPRIETARY_CODECS)
     {true, false, "video/x-matroska", "avc1", false},
 #endif
     {false, true, "audio/webm", "opus", true},
@@ -79,11 +86,13 @@ static const MediaRecorderTestParams kMediaRecorderTestParams[] = {
 
 MediaStream* CreateMediaStream(V8TestingScope& scope) {
   auto* source = MakeGarbageCollected<MediaStreamSource>(
-      "sourceId", MediaStreamSource::kTypeAudio, "sourceName", false);
-  auto* component =
-      MakeGarbageCollected<MediaStreamComponent>("audioTrack", source);
+      "sourceId", MediaStreamSource::kTypeAudio, "sourceName", false,
+      /*platform_source=*/nullptr);
+  auto* component = MakeGarbageCollected<MediaStreamComponentImpl>(
+      "audioTrack", source,
+      std::make_unique<MediaStreamAudioTrack>(/*is_local_track=*/true));
 
-  auto* track = MakeGarbageCollected<MediaStreamTrack>(
+  auto* track = MakeGarbageCollected<MediaStreamTrackImpl>(
       scope.GetExecutionContext(), component);
 
   HeapVector<Member<MediaStreamTrack>> tracks;
@@ -97,23 +106,23 @@ MediaStream* CreateMediaStream(V8TestingScope& scope) {
 
 class MockMediaRecorder : public MediaRecorder {
  public:
-  MockMediaRecorder(V8TestingScope& scope)
+  explicit MockMediaRecorder(V8TestingScope& scope)
       : MediaRecorder(scope.GetExecutionContext(),
                       CreateMediaStream(scope),
                       MediaRecorderOptions::Create(),
                       scope.GetExceptionState()) {}
-  virtual ~MockMediaRecorder() = default;
+  ~MockMediaRecorder() override = default;
 
-  MOCK_METHOD4(WriteData, void(const char*, size_t, bool, double));
+  MOCK_METHOD4(WriteData, void(const void*, size_t, bool, double));
   MOCK_METHOD1(OnError, void(const String& message));
 };
 
-class MediaRecorderHandlerTest : public TestWithParam<MediaRecorderTestParams>,
-                                 public ScopedMockOverlayScrollbars {
+class MediaRecorderHandlerFixture : public ScopedMockOverlayScrollbars {
  public:
-  MediaRecorderHandlerTest()
-      : media_recorder_handler_(MakeGarbageCollected<MediaRecorderHandler>(
-            scheduler::GetSingleThreadTaskRunnerForTesting())),
+  MediaRecorderHandlerFixture(bool has_video, bool has_audio)
+      : has_video_(has_video),
+        has_audio_(has_audio),
+        media_recorder_handler_(MakeGarbageCollected<MediaRecorderHandler>()),
         audio_source_(kTestAudioChannels,
                       440 /* freq */,
                       kTestAudioSampleRate) {
@@ -122,17 +131,17 @@ class MediaRecorderHandlerTest : public TestWithParam<MediaRecorderTestParams>,
     registry_.Init();
   }
 
-  ~MediaRecorderHandlerTest() {
+  ~MediaRecorderHandlerFixture() {
     registry_.reset();
     ThreadState::Current()->CollectAllGarbageForTesting();
   }
 
   bool recording() const { return media_recorder_handler_->recording_; }
   bool hasVideoRecorders() const {
-    return !media_recorder_handler_->video_recorders_.IsEmpty();
+    return !media_recorder_handler_->video_recorders_.empty();
   }
   bool hasAudioRecorders() const {
-    return !media_recorder_handler_->audio_recorders_.IsEmpty();
+    return !media_recorder_handler_->audio_recorders_.empty();
   }
 
   void OnVideoFrameForTesting(scoped_refptr<media::VideoFrame> frame) {
@@ -140,13 +149,21 @@ class MediaRecorderHandlerTest : public TestWithParam<MediaRecorderTestParams>,
                                                     base::TimeTicks::Now());
   }
 
-  void OnEncodedVideoForTesting(const media::WebmMuxer::VideoParameters& params,
+  void OnEncodedVideoForTesting(const media::Muxer::VideoParameters& params,
                                 std::string encoded_data,
                                 std::string encoded_alpha,
                                 base::TimeTicks timestamp,
                                 bool is_key_frame) {
-    media_recorder_handler_->OnEncodedVideo(params, encoded_data, encoded_alpha,
-                                            timestamp, is_key_frame);
+    media_recorder_handler_->OnEncodedVideo(params, std::move(encoded_data),
+                                            std::move(encoded_alpha), timestamp,
+                                            is_key_frame);
+  }
+
+  void OnEncodedAudioForTesting(const media::AudioParameters& params,
+                                std::string encoded_data,
+                                base::TimeTicks timestamp) {
+    media_recorder_handler_->OnEncodedAudio(params, std::move(encoded_data),
+                                            timestamp);
   }
 
   void OnAudioBusForTesting(const media::AudioBus& audio_bus) {
@@ -158,49 +175,61 @@ class MediaRecorderHandlerTest : public TestWithParam<MediaRecorderTestParams>,
   }
 
   void AddVideoTrack() {
-    video_source_ = registry_.AddVideoTrack(kTestVideoTrackId);
+    video_source_ = registry_.AddVideoTrack(TestVideoTrackId());
   }
 
   void AddTracks() {
     // Avoid issues with non-parameterized tests by calling this outside of ctr.
-    if (GetParam().has_video)
+    if (has_video_)
       AddVideoTrack();
-    if (GetParam().has_audio)
-      registry_.AddAudioTrack(kTestAudioTrackId);
+    if (has_audio_)
+      registry_.AddAudioTrack(TestAudioTrackId());
   }
 
   void ForceOneErrorInWebmMuxer() {
-    media_recorder_handler_->webm_muxer_->ForceOneLibWebmErrorForTesting();
+    static_cast<media::WebmMuxer*>(media_recorder_handler_->muxer_.get())
+        ->ForceOneLibWebmErrorForTesting();
   }
 
   std::unique_ptr<media::AudioBus> NextAudioBus() {
     std::unique_ptr<media::AudioBus> bus(media::AudioBus::Create(
         kTestAudioChannels,
         kTestAudioSampleRate * kTestAudioBufferDurationMs / 1000));
-    audio_source_.OnMoreData(base::TimeDelta(), base::TimeTicks::Now(), 0,
+    audio_source_.OnMoreData(base::TimeDelta(), base::TimeTicks::Now(), {},
                              bus.get());
     return bus;
   }
 
   ScopedTestingPlatformSupport<IOTaskRunnerTestingPlatformSupport> platform_;
-
   MockMediaStreamRegistry registry_;
-
-  // The Class under test. Needs to be scoped_ptr to force its destruction.
+  bool has_video_;
+  bool has_audio_;
   Persistent<MediaRecorderHandler> media_recorder_handler_;
-
-  // For generating test AudioBuses
   media::SineWaveAudioSource audio_source_;
-
   MockMediaStreamVideoSource* video_source_ = nullptr;
+};
 
- private:
-  DISALLOW_COPY_AND_ASSIGN(MediaRecorderHandlerTest);
+class MediaRecorderHandlerTest : public TestWithParam<MediaRecorderTestParams>,
+                                 public MediaRecorderHandlerFixture {
+ public:
+  MediaRecorderHandlerTest()
+      : MediaRecorderHandlerFixture(GetParam().has_video,
+                                    GetParam().has_audio) {}
+
+  bool IsCodecSupported() {
+#if !BUILDFLAG(RTC_USE_H264)
+    // Test requires OpenH264 encoder. It can't use the VEA encoder.
+    if (std::string(GetParam().codecs) == "avc1") {
+      return false;
+    }
+#endif
+    return true;
+  }
 };
 
 // Checks that canSupportMimeType() works as expected, by sending supported
 // combinations and unsupported ones.
-TEST_F(MediaRecorderHandlerTest, CanSupportMimeType) {
+TEST_P(MediaRecorderHandlerTest, CanSupportMimeType) {
   const String unsupported_mime_type("video/mpeg");
   EXPECT_FALSE(media_recorder_handler_->CanSupportMimeType(
       unsupported_mime_type, String()));
@@ -221,7 +250,7 @@ TEST_F(MediaRecorderHandlerTest, CanSupportMimeType) {
   EXPECT_TRUE(media_recorder_handler_->CanSupportMimeType(
       mime_type_video, example_good_codecs_3));
   const String example_good_codecs_4("H264");
-#if BUILDFLAG(RTC_USE_H264)
+#if BUILDFLAG(USE_PROPRIETARY_CODECS)
   EXPECT_TRUE(media_recorder_handler_->CanSupportMimeType(
       mime_type_video, example_good_codecs_4));
 #else
@@ -251,6 +280,28 @@ TEST_F(MediaRecorderHandlerTest, CanSupportMimeType) {
       mime_type_audio, example_unsupported_codecs_2));
 }
 
+// Checks that it uses the specified bitrate mode.
+TEST_P(MediaRecorderHandlerTest, SupportsBitrateMode) {
+  AddTracks();
+  V8TestingScope scope;
+  auto* recorder = MakeGarbageCollected<MockMediaRecorder>(scope);
+
+  const String mime_type(GetParam().mime_type);
+  const String codecs(GetParam().codecs);
+
+  EXPECT_TRUE(media_recorder_handler_->Initialize(
+      recorder, registry_.test_stream(), mime_type, codecs, 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable));
+  EXPECT_EQ(media_recorder_handler_->AudioBitrateMode(),
+            AudioTrackRecorder::BitrateMode::kVariable);
+
+  EXPECT_TRUE(media_recorder_handler_->Initialize(
+      recorder, registry_.test_stream(), mime_type, codecs, 0, 0,
+      AudioTrackRecorder::BitrateMode::kConstant));
+  EXPECT_EQ(media_recorder_handler_->AudioBitrateMode(),
+            AudioTrackRecorder::BitrateMode::kConstant);
+}
+
 // Checks that the initialization-destruction sequence works fine.
 TEST_P(MediaRecorderHandlerTest, InitializeStartStop) {
   AddTracks();
@@ -259,7 +310,8 @@ TEST_P(MediaRecorderHandlerTest, InitializeStartStop) {
   const String mime_type(GetParam().mime_type);
   const String codecs(GetParam().codecs);
   EXPECT_TRUE(media_recorder_handler_->Initialize(
-      recorder, registry_.test_stream(), mime_type, codecs, 0, 0));
+      recorder, registry_.test_stream(), mime_type, codecs, 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable));
   EXPECT_FALSE(recording());
   EXPECT_FALSE(hasVideoRecorders());
   EXPECT_FALSE(hasAudioRecorders());
@@ -274,18 +326,15 @@ TEST_P(MediaRecorderHandlerTest, InitializeStartStop) {
   EXPECT_FALSE(recording());
   EXPECT_FALSE(hasVideoRecorders());
   EXPECT_FALSE(hasAudioRecorders());
-
-  // Expect a last call on destruction.
-  EXPECT_CALL(*recorder, WriteData(_, _, true, _)).Times(1);
-  media_recorder_handler_ = nullptr;
 }
 
 // Sends 2 opaque frames and 1 transparent frame and expects them as WebM
 // contained encoded data in writeData().
 TEST_P(MediaRecorderHandlerTest, EncodeVideoFrames) {
   // Video-only test.
-  if (GetParam().has_audio)
+  if (GetParam().has_audio || !IsCodecSupported()) {
     return;
+  }
 
   AddTracks();
 
@@ -294,7 +343,8 @@ TEST_P(MediaRecorderHandlerTest, EncodeVideoFrames) {
   const String mime_type(GetParam().mime_type);
   const String codecs(GetParam().codecs);
   EXPECT_TRUE(media_recorder_handler_->Initialize(
-      recorder, registry_.test_stream(), mime_type, codecs, 0, 0));
+      recorder, registry_.test_stream(), mime_type, codecs, 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable));
   EXPECT_TRUE(media_recorder_handler_->Start(0));
 
   InSequence s;
@@ -359,15 +409,7 @@ TEST_P(MediaRecorderHandlerTest, EncodeVideoFrames) {
   }
 
   media_recorder_handler_->Stop();
-
-  // Expect a last call on destruction.
-  EXPECT_CALL(*recorder, WriteData(_, _, true, _)).Times(1);
-  media_recorder_handler_ = nullptr;
 }
-
-INSTANTIATE_TEST_SUITE_P(All,
-                         MediaRecorderHandlerTest,
-                         ValuesIn(kMediaRecorderTestParams));
 
 // Sends 2 frames and expect them as WebM (or MKV) contained encoded audio data
 // in writeData().
@@ -384,7 +426,8 @@ TEST_P(MediaRecorderHandlerTest, OpusEncodeAudioFrames) {
   const String mime_type(GetParam().mime_type);
   const String codecs(GetParam().codecs);
   EXPECT_TRUE(media_recorder_handler_->Initialize(
-      recorder, registry_.test_stream(), mime_type, codecs, 0, 0));
+      recorder, registry_.test_stream(), mime_type, codecs, 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable));
   EXPECT_TRUE(media_recorder_handler_->Start(0));
 
   InSequence s;
@@ -392,8 +435,8 @@ TEST_P(MediaRecorderHandlerTest, OpusEncodeAudioFrames) {
   const std::unique_ptr<media::AudioBus> audio_bus2 = NextAudioBus();
 
   media::AudioParameters params(
-      media::AudioParameters::AUDIO_PCM_LINEAR, media::CHANNEL_LAYOUT_STEREO,
-      kTestAudioSampleRate,
+      media::AudioParameters::AUDIO_PCM_LINEAR,
+      media::ChannelLayoutConfig::Stereo(), kTestAudioSampleRate,
       kTestAudioSampleRate * kTestAudioBufferDurationMs / 1000);
   SetAudioFormatForTesting(params);
 
@@ -430,17 +473,14 @@ TEST_P(MediaRecorderHandlerTest, OpusEncodeAudioFrames) {
   }
 
   media_recorder_handler_->Stop();
-
-  // Expect a last call on destruction.
-  EXPECT_CALL(*recorder, WriteData(_, _, true, _)).Times(1);
-  media_recorder_handler_ = nullptr;
 }
 
 // Starts up recording and forces a WebmMuxer's libwebm error.
 TEST_P(MediaRecorderHandlerTest, WebmMuxerErrorWhileEncoding) {
   // Video-only test: Audio would be very similar.
-  if (GetParam().has_audio)
+  if (GetParam().has_audio || !IsCodecSupported()) {
     return;
+  }
 
   AddTracks();
 
@@ -450,7 +490,8 @@ TEST_P(MediaRecorderHandlerTest, WebmMuxerErrorWhileEncoding) {
   const String mime_type(GetParam().mime_type);
   const String codecs(GetParam().codecs);
   EXPECT_TRUE(media_recorder_handler_->Initialize(
-      recorder, registry_.test_stream(), mime_type, codecs, 0, 0));
+      recorder, registry_.test_stream(), mime_type, codecs, 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable));
   EXPECT_TRUE(media_recorder_handler_->Start(0));
 
   InSequence s;
@@ -460,7 +501,7 @@ TEST_P(MediaRecorderHandlerTest, WebmMuxerErrorWhileEncoding) {
   {
     const size_t kEncodedSizeThreshold = 16;
     base::RunLoop run_loop;
-    EXPECT_CALL(*recorder, WriteData(_, _, _, _)).Times(AtLeast(1));
+    EXPECT_CALL(*recorder, WriteData).Times(AtLeast(1));
     EXPECT_CALL(*recorder, WriteData(_, Gt(kEncodedSizeThreshold), _, _))
         .Times(1)
         .WillOnce(RunOnceClosure(run_loop.QuitClosure()));
@@ -473,7 +514,7 @@ TEST_P(MediaRecorderHandlerTest, WebmMuxerErrorWhileEncoding) {
 
   {
     base::RunLoop run_loop;
-    EXPECT_CALL(*recorder, WriteData(_, _, _, _)).Times(0);
+    EXPECT_CALL(*recorder, WriteData).Times(0);
     EXPECT_CALL(*recorder, OnError(_))
         .Times(1)
         .WillOnce(RunOnceClosure(run_loop.QuitClosure()));
@@ -482,8 +523,9 @@ TEST_P(MediaRecorderHandlerTest, WebmMuxerErrorWhileEncoding) {
     run_loop.Run();
   }
 
-  // Expect a last call on destruction.
-  EXPECT_CALL(*recorder, WriteData(_, _, true, _)).Times(1);
+  // Make sure the |media_recorder_handler_| gets destroyed and removing sinks
+  // before the MediaStreamVideoTrack dtor, avoiding a DCHECK on a non-empty
+  // callback list.
   media_recorder_handler_ = nullptr;
 }
 
@@ -497,7 +539,8 @@ TEST_P(MediaRecorderHandlerTest, ActualMimeType) {
   const String mime_type(GetParam().mime_type);
   const String codecs(GetParam().codecs);
   EXPECT_TRUE(media_recorder_handler_->Initialize(
-      recorder, registry_.test_stream(), mime_type, codecs, 0, 0));
+      recorder, registry_.test_stream(), mime_type, codecs, 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable));
 
   StringBuilder actual_mime_type;
   actual_mime_type.Append(GetParam().mime_type);
@@ -511,10 +554,6 @@ TEST_P(MediaRecorderHandlerTest, ActualMimeType) {
 
   EXPECT_EQ(media_recorder_handler_->ActualMimeType(),
             actual_mime_type.ToString());
-
-  // Expect a last call on destruction.
-  EXPECT_CALL(*recorder, WriteData(_, _, true, _)).Times(1);
-  media_recorder_handler_ = nullptr;
 }
 
 TEST_P(MediaRecorderHandlerTest, PauseRecorderForVideo) {
@@ -531,20 +570,22 @@ TEST_P(MediaRecorderHandlerTest, PauseRecorderForVideo) {
   const String codecs(GetParam().codecs);
 
   EXPECT_TRUE(media_recorder_handler_->Initialize(
-      recorder, registry_.test_stream(), mime_type, codecs, 0, 0));
+      recorder, registry_.test_stream(), mime_type, codecs, 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable));
   EXPECT_TRUE(media_recorder_handler_->Start(0));
 
   Mock::VerifyAndClearExpectations(recorder);
   media_recorder_handler_->Pause();
 
   EXPECT_CALL(*recorder, WriteData).Times(AtLeast(1));
-  media::WebmMuxer::VideoParameters params(gfx::Size(), 1, media::kCodecVP9,
-                                           gfx::ColorSpace());
+  media::Muxer::VideoParameters params(gfx::Size(), 1, media::VideoCodec::kVP9,
+                                       gfx::ColorSpace());
   OnEncodedVideoForTesting(params, "vp9 frame", "", base::TimeTicks::Now(),
                            true);
 
-  // Expect a last call on destruction.
-  EXPECT_CALL(*recorder, WriteData(_, _, true, _)).Times(1);
+  // Make sure the |media_recorder_handler_| gets destroyed and removing sinks
+  // before the MediaStreamVideoTrack dtor, avoiding a DCHECK on a non-empty
+  // callback list.
   media_recorder_handler_ = nullptr;
 }
 
@@ -562,7 +603,8 @@ TEST_P(MediaRecorderHandlerTest, StartStopStartRecorderForVideo) {
   const String codecs(GetParam().codecs);
 
   EXPECT_TRUE(media_recorder_handler_->Initialize(
-      recorder, registry_.test_stream(), mime_type, codecs, 0, 0));
+      recorder, registry_.test_stream(), mime_type, codecs, 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable));
   EXPECT_TRUE(media_recorder_handler_->Start(0));
   media_recorder_handler_->Stop();
 
@@ -570,15 +612,159 @@ TEST_P(MediaRecorderHandlerTest, StartStopStartRecorderForVideo) {
   EXPECT_TRUE(media_recorder_handler_->Start(0));
 
   EXPECT_CALL(*recorder, WriteData).Times(AtLeast(1));
-  media::WebmMuxer::VideoParameters params(gfx::Size(), 1, media::kCodecVP9,
-                                           gfx::ColorSpace());
+  media::Muxer::VideoParameters params(gfx::Size(), 1, media::VideoCodec::kVP9,
+                                       gfx::ColorSpace());
   OnEncodedVideoForTesting(params, "vp9 frame", "", base::TimeTicks::Now(),
                            true);
 
-  // Expect a last call on destruction.
-  EXPECT_CALL(*recorder, WriteData(_, _, true, _)).Times(1);
+  // Make sure the |media_recorder_handler_| gets destroyed and removing sinks
+  // before the MediaStreamVideoTrack dtor, avoiding a DCHECK on a non-empty
+  // callback list.
   media_recorder_handler_ = nullptr;
 }
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         MediaRecorderHandlerTest,
+                         ValuesIn(kMediaRecorderTestParams));
+
+class MediaRecorderHandlerAudioVideoTest : public testing::Test,
+                                           public MediaRecorderHandlerFixture {
+ public:
+  MediaRecorderHandlerAudioVideoTest()
+      : MediaRecorderHandlerFixture(/*has_video=*/true,
+                                    /*has_audio=*/true) {}
+
+  void FeedVideo() {
+    media::Muxer::VideoParameters video_params(
+        gfx::Size(), 1, media::VideoCodec::kVP9, gfx::ColorSpace());
+    OnEncodedVideoForTesting(video_params, "video", "alpha", timestamp_, true);
+    timestamp_ += base::Milliseconds(10);
+  }
+
+  void FeedAudio() {
+    media::AudioParameters audio_params(
+        media::AudioParameters::AUDIO_PCM_LINEAR,
+        media::ChannelLayoutConfig::Stereo(), kTestAudioSampleRate,
+        kTestAudioSampleRate * kTestAudioBufferDurationMs / 1000);
+    OnEncodedAudioForTesting(audio_params, "audio", timestamp_);
+    timestamp_ += base::Milliseconds(10);
+  }
+
+  base::TimeTicks timestamp_ = base::TimeTicks::Now();
+};
+
+TEST_F(MediaRecorderHandlerAudioVideoTest, EmitsCachedAudioDataOnStop) {
+  AddTracks();
+  V8TestingScope scope;
+  auto* recorder = MakeGarbageCollected<MockMediaRecorder>(scope);
+  media_recorder_handler_->Initialize(
+      recorder, registry_.test_stream(), "video/webm", "vp9,opus", 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable);
+  media_recorder_handler_->Start(std::numeric_limits<int>::max());
+
+  // Feed some encoded data into the recorder. Expect that data cached by the
+  // muxer is emitted on the call to Stop.
+  FeedVideo();
+  FeedAudio();
+  EXPECT_CALL(*recorder, WriteData).Times(AtLeast(1));
+  media_recorder_handler_->Stop();
+  media_recorder_handler_ = nullptr;
+}
+
+TEST_F(MediaRecorderHandlerAudioVideoTest, EmitsCachedVideoDataOnStop) {
+  AddTracks();
+  V8TestingScope scope;
+  auto* recorder = MakeGarbageCollected<MockMediaRecorder>(scope);
+  media_recorder_handler_->Initialize(
+      recorder, registry_.test_stream(), "video/webm", "vp9,opus", 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable);
+  media_recorder_handler_->Start(std::numeric_limits<int>::max());
+
+  // Feed some encoded data into the recorder. Expect that data cached by the
+  // muxer is emitted on the call to Stop.
+  FeedAudio();
+  FeedVideo();
+  EXPECT_CALL(*recorder, WriteData).Times(AtLeast(1));
+  media_recorder_handler_->Stop();
+  media_recorder_handler_ = nullptr;
+}
+
+TEST_F(MediaRecorderHandlerAudioVideoTest,
+       EmitsCachedAudioDataAfterVideoTrackEnded) {
+  AddTracks();
+  V8TestingScope scope;
+  auto* recorder = MakeGarbageCollected<MockMediaRecorder>(scope);
+  media_recorder_handler_->Initialize(
+      recorder, registry_.test_stream(), "video/webm", "vp9,opus", 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable);
+  media_recorder_handler_->Start(std::numeric_limits<int>::max());
+
+  // Feed some encoded data into the recorder. Expect that data cached by the
+  // muxer is emitted on the call to Stop.
+  FeedVideo();
+  registry_.test_stream()->VideoComponents()[0]->GetPlatformTrack()->Stop();
+  FeedAudio();
+  FeedAudio();
+  EXPECT_CALL(*recorder, WriteData).Times(AtLeast(1));
+  media_recorder_handler_->Stop();
+  media_recorder_handler_ = nullptr;
+}
+
+#if BUILDFLAG(USE_PROPRIETARY_CODECS)
+
+struct H264ProfileTestParams {
+  const bool has_audio;
+  const char* const mime_type;
+  const char* const codecs;
+};
+
+static const H264ProfileTestParams kH264ProfileTestParams[] = {
+    {false, "video/x-matroska", "avc1.42000c"},  // H264PROFILE_BASELINE
+    {false, "video/x-matroska", "avc1.4d000c"},  // H264PROFILE_MAIN
+    {false, "video/x-matroska", "avc1.64000c"},  // H264PROFILE_HIGH
+    {false, "video/x-matroska", "avc1.640029"},
+    {false, "video/x-matroska", "avc1.640034"},
+    {true, "video/x-matroska", "avc1.64000c,pcm"},
+};
+
+class MediaRecorderHandlerH264ProfileTest
+    : public TestWithParam<H264ProfileTestParams>,
+      public MediaRecorderHandlerFixture {
+ public:
+  MediaRecorderHandlerH264ProfileTest()
+      : MediaRecorderHandlerFixture(true, GetParam().has_audio) {}
+
+  MediaRecorderHandlerH264ProfileTest(
+      const MediaRecorderHandlerH264ProfileTest&) = delete;
+  MediaRecorderHandlerH264ProfileTest& operator=(
+      const MediaRecorderHandlerH264ProfileTest&) = delete;
+};
+
+TEST_P(MediaRecorderHandlerH264ProfileTest, ActualMimeType) {
+  AddTracks();
+
+  V8TestingScope scope;
+  auto* recorder = MakeGarbageCollected<MockMediaRecorder>(scope);
+
+  const String mime_type(GetParam().mime_type);
+  const String codecs(GetParam().codecs);
+  EXPECT_TRUE(media_recorder_handler_->Initialize(
+      recorder, registry_.test_stream(), mime_type, codecs, 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable));
+
+  String actual_mime_type =
+      String(GetParam().mime_type) + ";codecs=" + GetParam().codecs;
+
+  EXPECT_EQ(media_recorder_handler_->ActualMimeType(), actual_mime_type);
+
+  media_recorder_handler_ = nullptr;
+}
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         MediaRecorderHandlerH264ProfileTest,
+                         ValuesIn(kH264ProfileTestParams));
+
+#endif
 
 struct MediaRecorderPassthroughTestParams {
   const char* mime_type;
@@ -587,10 +773,10 @@ struct MediaRecorderPassthroughTestParams {
 
 static const MediaRecorderPassthroughTestParams
     kMediaRecorderPassthroughTestParams[] = {
-        {"video/webm;codecs=vp8", media::kCodecVP8},
-        {"video/webm;codecs=vp9", media::kCodecVP9},
-#if BUILDFLAG(RTC_USE_H264)
-        {"video/x-matroska;codecs=avc1", media::kCodecH264},
+        {"video/webm;codecs=vp8", media::VideoCodec::kVP8},
+        {"video/webm;codecs=vp9", media::VideoCodec::kVP9},
+#if BUILDFLAG(USE_PROPRIETARY_CODECS)
+        {"video/x-matroska;codecs=avc1", media::VideoCodec::kH264},
 #endif
 };
 
@@ -600,12 +786,16 @@ class MediaRecorderHandlerPassthroughTest
  public:
   MediaRecorderHandlerPassthroughTest() {
     registry_.Init();
-    video_source_ = registry_.AddVideoTrack(kTestVideoTrackId);
+    video_source_ = registry_.AddVideoTrack(TestVideoTrackId());
     ON_CALL(*video_source_, SupportsEncodedOutput).WillByDefault(Return(true));
-    media_recorder_handler_ = MakeGarbageCollected<MediaRecorderHandler>(
-        scheduler::GetSingleThreadTaskRunnerForTesting());
+    media_recorder_handler_ = MakeGarbageCollected<MediaRecorderHandler>();
     EXPECT_FALSE(media_recorder_handler_->recording_);
   }
+
+  MediaRecorderHandlerPassthroughTest(
+      const MediaRecorderHandlerPassthroughTest&) = delete;
+  MediaRecorderHandlerPassthroughTest& operator=(
+      const MediaRecorderHandlerPassthroughTest&) = delete;
 
   ~MediaRecorderHandlerPassthroughTest() {
     registry_.reset();
@@ -622,9 +812,6 @@ class MediaRecorderHandlerPassthroughTest
   MockMediaStreamRegistry registry_;
   MockMediaStreamVideoSource* video_source_ = nullptr;
   Persistent<MediaRecorderHandler> media_recorder_handler_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MediaRecorderHandlerPassthroughTest);
 };
 
 TEST_P(MediaRecorderHandlerPassthroughTest, PassesThrough) {
@@ -634,8 +821,9 @@ TEST_P(MediaRecorderHandlerPassthroughTest, PassesThrough) {
 
   V8TestingScope scope;
   auto* recorder = MakeGarbageCollected<MockMediaRecorder>(scope);
-  media_recorder_handler_->Initialize(recorder, registry_.test_stream(), "", "",
-                                      0, 0);
+  media_recorder_handler_->Initialize(
+      recorder, registry_.test_stream(), "", "", 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable);
   media_recorder_handler_->Start(0);
 
   const size_t kFrameSize = 42;
@@ -646,7 +834,7 @@ TEST_P(MediaRecorderHandlerPassthroughTest, PassesThrough) {
                    .BuildRefPtr();
   {
     base::RunLoop run_loop;
-    EXPECT_CALL(*recorder, WriteData(_, _, _, _)).Times(AtLeast(1));
+    EXPECT_CALL(*recorder, WriteData).Times(AtLeast(1));
     EXPECT_CALL(*recorder, WriteData(_, Ge(kFrameSize), _, _))
         .Times(1)
         .WillOnce(RunOnceClosure(run_loop.QuitClosure()));
@@ -657,17 +845,14 @@ TEST_P(MediaRecorderHandlerPassthroughTest, PassesThrough) {
   Mock::VerifyAndClearExpectations(this);
 
   media_recorder_handler_->Stop();
-
-  // Expect a last call on destruction.
-  EXPECT_CALL(*recorder, WriteData(_, _, true, _)).Times(1);
-  media_recorder_handler_ = nullptr;
 }
 
 TEST_F(MediaRecorderHandlerPassthroughTest, ErrorsOutOnCodecSwitch) {
   V8TestingScope scope;
   auto* recorder = MakeGarbageCollected<MockMediaRecorder>(scope);
   EXPECT_TRUE(media_recorder_handler_->Initialize(
-      recorder, registry_.test_stream(), "", "", 0, 0));
+      recorder, registry_.test_stream(), "", "", 0, 0,
+      AudioTrackRecorder::BitrateMode::kVariable));
   EXPECT_TRUE(media_recorder_handler_->Start(0));
 
   // NOTE, Asan: the prototype of WriteData which has a const char* as data
@@ -683,21 +868,21 @@ TEST_F(MediaRecorderHandlerPassthroughTest, ErrorsOutOnCodecSwitch) {
   }));
   OnVideoFrameForTesting(FakeEncodedVideoFrame::Builder()
                              .WithKeyFrame(true)
-                             .WithCodec(media::kCodecVP8)
+                             .WithCodec(media::VideoCodec::kVP8)
                              .WithData(std::string("vp8 frame"))
                              .BuildRefPtr());
   // Switch to VP9 frames. This is expected to cause the call to OnError
   // above.
   OnVideoFrameForTesting(FakeEncodedVideoFrame::Builder()
                              .WithKeyFrame(true)
-                             .WithCodec(media::kCodecVP9)
+                             .WithCodec(media::VideoCodec::kVP9)
                              .WithData(std::string("vp9 frame"))
                              .BuildRefPtr());
   // Send one more frame to verify that continued frame of different codec
   // transfer doesn't crash the media recorder.
   OnVideoFrameForTesting(FakeEncodedVideoFrame::Builder()
                              .WithKeyFrame(true)
-                             .WithCodec(media::kCodecVP8)
+                             .WithCodec(media::VideoCodec::kVP8)
                              .WithData(std::string("vp8 frame"))
                              .BuildRefPtr());
   platform_->RunUntilIdle();

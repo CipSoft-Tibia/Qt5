@@ -1,57 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qquickscreen_p.h"
+#include <QtQuick/private/qquickscreen_p.h>
+#include <QtQuick/qquickwindow.h>
 
-#include "qquickitem.h"
-#include "qquickitem_p.h"
-#include "qquickwindow.h"
+#include <QtQuick/private/qquickitem_p.h>
 
-#include <QGuiApplication>
-#include <QScreen>
+#include <QtGui/qguiapplication.h>
+#include <QtGui/qscreen.h>
 
 QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype Screen
     \instantiates QQuickScreenAttached
-    \inqmlmodule QtQuick.Window
+    \inqmlmodule QtQuick
     \ingroup qtquick-visual-utility
     \brief The Screen attached object provides information about the Screen an Item or Window is displayed on.
 
@@ -76,6 +39,8 @@ QT_BEGIN_NAMESPACE
 
     Note that the Screen type is not valid at Component.onCompleted, because
     the Item or Window has not been displayed on a screen by this time.
+
+    \sa {Qt Quick Examples - Window and Screen}
 */
 
 /*!
@@ -213,34 +178,21 @@ QT_BEGIN_NAMESPACE
     \qmlattachedproperty Qt::ScreenOrientation Screen::orientation
     \readonly
 
-    This contains the current orientation of the screen, from the accelerometer
-    (if any). On a desktop computer, this value typically does not change.
+    This contains the current orientation of the screen from the
+    window system perspective.
 
-    If primaryOrientation == orientation, it means that the screen
-    automatically rotates all content which is displayed, depending on how you
-    hold it. But if orientation changes while primaryOrientation does NOT
-    change, then probably you are using a device which does not rotate its own
-    display. In that case you may need to use \l {Item::rotation}{Item.rotation} or
-    \l {Item::transform}{Item.transform} to rotate your content.
+    Most mobile devices and tablet computers contain accelerometer sensors.
+    The windowing system may rotate the entire screen automatically
+    based on how it is being held, or manually via settings to rotate a desktop
+    monitor; in that case, this \c orientation property will change.
 
-    \note This property does not update unless a Screen::orientationUpdateMask
-    is set to a value other than \c 0.
+    \sa primaryOrientation, QWindow::contentOrientation()
 */
 /*!
     \qmlattachedmethod int Screen::angleBetween(Qt::ScreenOrientation a, Qt::ScreenOrientation b)
 
     Returns the rotation angle, in degrees, between the specified screen
     orientations \a a and \a b.
-*/
-
-/*!
-    \qmlattachedproperty Qt::ScreenOrientations Screen::orientationUpdateMask
-    \since 5.4
-
-    This contains the update mask for the orientation. Screen::orientation
-    only emits changes for the screen orientations matching this mask.
-
-    By default it is set to the value of the QScreen that the window uses.
 */
 
 QQuickScreenInfo::QQuickScreenInfo(QObject *parent, QScreen *wrappedScreen)
@@ -442,25 +394,6 @@ QQuickScreenAttached::QQuickScreenAttached(QObject* attachee)
         screenChanged(QGuiApplication::primaryScreen());
 }
 
-Qt::ScreenOrientations QQuickScreenAttached::orientationUpdateMask() const
-{
-    return m_updateMask;
-}
-
-void QQuickScreenAttached::setOrientationUpdateMask(Qt::ScreenOrientations mask)
-{
-    m_updateMaskSet = true;
-    if (m_updateMask == mask)
-        return;
-
-    m_updateMask = mask;
-
-    if (m_screen)
-        m_screen->setOrientationUpdateMask(m_updateMask);
-
-    emit orientationUpdateMaskChanged();
-}
-
 int QQuickScreenAttached::angleBetween(int a, int b)
 {
     if (!m_screen)
@@ -481,17 +414,8 @@ void QQuickScreenAttached::windowChanged(QQuickWindow* c)
 void QQuickScreenAttached::screenChanged(QScreen *screen)
 {
     //qDebug() << "QQuickScreenAttached::screenChanged" << (screen ? screen->name() : QString::fromLatin1("null"));
-    if (screen != m_screen) {
+    if (screen != m_screen)
         setWrappedScreen(screen);
-        if (!m_screen)
-            return;
-        if (m_updateMaskSet) {
-            m_screen->setOrientationUpdateMask(m_updateMask);
-        } else if (m_updateMask != m_screen->orientationUpdateMask()) {
-            m_updateMask = m_screen->orientationUpdateMask();
-            emit orientationUpdateMaskChanged();
-        }
-    }
 }
 
 QT_END_NAMESPACE

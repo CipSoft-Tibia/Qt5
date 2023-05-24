@@ -20,9 +20,9 @@ bool {{struct.name}}::Equals(const T& other_struct) const {
 template <typename T, {{struct.name}}::EnableIfSame<T>*>
 bool operator<(const T& lhs, const T& rhs) {
 {%- for field in struct.fields %}
-  if (std::less<>{}(lhs.{{field.name}}, rhs.{{field.name}}))
+  if (lhs.{{field.name}} < rhs.{{field.name}})
     return true;
-  if (std::less<>{}(rhs.{{field.name}}, lhs.{{field.name}}))
+  if (rhs.{{field.name}} < lhs.{{field.name}})
     return false;
 {%- endfor %}
   return false;

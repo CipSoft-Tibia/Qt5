@@ -1,5 +1,5 @@
 // © 2019 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
 
 // locdistance.cpp
 // created: 2019may08 Markus W. Scherer
@@ -45,13 +45,13 @@ enum {
 };
 
 LocaleDistance *gLocaleDistance = nullptr;
-UInitOnce gInitOnce = U_INITONCE_INITIALIZER;
+UInitOnce gInitOnce {};
 
 UBool U_CALLCONV cleanup() {
     delete gLocaleDistance;
     gLocaleDistance = nullptr;
     gInitOnce.reset();
-    return TRUE;
+    return true;
 }
 
 }  // namespace

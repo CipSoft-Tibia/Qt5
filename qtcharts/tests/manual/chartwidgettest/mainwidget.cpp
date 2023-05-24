@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "mainwidget.h"
 #include "dataseriedialog.h"
@@ -52,11 +26,11 @@
 #include <QtCore/QRandomGenerator>
 #include <QtGui/QStandardItemModel>
 #include <QtCharts/QBarCategoryAxis>
-#include <QtWidgets/QOpenGLWidget>
+#include <QtOpenGLWidgets/QOpenGLWidget>
 
 #include <qmath.h>
 
-QT_CHARTS_USE_NAMESPACE
+QT_USE_NAMESPACE
 
 MainWidget::MainWidget(QWidget *parent) :
     QWidget(parent),
@@ -297,25 +271,22 @@ void MainWidget::addSeries(QString seriesName, int columnCount, int rowCount, QS
     } else if (seriesName == "Bar"
                || seriesName == "Stacked bar"
                || seriesName == "Percent bar") {
-        QStringList category;
         QStringList labels = generateLabels(rowCount);
-        foreach (QString label, labels)
-            category << label;
         QAbstractBarSeries* series = 0;
         if (seriesName == "Bar") {
             series = new QBarSeries(this);
             QBarCategoryAxis* axis = new QBarCategoryAxis();
-            axis->append(category);
+            axis->append(labels);
             m_chart->setAxisX(axis,series);
         } else if (seriesName == "Stacked bar") {
             series = new QStackedBarSeries(this);
             QBarCategoryAxis* axis = new QBarCategoryAxis();
-            axis->append(category);
+            axis->append(labels);
             m_chart->setAxisX(axis,series);
         } else {
             series = new QPercentBarSeries(this);
             QBarCategoryAxis* axis = new QBarCategoryAxis();
-            axis->append(category);
+            axis->append(labels);
             m_chart->setAxisX(axis,series);
         }
 

@@ -1,3 +1,4 @@
+include(config.qdocconf)
 include(testcpp.qdocconf)
 moduleheader = TestCPP
 
@@ -13,10 +14,16 @@ sourcedirs += ../qml
 # Exclude source files from other tests' subdirs
 excludedirs = ../bug80259
 
-sources.fileextensions = "*.qml *.cpp *.qdoc"
-headers.fileextensions = "*.h"
-
 examples.fileextensions = "*.qml *.cpp"
 
 macro.begincomment      = "\\c{/*}"
 macro.QDocTestVer       = "1.1"
+
+navigation.qmltypespage     = "QDoc.Test QML Module"
+navigation.qmltypestitle    = "Types"
+warninglimit += 1
+
+manifestmeta.examplecategories = "Application Examples" \
+                                 "Desktop" \
+                                 "Mobile" \
+                                 "Embedded"

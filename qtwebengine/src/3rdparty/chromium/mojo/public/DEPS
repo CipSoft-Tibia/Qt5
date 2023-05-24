@@ -3,10 +3,12 @@ include_rules = [
   "+build",
   "+mojo/public",
   "+testing",
+  "+third_party/ipcz/include",
 
   "-mojo",
   "+mojo/public",
 
   # Temporary until mojom [Native] is gone.
   "+ipc/ipc_param_traits.h",
+  "+third_party/perfetto/protos/perfetto/trace/track_event",
 ]

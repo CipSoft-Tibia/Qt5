@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -30,10 +30,8 @@ bool StructTraits<ui::mojom::CursorDataView, ui::Cursor>::Read(
   if (!data.ReadHotspot(&hotspot) || !data.ReadBitmap(&bitmap))
     return false;
 
-  *out = ui::Cursor(type);
-  out->set_custom_bitmap(bitmap);
-  out->set_custom_hotspot(hotspot);
-  out->set_image_scale_factor(data.image_scale_factor());
+  *out = ui::Cursor::NewCustom(std::move(bitmap), std::move(hotspot),
+                               data.image_scale_factor());
   return true;
 }
 

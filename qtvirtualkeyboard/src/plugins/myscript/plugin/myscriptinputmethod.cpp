@@ -1,33 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) MyScript. Contact: https://www.myscript.com/about/contact-us/sales-inquiry/
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB). Contact: https://www.qt.io/licensing/
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) MyScript. Contact: https://www.myscript.com/about/contact-us/sales-inquiry/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB). Contact: https://www.qt.io/licensing/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "myscriptinputmethod_p.h"
 #include "myscriptinputmethod_p_p.h"
@@ -40,7 +14,6 @@
 
 #include MYSCRIPT_CERTIFICATE
 #include <common/Properties.h>
-#include <common/PortabilityDefinitions.h>
 #include <voim.h>
 
 #include <thread>
@@ -52,6 +25,7 @@
 #endif
 
 #include <QCryptographicHash>
+#include <QFile>
 #include <QThread>
 
 #include <QtCore/qmath.h>
@@ -180,7 +154,8 @@ public:
             traceList[i]->setOpacity(qMax(0.0, 1 - 0.25 * (traceList.size() - i)));
         }
 
-        QVirtualKeyboardTrace *trace = new QVirtualKeyboardTrace();
+        Q_Q(MyScriptInputMethod);
+        QVirtualKeyboardTrace *trace = new QVirtualKeyboardTrace(q);
         traceList.append(trace);
 
         return trace;
@@ -204,7 +179,7 @@ public:
     int countActiveTraces() const
     {
         int count = 0;
-        for (QVirtualKeyboardTrace *trace : qAsConst(traceList)) {
+        for (QVirtualKeyboardTrace *trace : std::as_const(traceList)) {
             if (!trace->isFinal())
                 count++;
         }
@@ -268,7 +243,7 @@ public:
 
         m_itemIndex = -1;
 
-        for (int i = 0; i < m_items.count(); i++) {
+        for (int i = 0; i < m_items.size(); i++) {
             CandidateItem *candidateItem = m_items.at(i).second;
             delete candidateItem;
         }
@@ -309,6 +284,16 @@ public:
             Q_Q(MyScriptInputMethod);
             q->killTimer(m_commitTimer);
             m_commitTimer = 0;
+        }
+    }
+
+    QString getLibraryPath(QString libName)
+    {
+        QString libPath = QLibraryInfo::path(QLibraryInfo::LibrariesPath) + "/" + libName;
+        if (QFile::exists(libPath)) {
+            return libPath;
+        } else {
+            return QLibraryInfo::path(QLibraryInfo::BinariesPath) + "/" + libName;
         }
     }
 
@@ -353,14 +338,14 @@ public:
         const voCertificate *certificate = &myCertificate;
         voimProperty *properties = nullptr;
 
-        QString imLibrary = QLibraryInfo::location(QLibraryInfo::BinariesPath) + "/" + MYSCRIPT_VOIM_NAME;
+        QString imLibrary = getLibraryPath(MYSCRIPT_VOIM_NAME);
         properties = Properties_put(properties, "com.myscript.im.library", imLibrary.toStdString().c_str());
         if (!properties) {
             qCCritical(qlcVKMyScript) << "failed to define property " << "com.myscript.im.library" << " with value " << imLibrary;
             return false;
         }
 
-        QString engineLibrary = QLibraryInfo::location(QLibraryInfo::BinariesPath) + "/" + MYSCRIPT_ENGINE_NAME;
+        QString engineLibrary = getLibraryPath(MYSCRIPT_ENGINE_NAME);
         properties = Properties_put(properties, "com.myscript.engine.library", engineLibrary.toStdString().c_str());
         if (!properties) {
             qCCritical(qlcVKMyScript) << "failed to define property " << "com.myscript.engine.library" << " with value " << engineLibrary;
@@ -368,7 +353,7 @@ public:
         }
 
         QString propertyFile = QLatin1String("/Engine.properties");
-        propertyFile = QLibraryInfo::location(QLibraryInfo::DataPath) + "/" + MYSCRIPT_VOIM_PROPERTY_PATH + propertyFile;
+        propertyFile = MYSCRIPT_VOIM_PROPERTY_PATH + propertyFile;
 
         if (!checkFile(propertyFile)) {
             qCCritical(qlcVKMyScript) << "failed to open Engine Property file " << propertyFile;
@@ -390,7 +375,7 @@ public:
 
         voimProperty *properties = nullptr;
 
-        QString languageConf = QLibraryInfo::location(QLibraryInfo::DataPath) + "/" + MYSCRIPT_LANGUAGE_CONF_PATH;
+        QString languageConf = MYSCRIPT_LANGUAGE_CONF_PATH;
         properties = Properties_put(properties, "com.myscript.im.languageSearchPath", languageConf.toStdString().c_str());
         if (!properties) {
             qCCritical(qlcVKMyScript) << "failed to define property " << "com.myscript.im.languageSearchPath" << " with value " << languageConf;
@@ -404,7 +389,7 @@ public:
         }
 
         QString propertyFile = QLatin1String("/LanguageManager.properties");
-        propertyFile = QLibraryInfo::location(QLibraryInfo::DataPath) + "/" + MYSCRIPT_VOIM_PROPERTY_PATH + propertyFile;
+        propertyFile = MYSCRIPT_VOIM_PROPERTY_PATH + propertyFile;
 
         if (!checkFile(propertyFile)) {
             qCCritical(qlcVKMyScript) << "failed to open LanguageManager Property file " << propertyFile;
@@ -431,7 +416,7 @@ public:
         qCDebug(qlcVKMyScript) << Q_FUNC_INFO;
 
         QString propertyFile = QLatin1String("/Recognizer.properties");
-        propertyFile = QLibraryInfo::location(QLibraryInfo::DataPath) + "/" + MYSCRIPT_VOIM_PROPERTY_PATH + propertyFile;
+        propertyFile = MYSCRIPT_VOIM_PROPERTY_PATH + propertyFile;
 
         if (!checkFile(propertyFile)) {
             qCCritical(qlcVKMyScript) << "failed to open Recognizer Property file " << propertyFile;
@@ -896,7 +881,7 @@ public:
 
         bool isItemChanged = false;
         int lastPosition = 0;
-        QVector<std::pair<int, CandidateItem *>>::const_iterator iter;
+        QList<std::pair<int, CandidateItem *>>::const_iterator iter;
 
         for (iter = m_items.cbegin(); iter != m_items.cend(); iter++) {
             int itemIndex = iter->first;
@@ -948,7 +933,7 @@ public:
     int m_itemIndex;
     int m_itemStartPosition;
     int m_itemLength;
-    QVector<std::pair<int, CandidateItem *>> m_items;
+    QList<std::pair<int, CandidateItem *>> m_items;
 
     QString m_locale;
     Qt::InputMethodHints m_inputMethodHints;
@@ -1050,7 +1035,7 @@ int MyScriptInputMethod::selectionListItemCount(QVirtualKeyboardSelectionListMod
     if (type != QVirtualKeyboardSelectionListModel::Type::WordCandidateList)
         return 0;
 
-    return d->wordCandidates.count();
+    return d->wordCandidates.size();
 }
 
 QVariant MyScriptInputMethod::selectionListData(QVirtualKeyboardSelectionListModel::Type type, int index, QVirtualKeyboardSelectionListModel::Role role)

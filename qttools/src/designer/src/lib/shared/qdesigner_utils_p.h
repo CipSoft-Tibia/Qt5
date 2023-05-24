@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 //
 //  W A R N I N G
@@ -60,6 +35,10 @@ class QDesignerFormWindowCommand;
 class DesignerIconCache;
 class FormWindowBase;
 
+
+QDESIGNER_SHARED_EXPORT QString dataDirectory();
+
+QDESIGNER_SHARED_EXPORT QString legacyDataDirectory();
 
 QDESIGNER_SHARED_EXPORT void designerWarning(const QString &message);
 
@@ -136,9 +115,10 @@ QString MetaEnum<IntType>::valueToKey(IntType value, bool *ok) const
 template <class IntType>
 IntType MetaEnum<IntType>::keyToValue(QString key, bool *ok) const
 {
-    if (!m_scope.isEmpty() && key.startsWith(m_scope))
-        key.remove(0, m_scope.size() + m_separator.size());
-    const typename KeyToValueMap::const_iterator it = m_keyToValueMap.find(key);
+    const auto lastSep = key.lastIndexOf(m_separator);
+    if (lastSep != -1)
+        key.remove(0, lastSep + m_separator.size());
+    const auto it = m_keyToValueMap.find(key);
     const bool found = it != m_keyToValueMap.constEnd();
     if (ok)
         *ok = found;
@@ -463,6 +443,12 @@ private:
     QWidget *m_widget;
     const bool m_enabled;
 };
+
+// QPalette helpers: Mask for a single color role/group
+QDESIGNER_SHARED_EXPORT quint64 paletteResolveMask(QPalette::ColorGroup colorGroup,
+                                                   QPalette::ColorRole colorRole);
+// Mask for the colors of a role in all groups (Active/Inactive/Disabled)
+QDESIGNER_SHARED_EXPORT quint64 paletteResolveMask(QPalette::ColorRole colorRole);
 
 namespace Utils {
 

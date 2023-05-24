@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,24 +22,20 @@ TEST(ContentSuggestionsMetricsTest, ShouldLogOnSuggestionsShown) {
   OnSuggestionShown(/*global_position=*/1,
                     Category::FromKnownCategory(KnownCategories::ARTICLES),
                     /*position_in_category=*/3, base::Time::Now(),
-                    /*score=*/0.01f,
-                    base::Time::Now() - base::TimeDelta::FromHours(2));
+                    /*score=*/0.01f, base::Time::Now() - base::Hours(2));
   // Test corner cases for score.
   OnSuggestionShown(/*global_position=*/1,
                     Category::FromKnownCategory(KnownCategories::ARTICLES),
                     /*position_in_category=*/3, base::Time::Now(),
-                    /*score=*/0.0f,
-                    base::Time::Now() - base::TimeDelta::FromHours(2));
+                    /*score=*/0.0f, base::Time::Now() - base::Hours(2));
   OnSuggestionShown(/*global_position=*/1,
                     Category::FromKnownCategory(KnownCategories::ARTICLES),
                     /*position_in_category=*/3, base::Time::Now(),
-                    /*score=*/1.0f,
-                    base::Time::Now() - base::TimeDelta::FromHours(2));
+                    /*score=*/1.0f, base::Time::Now() - base::Hours(2));
   OnSuggestionShown(/*global_position=*/1,
                     Category::FromKnownCategory(KnownCategories::ARTICLES),
                     /*position_in_category=*/3, base::Time::Now(),
-                    /*score=*/8.0f,
-                    base::Time::Now() - base::TimeDelta::FromHours(2));
+                    /*score=*/8.0f, base::Time::Now() - base::Hours(2));
 
   EXPECT_THAT(
       histogram_tester.GetAllSamples(
@@ -112,7 +108,8 @@ TEST(ContentSuggestionsMetricsTest,
   base::HistogramTester histogram_tester;
   OnPageShown(std::vector<Category>(
                   {Category::FromKnownCategory(KnownCategories::ARTICLES),
-                   Category::FromKnownCategory(KnownCategories::READING_LIST)}),
+                   Category::FromKnownCategory(
+                       KnownCategories::READING_LIST_DEPRECATED)}),
               /*suggestions_per_category=*/{10, 5},
               /*is_category_visible=*/{true, true});
   EXPECT_THAT(

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,16 @@
 
 #include <stdint.h>
 
+#include <string>
 #include <vector>
 
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
-#include "base/strings/string16.h"
+#include "base/memory/raw_ptr.h"
+#include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/views/controls/link.h"
+#include "ui/views/layout/box_layout_view.h"
+#include "ui/views/metadata/view_factory.h"
 #include "ui/views/view.h"
 
 namespace views {
@@ -27,7 +30,7 @@ class Textfield;
 // This class displays the contents of a message box. It is intended for use
 // within a constrained window, and has options for a message, prompt, OK
 // and Cancel buttons.
-class VIEWS_EXPORT MessageBoxView : public View {
+class VIEWS_EXPORT MessageBoxView : public BoxLayoutView {
  public:
   METADATA_HEADER(MessageBoxView);
 
@@ -40,8 +43,11 @@ class VIEWS_EXPORT MessageBoxView : public View {
   // http://dev.w3.org/html5/spec/Overview.html#text-rendered-in-native-user-interfaces:
   // The spec does not say anything about alignment. And we choose to
   // align all paragraphs according to the direction of the first paragraph.
-  explicit MessageBoxView(const base::string16& message = base::string16(),
+  explicit MessageBoxView(const std::u16string& message = std::u16string(),
                           bool detect_directionality = false);
+
+  MessageBoxView(const MessageBoxView&) = delete;
+  MessageBoxView& operator=(const MessageBoxView&) = delete;
 
   ~MessageBoxView() override;
 
@@ -50,7 +56,7 @@ class VIEWS_EXPORT MessageBoxView : public View {
 
   // Returns user entered data in the prompt field, returns an empty string if
   // no visible prompt field.
-  base::string16 GetInputText();
+  std::u16string GetInputText();
 
   // Returns true if this message box has a visible checkbox, false otherwise.
   bool HasVisibleCheckBox() const;
@@ -63,22 +69,19 @@ class VIEWS_EXPORT MessageBoxView : public View {
   // first call. Otherwise, it changes the label of the current checkbox. To
   // start, the message box has no visible checkbox until this function is
   // called.
-  void SetCheckBoxLabel(const base::string16& label);
+  void SetCheckBoxLabel(const std::u16string& label);
 
   // Sets the state of the check-box if it is visible.
   void SetCheckBoxSelected(bool selected);
 
   // Sets the text and the callback of the link. |text| must be non-empty.
-  void SetLink(const base::string16& text, Link::ClickedCallback callback);
-
-  // View:
-  void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
+  void SetLink(const std::u16string& text, Link::ClickedCallback callback);
 
   void SetInterRowVerticalSpacing(int spacing);
   void SetMessageWidth(int width);
 
   // Adds a prompt field with |default_prompt| as the displayed text.
-  void SetPromptField(const base::string16& default_prompt);
+  void SetPromptField(const std::u16string& default_prompt);
 
  protected:
   // View:
@@ -103,26 +106,35 @@ class VIEWS_EXPORT MessageBoxView : public View {
   std::vector<Label*> message_labels_;
 
   // Scrolling view containing the message labels.
-  ScrollView* scroll_view_ = nullptr;
+  raw_ptr<ScrollView> scroll_view_ = nullptr;
 
   // Input text field for the message box.
-  Textfield* prompt_field_ = nullptr;
+  raw_ptr<Textfield> prompt_field_ = nullptr;
 
   // Checkbox for the message box.
-  Checkbox* checkbox_ = nullptr;
+  raw_ptr<Checkbox> checkbox_ = nullptr;
 
   // Link displayed at the bottom of the view.
-  Link* link_ = nullptr;
+  raw_ptr<Link> link_ = nullptr;
 
   // Spacing between rows in the grid layout.
   int inter_row_vertical_spacing_ = 0;
 
   // Maximum width of the message label.
   int message_width_ = 0;
-
-  DISALLOW_COPY_AND_ASSIGN(MessageBoxView);
 };
 
+BEGIN_VIEW_BUILDER(VIEWS_EXPORT, MessageBoxView, BoxLayoutView)
+VIEW_BUILDER_PROPERTY(const std::u16string&, CheckBoxLabel)
+VIEW_BUILDER_PROPERTY(bool, CheckBoxSelected)
+VIEW_BUILDER_METHOD(SetLink, const std::u16string&, Link::ClickedCallback)
+VIEW_BUILDER_PROPERTY(int, InterRowVerticalSpacing)
+VIEW_BUILDER_PROPERTY(int, MessageWidth)
+VIEW_BUILDER_PROPERTY(const std::u16string&, PromptField)
+END_VIEW_BUILDER
+
 }  // namespace views
+
+DEFINE_VIEW_BUILDER(VIEWS_EXPORT, views::MessageBoxView)
 
 #endif  // UI_VIEWS_CONTROLS_MESSAGE_BOX_VIEW_H_

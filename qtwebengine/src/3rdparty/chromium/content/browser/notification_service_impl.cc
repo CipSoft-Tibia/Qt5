@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "base/lazy_instance.h"
 #include "base/logging.h"
+#include "base/observer_list.h"
 #include "base/threading/thread_local.h"
 #include "content/public/browser/notification_observer.h"
 #include "content/public/browser/notification_types.h"
@@ -84,7 +85,7 @@ void NotificationServiceImpl::RemoveObserver(NotificationObserver* observer,
       observers_[type][source.map_key()];
   if (observer_list) {
     observer_list->RemoveObserver(observer);
-    if (!observer_list->might_have_observers()) {
+    if (observer_list->empty()) {
       observers_[type].erase(source.map_key());
       delete observer_list;
     }
@@ -97,24 +98,8 @@ void NotificationServiceImpl::RemoveObserver(NotificationObserver* observer,
 void NotificationServiceImpl::Notify(int type,
                                      const NotificationSource& source,
                                      const NotificationDetails& details) {
-  DCHECK_GT(type, NOTIFICATION_ALL) <<
-      "Allowed for observing, but not posting.";
-
   // There's no particular reason for the order in which the different
   // classes of observers get notified here.
-
-  // Notify observers of all types and all sources
-  if (HasKey(observers_[NOTIFICATION_ALL], AllSources()) &&
-      source != AllSources()) {
-    for (auto& observer : *observers_[NOTIFICATION_ALL][AllSources().map_key()])
-      observer.Observe(type, source, details);
-  }
-
-  // Notify observers of all types and the given source
-  if (HasKey(observers_[NOTIFICATION_ALL], source)) {
-    for (auto& observer : *observers_[NOTIFICATION_ALL][source.map_key()])
-      observer.Observe(type, source, details);
-  }
 
   // Notify observers of the given type and all sources
   if (HasKey(observers_[type], AllSources()) &&
@@ -129,7 +114,6 @@ void NotificationServiceImpl::Notify(int type,
       observer.Observe(type, source, details);
   }
 }
-
 
 NotificationServiceImpl::~NotificationServiceImpl() {
   lazy_tls_ptr.Pointer()->Set(nullptr);

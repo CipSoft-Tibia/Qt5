@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/qtextstream.h>
 #include <QtWidgets/qtextedit.h>
@@ -32,6 +7,8 @@
 #include "htmlhighlighter_p.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace qdesigner_internal {
 
@@ -71,23 +48,13 @@ void HtmlHighlighter::setFormatFor(Construct construct,
 
 void HtmlHighlighter::highlightBlock(const QString &text)
 {
-    static const QLatin1Char tab = QLatin1Char('\t');
-    static const QLatin1Char space = QLatin1Char(' ');
-    static const QLatin1Char amp = QLatin1Char('&');
-    static const QLatin1Char startTag = QLatin1Char('<');
-    static const QLatin1Char endTag = QLatin1Char('>');
-    static const QLatin1Char quot = QLatin1Char('"');
-    static const QLatin1Char apos = QLatin1Char('\'');
-    static const QLatin1Char semicolon = QLatin1Char(';');
-    static const QLatin1Char equals = QLatin1Char('=');
-    static const QLatin1String startComment("<!--");
-    static const QLatin1String endComment("-->");
-    static const QLatin1String endElement("/>");
+    static const QChar tab = u'\t';
+    static const QChar space = u' ';
 
     int state = previousBlockState();
-    int len = text.length();
-    int start = 0;
-    int pos = 0;
+    qsizetype len = text.size();
+    qsizetype start = 0;
+    qsizetype pos = 0;
 
     while (pos < len) {
         switch (state) {
@@ -95,18 +62,19 @@ void HtmlHighlighter::highlightBlock(const QString &text)
         default:
             while (pos < len) {
                 QChar ch = text.at(pos);
-                if (ch == startTag) {
-                    if (text.mid(pos, 4) == startComment) {
+                if (ch == u'<') {
+                    if (QStringView{text}.sliced(pos).startsWith("<!--"_L1)) {
                         state = InComment;
                     } else {
                         state = InTag;
                         start = pos;
                         while (pos < len && text.at(pos) != space
-                               && text.at(pos) != endTag
+                               && text.at(pos) != u'>'
                                && text.at(pos) != tab
-                               && text.mid(pos, 2) != endElement)
+                               && !QStringView{text}.sliced(pos).startsWith("/>"_L1)) {
                             ++pos;
-                        if (text.mid(pos, 2) == endElement)
+                        }
+                        if (QStringView{text}.sliced(pos).startsWith("/>"_L1))
                             ++pos;
                         setFormat(start, pos - start,
                                   m_formats[Tag]);
@@ -114,9 +82,9 @@ void HtmlHighlighter::highlightBlock(const QString &text)
                     }
                     break;
                 }
-                if (ch == amp) {
+                if (ch == u'&') {
                     start = pos;
-                    while (pos < len && text.at(pos++) != semicolon)
+                    while (pos < len && text.at(pos++) != u';')
                         ;
                     setFormat(start, pos - start,
                               m_formats[Entity]);
@@ -129,7 +97,7 @@ void HtmlHighlighter::highlightBlock(const QString &text)
         case InComment:
             start = pos;
             for ( ; pos < len; ++pos) {
-                if (text.mid(pos, 3) == endComment) {
+                if (QStringView{text}.sliced(pos).startsWith("-->"_L1)) {
                     pos += 3;
                     state = NormalState;
                     break;
@@ -143,14 +111,14 @@ void HtmlHighlighter::highlightBlock(const QString &text)
                 QChar ch = text.at(pos);
                 if (quote.isNull()) {
                     start = pos;
-                    if (ch == apos || ch == quot) {
+                    if (ch == '\''_L1 || ch == u'"') {
                         quote = ch;
-                    } else if (ch == endTag) {
+                    } else if (ch == u'>') {
                         ++pos;
                         setFormat(start, pos - start, m_formats[Tag]);
                         state = NormalState;
                         break;
-                    } else if (text.mid(pos, 2) == endElement) {
+                    } else if (QStringView{text}.sliced(pos).startsWith("/>"_L1)) {
                         pos += 2;
                         setFormat(start, pos - start, m_formats[Tag]);
                         state = NormalState;
@@ -161,7 +129,7 @@ void HtmlHighlighter::highlightBlock(const QString &text)
                         ++pos;
                         while (pos < len && text.at(pos) != space
                                && text.at(pos) != tab
-                               && text.at(pos) != equals)
+                               && text.at(pos) != u'=')
                             ++pos;
                         setFormat(start, pos - start, m_formats[Attribute]);
                         start = pos;

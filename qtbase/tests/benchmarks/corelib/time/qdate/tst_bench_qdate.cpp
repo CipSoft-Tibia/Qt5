@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QDate>
 #include <QTest>
-#include <QVector>
+#include <QList>
 
 class tst_QDate : public QObject
 {
@@ -41,8 +16,8 @@ class tst_QDate : public QObject
         JULIAN_DAY_2020 = 2458850,
     };
 
-    static QVector<QDate> daily(qint64 start, qint64 end);
-    static QVector<QDate> yearly(qint32 first, qint32 last);
+    static QList<QDate> daily(qint64 start, qint64 end);
+    static QList<QDate> yearly(qint32 first, qint32 last);
 
 private Q_SLOTS:
     void create();
@@ -60,18 +35,18 @@ private Q_SLOTS:
     void addYears();
 };
 
-QVector<QDate> tst_QDate::daily(qint64 start, qint64 end)
+QList<QDate> tst_QDate::daily(qint64 start, qint64 end)
 {
-    QVector<QDate> list;
+    QList<QDate> list;
     list.reserve(end - start);
     for (qint64 jd = start; jd < end; ++jd)
         list.append(QDate::fromJulianDay(jd));
     return list;
 }
 
-QVector<QDate> tst_QDate::yearly(qint32 first, qint32 last)
+QList<QDate> tst_QDate::yearly(qint32 first, qint32 last)
 {
-    QVector<QDate> list;
+    QList<QDate> list;
     list.reserve(last + 1 - first);
     for (qint32 year = first; year <= last; ++year)
         list.append(QDate(year, 3, 21));
@@ -149,7 +124,7 @@ void tst_QDate::daysInYear()
 {
     const auto list = yearly(1601, 2401);
     QBENCHMARK {
-        for (const QDate date : list)
+        for (const QDate &date : list)
             date.daysInYear();
     }
 }
@@ -167,7 +142,7 @@ void tst_QDate::getSetDate()
     QDate store;
     const auto list = daily(JULIAN_DAY_2010, JULIAN_DAY_2020);
     QBENCHMARK {
-        for (const auto test : list) {
+        for (const auto &test : list) {
             int year, month, day;
             test.getDate(&year, &month, &day);
             store.setDate(year, month, day);
@@ -181,7 +156,7 @@ void tst_QDate::addDays()
     QDate store;
     const auto list = daily(JULIAN_DAY_2010, JULIAN_DAY_2020);
     QBENCHMARK {
-        for (const auto test : list)
+        for (const auto &test : list)
             store = test.addDays(17);
     }
     Q_UNUSED(store);
@@ -192,7 +167,7 @@ void tst_QDate::addMonths()
     QDate store;
     const auto list = daily(JULIAN_DAY_2010, JULIAN_DAY_2020);
     QBENCHMARK {
-        for (const auto test : list)
+        for (const auto &test : list)
             store = test.addMonths(17);
     }
     Q_UNUSED(store);
@@ -203,7 +178,7 @@ void tst_QDate::addYears()
     QDate store;
     const auto list = daily(JULIAN_DAY_2010, JULIAN_DAY_2020);
     QBENCHMARK {
-        for (const auto test : list)
+        for (const auto &test : list)
             store = test.addYears(17);
     }
     Q_UNUSED(store);

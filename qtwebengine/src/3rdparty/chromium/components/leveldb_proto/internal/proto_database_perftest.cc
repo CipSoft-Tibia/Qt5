@@ -1,4 +1,4 @@
-// Copyright (c) 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,23 +8,21 @@
 #include <utility>
 #include <vector>
 
-#include "base/test/perf_time_logger.h"
-#include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
-#include "base/timer/elapsed_timer.h"
-
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/containers/contains.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/memory/ptr_util.h"
 #include "base/run_loop.h"
-#include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/perf_time_logger.h"
 #include "base/test/task_environment.h"
 #include "base/threading/thread.h"
+#include "base/timer/elapsed_timer.h"
 #include "build/build_config.h"
 #include "components/leveldb_proto/internal/leveldb_database.h"
 #include "components/leveldb_proto/internal/proto_database_impl.h"
@@ -140,7 +138,9 @@ class TestDatabase {
 
 class ProtoDBPerfTest : public testing::Test {
  public:
-  void SetUp() override { task_runner_ = base::ThreadTaskRunnerHandle::Get(); }
+  void SetUp() override {
+    task_runner_ = base::SingleThreadTaskRunner::GetCurrentDefault();
+  }
 
   void TearDown() override {
     ShutdownDBs();
@@ -563,8 +563,8 @@ class ProtoDBPerfTest : public testing::Test {
   scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
 };
 
-// Flakily times out on Windows, see http://crbug.com/918874.
-#if defined(OS_WIN)
+// Flakily times out on Windows and Mac, see http://crbug.com/918874.
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 #define MAYBE_InsertMultipleDBsAlternating_Individual_100b \
   DISABLED_InsertMultipleDBsAlternating_Individual_100b
 #else
@@ -578,8 +578,8 @@ TEST_F(ProtoDBPerfTest, MAYBE_InsertMultipleDBsAlternating_Individual_100b) {
                             5);
 }
 
-// Flakily times out on Windows, see http://crbug.com/918874.
-#if defined(OS_WIN)
+// Flakily times out on Windows and Mac, see http://crbug.com/918874.
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 #define MAYBE_InsertMultipleDBsAlternating_Individual_1000b \
   DISABLED_InsertMultipleDBsAlternating_Individual_1000b
 #else
@@ -593,8 +593,8 @@ TEST_F(ProtoDBPerfTest, MAYBE_InsertMultipleDBsAlternating_Individual_1000b) {
                             5);
 }
 
-// Flakily times out on Windows, see http://crbug.com/918874.
-#if defined(OS_WIN)
+// Flakily times out on Windows and Mac, see http://crbug.com/918874.
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 #define MAYBE_InsertSingleDBAlternating_Individual_100b \
   DISABLED_InsertSingleDBAlternating_Individual_100b
 #else
@@ -608,8 +608,8 @@ TEST_F(ProtoDBPerfTest, MAYBE_InsertSingleDBAlternating_Individual_100b) {
                             5);
 }
 
-// Flakily times out on Windows, see http://crbug.com/918874.
-#if defined(OS_WIN)
+// Flakily times out on Windows and Mac, see http://crbug.com/918874.
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 #define MAYBE_InsertSingleDBAlternating_Individual_1000b \
   DISABLED_InsertSingleDBAlternating_Individual_1000b
 #else
@@ -661,22 +661,54 @@ TEST_F(ProtoDBPerfTest, DistributionTestSmall_FewEntries_Multi) {
                                 kFewEntriesDistributionTestParams, false);
 }
 
-TEST_F(ProtoDBPerfTest, DistributionTestSmall_ManyEntries_Single) {
+// Flakily times out on Mac, see http://crbug.com/918874.
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_DistributionTestSmall_ManyEntries_Single \
+  DISABLED_DistributionTestSmall_ManyEntries_Single
+#else
+#define MAYBE_DistributionTestSmall_ManyEntries_Single \
+  DistributionTestSmall_ManyEntries_Single
+#endif
+TEST_F(ProtoDBPerfTest, MAYBE_DistributionTestSmall_ManyEntries_Single) {
   RunDistributionTestAndCleanup("Small_ManyEntries_Single",
                                 kManyEntriesDistributionTestParams, true);
 }
 
-TEST_F(ProtoDBPerfTest, DistributionTestSmall_ManyEntries_Multi) {
+// Flakily times out on Mac, see http://crbug.com/918874.
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_DistributionTestSmall_ManyEntries_Multi \
+  DISABLED_DistributionTestSmall_ManyEntries_Multi
+#else
+#define MAYBE_DistributionTestSmall_ManyEntries_Multi \
+  DistributionTestSmall_ManyEntries_Multi
+#endif
+TEST_F(ProtoDBPerfTest, MAYBE_DistributionTestSmall_ManyEntries_Multi) {
   RunDistributionTestAndCleanup("Small_ManyEntries_Multi",
                                 kManyEntriesDistributionTestParams, false);
 }
 
-TEST_F(ProtoDBPerfTest, DistributionTestSmall_ManyEntries_Batch_Single) {
+// Flakily times out on Mac, see http://crbug.com/918874.
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_DistributionTestSmall_ManyEntries_Batch_Single \
+  DISABLED_DistributionTestSmall_ManyEntries_Batch_Single
+#else
+#define MAYBE_DistributionTestSmall_ManyEntries_Batch_Single \
+  DistributionTestSmall_ManyEntries_Batch_Single
+#endif
+TEST_F(ProtoDBPerfTest, MAYBE_DistributionTestSmall_ManyEntries_Batch_Single) {
   RunDistributionTestAndCleanup("Small_ManyEntries_Batch_Single",
                                 kManyEntriesDistributionTestParams, true);
 }
 
-TEST_F(ProtoDBPerfTest, DistributionTestSmall_ManyEntries_Batch_Multi) {
+// Flakily times out on Mac, see http://crbug.com/918874.
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_DistributionTestSmall_ManyEntries_Batch_Multi \
+  DISABLED_DistributionTestSmall_ManyEntries_Batch_Multi
+#else
+#define MAYBE_DistributionTestSmall_ManyEntries_Batch_Multi \
+  DistributionTestSmall_ManyEntries_Batch_Multi
+#endif
+TEST_F(ProtoDBPerfTest, MAYBE_DistributionTestSmall_ManyEntries_Batch_Multi) {
   RunDistributionTestAndCleanup("Small_ManyEntries_Batch_Multi",
                                 kManyEntriesDistributionTestParams, false);
 }

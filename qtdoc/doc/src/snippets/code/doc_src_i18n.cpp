@@ -1,52 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+
+using namespace Qt::StringLiterals;
 
 //! [0]
 LoginWidget::LoginWidget()
@@ -115,23 +70,14 @@ void FileCopier::showProgress(int done, int total,
 //! [4]
 
 
-//! [5]
-QString s1 = "%1 of %2 files copied. Copying: %3";
-QString s2 = "Kopierer nu %3. Av totalt %2 filer er %1 kopiert.";
-
-qDebug() << s1.arg(5).arg(10).arg("somefile.txt");
-qDebug() << s2.arg(5).arg(10).arg("somefile.txt");
-//! [5]
-
-
 //! [8]
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
 
     QTranslator myappTranslator;
-    myappTranslator.load(QLocale(), QLatin1String("myapp"), QLatin1String("_"), QLatin1String(":/i18n"));
-    app.installTranslator(&myappTranslator);
+    if (myappTranslator.load(QLocale::system(), u"myapp"_s, u"_"_s, u":/i18n"_s))
+        app.installTranslator(&myappTranslator);
 
     return app.exec();
 }
@@ -152,18 +98,6 @@ QByteArray encodedString = ...; // some ISO 8859-5 encoded text
 QTextCodec *codec = QTextCodec::codecForName("ISO 8859-5");
 QString string = codec->toUnicode(encodedString);
 //! [10]
-
-
-//! [11]
-void Clock::setTime(const QTime &time)
-{
-    if (tr("AMPM") == "AMPM") {
-        // 12-hour clock
-    } else {
-        // 24-hour clock
-    }
-}
-//! [11]
 
 
 //! [12]
@@ -197,6 +131,71 @@ void same_global_function(LoginWidget *logwid)
 
 //! [14]
     QTranslator qtTranslator;
-    qtTranslator.load(QLocale::system(), QStringLiteral("qtbase_"));
-    app.installTranslator(&qtTranslator);
+    if (qtTranslator.load(QLocale::system(), u"qtbase"_s, u"_"_s,
+                          QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
+        app.installTranslator(&qtTranslator);
+    }
 //! [14]
+
+//! [15]
+
+class MyItem : public QQuickItem
+{
+    Q_OJBECT
+    QML_ELEMENT
+
+    Q_PROPERTY(QString greeting READ greeting NOTIFY greetingChanged)
+
+public signals:
+    void greetingChanged();
+public:
+    QString greeting() const
+    {
+        return tr("Hello World!");
+    }
+
+    bool event(QEvent *ev) override
+    {
+        if (ev->type() == QEvent::LanguageChange)
+            emit greetingChanged();
+        return QQuickItem::event(ev);
+    }
+};
+//! [15]
+
+
+//! [16]
+class CustomObject : public QObject
+{
+    Q_OBJECT
+
+public:
+    QList<QQuickItem *> managedItems;
+
+    CustomObject(QOject *parent = nullptr) : QObject(parent)
+    {
+        QCoreApplication::instance()->installEventFilter(this);
+    }
+
+    bool eventFilter(QObject *obj, QEvent *ev) override
+    {
+        if (obj == QCoreApplication::instance() && ev->type() == QEvent::LanguageChange) {
+            for (auto item : std::as_const(managedItems))
+                QCoreApplication::sendEvent(item, ev);
+            // do any further work on reaction, e.g. emit changed signals
+        }
+        return false;
+    }
+};
+//! [16]
+
+
+//! [17]
+void MyWidget::changeEvent(QEvent *event)
+{
+    if (event->type() == QEvent::LanguageChange) {
+        ui.retranslateUi(this);
+    } else
+        QWidget::changeEvent(event);
+}
+//! [17]

@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #include <memory>
 #include <vector>
 
-#include "base/macros.h"
+#include "base/scoped_observation_traits.h"
 #include "ui/events/event_dispatcher.h"
 #include "ui/events/event_rewriter.h"
 #include "ui/events/events_export.h"
@@ -24,6 +24,10 @@ class EventSink;
 class EVENTS_EXPORT EventSource {
  public:
   EventSource();
+
+  EventSource(const EventSource&) = delete;
+  EventSource& operator=(const EventSource&) = delete;
+
   virtual ~EventSource();
 
   virtual EventSink* GetEventSink() = 0;
@@ -70,10 +74,24 @@ class EVENTS_EXPORT EventSource {
 
   friend class EventRewriter;  // TODO(kpschoedel): Remove along with old API.
   friend class EventSourceTestApi;
-
-  DISALLOW_COPY_AND_ASSIGN(EventSource);
 };
 
 }  // namespace ui
+
+namespace base {
+
+template <>
+struct ScopedObservationTraits<ui::EventSource, ui::EventRewriter> {
+  static void AddObserver(ui::EventSource* source,
+                          ui::EventRewriter* observer) {
+    source->AddEventRewriter(observer);
+  }
+  static void RemoveObserver(ui::EventSource* source,
+                             ui::EventRewriter* observer) {
+    source->RemoveEventRewriter(observer);
+  }
+};
+
+}  // namespace base
 
 #endif  // UI_EVENTS_EVENT_SOURCE_H_

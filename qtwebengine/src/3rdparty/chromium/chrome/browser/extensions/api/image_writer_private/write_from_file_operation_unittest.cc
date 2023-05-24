@@ -1,12 +1,13 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/extensions/api/image_writer_private/write_from_file_operation.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "build/build_config.h"
-#include "chrome/browser/extensions/api/image_writer_private/error_messages.h"
+#include "build/chromeos_buildflags.h"
+#include "chrome/browser/extensions/api/image_writer_private/error_constants.h"
 #include "chrome/browser/extensions/api/image_writer_private/test_utils.h"
 #include "chrome/test/base/testing_profile.h"
 
@@ -20,7 +21,7 @@ using testing::AtLeast;
 
 namespace {
 
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
 void SetUpImageWriteClientProgressSimulation(FakeImageWriterClient* client) {
   std::vector<int> progress_list{0, 50, 100};
   bool will_succeed = true;
@@ -61,7 +62,7 @@ TEST_F(ImageWriterFromFileTest, InvalidFile) {
 
 // Runs the entire WriteFromFile operation.
 TEST_F(ImageWriterFromFileTest, WriteFromFileEndToEnd) {
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
   // Sets up simulating Operation::Progress() and Operation::Success().
   test_utils_.RunOnUtilityClientCreation(
       base::BindOnce(&SetUpImageWriteClientProgressSimulation));
@@ -81,7 +82,7 @@ TEST_F(ImageWriterFromFileTest, WriteFromFileEndToEnd) {
               OnProgress(kDummyExtensionId, image_writer_api::STAGE_WRITE, 100))
       .Times(AtLeast(1));
 
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
   // Chrome OS doesn't verify.
   EXPECT_CALL(
       manager_,

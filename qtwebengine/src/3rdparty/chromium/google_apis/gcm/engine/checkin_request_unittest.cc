@@ -1,13 +1,15 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <stdint.h>
 
+#include <memory>
 #include <string>
 
-#include "base/bind.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
+#include "build/chromeos_buildflags.h"
 #include "google_apis/gcm/engine/checkin_request.h"
 #include "google_apis/gcm/engine/gcm_request_test_base.h"
 #include "google_apis/gcm/monitoring/fake_gcm_stats_recorder.h"
@@ -97,11 +99,12 @@ void CheckinRequestTest::CreateRequest(uint64_t android_id,
                                            chrome_build_proto_);
   // Then create a request with that protobuf and specified android_id,
   // security_token.
-  request_.reset(new CheckinRequest(
+  request_ = std::make_unique<CheckinRequest>(
       GURL(kCheckinURL), request_info, GetBackoffPolicy(),
       base::BindOnce(&CheckinRequestTest::FetcherCallback,
                      base::Unretained(this)),
-      url_loader_factory(), base::ThreadTaskRunnerHandle::Get(), &recorder_));
+      url_loader_factory(), base::SingleThreadTaskRunner::GetCurrentDefault(),
+      &recorder_);
 
   // Setting android_id_ and security_token_ to blank value, not used elsewhere
   // in the tests.
@@ -153,7 +156,7 @@ TEST_F(CheckinRequestTest, FetcherDataAndURL) {
   EXPECT_EQ(kEmailAddress, request_proto.account_cookie(0));
   EXPECT_EQ(kTokenValue, request_proto.account_cookie(1));
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   EXPECT_EQ(checkin_proto::DEVICE_CHROME_OS, request_proto.checkin().type());
 #else
   EXPECT_EQ(checkin_proto::DEVICE_CHROME_BROWSER,

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,12 @@
 
 #include <stdint.h>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include <memory>
+
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/mac/foundation_util.h"
 #include "base/run_loop.h"
 #include "base/strings/sys_string_conversions.h"
@@ -33,9 +35,9 @@ StorageInfo CreateStorageInfo(const std::string& device_id,
                               const std::string& model_name,
                               const base::FilePath& mount_point,
                               uint64_t size_bytes) {
-  return StorageInfo(
-      device_id, mount_point.value(), base::string16(), base::string16(),
-      base::UTF8ToUTF16(model_name), size_bytes);
+  return StorageInfo(device_id, mount_point.value(), std::u16string(),
+                     std::u16string(), base::UTF8ToUTF16(model_name),
+                     size_bytes);
 }
 
 }  // namespace
@@ -45,9 +47,9 @@ class StorageMonitorMacTest : public testing::Test {
   StorageMonitorMacTest() {}
 
   void SetUp() override {
-    monitor_.reset(new StorageMonitorMac);
+    monitor_ = std::make_unique<StorageMonitorMac>();
 
-    mock_storage_observer_.reset(new MockRemovableStorageObserver);
+    mock_storage_observer_ = std::make_unique<MockRemovableStorageObserver>();
     monitor_->AddObserver(mock_storage_observer_.get());
 
     unique_id_ = "test_id";

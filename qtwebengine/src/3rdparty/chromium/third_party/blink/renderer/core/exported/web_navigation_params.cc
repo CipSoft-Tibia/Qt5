@@ -1,10 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/public/web/web_navigation_params.h"
 
-#include "third_party/blink/renderer/core/exported/web_document_loader_impl.h"
+#include "third_party/blink/public/platform/modules/service_worker/web_service_worker_network_provider.h"
 #include "third_party/blink/renderer/platform/loader/static_data_navigation_body_loader.h"
 #include "third_party/blink/renderer/platform/network/encoded_form_data.h"
 #include "third_party/blink/renderer/platform/network/http_names.h"
@@ -19,8 +19,10 @@ WebNavigationParams::WebNavigationParams()
 WebNavigationParams::~WebNavigationParams() = default;
 
 WebNavigationParams::WebNavigationParams(
+    const blink::DocumentToken& document_token,
     const base::UnguessableToken& devtools_navigation_token)
     : http_method(http_names::kGET),
+      document_token(document_token),
       devtools_navigation_token(devtools_navigation_token) {}
 
 // static
@@ -34,48 +36,31 @@ std::unique_ptr<WebNavigationParams> WebNavigationParams::CreateFromInfo(
   result->http_body = info.url_request.HttpBody();
   result->http_content_type =
       info.url_request.HttpHeaderField(http_names::kContentType);
-  result->previews_state = info.url_request.GetPreviewsState();
   result->requestor_origin = info.url_request.RequestorOrigin();
   result->frame_load_type = info.frame_load_type;
   result->is_client_redirect = info.is_client_redirect;
   result->navigation_timings.input_start = info.input_start;
   result->initiator_origin_trial_features =
       info.initiator_origin_trial_features;
-  result->ip_address_space = info.initiator_address_space;
   result->frame_policy = info.frame_policy;
-  result->had_transient_activation = info.url_request.HasUserGesture();
+  result->had_transient_user_activation = info.url_request.HasUserGesture();
   return result;
 }
 
 // static
-std::unique_ptr<WebNavigationParams> WebNavigationParams::CreateWithHTMLString(
-    base::span<const char> html,
-    const WebURL& base_url) {
+std::unique_ptr<WebNavigationParams>
+WebNavigationParams::CreateWithHTMLStringForTesting(base::span<const char> html,
+                                                    const WebURL& base_url) {
   auto result = std::make_unique<WebNavigationParams>();
   result->url = base_url;
   FillStaticResponse(result.get(), "text/html", "UTF-8", html);
   return result;
 }
 
-// static
-std::unique_ptr<WebNavigationParams> WebNavigationParams::CreateForErrorPage(
-    WebDocumentLoader* failed_document_loader,
-    base::span<const char> html,
-    const WebURL& base_url,
-    const WebURL& unreachable_url,
-    int error_code) {
-  auto result = WebNavigationParams::CreateWithHTMLString(html, base_url);
-  DCHECK(!unreachable_url.IsEmpty() || error_code != 0);
-  result->unreachable_url = unreachable_url;
-  result->error_code = error_code;
-  static_cast<WebDocumentLoaderImpl*>(failed_document_loader)
-      ->FillNavigationParamsForErrorPage(result.get());
-  return result;
-}
-
 #if INSIDE_BLINK
 // static
-std::unique_ptr<WebNavigationParams> WebNavigationParams::CreateWithHTMLBuffer(
+std::unique_ptr<WebNavigationParams>
+WebNavigationParams::CreateWithHTMLBufferForTesting(
     scoped_refptr<SharedBuffer> buffer,
     const KURL& base_url) {
   auto result = std::make_unique<WebNavigationParams>();
@@ -118,6 +103,7 @@ void WebNavigationParams::FillStaticResponse(WebNavigationParams* params,
   params->response = WebURLResponse(params->url);
   params->response.SetMimeType(mime_type);
   params->response.SetTextEncodingName(text_encoding);
+  params->response.SetHttpStatusCode(params->http_status_code);
   FillBodyLoader(params, data);
 }
 

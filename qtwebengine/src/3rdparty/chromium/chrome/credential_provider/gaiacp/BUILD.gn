@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -16,14 +16,16 @@ import("//tools/grit/grit_rule.gni")
 # This static library is shared with the setup program.
 source_set("common") {
   sources = [
+    "experiments_fetcher.cc",
+    "experiments_fetcher.h",
+    "experiments_manager.cc",
+    "experiments_manager.h",
     "gcp_crash_reporter_client.cc",
     "gcp_crash_reporter_client.h",
     "gcp_crash_reporting_utils.cc",
     "gcp_crash_reporting_utils.h",
     "gem_device_details_manager.cc",
     "gem_device_details_manager.h",
-    "os_user_manager.cc",
-    "os_user_manager.h",
   ]
   public_configs = [ ":common_config" ]
   public_deps = [ "//chrome/credential_provider/common:common_constants" ]
@@ -67,6 +69,8 @@ source_set("util") {
     "gcpw_strings.h",
     "logging.cc",
     "logging.h",
+    "os_user_manager.cc",
+    "os_user_manager.h",
     "reg_utils.cc",
     "reg_utils.h",
     "scoped_handle.h",
@@ -126,6 +130,21 @@ component("policies") {
   ]
 }
 
+source_set("mdm_utils") {
+  sources = [
+    "mdm_utils.cc",
+    "mdm_utils.h",
+  ]
+  public_configs = [ ":gaiacp_config" ]
+  deps = [
+    ":policies",
+    ":util",
+    "//base",
+    "//build:branding_buildflags",
+    "//url:url",
+  ]
+}
+
 # This static library is shared with the test code.
 
 source_set("gaiacp_lib") {
@@ -159,8 +178,6 @@ source_set("gaiacp_lib") {
     "initguid.cc",
     "internet_availability_checker.cc",
     "internet_availability_checker.h",
-    "mdm_utils.cc",
-    "mdm_utils.h",
     "os_process_manager.cc",
     "os_process_manager.h",
     "password_recovery_manager.cc",
@@ -175,12 +192,14 @@ source_set("gaiacp_lib") {
   public_deps = [ ":common" ]
   deps = [
     ":gaia_credential_provider_idl",
+    ":mdm_utils",
     ":policies",
     ":static_resources",
     ":string_resources",
     ":util",
     "../eventlog:gcp_eventlog_messages",
     "../extension:common",
+    "../extension:extension_lib",
     "//build:branding_buildflags",
     "//chrome/common:non_code_constants",
     "//chrome/common:version_header",
@@ -206,19 +225,11 @@ source_set("gaiacp_lib") {
 
 config("gaiacp_config") {
   defines = [
+    # Make single parameter CString constructors explicit.
+    "_ATL_CSTRING_EXPLICIT_CONSTRUCTORS",
+
     # Needed to build COM objects that will be hosted in a DLL.
     "_WINDLL",
-  ]
-  cflags = [
-    # C4245: 'conversion' : conversion from 'type1' to 'type2',
-    #                       signed/unsigned mismatch
-    # Disabling because this Level 4 warning is causing ATL code to not compile,
-    # warnings are errors:
-    #     c:\src\depot_tools\win_toolchain\vs_files\
-    #         d3cb0e37bdd120ad0ac4650b674b09e81be45616\vc\atlmfc\include\
-    #         atlexcept.h(102): warning C4245: '=':
-    #         conversion from 'NTSTATUS' to 'DWORD', signed/unsigned mismatch
-    "/wd4245",
   ]
   libs = [
     "advapi32.lib",  # For LookupAccountSid()
@@ -237,31 +248,18 @@ process_version_rc_template("version") {
   output = "$root_out_dir/gaia_credential_provider.rc"
 }
 
+GCP_PLACEHOLDER_CLSID = "PLACEHOLDER-GUID-89adae71-aee5-4ee2-bffb-e8424e06f519"
+
 if (is_chrome_branded) {
   gaia_credential_provider_clsid = "0b5bfdf0-4594-47ac-940a-cfc69abc561c"
 } else {
   gaia_credential_provider_clsid = "89adae71-aee5-4ee2-bffb-e8424e06f519"
 }
 
-action("generate_credential_provider_idl_file") {
-  script = "//build/util/version.py"
-
-  inputs = [ "gaia_credential_provider_idl.templ" ]
-  outputs = [ "$target_gen_dir/gaia_credential_provider.idl" ]
-
-  args = [
-    "-e",
-    "GAIA_CREDENTIAL_PROVIDER_CLSID='$gaia_credential_provider_clsid'",
-    rebase_path(inputs[0], root_build_dir),
-    rebase_path(outputs[0], root_build_dir),
-  ]
-}
-
 midl("gaia_credential_provider_idl") {
-  dynamic_guid = gaia_credential_provider_clsid
-  deps = [ ":generate_credential_provider_idl_file" ]
+  dynamic_guids = "$GCP_PLACEHOLDER_CLSID=$gaia_credential_provider_clsid"
   header_file = "gaia_credential_provider_i.h"
-  sources = get_target_outputs(":generate_credential_provider_idl_file")
+  sources = [ "gaia_credential_provider.templ" ]
 }
 
 grit("static_resources") {
@@ -275,10 +273,6 @@ grit("static_resources") {
     "grit/gaia_static_resources.rc",
   ]
   resource_ids = ""
-  grit_flags = [
-    "-E",
-    "root_gen_dir=" + rebase_path(root_gen_dir, root_build_dir),
-  ]
 }
 
 shared_library("gaia1_0") {
@@ -290,6 +284,7 @@ shared_library("gaia1_0") {
   deps = [
     ":common",
     ":gaiacp_lib",
+    ":mdm_utils",
     ":policies",
     ":util",
     ":version",

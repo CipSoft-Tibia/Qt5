@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,22 +11,15 @@ namespace blink {
 
 StaleRevalidationResourceClient::StaleRevalidationResourceClient(
     Resource* stale_resource)
-    : start_time_(base::TimeTicks::Now()), stale_resource_(stale_resource) {}
+    : stale_resource_(stale_resource) {}
 
 StaleRevalidationResourceClient::~StaleRevalidationResourceClient() = default;
 
 void StaleRevalidationResourceClient::NotifyFinished(Resource* resource) {
   // After the load is finished
   if (stale_resource_ && IsMainThread())
-    GetMemoryCache()->Remove(stale_resource_);
+    MemoryCache::Get()->Remove(stale_resource_);
   ClearResource();
-
-  base::TimeTicks response_end = resource->LoadResponseEnd();
-  if (!response_end.is_null()) {
-    UMA_HISTOGRAM_LONG_TIMES(
-        "Blink.ResourceFetcher.StaleWhileRevalidateDuration",
-        response_end - start_time_);
-  }
 }
 
 void StaleRevalidationResourceClient::Trace(Visitor* visitor) const {

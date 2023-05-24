@@ -1,47 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qabstractproxymodel.h"
 #include "qitemselectionmodel.h"
 #include <private/qabstractproxymodel_p.h>
 #include <QtCore/QSize>
 #include <QtCore/QStringList>
+#include <QtCore/QMap>
 
 
 QT_BEGIN_NAMESPACE
@@ -90,6 +55,87 @@ void QAbstractProxyModelPrivate::_q_sourceModelDestroyed()
     model = QAbstractItemModelPrivate::staticEmptyModel();
 }
 
+void QAbstractProxyModelPrivate::emitHeaderDataChanged()
+{
+    Q_Q(QAbstractProxyModel);
+
+    if (updateHorizontalHeader) {
+        if (auto columnCount = q->columnCount(); columnCount > 0)
+            emit q->headerDataChanged(Qt::Horizontal, 0, columnCount - 1);
+    }
+
+    if (updateVerticalHeader) {
+        if (auto rowCount = q->rowCount(); rowCount > 0)
+            emit q->headerDataChanged(Qt::Vertical, 0, rowCount - 1);
+    }
+
+    updateHorizontalHeader = false;
+    updateVerticalHeader = false;
+}
+
+void QAbstractProxyModelPrivate::scheduleHeaderUpdate(Qt::Orientation orientation)
+{
+    const bool isUpdateScheduled = updateHorizontalHeader || updateVerticalHeader;
+
+    if (orientation == Qt::Horizontal && !updateHorizontalHeader)
+        updateHorizontalHeader = true;
+    else if (orientation == Qt::Vertical && !updateVerticalHeader)
+        updateVerticalHeader = true;
+    else
+        return;
+
+    if (!isUpdateScheduled) {
+        Q_Q(QAbstractProxyModel);
+        QMetaObject::invokeMethod(q, [this]() { emitHeaderDataChanged(); }, Qt::QueuedConnection);
+    }
+}
+
+void QAbstractProxyModelPrivate::_q_sourceModelRowsAboutToBeInserted(const QModelIndex &parent, int, int)
+{
+    if (parent.isValid())
+        return;
+    sourceHadZeroRows = model->rowCount() == 0;
+}
+
+void QAbstractProxyModelPrivate::_q_sourceModelRowsInserted(const QModelIndex &parent, int, int)
+{
+    if (parent.isValid())
+        return;
+    if (sourceHadZeroRows)
+        scheduleHeaderUpdate(Qt::Horizontal);
+}
+
+void QAbstractProxyModelPrivate::_q_sourceModelRowsRemoved(const QModelIndex &parent, int, int)
+{
+    if (parent.isValid())
+        return;
+    if (model->rowCount() == 0)
+        scheduleHeaderUpdate(Qt::Horizontal);
+}
+
+void QAbstractProxyModelPrivate::_q_sourceModelColumnsAboutToBeInserted(const QModelIndex &parent, int, int)
+{
+    if (parent.isValid())
+        return;
+    sourceHadZeroColumns = model->columnCount() == 0;
+}
+
+void QAbstractProxyModelPrivate::_q_sourceModelColumnsInserted(const QModelIndex &parent, int, int)
+{
+    if (parent.isValid())
+        return;
+    if (sourceHadZeroColumns)
+        scheduleHeaderUpdate(Qt::Vertical);
+}
+
+void QAbstractProxyModelPrivate::_q_sourceModelColumnsRemoved(const QModelIndex &parent, int, int)
+{
+    if (parent.isValid())
+        return;
+    if (model->columnCount() == 0)
+        scheduleHeaderUpdate(Qt::Vertical);
+}
+
 /*!
     Constructs a proxy model with the given \a parent.
 */
@@ -128,28 +174,42 @@ QAbstractProxyModel::~QAbstractProxyModel()
 void QAbstractProxyModel::setSourceModel(QAbstractItemModel *sourceModel)
 {
     Q_D(QAbstractProxyModel);
-    if (sourceModel != d->model) {
-        if (d->model)
-            disconnect(d->model, SIGNAL(destroyed()), this, SLOT(_q_sourceModelDestroyed()));
+    d->model.removeBindingUnlessInWrapper();
+    // Special case to handle nullptr models. Otherwise we will have unwanted
+    // notifications.
+    const QAbstractItemModel *currentModel = d->model.valueBypassingBindings();
+    if (!sourceModel && currentModel == QAbstractItemModelPrivate::staticEmptyModel())
+        return;
+    static const struct {
+        const char *signalName;
+        const char *slotName;
+    } connectionTable[] = {
+        // clang-format off
+        { SIGNAL(destroyed()), SLOT(_q_sourceModelDestroyed()) },
+        { SIGNAL(rowsAboutToBeInserted(QModelIndex,int,int)), SLOT(_q_sourceModelRowsAboutToBeInserted(QModelIndex,int,int)) },
+        { SIGNAL(rowsInserted(QModelIndex,int,int)), SLOT(_q_sourceModelRowsInserted(QModelIndex,int,int)) },
+        { SIGNAL(rowsRemoved(QModelIndex,int,int)), SLOT(_q_sourceModelRowsRemoved(QModelIndex,int,int)) },
+        { SIGNAL(columnsAboutToBeInserted(QModelIndex,int,int)), SLOT(_q_sourceModelColumnsAboutToBeInserted(QModelIndex,int,int)) },
+        { SIGNAL(columnsInserted(QModelIndex,int,int)), SLOT(_q_sourceModelColumnsInserted(QModelIndex,int,int)) },
+        { SIGNAL(columnsRemoved(QModelIndex,int,int)), SLOT(_q_sourceModelColumnsRemoved(QModelIndex,int,int)) }
+        // clang-format on
+    };
+
+    if (sourceModel != currentModel) {
+        if (currentModel) {
+            for (const auto &c : connectionTable)
+                disconnect(currentModel, c.signalName, this, c.slotName);
+        }
 
         if (sourceModel) {
-            d->model = sourceModel;
-            connect(d->model, SIGNAL(destroyed()), this, SLOT(_q_sourceModelDestroyed()));
+            d->model.setValueBypassingBindings(sourceModel);
+            for (const auto &c : connectionTable)
+                connect(sourceModel, c.signalName, this, c.slotName);
         } else {
-            d->model = QAbstractItemModelPrivate::staticEmptyModel();
+            d->model.setValueBypassingBindings(QAbstractItemModelPrivate::staticEmptyModel());
         }
-        d->roleNames = d->model->roleNames();
-        emit sourceModelChanged(QPrivateSignal());
+        d->model.notify();
     }
-}
-
-/*!
-    Clears the roleNames of this proxy model.
-*/
-void QAbstractProxyModel::resetInternalData()
-{
-    Q_D(QAbstractProxyModel);
-    d->roleNames = d->model->roleNames();
 }
 
 /*!
@@ -161,6 +221,12 @@ QAbstractItemModel *QAbstractProxyModel::sourceModel() const
     if (d->model == QAbstractItemModelPrivate::staticEmptyModel())
         return nullptr;
     return d->model;
+}
+
+QBindable<QAbstractItemModel *> QAbstractProxyModel::bindableSourceModel()
+{
+    Q_D(QAbstractProxyModel);
+    return QBindable<QAbstractItemModel *>(&d->model);
 }
 
 /*!
@@ -251,13 +317,17 @@ QVariant QAbstractProxyModel::data(const QModelIndex &proxyIndex, int role) cons
 QVariant QAbstractProxyModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
     Q_D(const QAbstractProxyModel);
-    int sourceSection;
+    int sourceSection = section;
     if (orientation == Qt::Horizontal) {
-        const QModelIndex proxyIndex = index(0, section);
-        sourceSection = mapToSource(proxyIndex).column();
+        if (rowCount() > 0) {
+            const QModelIndex proxyIndex = index(0, section);
+            sourceSection = mapToSource(proxyIndex).column();
+        }
     } else {
-        const QModelIndex proxyIndex = index(section, 0);
-        sourceSection = mapToSource(proxyIndex).row();
+        if (columnCount() > 0) {
+            const QModelIndex proxyIndex = index(section, 0);
+            sourceSection = mapToSource(proxyIndex).row();
+        }
     }
     return d->model->headerData(sourceSection, orientation, role);
 }
@@ -267,7 +337,8 @@ QVariant QAbstractProxyModel::headerData(int section, Qt::Orientation orientatio
  */
 QMap<int, QVariant> QAbstractProxyModel::itemData(const QModelIndex &proxyIndex) const
 {
-    return QAbstractItemModel::itemData(proxyIndex);
+    Q_D(const QAbstractProxyModel);
+    return d->model->itemData(mapToSource(proxyIndex));
 }
 
 /*!
@@ -293,7 +364,8 @@ bool QAbstractProxyModel::setData(const QModelIndex &index, const QVariant &valu
  */
 bool QAbstractProxyModel::setItemData(const QModelIndex &index, const QMap< int, QVariant >& roles)
 {
-    return QAbstractItemModel::setItemData(index, roles);
+    Q_D(QAbstractProxyModel);
+    return d->model->setItemData(mapToSource(index), roles);
 }
 
 /*!
@@ -313,7 +385,6 @@ bool QAbstractProxyModel::setHeaderData(int section, Qt::Orientation orientation
     return d->model->setHeaderData(sourceSection, orientation, value, role);
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 /*!
     \reimp
     \since 6.0
@@ -323,7 +394,6 @@ bool QAbstractProxyModel::clearItemData(const QModelIndex &index)
     Q_D(QAbstractProxyModel);
     return d->model->clearItemData(mapToSource(index));
 }
-#endif
 
 /*!
     \reimp
@@ -394,7 +464,7 @@ QMimeData* QAbstractProxyModel::mimeData(const QModelIndexList &indexes) const
 {
     Q_D(const QAbstractProxyModel);
     QModelIndexList list;
-    list.reserve(indexes.count());
+    list.reserve(indexes.size());
     for (const QModelIndex &index : indexes)
         list << mapToSource(index);
     return d->model->mimeData(list);
@@ -475,6 +545,36 @@ Qt::DropActions QAbstractProxyModel::supportedDropActions() const
 {
     Q_D(const QAbstractProxyModel);
     return d->model->supportedDropActions();
+}
+
+/*!
+    \reimp
+ */
+QHash<int,QByteArray> QAbstractProxyModel::roleNames() const
+{
+  Q_D(const QAbstractProxyModel);
+  return d->model->roleNames();
+}
+
+/*!
+    Equivalent to calling createIndex on the source model.
+
+    This method is useful if your proxy model wants to maintain the
+    parent-child relationship of items in the source model.
+    When reimplementing mapToSource(), you can call this method to
+    create an index for row \a row and column \a col of the source model.
+
+    A typical use would be to save the internal pointer coming from the source model
+    in the proxy index when reimplementing mapFromSource() and use the same internal
+    pointer as \a internalPtr to recover the original source index when
+    reimplementing mapToSource().
+    \since 6.2
+ */
+QModelIndex QAbstractProxyModel::createSourceIndex(int row, int col, void *internalPtr) const
+{
+    if (sourceModel())
+        return sourceModel()->createIndex(row, col, internalPtr);
+    return QModelIndex();
 }
 
 QT_END_NAMESPACE

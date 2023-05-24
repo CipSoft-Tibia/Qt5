@@ -31,7 +31,7 @@ void DbTableMaybeUpdateMinMax(const TypedColumn<int64_t>& ts_col,
                               int64_t* min_value,
                               int64_t* max_value,
                               const TypedColumn<int64_t>* dur_col = nullptr) {
-  if (ts_col.row_map().empty())
+  if (ts_col.overlay().empty())
     return;
 
   int64_t col_min = ts_col.Min()->AsLong();
@@ -39,10 +39,9 @@ void DbTableMaybeUpdateMinMax(const TypedColumn<int64_t>& ts_col,
 
   if (dur_col) {
     PERFETTO_CHECK(ts_col.IsSorted());
-    PERFETTO_CHECK(dur_col->row_map().size() == ts_col.row_map().size());
-    for (uint32_t i = 0; i < dur_col->row_map().size(); i++) {
-      col_max =
-          std::max(ts_col.Get(i).AsLong() + dur_col->Get(i).AsLong(), col_max);
+    PERFETTO_CHECK(dur_col->overlay().size() == ts_col.overlay().size());
+    for (uint32_t i = 0; i < dur_col->overlay().size(); i++) {
+      col_max = std::max(ts_col[i] + (*dur_col)[i], col_max);
     }
   }
 
@@ -80,18 +79,15 @@ TraceStorage::TraceStorage(const Config&) {
 TraceStorage::~TraceStorage() {}
 
 uint32_t TraceStorage::SqlStats::RecordQueryBegin(const std::string& query,
-                                                  int64_t time_queued,
                                                   int64_t time_started) {
   if (queries_.size() >= kMaxLogEntries) {
     queries_.pop_front();
-    times_queued_.pop_front();
     times_started_.pop_front();
     times_first_next_.pop_front();
     times_ended_.pop_front();
     popped_queries_++;
   }
   queries_.push_back(query);
-  times_queued_.push_back(time_queued);
   times_started_.push_back(time_started);
   times_first_next_.push_back(0);
   times_ended_.push_back(0);
@@ -131,10 +127,11 @@ std::pair<int64_t, int64_t> TraceStorage::GetTraceTimestampBoundsNs() const {
                            &slice_table_.dur());
   DbTableMaybeUpdateMinMax(heap_profile_allocation_table_.ts(), &start_ns,
                            &end_ns);
-  DbTableMaybeUpdateMinMax(instant_table_.ts(), &start_ns, &end_ns);
+  DbTableMaybeUpdateMinMax(thread_state_table_.ts(), &start_ns, &end_ns);
   DbTableMaybeUpdateMinMax(android_log_table_.ts(), &start_ns, &end_ns);
   DbTableMaybeUpdateMinMax(heap_graph_object_table_.graph_sample_ts(),
                            &start_ns, &end_ns);
+  DbTableMaybeUpdateMinMax(perf_sample_table_.ts(), &start_ns, &end_ns);
 
   if (start_ns == std::numeric_limits<int64_t>::max()) {
     return std::make_pair(0, 0);

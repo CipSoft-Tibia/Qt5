@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,10 @@
 #include <vulkan/vulkan_wayland.h>
 
 #include "base/base_paths.h"
-#include "base/bind_helpers.h"
 #include "base/files/file_path.h"
+#include "base/functional/callback_helpers.h"
 #include "base/notreached.h"
 #include "base/path_service.h"
-#include "gpu/vulkan/vulkan_function_pointers.h"
 #include "gpu/vulkan/vulkan_image.h"
 #include "gpu/vulkan/vulkan_instance.h"
 #include "gpu/vulkan/vulkan_surface.h"
@@ -21,21 +20,8 @@
 
 namespace ui {
 
-namespace {
-
-bool InitializeVulkanFunctionPointers(
-    const base::FilePath& path,
-    gpu::VulkanFunctionPointers* vulkan_function_pointers) {
-  base::NativeLibraryLoadError native_library_load_error;
-  vulkan_function_pointers->vulkan_loader_library =
-      base::LoadNativeLibrary(path, &native_library_load_error);
-  return !!vulkan_function_pointers->vulkan_loader_library;
-}
-
-}  // namespace
-
-VulkanImplementationWayland::VulkanImplementationWayland()
-    : gpu::VulkanImplementation(false /* use_swiftshader */) {}
+VulkanImplementationWayland::VulkanImplementationWayland(bool use_swiftshader)
+    : gpu::VulkanImplementation(use_swiftshader) {}
 
 VulkanImplementationWayland::~VulkanImplementationWayland() {}
 
@@ -45,16 +31,17 @@ bool VulkanImplementationWayland::InitializeVulkanInstance(bool using_surface) {
       VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME,
   };
 
-  auto* vulkan_function_pointers = gpu::GetVulkanFunctionPointers();
+  base::FilePath path;
+  if (use_swiftshader()) {
+    if (!base::PathService::Get(base::DIR_MODULE, &path))
+      return false;
 
-  base::FilePath path("libvulkan.so.1");
+    path = path.Append("libvk_swiftshader.so");
+  } else {
+    path = base::FilePath("libvulkan.so.1");
+  }
 
-  if (!InitializeVulkanFunctionPointers(path, vulkan_function_pointers))
-    return false;
-
-  if (!vulkan_instance_.Initialize(required_extensions, {}))
-    return false;
-  return true;
+  return vulkan_instance_.Initialize(path, required_extensions, {});
 }
 
 gpu::VulkanInstance* VulkanImplementationWayland::GetVulkanInstance() {
@@ -77,13 +64,16 @@ bool VulkanImplementationWayland::GetPhysicalDevicePresentationSupport(
 
 std::vector<const char*>
 VulkanImplementationWayland::GetRequiredDeviceExtensions() {
-  return {
-      VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
+  std::vector<const char*> result{
       VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
       VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
       VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,
       VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,
   };
+
+  if (!use_swiftshader())
+    result.push_back(VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME);
+  return result;
 }
 
 std::vector<const char*>
@@ -133,9 +123,14 @@ VulkanImplementationWayland::GetExternalImageHandleType() {
 }
 
 bool VulkanImplementationWayland::CanImportGpuMemoryBuffer(
+    gpu::VulkanDeviceQueue* device_queue,
     gfx::GpuMemoryBufferType memory_buffer_type) {
-  NOTIMPLEMENTED();
-  return false;
+  const auto& enabled_extensions = device_queue->enabled_extensions();
+  return gfx::HasExtension(enabled_extensions,
+                           VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME) &&
+         gfx::HasExtension(enabled_extensions,
+                           VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME) &&
+         memory_buffer_type == gfx::GpuMemoryBufferType::NATIVE_PIXMAP;
 }
 
 std::unique_ptr<gpu::VulkanImage>
@@ -143,9 +138,18 @@ VulkanImplementationWayland::CreateImageFromGpuMemoryHandle(
     gpu::VulkanDeviceQueue* device_queue,
     gfx::GpuMemoryBufferHandle gmb_handle,
     gfx::Size size,
-    VkFormat vk_formate) {
-  NOTIMPLEMENTED();
-  return nullptr;
+    VkFormat vk_format,
+    const gfx::ColorSpace& color_space) {
+  constexpr auto kUsage =
+      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+  auto tiling = gmb_handle.native_pixmap_handle.modifier ==
+                        gfx::NativePixmapHandle::kNoModifier
+                    ? VK_IMAGE_TILING_OPTIMAL
+                    : VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
+  return gpu::VulkanImage::CreateFromGpuMemoryBufferHandle(
+      device_queue, std::move(gmb_handle), size, vk_format, kUsage, /*flags=*/0,
+      tiling, VK_QUEUE_FAMILY_FOREIGN_EXT);
 }
 
 }  // namespace ui

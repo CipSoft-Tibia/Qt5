@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,14 @@
 
 class GURL;
 
+namespace base {
+class TimeDelta;
+class TimeTicks;
+}  // namespace base
+
 namespace weblayer {
 class Navigation;
+class Page;
 
 // An interface for a WebLayer embedder to get notified about navigations. For
 // now this only notifies for the main frame.
@@ -19,9 +25,8 @@ class Navigation;
 // 2) LoadStateChanged() first invoked
 // 3) NavigationStarted
 // 4) 0 or more NavigationRedirected
-// 5) 0 or 1 ReadyToCommitNavigation
-// 6) NavigationCompleted or NavigationFailed
-// 7) Main frame completes loading, LoadStateChanged() last invoked
+// 5) NavigationCompleted or NavigationFailed
+// 6) Main frame completes loading, LoadStateChanged() last invoked
 class NavigationObserver {
  public:
   virtual ~NavigationObserver() {}
@@ -50,20 +55,6 @@ class NavigationObserver {
   // Called when a navigation encountered a server redirect.
   virtual void NavigationRedirected(Navigation* navigation) {}
 
-  // Called when the navigation is ready to be committed in a renderer. This
-  // occurs when the response code isn't 204/205 (which tell the browser that
-  // the request is successful but there's no content that follows) or a
-  // download (either from a response header or based on mime sniffing the
-  // response). The browser then is ready to switch rendering the new document.
-  // Most observers should use NavigationCompleted or NavigationFailed instead,
-  // which happens right after the navigation commits. This method is for
-  // observers that want to initialize renderer-side state just before the
-  // Tab commits the navigation.
-  //
-  // This is the first point in time where a Tab is associated
-  // with the navigation.
-  virtual void ReadyToCommitNavigation(Navigation* navigation) {}
-
   // Called when a navigation completes successfully in the Tab.
   //
   // The document load will still be ongoing in the Tab. Use the
@@ -85,10 +76,10 @@ class NavigationObserver {
   virtual void NavigationFailed(Navigation* navigation) {}
 
   // Indicates that loading has started (|is_loading| is true) or is done
-  // (|is_loading| is false). |to_different_document| will be true unless the
+  // (|is_loading| is false). |should_show_loading_ui| will be true unless the
   // load is a fragment navigation, or triggered by
   // history.pushState/replaceState.
-  virtual void LoadStateChanged(bool is_loading, bool to_different_document) {}
+  virtual void LoadStateChanged(bool is_loading, bool should_show_loading_ui) {}
 
   // Indicates that the load progress of the page has changed. |progress|
   // ranges from 0.0 to 1.0.
@@ -98,10 +89,42 @@ class NavigationObserver {
   // first paint after a non-empty layout has finished.
   virtual void OnFirstContentfulPaint() {}
 
+  // Similar to OnFirstContentfulPaint but contains timing information from the
+  // renderer process to better align with the Navigation Timing API.
+  // |navigation_start| is the navigation start time.
+  // |first_contentful_paint| is the duration to first contentful paint from
+  // navigation start.
+  virtual void OnFirstContentfulPaint(
+      const base::TimeTicks& navigation_start,
+      const base::TimeDelta& first_contentful_paint) {}
+
+  // This is fired when the largest contentful paint page load metric is
+  // available. |navigation_start| is the navigation start time.
+  // |largest_contentful_paint| is the duration to largest contentful paint from
+  // navigation start.
+  virtual void OnLargestContentfulPaint(
+      const base::TimeTicks& navigation_start,
+      const base::TimeDelta& largest_contentful_paint) {}
+
   // Called after each navigation to indicate that the old page is no longer
   // being rendered. Note this is not ordered with respect to
   // OnFirstContentfulPaint.
   virtual void OnOldPageNoLongerRendered(const GURL& url) {}
+
+  // Called when a Page is destroyed. For the common case, this is called when
+  // the user navigates away from a page to a new one or when the Tab is
+  // destroyed. However there are situations when a page is alive when it's not
+  // visible, e.g. when it goes into the back-forward cache. In that case this
+  // method will either be called when the back-forward cache entry is evicted
+  // or if it is used then this cycle repeats.
+  virtual void OnPageDestroyed(Page* page) {}
+
+  // Called when the source language for |page| has been determined to be
+  // |language|.
+  // Note: |language| is an ISO 639 language code (two letters, except for
+  // Chinese where a localization is necessary).
+  virtual void OnPageLanguageDetermined(Page* page,
+                                        const std::string& language) {}
 };
 
 }  // namespace weblayer

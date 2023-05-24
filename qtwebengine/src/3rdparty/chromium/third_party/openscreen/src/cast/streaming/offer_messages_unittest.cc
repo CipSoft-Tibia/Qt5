@@ -4,6 +4,7 @@
 
 #include "cast/streaming/offer_messages.h"
 
+#include <limits>
 #include <utility>
 
 #include "cast/streaming/rtp_defines.h"
@@ -20,7 +21,6 @@ namespace {
 
 constexpr char kValidOffer[] = R"({
   "castMode": "mirroring",
-  "receiverGetStatus": true,
   "supportedStreams": [
     {
       "index": 0,
@@ -81,32 +81,56 @@ constexpr char kValidOffer[] = R"({
       "channels": 2,
       "aesKey": "51027e4e2347cbcb49d57ef10177aebc",
       "aesIvMask": "7f12a19be62a36c04ae4116caaeff6d1"
+    },
+    {
+      "index": 3,
+      "type": "video_source",
+      "codecName": "av1",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 104,
+      "ssrc": 19088744,
+      "maxFrameRate": "30000/1001",
+      "targetDelay": 1000,
+      "timeBase": "1/90000",
+      "maxBitRate": 5000000,
+      "profile": "main",
+      "level": "5",
+      "aesKey": "bbf109bf84513b456b13a184453b66ce",
+      "aesIvMask": "edaf9e4536e2b66191f560d9c04b2a69"
     }
   ]
 })";
 
-void ExpectFailureOnParse(absl::string_view body) {
+void ExpectFailureOnParse(
+    absl::string_view body,
+    absl::optional<Error::Code> expected = absl::nullopt) {
   ErrorOr<Json::Value> root = json::Parse(body);
-  ASSERT_TRUE(root.is_value());
-  EXPECT_TRUE(Offer::Parse(std::move(root.value())).is_error());
+  ASSERT_TRUE(root.is_value()) << root.error();
+
+  Offer offer;
+  Error error = Offer::TryParse(std::move(root.value()), &offer);
+  EXPECT_FALSE(error.ok());
+  if (expected) {
+    EXPECT_EQ(expected, error.code());
+  }
 }
 
 void ExpectEqualsValidOffer(const Offer& offer) {
-  EXPECT_EQ(CastMode::Type::kMirroring, offer.cast_mode.type);
-  EXPECT_EQ(true, offer.supports_wifi_status_reporting);
+  EXPECT_EQ(CastMode::kMirroring, offer.cast_mode);
 
   // Verify list of video streams.
-  EXPECT_EQ(2u, offer.video_streams.size());
+  EXPECT_EQ(3u, offer.video_streams.size());
   const auto& video_streams = offer.video_streams;
 
   const bool flipped = video_streams[0].stream.index != 0;
-  const VideoStream& vs_one = flipped ? video_streams[1] : video_streams[0];
-  const VideoStream& vs_two = flipped ? video_streams[0] : video_streams[1];
+  const VideoStream& vs_one = flipped ? video_streams[2] : video_streams[0];
+  const VideoStream& vs_two = video_streams[1];
+  const VideoStream& vs_three = flipped ? video_streams[0] : video_streams[2];
 
   EXPECT_EQ(0, vs_one.stream.index);
   EXPECT_EQ(1, vs_one.stream.channels);
   EXPECT_EQ(Stream::Type::kVideoSource, vs_one.stream.type);
-  EXPECT_EQ("h264", vs_one.stream.codec_name);
+  EXPECT_EQ(VideoCodec::kH264, vs_one.codec);
   EXPECT_EQ(RtpPayloadType::kVideoH264, vs_one.stream.rtp_payload_type);
   EXPECT_EQ(19088743u, vs_one.stream.ssrc);
   EXPECT_EQ((SimpleFraction{60000, 1000}), vs_one.max_frame_rate);
@@ -138,7 +162,7 @@ void ExpectEqualsValidOffer(const Offer& offer) {
   EXPECT_EQ(1, vs_two.stream.index);
   EXPECT_EQ(1, vs_two.stream.channels);
   EXPECT_EQ(Stream::Type::kVideoSource, vs_two.stream.type);
-  EXPECT_EQ("vp8", vs_two.stream.codec_name);
+  EXPECT_EQ(VideoCodec::kVp8, vs_two.codec);
   EXPECT_EQ(RtpPayloadType::kVideoVp8, vs_two.stream.rtp_payload_type);
   EXPECT_EQ(19088744u, vs_two.stream.ssrc);
   EXPECT_EQ((SimpleFraction{30000, 1001}), vs_two.max_frame_rate);
@@ -156,12 +180,33 @@ void ExpectEqualsValidOffer(const Offer& offer) {
   const auto& resolutions_two = vs_two.resolutions;
   EXPECT_EQ(0u, resolutions_two.size());
 
+  EXPECT_EQ(3, vs_three.stream.index);
+  EXPECT_EQ(1, vs_three.stream.channels);
+  EXPECT_EQ(Stream::Type::kVideoSource, vs_three.stream.type);
+  EXPECT_EQ(VideoCodec::kAv1, vs_three.codec);
+  EXPECT_EQ(RtpPayloadType::kVideoAv1, vs_three.stream.rtp_payload_type);
+  EXPECT_EQ(19088744u, vs_three.stream.ssrc);
+  EXPECT_EQ((SimpleFraction{30000, 1001}), vs_three.max_frame_rate);
+  EXPECT_EQ(90000, vs_three.stream.rtp_timebase);
+  EXPECT_EQ(5000000, vs_three.max_bit_rate);
+  EXPECT_EQ("main", vs_three.profile);
+  EXPECT_EQ("5", vs_three.level);
+  EXPECT_THAT(vs_three.stream.aes_key,
+              ElementsAre(0xbb, 0xf1, 0x09, 0xbf, 0x84, 0x51, 0x3b, 0x45, 0x6b,
+                          0x13, 0xa1, 0x84, 0x45, 0x3b, 0x66, 0xce));
+  EXPECT_THAT(vs_three.stream.aes_iv_mask,
+              ElementsAre(0xed, 0xaf, 0x9e, 0x45, 0x36, 0xe2, 0xb6, 0x61, 0x91,
+                          0xf5, 0x60, 0xd9, 0xc0, 0x4b, 0x2a, 0x69));
+
+  const auto& resolutions_three = vs_three.resolutions;
+  EXPECT_EQ(0u, resolutions_three.size());
+
   // Verify list of audio streams.
   EXPECT_EQ(1u, offer.audio_streams.size());
   const AudioStream& as = offer.audio_streams[0];
   EXPECT_EQ(2, as.stream.index);
   EXPECT_EQ(Stream::Type::kAudioSource, as.stream.type);
-  EXPECT_EQ("opus", as.stream.codec_name);
+  EXPECT_EQ(AudioCodec::kOpus, as.codec);
   EXPECT_EQ(RtpPayloadType::kAudioOpus, as.stream.rtp_payload_type);
   EXPECT_EQ(std::numeric_limits<Ssrc>::max(), as.stream.ssrc);
   EXPECT_EQ(124000, as.bit_rate);
@@ -182,8 +227,8 @@ TEST(OfferTest, ErrorOnEmptyOffer) {
 }
 
 TEST(OfferTest, ErrorOnMissingMandatoryFields) {
-  // It's okay if castMode is omitted, but if supportedStreams isanne  //
-  // omitted we should fail here.
+  // It's okay if castMode is omitted, but if supportedStreams is omitted we
+  // should fail here.
   ExpectFailureOnParse(R"({
     "castMode": "mirroring"
   })");
@@ -194,8 +239,10 @@ TEST(OfferTest, CanParseValidButStreamlessOffer) {
     "castMode": "mirroring",
     "supportedStreams": []
   })");
-  ASSERT_TRUE(root.is_value());
-  EXPECT_TRUE(Offer::Parse(std::move(root.value())).is_value());
+  ASSERT_TRUE(root.is_value()) << root.error();
+
+  Offer offer;
+  EXPECT_TRUE(Offer::TryParse(std::move(root.value()), &offer).ok());
 }
 
 TEST(OfferTest, ErrorOnMissingAudioStreamMandatoryField) {
@@ -244,7 +291,8 @@ TEST(OfferTest, CanParseValidButMinimalAudioOffer) {
     }]
   })");
   ASSERT_TRUE(root.is_value());
-  EXPECT_TRUE(Offer::Parse(std::move(root.value())).is_value());
+  Offer offer;
+  EXPECT_TRUE(Offer::TryParse(std::move(root.value()), &offer).ok());
 }
 
 TEST(OfferTest, CanParseValidZeroBitRateAudioOffer) {
@@ -258,14 +306,85 @@ TEST(OfferTest, CanParseValidZeroBitRateAudioOffer) {
       "rtpPayloadType": 96,
       "ssrc": 19088743,
       "bitRate": 0,
-      "timeBase": "1/96000",
+      "timeBase": "1/48000",
       "channels": 5,
       "aesKey": "51029e4e2347cbcb49d57ef10177aebd",
       "aesIvMask": "7f12a19be62a36c04ae4116caaeff5d2"
     }]
   })");
-  ASSERT_TRUE(root.is_value());
-  EXPECT_TRUE(Offer::Parse(std::move(root.value())).is_value());
+  ASSERT_TRUE(root.is_value()) << root.error();
+  Offer offer;
+  EXPECT_TRUE(Offer::TryParse(std::move(root.value()), &offer).ok());
+}
+
+TEST(OfferTest, ErrorOnInvalidRtpTimebase) {
+  ExpectFailureOnParse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "audio_source",
+      "codecName": "opus",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 96,
+      "ssrc": 19088743,
+      "bitRate": 124000,
+      "timeBase": "1/10000000",
+      "channels": 2,
+      "aesKey": "51027e4e2347cbcb49d57ef10177aebc",
+      "aesIvMask": "7f12a19be62a36c04ae4116caaeff6d1"
+    }]
+  })");
+
+  ExpectFailureOnParse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "audio_source",
+      "codecName": "opus",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 96,
+      "ssrc": 19088743,
+      "bitRate": 124000,
+      "timeBase": "0",
+      "channels": 2,
+      "aesKey": "51027e4e2347cbcb49d57ef10177aebc",
+      "aesIvMask": "7f12a19be62a36c04ae4116caaeff6d1"
+    }]
+  })");
+
+  ExpectFailureOnParse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "audio_source",
+      "codecName": "opus",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 96,
+      "ssrc": 19088743,
+      "bitRate": 124000,
+      "timeBase": "1/1",
+      "channels": 2,
+      "aesKey": "51027e4e2347cbcb49d57ef10177aebc",
+      "aesIvMask": "7f12a19be62a36c04ae4116caaeff6d1"
+    }]
+  })");
+
+  ExpectFailureOnParse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "audio_source",
+      "codecName": "opus",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 96,
+      "ssrc": 19088743,
+      "bitRate": 124000,
+      "timeBase": "really fast plz, kthx",
+      "channels": 2,
+      "aesKey": "51027e4e2347cbcb49d57ef10177aebc",
+      "aesIvMask": "7f12a19be62a36c04ae4116caaeff6d1"
+    }]
+  })");
 }
 
 TEST(OfferTest, ErrorOnMissingVideoStreamMandatoryField) {
@@ -344,6 +463,80 @@ TEST(OfferTest, ErrorOnMissingVideoStreamMandatoryField) {
   })");
 }
 
+TEST(OfferTest, ValidatesCodecParameterFormat) {
+  ExpectFailureOnParse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "audio_source",
+      "codecName": "aac",
+      "codecParameter": "vp08.123.332",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 96,
+      "ssrc": 19088743,
+      "bitRate": 124000,
+      "timeBase": "1/10000000",
+      "channels": 2,
+      "aesKey": "51027e4e2347cbcb49d57ef10177aebc",
+      "aesIvMask": "7f12a19be62a36c04ae4116caaeff6d1"
+    }]
+  })");
+
+  ExpectFailureOnParse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "video_source",
+      "codecName": "vp8",
+      "codecParameter": "vp09.11.23",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 100,
+      "ssrc": 19088743,
+      "timeBase": "1/48000",
+       "resolutions": [],
+       "maxBitRate": 10000,
+       "aesKey": "51027e4e2347cbcb49d57ef10177aebc"
+    }]
+  })");
+
+  const ErrorOr<Json::Value> audio_root = json::Parse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "audio_source",
+      "codecName": "aac",
+      "codecParameter": "mp4a.12",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 96,
+      "ssrc": 19088743,
+      "bitRate": 124000,
+      "timeBase": "1/10000000",
+      "channels": 2,
+      "aesKey": "51027e4e2347cbcb49d57ef10177aebc",
+      "aesIvMask": "7f12a19be62a36c04ae4116caaeff6d1"
+    }]
+  })");
+  ASSERT_TRUE(audio_root.is_value()) << audio_root.error();
+
+  const ErrorOr<Json::Value> video_root = json::Parse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "video_source",
+      "codecName": "vp9",
+      "codecParameter": "vp09.11.23",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 100,
+      "ssrc": 19088743,
+      "timeBase": "1/48000",
+       "resolutions": [],
+       "maxBitRate": 10000,
+       "aesKey": "51027e4e2347cbcb49d57ef10177aebc"
+    }]
+  })");
+  ASSERT_TRUE(video_root.is_value()) << video_root.error();
+}
+
 TEST(OfferTest, CanParseValidButMinimalVideoOffer) {
   ErrorOr<Json::Value> root = json::Parse(R"({
     "castMode": "mirroring",
@@ -363,66 +556,155 @@ TEST(OfferTest, CanParseValidButMinimalVideoOffer) {
   })");
 
   ASSERT_TRUE(root.is_value());
-  EXPECT_TRUE(Offer::Parse(std::move(root.value())).is_value());
+  Offer offer;
+  EXPECT_TRUE(Offer::TryParse(std::move(root.value()), &offer).ok());
 }
 
 TEST(OfferTest, CanParseValidOffer) {
   ErrorOr<Json::Value> root = json::Parse(kValidOffer);
   ASSERT_TRUE(root.is_value());
-  ErrorOr<Offer> offer = Offer::Parse(std::move(root.value()));
+  Offer offer;
+  EXPECT_TRUE(Offer::TryParse(std::move(root.value()), &offer).ok());
 
-  ExpectEqualsValidOffer(offer.value());
+  ExpectEqualsValidOffer(offer);
 }
 
 TEST(OfferTest, ParseAndToJsonResultsInSameOffer) {
   ErrorOr<Json::Value> root = json::Parse(kValidOffer);
   ASSERT_TRUE(root.is_value());
-  ErrorOr<Offer> offer = Offer::Parse(std::move(root.value()));
+  Offer offer;
+  EXPECT_TRUE(Offer::TryParse(std::move(root.value()), &offer).ok());
+  ExpectEqualsValidOffer(offer);
 
-  ExpectEqualsValidOffer(offer.value());
-
-  auto eoj = offer.value().ToJson();
-  EXPECT_TRUE(eoj.is_value());
-  ErrorOr<Offer> reparsed_offer = Offer::Parse(std::move(eoj.value()));
-  ExpectEqualsValidOffer(reparsed_offer.value());
+  Offer reparsed_offer;
+  EXPECT_TRUE(Offer::TryParse(std::move(root.value()), &reparsed_offer).ok());
+  ExpectEqualsValidOffer(reparsed_offer);
 }
 
 // We don't want to enforce that a given offer must have both audio and
 // video, so we don't assert on either.
-TEST(OfferTest, ToJsonSucceedsWithMissingStreams) {
+TEST(OfferTest, IsValidWithMissingStreams) {
   ErrorOr<Json::Value> root = json::Parse(kValidOffer);
   ASSERT_TRUE(root.is_value());
-  ErrorOr<Offer> offer = Offer::Parse(std::move(root.value()));
-  ExpectEqualsValidOffer(offer.value());
-  const Offer valid_offer = std::move(offer.value());
+  Offer offer;
+  EXPECT_TRUE(Offer::TryParse(std::move(root.value()), &offer).ok());
+  ExpectEqualsValidOffer(offer);
+  const Offer valid_offer = std::move(offer);
 
   Offer missing_audio_streams = valid_offer;
   missing_audio_streams.audio_streams.clear();
-  EXPECT_TRUE(missing_audio_streams.ToJson().is_value());
+  EXPECT_TRUE(missing_audio_streams.IsValid());
 
   Offer missing_video_streams = valid_offer;
   missing_video_streams.audio_streams.clear();
-  EXPECT_TRUE(missing_video_streams.ToJson().is_value());
+  EXPECT_TRUE(missing_video_streams.IsValid());
 }
 
-TEST(OfferTest, ToJsonFailsWithInvalidStreams) {
+TEST(OfferTest, InvalidIfInvalidStreams) {
   ErrorOr<Json::Value> root = json::Parse(kValidOffer);
   ASSERT_TRUE(root.is_value());
-  ErrorOr<Offer> offer = Offer::Parse(std::move(root.value()));
-  ExpectEqualsValidOffer(offer.value());
-  const Offer valid_offer = std::move(offer.value());
+  Offer offer;
+  EXPECT_TRUE(Offer::TryParse(std::move(root.value()), &offer).ok());
+  ExpectEqualsValidOffer(offer);
 
-  Offer video_stream_invalid = valid_offer;
-  video_stream_invalid.video_streams[0].max_frame_rate.denominator = 0;
-  EXPECT_TRUE(video_stream_invalid.ToJson().is_error());
+  Offer video_stream_invalid = offer;
+  video_stream_invalid.video_streams[0].max_frame_rate = SimpleFraction{1, 0};
+  EXPECT_FALSE(video_stream_invalid.IsValid());
 
-  Offer audio_stream_invalid = valid_offer;
+  Offer audio_stream_invalid = offer;
   video_stream_invalid.audio_streams[0].bit_rate = 0;
-  EXPECT_TRUE(video_stream_invalid.ToJson().is_error());
+  EXPECT_FALSE(video_stream_invalid.IsValid());
+}
 
-  Offer stream_invalid = valid_offer;
-  stream_invalid.video_streams[0].stream.codec_name = "";
-  EXPECT_TRUE(stream_invalid.ToJson().is_error());
+TEST(OfferTest, FailsIfUnencrypted) {
+  // Video stream missing AES fields.
+  ExpectFailureOnParse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "video_source",
+      "codecName": "vp8",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 100,
+      "ssrc": 19088743,
+      "timeBase": "1/48000",
+       "resolutions": [],
+       "maxBitRate": 10000,
+       "aesIvMask": "7f12a19be62a36c04ae4116caaeff6d1"
+    }]
+  })",
+                       Error::Code::kUnencryptedOffer);
+
+  ExpectFailureOnParse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "video_source",
+      "codecName": "vp8",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 100,
+      "ssrc": 19088743,
+      "timeBase": "1/48000",
+       "resolutions": [],
+       "maxBitRate": 10000,
+       "aesKey": "51027e4e2347cbcb49d57ef10177aebc"
+    }]
+  })",
+                       Error::Code::kUnencryptedOffer);
+
+  // Audio stream missing AES fields.
+  ExpectFailureOnParse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "audio_source",
+      "codecName": "opus",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 96,
+      "ssrc": 19088743,
+      "bitRate": 124000,
+      "timeBase": "1/48000",
+      "channels": 2,
+      "aesIvMask": "7f12a19be62a36c04ae4116caaeff6d1"
+    }]
+  })",
+                       Error::Code::kUnencryptedOffer);
+
+  ExpectFailureOnParse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "audio_source",
+      "codecName": "opus",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 96,
+      "ssrc": 19088743,
+      "bitRate": 124000,
+      "timeBase": "1/48000",
+      "channels": 2,
+      "aesKey": "51027e4e2347cbcb49d57ef10177aebc"
+    }]
+  })",
+                       Error::Code::kUnencryptedOffer);
+
+  // And finally, fields provided but not properly formatted.
+  ExpectFailureOnParse(R"({
+    "castMode": "mirroring",
+    "supportedStreams": [{
+      "index": 2,
+      "type": "audio_source",
+      "codecName": "opus",
+      "rtpProfile": "cast",
+      "rtpPayloadType": 96,
+      "ssrc": 19088743,
+      "bitRate": 124000,
+      "timeBase": "1/48000",
+      "channels": 2,
+      "aesKey": "51027e4e2347$bcb49d57ef10177aebc",
+      "aesIvMask": "7f12a19be62a36c04ae4116caaeff6d1"
+    }]
+  })",
+                       Error::Code::kUnencryptedOffer);
 }
 
 }  // namespace cast

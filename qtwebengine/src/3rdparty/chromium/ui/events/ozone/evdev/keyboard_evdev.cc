@@ -1,11 +1,10 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/events/ozone/evdev/keyboard_evdev.h"
 
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "ui/events/event.h"
 #include "ui/events/event_constants.h"
 #include "ui/events/event_modifiers.h"
@@ -13,7 +12,6 @@
 #include "ui/events/keycodes/dom/dom_code.h"
 #include "ui/events/keycodes/dom/keycode_converter.h"
 #include "ui/events/keycodes/keyboard_code_conversion.h"
-#include "ui/events/ozone/evdev/keyboard_util_evdev.h"
 #include "ui/events/ozone/layout/keyboard_layout_engine.h"
 #include "ui/events/ozone/layout/keyboard_layout_engine_manager.h"
 #include "ui/events/types/event_type.h"
@@ -88,7 +86,8 @@ void KeyboardEvdev::FlushInput(base::OnceClosure closure) {
   // Post a task behind any pending key releases in the message loop
   // FIFO. This ensures there's no spurious repeats during periods of UI
   // thread jank.
-  base::ThreadTaskRunnerHandle::Get()->PostTask(FROM_HERE, std::move(closure));
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, std::move(closure));
 }
 
 void KeyboardEvdev::UpdateModifier(int modifier_flag, bool down) {
@@ -119,8 +118,7 @@ void KeyboardEvdev::RefreshModifiers() {
   for (int key = 0; key < KEY_CNT; ++key) {
     if (!key_state_.test(key))
       continue;
-    DomCode dom_code =
-        KeycodeConverter::NativeKeycodeToDomCode(EvdevCodeToNativeCode(key));
+    DomCode dom_code = KeycodeConverter::EvdevCodeToDomCode(key);
     if (dom_code == DomCode::NONE)
       continue;
     DomKey dom_key;
@@ -141,8 +139,7 @@ void KeyboardEvdev::DispatchKey(unsigned int key,
                                 base::TimeTicks timestamp,
                                 int device_id,
                                 int flags) {
-  DomCode dom_code =
-      KeycodeConverter::NativeKeycodeToDomCode(EvdevCodeToNativeCode(key));
+  DomCode dom_code = KeycodeConverter::EvdevCodeToDomCode(key);
   if (dom_code == DomCode::NONE)
     return;
   int modifier_flags = modifiers_->GetModifierFlags();

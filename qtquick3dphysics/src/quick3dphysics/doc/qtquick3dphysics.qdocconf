@@ -1,0 +1,53 @@
+include($QT_INSTALL_DOCS/global/qt-module-defaults.qdocconf)
+
+project                 = QtQuick3DPhysics
+description             = Qt Quick 3D Physics Reference Documentation
+version                 = $QT_VERSION
+buildversion            = Qt Quick 3D Physics | Commercial or GPLv3
+
+examplesinstallpath     = quick3dphysics
+
+qhp.projects            = QtQuick3DPhysics
+
+qhp.QtQuick3DPhysics.file                = qtquick3dphysics.qhp
+qhp.QtQuick3DPhysics.namespace           = org.qt-project.qtquick3dphysics.$QT_VERSION_TAG
+qhp.QtQuick3DPhysics.namespace           = org.qt-project.qtquick3dphysics.dev
+qhp.QtQuick3DPhysics.virtualFolder       = qtquick3dphysics
+qhp.QtQuick3DPhysics.indexTitle          = Qt Quick 3D Physics
+qhp.QtQuick3DPhysics.indexRoot           =
+
+qhp.QtQuick3DPhysics.subprojects = qmltypes examples classes
+qhp.QtQuick3DPhysics.subprojects.qmltypes.title = QML Types
+qhp.QtQuick3DPhysics.subprojects.qmltypes.indexTitle = Qt Quick 3D Physics QML Types
+qhp.QtQuick3DPhysics.subprojects.qmltypes.selectors = qmlclass
+qhp.QtQuick3DPhysics.subprojects.qmltypes.sortPages = true
+qhp.QtQuick3DPhysics.subprojects.examples.title = Examples
+qhp.QtQuick3DPhysics.subprojects.examples.indexTitle = Qt Quick 3D Physics Examples and Tutorials
+qhp.QtQuick3DPhysics.subprojects.examples.selectors = doc:example
+qhp.QtQuick3DPhysics.subprojects.classes.title      = C++ Classes
+qhp.QtQuick3DPhysics.subprojects.classes.indexTitle = Qt Quick 3D Physics C++ Classes
+qhp.QtQuick3DPhysics.subprojects.classes.selectors  = class doc:headerfile
+qhp.QtQuick3DPhysics.subprojects.classes.sortPages  = true
+
+depends += qtcore qtgui qtdoc qtqml qtqmlmodels qtquick qtquickcontrols qtshadertools qtquicktimeline qtquick3d
+
+sourcedirs  += .. \
+               src
+
+exampledirs +=  ../../../examples/quick3dphysics
+
+imagedirs   += images
+
+# Exclude private header files from the documentation build
+excludefiles += "*_p.h"
+navigation.landingpage = "Qt Quick 3D Physics"
+navigation.qmltypespage = "Qt Quick 3D Physics QML Types"
+navigation.cppclassespage = "Qt Quick 3D Physics C++ Classes"
+
+tagfile                 = qtquick3dphysics.tags
+
+# Highlighted examples in Data Visualization & 3D category
+manifestmeta.highlighted.names = "QtQuick3DPhysics/Qt Quick 3D Physics - CharacterController Example"
+
+# Fail the documentation build if there are more warnings than the limit
+warninglimit = 0

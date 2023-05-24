@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -81,7 +81,7 @@ class InheritedScaleChecker
 
 }  // namespace
 
-class CSSScaleNonInterpolableValue : public NonInterpolableValue {
+class CSSScaleNonInterpolableValue final : public NonInterpolableValue {
  public:
   ~CSSScaleNonInterpolableValue() final = default;
 
@@ -271,10 +271,10 @@ void CSSScaleInterpolationType::ApplyStandardPropertyValue(
     StyleResolverState& state) const {
   Scale scale(interpolable_value);
   if (scale.is_none) {
-    state.Style()->SetScale(nullptr);
+    state.StyleBuilder().SetScale(nullptr);
     return;
   }
-  state.Style()->SetScale(ScaleTransformOperation::Create(
+  state.StyleBuilder().SetScale(ScaleTransformOperation::Create(
       scale.array[0], scale.array[1], scale.array[2],
       TransformOperation::kScale3D));
 }

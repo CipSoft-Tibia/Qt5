@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef PROPERTYEDITOR_H
 #define PROPERTYEDITOR_H
@@ -32,9 +7,9 @@
 #include "propertyeditor_global.h"
 #include <qdesigner_propertyeditor_p.h>
 
-#include <QtCore/qpointer.h>
+#include <QtCore/qlist.h>
 #include <QtCore/qmap.h>
-#include <QtCore/qvector.h>
+#include <QtCore/qpointer.h>
 #include <QtCore/qset.h>
 
 QT_BEGIN_NAMESPACE
@@ -155,7 +130,7 @@ private:
     DesignerEditorFactory *m_groupFactory;
     QPointer<QObject> m_object;
     QMap<QString, QtVariantProperty*> m_nameToProperty;
-    QMap<QtProperty*, QString> m_propertyToGroup;
+    QHash<QtProperty *, QString> m_propertyToGroup;
     QMap<QString, QtVariantProperty*> m_nameToGroup;
     QList<QtProperty *> m_groups;
     QtProperty *m_dynamicGroup = nullptr;
@@ -180,7 +155,7 @@ private:
     QMap<QString, bool> m_expansionState;
 
     QString m_filterPattern;
-    QVector<QPair<QColor, QColor> > m_colors;
+    QList<QPair<QColor, QColor> > m_colors;
     QPair<QColor, QColor> m_dynamicColor;
     QPair<QColor, QColor> m_layoutColor;
 

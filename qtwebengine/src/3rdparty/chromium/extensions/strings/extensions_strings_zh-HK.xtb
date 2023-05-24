@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">套件無效：<ph name="ERROR_CODE" />。</translation>
 <translation id="1140871961407805696">後置相機</translation>
 <translation id="1196338895211115272">匯出私密金鑰失敗。</translation>
+<translation id="132960226125594336">無法載入內容指令碼的「<ph name="RELATIVE_PATH" />」檔案，因為檔案會超過最大指令碼大小，或者擴充程式的最大總內容指令碼大小。</translation>
 <translation id="1420684932347524586">糟糕！產生隨機 RSA 私密金鑰失敗。</translation>
 <translation id="1445572445564823378">這個擴充功能使 <ph name="PRODUCT_NAME" /> 運作變慢。建議您停用這個擴充功能，以恢復 <ph name="PRODUCT_NAME" /> 的效能。</translation>
 <translation id="1468038450257740950">系統不支援 WebGL。</translation>
@@ -61,6 +62,7 @@
 <translation id="8636666366616799973">套件無效，詳情：<ph name="ERROR_MESSAGE" />。</translation>
 <translation id="8761756413268424715">「<ph name="APP_NAME" />」要求存取您其中一部裝置：</translation>
 <translation id="8885905466771744233">所指定的擴充功能已有私密金鑰，請使用該金鑰，或先將它刪除。</translation>
+<translation id="9039223174332979184">此電腦的管理員要求「<ph name="EXTENSION_NAME" />」至少要使用版本 3 的資訊清單。</translation>
 <translation id="907841381057066561">封裝過程中建立暫存壓縮檔失敗。</translation>
 <translation id="941543339607623937">私密金鑰無效。</translation>
 </translationbundle>

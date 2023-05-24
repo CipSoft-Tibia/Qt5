@@ -1,4 +1,4 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -32,10 +32,7 @@ cast_source_set("net") {
       "network_change_notifier_factory_fuchsia.h",
     ]
 
-    deps += [
-      "//chromecast/base:chromecast_switches",
-      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.hardware.ethernet",
-    ]
+    deps += [ "//chromecast/base:chromecast_switches" ]
   }
 }
 
@@ -44,6 +41,21 @@ cast_source_set("net_switches") {
     "net_switches.cc",
     "net_switches.h",
   ]
+}
+
+cast_source_set("time_sync_tracker") {
+  sources = [
+    "time_sync_tracker.cc",
+    "time_sync_tracker.h",
+  ]
+  deps = [ "//base" ]
+
+  if (is_fuchsia) {
+    sources += [
+      "time_sync_tracker_fuchsia.cc",
+      "time_sync_tracker_fuchsia.h",
+    ]
+  }
 }
 
 cast_source_set("connectivity_checker") {
@@ -57,11 +69,24 @@ cast_source_set("connectivity_checker") {
   ]
   deps = [
     ":net_switches",
+    ":time_sync_tracker",
     "//base",
     "//chromecast:chromecast_buildflags",
     "//chromecast/base/metrics",
     "//services/network/public/cpp",
     "//services/network/public/mojom",
+  ]
+}
+
+cast_source_set("socket_util") {
+  sources = [
+    "socket_util.cc",
+    "socket_util.h",
+  ]
+
+  deps = [
+    "//base",
+    "//net",
   ]
 }
 
@@ -94,6 +119,8 @@ cast_source_set("test_support") {
   testonly = true
 
   sources = [
+    "fake_shared_url_loader_factory.cc",
+    "fake_shared_url_loader_factory.h",
     "fake_stream_socket.cc",
     "fake_stream_socket.h",
     "mock_stream_socket.cc",
@@ -104,25 +131,36 @@ cast_source_set("test_support") {
 
   deps = [
     "//base",
+    "//mojo/public/cpp/bindings",
     "//net",
+    "//services/network:test_support",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
   ]
 }
 
 test("cast_net_unittests") {
   sources = [
+    "connectivity_checker_impl_unittest.cc",
     "fake_stream_socket_unittest.cc",
     "io_buffer_pool_unittest.cc",
     "small_message_socket_unittest.cc",
   ]
 
   deps = [
+    ":connectivity_checker",
     ":io_buffer_pool",
     ":small_message_socket",
     ":test_support",
     "//base",
-    "//base/test:run_all_unittests",
+    "//chromecast/base/metrics:test_support",
+    "//chromecast/mojo/test:run_all_unittests",
     "//net",
     "//net:test_support",
+    "//services/network:test_support",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
+    "//testing/gmock",
     "//testing/gtest",
   ]
 }

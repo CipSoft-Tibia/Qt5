@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -50,10 +50,11 @@ typedef enum {
   FPDF_TEXTRENDERMODE_LAST = FPDF_TEXTRENDERMODE_CLIP,
 } FPDF_TEXT_RENDERMODE;
 
-// PDF types - use incomplete types (never completed) just for API type safety.
+// PDF types - use incomplete types (never completed) to force API type safety.
 typedef struct fpdf_action_t__* FPDF_ACTION;
 typedef struct fpdf_annotation_t__* FPDF_ANNOTATION;
 typedef struct fpdf_attachment_t__* FPDF_ATTACHMENT;
+typedef struct fpdf_avail_t__* FPDF_AVAIL;
 typedef struct fpdf_bitmap_t__* FPDF_BITMAP;
 typedef struct fpdf_bookmark_t__* FPDF_BOOKMARK;
 typedef struct fpdf_clippath_t__* FPDF_CLIPPATH;
@@ -61,21 +62,24 @@ typedef struct fpdf_dest_t__* FPDF_DEST;
 typedef struct fpdf_document_t__* FPDF_DOCUMENT;
 typedef struct fpdf_font_t__* FPDF_FONT;
 typedef struct fpdf_form_handle_t__* FPDF_FORMHANDLE;
+typedef const struct fpdf_glyphpath_t__* FPDF_GLYPHPATH;
 typedef struct fpdf_javascript_action_t* FPDF_JAVASCRIPT_ACTION;
 typedef struct fpdf_link_t__* FPDF_LINK;
 typedef struct fpdf_page_t__* FPDF_PAGE;
 typedef struct fpdf_pagelink_t__* FPDF_PAGELINK;
 typedef struct fpdf_pageobject_t__* FPDF_PAGEOBJECT;  // (text, path, etc.)
 typedef struct fpdf_pageobjectmark_t__* FPDF_PAGEOBJECTMARK;
-typedef struct fpdf_pagerange_t__* FPDF_PAGERANGE;
+typedef const struct fpdf_pagerange_t__* FPDF_PAGERANGE;
 typedef const struct fpdf_pathsegment_t* FPDF_PATHSEGMENT;
-typedef void* FPDF_RECORDER;  // Passed into skia.
+typedef void* FPDF_RECORDER;  // Passed into Skia as a SkPictureRecorder.
 typedef struct fpdf_schhandle_t__* FPDF_SCHHANDLE;
-typedef struct fpdf_signature_t__* FPDF_SIGNATURE;
+typedef const struct fpdf_signature_t__* FPDF_SIGNATURE;
 typedef struct fpdf_structelement_t__* FPDF_STRUCTELEMENT;
+typedef const struct fpdf_structelement_attr_t__* FPDF_STRUCTELEMENT_ATTR;
 typedef struct fpdf_structtree_t__* FPDF_STRUCTTREE;
 typedef struct fpdf_textpage_t__* FPDF_TEXTPAGE;
 typedef struct fpdf_widget_t__* FPDF_WIDGET;
+typedef struct fpdf_xobject_t__* FPDF_XOBJECT;
 
 // Basic data types
 typedef int FPDF_BOOL;
@@ -100,7 +104,7 @@ typedef const char* FPDF_BYTESTRING;
 
 // FPDFSDK always uses UTF-16LE encoded wide strings, each character uses 2
 // bytes (except surrogation), with the low byte first.
-typedef const unsigned short* FPDF_WIDESTRING;
+typedef const FPDF_WCHAR* FPDF_WIDESTRING;
 
 // Structure for persisting a string beyond the duration of a callback.
 // Note: although represented as a char*, string may be interpreted as
@@ -169,6 +173,17 @@ typedef struct FS_POINTF_ {
 // Const Pointer to FS_POINTF structure.
 typedef const FS_POINTF* FS_LPCPOINTF;
 
+typedef struct _FS_QUADPOINTSF {
+  FS_FLOAT x1;
+  FS_FLOAT y1;
+  FS_FLOAT x2;
+  FS_FLOAT y2;
+  FS_FLOAT x3;
+  FS_FLOAT y3;
+  FS_FLOAT x4;
+  FS_FLOAT y4;
+} FS_QUADPOINTSF;
+
 // Annotation enums.
 typedef int FPDF_ANNOTATION_SUBTYPE;
 typedef int FPDF_ANNOT_APPEARANCEMODE;
@@ -219,6 +234,15 @@ extern "C" {
 //          future.
 FPDF_EXPORT void FPDF_CALLCONV FPDF_InitLibrary();
 
+// PDF renderer types - Experimental.
+// Selection of 2D graphics library to use for rendering to FPDF_BITMAPs.
+typedef enum {
+  // Anti-Grain Geometry - https://sourceforge.net/projects/agg/
+  FPDF_RENDERERTYPE_AGG = 0,
+  // Skia - https://skia.org/
+  FPDF_RENDERERTYPE_SKIA = 1,
+} FPDF_RENDERER_TYPE;
+
 // Process-wide options for initializing the library.
 typedef struct FPDF_LIBRARY_CONFIG_ {
   // Version number of the interface. Currently must be 2.
@@ -242,10 +266,20 @@ typedef struct FPDF_LIBRARY_CONFIG_ {
   // embedders.
   unsigned int m_v8EmbedderSlot;
 
-  // Version 3 - Experimantal,
+  // Version 3 - Experimental.
 
   // Pointer to the V8::Platform to use.
   void* m_pPlatform;
+
+  // Version 4 - Experimental.
+
+  // Explicit specification of core renderer to use. |m_RendererType| must be
+  // a valid value for |FPDF_LIBRARY_CONFIG| versions of this level or higher,
+  // or else the initialization will fail with an immediate crash.
+  // Note that use of a specified |FPDF_RENDERER_TYPE| value for which the
+  // corresponding render library is not included in the build will similarly
+  // fail with an immediate crash.
+  FPDF_RENDERER_TYPE m_RendererType;
 
 } FPDF_LIBRARY_CONFIG;
 
@@ -289,35 +323,6 @@ FPDF_EXPORT void FPDF_CALLCONV FPDF_SetSandBoxPolicy(FPDF_DWORD policy,
                                                      FPDF_BOOL enable);
 
 #if defined(_WIN32)
-#if defined(PDFIUM_PRINT_TEXT_WITH_GDI)
-// Pointer to a helper function to make |font| with |text| of |text_length|
-// accessible when printing text with GDI. This is useful in sandboxed
-// environments where PDFium's access to GDI may be restricted.
-typedef void (*PDFiumEnsureTypefaceCharactersAccessible)(const LOGFONT* font,
-                                                         const wchar_t* text,
-                                                         size_t text_length);
-
-// Experimental API.
-// Function: FPDF_SetTypefaceAccessibleFunc
-//          Set the function pointer that makes GDI fonts available in sandboxed
-//          environments.
-// Parameters:
-//          func -   A function pointer. See description above.
-// Return value:
-//          None.
-FPDF_EXPORT void FPDF_CALLCONV
-FPDF_SetTypefaceAccessibleFunc(PDFiumEnsureTypefaceCharactersAccessible func);
-
-// Experimental API.
-// Function: FPDF_SetPrintTextWithGDI
-//          Set whether to use GDI to draw fonts when printing on Windows.
-// Parameters:
-//          use_gdi -   Set to true to enable printing text with GDI.
-// Return value:
-//          None.
-FPDF_EXPORT void FPDF_CALLCONV FPDF_SetPrintTextWithGDI(FPDF_BOOL use_gdi);
-#endif  // PDFIUM_PRINT_TEXT_WITH_GDI
-
 // Experimental API.
 // Function: FPDF_SetPrintMode
 //          Set printing mode when printing on Windows.
@@ -335,6 +340,12 @@ FPDF_EXPORT void FPDF_CALLCONV FPDF_SetPrintTextWithGDI(FPDF_BOOL use_gdi);
 //                 PostScript via ExtEscape() in PASSTHROUGH mode.
 //                 FPDF_PRINTMODE_EMF_IMAGE_MASKS to output EMF, with more
 //                 efficient processing of documents containing image masks.
+//                 FPDF_PRINTMODE_POSTSCRIPT3_TYPE42 to output level 3
+//                 PostScript with embedded Type 42 fonts, when applicable, into
+//                 EMF as a series of GDI comments.
+//                 FPDF_PRINTMODE_POSTSCRIPT3_TYPE42_PASSTHROUGH to output level
+//                 3 PostScript with embedded Type 42 fonts, when applicable,
+//                 via ExtEscape() in PASSTHROUGH mode.
 // Return value:
 //          True if successful, false if unsuccessful (typically invalid input).
 FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV FPDF_SetPrintMode(int mode);
@@ -353,6 +364,8 @@ FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV FPDF_SetPrintMode(int mode);
 //          Loaded document can be closed by FPDF_CloseDocument().
 //          If this function fails, you can use FPDF_GetLastError() to retrieve
 //          the reason why it failed.
+//
+//          The encoding for |file_path| is UTF-8.
 //
 //          The encoding for |password| can be either UTF-8 or Latin-1. PDFs,
 //          depending on the security handler revision, will only accept one or
@@ -588,7 +601,8 @@ FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV FPDF_GetFileVersion(FPDF_DOCUMENT doc,
 //          A 32-bit integer indicating error code as defined above.
 // Comments:
 //          If the previous SDK call succeeded, the return value of this
-//          function is not defined.
+//          function is not defined. This function only works in conjunction
+//          with APIs that mention FPDF_GetLastError() in their documentation.
 FPDF_EXPORT unsigned long FPDF_CALLCONV FPDF_GetLastError();
 
 // Experimental API.
@@ -897,6 +911,16 @@ FPDF_RenderPageBitmapWithMatrix(FPDF_BITMAP bitmap,
                                 int flags);
 
 #if defined(_SKIA_SUPPORT_)
+// Experimental API.
+// Function: FPDF_RenderPageSkp
+//          Render contents of a page to a Skia SkPictureRecorder.
+// Parameters:
+//          page        -   Handle to the page.
+//          size_x      -   Horizontal size (in pixels) for displaying the page.
+//          size_y      -   Vertical size (in pixels) for displaying the page.
+// Return value:
+//          The SkPictureRecorder that holds the rendering of the page, or NULL
+//          on failure. Caller takes ownership of the returned result.
 FPDF_EXPORT FPDF_RECORDER FPDF_CALLCONV FPDF_RenderPageSkp(FPDF_PAGE page,
                                                            int size_x,
                                                            int size_y);
@@ -1064,9 +1088,15 @@ FPDF_EXPORT FPDF_BITMAP FPDF_CALLCONV FPDFBitmap_Create(int width,
 //                          above.
 //          first_scan  -   A pointer to the first byte of the first line if
 //                          using an external buffer. If this parameter is NULL,
-//                          then the a new buffer will be created.
-//          stride      -   Number of bytes for each scan line, for external
-//                          buffer only.
+//                          then a new buffer will be created.
+//          stride      -   Number of bytes for each scan line. The value must
+//                          be 0 or greater. When the value is 0,
+//                          FPDFBitmap_CreateEx() will automatically calculate
+//                          the appropriate value using |width| and |format|.
+//                          When using an external buffer, it is recommended for
+//                          the caller to pass in the value.
+//                          When not using an external buffer, it is recommended
+//                          for the caller to pass in 0.
 // Return value:
 //          The bitmap handle, or NULL if parameter error or out of memory.
 // Comments:
@@ -1075,9 +1105,11 @@ FPDF_EXPORT FPDF_BITMAP FPDF_CALLCONV FPDFBitmap_Create(int width,
 //          function can be used in any place that a FPDF_BITMAP handle is
 //          required.
 //
-//          If an external buffer is used, then the application should destroy
-//          the buffer by itself. FPDFBitmap_Destroy function will not destroy
-//          the buffer.
+//          If an external buffer is used, then the caller should destroy the
+//          buffer. FPDFBitmap_Destroy() will not destroy the buffer.
+//
+//          It is recommended to use FPDFBitmap_GetStride() to get the stride
+//          value.
 FPDF_EXPORT FPDF_BITMAP FPDF_CALLCONV FPDFBitmap_CreateEx(int width,
                                                           int height,
                                                           int format,

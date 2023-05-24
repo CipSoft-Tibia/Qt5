@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 Klaralvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DRENDER_RENDER_RHI_RENDERCOMMAND_H
 #define QT3DRENDER_RENDER_RHI_RENDERCOMMAND_H
@@ -55,14 +19,16 @@
 #include <qglobal.h>
 #include <shaderparameterpack_p.h>
 #include <rhihandle_types_p.h>
-#include <renderviewjobutils_p.h>
+#include <Qt3DCore/private/vector_helper_p.h>
+#include <Qt3DRender/private/renderviewjobutils_p.h>
 #include <Qt3DRender/private/handle_types_p.h>
 #include <Qt3DRender/qgeometryrenderer.h>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLTexture>
 #include <QMatrix4x4>
-#include <QtGui/private/qrhi_p.h>
-#include <Qt3DRender/qattribute.h>
+#include <rhi/qrhi.h>
+#include <Qt3DCore/qattribute.h>
+#include <variant>
 
 QT_BEGIN_NAMESPACE
 class QRhiGraphicsPipeline;
@@ -79,6 +45,7 @@ namespace Rhi {
 
 class RHIShader;
 class RHIGraphicsPipeline;
+class RHIComputePipeline;
 
 struct CommandUBO
 {
@@ -89,20 +56,34 @@ struct CommandUBO
     float inverseModelViewMatrix[16];
     float mvp[16];
     float inverseModelViewProjectionMatrix[16];
+    float modelViewNormalMatrix[12];
 };
-static_assert(sizeof(CommandUBO) == 6 * (16 * sizeof(float)) + 1 * (12 * sizeof(float)),
+static_assert(sizeof(CommandUBO) == 6 * (16 * sizeof(float)) + 2 * (12 * sizeof(float)),
               "UBO doesn't match std140");
+
+struct Q_AUTOTEST_EXPORT AttributeInfo
+{
+    int nameId = -1;
+    QRhiVertexInputBinding::Classification classification = QRhiVertexInputBinding::PerVertex;
+    size_t stride = 0;
+    size_t offset = 0;
+    size_t divisor = 0;
+};
+
+Q_AUTOTEST_EXPORT bool operator==(const AttributeInfo &a, const AttributeInfo &b);
+Q_AUTOTEST_EXPORT bool operator!=(const AttributeInfo &a, const AttributeInfo &b);
 
 class Q_AUTOTEST_EXPORT RenderCommand
 {
 public:
     RenderCommand();
+    ~RenderCommand();
 
     bool isValid() const noexcept;
 
     HMaterial m_material; // Purely used to ease sorting (minimize stage changes, binding changes
                           // ....)
-    RHIShader *m_rhiShader; // GL Shader to be used at render time
+    RHIShader *m_rhiShader; // Shader to be used at render time
     Qt3DCore::QNodeId m_shaderId; // Shader for given pass and mesh
     ShaderParameterPack m_parameterPack; // Might need to be reworked so as to be able to destroy
                                          // the Texture while submission is happening.
@@ -117,7 +98,7 @@ public:
 
     // A QAttribute pack might be interesting
     // This is a temporary fix in the meantime, to remove the hacked methods in Technique
-    QVector<int> m_activeAttributes;
+    std::vector<int> m_activeAttributes;
 
     float m_depth;
     int m_changeCost;
@@ -137,20 +118,49 @@ public:
     int m_instanceCount;
     int m_indexOffset;
     uint m_indexAttributeByteOffset;
-    Qt3DRender::QAttribute::VertexBaseType m_indexAttributeDataType;
+    Qt3DCore::QAttribute::VertexBaseType m_indexAttributeDataType;
     uint m_indirectAttributeByteOffset;
     bool m_drawIndexed;
     bool m_drawIndirect;
     bool m_primitiveRestartEnabled;
     bool m_isValid;
 
+    std::vector<AttributeInfo> m_attributeInfo;
     QVarLengthArray<QRhiCommandBuffer::VertexInput, 8> vertex_input;
 
     const Attribute *indexAttribute {};
     QRhiBuffer *indexBuffer {};
 
     CommandUBO m_commandUBO;
-    RHIGraphicsPipeline *pipeline {};
+    QRhiShaderResourceBindings *shaderResourceBindings = nullptr;
+    std::vector<QRhiShaderResourceBinding> resourcesBindings;
+
+    struct Pipeline : std::variant<std::monostate, RHIGraphicsPipeline *, RHIComputePipeline*>
+    {
+        using variant::variant;
+
+        bool isValid() const noexcept;
+
+        RHIGraphicsPipeline* graphics() const noexcept
+        {
+            auto ptr = std::get_if<RHIGraphicsPipeline*>(this);
+            return ptr ? *ptr : nullptr;
+        }
+
+        RHIComputePipeline* compute() const noexcept
+        {
+            auto ptr = std::get_if<RHIComputePipeline*>(this);
+            return ptr ? *ptr : nullptr;
+        }
+
+        template<typename F>
+        auto visit(F&& f) const
+        {
+            return std::visit(f, (const variant&) *this);
+        }
+    };
+
+    Pipeline pipeline {};
 };
 
 Q_AUTOTEST_EXPORT bool operator==(const RenderCommand &a, const RenderCommand &b) noexcept;
@@ -159,46 +169,6 @@ inline bool operator!=(const RenderCommand &lhs, const RenderCommand &rhs) noexc
 {
     return !operator==(lhs, rhs);
 }
-
-struct EntityRenderCommandData
-{
-    QVector<Entity *> entities;
-    QVector<RenderCommand> commands;
-    QVector<RenderPassParameterData> passesData;
-
-    void reserve(int size)
-    {
-        entities.reserve(size);
-        commands.reserve(size);
-        passesData.reserve(size);
-    }
-
-    inline int size() const { return entities.size(); }
-
-    inline void push_back(Entity *e, const RenderCommand &c, const RenderPassParameterData &p)
-    {
-        entities.push_back(e);
-        commands.push_back(c);
-        passesData.push_back(p);
-    }
-
-    inline void push_back(Entity *e, RenderCommand &&c, RenderPassParameterData &&p)
-    {
-        entities.push_back(e);
-        commands.push_back(std::move(c));
-        passesData.push_back(std::move(p));
-    }
-
-    EntityRenderCommandData &operator+=(EntityRenderCommandData &&t)
-    {
-        entities += std::move(t.entities);
-        commands += std::move(t.commands);
-        passesData += std::move(t.passesData);
-        return *this;
-    }
-};
-
-using EntityRenderCommandDataPtr = QSharedPointer<EntityRenderCommandData>;
 
 } // namespace Rhi
 

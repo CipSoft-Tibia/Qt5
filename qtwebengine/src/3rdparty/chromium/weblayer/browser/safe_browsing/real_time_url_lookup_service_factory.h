@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,6 +33,12 @@ class RealTimeUrlLookupServiceFactory
   // Get the singleton instance.
   static RealTimeUrlLookupServiceFactory* GetInstance();
 
+  // TODO(crbug.com/1171215): Remove this once browsertests can enable this
+  // functionality via the production mechanism for doing so.
+  void set_access_token_fetches_enabled_for_testing() {
+    access_token_fetches_enabled_for_testing_ = true;
+  }
+
  private:
   friend struct base::DefaultSingletonTraits<RealTimeUrlLookupServiceFactory>;
 
@@ -46,6 +52,17 @@ class RealTimeUrlLookupServiceFactory
   // BrowserContextKeyedServiceFactory:
   KeyedService* BuildServiceInstanceFor(
       content::BrowserContext* context) const override;
+
+  // TODO(crbug.com/1171215): Remove this once browsertests can enable this
+  // functionality via the production mechanism for doing so.
+  bool access_token_fetches_enabled_for_testing(
+      bool user_has_enabled_enhanced_protection) const {
+    return access_token_fetches_enabled_for_testing_;
+  }
+
+  // TODO(crbug.com/1171215): Remove this once browsertests can enable this
+  // functionality via the production mechanism for doing so.
+  bool access_token_fetches_enabled_for_testing_ = false;
 };
 
 }  // namespace weblayer

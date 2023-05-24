@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,17 +11,17 @@
 #include <string>
 #include <vector>
 
-#include "base/callback.h"
 #include "base/containers/span.h"
 #include "base/files/file_path.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/optional.h"
 #include "base/sequence_checker.h"
-#include "base/sequenced_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/threading/sequence_bound.h"
 #include "base/trace_event/memory_allocator_dump_guid.h"
 #include "base/trace_event/memory_dump_provider.h"
+#include "base/types/pass_key.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/leveldatabase/env_chromium.h"
 #include "third_party/leveldatabase/src/include/leveldb/db.h"
 #include "third_party/leveldatabase/src/include/leveldb/env.h"
@@ -39,6 +39,9 @@ namespace storage {
 // all work on the DomStorageDatabase can be safely done via
 // |SequenceBound::PostTaskWithThisObject|.
 class DomStorageDatabase : private base::trace_event::MemoryDumpProvider {
+ private:
+  using PassKey = base::PassKey<DomStorageDatabase>;
+
  public:
   using Key = std::vector<uint8_t>;
   using KeyView = base::span<const uint8_t>;
@@ -64,6 +67,9 @@ class DomStorageDatabase : private base::trace_event::MemoryDumpProvider {
     Value value;
   };
 
+  DomStorageDatabase(const DomStorageDatabase&) = delete;
+  DomStorageDatabase& operator=(const DomStorageDatabase&) = delete;
+
   ~DomStorageDatabase() override;
 
   // Callback invoked asynchronously with the result of both |OpenDirectory()|
@@ -86,7 +92,7 @@ class DomStorageDatabase : private base::trace_event::MemoryDumpProvider {
       const base::FilePath& directory,
       const std::string& name,
       const leveldb_env::Options& options,
-      const base::Optional<base::trace_event::MemoryAllocatorDumpGuid>&
+      const absl::optional<base::trace_event::MemoryAllocatorDumpGuid>&
           memory_dump_id,
       scoped_refptr<base::SequencedTaskRunner> blocking_task_runner,
       OpenCallback callback);
@@ -98,7 +104,7 @@ class DomStorageDatabase : private base::trace_event::MemoryDumpProvider {
   // sequence once the operation completes.
   static void OpenInMemory(
       const std::string& name,
-      const base::Optional<base::trace_event::MemoryAllocatorDumpGuid>&
+      const absl::optional<base::trace_event::MemoryAllocatorDumpGuid>&
           memory_dump_id,
       scoped_refptr<base::SequencedTaskRunner> blocking_task_runner,
       OpenCallback callback);
@@ -152,9 +158,6 @@ class DomStorageDatabase : private base::trace_event::MemoryDumpProvider {
 
   void MakeAllCommitsFailForTesting() { fail_commits_for_testing_ = true; }
 
- private:
-  friend class base::SequenceBound<DomStorageDatabase>;
-
   // Constructs a new DomStorageDatabase, creating or opening persistent
   // on-filesystem database as specified. Asynchronously invokes |callback| on
   // |callback_task_runner| when done.
@@ -163,10 +166,11 @@ class DomStorageDatabase : private base::trace_event::MemoryDumpProvider {
   // to instead call one of the static methods defined below, which can be
   // called from any sequence.
   DomStorageDatabase(
+      PassKey,
       const base::FilePath& directory,
       const std::string& name,
       const leveldb_env::Options& options,
-      const base::Optional<base::trace_event::MemoryAllocatorDumpGuid>&
+      const absl::optional<base::trace_event::MemoryAllocatorDumpGuid>&
           memory_dump_id,
       scoped_refptr<base::SequencedTaskRunner> callback_task_runner,
       StatusCallback callback);
@@ -174,20 +178,29 @@ class DomStorageDatabase : private base::trace_event::MemoryDumpProvider {
   // Same as above, but for an in-memory database. |tracking_name| is used
   // internally for memory dump details.
   DomStorageDatabase(
+      PassKey,
       const std::string& tracking_name,
-      const base::Optional<base::trace_event::MemoryAllocatorDumpGuid>&
+      const absl::optional<base::trace_event::MemoryAllocatorDumpGuid>&
           memory_dump_id,
       scoped_refptr<base::SequencedTaskRunner> callback_task_runner,
       StatusCallback callback);
 
   DomStorageDatabase(
+      PassKey,
       const std::string& name,
       std::unique_ptr<leveldb::Env> env,
       const leveldb_env::Options& options,
-      const base::Optional<base::trace_event::MemoryAllocatorDumpGuid>
+      const absl::optional<base::trace_event::MemoryAllocatorDumpGuid>
           memory_dump_id_,
       scoped_refptr<base::SequencedTaskRunner> callback_task_runner,
       StatusCallback callback);
+
+ private:
+  template <typename... Args>
+  static void CreateSequenceBoundDomStorageDatabase(
+      scoped_refptr<base::SequencedTaskRunner> blocking_task_runner,
+      DomStorageDatabase::OpenCallback callback,
+      Args&&... args);
 
   // base::trace_event::MemoryDumpProvider implementation:
   bool OnMemoryDump(const base::trace_event::MemoryDumpArgs& args,
@@ -196,7 +209,7 @@ class DomStorageDatabase : private base::trace_event::MemoryDumpProvider {
   const std::string name_;
   const std::unique_ptr<leveldb::Env> env_;
   const leveldb_env::Options options_;
-  const base::Optional<base::trace_event::MemoryAllocatorDumpGuid>
+  const absl::optional<base::trace_event::MemoryAllocatorDumpGuid>
       memory_dump_id_;
   std::unique_ptr<leveldb::DB> db_;
 
@@ -208,8 +221,6 @@ class DomStorageDatabase : private base::trace_event::MemoryDumpProvider {
   base::OnceClosure destruction_callback_;
 
   SEQUENCE_CHECKER(sequence_checker_);
-
-  DISALLOW_COPY_AND_ASSIGN(DomStorageDatabase);
 };
 
 }  // namespace storage

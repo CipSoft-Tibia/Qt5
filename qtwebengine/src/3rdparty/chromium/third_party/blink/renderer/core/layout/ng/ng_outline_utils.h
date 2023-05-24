@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,19 +12,12 @@ namespace blink {
 
 class ComputedStyle;
 class Node;
-class NGPhysicalBoxFragment;
 
 class CORE_EXPORT NGOutlineUtils {
   STATIC_ONLY(NGOutlineUtils);
 
  public:
   static bool HasPaintedOutline(const ComputedStyle& style, const Node* node);
-
-  // Returns true if this fragment should paint an outline.
-  //
-  // Specifically a |LayoutInline| can be split across multiple flows. The
-  // first fragment produced should paint the outline for *all* fragments.
-  static bool ShouldPaintOutline(const NGPhysicalBoxFragment&);
 };
 
 }  // namespace blink

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,13 @@
 #include <memory>
 #include <string>
 
-#include "base/callback_forward.h"
 #include "base/callback_list.h"
-#include "base/strings/string16.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
+#include "base/timer/timer.h"
 #include "components/infobars/core/confirm_infobar_delegate.h"
+
+class GlobalConfirmInfoBar;
 
 namespace extensions {
 
@@ -19,12 +22,13 @@ namespace extensions {
 // browser (which has security consequences).
 class ExtensionDevToolsInfoBarDelegate : public ConfirmInfoBarDelegate {
  public:
+  static constexpr base::TimeDelta kAutoCloseDelay = base::Seconds(5);
   using CallbackList = base::OnceClosureList;
 
   // Ensures a global infobar corresponding to the supplied extension is
   // showing and registers |destroyed_callback| with it to be called back on
   // destruction.
-  static std::unique_ptr<CallbackList::Subscription> Create(
+  static base::CallbackListSubscription Create(
       const std::string& extension_id,
       const std::string& extension_name,
       base::OnceClosure destroyed_callback);
@@ -38,21 +42,29 @@ class ExtensionDevToolsInfoBarDelegate : public ConfirmInfoBarDelegate {
   // ConfirmInfoBarDelegate:
   infobars::InfoBarDelegate::InfoBarIdentifier GetIdentifier() const override;
   bool ShouldExpire(const NavigationDetails& details) const override;
-  base::string16 GetMessageText() const override;
+  std::u16string GetMessageText() const override;
   gfx::ElideBehavior GetMessageElideBehavior() const override;
   int GetButtons() const override;
+
+  // Autocloses the infobar_ after 5 seconds.
+  static void NotifyExtensionDetached(const std::string& extension_id);
 
  private:
   ExtensionDevToolsInfoBarDelegate(std::string extension_id,
                                    const std::string& extension_name);
 
   // Adds |destroyed_callback| to the list of callbacks to run on destruction.
-  std::unique_ptr<CallbackList::Subscription> RegisterDestroyedCallback(
+  base::CallbackListSubscription RegisterDestroyedCallback(
       base::OnceClosure destroyed_callback);
 
   const std::string extension_id_;
-  const base::string16 extension_name_;
+  const std::u16string extension_name_;
+  // infobar_ is set after attaching an extension and is deleted 5 seconds after
+  // detaching the extension. |infobar_| owns this object and is therefore
+  // guaranteed to outlive it.
+  raw_ptr<GlobalConfirmInfoBar> infobar_ = nullptr;
   CallbackList callback_list_;
+  base::OneShotTimer timer_;
 };
 
 }  // namespace extensions

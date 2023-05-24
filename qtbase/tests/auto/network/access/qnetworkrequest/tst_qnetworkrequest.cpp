@@ -1,36 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
+#include <QTest>
 
-#include <QtTest/QtTest>
-#include <QtCore/QUrl>
 #include <QtNetwork/QNetworkRequest>
 #include <QtNetwork/QNetworkCookie>
+
+#include <QtCore/QDateTime>
+#include <QtCore/QTimeZone>
+#include <QtCore/QUrl>
 
 Q_DECLARE_METATYPE(QNetworkRequest::KnownHeaders)
 
@@ -188,11 +166,11 @@ void tst_QNetworkRequest::rawHeaderList_data()
 
 void tst_QNetworkRequest::rawHeaderList()
 {
-    QFETCH(QList<QByteArray>, set);
+    QFETCH(const QList<QByteArray>, set);
     QFETCH(QList<QByteArray>, expected);
 
     QNetworkRequest request;
-    foreach (QByteArray header, set)
+    for (const QByteArray &header : set)
         request.setRawHeader(header, "a value");
 
     QList<QByteArray> got = request.rawHeaderList();
@@ -236,12 +214,30 @@ void tst_QNetworkRequest::setHeader_data()
                                         << QVariant(QDate(2007, 11, 01))
                                         << true << "Last-Modified"
                                         << "Thu, 01 Nov 2007 00:00:00 GMT";
-    QTest::newRow("Last-Modified-DateTime") << QNetworkRequest::LastModifiedHeader
-                                            << QVariant(QDateTime(QDate(2007, 11, 01),
-                                                                  QTime(18, 8, 30),
-                                                                  Qt::UTC))
-                                            << true << "Last-Modified"
-                                            << "Thu, 01 Nov 2007 18:08:30 GMT";
+    QTest::newRow("Last-Modified-DateTime-UTC")
+        << QNetworkRequest::LastModifiedHeader
+        << QVariant(QDateTime(QDate(2007, 11, 1), QTime(18, 8, 30), QTimeZone::UTC))
+        << true << "Last-Modified" << "Thu, 01 Nov 2007 18:08:30 GMT";
+    // QTBUG-80666: format dates correctly (as GMT) even if the date passed in isn't in UTC:
+    QTest::newRow("Last-Modified-DateTime-Local")
+        << QNetworkRequest::LastModifiedHeader
+        << QVariant(QDateTime(QDate(2007, 11, 1), QTime(18, 8, 30), QTimeZone::UTC).toLocalTime())
+        << true << "Last-Modified" << "Thu, 01 Nov 2007 18:08:30 GMT";
+    QTest::newRow("Last-Modified-DateTime-Offset")
+        << QNetworkRequest::LastModifiedHeader
+        << QVariant(QDateTime(QDate(2007, 11, 1), QTime(18, 8, 30),
+                              QTimeZone::UTC).toOffsetFromUtc(3600))
+        << true << "Last-Modified" << "Thu, 01 Nov 2007 18:08:30 GMT";
+#if QT_CONFIG(timezone)
+    QTimeZone cet("Europe/Oslo");
+    if (cet.isValid()) {
+        QTest::newRow("Last-Modified-DateTime-CET")
+            << QNetworkRequest::LastModifiedHeader
+            << QVariant(QDateTime(QDate(2007, 11, 1), QTime(18, 8, 30),
+                                  QTimeZone::UTC).toTimeZone(cet))
+            << true << "Last-Modified" << "Thu, 01 Nov 2007 18:08:30 GMT";
+    }
+#endif
 
     QTest::newRow("If-Modified-Since-Date") << QNetworkRequest::IfModifiedSinceHeader
                                         << QVariant(QDate(2017, 7, 01))
@@ -250,7 +246,7 @@ void tst_QNetworkRequest::setHeader_data()
     QTest::newRow("If-Modified-Since-DateTime") << QNetworkRequest::IfModifiedSinceHeader
                                             << QVariant(QDateTime(QDate(2017, 7, 01),
                                                                   QTime(3, 14, 15),
-                                                                  Qt::UTC))
+                                                                  QTimeZone::UTC))
                                             << true << "If-Modified-Since"
                                             << "Sat, 01 Jul 2017 03:14:15 GMT";
 
@@ -358,38 +354,38 @@ void tst_QNetworkRequest::rawHeaderParsing_data()
     QTest::newRow("Last-Modified-RFC1123") << QNetworkRequest::LastModifiedHeader
                                            << QVariant(QDateTime(QDate(1994, 11, 06),
                                                                  QTime(8, 49, 37),
-                                                                 Qt::UTC))
+                                                                 QTimeZone::UTC))
                                            << true << "Last-Modified"
                                            << "Sun, 06 Nov 1994 08:49:37 GMT";
     QTest::newRow("Last-Modified-RFC850") << QNetworkRequest::LastModifiedHeader
                                            << QVariant(QDateTime(QDate(1994, 11, 06),
                                                                  QTime(8, 49, 37),
-                                                                 Qt::UTC))
+                                                                 QTimeZone::UTC))
                                            << true << "Last-Modified"
                                            << "Sunday, 06-Nov-94 08:49:37 GMT";
     QTest::newRow("Last-Modified-asctime") << QNetworkRequest::LastModifiedHeader
                                            << QVariant(QDateTime(QDate(1994, 11, 06),
                                                                  QTime(8, 49, 37),
-                                                                 Qt::UTC))
+                                                                 QTimeZone::UTC))
                                            << true << "Last-Modified"
                                            << "Sun Nov  6 08:49:37 1994";
 
     QTest::newRow("If-Modified-Since-RFC1123") << QNetworkRequest::IfModifiedSinceHeader
                                            << QVariant(QDateTime(QDate(1994, 8, 06),
                                                                  QTime(8, 49, 37),
-                                                                 Qt::UTC))
+                                                                 QTimeZone::UTC))
                                            << true << "If-Modified-Since"
                                            << "Sun, 06 Aug 1994 08:49:37 GMT";
     QTest::newRow("If-Modified-Since-RFC850") << QNetworkRequest::IfModifiedSinceHeader
                                            << QVariant(QDateTime(QDate(1994, 8, 06),
                                                                  QTime(8, 49, 37),
-                                                                 Qt::UTC))
+                                                                 QTimeZone::UTC))
                                            << true << "If-Modified-Since"
                                            << "Sunday, 06-Aug-94 08:49:37 GMT";
     QTest::newRow("If-Modified-Since-asctime") << QNetworkRequest::IfModifiedSinceHeader
                                            << QVariant(QDateTime(QDate(1994, 8, 06),
                                                                  QTime(8, 49, 37),
-                                                                 Qt::UTC))
+                                                                 QTimeZone::UTC))
                                            << true << "If-Modified-Since"
                                            << "Sun Aug  6 08:49:37 1994";
 
@@ -498,7 +494,7 @@ void tst_QNetworkRequest::rawHeaderParsing()
     QCOMPARE(QString(request.rawHeader(rawHeader.toLatin1())), rawValue);
 
     QCOMPARE(request.header(cookedHeader).isNull(), !success);
-    if (cookedValue.type() != QVariant::UserType)
+    if (cookedValue.metaType().id() < QMetaType::User)
         QCOMPARE(request.header(cookedHeader), cookedValue);
     else if (cookedValue.userType() == qMetaTypeId<QList<QNetworkCookie> >())
         QCOMPARE(qvariant_cast<QList<QNetworkCookie> >(request.header(cookedHeader)),

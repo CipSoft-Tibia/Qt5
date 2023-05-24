@@ -2,27 +2,13 @@
 
 ## Prerequisites
 
-Get the Chromium depot\_tools via the
-[instructions](https://www.chromium.org/developers/how-tos/install-depot-tools).
-This provides the gclient utility needed below and many other tools needed for
-PDFium development.
+PDFium uses the same build tooling as Chromium. See the platform-specific
+Chromium build instructions to get started, but replace Chromium's
+"Get the code" instructions with [PDFium's](#get-the-code).
 
-Also install Python, Subversion, and Git and make sure they're in your path.
-
-
-### Windows development
-
-PDFium uses the same build tool as Chromium:
-
-#### Open source contributors
-Please refer to
-[Chromium's Visual Studio set up](https://chromium.googlesource.com/chromium/src/+/master/docs/windows_build_instructions.md#visual-studio)
-for requirements and instructions on build environment configuration.
-
-Run `set DEPOT_TOOLS_WIN_TOOLCHAIN=0`, or set that variable in your global
-environment.
-
-Compilation is done through Ninja, **not** Visual Studio.
+*   [Chromium Linux build instructions](https://chromium.googlesource.com/chromium/src/+/main/docs/linux/build_instructions.md)
+*   [Chromium Mac build instructions](https://chromium.googlesource.com/chromium/src/+/main/docs/mac_build_instructions.md)
+*   [Chromium Windows build instructions](https://chromium.googlesource.com/chromium/src/+/main/docs/windows_build_instructions.md)
 
 ### CPU Architectures supported
 
@@ -42,7 +28,7 @@ authentication instructions. **Note that you must authenticate with your
 @google.com credentials**. Enter "0" if asked for a project-id.
 
 Once you've done this, the toolchain will be installed automatically for
-you in the [Generate the build files](#GenBuild) step below.
+you in the [Generate the build files](#generate-the-build-files) step below.
 
 The toolchain will be in `depot_tools\win_toolchain\vs_files\<hash>`, and
 windbg can be found in
@@ -53,9 +39,10 @@ it separately, but this is optional and not needed for building PDFium.
 
 ## Get the code
 
-The name of the top-level directory does not matter. In our examples, we use
-"repo". This directory must not have been used before by `gclient config` as
-each directory can only house a single gclient configuration.
+The name of the top-level directory does not matter. In the following example,
+the directory name is "repo". This directory must not have been used before by
+`gclient config` as each directory can only house a single gclient
+configuration.
 
 ```
 mkdir repo
@@ -65,8 +52,8 @@ gclient sync
 cd pdfium
 ```
 
-Additional build dependencies need to be installed by running the following from
-the `pdfium` directory.
+On Linux, additional build dependencies need to be installed by running the
+following from the `pdfium` directory.
 
 ```
 ./build/install-build-deps.sh
@@ -74,7 +61,7 @@ the `pdfium` directory.
 
 ## Generate the build files
 
-We use GN to generate the build files and [Ninja](https://ninja-build.org/)
+PDFium uses GN to generate the build files and [Ninja](https://ninja-build.org/)
 to execute the build files.  Both of these are included with the
 depot\_tools checkout.
 
@@ -96,22 +83,17 @@ is_debug = true  # Enable debugging features.
 
 # Set true to enable experimental Skia backend.
 pdf_use_skia = false
-# Set true to enable experimental Skia backend (paths only).
-pdf_use_skia_paths = false
 
 pdf_enable_xfa = true  # Set false to remove XFA support (implies JS support).
 pdf_enable_v8 = true  # Set false to remove Javascript support.
 pdf_is_standalone = true  # Set for a non-embedded build.
 is_component_build = false # Disable component build (Though it should work)
-
-clang_use_chrome_plugins = false  # Currently must be false.
 ```
 
 For sample applications like `pdfium_test` to build, one must set
 `pdf_is_standalone = true`.
 
-By default, the entire project builds with C++14. When building with the
-experimental Skia backend, Skia itself it built with C++17.
+By default, the entire project builds with C++17.
 
 When complete the arguments will be stored in `<directory>/args.gn`, and
 GN will automatically use the new arguments to generate build files.
@@ -182,7 +164,7 @@ easier by replacing the byte offsets with certain keywords.
 This saves space and also allows an easy way to reduce the test case to the
 essentials as you can simply remove everything that is not necessary.
 
-A simple example can be found [here](https://pdfium.googlesource.com/pdfium/+/refs/heads/master/testing/resources/rectangles.in).
+A simple example can be found [here](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/testing/resources/rectangles.in).
 
 To transform this into a PDF, you can use the `fixup_pdf_template.py` tool:
 
@@ -200,7 +182,8 @@ make object identification easier.
 ## Embedding PDFium in your own projects
 
 The public/ directory contains header files for the APIs available for use by
-embedders of PDFium. We endeavor to keep these as stable as possible.
+embedders of PDFium. The PDFium project endeavors to keep these as stable as
+possible.
 
 Outside of the public/ directory, code may change at any time, and embedders
 should not directly call these routines.
@@ -232,9 +215,8 @@ Note, the Reviews and Bugs lists are typically read-only.
 
 ## Bugs
 
- We use this
-[bug tracker](https://bugs.chromium.org/p/pdfium/issues/list), but for security
-bugs, please use
+PDFium uses this [bug tracker](https://bugs.chromium.org/p/pdfium/issues/list),
+but for security bugs, please use
 [Chromium's security bug template](https://bugs.chromium.org/p/chromium/issues/entry?template=Security%20Bug)
 and add the "Cr-Internals-Plugins-PDF" label.
 

@@ -69,14 +69,16 @@ void av1_highbd_warp_affine_avx2(const int32_t *mat, const uint16_t *ref,
       // then convert back to the original coordinates (if necessary)
       const int32_t src_x = (p_col + j + 4) << subsampling_x;
       const int32_t src_y = (p_row + i + 4) << subsampling_y;
-      const int32_t dst_x = mat[2] * src_x + mat[3] * src_y + mat[0];
-      const int32_t dst_y = mat[4] * src_x + mat[5] * src_y + mat[1];
-      const int32_t x4 = dst_x >> subsampling_x;
-      const int32_t y4 = dst_y >> subsampling_y;
+      const int64_t dst_x =
+          (int64_t)mat[2] * src_x + (int64_t)mat[3] * src_y + (int64_t)mat[0];
+      const int64_t dst_y =
+          (int64_t)mat[4] * src_x + (int64_t)mat[5] * src_y + (int64_t)mat[1];
+      const int64_t x4 = dst_x >> subsampling_x;
+      const int64_t y4 = dst_y >> subsampling_y;
 
-      const int16_t ix4 = x4 >> WARPEDMODEL_PREC_BITS;
+      const int16_t ix4 = (int32_t)(x4 >> WARPEDMODEL_PREC_BITS);
       int32_t sx4 = x4 & ((1 << WARPEDMODEL_PREC_BITS) - 1);
-      const int16_t iy4 = y4 >> WARPEDMODEL_PREC_BITS;
+      const int16_t iy4 = (int32_t)(y4 >> WARPEDMODEL_PREC_BITS);
       int32_t sy4 = y4 & ((1 << WARPEDMODEL_PREC_BITS) - 1);
 
       sx4 += alpha * (-4) + beta * (-4) + (1 << (WARPEDDIFF_PREC_BITS - 1)) +
@@ -156,7 +158,7 @@ void av1_highbd_warp_affine_avx2(const int32_t *mat, const uint16_t *ref,
             iy = iy * stride;
 
             __m256i v_refl = _mm256_inserti128_si256(
-                _mm256_set1_epi16(0),
+                _mm256_setzero_si256(),
                 _mm_loadu_si128((__m128i *)&ref[iy + ix4 - 7]), 0);
             v_refl = _mm256_inserti128_si256(
                 v_refl, _mm_loadu_si128((__m128i *)&ref[iy + ix4 + 1]),
@@ -216,7 +218,7 @@ void av1_highbd_warp_affine_avx2(const int32_t *mat, const uint16_t *ref,
                 _mm_shuffle_epi32(v_01, 3));  // A7A6A7A6A7A6A7A6
 
             __m256i v_refl = _mm256_inserti128_si256(
-                _mm256_set1_epi16(0),
+                _mm256_setzero_si256(),
                 _mm_loadu_si128((__m128i *)&ref[iy + ix4 - 7]), 0);
             v_refl = _mm256_inserti128_si256(
                 v_refl, _mm_loadu_si128((__m128i *)&ref[iy + ix4 + 1]),
@@ -331,7 +333,7 @@ void av1_highbd_warp_affine_avx2(const int32_t *mat, const uint16_t *ref,
             iy = iy * stride;
 
             __m256i v_refl = _mm256_inserti128_si256(
-                _mm256_set1_epi16(0),
+                _mm256_setzero_si256(),
                 _mm_loadu_si128((__m128i *)&ref[iy + ix4 - 7]), 0);
             v_refl = _mm256_inserti128_si256(
                 v_refl, _mm_loadu_si128((__m128i *)&ref[iy + ix4 + 1]),
@@ -452,7 +454,7 @@ void av1_highbd_warp_affine_avx2(const int32_t *mat, const uint16_t *ref,
                 _mm256_unpackhi_epi64(v_c0123u, v_c4567u);  // H7H6 ... A7A6
 
             __m256i v_refl = _mm256_inserti128_si256(
-                _mm256_set1_epi16(0),
+                _mm256_setzero_si256(),
                 _mm_loadu_si128((__m128i *)&ref[iy + ix4 - 7]), 0);
             v_refl = _mm256_inserti128_si256(
                 v_refl, _mm_loadu_si128((__m128i *)&ref[iy + ix4 + 1]),

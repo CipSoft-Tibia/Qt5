@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,12 @@
 #include <memory>
 
 #include "build/build_config.h"
+#include "media/base/output_device_info.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_audio_device.h"
 #include "third_party/blink/public/platform/web_audio_latency_hint.h"
+#include "third_party/blink/public/platform/web_audio_sink_descriptor.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_audio_context_options.h"
 #include "third_party/blink/renderer/core/dom/document.h"
@@ -45,6 +47,11 @@ class MockWebAudioDeviceForAutoplayTest : public WebAudioDevice {
   void Resume() override {}
   double SampleRate() override { return sample_rate_; }
   int FramesPerBuffer() override { return frames_per_buffer_; }
+  int MaxChannelCount() override { return 2; }
+  media::OutputDeviceStatus CreateSinkAndGetDeviceStatus() override {
+    // In this test, we assume the sink creation always succeeds.
+    return media::OUTPUT_DEVICE_STATUS_OK;
+  }
 
  private:
   double sample_rate_;
@@ -54,11 +61,10 @@ class MockWebAudioDeviceForAutoplayTest : public WebAudioDevice {
 class AudioContextAutoplayTestPlatform : public TestingPlatformSupport {
  public:
   std::unique_ptr<WebAudioDevice> CreateAudioDevice(
-      unsigned number_of_input_channels,
-      unsigned number_of_channels,
+      const WebAudioSinkDescriptor& sink_descriptor,
+      unsigned number_of_output_channels,
       const WebAudioLatencyHint& latency_hint,
-      WebAudioDevice::RenderCallback*,
-      const WebString& device_id) override {
+      media::AudioRendererSink::RenderCallback*) override {
     return std::make_unique<MockWebAudioDeviceForAutoplayTest>(
         AudioHardwareSampleRate(), AudioHardwareBufferSize());
   }
@@ -67,7 +73,7 @@ class AudioContextAutoplayTestPlatform : public TestingPlatformSupport {
   size_t AudioHardwareBufferSize() override { return 128; }
 };
 
-}  // anonymous namespace
+}  // namespace
 
 class AudioContextAutoplayTest
     : public testing::TestWithParam<AutoplayPolicy::Type> {

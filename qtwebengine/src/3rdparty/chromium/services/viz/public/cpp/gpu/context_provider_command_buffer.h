@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,9 +11,12 @@
 #include <vector>
 
 #include "base/compiler_specific.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/shared_memory_mapper.h"
 #include "base/observer_list.h"
-#include "base/single_thread_task_runner.h"
 #include "base/synchronization/lock.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
 #include "base/trace_event/memory_dump_provider.h"
 #include "components/viz/common/gpu/context_provider.h"
@@ -78,9 +81,11 @@ class ContextProviderCommandBuffer
       bool support_grcontext,
       const gpu::SharedMemoryLimits& memory_limits,
       const gpu::ContextCreationAttribs& attributes,
-      command_buffer_metrics::ContextType type);
+      command_buffer_metrics::ContextType type,
+      base::SharedMemoryMapper* buffer_mapper = nullptr);
 
-  gpu::CommandBufferProxyImpl* GetCommandBufferProxy();
+  // Virtual for testing.
+  virtual gpu::CommandBufferProxyImpl* GetCommandBufferProxy();
   // Gives the GL internal format that should be used for calling CopyTexImage2D
   // on the default framebuffer.
   uint32_t GetCopyTextureInternalFormat();
@@ -88,7 +93,7 @@ class ContextProviderCommandBuffer
   // ContextProvider / RasterContextProvider implementation.
   void AddRef() const override;
   void Release() const override;
-  gpu::ContextResult BindToCurrentThread() override;
+  gpu::ContextResult BindToCurrentSequence() override;
   gpu::gles2::GLES2Interface* ContextGL() override;
   gpu::raster::RasterInterface* RasterInterface() override;
   gpu::ContextSupport* ContextSupport() override;
@@ -120,18 +125,18 @@ class ContextProviderCommandBuffer
   void OnLostContext();
 
  private:
-  void CheckValidThreadOrLockAcquired() const {
+  void CheckValidSequenceOrLockAcquired() const {
 #if DCHECK_IS_ON()
     if (support_locking_) {
       context_lock_.AssertAcquired();
     } else {
-      DCHECK(context_thread_checker_.CalledOnValidThread());
+      DCHECK(context_sequence_checker_.CalledOnValidSequence());
     }
 #endif
   }
 
   base::ThreadChecker main_thread_checker_;
-  base::ThreadChecker context_thread_checker_;
+  base::SequenceChecker context_sequence_checker_;
 
   bool bind_tried_ = false;
   gpu::ContextResult bind_result_;
@@ -148,25 +153,51 @@ class ContextProviderCommandBuffer
   const command_buffer_metrics::ContextType context_type_;
 
   scoped_refptr<gpu::GpuChannelHost> channel_;
-  gpu::GpuMemoryBufferManager* gpu_memory_buffer_manager_;
-  scoped_refptr<base::SingleThreadTaskRunner> default_task_runner_;
+  raw_ptr<gpu::GpuMemoryBufferManager, DanglingUntriaged>
+      gpu_memory_buffer_manager_;
+  scoped_refptr<base::SequencedTaskRunner> default_task_runner_;
 
   // |shared_image_interface_| must be torn down after |command_buffer_| to
   // ensure any dependent commands in the command stream are flushed before the
   // associated shared images are destroyed.
   std::unique_ptr<gpu::ClientSharedImageInterface> shared_image_interface_;
 
-  base::Lock context_lock_;  // Referenced by command_buffer_.
+  //////////////////////////////////////////////////////////////////////////////
+  // IMPORTANT NOTE: All of the objects in this block are part of a complex   //
+  // graph of raw pointers (holder or pointee of various raw_ptrs). They are  //
+  // defined in topological order: only later items point to earlier items.   //
+  // - When writing any member, always ensure its pointers to earlier members
+  //   are guaranteed to stay alive.
+  // - When clearing OR overwriting any member, always ensure objects that
+  //   point to it have already been cleared.
+  //     - The topological order of definitions guarantees that the
+  //       destructors will be called in the correct order (bottom to top).
+  //     - When overwriting multiple members, similarly do so in reverse order.
+  //
+  // Please note these comments are likely not to stay perfectly up-to-date.
+
+  base::Lock context_lock_;
+  // Points to the context_lock_ field of `this`.
   std::unique_ptr<gpu::CommandBufferProxyImpl> command_buffer_;
+
+  // Points to command_buffer_.
   std::unique_ptr<gpu::CommandBufferHelper> helper_;
+  // Points to helper_.
   std::unique_ptr<gpu::TransferBuffer> transfer_buffer_;
 
-  // Owned by either gles2_impl_ or raster_interface_, not both.
-  gpu::ImplementationBase* impl_;
+  // Points to transfer_buffer_, helper_, and command_buffer_.
   std::unique_ptr<gpu::gles2::GLES2Implementation> gles2_impl_;
+  // Points to gles2_impl_.
   std::unique_ptr<gpu::gles2::GLES2TraceImplementation> trace_impl_;
+  // Points to transfer_buffer_, helper_, and command_buffer_.
   std::unique_ptr<gpu::raster::RasterInterface> raster_interface_;
+  // Points to transfer_buffer_, helper_, and command_buffer_.
   std::unique_ptr<gpu::webgpu::WebGPUInterface> webgpu_interface_;
+  // This is an alias for gles2_impl_, raster_interface_, or webgpu_interface_.
+  raw_ptr<gpu::ImplementationBase> impl_ = nullptr;
+
+  // END IMPORTANT NOTE                                                       //
+  //////////////////////////////////////////////////////////////////////////////
 
   std::unique_ptr<skia_bindings::GrContextForGLES2Interface> gr_context_;
 #if BUILDFLAG(SKIA_USE_DAWN)
@@ -176,6 +207,12 @@ class ContextProviderCommandBuffer
   std::unique_ptr<ContextCacheController> cache_controller_;
 
   base::ObserverList<ContextLostObserver>::Unchecked observers_;
+
+  // Shared memory mapper used by command buffer proxies created from this
+  // provider when creating shared memory mappings.
+  // TODO(crbug.com/1321521) remove this member again once users of the command
+  // buffer proxy can specify the mapper for each mapping individually.
+  raw_ptr<base::SharedMemoryMapper> buffer_mapper_ = nullptr;
 };
 
 }  // namespace viz

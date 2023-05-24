@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,6 +18,7 @@
 #include "components/viz/service/hit_test/hit_test_manager.h"
 #include "components/viz/test/compositor_frame_helpers.h"
 #include "components/viz/test/test_latest_local_surface_id_lookup_delegate.h"
+#include "ui/gfx/geometry/test/fuzzer_util.h"
 
 namespace {
 
@@ -26,16 +27,6 @@ constexpr uint32_t kMaxDepthAllowed = 255;
 uint32_t GetNextUInt32NonZero(FuzzedDataProvider* fuzz) {
   return fuzz->ConsumeIntegralInRange<uint32_t>(
       1, std::numeric_limits<uint32_t>::max());
-}
-
-gfx::Transform GetNextTransform(FuzzedDataProvider* fuzz) {
-  gfx::Transform transform;
-  if (fuzz->ConsumeBool() && fuzz->remaining_bytes() >= sizeof(transform)) {
-    std::vector<uint8_t> matrix_bytes =
-        fuzz->ConsumeBytes<uint8_t>(sizeof(gfx::Transform));
-    memcpy(&transform, matrix_bytes.data(), matrix_bytes.size());
-  }
-  return transform;
 }
 
 void SubmitHitTestRegionList(
@@ -70,7 +61,7 @@ void AddHitTestRegion(FuzzedDataProvider* fuzz,
   hit_test_region.rect =
       gfx::Rect(fuzz->ConsumeIntegral<int>(), fuzz->ConsumeIntegral<int>(),
                 fuzz->ConsumeIntegral<int>(), fuzz->ConsumeIntegral<int>());
-  hit_test_region.transform = GetNextTransform(fuzz);
+  hit_test_region.transform = gfx::ConsumeTransform(*fuzz);
 
   if (fuzz->ConsumeBool() &&
       (hit_test_region.flags & viz::HitTestRegionFlags::kHitTestChildSurface)) {
@@ -109,7 +100,7 @@ void SubmitHitTestRegionList(
     return;
   }
 
-  base::Optional<viz::HitTestRegionList> hit_test_region_list;
+  absl::optional<viz::HitTestRegionList> hit_test_region_list;
   if (fuzz->ConsumeBool()) {
     hit_test_region_list.emplace();
     hit_test_region_list->flags = fuzz->ConsumeIntegral<uint32_t>();
@@ -121,7 +112,7 @@ void SubmitHitTestRegionList(
     hit_test_region_list->bounds =
         gfx::Rect(fuzz->ConsumeIntegral<int>(), fuzz->ConsumeIntegral<int>(),
                   fuzz->ConsumeIntegral<int>(), fuzz->ConsumeIntegral<int>());
-    hit_test_region_list->transform = GetNextTransform(fuzz);
+    hit_test_region_list->transform = gfx::ConsumeTransform(*fuzz);
 
     uint32_t child_count = fuzz->ConsumeIntegral<uint32_t>();
     AddHitTestRegion(fuzz, &hit_test_region_list->regions, child_count,
@@ -142,7 +133,8 @@ void SubmitHitTestRegionList(
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t num_bytes) {
   FuzzedDataProvider fuzz(data, num_bytes);
   viz::ServerSharedBitmapManager shared_bitmap_manager;
-  viz::FrameSinkManagerImpl frame_sink_manager(&shared_bitmap_manager);
+  viz::FrameSinkManagerImpl frame_sink_manager{
+      viz::FrameSinkManagerImpl::InitParams(&shared_bitmap_manager)};
   viz::TestLatestLocalSurfaceIdLookupDelegate delegate;
   viz::TestLatestLocalSurfaceIdLookupDelegate* lsi_delegate =
       fuzz.ConsumeBool() ? &delegate : nullptr;
@@ -167,12 +159,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t num_bytes) {
 
   viz::SurfaceId aggregate_surface_id = surface_id;
   if (fuzz.ConsumeBool() && fuzz.remaining_bytes() >= sizeof(viz::SurfaceId)) {
-    viz::FrameSinkId frame_sink_id(GetNextUInt32NonZero(&fuzz),
-                                   GetNextUInt32NonZero(&fuzz));
-    viz::LocalSurfaceId local_surface_id(GetNextUInt32NonZero(&fuzz),
-                                         GetNextUInt32NonZero(&fuzz),
-                                         base::UnguessableToken::Create());
-    aggregate_surface_id = viz::SurfaceId(frame_sink_id, local_surface_id);
+    aggregate_surface_id =
+        viz::SurfaceId(viz::FrameSinkId(GetNextUInt32NonZero(&fuzz),
+                                        GetNextUInt32NonZero(&fuzz)),
+                       viz::LocalSurfaceId(GetNextUInt32NonZero(&fuzz),
+                                           GetNextUInt32NonZero(&fuzz),
+                                           base::UnguessableToken::Create()));
   }
   aggregator.Aggregate(aggregate_surface_id);
   viz::Surface* surface = frame_sink_manager.surface_manager()->GetSurfaceForId(

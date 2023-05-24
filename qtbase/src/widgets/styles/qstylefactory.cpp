@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qstylefactory.h"
 #include "qstyleplugin.h"
@@ -50,8 +14,10 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
-    (QStyleFactoryInterface_iid, QLatin1String("/styles"), Qt::CaseInsensitive))
+    (QStyleFactoryInterface_iid, "/styles"_L1, Qt::CaseInsensitive))
 
 /*!
     \class QStyleFactory
@@ -69,7 +35,7 @@ Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
     The valid keys can be retrieved using the keys()
     function. Typically they include "windows" and "fusion".
     Depending on the platform, "windowsvista"
-    and "macintosh" may be available.
+    and "macos" may be available.
     Note that keys are case insensitive.
 
     \sa QStyle
@@ -91,20 +57,28 @@ QStyle *QStyleFactory::create(const QString& key)
     QStyle *ret = nullptr;
     QString style = key.toLower();
 #if QT_CONFIG(style_windows)
-    if (style == QLatin1String("windows"))
+    if (style == "windows"_L1)
         ret = new QWindowsStyle;
     else
 #endif
 #if QT_CONFIG(style_fusion)
-    if (style == QLatin1String("fusion"))
+    if (style == "fusion"_L1)
         ret = new QFusionStyle;
     else
+#endif
+#if defined(Q_OS_MACOS) && QT_DEPRECATED_SINCE(6, 0)
+    if (style == "macintosh"_L1) {
+        qWarning() << "The style key 'macintosh' is deprecated. Please use 'macos' instead.";
+        style = QStringLiteral("macos");
+    } else
 #endif
     { } // Keep these here - they make the #ifdefery above work
     if (!ret)
         ret = qLoadPlugin<QStyle, QStylePlugin>(loader(), style);
-    if(ret)
+    if (ret) {
         ret->setObjectName(style);
+        ret->setName(style);
+    }
     return ret;
 }
 
@@ -124,12 +98,12 @@ QStringList QStyleFactory::keys()
     for (PluginKeyMap::const_iterator it = keyMap.constBegin(); it != cend; ++it)
         list.append(it.value());
 #if QT_CONFIG(style_windows)
-    if (!list.contains(QLatin1String("Windows")))
-        list << QLatin1String("Windows");
+    if (!list.contains("Windows"_L1))
+        list << "Windows"_L1;
 #endif
 #if QT_CONFIG(style_fusion)
-    if (!list.contains(QLatin1String("Fusion")))
-        list << QLatin1String("Fusion");
+    if (!list.contains("Fusion"_L1))
+        list << "Fusion"_L1;
 #endif
     return list;
 }

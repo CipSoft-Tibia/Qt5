@@ -1,10 +1,5 @@
 # primary reviewers
-zqzhang@chromium.org
 tguilbert@chromium.org
 
 # backup reviewers
 mfoltz@chromium.org
-mlamouri@chromium.org
-
-# TEAM: media-dev@chromium.org
-# COMPONENT: Internals>Cast

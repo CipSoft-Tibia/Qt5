@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "base/files/file.h"
-#include "base/strings/string16.h"
 
 namespace service_manager {
 class LocalInterfaceProvider;
@@ -29,10 +28,10 @@ class SpellingEngine {
   virtual void Init(base::File bdict_file) = 0;
   virtual bool InitializeIfNeeded() = 0;
   virtual bool IsEnabled() = 0;
-  virtual bool CheckSpelling(const base::string16& word_to_check, int tag) = 0;
+  virtual bool CheckSpelling(const std::u16string& word_to_check, int tag) = 0;
   virtual void FillSuggestionList(
-      const base::string16& wrong_word,
-      std::vector<base::string16>* optional_suggestions) = 0;
+      const std::u16string& wrong_word,
+      std::vector<std::u16string>* optional_suggestions) = 0;
 };
 
 #endif  // COMPONENTS_SPELLCHECK_RENDERER_SPELLING_ENGINE_H_

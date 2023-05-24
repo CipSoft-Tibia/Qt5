@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <private/qqmldatablob_p.h>
 #include <private/qqmlglobal_p.h>
@@ -56,6 +20,8 @@
 
 DEFINE_BOOL_CONFIG_OPTION(dumpErrors, QML_DUMP_ERRORS);
 
+Q_DECLARE_LOGGING_CATEGORY(lcCycle)
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -73,16 +39,14 @@ The QQmlTypeLoader invokes callbacks on the QQmlDataBlob as data becomes availab
 
 This enum describes the status of the data blob.
 
-\list
-\li Null The blob has not yet been loaded by a QQmlTypeLoader
-\li Loading The blob is loading network data.  The QQmlDataBlob::setData() callback has not yet been
-    invoked or has not yet returned.
-\li WaitingForDependencies The blob is waiting for dependencies to be done before continuing.
-    This status only occurs after the QQmlDataBlob::setData() callback has been made, and when the
-    blob has outstanding dependencies.
-\li Complete The blob's data has been loaded and all dependencies are done.
-\li Error An error has been set on this blob.
-\endlist
+\value Null             The blob has not yet been loaded by a QQmlTypeLoader
+\value Loading          The blob is loading network data.  The QQmlDataBlob::setData() callback has
+                        not yet been invoked or has not yet returned.
+\value WaitingForDependencies The blob is waiting for dependencies to be done before continuing.
+                        This status only occurs after the QQmlDataBlob::setData() callback has been made,
+                        and when the blob has outstanding dependencies.
+\value Complete         The blob's data has been loaded and all dependencies are done.
+\value Error            An error has been set on this blob.
 */
 
 /*!
@@ -90,11 +54,9 @@ This enum describes the status of the data blob.
 
 This enum describes the type of the data blob.
 
-\list
-\li QmlFile This is a QQmlTypeData
-\li JavaScriptFile This is a QQmlScriptData
-\li QmldirFile This is a QQmlQmldirData
-\endlist
+\value QmlFile          This is a QQmlTypeData
+\value JavaScriptFile   This is a QQmlScriptData
+\value QmldirFile       This is a QQmlQmldirData
 */
 
 /*!
@@ -105,9 +67,8 @@ QQmlDataBlob::QQmlDataBlob(const QUrl &url, Type type, QQmlTypeLoader *manager)
   m_inCallback(false), m_isDone(false)
 {
     //Set here because we need to get the engine from the manager
-    if (m_typeLoader->engine() && m_typeLoader->engine()->urlInterceptor())
-        m_url = m_typeLoader->engine()->urlInterceptor()->intercept(m_url,
-                    (QQmlAbstractUrlInterceptor::DataType)m_type);
+    if (const QQmlEngine *qmlEngine = m_typeLoader->engine())
+        m_url = qmlEngine->interceptUrl(m_url, (QQmlAbstractUrlInterceptor::DataType)m_type);
 }
 
 /*!  \internal */
@@ -290,12 +251,23 @@ void QQmlDataBlob::setError(const QList<QQmlError> &errors)
     Q_ASSERT(status() != Error);
     Q_ASSERT(m_errors.isEmpty());
 
-    m_errors = errors; // Must be set before the m_data fence
+    // m_errors must be set before the m_data fence
+    m_errors.reserve(errors.size());
+    for (const QQmlError &error : errors) {
+        if (error.url().isEmpty()) {
+            QQmlError mutableError = error;
+            mutableError.setUrl(url());
+            m_errors.append(mutableError);
+        } else {
+            m_errors.append(error);
+        }
+    }
+
     m_data.setStatus(Error);
 
     if (dumpErrors()) {
         qWarning().nospace() << "Errors for " << urlString();
-        for (int ii = 0; ii < errors.count(); ++ii)
+        for (int ii = 0; ii < errors.size(); ++ii)
             qWarning().nospace() << "    " << qPrintable(errors.at(ii).toString());
     }
     cancelAllWaitingFor();
@@ -312,18 +284,6 @@ void QQmlDataBlob::setError(const QQmlJS::DiagnosticMessage &error)
     e.setDescription(error.message);
     e.setUrl(url());
     setError(e);
-}
-
-void QQmlDataBlob::setError(const QVector<QQmlError> &errors)
-{
-    QList<QQmlError> finalErrors;
-    finalErrors.reserve(errors.count());
-    for (const auto &error : errors) {
-        QQmlError e = error;
-        e.setUrl(url());
-        finalErrors << e;
-    }
-    setError(finalErrors);
 }
 
 void QQmlDataBlob::setError(const QString &description)
@@ -351,7 +311,7 @@ void QQmlDataBlob::addDependency(QQmlDataBlob *blob)
         status() == Error || status() == Complete || m_isDone)
         return;
 
-    for (const auto &existingDep: qAsConst(m_waitingFor))
+    for (const auto &existingDep: std::as_const(m_waitingFor))
         if (existingDep.data() == blob)
             return;
 
@@ -362,7 +322,8 @@ void QQmlDataBlob::addDependency(QQmlDataBlob *blob)
 
     // Check circular dependency
     if (m_waitingOnMe.indexOf(blob) >= 0) {
-        qWarning() << "Cyclic dependency detected between" << this->url().toString() << "and" << blob->url().toString();
+        qCWarning(lcCycle) << "Cyclic dependency detected between" << this->url().toString()
+                           << "and" << blob->url().toString();
         m_data.setStatus(Error);
     }
 }
@@ -541,7 +502,7 @@ void QQmlDataBlob::tryDone()
 
 void QQmlDataBlob::cancelAllWaitingFor()
 {
-    while (m_waitingFor.count()) {
+    while (m_waitingFor.size()) {
         QQmlRefPointer<QQmlDataBlob> blob = m_waitingFor.takeLast();
 
         Q_ASSERT(blob->m_waitingOnMe.contains(this));
@@ -552,7 +513,7 @@ void QQmlDataBlob::cancelAllWaitingFor()
 
 void QQmlDataBlob::notifyAllWaitingOnMe()
 {
-    while (m_waitingOnMe.count()) {
+    while (m_waitingOnMe.size()) {
         QQmlDataBlob *blob = m_waitingOnMe.takeLast();
 
         Q_ASSERT(std::any_of(blob->m_waitingFor.constBegin(), blob->m_waitingFor.constEnd(),
@@ -571,7 +532,7 @@ void QQmlDataBlob::notifyComplete(QQmlDataBlob *blob)
     m_inCallback = true;
 
     QQmlRefPointer<QQmlDataBlob> blobRef;
-    for (int i = 0; i < m_waitingFor.count(); ++i) {
+    for (int i = 0; i < m_waitingFor.size(); ++i) {
         if (m_waitingFor.at(i).data() == blob) {
             blobRef = m_waitingFor.takeAt(i);
             break;
@@ -614,7 +575,7 @@ QString QQmlDataBlob::SourceCodeData::readAll(QString *error) const
     }
 
     QByteArray data(fileSize, Qt::Uninitialized);
-    if (f.read(data.data(), data.length()) != data.length()) {
+    if (f.read(data.data(), data.size()) != data.size()) {
         *error = f.errorString();
         return QString();
     }

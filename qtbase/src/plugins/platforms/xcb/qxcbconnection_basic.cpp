@@ -1,49 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qxcbconnection_basic.h"
 #include "qxcbbackingstore.h" // for createSystemVShmSegment()
+#include "private/qoffsetstringarray_p.h"
 
 #include <xcb/randr.h>
 #include <xcb/shm.h>
 #include <xcb/sync.h>
 #include <xcb/xfixes.h>
-#include <xcb/xinerama.h>
 #include <xcb/render.h>
 #include <xcb/xinput.h>
 #define explicit dont_use_cxx_explicit
@@ -64,7 +28,7 @@ QT_BEGIN_NAMESPACE
 Q_LOGGING_CATEGORY(lcQpaXcb, "qt.qpa.xcb")
 
 #if QT_CONFIG(xcb_xlib)
-static const char * const xcbConnectionErrors[] = {
+static constexpr auto xcbConnectionErrors = qOffsetStringArray(
     "No error", /* Error 0 */
     "I/O error", /* XCB_CONN_ERROR */
     "Unsupported extension used", /* XCB_CONN_CLOSED_EXT_NOTSUPPORTED */
@@ -73,7 +37,7 @@ static const char * const xcbConnectionErrors[] = {
     "Failed to parse display string", /* XCB_CONN_CLOSED_PARSE_ERR */
     "No such screen on display", /* XCB_CONN_CLOSED_INVALID_SCREEN */
     "Error during FD passing" /* XCB_CONN_CLOSED_FDPASSING_FAILED */
-};
+);
 
 static int nullErrorHandler(Display *dpy, XErrorEvent *err)
 {
@@ -97,8 +61,7 @@ static int ioErrorHandler(Display *dpy)
         /* Print a message with a textual description of the error */
         int code = xcb_connection_has_error(conn);
         const char *str = "Unknown error";
-        int arrayLength = sizeof(xcbConnectionErrors) / sizeof(xcbConnectionErrors[0]);
-        if (code >= 0 && code < arrayLength)
+        if (code >= 0 && code < xcbConnectionErrors.count())
             str = xcbConnectionErrors[code];
 
         qWarning("The X11 connection broke: %s (code %d)", str, code);
@@ -145,8 +108,6 @@ QXcbBasicConnection::QXcbBasicConnection(const char *displayName)
         initializeShm();
     if (!qEnvironmentVariableIsSet("QT_XCB_NO_XRANDR"))
         initializeXRandr();
-    if (!m_hasXRandr)
-        initializeXinerama();
     initializeXFixes();
     initializeXRender();
     if (!qEnvironmentVariableIsSet("QT_XCB_NO_XI2"))
@@ -313,17 +274,6 @@ void QXcbBasicConnection::initializeXRender()
     m_xrenderVersion.second = xrenderQuery->minor_version;
 }
 
-void QXcbBasicConnection::initializeXinerama()
-{
-    const xcb_query_extension_reply_t *reply = xcb_get_extension_data(m_xcbConnection, &xcb_xinerama_id);
-    if (!reply || !reply->present)
-        return;
-
-    auto xineramaActive = Q_XCB_REPLY(xcb_xinerama_is_active, m_xcbConnection);
-    if (xineramaActive && xineramaActive->state)
-        m_hasXinerama = true;
-}
-
 void QXcbBasicConnection::initializeXFixes()
 {
     const xcb_query_extension_reply_t *reply = xcb_get_extension_data(m_xcbConnection, &xcb_xfixes_id);
@@ -353,11 +303,14 @@ void QXcbBasicConnection::initializeXRandr()
                                     XCB_RANDR_MINOR_VERSION);
     if (!xrandrQuery || (xrandrQuery->major_version < 1 ||
                         (xrandrQuery->major_version == 1 && xrandrQuery->minor_version < 2))) {
-        qCWarning(lcQpaXcb, "failed to initialize XRandr");
+        qCWarning(lcQpaXcb, "failed to initialize XRandr 1.2");
         return;
     }
 
     m_hasXRandr = true;
+
+    m_xrandr1Minor = xrandrQuery->minor_version;
+
     m_xrandrFirstEvent = reply->first_event;
 }
 
@@ -369,7 +322,9 @@ void QXcbBasicConnection::initializeXInput2()
         return;
     }
 
-    auto xinputQuery = Q_XCB_REPLY(xcb_input_xi_query_version, m_xcbConnection, 2, 2);
+    // depending on whether bundled xcb is used we may support different XCB protocol versions.
+    auto xinputQuery = Q_XCB_REPLY(xcb_input_xi_query_version, m_xcbConnection,
+                                   2, XCB_INPUT_MINOR_VERSION);
     if (!xinputQuery || xinputQuery->major_version != 2) {
         qCWarning(lcQpaXcb, "X server does not support XInput 2");
         return;
@@ -430,3 +385,5 @@ void QXcbBasicConnection::initializeXKB()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qxcbconnection_basic.cpp"

@@ -1,10 +1,11 @@
-// Copyright 2019 PDFium Authors. All rights reserved.
+// Copyright 2019 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "core/fxcrt/observed_ptr.h"
 
-#include "third_party/base/stl_util.h"
+#include "third_party/base/check.h"
+#include "third_party/base/containers/contains.h"
 
 namespace fxcrt {
 
@@ -15,12 +16,12 @@ Observable::~Observable() {
 }
 
 void Observable::AddObserver(ObserverIface* pObserver) {
-  ASSERT(!pdfium::Contains(m_Observers, pObserver));
+  DCHECK(!pdfium::Contains(m_Observers, pObserver));
   m_Observers.insert(pObserver);
 }
 
 void Observable::RemoveObserver(ObserverIface* pObserver) {
-  ASSERT(pdfium::Contains(m_Observers, pObserver));
+  DCHECK(pdfium::Contains(m_Observers, pObserver));
   m_Observers.erase(pObserver);
 }
 

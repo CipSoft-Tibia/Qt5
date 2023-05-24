@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,15 +6,20 @@
 
 #include <memory>
 
-#include "base/bind.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
 #include "base/memory/ref_counted_memory.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/strings/strcat.h"
+#include "base/strings/string_piece.h"
+#include "base/test/bind.h"
 #include "build/build_config.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/url_constants.h"
 #include "content/public/browser/url_data_source.h"
+#include "content/public/test/browser_task_environment.h"
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
+#include "services/network/test/test_shared_url_loader_factory.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace {
@@ -53,17 +58,23 @@ class TestDevToolsDataSource : public DevToolsDataSource {
       int load_flags,
       GotDataCallback callback) override {
     std::string result = "url: " + url.spec();
-    std::move(callback).Run(base::RefCountedString::TakeString(&result));
+    std::move(callback).Run(
+        base::MakeRefCounted<base::RefCountedString>(std::move(result)));
   }
 
   void StartFileRequest(const std::string& path,
                         GotDataCallback callback) override {
     std::string result = "file: " + path;
-    std::move(callback).Run(base::RefCountedString::TakeString(&result));
+    std::move(callback).Run(
+        base::MakeRefCounted<base::RefCountedString>(std::move(result)));
   }
 };
 
 class DevToolsUIDataSourceTest : public testing::Test {
+ public:
+  DevToolsUIDataSourceTest(const DevToolsUIDataSourceTest&) = delete;
+  DevToolsUIDataSourceTest& operator=(const DevToolsUIDataSourceTest&) = delete;
+
  protected:
   DevToolsUIDataSourceTest() {}
   ~DevToolsUIDataSourceTest() override = default;
@@ -98,17 +109,14 @@ class DevToolsUIDataSourceTest : public testing::Test {
   void OnDataReceived(scoped_refptr<base::RefCountedMemory> bytes) {
     data_received_ = true;
     if (bytes.get()) {
-      data_ = base::StringPiece(reinterpret_cast<const char*>(bytes->front()),
-                                bytes->size())
-                  .as_string();
+      data_ = std::string(base::StringPiece(
+          reinterpret_cast<const char*>(bytes->front()), bytes->size()));
     }
   }
 
   std::unique_ptr<TestDevToolsDataSource> devtools_data_source_;
   bool data_received_ = false;
   std::string data_;
-
-  DISALLOW_COPY_AND_ASSIGN(DevToolsUIDataSourceTest);
 };
 
 // devtools/bundled path.
@@ -130,7 +138,7 @@ TEST_F(DevToolsUIDataSourceTest, TestDevToolsBundledURLWithQueryParam) {
 }
 
 TEST_F(DevToolsUIDataSourceTest, TestDevToolsBundledFileURLWithSwitch) {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   const char* flag_value = "file://C:/tmp/";
 #else
   const char* flag_value = "file://tmp/";
@@ -190,6 +198,49 @@ TEST_F(DevToolsUIDataSourceTest, TestDevToolsBlankURLWithQueryParam) {
 }
 
 // devtools/remote path
+
+TEST_F(DevToolsUIDataSourceTest, TestDevToolsRemoteURLWithSwitch) {
+  const char* flag_value = "http://example.com/example/path/";
+  base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
+      switches::kCustomDevtoolsFrontend, flag_value);
+  const GURL path =
+      DevToolsUrl().Resolve(DevToolsRemotePath(kDevToolsUITestFrontEndUrl));
+  StartRequest(path.path());
+  EXPECT_TRUE(data_received());
+  EXPECT_EQ(data(), "url: http://example.com/example/path/devtools_app.html");
+}
+
+TEST_F(DevToolsUIDataSourceTest, TestDevToolsRemoteFileURLWithSwitch) {
+#if BUILDFLAG(IS_WIN)
+  const char* flag_value = "file://C:/tmp/";
+#else
+  const char* flag_value = "file://tmp/";
+#endif
+  base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
+      switches::kCustomDevtoolsFrontend, flag_value);
+  const GURL path =
+      DevToolsUrl().Resolve(DevToolsRemotePath(kDevToolsUITestFrontEndUrl));
+  StartRequest(path.path());
+  EXPECT_TRUE(data_received());
+  EXPECT_EQ(data(), "file: devtools_app.html");
+}
+
+TEST_F(DevToolsUIDataSourceTest,
+       TestDevToolsRemoteFileURLWithSwitchAndParameters) {
+#if BUILDFLAG(IS_WIN)
+  const char* flag_value = "file://C:/tmp/";
+#else
+  const char* flag_value = "file://tmp/";
+#endif
+  base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
+      switches::kCustomDevtoolsFrontend, flag_value);
+  const GURL path = DevToolsUrl().Resolve(
+      DevToolsRemotePath("/serve_rev/@76e4c1bb2ab4671b8beba3444e61c0f17584b2fc/"
+                         "devtools_app.html"));
+  StartRequest(path.path());
+  EXPECT_TRUE(data_received());
+  EXPECT_EQ(data(), "file: devtools_app.html");
+}
 
 TEST_F(DevToolsUIDataSourceTest, TestDevToolsRemoteURL) {
   const GURL path =
@@ -274,4 +325,37 @@ TEST_F(DevToolsUIDataSourceTest, TestDevToolsNoRouteWithSwitch) {
   EXPECT_TRUE(data_received());
   ASSERT_TRUE(base::StartsWith(data(), kDevToolsUITest404Response,
                                base::CompareCase::SENSITIVE));
+}
+
+class DevToolsUIDataSourceWithTaskEnvTest : public testing::Test {
+ public:
+  DevToolsUIDataSourceWithTaskEnvTest()
+      : task_environment_(content::BrowserTaskEnvironment::IO_MAINLOOP) {}
+
+ private:
+  content::BrowserTaskEnvironment task_environment_;
+};
+
+TEST_F(DevToolsUIDataSourceWithTaskEnvTest,
+       GotDataCallbackOwnsDevToolsDataSource) {
+  scoped_refptr<network::SharedURLLoaderFactory> factory =
+      base::MakeRefCounted<network::TestSharedURLLoaderFactory>();
+  DevToolsDataSource* data_source = new DevToolsDataSource(factory);
+
+  DevToolsDataSource::GotDataCallback callback = base::BindOnce(
+      [](DevToolsDataSource* data_source,
+         scoped_refptr<base::RefCountedMemory> payload) {
+        // Do nothing in the callback.
+      },
+      base::Owned(data_source));
+
+  // `callback` controls the life-time of the data_source now, so data_source is
+  // deleted after the callback is done running. This is similar to what
+  // WebUIURLLoaderFactory is doing.
+
+  const GURL path =
+      DevToolsUrl().Resolve(DevToolsRemotePath(kDevToolsUITestFrontEndUrl));
+  content::WebContents::Getter wc_getter;
+  data_source->StartDataRequest(path, std::move(wc_getter),
+                                std::move(callback));
 }

@@ -8,14 +8,13 @@
 : # If you're running this on Windows, be sure you've already run this (from your VC2019 install dir):
 : #     "C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvars64.bat"
 
-git clone --single-branch https://chromium.googlesource.com/codecs/libgav1
+# When updating the libgav1 version, make the same change to libgav1_android.sh.
+git clone -b v0.18.0 --depth 1 https://chromium.googlesource.com/codecs/libgav1
 
 cd libgav1
-git checkout 45a1d76
-git clone -b 20200225.2 --depth 1 https://github.com/abseil/abseil-cpp.git third_party/abseil-cpp
 mkdir build
 cd build
 
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DLIBGAV1_THREADPOOL_USE_STD_MUTEX=1 ..
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DLIBGAV1_THREADPOOL_USE_STD_MUTEX=1 -DLIBGAV1_ENABLE_EXAMPLES=0 -DLIBGAV1_ENABLE_TESTS=0 -DLIBGAV1_MAX_BITDEPTH=12 ..
 ninja
 cd ../..

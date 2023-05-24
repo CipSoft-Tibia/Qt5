@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the ActiveQt framework of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #ifndef QAXFACTORY_H
 #define QAXFACTORY_H
@@ -142,8 +95,7 @@ inline bool QAxFactory::stopServer()
     QT_BEGIN_NAMESPACE \
     QAxFactory *qax_instantiate()               \
     {                                                   \
-        IMPL *impl = new IMPL(QUuid(TYPELIB), QUuid(APPID));    \
-        return impl;                                    \
+        return new IMPL(QUuid(TYPELIB), QUuid(APPID));    \
     } \
     QT_END_NAMESPACE
 
@@ -152,18 +104,16 @@ inline bool QAxFactory::stopServer()
     class QAxDefaultFactory : public QAxFactory \
     { \
     public: \
-        QAxDefaultFactory(const QUuid &app, const QUuid &lib) \
+        explicit QAxDefaultFactory(const QUuid &app, const QUuid &lib) \
         : QAxFactory(app, lib), className(QLatin1String(#Class)) {} \
         QStringList featureList() const override \
         { \
-            QStringList list; \
-            list << className; \
-            return list; \
+            return {className}; \
         } \
         const QMetaObject *metaObject(const QString &key) const override \
         { \
             if (key == className) \
-            return &Class::staticMetaObject; \
+                return &Class::staticMetaObject; \
             return nullptr; \
         } \
         QObject *createObject(const QString &key) override \
@@ -200,12 +150,16 @@ template<class T>
 class QAxClass : public QAxFactory
 {
 public:
-    QAxClass(const QString &libId, const QString &appId)
+    explicit QAxClass(const QString &libId, const QString &appId)
     : QAxFactory(QUuid(libId), QUuid(appId))
     {}
 
     const QMetaObject *metaObject(const QString &) const override { return &T::staticMetaObject; }
-    QStringList featureList() const override { return QStringList(QLatin1String(T::staticMetaObject.className())); }
+    QStringList featureList() const override
+    {
+        return {QLatin1String(T::staticMetaObject.className())};
+    }
+
     QObject *createObject(const QString &key) override
     {
         const QMetaObject &mo = T::staticMetaObject;
@@ -260,13 +214,12 @@ private:
         { \
             QAxFactory *factory = nullptr; \
             QStringList keys; \
-            QStringList::Iterator it; \
 
 #define QAXCLASS(Class) \
             factory = new QAxClass<Class>(typeLibID().toString(), appID().toString()); \
             qRegisterMetaType<Class*>(#Class"*"); \
             keys = factory->featureList(); \
-            for (const QString &key : qAsConst(keys)) { \
+            for (const QString &key : std::as_const(keys)) { \
                 factoryKeys += key; \
                 factories.insert(key, factory); \
                 creatable.insert(key, true); \
@@ -276,7 +229,7 @@ private:
             factory = new QAxClass<Class>(typeLibID().toString(), appID().toString()); \
             qRegisterMetaType<Class*>(#Class"*"); \
             keys = factory->featureList(); \
-            for (const QString &key : qAsConst(keys)) { \
+            for (const QString &key : std::as_const(keys)) { \
                 factoryKeys += key; \
                 factories.insert(key, factory); \
                 creatable.insert(key, false); \
@@ -286,14 +239,15 @@ private:
         } \
         ~QAxFactoryList() override { qDeleteAll(factories); } \
         QStringList featureList() const override {  return factoryKeys; } \
-        const QMetaObject *metaObject(const QString&key) const override { \
-            QAxFactory *f = factories[key]; \
+        const QMetaObject *metaObject(const QString&key) const override \
+        { \
+            QAxFactory *f = factories.value(key); \
             return f ? f->metaObject(key) : nullptr; \
         } \
         QObject *createObject(const QString &key) override { \
             if (!creatable.value(key)) \
                 return nullptr; \
-            QAxFactory *f = factories[key]; \
+            QAxFactory *f = factories.value(key); \
             return f ? f->createObject(key) : nullptr; \
         } \
         QUuid classID(const QString &key) const override { \
@@ -309,12 +263,12 @@ private:
             return f ? f->eventsID(key) : QUuid(); \
         } \
         void registerClass(const QString &key, QSettings *s) const override { \
-            QAxFactory *f = factories.value(key); \
-            if (f) f->registerClass(key, s); \
+            if (QAxFactory *f = factories.value(key)) \
+                f->registerClass(key, s); \
         } \
         void unregisterClass(const QString &key, QSettings *s) const override { \
-            QAxFactory *f = factories.value(key); \
-            if (f) f->unregisterClass(key, s); \
+            if (QAxFactory *f = factories.value(key)) \
+                f->unregisterClass(key, s); \
         } \
         QString exposeToSuperClass(const QString &key) const override { \
             QAxFactory *f = factories.value(key); \
@@ -330,9 +284,8 @@ private:
         } \
     }; \
     QAxFactory *qax_instantiate()               \
-    {                                                   \
-        QAxFactoryList *impl = new QAxFactoryList();    \
-        return impl;                                    \
+    {                                           \
+        return new QAxFactoryList();            \
     } \
     QT_END_NAMESPACE
 

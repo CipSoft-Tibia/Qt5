@@ -9,10 +9,12 @@
 #include "include/core/SkCanvas.h"
 #include "include/core/SkClipOp.h"
 #include "include/core/SkColor.h"
+#include "include/core/SkColorFilter.h"
 #include "include/core/SkFont.h"
 #include "include/core/SkFontTypes.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPathBuilder.h"
+#include "include/core/SkRRect.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkScalar.h"
 #include "include/core/SkSize.h"
@@ -20,7 +22,6 @@
 #include "include/core/SkTypeface.h"
 #include "include/core/SkTypes.h"
 #include "include/effects/SkGradientShader.h"
-#include "src/core/SkClipOpPriv.h"
 #include "tools/Resources.h"
 #include "tools/ToolUtils.h"
 
@@ -89,8 +90,8 @@ protected:
             SkClipOp fOp;
             const char*      fName;
         } gOps[] = { //extra spaces in names for measureText
-            {kIntersect_SkClipOp,         "Isect "},
-            {kDifference_SkClipOp,        "Diff " },
+            {SkClipOp::kIntersect,         "Isect "},
+            {SkClipOp::kDifference,        "Diff " },
         };
 
         canvas->translate(20, 20);
@@ -117,7 +118,7 @@ protected:
 
         for (int invBits = 0; invBits < 4; ++invBits) {
             canvas->save();
-            for (size_t op = 0; op < SK_ARRAY_COUNT(gOps); ++op) {
+            for (size_t op = 0; op < std::size(gOps); ++op) {
                 this->drawHairlines(canvas, path, clipA, clipB);
 
                 bool doInvA = SkToBool(invBits & 1);
@@ -210,13 +211,13 @@ DEF_GM(return new ComplexClipGM(true, true, true);)
 
 DEF_SIMPLE_GM(clip_shader, canvas, 840, 650) {
     auto img = GetResourceAsImage("images/yellow_rose.png");
-    auto sh = img->makeShader();
+    auto sh = img->makeShader(SkSamplingOptions());
 
     SkRect r = SkRect::MakeIWH(img->width(), img->height());
     SkPaint p;
 
     canvas->translate(10, 10);
-    canvas->drawImage(img, 0, 0, nullptr);
+    canvas->drawImage(img, 0, 0);
 
     canvas->save();
     canvas->translate(img->width() + 10, 0);
@@ -237,8 +238,9 @@ DEF_SIMPLE_GM(clip_shader, canvas, 840, 650) {
     canvas->clipShader(sh, SkClipOp::kIntersect);
     canvas->save();
     SkMatrix lm = SkMatrix::Scale(1.0f/5, 1.0f/5);
-    canvas->clipShader(img->makeShader(SkTileMode::kRepeat, SkTileMode::kRepeat, &lm));
-    canvas->drawImage(img, 0, 0, nullptr);
+    canvas->clipShader(img->makeShader(SkTileMode::kRepeat, SkTileMode::kRepeat,
+                                       SkSamplingOptions(), lm));
+    canvas->drawImage(img, 0, 0);
 
     canvas->restore();
     canvas->restore();
@@ -246,7 +248,7 @@ DEF_SIMPLE_GM(clip_shader, canvas, 840, 650) {
 
 DEF_SIMPLE_GM(clip_shader_layer, canvas, 430, 320) {
     auto img = GetResourceAsImage("images/yellow_rose.png");
-    auto sh = img->makeShader();
+    auto sh = img->makeShader(SkSamplingOptions());
 
     SkRect r = SkRect::MakeIWH(img->width(), img->height());
 
@@ -392,7 +394,7 @@ DEF_SIMPLE_GM(clip_shader_persp, canvas, 1370, 1030) {
                                                         gradLM ? &persp : nullptr);
         bool imageLM = config.fLM == kImageWithLocalMat || config.fLM == kBothWithLocalMat;
         auto imgShader = img->makeShader(SkTileMode::kRepeat, SkTileMode::kRepeat,
-                                         imageLM ? perspScale : scale);
+                                         SkSamplingOptions(), imageLM ? perspScale : scale);
 
         // Perspective before any clipShader
         if (config.fConcat == kConcatBeforeClips) {
@@ -416,7 +418,7 @@ DEF_SIMPLE_GM(clip_shader_persp, canvas, 1370, 1030) {
         }
 
         // Actual draw and clip boundary are the same for all configs
-        canvas->clipRect(SkRect::MakeIWH(img->width(), img->height()));
+        canvas->clipIRect(img->bounds());
         canvas->clear(SK_ColorBLACK);
         canvas->drawImage(img, 0, 0);
 
@@ -428,7 +430,7 @@ DEF_SIMPLE_GM(clip_shader_persp, canvas, 1370, 1030) {
 
     canvas->translate(10.f, 10.f);
 
-    for (size_t i = 0; i < SK_ARRAY_COUNT(matches); ++i) {
+    for (size_t i = 0; i < std::size(matches); ++i) {
         canvas->save();
         canvas->translate(-grid.fLeft, -grid.fTop);
         drawConfig(matches[i][0]);
@@ -437,5 +439,67 @@ DEF_SIMPLE_GM(clip_shader_persp, canvas, 1370, 1030) {
         canvas->restore();
 
         canvas->translate(grid.width(), 0.f);
+    }
+}
+
+DEF_SIMPLE_GM(clip_shader_difference, canvas, 512, 512) {
+    auto image = GetResourceAsImage("images/yellow_rose.png");
+    canvas->clear(SK_ColorGRAY);
+
+    SkRect rect = SkRect::MakeWH(256, 256);
+    SkMatrix local = SkMatrix::RectToRect(SkRect::MakeWH(image->width(), image->height()),
+                                          SkRect::MakeWH(64, 64));
+    auto shader = image->makeShader(SkTileMode::kRepeat, SkTileMode::kRepeat,
+                                    SkSamplingOptions(), &local);
+
+    SkPaint paint;
+    paint.setColor(SK_ColorRED);
+    paint.setAntiAlias(true);
+
+    // TL: A rectangle
+    {
+        canvas->save();
+        canvas->translate(0, 0);
+        canvas->clipShader(shader, SkClipOp::kDifference);
+        canvas->drawRect(rect, paint);
+        canvas->restore();
+    }
+    // TR: A round rectangle
+    {
+        canvas->save();
+        canvas->translate(256, 0);
+        canvas->clipShader(shader, SkClipOp::kDifference);
+        canvas->drawRRect(SkRRect::MakeRectXY(rect, 64.f, 64.f), paint);
+        canvas->restore();
+    }
+    // BL: A path
+    {
+        canvas->save();
+        canvas->translate(0, 256);
+        canvas->clipShader(shader, SkClipOp::kDifference);
+
+        SkPath path;
+        path.moveTo(0.f, 128.f);
+        path.lineTo(128.f, 256.f);
+        path.lineTo(256.f, 128.f);
+        path.lineTo(128.f, 0.f);
+
+        SkScalar d = 64.f * SK_ScalarSqrt2;
+        path.moveTo(128.f - d, 128.f - d);
+        path.lineTo(128.f - d, 128.f + d);
+        path.lineTo(128.f + d, 128.f + d);
+        path.lineTo(128.f + d, 128.f - d);
+        canvas->drawPath(path, paint);
+        canvas->restore();
+    }
+    // BR: Text
+    {
+        canvas->save();
+        canvas->translate(256, 256);
+        canvas->clipShader(shader, SkClipOp::kDifference);
+        for (int y = 0; y < 4; ++y) {
+            canvas->drawString("Hello", 32.f, y * 64.f, SkFont(nullptr, 64.f), paint);
+        }
+        canvas->restore();
     }
 }

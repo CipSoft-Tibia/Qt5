@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QLOCALSOCKET_H
 #define QLOCALSOCKET_H
@@ -58,6 +22,8 @@ class Q_NETWORK_EXPORT QLocalSocket : public QIODevice
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QLocalSocket)
+    Q_PROPERTY(SocketOptions socketOptions READ socketOptions WRITE setSocketOptions
+               BINDABLE bindableSocketOptions)
 
 public:
     enum LocalSocketError
@@ -82,6 +48,13 @@ public:
         ConnectedState = QAbstractSocket::ConnectedState,
         ClosingState = QAbstractSocket::ClosingState
     };
+
+    enum SocketOption {
+        NoOptions = 0x00,
+        AbstractNamespaceOption = 0x01
+    };
+    Q_DECLARE_FLAGS(SocketOptions, SocketOption)
+    Q_FLAG(SocketOptions)
 
     QLocalSocket(QObject *parent = nullptr);
     ~QLocalSocket();
@@ -112,6 +85,10 @@ public:
                              OpenMode openMode = ReadWrite);
     qintptr socketDescriptor() const;
 
+    void setSocketOptions(SocketOptions option);
+    SocketOptions socketOptions() const;
+    QBindable<SocketOptions> bindableSocketOptions();
+
     LocalSocketState state() const;
     bool waitForBytesWritten(int msecs = 30000) override;
     bool waitForConnected(int msecs = 30000);
@@ -121,15 +98,13 @@ public:
 Q_SIGNALS:
     void connected();
     void disconnected();
-#if QT_DEPRECATED_SINCE(5,15)
-    QT_DEPRECATED_NETWORK_API_5_15_X("Use QLocalSocket::errorOccurred(QLocalSocket::LocalSocketError) instead")
-    void error(QLocalSocket::LocalSocketError socketError);
-#endif
     void errorOccurred(QLocalSocket::LocalSocketError socketError);
     void stateChanged(QLocalSocket::LocalSocketState socketState);
 
 protected:
     virtual qint64 readData(char*, qint64) override;
+    qint64 readLineData(char *data, qint64 maxSize) override;
+    qint64 skipData(qint64 maxSize) override;
     virtual qint64 writeData(const char*, qint64) override;
 
 private:
@@ -138,7 +113,6 @@ private:
     Q_PRIVATE_SLOT(d_func(), void _q_stateChanged(QAbstractSocket::SocketState))
     Q_PRIVATE_SLOT(d_func(), void _q_errorOccurred(QAbstractSocket::SocketError))
 #elif defined(Q_OS_WIN)
-    Q_PRIVATE_SLOT(d_func(), void _q_canWrite())
     Q_PRIVATE_SLOT(d_func(), void _q_pipeClosed())
     Q_PRIVATE_SLOT(d_func(), void _q_winError(ulong, const QString &))
 #else
@@ -153,6 +127,8 @@ private:
 Q_NETWORK_EXPORT QDebug operator<<(QDebug, QLocalSocket::LocalSocketError);
 Q_NETWORK_EXPORT QDebug operator<<(QDebug, QLocalSocket::LocalSocketState);
 #endif
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(QLocalSocket::SocketOptions)
 
 QT_END_NAMESPACE
 

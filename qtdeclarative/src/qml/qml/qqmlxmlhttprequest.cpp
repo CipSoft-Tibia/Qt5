@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlxmlhttprequest_p.h"
 
@@ -43,7 +7,6 @@
 #include "qqmlengine_p.h"
 #include <private/qqmlrefcount_p.h>
 #include "qqmlengine_p.h"
-#include "qqmlexpression_p.h"
 #include "qqmlglobal_p.h"
 #include <private/qv4domerrors_p.h>
 #include <private/qv4engine_p.h>
@@ -56,7 +19,7 @@
 #include <QtQml/qjsengine.h>
 #include <QtQml/qqmlfile.h>
 #include <QtNetwork/qnetworkreply.h>
-#include <QtCore/qtextcodec.h>
+#include <QtCore/qstringconverter.h>
 #include <QtCore/qxmlstream.h>
 #include <QtCore/qstack.h>
 #include <QtCore/qdebug.h>
@@ -153,11 +116,12 @@ public:
     QList<NodeImpl *> attributes;
 };
 
-class DocumentImpl : public QQmlRefCount, public NodeImpl
+class DocumentImpl : public QQmlRefCounted<DocumentImpl>, public NodeImpl
 {
+    using Base1 = QQmlRefCounted<DocumentImpl>;
 public:
     DocumentImpl() : root(nullptr) { type = Document; }
-    virtual ~DocumentImpl() {
+    ~DocumentImpl() override {
         delete root;
     }
 
@@ -167,8 +131,8 @@ public:
 
     NodeImpl *root;
 
-    void addref() { QQmlRefCount::addref(); }
-    void release() { QQmlRefCount::release(); }
+    void addref() { Base1::addref(); }
+    void release() { Base1::release(); }
 };
 
 namespace Heap {
@@ -540,7 +504,7 @@ ReturnedValue NodePrototype::method_get_previousSibling(const FunctionObject *b,
     if (!r->d()->d->parent)
         RETURN_RESULT(Encode::null());
 
-    for (int ii = 0; ii < r->d()->d->parent->children.count(); ++ii) {
+    for (int ii = 0; ii < r->d()->d->parent->children.size(); ++ii) {
         if (r->d()->d->parent->children.at(ii) == r->d()->d) {
             if (ii == 0)
                 return Encode::null();
@@ -562,9 +526,9 @@ ReturnedValue NodePrototype::method_get_nextSibling(const FunctionObject *b, con
     if (!r->d()->d->parent)
         RETURN_RESULT(Encode::null());
 
-    for (int ii = 0; ii < r->d()->d->parent->children.count(); ++ii) {
+    for (int ii = 0; ii < r->d()->d->parent->children.size(); ++ii) {
         if (r->d()->d->parent->children.at(ii) == r->d()->d) {
-            if ((ii + 1) == r->d()->d->parent->children.count())
+            if ((ii + 1) == r->d()->d->parent->children.size())
                 return Encode::null();
             else
                 return Node::create(scope.engine, r->d()->d->parent->children.at(ii + 1));
@@ -702,7 +666,7 @@ ReturnedValue CharacterData::method_length(const FunctionObject *b, const Value 
     if (!r)
         RETURN_UNDEFINED();
 
-    return Encode(r->d()->d->data.length());
+    return Encode(int(r->d()->d->data.size()));
 }
 
 ReturnedValue CharacterData::prototype(ExecutionEngine *v4)
@@ -728,7 +692,7 @@ ReturnedValue Text::method_isElementContentWhitespace(const FunctionObject *b, c
     if (!r)
         RETURN_UNDEFINED();
 
-    return Encode(QStringRef(&r->d()->d->data).trimmed().isEmpty());
+    return Encode(QStringView(r->d()->d->data).trimmed().isEmpty());
 }
 
 ReturnedValue Text::method_wholeText(const FunctionObject *b, const Value *thisObject, const Value *, int)
@@ -895,7 +859,7 @@ ReturnedValue NamedNodeMap::virtualGet(const Managed *m, PropertyKey id, const V
     if (id.isArrayIndex()) {
         uint index = id.asArrayIndex();
 
-        if ((int)index < r->d()->list().count()) {
+        if ((int)index < r->d()->list().size()) {
             if (hasProperty)
                 *hasProperty = true;
             return Node::create(v4, r->d()->list().at(index));
@@ -909,10 +873,10 @@ ReturnedValue NamedNodeMap::virtualGet(const Managed *m, PropertyKey id, const V
         return Object::virtualGet(m, id, receiver, hasProperty);
 
     if (id == v4->id_length()->propertyKey())
-        return Value::fromInt32(r->d()->list().count()).asReturnedValue();
+        return Value::fromInt32(r->d()->list().size()).asReturnedValue();
 
     QString str = id.toQString();
-    for (int ii = 0; ii < r->d()->list().count(); ++ii) {
+    for (int ii = 0; ii < r->d()->list().size(); ++ii) {
         if (r->d()->list().at(ii)->name == str) {
             if (hasProperty)
                 *hasProperty = true;
@@ -938,7 +902,7 @@ ReturnedValue NodeList::virtualGet(const Managed *m, PropertyKey id, const Value
 
     if (id.isArrayIndex()) {
         uint index = id.asArrayIndex();
-        if ((int)index < r->d()->d->children.count()) {
+        if ((int)index < r->d()->d->children.size()) {
             if (hasProperty)
                 *hasProperty = true;
             return Node::create(v4, r->d()->d->children.at(index));
@@ -949,7 +913,7 @@ ReturnedValue NodeList::virtualGet(const Managed *m, PropertyKey id, const Value
     }
 
     if (id == v4->id_length()->propertyKey())
-        return Value::fromInt32(r->d()->d->children.count()).asReturnedValue();
+        return Value::fromInt32(r->d()->d->children.size()).asReturnedValue();
     return Object::virtualGet(m, id, receiver, hasProperty);
 }
 
@@ -1006,9 +970,13 @@ public:
         AsynchronousLoad,
         SynchronousLoad
     };
-    enum State { Unsent = 0,
-                 Opened = 1, HeadersReceived = 2,
-                 Loading = 3, Done = 4 };
+    enum State {
+        Unsent = 0,
+        Opened = 1,
+        HeadersReceived = 2,
+        Loading = 3,
+        Done = 4
+    };
 
     QQmlXMLHttpRequest(QNetworkAccessManager *manager, QV4::ExecutionEngine *v4);
     virtual ~QQmlXMLHttpRequest();
@@ -1020,7 +988,8 @@ public:
     QString replyStatusText() const;
 
     ReturnedValue open(Object *thisObject, const QString &, const QUrl &, LoadType);
-    ReturnedValue send(Object *thisObject, QQmlContextData *context, const QByteArray &);
+    ReturnedValue send(Object *thisObject, const QQmlRefPointer<QQmlContextData> &context,
+                       const QByteArray &);
     ReturnedValue abort(Object *thisObject);
 
     void addHeader(const QString &, const QString &);
@@ -1030,9 +999,15 @@ public:
     QString responseBody();
     const QByteArray & rawResponseBody() const;
     bool receivedXml() const;
+    QUrl url() const;
 
     const QString & responseType() const;
     void setResponseType(const QString &);
+    void setOverrideMimeType(QStringView mimeType) { m_overrideMime = mimeType.toUtf8(); }
+    void setOverrideCharset(QStringView charset) { m_overrideCharset = charset.toUtf8(); }
+
+    const QByteArray mimeType() const;
+    const QByteArray charset() const;
 
     QV4::ReturnedValue jsonResponseBody(QV4::ExecutionEngine*);
     QV4::ReturnedValue xmlResponseBody(QV4::ExecutionEngine*);
@@ -1061,14 +1036,14 @@ private:
     bool m_gotXml;
     QByteArray m_mime;
     QByteArray m_charset;
-    QTextCodec *m_textCodec;
-#if QT_CONFIG(textcodec)
-    QTextCodec* findTextCodec() const;
-#endif
+    QByteArray m_overrideMime;
+    QByteArray m_overrideCharset;
+
+    QStringDecoder findTextDecoder() const;
     void readEncoding();
 
     PersistentValue m_thisObject;
-    QQmlContextDataRef m_qmlContext;
+    QQmlRefPointer<QQmlContextData> m_qmlContext;
     bool m_wasConstructedWithQmlContext = true;
 
     void dispatchCallbackNow(Object *thisObj);
@@ -1091,11 +1066,9 @@ private:
 
 QQmlXMLHttpRequest::QQmlXMLHttpRequest(QNetworkAccessManager *manager, QV4::ExecutionEngine *v4)
     : m_state(Unsent), m_errorFlag(false), m_sendFlag(false)
-    , m_redirectCount(0), m_gotXml(false), m_textCodec(nullptr), m_network(nullptr), m_nam(manager)
-    , m_responseType()
-    , m_parsedDocument()
+    , m_redirectCount(0), m_gotXml(false), m_network(nullptr), m_nam(manager)
 {
-    m_wasConstructedWithQmlContext = v4->callingQmlContext() != nullptr;
+    m_wasConstructedWithQmlContext = !v4->callingQmlContext().isNull();
 }
 
 QQmlXMLHttpRequest::~QQmlXMLHttpRequest()
@@ -1172,7 +1145,7 @@ QString QQmlXMLHttpRequest::headers() const
     QString ret;
 
     for (const HeaderPair &header : m_headersList) {
-        if (ret.length())
+        if (ret.size())
             ret.append(QLatin1String("\r\n"));
         ret += QString::fromUtf8(header.first) + QLatin1String(": ")
              + QString::fromUtf8(header.second);
@@ -1197,31 +1170,22 @@ void QQmlXMLHttpRequest::fillHeadersList()
 
 void QQmlXMLHttpRequest::requestFromUrl(const QUrl &url)
 {
+    m_url = url;
     QNetworkRequest request = m_request;
 
     if (QQmlFile::isLocalFile(url)) {
         if (m_method == QLatin1String("PUT"))
         {
             if (!xhrFileWrite()) {
-                if (qEnvironmentVariableIsSet("QML_XHR_ALLOW_FILE_WRITE")) {
-                    qWarning("XMLHttpRequest: Tried to use PUT on a local file despite being disabled.");
-                    return;
-                } else {
-                    qWarning("XMLHttpRequest: Using PUT on a local file is dangerous "
-                             "and will be disabled by default in a future Qt version."
-                             "Set QML_XHR_ALLOW_FILE_WRITE to 1 if you wish to continue using this feature.");
-                }
+                qWarning("XMLHttpRequest: Using PUT on a local file is disabled by default.\n"
+                         "Set QML_XHR_ALLOW_FILE_WRITE to 1 to enable this feature.");
+                return;
             }
         } else if (m_method == QLatin1String("GET")) {
             if (!xhrFileRead()) {
-                if (qEnvironmentVariableIsSet("QML_XHR_ALLOW_FILE_READ")) {
-                    qWarning("XMLHttpRequest: Tried to use GET on a local file despite being disabled.");
-                    return;
-                } else {
-                    qWarning("XMLHttpRequest: Using GET on a local file is dangerous "
-                             "and will be disabled by default in a future Qt version."
-                             "Set QML_XHR_ALLOW_FILE_READ to 1 if you wish to continue using this feature.");
-                }
+                qWarning("XMLHttpRequest: Using GET on a local file is disabled by default.\n"
+                         "Set QML_XHR_ALLOW_FILE_READ to 1 to enable this feature.");
+                return;
             }
         } else {
             qWarning("XMLHttpRequest: Unsupported method used on a local file");
@@ -1229,6 +1193,7 @@ void QQmlXMLHttpRequest::requestFromUrl(const QUrl &url)
         }
     }
 
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     request.setUrl(url);
     if(m_method == QLatin1String("POST") ||
        m_method == QLatin1String("PUT")) {
@@ -1245,7 +1210,7 @@ void QQmlXMLHttpRequest::requestFromUrl(const QUrl &url)
                 int n = 0;
                 int semiColon = str.indexOf(QLatin1Char(';'), charsetIdx);
                 if (semiColon == -1) {
-                    n = str.length() - charsetIdx;
+                    n = str.size() - charsetIdx;
                 } else {
                     n = semiColon - charsetIdx;
                 }
@@ -1307,7 +1272,8 @@ void QQmlXMLHttpRequest::requestFromUrl(const QUrl &url)
     }
 }
 
-ReturnedValue QQmlXMLHttpRequest::send(Object *thisObject, QQmlContextData *context, const QByteArray &data)
+ReturnedValue QQmlXMLHttpRequest::send(
+        Object *thisObject, const QQmlRefPointer<QQmlContextData> &context, const QByteArray &data)
 {
     m_errorFlag = false;
     m_sendFlag = true;
@@ -1353,7 +1319,7 @@ void QQmlXMLHttpRequest::readyRead()
     // ### We assume if this is called the headers are now available
     if (m_state < HeadersReceived) {
         m_state = HeadersReceived;
-        fillHeadersList ();
+        fillHeadersList();
         dispatchCallbackSafely();
     }
 
@@ -1472,13 +1438,13 @@ void QQmlXMLHttpRequest::finished()
     dispatchCallbackSafely();
 
     m_thisObject.clear();
-    m_qmlContext.setContextData(nullptr);
+    m_qmlContext.reset();
 }
 
 
 void QQmlXMLHttpRequest::readEncoding()
 {
-    for (const HeaderPair &header : qAsConst(m_headersList)) {
+    for (const HeaderPair &header : std::as_const(m_headersList)) {
         if (header.first == "content-type") {
             int separatorIdx = header.second.indexOf(';');
             if (separatorIdx == -1) {
@@ -1489,20 +1455,40 @@ void QQmlXMLHttpRequest::readEncoding()
                 if (charsetIdx != -1) {
                     charsetIdx += 8;
                     separatorIdx = header.second.indexOf(';', charsetIdx);
-                    m_charset = header.second.mid(charsetIdx, separatorIdx >= 0 ? separatorIdx : header.second.length());
+                    m_charset = header.second.mid(charsetIdx, separatorIdx >= 0 ? separatorIdx : header.second.size());
                 }
             }
             break;
         }
     }
 
-    if (m_mime.isEmpty() || m_mime == "text/xml" || m_mime == "application/xml" || m_mime.endsWith("+xml"))
+    const auto mime = mimeType();
+    if (mime.isEmpty() || mime == "text/xml" || mime == "application/xml" || mime.endsWith("+xml"))
         m_gotXml = true;
 }
 
 bool QQmlXMLHttpRequest::receivedXml() const
 {
     return m_gotXml;
+}
+
+QUrl QQmlXMLHttpRequest::url() const
+{
+    return m_url;
+}
+
+const QByteArray QQmlXMLHttpRequest::mimeType() const
+{
+    // Final MIME type is the override MIME type unless that is null in which
+    // case it is the response MIME type.
+    return m_overrideMime.isEmpty() ? m_mime : m_overrideMime;
+}
+
+const QByteArray QQmlXMLHttpRequest::charset() const
+{
+    // Final charset is the override charset unless that is null in which case
+    // it is the response charset.
+    return m_overrideCharset.isEmpty() ? m_charset : m_overrideCharset;
 }
 
 const QString & QQmlXMLHttpRequest::responseType() const
@@ -1522,7 +1508,7 @@ QV4::ReturnedValue QQmlXMLHttpRequest::jsonResponseBody(QV4::ExecutionEngine* en
 
         QJsonParseError error;
         const QString& jtext = responseBody();
-        JsonParser parser(scope.engine, jtext.constData(), jtext.length());
+        JsonParser parser(scope.engine, jtext.constData(), jtext.size());
         ScopedValue jsonObject(scope, parser.parse(&error));
         if (error.error != QJsonParseError::NoError)
             return engine->throwSyntaxError(QStringLiteral("JSON.parse: Parse error"));
@@ -1542,43 +1528,38 @@ QV4::ReturnedValue QQmlXMLHttpRequest::xmlResponseBody(QV4::ExecutionEngine* eng
     return m_parsedDocument.value();
 }
 
-#if QT_CONFIG(textcodec)
-QTextCodec* QQmlXMLHttpRequest::findTextCodec() const
+QStringDecoder QQmlXMLHttpRequest::findTextDecoder() const
 {
-    QTextCodec *codec = nullptr;
+    QStringDecoder decoder;
 
-    if (!m_charset.isEmpty())
-        codec = QTextCodec::codecForName(m_charset);
+    if (!charset().isEmpty())
+        decoder = QStringDecoder(charset());
 
-    if (!codec && m_gotXml) {
+    if (!decoder.isValid() && m_gotXml) {
         QXmlStreamReader reader(m_responseEntityBody);
         reader.readNext();
-        codec = QTextCodec::codecForName(reader.documentEncoding().toString().toUtf8());
+        decoder = QStringDecoder(reader.documentEncoding().toString().toUtf8());
     }
 
-    if (!codec && m_mime == "text/html")
-        codec = QTextCodec::codecForHtml(m_responseEntityBody, nullptr);
+    if (!decoder.isValid() && mimeType() == "text/html")
+        decoder = QStringDecoder::decoderForHtml(m_responseEntityBody);
 
-    if (!codec)
-        codec = QTextCodec::codecForUtfText(m_responseEntityBody, nullptr);
+    if (!decoder.isValid()) {
+        auto encoding = QStringConverter::encodingForData(m_responseEntityBody);
+        if (encoding)
+            decoder = QStringDecoder(*encoding);
+    }
 
-    if (!codec)
-        codec = QTextCodec::codecForName("UTF-8");
-    return codec;
+    if (!decoder.isValid())
+        decoder = QStringDecoder(QStringDecoder::Utf8);
+
+    return decoder;
 }
-#endif
-
 
 QString QQmlXMLHttpRequest::responseBody()
 {
-#if QT_CONFIG(textcodec)
-    if (!m_textCodec)
-        m_textCodec = findTextCodec();
-    if (m_textCodec)
-        return m_textCodec->toUnicode(m_responseEntityBody);
-#endif
-
-    return QString::fromUtf8(m_responseEntityBody);
+    QStringDecoder toUtf16 = findTextDecoder();
+    return toUtf16(m_responseEntityBody);
 }
 
 const QByteArray &QQmlXMLHttpRequest::rawResponseBody() const
@@ -1603,10 +1584,10 @@ void QQmlXMLHttpRequest::dispatchCallbackNow(Object *thisObj, bool done, bool er
         if (!callback)
             return;
 
-        QV4::JSCallData jsCallData(scope);
+        QV4::JSCallArguments jsCallData(scope);
         callback->call(jsCallData);
 
-        if (scope.engine->hasException) {
+        if (scope.hasException()) {
             QQmlError error = scope.engine->catchExceptionAsQmlError();
             QQmlEnginePrivate *qmlEnginePrivate = scope.engine->qmlEngine() ? QQmlEnginePrivate::get(scope.engine->qmlEngine()) : nullptr;
             QQmlEnginePrivate::warning(qmlEnginePrivate, error);
@@ -1625,12 +1606,13 @@ void QQmlXMLHttpRequest::dispatchCallbackNow(Object *thisObj, bool done, bool er
 
 void QQmlXMLHttpRequest::dispatchCallbackSafely()
 {
-    if (m_wasConstructedWithQmlContext && !m_qmlContext.contextData())
+    if (m_wasConstructedWithQmlContext && m_qmlContext.isNull()) {
         // if the calling context object is no longer valid, then it has been
         // deleted explicitly (e.g., by a Loader deleting the itemContext when
         // the source is changed).  We do nothing in this case, as the evaluation
         // cannot succeed.
         return;
+    }
 
     dispatchCallbackNow(m_thisObject.as<Object>());
 }
@@ -1664,7 +1646,7 @@ struct QQmlXMLHttpRequestWrapper : Object {
     Member(class, Pointer, Object *, proto)
 
 DECLARE_HEAP_OBJECT(QQmlXMLHttpRequestCtor, FunctionObject) {
-    DECLARE_MARKOBJECTS(QQmlXMLHttpRequestCtor);
+    DECLARE_MARKOBJECTS(QQmlXMLHttpRequestCtor)
     void init(ExecutionEngine *engine);
 };
 
@@ -1676,6 +1658,7 @@ struct QQmlXMLHttpRequestWrapper : public Object
     V4_NEEDS_DESTROY
 };
 
+// https://xhr.spec.whatwg.org/
 struct QQmlXMLHttpRequestCtor : public FunctionObject
 {
     V4_OBJECT2(QQmlXMLHttpRequestCtor, FunctionObject)
@@ -1704,6 +1687,7 @@ struct QQmlXMLHttpRequestCtor : public FunctionObject
     static ReturnedValue method_abort(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc);
     static ReturnedValue method_getResponseHeader(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc);
     static ReturnedValue method_getAllResponseHeaders(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc);
+    static ReturnedValue method_overrideMimeType(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc);
 
     static ReturnedValue method_get_readyState(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc);
     static ReturnedValue method_get_status(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc);
@@ -1713,6 +1697,7 @@ struct QQmlXMLHttpRequestCtor : public FunctionObject
     static ReturnedValue method_get_response(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc);
     static ReturnedValue method_get_responseType(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc);
     static ReturnedValue method_set_responseType(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc);
+    static ReturnedValue method_get_responseURL(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc);
 };
 
 }
@@ -1725,11 +1710,12 @@ void Heap::QQmlXMLHttpRequestCtor::init(ExecutionEngine *engine)
     Scope scope(engine);
     Scoped<QV4::QQmlXMLHttpRequestCtor> ctor(scope, this);
 
-    ctor->defineReadonlyProperty(QStringLiteral("UNSENT"), Value::fromInt32(0));
-    ctor->defineReadonlyProperty(QStringLiteral("OPENED"), Value::fromInt32(1));
-    ctor->defineReadonlyProperty(QStringLiteral("HEADERS_RECEIVED"), Value::fromInt32(2));
-    ctor->defineReadonlyProperty(QStringLiteral("LOADING"), Value::fromInt32(3));
-    ctor->defineReadonlyProperty(QStringLiteral("DONE"), Value::fromInt32(4));
+    ctor->defineReadonlyProperty(QStringLiteral("UNSENT"),           Value::fromInt32(QQmlXMLHttpRequest::Unsent));
+    ctor->defineReadonlyProperty(QStringLiteral("OPENED"),           Value::fromInt32(QQmlXMLHttpRequest::Opened));
+    ctor->defineReadonlyProperty(QStringLiteral("HEADERS_RECEIVED"), Value::fromInt32(QQmlXMLHttpRequest::HeadersReceived));
+    ctor->defineReadonlyProperty(QStringLiteral("LOADING"),          Value::fromInt32(QQmlXMLHttpRequest::Loading));
+    ctor->defineReadonlyProperty(QStringLiteral("DONE"),             Value::fromInt32(QQmlXMLHttpRequest::Done));
+
     if (!ctor->d()->proto)
         ctor->setupProto();
     ScopedString s(scope, engine->id_prototype());
@@ -1752,6 +1738,7 @@ void QQmlXMLHttpRequestCtor::setupProto()
     p->defineDefaultProperty(QStringLiteral("abort"), method_abort);
     p->defineDefaultProperty(QStringLiteral("getResponseHeader"), method_getResponseHeader);
     p->defineDefaultProperty(QStringLiteral("getAllResponseHeaders"), method_getAllResponseHeaders);
+    p->defineDefaultProperty(QStringLiteral("overrideMimeType"), method_overrideMimeType);
 
     // Read-only properties
     p->defineAccessorProperty(QStringLiteral("readyState"), method_get_readyState, nullptr);
@@ -1760,6 +1747,7 @@ void QQmlXMLHttpRequestCtor::setupProto()
     p->defineAccessorProperty(QStringLiteral("responseText"),method_get_responseText, nullptr);
     p->defineAccessorProperty(QStringLiteral("responseXML"),method_get_responseXML, nullptr);
     p->defineAccessorProperty(QStringLiteral("response"),method_get_response, nullptr);
+    p->defineAccessorProperty(QStringLiteral("responseURL"),method_get_responseURL, nullptr);
 
     // Read-write properties
     p->defineAccessorProperty(QStringLiteral("responseType"), method_get_responseType, method_set_responseType);
@@ -1801,8 +1789,7 @@ ReturnedValue QQmlXMLHttpRequestCtor::method_open(const FunctionObject *b, const
     QUrl url = QUrl(argv[1].toQStringNoThrow());
 
     if (url.isRelative()) {
-        QQmlContextData *qmlContextData = scope.engine->callingQmlContext();
-        if (qmlContextData)
+        if (QQmlRefPointer<QQmlContextData> qmlContextData = scope.engine->callingQmlContext())
             url = qmlContextData->resolvedUrl(url);
         else
             url = scope.engine->resolvedUrl(url.url());
@@ -1867,7 +1854,6 @@ ReturnedValue QQmlXMLHttpRequestCtor::method_setRequestHeader(const FunctionObje
         nameUpper == QLatin1String("TRAILER") ||
         nameUpper == QLatin1String("TRANSFER-ENCODING") ||
         nameUpper == QLatin1String("UPGRADE") ||
-        nameUpper == QLatin1String("USER-AGENT") ||
         nameUpper == QLatin1String("VIA") ||
         nameUpper.startsWith(QLatin1String("PROXY-")) ||
         nameUpper.startsWith(QLatin1String("SEC-")))
@@ -2083,6 +2069,71 @@ ReturnedValue QQmlXMLHttpRequestCtor::method_set_responseType(const FunctionObje
 
     // Argument 0 - response type
     r->setResponseType(argv[0].toQStringNoThrow());
+
+    return Encode::undefined();
+}
+
+ReturnedValue QQmlXMLHttpRequestCtor::method_get_responseURL(const FunctionObject *b, const Value *thisObject, const Value *, int)
+{
+    Scope scope(b);
+    Scoped<QQmlXMLHttpRequestWrapper> w(scope, thisObject->as<QQmlXMLHttpRequestWrapper>());
+    if (!w)
+        V4THROW_REFERENCE("Not an XMLHttpRequest object");
+    QQmlXMLHttpRequest *r = w->d()->request;
+
+    if (r->readyState() != QQmlXMLHttpRequest::Loading &&
+        r->readyState() != QQmlXMLHttpRequest::Done) {
+        return Encode(scope.engine->newString(QString()));
+    } else {
+        QUrl url = r->url();
+        url.setFragment(QString());
+        return Encode(scope.engine->newString(url.toString()));
+    }
+}
+
+ReturnedValue QQmlXMLHttpRequestCtor::method_overrideMimeType(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc)
+{
+    Scope scope(b);
+    Scoped<QQmlXMLHttpRequestWrapper> w(scope, thisObject->as<QQmlXMLHttpRequestWrapper>());
+    if (!w)
+        V4THROW_REFERENCE("Not an XMLHttpRequest object");
+    QQmlXMLHttpRequest *r = w->d()->request;
+
+    if (argc != 1)
+        THROW_DOM(DOMEXCEPTION_SYNTAX_ERR, "Incorrect argument count");
+
+    // If state is loading or done, throw an InvalidStateError exception.
+    if (r->readyState() == QQmlXMLHttpRequest::Loading ||
+        r->readyState() == QQmlXMLHttpRequest::Done)
+        THROW_DOM(DOMEXCEPTION_INVALID_STATE_ERR, "Invalid state");
+
+    // Set override MIME type to `application/octet-stream`.
+    r->setOverrideMimeType(QStringLiteral("application/octet-stream"));
+    const auto parts = argv[0].toQStringNoThrow().split(QLatin1Char(';'));
+    const auto type = parts.at(0).trimmed();
+
+    const auto mimeInvalidCharacter = [](QChar uni) {
+        if (uni.unicode() > 127) // Only accept ASCII
+            return true;
+        const char ch = char(uni.unicode());
+        return !(ch == '-' || ch == '/' || isAsciiLetterOrNumber(ch));
+    };
+
+    // If mime is a parsable MIME type, ...
+    if (type.count(QLatin1Char('/')) == 1
+        && std::find_if(type.begin(), type.end(), mimeInvalidCharacter) == type.end()) {
+        // ... then set override MIME type to its MIME type portion.
+        r->setOverrideMimeType(type);
+    }
+    for (const auto &part : parts) {
+        const QLatin1String charset("charset=");
+        // If override MIME type has a `charset` parameter, ...
+        if (part.trimmed().startsWith(charset)) {
+            // ... then set override charset to its value.
+            const int offset(part.indexOf(charset) + charset.size());
+            r->setOverrideCharset(part.sliced(offset).trimmed());
+        }
+    }
 
     return Encode::undefined();
 }

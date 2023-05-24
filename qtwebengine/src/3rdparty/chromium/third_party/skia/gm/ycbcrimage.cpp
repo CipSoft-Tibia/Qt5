@@ -11,6 +11,7 @@
 #ifdef SK_VULKAN
 
 #include "include/core/SkCanvas.h"
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkSize.h"
@@ -26,7 +27,7 @@ static void release_ycbcrhelper(void* releaseContext) {
 namespace skiagm {
 
 // This GM exercises the native YCbCr image format on Vulkan
-class YCbCrImageGM : public GpuGM {
+class YCbCrImageGM : public GM {
 public:
     YCbCrImageGM() {
         this->setBGColor(0xFFCCCCCC);
@@ -60,26 +61,27 @@ protected:
                                                kTopLeft_GrSurfaceOrigin, kRGB_888x_SkColorType,
                                                kPremul_SkAlphaType, nullptr,
                                                release_ycbcrhelper, ycbcrHelper.get());
+        ycbcrHelper.release();
         if (!fYCbCrImage) {
             *errorMsg = "Failed to create I420 image.";
             return DrawResult::kFail;
         }
 
-        ycbcrHelper.release();
         return DrawResult::kOk;
     }
 
-    DrawResult onGpuSetup(GrDirectContext* context, SkString* errorMsg) override {
-        if (!context || context->abandoned()) {
+    DrawResult onGpuSetup(SkCanvas* canvas, SkString* errorMsg) override {
+        GrDirectContext* dContext = GrAsDirectContext(canvas->recordingContext());
+        if (!dContext || dContext->abandoned()) {
             return DrawResult::kSkip;
         }
 
-        if (context->backend() != GrBackendApi::kVulkan) {
+        if (dContext->backend() != GrBackendApi::kVulkan) {
             *errorMsg = "This GM requires a Vulkan context.";
             return DrawResult::kSkip;
         }
 
-        DrawResult result = this->createYCbCrImage(context, errorMsg);
+        DrawResult result = this->createYCbCrImage(dContext, errorMsg);
         if (result != DrawResult::kOk) {
             return result;
         }
@@ -91,14 +93,10 @@ protected:
         fYCbCrImage = nullptr;
     }
 
-    DrawResult onDraw(GrRecordingContext*, GrRenderTargetContext*,
-                      SkCanvas* canvas, SkString*) override {
+    DrawResult onDraw(SkCanvas* canvas, SkString*) override {
         SkASSERT(fYCbCrImage);
 
-        SkPaint paint;
-        paint.setFilterQuality(kLow_SkFilterQuality);
-
-        canvas->drawImage(fYCbCrImage, kPad, kPad, &paint);
+        canvas->drawImage(fYCbCrImage, kPad, kPad, SkSamplingOptions(SkFilterMode::kLinear));
         return DrawResult::kOk;
     }
 

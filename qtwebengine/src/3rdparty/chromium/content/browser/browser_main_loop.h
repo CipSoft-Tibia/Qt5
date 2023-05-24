@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,26 +7,33 @@
 
 #include <memory>
 
-#include "base/files/file_path.h"
+#include "base/functional/callback_helpers.h"
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
+#include "base/memory/raw_ref.h"
 #include "base/memory/ref_counted.h"
 #include "base/task/thread_pool/thread_pool_instance.h"
+#include "base/types/strong_alias.h"
 #include "build/build_config.h"
-#include "content/browser/browser_process_sub_thread.h"
+#include "build/chromeos_buildflags.h"
+#include "content/browser/browser_process_io_thread.h"
+#include "content/common/content_export.h"
 #include "content/public/browser/browser_main_runner.h"
 #include "media/media_buildflags.h"
 #include "services/viz/public/mojom/compositing/compositing_mode_watcher.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/buildflags.h"
-
-#if defined(OS_CHROMEOS)
-#include "content/browser/media/keyboard_mic_registration.h"
-#endif
 
 #if defined(USE_AURA)
 namespace aura {
 class Env;
 }
+#endif
+
+#if BUILDFLAG(IS_OZONE)
+#include "ui/ozone/buildflags.h"  // nogncheck
+#if BUILDFLAG(OZONE_PLATFORM_X11)
+#define USE_OZONE_PLATFORM_X11
+#endif
 #endif
 
 namespace base {
@@ -48,13 +55,13 @@ class GpuChannelEstablishFactory;
 namespace media {
 class AudioManager;
 class AudioSystem;
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 class SystemMessageWindowWin;
-#elif (defined(OS_LINUX) || defined(OS_CHROMEOS)) && defined(USE_UDEV)
+#elif (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)
 class DeviceMonitorLinux;
 #endif
 class UserInputMonitor;
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 class DeviceMonitorMac;
 #endif
 }  // namespace media
@@ -82,7 +89,6 @@ namespace content {
 class BrowserMainParts;
 class BrowserOnlineStateObserver;
 class BrowserThreadImpl;
-class FieldTrialSynchronizer;
 class MediaKeysListenerManagerImpl;
 class MediaStreamManager;
 class SaveFileManager;
@@ -97,14 +103,8 @@ namespace responsiveness {
 class Watcher;
 }  // namespace responsiveness
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 class ScreenOrientationDelegate;
-#endif
-
-#if defined(USE_X11)
-namespace internal {
-class GpuDataManagerVisualProxy;
-}
 #endif
 
 // Implements the main browser loop stages called from BrowserMainRunner.
@@ -120,8 +120,12 @@ class CONTENT_EXPORT BrowserMainLoop {
   // The ThreadPoolInstance must exist but not to be started when building
   // BrowserMainLoop.
   explicit BrowserMainLoop(
-      const MainFunctionParams& parameters,
+      MainFunctionParams parameters,
       std::unique_ptr<base::ThreadPoolInstance::ScopedExecutionFence> fence);
+
+  BrowserMainLoop(const BrowserMainLoop&) = delete;
+  BrowserMainLoop& operator=(const BrowserMainLoop&) = delete;
+
   virtual ~BrowserMainLoop();
 
   void Init();
@@ -134,25 +138,37 @@ class CONTENT_EXPORT BrowserMainLoop {
   // successful or not.
   bool InitializeToolkit();
 
-  void PreMainMessageLoopStart();
-  void MainMessageLoopStart();
-  void PostMainMessageLoopStart();
-  void PreShutdown();
+  void PreCreateMainMessageLoop();
+  // Creates the main message loop, bringing APIs like
+  // SingleThreadTaskRunner::GetCurrentDefault() online.
+  void CreateMainMessageLoop();
+  void PostCreateMainMessageLoop();
+
+  // Creates a "bare" message loop that is required to exit gracefully at the
+  // early stage if the toolkit failed to initialise.
+  void CreateMessageLoopForEarlyShutdown();
 
   // Create and start running the tasks we need to complete startup. Note that
   // this can be called more than once (currently only on Android) if we get a
   // request for synchronous startup while the tasks created by asynchronous
-  // startup are still running.
+  // startup are still running. Completes tasks synchronously as part of this
+  // method on non-Android platforms.
   void CreateStartupTasks();
 
-  // Perform the default message loop run logic.
-  void RunMainMessageLoopParts();
+  // Performs the default message loop run logic.
+  void RunMainMessageLoop();
+
+  // Performs the pre-shutdown steps.
+  void PreShutdown();
 
   // Performs the shutdown sequence, starting with PostMainMessageLoopRun
   // through stopping threads to PostDestroyThreads.
   void ShutdownThreadsAndCleanUp();
 
   int GetResultCode() const { return result_code_; }
+
+  // Needed by some embedders.
+  void SetResultCode(int code) { result_code_ = code; }
 
   media::AudioManager* audio_manager() const;
   bool AudioServiceOutOfProcess() const;
@@ -167,14 +183,11 @@ class CONTENT_EXPORT BrowserMainLoop {
     return media_keys_listener_manager_.get();
   }
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
   // Only expose this on ChromeOS since it's only needed there. On Android this
   // be null if this process started in reduced mode.
   net::NetworkChangeNotifier* network_change_notifier() const {
     return network_change_notifier_.get();
-  }
-  KeyboardMicRegistration* keyboard_mic_registration() {
-    return &keyboard_mic_registration_;
   }
 #endif
 
@@ -188,7 +201,7 @@ class CONTENT_EXPORT BrowserMainLoop {
 
   gpu::GpuChannelEstablishFactory* gpu_channel_establish_factory() const;
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   void SynchronouslyFlushStartupTasks();
 
   // |enabled| Whether or not CreateStartupTasks() posts any tasks. This is
@@ -196,9 +209,9 @@ class CONTENT_EXPORT BrowserMainLoop {
   // whole browser loaded. In that scenario tasks posted by CreateStartupTasks()
   // may crash if run.
   static void EnableStartupTasks(bool enabled);
-#endif  // OS_ANDROID
+#endif  // BUILDFLAG(IS_ANDROID)
 
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
   // TODO(fsamuel): We should find an object to own HostFrameSinkManager on all
   // platforms including Android. See http://crbug.com/732507.
   viz::HostFrameSinkManager* host_frame_sink_manager() const {
@@ -210,7 +223,7 @@ class CONTENT_EXPORT BrowserMainLoop {
   void GetCompositingModeReporter(
       mojo::PendingReceiver<viz::mojom::CompositingModeReporter> receiver);
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   media::DeviceMonitorMac* device_monitor_mac() const {
     return device_monitor_mac_.get();
   }
@@ -221,13 +234,16 @@ class CONTENT_EXPORT BrowserMainLoop {
 
   BrowserMainParts* parts() { return parts_.get(); }
 
+  // This should only be called after the IO thread has been started (and will
+  // crash otherwise). May block on the thread ID being initialized if the IO
+  // thread ThreadMain has not yet run.
+  base::PlatformThreadId GetIOThreadId();
+
  private:
   FRIEND_TEST_ALL_PREFIXES(BrowserMainLoopTest, CreateThreadsInSingleProcess);
   FRIEND_TEST_ALL_PREFIXES(
       BrowserMainLoopTest,
       PostTaskToIOThreadBeforeThreadCreationDoesNotRunTask);
-
-  void InitializeMainThread();
 
   // Called just before creating the threads
   int PreCreateThreads();
@@ -237,11 +253,16 @@ class CONTENT_EXPORT BrowserMainLoop {
 
   // Called just after creating the threads.
   int PostCreateThreads();
-
-  // Called right after the browser threads have been started.
-  int BrowserThreadsStarted();
+  void PostCreateThreadsImpl();
 
   int PreMainMessageLoopRun();
+
+  // One last opportunity to intercept the upcoming MainMessageLoopRun (or
+  // before yielding to the native loop on Android). Returns false iff the run
+  // should proceed after this call.
+  using ProceedWithMainMessageLoopRun =
+      base::StrongAlias<class ProceedWithMainMessageLoopRunTag, bool>;
+  ProceedWithMainMessageLoopRun InterceptMainMessageLoopRun();
 
   void MainMessageLoopRun();
 
@@ -258,21 +279,24 @@ class CONTENT_EXPORT BrowserMainLoop {
   // Init()
   // EarlyInitialization()
   // InitializeToolkit()
-  // PreMainMessageLoopStart()
-  // MainMessageLoopStart()
-  //   InitializeMainThread()
-  // PostMainMessageLoopStart()
+  // PreCreateMainMessageLoop()
+  // CreateMainMessageLoop()
+  // PostCreateMainMessageLoop()
   // CreateStartupTasks()
   //   PreCreateThreads()
+  //     InitializeMemoryManagementComponent()
   //   CreateThreads()
   //   PostCreateThreads()
-  //   BrowserThreadsStarted()
-  //     InitializeMojo()
-  //   PreMainMessageLoopRun()
+  //     PostCreateThreadsImpl()
+  //       InitializeMojo()
+  //       InitializeAudio()
+  // PreMainMessageLoopRun()
+  // MainMessageLoopRun()
+  //   OnFirstIdle()
 
   // Members initialized on construction ---------------------------------------
-  const MainFunctionParams& parameters_;
-  const base::CommandLine& parsed_command_line_;
+  MainFunctionParams parameters_;
+  const raw_ref<const base::CommandLine> parsed_command_line_;
   int result_code_;
   bool created_threads_;  // True if the non-UI threads were created.
   // //content must be initialized single-threaded until
@@ -290,37 +314,34 @@ class CONTENT_EXPORT BrowserMainLoop {
   //
   // TODO(fdoray): Move this to a more elaborate class that prevents BEST_EFFORT
   // tasks from running when resources are needed to respond to user actions.
-  base::Optional<base::ThreadPoolInstance::ScopedBestEffortExecutionFence>
+  absl::optional<base::ThreadPoolInstance::ScopedBestEffortExecutionFence>
       scoped_best_effort_execution_fence_;
 
-  // Unregister UI thread from hang watching on destruction.
-  base::ScopedClosureRunner unregister_thread_closure_;
+  // Members initialized in |Init()| -------------------------------------------
+  std::unique_ptr<mojo::core::ScopedIPCSupport> mojo_ipc_support_;
 
-  // Members initialized in |PostMainMessageLoopStart()| -----------------------
-  std::unique_ptr<BrowserProcessSubThread> io_thread_;
-  std::unique_ptr<base::SystemMonitor> system_monitor_;
-  std::unique_ptr<base::HighResolutionTimerManager> hi_res_timer_manager_;
-  std::unique_ptr<net::NetworkChangeNotifier> network_change_notifier_;
-  std::unique_ptr<ScreenlockMonitor> screenlock_monitor_;
-
-  // Per-process listener for online state changes.
-  std::unique_ptr<BrowserOnlineStateObserver> online_state_observer_;
-
+  // Members initialized in |InitializeToolkit()| ------------------------------
 #if defined(USE_AURA)
   std::unique_ptr<aura::Env> env_;
 #endif
 
-#if defined(OS_ANDROID)
+  // Members initialized in |PostCreateMainMessageLoop()| ----------------------
+  std::unique_ptr<base::SystemMonitor> system_monitor_;
+  std::unique_ptr<base::HighResolutionTimerManager> hi_res_timer_manager_;
+  std::unique_ptr<net::NetworkChangeNotifier> network_change_notifier_;
+  std::unique_ptr<ScreenlockMonitor> screenlock_monitor_;
+  // Per-process listener for online state changes.
+  std::unique_ptr<BrowserOnlineStateObserver> online_state_observer_;
+#if BUILDFLAG(IS_ANDROID)
   // Android implementation of ScreenOrientationDelegate
   std::unique_ptr<ScreenOrientationDelegate> screen_orientation_delegate_;
 #endif
 
-  // Members initialized in |Init()| -------------------------------------------
-  // Destroy |parts_| before |main_message_loop_| (required) and before other
-  // classes constructed in content (but after |main_thread_|).
+  // Destroy |parts_| before above members (except the ones that are explicitly
+  // reset() on shutdown) but after |main_thread_| and services below.
   std::unique_ptr<BrowserMainParts> parts_;
 
-  // Members initialized in |InitializeMainThread()| ---------------------------
+  // Members initialized in |CreateMainMessageLoop()| --------------------------
   // This must get destroyed before other threads that are created in |parts_|.
   std::unique_ptr<BrowserThreadImpl> main_thread_;
 
@@ -330,27 +351,13 @@ class CONTENT_EXPORT BrowserMainLoop {
   // Members initialized in |PreCreateThreads()| -------------------------------
   // Torn down in ShutdownThreadsAndCleanUp.
   std::unique_ptr<base::MemoryPressureMonitor> memory_pressure_monitor_;
-#if defined(USE_X11)
-  std::unique_ptr<internal::GpuDataManagerVisualProxy>
-      gpu_data_manager_visual_proxy_;
-#endif
 
-  // If provided to the BrowserMainLoop (see StartupDataImpl), this closure
-  // is run during shutdown, prior to IO thread destruction, and should do
-  // whatever work is necessary to tear down the ServiceManager if one is
-  // running. Must be provided if a ServiceManager is initialized and running on
-  // the IO thread.
-  base::OnceClosure service_manager_shutdown_closure_;
+  // Members initialized in |CreateThreads()| ----------------------------------
+  std::unique_ptr<BrowserProcessIOThread> io_thread_;
 
-  // Members initialized in |BrowserThreadsStarted()| --------------------------
-  std::unique_ptr<mojo::core::ScopedIPCSupport> mojo_ipc_support_;
+  // BEGIN Members initialized in |PostCreateThreads()| ------------------------
+  // ***************************************************************************
   std::unique_ptr<MediaKeysListenerManagerImpl> media_keys_listener_manager_;
-
-  // The FieldTrialSynchronizer tells child processes when a trial gets
-  // activated. This is mostly an optimization, as a consequence if renderers
-  // know a trial is already active they don't need to send anything to the
-  // browser.
-  scoped_refptr<FieldTrialSynchronizer> field_trial_synchronizer_;
 
   // |user_input_monitor_| has to outlive |audio_manager_|, so declared first.
   std::unique_ptr<media::UserInputMonitor> user_input_monitor_;
@@ -364,10 +371,6 @@ class CONTENT_EXPORT BrowserMainLoop {
 
   std::unique_ptr<media::AudioSystem> audio_system_;
 
-#if defined(OS_CHROMEOS)
-  KeyboardMicRegistration keyboard_mic_registration_;
-#endif
-
   std::unique_ptr<midi::MidiService> midi_service_;
 
 #if defined(ENABLE_WEB_SPEECH)
@@ -375,21 +378,18 @@ class CONTENT_EXPORT BrowserMainLoop {
   std::unique_ptr<SpeechRecognitionManagerImpl> speech_recognition_manager_;
 #endif
 
-  std::unique_ptr<SmsProvider> sms_provider_;
-
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   std::unique_ptr<media::SystemMessageWindowWin> system_message_window_;
-#elif (defined(OS_LINUX) || defined(OS_CHROMEOS)) && defined(USE_UDEV)
+#elif (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(USE_UDEV)
   std::unique_ptr<media::DeviceMonitorLinux> device_monitor_linux_;
-#elif defined(OS_MAC)
+#elif BUILDFLAG(IS_MAC)
   std::unique_ptr<media::DeviceMonitorMac> device_monitor_mac_;
 #endif
 
   std::unique_ptr<MediaStreamManager> media_stream_manager_;
   scoped_refptr<SaveFileManager> save_file_manager_;
   std::unique_ptr<content::TracingControllerImpl> tracing_controller_;
-  scoped_refptr<responsiveness::Watcher> responsiveness_watcher_;
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
   std::unique_ptr<viz::HostFrameSinkManager> host_frame_sink_manager_;
 
   // Reports on the compositing mode in the system for clients to submit
@@ -398,10 +398,16 @@ class CONTENT_EXPORT BrowserMainLoop {
   std::unique_ptr<viz::CompositingModeReporterImpl>
       compositing_mode_reporter_impl_;
 #endif
+  // ***************************************************************************
+  // END Members initialized in |PostCreateThreads()| --------------------------
+
+  // Members initialized in |PreMainMessageLoopRun()| --------------------------
+  scoped_refptr<responsiveness::Watcher> responsiveness_watcher_;
+
+  // Members not associated with a specific phase.
+  std::unique_ptr<SmsProvider> sms_provider_;
 
   // DO NOT add members here. Add them to the right categories above.
-
-  DISALLOW_COPY_AND_ASSIGN(BrowserMainLoop);
 };
 
 }  // namespace content

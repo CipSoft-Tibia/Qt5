@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,16 @@ gpu::SharedImageManager* ContentGpuClient::GetSharedImageManager() {
   return nullptr;
 }
 
+gpu::Scheduler* ContentGpuClient::GetScheduler() {
+  return nullptr;
+}
+
 viz::VizCompositorThreadRunner*
 ContentGpuClient::GetVizCompositorThreadRunner() {
+  return nullptr;
+}
+
+gl::GLShareGroup* ContentGpuClient::GetInProcessGpuShareGroup() {
   return nullptr;
 }
 

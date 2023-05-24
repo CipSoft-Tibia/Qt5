@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,10 @@
 
 #include <stdint.h>
 
-#include "base/bind.h"
-#include "base/memory/ptr_util.h"
+#include <memory>
+
+#include "base/functional/bind.h"
+#include "base/types/pass_key.h"
 #include "net/base/file_stream.h"
 #include "net/base/io_buffer.h"
 #include "net/base/net_errors.h"
@@ -31,8 +33,9 @@ std::unique_ptr<FileStreamWriter> FileStreamWriter::CreateForLocalFile(
     const base::FilePath& file_path,
     int64_t initial_offset,
     OpenOrCreate open_or_create) {
-  return base::WrapUnique(new LocalFileStreamWriter(
-      task_runner, file_path, initial_offset, open_or_create));
+  return std::make_unique<LocalFileStreamWriter>(
+      task_runner, file_path, initial_offset, open_or_create,
+      base::PassKey<FileStreamWriter>());
 }
 
 LocalFileStreamWriter::~LocalFileStreamWriter() {
@@ -89,10 +92,12 @@ int LocalFileStreamWriter::Flush(net::CompletionOnceCallback callback) {
   return result;
 }
 
-LocalFileStreamWriter::LocalFileStreamWriter(base::TaskRunner* task_runner,
-                                             const base::FilePath& file_path,
-                                             int64_t initial_offset,
-                                             OpenOrCreate open_or_create)
+LocalFileStreamWriter::LocalFileStreamWriter(
+    base::TaskRunner* task_runner,
+    const base::FilePath& file_path,
+    int64_t initial_offset,
+    OpenOrCreate open_or_create,
+    base::PassKey<FileStreamWriter> /*pass_key*/)
     : file_path_(file_path),
       open_or_create_(open_or_create),
       initial_offset_(initial_offset),
@@ -103,7 +108,7 @@ int LocalFileStreamWriter::InitiateOpen(base::OnceClosure main_operation) {
   DCHECK(has_pending_operation_);
   DCHECK(!stream_impl_.get());
 
-  stream_impl_.reset(new net::FileStream(task_runner_));
+  stream_impl_ = std::make_unique<net::FileStream>(task_runner_);
 
   int open_flags = 0;
   switch (open_or_create_) {
@@ -139,43 +144,16 @@ void LocalFileStreamWriter::DidOpen(base::OnceClosure main_operation,
     return;
   }
 
-  auto file_info = std::make_unique<base::File::Info>();
-  base::File::Info* raw_file_info = file_info.get();
-  result = stream_impl_->GetFileInfo(
-      raw_file_info,
-      base::BindOnce(&LocalFileStreamWriter::InitiateSeek,
-                     weak_factory_.GetWeakPtr(), std::move(main_operation),
-                     std::move(file_info)));
-  DCHECK_NE(result, net::OK);
-  if (result != net::ERR_IO_PENDING) {
-    has_pending_operation_ = false;
-    std::move(write_callback_).Run(result);
-  }
+  InitiateSeek(std::move(main_operation));
 }
 
-void LocalFileStreamWriter::InitiateSeek(
-    base::OnceClosure main_operation,
-    std::unique_ptr<base::File::Info> file_info,
-    int file_info_result) {
+void LocalFileStreamWriter::InitiateSeek(base::OnceClosure main_operation) {
   DCHECK(has_pending_operation_);
   DCHECK(stream_impl_.get());
-
-  if (file_info_result != net::OK) {
-    has_pending_operation_ = false;
-    std::move(write_callback_).Run(file_info_result);
-    return;
-  }
 
   if (initial_offset_ == 0) {
     // No need to seek.
     std::move(main_operation).Run();
-    return;
-  }
-
-  if (initial_offset_ > file_info->size) {
-    // We should not be writing past the end of the file.
-    has_pending_operation_ = false;
-    std::move(write_callback_).Run(net::ERR_REQUEST_RANGE_NOT_SATISFIABLE);
     return;
   }
 

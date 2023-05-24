@@ -89,9 +89,8 @@ std::string Mutator::MutateString(const std::string& value,
   // any 8 bit types.
   if (!std::uniform_int_distribution<uint16_t>(0, 20)(*random())) return {};
   std::string result = value;
-  result.resize(value.size() +
-                std::max<int>(-value.size(), size_increase_hint));
-  if (result.empty()) result.push_back(0);
+  int new_size = value.size() + size_increase_hint;
+  result.resize(std::max(1, new_size));
   result.resize(LLVMFuzzerMutate(reinterpret_cast<uint8_t*>(&result[0]),
                                  value.size(), result.size()));
   return result;

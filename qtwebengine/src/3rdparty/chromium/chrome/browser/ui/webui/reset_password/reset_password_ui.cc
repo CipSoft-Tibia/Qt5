@@ -1,23 +1,27 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/webui/reset_password/reset_password_ui.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/values.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/webui/reset_password/reset_password.mojom.h"
+#include "chrome/browser/ui/webui/webui_util.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/browser_resources.h"
-#include "components/safe_browsing/content/password_protection/metrics_util.h"
-#include "components/safe_browsing/content/password_protection/password_protection_service.h"
+#include "components/safe_browsing/content/browser/password_protection/password_protection_service.h"
+#include "components/safe_browsing/core/browser/password_protection/metrics_util.h"
+#include "components/safe_browsing/core/common/proto/csd.pb.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
-#include "components/safe_browsing/core/proto/csd.pb.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/url_formatter/url_formatter.h"
 #include "components/user_prefs/user_prefs.h"
@@ -32,8 +36,6 @@ using safe_browsing::LoginReputationClientResponse;
 using safe_browsing::RequestOutcome;
 
 namespace {
-
-constexpr char kStringTypeUMAName[] = "PasswordProtection.InterstitialString";
 
 // Used for UMA metric logging. Please don't reorder.
 // Indicates which type of strings are shown on this page.
@@ -55,6 +57,9 @@ class ResetPasswordHandlerImpl : public mojom::ResetPasswordHandler {
     DCHECK(web_contents);
   }
 
+  ResetPasswordHandlerImpl(const ResetPasswordHandlerImpl&) = delete;
+  ResetPasswordHandlerImpl& operator=(const ResetPasswordHandlerImpl&) = delete;
+
   ~ResetPasswordHandlerImpl() override {}
 
   // mojom::ResetPasswordHandler overrides:
@@ -75,10 +80,8 @@ class ResetPasswordHandlerImpl : public mojom::ResetPasswordHandler {
   }
 
  private:
-  content::WebContents* web_contents_;
+  raw_ptr<content::WebContents> web_contents_;
   mojo::Receiver<mojom::ResetPasswordHandler> receiver_;
-
-  DISALLOW_COPY_AND_ASSIGN(ResetPasswordHandlerImpl);
 };
 
 // Gets the reused password type from post data, or returns
@@ -86,21 +89,24 @@ class ResetPasswordHandlerImpl : public mojom::ResetPasswordHandler {
 PasswordType GetPasswordType(content::WebContents* web_contents) {
   content::NavigationEntry* nav_entry =
       web_contents->GetController().GetPendingEntry();
-  if (!nav_entry || !nav_entry->GetHasPostData())
+  if (!nav_entry || !nav_entry->GetHasPostData() || !nav_entry->GetPostData())
     return PasswordType::PASSWORD_TYPE_UNKNOWN;
   auto& post_data = nav_entry->GetPostData()->elements()->at(0);
-  int post_data_int = -1;
-  if (base::StringToInt(std::string(post_data.bytes(), post_data.length()),
-                        &post_data_int)) {
-    return static_cast<PasswordType>(post_data_int);
+  if (post_data.type() == network::DataElement::Tag::kBytes) {
+    int post_data_int = -1;
+    if (base::StringToInt(
+            post_data.As<network::DataElementBytes>().AsStringPiece(),
+            &post_data_int)) {
+      return static_cast<PasswordType>(post_data_int);
+    }
   }
 
   return PasswordType::PASSWORD_TYPE_UNKNOWN;
 }
 
 // Properly format host name based on text direction.
-base::string16 GetFormattedHostName(const std::string host_name) {
-  base::string16 host = url_formatter::IDNToUnicode(host_name);
+std::u16string GetFormattedHostName(const std::string host_name) {
+  std::u16string host = url_formatter::IDNToUnicode(host_name);
   if (base::i18n::IsRTL())
     base::i18n::WrapStringWithLTRFormatting(&host);
   return host;
@@ -111,17 +117,16 @@ base::string16 GetFormattedHostName(const std::string host_name) {
 ResetPasswordUI::ResetPasswordUI(content::WebUI* web_ui)
     : ui::MojoWebUIController(web_ui),
       password_type_(GetPasswordType(web_ui->GetWebContents())) {
-  std::unique_ptr<content::WebUIDataSource> html_source(
-      content::WebUIDataSource::Create(chrome::kChromeUIResetPasswordHost));
-  html_source->DisableTrustedTypesCSP();
+  content::WebUIDataSource* html_source =
+      content::WebUIDataSource::CreateAndAdd(
+          web_ui->GetWebContents()->GetBrowserContext(),
+          chrome::kChromeUIResetPasswordHost);
+  webui::EnableTrustedTypesCSP(html_source);
   html_source->AddResourcePath("reset_password.js", IDR_RESET_PASSWORD_JS);
-  html_source->AddResourcePath("reset_password.mojom-lite.js",
-                               IDR_RESET_PASSWORD_MOJOM_LITE_JS);
+  html_source->AddResourcePath("reset_password.mojom-webui.js",
+                               IDR_RESET_PASSWORD_MOJOM_WEBUI_JS);
   html_source->SetDefaultResource(IDR_RESET_PASSWORD_HTML);
   html_source->AddLocalizedStrings(PopulateStrings());
-
-  content::WebUIDataSource::Add(web_ui->GetWebContents()->GetBrowserContext(),
-                                html_source.release());
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(ResetPasswordUI)
@@ -134,46 +139,40 @@ void ResetPasswordUI::BindInterface(
       web_ui()->GetWebContents(), std::move(receiver));
 }
 
-base::DictionaryValue ResetPasswordUI::PopulateStrings() const {
+base::Value::Dict ResetPasswordUI::PopulateStrings() const {
   auto* service = safe_browsing::ChromePasswordProtectionService::
       GetPasswordProtectionService(Profile::FromWebUI(web_ui()));
-  std::string org_name = service->GetOrganizationName(
-      service->reused_password_account_type_for_last_shown_warning());
+  std::string org_name =
+      service
+          ? service->GetOrganizationName(
+                service->reused_password_account_type_for_last_shown_warning())
+          : std::string();
   bool known_password_type =
       password_type_ != PasswordType::PASSWORD_TYPE_UNKNOWN;
 
   int heading_string_id = known_password_type
                               ? IDS_RESET_PASSWORD_WARNING_HEADING
                               : IDS_RESET_PASSWORD_HEADING;
-  base::string16 explanation_paragraph_string;
+  std::u16string explanation_paragraph_string;
   if (org_name.empty()) {
     explanation_paragraph_string = l10n_util::GetStringUTF16(
         known_password_type ? IDS_RESET_PASSWORD_WARNING_EXPLANATION_PARAGRAPH
                             : IDS_RESET_PASSWORD_EXPLANATION_PARAGRAPH);
-    UMA_HISTOGRAM_ENUMERATION(kStringTypeUMAName,
-                              known_password_type
-                                  ? StringType::WARNING_NO_ORG_NAME
-                                  : StringType::GENERIC_NO_ORG_NAME);
   } else {
-    base::string16 formatted_org_name = GetFormattedHostName(org_name);
+    std::u16string formatted_org_name = GetFormattedHostName(org_name);
     explanation_paragraph_string = l10n_util::GetStringFUTF16(
         known_password_type
             ? IDS_RESET_PASSWORD_WARNING_EXPLANATION_PARAGRAPH_WITH_ORG_NAME
             : IDS_RESET_PASSWORD_EXPLANATION_PARAGRAPH_WITH_ORG_NAME,
         formatted_org_name);
-    UMA_HISTOGRAM_ENUMERATION(kStringTypeUMAName,
-                              known_password_type
-                                  ? StringType::WARNING_WITH_ORG_NAME
-                                  : StringType::GENERIC_WITH_ORG_NAME);
   }
 
-  base::DictionaryValue load_time_data;
-  load_time_data.SetString("title",
-                           l10n_util::GetStringUTF16(IDS_RESET_PASSWORD_TITLE));
-  load_time_data.SetString("heading",
-                           l10n_util::GetStringUTF16(heading_string_id));
-  load_time_data.SetString("primaryParagraph", explanation_paragraph_string);
-  load_time_data.SetString("primaryButtonText", l10n_util::GetStringUTF16(
-                                                    IDS_RESET_PASSWORD_BUTTON));
+  base::Value::Dict load_time_data;
+  load_time_data.Set("title",
+                     l10n_util::GetStringUTF16(IDS_RESET_PASSWORD_TITLE));
+  load_time_data.Set("heading", l10n_util::GetStringUTF16(heading_string_id));
+  load_time_data.Set("primaryParagraph", explanation_paragraph_string);
+  load_time_data.Set("primaryButtonText",
+                     l10n_util::GetStringUTF16(IDS_RESET_PASSWORD_BUTTON));
   return load_time_data;
 }

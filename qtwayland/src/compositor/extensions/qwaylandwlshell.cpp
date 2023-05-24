@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Copyright (C) 2017 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// Copyright (C) 2017 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwaylandwlshell.h"
 #include "qwaylandwlshell_p.h"
@@ -244,8 +218,8 @@ void QWaylandWlShellSurfacePrivate::shell_surface_set_class(Resource *resource,
 
 /*!
  * \qmltype WlShell
- * \inqmlmodule QtWayland.Compositor
  * \instantiates QWaylandWlShell
+ * \inqmlmodule QtWayland.Compositor.WlShell
  * \since 5.8
  * \brief Provides an extension for desktop-style user interfaces.
  *
@@ -259,8 +233,8 @@ void QWaylandWlShellSurfacePrivate::shell_surface_set_class(Resource *resource,
  * an instance of the WlShell component and add it to the list of extensions
  * supported by the compositor:
  *
- * \qml \QtMinorVersion
- * import QtWayland.Compositor 1.\1
+ * \qml
+ * import QtWayland.Compositor.WlShell
  *
  * WaylandCompositor {
  *     WlShell {
@@ -371,7 +345,7 @@ const struct wl_interface *QWaylandWlShell::interface()
 }
 
 /*!
- * \qmlsignal void QtWaylandCompositor::WlShell::wlShellSurfaceRequested(WaylandSurface surface, WaylandResource resource)
+ * \qmlsignal void WlShell::wlShellSurfaceRequested(WaylandSurface surface, WaylandResource resource)
  *
  * This signal is emitted when the client has requested a \c wl_shell_surface to be associated with
  * \a surface. The handler for this signal may create a shell surface for \a resource and initialize
@@ -389,7 +363,7 @@ const struct wl_interface *QWaylandWlShell::interface()
  */
 
 /*!
- * \qmlsignal void QtWaylandCompositor::WlShell::wlShellSurfaceCreated(WlShellSurface shellSurface)
+ * \qmlsignal void WlShell::wlShellSurfaceCreated(WlShellSurface shellSurface)
  *
  * This signal is emitted when the client has created a \c wl_shell_surface.
  * A common use case is to let the handler of this signal instantiate a ShellSurfaceItem or
@@ -414,8 +388,8 @@ QByteArray QWaylandWlShell::interfaceName()
 
 /*!
  * \qmltype WlShellSurface
- * \inqmlmodule QtWayland.Compositor
  * \instantiates QWaylandWlShellSurface
+ * \inqmlmodule QtWayland.Compositor.WlShell
  * \since 5.8
  * \brief Provides a \c wl_shell_surface that offers desktop-style compositor-specific features to a surface.
  *
@@ -464,7 +438,7 @@ QWaylandWlShellSurface::~QWaylandWlShellSurface()
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::WlShellSurface::initialize(WlShell shell, WaylandSurface surface, WaylandResource resource)
+ * \qmlmethod void WlShellSurface::initialize(WlShell shell, WaylandSurface surface, WaylandResource resource)
  *
  * Initializes the WlShellSurface and associates it with the given \a shell, \a surface, and \a resource.
  */
@@ -564,7 +538,7 @@ void QWaylandWlShellSurface::sendConfigure(const QSize &size, ResizeEdge edges)
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::WlShellSurface::sendPopupDone()
+ * \qmlmethod void WlShellSurface::sendPopupDone()
  *
  * Sends a popup_done event to the client to indicate that the user has clicked
  * somewhere outside the client's surfaces.
@@ -588,7 +562,7 @@ QWaylandQuickShellIntegration *QWaylandWlShellSurface::createIntegration(QWaylan
 #endif
 
 /*!
- * \qmlproperty WaylandSurface QtWaylandCompositor::WlShellSurface::surface
+ * \qmlproperty WaylandSurface WlShellSurface::surface
  *
  * This property holds the \c wl_surface associated with this WlShellSurface.
  */
@@ -605,7 +579,7 @@ QWaylandSurface *QWaylandWlShellSurface::surface() const
 }
 
 /*!
- * \qmlproperty WlShell QtWaylandCompositor::WlShellSurface::shell
+ * \qmlproperty WlShell WlShellSurface::shell
  *
  * This property holds the shell associated with this WlShellSurface.
  */
@@ -622,7 +596,7 @@ QWaylandWlShell *QWaylandWlShellSurface::shell() const
 }
 
 /*!
- * \qmlproperty enum QtWaylandCompositor::WlShellSurface::windowType
+ * \qmlproperty enum WlShellSurface::windowType
  *
  * This property holds the window type of the WlShellSurface.
  */
@@ -634,7 +608,7 @@ Qt::WindowType QWaylandWlShellSurface::windowType() const
 }
 
 /*!
- * \qmlproperty string QtWaylandCompositor::WlShellSurface::title
+ * \qmlproperty string WlShellSurface::title
  *
  * This property holds the title of the WlShellSurface.
  */
@@ -651,7 +625,7 @@ QString QWaylandWlShellSurface::title() const
 }
 
 /*!
- * \qmlproperty string QtWaylandCompositor::WlShellSurface::className
+ * \qmlproperty string WlShellSurface::className
  *
  * This property holds the class name of the WlShellSurface.
  */
@@ -673,7 +647,7 @@ QWaylandSurfaceRole *QWaylandWlShellSurface::role()
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::WlShellSurface::ping()
+ * \qmlmethod void WlShellSurface::ping()
  *
  * Sends a ping event to the client. If the client replies to the event the pong
  * signal will be emitted.
@@ -701,3 +675,5 @@ QWaylandWlShellSurface *QWaylandWlShellSurface::fromResource(wl_resource *resour
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandwlshell.cpp"

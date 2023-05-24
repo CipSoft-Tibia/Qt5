@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,17 +8,17 @@
 #include <memory>
 #include <string>
 
-#include "base/bind.h"
 #include "base/command_line.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/simple_test_clock.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "base/time/time.h"
 #include "components/blocklist/opt_out_blocklist/opt_out_blocklist_data.h"
 #include "components/blocklist/opt_out_blocklist/opt_out_blocklist_item.h"
@@ -48,13 +48,10 @@ class OptOutStoreSQLTest : public testing::Test {
   void Load() {
     // Choose reasonable constants.
     std::unique_ptr<BlocklistData> data = std::make_unique<BlocklistData>(
-        std::make_unique<BlocklistData::Policy>(base::TimeDelta::FromMinutes(5),
-                                                1, 1),
-        std::make_unique<BlocklistData::Policy>(base::TimeDelta::FromDays(30),
-                                                10, 6u),
-        std::make_unique<BlocklistData::Policy>(base::TimeDelta::FromDays(30),
-                                                4, 2u),
-        nullptr, 10, allowed_types_);
+        std::make_unique<BlocklistData::Policy>(base::Minutes(5), 1, 1),
+        std::make_unique<BlocklistData::Policy>(base::Days(30), 10, 6u),
+        std::make_unique<BlocklistData::Policy>(base::Days(30), 4, 2u), nullptr,
+        10, allowed_types_);
 
     store_->LoadBlockList(
         std::move(data),
@@ -71,8 +68,8 @@ class OptOutStoreSQLTest : public testing::Test {
   // Creates a store that operates on one thread.
   void Create() {
     store_ = std::make_unique<OptOutStoreSQL>(
-        base::ThreadTaskRunnerHandle::Get(),
-        base::ThreadTaskRunnerHandle::Get(),
+        base::SingleThreadTaskRunner::GetCurrentDefault(),
+        base::SingleThreadTaskRunner::GetCurrentDefault(),
         temp_dir_.GetPath().Append(kOptOutFilename));
   }
 
@@ -184,11 +181,11 @@ TEST_F(OptOutStoreSQLTest, TestMaxRows) {
 
   // Create three different entries with different hosts.
   store_->AddEntry(true, test_host_a, 1, clock.Now());
-  clock.Advance(base::TimeDelta::FromSeconds(1));
+  clock.Advance(base::Seconds(1));
 
   store_->AddEntry(true, test_host_b, 1, clock.Now());
   base::Time host_b_time = clock.Now();
-  clock.Advance(base::TimeDelta::FromSeconds(1));
+  clock.Advance(base::Seconds(1));
 
   store_->AddEntry(false, test_host_c, 1, clock.Now());
   base::RunLoop().RunUntilIdle();
@@ -244,10 +241,10 @@ TEST_F(OptOutStoreSQLTest, TestMaxRowsPerHost) {
   for (size_t i = 0; i < row_limit; i++) {
     store_->AddEntry(true, test_host, 1, clock.Now());
     last_opt_out_time = clock.Now();
-    clock.Advance(base::TimeDelta::FromSeconds(1));
+    clock.Advance(base::Seconds(1));
   }
 
-  clock.Advance(base::TimeDelta::FromSeconds(1));
+  clock.Advance(base::Seconds(1));
   store_->AddEntry(false, test_host, 1, clock.Now());
 
   base::RunLoop().RunUntilIdle();
@@ -268,7 +265,7 @@ TEST_F(OptOutStoreSQLTest, TestMaxRowsPerHost) {
   EXPECT_NE(blocklist_data_->block_list_item_host_map().end(), iter);
   EXPECT_EQ(last_opt_out_time, iter->second.most_recent_opt_out_time().value());
   EXPECT_EQ(row_limit, iter->second.OptOutRecordsSizeForTesting());
-  clock.Advance(base::TimeDelta::FromSeconds(1));
+  clock.Advance(base::Seconds(1));
   // If both entries' opt out states are stored correctly, then this should not
   // be block listed.
   EXPECT_FALSE(iter->second.IsBlockListed(clock.Now()));

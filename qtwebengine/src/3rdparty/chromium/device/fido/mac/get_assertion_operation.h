@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,18 +7,16 @@
 
 #include <os/availability.h>
 
-#include "base/callback.h"
 #include "base/component_export.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "device/fido/authenticator_get_assertion_response.h"
 #include "device/fido/ctap_get_assertion_request.h"
 #include "device/fido/mac/credential_store.h"
 #include "device/fido/mac/operation.h"
 #include "device/fido/mac/touch_id_context.h"
 
-namespace device {
-namespace fido {
-namespace mac {
+namespace device::fido::mac {
 
 // GetAssertionOperation implements the authenticatorGetAssertion operation. The
 // operation can be invoked via its |Run| method, which must only be called
@@ -29,43 +27,37 @@ namespace mac {
 //
 // For documentation on the keychain item metadata, see
 // |MakeCredentialOperation|.
-class API_AVAILABLE(macosx(10.12.2))
-    COMPONENT_EXPORT(DEVICE_FIDO) GetAssertionOperation : public Operation {
+class COMPONENT_EXPORT(DEVICE_FIDO) GetAssertionOperation : public Operation {
  public:
-  using Callback = base::OnceCallback<void(
-      CtapDeviceResponseCode,
-      base::Optional<AuthenticatorGetAssertionResponse>)>;
+  using Callback =
+      base::OnceCallback<void(CtapDeviceResponseCode,
+                              std::vector<AuthenticatorGetAssertionResponse>)>;
 
   GetAssertionOperation(CtapGetAssertionRequest request,
                         TouchIdCredentialStore* credential_store,
                         Callback callback);
+
+  GetAssertionOperation(const GetAssertionOperation&) = delete;
+  GetAssertionOperation& operator=(const GetAssertionOperation&) = delete;
+
   ~GetAssertionOperation() override;
 
   // Operation:
   void Run() override;
 
-  // GetNextAssertion() may be called for a request with an empty allowList
-  // after the initial callback has returned.
-  void GetNextAssertion(Callback callback);
-
  private:
   void PromptTouchIdDone(bool success);
-  base::Optional<AuthenticatorGetAssertionResponse> ResponseForCredential(
+  absl::optional<AuthenticatorGetAssertionResponse> ResponseForCredential(
       const Credential& credential);
 
   const std::unique_ptr<TouchIdContext> touch_id_context_ =
       TouchIdContext::Create();
 
   const CtapGetAssertionRequest request_;
-  TouchIdCredentialStore* const credential_store_;
+  const raw_ptr<TouchIdCredentialStore> credential_store_;
   Callback callback_;
-  std::list<Credential> matching_credentials_;
-
-  DISALLOW_COPY_AND_ASSIGN(GetAssertionOperation);
 };
 
-}  // namespace mac
-}  // namespace fido
-}  // namespace device
+}  // namespace device::fido::mac
 
 #endif  // DEVICE_FIDO_MAC_GET_ASSERTION_OPERATION_H_

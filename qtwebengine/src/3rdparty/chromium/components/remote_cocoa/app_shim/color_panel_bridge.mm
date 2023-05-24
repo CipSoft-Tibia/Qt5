@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -39,13 +39,17 @@ remote_cocoa::ColorPanelBridge* g_current_panel_bridge = nullptr;
 @end
 
 @implementation ColorPanelListener
-- (id)init {
+- (instancetype)init {
   if ((self = [super init])) {
     NSColorPanel* panel = [NSColorPanel sharedColorPanel];
-    [[NSNotificationCenter defaultCenter]
-        addObserver:self
+    NSNotificationCenter* nc = [NSNotificationCenter defaultCenter];
+    [nc addObserver:self
            selector:@selector(windowWillClose:)
                name:NSWindowWillCloseNotification
+             object:panel];
+    [nc addObserver:self
+           selector:@selector(windowDidResignKey:)
+               name:NSWindowDidResignKeyNotification
              object:panel];
   }
   return self;
@@ -63,15 +67,21 @@ remote_cocoa::ColorPanelBridge* g_current_panel_bridge = nullptr;
   _nonUserChange = NO;
 }
 
+- (void)windowDidResignKey:(NSNotification*)notification {
+  // Close the color panel when the user clicks away.
+  [self windowWillClose:notification];
+  [[NSColorPanel sharedColorPanel] close];
+}
+
 - (void)didChooseColor:(NSColorPanel*)panel {
   if (_nonUserChange) {
     _nonUserChange = NO;
     return;
   }
   _nonUserChange = NO;
-  NSColor* color = [panel color];
-  if ([[color colorSpaceName] isEqualToString:NSNamedColorSpace]) {
-    color = [color colorUsingColorSpace:[NSColorSpace genericRGBColorSpace]];
+  NSColor* color = panel.color;
+  if (color.type == NSColorTypeCatalog) {
+    color = [color colorUsingColorSpace:NSColorSpace.genericRGBColorSpace];
     // Some colors in "Developer" palette in "Color Palettes" tab can't be
     // converted to RGB. We just ignore such colors.
     // TODO(tkent): We should notice the rejection to users.
@@ -79,7 +89,7 @@ remote_cocoa::ColorPanelBridge* g_current_panel_bridge = nullptr;
       return;
   }
   SkColor skColor = 0;
-  if ([color colorSpace] == [NSColorSpace genericRGBColorSpace]) {
+  if (color.colorSpace == NSColorSpace.genericRGBColorSpace) {
     // genericRGB -> deviceRGB conversion isn't ignorable.  We'd like to use RGB
     // values shown in NSColorPanel UI.
     CGFloat red, green, blue, alpha;
@@ -89,7 +99,7 @@ remote_cocoa::ColorPanelBridge* g_current_panel_bridge = nullptr;
         SkScalarRoundToInt(255.0 * green), SkScalarRoundToInt(255.0 * blue));
   } else {
     skColor = skia::NSDeviceColorToSkColor(
-        [[panel color] colorUsingColorSpaceName:NSDeviceRGBColorSpace]);
+        [color colorUsingColorSpace:NSColorSpace.deviceRGBColorSpace]);
   }
   if (g_current_panel_bridge)
     g_current_panel_bridge->host()->DidChooseColorInColorPanel(skColor);
@@ -127,15 +137,18 @@ ColorPanelBridge::~ColorPanelBridge() {
     g_current_panel_bridge = nullptr;
 }
 
-void ColorPanelBridge::Show(uint32_t initial_color) {
+void ColorPanelBridge::Show(uint32_t initial_color, ShowCallback callback) {
   ColorPanelListener* listener = [ColorPanelListener instance];
   [listener setColor:skia::SkColorToDeviceNSColor(initial_color)];
   [listener showColorPanel];
+  std::move(callback).Run();
 }
 
-void ColorPanelBridge::SetSelectedColor(uint32_t color) {
+void ColorPanelBridge::SetSelectedColor(uint32_t color,
+                                        SetSelectedColorCallback callback) {
   ColorPanelListener* listener = [ColorPanelListener instance];
   [listener setColor:skia::SkColorToDeviceNSColor(color)];
+  std::move(callback).Run();
 }
 
 }  // namespace remote_cocoa

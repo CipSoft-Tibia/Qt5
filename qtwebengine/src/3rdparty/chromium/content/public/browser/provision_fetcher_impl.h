@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,8 @@
 
 #include <memory>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
+#include "content/common/content_export.h"
 #include "content/public/browser/provision_fetcher_factory.h"
 #include "media/base/provision_fetcher.h"
 #include "media/mojo/mojom/provision_fetcher.mojom.h"
@@ -32,10 +31,14 @@ class CONTENT_EXPORT ProvisionFetcherImpl
 
   explicit ProvisionFetcherImpl(
       std::unique_ptr<media::ProvisionFetcher> provision_fetcher);
+
+  ProvisionFetcherImpl(const ProvisionFetcherImpl&) = delete;
+  ProvisionFetcherImpl& operator=(const ProvisionFetcherImpl&) = delete;
+
   ~ProvisionFetcherImpl() override;
 
   // media::mojom::ProvisionFetcher implementation.
-  void Retrieve(const std::string& default_url,
+  void Retrieve(const GURL& default_url,
                 const std::string& request_data,
                 RetrieveCallback callback) final;
 
@@ -48,8 +51,6 @@ class CONTENT_EXPORT ProvisionFetcherImpl
   std::unique_ptr<media::ProvisionFetcher> provision_fetcher_;
 
   base::WeakPtrFactory<ProvisionFetcherImpl> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(ProvisionFetcherImpl);
 };
 
 }  // namespace content

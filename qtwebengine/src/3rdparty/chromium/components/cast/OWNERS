@@ -1,4 +1,5 @@
 file://build/fuchsia/OWNERS
 file://chromecast/OWNERS
 
-# COMPONENT: Chromecast
+# For trivial or mechanical horizontal JS/CSS/HTML changes.
+file://ui/webui/PLATFORM_OWNERS

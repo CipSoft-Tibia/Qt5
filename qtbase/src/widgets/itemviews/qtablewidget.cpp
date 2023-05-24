@@ -1,45 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtablewidget.h"
 
-#include <qitemdelegate.h>
 #include <qpainter.h>
 #include <private/qtablewidget_p.h>
 
@@ -63,12 +26,12 @@ QTableModel::~QTableModel()
 
 bool QTableModel::insertRows(int row, int count, const QModelIndex &)
 {
-    if (count < 1 || row < 0 || row > verticalHeaderItems.count())
+    if (count < 1 || row < 0 || row > verticalHeaderItems.size())
         return false;
 
     beginInsertRows(QModelIndex(), row, row + count - 1);
-    int rc = verticalHeaderItems.count();
-    int cc = horizontalHeaderItems.count();
+    int rc = verticalHeaderItems.size();
+    int cc = horizontalHeaderItems.size();
     verticalHeaderItems.insert(row, count, 0);
     if (rc == 0)
         tableItems.resize(cc * count);
@@ -80,12 +43,12 @@ bool QTableModel::insertRows(int row, int count, const QModelIndex &)
 
 bool QTableModel::insertColumns(int column, int count, const QModelIndex &)
 {
-    if (count < 1 || column < 0 || column > horizontalHeaderItems.count())
+    if (count < 1 || column < 0 || column > horizontalHeaderItems.size())
         return false;
 
     beginInsertColumns(QModelIndex(), column, column + count - 1);
-    int rc = verticalHeaderItems.count();
-    int cc = horizontalHeaderItems.count();
+    int rc = verticalHeaderItems.size();
+    int cc = horizontalHeaderItems.size();
     horizontalHeaderItems.insert(column, count, 0);
     if (cc == 0)
         tableItems.resize(rc * count);
@@ -98,7 +61,7 @@ bool QTableModel::insertColumns(int column, int count, const QModelIndex &)
 
 bool QTableModel::removeRows(int row, int count, const QModelIndex &)
 {
-    if (count < 1 || row < 0 || row + count > verticalHeaderItems.count())
+    if (count < 1 || row < 0 || row + count > verticalHeaderItems.size())
         return false;
 
     beginRemoveRows(QModelIndex(), row, row + count - 1);
@@ -125,7 +88,7 @@ bool QTableModel::removeRows(int row, int count, const QModelIndex &)
 
 bool QTableModel::removeColumns(int column, int count, const QModelIndex &)
 {
-    if (count < 1 || column < 0 || column + count >  horizontalHeaderItems.count())
+    if (count < 1 || column < 0 || column + count >  horizontalHeaderItems.size())
         return false;
 
     beginRemoveColumns(QModelIndex(), column, column + count - 1);
@@ -154,7 +117,7 @@ bool QTableModel::removeColumns(int column, int count, const QModelIndex &)
 void QTableModel::setItem(int row, int column, QTableWidgetItem *item)
 {
     int i = tableIndex(row, column);
-    if (i < 0 || i >= tableItems.count())
+    if (i < 0 || i >= tableItems.size())
         return;
     QTableWidgetItem *oldItem = tableItems.at(i);
     if (item == oldItem)
@@ -176,15 +139,15 @@ void QTableModel::setItem(int row, int column, QTableWidgetItem *item)
         && view->horizontalHeader()->sortIndicatorSection() == column) {
         // sorted insertion
         Qt::SortOrder order = view->horizontalHeader()->sortIndicatorOrder();
-        QVector<QTableWidgetItem*> colItems = columnItems(column);
-        if (row < colItems.count())
+        QList<QTableWidgetItem *> colItems = columnItems(column);
+        if (row < colItems.size())
             colItems.remove(row);
         int sortedRow;
         if (item == nullptr) {
             // move to after all non-0 (sortable) items
-            sortedRow = colItems.count();
+            sortedRow = colItems.size();
         } else {
-            QVector<QTableWidgetItem*>::iterator it;
+            QList<QTableWidgetItem *>::iterator it;
             it = sortedInsertionIterator(colItems.begin(), colItems.end(), order, item);
             sortedRow = qMax((int)(it - colItems.begin()), 0);
         }
@@ -192,7 +155,7 @@ void QTableModel::setItem(int row, int column, QTableWidgetItem *item)
             emit layoutAboutToBeChanged({}, QAbstractItemModel::VerticalSortHint);
             // move the items @ row to sortedRow
             int cc = columnCount();
-            QVector<QTableWidgetItem*> rowItems(cc);
+            QList<QTableWidgetItem *> rowItems(cc);
             for (int j = 0; j < cc; ++j)
                 rowItems[j] = tableItems.at(tableIndex(row, j));
             tableItems.remove(tableIndex(row, 0), cc);
@@ -270,7 +233,7 @@ void QTableModel::removeItem(QTableWidgetItem *item)
 
 void QTableModel::setHorizontalHeaderItem(int section, QTableWidgetItem *item)
 {
-    if (section < 0 || section >= horizontalHeaderItems.count())
+    if (section < 0 || section >= horizontalHeaderItems.size())
         return;
     QTableWidgetItem *oldItem = horizontalHeaderItems.at(section);
     if (item == oldItem)
@@ -284,7 +247,7 @@ void QTableModel::setHorizontalHeaderItem(int section, QTableWidgetItem *item)
 
     if (item) {
         item->view = view;
-        item->itemFlags = Qt::ItemFlags(int(item->itemFlags)|ItemIsHeaderItem);
+        item->d->headerItem = true;
     }
     horizontalHeaderItems[section] = item;
     emit headerDataChanged(Qt::Horizontal, section, section);
@@ -292,7 +255,7 @@ void QTableModel::setHorizontalHeaderItem(int section, QTableWidgetItem *item)
 
 void QTableModel::setVerticalHeaderItem(int section, QTableWidgetItem *item)
 {
-    if (section < 0 || section >= verticalHeaderItems.count())
+    if (section < 0 || section >= verticalHeaderItems.size())
         return;
     QTableWidgetItem *oldItem = verticalHeaderItems.at(section);
     if (item == oldItem)
@@ -306,7 +269,7 @@ void QTableModel::setVerticalHeaderItem(int section, QTableWidgetItem *item)
 
     if (item) {
         item->view = view;
-        item->itemFlags = Qt::ItemFlags(int(item->itemFlags)|ItemIsHeaderItem);
+        item->d->headerItem = true;
     }
     verticalHeaderItems[section] = item;
     emit headerDataChanged(Qt::Vertical, section, section);
@@ -314,12 +277,12 @@ void QTableModel::setVerticalHeaderItem(int section, QTableWidgetItem *item)
 
 QTableWidgetItem *QTableModel::takeHorizontalHeaderItem(int section)
 {
-    if (section < 0 || section >= horizontalHeaderItems.count())
+    if (section < 0 || section >= horizontalHeaderItems.size())
         return nullptr;
     QTableWidgetItem *itm = horizontalHeaderItems.at(section);
     if (itm) {
         itm->view = nullptr;
-        itm->itemFlags &= ~ItemIsHeaderItem;
+        itm->d->headerItem = false;
         horizontalHeaderItems[section] = 0;
     }
     return itm;
@@ -327,12 +290,12 @@ QTableWidgetItem *QTableModel::takeHorizontalHeaderItem(int section)
 
 QTableWidgetItem *QTableModel::takeVerticalHeaderItem(int section)
 {
-    if (section < 0 || section >= verticalHeaderItems.count())
+    if (section < 0 || section >= verticalHeaderItems.size())
         return nullptr;
     QTableWidgetItem *itm = verticalHeaderItems.at(section);
     if (itm) {
         itm->view = nullptr;
-        itm->itemFlags &= ~ItemIsHeaderItem;
+        itm->d->headerItem = false;
         verticalHeaderItems[section] = 0;
     }
     return itm;
@@ -354,7 +317,7 @@ QModelIndex QTableModel::index(const QTableWidgetItem *item) const
         return QModelIndex();
     int i = -1;
     const int id = item->d->id;
-    if (id >= 0 && id < tableItems.count() && tableItems.at(id) == item) {
+    if (id >= 0 && id < tableItems.size() && tableItems.at(id) == item) {
         i = id;
     } else { // we need to search for the item
         i = tableItems.indexOf(const_cast<QTableWidgetItem*>(item));
@@ -368,7 +331,7 @@ QModelIndex QTableModel::index(const QTableWidgetItem *item) const
 
 void QTableModel::setRowCount(int rows)
 {
-    int rc = verticalHeaderItems.count();
+    int rc = verticalHeaderItems.size();
     if (rows < 0 || rc == rows)
         return;
     if (rc < rows)
@@ -379,7 +342,7 @@ void QTableModel::setRowCount(int rows)
 
 void QTableModel::setColumnCount(int columns)
 {
-    int cc = horizontalHeaderItems.count();
+    int cc = horizontalHeaderItems.size();
     if (columns < 0 || cc == columns)
         return;
     if (cc < columns)
@@ -390,12 +353,12 @@ void QTableModel::setColumnCount(int columns)
 
 int QTableModel::rowCount(const QModelIndex &parent) const
 {
-    return parent.isValid() ? 0 : verticalHeaderItems.count();
+    return parent.isValid() ? 0 : verticalHeaderItems.size();
 }
 
 int QTableModel::columnCount(const QModelIndex &parent) const
 {
-    return parent.isValid() ? 0 : horizontalHeaderItems.count();
+    return parent.isValid() ? 0 : horizontalHeaderItems.size();
 }
 
 QVariant QTableModel::data(const QModelIndex &index, int role) const
@@ -436,7 +399,7 @@ QMap<int, QVariant> QTableModel::itemData(const QModelIndex &index) const
     QMap<int, QVariant> roles;
     QTableWidgetItem *itm = item(index);
     if (itm) {
-        for (int i = 0; i < itm->values.count(); ++i) {
+        for (int i = 0; i < itm->values.size(); ++i) {
             roles.insert(itm->values.at(i).role,
                          itm->values.at(i).value);
         }
@@ -454,7 +417,7 @@ bool QTableModel::setItemData(const QModelIndex &index, const QMap<int, QVariant
     QTableWidgetItem *itm = item(index);
     if (itm) {
         itm->view = nullptr; // prohibits item from calling itemChanged()
-        QVector<int> rolesVec;
+        QList<int> rolesVec;
         for (QMap<int, QVariant>::ConstIterator it = roles.constBegin(); it != roles.constEnd(); ++it) {
             const int role = (it.key() == Qt::EditRole ? Qt::DisplayRole : it.key());
             if (itm->data(role) != it.value()) {
@@ -480,7 +443,6 @@ bool QTableModel::setItemData(const QModelIndex &index, const QMap<int, QVariant
     return true;
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 bool QTableModel::clearItemData(const QModelIndex &index)
 {
     if (!checkIndex(index, CheckIndexOption::IndexIsValid))
@@ -493,10 +455,9 @@ bool QTableModel::clearItemData(const QModelIndex &index)
     if (std::all_of(beginIter, endIter, [](const QWidgetItemData& data) -> bool { return !data.value.isValid(); }))
         return true; //it's already cleared
     itm->values.clear();
-    emit dataChanged(index, index, QVector<int>{});
+    emit dataChanged(index, index, QList<int> {});
     return true;
 }
-#endif
 
 Qt::ItemFlags QTableModel::flags(const QModelIndex &index) const
 {
@@ -514,8 +475,8 @@ Qt::ItemFlags QTableModel::flags(const QModelIndex &index) const
 
 void QTableModel::sort(int column, Qt::SortOrder order)
 {
-    QVector<QPair<QTableWidgetItem*, int> > sortable;
-    QVector<int> unsortable;
+    QList<QPair<QTableWidgetItem *, int>> sortable;
+    QList<int> unsortable;
 
     sortable.reserve(rowCount());
     unsortable.reserve(rowCount());
@@ -530,7 +491,7 @@ void QTableModel::sort(int column, Qt::SortOrder order)
     const auto compare = (order == Qt::AscendingOrder ? &itemLessThan : &itemGreaterThan);
     std::stable_sort(sortable.begin(), sortable.end(), compare);
 
-    QVector<QTableWidgetItem*> sorted_table(tableItems.count());
+    QList<QTableWidgetItem *> sorted_table(tableItems.size());
     QModelIndexList from;
     QModelIndexList to;
     const int numRows = rowCount();
@@ -538,9 +499,9 @@ void QTableModel::sort(int column, Qt::SortOrder order)
     from.reserve(numRows * numColumns);
     to.reserve(numRows * numColumns);
     for (int i = 0; i < numRows; ++i) {
-        int r = (i < sortable.count()
+        int r = (i < sortable.size()
                  ? sortable.at(i).second
-                 : unsortable.at(i - sortable.count()));
+                 : unsortable.at(i - sortable.size()));
         for (int c = 0; c < numColumns; ++c) {
             sorted_table[tableIndex(i, c)] = item(r, c);
             from.append(createIndex(r, c));
@@ -567,7 +528,7 @@ void QTableModel::ensureSorted(int column, Qt::SortOrder order,
                                int start, int end)
 {
     int count = end - start + 1;
-    QVector < QPair<QTableWidgetItem*,int> > sorting;
+    QList<QPair<QTableWidgetItem *, int>> sorting;
     sorting.reserve(count);
     for (int row = start; row <= end; ++row) {
         QTableWidgetItem *itm = item(row, column);
@@ -582,16 +543,19 @@ void QTableModel::ensureSorted(int column, Qt::SortOrder order,
     const auto compare = (order == Qt::AscendingOrder ? &itemLessThan : &itemGreaterThan);
     std::stable_sort(sorting.begin(), sorting.end(), compare);
     QModelIndexList oldPersistentIndexes, newPersistentIndexes;
-    QVector<QTableWidgetItem*> newTable = tableItems;
-    QVector<QTableWidgetItem*> newVertical = verticalHeaderItems;
-    QVector<QTableWidgetItem*> colItems = columnItems(column);
-    QVector<QTableWidgetItem*>::iterator vit = colItems.begin();
+    QList<QTableWidgetItem *> newTable = tableItems;
+    QList<QTableWidgetItem *> newVertical = verticalHeaderItems;
+    QList<QTableWidgetItem *> colItems = columnItems(column);
+    QList<QTableWidgetItem *>::iterator vit = colItems.begin();
+    qsizetype distanceFromBegin = 0;
     bool changed = false;
-    for (int i = 0; i < sorting.count(); ++i) {
+    for (int i = 0; i < sorting.size(); ++i) {
+        distanceFromBegin = std::distance(colItems.begin(), vit);
         int oldRow = sorting.at(i).second;
         QTableWidgetItem *item = colItems.at(oldRow);
         colItems.remove(oldRow);
-        vit = sortedInsertionIterator(vit, colItems.end(), order, item);
+        vit = sortedInsertionIterator(colItems.begin() + distanceFromBegin, colItems.end(), order,
+                                      item);
         int newRow = qMax((int)(vit - colItems.begin()), 0);
         if ((newRow < oldRow) && !(*item < *colItems.at(oldRow - 1)) && !(*colItems.at(oldRow - 1) < *item))
             newRow = oldRow;
@@ -605,7 +569,7 @@ void QTableModel::ensureSorted(int column, Qt::SortOrder order,
             }
             // move the items @ oldRow to newRow
             int cc = columnCount();
-            QVector<QTableWidgetItem*> rowItems(cc);
+            QList<QTableWidgetItem *> rowItems(cc);
             for (int j = 0; j < cc; ++j)
                 rowItems[j] = newTable.at(tableIndex(oldRow, j));
             newTable.remove(tableIndex(oldRow, 0), cc);
@@ -618,7 +582,7 @@ void QTableModel::ensureSorted(int column, Qt::SortOrder order,
             // update persistent indexes
             updateRowIndexes(newPersistentIndexes, oldRow, newRow);
             // the index of the remaining rows may have changed
-            for (int j = i + 1; j < sorting.count(); ++j) {
+            for (int j = i + 1; j < sorting.size(); ++j) {
                 int otherRow = sorting.at(j).second;
                 if (oldRow < otherRow && newRow >= otherRow)
                     --sorting[j].second;
@@ -642,9 +606,9 @@ void QTableModel::ensureSorted(int column, Qt::SortOrder order,
 
   Returns the non-0 items in column \a column.
 */
-QVector<QTableWidgetItem*> QTableModel::columnItems(int column) const
+QList<QTableWidgetItem *> QTableModel::columnItems(int column) const
 {
-    QVector<QTableWidgetItem*> items;
+    QList<QTableWidgetItem *> items;
     int rc = rowCount();
     items.reserve(rc);
     for (int row = 0; row < rc; ++row) {
@@ -691,10 +655,10 @@ void QTableModel::updateRowIndexes(QModelIndexList &indexes,
   inserted in the interval (\a begin, \a end) according to
   the given sort \a order.
 */
-QVector<QTableWidgetItem*>::iterator QTableModel::sortedInsertionIterator(
-    const QVector<QTableWidgetItem*>::iterator &begin,
-    const QVector<QTableWidgetItem*>::iterator &end,
-    Qt::SortOrder order, QTableWidgetItem *item)
+QList<QTableWidgetItem *>::iterator
+QTableModel::sortedInsertionIterator(const QList<QTableWidgetItem *>::iterator &begin,
+                                     const QList<QTableWidgetItem *>::iterator &end,
+                                     Qt::SortOrder order, QTableWidgetItem *item)
 {
     if (order == Qt::AscendingOrder)
         return std::lower_bound(begin, end, item, QTableModelLessThan());
@@ -719,9 +683,9 @@ QVariant QTableModel::headerData(int section, Qt::Orientation orientation, int r
         return QVariant();
 
     QTableWidgetItem *itm = nullptr;
-    if (orientation == Qt::Horizontal && section < horizontalHeaderItems.count())
+    if (orientation == Qt::Horizontal && section < horizontalHeaderItems.size())
         itm = horizontalHeaderItems.at(section);
-    else if (orientation == Qt::Vertical && section < verticalHeaderItems.count())
+    else if (orientation == Qt::Vertical && section < verticalHeaderItems.size())
         itm = verticalHeaderItems.at(section);
     else
         return QVariant(); // section is out of bounds
@@ -756,20 +720,20 @@ bool QTableModel::setHeaderData(int section, Qt::Orientation orientation,
 bool QTableModel::isValid(const QModelIndex &index) const
 {
     return (index.isValid()
-            && index.row() < verticalHeaderItems.count()
-            && index.column() < horizontalHeaderItems.count());
+            && index.row() < verticalHeaderItems.size()
+            && index.column() < horizontalHeaderItems.size());
 }
 
 void QTableModel::clear()
 {
-    for (int j = 0; j < verticalHeaderItems.count(); ++j) {
+    for (int j = 0; j < verticalHeaderItems.size(); ++j) {
         if (verticalHeaderItems.at(j)) {
             verticalHeaderItems.at(j)->view = nullptr;
             delete verticalHeaderItems.at(j);
             verticalHeaderItems[j] = 0;
         }
     }
-    for (int k = 0; k < horizontalHeaderItems.count(); ++k) {
+    for (int k = 0; k < horizontalHeaderItems.size(); ++k) {
         if (horizontalHeaderItems.at(k)) {
             horizontalHeaderItems.at(k)->view = nullptr;
             delete horizontalHeaderItems.at(k);
@@ -782,7 +746,7 @@ void QTableModel::clear()
 void QTableModel::clearContents()
 {
     beginResetModel();
-    for (int i = 0; i < tableItems.count(); ++i) {
+    for (int i = 0; i < tableItems.size(); ++i) {
         if (tableItems.at(i)) {
             tableItems.at(i)->view = nullptr;
             delete tableItems.at(i);
@@ -792,11 +756,11 @@ void QTableModel::clearContents()
     endResetModel();
 }
 
-void QTableModel::itemChanged(QTableWidgetItem *item, const QVector<int> &roles)
+void QTableModel::itemChanged(QTableWidgetItem *item, const QList<int> &roles)
 {
     if (!item)
         return;
-    if (item->flags() & ItemIsHeaderItem) {
+    if (item->d->headerItem) {
         int row = verticalHeaderItems.indexOf(item);
         if (row >= 0) {
             emit headerDataChanged(Qt::Vertical, row, row);
@@ -844,7 +808,7 @@ QMimeData *QTableModel::internalMimeData()  const
 QMimeData *QTableModel::mimeData(const QModelIndexList &indexes) const
 {
     QList<QTableWidgetItem*> items;
-    const int indexesCount = indexes.count();
+    const int indexesCount = indexes.size();
     items.reserve(indexesCount);
     for (int i = 0; i < indexesCount; ++i)
         items << item(indexes.at(i));
@@ -900,38 +864,36 @@ Qt::DropActions QTableModel::supportedDropActions() const
 */
 
 /*!
-    Constructs an table selection range, i.e. a range
+    \fn QTableWidgetSelectionRange::QTableWidgetSelectionRange()
+
+    Constructs an empty table selection range, i.e. a range
     whose rowCount() and columnCount() are 0.
+
+    \sa topRow(), leftColumn(), bottomRow(), rightColumn()
 */
-QTableWidgetSelectionRange::QTableWidgetSelectionRange()
-    : top(-1), left(-1), bottom(-2), right(-2)
-{
-}
 
 /*!
+    \fn QTableWidgetSelectionRange::QTableWidgetSelectionRange(int top, int left, int bottom, int right)
+
     Constructs the table selection range from the given \a top, \a
     left, \a bottom and \a right table rows and columns.
 
     \sa topRow(), leftColumn(), bottomRow(), rightColumn()
 */
-QTableWidgetSelectionRange::QTableWidgetSelectionRange(int top, int left, int bottom, int right)
-    : top(top), left(left), bottom(bottom), right(right)
-{
-}
 
 /*!
-    Constructs a the table selection range by copying the given \a
-    other table selection range.
+    \fn bool QTableWidgetSelectionRange::operator==(const QTableWidgetSelectionRange &lhs, const QTableWidgetSelectionRange &rhs)
+    \since 6.3
+
+    Returns true if \a lhs and \a rhs are equal, otherwise returns false.
 */
-QTableWidgetSelectionRange::QTableWidgetSelectionRange(const QTableWidgetSelectionRange &) = default;
-QTableWidgetSelectionRange &QTableWidgetSelectionRange::operator=(const QTableWidgetSelectionRange &) = default;
 
 /*!
-    Destroys the table selection range.
+    \fn bool QTableWidgetSelectionRange::operator!=(const QTableWidgetSelectionRange &lhs, const QTableWidgetSelectionRange &rhs)
+    \since 6.3
+
+    Returns true if \a lhs and \a rhs are not equal, otherwise returns false.
 */
-QTableWidgetSelectionRange::~QTableWidgetSelectionRange()
-{
-}
 
 /*!
     \fn int QTableWidgetSelectionRange::topRow() const
@@ -1249,22 +1211,6 @@ void QTableWidgetItem::setFlags(Qt::ItemFlags aflags)
     \sa font(), setText(), setForeground()
 */
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \fn QColor QTableWidgetItem::backgroundColor() const
-    \obsolete
-
-    This function is deprecated. Use background() instead.
-*/
-
-/*!
-    \fn void QTableWidgetItem::setBackgroundColor(const QColor &color)
-    \obsolete
-
-    This function is deprecated. Use setBackground() instead.
-*/
-#endif
-
 /*!
     \fn QBrush QTableWidgetItem::background() const
     \since 4.2
@@ -1284,22 +1230,6 @@ void QTableWidgetItem::setFlags(Qt::ItemFlags aflags)
 
     \sa setForeground()
 */
-
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \fn QColor QTableWidgetItem::textColor() const
-    \obsolete
-
-    This function is deprecated. Use foreground() instead.
-*/
-
-/*!
-    \fn void QTableWidgetItem::setTextColor(const QColor &color)
-    \obsolete
-
-    This function is deprecated. Use setForeground() instead.
-*/
-#endif
 
 /*!
     \fn QBrush QTableWidgetItem::foreground() const
@@ -1322,20 +1252,49 @@ void QTableWidgetItem::setFlags(Qt::ItemFlags aflags)
 */
 
 /*!
+    \if defined(qt7)
+
+    \fn Qt::Alignment QTableWidgetItem::textAlignment() const
+
+    Returns the text alignment for the list item.
+
+    \else
+
     \fn int QTableWidgetItem::textAlignment() const
 
     Returns the text alignment for the item's text.
 
+    \note This function returns an int for historical reasons. It will
+    be corrected to return Qt::Alignment in Qt 7.
+
     \sa Qt::Alignment
+
+    \endif
 */
 
 /*!
+    \obsolete [6.4] Use the overload that takes a Qt::Alignment argument.
+
     \fn void QTableWidgetItem::setTextAlignment(int alignment)
 
     Sets the text alignment for the item's text to the \a alignment
     specified.
 
     \sa Qt::Alignment
+*/
+
+/*!
+    \since 6.4
+
+    \fn void QTableWidgetItem::setTextAlignment(Qt::Alignment alignment)
+
+    Sets the text alignment for the item's text to the \a alignment
+    specified.
+*/
+
+/*!
+  \fn void QTableWidgetItem::setTextAlignment(Qt::AlignmentFlag alignment)
+  \internal
 */
 
 /*!
@@ -1420,7 +1379,7 @@ void QTableWidgetItem::setData(int role, const QVariant &value)
 {
     bool found = false;
     role = (role == Qt::EditRole ? Qt::DisplayRole : role);
-    for (int i = 0; i < values.count(); ++i) {
+    for (int i = 0; i < values.size(); ++i) {
         if (values.at(i).role == role) {
             if (values[i].value == value)
                 return;
@@ -1434,9 +1393,9 @@ void QTableWidgetItem::setData(int role, const QVariant &value)
         values.append(QWidgetItemData(role, value));
     if (QTableModel *model = tableModel())
     {
-        const QVector<int> roles((role == Qt::DisplayRole) ?
-                                    QVector<int>({Qt::DisplayRole, Qt::EditRole}) :
-                                    QVector<int>({role}));
+        const QList<int> roles((role == Qt::DisplayRole)
+                                       ? QList<int>({ Qt::DisplayRole, Qt::EditRole })
+                                       : QList<int>({ role }));
         model->itemChanged(this, roles);
     }
 }
@@ -2127,7 +2086,7 @@ void QTableWidget::setVerticalHeaderLabels(const QStringList &labels)
     Q_D(QTableWidget);
     QTableModel *model = d->tableModel();
     QTableWidgetItem *item = nullptr;
-    for (int i = 0; i < model->rowCount() && i < labels.count(); ++i) {
+    for (int i = 0; i < model->rowCount() && i < labels.size(); ++i) {
         item = model->verticalHeaderItem(i);
         if (!item) {
             item = model->createItem();
@@ -2145,7 +2104,7 @@ void QTableWidget::setHorizontalHeaderLabels(const QStringList &labels)
     Q_D(QTableWidget);
     QTableModel *model = d->tableModel();
     QTableWidgetItem *item = nullptr;
-    for (int i = 0; i < model->columnCount() && i < labels.count(); ++i) {
+    for (int i = 0; i < model->columnCount() && i < labels.size(); ++i) {
         item = model->horizontalHeaderItem(i);
         if (!item) {
             item = model->createItem();
@@ -2358,34 +2317,6 @@ void QTableWidget::setCellWidget(int row, int column, QWidget *widget)
     QAbstractItemView::setIndexWidget(index, widget);
 }
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-  Returns \c true if the \a item is selected, otherwise returns \c false.
-
-  \obsolete
-
-  This function is deprecated. Use \l{QTableWidgetItem::isSelected()} instead.
-*/
-
-bool QTableWidget::isItemSelected(const QTableWidgetItem *item) const
-{
-    return ((item && item->tableWidget() == this) ? item->isSelected() : false);
-}
-
-/*!
-  Selects or deselects \a item depending on \a select.
-
-  \obsolete
-
-  This function is deprecated. Use \l{QTableWidgetItem::setSelected()} instead.
-*/
-void QTableWidget::setItemSelected(const QTableWidgetItem *item, bool select)
-{
-    if (item && item->tableWidget() == this)
-        const_cast<QTableWidgetItem*>(item)->setSelected(select);
-}
-#endif
-
 /*!
   Selects or deselects the \a range depending on \a select.
 */
@@ -2412,13 +2343,13 @@ QList<QTableWidgetSelectionRange> QTableWidget::selectedRanges() const
 {
     const QList<QItemSelectionRange> ranges = selectionModel()->selection();
     QList<QTableWidgetSelectionRange> result;
-    const int rangesCount = ranges.count();
+    const int rangesCount = ranges.size();
     result.reserve(rangesCount);
     for (int i = 0; i < rangesCount; ++i)
-        result.append(QTableWidgetSelectionRange(ranges.at(i).top(),
-                                                 ranges.at(i).left(),
-                                                 ranges.at(i).bottom(),
-                                                 ranges.at(i).right()));
+        result.append({ranges.at(i).top(),
+                       ranges.at(i).left(),
+                       ranges.at(i).bottom(),
+                       ranges.at(i).right()});
     return result;
 }
 
@@ -2642,11 +2573,7 @@ QStringList QTableWidget::mimeTypes() const
     If the list of items is empty, \nullptr is returned rather than a
     serialized empty list.
 */
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
 QMimeData *QTableWidget::mimeData(const QList<QTableWidgetItem *> &items) const
-#else
-QMimeData *QTableWidget::mimeData(const QList<QTableWidgetItem*> items) const
-#endif
 {
     Q_D(const QTableWidget);
 
@@ -2654,7 +2581,7 @@ QMimeData *QTableWidget::mimeData(const QList<QTableWidgetItem*> items) const
 
     // if non empty, it's called from the model's own mimeData
     if (cachedIndexes.isEmpty()) {
-        cachedIndexes.reserve(items.count());
+        cachedIndexes.reserve(items.size());
         for (QTableWidgetItem *item : items)
             cachedIndexes << indexFromItem(item);
 
@@ -2725,18 +2652,6 @@ QModelIndex QTableWidget::indexFromItem(const QTableWidgetItem *item) const
     return d->tableModel()->index(item);
 }
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-/*!
-  \internal
-  \obsolete
-  \overload
-*/
-QModelIndex QTableWidget::indexFromItem(QTableWidgetItem *item) const
-{
-    return indexFromItem(const_cast<const QTableWidgetItem *>(item));
-}
-#endif
-
 /*!
   Returns a pointer to the QTableWidgetItem associated with the given \a index.
 */
@@ -2770,7 +2685,8 @@ void QTableWidget::dropEvent(QDropEvent *event) {
         QModelIndex topIndex;
         int col = -1;
         int row = -1;
-        if (d->dropOn(event, &row, &col, &topIndex)) {
+        // check whether a subclass has already accepted the event, ie. moved the data
+        if (!event->isAccepted() && d->dropOn(event, &row, &col, &topIndex)) {
             const QModelIndexList indexes = selectedIndexes();
             int top = INT_MAX;
             int left = INT_MAX;
@@ -2780,7 +2696,7 @@ void QTableWidget::dropEvent(QDropEvent *event) {
             }
 
             QList<QTableWidgetItem *> taken;
-            const int indexesCount = indexes.count();
+            const int indexesCount = indexes.size();
             taken.reserve(indexesCount);
             for (const auto &index : indexes)
                 taken.append(takeItem(index.row(), index.column()));
@@ -2792,9 +2708,11 @@ void QTableWidget::dropEvent(QDropEvent *event) {
             }
 
             event->accept();
-            // Don't want QAbstractItemView to delete it because it was "moved" we already did it
-            d->dropEventMoved = true;
         }
+        // either we or a subclass accepted the move event, so assume that the data was
+        // moved and that QAbstractItemView shouldn't remove the source when QDrag::exec returns
+        if (event->isAccepted())
+            d->dropEventMoved = true;
     }
 
     QTableView::dropEvent(event);

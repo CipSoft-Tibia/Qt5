@@ -1,21 +1,17 @@
+set noparent
 agl@chromium.org
-asanka@chromium.org
+bashi@chromium.org
 davidben@chromium.org
+dschinazi@chromium.org
 ericorth@chromium.org
-eroman@chromium.org
 jkarlin@chromium.org
 mattm@chromium.org
 mmenke@chromium.org
 morlovich@chromium.org
 nharper@chromium.org
 pauljensen@chromium.org
-rsleevi@chromium.org
-zhongyi@chromium.org
-
-file://net/quic/OWNERS # For QUICHE rolls only.
+rch@chromium.org
+ricea@chromium.org
 
 per-file BUILD.gn=file://net/nqe/OWNERS
 per-file BUILD.gn=file://net/websockets/OWNERS
-
-# TEAM: net-dev@chromium.org
-# COMPONENT: Internals>Network

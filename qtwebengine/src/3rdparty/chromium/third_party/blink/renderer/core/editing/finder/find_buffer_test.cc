@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include "third_party/blink/renderer/core/editing/ephemeral_range.h"
 #include "third_party/blink/renderer/core/editing/selection_template.h"
 #include "third_party/blink/renderer/core/editing/testing/editing_test_base.h"
+#include "third_party/blink/renderer/core/html/forms/text_control_element.h"
 
 namespace blink {
 
@@ -451,6 +452,12 @@ TEST_P(FindBufferSeparatorTest, FindSeparatedElements) {
   EXPECT_EQ(0u, buffer.FindMatches("aa", kCaseInsensitive).CountForTesting());
 }
 
+TEST_P(FindBufferSeparatorTest, FindBRSeparatedElements) {
+  SetBodyContent("a<br>a");
+  FindBuffer buffer(WholeDocumentRange());
+  EXPECT_EQ(1u, buffer.FindMatches("a\na", kCaseInsensitive).CountForTesting());
+}
+
 TEST_F(FindBufferTest, WhiteSpaceCollapsingPreWrap) {
   SetBodyContent(
       " a  \n   b  <b> c </b> d  <span style='white-space: pre-wrap'> e  "
@@ -661,20 +668,20 @@ TEST_F(FindBufferTest, SelectMultipleTest) {
   SetBodyContent("<select multiple><option>find me</option></select>");
   {
     FindBuffer buffer(WholeDocumentRange());
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
     EXPECT_EQ(0u, buffer.FindMatches("find", 0).CountForTesting());
 #else
     EXPECT_EQ(1u, buffer.FindMatches("find", 0).CountForTesting());
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   }
   SetBodyContent("<select size=2><option>find me</option></select>");
   {
     FindBuffer buffer(WholeDocumentRange());
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
     EXPECT_EQ(0u, buffer.FindMatches("find", 0).CountForTesting());
 #else
     EXPECT_EQ(1u, buffer.FindMatches("find", 0).CountForTesting());
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   }
   SetBodyContent("<select size=1><option>find me</option></select>");
   {
@@ -691,7 +698,8 @@ TEST_F(FindBufferTest, NullRange) {
 
 TEST_F(FindBufferTest, FindObjectReplacementCharacter) {
   SetBodyContent(
-      "some text with <br> and \uFFFC (object replacement character)");
+      "some text with <script></script> and \uFFFC (object replacement "
+      "character)");
   FindBuffer buffer(WholeDocumentRange());
   const auto results = buffer.FindMatches("\uFFFC", 0);
   ASSERT_EQ(1u, results.CountForTesting());
@@ -699,7 +707,8 @@ TEST_F(FindBufferTest, FindObjectReplacementCharacter) {
 
 TEST_F(FindBufferTest,
        FindMaxCodepointWithReplacedElementAndMaxCodepointUTF32) {
-  SetBodyContent("some text with <img/> <br> and \U0010FFFF (max codepoint)");
+  SetBodyContent(
+      "some text with <img/> <script></script> and \U0010FFFF (max codepoint)");
   FindBuffer buffer(WholeDocumentRange());
   const auto results = buffer.FindMatches("\U0010FFFF", 0);
   ASSERT_EQ(1u, results.CountForTesting());
@@ -713,7 +722,7 @@ TEST_F(FindBufferTest, FindMaxCodepointNormalTextUTF32) {
 }
 
 TEST_F(FindBufferTest, FindMaxCodepointWithReplacedElementUTF32) {
-  SetBodyContent("some text with <img/> <br>");
+  SetBodyContent("some text with <img/> <script></script>");
   FindBuffer buffer(WholeDocumentRange());
   const auto results = buffer.FindMatches("\U0010FFFF", 0);
   ASSERT_EQ(0u, results.CountForTesting());
@@ -721,7 +730,8 @@ TEST_F(FindBufferTest, FindMaxCodepointWithReplacedElementUTF32) {
 
 TEST_F(FindBufferTest,
        FindMaxCodepointWithReplacedElementAndMaxCodepointUTF16) {
-  SetBodyContent("some text with <img/> <br> and \uFFFF (max codepoint)");
+  SetBodyContent(
+      "some text with <img/> <scrip></script> and \uFFFF (max codepoint)");
   FindBuffer buffer(WholeDocumentRange());
   const auto results = buffer.FindMatches("\uFFFF", 0);
   ASSERT_EQ(1u, results.CountForTesting());
@@ -735,9 +745,137 @@ TEST_F(FindBufferTest, FindMaxCodepointNormalTextUTF16) {
 }
 
 TEST_F(FindBufferTest, FindMaxCodepointWithReplacedElementUTF16) {
-  SetBodyContent("some text with <img/> <br>");
+  SetBodyContent("some text with <img/> <script></script>");
   FindBuffer buffer(WholeDocumentRange());
   const auto results = buffer.FindMatches("\uFFFF", 0);
   ASSERT_EQ(0u, results.CountForTesting());
 }
+
+// Tests that a suggested value is not found by searches.
+TEST_F(FindBufferTest, DoNotSearchInSuggestedValues) {
+  SetBodyContent("<input name='field' type='text'>");
+
+  // The first node of the document should be the input field.
+  Node* input_element = GetDocument().body()->firstChild();
+  ASSERT_TRUE(IsA<TextControlElement>(*input_element));
+  TextControlElement& text_control_element =
+      To<TextControlElement>(*input_element);
+  ASSERT_EQ(text_control_element.NameForAutofill(), "field");
+
+  // The suggested value to a string that contains the search string.
+  text_control_element.SetSuggestedValue("aba");
+  ASSERT_EQ(text_control_element.SuggestedValue(), "aba");
+  GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  {
+    // Apply a search for 'aba'.
+    FindBuffer buffer(WholeDocumentRange());
+    const auto results = buffer.FindMatches("aba", 0);
+
+    // There should be no result because the suggested value is not supposed to
+    // be considered in a search.
+    EXPECT_EQ(0U, results.CountForTesting());
+  }
+  // Convert the suggested value to an autofill value.
+  text_control_element.SetAutofillValue(text_control_element.SuggestedValue());
+  GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+  {
+    // Apply a search for 'aba' again.
+    FindBuffer buffer(WholeDocumentRange());
+    const auto results = buffer.FindMatches("aba", 0);
+
+    // This time, there should be a match.
+    EXPECT_EQ(1U, results.CountForTesting());
+  }
+}
+
+TEST_F(FindBufferTest, FindInTable) {
+  SetBodyContent(
+      "<table id='table'><tbody><tr id='row'><td id='c1'>c1 "
+      "<i>i</i></td></tr></tbody></table>");
+  FindBuffer buffer(WholeDocumentRange());
+  const auto results = buffer.FindMatches("c1", 0);
+  ASSERT_EQ(1u, results.CountForTesting());
+}
+
+TEST_F(FindBufferTest, IsInSameUninterruptedBlock) {
+  SetBodyContent(
+      "<div id=outer>a<div id=inner>b</div><i id='styled'>i</i>c</div>");
+  Node* text_node_a = GetDocument().getElementById("outer")->firstChild();
+  Node* styled = GetDocument().getElementById("styled");
+  Node* text_node_i = GetDocument().getElementById("styled")->firstChild();
+  Node* text_node_c = GetDocument().getElementById("outer")->lastChild();
+  Node* text_node_b = GetDocument().getElementById("inner")->firstChild();
+
+  ASSERT_TRUE(
+      FindBuffer::IsInSameUninterruptedBlock(*text_node_i, *text_node_c));
+  ASSERT_TRUE(FindBuffer::IsInSameUninterruptedBlock(*styled, *text_node_c));
+  ASSERT_FALSE(
+      FindBuffer::IsInSameUninterruptedBlock(*text_node_a, *text_node_c));
+  ASSERT_FALSE(
+      FindBuffer::IsInSameUninterruptedBlock(*text_node_a, *text_node_b));
+}
+
+TEST_F(FindBufferTest, IsInSameUninterruptedBlock_input) {
+  SetBodyContent("<div id='outer'>a<input value='input' id='input'>b</div>");
+  Node* text_node_a = GetDocument().getElementById("outer")->firstChild();
+  Node* text_node_b = GetDocument().getElementById("outer")->lastChild();
+  Node* input = GetDocument().getElementById("input");
+  Node* editable_div = FlatTreeTraversal::Next(*input);
+
+  // input elements are followed by an editable div that contains the input
+  // field value.
+  ASSERT_EQ("input", editable_div->textContent());
+
+  ASSERT_FALSE(
+      FindBuffer::IsInSameUninterruptedBlock(*text_node_a, *text_node_b));
+  ASSERT_FALSE(FindBuffer::IsInSameUninterruptedBlock(*text_node_a, *input));
+  ASSERT_FALSE(
+      FindBuffer::IsInSameUninterruptedBlock(*text_node_a, *editable_div));
+}
+
+TEST_F(FindBufferTest, IsInSameUninterruptedBlock_table) {
+  SetBodyContent(
+      "<table id='table'>"
+      "<tbody>"
+      "<tr id='row'>"
+      "  <td id='c1'>c1</td>"
+      "  <td id='c2'>c2</td>"
+      "  <td id='c3'>c3</td>"
+      "</tr>"
+      "</tbody>"
+      "</table>");
+  Node* text_node_1 = GetDocument().getElementById("c1")->firstChild();
+  Node* text_node_3 = GetDocument().getElementById("c3")->firstChild();
+
+  ASSERT_FALSE(
+      FindBuffer::IsInSameUninterruptedBlock(*text_node_1, *text_node_3));
+}
+
+TEST_F(FindBufferTest, IsInSameUninterruptedBlock_comment) {
+  SetBodyContent(
+      "<div id='text'><span id='span1'>abc</span><!--comment--><span "
+      "id='span2'>def</span></div>");
+  Node* span_1 = GetDocument().getElementById("span1")->firstChild();
+  Node* span_2 = GetDocument().getElementById("span2")->firstChild();
+
+  ASSERT_TRUE(FindBuffer::IsInSameUninterruptedBlock(*span_1, *span_2));
+}
+
+TEST_F(FindBufferTest, GetFirstBlockLevelAncestorInclusive) {
+  SetBodyContent("<div id=outer>a<div id=inner>b</div>c</div>");
+  Node* outer_div = GetDocument().getElementById("outer");
+  Node* text_node_a = GetDocument().getElementById("outer")->firstChild();
+  Node* text_node_c = GetDocument().getElementById("outer")->lastChild();
+  Node* inner_div = GetDocument().getElementById("inner");
+  Node* text_node_b = GetDocument().getElementById("inner")->firstChild();
+
+  ASSERT_EQ(outer_div,
+            FindBuffer::GetFirstBlockLevelAncestorInclusive(*text_node_a));
+  ASSERT_EQ(outer_div,
+            FindBuffer::GetFirstBlockLevelAncestorInclusive(*text_node_c));
+  ASSERT_EQ(inner_div,
+            FindBuffer::GetFirstBlockLevelAncestorInclusive(*text_node_b));
+}
+
 }  // namespace blink

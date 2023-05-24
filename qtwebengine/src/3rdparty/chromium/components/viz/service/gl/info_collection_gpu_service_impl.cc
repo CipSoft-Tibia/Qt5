@@ -1,12 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/viz/service/gl/info_collection_gpu_service_impl.h"
 
 #include <utility>
-#include "base/task/post_task.h"
-#include "base/task_runner_util.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/task/thread_pool.h"
 #include "gpu/config/dx_diag_node.h"
 #include "gpu/config/gpu_info_collector.h"
 
@@ -60,12 +60,14 @@ void InfoCollectionGpuServiceImpl::
         GetGpuSupportedDx12VersionAndDevicePerfInfoCallback callback) {
   DCHECK(main_runner_->BelongsToCurrentThread());
 
-  uint32_t d3d12_feature_level = gpu::GetGpuSupportedD3D12Version();
-  gpu::RecordGpuSupportedDx12VersionHistograms(d3d12_feature_level);
-
-  io_runner_->PostTask(FROM_HERE,
-                       base::BindOnce(std::move(callback), d3d12_feature_level,
-                                      device_perf_info_));
+  uint32_t d3d12_feature_level = 0;
+  uint32_t highest_shader_model_version = 0;
+  gpu::GetGpuSupportedD3D12Version(d3d12_feature_level,
+                                   highest_shader_model_version);
+  io_runner_->PostTask(
+      FROM_HERE,
+      base::BindOnce(std::move(callback), d3d12_feature_level,
+                     highest_shader_model_version, device_perf_info_));
 }
 
 void InfoCollectionGpuServiceImpl::GetGpuSupportedVulkanVersionInfo(
@@ -104,24 +106,24 @@ void InfoCollectionGpuServiceImpl::RequestDxDiagNodeInfoOnMain(
 
   // We can continue on shutdown here because we're not writing any critical
   // state in this task.
-  base::PostTaskAndReplyWithResult(
-      base::ThreadPool::CreateCOMSTATaskRunner(
-          {base::TaskPriority::USER_VISIBLE,
-           base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN})
-          .get(),
-      FROM_HERE, base::BindOnce([]() {
-        gpu::DxDiagNode dx_diag_node;
-        gpu::GetDxDiagnostics(&dx_diag_node);
-        return dx_diag_node;
-      }),
-      base::BindOnce(
-          [](RequestDxDiagNodeInfoCallback callback,
-             scoped_refptr<base::SingleThreadTaskRunner> io_runner,
-             const gpu::DxDiagNode& dx_diag_node) {
-            io_runner->PostTask(
-                FROM_HERE, base::BindOnce(std::move(callback), dx_diag_node));
-          },
-          std::move(callback), io_runner_));
+  base::ThreadPool::CreateCOMSTATaskRunner(
+      {base::TaskPriority::USER_VISIBLE,
+       base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN})
+      ->PostTaskAndReplyWithResult(
+          FROM_HERE, base::BindOnce([]() {
+            gpu::DxDiagNode dx_diag_node;
+            gpu::GetDxDiagnostics(&dx_diag_node);
+            return dx_diag_node;
+          }),
+          base::BindOnce(
+              [](RequestDxDiagNodeInfoCallback callback,
+                 scoped_refptr<base::SingleThreadTaskRunner> io_runner,
+                 const gpu::DxDiagNode& dx_diag_node) {
+                io_runner->PostTask(
+                    FROM_HERE,
+                    base::BindOnce(std::move(callback), dx_diag_node));
+              },
+              std::move(callback), io_runner_));
 }
 
 }  // namespace viz

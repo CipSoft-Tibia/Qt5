@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdatastream.h"
 #include "qdatastream_p.h"
@@ -54,6 +18,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \class QDataStream
     \inmodule QtCore
+    \ingroup qtserialization
     \reentrant
     \brief The QDataStream class provides serialization of binary data
     to a QIODevice.
@@ -138,9 +103,9 @@ QT_BEGIN_NAMESPACE
     \snippet code/src_corelib_io_qdatastream.cpp 4
 
     You can select which byte order to use when serializing data. The
-    default setting is big endian (MSB first). Changing it to little
-    endian breaks the portability (unless the reader also changes to
-    little endian). We recommend keeping this setting unless you have
+    default setting is big-endian (MSB first). Changing it to little-endian
+    breaks the portability (unless the reader also changes to
+    little-endian). We recommend keeping this setting unless you have
     special requirements.
 
     \target raw
@@ -163,7 +128,7 @@ QT_BEGIN_NAMESPACE
     \section1 Reading and Writing Qt Collection Classes
 
     The Qt container classes can also be serialized to a QDataStream.
-    These include QList, QLinkedList, QVector, QSet, QHash, and QMap.
+    These include QList, QSet, QHash, and QMap.
     The stream operators are declared as non-members of the classes.
 
     \target Serializing Qt Classes
@@ -198,6 +163,27 @@ QT_BEGIN_NAMESPACE
 
     If no full packet is received, this code restores the stream to the
     initial position, after which you need to wait for more data to arrive.
+
+    \section1 Corruption and Security
+
+    QDataStream is not resilient against corrupted data inputs and should
+    therefore not be used for security-sensitive situations, even when using
+    transactions. Transactions will help determine if a valid input can
+    currently be decoded with the data currently available on an asynchronous
+    device, but will assume that the data that is available is correctly
+    formed.
+
+    Additionally, many QDataStream demarshalling operators will allocate memory
+    based on information found in the stream. Those operators perform no
+    verification on whether the requested amount of memory is reasonable or if
+    it is compatible with the amount of data available in the stream (example:
+    demarshalling a QByteArray or QString may see the request for allocation of
+    several gigabytes of data).
+
+    QDataStream should not be used on content whose provenance cannot be
+    trusted. Applications should be designed to attempt to decode only streams
+    whose provenance is at least as trustworthy as that of the application
+    itself or its plugins.
 
     \sa QTextStream, QVariant
 */
@@ -302,7 +288,7 @@ QDataStream::QDataStream(QIODevice *d)
 }
 
 /*!
-    \fn QDataStream::QDataStream(QByteArray *a, QIODevice::OpenMode mode)
+    \fn QDataStream::QDataStream(QByteArray *a, OpenMode mode)
 
     Constructs a data stream that operates on a byte array, \a a. The
     \a mode describes how the device is to be used.
@@ -314,7 +300,7 @@ QDataStream::QDataStream(QIODevice *d)
     is created to wrap the byte array.
 */
 
-QDataStream::QDataStream(QByteArray *a, QIODevice::OpenMode flags)
+QDataStream::QDataStream(QByteArray *a, OpenMode flags)
 {
     QBuffer *buf = new QBuffer(a);
 #ifndef QT_NO_QOBJECT
@@ -395,19 +381,6 @@ void QDataStream::setDevice(QIODevice *d)
     }
     dev = d;
 }
-
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \obsolete
-    Unsets the I/O device.
-    Use setDevice(nullptr) instead.
-*/
-
-void QDataStream::unsetDevice()
-{
-    setDevice(nullptr);
-}
-#endif
 
 /*!
     \fn bool QDataStream::atEnd() const
@@ -513,7 +486,7 @@ void QDataStream::setStatus(Status status)
     The \a bo parameter can be QDataStream::BigEndian or
     QDataStream::LittleEndian.
 
-    The default setting is big endian. We recommend leaving this
+    The default setting is big-endian. We recommend leaving this
     setting unless you have special requirements.
 
     \sa byteOrder()
@@ -567,6 +540,13 @@ void QDataStream::setByteOrder(ByteOrder bo)
     \value Qt_5_13 Version 19 (Qt 5.13)
     \value Qt_5_14 Same as Qt_5_13
     \value Qt_5_15 Same as Qt_5_13
+    \value Qt_6_0 Version 20 (Qt 6.0)
+    \value Qt_6_1 Same as Qt_6_0
+    \value Qt_6_2 Same as Qt_6_0
+    \value Qt_6_3 Same as Qt_6_0
+    \value Qt_6_4 Same as Qt_6_0
+    \value Qt_6_5 Same as Qt_6_0
+    \value Qt_6_6 Same as Qt_6_0
     \omitvalue Qt_DefaultCompiledVersion
 
     \sa setVersion(), version()
@@ -753,6 +733,14 @@ void QDataStream::abortTransaction()
 
     CHECK_STREAM_PRECOND(Q_VOID)
     dev->commitTransaction();
+}
+
+/*!
+   \internal
+*/
+bool QDataStream::isDeviceTransactionStarted() const
+{
+   return dev && dev->isTransactionStarted();
 }
 
 /*****************************************************************************
@@ -993,25 +981,12 @@ QDataStream &QDataStream::operator>>(double &f)
 
 /*!
     \overload
-    \since 5.9
 
-    Reads a floating point number from the stream into \a f,
-    using the standard IEEE 754 format. Returns a reference to the
-    stream.
-*/
-QDataStream &QDataStream::operator>>(qfloat16 &f)
-{
-    return *this >> reinterpret_cast<qint16&>(f);
-}
+    Reads string \a s from the stream and returns a reference to the stream.
 
-
-/*!
-    \overload
-
-    Reads the '\\0'-terminated string \a s from the stream and returns
-    a reference to the stream.
-
-    The string is deserialized using \c{readBytes()}.
+    The string is deserialized using \c{readBytes()} where the serialization
+    format is a \c quint32 length specifier first, followed by that many bytes
+    of data. The resulting string is always '\\0'-terminated.
 
     Space for the string is allocated using \c{new []} -- the caller must
     destroy it with \c{delete []}.
@@ -1025,6 +1000,35 @@ QDataStream &QDataStream::operator>>(char *&s)
     return readBytes(s, len);
 }
 
+/*!
+    \overload
+    \since 6.0
+
+    Reads a 16bit wide char from the stream into \a c and
+    returns a reference to the stream.
+*/
+QDataStream &QDataStream::operator>>(char16_t &c)
+{
+    quint16 u;
+    *this >> u;
+    c = char16_t(u);
+    return *this;
+}
+
+/*!
+    \overload
+    \since 6.0
+
+    Reads a 32bit wide character from the stream into \a c and
+    returns a reference to the stream.
+*/
+QDataStream &QDataStream::operator>>(char32_t &c)
+{
+    quint32 u;
+    *this >> u;
+    c = char32_t(u);
+    return *this;
+}
 
 /*!
     Reads the buffer \a s from the stream and returns a reference to
@@ -1094,6 +1098,16 @@ int QDataStream::readRawData(char *s, int len)
     return readBlock(s, len);
 }
 
+/*! \fn template <class T1, class T2> QDataStream &operator>>(QDataStream &in, std::pair<T1, T2> &pair)
+    \since 6.0
+    \relates QDataStream
+
+    Reads a pair from stream \a in into \a pair.
+
+    This function requires the T1 and T2 types to implement \c operator>>().
+
+    \sa {Serializing Qt Data Types}
+*/
 
 /*****************************************************************************
   QDataStream write functions
@@ -1302,19 +1316,6 @@ QDataStream &QDataStream::operator<<(double f)
 
 
 /*!
-    \fn QDataStream &QDataStream::operator<<(qfloat16 f)
-    \overload
-    \since 5.9
-
-    Writes a floating point number, \a f, to the stream using
-    the standard IEEE 754 format. Returns a reference to the stream.
-*/
-QDataStream &QDataStream::operator<<(qfloat16 f)
-{
-    return *this << reinterpret_cast<qint16&>(f);
-}
-
-/*!
     \overload
 
     Writes the '\\0'-terminated string \a s to the stream and returns a
@@ -1331,10 +1332,34 @@ QDataStream &QDataStream::operator<<(const char *s)
         *this << (quint32)0;
         return *this;
     }
-    uint len = qstrlen(s) + 1;                        // also write null terminator
+    int len = int(qstrlen(s)) + 1;                        // also write null terminator
     *this << (quint32)len;                        // write length specifier
     writeRawData(s, len);
     return *this;
+}
+
+/*!
+  \overload
+  \since 6.0
+
+  Writes a character, \a c, to the stream. Returns a reference to
+  the stream
+*/
+QDataStream &QDataStream::operator<<(char16_t c)
+{
+    return *this << qint16(c);
+}
+
+/*!
+  \overload
+  \since 6.0
+
+  Writes a character, \a c, to the stream. Returns a reference to
+  the stream
+*/
+QDataStream &QDataStream::operator<<(char32_t c)
+{
+    return *this << qint32(c);
 }
 
 /*!
@@ -1396,6 +1421,18 @@ int QDataStream::skipRawData(int len)
         setStatus(ReadPastEnd);
     return skipResult;
 }
+
+/*!
+    \fn template <class T1, class T2> QDataStream &operator<<(QDataStream &out, const std::pair<T1, T2> &pair)
+    \since 6.0
+    \relates QDataStream
+
+    Writes the pair \a pair to stream \a out.
+
+    This function requires the T1 and T2 types to implement \c operator<<().
+
+    \sa {Serializing Qt Data Types}
+*/
 
 QT_END_NAMESPACE
 

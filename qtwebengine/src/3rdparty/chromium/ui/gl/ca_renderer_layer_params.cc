@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,25 +12,33 @@ CARendererLayerParams::CARendererLayerParams(
     const gfx::RRectF rounded_corner_bounds,
     unsigned sorting_context_id,
     const gfx::Transform& transform,
-    gl::GLImage* image,
+    gfx::ScopedIOSurface io_surface,
+    const gfx::ColorSpace& io_surface_color_space,
     const gfx::RectF& contents_rect,
     const gfx::Rect& rect,
-    unsigned background_color,
+    SkColor4f background_color,
     unsigned edge_aa_mask,
     float opacity,
-    unsigned filter)
+    unsigned filter,
+    gfx::HDRMode hdr_mode,
+    absl::optional<gfx::HDRMetadata> hdr_metadata,
+    gfx::ProtectedVideoType protected_video_type)
     : is_clipped(is_clipped),
       clip_rect(clip_rect),
       rounded_corner_bounds(rounded_corner_bounds),
       sorting_context_id(sorting_context_id),
       transform(transform),
-      image(image),
+      io_surface(std::move(io_surface)),
+      io_surface_color_space(io_surface_color_space),
       contents_rect(contents_rect),
       rect(rect),
       background_color(background_color),
       edge_aa_mask(edge_aa_mask),
       opacity(opacity),
-      filter(filter) {}
+      filter(filter),
+      hdr_mode(hdr_mode),
+      hdr_metadata(hdr_metadata),
+      protected_video_type(protected_video_type) {}
 
 CARendererLayerParams::CARendererLayerParams(
     const CARendererLayerParams& other) = default;

@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <QtCore/QtCore>
-#include <QtTest/QtTest>
-#include <QtDBus/QtDBus>
+#include <QTest>
+#include <QTestEventLoop>
 
 #include "common.h"
 #include <limits>
@@ -594,8 +569,8 @@ void tst_QDBusMarshall::sendComplex_data()
     QTest::newRow("empty-lldtmap") << QVariant::fromValue(lldtmap) << "a{x((iii)(iiii)i)}"
             << "[Argument: a{x((iii)(iiii)i)} {}]";
     lldtmap[0] = QDateTime();
-    lldtmap[1] = QDateTime(QDate(1970, 1, 1), QTime(0, 0, 1), Qt::UTC);
-    lldtmap[1150629776] = QDateTime(QDate(2006, 6, 18), QTime(11, 22, 56), Qt::UTC);
+    lldtmap[1] = QDateTime(QDate(1970, 1, 1), QTime(0, 0, 1), QTimeZone::UTC);
+    lldtmap[1150629776] = QDateTime(QDate(2006, 6, 18), QTime(11, 22, 56), QTimeZone::UTC);
     QTest::newRow("lldtmap") << QVariant::fromValue(lldtmap) << "a{x((iii)(iiii)i)}"
             << "[Argument: a{x((iii)(iiii)i)} {0 = [Argument: ((iii)(iiii)i) [Argument: (iii) 0, 0, 0], [Argument: (iiii) -1, -1, -1, -1], 0], 1 = [Argument: ((iii)(iiii)i) [Argument: (iii) 1970, 1, 1], [Argument: (iiii) 0, 0, 1, 0], 1], 1150629776 = [Argument: ((iii)(iiii)i) [Argument: (iii) 2006, 6, 18], [Argument: (iiii) 11, 22, 56, 0], 1]}]";
 
@@ -640,92 +615,112 @@ void tst_QDBusMarshall::sendArgument_data()
     QTest::addColumn<QVariant>("value");
     QTest::addColumn<QString>("sig");
     QTest::addColumn<int>("classification");
+    QTest::addColumn<QVariant>("unwrappedValue");
 
     QDBusArgument();
     QDBusArgument arg;
 
     arg = QDBusArgument();
     arg << true;
-    QTest::newRow("bool") << QVariant::fromValue(arg) << "b" << int(QDBusArgument::BasicType);;
+    QTest::newRow("bool") << QVariant::fromValue(arg) << "b" << int(QDBusArgument::BasicType)
+                          << QVariant::fromValue(true);
 
     arg = QDBusArgument();
     arg << false;
-    QTest::newRow("bool2") << QVariant::fromValue(arg) << "b" << int(QDBusArgument::BasicType);
+    QTest::newRow("bool2") << QVariant::fromValue(arg) << "b" << int(QDBusArgument::BasicType)
+                           << QVariant::fromValue(false);
 
     arg = QDBusArgument();
     arg << uchar(1);
-    QTest::newRow("byte") << QVariant::fromValue(arg) << "y" << int(QDBusArgument::BasicType);
+    QTest::newRow("byte") << QVariant::fromValue(arg) << "y" << int(QDBusArgument::BasicType)
+                          << QVariant::fromValue(uchar(1));
 
     arg = QDBusArgument();
     arg << short(2);
-    QTest::newRow("int16") << QVariant::fromValue(arg) << "n" << int(QDBusArgument::BasicType);
+    QTest::newRow("int16") << QVariant::fromValue(arg) << "n" << int(QDBusArgument::BasicType)
+                           << QVariant::fromValue(short(2));
 
     arg = QDBusArgument();
     arg << ushort(3);
-    QTest::newRow("uint16") << QVariant::fromValue(arg) << "q" << int(QDBusArgument::BasicType);
+    QTest::newRow("uint16") << QVariant::fromValue(arg) << "q" << int(QDBusArgument::BasicType)
+                            << QVariant::fromValue(ushort(3));
 
     arg = QDBusArgument();
     arg << 1;
-    QTest::newRow("int32") << QVariant::fromValue(arg) << "i" << int(QDBusArgument::BasicType);
+    QTest::newRow("int32") << QVariant::fromValue(arg) << "i" << int(QDBusArgument::BasicType)
+                           << QVariant::fromValue(1);
 
     arg = QDBusArgument();
     arg << 2U;
-    QTest::newRow("uint32") << QVariant::fromValue(arg) << "u" << int(QDBusArgument::BasicType);
+    QTest::newRow("uint32") << QVariant::fromValue(arg) << "u" << int(QDBusArgument::BasicType)
+                           << QVariant::fromValue(2U);
 
     arg = QDBusArgument();
     arg << Q_INT64_C(3);
-    QTest::newRow("int64") << QVariant::fromValue(arg) << "x" << int(QDBusArgument::BasicType);
+    QTest::newRow("int64") << QVariant::fromValue(arg) << "x" << int(QDBusArgument::BasicType)
+                           << QVariant::fromValue(Q_INT64_C(3));
 
     arg = QDBusArgument();
     arg << Q_UINT64_C(4);
-    QTest::newRow("uint64") << QVariant::fromValue(arg) << "t" << int(QDBusArgument::BasicType);
+    QTest::newRow("uint64") << QVariant::fromValue(arg) << "t" << int(QDBusArgument::BasicType)
+                           << QVariant::fromValue(Q_UINT64_C(4));
 
     arg = QDBusArgument();
     arg << 42.5;
-    QTest::newRow("double") << QVariant::fromValue(arg) << "d" << int(QDBusArgument::BasicType);
+    QTest::newRow("double") << QVariant::fromValue(arg) << "d" << int(QDBusArgument::BasicType)
+                            << QVariant::fromValue(42.5);
 
     arg = QDBusArgument();
     arg << QLatin1String("ping");
-    QTest::newRow("string") << QVariant::fromValue(arg) << "s" << int(QDBusArgument::BasicType);
+    QTest::newRow("string") << QVariant::fromValue(arg) << "s" << int(QDBusArgument::BasicType)
+                           << QVariant::fromValue(QString("ping"));
 
     arg = QDBusArgument();
     arg << QDBusObjectPath("/org/kde");
-    QTest::newRow("objectpath") << QVariant::fromValue(arg) << "o" << int(QDBusArgument::BasicType);
+    QTest::newRow("objectpath") << QVariant::fromValue(arg) << "o" << int(QDBusArgument::BasicType)
+                                << QVariant::fromValue(QDBusObjectPath("/org/kde"));
 
     arg = QDBusArgument();
     arg << QDBusSignature("g");
-    QTest::newRow("signature") << QVariant::fromValue(arg) << "g" << int(QDBusArgument::BasicType);
+    QTest::newRow("signature") << QVariant::fromValue(arg) << "g" << int(QDBusArgument::BasicType)
+                               << QVariant::fromValue(QDBusSignature("g"));
 
     arg = QDBusArgument();
     arg << QLatin1String("");
-    QTest::newRow("emptystring") << QVariant::fromValue(arg) << "s" << int(QDBusArgument::BasicType);
+    QTest::newRow("emptystring") << QVariant::fromValue(arg) << "s" << int(QDBusArgument::BasicType)
+                                 << QVariant::fromValue(QString(""));
 
     arg = QDBusArgument();
     arg << QString();
-    QTest::newRow("nullstring") << QVariant::fromValue(arg) << "s" << int(QDBusArgument::BasicType);
+    QTest::newRow("nullstring") << QVariant::fromValue(arg) << "s" << int(QDBusArgument::BasicType)
+                                << QVariant::fromValue(QString());
 
     if (fileDescriptorPassing) {
         arg = QDBusArgument();
         arg << QDBusUnixFileDescriptor(fileDescriptorForTest());
-        QTest::newRow("filedescriptor") << QVariant::fromValue(arg) << "h" << int(QDBusArgument::BasicType);
+        QTest::newRow("filedescriptor") << QVariant::fromValue(arg) << "h" << int(QDBusArgument::BasicType)
+                                        << QVariant::fromValue(QDBusUnixFileDescriptor(fileDescriptorForTest()));
     }
 
     arg = QDBusArgument();
     arg << QDBusVariant(1);
-    QTest::newRow("variant") << QVariant::fromValue(arg) << "v" << int(QDBusArgument::VariantType);
+    QTest::newRow("variant") << QVariant::fromValue(arg) << "v" << int(QDBusArgument::VariantType)
+                             << QVariant::fromValue(QDBusVariant(1));
 
     arg = QDBusArgument();
     arg << QDBusVariant(QVariant::fromValue(QDBusVariant(1)));
-    QTest::newRow("variant-variant") << QVariant::fromValue(arg) << "v" << int(QDBusArgument::VariantType);
+    QTest::newRow("variant-variant") << QVariant::fromValue(arg) << "v" << int(QDBusArgument::VariantType)
+                                     << QVariant::fromValue(QVariant::fromValue(QDBusVariant(1)));
 
     arg = QDBusArgument();
-    arg.beginArray(QVariant::Int);
+    arg.beginArray(QMetaType::Int);
     arg << 1 << 2 << 3 << -4;
     arg.endArray();
-    QTest::newRow("array-of-int") << QVariant::fromValue(arg) << "ai" << int(QDBusArgument::ArrayType);
+    QTest::newRow("array-of-int") << QVariant::fromValue(arg) << "ai" << int(QDBusArgument::ArrayType)
+                                  << QVariant::fromValue(arg);
 
     arg = QDBusArgument();
-    arg.beginMap(QVariant::Int, QVariant::UInt);
+    arg.beginMap(QMetaType::Int, QMetaType::UInt);
     arg.beginMapEntry();
     arg << 1 << 2U;
     arg.endMapEntry();
@@ -733,13 +728,15 @@ void tst_QDBusMarshall::sendArgument_data()
     arg << 3 << 4U;
     arg.endMapEntry();
     arg.endMap();
-    QTest::newRow("map") << QVariant::fromValue(arg) << "a{iu}" << int(QDBusArgument::MapType);
+    QTest::newRow("map") << QVariant::fromValue(arg) << "a{iu}" << int(QDBusArgument::MapType)
+                         << QVariant::fromValue(arg);
 
     arg = QDBusArgument();
     arg.beginStructure();
     arg << 1 << 2U << short(-3) << ushort(4) << 5.0 << false;
     arg.endStructure();
-    QTest::newRow("structure") << QVariant::fromValue(arg) << "(iunqdb)" << int(QDBusArgument::StructureType);
+    QTest::newRow("structure") << QVariant::fromValue(arg) << "(iunqdb)" << int(QDBusArgument::StructureType)
+                               << QVariant::fromValue(arg);
 }
 
 void tst_QDBusMarshall::sendBasic()
@@ -760,9 +757,9 @@ void tst_QDBusMarshall::sendBasic()
              qPrintable(reply.errorName() + ": " + reply.errorMessage()));
     //qDebug() << reply;
 
-    QCOMPARE(reply.arguments().count(), msg.arguments().count());
+    QCOMPARE(reply.arguments().size(), msg.arguments().size());
     QTEST(reply.signature(), "sig");
-    for (int i = 0; i < reply.arguments().count(); ++i) {
+    for (int i = 0; i < reply.arguments().size(); ++i) {
         QVERIFY(compare(reply.arguments().at(i), msg.arguments().at(i)));
         //printf("\n! %s\n* %s\n", qPrintable(qDBusArgumentToString(reply.arguments().at(i))), qPrintable(stringResult));
         QCOMPARE(QDBusUtil::argumentToString(reply.arguments().at(i)), stringResult);
@@ -784,9 +781,9 @@ void tst_QDBusMarshall::sendVariant()
     QDBusMessage reply = con.call(msg);
  //   qDebug() << reply;
 
-    QCOMPARE(reply.arguments().count(), msg.arguments().count());
+    QCOMPARE(reply.arguments().size(), msg.arguments().size());
     QCOMPARE(reply.signature(), QString("v"));
-    for (int i = 0; i < reply.arguments().count(); ++i)
+    for (int i = 0; i < reply.arguments().size(); ++i)
         QVERIFY(compare(reply.arguments().at(i), msg.arguments().at(i)));
 }
 
@@ -819,6 +816,7 @@ void tst_QDBusMarshall::sendArgument()
 {
     QFETCH(QVariant, value);
     QFETCH(QString, sig);
+    QFETCH(QVariant, unwrappedValue);
 
     QDBusConnection con = QDBusConnection::sessionBus();
 
@@ -861,8 +859,18 @@ void tst_QDBusMarshall::sendArgument()
     QVERIFY(arg.atEnd());
     QCOMPARE(arg.currentType(), QDBusArgument::UnknownType);
 
-    if (value.type() != QVariant::UserType)
-        QCOMPARE(extracted, value);
+
+    QEXPECT_FAIL("variant-variant", "Needs more QVariant unwrapping", Continue);
+    if (extracted.metaType() == QMetaType::fromType<QDBusUnixFileDescriptor>()) {
+        auto fd1 = extracted.value<QDBusUnixFileDescriptor>();
+        auto fd2 = unwrappedValue.value<QDBusUnixFileDescriptor>();
+        QVERIFY(compare(fd1, fd2));
+    } else if (extracted.metaType() != QMetaType::fromType<QDBusArgument>()) {
+        QCOMPARE(extracted, unwrappedValue);
+    } else {
+        QEXPECT_FAIL("", "Comparison logic needs to be fixed", Continue);
+        QVERIFY(compare(extracted, value));
+    }
 }
 
 void tst_QDBusMarshall::sendSignalErrors()
@@ -942,19 +950,19 @@ void tst_QDBusMarshall::sendCallErrors_data()
     QTest::newRow("invalid-variant1") << serviceName << objectPath << interfaceName << "ping"
             << (QVariantList() << QVariant())
             << "org.freedesktop.DBus.Error.Failed"
-            << "Marshalling failed: Variant containing QVariant::Invalid passed in arguments"
+            << "Marshalling failed: Invalid QVariant passed in arguments"
             << "QDBusMarshaller: cannot add an invalid QVariant";
     QTest::newRow("invalid-variant1") << serviceName << objectPath << interfaceName << "ping"
             << (QVariantList() << QVariant::fromValue(QDBusVariant()))
             << "org.freedesktop.DBus.Error.Failed"
-            << "Marshalling failed: Variant containing QVariant::Invalid passed in arguments"
+            << "Marshalling failed: Invalid QVariant passed in arguments"
             << "QDBusMarshaller: cannot add a null QDBusVariant";
 
     QTest::newRow("builtin-unregistered") << serviceName << objectPath << interfaceName << "ping"
             << (QVariantList() << QLocale::c())
             << "org.freedesktop.DBus.Error.Failed"
             << "Marshalling failed: Unregistered type QLocale passed in arguments"
-            << "QDBusMarshaller: type `QLocale' (18) is not registered with D-BUS. Use qDBusRegisterMetaType to register it";
+            << "QDBusMarshaller: type 'QLocale' (18) is not registered with D-BUS. Use qDBusRegisterMetaType to register it";
 
     // this type is known to the meta type system, but not registered with D-Bus
     qRegisterMetaType<UnregisteredType>();
@@ -962,7 +970,7 @@ void tst_QDBusMarshall::sendCallErrors_data()
             << (QVariantList() << QVariant::fromValue(UnregisteredType()))
             << "org.freedesktop.DBus.Error.Failed"
             << "Marshalling failed: Unregistered type UnregisteredType passed in arguments"
-            << QString("QDBusMarshaller: type `UnregisteredType' (%1) is not registered with D-BUS. Use qDBusRegisterMetaType to register it")
+            << QString("QDBusMarshaller: type 'UnregisteredType' (%1) is not registered with D-BUS. Use qDBusRegisterMetaType to register it")
             .arg(qMetaTypeId<UnregisteredType>());
 
     QTest::newRow("invalid-object-path-arg") << serviceName << objectPath << interfaceName << "ping"
@@ -1074,7 +1082,7 @@ public:
     }
 };
 
-// mostly the same as qdbusintegrator.cpp:connectionCapabilies
+// mostly the same as qdbusintegrator.cpp:connectionCapabilities
 static bool canSendUnixFd(DBusConnection *connection)
 {
     typedef dbus_bool_t (*can_send_type_t)(DBusConnection *, int);
@@ -1137,6 +1145,7 @@ void tst_QDBusMarshall::receiveUnknownType()
         // now spin our event loop. We don't catch this call, so let's get the reply
         QEventLoop loop;
         QTimer::singleShot(200, &loop, SLOT(quit()));
+        QTest::ignoreMessage(QtWarningMsg, "QDBusConnection: couldn't handle call to theSlot, no slot matched");
         loop.exec();
 
         // now try to receive the reply
@@ -1197,7 +1206,7 @@ void tst_QDBusMarshall::receiveUnknownType()
         QTestEventLoop::instance().enterLoop(1);
         QVERIFY(!QTestEventLoop::instance().timeout());
         QCOMPARE(spy.list.size(), 1);
-        QCOMPARE(spy.list.at(0).arguments().count(), 1);
+        QCOMPARE(spy.list.at(0).arguments().size(), 1);
         QFETCH(int, receivedTypeId);
         //qDebug() << spy.list.at(0).arguments().at(0).typeName();
         QCOMPARE(spy.list.at(0).arguments().at(0).userType(), receivedTypeId);
@@ -1272,7 +1281,7 @@ void tst_QDBusMarshall::demarshallPrimitives()
         QCOMPARE(receiveArg.currentSignature(), sig);
 
         const QVariant receiveValue = demarshallPrimitiveAs(typeIndex, receiveArg);
-        if (receiveValue.type() == value.type()) {
+        if (receiveValue.metaType() == value.metaType()) {
             // Value type is the same, compare the values
             QCOMPARE(receiveValue, value);
             QVERIFY(receiveArg.atEnd());

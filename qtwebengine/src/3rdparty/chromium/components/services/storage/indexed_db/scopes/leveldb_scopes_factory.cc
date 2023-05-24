@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,7 +27,7 @@ DefaultLevelDBScopesFactory::CreateAndInitializeLevelDBScopes(
       std::move(level_db), options.lock_manager,
       std::move(options.failure_callback));
   leveldb::Status s = scopes->Initialize();
-  return std::make_tuple(s.ok() ? std::move(scopes) : nullptr, s);
+  return {s.ok() ? std::move(scopes) : nullptr, s};
 }
 
 }  // namespace content

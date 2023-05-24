@@ -18,7 +18,7 @@
 #include "include/core/SkScalar.h"
 #include "include/core/SkTypeface.h"
 #include "include/core/SkTypes.h"
-#include "include/effects/SkBlurImageFilter.h"
+#include "include/effects/SkImageFilters.h"
 #include "src/core/SkBlurMask.h"
 #include "tools/Resources.h"
 #include "tools/ToolUtils.h"
@@ -42,7 +42,7 @@ DEF_SIMPLE_GM_BG(blurs, canvas, 700, 500, 0xFFDDDDDD) {
 
     canvas->translate(SkIntToScalar(-40), SkIntToScalar(0));
 
-    for (size_t i = 0; i < SK_ARRAY_COUNT(gRecs); i++) {
+    for (size_t i = 0; i < std::size(gRecs); i++) {
         if (gRecs[i].fStyle != NONE) {
             paint.setMaskFilter(SkMaskFilter::MakeBlur(gRecs[i].fStyle,
                                    SkBlurMask::ConvertRadiusToSigma(SkIntToScalar(20))));
@@ -127,14 +127,35 @@ DEF_SIMPLE_GM(BlurDrawImage, canvas, 256, 256) {
     canvas->clear(0xFF88FF88);
     if (auto image = GetResourceAsImage("images/mandrill_512_q075.jpg")) {
         canvas->scale(0.25, 0.25);
-        canvas->drawImage(image, 256, 256, &paint);
+        canvas->drawImage(image, 256, 256, SkSamplingOptions(), &paint);
     }
 }
 
 DEF_SIMPLE_GM(BlurBigSigma, canvas, 1024, 1024) {
     SkPaint layerPaint, p;
 
-    p.setImageFilter(SkBlurImageFilter::Make(500, 500, nullptr));
+    p.setImageFilter(SkImageFilters::Blur(500, 500, nullptr));
 
     canvas->drawRect(SkRect::MakeWH(700, 800), p);
+}
+
+DEF_SIMPLE_GM(BlurSmallSigma, canvas, 512, 256) {
+    {
+        // Normal sigma on x-axis, a small but non-zero sigma on y-axis that should
+        // be treated as identity.
+        SkPaint paint;
+        paint.setImageFilter(SkImageFilters::Blur(16.f, 1e-5f, nullptr));
+        canvas->drawRect(SkRect::MakeLTRB(64, 64, 192, 192), paint);
+    }
+
+    {
+        // Small sigma on both axes, should be treated as identity and no red should show
+        SkPaint paint;
+        paint.setColor(SK_ColorRED);
+        SkRect rect = SkRect::MakeLTRB(320, 64, 448, 192);
+        canvas->drawRect(rect, paint);
+        paint.setColor(SK_ColorBLACK);
+        paint.setImageFilter(SkImageFilters::Blur(1e-5f, 1e-5f, nullptr));
+        canvas->drawRect(rect, paint);
+    }
 }

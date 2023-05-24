@@ -1,4 +1,4 @@
-// Copyright (c) 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include <memory>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/timer/timer.h"
 #include "components/browsing_data/core/pref_names.h"
 
@@ -80,9 +80,9 @@ void HistoryCounter::Count() {
 
   web_counting_finished_ = false;
 
-  web_history_timeout_.Start(
-      FROM_HERE, base::TimeDelta::FromSeconds(kWebHistoryTimeoutSeconds), this,
-      &HistoryCounter::OnWebHistoryTimeout);
+  web_history_timeout_.Start(FROM_HERE,
+                             base::Seconds(kWebHistoryTimeoutSeconds), this,
+                             &HistoryCounter::OnWebHistoryTimeout);
 
   history::QueryOptions options;
   options.max_count = 1;
@@ -112,7 +112,7 @@ void HistoryCounter::Count() {
           }
         })");
   web_history_request_ = web_history->QueryHistory(
-      base::string16(), options,
+      std::u16string(), options,
       base::BindOnce(&HistoryCounter::OnGetWebHistoryCount,
                      weak_ptr_factory_.GetWeakPtr()),
       partial_traffic_annotation);
@@ -137,7 +137,7 @@ void HistoryCounter::OnGetLocalHistoryCount(
 
 void HistoryCounter::OnGetWebHistoryCount(
     history::WebHistoryService::Request* request,
-    const base::DictionaryValue* result) {
+    const base::Value* result) {
   // Ensure that all callbacks are on the same thread, so that we do not need
   // a mutex for |MergeResults|.
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -151,9 +151,12 @@ void HistoryCounter::OnGetWebHistoryCount(
   // If the query failed, err on the safe side and inform the user that they
   // may have history items stored in Sync. Otherwise, we expect at least one
   // entry in the "event" list.
-  const base::ListValue* events;
-  has_synced_visits_ =
-      !result || (result->GetList("event", &events) && !events->empty());
+  if (!result)
+    has_synced_visits_ = true;
+  else if (const base::Value* events = result->FindListKey("event"))
+    has_synced_visits_ = !events->GetList().empty();
+  else
+    has_synced_visits_ = false;
   web_counting_finished_ = true;
   MergeResults();
 }

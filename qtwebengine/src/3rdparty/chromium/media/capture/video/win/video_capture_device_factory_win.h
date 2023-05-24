@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,16 +15,23 @@
 #include <windows.devices.enumeration.h>
 #include <wrl.h>
 
-#include "base/macros.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread.h"
-#include "media/base/win/mf_initializer.h"
+#include "media/base/win/dxgi_device_manager.h"
 #include "media/capture/video/video_capture_device_factory.h"
-#include "media/capture/video/win/video_capture_dxgi_device_manager.h"
 
 namespace media {
 
 using ABI::Windows::Foundation::IAsyncOperation;
 using ABI::Windows::Devices::Enumeration::DeviceInformationCollection;
+
+enum class MFSourceOutcome {
+  kSuccess = 0,
+  // Failed due to an unknown or unspecified reason.
+  kFailed,
+  // Failed to open due to OS-level system permissions.
+  kFailedSystemPermissions,
+};
 
 // Extension of VideoCaptureDeviceFactory to create and manipulate Windows
 // devices, via either DirectShow or MediaFoundation APIs.
@@ -34,9 +41,14 @@ class CAPTURE_EXPORT VideoCaptureDeviceFactoryWin
   static bool PlatformSupportsMediaFoundation();
 
   VideoCaptureDeviceFactoryWin();
+
+  VideoCaptureDeviceFactoryWin(const VideoCaptureDeviceFactoryWin&) = delete;
+  VideoCaptureDeviceFactoryWin& operator=(const VideoCaptureDeviceFactoryWin&) =
+      delete;
+
   ~VideoCaptureDeviceFactoryWin() override;
 
-  std::unique_ptr<VideoCaptureDevice> CreateDevice(
+  VideoCaptureErrorOrDevice CreateDevice(
       const VideoCaptureDeviceDescriptor& device_descriptor) override;
   void GetDevicesInfo(GetDevicesInfoCallback callback) override;
 
@@ -48,6 +60,8 @@ class CAPTURE_EXPORT VideoCaptureDeviceFactoryWin
     use_d3d11_with_media_foundation_ = use;
   }
 
+  scoped_refptr<DXGIDeviceManager> GetDxgiDeviceManager() override;
+
  protected:
   // Protected and virtual for testing.
   virtual bool CreateDeviceEnumMonikerDirectShow(IEnumMoniker** enum_moniker);
@@ -56,10 +70,11 @@ class CAPTURE_EXPORT VideoCaptureDeviceFactoryWin
   virtual bool CreateDeviceFilterDirectShow(
       Microsoft::WRL::ComPtr<IMoniker> moniker,
       IBaseFilter** capture_filter);
-  virtual bool CreateDeviceSourceMediaFoundation(const std::string& device_id,
-                                                 VideoCaptureApi capture_api,
-                                                 IMFMediaSource** source_out);
-  virtual bool CreateDeviceSourceMediaFoundation(
+  virtual MFSourceOutcome CreateDeviceSourceMediaFoundation(
+      const std::string& device_id,
+      VideoCaptureApi capture_api,
+      IMFMediaSource** source_out);
+  virtual MFSourceOutcome CreateDeviceSourceMediaFoundation(
       Microsoft::WRL::ComPtr<IMFAttributes> attributes,
       IMFMediaSource** source);
   virtual bool EnumerateDeviceSourcesMediaFoundation(
@@ -77,10 +92,7 @@ class CAPTURE_EXPORT VideoCaptureDeviceFactoryWin
     return use_d3d11_with_media_foundation_;
   }
 
-  scoped_refptr<VideoCaptureDXGIDeviceManager>
-  dxgi_device_manager_for_testing() {
-    return dxgi_device_manager_;
-  }
+  void OnGpuInfoUpdate(const CHROME_LUID& luid) override;
 
  private:
   void EnumerateDevicesUWP(std::vector<VideoCaptureDeviceInfo> devices_info,
@@ -94,21 +106,24 @@ class CAPTURE_EXPORT VideoCaptureDeviceFactoryWin
   std::vector<VideoCaptureDeviceInfo> GetDevicesInfoMediaFoundation();
   void AugmentDevicesListWithDirectShowOnlyDevices(
       std::vector<VideoCaptureDeviceInfo>* devices_info);
-  std::vector<VideoCaptureDeviceInfo> GetDevicesInfoDirectShow();
+  // Queries DirectShow devices, skips over devices listed in |known_devices|
+  // with non-empty supported formats.
+  std::vector<VideoCaptureDeviceInfo> GetDevicesInfoDirectShow(
+      const std::vector<VideoCaptureDeviceInfo>& known_devices);
 
   bool use_media_foundation_;
-  bool use_d3d11_with_media_foundation_ = false;
-  MFSessionLifetime session_;
+  bool use_d3d11_with_media_foundation_;
+
+  // Preferred adapter to use.
+  CHROME_LUID luid_ = {0, 0};
 
   // For calling WinRT methods on a COM initiated thread.
   base::Thread com_thread_;
   scoped_refptr<base::SingleThreadTaskRunner> origin_task_runner_;
   std::unordered_set<IAsyncOperation<DeviceInformationCollection*>*> async_ops_;
   // For hardware acceleration in MediaFoundation capture engine
-  scoped_refptr<VideoCaptureDXGIDeviceManager> dxgi_device_manager_;
+  scoped_refptr<DXGIDeviceManager> dxgi_device_manager_;
   base::WeakPtrFactory<VideoCaptureDeviceFactoryWin> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(VideoCaptureDeviceFactoryWin);
 };
 
 }  // namespace media

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,15 +7,17 @@
 
 #include <map>
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "media/base/scoped_async_trace.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/video_capture/broadcasting_receiver.h"
-#include "services/video_capture/device_factory_media_to_mojo_adapter.h"
+#include "services/video_capture/device_factory_impl.h"
 #include "services/video_capture/public/mojom/device.mojom.h"
 #include "services/video_capture/public/mojom/video_frame_handler.mojom.h"
 #include "services/video_capture/public/mojom/video_source.mojom.h"
@@ -27,9 +29,13 @@ class PushVideoStreamSubscriptionImpl;
 
 class VideoSourceImpl : public mojom::VideoSource {
  public:
-  VideoSourceImpl(mojom::DeviceFactory* device_factory,
+  VideoSourceImpl(DeviceFactory* device_factory,
                   const std::string& device_id,
                   base::RepeatingClosure on_last_binding_closed_cb);
+
+  VideoSourceImpl(const VideoSourceImpl&) = delete;
+  VideoSourceImpl& operator=(const VideoSourceImpl&) = delete;
+
   ~VideoSourceImpl() override;
 
   void AddToReceiverSet(mojo::PendingReceiver<VideoSource> receiver);
@@ -49,18 +55,23 @@ class VideoSourceImpl : public mojom::VideoSource {
     kStarted,
     kStoppingAsynchronously
   };
+  using DeviceInfo = DeviceFactory::DeviceInfo;
+
+  using ScopedCaptureTrace =
+      media::TypedScopedAsyncTrace<media::TraceCategory::kVideoAndImageCapture>;
 
   void OnClientDisconnected();
   void StartDeviceWithSettings(
       const media::VideoCaptureParams& requested_settings);
-  void OnCreateDeviceResponse(mojom::DeviceAccessResultCode result_code);
+  void OnCreateDeviceResponse(std::unique_ptr<ScopedCaptureTrace> scoped_trace,
+                              DeviceInfo info);
   void OnPushSubscriptionClosedOrDisconnectedOrDiscarded(
       PushVideoStreamSubscriptionImpl* subscription,
       base::OnceClosure done_cb);
   void StopDeviceAsynchronously();
   void OnStopDeviceComplete();
 
-  mojom::DeviceFactory* const device_factory_;
+  const raw_ptr<DeviceFactory> device_factory_;
   const std::string device_id_;
   mojo::ReceiverSet<mojom::VideoSource> receivers_;
   base::RepeatingClosure on_last_binding_closed_cb_;
@@ -70,20 +81,15 @@ class VideoSourceImpl : public mojom::VideoSource {
            std::unique_ptr<PushVideoStreamSubscriptionImpl>>
       push_subscriptions_;
   BroadcastingReceiver broadcaster_;
-  mojo::Receiver<mojom::VideoFrameHandler> broadcaster_video_frame_handler_{
-      &broadcaster_};
   DeviceStatus device_status_;
-  mojo::Remote<mojom::Device> device_;
   media::VideoCaptureParams device_start_settings_;
   bool restart_device_once_when_stop_complete_;
 
   SEQUENCE_CHECKER(sequence_checker_);
 
   base::WeakPtrFactory<VideoSourceImpl> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(VideoSourceImpl);
 };
 
 }  // namespace video_capture
 
-#endif  // SERVICES_VIDEO_CAPTURE_VIDEO_SOURCE_PROVIDER_IMPL_H_
+#endif  // SERVICES_VIDEO_CAPTURE_VIDEO_SOURCE_IMPL_H_

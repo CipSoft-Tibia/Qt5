@@ -1,9 +1,11 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/base/resource/resource_bundle_android.h"
 
+#include <memory>
+#include <string>
 #include <utility>
 
 #include "base/android/apk_assets.h"
@@ -46,7 +48,8 @@ bool LoadFromApkOrFile(const char* apk_path,
   }
   // For unit tests, the file exists on disk.
   if (*out_fd < 0 && disk_path != nullptr) {
-    int flags = base::File::FLAG_OPEN | base::File::FLAG_READ;
+    auto flags =
+        static_cast<uint32_t>(base::File::FLAG_OPEN | base::File::FLAG_READ);
     *out_fd = base::File(*disk_path, flags).TakePlatformFile();
     *out_region = base::MemoryMappedFile::Region::kWholeFile;
   }
@@ -72,7 +75,7 @@ int LoadLocalePakFromApk(const std::string& app_locale,
 std::unique_ptr<DataPack> LoadDataPackFromLocalePak(
     int locale_pack_fd,
     const base::MemoryMappedFile::Region& region) {
-  auto data_pack = std::make_unique<DataPack>(SCALE_FACTOR_100P);
+  auto data_pack = std::make_unique<DataPack>(k100Percent);
   if (!data_pack->LoadFromFileRegion(base::File(locale_pack_fd), region)) {
     LOG(WARNING) << "failed to load locale.pak";
     NOTREACHED();
@@ -93,7 +96,7 @@ void ResourceBundle::LoadCommonResources() {
   DCHECK(success);
 
   AddDataPackFromFileRegion(base::File(g_chrome_100_percent_fd),
-                            g_chrome_100_percent_region, SCALE_FACTOR_100P);
+                            g_chrome_100_percent_region, k100Percent);
 }
 
 // static
@@ -106,6 +109,8 @@ bool ResourceBundle::LocaleDataPakExists(const std::string& locale) {
   }
   if (!GetPathForAndroidLocalePakWithinApk(locale, in_split, log_error).empty())
     return true;
+
+  // Fall back to checking on disk, which is necessary only for tests.
   const auto path = GetLocaleFilePath(locale);
   return !path.empty() && base::PathExists(path);
 }
@@ -122,9 +127,7 @@ std::string ResourceBundle::LoadLocaleResources(const std::string& pref_locale,
   // a) WebView strings, which are always stored uncompressed under
   //    assets/stored-locales/ inside the APK or App Bundle.
   //
-  // b) For APKs, the Chrome UI strings are stored under assets/locales/
-  //    in compressed form. The relevant pak files is extracted on startup
-  //    and stored on the /data partition, with a version-specific suffix.
+  // b) For APKs, the Chrome UI strings are stored under assets/locales/.
   //
   // c) For App Bundles, Chrome UI strings are stored uncompressed under
   //    assets/locales#lang_<lang>/ (where <lang> is an Android language code)
@@ -139,8 +142,7 @@ std::string ResourceBundle::LoadLocaleResources(const std::string& pref_locale,
   //
   //    If false, try to load it from the app bundle specific location
   //    (e.g. locales#lang_<language>/<locale>.pak). If the latter does not
-  //    exist, try to lookup the extracted APK-specific locale .pak file
-  //    from /data/app/.../<locale>.pak@<version> instead.
+  //    exist, try to lookup the APK-specific locale .pak file.
   //
   //    g_locale_paks_in_apk is set by SetLocalePaksStoredInApk() which
   //    is called from the WebView startup code.
@@ -172,7 +174,7 @@ std::string ResourceBundle::LoadLocaleResources(const std::string& pref_locale,
           LoadLocalePakFromApk(app_locale, true, &g_locale_pack_region);
     }
     if (g_locale_pack_fd < 0) {
-      // Otherwise, try to locate the extracted locale .pak file.
+      // Otherwise, try to locate the side-loaded locale .pak file (for tests).
       if (locale_file_path.empty()) {
         auto path = GetLocaleFilePath(app_locale);
         if (base::PathExists(path))
@@ -184,7 +186,8 @@ std::string ResourceBundle::LoadLocaleResources(const std::string& pref_locale,
         LOG(WARNING) << "locale_file_path.empty() for locale " << app_locale;
         return std::string();
       }
-      int flags = base::File::FLAG_OPEN | base::File::FLAG_READ;
+      auto flags =
+          static_cast<uint32_t>(base::File::FLAG_OPEN | base::File::FLAG_READ);
       g_locale_pack_fd = base::File(locale_file_path, flags).TakePlatformFile();
       g_locale_pack_region = base::MemoryMappedFile::Region::kWholeFile;
     }
@@ -234,16 +237,17 @@ void LoadMainAndroidPackFile(const char* path_within_apk,
                         &g_resources_pack_region)) {
     ResourceBundle::GetSharedInstance().AddDataPackFromFileRegion(
         base::File(g_resources_pack_fd), g_resources_pack_region,
-        SCALE_FACTOR_NONE);
+        kScaleFactorNone);
   }
 }
 
-void LoadPackFileFromApk(const std::string& path) {
+void LoadPackFileFromApk(const std::string& path,
+                         const std::string& split_name) {
   base::MemoryMappedFile::Region region;
-  int fd = base::android::OpenApkAsset(path, &region);
+  int fd = base::android::OpenApkAsset(path, split_name, &region);
   CHECK_GE(fd, 0) << "Could not find " << path << " in APK.";
   ui::ResourceBundle::GetSharedInstance().AddDataPackFromFileRegion(
-      base::File(fd), region, ui::SCALE_FACTOR_NONE);
+      base::File(fd), region, ui::kScaleFactorNone);
 }
 
 int GetMainAndroidPackFd(base::MemoryMappedFile::Region* out_region) {

@@ -1,47 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 #include "qv4stringobject_p.h"
 #include "qv4regexp_p.h"
 #include "qv4regexpobject_p.h"
-#include "qv4objectproto_p.h"
 #include <private/qv4mm_p.h>
 #include "qv4scopedvalue_p.h"
 #include "qv4symbol_p.h"
@@ -51,6 +14,7 @@
 #include <QtCore/QDateTime>
 #include <QtCore/QDebug>
 #include <QtCore/QStringList>
+#include <QtQml/private/qv4runtime_p.h>
 
 #include <cassert>
 
@@ -62,7 +26,7 @@
 #    include "qplatformdefs.h"
 #  endif
 #else
-#  include <windows.h>
+#  include <qt_windows.h>
 #endif
 
 using namespace QV4;
@@ -87,7 +51,7 @@ void Heap::StringObject::init(const QV4::String *str)
 Heap::String *Heap::StringObject::getIndex(uint index) const
 {
     QString str = string->toQString();
-    if (index >= (uint)str.length())
+    if (index >= (uint)str.size())
         return nullptr;
     return internalClass->engine->newString(str.mid(index, 1));
 }
@@ -103,7 +67,7 @@ bool StringObject::virtualDeleteProperty(Managed *m, PropertyKey id)
     if (id.isArrayIndex()) {
         StringObject *o = static_cast<StringObject *>(m);
         uint index = id.asArrayIndex();
-        if (index < static_cast<uint>(o->d()->string->toQString().length()))
+        if (index < static_cast<uint>(o->d()->string->toQString().size()))
             return false;
     }
     return Object::virtualDeleteProperty(m, id);
@@ -119,7 +83,7 @@ struct StringObjectOwnPropertyKeyIterator : ObjectOwnPropertyKeyIterator
 PropertyKey StringObjectOwnPropertyKeyIterator::next(const QV4::Object *o, Property *pd, PropertyAttributes *attrs)
 {
     const StringObject *s = static_cast<const StringObject *>(o);
-    uint slen = s->d()->string->toQString().length();
+    uint slen = s->d()->string->toQString().size();
     if (arrayIndex < slen) {
         uint index = arrayIndex;
         ++arrayIndex;
@@ -155,7 +119,7 @@ PropertyAttributes StringObject::virtualGetOwnProperty(const Managed *m, Propert
     if (id.isArrayIndex()) {
         const uint index = id.asArrayIndex();
         const auto s = static_cast<const StringObject *>(m);
-        if (index < uint(s->d()->string->toQString().length())) {
+        if (index < uint(s->d()->string->toQString().size())) {
             if (p)
                 p->value = s->getIndex(index);
             return Attr_NotConfigurable|Attr_NotWritable;
@@ -208,7 +172,6 @@ ReturnedValue StringCtor::method_fromCharCode(const FunctionObject *b, const Val
         *ch = QChar(argv[i].toUInt16());
         ++ch;
     }
-    *ch = 0;
     return Encode(b->engine()->newString(str));
 }
 
@@ -231,11 +194,10 @@ ReturnedValue StringCtor::method_fromCodePoint(const FunctionObject *f, const Va
             ++ch;
             *ch = QChar::lowSurrogate(cp);
         } else {
-            *ch = cp;
+            *ch = QChar(cp);
         }
         ++ch;
     }
-    *ch = 0;
     result.truncate(ch - result.constData());
     return e->newString(result)->asReturnedValue();
 }
@@ -268,14 +230,14 @@ ReturnedValue StringCtor::method_raw(const FunctionObject *f, const Value *, con
     while (1) {
         val = raw->get(nextIndex);
         result += val->toQString();
-        if (scope.engine->hasException)
+        if (scope.hasException())
             return Encode::undefined();
         if (nextIndex + 1 == literalSegments)
             return scope.engine->newString(result)->asReturnedValue();
 
         if (nextIndex < static_cast<uint>(argc))
             result += argv[nextIndex].toQString();
-        if (scope.engine->hasException)
+        if (scope.hasException())
             return Encode::undefined();
         ++nextIndex;
     }
@@ -371,12 +333,12 @@ ReturnedValue StringPrototype::method_charAt(const FunctionObject *b, const Valu
     if (v4->hasException)
         return QV4::Encode::undefined();
 
-    int pos = 0;
+    double pos = 0;
     if (argc > 0)
-        pos = (int) argv[0].toInteger();
+        pos = argv[0].toInteger();
 
     QString result;
-    if (pos >= 0 && pos < str.length())
+    if (pos >= 0 && pos < str.size())
         result += str.at(pos);
 
     return Encode(v4->newString(result));
@@ -389,12 +351,12 @@ ReturnedValue StringPrototype::method_charCodeAt(const FunctionObject *b, const 
     if (v4->hasException)
         return QV4::Encode::undefined();
 
-    int pos = 0;
+    double pos = 0;
     if (argc > 0)
-        pos = (int) argv[0].toInteger();
+        pos = argv[0].toInteger();
 
 
-    if (pos >= 0 && pos < str.length())
+    if (pos >= 0 && pos < str.size())
         RETURN_RESULT(Encode(str.at(pos).unicode()));
 
     return Encode(qt_qnan());
@@ -407,7 +369,7 @@ ReturnedValue StringPrototype::method_codePointAt(const FunctionObject *f, const
     if (v4->hasException)
         return QV4::Encode::undefined();
 
-    int index = argc ? argv[0].toInteger() : 0;
+    double index = argc ? argv[0].toInteger() : 0.0;
     if (v4->hasException)
         return QV4::Encode::undefined();
 
@@ -457,14 +419,14 @@ ReturnedValue StringPrototype::method_endsWith(const FunctionObject *b, const Va
     if (v4->hasException)
         return Encode::undefined();
 
-    int pos = value.length();
+    double pos = value.size();
     if (argc > 1)
-        pos = (int) argv[1].toInteger();
+        pos = argv[1].toInteger();
 
-    if (pos == value.length())
+    if (pos == value.size())
         RETURN_RESULT(Encode(value.endsWith(searchString)));
 
-    QStringRef stringToSearch = value.leftRef(pos);
+    QStringView stringToSearch = QStringView{value}.left(pos);
     return Encode(stringToSearch.endsWith(searchString));
 }
 
@@ -479,13 +441,13 @@ ReturnedValue StringPrototype::method_indexOf(const FunctionObject *b, const Val
     if (v4->hasException)
         return Encode::undefined();
 
-    int pos = 0;
+    double pos = 0;
     if (argc > 1)
-        pos = (int) argv[1].toInteger();
+        pos = argv[1].toInteger();
 
     int index = -1;
-    if (! value.isEmpty())
-        index = value.indexOf(searchString, qMin(qMax(pos, 0), value.length()));
+    if (!value.isEmpty())
+        index = value.indexOf(searchString, qMin(qMax(pos, 0.0), double(value.size())));
 
     return Encode(index);
 }
@@ -503,18 +465,18 @@ ReturnedValue StringPrototype::method_includes(const FunctionObject *b, const Va
     if (v4->hasException)
         return Encode::undefined();
 
-    int pos = 0;
+    double pos = 0;
     if (argc > 1) {
         const Value &posArg = argv[1];
-        pos = (int) posArg.toInteger();
+        pos = posArg.toInteger();
         if (!posArg.isInteger() && posArg.isNumber() && qIsInf(posArg.toNumber()))
-            pos = value.length();
+            pos = value.size();
     }
 
     if (pos == 0)
         RETURN_RESULT(Encode(value.contains(searchString)));
 
-    QStringRef stringToSearch = value.midRef(pos);
+    QStringView stringToSearch = QStringView{value}.mid(pos);
     return Encode(stringToSearch.contains(searchString));
 }
 
@@ -535,8 +497,8 @@ ReturnedValue StringPrototype::method_lastIndexOf(const FunctionObject *b, const
     else
         position = std::trunc(position);
 
-    int pos = std::trunc(qMin(qMax(position, 0.0), double(value.length())));
-    if (!searchString.isEmpty() && pos == value.length())
+    int pos = std::trunc(qMin(qMax(position, 0.0), double(value.size())));
+    if (!searchString.isEmpty() && pos == value.size())
         --pos;
     if (searchString.isNull() && pos == 0)
         RETURN_RESULT(Encode(-1));
@@ -634,7 +596,7 @@ ReturnedValue StringPrototype::method_padEnd(const FunctionObject *f, const Valu
     if (!argc)
         return s->asReturnedValue();
 
-    int maxLen = argv[0].toInteger();
+    double maxLen = argv[0].toInteger();
     if (maxLen <= s->d()->length())
         return s->asReturnedValue();
     QString fillString = (argc > 1 && !argv[1].isUndefined()) ? argv[1].toQString() : QString::fromLatin1(" ");
@@ -645,17 +607,17 @@ ReturnedValue StringPrototype::method_padEnd(const FunctionObject *f, const Valu
         return s->asReturnedValue();
 
     QString padded = s->toQString();
-    int oldLength = padded.length();
+    int oldLength = padded.size();
     int toFill = maxLen - oldLength;
     padded.resize(maxLen);
     QChar *ch = padded.data() + oldLength;
     while (toFill) {
-        int copy = qMin(fillString.length(), toFill);
+        int copy = qMin(fillString.size(), toFill);
         memcpy(ch, fillString.constData(), copy*sizeof(QChar));
         toFill -= copy;
         ch += copy;
     }
-    *ch = 0;
+    *ch = QChar::Null;
 
     return v4->newString(padded)->asReturnedValue();
 }
@@ -673,7 +635,7 @@ ReturnedValue StringPrototype::method_padStart(const FunctionObject *f, const Va
     if (!argc)
         return s->asReturnedValue();
 
-    int maxLen = argv[0].toInteger();
+    double maxLen = argv[0].toInteger();
     if (maxLen <= s->d()->length())
         return s->asReturnedValue();
     QString fillString = (argc > 1 && !argv[1].isUndefined()) ? argv[1].toQString() : QString::fromLatin1(" ");
@@ -684,20 +646,20 @@ ReturnedValue StringPrototype::method_padStart(const FunctionObject *f, const Va
         return s->asReturnedValue();
 
     QString original = s->toQString();
-    int oldLength = original.length();
+    int oldLength = original.size();
     int toFill = maxLen - oldLength;
     QString padded;
     padded.resize(maxLen);
     QChar *ch = padded.data();
     while (toFill) {
-        int copy = qMin(fillString.length(), toFill);
+        int copy = qMin(fillString.size(), toFill);
         memcpy(ch, fillString.constData(), copy*sizeof(QChar));
         toFill -= copy;
         ch += copy;
     }
     memcpy(ch, original.constData(), oldLength*sizeof(QChar));
     ch += oldLength;
-    *ch = 0;
+    *ch = QChar::Null;
 
     return v4->newString(padded)->asReturnedValue();
 }
@@ -720,9 +682,9 @@ ReturnedValue StringPrototype::method_repeat(const FunctionObject *b, const Valu
 
 static void appendReplacementString(QString *result, const QString &input, const QString& replaceValue, uint* matchOffsets, int captureCount)
 {
-    result->reserve(result->length() + replaceValue.length());
-    for (int i = 0; i < replaceValue.length(); ++i) {
-        if (replaceValue.at(i) == QLatin1Char('$') && i < replaceValue.length() - 1) {
+    result->reserve(result->size() + replaceValue.size());
+    for (int i = 0; i < replaceValue.size(); ++i) {
+        if (replaceValue.at(i) == QLatin1Char('$') && i < replaceValue.size() - 1) {
             ushort ch = replaceValue.at(i + 1).unicode();
             uint substStart = JSC::Yarr::offsetNoMatch;
             uint substEnd = JSC::Yarr::offsetNoMatch;
@@ -741,12 +703,12 @@ static void appendReplacementString(QString *result, const QString &input, const
                 skip = 1;
             } else if (ch == '\'') {
                 substStart = matchOffsets[1];
-                substEnd = input.length();
+                substEnd = input.size();
                 skip = 1;
             } else if (ch >= '0' && ch <= '9') {
                 uint capture = ch - '0';
                 skip = 1;
-                if (i < replaceValue.length() - 2) {
+                if (i < replaceValue.size() - 2) {
                     ch = replaceValue.at(i + 2).unicode();
                     if (ch >= '0' && ch <= '9') {
                         uint c = capture*10 + ch - '0';
@@ -765,7 +727,7 @@ static void appendReplacementString(QString *result, const QString &input, const
             }
             i += skip;
             if (substStart != JSC::Yarr::offsetNoMatch && substEnd != JSC::Yarr::offsetNoMatch)
-                *result += input.midRef(substStart, substEnd - substStart);
+                *result += QStringView{input}.mid(substStart, substEnd - substStart);
             else if (skip == 0) // invalid capture reference. Taken as literal value
                 *result += replaceValue.at(i);
         } else {
@@ -831,7 +793,7 @@ ReturnedValue StringPrototype::method_replace(const FunctionObject *b, const Val
         if (idx != -1) {
             numStringMatches = 1;
             matchOffsets[0] = idx;
-            matchOffsets[1] = idx + searchString.length();
+            matchOffsets[1] = idx + searchString.size();
         }
     }
 
@@ -840,7 +802,7 @@ ReturnedValue StringPrototype::method_replace(const FunctionObject *b, const Val
     ScopedValue replaceValue(scope, argc > 1 ? argv[1] : Value::undefinedValue());
     ScopedFunctionObject searchCallback(scope, replaceValue);
     if (!!searchCallback) {
-        result.reserve(string.length() + 10*numStringMatches);
+        result.reserve(string.size() + 10*numStringMatches);
         ScopedValue entry(scope);
         Value *arguments = scope.alloc(numCaptures + 2);
         int lastEnd = 0;
@@ -863,14 +825,14 @@ ReturnedValue StringPrototype::method_replace(const FunctionObject *b, const Val
             Value that = Value::undefinedValue();
             replacement = searchCallback->call(&that, arguments, numCaptures + 2);
             CHECK_EXCEPTION();
-            result += string.midRef(lastEnd, matchStart - lastEnd);
+            result += QStringView{string}.mid(lastEnd, matchStart - lastEnd);
             result += replacement->toQString();
             lastEnd = matchEnd;
         }
-        result += string.midRef(lastEnd);
+        result += QStringView{string}.mid(lastEnd);
     } else {
         QString newString = replaceValue->toQString();
-        result.reserve(string.length() + numStringMatches*newString.size());
+        result.reserve(string.size() + numStringMatches*newString.size());
 
         int lastEnd = 0;
         for (int i = 0; i < numStringMatches; ++i) {
@@ -880,11 +842,11 @@ ReturnedValue StringPrototype::method_replace(const FunctionObject *b, const Val
             if (matchStart == JSC::Yarr::offsetNoMatch)
                 continue;
 
-            result += string.midRef(lastEnd, matchStart - lastEnd);
+            result += QStringView{string}.mid(lastEnd, matchStart - lastEnd);
             appendReplacementString(&result, string, newString, matchOffsets + baseIndex, numCaptures);
             lastEnd = matchEnd;
         }
-        result += string.midRef(lastEnd);
+        result += QStringView{string}.mid(lastEnd);
     }
 
     if (matchOffsets != _matchOffsets)
@@ -897,13 +859,13 @@ ReturnedValue StringPrototype::method_search(const FunctionObject *b, const Valu
 {
     Scope scope(b);
     QString string = getThisString(scope.engine, thisObject);
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     Scoped<RegExpObject> regExp(scope, argc ? argv[0] : Value::undefinedValue());
     if (!regExp) {
         regExp = scope.engine->regExpCtor()->callAsConstructor(argv, 1);
-        if (scope.engine->hasException)
+        if (scope.hasException())
             return QV4::Encode::undefined();
 
         Q_ASSERT(regExp);
@@ -1013,7 +975,7 @@ ReturnedValue StringPrototype::method_split(const FunctionObject *b, const Value
     } else {
         QString separator = separatorValue->toQString();
         if (separator.isEmpty()) {
-            for (uint i = 0; i < qMin(limit, uint(text.length())); ++i)
+            for (uint i = 0; i < qMin(limit, uint(text.size())); ++i)
                 array->push_back((s = scope.engine->newString(text.mid(i, 1))));
             return array.asReturnedValue();
         }
@@ -1045,14 +1007,14 @@ ReturnedValue StringPrototype::method_startsWith(const FunctionObject *b, const 
     if (v4->hasException)
         return Encode::undefined();
 
-    int pos = 0;
+    double pos = 0;
     if (argc > 1)
-        pos = (int) argv[1].toInteger();
+        pos = argv[1].toInteger();
 
     if (pos == 0)
         return Encode(value.startsWith(searchString));
 
-    QStringRef stringToSearch = value.midRef(pos);
+    QStringView stringToSearch = QStringView{value}.mid(pos);
     RETURN_RESULT(Encode(stringToSearch.startsWith(searchString)));
 }
 
@@ -1071,7 +1033,7 @@ ReturnedValue StringPrototype::method_substr(const FunctionObject *b, const Valu
     if (argc > 1)
         length = argv[1].toInteger();
 
-    double count = value.length();
+    double count = value.size();
     if (start < 0)
         start = qMax(count + start, 0.0);
 
@@ -1089,7 +1051,7 @@ ReturnedValue StringPrototype::method_substring(const FunctionObject *b, const V
     if (v4->hasException)
         return QV4::Encode::undefined();
 
-    int length = value.length();
+    int length = value.size();
 
     double start = 0;
     double end = length;
@@ -1162,11 +1124,11 @@ ReturnedValue StringPrototype::method_trim(const FunctionObject *b, const Value 
 
     const QChar *chars = s.constData();
     int start, end;
-    for (start = 0; start < s.length(); ++start) {
+    for (start = 0; start < s.size(); ++start) {
         if (!chars[start].isSpace() && chars[start].unicode() != 0xfeff)
             break;
     }
-    for (end = s.length() - 1; end >= start; --end) {
+    for (end = s.size() - 1; end >= start; --end) {
         if (!chars[end].isSpace() && chars[end].unicode() != 0xfeff)
             break;
     }

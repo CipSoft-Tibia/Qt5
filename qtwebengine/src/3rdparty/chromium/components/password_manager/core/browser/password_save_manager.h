@@ -1,13 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_PASSWORD_MANAGER_CORE_BROWSER_PASSWORD_SAVE_MANAGER_H_
 #define COMPONENTS_PASSWORD_MANAGER_CORE_BROWSER_PASSWORD_SAVE_MANAGER_H_
 
-#include "base/macros.h"
-#include "components/password_manager/core/browser/password_form_forward.h"
-#include "components/password_manager/core/browser/password_store.h"
+#include "components/password_manager/core/browser/password_store_interface.h"
 
 namespace autofill {
 struct FormData;
@@ -26,17 +24,20 @@ class VotesUploader;
 class FormSaver;
 class PasswordFormMetricsRecorder;
 class PasswordManagerDriver;
+struct PasswordForm;
 
 // Implementations of this interface should encapsulate the password Save/Update
-// logic. One implementation of this class will provide the Save/Update logic in
-// case of multiple password stores. This ensures that the PasswordFormManager
-// stays agnostic to whether one password store or multiple password stores are
-// active. While FormSaver abstracts the implementation of different
-// operations (e.g. Save()), PasswordSaveManager is responsible for deciding
-// what and where to Save().
+// logic. This ensures that the PasswordFormManager stays agnostic to whether
+// one password store or multiple password stores are active. While FormSaver
+// abstracts the implementation of different operations (e.g. Save()),
+// PasswordSaveManager is responsible for deciding what and where to Save().
 class PasswordSaveManager {
  public:
   PasswordSaveManager() = default;
+
+  PasswordSaveManager(const PasswordSaveManager&) = delete;
+  PasswordSaveManager& operator=(const PasswordSaveManager&) = delete;
+
   virtual ~PasswordSaveManager() = default;
 
   virtual void Init(PasswordManagerClient* client,
@@ -46,9 +47,9 @@ class PasswordSaveManager {
 
   virtual const PasswordForm& GetPendingCredentials() const = 0;
 
-  virtual const base::string16& GetGeneratedPassword() const = 0;
+  virtual const std::u16string& GetGeneratedPassword() const = 0;
 
-  virtual FormSaver* GetFormSaver() const = 0;
+  virtual FormSaver* GetProfileStoreFormSaverForTesting() const = 0;
 
   // Create pending credentials from |parsed_submitted_form| and |observed_form|
   // and |submitted_form|. In the case of HTTP or proxy auth no |observed_form|
@@ -74,9 +75,8 @@ class PasswordSaveManager {
                       const autofill::FormData* observed_form,
                       const PasswordForm& parsed_submitted_form) = 0;
 
-  virtual void PermanentlyBlacklist(
-      const PasswordStore::FormDigest& form_digest) = 0;
-  virtual void Unblacklist(const PasswordStore::FormDigest& form_digest) = 0;
+  virtual void Blocklist(const PasswordFormDigest& form_digest) = 0;
+  virtual void Unblocklist(const PasswordFormDigest& form_digest) = 0;
 
   // Called when generated password is accepted or changed by user.
   virtual void PresaveGeneratedPassword(PasswordForm parsed_form) = 0;
@@ -102,14 +102,19 @@ class PasswordSaveManager {
   virtual void BlockMovingToAccountStoreFor(
       const autofill::GaiaIdHash& gaia_id_hash) = 0;
 
+  // Updates the submission indicator event for pending credentials at the
+  // moment of submisison detection.
+  virtual void UpdateSubmissionIndicatorEvent(
+      autofill::mojom::SubmissionIndicatorEvent event) = 0;
+
   virtual bool IsNewLogin() const = 0;
   virtual bool IsPasswordUpdate() const = 0;
   virtual bool HasGeneratedPassword() const = 0;
 
-  virtual std::unique_ptr<PasswordSaveManager> Clone() = 0;
+  // Signals that the user updated the username value in the bubble prompt.
+  virtual void UsernameUpdatedInBubble() = 0;
 
- private:
-  DISALLOW_COPY_AND_ASSIGN(PasswordSaveManager);
+  virtual std::unique_ptr<PasswordSaveManager> Clone() = 0;
 };
 }  // namespace password_manager
 

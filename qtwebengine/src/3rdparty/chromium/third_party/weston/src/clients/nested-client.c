@@ -34,7 +34,7 @@
 #include <GLES2/gl2.h>
 #include <EGL/egl.h>
 
-#include "../shared/platform.h"
+#include "shared/platform.h"
 
 struct window;
 struct seat;
@@ -81,7 +81,7 @@ create_shader(const char *source, GLenum shader_type)
 		char log[1000];
 		GLsizei len;
 		glGetShaderInfoLog(shader, 1000, &len, log);
-		fprintf(stderr, "Error: compiling %s: %*s\n",
+		fprintf(stderr, "Error: compiling %s: %.*s\n",
 			shader_type == GL_VERTEX_SHADER ? "vertex" : "fragment",
 			len, log);
 		return 0;
@@ -111,7 +111,7 @@ create_program(struct nested_client *client,
 		char log[1000];
 		GLsizei len;
 		glGetProgramInfoLog(client->program, 1000, &len, log);
-		fprintf(stderr, "Error: linking:\n%*s\n", len, log);
+		fprintf(stderr, "Error: linking:\n%.*s\n", len, log);
 		exit(1);
 	}
 

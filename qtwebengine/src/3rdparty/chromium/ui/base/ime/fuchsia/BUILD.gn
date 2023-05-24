@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -12,14 +12,21 @@ jumbo_component("fuchsia") {
   sources = [
     "input_method_fuchsia.cc",
     "input_method_fuchsia.h",
-    "input_method_keyboard_controller_fuchsia.cc",
-    "input_method_keyboard_controller_fuchsia.h",
+    "keyboard_client.cc",
+    "keyboard_client.h",
+    "virtual_keyboard_controller_fuchsia.cc",
+    "virtual_keyboard_controller_fuchsia.h",
   ]
 
   defines = [ "IS_UI_BASE_IME_FUCHSIA_IMPL" ]
 
   public_deps = [
-    "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.input",
+    "//base",
+    "//third_party/abseil-cpp:absl",
+    "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.input.virtualkeyboard:fuchsia.input.virtualkeyboard_hlcpp",
+    "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.input:fuchsia.ui.input_hlcpp",
+    "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.ui.input3:fuchsia.ui.input3_hlcpp",
+    "//third_party/fuchsia-sdk/sdk/pkg/scenic_cpp",
     "//third_party/fuchsia-sdk/sdk/pkg/sys_cpp",
     "//ui/base/ime",
     "//ui/events",

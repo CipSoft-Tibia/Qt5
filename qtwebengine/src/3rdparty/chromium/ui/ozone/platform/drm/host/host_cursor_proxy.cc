@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,9 @@
 
 #include <utility>
 
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/threading/platform_thread.h"
+#include "base/time/time.h"
 #include "ui/ozone/public/gpu_platform_support_host.h"
 
 namespace ui {
@@ -39,12 +41,12 @@ HostCursorProxy::~HostCursorProxy() {
 void HostCursorProxy::CursorSet(gfx::AcceleratedWidget widget,
                                 const std::vector<SkBitmap>& bitmaps,
                                 const gfx::Point& location,
-                                int frame_delay_ms) {
+                                base::TimeDelta frame_delay) {
   if (ui_thread_ref_ == base::PlatformThread::CurrentRef()) {
-    main_cursor_->SetCursor(widget, bitmaps, location, frame_delay_ms);
+    main_cursor_->SetCursor(widget, bitmaps, location, frame_delay);
   } else {
     InitializeOnEvdevIfNecessary();
-    evdev_cursor_->SetCursor(widget, bitmaps, location, frame_delay_ms);
+    evdev_cursor_->SetCursor(widget, bitmaps, location, frame_delay);
   }
 }
 
@@ -62,7 +64,7 @@ void HostCursorProxy::InitializeOnEvdevIfNecessary() {
   if (evdev_cursor_.is_bound())
     return;
   evdev_cursor_.Bind(std::move(evdev_cursor_pending_remote_));
-  evdev_task_runner_ = base::ThreadTaskRunnerHandle::Get();
+  evdev_task_runner_ = base::SingleThreadTaskRunner::GetCurrentDefault();
 }
 
 }  // namespace ui

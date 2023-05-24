@@ -1,52 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTEXTSTREAM_H
 #define QTEXTSTREAM_H
 
-#include <QtCore/qiodevice.h>
-#include <QtCore/qstring.h>
+#include <QtCore/qiodevicebase.h>
 #include <QtCore/qchar.h>
-#include <QtCore/qlocale.h>
 #include <QtCore/qscopedpointer.h>
+#include <QtCore/qstringconverter_base.h>
 
 #include <stdio.h>
+
+#if 0
+// the macros around the class name throw off syncqt:
+#pragma qt_class(QTextStream)
+#endif
 
 #ifdef Status
 #error qtextstream.h must be included before any header file that defines Status
@@ -54,12 +22,22 @@
 
 QT_BEGIN_NAMESPACE
 
+class QIODevice;
+class QLocale;
+class QString;
 
-class QTextCodec;
-class QTextDecoder;
+#if !QT_DEPRECATED_SINCE(6, 9)
+# define QT_NO_INHERITABLE_TEXT_STREAM
+#endif
+
+#ifdef QT_NO_INHERITABLE_TEXT_STREAM
+#  define QT_TEXT_STREAM_FINAL final
+#else
+#  define QT_TEXT_STREAM_FINAL
+#endif
 
 class QTextStreamPrivate;
-class Q_CORE_EXPORT QTextStream                                // text stream class
+class Q_CORE_EXPORT QTextStream QT_TEXT_STREAM_FINAL : public QIODeviceBase
 {
     Q_DECLARE_PRIVATE(QTextStream)
 
@@ -92,21 +70,19 @@ public:
 
     QTextStream();
     explicit QTextStream(QIODevice *device);
-    explicit QTextStream(FILE *fileHandle, QIODevice::OpenMode openMode = QIODevice::ReadWrite);
-    explicit QTextStream(QString *string, QIODevice::OpenMode openMode = QIODevice::ReadWrite);
-    explicit QTextStream(QByteArray *array, QIODevice::OpenMode openMode = QIODevice::ReadWrite);
-    explicit QTextStream(const QByteArray &array, QIODevice::OpenMode openMode = QIODevice::ReadOnly);
-    virtual ~QTextStream();
+    explicit QTextStream(FILE *fileHandle, OpenMode openMode = ReadWrite);
+    explicit QTextStream(QString *string, OpenMode openMode = ReadWrite);
+    explicit QTextStream(QByteArray *array, OpenMode openMode = ReadWrite);
+    explicit QTextStream(const QByteArray &array, OpenMode openMode = ReadOnly);
+    QT6_ONLY(virtual)
+    ~QTextStream();
 
-#if QT_CONFIG(textcodec)
-    void setCodec(QTextCodec *codec);
-    void setCodec(const char *codecName);
-    QTextCodec *codec() const;
+    void setEncoding(QStringConverter::Encoding encoding);
+    QStringConverter::Encoding encoding() const;
     void setAutoDetectUnicode(bool enabled);
     bool autoDetectUnicode() const;
     void setGenerateByteOrderMark(bool generate);
     bool generateByteOrderMark() const;
-#endif
 
     void setLocale(const QLocale &locale);
     QLocale locale() const;
@@ -114,7 +90,7 @@ public:
     void setDevice(QIODevice *device);
     QIODevice *device() const;
 
-    void setString(QString *string, QIODevice::OpenMode openMode = QIODevice::ReadWrite);
+    void setString(QString *string, OpenMode openMode = ReadWrite);
     QString *string() const;
 
     Status status() const;
@@ -157,6 +133,8 @@ public:
 
     QTextStream &operator>>(QChar &ch);
     QTextStream &operator>>(char &ch);
+    QTextStream &operator>>(char16_t &ch)
+    { QChar c; *this >> c; ch = c.unicode(); return *this; }
     QTextStream &operator>>(signed short &i);
     QTextStream &operator>>(unsigned short &i);
     QTextStream &operator>>(signed int &i);
@@ -173,6 +151,7 @@ public:
 
     QTextStream &operator<<(QChar ch);
     QTextStream &operator<<(char ch);
+    QTextStream &operator<<(char16_t ch) { return *this << QChar(ch); }
     QTextStream &operator<<(signed short i);
     QTextStream &operator<<(unsigned short i);
     QTextStream &operator<<(signed int i);
@@ -185,8 +164,7 @@ public:
     QTextStream &operator<<(double f);
     QTextStream &operator<<(const QString &s);
     QTextStream &operator<<(QStringView s);
-    QTextStream &operator<<(QLatin1String s);
-    QTextStream &operator<<(const QStringRef &s);
+    QTextStream &operator<<(QLatin1StringView s);
     QTextStream &operator<<(const QByteArray &array);
     QTextStream &operator<<(const char *c);
     QTextStream &operator<<(const void *ptr);
@@ -213,8 +191,8 @@ typedef void (QTextStream::*QTSMFC)(QChar); // manipulator w/QChar argument
 class Q_CORE_EXPORT QTextStreamManipulator
 {
 public:
-    Q_DECL_CONSTEXPR QTextStreamManipulator(QTSMFI m, int a) noexcept : mf(m), mc(nullptr), arg(a), ch() {}
-    Q_DECL_CONSTEXPR QTextStreamManipulator(QTSMFC m, QChar c) noexcept : mf(nullptr), mc(m), arg(-1), ch(c) {}
+    constexpr QTextStreamManipulator(QTSMFI m, int a) noexcept : mf(m), mc(nullptr), arg(a), ch() {}
+    constexpr QTextStreamManipulator(QTSMFC m, QChar c) noexcept : mf(nullptr), mc(m), arg(-1), ch(c) {}
     void exec(QTextStream &s) { if (mf) { (s.*mf)(arg); } else { (s.*mc)(ch); } }
 
 private:
@@ -267,43 +245,6 @@ Q_CORE_EXPORT QTextStream &bom(QTextStream &s);
 Q_CORE_EXPORT QTextStream &ws(QTextStream &s);
 
 } // namespace Qt
-
-#if QT_DEPRECATED_SINCE(5, 15)
-// This namespace only exists for 'using namespace' declarations.
-namespace QTextStreamFunctions {
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::bin") QTextStream &bin(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::oct") QTextStream &oct(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::dec") QTextStream &dec(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::hex") QTextStream &hex(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::showbase") QTextStream &showbase(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::forcesign") QTextStream &forcesign(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::forcepoint") QTextStream &forcepoint(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::noshowbase") QTextStream &noshowbase(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::noforcesign") QTextStream &noforcesign(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::noforcepoint") QTextStream &noforcepoint(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::uppercasebase") QTextStream &uppercasebase(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::uppercasedigits") QTextStream &uppercasedigits(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::lowercasebase") QTextStream &lowercasebase(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::lowercasedigits") QTextStream &lowercasedigits(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::fixed") QTextStream &fixed(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::scientific") QTextStream &scientific(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::left") QTextStream &left(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::right") QTextStream &right(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::center") QTextStream &center(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::endl") QTextStream &endl(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::flush") QTextStream &flush(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::reset") QTextStream &reset(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::bom") QTextStream &bom(QTextStream &s);
-Q_CORE_EXPORT QT_DEPRECATED_VERSION_X(5, 15, "Use Qt::ws") QTextStream &ws(QTextStream &s);
-} // namespace QTextStreamFunctions
-
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_CLANG("-Wheader-hygiene")
-// We use 'using namespace' as that doesn't cause
-// conflicting definitions compiler errors.
-using namespace QTextStreamFunctions;
-QT_WARNING_POP
-#endif // QT_DEPRECATED_SINCE(5, 15)
 
 inline QTextStreamManipulator qSetFieldWidth(int width)
 {

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 #define MEDIA_BASE_ANDROID_JNI_HDR_METADATA_H_
 
 #include "base/android/jni_android.h"
-#include "base/macros.h"
-#include "ui/gl/hdr_metadata.h"
+#include "base/memory/raw_ref.h"
+#include "ui/gfx/hdr_metadata.h"
 
 namespace media {
 
@@ -16,7 +16,11 @@ class VideoColorSpace;
 class JniHdrMetadata {
  public:
   JniHdrMetadata(const VideoColorSpace& color_space,
-                 const gl::HDRMetadata& hdr_metadata);
+                 const gfx::HDRMetadata& hdr_metadata);
+
+  JniHdrMetadata(const JniHdrMetadata&) = delete;
+  JniHdrMetadata& operator=(const JniHdrMetadata&) = delete;
+
   ~JniHdrMetadata();
 
   base::android::ScopedJavaLocalRef<jobject> obj() { return jobject_; }
@@ -46,10 +50,12 @@ class JniHdrMetadata {
   jfloat WhitePointChromaticityY(
       JNIEnv* env,
       const base::android::JavaParamRef<jobject>& obj);
-  jfloat MaxMasteringLuminance(JNIEnv* env,
-                               const base::android::JavaParamRef<jobject>& obj);
-  jfloat MinMasteringLuminance(JNIEnv* env,
-                               const base::android::JavaParamRef<jobject>& obj);
+  jfloat MaxColorVolumeLuminance(
+      JNIEnv* env,
+      const base::android::JavaParamRef<jobject>& obj);
+  jfloat MinColorVolumeLuminance(
+      JNIEnv* env,
+      const base::android::JavaParamRef<jobject>& obj);
   jint MaxContentLuminance(JNIEnv* env,
                            const base::android::JavaParamRef<jobject>& obj);
   jint MaxFrameAverageLuminance(
@@ -57,11 +63,9 @@ class JniHdrMetadata {
       const base::android::JavaParamRef<jobject>& obj);
 
  private:
-  const VideoColorSpace& color_space_;
-  const gl::HDRMetadata& hdr_metadata_;
+  const raw_ref<const VideoColorSpace> color_space_;
+  const raw_ref<const gfx::HDRMetadata> hdr_metadata_;
   base::android::ScopedJavaLocalRef<jobject> jobject_;
-
-  DISALLOW_COPY_AND_ASSIGN(JniHdrMetadata);
 };
 
 }  // namespace media

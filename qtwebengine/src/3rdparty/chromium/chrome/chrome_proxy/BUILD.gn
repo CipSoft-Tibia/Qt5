@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -16,12 +16,16 @@ executable("chrome_proxy") {
     ":chrome_proxy_version",
     "//base",
     "//chrome/app/version_assembly:chrome_exe_manifest",
+    "//chrome/common:non_code_constants",
   ]
 
   data_deps = [ "//chrome/app/version_assembly:version_assembly_manifest" ]
 
   sources = [ "chrome_proxy_main_win.cc" ]
 
-  configs -= [ "//build/config/win:console" ]
+  configs -= [
+    "//build/config/compiler:cet_shadow_stack",
+    "//build/config/win:console",
+  ]
   configs += [ "//build/config/win:windowed" ]
 }

@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -42,7 +42,8 @@
 #       And strip the leading "./" from the output files.
 #
 #   defines (optional)
-#       Extra defines to pass to grit (on top of the global grit_defines list).
+#       Extra defines to pass to grit (on top of the global defines in the
+#       grit_args list).
 #
 #   grit_flags (optional)
 #       List of strings containing extra command-line flags to pass to Grit.
@@ -72,6 +73,7 @@
 #   visibility  (optional)
 #       Normal meaning.
 #
+#
 # Example
 #
 #   grit("my_resources") {
@@ -90,9 +92,9 @@ import("//build/config/compiler/compiler.gni")
 import("//build/config/compute_inputs_for_analyze.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 import("//build/toolchain/gcc_toolchain.gni")
-import("//tools/grit/grit_defines.gni")
+import("//tools/grit/grit_args.gni")
 _strip_resource_files = is_android && is_official_build
-_js_minifier = "//tools/grit/minify_with_uglify.py"
+_js_minifier = "//tools/grit/minify_js.py"
 _css_minifier = "//tools/grit/minimize_css.py"
 
 grit_resource_id_target = "//tools/gritsettings:default_resource_ids"
@@ -138,16 +140,17 @@ template("grit") {
 
   _grit_custom_target = target_name + "_grit"
   action(_grit_custom_target) {
+    script = "//tools/grit/grit.py"
+    inputs = [ invoker.source ]
+
     testonly = defined(invoker.testonly) && invoker.testonly
 
-    script = "//tools/grit/grit.py"
     depfile = "$target_gen_dir/$target_name.d"
 
-    inputs = [ invoker.source ]
     deps = [ "//tools/grit:grit_sources" ]
     outputs = [ "${depfile}.stamp" ] + _grit_outputs + _pak_info_outputs
 
-    _grit_flags = grit_defines
+    _grit_flags = grit_args
 
     # Add extra defines with -D flags.
     if (defined(invoker.defines)) {
@@ -326,8 +329,6 @@ template("grit") {
     # script as inputs.
     public_deps = [ ":$_grit_custom_target" ]
 
-    deps = [ "//base" ]
-
     if (defined(invoker.public_configs)) {
       public_configs += invoker.public_configs
     }
@@ -340,5 +341,114 @@ template("grit") {
       visibility = invoker.visibility
     }
     output_name = _grit_output_name
+  }
+}
+
+if (is_android) {
+  import("//build/config/android/rules.gni")
+
+  # Declare a target that generates localized strings.xml from a .grd file.
+  #
+  # If this target is included in the deps of an android resources/library/apk,
+  # the strings.xml will be included with that target.
+  #
+  # Variables
+  #   deps: Specifies the dependencies of this target.
+  #   grd_file: Path to the .grd file to generate strings.xml from.
+  #   outputs: Expected grit outputs (see grit rule).
+  #
+  # Example
+  #  java_strings_grd("foo_strings_grd") {
+  #    grd_file = "foo_strings.grd"
+  #  }
+  template("java_strings_grd") {
+    forward_variables_from(invoker, [ "testonly" ])
+
+    _resources_zip = "$target_out_dir/$target_name.resources.zip"
+    _grit_target_name = "${target_name}__grit"
+    _grit_output_dir = "$target_gen_dir/${target_name}_grit_output"
+
+    grit(_grit_target_name) {
+      forward_variables_from(invoker,
+                             [
+                               "deps",
+                               "defines",
+                             ])
+      grit_flags = [
+        "-E",
+        "ANDROID_JAVA_TAGGED_ONLY=false",
+      ]
+      output_dir = _grit_output_dir
+      resource_ids = ""
+      source = invoker.grd_file
+      outputs = invoker.outputs
+    }
+
+    _zip_target_name = "${target_name}__zip"
+
+    zip(_zip_target_name) {
+      base_dir = _grit_output_dir
+
+      # No need to depend on the source_set().
+      _grit_dep = ":${_grit_target_name}_grit"
+      deps = [ _grit_dep ]
+      inputs = filter_exclude(get_target_outputs(_grit_dep), [ "*.stamp" ])
+      output = _resources_zip
+    }
+
+    android_generated_resources(target_name) {
+      forward_variables_from(invoker,
+                             [
+                               "resource_overlay",
+                               "visibility",
+                             ])
+      generating_target = ":$_zip_target_name"
+      generated_resources_zip = _resources_zip
+    }
+  }
+
+  # Declare a target that packages strings.xml generated from a grd file.
+  #
+  # If this target is included in the deps of an android resources/library/apk,
+  # the strings.xml will be included with that target.
+  #
+  # Variables
+  #  grit_output_dir: directory containing grit-generated files.
+  #  generated_files: list of android resource files to package.
+  #
+  # Example
+  #  java_strings_grd_prebuilt("foo_strings_grd") {
+  #    grit_output_dir = "$root_gen_dir/foo/grit"
+  #    generated_files = [
+  #      "values/strings.xml"
+  #    ]
+  #  }
+  template("java_strings_grd_prebuilt") {
+    forward_variables_from(invoker, [ "testonly" ])
+
+    _resources_zip = "$target_out_dir/$target_name.resources.zip"
+    _zip_target_name = "${target_name}__zip"
+
+    zip(_zip_target_name) {
+      base_dir = invoker.grit_output_dir
+      inputs = rebase_path(invoker.generated_files, ".", base_dir)
+      output = _resources_zip
+      if (defined(invoker.deps)) {
+        deps = []
+        foreach(_dep, invoker.deps) {
+          deps += [ "${_dep}_grit" ]
+        }
+      }
+    }
+
+    android_generated_resources(target_name) {
+      forward_variables_from(invoker,
+                             [
+                               "resource_overlay",
+                               "visibility",
+                             ])
+      generating_target = ":$_zip_target_name"
+      generated_resources_zip = _resources_zip
+    }
   }
 }

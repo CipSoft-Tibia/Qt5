@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QMATH_H
 #define QMATH_H
@@ -46,6 +10,10 @@
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qalgorithms.h>
+
+#if __has_include(<bit>) && __cplusplus > 201703L
+#include <bit>
+#endif
 
 #ifndef _USE_MATH_DEFINES
 #  define _USE_MATH_DEFINES
@@ -65,85 +33,151 @@ QT_BEGIN_NAMESPACE
 
 extern Q_CORE_EXPORT const qreal qt_sine_table[QT_SINE_TABLE_SIZE];
 
-inline int qCeil(qreal v)
+template <typename T> int qCeil(T v)
 {
     using std::ceil;
     return int(ceil(v));
 }
 
-inline int qFloor(qreal v)
+template <typename T> int qFloor(T v)
 {
     using std::floor;
     return int(floor(v));
 }
 
-inline qreal qFabs(qreal v)
+template <typename T> auto qFabs(T v)
 {
     using std::fabs;
     return fabs(v);
 }
 
-inline qreal qSin(qreal v)
+template <typename T> auto qSin(T v)
 {
     using std::sin;
     return sin(v);
 }
 
-inline qreal qCos(qreal v)
+template <typename T> auto qCos(T v)
 {
     using std::cos;
     return cos(v);
 }
 
-inline qreal qTan(qreal v)
+template <typename T> auto qTan(T v)
 {
     using std::tan;
     return tan(v);
 }
 
-inline qreal qAcos(qreal v)
+template <typename T> auto qAcos(T v)
 {
     using std::acos;
     return acos(v);
 }
 
-inline qreal qAsin(qreal v)
+template <typename T> auto qAsin(T v)
 {
     using std::asin;
     return asin(v);
 }
 
-inline qreal qAtan(qreal v)
+template <typename T> auto qAtan(T v)
 {
     using std::atan;
     return atan(v);
 }
 
-inline qreal qAtan2(qreal y, qreal x)
+template <typename T1, typename T2> auto qAtan2(T1 y, T2 x)
 {
     using std::atan2;
     return atan2(y, x);
 }
 
-inline qreal qSqrt(qreal v)
+template <typename T> auto qSqrt(T v)
 {
     using std::sqrt;
     return sqrt(v);
 }
 
-inline qreal qLn(qreal v)
+namespace QtPrivate {
+template <typename R, typename F> // For qfloat16 to specialize
+struct QHypotType { using type = decltype(std::hypot(R(1), F(1))); };
+
+// Implements hypot() without limiting number of arguments:
+template <typename T>
+class QHypotHelper
+{
+    T scale, total;
+    template <typename F> friend class QHypotHelper;
+    QHypotHelper(T first, T prior) : scale(first), total(prior) {}
+public:
+    QHypotHelper(T first) : scale(qAbs(first)), total(1) {}
+    T result() const
+    { return qIsFinite(scale) ? scale > 0 ? scale * T(qSqrt(total)) : T(0) : scale; }
+
+    template<typename F, typename ...Fs>
+    auto add(F first, Fs... rest) const
+    { return add(first).add(rest...); }
+
+    template<typename F, typename R = typename QHypotType<T, F>::type>
+    QHypotHelper<R> add(F next) const
+    {
+        if (qIsInf(scale) || (qIsNaN(scale) && !qIsInf(next)))
+            return QHypotHelper<R>(scale, R(1));
+        if (qIsNaN(next))
+            return QHypotHelper<R>(next, R(1));
+        const R val = qAbs(next);
+        if (!(scale > 0) || qIsInf(next))
+            return QHypotHelper<R>(val, R(1));
+        if (!(val > 0))
+            return QHypotHelper<R>(scale, total);
+        if (val > scale) {
+            const R ratio = scale / next;
+            return QHypotHelper<R>(val, total * ratio * ratio + R(1));
+        }
+        const R ratio = next / scale;
+        return QHypotHelper<R>(scale, total + ratio * ratio);
+    }
+};
+} // QtPrivate
+
+template<typename F, typename ...Fs>
+auto qHypot(F first, Fs... rest)
+{
+    return QtPrivate::QHypotHelper<F>(first).add(rest...).result();
+}
+
+// However, where possible, use the standard library implementations:
+template <typename Tx, typename Ty>
+auto qHypot(Tx x, Ty y)
+{
+    // C99 has hypot(), hence C++11 has std::hypot()
+    using std::hypot;
+    return hypot(x, y);
+}
+
+#if defined(__cpp_lib_hypot) && __cpp_lib_hypot >= 201603L // Expected to be true
+template <typename Tx, typename Ty, typename Tz>
+auto qHypot(Tx x, Ty y, Tz z)
+{
+    using std::hypot;
+    return hypot(x, y, z);
+}
+#endif // else: no need to over-ride the arbitrarily-many-arg form
+
+template <typename T> auto qLn(T v)
 {
     using std::log;
     return log(v);
 }
 
-inline qreal qExp(qreal v)
+template <typename T> auto qExp(T v)
 {
     using std::exp;
     return exp(v);
 }
 
-inline qreal qPow(qreal x, qreal y)
+template <typename T1, typename T2> auto qPow(T1 x, T2 y)
 {
     using std::pow;
     return pow(x, y);
@@ -223,34 +257,49 @@ inline qreal qFastCos(qreal x)
     return qt_sine_table[si] - (qt_sine_table[ci] + 0.5 * qt_sine_table[si] * d) * d;
 }
 
-Q_DECL_CONSTEXPR inline float qDegreesToRadians(float degrees)
+constexpr inline float qDegreesToRadians(float degrees)
 {
-    return degrees * float(M_PI/180);
+    return degrees * float(M_PI / 180);
 }
 
-Q_DECL_CONSTEXPR inline double qDegreesToRadians(double degrees)
+constexpr inline double qDegreesToRadians(double degrees)
 {
     return degrees * (M_PI / 180);
 }
 
-Q_DECL_CONSTEXPR inline float qRadiansToDegrees(float radians)
+constexpr inline long double qDegreesToRadians(long double degrees)
 {
-    return radians * float(180/M_PI);
+    return degrees * (M_PI / 180);
 }
 
-Q_DECL_CONSTEXPR inline double qRadiansToDegrees(double radians)
+template <typename T, std::enable_if_t<std::is_integral_v<T>, bool> = true>
+constexpr inline double qDegreesToRadians(T degrees)
+{
+    return qDegreesToRadians(static_cast<double>(degrees));
+}
+
+constexpr inline float qRadiansToDegrees(float radians)
+{
+    return radians * float(180 / M_PI);
+}
+
+constexpr inline double qRadiansToDegrees(double radians)
 {
     return radians * (180 / M_PI);
 }
 
-
-Q_DECL_RELAXED_CONSTEXPR inline quint32 qNextPowerOfTwo(quint32 v)
+constexpr inline long double qRadiansToDegrees(long double radians)
 {
-#if defined(QT_HAS_BUILTIN_CLZ)
-    if (v == 0)
-        return 1;
-    return 2U << (31 ^ QAlgorithmsPrivate::qt_builtin_clz(v));
-#else
+    return radians * (180 / M_PI);
+}
+
+// A qRadiansToDegrees(Integral) overload isn't here; it's extremely
+// questionable that someone is manipulating quantities in radians
+// using integral datatypes...
+
+namespace QtPrivate {
+constexpr inline quint32 qConstexprNextPowerOfTwo(quint32 v)
+{
     v |= v >> 1;
     v |= v >> 2;
     v |= v >> 4;
@@ -258,16 +307,10 @@ Q_DECL_RELAXED_CONSTEXPR inline quint32 qNextPowerOfTwo(quint32 v)
     v |= v >> 16;
     ++v;
     return v;
-#endif
 }
 
-Q_DECL_RELAXED_CONSTEXPR inline quint64 qNextPowerOfTwo(quint64 v)
+constexpr inline quint64 qConstexprNextPowerOfTwo(quint64 v)
 {
-#if defined(QT_HAS_BUILTIN_CLZLL)
-    if (v == 0)
-        return 1;
-    return Q_UINT64_C(2) << (63 ^ QAlgorithmsPrivate::qt_builtin_clzll(v));
-#else
     v |= v >> 1;
     v |= v >> 2;
     v |= v >> 4;
@@ -276,17 +319,65 @@ Q_DECL_RELAXED_CONSTEXPR inline quint64 qNextPowerOfTwo(quint64 v)
     v |= v >> 32;
     ++v;
     return v;
+}
+
+constexpr inline quint32 qConstexprNextPowerOfTwo(qint32 v)
+{
+    return qConstexprNextPowerOfTwo(quint32(v));
+}
+
+constexpr inline quint64 qConstexprNextPowerOfTwo(qint64 v)
+{
+    return qConstexprNextPowerOfTwo(quint64(v));
+}
+} // namespace QtPrivate
+
+constexpr inline quint32 qNextPowerOfTwo(quint32 v)
+{
+    Q_ASSERT(static_cast<qint32>(v) >= 0); // There is a next power of two
+#if defined(__cpp_lib_int_pow2) && __cpp_lib_int_pow2 >= 202002L
+    return std::bit_ceil(v + 1);
+#elif defined(QT_HAS_BUILTIN_CLZ)
+    if (v == 0)
+        return 1;
+    return 2U << (31 ^ QAlgorithmsPrivate::qt_builtin_clz(v));
+#else
+    return QtPrivate::qConstexprNextPowerOfTwo(v);
 #endif
 }
 
-Q_DECL_RELAXED_CONSTEXPR inline quint32 qNextPowerOfTwo(qint32 v)
+constexpr inline quint64 qNextPowerOfTwo(quint64 v)
+{
+    Q_ASSERT(static_cast<qint64>(v) >= 0); // There is a next power of two
+#if defined(__cpp_lib_int_pow2) && __cpp_lib_int_pow2 >= 202002L
+    return std::bit_ceil(v + 1);
+#elif defined(QT_HAS_BUILTIN_CLZLL)
+    if (v == 0)
+        return 1;
+    return Q_UINT64_C(2) << (63 ^ QAlgorithmsPrivate::qt_builtin_clzll(v));
+#else
+    return QtPrivate::qConstexprNextPowerOfTwo(v);
+#endif
+}
+
+constexpr inline quint32 qNextPowerOfTwo(qint32 v)
 {
     return qNextPowerOfTwo(quint32(v));
 }
 
-Q_DECL_RELAXED_CONSTEXPR inline quint64 qNextPowerOfTwo(qint64 v)
+constexpr inline quint64 qNextPowerOfTwo(qint64 v)
 {
     return qNextPowerOfTwo(quint64(v));
+}
+
+constexpr inline unsigned long qNextPowerOfTwo(unsigned long v)
+{
+    return qNextPowerOfTwo(QIntegerForSizeof<long>::Unsigned(v));
+}
+
+constexpr inline unsigned long qNextPowerOfTwo(long v)
+{
+    return qNextPowerOfTwo(QIntegerForSizeof<long>::Unsigned(v));
 }
 
 QT_END_NAMESPACE

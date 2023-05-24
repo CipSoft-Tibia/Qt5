@@ -1,10 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/sensor/relative_orientation_sensor.h"
 
-#include "third_party/blink/public/mojom/feature_policy/feature_policy_feature.mojom-blink.h"
+#include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom-blink.h"
 
 using device::mojom::blink::SensorType;
 
@@ -34,8 +34,8 @@ RelativeOrientationSensor::RelativeOrientationSensor(
                         options,
                         exception_state,
                         SensorType::RELATIVE_ORIENTATION_QUATERNION,
-                        {mojom::blink::FeaturePolicyFeature::kAccelerometer,
-                         mojom::blink::FeaturePolicyFeature::kGyroscope}) {}
+                        {mojom::blink::PermissionsPolicyFeature::kAccelerometer,
+                         mojom::blink::PermissionsPolicyFeature::kGyroscope}) {}
 
 void RelativeOrientationSensor::Trace(Visitor* visitor) const {
   OrientationSensor::Trace(visitor);

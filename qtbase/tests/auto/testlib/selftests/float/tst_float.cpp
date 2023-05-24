@@ -1,37 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/qfloat16.h>
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QDebug>
 
-#include "emulationdetector.h"
+#include <QtTest/private/qemulationdetector_p.h>
 
 // Test proper handling of floating-point types
 class tst_float: public QObject
@@ -182,20 +157,20 @@ void tst_float::float16Comparisons_data() const
     QTest::addColumn<qfloat16>("operandLeft");
     QTest::addColumn<qfloat16>("operandRight");
     const qfloat16 zero(0), one(1);
-    const qfloat16 tiny(EmulationDetector::isRunningArmOnX86() ? 0.00099f : 0.001f);
+    const qfloat16 tiny(9.756e-03f);
 
     QTest::newRow("should FAIL 1") << one << qfloat16(3);
     QTest::newRow("should PASS 1") << zero << zero;
-    QTest::newRow("should FAIL 2") << qfloat16(1e-3f) << qfloat16(3e-3f);
 
     // QCOMPARE for uses qFuzzyCompare(), which ignores differences of one part
     // in 102.5 and considers any two qFuzzyIsNull() values, i.e. values smaller
-    // than 1e-3, equal
+    // than 1/102.5, equal
+    QTest::newRow("should FAIL 2") << qfloat16(.01f) << qfloat16(.03f);
     QTest::newRow("should PASS 2") << qfloat16(1001) << qfloat16(1002);
     QTest::newRow("should FAIL 3") << qfloat16(98) << qfloat16(99);
     QTest::newRow("should PASS 3") << tiny << -tiny;
     // ... which gets a bit unreliable near to the type's bounds
-    QTest::newRow("should FAIL 4") << qfloat16(1.01e-3f) << qfloat16(0.99e-3f);
+    QTest::newRow("should FAIL 4") << qfloat16(10e-3f) << qfloat16(9.7e-3f);
     QTest::newRow("should PASS 4") << qfloat16(6e4) + qfloat16(700) << qfloat16(6e4) + qfloat16(1200);
     QTest::newRow("should FAIL 5") << qfloat16(6e4) - qfloat16(600) << qfloat16(6e4) - qfloat16(1200);
 

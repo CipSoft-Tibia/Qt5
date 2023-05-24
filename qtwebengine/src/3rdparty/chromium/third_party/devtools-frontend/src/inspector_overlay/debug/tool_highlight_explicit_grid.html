@@ -9,15 +9,15 @@ found in the LICENSE file.
   <meta charset="utf-8">
   <title>Debug</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <link rel="stylesheet" href="/out/Default/resources/inspector_overlay/common.css">
-  <script type="module" src="/out/Default/resources/inspector_overlay/tool_highlight.js"></script>
+  <script type="module" src="/out/Default/resources/inspector_overlay/main.js"></script>
 </head>
 <body>
   <script type="module">
-    setPlatform("mac");
-    reset(window);
+    dispatch(["setPlatform", "mac"]);
+    dispatch(["setOverlay", "highlight"]);
+    dispatch(["reset"]);
 
-    drawHighlight({
+    dispatch(["drawHighlight", {
       "paths":[
         {"path":["M",100,60,"L",420,60,"L",420,204,"L",100,204,"Z"],"fillColor":"rgba(111, 168, 220, .66)","name":"content"},
         {"path":["M",90,50,"L",430,50,"L",430,214,"L",90,214,"Z"],"fillColor":"rgba(147, 196, 125, .55)","name":"padding"},
@@ -35,11 +35,11 @@ found in the LICENSE file.
           "positiveColumnLineNumberPositions":[{x: 100, y: 60},{x: 205, y: 60},{x: 315, y: 60},{x: 420, y: 60}],
           "negativeColumnLineNumberPositions":[{x: 100, y: 204},{x: 205, y: 204},{x: 315, y: 204},{x: 420, y: 204}],
           "gridBorder":["M",100,60,"L",420,60,"L",420,204,"L",100,204,"Z"],
-          "gridHighlightConfig":{"gridBorderDash":false,"rowLineDash":true,"columnLineDash":true,"showGridExtensionLines":true,"showPositiveLineNumbers":true,"showNegativeLineNumbers":true,"rowLineColor":"rgba(127, 32, 210, 1)","columnLineColor":"rgba(127, 32, 210, 1)","rowHatchColor":"rgba(127, 32, 210, .8)","columnHatchColor":"rgba(127, 32, 210, .8)"},
+          "gridHighlightConfig":{"gridBorderDash":false,"rowLineDash":true,"columnLineDash":true,"showGridExtensionLines":true,"showPositiveLineNumbers":true,"showNegativeLineNumbers":true,"rowLineColor":"rgba(127, 32, 210, 1)","columnLineColor":"rgba(127, 32, 210, 1)","rowHatchColor":"rgba(127, 32, 210, .8)","columnHatchColor":"rgba(127, 32, 210, .8)","gridBorderColor":"rgba(127, 32, 210, 1)"},
           "isPrimaryGrid":true
         }
       ]
-    });
+    }]);
   </script>
 </body>
 </html>

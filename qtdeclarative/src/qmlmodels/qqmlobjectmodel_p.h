@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLINSTANCEMODEL_P_H
 #define QQMLINSTANCEMODEL_P_H
@@ -70,14 +34,13 @@ class Q_QMLMODELS_PRIVATE_EXPORT QQmlInstanceModel : public QObject
 
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     QML_ANONYMOUS
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     enum ReusableFlag {
         NotReusable,
         Reusable
     };
-
-    virtual ~QQmlInstanceModel() {}
 
     enum ReleaseFlag { Referenced = 0x01, Destroyed = 0x02, Pooled = 0x04 };
     Q_DECLARE_FLAGS(ReleaseFlags, ReleaseFlag)
@@ -92,11 +55,13 @@ public:
     virtual void setWatchedRoles(const QList<QByteArray> &roles) = 0;
     virtual QQmlIncubator::Status incubationStatus(int index) = 0;
 
-    virtual void drainReusableItemsPool(int maxPoolTime) { Q_UNUSED(maxPoolTime) }
+    virtual void drainReusableItemsPool(int maxPoolTime) { Q_UNUSED(maxPoolTime); }
     virtual int poolSize() { return 0; }
 
     virtual int indexOf(QObject *object, QObject *objectContext) const = 0;
     virtual const QAbstractItemModel *abstractItemModel() const { return nullptr; }
+
+    virtual bool setRequiredProperty(int index, const QString &name, const QVariant &value);
 
 Q_SIGNALS:
     void countChanged();
@@ -104,8 +69,8 @@ Q_SIGNALS:
     void createdItem(int index, QObject *object);
     void initItem(int index, QObject *object);
     void destroyingItem(QObject *object);
-    Q_REVISION(15) void itemPooled(int index, QObject *object);
-    Q_REVISION(15) void itemReused(int index, QObject *object);
+    Q_REVISION(2, 15) void itemPooled(int index, QObject *object);
+    Q_REVISION(2, 15) void itemReused(int index, QObject *object);
 
 protected:
     QQmlInstanceModel(QObjectPrivate &dd, QObject *parent = nullptr)
@@ -125,7 +90,7 @@ class Q_QMLMODELS_PRIVATE_EXPORT QQmlObjectModel : public QQmlInstanceModel
     Q_PROPERTY(QQmlListProperty<QObject> children READ children NOTIFY childrenChanged DESIGNABLE false)
     Q_CLASSINFO("DefaultProperty", "children")
     QML_NAMED_ELEMENT(ObjectModel)
-    QML_ADDED_IN_MINOR_VERSION(1)
+    QML_ADDED_IN_VERSION(2, 1)
     QML_ATTACHED(QQmlObjectModelAttached)
 
 public:
@@ -146,14 +111,14 @@ public:
 
     static QQmlObjectModelAttached *qmlAttachedProperties(QObject *obj);
 
-    Q_REVISION(3) Q_INVOKABLE QObject *get(int index) const;
-    Q_REVISION(3) Q_INVOKABLE void append(QObject *object);
-    Q_REVISION(3) Q_INVOKABLE void insert(int index, QObject *object);
-    Q_REVISION(3) Q_INVOKABLE void move(int from, int to, int n = 1);
-    Q_REVISION(3) Q_INVOKABLE void remove(int index, int n = 1);
+    Q_REVISION(2, 3) Q_INVOKABLE QObject *get(int index) const;
+    Q_REVISION(2, 3) Q_INVOKABLE void append(QObject *object);
+    Q_REVISION(2, 3) Q_INVOKABLE void insert(int index, QObject *object);
+    Q_REVISION(2, 3) Q_INVOKABLE void move(int from, int to, int n = 1);
+    Q_REVISION(2, 3) Q_INVOKABLE void remove(int index, int n = 1);
 
 public Q_SLOTS:
-    Q_REVISION(3) void clear();
+    Q_REVISION(2, 3) void clear();
 
 Q_SIGNALS:
     void childrenChanged();
@@ -173,7 +138,7 @@ public:
         attachedProperties.remove(parent());
     }
 
-    Q_PROPERTY(int index READ index NOTIFY indexChanged)
+    Q_PROPERTY(int index READ index NOTIFY indexChanged FINAL)
     int index() const { return m_index; }
     void setIndex(int idx) {
         if (m_index != idx) {

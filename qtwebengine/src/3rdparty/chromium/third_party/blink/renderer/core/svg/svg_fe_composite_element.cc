@@ -25,7 +25,7 @@
 #include "third_party/blink/renderer/core/svg/svg_animated_string.h"
 #include "third_party/blink/renderer/core/svg/svg_enumeration_map.h"
 #include "third_party/blink/renderer/core/svg_names.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -107,7 +107,8 @@ bool SVGFECompositeElement::SetFilterEffectAttribute(
 }
 
 void SVGFECompositeElement::SvgAttributeChanged(
-    const QualifiedName& attr_name) {
+    const SvgAttributeChangedParams& params) {
+  const QualifiedName& attr_name = params.name;
   if (attr_name == svg_names::kOperatorAttr ||
       attr_name == svg_names::kK1Attr || attr_name == svg_names::kK2Attr ||
       attr_name == svg_names::kK3Attr || attr_name == svg_names::kK4Attr) {
@@ -122,7 +123,7 @@ void SVGFECompositeElement::SvgAttributeChanged(
     return;
   }
 
-  SVGFilterPrimitiveStandardAttributes::SvgAttributeChanged(attr_name);
+  SVGFilterPrimitiveStandardAttributes::SvgAttributeChanged(params);
 }
 
 FilterEffect* SVGFECompositeElement::Build(SVGFilterBuilder* filter_builder,
@@ -139,7 +140,7 @@ FilterEffect* SVGFECompositeElement::Build(SVGFilterBuilder* filter_builder,
       k2_->CurrentValue()->Value(), k3_->CurrentValue()->Value(),
       k4_->CurrentValue()->Value());
   FilterEffectVector& input_effects = effect->InputEffects();
-  input_effects.ReserveCapacity(2);
+  input_effects.reserve(2);
   input_effects.push_back(input1);
   input_effects.push_back(input2);
   return effect;

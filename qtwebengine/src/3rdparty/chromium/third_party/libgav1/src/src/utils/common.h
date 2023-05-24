@@ -21,12 +21,13 @@
 #include <intrin.h>
 #pragma intrinsic(_BitScanForward)
 #pragma intrinsic(_BitScanReverse)
-#if defined(_M_X64) || defined(_M_ARM) || defined(_M_ARM64)
+#if defined(_M_X64) || defined(_M_ARM64)
 #pragma intrinsic(_BitScanReverse64)
 #define HAVE_BITSCANREVERSE64
-#endif  // defined(_M_X64) || defined(_M_ARM) || defined(_M_ARM64)
+#endif  // defined(_M_X64) || defined(_M_ARM64)
 #endif  // defined(_MSC_VER)
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -40,6 +41,26 @@
 #include "src/utils/types.h"
 
 namespace libgav1 {
+
+// LIBGAV1_RESTRICT
+// Declares a pointer with the restrict type qualifier if available.
+// This allows code to hint to the compiler that only this pointer references a
+// particular object or memory region within the scope of the block in which it
+// is declared. This may allow for improved optimizations due to the lack of
+// pointer aliasing. See also:
+// https://en.cppreference.com/w/c/language/restrict
+// Note a template alias is not used for compatibility with older compilers
+// (e.g., gcc < 10) that do not expand the type when instantiating a template
+// function, either explicitly or in an assignment to a function pointer as is
+// done within the dsp code. RestrictPtr<T>::type is an alternative to this,
+// similar to std::add_const, but for conciseness the macro is preferred.
+#ifdef __GNUC__
+#define LIBGAV1_RESTRICT __restrict__
+#elif defined(_MSC_VER)
+#define LIBGAV1_RESTRICT __restrict
+#else
+#define LIBGAV1_RESTRICT
+#endif
 
 // Aligns |value| to the desired |alignment|. |alignment| must be a power of 2.
 template <typename T>
@@ -131,7 +152,7 @@ inline int CountLeadingZeros(uint64_t n) {
 #if defined(HAVE_BITSCANREVERSE64)
   const unsigned char bit_set =
       _BitScanReverse64(&first_set_bit, static_cast<unsigned __int64>(n));
-#else  // !defined(HAVE_BITSCANREVERSE64)
+#else   // !defined(HAVE_BITSCANREVERSE64)
   const auto n_hi = static_cast<unsigned long>(n >> 32);  // NOLINT(runtime/int)
   if (n_hi != 0) {
     const unsigned char bit_set = _BitScanReverse(&first_set_bit, n_hi);
@@ -376,7 +397,7 @@ constexpr bool IsDirectionalMode(PredictionMode mode) {
 // behavior and result apply to other CPUs' SIMD instructions.
 inline int GetRelativeDistance(const unsigned int a, const unsigned int b,
                                const unsigned int order_hint_shift_bits) {
-  const int diff = a - b;
+  const int diff = static_cast<int>(a) - static_cast<int>(b);
   assert(order_hint_shift_bits <= 31);
   if (order_hint_shift_bits == 0) {
     assert(a == 0);

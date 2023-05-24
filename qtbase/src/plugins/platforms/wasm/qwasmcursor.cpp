@@ -1,145 +1,101 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwasmcursor.h"
 #include "qwasmscreen.h"
-#include "qwasmstring.h"
+#include "qwasmwindow.h"
 
+#include <QtCore/qbuffer.h>
 #include <QtCore/qdebug.h>
+#include <QtCore/qstring.h>
 #include <QtGui/qwindow.h>
 
 #include <emscripten/emscripten.h>
 #include <emscripten/bind.h>
 
+QT_BEGIN_NAMESPACE
 using namespace emscripten;
+
+namespace {
+QByteArray cursorToCss(const QCursor *cursor)
+{
+    auto shape = cursor->shape();
+    switch (shape) {
+    case Qt::ArrowCursor:
+        return "default";
+    case Qt::UpArrowCursor:
+        return "n-resize";
+    case Qt::CrossCursor:
+        return "crosshair";
+    case Qt::WaitCursor:
+        return "wait";
+    case Qt::IBeamCursor:
+        return "text";
+    case Qt::SizeVerCursor:
+        return "ns-resize";
+    case Qt::SizeHorCursor:
+        return "ew-resize";
+    case Qt::SizeBDiagCursor:
+        return "nesw-resize";
+    case Qt::SizeFDiagCursor:
+        return "nwse-resize";
+    case Qt::SizeAllCursor:
+        return "move";
+    case Qt::BlankCursor:
+        return "none";
+    case Qt::SplitVCursor:
+        return "row-resize";
+    case Qt::SplitHCursor:
+        return "col-resize";
+    case Qt::PointingHandCursor:
+        return "pointer";
+    case Qt::ForbiddenCursor:
+        return "not-allowed";
+    case Qt::WhatsThisCursor:
+        return "help";
+    case Qt::BusyCursor:
+        return "progress";
+    case Qt::OpenHandCursor:
+        return "grab";
+    case Qt::ClosedHandCursor:
+        return "grabbing";
+    case Qt::DragCopyCursor:
+        return "copy";
+    case Qt::DragMoveCursor:
+        return "default";
+    case Qt::DragLinkCursor:
+        return "alias";
+    case Qt::BitmapCursor: {
+        auto pixmap = cursor->pixmap();
+        QByteArray cursorAsPng;
+        QBuffer buffer(&cursorAsPng);
+        buffer.open(QBuffer::WriteOnly);
+        pixmap.save(&buffer, "PNG");
+        buffer.close();
+        auto cursorAsBase64 = cursorAsPng.toBase64();
+        auto hotSpot = cursor->hotSpot();
+        auto encodedCursor =
+            QString("url(data:image/png;base64,%1) %2 %3, auto")
+                .arg(QString::fromUtf8(cursorAsBase64),
+                     QString::number(hotSpot.x()),
+                     QString::number(hotSpot.y()));
+        return encodedCursor.toUtf8();
+        }
+    default:
+        static_assert(Qt::CustomCursor == 25,
+                      "New cursor type added, handle it");
+        qWarning() << "QWasmCursor: " << shape << " unsupported";
+        return "default";
+    }
+}
+} // namespace
 
 void QWasmCursor::changeCursor(QCursor *windowCursor, QWindow *window)
 {
     if (!window)
         return;
-    QScreen *screen = window->screen();
-    if (!screen)
-        return;
-
-    QByteArray htmlCursorName;
-    if (windowCursor) {
-
-        // Bitmap and custom cursors are not implemented (will fall back to "auto")
-        if (windowCursor->shape() == Qt::BitmapCursor || windowCursor->shape() >= Qt::CustomCursor)
-            qWarning() << "QWasmCursor: bitmap and custom cursors are not supported";
-
-
-        htmlCursorName = cursorShapeToHtml(windowCursor->shape());
-    }
-    if (htmlCursorName.isEmpty())
-        htmlCursorName = "default";
-
-    // Set cursor on the canvas
-    val canvas = QWasmScreen::get(screen)->canvas();
-    val canvasStyle = canvas["style"];
-    canvasStyle.set("cursor", val(htmlCursorName.constData()));
+    if (QWasmWindow *wasmWindow = static_cast<QWasmWindow *>(window->handle()))
+        wasmWindow->setWindowCursor(windowCursor ? cursorToCss(windowCursor) : "default");
 }
 
-QByteArray QWasmCursor::cursorShapeToHtml(Qt::CursorShape shape)
-{
-    QByteArray cursorName;
-
-    switch (shape) {
-    case Qt::ArrowCursor:
-        cursorName = "default";
-        break;
-    case Qt::UpArrowCursor:
-        cursorName = "n-resize";
-        break;
-    case Qt::CrossCursor:
-        cursorName = "crosshair";
-        break;
-    case Qt::WaitCursor:
-        cursorName = "wait";
-        break;
-    case Qt::IBeamCursor:
-        cursorName = "text";
-        break;
-    case Qt::SizeVerCursor:
-        cursorName = "ns-resize";
-        break;
-    case Qt::SizeHorCursor:
-        cursorName = "ew-resize";
-        break;
-    case Qt::SizeBDiagCursor:
-        cursorName = "nesw-resize";
-        break;
-    case Qt::SizeFDiagCursor:
-        cursorName = "nwse-resize";
-        break;
-    case Qt::SizeAllCursor:
-        cursorName = "move";
-        break;
-    case Qt::BlankCursor:
-        cursorName = "none";
-        break;
-    case Qt::SplitVCursor:
-        cursorName = "row-resize";
-        break;
-    case Qt::SplitHCursor:
-        cursorName = "col-resize";
-        break;
-    case Qt::PointingHandCursor:
-        cursorName = "pointer";
-        break;
-    case Qt::ForbiddenCursor:
-        cursorName = "not-allowed";
-        break;
-    case Qt::WhatsThisCursor:
-        cursorName = "help";
-        break;
-    case Qt::BusyCursor:
-        cursorName = "progress";
-        break;
-    case Qt::OpenHandCursor:
-        cursorName = "grab";
-        break;
-    case Qt::ClosedHandCursor:
-        cursorName = "grabbing";
-        break;
-    case Qt::DragCopyCursor:
-        cursorName = "copy";
-        break;
-    case Qt::DragMoveCursor:
-        cursorName = "default";
-        break;
-    case Qt::DragLinkCursor:
-        cursorName = "alias";
-        break;
-    default:
-        break;
-    }
-
-    return cursorName;
-}
+QT_END_NAMESPACE

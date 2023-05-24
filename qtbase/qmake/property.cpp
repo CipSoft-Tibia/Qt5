@@ -1,49 +1,29 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "property.h"
-#include "option.h"
 
 #include <qdir.h>
 #include <qsettings.h>
-#include <qlibraryinfo.h>
+#include <qtversion.h>
+#include <qmakelibraryinfo.h>
 #include <qstringlist.h>
 #include <stdio.h>
+
+namespace {
+constexpr int PropSuccessRetCode = 0;
+constexpr int PropFailRetCode = 101;
+}
 
 QT_BEGIN_NAMESPACE
 
 static const struct {
     const char *name;
-    QLibraryInfo::LibraryLocation loc;
+    int loc;
     bool raw;
     bool singular;
 } propList[] = {
-    { "QT_SYSROOT", QLibraryInfo::SysrootPath, true, true },
+    { "QT_SYSROOT", QMakeLibraryInfo::SysrootPath, true, true },
     { "QT_INSTALL_PREFIX", QLibraryInfo::PrefixPath, false, false },
     { "QT_INSTALL_ARCHDATA", QLibraryInfo::ArchDataPath, false, false },
     { "QT_INSTALL_DATA", QLibraryInfo::DataPath, false, false },
@@ -54,18 +34,18 @@ static const struct {
     { "QT_INSTALL_BINS", QLibraryInfo::BinariesPath, false, false },
     { "QT_INSTALL_TESTS", QLibraryInfo::TestsPath, false, false },
     { "QT_INSTALL_PLUGINS", QLibraryInfo::PluginsPath, false, false },
-    { "QT_INSTALL_IMPORTS", QLibraryInfo::ImportsPath, false, false },
-    { "QT_INSTALL_QML", QLibraryInfo::Qml2ImportsPath, false, false },
+    { "QT_INSTALL_QML", QLibraryInfo::QmlImportsPath, false, false },
     { "QT_INSTALL_TRANSLATIONS", QLibraryInfo::TranslationsPath, false, false },
     { "QT_INSTALL_CONFIGURATION", QLibraryInfo::SettingsPath, false, false },
     { "QT_INSTALL_EXAMPLES", QLibraryInfo::ExamplesPath, false, false },
     { "QT_INSTALL_DEMOS", QLibraryInfo::ExamplesPath, false, false }, // Just backwards compat
-    { "QT_HOST_PREFIX", QLibraryInfo::HostPrefixPath, true, false },
-    { "QT_HOST_DATA", QLibraryInfo::HostDataPath, true, false },
-    { "QT_HOST_BINS", QLibraryInfo::HostBinariesPath, true, false },
-    { "QT_HOST_LIBS", QLibraryInfo::HostLibrariesPath, true, false },
-    { "QMAKE_SPEC", QLibraryInfo::HostSpecPath, true, true },
-    { "QMAKE_XSPEC", QLibraryInfo::TargetSpecPath, true, true },
+    { "QT_HOST_PREFIX", QMakeLibraryInfo::HostPrefixPath, true, false },
+    { "QT_HOST_DATA", QMakeLibraryInfo::HostDataPath, true, false },
+    { "QT_HOST_BINS", QMakeLibraryInfo::HostBinariesPath, true, false },
+    { "QT_HOST_LIBEXECS", QMakeLibraryInfo::HostLibraryExecutablesPath, true, false },
+    { "QT_HOST_LIBS", QMakeLibraryInfo::HostLibrariesPath, true, false },
+    { "QMAKE_SPEC", QMakeLibraryInfo::HostSpecPath, true, true },
+    { "QMAKE_XSPEC", QMakeLibraryInfo::TargetSpecPath, true, true },
 };
 
 QMakeProperty::QMakeProperty() : settings(nullptr)
@@ -75,22 +55,27 @@ QMakeProperty::QMakeProperty() : settings(nullptr)
 
 void QMakeProperty::reload()
 {
-    QLibraryInfo::reload();
+    QMakeLibraryInfo::reload();
     for (unsigned i = 0; i < sizeof(propList)/sizeof(propList[0]); i++) {
         QString name = QString::fromLatin1(propList[i].name);
         if (!propList[i].singular) {
-            m_values[ProKey(name + "/src")] = QLibraryInfo::rawLocation(propList[i].loc, QLibraryInfo::EffectiveSourcePaths);
-            m_values[ProKey(name + "/get")] = QLibraryInfo::rawLocation(propList[i].loc, QLibraryInfo::EffectivePaths);
+            m_values[ProKey(name + "/src")] = QMakeLibraryInfo::rawLocation(
+                    propList[i].loc, QMakeLibraryInfo::EffectiveSourcePaths);
+            m_values[ProKey(name + "/get")] = QMakeLibraryInfo::rawLocation(
+                    propList[i].loc, QMakeLibraryInfo::EffectivePaths);
         }
-        QString val = QLibraryInfo::rawLocation(propList[i].loc, QLibraryInfo::FinalPaths);
+        QString val = QMakeLibraryInfo::rawLocation(propList[i].loc, QMakeLibraryInfo::FinalPaths);
         if (!propList[i].raw) {
-            m_values[ProKey(name + "/dev")] = QLibraryInfo::rawLocation(propList[i].loc, QLibraryInfo::DevicePaths);
-            m_values[ProKey(name)] = QLibraryInfo::location(propList[i].loc);
+            m_values[ProKey(name + "/dev")] =
+                    QMakeLibraryInfo::rawLocation(propList[i].loc, QMakeLibraryInfo::DevicePaths);
+            m_values[ProKey(name)] = QMakeLibraryInfo::path(propList[i].loc);
             name += "/raw";
         }
         m_values[ProKey(name)] = val;
     }
+#ifdef QMAKE_VERSION_STR
     m_values["QMAKE_VERSION"] = ProString(QMAKE_VERSION_STR);
+#endif
 #ifdef QT_VERSION_STR
     m_values["QT_VERSION"] = ProString(QT_VERSION_STR);
 #endif
@@ -104,7 +89,7 @@ QMakeProperty::~QMakeProperty()
 
 void QMakeProperty::initSettings()
 {
-    if(!settings) {
+    if (!settings) {
         settings = new QSettings(QSettings::UserScope, "QtProject", "QMake");
         settings->setFallbacksEnabled(false);
     }
@@ -141,76 +126,79 @@ QMakeProperty::remove(const QString &var)
     settings->remove(var);
 }
 
-bool
-QMakeProperty::exec()
+int QMakeProperty::queryProperty(const QStringList &optionProperties,
+                                 const PropertyPrinter &printer)
 {
-    bool ret = true;
-    if(Option::qmake_mode == Option::QMAKE_QUERY_PROPERTY) {
-        if(Option::prop::properties.isEmpty()) {
-            initSettings();
-            const auto keys = settings->childKeys();
-            for (const QString &key : keys) {
-                QString val = settings->value(key).toString();
-                fprintf(stdout, "%s:%s\n", qPrintable(key), qPrintable(val));
-            }
-            QStringList specialProps;
-            for (unsigned i = 0; i < sizeof(propList)/sizeof(propList[0]); i++)
-                specialProps.append(QString::fromLatin1(propList[i].name));
-            specialProps.append("QMAKE_VERSION");
-#ifdef QT_VERSION_STR
-            specialProps.append("QT_VERSION");
+    QList<QPair<QString, QString>> output;
+    int ret = PropSuccessRetCode;
+    if (optionProperties.isEmpty()) {
+        initSettings();
+        const auto keys = settings->childKeys();
+        for (const QString &key : keys) {
+            QString val = settings->value(key).toString();
+            output.append({ key, val });
+        }
+        QStringList specialProps;
+        for (unsigned i = 0; i < sizeof(propList) / sizeof(propList[0]); i++)
+            specialProps.append(QString::fromLatin1(propList[i].name));
+#ifdef QMAKE_VERSION_STR
+        specialProps.append("QMAKE_VERSION");
 #endif
-            for (const QString &prop : qAsConst(specialProps)) {
-                ProString val = value(ProKey(prop));
-                ProString pval = value(ProKey(prop + "/raw"));
-                ProString gval = value(ProKey(prop + "/get"));
-                ProString sval = value(ProKey(prop + "/src"));
-                ProString dval = value(ProKey(prop + "/dev"));
-                fprintf(stdout, "%s:%s\n", prop.toLatin1().constData(), val.toLatin1().constData());
-                if (!pval.isEmpty() && pval != val)
-                    fprintf(stdout, "%s/raw:%s\n", prop.toLatin1().constData(), pval.toLatin1().constData());
-                if (!gval.isEmpty() && gval != (pval.isEmpty() ? val : pval))
-                    fprintf(stdout, "%s/get:%s\n", prop.toLatin1().constData(), gval.toLatin1().constData());
-                if (!sval.isEmpty() && sval != gval)
-                    fprintf(stdout, "%s/src:%s\n", prop.toLatin1().constData(), sval.toLatin1().constData());
-                if (!dval.isEmpty() && dval != pval)
-                    fprintf(stdout, "%s/dev:%s\n", prop.toLatin1().constData(), dval.toLatin1().constData());
-            }
-            return true;
+#ifdef QT_VERSION_STR
+        specialProps.append("QT_VERSION");
+#endif
+        for (const QString &prop : std::as_const(specialProps)) {
+            ProString val = value(ProKey(prop));
+            ProString pval = value(ProKey(prop + "/raw"));
+            ProString gval = value(ProKey(prop + "/get"));
+            ProString sval = value(ProKey(prop + "/src"));
+            ProString dval = value(ProKey(prop + "/dev"));
+            output.append({ prop, val.toQString() });
+            if (!pval.isEmpty() && pval != val)
+                output.append({ prop + "/raw", pval.toQString() });
+            if (!gval.isEmpty() && gval != (pval.isEmpty() ? val : pval))
+                output.append({ prop + "/get", gval.toQString() });
+            if (!sval.isEmpty() && sval != gval)
+                output.append({ prop + "/src", sval.toQString() });
+            if (!dval.isEmpty() && dval != pval)
+                output.append({ prop + "/dev", dval.toQString() });
         }
-        for (QStringList::ConstIterator it = Option::prop::properties.cbegin();
-            it != Option::prop::properties.cend(); it++) {
-            if(Option::prop::properties.count() > 1)
-                fprintf(stdout, "%s:", (*it).toLatin1().constData());
-            const ProKey pkey(*it);
+    } else {
+        for (const auto &prop : optionProperties) {
+            const ProKey pkey(prop);
             if (!hasValue(pkey)) {
-                ret = false;
-                fprintf(stdout, "**Unknown**\n");
+                ret = PropFailRetCode;
+                output.append({ prop, QString("**Unknown**") });
             } else {
-                fprintf(stdout, "%s\n", value(pkey).toLatin1().constData());
+                output.append({ prop, value(pkey).toQString() });
             }
-        }
-    } else if(Option::qmake_mode == Option::QMAKE_SET_PROPERTY) {
-        for (QStringList::ConstIterator it = Option::prop::properties.cbegin();
-            it != Option::prop::properties.cend(); it++) {
-            QString var = (*it);
-            it++;
-            if (it == Option::prop::properties.cend()) {
-                ret = false;
-                break;
-            }
-            if(!var.startsWith("."))
-                setValue(var, (*it));
-        }
-    } else if(Option::qmake_mode == Option::QMAKE_UNSET_PROPERTY) {
-        for (QStringList::ConstIterator it = Option::prop::properties.cbegin();
-            it != Option::prop::properties.cend(); it++) {
-            QString var = (*it);
-            if(!var.startsWith("."))
-                remove(var);
         }
     }
+    printer(output);
     return ret;
+}
+
+int QMakeProperty::setProperty(const QStringList &optionProperties)
+{
+    for (auto it = optionProperties.cbegin(); it != optionProperties.cend(); ++it) {
+        QString var = (*it);
+        ++it;
+        if (it == optionProperties.cend()) {
+            return PropFailRetCode;
+        }
+        if (!var.startsWith("."))
+            setValue(var, (*it));
+    }
+    return PropSuccessRetCode;
+}
+
+void QMakeProperty::unsetProperty(const QStringList &optionProperties)
+{
+    for (auto it = optionProperties.cbegin(); it != optionProperties.cend(); ++it) {
+        QString var = (*it);
+        if (!var.startsWith("."))
+            remove(var);
+    }
 }
 
 QT_END_NAMESPACE

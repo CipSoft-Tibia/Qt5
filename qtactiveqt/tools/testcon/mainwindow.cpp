@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mainwindow.h"
 #include "changeproperties.h"
@@ -44,11 +19,10 @@
 #include <QtCore/QDebug>
 #include <QtCore/QLibraryInfo>
 #include <QtCore/qt_windows.h>
-#include <ActiveQt/QAxScriptManager>
-#include <ActiveQt/QAxWidget>
-#include <ActiveQt/qaxtypes.h>
-#include <memory>
-#include <sddl.h>
+#include <QtAxContainer/QAxScriptManager>
+#include <QtAxContainer/QAxWidget>
+#include <QtAxContainer/private/qaxbase_p.h>
+#include "sandboxing.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -87,7 +61,7 @@ MainWindow::MainWindow(QWidget *parent)
     QHBoxLayout *layout = new QHBoxLayout(Workbase);
     m_mdiArea = new QMdiArea(Workbase);
     layout->addWidget(m_mdiArea);
-    layout->setMargin(0);
+    layout->setContentsMargins(0, 0, 0, 0);
 
     connect(m_mdiArea, &QMdiArea::subWindowActivated, this, &MainWindow::updateGUI);
     connect(actionFileExit, &QAction::triggered, QCoreApplication::quit);
@@ -105,9 +79,9 @@ QAxWidget *MainWindow::activeAxWidget() const
     return nullptr;
 }
 
-QVector<QAxWidget *> MainWindow::axWidgets() const
+QList<QAxWidget *> MainWindow::axWidgets() const
 {
-    QVector<QAxWidget *> result;
+    QList<QAxWidget *> result;
     const auto mdiSubWindows = m_mdiArea->subWindowList();
     for (const QMdiSubWindow *subWindow : mdiSubWindows)
         if (QAxWidget *axWidget = qobject_cast<QAxWidget *>(subWindow->widget()))
@@ -115,70 +89,28 @@ QVector<QAxWidget *> MainWindow::axWidgets() const
     return result;
 }
 
-
-/** RAII class for temporarily impersonating low-integrity level for the current thread.
-    Intended to be used together with CLSCTX_ENABLE_CLOAKING when creating COM objects.
-    Based on "Designing Applications to Run at a Low Integrity Level" https://msdn.microsoft.com/en-us/library/bb625960.aspx */
-struct LowIntegrity {
-    LowIntegrity()
-    {
-        HANDLE cur_token = nullptr;
-        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_ADJUST_DEFAULT | TOKEN_QUERY | TOKEN_ASSIGN_PRIMARY, &cur_token))
-            abort();
-
-        if (!DuplicateTokenEx(cur_token, 0, nullptr, SecurityImpersonation, TokenPrimary, &m_token))
-            abort();
-
-        CloseHandle(cur_token);
-
-        PSID li_sid = nullptr;
-        if (!ConvertStringSidToSid(L"S-1-16-4096", &li_sid)) // low integrity SID
-            abort();
-
-        // reduce process integrity level
-        TOKEN_MANDATORY_LABEL TIL = {};
-        TIL.Label.Attributes = SE_GROUP_INTEGRITY;
-        TIL.Label.Sid = li_sid;
-        if (!SetTokenInformation(m_token, TokenIntegrityLevel, &TIL, sizeof(TOKEN_MANDATORY_LABEL) + GetLengthSid(li_sid)))
-            abort();
-
-        if (!ImpersonateLoggedOnUser(m_token)) // change current thread integrity
-            abort();
-
-        LocalFree(li_sid);
-        li_sid = nullptr;
-    }
-
-    ~LowIntegrity()
-    {
-        if (!RevertToSelf())
-            abort();
-
-        CloseHandle(m_token);
-        m_token = nullptr;
-    }
-
-private:
-    HANDLE m_token = nullptr;
-};
-
 bool MainWindow::addControlFromClsid(const QString &clsid, QAxSelect::SandboxingLevel sandboxing)
 {
     QAxWidget *container = new QAxWidget;
 
     bool result = false;
     {
-        std::unique_ptr<LowIntegrity> low_integrity;
+        // RAII object for impersonating sandboxing on current thread
+        std::unique_ptr<Sandboxing> sandbox_impl;
 
-        if (sandboxing == QAxSelect::SandboxingProcess) {
+        switch (sandboxing) {
+        case QAxSelect::SandboxingNone:
+            break; // sandboxing disabled
+        case QAxSelect::SandboxingProcess:
             // require out-of-process
             container->setClassContext(CLSCTX_LOCAL_SERVER);
-        } else if (sandboxing == QAxSelect::SandboxingLowIntegrity) {
-            // impersonate "low integrity"
-            low_integrity.reset(new LowIntegrity);
-            // require out-of-process and
-            // propagate integrity level when calling setControl
+            break;
+        default:
+            // impersonate desired sandboxing
+            sandbox_impl = Sandboxing::Create(sandboxing, clsid);
+            // require out-of-process and activate impersonation
             container->setClassContext(CLSCTX_LOCAL_SERVER | CLSCTX_ENABLE_CLOAKING);
+            break;
         }
 
         result = container->setControl(clsid);
@@ -349,11 +281,11 @@ void MainWindow::on_VerbMenu_aboutToShow()
         return;
 
     QStringList verbs = container->verbs();
-    for (int i = 0; i < verbs.count(); ++i) {
+    for (qsizetype i = 0; i < verbs.size(); ++i) {
         VerbMenu->addAction(verbs.at(i));
     }
 
-    if (!verbs.count()) { // no verbs?
+    if (verbs.isEmpty()) { // no verbs?
         VerbMenu->addAction(tr("-- Object does not support any verbs --"))->setEnabled(false);
     }
 }
@@ -404,7 +336,7 @@ void MainWindow::on_actionScriptingRun_triggered()
 
     // If we have only one script loaded we can use the cool dialog
     QStringList scriptList = m_scripts->scriptNames();
-    if (scriptList.count() == 1) {
+    if (scriptList.size() == 1) {
         InvokeMethod scriptInvoke(this);
         scriptInvoke.setWindowTitle(tr("Execute Script Function"));
         scriptInvoke.setControl(m_scripts->script(scriptList[0])->scriptEngine());
@@ -476,7 +408,7 @@ bool MainWindow::loadScript(const QString &file)
     }
     return script;
 #else // !QT_NO_QAXSCRIPT
-    Q_UNUSED(file)
+    Q_UNUSED(file);
     noScriptMessage(this);
     return false;
 #endif
@@ -549,17 +481,15 @@ void MainWindow::updateGUI()
 
     const auto axw = axWidgets();
     for (QAxWidget *container : axw) {
-        container->disconnect(SIGNAL(signal(QString,int,void*)));
+        disconnect(container, &QAxWidget::signal, this, nullptr);
         if (actionLogSignals->isChecked())
-            connect(container, SIGNAL(signal(QString,int,void*)), this, SLOT(logSignal(QString,int,void*)));
+            connect(container, &QAxWidget::signal, this, &MainWindow::logSignal);
+        disconnect(container, &QAxWidget::exception, this, nullptr);
+        connect(container, &QAxWidget::exception, this, &MainWindow::logException);
 
-        container->disconnect(SIGNAL(exception(int,QString,QString,QString)));
-        connect(container, SIGNAL(exception(int,QString,QString,QString)),
-                this, SLOT(logException(int,QString,QString,QString)));
-
-        container->disconnect(SIGNAL(propertyChanged(QString)));
+        disconnect(container, &QAxWidget::propertyChanged, this, nullptr);
         if (actionLogProperties->isChecked())
-            connect(container, SIGNAL(propertyChanged(QString)), this, SLOT(logPropertyChanged(QString)));
+            connect(container, &QAxWidget::propertyChanged, this, &MainWindow::logPropertyChanged);
         container->blockSignals(actionFreezeEvents->isChecked());
     }
 }
@@ -584,7 +514,7 @@ void MainWindow::logSignal(const QString &signal, int argc, void *argv)
     auto params = static_cast<const VARIANT *>(argv);
     for (int a = argc-1; a >= 0; --a) {
         paramlist += QLatin1Char(' ');
-        paramlist += VARIANTToQVariant(params[a], nullptr).toString();
+        paramlist += QAxBasePrivate::VARIANTToQVariant(params[a], nullptr).toString();
         paramlist += a > 0 ? QLatin1Char(',') : QLatin1Char(' ');
     }
     if (argc)

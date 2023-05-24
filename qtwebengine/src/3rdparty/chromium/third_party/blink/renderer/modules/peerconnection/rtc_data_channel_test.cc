@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,7 @@
 #include "base/memory/ptr_util.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/test_simple_task_runner.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_testing.h"
@@ -18,6 +19,7 @@
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/testing/null_execution_context.h"
 #include "third_party/blink/renderer/modules/peerconnection/mock_rtc_peer_connection_handler_platform.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/scheduler/public/frame_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/page_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
@@ -44,8 +46,7 @@ void RunSynchronous(base::TestSimpleTaskRunner* thread,
             std::move(closure).Run();
             event->Signal();
           },
-          WTF::Passed(std::move(closure)),
-          CrossThreadUnretained(&waitable_event)));
+          std::move(closure), CrossThreadUnretained(&waitable_event)));
   waitable_event.Wait();
 }
 
@@ -54,6 +55,10 @@ class MockPeerConnectionHandler : public MockRTCPeerConnectionHandlerPlatform {
   MockPeerConnectionHandler(
       scoped_refptr<base::TestSimpleTaskRunner> signaling_thread)
       : signaling_thread_(signaling_thread) {}
+
+  MockPeerConnectionHandler(const MockPeerConnectionHandler&) = delete;
+  MockPeerConnectionHandler& operator=(const MockPeerConnectionHandler&) =
+      delete;
 
   scoped_refptr<base::SingleThreadTaskRunner> signaling_thread()
       const override {
@@ -78,8 +83,6 @@ class MockPeerConnectionHandler : public MockRTCPeerConnectionHandlerPlatform {
 
   scoped_refptr<base::TestSimpleTaskRunner> signaling_thread_;
   CrossThreadOnceClosure closure_;
-
-  DISALLOW_COPY_AND_ASSIGN(MockPeerConnectionHandler);
 };
 
 class MockDataChannel : public webrtc::DataChannelInterface {
@@ -90,6 +93,9 @@ class MockDataChannel : public webrtc::DataChannelInterface {
         buffered_amount_(0),
         observer_(nullptr),
         state_(webrtc::DataChannelInterface::kConnecting) {}
+
+  MockDataChannel(const MockDataChannel&) = delete;
+  MockDataChannel& operator=(const MockDataChannel&) = delete;
 
   std::string label() const override { return std::string(); }
   bool reliable() const override { return false; }
@@ -207,22 +213,29 @@ class MockDataChannel : public webrtc::DataChannelInterface {
   uint64_t buffered_amount_;
   webrtc::DataChannelObserver* observer_;
   webrtc::DataChannelInterface::DataState state_;
-
-  DISALLOW_COPY_AND_ASSIGN(MockDataChannel);
 };
 
 class RTCDataChannelTest : public ::testing::Test {
  public:
   RTCDataChannelTest() : signaling_thread_(new base::TestSimpleTaskRunner()) {}
 
+  RTCDataChannelTest(const RTCDataChannelTest&) = delete;
+  RTCDataChannelTest& operator=(const RTCDataChannelTest&) = delete;
+
+  ~RTCDataChannelTest() override {
+    execution_context_->NotifyContextDestroyed();
+  }
+
   scoped_refptr<base::TestSimpleTaskRunner> signaling_thread() {
     return signaling_thread_;
   }
 
+ protected:
+  Persistent<NullExecutionContext> execution_context_ =
+      MakeGarbageCollected<NullExecutionContext>();
+
  private:
   scoped_refptr<base::TestSimpleTaskRunner> signaling_thread_;
-
-  DISALLOW_COPY_AND_ASSIGN(RTCDataChannelTest);
 };
 
 }  // namespace
@@ -237,8 +250,7 @@ TEST_F(RTCDataChannelTest, ChangeStateEarly) {
   std::unique_ptr<MockPeerConnectionHandler> pc(
       new MockPeerConnectionHandler(signaling_thread()));
   auto* channel = MakeGarbageCollected<RTCDataChannel>(
-      MakeGarbageCollected<NullExecutionContext>(), webrtc_channel.get(),
-      pc.get());
+      execution_context_, webrtc_channel.get(), pc.get());
 
   // In RTCDataChannel::Create, the state change update is posted from the
   // signaling thread to the main thread. Wait for posted the task to be
@@ -255,8 +267,7 @@ TEST_F(RTCDataChannelTest, BufferedAmount) {
   std::unique_ptr<MockPeerConnectionHandler> pc(
       new MockPeerConnectionHandler(signaling_thread()));
   auto* channel = MakeGarbageCollected<RTCDataChannel>(
-      MakeGarbageCollected<NullExecutionContext>(), webrtc_channel.get(),
-      pc.get());
+      execution_context_, webrtc_channel.get(), pc.get());
   webrtc_channel->ChangeState(webrtc::DataChannelInterface::kOpen);
 
   String message(std::string(100, 'A').c_str());
@@ -273,8 +284,7 @@ TEST_F(RTCDataChannelTest, BufferedAmountLow) {
   std::unique_ptr<MockPeerConnectionHandler> pc(
       new MockPeerConnectionHandler(signaling_thread()));
   auto* channel = MakeGarbageCollected<RTCDataChannel>(
-      MakeGarbageCollected<NullExecutionContext>(), webrtc_channel.get(),
-      pc.get());
+      execution_context_, webrtc_channel.get(), pc.get());
   webrtc_channel->ChangeState(webrtc::DataChannelInterface::kOpen);
 
   channel->setBufferedAmountLowThreshold(1);
@@ -295,8 +305,7 @@ TEST_F(RTCDataChannelTest, Open) {
   std::unique_ptr<MockPeerConnectionHandler> pc(
       new MockPeerConnectionHandler(signaling_thread()));
   auto* channel = MakeGarbageCollected<RTCDataChannel>(
-      MakeGarbageCollected<NullExecutionContext>(), webrtc_channel.get(),
-      pc.get());
+      execution_context_, webrtc_channel.get(), pc.get());
   channel->OnStateChange(webrtc::DataChannelInterface::kOpen);
   EXPECT_EQ("open", channel->readyState());
 }
@@ -307,8 +316,7 @@ TEST_F(RTCDataChannelTest, Close) {
   std::unique_ptr<MockPeerConnectionHandler> pc(
       new MockPeerConnectionHandler(signaling_thread()));
   auto* channel = MakeGarbageCollected<RTCDataChannel>(
-      MakeGarbageCollected<NullExecutionContext>(), webrtc_channel.get(),
-      pc.get());
+      execution_context_, webrtc_channel.get(), pc.get());
   channel->OnStateChange(webrtc::DataChannelInterface::kClosed);
   EXPECT_EQ("closed", channel->readyState());
 }
@@ -319,8 +327,7 @@ TEST_F(RTCDataChannelTest, Message) {
   std::unique_ptr<MockPeerConnectionHandler> pc(
       new MockPeerConnectionHandler(signaling_thread()));
   auto* channel = MakeGarbageCollected<RTCDataChannel>(
-      MakeGarbageCollected<NullExecutionContext>(), webrtc_channel.get(),
-      pc.get());
+      execution_context_, webrtc_channel.get(), pc.get());
 
   std::unique_ptr<webrtc::DataBuffer> message(new webrtc::DataBuffer("A"));
   channel->OnMessage(std::move(message));
@@ -334,8 +341,7 @@ TEST_F(RTCDataChannelTest, SendAfterContextDestroyed) {
   std::unique_ptr<MockPeerConnectionHandler> pc(
       new MockPeerConnectionHandler(signaling_thread()));
   auto* channel = MakeGarbageCollected<RTCDataChannel>(
-      MakeGarbageCollected<NullExecutionContext>(), webrtc_channel.get(),
-      pc.get());
+      execution_context_, webrtc_channel.get(), pc.get());
   webrtc_channel->ChangeState(webrtc::DataChannelInterface::kOpen);
 
   channel->ContextDestroyed();
@@ -353,8 +359,7 @@ TEST_F(RTCDataChannelTest, CloseAfterContextDestroyed) {
   std::unique_ptr<MockPeerConnectionHandler> pc(
       new MockPeerConnectionHandler(signaling_thread()));
   auto* channel = MakeGarbageCollected<RTCDataChannel>(
-      MakeGarbageCollected<NullExecutionContext>(), webrtc_channel.get(),
-      pc.get());
+      execution_context_, webrtc_channel.get(), pc.get());
   webrtc_channel->ChangeState(webrtc::DataChannelInterface::kOpen);
 
   channel->ContextDestroyed();

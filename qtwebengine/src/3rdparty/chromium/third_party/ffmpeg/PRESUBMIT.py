@@ -9,6 +9,8 @@ Does the following:
 - Warns users when a change is made without updating the README file.
 """
 
+USE_PYTHON3 = True
+
 import re
 import subprocess
 
@@ -40,14 +42,17 @@ def _WarnIfGenerateGnTestsFail(input_api, output_api):
   for f in input_api.AffectedFiles():
     if generate_gn_re.match(f.LocalPath()):
       should_run_tests = True
-      break;
+      break
 
   errors = []
   if should_run_tests:
     errors += input_api.RunTests(
         input_api.canned_checks.GetUnitTests(
             input_api, output_api,
-            ['chromium/scripts/generate_gn_unittest.py']))
+            ['chromium/scripts/generate_gn_unittest_wrapper.py'],
+            run_on_python2=False,
+            run_on_python3=True,
+            skip_shebang_check=False))
 
   return errors
 

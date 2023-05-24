@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,10 +18,16 @@ class TestFormDataImporter : public FormDataImporter {
       AutofillClient* client,
       payments::PaymentsClient* payments_client,
       std::unique_ptr<CreditCardSaveManager> credit_card_save_manager,
+      std::unique_ptr<IBANSaveManager> iban_save_manager,
       PersonalDataManager* personal_data_manager,
       const std::string& app_locale,
       std::unique_ptr<LocalCardMigrationManager> local_card_migration_manager =
           nullptr);
+  ~TestFormDataImporter() override = default;
+
+  absl::optional<int64_t> fetched_card_instrument_id() {
+    return fetched_card_instrument_id_;
+  }
 };
 
 }  // namespace autofill

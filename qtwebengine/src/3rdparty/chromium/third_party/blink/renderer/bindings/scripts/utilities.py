@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Utility functions (file reading, simple IDL parsing by regexes) for IDL build.
@@ -196,8 +196,9 @@ class ComponentInfoProviderModules(ComponentInfoProvider):
 
     @property
     def callback_functions(self):
-        return dict(self._component_info_core['callback_functions'].items() +
-                    self._component_info_modules['callback_functions'].items())
+        return dict(
+            list(self._component_info_core['callback_functions'].items()) +
+            list(self._component_info_modules['callback_functions'].items()))
 
     @property
     def specifier_for_export(self):
@@ -209,8 +210,8 @@ class ComponentInfoProviderModules(ComponentInfoProvider):
 
 
 def load_interfaces_info_overall_pickle(info_dir):
-    with open(os.path.join(info_dir,
-                           'interfaces_info.pickle')) as interface_info_file:
+    with open(os.path.join(info_dir, 'interfaces_info.pickle'),
+              mode='rb') as interface_info_file:
         return pickle.load(interface_info_file)
 
 
@@ -236,23 +237,20 @@ def merge_dict_recursively(target, diff):
 
 def create_component_info_provider_core(info_dir):
     interfaces_info = load_interfaces_info_overall_pickle(info_dir)
-    with open(
-            os.path.join(info_dir, 'core',
-                         'component_info_core.pickle')) as component_info_file:
+    with open(os.path.join(info_dir, 'core', 'component_info_core.pickle'),
+              mode='rb') as component_info_file:
         component_info = pickle.load(component_info_file)
     return ComponentInfoProviderCore(interfaces_info, component_info)
 
 
 def create_component_info_provider_modules(info_dir):
     interfaces_info = load_interfaces_info_overall_pickle(info_dir)
-    with open(
-            os.path.join(info_dir, 'core',
-                         'component_info_core.pickle')) as component_info_file:
+    with open(os.path.join(info_dir, 'core', 'component_info_core.pickle'),
+              mode='rb') as component_info_file:
         component_info_core = pickle.load(component_info_file)
-    with open(
-            os.path.join(
-                info_dir, 'modules',
-                'component_info_modules.pickle')) as component_info_file:
+    with open(os.path.join(info_dir, 'modules',
+                           'component_info_modules.pickle'),
+              mode='rb') as component_info_file:
         component_info_modules = pickle.load(component_info_file)
     return ComponentInfoProviderModules(interfaces_info, component_info_core,
                                         component_info_modules)
@@ -271,20 +269,14 @@ def create_component_info_provider(info_dir, component):
 # Basic file reading/writing
 ################################################################################
 
-def abs(filename):
-    # open, abspath, etc. are all limited to the 260 char MAX_PATH and this causes
-    # problems when we try to resolve long relative paths in the WebKit directory structure.
-    return os.path.normpath(os.path.join(os.getcwd(), filename))
 
 def get_file_contents(filename):
-    filename = abs(filename)
     with open(filename) as f:
         return f.read()
 
 
 def read_file_to_list(filename):
     """Returns a list of (stripped) lines for a given filename."""
-    filename = abs(filename)
     with open(filename) as f:
         return [line.rstrip('\n') for line in f]
 
@@ -310,7 +302,7 @@ def resolve_cygpath(cygdrive_names):
 
 def read_idl_files_list_from_file(filename):
     """Similar to read_file_to_list, but also resolves cygpath."""
-    with open(abs(filename)) as input_file:
+    with open(filename) as input_file:
         file_names = sorted(shlex.split(input_file))
         idl_file_names = [
             file_name for file_name in file_names
@@ -330,13 +322,11 @@ def read_pickle_files(pickle_filenames):
 
 
 def read_pickle_file(pickle_filename):
-    pickle_filename = abs(pickle_filename)
     with open(pickle_filename, 'rb') as pickle_file:
         return pickle.load(pickle_file)
 
 
 def write_file(new_text, destination_filename):
-    destination_filename = abs(destination_filename)
     # If |new_text| is same with the file content, we skip updating.
     if os.path.isfile(destination_filename):
         with open(destination_filename) as destination_file:
@@ -353,10 +343,9 @@ def write_file(new_text, destination_filename):
 
 
 def write_pickle_file(pickle_filename, data):
-    pickle_filename = abs(pickle_filename)
     # If |data| is same with the file content, we skip updating.
     if os.path.isfile(pickle_filename):
-        with open(pickle_filename) as pickle_file:
+        with open(pickle_filename, 'rb') as pickle_file:
             try:
                 if pickle.load(pickle_file) == data:
                     return
@@ -381,7 +370,7 @@ def is_non_legacy_callback_interface_from_idl(file_contents):
     """Returns True if the specified IDL is a non-legacy callback interface."""
     match = re.search(r'callback\s+interface\s+\w+\s*{', file_contents)
     # Having constants means it's a legacy callback interface.
-    # https://heycam.github.io/webidl/#legacy-callback-interface-object
+    # https://webidl.spec.whatwg.org/#legacy-callback-interface-object
     return bool(match) and not re.search(r'\s+const\b', file_contents)
 
 
@@ -486,31 +475,29 @@ def get_first_interface_name_from_idl(file_contents):
 def shorten_union_name(union_type):
     aliases = {
         # modules/canvas2d/CanvasRenderingContext2D.idl
-        'CSSImageValueOrHTMLImageElementOrSVGImageElementOrHTMLVideoElementOrHTMLCanvasElementOrImageBitmapOrOffscreenCanvas':
+        'CSSImageValueOrHTMLImageElementOrSVGImageElementOrHTMLVideoElementOrHTMLCanvasElementOrImageBitmapOrOffscreenCanvasOrVideoFrame':
         'CanvasImageSource',
-        # modules/canvas/htmlcanvas/html_canvas_element_module_support_webgl2_compute.idl
-        # Due to html_canvas_element_module_support_webgl2_compute.idl and html_canvas_element_module.idl are exclusive in modules_idl_files.gni, they have same shorten name.
-        'CanvasRenderingContext2DOrWebGLRenderingContextOrWebGL2RenderingContextOrWebGL2ComputeRenderingContextOrImageBitmapRenderingContextOrGPUCanvasContext':
-        'RenderingContext',
         # modules/canvas/htmlcanvas/html_canvas_element_module.idl
         'CanvasRenderingContext2DOrWebGLRenderingContextOrWebGL2RenderingContextOrImageBitmapRenderingContextOrGPUCanvasContext':
         'RenderingContext',
         # core/frame/window_or_worker_global_scope.idl
-        'HTMLImageElementOrSVGImageElementOrHTMLVideoElementOrHTMLCanvasElementOrBlobOrImageDataOrImageBitmapOrOffscreenCanvas':
+        'HTMLImageElementOrSVGImageElementOrHTMLVideoElementOrHTMLCanvasElementOrBlobOrImageDataOrImageBitmapOrOffscreenCanvasOrVideoFrame':
         'ImageBitmapSource',
         # bindings/tests/idls/core/TestTypedefs.idl
         'NodeOrLongSequenceOrEventOrXMLHttpRequestOrStringOrStringByteStringOrNodeListRecord':
         'NestedUnionType',
-        # modules/canvas/offscreencanvas/offscreen_canvas_module_support_webgl2_compute.idl.
-        # Due to offscreen_canvas_module_support_webgl2_compute.idl and offscreen_canvas_module.idl are exclusive in modules_idl_files.gni, they have same shorten name.
-        'OffscreenCanvasRenderingContext2DOrWebGLRenderingContextOrWebGL2RenderingContextOrWebGL2ComputeRenderingContextOrImageBitmapRenderingContext':
-        'OffscreenRenderingContext',
         # modules/canvas/offscreencanvas/offscreen_canvas_module.idl
-        'OffscreenCanvasRenderingContext2DOrWebGLRenderingContextOrWebGL2RenderingContextOrImageBitmapRenderingContext':
+        'OffscreenCanvasRenderingContext2DOrWebGLRenderingContextOrWebGL2RenderingContextOrImageBitmapRenderingContextOrGPUCanvasContext':
         'OffscreenRenderingContext',
         # core/xmlhttprequest/xml_http_request.idl
         'DocumentOrBlobOrArrayBufferOrArrayBufferViewOrFormDataOrURLSearchParamsOrUSVString':
         'DocumentOrXMLHttpRequestBodyInit',
+        # modules/beacon/navigator_beacon.idl
+        'ReadableStreamOrBlobOrArrayBufferOrArrayBufferViewOrFormDataOrURLSearchParamsOrUSVString':
+        'ReadableStreamOrXMLHttpRequestBodyInit',
+        # modules/mediasource/source_buffer.idl
+        'EncodedAudioChunkOrEncodedVideoChunkSequenceOrEncodedAudioChunkOrEncodedVideoChunk':
+        'EncodedAVChunkSequenceOrEncodedAVChunk',
     }
 
     idl_type = union_type

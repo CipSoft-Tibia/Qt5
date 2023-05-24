@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // based on chrome/browser/net/system_network_context_manager.cc:
 // Copyright 2017 The Chromium Authors. All rights reserved.
@@ -44,34 +8,42 @@
 
 #include "net/system_network_context_manager.h"
 
-#include "base/bind.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/strings/string_split.h"
 #include "chrome/browser/net/chrome_mojo_proxy_resolver_factory.h"
 #include "chrome/common/chrome_switches.h"
 #include "components/certificate_transparency/ct_known_logs.h"
 #include "components/network_session_configurator/common/network_switches.h"
 #include "content/public/browser/network_service_instance.h"
 #include "content/public/common/content_switches.h"
-#include "content/public/common/service_names.mojom.h"
+#include "crypto/sha2.h"
+#include "mojo/public/cpp/bindings/pending_remote.h"
+#include "net/base/port_util.h"
 #include "net/net_buildflags.h"
+#include "services/cert_verifier/public/mojom/cert_verifier_service_factory.mojom.h"
 #include "services/network/network_service.h"
 #include "services/network/public/cpp/cross_thread_pending_shared_url_loader_factory.h"
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
-#include "services/network/public/mojom/host_resolver.mojom.h"
-#include "services/network/public/mojom/url_loader_factory.mojom.h"
+#include "services/network/public/mojom/cert_verifier_service.mojom.h"
+#include "services/network/public/mojom/network_context.mojom.h"
 #include "services/proxy_resolver/public/mojom/proxy_resolver.mojom.h"
+#include "api/qwebengineglobalsettings.h"
+#include "api/qwebengineglobalsettings_p.h"
+
+#if BUILDFLAG(IS_WIN)
+#include "chrome/browser/net/chrome_mojo_proxy_resolver_win.h"
+#include "components/os_crypt/os_crypt.h"
+#include "content/public/common/network_service_util.h"
+#endif
 
 namespace {
 
-// The global instance of the SystemNetworkContextmanager.
-SystemNetworkContextManager *g_system_network_context_manager = nullptr;
-
 network::mojom::HttpAuthStaticParamsPtr CreateHttpAuthStaticParams()
 {
-    network::mojom::HttpAuthStaticParamsPtr auth_static_params = network::mojom::HttpAuthStaticParams::New();
-
-    auth_static_params->supported_schemes = { "basic", "digest", "ntlm", "negotiate" };
+    network::mojom::HttpAuthStaticParamsPtr auth_static_params =
+        network::mojom::HttpAuthStaticParams::New();
 
     return auth_static_params;
 }
@@ -79,6 +51,8 @@ network::mojom::HttpAuthStaticParamsPtr CreateHttpAuthStaticParams()
 network::mojom::HttpAuthDynamicParamsPtr CreateHttpAuthDynamicParams()
 {
     network::mojom::HttpAuthDynamicParamsPtr auth_dynamic_params = network::mojom::HttpAuthDynamicParams::New();
+
+    auth_dynamic_params->allowed_schemes = { "basic", "digest", "ntlm", "negotiate" };
 
     auto *command_line = base::CommandLine::ForCurrentProcess();
     auth_dynamic_params->server_allowlist = command_line->GetSwitchValueASCII(switches::kAuthServerAllowlist);
@@ -89,6 +63,11 @@ network::mojom::HttpAuthDynamicParamsPtr CreateHttpAuthDynamicParams()
 }
 
 } // namespace
+
+namespace QtWebEngineCore {
+
+// The global instance of the SystemNetworkContextmanager.
+SystemNetworkContextManager *g_system_network_context_manager = nullptr;
 
 // SharedURLLoaderFactory backed by a SystemNetworkContextManager and its
 // network context. Transparently handles crashes.
@@ -103,7 +82,6 @@ public:
     // mojom::URLLoaderFactory implementation:
 
     void CreateLoaderAndStart(mojo::PendingReceiver<network::mojom::URLLoader> receiver,
-                              int32_t routing_id,
                               int32_t request_id,
                               uint32_t options,
                               const network::ResourceRequest &url_request,
@@ -114,7 +92,7 @@ public:
         if (!manager_)
             return;
         manager_->GetURLLoaderFactory()->CreateLoaderAndStart(
-                    std::move(receiver), routing_id, request_id, options, url_request,
+                    std::move(receiver), request_id, options, url_request,
                     std::move(client), traffic_annotation);
     }
 
@@ -140,8 +118,6 @@ private:
 
     SEQUENCE_CHECKER(sequence_checker_);
     SystemNetworkContextManager *manager_;
-
-    DISALLOW_COPY_AND_ASSIGN(URLLoaderFactoryForSystem);
 };
 
 network::mojom::NetworkContext *SystemNetworkContextManager::GetContext()
@@ -220,28 +196,86 @@ void SystemNetworkContextManager::OnNetworkServiceCreated(network::mojom::Networ
     network_service->SetUpHttpAuth(CreateHttpAuthStaticParams());
     network_service->ConfigureHttpAuthPrefs(CreateHttpAuthDynamicParams());
 
+#if BUILDFLAG(IS_WIN)
+    if (content::IsOutOfProcessNetworkService())
+        network_service->SetEncryptionKey(OSCrypt::GetRawEncryptionKey());
+#endif
+
+    // Configure the Certificate Transparency logs.
+    std::vector<std::pair<std::string, base::Time>> disqualified_logs =
+        certificate_transparency::GetDisqualifiedLogs();
+    std::vector<network::mojom::CTLogInfoPtr> log_list_mojo;
+    for (const auto &ct_log : certificate_transparency::GetKnownLogs()) {
+        network::mojom::CTLogInfoPtr log_info = network::mojom::CTLogInfo::New();
+        log_info->public_key = std::string(ct_log.log_key, ct_log.log_key_length);
+        log_info->id = crypto::SHA256HashString(log_info->public_key);
+        log_info->name = ct_log.log_name;
+        log_info->current_operator = ct_log.current_operator;
+
+        auto it = std::lower_bound(
+            std::begin(disqualified_logs), std::end(disqualified_logs), log_info->id,
+            [](const auto& disqualified_log, const std::string& log_id) {
+                return disqualified_log.first < log_id;
+            });
+        if (it != std::end(disqualified_logs) && it->first == log_info->id)
+            log_info->disqualified_at = it->second;
+
+        for (size_t i = 0; i < ct_log.previous_operators_length; i++) {
+            const auto& op = ct_log.previous_operators[i];
+            network::mojom::PreviousOperatorEntryPtr previous_operator =
+                network::mojom::PreviousOperatorEntry::New();
+            previous_operator->name = op.name;
+            previous_operator->end_time = op.end_time;
+            log_info->previous_operators.push_back(std::move(previous_operator));
+        }
+
+        log_list_mojo.push_back(std::move(log_info));
+    }
+    network_service->UpdateCtLogList(
+            std::move(log_list_mojo),
+            certificate_transparency::GetLogListTimestamp(),
+            base::DoNothing());
+
     // The system NetworkContext is created first
     network_service_network_context_.reset();
     network_service->CreateNetworkContext(
         network_service_network_context_.BindNewPipeAndPassReceiver(),
         CreateNetworkContextParams());
 
-    // Configure the stub resolver. This must be done after the system
-    // NetworkContext is created, but before anything has the chance to use it.
-    //    bool stub_resolver_enabled;
-    //    base::Optional<std::vector<network::mojom::DnsOverHttpsServerPtr>> dns_over_https_servers;
-    //    GetStubResolverConfig(local_state_, &stub_resolver_enabled, &dns_over_https_servers);
-    //    content::GetNetworkService()->ConfigureStubHostResolver(stub_resolver_enabled, std::move(dns_over_https_servers));
+    // Handle --explicitly-allowed-ports
+    if (base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kExplicitlyAllowedPorts)) {
+        std::vector<uint16_t> explicitly_allowed_network_ports;
+        std::string switch_value =
+            base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(switches::kExplicitlyAllowedPorts);
+        const auto split = base::SplitStringPiece(switch_value, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
+        for (const auto &piece : split) {
+            int port;
+            if (!base::StringToInt(piece, &port))
+                continue;
+            if (!net::IsPortValid(port))
+                continue;
+            explicitly_allowed_network_ports.push_back(static_cast<uint16_t>(port));
+        }
+
+        network_service->SetExplicitlyAllowedPorts(explicitly_allowed_network_ports);
+    }
+
+    // The network service is a singleton that can be reinstantiated for different reasons,
+    // e.g., when the network service crashes. Therefore, we configure the stub host
+    // resolver of the network service here, each time it is instantiated, with our global
+    // DNS-Over-HTTPS settings. This ensures that the global settings don't get lost
+    // on reinstantiation and are in effect upon initial instantiation.
+    QWebEngineGlobalSettingsPrivate::instance()->configureStubHostResolver();
 }
 
 void SystemNetworkContextManager::AddSSLConfigToNetworkContextParams(network::mojom::NetworkContextParams *network_context_params)
 {
     network_context_params->initial_ssl_config = network::mojom::SSLConfig::New();
-    network_context_params->initial_ssl_config->rev_checking_enabled = true;
     network_context_params->initial_ssl_config->symantec_enforcement_disabled = true;
 }
 
-void SystemNetworkContextManager::ConfigureDefaultNetworkContextParams(network::mojom::NetworkContextParams *network_context_params)
+void SystemNetworkContextManager::ConfigureDefaultNetworkContextParams(network::mojom::NetworkContextParams *network_context_params,
+                                                                       cert_verifier::mojom::CertVerifierCreationParams *cert_verifier_creation_params)
 {
     network_context_params->enable_brotli = true;
 
@@ -249,43 +283,47 @@ void SystemNetworkContextManager::ConfigureDefaultNetworkContextParams(network::
     // respect prefs::kEnableReferrers from the appropriate pref store.
     network_context_params->enable_referrers = false;
 
-    network_context_params->proxy_resolver_factory = ChromeMojoProxyResolverFactory::CreateWithSelfOwnedReceiver();
+    const base::CommandLine& command_line =
+      *base::CommandLine::ForCurrentProcess();
 
+    if (!command_line.HasSwitch(switches::kWinHttpProxyResolver)) {
+        if (command_line.HasSwitch(switches::kSingleProcess)) {
+            LOG(ERROR) << "Cannot use V8 Proxy resolver in single process mode.";
+        } else {
+            network_context_params->proxy_resolver_factory =
+                    ChromeMojoProxyResolverFactory::CreateWithSelfOwnedReceiver();
+        }
+    }
+#if BUILDFLAG(IS_WIN)
+    if (command_line.HasSwitch(switches::kUseSystemProxyResolver)) {
+        network_context_params->windows_system_proxy_resolver =
+                ChromeMojoProxyResolverWin::CreateWithSelfOwnedReceiver();
+    }
+#endif
     // Use the SystemNetworkContextManager to populate and update SSL
     // configuration. The SystemNetworkContextManager is owned by the
     // BrowserProcess itself, so will only be destroyed on shutdown, at which
     // point, all NetworkContexts will be destroyed as well.
     AddSSLConfigToNetworkContextParams(network_context_params);
-
-    // CT is only enabled on Desktop platforms for now.
-    network_context_params->enforce_chrome_ct_policy = true;
-    for (const auto &ct_log : certificate_transparency::GetKnownLogs()) {
-        // TODO(rsleevi): https://crbug.com/702062 - Remove this duplication.
-        network::mojom::CTLogInfoPtr log_info = network::mojom::CTLogInfo::New();
-        log_info->public_key = std::string(ct_log.log_key, ct_log.log_key_length);
-        log_info->name = ct_log.log_name;
-        network_context_params->ct_logs.push_back(std::move(log_info));
-    }
 }
 
 network::mojom::NetworkContextParamsPtr SystemNetworkContextManager::CreateNetworkContextParams()
 {
     // TODO(mmenke): Set up parameters here (in memory cookie store, etc).
     network::mojom::NetworkContextParamsPtr network_context_params = network::mojom::NetworkContextParams::New();
-    ConfigureDefaultNetworkContextParams(network_context_params.get());
-
-    network_context_params->context_name = std::string("system");
+    cert_verifier::mojom::CertVerifierCreationParamsPtr
+            cert_verifier_creation_params = cert_verifier::mojom::CertVerifierCreationParams::New();
+    ConfigureDefaultNetworkContextParams(network_context_params.get(), cert_verifier_creation_params.get());
 
     network_context_params->enable_referrers = false;
 
     network_context_params->http_cache_enabled = false;
 
-    // These are needed for PAC scripts that use FTP URLs.
-#if !BUILDFLAG(DISABLE_FTP_SUPPORT)
-    network_context_params->enable_ftp_url_support = true;
-#endif
-
     proxy_config_monitor_.AddToNetworkContextParams(network_context_params.get());
 
+    network_context_params->cert_verifier_params =
+         content::GetCertVerifierParams(std::move(cert_verifier_creation_params));
     return network_context_params;
 }
+
+} // namespace QtWebEngineCore

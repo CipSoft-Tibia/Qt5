@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/mojom/manifest/manifest.mojom-blink.h"
-#include "third_party/blink/public/platform/web_size.h"
 #include "third_party/blink/public/platform/web_string.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_image_resource.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
@@ -25,12 +24,12 @@ TEST(ImageResourceConverter, EmptySizesTest) {
       blink::ManifestImageResource::Create();
 
   ManifestImageResourcePtr converted = ManifestImageResource::From(resource);
-  ASSERT_TRUE(converted->sizes.IsEmpty());
+  ASSERT_TRUE(converted->sizes.empty());
 
   // Explicitly set to empty.
   resource->setSizes("");
   converted = ManifestImageResource::From(resource);
-  ASSERT_TRUE(converted->sizes.IsEmpty());
+  ASSERT_TRUE(converted->sizes.empty());
 }
 
 TEST(ImageResourceConverter, ValidSizesTest) {
@@ -82,19 +81,19 @@ TEST(ImageResourceConverter, InvalidSizesTest) {
 
   resource->setSizes("02x3");
   ManifestImageResourcePtr converted = ManifestImageResource::From(resource);
-  ASSERT_TRUE(converted->sizes.IsEmpty());
+  ASSERT_TRUE(converted->sizes.empty());
 
   resource->setSizes("42X024");
   converted = ManifestImageResource::From(resource);
-  ASSERT_TRUE(converted->sizes.IsEmpty());
+  ASSERT_TRUE(converted->sizes.empty());
 
   resource->setSizes("42x");
   converted = ManifestImageResource::From(resource);
-  ASSERT_TRUE(converted->sizes.IsEmpty());
+  ASSERT_TRUE(converted->sizes.empty());
 
   resource->setSizes("foo");
   converted = ManifestImageResource::From(resource);
-  ASSERT_TRUE(converted->sizes.IsEmpty());
+  ASSERT_TRUE(converted->sizes.empty());
 }
 
 TEST(ImageResourceConverter, EmptyPurposeTest) {
@@ -102,12 +101,12 @@ TEST(ImageResourceConverter, EmptyPurposeTest) {
       blink::ManifestImageResource::Create();
 
   ManifestImageResourcePtr converted = ManifestImageResource::From(resource);
-  ASSERT_TRUE(converted->purpose.IsEmpty());
+  ASSERT_TRUE(converted->purpose.empty());
 
   // Explicitly set to empty.
   resource->setPurpose("");
   converted = ManifestImageResource::From(resource);
-  ASSERT_TRUE(converted->purpose.IsEmpty());
+  ASSERT_TRUE(converted->purpose.empty());
 }
 
 TEST(ImageResourceConverter, ValidPurposeTest) {
@@ -143,7 +142,7 @@ TEST(ImageResourceConverter, InvalidPurposeTest) {
 
   resource->setPurpose("any?");
   ManifestImageResourcePtr converted = ManifestImageResource::From(resource);
-  ASSERT_TRUE(converted->purpose.IsEmpty());
+  ASSERT_TRUE(converted->purpose.empty());
 }
 
 TEST(ImageResourceConverter, EmptyTypeTest) {
@@ -151,12 +150,12 @@ TEST(ImageResourceConverter, EmptyTypeTest) {
       blink::ManifestImageResource::Create();
 
   ManifestImageResourcePtr converted = ManifestImageResource::From(resource);
-  ASSERT_TRUE(converted->type.IsEmpty());
+  ASSERT_TRUE(converted->type.empty());
 
   // Explicitly set to empty.
   resource->setType("");
   converted = ManifestImageResource::From(resource);
-  ASSERT_TRUE(converted->type.IsEmpty());
+  ASSERT_TRUE(converted->type.empty());
 }
 
 TEST(ImageResourceConverter, InvalidTypeTest) {
@@ -165,7 +164,7 @@ TEST(ImageResourceConverter, InvalidTypeTest) {
 
   resource->setType("image/NOTVALID!");
   ManifestImageResourcePtr converted = ManifestImageResource::From(resource);
-  ASSERT_TRUE(converted->type.IsEmpty());
+  ASSERT_TRUE(converted->type.empty());
 }
 
 TEST(ImageResourceConverter, ValidTypeTest) {
@@ -207,7 +206,7 @@ TEST(ImageResourceConverter, BlinkToMojoTypeTest) {
   EXPECT_EQ(mojo_icon.type, blink::WebString("image/jpeg").Utf16());
   EXPECT_EQ(mojo_icon.sizes[1], gfx::Size(64, 64));
   EXPECT_EQ(mojo_icon.purpose[0],
-            blink::Manifest::ImageResource::Purpose::MONOCHROME);
+            blink::mojom::ManifestImageResource_Purpose::MONOCHROME);
 }
 
 }  // namespace

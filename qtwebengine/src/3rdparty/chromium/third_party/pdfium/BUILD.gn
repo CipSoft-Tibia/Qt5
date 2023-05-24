@@ -1,9 +1,16 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/clang/clang.gni")
+import("//build/config/gclient_args.gni")
 import("//testing/test.gni")
 import("pdfium.gni")
+
+group("default") {
+  testonly = true
+  deps = [ ":pdfium_all" ]
+}
 
 group("freetype_common") {
   public_deps = []
@@ -16,12 +23,10 @@ group("freetype_common") {
 
 config("pdfium_common_config") {
   cflags = []
+  cflags_cc = []
   ldflags = []
   include_dirs = [ "." ]
-  defines = [
-    "PNG_PREFIX",
-    "PNG_USE_READ_MACROS",
-  ]
+  defines = []
 
   if (!use_system_libopenjpeg2) {
     defines += [ "OPJ_STATIC" ]
@@ -35,13 +40,176 @@ config("pdfium_common_config") {
     defines += [ "_SKIA_SUPPORT_" ]
   }
 
-  if (pdf_use_skia_paths) {
-    defines += [ "_SKIA_SUPPORT_PATHS_" ]
+  if (pdf_use_partition_alloc) {
+    defines += [ "PDF_USE_PARTITION_ALLOC" ]
   }
 
-  if (is_win) {
+  if (is_win && !is_mingw) {
     # Assume UTF-8 by default to avoid code page dependencies.
     cflags += [ "/utf-8" ]
+
+    if (!is_clang) {
+      cflags += [
+        # Warnings permanently disabled:
+
+        # C4091: 'typedef ': ignored on left of 'X' when no variable is
+        #                    declared.
+        # This happens in a number of Windows headers. Dumb.
+        "/wd4091",
+
+        # C4127: conditional expression is constant
+        # This warning can in theory catch dead code and other problems, but
+        # triggers in far too many desirable cases where the conditional
+        # expression is either set by macros or corresponds some legitimate
+        # compile-time constant expression (due to constant template args,
+        # conditionals comparing the sizes of different types, etc.).  Some of
+        # these can be worked around, but it's not worth it.
+        "/wd4127",
+
+        # C4251: 'identifier' : class 'type' needs to have dll-interface to be
+        #        used by clients of class 'type2'
+        # This is necessary for the shared library build.
+        "/wd4251",
+
+        # C4275:  non dll-interface class used as base for dll-interface class
+        # This points out a potential (but rare) problem with referencing static
+        # fields of a non-exported base, through the base's non-exported inline
+        # functions, or directly. The warning is subtle enough that people just
+        # suppressed it when they saw it, so it's not worth it.
+        "/wd4275",
+
+        # C4312 is a VS 2015 64-bit warning for integer to larger pointer.
+        # TODO(brucedawson): fix warnings, crbug.com/554200
+        "/wd4312",
+
+        # C4324 warns when padding is added to fulfill alignas requirements,
+        # but can trigger in benign cases that are difficult to individually
+        # suppress.
+        "/wd4324",
+
+        # C4351: new behavior: elements of array 'array' will be default
+        #        initialized
+        # This is a silly "warning" that basically just alerts you that the
+        # compiler is going to actually follow the language spec like it's
+        # supposed to, instead of not following it like old buggy versions did.
+        # There's absolutely no reason to turn this on.
+        "/wd4351",
+
+        # C4355: 'this': used in base member initializer list
+        # It's commonly useful to pass |this| to objects in a class' initializer
+        # list.  While this warning can catch real bugs, most of the time the
+        # constructors in question don't attempt to call methods on the passed-in
+        # pointer (until later), and annotating every legit usage of this is
+        # simply more hassle than the warning is worth.
+        "/wd4355",
+
+        # C4503: 'identifier': decorated name length exceeded, name was
+        #        truncated
+        # This only means that some long error messages might have truncated
+        # identifiers in the presence of lots of templates.  It has no effect on
+        # program correctness and there's no real reason to waste time trying to
+        # prevent it.
+        "/wd4503",
+
+        # Warning C4589 says: "Constructor of abstract class ignores
+        # initializer for virtual base class." Disable this warning because it
+        # is flaky in VS 2015 RTM. It triggers on compiler generated
+        # copy-constructors in some cases.
+        "/wd4589",
+
+        # C4611: interaction between 'function' and C++ object destruction is
+        #        non-portable
+        # This warning is unavoidable when using e.g. setjmp/longjmp.  MSDN
+        # suggests using exceptions instead of setjmp/longjmp for C++, but
+        # Chromium code compiles without exception support.  We therefore have to
+        # use setjmp/longjmp for e.g. JPEG decode error handling, which means we
+        # have to turn off this warning (and be careful about how object
+        # destruction happens in such cases).
+        "/wd4611",
+
+        # Warnings to evaluate and possibly fix/reenable later:
+
+        "/wd4100",  # Unreferenced formal function parameter.
+        "/wd4121",  # Alignment of a member was sensitive to packing.
+        "/wd4244",  # Conversion: possible loss of data.
+        "/wd4505",  # Unreferenced local function has been removed.
+        "/wd4510",  # Default constructor could not be generated.
+        "/wd4512",  # Assignment operator could not be generated.
+        "/wd4610",  # Class can never be instantiated, constructor required.
+        "/wd4838",  # Narrowing conversion. Doesn't seem to be very useful.
+        "/wd4995",  # 'X': name was marked as #pragma deprecated
+        "/wd4996",  # Deprecated function warning.
+
+        # These are variable shadowing warnings that are new in VS2015. We
+        # should work through these at some point -- they may be removed from
+        # the RTM release in the /W4 set.
+        "/wd4456",
+        "/wd4457",
+        "/wd4458",
+        "/wd4459",
+
+        # All of our compilers support the extensions below.
+        "/wd4200",  # nonstandard extension used: zero-sized array in
+                    # struct/union
+        "/wd4201",  # nonstandard extension used: nameless struct/union
+        "/wd4204",  # nonstandard extension used : non-constant aggregate
+                    # initializer
+
+        "/wd4221",  # nonstandard extension used : 'identifier' : cannot be
+                    # initialized using address of automatic variable
+
+        # http://crbug.com/588506 - Conversion suppressions waiting on Clang
+        # -Wconversion.
+        "/wd4245",  # 'conversion' : conversion from 'type1' to 'type2',
+                    # signed/unsigned mismatch
+
+        "/wd4267",  # 'var' : conversion from 'size_t' to 'type', possible loss
+                    # of
+                    # data
+
+        "/wd4305",  # 'identifier' : truncation from 'type1' to 'type2'
+        "/wd4389",  # 'operator' : signed/unsigned mismatch
+
+        "/wd4702",  # unreachable code
+
+        # http://crbug.com/848979 - MSVC is more conservative than Clang with
+        # regards to variables initialized and consumed in different branches.
+        "/wd4701",  # Potentially uninitialized local variable 'name' used
+        "/wd4703",  # Potentially uninitialized local pointer variable 'name'
+                    # used
+
+        # http://crbug.com/848979 - Remaining Clang permitted warnings.
+        "/wd4661",  # 'identifier' : no suitable definition provided for
+                    # explicit
+                    # template instantiation request
+
+        "/wd4706",  # assignment within conditional expression
+                    # MSVC is stricter and requires a boolean expression.
+
+        "/wd4715",  # 'function' : not all control paths return a value'
+                    # MSVC does not analyze switch (enum) for completeness.
+      ]
+
+      cflags_cc += [
+        # Allow "noexcept" annotations even though we compile with exceptions
+        # disabled.
+        "/wd4577",
+      ]
+
+      if (current_cpu == "x86") {
+        cflags += [
+          # VC++ 2015 changes 32-bit size_t truncation warnings from 4244 to
+          # 4267. Example: short TruncTest(size_t x) { return x; }
+          # Since we disable 4244 we need to disable 4267 during migration.
+          # TODO(jschuh): crbug.com/167187 fix size_t to int truncations.
+          "/wd4267",
+        ]
+
+        if (msvc_use_sse2) {
+          cflags += [ "/arch:SSE2" ]
+        }
+      }
+    }
   }
 
   if (is_ios) {
@@ -51,11 +219,33 @@ config("pdfium_common_config") {
   if (is_clang) {
     # Override -Wno-c++11-narrowing.
     cflags += [ "-Wc++11-narrowing" ]
+
+    # TODO(crbug.com/1213098): Remove once this is in //build.
+    cflags += [ "-Wdeprecated-copy" ]
+
+    # May flag some issues when converting int to size_t.
+    cflags += [ "-Wtautological-unsigned-zero-compare" ]
+
+    # Catch misuse of cppgc in XFA.
+    if (pdf_enable_xfa && clang_use_chrome_plugins) {
+      cflags += [
+        "-Xclang",
+        "-add-plugin",
+        "-Xclang",
+        "blink-gc-plugin",
+      ]
+    }
   }
 
   if (!is_win && !is_clang) {
-    # Override -Wno-narrowing.
-    cflags += [ "-Wnarrowing" ]
+    cflags += [
+      # Override -Wno-narrowing for GCC.
+      "-Wnarrowing",
+
+      # GCC assumes that control can get past an exhaustive switch and then
+      # warns if there's no return there.
+      "-Wno-return-type",
+    ]
   }
 }
 
@@ -86,10 +276,6 @@ config("pdfium_public_config") {
       }
     }
   }
-
-  if (pdf_use_win32_gdi) {
-    defines += [ "PDFIUM_PRINT_TEXT_WITH_GDI" ]
-  }
 }
 
 config("pdfium_core_config") {
@@ -100,21 +286,27 @@ config("pdfium_core_config") {
     "//build/config/compiler:noshadowing",
   ]
   defines = []
-  if (is_linux || is_chromeos) {
-    if (current_cpu == "x64") {
-      defines += [ "_FX_CPU_=_FX_X64_" ]
-      cflags += [ "-fPIC" ]
-    } else if (current_cpu == "x86") {
-      defines += [ "_FX_CPU_=_FX_X86_" ]
-    }
-  }
-  if (is_win) {
+  if (is_win && !is_mingw) {
     cflags += [
       "/wd4324",
       "/wd4577",
     ]
   }
-  configs += [ "//build/config/compiler:no_size_t_to_int_warning" ]
+}
+
+config("pdfium_strict_config") {
+  configs = [
+    ":pdfium_core_config",
+    "//build/config/compiler:wexit_time_destructors",
+    "//build/config/compiler:wglobal_constructors",
+  ]
+}
+
+config("pdfium_noshorten_config") {
+  cflags = []
+  if (is_clang) {
+    cflags += [ "-Wshorten-64-to-32" ]
+  }
 }
 
 source_set("pdfium_public_headers_impl") {
@@ -154,8 +346,9 @@ group("pdfium_public_headers") {
 }
 
 component("pdfium") {
+  output_name = "pdfium"
   libs = []
-  configs += [ ":pdfium_core_config" ]
+  configs += [ ":pdfium_strict_config" ]
   public_configs = [ ":pdfium_public_config" ]
 
   deps = [
@@ -186,11 +379,18 @@ component("pdfium") {
     ]
   }
 
-  if (is_win) {
+  if (is_win && !is_mingw) {
     libs += [
       "advapi32.lib",
       "gdi32.lib",
       "user32.lib",
+    ]
+  }
+  if (is_mingw) {
+    libs += [
+      "advapi32",
+      "gdi32",
+      "user32",
     ]
   }
 
@@ -205,10 +405,6 @@ component("pdfium") {
     static_component_type = "static_library"
     complete_static_lib = true
     configs -= [ "//build/config/compiler:thin_archive" ]
-  }
-
-  if (is_component_build) {
-    deps += [ "testing/fuzzers:fuzzer_impls" ]
   }
 }
 
@@ -275,10 +471,11 @@ test("pdfium_unittests") {
         "core/fxcrt/css:unittests",
         "fxbarcode:unittests",
         "xfa/fde:unittests",
-        "xfa/fgas:unittests",
+        "xfa/fgas/crt:unittests",
+        "xfa/fgas/font:unittests",
         "xfa/fgas/layout:unittests",
         "xfa/fxfa:unittests",
-        "xfa/fxfa/fm2js:unittests",
+        "xfa/fxfa/formcalc:unittests",
         "xfa/fxfa/parser:unittests",
       ]
     }
@@ -315,6 +512,7 @@ test("pdfium_embeddertests") {
     "core/fxcrt",
     "core/fxge:embeddertests",
     "fpdfsdk:embeddertests",
+    "fpdfsdk/formfiller:embeddertests",
     "fpdfsdk/pwl:embeddertests",
     "testing/image_diff",
     "//testing/gmock",
@@ -355,9 +553,7 @@ executable("pdfium_diff") {
     "testing/image_diff",
     "//build/win:default_exe_manifest",
   ]
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
-  configs += [ ":pdfium_core_config" ]
+  configs += [ ":pdfium_strict_config" ]
 }
 
 if (pdf_is_standalone) {
@@ -384,5 +580,18 @@ group("pdfium_all") {
       ":fuzzers",
       ":samples",
     ]
+  }
+}
+
+# Makes additional targets reachable only for "gn check". These are not always
+# built by the "all" Ninja target, which uses the "default" group, which in turn
+# depends on the "pdfium_all" group.
+group("gn_check") {
+  deps = []
+
+  # TODO(crbug.com/pdfium/1832): Remove !is_android when //third_party/expat is
+  # available.
+  if (defined(checkout_skia) && checkout_skia && !is_android) {
+    deps += [ "//skia" ]
   }
 }

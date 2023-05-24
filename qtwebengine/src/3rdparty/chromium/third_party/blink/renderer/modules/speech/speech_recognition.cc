@@ -26,9 +26,12 @@
 #include "third_party/blink/renderer/modules/speech/speech_recognition.h"
 
 #include <algorithm>
+
 #include "build/build_config.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "third_party/blink/public/mojom/speech/speech_recognition_error.mojom-blink.h"
+#include "third_party/blink/public/mojom/speech/speech_recognition_result.mojom-blink.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/page/page.h"
@@ -36,7 +39,7 @@
 #include "third_party/blink/renderer/modules/speech/speech_recognition_error_event.h"
 #include "third_party/blink/renderer/modules/speech/speech_recognition_event.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -45,35 +48,26 @@ SpeechRecognition* SpeechRecognition::Create(ExecutionContext* context) {
 }
 
 void SpeechRecognition::start(ExceptionState& exception_state) {
-  if (!controller_ || !GetExecutionContext())
-    return;
-
-  if (started_) {
-    exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
-                                      "recognition has already started.");
+  // https://wicg.github.io/nav-speculation/prerendering.html#web-speech-patch
+  // If this is called in prerendering, it should be deferred.
+  if (DomWindow() && DomWindow()->document()->IsPrerendering()) {
+    DomWindow()->document()->AddPostPrerenderingActivationStep(
+        WTF::BindOnce(&SpeechRecognition::StartInternal,
+                      WrapWeakPersistent(this), /*exception_state=*/nullptr));
     return;
   }
-
-  final_results_.clear();
-
-  mojo::PendingRemote<mojom::blink::SpeechRecognitionSessionClient>
-      session_client;
-  // See https://bit.ly/2S0zRAS for task types.
-  receiver_.Bind(
-      session_client.InitWithNewPipeAndPassReceiver(),
-      GetExecutionContext()->GetTaskRunner(TaskType::kMiscPlatformAPI));
-  receiver_.set_disconnect_handler(WTF::Bind(
-      &SpeechRecognition::OnConnectionError, WrapWeakPersistent(this)));
-
-  controller_->Start(
-      session_.BindNewPipeAndPassReceiver(
-          GetExecutionContext()->GetTaskRunner(TaskType::kMiscPlatformAPI)),
-      std::move(session_client), *grammars_, lang_, continuous_,
-      interim_results_, max_alternatives_);
-  started_ = true;
+  StartInternal(&exception_state);
 }
 
 void SpeechRecognition::stopFunction() {
+  // https://wicg.github.io/nav-speculation/prerendering.html#web-speech-patch
+  // If this is called in prerendering, it should be deferred.
+  if (DomWindow() && DomWindow()->document()->IsPrerendering()) {
+    DomWindow()->document()->AddPostPrerenderingActivationStep(WTF::BindOnce(
+        &SpeechRecognition::stopFunction, WrapWeakPersistent(this)));
+    return;
+  }
+
   if (!controller_)
     return;
 
@@ -84,6 +78,14 @@ void SpeechRecognition::stopFunction() {
 }
 
 void SpeechRecognition::abort() {
+  // https://wicg.github.io/nav-speculation/prerendering.html#web-speech-patch
+  // If this is called in prerendering, it should be deferred.
+  if (DomWindow() && DomWindow()->document()->IsPrerendering()) {
+    DomWindow()->document()->AddPostPrerenderingActivationStep(
+        WTF::BindOnce(&SpeechRecognition::abort, WrapWeakPersistent(this)));
+    return;
+  }
+
   if (!controller_)
     return;
 
@@ -103,8 +105,7 @@ void SpeechRecognition::ResultRetrieved(
   // Add the new results to the previous final results.
   HeapVector<Member<SpeechRecognitionResult>> aggregated_results =
       std::move(final_results_);
-  aggregated_results.ReserveCapacity(aggregated_results.size() +
-                                     results.size());
+  aggregated_results.reserve(aggregated_results.size() + results.size());
 
   for (const auto& result : results) {
     HeapVector<Member<SpeechRecognitionAlternative>> alternatives;
@@ -194,7 +195,7 @@ bool SpeechRecognition::HasPendingActivity() const {
 }
 
 void SpeechRecognition::PageVisibilityChanged() {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   if (!GetPage()->IsPageVisible())
     abort();
 #endif
@@ -205,6 +206,43 @@ void SpeechRecognition::OnConnectionError() {
       mojom::blink::SpeechRecognitionErrorCode::kNetwork,
       mojom::blink::SpeechAudioErrorDetails::kNone));
   Ended();
+}
+
+void SpeechRecognition::StartInternal(ExceptionState* exception_state) {
+  if (!controller_ || !GetExecutionContext())
+    return;
+
+  if (started_) {
+    // https://wicg.github.io/speech-api/#dom-speechrecognition-start
+    // The spec says that if the start method is called on an already started
+    // object (that is, start has previously been called, and no error or end
+    // event has fired on the object), the user agent must throw an
+    // "InvalidStateError" DOMException and ignore the call. But, if it's called
+    // after prerendering activation, `exception_state` is null since it's
+    // STACK_ALLOCATED and it can't be passed.
+    if (exception_state) {
+      exception_state->ThrowDOMException(DOMExceptionCode::kInvalidStateError,
+                                         "recognition has already started.");
+    }
+    return;
+  }
+  final_results_.clear();
+
+  mojo::PendingRemote<mojom::blink::SpeechRecognitionSessionClient>
+      session_client;
+  // See https://bit.ly/2S0zRAS for task types.
+  receiver_.Bind(
+      session_client.InitWithNewPipeAndPassReceiver(),
+      GetExecutionContext()->GetTaskRunner(TaskType::kMiscPlatformAPI));
+  receiver_.set_disconnect_handler(WTF::BindOnce(
+      &SpeechRecognition::OnConnectionError, WrapWeakPersistent(this)));
+
+  controller_->Start(
+      session_.BindNewPipeAndPassReceiver(
+          GetExecutionContext()->GetTaskRunner(TaskType::kMiscPlatformAPI)),
+      std::move(session_client), *grammars_, lang_, continuous_,
+      interim_results_, max_alternatives_);
+  started_ = true;
 }
 
 SpeechRecognition::SpeechRecognition(LocalDOMWindow* window)

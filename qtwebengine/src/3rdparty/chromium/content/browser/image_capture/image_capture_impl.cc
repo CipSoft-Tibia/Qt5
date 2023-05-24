@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,9 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/task/bind_post_task.h"
 #include "base/unguessable_token.h"
 #include "content/browser/browser_main_loop.h"
 #include "content/browser/media/media_devices_permission_checker.h"
@@ -18,7 +19,6 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/common/content_features.h"
-#include "media/base/bind_to_current_loop.h"
 #include "media/capture/mojom/image_capture_types.h"
 #include "media/capture/video/video_capture_device.h"
 #include "mojo/public/cpp/bindings/callback_helpers.h"
@@ -42,10 +42,11 @@ void GetPhotoStateOnIOThread(const std::string& source_id,
       session_id, std::move(callback));
 }
 
-void SetOptionsOnIOThread(const std::string& source_id,
-                          MediaStreamManager* media_stream_manager,
-                          media::mojom::PhotoSettingsPtr settings,
-                          ImageCaptureImpl::SetOptionsCallback callback) {
+void SetPhotoOptionsOnIOThread(
+    const std::string& source_id,
+    MediaStreamManager* media_stream_manager,
+    media::mojom::PhotoSettingsPtr settings,
+    ImageCaptureImpl::SetPhotoOptionsCallback callback) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
 
   const base::UnguessableToken session_id =
@@ -79,11 +80,11 @@ void TakePhotoOnIOThread(const std::string& source_id,
 void ImageCaptureImpl::Create(
     RenderFrameHost* render_frame_host,
     mojo::PendingReceiver<media::mojom::ImageCapture> receiver) {
-  DCHECK(render_frame_host);
+  CHECK(render_frame_host);
   // ImageCaptureImpl owns itself. It will self-destruct when a Mojo interface
-  // error occurs, the render frame host is deleted, or the render frame host
+  // error occurs, the RenderFrameHost is deleted, or the RenderFrameHost
   // navigates to a new document.
-  new ImageCaptureImpl(render_frame_host, std::move(receiver));
+  new ImageCaptureImpl(*render_frame_host, std::move(receiver));
 }
 
 void ImageCaptureImpl::GetPhotoState(const std::string& source_id,
@@ -95,7 +96,7 @@ void ImageCaptureImpl::GetPhotoState(const std::string& source_id,
 
   GetPhotoStateCallback scoped_callback =
       mojo::WrapCallbackWithDefaultInvokeIfNotRun(
-          media::BindToCurrentLoop(
+          base::BindPostTaskToCurrentDefault(
               base::BindOnce(&ImageCaptureImpl::OnGetPhotoState,
                              weak_factory_.GetWeakPtr(), std::move(callback))),
           mojo::CreateEmptyPhotoState());
@@ -106,12 +107,12 @@ void ImageCaptureImpl::GetPhotoState(const std::string& source_id,
                      std::move(scoped_callback)));
 }
 
-void ImageCaptureImpl::SetOptions(const std::string& source_id,
-                                  media::mojom::PhotoSettingsPtr settings,
-                                  SetOptionsCallback callback) {
+void ImageCaptureImpl::SetPhotoOptions(const std::string& source_id,
+                                       media::mojom::PhotoSettingsPtr settings,
+                                       SetPhotoOptionsCallback callback) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   TRACE_EVENT_INSTANT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
-                       "ImageCaptureImpl::SetOptions",
+                       "ImageCaptureImpl::SetPhotoOptions",
                        TRACE_EVENT_SCOPE_PROCESS);
 
   if ((settings->has_pan || settings->has_tilt || settings->has_zoom) &&
@@ -120,12 +121,12 @@ void ImageCaptureImpl::SetOptions(const std::string& source_id,
     return;
   }
 
-  SetOptionsCallback scoped_callback =
+  SetPhotoOptionsCallback scoped_callback =
       mojo::WrapCallbackWithDefaultInvokeIfNotRun(
-          media::BindToCurrentLoop(std::move(callback)), false);
+          base::BindPostTaskToCurrentDefault(std::move(callback)), false);
   GetIOThreadTaskRunner({})->PostTask(
       FROM_HERE,
-      base::BindOnce(&SetOptionsOnIOThread, source_id,
+      base::BindOnce(&SetPhotoOptionsOnIOThread, source_id,
                      BrowserMainLoop::GetInstance()->media_stream_manager(),
                      std::move(settings), std::move(scoped_callback)));
 }
@@ -139,7 +140,7 @@ void ImageCaptureImpl::TakePhoto(const std::string& source_id,
 
   TakePhotoCallback scoped_callback =
       mojo::WrapCallbackWithDefaultInvokeIfNotRun(
-          media::BindToCurrentLoop(std::move(callback)),
+          base::BindPostTaskToCurrentDefault(std::move(callback)),
           media::mojom::Blob::New());
   GetIOThreadTaskRunner({})->PostTask(
       FROM_HERE,
@@ -149,9 +150,9 @@ void ImageCaptureImpl::TakePhoto(const std::string& source_id,
 }
 
 ImageCaptureImpl::ImageCaptureImpl(
-    RenderFrameHost* render_frame_host,
+    RenderFrameHost& render_frame_host,
     mojo::PendingReceiver<media::mojom::ImageCapture> receiver)
-    : FrameServiceBase(render_frame_host, std::move(receiver)) {}
+    : DocumentService(render_frame_host, std::move(receiver)) {}
 
 ImageCaptureImpl::~ImageCaptureImpl() = default;
 
@@ -171,7 +172,7 @@ bool ImageCaptureImpl::HasPanTiltZoomPermissionGranted() {
 
   return MediaDevicesPermissionChecker::
       HasPanTiltZoomPermissionGrantedOnUIThread(
-          render_frame_host()->GetProcess()->GetID(),
-          render_frame_host()->GetRoutingID());
+          render_frame_host().GetProcess()->GetID(),
+          render_frame_host().GetRoutingID());
 }
 }  // namespace content

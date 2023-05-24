@@ -1,7 +1,7 @@
 # libgav1 -- an AV1 decoder
 
-libgav1 is a Main profile (0) & High profile (1) compliant AV1 decoder. More
-information on the AV1 video format can be found at
+libgav1 is a Main profile (0), High profile (1) & Professional profile (2)
+compliant AV1 decoder. More information on the AV1 video format can be found at
 [aomedia.org](https://aomedia.org).
 
 [TOC]
@@ -20,7 +20,18 @@ information on the AV1 video format can be found at
     From within the libgav1 directory:
 
     ```shell
-      $ git clone https://github.com/abseil/abseil-cpp.git third_party/abseil-cpp
+    $ git clone https://github.com/abseil/abseil-cpp.git third_party/abseil-cpp
+    ```
+
+    Note: Abseil is required by the examples and tests. libgav1 will depend on
+    it if `LIBGAV1_THREADPOOL_USE_STD_MUTEX` is set to `0` (see below).
+
+4.  (Optional) [GoogleTest](https://github.com/google/googletest)
+
+    From within the libgav1 directory:
+
+    ```shell
+    $ git clone https://github.com/google/googletest.git third_party/googletest
     ```
 
 ### Compile
@@ -39,10 +50,13 @@ Configuration options:
     [symbol reduction](#symbol-reduction) in an optimized build to keep all
     versions of dsp functions available. Automatically defined in
     `src/dsp/dsp.h` if unset.
+*   `LIBGAV1_ENABLE_AVX2`: define to a non-zero value to enable avx2
+    optimizations. Automatically defined in `src/utils/cpu.h` if unset.
 *   `LIBGAV1_ENABLE_NEON`: define to a non-zero value to enable NEON
-    optimizations. Automatically defined in `src/dsp/dsp.h` if unset.
+    optimizations. Automatically defined in `src/utils/cpu.h` if unset.
 *   `LIBGAV1_ENABLE_SSE4_1`: define to a non-zero value to enable sse4.1
-    optimizations. Automatically defined in `src/dsp/dsp.h` if unset.
+    optimizations. Automatically defined in `src/utils/cpu.h` if unset. Note
+    setting this to 0 will also disable AVX2.
 *   `LIBGAV1_ENABLE_LOGGING`: define to 0/1 to control debug logging.
     Automatically defined in `src/utils/logging.h` if unset.
 *   `LIBGAV1_EXAMPLES_ENABLE_LOGGING`: define to 0/1 to control error logging in
@@ -55,10 +69,11 @@ Configuration options:
 *   `LIBGAV1_THREADPOOL_USE_STD_MUTEX`: controls use of std::mutex and
     absl::Mutex in ThreadPool. Defining this to 1 will remove any Abseil
     dependency from the core library. Automatically defined in
-    `src/utils/threadpool.h` if unset.
+    `src/utils/threadpool.h` if unset. Defaults to 1 on Android & iOS, 0
+    otherwise.
 *   `LIBGAV1_MAX_THREADS`: sets the number of threads that the library is
-    allowed to create. Has to be an integer > 0. Otherwise this is ignored.
-    The default value is 128.
+    allowed to create. Has to be an integer > 0. Otherwise this is ignored. The
+    default value is 128.
 *   `LIBGAV1_FRAME_PARALLEL_THRESHOLD_MULTIPLIER`: the threshold multiplier that
     is used to determine when to use frame parallel decoding. Frame parallel
     decoding will be used if |threads| > |tile_count| * this multiplier. Has to
@@ -76,6 +91,21 @@ For additional options see:
 *   `gav1_decode` can be used to decode IVF files, see `gav1_decode --help` for
     options. Note: tools like [FFmpeg](https://ffmpeg.org) can be used to
     convert other container formats to IVF.
+
+*   Unit tests are built when `LIBGAV1_ENABLE_TESTS` is set to `1`. The binaries
+    can be invoked directly or with
+    [`ctest`](https://cmake.org/cmake/help/latest/manual/ctest.1.html).
+
+    *   The test input location can be given by setting the
+        `LIBGAV1_TEST_DATA_PATH` environment variable; it defaults to
+        `<libgav1_src>/tests/data`, where `<libgav1_src>` is `/data/local/tmp`
+        on Android platforms or the source directory configured with cmake
+        otherwise.
+
+    *   Output is written to the value of the `TMPDIR` or `TEMP` environment
+        variables in that order if set, otherwise `/data/local/tmp` on Android
+        platforms, the value of `LIBGAV1_FLAGS_TMPDIR` if defined during
+        compilation or the current directory if not.
 
 ## Development
 

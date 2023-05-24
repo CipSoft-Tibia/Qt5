@@ -1,39 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Denis Shienkov <denis.shienkov@gmail.com>
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Denis Shienkov <denis.shienkov@gmail.com>
+// Copyright (c) 2020 Andre Hartmann <aha_1980@gmx.de>
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef PEAKCAN_SYMBOLS_P_H
 #define PEAKCAN_SYMBOLS_P_H
@@ -168,7 +136,7 @@
 #define PCAN_PCC                 0x06U  // PCAN-PC Card
 
 // PCAN parameters
-#define PCAN_DEVICE_NUMBER       0x01U  // PCAN-USB device number parameter
+#define PCAN_DEVICE_ID           0x01U  // Device identifier parameter
 #define PCAN_5VOLTS_POWER        0x02U  // PCAN-PC Card 5-Volt power parameter
 #define PCAN_RECEIVE_EVENT       0x03U  // PCAN receive event handler parameter
 #define PCAN_MESSAGE_FILTER      0x04U  // PCAN message filter parameter
@@ -197,6 +165,8 @@
 #define PCAN_BUSSPEED_DATA       0x1BU  // Configured CAN data speed as Bits per seconds
 #define PCAN_IP_ADDRESS          0x1CU  // Remote address of a LAN channel as string in IPv4 format
 #define PCAN_LAN_SERVICE_STATUS  0x1DU  // Status of the Virtual PCAN-Gateway Service
+#define PCAN_ATTACHED_CHANNELS_COUNT  0x2AU  // Get the amount of PCAN channels attached to a system
+#define PCAN_ATTACHED_CHANNELS        0x2BU  // Get information about PCAN channels attached to a system
 
 #define FEATURE_FD_CAPABLE       0x01U  // Device supports flexible data-rate (CAN-FD)
 
@@ -224,6 +194,10 @@
 #define TRACE_FILE_DATE          0x02U  // Includes the date into the name of the trace file
 #define TRACE_FILE_TIME          0x04U  // Includes the start time into the name of the trace file
 #define TRACE_FILE_OVERWRITE     0x80U  // Causes the overwriting of available traces (same name)
+
+// Other constants
+#define MAX_LENGTH_HARDWARE_NAME      33     // Maximum length of the name of a device: 32 characters + terminator
+#define MAX_LENGTH_VERSION_STRING     18     // Maximum length of a version string: 17 characters + terminator
 
 // PCAN message types
 #define PCAN_MESSAGE_STANDARD    0x00U  // The PCAN message is a CAN Standard Frame (11-bit identifier)
@@ -267,15 +241,8 @@
 #define PCAN_TYPE_DNG_SJA_EPP    0x06U  // PCAN-Dongle EPP SJA1000
 
 // Type definitions
-#ifdef Q_OS_MACOS
-#define TPCANLong                quint64
-#define TPCANLongToFrameID(a)    static_cast<quint32>(a)
-#else
-#define TPCANLong                quint32
-#define TPCANLongToFrameID(a)    a
-#endif
 #define TPCANHandle              quint16   // Represents a PCAN hardware channel handle
-#define TPCANStatus              TPCANLong // Represents a PCAN status/error code
+#define TPCANStatus              quint32   // Represents a PCAN status/error code
 #define TPCANParameter           quint8    // Represents a PCAN parameter to be read or set
 #define TPCANDevice              quint8    // Represents a PCAN device
 #define TPCANMessageType         quint8    // Represents the type of a PCAN message
@@ -288,7 +255,7 @@
 // Represents a PCAN message
 typedef struct tagTPCANMsg
 {
-    TPCANLong           ID;      // 11/29-bit message identifier
+    quint32             ID;      // 11/29-bit message identifier
     TPCANMessageType    MSGTYPE; // Type of the message
     quint8              LEN;     // Data Length Code of the message (0..8)
     quint8              DATA[8]; // Data of the message (DATA[0]..DATA[7])
@@ -298,7 +265,7 @@ typedef struct tagTPCANMsg
 // Total Microseconds = micros + 1000 * millis + 0xFFFFFFFF * 1000 * millis_overflow
 typedef struct tagTPCANTimestamp
 {
-    TPCANLong   millis;             // Base-value: milliseconds: 0.. 2^32-1
+    quint32     millis;             // Base-value: milliseconds: 0.. 2^32-1
     quint16     millis_overflow;    // Roll-arounds of millis
     quint16     micros;             // Microseconds: 0..999
 } TPCANTimestamp;
@@ -306,11 +273,23 @@ typedef struct tagTPCANTimestamp
 // Represents a PCAN message from a FD capable hardware
 typedef struct tagTPCANMsgFD
 {
-    TPCANLong         ID;       // 11/29-bit message identifier
+    quint32           ID;       // 11/29-bit message identifier
     TPCANMessageType  MSGTYPE;  // Type of the message
     quint8            DLC;      // Data Length Code of the message (0..15)
     quint8            DATA[64]; // Data of the message (DATA[0]..DATA[63])
 } TPCANMsgFD;
+
+// Describes an available PCAN channel
+typedef struct tagTPCANChannelInformation
+{
+    TPCANHandle channel_handle;                 // PCAN channel handle
+    TPCANDevice device_type;                    // Kind of PCAN device
+    quint8 controller_number;                   // CAN-Controller number
+    quint32 device_features;                    // Device capabilities flag (see FEATURE_*)
+    char device_name[MAX_LENGTH_HARDWARE_NAME]; // Device name
+    quint32 device_id;                          // Device number
+    quint32 channel_condition;                  // Availability status of a PCAN-Channel
+} TPCANChannelInformation;
 
 #define GENERATE_SYMBOL_VARIABLE(returnType, symbolName, ...) \
     typedef returnType (DRV_CALLBACK_TYPE *fp_##symbolName)(__VA_ARGS__); \
@@ -321,7 +300,7 @@ typedef struct tagTPCANMsgFD
     if (!symbolName) \
         return false;
 
-GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_Initialize, TPCANHandle, TPCANBaudrate, TPCANType, TPCANLong, quint16)
+GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_Initialize, TPCANHandle, TPCANBaudrate, TPCANType, quint32, quint16)
 GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_InitializeFD, TPCANHandle, TPCANBitrateFD)
 GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_Uninitialize, TPCANHandle)
 GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_Reset, TPCANHandle)
@@ -330,9 +309,9 @@ GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_Read, TPCANHandle, TPCANMsg *, TPCANTi
 GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_ReadFD, TPCANHandle, TPCANMsgFD *, TPCANTimestampFD *)
 GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_Write, TPCANHandle, TPCANMsg *)
 GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_WriteFD, TPCANHandle, TPCANMsgFD *)
-GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_FilterMessages, TPCANHandle, TPCANLong, TPCANLong, TPCANMode)
-GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_GetValue, TPCANHandle, TPCANParameter, void *, TPCANLong)
-GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_SetValue, TPCANHandle, TPCANParameter, void *, TPCANLong)
+GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_FilterMessages, TPCANHandle, quint32, quint32, TPCANMode)
+GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_GetValue, TPCANHandle, TPCANParameter, void *, quint32)
+GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_SetValue, TPCANHandle, TPCANParameter, void *, quint32)
 GENERATE_SYMBOL_VARIABLE(TPCANStatus, CAN_GetErrorText, TPCANStatus, quint16, char *)
 
 inline bool resolvePeakCanSymbols(QLibrary *pcanLibrary)

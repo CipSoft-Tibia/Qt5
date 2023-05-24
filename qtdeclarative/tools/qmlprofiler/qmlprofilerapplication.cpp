@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlprofilerapplication.h"
 #include "constants.h"
@@ -36,6 +11,7 @@
 #include <QtCore/QDebug>
 #include <QtCore/QCommandLineParser>
 #include <QtCore/QTemporaryFile>
+#include <QtCore/QLibraryInfo>
 
 #include <iostream>
 
@@ -354,7 +330,7 @@ bool QmlProfilerApplication::checkOutputFile(PendingRequest pending)
 
 void QmlProfilerApplication::userCommand(const QString &command)
 {
-    auto args = command.splitRef(QChar::Space, Qt::SkipEmptyParts);
+    auto args = QStringView{command}.split(QChar::Space, Qt::SkipEmptyParts);
     if (args.isEmpty()) {
         prompt();
         return;
@@ -408,7 +384,7 @@ void QmlProfilerApplication::userCommand(const QString &command)
         } else if (m_profilerData->isEmpty()) {
             prompt(tr("No data was recorded so far."));
         } else {
-            m_interactiveOutputFile = args.length() > 0 ? args.at(0).toString() : m_outputFile;
+            m_interactiveOutputFile = args.size() > 0 ? args.at(0).toString() : m_outputFile;
             if (checkOutputFile(REQUEST_OUTPUT_FILE))
                 output();
         }
@@ -425,7 +401,7 @@ void QmlProfilerApplication::userCommand(const QString &command)
         if (!m_recording && m_profilerData->isEmpty()) {
             prompt(tr("No data was recorded so far."));
         } else {
-            m_interactiveOutputFile = args.length() > 0 ? args.at(0).toString() : m_outputFile;
+            m_interactiveOutputFile = args.size() > 0 ? args.at(0).toString() : m_outputFile;
             if (checkOutputFile(REQUEST_FLUSH_FILE))
                 flush();
         }
@@ -491,14 +467,13 @@ void QmlProfilerApplication::tryToConnect()
     Q_ASSERT(!m_connection->isConnected());
     ++ m_connectionAttempts;
 
-    if (!m_verbose && !(m_connectionAttempts % 5)) {// print every 5 seconds
-        if (m_verbose) {
-            if (m_socketFile.isEmpty())
-                logError(QString::fromLatin1("Could not connect to %1:%2 for %3 seconds ...")
-                         .arg(m_hostName).arg(m_port).arg(m_connectionAttempts));
-            else
-                logError(QString::fromLatin1("No connection received on %1 for %2 seconds ...")
-                         .arg(m_socketFile).arg(m_connectionAttempts));
+    if (!(m_connectionAttempts % 5)) {// print every 5 seconds
+        if (m_socketFile.isEmpty()) {
+            logWarning(QString::fromLatin1("Could not connect to %1:%2 for %3 seconds ...")
+                      .arg(m_hostName).arg(m_port).arg(m_connectionAttempts));
+        } else {
+            logWarning(QString::fromLatin1("No connection received on %1 for %2 seconds ...")
+                       .arg(m_socketFile).arg(m_connectionAttempts));
         }
     }
 
@@ -602,6 +577,11 @@ void QmlProfilerApplication::prompt(const QString &line, bool ready)
 void QmlProfilerApplication::logError(const QString &error)
 {
     std::cerr << "Error: " << qPrintable(error) << std::endl;
+}
+
+void QmlProfilerApplication::logWarning(const QString &warning)
+{
+    std::cerr << "Warning: " << qPrintable(warning) << std::endl;
 }
 
 void QmlProfilerApplication::logStatus(const QString &status)

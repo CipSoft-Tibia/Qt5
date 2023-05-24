@@ -1,9 +1,10 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//build/config/android/config.gni")
 import("//components/safe_browsing/buildflags.gni")
+import("//components/supervised_user/buildflags.gni")
 import("//printing/buildflags/buildflags.gni")
 import("//tools/grit/grit_rule.gni")
 
@@ -37,27 +38,35 @@ grit("components_resources") {
   grit_flags = [
     "-E",
     "about_credits_file=" + rebase_path(about_credits_file, root_build_dir),
-    "-E",
-    "root_gen_dir=" + rebase_path(root_gen_dir, root_build_dir),
   ]
 
   defines = [
-    "enable_basic_printing=$enable_basic_printing",
+    "enable_printing=$enable_printing",
     "enable_print_preview=$enable_print_preview",
+    "enable_supervised_users=$enable_supervised_users",
     "safe_browsing_mode=$safe_browsing_mode",
     "is_fuchsia=$is_fuchsia",
   ]
 
-  deps = [ ":about_credits" ]
+  deps = [
+    ":about_credits",
+    "//components/flags_ui/resources:build_ts",
+    "//components/security_interstitials/content/resources:build_ts",
+    "//components/version_ui/resources:build_ts",
+  ]
 
   if (!is_ios) {
     deps += [ "//components/resources/ssl/ssl_error_assistant:make_ssl_error_assistant_protobuf" ]
   }
 
-  # TODO(crbug/1056278): Enable this on Fuchsia
-  if (safe_browsing_mode > 0 && !is_fuchsia) {
-    deps +=
-        [ "//components/safe_browsing/core/resources:make_file_types_protobuf" ]
+  if (safe_browsing_mode > 0) {
+    deps += [
+      "//components/safe_browsing/content/resources:make_file_types_protobuf",
+    ]
+  }
+
+  if (is_android && safe_browsing_mode == 2) {
+    deps += [ "//components/safe_browsing/content/resources/real_time_url_checks_allowlist:make_real_time_url_allowlist_protobuf" ]
   }
 }
 
@@ -67,6 +76,11 @@ grit("dev_ui_components_resources") {
   outputs = [
     "grit/dev_ui_components_resources.h",
     "dev_ui_components_resources.pak",
+  ]
+
+  deps = [
+    "//components/crash/core/browser/resources:build_ts",
+    "//components/local_state:build",
   ]
   output_dir = "$root_gen_dir/components"
 }
@@ -86,7 +100,7 @@ grit("components_scaled_resources") {
 }
 
 action("about_credits") {
-  script = "//tools/licenses.py"
+  script = "//tools/licenses/licenses.py"
   depfile = "$target_gen_dir/$target_name.d"
 
   inputs = [
@@ -103,6 +117,11 @@ action("about_credits") {
     "credits",
     rebase_path(about_credits_file, root_build_dir),
   ]
+
+  # Defined by downstream projects.
+  if (defined(extra_third_party_notice_dirs)) {
+    args += [ "--extra-third-party-dirs=$extra_third_party_notice_dirs" ]
+  }
 }
 
 if (is_android) {
@@ -113,6 +132,9 @@ if (is_android) {
       "android/permissions_resource_id.h",
       "android/sms_resource_id.h",
       "android/theme_resources.h",
+      "android/webxr_resource_id.h",
     ]
+
+    public_deps = [ "//device/vr/buildflags" ]
   }
 }

@@ -1,0 +1,18 @@
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+//! [0]
+\li \c PROTO_FILES is the list of \c .proto files that will be used in the
+generation procedure.
+\li \c PROTO_INCLUDES is the list of directories that will be searched for
+dependencies.
+\li \c OUTPUT_DIRECTORY is the directory where the generated files will be
+put. By default, the current directory (while evaluating the function) is
+used.
+\li \c OUTPUT_HEADERS can be used to specify a variable that will
+hold the list of headers created by the function. This list can be useful for
+custom project install rules.
+\li \c OUTPUT_TARGETS can be used to specify a variable that will
+hold the list of targets created by the function. This list can be useful for
+custom project install rules.
+//! [0]

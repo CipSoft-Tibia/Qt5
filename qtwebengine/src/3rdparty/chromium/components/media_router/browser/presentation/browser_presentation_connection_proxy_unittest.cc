@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -45,10 +45,11 @@ class BrowserPresentationConnectionProxyTest : public ::testing::Test {
         std::make_unique<MockPresentationConnectionProxy>();
     mojo::PendingRemote<blink::mojom::PresentationConnection>
         controller_connection_remote;
-    receiver_.reset(new mojo::Receiver<blink::mojom::PresentationConnection>(
-        mock_controller_connection_proxy_.get(),
-        controller_connection_remote.InitWithNewPipeAndPassReceiver()));
-    EXPECT_CALL(mock_router_, RegisterRouteMessageObserver(_));
+    receiver_ =
+        std::make_unique<mojo::Receiver<blink::mojom::PresentationConnection>>(
+            mock_controller_connection_proxy_.get(),
+            controller_connection_remote.InitWithNewPipeAndPassReceiver());
+    EXPECT_CALL(mock_router_, RegisterPresentationConnectionMessageObserver(_));
     EXPECT_CALL(
         *mock_controller_connection_proxy_,
         DidChangeState(blink::mojom::PresentationConnectionState::CONNECTED));
@@ -66,7 +67,8 @@ class BrowserPresentationConnectionProxyTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    EXPECT_CALL(mock_router_, UnregisterRouteMessageObserver(_));
+    EXPECT_CALL(mock_router_,
+                UnregisterPresentationConnectionMessageObserver(_));
     browser_connection_proxy_.reset();
     receiver_.reset();
     mock_controller_connection_proxy_.reset();

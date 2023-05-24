@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,9 @@
 #define EXTENSIONS_BROWSER_EXTENSION_UTIL_H_
 
 #include <string>
+#include <vector>
 
+#include "base/functional/callback.h"
 #include "extensions/common/manifest.h"
 #include "url/gurl.h"
 
@@ -16,9 +18,12 @@ class FilePath;
 
 namespace content {
 class BrowserContext;
+class ServiceWorkerContext;
+class SiteInstance;
 class StoragePartition;
 class StoragePartitionConfig;
-}
+class RenderFrameHost;
+}  // namespace content
 
 namespace extensions {
 class Extension;
@@ -26,7 +31,7 @@ class ExtensionSet;
 
 namespace util {
 
-// TODO(benwells): Move functions from
+// TODO(crbug.com/1417028): Move functions from
 // chrome/browser/extensions/extension_util.h/cc that are only dependent on
 // extensions/ here.
 
@@ -34,7 +39,7 @@ namespace util {
 bool CanBeIncognitoEnabled(const Extension* extension);
 
 // Returns true if |extension_id| can run in an incognito window.
-bool IsIncognitoEnabled(const std::string& extension_id,
+bool IsIncognitoEnabled(const ExtensionId& extension_id,
                         content::BrowserContext* context);
 
 // Returns true if |extension| can see events and data from another sub-profile
@@ -50,13 +55,18 @@ const std::string& GetPartitionDomainForExtension(const Extension* extension);
 // associated with |extension_id| has isolated storage.
 // Otherwise, return the default StoragePartitionConfig.
 content::StoragePartitionConfig GetStoragePartitionConfigForExtensionId(
-    const std::string& extension_id,
+    const ExtensionId& extension_id,
     content::BrowserContext* browser_context);
 
 content::StoragePartition* GetStoragePartitionForExtensionId(
-    const std::string& extension_id,
+    const ExtensionId& extension_id,
     content::BrowserContext* browser_context,
     bool can_create = true);
+
+// Returns the ServiceWorkerContext associated with the given `extension_id`.
+content::ServiceWorkerContext* GetServiceWorkerContextForExtensionId(
+    const ExtensionId& extension_id,
+    content::BrowserContext* browser_context);
 
 // Maps a |file_url| to a |file_path| on the local filesystem, including
 // resources in extensions. Returns true on success. See NaClBrowserDelegate for
@@ -72,12 +82,48 @@ bool MapUrlToLocalFilePath(const ExtensionSet* extensions,
 // Returns true if the browser can potentially withhold permissions from the
 // extension.
 bool CanWithholdPermissionsFromExtension(const Extension& extension);
-bool CanWithholdPermissionsFromExtension(const std::string& extension_id,
-                                         const Manifest::Type type,
-                                         const Manifest::Location location);
+bool CanWithholdPermissionsFromExtension(
+    const ExtensionId& extension_id,
+    const Manifest::Type type,
+    const mojom::ManifestLocation location);
 
 // Returns a unique int id for each context.
 int GetBrowserContextId(content::BrowserContext* context);
+
+// Returns whether the |extension| should be loaded in the given
+// |browser_context|.
+bool IsExtensionVisibleToContext(const Extension& extension,
+                                 content::BrowserContext* browser_context);
+
+// Initializes file scheme access if the extension has such permission.
+void InitializeFileSchemeAccessForExtension(
+    int render_process_id,
+    const std::string& extension_id,
+    content::BrowserContext* browser_context);
+
+// Gets the ExtensionId associated with the given `site_instance`.  An empty
+// string is returned when `site_instance` is not associated with an extension.
+ExtensionId GetExtensionIdForSiteInstance(content::SiteInstance& site_instance);
+
+// Returns the extension id associated with the given `render_frame_host`, or
+// the empty string if there is none.
+std::string GetExtensionIdFromFrame(
+    content::RenderFrameHost* render_frame_host);
+
+// Returns true if the process corresponding to `render_process_id` can host an
+// extension with `extension_id`.  (It doesn't necessarily mean that the process
+// *does* host this specific extension at this point in time.)
+bool CanRendererHostExtensionOrigin(int render_process_id,
+                                    const ExtensionId& extension_id);
+
+// Returns true if `extension_id` can be launched (possibly only after being
+// enabled).
+bool IsAppLaunchable(const std::string& extension_id,
+                     content::BrowserContext* context);
+
+// Returns true if `extension_id` can be launched without being enabled first.
+bool IsAppLaunchableWithoutEnabling(const std::string& extension_id,
+                                    content::BrowserContext* context);
 
 }  // namespace util
 }  // namespace extensions

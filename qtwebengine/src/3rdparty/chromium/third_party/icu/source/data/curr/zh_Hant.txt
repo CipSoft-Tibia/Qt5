@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 zh_Hant{
     %%Parent{"root"}
     Currencies{
@@ -185,7 +186,7 @@ zh_Hant{
         }
         BRL{
             "R$",
-            "巴西里拉",
+            "巴西雷亞爾",
         }
         BRN{
             "BRN",
@@ -1116,7 +1117,7 @@ zh_Hant{
             "法國法郎 (UIC)",
         }
         XOF{
-            "CFA",
+            "F CFA",
             "法郎 (CFA–BCEAO)",
         }
         XPD{
@@ -1216,6 +1217,7 @@ zh_Hant{
         TWD{"NT$"}
     }
     Currencies%narrow{
+        AMD{"֏"}
         AOA{"Kz"}
         ARS{"$"}
         AUD{"$"}
@@ -1313,7 +1315,6 @@ zh_Hant{
         ZMW{"ZK"}
     }
     Currencies%variant{
-        GEL{"₾"}
         TRY{"TL"}
     }
     CurrencyPlurals{
@@ -1453,7 +1454,7 @@ zh_Hant{
             other{"巴西克魯賽羅 (1990–1993)"}
         }
         BRL{
-            other{"巴西里拉"}
+            other{"巴西雷亞爾"}
         }
         BRN{
             other{"巴西克如爾達農瓦"}
@@ -2224,5 +2225,4 @@ zh_Hant{
     CurrencyUnitPatterns{
         other{"{0} {1}"}
     }
-    Version{"37"}
 }

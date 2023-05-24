@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qdebug.h>
 
@@ -44,8 +8,9 @@
 QT_BEGIN_NAMESPACE
 
 /*!
-    \class QMediaTimeInterval
-    \brief The QMediaTimeInterval class represents a time interval with integer precision.
+    \class QMediaTimeRange::Interval
+    \brief The QMediaTimeRange::Interval class represents a time interval with
+    integer precision.
     \inmodule QtMultimedia
 
     \ingroup multimedia
@@ -71,183 +36,101 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn QMediaTimeInterval::QMediaTimeInterval()
-
-    Constructs an empty interval.
-*/
-QMediaTimeInterval::QMediaTimeInterval()
-    : s(0)
-    , e(0)
-{
-
-}
-
-/*!
-    \fn QMediaTimeInterval::QMediaTimeInterval(qint64 start, qint64 end)
+    \fn QMediaTimeRange::Interval::Interval(qint64 start, qint64 end)
 
     Constructs an interval with the specified \a start and \a end times.
 */
-QMediaTimeInterval::QMediaTimeInterval(qint64 start, qint64 end)
-    : s(start)
-    , e(end)
-{
-
-}
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-/*!
-    \fn QMediaTimeInterval::QMediaTimeInterval(const QMediaTimeInterval &other)
-
-    Constructs an interval by taking a copy of \a other.
-*/
-QMediaTimeInterval::QMediaTimeInterval(const QMediaTimeInterval &other)
-    : s(other.s)
-    , e(other.e)
-{
-
-}
-#endif
 
 /*!
-    \fn QMediaTimeInterval::start() const
+    \fn QMediaTimeRange::Interval::start() const
 
     Returns the start time of the interval.
 
     \sa end()
 */
-qint64 QMediaTimeInterval::start() const
-{
-    return s;
-}
 
 /*!
-    \fn QMediaTimeInterval::end() const
+    \fn QMediaTimeRange::Interval::end() const
 
     Returns the end time of the interval.
 
     \sa start()
 */
-qint64 QMediaTimeInterval::end() const
-{
-    return e;
-}
 
 /*!
-    \fn QMediaTimeInterval::contains(qint64 time) const
+    \fn QMediaTimeRange::Interval::contains(qint64 time) const
 
     Returns true if the time interval contains the specified \a time.
     That is, start() <= time <= end().
 */
-bool QMediaTimeInterval::contains(qint64 time) const
-{
-    return isNormal() ? (s <= time && time <= e)
-        : (e <= time && time <= s);
-}
 
 /*!
-    \fn QMediaTimeInterval::isNormal() const
+    \fn QMediaTimeRange::Interval::isNormal() const
 
     Returns true if this time interval is normal.
     A normal time interval has start() <= end().
 
     \sa normalized()
 */
-bool QMediaTimeInterval::isNormal() const
-{
-    return s <= e;
-}
 
 /*!
-    \fn QMediaTimeInterval::normalized() const
+    \fn QMediaTimeRange::Interval::normalized() const
 
     Returns a normalized version of this interval.
 
     If the start() time of the interval is greater than the end() time,
     then the returned interval has the start and end times swapped.
 */
-QMediaTimeInterval QMediaTimeInterval::normalized() const
-{
-    if(s > e)
-        return QMediaTimeInterval(e, s);
-
-    return *this;
-}
 
 /*!
-    \fn QMediaTimeInterval::translated(qint64 offset) const
+    \fn QMediaTimeRange::Interval::translated(qint64 offset) const
 
     Returns a copy of this time interval, translated by a value of \a offset.
     An interval can be moved forward through time with a positive offset, or backward
     through time with a negative offset.
 */
-QMediaTimeInterval QMediaTimeInterval::translated(qint64 offset) const
-{
-    return QMediaTimeInterval(s + offset, e + offset);
-}
 
 /*!
-    \relates QMediaTimeRange
+    \fn bool QMediaTimeRange::Interval::operator==(QMediaTimeRange::Interval lhs, QMediaTimeRange::Interval rhs)
 
-    Returns true if \a a is exactly equal to \a b.
+    Returns true if \a lhs is exactly equal to \a rhs.
 */
-bool operator==(const QMediaTimeInterval &a, const QMediaTimeInterval &b)
-{
-    return a.start() == b.start() && a.end() == b.end();
-}
 
 /*!
-    \relates QMediaTimeRange
+    \fn bool QMediaTimeRange::Interval::operator!=(QMediaTimeRange::Interval lhs, QMediaTimeRange::Interval rhs)
 
-    Returns true if \a a is not exactly equal to \a b.
+    Returns true if \a lhs is not exactly equal to \a rhs.
 */
-bool operator!=(const QMediaTimeInterval &a, const QMediaTimeInterval &b)
-{
-    return a.start() != b.start() || a.end() != b.end();
-}
 
 class QMediaTimeRangePrivate : public QSharedData
 {
 public:
+    QMediaTimeRangePrivate() = default;
+    QMediaTimeRangePrivate(const QMediaTimeRange::Interval &interval);
 
-    QMediaTimeRangePrivate();
-    QMediaTimeRangePrivate(const QMediaTimeRangePrivate &other);
-    QMediaTimeRangePrivate(const QMediaTimeInterval &interval);
+    QList<QMediaTimeRange::Interval> intervals;
 
-    QList<QMediaTimeInterval> intervals;
-
-    void addInterval(const QMediaTimeInterval &interval);
-    void removeInterval(const QMediaTimeInterval &interval);
+    void addInterval(const QMediaTimeRange::Interval &interval);
+    void removeInterval(const QMediaTimeRange::Interval &interval);
 };
 
-QMediaTimeRangePrivate::QMediaTimeRangePrivate()
-    : QSharedData()
+QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QMediaTimeRangePrivate);
+
+QMediaTimeRangePrivate::QMediaTimeRangePrivate(const QMediaTimeRange::Interval &interval)
 {
-
-}
-
-QMediaTimeRangePrivate::QMediaTimeRangePrivate(const QMediaTimeRangePrivate &other)
-    : QSharedData()
-    , intervals(other.intervals)
-{
-
-}
-
-QMediaTimeRangePrivate::QMediaTimeRangePrivate(const QMediaTimeInterval &interval)
-    : QSharedData()
-{
-    if(interval.isNormal())
+    if (interval.isNormal())
         intervals << interval;
 }
 
-void QMediaTimeRangePrivate::addInterval(const QMediaTimeInterval &interval)
+void QMediaTimeRangePrivate::addInterval(const QMediaTimeRange::Interval &interval)
 {
     // Handle normalized intervals only
-    if(!interval.isNormal())
+    if (!interval.isNormal())
         return;
 
     // Find a place to insert the interval
     int i;
-    for (i = 0; i < intervals.count(); i++) {
+    for (i = 0; i < intervals.size(); i++) {
         // Insert before this element
         if(interval.s < intervals[i].s) {
             intervals.insert(i, interval);
@@ -256,29 +139,29 @@ void QMediaTimeRangePrivate::addInterval(const QMediaTimeInterval &interval)
     }
 
     // Interval needs to be added to the end of the list
-    if (i == intervals.count())
+    if (i == intervals.size())
         intervals.append(interval);
 
     // Do we need to correct the element before us?
-    if(i > 0 && intervals[i - 1].e >= interval.s - 1)
+    if (i > 0 && intervals[i - 1].e >= interval.s - 1)
         i--;
 
     // Merge trailing ranges
-    while (i < intervals.count() - 1
+    while (i < intervals.size() - 1
           && intervals[i].e >= intervals[i + 1].s - 1) {
         intervals[i].e = qMax(intervals[i].e, intervals[i + 1].e);
         intervals.removeAt(i + 1);
     }
 }
 
-void QMediaTimeRangePrivate::removeInterval(const QMediaTimeInterval &interval)
+void QMediaTimeRangePrivate::removeInterval(const QMediaTimeRange::Interval &interval)
 {
     // Handle normalized intervals only
-    if(!interval.isNormal())
+    if (!interval.isNormal())
         return;
 
-    for (int i = 0; i < intervals.count(); i++) {
-        QMediaTimeInterval r = intervals[i];
+    for (int i = 0; i < intervals.size(); i++) {
+        const QMediaTimeRange::Interval r = intervals.at(i);
 
         if (r.e < interval.s) {
             // Before the removal interval
@@ -289,7 +172,7 @@ void QMediaTimeRangePrivate::removeInterval(const QMediaTimeInterval &interval)
         } else if (r.s < interval.s && interval.e < r.e) {
             // Split case - a single range has a chunk removed
             intervals[i].e = interval.s -1;
-            addInterval(QMediaTimeInterval(interval.e + 1, r.e));
+            addInterval(QMediaTimeRange::Interval(interval.e + 1, r.e));
             break;
         } else if (r.s < interval.s) {
             // Trimming Tail Case
@@ -325,14 +208,12 @@ void QMediaTimeRangePrivate::removeInterval(const QMediaTimeInterval &interval)
     within the range may be expanded, trimmed, deleted, merged or split to ensure
     that all intervals within the time range remain distinct and disjoint. As a
     consequence, all intervals added or removed from a time range must be
-    \l{QMediaTimeInterval::isNormal()}{normal}.
+    \l{QMediaTimeRange::Interval::isNormal()}{normal}.
 
-    \sa QMediaTimeInterval
+    \sa QMediaTimeRange::Interval
 */
 
 /*!
-    \fn QMediaTimeRange::QMediaTimeRange()
-
     Constructs an empty time range.
 */
 QMediaTimeRange::QMediaTimeRange()
@@ -342,80 +223,76 @@ QMediaTimeRange::QMediaTimeRange()
 }
 
 /*!
-    \fn QMediaTimeRange::QMediaTimeRange(qint64 start, qint64 end)
-
     Constructs a time range that contains an initial interval from
     \a start to \a end inclusive.
 
-    If the interval is not \l{QMediaTimeInterval::isNormal()}{normal},
+    If the interval is not \l{QMediaTimeRange::Interval::isNormal()}{normal},
     the resulting time range will be empty.
 
     \sa addInterval()
 */
 QMediaTimeRange::QMediaTimeRange(qint64 start, qint64 end)
-    : d(new QMediaTimeRangePrivate(QMediaTimeInterval(start, end)))
+    : QMediaTimeRange(Interval(start, end))
 {
-
 }
 
 /*!
-    \fn QMediaTimeRange::QMediaTimeRange(const QMediaTimeInterval &interval)
-
     Constructs a time range that contains an initial interval, \a interval.
 
-    If \a interval is not \l{QMediaTimeInterval::isNormal()}{normal},
+    If \a interval is not \l{QMediaTimeRange::Interval::isNormal()}{normal},
     the resulting time range will be empty.
 
     \sa addInterval()
 */
-QMediaTimeRange::QMediaTimeRange(const QMediaTimeInterval &interval)
+QMediaTimeRange::QMediaTimeRange(const QMediaTimeRange::Interval &interval)
     : d(new QMediaTimeRangePrivate(interval))
 {
-
 }
 
 /*!
-    \fn QMediaTimeRange::QMediaTimeRange(const QMediaTimeRange &range)
-
     Constructs a time range by copying another time \a range.
 */
-QMediaTimeRange::QMediaTimeRange(const QMediaTimeRange &range)
-    : d(range.d)
-{
+QMediaTimeRange::QMediaTimeRange(const QMediaTimeRange &range) noexcept = default;
 
-}
+/*! \fn QMediaTimeRange::QMediaTimeRange(QMediaTimeRange &&other)
+
+    Constructs a time range by moving from \a other.
+*/
+
+/*!
+    \fn void QMediaTimeRange::swap(QMediaTimeRange &other) noexcept
+
+    Swaps the current instance with the \a other.
+*/
 
 /*!
     \fn QMediaTimeRange::~QMediaTimeRange()
 
     Destructor.
 */
-QMediaTimeRange::~QMediaTimeRange()
-{
-
-}
+QMediaTimeRange::~QMediaTimeRange() = default;
 
 /*!
     Takes a copy of the \a other time range and returns itself.
 */
-QMediaTimeRange &QMediaTimeRange::operator=(const QMediaTimeRange &other)
-{
-    d = other.d;
-    return *this;
-}
+QMediaTimeRange &QMediaTimeRange::operator=(const QMediaTimeRange &other) noexcept = default;
+
+/*!
+    \fn QMediaTimeRange &QMediaTimeRange::operator=(QMediaTimeRange &&other)
+
+    Moves \a other into this time range.
+*/
 
 /*!
     Sets the time range to a single continuous interval, \a interval.
 */
-QMediaTimeRange &QMediaTimeRange::operator=(const QMediaTimeInterval &interval)
+QMediaTimeRange &QMediaTimeRange::operator=(const QMediaTimeRange::Interval &interval)
 {
     d = new QMediaTimeRangePrivate(interval);
     return *this;
 }
 
 /*!
-    \fn QMediaTimeRange::earliestTime() const
-
     Returns the earliest time within the time range.
 
     For empty time ranges, this value is equal to zero.
@@ -425,14 +302,12 @@ QMediaTimeRange &QMediaTimeRange::operator=(const QMediaTimeInterval &interval)
 qint64 QMediaTimeRange::earliestTime() const
 {
     if (!d->intervals.isEmpty())
-        return d->intervals[0].s;
+        return d->intervals[0].start();
 
     return 0;
 }
 
 /*!
-    \fn QMediaTimeRange::latestTime() const
-
     Returns the latest time within the time range.
 
     For empty time ranges, this value is equal to zero.
@@ -442,13 +317,12 @@ qint64 QMediaTimeRange::earliestTime() const
 qint64 QMediaTimeRange::latestTime() const
 {
     if (!d->intervals.isEmpty())
-        return d->intervals[d->intervals.count() - 1].e;
+        return d->intervals[d->intervals.size() - 1].end();
 
     return 0;
 }
 
 /*!
-    \fn QMediaTimeRange::addInterval(qint64 start, qint64 end)
     \overload
 
     Adds the interval specified by \a start and \a end
@@ -458,15 +332,14 @@ qint64 QMediaTimeRange::latestTime() const
 */
 void QMediaTimeRange::addInterval(qint64 start, qint64 end)
 {
-    d->addInterval(QMediaTimeInterval(start, end));
+    detach();
+    d->addInterval(Interval(start, end));
 }
 
 /*!
-    \fn QMediaTimeRange::addInterval(const QMediaTimeInterval &interval)
-
     Adds the specified \a interval to the time range.
 
-    Adding intervals which are not \l{QMediaTimeInterval::isNormal()}{normal}
+    Adding intervals which are not \l{QMediaTimeRange::Interval::isNormal()}{normal}
     is invalid, and will be ignored.
 
     If the specified interval is adjacent to, or overlaps existing
@@ -476,8 +349,9 @@ void QMediaTimeRange::addInterval(qint64 start, qint64 end)
 
     \sa removeInterval()
 */
-void QMediaTimeRange::addInterval(const QMediaTimeInterval &interval)
+void QMediaTimeRange::addInterval(const QMediaTimeRange::Interval &interval)
 {
+    detach();
     d->addInterval(interval);
 }
 
@@ -488,14 +362,14 @@ void QMediaTimeRange::addInterval(const QMediaTimeInterval &interval)
 */
 void QMediaTimeRange::addTimeRange(const QMediaTimeRange &range)
 {
+    detach();
     const auto intervals = range.intervals();
-    for (const QMediaTimeInterval &i : intervals) {
+    for (const Interval &i : intervals) {
         d->addInterval(i);
     }
 }
 
 /*!
-    \fn QMediaTimeRange::removeInterval(qint64 start, qint64 end)
     \overload
 
     Removes the interval specified by \a start and \a end
@@ -505,15 +379,16 @@ void QMediaTimeRange::addTimeRange(const QMediaTimeRange &range)
 */
 void QMediaTimeRange::removeInterval(qint64 start, qint64 end)
 {
-    d->removeInterval(QMediaTimeInterval(start, end));
+    detach();
+    d->removeInterval(Interval(start, end));
 }
 
 /*!
-    \fn QMediaTimeRange::removeInterval(const QMediaTimeInterval &interval)
+    \fn QMediaTimeRange::removeInterval(const QMediaTimeRange::Interval &interval)
 
     Removes the specified \a interval from the time range.
 
-    Removing intervals which are not \l{QMediaTimeInterval::isNormal()}{normal}
+    Removing intervals which are not \l{QMediaTimeRange::Interval::isNormal()}{normal}
     is invalid, and will be ignored.
 
     Intervals within the time range will be trimmed, split or deleted
@@ -524,8 +399,9 @@ void QMediaTimeRange::removeInterval(qint64 start, qint64 end)
 
     \sa addInterval()
 */
-void QMediaTimeRange::removeInterval(const QMediaTimeInterval &interval)
+void QMediaTimeRange::removeInterval(const QMediaTimeRange::Interval &interval)
 {
+    detach();
     d->removeInterval(interval);
 }
 
@@ -536,8 +412,9 @@ void QMediaTimeRange::removeInterval(const QMediaTimeInterval &interval)
 */
 void QMediaTimeRange::removeTimeRange(const QMediaTimeRange &range)
 {
+    detach();
     const auto intervals = range.intervals();
-    for (const QMediaTimeInterval &i : intervals) {
+    for (const Interval &i : intervals) {
         d->removeInterval(i);
     }
 }
@@ -554,7 +431,7 @@ QMediaTimeRange& QMediaTimeRange::operator+=(const QMediaTimeRange &other)
 /*!
     Adds the specified \a interval to the time range and returns the result.
 */
-QMediaTimeRange& QMediaTimeRange::operator+=(const QMediaTimeInterval &interval)
+QMediaTimeRange& QMediaTimeRange::operator+=(const QMediaTimeRange::Interval &interval)
 {
     addInterval(interval);
     return *this;
@@ -572,7 +449,7 @@ QMediaTimeRange& QMediaTimeRange::operator-=(const QMediaTimeRange &other)
 /*!
     Removes the specified \a interval from the time range and returns the result.
 */
-QMediaTimeRange& QMediaTimeRange::operator-=(const QMediaTimeInterval &interval)
+QMediaTimeRange& QMediaTimeRange::operator-=(const QMediaTimeRange::Interval &interval)
 {
     removeInterval(interval);
     return *this;
@@ -587,7 +464,16 @@ QMediaTimeRange& QMediaTimeRange::operator-=(const QMediaTimeInterval &interval)
 */
 void QMediaTimeRange::clear()
 {
+    detach();
     d->intervals.clear();
+}
+
+/*!
+    \internal
+*/
+void QMediaTimeRange::detach()
+{
+    d.detach();
 }
 
 /*!
@@ -595,7 +481,7 @@ void QMediaTimeRange::clear()
 
     Returns the list of intervals covered by this time range.
 */
-QList<QMediaTimeInterval> QMediaTimeRange::intervals() const
+QList<QMediaTimeRange::Interval> QMediaTimeRange::intervals() const
 {
     return d->intervals;
 }
@@ -620,7 +506,7 @@ bool QMediaTimeRange::isEmpty() const
 */
 bool QMediaTimeRange::isContinuous() const
 {
-    return (d->intervals.count() <= 1);
+    return (d->intervals.size() <= 1);
 }
 
 /*!
@@ -630,11 +516,11 @@ bool QMediaTimeRange::isContinuous() const
 */
 bool QMediaTimeRange::contains(qint64 time) const
 {
-    for (int i = 0; i < d->intervals.count(); i++) {
+    for (int i = 0; i < d->intervals.size(); i++) {
         if (d->intervals[i].contains(time))
             return true;
 
-        if (time < d->intervals[i].s)
+        if (time < d->intervals[i].start())
             break;
     }
 
@@ -642,53 +528,47 @@ bool QMediaTimeRange::contains(qint64 time) const
 }
 
 /*!
-    \relates QMediaTimeRange
+    \fn bool QMediaTimeRange::operator==(const QMediaTimeRange &lhs, const QMediaTimeRange &rhs)
 
-    Returns true if all intervals in \a a are present in \a b.
+    Returns true if all intervals in \a lhs are present in \a rhs.
 */
-bool operator==(const QMediaTimeRange &a, const QMediaTimeRange &b)
-{
-    return a.intervals() == b.intervals();
-}
 
 /*!
-    \relates QMediaTimeRange
+    \fn bool QMediaTimeRange::operator!=(const QMediaTimeRange &lhs, const QMediaTimeRange &rhs)
 
-    Returns true if one or more intervals in \a a are not present in \a b.
+    Returns true if one or more intervals in \a lhs are not present in \a rhs.
 */
-bool operator!=(const QMediaTimeRange &a, const QMediaTimeRange &b)
-{
-    return !(a == b);
-}
 
 /*!
+    \fn QMediaTimeRange operator+(const QMediaTimeRange &r1, const QMediaTimeRange &r2)
     \relates QMediaTimeRange
 
     Returns a time range containing the union between \a r1 and \a r2.
  */
-QMediaTimeRange operator+(const QMediaTimeRange &r1, const QMediaTimeRange &r2)
-{
-    return (QMediaTimeRange(r1) += r2);
-}
 
 /*!
+    \fn QMediaTimeRange operator-(const QMediaTimeRange &r1, const QMediaTimeRange &r2)
     \relates QMediaTimeRange
 
     Returns a time range containing \a r2 subtracted from \a r1.
  */
-QMediaTimeRange operator-(const QMediaTimeRange &r1, const QMediaTimeRange &r2)
-{
-    return (QMediaTimeRange(r1) -= r2);
-}
 
 #ifndef QT_NO_DEBUG_STREAM
+QDebug operator<<(QDebug dbg, const QMediaTimeRange::Interval &interval)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace();
+    dbg << "QMediaTimeRange::Interval( " << interval.start() << ", " << interval.end() << " )";
+    return dbg;
+}
+
 QDebug operator<<(QDebug dbg, const QMediaTimeRange &range)
 {
     QDebugStateSaver saver(dbg);
     dbg.nospace();
     dbg << "QMediaTimeRange( ";
     const auto intervals = range.intervals();
-    for (const QMediaTimeInterval &interval : intervals)
+    for (const auto &interval : intervals)
         dbg << '(' <<  interval.start() << ", " << interval.end() << ") ";
     dbg.space();
     dbg << ')';
@@ -697,4 +577,3 @@ QDebug operator<<(QDebug dbg, const QMediaTimeRange &range)
 #endif
 
 QT_END_NAMESPACE
-

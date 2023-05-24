@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -9,8 +9,16 @@ blink_modules_sources("canvas") {
   sources = [
     "canvas2d/base_rendering_context_2d.cc",
     "canvas2d/base_rendering_context_2d.h",
+    "canvas2d/canvas_color_cache.cc",
+    "canvas2d/canvas_color_cache.h",
+    "canvas2d/canvas_filter.cc",
+    "canvas2d/canvas_filter.h",
+    "canvas2d/canvas_filter_operation_resolver.cc",
+    "canvas2d/canvas_filter_operation_resolver.h",
     "canvas2d/canvas_gradient.cc",
     "canvas2d/canvas_gradient.h",
+    "canvas2d/canvas_image_source_util.cc",
+    "canvas2d/canvas_image_source_util.h",
     "canvas2d/canvas_path.cc",
     "canvas2d/canvas_path.h",
     "canvas2d/canvas_pattern.cc",
@@ -23,15 +31,18 @@ blink_modules_sources("canvas") {
     "canvas2d/canvas_style.h",
     "canvas2d/clip_list.cc",
     "canvas2d/clip_list.h",
-    "canvas2d/hit_region.cc",
-    "canvas2d/hit_region.h",
     "canvas2d/identifiability_study_helper.cc",
     "canvas2d/identifiability_study_helper.h",
+    "canvas2d/path_2d.cc",
     "canvas2d/path_2d.h",
+    "canvas2d/v8_canvas_style.cc",
+    "canvas2d/v8_canvas_style.h",
     "htmlcanvas/canvas_context_creation_attributes_helpers.cc",
     "htmlcanvas/canvas_context_creation_attributes_helpers.h",
     "htmlcanvas/html_canvas_element_module.cc",
     "htmlcanvas/html_canvas_element_module.h",
+    "imagebitmap/image_bitmap_factories.cc",
+    "imagebitmap/image_bitmap_factories.h",
     "imagebitmap/image_bitmap_rendering_context.cc",
     "imagebitmap/image_bitmap_rendering_context.h",
     "imagebitmap/image_bitmap_rendering_context_base.cc",
@@ -40,11 +51,19 @@ blink_modules_sources("canvas") {
     "offscreencanvas/offscreen_canvas_module.h",
     "offscreencanvas2d/offscreen_canvas_rendering_context_2d.cc",
     "offscreencanvas2d/offscreen_canvas_rendering_context_2d.h",
+    "testing/canvas_test_utils.cc",
   ]
   jumbo_excluded_sources = [
     "imagebitmap/image_bitmap_rendering_context_base.cc",
     "offscreencanvas2d/offscreen_canvas_rendering_context_2d.cc",
   ]
+
+  deps = [
+    "//third_party/blink/renderer/modules/formatted_text",
+    "//third_party/blink/renderer/modules/webcodecs",
+  ]
+  allow_circular_includes_from =
+      [ "//third_party/blink/renderer/modules/webcodecs" ]
 }
 
 fuzzer_test("canvas_fuzzer") {

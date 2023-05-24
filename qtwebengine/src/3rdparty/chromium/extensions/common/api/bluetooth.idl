@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -98,10 +98,6 @@ namespace bluetooth {
     Transport? transport;
 
     // The remaining battery of the device.
-    // TODO(https://crbug.com/973237): This field is only used by Chrome OS and
-    // it is different from others because it is not filled by the platform. In
-    // the future, when there is a unified Mojo service, this field will be
-    // moved to BluetoothDeviceInfo.
     long? batteryPercentage;
   };
 
@@ -133,12 +129,14 @@ namespace bluetooth {
     // Get information about the Bluetooth adapter.
     // |callback| : Called with an AdapterState object describing the adapter
     // state.
-    static void getAdapterState(AdapterStateCallback callback);
+    [supportsPromises] static void getAdapterState(
+        AdapterStateCallback callback);
 
     // Get information about a Bluetooth device known to the system.
     // |deviceAddress| : Address of device to get.
     // |callback| : Called with the Device object describing the device.
-    static void getDevice(DOMString deviceAddress, GetDeviceCallback callback);
+    [supportsPromises] static void getDevice(DOMString deviceAddress,
+                                             GetDeviceCallback callback);
 
     // Get a list of Bluetooth devices known to the system, including paired
     // and recently discovered devices.
@@ -147,8 +145,8 @@ namespace bluetooth {
     // will contain all bluetooth devices. Right now this is only supported in
     // ChromeOS, for other platforms, a full list is returned.
     // |callback| : Called when the search is completed.
-    static void getDevices(optional BluetoothFilter filter,
-                           GetDevicesCallback callback);
+    [supportsPromises] static void getDevices(optional BluetoothFilter filter,
+                                              GetDevicesCallback callback);
 
     // Start discovery. Newly discovered devices will be returned via the
     // onDeviceAdded event. Previously discovered devices already known to
@@ -159,11 +157,13 @@ namespace bluetooth {
     // startDiscovery.  Discovery can be resource intensive: stopDiscovery
     // should be called as soon as possible.
     // |callback| : Called to indicate success or failure.
-    static void startDiscovery(optional StartDiscoveryCallback callback);
+    [supportsPromises] static void startDiscovery(
+        optional StartDiscoveryCallback callback);
 
     // Stop discovery.
     // |callback| : Called to indicate success or failure.
-    static void stopDiscovery(optional StopDiscoveryCallback callback);
+    [supportsPromises] static void stopDiscovery(
+        optional StopDiscoveryCallback callback);
   };
 
   interface Events {

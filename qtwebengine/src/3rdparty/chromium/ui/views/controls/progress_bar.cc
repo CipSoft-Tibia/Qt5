@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,17 +11,18 @@
 
 #include "base/check_op.h"
 #include "base/i18n/number_formatting.h"
-#include "base/macros.h"
 #include "cc/paint/paint_flags.h"
 #include "third_party/skia/include/core/SkPath.h"
 #include "third_party/skia/include/effects/SkGradientShader.h"
 #include "ui/accessibility/ax_enums.mojom.h"
 #include "ui/accessibility/ax_node_data.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/color/color_id.h"
+#include "ui/color/color_provider.h"
 #include "ui/gfx/animation/linear_animation.h"
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/color_utils.h"
-#include "ui/native_theme/native_theme.h"
-#include "ui/views/metadata/metadata_impl_macros.h"
+#include "ui/gfx/geometry/skia_conversions.h"
 #include "ui/views/widget/widget.h"
 
 namespace views {
@@ -31,13 +32,20 @@ namespace {
 // In DP, the amount to round the corners of the progress bar (both bg and
 // fg, aka slice).
 constexpr int kCornerRadius = 3;
+constexpr int kSmallCornerRadius = 1;
 
-// Adds a rectangle to the path. The corners will be rounded if there is room.
+// Adds a rectangle to the path. The corners will be rounded with regular corner
+// radius if the progress bar height is larger than the regular corner radius.
+// Otherwise the corners will be rounded with the small corner radius if there
+// is room for it.
 void AddPossiblyRoundRectToPath(const gfx::Rect& rectangle,
                                 bool allow_round_corner,
                                 SkPath* path) {
-  if (!allow_round_corner || rectangle.height() < kCornerRadius) {
+  if (!allow_round_corner || rectangle.height() < kSmallCornerRadius) {
     path->addRect(gfx::RectToSkRect(rectangle));
+  } else if (rectangle.height() < kCornerRadius) {
+    path->addRoundRect(gfx::RectToSkRect(rectangle), kSmallCornerRadius,
+                       kSmallCornerRadius);
   } else {
     path->addRoundRect(gfx::RectToSkRect(rectangle), kCornerRadius,
                        kCornerRadius);
@@ -53,7 +61,7 @@ int RoundToPercent(double fractional_value) {
 ProgressBar::ProgressBar(int preferred_height, bool allow_round_corner)
     : preferred_height_(preferred_height),
       allow_round_corner_(allow_round_corner) {
-  EnableCanvasFlippingForRTLUI(true);
+  SetFlipCanvasOnPaintForRTLUI(true);
 }
 
 ProgressBar::~ProgressBar() = default;
@@ -129,7 +137,7 @@ void ProgressBar::SetValue(double value) {
   current_value_ = adjusted_value;
   if (IsIndeterminate()) {
     indeterminate_bar_animation_ = std::make_unique<gfx::LinearAnimation>(this);
-    indeterminate_bar_animation_->SetDuration(base::TimeDelta::FromSeconds(2));
+    indeterminate_bar_animation_->SetDuration(base::Seconds(2));
     indeterminate_bar_animation_->Start();
   } else {
     indeterminate_bar_animation_.reset();
@@ -139,12 +147,20 @@ void ProgressBar::SetValue(double value) {
   MaybeNotifyAccessibilityValueChanged();
 }
 
+void ProgressBar::SetPaused(bool is_paused) {
+  if (is_paused_ == is_paused)
+    return;
+
+  is_paused_ = is_paused;
+  OnPropertyChanged(&is_paused_, kPropertyEffectsPaint);
+}
+
 SkColor ProgressBar::GetForegroundColor() const {
   if (foreground_color_)
     return foreground_color_.value();
 
-  return GetNativeTheme()->GetSystemColor(
-      ui::NativeTheme::kColorId_ProminentButtonColor);
+  return GetColorProvider()->GetColor(GetPaused() ? ui::kColorProgressBarPaused
+                                                  : ui::kColorProgressBar);
 }
 
 void ProgressBar::SetForegroundColor(SkColor color) {
@@ -257,8 +273,9 @@ void ProgressBar::MaybeNotifyAccessibilityValueChanged() {
 }
 
 BEGIN_METADATA(ProgressBar, View)
-ADD_PROPERTY_METADATA(SkColor, ForegroundColor)
-ADD_PROPERTY_METADATA(SkColor, BackgroundColor)
+ADD_PROPERTY_METADATA(SkColor, ForegroundColor, ui::metadata::SkColorConverter)
+ADD_PROPERTY_METADATA(SkColor, BackgroundColor, ui::metadata::SkColorConverter)
+ADD_PROPERTY_METADATA(bool, Paused)
 END_METADATA
 
 }  // namespace views

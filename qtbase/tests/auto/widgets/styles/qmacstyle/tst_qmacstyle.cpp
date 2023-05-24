@@ -1,37 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtWidgets>
 #include <private/qstylehelper_p.h>
-
-const int N = 1;
 
 Q_DECLARE_METATYPE(QStyleHelper::WidgetSizePolicy);
 
@@ -40,22 +13,13 @@ Q_DECLARE_METATYPE(QStyleHelper::WidgetSizePolicy);
 
 typedef QSizePolicy::ControlType ControlType;
 
-CT(DefaultType)
 CT(ButtonBox)
 CT(CheckBox)
 CT(ComboBox)
-CT(Frame)
-CT(GroupBox)
 CT(Label)
-CT(Line)
 CT(LineEdit)
 CT(PushButton)
 CT(RadioButton)
-CT(Slider)
-CT(SpinBox)
-CT(TabWidget)
-CT(ToolButton)
-
 
 class tst_QMacStyle : public QObject
 {
@@ -86,13 +50,17 @@ private:
     static int vgap(QWidget *widget1, QWidget *widget2) { return gap(widget1, widget2).height(); }
     static void setSize(QWidget *widget, QStyleHelper::WidgetSizePolicy size);
     static int spacing(ControlType control1, ControlType control2, Qt::Orientation orientation,
-                       QStyleOption *option = 0, QWidget *widget = 0);
+                       QStyleOption *option = nullptr, QWidget *widget = nullptr);
     static int hspacing(ControlType control1, ControlType control2, QStyleHelper::WidgetSizePolicy size = QStyleHelper::SizeLarge);
     static int vspacing(ControlType control1, ControlType control2, QStyleHelper::WidgetSizePolicy size = QStyleHelper::SizeLarge);
 };
 
 #define SIZE(x, y, z) \
     ((size == QStyleHelper::SizeLarge) ? (x) : (size == QStyleHelper::SizeSmall) ? (y) : (z))
+
+static bool bigSurOrAbove() {
+    return QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSBigSur;
+}
 
 void tst_QMacStyle::sizeHints_data()
 {
@@ -144,7 +112,7 @@ void tst_QMacStyle::sizeHints()
     QCOMPARE(sh(&comboBox3).height(), SIZE(32, -1, -1));
 
     QSlider slider1(Qt::Horizontal, &w);
-    QCOMPARE(sh(&slider1).height(), SIZE(15, 12, 10));
+    QCOMPARE(sh(&slider1).height(), SIZE(bigSurOrAbove() ? 18 : 15, 12, 10));
 
     slider1.setTickPosition(QSlider::TicksAbove);
     QCOMPARE(sh(&slider1).height(), SIZE(24, 17, 16));  // Builder
@@ -153,7 +121,7 @@ void tst_QMacStyle::sizeHints()
     QCOMPARE(sh(&slider1).height(), SIZE(24, 17, 16));  // Builder
 
     slider1.setTickPosition(QSlider::TicksBothSides);
-    QVERIFY(sh(&slider1).height() > SIZE(15, 12, 10));  // common sense
+    QVERIFY(sh(&slider1).height() > SIZE(bigSurOrAbove() ? 18 : 15, 12, 10));  // common sense
 
     QPushButton ok1("OK", &w);
     QPushButton cancel1("Cancel", &w);
@@ -305,6 +273,8 @@ QSize tst_QMacStyle::gap(QWidget *widget1, QWidget *widget2)
 void tst_QMacStyle::setSize(QWidget *widget, QStyleHelper::WidgetSizePolicy size)
 {
     switch (size) {
+    case QStyleHelper::SizeDefault:
+        break;
     case QStyleHelper::SizeLarge:
         widget->setAttribute(Qt::WA_MacNormalSize, true);
         break;

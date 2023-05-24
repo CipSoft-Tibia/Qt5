@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,43 +7,83 @@
 
 #include <memory>
 
+#include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
+#include "content/public/browser/render_process_host.h"
+#include "content/public/browser/render_process_host_observer.h"
 #include "services/network/public/cpp/cross_origin_opener_policy.h"
+#include "services/network/public/mojom/blocked_by_response_reason.mojom.h"
 #include "services/network/public/mojom/content_security_policy.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+
+namespace net {
+class IsolationInfo;
+class NetworkAnonymizationKey;
+}  // namespace net
 
 namespace content {
 class CrossOriginOpenerPolicyReporter;
 class FrameTreeNode;
+class NavigationRequest;
 class StoragePartition;
+struct ChildProcessTerminationInfo;
+
+enum class CoopSwapResult {
+  // Indicates that no BrowsingContext group swap is required, based on COOP
+  // values.
+  kNoSwap,
+  // Indicates that a BrowsingContext group swap is required, but that we should
+  // use a BrowsingContext group that is "related", preserving restricted
+  // openers.
+  kSwapRelated,
+  // Indicates that a BrowsingContext group swap is required, and that should
+  // sever all links between the two BrowsingContext groups, opener, names, etc.
+  kSwap
+};
+
+// Helper function that returns whether the BrowsingInstance should change
+// following COOP rules defined in:
+//
+// https://gist.github.com/annevk/6f2dd8c79c77123f39797f6bdac43f3e#changes-to-navigation
+CONTENT_EXPORT CoopSwapResult
+ShouldSwapBrowsingInstanceForCrossOriginOpenerPolicy(
+    network::mojom::CrossOriginOpenerPolicyValue initiator_coop,
+    const url::Origin& initiator_origin,
+    bool is_navigation_from_initial_empty_document,
+    network::mojom::CrossOriginOpenerPolicyValue destination_coop,
+    const url::Origin& destination_origin);
 
 // Groups information used to apply COOP during navigations. This class will be
 // used to trigger a number of mechanisms such as BrowsingInstance switch or
 // reporting.
-class CrossOriginOpenerPolicyStatus {
+class CrossOriginOpenerPolicyStatus : public RenderProcessHostObserver {
  public:
-  CrossOriginOpenerPolicyStatus(
-      FrameTreeNode* frame_tree_node,
-      const base::Optional<url::Origin>& intiator_origin);
-  ~CrossOriginOpenerPolicyStatus();
+  explicit CrossOriginOpenerPolicyStatus(NavigationRequest* navigation_request);
+  ~CrossOriginOpenerPolicyStatus() override;
 
-  // Called after receiving a network response. Returns a BlockedByResponse
-  // reason if the navigation should be blocked, nullopt otherwise.
-  base::Optional<network::mojom::BlockedByResponseReason> EnforceCOOP(
-      network::mojom::URLResponseHead* response_head,
+  // Sanitize the COOP header from the `response`.
+  // Return an error, and swap browsing context group when COOP is used on
+  // sandboxed popups.
+  absl::optional<network::mojom::BlockedByResponseReason> SanitizeResponse(
+      network::mojom::URLResponseHead* response);
+
+  // Called when receiving a redirect or the final response.
+  void EnforceCOOP(
+      const network::CrossOriginOpenerPolicy& response_coop,
       const url::Origin& response_origin,
-      const GURL& response_url,
-      const GURL& response_referrer_url);
+      const net::NetworkAnonymizationKey& network_anonymization_key);
 
-  // Set to true whenever the Cross-Origin-Opener-Policy spec requires a
-  // "BrowsingContext group" swap:
-  // https://gist.github.com/annevk/6f2dd8c79c77123f39797f6bdac43f3e
-  // This forces the new RenderFrameHost to use a different BrowsingInstance
-  // than the current one. If other pages had JavaScript references to the
-  // Window object for the frame (via window.opener, window.open(), et cetera),
-  // those references will be broken; window.name will also be reset to an empty
-  // string.
-  bool require_browsing_instance_swap() const {
-    return require_browsing_instance_swap_;
+  // Force a browsing instance swap, even if the COOP rules do not require it.
+  // Calling this function is safe because it can only tighten security.
+  // This is used by _unfencedTop in fenced frames to ensure that navigations
+  // leaving the fenced context create a new browsing instance.
+  void ForceBrowsingInstanceSwap() {
+    browsing_instance_swap_result_ = CoopSwapResult::kSwap;
+  }
+
+  CoopSwapResult browsing_instance_swap_result() const {
+    return browsing_instance_swap_result_;
   }
 
   // The virtual browsing context group of the document to commit. Initially,
@@ -54,10 +94,10 @@ class CrossOriginOpenerPolicyStatus {
     return virtual_browsing_context_group_;
   }
 
-  // This is used to warn developer a COOP header has been ignored, because
-  // the origin was not trustworthy.
-  bool header_ignored_due_to_insecure_context() const {
-    return header_ignored_due_to_insecure_context_;
+  // Used to keep track of browsing context group swaps that would happen if
+  // COOP had a value of same-origin-allow-popups by default.
+  int soap_by_default_virtual_browsing_context_group() const {
+    return soap_by_default_virtual_browsing_context_group_;
   }
 
   // The COOP used when comparing to the COOP and origin of a response. At the
@@ -68,6 +108,11 @@ class CrossOriginOpenerPolicyStatus {
     return current_coop_;
   }
 
+  const std::vector<base::UnguessableToken>&
+  TransientReportingSourcesForTesting() {
+    return transient_reporting_sources_;
+  }
+
   std::unique_ptr<CrossOriginOpenerPolicyReporter> TakeCoopReporter();
 
   // Called when a RenderFrameHost has been created to use its process's
@@ -76,27 +121,57 @@ class CrossOriginOpenerPolicyStatus {
   void UpdateReporterStoragePartition(StoragePartition* storage_partition);
 
  private:
+  // If the process crashes/exited before CrossOriginOpenerPolicyStatus is
+  // destructed, clean up transient reporting sources.
+  void RenderProcessExited(RenderProcessHost* host,
+                           const ChildProcessTerminationInfo& info) override;
+  void RenderProcessHostDestroyed(RenderProcessHost* host) override;
+
+  void SetReportingEndpoints(const url::Origin& response_origin,
+                             StoragePartition* storage_partition,
+                             const base::UnguessableToken& reporting_source,
+                             const net::IsolationInfo& isolation_info);
+  // Remove any transient Reporting-Endpoints endpoint created for COOP
+  // reporting during navigation before the document loads.
+  // There could be multiple due to redirect chains.
+  void ClearTransientReportingSources();
   // Make sure COOP is relevant or clear the COOP headers.
-  void SanitizeCoopHeaders(const GURL& response_url,
-                           const url::Origin& response_origin,
-                           network::mojom::URLResponseHead* response_head);
+  void SanitizeCoopHeaders(
+      const GURL& response_url,
+      network::mojom::URLResponseHead* response_head) const;
+
+  // The NavigationRequest which owns this object.
+  const raw_ptr<NavigationRequest> navigation_request_;
 
   // Tracks the FrameTreeNode in which this navigation is taking place.
-  const FrameTreeNode* frame_tree_node_;
+  raw_ptr<const FrameTreeNode> frame_tree_node_;
 
-  bool require_browsing_instance_swap_ = false;
+  // Track the previous document's RenderProcessHost. This instance acquires
+  // reporting endpoints from it, and will use it to release them in its
+  // destructor.
+  raw_ptr<RenderProcessHost> previous_document_rph_;
+  base::ScopedObservation<RenderProcessHost, RenderProcessHostObserver>
+      previous_document_rph_observation_{this};
+
+  // Tracks whether the new document created by the navigation needs to be
+  // created in a different BrowsingContext group. This is updated after every
+  // redirect, and after receiving the final response.
+  CoopSwapResult browsing_instance_swap_result_ = CoopSwapResult::kNoSwap;
 
   int virtual_browsing_context_group_;
 
-  // When a page has a reachable opener and COOP triggers a browsing instance
-  // swap we sever the window.open relationship. This is one of the cases that
-  // can be reported using the COOP reporting API.
-  const bool had_opener_;
+  // Keeps track of browsing context group switches that would happen if COOP
+  // had a value of same-origin-allow-popups-by-default.
+  int soap_by_default_virtual_browsing_context_group_;
 
-  // Whether this is the first navigation happening in the browsing context.
-  const bool is_initial_navigation_;
-
-  bool header_ignored_due_to_insecure_context_ = false;
+  // Whether this is a navigation away from the initial empty document. Note
+  // that this might be false in case it happens on a initial empty document
+  // whose input stream has been opened (e.g. due to document.open()), causing
+  // it to no longer be considered as the initial empty document per the HTML
+  // specification.
+  // For more details, see FrameTreeNode::is_on_initial_empty_document() and
+  // https://html.spec.whatwg.org/multipage/origin.html#browsing-context-group-switches-due-to-cross-origin-opener-policy:still-on-its-initial-about:blank-document
+  const bool is_navigation_from_initial_empty_document_;
 
   network::CrossOriginOpenerPolicy current_coop_;
 
@@ -119,6 +194,10 @@ class CrossOriginOpenerPolicyStatus {
 
   // The reporter currently in use by COOP.
   std::unique_ptr<CrossOriginOpenerPolicyReporter> coop_reporter_;
+
+  // Transient reporting sources created for Reporting-Endpoints header during
+  // this navigation before it fails or commits.
+  std::vector<base::UnguessableToken> transient_reporting_sources_;
 
   // Whether the current context tracked by this CrossOriginOpenerPolicy is the
   // source of the current navigation. This is updated every time we receive a

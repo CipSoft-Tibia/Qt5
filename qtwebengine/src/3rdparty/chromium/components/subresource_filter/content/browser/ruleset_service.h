@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,18 +33,16 @@
 #include <stdint.h>
 
 #include <memory>
-#include <string>
-#include <vector>
 
-#include "base/callback.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/callback.h"
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/version.h"
 #include "components/subresource_filter/content/browser/ruleset_publisher.h"
 #include "components/subresource_filter/content/browser/ruleset_version.h"
@@ -59,6 +57,7 @@ class SequencedTaskRunner;
 namespace subresource_filter {
 
 class RulesetIndexer;
+class UnindexedRulesetStreamGenerator;
 
 // Contains all utility functions that govern how files pertaining to indexed
 // ruleset version should be organized on disk.
@@ -163,6 +162,10 @@ class RulesetService : public base::SupportsWeakPtr<RulesetService> {
       scoped_refptr<base::SequencedTaskRunner> blocking_task_runner,
       // Note: Optional publisher parameter used exclusively for testing.
       std::unique_ptr<RulesetPublisher> publisher = nullptr);
+
+  RulesetService(const RulesetService&) = delete;
+  RulesetService& operator=(const RulesetService&) = delete;
+
   virtual ~RulesetService();
 
   // Pass-through function to set the callback on publishing.
@@ -214,10 +217,11 @@ class RulesetService : public base::SupportsWeakPtr<RulesetService> {
       const base::FilePath& indexed_ruleset_base_dir,
       const UnindexedRulesetInfo& unindexed_ruleset_info);
 
-  // Reads the rules from the |unindexed_ruleset_file|, and indexes them using
-  // |indexer|. Returns whether the entire ruleset could be parsed.
-  static bool IndexRuleset(base::File unindexed_ruleset_file,
-                           RulesetIndexer* indexer);
+  // Reads the rules via the |unindexed_ruleset_stream_generator|, and indexes
+  // them using |indexer|. Returns whether the entire ruleset could be parsed.
+  static bool IndexRuleset(
+      UnindexedRulesetStreamGenerator* unindexed_ruleset_stream_generator,
+      RulesetIndexer* indexer);
 
   // Writes all files comprising the given |indexed_version| of the ruleset
   // into the corresponding subdirectory in |indexed_ruleset_base_dir|.
@@ -256,9 +260,9 @@ class RulesetService : public base::SupportsWeakPtr<RulesetService> {
                         const IndexedRulesetVersion& version);
 
   void OpenAndPublishRuleset(const IndexedRulesetVersion& version);
-  void OnRulesetSet(base::File file);
+  void OnRulesetSet(RulesetFilePtr file);
 
-  PrefService* const local_state_;
+  const raw_ptr<PrefService> local_state_;
 
   // Obsolete files deletion and indexing should be done on this runner.
   scoped_refptr<base::SequencedTaskRunner> background_task_runner_;
@@ -269,8 +273,6 @@ class RulesetService : public base::SupportsWeakPtr<RulesetService> {
   bool is_initialized_;
 
   const base::FilePath indexed_ruleset_base_dir_;
-
-  DISALLOW_COPY_AND_ASSIGN(RulesetService);
 };
 
 }  // namespace subresource_filter

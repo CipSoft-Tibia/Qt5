@@ -1,9 +1,12 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/aura/window_targeter.h"
 
+#include <tuple>
+
+#include "build/chromeos_buildflags.h"
 #include "ui/aura/client/capture_client.h"
 #include "ui/aura/client/event_client.h"
 #include "ui/aura/client/focus_client.h"
@@ -13,6 +16,7 @@
 #include "ui/aura/window_delegate.h"
 #include "ui/aura/window_event_dispatcher.h"
 #include "ui/aura/window_tree_host.h"
+#include "ui/compositor/layer.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
 #include "ui/events/event_target.h"
@@ -122,7 +126,7 @@ Window* WindowTargeter::FindTargetInRootWindow(Window* root_window,
     if (consumer)
       return static_cast<Window*>(consumer);
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
     // If the initial touch is outside the window's display, target the root.
     // This is used for bezel gesture events (eg. swiping in from screen edge).
     display::Display display =
@@ -137,7 +141,7 @@ Window* WindowTargeter::FindTargetInRootWindow(Window* root_window,
       return root_window;
 #else
     // If the initial touch is outside the root window, target the root.
-    // TODO: this code is likely not necessarily and will be removed.
+    // TODO(lanwei): this code is likely not necessarily and will be removed.
     if (!root_window->bounds().Contains(event.location()))
       return root_window;
 #endif
@@ -171,7 +175,7 @@ bool WindowTargeter::ProcessEventIfTargetsDifferentRootWindow(
         window_tree_host->GetRootTransform(),
         window_tree_host->GetRootTransformForLocalEventCoordinates());
   }
-  ignore_result(new_root->GetHost()->event_sink()->OnEventFromSource(event));
+  std::ignore = new_root->GetHost()->GetEventSink()->OnEventFromSource(event);
   return true;
 }
 
@@ -223,7 +227,7 @@ Window* WindowTargeter::FindTargetForLocatedEvent(Window* window,
     if (target) {
       window->ConvertEventToTarget(target, event);
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
       if (window->IsRootWindow() && event->HasNativeEvent()) {
         // If window is root, and the target is in a different host, we need to
         // convert the native event to the target's host as well. This happens
@@ -272,35 +276,15 @@ bool WindowTargeter::SubtreeCanAcceptEvent(
 bool WindowTargeter::EventLocationInsideBounds(
     Window* window,
     const ui::LocatedEvent& event) const {
-  gfx::Rect mouse_rect;
-  gfx::Rect touch_rect;
-  if (!GetHitTestRects(window, &mouse_rect, &touch_rect))
-    return false;
+  gfx::Point point = ConvertEventLocationToWindowCoordinates(window, event);
 
-  const gfx::Vector2d offset = -window->bounds().OffsetFromOrigin();
-  mouse_rect.Offset(offset);
-  touch_rect.Offset(offset);
-  gfx::Point point = event.location();
-  if (window->parent())
-    Window::ConvertPointToTarget(window->parent(), window, &point);
+  BoundsType bounds_type = BoundsType::kMouse;
+  if (event.IsTouchEvent())
+    bounds_type = BoundsType::kTouch;
+  else if (event.IsGestureEvent())
+    bounds_type = BoundsType::kGesture;
 
-  const bool point_in_rect = event.IsTouchEvent() || event.IsGestureEvent()
-                                 ? touch_rect.Contains(point)
-                                 : mouse_rect.Contains(point);
-  if (!point_in_rect)
-    return false;
-
-  auto shape_rects = GetExtraHitTestShapeRects(window);
-  if (!shape_rects)
-    return true;
-
-  for (const gfx::Rect& shape_rect : *shape_rects) {
-    if (shape_rect.Contains(point)) {
-      return true;
-    }
-  }
-
-  return false;
+  return PointInsideBounds(window, bounds_type, point);
 }
 
 bool WindowTargeter::ShouldUseExtendedBounds(const aura::Window* w) const {
@@ -316,6 +300,16 @@ bool WindowTargeter::ShouldUseExtendedBounds(const aura::Window* w) const {
   // Insets should only apply to the window. Subclasses may enforce other
   // policies.
   return window() == w;
+}
+
+// static
+gfx::Point WindowTargeter::ConvertEventLocationToWindowCoordinates(
+    Window* window,
+    const ui::LocatedEvent& event) {
+  gfx::Point point = event.location();
+  if (window->parent())
+    Window::ConvertPointToTarget(window->parent(), window, &point);
+  return point;
 }
 
 Window* WindowTargeter::FindTargetForNonKeyEvent(Window* root_window,
@@ -353,6 +347,65 @@ Window* WindowTargeter::FindTargetForLocatedEventRecursively(
     target->ConvertEventToTarget(root_window, event);
   }
   return root_window->CanAcceptEvent(*event) ? root_window : nullptr;
+}
+
+bool WindowTargeter::PointInsideBounds(Window* window,
+                                       BoundsType bounds_type,
+                                       const gfx::Point& point) const {
+  gfx::Rect mouse_rect;
+  gfx::Rect touch_rect;
+  if (!GetHitTestRects(window, &mouse_rect, &touch_rect))
+    return false;
+
+  const gfx::Vector2d offset = -window->bounds().OffsetFromOrigin();
+  mouse_rect.Offset(offset);
+  touch_rect.Offset(offset);
+
+  const bool point_in_rect =
+      bounds_type == BoundsType::kTouch || bounds_type == BoundsType::kGesture
+          ? touch_rect.Contains(point)
+          : mouse_rect.Contains(point);
+  if (point_in_rect) {
+    auto shape_rects = GetExtraHitTestShapeRects(window);
+    if (!shape_rects)
+      return true;
+
+    for (const gfx::Rect& shape_rect : *shape_rects) {
+      if (shape_rect.Contains(point)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  if (ShouldUseExtendedBounds(window) &&
+      (!mouse_extend_.IsEmpty() || !touch_extend_.IsEmpty())) {
+    // Insets take priority over child traversal, otherwise it's possible to
+    // have a window that has a non-interactable region in the middle.
+    return false;
+  }
+
+  if (window->layer()->GetMasksToBounds()) {
+    // If the layer masks to bounds, children are clipped and shouldn't receive
+    // input events.
+    return false;
+  }
+
+  // Child windows are not always fully contained in the current window.
+  std::unique_ptr<ui::EventTargetIterator> iter = window->GetChildIterator();
+  if (!iter)
+    return false;
+
+  for (ui::EventTarget* child = iter->GetNextTarget(); child;
+       child = iter->GetNextTarget()) {
+    auto* child_window = static_cast<Window*>(child);
+    gfx::Point child_point(point);
+    Window::ConvertPointToTarget(window, child_window, &child_point);
+    if (PointInsideBounds(child_window, bounds_type, child_point))
+      return true;
+  }
+  return false;
 }
 
 }  // namespace aura

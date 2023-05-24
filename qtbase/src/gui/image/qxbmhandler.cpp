@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qplatformdefs.h>
 #include "private/qxbmhandler_p.h"
@@ -44,13 +8,17 @@
 
 #include <qimage.h>
 #include <qiodevice.h>
-#include <qregexp.h>
+#include <qloggingcategory.h>
 #include <qvariant.h>
+#include <private/qtools_p.h>
 
 #include <stdio.h>
-#include <ctype.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace QtMiscUtils;
+
+Q_DECLARE_LOGGING_CATEGORY(lcImageIo)
 
 /*****************************************************************************
   X bitmap image read/write functions
@@ -58,8 +26,7 @@ QT_BEGIN_NAMESPACE
 
 static inline int hex2byte(char *p)
 {
-    return ((isdigit((uchar) *p) ? *p - '0' : toupper((uchar) *p) - 'A' + 10) << 4) |
-           (isdigit((uchar) *(p+1)) ? *(p+1) - '0' : toupper((uchar) *(p+1)) - 'A' + 10);
+    return QtMiscUtils::fromHex(p[0]) * 16 | QtMiscUtils::fromHex(p[1]);
 }
 
 static bool read_xbm_header(QIODevice *device, int& w, int& h)
@@ -67,8 +34,6 @@ static bool read_xbm_header(QIODevice *device, int& w, int& h)
     const int buflen = 300;
     const int maxlen = 4096;
     char buf[buflen + 1];
-    QRegExp r1(QLatin1String("^#define[ \t]+[a-zA-Z0-9._]+[ \t]+"));
-    QRegExp r2(QLatin1String("[0-9]+"));
 
     qint64 readBytes = 0;
     qint64 totalReadBytes = 0;
@@ -90,30 +55,36 @@ static bool read_xbm_header(QIODevice *device, int& w, int& h)
             return false;
     }
 
-    buf[readBytes - 1] = '\0';
-    QString sbuf;
-    sbuf = QString::fromLatin1(buf);
+    auto parseDefine = [] (const char *buf, int len) -> int {
+        auto checkChar = [] (char ch) -> bool {
+            return isAsciiLetterOrNumber(ch)
+                || ch == '_' || ch == '.';
+        };
+        auto isAsciiSpace = [] (char ch) -> bool {
+            return ch == ' ' || ch == '\t';
+        };
+        const char define[] = "#define";
+        constexpr size_t defineLen = sizeof(define) - 1;
+        if (strncmp(buf, define, defineLen) != 0)
+            return 0;
+        int index = defineLen;
+        while (buf[index] && isAsciiSpace(buf[index]))
+            ++index;
+        while (buf[index] && checkChar(buf[index]))
+            ++index;
+        while (buf[index] && isAsciiSpace(buf[index]))
+            ++index;
+
+        return QByteArray(buf + index, len - index).toInt();
+    };
+
 
     // "#define .._width <num>"
-    if (r1.indexIn(sbuf) == 0 &&
-         r2.indexIn(sbuf, r1.matchedLength()) == r1.matchedLength())
-        w = QByteArray(&buf[r1.matchedLength()]).trimmed().toInt();
-    else
-        return false;
+    w = parseDefine(buf, readBytes - 1);
 
-    // "#define .._height <num>"
     readBytes = device->readLine(buf, buflen);
-    if (readBytes <= 0)
-        return false;
-    buf[readBytes - 1] = '\0';
-
-    sbuf = QString::fromLatin1(buf);
-
-    if (r1.indexIn(sbuf) == 0 &&
-         r2.indexIn(sbuf, r1.matchedLength()) == r1.matchedLength())
-        h = QByteArray(&buf[r1.matchedLength()]).trimmed().toInt();
-    else
-        return false;
+    // "#define .._height <num>"
+    h = parseDefine(buf, readBytes - 1);
 
     // format error
     if (w <= 0 || w > 32767 || h <= 0 || h > 32767)
@@ -142,11 +113,8 @@ static bool read_xbm_body(QIODevice *device, int w, int h, QImage *outImage)
         p = strstr(buf, "0x");
     } while (!p);
 
-    if (outImage->size() != QSize(w, h) || outImage->format() != QImage::Format_MonoLSB) {
-        *outImage = QImage(w, h, QImage::Format_MonoLSB);
-        if (outImage->isNull())
-            return false;
-    }
+    if (!QImageIOHandler::allocateImage(QSize(w, h), QImage::Format_MonoLSB, outImage))
+        return false;
 
     outImage->fill(Qt::color0);       // in case the image data does not cover the full image
 
@@ -160,9 +128,10 @@ static bool read_xbm_body(QIODevice *device, int w, int h, QImage *outImage)
 
     while (y < h) {                                // for all encoded bytes...
         if (p && p < (buf + readBytes - 3)) {      // p = "0x.."
-            if (!isxdigit(p[2]) || !isxdigit(p[3]))
+            const int byte = hex2byte(p + 2);
+            if (byte < 0) // non-hex char encountered
                 return false;
-            *b++ = hex2byte(p+2);
+            *b++ = byte;
             p += 2;
             if (++x == w && ++y < h) {
                 b = outImage->scanLine(y);
@@ -195,7 +164,7 @@ static bool write_xbm_image(const QImage &sourceImage, QIODevice *device, const 
     int        h = image.height();
     int        i;
     QString    s = fileName; // get file base name
-    int        msize = s.length() + 100;
+    int        msize = s.size() + 100;
     char *buf = new char[msize];
 
     qsnprintf(buf, msize, "#define %s_width %d\n", s.toUtf8().data(), w);
@@ -291,7 +260,10 @@ bool QXbmHandler::canRead() const
 
 bool QXbmHandler::canRead(QIODevice *device)
 {
-    QImage image;
+    if (!device) {
+        qCWarning(lcImageIo, "QXbmHandler::canRead() called with no device");
+        return false;
+    }
 
     // it's impossible to tell whether we can load an XBM or not when
     // it's from a sequential device, as the only way to do it is to
@@ -299,6 +271,7 @@ bool QXbmHandler::canRead(QIODevice *device)
     if (device->isSequential())
         return false;
 
+    QImage image;
     qint64 oldPos = device->pos();
     bool success = read_xbm_image(device, &image);
     device->seek(oldPos);

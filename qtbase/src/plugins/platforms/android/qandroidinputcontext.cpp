@@ -1,67 +1,29 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
-** Copyright (C) 2016 Olivier Goffart <ogoffart@woboq.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
+// Copyright (C) 2016 Olivier Goffart <ogoffart@woboq.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <android/log.h>
 
-#include "qandroidinputcontext.h"
-#include "androidjnimain.h"
-#include "androidjniinput.h"
-#include "qandroideventdispatcher.h"
 #include "androiddeadlockprotector.h"
+#include "androidjniinput.h"
+#include "androidjnimain.h"
+#include "qandroideventdispatcher.h"
+#include "qandroidinputcontext.h"
 #include "qandroidplatformintegration.h"
-#include <private/qhighdpiscaling_p.h>
-#include <QDebug>
+#include "private/qhighdpiscaling_p.h"
+
+#include <QTextBoundaryFinder>
+#include <QTextCharFormat>
+#include <QtCore/QJniEnvironment>
+#include <QtCore/QJniObject>
 #include <qevent.h>
 #include <qguiapplication.h>
+#include <qinputmethod.h>
 #include <qsharedpointer.h>
 #include <qthread.h>
-#include <qinputmethod.h>
 #include <qwindow.h>
-#include <QtCore/private/qjni_p.h>
-#include <private/qhighdpiscaling_p.h>
-
-#include <QTextCharFormat>
-#include <QTextBoundaryFinder>
-
-#include <QDebug>
+#include <qpa/qplatformwindow.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -92,10 +54,10 @@ private:
 
 } // namespace anonymous
 
-static QAndroidInputContext *m_androidInputContext = 0;
-static char const *const QtNativeInputConnectionClassName = "org/qtproject/qt5/android/QtNativeInputConnection";
-static char const *const QtExtractedTextClassName = "org/qtproject/qt5/android/QtExtractedText";
-static char const *const QtObjectType = "QDialog";
+static QAndroidInputContext *m_androidInputContext = nullptr;
+static char const *const QtNativeInputConnectionClassName = "org/qtproject/qt/android/QtNativeInputConnection";
+static char const *const QtExtractedTextClassName = "org/qtproject/qt/android/QtExtractedText";
+static int m_selectHandleWidth = 0;
 static jclass m_extractedTextClass = 0;
 static jmethodID m_classConstructorMethodID = 0;
 static jfieldID m_partialEndOffsetFieldID = 0;
@@ -118,9 +80,7 @@ static jboolean beginBatchEdit(JNIEnv */*env*/, jobject /*thiz*/)
     if (!m_androidInputContext)
         return JNI_FALSE;
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug("@@@ BEGINBATCH");
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ BEGINBATCH";
     jboolean res = JNI_FALSE;
     runOnQtThread([&res]{res = m_androidInputContext->beginBatchEdit();});
     return res;
@@ -131,9 +91,7 @@ static jboolean endBatchEdit(JNIEnv */*env*/, jobject /*thiz*/)
     if (!m_androidInputContext)
         return JNI_FALSE;
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug("@@@ ENDBATCH");
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ ENDBATCH";
 
     jboolean res = JNI_FALSE;
     runOnQtThread([&res]{res = m_androidInputContext->endBatchEdit();});
@@ -151,9 +109,7 @@ static jboolean commitText(JNIEnv *env, jobject /*thiz*/, jstring text, jint new
     QString str(reinterpret_cast<const QChar *>(jstr), env->GetStringLength(text));
     env->ReleaseStringChars(text, jstr);
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug() << "@@@ COMMIT" << str << newCursorPosition;
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ COMMIT" << str << newCursorPosition;
     jboolean res = JNI_FALSE;
     runOnQtThread([&]{res = m_androidInputContext->commitText(str, newCursorPosition);});
     return res;
@@ -164,9 +120,7 @@ static jboolean deleteSurroundingText(JNIEnv */*env*/, jobject /*thiz*/, jint le
     if (!m_androidInputContext)
         return JNI_FALSE;
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug() << "@@@ DELETE" << leftLength << rightLength;
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ DELETE" << leftLength << rightLength;
     jboolean res = JNI_FALSE;
     runOnQtThread([&]{res = m_androidInputContext->deleteSurroundingText(leftLength, rightLength);});
     return res;
@@ -177,9 +131,7 @@ static jboolean finishComposingText(JNIEnv */*env*/, jobject /*thiz*/)
     if (!m_androidInputContext)
         return JNI_FALSE;
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug("@@@ FINISH");
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ FINISH";
     jboolean res = JNI_FALSE;
     runOnQtThread([&]{res = m_androidInputContext->finishComposingText();});
     return res;
@@ -203,9 +155,7 @@ static jobject getExtractedText(JNIEnv *env, jobject /*thiz*/, int hintMaxChars,
     QAndroidInputContext::ExtractedText extractedText;
     runOnQtThread([&]{extractedText = m_androidInputContext->getExtractedText(hintMaxChars, hintMaxLines, flags);});
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug() << "@@@ GETEX" << hintMaxChars << hintMaxLines << QString::fromLatin1("0x") + QString::number(flags,16) << extractedText.text << "partOff:" << extractedText.partialStartOffset << extractedText.partialEndOffset << "sel:" << extractedText.selectionStart << extractedText.selectionEnd << "offset:" << extractedText.startOffset;
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ GETEX" << hintMaxChars << hintMaxLines << QString::fromLatin1("0x") + QString::number(flags,16) << extractedText.text << "partOff:" << extractedText.partialStartOffset << extractedText.partialEndOffset << "sel:" << extractedText.selectionStart << extractedText.selectionEnd << "offset:" << extractedText.startOffset;
 
     jobject object = env->NewObject(m_extractedTextClass, m_classConstructorMethodID);
     env->SetIntField(object, m_partialStartOffsetFieldID, extractedText.partialStartOffset);
@@ -228,9 +178,7 @@ static jstring getSelectedText(JNIEnv *env, jobject /*thiz*/, jint flags)
 
     QString text;
     runOnQtThread([&]{text = m_androidInputContext->getSelectedText(flags);});
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug() << "@@@ GETSEL" << text;
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ GETSEL" << text;
     if (text.isEmpty())
         return 0;
     return env->NewString(reinterpret_cast<const jchar *>(text.constData()), jsize(text.length()));
@@ -243,9 +191,7 @@ static jstring getTextAfterCursor(JNIEnv *env, jobject /*thiz*/, jint length, ji
 
     QString text;
     runOnQtThread([&]{text = m_androidInputContext->getTextAfterCursor(length, flags);});
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug() << "@@@ GETA" << length << text;
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ GETA" << length << text;
     return env->NewString(reinterpret_cast<const jchar *>(text.constData()), jsize(text.length()));
 }
 
@@ -256,9 +202,7 @@ static jstring getTextBeforeCursor(JNIEnv *env, jobject /*thiz*/, jint length, j
 
     QString text;
     runOnQtThread([&]{text = m_androidInputContext->getTextBeforeCursor(length, flags);});
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug() << "@@@ GETB" << length << text;
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ GETB" << length << text;
     return env->NewString(reinterpret_cast<const jchar *>(text.constData()), jsize(text.length()));
 }
 
@@ -272,9 +216,7 @@ static jboolean setComposingText(JNIEnv *env, jobject /*thiz*/, jstring text, ji
     QString str(reinterpret_cast<const QChar *>(jstr), env->GetStringLength(text));
     env->ReleaseStringChars(text, jstr);
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug() << "@@@ SET" << str << newCursorPosition;
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ SET" << str << newCursorPosition;
     jboolean res = JNI_FALSE;
     runOnQtThread([&]{res = m_androidInputContext->setComposingText(str, newCursorPosition);});
     return res;
@@ -285,9 +227,7 @@ static jboolean setComposingRegion(JNIEnv */*env*/, jobject /*thiz*/, jint start
     if (!m_androidInputContext)
         return JNI_FALSE;
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug() << "@@@ SETR" << start << end;
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ SETR" << start << end;
     jboolean res = JNI_FALSE;
     runOnQtThread([&]{res = m_androidInputContext->setComposingRegion(start, end);});
     return res;
@@ -299,9 +239,7 @@ static jboolean setSelection(JNIEnv */*env*/, jobject /*thiz*/, jint start, jint
     if (!m_androidInputContext)
         return JNI_FALSE;
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug() << "@@@ SETSEL" << start << end;
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ SETSEL" << start << end;
     jboolean res = JNI_FALSE;
     runOnQtThread([&]{res = m_androidInputContext->setSelection(start, end);});
     return res;
@@ -313,9 +251,7 @@ static jboolean selectAll(JNIEnv */*env*/, jobject /*thiz*/)
     if (!m_androidInputContext)
         return JNI_FALSE;
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug("@@@ SELALL");
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ SELALL";
     jboolean res = JNI_FALSE;
     runOnQtThread([&]{res = m_androidInputContext->selectAll();});
     return res;
@@ -326,9 +262,7 @@ static jboolean cut(JNIEnv */*env*/, jobject /*thiz*/)
     if (!m_androidInputContext)
         return JNI_FALSE;
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug("@@@");
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@";
     jboolean res = JNI_FALSE;
     runOnQtThread([&]{res = m_androidInputContext->cut();});
     return res;
@@ -339,9 +273,7 @@ static jboolean copy(JNIEnv */*env*/, jobject /*thiz*/)
     if (!m_androidInputContext)
         return JNI_FALSE;
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug("@@@");
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@";
     jboolean res = JNI_FALSE;
     runOnQtThread([&]{res = m_androidInputContext->copy();});
     return res;
@@ -352,9 +284,7 @@ static jboolean copyURL(JNIEnv */*env*/, jobject /*thiz*/)
     if (!m_androidInputContext)
         return JNI_FALSE;
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug("@@@");
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@";
     jboolean res = JNI_FALSE;
     runOnQtThread([&]{res = m_androidInputContext->copyURL();});
     return res;
@@ -365,9 +295,7 @@ static jboolean paste(JNIEnv */*env*/, jobject /*thiz*/)
     if (!m_androidInputContext)
         return JNI_FALSE;
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug("@@@ PASTE");
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ PASTE";
     jboolean res = JNI_FALSE;
     runOnQtThread([&]{res = m_androidInputContext->paste();});
     return res;
@@ -378,9 +306,7 @@ static jboolean updateCursorPosition(JNIEnv */*env*/, jobject /*thiz*/)
     if (!m_androidInputContext)
         return JNI_FALSE;
 
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-    qDebug("@@@ UPDATECURSORPOS");
-#endif
+    qCDebug(lcQpaInputMethods) << "@@@ UPDATECURSORPOS";
 
     runOnQtThread([&]{m_androidInputContext->updateCursorPosition();});
     return true;
@@ -394,7 +320,7 @@ static JNINativeMethod methods[] = {
     {"deleteSurroundingText", "(II)Z", (void *)deleteSurroundingText},
     {"finishComposingText", "()Z", (void *)finishComposingText},
     {"getCursorCapsMode", "(I)I", (void *)getCursorCapsMode},
-    {"getExtractedText", "(III)Lorg/qtproject/qt5/android/QtExtractedText;", (void *)getExtractedText},
+    {"getExtractedText", "(III)Lorg/qtproject/qt/android/QtExtractedText;", (void *)getExtractedText},
     {"getSelectedText", "(I)Ljava/lang/String;", (void *)getSelectedText},
     {"getTextAfterCursor", "(II)Ljava/lang/String;", (void *)getTextAfterCursor},
     {"getTextBeforeCursor", "(II)Ljava/lang/String;", (void *)getTextBeforeCursor},
@@ -409,23 +335,11 @@ static JNINativeMethod methods[] = {
     {"updateCursorPosition", "()Z", (void *)updateCursorPosition}
 };
 
-static QRect inputItemRectangle()
+static QRect screenInputItemRectangle()
 {
-    QRectF itemRect = qGuiApp->inputMethod()->inputItemRectangle();
-    QRect rect = qGuiApp->inputMethod()->inputItemTransform().mapRect(itemRect).toRect();
-    QWindow *window = qGuiApp->focusWindow();
-    if (window)
-        rect = QRect(window->mapToGlobal(rect.topLeft()), rect.size());
-    double pixelDensity = window
-        ? QHighDpiScaling::factor(window)
-        : QHighDpiScaling::factor(QtAndroid::androidPlatformIntegration()->screen());
-    if (pixelDensity != 1.0) {
-        rect.setRect(rect.x() * pixelDensity,
-                     rect.y() * pixelDensity,
-                     rect.width() * pixelDensity,
-                     rect.height() * pixelDensity);
-    }
-    return rect;
+    QRect windowRect = QPlatformInputContext::inputItemRectangle().toRect();
+    QPlatformWindow *window = qGuiApp->focusWindow()->handle();
+    return QRect(window->mapToGlobal(windowRect.topLeft()), windowRect.size());
 }
 
 QAndroidInputContext::QAndroidInputContext()
@@ -436,7 +350,8 @@ QAndroidInputContext::QAndroidInputContext()
     , m_batchEditNestingLevel(0)
     , m_focusObject(0)
 {
-    jclass clazz = QJNIEnvironmentPrivate::findClass(QtNativeInputConnectionClassName);
+    QJniEnvironment env;
+    jclass clazz = env.findClass(QtNativeInputConnectionClassName);
     if (Q_UNLIKELY(!clazz)) {
         qCritical() << "Native registration unable to find class '"
                     << QtNativeInputConnectionClassName
@@ -444,7 +359,6 @@ QAndroidInputContext::QAndroidInputContext()
         return;
     }
 
-    QJNIEnvironmentPrivate env;
     if (Q_UNLIKELY(env->RegisterNatives(clazz, methods, sizeof(methods) / sizeof(methods[0])) < 0)) {
         qCritical() << "RegisterNatives failed for '"
                     << QtNativeInputConnectionClassName
@@ -452,7 +366,7 @@ QAndroidInputContext::QAndroidInputContext()
         return;
     }
 
-    clazz = QJNIEnvironmentPrivate::findClass(QtExtractedTextClassName);
+    clazz = env.findClass(QtExtractedTextClassName);
     if (Q_UNLIKELY(!clazz)) {
         qCritical() << "Native registration unable to find class '"
                     << QtExtractedTextClassName
@@ -617,64 +531,105 @@ void QAndroidInputContext::updateCursorPosition()
     }
 }
 
+bool QAndroidInputContext::isImhNoTextHandlesSet()
+{
+    QSharedPointer<QInputMethodQueryEvent> query = focusObjectInputMethodQuery();
+    if (query.isNull())
+        return false;
+    return query->value(Qt::ImHints).toUInt() & Qt::ImhNoTextHandles;
+}
+
 void QAndroidInputContext::updateSelectionHandles()
 {
     static bool noHandles = qEnvironmentVariableIntValue("QT_QPA_NO_TEXT_HANDLES");
-    if (noHandles)
+    if (noHandles || !m_focusObject)
         return;
 
-    auto im = qGuiApp->inputMethod();
-    if (!m_focusObject || ((m_handleMode & 0xff) == Hidden)) {
-        // Hide the handles
+    if (isImhNoTextHandlesSet()) {
         QtAndroidInput::updateHandles(Hidden);
         return;
     }
-    QWindow *window = qGuiApp->focusWindow();
-    double pixelDensity = window
-        ? QHighDpiScaling::factor(window)
-        : QHighDpiScaling::factor(QtAndroid::androidPlatformIntegration()->screen());
 
-    QInputMethodQueryEvent query(Qt::ImCursorPosition | Qt::ImAnchorPosition | Qt::ImEnabled | Qt::ImCurrentSelection | Qt::ImHints | Qt::ImSurroundingText);
+    auto im = qGuiApp->inputMethod();
+
+    QInputMethodQueryEvent query(Qt::ImCursorPosition | Qt::ImAnchorPosition | Qt::ImEnabled
+                                 | Qt::ImCurrentSelection | Qt::ImHints | Qt::ImSurroundingText
+                                 | Qt::ImReadOnly);
     QCoreApplication::sendEvent(m_focusObject, &query);
 
     int cpos = query.value(Qt::ImCursorPosition).toInt();
     int anchor = query.value(Qt::ImAnchorPosition).toInt();
+    const QVariant readOnlyVariant = query.value(Qt::ImReadOnly);
+    bool readOnly = readOnlyVariant.toBool();
+    QPlatformWindow *qPlatformWindow = qGuiApp->focusWindow()->handle();
+
+    if (!readOnly && ((m_handleMode & 0xff) == Hidden)) {
+        QtAndroidInput::updateHandles(Hidden);
+        return;
+    }
+
+    if ( cpos == anchor && (!readOnlyVariant.isValid() || readOnly)) {
+        QtAndroidInput::updateHandles(Hidden);
+        return;
+    }
 
     if (cpos == anchor || im->anchorRectangle().isNull()) {
-        if (!query.value(Qt::ImEnabled).toBool()) {
-            QtAndroidInput::updateHandles(Hidden);
-            return;
+        auto curRect = cursorRectangle();
+        QPoint cursorPointGlobal = qPlatformWindow->mapToGlobal(
+                    QPoint(curRect.x() + (curRect.width() / 2), curRect.y() + curRect.height()));
+        QPoint cursorPoint(curRect.center().x(), curRect.bottom());
+        int x = curRect.x();
+        int y = curRect.y();
+
+        // Use x and y for the editMenuPoint from the cursorPointGlobal when the cursor is in the Dialog
+        if (cursorPointGlobal != cursorPoint) {
+            x = cursorPointGlobal.x();
+            y = cursorPointGlobal.y();
         }
 
-        auto curRect = im->cursorRectangle();
-        QPoint cursorPoint(window->mapToGlobal(QPoint(curRect.x() + (curRect.width() / 2), curRect.y() + curRect.height())));
-        QPoint editMenuPoint(cursorPoint.x(), cursorPoint.y());
+        QPoint editMenuPoint(x, y);
         m_handleMode &= ShowEditPopup;
         m_handleMode |= ShowCursor;
-        uint32_t buttons = EditContext::PasteButton;
+        uint32_t buttons = readOnly ? 0 : EditContext::PasteButton;
         if (!query.value(Qt::ImSurroundingText).toString().isEmpty())
             buttons |= EditContext::SelectAllButton;
-        QtAndroidInput::updateHandles(m_handleMode, editMenuPoint * pixelDensity, buttons, cursorPoint * pixelDensity);
-        // The VK is hidden, reset the timer
-        if (m_hideCursorHandleTimer.isActive())
-            m_hideCursorHandleTimer.start();
+        QtAndroidInput::updateHandles(m_handleMode, editMenuPoint, buttons, cursorPointGlobal);
+        m_hideCursorHandleTimer.start();
+
         return;
     }
 
     m_handleMode = ShowSelection | ShowEditPopup ;
-    auto leftRect = im->cursorRectangle();
-    auto rightRect = im->anchorRectangle();
+    auto leftRect = cursorRectangle();
+    auto rightRect = anchorRectangle();
     if (cpos > anchor)
         std::swap(leftRect, rightRect);
+    //Move the left or right select handle to the center from the screen edge
+    //the select handle is close to or over the screen edge. Otherwise, the
+    //select handle might go out of the screen and it would be impossible to drag.
+    QPoint leftPoint(qPlatformWindow->mapToGlobal(leftRect.bottomLeft().toPoint()));
+    QPoint rightPoint(qPlatformWindow->mapToGlobal(rightRect.bottomRight().toPoint()));
 
-    QPoint leftPoint(window->mapToGlobal(leftRect.bottomLeft().toPoint()));
-    QPoint righPoint(window->mapToGlobal(rightRect.bottomRight().toPoint()));
-    QPoint editPoint(window->mapToGlobal(leftRect.united(rightRect)
-                                                         .topLeft().toPoint()));
-    QtAndroidInput::updateHandles(m_handleMode, editPoint * pixelDensity, EditContext::AllButtons,
-                                  leftPoint * pixelDensity, righPoint * pixelDensity,
-                                  query.value(Qt::ImCurrentSelection).toString().isRightToLeft());
-    m_hideCursorHandleTimer.stop();
+    QAndroidPlatformIntegration *platformIntegration = QtAndroid::androidPlatformIntegration();
+    if (platformIntegration) {
+        if (m_selectHandleWidth == 0)
+                m_selectHandleWidth = QtAndroidInput::getSelectHandleWidth() / 2;
+
+        int rightSideOfScreen = platformIntegration->screen()->availableGeometry().right();
+        if (leftPoint.x() < m_selectHandleWidth)
+            leftPoint.setX(m_selectHandleWidth);
+
+        if (rightPoint.x() > rightSideOfScreen - m_selectHandleWidth)
+            rightPoint.setX(rightSideOfScreen - m_selectHandleWidth);
+
+        QPoint editPoint(qPlatformWindow->mapToGlobal(leftRect.united(rightRect).topLeft().toPoint()));
+        uint32_t buttons = readOnly ? EditContext::CopyButton | EditContext::SelectAllButton
+                                    : EditContext::AllButtons;
+
+        QtAndroidInput::updateHandles(m_handleMode, editPoint, buttons, leftPoint, rightPoint,
+                                      query.value(Qt::ImCurrentSelection).toString().isRightToLeft());
+        m_hideCursorHandleTimer.stop();
+    }
 }
 
 /*
@@ -688,33 +643,16 @@ void QAndroidInputContext::handleLocationChanged(int handleId, int x, int y)
         qWarning() << "QAndroidInputContext::handleLocationChanged returned";
         return;
     }
+    QPoint point(x, y);
 
-    auto im = qGuiApp->inputMethod();
-    auto leftRect = im->cursorRectangle();
     // The handle is down of the cursor, but we want the position in the middle.
-    QWindow *window = qGuiApp->focusWindow();
-    double pixelDensity = window
-        ? QHighDpiScaling::factor(window)
-        : QHighDpiScaling::factor(QtAndroid::androidPlatformIntegration()->screen());
-    auto object = m_focusObject->parent();
-    int dialogMoveX = 0;
-    while (object) {
-        if (QString::compare(object->metaObject()->className(),
-                             QtObjectType, Qt::CaseInsensitive) == 0) {
-            dialogMoveX += object->property("x").toInt();
-        }
-        object = object->parent();
-    };
-
-    QPointF point((x / pixelDensity) - dialogMoveX, y / pixelDensity);
-    point.setY(point.y() - leftRect.width() / 2);
-
     QInputMethodQueryEvent query(Qt::ImCursorPosition | Qt::ImAnchorPosition
                                  | Qt::ImAbsolutePosition | Qt::ImCurrentSelection);
     QCoreApplication::sendEvent(m_focusObject, &query);
     int cpos = query.value(Qt::ImCursorPosition).toInt();
     int anchor = query.value(Qt::ImAnchorPosition).toInt();
-    auto rightRect = im->anchorRectangle();
+    auto leftRect = cursorRectangle();
+    auto rightRect = anchorRectangle();
     if (cpos > anchor)
         std::swap(leftRect, rightRect);
 
@@ -725,10 +663,24 @@ void QAndroidInputContext::handleLocationChanged(int handleId, int x, int y)
         point.setY(leftRect.center().y());
     }
 
-    const QPointF pointLocal = im->inputItemTransform().inverted().map(point);
     bool ok;
-    const int handlePos =
-            QInputMethod::queryFocusObject(Qt::ImCursorPosition, pointLocal).toInt(&ok);
+    auto object = m_focusObject->parent();
+    int dialogMoveX = 0;
+    while (object) {
+        if (QString::compare(object->metaObject()->className(),
+                             "QDialog", Qt::CaseInsensitive) == 0) {
+            dialogMoveX += object->property("x").toInt();
+        }
+        object = object->parent();
+    };
+
+    auto position =
+            QPointF(QHighDpi::fromNativePixels(point, QGuiApplication::focusWindow()));
+    const QPointF fixedPosition = QPointF(position.x() - dialogMoveX, position.y());
+    const QInputMethod *im = QGuiApplication::inputMethod();
+    const QTransform mapToLocal = im->inputItemTransform().inverted();
+    const int handlePos = im->queryFocusObject(Qt::ImCursorPosition, mapToLocal.map(fixedPosition)).toInt(&ok);
+
     if (!ok)
         return;
 
@@ -802,31 +754,30 @@ void QAndroidInputContext::handleLocationChanged(int handleId, int x, int y)
 
 void QAndroidInputContext::touchDown(int x, int y)
 {
-    if (m_focusObject && inputItemRectangle().contains(x, y)) {
+    if (m_focusObject && screenInputItemRectangle().contains(x, y)) {
         // If the user touch the input rectangle, we can show the cursor handle
         m_handleMode = ShowCursor;
         // The VK will appear in a moment, stop the timer
         m_hideCursorHandleTimer.stop();
 
         if (focusObjectIsComposing()) {
-            const double pixelDensity =
-                    QGuiApplication::focusWindow()
-                    ? QHighDpiScaling::factor(QGuiApplication::focusWindow())
-                    : QHighDpiScaling::factor(QtAndroid::androidPlatformIntegration()->screen());
-
-            const QPointF touchPointLocal =
-                    QGuiApplication::inputMethod()->inputItemTransform().inverted().map(
-                            QPointF(x / pixelDensity, y / pixelDensity));
-
             const int curBlockPos = getBlockPosition(
                     focusObjectInputMethodQuery(Qt::ImCursorPosition | Qt::ImAbsolutePosition));
             const int touchPosition = curBlockPos
-                    + QInputMethod::queryFocusObject(Qt::ImCursorPosition, touchPointLocal).toInt();
+                    + queryFocusObject(Qt::ImCursorPosition, QPointF(x, y)).toInt();
             if (touchPosition != m_composingCursor)
                 focusObjectStopComposing();
         }
 
-        updateSelectionHandles();
+        // Check if cursor is visible in focused window before updating handles
+        QPlatformWindow *window = qGuiApp->focusWindow()->handle();
+        const QRectF curRect = cursorRectangle();
+        const QPoint cursorGlobalPoint = window->mapToGlobal(QPoint(curRect.x(), curRect.y()));
+        const QRect windowRect = QPlatformInputContext::inputItemClipRectangle().toRect();
+        const QRect windowGlobalRect = QRect(window->mapToGlobal(windowRect.topLeft()), windowRect.size());
+
+        if (windowGlobalRect.contains(cursorGlobalPoint.x(), cursorGlobalPoint.y()))
+            updateSelectionHandles();
     }
 }
 
@@ -836,16 +787,11 @@ void QAndroidInputContext::longPress(int x, int y)
     if (noHandles)
         return;
 
-    if (m_focusObject && inputItemRectangle().contains(x, y)) {
+    if (m_focusObject && screenInputItemRectangle().contains(x, y)) {
         BatchEditLock batchEditLock(this);
 
         focusObjectStopComposing();
-
-        const double pixelDensity =
-                QGuiApplication::focusWindow()
-                ? QHighDpiScaling::factor(QGuiApplication::focusWindow())
-                : QHighDpiScaling::factor(QtAndroid::androidPlatformIntegration()->screen());
-        const QPointF touchPoint(x / pixelDensity, y / pixelDensity);
+        const QPointF touchPoint(x, y);
         setSelectionOnFocusObject(touchPoint, touchPoint);
 
         QInputMethodQueryEvent query(Qt::ImCursorPosition | Qt::ImAnchorPosition | Qt::ImTextBeforeCursor | Qt::ImTextAfterCursor);
@@ -911,8 +857,8 @@ void QAndroidInputContext::update(Qt::InputMethodQueries queries)
 void QAndroidInputContext::invokeAction(QInputMethod::Action action, int cursorPosition)
 {
 #warning TODO Handle at least QInputMethod::ContextMenu action
-    Q_UNUSED(action)
-    Q_UNUSED(cursorPosition)
+    Q_UNUSED(action);
+    Q_UNUSED(cursorPosition);
     //### click should be passed to the IM, but in the meantime it's better to ignore it than to do something wrong
     // if (action == QInputMethod::Click)
     //     commit();
@@ -939,12 +885,14 @@ void QAndroidInputContext::showInputPanel()
         return;
 
     disconnect(m_updateCursorPosConnection);
+    m_updateCursorPosConnection = {};
+
     if (qGuiApp->focusObject()->metaObject()->indexOfSignal("cursorPositionChanged(int,int)") >= 0) // QLineEdit breaks the pattern
         m_updateCursorPosConnection = connect(qGuiApp->focusObject(), SIGNAL(cursorPositionChanged(int,int)), this, SLOT(updateCursorPosition()));
-    else
+    else if (qGuiApp->focusObject()->metaObject()->indexOfSignal("cursorPositionChanged()") >= 0)
         m_updateCursorPosConnection = connect(qGuiApp->focusObject(), SIGNAL(cursorPositionChanged()), this, SLOT(updateCursorPosition()));
 
-    QRect rect = inputItemRectangle();
+    QRect rect = screenInputItemRectangle();
     QtAndroidInput::showSoftwareKeyboard(rect.left(), rect.top(), rect.width(), rect.height(),
                                          query->value(Qt::ImHints).toUInt(),
                                          query->value(Qt::ImEnterKeyType).toUInt());
@@ -997,7 +945,6 @@ void QAndroidInputContext::setFocusObject(QObject *object)
         m_focusObject = object;
         reset();
     }
-    QPlatformInputContext::setFocusObject(object);
     updateSelectionHandles();
 }
 
@@ -1051,7 +998,7 @@ jboolean QAndroidInputContext::deleteSurroundingText(jint leftLength, jint right
       absolutely not what Android's native EditText does. It deletes leftLength characters before
       min(selection start, composing region start) and rightLength characters after max(selection
       end, composing region end). There are no known keyboards that depend on this behavior, but
-      it is better to be consistent with EditText behavior, because there definetly should be no
+      it is better to be consistent with EditText behavior, because there definitely should be no
       keyboards that depend on documented behavior.
      */
     const int leftEnd =
@@ -1165,7 +1112,7 @@ void QAndroidInputContext::focusObjectStartComposing()
         return;
 
     // Composing strings containing newline characters are rare and may cause problems
-    if (m_composingText.contains(QLatin1Char('\n')))
+    if (m_composingText.contains(u'\n'))
         return;
 
     QSharedPointer<QInputMethodQueryEvent> query = focusObjectInputMethodQuery();
@@ -1187,7 +1134,7 @@ void QAndroidInputContext::focusObjectStartComposing()
 
     QInputMethodEvent event(m_composingText, {
         { QInputMethodEvent::Cursor, absoluteCursorPos - m_composingTextStart, 1 },
-        { QInputMethodEvent::TextFormat, 0, m_composingText.length(), underlined }
+        { QInputMethodEvent::TextFormat, 0, int(m_composingText.length()), underlined }
     });
 
     event.setCommitString({}, m_composingTextStart - absoluteCursorPos, m_composingText.length());
@@ -1246,9 +1193,9 @@ jint QAndroidInputContext::getCursorCapsMode(jint /*reqModes*/)
         QString surroundingText = query->value(Qt::ImSurroundingText).toString();
         surroundingText.truncate(localPos);
         if (focusObjectIsComposing())
-            surroundingText += m_composingText.leftRef(m_composingCursor - m_composingTextStart);
+            surroundingText += QStringView{m_composingText}.left(m_composingCursor - m_composingTextStart);
         // Add a character to see if it is at the end of the sentence or not
-        QTextBoundaryFinder finder(QTextBoundaryFinder::Sentence, surroundingText + QLatin1Char('A'));
+        QTextBoundaryFinder finder(QTextBoundaryFinder::Sentence, surroundingText + u'A');
         finder.setPosition(surroundingText.length());
         if (finder.isAtBoundary())
             atWordBoundary = finder.isAtBoundary();
@@ -1352,7 +1299,7 @@ QString QAndroidInputContext::getTextAfterCursor(jint length, jint /*flags*/)
     if (focusObjectIsComposing()) {
         // Controls do not report preedit text, so we have to add it
         const int cursorPosInsidePreedit = m_composingCursor - m_composingTextStart;
-        text = m_composingText.midRef(cursorPosInsidePreedit) + text;
+        text = QStringView{m_composingText}.mid(cursorPosInsidePreedit) + text;
     } else {
         // We must not return selected text if there is any
         QSharedPointer<QInputMethodQueryEvent> query =
@@ -1392,7 +1339,7 @@ QString QAndroidInputContext::getTextBeforeCursor(jint length, jint /*flags*/)
     if (focusObjectIsComposing()) {
         // Controls do not report preedit text, so we have to add it
         const int cursorPosInsidePreedit = m_composingCursor - m_composingTextStart;
-        text += m_composingText.leftRef(cursorPosInsidePreedit);
+        text += QStringView{m_composingText}.left(cursorPosInsidePreedit);
     } else {
         // We must not return selected text if there is any
         QSharedPointer<QInputMethodQueryEvent> query =
@@ -1468,20 +1415,19 @@ jboolean QAndroidInputContext::setComposingText(const QString &text, jint newCur
     const bool focusObjectWasComposing = focusObjectIsComposing();
 
     // Same checks as in focusObjectStartComposing()
-    if (!m_composingText.isEmpty() && !m_composingText.contains(QLatin1Char('\n'))
+    if (!m_composingText.isEmpty() && !m_composingText.contains(u'\n')
             && newAbsoluteCursorPos >= m_composingTextStart
             && newAbsoluteCursorPos <= m_composingTextStart + m_composingText.length())
         m_composingCursor = newAbsoluteCursorPos;
     else
         m_composingCursor = -1;
 
-    QInputMethodEvent event;
     if (focusObjectIsComposing()) {
         QTextCharFormat underlined;
         underlined.setFontUnderline(true);
 
-        event = QInputMethodEvent(m_composingText, {
-            { QInputMethodEvent::TextFormat, 0, m_composingText.length(), underlined },
+        QInputMethodEvent event(m_composingText, {
+            { QInputMethodEvent::TextFormat, 0, int(m_composingText.length()), underlined },
             { QInputMethodEvent::Cursor, m_composingCursor - m_composingTextStart, 1 }
         });
 
@@ -1489,8 +1435,12 @@ jboolean QAndroidInputContext::setComposingText(const QString &text, jint newCur
             event.setCommitString({}, m_composingTextStart - effectiveAbsoluteCursorPos,
                                   oldComposingTextLen);
         }
+        if (m_composingText.isEmpty())
+            clear();
+
+        QGuiApplication::sendEvent(m_focusObject, &event);
     } else {
-        event = QInputMethodEvent({}, {});
+        QInputMethodEvent event({}, {});
 
         if (focusObjectWasComposing) {
             event.setCommitString(m_composingText);
@@ -1499,12 +1449,11 @@ jboolean QAndroidInputContext::setComposingText(const QString &text, jint newCur
                                   m_composingTextStart - effectiveAbsoluteCursorPos,
                                   oldComposingTextLen);
         }
+        if (m_composingText.isEmpty())
+            clear();
+
+        QGuiApplication::sendEvent(m_focusObject, &event);
     }
-
-    if (m_composingText.isEmpty())
-        clear();
-
-    QGuiApplication::sendEvent(m_focusObject, &event);
 
     if (!focusObjectIsComposing() && newCursorPosition != 1) {
         // Move cursor using a separate event because if we have inserted or deleted a newline
@@ -1513,7 +1462,7 @@ jboolean QAndroidInputContext::setComposingText(const QString &text, jint newCur
         const int newBlockPos = getBlockPosition(
                 focusObjectInputMethodQuery(Qt::ImCursorPosition | Qt::ImAbsolutePosition));
 
-        event = QInputMethodEvent({}, {
+         QInputMethodEvent event({}, {
             { QInputMethodEvent::Selection, newAbsoluteCursorPos - newBlockPos, 0 }
         });
 
@@ -1560,7 +1509,7 @@ jboolean QAndroidInputContext::setComposingRegion(jint start, jint end)
             const int additionalSuffixLen = after.length() - (text.length() - cursorPos);
 
             if (additionalSuffixLen > 0)
-                text += after.rightRef(additionalSuffixLen);
+                text += QStringView{after}.right(additionalSuffixLen);
         }
 
         if (start < textOffset) {
@@ -1574,9 +1523,7 @@ jboolean QAndroidInputContext::setComposingRegion(jint start, jint end)
         }
 
         if (start < textOffset || end - textOffset > text.length()) {
-#ifdef QT_DEBUG_ANDROID_IM_PROTOCOL
-            qWarning("setComposingRegion: failed to retrieve text from composing region");
-#endif
+            qCDebug(lcQpaInputMethods) << "Warning: setComposingRegion: failed to retrieve text from composing region";
 
             return JNI_TRUE;
         }
@@ -1686,9 +1633,9 @@ jboolean QAndroidInputContext::paste()
 void QAndroidInputContext::sendShortcut(const QKeySequence &sequence)
 {
     for (int i = 0; i < sequence.count(); ++i) {
-        const int keys = sequence[i];
-        Qt::Key key = Qt::Key(keys & ~Qt::KeyboardModifierMask);
-        Qt::KeyboardModifiers mod = Qt::KeyboardModifiers(keys & Qt::KeyboardModifierMask);
+        const QKeyCombination keys = sequence[i];
+        Qt::Key key = Qt::Key(keys.toCombined() & ~Qt::KeyboardModifierMask);
+        Qt::KeyboardModifiers mod = Qt::KeyboardModifiers(keys.toCombined() & Qt::KeyboardModifierMask);
 
         QKeyEvent pressEvent(QEvent::KeyPress, key, mod);
         QKeyEvent releaseEvent(QEvent::KeyRelease, key, mod);

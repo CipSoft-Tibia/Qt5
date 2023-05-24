@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLATFORMTHEME_H
 #define QPLATFORMTHEME_H
@@ -50,8 +14,11 @@
 //
 
 #include <QtGui/qtguiglobal.h>
+#include <QtCore/QObject>
 #include <QtCore/QScopedPointer>
-#include <QtGui/QKeySequence>
+#if QT_CONFIG(shortcut)
+#  include <QtGui/QKeySequence>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -74,7 +41,9 @@ class QFileInfo;
 
 class Q_GUI_EXPORT QPlatformTheme
 {
+    Q_GADGET
     Q_DECLARE_PRIVATE(QPlatformTheme)
+
 public:
     Q_DISABLE_COPY_MOVE(QPlatformTheme)
 
@@ -104,12 +73,7 @@ public:
         KeyboardScheme,
         UiEffects,
         SpellCheckUnderlineStyle,
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
         TabFocusBehavior,
-#else
-        TabAllWidgets,
-        TabFocusBehavior = TabAllWidgets,
-#endif
         IconPixmapSizes,
         PasswordMaskCharacter,
         DialogSnapToDefaultButton,
@@ -121,8 +85,20 @@ public:
         ShowShortcutsInContextMenus,
         IconFallbackSearchPaths,
         MouseQuickSelectionThreshold,
-        ButtonPressKeys
+        InteractiveResizeAcrossScreens,
+        ShowDirectoriesFirst,
+        PreselectFirstFileInDirectory,
+        ButtonPressKeys,
+        SetFocusOnTouchRelease,
+        FlickStartDistance,
+        FlickMaximumVelocity,
+        FlickDeceleration,
+        MenuBarFocusOnAltPressRelease,
+        MouseCursorTheme,
+        MouseCursorSize,
+        UnderlineShortcut,
     };
+    Q_ENUM(ThemeHint)
 
     enum DialogType {
         FileDialog,
@@ -130,6 +106,7 @@ public:
         FontDialog,
         MessageDialog
     };
+    Q_ENUM(DialogType);
 
     enum Palette {
         SystemPalette,
@@ -152,6 +129,7 @@ public:
         TextLineEditPalette,
         NPalettes
     };
+    Q_ENUM(Palette)
 
     enum Font {
         SystemFont,
@@ -183,6 +161,7 @@ public:
         EditorFont,
         NFonts
     };
+    Q_ENUM(Font)
 
     enum StandardPixmap {  // Keep in sync with QStyle::StandardPixmap
         TitleBarMenuButton,
@@ -256,9 +235,20 @@ public:
         MediaVolume,
         MediaVolumeMuted,
         LineEditClearButton,
+        DialogYesToAllButton,
+        DialogNoToAllButton,
+        DialogSaveAllButton,
+        DialogAbortButton,
+        DialogRetryButton,
+        DialogIgnoreButton,
+        RestoreDefaultsButton,
+        TabCloseButton,
+        NStandardPixmap, // assertion value for sync with QStyle::StandardPixmap
+
         // do not add any values below/greater than this
         CustomBase = 0xf0000000
     };
+    Q_ENUM(StandardPixmap)
 
     enum KeyboardSchemes
     {
@@ -269,6 +259,7 @@ public:
         GnomeKeyboardScheme,
         CdeKeyboardScheme
     };
+    Q_ENUM(KeyboardSchemes)
 
     enum UiEffect
     {
@@ -281,6 +272,7 @@ public:
         AnimateToolBoxUiEffect = 0x40,
         HoverEffect = 0x80
     };
+    Q_ENUM(UiEffect)
 
     enum IconOption {
         DontUseCustomDirectoryIcons = 0x01
@@ -302,6 +294,8 @@ public:
     virtual QPlatformSystemTrayIcon *createPlatformSystemTrayIcon() const;
 #endif
 
+    virtual Qt::ColorScheme colorScheme() const;
+
     virtual const QPalette *palette(Palette type = SystemPalette) const;
 
     virtual const QFont *font(Font type = SystemFont) const;
@@ -313,20 +307,26 @@ public:
                            QPlatformTheme::IconOptions iconOptions = { }) const;
     virtual QIconEngine *createIconEngine(const QString &iconName) const;
 
-#ifndef QT_NO_SHORTCUT
+#if QT_CONFIG(shortcut)
     virtual QList<QKeySequence> keyBindings(QKeySequence::StandardKey key) const;
 #endif
 
     virtual QString standardButtonText(int button) const;
+#if QT_CONFIG(shortcut)
     virtual QKeySequence standardButtonShortcut(int button) const;
+#endif
 
     static QVariant defaultThemeHint(ThemeHint hint);
     static QString defaultStandardButtonText(int button);
     static QString removeMnemonics(const QString &original);
+    QString name() const;
 
 protected:
     explicit QPlatformTheme(QPlatformThemePrivate *priv);
     QScopedPointer<QPlatformThemePrivate> d_ptr;
+
+private:
+    friend class QPlatformThemeFactory;
 };
 
 QT_END_NAMESPACE

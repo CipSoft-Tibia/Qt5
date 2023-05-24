@@ -1,12 +1,12 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/webcrypto/algorithms/secret_key_util.h"
 
+#include "base/strings/string_piece.h"
 #include "components/webcrypto/algorithms/util.h"
 #include "components/webcrypto/blink_key_handle.h"
-#include "components/webcrypto/crypto_data.h"
 #include "components/webcrypto/generate_key_result.h"
 #include "components/webcrypto/jwk.h"
 #include "components/webcrypto/status.h"
@@ -32,13 +32,13 @@ Status GenerateWebCryptoSecretKey(const blink::WebCryptoKeyAlgorithm& algorithm,
   }
 
   result->AssignSecretKey(blink::WebCryptoKey::Create(
-      CreateSymmetricKeyHandle(CryptoData(random_bytes)),
-      blink::kWebCryptoKeyTypeSecret, extractable, algorithm, usages));
+      CreateSymmetricKeyHandle(random_bytes), blink::kWebCryptoKeyTypeSecret,
+      extractable, algorithm, usages));
 
   return Status::Success();
 }
 
-Status CreateWebCryptoSecretKey(const CryptoData& key_data,
+Status CreateWebCryptoSecretKey(base::span<const uint8_t> key_data,
                                 const blink::WebCryptoKeyAlgorithm& algorithm,
                                 bool extractable,
                                 blink::WebCryptoKeyUsageMask usages,
@@ -49,8 +49,8 @@ Status CreateWebCryptoSecretKey(const CryptoData& key_data,
   return Status::Success();
 }
 
-void WriteSecretKeyJwk(const CryptoData& raw_key_data,
-                       const std::string& algorithm,
+void WriteSecretKeyJwk(base::span<const uint8_t> raw_key_data,
+                       base::StringPiece algorithm,
                        bool extractable,
                        blink::WebCryptoKeyUsageMask usages,
                        std::vector<uint8_t>* jwk_key_data) {
@@ -60,7 +60,7 @@ void WriteSecretKeyJwk(const CryptoData& raw_key_data,
 }
 
 Status ReadSecretKeyNoExpectedAlgJwk(
-    const CryptoData& key_data,
+    base::span<const uint8_t> key_data,
     bool expected_extractable,
     blink::WebCryptoKeyUsageMask expected_usages,
     std::vector<uint8_t>* raw_key_data,
@@ -70,13 +70,7 @@ Status ReadSecretKeyNoExpectedAlgJwk(
   if (status.IsError())
     return status;
 
-  std::string jwk_k_value;
-  status = jwk->GetBytes("k", &jwk_k_value);
-  if (status.IsError())
-    return status;
-  raw_key_data->assign(jwk_k_value.begin(), jwk_k_value.end());
-
-  return Status::Success();
+  return jwk->GetBytes("k", raw_key_data);
 }
 
 }  // namespace webcrypto

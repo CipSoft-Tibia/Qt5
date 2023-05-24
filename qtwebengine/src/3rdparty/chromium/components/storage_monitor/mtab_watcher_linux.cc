@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,9 +10,8 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/stl_util.h"
 #include "base/threading/scoped_blocking_call.h"
 
 namespace {
@@ -41,7 +40,7 @@ MtabWatcherLinux::MtabWatcherLinux(const base::FilePath& mtab_path,
     : mtab_path_(mtab_path), callback_(callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   bool ret = file_watcher_.Watch(
-      mtab_path_, false,
+      mtab_path_, base::FilePathWatcher::Type::kNonRecursive,
       base::BindRepeating(&MtabWatcherLinux::OnFilePathChanged,
                           weak_ptr_factory_.GetWeakPtr()));
   if (!ret) {
@@ -73,7 +72,7 @@ void MtabWatcherLinux::ReadMtab() const {
   // devices that have been mounted over.
   while (getmntent_r(fp, &entry, buf, sizeof(buf))) {
     // We only care about real file systems.
-    for (size_t i = 0; i < base::size(kKnownFileSystems); ++i) {
+    for (size_t i = 0; i < std::size(kKnownFileSystems); ++i) {
       if (strcmp(kKnownFileSystems[i], entry.mnt_type) == 0) {
         device_map[base::FilePath(entry.mnt_dir)] =
             base::FilePath(entry.mnt_fsname);

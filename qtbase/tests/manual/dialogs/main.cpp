@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "filedialogpanel.h"
 #include "colordialogpanel.h"
@@ -52,22 +27,16 @@ static bool optNoPrinter = false;
 class AboutDialog : public QDialog
 {
 public:
-    explicit AboutDialog(QWidget *parent = 0);
+    explicit AboutDialog(QWidget *parent = nullptr);
 };
 
 AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     QFormLayout *mainLayout = new QFormLayout(this);
-#if QT_VERSION >= 0x050600
     mainLayout->addRow(new QLabel(QLibraryInfo::build()));
-#else
-    mainLayout->addRow(new QLabel(QLatin1String("Qt ") + QLatin1String(QT_VERSION_STR )));
-#endif
     mainLayout->addRow("Style:", new QLabel(qApp->style()->objectName()));
-#if QT_VERSION >= 0x050600
     mainLayout->addRow("DPR:", new QLabel(QString::number(qApp->devicePixelRatio())));
-#endif
     const QString resolution = QString::number(logicalDpiX()) + QLatin1Char(',')
                                + QString::number(logicalDpiY()) + QLatin1String("dpi");
     mainLayout->addRow("Resolution:", new QLabel(resolution));
@@ -79,7 +48,7 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    explicit MainWindow(QWidget *parent = 0);
+    explicit MainWindow(QWidget *parent = nullptr);
 
 public slots:
     void aboutDialog();
@@ -126,16 +95,10 @@ void MainWindow::aboutDialog()
 
 int main(int argc, char *argv[])
 {
-#if QT_VERSION >= 0x050600
-    QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
-#endif
-
     for (int a = 1; a < argc; ++a) {
         if (!qstrcmp(argv[a], "-n")) {
             qDebug("AA_DontUseNativeDialogs");
-#if QT_VERSION >= 0x050700
             QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
-#endif
         } else if (!qstrcmp(argv[a], "-p")) {
             optNoPrinter = true; // Avoid startup slowdown by printer code
         }

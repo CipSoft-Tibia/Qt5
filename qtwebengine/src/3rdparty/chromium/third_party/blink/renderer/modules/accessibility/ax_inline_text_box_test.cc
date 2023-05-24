@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,15 +14,19 @@
 #include "third_party/blink/renderer/modules/accessibility/testing/accessibility_test.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
+using AXIntListAttribute = ax::mojom::blink::IntListAttribute;
+using AXMarkerType = ax::mojom::blink::MarkerType;
+
 namespace blink {
 namespace test {
 
-TEST_P(ParameterizedAccessibilityTest, GetWordBoundaries) {
+TEST_F(AccessibilityTest, GetWordBoundaries) {
   // &#9728; is the sun emoji symbol.
   // &#2460; is circled digit one.
+  // Full string: "This, ☀ জ is ... a---+++test. <p>word</p>"
   SetBodyInnerHTML(R"HTML(
       <p id="paragraph">
-        &quot;This, &#9728; &#2460; is ... a---+++test.&quot;
+        &quot;This, &#9728; &#2460; is ... a---+++test. &lt;p&gt;word&lt;/p&gt;&quot;
       </p>)HTML");
 
   AXObject* ax_paragraph = GetAXObjectByElementId("paragraph");
@@ -35,15 +39,17 @@ TEST_P(ParameterizedAccessibilityTest, GetWordBoundaries) {
   ASSERT_NE(nullptr, ax_inline_text_box);
   ASSERT_EQ(ax::mojom::Role::kInlineTextBox, ax_inline_text_box->RoleValue());
 
-  VectorOf<int> expected_word_starts{0, 1, 5, 9, 11, 14, 18, 19, 25, 29};
-  VectorOf<int> expected_word_ends{1, 5, 6, 10, 13, 17, 19, 22, 29, 31};
+  VectorOf<int> expected_word_starts{0,  1,  5,  7,  9,  11, 14, 18, 19, 22, 23,
+                                     24, 25, 29, 31, 32, 33, 34, 38, 40, 41};
+  VectorOf<int> expected_word_ends{1,  5,  6,  8,  10, 13, 17, 19, 22, 23, 24,
+                                   25, 29, 30, 32, 33, 34, 38, 40, 41, 43};
   VectorOf<int> word_starts, word_ends;
   ax_inline_text_box->GetWordBoundaries(word_starts, word_ends);
   EXPECT_EQ(expected_word_starts, word_starts);
   EXPECT_EQ(expected_word_ends, word_ends);
 }
 
-TEST_P(ParameterizedAccessibilityTest, GetDocumentMarkers) {
+TEST_F(AccessibilityTest, GetDocumentMarkers) {
   // There should be four inline text boxes in the following paragraph.
   SetBodyInnerHTML(R"HTML(
       <style>* { font-size: 10px; }</style>
@@ -84,67 +90,62 @@ TEST_P(ParameterizedAccessibilityTest, GetDocumentMarkers) {
   // kInlineTextBox: "<Misspelled >".
   AXObject* ax_inline_text_box = ax_text->ChildAtIncludingIgnored(0);
   ASSERT_NE(nullptr, ax_inline_text_box);
-  VectorOf<DocumentMarker::MarkerType> marker_types;
-  VectorOf<AXRange> marker_ranges;
-  ax_inline_text_box->GetDocumentMarkers(&marker_types, &marker_ranges);
-  EXPECT_EQ((VectorOf<DocumentMarker::MarkerType>{DocumentMarker::kSpelling}),
-            marker_types);
-  EXPECT_EQ(
-      (VectorOf<AXRange>{AXRange(
-          AXPosition::CreatePositionInTextObject(*ax_inline_text_box, 0),
-          AXPosition::CreatePositionInTextObject(*ax_inline_text_box, 11))}),
-      marker_ranges);
+  {
+    ui::AXNodeData node_data;
+    ax_inline_text_box->Serialize(&node_data, ui::kAXModeComplete);
+    EXPECT_EQ(std::vector<int32_t>{int32_t(AXMarkerType::kSpelling)},
+              node_data.GetIntListAttribute(AXIntListAttribute::kMarkerTypes));
+    EXPECT_EQ(std::vector<int32_t>{0},
+              node_data.GetIntListAttribute(AXIntListAttribute::kMarkerStarts));
+    EXPECT_EQ(std::vector<int32_t>{11},
+              node_data.GetIntListAttribute(AXIntListAttribute::kMarkerEnds));
+  }
 
   // kInlineTextBox: "<text> with <a >".
   ax_inline_text_box = ax_text->ChildAtIncludingIgnored(1);
   ASSERT_NE(nullptr, ax_inline_text_box);
-  marker_types.clear();
-  marker_ranges.clear();
-  ax_inline_text_box->GetDocumentMarkers(&marker_types, &marker_ranges);
-  EXPECT_EQ((VectorOf<DocumentMarker::MarkerType>{DocumentMarker::kSpelling,
-                                                  DocumentMarker::kGrammar}),
-            marker_types);
-  EXPECT_EQ(
-      (VectorOf<AXRange>{
-          AXRange(
-              AXPosition::CreatePositionInTextObject(*ax_inline_text_box, 0),
-              AXPosition::CreatePositionInTextObject(*ax_inline_text_box, 4)),
-          AXRange(
-              AXPosition::CreatePositionInTextObject(*ax_inline_text_box, 10),
-              AXPosition::CreatePositionInTextObject(*ax_inline_text_box,
-                                                     12))}),
-      marker_ranges);
+  {
+    ui::AXNodeData node_data;
+    ax_inline_text_box->Serialize(&node_data, ui::kAXModeComplete);
+    EXPECT_EQ((std::vector<int32_t>{int32_t(AXMarkerType::kSpelling),
+                                    int32_t(AXMarkerType::kGrammar)}),
+              node_data.GetIntListAttribute(AXIntListAttribute::kMarkerTypes));
+    EXPECT_EQ((std::vector<int32_t>{0, 10}),
+              node_data.GetIntListAttribute(AXIntListAttribute::kMarkerStarts));
+    EXPECT_EQ((std::vector<int32_t>{4, 12}),
+              node_data.GetIntListAttribute(AXIntListAttribute::kMarkerEnds));
+  }
 
   // kInlineTextBox: "<grammar >".
   ax_inline_text_box = ax_text->ChildAtIncludingIgnored(2);
   ASSERT_NE(nullptr, ax_inline_text_box);
-  marker_types.clear();
-  marker_ranges.clear();
-  ax_inline_text_box->GetDocumentMarkers(&marker_types, &marker_ranges);
-  EXPECT_EQ((VectorOf<DocumentMarker::MarkerType>{DocumentMarker::kGrammar}),
-            marker_types);
-  EXPECT_EQ(
-      (VectorOf<AXRange>{AXRange(
-          AXPosition::CreatePositionInTextObject(*ax_inline_text_box, 0),
-          AXPosition::CreatePositionInTextObject(*ax_inline_text_box, 8))}),
-      marker_ranges);
+  {
+    ui::AXNodeData node_data;
+    ax_inline_text_box->Serialize(&node_data, ui::kAXModeComplete);
+    EXPECT_EQ(std::vector<int32_t>{int32_t(AXMarkerType::kGrammar)},
+              node_data.GetIntListAttribute(AXIntListAttribute::kMarkerTypes));
+    EXPECT_EQ(std::vector<int32_t>{0},
+              node_data.GetIntListAttribute(AXIntListAttribute::kMarkerStarts));
+    EXPECT_EQ(std::vector<int32_t>{8},
+              node_data.GetIntListAttribute(AXIntListAttribute::kMarkerEnds));
+  }
 
   // kInlineTextBox: "<error>.".
   ax_inline_text_box = ax_text->ChildAtIncludingIgnored(3);
   ASSERT_NE(nullptr, ax_inline_text_box);
-  marker_types.clear();
-  marker_ranges.clear();
-  ax_inline_text_box->GetDocumentMarkers(&marker_types, &marker_ranges);
-  EXPECT_EQ((VectorOf<DocumentMarker::MarkerType>{DocumentMarker::kGrammar}),
-            marker_types);
-  EXPECT_EQ(
-      (VectorOf<AXRange>{AXRange(
-          AXPosition::CreatePositionInTextObject(*ax_inline_text_box, 0),
-          AXPosition::CreatePositionInTextObject(*ax_inline_text_box, 5))}),
-      marker_ranges);
+  {
+    ui::AXNodeData node_data;
+    ax_inline_text_box->Serialize(&node_data, ui::kAXModeComplete);
+    EXPECT_EQ(std::vector<int32_t>{int32_t(AXMarkerType::kGrammar)},
+              node_data.GetIntListAttribute(AXIntListAttribute::kMarkerTypes));
+    EXPECT_EQ(std::vector<int32_t>{0},
+              node_data.GetIntListAttribute(AXIntListAttribute::kMarkerStarts));
+    EXPECT_EQ(std::vector<int32_t>{5},
+              node_data.GetIntListAttribute(AXIntListAttribute::kMarkerEnds));
+  }
 }
 
-TEST_P(ParameterizedAccessibilityTest, TextOffsetInContainerWithASpan) {
+TEST_F(AccessibilityTest, TextOffsetInContainerWithASpan) {
   // There should be three inline text boxes in the following paragraph. The
   // span should reset the text start offset of all of them to 0.
   SetBodyInnerHTML(R"HTML(
@@ -182,8 +183,7 @@ TEST_P(ParameterizedAccessibilityTest, TextOffsetInContainerWithASpan) {
   ASSERT_EQ(nullptr, ax_inline_text_box->NextInPreOrderIncludingIgnored());
 }
 
-TEST_P(ParameterizedAccessibilityTest,
-       TextOffsetInContainerWithMultipleInlineTextBoxes) {
+TEST_F(AccessibilityTest, TextOffsetInContainerWithMultipleInlineTextBoxes) {
   // There should be four inline text boxes in the following paragraph. The span
   // should not affect the text start offset of the text outside the span.
   SetBodyInnerHTML(R"HTML(
@@ -226,7 +226,7 @@ TEST_P(ParameterizedAccessibilityTest,
   ASSERT_EQ(nullptr, ax_inline_text_box->NextInPreOrderIncludingIgnored());
 }
 
-TEST_P(ParameterizedAccessibilityTest, TextOffsetInContainerWithLineBreak) {
+TEST_F(AccessibilityTest, TextOffsetInContainerWithLineBreak) {
   // There should be three inline text boxes in the following paragraph. The
   // line break should reset the text start offset to 0 of both the inline text
   // box inside the line break, as well as the text start ofset of the second
@@ -266,7 +266,7 @@ TEST_P(ParameterizedAccessibilityTest, TextOffsetInContainerWithLineBreak) {
   ASSERT_EQ(nullptr, ax_inline_text_box->NextInPreOrderIncludingIgnored());
 }
 
-TEST_P(ParameterizedAccessibilityTest, TextOffsetInContainerWithBreakWord) {
+TEST_F(AccessibilityTest, TextOffsetInContainerWithBreakWord) {
   // There should be three inline text boxes in the following paragraph because
   // of the narrow width and the long word, coupled with the CSS "break-word"
   // property. Each inline text box should have a different offset in container.

@@ -1,32 +1,6 @@
 #!/usr/bin/env python
-
-#############################################################################
-##
-## Copyright (C) 2016 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of the QtWebEngine module of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:GPL-EXCEPT$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 3 as published by the Free Software
-## Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2016 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import glob
 import os
@@ -35,11 +9,42 @@ import shutil
 import subprocess
 import sys
 import json
-import urllib2
+import urllib3
 import git_submodule as GitSubmodule
+from abc import ABC, abstractmethod
 
-chromium_version = '87.0.4280.144'
-chromium_branch = '4280'
+class DEPSParser(ABC):
+    def __init__(self):
+        self.global_scope = {
+          'Var': lambda var_name: '{%s}' % var_name,
+          'Str': str,
+          'deps_os': {},
+        }
+        self.local_scope = {}
+        self.topmost_supermodule_path_prefix = ''
+
+    def subdir(self, dep):
+        if dep.startswith('src/'):
+            return dep[4:]
+        # Don't skip submodules that have a supermodule path prefix set (at the moment these
+        # are 2nd level deep submodules).
+        elif not self.topmost_supermodule_path_prefix:
+        # Ignore the information about chromium itself since we get that from git,
+        # also ignore anything outside src/ (e.g. depot_tools)
+           return None
+        else:
+           return dep
+
+    @abstractmethod
+    def parse(self):
+        pass
+
+    def get_recursedeps(self):
+        return self.local_scope["recursedeps"]
+
+
+chromium_version = '112.0.5615.213'
+chromium_branch = '5615'
 ninja_version = 'v1.8.2'
 
 json_url = 'http://omahaproxy.appspot.com/all.json'
@@ -49,12 +54,12 @@ snapshot_src_dir = os.path.abspath(os.path.join(qtwebengine_root, 'src/3rdparty'
 upstream_src_dir = os.path.abspath(snapshot_src_dir + '_upstream')
 
 submodule_blacklist = [
-    'third_party/WebKit/LayoutTests/w3c/csswg-test'
-    , 'third_party/WebKit/LayoutTests/w3c/web-platform-tests'
-    , 'chrome/tools/test/reference_build/chrome_mac'
-    , 'chrome/tools/test/reference_build/chrome_linux'
-    , 'chrome/tools/test/reference_build/chrome_win'
-    ]
+  'buildtools/clang_format/script',
+  'buildtools/third_party/libc++/trunk',
+  'buildtools/third_party/libc++abi/trunk',
+  'buildtools/third_party/libunwind/trunk'
+]
+submodule_whitelist = [ 'src/third_party/android_ndk' , 'src/third_party/libunwindstack' ]
 
 sys.path.append(os.path.join(qtwebengine_root, 'tools', 'scripts'))
 
@@ -77,11 +82,11 @@ def readReleaseChannels():
             channels[os].append({ 'channel': ver['channel'], 'version': ver['version'], 'branch': ver['true_branch'] })
     return channels
 
-def readSubmodules():
+def read(parserCls):
     git_deps = subprocess.check_output(['git', 'show', chromium_version +':DEPS'])
 
-    parser = GitSubmodule.DEPSParser()
-    git_submodules = parser.parse(git_deps)
+    parser = parserCls()
+    git_submodules = parser.parse(git_deps, submodule_whitelist)
 
     submodule_dict = {}
 
@@ -98,7 +103,7 @@ def readSubmodules():
             with open(extra_deps_file_path, 'r') as extra_deps_file:
                 extra_deps = extra_deps_file.read()
                 if extra_deps:
-                    extradeps_parser = GitSubmodule.DEPSParser()
+                    extradeps_parser = parserCls()
                     extradeps_parser.topmost_supermodule_path_prefix = extradeps_dir
                     extradeps_submodules = extradeps_parser.parse(extra_deps)
                     for sub in extradeps_submodules:
@@ -163,7 +168,7 @@ def resetUpstream():
 
     chromium = GitSubmodule.Submodule()
     chromium.path = "."
-    submodules = chromium.readSubmodules()
+    submodules = chromium.readSubmodules(True)
     submodules.append(chromium)
 
     print('-- resetting upstream submodules in ' + os.path.relpath(target_dir) + ' to baseline --')

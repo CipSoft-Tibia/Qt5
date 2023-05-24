@@ -31,56 +31,14 @@
 #ifndef THIRD_PARTY_BLINK_PUBLIC_WEB_WEB_VIEW_CLIENT_H_
 #define THIRD_PARTY_BLINK_PUBLIC_WEB_WEB_VIEW_CLIENT_H_
 
-#include "base/strings/string_piece.h"
-#include "services/network/public/mojom/web_sandbox_flags.mojom-shared.h"
-#include "third_party/blink/public/common/dom_storage/session_storage_namespace_id.h"
-#include "third_party/blink/public/common/feature_policy/feature_policy_features.h"
-#include "third_party/blink/public/mojom/page/page_visibility_state.mojom-forward.h"
-#include "third_party/blink/public/platform/web_string.h"
-#include "third_party/blink/public/web/web_ax_enums.h"
-#include "third_party/blink/public/web/web_frame.h"
-#include "third_party/blink/public/web/web_widget_client.h"
+#include "ui/gfx/geometry/size.h"
 
 namespace blink {
-
-class WebPagePopup;
-class WebURLRequest;
-class WebView;
-struct WebRect;
-struct WebSize;
-struct WebWindowFeatures;
 
 class WebViewClient {
  public:
   virtual ~WebViewClient() = default;
   // Factory methods -----------------------------------------------------
-
-  // Create a new related WebView.  This method must clone its session storage
-  // so any subsequent calls to createSessionStorageNamespace conform to the
-  // WebStorage specification.
-  // The request parameter is only for the client to check if the request
-  // could be fulfilled.  The client should not load the request.
-  // The policy parameter indicates how the new view will be displayed in
-  // WebWidgetClient::Show.
-  virtual WebView* CreateView(
-      WebLocalFrame* creator,
-      const WebURLRequest& request,
-      const WebWindowFeatures& features,
-      const WebString& name,
-      WebNavigationPolicy policy,
-      network::mojom::WebSandboxFlags,
-      const FeaturePolicyFeatureState&,
-      const SessionStorageNamespaceId& session_storage_namespace_id) {
-    return nullptr;
-  }
-
-  // Create a new popup WebWidget.
-  virtual WebPagePopup* CreatePopup(WebLocalFrame*) { return nullptr; }
-
-  // Returns the session storage namespace id associated with this WebView.
-  virtual base::StringPiece GetSessionStorageNamespaceId() {
-    return base::StringPiece();
-  }
 
   // Misc ----------------------------------------------------------------
 
@@ -88,88 +46,20 @@ class WebViewClient {
   // for non-composited WebViews that exist to contribute to a "parent" WebView
   // painting. Otherwise invalidations are transmitted to the compositor through
   // the layers.
-  virtual void DidInvalidateRect(const WebRect&) {}
-
-  // Called when script in the page calls window.print().  If frame is
-  // non-null, then it selects a particular frame, including its
-  // children, to print.  Otherwise, the main frame and its children
-  // should be printed.
-  virtual void PrintPage(WebLocalFrame*) {}
-
-  virtual void OnPageVisibilityChanged(mojom::PageVisibilityState visibility) {}
-
-  virtual void OnPageFrozenChanged(bool frozen) {}
+  virtual void InvalidateContainer() {}
 
   // UI ------------------------------------------------------------------
 
-  // Called to determine if drag-n-drop operations may initiate a page
-  // navigation.
-  virtual bool AcceptsLoadDrops() { return true; }
-
-  // Take focus away from the WebView by focusing an adjacent UI element
-  // in the containing window.
-  virtual void FocusNext() {}
-  virtual void FocusPrevious() {}
-
-  // Called to check if layout update should be processed.
-  virtual bool CanUpdateLayout() { return false; }
-
-  // Indicates two things:
-  //   1) This view may have a new layout now.
-  //   2) Layout is up-to-date.
-  // After calling WebWidget::updateAllLifecyclePhases(), expect to get this
-  // notification unless the view did not need a layout.
-  virtual void DidUpdateMainFrameLayout() {}
-
-  // Return true to swallow the input event if the embedder will start a
-  // disambiguation popup
-  virtual bool DidTapMultipleTargets(const WebSize& visual_viewport_offset,
-                                     const WebRect& touch_rect,
-                                     const WebVector<WebRect>& target_rects) {
-    return false;
-  }
-
-  // Returns comma separated list of accept languages.
-  virtual WebString AcceptLanguages() { return WebString(); }
-
   // Called when the View has changed size as a result of an auto-resize.
-  virtual void DidAutoResize(const WebSize& new_size) {}
+  virtual void DidAutoResize(const gfx::Size& new_size) {}
 
   // Called when the View acquires focus.
   virtual void DidFocus() {}
 
-  // Called when the View's zoom has changed.
-  virtual void ZoomLevelChanged() {}
-
-  // Session history -----------------------------------------------------
-
-  // Returns the number of history items before/after the current
-  // history item.
-  virtual int HistoryBackListCount() { return 0; }
-  virtual int HistoryForwardListCount() { return 0; }
-
-  // Developer tools -----------------------------------------------------
-
-  // Called to notify the client that the inspector's settings were
-  // changed and should be saved.  See WebView::inspectorSettings.
-  virtual void DidUpdateInspectorSettings() {}
-
-  virtual void DidUpdateInspectorSetting(const WebString& key,
-                                         const WebString& value) {}
-
-  // Gestures -------------------------------------------------------------
-
-  virtual bool CanHandleGestureEvent() { return false; }
-
-  // Policies -------------------------------------------------------------
-
-  virtual bool AllowPopupsDuringPageUnload() { return false; }
-
-  // History -------------------------------------------------------------
-  virtual void OnSetHistoryOffsetAndLength(int history_offset,
-                                           int history_length) {}
+  // Called when the WebView is destroying itself.
+  virtual void OnDestruct() {}
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_PUBLIC_WEB_WEB_VIEW_CLIENT_H_

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -28,25 +28,25 @@ const char kInterfaceIdKey[] = "interfaceId";
 const char kInterfaceClassKey[] = "interfaceClass";
 
 bool ExtractFromDict(const std::string& key,
-                     const base::DictionaryValue* dict_value,
+                     const base::Value::Dict* dict_value,
                      int max,
                      int* value) {
-  int temp;
-  if (!dict_value->GetInteger(key, &temp)) {
+  absl::optional<int> temp = dict_value->FindInt(key);
+  if (!temp) {
     *value = UsbDevicePermissionData::SPECIAL_VALUE_ANY;
     return true;
   }
 
-  if (temp < UsbDevicePermissionData::SPECIAL_VALUE_ANY || temp > max)
+  if (*temp < UsbDevicePermissionData::SPECIAL_VALUE_ANY || *temp > max)
     return false;
 
-  *value = temp;
+  *value = *temp;
   return true;
 }
 
 }  // namespace
 
-UsbDevicePermissionData::UsbDevicePermissionData() {}
+UsbDevicePermissionData::UsbDevicePermissionData() = default;
 
 UsbDevicePermissionData::UsbDevicePermissionData(int vendor_id,
                                                  int product_id,
@@ -85,20 +85,20 @@ bool UsbDevicePermissionData::Check(
 }
 
 std::unique_ptr<base::Value> UsbDevicePermissionData::ToValue() const {
-  base::DictionaryValue* result = new base::DictionaryValue();
-  result->SetInteger(kVendorIdKey, vendor_id_);
-  result->SetInteger(kProductIdKey, product_id_);
-  result->SetInteger(kInterfaceIdKey, interface_id_);
-  result->SetInteger(kInterfaceClassKey, interface_class_);
-  return std::unique_ptr<base::Value>(result);
+  base::Value::Dict result;
+  result.Set(kVendorIdKey, vendor_id_);
+  result.Set(kProductIdKey, product_id_);
+  result.Set(kInterfaceIdKey, interface_id_);
+  result.Set(kInterfaceClassKey, interface_class_);
+  return std::make_unique<base::Value>(std::move(result));
 }
 
 bool UsbDevicePermissionData::FromValue(const base::Value* value) {
   if (!value)
     return false;
 
-  const base::DictionaryValue* dict_value;
-  if (!value->GetAsDictionary(&dict_value))
+  const base::Value::Dict* dict_value = value->GetIfDict();
+  if (!dict_value)
     return false;
 
   const int kMaxId = std::numeric_limits<uint16_t>::max();

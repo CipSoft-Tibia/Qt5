@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,16 +9,12 @@ namespace content {
 
 // Enumerations of the possible restore types.
 enum class RestoreType {
-  // Restore from the previous session.
-  LAST_SESSION_EXITED_CLEANLY,
-  LAST_SESSION_CRASHED,
-
-  // The entry has been restored from the current session. This is used when
-  // the user issues 'reopen closed tab'.
-  CURRENT_SESSION,
+  // The entry has been restored (either from the previous session OR from the
+  // current session - e.g. via 'reopen closed tab').
+  kRestored,
 
   // The entry was not restored.
-  NONE
+  kNotRestored
 };
 
 }  // namespace content

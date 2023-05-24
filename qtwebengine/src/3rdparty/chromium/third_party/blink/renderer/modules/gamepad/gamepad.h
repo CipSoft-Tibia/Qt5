@@ -26,13 +26,14 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_GAMEPAD_GAMEPAD_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_GAMEPAD_GAMEPAD_H_
 
+#include "base/time/time.h"
 #include "device/gamepad/public/cpp/gamepad.h"
 #include "third_party/blink/renderer/core/dom/dom_high_res_time_stamp.h"
 #include "third_party/blink/renderer/modules/gamepad/gamepad_button.h"
 #include "third_party/blink/renderer/modules/gamepad/gamepad_haptic_actuator.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
@@ -56,7 +57,8 @@ class MODULES_EXPORT Gamepad final : public ScriptWrappable {
           base::TimeTicks time_floor);
   ~Gamepad() override;
 
-  void UpdateFromDeviceState(const device::Gamepad&);
+  void UpdateFromDeviceState(const device::Gamepad&,
+                             bool cross_origin_isolated_capability);
 
   typedef Vector<double> DoubleVector;
 
@@ -91,7 +93,8 @@ class MODULES_EXPORT Gamepad final : public ScriptWrappable {
   void Trace(Visitor*) const override;
 
  private:
-  void SetTimestamp(const device::Gamepad& device_gamepad);
+  void SetTimestamp(const device::Gamepad& device_gamepad,
+                    bool cross_origin_isolated_capability);
 
   Member<Client> client_;
 

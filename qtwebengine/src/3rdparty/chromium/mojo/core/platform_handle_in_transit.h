@@ -1,16 +1,15 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef MOJO_CORE_PLATFORM_HANDLE_IN_TRANSIT_H_
 #define MOJO_CORE_PLATFORM_HANDLE_IN_TRANSIT_H_
 
-#include "base/macros.h"
+#include "base/process/process.h"
 #include "build/build_config.h"
-#include "mojo/core/scoped_process_handle.h"
 #include "mojo/public/cpp/platform/platform_handle.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include <windows.h>
 #endif
 
@@ -28,19 +27,23 @@ class PlatformHandleInTransit {
   PlatformHandleInTransit();
   explicit PlatformHandleInTransit(PlatformHandle handle);
   PlatformHandleInTransit(PlatformHandleInTransit&&);
+
+  PlatformHandleInTransit(const PlatformHandleInTransit&) = delete;
+  PlatformHandleInTransit& operator=(const PlatformHandleInTransit&) = delete;
+
   ~PlatformHandleInTransit();
 
   PlatformHandleInTransit& operator=(PlatformHandleInTransit&&);
 
   // Accessor for the owned handle. Must be owned by the calling process.
   const PlatformHandle& handle() const {
-    DCHECK(!owning_process_.is_valid());
+    DCHECK(!owning_process_.IsValid());
     return handle_;
   }
 
   // Returns the process which owns this handle. If this is invalid, the handle
   // is owned by the current process.
-  const ScopedProcessHandle& owning_process() const { return owning_process_; }
+  const base::Process& owning_process() const { return owning_process_; }
 
   // Takes ownership of the held handle as-is. The handle must belong to the
   // current process.
@@ -52,10 +55,23 @@ class PlatformHandleInTransit {
   // lifetime.
   void CompleteTransit();
 
-  // Transfers ownership of this (local) handle to |target_process|.
-  bool TransferToProcess(ScopedProcessHandle target_process);
+  // Designates the relative trust level of the destination process compared to
+  // the source process, in the context of a handle transfer operation. This
+  // may be expanded to more granular degrees of trust in the future.
+  enum TransferTargetTrustLevel {
+    // No special constraints on what can be transferred or how.
+    kTrustedTarget,
 
-#if defined(OS_WIN)
+    // On some platforms, transfers with this destination type may be restricted
+    // to block certain types of handles.
+    kUntrustedTarget,
+  };
+
+  // Transfers ownership of this (local) handle to |target_process|.
+  bool TransferToProcess(base::Process target_process,
+                         TransferTargetTrustLevel trust = kTrustedTarget);
+
+#if BUILDFLAG(IS_WIN)
   HANDLE remote_handle() const { return remote_handle_; }
 
   // Indicates whether |handle| is a known pseudo handle value. In a fuzzing
@@ -86,7 +102,7 @@ class PlatformHandleInTransit {
 #endif
 
  private:
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // We don't use a ScopedHandle (or, by extension, PlatformHandle) here because
   // the handle verifier expects all handle values to be owned by this process.
   // On Windows we use |handle_| for locally owned handles and |remote_handle_|
@@ -95,9 +111,7 @@ class PlatformHandleInTransit {
 #endif
 
   PlatformHandle handle_;
-  ScopedProcessHandle owning_process_;
-
-  DISALLOW_COPY_AND_ASSIGN(PlatformHandleInTransit);
+  base::Process owning_process_;
 };
 
 }  // namespace core

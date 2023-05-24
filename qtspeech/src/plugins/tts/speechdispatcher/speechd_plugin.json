@@ -2,5 +2,9 @@
     "Keys": ["speechd"],
     "Provider": "speechd",
     "Version": 100,
-    "Features": []
+    "Priority": 80,
+    "Capabilities": [
+        "Speak",
+        "PauseResume"
+    ]
 }

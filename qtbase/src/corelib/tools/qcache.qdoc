@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \class QCache
@@ -80,7 +56,7 @@
     \sa QPixmapCache, QHash, QMap
 */
 
-/*! \fn template <class Key, class T> QCache<Key, T>::QCache(int maxCost = 100)
+/*! \fn template <class Key, class T> QCache<Key, T>::QCache(qsizetype maxCost = 100)
 
     Constructs a cache whose contents will never have a total cost
     greater than \a maxCost.
@@ -91,14 +67,14 @@
     Destroys the cache. Deletes all the objects in the cache.
 */
 
-/*! \fn template <class Key, class T> int QCache<Key, T>::maxCost() const
+/*! \fn template <class Key, class T> qsizetype QCache<Key, T>::maxCost() const
 
     Returns the maximum allowed total cost of the cache.
 
     \sa setMaxCost(), totalCost()
 */
 
-/*! \fn template <class Key, class T> void QCache<Key, T>::setMaxCost(int cost)
+/*! \fn template <class Key, class T> void QCache<Key, T>::setMaxCost(qsizetype cost)
 
     Sets the maximum allowed total cost of the cache to \a cost. If
     the current total cost is greater than \a cost, some objects are
@@ -107,7 +83,7 @@
     \sa maxCost(), totalCost()
 */
 
-/*! \fn template <class Key, class T> int QCache<Key, T>::totalCost() const
+/*! \fn template <class Key, class T> qsizetype QCache<Key, T>::totalCost() const
 
     Returns the total cost of the objects in the cache.
 
@@ -120,14 +96,14 @@
     \sa setMaxCost()
 */
 
-/*! \fn template <class Key, class T> int QCache<Key, T>::size() const
+/*! \fn template <class Key, class T> qsizetype QCache<Key, T>::size() const
 
     Returns the number of objects in the cache.
 
     \sa isEmpty()
 */
 
-/*! \fn template <class Key, class T> int QCache<Key, T>::count() const
+/*! \fn template <class Key, class T> qsizetype QCache<Key, T>::count() const
 
     Same as size().
 */
@@ -153,7 +129,7 @@
 */
 
 
-/*! \fn template <class Key, class T> bool QCache<Key, T>::insert(const Key &key, T *object, int cost = 1)
+/*! \fn template <class Key, class T> bool QCache<Key, T>::insert(const Key &key, T *object, qsizetype cost = 1)
 
     Inserts \a object into the cache with key \a key and
     associated cost \a cost. Any object with the same key already in

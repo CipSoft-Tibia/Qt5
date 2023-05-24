@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qv4arraybuffer_p.h"
 #include "qv4typedarray_p.h"
 #include "qv4atomics_p.h"
@@ -87,7 +51,7 @@ static SharedArrayBuffer *validateSharedIntegerTypedArray(Scope &scope, const Va
         scope.engine->throwTypeError();
         return nullptr;
     }
-    Q_ASSERT(!buffer->isDetachedBuffer());
+    Q_ASSERT(!buffer->hasDetachedArrayData());
     return buffer;
 }
 
@@ -125,7 +89,7 @@ ReturnedValue atomicReadModifyWrite(const FunctionObject *f, const Value *argv, 
     int bytesPerElement = a.d()->type->bytesPerElement;
     int byteOffset = a.d()->byteOffset + index * bytesPerElement;
 
-    return a.d()->type->atomicModifyOps[modify](buffer->data() + byteOffset, v);
+    return a.d()->type->atomicModifyOps[modify](buffer->arrayData() + byteOffset, v);
 }
 
 ReturnedValue Atomics::method_add(const FunctionObject *f, const Value *, const Value *argv, int argc)
@@ -162,7 +126,7 @@ ReturnedValue Atomics::method_compareExchange(const FunctionObject *f, const Val
     int bytesPerElement = a.d()->type->bytesPerElement;
     int byteOffset = a.d()->byteOffset + index * bytesPerElement;
 
-    return a.d()->type->atomicCompareExchange(buffer->data() + byteOffset, expected, v);
+    return a.d()->type->atomicCompareExchange(buffer->arrayData() + byteOffset, expected, v);
 }
 
 ReturnedValue Atomics::method_exchange(const FunctionObject *f, const Value *, const Value *argv, int argc)
@@ -203,7 +167,7 @@ ReturnedValue Atomics::method_load(const FunctionObject *f, const Value *, const
     int bytesPerElement = a.d()->type->bytesPerElement;
     int byteOffset = a.d()->byteOffset + index * bytesPerElement;
 
-    return a.d()->type->atomicLoad(buffer->data() + byteOffset);
+    return a.d()->type->atomicLoad(buffer->arrayData() + byteOffset);
 }
 
 ReturnedValue Atomics::method_or(const FunctionObject *f, const Value *, const Value *argv, int argc)
@@ -232,7 +196,7 @@ ReturnedValue Atomics::method_store(const FunctionObject *f, const Value *, cons
     int bytesPerElement = a.d()->type->bytesPerElement;
     int byteOffset = a.d()->byteOffset + index * bytesPerElement;
 
-    return a.d()->type->atomicStore(buffer->data() + byteOffset, v);
+    return a.d()->type->atomicStore(buffer->arrayData() + byteOffset, v);
 }
 
 ReturnedValue Atomics::method_sub(const FunctionObject *f, const Value *, const Value *argv, int argc)

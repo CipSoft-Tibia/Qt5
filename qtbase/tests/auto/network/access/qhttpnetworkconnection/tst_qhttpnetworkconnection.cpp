@@ -1,37 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
-#include "private/qhttpnetworkconnection_p.h"
-#include "private/qnoncontiguousbytedevice_p.h"
+#include <QTest>
+#include <QTestEventLoop>
 #include <QAuthenticator>
 #include <QTcpServer>
+
+#include "private/qhttpnetworkconnection_p.h"
+#include "private/qnoncontiguousbytedevice_p.h"
 
 #include "../../../network-settings.h"
 
@@ -233,7 +210,7 @@ void tst_QHttpNetworkConnection::finishedReply()
 
 void tst_QHttpNetworkConnection::finishedWithError(QNetworkReply::NetworkError errorCode, const QString &detail)
 {
-    Q_UNUSED(detail)
+    Q_UNUSED(detail);
     finishedWithErrorCalled = true;
     netErrorCode = errorCode;
 }
@@ -425,7 +402,7 @@ void tst_QHttpNetworkConnection::_connect()
 void tst_QHttpNetworkConnection::challenge401(const QHttpNetworkRequest &request,
                                                         QAuthenticator *authenticator)
 {
-    Q_UNUSED(request)
+    Q_UNUSED(request);
 
     QHttpNetworkReply *reply = qobject_cast<QHttpNetworkReply*>(sender());
     if (reply) {
@@ -563,7 +540,7 @@ void tst_QHttpNetworkConnection::compression()
 #ifndef QT_NO_SSL
 void tst_QHttpNetworkConnection::sslErrors(const QList<QSslError> &errors)
 {
-    Q_UNUSED(errors)
+    Q_UNUSED(errors);
 
     QHttpNetworkReply *reply = qobject_cast<QHttpNetworkReply*>(sender());
     if (reply) {
@@ -689,7 +666,7 @@ void tst_QHttpNetworkConnection::getMultiple_data()
 static bool allRepliesFinished(const QList<QHttpNetworkReply*> *_replies)
 {
     const QList<QHttpNetworkReply*> &replies = *_replies;
-    for (int i = 0; i < replies.length(); i++)
+    for (int i = 0; i < replies.size(); i++)
         if (!replies.at(i)->isFinished())
             return false;
     return true;
@@ -734,7 +711,7 @@ void tst_QHttpNetworkConnection::getMultipleWithPipeliningAndMultiplePriorities(
     QList<QHttpNetworkReply*> replies;
 
     for (int i = 0; i < requestCount; i++) {
-        QHttpNetworkRequest *request = 0;
+        QHttpNetworkRequest *request = nullptr;
         if (i % 3)
             request = new QHttpNetworkRequest("http://" + httpServerName() + "/qtest/rfc3252.txt", QHttpNetworkRequest::Get);
         else
@@ -758,7 +735,7 @@ void tst_QHttpNetworkConnection::getMultipleWithPipeliningAndMultiplePriorities(
     QTRY_VERIFY_WITH_TIMEOUT(allRepliesFinished(&replies), 60000);
 
     int pipelinedCount = 0;
-    for (int i = 0; i < replies.length(); i++) {
+    for (int i = 0; i < replies.size(); i++) {
         QVERIFY (!(replies.at(i)->request().isPipeliningAllowed() == false
             && replies.at(i)->isPipeliningUsed()));
 
@@ -812,7 +789,7 @@ void tst_QHttpNetworkConnection::getMultipleWithPriorities()
     QList<QHttpNetworkReply*> replies;
 
     for (int i = 0; i < requestCount; i++) {
-        QHttpNetworkRequest *request = 0;
+        QHttpNetworkRequest *request = nullptr;
         if (i % 3)
             request = new QHttpNetworkRequest(url, QHttpNetworkRequest::Get);
         else
@@ -867,7 +844,7 @@ void tst_QHttpNetworkConnection::getEmptyWithPipelining()
     QList<QHttpNetworkReply*> replies;
 
     for (int i = 0; i < requestCount; i++) {
-        QHttpNetworkRequest *request = 0;
+        QHttpNetworkRequest *request = nullptr;
         request = new QHttpNetworkRequest(url, QHttpNetworkRequest::Get);
         request->setPipeliningAllowed(true);
 
@@ -914,7 +891,7 @@ void tst_QHttpNetworkConnection::getAndEverythingShouldBePipelined()
     GetAndEverythingShouldBePipelinedReceiver receiver(requestCount);
 
     for (int i = 0; i < requestCount; i++) {
-        QHttpNetworkRequest *request = 0;
+        QHttpNetworkRequest *request = nullptr;
         request = new QHttpNetworkRequest(url, QHttpNetworkRequest::Get);
         request->setPipeliningAllowed(true);
         requests.append(request);

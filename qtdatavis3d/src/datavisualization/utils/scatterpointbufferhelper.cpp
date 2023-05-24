@@ -1,36 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "scatterpointbufferhelper_p.h"
 #include <QtGui/QVector2D>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 const QVector3D hiddenPos(-1000.0f, -1000.0f, -1000.0f);
 
@@ -112,7 +86,7 @@ void ScatterPointBufferHelper::load(ScatterSeriesRenderCache *cache)
         }
     }
 
-    QVector<QVector2D> buffered_uvs;
+    QList<QVector2D> buffered_uvs;
     if (itemsVisible)
         m_indexCount = renderArraySize;
 
@@ -170,7 +144,7 @@ void ScatterPointBufferHelper::updateUVs(ScatterSeriesRenderCache *cache)
     // It may be that the buffer hasn't yet been initialized, in case the entire series was
     // hidden items. No need to update in that case.
     if (m_indexCount > 0) {
-        QVector<QVector2D> buffered_uvs;
+        QList<QVector2D> buffered_uvs;
         createRangeGradientUVs(cache, buffered_uvs);
 
         if (buffered_uvs.size()) {
@@ -197,7 +171,7 @@ void ScatterPointBufferHelper::updateUVs(ScatterSeriesRenderCache *cache)
 }
 
 void ScatterPointBufferHelper::createRangeGradientUVs(ScatterSeriesRenderCache *cache,
-                                                      QVector<QVector2D> &buffered_uvs)
+                                                      QList<QVector2D> &buffered_uvs)
 {
     const ScatterRenderItemArray &renderArray = cache->renderArray();
     const bool updateAll = (cache->updateIndices().size() == 0);
@@ -216,4 +190,4 @@ void ScatterPointBufferHelper::createRangeGradientUVs(ScatterSeriesRenderCache *
     }
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

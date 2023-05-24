@@ -34,7 +34,7 @@
 int main (int argc, char **argv)
 {
     AVFormatContext *fmt_ctx = NULL;
-    AVDictionaryEntry *tag = NULL;
+    const AVDictionaryEntry *tag = NULL;
     int ret;
 
     if (argc != 2) {
@@ -52,7 +52,7 @@ int main (int argc, char **argv)
         return ret;
     }
 
-    while ((tag = av_dict_get(fmt_ctx->metadata, "", tag, AV_DICT_IGNORE_SUFFIX)))
+    while ((tag = av_dict_iterate(fmt_ctx->metadata, tag)))
         printf("%s=%s\n", tag->key, tag->value);
 
     avformat_close_input(&fmt_ctx);

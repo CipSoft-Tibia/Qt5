@@ -1,11 +1,9 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_CONTENT_SETTINGS_CORE_BROWSER_CONTENT_SETTINGS_OBSERVABLE_PROVIDER_H_
 #define COMPONENTS_CONTENT_SETTINGS_CORE_BROWSER_CONTENT_SETTINGS_OBSERVABLE_PROVIDER_H_
-
-#include <string>
 
 #include "base/observer_list.h"
 #include "base/threading/thread_checker.h"
@@ -26,8 +24,7 @@ class ObservableProvider : public ProviderInterface {
  protected:
   void NotifyObservers(const ContentSettingsPattern& primary_pattern,
                        const ContentSettingsPattern& secondary_pattern,
-                       ContentSettingsType content_type,
-                       const std::string& resource_identifier);
+                       ContentSettingsType content_type);
   void RemoveAllObservers();
   bool CalledOnValidThread();
 

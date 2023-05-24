@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 #ifndef QSSLERROR_H
@@ -44,6 +8,8 @@
 #include <QtNetwork/qtnetworkglobal.h>
 #include <QtCore/qvariant.h>
 #include <QtNetwork/qsslcertificate.h>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -100,13 +66,13 @@ public:
     // RVCT compiler in debug build does not like about default values in const-
     // So as an workaround we define all constructor overloads here explicitly
     QSslError();
-    QSslError(SslError error);
+    explicit QSslError(SslError error);
     QSslError(SslError error, const QSslCertificate &certificate);
 
     QSslError(const QSslError &other);
 
     void swap(QSslError &other) noexcept
-    { qSwap(d, other.d); }
+    { d.swap(other.d); }
 
     ~QSslError();
     QSslError &operator=(QSslError &&other) noexcept { swap(other); return *this; }
@@ -120,24 +86,26 @@ public:
     QSslCertificate certificate() const;
 
 private:
-    QScopedPointer<QSslErrorPrivate> d;
+    // ### Qt 7: make QSslError implicitly shared
+    std::unique_ptr<QSslErrorPrivate> d;
 };
 Q_DECLARE_SHARED(QSslError)
 
-Q_NETWORK_EXPORT uint qHash(const QSslError &key, uint seed = 0) noexcept;
+Q_NETWORK_EXPORT size_t qHash(const QSslError &key, size_t seed = 0) noexcept;
 
 #ifndef QT_NO_DEBUG_STREAM
 class QDebug;
 Q_NETWORK_EXPORT QDebug operator<<(QDebug debug, const QSslError &error);
 Q_NETWORK_EXPORT QDebug operator<<(QDebug debug, const QSslError::SslError &error);
 #endif
-
+#else
+class Q_NETWORK_EXPORT QSslError {}; // dummy class so that moc has a complete type
 #endif // QT_NO_SSL
 
 QT_END_NAMESPACE
 
 #ifndef QT_NO_SSL
-Q_DECLARE_METATYPE(QList<QSslError>)
+QT_DECL_METATYPE_EXTERN_TAGGED(QList<QSslError>, QList_QSslError, Q_NETWORK_EXPORT)
 #endif
 
 #endif

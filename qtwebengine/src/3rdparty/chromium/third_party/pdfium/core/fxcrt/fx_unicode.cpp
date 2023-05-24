@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,11 @@
 
 #include "core/fxcrt/fx_unicode.h"
 
-#include "third_party/base/stl_util.h"
+#include <stddef.h>
+
+#include <iterator>
+
+#include "third_party/base/check.h"
 
 namespace {
 
@@ -30,7 +34,7 @@ constexpr uint16_t kTextLayoutCodeProperties[] = {
 #undef CHARPROP____
 
 constexpr size_t kTextLayoutCodePropertiesSize =
-    pdfium::size(kTextLayoutCodeProperties);
+    std::size(kTextLayoutCodeProperties);
 
 static_assert(kTextLayoutCodePropertiesSize == 65536, "missing characters");
 
@@ -63,7 +67,7 @@ constexpr uint16_t kExtendedTextLayoutCodeProperties[] = {
 #undef CHARPROP____
 
 constexpr size_t kExtendedTextLayoutCodePropertiesSize =
-    pdfium::size(kExtendedTextLayoutCodeProperties);
+    std::size(kExtendedTextLayoutCodeProperties);
 
 static_assert(kExtendedTextLayoutCodePropertiesSize == 65536,
               "missing characters");
@@ -122,7 +126,7 @@ constexpr uint16_t kFXTextLayoutBidiMirror[] = {
 };
 
 constexpr size_t kFXTextLayoutBidiMirrorSize =
-    pdfium::size(kFXTextLayoutBidiMirror);
+    std::size(kFXTextLayoutBidiMirror);
 
 // Check that the mirror indicies in the fx_ucddata.inc table are in bounds.
 #undef CHARPROP____
@@ -134,34 +138,40 @@ constexpr size_t kFXTextLayoutBidiMirrorSize =
 
 }  // namespace
 
-wchar_t FX_GetMirrorChar(wchar_t wch) {
+namespace pdfium {
+namespace unicode {
+
+wchar_t GetMirrorChar(wchar_t wch) {
   uint16_t prop = GetUnicodeProperties(wch);
   size_t idx = prop >> kMirrorBitPos;
   if (idx == kMirrorMax)
     return wch;
-  ASSERT(idx < kFXTextLayoutBidiMirrorSize);
+  DCHECK(idx < kFXTextLayoutBidiMirrorSize);
   return kFXTextLayoutBidiMirror[idx];
 }
 
-FX_BIDICLASS FX_GetBidiClass(wchar_t wch) {
+FX_BIDICLASS GetBidiClass(wchar_t wch) {
   uint16_t prop = GetUnicodeProperties(wch);
   uint16_t result = (prop & kBidiClassBitMask) >> kBidiClassBitPos;
-  ASSERT(result <= static_cast<uint16_t>(FX_BIDICLASS::kPDF));
+  DCHECK(result <= static_cast<uint16_t>(FX_BIDICLASS::kPDF));
   return static_cast<FX_BIDICLASS>(result);
 }
 
 #ifdef PDF_ENABLE_XFA
-FX_CHARTYPE FX_GetCharType(wchar_t wch) {
+FX_CHARTYPE GetCharType(wchar_t wch) {
   uint16_t prop = GetExtendedUnicodeProperties(wch);
   uint16_t result = (prop & kCharTypeBitMask) >> kCharTypeBitPos;
-  ASSERT(result <= static_cast<uint16_t>(FX_CHARTYPE::kArabic));
+  DCHECK(result <= static_cast<uint16_t>(FX_CHARTYPE::kArabic));
   return static_cast<FX_CHARTYPE>(result);
 }
 
-FX_BREAKPROPERTY FX_GetBreakProperty(wchar_t wch) {
+FX_BREAKPROPERTY GetBreakProperty(wchar_t wch) {
   uint16_t prop = GetExtendedUnicodeProperties(wch);
   uint16_t result = (prop & kBreakTypeBitMask) >> kBreakTypeBitPos;
-  ASSERT(result <= static_cast<uint16_t>(FX_BREAKPROPERTY::kTB));
+  DCHECK(result <= static_cast<uint16_t>(FX_BREAKPROPERTY::kTB));
   return static_cast<FX_BREAKPROPERTY>(result);
 }
 #endif  // PDF_ENABLE_XFA
+
+}  // namespace unicode
+}  // namespace pdfium

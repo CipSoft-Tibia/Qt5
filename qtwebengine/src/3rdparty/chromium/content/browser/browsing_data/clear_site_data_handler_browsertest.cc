@@ -1,25 +1,28 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <algorithm>
 #include <memory>
+#include <vector>
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/command_line.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/run_loop.h"
-#include "base/scoped_observer.h"
-#include "base/stl_util.h"
+#include "base/strings/escape.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/lock.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/thread_annotations.h"
 #include "build/build_config.h"
 #include "content/browser/browsing_data/browsing_data_browsertest_utils.h"
 #include "content/browser/browsing_data/browsing_data_filter_builder_impl.h"
+#include "content/browser/browsing_data/shared_storage_clear_site_data_tester.h"
+#include "content/browser/browsing_data/storage_bucket_clear_site_data_tester.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -35,7 +38,7 @@
 #include "content/public/test/mock_browsing_data_remover_delegate.h"
 #include "content/public/test/test_navigation_observer.h"
 #include "content/shell/browser/shell.h"
-#include "net/base/escape.h"
+#include "net/base/features.h"
 #include "net/base/net_errors.h"
 #include "net/base/url_util.h"
 #include "net/cookies/cookie_access_result.h"
@@ -46,6 +49,8 @@
 #include "storage/browser/quota/quota_settings.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/features_generated.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "url/origin.h"
 #include "url/url_constants.h"
 
@@ -58,14 +63,14 @@ namespace {
 // Adds a key=value pair to the url's query.
 void AddQuery(GURL* url, const std::string& key, const std::string& value) {
   *url = GURL(url->spec() + (url->has_query() ? "&" : "?") + key + "=" +
-              net::EscapeQueryParamValue(value, false));
+              base::EscapeQueryParamValue(value, false));
 }
 
 // A helper function to synchronize with JS side of the tests. JS can append
 // information to the loaded website's title and C++ will wait until that
 // happens.
 void WaitForTitle(const Shell* shell, const char* expected_title) {
-  base::string16 expected_title_16 = base::ASCIIToUTF16(expected_title);
+  std::u16string expected_title_16 = base::ASCIIToUTF16(expected_title);
   TitleWatcher title_watcher(shell->web_contents(), expected_title_16);
   ASSERT_EQ(expected_title_16, title_watcher.WaitAndGetTitle());
 }
@@ -102,8 +107,12 @@ class TestBrowsingDataRemoverDelegate : public MockBrowsingDataRemoverDelegate {
     }
     if (storage || cache) {
       uint64_t data_type_mask =
-          (storage ? BrowsingDataRemover::DATA_TYPE_DOM_STORAGE : 0) |
+          (storage ? BrowsingDataRemover::DATA_TYPE_DOM_STORAGE |
+                         BrowsingDataRemover::DATA_TYPE_PRIVACY_SANDBOX
+                   : 0) |
           (cache ? BrowsingDataRemover::DATA_TYPE_CACHE : 0);
+      data_type_mask &=
+          ~BrowsingDataRemover::DATA_TYPE_PRIVACY_SANDBOX_INTERNAL;
 
       BrowsingDataFilterBuilderImpl filter_builder(
           BrowsingDataFilterBuilder::Mode::kDelete);
@@ -132,8 +141,8 @@ class ClearSiteDataHandlerBrowserTest : public ContentBrowserTest {
   void SetUpOnMainThread() override {
     ContentBrowserTest::SetUpOnMainThread();
 
-    BrowserContext::GetBrowsingDataRemover(browser_context())
-        ->SetEmbedderDelegate(&embedder_delegate_);
+    browser_context()->GetBrowsingDataRemover()->SetEmbedderDelegate(
+        &embedder_delegate_);
 
     // Set up HTTP and HTTPS test servers that handle all hosts.
     host_resolver()->AddRule("*", "127.0.0.1");
@@ -147,8 +156,8 @@ class ClearSiteDataHandlerBrowserTest : public ContentBrowserTest {
     ASSERT_TRUE(embedded_test_server()->Start());
 
     // Set up HTTPS server.
-    https_server_.reset(new net::EmbeddedTestServer(
-        net::test_server::EmbeddedTestServer::TYPE_HTTPS));
+    https_server_ = std::make_unique<net::EmbeddedTestServer>(
+        net::test_server::EmbeddedTestServer::TYPE_HTTPS);
     https_server_->SetSSLConfig(net::EmbeddedTestServer::CERT_OK);
     https_server_->RegisterRequestHandler(
         base::BindRepeating(&ClearSiteDataHandlerBrowserTest::HandleRequest,
@@ -161,7 +170,7 @@ class ClearSiteDataHandlerBrowserTest : public ContentBrowserTest {
   }
 
   StoragePartition* storage_partition() {
-    return BrowserContext::GetDefaultStoragePartition(browser_context());
+    return browser_context()->GetDefaultStoragePartition();
   }
 
   // Adds a cookie for the |url|. Used in the cookie integration tests.
@@ -171,7 +180,8 @@ class ClearSiteDataHandlerBrowserTest : public ContentBrowserTest {
         storage_partition()->GetCookieManagerForBrowserProcess();
 
     std::unique_ptr<net::CanonicalCookie> cookie(net::CanonicalCookie::Create(
-        url, "A=1", base::Time::Now(), base::nullopt /* server_time */));
+        url, "A=1", base::Time::Now(), absl::nullopt /* server_time */,
+        absl::nullopt /* cookie_partition_key */));
 
     base::RunLoop run_loop;
     cookie_manager->SetCanonicalCookie(
@@ -225,10 +235,9 @@ class ClearSiteDataHandlerBrowserTest : public ContentBrowserTest {
   }
 
   bool RunScriptAndGetBool(const std::string& script) {
-    bool data;
-    EXPECT_TRUE(content::ExecuteScriptAndExtractBool(shell()->web_contents(),
-                                                     script, &data));
-    return data;
+    return EvalJs(shell()->web_contents(), script,
+                  EXECUTE_SCRIPT_USE_MANUAL_REPLY)
+        .ExtractBool();
   }
 
  private:
@@ -331,7 +340,7 @@ class ClearSiteDataHandlerBrowserTest : public ContentBrowserTest {
 // may or may not send the header, so there are 8 configurations to test.
 
 // Crashes on Win only. https://crbug.com/741189
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #define MAYBE_RedirectNavigation DISABLED_RedirectNavigation
 #else
 #define MAYBE_RedirectNavigation RedirectNavigation
@@ -369,7 +378,7 @@ IN_PROC_BROWSER_TEST_F(ClearSiteDataHandlerBrowserTest,
         NavigateToURL(shell(), urls[0], urls[2] /* expected_commit_url */));
 
     // We reached the end of the redirect chain.
-    EXPECT_EQ(urls[2], shell()->web_contents()->GetURL());
+    EXPECT_EQ(urls[2], shell()->web_contents()->GetLastCommittedURL());
 
     delegate()->VerifyAndClearExpectations();
   }
@@ -380,7 +389,7 @@ IN_PROC_BROWSER_TEST_F(ClearSiteDataHandlerBrowserTest,
 // chain may or may not send the header, so there are 8 configurations to test.
 
 // Crashes on Win only. https://crbug.com/741189
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #define MAYBE_RedirectResourceLoad DISABLED_RedirectResourceLoad
 #else
 #define MAYBE_RedirectResourceLoad RedirectResourceLoad
@@ -574,7 +583,7 @@ IN_PROC_BROWSER_TEST_F(ClearSiteDataHandlerBrowserTest, ServiceWorker) {
 // if credentials are allowed in that fetch.
 
 // Crashes on Win only. https://crbug.com/741189
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #define MAYBE_Credentials DISABLED_Credentials
 #else
 #define MAYBE_Credentials Credentials
@@ -774,7 +783,7 @@ IN_PROC_BROWSER_TEST_F(ClearSiteDataHandlerBrowserTest,
   service_workers =
       browsing_data_browsertest_utils::GetServiceWorkers(partition);
   ASSERT_EQ(1u, service_workers.size());
-  EXPECT_EQ(service_workers[0].origin.GetURL(),
+  EXPECT_EQ(service_workers[0].storage_key.origin().GetURL(),
             server->GetURL("origin2.com", "/"));
 
   // TODO(msramek): Test that the service worker update ping also deletes
@@ -827,7 +836,7 @@ IN_PROC_BROWSER_TEST_F(ClearSiteDataHandlerBrowserTest, ClosedTab) {
 }
 
 // Tests that sending Clear-Site-Data during a service worker installation
-// doesn't fail. (see crbug.com/898465)
+// results in the service worker not installed. (see crbug.com/898465)
 IN_PROC_BROWSER_TEST_F(ClearSiteDataHandlerBrowserTest,
                        ClearSiteDataDuringServiceWorkerInstall) {
   GURL url = embedded_test_server()->GetURL("127.0.0.1", "/");
@@ -836,6 +845,14 @@ IN_PROC_BROWSER_TEST_F(ClearSiteDataHandlerBrowserTest,
   delegate()->ExpectClearSiteDataCall(url::Origin::Create(url), false, true,
                                       false);
   SetClearSiteDataHeader("\"storage\"");
+  EXPECT_FALSE(RunScriptAndGetBool("installServiceWorker()"));
+  delegate()->VerifyAndClearExpectations();
+  EXPECT_FALSE(RunScriptAndGetBool("hasServiceWorker()"));
+
+  // Install the service worker again without CSD header to verify that
+  // future network requests are not broken and the service worker
+  // installs correctly.
+  SetClearSiteDataHeader("");
   EXPECT_TRUE(RunScriptAndGetBool("installServiceWorker()"));
   delegate()->VerifyAndClearExpectations();
   EXPECT_TRUE(RunScriptAndGetBool("hasServiceWorker()"));
@@ -856,7 +873,7 @@ IN_PROC_BROWSER_TEST_F(ClearSiteDataHandlerBrowserTest,
                                       false);
 
   base::RunLoop loop;
-  auto* remover = BrowserContext::GetBrowsingDataRemover(browser_context());
+  auto* remover = browser_context()->GetBrowsingDataRemover();
   remover->SetWouldCompleteCallbackForTesting(
       base::BindLambdaForTesting([&](base::OnceClosure callback) {
         std::move(callback).Run();
@@ -871,6 +888,142 @@ IN_PROC_BROWSER_TEST_F(ClearSiteDataHandlerBrowserTest,
 
   // Notify crbug.com/912313 if the test fails here again.
   EXPECT_FALSE(RunScriptAndGetBool("hasServiceWorker()"));
+}
+
+enum TestScenario {
+  NoFeaturesActivated,
+  StorageBucketsActivated,
+  ThirdPartyStoragePartitioningActivated,
+  AllFeaturesActivated,
+};
+
+class ClearSiteDataHandlerStorageBucketsBrowserTest
+    : public ClearSiteDataHandlerBrowserTest,
+      public testing::WithParamInterface<TestScenario> {
+ public:
+  explicit ClearSiteDataHandlerStorageBucketsBrowserTest() {
+    enum TestScenario test_scenario = GetParam();
+    std::vector<base::test::FeatureRef> activated_features = {};
+
+    switch (test_scenario) {
+      case NoFeaturesActivated:
+        break;
+
+      case StorageBucketsActivated:
+        activated_features.push_back(blink::features::kStorageBuckets);
+        break;
+
+      case ThirdPartyStoragePartitioningActivated:
+        activated_features.push_back(
+            net::features::kThirdPartyStoragePartitioning);
+        break;
+
+      case AllFeaturesActivated:
+        activated_features.push_back(blink::features::kStorageBuckets);
+        activated_features.push_back(
+            net::features::kThirdPartyStoragePartitioning);
+        break;
+    }
+
+    feature_list_.InitWithFeatures(activated_features, {});
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+INSTANTIATE_TEST_SUITE_P(StorageBucketsIntegrationTestSuite,
+                         ClearSiteDataHandlerStorageBucketsBrowserTest,
+                         testing::Values(NoFeaturesActivated,
+                                         StorageBucketsActivated,
+                                         ThirdPartyStoragePartitioningActivated,
+                                         AllFeaturesActivated));
+
+// Integration test for the deletion of storage buckets.
+IN_PROC_BROWSER_TEST_P(ClearSiteDataHandlerStorageBucketsBrowserTest,
+                       StorageBucketsIntegrationTest) {
+  GURL url = https_server()->GetURL("127.0.0.1", "/");
+
+  const auto storage_key =
+      blink::StorageKey::CreateFirstParty(url::Origin::Create(url));
+
+  StorageBucketClearSiteDataTester tester(storage_partition());
+  tester.CreateBucketForTesting(
+      storage_key, "drafts",
+      base::BindOnce(
+          [](storage::QuotaErrorOr<storage::BucketInfo> error_or_bucket_info) {
+          }));
+  tester.CreateBucketForTesting(
+      storage_key, "inbox",
+      base::BindOnce(
+          [](storage::QuotaErrorOr<storage::BucketInfo> error_or_bucket_info) {
+          }));
+  tester.CreateBucketForTesting(
+      storage_key, "attachments",
+      base::BindOnce(
+          [](storage::QuotaErrorOr<storage::BucketInfo> error_or_bucket_info) {
+          }));
+
+  AddQuery(&url, "header", "\"storage:drafts\", \"storage:attachments\"");
+  EXPECT_TRUE(NavigateToURL(shell(), url));
+
+  tester.GetBucketsForStorageKey(
+      storage_key,
+      base::BindOnce([](storage::QuotaErrorOr<std::set<storage::BucketInfo>>
+                            error_or_buckets) {
+        EXPECT_EQ(base::FeatureList::IsEnabled(blink::features::kStorageBuckets)
+                      ? 1u
+                      : 3u,
+                  error_or_buckets.value().size());
+      }));
+
+  delegate()->VerifyAndClearExpectations();
+}
+
+class ClearSiteDataHandlerSharedStorageBrowserTest
+    : public ClearSiteDataHandlerBrowserTest {
+ public:
+  ClearSiteDataHandlerSharedStorageBrowserTest() {
+    feature_list_.InitAndEnableFeature(blink::features::kSharedStorageAPI);
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+// Integration test for the deletion of shared storage.
+IN_PROC_BROWSER_TEST_F(ClearSiteDataHandlerSharedStorageBrowserTest,
+                       SharedStorageIntegrationTest) {
+  SharedStorageClearSiteDataTester tester(storage_partition());
+
+  GURL url1 = https_server()->GetURL("origin1.com", "/");
+  const url::Origin kOrigin1 = url::Origin::Create(url1);
+  tester.AddConsecutiveSharedStorageEntries(kOrigin1, u"key", u"value", 10);
+
+  GURL url2 = https_server()->GetURL("origin2.com", "/");
+  const url::Origin kOrigin2 = url::Origin::Create(url2);
+  tester.AddConsecutiveSharedStorageEntries(kOrigin2, u"key", u"value", 5);
+
+  // There are 15 entries for two origins.
+  EXPECT_THAT(tester.GetSharedStorageOrigins(),
+              testing::UnorderedElementsAre(kOrigin1, kOrigin2));
+  EXPECT_EQ(10, tester.GetSharedStorageNumEntriesForOrigin(kOrigin1));
+  EXPECT_EQ(5, tester.GetSharedStorageNumEntriesForOrigin(kOrigin2));
+  EXPECT_EQ(15, tester.GetSharedStorageTotalEntries());
+
+  // Let Clear-Site-Data delete the shared storage of "origin1.com".
+  delegate()->ExpectClearSiteDataCall(kOrigin1, /*cookies=*/false,
+                                      /*storage=*/true, /*cache=*/false);
+  AddQuery(&url1, "header", "\"storage\"");
+  EXPECT_TRUE(NavigateToURL(shell(), url1));
+  delegate()->VerifyAndClearExpectations();
+
+  // There are now only 5 entries for one origin.
+  EXPECT_THAT(tester.GetSharedStorageOrigins(),
+              testing::UnorderedElementsAre(kOrigin2));
+  EXPECT_EQ(0, tester.GetSharedStorageNumEntriesForOrigin(kOrigin1));
+  EXPECT_EQ(5, tester.GetSharedStorageNumEntriesForOrigin(kOrigin2));
+  EXPECT_EQ(5, tester.GetSharedStorageTotalEntries());
 }
 
 }  // namespace content

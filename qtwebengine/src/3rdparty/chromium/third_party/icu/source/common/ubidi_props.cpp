@@ -53,7 +53,7 @@ _enumPropertyStartsRange(const void *context, UChar32 start, UChar32 end, uint32
     /* add the start code point to the USet */
     const USetAdder *sa=(const USetAdder *)context;
     sa->add(sa->set, start);
-    return TRUE;
+    return true;
 }
 
 U_CFUNC void
@@ -248,7 +248,7 @@ u_charMirror(UChar32 c) {
     return ubidi_getMirror(c);
 }
 
-U_STABLE UChar32 U_EXPORT2
+U_CAPI UChar32 U_EXPORT2
 u_getBidiPairedBracket(UChar32 c) {
     return ubidi_getPairedBracket(c);
 }

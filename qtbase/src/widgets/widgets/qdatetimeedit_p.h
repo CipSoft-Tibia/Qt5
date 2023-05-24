@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2021 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QDATETIMEEDIT_P_H
 #define QDATETIMEEDIT_P_H
@@ -53,6 +17,8 @@
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtCore/qcalendar.h>
+#include <QtCore/qdatetime.h>
+#include <QtCore/qtimezone.h>
 #include "QtWidgets/qcalendarwidget.h"
 #include "QtWidgets/qspinbox.h"
 #include "QtWidgets/qtoolbutton.h"
@@ -70,7 +36,7 @@ class Q_AUTOTEST_EXPORT QDateTimeEditPrivate : public QAbstractSpinBoxPrivate, p
 {
     Q_DECLARE_PUBLIC(QDateTimeEdit)
 public:
-    QDateTimeEditPrivate();
+    QDateTimeEditPrivate(const QTimeZone &zone = QTimeZone::LocalTime);
 
     void init(const QVariant &var);
     void readLocaleSettings();
@@ -94,24 +60,9 @@ public:
 
     // Override QDateTimeParser:
     QString displayText() const override { return edit->text(); }
-    QDateTime getMinimum() const override
-    {
-        if (keyboardTracking)
-            return minimum.toDateTime();
-        if (spec != Qt::LocalTime)
-            return QDateTime(QDATETIMEEDIT_DATE_MIN.startOfDay(spec));
-        return QDateTimeParser::getMinimum();
-    }
-    QDateTime getMaximum() const override
-    {
-        if (keyboardTracking)
-            return maximum.toDateTime();
-        if (spec != Qt::LocalTime)
-            return QDateTime(QDATETIMEEDIT_DATE_MAX.endOfDay(spec));
-        return QDateTimeParser::getMaximum();
-    }
+    QDateTime getMinimum() const override;
+    QDateTime getMaximum() const override;
     QLocale locale() const override { return q_func()->locale(); }
-    QString getAmPmText(AmPm ap, Case cs) const override;
     int cursorPosition() const override { return edit ? edit->cursorPosition() : -1; }
 
     int absoluteIndex(QDateTimeEdit::Section s, int index) const;
@@ -124,8 +75,10 @@ public:
 
     void updateCache(const QVariant &val, const QString &str) const;
 
-    void updateTimeSpec();
+    QDateTime convertTimeZone(const QDateTime &datetime);
+    void updateTimeZone();
     QString valueToText(const QVariant &var) const { return textFromValue(var); }
+    QDateTime dateTimeValue(QDate date, QTime time) const;
 
     void _q_resetButton();
     void updateArrow(QStyle::StateFlag state);
@@ -140,20 +93,20 @@ public:
     void initCalendarPopup(QCalendarWidget *cw = nullptr);
     void positionCalendarPopup();
 
-    QDateTimeEdit::Sections sections;
-    mutable bool cacheGuard;
+    QDateTimeEdit::Sections sections = {};
+    mutable bool cacheGuard = false;
 
     QString defaultDateFormat, defaultTimeFormat, defaultDateTimeFormat, unreversedFormat;
     mutable QVariant conflictGuard;
-    bool hasHadFocus, formatExplicitlySet, calendarPopup;
-    QStyle::StateFlag arrowState;
-    QCalendarPopup *monthCalendar;
+    bool hasHadFocus = false, formatExplicitlySet = false, calendarPopup = false;
+    QStyle::StateFlag arrowState = QStyle::State_None;
+    QCalendarPopup *monthCalendar = nullptr;
 
 #ifdef QT_KEYPAD_NAVIGATION
-    bool focusOnButton;
+    bool focusOnButton = false;
 #endif
 
-    Qt::TimeSpec spec = Qt::LocalTime;
+    QTimeZone timeZone;
 };
 
 

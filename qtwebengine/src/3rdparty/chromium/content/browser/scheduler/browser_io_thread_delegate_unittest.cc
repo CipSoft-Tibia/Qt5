@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <memory>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/threading/thread.h"
 #include "content/browser/scheduler/browser_task_executor.h"
@@ -22,14 +22,14 @@ TEST(BrowserIOThreadDelegateTest, CanPostTasksToThread) {
 
   auto delegate = std::make_unique<BrowserIOThreadDelegate>();
   auto handle = delegate->GetHandle();
-  handle->EnableAllQueues();
+  handle->OnStartupComplete();
 
   base::Thread::Options options;
-  options.delegate = delegate.release();
-  thread.StartWithOptions(options);
+  options.delegate = std::move(delegate);
+  thread.StartWithOptions(std::move(options));
 
   auto runner =
-      handle->GetBrowserTaskRunner(BrowserTaskQueues::QueueType::kDefault);
+      handle->GetBrowserTaskRunner(BrowserTaskQueues::QueueType::kUserBlocking);
 
   base::WaitableEvent event;
   runner->PostTask(FROM_HERE, base::BindOnce(&base::WaitableEvent::Signal,
@@ -44,8 +44,8 @@ TEST(BrowserIOThreadDelegateTest, DefaultTaskRunnerIsAlwaysActive) {
   auto task_runner = delegate->GetDefaultTaskRunner();
 
   base::Thread::Options options;
-  options.delegate = delegate.release();
-  thread.StartWithOptions(options);
+  options.delegate = std::move(delegate);
+  thread.StartWithOptions(std::move(options));
 
   base::WaitableEvent event;
   task_runner->PostTask(FROM_HERE, base::BindOnce(&base::WaitableEvent::Signal,

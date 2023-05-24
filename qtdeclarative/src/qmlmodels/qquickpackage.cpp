@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickpackage_p.h"
 
@@ -74,11 +38,11 @@ QT_BEGIN_NAMESPACE
     \note Package is part of QtQml.Models since version 2.14 and part of QtQuick since version 2.0.
     Importing Package via QtQuick is deprecated since Qt 5.14.
 
-    \sa {Qt Quick Examples - Views}, {Qt Quick Demo - Photo Viewer}, {Qt QML}
+    \sa {Qt Quick Examples - Views}, {Qt QML}
 */
 
 /*!
-    \qmlattachedproperty string QtQuick::Package::name
+    \qmlattachedproperty string QtQml.Models::Package::name
     This attached property holds the name of an item within a Package.
 */
 
@@ -90,11 +54,14 @@ public:
 
     struct DataGuard : public QQmlGuard<QObject>
     {
-        DataGuard(QObject *obj, QList<DataGuard> *l) : list(l) { (QQmlGuard<QObject>&)*this = obj; }
+        DataGuard(QObject *obj, QList<DataGuard> *l) : QQmlGuard<QObject>(DataGuard::objectDestroyedImpl, nullptr), list(l) { (QQmlGuard<QObject>&)*this = obj; }
         QList<DataGuard> *list;
-        void objectDestroyed(QObject *) override {
+
+    private:
+        static void objectDestroyedImpl(QQmlGuardImpl *guard) {
+            auto This = static_cast<DataGuard *>(guard);
             // we assume priv will always be destroyed after objectDestroyed calls
-            list->removeOne(*this);
+            This->list->removeOne(*This);
         }
     };
 
@@ -107,15 +74,15 @@ public:
         QList<DataGuard> *list = static_cast<QList<DataGuard> *>(prop->data);
         list->clear();
     }
-    static QObject *data_at(QQmlListProperty<QObject> *prop, int index) {
+    static QObject *data_at(QQmlListProperty<QObject> *prop, qsizetype index) {
         QList<DataGuard> *list = static_cast<QList<DataGuard> *>(prop->data);
         return list->at(index);
     }
-    static int data_count(QQmlListProperty<QObject> *prop) {
+    static qsizetype data_count(QQmlListProperty<QObject> *prop) {
         QList<DataGuard> *list = static_cast<QList<DataGuard> *>(prop->data);
-        return list->count();
+        return list->size();
     }
-    static void data_replace(QQmlListProperty<QObject> *prop, int index, QObject *o) {
+    static void data_replace(QQmlListProperty<QObject> *prop, qsizetype index, QObject *o) {
         QList<DataGuard> *list = static_cast<QList<DataGuard> *>(prop->data);
         list->replace(index, DataGuard(o, list));
     }
@@ -153,10 +120,6 @@ QQuickPackage::QQuickPackage(QObject *parent)
 {
 }
 
-QQuickPackage::~QQuickPackage()
-{
-}
-
 QQmlListProperty<QObject> QQuickPackage::data()
 {
     Q_D(QQuickPackage);
@@ -172,7 +135,7 @@ QQmlListProperty<QObject> QQuickPackage::data()
 bool QQuickPackage::hasPart(const QString &name)
 {
     Q_D(QQuickPackage);
-    for (int ii = 0; ii < d->dataList.count(); ++ii) {
+    for (int ii = 0; ii < d->dataList.size(); ++ii) {
         QObject *obj = d->dataList.at(ii);
         QQuickPackageAttached *a = QQuickPackageAttached::attached.value(obj);
         if (a && a->name() == name)
@@ -187,7 +150,7 @@ QObject *QQuickPackage::part(const QString &name)
     if (name.isEmpty() && !d->dataList.isEmpty())
         return d->dataList.at(0);
 
-    for (int ii = 0; ii < d->dataList.count(); ++ii) {
+    for (int ii = 0; ii < d->dataList.size(); ++ii) {
         QObject *obj = d->dataList.at(ii);
         QQuickPackageAttached *a = QQuickPackageAttached::attached.value(obj);
         if (a && a->name() == name)

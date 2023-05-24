@@ -1,11 +1,10 @@
-// Copyright (c) 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef MEDIA_AUDIO_ALSA_MOCK_ALSA_WRAPPER_H_
 #define MEDIA_AUDIO_ALSA_MOCK_ALSA_WRAPPER_H_
 
-#include "base/macros.h"
 #include "media/audio/alsa/alsa_wrapper.h"
 #include "testing/gmock/include/gmock/gmock.h"
 
@@ -14,6 +13,9 @@ namespace media {
 class MockAlsaWrapper : public AlsaWrapper {
  public:
   MockAlsaWrapper();
+
+  MockAlsaWrapper(const MockAlsaWrapper&) = delete;
+  MockAlsaWrapper& operator=(const MockAlsaWrapper&) = delete;
 
   ~MockAlsaWrapper() override;
 
@@ -167,7 +169,19 @@ class MockAlsaWrapper : public AlsaWrapper {
                    long* value));
   MOCK_METHOD3(MixerSelemGetPlaybackVolumeRange,
                int(snd_mixer_elem_t* elem, long* min, long* max));
+  MOCK_METHOD(int,
+              MixerSelemAskPlaybackVolDb,
+              (snd_mixer_elem_t * elem, long value, long* db_value),
+              (override));
+  MOCK_METHOD(int,
+              MixerSelemAskPlaybackDbVol,
+              (snd_mixer_elem_t * elem, long db_value, long* value),
+              (override));
   MOCK_METHOD1(MixerSelemHasPlaybackSwitch, int(snd_mixer_elem_t* elem));
+  MOCK_METHOD(int,
+              MixerSelemHasPlaybackVolume,
+              (snd_mixer_elem_t * elem),
+              (override));
   MOCK_METHOD2(MixerSelemIdSetIndex,
                void(snd_mixer_selem_id_t* obj, unsigned int val));
   MOCK_METHOD2(MixerSelemIdSetName,
@@ -176,14 +190,15 @@ class MockAlsaWrapper : public AlsaWrapper {
                int(snd_mixer_elem_t* elem,
                    snd_mixer_selem_channel_id_t channel,
                    int value));
+  MOCK_METHOD(int,
+              MixerSelemSetPlaybackSwitchAll,
+              (snd_mixer_elem_t * elem, int value),
+              (override));
   MOCK_METHOD2(MixerSelemSetPlaybackVolumeAll,
                int(snd_mixer_elem_t* elem, long value));
   MOCK_METHOD1(MixerSelemIdMalloc, int(snd_mixer_selem_id_t** ptr));
   MOCK_METHOD1(MixerSelemIdFree, void(snd_mixer_selem_id_t* obj));
   MOCK_METHOD1(StrError, const char*(int errnum));
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MockAlsaWrapper);
 };
 
 }  // namespace media

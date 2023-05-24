@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #define QT_NO_KEYWORDS
 #undef signals
@@ -49,11 +24,9 @@
 #include <QtQuick/private/qsgcontext_p.h>
 #include <QtQuick/private/qsgcontextplugin_p.h>
 #if QT_CONFIG(opengl)
-#include <QtQuick/private/qsgopengldistancefieldglyphcache_p.h>
 #include <QtQuick/private/qsgdefaultglyphnode_p.h>
 #include <QtQuick/private/qsgdefaultinternalimagenode_p.h>
 #include <QtQuick/private/qsgdefaultinternalrectanglenode_p.h>
-#include <QtQuick/private/qsgdepthstencilbuffer_p.h>
 #include <QtQuick/private/qsgdistancefieldglyphnode_p.h>
 #endif
 #include <QtQuick/private/qsggeometry_p.h>
@@ -67,7 +40,6 @@
 #include <QtQuick/private/qsgtexture_p.h>
 #include <QtQuick/private/qsgplaintexture_p.h>
 #include <QtQuick/private/qsgthreadedrenderloop_p.h>
-#include <QtQuick/private/qsgwindowsrenderloop_p.h>
 
 #include <QtQuick/private/qsgrhiatlastexture_p.h>
 #include <QtQuick/private/qsgrhidistancefieldglyphcache_p.h>

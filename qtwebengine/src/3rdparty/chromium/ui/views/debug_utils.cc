@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,14 @@
 #include <ostream>
 
 #include "base/logging.h"
+#include "ui/compositor/layer.h"
 #include "ui/views/view.h"
+#include "ui/views/widget/widget.h"
 
 #if !defined(NDEBUG)
 #include "ui/gfx/geometry/angle_conversions.h"
-#include "ui/gfx/transform_util.h"
+#include "ui/gfx/geometry/decomposed_transform.h"
+#include "ui/gfx/geometry/transform.h"
 #endif
 
 namespace views {
@@ -89,22 +92,23 @@ std::string PrintViewGraphImpl(const View* view) {
                  view->bounds().height());
   result.append(bounds_buffer);
 
-  gfx::DecomposedTransform decomp;
-  if (!view->GetTransform().IsIdentity() &&
-      gfx::DecomposeTransform(&decomp, view->GetTransform())) {
-    base::snprintf(bounds_buffer, kBoundsBufferSize,
-                   "\\n translation: (%f, %f)", decomp.translate[0],
-                   decomp.translate[1]);
-    result.append(bounds_buffer);
+  if (!view->GetTransform().IsIdentity()) {
+    if (absl::optional<gfx::DecomposedTransform> decomp =
+            view->GetTransform().Decompose()) {
+      base::snprintf(bounds_buffer, kBoundsBufferSize,
+                     "\\n translation: (%f, %f)", decomp->translate[0],
+                     decomp->translate[1]);
+      result.append(bounds_buffer);
 
-    base::snprintf(bounds_buffer, kBoundsBufferSize, "\\n rotation: %3.2f",
-                   gfx::RadToDeg(std::acos(decomp.quaternion.w()) * 2));
-    result.append(bounds_buffer);
+      base::snprintf(bounds_buffer, kBoundsBufferSize, "\\n rotation: %3.2f",
+                     gfx::RadToDeg(std::acos(decomp->quaternion.w()) * 2));
+      result.append(bounds_buffer);
 
-    base::snprintf(bounds_buffer, kBoundsBufferSize,
-                   "\\n scale: (%2.4f, %2.4f)", decomp.scale[0],
-                   decomp.scale[1]);
-    result.append(bounds_buffer);
+      base::snprintf(bounds_buffer, kBoundsBufferSize,
+                     "\\n scale: (%2.4f, %2.4f)", decomp->scale[0],
+                     decomp->scale[1]);
+      result.append(bounds_buffer);
+    }
   }
 
   result.append("\"");
@@ -141,6 +145,41 @@ std::string PrintViewGraphImpl(const View* view) {
 #endif
 
 }  // namespace
+
+void PrintWidgetInformation(const Widget& widget,
+                            bool detailed,
+                            std::ostringstream* out) {
+  *out << " name=" << widget.GetName();
+  *out << " (" << &widget << ")";
+
+  if (widget.parent())
+    *out << " parent=" << widget.parent();
+  else
+    *out << " parent=none";
+
+  const ui::Layer* layer = widget.GetLayer();
+  if (layer)
+    *out << " layer=" << layer;
+  else
+    *out << " layer=none";
+
+  *out << (widget.is_top_level() ? " [top_level]" : " [!top_level]");
+
+  if (detailed) {
+    *out << (widget.IsActive() ? " [active]" : " [!active]");
+    *out << (widget.IsVisible() ? " [visible]" : " [!visible]");
+  }
+
+  *out << (widget.IsClosed() ? " [closed]" : "");
+  *out << (widget.IsMaximized() ? " [maximized]" : "");
+  *out << (widget.IsMinimized() ? " [minimized]" : "");
+  *out << (widget.IsFullscreen() ? " [fullscreen]" : "");
+
+  if (detailed)
+    *out << " " << widget.GetWindowBoundsInScreen().ToString();
+
+  *out << '\n';
+}
 
 void PrintViewHierarchy(const View* view) {
   std::ostringstream out;

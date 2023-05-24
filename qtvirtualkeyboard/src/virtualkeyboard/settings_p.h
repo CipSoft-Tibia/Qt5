@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef SETTINGS_P_H
 #define SETTINGS_P_H
@@ -41,16 +15,18 @@
 // We mean it.
 //
 
+#include "qvirtualkeyboardnamespace_p.h"
 #include <QObject>
 #include <QUrl>
 #include <QtVirtualKeyboard/qvirtualkeyboard_global.h>
+#include <QtCore/private/qglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 namespace QtVirtualKeyboard {
 
 class SettingsPrivate;
 
-class QVIRTUALKEYBOARD_EXPORT Settings : public QObject
+class Q_VIRTUALKEYBOARD_EXPORT Settings : public QObject
 {
     Q_OBJECT
     Q_DISABLE_COPY(Settings)
@@ -91,6 +67,30 @@ public:
     bool fullScreenMode() const;
     void setFullScreenMode(bool fullScreenMode);
 
+    QString userDataPath() const;
+    void setUserDataPath(const QString &userDataPath);
+
+    int hwrTimeoutForAlphabetic() const;
+    void setHwrTimeoutForAlphabetic(int hwrTimeoutForAlphabetic);
+
+    int hwrTimeoutForCjk() const;
+    void setHwrTimeoutForCjk(int hwrTimeoutForCjk);
+
+    Qt::InputMethodHints inputMethodHints() const;
+    void setInputMethodHints(const Qt::InputMethodHints &inputMethodHints);
+
+    bool isHandwritingModeDisabled() const;
+    void setHandwritingModeDisabled(bool handwritingModeDisabled);
+
+    bool isDefaultInputMethodDisabled() const;
+    void setDefaultInputMethodDisabled(bool defaultInputMethodDisabled);
+
+    bool isDefaultDictionaryDisabled() const;
+    void setDefaultDictionaryDisabled(bool defaultDictionaryDisabled);
+
+    QtVirtualKeyboard::KeyboardFunctionKeys visibleFunctionKeys() const;
+    void setVisibleFunctionKeys(QtVirtualKeyboard::KeyboardFunctionKeys newVisibleFunctionKeys);
+
 signals:
     void styleChanged();
     void styleNameChanged();
@@ -102,6 +102,15 @@ signals:
     void wclAlwaysVisibleChanged();
     void wclAutoCommitWordChanged();
     void fullScreenModeChanged();
+    void userDataPathChanged();
+    void userDataReset();
+    void hwrTimeoutForAlphabeticChanged();
+    void hwrTimeoutForCjkChanged();
+    void inputMethodHintsChanged();
+    void handwritingModeDisabledChanged();
+    void defaultInputMethodDisabledChanged();
+    void defaultDictionaryDisabledChanged();
+    void visibleFunctionKeysChanged();
 };
 
 } // namespace QtVirtualKeyboard

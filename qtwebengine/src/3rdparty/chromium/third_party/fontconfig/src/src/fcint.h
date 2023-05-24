@@ -40,7 +40,9 @@
 #include <limits.h>
 #include <float.h>
 #include <math.h>
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
+#endif
 #include <stddef.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -53,6 +55,14 @@
 
 #ifndef FC_CONFIG_PATH
 #define FC_CONFIG_PATH "fonts.conf"
+#endif
+
+#ifdef _WIN32
+#define FC_LIKELY(expr) (expr)
+#define FC_UNLIKELY(expr) (expr)
+#else
+#define FC_LIKELY(expr) (__builtin_expect (((expr) ? 1 : 0), 1))
+#define FC_UNLIKELY(expr) (__builtin_expect (((expr) ? 1 : 0), 0))
 #endif
 
 #ifdef _WIN32
@@ -80,6 +90,10 @@ extern pfnSHGetFolderPathA pSHGetFolderPathA;
 #define FC_UNUSED	__attribute__((unused))
 #else
 #define FC_UNUSED
+#endif
+
+#ifndef FC_UINT64_FORMAT
+#define FC_UINT64_FORMAT	"llu"
 #endif
 
 #define FC_DBG_MATCH	1
@@ -138,16 +152,16 @@ FC_ASSERT_STATIC (sizeof (FcRef) == sizeof (int));
 #define FcIsEncodedOffset(p)	((((intptr_t) (p)) & 1) != 0)
 
 /* Encode offset in a pointer of type t */
-#define FcOffsetEncode(o,t)	((t *) ((o) | 1))
+#define FcOffsetEncode(o,t)	((t *) (intptr_t) ((o) | 1))
 
 /* Decode a pointer into an offset */
 #define FcOffsetDecode(p)	(((intptr_t) (p)) & ~1)
 
 /* Compute pointer offset */
-#define FcPtrToOffset(b,p)	((intptr_t) (p) - (intptr_t) (b))
+#define FcPtrToOffset(b,p)	((ptrdiff_t) ((intptr_t) (p) - (intptr_t) (b)))
 
 /* Given base address, offset and type, return a pointer */
-#define FcOffsetToPtr(b,o,t)	((t *) ((intptr_t) (b) + (o)))
+#define FcOffsetToPtr(b,o,t)	((t *) ((intptr_t) (b) + (ptrdiff_t) (o)))
 
 /* Given base address, encoded offset and type, return a pointer */
 #define FcEncodedOffsetToPtr(b,p,t) FcOffsetToPtr(b,FcOffsetDecode(p),t)
@@ -185,7 +199,7 @@ typedef struct _FcValueList {
 } FcValueList;
 
 #define FcValueListNext(vl)	FcPointerMember(vl,next,FcValueList)
-			
+
 typedef int FcObject;
 
 /* The 1024 is to leave some room for future added internal objects, such
@@ -224,7 +238,7 @@ struct _FcPattern {
 						      FcFontSetFonts(fs)[i], \
 						      FcPattern) : \
 				 fs->fonts[i])
-						
+
 typedef enum _FcOp {
     FcOpInteger, FcOpDouble, FcOpString, FcOpMatrix, FcOpRange, FcOpBool, FcOpCharSet, FcOpLangSet,
     FcOpNil,
@@ -394,8 +408,8 @@ typedef struct _FcStrBuf {
 
 typedef struct _FcHashTable	FcHashTable;
 
-typedef FcChar32 (* FcHashFunc)	   (const void *data);
-typedef int	 (* FcCompareFunc) (const void *v1, const void *v2);
+typedef FcChar32 (* FcHashFunc)	   (const FcChar8 *data);
+typedef int	 (* FcCompareFunc) (const FcChar8 *v1, const FcChar8 *v2);
 typedef FcBool	 (* FcCopyFunc)	   (const void *src, void **dest);
 
 
@@ -424,8 +438,6 @@ struct _FcCache {
  * Used while constructing a directory cache object
  */
 
-#define FC_SERIALIZE_HASH_SIZE	8191
-
 typedef union _FcAlign {
     double	d;
     int		i;
@@ -435,9 +447,9 @@ typedef union _FcAlign {
 } FcAlign;
 
 typedef struct _FcSerializeBucket {
-    struct _FcSerializeBucket *next;
-    const void	*object;
-    intptr_t	offset;
+    const void	*object; /* key */
+    uintptr_t	hash;    /* hash of key */
+    intptr_t	offset;  /* value */
 } FcSerializeBucket;
 
 typedef struct _FcCharSetFreezer FcCharSetFreezer;
@@ -446,7 +458,10 @@ typedef struct _FcSerialize {
     intptr_t		size;
     FcCharSetFreezer	*cs_freezer;
     void		*linear;
-    FcSerializeBucket	*buckets[FC_SERIALIZE_HASH_SIZE];
+    FcSerializeBucket	*buckets;
+    size_t		buckets_count;
+    size_t		buckets_used;
+    size_t		buckets_used_max;
 } FcSerialize;
 
 /*
@@ -649,6 +664,9 @@ FcConfigXdgConfigHome (void);
 
 FcPrivate FcChar8 *
 FcConfigXdgDataHome (void);
+
+FcPrivate FcStrSet *
+FcConfigXdgDataDirs (void);
 
 FcPrivate FcExpr *
 FcConfigAllocExpr (FcConfig *config);
@@ -890,6 +908,9 @@ FcGetDefaultLang (void);
 
 FcPrivate FcChar8 *
 FcGetPrgname (void);
+
+FcPrivate FcChar8 *
+FcGetDesktopName (void);
 
 FcPrivate void
 FcDefaultFini (void);
@@ -1244,6 +1265,9 @@ FcPrivate FcStrSet *
 FcStrSetCreateEx (unsigned int control);
 
 FcPrivate FcBool
+FcStrSetInsert (FcStrSet *set, const FcChar8 *s, int pos);
+
+FcPrivate FcBool
 FcStrSetAddLangs (FcStrSet *strs, const char *languages);
 
 FcPrivate void
@@ -1321,6 +1345,12 @@ FcStrLastSlash (const FcChar8  *path);
 
 FcPrivate FcChar32
 FcStrHashIgnoreCase (const FcChar8 *s);
+
+FcPrivate FcChar32
+FcStrHashIgnoreBlanksAndCase (const FcChar8 *s);
+
+FcPrivate FcChar8 *
+FcStrRealPath (const FcChar8 *path);
 
 FcPrivate FcChar8 *
 FcStrCanonFilename (const FcChar8 *s);

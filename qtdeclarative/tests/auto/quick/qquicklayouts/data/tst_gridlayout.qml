@@ -1,56 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import QtQuick 2.6
 import QtTest 1.0
 import QtQuick.Layouts 1.1
+import "LayoutHelperLibrary.js" as LayoutHelpers
 
 Item {
     id: container
@@ -586,6 +540,56 @@ Item {
             tryCompare(layout.children[4], "y", 60);
         }
 
+        Component {
+            id: layout_alignBaseline_Component
+            GridLayout {
+                columns: 2
+                columnSpacing: 0
+                rowSpacing: 0
+                TextInput {
+                    property var itemRect: [x, y, width, height]
+                    text: "red"
+                    baselineOffset: 7
+                    color: "red"
+                    verticalAlignment: TextInput.AlignVCenter
+                    Layout.preferredWidth: 50
+                    Layout.preferredHeight: 10
+                    Layout.fillHeight: true
+                }
+                TextInput {
+                    property var itemRect: [x, y, width, height]
+                    text: "green"
+                    baselineOffset: 7
+                    color: "green"
+                    verticalAlignment: TextInput.AlignVCenter
+                    Layout.preferredWidth: 50
+                    Layout.preferredHeight: 10
+                    Layout.fillHeight: true
+                }
+
+            }
+        }
+
+        function test_alignBaseline_dont_always_invalidate()
+        {
+            var layout = createTemporaryObject(layout_alignBaseline_Component, container);
+            waitForItemPolished(layout)
+            layout.height = 20
+            // Adjusting height on an item that uses Qt.AlignBaseline might adjust the baseline
+            // Test if we don't get excessive number of polish() events because of baseline changes
+            // (In this case, we don't want to align by the baseline)
+            compare(isPolishScheduled(layout), false)
+            waitForItemPolished(layout)
+            var c0 = layout.children[0]
+            c0.Layout.alignment = Qt.AlignBaseline
+            var c1 = layout.children[1]
+            c1.Layout.alignment = Qt.AlignBaseline
+
+            // We want to align by baseline => expect a polish event
+            compare(isPolishScheduled(layout), true)
+            waitForItemPolished(layout)
+        }
+
 
         Component {
             id: layout_rightToLeft_Component
@@ -985,8 +989,10 @@ Item {
 
             // reset left|rightMargin. It should then use the generic "margins" property
             c0.Layout.leftMargin = undefined
+            waitForItemPolished(layout)
             compare(layout.implicitWidth, 10 + 20 + 4 + 4 + 20 + 6)
             c0.Layout.bottomMargin = undefined
+            waitForItemPolished(layout)
             compare(layout.implicitHeight, 3 + 20 + 10 + 4 + 20 + 5)
         }
 
@@ -1139,7 +1145,7 @@ Item {
 
         function test_columnIsOutsideGrid()
         {
-            ignoreWarning(/QML Item: Layout: column \(2\) should be less than the number of columns \(2\)/);
+            ignoreWarning(/.*: Layout: column \(2\) should be less than the number of columns \(2\)/);
             var layout = layout_columnIsOutsideGrid_Component.createObject(container);
             layout.width = layout.implicitWidth
             layout.height = layout.implicitHeight
@@ -1203,5 +1209,173 @@ Item {
             verify(waitForItemPolished(layout))
             // Shouldn't be any warnings, but no way to verify this currently: QTBUG-70029
         }
+
+        // ------------------
+        Component {
+            id: hfw_Component
+            GridLayout {
+                columns: 2
+
+                Text {
+                    text: "Description:"
+                }
+                TextEdit {
+                    Layout.fillWidth: true
+                    wrapMode: TextEdit.WordWrap
+                    text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit."
+                          + " Mauris fermentum a ante et feugiat. Nam tortor velit, sagittis et nunc a, mattis efficitur dui."
+                          + " Quisque nec blandit lacus. Morbi eget mi arcu."
+
+                }
+                Rectangle {
+                    color: "lightgray"
+                    Layout.row: 1
+                    Layout.column: 0
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+                    implicitHeight: 2
+                }
+            }
+        }
+        function test_hfw() {
+            // Test to see how layouts handle height-for-width items
+            // For TextEdit, changing the width will update its implicitHeight to match what's
+            // needed in order to display it's full text
+            // Therefore, reducing the width of the layout should also increase its implicitHeight.
+            var layout = createTemporaryObject(hfw_Component, container)
+            verify(layout)
+            verify(waitForItemPolished(layout))
+            var initialImplicitHeight = layout.implicitHeight
+            var oldImplicitHeight = initialImplicitHeight
+            for (var w = layout.width - 100; w >= 200; w -= 100) {
+                layout.width = w
+                // will trigger a change in implicitHeight, which will trigger a polish event
+                verify(waitForItemPolished(layout))
+                verify(layout.implicitHeight >= oldImplicitHeight)
+                oldImplicitHeight = layout.implicitHeight
+            }
+            verify(layout.implicitHeight > initialImplicitHeight)
+        }
+
+        function test_uniformCellSizes_data()
+        {
+            return [
+                {
+                  tag: "hor 9/3",
+                  layout: {
+                    type: "GridLayout",
+                    columns: 3,
+                    items: [
+                        {minimumWidth:  1, preferredWidth: 10, maximumWidth: 20, fillWidth: true},
+                        {minimumWidth:  1, preferredWidth:  4, maximumWidth: 10, fillWidth: true},
+                        {minimumWidth:  1, preferredWidth: 50, maximumWidth: 99, fillWidth: true}
+                    ]
+                  },
+                  layoutWidth:     9,
+                  expectedWidths: [3, 3, 3],
+                  expectedPositions: [0, 3, 6]
+                },
+                {
+                  tag: "hor 30/3",
+                  layout: {
+                    type: "GridLayout",
+                    columns: 3,
+                    items: [
+                        {minimumWidth:  1, preferredWidth: 10, maximumWidth: 20, fillWidth: true},
+                        {minimumWidth:  1, preferredWidth:  4, maximumWidth: 10, fillWidth: true},
+                        {minimumWidth:  1, preferredWidth: 50, maximumWidth: 99, fillWidth: true}
+                    ]
+                  },
+                  layoutWidth:     30,
+                  expectedWidths: [10, 10, 10]
+                },
+                {
+                  tag: "hor 60/3",
+                  layout: {
+                    type: "GridLayout",
+                    columns: 3,
+                    items: [
+                        {minimumWidth:  1, preferredWidth: 10, maximumWidth: 20, fillWidth: true},
+                        {minimumWidth:  1, preferredWidth:  4, maximumWidth: 10, fillWidth: true},
+                        {minimumWidth:  1, preferredWidth: 50, maximumWidth: 99, fillWidth: true}
+                    ]
+                  },
+                  layoutWidth:     60,
+                  expectedWidths: [20, 10, 20],     // We are beyond the maximumWidth. of the middle item,
+                  expectedPositions: [0, 20, 40]    // check that *cellSize* is still uniform
+                                                    // (middle item will be left-aligned in the cell by default)
+                },
+                {
+                  tag: "hor 66/3",
+                  layout: {
+                    type: "GridLayout",
+                    columns: 3,
+                    items: [
+                        {minimumWidth:  1, preferredWidth: 10, maximumWidth: 20, fillWidth: true},
+                        {minimumWidth:  1, preferredWidth:  4, maximumWidth: 10, fillWidth: true},
+                        {minimumWidth:  1, preferredWidth: 50, maximumWidth: 99, fillWidth: true}
+                    ]
+                  },
+                  layoutWidth:     66,
+                  expectedWidths: [20, 10, 22],
+                  expectedPositions: [0, 22, 44]
+                },
+                {
+                  tag: "ver 66/3",
+                  layout: {
+                    type: "GridLayout",
+                    columns: 1,
+                    items: [
+                        {minimumHeight:  1, preferredHeight: 10, maximumHeight: 20, fillHeight: true},
+                        {minimumHeight:  1, preferredHeight:  4, maximumHeight: 10, fillHeight: true},
+                        {minimumHeight:  1, preferredHeight: 50, maximumHeight: 99, fillHeight: true}
+                    ]
+                  },
+                  layoutHeight:     66,
+                  expectedHeights: [20, 10, 22],
+                    // If items are too small to fit the cell, they have a default alignment of
+                    // Qt::AlignLeft | Qt::AlignVCenter
+                  expectedPositions: [1, 22+6, 44]
+                }
+            ];
+        }
+
+        function test_uniformCellSizes(data)
+        {
+            let layout = LayoutHelpers.buildLayout(data.layout, testCase)
+            let isHorizontal = data.hasOwnProperty("expectedWidths")
+            layout.rowSpacing = 0
+            layout.columnSpacing = 0
+            layout.uniformCellWidths = true
+            layout.uniformCellHeights = true
+            waitForPolish(layout)
+            if (data.hasOwnProperty('layoutWidth')) {
+                layout.width = data.layoutWidth
+            }
+            if (data.hasOwnProperty('layoutHeight')) {
+                layout.height = data.layoutHeight
+            }
+
+            let expectedSizes = isHorizontal ? data.expectedWidths : data.expectedHeights
+            let actualSizes = []
+            let i = 0
+            for (i = 0; i < layout.children.length; i++) {
+                let item = layout.children[i]
+                actualSizes.push(isHorizontal ? item.width : item.height)
+            }
+            compare(actualSizes, expectedSizes)
+
+            if (data.hasOwnProperty('expectedPositions')) {
+                let actualPositions = []
+                // If items are too small to fit the cell, they have a default alignment of
+                // Qt::AlignLeft | Qt::AlignVCenter
+                for (i = 0; i < layout.children.length; i++) {
+                    let item = layout.children[i]
+                    actualPositions.push(isHorizontal ? item.x : item.y)
+                }
+                compare(actualPositions, data.expectedPositions)
+            }
+        }
+
     }
 }

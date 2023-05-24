@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,9 +11,9 @@
 #include <string>
 #include <vector>
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
 #include "base/observer_list.h"
+#include "build/chromeos_buildflags.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
 #include "components/sync_preferences/pref_model_associator.h"
@@ -33,7 +33,8 @@ class SyncedPrefObserver;
 // A PrefService that can be synced. Users are forced to declare
 // whether preferences are syncable or not when registering them to
 // this PrefService.
-class PrefServiceSyncable : public PrefService {
+class PrefServiceSyncable : public PrefService,
+                            public PrefServiceForAssociator {
  public:
   // You may wish to use PrefServiceFactory or one of its subclasses
   // for simplified construction.
@@ -41,11 +42,16 @@ class PrefServiceSyncable : public PrefService {
       std::unique_ptr<PrefNotifierImpl> pref_notifier,
       std::unique_ptr<PrefValueStore> pref_value_store,
       scoped_refptr<PersistentPrefStore> user_prefs,
+      scoped_refptr<PersistentPrefStore> standalone_browser_prefs,
       scoped_refptr<user_prefs::PrefRegistrySyncable> pref_registry,
       const PrefModelAssociatorClient* pref_model_associator_client,
       base::RepeatingCallback<void(PersistentPrefStore::PrefReadError)>
           read_error_callback,
       bool async);
+
+  PrefServiceSyncable(const PrefServiceSyncable&) = delete;
+  PrefServiceSyncable& operator=(const PrefServiceSyncable&) = delete;
+
   ~PrefServiceSyncable() override;
 
   // Creates an incognito copy of the pref service that shares most pref stores
@@ -71,7 +77,7 @@ class PrefServiceSyncable : public PrefService {
   // priority preferences.
   bool IsPrioritySyncing();
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   // As above, but for OS preferences.
   bool AreOsPrefsSyncing();
 
@@ -82,8 +88,6 @@ class PrefServiceSyncable : public PrefService {
   void AddObserver(PrefServiceSyncableObserver* observer);
   void RemoveObserver(PrefServiceSyncableObserver* observer);
 
-  // TODO(zea): Have PrefServiceSyncable implement
-  // syncer::SyncableService directly.
   syncer::SyncableService* GetSyncableService(const syncer::ModelType& type);
 
   // Do not call this after having derived an incognito or per tab pref service.
@@ -95,16 +99,12 @@ class PrefServiceSyncable : public PrefService {
                                 SyncedPrefObserver* observer);
 
  private:
-  friend class PrefModelAssociator;
-
   void AddRegisteredSyncablePreference(const std::string& path, uint32_t flags);
 
-  // Invoked internally when the syncing state changes for a type of pref.
-  void OnIsSyncingChanged();
-
-  // Process a local preference change. This can trigger new SyncChanges being
-  // sent to the syncer.
-  void ProcessPrefChange(const std::string& name);
+  // PrefServiceForAssociator:
+  base::Value::Type GetRegisteredPrefType(
+      const std::string& pref_name) const override;
+  void OnIsSyncingChanged() override;
 
   // Whether CreateIncognitoPrefService() has been called to create a
   // "forked" PrefService.
@@ -113,7 +113,7 @@ class PrefServiceSyncable : public PrefService {
   PrefModelAssociator pref_sync_associator_;
   PrefModelAssociator priority_pref_sync_associator_;
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   // Associators for Chrome OS system preferences.
   PrefModelAssociator os_pref_sync_associator_;
   PrefModelAssociator os_priority_pref_sync_associator_;
@@ -122,8 +122,6 @@ class PrefServiceSyncable : public PrefService {
   const scoped_refptr<user_prefs::PrefRegistrySyncable> pref_registry_;
 
   base::ObserverList<PrefServiceSyncableObserver>::Unchecked observer_list_;
-
-  DISALLOW_COPY_AND_ASSIGN(PrefServiceSyncable);
 };
 
 }  // namespace sync_preferences

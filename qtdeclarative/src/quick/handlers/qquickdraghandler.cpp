@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickdraghandler_p.h"
 #include <private/qquickwindow_p.h>
@@ -88,7 +52,7 @@ Q_LOGGING_CATEGORY(lcDragHandler, "qt.quick.handler.drag")
 
     At this time, drag-and-drop is not yet supported.
 
-    \sa Drag, MouseArea
+    \sa Drag, MouseArea, {Qt Quick Examples - Pointer Handlers}
 */
 
 QQuickDragHandler::QQuickDragHandler(QQuickItem *parent)
@@ -96,28 +60,24 @@ QQuickDragHandler::QQuickDragHandler(QQuickItem *parent)
 {
 }
 
-bool QQuickDragHandler::targetContainsCentroid()
-{
-    Q_ASSERT(parentItem() && target());
-    return target()->contains(targetCentroidPosition());
-}
-
 QPointF QQuickDragHandler::targetCentroidPosition()
 {
     QPointF pos = centroid().position();
-    if (target() != parentItem())
-        pos = parentItem()->mapToItem(target(), pos);
+    if (auto par = parentItem()) {
+        if (target() != par)
+            pos = par->mapToItem(target(), pos);
+    }
     return pos;
 }
 
-void QQuickDragHandler::onGrabChanged(QQuickPointerHandler *grabber, QQuickEventPoint::GrabTransition transition, QQuickEventPoint *point)
+void QQuickDragHandler::onGrabChanged(QQuickPointerHandler *grabber, QPointingDevice::GrabTransition transition, QPointerEvent *event, QEventPoint &point)
 {
-    QQuickMultiPointHandler::onGrabChanged(grabber, transition, point);
-    if (grabber == this && transition == QQuickEventPoint::GrabExclusive && target()) {
+    QQuickMultiPointHandler::onGrabChanged(grabber, transition, event, point);
+    if (grabber == this && transition == QPointingDevice::GrabExclusive && target()) {
         // In case the grab got handed over from another grabber, we might not get the Press.
 
         auto isDescendant = [](QQuickItem *parent, QQuickItem *target) {
-            return (target != parent) && !target->isAncestorOf(parent);
+            return parent && (target != parent) && !target->isAncestorOf(parent);
         };
         if (m_snapMode == SnapAlways
             || (m_snapMode == SnapIfPressedOutsideTarget && !m_pressedInsideTarget)
@@ -131,17 +91,17 @@ void QQuickDragHandler::onGrabChanged(QQuickPointerHandler *grabber, QQuickEvent
 }
 
 /*!
-    \qmlproperty enumeration QtQuick.DragHandler::snapMode
+    \qmlproperty enumeration QtQuick::DragHandler::snapMode
 
     This property holds the snap mode.
 
-    The snap mode configures snapping of the \l target item's center to the event point.
+    The snap mode configures snapping of the \l target item's center to the \l eventPoint.
 
     Possible values:
     \value DragHandler.SnapNever Never snap
-    \value DragHandler.SnapAuto The \l target snaps if the event point was pressed outside of the \l target
-                                item \e and the \l target is a descendant of \l parentItem (default)
-    \value DragHandler.SnapWhenPressedOutsideTarget The \l target snaps if the event point was pressed outside of the \l target
+    \value DragHandler.SnapAuto The \l target snaps if the \l eventPoint was pressed outside of the \l target
+                                item \e and the \l target is a descendant of \l {PointerHandler::}{parent} item (default)
+    \value DragHandler.SnapWhenPressedOutsideTarget The \l target snaps if the \l eventPoint was pressed outside of the \l target
     \value DragHandler.SnapAlways Always snap
 */
 QQuickDragHandler::SnapMode QQuickDragHandler::snapMode() const
@@ -160,9 +120,12 @@ void QQuickDragHandler::setSnapMode(QQuickDragHandler::SnapMode mode)
 void QQuickDragHandler::onActiveChanged()
 {
     QQuickMultiPointHandler::onActiveChanged();
-    if (active()) {
+    const bool curActive = active();
+    m_xAxis.onActiveChanged(curActive, 0);
+    m_yAxis.onActiveChanged(curActive, 0);
+    if (curActive) {
         if (auto parent = parentItem()) {
-            if (currentEvent()->asPointerTouchEvent())
+            if (QQuickDeliveryAgentPrivate::isTouchEvent(currentEvent()))
                 parent->setKeepTouchGrab(true);
             // tablet and mouse are treated the same by Item's legacy event handling, and
             // touch becomes synth-mouse for Flickable, so we need to prevent stealing
@@ -179,8 +142,30 @@ void QQuickDragHandler::onActiveChanged()
     }
 }
 
-void QQuickDragHandler::handlePointerEventImpl(QQuickPointerEvent *event)
+bool QQuickDragHandler::wantsPointerEvent(QPointerEvent *event)
 {
+    if (!QQuickMultiPointHandler::wantsPointerEvent(event))
+        /* Do handle other events than we would normally care about
+           while we are still doing a drag; otherwise we would suddenly
+           become inactive when a wheel event arrives during dragging.
+           This extra condition needs to be kept in sync with
+           handlePointerEventImpl */
+        if (!active())
+            return false;
+
+#if QT_CONFIG(gestures)
+    if (event->type() == QEvent::NativeGesture)
+       return false;
+#endif
+
+    return true;
+}
+
+void QQuickDragHandler::handlePointerEventImpl(QPointerEvent *event)
+{
+    if (active() && !QQuickMultiPointHandler::wantsPointerEvent(event))
+        return; // see QQuickDragHandler::wantsPointerEvent; we don't want to handle those events
+
     QQuickMultiPointHandler::handlePointerEventImpl(event);
     event->setAccepted(true);
 
@@ -192,25 +177,26 @@ void QQuickDragHandler::handlePointerEventImpl(QQuickPointerEvent *event)
             accumulatedDragDelta.setX(0);
         if (!m_yAxis.enabled())
             accumulatedDragDelta.setY(0);
-        setTranslation(accumulatedDragDelta);
+        setActiveTranslation(accumulatedDragDelta);
     } else {
         // Check that all points have been dragged past the drag threshold,
         // to the extent that the constraints allow,
         // and in approximately the same direction
         qreal minAngle =  361;
         qreal maxAngle = -361;
-        bool allOverThreshold = !event->isReleaseEvent();
-        QVector <QQuickEventPoint *> chosenPoints;
+        bool allOverThreshold = !event->isEndEvent();
+        QVector<QEventPoint> chosenPoints;
 
-        if (event->isPressEvent())
-            m_pressedInsideTarget = target() && currentPoints().count() > 0;
+        if (event->isBeginEvent())
+            m_pressedInsideTarget = target() && currentPoints().size() > 0;
 
         for (const QQuickHandlerPoint &p : currentPoints()) {
             if (!allOverThreshold)
                 break;
-            QQuickEventPoint *point = event->pointById(p.id());
-            chosenPoints << point;
-            setPassiveGrab(point);
+            auto point = event->pointById(p.id());
+            Q_ASSERT(point);
+            chosenPoints << *point;
+            setPassiveGrab(event, *point);
             // Calculate drag delta, taking into account the axis enabled constraint
             // i.e. if xAxis is not enabled, then ignore the horizontal component of the actual movement
             QVector2D accumulatedDragDelta = QVector2D(point->scenePosition() - point->scenePressPosition());
@@ -237,7 +223,7 @@ void QQuickDragHandler::handlePointerEventImpl(QQuickPointerEvent *event)
             if (allOverThreshold && !overThreshold)
                 allOverThreshold = false;
 
-            if (event->isPressEvent()) {
+            if (event->isBeginEvent()) {
                 // m_pressedInsideTarget should stay true iff ALL points in which DragHandler is interested
                 // have been pressed inside the target() Item.  (E.g. in a Slider the parent might be the
                 // whole control while the target is just the knob.)
@@ -246,11 +232,11 @@ void QQuickDragHandler::handlePointerEventImpl(QQuickPointerEvent *event)
                     m_pressedInsideTarget &= target()->contains(localPressPos);
                     m_pressTargetPos = targetCentroidPosition();
                 }
-                // QQuickWindowPrivate::deliverToPassiveGrabbers() skips subsequent delivery if the event is filtered.
+                // QQuickDeliveryAgentPrivate::deliverToPassiveGrabbers() skips subsequent delivery if the event is filtered.
                 // (That affects behavior for mouse but not for touch, because Flickable only handles mouse.)
                 // So we have to compensate by accepting the event here to avoid any parent Flickable from
                 // getting the event via direct delivery and grabbing too soon.
-                point->setAccepted(event->asPointerMouseEvent()); // stop propagation iff it's a mouse event
+                point->setAccepted(QQuickDeliveryAgentPrivate::isMouseEvent(event)); // stop propagation iff it's a mouse event
             }
         }
         if (allOverThreshold) {
@@ -258,7 +244,7 @@ void QQuickDragHandler::handlePointerEventImpl(QQuickPointerEvent *event)
             if (angleDiff > 180)
                 angleDiff = 360 - angleDiff;
             qCDebug(lcDragHandler) << "angle min" << minAngle << "max" << maxAngle << "range" << angleDiff;
-            if (angleDiff < DragAngleToleranceDegrees && grabPoints(chosenPoints))
+            if (angleDiff < DragAngleToleranceDegrees && grabPoints(event, chosenPoints))
                 setActive(true);
         }
     }
@@ -278,17 +264,6 @@ void QQuickDragHandler::handlePointerEventImpl(QQuickPointerEvent *event)
     }
 }
 
-void QQuickDragHandler::enforceConstraints()
-{
-    if (!target() || !target()->parentItem())
-        return;
-    QPointF pos = target()->position();
-    QPointF copy(pos);
-    enforceAxisConstraints(&pos);
-    if (pos != copy)
-        target()->setPosition(pos);
-}
-
 void QQuickDragHandler::enforceAxisConstraints(QPointF *localPos)
 {
     if (m_xAxis.enabled())
@@ -297,12 +272,28 @@ void QQuickDragHandler::enforceAxisConstraints(QPointF *localPos)
         localPos->setY(qBound(m_yAxis.minimum(), localPos->y(), m_yAxis.maximum()));
 }
 
-void QQuickDragHandler::setTranslation(const QVector2D &trans)
+void QQuickDragHandler::setPersistentTranslation(const QVector2D &trans)
 {
-    if (trans == m_translation) // fuzzy compare?
+    if (trans == persistentTranslation())
         return;
-    m_translation = trans;
-    emit translationChanged();
+
+    m_xAxis.updateValue(m_xAxis.activeValue(), trans.x());
+    m_yAxis.updateValue(m_yAxis.activeValue(), trans.y());
+    emit translationChanged({});
+}
+
+void QQuickDragHandler::setActiveTranslation(const QVector2D &trans)
+{
+    if (trans == activeTranslation())
+        return;
+
+    const QVector2D delta = trans - activeTranslation();
+    m_xAxis.updateValue(trans.x(), m_xAxis.persistentValue() + delta.x(), delta.x());
+    m_yAxis.updateValue(trans.y(), m_yAxis.persistentValue() + delta.y(), delta.y());
+
+    qCDebug(lcDragHandler) << "translation: delta" << delta
+                           << "active" << trans << "accumulated" << persistentTranslation();
+    emit translationChanged(delta);
 }
 
 /*!
@@ -310,6 +301,7 @@ void QQuickDragHandler::setTranslation(const QVector2D &trans)
     \qmlproperty real QtQuick::DragHandler::xAxis.minimum
     \qmlproperty real QtQuick::DragHandler::xAxis.maximum
     \qmlproperty bool QtQuick::DragHandler::xAxis.enabled
+    \qmlproperty real QtQuick::DragHandler::xAxis.activeValue
 
     \c xAxis controls the constraints for horizontal dragging.
 
@@ -318,13 +310,19 @@ void QQuickDragHandler::setTranslation(const QVector2D &trans)
     \c maximum is the maximum acceptable value of \l {Item::x}{x} to be
     applied to the \l {PointerHandler::target} {target}.
     If \c enabled is true, horizontal dragging is allowed.
- */
+    \c activeValue is the same as \l {QtQuick::DragHandler::activeTranslation}{activeTranslation.x}.
+
+    The \c activeValueChanged signal is emitted when \c activeValue changes, to
+    provide the increment by which it changed.
+    This is intended for incrementally adjusting one property via multiple handlers.
+*/
 
 /*!
     \qmlpropertygroup QtQuick::DragHandler::yAxis
     \qmlproperty real QtQuick::DragHandler::yAxis.minimum
     \qmlproperty real QtQuick::DragHandler::yAxis.maximum
     \qmlproperty bool QtQuick::DragHandler::yAxis.enabled
+    \qmlproperty real QtQuick::DragHandler::yAxis.activeValue
 
     \c yAxis controls the constraints for vertical dragging.
 
@@ -333,13 +331,41 @@ void QQuickDragHandler::setTranslation(const QVector2D &trans)
     \c maximum is the maximum acceptable value of \l {Item::y}{y} to be
     applied to the \l {PointerHandler::target} {target}.
     If \c enabled is true, vertical dragging is allowed.
- */
+    \c activeValue is the same as \l {QtQuick::DragHandler::activeTranslation}{activeTranslation.y}.
+
+    The \c activeValueChanged signal is emitted when \c activeValue changes, to
+    provide the increment by which it changed.
+    This is intended for incrementally adjusting one property via multiple handlers:
+
+    \snippet pointerHandlers/rotateViaWheelOrDrag.qml 0
+*/
 
 /*!
     \readonly
     \qmlproperty QVector2D QtQuick::DragHandler::translation
+    \deprecated [6.2] Use activeTranslation
+*/
 
-    The translation since the gesture began.
+/*!
+    \qmlproperty QVector2D QtQuick::DragHandler::persistentTranslation
+
+    The translation to be applied to the \l target if it is not \c null.
+    Otherwise, bindings can be used to do arbitrary things with this value.
+    While the drag gesture is being performed, \l activeTranslation is
+    continuously added to it; after the gesture ends, it stays the same.
+*/
+
+/*!
+    \readonly
+    \qmlproperty QVector2D QtQuick::DragHandler::activeTranslation
+
+    The translation while the drag gesture is being performed.
+    It is \c {0, 0} when the gesture begins, and increases as the event
+    point(s) are dragged downward and to the right. After the gesture ends, it
+    stays the same; and when the next drag gesture begins, it is reset to
+    \c {0, 0} again.
 */
 
 QT_END_NAMESPACE
+
+#include "moc_qquickdraghandler_p.cpp"

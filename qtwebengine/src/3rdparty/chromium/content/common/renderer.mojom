@@ -1,16 +1,20 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 module content.mojom;
 
+import "components/attribution_reporting/os_support.mojom";
 import "content/common/agent_scheduling_group.mojom";
 import "content/common/native_types.mojom";
+import "ipc/ipc.mojom";
 import "mojo/public/mojom/base/generic_pending_receiver.mojom";
 import "mojo/public/mojom/base/time.mojom";
 import "services/network/public/mojom/network_types.mojom";
+import "skia/public/mojom/skcolor.mojom";
+import "third_party/blink/public/mojom/browser_interface_broker.mojom";
 import "third_party/blink/public/mojom/user_agent/user_agent_metadata.mojom";
-import "ui/gfx/geometry/mojom/geometry.mojom";
+import "ui/color/color_id.mojom";
 
 struct UpdateScrollbarThemeParams {
   // TODO(avi): Update these to optional values when optional numeric types are
@@ -29,9 +33,16 @@ struct UpdateScrollbarThemeParams {
 
 struct UpdateSystemColorInfoParams {
   bool is_dark_mode;
-  bool is_high_contrast;
+  bool forced_colors;
+
   // uint32 represents a SkColor in the map.
+  // TODO(crbug.com/1251637): These colors should be consolidated into the
+  // renderer's ColorProviders.
   map<SystemThemeColor, uint32> colors;
+
+  // Maps used to reconstruct ColorProvider instances in the renderer.
+  map<color.mojom.RendererColorId, skia.mojom.SkColor> light_colors;
+  map<color.mojom.RendererColorId, skia.mojom.SkColor> dark_colors;
 };
 
 // The background state for the render process.  When backgrounded the process's
@@ -58,25 +69,30 @@ enum RenderProcessVisibleState {
 // This should be used for implementing browser-to-renderer control messages
 // which need to retain FIFO with respect to legacy IPC messages.
 interface Renderer {
-  // Tells the renderer to create a new AgentSchedulingGroup, that will
-  // communicate via the pending |agent_scheduling_group_host| and
-  // |agent_scheduling_group|. This will create "independent" interfaces that
-  // are not associated with the IPC channel, which will not guarantee any order
-  // across agent scheduling groups.
+  // Tells the renderer to create a new AgentSchedulingGroup, and initialize its
+  // legacy IPC Channel using the pipe provided by `bootstrap`. The channel will
+  // later be used to bind the mojom::AgentSchedulingGroup receiver, that
+  // listens to messages sent by the host.
+  // This will create an "independent" agent scheduling group that is not
+  // associated with the process-wide or other groups' IPC channels, meaning
+  // there is no guaranteed ordering between them.
+  // `broker_remote` is the BrowserInterfaceBroker bound to the newly-created
+  // AgentSchedulingGroup.
   CreateAgentSchedulingGroup(
-    pending_remote<AgentSchedulingGroupHost> agent_scheduling_group_host,
-    pending_receiver<AgentSchedulingGroup> agent_scheduling_group
-  );
+    pending_receiver<IPC.mojom.ChannelBootstrap> bootstrap,
+    pending_remote<blink.mojom.BrowserInterfaceBroker> broker_remote);
 
   // Tells the renderer to create a new AgentSchedulingGroup, that will
-  // communicate via the pending |agent_scheduling_group_host| and
-  // |agent_scheduling_group|. This will create channel-associated interfaces
-  // that will preserve message ordering across agent scheduling groups.
+  // listen to messages sent by the host via the pending
+  // |agent_scheduling_group|.
+  // This will create an agent scheduling group that is associated with the
+  // process-wide IPC channel, preserving message ordering across different
+  // agent scheduling groups.
+  // `broker_remote` is the BrowserInterfaceBroker bound to the newly-created
+  // AgentSchedulingGroup.
   CreateAssociatedAgentSchedulingGroup(
-    pending_associated_remote<AgentSchedulingGroupHost>
-      agent_scheduling_group_host,
-    pending_associated_receiver<AgentSchedulingGroup> agent_scheduling_group
-  );
+    pending_associated_receiver<AgentSchedulingGroup> agent_scheduling_group,
+    pending_remote<blink.mojom.BrowserInterfaceBroker> broker_remote);
 
   // Tells the renderer that the network type has changed so that
   // navigator.onLine and navigator.connection can be updated.
@@ -100,19 +116,6 @@ interface Renderer {
   // Android.
   SetWebKitSharedTimersSuspended(bool suspend);
 
-  // Sets the user-agent string. This is needed because getting the value in the
-  // renderer from the system leads to a wrong value due to sandboxing. This
-  // must be called as early as possible, during the renderer process
-  // initialization.
-  SetUserAgent(string user_agent);
-
-  // Sets the user agent metadata. This will replace `SetUserAgent()` if we
-  // decide to ship https://github.com/WICG/ua-client-hints.
-  SetUserAgentMetadata(blink.mojom.UserAgentMetadata metadata);
-
-  // Sets the CORS exempt header list for sanity checking (e.g. DCHECKs).
-  SetCorsExemptHeaderList(array<string> list);
-
   // Tells the renderer about a scrollbar appearance change. Only for use on
   // OS X.
   UpdateScrollbarTheme(UpdateScrollbarThemeParams params);
@@ -133,11 +136,6 @@ interface Renderer {
   SetProcessState(RenderProcessBackgroundState background_state,
                   RenderProcessVisibleState visible_state);
 
-  // Tells the scheduler about "keep-alive" state which can be due to:
-  // service workers, shared workers, or fetch keep-alive.
-  // If set to true, then the scheduler should not freeze the renderer.
-  SetSchedulerKeepActive(bool keep_active);
-
   // Tells the renderer process that it has been locked to a site (i.e., a
   // scheme plus eTLD+1, such as https://google.com), or to a more specific
   // origin.
@@ -154,6 +152,46 @@ interface Renderer {
   // This property is process global because we ensure that a renderer process
   // host only cross-origin isolated agents or only non-cross-origin isolated
   // agents, not both.
-  // This is called at most once. This is called earlier than any frame commit.
+  // This is called at most once, prior to committing a navigation.
   SetIsCrossOriginIsolated(bool value);
+
+  // Set whether this renderer process is allowed to use Isolated Context APIs.
+  // Similarly to the `SetIsCrossOriginIsolated()` method above, this flag is
+  // process global, and called at most once, prior to committing a navigation.
+  //
+  // TODO(crbug.com/1206150): We need a specification for this restriction.
+  SetIsIsolatedContext(bool value);
+
+  // Set the OS-level support for Attribution Reporting indicating whether
+  // OS-level attribution is enabled.
+  SetOsSupportForAttributionReporting(
+      attribution_reporting.mojom.OsSupport os_support);
+
+  // Initialize renderer user agent string, user agent metadata and CORS exempt
+  // header list on renderer startup.
+  //
+  // |user_agent| sets the user-agent string. This is needed because getting the
+  // value in the renderer from the system leads to a wrong value due to
+  // sandboxing. This must be called as early as possible, during the renderer
+  // process initialization.
+  //
+  // |full_user_agent| sets the full user-agent with high-entropy information.
+  //
+  // |reduced_user_agent| sets a user-agent with high-entropy information
+  // reduced to common values.
+  //
+  // |metadata| sets the user agent metadata. This will replace `SetUserAgent()`
+  // if we decide to ship https://github.com/WICG/ua-client-hints.
+  //
+  // |cors_exempt_header_list| sets the CORS exempt header list for sanity
+  // checking (e.g. DCHECKs).
+  //
+  // |attribution_os_support| sets the OS-level support for Attribution
+  // Reporting.
+  InitializeRenderer(string user_agent,
+                     string full_user_agent,
+                     string reduced_user_agent,
+                     blink.mojom.UserAgentMetadata metadata,
+                     array<string> cors_exempt_header_list,
+                     attribution_reporting.mojom.OsSupport attribution_os_support);
 };

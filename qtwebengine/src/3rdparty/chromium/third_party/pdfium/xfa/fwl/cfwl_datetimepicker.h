@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -39,16 +39,17 @@ class CFWL_DateTimePicker final : public CFWL_Widget {
   FWL_Type GetClassID() const override;
   void Update() override;
   FWL_WidgetHit HitTest(const CFX_PointF& point) override;
-  void DrawWidget(CXFA_Graphics* pGraphics, const CFX_Matrix& matrix) override;
+  void DrawWidget(CFGAS_GEGraphics* pGraphics,
+                  const CFX_Matrix& matrix) override;
   void OnProcessMessage(CFWL_Message* pMessage) override;
-  void OnDrawWidget(CXFA_Graphics* pGraphics,
+  void OnDrawWidget(CFGAS_GEGraphics* pGraphics,
                     const CFX_Matrix& matrix) override;
 
   void GetCurSel(int32_t& iYear, int32_t& iMonth, int32_t& iDay);
   void SetCurSel(int32_t iYear, int32_t iMonth, int32_t iDay);
 
   void SetEditText(const WideString& wsText);
-  int32_t GetEditTextLength() const;
+  size_t GetEditTextLength() const;
   WideString GetEditText() const;
   void ClearText();
 
@@ -59,8 +60,8 @@ class CFWL_DateTimePicker final : public CFWL_Widget {
   std::pair<size_t, size_t> GetSelection() const {
     return m_pEdit->GetSelection();
   }
-  Optional<WideString> Copy();
-  Optional<WideString> Cut();
+  absl::optional<WideString> Copy();
+  absl::optional<WideString> Cut();
   bool Paste(const WideString& wsPaste);
   bool Undo();
   bool Redo();
@@ -69,31 +70,36 @@ class CFWL_DateTimePicker final : public CFWL_Widget {
 
   CFX_RectF GetBBox() const;
   void SetEditLimit(int32_t nLimit) { m_pEdit->SetLimit(nLimit); }
-  void ModifyEditStylesEx(uint32_t dwStylesExAdded, uint32_t dwStylesExRemoved);
+  void ModifyEditStyleExts(uint32_t dwStyleExtsAdded,
+                           uint32_t dwStyleExtsRemoved);
 
   bool IsMonthCalendarVisible() const;
-  void ShowMonthCalendar(bool bActivate);
+  void ShowMonthCalendar();
+  void HideMonthCalendar();
   void ProcessSelChanged(int32_t iYear, int32_t iMonth, int32_t iDay);
 
  private:
   explicit CFWL_DateTimePicker(CFWL_App* pApp);
 
-  void DrawDropDownButton(CXFA_Graphics* pGraphics, const CFX_Matrix* pMatrix);
+  void DrawDropDownButton(CFGAS_GEGraphics* pGraphics,
+                          const CFX_Matrix& mtMatrix);
   WideString FormatDateString(int32_t iYear, int32_t iMonth, int32_t iDay);
   void ResetEditAlignment();
   void GetPopupPos(float fMinHeight,
                    float fMaxHeight,
                    const CFX_RectF& rtAnchor,
                    CFX_RectF* pPopupRect);
-  void OnFocusChanged(CFWL_Message* pMsg, bool bSet);
+  void OnFocusGained(CFWL_Message* pMsg);
+  void OnFocusLost(CFWL_Message* pMsg);
   void OnLButtonDown(CFWL_MessageMouse* pMsg);
   void OnLButtonUp(CFWL_MessageMouse* pMsg);
   void OnMouseMove(CFWL_MessageMouse* pMsg);
   void OnMouseLeave(CFWL_MessageMouse* pMsg);
   bool NeedsToShowButton() const;
+  void RepaintInflatedMonthCalRect();
 
   bool m_bLBtnDown = false;
-  int32_t m_iBtnState = 1;
+  Mask<CFWL_PartState> m_iBtnState = CFWL_PartState::kChecked;
   int32_t m_iYear = -1;
   int32_t m_iMonth = -1;
   int32_t m_iDay = -1;

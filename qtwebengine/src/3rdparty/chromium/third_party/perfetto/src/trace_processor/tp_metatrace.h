@@ -25,6 +25,8 @@
 #include "perfetto/ext/base/metatrace_events.h"
 #include "perfetto/ext/base/string_view.h"
 #include "perfetto/ext/base/thread_checker.h"
+#include "perfetto/trace_processor/metatrace_config.h"
+#include "protos/perfetto/trace_processor/metatrace_categories.pbzero.h"
 
 // Trace processor maintains its own base implementation to avoid the
 // threading and task runners which are required by base's metatracing.
@@ -36,8 +38,10 @@ namespace perfetto {
 namespace trace_processor {
 namespace metatrace {
 
+using Category = protos::pbzero::MetatraceCategories;
+
 // Stores whether meta-tracing is enabled.
-extern bool g_enabled;
+extern Category g_enabled_categories;
 
 inline uint64_t TraceTimeNowNs() {
   return static_cast<uint64_t>(base::GetBootTimeNs().count());
@@ -48,7 +52,7 @@ struct Record {
   uint64_t timestamp_ns;
 
   // Duration of the event.
-  uint32_t duration_ns;
+  uint64_t duration_ns;
 
   // The name of the event.
   // This is assumed to be a static/long lived string.
@@ -62,6 +66,17 @@ struct Record {
 
   // Adds an arg to the record.
   void AddArg(base::StringView key, base::StringView value) {
+#if PERFETTO_DCHECK_IS_ON()
+    // |key| and |value| should not contain any '\0' characters as it
+    // messes with the |args_buffer| which uses '\0' to deliniate different
+    // arguments.
+    for (char c : key) {
+      PERFETTO_DCHECK(c != '\0');
+    }
+    for (char c : value) {
+      PERFETTO_DCHECK(c != '\0');
+    }
+#endif
     size_t new_buffer_size = args_buffer_size + key.size() + value.size() + 2;
     args_buffer = static_cast<char*>(realloc(args_buffer, new_buffer_size));
 
@@ -77,6 +92,10 @@ struct Record {
   void AddArg(base::StringView key, const std::string& value) {
     AddArg(key, base::StringView(value));
   }
+
+  void AddArg(base::StringView key, const char* value) {
+    AddArg(key, base::StringView(value));
+  }
 };
 
 // Implementation of fixed-size ring buffer. The implementation of this
@@ -90,7 +109,7 @@ struct Record {
 //     is enabled and read one-shot at the end of execution.
 class RingBuffer {
  public:
-  static constexpr uint32_t kCapacity = 256 * 1024;
+  static constexpr uint32_t kDefaultCapacity = 256 * 1024;
 
   RingBuffer();
   ~RingBuffer() = default;
@@ -108,7 +127,7 @@ class RingBuffer {
     return std::make_pair(idx, record);
   }
 
-  Record* At(uint64_t idx) { return &data_[idx % kCapacity]; }
+  Record* At(uint64_t idx) { return &data_[idx % data_.size()]; }
 
   void ReadAll(std::function<void(Record*)>);
 
@@ -123,14 +142,19 @@ class RingBuffer {
 
   // Returns whether the record at the |index| has been overwritten because
   // of wraps of the ring buffer.
-  bool HasOverwritten(uint64_t index) { return index + kCapacity < write_idx_; }
+  bool HasOverwritten(uint64_t index) {
+    return index + data_.size() < write_idx_;
+  }
+
+  // Request the ring buffer to be resized. Clears the existing buffer.
+  void Resize(size_t requested_capacity);
 
  private:
   bool is_reading_ = false;
 
   uint64_t start_idx_ = 0;
   uint64_t write_idx_ = 0;
-  std::array<Record, kCapacity> data_;
+  std::vector<Record> data_;
 
   PERFETTO_THREAD_CHECKER(thread_checker_)
 };
@@ -145,7 +169,7 @@ class ScopedEvent {
     if (RingBuffer::GetInstance()->HasOverwritten(record_idx_))
       return;
     auto now = TraceTimeNowNs();
-    record_->duration_ns = static_cast<uint32_t>(now - record_->timestamp_ns);
+    record_->duration_ns = now - record_->timestamp_ns;
   }
 
   ScopedEvent(ScopedEvent&& value) {
@@ -156,9 +180,10 @@ class ScopedEvent {
 
   template <typename Fn = void(Record*)>
   static ScopedEvent Create(
+      Category category,
       const char* event_id,
       Fn args_fn = [](Record*) {}) {
-    if (PERFETTO_LIKELY(!g_enabled))
+    if (PERFETTO_LIKELY((category & g_enabled_categories) == 0))
       return ScopedEvent();
 
     ScopedEvent event;
@@ -179,7 +204,7 @@ class ScopedEvent {
 };
 
 // Enables meta-tracing of trace-processor.
-void Enable();
+void Enable(MetatraceConfig config = {});
 
 // Disables meta-tracing of trace-processor and reads all records.
 void DisableAndReadBuffer(std::function<void(Record*)>);

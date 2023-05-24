@@ -17,6 +17,9 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
 
 # This file must be kept in sync with tools/install-build-deps.
 
+# To generate shallow_since fields for git repos, use:
+#   git show --date=raw COMMIT
+
 def perfetto_deps():
     # Note: this is more recent than the version of protobuf we use in the
     # GN and Android builds. This is because older versions of protobuf don't
@@ -24,26 +27,26 @@ def perfetto_deps():
     _add_repo_if_not_existing(
         http_archive,
         name = "com_google_protobuf",
-        strip_prefix = "protobuf-3.9.0",
-        url = "https://github.com/google/protobuf/archive/v3.9.0.tar.gz",
-        sha256 = "2ee9dcec820352671eb83e081295ba43f7a4157181dad549024d7070d079cf65",
+        strip_prefix = "protobuf-3.10.1",
+        url = "https://github.com/protocolbuffers/protobuf/archive/v3.10.1.tar.gz",
+        sha256 = "6adf73fd7f90409e479d6ac86529ade2d45f50494c5c10f539226693cb8fe4f7",
     )
 
     _add_repo_if_not_existing(
         http_archive,
         name = "perfetto_dep_sqlite",
-        url = "https://storage.googleapis.com/perfetto/sqlite-amalgamation-3250300.zip",
-        sha256 = "2ad5379f3b665b60599492cc8a13ac480ea6d819f91b1ef32ed0e1ad152fafef",
-        strip_prefix = "sqlite-amalgamation-3250300",
+        url = "https://storage.googleapis.com/perfetto/sqlite-amalgamation-3390200.zip",
+        sha256 = "87775784f8b22d0d0f1d7811870d39feaa7896319c7c20b849a4181c5a50609b",
+        strip_prefix = "sqlite-amalgamation-3390200",
         build_file = "//bazel:sqlite.BUILD",
     )
 
     _add_repo_if_not_existing(
         http_archive,
         name = "perfetto_dep_sqlite_src",
-        url = "https://storage.googleapis.com/perfetto/sqlite-src-3250300.zip",
-        sha256 = "c7922bc840a799481050ee9a76e679462da131adba1814687f05aa5c93766421",
-        strip_prefix = "sqlite-src-3250300",
+        url = "https://storage.googleapis.com/perfetto/sqlite-src-3390200.zip",
+        sha256 = "e933d77000f45f3fbc8605f0050586a3013505a8de9b44032bd00ed72f1586f0",
+        strip_prefix = "sqlite-src-3390200",
         build_file = "//bazel:sqlite.BUILD",
     )
 
@@ -69,9 +72,18 @@ def perfetto_deps():
         new_git_repository,
         name = "perfetto_dep_zlib",
         remote = "https://android.googlesource.com/platform/external/zlib.git",
-        commit = "dfa0646a03b4e1707469e04dc931b09774968fe6",
+        commit = "5c85a2da4c13eda07f69d81a1579a5afddd35f59",
         build_file = "//bazel:zlib.BUILD",
-        shallow_since = "1557160162 -0700",
+        shallow_since = "1605147005 +0000",
+    )
+
+    _add_repo_if_not_existing(
+        http_archive,
+        name = "perfetto_dep_llvm_demangle",
+        url = "https://storage.googleapis.com/perfetto/llvm-project-3b4c59c156919902c785ce3cbae0eee2ee53064d.tgz",
+        sha256 = "f4a52e7f36edd7cacc844d5ae0e5f60b6f57c5afc40683e99f295886c9ce8ff4",
+        strip_prefix = "llvm-project",
+        build_file = "//bazel:llvm_demangle.BUILD",
     )
 
     # Without this protobuf.bzl fails. This seems a bug in protobuf_deps().

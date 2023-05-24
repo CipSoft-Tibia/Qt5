@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <QDebug>
@@ -35,6 +10,7 @@
 #define TEST_FILE_NAME "testdata/test.wav"
 #define TEST_UNSUPPORTED_FILE_NAME "testdata/test-unsupported.avi"
 #define TEST_CORRUPTED_FILE_NAME "testdata/test-corrupted.wav"
+#define TEST_INVALID_SOURCE "invalid"
 
 QT_USE_NAMESPACE
 
@@ -54,13 +30,28 @@ public slots:
     void initTestCase();
 
 private slots:
+    void testMediaFilesAreSupported();
+    void directBruteForceReading();
+    void indirectReadingByBufferReadySignal();
+    void indirectReadingByBufferAvailableSignal();
+    void stopOnBufferReady();
+    void restartOnBufferReady();
+    void restartOnFinish();
     void fileTest();
     void unsupportedFileTest();
     void corruptedFileTest();
+    void invalidSource();
     void deviceTest();
 
 private:
-    bool isWavSupported();
+    QUrl testFileUrl(const QString filePath);
+    void checkNoMoreChanges(QAudioDecoder &decoder);
+#ifdef Q_OS_ANDROID
+    QTemporaryFile *temporaryFile = nullptr;
+#endif
+
+    MediaFileSelector m_mediaSelector;
+    MaybeUrl m_wavFile = QUnexpect{};
 };
 
 void tst_QAudioDecoderBackend::init()
@@ -70,66 +61,334 @@ void tst_QAudioDecoderBackend::init()
 void tst_QAudioDecoderBackend::initTestCase()
 {
     QAudioDecoder d;
-    if (!d.isAvailable())
+    if (!d.isSupported())
         QSKIP("Audio decoder service is not available");
 
-    qRegisterMetaType<QMediaContent>();
+    m_wavFile = m_mediaSelector.select(QFINDTESTDATA(TEST_FILE_NAME));
 }
 
 void tst_QAudioDecoderBackend::cleanup()
 {
+#ifdef Q_OS_ANDROID
+    if (temporaryFile) {
+        delete temporaryFile;
+        temporaryFile = nullptr;
+    }
+#endif
 }
 
-bool tst_QAudioDecoderBackend::isWavSupported()
+QUrl tst_QAudioDecoderBackend::testFileUrl(const QString filePath)
 {
-#ifdef WAV_SUPPORT_NOT_FORCED
-    return !MediaFileSelector::selectMediaFile(QStringList() << QFINDTESTDATA(TEST_FILE_NAME)).isNull();
+    QUrl url;
+#ifndef Q_OS_ANDROID
+    QFileInfo fileInfo(QFINDTESTDATA(filePath));
+    url = QUrl::fromLocalFile(fileInfo.absoluteFilePath());
 #else
-    return true;
+    QFile file(":/" + filePath);
+    if (temporaryFile) {
+        delete temporaryFile;
+        temporaryFile = nullptr;
+    }
+    if (file.open(QIODevice::ReadOnly)) {
+        temporaryFile = QTemporaryFile::createNativeFile(file);
+        url = QUrl(temporaryFile->fileName());
+    }
 #endif
+    return url;
+}
+
+void tst_QAudioDecoderBackend::checkNoMoreChanges(QAudioDecoder &decoder)
+{
+    QSignalSpy finishedSpy(&decoder, &QAudioDecoder::finished);
+    QSignalSpy bufferReadySpy(&decoder, &QAudioDecoder::bufferReady);
+    QSignalSpy bufferAvailableSpy(&decoder, &QAudioDecoder::bufferAvailableChanged);
+
+    QTest::qWait(50); // wait a bit to check nothing happened after finish
+
+    QCOMPARE(finishedSpy.size(), 0);
+    QCOMPARE(bufferReadySpy.size(), 0);
+    QCOMPARE(bufferAvailableSpy.size(), 0);
+}
+
+void tst_QAudioDecoderBackend::testMediaFilesAreSupported()
+{
+    QCOMPARE(m_mediaSelector.dumpErrors(), "");
+}
+
+void tst_QAudioDecoderBackend::directBruteForceReading()
+{
+    CHECK_SELECTED_URL(m_wavFile);
+
+    QAudioDecoder decoder;
+    if (decoder.error() == QAudioDecoder::NotSupportedError)
+        QSKIP("There is no audio decoding support on this platform.");
+
+    int sampleCount = 0;
+
+    decoder.setSource(*m_wavFile);
+    QVERIFY(!decoder.isDecoding());
+    QVERIFY(!decoder.bufferAvailable());
+
+    decoder.start();
+    QTRY_VERIFY(decoder.isDecoding());
+
+    auto waitAndCheck = [](auto &&predicate) { QVERIFY(QTest::qWaitFor(predicate)); };
+
+    auto waitForBufferAvailable = [&]() {
+        waitAndCheck([&]() { return !decoder.isDecoding() || decoder.bufferAvailable(); });
+
+        return decoder.bufferAvailable();
+    };
+
+    while (waitForBufferAvailable()) {
+        auto buffer = decoder.read();
+        QVERIFY(buffer.isValid());
+
+        sampleCount += buffer.sampleCount();
+    }
+
+    checkNoMoreChanges(decoder);
+
+    QCOMPARE(sampleCount, 44094);
+}
+
+void tst_QAudioDecoderBackend::indirectReadingByBufferReadySignal()
+{
+    CHECK_SELECTED_URL(m_wavFile);
+
+    QAudioDecoder decoder;
+    if (decoder.error() == QAudioDecoder::NotSupportedError)
+        QSKIP("There is no audio decoding support on this platform.");
+
+    int sampleCount = 0;
+
+    connect(&decoder, &QAudioDecoder::bufferReady, this, [&]() {
+        QVERIFY(decoder.bufferAvailable());
+        QVERIFY(decoder.isDecoding());
+
+        auto buffer = decoder.read();
+        QVERIFY(buffer.isValid());
+        QVERIFY(!decoder.bufferAvailable());
+
+        sampleCount += buffer.sampleCount();
+    });
+
+    QSignalSpy decodingSpy(&decoder, &QAudioDecoder::isDecodingChanged);
+    QSignalSpy finishSpy(&decoder, &QAudioDecoder::finished);
+
+    decoder.setSource(*m_wavFile);
+    QVERIFY(!decoder.isDecoding());
+    QVERIFY(!decoder.bufferAvailable());
+
+    decoder.start();
+    QTRY_VERIFY(decodingSpy.size() >= 1);
+
+    QTRY_VERIFY(finishSpy.size() == 1);
+    QVERIFY(!decoder.isDecoding());
+
+    checkNoMoreChanges(decoder);
+
+    QCOMPARE(sampleCount, 44094);
+    QCOMPARE(finishSpy.size(), 1);
+}
+
+void tst_QAudioDecoderBackend::indirectReadingByBufferAvailableSignal() {
+    CHECK_SELECTED_URL(m_wavFile);
+
+    QAudioDecoder decoder;
+    if (decoder.error() == QAudioDecoder::NotSupportedError)
+        QSKIP("There is no audio decoding support on this platform.");
+
+    int sampleCount = 0;
+
+    connect(&decoder, &QAudioDecoder::bufferAvailableChanged, this, [&](bool available) {
+        QCOMPARE(decoder.bufferAvailable(), available);
+
+        if (!available)
+            return;
+
+        QVERIFY(decoder.isDecoding());
+
+        while (decoder.bufferAvailable()) {
+            auto buffer = decoder.read();
+            QVERIFY(buffer.isValid());
+
+            sampleCount += buffer.sampleCount();
+        }
+    });
+
+    QSignalSpy decodingSpy(&decoder, &QAudioDecoder::isDecodingChanged);
+    QSignalSpy finishSpy(&decoder, &QAudioDecoder::finished);
+
+    decoder.setSource(*m_wavFile);
+    QVERIFY(!decoder.isDecoding());
+    QVERIFY(!decoder.bufferAvailable());
+
+    decoder.start();
+    QTRY_VERIFY(decodingSpy.size() >= 1);
+
+    QTRY_VERIFY(finishSpy.size() == 1);
+    QVERIFY(!decoder.isDecoding());
+
+    checkNoMoreChanges(decoder);
+
+    QCOMPARE(sampleCount, 44094);
+    QCOMPARE(finishSpy.size(), 1);
+}
+
+void tst_QAudioDecoderBackend::stopOnBufferReady()
+{
+    CHECK_SELECTED_URL(m_wavFile);
+
+    QAudioDecoder decoder;
+    if (decoder.error() == QAudioDecoder::NotSupportedError)
+        QSKIP("There is no audio decoding support on this platform.");
+
+    connect(&decoder, &QAudioDecoder::bufferReady, this, [&]() {
+        decoder.read(); // run next reading
+        decoder.stop();
+    });
+
+    QSignalSpy finishSpy(&decoder, &QAudioDecoder::finished);
+    QSignalSpy bufferReadySpy(&decoder, &QAudioDecoder::bufferReady);
+
+    decoder.setSource(*m_wavFile);
+    decoder.start();
+
+    bufferReadySpy.wait();
+    QVERIFY(!decoder.isDecoding());
+
+    checkNoMoreChanges(decoder);
+
+    QCOMPARE(bufferReadySpy.size(), 1);
+}
+
+void tst_QAudioDecoderBackend::restartOnBufferReady()
+{
+    CHECK_SELECTED_URL(m_wavFile);
+
+    QAudioDecoder decoder;
+    if (decoder.error() == QAudioDecoder::NotSupportedError)
+        QSKIP("There is no audio decoding support on this platform.");
+
+    int sampleCount = 0;
+
+    std::once_flag restartOnce;
+    connect(&decoder, &QAudioDecoder::bufferReady, this, [&]() {
+        QVERIFY(decoder.bufferAvailable());
+
+        auto buffer = decoder.read();
+        QVERIFY(buffer.isValid());
+        QVERIFY(!decoder.bufferAvailable());
+
+        sampleCount += buffer.sampleCount();
+
+        std::call_once(restartOnce, [&]() {
+            sampleCount = 0;
+            decoder.stop();
+            decoder.start();
+        });
+    });
+
+    QSignalSpy finishSpy(&decoder, &QAudioDecoder::finished);
+
+    decoder.setSource(*m_wavFile);
+    decoder.start();
+
+    QTRY_VERIFY2(finishSpy.size() == 2, "Wait for signals after restart and after finishing");
+    QVERIFY(!decoder.isDecoding());
+
+    checkNoMoreChanges(decoder);
+
+    QCOMPARE(sampleCount, 44094);
+}
+
+void tst_QAudioDecoderBackend::restartOnFinish()
+{
+    CHECK_SELECTED_URL(m_wavFile);
+
+    QAudioDecoder decoder;
+    if (decoder.error() == QAudioDecoder::NotSupportedError)
+        QSKIP("There is no audio decoding support on this platform.");
+
+    int sampleCount = 0;
+
+    connect(&decoder, &QAudioDecoder::bufferReady, this, [&]() {
+        auto buffer = decoder.read();
+        QVERIFY(buffer.isValid());
+
+        sampleCount += buffer.sampleCount();
+    });
+
+    QSignalSpy finishSpy(&decoder, &QAudioDecoder::finished);
+
+    std::once_flag restartOnce;
+    connect(&decoder, &QAudioDecoder::finished, this, [&]() {
+        QVERIFY(!decoder.bufferAvailable());
+        QVERIFY(!decoder.isDecoding());
+
+        std::call_once(restartOnce, [&]() {
+            sampleCount = 0;
+            decoder.start();
+        });
+    });
+
+    decoder.setSource(*m_wavFile);
+    decoder.start();
+
+    QTRY_VERIFY(finishSpy.size() == 2);
+
+    QVERIFY(!decoder.isDecoding());
+
+    checkNoMoreChanges(decoder);
+    QCOMPARE(sampleCount, 44094);
 }
 
 void tst_QAudioDecoderBackend::fileTest()
 {
-    if (!isWavSupported())
-        QSKIP("Sound format is not supported");
+    CHECK_SELECTED_URL(m_wavFile);
 
     QAudioDecoder d;
-    if (d.error() == QAudioDecoder::ServiceMissingError)
+    if (d.error() == QAudioDecoder::NotSupportedError)
         QSKIP("There is no audio decoding support on this platform.");
     QAudioBuffer buffer;
     quint64 duration = 0;
     int byteCount = 0;
     int sampleCount = 0;
 
-    QVERIFY(d.state() == QAudioDecoder::StoppedState);
+    QVERIFY(!d.isDecoding());
     QVERIFY(d.bufferAvailable() == false);
-    QCOMPARE(d.sourceFilename(), QString(""));
+    QCOMPARE(d.source(), QString(""));
     QVERIFY(d.audioFormat() == QAudioFormat());
 
     // Test local file
-    QFileInfo fileInfo(QFINDTESTDATA(TEST_FILE_NAME));
-    d.setSourceFilename(fileInfo.absoluteFilePath());
-    QVERIFY(d.state() == QAudioDecoder::StoppedState);
+
+    d.setSource(*m_wavFile);
+    QVERIFY(!d.isDecoding());
     QVERIFY(!d.bufferAvailable());
-    QCOMPARE(d.sourceFilename(), fileInfo.absoluteFilePath());
+    QCOMPARE(d.source(), *m_wavFile);
 
     QSignalSpy readySpy(&d, SIGNAL(bufferReady()));
     QSignalSpy bufferChangedSpy(&d, SIGNAL(bufferAvailableChanged(bool)));
     QSignalSpy errorSpy(&d, SIGNAL(error(QAudioDecoder::Error)));
-    QSignalSpy stateSpy(&d, SIGNAL(stateChanged(QAudioDecoder::State)));
+    QSignalSpy isDecodingSpy(&d, SIGNAL(isDecodingChanged(bool)));
     QSignalSpy durationSpy(&d, SIGNAL(durationChanged(qint64)));
     QSignalSpy finishedSpy(&d, SIGNAL(finished()));
     QSignalSpy positionSpy(&d, SIGNAL(positionChanged(qint64)));
 
     d.start();
-    QTRY_VERIFY(d.state() == QAudioDecoder::DecodingState);
-    QTRY_VERIFY(!stateSpy.isEmpty());
+
+    QTRY_VERIFY(!isDecodingSpy.isEmpty());
     QTRY_VERIFY(!readySpy.isEmpty());
     QTRY_VERIFY(!bufferChangedSpy.isEmpty());
     QVERIFY(d.bufferAvailable());
     QTRY_VERIFY(!durationSpy.isEmpty());
-    QVERIFY(qAbs(d.duration() - 1000) < 20);
+
+    QVERIFY(qAbs(durationSpy.front().front().value<qint64>() - 1000) < 20);
+    if (finishedSpy.empty())
+        QVERIFY(qAbs(d.duration() - 1000) < 20);
+    else
+        QCOMPARE(d.duration(), -1);
 
     buffer = d.read();
     QVERIFY(buffer.isValid());
@@ -137,14 +396,11 @@ void tst_QAudioDecoderBackend::fileTest()
     // Test file is 44.1K 16bit mono, 44094 samples
     QCOMPARE(buffer.format().channelCount(), 1);
     QCOMPARE(buffer.format().sampleRate(), 44100);
-    QCOMPARE(buffer.format().sampleSize(), 16);
-    QCOMPARE(buffer.format().sampleType(), QAudioFormat::SignedInt);
-    QCOMPARE(buffer.format().codec(), QString("audio/pcm"));
+    QCOMPARE(buffer.format().sampleFormat(), QAudioFormat::Int16);
     QCOMPARE(buffer.byteCount(), buffer.sampleCount() * 2); // 16bit mono
 
     // The decoder should still have no format set
     QVERIFY(d.audioFormat() == QAudioFormat());
-
     QVERIFY(errorSpy.isEmpty());
 
     duration += buffer.duration();
@@ -160,7 +416,7 @@ void tst_QAudioDecoderBackend::fileTest()
         buffer = d.read();
         QVERIFY(buffer.isValid());
         QTRY_VERIFY(!positionSpy.isEmpty());
-        QVERIFY(positionSpy.takeLast().at(0).toLongLong() == qint64(duration / 1000));
+        QCOMPARE(positionSpy.takeLast().at(0).toLongLong(), qint64(duration / 1000));
 
         duration += buffer.duration();
         sampleCount += buffer.sampleCount();
@@ -176,29 +432,30 @@ void tst_QAudioDecoderBackend::fileTest()
     QCOMPARE(byteCount, 44094 * 2);
     QVERIFY(qAbs(qint64(duration) - 1000000) < 20000);
     QVERIFY(qAbs((d.position() + (buffer.duration() / 1000)) - 1000) < 20);
-    QTRY_COMPARE(finishedSpy.count(), 1);
+    QTRY_COMPARE(finishedSpy.size(), 1);
     QVERIFY(!d.bufferAvailable());
-    QTRY_COMPARE(d.state(), QAudioDecoder::StoppedState);
+    QTRY_VERIFY(!d.isDecoding());
 
     d.stop();
-    QTRY_COMPARE(d.state(), QAudioDecoder::StoppedState);
-    QTRY_COMPARE(durationSpy.count(), 2);
+    QTRY_VERIFY(!d.isDecoding());
+    QTRY_COMPARE(durationSpy.size(), 2);
     QCOMPARE(d.duration(), qint64(-1));
     QVERIFY(!d.bufferAvailable());
     readySpy.clear();
     bufferChangedSpy.clear();
-    stateSpy.clear();
+    isDecodingSpy.clear();
     durationSpy.clear();
     finishedSpy.clear();
     positionSpy.clear();
 
+#ifdef Q_OS_ANDROID
+    QSKIP("Setting a desired audio format is not yet supported on Android", QTest::SkipSingle);
+#endif
     // change output audio format
     QAudioFormat format;
     format.setChannelCount(2);
-    format.setSampleSize(8);
     format.setSampleRate(11050);
-    format.setCodec("audio/pcm");
-    format.setSampleType(QAudioFormat::SignedInt);
+    format.setSampleFormat(QAudioFormat::UInt8);
 
     d.setAudioFormat(format);
 
@@ -213,13 +470,16 @@ void tst_QAudioDecoderBackend::fileTest()
     byteCount = 0;
 
     d.start();
-    QTRY_VERIFY(d.state() == QAudioDecoder::DecodingState);
-    QTRY_VERIFY(!stateSpy.isEmpty());
+    QTRY_VERIFY(!isDecodingSpy.isEmpty());
     QTRY_VERIFY(!readySpy.isEmpty());
     QTRY_VERIFY(!bufferChangedSpy.isEmpty());
     QVERIFY(d.bufferAvailable());
     QTRY_VERIFY(!durationSpy.isEmpty());
-    QVERIFY(qAbs(d.duration() - 1000) < 20);
+    QVERIFY(qAbs(durationSpy.front().front().value<qint64>() - 1000) < 20);
+    if (finishedSpy.empty())
+        QVERIFY(qAbs(d.duration() - 1000) < 20);
+    else
+        QCOMPARE(d.duration(), -1);
 
     buffer = d.read();
     QVERIFY(buffer.isValid());
@@ -236,7 +496,7 @@ void tst_QAudioDecoderBackend::fileTest()
     byteCount += buffer.byteCount();
 
     // Now drain the decoder
-    if (duration < 998000) {
+    if (duration < 996000) {
         QTRY_COMPARE(d.bufferAvailable(), true);
     }
 
@@ -244,14 +504,14 @@ void tst_QAudioDecoderBackend::fileTest()
         buffer = d.read();
         QVERIFY(buffer.isValid());
         QTRY_VERIFY(!positionSpy.isEmpty());
-        QVERIFY(positionSpy.takeLast().at(0).toLongLong() == qint64(duration / 1000));
+        QCOMPARE(positionSpy.takeLast().at(0).toLongLong(), qint64(duration / 1000));
         QVERIFY(d.position() - (duration / 1000) < 20);
 
         duration += buffer.duration();
         sampleCount += buffer.sampleCount();
         byteCount += buffer.byteCount();
 
-        if (duration < 998000) {
+        if (duration < 996000) {
             QTRY_COMPARE(d.bufferAvailable(), true);
         }
     }
@@ -262,13 +522,13 @@ void tst_QAudioDecoderBackend::fileTest()
     QVERIFY(qAbs(byteCount - 22047) < 100);
     QVERIFY(qAbs(qint64(duration) - 1000000) < 20000);
     QVERIFY(qAbs((d.position() + (buffer.duration() / 1000)) - 1000) < 20);
-    QTRY_COMPARE(finishedSpy.count(), 1);
+    QTRY_COMPARE(finishedSpy.size(), 1);
     QVERIFY(!d.bufferAvailable());
-    QTRY_COMPARE(d.state(), QAudioDecoder::StoppedState);
+    QVERIFY(!d.isDecoding());
 
     d.stop();
-    QTRY_COMPARE(d.state(), QAudioDecoder::StoppedState);
-    QTRY_COMPARE(durationSpy.count(), 2);
+    QTRY_VERIFY(!d.isDecoding());
+    QTRY_COMPARE(durationSpy.size(), 2);
     QCOMPARE(d.duration(), qint64(-1));
     QVERIFY(!d.bufferAvailable());
 }
@@ -279,32 +539,32 @@ void tst_QAudioDecoderBackend::fileTest()
 void tst_QAudioDecoderBackend::unsupportedFileTest()
 {
     QAudioDecoder d;
-    if (d.error() == QAudioDecoder::ServiceMissingError)
+    if (d.error() == QAudioDecoder::NotSupportedError)
         QSKIP("There is no audio decoding support on this platform.");
     QAudioBuffer buffer;
 
-    QVERIFY(d.state() == QAudioDecoder::StoppedState);
+    QVERIFY(!d.isDecoding());
     QVERIFY(d.bufferAvailable() == false);
-    QCOMPARE(d.sourceFilename(), QString(""));
+    QCOMPARE(d.source(), QString(""));
     QVERIFY(d.audioFormat() == QAudioFormat());
 
     // Test local file
-    QFileInfo fileInfo(QFINDTESTDATA(TEST_UNSUPPORTED_FILE_NAME));
-    d.setSourceFilename(fileInfo.absoluteFilePath());
-    QVERIFY(d.state() == QAudioDecoder::StoppedState);
+    QUrl url = testFileUrl(TEST_UNSUPPORTED_FILE_NAME);
+    d.setSource(url);
+    QVERIFY(!d.isDecoding());
     QVERIFY(!d.bufferAvailable());
-    QCOMPARE(d.sourceFilename(), fileInfo.absoluteFilePath());
+    QCOMPARE(d.source(), url);
 
     QSignalSpy readySpy(&d, SIGNAL(bufferReady()));
     QSignalSpy bufferChangedSpy(&d, SIGNAL(bufferAvailableChanged(bool)));
     QSignalSpy errorSpy(&d, SIGNAL(error(QAudioDecoder::Error)));
-    QSignalSpy stateSpy(&d, SIGNAL(stateChanged(QAudioDecoder::State)));
+    QSignalSpy isDecodingSpy(&d, SIGNAL(isDecodingChanged(bool)));
     QSignalSpy durationSpy(&d, SIGNAL(durationChanged(qint64)));
     QSignalSpy finishedSpy(&d, SIGNAL(finished()));
     QSignalSpy positionSpy(&d, SIGNAL(positionChanged(qint64)));
 
     d.start();
-    QTRY_VERIFY(d.state() == QAudioDecoder::StoppedState);
+    QTRY_VERIFY(!d.isDecoding());
     QVERIFY(!d.bufferAvailable());
     QCOMPARE(d.audioFormat(), QAudioFormat());
     QCOMPARE(d.duration(), qint64(-1));
@@ -321,16 +581,17 @@ void tst_QAudioDecoderBackend::unsupportedFileTest()
     // Check all other spies.
     QVERIFY(readySpy.isEmpty());
     QVERIFY(bufferChangedSpy.isEmpty());
-    QVERIFY(stateSpy.isEmpty());
+    QVERIFY(isDecodingSpy.isEmpty());
     QVERIFY(finishedSpy.isEmpty());
     QVERIFY(positionSpy.isEmpty());
-    QVERIFY(durationSpy.isEmpty());
+    // Either reject the file directly, or set the duration to 5secs on setUrl() and back to -1 on start()
+    QVERIFY(durationSpy.isEmpty() || durationSpy.size() == 2);
 
     errorSpy.clear();
 
     // Try read even if the file is not supported to test robustness.
     buffer = d.read();
-    QTRY_VERIFY(d.state() == QAudioDecoder::StoppedState);
+    QTRY_VERIFY(!d.isDecoding());
     QVERIFY(!buffer.isValid());
     QVERIFY(!d.bufferAvailable());
     QCOMPARE(d.position(), qint64(-1));
@@ -338,14 +599,14 @@ void tst_QAudioDecoderBackend::unsupportedFileTest()
     QVERIFY(errorSpy.isEmpty());
     QVERIFY(readySpy.isEmpty());
     QVERIFY(bufferChangedSpy.isEmpty());
-    QVERIFY(stateSpy.isEmpty());
+    QVERIFY(isDecodingSpy.isEmpty());
     QVERIFY(finishedSpy.isEmpty());
     QVERIFY(positionSpy.isEmpty());
-    QVERIFY(durationSpy.isEmpty());
+    QVERIFY(durationSpy.isEmpty() || durationSpy.size() == 2);
 
 
     d.stop();
-    QTRY_COMPARE(d.state(), QAudioDecoder::StoppedState);
+    QTRY_VERIFY(!d.isDecoding());
     QCOMPARE(d.duration(), qint64(-1));
     QVERIFY(!d.bufferAvailable());
 }
@@ -357,32 +618,32 @@ void tst_QAudioDecoderBackend::unsupportedFileTest()
 void tst_QAudioDecoderBackend::corruptedFileTest()
 {
     QAudioDecoder d;
-    if (d.error() == QAudioDecoder::ServiceMissingError)
+    if (d.error() == QAudioDecoder::NotSupportedError)
         QSKIP("There is no audio decoding support on this platform.");
     QAudioBuffer buffer;
 
-    QVERIFY(d.state() == QAudioDecoder::StoppedState);
+    QVERIFY(!d.isDecoding());
     QVERIFY(d.bufferAvailable() == false);
-    QCOMPARE(d.sourceFilename(), QString(""));
+    QCOMPARE(d.source(), QUrl());
     QVERIFY(d.audioFormat() == QAudioFormat());
 
     // Test local file
-    QFileInfo fileInfo(QFINDTESTDATA(TEST_CORRUPTED_FILE_NAME));
-    d.setSourceFilename(fileInfo.absoluteFilePath());
-    QVERIFY(d.state() == QAudioDecoder::StoppedState);
+    QUrl url = testFileUrl(TEST_CORRUPTED_FILE_NAME);
+    d.setSource(url);
+    QVERIFY(!d.isDecoding());
     QVERIFY(!d.bufferAvailable());
-    QCOMPARE(d.sourceFilename(), fileInfo.absoluteFilePath());
+    QCOMPARE(d.source(), url);
 
     QSignalSpy readySpy(&d, SIGNAL(bufferReady()));
     QSignalSpy bufferChangedSpy(&d, SIGNAL(bufferAvailableChanged(bool)));
     QSignalSpy errorSpy(&d, SIGNAL(error(QAudioDecoder::Error)));
-    QSignalSpy stateSpy(&d, SIGNAL(stateChanged(QAudioDecoder::State)));
+    QSignalSpy isDecodingSpy(&d, SIGNAL(isDecodingChanged(bool)));
     QSignalSpy durationSpy(&d, SIGNAL(durationChanged(qint64)));
     QSignalSpy finishedSpy(&d, SIGNAL(finished()));
     QSignalSpy positionSpy(&d, SIGNAL(positionChanged(qint64)));
 
     d.start();
-    QTRY_VERIFY(d.state() == QAudioDecoder::StoppedState);
+    QTRY_VERIFY(!d.isDecoding());
     QVERIFY(!d.bufferAvailable());
     QCOMPARE(d.audioFormat(), QAudioFormat());
     QCOMPARE(d.duration(), qint64(-1));
@@ -399,7 +660,7 @@ void tst_QAudioDecoderBackend::corruptedFileTest()
     // Check all other spies.
     QVERIFY(readySpy.isEmpty());
     QVERIFY(bufferChangedSpy.isEmpty());
-    QVERIFY(stateSpy.isEmpty());
+    QVERIFY(isDecodingSpy.isEmpty());
     QVERIFY(finishedSpy.isEmpty());
     QVERIFY(positionSpy.isEmpty());
     QVERIFY(durationSpy.isEmpty());
@@ -408,7 +669,7 @@ void tst_QAudioDecoderBackend::corruptedFileTest()
 
     // Try read even if the file is corrupted to test the robustness.
     buffer = d.read();
-    QTRY_VERIFY(d.state() == QAudioDecoder::StoppedState);
+    QTRY_VERIFY(!d.isDecoding());
     QVERIFY(!buffer.isValid());
     QVERIFY(!d.bufferAvailable());
     QCOMPARE(d.position(), qint64(-1));
@@ -416,25 +677,114 @@ void tst_QAudioDecoderBackend::corruptedFileTest()
     QVERIFY(errorSpy.isEmpty());
     QVERIFY(readySpy.isEmpty());
     QVERIFY(bufferChangedSpy.isEmpty());
-    QVERIFY(stateSpy.isEmpty());
+    QVERIFY(isDecodingSpy.isEmpty());
     QVERIFY(finishedSpy.isEmpty());
     QVERIFY(positionSpy.isEmpty());
     QVERIFY(durationSpy.isEmpty());
 
+    d.stop();
+    QTRY_VERIFY(!d.isDecoding());
+    QCOMPARE(d.duration(), qint64(-1));
+    QVERIFY(!d.bufferAvailable());
+}
+
+void tst_QAudioDecoderBackend::invalidSource()
+{
+    QAudioDecoder d;
+    if (d.error() == QAudioDecoder::NotSupportedError)
+        QSKIP("There is no audio decoding support on this platform.");
+    QAudioBuffer buffer;
+
+    QVERIFY(!d.isDecoding());
+    QVERIFY(d.bufferAvailable() == false);
+    QCOMPARE(d.source(), QUrl());
+    QVERIFY(d.audioFormat() == QAudioFormat());
+
+    // Test invalid file source
+    QFileInfo fileInfo(TEST_INVALID_SOURCE);
+    QUrl url = QUrl::fromLocalFile(fileInfo.absoluteFilePath());
+    d.setSource(url);
+    QVERIFY(!d.isDecoding());
+    QVERIFY(!d.bufferAvailable());
+    QCOMPARE(d.source(), url);
+
+    QSignalSpy readySpy(&d, SIGNAL(bufferReady()));
+    QSignalSpy bufferChangedSpy(&d, SIGNAL(bufferAvailableChanged(bool)));
+    QSignalSpy errorSpy(&d, SIGNAL(error(QAudioDecoder::Error)));
+    QSignalSpy isDecodingSpy(&d, SIGNAL(isDecodingChanged(bool)));
+    QSignalSpy durationSpy(&d, SIGNAL(durationChanged(qint64)));
+    QSignalSpy finishedSpy(&d, SIGNAL(finished()));
+    QSignalSpy positionSpy(&d, SIGNAL(positionChanged(qint64)));
+
+    d.start();
+    QTRY_VERIFY(!d.isDecoding());
+    QVERIFY(!d.bufferAvailable());
+    QCOMPARE(d.audioFormat(), QAudioFormat());
+    QCOMPARE(d.duration(), qint64(-1));
+    QCOMPARE(d.position(), qint64(-1));
+
+    // Check the error code.
+    QTRY_VERIFY(!errorSpy.isEmpty());
+
+    // Have to use qvariant_cast, toInt will return 0 because unrecognized type;
+    QAudioDecoder::Error errorCode = qvariant_cast<QAudioDecoder::Error>(errorSpy.takeLast().at(0));
+    QCOMPARE(errorCode, QAudioDecoder::ResourceError);
+    QCOMPARE(d.error(), QAudioDecoder::ResourceError);
+
+    // Check all other spies.
+    QVERIFY(readySpy.isEmpty());
+    QVERIFY(bufferChangedSpy.isEmpty());
+    QVERIFY(isDecodingSpy.isEmpty());
+    QVERIFY(finishedSpy.isEmpty());
+    QVERIFY(positionSpy.isEmpty());
+    QVERIFY(durationSpy.isEmpty());
+
+    errorSpy.clear();
 
     d.stop();
-    QTRY_COMPARE(d.state(), QAudioDecoder::StoppedState);
+    QTRY_VERIFY(!d.isDecoding());
+    QCOMPARE(d.duration(), qint64(-1));
+    QVERIFY(!d.bufferAvailable());
+
+    QFile file;
+    file.setFileName(TEST_INVALID_SOURCE);
+    file.open(QIODevice::ReadOnly);
+    d.setSourceDevice(&file);
+
+    d.start();
+    QTRY_VERIFY(!d.isDecoding());
+    QVERIFY(!d.bufferAvailable());
+    QCOMPARE(d.audioFormat(), QAudioFormat());
+    QCOMPARE(d.duration(), qint64(-1));
+    QCOMPARE(d.position(), qint64(-1));
+
+    // Check the error code.
+    QTRY_VERIFY(!errorSpy.isEmpty());
+    errorCode = qvariant_cast<QAudioDecoder::Error>(errorSpy.takeLast().at(0));
+    QCOMPARE(errorCode, QAudioDecoder::ResourceError);
+    QCOMPARE(d.error(), QAudioDecoder::ResourceError);
+    // Check all other spies.
+    QVERIFY(readySpy.isEmpty());
+    QVERIFY(bufferChangedSpy.isEmpty());
+    QVERIFY(isDecodingSpy.isEmpty());
+    QVERIFY(finishedSpy.isEmpty());
+    QVERIFY(positionSpy.isEmpty());
+    QVERIFY(durationSpy.isEmpty());
+
+    errorSpy.clear();
+
+    d.stop();
+    QTRY_VERIFY(!d.isDecoding());
     QCOMPARE(d.duration(), qint64(-1));
     QVERIFY(!d.bufferAvailable());
 }
 
 void tst_QAudioDecoderBackend::deviceTest()
 {
-    if (!isWavSupported())
-        QSKIP("Sound format is not supported");
+    CHECK_SELECTED_URL(m_wavFile);
 
     QAudioDecoder d;
-    if (d.error() == QAudioDecoder::ServiceMissingError)
+    if (d.error() == QAudioDecoder::NotSupportedError)
         QSKIP("There is no audio decoding support on this platform.");
     QAudioBuffer buffer;
     quint64 duration = 0;
@@ -443,35 +793,36 @@ void tst_QAudioDecoderBackend::deviceTest()
     QSignalSpy readySpy(&d, SIGNAL(bufferReady()));
     QSignalSpy bufferChangedSpy(&d, SIGNAL(bufferAvailableChanged(bool)));
     QSignalSpy errorSpy(&d, SIGNAL(error(QAudioDecoder::Error)));
-    QSignalSpy stateSpy(&d, SIGNAL(stateChanged(QAudioDecoder::State)));
+    QSignalSpy isDecodingSpy(&d, SIGNAL(isDecodingChanged(bool)));
     QSignalSpy durationSpy(&d, SIGNAL(durationChanged(qint64)));
     QSignalSpy finishedSpy(&d, SIGNAL(finished()));
     QSignalSpy positionSpy(&d, SIGNAL(positionChanged(qint64)));
 
-    QVERIFY(d.state() == QAudioDecoder::StoppedState);
+    QVERIFY(!d.isDecoding());
     QVERIFY(d.bufferAvailable() == false);
-    QCOMPARE(d.sourceFilename(), QString(""));
+    QCOMPARE(d.source(), QString(""));
     QVERIFY(d.audioFormat() == QAudioFormat());
-
-    QFileInfo fileInfo(QFINDTESTDATA(TEST_FILE_NAME));
-    QFile file(fileInfo.absoluteFilePath());
+    QFile file(m_wavFile->toString());
     QVERIFY(file.open(QIODevice::ReadOnly));
     d.setSourceDevice(&file);
 
     QVERIFY(d.sourceDevice() == &file);
-    QVERIFY(d.sourceFilename().isEmpty());
+    QVERIFY(d.source().isEmpty());
 
     // We haven't set the format yet
     QVERIFY(d.audioFormat() == QAudioFormat());
 
     d.start();
-    QTRY_VERIFY(d.state() == QAudioDecoder::DecodingState);
-    QTRY_VERIFY(!stateSpy.isEmpty());
+
+    QTRY_VERIFY(!isDecodingSpy.isEmpty());
     QTRY_VERIFY(!readySpy.isEmpty());
     QTRY_VERIFY(!bufferChangedSpy.isEmpty());
     QVERIFY(d.bufferAvailable());
     QTRY_VERIFY(!durationSpy.isEmpty());
-    QVERIFY(qAbs(d.duration() - 1000) < 20);
+    if (finishedSpy.empty())
+        QVERIFY(qAbs(d.duration() - 1000) < 20);
+    else
+        QCOMPARE(d.duration(), -1);
 
     buffer = d.read();
     QVERIFY(buffer.isValid());
@@ -479,9 +830,7 @@ void tst_QAudioDecoderBackend::deviceTest()
     // Test file is 44.1K 16bit mono
     QCOMPARE(buffer.format().channelCount(), 1);
     QCOMPARE(buffer.format().sampleRate(), 44100);
-    QCOMPARE(buffer.format().sampleSize(), 16);
-    QCOMPARE(buffer.format().sampleType(), QAudioFormat::SignedInt);
-    QCOMPARE(buffer.format().codec(), QString("audio/pcm"));
+    QCOMPARE(buffer.format().sampleFormat(), QAudioFormat::Int16);
 
     QVERIFY(errorSpy.isEmpty());
 
@@ -511,29 +860,30 @@ void tst_QAudioDecoderBackend::deviceTest()
     QCOMPARE(sampleCount, 44094);
     QVERIFY(qAbs(qint64(duration) - 1000000) < 20000);
     QVERIFY(qAbs((d.position() + (buffer.duration() / 1000)) - 1000) < 20);
-    QTRY_COMPARE(finishedSpy.count(), 1);
+    QTRY_COMPARE(finishedSpy.size(), 1);
     QVERIFY(!d.bufferAvailable());
-    QTRY_COMPARE(d.state(), QAudioDecoder::StoppedState);
+    QTRY_VERIFY(!d.isDecoding());
 
     d.stop();
-    QTRY_COMPARE(d.state(), QAudioDecoder::StoppedState);
+    QTRY_VERIFY(!d.isDecoding());
     QVERIFY(!d.bufferAvailable());
-    QTRY_COMPARE(durationSpy.count(), 2);
+    QTRY_COMPARE(durationSpy.size(), 2);
     QCOMPARE(d.duration(), qint64(-1));
     readySpy.clear();
     bufferChangedSpy.clear();
-    stateSpy.clear();
+    isDecodingSpy.clear();
     durationSpy.clear();
     finishedSpy.clear();
     positionSpy.clear();
 
+#ifdef Q_OS_ANDROID
+    QSKIP("Setting a desired audio format is not yet supported on Android", QTest::SkipSingle);
+#endif
     // Now try changing formats
     QAudioFormat format;
     format.setChannelCount(2);
-    format.setSampleSize(8);
     format.setSampleRate(8000);
-    format.setCodec("audio/pcm");
-    format.setSampleType(QAudioFormat::SignedInt);
+    format.setSampleFormat(QAudioFormat::UInt8);
 
     d.setAudioFormat(format);
 
@@ -541,13 +891,18 @@ void tst_QAudioDecoderBackend::deviceTest()
     QVERIFY(d.audioFormat() == format);
 
     d.start();
-    QTRY_VERIFY(d.state() == QAudioDecoder::DecodingState);
-    QTRY_VERIFY(!stateSpy.isEmpty());
+    QVERIFY(d.error() == QAudioDecoder::NoError);
+    QTRY_VERIFY(!isDecodingSpy.isEmpty());
     QTRY_VERIFY(!readySpy.isEmpty());
     QTRY_VERIFY(!bufferChangedSpy.isEmpty());
     QVERIFY(d.bufferAvailable());
     QTRY_VERIFY(!durationSpy.isEmpty());
-    QVERIFY(qAbs(d.duration() - 1000) < 20);
+
+    QVERIFY(qAbs(durationSpy.front().front().value<qint64>() - 1000) < 20);
+    if (finishedSpy.empty())
+        QVERIFY(qAbs(d.duration() - 1000) < 20);
+    else
+        QCOMPARE(d.duration(), -1);
 
     buffer = d.read();
     QVERIFY(buffer.isValid());
@@ -560,9 +915,9 @@ void tst_QAudioDecoderBackend::deviceTest()
     QVERIFY(errorSpy.isEmpty());
 
     d.stop();
-    QTRY_COMPARE(d.state(), QAudioDecoder::StoppedState);
+    QTRY_VERIFY(!d.isDecoding());
     QVERIFY(!d.bufferAvailable());
-    QTRY_COMPARE(durationSpy.count(), 2);
+    QTRY_COMPARE(durationSpy.size(), 2);
     QCOMPARE(d.duration(), qint64(-1));
 }
 

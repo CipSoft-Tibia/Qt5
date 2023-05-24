@@ -1,11 +1,11 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // https://w3c.github.io/mediacapture-main/#idl-def-mediatracksupportedconstraints
 
 // NOTE: The names of this dictionary MUST be kept aligned with those in
-// MediaTrackConstraintSet.idl.
+// media_track_constraint_set.idl.
 
 dictionary MediaTrackSupportedConstraints {
     boolean width = true;
@@ -24,12 +24,6 @@ dictionary MediaTrackSupportedConstraints {
     boolean deviceId = true;
     boolean groupId = true;
 
-    // Media Capture Depth Stream Extensions
-    // https://w3c.github.io/mediacapture-depth
-    // TODO(riju): videoKind attribute should be declared as partial
-    // dictionary but IDL parser can't support it yet. http://crbug.com/579896.
-    [RuntimeEnabled=MediaCaptureDepthVideoKind] boolean videoKind = true;
-
     // W3C Image Capture API
     // https://w3c.github.io/mediacapture-image/#mediatracksupportedconstraints-section
     // TODO(mcasas) move out when partial dictionaries are supported
@@ -44,11 +38,20 @@ dictionary MediaTrackSupportedConstraints {
     boolean iso = true;
     boolean brightness = true;
     boolean contrast = true;
-    [RuntimeEnabled=MediaCapturePanTilt] boolean pan = true;
+    boolean pan = true;
     boolean saturation = true;
     boolean sharpness = true;
     boolean focusDistance = true;
-    [RuntimeEnabled=MediaCapturePanTilt] boolean tilt = true;
+    boolean tilt = true;
     boolean zoom = true;
     boolean torch = true;
+
+    // W3C Media Capture Extensions
+    [RuntimeEnabled=MediaCaptureBackgroundBlur] boolean backgroundBlur = true;
+
+    // https://github.com/w3c/mediacapture-screen-share/pull/186/files
+    [RuntimeEnabled=DisplaySurfaceConstraint] boolean displaySurface = true;
+
+    // https://w3c.github.io/mediacapture-screen-share/#dfn-suppresslocalaudioplayback
+    [RuntimeEnabled=SuppressLocalAudioPlayback] boolean suppressLocalAudioPlayback = true;
 };

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/memory/ptr_util.h"
 #include "media/audio/audio_debug_recording_helper.h"
 #include "media/audio/audio_io.h"
@@ -30,7 +30,7 @@ class MockStream : public AudioInputStream {
  public:
   MockStream() = default;
   ~MockStream() override = default;
-  MOCK_METHOD0(Open, bool());
+  MOCK_METHOD0(Open, AudioInputStream::OpenOutcome());
   MOCK_METHOD1(Start, void(AudioInputStream::AudioInputCallback*));
   MOCK_METHOD0(Stop, void());
   MOCK_METHOD0(Close, void());

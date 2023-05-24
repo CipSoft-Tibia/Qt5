@@ -1,10 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/viz/common/surfaces/scoped_surface_id_allocator.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "components/viz/common/surfaces/parent_local_surface_id_allocator.h"
 #include "testing/gtest/include/gtest/gtest.h"
 

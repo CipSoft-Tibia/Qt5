@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -54,37 +54,19 @@ NSString* kSelectionDirection = @"Chromium.kSelectionDirection";
   }
 }
 
-- (void)updateTrackingAreas {
-  [super updateTrackingAreas];
-
-  // NSTrackingInVisibleRect doesn't work correctly with Lion's window
-  // resizing (See https://crbug.com/176725 and
-  // http://openradar.appspot.com/radar?id=2773401). It also doesn't work
-  // correctly when the window enters fullscreen
-  // (See https://crbug.com/170058).
-  //
-  // Work around it by reinstalling the tracking area after the window resizes
-  // or enters fullscreen. This AppKit bug is fixed on High Sierra, so we only
-  // apply this workaround on 10.12 or earlier.
-  if (base::mac::IsAtMostOS10_12()) {
-    [self disableTracking];
-    [self enableTracking];
-  }
-}
-
 - (void)handleLeftMouseUp:(NSEvent*)theEvent {
-  DCHECK_EQ([theEvent type], NSLeftMouseUp);
+  DCHECK_EQ([theEvent type], NSEventTypeLeftMouseUp);
   _dragging = NO;
   if (!_pendingExitEvent)
     return;
 
   NSEvent* exitEvent =
-      [NSEvent enterExitEventWithType:NSMouseExited
+      [NSEvent enterExitEventWithType:NSEventTypeMouseExited
                              location:[theEvent locationInWindow]
                         modifierFlags:[theEvent modifierFlags]
                             timestamp:[theEvent timestamp]
                          windowNumber:[theEvent windowNumber]
-                              context:[theEvent context]
+                              context:nil
                           eventNumber:[_pendingExitEvent eventNumber]
                        trackingNumber:[_pendingExitEvent trackingNumber]
                              userData:[_pendingExitEvent userData]];
@@ -163,6 +145,14 @@ NSString* kSelectionDirection = @"Chromium.kSelectionDirection";
 }
 
 - (void)mouseExited:(NSEvent*)theEvent {
+  // Suppress spurious mouseExited events that are in the bounds of this view.
+  // For unknown reasons this happens shortly after mouseMoved on the toolbar if
+  // the overlay window is above the NSToolbarFullScreenWindow.
+  NSRect frameInWindow = [self convertRect:[self bounds] toView:nil];
+  if (NSPointInRect([theEvent locationInWindow], frameInWindow)) {
+    return;
+  }
+
   // The tracking area will send an exit event even during a drag, which isn't
   // how the event flow for drags should work. This stores the exit event, and
   // sends it when the drag completes instead.

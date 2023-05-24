@@ -1,35 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtCore>
 #include <QtGui>
-#include <QtTest/QtTest>
+#include <QTest>
 
 Q_DECLARE_METATYPE(QMetaType::Type)
 
@@ -45,6 +20,8 @@ private slots:
     void sizeOf();
     void flags_data();
     void flags();
+    void flags2_data();
+    void flags2();
     void construct_data();
     void construct();
     void constructCopy_data();
@@ -67,7 +44,6 @@ private slots:
     F(QPen, QPen) \
     F(QTextLength, QTextLength) \
     F(QTextFormat, QTextFormat) \
-    F(QMatrix, QMatrix) \
     F(QTransform, QTransform) \
     F(QMatrix4x4, QMatrix4x4) \
     F(QVector2D, QVector2D) \
@@ -88,16 +64,16 @@ private slots:
 namespace {
     template <typename T>
     struct static_assert_trigger {
-        Q_STATIC_ASSERT(( QMetaTypeId2<T>::IsBuiltIn ));
+        static_assert(( QMetaTypeId2<T>::IsBuiltIn ));
         enum { value = true };
     };
 }
 
 #define CHECK_BUILTIN(TYPE, ID) static_assert_trigger< TYPE >::value &&
-Q_STATIC_ASSERT(( FOR_EACH_GUI_METATYPE(CHECK_BUILTIN) true ));
+static_assert(( FOR_EACH_GUI_METATYPE(CHECK_BUILTIN) true ));
 #undef CHECK_BUILTIN
-Q_STATIC_ASSERT((!QMetaTypeId2<QList<QPen> >::IsBuiltIn));
-Q_STATIC_ASSERT((!QMetaTypeId2<QMap<QString,QPen> >::IsBuiltIn));
+static_assert((!QMetaTypeId2<QList<QPen> >::IsBuiltIn));
+static_assert((!QMetaTypeId2<QMap<QString,QPen> >::IsBuiltIn));
 
 template <int ID>
 struct MetaEnumToType {};
@@ -181,9 +157,13 @@ template<> struct TestValueFactory<QMetaType::QCursor> {
     static QCursor *create() { return new QCursor(Qt::WaitCursor); }
 };
 #endif
+
+#if QT_CONFIG(shortcut)
 template<> struct TestValueFactory<QMetaType::QKeySequence> {
     static QKeySequence *create() { return new QKeySequence(QKeySequence::Close); }
 };
+#endif
+
 template<> struct TestValueFactory<QMetaType::QPen> {
     static QPen *create() { return new QPen(Qt::DashDotDotLine); }
 };
@@ -193,14 +173,6 @@ template<> struct TestValueFactory<QMetaType::QTextLength> {
 template<> struct TestValueFactory<QMetaType::QTextFormat> {
     static QTextFormat *create() { return new QTextFormat(QTextFormat::FrameFormat); }
 };
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-template<> struct TestValueFactory<QMetaType::QMatrix> {
-    static QMatrix *create() { return new QMatrix(10, 20, 30, 40, 50, 60); }
-};
-QT_WARNING_POP
-#endif
 template<> struct TestValueFactory<QMetaType::QTransform> {
     static QTransform *create() { return new QTransform(10, 20, 30, 40, 50, 60); }
 };
@@ -224,7 +196,7 @@ void tst_QGuiMetaType::create_data()
 {
     QTest::addColumn<QMetaType::Type>("type");
 #define ADD_METATYPE_TEST_ROW(TYPE, ID) \
-    QTest::newRow(QMetaType::typeName(QMetaType::ID)) << QMetaType::ID;
+    QTest::newRow(QMetaType(QMetaType::ID).name()) << QMetaType::ID;
 FOR_EACH_GUI_METATYPE(ADD_METATYPE_TEST_ROW)
 #undef ADD_METATYPE_TEST_ROW
 }
@@ -233,11 +205,11 @@ template <int ID>
 static void testCreateHelper()
 {
     typedef typename MetaEnumToType<ID>::Type Type;
-    void *actual = QMetaType::create(ID);
+    void *actual = QMetaType(ID).create();
     Type *expected = DefaultValueFactory<ID>::create();
     QVERIFY(TypeComparator<ID>::equal(*static_cast<Type *>(actual), *expected));
     delete expected;
-    QMetaType::destroy(ID, actual);
+    QMetaType(ID).destroy(actual);
 }
 
 typedef void (*TypeTestFunction)();
@@ -273,9 +245,9 @@ static void testCreateCopyHelper()
 {
     typedef typename MetaEnumToType<ID>::Type Type;
     Type *expected = TestValueFactory<ID>::create();
-    void *actual = QMetaType::create(ID, expected);
+    void *actual = QMetaType(ID).create(expected);
     QVERIFY(TypeComparator<ID>::equal(*static_cast<Type*>(actual), *expected));
-    QMetaType::destroy(ID, actual);
+    QMetaType(ID).destroy(actual);
     delete expected;
 }
 
@@ -305,7 +277,7 @@ void tst_QGuiMetaType::sizeOf_data()
     QTest::addColumn<QMetaType::Type>("type");
     QTest::addColumn<int>("size");
 #define ADD_METATYPE_TEST_ROW(TYPE, ID) \
-    QTest::newRow(QMetaType::typeName(QMetaType::ID)) << QMetaType::ID << int(sizeof(TYPE));
+    QTest::newRow(QMetaType(QMetaType::ID).name()) << QMetaType::ID << int(sizeof(TYPE));
 FOR_EACH_GUI_METATYPE(ADD_METATYPE_TEST_ROW)
 #undef ADD_METATYPE_TEST_ROW
 }
@@ -314,43 +286,36 @@ void tst_QGuiMetaType::sizeOf()
 {
     QFETCH(QMetaType::Type, type);
     QFETCH(int, size);
-    QCOMPARE(QMetaType::sizeOf(type), size);
+    QCOMPARE(QMetaType(type).sizeOf(), size);
 }
-
-#ifndef Q_ALIGNOF
-template<uint N>
-struct RoundToNextHighestPowerOfTwo
-{
-private:
-    enum { V1 = N-1 };
-    enum { V2 = V1 | (V1 >> 1) };
-    enum { V3 = V2 | (V2 >> 2) };
-    enum { V4 = V3 | (V3 >> 4) };
-    enum { V5 = V4 | (V4 >> 8) };
-    enum { V6 = V5 | (V5 >> 16) };
-public:
-    enum { Value = V6 + 1 };
-};
-#endif
 
 template<class T>
 struct TypeAlignment
 {
-#ifdef Q_ALIGNOF
-    enum { Value = Q_ALIGNOF(T) };
-#else
-    enum { Value = RoundToNextHighestPowerOfTwo<sizeof(T)>::Value };
-#endif
+    enum { Value = alignof(T) };
 };
 
+template <typename T> void addFlagsRow(const char *name, int id = qMetaTypeId<T>())
+{
+    QTest::newRow(name)
+            << id
+            << bool(QTypeInfo<T>::isRelocatable)
+            << bool(!std::is_trivially_default_constructible_v<T>)
+            << bool(!std::is_trivially_copy_constructible_v<T>)
+            << bool(!std::is_trivially_destructible_v<T>);
+}
+
+// tst_QGuiMetaType::flags is nearly identical to tst_QMetaType::flags
 void tst_QGuiMetaType::flags_data()
 {
     QTest::addColumn<int>("type");
     QTest::addColumn<bool>("isRelocatable");
-    QTest::addColumn<bool>("isComplex");
+    QTest::addColumn<bool>("needsConstruction");
+    QTest::addColumn<bool>("needsCopyConstruction");
+    QTest::addColumn<bool>("needsDestruction");
 
 #define ADD_METATYPE_TEST_ROW(MetaTypeName, MetaTypeId, RealType) \
-    QTest::newRow(#RealType) << MetaTypeId << bool(QTypeInfoQuery<RealType>::isRelocatable) << bool(QTypeInfoQuery<RealType>::isComplex);
+    addFlagsRow<RealType>(#RealType, MetaTypeId);
 QT_FOR_EACH_STATIC_GUI_CLASS(ADD_METATYPE_TEST_ROW)
 #undef ADD_METATYPE_TEST_ROW
 }
@@ -359,13 +324,62 @@ void tst_QGuiMetaType::flags()
 {
     QFETCH(int, type);
     QFETCH(bool, isRelocatable);
-    QFETCH(bool, isComplex);
+    QFETCH(bool, needsConstruction);
+    QFETCH(bool, needsCopyConstruction);
+    QFETCH(bool, needsDestruction);
 
-    QCOMPARE(bool(QMetaType::typeFlags(type) & QMetaType::NeedsConstruction), isComplex);
-    QCOMPARE(bool(QMetaType::typeFlags(type) & QMetaType::NeedsDestruction), isComplex);
-    QCOMPARE(bool(QMetaType::typeFlags(type) & QMetaType::MovableType), isRelocatable);
+    QCOMPARE(bool(QMetaType(type).flags() & QMetaType::NeedsConstruction), needsConstruction);
+    QCOMPARE(bool(QMetaType(type).flags() & QMetaType::NeedsCopyConstruction), needsCopyConstruction);
+    QCOMPARE(bool(QMetaType(type).flags() & QMetaType::NeedsDestruction), needsDestruction);
+    QCOMPARE(bool(QMetaType(type).flags() & QMetaType::RelocatableType), isRelocatable);
 }
 
+template <typename T> static void addFlags2Row(QMetaType metaType = QMetaType::fromType<T>())
+{
+    QTest::newRow(metaType.name() ? metaType.name() : "UnknownType")
+            << metaType
+            << std::is_default_constructible_v<T>
+            << std::is_copy_constructible_v<T>
+            << std::is_move_constructible_v<T>
+            << std::is_destructible_v<T>
+            << (QTypeTraits::has_operator_equal<T>::value || QTypeTraits::has_operator_less_than<T>::value)
+            << QTypeTraits::has_operator_less_than<T>::value;
+};
+
+// tst_QGuiMetaType::flags2 is nearly identical to tst_QMetaType::flags2
+void tst_QGuiMetaType::flags2_data()
+{
+    QTest::addColumn<QMetaType>("type");
+    QTest::addColumn<bool>("isDefaultConstructible");
+    QTest::addColumn<bool>("isCopyConstructible");
+    QTest::addColumn<bool>("isMoveConstructible");
+    QTest::addColumn<bool>("isDestructible");
+    QTest::addColumn<bool>("isEqualityComparable");
+    QTest::addColumn<bool>("isOrdered");
+
+#define ADD_METATYPE_TEST_ROW(MetaTypeName, MetaTypeId, RealType) \
+    addFlags2Row<RealType>();
+QT_FOR_EACH_STATIC_GUI_CLASS(ADD_METATYPE_TEST_ROW)
+#undef ADD_METATYPE_TEST_ROW
+}
+
+void tst_QGuiMetaType::flags2()
+{
+    QFETCH(QMetaType, type);
+    QFETCH(bool, isDefaultConstructible);
+    QFETCH(bool, isCopyConstructible);
+    QFETCH(bool, isMoveConstructible);
+    QFETCH(bool, isDestructible);
+    QFETCH(bool, isEqualityComparable);
+    QFETCH(bool, isOrdered);
+
+    QCOMPARE(type.isDefaultConstructible(), isDefaultConstructible);
+    QCOMPARE(type.isCopyConstructible(), isCopyConstructible);
+    QCOMPARE(type.isMoveConstructible(), isMoveConstructible);
+    QCOMPARE(type.isDestructible(), isDestructible);
+    QCOMPARE(type.isEqualityComparable(), isEqualityComparable);
+    QCOMPARE(type.isOrdered(), isOrdered);
+}
 
 void tst_QGuiMetaType::construct_data()
 {
@@ -376,14 +390,14 @@ template <int ID>
 static void testConstructHelper()
 {
     typedef typename MetaEnumToType<ID>::Type Type;
-    int size = QMetaType::sizeOf(ID);
+    int size = QMetaType(ID).sizeOf();
     void *storage = qMallocAligned(size, TypeAlignment<Type>::Value);
-    void *actual = QMetaType::construct(ID, storage, /*copy=*/0);
+    void *actual = QMetaType(ID).construct(storage, /*copy=*/0);
     QCOMPARE(actual, storage);
     Type *expected = DefaultValueFactory<ID>::create();
-    QVERIFY2(TypeComparator<ID>::equal(*static_cast<Type *>(actual), *expected), QMetaType::typeName(ID));
+    QVERIFY2(TypeComparator<ID>::equal(*static_cast<Type *>(actual), *expected), QMetaType(ID).name());
     delete expected;
-    QMetaType::destruct(ID, actual);
+    QMetaType(ID).destruct(actual);
     qFreeAligned(storage);
 }
 
@@ -418,12 +432,12 @@ static void testConstructCopyHelper()
 {
     typedef typename MetaEnumToType<ID>::Type Type;
     Type *expected = TestValueFactory<ID>::create();
-    int size = QMetaType::sizeOf(ID);
+    int size = QMetaType(ID).sizeOf();
     void *storage = qMallocAligned(size, TypeAlignment<Type>::Value);
-    void *actual = QMetaType::construct(ID, storage, expected);
+    void *actual = QMetaType(ID).construct(storage, expected);
     QCOMPARE(actual, storage);
-    QVERIFY2(TypeComparator<ID>::equal(*static_cast<Type*>(actual), *expected), QMetaType::typeName(ID));
-    QMetaType::destruct(ID, actual);
+    QVERIFY2(TypeComparator<ID>::equal(*static_cast<Type*>(actual), *expected), QMetaType(ID).name());
+    QMetaType(ID).destruct(actual);
     qFreeAligned(storage);
     delete expected;
 }
@@ -472,25 +486,25 @@ void tst_QGuiMetaType::saveAndLoadBuiltin()
     QFETCH(int, type);
     QFETCH(bool, isStreamable);
 
-    void *value = QMetaType::create(type);
+    void *value = QMetaType(type).create();
 
     QByteArray ba;
     QDataStream stream(&ba, QIODevice::ReadWrite);
-    QCOMPARE(QMetaType::save(stream, type, value), isStreamable);
+    QCOMPARE(QMetaType(type).save(stream, value), isStreamable);
     QCOMPARE(stream.status(), QDataStream::Ok);
 
     if (isStreamable)
-        QVERIFY(QMetaType::load(stream, type, value));
+        QVERIFY(QMetaType(type).load(stream, value));
 
     stream.device()->seek(0);
     stream.resetStatus();
-    QCOMPARE(QMetaType::load(stream, type, value), isStreamable);
+    QCOMPARE(QMetaType(type).load(stream, value), isStreamable);
     QCOMPARE(stream.status(), QDataStream::Ok);
 
     if (isStreamable)
-        QVERIFY(QMetaType::load(stream, type, value));
+        QVERIFY(QMetaType(type).load(stream, value));
 
-    QMetaType::destroy(type, value);
+    QMetaType(type).destroy(value);
 }
 
 QTEST_MAIN(tst_QGuiMetaType)

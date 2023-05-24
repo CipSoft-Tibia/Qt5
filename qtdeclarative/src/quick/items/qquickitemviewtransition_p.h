@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKITEMVIEWTRANSITION_P_P_H
 #define QQUICKITEMVIEWTRANSITION_P_P_H
@@ -157,6 +121,7 @@ public:
 
     bool prepareTransition(QQuickItemViewTransitioner *transitioner, int index, const QRectF &viewBounds);
     void startTransition(QQuickItemViewTransitioner *transitioner, int index);
+    void completeTransition(QQuickTransition *quickTransition);
 
     SelfDeletable m_selfDeletable;
     QPointF nextTransitionTo;
@@ -187,14 +152,15 @@ class QQuickViewTransitionAttached : public QObject
 {
     Q_OBJECT
 
-    Q_PROPERTY(int index READ index NOTIFY indexChanged)
-    Q_PROPERTY(QQuickItem* item READ item NOTIFY itemChanged)
-    Q_PROPERTY(QPointF destination READ destination NOTIFY destinationChanged)
+    Q_PROPERTY(int index READ index NOTIFY indexChanged FINAL)
+    Q_PROPERTY(QQuickItem* item READ item NOTIFY itemChanged FINAL)
+    Q_PROPERTY(QPointF destination READ destination NOTIFY destinationChanged FINAL)
 
-    Q_PROPERTY(QList<int> targetIndexes READ targetIndexes NOTIFY targetIndexesChanged)
-    Q_PROPERTY(QQmlListProperty<QObject> targetItems READ targetItems NOTIFY targetItemsChanged)
+    Q_PROPERTY(QList<int> targetIndexes READ targetIndexes NOTIFY targetIndexesChanged FINAL)
+    Q_PROPERTY(QQmlListProperty<QObject> targetItems READ targetItems NOTIFY targetItemsChanged FINAL)
 
     QML_NAMED_ELEMENT(ViewTransition)
+    QML_ADDED_IN_VERSION(2, 0)
     QML_UNCREATABLE("ViewTransition is only available via attached properties.")
     QML_ATTACHED(QQuickViewTransitionAttached)
 
@@ -224,7 +190,7 @@ private:
     QList<int> m_targetIndexes;
     QList<QObject *> m_targetItems;
 
-    QQuickItem *m_item;
+    QPointer<QQuickItem> m_item;
     int m_index;
 };
 

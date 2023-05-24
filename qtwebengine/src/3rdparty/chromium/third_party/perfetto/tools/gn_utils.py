@@ -16,6 +16,8 @@
 # projects.
 
 from __future__ import print_function
+import collections
+from compat import iteritems
 import errno
 import filecmp
 import json
@@ -24,12 +26,22 @@ import re
 import shutil
 import subprocess
 import sys
-from compat import iteritems
+from typing import Dict
+from typing import Optional
+from typing import Set
+from typing import Tuple
 
 BUILDFLAGS_TARGET = '//gn:gen_buildflags'
+GEN_VERSION_TARGET = '//src/base:version_gen_h'
 TARGET_TOOLCHAIN = '//gn/standalone/toolchain:gcc_like_host'
 HOST_TOOLCHAIN = '//gn/standalone/toolchain:gcc_like_host'
 LINKER_UNIT_TYPES = ('executable', 'shared_library', 'static_library')
+
+# TODO(primiano): investigate these, they require further componentization.
+ODR_VIOLATION_IGNORE_TARGETS = {
+    '//test/cts:perfetto_cts_deps',
+    '//:perfetto_integrationtests',
+}
 
 
 def _check_command_output(cmd, cwd):
@@ -51,11 +63,20 @@ def repo_root():
       os.path.realpath(os.path.dirname(__file__)), os.path.pardir)
 
 
-def _tool_path(name):
-  return os.path.join(repo_root(), 'tools', name)
+def _tool_path(name, system_buildtools=False):
+  # Pass-through to use name if the caller requests to use the system
+  # toolchain.
+  if system_buildtools:
+    return [name]
+  wrapper = os.path.abspath(
+      os.path.join(repo_root(), 'tools', 'run_buildtools_binary.py'))
+  return ['python3', wrapper, name]
 
 
-def prepare_out_directory(gn_args, name, root=repo_root()):
+def prepare_out_directory(gn_args,
+                          name,
+                          root=repo_root(),
+                          system_buildtools=False):
   """Creates the JSON build description by running GN.
 
     Returns (path, desc) where |path| is the location of the output directory
@@ -67,18 +88,19 @@ def prepare_out_directory(gn_args, name, root=repo_root()):
   except OSError as e:
     if e.errno != errno.EEXIST:
       raise
-  _check_command_output([_tool_path('gn'), 'gen', out,
-                         '--args=%s' % gn_args],
-                        cwd=repo_root())
+  _check_command_output(
+      _tool_path('gn', system_buildtools) +
+      ['gen', out, '--args=%s' % gn_args],
+      cwd=repo_root())
   return out
 
 
-def load_build_description(out):
+def load_build_description(out, system_buildtools=False):
   """Creates the JSON build description by running GN."""
-  desc = _check_command_output([
-      _tool_path('gn'), 'desc', out, '--format=json', '--all-toolchains', '//*'
-  ],
-                               cwd=repo_root())
+  desc = _check_command_output(
+      _tool_path('gn', system_buildtools) +
+      ['desc', out, '--format=json', '--all-toolchains', '//*'],
+      cwd=repo_root())
   return json.loads(desc)
 
 
@@ -94,7 +116,7 @@ def create_build_description(gn_args, root=repo_root()):
     shutil.rmtree(out)
 
 
-def build_targets(out, targets, quiet=False):
+def build_targets(out, targets, quiet=False, system_buildtools=False):
   """Runs ninja to build a list of GN targets in the given out directory.
 
     Compiling these targets is required so that we can include any generated
@@ -103,14 +125,14 @@ def build_targets(out, targets, quiet=False):
   targets = [t.replace('//', '') for t in targets]
   with open(os.devnull, 'w') as devnull:
     stdout = devnull if quiet else None
-    subprocess.check_call(
-        [_tool_path('ninja')] + targets, cwd=out, stdout=stdout)
+    cmd = _tool_path('ninja', system_buildtools) + targets
+    subprocess.check_call(cmd, cwd=os.path.abspath(out), stdout=stdout)
 
 
-def compute_source_dependencies(out):
+def compute_source_dependencies(out, system_buildtools=False):
   """For each source file, computes a set of headers it depends on."""
-  ninja_deps = _check_command_output([_tool_path('ninja'), '-t', 'deps'],
-                                     cwd=out)
+  ninja_deps = _check_command_output(
+      _tool_path('ninja', system_buildtools) + ['-t', 'deps'], cwd=out)
   deps = {}
   current_source = None
   for line in ninja_deps.split('\n'):
@@ -190,6 +212,79 @@ def check_or_commit_generated_files(tmp_files, check):
   return res
 
 
+class ODRChecker(object):
+  """Detects ODR violations in linker units
+
+  When we turn GN source sets into Soong & Bazel file groups, there is the risk
+  to create ODR violations by including the same file group into different
+  linker unit (this is because other build systems don't have a concept
+  equivalent to GN's source_set). This class navigates the transitive
+  dependencies (mostly static libraries) of a target and detects if multiple
+  paths end up including the same file group. This is to avoid situations like:
+
+  traced.exe -> base(file group)
+  traced.exe -> libperfetto(static lib) -> base(file group)
+  """
+
+  def __init__(self, gn: 'GnParser', target_name: str):
+    self.gn = gn
+    self.root = gn.get_target(target_name)
+    self.source_sets: Dict[str, Set[str]] = collections.defaultdict(set)
+    self.deps_visited = set()
+    self.source_set_hdr_only = {}
+
+    self._visit(target_name)
+    num_violations = 0
+    if target_name in ODR_VIOLATION_IGNORE_TARGETS:
+      return
+    for sset, paths in self.source_sets.items():
+      if self.is_header_only(sset):
+        continue
+      if len(paths) != 1:
+        num_violations += 1
+        print(
+            'ODR violation in target %s, multiple paths include %s:\n  %s' %
+            (target_name, sset, '\n  '.join(paths)),
+            file=sys.stderr)
+    if num_violations > 0:
+      raise Exception('%d ODR violations detected. Build generation aborted' %
+                      num_violations)
+
+  def _visit(self, target_name: str, parent_path=''):
+    target = self.gn.get_target(target_name)
+    path = ((parent_path + ' > ') if parent_path else '') + target_name
+    if not target:
+      raise Exception('Cannot find target %s' % target_name)
+    for ssdep in target.transitive_source_set_deps():
+      name_and_path = '%s (via %s)' % (target_name, path)
+      self.source_sets[ssdep.name].add(name_and_path)
+    deps = set(target.non_proto_or_source_set_deps()).union(
+        target.transitive_proto_deps()) - self.deps_visited
+    for dep in deps:
+      if dep.type == 'executable':
+        continue  # Execs are strong boundaries and don't cause ODR violations.
+      # static_library dependencies should reset the path. It doesn't matter if
+      # we get to a source file via:
+      # source_set1 > static_lib > source.cc OR
+      # source_set1 > source_set2 > static_lib > source.cc
+      # This is NOT an ODR violation because source.cc is linked from the same
+      # static library
+      next_parent_path = path if dep.type != 'static_library' else ''
+      self.deps_visited.add(dep.name)
+      self._visit(dep.name, next_parent_path)
+
+  def is_header_only(self, source_set_name: str):
+    cached = self.source_set_hdr_only.get(source_set_name)
+    if cached is not None:
+      return cached
+    target = self.gn.get_target(source_set_name)
+    if target.type != 'source_set':
+      raise TypeError('%s is not a source_set' % source_set_name)
+    res = all(src.endswith('.h') for src in target.sources)
+    self.source_set_hdr_only[source_set_name] = res
+    return res
+
+
 class GnParser(object):
   """A parser with some cleverness for GN json desc files
 
@@ -218,7 +313,7 @@ class GnParser(object):
       self.name = name  # e.g. //src/ipc:ipc
 
       VALID_TYPES = ('static_library', 'shared_library', 'executable', 'group',
-                     'action', 'source_set', 'proto_library')
+                     'action', 'source_set', 'proto_library', 'generated_file')
       assert (type in VALID_TYPES)
       self.type = type
       self.testonly = False
@@ -226,27 +321,33 @@ class GnParser(object):
 
       # These are valid only for type == proto_library.
       # This is typically: 'proto', 'protozero', 'ipc'.
-      self.proto_plugin = None
+      self.proto_plugin: Optional[str] = None
       self.proto_paths = set()
+      self.proto_exports = set()
 
       self.sources = set()
+      # TODO(primiano): consider whether the public section should be part of
+      # bubbled-up sources.
+      self.public_headers = set()  # 'public'
 
       # These are valid only for type == 'action'
+      self.data = set()
       self.inputs = set()
       self.outputs = set()
       self.script = None
       self.args = []
+      self.custom_action_type = None
+      self.python_main = None
 
       # These variables are propagated up when encountering a dependency
       # on a source_set target.
       self.cflags = set()
       self.defines = set()
-      self.deps = set()
+      self.deps: Set[GnParser.Target] = set()
+      self.transitive_deps: Set[GnParser.Target] = set()
       self.libs = set()
       self.include_dirs = set()
       self.ldflags = set()
-      self.source_set_deps = set()  # Transitive set of source_set deps.
-      self.proto_deps = set()  # Transitive set of protobuf deps.
 
       # Deps on //gn:xxx have this flag set to True. These dependencies
       # are special because they pull third_party code from buildtools/.
@@ -254,6 +355,24 @@ class GnParser(object):
       # this flag is used to stop the recursion and create an empty
       # placeholder target once we hit //gn:protoc or similar.
       self.is_third_party_dep_ = False
+
+    def non_proto_or_source_set_deps(self):
+      return set(d for d in self.deps
+                 if d.type != 'proto_library' and d.type != 'source_set')
+
+    def proto_deps(self):
+      return set(d for d in self.deps if d.type == 'proto_library')
+
+    def transitive_proto_deps(self):
+      return set(d for d in self.transitive_deps if d.type == 'proto_library')
+
+    def transitive_cpp_proto_deps(self):
+      return set(
+          d for d in self.transitive_deps if d.type == 'proto_library' and
+          d.proto_plugin != 'descriptor' and d.proto_plugin != 'source_set')
+
+    def transitive_source_set_deps(self):
+      return set(d for d in self.transitive_deps if d.type == 'source_set')
 
     def __lt__(self, other):
       if isinstance(other, self.__class__):
@@ -271,8 +390,8 @@ class GnParser(object):
                         sort_keys=True)
 
     def update(self, other):
-      for key in ('cflags', 'defines', 'deps', 'include_dirs', 'ldflags',
-                  'source_set_deps', 'proto_deps', 'libs', 'proto_paths'):
+      for key in ('cflags', 'data', 'defines', 'deps', 'include_dirs',
+                  'ldflags', 'transitive_deps', 'libs', 'proto_paths'):
         self.__dict__[key].update(other.__dict__.get(key, []))
 
   def __init__(self, gn_desc):
@@ -283,7 +402,7 @@ class GnParser(object):
     self.actions = {}
     self.proto_libs = {}
 
-  def get_target(self, gn_target_name):
+  def get_target(self, gn_target_name: str) -> Target:
     """Returns a Target object from the fully qualified GN target name.
 
         It bubbles up variables from source_set dependencies as described in the
@@ -310,22 +429,26 @@ class GnParser(object):
       target.is_third_party_dep_ = True
       return target
 
-    proto_target_type, proto_desc = self.get_proto_target_type_(target)
-    if proto_target_type is not None:
+    proto_target_type, proto_desc = self.get_proto_target_type(target)
+    if proto_target_type:
+      assert proto_desc
       self.proto_libs[target.name] = target
       target.type = 'proto_library'
       target.proto_plugin = proto_target_type
       target.proto_paths.update(self.get_proto_paths(proto_desc))
+      target.proto_exports.update(self.get_proto_exports(proto_desc))
       target.sources.update(proto_desc.get('sources', []))
       assert (all(x.endswith('.proto') for x in target.sources))
     elif target.type == 'source_set':
       self.source_sets[gn_target_name] = target
       target.sources.update(desc.get('sources', []))
+      target.inputs.update(desc.get('inputs', []))
     elif target.type in LINKER_UNIT_TYPES:
       self.linker_units[gn_target_name] = target
       target.sources.update(desc.get('sources', []))
     elif target.type == 'action':
       self.actions[gn_target_name] = target
+      target.data.update(desc.get('metadata', {}).get('perfetto_data', []))
       target.inputs.update(desc.get('inputs', []))
       target.sources.update(desc.get('sources', []))
       outs = [re.sub('^//out/.+?/gen/', '', x) for x in desc['outputs']]
@@ -334,6 +457,20 @@ class GnParser(object):
       # Args are typically relative to the root build dir (../../xxx)
       # because root build dir is typically out/xxx/).
       target.args = [re.sub('^../../', '//', x) for x in desc['args']]
+      action_types = desc.get('metadata',
+                              {}).get('perfetto_action_type_for_generator', [])
+      target.custom_action_type = action_types[0] if len(
+          action_types) > 0 else None
+      python_main = desc.get('metadata', {}).get('perfetto_python_main', [])
+      target.python_main = python_main[0] if python_main else None
+
+    # Default for 'public' is //* - all headers in 'sources' are public.
+    # TODO(primiano): if a 'public' section is specified (even if empty), then
+    # the rest of 'sources' is considered inaccessible by gn. Consider
+    # emulating that, so that generated build files don't end up with overly
+    # accessible headers.
+    public_headers = [x for x in desc.get('public', []) if x != '*']
+    target.public_headers.update(public_headers)
 
     target.cflags.update(desc.get('cflags', []) + desc.get('cflags_cc', []))
     target.libs.update(desc.get('libs', []))
@@ -344,46 +481,57 @@ class GnParser(object):
     # Recurse in dependencies.
     for dep_name in desc.get('deps', []):
       dep = self.get_target(dep_name)
-      if dep.is_third_party_dep_:
-        target.deps.add(dep_name)
+
+      # generated_file targets only exist for GN builds: we can safely ignore
+      # them.
+      if dep.type == 'generated_file':
+        continue
+
+      # When a proto_library depends on an action, that is always the "_gen"
+      # rule of the action which is "private" to the proto_library rule.
+      # therefore, just ignore it for dep tracking purposes.
+      if dep.type == 'action' and proto_target_type is not None:
+        target_no_toolchain = label_without_toolchain(target.name)
+        dep_no_toolchain = label_without_toolchain(dep.name)
+        assert (dep_no_toolchain == f'{target_no_toolchain}_gen')
+        continue
+
+      # Non-third party groups are only used for bubbling cflags etc so don't
+      # add a dep.
+      if dep.type == 'group' and not dep.is_third_party_dep_:
+        target.update(dep)  # Bubble up groups's cflags/ldflags etc.
+        continue
+
+      # Linker units act as a hard boundary making all their internal deps
+      # opaque to the outside world. For this reason, do not propogate deps
+      # transitively across them.
+      if dep.type in LINKER_UNIT_TYPES:
+        target.deps.add(dep)
+        continue
+
+      if dep.type == 'source_set':
+        target.update(dep)  # Bubble up source set's cflags/ldflags etc.
       elif dep.type == 'proto_library':
-        target.proto_deps.add(dep_name)
         target.proto_paths.update(dep.proto_paths)
 
-        # Don't bubble deps for action targets
-        if target.type != 'action':
-          target.proto_deps.update(dep.proto_deps)  # Bubble up deps.
-      elif dep.type == 'source_set':
-        target.source_set_deps.add(dep_name)
-        target.update(dep)  # Bubble up source set's cflags/ldflags etc.
-      elif dep.type == 'group':
-        target.update(dep)  # Bubble up groups's cflags/ldflags etc.
-      elif dep.type == 'action':
-        if proto_target_type is None:
-          target.deps.add(dep_name)
-      elif dep.type in LINKER_UNIT_TYPES:
-        target.deps.add(dep_name)
+      target.deps.add(dep)
+      target.transitive_deps.add(dep)
+      target.transitive_deps.update(dep.transitive_deps)
 
     return target
+
+  def get_proto_exports(self, proto_desc):
+    # exports in metadata will be available for source_set targets.
+    metadata = proto_desc.get('metadata', {})
+    return metadata.get('exports', [])
 
   def get_proto_paths(self, proto_desc):
     # import_dirs in metadata will be available for source_set targets.
     metadata = proto_desc.get('metadata', {})
-    import_dirs = metadata.get('import_dirs', [])
-    if import_dirs:
-      return import_dirs
+    return metadata.get('import_dirs', [])
 
-    # For all non-source-set targets, we need to parse the command line
-    # of the protoc invocation.
-    proto_paths = []
-    args = proto_desc.get('args', [])
-    for i, arg in enumerate(args):
-      if arg != '--proto_path':
-        continue
-      proto_paths.append(re.sub('^../../', '//', args[i + 1]))
-    return proto_paths
-
-  def get_proto_target_type_(self, target):
+  def get_proto_target_type(self, target: Target
+                           ) -> Tuple[Optional[str], Optional[Dict]]:
     """ Checks if the target is a proto library and return the plugin.
 
         Returns:
@@ -404,7 +552,7 @@ class GnParser(object):
       return 'descriptor', desc
 
     # Source set proto targets have a non-empty proto_library_sources in the
-    # metadata of the descirption.
+    # metadata of the description.
     metadata = desc.get('metadata', {})
     if 'proto_library_sources' in metadata:
       return 'source_set', desc

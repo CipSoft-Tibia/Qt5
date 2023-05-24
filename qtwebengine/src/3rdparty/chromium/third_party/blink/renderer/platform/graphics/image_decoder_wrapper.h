@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,47 +21,37 @@ class ImageDecoderWrapper {
  public:
   ImageDecoderWrapper(ImageFrameGenerator* generator,
                       SegmentReader* data,
-                      const SkISize& scaled_size,
-                      ImageDecoder::AlphaOption alpha_option,
+                      const SkPixmap& pixmap,
                       ColorBehavior decoder_color_behavior,
-                      ImageDecoder::HighBitDepthDecodingOption decoding_option,
-                      size_t index,
-                      const SkImageInfo& info,
-                      void* pixels,
-                      size_t row_bytes,
+                      wtf_size_t index,
                       bool all_data_received,
                       cc::PaintImage::GeneratorClientId client_id);
   ~ImageDecoderWrapper();
 
   // Returns true if the decode succeeded.
   bool Decode(ImageDecoderFactory* factory,
-              size_t* frame_count,
+              wtf_size_t* frame_count,
               bool* has_alpha);
 
   // Indicates that the decode failed due to a corrupt image.
   bool decode_failed() const { return decode_failed_; }
 
  private:
-  bool ShouldDecodeToExternalMemory(size_t frame_count,
+  bool ShouldDecodeToExternalMemory(wtf_size_t frame_count,
                                     bool has_cached_decoder) const;
   bool ShouldRemoveDecoder(bool frame_was_completely_decoded,
                            bool decoded_to_external_memory) const;
   void PurgeAllFramesIfNecessary(ImageDecoder* decoder,
                                  bool frame_was_completely_decoded,
-                                 size_t frame_count) const;
+                                 wtf_size_t frame_count) const;
   std::unique_ptr<ImageDecoder> CreateDecoderWithData(
       ImageDecoderFactory* factory) const;
 
   const ImageFrameGenerator* const generator_;
   SegmentReader* data_;
-  const SkISize scaled_size_;
-  const ImageDecoder::AlphaOption alpha_option_;
+  SkPixmap pixmap_;
   const ColorBehavior decoder_color_behavior_;
-  const ImageDecoder::HighBitDepthDecodingOption decoding_option_;
-  const size_t frame_index_;
-  const SkImageInfo info_;
-  void* pixels_;
-  const size_t row_bytes_;
+  const wtf_size_t frame_index_;
   const bool all_data_received_;
   const cc::PaintImage::GeneratorClientId client_id_;
 

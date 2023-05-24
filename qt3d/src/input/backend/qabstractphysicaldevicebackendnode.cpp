@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qabstractphysicaldevicebackendnode_p.h"
 #include "qabstractphysicaldevicebackendnode_p_p.h"
@@ -43,7 +7,6 @@
 #include <Qt3DInput/qabstractphysicaldevice.h>
 #include <Qt3DInput/qaxissetting.h>
 #include <Qt3DInput/qinputaspect.h>
-#include <Qt3DInput/qphysicaldevicecreatedchange.h>
 
 #include <cmath>
 #include <algorithm>
@@ -57,7 +20,7 @@ QT_BEGIN_NAMESPACE
 
 namespace {
 
-Q_DECL_CONSTEXPR int signum(float v)
+constexpr int signum(float v)
 {
     return (v > 0.0f) - (v < 0.0f);
 }
@@ -80,37 +43,31 @@ void QAbstractPhysicalDeviceBackendNodePrivate::addAxisSetting(int axisIdentifie
     axisIdSetting.m_axisSettingsId = axisSettingsId;
 
     // Replace if already present, otherwise append
-    bool replaced = false;
-    QVector<Input::AxisIdSetting>::iterator it;
-    QVector<Input::AxisIdSetting>::iterator end = m_axisSettings.end();
-    for (it = m_axisSettings.begin(); it != end; ++it) {
+    const auto end = m_axisSettings.end();
+    for (auto it = m_axisSettings.begin(); it != end; ++it) {
         if (it->m_axisIdentifier == axisIdentifier) {
             *it = axisIdSetting;
-            replaced = true;
-            break;
+            return;
         }
     }
-
-    if (!replaced)
-        m_axisSettings.push_back(axisIdSetting);
+    m_axisSettings.push_back(axisIdSetting);
 }
 
 void QAbstractPhysicalDeviceBackendNodePrivate::removeAxisSetting(Qt3DCore::QNodeId axisSettingsId)
 {
-    QVector<Input::AxisIdSetting>::iterator it;
-    for (it = m_axisSettings.begin(); it != m_axisSettings.end(); ++it) {
+    const auto end = m_axisSettings.end();
+    for (auto it = m_axisSettings.begin(); it != end; ++it) {
         if (it->m_axisSettingsId == axisSettingsId) {
             m_axisSettings.erase(it);
-            break;
+            return;
         }
     }
 }
 
 Input::MovingAverage &QAbstractPhysicalDeviceBackendNodePrivate::getOrCreateFilter(int axisIdentifier)
 {
-    QVector<Input::AxisIdFilter>::iterator it;
-    QVector<Input::AxisIdFilter>::iterator end = m_axisFilters.end();
-    for (it = m_axisFilters.begin(); it != end; ++it) {
+    const auto end = m_axisFilters.end();
+    for (auto it = m_axisFilters.begin(); it != end; ++it) {
         if (it->m_axisIdentifier == axisIdentifier)
             return it->m_filter;
     }
@@ -169,13 +126,13 @@ void QAbstractPhysicalDeviceBackendNode::syncFromFrontEnd(const Qt3DCore::QNode 
                         std::inserter(removedSettings, removedSettings.end()));
     d->m_currentAxisSettingIds = settings;
 
-    for (const auto &axisSettingId: qAsConst(addedSettings)) {
+    for (const auto &axisSettingId: std::as_const(addedSettings)) {
         Input::AxisSetting *axisSetting = d->getAxisSetting(axisSettingId);
         const auto axisIds = axisSetting->axes();
         for (int axisId : axisIds)
             d->addAxisSetting(axisId, axisSettingId);
     }
-    for (const auto &axisSettingId: qAsConst(removedSettings))
+    for (const auto &axisSettingId: std::as_const(removedSettings))
         d->removeAxisSetting(axisSettingId);
 }
 
@@ -197,9 +154,8 @@ float QAbstractPhysicalDeviceBackendNode::processedAxisValue(int axisIdentifier)
 
     // Find axis settings for this axis (if any)
     Qt3DCore::QNodeId axisSettingId;
-    QVector<Input::AxisIdSetting>::const_iterator it;
-    QVector<Input::AxisIdSetting>::const_iterator end = d->m_axisSettings.cend();
-    for (it = d->m_axisSettings.cbegin(); it != end; ++it) {
+    const auto end = d->m_axisSettings.cend();
+    for (auto it = d->m_axisSettings.cbegin(); it != end; ++it) {
         if (it->m_axisIdentifier == axisIdentifier) {
             axisSettingId = it->m_axisSettingsId;
             break;

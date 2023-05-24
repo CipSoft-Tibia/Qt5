@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,15 +7,16 @@
 #include "xfa/fxfa/parser/cxfa_pattern.h"
 
 #include "fxjs/xfa/cjx_node.h"
+#include "xfa/fgas/graphics/cfgas_gegraphics.h"
+#include "xfa/fgas/graphics/cfgas_gepattern.h"
 #include "xfa/fxfa/parser/cxfa_color.h"
 #include "xfa/fxfa/parser/cxfa_document.h"
-#include "xfa/fxgraphics/cxfa_gepattern.h"
 
 namespace {
 
 const CXFA_Node::PropertyData kPatternPropertyData[] = {
-    {XFA_Element::Color, 1, 0},
-    {XFA_Element::Extras, 1, 0},
+    {XFA_Element::Color, 1, {}},
+    {XFA_Element::Extras, 1, {}},
 };
 
 const CXFA_Node::AttributeData kPatternAttributeData[] = {
@@ -31,7 +32,7 @@ const CXFA_Node::AttributeData kPatternAttributeData[] = {
 CXFA_Pattern::CXFA_Pattern(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                (XFA_XDPPACKET_Template | XFA_XDPPACKET_Form),
+                {XFA_XDPPACKET::kTemplate, XFA_XDPPACKET::kForm},
                 XFA_ObjectType::Node,
                 XFA_Element::Pattern,
                 kPatternPropertyData,
@@ -50,39 +51,36 @@ XFA_AttributeValue CXFA_Pattern::GetType() {
   return JSObject()->GetEnum(XFA_Attribute::Type);
 }
 
-void CXFA_Pattern::Draw(CXFA_Graphics* pGS,
-                        CXFA_GEPath* fillPath,
+void CXFA_Pattern::Draw(CFGAS_GEGraphics* pGS,
+                        const CFGAS_GEPath& fillPath,
                         FX_ARGB crStart,
                         const CFX_RectF& rtFill,
                         const CFX_Matrix& matrix) {
   CXFA_Color* pColor = GetColorIfExists();
   FX_ARGB crEnd = pColor ? pColor->GetValue() : CXFA_Color::kBlackColor;
-
-  FX_HatchStyle iHatch = FX_HatchStyle::Cross;
+  CFGAS_GEPattern::HatchStyle iHatch = CFGAS_GEPattern::HatchStyle::Cross;
   switch (GetType()) {
     case XFA_AttributeValue::CrossDiagonal:
-      iHatch = FX_HatchStyle::DiagonalCross;
+      iHatch = CFGAS_GEPattern::HatchStyle::DiagonalCross;
       break;
     case XFA_AttributeValue::DiagonalLeft:
-      iHatch = FX_HatchStyle::ForwardDiagonal;
+      iHatch = CFGAS_GEPattern::HatchStyle::ForwardDiagonal;
       break;
     case XFA_AttributeValue::DiagonalRight:
-      iHatch = FX_HatchStyle::BackwardDiagonal;
+      iHatch = CFGAS_GEPattern::HatchStyle::BackwardDiagonal;
       break;
     case XFA_AttributeValue::Horizontal:
-      iHatch = FX_HatchStyle::Horizontal;
+      iHatch = CFGAS_GEPattern::HatchStyle::Horizontal;
       break;
     case XFA_AttributeValue::Vertical:
-      iHatch = FX_HatchStyle::Vertical;
+      iHatch = CFGAS_GEPattern::HatchStyle::Vertical;
       break;
     default:
       break;
   }
 
-  CXFA_GEPattern pattern(iHatch, crEnd, crStart);
-
-  pGS->SaveGraphState();
-  pGS->SetFillColor(CXFA_GEColor(&pattern, 0x0));
-  pGS->FillPath(fillPath, CFX_FillRenderOptions::FillType::kWinding, &matrix);
-  pGS->RestoreGraphState();
+  CFGAS_GEPattern pattern(iHatch, crEnd, crStart);
+  CFGAS_GEGraphics::StateRestorer restorer(pGS);
+  pGS->SetFillColor(CFGAS_GEColor(&pattern, 0x0));
+  pGS->FillPath(fillPath, CFX_FillRenderOptions::FillType::kWinding, matrix);
 }

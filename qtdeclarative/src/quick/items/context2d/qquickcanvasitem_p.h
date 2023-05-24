@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKCANVASITEM_P_H
 #define QQUICKCANVASITEM_P_H
@@ -67,8 +31,9 @@ class QQuickCanvasContext;
 
 class QQuickCanvasItemPrivate;
 class QQuickPixmap;
+class QQmlV4Function;
 
-class QQuickCanvasPixmap : public QQmlRefCount
+class QQuickCanvasPixmap : public QQmlRefCounted<QQuickCanvasPixmap>
 {
 public:
     QQuickCanvasPixmap(const QImage& image);
@@ -91,15 +56,16 @@ class QQuickCanvasItem : public QQuickItem
 {
     Q_OBJECT
 
-    Q_PROPERTY(bool available READ isAvailable NOTIFY availableChanged)
-    Q_PROPERTY(QString contextType READ contextType WRITE setContextType NOTIFY contextTypeChanged)
-    Q_PROPERTY(QJSValue context READ context NOTIFY contextChanged)
-    Q_PROPERTY(QSizeF canvasSize READ canvasSize WRITE setCanvasSize NOTIFY canvasSizeChanged)
-    Q_PROPERTY(QSize tileSize READ tileSize WRITE setTileSize NOTIFY tileSizeChanged)
-    Q_PROPERTY(QRectF canvasWindow READ canvasWindow WRITE setCanvasWindow NOTIFY canvasWindowChanged)
-    Q_PROPERTY(RenderTarget renderTarget READ renderTarget WRITE setRenderTarget NOTIFY renderTargetChanged)
-    Q_PROPERTY(RenderStrategy renderStrategy READ renderStrategy WRITE setRenderStrategy NOTIFY renderStrategyChanged)
+    Q_PROPERTY(bool available READ isAvailable NOTIFY availableChanged FINAL)
+    Q_PROPERTY(QString contextType READ contextType WRITE setContextType NOTIFY contextTypeChanged FINAL)
+    Q_PROPERTY(QJSValue context READ context NOTIFY contextChanged FINAL)
+    Q_PROPERTY(QSizeF canvasSize READ canvasSize WRITE setCanvasSize NOTIFY canvasSizeChanged FINAL)
+    Q_PROPERTY(QSize tileSize READ tileSize WRITE setTileSize NOTIFY tileSizeChanged FINAL)
+    Q_PROPERTY(QRectF canvasWindow READ canvasWindow WRITE setCanvasWindow NOTIFY canvasWindowChanged FINAL)
+    Q_PROPERTY(RenderTarget renderTarget READ renderTarget WRITE setRenderTarget NOTIFY renderTargetChanged FINAL)
+    Q_PROPERTY(RenderStrategy renderStrategy READ renderStrategy WRITE setRenderStrategy NOTIFY renderStrategyChanged FINAL)
     QML_NAMED_ELEMENT(Canvas)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     enum RenderTarget {
@@ -152,7 +118,7 @@ public:
     Q_INVOKABLE void requestPaint();
     Q_INVOKABLE void markDirty(const QRectF& dirtyRect = QRectF());
 
-    Q_INVOKABLE bool save(const QString &filename) const;
+    Q_INVOKABLE bool save(const QString &filename, const QSizeF &imageSize = QSizeF()) const;
     Q_INVOKABLE QString toDataURL(const QString& type = QLatin1String("image/png")) const;
     QQmlRefPointer<QQuickCanvasPixmap> loadedPixmap(const QUrl& url);
 
@@ -190,7 +156,7 @@ protected:
     void itemChange(QQuickItem::ItemChange, const QQuickItem::ItemChangeData &) override;
     void updatePolish() override;
     QSGNode *updatePaintNode(QSGNode *, UpdatePaintNodeData *) override;
-    void geometryChanged(const QRectF &newGeometry, const QRectF &oldGeometry) override;
+    void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
     void releaseResources() override;
     bool event(QEvent *event) override;
 private:

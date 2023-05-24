@@ -1,12 +1,6 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-
-# Reset sources_assignment_filter for the BUILD.gn file to prevent
-# regression during the migration of Chromium away from the feature.
-# See docs/no_sources_assignment_filter.md for more information.
-# TODO(crbug.com/1018739): remove this when migration is done.
-set_sources_assignment_filter([])
 
 source_set("input") {
   sources = [
@@ -82,10 +76,7 @@ source_set("unit_tests") {
     "touch_input_scaler_unittest.cc",
   ]
 
-  configs += [
-    "//remoting/build/config:version",
-    "//remoting/build/config:enable_webrtc_remoting_client",
-  ]
+  configs += [ "//remoting/build/config:version" ]
 
   deps = [
     ":input",
@@ -108,10 +99,7 @@ source_set("normalizing_input_filter_unit_tests") {
     "normalizing_input_filter_win_unittest.cc",
   ]
 
-  configs += [
-    "//remoting/build/config:version",
-    "//remoting/build/config:enable_webrtc_remoting_client",
-  ]
+  configs += [ "//remoting/build/config:version" ]
 
   deps = [
     ":input",

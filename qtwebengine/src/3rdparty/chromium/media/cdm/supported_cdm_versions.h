@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 #include <stddef.h>
 
 #include <array>
-#include <cstddef>
 
 #include "media/base/media_export.h"
 #include "media/cdm/api/content_decryption_module.h"

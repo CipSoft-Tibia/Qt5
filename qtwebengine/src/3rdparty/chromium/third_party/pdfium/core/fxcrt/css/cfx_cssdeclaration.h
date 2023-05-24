@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core/fxcrt/css/cfx_cssdata.h"
+#include "core/fxcrt/retain_ptr.h"
 
 class CFX_CSSPropertyHolder;
 class CFX_CSSCustomProperty;
@@ -23,11 +24,11 @@ class CFX_CSSDeclaration {
       std::vector<std::unique_ptr<CFX_CSSCustomProperty>>::const_iterator;
 
   static bool ParseCSSString(const wchar_t* pszValue,
-                             int32_t iValueLen,
-                             int32_t* iOffset,
-                             int32_t* iLength);
+                             size_t nValueLen,
+                             size_t* nOffset,
+                             size_t* nLength);
   static bool ParseCSSColor(const wchar_t* pszValue,
-                            int32_t iValueLen,
+                            size_t nValueLen,
                             FX_ARGB* dwColor);
 
   CFX_CSSDeclaration();
@@ -52,19 +53,19 @@ class CFX_CSSDeclaration {
   size_t PropertyCountForTesting() const;
 
   FX_ARGB ParseColorForTest(const wchar_t* pszValue,
-                            int32_t iValueLen,
+                            size_t nValueLen,
                             FX_ARGB* dwColor) const;
 
  private:
   void ParseFontProperty(const wchar_t* pszValue,
-                         int32_t iValueLen,
+                         size_t nValueLen,
                          bool bImportant);
   bool ParseBorderProperty(const wchar_t* pszValue,
-                           int32_t iValueLen,
+                           size_t nValueLen,
                            RetainPtr<CFX_CSSValue>& pWidth) const;
   void ParseValueListProperty(const CFX_CSSData::Property* pProperty,
                               const wchar_t* pszValue,
-                              int32_t iValueLen,
+                              size_t nValueLen,
                               bool bImportant);
   void Add4ValuesProperty(const std::vector<RetainPtr<CFX_CSSValue>>& list,
                           bool bImportant,
@@ -73,12 +74,11 @@ class CFX_CSSDeclaration {
                           CFX_CSSProperty eRight,
                           CFX_CSSProperty eBottom);
   RetainPtr<CFX_CSSValue> ParseNumber(const wchar_t* pszValue,
-                                      int32_t iValueLen);
-  RetainPtr<CFX_CSSValue> ParseEnum(const wchar_t* pszValue, int32_t iValueLen);
-  RetainPtr<CFX_CSSValue> ParseColor(const wchar_t* pszValue,
-                                     int32_t iValueLen);
+                                      size_t nValueLen);
+  RetainPtr<CFX_CSSValue> ParseEnum(const wchar_t* pszValue, size_t nValueLen);
+  RetainPtr<CFX_CSSValue> ParseColor(const wchar_t* pszValue, size_t nValueLen);
   RetainPtr<CFX_CSSValue> ParseString(const wchar_t* pszValue,
-                                      int32_t iValueLen);
+                                      size_t nValueLen);
   void AddPropertyHolder(CFX_CSSProperty eProperty,
                          RetainPtr<CFX_CSSValue> pValue,
                          bool bImportant);

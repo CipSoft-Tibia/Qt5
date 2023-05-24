@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "newformwidget_p.h"
 #include "ui_newformwidget.h"
@@ -49,13 +24,15 @@
 #include <QtCore/qtextstream.h>
 
 #include <QtWidgets/qapplication.h>
-#include <QtWidgets/qdesktopwidget.h>
 #include <QtWidgets/qheaderview.h>
 #include <QtWidgets/qtreewidget.h>
 #include <QtGui/qpainter.h>
+#include <QtGui/qscreen.h>
 #include <QtWidgets/qpushbutton.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 enum { profileComboIndexOffset = 1 };
 enum { debugNewFormWidget = 0 };
@@ -67,14 +44,14 @@ enum NewForm_CustomRole {
     ClassNameRole = Qt::UserRole + 101
 };
 
-static const char *newFormObjectNameC = "Form";
+static const char newFormObjectNameC[] = "Form";
 
 // Create a form name for an arbitrary class. If it is Qt, qtify it,
 //  else return "Form".
 static QString formName(const QString &className)
 {
-    if (!className.startsWith(QLatin1Char('Q')))
-        return QLatin1String(newFormObjectNameC);
+    if (!className.startsWith(u'Q'))
+        return QLatin1StringView(newFormObjectNameC);
     QString rc = className;
     rc.remove(0, 1);
     return rc;
@@ -129,19 +106,32 @@ NewFormWidget::NewFormWidget(QDesignerFormEditorInterface *core, QWidget *parent
     m_currentItem(nullptr),
     m_acceptedItem(nullptr)
 {
+     // ### FIXME Qt 8: Remove (QTBUG-96005)
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    QDesignerSharedSettings::migrateTemplates();
+#endif
+
     m_ui->setupUi(this);
     m_ui->treeWidget->setItemDelegate(new qdesigner_internal::SheetDelegate(m_ui->treeWidget, this));
     m_ui->treeWidget->header()->hide();
     m_ui->treeWidget->header()->setStretchLastSection(true);
     m_ui->lblPreview->setBackgroundRole(QPalette::Base);
+
+    connect(m_ui->treeWidget, &QTreeWidget::itemActivated,
+            this, &NewFormWidget::treeWidgetItemActivated);
+    connect(m_ui->treeWidget, &QTreeWidget::currentItemChanged,
+            this, &NewFormWidget::treeWidgetCurrentItemChanged);
+    connect(m_ui->treeWidget, &QTreeWidget::itemPressed,
+            this, &NewFormWidget::treeWidgetItemPressed);
+
     QDesignerSharedSettings settings(m_core);
 
-    QString uiExtension = QStringLiteral("ui");
-    QString templatePath = QStringLiteral(":/qt-project.org/designer/templates/forms");
+    QString uiExtension = u"ui"_s;
+    QString templatePath = u":/qt-project.org/designer/templates/forms"_s;
 
     QDesignerLanguageExtension *lang = qt_extension<QDesignerLanguageExtension *>(core->extensionManager(), core);
     if (lang) {
-        templatePath = QStringLiteral(":/templates/forms");
+        templatePath = u":/templates/forms"_s;
         uiExtension = lang->uiExtension();
     }
 
@@ -151,9 +141,8 @@ NewFormWidget::NewFormWidget(QDesignerFormEditorInterface *core, QWidget *parent
     loadFrom(templatePath, true, uiExtension, formTemplate, selectedItem);
     // Additional template paths
     const QStringList formTemplatePaths = settings.formTemplatePaths();
-    const QStringList::const_iterator ftcend = formTemplatePaths.constEnd();
-    for (QStringList::const_iterator it = formTemplatePaths.constBegin(); it != ftcend; ++it)
-        loadFrom(*it, false, uiExtension, formTemplate, selectedItem);
+    for (const auto &ftp : formTemplatePaths)
+        loadFrom(ftp, false, uiExtension, formTemplate, selectedItem);
 
     // Widgets/custom widgets
     if (!lang) {
@@ -179,12 +168,12 @@ NewFormWidget::NewFormWidget(QDesignerFormEditorInterface *core, QWidget *parent
     m_deviceProfiles = settings.deviceProfiles();
     m_ui->profileComboBox->addItem(tr("None"));
     connect(m_ui->profileComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            &QComboBox::currentIndexChanged,
             this, &NewFormWidget::slotDeviceProfileIndexChanged);
     if (m_deviceProfiles.isEmpty()) {
         m_ui->profileComboBox->setEnabled(false);
     } else {
-        for (const auto &deviceProfile : qAsConst(m_deviceProfiles))
+        for (const auto &deviceProfile : std::as_const(m_deviceProfiles))
             m_ui->profileComboBox->addItem(deviceProfile.name());
         const int ci = settings.currentDeviceProfileIndex();
         if (ci >= 0)
@@ -210,7 +199,7 @@ NewFormWidget::~NewFormWidget()
     delete m_ui;
 }
 
-void NewFormWidget::on_treeWidget_currentItemChanged(QTreeWidgetItem *current, QTreeWidgetItem *)
+void NewFormWidget::treeWidgetCurrentItemChanged(QTreeWidgetItem *current)
 {
     if (debugNewFormWidget)
         qDebug() << Q_FUNC_INFO << current;
@@ -241,7 +230,7 @@ bool NewFormWidget::showCurrentItemPixmap()
     return rc;
 }
 
-void NewFormWidget::on_treeWidget_itemActivated(QTreeWidgetItem *item)
+void NewFormWidget::treeWidgetItemActivated(QTreeWidgetItem *item)
 {
     if (debugNewFormWidget)
         qDebug() << Q_FUNC_INFO << item;
@@ -254,16 +243,16 @@ QPixmap  NewFormWidget::formPreviewPixmap(const QTreeWidgetItem *item)
 {
     // Cache pixmaps per item/device profile
     const ItemPixmapCacheKey cacheKey(item, profileComboIndex());
-    ItemPixmapCache::iterator it = m_itemPixmapCache.find(cacheKey);
+    auto it = m_itemPixmapCache.find(cacheKey);
     if (it == m_itemPixmapCache.end()) {
         // file or string?
         const QVariant fileName = item->data(0, TemplateNameRole);
         QPixmap rc;
-        if (fileName.type() == QVariant::String) {
+        if (fileName.metaType().id() == QMetaType::QString) {
             rc = formPreviewPixmap(fileName.toString());
         } else {
             const QVariant classNameV = item->data(0, ClassNameRole);
-            Q_ASSERT(classNameV.type() == QVariant::String);
+            Q_ASSERT(classNameV.metaType().id() == QMetaType::QString);
             const QString className = classNameV.toString();
             QByteArray data =  qdesigner_internal::WidgetDataBase::formTemplate(m_core, className, formName(className)).toUtf8();
             QBuffer buffer(&data);
@@ -311,7 +300,7 @@ QImage NewFormWidget::grabForm(QDesignerFormEditorInterface *core,
 
 QPixmap NewFormWidget::formPreviewPixmap(QIODevice &file, const QString &workingDir) const
 {
-    const QSizeF screenSize(QApplication::desktop()->screenGeometry(this).size());
+    const QSizeF screenSize(screen()->geometry().size());
     const int previewSize = qRound(screenSize.width() / 7.5); // 256 on 1920px screens.
     const int margin = previewSize / 32 - 1; // 7 on 1920px screens.
     const int shadow = margin;
@@ -399,13 +388,13 @@ void NewFormWidget::loadFrom(const QString &path, bool resourceFile, const QStri
         return;
 
     // Iterate through the directory and add the templates
-    const QFileInfoList list = dir.entryInfoList(QStringList(QStringLiteral("*.") + uiExtension),
+    const QFileInfoList list = dir.entryInfoList(QStringList{"*."_L1 + uiExtension},
                                                  QDir::Files);
 
     if (list.isEmpty())
         return;
 
-    const QChar separator = resourceFile ? QChar(QLatin1Char('/'))
+    const QChar separator = resourceFile ? QChar(u'/')
                                          : QDir::separator();
     QTreeWidgetItem *root = new QTreeWidgetItem(m_ui->treeWidget);
     root->setFlags(root->flags() & ~Qt::ItemIsSelectable);
@@ -421,22 +410,19 @@ void NewFormWidget::loadFrom(const QString &path, bool resourceFile, const QStri
         visiblePath = QDir::toNativeSeparators(visiblePath);
     }
 
-    const QChar underscore = QLatin1Char('_');
-    const QChar blank = QLatin1Char(' ');
-    root->setText(0, visiblePath.replace(underscore, blank));
+    root->setText(0, visiblePath.replace(u'_', u' '));
     root->setToolTip(0, path);
 
-    const QFileInfoList::const_iterator lcend = list.constEnd();
-    for (QFileInfoList::const_iterator it = list.constBegin(); it != lcend; ++it) {
-        if (!it->isFile())
+    for (const auto &fi : list) {
+        if (!fi.isFile())
             continue;
 
         QTreeWidgetItem *item = new QTreeWidgetItem(root);
-        const QString text = it->baseName().replace(underscore, blank);
+        const QString text = fi.baseName().replace(u'_', u' ');
         if (selectedItemFound == nullptr && text == selectedItem)
             selectedItemFound = item;
         item->setText(0, text);
-        item->setData(0, TemplateNameRole, it->absoluteFilePath());
+        item->setData(0, TemplateNameRole, fi.absoluteFilePath());
     }
 }
 
@@ -448,18 +434,16 @@ void NewFormWidget::loadFrom(const QString &title, const QStringList &nameList,
     QTreeWidgetItem *root = new QTreeWidgetItem(m_ui->treeWidget);
     root->setFlags(root->flags() & ~Qt::ItemIsSelectable);
     root->setText(0, title);
-    const QStringList::const_iterator cend = nameList.constEnd();
-    for (QStringList::const_iterator it = nameList.constBegin(); it != cend; ++it) {
-        const QString text = *it;
+    for (const auto &text : nameList) {
         QTreeWidgetItem *item = new QTreeWidgetItem(root);
         item->setText(0, text);
         if (selectedItemFound == nullptr && text == selectedItem)
             selectedItemFound = item;
-        item->setData(0, ClassNameRole, *it);
+        item->setData(0, ClassNameRole, text);
     }
 }
 
-void NewFormWidget::on_treeWidget_itemPressed(QTreeWidgetItem *item)
+void NewFormWidget::treeWidgetItemPressed(QTreeWidgetItem *item)
 {
     if (item && !item->parent())
         item->setExpanded(!item->isExpanded());
@@ -492,7 +476,7 @@ QString NewFormWidget::itemToTemplate(const QTreeWidgetItem *item, QString *erro
     const QSize size = templateSize();
     // file name or string contents?
     const QVariant templateFileName = item->data(0, TemplateNameRole);
-    if (templateFileName.type() == QVariant::String) {
+    if (templateFileName.metaType().id() == QMetaType::QString) {
         const QString fileName = templateFileName.toString();
         // No fixed size: just open.
         if (size.isNull())
@@ -501,7 +485,7 @@ QString NewFormWidget::itemToTemplate(const QTreeWidgetItem *item, QString *erro
         const QFileInfo fiBase(fileName);
         QString sizeFileName;
         QTextStream(&sizeFileName) << fiBase.path() << QDir::separator()
-                                   << size.width() << QLatin1Char('x') << size.height() << QDir::separator()
+                                   << size.width() << 'x' << size.height() << QDir::separator()
                                    << fiBase.fileName();
         if (QFileInfo(sizeFileName).isFile())
             return readAll(sizeFileName, errorMessage);

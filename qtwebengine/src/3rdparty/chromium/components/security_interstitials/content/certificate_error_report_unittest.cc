@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,11 +17,14 @@
 #include "base/time/default_clock.h"
 #include "base/time/default_tick_clock.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "components/network_time/network_time_test_utils.h"
 #include "components/prefs/testing_pref_service.h"
 #include "components/security_interstitials/content/cert_logger.pb.h"
 #include "components/version_info/version_info.h"
 #include "net/cert/cert_status_flags.h"
+#include "net/cert/cert_verify_result.h"
+#include "net/net_buildflags.h"
 #include "net/ssl/ssl_info.h"
 #include "net/test/cert_test_util.h"
 #include "net/test/test_data_directory.h"
@@ -29,12 +32,11 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-#if defined(OS_ANDROID)
-#include "base/test/scoped_feature_list.h"
+#if BUILDFLAG(IS_ANDROID)
 #include "net/cert/cert_verify_proc_android.h"
 #endif
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
 #include "net/cert/internal/trust_store_mac.h"
 #endif
 
@@ -90,10 +92,26 @@ std::string GetPEMEncodedChain() {
     ADD_FAILURE();
     return cert_data;
   }
-  for (const auto& cert : pem_certs) {
-    cert_data += cert;
+  for (const auto& pem_cert : pem_certs) {
+    cert_data += pem_cert;
   }
   return cert_data;
+}
+
+void VerifyDeserializedReportSystemInfo(
+    const chrome_browser_ssl::CertLoggerRequest& parsed) {
+  ASSERT_TRUE(parsed.has_chrome_version());
+  EXPECT_FALSE(parsed.chrome_version().empty());
+  ASSERT_TRUE(parsed.has_os_type());
+  EXPECT_FALSE(parsed.os_type().empty());
+  ASSERT_TRUE(parsed.has_os_version());
+  EXPECT_FALSE(parsed.os_version().empty());
+  ASSERT_TRUE(parsed.has_hardware_model_name());
+  // HardwareModelName() may return empty string on some platforms.
+  ASSERT_TRUE(parsed.has_os_architecture());
+  EXPECT_FALSE(parsed.os_architecture().empty());
+  ASSERT_TRUE(parsed.has_process_architecture());
+  EXPECT_FALSE(parsed.process_architecture().empty());
 }
 
 void VerifyErrorReportSerialization(
@@ -114,6 +132,8 @@ void VerifyErrorReportSerialization(
             deserialized_report.is_issued_by_known_root());
   EXPECT_THAT(deserialized_report.cert_error(),
               UnorderedElementsAreArray(cert_errors));
+
+  VerifyDeserializedReportSystemInfo(deserialized_report);
 }
 
 // Test that a serialized CertificateErrorReport can be deserialized as
@@ -216,8 +236,9 @@ TEST(ErrorReportTest, NetworkTimeQueryingFeatureInfo) {
 
   std::unique_ptr<network_time::FieldTrialTest> field_trial_test(
       new network_time::FieldTrialTest());
-  field_trial_test->SetNetworkQueriesWithVariationsService(
-      true, 0.0, network_time::NetworkTimeTracker::FETCHES_ON_DEMAND_ONLY);
+  field_trial_test->SetFeatureParams(
+      true, 0.0, network_time::NetworkTimeTracker::FETCHES_ON_DEMAND_ONLY,
+      network_time::NetworkTimeTracker::ClockDriftSamples::NO_SAMPLES);
 
   scoped_refptr<network::TestSharedURLLoaderFactory> shared_url_loader_factory =
       base::MakeRefCounted<network::TestSharedURLLoaderFactory>();
@@ -287,7 +308,7 @@ TEST(ErrorReportTest, TestChromeChannelIncluded) {
   }
 }
 
-#if defined(OS_WIN) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS_ASH)
 // Tests that the SetIsEnterpriseManaged() function populates
 // is_enterprise_managed correctly on Windows, and that value is correctly
 // extracted from the parsed report.
@@ -309,7 +330,7 @@ TEST(ErrorReportTest, TestIsEnterpriseManagedPopulatedOnWindows) {
 }
 #endif
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 // Tests that information about the Android AIA fetching feature is included in
 // the report.
 TEST(ErrorReportTest, AndroidAIAFetchingFeatureEnabled) {
@@ -328,6 +349,10 @@ TEST(ErrorReportTest, AndroidAIAFetchingFeatureEnabled) {
 #endif
 
 #if BUILDFLAG(TRIAL_COMPARISON_CERT_VERIFIER_SUPPORTED)
+#if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
+const int64_t kTestChromeRootVersion = 24601;
+#endif
+
 TEST(ErrorReportTest, TrialDebugInfo) {
   scoped_refptr<net::X509Certificate> unverified_cert =
       net::ImportCertFromFile(net::GetTestCertsDirectory(), "ok_cert.pem");
@@ -344,23 +369,23 @@ TEST(ErrorReportTest, TrialDebugInfo) {
   net::CertVerifyResult trial_result;
   trial_result.verified_cert = chain2;
 
-  network::mojom::CertVerifierDebugInfoPtr debug_info =
-      network::mojom::CertVerifierDebugInfo::New();
-#if defined(OS_APPLE)
+  cert_verifier::mojom::CertVerifierDebugInfoPtr debug_info =
+      cert_verifier::mojom::CertVerifierDebugInfo::New();
+#if BUILDFLAG(IS_APPLE)
   debug_info->mac_platform_debug_info =
-      network::mojom::MacPlatformVerifierDebugInfo::New();
+      cert_verifier::mojom::MacPlatformVerifierDebugInfo::New();
   debug_info->mac_platform_debug_info->trust_result = 1;
   debug_info->mac_platform_debug_info->result_code = 20;
-  network::mojom::MacCertEvidenceInfoPtr info =
-      network::mojom::MacCertEvidenceInfo::New();
+  cert_verifier::mojom::MacCertEvidenceInfoPtr info =
+      cert_verifier::mojom::MacCertEvidenceInfo::New();
   info->status_bits = 30;
   info->status_codes = {40, 41};
   debug_info->mac_platform_debug_info->status_chain.push_back(std::move(info));
-  info = network::mojom::MacCertEvidenceInfo::New();
+  info = cert_verifier::mojom::MacCertEvidenceInfo::New();
   info->status_bits = 50;
   info->status_codes = {};
   debug_info->mac_platform_debug_info->status_chain.push_back(std::move(info));
-  info = network::mojom::MacCertEvidenceInfo::New();
+  info = cert_verifier::mojom::MacCertEvidenceInfo::New();
   info->status_bits = 70;
   info->status_codes = {80, 81, 82};
   debug_info->mac_platform_debug_info->status_chain.push_back(std::move(info));
@@ -368,7 +393,24 @@ TEST(ErrorReportTest, TrialDebugInfo) {
   debug_info->mac_combined_trust_debug_info =
       net::TrustStoreMac::TRUST_SETTINGS_DICT_CONTAINS_APPLICATION |
       net::TrustStoreMac::TRUST_SETTINGS_DICT_CONTAINS_RESULT;
+  debug_info->mac_trust_impl =
+      cert_verifier::mojom::CertVerifierDebugInfo::MacTrustImplType::kSimple;
 #endif
+#if BUILDFLAG(IS_WIN)
+  debug_info->win_platform_debug_info =
+      cert_verifier::mojom::WinPlatformVerifierDebugInfo::New();
+  debug_info->win_platform_debug_info->authroot_this_update =
+      base::Time::FromDeltaSinceWindowsEpoch(base::Microseconds(8675309));
+  debug_info->win_platform_debug_info->authroot_sequence_number = {
+      'J', 'E', 'N', 'N', 'Y'};
+#endif
+#if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
+  debug_info->chrome_root_store_debug_info =
+      cert_verifier::mojom::ChromeRootStoreDebugInfo::New();
+  debug_info->chrome_root_store_debug_info->chrome_root_store_version =
+      kTestChromeRootVersion;
+#endif
+
   base::Time time = base::Time::Now();
   debug_info->trial_verification_time = time;
   debug_info->trial_der_verification_time = "it's just a string";
@@ -389,7 +431,9 @@ TEST(ErrorReportTest, TrialDebugInfo) {
   ASSERT_TRUE(trial_info.has_sct_list());
   EXPECT_EQ("sct", trial_info.sct_list());
 
-#if defined(OS_APPLE)
+  VerifyDeserializedReportSystemInfo(parsed);
+
+#if BUILDFLAG(IS_APPLE)
   ASSERT_TRUE(trial_info.has_mac_platform_debug_info());
   EXPECT_EQ(1U, trial_info.mac_platform_debug_info().trust_result());
   EXPECT_EQ(20, trial_info.mac_platform_debug_info().result_code());
@@ -427,9 +471,35 @@ TEST(ErrorReportTest, TrialDebugInfo) {
   EXPECT_EQ(chrome_browser_ssl::TrialVerificationInfo::
                 MAC_TRUST_SETTINGS_DICT_CONTAINS_RESULT,
             trial_info.mac_combined_trust_debug_info()[1]);
+  EXPECT_TRUE(trial_info.has_mac_trust_impl());
+  EXPECT_EQ(chrome_browser_ssl::TrialVerificationInfo::MAC_TRUST_IMPL_SIMPLE,
+            trial_info.mac_trust_impl());
 #else
+  EXPECT_FALSE(trial_info.has_mac_platform_debug_info());
   EXPECT_EQ(0, trial_info.mac_combined_trust_debug_info_size());
+  EXPECT_FALSE(trial_info.has_mac_trust_impl());
 #endif
+
+#if BUILDFLAG(IS_WIN)
+  ASSERT_TRUE(trial_info.has_win_platform_debug_info());
+  EXPECT_EQ(
+      8675309,
+      trial_info.win_platform_debug_info().authroot_this_update_time_usec());
+  EXPECT_EQ("JENNY",
+            trial_info.win_platform_debug_info().authroot_sequence_number());
+#else
+  EXPECT_FALSE(trial_info.has_win_platform_debug_info());
+#endif
+
+#if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
+  ASSERT_TRUE(trial_info.has_chrome_root_store_debug_info());
+  EXPECT_EQ(
+      kTestChromeRootVersion,
+      trial_info.chrome_root_store_debug_info().chrome_root_store_version());
+#else
+  EXPECT_FALSE(trial_info.has_chrome_root_store_debug_info());
+#endif
+
   ASSERT_TRUE(trial_info.has_trial_verification_time_usec());
   EXPECT_EQ(time.ToDeltaSinceWindowsEpoch().InMicroseconds(),
             trial_info.trial_verification_time_usec());

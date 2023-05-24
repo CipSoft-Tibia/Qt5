@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QDebug>
 #include <QGeoCircle>
@@ -84,7 +37,8 @@ public:
         QPlaceSearchReply * searchReply = manager->search(searchRequest);
 
         //3) Connect the reply object to a slot which is invoked upon operation completion
-        connect(searchReply, SIGNAL(finished()), this, SLOT(processSearchReply()));
+        connect(searchReply, &QPlaceSearchReply::finished,
+                this, &RequestHandler::processSearchReply);
         //! [Simple search]
     }
 
@@ -101,7 +55,7 @@ public:
         /*QPlaceSearchReply * */ searchReply = manager->search(searchRequest);
 
         //connect a slot to handle the reply
-        connect(searchReply, SIGNAL(finished()), this, SLOT(handleSearchReply()));
+        connect(searchReply, &QPlaceSearchReply::finished, this, &RequestHandler::handleSearchReply);
 
         //! [Search for places cpp]
     }
@@ -120,7 +74,7 @@ public:
         //! [Details check]
         if (!place.detailsFetched()) {
             /*QPlaceDetailsReply * */ detailsReply = manager->getPlaceDetails(place.placeId());
-            connect(detailsReply, SIGNAL(finished()), this, SLOT(handleDetailsReply()));
+            connect(detailsReply, &QPlaceDetailsReply::finished, this, &RequestHandler::handleDetailsReply);
         }
         //! [Details check]
     }
@@ -135,7 +89,7 @@ public:
         request.setPlaceId(place.placeId());
         request.setLimit(5);
         /*QPlaceContentReply * */ contentReply = manager->getPlaceContent(request);
-        connect(contentReply, SIGNAL(finished()), this, SLOT(handleImagesReply()));
+        connect(contentReply, &QPlaceContentReply::finished, this, &RequestHandler::handleImagesReply);
         //! [Image request]
     }
 
@@ -147,7 +101,7 @@ public:
         request.setSearchTerm("piz");
         request.setSearchArea(QGeoCircle(QGeoCoordinate(12.34, 56.78)));
         /* QPlaceSearchSuggestion * */suggestionReply = manager->searchSuggestions(request);
-        connect(suggestionReply, SIGNAL(finished()), this, SLOT(handleSuggestionReply()));
+        connect(suggestionReply, &QPlaceSearchSuggestion::finished, this, &RequestHandler::handleSuggestionReply);
         //! [Suggestion request]
     }
 
@@ -169,7 +123,7 @@ public:
         place.setLocation(location);
 
         /* QPlaceIdReply * */savePlaceReply = manager->savePlace(place);
-        connect(savePlaceReply, SIGNAL(finished()), this, SLOT(handleSavePlaceReply()));
+        connect(savePlaceReply, &QPlaceIdReply::finished, this, &RequestHandler::handleSavePlaceReply);
         //! [Save place pt2]
     }
 
@@ -178,7 +132,7 @@ public:
         QPlace place;
         //! [Remove place]
         /* QPlaceIdReply * */removePlaceReply = manager->removePlace(place.placeId());
-        connect(removePlaceReply, SIGNAL(finished()), this, SLOT(handleRemovePlaceReply()));
+        connect(removePlaceReply, &QPlaceIdReply::finished, this, &RequestHandler::handleRemovePlaceReply);
         //! [Remove place]
     }
 
@@ -186,7 +140,7 @@ public:
     {
         //! [Initialize categories]
         /* QPlaceReply * */initCatReply = manager->initializeCategories();
-        connect(initCatReply, SIGNAL(finished()), this, SLOT(handleInitCatReply()));
+        connect(initCatReply, &QPlaceReply::finished, this, &RequestHandler::handleInitCatReply);
         //! [Initialize categories]
     }
 
@@ -198,7 +152,7 @@ public:
         QPlaceCategory category;
         category.setName("pizza");
         /*QPlaceIdReply */ saveCategoryReply = manager->saveCategory(category);
-        connect(saveCategoryReply, SIGNAL(finished()), this, SLOT(handleSaveCategoryReply()));
+        connect(saveCategoryReply, &QPlaceIdReply::finished, this, &RequestHandler::handleSaveCategoryReply);
 
         //we could have saved a category as a child by supplying a parent identifier.
         saveCategoryReply = manager->saveCategory(category, fastFood.categoryId());
@@ -210,7 +164,7 @@ public:
         QPlaceCategory category;
         //! [Remove category]
         /* QPlaceIdReply * */removeCategoryReply = manager->removeCategory(place.placeId());
-        connect(removeCategoryReply, SIGNAL(finished()), this, SLOT(handleRemoveCategoryReply()));
+        connect(removeCategoryReply, &QPlaceIdReply::finished, this, &RequestHandler::handleRemoveCategoryReply);
         //! [Remove category]
     }
 
@@ -314,7 +268,7 @@ public slots:
     //4) Have the slot appropriately process the results of the operation
     void processSearchReply() {
         if (searchReply->error() == QPlaceReply::NoError) {
-            foreach (const QPlaceSearchResult &result, searchReply->results()) {
+            for (const QPlaceSearchResult &result : searchReply->results()) {
                 if (result.type() == QPlaceSearchResult::PlaceResult)
                     qDebug() << "Title:" << result.title();
             }
@@ -322,14 +276,14 @@ public slots:
 
     //5) Discard the rely object when done.
         searchReply->deleteLater();
-        searchReply = 0;
+        searchReply = nullptr;
     }
     // ![Simple search handler]
 
     //! [Search for places handler cpp]
     void handleSearchReply() {
         if (searchReply->error() == QPlaceReply::NoError) {
-            foreach (const QPlaceSearchResult &result, searchReply->results()) {
+            for (const QPlaceSearchResult &result : searchReply->results()) {
                 if (result.type() == QPlaceSearchResult::PlaceResult) {
                     QPlaceResult placeResult = result;
                     qDebug() << "Name: " << placeResult.place().name();
@@ -340,7 +294,7 @@ public slots:
             }
         }
         searchReply->deleteLater();  //discard reply
-        searchReply = 0;
+        searchReply = nullptr;
     }
     //! [Search for places handler cpp]
 
@@ -351,7 +305,7 @@ public slots:
             place = detailsReply->place();
 
         detailsReply->deleteLater(); //discard reply
-        detailsReply = 0;
+        detailsReply = nullptr;
     }
     //! [Details handler cpp]
 
@@ -367,7 +321,7 @@ public slots:
             }
 
             //alternatively if indexes are irrelevant
-            foreach (const QPlaceImage &image, contentReply->content()) {
+            for (const QPlaceImage &image : contentReply->content()) {
                 qDebug() << image.url();
                 qDebug() << image.mimeType();
             }
@@ -380,19 +334,19 @@ public slots:
         }
 
         contentReply->deleteLater();
-        contentReply = 0;
+        contentReply = nullptr;
     }
     //! [Image handler]
 
     //! [Suggestion handler]
     void handleSuggestionReply() {
         if (suggestionReply->error() == QPlaceReply::NoError) {
-            foreach (const QString &suggestion, suggestionReply->suggestions())
+            for (const QString &suggestion : suggestionReply->suggestions())
                 qDebug() << suggestion;
         }
 
         suggestionReply->deleteLater(); //discard reply
-        suggestionReply = 0;
+        suggestionReply = nullptr;
     }
 
     //! [Suggestion handler]
@@ -403,7 +357,7 @@ public slots:
             qDebug() << savePlaceReply->id();
 
         savePlaceReply->deleteLater(); //discard reply
-        savePlaceReply = 0;
+        savePlaceReply = nullptr;
     }
     //! [Save place handler]
 
@@ -414,7 +368,7 @@ public slots:
                      << removePlaceReply->id() << "was successful";
 
         removePlaceReply->deleteLater(); //discard reply
-        removePlaceReply = 0;
+        removePlaceReply = nullptr;
     }
     //! [Remove place handler]
 
@@ -426,15 +380,15 @@ public slots:
             qDebug() << "Failed to initialize categories";
 
         initCatReply->deleteLater();
-        initCatReply = 0;
+        initCatReply = nullptr;
     }
     //! [Initialize categories reply]
 
     void categories() {
         QPlaceCategory pizza;
         //! [Top level categories]
-        QList<QPlaceCategory> topLevelCategories = manager->childCategories();
-        foreach (const QPlaceCategory &category, topLevelCategories)
+        const QList<QPlaceCategory> topLevelCategories = manager->childCategories();
+        for (const QPlaceCategory &category : topLevelCategories)
             qDebug() << category.name();
         //! [Top level categories]
 
@@ -450,7 +404,7 @@ public slots:
         }
 
         saveCategoryReply->deleteLater();
-        saveCategoryReply = 0;
+        saveCategoryReply = nullptr;
     }
     //! [Save category handler]
 
@@ -461,7 +415,7 @@ public slots:
                      << removeCategoryReply->id() << "was successful";
 
         removeCategoryReply->deleteLater(); //discard reply
-        removeCategoryReply = 0;
+        removeCategoryReply = nullptr;
     }
     //! [Remove category handler]
 
@@ -477,7 +431,7 @@ public slots:
     void phoneNumbers() {
         //! [Phone numbers]
         if (place.contactTypes().contains(QPlaceContactDetail::Phone)) {
-            foreach (const QPlaceContactDetail &number, place.contactDetails(QPlaceContactDetail::Phone))
+            for (const QPlaceContactDetail &number : place.contactDetails(QPlaceContactDetail::Phone))
                 qDebug() << number.label() << ":" << number.value();
         }
         //! [Phone numbers]
@@ -494,7 +448,8 @@ public slots:
     //! [Match places handler]
     void matchHandler() {
         if (matchReply->error() == QPlaceReply::NoError) {
-            foreach (const QPlace place, matchReply->places()) {
+            const auto places = matchReply->places();
+            for (const QPlace &place : places) {
                 if (place != QPlace())
                     qDebug() << "Place is a favorite with name" << place.name();
                 else
@@ -503,7 +458,7 @@ public slots:
         }
 
         matchReply->deleteLater();
-        matchReply = 0;
+        matchReply = nullptr;
     }
     //! [Match places handler]
 
@@ -573,11 +528,11 @@ void SearchSuggestionReply::triggerDone(QPlaceReply::Error error,
 {
     if (error != QPlaceReply::NoError) {
         this->setError(error,errorString);
-        QMetaObject::invokeMethod(m_engine, "error", Qt::QueuedConnection,
+        QMetaObject::invokeMethod(m_engine, "errorOccurred", Qt::QueuedConnection,
                                   Q_ARG(QPlaceReply *,this),
                                   Q_ARG(QPlaceReply::Error, error),
                                   Q_ARG(QString, errorString));
-        QMetaObject::invokeMethod(this, "error", Qt::QueuedConnection,
+        QMetaObject::invokeMethod(this, "errorOccurred", Qt::QueuedConnection,
                                   Q_ARG(QPlaceReply::Error, error),
                                   Q_ARG(QString, errorString));
     }

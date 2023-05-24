@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,13 +15,12 @@ CompositorMetricsHelper::CompositorMetricsHelper(
 CompositorMetricsHelper::~CompositorMetricsHelper() {}
 
 void CompositorMetricsHelper::RecordTaskMetrics(
-    NonMainThreadTaskQueue* queue,
     const base::sequence_manager::Task& task,
     const base::sequence_manager::TaskQueue::TaskTiming& task_timing) {
-  if (ShouldDiscardTask(queue, task, task_timing))
+  if (ShouldDiscardTask(task, task_timing))
     return;
 
-  MetricsHelper::RecordCommonTaskMetrics(queue, task, task_timing);
+  MetricsHelper::RecordCommonTaskMetrics(task, task_timing);
 }
 
 }  // namespace scheduler

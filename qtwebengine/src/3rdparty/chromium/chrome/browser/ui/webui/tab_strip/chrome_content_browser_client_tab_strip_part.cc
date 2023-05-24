@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,15 +15,13 @@ ChromeContentBrowserClientTabStripPart::
     ~ChromeContentBrowserClientTabStripPart() = default;
 
 void ChromeContentBrowserClientTabStripPart::OverrideWebkitPrefs(
-    content::RenderViewHost* rvh,
+    content::WebContents* web_contents,
     blink::web_pref::WebPreferences* web_prefs) {
-  content::WebContents* contents =
-      content::WebContents::FromRenderViewHost(rvh);
-
-  if (!contents)
+  if (!web_contents)
     return;
 
-  content::NavigationEntry* entry = contents->GetController().GetVisibleEntry();
+  content::NavigationEntry* entry =
+      web_contents->GetController().GetVisibleEntry();
   GURL url = entry ? entry->GetURL() : GURL();
 
   if (url.host_piece() != chrome::kChromeUITabStripHost) {

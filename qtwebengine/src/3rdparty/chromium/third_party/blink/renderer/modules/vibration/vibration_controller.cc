@@ -19,15 +19,16 @@
 
 #include "third_party/blink/renderer/modules/vibration/vibration_controller.h"
 
+#include "base/metrics/histogram_functions.h"
 #include "third_party/blink/public/common/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/task_type.h"
-#include "third_party/blink/renderer/bindings/modules/v8/unsigned_long_or_unsigned_long_sequence.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_union_unsignedlong_unsignedlongsequence.h"
+#include "third_party/blink/renderer/core/frame/intervention.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/navigator.h"
 #include "third_party/blink/renderer/core/page/page.h"
-#include "third_party/blink/renderer/platform/mojo/mojo_helper.h"
 
 // Maximum number of entries in a vibration pattern.
 const unsigned kVibrationPatternLengthMax = 99;
@@ -61,38 +62,150 @@ blink::VibrationController::VibrationPattern sanitizeVibrationPatternInternal(
 
 namespace blink {
 
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class NavigatorVibrationType {
+  kMainFrameNoUserGesture = 0,
+  kMainFrameWithUserGesture = 1,
+  kSameOriginSubFrameNoUserGesture = 2,
+  kSameOriginSubFrameWithUserGesture = 3,
+  kCrossOriginSubFrameNoUserGesture = 4,
+  kCrossOriginSubFrameWithUserGesture = 5,
+  kInFencedFrameTree = 6,
+  kMaxValue = kInFencedFrameTree,
+};
+
+void CollectHistogramMetrics(LocalDOMWindow* window) {
+  NavigatorVibrationType type;
+  bool user_gesture = window->GetFrame()->HasStickyUserActivation();
+  UseCounter::Count(window, WebFeature::kNavigatorVibrate);
+  if (window->GetFrame()->IsInFencedFrameTree()) {
+    type = NavigatorVibrationType::kInFencedFrameTree;
+  } else if (!window->GetFrame()->IsMainFrame()) {
+    // TODO(crbug.com/1254770): Update for embedded portals.
+    UseCounter::Count(window, WebFeature::kNavigatorVibrateSubFrame);
+    if (window->GetFrame()->IsCrossOriginToNearestMainFrame()) {
+      if (user_gesture)
+        type = NavigatorVibrationType::kCrossOriginSubFrameWithUserGesture;
+      else
+        type = NavigatorVibrationType::kCrossOriginSubFrameNoUserGesture;
+    } else {
+      if (user_gesture)
+        type = NavigatorVibrationType::kSameOriginSubFrameWithUserGesture;
+      else
+        type = NavigatorVibrationType::kSameOriginSubFrameNoUserGesture;
+    }
+  } else {
+    if (user_gesture)
+      type = NavigatorVibrationType::kMainFrameWithUserGesture;
+    else
+      type = NavigatorVibrationType::kMainFrameNoUserGesture;
+  }
+  base::UmaHistogramEnumeration("Vibration.Context", type);
+}
+
 // static
 VibrationController::VibrationPattern
 VibrationController::SanitizeVibrationPattern(
-    const UnsignedLongOrUnsignedLongSequence& input) {
-  VibrationPattern pattern;
-
-  if (input.IsUnsignedLong())
-    pattern.push_back(input.GetAsUnsignedLong());
-  else if (input.IsUnsignedLongSequence())
-    pattern = input.GetAsUnsignedLongSequence();
-
-  return sanitizeVibrationPatternInternal(pattern);
+    const V8UnionUnsignedLongOrUnsignedLongSequence* input) {
+  switch (input->GetContentType()) {
+    case V8UnionUnsignedLongOrUnsignedLongSequence::ContentType::
+        kUnsignedLong: {
+      VibrationPattern pattern;
+      pattern.push_back(input->GetAsUnsignedLong());
+      return sanitizeVibrationPatternInternal(pattern);
+    }
+    case V8UnionUnsignedLongOrUnsignedLongSequence::ContentType::
+        kUnsignedLongSequence:
+      return sanitizeVibrationPatternInternal(
+          input->GetAsUnsignedLongSequence());
+  }
+  NOTREACHED();
+  return {};
 }
 
-VibrationController::VibrationController(LocalFrame& frame)
-    : ExecutionContextLifecycleObserver(frame.DomWindow()),
-      PageVisibilityObserver(frame.GetPage()),
-      vibration_manager_(frame.DomWindow()),
-      timer_do_vibrate_(frame.GetTaskRunner(TaskType::kMiscPlatformAPI),
+// static
+VibrationController& VibrationController::From(Navigator& navigator) {
+  VibrationController* vibration_controller =
+      Supplement<Navigator>::From<VibrationController>(navigator);
+  if (!vibration_controller) {
+    vibration_controller = MakeGarbageCollected<VibrationController>(navigator);
+    ProvideTo(navigator, vibration_controller);
+  }
+  return *vibration_controller;
+}
+
+// static
+const char VibrationController::kSupplementName[] = "VibrationController";
+
+// static
+bool VibrationController::vibrate(Navigator& navigator, unsigned time) {
+  VibrationPattern pattern;
+  pattern.push_back(time);
+  return vibrate(navigator, pattern);
+}
+
+// static
+bool VibrationController::vibrate(Navigator& navigator,
+                                  const VibrationPattern& pattern) {
+  // There will be no frame if the window has been closed, but a JavaScript
+  // reference to |window| or |navigator| was retained in another window.
+  if (!navigator.DomWindow())
+    return false;
+  return From(navigator).Vibrate(pattern);
+}
+
+VibrationController::VibrationController(Navigator& navigator)
+    : Supplement<Navigator>(navigator),
+      ExecutionContextLifecycleObserver(navigator.DomWindow()),
+      PageVisibilityObserver(DomWindow()->GetFrame()->GetPage()),
+      vibration_manager_(DomWindow()),
+      timer_do_vibrate_(DomWindow()->GetTaskRunner(TaskType::kMiscPlatformAPI),
                         this,
                         &VibrationController::DoVibrate),
       is_running_(false),
       is_calling_cancel_(false),
       is_calling_vibrate_(false) {
-  frame.GetBrowserInterfaceBroker().GetInterface(
+  DomWindow()->GetBrowserInterfaceBroker().GetInterface(
       vibration_manager_.BindNewPipeAndPassReceiver(
-          frame.GetTaskRunner(TaskType::kMiscPlatformAPI)));
+          DomWindow()->GetTaskRunner(TaskType::kMiscPlatformAPI)));
 }
 
 VibrationController::~VibrationController() = default;
 
 bool VibrationController::Vibrate(const VibrationPattern& pattern) {
+  CollectHistogramMetrics(DomWindow());
+
+  LocalFrame* frame = DomWindow()->GetFrame();
+  if (frame->IsInFencedFrameTree()) {
+    Intervention::GenerateReport(
+        frame, "NavigatorVibrate",
+        "Blocked call to navigator.vibrate inside a fenced frame.");
+    return false;
+  }
+
+  if (!frame->GetPage()->IsPageVisible())
+    return false;
+
+  if (!frame->HasStickyUserActivation()) {
+    String message;
+    // TODO(crbug.com/1254770): Update for embedded portals.
+    if (frame->IsCrossOriginToNearestMainFrame()) {
+      message =
+          "Blocked call to navigator.vibrate inside a cross-origin "
+          "iframe because the frame has never been activated by the user: "
+          "https://www.chromestatus.com/feature/5682658461876224.";
+    } else {
+      message =
+          "Blocked call to navigator.vibrate because user hasn't tapped "
+          "on the frame or any embedded frame yet: "
+          "https://www.chromestatus.com/feature/5644273861001216.";
+    }
+
+    Intervention::GenerateReport(frame, "NavigatorVibrate", message);
+    return false;
+  }
+
   // Cancel clears the stored pattern and cancels any ongoing vibration.
   Cancel();
 
@@ -120,7 +233,7 @@ bool VibrationController::Vibrate(const VibrationPattern& pattern) {
 void VibrationController::DoVibrate(TimerBase* timer) {
   DCHECK(timer == &timer_do_vibrate_);
 
-  if (pattern_.IsEmpty())
+  if (pattern_.empty())
     is_running_ = false;
 
   if (!is_running_ || is_calling_cancel_ || is_calling_vibrate_ ||
@@ -131,7 +244,7 @@ void VibrationController::DoVibrate(TimerBase* timer) {
     is_calling_vibrate_ = true;
     vibration_manager_->Vibrate(
         pattern_[0],
-        WTF::Bind(&VibrationController::DidVibrate, WrapPersistent(this)));
+        WTF::BindOnce(&VibrationController::DidVibrate, WrapPersistent(this)));
   }
 }
 
@@ -140,7 +253,7 @@ void VibrationController::DidVibrate() {
 
   // If the pattern is empty here, it was probably cleared by a fresh call to
   // |vibrate| while the mojo call was in flight.
-  if (pattern_.IsEmpty())
+  if (pattern_.empty())
     return;
 
   // Use the current vibration entry of the pattern as the initial interval.
@@ -148,13 +261,12 @@ void VibrationController::DidVibrate() {
   pattern_.EraseAt(0);
 
   // If there is another entry it is for a pause.
-  if (!pattern_.IsEmpty()) {
+  if (!pattern_.empty()) {
     interval += pattern_[0];
     pattern_.EraseAt(0);
   }
 
-  timer_do_vibrate_.StartOneShot(base::TimeDelta::FromMilliseconds(interval),
-                                 FROM_HERE);
+  timer_do_vibrate_.StartOneShot(base::Milliseconds(interval), FROM_HERE);
 }
 
 void VibrationController::Cancel() {
@@ -164,7 +276,7 @@ void VibrationController::Cancel() {
   if (is_running_ && !is_calling_cancel_ && vibration_manager_.is_bound()) {
     is_calling_cancel_ = true;
     vibration_manager_->Cancel(
-        WTF::Bind(&VibrationController::DidCancel, WrapPersistent(this)));
+        WTF::BindOnce(&VibrationController::DidCancel, WrapPersistent(this)));
   }
 
   is_running_ = false;
@@ -194,9 +306,11 @@ void VibrationController::PageVisibilityChanged() {
 }
 
 void VibrationController::Trace(Visitor* visitor) const {
+  Supplement<Navigator>::Trace(visitor);
   ExecutionContextLifecycleObserver::Trace(visitor);
   PageVisibilityObserver::Trace(visitor);
   visitor->Trace(vibration_manager_);
+  visitor->Trace(timer_do_vibrate_);
 }
 
 }  // namespace blink

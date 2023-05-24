@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "base/containers/flat_set.h"
+#include "base/memory/raw_ptr.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/animation/animation_delegate.h"
 #include "ui/gfx/animation/slide_animation.h"
@@ -57,6 +58,10 @@ class VIEWS_EXPORT Slider : public View, public gfx::AnimationDelegate {
   float GetValue() const;
   void SetValue(float value);
 
+  // Getter and Setter of `value_indicator_radius_`.
+  float GetValueIndicatorRadius() const;
+  void SetValueIndicatorRadius(float radius);
+
   bool GetEnableAccessibilityEvents() const;
   void SetEnableAccessibilityEvents(bool enabled);
 
@@ -80,6 +85,9 @@ class VIEWS_EXPORT Slider : public View, public gfx::AnimationDelegate {
   const base::flat_set<float>& allowed_values() const {
     return allowed_values_;
   }
+
+  // The radius of the thumb.
+  static constexpr float kThumbRadius = 4.f;
 
  protected:
   // Returns the current position of the thumb on the slider.
@@ -139,7 +147,7 @@ class VIEWS_EXPORT Slider : public View, public gfx::AnimationDelegate {
   virtual SkColor GetTroughColor() const;
   int GetSliderExtraPadding() const;
 
-  SliderListener* listener_;
+  raw_ptr<SliderListener, DanglingUntriaged> listener_;
 
   std::unique_ptr<gfx::SlideAnimation> move_animation_;
 
@@ -156,14 +164,17 @@ class VIEWS_EXPORT Slider : public View, public gfx::AnimationDelegate {
   // button.
   int initial_button_offset_ = 0;
 
+  // The radius of the value indicator.
+  float value_indicator_radius_ = kThumbRadius;
+
   RenderingStyle style_ = RenderingStyle::kDefaultStyle;
 
   // Animating value of the current radius of the thumb's highlight.
   float thumb_highlight_radius_ = 0.f;
 
-  gfx::SlideAnimation highlight_animation_;
+  gfx::SlideAnimation highlight_animation_{this};
 
-  bool pending_accessibility_value_change_;
+  bool pending_accessibility_value_change_ = false;
 };
 
 }  // namespace views

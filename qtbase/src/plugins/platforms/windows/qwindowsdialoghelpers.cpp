@@ -1,48 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #define QT_NO_URL_CAST_FROM_STRING 1
 
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0601
-#endif
-
+#include <QtCore/qt_windows.h>
 #include "qwindowscombase.h"
 #include "qwindowsdialoghelpers.h"
 
@@ -55,7 +16,9 @@
 #include <QtGui/qcolor.h>
 
 #include <QtCore/qdebug.h>
-#include <QtCore/qregularexpression.h>
+#if QT_CONFIG(regularexpression)
+#  include <QtCore/qregularexpression.h>
+#endif
 #include <QtCore/qtimer.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qscopedpointer.h>
@@ -68,44 +31,17 @@
 #include <QtCore/qmutex.h>
 #include <QtCore/quuid.h>
 #include <QtCore/qtemporaryfile.h>
-#include <QtCore/private/qsystemlibrary_p.h>
+#include <QtCore/private/qfunctions_win_p.h>
+#include <QtCore/private/qsystemerror_p.h>
 
 #include <algorithm>
 #include <vector>
-
-#include <QtCore/qt_windows.h>
 
 // #define USE_NATIVE_COLOR_DIALOG /* Testing purposes only */
 
 QT_BEGIN_NAMESPACE
 
-#ifndef QT_NO_DEBUG_STREAM
-/* Output UID (IID, CLSID) as C++ constants.
- * The constants are contained in the Windows SDK libs, but not for MinGW. */
-static inline QString guidToString(const GUID &g)
-{
-    QString rc;
-    QTextStream str(&rc);
-    str.setIntegerBase(16);
-    str.setNumberFlags(str.numberFlags() | QTextStream::ShowBase);
-    str << '{' << g.Data1 << ", " << g.Data2 << ", " << g.Data3;
-    str.setFieldWidth(2);
-    str.setFieldAlignment(QTextStream::AlignRight);
-    str.setPadChar(u'0');
-    str << ",{" << g.Data4[0] << ", " << g.Data4[1]  << ", " << g.Data4[2]  << ", " << g.Data4[3]
-        << ", " << g.Data4[4] << ", " << g.Data4[5]  << ", " << g.Data4[6]  << ", " << g.Data4[7]
-        << "}};";
-    return rc;
-}
-
-inline QDebug operator<<(QDebug d, const GUID &g)
-{
-    QDebugStateSaver saver(d);
-    d.nospace();
-    d << guidToString(g);
-    return d;
-}
-#endif // !QT_NO_DEBUG_STREAM
+using namespace Qt::StringLiterals;
 
 // Return an allocated wchar_t array from a QString, reserve more memory if desired.
 static wchar_t *qStringToWCharArray(const QString &s, size_t reserveSize = 0)
@@ -140,6 +76,22 @@ void eatMouseMove()
     qCDebug(lcQpaDialogs) << __FUNCTION__ << "triggered=" << (msg.message == WM_MOUSEMOVE);
 }
 
+HWND getHWND(IFileDialog *fileDialog)
+{
+    IOleWindow *oleWindow = nullptr;
+    if (FAILED(fileDialog->QueryInterface(IID_IOleWindow, reinterpret_cast<void **>(&oleWindow)))) {
+        qCWarning(lcQpaDialogs, "Native file dialog: unable to query IID_IOleWindow interface.");
+        return HWND(0);
+    }
+
+    HWND result(0);
+    if (FAILED(oleWindow->GetWindow(&result)))
+        qCWarning(lcQpaDialogs, "Native file dialog: unable to get dialog's window.");
+
+    oleWindow->Release();
+    return result;
+}
+
 } // namespace QWindowsDialogs
 
 /*!
@@ -148,7 +100,7 @@ void eatMouseMove()
 
     Base classes for native dialogs (using the CLSID-based
     dialog interfaces "IFileDialog", etc. available from Windows
-    Vista on) that mimick the behaviour of their QDialog
+    Vista on) that mimic the behavior of their QDialog
     counterparts as close as possible.
 
     Instances of derived classes are controlled by
@@ -212,20 +164,25 @@ private:
 */
 
 template <class BaseClass>
+QWindowsDialogHelperBase<BaseClass>::~QWindowsDialogHelperBase()
+{
+    hide();
+    cleanupThread();
+}
+
+template <class BaseClass>
 void QWindowsDialogHelperBase<BaseClass>::cleanupThread()
 {
-    if (m_thread) { // Thread may be running if the dialog failed to close.
-        if (m_thread->isRunning())
-            m_thread->wait(500);
-        if (m_thread->isRunning()) {
-            m_thread->terminate();
-            m_thread->wait(300);
-            if (m_thread->isRunning())
-                qCCritical(lcQpaDialogs) <<__FUNCTION__ << "Failed to terminate thread.";
-            else
-                qCWarning(lcQpaDialogs) << __FUNCTION__ << "Thread terminated.";
-        }
-        delete m_thread;
+    if (m_thread) {
+        // Thread may be running if the dialog failed to close. Give it a bit
+        // to exit, but let it be a memory leak if that fails. We must not
+        // terminate the thread, it might be stuck in Comdlg32 or an IModalWindow
+        // implementation, and we might end up dead-locking the application if the thread
+        // holds a mutex or critical section.
+        if (m_thread->wait(500))
+            delete m_thread;
+        else
+            qCCritical(lcQpaDialogs) <<__FUNCTION__ << "Thread failed to finish.";
         m_thread = nullptr;
     }
 }
@@ -252,7 +209,7 @@ QWindowsNativeDialogBase *QWindowsDialogHelperBase<BaseClass>::ensureNativeDialo
     // Create dialog and apply common settings. Check "executed" flag as well
     // since for example IFileDialog::Show() works only once.
     if (m_nativeDialog.isNull() || m_nativeDialog->executed())
-        m_nativeDialog = QWindowsNativeDialogBasePtr(createNativeDialog());
+        m_nativeDialog = QWindowsNativeDialogBasePtr(createNativeDialog(), &QObject::deleteLater);
     return m_nativeDialog.data();
 }
 
@@ -271,7 +228,7 @@ public:
 
     explicit QWindowsDialogThread(const QWindowsNativeDialogBasePtr &d, HWND owner)
         : m_dialog(d), m_owner(owner) {}
-    void run();
+    void run() override;
 
 private:
     const QWindowsNativeDialogBasePtr m_dialog;
@@ -281,6 +238,7 @@ private:
 void QWindowsDialogThread::run()
 {
     qCDebug(lcQpaDialogs) << '>' << __FUNCTION__;
+    QComHelper comInit(COINIT_APARTMENTTHREADED);
     m_dialog->exec(m_owner);
     qCDebug(lcQpaDialogs) << '<' << __FUNCTION__;
 }
@@ -337,47 +295,13 @@ void QWindowsDialogHelperBase<BaseClass>::stopTimer()
     }
 }
 
-// Find a file dialog window created by IFileDialog by process id, window
-// title and class, which starts with a hash '#'.
-
-struct FindDialogContext
-{
-    explicit FindDialogContext(const QString &titleIn)
-        : title(qStringToWCharArray(titleIn)), processId(GetCurrentProcessId()), hwnd(nullptr) {}
-
-    const QScopedArrayPointer<wchar_t> title;
-    const DWORD processId;
-    HWND hwnd; // contains the HWND of the window found.
-};
-
-static BOOL QT_WIN_CALLBACK findDialogEnumWindowsProc(HWND hwnd, LPARAM lParam)
-{
-    auto *context = reinterpret_cast<FindDialogContext *>(lParam);
-    DWORD winPid = 0;
-    GetWindowThreadProcessId(hwnd, &winPid);
-    if (winPid != context->processId)
-        return TRUE;
-    wchar_t buf[256];
-    if (!RealGetWindowClass(hwnd, buf, sizeof(buf)/sizeof(wchar_t)) || buf[0] != L'#')
-        return TRUE;
-    if (!GetWindowTextW(hwnd, buf, sizeof(buf)/sizeof(wchar_t)) || wcscmp(buf, context->title.data()) != 0)
-        return TRUE;
-    context->hwnd = hwnd;
-    return FALSE;
-}
-
-static inline HWND findDialogWindow(const QString &title)
-{
-    FindDialogContext context(title);
-    EnumWindows(findDialogEnumWindowsProc, reinterpret_cast<LPARAM>(&context));
-    return context.hwnd;
-}
-
 template <class BaseClass>
 void QWindowsDialogHelperBase<BaseClass>::hide()
 {
-    if (m_nativeDialog)
+    if (m_nativeDialog) {
         m_nativeDialog->close();
+        m_nativeDialog.clear();
+    }
     m_ownerWindow = nullptr;
 }
 
@@ -506,14 +430,20 @@ public:
     static IFileDialogEvents *create(QWindowsNativeFileDialogBase *nativeFileDialog);
 
     // IFileDialogEvents methods
-    IFACEMETHODIMP OnFileOk(IFileDialog *);
-    IFACEMETHODIMP OnFolderChange(IFileDialog *) { return S_OK; }
-    IFACEMETHODIMP OnFolderChanging(IFileDialog *, IShellItem *);
-    IFACEMETHODIMP OnHelp(IFileDialog *) { return S_OK; }
-    IFACEMETHODIMP OnSelectionChange(IFileDialog *);
-    IFACEMETHODIMP OnShareViolation(IFileDialog *, IShellItem *, FDE_SHAREVIOLATION_RESPONSE *) { return S_OK; }
-    IFACEMETHODIMP OnTypeChange(IFileDialog *);
-    IFACEMETHODIMP OnOverwrite(IFileDialog *, IShellItem *, FDE_OVERWRITE_RESPONSE *) { return S_OK; }
+    IFACEMETHODIMP OnFileOk(IFileDialog *) override;
+    IFACEMETHODIMP OnFolderChange(IFileDialog *) override { return S_OK; }
+    IFACEMETHODIMP OnFolderChanging(IFileDialog *, IShellItem *) override;
+    IFACEMETHODIMP OnSelectionChange(IFileDialog *) override;
+    IFACEMETHODIMP OnShareViolation(IFileDialog *, IShellItem *,
+                                    FDE_SHAREVIOLATION_RESPONSE *) override
+    {
+        return S_OK;
+    }
+    IFACEMETHODIMP OnTypeChange(IFileDialog *) override;
+    IFACEMETHODIMP OnOverwrite(IFileDialog *, IShellItem *, FDE_OVERWRITE_RESPONSE *) override
+    {
+        return S_OK;
+    }
 
     QWindowsNativeFileDialogEventHandler(QWindowsNativeFileDialogBase *nativeFileDialog) :
         m_nativeFileDialog(nativeFileDialog) {}
@@ -586,8 +516,18 @@ QWindowsShellItem::QWindowsShellItem(IShellItem *item)
     : m_item(item)
     , m_attributes(0)
 {
-    if (FAILED(item->GetAttributes(SFGAO_CAPABILITYMASK | SFGAO_DISPLAYATTRMASK | SFGAO_CONTENTSMASK | SFGAO_STORAGECAPMASK, &m_attributes)))
+    SFGAOF mask = (SFGAO_CAPABILITYMASK | SFGAO_CONTENTSMASK | SFGAO_STORAGECAPMASK);
+
+    // Check for attributes which might be expensive to enumerate for subfolders
+    if (FAILED(item->GetAttributes((SFGAO_STREAM | SFGAO_COMPRESSED), &m_attributes))) {
         m_attributes = 0;
+    } else {
+        // If the item is compressed or stream, skip expensive subfolder test
+        if (m_attributes & (SFGAO_STREAM | SFGAO_COMPRESSED))
+            mask &= ~SFGAO_HASSUBFOLDER;
+        if (FAILED(item->GetAttributes(mask, &m_attributes)))
+            m_attributes = 0;
+    }
 }
 
 QString QWindowsShellItem::path() const
@@ -627,7 +567,7 @@ QUrl QWindowsShellItem::url() const
         return urlV;
     // Last resort: encode the absolute desktop parsing id as data URL
     const QString data = QStringLiteral("data:text/plain;base64,")
-        + QLatin1String(desktopAbsoluteParsing().toLatin1().toBase64());
+        + QLatin1StringView(desktopAbsoluteParsing().toLatin1().toBase64());
     return QUrl(data);
 }
 
@@ -660,14 +600,14 @@ QWindowsShellItem::IShellItems QWindowsShellItem::itemsFromItemArray(IShellItemA
 bool QWindowsShellItem::copyData(QIODevice *out, QString *errorMessage)
 {
     if (!canStream()) {
-        *errorMessage = QLatin1String("Item not streamable");
+        *errorMessage = "Item not streamable"_L1;
         return false;
     }
     IStream *istream = nullptr;
     HRESULT hr = m_item->BindToHandler(nullptr, BHID_Stream, IID_PPV_ARGS(&istream));
     if (FAILED(hr)) {
-        *errorMessage = QLatin1String("BindToHandler() failed: ")
-                        + QLatin1String(QWindowsContext::comErrorString(hr));
+        *errorMessage = "BindToHandler() failed: "_L1
+                        + QSystemError::windowsComString(hr);
         return false;
     }
     enum : ULONG { bufSize = 102400 };
@@ -683,8 +623,8 @@ bool QWindowsShellItem::copyData(QIODevice *out, QString *errorMessage)
     }
     istream->Release();
     if (hr != S_OK && hr != S_FALSE) {
-        *errorMessage = QLatin1String("Read() failed: ")
-                        + QLatin1String(QWindowsContext::comErrorString(hr));
+        *errorMessage = "Read() failed: "_L1
+                        + QSystemError::windowsComString(hr);
         return false;
     }
     return true;
@@ -1026,9 +966,12 @@ static QList<FilterSpec> filterSpecs(const QStringList &filters,
     result.reserve(filters.size());
     *totalStringLength = 0;
 
+#if QT_CONFIG(regularexpression)
     const QRegularExpression filterSeparatorRE(QStringLiteral("[;\\s]+"));
     const QString separator = QStringLiteral(";");
     Q_ASSERT(filterSeparatorRE.isValid());
+#endif
+
     // Split filter specification as 'Texts (*.txt[;] *.doc)', '*.txt[;] *.doc'
     // into description and filters specification as '*.txt;*.doc'
     for (const QString &filterString : filters) {
@@ -1041,7 +984,11 @@ static QList<FilterSpec> filterSpecs(const QStringList &filters,
             filterString.mid(openingParenPos + 1, closingParenPos - openingParenPos - 1).trimmed();
         if (filterSpec.filter.isEmpty())
             filterSpec.filter += u'*';
+#if QT_CONFIG(regularexpression)
         filterSpec.filter.replace(filterSeparatorRE, separator);
+#else
+        filterSpec.filter.replace(u' ', u';');
+#endif
         filterSpec.description = filterString;
         if (hideFilterDetails && openingParenPos != -1) { // Do not show pattern in description
             filterSpec.description.truncate(openingParenPos);
@@ -1254,7 +1201,7 @@ void QWindowsNativeFileDialogBase::close()
     m_fileDialog->Close(S_OK);
     // IFileDialog::Close() does not work unless invoked from a callback.
     // Try to find the window and send it a WM_CLOSE in addition.
-    const HWND hwnd = findDialogWindow(m_title);
+    const HWND hwnd = QWindowsDialogs::getHWND(m_fileDialog);
     qCDebug(lcQpaDialogs) << __FUNCTION__ << "closing" << hwnd;
     if (hwnd && IsWindowVisible(hwnd))
         PostMessageW(hwnd, WM_CLOSE, 0, 0);
@@ -1390,7 +1337,7 @@ Q_GLOBAL_STATIC(QStringList, temporaryItemCopies)
 
 static void cleanupTemporaryItemCopies()
 {
-    for (const QString &file : qAsConst(*temporaryItemCopies()))
+    for (const QString &file : std::as_const(*temporaryItemCopies()))
         QFile::remove(file);
 }
 
@@ -1426,14 +1373,14 @@ QString tempFilePattern(QString name)
 static QString createTemporaryItemCopy(QWindowsShellItem &qItem, QString *errorMessage)
 {
     if (!qItem.canStream()) {
-        *errorMessage = QLatin1String("Item not streamable");
+        *errorMessage = "Item not streamable"_L1;
         return QString();
     }
 
     QTemporaryFile targetFile(tempFilePattern(qItem.normalDisplay()));
     targetFile.setAutoRemove(false);
     if (!targetFile.open())  {
-        *errorMessage = QLatin1String("Cannot create temporary file: ")
+        *errorMessage = "Cannot create temporary file: "_L1
                         + targetFile.errorString();
         return QString();
     }
@@ -1604,7 +1551,7 @@ QWindowsNativeDialogBase *QWindowsFileDialogHelper::createNativeDialog()
             if (!info.isDir())
                 result->selectFile(info.fileName());
         } else {
-            result->selectFile(url.path()); // TODO url.fileName() once it exists
+            result->selectFile(url.fileName());
         }
     }
     // No need to select initialNameFilter if mode is Dir
@@ -1638,7 +1585,7 @@ void QWindowsFileDialogHelper::selectFile(const QUrl &fileName)
     qCDebug(lcQpaDialogs) << __FUNCTION__ << fileName.toString();
 
     if (hasNativeDialog()) // Might be invoked from the QFileDialog constructor.
-        nativeFileDialog()->selectFile(fileName.toLocalFile()); // ## should use QUrl::fileName() once it exists
+        nativeFileDialog()->selectFile(fileName.fileName());
 }
 
 QList<QUrl> QWindowsFileDialogHelper::selectedFiles() const
@@ -1692,9 +1639,6 @@ public slots:
     void close() override {}
 
 private:
-    typedef BOOL (APIENTRY *PtrGetOpenFileNameW)(LPOPENFILENAMEW);
-    typedef BOOL (APIENTRY *PtrGetSaveFileNameW)(LPOPENFILENAMEW);
-
     explicit QWindowsXpNativeFileDialog(const OptionsPtr &options, const QWindowsFileDialogSharedData &data);
     void populateOpenFileName(OPENFILENAME *ofn, HWND owner) const;
     QList<QUrl> execExistingDir(HWND owner);
@@ -1704,27 +1648,11 @@ private:
     QString m_title;
     QPlatformDialogHelper::DialogCode m_result;
     QWindowsFileDialogSharedData m_data;
-
-    static PtrGetOpenFileNameW m_getOpenFileNameW;
-    static PtrGetSaveFileNameW m_getSaveFileNameW;
 };
-
-QWindowsXpNativeFileDialog::PtrGetOpenFileNameW QWindowsXpNativeFileDialog::m_getOpenFileNameW = nullptr;
-QWindowsXpNativeFileDialog::PtrGetSaveFileNameW QWindowsXpNativeFileDialog::m_getSaveFileNameW = nullptr;
 
 QWindowsXpNativeFileDialog *QWindowsXpNativeFileDialog::create(const OptionsPtr &options, const QWindowsFileDialogSharedData &data)
 {
-    // GetOpenFileNameW() GetSaveFileName() are resolved
-    // dynamically as not to create a dependency on Comdlg32, which
-    // is used on XP only.
-    if (!m_getOpenFileNameW) {
-        QSystemLibrary library(QStringLiteral("Comdlg32"));
-        m_getOpenFileNameW = (PtrGetOpenFileNameW)(library.resolve("GetOpenFileNameW"));
-        m_getSaveFileNameW = (PtrGetSaveFileNameW)(library.resolve("GetSaveFileNameW"));
-    }
-    if (m_getOpenFileNameW && m_getSaveFileNameW)
-        return new QWindowsXpNativeFileDialog(options, data);
-    return nullptr;
+    return new QWindowsXpNativeFileDialog(options, data);
 }
 
 QWindowsXpNativeFileDialog::QWindowsXpNativeFileDialog(const OptionsPtr &options,
@@ -1888,7 +1816,7 @@ QList<QUrl> QWindowsXpNativeFileDialog::execFileNames(HWND owner, int *selectedF
     populateOpenFileName(&ofn, owner);
     QList<QUrl> result;
     const bool isSave = m_options->acceptMode() == QFileDialogOptions::AcceptSave;
-    if (isSave ? m_getSaveFileNameW(&ofn) : m_getOpenFileNameW(&ofn)) {
+    if (isSave ? GetSaveFileNameW(&ofn) : GetOpenFileNameW(&ofn)) {
         *selectedFilterIndex = ofn.nFilterIndex - 1;
         const QString dir = QDir::cleanPath(QString::fromWCharArray(ofn.lpstrFile));
         result.push_back(QUrl::fromLocalFile(dir));
@@ -2030,8 +1958,6 @@ QWindowsNativeColorDialog::QWindowsNativeColorDialog(const SharedPointerColor &c
 
 void QWindowsNativeColorDialog::doExec(HWND owner)
 {
-    typedef BOOL (WINAPI *ChooseColorWType)(LPCHOOSECOLORW);
-
     CHOOSECOLOR chooseColor;
     ZeroMemory(&chooseColor, sizeof(chooseColor));
     chooseColor.lStructSize = sizeof(chooseColor);
@@ -2044,18 +1970,9 @@ void QWindowsNativeColorDialog::doExec(HWND owner)
         m_customColors[c] = qColorToCOLORREF(QColor(qCustomColors[c]));
     chooseColor.rgbResult = qColorToCOLORREF(*m_color);
     chooseColor.Flags = CC_FULLOPEN | CC_RGBINIT;
-    static ChooseColorWType chooseColorW = 0;
-    if (!chooseColorW) {
-        QSystemLibrary library(QStringLiteral("Comdlg32"));
-        chooseColorW = (ChooseColorWType)library.resolve("ChooseColorW");
-    }
-    if (chooseColorW) {
-        m_code = chooseColorW(&chooseColor) ?
-            QPlatformDialogHelper::Accepted : QPlatformDialogHelper::Rejected;
-        QWindowsDialogs::eatMouseMove();
-    } else {
-        m_code = QPlatformDialogHelper::Rejected;
-    }
+    m_code = ChooseColorW(&chooseColor) ?
+        QPlatformDialogHelper::Accepted : QPlatformDialogHelper::Rejected;
+    QWindowsDialogs::eatMouseMove();
     if (m_code == QPlatformDialogHelper::Accepted) {
         *m_color = COLORREFToQColor(chooseColor.rgbResult);
         for (int c= 0; c < customColorCount; ++c)

@@ -21,9 +21,10 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
-#include "src/trace_processor/chunked_trace_reader.h"
-#include "src/trace_processor/trace_parser.h"
+#include "src/trace_processor/importers/common/chunked_trace_reader.h"
+#include "src/trace_processor/importers/common/trace_parser.h"
 
 namespace perfetto {
 namespace trace_processor {
@@ -49,15 +50,14 @@ class NinjaLogParser : public ChunkedTraceReader {
   NinjaLogParser& operator=(const NinjaLogParser&) = delete;
 
   // ChunkedTraceReader implementation
-  util::Status Parse(std::unique_ptr<uint8_t[]>, size_t) override;
+  util::Status Parse(TraceBlobView) override;
   void NotifyEndOfFile() override;
 
  private:
   struct Job {
-    Job(uint32_t b, int64_t s, int64_t e, uint64_t h, const std::string& n)
-        : build_id(b), start_ms(s), end_ms(e), hash(h), names(n) {}
+    Job(int64_t s, int64_t e, uint64_t h, const std::string& n)
+        : start_ms(s), end_ms(e), hash(h), names(n) {}
 
-    uint32_t build_id;  // The synthesized PID of the build "process".
     int64_t start_ms;
     int64_t end_ms;
     uint64_t hash;  // Hash of the compiler invocation cmdline.
@@ -69,8 +69,6 @@ class NinjaLogParser : public ChunkedTraceReader {
 
   TraceProcessorContext* const ctx_;
   bool header_parsed_ = false;
-  int64_t last_end_seen_ = 0;
-  uint32_t cur_build_id_ = 0;
   std::vector<Job> jobs_;
   std::vector<char> log_;
 };

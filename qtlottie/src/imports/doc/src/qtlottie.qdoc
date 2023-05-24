@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtlottieanimation-index.html
@@ -41,12 +17,65 @@
     Import the types using the the following statement:
 
     \qml
-    import Qt.labs.lottieqt 1.0
+    import Qt.labs.lottieqt
     \endqml
 //! [usage]
 
     See the \l {Bodymovin Source}{GitHub page for Bodymovin} for instructions
     on how to download and install the plugin for Adobe After Effects.
+
+    \section1 Limitations
+
+    The implementation follows the \l {Bodymovin Specification}{master specification for bodymovin}.
+    Deviations in exported Bodymovin files compared to the specification are
+    taken into account as much as possible when differences are noticed.
+
+    \section2 General limitations
+
+    \list
+    \li \c precomps are not supported
+    \li expressions are not supported
+    \li the timeline only supports frame-mode, not time-mode
+    \endlist
+
+    \section2 Animation level limitations
+
+    The following properties are not supported:
+
+    \list
+    \li \c assets - reusable text and images
+    \li \c chars text
+    \endlist
+
+    \section2 Layers
+
+    Only the \c shape layer and the \c {alpha mask adjustment} layer are supported.
+
+    The following properties are not supported:
+
+    \list
+    \li \c ao (auto-orientation)
+    \li \c bm (blend mode)
+    \li \c maskProperties (masks)
+    \li \c sr (time stretch)
+    \endlist
+
+    \section2 Shapes
+
+    The following elements and shapes are not supported:
+
+    \list
+    \li the \c gstroke (group stroke) element
+    \li the \c star element
+    \li Nested Repeater shapes
+    \endlist
+
+    Also note that the behavior when using multiple active trim paths (e.g. trim
+    paths in nested groups) is unpredictable.
+
+    \section2 Effects
+
+    The only supported effects are \c Slide and \c {Layer Fill}.
 
     \section1 Licenses
 

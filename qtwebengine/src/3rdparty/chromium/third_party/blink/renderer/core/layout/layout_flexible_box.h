@@ -32,8 +32,11 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_LAYOUT_FLEXIBLE_BOX_H_
 
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/layout/geometry/flex_offset.h"
 #include "third_party/blink/renderer/core/layout/layout_block.h"
 #include "third_party/blink/renderer/core/layout/order_iterator.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
 
 namespace blink {
 
@@ -47,6 +50,7 @@ class CORE_EXPORT LayoutFlexibleBox : public LayoutBlock {
  public:
   explicit LayoutFlexibleBox(Element*);
   ~LayoutFlexibleBox() override;
+  void Trace(Visitor*) const override;
 
   const char* GetName() const override {
     NOT_DESTROYED();
@@ -123,7 +127,7 @@ class CORE_EXPORT LayoutFlexibleBox : public LayoutBlock {
   bool HitTestChildren(HitTestResult&,
                        const HitTestLocation&,
                        const PhysicalOffset& accumulated_offset,
-                       HitTestAction) override;
+                       HitTestPhase) override;
 
   void StyleDidChange(StyleDifference, const ComputedStyle* old_style) override;
   void RemoveChild(LayoutObject*) override;
@@ -162,15 +166,18 @@ class CORE_EXPORT LayoutFlexibleBox : public LayoutBlock {
 
   LayoutUnit CrossAxisScrollbarExtent() const;
   LayoutUnit CrossAxisScrollbarExtentForChild(const LayoutBox& child) const;
-  LayoutPoint FlowAwareLocationForChild(const LayoutBox& child) const;
+  FlexOffset FlowAwareLocationForChild(const LayoutBox& child) const;
   bool UseChildAspectRatio(const LayoutBox& child) const;
   LayoutUnit ComputeMainSizeFromAspectRatioUsing(
       const LayoutBox& child,
-      const Length& cross_size_length) const;
-  void SetFlowAwareLocationForChild(LayoutBox& child, const LayoutPoint&);
+      const Length& cross_size_length,
+      LayoutUnit main_axis_border_and_padding,
+      LayoutUnit cross_axis_border_and_padding) const;
+  void SetFlowAwareLocationForChild(LayoutBox& child, const FlexOffset&);
   LayoutUnit ComputeInnerFlexBaseSizeForChild(
       LayoutBox& child,
       LayoutUnit main_axis_border_and_padding,
+      LayoutUnit cross_axis_border_and_padding,
       ChildLayoutType = kLayoutIfNeeded);
   void ResetAlignmentForChild(LayoutBox& child, LayoutUnit);
   bool MainAxisLengthIsDefinite(const LayoutBox& child,
@@ -197,10 +204,13 @@ class CORE_EXPORT LayoutFlexibleBox : public LayoutBlock {
   MinMaxSizes ComputeMinAndMaxSizesForChild(
       const FlexLayoutAlgorithm& algorithm,
       const LayoutBox& child,
-      LayoutUnit border_and_padding) const;
+      LayoutUnit border_and_padding,
+      LayoutUnit cross_axis_border_and_padding) const;
   LayoutUnit AdjustChildSizeForAspectRatioCrossAxisMinAndMax(
       const LayoutBox& child,
-      LayoutUnit child_size) const;
+      LayoutUnit child_size,
+      LayoutUnit main_axis_border_and_padding,
+      LayoutUnit cross_axis_border_and_padding) const;
   void ConstructAndAppendFlexItem(FlexLayoutAlgorithm* algorithm,
                                   LayoutBox& child,
                                   ChildLayoutType);
@@ -212,7 +222,10 @@ class CORE_EXPORT LayoutFlexibleBox : public LayoutBlock {
   void ResetAutoMarginsAndLogicalTopInCrossAxis(LayoutBox& child);
   void SetOverrideMainAxisContentSizeForChild(FlexItem&);
   void PrepareChildForPositionedLayout(LayoutBox& child);
-  void LayoutLineItems(FlexLine*, bool relayout_children, SubtreeLayoutScope&);
+  void LayoutLineItems(FlexLine*,
+                       bool relayout_children,
+                       SubtreeLayoutScope&,
+                       FlexOffset** current_item_offset);
   void ApplyLineItemsPosition(FlexLine*);
   void LayoutColumnReverse(FlexItemVectorView&,
                            LayoutUnit cross_axis_offset,
@@ -231,14 +244,15 @@ class CORE_EXPORT LayoutFlexibleBox : public LayoutBlock {
 
   // This is used to cache the preferred size for orthogonal flow children so we
   // don't have to relayout to get it
-  HashMap<const LayoutObject*, LayoutUnit> intrinsic_size_along_main_axis_;
+  HeapHashMap<Member<const LayoutObject>, LayoutUnit>
+      intrinsic_size_along_main_axis_;
 
   // This set is used to keep track of which children we laid out in this
   // current layout iteration. We need it because the ones in this set may
   // need an additional layout pass for correct stretch alignment handling, as
   // the first layout likely did not use the correct value for percentage
   // sizing of children.
-  HashSet<const LayoutObject*> relaid_out_children_;
+  HeapHashSet<Member<const LayoutObject>> relaid_out_children_;
 
   mutable OrderIterator order_iterator_;
   int number_of_in_flow_children_on_first_line_;
@@ -248,7 +262,12 @@ class CORE_EXPORT LayoutFlexibleBox : public LayoutBlock {
   bool in_layout_;
 };
 
-DEFINE_LAYOUT_OBJECT_TYPE_CASTS(LayoutFlexibleBox, IsFlexibleBox());
+template <>
+struct DowncastTraits<LayoutFlexibleBox> {
+  static bool AllowFrom(const LayoutObject& object) {
+    return object.IsFlexibleBox();
+  }
+};
 
 }  // namespace blink
 

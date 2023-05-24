@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,30 +6,37 @@
 #define MEDIA_BASE_AUDIO_ENCODER_H_
 
 #include <memory>
+#include <vector>
 
-#include "base/callback.h"
-#include "base/threading/thread_checker.h"
+#include "base/functional/callback.h"
+#include "base/sequence_checker.h"
 #include "base/time/time.h"
 #include "media/base/audio_bus.h"
+#include "media/base/audio_codecs.h"
 #include "media/base/audio_parameters.h"
+#include "media/base/encoder_status.h"
 #include "media/base/media_export.h"
-#include "media/base/status.h"
+#include "media/base/timestamp_constants.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media {
 
 // Defines a move-only wrapper to hold the encoded audio data.
 struct MEDIA_EXPORT EncodedAudioBuffer {
+  EncodedAudioBuffer();
   EncodedAudioBuffer(const AudioParameters& params,
                      std::unique_ptr<uint8_t[]> data,
                      size_t size,
-                     base::TimeTicks timestamp);
+                     base::TimeTicks timestamp,
+                     base::TimeDelta duration = media::kNoTimestamp);
   EncodedAudioBuffer(EncodedAudioBuffer&&);
+  EncodedAudioBuffer& operator=(EncodedAudioBuffer&&);
   ~EncodedAudioBuffer();
 
   // The audio parameters the encoder used to encode the input audio. They may
   // differ from the original parameters given to the encoder initially, as the
   // encoder may convert the audio to a format more suitable for encoding.
-  const AudioParameters params;
+  AudioParameters params;
 
   // The buffer containing the encoded data.
   std::unique_ptr<uint8_t[]> encoded_data;
@@ -39,73 +46,120 @@ struct MEDIA_EXPORT EncodedAudioBuffer {
   // bigger buffer and fill it only with |encoded_data_size| data without
   // bothering to allocate another shrunk buffer and copy the data in, since the
   // number of encoded bytes may not be known in advance.
-  const size_t encoded_data_size;
+  size_t encoded_data_size = 0;
 
-  // The capture time of the first sample of the current AudioBus.
-  const base::TimeTicks timestamp;
+  // The capture time of the first sample of the current AudioBus, or a previous
+  // AudioBus If this output was generated because of a call to Flush().
+  base::TimeTicks timestamp;
+
+  // The duration of the encoded samples, if they were decoded and played out.
+  // A duration of media::kNoTimestamp means we don't know the duration or don't
+  // care about it.
+  base::TimeDelta duration;
 };
 
-// Defines an interface for audio encoders. Concrete encoders must implement the
-// EncodeAudioImpl() function.
+// Defines an interface for audio encoders.
 class MEDIA_EXPORT AudioEncoder {
  public:
+  struct MEDIA_EXPORT OpusOptions {
+    base::TimeDelta frame_duration;
+    unsigned int complexity;
+    unsigned int packet_loss_perc;
+    bool use_in_band_fec;
+    bool use_dtx;
+  };
+
+  enum class AacOutputFormat { AAC, ADTS };
+  struct MEDIA_EXPORT AacOptions {
+    AacOutputFormat format;
+  };
+
+  struct MEDIA_EXPORT Options {
+    Options();
+    Options(const Options&);
+    ~Options();
+
+    AudioCodec codec;
+
+    absl::optional<int> bitrate;
+
+    int channels;
+
+    int sample_rate;
+
+    absl::optional<OpusOptions> opus;
+    absl::optional<AacOptions> aac;
+  };
+
+  // A sequence of codec specific bytes, commonly known as extradata.
+  using CodecDescription = std::vector<uint8_t>;
+
   // Signature of the callback invoked to provide the encoded audio data. It is
-  // invoked on the same thread on which EncodeAudio() is called. The utility
-  // media::BindToCurrentLoop() can be used to create a callback that will be
-  // invoked on the same thread it is constructed on.
-  using EncodeCB = base::RepeatingCallback<void(EncodedAudioBuffer output)>;
+  // invoked on the same sequence on which EncodeAudio() is called.
+  using OutputCB =
+      base::RepeatingCallback<void(EncodedAudioBuffer output,
+                                   absl::optional<CodecDescription>)>;
 
   // Signature of the callback to report errors.
-  using StatusCB = base::RepeatingCallback<void(Status error)>;
+  using EncoderStatusCB = base::OnceCallback<void(EncoderStatus error)>;
 
-  // Constructs the encoder given the audio parameters of the input to this
-  // encoder, and a callback to trigger to provide the encoded audio data.
-  // |input_params| must be valid, and |encode_callback| and |status_callback|
-  // must not be null callbacks. All calls to EncodeAudio() must happen on the
-  // same thread (usually an encoder thread), but the encoder itself can be
-  // constructed on any thread.
-  AudioEncoder(const AudioParameters& input_params,
-               EncodeCB encode_callback,
-               StatusCB status_callback);
+  AudioEncoder();
   AudioEncoder(const AudioEncoder&) = delete;
   AudioEncoder& operator=(const AudioEncoder&) = delete;
   virtual ~AudioEncoder();
 
-  const AudioParameters& audio_input_params() const {
-    return audio_input_params_;
-  }
+  // Initializes an AudioEncoder with the given input option, executing
+  // the |done_cb| upon completion. |output_cb| is called for each encoded audio
+  // chunk.
+  //
+  // No AudioEncoder calls should be made before |done_cb| is executed.
+  virtual void Initialize(const Options& options,
+                          OutputCB output_cb,
+                          EncoderStatusCB done_cb) = 0;
 
-  // Performs various checks before calling EncodeAudioImpl() which does the
-  // actual encoding.
-  void EncodeAudio(const AudioBus& audio_bus, base::TimeTicks capture_time);
+  // Requests contents of |audio_bus| to be encoded.
+  // |capture_time| is a media time at the end of the audio piece in the
+  // |audio_bus|.
+  //
+  // |done_cb| is called upon encode completion and can possible convey an
+  // encoding error. It doesn't depend on future call to encoder's methods.
+  // |done_cb| will not be called from within this method.
+  //
+  // After the input, or several inputs, are encoded the encoder calls
+  // |output_cb|.
+  // |output_cb| may be called before or after |done_cb|,
+  // including before Encode() returns.
+  virtual void Encode(std::unique_ptr<AudioBus> audio_bus,
+                      base::TimeTicks capture_time,
+                      EncoderStatusCB done_cb) = 0;
+
+  // Some encoders may choose to buffer audio frames before they encode them.
+  // Requests all outputs for already encoded frames to be
+  // produced via |output_cb| and calls |done_cb| after that.
+  virtual void Flush(EncoderStatusCB done_cb) = 0;
+
+  // Normally AudioEncoder implementations aren't supposed to call OutputCB and
+  // EncoderStatusCB directly from inside any of AudioEncoder's methods.
+  // This method tells AudioEncoder that all callbacks can be called directly
+  // from within its methods. It saves extra thread hops if it's known that
+  // all callbacks already point to a task runner different from
+  // the current one.
+  virtual void DisablePostedCallbacks();
 
  protected:
-  const EncodeCB& encode_callback() const { return encode_callback_; }
-  const StatusCB& status_callback() const { return status_callback_; }
-  base::TimeTicks last_capture_time() const { return last_capture_time_; }
+  OutputCB BindCallbackToCurrentLoopIfNeeded(OutputCB&& callback);
+  EncoderStatusCB BindCallbackToCurrentLoopIfNeeded(EncoderStatusCB&& callback);
 
-  virtual void EncodeAudioImpl(const AudioBus& audio_bus,
-                               base::TimeTicks capture_time) = 0;
+  bool post_callbacks_ = true;
 
-  // Computes the timestamp of an AudioBus which has |num_frames| and was
-  // captured at |capture_time|. This timestamp is the capture time of the first
-  // sample in that AudioBus.
-  base::TimeTicks ComputeTimestamp(int num_frames,
-                                   base::TimeTicks capture_time) const;
+  Options options_;
 
- private:
-  const AudioParameters audio_input_params_;
+  OutputCB output_cb_;
 
-  const EncodeCB encode_callback_;
-
-  const StatusCB status_callback_;
-
-  // The capture time of the most recent |audio_bus| delivered to
-  // EncodeAudio().
-  base::TimeTicks last_capture_time_;
-
-  THREAD_CHECKER(thread_checker_);
+  SEQUENCE_CHECKER(sequence_checker_);
 };
+
+using AudioEncoderConfig = AudioEncoder::Options;
 
 }  // namespace media
 

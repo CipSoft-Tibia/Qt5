@@ -1,4 +1,4 @@
-/* Copyright (c) 2012 The Chromium Authors. All rights reserved.
+/* Copyright 2012 The Chromium Authors
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file. */
 
@@ -316,8 +316,16 @@ img {
   width: 35ex;
 }
 
+.settings-bar button {
+  margin: 7px 0;
+}
+
 .node-frontend-action {
+  background-color: transparent;
+  border: none;
+  font-size: inherit;
   margin: 6px 4px;
+  padding: 0;
 }
 
 dialog.config::backdrop {
@@ -335,6 +343,7 @@ dialog.config {
 }
 
 .port-forwarding-container {
+  align-items: center;
   display: flex;
 }
 

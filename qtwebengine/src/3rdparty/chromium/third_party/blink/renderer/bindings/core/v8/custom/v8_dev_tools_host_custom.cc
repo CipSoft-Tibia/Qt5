@@ -30,26 +30,30 @@
 
 #include "third_party/blink/renderer/bindings/core/v8/v8_dev_tools_host.h"
 
+#include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
+#include "third_party/blink/public/common/context_menu_data/menu_item_info.h"
 #include "third_party/blink/public/platform/platform.h"
-#include "third_party/blink/public/web/web_menu_item_info.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_html_document.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_mouse_event.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_string_resource.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_window.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/html/html_document.h"
 #include "third_party/blink/renderer/core/inspector/dev_tools_host.h"
 #include "third_party/blink/renderer/core/inspector/inspector_frontend_client.h"
+#include "third_party/blink/renderer/platform/bindings/v8_binding_macros.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
 
 void V8DevToolsHost::PlatformMethodCustom(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   V8SetReturnValue(info, V8AtomicString(info.GetIsolate(), "mac"));
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
   V8SetReturnValue(info, V8AtomicString(info.GetIsolate(), "windows"));
 #else  // Unix-like systems
   V8SetReturnValue(info, V8AtomicString(info.GetIsolate(), "linux"));
@@ -58,11 +62,16 @@ void V8DevToolsHost::PlatformMethodCustom(
 
 static bool PopulateContextMenuItems(v8::Isolate* isolate,
                                      const v8::Local<v8::Array>& item_array,
-                                     WebVector<WebMenuItemInfo>& items) {
+                                     std::vector<MenuItemInfo>& items) {
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
   for (uint32_t i = 0; i < item_array->Length(); ++i) {
-    v8::Local<v8::Object> item =
-        item_array->Get(context, i).ToLocalChecked().As<v8::Object>();
+    v8::Local<v8::Value> item_value =
+        item_array->Get(context, i).ToLocalChecked();
+    if (!item_value->IsObject()) {
+      return false;
+    }
+    v8::Local<v8::Object> item = item_value.As<v8::Object>();
+
     v8::Local<v8::Value> type;
     v8::Local<v8::Value> id;
     v8::Local<v8::Value> label;
@@ -84,13 +93,13 @@ static bool PopulateContextMenuItems(v8::Isolate* isolate,
     String type_string = ToCoreStringWithNullCheck(type.As<v8::String>());
     items.reserve(items.size() + 1);
     items.emplace_back();
-    WebMenuItemInfo& item_info = items[items.size() - 1];
+    MenuItemInfo& item_info = items[items.size() - 1];
     if (type_string == "separator") {
-      item_info.type = WebMenuItemInfo::kSeparator;
+      item_info.type = MenuItemInfo::kSeparator;
       item_info.enabled = true;
       item_info.action = DevToolsHost::kMaxContextMenuAction;
     } else if (type_string == "subMenu" && sub_items->IsArray()) {
-      item_info.type = WebMenuItemInfo::kSubMenu;
+      item_info.type = MenuItemInfo::kSubMenu;
       item_info.enabled = true;
       item_info.action = DevToolsHost::kMaxContextMenuAction;
       v8::Local<v8::Array> sub_items_array =
@@ -100,7 +109,7 @@ static bool PopulateContextMenuItems(v8::Isolate* isolate,
         return false;
       TOSTRING_DEFAULT(V8StringResource<kTreatNullAsNullString>, label_string,
                        label, false);
-      item_info.label = String(label_string);
+      item_info.label = base::UTF8ToUTF16(String(label_string).Utf8());
     } else {
       int32_t int32_id;
       if (!id->Int32Value(context).To(&int32_id) || int32_id < 0 ||
@@ -109,10 +118,10 @@ static bool PopulateContextMenuItems(v8::Isolate* isolate,
       TOSTRING_DEFAULT(V8StringResource<kTreatNullAsNullString>, label_string,
                        label, false);
       if (type_string == "checkbox")
-        item_info.type = WebMenuItemInfo::kCheckableOption;
+        item_info.type = MenuItemInfo::kCheckableOption;
       else
-        item_info.type = WebMenuItemInfo::kOption;
-      item_info.label = String(label_string);
+        item_info.type = MenuItemInfo::kOption;
+      item_info.label = base::UTF8ToUTF16(String(label_string).Utf8());
       item_info.enabled = true;
       item_info.action = int32_id;
       if (checked->IsBoolean())
@@ -144,7 +153,7 @@ void V8DevToolsHost::ShowContextMenuAtPointMethodCustom(
   v8::Local<v8::Value> array = info[2];
   if (!array->IsArray())
     return;
-  WebVector<WebMenuItemInfo> items;
+  std::vector<MenuItemInfo> items;
   if (!PopulateContextMenuItems(isolate, v8::Local<v8::Array>::Cast(array),
                                 items))
     return;

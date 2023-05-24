@@ -19,6 +19,9 @@ namespace cricket {
 // put in separate file so that they can be shared e.g
 // with Connection.
 struct IceFieldTrials {
+  // This struct is built using the FieldTrialParser, and then not modified.
+  // TODO(jonaso) : Consider how members of this struct can be made const.
+
   bool skip_relay_to_non_relay_connections = false;
   absl::optional<int> max_outstanding_pings;
 
@@ -45,7 +48,7 @@ struct IceFieldTrials {
 
   // Sending a PING directly after a switch on ICE_CONTROLLING-side.
   // TODO(jonaso) : Deprecate this in favor of
-  // |send_ping_on_selected_ice_controlling|.
+  // `send_ping_on_selected_ice_controlling`.
   bool send_ping_on_switch_ice_controlling = false;
 
   // Sending a PING directly after selecting a connection
@@ -58,6 +61,15 @@ struct IceFieldTrials {
   // The timeout after which the connection will be considered dead if no
   // traffic is received.
   int dead_connection_timeout_ms = 30000;
+
+  // Stop gathering when having a strong connection.
+  bool stop_gather_on_strongly_connected = true;
+
+  // DSCP taging.
+  absl::optional<int> override_dscp;
+
+  bool piggyback_ice_check_acknowledgement = false;
+  bool extra_ice_ping = false;
 };
 
 }  // namespace cricket

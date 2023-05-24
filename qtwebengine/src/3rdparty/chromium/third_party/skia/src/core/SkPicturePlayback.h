@@ -31,7 +31,7 @@ public:
     size_t curOpID() const { return fCurOffset; }
     void resetOpID() { fCurOffset = 0; }
 
-protected:
+private:
     const SkPictureData* fPictureData;
 
     // The offset of the current operation when within the draw method
@@ -41,7 +41,7 @@ protected:
                   DrawType op,
                   uint32_t size,
                   SkCanvas* canvas,
-                  const SkMatrix& initialMatrix);
+                  const SkM44& initialMatrix);
 
     class AutoResetOpID {
     public:
@@ -56,7 +56,6 @@ protected:
         SkPicturePlayback* fPlayback;
     };
 
-private:
     using INHERITED = SkNoncopyable;
 };
 

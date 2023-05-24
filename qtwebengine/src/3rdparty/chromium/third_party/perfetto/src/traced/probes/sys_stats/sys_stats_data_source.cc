@@ -31,6 +31,7 @@
 #include "perfetto/ext/base/metatrace.h"
 #include "perfetto/ext/base/scoped_file.h"
 #include "perfetto/ext/base/string_splitter.h"
+#include "perfetto/ext/base/string_utils.h"
 #include "perfetto/ext/base/utils.h"
 #include "perfetto/ext/traced/sys_stats_counters.h"
 
@@ -69,16 +70,20 @@ uint32_t ClampTo10Ms(uint32_t period_ms, const char* counter_name) {
 const ProbesDataSource::Descriptor SysStatsDataSource::descriptor = {
     /*name*/ "linux.sys_stats",
     /*flags*/ Descriptor::kFlagsNone,
+    /*fill_descriptor_func*/ nullptr,
 };
 
-SysStatsDataSource::SysStatsDataSource(base::TaskRunner* task_runner,
-                                       TracingSessionID session_id,
-                                       std::unique_ptr<TraceWriter> writer,
-                                       const DataSourceConfig& ds_config,
-                                       OpenFunction open_fn)
+SysStatsDataSource::SysStatsDataSource(
+    base::TaskRunner* task_runner,
+    TracingSessionID session_id,
+    std::unique_ptr<TraceWriter> writer,
+    const DataSourceConfig& ds_config,
+    std::unique_ptr<CpuFreqInfo> cpu_freq_info,
+    OpenFunction open_fn)
     : ProbesDataSource(session_id, &descriptor),
       task_runner_(task_runner),
       writer_(std::move(writer)),
+      cpu_freq_info_(std::move(cpu_freq_info)),
       weak_factory_(this) {
   ns_per_user_hz_ = 1000000000ull / static_cast<uint64_t>(sysconf(_SC_CLK_TCK));
 
@@ -86,6 +91,8 @@ SysStatsDataSource::SysStatsDataSource(base::TaskRunner* task_runner,
   meminfo_fd_ = open_fn("/proc/meminfo");
   vmstat_fd_ = open_fn("/proc/vmstat");
   stat_fd_ = open_fn("/proc/stat");
+  buddy_fd_ = open_fn("/proc/buddyinfo");
+  diskstat_fd_ = open_fn("/proc/diskstats");
 
   read_buf_ = base::PagedMemory::Allocate(kReadBufSize);
 
@@ -138,19 +145,24 @@ SysStatsDataSource::SysStatsDataSource(base::TaskRunner* task_runner,
     stat_enabled_fields_ |= 1ul << static_cast<uint32_t>(*counter);
   }
 
-  std::array<uint32_t, 3> periods_ms{};
-  std::array<uint32_t, 3> ticks{};
+  std::array<uint32_t, 7> periods_ms{};
+  std::array<uint32_t, 7> ticks{};
   static_assert(periods_ms.size() == ticks.size(), "must have same size");
 
   periods_ms[0] = ClampTo10Ms(cfg.meminfo_period_ms(), "meminfo_period_ms");
   periods_ms[1] = ClampTo10Ms(cfg.vmstat_period_ms(), "vmstat_period_ms");
   periods_ms[2] = ClampTo10Ms(cfg.stat_period_ms(), "stat_period_ms");
+  periods_ms[3] = ClampTo10Ms(cfg.devfreq_period_ms(), "devfreq_period_ms");
+  periods_ms[4] = ClampTo10Ms(cfg.cpufreq_period_ms(), "cpufreq_period_ms");
+  periods_ms[5] = ClampTo10Ms(cfg.buddyinfo_period_ms(), "buddyinfo_period_ms");
+  periods_ms[6] = ClampTo10Ms(cfg.diskstat_period_ms(), "diskstat_period_ms");
 
   tick_period_ms_ = 0;
   for (uint32_t ms : periods_ms) {
     if (ms && (ms < tick_period_ms_ || tick_period_ms_ == 0))
       tick_period_ms_ = ms;
   }
+
   if (tick_period_ms_ == 0)
     return;  // No polling configured.
 
@@ -165,6 +177,10 @@ SysStatsDataSource::SysStatsDataSource(base::TaskRunner* task_runner,
   meminfo_ticks_ = ticks[0];
   vmstat_ticks_ = ticks[1];
   stat_ticks_ = ticks[2];
+  devfreq_ticks_ = ticks[3];
+  cpufreq_ticks_ = ticks[4];
+  buddyinfo_ticks_ = ticks[5];
+  diskstat_ticks_ = ticks[6];
 }
 
 void SysStatsDataSource::Start() {
@@ -205,10 +221,153 @@ void SysStatsDataSource::ReadSysStats() {
   if (stat_ticks_ && tick_ % stat_ticks_ == 0)
     ReadStat(sys_stats);
 
+  if (devfreq_ticks_ && tick_ % devfreq_ticks_ == 0)
+    ReadDevfreq(sys_stats);
+
+  if (cpufreq_ticks_ && tick_ % cpufreq_ticks_ == 0)
+    ReadCpufreq(sys_stats);
+
+  if (buddyinfo_ticks_ && tick_ % buddyinfo_ticks_ == 0)
+    ReadBuddyInfo(sys_stats);
+
+  if (diskstat_ticks_ && tick_ % diskstat_ticks_ == 0)
+    ReadDiskStat(sys_stats);
+
   sys_stats->set_collection_end_timestamp(
       static_cast<uint64_t>(base::GetBootTimeNs().count()));
 
   tick_++;
+}
+
+void SysStatsDataSource::ReadDiskStat(protos::pbzero::SysStats* sys_stats) {
+  size_t rsize = ReadFile(&diskstat_fd_, "/proc/diskstats");
+  if (!rsize) {
+    return;
+  }
+
+  char* buf = static_cast<char*>(read_buf_.Get());
+  for (base::StringSplitter lines(buf, rsize, '\n'); lines.Next();) {
+    uint32_t index = 0;
+    auto* disk_stat = sys_stats->add_disk_stat();
+    for (base::StringSplitter words(&lines, ' '); words.Next(); index++) {
+      if (index == 2) {  // index for device name (string)
+        disk_stat->set_device_name(words.cur_token());
+      } else if (index >= 5) {  // integer values from index 5
+        base::Optional<uint64_t> value_address =
+            base::CStringToUInt64(words.cur_token());
+        uint64_t value = value_address ? *value_address : 0;
+
+        switch (index) {
+          case 5:
+            disk_stat->set_read_sectors(value);
+            break;
+          case 6:
+            disk_stat->set_read_time_ms(value);
+            break;
+          case 9:
+            disk_stat->set_write_sectors(value);
+            break;
+          case 10:
+            disk_stat->set_write_time_ms(value);
+            break;
+          case 16:
+            disk_stat->set_discard_sectors(value);
+            break;
+          case 17:
+            disk_stat->set_discard_time_ms(value);
+            break;
+          case 18:
+            disk_stat->set_flush_count(value);
+            break;
+          case 19:
+            disk_stat->set_flush_time_ms(value);
+            break;
+        }
+
+        if (index == 19) {
+          break;
+        }
+      }
+    }
+  }
+}
+
+void SysStatsDataSource::ReadBuddyInfo(protos::pbzero::SysStats* sys_stats) {
+  size_t rsize = ReadFile(&buddy_fd_, "/proc/buddyinfo");
+  if (!rsize) {
+    return;
+  }
+
+  char* buf = static_cast<char*>(read_buf_.Get());
+  for (base::StringSplitter lines(buf, rsize, '\n'); lines.Next();) {
+    uint32_t index = 0;
+    auto* buddy_info = sys_stats->add_buddy_info();
+    for (base::StringSplitter words(&lines, ' '); words.Next();) {
+      if (index == 1) {
+        std::string token = words.cur_token();
+        token = token.substr(0, token.find(","));
+        buddy_info->set_node(token);
+      } else if (index == 3) {
+        buddy_info->set_zone(words.cur_token());
+      } else if (index > 3) {
+        buddy_info->add_order_pages(
+            static_cast<uint32_t>(strtoul(words.cur_token(), nullptr, 0)));
+      }
+      index++;
+    }
+  }
+}
+
+void SysStatsDataSource::ReadDevfreq(protos::pbzero::SysStats* sys_stats) {
+  base::ScopedDir devfreq_dir = OpenDevfreqDir();
+  if (devfreq_dir) {
+    while (struct dirent* dir_ent = readdir(*devfreq_dir)) {
+      // Entries in /sys/class/devfreq are symlinks to /devices/platform
+      if (dir_ent->d_type != DT_LNK)
+        continue;
+      const char* name = dir_ent->d_name;
+      const char* file_content = ReadDevfreqCurFreq(name);
+      auto value = static_cast<uint64_t>(strtoll(file_content, nullptr, 10));
+      auto* devfreq = sys_stats->add_devfreq();
+      devfreq->set_key(name);
+      devfreq->set_value(value);
+    }
+  }
+}
+
+void SysStatsDataSource::ReadCpufreq(protos::pbzero::SysStats* sys_stats) {
+  const auto& cpufreq = cpu_freq_info_->ReadCpuCurrFreq();
+
+  for (const auto& c : cpufreq)
+    sys_stats->add_cpufreq_khz(c);
+}
+
+base::ScopedDir SysStatsDataSource::OpenDevfreqDir() {
+  const char* base_dir = "/sys/class/devfreq/";
+  base::ScopedDir devfreq_dir(opendir(base_dir));
+  if (!devfreq_dir && !devfreq_error_logged_) {
+    devfreq_error_logged_ = true;
+    PERFETTO_PLOG("failed to opendir(/sys/class/devfreq)");
+  }
+  return devfreq_dir;
+}
+
+const char* SysStatsDataSource::ReadDevfreqCurFreq(
+    const std::string& deviceName) {
+  const char* devfreq_base_path = "/sys/class/devfreq";
+  const char* freq_file_name = "cur_freq";
+  base::StackString<256> cur_freq_path("%s/%s/%s", devfreq_base_path,
+                                       deviceName.c_str(), freq_file_name);
+  base::ScopedFile fd = OpenReadOnly(cur_freq_path.c_str());
+  if (!fd && !devfreq_error_logged_) {
+    devfreq_error_logged_ = true;
+    PERFETTO_PLOG("Failed to open %s", cur_freq_path.c_str());
+    return "";
+  }
+  size_t rsize = ReadFile(&fd, cur_freq_path.c_str());
+  if (!rsize)
+    return "";
+  return static_cast<char*>(read_buf_.Get());
 }
 
 void SysStatsDataSource::ReadMeminfo(protos::pbzero::SysStats* sys_stats) {

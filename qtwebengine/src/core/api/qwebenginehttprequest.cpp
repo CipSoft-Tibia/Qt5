@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformdefs.h"
 #include <QtCore/qshareddata.h>
@@ -72,7 +36,7 @@ public:
     QUrl url;
     QWebEngineHttpRequest::Method method;
     typedef QPair<QByteArray, QByteArray> HeaderPair;
-    typedef QVector<HeaderPair> Headers;
+    typedef QList<HeaderPair> Headers;
     Headers headers;
     QByteArray postData;
 
@@ -96,7 +60,7 @@ public:
 
     Headers::ConstIterator findHeader(const QByteArray &key) const;
     Headers allHeaders() const;
-    QVector<QByteArray> headersKeys() const;
+    QList<QByteArray> headersKeys() const;
     void setHeader(const QByteArray &key, const QByteArray &value);
     void unsetHeader(const QByteArray &key);
     void setAllHeaders(const Headers &list);
@@ -182,16 +146,16 @@ QWebEngineHttpRequest QWebEngineHttpRequest::postRequest(const QUrl &url,
     QWebEngineHttpRequest result(url);
     result.setMethod(QWebEngineHttpRequest::Post);
 
-    QString buffer;
+    QByteArray buffer;
     for (QMap<QString, QString>::const_iterator it = postData.begin(); it != postData.end(); it++) {
         QByteArray key = QUrl::toPercentEncoding(it.key());
         QByteArray value = QUrl::toPercentEncoding(it.value());
 
-        if (buffer.length() > 0)
-            buffer += QLatin1Char('&');
-        buffer += key + QLatin1Char('=') + value;
+        if (buffer.size() > 0)
+            buffer += '&';
+        buffer.append(key).append('=').append(value);
     }
-    result.setPostData(buffer.toLatin1());
+    result.setPostData(buffer);
 
     result.setHeader(QByteArrayLiteral("Content-Type"),
                      QByteArrayLiteral("application/x-www-form-urlencoded"));
@@ -293,7 +257,7 @@ QByteArray QWebEngineHttpRequest::header(const QByteArray &headerName) const
 
     \sa setHeader(), header(), hasHeader(), unsetHeader()
 */
-QVector<QByteArray> QWebEngineHttpRequest::headers() const
+QList<QByteArray> QWebEngineHttpRequest::headers() const
 {
     return d->headersKeys();
 }
@@ -339,9 +303,9 @@ QWebEngineHttpRequestPrivate::Headers QWebEngineHttpRequestPrivate::allHeaders()
     return headers;
 }
 
-QVector<QByteArray> QWebEngineHttpRequestPrivate::headersKeys() const
+QList<QByteArray> QWebEngineHttpRequestPrivate::headersKeys() const
 {
-    QVector<QByteArray> result;
+    QList<QByteArray> result;
     result.reserve(headers.size());
     Headers::ConstIterator it = headers.constBegin(), end = headers.constEnd();
     for (; it != end; ++it)

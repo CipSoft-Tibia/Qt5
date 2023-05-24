@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,12 +9,11 @@
 #include <map>
 #include <string>
 
-#include "base/macros.h"
 #include "content/common/content_export.h"
 
-namespace url {
-class Origin;
-}  // namespace url
+namespace blink {
+class StorageKey;
+}  // namespace blink
 
 namespace content {
 
@@ -35,26 +34,30 @@ enum class DevToolsBackgroundService {
 class CONTENT_EXPORT DevToolsBackgroundServicesContext {
  public:
   DevToolsBackgroundServicesContext() = default;
+
+  DevToolsBackgroundServicesContext(const DevToolsBackgroundServicesContext&) =
+      delete;
+  DevToolsBackgroundServicesContext& operator=(
+      const DevToolsBackgroundServicesContext&) = delete;
+
   virtual ~DevToolsBackgroundServicesContext() = default;
 
   // Whether events related to |service| should be recorded.
   virtual bool IsRecording(DevToolsBackgroundService service) = 0;
 
   // Logs the event if recording for |service| is enabled.
+  // |storage_key| refers to the storage partition the event belongs to.
   // |event_name| is a description of the event.
   // |instance_id| is for tracking events related to the same feature instance.
   // Any additional useful information relating to the feature can be sent via
   // |event_metadata|. Called from the UI thread.
   virtual void LogBackgroundServiceEvent(
       uint64_t service_worker_registration_id,
-      const url::Origin& origin,
+      blink::StorageKey storage_key,
       DevToolsBackgroundService service,
       const std::string& event_name,
       const std::string& instance_id,
       const std::map<std::string, std::string>& event_metadata) = 0;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(DevToolsBackgroundServicesContext);
 };
 
 }  // namespace content

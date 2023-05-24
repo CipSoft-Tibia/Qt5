@@ -28,50 +28,59 @@
 #include "base/feature_list.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/trace_event/trace_event.h"
 #include "third_party/blink/public/common/action_after_pagehide.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/platform/task_type.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/modules/storage/dom_window_storage.h"
 #include "third_party/blink/renderer/modules/storage/inspector_dom_storage_agent.h"
 #include "third_party/blink/renderer/modules/storage/storage_controller.h"
 #include "third_party/blink/renderer/modules/storage/storage_event.h"
 #include "third_party/blink/renderer/modules/storage/storage_namespace.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/storage/blink_storage_key.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
+#include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
 
-StorageArea* StorageArea::Create(LocalFrame* frame,
+StorageArea* StorageArea::Create(LocalDOMWindow* window,
                                  scoped_refptr<CachedStorageArea> storage_area,
                                  StorageType storage_type) {
-  return MakeGarbageCollected<StorageArea>(frame, std::move(storage_area),
+  return MakeGarbageCollected<StorageArea>(window, std::move(storage_area),
                                            storage_type,
                                            /* should_enqueue_events */ true);
 }
 
 StorageArea* StorageArea::CreateForInspectorAgent(
-    LocalFrame* frame,
+    LocalDOMWindow* window,
     scoped_refptr<CachedStorageArea> storage_area,
     StorageType storage_type) {
-  return MakeGarbageCollected<StorageArea>(frame, std::move(storage_area),
+  return MakeGarbageCollected<StorageArea>(window, std::move(storage_area),
                                            storage_type,
                                            /* should_enqueue_events */ false);
 }
 
-StorageArea::StorageArea(LocalFrame* frame,
+StorageArea::StorageArea(LocalDOMWindow* window,
                          scoped_refptr<CachedStorageArea> storage_area,
                          StorageType storage_type,
                          bool should_enqueue_events)
-    : ExecutionContextClient(frame),
+    : ExecutionContextClient(window),
       cached_area_(std::move(storage_area)),
       storage_type_(storage_type),
       should_enqueue_events_(should_enqueue_events) {
-  DCHECK(frame);
+  DCHECK(window);
   DCHECK(cached_area_);
   cached_area_->RegisterSource(this);
+  if (cached_area_->is_session_storage_for_prerendering()) {
+    DomWindow()->document()->AddWillDispatchPrerenderingchangeCallback(
+        WTF::BindOnce(&StorageArea::OnDocumentActivatedForPrerendering,
+                      WrapWeakPersistent(this)));
+  }
 }
 
 unsigned StorageArea::length(ExceptionState& exception_state) const {
@@ -179,22 +188,21 @@ void StorageArea::Trace(Visitor* visitor) const {
 }
 
 bool StorageArea::CanAccessStorage() const {
-  LocalFrame* frame = GetFrame();
-  if (!frame || !frame->GetPage())
+  if (!DomWindow())
     return false;
 
   if (did_check_can_access_storage_)
     return can_access_storage_cached_result_;
-  can_access_storage_cached_result_ =
-      StorageController::CanAccessStorageArea(frame, storage_type_);
+  can_access_storage_cached_result_ = StorageController::CanAccessStorageArea(
+      DomWindow()->GetFrame(), storage_type_);
   did_check_can_access_storage_ = true;
   return can_access_storage_cached_result_;
 }
 
 void StorageArea::RecordModificationInMetrics() {
   TRACE_EVENT0("blink", "StorageArea::RecordModificationInMetrics");
-  if (!GetFrame() || !GetFrame()->GetPage() ||
-      !GetFrame()->GetPage()->DispatchedPagehideAndStillHidden()) {
+  if (!DomWindow() ||
+      !DomWindow()->GetFrame()->GetPage()->DispatchedPagehideAndStillHidden()) {
     return;
   }
   // The storage modification is done after the pagehide event got dispatched
@@ -205,8 +213,8 @@ void StorageArea::RecordModificationInMetrics() {
   // should track this case to measure how often this is happening, except for
   // when the unload event is currently in progress, which means the page is not
   // actually stored in the back-forward cache and this behavior is ok.
-  if (GetFrame()->GetDocument() &&
-      GetFrame()->GetDocument()->UnloadEventInProgress()) {
+  if (DomWindow()->document() &&
+      DomWindow()->document()->UnloadEventInProgress()) {
     return;
   }
   UMA_HISTOGRAM_ENUMERATION(
@@ -217,10 +225,7 @@ void StorageArea::RecordModificationInMetrics() {
 }
 
 KURL StorageArea::GetPageUrl() const {
-  LocalFrame* frame = GetFrame();
-  if (!frame)
-    return KURL();
-  return GetFrame()->GetDocument()->Url();
+  return DomWindow() ? DomWindow()->Url() : KURL();
 }
 
 bool StorageArea::EnqueueStorageEvent(const String& key,
@@ -229,12 +234,9 @@ bool StorageArea::EnqueueStorageEvent(const String& key,
                                       const String& url) {
   if (!should_enqueue_events_)
     return true;
-  if (!GetExecutionContext())
+  if (!DomWindow())
     return false;
-  LocalFrame* frame = GetFrame();
-  if (!frame)
-    return true;
-  frame->DomWindow()->EnqueueWindowEvent(
+  DomWindow()->EnqueueWindowEvent(
       *StorageEvent::Create(event_type_names::kStorage, key, old_value,
                             new_value, url, this),
       TaskType::kDOMManipulation);
@@ -244,11 +246,29 @@ bool StorageArea::EnqueueStorageEvent(const String& key,
 blink::WebScopedVirtualTimePauser StorageArea::CreateWebScopedVirtualTimePauser(
     const char* name,
     WebScopedVirtualTimePauser::VirtualTaskDuration duration) {
-  LocalFrame* frame = GetFrame();
-  if (!frame)
+  if (!DomWindow())
     return blink::WebScopedVirtualTimePauser();
-  return frame->GetFrameScheduler()->CreateWebScopedVirtualTimePauser(name,
-                                                                      duration);
+  return DomWindow()
+      ->GetFrame()
+      ->GetFrameScheduler()
+      ->CreateWebScopedVirtualTimePauser(name, duration);
+}
+
+LocalDOMWindow* StorageArea::GetDOMWindow() {
+  return DomWindow();
+}
+
+void StorageArea::OnDocumentActivatedForPrerendering() {
+  StorageNamespace* storage_namespace =
+      StorageNamespace::From(DomWindow()->GetFrame()->GetPage());
+  if (!storage_namespace)
+    return;
+
+  // Swap out the session storage state used within prerendering, and replace it
+  // with the normal session storage state. For more details:
+  // https://docs.google.com/document/d/1I5Hr8I20-C1GBr4tAXdm0U8a1RDUKHt4n7WcH4fxiSE/edit?usp=sharing
+  cached_area_ = storage_namespace->GetCachedArea(DomWindow());
+  cached_area_->RegisterSource(this);
 }
 
 }  // namespace blink

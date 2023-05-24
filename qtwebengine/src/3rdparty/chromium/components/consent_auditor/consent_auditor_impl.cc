@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,12 +7,9 @@
 #include <memory>
 #include <utility>
 
-#include "base/values.h"
-#include "components/consent_auditor/pref_names.h"
-#include "components/prefs/pref_registry_simple.h"
-#include "components/prefs/pref_service.h"
-#include "components/prefs/scoped_user_pref_update.h"
 #include "components/sync/model/model_type_sync_bridge.h"
+#include "components/sync/protocol/user_consent_specifics.pb.h"
+#include "components/sync/protocol/user_consent_types.pb.h"
 
 using ArcPlayTermsOfServiceConsent =
     sync_pb::UserConsentTypes::ArcPlayTermsOfServiceConsent;
@@ -22,11 +19,6 @@ using sync_pb::UserConsentSpecifics;
 namespace consent_auditor {
 
 namespace {
-
-const char kLocalConsentDescriptionKey[] = "description";
-const char kLocalConsentConfirmationKey[] = "confirmation";
-const char kLocalConsentVersionKey[] = "version";
-const char kLocalConsentLocaleKey[] = "locale";
 
 std::unique_ptr<sync_pb::UserConsentSpecifics> CreateUserConsentSpecifics(
     const CoreAccountId& account_id,
@@ -45,28 +37,18 @@ std::unique_ptr<sync_pb::UserConsentSpecifics> CreateUserConsentSpecifics(
 }  // namespace
 
 ConsentAuditorImpl::ConsentAuditorImpl(
-    PrefService* pref_service,
     std::unique_ptr<ConsentSyncBridge> consent_sync_bridge,
-    const std::string& app_version,
     const std::string& app_locale,
     base::Clock* clock)
-    : pref_service_(pref_service),
-      consent_sync_bridge_(std::move(consent_sync_bridge)),
-      app_version_(app_version),
+    : consent_sync_bridge_(std::move(consent_sync_bridge)),
       app_locale_(app_locale),
       clock_(clock) {
   DCHECK(consent_sync_bridge_);
-  DCHECK(pref_service_);
 }
 
 ConsentAuditorImpl::~ConsentAuditorImpl() {}
 
 void ConsentAuditorImpl::Shutdown() {}
-
-// static
-void ConsentAuditorImpl::RegisterProfilePrefs(PrefRegistrySimple* registry) {
-  registry->RegisterDictionaryPref(prefs::kLocalConsentsDictionary);
-}
 
 void ConsentAuditorImpl::RecordArcPlayConsent(
     const CoreAccountId& account_id,
@@ -139,24 +121,6 @@ void ConsentAuditorImpl::RecordAccountPasswordsConsent(
   specifics->mutable_account_passwords_consent()->CopyFrom(consent);
 
   consent_sync_bridge_->RecordConsent(std::move(specifics));
-}
-
-void ConsentAuditorImpl::RecordLocalConsent(
-    const std::string& feature,
-    const std::string& description_text,
-    const std::string& confirmation_text) {
-  DictionaryPrefUpdate consents_update(pref_service_,
-                                       prefs::kLocalConsentsDictionary);
-  base::DictionaryValue* consents = consents_update.Get();
-  DCHECK(consents);
-
-  base::DictionaryValue record;
-  record.SetKey(kLocalConsentDescriptionKey, base::Value(description_text));
-  record.SetKey(kLocalConsentConfirmationKey, base::Value(confirmation_text));
-  record.SetKey(kLocalConsentVersionKey, base::Value(app_version_));
-  record.SetKey(kLocalConsentLocaleKey, base::Value(app_locale_));
-
-  consents->SetKey(feature, std::move(record));
 }
 
 base::WeakPtr<syncer::ModelTypeControllerDelegate>

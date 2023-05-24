@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example threads/mandelbrot
-    \title Mandelbrot Example
+    \examplecategory {Data Processing & I/O}
+    \title Mandelbrot
     \ingroup qtconcurrent-mtexamples
 
     \brief The Mandelbrot example demonstrates multi-thread programming
@@ -37,17 +14,17 @@
 
     \image mandelbrot-example.png Screenshot of the Mandelbrot example
 
-    The heavy computation here is the Mandelbrot set, probably the
-    world's most famous fractal. These days, while sophisticated
-    programs such as \l{http://matek.hu/xaos/doku.php}{XaoS} that provide real-time zooming in the
-    Mandelbrot set, the standard Mandelbrot algorithm is just slow
-    enough for our purposes.
+    The heavy computation here is the Mandelbrot set, probably the world's most
+    famous fractal. These days, while sophisticated programs, such as
+    \l{https://xaos-project.github.io/}{XaoS}, provide real-time zooming in
+    the Mandelbrot set, the standard Mandelbrot algorithm is just slow enough
+    for our purposes.
 
     In real life, the approach described here is applicable to a
     large set of problems, including synchronous network I/O and
     database access, where the user interface must remain responsive
     while some heavy operation is taking place. The \l
-    {Blocking Fortune Client Example} shows the same principle at
+    {Blocking Fortune Client} example shows the same principle at
     work in a TCP client.
 
     The Mandelbrot application supports zooming and scrolling using
@@ -170,12 +147,12 @@
     rendering parameters in local variables. As usual, we protect
     accesses to the member variables using the class's mutex. Storing
     the member variables in local variables allows us to minimize the
-    amout of code that needs to be protected by a mutex. This ensures
+    amount of code that needs to be protected by a mutex. This ensures
     that the main thread will never have to block for too long when
     it needs to access \c{RenderThread}'s member variables (e.g., in
     \c render()).
 
-    The \c forever keyword is, like \c foreach, a Qt pseudo-keyword.
+    The \c forever keyword is a Qt pseudo-keyword.
 
     \snippet threads/mandelbrot/renderthread.cpp 4
     \snippet threads/mandelbrot/renderthread.cpp 5
@@ -326,6 +303,11 @@
     to the second power, i.e. 0.8 * 0.8 = 0.64.
 
     \snippet threads/mandelbrot/mandelbrotwidget.cpp 13
+
+    Pinch to zoom has been implemented with QGesture as outlined in
+    \l{Gestures in Widgets and Graphics View}.
+
+    \snippet threads/mandelbrot/mandelbrotwidget.cpp gesture1
 
     When the user presses the left mouse button, we store the mouse
     pointer position in \c lastDragPos.

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -164,6 +164,38 @@ TEST(BufferIteratorTest, Position) {
   EXPECT_EQ(32u, iterator.position());
 
   EXPECT_EQ(sizeof(buffer), iterator.total_size());
+}
+
+TEST(BufferIteratorTest, CopyObject) {
+  TestStruct expected = CreateTestStruct();
+
+  constexpr int kNumCopies = 3;
+  char buffer[sizeof(TestStruct) * kNumCopies];
+  for (int i = 0; i < kNumCopies; i++)
+    memcpy(buffer + i * sizeof(TestStruct), &expected, sizeof(TestStruct));
+
+  BufferIterator<char> iterator(buffer);
+  absl::optional<TestStruct> actual;
+  for (int i = 0; i < kNumCopies; i++) {
+    actual = iterator.CopyObject<TestStruct>();
+    ASSERT_TRUE(actual.has_value());
+    EXPECT_EQ(expected, *actual);
+  }
+  actual = iterator.CopyObject<TestStruct>();
+  EXPECT_FALSE(actual.has_value());
+}
+
+TEST(BufferIteratorTest, SeekWithSizeConfines) {
+  const char buffer[] = "vindicate";
+  BufferIterator<const char> iterator(buffer);
+  iterator.Seek(5);
+  iterator.TruncateTo(3);
+  EXPECT_TRUE(iterator.Span<char>(4).empty());
+
+  std::string result;
+  while (const char* c = iterator.Object<char>())
+    result += *c;
+  EXPECT_EQ(result, "cat");
 }
 
 }  // namespace

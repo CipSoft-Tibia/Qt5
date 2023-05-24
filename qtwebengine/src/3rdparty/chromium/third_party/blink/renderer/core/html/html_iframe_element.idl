@@ -33,7 +33,6 @@
     [PutForwards=value] readonly attribute DOMTokenList sandbox;
     // Note: The seamless attribute was once supported, but was removed.
     [CEReactions, Reflect] attribute boolean allowFullscreen;
-    [RuntimeEnabled=DisallowDocumentAccess, CEReactions, Reflect] attribute boolean disallowDocumentAccess;
     [CEReactions, Reflect] attribute DOMString width;
     [CEReactions, Reflect] attribute DOMString height;
 
@@ -55,7 +54,11 @@
     [RuntimeEnabled=LazyFrameLoading, CEReactions, Reflect, ReflectOnly=("lazy", "eager", "auto"), ReflectMissing="auto", ReflectInvalid="auto"] attribute DOMString loading;
 
     // Trust Tokens request parameters (https://github.com/wicg/trust-token-api)
-    [RuntimeEnabled=TrustTokens, SecureContext, Reflect, MeasureAs=TrustTokenIframe] attribute DOMString trustToken;
+    [RuntimeEnabled=PrivateStateTokens, SecureContext, Reflect, MeasureAs=TrustTokenIframe] attribute DOMString trustToken;
+
+    // Iframes credentialless
+    // https://github.com/WICG/anonymous-iframe
+    [CEReactions, Reflect, RuntimeEnabled=AnonymousIframe] attribute boolean credentialless;
 
     // obsolete members
     // https://html.spec.whatwg.org/C/#HTMLIFrameElement-partial

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKTEXTINPUT_P_P_H
 #define QQUICKTEXTINPUT_P_P_H
@@ -136,7 +100,7 @@ public:
         , cursorVisible(false)
         , cursorPending(false)
         , autoScroll(true)
-        , selectByMouse(false)
+        , selectByMouse(true)
         , canPaste(false)
         , canPasteValid(false)
         , canUndo(false)
@@ -160,6 +124,9 @@ public:
         , inLayout(false)
         , requireImplicitWidth(false)
         , overwriteMode(false)
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+        , selectByTouchDrag(false)
+#endif
     {
     }
 
@@ -169,7 +136,7 @@ public:
         // password data to stay in the process memory, therefore we need
         // to zero it out
         if (m_echoMode != QQuickTextInput::Normal)
-            m_text.fill(0);
+            m_text.fill(u'\0');
     }
 
     void init();
@@ -309,6 +276,9 @@ public:
     bool inLayout:1;
     bool requireImplicitWidth:1;
     bool overwriteMode:1;
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    bool selectByTouchDrag:1;
+#endif
 
     static inline QQuickTextInputPrivate *get(QQuickTextInput *t) {
         return t->d_func();
@@ -345,7 +315,7 @@ public:
 #endif
     }
 
-    bool allSelected() const { return !m_text.isEmpty() && m_selstart == 0 && m_selend == (int)m_text.length(); }
+    bool allSelected() const { return !m_text.isEmpty() && m_selstart == 0 && m_selend == (int)m_text.size(); }
     bool hasSelectedText() const { return !m_text.isEmpty() && m_selend > m_selstart; }
 
     void setSelection(int start, int length);
@@ -372,7 +342,7 @@ public:
     }
 
     int start() const { return 0; }
-    int end() const { return m_text.length(); }
+    int end() const { return m_text.size(); }
 
     QString realText() const;
 
@@ -409,18 +379,18 @@ public:
     void cursorWordBackward(bool mark) { moveCursor(m_textLayout.previousCursorPosition(m_cursor, QTextLayout::SkipWords), mark); }
 
     void home(bool mark) { moveCursor(0, mark); }
-    void end(bool mark) { moveCursor(q_func()->text().length(), mark); }
+    void end(bool mark) { moveCursor(q_func()->text().size(), mark); }
 
     void backspace();
     void del();
     void deselect() { internalDeselect(); finishChange(); }
-    void selectAll() { m_selstart = m_selend = m_cursor = 0; moveCursor(m_text.length(), true); }
+    void selectAll() { m_selstart = m_selend = m_cursor = 0; moveCursor(m_text.size(), true); }
 
     void insert(const QString &);
     void clear();
     void selectWordAtPos(int);
 
-    void setCursorPosition(int pos) { if (pos <= m_text.length()) moveCursor(qMax(0, pos)); }
+    void setCursorPosition(int pos) { if (pos <= m_text.size()) moveCursor(qMax(0, pos)); }
 
     bool fixup();
 
@@ -466,6 +436,7 @@ public:
     void updateLayout();
     void updateBaselineOffset();
 
+    qreal calculateImplicitWidthForText(const QString &text) const;
     qreal getImplicitWidth() const override;
 
     inline qreal padding() const { return extra.isAllocated() ? extra->padding : 0.0; }

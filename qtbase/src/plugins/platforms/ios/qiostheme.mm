@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qiostheme.h"
 
@@ -46,7 +10,7 @@
 #include <QtGui/QFont>
 #include <QtGui/private/qcoregraphics_p.h>
 
-#include <QtFontDatabaseSupport/private/qcoretextfontdatabase_p.h>
+#include <QtGui/private/qcoretextfontdatabase_p.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <qpa/qplatformintegration.h>
 
@@ -57,6 +21,9 @@
 #include "qiosmenu.h"
 #include "qiosfiledialog.h"
 #include "qiosmessagedialog.h"
+#include "qioscolordialog.h"
+#include "qiosfontdialog.h"
+#include "qiosscreen.h"
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -66,11 +33,16 @@ const char *QIOSTheme::name = "ios";
 QIOSTheme::QIOSTheme()
 {
     initializeSystemPalette();
+
+    m_contentSizeCategoryObserver = QMacNotificationObserver(nil,
+        UIContentSizeCategoryDidChangeNotification, [] {
+        qCDebug(lcQpaFonts) << "Contents size category changed to" << UIApplication.sharedApplication.preferredContentSizeCategory;
+        QPlatformFontDatabase::repopulateFontDatabase();
+    });
 }
 
 QIOSTheme::~QIOSTheme()
 {
-    qDeleteAll(m_fonts);
 }
 
 QPalette QIOSTheme::s_systemPalette;
@@ -80,28 +52,26 @@ void QIOSTheme::initializeSystemPalette()
     Q_DECL_IMPORT QPalette qt_fusionPalette(void);
     s_systemPalette = qt_fusionPalette();
 
-    if (@available(ios 13.0, *)) {
-        s_systemPalette.setBrush(QPalette::Window, qt_mac_toQBrush(UIColor.systemGroupedBackgroundColor.CGColor));
-        s_systemPalette.setBrush(QPalette::Active, QPalette::WindowText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Window, qt_mac_toQBrush(UIColor.systemGroupedBackgroundColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Active, QPalette::WindowText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
 
-        s_systemPalette.setBrush(QPalette::Base, qt_mac_toQBrush(UIColor.secondarySystemGroupedBackgroundColor.CGColor));
-        s_systemPalette.setBrush(QPalette::Active, QPalette::Text, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Base, qt_mac_toQBrush(UIColor.secondarySystemGroupedBackgroundColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Active, QPalette::Text, qt_mac_toQBrush(UIColor.labelColor.CGColor));
 
-        s_systemPalette.setBrush(QPalette::Button, qt_mac_toQBrush(UIColor.secondarySystemBackgroundColor.CGColor));
-        s_systemPalette.setBrush(QPalette::Active, QPalette::ButtonText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Button, qt_mac_toQBrush(UIColor.secondarySystemBackgroundColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Active, QPalette::ButtonText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
 
-        s_systemPalette.setBrush(QPalette::Active, QPalette::BrightText, qt_mac_toQBrush(UIColor.lightTextColor.CGColor));
-        s_systemPalette.setBrush(QPalette::Active, QPalette::PlaceholderText, qt_mac_toQBrush(UIColor.placeholderTextColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Active, QPalette::BrightText, qt_mac_toQBrush(UIColor.lightTextColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Active, QPalette::PlaceholderText, qt_mac_toQBrush(UIColor.placeholderTextColor.CGColor));
 
-        s_systemPalette.setBrush(QPalette::Active, QPalette::Link, qt_mac_toQBrush(UIColor.linkColor.CGColor));
-        s_systemPalette.setBrush(QPalette::Active, QPalette::LinkVisited, qt_mac_toQBrush(UIColor.linkColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Active, QPalette::Link, qt_mac_toQBrush(UIColor.linkColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Active, QPalette::LinkVisited, qt_mac_toQBrush(UIColor.linkColor.CGColor));
 
-        s_systemPalette.setBrush(QPalette::Highlight, QColor(11, 70, 150, 60));
-        s_systemPalette.setBrush(QPalette::HighlightedText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
-    } else {
-        s_systemPalette.setBrush(QPalette::Highlight, QColor(204, 221, 237));
-        s_systemPalette.setBrush(QPalette::HighlightedText, Qt::black);
-    }
+    s_systemPalette.setBrush(QPalette::Highlight, QColor(11, 70, 150, 60));
+    s_systemPalette.setBrush(QPalette::HighlightedText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+
+    if (@available(ios 15.0, *))
+        s_systemPalette.setBrush(QPalette::Accent, qt_mac_toQBrush(UIColor.tintColor.CGColor));
 }
 
 const QPalette *QIOSTheme::palette(QPlatformTheme::Palette type) const
@@ -134,6 +104,8 @@ bool QIOSTheme::usePlatformNativeDialog(QPlatformTheme::DialogType type) const
     switch (type) {
     case FileDialog:
     case MessageDialog:
+    case ColorDialog:
+    case FontDialog:
         return !qt_apple_isApplicationExtension();
     default:
         return false;
@@ -150,6 +122,12 @@ QPlatformDialogHelper *QIOSTheme::createPlatformDialogHelper(QPlatformTheme::Dia
     case MessageDialog:
         return new QIOSMessageDialog();
         break;
+    case ColorDialog:
+        return new QIOSColorDialog();
+        break;
+    case FontDialog:
+        return new QIOSFontDialog();
+        break;
 #endif
     default:
         return 0;
@@ -160,7 +138,7 @@ QVariant QIOSTheme::themeHint(ThemeHint hint) const
 {
     switch (hint) {
     case QPlatformTheme::StyleNames:
-        return QStringList(QStringLiteral("fusion"));
+        return QStringList(QStringLiteral("Fusion"));
     case KeyboardScheme:
         return QVariant(int(MacKeyboardScheme));
     default:
@@ -168,14 +146,29 @@ QVariant QIOSTheme::themeHint(ThemeHint hint) const
     }
 }
 
-const QFont *QIOSTheme::font(Font type) const
+Qt::ColorScheme QIOSTheme::colorScheme() const
 {
-    if (m_fonts.isEmpty()) {
-        QCoreTextFontDatabase *ctfd = static_cast<QCoreTextFontDatabase *>(QGuiApplicationPrivate::platformIntegration()->fontDatabase());
-        m_fonts = ctfd->themeFonts();
+    // Set the appearance based on the QUIWindow
+    // Fallback to the UIScreen if no window is created yet
+    UIUserInterfaceStyle appearance = UIScreen.mainScreen.traitCollection.userInterfaceStyle;
+    NSArray<UIWindow *> *windows = qt_apple_sharedApplication().windows;
+    for (UIWindow *window in windows) {
+        if ([window isKindOfClass:[QUIWindow class]]) {
+            appearance = static_cast<QUIWindow*>(window).traitCollection.userInterfaceStyle;
+            break;
+        }
     }
 
-    return m_fonts.value(type, 0);
+    return appearance == UIUserInterfaceStyleDark
+                       ? Qt::ColorScheme::Dark
+                       : Qt::ColorScheme::Light;
+}
+
+const QFont *QIOSTheme::font(Font type) const
+{
+    const auto *platformIntegration = QGuiApplicationPrivate::platformIntegration();
+    const auto *coreTextFontDatabase = static_cast<QCoreTextFontDatabase *>(platformIntegration->fontDatabase());
+    return coreTextFontDatabase->themeFont(type);
 }
 
 QT_END_NAMESPACE

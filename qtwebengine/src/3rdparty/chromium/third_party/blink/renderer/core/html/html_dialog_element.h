@@ -26,6 +26,8 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_HTML_HTML_DIALOG_ELEMENT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_HTML_HTML_DIALOG_ELEMENT_H_
 
+#include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/html/closewatcher/close_watcher.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/platform/geometry/layout_unit.h"
 
@@ -33,47 +35,55 @@ namespace blink {
 
 class Document;
 class ExceptionState;
-class QualifiedName;
 
-class HTMLDialogElement final : public HTMLElement {
+class CORE_EXPORT HTMLDialogElement final : public HTMLElement {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
   explicit HTMLDialogElement(Document&);
 
+  void Trace(Visitor*) const override;
+
   void close(const String& return_value = String());
-  void show();
+  void show(ExceptionState&);
   void showModal(ExceptionState&);
   void RemovedFrom(ContainerNode&) override;
 
-  // NotCentered means do not center the dialog. Centered means the dialog has
-  // been centered and centeredPosition() is set. NeedsCentering means attempt
-  // to center on the next layout, then set to Centered or NotCentered.
-  enum CenteringMode { kNotCentered, kCentered, kNeedsCentering };
-  CenteringMode GetCenteringMode() const { return centering_mode_; }
-  LayoutUnit CenteredPosition() const {
-    DCHECK_EQ(centering_mode_, kCentered);
-    return centered_position_;
-  }
-  void SetCentered(LayoutUnit centered_position);
-  void SetNotCentered();
+  bool IsModal() const { return is_modal_; }
 
   String returnValue() const { return return_value_; }
   void setReturnValue(const String& return_value) {
     return_value_ = return_value;
   }
 
+  void CloseWatcherFiredCancel(Event*);
+  void CloseWatcherFiredClose();
+
+  bool IsMouseFocusable() const override {
+    return isConnected() && IsFocusableStyleAfterUpdate();
+  }
+
  private:
-  bool IsPresentationAttribute(const QualifiedName&) const override;
   void DefaultEventHandler(Event&) override;
 
-  void ForceLayoutForCentering();
-
+  void SetIsModal(bool is_modal);
   void ScheduleCloseEvent();
 
-  CenteringMode centering_mode_;
-  LayoutUnit centered_position_;
+  // https://html.spec.whatwg.org/C/#the-dialog-element
+  // Chooses the focused element when show() or showModal() is invoked.
+  void SetFocusForDialog();
+
+  // This is the old dialog initial focus behavior which is currently being
+  // replaced by SetFocusForDialog.
+  // TODO(http://crbug.com/383230): Remove this when DialogNewFocusBehavior gets
+  // to stable with no issues.
+  static void SetFocusForDialogLegacy(HTMLDialogElement* dialog);
+
+  bool is_modal_;
   String return_value_;
+  WeakMember<Element> previously_focused_element_;
+
+  Member<CloseWatcher> close_watcher_;
 };
 
 }  // namespace blink

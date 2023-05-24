@@ -42,8 +42,8 @@ class RtpPacketizerTest : public testing::Test {
                              milliseconds new_playout_delay,
                              int payload_size) const {
     EncodedFrame frame;
-    frame.dependency = is_key_frame ? EncodedFrame::KEY_FRAME
-                                    : EncodedFrame::DEPENDS_ON_ANOTHER;
+    frame.dependency = is_key_frame ? EncodedFrame::Dependency::kKeyFrame
+                                    : EncodedFrame::Dependency::kDependent;
     frame.frame_id = frame_id;
     frame.referenced_frame_id = is_key_frame ? frame_id : (frame_id - 1);
     frame.rtp_timestamp = RtpTimeTicks() + RtpTimeDelta::FromTicks(987);
@@ -54,7 +54,7 @@ class RtpPacketizerTest : public testing::Test {
     for (int i = 0; i < payload_size; ++i) {
       buffer[i] = static_cast<uint8_t>(i);
     }
-    frame.data = absl::Span<uint8_t>(buffer.get(), payload_size);
+    frame.data = ByteView(buffer.get(), payload_size);
 
     return crypto_.Encrypt(frame);
   }
@@ -86,7 +86,7 @@ class RtpPacketizerTest : public testing::Test {
     // Check that RTP header fields match expected values.
     EXPECT_EQ(kPayloadType, result->payload_type);
     EXPECT_EQ(frame.rtp_timestamp, result->rtp_timestamp);
-    EXPECT_EQ(frame.dependency == EncodedFrame::KEY_FRAME,
+    EXPECT_EQ(frame.dependency == EncodedFrame::Dependency::kKeyFrame,
               result->is_key_frame);
     EXPECT_EQ(frame.frame_id, result->frame_id);
     EXPECT_EQ(packet_id, result->packet_id);

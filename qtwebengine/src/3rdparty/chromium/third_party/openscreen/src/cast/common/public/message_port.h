@@ -20,17 +20,30 @@ class MessagePort {
  public:
   class Client {
    public:
-    virtual void OnMessage(const std::string& source_sender_id,
+    // Called whenever a message arrives on the message port.
+    virtual void OnMessage(const std::string& source_id,
                            const std::string& message_namespace,
                            const std::string& message) = 0;
+
+    // Called whenever an error occurs on the message port.
     virtual void OnError(Error error) = 0;
+
+    // Clients should expose a unique identifier used as the "source" of
+    // all messages sent on this message port.
+    virtual const std::string& source_id() = 0;
+
+   protected:
+    virtual ~Client() = default;
   };
 
   virtual ~MessagePort() = default;
-  virtual void SetClient(Client* client, std::string client_sender_id) = 0;
+
+  // Set or reset the `MessagePort::Client` for this instance.
+  virtual void SetClient(Client& client) = 0;
   virtual void ResetClient() = 0;
 
-  virtual void PostMessage(const std::string& destination_sender_id,
+  // Sends a message to a given `destination_id`.
+  virtual void PostMessage(const std::string& destination_id,
                            const std::string& message_namespace,
                            const std::string& message) = 0;
 };

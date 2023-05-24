@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,9 +11,10 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ref.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
@@ -55,11 +56,11 @@ class PageClearCriteria {
     // If the cached pages exceed the storage limit, we need to clear more than
     // just expired pages to make the storage usage below the threshold.
     const bool quota_based_clearing =
-        stats_.temporary_archives_size >=
-        (stats_.temporary_archives_size + stats_.internal_free_disk_space) *
+        stats_->temporary_archives_size >=
+        (stats_->temporary_archives_size + stats_->internal_free_disk_space) *
             kOfflinePageStorageLimit;
     const int64_t max_allowed_size =
-        (stats_.temporary_archives_size + stats_.internal_free_disk_space) *
+        (stats_->temporary_archives_size + stats_->internal_free_disk_space) *
         kOfflinePageStorageClearThreshold;
 
     // If the page is expired, put it in the list to delete later.
@@ -92,7 +93,7 @@ class PageClearCriteria {
 
  private:
   base::Time start_time_;
-  const ArchiveManager::StorageStats& stats_;
+  const raw_ref<const ArchiveManager::StorageStats> stats_;
 
   int64_t remaining_size_ = 0;
   std::map<std::string, size_t> namespace_page_count_;
@@ -134,8 +135,7 @@ std::pair<size_t, DeletePageResult> ClearPagesSync(
         base::TimeDelta time_since_creation = start_time - page.creation_time;
         UMA_HISTOGRAM_CUSTOM_COUNTS(
             "OfflinePages.ClearTemporaryPages.TimeSinceCreation",
-            time_since_creation.InMinutes(), 1,
-            base::TimeDelta::FromDays(30).InMinutes(), 50);
+            time_since_creation.InMinutes(), 1, base::Days(30).InMinutes(), 50);
       }
     }
   }

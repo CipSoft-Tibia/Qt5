@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebChannel module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QMETAOBJECTPUBLISHER_P_H
 #define QMETAOBJECTPUBLISHER_P_H
@@ -51,19 +15,19 @@
 // We mean it.
 //
 
-#include "variantargument_p.h"
+#include "qwebchannelglobal.h"
 #include "signalhandler_p.h"
 
 #include <QStringList>
 #include <QMetaObject>
 #include <QBasicTimer>
 #include <QPointer>
+#include <QProperty>
 #include <QJsonObject>
 #include <QQueue>
+#include <QSet>
 
 #include <unordered_map>
-
-#include "qwebchannelglobal.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -87,11 +51,29 @@ enum MessageType {
     TYPES_LAST_VALUE = 10
 };
 
+class QMetaObjectPublisher;
 class QWebChannel;
 class QWebChannelAbstractTransport;
+
+struct QWebChannelPropertyChangeNotifier : QPropertyObserver
+{
+    QWebChannelPropertyChangeNotifier(QMetaObjectPublisher *publisher, const QObject *object, int propertyIndex)
+        : QPropertyObserver(&QWebChannelPropertyChangeNotifier::notify),
+          publisher(publisher), object(object), propertyIndex(propertyIndex)
+    {
+    }
+
+    QMetaObjectPublisher *publisher = nullptr;
+    const QObject *object = nullptr;
+    int propertyIndex = 0;
+    static void notify(QPropertyObserver *, QUntypedPropertyData *);
+};
+
 class Q_WEBCHANNEL_EXPORT QMetaObjectPublisher : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(int propertyUpdateIntervalTime READ propertyUpdateInterval WRITE
+                       setPropertyUpdateInterval)
 public:
     explicit QMetaObjectPublisher(QWebChannel *webChannel);
     virtual ~QMetaObjectPublisher();
@@ -156,7 +138,7 @@ public:
      * When receiving a notify signal, it will store the information in pendingPropertyUpdates which
      * gets send via a Qt.propertyUpdate message to the server when the grouping timer timeouts.
      */
-    void initializePropertyUpdates(const QObject *const object, const QJsonObject &objectInfo);
+    void initializePropertyUpdates(QObject *const object, const QJsonObject &objectInfo);
 
     /**
      * Send the clients the new property values since the last time this function was invoked.
@@ -168,6 +150,12 @@ public:
      * @sa timer, initializePropertyUpdates
      */
     void sendPendingPropertyUpdates();
+
+    /**
+     * Helper function for the invokeMehtods below
+     */
+    QVariant invokeMethod_helper(QObject *const object, const QMetaMethod &method,
+                                 const QJsonArray &args);
 
     /**
      * Invoke the @p method on @p object with the arguments @p args.
@@ -206,6 +194,17 @@ public:
     void signalEmitted(const QObject *object, const int signalIndex, const QVariantList &arguments);
 
     /**
+     * Callback for bindable property value changes which forwards the change to the webchannel clients.
+     */
+    void propertyValueChanged(const QObject *object, const int propertyIndex);
+
+    /**
+     * Called after a property has been updated. Starts the update timer if
+     * the client is idle and updates are not blocked.
+     */
+    void startPropertyUpdateTimer(bool forceRestart = false);
+
+    /**
      * Callback for registered or wrapped objects which erases all data related to @p object.
      *
      * @sa signalEmitted
@@ -213,6 +212,9 @@ public:
     void objectDestroyed(const QObject *object);
 
     QObject *unwrapObject(const QString &objectId) const;
+    QVariant unwrapMap(QVariantMap map) const;
+    QVariant unwrapList(QVariantList list) const;
+    QVariant unwrapVariant(const QVariant &value) const;
 
     QVariant toVariant(const QJsonValue &value, int targetType) const;
 
@@ -272,9 +274,23 @@ public:
     void deleteWrappedObject(QObject *object) const;
 
     /**
+     * The property update interval in milliseconds.
+     *
+     * This interval can be changed to a different interval in milliseconds by
+     * setting it to a positive value. Property updates are batched and sent out
+     * after the interval expires. If set to zero, the updates occurring within a
+     * single event loop run are batched and sent out on the next run.
+     * If negative, updates will be sent immediately.
+     * Default value is 50 milliseconds.
+     */
+    int propertyUpdateInterval();
+    void setPropertyUpdateInterval(int ms);
+
+    /**
      * When updates are blocked, no property updates are transmitted to remote clients.
      */
     void setBlockUpdates(bool block);
+    bool blockUpdates() const;
 
 Q_SIGNALS:
     void blockUpdatesChanged(bool block);
@@ -289,6 +305,8 @@ protected:
     void timerEvent(QTimerEvent *) override;
 
 private:
+    void onBlockUpdatesChanged();
+
     friend class QQmlWebChannelPrivate;
     friend class QWebChannel;
     friend class TestWebChannel;
@@ -308,13 +326,20 @@ private:
     QHash<QWebChannelAbstractTransport *, TransportState> transportState;
 
     // true when no property updates should be sent, false otherwise
-    bool blockUpdates;
+    Q_OBJECT_BINDABLE_PROPERTY(QMetaObjectPublisher, bool, blockUpdatesStatus);
 
+    QPropertyChangeHandler<std::function<void()>> blockUpdatesHandler;
     // true when at least one client was initialized and thus
     // the property updates have been initialized and the
     // object info map set.
     bool propertyUpdatesInitialized;
 
+    // The update interval in ms when more than zero.
+    // Update in next event loop when zero.
+    // Update immediately when less than zero.
+    Q_OBJECT_BINDABLE_PROPERTY(QMetaObjectPublisher, int, propertyUpdateIntervalTime);
+
+    QPropertyChangeHandler<std::function<void()>> propertyUpdateIntervalHandler;
     // Map of registered objects indexed by their id.
     QHash<QString, QObject *> registeredObjects;
 
@@ -329,7 +354,7 @@ private:
             : object(o), isBeingWrapped(false)
         {}
         QObject *object;
-        QVector<QWebChannelAbstractTransport*> transports;
+        QList<QWebChannelAbstractTransport *> transports;
         bool isBeingWrapped;
     };
 
@@ -343,10 +368,32 @@ private:
     typedef QHash<int, QSet<int> > SignalToPropertyNameMap;
     QHash<const QObject *, SignalToPropertyNameMap> signalToPropertyMap;
 
+    // Keeps property observers alive for as long as we track an object
+    std::unordered_multimap<const QObject*, QWebChannelPropertyChangeNotifier> propertyObservers;
+
     // Objects that changed their properties and are waiting for idle client.
-    // map of object name to map of signal index to arguments
     typedef QHash<int, QVariantList> SignalToArgumentsMap;
-    typedef QHash<const QObject *, SignalToArgumentsMap> PendingPropertyUpdates;
+
+    // A set of plain property index (for bindable properties) and a map of
+    // signal index to arguments (for property updates from a notify signal).
+    // NOTIFY signals and their arguments are first collected and then mapped to
+    // the corresponding property in sendPendingPropertyUpdates()
+    struct PropertyUpdate
+    {
+    public:
+        SignalToArgumentsMap signalMap;
+        QSet<int> plainProperties;
+
+        /**
+         * Given a SignalToPropertyNameMap, returns the set of all property
+         * indices of properties that were changed in this PropertyUpdate.
+         */
+        QSet<int> propertyIndices(const SignalToPropertyNameMap &map) const;
+    };
+
+    // map of object to either a property index for plain bindable properties
+    // or a to map of signal index to arguments
+    typedef QHash<const QObject *, PropertyUpdate> PendingPropertyUpdates;
     PendingPropertyUpdates pendingPropertyUpdates;
 
     // Aggregate property updates since we get multiple Qt.idle message when we have multiple
@@ -354,6 +401,14 @@ private:
     // prevent message flooding.
     QBasicTimer timer;
 };
+
+inline QSet<int> QMetaObjectPublisher::PropertyUpdate::propertyIndices(const SignalToPropertyNameMap &map) const {
+    auto indexes = plainProperties;
+    for (auto it = signalMap.cbegin(); it != signalMap.cend(); ++it) {
+        indexes += map.value(it.key());
+    }
+    return indexes;
+}
 
 QT_END_NAMESPACE
 

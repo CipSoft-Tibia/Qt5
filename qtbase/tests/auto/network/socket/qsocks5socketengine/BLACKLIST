@@ -1,7 +1,9 @@
 [udpTest]
 *
 [passwordAuth]
-ubuntu-18.04
+ubuntu
+# QTBUG-101274
+qnx ci
 # QTBUG-74162
 [passwordAuth2]
 ubuntu
@@ -9,6 +11,3 @@ ubuntu
 windows-10 msvc-2015
 windows-7sp1
 
-# QTBUG-96345
-[simpleConnectToIMAP]
-ubuntu

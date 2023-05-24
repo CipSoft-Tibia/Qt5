@@ -1,12 +1,20 @@
 import { Fixture } from '../../common/framework/fixture.js';
-import { assert } from '../../common/framework/util/util.js';
+import { getGPU } from '../../common/util/navigator_gpu.js';
+import { assert } from '../../common/util/util.js';
 
 interface UnknownObject {
   [k: string]: unknown;
 }
 
+/**
+ * Base fixture for testing the exposed interface is correct (without actually using WebGPU).
+ */
 export class IDLTest extends Fixture {
-  // TODO: add a helper to check prototype chains
+  init(): Promise<void> {
+    // Ensure the GPU provider is initialized
+    getGPU();
+    return Promise.resolve();
+  }
 
   /**
    * Asserts that a member of an IDL interface has the expected value.
@@ -19,8 +27,8 @@ export class IDLTest extends Fixture {
   /**
    * Asserts that an IDL interface has the same number of keys as the
    *
-   * TODO: add a way to check for the types of keys with unknown values, like methods and attributes
-   * TODO: handle extensions
+   * MAINTENANCE_TODO: add a way to check for the types of keys with unknown values, like methods and attributes
+   * MAINTENANCE_TODO: handle extensions
    */
   assertMemberCount(act: UnknownObject, exp: UnknownObject) {
     const expKeys = Object.keys(exp);

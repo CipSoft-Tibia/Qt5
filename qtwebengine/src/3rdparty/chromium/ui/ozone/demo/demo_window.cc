@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,8 @@
 
 #include <utility>
 
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/logging.h"
+#include "build/build_config.h"
 #include "ui/events/event.h"
 #include "ui/events/keycodes/dom/dom_code.h"
 #include "ui/ozone/demo/renderer.h"
@@ -16,7 +17,7 @@
 #include "ui/platform_window/platform_window.h"
 #include "ui/platform_window/platform_window_init_properties.h"
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
 #include "ui/platform_window/fuchsia/initialize_presenter_api_view.h"
 #endif
 
@@ -29,7 +30,7 @@ DemoWindow::DemoWindow(WindowManager* window_manager,
   PlatformWindowInitProperties properties;
   properties.bounds = bounds;
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
   // When using Scenic Ozone platform we need to supply a view_token to the
   // window. This is not necessary when using the headless ozone platform.
   if (ui::OzonePlatform::GetInstance()
@@ -54,7 +55,7 @@ gfx::AcceleratedWidget DemoWindow::GetAcceleratedWidget() {
 }
 
 gfx::Size DemoWindow::GetSize() {
-  return platform_window_->GetBounds().size();
+  return platform_window_->GetBoundsInPixels().size();
 }
 
 void DemoWindow::Start() {
@@ -65,7 +66,7 @@ void DemoWindow::Quit() {
   window_manager_->Quit();
 }
 
-void DemoWindow::OnBoundsChanged(const gfx::Rect& new_bounds) {
+void DemoWindow::OnBoundsChanged(const BoundsChange& change) {
   StartRendererIfNecessary();
 }
 
@@ -84,7 +85,8 @@ void DemoWindow::OnCloseRequest() {
 
 void DemoWindow::OnClosed() {}
 
-void DemoWindow::OnWindowStateChanged(PlatformWindowState new_state) {}
+void DemoWindow::OnWindowStateChanged(PlatformWindowState old_state,
+                                      PlatformWindowState new_state) {}
 
 void DemoWindow::OnLostCapture() {}
 

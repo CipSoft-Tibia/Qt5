@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,30 +7,31 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/user_metrics.h"
 #include "base/no_destructor.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/time/time.h"
 #include "components/browsing_data/core/counters/autofill_counter.h"
 #include "components/browsing_data/core/counters/history_counter.h"
 #include "components/browsing_data/core/counters/passwords_counter.h"
 #include "components/browsing_data/core/pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/strings/grit/components_strings.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/l10n/l10n_util.h"
 
 namespace browsing_data {
 
 // Creates a string like "for a.com, b.com, and 4 more".
-base::string16 CreateDomainExamples(
+std::u16string CreateDomainExamples(
     int password_count,
     const std::vector<std::string> domain_examples) {
   DCHECK_GE(password_count,
             base::checked_cast<browsing_data::BrowsingDataCounter::ResultInt>(
                 domain_examples.size()));
   DCHECK_EQ(domain_examples.empty(), password_count == 0);
-  std::vector<base::string16> replacements;
+  std::vector<std::u16string> replacements;
 
   replacements.emplace_back(base::UTF8ToUTF16(domain_examples[0]));
   if (domain_examples.size() > 1) {
@@ -40,7 +41,7 @@ base::string16 CreateDomainExamples(
     replacements.emplace_back(l10n_util::GetPluralStringFUTF16(
         IDS_DEL_PASSWORDS_COUNTER_AND_X_MORE, password_count - 2));
   }
-  base::string16 domains_list = base::ReplaceStringPlaceholders(
+  std::u16string domains_list = base::ReplaceStringPlaceholders(
       l10n_util::GetPluralStringFUTF16(IDS_DEL_PASSWORDS_DOMAINS_DISPLAY,
                                        (domain_examples.size() > 1)
                                            ? password_count
@@ -53,17 +54,20 @@ base::Time CalculateBeginDeleteTime(TimePeriod time_period) {
   base::TimeDelta diff;
   base::Time delete_begin_time = base::Time::Now();
   switch (time_period) {
+    case TimePeriod::LAST_15_MINUTES:
+      diff = base::Minutes(15);
+      break;
     case TimePeriod::LAST_HOUR:
-      diff = base::TimeDelta::FromHours(1);
+      diff = base::Hours(1);
       break;
     case TimePeriod::LAST_DAY:
-      diff = base::TimeDelta::FromHours(24);
+      diff = base::Hours(24);
       break;
     case TimePeriod::LAST_WEEK:
-      diff = base::TimeDelta::FromHours(7 * 24);
+      diff = base::Hours(7 * 24);
       break;
     case TimePeriod::FOUR_WEEKS:
-      diff = base::TimeDelta::FromHours(4 * 7 * 24);
+      diff = base::Hours(4 * 7 * 24);
       break;
     case TimePeriod::ALL_TIME:
     case TimePeriod::OLDER_THAN_30_DAYS:
@@ -75,13 +79,17 @@ base::Time CalculateBeginDeleteTime(TimePeriod time_period) {
 
 base::Time CalculateEndDeleteTime(TimePeriod time_period) {
   if (time_period == TimePeriod::OLDER_THAN_30_DAYS) {
-    return base::Time::Now() - base::TimeDelta::FromDays(30);
+    return base::Time::Now() - base::Days(30);
   }
   return base::Time::Max();
 }
 
 void RecordDeletionForPeriod(TimePeriod period) {
   switch (period) {
+    case TimePeriod::LAST_15_MINUTES:
+      base::RecordAction(
+          base::UserMetricsAction("ClearBrowsingData_Last15Minutes"));
+      break;
     case TimePeriod::LAST_HOUR:
       base::RecordAction(base::UserMetricsAction("ClearBrowsingData_LastHour"));
       break;
@@ -108,6 +116,10 @@ void RecordDeletionForPeriod(TimePeriod period) {
 
 void RecordTimePeriodChange(TimePeriod period) {
   switch (period) {
+    case TimePeriod::LAST_15_MINUTES:
+      base::RecordAction(base::UserMetricsAction(
+          "ClearBrowsingData_TimePeriodChanged_Last15Minutes"));
+      break;
     case TimePeriod::LAST_HOUR:
       base::RecordAction(base::UserMetricsAction(
           "ClearBrowsingData_TimePeriodChanged_LastHour"));
@@ -135,7 +147,7 @@ void RecordTimePeriodChange(TimePeriod period) {
   }
 }
 
-base::string16 GetCounterTextFromResult(
+std::u16string GetCounterTextFromResult(
     const BrowsingDataCounter::Result* result) {
   std::string pref_name = result->source()->GetPrefName();
 
@@ -148,7 +160,7 @@ base::string16 GetCounterTextFromResult(
     const PasswordsCounter::PasswordsResult* password_result =
         static_cast<const PasswordsCounter::PasswordsResult*>(result);
 
-    std::vector<base::string16> parts;
+    std::vector<std::u16string> parts;
     BrowsingDataCounter::ResultInt profile_passwords = password_result->Value();
 
     if (profile_passwords) {
@@ -230,7 +242,7 @@ base::string16 GetCounterTextFromResult(
         autofill_result->num_credit_cards();
     AutofillCounter::ResultInt num_addresses = autofill_result->num_addresses();
 
-    std::vector<base::string16> displayed_strings;
+    std::vector<std::u16string> displayed_strings;
 
     if (num_credit_cards) {
       displayed_strings.push_back(l10n_util::GetPluralStringFUTF16(
@@ -267,32 +279,28 @@ base::string16 GetCounterTextFromResult(
     switch (displayed_strings.size()) {
       case 0:
         return l10n_util::GetStringUTF16(IDS_DEL_AUTOFILL_COUNTER_EMPTY);
-        break;
       case 1:
         return synced ? l10n_util::GetStringFUTF16(
                             IDS_DEL_AUTOFILL_COUNTER_ONE_TYPE_SYNCED,
                             displayed_strings[0])
                       : displayed_strings[0];
-        break;
       case 2:
         return l10n_util::GetStringFUTF16(
             synced ? IDS_DEL_AUTOFILL_COUNTER_TWO_TYPES_SYNCED
                    : IDS_DEL_AUTOFILL_COUNTER_TWO_TYPES,
             displayed_strings[0], displayed_strings[1]);
-        break;
       case 3:
         return l10n_util::GetStringFUTF16(
             synced ? IDS_DEL_AUTOFILL_COUNTER_THREE_TYPES_SYNCED
                    : IDS_DEL_AUTOFILL_COUNTER_THREE_TYPES,
             displayed_strings[0], displayed_strings[1], displayed_strings[2]);
-        break;
       default:
         NOTREACHED();
     }
   }
 
   NOTREACHED();
-  return base::string16();
+  return std::u16string();
 }
 
 const char* GetTimePeriodPreferenceName(
@@ -367,7 +375,7 @@ bool GetDeletionPreferenceFromDataType(
   return false;
 }
 
-BrowsingDataType GetDataTypeFromDeletionPreference(
+absl::optional<BrowsingDataType> GetDataTypeFromDeletionPreference(
     const std::string& pref_name) {
   using DataTypeMap = base::flat_map<std::string, BrowsingDataType>;
   static base::NoDestructor<DataTypeMap> preference_to_datatype(
@@ -386,8 +394,23 @@ BrowsingDataType GetDataTypeFromDeletionPreference(
       });
 
   auto iter = preference_to_datatype->find(pref_name);
-  DCHECK(iter != preference_to_datatype->end());
-  return iter->second;
+  if (iter != preference_to_datatype->end()) {
+    return iter->second;
+  }
+  return absl::nullopt;
+}
+
+bool IsHttpsCookieSourceScheme(net::CookieSourceScheme cookie_source_scheme) {
+  switch (cookie_source_scheme) {
+    case net::CookieSourceScheme::kSecure:
+      return true;
+    case net::CookieSourceScheme::kNonSecure:
+      return false;
+    case net::CookieSourceScheme::kUnset:
+      // Older cookies don't have a source scheme. Associate them with https
+      // since the majority of pageloads are https.
+      return true;
+  }
 }
 
 }  // namespace browsing_data

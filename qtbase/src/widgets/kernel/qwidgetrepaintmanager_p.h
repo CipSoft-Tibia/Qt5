@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWIDGETREPAINTMANAGER_P_H
 #define QWIDGETREPAINTMANAGER_P_H
@@ -62,8 +26,10 @@ QT_BEGIN_NAMESPACE
 class QPlatformTextureList;
 class QPlatformTextureListWatcher;
 class QWidgetRepaintManager;
+class QRhi;
+class QRhiSwapChain;
 
-class Q_AUTOTEST_EXPORT QWidgetRepaintManager
+class Q_WIDGETS_EXPORT QWidgetRepaintManager
 {
     Q_GADGET
 public:
@@ -100,8 +66,13 @@ public:
     void moveStaticWidgets(QWidget *reparented);
     void removeStaticWidget(QWidget *widget);
     QRegion staticContents(QWidget *widget = nullptr, const QRect &withinClipRect = QRect()) const;
+    QRegion dirtyRegion() const { return dirty; }
+    QList<QWidget *> dirtyWidgetList() const { return dirtyWidgets; }
+    bool isDirty() const;
 
     bool bltRect(const QRect &rect, int dx, int dy, QWidget *widget);
+
+    QRhi *rhi() const;
 
 private:
     void updateLists(QWidget *widget);
@@ -121,8 +92,6 @@ private:
     void flush();
     void flush(QWidget *widget, const QRegion &region, QPlatformTextureList *widgetTextures);
 
-    bool isDirty() const;
-
     bool hasStaticContents() const;
     void updateStaticContentsSize();
 
@@ -130,11 +99,11 @@ private:
     QBackingStore *store = nullptr;
 
     QRegion dirty; // needsRepaint
-    QVector<QWidget *> dirtyWidgets;
-    QVector<QWidget *> dirtyRenderToTextureWidgets;
+    QList<QWidget *> dirtyWidgets;
+    QList<QWidget *> dirtyRenderToTextureWidgets;
 
     QRegion topLevelNeedsFlush;
-    QVector<QWidget *> needsFlushWidgets;
+    QList<QWidget *> needsFlushWidgets;
 
     QList<QWidget *> staticWidgets;
 

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,15 +7,18 @@
 #include <set>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/guid.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/strcat.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/time/default_tick_clock.h"
 #include "base/values.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
+#include "components/value_store/value_store.h"
+#include "components/value_store/value_store_factory_impl.h"
 #include "extensions/browser/api/lock_screen_data/data_item.h"
 #include "extensions/browser/api/lock_screen_data/lock_screen_value_store_migrator.h"
 #include "extensions/browser/api/lock_screen_data/lock_screen_value_store_migrator_impl.h"
@@ -24,8 +27,6 @@
 #include "extensions/browser/api/storage/local_value_store_cache.h"
 #include "extensions/browser/event_router.h"
 #include "extensions/browser/extensions_browser_client.h"
-#include "extensions/browser/value_store/value_store.h"
-#include "extensions/browser/value_store/value_store_factory_impl.h"
 #include "extensions/common/api/lock_screen_data.h"
 
 namespace extensions {
@@ -38,6 +39,15 @@ constexpr char kLockScreenDataPrefKey[] = "lockScreenDataItems";
 
 constexpr char kExtensionStorageVersionPrefKey[] = "storage_version";
 constexpr char kExtensionItemCountPrefKey[] = "item_count";
+
+// Returns dictionary at `lock_screen_pref_dict[user_id][extension_id]`,
+// creating it if needed.
+base::Value::Dict& GetOrCreateExtensionInfoDict(
+    const std::string& user_id,
+    const std::string& extension_id,
+    base::Value::Dict& lock_screen_pref_dict) {
+  return *lock_screen_pref_dict.EnsureDict(user_id)->EnsureDict(extension_id);
+}
 
 LockScreenItemStorage* g_data_item_storage = nullptr;
 
@@ -57,7 +67,7 @@ std::unique_ptr<LocalValueStoreCache> CreateValueStoreCache(
   if (g_test_value_store_cache_factory_callback)
     return g_test_value_store_cache_factory_callback->Run(storage_root);
   return std::make_unique<LocalValueStoreCache>(
-      new ValueStoreFactoryImpl(storage_root));
+      new value_store::ValueStoreFactoryImpl(storage_root));
 }
 
 std::unique_ptr<LockScreenValueStoreMigrator> CreateValueStoreMigrator(
@@ -92,26 +102,28 @@ void GetRegisteredItems(const std::string& extension_id,
                         content::BrowserContext* context,
                         ValueStoreCache* value_store_cache,
                         base::SequencedTaskRunner* task_runner,
-                        const DataItem::RegisteredValuesCallback& callback) {
+                        DataItem::RegisteredValuesCallback callback) {
   if (g_test_registered_items_getter_callback) {
-    g_test_registered_items_getter_callback->Run(extension_id, callback);
+    g_test_registered_items_getter_callback->Run(extension_id,
+                                                 std::move(callback));
     return;
   }
-  DataItem::GetRegisteredValuesForExtension(
-      context, value_store_cache, task_runner, extension_id, callback);
+  DataItem::GetRegisteredValuesForExtension(context, value_store_cache,
+                                            task_runner, extension_id,
+                                            std::move(callback));
 }
 
 void DeleteAllItems(const std::string& extension_id,
                     content::BrowserContext* context,
                     ValueStoreCache* value_store_cache,
                     base::SequencedTaskRunner* task_runner,
-                    const base::Closure& callback) {
+                    base::OnceClosure callback) {
   if (g_test_delete_all_items_callback) {
-    g_test_delete_all_items_callback->Run(extension_id, callback);
+    g_test_delete_all_items_callback->Run(extension_id, std::move(callback));
     return;
   }
   DataItem::DeleteAllItemsForExtension(context, value_store_cache, task_runner,
-                                       extension_id, callback);
+                                       extension_id, std::move(callback));
 }
 
 }  // namespace
@@ -143,7 +155,7 @@ LockScreenItemStorage::LockScreenItemStorage(
       tick_clock_(base::DefaultTickClock::GetInstance()),
       value_store_cache_(CreateValueStoreCache(storage_root.Append(user_id_))) {
   CHECK(!user_id_.empty());
-  extension_registry_observer_.Add(ExtensionRegistry::Get(context));
+  extension_registry_observation_.Observe(ExtensionRegistry::Get(context));
   task_runner_ = GetBackendTaskRunner();
 
   DCHECK(!g_data_item_storage);
@@ -158,8 +170,8 @@ LockScreenItemStorage::LockScreenItemStorage(
         task_runner_.get(), crypto_key_);
     storage_migrator_->Run(
         extensions_to_migrate,
-        base::Bind(&LockScreenItemStorage::OnItemsMigratedForExtension,
-                   weak_ptr_factory_.GetWeakPtr()));
+        base::BindRepeating(&LockScreenItemStorage::OnItemsMigratedForExtension,
+                            weak_ptr_factory_.GetWeakPtr()));
   }
 
   ClearUninstalledAppData();
@@ -231,50 +243,48 @@ void LockScreenItemStorage::SetSessionLocked(bool session_locked) {
 }
 
 void LockScreenItemStorage::CreateItem(const std::string& extension_id,
-                                       const CreateCallback& callback) {
+                                       CreateCallback callback) {
+  EnsureCacheForExtensionLoaded(
+      extension_id, base::BindOnce(&LockScreenItemStorage::CreateItemImpl,
+                                   weak_ptr_factory_.GetWeakPtr(), extension_id,
+                                   std::move(callback)));
+}
+
+void LockScreenItemStorage::GetAllForExtension(const std::string& extension_id,
+                                               DataItemListCallback callback) {
   EnsureCacheForExtensionLoaded(
       extension_id,
-      base::Bind(&LockScreenItemStorage::CreateItemImpl,
-                 weak_ptr_factory_.GetWeakPtr(), extension_id, callback));
+      base::BindOnce(&LockScreenItemStorage::GetAllForExtensionImpl,
+                     weak_ptr_factory_.GetWeakPtr(), extension_id,
+                     std::move(callback)));
 }
 
-void LockScreenItemStorage::GetAllForExtension(
-    const std::string& extension_id,
-    const DataItemListCallback& callback) {
+void LockScreenItemStorage::SetItemContent(const std::string& extension_id,
+                                           const std::string& item_id,
+                                           const std::vector<char>& data,
+                                           WriteCallback callback) {
   EnsureCacheForExtensionLoaded(
-      extension_id,
-      base::Bind(&LockScreenItemStorage::GetAllForExtensionImpl,
-                 weak_ptr_factory_.GetWeakPtr(), extension_id, callback));
+      extension_id, base::BindOnce(&LockScreenItemStorage::SetItemContentImpl,
+                                   weak_ptr_factory_.GetWeakPtr(), extension_id,
+                                   item_id, data, std::move(callback)));
 }
 
-void LockScreenItemStorage::SetItemContent(
-    const std::string& extension_id,
-    const std::string& item_id,
-    const std::vector<char>& data,
-    const LockScreenItemStorage::WriteCallback& callback) {
+void LockScreenItemStorage::GetItemContent(const std::string& extension_id,
+                                           const std::string& item_id,
+                                           ReadCallback callback) {
   EnsureCacheForExtensionLoaded(
-      extension_id, base::Bind(&LockScreenItemStorage::SetItemContentImpl,
-                               weak_ptr_factory_.GetWeakPtr(), extension_id,
-                               item_id, data, callback));
-}
-
-void LockScreenItemStorage::GetItemContent(
-    const std::string& extension_id,
-    const std::string& item_id,
-    const LockScreenItemStorage::ReadCallback& callback) {
-  EnsureCacheForExtensionLoaded(
-      extension_id, base::Bind(&LockScreenItemStorage::GetItemContentImpl,
-                               weak_ptr_factory_.GetWeakPtr(), extension_id,
-                               item_id, callback));
+      extension_id, base::BindOnce(&LockScreenItemStorage::GetItemContentImpl,
+                                   weak_ptr_factory_.GetWeakPtr(), extension_id,
+                                   item_id, std::move(callback)));
 }
 
 void LockScreenItemStorage::DeleteItem(const std::string& extension_id,
                                        const std::string& item_id,
-                                       const WriteCallback& callback) {
+                                       WriteCallback callback) {
   EnsureCacheForExtensionLoaded(
-      extension_id, base::Bind(&LockScreenItemStorage::DeleteItemImpl,
-                               weak_ptr_factory_.GetWeakPtr(), extension_id,
-                               item_id, callback));
+      extension_id, base::BindOnce(&LockScreenItemStorage::DeleteItemImpl,
+                                   weak_ptr_factory_.GetWeakPtr(), extension_id,
+                                   item_id, std::move(callback)));
 }
 
 void LockScreenItemStorage::OnExtensionUninstalled(
@@ -302,7 +312,7 @@ bool LockScreenItemStorage::IsContextAllowed(content::BrowserContext* context) {
 }
 
 void LockScreenItemStorage::CreateItemImpl(const std::string& extension_id,
-                                           const CreateCallback& callback) {
+                                           CreateCallback callback) {
   ExtensionDataMap::iterator data = data_item_cache_.find(extension_id);
   if (data == data_item_cache_.end() ||
       data->second.state != CachedExtensionData::State::kLoaded) {
@@ -313,20 +323,20 @@ void LockScreenItemStorage::CreateItemImpl(const std::string& extension_id,
       CreateDataItem(base::GenerateGUID(), extension_id, context_,
                      value_store_cache_.get(), task_runner_.get(), crypto_key_);
   DataItem* item_ptr = item.get();
-  item_ptr->Register(base::Bind(&LockScreenItemStorage::OnItemRegistered,
-                                weak_ptr_factory_.GetWeakPtr(),
-                                base::Passed(std::move(item)), extension_id,
-                                tick_clock_->NowTicks(), callback));
+  item_ptr->Register(base::BindOnce(
+      &LockScreenItemStorage::OnItemRegistered, weak_ptr_factory_.GetWeakPtr(),
+      std::move(item), extension_id, tick_clock_->NowTicks(),
+      std::move(callback)));
 }
 
 void LockScreenItemStorage::GetAllForExtensionImpl(
     const std::string& extension_id,
-    const DataItemListCallback& callback) {
+    DataItemListCallback callback) {
   std::vector<const DataItem*> items;
   ExtensionDataMap::iterator extension_data =
       data_item_cache_.find(extension_id);
   if (extension_data == data_item_cache_.end()) {
-    callback.Run(items);
+    std::move(callback).Run(items);
     return;
   }
 
@@ -336,57 +346,57 @@ void LockScreenItemStorage::GetAllForExtensionImpl(
     items.push_back(item.second.get());
   }
 
-  callback.Run(items);
+  std::move(callback).Run(items);
 }
 
-void LockScreenItemStorage::SetItemContentImpl(
-    const std::string& extension_id,
-    const std::string& item_id,
-    const std::vector<char>& data,
-    const LockScreenItemStorage::WriteCallback& callback) {
+void LockScreenItemStorage::SetItemContentImpl(const std::string& extension_id,
+                                               const std::string& item_id,
+                                               const std::vector<char>& data,
+                                               WriteCallback callback) {
   DataItem* item = FindItem(extension_id, item_id);
   if (!item) {
-    callback.Run(OperationResult::kNotFound);
+    std::move(callback).Run(OperationResult::kNotFound);
     return;
   }
 
-  item->Write(data, base::Bind(&LockScreenItemStorage::OnItemWritten,
-                               weak_ptr_factory_.GetWeakPtr(),
-                               tick_clock_->NowTicks(), callback));
+  item->Write(data,
+              base::BindOnce(&LockScreenItemStorage::OnItemWritten,
+                             weak_ptr_factory_.GetWeakPtr(),
+                             tick_clock_->NowTicks(), std::move(callback)));
 }
 
 void LockScreenItemStorage::GetItemContentImpl(const std::string& extension_id,
                                                const std::string& item_id,
-                                               const ReadCallback& callback) {
+                                               ReadCallback callback) {
   DataItem* item = FindItem(extension_id, item_id);
   if (!item) {
-    callback.Run(OperationResult::kNotFound, nullptr);
+    std::move(callback).Run(OperationResult::kNotFound, nullptr);
     return;
   }
 
-  item->Read(base::Bind(&LockScreenItemStorage::OnItemRead,
-                        weak_ptr_factory_.GetWeakPtr(), tick_clock_->NowTicks(),
-                        callback));
+  item->Read(base::BindOnce(&LockScreenItemStorage::OnItemRead,
+                            weak_ptr_factory_.GetWeakPtr(),
+                            tick_clock_->NowTicks(), std::move(callback)));
 }
 
 void LockScreenItemStorage::DeleteItemImpl(const std::string& extension_id,
                                            const std::string& item_id,
-                                           const WriteCallback& callback) {
+                                           WriteCallback callback) {
   DataItem* item = FindItem(extension_id, item_id);
   if (!item) {
-    callback.Run(OperationResult::kNotFound);
+    std::move(callback).Run(OperationResult::kNotFound);
     return;
   }
 
-  item->Delete(base::Bind(&LockScreenItemStorage::OnItemDeleted,
-                          weak_ptr_factory_.GetWeakPtr(), extension_id, item_id,
-                          tick_clock_->NowTicks(), callback));
+  item->Delete(base::BindOnce(
+      &LockScreenItemStorage::OnItemDeleted, weak_ptr_factory_.GetWeakPtr(),
+      extension_id, item_id, tick_clock_->NowTicks(), std::move(callback)));
 }
 
 void LockScreenItemStorage::OnItemRegistered(std::unique_ptr<DataItem> item,
                                              const std::string& extension_id,
                                              const base::TimeTicks& start_time,
-                                             const CreateCallback& callback,
+                                             CreateCallback callback,
                                              OperationResult result) {
   if (result == OperationResult::kSuccess) {
     UMA_HISTOGRAM_TIMES(
@@ -399,7 +409,7 @@ void LockScreenItemStorage::OnItemRegistered(std::unique_ptr<DataItem> item,
   }
 
   if (result != OperationResult::kSuccess) {
-    callback.Run(result, nullptr);
+    std::move(callback).Run(result, nullptr);
     return;
   }
 
@@ -408,17 +418,19 @@ void LockScreenItemStorage::OnItemRegistered(std::unique_ptr<DataItem> item,
                                                     std::move(item));
 
   {
-    DictionaryPrefUpdate update(local_state_, kLockScreenDataPrefKey);
-    update->SetPath({user_id_, extension_id, kExtensionItemCountPrefKey},
-                    base::Value(static_cast<int>(
-                        data_item_cache_[extension_id].data_items.size())));
+    ScopedDictPrefUpdate update(local_state_, kLockScreenDataPrefKey);
+    base::Value::Dict& info =
+        GetOrCreateExtensionInfoDict(user_id_, extension_id, *update);
+    info.Set(
+        kExtensionItemCountPrefKey,
+        static_cast<int>(data_item_cache_[extension_id].data_items.size()));
   }
 
-  callback.Run(OperationResult::kSuccess, item_ptr);
+  std::move(callback).Run(OperationResult::kSuccess, item_ptr);
 }
 
 void LockScreenItemStorage::OnItemWritten(const base::TimeTicks& start_time,
-                                          const WriteCallback& callback,
+                                          WriteCallback callback,
                                           OperationResult result) {
   if (result == OperationResult::kSuccess) {
     UMA_HISTOGRAM_TIMES(
@@ -430,12 +442,12 @@ void LockScreenItemStorage::OnItemWritten(const base::TimeTicks& start_time,
         tick_clock_->NowTicks() - start_time);
   }
 
-  callback.Run(result);
+  std::move(callback).Run(result);
 }
 
 void LockScreenItemStorage::OnItemRead(
     const base::TimeTicks& start_time,
-    const ReadCallback& callback,
+    ReadCallback callback,
     OperationResult result,
     std::unique_ptr<std::vector<char>> data) {
   if (result == OperationResult::kSuccess) {
@@ -448,13 +460,13 @@ void LockScreenItemStorage::OnItemRead(
         tick_clock_->NowTicks() - start_time);
   }
 
-  callback.Run(result, std::move(data));
+  std::move(callback).Run(result, std::move(data));
 }
 
 void LockScreenItemStorage::OnItemDeleted(const std::string& extension_id,
                                           const std::string& item_id,
                                           const base::TimeTicks& start_time,
-                                          const WriteCallback& callback,
+                                          WriteCallback callback,
                                           OperationResult result) {
   if (result == OperationResult::kSuccess) {
     UMA_HISTOGRAM_TIMES(
@@ -468,25 +480,27 @@ void LockScreenItemStorage::OnItemDeleted(const std::string& extension_id,
 
   data_item_cache_[extension_id].data_items.erase(item_id);
   {
-    DictionaryPrefUpdate update(local_state_, kLockScreenDataPrefKey);
-    update->SetPath({user_id_, extension_id, kExtensionItemCountPrefKey},
-                    base::Value(static_cast<int>(
-                        data_item_cache_[extension_id].data_items.size())));
+    ScopedDictPrefUpdate update(local_state_, kLockScreenDataPrefKey);
+    base::Value::Dict& info =
+        GetOrCreateExtensionInfoDict(user_id_, extension_id, *update);
+    info.Set(
+        kExtensionItemCountPrefKey,
+        static_cast<int>(data_item_cache_[extension_id].data_items.size()));
   }
 
-  callback.Run(result);
+  std::move(callback).Run(result);
 }
 
 void LockScreenItemStorage::EnsureCacheForExtensionLoaded(
     const std::string& extension_id,
-    const base::Closure& callback) {
+    base::OnceClosure callback) {
   CachedExtensionData* data = &data_item_cache_[extension_id];
   if (data->state == CachedExtensionData::State::kLoaded) {
-    callback.Run();
+    std::move(callback).Run();
     return;
   }
 
-  data->load_callbacks.push_back(callback);
+  data->load_callbacks.push_back(std::move(callback));
 
   if (data->state == CachedExtensionData::State::kRemoving ||
       data->state == CachedExtensionData::State::kLoading) {
@@ -502,9 +516,9 @@ void LockScreenItemStorage::EnsureCacheForExtensionLoaded(
 
   GetRegisteredItems(extension_id, context_, value_store_cache_.get(),
                      task_runner_.get(),
-                     base::Bind(&LockScreenItemStorage::OnGotExtensionItems,
-                                weak_ptr_factory_.GetWeakPtr(), extension_id,
-                                tick_clock_->NowTicks()));
+                     base::BindOnce(&LockScreenItemStorage::OnGotExtensionItems,
+                                    weak_ptr_factory_.GetWeakPtr(),
+                                    extension_id, tick_clock_->NowTicks()));
 }
 
 void LockScreenItemStorage::OnItemsMigratedForExtension(
@@ -515,16 +529,16 @@ void LockScreenItemStorage::OnItemsMigratedForExtension(
   data_item_cache_[extension_id].state = CachedExtensionData::State::kLoading;
   GetRegisteredItems(extension_id, context_, value_store_cache_.get(),
                      task_runner_.get(),
-                     base::Bind(&LockScreenItemStorage::OnGotExtensionItems,
-                                weak_ptr_factory_.GetWeakPtr(), extension_id,
-                                tick_clock_->NowTicks()));
+                     base::BindOnce(&LockScreenItemStorage::OnGotExtensionItems,
+                                    weak_ptr_factory_.GetWeakPtr(),
+                                    extension_id, tick_clock_->NowTicks()));
 }
 
 void LockScreenItemStorage::OnGotExtensionItems(
     const std::string& extension_id,
     const base::TimeTicks& start_time,
     OperationResult result,
-    std::unique_ptr<base::DictionaryValue> items) {
+    base::Value::Dict items) {
   ExtensionDataMap::iterator data = data_item_cache_.find(extension_id);
   if (data == data_item_cache_.end() ||
       data->second.state != CachedExtensionData::State::kLoading) {
@@ -547,12 +561,11 @@ void LockScreenItemStorage::OnGotExtensionItems(
   }
 
   if (result == OperationResult::kSuccess) {
-    for (base::DictionaryValue::Iterator item_iter(*items);
-         !item_iter.IsAtEnd(); item_iter.Advance()) {
-      std::unique_ptr<DataItem> item = CreateDataItem(
-          item_iter.key(), extension_id, context_, value_store_cache_.get(),
+    for (const auto item : items) {
+      std::unique_ptr<DataItem> data_item = CreateDataItem(
+          item.first, extension_id, context_, value_store_cache_.get(),
           task_runner_.get(), crypto_key_);
-      data->second.data_items.emplace(item_iter.key(), std::move(item));
+      data->second.data_items.emplace(item.first, std::move(data_item));
     }
 
     // Record number of registered items.
@@ -562,12 +575,12 @@ void LockScreenItemStorage::OnGotExtensionItems(
   }
 
   {
-    DictionaryPrefUpdate update(local_state_, kLockScreenDataPrefKey);
-    base::Value info(base::Value::Type::DICTIONARY);
-    info.SetKey(kExtensionItemCountPrefKey,
-                base::Value(static_cast<int>(data->second.data_items.size())));
-    info.SetKey(kExtensionStorageVersionPrefKey, base::Value(2));
-    update->SetPath({user_id_, extension_id}, std::move(info));
+    ScopedDictPrefUpdate update(local_state_, kLockScreenDataPrefKey);
+    base::Value::Dict& info =
+        GetOrCreateExtensionInfoDict(user_id_, extension_id, *update);
+    info.Set(kExtensionItemCountPrefKey,
+             static_cast<int>(data->second.data_items.size()));
+    info.Set(kExtensionStorageVersionPrefKey, 2);
   }
 
   data->second.state = CachedExtensionData::State::kLoaded;
@@ -597,22 +610,20 @@ std::set<std::string> LockScreenItemStorage::GetExtensionsWithDataItems(
     bool include_empty) {
   std::set<std::string> result;
 
-  const base::DictionaryValue* user_data = nullptr;
-  const base::DictionaryValue* items =
-      local_state_->GetDictionary(kLockScreenDataPrefKey);
-  if (!items || !items->GetDictionary(user_id_, &user_data) || !user_data)
+  const base::Value::Dict& items =
+      local_state_->GetDict(kLockScreenDataPrefKey);
+  const base::Value::Dict* user_data = items.FindDictByDottedPath(user_id_);
+  if (!user_data)
     return result;
 
-  for (base::DictionaryValue::Iterator extension_iter(*user_data);
-       !extension_iter.IsAtEnd(); extension_iter.Advance()) {
-    if (extension_iter.value().is_int() &&
-        (include_empty || extension_iter.value().GetInt() > 0)) {
-      result.insert(extension_iter.key());
-    } else if (extension_iter.value().is_dict()) {
-      const base::Value* count = extension_iter.value().FindKeyOfType(
+  for (auto it : *user_data) {
+    if (it.second.is_int() && (include_empty || it.second.GetInt() > 0)) {
+      result.insert(it.first);
+    } else if (it.second.is_dict()) {
+      const base::Value* count = it.second.FindKeyOfType(
           kExtensionItemCountPrefKey, base::Value::Type::INTEGER);
       if (include_empty || (count && count->GetInt() > 0)) {
-        result.insert(extension_iter.key());
+        result.insert(it.first);
       }
     }
   }
@@ -622,16 +633,16 @@ std::set<std::string> LockScreenItemStorage::GetExtensionsWithDataItems(
 std::set<ExtensionId> LockScreenItemStorage::GetExtensionsToMigrate() {
   std::set<ExtensionId> result;
 
-  const base::DictionaryValue* user_data = nullptr;
-  const base::DictionaryValue* items =
-      local_state_->GetDictionary(kLockScreenDataPrefKey);
-  if (!items || !items->GetDictionary(user_id_, &user_data) || !user_data)
+  const base::Value::Dict& items =
+      local_state_->GetDict(kLockScreenDataPrefKey);
+
+  const base::Value::Dict* user_data = items.FindDictByDottedPath(user_id_);
+  if (!user_data)
     return result;
 
-  for (base::DictionaryValue::Iterator extension_iter(*user_data);
-       !extension_iter.IsAtEnd(); extension_iter.Advance()) {
-    if (extension_iter.value().is_int())
-      result.insert(extension_iter.key());
+  for (auto it : *user_data) {
+    if (it.second.is_int())
+      result.insert(it.first);
   }
   return result;
 }
@@ -653,23 +664,23 @@ void LockScreenItemStorage::ClearExtensionData(const std::string& id) {
   data->data_items.clear();
   RunExtensionDataLoadCallbacks(data);
 
-  base::Closure callback =
-      base::Bind(&LockScreenItemStorage::RemoveExtensionFromLocalState,
-                 weak_ptr_factory_.GetWeakPtr(), id);
+  base::OnceClosure callback =
+      base::BindOnce(&LockScreenItemStorage::RemoveExtensionFromLocalState,
+                     weak_ptr_factory_.GetWeakPtr(), id);
 
   if (storage_migrator_ && storage_migrator_->IsMigratingExtensionData(id)) {
-    storage_migrator_->ClearDataForExtension(id, callback);
+    storage_migrator_->ClearDataForExtension(id, std::move(callback));
   } else {
     DeleteAllItems(id, context_, value_store_cache_.get(), task_runner_.get(),
-                   callback);
+                   std::move(callback));
   }
 }
 
 void LockScreenItemStorage::RemoveExtensionFromLocalState(
     const std::string& id) {
   {
-    DictionaryPrefUpdate update(local_state_, kLockScreenDataPrefKey);
-    update->RemovePath(base::StrCat({user_id_, ".", id}));
+    ScopedDictPrefUpdate update(local_state_, kLockScreenDataPrefKey);
+    update->RemoveByDottedPath(base::StrCat({user_id_, ".", id}));
   }
 
   data_item_cache_[id].state = CachedExtensionData::State::kLoaded;
@@ -678,10 +689,10 @@ void LockScreenItemStorage::RemoveExtensionFromLocalState(
 
 void LockScreenItemStorage::RunExtensionDataLoadCallbacks(
     CachedExtensionData* cache_data) {
-  std::vector<base::Closure> callbacks;
+  std::vector<base::OnceClosure> callbacks;
   callbacks.swap(cache_data->load_callbacks);
   for (auto& callback : callbacks)
-    callback.Run();
+    std::move(callback).Run();
 }
 
 }  // namespace lock_screen_data

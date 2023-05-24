@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -16,7 +16,6 @@ static_library("unified_consent") {
   deps = [
     "//base",
     "//components/autofill/core/common",
-    "//components/browser_sync",
     "//components/pref_registry",
     "//components/prefs",
     "//components/signin/public/identity_manager",
@@ -34,6 +33,7 @@ source_set("unit_tests") {
   deps = [
     ":unified_consent",
     "//base/test:test_support",
+    "//build:chromeos_buildflags",
     "//components/signin/public/identity_manager:test_support",
     "//components/sync:test_support",
     "//components/sync_preferences:test_support",

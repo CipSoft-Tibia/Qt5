@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,10 +20,8 @@ import org.chromium.weblayer_private.interfaces.IProfile;
  * is implemented using NoStatePrefetch and fetches resources needed for a url in advance, but does
  * not execute Javascript or render any part of the page in advance. For more information on
  * NoStatePrefetch, see https://developers.google.com/web/updates/2018/07/nostate-prefetch.
- *
- * @since 87
  */
-public class PrerenderController {
+class PrerenderController {
     private final IPrerenderController mImpl;
 
     static PrerenderController create(IProfile profile) {

@@ -8,14 +8,14 @@ developing, debugging and performance analysis.
 Dependencies:
 
 - [CMake](https://cmake.org/)
-- C++11
+- C++17
 
 ## Building
 
 First, check out the latest Perfetto release:
 
 ```bash
-git clone https://android.googlesource.com/platform/external/perfetto -b v5.0
+git clone https://android.googlesource.com/platform/external/perfetto -b v32.1
 ```
 
 Then, build using CMake:
@@ -26,6 +26,11 @@ cmake -B build
 cmake --build build
 ```
 
+Note: If amalgamated source files are not present, generate them using
+`cd perfetto ; tools/gen_amalgamated --output sdk/perfetto`.
+[Learn more](https://perfetto.dev/docs/contributing/sdk-releasing#building-and-tagging-the-release)
+at the release section.
+
 ## Track event example
 
 The [basic example](example.cc) shows how to instrument an app with track
@@ -35,7 +40,7 @@ events. Run it with:
 build/example
 ```
 
-The program will create a trace file in `example.pftrace`, which can be
+The program will create a trace file in `example.perfetto-trace`, which can be
 directly opened in the [Perfetto UI](https://ui.perfetto.dev). The result
 should look like this:
 
@@ -75,17 +80,18 @@ adb push build_android/example_system_wide ../system_wide_trace_cfg.pbtxt \
          /data/local/tmp/
 adb shell "\
     cd /data/local/tmp; \
-    rm -f /data/misc/perfetto-traces/example_system_wide.pftrace; \
+    rm -f /data/misc/perfetto-traces/example_system_wide.perfetto-trace; \
     cat system_wide_trace_cfg.pbtxt | \
         perfetto --config - --txt --background \
-                 -o /data/misc/perfetto-traces/example_system_wide.pftrace; \
+                 -o
+                 /data/misc/perfetto-traces/example_system_wide.perfetto-trace; \
     ./example_system_wide"
 ```
 
 Finally, retrieve the resulting trace:
 
 ```bash
-adb pull /data/misc/perfetto-traces/example_system_wide.pftrace
+adb pull /data/misc/perfetto-traces/example_system_wide.perfetto-trace
 ```
 
 When opened in the Perfetto UI, the trace now shows additional contextual
@@ -97,7 +103,7 @@ information such as CPU frequencies and kernel scheduler information.
 > Tip: You can generate a new trace config with additional data sources using
 > the [Perfetto UI](https://ui.perfetto.dev/#!/record) and replace
 > `system_wide_trace_cfg.pbtxt` with the [generated config](
-> https://ui.perfetto.dev/#!/record?p=instructions).
+> https://ui.perfetto.dev/#!/record/instructions).
 
 ## Custom data source example
 
@@ -109,12 +115,12 @@ trace. Run it with:
 build/example_custom_data_source
 ```
 
-The program generates a trace file in `example_custom_data_source.pftrace`,
-which we can examine using Perfetto's `trace_to_text` tool to show the trace
+The program generates a trace file in `example_custom_data_source.perfetto-trace`,
+which we can examine using Perfetto's `traceconv` tool to show the trace
 packet written by the custom data source:
 
 ```bash
-trace_to_text text example_custom_data_source.pftrace
+traceconv text example_custom_data_source.perfetto-trace
 ...
 packet {
   trusted_uid: 0

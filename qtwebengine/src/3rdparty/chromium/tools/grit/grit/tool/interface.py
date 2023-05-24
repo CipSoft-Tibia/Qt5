@@ -1,13 +1,12 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 '''Base class and interface for tools.
 '''
 
-from __future__ import print_function
 
-class Tool(object):
+class Tool:
   '''Base class for all tools.  Tools should use their docstring (i.e. the
   class-level docstring) for the help they want to have printed when they
   are invoked.'''

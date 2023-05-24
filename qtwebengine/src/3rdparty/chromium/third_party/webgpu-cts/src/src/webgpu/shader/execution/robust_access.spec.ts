@@ -1,72 +1,70 @@
 export const description = `
-Tests to check array clamping in shaders is correctly implemented including vector / matrix indexing
+Tests to check datatype clamping in shaders is correctly implemented for all indexable types
+(vectors, matrices, sized/unsized arrays) visible to shaders in various ways.
+
+TODO: add tests to check that textureLoad operations stay in-bounds.
 `;
 
-import { params, poptions } from '../../../common/framework/params_builder.js';
 import { makeTestGroup } from '../../../common/framework/test_group.js';
-import { assert } from '../../../common/framework/util/util.js';
+import { assert } from '../../../common/util/util.js';
 import { GPUTest } from '../../gpu_test.js';
+import { align } from '../../util/math.js';
+import { generateTypes, supportedScalarTypes, supportsAtomics } from '../types.js';
 
 export const g = makeTestGroup(GPUTest);
 
-// Utilities that should probably live in some shared place.
-function copyArrayBuffer(src: ArrayBuffer): ArrayBuffer {
-  const dst = new ArrayBuffer(src.byteLength);
-  new Uint8Array(dst).set(new Uint8Array(src));
-  return dst;
-}
+const kMaxU32 = 0xffff_ffff;
+const kMaxI32 = 0x7fff_ffff;
+const kMinI32 = -0x8000_0000;
 
-const kUintMax = 4294967295;
-const kIntMax = 2147483647;
-
-// A small utility to test shaders:
-//  - it wraps the source into a small harness that checks the runTest() function returns 0.
-//  - it runs the shader with the testBindings set as bindgroup 0.
-//
-// The shader also has access to a uniform value that's equal to 1u to avoid constant propagation
-// in the shader compiler.
+/**
+ * Wraps the provided source into a harness that checks calling `runTest()` returns 0.
+ *
+ * Non-test bindings are in bind group 1, including:
+ * - `constants.zero`: a dynamically-uniform `0u` value.
+ */
 function runShaderTest(
   t: GPUTest,
   stage: GPUShaderStageFlags,
   testSource: string,
-  testBindings: GPUBindGroupEntry[]
+  layout: GPUPipelineLayout,
+  testBindings: GPUBindGroupEntry[],
+  dynamicOffsets?: number[]
 ): void {
   assert(stage === GPUShaderStage.COMPUTE, 'Only know how to deal with compute for now');
 
-  const constantsBuffer = t.device.createBuffer({
-    mappedAtCreation: true,
-    size: 4,
-    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-  });
-
-  const constantsData = new Uint32Array(constantsBuffer.getMappedRange());
-  constantsData[0] = 1;
-  constantsBuffer.unmap();
+  // Contains just zero (for now).
+  const constantsBuffer = t.device.createBuffer({ size: 4, usage: GPUBufferUsage.UNIFORM });
 
   const resultBuffer = t.device.createBuffer({
     size: 4,
     usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.STORAGE,
   });
 
-  const source = `#version 450
-    layout(std140, set = 1, binding = 0) uniform Constants {
-      uint one;
-    };
-    layout(std430, set = 1, binding = 1) buffer Result {
-      uint result;
-    };
+  const source = `
+struct Constants {
+  zero: u32
+};
+@group(1) @binding(0) var<uniform> constants: Constants;
 
-    ${testSource}
+struct Result {
+  value: u32
+};
+@group(1) @binding(1) var<storage, read_write> result: Result;
 
-    void main() {
-      result = runTest();
-    }`;
+${testSource}
 
+@compute @workgroup_size(1)
+fn main() {
+  _ = constants.zero; // Ensure constants buffer is statically-accessed
+  result.value = runTest();
+}`;
+
+  t.debug(source);
+  const module = t.device.createShaderModule({ code: source });
   const pipeline = t.device.createComputePipeline({
-    computeStage: {
-      entryPoint: 'main',
-      module: t.makeShaderModule('compute', { glsl: source }),
-    },
+    layout,
+    compute: { module, entryPoint: 'main' },
   });
 
   const group = t.device.createBindGroup({
@@ -85,287 +83,398 @@ function runShaderTest(
   const encoder = t.device.createCommandEncoder();
   const pass = encoder.beginComputePass();
   pass.setPipeline(pipeline);
-  pass.setBindGroup(0, testGroup);
+  pass.setBindGroup(0, testGroup, dynamicOffsets);
   pass.setBindGroup(1, group);
-  pass.dispatch(1);
-  pass.endPass();
+  pass.dispatchWorkgroups(1);
+  pass.end();
 
   t.queue.submit([encoder.finish()]);
 
-  t.expectContents(resultBuffer, new Uint32Array([0]));
+  t.expectGPUBufferValuesEqual(resultBuffer, new Uint32Array([0]));
 }
 
-// The definition of base types for aggregate types, for example float, uint, etc.
-interface BaseType {
-  // The name which is also the GLSL type.
-  name: string;
-  // The size in byte in a buffer.
-  byteSize: number;
-  // The prefix when used in aggregate names, the "u" in "uvec2"
-  glslPrefix: string;
-  glslZero: string;
-  // Fill the buffer with 42s, except the regions of `size` elements starting at `zeroStart`
-  // offset from the start of the buffer, which is filled with zeroes instead.
-  fillBuffer: (data: ArrayBuffer, zeroStart: number, size: number) => void;
+/** Fill an ArrayBuffer with sentinel values, except clear a region to zero. */
+function testFillArrayBuffer(
+  array: ArrayBuffer,
+  type: 'u32' | 'i32' | 'f32',
+  { zeroByteStart, zeroByteCount }: { zeroByteStart: number; zeroByteCount: number }
+) {
+  const constructor = { u32: Uint32Array, i32: Int32Array, f32: Float32Array }[type];
+  assert(zeroByteCount % constructor.BYTES_PER_ELEMENT === 0);
+  new constructor(array).fill(42);
+  new constructor(array, zeroByteStart, zeroByteCount / constructor.BYTES_PER_ELEMENT).fill(0);
 }
 
-interface BaseTypeDictionary {
-  [key: string]: BaseType;
-}
+/**
+ * Generate a bunch of indexable types (vec, mat, sized/unsized array) for testing.
+ */
 
-const baseTypes: BaseTypeDictionary = {
-  // TODO bools
-  uint: {
-    name: 'uint',
-    byteSize: 4,
-    glslPrefix: 'u',
-    glslZero: '0u',
-    fillBuffer(data: ArrayBuffer, zeroStart: number, size: number): void {
-      const typedData = new Uint32Array(data);
-      typedData.fill(42);
-      for (let i = 0; i < size / 4; i++) {
-        typedData[zeroStart / 4 + i] = 0;
-      }
-    },
-  },
-  int: {
-    name: 'int',
-    byteSize: 4,
-    glslPrefix: 'i',
-    glslZero: '0',
-    fillBuffer(data: ArrayBuffer, zeroStart: number, size: number): void {
-      const typedData = new Int32Array(data);
-      typedData.fill(42);
-      for (let i = 0; i < size / 4; i++) {
-        typedData[zeroStart / 4 + i] = 0;
-      }
-    },
-  },
-  float: {
-    name: 'float',
-    byteSize: 4,
-    glslPrefix: '',
-    glslZero: '0.0f',
-    fillBuffer(data: ArrayBuffer, zeroStart: number, size: number): void {
-      const typedData = new Float32Array(data);
-      typedData.fill(42);
-      for (let i = 0; i < size / 4; i++) {
-        typedData[zeroStart / 4 + i] = 0;
-      }
-    },
-  },
-  bool: {
-    name: 'bool',
-    byteSize: 4,
-    glslPrefix: 'b',
-    glslZero: 'false',
-    fillBuffer(data: ArrayBuffer, zeroStart: number, size: number): void {
-      const typedData = new Uint32Array(data);
-      typedData.fill(42);
-      for (let i = 0; i < size / 4; i++) {
-        typedData[zeroStart / 4 + i] = 0;
-      }
-    },
-  },
-};
+g.test('linear_memory')
+  .desc(
+    `For each indexable data type (vec, mat, sized/unsized array, of various scalar types), attempts
+    to access (read, write, atomic load/store) a region of memory (buffer or internal) at various
+    (signed/unsigned) indices. Checks that the accesses conform to robust access (OOB reads only
+    return bound memory, OOB writes don't write OOB).
 
-// The definition of aggregate types.
-interface Type {
-  // String to declare a variable named "data" of that type.
-  declaration: string;
-  // The array length, which also defines the bounds for this type.
-  length: number;
-  // The footprints in the buffer of this type, in baseTypes
-  std140Length: number;
-  std430Length: number;
-  // String to produce this type filled with zeroes.
-  zero: string;
-  baseType: BaseType;
-  isUnsizedArray?: true;
-}
-
-interface TypeDictionary {
-  [key: string]: Type;
-}
-
-const typeParams: TypeDictionary = (() => {
-  const types: TypeDictionary = {};
-  for (const baseTypeName of Object.keys(baseTypes)) {
-    const baseType = baseTypes[baseTypeName];
-
-    // Arrays
-    types[`${baseTypeName}_sizedArray`] = {
-      declaration: `${baseTypeName} data[3]`,
-      length: 3,
-      std140Length: 2 * 4 + 1,
-      std430Length: 3,
-      zero: baseType.glslZero,
-      baseType,
-    };
-    types[`${baseTypeName}_unsizedArray`] = {
-      declaration: `${baseTypeName} data[]`,
-      length: 3,
-      std140Length: 0, // Unused
-      std430Length: 3,
-      zero: baseType.glslZero,
-      baseType,
-      isUnsizedArray: true,
-    };
-
-    // Vectors
-    for (let dimension = 2; dimension <= 4; dimension++) {
-      types[`${baseTypeName}_vector${dimension}`] = {
-        declaration: `${baseType.glslPrefix}vec${dimension} data`,
-        length: dimension,
-        std140Length: dimension,
-        std430Length: dimension,
-        zero: baseType.glslZero,
-        baseType,
-      };
-    }
-  }
-
-  // Matrices, there are only float matrics in GLSL.
-  for (const transposed of [false, true]) {
-    for (let numColumns = 2; numColumns <= 4; numColumns++) {
-      for (let numRows = 2; numRows <= 4; numRows++) {
-        const majorDim = transposed ? numRows : numColumns;
-        const minorDim = transposed ? numColumns : numRows;
-
-        const std140SizePerMinorDim = 4;
-        const std430SizePerMinorDim = minorDim === 3 ? 4 : minorDim;
-
-        let typeName = `mat${numColumns}`;
-        if (numColumns !== numRows) {
-          typeName += `x${numRows}`;
-        }
-
-        types[(transposed ? 'transposed_' : '') + typeName] = {
-          declaration: (transposed ? 'layout(row_major) ' : '') + `${typeName} data`,
-          length: numColumns,
-          std140Length: std140SizePerMinorDim * (majorDim - 1) + minorDim,
-          std430Length: std430SizePerMinorDim * (majorDim - 1) + minorDim,
-          zero: `vec${numRows}(0.0f)`,
-          baseType: baseTypes['float'],
-        };
-      }
-    }
-  }
-
-  return types;
-})();
-
-g.test('bufferMemory')
-  .params(
-    params()
-      .combine(poptions('type', Object.keys(typeParams)))
-      .combine([
-        { memory: 'storage', access: 'read' },
-        { memory: 'storage', access: 'write' },
-        { memory: 'storage', access: 'atomic' },
-        { memory: 'uniform', access: 'read' },
-      ])
-      // Unsized arrays are only supported with SSBOs
-      .unless(p => typeParams[p.type].isUnsizedArray === true && p.memory !== 'storage')
-      // Atomics are only supported with integers
-      .unless(p => p.access === 'atomic' && !(typeParams[p.type].baseType.name in ['uint', 'int']))
+    TODO: Test in/out storage classes.
+    TODO: Test vertex and fragment stages.
+    TODO: Test using a dynamic offset instead of a static offset into uniform/storage bindings.
+    TODO: Test types like vec2<atomic<i32>>, if that's allowed.
+    TODO: Test exprIndexAddon as constexpr.
+    TODO: Test exprIndexAddon as pipeline-overridable constant expression.
+  `
   )
-  .fn(async t => {
-    const type = typeParams[t.params.type];
-    const baseType = type.baseType;
+  .params(u =>
+    u
+      .combineWithParams([
+        { storageClass: 'storage', storageMode: 'read', access: 'read', dynamicOffset: false },
+        {
+          storageClass: 'storage',
+          storageMode: 'read_write',
+          access: 'read',
+          dynamicOffset: false,
+        },
+        {
+          storageClass: 'storage',
+          storageMode: 'read_write',
+          access: 'write',
+          dynamicOffset: false,
+        },
+        { storageClass: 'storage', storageMode: 'read', access: 'read', dynamicOffset: true },
+        { storageClass: 'storage', storageMode: 'read_write', access: 'read', dynamicOffset: true },
+        {
+          storageClass: 'storage',
+          storageMode: 'read_write',
+          access: 'write',
+          dynamicOffset: true,
+        },
+        { storageClass: 'uniform', access: 'read', dynamicOffset: false },
+        { storageClass: 'uniform', access: 'read', dynamicOffset: true },
+        { storageClass: 'private', access: 'read' },
+        { storageClass: 'private', access: 'write' },
+        { storageClass: 'function', access: 'read' },
+        { storageClass: 'function', access: 'write' },
+        { storageClass: 'workgroup', access: 'read' },
+        { storageClass: 'workgroup', access: 'write' },
+      ] as const)
+      .combineWithParams([
+        { containerType: 'array' },
+        { containerType: 'matrix' },
+        { containerType: 'vector' },
+      ] as const)
+      .combineWithParams([
+        { shadowingMode: 'none' },
+        { shadowingMode: 'module-scope' },
+        { shadowingMode: 'function-scope' },
+      ])
+      .expand('isAtomic', p => (supportsAtomics(p) ? [false, true] : [false]))
+      .beginSubcases()
+      .expand('baseType', supportedScalarTypes)
+      .expandWithParams(generateTypes)
+  )
+  .fn(t => {
+    const {
+      storageClass,
+      storageMode,
+      access,
+      dynamicOffset,
+      isAtomic,
+      containerType,
+      baseType,
+      type,
+      shadowingMode,
+      _kTypeInfo,
+    } = t.params;
 
-    const indicesToTest = [
-      // Write to the inside of the type so we can check the size computations were correct.
-      '0',
-      `${type.length} - 1`,
+    assert(_kTypeInfo !== undefined, 'not an indexable type');
+    assert('arrayLength' in _kTypeInfo);
 
-      // Check exact bounds
-      '-1',
-      `${type.length}`,
+    let usesCanary = false;
+    let globalSource = '';
+    let testFunctionSource = '';
+    const testBufferSize = 512;
+    const bufferBindingOffset = 256;
+    /** Undefined if no buffer binding is needed */
+    let bufferBindingSize: number | undefined = undefined;
 
-      // Check large offset
-      '-1000000',
-      '1000000',
+    // Declare the data that will be accessed to check robust access, as a buffer or a struct
+    // in the global scope or inside the test function itself.
+    const structDecl = `
+struct S {
+  startCanary: array<u32, 10>,
+  data: ${type},
+  endCanary: array<u32, 10>,
+};`;
 
-      // Check with max uint
-      `${kUintMax}`,
-      `-1 * ${kUintMax}`,
+    const testGroupBGLEntires: GPUBindGroupLayoutEntry[] = [];
+    switch (storageClass) {
+      case 'uniform':
+      case 'storage':
+        {
+          assert(_kTypeInfo.layout !== undefined);
+          const layout = _kTypeInfo.layout;
+          bufferBindingSize = align(layout.size, layout.alignment);
+          const qualifiers = storageClass === 'storage' ? `storage, ${storageMode}` : storageClass;
+          globalSource += `
+struct TestData {
+  data: ${type},
+};
+@group(0) @binding(0) var<${qualifiers}> s: TestData;`;
 
-      // Check with max int
-      `${kIntMax}`,
-      `-1 * ${kIntMax}`,
-    ];
+          testGroupBGLEntires.push({
+            binding: 0,
+            visibility: GPUShaderStage.COMPUTE,
+            buffer: {
+              type:
+                storageClass === 'uniform'
+                  ? 'uniform'
+                  : storageMode === 'read'
+                  ? 'read-only-storage'
+                  : 'storage',
+              hasDynamicOffset: dynamicOffset,
+            },
+          });
+        }
+        break;
 
-    let testSource = '';
-    let byteSize = 0;
+      case 'private':
+      case 'workgroup':
+        usesCanary = true;
+        globalSource += structDecl;
+        globalSource += `var<${storageClass}> s: S;`;
+        break;
 
-    // Declare the data that will be accessed to check robust access.
-    if (t.params.memory === 'uniform') {
-      testSource += `
-        layout(std140, set = 0, binding = 0) uniform TestData {
-          ${type.declaration};
-        };`;
-      byteSize = baseType.byteSize * type.std140Length;
-    } else {
-      testSource += `
-        layout(std430, set = 0, binding = 0) buffer TestData {
-          ${type.declaration};
-        };`;
-      byteSize = baseType.byteSize * type.std430Length;
+      case 'function':
+        usesCanary = true;
+        globalSource += structDecl;
+        testFunctionSource += 'var s: S;';
+        break;
     }
 
     // Build the test function that will do the tests.
-    testSource += `
-    uint runTest() {
-  `;
 
-    for (const indexToTest of indicesToTest) {
-      // TODO check with constants too.
-      const index = `(${indexToTest}) * one`;
+    // If we use a local canary declared in the shader, initialize it.
+    if (usesCanary) {
+      testFunctionSource += `
+  for (var i = 0u; i < 10u; i = i + 1u) {
+    s.startCanary[i] = 0xFFFFFFFFu;
+    s.endCanary[i] = 0xFFFFFFFFu;
+  }`;
+    }
 
-      if (t.params.access === 'read') {
-        testSource += `
-          if(data[${index}] != ${type.zero}) {
-            return __LINE__;
-          }`;
-      } else if (t.params.access === 'write') {
-        testSource += `data[${index}] = ${type.zero};`;
-      } else {
-        testSource += `atomicAdd(data[${index}], 1);`;
+    /** Returns a different number each time, kind of like a `__LINE__` to ID the failing check. */
+    const nextErrorReturnValue = (() => {
+      let errorReturnValue = 0x1000;
+      return () => {
+        ++errorReturnValue;
+        return `0x${errorReturnValue.toString(16)}u`;
+      };
+    })();
+
+    // This is here, instead of in subcases, so only a single shader is needed to test many modes.
+    for (const indexSigned of [false, true]) {
+      const indicesToTest = indexSigned
+        ? [
+            // Exactly in bounds (should be OK)
+            '0',
+            `${_kTypeInfo.arrayLength} - 1`,
+            // Exactly out of bounds
+            '-1',
+            `${_kTypeInfo.arrayLength}`,
+            // Far out of bounds
+            '-1000000',
+            '1000000',
+            `${kMinI32}`,
+            `${kMaxI32}`,
+          ]
+        : [
+            // Exactly in bounds (should be OK)
+            '0u',
+            `${_kTypeInfo.arrayLength}u - 1u`,
+            // Exactly out of bounds
+            `${_kTypeInfo.arrayLength}u`,
+            // Far out of bounds
+            '1000000u',
+            `${kMaxU32}u`,
+            `${kMaxI32}u`,
+          ];
+
+      const indexTypeLiteral = indexSigned ? '0' : '0u';
+      const indexTypeCast = indexSigned ? 'i32' : 'u32';
+      for (const exprIndexAddon of [
+        '', // No addon
+        ` + ${indexTypeLiteral}`, // Add a literal 0
+        ` + ${indexTypeCast}(constants.zero)`, // Add a uniform 0
+      ]) {
+        // Produce the accesses to the variable.
+        for (const indexToTest of indicesToTest) {
+          testFunctionSource += `
+  {
+    let index = (${indexToTest})${exprIndexAddon};`;
+          const exprZeroElement = `${_kTypeInfo.elementBaseType}()`;
+          const exprElement = `s.data[index]`;
+
+          switch (access) {
+            case 'read':
+              {
+                let exprLoadElement = isAtomic ? `atomicLoad(&${exprElement})` : exprElement;
+                if (storageClass === 'uniform' && containerType === 'array') {
+                  // Scalar types will be wrapped in a vec4 to satisfy array element size
+                  // requirements for the uniform address space, so we need an additional index
+                  // accessor expression.
+                  exprLoadElement += '[0]';
+                }
+                let condition = `${exprLoadElement} != ${exprZeroElement}`;
+                if (containerType === 'matrix') condition = `any(${condition})`;
+                testFunctionSource += `
+    if (${condition}) { return ${nextErrorReturnValue()}; }`;
+              }
+              break;
+
+            case 'write':
+              if (isAtomic) {
+                testFunctionSource += `
+    atomicStore(&s.data[index], ${exprZeroElement});`;
+              } else {
+                testFunctionSource += `
+    s.data[index] = ${exprZeroElement};`;
+              }
+              break;
+          }
+          testFunctionSource += `
+  }`;
+        }
       }
     }
 
-    testSource += `
-      return 0;
-    }`;
+    // Check that the canaries haven't been modified
+    if (usesCanary) {
+      testFunctionSource += `
+  for (var i = 0u; i < 10u; i = i + 1u) {
+    if (s.startCanary[i] != 0xFFFFFFFFu) {
+      return ${nextErrorReturnValue()};
+    }
+    if (s.endCanary[i] != 0xFFFFFFFFu) {
+      return ${nextErrorReturnValue()};
+    }
+  }`;
+    }
 
-    // Create a buffer that contains zeroes in the allowed access area, and 42s everywhere else.
-    const testBuffer = t.device.createBuffer({
-      mappedAtCreation: true,
-      size: 512,
-      usage:
-        GPUBufferUsage.COPY_SRC |
-        GPUBufferUsage.UNIFORM |
-        GPUBufferUsage.STORAGE |
-        GPUBufferUsage.COPY_DST,
+    // Shadowing case declarations
+    let moduleScopeShadowDecls = '';
+    let functionScopeShadowDecls = '';
+
+    switch (shadowingMode) {
+      case 'module-scope':
+        // Shadow the builtins likely used by robustness as module-scope variables
+        moduleScopeShadowDecls = `
+var<private> min = 0;
+var<private> max = 0;
+var<private> arrayLength = 0;
+`;
+        // Make sure that these are referenced by the function.
+        // This ensures that compilers don't strip away unused variables.
+        functionScopeShadowDecls = `
+  _ = min;
+  _ = max;
+  _ = arrayLength;
+`;
+        break;
+      case 'function-scope':
+        // Shadow the builtins likely used by robustness as function-scope variables
+        functionScopeShadowDecls = `
+  let min = 0;
+  let max = 0;
+  let arrayLength = 0;
+`;
+        break;
+    }
+
+    // Run the test
+
+    // First aggregate the test source
+    const testSource = `
+${globalSource}
+${moduleScopeShadowDecls}
+
+fn runTest() -> u32 {
+  ${functionScopeShadowDecls}
+  ${testFunctionSource}
+  return 0u;
+}`;
+
+    const layout = t.device.createPipelineLayout({
+      bindGroupLayouts: [
+        t.device.createBindGroupLayout({
+          entries: testGroupBGLEntires,
+        }),
+        t.device.createBindGroupLayout({
+          entries: [
+            {
+              binding: 0,
+              visibility: GPUShaderStage.COMPUTE,
+              buffer: {
+                type: 'uniform',
+              },
+            },
+            {
+              binding: 1,
+              visibility: GPUShaderStage.COMPUTE,
+              buffer: {
+                type: 'storage',
+              },
+            },
+          ],
+        }),
+      ],
     });
-    const testInit = testBuffer.getMappedRange();
-    baseType.fillBuffer(testInit, 256, byteSize);
-    const testInitCopy = copyArrayBuffer(testInit);
-    testBuffer.unmap();
 
-    // Run the shader, accessing the buffer.
-    runShaderTest(t, GPUShaderStage.COMPUTE, testSource, [
-      { binding: 0, resource: { buffer: testBuffer, offset: 256, size: byteSize } },
-    ]);
+    // Run it.
+    if (bufferBindingSize !== undefined && baseType !== 'bool') {
+      const expectedData = new ArrayBuffer(testBufferSize);
+      const bufferBindingEnd = bufferBindingOffset + bufferBindingSize;
+      testFillArrayBuffer(expectedData, baseType, {
+        zeroByteStart: bufferBindingOffset,
+        zeroByteCount: bufferBindingSize,
+      });
 
-    // Check that content of the buffer outside of the allowed area didn't change.
-    t.expectSubContents(testBuffer, 0, new Uint8Array(testInitCopy.slice(0, 256)));
-    const dataEnd = 256 + byteSize;
-    t.expectSubContents(testBuffer, dataEnd, new Uint8Array(testInitCopy.slice(dataEnd, 512)));
+      // Create a buffer that contains zeroes in the allowed access area, and 42s everywhere else.
+      const testBuffer = t.makeBufferWithContents(
+        new Uint8Array(expectedData),
+        GPUBufferUsage.COPY_SRC |
+          GPUBufferUsage.UNIFORM |
+          GPUBufferUsage.STORAGE |
+          GPUBufferUsage.COPY_DST
+      );
+
+      // Run the shader, accessing the buffer.
+      runShaderTest(
+        t,
+        GPUShaderStage.COMPUTE,
+        testSource,
+        layout,
+        [
+          {
+            binding: 0,
+            resource: {
+              buffer: testBuffer,
+              offset: dynamicOffset ? 0 : bufferBindingOffset,
+              size: bufferBindingSize,
+            },
+          },
+        ],
+        dynamicOffset ? [bufferBindingOffset] : undefined
+      );
+
+      // Check that content of the buffer outside of the allowed area didn't change.
+      const expectedBytes = new Uint8Array(expectedData);
+      t.expectGPUBufferValuesEqual(testBuffer, expectedBytes.subarray(0, bufferBindingOffset), 0);
+      t.expectGPUBufferValuesEqual(
+        testBuffer,
+        expectedBytes.subarray(bufferBindingEnd, testBufferSize),
+        bufferBindingEnd
+      );
+    } else {
+      runShaderTest(t, GPUShaderStage.COMPUTE, testSource, layout, []);
+    }
   });
-
-// TODO: also check other shader stages.
-// TODO: also check global, function local, and shared variables.
-// TODO: also check interface variables.
-// TODO: also check storage texture access.

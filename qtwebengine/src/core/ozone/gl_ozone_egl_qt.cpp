@@ -1,129 +1,70 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #if defined(USE_OZONE)
-#include <QtCore/qobject.h>
-#include <QtGui/qtgui-config.h>
 #include "gl_context_qt.h"
 #include "gl_ozone_egl_qt.h"
 #include "gl_surface_egl_qt.h"
-#include "base/files/file_path.h"
-#include "base/native_library.h"
-#include "ui/gl/gl_context_egl.h"
-#include "ui/gl/gl_implementation.h"
+
+#include "media/gpu/buildflags.h"
+#include "ui/gl/gl_bindings.h"
+#include "ui/gl/gl_display.h"
 #include "ui/gl/gl_surface.h"
-#include "ui/gl/init/gl_factory.h"
-#include "ui/gl/init/gl_initializer.h"
-
-
-#include <EGL/egl.h>
-#include <dlfcn.h>
+#include "ui/gl/gl_utils.h"
+#include "ui/ozone/common/native_pixmap_egl_binding.h"
 
 namespace ui {
 
-base::NativeLibrary LoadLibrary(const base::FilePath& filename) {
-    base::NativeLibraryLoadError error;
-    base::NativeLibrary library = base::LoadNativeLibrary(filename, &error);
-    if (!library) {
-        LOG(ERROR) << "Failed to load " << filename.MaybeAsASCII() << ": " << error.ToString();
-        return NULL;
-    }
-    return library;
-}
-
-bool GLOzoneEGLQt::LoadGLES2Bindings(gl::GLImplementation /*implementation*/)
+bool LoadQtEGLBindings()
 {
-    base::NativeLibrary eglgles2Library = dlopen(NULL, RTLD_LAZY);
-    if (!eglgles2Library) {
-        LOG(ERROR) << "Failed to open EGL/GLES2 context " << dlerror();
-        return false;
-    }
-
-    gl::GLGetProcAddressProc get_proc_address =
-            reinterpret_cast<gl::GLGetProcAddressProc>(
-                base::GetFunctionPointerFromNativeLibrary(eglgles2Library,
-                                                          "eglGetProcAddress"));
-#if QT_CONFIG(opengl)
-    if (!get_proc_address) {
-        // QTBUG-63341 most likely libgles2 not linked with libegl -> fallback to qpa
-        get_proc_address =
-                reinterpret_cast<gl::GLGetProcAddressProc>(GLContextHelper::getEglGetProcAddress());
-    }
-#endif
-
+    gl::GLGetProcAddressProc get_proc_address = reinterpret_cast<gl::GLGetProcAddressProc>(GLContextHelper::getEglGetProcAddress());
     if (!get_proc_address) {
         LOG(ERROR) << "eglGetProcAddress not found.";
-        base::UnloadNativeLibrary(eglgles2Library);
         return false;
     }
-
     gl::SetGLGetProcAddressProc(get_proc_address);
-    gl::AddGLNativeLibrary(eglgles2Library);
     return true;
 }
 
-bool GLOzoneEGLQt::InitializeGLOneOffPlatform()
+bool GLOzoneEGLQt::LoadGLES2Bindings(const gl::GLImplementationParts & /*implementation*/)
 {
-    if (!gl::GLSurfaceEGLQt::InitializeOneOff()) {
-        LOG(ERROR) << "GLOzoneEGLQt::InitializeOneOff failed.";
-        return false;
+    return LoadQtEGLBindings();
+}
+
+gl::GLDisplay *GLOzoneEGLQt::InitializeGLOneOffPlatform(bool supports_angle,
+                                                        std::vector<gl::DisplayType> init_displays,
+                                                        gl::GpuPreference gpu_preference)
+{
+    if (auto display = gl::GLSurfaceEGLQt::InitializeOneOff(gpu_preference)) {
+        if (!static_cast<gl::GLDisplayEGL*>(display)->Initialize(supports_angle, std::move(init_displays), GetNativeDisplay())) {
+            LOG(ERROR) << "GLDisplayEGL::Initialize failed.";
+            return nullptr;
+        }
+        return display;
     }
-    return true;
-}
-
-bool GLOzoneEGLQt::InitializeExtensionSettingsOneOffPlatform()
-{
-    return gl::GLSurfaceEGLQt::InitializeExtensionSettingsOneOff();
-}
-
-scoped_refptr<gl::GLSurface> GLOzoneEGLQt::CreateViewGLSurface(gfx::AcceleratedWidget window)
-{
     return nullptr;
 }
 
-scoped_refptr<gl::GLSurface> GLOzoneEGLQt::CreateOffscreenGLSurface(const gfx::Size &size)
+
+bool GLOzoneEGLQt::InitializeExtensionSettingsOneOffPlatform(gl::GLDisplay *display)
 {
-    scoped_refptr<gl::GLSurface> surface = new gl::GLSurfaceEGLQt(size);
+    return static_cast<gl::GLDisplayEGL*>(display)->InitializeExtensionSettings();
+}
+
+scoped_refptr<gl::GLSurface> GLOzoneEGLQt::CreateViewGLSurface(gl::GLDisplay* display, gfx::AcceleratedWidget window)
+{
+    Q_UNUSED(display);
+    Q_UNUSED(window);
+    return nullptr;
+}
+
+scoped_refptr<gl::GLSurface> GLOzoneEGLQt::CreateOffscreenGLSurface(gl::GLDisplay* display, const gfx::Size &size)
+{
+    scoped_refptr<gl::GLSurface> surface = new gl::GLSurfaceEGLQt(static_cast<gl::GLDisplayEGL*>(display), size);
     if (surface->Initialize(gl::GLSurfaceFormat()))
         return surface;
 
-    surface = new gl::GLSurfacelessQtEGL(size);
+    surface = new gl::GLSurfacelessQtEGL(static_cast<gl::GLDisplayEGL*>(display), size);
     if (surface->Initialize(gl::GLSurfaceFormat()))
         return surface;
 
@@ -136,6 +77,33 @@ gl::EGLDisplayPlatform GLOzoneEGLQt::GetNativeDisplay()
     static void *display = GLContextHelper::getNativeDisplay();
     static gl::EGLDisplayPlatform platform(display ? reinterpret_cast<intptr_t>(display) : EGL_DEFAULT_DISPLAY);
     return platform;
+}
+
+bool GLOzoneEGLQt::CanImportNativePixmap()
+{
+#if BUILDFLAG(USE_VAAPI)
+    return gl::GLSurfaceEGL::GetGLDisplayEGL()->ext->b_EGL_EXT_image_dma_buf_import;
+#else
+    return false;
+#endif
+}
+
+std::unique_ptr<NativePixmapGLBinding> GLOzoneEGLQt::ImportNativePixmap(
+        scoped_refptr<gfx::NativePixmap> pixmap,
+        gfx::BufferFormat plane_format,
+        gfx::BufferPlane plane,
+        gfx::Size plane_size,
+        const gfx::ColorSpace &color_space,
+        GLenum target,
+        GLuint texture_id)
+{
+#if BUILDFLAG(USE_VAAPI)
+    return NativePixmapEGLBinding::Create(pixmap, plane_format, plane,
+                                          plane_size, color_space, target,
+                                          texture_id);
+#else
+    return nullptr;
+#endif
 }
 
 } // namespace ui

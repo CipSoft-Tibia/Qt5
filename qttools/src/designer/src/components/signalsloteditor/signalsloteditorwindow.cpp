@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "signalsloteditorwindow.h"
 #include "signalsloteditor_p.h"
@@ -45,13 +20,8 @@
 #include <QtDesigner/abstractformwindowcursor.h>
 #include <abstractdialoggui_p.h>
 
-#include <QtCore/qabstractitemmodel.h>
-#include <QtCore/qdebug.h>
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qbuttongroup.h>
 #include <QtWidgets/qmenu.h>
-#include <QtCore/qsortfilterproxymodel.h>
-#include <QtGui/qstandarditemmodel.h>
 #include <QtWidgets/qcombobox.h>
 #include <QtWidgets/qapplication.h>
 #include <QtWidgets/qitemdelegate.h>
@@ -63,7 +33,16 @@
 #include <QtWidgets/qbuttongroup.h>
 #include <QtWidgets/qtoolbar.h>
 
+#include <QtGui/qaction.h>
+#include <QtGui/qstandarditemmodel.h>
+
+#include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qdebug.h>
+#include <QtCore/qsortfilterproxymodel.h>
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 // Add suitable form widgets to a list of objects for the  signal slot
 // editor. Prevent special widgets from showing up there.
@@ -306,7 +285,7 @@ bool ConnectionModel::setData(const QModelIndex &index, const QVariant &data, in
 {
     if (!index.isValid() || !m_editor)
         return false;
-    if (data.type() != QVariant::String)
+    if (data.metaType().id() != QMetaType::QString)
         return false;
 
     SignalSlotConnection *con = static_cast<SignalSlotConnection*>(m_editor->connection(index.row()));
@@ -425,7 +404,7 @@ void InlineEditorModel::addTitle(const QString &title)
     const int cnt = rowCount();
     insertRows(cnt, 1);
     QModelIndex cat_idx = index(cnt, 0);
-    setData(cat_idx, QString(title + QLatin1Char(':')), Qt::DisplayRole);
+    setData(cat_idx, QString(title + u':'), Qt::DisplayRole);
     setData(cat_idx, TitleItem, Qt::UserRole);
     QFont font = QApplication::font();
     font.setBold(true);
@@ -454,16 +433,13 @@ void InlineEditorModel::addTextList(const QMap<QString, bool> &text_list)
     QFont font = QApplication::font();
     font.setItalic(true);
     QVariant fontVariant = QVariant::fromValue(font);
-    QMap<QString, bool>::ConstIterator it = text_list.constBegin();
-    const QMap<QString, bool>::ConstIterator itEnd = text_list.constEnd();
-    while (it != itEnd) {
+    for (auto it = text_list.cbegin(), itEnd = text_list.cend(); it != itEnd; ++it) {
         const QModelIndex text_idx = index(cnt++, 0);
         setData(text_idx, it.key(), Qt::DisplayRole);
         if (it.value()) {
             setData(text_idx, fontVariant, Qt::FontRole);
             setData(text_idx, QColor(Qt::red), Qt::ForegroundRole);
         }
-        ++it;
     }
 }
 
@@ -516,7 +492,7 @@ InlineEditor::InlineEditor(QWidget *parent) :
     setModel(m_model = new InlineEditorModel(0, 4, this));
     setFrame(false);
     m_idx = -1;
-    connect(this, QOverload<int>::of(&QComboBox::activated),
+    connect(this, &QComboBox::activated,
             this, &InlineEditor::checkSelection);
 }
 
@@ -590,7 +566,7 @@ ConnectionDelegate::ConnectionDelegate(QWidget *parent)
         factory = new QItemEditorFactory;
         QItemEditorCreatorBase *creator
             = new QItemEditorCreator<InlineEditor>("text");
-        factory->registerEditor(QVariant::String, creator);
+        factory->registerEditor(QMetaType::QString, creator);
     }
 
     setItemEditorFactory(factory);
@@ -643,7 +619,7 @@ QWidget *ConnectionDelegate::createEditor(QWidget *parent,
                 continue;
             // Mark deprecated members by passing bool=true.
             QMap<QString, bool> markedMemberList;
-            for (const QString &member : qAsConst(classInfo.m_memberList))
+            for (const QString &member : std::as_const(classInfo.m_memberList))
                 markedMemberList.insert(member, false);
             inline_editor->addTitle(classInfo.m_className);
             inline_editor->addTextList(markedMemberList);
@@ -654,7 +630,7 @@ QWidget *ConnectionDelegate::createEditor(QWidget *parent,
         break;
     }
 
-    connect(inline_editor, QOverload<int>::of(&QComboBox::activated),
+    connect(inline_editor, &QComboBox::activated,
             this, &ConnectionDelegate::emitCommitData);
 
     return inline_editor;
@@ -705,11 +681,11 @@ SignalSlotEditorWindow::SignalSlotEditorWindow(QDesignerFormEditorInterface *cor
 
     QToolBar *toolBar = new QToolBar;
     toolBar->setIconSize(QSize(22, 22));
-    m_add_button->setIcon(createIconSet(QStringLiteral("plus.png")));
+    m_add_button->setIcon(createIconSet(u"plus.png"_s));
     connect(m_add_button, &QAbstractButton::clicked, this, &SignalSlotEditorWindow::addConnection);
     toolBar->addWidget(m_add_button);
 
-    m_remove_button->setIcon(createIconSet(QStringLiteral("minus.png")));
+    m_remove_button->setIcon(createIconSet(u"minus.png"_s));
     connect(m_remove_button, &QAbstractButton::clicked, this, &SignalSlotEditorWindow::removeConnection);
     toolBar->addWidget(m_remove_button);
 
@@ -741,7 +717,7 @@ void SignalSlotEditorWindow::setActiveFormWindow(QDesignerFormWindowInterface *f
         }
     }
 
-    m_editor = form->findChild<SignalSlotEditor*>();
+    m_editor = form ? form->findChild<SignalSlotEditor*>() : nullptr;
     m_model->setEditor(m_editor);
     if (!m_editor.isNull()) {
         ConnectionDelegate *delegate

@@ -1,18 +1,18 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/encryptedmedia/media_key_status_map.h"
 
+#include <algorithm>
+#include <limits>
+
 #include "third_party/blink/public/platform/web_data.h"
-#include "third_party/blink/renderer/bindings/core/v8/array_buffer_or_array_buffer_view.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_union_arraybuffer_arraybufferview.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_array_buffer.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_array_piece.h"
 #include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
-
-#include <algorithm>
-#include <limits>
 
 namespace blink {
 
@@ -45,15 +45,15 @@ class MediaKeyStatusMap::MapEntry final
       return b->KeyId();
 
     // Compare the bytes.
-    int result = memcmp(a->KeyId()->Data(), b->KeyId()->Data(),
-                        std::min(a->KeyId()->ByteLengthAsSizeT(),
-                                 b->KeyId()->ByteLengthAsSizeT()));
+    int result =
+        memcmp(a->KeyId()->Data(), b->KeyId()->Data(),
+               std::min(a->KeyId()->ByteLength(), b->KeyId()->ByteLength()));
     if (result != 0)
       return result < 0;
 
     // KeyIds are equal to the shared length, so the shorter string is <.
-    DCHECK_NE(a->KeyId()->ByteLengthAsSizeT(), b->KeyId()->ByteLengthAsSizeT());
-    return a->KeyId()->ByteLengthAsSizeT() < b->KeyId()->ByteLengthAsSizeT();
+    DCHECK_NE(a->KeyId()->ByteLength(), b->KeyId()->ByteLength());
+    return a->KeyId()->ByteLength() < b->KeyId()->ByteLength();
   }
 
   virtual void Trace(Visitor* visitor) const { visitor->Trace(key_id_); }
@@ -65,30 +65,28 @@ class MediaKeyStatusMap::MapEntry final
 
 // Represents an Iterator that loops through the set of MapEntrys.
 class MapIterationSource final
-    : public PairIterable<ArrayBufferOrArrayBufferView,
-                          String>::IterationSource {
+    : public PairSyncIterable<MediaKeyStatusMap>::IterationSource {
  public:
   MapIterationSource(MediaKeyStatusMap* map) : map_(map), current_(0) {}
 
-  bool Next(ScriptState* script_state,
-            ArrayBufferOrArrayBufferView& key,
-            String& value,
-            ExceptionState&) override {
+  bool FetchNextItem(ScriptState* script_state,
+                     V8BufferSource*& key,
+                     V8MediaKeyStatus& value,
+                     ExceptionState&) override {
     // This simply advances an index and returns the next value if any,
     // so if the iterated object is mutated values may be skipped.
     if (current_ >= map_->size())
       return false;
 
     const auto& entry = map_->at(current_++);
-    key.SetArrayBuffer(entry.KeyId());
+    key = MakeGarbageCollected<V8BufferSource>(entry.KeyId());
     value = entry.Status();
     return true;
   }
 
   void Trace(Visitor* visitor) const override {
     visitor->Trace(map_);
-    PairIterable<ArrayBufferOrArrayBufferView, String>::IterationSource::Trace(
-        visitor);
+    PairSyncIterable<MediaKeyStatusMap>::IterationSource::Trace(visitor);
   }
 
  private:
@@ -129,13 +127,16 @@ uint32_t MediaKeyStatusMap::IndexOf(const DOMArrayPiece& key) const {
   return std::numeric_limits<uint32_t>::max();
 }
 
-bool MediaKeyStatusMap::has(const ArrayBufferOrArrayBufferView& key_id) {
+bool MediaKeyStatusMap::has(
+    const V8BufferSource* key_id
+) {
   uint32_t index = IndexOf(key_id);
   return index < entries_.size();
 }
 
 ScriptValue MediaKeyStatusMap::get(ScriptState* script_state,
-                                   const ArrayBufferOrArrayBufferView& key_id) {
+                                   const V8BufferSource* key_id
+) {
   uint32_t index = IndexOf(key_id);
   if (index >= entries_.size()) {
     return ScriptValue(script_state->GetIsolate(),
@@ -144,8 +145,9 @@ ScriptValue MediaKeyStatusMap::get(ScriptState* script_state,
   return ScriptValue::From(script_state, at(index).Status());
 }
 
-PairIterable<ArrayBufferOrArrayBufferView, String>::IterationSource*
-MediaKeyStatusMap::StartIteration(ScriptState*, ExceptionState&) {
+MediaKeyStatusMap::IterationSource* MediaKeyStatusMap::CreateIterationSource(
+    ScriptState*,
+    ExceptionState&) {
   return MakeGarbageCollected<MapIterationSource>(this);
 }
 

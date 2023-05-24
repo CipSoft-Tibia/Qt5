@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QDebug>
@@ -40,16 +15,16 @@ class QtTestTableModel: public QAbstractTableModel
 
 
 public:
-    QtTestTableModel(int rows = 0, int columns = 0, QObject *parent = 0)
+    QtTestTableModel(int rows = 0, int columns = 0, QObject *parent = nullptr)
         : QAbstractTableModel(parent),
           row_count(rows),
           column_count(columns) {}
 
-    int rowCount(const QModelIndex& = QModelIndex()) const { return row_count; }
-    int columnCount(const QModelIndex& = QModelIndex()) const { return column_count; }
+    int rowCount(const QModelIndex & = QModelIndex()) const override { return row_count; }
+    int columnCount(const QModelIndex & = QModelIndex()) const override { return column_count; }
     bool isEditable(const QModelIndex &) const { return true; }
 
-    QVariant data(const QModelIndex &idx, int role) const
+    QVariant data(const QModelIndex &idx, int role) const override
     {
         if (!idx.isValid() || idx.row() >= row_count || idx.column() >= column_count) {
             qWarning() << "Invalid modelIndex [%d,%d,%p]" << idx;
@@ -62,7 +37,7 @@ public:
         return QVariant();
     }
 
-    bool insertRows(int start, int count, const QModelIndex &parent = QModelIndex())
+    bool insertRows(int start, int count, const QModelIndex &parent = QModelIndex()) override
     {
         if (start < 0 || start > row_count)
             return false;
@@ -73,7 +48,7 @@ public:
         return true;
     }
 
-    bool removeRows(int start, int count, const QModelIndex &parent = QModelIndex())
+    bool removeRows(int start, int count, const QModelIndex &parent = QModelIndex()) override
     {
         if (start < 0 || start >= row_count || row_count < count)
             return false;
@@ -84,7 +59,7 @@ public:
         return true;
     }
 
-    bool insertColumns(int start, int count, const QModelIndex &parent = QModelIndex())
+    bool insertColumns(int start, int count, const QModelIndex &parent = QModelIndex()) override
     {
         if (start < 0 || start > column_count)
             return false;
@@ -95,7 +70,7 @@ public:
         return true;
     }
 
-    bool removeColumns(int start, int count, const QModelIndex &parent = QModelIndex())
+    bool removeColumns(int start, int count, const QModelIndex &parent = QModelIndex()) override
     {
         if (start < 0 || start >= column_count || column_count < count)
             return false;
@@ -229,7 +204,7 @@ void tst_QTableView::spanSelectColumn()
     }
 }
 
-typedef QVector<QRect> SpanList;
+typedef QList<QRect> SpanList;
 Q_DECLARE_METATYPE(SpanList)
 
 void spansData()
@@ -258,13 +233,13 @@ void tst_QTableView::rowInsertion_data()
 
 void tst_QTableView::rowInsertion()
 {
-    QFETCH(SpanList, spans);
+    QFETCH(const SpanList, spans);
 
     QtTestTableModel model(10, 10);
     QTableView view;
     view.setModel(&model);
 
-    foreach (QRect span, spans)
+    for (QRect span : spans)
         view.setSpan(span.top(), span.left(), span.height(), span.width());
     view.show();
     QTest::qWait(50);
@@ -284,13 +259,13 @@ void tst_QTableView::rowRemoval_data()
 
 void tst_QTableView::rowRemoval()
 {
-    QFETCH(SpanList, spans);
+    QFETCH(const SpanList, spans);
 
     QtTestTableModel model(10, 10);
     QTableView view;
     view.setModel(&model);
 
-    foreach (QRect span, spans)
+    for (QRect span : spans)
         view.setSpan(span.top(), span.left(), span.height(), span.width());
     view.show();
     QTest::qWait(50);
@@ -307,14 +282,14 @@ void tst_QTableView::columnInsertion_data()
 
 void tst_QTableView::columnInsertion()
 {
-    QFETCH(SpanList, spans);
+    QFETCH(const SpanList, spans);
 
     QtTestTableModel model(10, 10);
     QTableView view;
     view.setModel(&model);
 
     // Same set as for rowInsertion, just swapping columns and rows.
-    foreach (QRect span, spans)
+    for (QRect span : spans)
         view.setSpan(span.left(), span.top(), span.width(), span.height());
     view.show();
     QTest::qWait(50);
@@ -334,14 +309,14 @@ void tst_QTableView::columnRemoval_data()
 
 void tst_QTableView::columnRemoval()
 {
-    QFETCH(SpanList, spans);
+    QFETCH(const SpanList, spans);
 
     QtTestTableModel model(10, 10);
     QTableView view;
     view.setModel(&model);
 
     // Same set as for rowRemoval, just swapping columns and rows.
-    foreach (QRect span, spans)
+    for (QRect span : spans)
         view.setSpan(span.left(), span.top(), span.width(), span.height());
     view.show();
     QTest::qWait(50);

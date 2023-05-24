@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickrectangle_p.h"
 #include "qquickrectangle_p_p.h"
@@ -95,7 +59,7 @@ void QQuickPen::setWidth(qreal w)
     m_width = w;
     m_valid = m_color.alpha() && (qRound(m_width) >= 1 || (!m_aligned && m_width > 0));
     static_cast<QQuickItem*>(parent())->update();
-    emit penChanged();
+    emit widthChanged();
 }
 
 QColor QQuickPen::color() const
@@ -108,7 +72,7 @@ void QQuickPen::setColor(const QColor &c)
     m_color = c;
     m_valid = m_color.alpha() && (qRound(m_width) >= 1 || (!m_aligned && m_width > 0));
     static_cast<QQuickItem*>(parent())->update();
-    emit penChanged();
+    emit colorChanged();
 }
 
 bool QQuickPen::pixelAligned() const
@@ -123,7 +87,7 @@ void QQuickPen::setPixelAligned(bool aligned)
     m_aligned = aligned;
     m_valid = m_color.alpha() && (qRound(m_width) >= 1 || (!m_aligned && m_width > 0));
     static_cast<QQuickItem*>(parent())->update();
-    emit penChanged();
+    emit pixelAlignedChanged();
 }
 
 bool QQuickPen::isValid() const
@@ -238,7 +202,7 @@ void QQuickGradientStop::updateGradient()
 
 /*!
     \qmlproperty list<GradientStop> QtQuick::Gradient::stops
-    \default
+    \qmldefault
 
     This property holds the gradient stops describing the gradient.
 
@@ -265,10 +229,9 @@ QQmlListProperty<QQuickGradientStop> QQuickGradient::stops()
     \since 5.12
 
     Set this property to define the direction of the gradient.
-    \list
-    \li Gradient.Vertical - a vertical gradient
-    \li Gradient.Horizontal - a horizontal gradient
-    \endlist
+
+    \value Gradient.Vertical    a vertical gradient
+    \value Gradient.Horizontal  a horizontal gradient
 
     The default is Gradient.Vertical.
 */
@@ -397,7 +360,7 @@ QQuickPen *QQuickRectangle::border()
 }
 
 /*!
-    \qmlproperty any QtQuick::Rectangle::gradient
+    \qmlproperty var QtQuick::Rectangle::gradient
 
     The gradient to use to fill the rectangle.
 
@@ -578,8 +541,13 @@ QSGNode *QQuickRectangle::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData 
 
     if (d->pen && d->pen->isValid()) {
         rectangle->setPenColor(d->pen->color());
-        rectangle->setPenWidth(d->pen->width());
-        rectangle->setAligned(d->pen->pixelAligned());
+        qreal penWidth = d->pen->width();
+        if (d->pen->pixelAligned()) {
+            qreal dpr = window() ? window()->effectiveDevicePixelRatio() : 1.0;
+            penWidth = qRound(penWidth * dpr) / dpr; // Ensures integer width after dpr scaling
+        }
+        rectangle->setPenWidth(penWidth);
+        rectangle->setAligned(false); // width rounding already done, so the Node should not do it
     } else {
         rectangle->setPenWidth(0);
     }
@@ -606,7 +574,7 @@ QSGNode *QQuickRectangle::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData 
                 // QSGInternalRectangleNode doesn't support stops in the wrong order,
                 // so we need to manually reverse them here.
                 QGradientStops reverseStops;
-                for (auto it = stops.crbegin(); it != stops.crend(); ++it) {
+                for (auto it = stops.rbegin(); it != stops.rend(); ++it) {
                     auto stop = *it;
                     stop.first = 1 - stop.first;
                     reverseStops.append(stop);

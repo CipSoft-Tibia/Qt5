@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QWAYLANDQUICKITEM_P_H
 #define QWAYLANDQUICKITEM_P_H
@@ -60,17 +34,11 @@ class QWaylandBufferMaterialShader : public QSGMaterialShader
 public:
     QWaylandBufferMaterialShader(QWaylandBufferRef::BufferFormatEgl format);
 
-    void updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect) override;
-    char const *const *attributeNames() const override;
-
-protected:
-    void initialize() override;
-
-private:
-    const QWaylandBufferRef::BufferFormatEgl m_format;
-    int m_id_matrix;
-    int m_id_opacity;
-    QVarLengthArray<int, 3> m_id_tex;
+    bool updateUniformData(RenderState &state,
+                           QSGMaterial *newMaterial, QSGMaterial *oldMaterial) override;
+    void updateSampledImage(RenderState &state, int binding, QSGTexture **texture,
+                            QSGMaterial *newMaterial, QSGMaterial *oldMaterial) override;
+    void setupExternalOESShader(const QString &shaderFilename);
 };
 
 class QWaylandBufferMaterial : public QSGMaterial
@@ -79,20 +47,24 @@ public:
     QWaylandBufferMaterial(QWaylandBufferRef::BufferFormatEgl format);
     ~QWaylandBufferMaterial() override;
 
-    void setTextureForPlane(int plane, QOpenGLTexture *texture);
+    void setTextureForPlane(int plane, QOpenGLTexture *texture, QSGTexture *scenegraphTexture);
     void setBufferRef(QWaylandQuickItem *surfaceItem, const QWaylandBufferRef &ref);
 
     void bind();
+    void updateScenegraphTextures(QRhi *rhi);
 
     QSGMaterialType *type() const override;
-    QSGMaterialShader *createShader() const override;
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode renderMode) const override;
 
 private:
+    friend QWaylandBufferMaterialShader;
+
     void setTextureParameters(GLenum target);
     void ensureTextures(int count);
 
     const QWaylandBufferRef::BufferFormatEgl m_format;
     QVarLengthArray<QOpenGLTexture*, 3> m_textures;
+    QVarLengthArray<QSGTexture*, 3> m_scenegraphTextures;
     QWaylandBufferRef m_bufferRef;
 };
 #endif // QT_CONFIG(opengl)
@@ -139,6 +111,7 @@ public:
                                    Qt::ExtraButton5 | Qt::ExtraButton6 | Qt::ExtraButton7 | Qt::ExtraButton8 |
                                    Qt::ExtraButton9 | Qt::ExtraButton10 | Qt::ExtraButton11 |
                                    Qt::ExtraButton12 | Qt::ExtraButton13) : Qt::NoButton);
+        q->setAcceptTouchEvents(enable);
         q->setAcceptHoverEvents(enable);
         inputEventsEnabled = enable;
     }
@@ -152,19 +125,25 @@ public:
     void placeAboveParent();
     void placeBelowParent();
 
+    virtual void raise();
+    virtual void lower();
+
     static QMutex *mutex;
 
     QScopedPointer<QWaylandView> view;
     QPointer<QWaylandSurface> oldSurface;
     mutable QWaylandSurfaceTextureProvider *provider = nullptr;
+    QMetaObject::Connection texProviderConnection;
     bool paintEnabled = true;
     bool touchEventsEnabled = true;
     bool inputEventsEnabled = true;
     bool isDragging = false;
     bool newTexture = false;
     bool focusOnClick = true;
-    bool sizeFollowsSurface = true;
     bool belowParent = false;
+#if QT_CONFIG(opengl)
+    bool paintByProvider = false;
+#endif
     QPointF hoverPos;
     QMatrix4x4 lastMatrix;
 
@@ -172,7 +151,7 @@ public:
     QWaylandOutput *connectedOutput = nullptr;
     QWaylandSurface::Origin origin = QWaylandSurface::OriginTopLeft;
     QPointer<QObject> subsurfaceHandler;
-    QVector<QWaylandSeat *> touchingSeats;
+    QList<QWaylandSeat *> touchingSeats;
 };
 
 QT_END_NAMESPACE

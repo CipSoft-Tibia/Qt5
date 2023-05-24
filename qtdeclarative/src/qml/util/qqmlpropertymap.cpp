@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlpropertymap.h"
 
@@ -57,7 +21,6 @@ protected:
     QVariant propertyWriteValue(int, const QVariant &) override;
     void propertyWritten(int index) override;
     void propertyCreated(int, QMetaPropertyBuilder &) override;
-    int createProperty(const char *, const char *) override;
 
     const QString &propertyName(int index);
 
@@ -130,13 +93,6 @@ void QQmlPropertyMapMetaObject::propertyCreated(int, QMetaPropertyBuilder &b)
     priv->keys.append(QString::fromUtf8(b.name()));
 }
 
-int QQmlPropertyMapMetaObject::createProperty(const char *name, const char *value)
-{
-    if (!priv->validKeyName(QString::fromUtf8(name)))
-        return -1;
-    return QQmlOpenMetaObject::createProperty(name, value);
-}
-
 /*!
     \class QQmlPropertyMap
     \brief The QQmlPropertyMap class allows you to set key-value pairs that can be used in QML bindings.
@@ -207,7 +163,24 @@ QQmlPropertyMap::~QQmlPropertyMap()
 void QQmlPropertyMap::clear(const QString &key)
 {
     Q_D(QQmlPropertyMap);
-    d->mo->setValue(key.toUtf8(), QVariant());
+    if (d->validKeyName(key))
+        d->mo->setValue(key.toUtf8(), QVariant());
+}
+
+/*!
+    \since 6.1
+
+    Disallows any further properties to be added to this property map.
+    Existing properties can be modified or cleared.
+
+    In turn, an internal cache is turned on for the existing properties, which
+    may result in faster access from QML.
+ */
+void QQmlPropertyMap::freeze()
+{
+    Q_D(QQmlPropertyMap);
+    d->mo->setAutoCreatesProperties(false);
+    d->mo->setCached(true);
 }
 
 /*!
@@ -241,6 +214,36 @@ void QQmlPropertyMap::insert(const QString &key, const QVariant &value)
 }
 
 /*!
+    \since 6.1
+
+    Inserts the \a values into the QQmlPropertyMap.
+
+    Keys that don't exist are automatically created.
+
+    This method is substantially faster than calling \c{insert(key, value)}
+    many times in a row.
+*/
+void QQmlPropertyMap::insert(const QVariantHash &values)
+{
+    Q_D(QQmlPropertyMap);
+
+    QHash<QByteArray, QVariant> checkedValues;
+    for (auto it = values.begin(), end = values.end(); it != end; ++it) {
+        const QString &key = it.key();
+        if (!d->validKeyName(key)) {
+            qWarning() << "Creating property with name"
+                       << key
+                       << "is not permitted, conflicts with internal symbols.";
+            return;
+        }
+
+        checkedValues.insert(key.toUtf8(), it.value());
+    }
+    d->mo->setValues(checkedValues);
+
+}
+
+/*!
     Returns the list of keys.
 
     Keys that have been cleared will still appear in this list, even though their
@@ -260,7 +263,7 @@ QStringList QQmlPropertyMap::keys() const
 int QQmlPropertyMap::count() const
 {
     Q_D(const QQmlPropertyMap);
-    return d->keys.count();
+    return d->keys.size();
 }
 
 /*!
@@ -337,7 +340,7 @@ QVariant QQmlPropertyMap::operator[](const QString &key) const
 */
 QVariant QQmlPropertyMap::updateValue(const QString &key, const QVariant &input)
 {
-    Q_UNUSED(key)
+    Q_UNUSED(key);
     return input;
 }
 
@@ -370,3 +373,5 @@ QQmlPropertyMap::QQmlPropertyMap(const QMetaObject *staticMetaObject, QObject *p
 */
 
 QT_END_NAMESPACE
+
+#include "moc_qqmlpropertymap.cpp"

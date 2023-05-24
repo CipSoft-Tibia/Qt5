@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "tabordereditor.h"
 
@@ -49,6 +24,8 @@
 Q_DECLARE_METATYPE(QWidgetList)
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace {
     enum { VBOX_MARGIN = 1, HBOX_MARGIN = 4, BG_ALPHA = 32 };
@@ -155,7 +132,7 @@ void TabOrderEditor::paintEvent(QPaintEvent *e)
     if (!m_beginning && cur < 0)
         cur = m_tab_order_list.size() - 1;
 
-    for (int i = 0; i < m_tab_order_list.size(); ++i) {
+    for (qsizetype i = 0; i < m_tab_order_list.size(); ++i) {
         QWidget *widget = m_tab_order_list.at(i);
         if (!isWidgetVisible(widget))
             continue;
@@ -190,7 +167,7 @@ bool TabOrderEditor::skipWidget(QWidget *w) const
 
     QExtensionManager *ext = formWindow()->core()->extensionManager();
     if (const QDesignerPropertySheetExtension *sheet = qt_extension<QDesignerPropertySheetExtension*>(ext, w)) {
-        const int index = sheet->indexOf(QStringLiteral("focusPolicy"));
+        const int index = sheet->indexOf(u"focusPolicy"_s);
         if (index != -1) {
             bool ok = false;
             Qt::FocusPolicy q = (Qt::FocusPolicy) Utils::valueOf(sheet->property(index), &ok);
@@ -212,7 +189,7 @@ void TabOrderEditor::initTabOrder()
     }
 
     // Remove any widgets that have been removed form the form
-    for (int i = 0; i < m_tab_order_list.size(); ) {
+    for (qsizetype i = 0; i < m_tab_order_list.size(); ) {
         QWidget *w = m_tab_order_list.at(i);
         if (!formWindow()->mainContainer()->isAncestorOf(w) || skipWidget(w))
             m_tab_order_list.removeAt(i);
@@ -247,7 +224,7 @@ void TabOrderEditor::initTabOrder()
     }
 
     m_indicator_region = QRegion();
-    for (int i = 0; i < m_tab_order_list.size(); ++i) {
+    for (qsizetype i = 0; i < m_tab_order_list.size(); ++i) {
         if (m_tab_order_list.at(i)->isVisible())
             m_indicator_region |= indicatorRect(i);
     }
@@ -262,7 +239,7 @@ void TabOrderEditor::mouseMoveEvent(QMouseEvent *e)
 {
     e->accept();
 #if QT_CONFIG(cursor)
-    if (m_indicator_region.contains(e->pos()))
+    if (m_indicator_region.contains(e->position().toPoint()))
         setCursor(Qt::PointingHandCursor);
     else
         setCursor(QCursor());
@@ -272,7 +249,7 @@ void TabOrderEditor::mouseMoveEvent(QMouseEvent *e)
 int TabOrderEditor::widgetIndexAt(const QPoint &pos) const
 {
     int target_index = -1;
-    for (int i = 0; i < m_tab_order_list.size(); ++i) {
+    for (qsizetype i = 0; i < m_tab_order_list.size(); ++i) {
         if (!m_tab_order_list.at(i)->isVisible())
             continue;
         if (indicatorRect(i).contains(pos)) {
@@ -288,20 +265,22 @@ void TabOrderEditor::mousePressEvent(QMouseEvent *e)
 {
     e->accept();
 
-    if (!m_indicator_region.contains(e->pos())) {
-        if (QWidget *child = m_bg_widget->childAt(e->pos())) {
+    if (!m_indicator_region.contains(e->position().toPoint())) {
+        if (QWidget *child = m_bg_widget->childAt(e->position().toPoint())) {
             QDesignerFormEditorInterface *core = m_form_window->core();
             if (core->widgetFactory()->isPassiveInteractor(child)) {
 
                 QMouseEvent event(QEvent::MouseButtonPress,
-                                    child->mapFromGlobal(e->globalPos()),
-                                    e->button(), e->buttons(), e->modifiers());
+                                  child->mapFromGlobal(e->globalPosition().toPoint()),
+                                  e->globalPosition().toPoint(), e->button(), e->buttons(),
+                                  e->modifiers());
 
                 qApp->sendEvent(child, &event);
 
                 QMouseEvent event2(QEvent::MouseButtonRelease,
-                                    child->mapFromGlobal(e->globalPos()),
-                                    e->button(), e->buttons(), e->modifiers());
+                                   child->mapFromGlobal(e->globalPosition().toPoint()),
+                                   e->globalPosition().toPoint(), e->button(), e->buttons(),
+                                   e->modifiers());
 
                 qApp->sendEvent(child, &event2);
 
@@ -314,7 +293,7 @@ void TabOrderEditor::mousePressEvent(QMouseEvent *e)
     if (e->button() != Qt::LeftButton)
         return;
 
-    const int target_index = widgetIndexAt(e->pos());
+    const int target_index = widgetIndexAt(e->position().toPoint());
     if (target_index == -1)
         return;
 
@@ -375,7 +354,7 @@ void TabOrderEditor::mouseDoubleClickEvent(QMouseEvent *e)
     if (e->button() != Qt::LeftButton)
         return;
 
-    const int target_index = widgetIndexAt(e->pos());
+    const int target_index = widgetIndexAt(e->position().toPoint());
     if (target_index >= 0)
         return;
 

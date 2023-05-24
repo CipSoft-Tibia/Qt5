@@ -1,11 +1,11 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/embedder_support/android/util/input_stream_reader.h"
 
 #include "base/android/scoped_java_ref.h"
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
 #include "components/embedder_support/android/util/input_stream.h"
 #include "net/base/io_buffer.h"
@@ -29,7 +29,7 @@ using testing::Test;
 class MockInputStream : public embedder_support::InputStream {
  public:
   MockInputStream() {}
-  virtual ~MockInputStream() {}
+  ~MockInputStream() override {}
 
   MOCK_CONST_METHOD1(BytesAvailable, bool(int* bytes_available));
   MOCK_METHOD2(Skip, bool(int64_t n, int64_t* bytes_skipped));

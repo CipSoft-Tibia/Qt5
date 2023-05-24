@@ -356,33 +356,18 @@ void MotionFieldProjectionKernel_NEON(const ReferenceInfo& reference_info,
   } while (++y8 < y8_end);
 }
 
-void Init8bpp() {
+}  // namespace
+
+void MotionFieldProjectionInit_NEON() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth8);
   assert(dsp != nullptr);
   dsp->motion_field_projection_kernel = MotionFieldProjectionKernel_NEON;
 }
 
-#if LIBGAV1_MAX_BITDEPTH >= 10
-void Init10bpp() {
-  Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth10);
-  assert(dsp != nullptr);
-  dsp->motion_field_projection_kernel = MotionFieldProjectionKernel_NEON;
-}
-#endif
-
-}  // namespace
-
-void MotionFieldProjectionInit_NEON() {
-  Init8bpp();
-#if LIBGAV1_MAX_BITDEPTH >= 10
-  Init10bpp();
-#endif
-}
-
 }  // namespace dsp
 }  // namespace libgav1
 
-#else  // !LIBGAV1_ENABLE_NEON
+#else   // !LIBGAV1_ENABLE_NEON
 namespace libgav1 {
 namespace dsp {
 

@@ -1,18 +1,19 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef TESTING_FX_STRING_TESTHELPERS_H_
 #define TESTING_FX_STRING_TESTHELPERS_H_
 
+#include <iosfwd>
 #include <memory>
-#include <ostream>
 #include <string>
 #include <vector>
 
-#include "core/fxcrt/cfx_datetime.h"
 #include "public/fpdfview.h"
 #include "testing/free_deleter.h"
+
+class CFX_DateTime;
 
 // Output stream operator so GTEST macros work with CFX_DateTime objects.
 std::ostream& operator<<(std::ostream& os, const CFX_DateTime& dt);

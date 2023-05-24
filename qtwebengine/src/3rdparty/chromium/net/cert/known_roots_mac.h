@@ -1,4 +1,4 @@
-// Copyright (c) 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,9 @@
 #define NET_CERT_KNOWN_ROOTS_MAC_H_
 
 #include <Security/Security.h>
+
+#include "net/base/hash_value.h"
+#include "net/base/net_export.h"
 
 namespace net {
 
@@ -16,7 +19,8 @@ namespace net {
 // holding crypto::GetMacSecurityServicesLock(). Callers must therefore either
 // acquire that lock prior to calling this, or eagerly initialize beforehand
 // using InitializeKnownRoots().
-bool IsKnownRoot(SecCertificateRef cert);
+NET_EXPORT_PRIVATE bool IsKnownRoot(SecCertificateRef cert);
+bool IsKnownRoot(const HashValue& cert_sha256);
 
 // Calling this is optional as initialization will otherwise be done lazily when
 // calling IsKnownRoot(). When calling this, the current thread must NOT already

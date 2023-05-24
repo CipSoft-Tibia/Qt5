@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Paul Lemire
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Paul Lemire
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <Qt3DCore/qentity.h>
@@ -49,13 +24,13 @@ class TestAspect : public Qt3DRender::QRenderAspect
 {
 public:
     TestAspect(Qt3DCore::QNode *root)
-        : Qt3DRender::QRenderAspect(Qt3DRender::QRenderAspect::Synchronous)
+        : Qt3DRender::QRenderAspect(Qt3DRender::QRenderAspect::Manual)
         , m_jobManager(new Qt3DCore::QAspectJobManager())
     {
         Qt3DCore::QAbstractAspectPrivate::get(this)->m_jobManager = m_jobManager.data();
         QRenderAspect::onRegistered();
 
-        QVector<Qt3DCore::NodeTreeChange> nodes;
+        QList<Qt3DCore::NodeTreeChange> nodes;
         Qt3DCore::QNodeVisitor v;
         v.traverse(root, [&nodes](Qt3DCore::QNode *node) {
             Qt3DCore::QNodePrivate *d = Qt3DCore::QNodePrivate::get(node);
@@ -98,16 +73,15 @@ namespace {
 
 Qt3DCore::QEntity *buildTestScene(int layersCount,
                                   int entityCount,
-                                  QVector<Qt3DCore::QNodeId> &layerFilterIds,
+                                  QList<Qt3DCore::QNodeId> &layerFilterIds,
                                   bool alwaysEnabled = true)
 {
     Qt3DCore::QEntity *root = new Qt3DCore::QEntity();
     Qt3DRender::QLayerFilter *layerFilter = new Qt3DRender::QLayerFilter(root);
     layerFilterIds.push_back(layerFilter->id());
 
-    QVector<Qt3DRender::QLayer *> layers;
+    QList<Qt3DRender::QLayer *> layers;
     layers.reserve(layersCount);
-
 
     for (int i = 0; i < layersCount; ++i) {
         Qt3DRender::QLayer *layer = new Qt3DRender::QLayer(root);

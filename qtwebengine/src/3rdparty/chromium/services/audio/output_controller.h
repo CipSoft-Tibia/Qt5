@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,22 +12,20 @@
 #include <vector>
 
 #include "base/atomic_ref_count.h"
-#include "base/callback.h"
 #include "base/compiler_specific.h"
-#include "base/containers/flat_set.h"
-#include "base/macros.h"
-#include "base/memory/weak_ptr.h"
-#include "base/optional.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/strings/string_piece.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "base/unguessable_token.h"
 #include "build/build_config.h"
 #include "media/audio/audio_io.h"
 #include "media/audio/audio_manager.h"
-#include "media/audio/audio_source_diverter.h"
 #include "media/base/audio_power_monitor.h"
 #include "services/audio/loopback_group_member.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 // An OutputController controls an AudioOutputStream and provides data to this
 // output stream. It executes audio operations like play, pause, stop, etc. on
@@ -59,10 +57,8 @@
 // it via construction to synchronously fulfill this read request.
 
 namespace audio {
-
 class OutputController : public media::AudioOutputStream::AudioSourceCallback,
-                         public LoopbackGroupMember,
-                         public media::AudioManager::AudioDeviceListener {
+                         public LoopbackGroupMember {
  public:
   // An event handler that receives events from the OutputController. The
   // following methods are called on the audio manager thread.
@@ -92,11 +88,12 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
     // source. An ordinary file playout would ignore this.
     virtual void RequestMoreData(base::TimeDelta delay,
                                  base::TimeTicks delay_timestamp,
-                                 int prior_frames_skipped) = 0;
+                                 const media::AudioGlitchInfo& glitch_info) = 0;
 
-    // Attempts to completely fill |dest|, zeroing |dest| if the request can not
-    // be fulfilled (due to timeout).
-    virtual void Read(media::AudioBus* dest) = 0;
+    // Attempts to completely fill `dest`, zeroing `dest` if the request can not
+    // be fulfilled (due to timeout). If `is_mixing` is set, the SyncReader
+    // might use a mixing-specific timeout.
+    virtual void Read(media::AudioBus* dest, bool is_mixing) = 0;
 
     // Close this synchronous reader.
     virtual void Close() = 0;
@@ -112,20 +109,39 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
     kError,
   };
 
-  // |audio_manager| and |handler| must outlive OutputController.  The
-  // |output_device_id| can be either empty (default device) or specify a
+  // OutputController guarantees that |on_device_change_callback| will
+  // synchronously close the stream received in
+  // ManagedDeviceOutputStreamCreateCallback.
+  using ManagedDeviceOutputStreamCreateCallback =
+      base::RepeatingCallback<media::AudioOutputStream*(
+          const std::string&,
+          const media::AudioParameters&,
+          base::OnceClosure on_device_change_callback)>;
+
+  // `audio_manager` and `handler` must outlive OutputController.  The
+  // `output_device_id` can be either empty (default device) or specify a
   // specific hardware device for audio output.
+  // If `managed_device_output_stream_create_callback` is provided, it will be
+  // used to create a device stream under control; otherwise the stream will be
+  // created using `audio_manager`.
   OutputController(media::AudioManager* audio_manager,
                    EventHandler* handler,
                    const media::AudioParameters& params,
                    const std::string& output_device_id,
-                   SyncReader* sync_reader);
+                   SyncReader* sync_reader,
+                   ManagedDeviceOutputStreamCreateCallback
+                       managed_device_output_stream_create_callback =
+                           ManagedDeviceOutputStreamCreateCallback());
+
+  OutputController(const OutputController&) = delete;
+  OutputController& operator=(const OutputController&) = delete;
+
   ~OutputController() override;
 
   // Indicates whether audio power level analysis will be performed.  If false,
   // ReadCurrentPowerAndClip() can not be called.
   static constexpr bool will_monitor_audio_levels() {
-#if defined(OS_ANDROID) || defined(OS_IOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
     return false;
 #else
     return true;
@@ -159,22 +175,21 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
   // AudioSourceCallback implementation.
   int OnMoreData(base::TimeDelta delay,
                  base::TimeTicks delay_timestamp,
-                 int prior_frames_skipped,
+                 const media::AudioGlitchInfo& glitch_info,
                  media::AudioBus* dest) override;
+  int OnMoreData(base::TimeDelta delay,
+                 base::TimeTicks delay_timestamp,
+                 const media::AudioGlitchInfo& glitch_info,
+                 media::AudioBus* dest,
+                 bool is_mixing) override;
   void OnError(ErrorType type) override;
 
   // LoopbackGroupMember implementation.
   const media::AudioParameters& GetAudioParameters() const override;
-  std::string GetDeviceId() const override;
   void StartSnooping(Snooper* snooper) override;
   void StopSnooping(Snooper* snooper) override;
   void StartMuting() override;
   void StopMuting() override;
-
-  // AudioDeviceListener implementation.  When called OutputController will
-  // shutdown the existing |stream_|, create a new stream, and then transition
-  // back to an equivalent state prior to being called.
-  void OnDeviceChange() override;
 
   // Accessor for AudioPowerMonitor::ReadCurrentPowerAndClip().  See comments in
   // audio_power_monitor.h for usage.  This may be called on any thread.
@@ -193,15 +208,24 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
     LOCAL_OUTPUT_TOGGLE = 2,
   };
 
+  // Used to log the result of rendering startup.
+  // Elements in this enum should not be deleted or rearranged; the only
+  // permitted operation is to add new elements before kMaxValue and update
+  // kMaxValue.
+  enum class StreamCreationResult {
+    kOk = 0,
+    kCreateFailed = 1,
+    kOpenFailed = 2,
+    kMaxValue = kOpenFailed,
+  };
+
   // Used to store various stats about a stream. The lifetime of this object is
   // from play until pause. The underlying physical stream may be changed when
   // resuming playback, hence separate stats are logged for each play/pause
   // cycle.
   class ErrorStatisticsTracker {
    public:
-    // |handler| must outlive the ErrorStatisticsTracker. See comments for
-    // |OutputController::handler_| why it is safe to use a raw pointer here.
-    ErrorStatisticsTracker(EventHandler* handler);
+    explicit ErrorStatisticsTracker(OutputController* controller);
 
     // Note: the destructor takes care of logging all of the stats.
     ~ErrorStatisticsTracker();
@@ -215,9 +239,11 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
    private:
     void WedgeCheck();
 
-    // Using a raw pointer is safe since the EventHandler object will outlive
-    // the ErrorStatisticsTracker object.
-    EventHandler* const handler_;
+    // Using a raw pointer is safe since the OutputController object will
+    // outlive the ErrorStatisticsTracker object.
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #union
+    RAW_PTR_EXCLUSION OutputController* const controller_;
 
     const base::TimeTicks start_time_;
 
@@ -228,9 +254,11 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
     base::OneShotTimer wedge_timer_;
   };
 
-  // Helper to call RecreateStream(), but with a scoped "CreateTime" UMA timing
-  // measurement surrounding the call.
-  void RecreateStreamWithTimingUMA(RecreateReason reason);
+  // Reports UMA statistics for stream creation.
+  static void ReportStreamCreationUma(RecreateReason reason,
+                                      StreamCreationResult result);
+
+  static const char* RecreateReasonToString(RecreateReason reason);
 
   // Closes the current stream and re-creates a new one via the AudioManager. If
   // reason is LOCAL_OUTPUT_TOGGLE, the new stream will be a fake one and UMA
@@ -239,6 +267,10 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
 
   // Notifies the EventHandler that an error has occurred.
   void ReportError();
+
+  // Helper method that starts the physical stream. Must only be called in state
+  // kCreated or kPaused.
+  void StartStream();
 
   // Helper method that stops the physical stream.
   void StopStream();
@@ -256,14 +288,28 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
   // change.
   void ToggleLocalOutput();
 
-  media::AudioManager* const audio_manager_;
+  // When called, OutputController will shutdown the existing |stream_|, create
+  // a new stream, and then transition back to an equivalent state prior to
+  // being called.
+  void ProcessDeviceChange();
+
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION media::AudioManager* const audio_manager_;
   const media::AudioParameters params_;
+
+  // Callback to create a device output stream; if not specified -
+  // |audio_manager_| will be used to create a device output stream.
+  ManagedDeviceOutputStreamCreateCallback
+      managed_device_output_stream_create_callback_;
 
   // This object (OC) is owned by an OutputStream (OS) object which is an
   // EventHandler. |handler_| is set at construction by the OS (using this).
   // It is safe to use a raw pointer here since the OS will always outlive
   // the OC object.
-  EventHandler* const handler_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION EventHandler* const handler_;
 
   // The task runner for the audio manager. All control methods should be called
   // via tasks run by this TaskRunner.
@@ -277,7 +323,9 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
   // default output device.
   const std::string output_device_id_;
 
-  media::AudioOutputStream* stream_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION media::AudioOutputStream* stream_;
 
   // When true, local audio output should be muted; either by having audio
   // diverted to |diverting_to_stream_|, or a fake AudioOutputStream.
@@ -294,7 +342,9 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
   State state_;
 
   // SyncReader is used only in low latency mode for synchronous reading.
-  SyncReader* const sync_reader_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION SyncReader* const sync_reader_;
 
   // Scans audio samples from OnMoreData() as input to compute power levels.
   media::AudioPowerMonitor power_monitor_;
@@ -305,14 +355,7 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
   // Used for keeping track of and logging stats. Created when a stream starts
   // and destroyed when a stream stops. Also reset every time there is a stream
   // being created due to device changes.
-  base::Optional<ErrorStatisticsTracker> stats_tracker_;
-
-  // WeakPtrFactory+WeakPtr that is used to post tasks that are canceled when a
-  // stream is closed.
-  base::WeakPtr<OutputController> weak_this_for_stream_;
-  base::WeakPtrFactory<OutputController> weak_factory_for_stream_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(OutputController);
+  absl::optional<ErrorStatisticsTracker> stats_tracker_;
 };
 
 }  // namespace audio

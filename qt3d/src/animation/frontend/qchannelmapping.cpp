@@ -1,43 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qchannelmapping.h"
 #include "qchannelmapping_p.h"
-
-#include <Qt3DAnimation/private/qchannelmappingcreatedchange_p.h>
 
 #include <QtCore/qmetaobject.h>
 #include <QtCore/QMetaProperty>
@@ -55,7 +20,7 @@ int componentCountForValue(const T &)
 }
 
 template<>
-int componentCountForValue<QVector<float>>(const QVector<float> &v)
+int componentCountForValue<QList<float>>(const QList<float> &v)
 {
     return v.size();
 }
@@ -69,28 +34,28 @@ int componentCountForValue<QVariantList>(const QVariantList &v)
 
 int componentCountForType(int type, const QVariant &value)
 {
-    const int vectorOfFloatTypeId = qMetaTypeId<QVector<float>>();
+    const int vectorOfFloatTypeId = qMetaTypeId<QList<float>>();
 
     if (type == vectorOfFloatTypeId)
-        return componentCountForValue<QVector<float>>(value.value<QVector<float>>());
+        return componentCountForValue<QList<float>>(value.value<QList<float>>());
 
     switch (type) {
     case QMetaType::Float:
-    case QVariant::Double:
+    case QMetaType::Double:
         return 1;
 
-    case QVariant::Vector2D:
+    case QMetaType::QVector2D:
         return 2;
 
-    case QVariant::Vector3D:
-    case QVariant::Color:
+    case QMetaType::QVector3D:
+    case QMetaType::QColor:
         return 3;
 
-    case QVariant::Vector4D:
-    case QVariant::Quaternion:
+    case QMetaType::QVector4D:
+    case QMetaType::QQuaternion:
         return 4;
 
-    case QVariant::List:
+    case QMetaType::QVariantList:
         return componentCountForValue<QVariantList>(value.toList());
 
     default:
@@ -107,10 +72,10 @@ QChannelMappingPrivate::QChannelMappingPrivate()
     , m_target(nullptr)
     , m_property()
     , m_propertyName(nullptr)
-    , m_type(static_cast<int>(QVariant::Invalid))
+    , m_type(static_cast<int>(QMetaType::UnknownType))
     , m_componentCount(0)
 {
-    m_mappingType = QChannelMappingCreatedChangeBase::ChannelMapping;
+    m_mappingType = ChannelMapping;
 }
 
 /*!
@@ -125,7 +90,7 @@ void QChannelMappingPrivate::updatePropertyNameTypeAndComponentCount()
     const char *propertyName = nullptr;
 
     if (!m_target || m_property.isNull()) {
-         type = QVariant::Invalid;
+         type = QMetaType::UnknownType;
     } else {
         const QMetaObject *mo = m_target->metaObject();
         const int propertyIndex = mo->indexOfProperty(m_property.toLocal8Bit());
@@ -248,19 +213,8 @@ void QChannelMapping::setProperty(const QString &property)
     d->updatePropertyNameTypeAndComponentCount();
 }
 
-Qt3DCore::QNodeCreatedChangeBasePtr QChannelMapping::createNodeCreationChange() const
-{
-    auto creationChange = QChannelMappingCreatedChangePtr<QChannelMappingData>::create(this);
-    auto &data = creationChange->data;
-    Q_D(const QChannelMapping);
-    data.channelName = d->m_channelName;
-    data.targetId = Qt3DCore::qIdForNode(d->m_target);
-    data.type = d->m_type;
-    data.componentCount = d->m_componentCount;
-    data.propertyName = d->m_propertyName;
-    return creationChange;
-}
-
 } // namespace Qt3DAnimation
 
 QT_END_NAMESPACE
+
+#include "moc_qchannelmapping.cpp"

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@
 #include <string>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "services/network/public/mojom/url_response_head.mojom-forward.h"
@@ -30,6 +29,7 @@ class SimpleURLLoader;
 
 namespace payments {
 
+class CSPChecker;
 class ErrorLogger;
 
 // Called on completed download of a manifest |contents| from |url|, which is
@@ -76,7 +76,12 @@ class PaymentManifestDownloader {
  public:
   PaymentManifestDownloader(
       std::unique_ptr<ErrorLogger> log,
+      base::WeakPtr<CSPChecker> csp_checker,
       scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory);
+
+  PaymentManifestDownloader(const PaymentManifestDownloader&) = delete;
+  PaymentManifestDownloader& operator=(const PaymentManifestDownloader&) =
+      delete;
 
   virtual ~PaymentManifestDownloader();
 
@@ -123,10 +128,13 @@ class PaymentManifestDownloader {
   // default implementation here simply returns |url|.
   virtual GURL FindTestServerURL(const GURL& url) const;
 
+  // Overridden in TestDownloader to allow modifying CSP. Should not be called
+  // in production.
+  virtual void SetCSPCheckerForTesting(base::WeakPtr<CSPChecker> csp_checker);
+
  private:
-  friend class PaymentMethodManifestDownloaderTest;
+  friend class PaymentManifestDownloaderTestBase;
   friend class TestDownloader;
-  friend class WebAppManifestDownloaderTest;
 
   // Information about an ongoing download request.
   struct Download {
@@ -142,12 +150,15 @@ class PaymentManifestDownloader {
     Type type = Type::RESPONSE_BODY;
     url::Origin request_initiator;
     GURL original_url;
+    GURL url_before_redirects;
+    bool did_follow_redirect = false;
     std::unique_ptr<network::SimpleURLLoader> loader;
     PaymentManifestDownloadCallback callback;
   };
 
   // Called by SimpleURLLoader on a redirect.
   void OnURLLoaderRedirect(network::SimpleURLLoader* url_loader,
+                           const GURL& url_before_redirect,
                            const net::RedirectInfo& redirect_info,
                            const network::mojom::URLResponseHead& response_head,
                            std::vector<std::string>* to_be_removed_headers);
@@ -173,11 +184,16 @@ class PaymentManifestDownloader {
   // Overridden in TestDownloader.
   virtual void InitiateDownload(const url::Origin& request_initiator,
                                 const GURL& url,
+                                const GURL& url_before_redirects,
+                                bool did_follow_redirect,
                                 Download::Type download_type,
                                 int allowed_number_of_redirects,
                                 PaymentManifestDownloadCallback callback);
 
+  void OnCSPCheck(std::unique_ptr<Download> download, bool csp_allowed);
+
   std::unique_ptr<ErrorLogger> log_;
+  base::WeakPtr<CSPChecker> csp_checker_;
   scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory_;
 
   // Downloads are identified by network::SimpleURLLoader pointers, because
@@ -188,8 +204,6 @@ class PaymentManifestDownloader {
       downloads_;
 
   base::WeakPtrFactory<PaymentManifestDownloader> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(PaymentManifestDownloader);
 };
 
 }  // namespace payments

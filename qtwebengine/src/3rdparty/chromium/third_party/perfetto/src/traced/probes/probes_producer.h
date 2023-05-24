@@ -17,6 +17,7 @@
 #ifndef SRC_TRACED_PROBES_PROBES_PRODUCER_H_
 #define SRC_TRACED_PROBES_PROBES_PRODUCER_H_
 
+#include <functional>
 #include <memory>
 #include <unordered_map>
 #include <utility>
@@ -44,6 +45,8 @@ class ProbesProducer : public Producer, public FtraceController::Observer {
   ProbesProducer();
   ~ProbesProducer() override;
 
+  static ProbesProducer* GetInstance();
+
   // Producer Impl:
   void OnConnect() override;
   void OnDisconnect() override;
@@ -63,38 +66,23 @@ class ProbesProducer : public Producer, public FtraceController::Observer {
   // Our Impl
   void ConnectWithRetries(const char* socket_name,
                           base::TaskRunner* task_runner);
-  std::unique_ptr<ProbesDataSource> CreateFtraceDataSource(
-      TracingSessionID session_id,
-      const DataSourceConfig& config);
-  std::unique_ptr<ProbesDataSource> CreateProcessStatsDataSource(
-      TracingSessionID session_id,
-      const DataSourceConfig& config);
-  std::unique_ptr<ProbesDataSource> CreateInodeFileDataSource(
-      TracingSessionID session_id,
-      DataSourceConfig config);
-  std::unique_ptr<ProbesDataSource> CreateSysStatsDataSource(
-      TracingSessionID session_id,
-      const DataSourceConfig& config);
-  std::unique_ptr<ProbesDataSource> CreateAndroidPowerDataSource(
-      TracingSessionID session_id,
-      const DataSourceConfig& config);
-  std::unique_ptr<ProbesDataSource> CreateAndroidLogDataSource(
-      TracingSessionID session_id,
-      const DataSourceConfig& config);
-  std::unique_ptr<ProbesDataSource> CreatePackagesListDataSource(
-      TracingSessionID session_id,
-      const DataSourceConfig& config);
-  std::unique_ptr<ProbesDataSource> CreateMetatraceDataSource(
-      TracingSessionID session_id,
-      const DataSourceConfig& config);
-  std::unique_ptr<ProbesDataSource> CreateSystemInfoDataSource(
-      TracingSessionID session_id,
-      const DataSourceConfig& config);
-  std::unique_ptr<ProbesDataSource> CreateInitialDisplayStateDataSource(
+
+  // Constructs an instance of a data source of type T.
+  template <typename T>
+  std::unique_ptr<ProbesDataSource> CreateDSInstance(
       TracingSessionID session_id,
       const DataSourceConfig& config);
 
+  void ActivateTrigger(std::string trigger);
+
+  // Calls `cb` when all data sources have been registered.
+  void SetAllDataSourcesRegisteredCb(std::function<void()> cb) {
+    all_data_sources_registered_cb_ = cb;
+  }
+
  private:
+  static ProbesProducer* instance_;
+
   enum State {
     kNotStarted = 0,
     kNotConnected,
@@ -124,12 +112,23 @@ class ProbesProducer : public Producer, public FtraceController::Observer {
   std::unordered_map<DataSourceInstanceID, std::unique_ptr<ProbesDataSource>>
       data_sources_;
 
-  // Keeps (pointers to) data sources ordered by session id.
-  std::unordered_multimap<TracingSessionID, ProbesDataSource*>
+  // Keeps (pointers to) data sources grouped by session id and data source
+  // type. The pointers do not own the data sources (they're owned by
+  // data_sources_).
+  //
+  // const ProbesDataSource::Descriptor* identifies the type.
+  //
+  // Used by OnFtraceDataWrittenIntoDataSourceBuffers().
+  std::unordered_map<
+      TracingSessionID,
+      std::unordered_multimap<const ProbesDataSource::Descriptor*,
+                              ProbesDataSource*>>
       session_data_sources_;
 
   std::unordered_multimap<FlushRequestID, DataSourceInstanceID>
       pending_flushes_;
+
+  std::function<void()> all_data_sources_registered_cb_;
 
   std::unordered_map<DataSourceInstanceID, base::Watchdog::Timer> watchdogs_;
   LRUInodeCache cache_{kLRUInodeCacheSize};

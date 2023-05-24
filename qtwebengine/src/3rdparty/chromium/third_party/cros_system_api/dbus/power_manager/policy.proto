@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium OS Authors. All rights reserved.
+// Copyright 2013 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@ syntax = "proto2";
 option optimize_for = LITE_RUNTIME;
 
 package power_manager;
-option go_package = "power_manager_proto";
+option go_package = "chromiumos/system_api/power_manager_proto";
 
 // Power management policy sent from Chrome to powerd.
 //
@@ -22,7 +22,7 @@ option go_package = "power_manager_proto";
 // opposed to continuing to use a value set by a previous message).  An
 // empty message will restore all settings to their defaults.
 //
-// Next ID to use: 25
+// Next ID to use: 31
 message PowerManagementPolicy {
 
   enum Action {
@@ -89,7 +89,26 @@ message PowerManagementPolicy {
     // less than or equal to |idle_ms|.
     optional int64 idle_warning_ms = 5;
 
-    // Next ID to use: 6
+    // Similar to the `screen_dim_ms`, also controls when the screen will be
+    // dimmed, in milliseconds.
+    // A quick dim may happen after this delay, before a standard screen dim if
+    // this is set and hps result is negative. Therefore this only applies on a
+    // device that has hps.
+    // 0 disables quick_dim; so do values that are >= screen_dim_ms, since
+    // there is no point to have a quick dim that is slower than a standard dim.
+    optional int64 quick_dim_ms = 6;
+
+    // Similar to the `screen_lock_ms`, also controls when the screen will be
+    // locked, in milliseconds.
+    // A quick lock may happen after this delay, before a standard screen lock
+    // if this is set and hps result is negative. Therefore this only applies on
+    // a device that has hps.
+    // 0 disables quick_lock; so do values that are >= screen_lock_ms, since
+    // there is no point to have a quick lock that is slower than a standard
+    // lock.
+    optional int64 quick_lock_ms = 7;
+
+    // Next ID to use: 8
   }
 
   // Action to perform when |idle_ms| (see Delays) is reached without any
@@ -250,7 +269,40 @@ message PowerManagementPolicy {
   // Ignored unless powerd is configured to honor charging-related prefs.
   optional BatteryChargeMode battery_charge_mode = 24;
 
-  // Next value to use: 26
+  // This field is only used for experiment and will be removed soon after the
+  // experiment. This controls whether to send feedback to DimAdvisor to disable
+  // quick dim for a short period of time if a quick dim is undimmed.
+  optional bool send_feedback_if_undimmed = 26;
+
+  // Unused unless Adaptive Charging is supported on the system.
+  optional bool adaptive_charging_enabled = 27;
+
+  // The battery charge that will be maintained by Adaptive Charging while it is
+  // delaying charge. For example, if Adaptive Charging predicts that the system
+  // will be plugged in for 4 hours, it may delay charging above this percentage
+  // (eg 80% charge) for 2 hours.
+  // Unused unless Adaptive Charging is enabled.
+  optional int32 adaptive_charging_hold_percent = 28;
+
+  // The minimum probability required from the prediction model to delay
+  // charging due to the Adaptive Charging feature. The ML model produces 9
+  // values in the range [0.0, 1.0] (sum of 1.0). The first 8 values represent
+  // the probability that the charger will be disconnected for the associated
+  // hour. The last value represents the probability that the charger will be
+  // unplugged more than 8 hours from now. If no value is higher than
+  // |adaptive_charging_min_probability|, we assume that the model does not have
+  // enough confidence in any prediction, so we don't delay charging. The
+  // highest probability is taken as the prediction for when the charger will be
+  // unplugged, and Adaptive Charging will attempt to fully charge the battery
+  // by then.
+  // Unused unless Adaptive Charging is enabled.
+  optional double adaptive_charging_min_probability = 29;
+
+  // The percentile of the charge durations recorded in Charge History to use as
+  // the max delay until full charge for Adaptive Charging.
+  optional double adaptive_charging_max_delay_percentile = 30;
+
+  // Next value to use: 31
 }
 
 // Message included in IdleActionImminent signals.

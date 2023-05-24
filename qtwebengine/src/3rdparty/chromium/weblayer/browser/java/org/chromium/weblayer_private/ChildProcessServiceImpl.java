@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,15 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.os.IBinder;
+import android.webkit.WebViewFactory;
 
-import org.chromium.base.annotations.UsedByReflection;
+import com.google.android.gms.common.GooglePlayServicesUtilLight;
+
+import org.chromium.base.StrictModeContext;
+import org.chromium.base.library_loader.LibraryLoader;
+import org.chromium.base.library_loader.NativeLibraryPreloader;
 import org.chromium.base.process_launcher.ChildProcessService;
+import org.chromium.build.annotations.UsedByReflection;
 import org.chromium.components.embedder_support.application.ClassLoaderContextWrapperFactory;
 import org.chromium.content_public.app.ChildProcessServiceFactory;
 import org.chromium.weblayer_private.interfaces.IChildProcessService;
@@ -23,14 +29,21 @@ import org.chromium.weblayer_private.interfaces.StrictModeWorkaround;
  */
 @UsedByReflection("WebLayer")
 public final class ChildProcessServiceImpl extends IChildProcessService.Stub {
+    private static final String TAG = "WebLayer";
     private ChildProcessService mService;
 
     @UsedByReflection("WebLayer")
     public static IBinder create(Service service, Context appContext, Context remoteContext) {
+        setLibraryPreloader(remoteContext.getPackageName(), remoteContext.getClassLoader());
         ClassLoaderContextWrapperFactory.setLightDarkResourceOverrideContext(
                 remoteContext, remoteContext);
         // Wrap the app context so that it can be used to load WebLayer implementation classes.
         appContext = ClassLoaderContextWrapperFactory.get(appContext);
+
+        // The GPU process may use GMS APIs using the host app's context. This is called in the
+        // browser process in GmsBridge.
+        GooglePlayServicesUtilLight.enableUsingApkIndependentContext();
+
         return new ChildProcessServiceImpl(service, appContext);
     }
 
@@ -55,5 +68,23 @@ public final class ChildProcessServiceImpl extends IChildProcessService.Stub {
 
     private ChildProcessServiceImpl(Service service, Context context) {
         mService = ChildProcessServiceFactory.create(service, context);
+    }
+
+    public static void setLibraryPreloader(String webLayerPackageName, ClassLoader classLoader) {
+        if (!LibraryLoader.getInstance().isLoadedByZygote()) {
+            LibraryLoader.getInstance().setNativeLibraryPreloader(new NativeLibraryPreloader() {
+                @Override
+                public int loadLibrary(String packageName) {
+                    return loadNativeLibrary(webLayerPackageName, classLoader);
+                }
+            });
+        }
+    }
+
+    private static int loadNativeLibrary(String packageName, ClassLoader cl) {
+        // Loading the library triggers disk access.
+        try (StrictModeContext ignored = StrictModeContext.allowDiskReads()) {
+            return WebViewFactory.loadWebViewNativeLibraryFromPackage(packageName, cl);
+        }
     }
 }

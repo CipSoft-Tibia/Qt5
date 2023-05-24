@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2008-2012 NVIDIA Corporation.
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2008-2012 NVIDIA Corporation.
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSG_RENDER_CUSTOM_MATERIAL_H
 #define QSSG_RENDER_CUSTOM_MATERIAL_H
@@ -42,110 +16,132 @@
 // We mean it.
 //
 
-#include <QtQuick3DRuntimeRender/private/qssgrenderimage_p.h>
-#include <QtQuick3DRuntimeRender/private/qssgrenderlightmaps_p.h>
-#include <QtQuick3DRuntimeRender/private/qssgrenderdynamicobjectsystemcommands_p.h>
-
 #include <QtCore/qurl.h>
+#include <QtCore/qvariant.h>
 #include <QtCore/qvector.h>
+#include <rhi/qrhi.h>
+
+#include <QtQuick3DRuntimeRender/private/qtquick3druntimerenderexports_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrendergraphobject_p.h>
+#include <QtQuick3DUtils/private/qssgrenderbasetypes_p.h>
 
 QT_BEGIN_NAMESPACE
 
+struct QSSGRenderImage;
+struct QSSGShaderMaterialAdapter;
+class QQuick3DShaderUtilsTextureInput;
+class QQuick3DTexture;
+
 struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderCustomMaterial : public QSSGRenderGraphObject
 {
-    QSSGRenderCustomMaterial() : QSSGRenderGraphObject(Type::CustomMaterial) {}
+    QSSGRenderCustomMaterial();
+    ~QSSGRenderCustomMaterial();
 
     struct TextureProperty
     {
+        QQuick3DShaderUtilsTextureInput *texInput = nullptr;
         QSSGRenderImage *texImage = nullptr;
         QByteArray name;
-        QSSGRenderShaderDataType shaderDataType;
-        QSSGRenderTextureMagnifyingOp magFilterType = QSSGRenderTextureMagnifyingOp::Linear;
-        QSSGRenderTextureMinifyingOp minFilterType = QSSGRenderTextureMinifyingOp::Linear;
-        QSSGRenderTextureCoordOp clampType = QSSGRenderTextureCoordOp::ClampToEdge;
+        QSSGRenderShaderValue::Type shaderDataType;
+        QSSGRenderTextureFilterOp minFilterType = QSSGRenderTextureFilterOp::Linear;
+        QSSGRenderTextureFilterOp magFilterType = QSSGRenderTextureFilterOp::Linear;
+        QSSGRenderTextureFilterOp mipFilterType = QSSGRenderTextureFilterOp::Linear;
+        QSSGRenderTextureCoordOp horizontalClampType = QSSGRenderTextureCoordOp::ClampToEdge;
+        QSSGRenderTextureCoordOp verticalClampType = QSSGRenderTextureCoordOp::ClampToEdge;
+        QQuick3DTexture *lastConnectedTexture = nullptr;
+        QMetaObject::Connection minFilterChangedConn;
+        QMetaObject::Connection magFilterChangedConn;
+        QMetaObject::Connection mipFilterChangedConn;
+        QMetaObject::Connection horizontalTilingChangedConn;
+        QMetaObject::Connection verticalTilingChangedConn;
     };
-
-    QVector<TextureProperty> textureProperties;
+    using TexturePropertyList = QList<TextureProperty>;
 
     struct Property
     {
         Property() = default;
-        Property(const QByteArray &name, const QVariant &value, QSSGRenderShaderDataType shaderDataType, int pid = -1)
+        Property(const QByteArray &name, const QVariant &value, QSSGRenderShaderValue::Type shaderDataType, int pid = -1)
             : name(name), value(value), shaderDataType(shaderDataType), pid(pid)
         { }
         QByteArray name;
-        mutable QVariant value;
-        QSSGRenderShaderDataType shaderDataType;
+        QVariant value;
+        QSSGRenderShaderValue::Type shaderDataType;
         int pid;
     };
+    using PropertyList = QList<Property>;
 
-    QVector<Property> properties;
-
-    struct ShaderInfo
+    enum class Flags : quint8
     {
-        QByteArray version;
-        QByteArray type; // I.e., GLSL
-        QByteArray shaderPrefix;
+        Dirty = 0x1,
+        AlwaysDirty = 0x2
+    };
+    using FlagT = std::underlying_type_t<Flags>;
+
+    enum class ShadingMode // must match QQuick3DCustomMaterial::ShadingMode
+    {
+        Unshaded,
+        Shaded
     };
 
-    ShaderInfo shaderInfo;
-    QMap<QByteArray, QByteArray> shaders;
-
-    QVector<dynamic::QSSGCommand *> commands;
-
-    // IMPORTANT: These flags matches the key produced by a MDL export file
-    enum class MaterialShaderKeyValues
-    {
-        diffuse = 1 << 0,
-        specular = 1 << 1,
-        cutout = 1 << 2,
-        refraction = 1 << 3,
-        transparent = 1 << 4,
-        displace = 1 << 5,
-        transmissive = 1 << 6,
+    enum class CustomShaderPresenceFlag {
+        Vertex = 1 << 0,
+        Fragment = 1 << 1
     };
-    Q_DECLARE_FLAGS(MaterialShaderKeyFlags, MaterialShaderKeyValues)
+    Q_DECLARE_FLAGS(CustomShaderPresence, CustomShaderPresenceFlag)
 
-    using Flag = QSSGRenderNode::Flag;
-    Q_DECLARE_FLAGS(Flags, Flag)
+    enum class RenderFlag {
+        Blending = 1 << 0,
+        ScreenTexture = 1 << 1,
+        DepthTexture = 1 << 2,
+        AoTexture = 1 << 3,
+        OverridesPosition = 1 << 4,
+        ProjectionMatrix = 1 << 5,
+        InverseProjectionMatrix = 1 << 6,
+        ScreenMipTexture = 1 << 7,
+        VarColor = 1 << 8,
+        IblOrientation = 1 << 9,
+        Lightmap = 1 << 10,
+        Skinning = 1 << 11,
+        Morphing = 1 << 12
+    };
+    Q_DECLARE_FLAGS(RenderFlags, RenderFlag)
 
-    const char *className = nullptr;
+    QByteArray m_shaderPathKey;
+    CustomShaderPresence m_customShaderPresence;
 
-    // lightmap section
-    QSSGRenderLightmaps m_lightmaps;
-    // material section
-    bool m_hasTransparency = false;
-    bool m_hasRefraction = false;
+    TexturePropertyList m_textureProperties;
+    PropertyList m_properties;
+
     QSSGRenderImage *m_iblProbe = nullptr;
     QSSGRenderImage *m_emissiveMap = nullptr;
-    QSSGRenderImage *m_displacementMap = nullptr;
-    float m_displaceAmount = 0.0f; ///< depends on the object size
-    QSSGCullFaceMode cullMode = QSSGCullFaceMode::Back;
+    QSSGCullFaceMode m_cullMode = QSSGCullFaceMode::Back;
+    QSSGDepthDrawMode m_depthDrawMode = QSSGDepthDrawMode::OpaqueOnly;
+    RenderFlags m_renderFlags;
+    QRhiGraphicsPipeline::BlendFactor m_srcBlend;
+    QRhiGraphicsPipeline::BlendFactor m_dstBlend;
+    float m_lineWidth = 1.0f;
 
     QSSGRenderGraphObject *m_nextSibling = nullptr;
 
-    MaterialShaderKeyFlags m_shaderKeyValues; ///< input from MDL files
+    ShadingMode m_shadingMode = ShadingMode::Shaded;
 
-    Flags flags;
-    bool m_alwaysDirty = false;
+    FlagT m_flags { FlagT(Flags::Dirty) };
+    bool incompleteBuildTimeObject = false; // Used by the shadergen tool
+    bool m_usesSharedVariables = false;
 
-    bool isDielectric() const { return m_shaderKeyValues & MaterialShaderKeyValues::diffuse; }
-    bool isSpecularEnabled() const { return m_shaderKeyValues & MaterialShaderKeyValues::specular; }
-    bool isCutOutEnabled() const { return m_shaderKeyValues & MaterialShaderKeyValues::cutout; }
-    bool isTransmissive() const { return m_shaderKeyValues & MaterialShaderKeyValues::transmissive; }
-    bool hasLighting() const { return true; }
+    void markDirty();
+    void clearDirty();
+    void setAlwaysDirty(bool v);
+    [[nodiscard]] inline bool isDirty() const { return ((m_flags & (FlagT(Flags::Dirty) | FlagT(Flags::AlwaysDirty))) != 0); }
 
-    // Dirty
-    bool m_dirtyFlagWithInFrame;
-    bool isDirty() const { return flags.testFlag(Flag::Dirty) || m_dirtyFlagWithInFrame || m_alwaysDirty; }
-    void updateDirtyForFrame()
-    {
-        m_dirtyFlagWithInFrame = flags.testFlag(Flag::Dirty);
-        flags.setFlag(Flag::Dirty, false);
-    }
+    QSSGShaderMaterialAdapter *adapter = nullptr;
+
+    QString debugObjectName;
 };
 
-Q_DECLARE_OPERATORS_FOR_FLAGS(QSSGRenderCustomMaterial::MaterialShaderKeyFlags)
+
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(QSSGRenderCustomMaterial::CustomShaderPresence)
 
 QT_END_NAMESPACE
 

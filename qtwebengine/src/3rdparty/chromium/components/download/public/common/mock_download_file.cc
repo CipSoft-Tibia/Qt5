@@ -1,11 +1,11 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/download/public/common/mock_download_file.h"
 
-#include "base/bind.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
 #include "testing/gmock/include/gmock/gmock.h"
 
 using ::testing::_;
@@ -25,8 +25,9 @@ ACTION_P(PostSuccessRun, task_runner) {
 MockDownloadFile::MockDownloadFile() {
   // This is here because |Initialize()| is normally called right after
   // construction.
-  ON_CALL(*this, Initialize(_, _, _, _))
-      .WillByDefault(PostSuccessRun(base::ThreadTaskRunnerHandle::Get()));
+  ON_CALL(*this, Initialize(_, _, _))
+      .WillByDefault(
+          PostSuccessRun(base::SingleThreadTaskRunner::GetCurrentDefault()));
 }
 
 MockDownloadFile::~MockDownloadFile() {}

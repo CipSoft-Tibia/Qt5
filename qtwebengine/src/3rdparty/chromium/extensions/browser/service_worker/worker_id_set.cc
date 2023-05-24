@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <iterator>
 #include <memory>
 
-#include "content/public/common/child_process_host.h"
+#include "content/public/browser/child_process_host.h"
 #include "extensions/browser/service_worker/worker_id.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker_registration.mojom.h"
 

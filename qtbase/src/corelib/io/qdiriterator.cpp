@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \since 4.3
@@ -60,11 +24,11 @@
 
     \snippet code/src_corelib_io_qdiriterator.cpp 1
 
-    The next() function returns the path to the next directory entry and
-    advances the iterator. You can also call filePath() to get the current
-    file path without advancing the iterator.  The fileName() function returns
-    only the name of the file, similar to how QDir::entryList() works. You can
-    also call fileInfo() to get a QFileInfo for the current entry.
+    The next() and nextFileInfo() functions advance the iterator and return
+    the path or the QFileInfo of the next directory entry. You can also call
+    filePath() or fileInfo() to get the current file path or QFileInfo without
+    first advancing the iterator. The fileName() function returns only the
+    name of the file, similar to how QDir::entryList() works.
 
     Unlike Qt's container iterators, QDirIterator is uni-directional (i.e.,
     you cannot iterate directories in reverse order) and does not allow random
@@ -93,7 +57,6 @@
 #include "qdir_p.h"
 #include "qabstractfileengine_p.h"
 
-#include <QtCore/qregexp.h>
 #include <QtCore/qset.h>
 #include <QtCore/qstack.h>
 #include <QtCore/qvariant.h>
@@ -106,10 +69,13 @@
 #include <QtCore/private/qfilesystemmetadata_p.h>
 #include <QtCore/private/qfilesystemengine_p.h>
 #include <QtCore/private/qfileinfo_p.h>
+#include <QtCore/private/qduplicatetracker_p.h>
 
 #include <memory>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 template <class Iterator>
 class QDirIteratorPrivateIteratorStack : public QStack<Iterator *>
@@ -141,11 +107,8 @@ public:
     const QDir::Filters filters;
     const QDirIterator::IteratorFlags iteratorFlags;
 
-#if defined(QT_BOOTSTRAPPED)
-    // ### Qt6: Get rid of this once we don't bootstrap qmake anymore
-    QVector<QRegExp> nameRegExps;
-#elif QT_CONFIG(regularexpression)
-    QVector<QRegularExpression> nameRegExps;
+#if QT_CONFIG(regularexpression)
+    QList<QRegularExpression> nameRegExps;
 #endif
 
     QDirIteratorPrivateIteratorStack<QAbstractFileEngineIterator> fileEngineIterators;
@@ -157,7 +120,7 @@ public:
     QFileInfo nextFileInfo;
 
     // Loop protection
-    QSet<QString> visitedLinks;
+    QDuplicateTracker<QString> visitedLinks;
 };
 
 /*!
@@ -166,24 +129,16 @@ public:
 QDirIteratorPrivate::QDirIteratorPrivate(const QFileSystemEntry &entry, const QStringList &nameFilters,
                                          QDir::Filters _filters, QDirIterator::IteratorFlags flags, bool resolveEngine)
     : dirEntry(entry)
-      , nameFilters(nameFilters.contains(QLatin1String("*")) ? QStringList() : nameFilters)
+      , nameFilters(nameFilters.contains("*"_L1) ? QStringList() : nameFilters)
       , filters(QDir::NoFilter == _filters ? QDir::AllEntries : _filters)
       , iteratorFlags(flags)
 {
-#if defined(QT_BOOTSTRAPPED)
+#if QT_CONFIG(regularexpression)
     nameRegExps.reserve(nameFilters.size());
     for (const auto &filter : nameFilters) {
-        nameRegExps.append(
-            QRegExp(filter,
-                    (filters & QDir::CaseSensitive) ? Qt::CaseSensitive : Qt::CaseInsensitive,
-                    QRegExp::Wildcard));
-    }
-#elif QT_CONFIG(regularexpression)
-    nameRegExps.reserve(nameFilters.size());
-    for (const auto &filter : nameFilters) {
-        QString re = QRegularExpression::wildcardToRegularExpression(filter);
-        nameRegExps.append(
-            QRegularExpression(re, (filters & QDir::CaseSensitive) ? QRegularExpression::NoPatternOption : QRegularExpression::CaseInsensitiveOption));
+        auto re = QRegularExpression::fromWildcard(filter, (filters & QDir::CaseSensitive ?
+                                                            Qt::CaseSensitive : Qt::CaseInsensitive));
+        nameRegExps.append(re);
     }
 #endif
     QFileSystemMetaData metaData;
@@ -208,8 +163,11 @@ void QDirIteratorPrivate::pushDirectory(const QFileInfo &fileInfo)
         path = fileInfo.canonicalFilePath();
 #endif
 
-    if (iteratorFlags & QDirIterator::FollowSymlinks)
-        visitedLinks << fileInfo.canonicalFilePath();
+    if ((iteratorFlags & QDirIterator::FollowSymlinks)) {
+        // Stop link loops
+        if (visitedLinks.hasSeen(fileInfo.canonicalFilePath()))
+            return;
+    }
 
     if (engine) {
         engine->setFileName(path);
@@ -309,16 +267,11 @@ void QDirIteratorPrivate::checkAndPushDirectory(const QFileInfo &fileInfo)
 
     // Never follow . and ..
     QString fileName = fileInfo.fileName();
-    if (QLatin1String(".") == fileName || QLatin1String("..") == fileName)
+    if ("."_L1 == fileName || ".."_L1 == fileName)
         return;
 
     // No hidden directories unless requested
     if (!(filters & QDir::AllDirs) && !(filters & QDir::Hidden) && fileInfo.isHidden())
-        return;
-
-    // Stop link loops
-    if (!visitedLinks.isEmpty() &&
-        visitedLinks.contains(fileInfo.canonicalFilePath()))
         return;
 
     pushDirectory(fileInfo);
@@ -341,49 +294,41 @@ bool QDirIteratorPrivate::matchesFilters(const QString &fileName, const QFileInf
         return false;
 
     // filter . and ..?
-    const int fileNameSize = fileName.size();
-    const bool dotOrDotDot = fileName[0] == QLatin1Char('.')
+    const qsizetype fileNameSize = fileName.size();
+    const bool dotOrDotDot = fileName[0] == u'.'
                              && ((fileNameSize == 1)
-                                 ||(fileNameSize == 2 && fileName[1] == QLatin1Char('.')));
+                                 ||(fileNameSize == 2 && fileName[1] == u'.'));
     if ((filters & QDir::NoDot) && dotOrDotDot && fileNameSize == 1)
         return false;
     if ((filters & QDir::NoDotDot) && dotOrDotDot && fileNameSize == 2)
         return false;
 
     // name filter
-#if QT_CONFIG(regularexpression) || defined(QT_BOOTSTRAPPED)
+#if QT_CONFIG(regularexpression)
     // Pass all entries through name filters, except dirs if the AllDirs
     if (!nameFilters.isEmpty() && !((filters & QDir::AllDirs) && fi.isDir())) {
         bool matched = false;
         for (const auto &re : nameRegExps) {
-#if defined(QT_BOOTSTRAPPED)
-            QRegExp copy = re;
-            if (copy.exactMatch(fileName)) {
-                matched = true;
-                break;
-            }
-#else
             if (re.match(fileName).hasMatch()) {
                 matched = true;
                 break;
             }
-#endif
         }
         if (!matched)
             return false;
     }
 #endif
     // skip symlinks
-    const bool skipSymlinks = (filters & QDir::NoSymLinks);
-    const bool includeSystem = (filters & QDir::System);
-    if(skipSymlinks && fi.isSymLink()) {
+    const bool skipSymlinks = filters.testAnyFlag(QDir::NoSymLinks);
+    const bool includeSystem = filters.testAnyFlag(QDir::System);
+    if (skipSymlinks && fi.isSymLink()) {
         // The only reason to save this file is if it is a broken link and we are requesting system files.
-        if(!includeSystem || fi.exists())
+        if (!includeSystem || fi.exists())
             return false;
     }
 
     // filter hidden
-    const bool includeHidden = (filters & QDir::Hidden);
+    const bool includeHidden = filters.testAnyFlag(QDir::Hidden);
     if (!includeHidden && !dotOrDotDot && fi.isHidden())
         return false;
 
@@ -511,10 +456,12 @@ QDirIterator::~QDirIterator()
     new entry. If hasNext() returns \c false, this function does nothing, and
     returns an empty QString.
 
-    You can call fileName() or filePath() to get the current entry file name
+    You can call fileName() or filePath() to get the current entry's file name
     or path, or fileInfo() to get a QFileInfo for the current entry.
 
-    \sa hasNext(), fileName(), filePath(), fileInfo()
+    Call nextFileInfo() instead of next() if you're interested in the QFileInfo.
+
+    \sa hasNext(), nextFileInfo(), fileName(), filePath(), fileInfo()
 */
 QString QDirIterator::next()
 {
@@ -523,10 +470,30 @@ QString QDirIterator::next()
 }
 
 /*!
+    \since 6.3
+
+    Advances the iterator to the next entry, and returns the file info of this
+    new entry. If hasNext() returns \c false, this function does nothing, and
+    returns an empty QFileInfo.
+
+    You can call fileName() or filePath() to get the current entry's file name
+    or path, or fileInfo() to get a QFileInfo for the current entry.
+
+    Call next() instead of nextFileInfo() when all you need is the filePath().
+
+    \sa hasNext(), fileName(), filePath(), fileInfo()
+*/
+QFileInfo QDirIterator::nextFileInfo()
+{
+    d->advance();
+    return fileInfo();
+}
+
+/*!
     Returns \c true if there is at least one more entry in the directory;
     otherwise, false is returned.
 
-    \sa next(), fileName(), filePath(), fileInfo()
+    \sa next(), nextFileInfo(), fileName(), filePath(), fileInfo()
 */
 bool QDirIterator::hasNext() const
 {

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,11 @@
 
 #include <stdint.h>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/synchronization/lock.h"
+#include "base/task/sequenced_task_runner.h"
 #include "gpu/command_buffer/common/command_buffer_id.h"
 #include "gpu/gpu_export.h"
 #include "gpu/ipc/common/gpu_peak_memory.h"
@@ -29,6 +30,10 @@ class GPU_EXPORT MemoryTracker {
   class Observer {
    public:
     Observer() = default;
+
+    Observer(const Observer&) = delete;
+    Observer& operator=(const Observer&) = delete;
+
     virtual ~Observer() = default;
 
     virtual void OnMemoryAllocatedChange(
@@ -36,9 +41,6 @@ class GPU_EXPORT MemoryTracker {
         uint64_t old_size,
         uint64_t new_size,
         GpuPeakMemoryAllocationSource source) = 0;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(Observer);
   };
 
   virtual ~MemoryTracker() = default;
@@ -60,15 +62,21 @@ class GPU_EXPORT MemoryTracker {
 // texture, or renderbuffer) and forward the result to a specified
 // MemoryTracker. MemoryTypeTracker is thread-safe, but it must not outlive the
 // MemoryTracker which will be notified on the sequence the MemoryTypeTracker
-// was created on (if base::SequencedTaskRunnerHandle::IsSet()), or on the task
-// runner specified (for testing).
+// was created on (if base::SequencedTaskRunner::HasCurrentDefault()), or on the
+// task runner specified (for testing).
 class GPU_EXPORT MemoryTypeTracker {
  public:
   explicit MemoryTypeTracker(MemoryTracker* memory_tracker);
   // For testing.
   MemoryTypeTracker(MemoryTracker* memory_tracker,
                     scoped_refptr<base::SequencedTaskRunner> task_runner);
+
+  MemoryTypeTracker(const MemoryTypeTracker&) = delete;
+  MemoryTypeTracker& operator=(const MemoryTypeTracker&) = delete;
+
   ~MemoryTypeTracker();
+
+  const MemoryTracker* memory_tracker() const { return memory_tracker_; }
 
   void TrackMemAlloc(size_t bytes);
   void TrackMemFree(size_t bytes);
@@ -77,15 +85,13 @@ class GPU_EXPORT MemoryTypeTracker {
  private:
   void TrackMemoryAllocatedChange(int64_t delta);
 
-  MemoryTracker* const memory_tracker_;
+  const raw_ptr<MemoryTracker, DanglingUntriaged> memory_tracker_;
 
   size_t mem_represented_ GUARDED_BY(lock_) = 0;
   mutable base::Lock lock_;
 
   scoped_refptr<base::SequencedTaskRunner> task_runner_;
   base::WeakPtrFactory<MemoryTypeTracker> weak_ptr_factory_;
-
-  DISALLOW_COPY_AND_ASSIGN(MemoryTypeTracker);
 };
 
 }  // namespace gpu

@@ -1,19 +1,26 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_VIZ_CLIENT_FRAME_EVICTOR_H_
 #define COMPONENTS_VIZ_CLIENT_FRAME_EVICTOR_H_
 
-#include "base/macros.h"
+#include <vector>
+
+#include "base/memory/raw_ptr.h"
 #include "components/viz/client/frame_eviction_manager.h"
+#include "components/viz/common/surfaces/surface_id.h"
 
 namespace viz {
 
 class FrameEvictorClient {
  public:
-  virtual ~FrameEvictorClient() {}
-  virtual void EvictDelegatedFrame() = 0;
+  virtual ~FrameEvictorClient() = default;
+  virtual void EvictDelegatedFrame(
+      const std::vector<SurfaceId>& surface_ids) = 0;
+  virtual std::vector<SurfaceId> CollectSurfaceIdsForEviction() const = 0;
+  virtual SurfaceId GetCurrentSurfaceId() const = 0;
+  virtual SurfaceId GetPreNavigationSurfaceId() const = 0;
 };
 
 // Keeps track of the visibility state of a child and notifies when the parent
@@ -21,6 +28,10 @@ class FrameEvictorClient {
 class VIZ_CLIENT_EXPORT FrameEvictor : public FrameEvictionManagerClient {
  public:
   explicit FrameEvictor(FrameEvictorClient* client);
+
+  FrameEvictor(const FrameEvictor&) = delete;
+  FrameEvictor& operator=(const FrameEvictor&) = delete;
+
   ~FrameEvictor() override;
 
   // Called when the parent allocates a new LocalSurfaceId for this child and
@@ -38,15 +49,16 @@ class VIZ_CLIENT_EXPORT FrameEvictor : public FrameEvictionManagerClient {
 
   bool visible() const { return visible_; }
 
+  // Return the collection of SurfaceIds that should be evicted.
+  std::vector<SurfaceId> CollectSurfaceIdsForEviction() const;
+
  private:
   // FrameEvictionManagerClient implementation.
   void EvictCurrentFrame() override;
 
-  FrameEvictorClient* client_;
+  raw_ptr<FrameEvictorClient> client_;
   bool has_surface_ = false;
   bool visible_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(FrameEvictor);
 };
 
 }  // namespace viz

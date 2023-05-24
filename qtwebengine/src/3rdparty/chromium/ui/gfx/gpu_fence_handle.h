@@ -1,16 +1,23 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_GFX_GPU_FENCE_HANDLE_H_
 #define UI_GFX_GPU_FENCE_HANDLE_H_
 
-#include "base/macros.h"
 #include "build/build_config.h"
 #include "ui/gfx/gfx_export.h"
 
-#if defined(OS_POSIX) || defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_POSIX)
 #include "base/files/scoped_file.h"
+#endif
+
+#if BUILDFLAG(IS_FUCHSIA)
+#include <lib/zx/event.h>
+#endif
+
+#if BUILDFLAG(IS_WIN)
+#include "base/win/scoped_handle.h"
 #endif
 
 namespace gfx {
@@ -31,11 +38,13 @@ struct GFX_EXPORT GpuFenceHandle {
   // |handle| itself.
   GpuFenceHandle Clone() const;
 
-  // owned_fd is defined here for both OS_FUCHSIA and OS_POSIX but all
-  // of the handling for owned_fd is only for POSIX. Consider adjusting the
-  // defines in the future.
-#if defined(OS_POSIX) || defined(OS_FUCHSIA)
+  // TODO(crbug.com/1142962): Make this a class instead of struct.
+#if BUILDFLAG(IS_POSIX)
   base::ScopedFD owned_fd;
+#elif BUILDFLAG(IS_FUCHSIA)
+  zx::event owned_event;
+#elif BUILDFLAG(IS_WIN)
+  base::win::ScopedHandle owned_handle;
 #endif
 };
 

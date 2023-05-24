@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSOCKETNOTIFIER_H
 #define QSOCKETNOTIFIER_H
@@ -54,12 +18,15 @@ class Q_CORE_EXPORT QSocketNotifier : public QObject
 public:
     enum Type { Read, Write, Exception };
 
+    explicit QSocketNotifier(Type, QObject *parent = nullptr);
     QSocketNotifier(qintptr socket, Type, QObject *parent = nullptr);
     ~QSocketNotifier();
 
+    void setSocket(qintptr socket);
     qintptr socket() const;
     Type type() const;
 
+    bool isValid() const;
     bool isEnabled() const;
 
 public Q_SLOTS:
@@ -81,7 +48,7 @@ Q_SIGNALS:
     // This means the PMF-based connect(..) will automatically, on recompile, pick up the new
     // version while the old-style connect(..) can query the metaobject system for this version.
 #if defined(Q_MOC_RUN) || defined(BUILDING_QSOCKETNOTIFIER) || defined(Q_QDOC)
-    void activated(int socket, QPrivateSignal);
+    QT_MOC_COMPAT void activated(int socket, QPrivateSignal);
 #endif
 
 protected:
@@ -102,14 +69,14 @@ public:
 #define Q_DECL_CONSTEXPR_NOT_WIN Q_DECL_CONSTEXPR
 #endif
 
-    /* implicit */ Q_DECL_CONSTEXPR_NOT_WIN
+    Q_DECL_CONSTEXPR_NOT_WIN Q_IMPLICIT
     QSocketDescriptor(DescriptorType descriptor = DescriptorType(-1)) noexcept : sockfd(descriptor)
     {
     }
 
 #if defined(Q_OS_WIN) || defined(Q_QDOC)
-    /* implicit */ QSocketDescriptor(qintptr desc) noexcept : sockfd(DescriptorType(desc)) {}
-    operator qintptr() const noexcept { return qintptr(sockfd); }
+    Q_IMPLICIT QSocketDescriptor(qintptr desc) noexcept : sockfd(DescriptorType(desc)) {}
+    Q_IMPLICIT operator qintptr() const noexcept { return qintptr(sockfd); }
     Q_DECL_CONSTEXPR Qt::HANDLE winHandle() const noexcept { return sockfd; }
 #endif
     Q_DECL_CONSTEXPR operator DescriptorType() const noexcept { return sockfd; }
@@ -134,7 +101,8 @@ private:
 };
 
 QT_END_NAMESPACE
-Q_DECLARE_METATYPE(QSocketNotifier::Type)
-Q_DECLARE_METATYPE(QSocketDescriptor)
+
+QT_DECL_METATYPE_EXTERN_TAGGED(QSocketNotifier::Type, QSocketNotifier_Type, Q_CORE_EXPORT)
+QT_DECL_METATYPE_EXTERN(QSocketDescriptor, Q_CORE_EXPORT)
 
 #endif // QSOCKETNOTIFIER_H

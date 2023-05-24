@@ -1,23 +1,33 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/features.gni")
 import("//mojo/public/tools/bindings/mojom.gni")
 
 mojom_component("mojom") {
   output_prefix = "tracing_mojom"
   macro_prefix = "TRACING_MOJOM"
+  enabled_features = []
+
+  if (is_linux || is_chromeos) {
+    enabled_features += [ "is_linux_or_chromeos" ]
+  }
 
   sources = [
     "background_tracing_agent.mojom",
+    "system_tracing_service.mojom",
     "traced_process.mojom",
     "tracing_service.mojom",
   ]
 
-  public_deps = [ "//mojo/public/mojom/base" ]
+  public_deps = [
+    "//mojo/public/mojom/base",
+    "//sandbox/policy/mojom",
+  ]
 
-  if (!is_nacl && !is_ios) {
-    enabled_features = [ "is_perfetto_supported_os" ]
+  if (!is_nacl && use_blink) {
+    enabled_features += [ "is_perfetto_supported_os" ]
     sources += [
       "constants.mojom",
       "perfetto_service.mojom",

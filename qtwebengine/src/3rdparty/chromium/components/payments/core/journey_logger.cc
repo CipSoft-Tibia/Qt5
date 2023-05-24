@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,8 @@
 
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/stringprintf.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
 #include "services/metrics/public/cpp/ukm_recorder.h"
 #include "third_party/re2/src/re2/re2.h"
@@ -50,6 +50,9 @@ std::string GetHistogramNameSuffix(
     case JourneyLogger::COMPLETION_STATUS_OTHER_ABORTED:
       name_suffix += "OtherAborted";
       break;
+    case JourneyLogger::COMPLETION_STATUS_USER_OPTED_OUT:
+      name_suffix += "UserOptedOut";
+      break;
     default:
       break;
   }
@@ -71,21 +74,13 @@ bool ValidateExclusiveBitVector(const std::vector<bool>& bit_vector) {
   return seen_true_bit;
 }
 
-// Records time to checkout for payment requests. The 5-minute max is chosen
-// since the payment handler window times out after 5 minutes.
-void RecordTimeToCheckoutUmaHistograms(const std::string name,
-                                       const base::TimeDelta time_to_checkout) {
-  UmaHistogramCustomTimes(
-      name, time_to_checkout, base::TimeDelta::FromMilliseconds(1) /* min */,
-      base::TimeDelta::FromMinutes(5) /* max */, 100 /*bucket count*/);
-}
-
 }  // namespace
 
 JourneyLogger::JourneyLogger(bool is_incognito,
                              ukm::SourceId payment_request_source_id)
     : is_incognito_(is_incognito),
       events_(EVENT_INITIATED),
+      events2_(static_cast<int>(Event2::kInitiated)),
       payment_request_source_id_(payment_request_source_id) {}
 
 JourneyLogger::~JourneyLogger() {
@@ -143,40 +138,130 @@ void JourneyLogger::SetEventOccurred(Event event) {
   events_ |= event;
 }
 
+void JourneyLogger::SetEvent2Occurred(Event2 event) {
+  events2_ |= static_cast<int>(event);
+}
+
+void JourneyLogger::SetOptOutOffered() {
+  SetEvent2Occurred(Event2::kOptOutOffered);
+}
+
+void JourneyLogger::SetSkippedShow() {
+  SetEventOccurred(EVENT_SKIPPED_SHOW);
+  SetEvent2Occurred(Event2::kSkippedShow);
+}
+
+void JourneyLogger::SetShown() {
+  SetEventOccurred(EVENT_SHOWN);
+  SetEvent2Occurred(Event2::kShown);
+}
+
+void JourneyLogger::SetReceivedInstrumentDetails() {
+  SetEventOccurred(EVENT_RECEIVED_INSTRUMENT_DETAILS);
+}
+
+void JourneyLogger::SetPayClicked() {
+  SetEventOccurred(EVENT_PAY_CLICKED);
+  SetEvent2Occurred(Event2::kPayClicked);
+}
+
+void JourneyLogger::SetSelectedMethod(PaymentMethodCategory category) {
+  switch (category) {
+    case PaymentMethodCategory::kBasicCard:
+      SetEventOccurred(EVENT_SELECTED_CREDIT_CARD);
+      SetEvent2Occurred(Event2::kSelectedCreditCard);
+      break;
+    case PaymentMethodCategory::kGoogle:
+      SetEventOccurred(EVENT_SELECTED_GOOGLE);
+      SetEvent2Occurred(Event2::kSelectedGoogle);
+      break;
+    case PaymentMethodCategory::kPlayBilling:
+      SetEvent2Occurred(Event2::kSelectedPlayBilling);
+      break;
+    case PaymentMethodCategory::kSecurePaymentConfirmation:
+      SetEventOccurred(EVENT_SELECTED_SECURE_PAYMENT_CONFIRMATION);
+      SetEvent2Occurred(Event2::kSelectedSecurePaymentConfirmation);
+      break;
+    case PaymentMethodCategory::kOther:
+      SetEventOccurred(EVENT_SELECTED_OTHER);
+      SetEvent2Occurred(Event2::kSelectedOther);
+      break;
+    default:
+      NOTREACHED();
+  }
+}
+
+void JourneyLogger::SetAvailableMethod(PaymentMethodCategory category) {
+  switch (category) {
+    case PaymentMethodCategory::kBasicCard:
+      SetEventOccurred(EVENT_AVAILABLE_METHOD_BASIC_CARD);
+      break;
+    case PaymentMethodCategory::kGoogle:
+      SetEventOccurred(EVENT_AVAILABLE_METHOD_GOOGLE);
+      break;
+    case PaymentMethodCategory::kPlayBilling:  // Intentional fallthrough.
+    case PaymentMethodCategory::kSecurePaymentConfirmation:
+      NOTREACHED();
+      break;
+    case PaymentMethodCategory::kOther:
+      SetEventOccurred(EVENT_AVAILABLE_METHOD_OTHER);
+      break;
+    default:
+      NOTREACHED();
+  }
+}
+
 void JourneyLogger::SetRequestedInformation(bool requested_shipping,
                                             bool requested_email,
                                             bool requested_phone,
                                             bool requested_name) {
   // This method should only be called once per Payment Request.
-  if (requested_shipping)
+  if (requested_shipping) {
     SetEventOccurred(EVENT_REQUEST_SHIPPING);
+    SetEvent2Occurred(Event2::kRequestShipping);
+  }
 
-  if (requested_email)
+  if (requested_email) {
     SetEventOccurred(EVENT_REQUEST_PAYER_EMAIL);
+    SetEvent2Occurred(Event2::kRequestPayerData);
+  }
 
-  if (requested_phone)
+  if (requested_phone) {
     SetEventOccurred(EVENT_REQUEST_PAYER_PHONE);
+    SetEvent2Occurred(Event2::kRequestPayerData);
+  }
 
-  if (requested_name)
+  if (requested_name) {
     SetEventOccurred(EVENT_REQUEST_PAYER_NAME);
+    SetEvent2Occurred(Event2::kRequestPayerData);
+  }
 }
 
-void JourneyLogger::SetRequestedPaymentMethodTypes(
-    bool requested_basic_card,
-    bool requested_method_google,
-    bool requested_method_secure_payment_confirmation,
-    bool requested_method_other) {
-  if (requested_basic_card)
-    SetEventOccurred(EVENT_REQUEST_METHOD_BASIC_CARD);
-
-  if (requested_method_google)
-    SetEventOccurred(EVENT_REQUEST_METHOD_GOOGLE);
-
-  if (requested_method_secure_payment_confirmation)
-    SetEventOccurred(EVENT_REQUEST_METHOD_SECURE_PAYMENT_CONFIRMATION);
-
-  if (requested_method_other)
-    SetEventOccurred(EVENT_REQUEST_METHOD_OTHER);
+void JourneyLogger::SetRequestedPaymentMethods(
+    const std::vector<PaymentMethodCategory>& methods) {
+  for (auto& method : methods) {
+    switch (method) {
+      case PaymentMethodCategory::kBasicCard:
+        SetEventOccurred(EVENT_REQUEST_METHOD_BASIC_CARD);
+        SetEvent2Occurred(Event2::kRequestMethodBasicCard);
+        break;
+      case PaymentMethodCategory::kGoogle:
+        SetEventOccurred(EVENT_REQUEST_METHOD_GOOGLE);
+        SetEvent2Occurred(Event2::kRequestMethodGoogle);
+        break;
+      case PaymentMethodCategory::kPlayBilling:
+        SetEvent2Occurred(Event2::kRequestMethodPlayBilling);
+        break;
+      case PaymentMethodCategory::kSecurePaymentConfirmation:
+        SetEventOccurred(EVENT_REQUEST_METHOD_SECURE_PAYMENT_CONFIRMATION);
+        SetEvent2Occurred(Event2::kRequestMethodSecurePaymentConfirmation);
+        break;
+      case PaymentMethodCategory::kOther:
+        SetEventOccurred(EVENT_REQUEST_METHOD_OTHER);
+        SetEvent2Occurred(Event2::kRequestMethodOther);
+        break;
+    }
+  }
 }
 
 void JourneyLogger::SetCompleted() {
@@ -193,6 +278,8 @@ void JourneyLogger::SetAborted(AbortReason reason) {
   if (reason == ABORT_REASON_ABORTED_BY_USER ||
       reason == ABORT_REASON_USER_NAVIGATION)
     RecordJourneyStatsHistograms(COMPLETION_STATUS_USER_ABORTED);
+  else if (reason == ABORT_REASON_USER_OPTED_OUT)
+    RecordJourneyStatsHistograms(COMPLETION_STATUS_USER_OPTED_OUT);
   else
     RecordJourneyStatsHistograms(COMPLETION_STATUS_OTHER_ABORTED);
 }
@@ -204,53 +291,9 @@ void JourneyLogger::SetNotShown(NotShownReason reason) {
                                 NOT_SHOWN_REASON_MAX);
 }
 
-void JourneyLogger::RecordTransactionAmount(std::string currency,
-                                            const std::string& value,
-                                            bool completed) {
-  DCHECK(!has_recorded_transaction_amount_[completed]);
-  has_recorded_transaction_amount_[completed] = true;
-  double amount = -1;
-  if (!base::StringToDouble(value, &amount) || amount < 0)
-    return;
-
-  std::string completion_suffix = completed ? ".Completed" : ".Triggered";
-  // The currency should be three upper-case characters between A and Z.
-  DCHECK(re2::RE2::FullMatch(currency, "^[A-Z]{3}$"));
-  // A dictionary of 3-letter recorded currency codes and their approximated USD
-  // conversion rates. Transaction currencies in currency_conversion_rates are
-  // recorded after conversion.
-  const std::unordered_map<std::string, float> currency_conversion_rates = {
-      {"USD", 1.0},   {"EUR", 1.14},  {"GBP", 1.27}, {"JPY", 0.0093},
-      {"INR", 0.014}, {"CNY", 0.15},  {"CAD", 0.77}, {"RUB", 0.016},
-      {"PLN", 0.27},  {"AUD", 0.70},  {"BRL", 0.26}, {"UAH", 0.038},
-      {"TWD", 0.032}, {"CZK", 0.045}, {"MXN", 0.052}};
-  std::unordered_map<std::string, float>::const_iterator it =
-      currency_conversion_rates.find(currency);
-  // transactions with currencies not included in the conversion dictionary are
-  // not recorded at this point.
-  if (it == currency_conversion_rates.end())
-    return;
-
-  // Approximately convert the transaction amount to USD and map it to one of
-  // the following categories: 1-zero transactions 2- micro transactions (<= $1)
-  // 3- regular transactions.
-  double converted_amount = amount * it->second;
-  TransactionSize transaction_size = TransactionSize::kRegularTransaction;
-  if (converted_amount == 0)
-    transaction_size = TransactionSize::kZeroTransaction;
-  else if (converted_amount <= 1)
-    transaction_size = TransactionSize::kMicroTransaction;
-  base::UmaHistogramEnumeration(
-      "PaymentRequest.TransactionAmount" + completion_suffix, transaction_size);
-
-  if (payment_request_source_id_ == ukm::kInvalidSourceId)
-    return;
-
-  // Record the transaction amount in UKM.
-  ukm::builders::PaymentRequest_TransactionAmount(payment_request_source_id_)
-      .SetCompletionStatus(completed)
-      .SetCategory(static_cast<int64_t>(transaction_size))
-      .Record(ukm::UkmRecorder::Get());
+void JourneyLogger::SetNoMatchingCredentialsShown() {
+  SetShown();
+  SetEvent2Occurred(Event2::kNoMatchingCredentials);
 }
 
 void JourneyLogger::RecordCheckoutStep(CheckoutFunnelStep step) {
@@ -266,7 +309,6 @@ void JourneyLogger::RecordJourneyStatsHistograms(
   has_recorded_ = true;
 
   RecordEventsMetric(completion_status);
-  RecordTimeToCheckout(completion_status);
 
   // Depending on the completion status record kPaymentRequestTriggered and/or
   // kCompleted checkout steps.
@@ -277,6 +319,7 @@ void JourneyLogger::RecordJourneyStatsHistograms(
       break;
     case COMPLETION_STATUS_USER_ABORTED:
     case COMPLETION_STATUS_OTHER_ABORTED:
+    case COMPLETION_STATUS_USER_OPTED_OUT:
       RecordCheckoutStep(CheckoutFunnelStep::kPaymentRequestTriggered);
       break;
     case COMPLETION_STATUS_COULD_NOT_SHOW:
@@ -310,16 +353,23 @@ void JourneyLogger::RecordEventsMetric(CompletionStatus completion_status) {
   // Add the completion status to the events.
   switch (completion_status) {
     case COMPLETION_STATUS_COMPLETED:
-      events_ |= EVENT_COMPLETED;
+      SetEventOccurred(EVENT_COMPLETED);
+      SetEvent2Occurred(Event2::kCompleted);
       break;
     case COMPLETION_STATUS_USER_ABORTED:
-      events_ |= EVENT_USER_ABORTED;
+      SetEventOccurred(EVENT_USER_ABORTED);
+      SetEvent2Occurred(Event2::kUserAborted);
       break;
     case COMPLETION_STATUS_OTHER_ABORTED:
-      events_ |= EVENT_OTHER_ABORTED;
+      SetEventOccurred(EVENT_OTHER_ABORTED);
+      SetEvent2Occurred(Event2::kOtherAborted);
       break;
     case COMPLETION_STATUS_COULD_NOT_SHOW:
-      events_ |= EVENT_COULD_NOT_SHOW;
+      SetEventOccurred(EVENT_COULD_NOT_SHOW);
+      SetEvent2Occurred(Event2::kCouldNotShow);
+      break;
+    case COMPLETION_STATUS_USER_OPTED_OUT:
+      SetEvent2Occurred(Event2::kUserOptedOut);
       break;
     default:
       NOTREACHED();
@@ -345,12 +395,15 @@ void JourneyLogger::RecordEventsMetric(CompletionStatus completion_status) {
   }
 
   // Add whether the user had and initial form of payment to the events.
-  if (sections_[SECTION_PAYMENT_METHOD].number_suggestions_shown_ > 0)
-    events_ |= EVENT_HAD_INITIAL_FORM_OF_PAYMENT;
+  if (sections_[SECTION_PAYMENT_METHOD].number_suggestions_shown_ > 0) {
+    SetEventOccurred(EVENT_HAD_INITIAL_FORM_OF_PAYMENT);
+    SetEvent2Occurred(Event2::kHadInitialFormOfPayment);
+  }
 
   // Record the events in UMA.
   ValidateEventBits();
   base::UmaHistogramSparse("PaymentRequest.Events", events_);
+  base::UmaHistogramSparse("PaymentRequest.Events2", events2_);
 
   if (payment_request_source_id_ == ukm::kInvalidSourceId)
     return;
@@ -359,6 +412,7 @@ void JourneyLogger::RecordEventsMetric(CompletionStatus completion_status) {
   ukm::builders::PaymentRequest_CheckoutEvents(payment_request_source_id_)
       .SetCompletionStatus(completion_status)
       .SetEvents(events_)
+      .SetEvents2(events2_)
       .Record(ukm::UkmRecorder::Get());
 
   if (payment_app_source_id_ == ukm::kInvalidSourceId)
@@ -368,99 +422,39 @@ void JourneyLogger::RecordEventsMetric(CompletionStatus completion_status) {
   ukm::builders::PaymentApp_CheckoutEvents(payment_app_source_id_)
       .SetCompletionStatus(completion_status)
       .SetEvents(events_)
+      .SetEvents2(events2_)
       .Record(ukm::UkmRecorder::Get());
 
   // Clear payment app source id since it gets deleted after recording.
   payment_app_source_id_ = ukm::kInvalidSourceId;
 }
 
-void JourneyLogger::RecordTimeToCheckout(
-    CompletionStatus completion_status) const {
-  const base::TimeDelta time_to_checkout =
-      base::TimeTicks::Now() - trigger_time_;
-  const std::string histogram_name = "PaymentRequest.TimeToCheckout";
-
-  // Whether or not the payment sheet was shown shown.
-  std::string ui_show_suffix;
-  if (events_ & EVENT_SHOWN)
-    ui_show_suffix = ".Shown";
-  else if (events_ & EVENT_SKIPPED_SHOW)
-    ui_show_suffix = ".SkippedShow";
-  else  // User aborted before request.show()
-    ui_show_suffix = ".BeforeShow";
-
-  std::string completion_suffix;
-  switch (completion_status) {
-    case COMPLETION_STATUS_COMPLETED: {
-      completion_suffix = ".Completed";
-      // Record time to checkout for completed requests separated by payment
-      // sheet shown status. Requests can complete only after request.show()
-      // call.
-      DCHECK_NE(".BeforeShow", ui_show_suffix);
-      RecordTimeToCheckoutUmaHistograms(
-          histogram_name + ".Completed" + ui_show_suffix, time_to_checkout);
-
-      // Record time to checkout for completed requests separated by payment
-      // sheet shown status and selected method.
-      std::string selected_method_suffix;
-      if (events_ & EVENT_SELECTED_CREDIT_CARD) {
-        selected_method_suffix = ".BasicCard";
-      } else if (events_ & EVENT_SELECTED_GOOGLE) {
-        selected_method_suffix = ".Google";
-      } else if (events_ & EVENT_SELECTED_SECURE_PAYMENT_CONFIRMATION) {
-        selected_method_suffix = ".SecurePaymentConfirmation";
-      } else {
-        DCHECK(events_ & EVENT_SELECTED_OTHER);
-        selected_method_suffix = ".Other";
-      }
-      RecordTimeToCheckoutUmaHistograms(histogram_name + ".Completed" +
-                                            ui_show_suffix +
-                                            selected_method_suffix,
-                                        time_to_checkout);
-      break;
-    }
-    case COMPLETION_STATUS_USER_ABORTED: {
-      completion_suffix = ".UserAborted";
-      // Record time to checkout for requests aborted by user separated by
-      // payment sheet shown status.
-      RecordTimeToCheckoutUmaHistograms(
-          histogram_name + ".UserAborted" + ui_show_suffix, time_to_checkout);
-      break;
-    }
-    case COMPLETION_STATUS_OTHER_ABORTED:
-      completion_suffix = ".OtherAborted";
-      break;
-    case COMPLETION_STATUS_COULD_NOT_SHOW:
-      // Do not record checkout duration when payment sheet could not shown.
-      return;
-    default:
-      NOTREACHED();
-  }
-  // Record time to checkout for payment reuqests separated by completion
-  // status.
-  RecordTimeToCheckoutUmaHistograms(histogram_name + completion_suffix,
-                                    time_to_checkout);
+bool JourneyLogger::WasOccurred(Event2 event) const {
+  return events2_ & static_cast<int>(event);
 }
 
 void JourneyLogger::ValidateEventBits() const {
   std::vector<bool> bit_vector;
 
   // Validate completion status.
-  bit_vector.push_back(events_ & EVENT_COMPLETED);
-  bit_vector.push_back(events_ & EVENT_OTHER_ABORTED);
-  bit_vector.push_back(events_ & EVENT_USER_ABORTED);
-  bit_vector.push_back(events_ & EVENT_COULD_NOT_SHOW);
+  bit_vector.push_back(WasOccurred(Event2::kCompleted));
+  bit_vector.push_back(WasOccurred(Event2::kOtherAborted));
+  bit_vector.push_back(WasOccurred(Event2::kUserAborted));
+  bit_vector.push_back(WasOccurred(Event2::kCouldNotShow));
+  bit_vector.push_back(WasOccurred(Event2::kUserOptedOut));
   DCHECK(ValidateExclusiveBitVector(bit_vector));
   bit_vector.clear();
   if (events_ & EVENT_COMPLETED)
     DCHECK(events_ & EVENT_PAY_CLICKED);
 
   // Validate the user selected method.
-  if (events_ & EVENT_COMPLETED) {
-    bit_vector.push_back(events_ & EVENT_SELECTED_CREDIT_CARD);
-    bit_vector.push_back(events_ & EVENT_SELECTED_GOOGLE);
-    bit_vector.push_back(events_ & EVENT_SELECTED_OTHER);
-    bit_vector.push_back(events_ & EVENT_SELECTED_SECURE_PAYMENT_CONFIRMATION);
+  if (WasOccurred(Event2::kCompleted)) {
+    bit_vector.push_back(WasOccurred(Event2::kSelectedCreditCard));
+    bit_vector.push_back(WasOccurred(Event2::kSelectedGoogle));
+    bit_vector.push_back(
+        WasOccurred(Event2::kSelectedSecurePaymentConfirmation));
+    bit_vector.push_back(WasOccurred(Event2::kSelectedPlayBilling));
+    bit_vector.push_back(WasOccurred(Event2::kSelectedOther));
     DCHECK(ValidateExclusiveBitVector(bit_vector));
     bit_vector.clear();
   }
@@ -499,19 +493,49 @@ void JourneyLogger::ValidateEventBits() const {
   // Check that the two bits are not set at the same time.
   DCHECK(!(events_ & EVENT_CAN_MAKE_PAYMENT_TRUE) ||
          !(events_ & EVENT_CAN_MAKE_PAYMENT_FALSE));
+
+  AssertOccurredTogether(EVENT_SHOWN, Event2::kShown);
+  AssertOccurredTogether(EVENT_SKIPPED_SHOW, Event2::kSkippedShow);
+  AssertOccurredTogether(EVENT_COULD_NOT_SHOW, Event2::kCouldNotShow);
+  AssertOccurredTogether(EVENT_PAY_CLICKED, Event2::kPayClicked);
+  AssertOccurredTogether(EVENT_COMPLETED, Event2::kCompleted);
+  AssertOccurredTogether(EVENT_USER_ABORTED, Event2::kUserAborted);
+  AssertOccurredTogether(EVENT_OTHER_ABORTED, Event2::kOtherAborted);
+  AssertOccurredTogether(EVENT_HAD_INITIAL_FORM_OF_PAYMENT,
+                         Event2::kHadInitialFormOfPayment);
+  AssertOccurredTogether(EVENT_REQUEST_SHIPPING, Event2::kRequestShipping);
+  AssertOccurredTogether(EVENT_REQUEST_METHOD_BASIC_CARD,
+                         Event2::kRequestMethodBasicCard);
+  AssertOccurredTogether(EVENT_REQUEST_METHOD_GOOGLE,
+                         Event2::kRequestMethodGoogle);
+  AssertOccurredTogether(EVENT_REQUEST_METHOD_OTHER,
+                         Event2::kRequestMethodOther);
+  AssertOccurredTogether(EVENT_REQUEST_METHOD_SECURE_PAYMENT_CONFIRMATION,
+                         Event2::kRequestMethodSecurePaymentConfirmation);
+  AssertOccurredTogether(EVENT_SELECTED_CREDIT_CARD,
+                         Event2::kSelectedCreditCard);
+  AssertOccurredTogether(EVENT_SELECTED_GOOGLE, Event2::kSelectedGoogle);
+  AssertOccurredTogether(EVENT_SELECTED_OTHER, Event2::kSelectedOther);
+  AssertOccurredTogether(EVENT_SELECTED_SECURE_PAYMENT_CONFIRMATION,
+                         Event2::kSelectedSecurePaymentConfirmation);
+}
+
+void JourneyLogger::AssertOccurredTogether(Event event, Event2 event2) const {
+  DCHECK(event == static_cast<int>(event2));
+  DCHECK((events_ & event) == (events2_ & static_cast<int>(event2)));
 }
 
 bool JourneyLogger::WasPaymentRequestTriggered() {
   return (events_ & EVENT_SHOWN) > 0 || (events_ & EVENT_SKIPPED_SHOW) > 0;
 }
 
-void JourneyLogger::SetTriggerTime() {
-  trigger_time_ = base::TimeTicks::Now();
-}
-
 void JourneyLogger::SetPaymentAppUkmSourceId(
     ukm::SourceId payment_app_source_id) {
   payment_app_source_id_ = payment_app_source_id;
+}
+
+base::WeakPtr<JourneyLogger> JourneyLogger::GetWeakPtr() {
+  return weak_ptr_factory_.GetWeakPtr();
 }
 
 }  // namespace payments

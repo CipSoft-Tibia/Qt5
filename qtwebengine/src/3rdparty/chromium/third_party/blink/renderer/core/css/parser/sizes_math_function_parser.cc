@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 #include "third_party/blink/renderer/core/css/media_values.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser_token.h"
 #include "third_party/blink/renderer/core/css_value_keywords.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 
 namespace blink {
 
@@ -23,12 +22,14 @@ float SizesMathFunctionParser::Result() const {
 }
 
 static bool OperatorPriority(CSSMathOperator cc, bool& high_priority) {
-  if (cc == CSSMathOperator::kAdd || cc == CSSMathOperator::kSubtract)
+  if (cc == CSSMathOperator::kAdd || cc == CSSMathOperator::kSubtract) {
     high_priority = false;
-  else if (cc == CSSMathOperator::kMultiply || cc == CSSMathOperator::kDivide)
+  } else if (cc == CSSMathOperator::kMultiply ||
+             cc == CSSMathOperator::kDivide) {
     high_priority = true;
-  else
+  } else {
     return false;
+  }
   return true;
 }
 
@@ -38,24 +39,28 @@ bool SizesMathFunctionParser::HandleOperator(Vector<CSSParserToken>& stack,
   // precedence of the new operator (op1).
   bool incoming_operator_priority;
   if (!OperatorPriority(ParseCSSArithmeticOperator(token),
-                        incoming_operator_priority))
+                        incoming_operator_priority)) {
     return false;
+  }
 
-  while (!stack.IsEmpty()) {
+  while (!stack.empty()) {
     // While there is an operator (op2) at the top of the stack,
     // determine its precedence, and...
     const CSSParserToken& top_of_stack = stack.back();
-    if (top_of_stack.GetType() != kDelimiterToken)
+    if (top_of_stack.GetType() != kDelimiterToken) {
       break;
+    }
     bool stack_operator_priority;
     if (!OperatorPriority(ParseCSSArithmeticOperator(top_of_stack),
-                          stack_operator_priority))
+                          stack_operator_priority)) {
       return false;
+    }
     // ...if op1 is left-associative (all currently supported
     // operators are) and its precedence is equal to that of op2, or
     // op1 has precedence less than that of op2, ...
-    if (incoming_operator_priority && !stack_operator_priority)
+    if (incoming_operator_priority && !stack_operator_priority) {
       break;
+    }
     // ...pop op2 off the stack and add it to the output queue.
     AppendOperator(top_of_stack);
     stack.pop_back();
@@ -73,18 +78,20 @@ bool SizesMathFunctionParser::HandleRightParenthesis(
   // Also count the number of commas to get the number of function
   // parameters if this right parenthesis closes a function.
   wtf_size_t comma_count = 0;
-  while (!stack.IsEmpty() && stack.back().GetType() != kLeftParenthesisToken &&
+  while (!stack.empty() && stack.back().GetType() != kLeftParenthesisToken &&
          stack.back().GetType() != kFunctionToken) {
-    if (stack.back().GetType() == kCommaToken)
+    if (stack.back().GetType() == kCommaToken) {
       ++comma_count;
-    else
+    } else {
       AppendOperator(stack.back());
+    }
     stack.pop_back();
   }
   // If the stack runs out without finding a left parenthesis, then there
   // are mismatched parentheses.
-  if (stack.IsEmpty())
+  if (stack.empty()) {
     return false;
+  }
 
   CSSParserToken left_side = stack.back();
   stack.pop_back();
@@ -96,8 +103,9 @@ bool SizesMathFunctionParser::HandleRightParenthesis(
   }
 
   if (left_side.FunctionId() == CSSValueID::kClamp) {
-    if (comma_count != 2)
+    if (comma_count != 2) {
       return false;
+    }
     // Convert clamp(MIN, VAL, MAX) into max(MIN, min(VAL, MAX))
     // https://www.w3.org/TR/css-values-4/#calc-notation
     value_list_.emplace_back(CSSMathOperator::kMin);
@@ -110,8 +118,9 @@ bool SizesMathFunctionParser::HandleRightParenthesis(
   CSSMathOperator op = left_side.FunctionId() == CSSValueID::kMin
                            ? CSSMathOperator::kMin
                            : CSSMathOperator::kMax;
-  for (wtf_size_t i = 0; i < comma_count; ++i)
+  for (wtf_size_t i = 0; i < comma_count; ++i) {
     value_list_.emplace_back(op);
+  }
   return true;
 }
 
@@ -120,15 +129,16 @@ bool SizesMathFunctionParser::HandleComma(Vector<CSSParserToken>& stack,
   // Treat comma as a binary right-associative operation for now, so that
   // when reaching the right parenthesis of the function, we can get the
   // number of parameters by counting the number of commas.
-  while (!stack.IsEmpty() && stack.back().GetType() != kFunctionToken &&
+  while (!stack.empty() && stack.back().GetType() != kFunctionToken &&
          stack.back().GetType() != kLeftParenthesisToken &&
          stack.back().GetType() != kCommaToken) {
     AppendOperator(stack.back());
     stack.pop_back();
   }
   // Commas are allowed as function parameter separators only
-  if (stack.IsEmpty() || stack.back().GetType() == kLeftParenthesisToken)
+  if (stack.empty() || stack.back().GetType() == kLeftParenthesisToken) {
     return false;
+  }
   stack.push_back(token);
   return true;
 }
@@ -143,8 +153,9 @@ bool SizesMathFunctionParser::AppendLength(const CSSParserToken& token) {
   SizesMathValue value;
   double result = 0;
   if (!media_values_->ComputeLength(token.NumericValue(), token.GetUnitType(),
-                                    result))
+                                    result)) {
     return false;
+  }
   value.value = result;
   value.is_length = true;
   value_list_.push_back(value);
@@ -170,12 +181,14 @@ bool SizesMathFunctionParser::CalcToReversePolishNotation(
         break;
       case kDimensionToken:
         if (!CSSPrimitiveValue::IsLength(token.GetUnitType()) ||
-            !AppendLength(token))
+            !AppendLength(token)) {
           return false;
+        }
         break;
       case kDelimiterToken:
-        if (!HandleOperator(stack, token))
+        if (!HandleOperator(stack, token)) {
           return false;
+        }
         break;
       case kFunctionToken:
         if (token.FunctionId() == CSSValueID::kMin ||
@@ -184,28 +197,31 @@ bool SizesMathFunctionParser::CalcToReversePolishNotation(
           stack.push_back(token);
           break;
         }
-        if (token.FunctionId() != CSSValueID::kCalc)
+        if (token.FunctionId() != CSSValueID::kCalc) {
           return false;
+        }
         // "calc(" is the same as "("
-        FALLTHROUGH;
+        [[fallthrough]];
       case kLeftParenthesisToken:
         // If the token is a left parenthesis, then push it onto the stack.
         stack.push_back(token);
         break;
       case kRightParenthesisToken:
-        if (!HandleRightParenthesis(stack))
+        if (!HandleRightParenthesis(stack)) {
           return false;
+        }
         break;
       case kCommaToken:
-        if (!HandleComma(stack, token))
+        if (!HandleComma(stack, token)) {
           return false;
+        }
         break;
       case kWhitespaceToken:
       case kEOFToken:
         break;
       case kCommentToken:
         NOTREACHED();
-        FALLTHROUGH;
+        [[fallthrough]];
       case kCDOToken:
       case kCDCToken:
       case kAtKeywordToken:
@@ -235,7 +251,7 @@ bool SizesMathFunctionParser::CalcToReversePolishNotation(
 
   // When there are no more tokens to read:
   // While there are still operator tokens in the stack:
-  while (!stack.IsEmpty()) {
+  while (!stack.empty()) {
     // If the operator token on the top of the stack is a parenthesis, then
     // there are unclosed parentheses.
     CSSParserTokenType type = stack.back().GetType();
@@ -250,8 +266,9 @@ bool SizesMathFunctionParser::CalcToReversePolishNotation(
 
 static bool OperateOnStack(Vector<SizesMathValue>& stack,
                            CSSMathOperator operation) {
-  if (stack.size() < 2)
+  if (stack.size() < 2) {
     return false;
+  }
   SizesMathValue right_operand = stack.back();
   stack.pop_back();
   SizesMathValue left_operand = stack.back();
@@ -259,42 +276,48 @@ static bool OperateOnStack(Vector<SizesMathValue>& stack,
   bool is_length;
   switch (operation) {
     case CSSMathOperator::kAdd:
-      if (right_operand.is_length != left_operand.is_length)
+      if (right_operand.is_length != left_operand.is_length) {
         return false;
+      }
       is_length = (right_operand.is_length && left_operand.is_length);
       stack.push_back(
           SizesMathValue(left_operand.value + right_operand.value, is_length));
       break;
     case CSSMathOperator::kSubtract:
-      if (right_operand.is_length != left_operand.is_length)
+      if (right_operand.is_length != left_operand.is_length) {
         return false;
+      }
       is_length = (right_operand.is_length && left_operand.is_length);
       stack.push_back(
           SizesMathValue(left_operand.value - right_operand.value, is_length));
       break;
     case CSSMathOperator::kMultiply:
-      if (right_operand.is_length && left_operand.is_length)
+      if (right_operand.is_length && left_operand.is_length) {
         return false;
+      }
       is_length = (right_operand.is_length || left_operand.is_length);
       stack.push_back(
           SizesMathValue(left_operand.value * right_operand.value, is_length));
       break;
     case CSSMathOperator::kDivide:
-      if (right_operand.is_length || right_operand.value == 0)
+      if (right_operand.is_length || right_operand.value == 0) {
         return false;
+      }
       stack.push_back(SizesMathValue(left_operand.value / right_operand.value,
                                      left_operand.is_length));
       break;
     case CSSMathOperator::kMin:
-      if (right_operand.is_length != left_operand.is_length)
+      if (right_operand.is_length != left_operand.is_length) {
         return false;
+      }
       is_length = (right_operand.is_length && left_operand.is_length);
       stack.push_back(SizesMathValue(
           std::min(left_operand.value, right_operand.value), is_length));
       break;
     case CSSMathOperator::kMax:
-      if (right_operand.is_length != left_operand.is_length)
+      if (right_operand.is_length != left_operand.is_length) {
         return false;
+      }
       is_length = (right_operand.is_length && left_operand.is_length);
       stack.push_back(SizesMathValue(
           std::max(left_operand.value, right_operand.value), is_length));
@@ -311,12 +334,13 @@ bool SizesMathFunctionParser::Calculate() {
     if (value.operation == CSSMathOperator::kInvalid) {
       stack.push_back(value);
     } else {
-      if (!OperateOnStack(stack, value.operation))
+      if (!OperateOnStack(stack, value.operation)) {
         return false;
+      }
     }
   }
   if (stack.size() == 1 && stack.back().is_length) {
-    result_ = std::max(clampTo<float>(stack.back().value), (float)0.0);
+    result_ = std::max(ClampTo<float>(stack.back().value), 0.0f);
     return true;
   }
   return false;

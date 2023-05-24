@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpolygon.h"
 #include "qrect.h"
@@ -84,7 +48,7 @@ static void qt_polygon_isect_line(const QPointF &p1, const QPointF &p2, const QP
 
 /*!
     \class QPolygon
-    \brief The QPolygon class provides a vector of points using
+    \brief The QPolygon class provides a list of points using
     integer precision.
     \inmodule QtGui
 
@@ -93,13 +57,13 @@ static void qt_polygon_isect_line(const QPointF &p1, const QPointF &p2, const QP
     \ingroup painting
     \ingroup shared
 
-    A QPolygon object is a QVector<QPoint>.  The easiest way to add
-    points to a QPolygon is to use QVector's streaming operator, as
+    A QPolygon object is a QList<QPoint>.  The easiest way to add
+    points to a QPolygon is to use QList's streaming operator, as
     illustrated below:
 
     \snippet polygon/polygon.cpp 0
 
-    In addition to the functions provided by QVector, QPolygon
+    In addition to the functions provided by QList, QPolygon
     provides some point-specific functions.
 
     Each point in a polygon can be retrieved by passing its index to
@@ -117,7 +81,7 @@ static void qt_polygon_isect_line(const QPointF &p1, const QPointF &p2, const QP
     The QPolygon class is \l {Implicit Data Sharing}{implicitly
     shared}.
 
-    \sa QVector, QPolygonF, QLine
+    \sa QList, QPolygonF, QLine
 */
 
 
@@ -130,28 +94,11 @@ static void qt_polygon_isect_line(const QPointF &p1, const QPointF &p2, const QP
 
     Constructs a polygon with no points.
 
-    \sa QVector::isEmpty()
+    \sa QList::isEmpty()
 */
 
 /*!
-    \fn QPolygon::QPolygon(int size)
-
-    Constructs a polygon of the given \a size. Creates an empty
-    polygon if \a size == 0.
-
-    \sa QVector::isEmpty()
-*/
-
-/*!
-    \fn QPolygon::QPolygon(const QPolygon &polygon)
-
-    Constructs a copy of the given \a polygon.
-
-    \sa setPoints()
-*/
-
-/*!
-    \fn QPolygon::QPolygon(const QVector<QPoint> &points)
+    \fn QPolygon::QPolygon(const QList<QPoint> &points)
 
     Constructs a polygon containing the specified \a points.
 
@@ -196,14 +143,6 @@ QPolygon::QPolygon(int nPoints, const int *points)
 {
     setPoints(nPoints, points);
 }
-
-
-/*!
-    \fn QPolygon::~QPolygon()
-
-    Destroys the polygon.
-*/
-
 
 /*!
     Translates all points in the polygon by (\a{dx}, \a{dy}).
@@ -288,13 +227,16 @@ void QPolygon::point(int index, int *x, int *y) const
 */
 
 /*!
-    \fn void QPolygon::setPoint(int index, int x, int y)
-
     Sets the point at the given \a index to the point specified by
     (\a{x}, \a{y}).
 
     \sa point(), putPoints(), setPoints(),
 */
+void QPolygon::setPoint(int index, int x, int y)
+{
+    (*this)[index] = QPoint(x, y);
+}
+
 
 /*!
     Resizes the polygon to \a nPoints and populates it with the given
@@ -438,7 +380,7 @@ void QPolygon::putPoints(int index, int nPoints, const QPolygon & from, int from
     Returns the bounding rectangle of the polygon, or QRect(0, 0, 0,
     0) if the polygon is empty.
 
-    \sa QVector::isEmpty()
+    \sa QList::isEmpty()
 */
 
 QRect QPolygon::boundingRect() const
@@ -464,22 +406,27 @@ QRect QPolygon::boundingRect() const
     return QRect(QPoint(minx,miny), QPoint(maxx,maxy));
 }
 
+/*!
+    \fn QPolygon::toPolygonF() const
+    \since 6.4
+
+    Returns this polygon as a polygon with floating point accuracy.
+
+    \sa QPolygonF::toPolygon()
+*/
+
+
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug dbg, const QPolygon &a)
 {
-    QDebugStateSaver saver(dbg);
-    dbg.nospace() << "QPolygon(";
-    for (int i = 0; i < a.count(); ++i)
-        dbg.nospace() << a.at(i);
-    dbg.nospace() << ')';
-    return dbg;
+    return QtPrivate::printSequentialContainer(dbg, "QPolygon", a);
 }
 #endif
 
 
 /*!
     \class QPolygonF
-    \brief The QPolygonF class provides a vector of points using
+    \brief The QPolygonF class provides a list of points using
     floating point precision.
     \inmodule QtGui
 
@@ -487,13 +434,13 @@ QDebug operator<<(QDebug dbg, const QPolygon &a)
     \ingroup painting
     \ingroup shared
 
-    A QPolygonF is a QVector<QPointF>. The easiest way to add points
+    A QPolygonF is a QList<QPointF>. The easiest way to add points
     to a QPolygonF is to use its streaming operator, as illustrated
     below:
 
     \snippet polygon/polygon.cpp 1
 
-    In addition to the functions provided by QVector, QPolygonF
+    In addition to the functions provided by QList, QPolygonF
     provides the boundingRect() and translate() functions for geometry
     operations. Use the QTransform::map() function for more general
     transformations of QPolygonFs.
@@ -506,7 +453,7 @@ QDebug operator<<(QDebug dbg, const QPolygon &a)
     The QPolygonF class is \l {Implicit Data Sharing}{implicitly
     shared}.
 
-    \sa QVector, QPolygon, QLineF
+    \sa QList, QPolygon, QLineF
 */
 
 
@@ -519,26 +466,11 @@ QDebug operator<<(QDebug dbg, const QPolygon &a)
 
     Constructs a polygon with no points.
 
-    \sa QVector::isEmpty()
+    \sa QList::isEmpty()
 */
 
 /*!
-    \fn QPolygonF::QPolygonF(int size)
-
-    Constructs a polygon of the given \a size. Creates an empty
-    polygon if \a size == 0.
-
-    \sa QVector::isEmpty()
-*/
-
-/*!
-    \fn QPolygonF::QPolygonF(const QPolygonF &polygon)
-
-    Constructs a copy of the given \a polygon.
-*/
-
-/*!
-    \fn QPolygonF::QPolygonF(const QVector<QPointF> &points)
+    \fn QPolygonF::QPolygonF(const QList<QPointF> &points)
 
     Constructs a polygon containing the specified \a points.
 */
@@ -579,13 +511,6 @@ QPolygonF::QPolygonF(const QPolygon &a)
     for (int i=0; i<a.size(); ++i)
         append(a.at(i));
 }
-
-/*!
-    \fn QPolygonF::~QPolygonF()
-
-    Destroys the polygon.
-*/
-
 
 /*!
     Translate all points in the polygon by the given \a offset.
@@ -645,14 +570,14 @@ QPolygonF QPolygonF::translated(const QPointF &offset) const
 
     A polygon is said to be closed if its start point and end point are equal.
 
-    \sa QVector::first(), QVector::last()
+    \sa QList::first(), QList::last()
 */
 
 /*!
     Returns the bounding rectangle of the polygon, or QRectF(0,0,0,0)
     if the polygon is empty.
 
-    \sa QVector::isEmpty()
+    \sa QList::isEmpty()
 */
 
 QRectF QPolygonF::boundingRect() const
@@ -716,7 +641,7 @@ QPolygon QPolygonF::toPolygon() const
 */
 QPolygon::operator QVariant() const
 {
-    return QVariant(QMetaType::QPolygon, this);
+    return QVariant::fromValue(*this);
 }
 
 /*****************************************************************************
@@ -735,7 +660,7 @@ QPolygon::operator QVariant() const
 */
 QDataStream &operator<<(QDataStream &s, const QPolygon &a)
 {
-    const QVector<QPoint> &v = a;
+    const QList<QPoint> &v = a;
     return s << v;
 }
 
@@ -751,7 +676,7 @@ QDataStream &operator<<(QDataStream &s, const QPolygon &a)
 */
 QDataStream &operator>>(QDataStream &s, QPolygon &a)
 {
-    QVector<QPoint> &v = a;
+    QList<QPoint> &v = a;
     return s >> v;
 }
 #endif // QT_NO_DATASTREAM
@@ -810,12 +735,7 @@ QDataStream &operator>>(QDataStream &s, QPolygonF &a)
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug dbg, const QPolygonF &a)
 {
-    QDebugStateSaver saver(dbg);
-    dbg.nospace() << "QPolygonF(";
-    for (int i = 0; i < a.count(); ++i)
-        dbg.nospace() << a.at(i);
-    dbg.nospace() << ')';
-    return dbg;
+    return QtPrivate::printSequentialContainer(dbg, "QPolygonF", a);
 }
 #endif
 
@@ -899,7 +819,7 @@ QPolygon QPolygon::united(const QPolygon &r) const
     QPainterPath subject; subject.addPolygon(*this);
     QPainterPath clip; clip.addPolygon(r);
 
-    return subject.united(clip).toFillPolygon(QTransform()).toPolygon();
+    return subject.united(clip).toFillPolygon().toPolygon();
 }
 
 /*!
@@ -918,7 +838,7 @@ QPolygon QPolygon::intersected(const QPolygon &r) const
     QPainterPath subject; subject.addPolygon(*this);
     QPainterPath clip; clip.addPolygon(r);
 
-    return subject.intersected(clip).toFillPolygon(QTransform()).toPolygon();
+    return subject.intersected(clip).toFillPolygon().toPolygon();
 }
 
 /*!
@@ -936,7 +856,7 @@ QPolygon QPolygon::subtracted(const QPolygon &r) const
     QPainterPath subject; subject.addPolygon(*this);
     QPainterPath clip; clip.addPolygon(r);
 
-    return subject.subtracted(clip).toFillPolygon(QTransform()).toPolygon();
+    return subject.subtracted(clip).toFillPolygon().toPolygon();
 }
 
 /*!
@@ -975,7 +895,7 @@ QPolygonF QPolygonF::united(const QPolygonF &r) const
     QPainterPath subject; subject.addPolygon(*this);
     QPainterPath clip; clip.addPolygon(r);
 
-    return subject.united(clip).toFillPolygon(QTransform());
+    return subject.united(clip).toFillPolygon();
 }
 
 /*!
@@ -994,7 +914,7 @@ QPolygonF QPolygonF::intersected(const QPolygonF &r) const
     QPainterPath subject; subject.addPolygon(*this);
     QPainterPath clip; clip.addPolygon(r);
 
-    return subject.intersected(clip).toFillPolygon(QTransform());
+    return subject.intersected(clip).toFillPolygon();
 }
 
 /*!
@@ -1011,7 +931,7 @@ QPolygonF QPolygonF::subtracted(const QPolygonF &r) const
 {
     QPainterPath subject; subject.addPolygon(*this);
     QPainterPath clip; clip.addPolygon(r);
-    return subject.subtracted(clip).toFillPolygon(QTransform());
+    return subject.subtracted(clip).toFillPolygon();
 }
 
 /*!
@@ -1040,7 +960,7 @@ bool QPolygonF::intersects(const QPolygonF &p) const
 
 QPolygonF::operator QVariant() const
 {
-    return QVariant(QMetaType::QPolygonF, this);
+    return QVariant::fromValue(*this);
 }
 
 QT_END_NAMESPACE

@@ -1,29 +1,43 @@
-// Copyright (c) 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/public/renderer/chrome_object_extensions_utils.h"
 
 #include "gin/converter.h"
-#include "v8/include/v8.h"
+#include "v8/include/v8-context.h"
+#include "v8/include/v8-object.h"
 
 namespace content {
 
 v8::Local<v8::Object> GetOrCreateChromeObject(v8::Isolate* isolate,
                                               v8::Local<v8::Context> context) {
+  return GetOrCreateObject(isolate, context, "chrome");
+}
+
+v8::Local<v8::Object> GetOrCreateObject(v8::Isolate* isolate,
+                                        v8::Local<v8::Context> context,
+                                        const std::string& object_name) {
   v8::Local<v8::Object> global = context->Global();
-  v8::Local<v8::Object> chrome;
-  v8::Local<v8::Value> chrome_value;
-  if (!global->Get(context, gin::StringToV8(isolate, "chrome"))
-           .ToLocal(&chrome_value) ||
-      !chrome_value->IsObject()) {
-    chrome = v8::Object::New(isolate);
-    global->Set(context, gin::StringToSymbol(isolate, "chrome"), chrome)
+  return GetOrCreateObject(isolate, context, global, object_name);
+}
+
+v8::Local<v8::Object> GetOrCreateObject(v8::Isolate* isolate,
+                                        v8::Local<v8::Context> context,
+                                        v8::Local<v8::Object> parent,
+                                        const std::string& object_name) {
+  v8::Local<v8::Object> new_object;
+  v8::Local<v8::Value> object_value;
+  if (!parent->Get(context, gin::StringToV8(isolate, object_name))
+           .ToLocal(&object_value) ||
+      !object_value->IsObject()) {
+    new_object = v8::Object::New(isolate);
+    parent->Set(context, gin::StringToSymbol(isolate, object_name), new_object)
         .Check();
   } else {
-    chrome = v8::Local<v8::Object>::Cast(chrome_value);
+    new_object = v8::Local<v8::Object>::Cast(object_value);
   }
-  return chrome;
+  return new_object;
 }
 
 }  // namespace content

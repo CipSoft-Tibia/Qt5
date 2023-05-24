@@ -1,15 +1,17 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/indexeddb/idb_factory.h"
 
 #include <memory>
+#include <utility>
 
 #include "base/memory/ptr_util.h"
 #include "base/memory/scoped_refptr.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "mojo/public/cpp/bindings/pending_associated_remote.h"
+#include "mojo/public/cpp/bindings/receiver.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/mojom/indexeddb/indexeddb.mojom-blink.h"
@@ -30,24 +32,16 @@
 namespace blink {
 namespace {
 
-class TestHelperFunction : public ScriptFunction {
+class TestHelperFunction : public ScriptFunction::Callable {
  public:
-  static v8::Local<v8::Function> CreateFunction(ScriptState* script_state,
-                                                bool* called_flag) {
-    auto* self =
-        MakeGarbageCollected<TestHelperFunction>(script_state, called_flag);
-    return self->BindToV8Function();
-  }
+  explicit TestHelperFunction(bool* called_flag) : called_flag_(called_flag) {}
 
-  TestHelperFunction(ScriptState* script_state, bool* called_flag)
-      : ScriptFunction(script_state), called_flag_(called_flag) {}
-
- private:
-  ScriptValue Call(ScriptValue value) override {
+  ScriptValue Call(ScriptState* script_state, ScriptValue value) override {
     *called_flag_ = true;
     return value;
   }
 
+ private:
   bool* called_flag_;
 };
 
@@ -78,22 +72,6 @@ class BackendFactoryWithMockedDatabaseInfo : public mojom::blink::IDBFactory {
                           pending_callbacks,
                       const WTF::String& name,
                       bool force_close) override {
-    NOTREACHED();
-  }
-
-  void AbortTransactionsAndCompactDatabase(
-      AbortTransactionsAndCompactDatabaseCallback callback) override {
-    NOTREACHED();
-  }
-
-  void AbortTransactionsForDatabase(
-      AbortTransactionsForDatabaseCallback callback) override {
-    NOTREACHED();
-  }
-
-  void GetDatabaseNames(
-      mojo::PendingAssociatedRemote<mojom::blink::IDBCallbacks>
-          pending_callbacks) override {
     NOTREACHED();
   }
 
@@ -147,9 +125,12 @@ TEST_F(IDBFactoryTest, WebIDBGetDBInfoCallbacksResolvesPromise) {
 
   bool on_fulfilled = false;
   bool on_rejected = false;
-  promise.Then(
-      TestHelperFunction::CreateFunction(scope.GetScriptState(), &on_fulfilled),
-      TestHelperFunction::CreateFunction(scope.GetScriptState(), &on_rejected));
+  promise.Then(MakeGarbageCollected<ScriptFunction>(
+                   scope.GetScriptState(),
+                   MakeGarbageCollected<TestHelperFunction>(&on_fulfilled)),
+               MakeGarbageCollected<ScriptFunction>(
+                   scope.GetScriptState(),
+                   MakeGarbageCollected<TestHelperFunction>(&on_rejected)));
 
   EXPECT_FALSE(on_fulfilled);
   EXPECT_FALSE(on_rejected);
@@ -192,9 +173,12 @@ TEST_F(IDBFactoryTest, WebIDBGetDBNamesCallbacksRejectsPromise) {
 
   bool on_fulfilled = false;
   bool on_rejected = false;
-  promise.Then(
-      TestHelperFunction::CreateFunction(scope.GetScriptState(), &on_fulfilled),
-      TestHelperFunction::CreateFunction(scope.GetScriptState(), &on_rejected));
+  promise.Then(MakeGarbageCollected<ScriptFunction>(
+                   scope.GetScriptState(),
+                   MakeGarbageCollected<TestHelperFunction>(&on_fulfilled)),
+               MakeGarbageCollected<ScriptFunction>(
+                   scope.GetScriptState(),
+                   MakeGarbageCollected<TestHelperFunction>(&on_rejected)));
 
   EXPECT_FALSE(on_fulfilled);
   EXPECT_FALSE(on_rejected);

@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2008-2012 NVIDIA Corporation.
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2008-2012 NVIDIA Corporation.
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSG_RENDER_LAYER_H
 #define QSSG_RENDER_LAYER_H
@@ -43,13 +17,22 @@
 //
 
 #include <QtQuick3DRuntimeRender/private/qssgrendernode_p.h>
-#include <QtQuick3DRuntimeRender/private/qssgrenderer_p.h>
+#include <QtQuick3DRuntimeRender/private/qssglightmapper_p.h>
+#include <QtCore/qvarlengtharray.h>
+#include <QtCore/qlist.h>
 
 QT_BEGIN_NAMESPACE
 class QSSGRenderContextInterface;
 struct QSSGRenderPresentation;
 struct QSSGRenderEffect;
 struct QSSGRenderImage;
+class QSSGLayerRenderData;
+struct QSSGRenderResourceLoader;
+
+class QQuick3DObject;
+class QSSGRenderExtension;
+
+class QRhiShaderResourceBindings;
 
 // A layer is a special node.  It *always* presents its global transform
 // to children as the identity.  It also can optionally have a width or height
@@ -97,32 +80,49 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
         Transparent = 0,
         Unspecified,
         Color,
-        SkyBox
+        SkyBox,
+        SkyBoxCubeMap
     };
 
-    enum class BlendMode : quint8
+    enum class TonemapMode : quint8
     {
-        SourceOver = 0,
-        Screen,
-        Multiply,
-        Add,
-        Subtract,
-        Overlay,
-        ColorBurn,
-        ColorDodge
+        None = 0, // Bypass mode
+        Linear,
+        Aces,
+        HejlDawson,
+        Filmic
+    };
+
+    enum class LayerFlag
+    {
+        EnableDepthTest = 0x1,
+        EnableDepthPrePass = 0x2, ///< True when we render a depth pass before
+        RenderToTarget = 0x3 ///< Does this layer render to the normal render target,
+    };
+    Q_DECLARE_FLAGS(LayerFlags, LayerFlag)
+
+    enum class MaterialDebugMode : quint8
+    {
+        None = 0, // Bypass
+        BaseColor = 1,
+        Roughness,
+        Metalness,
+        Diffuse,
+        Specular,
+        ShadowOcclusion,
+        Emission,
+        AmbientOcclusion,
+        Normal,
+        Tangent,
+        Binormal,
+        F0
     };
 
     // First effect in a list of effects.
     QSSGRenderEffect *firstEffect;
-
-    // If a layer has a valid texture path (one that resolves to either a
-    // an on-disk image or a offscreen renderer), then it does not render its
-    // own source path.  Instead, it renders the offscreen renderer.  Used in this manner,
-    // offscreen renderer's also have the option (if they support it) to render directly to the
-    // render target given a specific viewport (that is also scissored if necessary).
-    QString texturePath;
-
-    //SRenderPlugin *renderPlugin; // Overrides texture path if available.
+    QSSGLayerRenderData *renderData = nullptr;
+    enum RenderExtensionMode { Underlay, Overlay, Count };
+    QList<QSSGRenderExtension *> renderExtensions[RenderExtensionMode::Count];
 
     QSSGRenderLayer::AAMode antialiasingMode;
     QSSGRenderLayer::AAQuality antialiasingQuality;
@@ -130,67 +130,107 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
     QSSGRenderLayer::Background background;
     QVector3D clearColor;
 
-    BlendMode blendType;
-
-    // TODO: pack
-    HorizontalField horizontalFieldValues;
-    float m_left;
-    UnitType leftUnits;
-    float m_width;
-    UnitType widthUnits;
-    float m_right;
-    UnitType rightUnits;
-
-    VerticalField verticalFieldValues;
-    float m_top;
-    UnitType topUnits;
-    float m_height;
-    UnitType heightUnits;
-    float m_bottom;
-    UnitType bottomUnits;
-
     // Ambient occlusion
-    float aoStrength;
-    float aoDistance;
-    float aoSoftness;
-    float aoBias;
-    qint32 aoSamplerate;
-    bool aoDither;
+    float aoStrength = 0.0f;
+    float aoDistance = 5.0f;
+    float aoSoftness = 50.0f;
+    float aoBias = 0.0f;
+    qint32 aoSamplerate = 2;
+    bool aoDither = false;
+    bool aoEnabled = false;
 
-    // Direct occlusion
-    float shadowStrength;
-    float shadowDist;
-    float shadowSoftness;
-    float shadowBias;
+    constexpr bool ssaoEnabled() const { return aoEnabled && (aoStrength > 0.0f && aoDistance > 0.0f); }
 
     // IBL
     QSSGRenderImage *lightProbe;
-    float probeBright;
-    bool fastIbl;
+    float probeExposure;
     float probeHorizon;
-    float probeFov;
-    QSSGRenderImage *lightProbe2;
-    float probe2Fade;
-    float probe2Window;
-    float probe2Pos;
+    QMatrix3x3 probeOrientation;
+    QVector3D probeOrientationAngles;
+
+    QSSGRenderImage *skyBoxCubeMap = nullptr;
 
     bool temporalAAEnabled;
     float temporalAAStrength;
+    bool ssaaEnabled;
     float ssaaMultiplier;
+    bool specularAAEnabled;
 
-    QSSGRenderCamera *activeCamera;
-    // It is the used camera for the scene.
-    // If activeCamera is not GloballyActive,
-    // the first GloballyActive one will be used for render.
+    //TODO: move render state somewhere more suitable
+    bool temporalAAIsActive;
+    bool progressiveAAIsActive;
+    uint tempAAPassIndex;
+    uint progAAPassIndex;
+
+    // The camera explicitly set on the view by the user.
+    QSSGRenderCamera *explicitCamera;
+    // The camera used for rendering (explicitCamera, nullptr or first usable camera).
     QSSGRenderCamera *renderedCamera;
 
+    // Tonemapping
+    TonemapMode tonemapMode;
+
+    LayerFlags layerFlags { LayerFlag::RenderToTarget,
+                            LayerFlag::EnableDepthTest,
+                            LayerFlag::EnableDepthPrePass };
+
+    // references to objects owned by the QSSGRhiContext
+    QRhiShaderResourceBindings *skyBoxSrb = nullptr;
+    QVarLengthArray<QRhiShaderResourceBindings *, 4> item2DSrbs;
+    bool skyBoxIsRgbe8 = false;
+
+    // Skybox
+    float skyboxBlurAmount = 0.0f;
+
+    // Grid
+    bool gridEnabled = false;
+    float gridScale = 1.0f;
+    quint32 gridFlags = 0;
+    QRhiShaderResourceBindings *gridSrb = nullptr;
+
+    // Lightmapper config
+    QSSGLightmapperOptions lmOptions;
+
+    // Scissor
+    QRect scissorRect;
+
+    // Fog
+    struct FogOptions {
+        bool enabled = false;
+        QVector3D color = QVector3D(0.5f, 0.6f, 0.7f);
+        float density = 1.0f;
+        bool depthEnabled = false;
+        float depthBegin = 10.0f;
+        float depthEnd = 1000.0f;
+        float depthCurve = 1.0f;
+        bool heightEnabled = false;
+        float heightMin = 10.0f;
+        float heightMax = 0.0f;
+        float heightCurve = 1.0f;
+        bool transmitEnabled = false;
+        float transmitCurve = 1.0f;
+    } fog;
+
+    QVector<QSSGRenderGraphObject *> resourceLoaders;
+
+    MaterialDebugMode debugMode = MaterialDebugMode::None;
+
+    bool wireframeMode = false;
+
     QSSGRenderLayer();
+    ~QSSGRenderLayer();
+
+    void setProbeOrientation(const QVector3D &angles);
 
     void addEffect(QSSGRenderEffect &inEffect);
+    bool hasEffect(QSSGRenderEffect *inEffect) const;
 
-    QSSGRenderEffect *getLastEffect();
+    QSSGRenderNode *importSceneNode = nullptr;
 
-    QSSGRenderLayer::BlendMode getLayerBlend() { return blendType; }
+    // Special function(s) for importScene
+    void setImportScene(QSSGRenderNode &rootNode);
+    void removeImportScene(QSSGRenderNode &rootNode);
+
 };
 QT_END_NAMESPACE
 

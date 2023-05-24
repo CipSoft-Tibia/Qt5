@@ -1,12 +1,10 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/events/event_dispatcher.h"
 
-#include <algorithm>
-
-#include "base/macros.h"
+#include "base/ranges/algorithm.h"
 #include "ui/events/event_target.h"
 #include "ui/events/event_targeter.h"
 
@@ -21,12 +19,12 @@ class ScopedDispatchHelper : public Event::DispatcherApi {
     set_result(ui::ER_UNHANDLED);
   }
 
+  ScopedDispatchHelper(const ScopedDispatchHelper&) = delete;
+  ScopedDispatchHelper& operator=(const ScopedDispatchHelper&) = delete;
+
   virtual ~ScopedDispatchHelper() {
     set_phase(EP_POSTDISPATCH);
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ScopedDispatchHelper);
 };
 
 }  // namespace
@@ -107,9 +105,7 @@ EventDispatcher::~EventDispatcher() {
 }
 
 void EventDispatcher::OnHandlerDestroyed(EventHandler* handler) {
-  handler_list_.erase(std::find(handler_list_.begin(),
-                                handler_list_.end(),
-                                handler));
+  handler_list_.erase(base::ranges::find(handler_list_, handler));
 }
 
 void EventDispatcher::ProcessEvent(EventTarget* target, Event* event) {

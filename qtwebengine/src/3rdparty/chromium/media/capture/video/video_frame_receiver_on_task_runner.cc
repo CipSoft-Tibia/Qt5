@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/single_thread_task_runner.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
 
 namespace media {
 
@@ -18,6 +18,13 @@ VideoFrameReceiverOnTaskRunner::VideoFrameReceiverOnTaskRunner(
 
 VideoFrameReceiverOnTaskRunner::~VideoFrameReceiverOnTaskRunner() = default;
 
+void VideoFrameReceiverOnTaskRunner::OnCaptureConfigurationChanged() {
+  task_runner_->PostTask(
+      FROM_HERE,
+      base::BindOnce(&VideoFrameReceiver::OnCaptureConfigurationChanged,
+                     receiver_));
+}
+
 void VideoFrameReceiverOnTaskRunner::OnNewBuffer(
     int buffer_id,
     media::mojom::VideoBufferHandlePtr buffer_handle) {
@@ -27,16 +34,12 @@ void VideoFrameReceiverOnTaskRunner::OnNewBuffer(
 }
 
 void VideoFrameReceiverOnTaskRunner::OnFrameReadyInBuffer(
-    int buffer_id,
-    int frame_feedback_id,
-    std::unique_ptr<VideoCaptureDevice::Client::Buffer::ScopedAccessPermission>
-        buffer_read_permission,
-    mojom::VideoFrameInfoPtr frame_info) {
+    ReadyFrameInBuffer frame,
+    std::vector<ReadyFrameInBuffer> scaled_frames) {
   task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce(&VideoFrameReceiver::OnFrameReadyInBuffer, receiver_,
-                     buffer_id, frame_feedback_id,
-                     std::move(buffer_read_permission), std::move(frame_info)));
+                     std::move(frame), std::move(scaled_frames)));
 }
 
 void VideoFrameReceiverOnTaskRunner::OnBufferRetired(int buffer_id) {
@@ -55,6 +58,19 @@ void VideoFrameReceiverOnTaskRunner::OnFrameDropped(
   task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce(&VideoFrameReceiver::OnFrameDropped, receiver_, reason));
+}
+
+void VideoFrameReceiverOnTaskRunner::OnNewCropVersion(uint32_t crop_version) {
+  task_runner_->PostTask(FROM_HERE,
+                         base::BindOnce(&VideoFrameReceiver::OnNewCropVersion,
+                                        receiver_, crop_version));
+}
+
+void VideoFrameReceiverOnTaskRunner::OnFrameWithEmptyRegionCapture() {
+  task_runner_->PostTask(
+      FROM_HERE,
+      base::BindOnce(&VideoFrameReceiver::OnFrameWithEmptyRegionCapture,
+                     receiver_));
 }
 
 void VideoFrameReceiverOnTaskRunner::OnLog(const std::string& message) {

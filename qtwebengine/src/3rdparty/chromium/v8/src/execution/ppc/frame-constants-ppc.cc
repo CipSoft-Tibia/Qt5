@@ -16,17 +16,23 @@ namespace internal {
 Register JavaScriptFrame::fp_register() { return v8::internal::fp; }
 Register JavaScriptFrame::context_register() { return cp; }
 Register JavaScriptFrame::constant_pool_pointer_register() {
-  DCHECK(FLAG_enable_embedded_constant_pool);
+  DCHECK(V8_EMBEDDED_CONSTANT_POOL_BOOL);
   return kConstantPoolRegister;
 }
 
-int InterpreterFrameConstants::RegisterStackSlotCount(int register_count) {
+int UnoptimizedFrameConstants::RegisterStackSlotCount(int register_count) {
   return register_count;
 }
 
 int BuiltinContinuationFrameConstants::PaddingSlotCount(int register_count) {
   USE(register_count);
   return 0;
+}
+
+// static
+intptr_t MaglevFrame::StackGuardFrameSize(int register_input_count) {
+  USE(register_input_count);
+  UNREACHABLE();
 }
 
 }  // namespace internal

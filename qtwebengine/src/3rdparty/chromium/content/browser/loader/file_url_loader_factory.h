@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,13 @@
 #define CONTENT_BROWSER_LOADER_FILE_URL_LOADER_FACTORY_H_
 
 #include "base/files/file_path.h"
-#include "base/macros.h"
 #include "base/memory/ref_counted.h"
-#include "base/sequenced_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/task_traits.h"
 #include "content/common/content_export.h"
-#include "content/public/browser/non_network_url_loader_factory_base.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "services/network/public/cpp/self_deleting_url_loader_factory.h"
 
 namespace content {
 
@@ -24,7 +23,7 @@ class SharedCorsOriginAccessList;
 // If a caller needs a request that has a fetch request mode other than
 // "no-cors", this class should be used on the UI thread.
 class CONTENT_EXPORT FileURLLoaderFactory
-    : public NonNetworkURLLoaderFactoryBase {
+    : public network::SelfDeletingURLLoaderFactory {
  public:
   // Returns mojo::PendingRemote to a newly constructed FileURLLoaderFactory.
   // The factory is self-owned - it will delete itself once there are no more
@@ -41,6 +40,9 @@ class CONTENT_EXPORT FileURLLoaderFactory
       scoped_refptr<SharedCorsOriginAccessList> shared_cors_origin_access_list,
       base::TaskPriority task_priority);
 
+  FileURLLoaderFactory(const FileURLLoaderFactory&) = delete;
+  FileURLLoaderFactory& operator=(const FileURLLoaderFactory&) = delete;
+
  private:
   FileURLLoaderFactory(
       const base::FilePath& profile_path,
@@ -52,7 +54,6 @@ class CONTENT_EXPORT FileURLLoaderFactory
   ~FileURLLoaderFactory() override;
   void CreateLoaderAndStart(
       mojo::PendingReceiver<network::mojom::URLLoader> loader,
-      int32_t routing_id,
       int32_t request_id,
       uint32_t options,
       const network::ResourceRequest& request,
@@ -70,8 +71,6 @@ class CONTENT_EXPORT FileURLLoaderFactory
   const scoped_refptr<SharedCorsOriginAccessList>
       shared_cors_origin_access_list_;
   const scoped_refptr<base::SequencedTaskRunner> task_runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(FileURLLoaderFactory);
 };
 
 }  // namespace content

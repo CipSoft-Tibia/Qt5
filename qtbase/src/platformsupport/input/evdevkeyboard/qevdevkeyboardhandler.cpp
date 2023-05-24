@@ -1,43 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qevdevkeyboardhandler_p.h"
+#include "qoutputmapping_p.h"
 
 #include <qplatformdefs.h>
 
@@ -68,6 +33,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 Q_LOGGING_CATEGORY(qLcEvdevKey, "qt.qpa.input")
 Q_LOGGING_CATEGORY(qLcEvdevKeyMap, "qt.qpa.input.keymap")
 
@@ -89,7 +56,7 @@ QEvdevKeyboardHandler::QEvdevKeyboardHandler(const QString &device, QFdContainer
 {
     qCDebug(qLcEvdevKey) << "Create keyboard handler with for device" << device;
 
-    setObjectName(QLatin1String("LinuxInput Keyboard Handler"));
+    setObjectName("LinuxInput Keyboard Handler"_L1);
 
     memset(m_locks, 0, sizeof(m_locks));
 
@@ -120,19 +87,19 @@ std::unique_ptr<QEvdevKeyboardHandler> QEvdevKeyboardHandler::create(const QStri
     bool enableCompose = false;
     int grab = 0;
 
-    const auto args = specification.splitRef(QLatin1Char(':'));
-    for (const QStringRef &arg : args) {
-        if (arg.startsWith(QLatin1String("keymap=")))
+    const auto args = QStringView{specification}.split(u':');
+    for (const auto &arg : args) {
+        if (arg.startsWith("keymap="_L1))
             keymapFile = arg.mid(7).toString();
-        else if (arg == QLatin1String("disable-zap"))
+        else if (arg == "disable-zap"_L1)
             disableZap = true;
-        else if (arg == QLatin1String("enable-compose"))
+        else if (arg == "enable-compose"_L1)
             enableCompose = true;
-        else if (arg.startsWith(QLatin1String("repeat-delay=")))
+        else if (arg.startsWith("repeat-delay="_L1))
             repeatDelay = arg.mid(13).toInt();
-        else if (arg.startsWith(QLatin1String("repeat-rate=")))
+        else if (arg.startsWith("repeat-rate="_L1))
             repeatRate = arg.mid(12).toInt();
-        else if (arg.startsWith(QLatin1String("grab=")))
+        else if (arg.startsWith("grab="_L1))
             grab = arg.mid(5).toInt();
     }
 
@@ -244,7 +211,11 @@ void QEvdevKeyboardHandler::processKeyEvent(int nativecode, int unicode, int qtc
     if (!autoRepeat)
         QGuiApplicationPrivate::inputDeviceManager()->setKeyboardModifiers(QEvdevKeyboardHandler::toQtModifiers(m_modifiers));
 
-    QWindowSystemInterface::handleExtendedKeyEvent(0, (isPress ? QEvent::KeyPress : QEvent::KeyRelease),
+    QWindow *window = nullptr;
+#ifdef Q_OS_WEBOS
+    window = QOutputMapping::get()->windowForDeviceNode(m_device);
+#endif
+    QWindowSystemInterface::handleExtendedKeyEvent(window, (isPress ? QEvent::KeyPress : QEvent::KeyRelease),
                                                    qtcode, modifiers, nativecode + 8, 0, int(modifiers),
                                                    (unicode != 0xffff ) ? QString(QChar(unicode)) : QString(), autoRepeat);
 }
@@ -254,8 +225,8 @@ QEvdevKeyboardHandler::KeycodeAction QEvdevKeyboardHandler::processKeycode(quint
     KeycodeAction result = None;
     bool first_press = pressed && !autorepeat;
 
-    const QEvdevKeyboardMap::Mapping *map_plain = 0;
-    const QEvdevKeyboardMap::Mapping *map_withmod = 0;
+    const QEvdevKeyboardMap::Mapping *map_plain = nullptr;
+    const QEvdevKeyboardMap::Mapping *map_withmod = nullptr;
 
     quint8 modifiers = m_modifiers;
 

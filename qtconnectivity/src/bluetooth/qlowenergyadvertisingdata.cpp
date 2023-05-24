@@ -1,41 +1,5 @@
-/***************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qlowenergyadvertisingdata.h"
 
@@ -77,6 +41,10 @@ public:
     \note The actual data packets sent over the advertising channel cannot contain more than 31
           bytes. If the variable-length data set via this class exceeds that limit, it will
           be left out of the packet or truncated, depending on the type.
+          On Android, advertising will fail if advertising data is larger than 31 bytes.
+          On Bluez DBus backend the advertising length limit and the behavior when it is exceeded
+          is up to BlueZ; it may for example support extended advertising. For the most
+          predictable behavior keep the advertising data short.
 
     \sa QLowEnergyAdvertisingParameters
     \sa QLowEnergyController::startAdvertising()
@@ -243,6 +211,9 @@ QList<QBluetoothUuid> QLowEnergyAdvertisingData::services() const
   This can be used to send non-standard data.
   \note If \a data is longer than 31 bytes, it will be truncated. It is the caller's responsibility
         to ensure that \a data is well-formed.
+
+  Providing the raw advertising data is not supported on BlueZ DBus backend as BlueZ does not
+  support it. This may change in a future release.
  */
 void QLowEnergyAdvertisingData::setRawData(const QByteArray &data)
 {
@@ -263,27 +234,34 @@ QByteArray QLowEnergyAdvertisingData::rawData() const
  */
 
 /*!
-   Returns \c true if \a data1 and \a data2 are equal with respect to their public state,
-   otherwise returns \c false.
+    \brief Returns \c true if \a a and \a b are equal with respect to their public state,
+    otherwise returns \c false.
+    \internal
  */
-bool operator==(const QLowEnergyAdvertisingData &data1, const QLowEnergyAdvertisingData &data2)
+bool QLowEnergyAdvertisingData::equals(const QLowEnergyAdvertisingData &a,
+                                       const QLowEnergyAdvertisingData &b)
 {
-    if (data1.d == data2.d)
+    if (a.d == b.d)
         return true;
-    return data1.discoverability() == data2.discoverability()
-            && data1.includePowerLevel() == data2.includePowerLevel()
-            && data1.localName() == data2.localName()
-            && data1.manufacturerData() == data2.manufacturerData()
-            && data1.manufacturerId() == data2.manufacturerId()
-            && data1.services() == data2.services()
-            && data1.rawData() == data2.rawData();
+    return a.discoverability() == b.discoverability()
+            && a.includePowerLevel() == b.includePowerLevel() && a.localName() == b.localName()
+            && a.manufacturerData() == b.manufacturerData()
+            && a.manufacturerId() == b.manufacturerId() && a.services() == b.services()
+            && a.rawData() == b.rawData();
 }
 
 /*!
-   \fn bool operator!=(const QLowEnergyAdvertisingData &data1,
-                       const QLowEnergyAdvertisingData &data2)
-   Returns \c true if \a data1 and \a data2 are not equal with respect to their public state,
-   otherwise returns \c false.
+    \fn bool QLowEnergyAdvertisingData::operator!=(const QLowEnergyAdvertisingData &data1,
+                                                   const QLowEnergyAdvertisingData &data2)
+    \brief Returns \c true if \a data1 and \a data2 are not equal with respect to their
+    public state, otherwise returns \c false.
+ */
+
+/*!
+    \fn bool QLowEnergyAdvertisingData::operator==(const QLowEnergyAdvertisingData &data1,
+                                                   const QLowEnergyAdvertisingData &data2)
+    \brief Returns \c true if \a data1 and \a data2 are equal with respect to their public
+    state, otherwise returns \c false.
  */
 
 /*!

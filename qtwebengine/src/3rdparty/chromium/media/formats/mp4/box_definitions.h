@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "base/compiler_specific.h"
-#include "base/optional.h"
+#include "base/time/time.h"
 #include "media/base/decrypt_config.h"
 #include "media/base/media_export.h"
 #include "media/base/media_log.h"
@@ -20,8 +20,11 @@
 #include "media/formats/mp4/aac.h"
 #include "media/formats/mp4/avc.h"
 #include "media/formats/mp4/box_reader.h"
+#include "media/formats/mp4/dts.h"
+#include "media/formats/mp4/dtsx.h"
 #include "media/formats/mp4/fourccs.h"
 #include "media/media_buildflags.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media {
 namespace mp4 {
@@ -258,7 +261,16 @@ struct MEDIA_EXPORT VPCodecConfigurationRecord : Box {
 struct MEDIA_EXPORT AV1CodecConfigurationRecord : Box {
   DECLARE_BOX_METHODS(AV1CodecConfigurationRecord);
 
-  VideoCodecProfile profile;
+  // Parses AV1CodecConfigurationRecord data encoded in |data|.
+  // Note: This method is intended to parse data outside the MP4StreamParser
+  //       context and therefore the box header is not expected to be present
+  //       in |data|
+  bool Parse(const uint8_t* data, int data_size);
+
+  VideoCodecProfile profile = VIDEO_CODEC_PROFILE_UNKNOWN;
+
+ private:
+  bool ParseInternal(BufferReader* reader, MediaLog* media_log);
 };
 #endif
 
@@ -276,6 +288,7 @@ struct MEDIA_EXPORT ColorParameterInformation : Box {
   uint16_t transfer_characteristics;
   uint16_t matrix_coefficients;
   bool full_range;
+  bool fully_parsed;
 };
 
 struct MEDIA_EXPORT MasteringDisplayColorVolume : Box {
@@ -310,6 +323,7 @@ struct MEDIA_EXPORT ContentLightLevelInformation : Box {
 
 // Same as ContentLightLevelInformation, but with a different fourcc.
 struct MEDIA_EXPORT ContentLightLevel : ContentLightLevelInformation {
+  bool Parse(BoxReader* reader) override;
   FourCC BoxType() const override;
 };
 
@@ -324,17 +338,22 @@ struct MEDIA_EXPORT VideoSampleEntry : Box {
   PixelAspectRatioBox pixel_aspect;
   ProtectionSchemeInfo sinf;
 
+  VideoDecoderConfig::AlphaMode alpha_mode;
+
   VideoCodec video_codec;
   VideoCodecProfile video_codec_profile;
   VideoCodecLevel video_codec_level;
   VideoColorSpace video_color_space;
 
-  base::Optional<MasteringDisplayColorVolume> mastering_display_color_volume;
-  base::Optional<ContentLightLevelInformation> content_light_level_information;
+  absl::optional<gfx::HDRMetadata> hdr_metadata;
 
   bool IsFormatValid() const;
 
   scoped_refptr<BitstreamConverter> frame_bitstream_converter;
+
+  // Static method for testing.
+  static VideoColorSpace ConvertColorParameterInformationToColorSpace(
+      const ColorParameterInformation& info);
 };
 
 struct MEDIA_EXPORT ElementaryStreamDescriptor : Box {
@@ -376,6 +395,18 @@ struct MEDIA_EXPORT OpusSpecificBox : Box {
   uint32_t sample_rate;
 };
 
+#if BUILDFLAG(ENABLE_PLATFORM_DTS_AUDIO)
+struct MEDIA_EXPORT DtsSpecificBox : Box {
+  DECLARE_BOX_METHODS(DtsSpecificBox);
+  DTS dts;
+};
+
+struct MEDIA_EXPORT DtsUhdSpecificBox : Box {
+  DECLARE_BOX_METHODS(DtsUhdSpecificBox);
+  DTSX dtsx;
+};
+#endif  // BUILDFLAG(ENABLE_PLATFORM_DTS_AUDIO)
+
 struct MEDIA_EXPORT AudioSampleEntry : Box {
   DECLARE_BOX_METHODS(AudioSampleEntry);
 
@@ -389,6 +420,10 @@ struct MEDIA_EXPORT AudioSampleEntry : Box {
   ElementaryStreamDescriptor esds;
   FlacSpecificBox dfla;
   OpusSpecificBox dops;
+#if BUILDFLAG(ENABLE_PLATFORM_DTS_AUDIO)
+  DtsSpecificBox ddts;
+  DtsUhdSpecificBox udts;
+#endif  // BUILDFLAG(ENABLE_PLATFORM_DTS_AUDIO)
 };
 
 struct MEDIA_EXPORT SampleDescription : Box {
@@ -596,18 +631,6 @@ struct MEDIA_EXPORT MovieFragment : Box {
   MovieFragmentHeader header;
   std::vector<TrackFragment> tracks;
   std::vector<ProtectionSystemSpecificHeader> pssh;
-};
-
-struct MEDIA_EXPORT ID3v2Box : Box {
-  DECLARE_BOX_METHODS(ID3v2Box);
-
-  // Up to a maximum of the first 128 bytes of the ID3v2 box.
-  std::vector<uint8_t> id3v2_data;
-};
-
-struct MEDIA_EXPORT MetadataBox : Box {
-  DECLARE_BOX_METHODS(MetadataBox);
-  bool used_shaka_packager;
 };
 
 #undef DECLARE_BOX

@@ -1,16 +1,15 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/viz/service/display_embedder/skia_output_device_x11.h"
 
 #include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "base/memory/ref_counted_memory.h"
-#include "third_party/skia/include/core/SkSurface.h"
-#include "third_party/skia/include/gpu/GrBackendSurface.h"
-#include "third_party/skia/include/gpu/vk/GrVkTypes.h"
+#include "third_party/skia/include/core/SkImageInfo.h"
 #include "ui/base/x/x11_util.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/x/xproto.h"
@@ -27,9 +26,30 @@ x11::GraphicsContext CreateGC(x11::Connection* connection, x11::Window window) {
 
 }  // namespace
 
-SkiaOutputDeviceX11::SkiaOutputDeviceX11(
+// static
+std::unique_ptr<SkiaOutputDeviceX11> SkiaOutputDeviceX11::Create(
     scoped_refptr<gpu::SharedContextState> context_state,
     gfx::AcceleratedWidget widget,
+    gpu::MemoryTracker* memory_tracker,
+    DidSwapBufferCompleteCallback did_swap_buffer_complete_callback) {
+  auto window = static_cast<x11::Window>(widget);
+  auto attributes =
+      x11::Connection::Get()->GetWindowAttributes({window}).Sync();
+  if (!attributes) {
+    DLOG(ERROR) << "Failed to get attributes for window "
+                << static_cast<uint32_t>(window);
+    return {};
+  }
+  return std::make_unique<SkiaOutputDeviceX11>(
+      base::PassKey<SkiaOutputDeviceX11>(), std::move(context_state), window,
+      attributes->visual, memory_tracker, did_swap_buffer_complete_callback);
+}
+
+SkiaOutputDeviceX11::SkiaOutputDeviceX11(
+    base::PassKey<SkiaOutputDeviceX11> pass_key,
+    scoped_refptr<gpu::SharedContextState> context_state,
+    x11::Window window,
+    x11::VisualId visual,
     gpu::MemoryTracker* memory_tracker,
     DidSwapBufferCompleteCallback did_swap_buffer_complete_callback)
     : SkiaOutputDeviceOffscreen(context_state,
@@ -38,15 +58,9 @@ SkiaOutputDeviceX11::SkiaOutputDeviceX11(
                                 memory_tracker,
                                 did_swap_buffer_complete_callback),
       connection_(x11::Connection::Get()),
-      window_(static_cast<x11::Window>(widget)),
+      window_(window),
+      visual_(visual),
       gc_(CreateGC(connection_, window_)) {
-  if (auto attributes = connection_->GetWindowAttributes({window_}).Sync()) {
-    visual_ = attributes->visual;
-  } else {
-    LOG(FATAL) << "Failed to get attributes for window "
-               << static_cast<uint32_t>(window_);
-  }
-
   // |capabilities_| should be set by SkiaOutputDeviceOffscreen.
   DCHECK_EQ(capabilities_.output_surface_origin, gfx::SurfaceOrigin::kTopLeft);
   DCHECK(capabilities_.supports_post_sub_buffer);
@@ -56,34 +70,32 @@ SkiaOutputDeviceX11::~SkiaOutputDeviceX11() {
   connection_->FreeGC({gc_});
 }
 
-bool SkiaOutputDeviceX11::Reshape(const gfx::Size& size,
-                                  float device_scale_factor,
-                                  const gfx::ColorSpace& color_space,
-                                  gfx::BufferFormat format,
-                                  gfx::OverlayTransform transform) {
-  if (!SkiaOutputDeviceOffscreen::Reshape(size, device_scale_factor,
-                                          color_space, format, transform)) {
+bool SkiaOutputDeviceX11::Reshape(
+    const SkSurfaceCharacterization& characterization,
+    const gfx::ColorSpace& color_space,
+    float device_scale_factor,
+    gfx::OverlayTransform transform) {
+  if (!SkiaOutputDeviceOffscreen::Reshape(characterization, color_space,
+                                          device_scale_factor, transform)) {
     return false;
   }
-  auto ii =
-      SkImageInfo::MakeN32(size.width(), size.height(), kOpaque_SkAlphaType);
+  auto ii = SkImageInfo::MakeN32(
+      characterization.width(), characterization.height(), kOpaque_SkAlphaType);
   std::vector<uint8_t> mem(ii.computeMinByteSize());
   pixels_ = base::RefCountedBytes::TakeVector(&mem);
   return true;
 }
 
-void SkiaOutputDeviceX11::SwapBuffers(
-    BufferPresentedCallback feedback,
-    std::vector<ui::LatencyInfo> latency_info) {
+void SkiaOutputDeviceX11::SwapBuffers(BufferPresentedCallback feedback,
+                                      OutputSurfaceFrame frame) {
   return PostSubBuffer(
       gfx::Rect(0, 0, sk_surface_->width(), sk_surface_->height()),
-      std::move(feedback), std::move(latency_info));
+      std::move(feedback), std::move(frame));
 }
 
-void SkiaOutputDeviceX11::PostSubBuffer(
-    const gfx::Rect& rect,
-    BufferPresentedCallback feedback,
-    std::vector<ui::LatencyInfo> latency_info) {
+void SkiaOutputDeviceX11::PostSubBuffer(const gfx::Rect& rect,
+                                        BufferPresentedCallback feedback,
+                                        OutputSurfaceFrame frame) {
   StartSwapBuffers(std::move(feedback));
   if (!rect.IsEmpty()) {
     auto ii =
@@ -102,7 +114,7 @@ void SkiaOutputDeviceX11::PostSubBuffer(
   }
   FinishSwapBuffers(gfx::SwapCompletionResult(gfx::SwapResult::SWAP_ACK),
                     gfx::Size(sk_surface_->width(), sk_surface_->height()),
-                    std::move(latency_info));
+                    std::move(frame));
 }
 
 }  // namespace viz

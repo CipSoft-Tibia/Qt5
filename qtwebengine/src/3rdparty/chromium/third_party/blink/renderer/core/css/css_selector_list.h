@@ -26,13 +26,12 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_SELECTOR_LIST_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_SELECTOR_LIST_H_
 
-#include <memory>
+#include "base/types/pass_key.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/css_selector.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
-
-class CSSParserSelector;
 
 // This class represents a CSS selector, i.e. a pattern of one or more
 // simple selectors. https://www.w3.org/TR/css3-selectors/
@@ -61,92 +60,96 @@ class CSSParserSelector;
 // Use CSSSelector::TagHistory() and CSSSelector::IsLastInTagHistory()
 // to traverse through each sequence of simple selectors,
 // from .c3 to #ident; from span to .c2; from div to .c1
-class CORE_EXPORT CSSSelectorList {
-  USING_FAST_MALLOC(CSSSelectorList);
-
+//
+// StyleRule stores its selectors in an identical memory layout,
+// but not as part of a CSSSelectorList (see its class comments).
+// It reuses many of the exposed static member functions from CSSSelectorList
+// to provide a subset of its API.
+class CORE_EXPORT CSSSelectorList : public GarbageCollected<CSSSelectorList> {
  public:
-  CSSSelectorList() : selector_array_(nullptr) {}
+  // Constructs an empty selector list, for which IsValid() returns false.
+  // TODO(sesse): Consider making this a singleton.
+  static CSSSelectorList* Empty();
 
-  CSSSelectorList(CSSSelectorList&& o) : selector_array_(o.selector_array_) {
-    o.selector_array_ = nullptr;
+  // Do not call; for Empty() and AdoptSelectorVector() only.
+  explicit CSSSelectorList(base::PassKey<CSSSelectorList>) {}
+
+  CSSSelectorList(CSSSelectorList&& o) {
+    memcpy(this, o.first_selector_, ComputeLength() * sizeof(CSSSelector));
   }
+  ~CSSSelectorList() = default;
 
-  CSSSelectorList& operator=(CSSSelectorList&& o) {
-    DCHECK(this != &o);
-    DeleteSelectorsIfNeeded();
-    selector_array_ = o.selector_array_;
-    o.selector_array_ = nullptr;
-    return *this;
+  static CSSSelectorList* AdoptSelectorVector(
+      base::span<CSSSelector> selector_vector);
+  static void AdoptSelectorVector(base::span<CSSSelector> selector_vector,
+                                  CSSSelector* selector_array);
+
+  CSSSelectorList* Copy() const;
+
+  bool IsValid() const {
+    return first_selector_[0].Match() != CSSSelector::kInvalidList;
   }
-
-  ~CSSSelectorList() { DeleteSelectorsIfNeeded(); }
-
-  static CSSSelectorList AdoptSelectorVector(
-      Vector<std::unique_ptr<CSSParserSelector>>& selector_vector);
-  CSSSelectorList Copy() const;
-
-  bool IsValid() const { return !!selector_array_; }
-  const CSSSelector* First() const { return selector_array_; }
-  const CSSSelector* FirstForCSSOM() const;
+  const CSSSelector* First() const {
+    return IsValid() ? first_selector_ : nullptr;
+  }
   static const CSSSelector* Next(const CSSSelector&);
-  static const CSSSelector* NextInFullList(const CSSSelector&);
+  static CSSSelector* Next(CSSSelector&);
 
   // The CSS selector represents a single sequence of simple selectors.
-  bool HasOneSelector() const {
-    return selector_array_ && !Next(*selector_array_);
-  }
+  bool HasOneSelector() const { return IsValid() && !Next(*first_selector_); }
   const CSSSelector& SelectorAt(wtf_size_t index) const {
-    return selector_array_[index];
+    DCHECK(IsValid());
+    return first_selector_[index];
   }
 
   wtf_size_t SelectorIndex(const CSSSelector& selector) const {
-    return static_cast<wtf_size_t>(&selector - selector_array_);
+    DCHECK(IsValid());
+    return static_cast<wtf_size_t>(&selector - first_selector_);
   }
 
   wtf_size_t IndexOfNextSelectorAfter(wtf_size_t index) const {
     const CSSSelector& current = SelectorAt(index);
-    const CSSSelector* next = this->Next(current);
-    if (!next)
+    const CSSSelector* next = Next(current);
+    if (!next) {
       return kNotFound;
+    }
     return SelectorIndex(*next);
   }
 
-  String SelectorsText() const;
+  String SelectorsText() const { return SelectorsText(First()); }
+  static String SelectorsText(const CSSSelector* first);
 
   // Selector lists don't know their length, computing it is O(n) and should be
   // avoided when possible. Instead iterate from first() and using next().
   unsigned ComputeLength() const;
 
- private:
-  void DeleteSelectorsIfNeeded() {
-    if (selector_array_)
-      DeleteSelectors();
-  }
-  void DeleteSelectors();
+  // Return the specificity of the selector with the highest specificity.
+  unsigned MaximumSpecificity() const;
 
   CSSSelectorList(const CSSSelectorList&) = delete;
   CSSSelectorList& operator=(const CSSSelectorList&) = delete;
 
-  // End of a multipart selector is indicated by is_last_in_tag_history_ bit in
-  // the last item. End of the array is indicated by is_last_in_selector_list_
-  // bit in the last item.
-  CSSSelector* selector_array_;
+  void Trace(Visitor* visitor) const;
+
+ private:
+  // All of the remaining CSSSelector objects are allocated on
+  // AdditionalBytes, and thus live immediately after this object. The length
+  // is not stored explicitly anywhere: End of a multipart selector is
+  // indicated by is_last_in_tag_history_ bit in the last item. End of the
+  // array is indicated by is_last_in_selector_list_ bit in the last item.
+  CSSSelector first_selector_[1];
 };
 
 inline const CSSSelector* CSSSelectorList::Next(const CSSSelector& current) {
-  // Skip subparts of compound selectors.
-  const CSSSelector* last = &current;
-  while (!last->IsLastInTagHistory())
-    last++;
-  return last->IsLastInOriginalList() ? nullptr : last + 1;
+  return Next(const_cast<CSSSelector&>(current));
 }
 
-inline const CSSSelector* CSSSelectorList::NextInFullList(
-    const CSSSelector& current) {
+inline CSSSelector* CSSSelectorList::Next(CSSSelector& current) {
   // Skip subparts of compound selectors.
-  const CSSSelector* last = &current;
-  while (!last->IsLastInTagHistory())
+  CSSSelector* last = &current;
+  while (!last->IsLastInTagHistory()) {
     last++;
+  }
   return last->IsLastInSelectorList() ? nullptr : last + 1;
 }
 

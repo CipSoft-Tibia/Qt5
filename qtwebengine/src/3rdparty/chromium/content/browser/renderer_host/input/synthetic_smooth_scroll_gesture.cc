@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,6 +16,7 @@ SyntheticSmoothScrollGesture::~SyntheticSmoothScrollGesture() = default;
 SyntheticGesture::Result SyntheticSmoothScrollGesture::ForwardInputEvents(
     const base::TimeTicks& timestamp,
     SyntheticGestureTarget* target) {
+  DCHECK(dispatching_controller_);
   if (!move_gesture_) {
     if (!InitializeMoveGesture(params_.gesture_source_type, target))
       return SyntheticGesture::GESTURE_SOURCE_TYPE_NOT_IMPLEMENTED;
@@ -32,21 +33,21 @@ void SyntheticSmoothScrollGesture::WaitForTargetAck(
 
 SyntheticSmoothMoveGestureParams::InputType
 SyntheticSmoothScrollGesture::GetInputSourceType(
-    SyntheticGestureParams::GestureSourceType gesture_source_type) {
-  if (gesture_source_type == SyntheticGestureParams::MOUSE_INPUT)
+    content::mojom::GestureSourceType gesture_source_type) {
+  if (gesture_source_type == content::mojom::GestureSourceType::kMouseInput)
     return SyntheticSmoothMoveGestureParams::MOUSE_WHEEL_INPUT;
   else
     return SyntheticSmoothMoveGestureParams::TOUCH_INPUT;
 }
 
 bool SyntheticSmoothScrollGesture::InitializeMoveGesture(
-    SyntheticGestureParams::GestureSourceType gesture_type,
+    content::mojom::GestureSourceType gesture_type,
     SyntheticGestureTarget* target) {
-  if (gesture_type == SyntheticGestureParams::DEFAULT_INPUT)
+  if (gesture_type == content::mojom::GestureSourceType::kDefaultInput)
     gesture_type = target->GetDefaultSyntheticGestureSourceType();
 
-  if (gesture_type == SyntheticGestureParams::TOUCH_INPUT ||
-      gesture_type == SyntheticGestureParams::MOUSE_INPUT) {
+  if (gesture_type == content::mojom::GestureSourceType::kTouchInput ||
+      gesture_type == content::mojom::GestureSourceType::kMouseInput) {
     SyntheticSmoothMoveGestureParams move_params;
     move_params.start_point = params_.anchor;
     move_params.distances = params_.distances;
@@ -58,7 +59,9 @@ bool SyntheticSmoothScrollGesture::InitializeMoveGesture(
     move_params.add_slop = true;
     move_params.granularity = params_.granularity;
     move_params.modifiers = params_.modifiers;
+    move_params.from_devtools_debugger = params_.from_devtools_debugger;
     move_gesture_ = std::make_unique<SyntheticSmoothMoveGesture>(move_params);
+    move_gesture_->DidQueue(dispatching_controller_);
     return true;
   }
   return false;

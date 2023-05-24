@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,13 +13,13 @@
 #include <setupapi.h>
 #include <stddef.h>
 
-#include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/task/bind_post_task.h"
 #include "base/win/windows_version.h"
 #include "media/audio/audio_device_description.h"
 #include "media/audio/audio_io.h"
@@ -30,7 +30,6 @@
 #include "media/audio/win/device_enumeration_win.h"
 #include "media/audio/win/waveout_output_win.h"
 #include "media/base/audio_parameters.h"
-#include "media/base/bind_to_current_loop.h"
 #include "media/base/channel_layout.h"
 #include "media/base/limits.h"
 #include "media/base/media_switches.h"
@@ -66,7 +65,9 @@ constexpr int kWinMaxChannels = 8;
 // determined from the system
 constexpr int kFallbackBufferSize = 2048;
 
-static int NumberOfWaveOutBuffers() {
+namespace {
+
+int NumberOfWaveOutBuffers() {
   // Use the user provided buffer count if provided.
   int buffers = 0;
   std::string buffers_str(
@@ -78,6 +79,8 @@ static int NumberOfWaveOutBuffers() {
 
   return 3;
 }
+
+}  // namespace
 
 AudioManagerWin::AudioManagerWin(std::unique_ptr<AudioThread> audio_thread,
                                  AudioLogFactory* audio_log_factory)
@@ -112,6 +115,12 @@ AudioManagerWin::AudioManagerWin(std::unique_ptr<AudioThread> audio_thread,
 AudioManagerWin::~AudioManagerWin() = default;
 
 void AudioManagerWin::ShutdownOnAudioThread() {
+  // Prevent pending callbacks from `output_device_listener_` from being run.
+  // TODO(crbug.com/1458623): Remove this call when kAudioServiceOutOfProcess is
+  // removed on Windows; `weak_factory_on_audio_thread_` will be guaranteed to
+  // be destroyed/invalidated on the right thread then.
+  weak_factory_on_audio_thread_.InvalidateWeakPtrs();
+
   AudioManagerBase::ShutdownOnAudioThread();
 
   // Destroy AudioDeviceListenerWin instance on the audio thread because it
@@ -136,11 +145,22 @@ bool AudioManagerWin::HasAudioInputDevices() {
 void AudioManagerWin::InitializeOnAudioThread() {
   DCHECK(GetTaskRunner()->BelongsToCurrentThread());
 
+  // Initialize should only be called once.
+  CHECK(!output_device_listener_);
+
+  // Create a WeakPtr bound to the Audio thread, which will be invalidated
+  // in ShutdownOnAudioThread().
+  weak_this_on_audio_thread_ = weak_factory_on_audio_thread_.GetWeakPtr();
+
   // AudioDeviceListenerWin must be initialized on a COM thread.
+  // Despite `this` owning `output_device_listener_`, we need to bind the
+  // callback to a WeakPtr: NotifyAllOutputDeviceChangeListeners() will be
+  // posted to the audio thread instead of being run synchronously, since we use
+  // BindPostTaskToCurrentDefault().
   output_device_listener_ = std::make_unique<AudioDeviceListenerWin>(
-      BindToCurrentLoop(base::BindRepeating(
+      base::BindPostTaskToCurrentDefault(base::BindRepeating(
           &AudioManagerWin::NotifyAllOutputDeviceChangeListeners,
-          base::Unretained(this))));
+          weak_this_on_audio_thread_), FROM_HERE));
 }
 
 void AudioManagerWin::GetAudioDeviceNamesImpl(bool input,
@@ -183,9 +203,9 @@ AudioParameters AudioManagerWin::GetInputStreamParameters(
     // unavailable device. We should track down those code paths (it is likely
     // that they actually don't need a real device but depend on the audio
     // code path somehow for a configuration - e.g. tab capture).
-    parameters =
-        AudioParameters(AudioParameters::AUDIO_PCM_LINEAR,
-                        CHANNEL_LAYOUT_STEREO, 48000, kFallbackBufferSize);
+    parameters = AudioParameters(AudioParameters::AUDIO_PCM_LINEAR,
+                                 ChannelLayoutConfig::Stereo(), 48000,
+                                 kFallbackBufferSize);
   }
 
   int user_buffer_size = GetUserBufferSize();
@@ -218,6 +238,17 @@ AudioOutputStream* AudioManagerWin::MakeLinearOutputStream(
                                          WAVE_MAPPER);
 }
 
+AudioOutputStream* AudioManagerWin::MakeBitstreamOutputStream(
+    const AudioParameters& params,
+    const std::string& device_id,
+    const LogCallback& log_callback) {
+#if BUILDFLAG(ENABLE_PLATFORM_DTS_AUDIO)
+  return MakeLowLatencyOutputStream(params, device_id, log_callback);
+#else   // BUILDFLAG(ENABLE_PLATFORM_DTS_AUDIO)
+  return nullptr;
+#endif  // BUILDFLAG(ENABLE_PLATFORM_DTS_AUDIO)
+}
+
 // Factory for the implementations of AudioOutputStream for
 // AUDIO_PCM_LOW_LATENCY mode. Two implementations should suffice most
 // windows user's needs.
@@ -227,7 +258,14 @@ AudioOutputStream* AudioManagerWin::MakeLowLatencyOutputStream(
     const AudioParameters& params,
     const std::string& device_id,
     const LogCallback& log_callback) {
-  DCHECK_EQ(AudioParameters::AUDIO_PCM_LOW_LATENCY, params.format());
+#if BUILDFLAG(ENABLE_PLATFORM_DTS_AUDIO)
+  DCHECK(params.format() == AudioParameters::AUDIO_BITSTREAM_DTS ||
+         params.format() == AudioParameters::AUDIO_PCM_LOW_LATENCY)
+      << params.format();
+#else
+  DCHECK_EQ(params.format(), AudioParameters::AUDIO_PCM_LOW_LATENCY);
+#endif
+
   if (params.channels() > kWinMaxChannels)
     return nullptr;
 
@@ -290,16 +328,13 @@ AudioParameters AudioManagerWin::GetPreferredOutputStreamParameters(
     const std::string& output_device_id,
     const AudioParameters& input_params) {
   const base::CommandLine* cmd_line = base::CommandLine::ForCurrentProcess();
-  int channels = 0;
-  ChannelLayout channel_layout = CHANNEL_LAYOUT_STEREO;
+  ChannelLayoutConfig channel_layout_config = ChannelLayoutConfig::Stereo();
   int sample_rate = 48000;
   int buffer_size = kFallbackBufferSize;
   int effects = AudioParameters::NO_EFFECTS;
   int min_buffer_size = 0;
   int max_buffer_size = 0;
 
-  // TODO(henrika): Remove kEnableExclusiveAudio and related code. It doesn't
-  // look like it's used.
   if (cmd_line->HasSwitch(switches::kEnableExclusiveAudio)) {
     // TODO(rtoy): tune these values for best possible WebAudio
     // performance. WebRTC works well at 48kHz and a buffer size of 480
@@ -309,7 +344,7 @@ AudioParameters AudioManagerWin::GetPreferredOutputStreamParameters(
     sample_rate = 48000;
     buffer_size = 256;
     if (input_params.IsValid())
-      channel_layout = input_params.channel_layout();
+      channel_layout_config = input_params.channel_layout_config();
   } else {
     AudioParameters params;
     HRESULT hr = CoreAudioUtil::GetPreferredAudioParameters(
@@ -329,9 +364,8 @@ AudioParameters AudioManagerWin::GetPreferredOutputStreamParameters(
     DVLOG(1) << params.AsHumanReadableString();
     DCHECK(params.IsValid());
 
-    channels = params.channels();
+    channel_layout_config = params.channel_layout_config();
     buffer_size = params.frames_per_buffer();
-    channel_layout = params.channel_layout();
     sample_rate = params.sample_rate();
     effects = params.effects();
 
@@ -347,12 +381,13 @@ AudioParameters AudioManagerWin::GetPreferredOutputStreamParameters(
     // have a valid channel layout yet, try to use the input layout.  See bugs
     // http://crbug.com/259165 and http://crbug.com/311906 for more details.
     if (cmd_line->HasSwitch(switches::kTrySupportedChannelLayouts) ||
-        channel_layout == CHANNEL_LAYOUT_UNSUPPORTED) {
+        channel_layout_config.channel_layout() == CHANNEL_LAYOUT_UNSUPPORTED) {
       // Check if it is possible to open up at the specified input channel
       // layout but avoid checking if the specified layout is the same as the
       // hardware (preferred) layout. We do this extra check to avoid the
       // CoreAudioUtil::IsChannelLayoutSupported() overhead in most cases.
-      if (input_params.channel_layout() != channel_layout) {
+      if (input_params.channel_layout() !=
+          channel_layout_config.channel_layout()) {
         // TODO(henrika): Internally, IsChannelLayoutSupported does many of the
         // operations that have already been done such as opening up a client
         // and fetching the WAVEFORMATPCMEX format.  Ideally we should only do
@@ -363,9 +398,10 @@ AudioParameters AudioManagerWin::GetPreferredOutputStreamParameters(
                 input_params.channel_layout())) {
           // Open up using the same channel layout as the source if it is
           // supported by the hardware.
-          channel_layout = input_params.channel_layout();
+          channel_layout_config = input_params.channel_layout_config();
           DVLOG(1) << "Hardware channel layout is not used; using same layout"
-                   << " as the source instead (" << channel_layout << ")";
+                   << " as the source instead ("
+                   << channel_layout_config.channel_layout() << ")";
         }
       }
     }
@@ -384,14 +420,20 @@ AudioParameters AudioManagerWin::GetPreferredOutputStreamParameters(
   if (user_buffer_size)
     buffer_size = user_buffer_size;
 
-  AudioParameters params(
-      AudioParameters::AUDIO_PCM_LOW_LATENCY, channel_layout, sample_rate,
-      buffer_size,
-      AudioParameters::HardwareCapabilities(min_buffer_size, max_buffer_size));
-  params.set_effects(effects);
-  if (channel_layout == CHANNEL_LAYOUT_DISCRETE) {
-    params.set_channels_for_discrete(channels);
+  AudioParameters::HardwareCapabilities hardware_capabilities(min_buffer_size,
+                                                              max_buffer_size);
+#if BUILDFLAG(ENABLE_PASSTHROUGH_AUDIO_CODECS)
+  hardware_capabilities.bitstream_formats = 0;
+  hardware_capabilities.require_encapsulation = false;
+  if (WASAPIAudioOutputStream::GetShareMode() == AUDCLNT_SHAREMODE_EXCLUSIVE) {
+    hardware_capabilities.bitstream_formats = GetPassthroughAudioFormats();
+    hardware_capabilities.require_encapsulation = true;
   }
+#endif  // BUILDFLAG(ENABLE_PASSTHROUGH_AUDIO_CODECS)
+  AudioParameters params(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+                         channel_layout_config, sample_rate, buffer_size,
+                         hardware_capabilities);
+  params.set_effects(effects);
   DCHECK(params.IsValid());
   return params;
 }

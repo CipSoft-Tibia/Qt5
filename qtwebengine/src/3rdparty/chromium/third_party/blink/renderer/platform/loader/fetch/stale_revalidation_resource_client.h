@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,7 +26,6 @@ class StaleRevalidationResourceClient
   String DebugName() const override;
 
  private:
-  base::TimeTicks start_time_;
   // |stale_resource_| is the original resource that will be removed from the
   // MemoryCache when this revalidation request is completed. Note that it is
   // different than the active resource for this resource client which accessed

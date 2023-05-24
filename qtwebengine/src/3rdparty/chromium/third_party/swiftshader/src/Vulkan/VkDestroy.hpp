@@ -29,6 +29,7 @@
 #include "VkPipeline.hpp"
 #include "VkPipelineCache.hpp"
 #include "VkPipelineLayout.hpp"
+#include "VkPrivateData.hpp"
 #include "VkQueryPool.hpp"
 #include "VkQueue.hpp"
 #include "VkRenderPass.hpp"
@@ -62,7 +63,7 @@ inline void destroy(VkT vkObject, const VkAllocationCallbacks *pAllocator)
 		// object may not point to the same pointer as vkObject, for dispatchable objects,
 		// for example, so make sure to deallocate based on the vkObject pointer, which
 		// should always point to the beginning of the allocated memory
-		vk::deallocate(vkObject, pAllocator);
+		vk::freeHostMemory(vkObject, pAllocator);
 	}
 }
 
@@ -79,7 +80,7 @@ inline void release(VkT vkObject, const VkAllocationCallbacks *pAllocator)
 			// object may not point to the same pointer as vkObject, for dispatchable objects,
 			// for example, so make sure to deallocate based on the vkObject pointer, which
 			// should always point to the beginning of the allocated memory
-			vk::deallocate(vkObject, pAllocator);
+			vk::freeHostMemory(vkObject, pAllocator);
 		}
 	}
 }

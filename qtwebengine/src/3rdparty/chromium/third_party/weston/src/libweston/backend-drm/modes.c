@@ -52,8 +52,19 @@ static const char *const aspect_ratio_as_string[] = {
 static enum weston_mode_aspect_ratio
 drm_to_weston_mode_aspect_ratio(uint32_t drm_mode_flags)
 {
-	return (drm_mode_flags & DRM_MODE_FLAG_PIC_AR_MASK) >>
-		DRM_MODE_FLAG_PIC_AR_BITS_POS;
+	switch (drm_mode_flags & DRM_MODE_FLAG_PIC_AR_MASK) {
+	case DRM_MODE_FLAG_PIC_AR_4_3:
+		return WESTON_MODE_PIC_AR_4_3;
+	case DRM_MODE_FLAG_PIC_AR_16_9:
+		return WESTON_MODE_PIC_AR_16_9;
+	case DRM_MODE_FLAG_PIC_AR_64_27:
+		return WESTON_MODE_PIC_AR_64_27;
+	case DRM_MODE_FLAG_PIC_AR_256_135:
+		return WESTON_MODE_PIC_AR_256_135;
+	case DRM_MODE_FLAG_PIC_AR_NONE:
+	default:
+		return WESTON_MODE_PIC_AR_NONE;
+	}
 }
 
 static const char *
@@ -115,6 +126,29 @@ check_non_desktop(struct drm_head *head, drmModeObjectPropertiesPtr props)
 		&head->props_conn[WDRM_CONNECTOR_NON_DESKTOP];
 
 	return drm_property_get_value(non_desktop_info, props, 0);
+}
+
+static uint32_t
+get_panel_orientation(struct drm_head *head, drmModeObjectPropertiesPtr props)
+{
+	struct drm_property_info *orientation =
+		&head->props_conn[WDRM_CONNECTOR_PANEL_ORIENTATION];
+	uint64_t kms_val =
+		drm_property_get_value(orientation, props,
+				       WDRM_PANEL_ORIENTATION_NORMAL);
+
+	switch (kms_val) {
+	case WDRM_PANEL_ORIENTATION_NORMAL:
+		return WL_OUTPUT_TRANSFORM_NORMAL;
+	case WDRM_PANEL_ORIENTATION_UPSIDE_DOWN:
+		return WL_OUTPUT_TRANSFORM_180;
+	case WDRM_PANEL_ORIENTATION_LEFT_SIDE_UP:
+		return WL_OUTPUT_TRANSFORM_90;
+	case WDRM_PANEL_ORIENTATION_RIGHT_SIDE_UP:
+		return WL_OUTPUT_TRANSFORM_270;
+	default:
+		assert(!"unknown property value in get_panel_orientation");
+	}
 }
 
 static int
@@ -489,6 +523,9 @@ update_head_from_connector(struct drm_head *head,
 	weston_head_set_physical_size(&head->base, head->connector->mmWidth,
 				      head->connector->mmHeight);
 
+	weston_head_set_transform(&head->base,
+				  get_panel_orientation(head, props));
+
 	/* Unknown connection status is assumed disconnected. */
 	weston_head_set_connection_status(&head->base,
 			head->connector->connection == DRM_MODE_CONNECTED);
@@ -674,7 +711,7 @@ static int
 drm_output_try_add_mode(struct drm_output *output, const drmModeModeInfo *info)
 {
 	struct weston_mode *base;
-	struct drm_mode *mode;
+	struct drm_mode *mode = NULL;
 	struct drm_backend *backend;
 	const drmModeModeInfo *chosen = NULL;
 
@@ -688,6 +725,7 @@ drm_output_try_add_mode(struct drm_output *output, const drmModeModeInfo *info)
 	}
 
 	if (chosen == info) {
+		assert(mode);
 		backend = to_drm_backend(output->base.compositor);
 		drm_output_destroy_mode(backend, mode);
 		chosen = NULL;

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,21 +10,21 @@
 #include <string>
 #include <vector>
 
-#include "base/callback_forward.h"
-#include "base/strings/string16.h"
+#include "base/functional/callback_forward.h"
 #include "build/build_config.h"
 
 namespace base {
 class Value;
 }
 
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
 namespace views {
 class WebView;
 }
 #endif
 
 namespace weblayer {
+class Browser;
 class ErrorPageDelegate;
 class FaviconFetcher;
 class FaviconFetcherDelegate;
@@ -39,6 +39,9 @@ class WebMessageHostFactory;
 class Tab {
  public:
   virtual ~Tab() = default;
+
+  // Returns the Browser that owns this.
+  virtual Browser* GetBrowser() = 0;
 
   // Sets the ErrorPageDelegate. If none is set, a default action will be taken
   // for any given interaction with an error page.
@@ -69,7 +72,7 @@ class Tab {
   // first-party scripts in the page, and injected scripts. Use with caution,
   // only pass false for this argument if you know this isn't an issue or you
   // need to interact with first-party scripts.
-  virtual void ExecuteScript(const base::string16& script,
+  virtual void ExecuteScript(const std::u16string& script,
                              bool use_separate_isolate,
                              JavaScriptResultCallback callback) = 0;
 
@@ -101,14 +104,14 @@ class Tab {
   //
   // Returns an empty string on success. On failure, the return string gives
   // an error message.
-  virtual base::string16 AddWebMessageHostFactory(
+  virtual std::u16string AddWebMessageHostFactory(
       std::unique_ptr<WebMessageHostFactory> factory,
-      const base::string16& js_object_name,
+      const std::u16string& js_object_name,
       const std::vector<std::string>& allowed_origin_rules) = 0;
 
   // Removes the WebMessageHostFactory registered under |js_object_name|.
   virtual void RemoveWebMessageHostFactory(
-      const base::string16& js_object_name) = 0;
+      const std::u16string& js_object_name) = 0;
 
   // Creates a FaviconFetcher that notifies a FaviconFetcherDelegate when
   // the favicon changes.
@@ -121,7 +124,25 @@ class Tab {
   virtual std::unique_ptr<FaviconFetcher> CreateFaviconFetcher(
       FaviconFetcherDelegate* delegate) = 0;
 
-#if !defined(OS_ANDROID)
+  // Sets the target language for translation such that whenever the translate
+  // UI shows in this Tab, the target language will be |targetLanguage|. Notes:
+  // - |targetLanguage| should be specified as the language code (e.g., "de" for
+  //   German).
+  // - Passing an empty string causes behavior to revert to default.
+  // - Specifying a non-empty target language will also result in the following
+  //   behaviors (all of which are intentional as part of the semantics of
+  //   having a target language):
+  //   - Translation is initiated automatically (note that the infobar UI is
+  //      present)
+  //   - Translation occurs even for languages/sites that the user has
+  //     blocklisted
+  //   - Translation occurs even for pages in the user's default locale
+  //   - Translation does *not* occur nor is the infobar UI shown for pages in
+  //     the specified target language
+  virtual void SetTranslateTargetLanguage(
+      const std::string& translate_target_lang) = 0;
+
+#if !BUILDFLAG(IS_ANDROID)
   // TODO: this isn't a stable API, so use it now for expediency in the C++ API,
   // but if we ever want to have backward or forward compatibility in C++ this
   // will have to be something else.

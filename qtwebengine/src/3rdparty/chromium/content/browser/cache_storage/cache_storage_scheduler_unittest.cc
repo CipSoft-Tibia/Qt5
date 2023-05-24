@@ -1,15 +1,15 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/cache_storage/cache_storage_scheduler.h"
 
-#include "base/bind.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/scoped_feature_list.h"
-#include "base/threading/thread_task_runner_handle.h"
-#include "content/public/common/content_features.h"
 #include "content/public/test/browser_task_environment.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -34,7 +34,7 @@ class TestTask {
   base::RunLoop& run_loop() { return run_loop_; }
 
  protected:
-  CacheStorageScheduler* scheduler_;
+  raw_ptr<CacheStorageScheduler> scheduler_;
   const CacheStorageSchedulerId id_;
   base::RunLoop run_loop_;
   int callback_count_;
@@ -43,8 +43,9 @@ class TestTask {
 class TestScheduler : public CacheStorageScheduler {
  public:
   TestScheduler()
-      : CacheStorageScheduler(CacheStorageSchedulerClient::kStorage,
-                              base::ThreadTaskRunnerHandle::Get()) {}
+      : CacheStorageScheduler(
+            CacheStorageSchedulerClient::kStorage,
+            base::SingleThreadTaskRunner::GetCurrentDefault()) {}
 
   void SetDoneStartingClosure(base::OnceClosure done_closure) {
     CHECK(!done_closure_);
@@ -54,8 +55,8 @@ class TestScheduler : public CacheStorageScheduler {
  protected:
   void DoneStartingAvailableOperations() override {
     if (done_closure_) {
-      base::ThreadTaskRunnerHandle::Get()->PostTask(FROM_HERE,
-                                                    std::move(done_closure_));
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE, std::move(done_closure_));
     }
     CacheStorageScheduler::DoneStartingAvailableOperations();
   }
@@ -111,7 +112,7 @@ TEST_F(CacheStorageSchedulerTest, ScheduledOperations) {
 TEST_F(CacheStorageSchedulerTest, ScheduleTwoExclusive) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeatureWithParameters(
-      features::kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
+      kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
 
   scheduler_.ScheduleOperation(
       task1_.id(), CacheStorageSchedulerMode::kExclusive,
@@ -147,7 +148,7 @@ TEST_F(CacheStorageSchedulerTest, ScheduleTwoExclusive) {
 TEST_F(CacheStorageSchedulerTest, ScheduleTwoShared) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeatureWithParameters(
-      features::kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
+      kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
 
   scheduler_.ScheduleOperation(
       task1_.id(), CacheStorageSchedulerMode::kShared,
@@ -195,7 +196,7 @@ TEST_F(CacheStorageSchedulerTest, ScheduleTwoShared) {
 TEST_F(CacheStorageSchedulerTest, ScheduleOneExclusiveOneShared) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeatureWithParameters(
-      features::kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
+      kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
 
   scheduler_.ScheduleOperation(
       task1_.id(), CacheStorageSchedulerMode::kExclusive,
@@ -234,7 +235,7 @@ TEST_F(CacheStorageSchedulerTest, ScheduleOneExclusiveOneShared) {
 TEST_F(CacheStorageSchedulerTest, ScheduleOneSharedOneExclusive) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeatureWithParameters(
-      features::kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
+      kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
 
   scheduler_.ScheduleOperation(
       task1_.id(), CacheStorageSchedulerMode::kShared,
@@ -273,7 +274,7 @@ TEST_F(CacheStorageSchedulerTest, ScheduleOneSharedOneExclusive) {
 TEST_F(CacheStorageSchedulerTest, ScheduleTwoSharedOneExclusive) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeatureWithParameters(
-      features::kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
+      kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
 
   scheduler_.ScheduleOperation(
       task1_.id(), CacheStorageSchedulerMode::kShared,
@@ -333,7 +334,7 @@ TEST_F(CacheStorageSchedulerTest, ScheduleTwoSharedOneExclusive) {
 TEST_F(CacheStorageSchedulerTest, ScheduleOneExclusiveTwoShared) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeatureWithParameters(
-      features::kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
+      kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
 
   scheduler_.ScheduleOperation(
       task1_.id(), CacheStorageSchedulerMode::kExclusive,
@@ -391,7 +392,7 @@ TEST_F(CacheStorageSchedulerTest, ScheduleOneExclusiveTwoShared) {
 TEST_F(CacheStorageSchedulerTest, ScheduleOneSharedOneExclusiveOneShared) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeatureWithParameters(
-      features::kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
+      kCacheStorageParallelOps, {{"max_shared_ops", "3"}});
 
   scheduler_.ScheduleOperation(
       task1_.id(), CacheStorageSchedulerMode::kShared,
@@ -451,7 +452,7 @@ TEST_F(CacheStorageSchedulerTest, ScheduleTwoSharedNotParallel) {
   // Disable parallelism
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeatureWithParameters(
-      features::kCacheStorageParallelOps, {{"max_shared_ops", "1"}});
+      kCacheStorageParallelOps, {{"max_shared_ops", "1"}});
 
   scheduler_.ScheduleOperation(
       task1_.id(), CacheStorageSchedulerMode::kShared,

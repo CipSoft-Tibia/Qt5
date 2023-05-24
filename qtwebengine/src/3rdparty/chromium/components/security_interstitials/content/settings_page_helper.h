@@ -1,11 +1,9 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_SECURITY_INTERSTITIALS_CONTENT_SETTINGS_PAGE_HELPER_H_
 #define COMPONENTS_SECURITY_INTERSTITIALS_CONTENT_SETTINGS_PAGE_HELPER_H_
-
-#include "base/macros.h"
 
 namespace content {
 class WebContents;
@@ -23,6 +21,12 @@ class SettingsPageHelper {
 
   // Opens the settings page that contains enhanced protection.
   virtual void OpenEnhancedProtectionSettings(
+      content::WebContents* web_contents) const = 0;
+
+  // Opens the settings page that contains enhanced protection with the
+  // triggering of an in-product-help bubble over the Enhanced Safe
+  // Browsing radio button.
+  virtual void OpenEnhancedProtectionSettingsWithIph(
       content::WebContents* web_contents) const = 0;
 };
 

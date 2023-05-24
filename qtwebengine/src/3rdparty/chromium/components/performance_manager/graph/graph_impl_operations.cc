@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,40 @@
 #include "components/performance_manager/graph/process_node_impl.h"
 
 namespace performance_manager {
+
+namespace {
+
+// Implementation details for VisitFrameTree*.
+
+bool VisitFrameAndChildrenPreOrder(
+    FrameNodeImpl* frame,
+    GraphImplOperations::FrameNodeImplVisitor visitor) {
+  if (!visitor(frame)) {
+    return false;
+  }
+  for (auto* child : frame->child_frame_nodes()) {
+    if (!VisitFrameAndChildrenPreOrder(child, visitor)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool VisitFrameAndChildrenPostOrder(
+    FrameNodeImpl* frame,
+    GraphImplOperations::FrameNodeImplVisitor visitor) {
+  for (auto* child : frame->child_frame_nodes()) {
+    if (!VisitFrameAndChildrenPostOrder(child, visitor)) {
+      return false;
+    }
+  }
+  if (!visitor(frame)) {
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
 
 // static
 base::flat_set<PageNodeImpl*> GraphImplOperations::GetAssociatedPageNodes(
@@ -46,6 +80,29 @@ std::vector<FrameNodeImpl*> GraphImplOperations::GetFrameNodes(
   }
 
   return frame_nodes;
+}
+
+// static
+bool GraphImplOperations::VisitFrameTreePreOrder(const PageNodeImpl* page,
+                                                 FrameNodeImplVisitor visitor) {
+  for (auto* main_frame_node : page->main_frame_nodes()) {
+    if (!VisitFrameAndChildrenPreOrder(main_frame_node, visitor)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// static
+bool GraphImplOperations::VisitFrameTreePostOrder(
+    const PageNodeImpl* page,
+    FrameNodeImplVisitor visitor) {
+  for (auto* main_frame_node : page->main_frame_nodes()) {
+    if (!VisitFrameAndChildrenPostOrder(main_frame_node, visitor)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // static

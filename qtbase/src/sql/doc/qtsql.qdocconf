@@ -15,10 +15,6 @@ qhp.QtSql.virtualFolder       = qtsql
 qhp.QtSql.indexTitle          = Qt SQL
 qhp.QtSql.indexRoot           =
 
-qhp.QtSql.filterAttributes    = qtsql $QT_VERSION qtrefdoc
-qhp.QtSql.customFilters.Qt.name = QtSql $QT_VERSION
-qhp.QtSql.customFilters.Qt.filterAttributes = qtsql $QT_VERSION
-
 qhp.QtSql.subprojects         = classes
 qhp.QtSql.subprojects.classes.title = C++ Classes
 qhp.QtSql.subprojects.classes.indexTitle = Qt SQL C++ Classes
@@ -26,7 +22,7 @@ qhp.QtSql.subprojects.classes.selectors = class fake:headerfile
 qhp.QtSql.subprojects.classes.sortPages = true
 tagfile                 = ../../../doc/qtsql/qtsql.tags
 
-depends                 += qtcore qtwidgets qtdoc qmake
+depends                 += qtcore qtwidgets qtdoc qmake qtcmake
 
 headerdirs  += ..
 
@@ -35,6 +31,7 @@ sourcedirs  += .. \
 
 exampledirs += ../../../examples/sql \
                ../ \
+               . \ \
                snippets
 
 imagedirs   += images \
@@ -42,3 +39,11 @@ imagedirs   += images \
 
 navigation.landingpage = "Qt SQL"
 navigation.cppclassespage = "Qt SQL C++ Classes"
+
+# Highlighted examples in Data Processing & IO category
+manifestmeta.highlighted.names = \
+    "QtSql/Master Detail Example" \
+    "QtSql/SQL Browser"
+
+# Fail the documentation build if there are more warnings than the limit
+warninglimit = 0

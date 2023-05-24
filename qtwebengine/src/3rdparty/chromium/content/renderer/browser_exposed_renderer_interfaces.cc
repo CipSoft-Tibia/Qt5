@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,13 +9,13 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/task/post_task.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/task/task_runner.h"
 #include "base/task/thread_pool.h"
-#include "base/task_runner.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "content/common/frame.mojom.h"
@@ -23,15 +23,15 @@
 #include "content/public/common/resource_usage_reporter.mojom.h"
 #include "content/public/common/resource_usage_reporter_type_converters.h"
 #include "content/public/renderer/content_renderer_client.h"
-#include "content/renderer/loader/resource_dispatcher.h"
-#include "content/renderer/render_frame_impl.h"
 #include "content/renderer/render_thread_impl.h"
 #include "content/renderer/service_worker/embedded_worker_instance_client_impl.h"
 #include "content/renderer/worker/shared_worker_factory_impl.h"
+#include "content/services/auction_worklet/auction_worklet_service_impl.h"
 #include "mojo/public/cpp/bindings/binder_map.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
-#include "v8/include/v8.h"
+#include "v8/include/v8-isolate.h"
+#include "v8/include/v8-statistics.h"
 
 namespace content {
 
@@ -109,19 +109,20 @@ class ResourceUsageReporterImpl : public content::mojom::ResourceUsageReporter {
       usage_data_->v8_bytes_allocated = heap_stats.total_heap_size();
       usage_data_->v8_bytes_used = heap_stats.used_heap_size();
     }
-    base::RepeatingClosure collect = base::BindRepeating(
-        &ResourceUsageReporterImpl::CollectOnWorkerThread,
-        base::ThreadTaskRunnerHandle::Get(), weak_factory_.GetWeakPtr());
+    base::RepeatingClosure collect =
+        base::BindRepeating(&ResourceUsageReporterImpl::CollectOnWorkerThread,
+                            base::SingleThreadTaskRunner::GetCurrentDefault(),
+                            weak_factory_.GetWeakPtr());
     workers_to_go_ =
         RenderThread::Get()->PostTaskToAllWebWorkers(std::move(collect));
     if (workers_to_go_) {
       // The guard task to send out partial stats
       // in case some workers are not responsive.
-      base::ThreadTaskRunnerHandle::Get()->PostDelayedTask(
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
           FROM_HERE,
           base::BindOnce(&ResourceUsageReporterImpl::SendResults,
                          weak_factory_.GetWeakPtr()),
-          base::TimeDelta::FromMilliseconds(kWaitForWorkersStatsTimeoutMS));
+          base::Milliseconds(kWaitForWorkersStatsTimeoutMS));
     } else {
       // No worker threads so just send out the main thread data right away.
       SendResults();
@@ -144,57 +145,16 @@ void CreateResourceUsageReporter(
       std::move(receiver));
 }
 
-class FrameFactoryImpl : public mojom::FrameFactory {
- public:
-  FrameFactoryImpl() = default;
-  FrameFactoryImpl(const FrameFactoryImpl&) = delete;
-  FrameFactoryImpl& operator=(const FrameFactoryImpl&) = delete;
-
- private:
-  // mojom::FrameFactory:
-  void CreateFrame(
-      int32_t frame_routing_id,
-      mojo::PendingReceiver<mojom::Frame> frame_receiver) override {
-    // TODO(morrita): This is for investigating http://crbug.com/415059 and
-    // should be removed once it is fixed.
-    CHECK_LT(routing_id_highmark_, frame_routing_id);
-    routing_id_highmark_ = frame_routing_id;
-
-    RenderFrameImpl* frame = RenderFrameImpl::FromRoutingID(frame_routing_id);
-    // We can receive a GetServiceProviderForFrame message for a frame not yet
-    // created due to a race between the message and a
-    // mojom::Renderer::CreateView IPC that triggers creation of the RenderFrame
-    // we want.
-    if (!frame) {
-      RenderThreadImpl::current()->RegisterPendingFrameCreate(
-          frame_routing_id, std::move(frame_receiver));
-      return;
-    }
-
-    frame->BindFrame(std::move(frame_receiver));
-  }
-
- private:
-  int32_t routing_id_highmark_ = -1;
-};
-
-void CreateFrameFactory(mojo::PendingReceiver<mojom::FrameFactory> receiver) {
-  mojo::MakeSelfOwnedReceiver(std::make_unique<FrameFactoryImpl>(),
-                              std::move(receiver));
-}
-
 void CreateEmbeddedWorker(
     scoped_refptr<base::SingleThreadTaskRunner> initiator_task_runner,
     base::WeakPtr<RenderThreadImpl> render_thread,
     mojo::PendingReceiver<blink::mojom::EmbeddedWorkerInstanceClient>
         receiver) {
   initiator_task_runner->PostTask(
-      FROM_HERE,
-      base::BindOnce(
-          &EmbeddedWorkerInstanceClientImpl::CreateForRequest,
-          initiator_task_runner,
-          render_thread->resource_dispatcher()->cors_exempt_header_list(),
-          std::move(receiver)));
+      FROM_HERE, base::BindOnce(&EmbeddedWorkerInstanceClientImpl::Create,
+                                initiator_task_runner,
+                                render_thread->cors_exempt_header_list(),
+                                std::move(receiver)));
 }
 
 }  // namespace
@@ -204,22 +164,32 @@ void ExposeRendererInterfacesToBrowser(
     mojo::BinderMap* binders) {
   DCHECK(render_thread);
 
-  binders->Add(base::BindRepeating(&SharedWorkerFactoryImpl::Create),
-               base::ThreadTaskRunnerHandle::Get());
-  binders->Add(base::BindRepeating(&CreateResourceUsageReporter, render_thread),
-               base::ThreadTaskRunnerHandle::Get());
+  binders->Add<blink::mojom::SharedWorkerFactory>(
+      base::BindRepeating(&SharedWorkerFactoryImpl::Create),
+      base::SingleThreadTaskRunner::GetCurrentDefault());
+  binders->Add<mojom::ResourceUsageReporter>(
+      base::BindRepeating(&CreateResourceUsageReporter, render_thread),
+      base::SingleThreadTaskRunner::GetCurrentDefault());
+#if BUILDFLAG(IS_ANDROID)
+  binders->Add<auction_worklet::mojom::AuctionWorkletService>(
+      base::BindRepeating(
+          &auction_worklet::AuctionWorkletServiceImpl::CreateForRenderer),
+      base::SingleThreadTaskRunner::GetCurrentDefault());
+#endif
 
   auto task_runner_for_service_worker_startup =
       base::ThreadPool::CreateSingleThreadTaskRunner(
           {base::MayBlock(), base::TaskPriority::USER_BLOCKING,
            base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN});
-  binders->Add(base::BindRepeating(&CreateEmbeddedWorker,
-                                   task_runner_for_service_worker_startup,
-                                   render_thread),
-               base::ThreadTaskRunnerHandle::Get());
-
-  binders->Add(base::BindRepeating(&CreateFrameFactory),
-               base::ThreadTaskRunnerHandle::Get());
+  // TODO(crbug.com/1186912): Bind on `task_runner_for_service_worker_startup`
+  // instead of the main thread, so startup isn't blocked on the main thread.
+  // Currently it's on the main thread as CreateEmbeddedWorker accesses
+  // `cors_exempt_header_list` from `render_thread`.
+  binders->Add<blink::mojom::EmbeddedWorkerInstanceClient>(
+      base::BindRepeating(&CreateEmbeddedWorker,
+                          task_runner_for_service_worker_startup,
+                          render_thread),
+      base::SingleThreadTaskRunner::GetCurrentDefault());
 
   GetContentClient()->renderer()->ExposeInterfacesToBrowser(binders);
 }

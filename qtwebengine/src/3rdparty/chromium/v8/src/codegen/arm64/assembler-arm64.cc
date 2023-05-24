@@ -32,10 +32,10 @@
 
 #include "src/base/bits.h"
 #include "src/base/cpu.h"
+#include "src/base/small-vector.h"
 #include "src/codegen/arm64/assembler-arm64-inl.h"
 #include "src/codegen/register-configuration.h"
 #include "src/codegen/safepoint-table.h"
-#include "src/codegen/string-constants.h"
 #include "src/execution/frame-constants.h"
 
 namespace v8 {
@@ -44,17 +44,17 @@ namespace internal {
 namespace {
 
 #ifdef USE_SIMULATOR
-static unsigned SimulatorFeaturesFromCommandLine() {
-  if (strcmp(FLAG_sim_arm64_optional_features, "none") == 0) {
+unsigned SimulatorFeaturesFromCommandLine() {
+  if (strcmp(v8_flags.sim_arm64_optional_features, "none") == 0) {
     return 0;
   }
-  if (strcmp(FLAG_sim_arm64_optional_features, "all") == 0) {
+  if (strcmp(v8_flags.sim_arm64_optional_features, "all") == 0) {
     return (1u << NUMBER_OF_CPU_FEATURES) - 1;
   }
   fprintf(
       stderr,
       "Error: unrecognised value for --sim-arm64-optional-features ('%s').\n",
-      FLAG_sim_arm64_optional_features);
+      v8_flags.sim_arm64_optional_features.value());
   fprintf(stderr,
           "Supported values are:  none\n"
           "                       all\n");
@@ -62,10 +62,28 @@ static unsigned SimulatorFeaturesFromCommandLine() {
 }
 #endif  // USE_SIMULATOR
 
-static constexpr unsigned CpuFeaturesFromCompiler() {
+constexpr unsigned CpuFeaturesFromCompiler() {
   unsigned features = 0;
-#if defined(__ARM_FEATURE_JCVT)
+#if defined(__ARM_FEATURE_JCVT) && !defined(V8_TARGET_OS_IOS)
   features |= 1u << JSCVT;
+#endif
+#if defined(__ARM_FEATURE_DOTPROD)
+  features |= 1u << DOTPROD;
+#endif
+#if defined(__ARM_FEATURE_ATOMICS)
+  features |= 1u << LSE;
+#endif
+  return features;
+}
+
+constexpr unsigned CpuFeaturesFromTargetOS() {
+  unsigned features = 0;
+#if defined(V8_TARGET_OS_MACOS) && !defined(V8_TARGET_OS_IOS)
+  // TODO(v8:13004): Detect if an iPhone is new enough to support jscvt, dotprot
+  // and lse.
+  features |= 1u << JSCVT;
+  features |= 1u << DOTPROD;
+  features |= 1u << LSE;
 #endif
   return features;
 }
@@ -74,11 +92,13 @@ static constexpr unsigned CpuFeaturesFromCompiler() {
 
 // -----------------------------------------------------------------------------
 // CpuFeatures implementation.
+bool CpuFeatures::SupportsWasmSimd128() { return true; }
 
 void CpuFeatures::ProbeImpl(bool cross_compile) {
   // Only use statically determined features for cross compile (snapshot).
   if (cross_compile) {
     supported_ |= CpuFeaturesFromCompiler();
+    supported_ |= CpuFeaturesFromTargetOS();
     return;
   }
 
@@ -95,12 +115,24 @@ void CpuFeatures::ProbeImpl(bool cross_compile) {
   if (cpu.has_jscvt()) {
     runtime |= 1u << JSCVT;
   }
+  if (cpu.has_dot_prod()) {
+    runtime |= 1u << DOTPROD;
+  }
+  if (cpu.has_lse()) {
+    runtime |= 1u << LSE;
+  }
 
   // Use the best of the features found by CPU detection and those inferred from
   // the build system.
   supported_ |= CpuFeaturesFromCompiler();
   supported_ |= runtime;
 #endif  // USE_SIMULATOR
+
+  // Set a static value on whether Simd is supported.
+  // This variable is only used for certain archs to query SupportWasmSimd128()
+  // at runtime in builtins using an extern ref. Other callers should use
+  // CpuFeatures::SupportWasmSimd128().
+  CpuFeatures::supports_wasm_simd_128_ = CpuFeatures::SupportsWasmSimd128();
 }
 
 void CpuFeatures::PrintTarget() {}
@@ -170,7 +202,7 @@ CPURegList CPURegList::GetCallerSavedV(int size) {
 
 const int RelocInfo::kApplyMask =
     RelocInfo::ModeMask(RelocInfo::CODE_TARGET) |
-    RelocInfo::ModeMask(RelocInfo::RUNTIME_ENTRY) |
+    RelocInfo::ModeMask(RelocInfo::NEAR_BUILTIN_ENTRY) |
     RelocInfo::ModeMask(RelocInfo::INTERNAL_REFERENCE);
 
 bool RelocInfo::IsCodedSpecially() {
@@ -211,18 +243,18 @@ bool AreAliased(const CPURegister& reg1, const CPURegister& reg2,
   int number_of_valid_regs = 0;
   int number_of_valid_fpregs = 0;
 
-  RegList unique_regs = 0;
-  RegList unique_fpregs = 0;
+  uint64_t unique_regs = 0;
+  uint64_t unique_fpregs = 0;
 
   const CPURegister regs[] = {reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8};
 
   for (unsigned i = 0; i < arraysize(regs); i++) {
     if (regs[i].IsRegister()) {
       number_of_valid_regs++;
-      unique_regs |= regs[i].bit();
+      unique_regs |= (uint64_t{1} << regs[i].code());
     } else if (regs[i].IsVRegister()) {
       number_of_valid_fpregs++;
-      unique_fpregs |= regs[i].bit();
+      unique_fpregs |= (uint64_t{1} << regs[i].code());
     } else {
       DCHECK(!regs[i].is_valid());
     }
@@ -256,6 +288,14 @@ bool AreSameSizeAndType(const CPURegister& reg1, const CPURegister& reg2,
   return match;
 }
 
+bool AreSameFormat(const Register& reg1, const Register& reg2,
+                   const Register& reg3, const Register& reg4) {
+  DCHECK(reg1.is_valid());
+  return (!reg2.is_valid() || reg2.IsSameSizeAndType(reg1)) &&
+         (!reg3.is_valid() || reg3.IsSameSizeAndType(reg1)) &&
+         (!reg4.is_valid() || reg4.IsSameSizeAndType(reg1));
+}
+
 bool AreSameFormat(const VRegister& reg1, const VRegister& reg2,
                    const VRegister& reg3, const VRegister& reg4) {
   DCHECK(reg1.is_valid());
@@ -264,30 +304,47 @@ bool AreSameFormat(const VRegister& reg1, const VRegister& reg2,
          (!reg4.is_valid() || reg4.IsSameFormat(reg1));
 }
 
-bool AreConsecutive(const VRegister& reg1, const VRegister& reg2,
-                    const VRegister& reg3, const VRegister& reg4) {
+bool AreConsecutive(const CPURegister& reg1, const CPURegister& reg2,
+                    const CPURegister& reg3, const CPURegister& reg4) {
   DCHECK(reg1.is_valid());
+
   if (!reg2.is_valid()) {
     DCHECK(!reg3.is_valid() && !reg4.is_valid());
     return true;
-  } else if (reg2.code() != ((reg1.code() + 1) % kNumberOfVRegisters)) {
+  } else if (reg2.code() != ((reg1.code() + 1) % (reg1.MaxCode() + 1))) {
     return false;
   }
 
   if (!reg3.is_valid()) {
     DCHECK(!reg4.is_valid());
     return true;
-  } else if (reg3.code() != ((reg2.code() + 1) % kNumberOfVRegisters)) {
+  } else if (reg3.code() != ((reg2.code() + 1) % (reg1.MaxCode() + 1))) {
     return false;
   }
 
   if (!reg4.is_valid()) {
     return true;
-  } else if (reg4.code() != ((reg3.code() + 1) % kNumberOfVRegisters)) {
+  } else if (reg4.code() != ((reg3.code() + 1) % (reg1.MaxCode() + 1))) {
     return false;
   }
 
   return true;
+}
+
+bool AreEven(const CPURegister& reg1, const CPURegister& reg2,
+             const CPURegister& reg3, const CPURegister& reg4,
+             const CPURegister& reg5, const CPURegister& reg6,
+             const CPURegister& reg7, const CPURegister& reg8) {
+  DCHECK(reg1.is_valid());
+  bool even = reg1.IsEven();
+  even &= !reg2.is_valid() || reg2.IsEven();
+  even &= !reg3.is_valid() || reg3.IsEven();
+  even &= !reg4.is_valid() || reg4.IsEven();
+  even &= !reg5.is_valid() || reg5.IsEven();
+  even &= !reg6.is_valid() || reg6.IsEven();
+  even &= !reg7.is_valid() || reg7.IsEven();
+  even &= !reg8.is_valid() || reg8.IsEven();
+  return even;
 }
 
 bool Operand::NeedsRelocation(const Assembler* assembler) const {
@@ -297,7 +354,7 @@ bool Operand::NeedsRelocation(const Assembler* assembler) const {
     return assembler->options().record_reloc_info_for_serialization;
   }
 
-  return !RelocInfo::IsNone(rmode);
+  return !RelocInfo::IsNoInfo(rmode);
 }
 
 // Assembler
@@ -344,41 +401,37 @@ win64_unwindinfo::BuiltinUnwindInfo Assembler::GetUnwindInfo() const {
 }
 #endif
 
-void Assembler::AllocateAndInstallRequestedHeapObjects(Isolate* isolate) {
-  DCHECK_IMPLIES(isolate == nullptr, heap_object_requests_.empty());
-  for (auto& request : heap_object_requests_) {
+void Assembler::AllocateAndInstallRequestedHeapNumbers(Isolate* isolate) {
+  DCHECK_IMPLIES(isolate == nullptr, heap_number_requests_.empty());
+  for (auto& request : heap_number_requests_) {
     Address pc = reinterpret_cast<Address>(buffer_start_) + request.offset();
-    switch (request.kind()) {
-      case HeapObjectRequest::kHeapNumber: {
-        Handle<HeapObject> object =
-            isolate->factory()->NewHeapNumber<AllocationType::kOld>(
-                request.heap_number());
-        EmbeddedObjectIndex index = AddEmbeddedObject(object);
-        set_embedded_object_index_referenced_from(pc, index);
-        break;
-      }
-      case HeapObjectRequest::kStringConstant: {
-        const StringConstantBase* str = request.string();
-        CHECK_NOT_NULL(str);
-        EmbeddedObjectIndex index =
-            AddEmbeddedObject(str->AllocateStringConstant(isolate));
-        set_embedded_object_index_referenced_from(pc, index);
-        break;
-      }
-    }
+    Handle<HeapObject> object =
+        isolate->factory()->NewHeapNumber<AllocationType::kOld>(
+            request.heap_number());
+    EmbeddedObjectIndex index = AddEmbeddedObject(object);
+    set_embedded_object_index_referenced_from(pc, index);
   }
 }
 
 void Assembler::GetCode(Isolate* isolate, CodeDesc* desc,
-                        SafepointTableBuilder* safepoint_table_builder,
+                        SafepointTableBuilderBase* safepoint_table_builder,
                         int handler_table_offset) {
+  // As a crutch to avoid having to add manual Align calls wherever we use a
+  // raw workflow to create InstructionStream objects (mostly in tests), add
+  // another Align call here. It does no harm - the end of the InstructionStream
+  // object is aligned to the (larger) kCodeAlignment anyways.
+  // TODO(jgruber): Consider moving responsibility for proper alignment to
+  // metadata table builders (safepoint, handler, constant pool, code
+  // comments).
+  DataAlign(InstructionStream::kMetadataAlignment);
+
   // Emit constant pool if necessary.
   ForceConstantPoolEmissionWithoutJump();
   DCHECK(constpool_.IsEmpty());
 
   int code_comments_size = WriteCodeComments();
 
-  AllocateAndInstallRequestedHeapObjects(isolate);
+  AllocateAndInstallRequestedHeapNumbers(isolate);
 
   // Set up code descriptor.
   // TODO(jgruber): Reconsider how these offsets and sizes are maintained up to
@@ -394,7 +447,7 @@ void Assembler::GetCode(Isolate* isolate, CodeDesc* desc,
   const int safepoint_table_offset =
       (safepoint_table_builder == kNoSafepointTable)
           ? handler_table_offset2
-          : safepoint_table_builder->GetCodeOffset();
+          : safepoint_table_builder->safepoint_table_offset();
   const int reloc_info_offset =
       static_cast<int>(reloc_info_writer.pos() - buffer_->start());
   CodeDesc::Initialize(desc, this, safepoint_table_offset,
@@ -403,7 +456,9 @@ void Assembler::GetCode(Isolate* isolate, CodeDesc* desc,
 }
 
 void Assembler::Align(int m) {
-  DCHECK(m >= 4 && base::bits::IsPowerOfTwo(m));
+  // If not, the loop below won't terminate.
+  DCHECK(IsAligned(pc_offset(), kInstrSize));
+  DCHECK(m >= kInstrSize && base::bits::IsPowerOfTwo(m));
   while ((pc_offset() & (m - 1)) != 0) {
     nop();
   }
@@ -554,8 +609,7 @@ void Assembler::bind(Label* label) {
       // Internal references do not get patched to an instruction but directly
       // to an address.
       internal_reference_positions_.push_back(linkoffset);
-      PatchingAssembler patcher(options(), reinterpret_cast<byte*>(link), 2);
-      patcher.dc64(reinterpret_cast<uintptr_t>(pc_));
+      memcpy(link, &pc_, kSystemPointerSize);
     } else {
       link->SetImmPCOffsetTarget(options(),
                                  reinterpret_cast<Instruction*>(pc_));
@@ -1119,8 +1173,18 @@ void Assembler::smull(const Register& rd, const Register& rn,
 
 void Assembler::smulh(const Register& rd, const Register& rn,
                       const Register& rm) {
-  DCHECK(AreSameSizeAndType(rd, rn, rm));
+  DCHECK(rd.Is64Bits());
+  DCHECK(rn.Is64Bits());
+  DCHECK(rm.Is64Bits());
   DataProcessing3Source(rd, rn, rm, xzr, SMULH_x);
+}
+
+void Assembler::umulh(const Register& rd, const Register& rn,
+                      const Register& rm) {
+  DCHECK(rd.Is64Bits());
+  DCHECK(rn.Is64Bits());
+  DCHECK(rm.Is64Bits());
+  DataProcessing3Source(rd, rn, rm, xzr, UMULH_x);
 }
 
 void Assembler::sdiv(const Register& rd, const Register& rn,
@@ -1292,24 +1356,21 @@ Operand Operand::EmbeddedNumber(double number) {
   if (DoubleToSmiInteger(number, &smi)) {
     return Operand(Immediate(Smi::FromInt(smi)));
   }
-  Operand result(0, RelocInfo::FULL_EMBEDDED_OBJECT);
-  result.heap_object_request_.emplace(number);
-  DCHECK(result.IsHeapObjectRequest());
-  return result;
+  return EmbeddedHeapNumber(number);
 }
 
-Operand Operand::EmbeddedStringConstant(const StringConstantBase* str) {
+Operand Operand::EmbeddedHeapNumber(double number) {
   Operand result(0, RelocInfo::FULL_EMBEDDED_OBJECT);
-  result.heap_object_request_.emplace(str);
-  DCHECK(result.IsHeapObjectRequest());
+  result.heap_number_request_.emplace(number);
+  DCHECK(result.IsHeapNumberRequest());
   return result;
 }
 
 void Assembler::ldr(const CPURegister& rt, const Operand& operand) {
-  if (operand.IsHeapObjectRequest()) {
-    BlockPoolsScope no_pool_before_ldr_of_heap_object_request(this);
-    RequestHeapObject(operand.heap_object_request());
-    ldr(rt, operand.immediate_for_heap_object_request());
+  if (operand.IsHeapNumberRequest()) {
+    BlockPoolsScope no_pool_before_ldr_of_heap_number_request(this);
+    RequestHeapNumber(operand.heap_number_request());
+    ldr(rt, operand.immediate_for_heap_number_request());
   } else {
     ldr(rt, operand.immediate());
   }
@@ -1401,6 +1462,138 @@ void Assembler::stlxrh(const Register& rs, const Register& rt,
   DCHECK(rn.Is64Bits());
   DCHECK(rs != rt && rs != rn);
   Emit(STLXR_h | Rs(rs) | Rt2(x31) | RnSP(rn) | Rt(rt));
+}
+
+#define COMPARE_AND_SWAP_W_X_LIST(V) \
+  V(cas, CAS)                        \
+  V(casa, CASA)                      \
+  V(casl, CASL)                      \
+  V(casal, CASAL)
+
+#define DEFINE_ASM_FUNC(FN, OP)                                     \
+  void Assembler::FN(const Register& rs, const Register& rt,        \
+                     const MemOperand& src) {                       \
+    DCHECK(IsEnabled(LSE));                                         \
+    DCHECK(src.IsImmediateOffset() && (src.offset() == 0));         \
+    LoadStoreAcquireReleaseOp op = rt.Is64Bits() ? OP##_x : OP##_w; \
+    Emit(op | Rs(rs) | Rt(rt) | Rt2_mask | RnSP(src.base()));       \
+  }
+COMPARE_AND_SWAP_W_X_LIST(DEFINE_ASM_FUNC)
+#undef DEFINE_ASM_FUNC
+
+#define COMPARE_AND_SWAP_W_LIST(V) \
+  V(casb, CASB)                    \
+  V(casab, CASAB)                  \
+  V(caslb, CASLB)                  \
+  V(casalb, CASALB)                \
+  V(cash, CASH)                    \
+  V(casah, CASAH)                  \
+  V(caslh, CASLH)                  \
+  V(casalh, CASALH)
+
+#define DEFINE_ASM_FUNC(FN, OP)                               \
+  void Assembler::FN(const Register& rs, const Register& rt,  \
+                     const MemOperand& src) {                 \
+    DCHECK(IsEnabled(LSE));                                   \
+    DCHECK(src.IsImmediateOffset() && (src.offset() == 0));   \
+    Emit(OP | Rs(rs) | Rt(rt) | Rt2_mask | RnSP(src.base())); \
+  }
+COMPARE_AND_SWAP_W_LIST(DEFINE_ASM_FUNC)
+#undef DEFINE_ASM_FUNC
+
+#define COMPARE_AND_SWAP_PAIR_LIST(V) \
+  V(casp, CASP)                       \
+  V(caspa, CASPA)                     \
+  V(caspl, CASPL)                     \
+  V(caspal, CASPAL)
+
+#define DEFINE_ASM_FUNC(FN, OP)                                     \
+  void Assembler::FN(const Register& rs, const Register& rs1,       \
+                     const Register& rt, const Register& rt1,       \
+                     const MemOperand& src) {                       \
+    DCHECK(IsEnabled(LSE));                                         \
+    DCHECK(src.IsImmediateOffset() && (src.offset() == 0));         \
+    DCHECK(AreEven(rs, rt));                                        \
+    DCHECK(AreConsecutive(rs, rs1));                                \
+    DCHECK(AreConsecutive(rt, rt1));                                \
+    DCHECK(AreSameFormat(rs, rs1, rt, rt1));                        \
+    LoadStoreAcquireReleaseOp op = rt.Is64Bits() ? OP##_x : OP##_w; \
+    Emit(op | Rs(rs) | Rt(rt) | Rt2_mask | RnSP(src.base()));       \
+  }
+COMPARE_AND_SWAP_PAIR_LIST(DEFINE_ASM_FUNC)
+#undef DEFINE_ASM_FUNC
+
+// These macros generate all the variations of the atomic memory operations,
+// e.g. ldadd, ldadda, ldaddb, staddl, etc.
+// For a full list of the methods with comments, see the assembler header file.
+
+#define ATOMIC_MEMORY_SIMPLE_OPERATION_LIST(V, DEF) \
+  V(DEF, add, LDADD)                                \
+  V(DEF, clr, LDCLR)                                \
+  V(DEF, eor, LDEOR)                                \
+  V(DEF, set, LDSET)                                \
+  V(DEF, smax, LDSMAX)                              \
+  V(DEF, smin, LDSMIN)                              \
+  V(DEF, umax, LDUMAX)                              \
+  V(DEF, umin, LDUMIN)
+
+#define ATOMIC_MEMORY_STORE_MODES(V, NAME, OP) \
+  V(NAME, OP##_x, OP##_w)                      \
+  V(NAME##l, OP##L_x, OP##L_w)                 \
+  V(NAME##b, OP##B, OP##B)                     \
+  V(NAME##lb, OP##LB, OP##LB)                  \
+  V(NAME##h, OP##H, OP##H)                     \
+  V(NAME##lh, OP##LH, OP##LH)
+
+#define ATOMIC_MEMORY_LOAD_MODES(V, NAME, OP) \
+  ATOMIC_MEMORY_STORE_MODES(V, NAME, OP)      \
+  V(NAME##a, OP##A_x, OP##A_w)                \
+  V(NAME##al, OP##AL_x, OP##AL_w)             \
+  V(NAME##ab, OP##AB, OP##AB)                 \
+  V(NAME##alb, OP##ALB, OP##ALB)              \
+  V(NAME##ah, OP##AH, OP##AH)                 \
+  V(NAME##alh, OP##ALH, OP##ALH)
+
+#define DEFINE_ASM_LOAD_FUNC(FN, OP_X, OP_W)                     \
+  void Assembler::ld##FN(const Register& rs, const Register& rt, \
+                         const MemOperand& src) {                \
+    DCHECK(IsEnabled(LSE));                                      \
+    DCHECK(src.IsImmediateOffset() && (src.offset() == 0));      \
+    AtomicMemoryOp op = rt.Is64Bits() ? OP_X : OP_W;             \
+    Emit(op | Rs(rs) | Rt(rt) | RnSP(src.base()));               \
+  }
+#define DEFINE_ASM_STORE_FUNC(FN, OP_X, OP_W)                         \
+  void Assembler::st##FN(const Register& rs, const MemOperand& src) { \
+    DCHECK(IsEnabled(LSE));                                           \
+    ld##FN(rs, AppropriateZeroRegFor(rs), src);                       \
+  }
+
+ATOMIC_MEMORY_SIMPLE_OPERATION_LIST(ATOMIC_MEMORY_LOAD_MODES,
+                                    DEFINE_ASM_LOAD_FUNC)
+ATOMIC_MEMORY_SIMPLE_OPERATION_LIST(ATOMIC_MEMORY_STORE_MODES,
+                                    DEFINE_ASM_STORE_FUNC)
+
+#define DEFINE_ASM_SWP_FUNC(FN, OP_X, OP_W)                  \
+  void Assembler::FN(const Register& rs, const Register& rt, \
+                     const MemOperand& src) {                \
+    DCHECK(IsEnabled(LSE));                                  \
+    DCHECK(src.IsImmediateOffset() && (src.offset() == 0));  \
+    AtomicMemoryOp op = rt.Is64Bits() ? OP_X : OP_W;         \
+    Emit(op | Rs(rs) | Rt(rt) | RnSP(src.base()));           \
+  }
+
+ATOMIC_MEMORY_LOAD_MODES(DEFINE_ASM_SWP_FUNC, swp, SWP)
+
+#undef DEFINE_ASM_LOAD_FUNC
+#undef DEFINE_ASM_STORE_FUNC
+#undef DEFINE_ASM_SWP_FUNC
+
+void Assembler::sdot(const VRegister& vd, const VRegister& vn,
+                     const VRegister& vm) {
+  DCHECK(CpuFeatures::IsSupported(DOTPROD));
+  DCHECK(vn.Is16B() && vd.Is4S());
+  DCHECK(AreSameFormat(vn, vm));
+  Emit(NEON_Q | NEON_SDOT | Rm(vm) | Rn(vn) | Rd(vd));
 }
 
 void Assembler::NEON3DifferentL(const VRegister& vd, const VRegister& vn,
@@ -2600,7 +2793,7 @@ void Assembler::fmov(const VRegister& vd, float imm) {
     DCHECK(vd.Is1S());
     Emit(FMOV_s_imm | Rd(vd) | ImmFP(imm));
   } else {
-    DCHECK(vd.Is2S() | vd.Is4S());
+    DCHECK(vd.Is2S() || vd.Is4S());
     Instr op = NEONModifiedImmediate_MOVI;
     Instr q = vd.Is4S() ? NEON_Q : 0;
     Emit(q | op | ImmNEONFP(imm) | NEONCmode(0xF) | Rd(vd));
@@ -2789,7 +2982,7 @@ NEON_FP2REGMISC_FCVT_LIST(DEFINE_ASM_FUNCS)
 void Assembler::scvtf(const VRegister& vd, const VRegister& vn, int fbits) {
   DCHECK_GE(fbits, 0);
   if (fbits == 0) {
-    NEONFP2RegMisc(vd, vn, NEON_SCVTF);
+    NEONFP2RegMisc(vd, vn, NEON_SCVTF, 0.0);
   } else {
     DCHECK(vd.Is1D() || vd.Is1S() || vd.Is2D() || vd.Is2S() || vd.Is4S());
     NEONShiftRightImmediate(vd, vn, fbits, NEON_SCVTF_imm);
@@ -2799,7 +2992,7 @@ void Assembler::scvtf(const VRegister& vd, const VRegister& vn, int fbits) {
 void Assembler::ucvtf(const VRegister& vd, const VRegister& vn, int fbits) {
   DCHECK_GE(fbits, 0);
   if (fbits == 0) {
-    NEONFP2RegMisc(vd, vn, NEON_UCVTF);
+    NEONFP2RegMisc(vd, vn, NEON_UCVTF, 0.0);
   } else {
     DCHECK(vd.Is1D() || vd.Is1S() || vd.Is2D() || vd.Is2S() || vd.Is4S());
     NEONShiftRightImmediate(vd, vn, fbits, NEON_UCVTF_imm);
@@ -2864,15 +3057,12 @@ void Assembler::NEONFP3Same(const VRegister& vd, const VRegister& vn,
 
 #define DEFINE_ASM_FUNC(FN, VEC_OP, SCA_OP)                      \
   void Assembler::FN(const VRegister& vd, const VRegister& vn) { \
-    Instr op;                                                    \
     if (vd.IsScalar()) {                                         \
       DCHECK(vd.Is1S() || vd.Is1D());                            \
-      op = SCA_OP;                                               \
+      NEONFP2RegMisc(vd, vn, SCA_OP);                            \
     } else {                                                     \
-      DCHECK(vd.Is2S() || vd.Is2D() || vd.Is4S());               \
-      op = VEC_OP;                                               \
+      NEONFP2RegMisc(vd, vn, VEC_OP, 0.0);                       \
     }                                                            \
-    NEONFP2RegMisc(vd, vn, op);                                  \
   }
 NEON_FP2REGMISC_LIST(DEFINE_ASM_FUNC)
 #undef DEFINE_ASM_FUNC
@@ -2951,7 +3141,7 @@ void Assembler::fcvtzs(const Register& rd, const VRegister& vn, int fbits) {
 void Assembler::fcvtzs(const VRegister& vd, const VRegister& vn, int fbits) {
   DCHECK_GE(fbits, 0);
   if (fbits == 0) {
-    NEONFP2RegMisc(vd, vn, NEON_FCVTZS);
+    NEONFP2RegMisc(vd, vn, NEON_FCVTZS, 0.0);
   } else {
     DCHECK(vd.Is1D() || vd.Is1S() || vd.Is2D() || vd.Is2S() || vd.Is4S());
     NEONShiftRightImmediate(vd, vn, fbits, NEON_FCVTZS_imm);
@@ -2972,7 +3162,7 @@ void Assembler::fcvtzu(const Register& rd, const VRegister& vn, int fbits) {
 void Assembler::fcvtzu(const VRegister& vd, const VRegister& vn, int fbits) {
   DCHECK_GE(fbits, 0);
   if (fbits == 0) {
-    NEONFP2RegMisc(vd, vn, NEON_FCVTZU);
+    NEONFP2RegMisc(vd, vn, NEON_FCVTZU, 0.0);
   } else {
     DCHECK(vd.Is1D() || vd.Is1S() || vd.Is2D() || vd.Is2S() || vd.Is4S());
     NEONShiftRightImmediate(vd, vn, fbits, NEON_FCVTZU_imm);
@@ -3199,9 +3389,11 @@ void Assembler::movi(const VRegister& vd, const uint64_t imm, Shift shift,
     Emit(q | NEONModImmOp(1) | NEONModifiedImmediate_MOVI |
          ImmNEONabcdefgh(imm8) | NEONCmode(0xE) | Rd(vd));
   } else if (shift == LSL) {
+    DCHECK(is_uint8(imm));
     NEONModifiedImmShiftLsl(vd, static_cast<int>(imm), shift_amount,
                             NEONModifiedImmediate_MOVI);
   } else {
+    DCHECK(is_uint8(imm));
     NEONModifiedImmShiftMsl(vd, static_cast<int>(imm), shift_amount,
                             NEONModifiedImmediate_MOVI);
   }
@@ -3541,7 +3733,7 @@ uint32_t Assembler::FPToImm8(double imm) {
   DCHECK(IsImmFP64(imm));
   // bits: aBbb.bbbb.bbcd.efgh.0000.0000.0000.0000
   //       0000.0000.0000.0000.0000.0000.0000.0000
-  uint64_t bits = bit_cast<uint64_t>(imm);
+  uint64_t bits = base::bit_cast<uint64_t>(imm);
   // bit7: a000.0000
   uint64_t bit7 = ((bits >> 63) & 0x1) << 7;
   // bit6: 0b00.0000
@@ -3557,7 +3749,7 @@ Instr Assembler::ImmNEONFP(double imm) {
   return ImmNEONabcdefgh(FPToImm8(imm));
 }
 
-// Code generation helpers.
+// InstructionStream generation helpers.
 void Assembler::MoveWide(const Register& rd, uint64_t imm, int shift,
                          MoveWideImmediateOp mov_op) {
   // Ignore the top 32 bits of an immediate if we're moving to a W register.
@@ -3667,9 +3859,12 @@ void Assembler::EmitStringData(const char* string) {
 
 void Assembler::debug(const char* message, uint32_t code, Instr params) {
   if (options().enable_simulator_code) {
+    size_t size_of_debug_sequence =
+        4 * kInstrSize + RoundUp<kInstrSize>(strlen(message) + 1);
+
     // The arguments to the debug marker need to be contiguous in memory, so
     // make sure we don't try to emit pools.
-    BlockPoolsScope scope(this);
+    BlockPoolsScope scope(this, size_of_debug_sequence);
 
     Label start;
     bind(&start);
@@ -3684,6 +3879,7 @@ void Assembler::debug(const char* message, uint32_t code, Instr params) {
     DCHECK_EQ(SizeOfCodeGeneratedSince(&start), kDebugMessageOffset);
     EmitStringData(message);
     hlt(kImmExceptionIsUnreachable);
+    DCHECK_EQ(SizeOfCodeGeneratedSince(&start), size_of_debug_sequence);
 
     return;
   }
@@ -4202,7 +4398,7 @@ bool Assembler::IsImmConditionalCompare(int64_t immediate) {
 bool Assembler::IsImmFP32(float imm) {
   // Valid values will have the form:
   // aBbb.bbbc.defg.h000.0000.0000.0000.0000
-  uint32_t bits = bit_cast<uint32_t>(imm);
+  uint32_t bits = base::bit_cast<uint32_t>(imm);
   // bits[19..0] are cleared.
   if ((bits & 0x7FFFF) != 0) {
     return false;
@@ -4226,7 +4422,7 @@ bool Assembler::IsImmFP64(double imm) {
   // Valid values will have the form:
   // aBbb.bbbb.bbcd.efgh.0000.0000.0000.0000
   // 0000.0000.0000.0000.0000.0000.0000.0000
-  uint64_t bits = bit_cast<uint64_t>(imm);
+  uint64_t bits = base::bit_cast<uint64_t>(imm);
   // bits[47..0] are cleared.
   if ((bits & 0xFFFFFFFFFFFFL) != 0) {
     return false;
@@ -4298,11 +4494,15 @@ void Assembler::RecordRelocInfo(RelocInfo::Mode rmode, intptr_t data,
       (rmode == RelocInfo::CONST_POOL) || (rmode == RelocInfo::VENEER_POOL) ||
       (rmode == RelocInfo::DEOPT_SCRIPT_OFFSET) ||
       (rmode == RelocInfo::DEOPT_INLINING_ID) ||
-      (rmode == RelocInfo::DEOPT_REASON) || (rmode == RelocInfo::DEOPT_ID)) {
+      (rmode == RelocInfo::DEOPT_REASON) || (rmode == RelocInfo::DEOPT_ID) ||
+      (rmode == RelocInfo::LITERAL_CONSTANT) ||
+      (rmode == RelocInfo::DEOPT_NODE_ID)) {
     // Adjust code for new modes.
     DCHECK(RelocInfo::IsDeoptReason(rmode) || RelocInfo::IsDeoptId(rmode) ||
+           RelocInfo::IsDeoptNodeId(rmode) ||
            RelocInfo::IsDeoptPosition(rmode) ||
            RelocInfo::IsInternalReference(rmode) ||
+           RelocInfo::IsLiteralConstant(rmode) ||
            RelocInfo::IsConstPool(rmode) || RelocInfo::IsVeneerPool(rmode));
     // These modes do not need an entry in the constant pool.
   } else if (constant_pool_mode == NEEDS_POOL_ENTRY) {
@@ -4332,7 +4532,8 @@ void Assembler::RecordRelocInfo(RelocInfo::Mode rmode, intptr_t data,
   DCHECK(constpool_.IsBlocked());
 
   // We do not try to reuse pool constants.
-  RelocInfo rinfo(reinterpret_cast<Address>(pc_), rmode, data, Code());
+  RelocInfo rinfo(reinterpret_cast<Address>(pc_), rmode, data,
+                  InstructionStream());
 
   DCHECK_GE(buffer_space(), kMaxRelocSize);  // too late to grow buffer here
   reloc_info_writer.Write(&rinfo);
@@ -4340,19 +4541,21 @@ void Assembler::RecordRelocInfo(RelocInfo::Mode rmode, intptr_t data,
 
 void Assembler::near_jump(int offset, RelocInfo::Mode rmode) {
   BlockPoolsScope no_pool_before_b_instr(this);
-  if (!RelocInfo::IsNone(rmode)) RecordRelocInfo(rmode, offset, NO_POOL_ENTRY);
+  if (!RelocInfo::IsNoInfo(rmode))
+    RecordRelocInfo(rmode, offset, NO_POOL_ENTRY);
   b(offset);
 }
 
 void Assembler::near_call(int offset, RelocInfo::Mode rmode) {
   BlockPoolsScope no_pool_before_bl_instr(this);
-  if (!RelocInfo::IsNone(rmode)) RecordRelocInfo(rmode, offset, NO_POOL_ENTRY);
+  if (!RelocInfo::IsNoInfo(rmode))
+    RecordRelocInfo(rmode, offset, NO_POOL_ENTRY);
   bl(offset);
 }
 
-void Assembler::near_call(HeapObjectRequest request) {
+void Assembler::near_call(HeapNumberRequest request) {
   BlockPoolsScope no_pool_before_bl_instr(this);
-  RequestHeapObject(request);
+  RequestHeapNumber(request);
   EmbeddedObjectIndex index = AddEmbeddedObject(Handle<Code>());
   RecordRelocInfo(RelocInfo::CODE_TARGET, index, NO_POOL_ENTRY);
   DCHECK(is_int32(index));
@@ -4442,25 +4645,29 @@ const size_t ConstantPool::kOpportunityDistToPool32 = 64 * KB;
 const size_t ConstantPool::kOpportunityDistToPool64 = 64 * KB;
 const size_t ConstantPool::kApproxMaxEntryCount = 512;
 
-bool Assembler::ShouldEmitVeneer(int max_reachable_pc, size_t margin) {
-  // Account for the branch around the veneers and the guard.
-  int protection_offset = 2 * kInstrSize;
-  return static_cast<intptr_t>(pc_offset() + margin + protection_offset +
-                               unresolved_branches_.size() *
-                                   kMaxVeneerCodeSize) >= max_reachable_pc;
+intptr_t Assembler::MaxPCOffsetAfterVeneerPoolIfEmittedNow(size_t margin) {
+  // Account for the branch and guard around the veneers.
+  static constexpr int kBranchSizeInBytes = kInstrSize;
+  static constexpr int kGuardSizeInBytes = kInstrSize;
+  const size_t max_veneer_size_in_bytes =
+      unresolved_branches_.size() * kVeneerCodeSize;
+  return static_cast<intptr_t>(pc_offset() + kBranchSizeInBytes +
+                               kGuardSizeInBytes + max_veneer_size_in_bytes +
+                               margin);
 }
 
 void Assembler::RecordVeneerPool(int location_offset, int size) {
   Assembler::BlockPoolsScope block_pools(this, PoolEmissionCheck::kSkip);
   RelocInfo rinfo(reinterpret_cast<Address>(buffer_start_) + location_offset,
-                  RelocInfo::VENEER_POOL, static_cast<intptr_t>(size), Code());
+                  RelocInfo::VENEER_POOL, static_cast<intptr_t>(size),
+                  InstructionStream());
   reloc_info_writer.Write(&rinfo);
 }
 
 void Assembler::EmitVeneers(bool force_emit, bool need_protection,
                             size_t margin) {
+  ASM_CODE_COMMENT(this);
   BlockPoolsScope scope(this, PoolEmissionCheck::kSkip);
-  RecordComment("[ Veneers");
 
   // The exact size of the veneer pool must be recorded (see the comment at the
   // declaration site of RecordConstPool()), but computing the number of
@@ -4478,44 +4685,42 @@ void Assembler::EmitVeneers(bool force_emit, bool need_protection,
 
   EmitVeneersGuard();
 
-#ifdef DEBUG
-  Label veneer_size_check;
-#endif
+  // We only emit veneers if needed (unless emission is forced), i.e. when the
+  // max-reachable-pc of the branch has been exhausted by the current codegen
+  // state. Specifically, we emit when the max-reachable-pc of the branch <= the
+  // max-pc-after-veneers (over-approximated).
+  const intptr_t max_pc_after_veneers =
+      MaxPCOffsetAfterVeneerPoolIfEmittedNow(margin);
 
-  std::multimap<int, FarBranchInfo>::iterator it, it_to_delete;
+  // The `unresolved_branches_` multimap is sorted by max-reachable-pc in
+  // ascending order. For efficiency reasons, we want to call
+  // RemoveBranchFromLabelLinkChain in descending order. The actual veneers are
+  // then generated in ascending order.
+  // TODO(jgruber): This is still inefficient in multiple ways, thoughts on how
+  // we could improve in the future:
+  // - Don't erase individual elements from the multimap, erase a range instead.
+  // - Replace the multimap by a simpler data structure (like a plain vector or
+  //   a circular array).
+  // - Refactor s.t. RemoveBranchFromLabelLinkChain does not need the linear
+  //   lookup in the link chain.
 
-  it = unresolved_branches_.begin();
-  while (it != unresolved_branches_.end()) {
-    if (force_emit || ShouldEmitVeneer(it->first, margin)) {
-      Instruction* branch = InstructionAt(it->second.pc_offset_);
-      Label* label = it->second.label_;
+  static constexpr int kStaticTasksSize = 16;  // Arbitrary.
+  base::SmallVector<FarBranchInfo, kStaticTasksSize> tasks;
 
-#ifdef DEBUG
-      bind(&veneer_size_check);
-#endif
-      // Patch the branch to point to the current position, and emit a branch
-      // to the label.
-      Instruction* veneer = reinterpret_cast<Instruction*>(pc_);
-      RemoveBranchFromLabelLinkChain(branch, label, veneer);
-      branch->SetImmPCOffsetTarget(options(), veneer);
-      b(label);
-#ifdef DEBUG
-      DCHECK(SizeOfCodeGeneratedSince(&veneer_size_check) <=
-             static_cast<uint64_t>(kMaxVeneerCodeSize));
-      veneer_size_check.Unuse();
-#endif
+  {
+    auto it = unresolved_branches_.begin();
+    while (it != unresolved_branches_.end()) {
+      const int max_reachable_pc = it->first;
+      if (!force_emit && max_reachable_pc > max_pc_after_veneers) break;
 
-      it_to_delete = it++;
-      unresolved_branches_.erase(it_to_delete);
-    } else {
-      ++it;
+      // Found a task. We'll emit a veneer for this.
+      tasks.emplace_back(it->second);
+      auto eraser_it = it++;
+      unresolved_branches_.erase(eraser_it);
     }
   }
 
-  // Record the veneer pool size.
-  int pool_size = static_cast<int>(SizeOfCodeGeneratedSince(&size_check));
-  RecordVeneerPool(veneer_pool_relocinfo_loc, pool_size);
-
+  // Update next_veneer_pool_check_ (tightly coupled with unresolved_branches_).
   if (unresolved_branches_.empty()) {
     next_veneer_pool_check_ = kMaxInt;
   } else {
@@ -4523,9 +4728,38 @@ void Assembler::EmitVeneers(bool force_emit, bool need_protection,
         unresolved_branches_first_limit() - kVeneerDistanceCheckMargin;
   }
 
-  bind(&end);
+  // Reminder: We iterate in reverse order to avoid duplicate linked-list
+  // iteration in RemoveBranchFromLabelLinkChain (which starts at the target
+  // label, and iterates backwards through linked branch instructions).
 
-  RecordComment("]");
+  const int tasks_size = static_cast<int>(tasks.size());
+  for (int i = tasks_size - 1; i >= 0; i--) {
+    Instruction* branch = InstructionAt(tasks[i].pc_offset_);
+    Instruction* veneer = reinterpret_cast<Instruction*>(
+        reinterpret_cast<uintptr_t>(pc_) + i * kVeneerCodeSize);
+    RemoveBranchFromLabelLinkChain(branch, tasks[i].label_, veneer);
+  }
+
+  // Now emit the actual veneer and patch up the incoming branch.
+
+  for (const FarBranchInfo& info : tasks) {
+#ifdef DEBUG
+    Label veneer_size_check;
+    bind(&veneer_size_check);
+#endif
+    Instruction* branch = InstructionAt(info.pc_offset_);
+    Instruction* veneer = reinterpret_cast<Instruction*>(pc_);
+    branch->SetImmPCOffsetTarget(options(), veneer);
+    b(info.label_);  // This may end up pointing at yet another veneer later on.
+    DCHECK_EQ(SizeOfCodeGeneratedSince(&veneer_size_check),
+              static_cast<uint64_t>(kVeneerCodeSize));
+  }
+
+  // Record the veneer pool size.
+  int pool_size = static_cast<int>(SizeOfCodeGeneratedSince(&size_check));
+  RecordVeneerPool(veneer_pool_relocinfo_loc, pool_size);
+
+  bind(&end);
 }
 
 void Assembler::CheckVeneerPool(bool force_emit, bool require_jump,

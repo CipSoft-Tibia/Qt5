@@ -1,11 +1,10 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/command_line.h"
 #include "base/files/file_path.h"
 #include "base/path_service.h"
-#include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/test/scoped_feature_list.h"
 #include "chrome/common/chrome_paths.h"
@@ -40,10 +39,10 @@ TEST_F(ContentScriptsManifestTest, MatchPattern) {
 
       // Match paterns must be strings.
       Testcase("content_script_match_pattern_not_string.json",
-               ErrorUtils::FormatErrorMessage(
-                   errors::kInvalidMatch, base::NumberToString(0),
-                   base::NumberToString(0), errors::kExpectString))};
-  RunTestcases(testcases, base::size(testcases), EXPECT_TYPE_ERROR);
+               "Error at key 'content_scripts'. Parsing array failed at index "
+               "0: Error at key 'matches': Parsing array failed at index 0: "
+               "expected string, got integer")};
+  RunTestcases(testcases, std::size(testcases), EXPECT_TYPE_ERROR);
 
   LoadAndExpectSuccess("ports_in_content_scripts.json");
 }
@@ -80,12 +79,13 @@ TEST_F(ContentScriptsManifestTest, ContentScriptIds) {
   const UserScriptList& user_scripts1 =
       ContentScriptsInfo::GetContentScripts(extension1.get());
   ASSERT_EQ(1u, user_scripts1.size());
-  int id = user_scripts1[0]->id();
+
   const UserScriptList& user_scripts2 =
       ContentScriptsInfo::GetContentScripts(extension2.get());
   ASSERT_EQ(1u, user_scripts2.size());
-  // The id of the content script should be one higher than the previous.
-  EXPECT_EQ(id + 1, user_scripts2[0]->id());
+
+  // The two content scripts should have different ids.
+  EXPECT_NE(user_scripts2[0]->id(), user_scripts1[0]->id());
 }
 
 TEST_F(ContentScriptsManifestTest, FailLoadingNonUTF8Scripts) {
@@ -96,9 +96,10 @@ TEST_F(ContentScriptsManifestTest, FailLoadingNonUTF8Scripts) {
                     .AppendASCII("bad_encoding");
 
   std::string error;
-  scoped_refptr<Extension> extension(file_util::LoadExtension(
-      install_dir, Manifest::UNPACKED, Extension::NO_FLAGS, &error));
-  ASSERT_TRUE(extension.get() == NULL);
+  scoped_refptr<Extension> extension(
+      file_util::LoadExtension(install_dir, mojom::ManifestLocation::kUnpacked,
+                               Extension::NO_FLAGS, &error));
+  ASSERT_TRUE(extension.get() == nullptr);
   ASSERT_STREQ(
       "Could not load file 'bad_encoding.js' for content script. "
       "It isn't UTF-8 encoded.",
@@ -142,6 +143,19 @@ TEST_F(ContentScriptsManifestTest, MatchOriginAsFallback_FeatureEnabled) {
             user_scripts[6]->match_origin_as_fallback());
 }
 
+TEST_F(ContentScriptsManifestTest, MatchOriginAsFallback_InvalidCases) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      extensions_features::kContentScriptsMatchOriginAsFallback);
+
+  LoadAndExpectWarning(
+      "content_script_match_origin_as_fallback_warning_for_mv2.json",
+      errors::kMatchOriginAsFallbackRestrictedToMV3);
+  LoadAndExpectError(
+      "content_script_match_origin_as_fallback_invalid_with_paths.json",
+      errors::kMatchOriginAsFallbackCantHavePaths);
+}
+
 TEST_F(ContentScriptsManifestTest, MatchOriginAsFallback_FeatureDisabled) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndDisableFeature(
@@ -179,6 +193,39 @@ TEST_F(ContentScriptsManifestTest, MatchOriginAsFallback_FeatureDisabled) {
   // The seventh and final does not specify a value for either.
   EXPECT_EQ(MatchOriginAsFallbackBehavior::kNever,
             user_scripts[6]->match_origin_as_fallback());
+}
+
+TEST_F(ContentScriptsManifestTest, ExecutionWorld) {
+  scoped_refptr<const Extension> extension =
+      LoadAndExpectSuccess("content_script_execution_world.json");
+  const UserScriptList& user_scripts =
+      ContentScriptsInfo::GetContentScripts(extension.get());
+  ASSERT_EQ(3u, user_scripts.size());
+
+  // Content scripts which don't specify an execution world will default to the
+  // isolated world.
+  EXPECT_EQ(mojom::ExecutionWorld::kIsolated,
+            user_scripts[0]->execution_world());
+
+  // Content scripts which specify an execution world will run on the world that
+  // was specified.
+  EXPECT_EQ(mojom::ExecutionWorld::kMain, user_scripts[1]->execution_world());
+  EXPECT_EQ(mojom::ExecutionWorld::kIsolated,
+            user_scripts[2]->execution_world());
+}
+
+TEST_F(ContentScriptsManifestTest, ExecutionWorld_InvalidForMV2) {
+  scoped_refptr<const Extension> extension = LoadAndExpectWarning(
+      "content_script_execution_world_warning_for_mv2.json",
+      errors::kExecutionWorldRestrictedToMV3);
+  const UserScriptList& user_scripts =
+      ContentScriptsInfo::GetContentScripts(extension.get());
+  ASSERT_EQ(1u, user_scripts.size());
+
+  // The content script parsed from the manifest should be executing in the
+  // isolated world.
+  EXPECT_EQ(mojom::ExecutionWorld::kIsolated,
+            user_scripts[0]->execution_world());
 }
 
 }  // namespace extensions

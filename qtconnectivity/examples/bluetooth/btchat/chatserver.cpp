@@ -1,60 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "chatserver.h"
 
 #include <QtBluetooth/qbluetoothserver.h>
 #include <QtBluetooth/qbluetoothsocket.h>
 
+using namespace Qt::StringLiterals;
+
 //! [Service UUID]
-static const QLatin1String serviceUuid("e8e10f95-1a70-4b27-9ccf-02010264e9c8");
+static constexpr auto serviceUuid = "e8e10f95-1a70-4b27-9ccf-02010264e9c8"_L1;
 //! [Service UUID]
 
 ChatServer::ChatServer(QObject *parent)
@@ -87,7 +42,7 @@ void ChatServer::startServer(const QBluetoothAddress& localAdapter)
 
     QBluetoothServiceInfo::Sequence profileSequence;
     QBluetoothServiceInfo::Sequence classId;
-    classId << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::SerialPort));
+    classId << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ServiceClassUuid::SerialPort));
     classId << QVariant::fromValue(quint16(0x100));
     profileSequence.append(QVariant::fromValue(classId));
     serviceInfo.setAttribute(QBluetoothServiceInfo::BluetoothProfileDescriptorList,
@@ -95,7 +50,7 @@ void ChatServer::startServer(const QBluetoothAddress& localAdapter)
 
     classId.clear();
     classId << QVariant::fromValue(QBluetoothUuid(serviceUuid));
-    classId << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::SerialPort));
+    classId << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ServiceClassUuid::SerialPort));
 
     serviceInfo.setAttribute(QBluetoothServiceInfo::ServiceClassIds, classId);
 
@@ -111,19 +66,19 @@ void ChatServer::startServer(const QBluetoothAddress& localAdapter)
     //! [Service UUID set]
 
     //! [Service Discoverability]
+    const auto groupUuid = QBluetoothUuid(QBluetoothUuid::ServiceClassUuid::PublicBrowseGroup);
     QBluetoothServiceInfo::Sequence publicBrowse;
-    publicBrowse << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::PublicBrowseGroup));
-    serviceInfo.setAttribute(QBluetoothServiceInfo::BrowseGroupList,
-                             publicBrowse);
+    publicBrowse << QVariant::fromValue(groupUuid);
+    serviceInfo.setAttribute(QBluetoothServiceInfo::BrowseGroupList, publicBrowse);
     //! [Service Discoverability]
 
     //! [Protocol descriptor list]
     QBluetoothServiceInfo::Sequence protocolDescriptorList;
     QBluetoothServiceInfo::Sequence protocol;
-    protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::L2cap));
+    protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ProtocolUuid::L2cap));
     protocolDescriptorList.append(QVariant::fromValue(protocol));
     protocol.clear();
-    protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::Rfcomm))
+    protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ProtocolUuid::Rfcomm))
              << QVariant::fromValue(quint8(rfcommServer->serverPort()));
     protocolDescriptorList.append(QVariant::fromValue(protocol));
     serviceInfo.setAttribute(QBluetoothServiceInfo::ProtocolDescriptorList,
@@ -143,6 +98,7 @@ void ChatServer::stopServer()
 
     // Close sockets
     qDeleteAll(clientSockets);
+    clientNames.clear();
 
     // Close server
     delete rfcommServer;
@@ -155,7 +111,7 @@ void ChatServer::sendMessage(const QString &message)
 {
     QByteArray text = message.toUtf8() + '\n';
 
-    for (QBluetoothSocket *socket : qAsConst(clientSockets))
+    for (QBluetoothSocket *socket : std::as_const(clientSockets))
         socket->write(text);
 }
 //! [sendMessage]
@@ -168,8 +124,10 @@ void ChatServer::clientConnected()
         return;
 
     connect(socket, &QBluetoothSocket::readyRead, this, &ChatServer::readSocket);
-    connect(socket, &QBluetoothSocket::disconnected, this, QOverload<>::of(&ChatServer::clientDisconnected));
+    connect(socket, &QBluetoothSocket::disconnected,
+            this, QOverload<>::of(&ChatServer::clientDisconnected));
     clientSockets.append(socket);
+    clientNames[socket] = socket->peerName();
     emit clientConnected(socket->peerName());
 }
 //! [clientConnected]
@@ -181,9 +139,10 @@ void ChatServer::clientDisconnected()
     if (!socket)
         return;
 
-    emit clientDisconnected(socket->peerName());
+    emit clientDisconnected(clientNames[socket]);
 
     clientSockets.removeOne(socket);
+    clientNames.remove(socket);
 
     socket->deleteLater();
 }
@@ -198,7 +157,7 @@ void ChatServer::readSocket()
 
     while (socket->canReadLine()) {
         QByteArray line = socket->readLine().trimmed();
-        emit messageReceived(socket->peerName(),
+        emit messageReceived(clientNames[socket],
                              QString::fromUtf8(line.constData(), line.length()));
     }
 }

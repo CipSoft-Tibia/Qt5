@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include "third_party/blink/renderer/core/style/style_path.h"
 #include "third_party/blink/renderer/core/svg/svg_path_utilities.h"
 #include "third_party/blink/renderer/platform/heap/persistent.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
 namespace blink {
 
@@ -16,14 +17,15 @@ namespace cssvalue {
 CSSPathValue::CSSPathValue(scoped_refptr<StylePath> style_path,
                            PathSerializationFormat serialization_format)
     : CSSValue(kPathClass),
-      style_path_(std::move(style_path)),
-      serialization_format_(serialization_format) {
+      serialization_format_(serialization_format),
+      style_path_(std::move(style_path)) {
   DCHECK(style_path_);
 }
 
 CSSPathValue::CSSPathValue(std::unique_ptr<SVGPathByteStream> path_byte_stream,
+                           WindRule wind_rule,
                            PathSerializationFormat serialization_format)
-    : CSSPathValue(StylePath::Create(std::move(path_byte_stream)),
+    : CSSPathValue(StylePath::Create(std::move(path_byte_stream), wind_rule),
                    serialization_format) {}
 
 namespace {
@@ -39,14 +41,21 @@ CSSPathValue* CreatePathValue() {
 
 }  // namespace
 
-CSSPathValue& CSSPathValue::EmptyPathValue() {
+const CSSPathValue& CSSPathValue::EmptyPathValue() {
   DEFINE_STATIC_LOCAL(Persistent<CSSPathValue>, empty, (CreatePathValue()));
   return *empty;
 }
 
 String CSSPathValue::CustomCSSText() const {
-  return "path(\"" +
-         BuildStringFromByteStream(ByteStream(), serialization_format_) + "\")";
+  StringBuilder result;
+  result.Append("path(");
+  if (style_path_->GetWindRule() == RULE_EVENODD) {
+    result.Append("evenodd, ");
+  }
+  result.Append("\"");
+  result.Append(BuildStringFromByteStream(ByteStream(), serialization_format_));
+  result.Append("\")");
+  return result.ReleaseString();
 }
 
 bool CSSPathValue::Equals(const CSSPathValue& other) const {

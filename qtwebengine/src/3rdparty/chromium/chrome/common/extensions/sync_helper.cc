@@ -1,10 +1,11 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/common/extensions/sync_helper.h"
 
 #include "base/logging.h"
+#include "components/app_constants/constants.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/features/behavior_feature.h"
@@ -26,8 +27,9 @@ bool IsSyncable(const Extension* extension) {
   // that don't already have them. Specially, if a user doesn't have default
   // apps, creates a new profile (which get default apps) and then enables sync
   // for it, then their profile everywhere gets the default apps.
-  bool is_syncable = (extension->location() == Manifest::INTERNAL &&
-                      !extension->was_installed_by_default());
+  bool is_syncable =
+      (extension->location() == mojom::ManifestLocation::kInternal &&
+       !extension->was_installed_by_default());
   if (!is_syncable && !IsSyncableComponentExtension(extension)) {
     // We have a non-standard location.
     return false;
@@ -59,6 +61,7 @@ bool IsSyncable(const Extension* extension) {
     case Manifest::TYPE_UNKNOWN:
     case Manifest::TYPE_SHARED_MODULE:
     case Manifest::TYPE_LOGIN_SCREEN_EXTENSION:
+    case Manifest::TYPE_CHROMEOS_SYSTEM_EXTENSION:
       return false;
 
     case Manifest::NUM_LOAD_TYPES:
@@ -72,7 +75,7 @@ bool IsSyncableComponentExtension(const Extension* extension) {
   if (!Manifest::IsComponentLocation(extension->location()))
     return false;
   return (extension->id() == extensions::kWebStoreAppId) ||
-         (extension->id() == extension_misc::kChromeAppId);
+         (extension->id() == app_constants::kChromeAppId);
 }
 
 }  // namespace sync_helper

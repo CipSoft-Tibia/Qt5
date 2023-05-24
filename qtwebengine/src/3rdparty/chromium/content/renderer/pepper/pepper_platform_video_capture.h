@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,7 @@
 #include <memory>
 #include <string>
 
-#include "base/callback.h"
-#include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/threading/thread_checker.h"
 #include "base/time/time.h"
@@ -31,6 +29,11 @@ class PepperPlatformVideoCapture {
   PepperPlatformVideoCapture(int render_frame_id,
                              const std::string& device_id,
                              PepperVideoCaptureHost* handler);
+
+  PepperPlatformVideoCapture(const PepperPlatformVideoCapture&) = delete;
+  PepperPlatformVideoCapture& operator=(const PepperPlatformVideoCapture&) =
+      delete;
+
   virtual ~PepperPlatformVideoCapture();
 
   // Detaches the event handler and stops sending notifications to it.
@@ -42,8 +45,10 @@ class PepperPlatformVideoCapture {
  private:
   void OnDeviceOpened(int request_id, bool succeeded, const std::string& label);
   void OnStateUpdate(blink::VideoCaptureState state);
-  void OnFrameReady(scoped_refptr<media::VideoFrame> frame,
-                    base::TimeTicks estimated_capture_time);
+  void OnFrameReady(
+      scoped_refptr<media::VideoFrame> video_frame,
+      std::vector<scoped_refptr<media::VideoFrame>> scaled_video_frames,
+      base::TimeTicks estimated_capture_time);
 
   // Can return NULL if the RenderFrame referenced by |render_frame_id_| has
   // gone away.
@@ -67,8 +72,6 @@ class PepperPlatformVideoCapture {
   base::ThreadChecker thread_checker_;
 
   base::WeakPtrFactory<PepperPlatformVideoCapture> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(PepperPlatformVideoCapture);
 };
 
 }  // namespace content

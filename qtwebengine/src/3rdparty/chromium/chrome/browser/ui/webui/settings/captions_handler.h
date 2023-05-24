@@ -1,32 +1,46 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CHROME_BROWSER_UI_WEBUI_SETTINGS_CAPTIONS_HANDLER_H_
 #define CHROME_BROWSER_UI_WEBUI_SETTINGS_CAPTIONS_HANDLER_H_
 
-#include "base/macros.h"
-#include "build/build_config.h"
+#include "base/memory/raw_ptr.h"
 #include "chrome/browser/ui/webui/settings/settings_page_ui_handler.h"
+#include "components/soda/constants.h"
+#include "components/soda/soda_installer.h"
+
+class PrefService;
 
 namespace settings {
 
-// UI handler for Chrome caption settings subpage on operating systems other
-// than Chrome OS and Linux.
-class CaptionsHandler : public SettingsPageUIHandler {
+// Settings handler for the captions settings subpage.
+class CaptionsHandler : public SettingsPageUIHandler,
+                        public speech::SodaInstaller::Observer {
  public:
-  CaptionsHandler();
+  explicit CaptionsHandler(PrefService* prefs);
   ~CaptionsHandler() override;
+  CaptionsHandler(const CaptionsHandler&) = delete;
+  CaptionsHandler& operator=(const CaptionsHandler&) = delete;
 
-  // SettingsPageUIHandler overrides:
+  // SettingsPageUIHandler overrides.
   void RegisterMessages() override;
   void OnJavascriptAllowed() override;
   void OnJavascriptDisallowed() override;
 
  private:
-  void HandleOpenSystemCaptionsDialog(const base::ListValue* args);
+  void HandleLiveCaptionSectionReady(const base::Value::List& args);
+  void HandleOpenSystemCaptionsDialog(const base::Value::List& args);
 
-  DISALLOW_COPY_AND_ASSIGN(CaptionsHandler);
+  // SodaInstaller::Observer overrides:
+  void OnSodaInstalled(speech::LanguageCode language_code) override;
+  void OnSodaInstallError(speech::LanguageCode language_code,
+                          speech::SodaInstaller::ErrorCode error_code) override;
+  void OnSodaProgress(speech::LanguageCode language_code,
+                      int progress) override;
+
+  raw_ptr<PrefService> prefs_;
+  bool soda_available_ = true;
 };
 
 }  // namespace settings

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,20 +18,19 @@ class MediaControlTimeDisplayElement : public MediaControlDivElement {
   MODULES_EXPORT void SetCurrentValue(double);
   MODULES_EXPORT double CurrentValue() const;
 
-  WebSize GetSizeOrDefault() const override;
-
- protected:
-  MediaControlTimeDisplayElement(MediaControlsImpl&, int resource_id);
-
-  virtual int EstimateElementWidth() const;
+  gfx::Size GetSizeOrDefault() const override;
 
   virtual String FormatTime() const;
+
+ protected:
+  explicit MediaControlTimeDisplayElement(MediaControlsImpl&);
+
+  virtual int EstimateElementWidth() const;
 
  private:
   void SetAriaLabel();
 
   double current_value_ = 0;
-  int localized_resource_id_;
 };
 
 }  // namespace blink

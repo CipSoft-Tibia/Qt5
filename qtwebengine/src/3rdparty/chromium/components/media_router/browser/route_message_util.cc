@@ -1,16 +1,24 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/media_router/browser/route_message_util.h"
 
-#include "base/macros.h"
+#include "base/json/json_writer.h"
+#include "base/values.h"
 
 using media_router::mojom::RouteMessage;
 using media_router::mojom::RouteMessagePtr;
 
 namespace media_router {
 namespace message_util {
+
+media_router::mojom::RouteMessagePtr RouteMessageFromValue(
+    base::Value message) {
+  std::string str;
+  CHECK(base::JSONWriter::Write(message, &str));
+  return RouteMessageFromString(std::move(str));
+}
 
 RouteMessagePtr RouteMessageFromString(std::string message) {
   auto route_message = RouteMessage::New();
@@ -37,10 +45,9 @@ PresentationConnectionFromRouteMessage(RouteMessagePtr route_message) {
     case RouteMessage::Type::BINARY:
       return blink::mojom::PresentationConnectionMessage::NewData(
           route_message->data.value());
-    default:
-      NOTREACHED() << "Unknown RouteMessageType " << route_message->type;
-      return blink::mojom::PresentationConnectionMessage::New();
   }
+  NOTREACHED() << "Unknown RouteMessageType " << route_message->type;
+  return nullptr;
 }
 
 }  // namespace message_util

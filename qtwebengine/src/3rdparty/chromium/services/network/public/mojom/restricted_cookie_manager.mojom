@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@ module network.mojom;
 
 import "services/network/public/mojom/cookie_manager.mojom";
 import "services/network/public/mojom/site_for_cookies.mojom";
-import "mojo/public/mojom/base/time.mojom";
 import "url/mojom/url.mojom";
 import "url/mojom/origin.mojom";
 
@@ -62,6 +61,9 @@ interface RestrictedCookieManager {
   // level frame or the script url for service workers. |site_for_cookies| is
   // used to determine if a cookie is accessed in a third-party context.
   // |top_frame_origin| is used to check for content settings.
+  // |has_storage_access| is used to opt-in to using Storage Access API
+  // permission grants. (Note: it does *not* grant access on its own, but rather
+  // allows an existing permission grant to be used, if one exists.)
   // |options| filters the returned list of cookies. The returned cookies
   // include CookieAccessResult information of the cookie.
   // Any information contained in the CookieInclusionStatus::WarningReasons
@@ -70,19 +72,26 @@ interface RestrictedCookieManager {
   GetAllForUrl(
       url.mojom.Url url, SiteForCookies site_for_cookies,
       url.mojom.Origin top_frame_origin,
+      bool has_storage_access,
       CookieManagerGetOptions options) => (
       array<CookieWithAccessResult> cookies);
 
+  // Sets a canonical cookie. |status| must be an inclusion status as defined
+  // by the C++ net::CookieInclusionStatus::IsInclude() method. It is expected
+  // that exclusion reasons have been taken care of on the renderer side.
   SetCanonicalCookie(CanonicalCookie cookie,
                      url.mojom.Url url,
                      SiteForCookies site_for_cookies,
-                     url.mojom.Origin top_frame_origin) => (bool success);
+                     url.mojom.Origin top_frame_origin,
+                     bool has_storage_access,
+                     CookieInclusionStatus status) => (bool success);
 
   // Subscribes to changes in the cookies transmitted in a request to an URL.
   //
   // The subscription is canceled by closing the pipe.
   AddChangeListener(url.mojom.Url url, SiteForCookies site_for_cookies,
                     url.mojom.Origin top_frame_origin,
+                    bool has_storage_access,
                     pending_remote<CookieChangeListener> listener) => ();
 
   // Sets a cookie.  If setting of this cookie is not permitted either by web
@@ -93,10 +102,16 @@ interface RestrictedCookieManager {
   //
   // The implementation may block, e.g. while cookies are still being loaded, or
   // to serialize with other operations.
+  //
+  // The booleans that are returned indicate if the site for cookies and top
+  // frame origin provided to this method from the renderer match the browser's
+  // own site for cookies and top-frame origin.
   [Sync]
   SetCookieFromString(url.mojom.Url url, SiteForCookies site_for_cookies,
                       url.mojom.Origin top_frame_origin,
-                      string cookie) => ();
+                      bool has_storage_access,
+                      string cookie) => (
+                      bool site_for_cookies_ok, bool top_frame_origin_ok);
 
   // Used to get cookies for the given URL. Cookies that are blocked by user
   // preferences will be skipped, down to potentially returning an empty string.
@@ -108,7 +123,9 @@ interface RestrictedCookieManager {
   [Sync]
   GetCookiesString(url.mojom.Url url,
                    SiteForCookies site_for_cookies,
-                   url.mojom.Origin top_frame_origin) => (string cookies);
+                   url.mojom.Origin top_frame_origin,
+                   bool has_storage_access) => (
+                   string cookies);
 
   // Used to check if cookies are enabled for the given URL in context of a
   // given site.
@@ -119,5 +136,6 @@ interface RestrictedCookieManager {
   CookiesEnabledFor(
       url.mojom.Url url,
       SiteForCookies site_for_cookies,
-      url.mojom.Origin top_frame_origin) => (bool cookies_enabled);
+      url.mojom.Origin top_frame_origin,
+      bool has_storage_access) => (bool cookies_enabled);
 };

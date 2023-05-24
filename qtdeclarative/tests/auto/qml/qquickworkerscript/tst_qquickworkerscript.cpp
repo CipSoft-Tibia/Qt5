@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <qtest.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qtimer.h>
@@ -38,13 +13,13 @@
 
 #include <private/qquickworkerscript_p.h>
 #include <private/qqmlengine_p.h>
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 class tst_QQuickWorkerScript : public QQmlDataTest
 {
     Q_OBJECT
 public:
-    tst_QQuickWorkerScript() {}
+    tst_QQuickWorkerScript() : QQmlDataTest(QT_QMLTEST_DATADIR) {}
 private slots:
     void source();
     void ready();
@@ -138,17 +113,7 @@ void tst_QQuickWorkerScript::messaging()
     if (response.userType() == qMetaTypeId<QJSValue>())
         response = response.value<QJSValue>().toVariant();
 
-    if (value.type() == QMetaType::QRegExp && response.type() == QMetaType::QRegularExpression) {
-        // toVariant() doesn't know if we want QRegExp or QRegularExpression. It always creates
-        // a QRegularExpression from a JavaScript regular expression.
-        const QRegularExpression responseRegExp = response.toRegularExpression();
-        const QRegExp valueRegExp = value.toRegExp();
-        QCOMPARE(responseRegExp.pattern(), valueRegExp.pattern());
-        QCOMPARE(bool(responseRegExp.patternOptions() & QRegularExpression::CaseInsensitiveOption),
-                 bool(valueRegExp.caseSensitivity() == Qt::CaseInsensitive));
-    } else {
-        QCOMPARE(response, value);
-    }
+    QCOMPARE(response, value);
 
     qApp->processEvents();
     delete worker;
@@ -165,8 +130,6 @@ void tst_QQuickWorkerScript::messaging_data()
     QTest::newRow("string") << QVariant::fromValue(QString("More cheeeese, Gromit!"));
     QTest::newRow("variant list") << QVariant::fromValue((QVariantList() << "a" << "b" << "c"));
     QTest::newRow("date time") << QVariant::fromValue(QDateTime::currentDateTime());
-    QTest::newRow("regexp") << QVariant::fromValue(QRegExp("^\\d\\d?$", Qt::CaseInsensitive,
-                                                         QRegExp::RegExp2));
     QTest::newRow("regularexpression") << QVariant::fromValue(QRegularExpression(
             "^\\d\\d?$", QRegularExpression::CaseInsensitiveOption));
     QTest::newRow("url") << QVariant::fromValue(QUrl("http://example.com/foo/bar"));

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QV4ARRAYDATA_H
 #define QV4ARRAYDATA_H
 
@@ -129,7 +93,7 @@ DECLARE_HEAP_OBJECT(ArrayData, Base) {
 
     uint mappedIndex(uint index) const;
 };
-Q_STATIC_ASSERT(std::is_trivial< ArrayData >::value);
+Q_STATIC_ASSERT(std::is_trivial_v<ArrayData>);
 
 struct SimpleArrayData : public ArrayData {
     uint mappedIndex(uint index) const { index += offset; if (index >= values.alloc) index -= values.alloc; return index; }
@@ -142,7 +106,7 @@ struct SimpleArrayData : public ArrayData {
         return attrs ? attrs[i] : Attr_Data;
     }
 };
-Q_STATIC_ASSERT(std::is_trivial< SimpleArrayData >::value);
+Q_STATIC_ASSERT(std::is_trivial_v<SimpleArrayData>);
 
 struct SparseArrayData : public ArrayData {
     void destroy() {
@@ -266,6 +230,74 @@ struct Q_QML_EXPORT SparseArrayData : public ArrayData
     static uint truncate(Object *o, uint newLen);
     static uint length(const Heap::ArrayData *d);
 };
+
+class ArrayElementLessThan
+{
+public:
+    inline ArrayElementLessThan(ExecutionEngine *engine, const Value &comparefn)
+        : m_engine(engine), m_comparefn(comparefn) {}
+
+    bool operator()(Value v1, Value v2) const;
+
+private:
+    ExecutionEngine *m_engine;
+    const Value &m_comparefn;
+};
+
+template <typename RandomAccessIterator, typename LessThan>
+void sortHelper(RandomAccessIterator start, RandomAccessIterator end, LessThan lessThan)
+{
+top:
+    using std::swap;
+
+    int span = int(end - start);
+    if (span < 2)
+        return;
+
+    --end;
+    RandomAccessIterator low = start, high = end - 1;
+    RandomAccessIterator pivot = start + span / 2;
+
+    if (lessThan(*end, *start))
+        swap(*end, *start);
+    if (span == 2)
+        return;
+
+    if (lessThan(*pivot, *start))
+        swap(*pivot, *start);
+    if (lessThan(*end, *pivot))
+        swap(*end, *pivot);
+    if (span == 3)
+        return;
+
+    swap(*pivot, *end);
+
+    while (low < high) {
+        while (low < high && lessThan(*low, *end))
+            ++low;
+
+        while (high > low && lessThan(*end, *high))
+            --high;
+
+        if (low < high) {
+            swap(*low, *high);
+            ++low;
+            --high;
+        } else {
+            break;
+        }
+    }
+
+    if (lessThan(*low, *end))
+        ++low;
+
+    swap(*end, *low);
+    sortHelper(start, low, lessThan);
+
+    start = low + 1;
+    ++end;
+    goto top;
+}
 
 namespace Heap {
 

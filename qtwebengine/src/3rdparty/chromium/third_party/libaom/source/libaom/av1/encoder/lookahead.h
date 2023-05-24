@@ -15,6 +15,8 @@
 #ifndef AOM_AV1_ENCODER_LOOKAHEAD_H_
 #define AOM_AV1_ENCODER_LOOKAHEAD_H_
 
+#include <stdbool.h>
+
 #include "aom_scale/yv12config.h"
 #include "aom/aom_integer.h"
 
@@ -23,8 +25,8 @@ extern "C" {
 #endif
 
 /*!\cond */
-#define MAX_LAG_BUFFERS 35
-#define MAX_LAP_BUFFERS 35
+#define MAX_LAG_BUFFERS 48
+#define MAX_LAP_BUFFERS 48
 #define MAX_TOTAL_BUFFERS (MAX_LAG_BUFFERS + MAX_LAP_BUFFERS)
 #define LAP_LAG_IN_FRAMES 17
 
@@ -32,6 +34,7 @@ struct lookahead_entry {
   YV12_BUFFER_CONFIG img;
   int64_t ts_start;
   int64_t ts_end;
+  int display_idx;
   aom_enc_frame_flags_t flags;
 };
 
@@ -52,6 +55,9 @@ struct lookahead_ctx {
   int write_idx;                         /* Write index */
   struct read_ctx read_ctxs[MAX_STAGES]; /* Read context */
   struct lookahead_entry *buf;           /* Buffer list */
+  int push_frame_count; /* Number of frames that have been pushed in the queue*/
+  uint8_t
+      max_pre_frames; /* Maximum number of past frames allowed in the queue */
 };
 /*!\endcond */
 
@@ -63,30 +69,34 @@ struct lookahead_ctx {
 struct lookahead_ctx *av1_lookahead_init(
     unsigned int width, unsigned int height, unsigned int subsampling_x,
     unsigned int subsampling_y, int use_highbitdepth, unsigned int depth,
-    const int border_in_pixels, int byte_alignment, int num_lap_buffers);
+    const int border_in_pixels, int byte_alignment, int num_lap_buffers,
+    bool is_all_intra, int num_pyramid_levels);
 
 /**\brief Destroys the lookahead stage
  */
 void av1_lookahead_destroy(struct lookahead_ctx *ctx);
+
+/**\brief Check if lookahead buffer is full
+ */
+int av1_lookahead_full(const struct lookahead_ctx *ctx);
 
 /**\brief Enqueue a source buffer
  *
  * This function will copy the source image into a new framebuffer with
  * the expected stride/border.
  *
- * If active_map is non-NULL and there is only one frame in the queue, then copy
- * only active macroblocks.
- *
  * \param[in] ctx         Pointer to the lookahead context
  * \param[in] src         Pointer to the image to enqueue
  * \param[in] ts_start    Timestamp for the start of this frame
  * \param[in] ts_end      Timestamp for the end of this frame
  * \param[in] use_highbitdepth Tell if HBD is used
+ * \param[in] num_pyramid_levels Number of pyramid levels to allocate
+                          for each frame buffer
  * \param[in] flags       Flags set on this frame
  */
 int av1_lookahead_push(struct lookahead_ctx *ctx, const YV12_BUFFER_CONFIG *src,
                        int64_t ts_start, int64_t ts_end, int use_highbitdepth,
-                       aom_enc_frame_flags_t flags);
+                       int num_pyramid_levels, aom_enc_frame_flags_t flags);
 
 /**\brief Get the next source buffer to encode
  *

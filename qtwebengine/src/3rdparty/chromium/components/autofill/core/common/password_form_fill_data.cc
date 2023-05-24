@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -37,11 +37,11 @@ PasswordFormFillData MaybeClearPasswordValues(
   // credentials from |additional_logins| could be used for filling on load. So
   // in case of filling on load nor |password_field| nor |additional_logins|
   // can't be cleared
-  bool is_fallback = data.password_field.unique_renderer_id.is_null();
+  bool is_fallback = data.password_element_renderer_id.is_null();
   if (!data.wait_for_username && !is_fallback)
     return data;
   PasswordFormFillData result(data);
-  result.password_field.value.clear();
+  result.preferred_login.password.clear();
   for (auto& credentials : result.additional_logins)
     credentials.password.clear();
   return result;

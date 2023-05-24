@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qaxwidgettaskmenu.h"
 #include "qdesigneraxwidget.h"
@@ -35,17 +10,21 @@
 #include <QtDesigner/abstractformeditor.h>
 #include <QtDesigner/qextensionmanager.h>
 
-#include <QtWidgets/qmessagebox.h>
-#include <QtWidgets/qundostack.h>
-#include <QtWidgets/qaction.h>
-#include <QtCore/quuid.h>
-#include <ActiveQt/qaxselect.h>
+#include <QtAxContainer/qaxselect.h>
 
-#include <qt_windows.h>
+#include <QtWidgets/qmessagebox.h>
+#include <QtGui/qundostack.h>
+
+#include <QtGui/qaction.h>
+
+#include <QtCore/qt_windows.h>
+#include <QtCore/quuid.h>
+
 #include <olectl.h>
-#include <qaxtypes.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /* SetControlCommand: An undo commands that sets a control bypassing
    Designer's property system which cannot handle the changing
@@ -57,8 +36,8 @@ class SetControlCommand : public QUndoCommand
 public:
     SetControlCommand(QDesignerAxWidget *ax, QDesignerFormWindowInterface *core, const QString &newClsid = QString());
 
-    virtual void redo() {  apply(m_newClsid); }
-    virtual void undo() {  apply(m_oldClsid);  }
+    virtual void redo() override {  apply(m_newClsid); }
+    virtual void undo() override {  apply(m_oldClsid);  }
 
 private:
     bool apply(const QString &clsid);
@@ -137,7 +116,7 @@ void QAxWidgetTaskMenu::setActiveXControl()
     if (dialog.exec() != QDialog::Accepted)
         return;
 
-    QUuid clsid = dialog.clsid();
+    const auto clsid = QUuid::fromString(dialog.clsid());
     QString key;
 
     IClassFactory2 *cf2 = nullptr;
@@ -161,10 +140,8 @@ void QAxWidgetTaskMenu::setActiveXControl()
 
     Q_ASSERT(formWin != nullptr);
     QString value = clsid.toString();
-    if (!key.isEmpty()) {
-        value += QLatin1Char(':');
-        value += key;
-    }
+    if (!key.isEmpty())
+        value += u':' + key;
     formWin->commandHistory()->push(new SetControlCommand(m_axwidget, formWin, value));
 }
 

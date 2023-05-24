@@ -1,46 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "translator.h"
 
 #include <QtCore/QByteArray>
 #include <QtCore/QDebug>
-#include <QtCore/QRegExp>
-#include <QtCore/QTextCodec>
+#include <QtCore/QRegularExpression>
 #include <QtCore/QTextStream>
 
 #include <QtCore/QXmlStreamReader>
 
 #include <algorithm>
 
-#define STRINGIFY_INTERNAL(x) #x
-#define STRINGIFY(x) STRINGIFY_INTERNAL(x)
-#define STRING(s) static QString str##s(QLatin1String(STRINGIFY(s)))
+using namespace Qt::StringLiterals;
 
 QT_BEGIN_NAMESPACE
 
@@ -103,7 +75,7 @@ void TSReader::handleError()
     case Characters:
         {
             QString tok = text().toString();
-            if (tok.length() > 30)
+            if (tok.size() > 30)
                 tok = tok.left(30) + QLatin1String("[...]");
             raiseError(QString::fromLatin1("Unexpected characters '%1' %2").arg(tok, loc));
         }
@@ -130,8 +102,8 @@ static QString byteValue(QString value)
 
 QString TSReader::readContents()
 {
-    STRING(byte);
-    STRING(value);
+    static const QString strbyte = u"byte"_s;
+    static const QString strvalue = u"value"_s;
 
     QString result;
     while (!atEnd()) {
@@ -159,9 +131,9 @@ QString TSReader::readContents()
 
 QString TSReader::readTransContents()
 {
-    STRING(lengthvariant);
-    STRING(variants);
-    STRING(yes);
+    static const QString strlengthvariant = u"lengthvariant"_s;
+    static const QString strvariants = u"variants"_s;
+    static const QString stryes = u"yes"_s;
 
     if (attributes().value(strvariants) == stryes) {
         QString result;
@@ -188,36 +160,35 @@ QString TSReader::readTransContents()
 
 bool TSReader::read(Translator &translator)
 {
-    STRING(catalog);
-    STRING(comment);
-    STRING(context);
-    STRING(defaultcodec);
-    STRING(dependencies);
-    STRING(dependency);
-    STRING(extracomment);
-    STRING(filename);
-    STRING(id);
-    STRING(language);
-    STRING(line);
-    STRING(location);
-    STRING(message);
-    STRING(name);
-    STRING(numerus);
-    STRING(numerusform);
-    STRING(obsolete);
-    STRING(oldcomment);
-    STRING(oldsource);
-    STRING(source);
-    STRING(sourcelanguage);
-    STRING(translation);
-    STRING(translatorcomment);
-    STRING(TS);
-    STRING(type);
-    STRING(unfinished);
-    STRING(userdata);
-    STRING(vanished);
-    //STRING(version);
-    STRING(yes);
+    static const QString strcatalog = u"catalog"_s;
+    static const QString strcomment = u"comment"_s;
+    static const QString strcontext = u"context"_s;
+    static const QString strdependencies = u"dependencies"_s;
+    static const QString strdependency = u"dependency"_s;
+    static const QString strextracomment = u"extracomment"_s;
+    static const QString strfilename = u"filename"_s;
+    static const QString strid = u"id"_s;
+    static const QString strlanguage = u"language"_s;
+    static const QString strline = u"line"_s;
+    static const QString strlocation = u"location"_s;
+    static const QString strmessage = u"message"_s;
+    static const QString strname = u"name"_s;
+    static const QString strnumerus = u"numerus"_s;
+    static const QString strnumerusform = u"numerusform"_s;
+    static const QString strobsolete = u"obsolete"_s;
+    static const QString stroldcomment = u"oldcomment"_s;
+    static const QString stroldsource = u"oldsource"_s;
+    static const QString strsource = u"source"_s;
+    static const QString strsourcelanguage = u"sourcelanguage"_s;
+    static const QString strtranslation = u"translation"_s;
+    static const QString strtranslatorcomment = u"translatorcomment"_s;
+    static const QString strTS = u"TS"_s;
+    static const QString strtype = u"type"_s;
+    static const QString strunfinished = u"unfinished"_s;
+    static const QString struserdata = u"userdata"_s;
+    static const QString strvanished = u"vanished"_s;
+    //static const QString strversion = u"version"_s;
+    static const QString stryes = u"yes"_s;
 
     static const QString strextrans(QLatin1String("extra-"));
 
@@ -250,11 +221,6 @@ bool TSReader::read(Translator &translator)
                     break;
                 } else if (isWhiteSpace()) {
                     // ignore these, just whitespace
-                } else if (elementStarts(strdefaultcodec)) {
-                    // <defaultcodec>
-                    readElementText();
-                    m_cd.appendError(QString::fromLatin1("Warning: ignoring <defaultcodec> element"));
-                    // </defaultcodec>
                 } else if (isStartElement()
                         && name().toString().startsWith(strextrans)) {
                     // <extra-...>
@@ -312,6 +278,7 @@ bool TSReader::read(Translator &translator)
                             msg.setContext(context);
                             msg.setType(TranslatorMessage::Finished);
                             msg.setPlural(attributes().value(strnumerus) == stryes);
+                            msg.setTsLineNumber(lineNumber());
                             while (!atEnd()) {
                                 readNext();
                                 if (isEndElement()) {
@@ -373,7 +340,7 @@ bool TSReader::read(Translator &translator)
                                 } else if (elementStarts(strtranslation)) {
                                     // <translation>
                                     QXmlStreamAttributes atts = attributes();
-                                    QStringRef type = atts.value(strtype);
+                                    QStringView type = atts.value(strtype);
                                     if (type == strunfinished)
                                         msg.setType(TranslatorMessage::Unfinished);
                                     else if (type == strvanished)
@@ -419,6 +386,9 @@ bool TSReader::read(Translator &translator)
                 } else {
                     handleError();
                 }
+                // if the file is empty adopt AbsoluteLocation (default location type for Translator)
+                if (translator.messageCount() == 0)
+                    maybeAbsolute = true;
                 translator.setLocationsType(maybeRelative ? Translator::RelativeLocations :
                                             maybeAbsolute ? Translator::AbsoluteLocations :
                                                             Translator::NoLocations);
@@ -434,16 +404,16 @@ bool TSReader::read(Translator &translator)
     return true;
 }
 
-static QString numericEntity(int ch)
+static QString tsNumericEntity(int ch)
 {
     return QString(ch <= 0x20 ? QLatin1String("<byte value=\"x%1\"/>")
         : QLatin1String("&#x%1;")) .arg(ch, 0, 16);
 }
 
-static QString protect(const QString &str)
+static QString tsProtect(const QString &str)
 {
     QString result;
-    result.reserve(str.length() * 12 / 10);
+    result.reserve(str.size() * 12 / 10);
     for (int i = 0; i != str.size(); ++i) {
         const QChar ch = str[i];
         uint c = ch.unicode();
@@ -465,7 +435,7 @@ static QString protect(const QString &str)
             break;
         default:
             if ((c < 0x20 || (ch > QChar(0x7f) && ch.isSpace())) && c != '\n' && c != '\t')
-                result += numericEntity(c);
+                result += tsNumericEntity(c);
             else // this also covers surrogates
                 result += QChar(c);
         }
@@ -474,18 +444,18 @@ static QString protect(const QString &str)
 }
 
 static void writeExtras(QTextStream &t, const char *indent,
-                        const TranslatorMessage::ExtraData &extras, QRegExp drops)
+                        const TranslatorMessage::ExtraData &extras, QRegularExpression drops)
 {
     QStringList outs;
-    for (Translator::ExtraData::ConstIterator it = extras.begin(); it != extras.end(); ++it) {
-        if (!drops.exactMatch(it.key())) {
+    for (auto it = extras.cbegin(), end = extras.cend(); it != end; ++it) {
+        if (!drops.match(it.key()).hasMatch()) {
             outs << (QStringLiteral("<extra-") + it.key() + QLatin1Char('>')
-                     + protect(it.value())
+                     + tsProtect(it.value())
                      + QStringLiteral("</extra-") + it.key() + QLatin1Char('>'));
         }
     }
     outs.sort();
-    foreach (const QString &out, outs)
+    for (const QString &out : std::as_const(outs))
         t << indent << out << Qt::endl;
 }
 
@@ -497,18 +467,18 @@ static void writeVariants(QTextStream &t, const char *indent, const QString &inp
         int start = 0;
         forever {
             t << "\n    " << indent << "<lengthvariant>"
-              << protect(input.mid(start, offset - start))
+              << tsProtect(input.mid(start, offset - start))
               << "</lengthvariant>";
-            if (offset == input.length())
+            if (offset == input.size())
                 break;
             start = offset + 1;
             offset = input.indexOf(QChar(Translator::BinaryVariantSeparator), start);
             if (offset < 0)
-                offset = input.length();
+                offset = input.size();
         }
         t << "\n" << indent;
     } else {
-        t << ">" << protect(input);
+        t << ">" << tsProtect(input);
     }
 }
 
@@ -516,8 +486,6 @@ bool saveTS(const Translator &translator, QIODevice &dev, ConversionData &cd)
 {
     bool result = true;
     QTextStream t(&dev);
-    t.setCodec(QTextCodec::codecForName("UTF-8"));
-    //qDebug() << translator.codecName();
 
     // The xml prolog allows processors to easily detect the correct encoding
     t << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE TS>\n";
@@ -532,21 +500,21 @@ bool saveTS(const Translator &translator, QIODevice &dev, ConversionData &cd)
         t << " sourcelanguage=\"" << languageCode << "\"";
     t << ">\n";
 
-    QStringList deps = translator.dependencies();
+    const QStringList deps = translator.dependencies();
     if (!deps.isEmpty()) {
         t << "<dependencies>\n";
-        foreach (const QString &dep, deps)
+        for (const QString &dep : deps)
             t << "<dependency catalog=\"" << dep << "\"/>\n";
         t << "</dependencies>\n";
     }
 
-    QRegExp drops(cd.dropTags().join(QLatin1Char('|')));
+    QRegularExpression drops(QRegularExpression::anchoredPattern(cd.dropTags().join(QLatin1Char('|'))));
 
     writeExtras(t, "    ", translator.extras(), drops);
 
     QHash<QString, QList<TranslatorMessage> > messageOrder;
     QList<QString> contextOrder;
-    foreach (const TranslatorMessage &msg, translator.messages()) {
+    for (const TranslatorMessage &msg : translator.messages()) {
         // no need for such noise
         if ((msg.type() == TranslatorMessage::Obsolete || msg.type() == TranslatorMessage::Vanished)
             && msg.translation().isEmpty()) {
@@ -563,24 +531,24 @@ bool saveTS(const Translator &translator, QIODevice &dev, ConversionData &cd)
 
     QHash<QString, int> currentLine;
     QString currentFile;
-    foreach (const QString &context, contextOrder) {
+    for (const QString &context : std::as_const(contextOrder)) {
         t << "<context>\n"
              "    <name>"
-          << protect(context)
+          << tsProtect(context)
           << "</name>\n";
-        foreach (const TranslatorMessage &msg, messageOrder[context]) {
+        for (const TranslatorMessage &msg : std::as_const(messageOrder[context])) {
             //msg.dump();
 
                 t << "    <message";
                 if (!msg.id().isEmpty())
-                    t << " id=\"" << msg.id() << "\"";
+                    t << " id=\"" << tsProtect(msg.id()) << "\"";
                 if (msg.isPlural())
                     t << " numerus=\"yes\"";
                 t << ">\n";
                 if (translator.locationsType() != Translator::NoLocations) {
                     QString cfile = currentFile;
                     bool first = true;
-                    foreach (const TranslatorMessage::Reference &ref, msg.allReferences()) {
+                    for (const TranslatorMessage::Reference &ref : msg.allReferences()) {
                         QString fn = cd.m_targetDir.relativeFilePath(ref.fileName())
                                     .replace(QLatin1Char('\\'),QLatin1Char('/'));
                         int ln = ref.lineNumber();
@@ -616,27 +584,27 @@ bool saveTS(const Translator &translator, QIODevice &dev, ConversionData &cd)
                 }
 
                 t << "        <source>"
-                  << protect(msg.sourceText())
+                  << tsProtect(msg.sourceText())
                   << "</source>\n";
 
                 if (!msg.oldSourceText().isEmpty())
-                    t << "        <oldsource>" << protect(msg.oldSourceText()) << "</oldsource>\n";
+                    t << "        <oldsource>" << tsProtect(msg.oldSourceText()) << "</oldsource>\n";
 
                 if (!msg.comment().isEmpty()) {
                     t << "        <comment>"
-                      << protect(msg.comment())
+                      << tsProtect(msg.comment())
                       << "</comment>\n";
                 }
 
                     if (!msg.oldComment().isEmpty())
-                        t << "        <oldcomment>" << protect(msg.oldComment()) << "</oldcomment>\n";
+                        t << "        <oldcomment>" << tsProtect(msg.oldComment()) << "</oldcomment>\n";
 
                     if (!msg.extraComment().isEmpty())
-                        t << "        <extracomment>" << protect(msg.extraComment())
+                        t << "        <extracomment>" << tsProtect(msg.extraComment())
                           << "</extracomment>\n";
 
                     if (!msg.translatorComment().isEmpty())
-                        t << "        <translatorcomment>" << protect(msg.translatorComment())
+                        t << "        <translatorcomment>" << tsProtect(msg.translatorComment())
                           << "</translatorcomment>\n";
 
                 t << "        <translation";
@@ -649,7 +617,7 @@ bool saveTS(const Translator &translator, QIODevice &dev, ConversionData &cd)
                 if (msg.isPlural()) {
                     t << ">";
                     const QStringList &translns = msg.translations();
-                    for (int j = 0; j < translns.count(); ++j) {
+                    for (int j = 0; j < translns.size(); ++j) {
                         t << "\n            <numerusform";
                         writeVariants(t, "            ", translns[j]);
                         t << "</numerusform>";

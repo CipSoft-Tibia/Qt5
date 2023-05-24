@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,25 +10,27 @@
 #include <string>
 #include <vector>
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/ref_counted.h"
 #include "base/task/task_traits.h"
 #include "base/timer/timer.h"
+#include "base/values.h"
+#include "build/chromeos_buildflags.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/tracing_controller.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "mojo/public/cpp/system/data_pipe_drainer.h"
 #include "services/tracing/public/mojom/perfetto_service.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
-namespace base {
+namespace perfetto::protos::pbzero {
+class TracePacket;
+}  // namespace perfetto::protos::pbzero
 
-namespace trace_event {
+namespace base::trace_event {
 class TraceConfig;
-}  // namespace trace_event
-
-class DictionaryValue;
-}  // namespace base
+}  // namespace base::trace_event
 
 namespace tracing {
 class BaseAgent;
@@ -36,7 +38,6 @@ class BaseAgent;
 
 namespace content {
 
-class PerfettoFileTracer;
 class TracingDelegate;
 
 class TracingControllerImpl : public TracingController,
@@ -56,6 +57,9 @@ class TracingControllerImpl : public TracingController,
   // Should be called on the UI thread.
   CONTENT_EXPORT TracingControllerImpl();
 
+  TracingControllerImpl(const TracingControllerImpl&) = delete;
+  TracingControllerImpl& operator=(const TracingControllerImpl&) = delete;
+
   // TracingController implementation.
   bool GetCategories(GetCategoriesDoneCallback callback) override;
   bool StartTracing(const base::trace_event::TraceConfig& trace_config,
@@ -69,7 +73,7 @@ class TracingControllerImpl : public TracingController,
 
   // tracing::mojom::TracingSessionClient implementation:
   void OnTracingEnabled() override;
-  void OnTracingDisabled() override;
+  void OnTracingDisabled(bool tracing_succeeded) override;
 
   void OnTracingFailed();
 
@@ -77,29 +81,15 @@ class TracingControllerImpl : public TracingController,
   CONTENT_EXPORT void SetTracingDelegateForTesting(
       std::unique_ptr<TracingDelegate> delegate);
 
-  // If command line flags specify startup tracing options, adopts the startup
-  // tracing session and relays it to all tracing agents. Note that the local
-  // TraceLog has already been enabled at this point by
-  // tracing::EnableStartupTracingIfNeeded(), before threads were available.
-  // Requires browser threads to have started and a started main message loop.
-  void StartStartupTracingIfNeeded();
-
-  // Should be called before browser main loop shutdown. If startup tracing is
-  // tracing to a file and is still active, this stops the duration timer if it
-  // exists.
-  void FinalizeStartupTracingIfNeeded();
-
-  PerfettoFileTracer* perfetto_file_tracer_for_testing() const {
-    return perfetto_file_tracer_.get();
-  }
-
  private:
   friend std::default_delete<TracingControllerImpl>;
 
   ~TracingControllerImpl() override;
   void AddAgents();
   void ConnectToServiceIfNeeded();
-  std::unique_ptr<base::DictionaryValue> GenerateMetadataDict();
+  absl::optional<base::Value::Dict> GenerateMetadataDict();
+  void GenerateMetadataPacket(perfetto::protos::pbzero::TracePacket* packet,
+                              bool privacy_filtering_enabled);
 
   // mojo::DataPipeDrainer::Client
   void OnDataAvailable(const void* data, size_t num_bytes) override;
@@ -111,12 +101,10 @@ class TracingControllerImpl : public TracingController,
 
   void InitStartupTracingForDuration();
   void EndStartupTracing();
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   void OnMachineStatisticsLoaded();
 #endif
-  base::FilePath GetStartupTraceFileName() const;
 
-  std::unique_ptr<PerfettoFileTracer> perfetto_file_tracer_;
   mojo::Remote<tracing::mojom::ConsumerHost> consumer_host_;
   mojo::Remote<tracing::mojom::TracingSessionHost> tracing_session_host_;
   mojo::Receiver<tracing::mojom::TracingSessionClient> receiver_{this};
@@ -130,17 +118,11 @@ class TracingControllerImpl : public TracingController,
   bool is_data_complete_ = false;
   bool read_buffers_complete_ = false;
 
-  base::FilePath startup_trace_file_;
-  // This timer initiates trace file saving.
-  base::OneShotTimer startup_trace_timer_;
-
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   bool are_statistics_loaded_ = false;
   std::string hardware_class_;
   base::WeakPtrFactory<TracingControllerImpl> weak_ptr_factory_{this};
 #endif
-
-  DISALLOW_COPY_AND_ASSIGN(TracingControllerImpl);
 };
 
 }  // namespace content

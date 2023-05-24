@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,11 @@
 #define XFA_FXFA_PARSER_CXFA_FILL_H_
 
 #include "core/fxcrt/fx_coordinates.h"
-#include "core/fxge/fx_dib.h"
+#include "core/fxge/dib/fx_dib.h"
+#include "xfa/fgas/graphics/cfgas_gepath.h"
 #include "xfa/fxfa/parser/cxfa_node.h"
-#include "xfa/fxgraphics/cxfa_gepath.h"
 
-class CXFA_Graphics;
-class CXFA_Linear;
-class CXFA_Pattern;
-class CXFA_Radial;
-class CXFA_Stipple;
+class CFGAS_GEGraphics;
 
 class CXFA_Fill final : public CXFA_Node {
  public:
@@ -25,11 +21,12 @@ class CXFA_Fill final : public CXFA_Node {
 
   bool IsVisible();
 
-  FX_ARGB GetColor(bool bText);
+  FX_ARGB GetFillColor() const;
+  FX_ARGB GetTextColor() const;
   void SetColor(FX_ARGB color);
 
-  void Draw(CXFA_Graphics* pGS,
-            CXFA_GEPath* fillPath,
+  void Draw(CFGAS_GEGraphics* pGS,
+            const CFGAS_GEPath& fillPath,
             const CFX_RectF& rtWidget,
             const CFX_Matrix& matrix);
 
@@ -38,20 +35,20 @@ class CXFA_Fill final : public CXFA_Node {
 
   XFA_Element GetType() const;
 
-  void DrawStipple(CXFA_Graphics* pGS,
-                   CXFA_GEPath* fillPath,
+  void DrawStipple(CFGAS_GEGraphics* pGS,
+                   const CFGAS_GEPath& fillPath,
                    const CFX_RectF& rtWidget,
                    const CFX_Matrix& matrix);
-  void DrawRadial(CXFA_Graphics* pGS,
-                  CXFA_GEPath* fillPath,
+  void DrawRadial(CFGAS_GEGraphics* pGS,
+                  const CFGAS_GEPath& fillPath,
                   const CFX_RectF& rtWidget,
                   const CFX_Matrix& matrix);
-  void DrawLinear(CXFA_Graphics* pGS,
-                  CXFA_GEPath* fillPath,
+  void DrawLinear(CFGAS_GEGraphics* pGS,
+                  const CFGAS_GEPath& fillPath,
                   const CFX_RectF& rtWidget,
                   const CFX_Matrix& matrix);
-  void DrawPattern(CXFA_Graphics* pGS,
-                   CXFA_GEPath* fillPath,
+  void DrawPattern(CFGAS_GEGraphics* pGS,
+                   const CFGAS_GEPath& fillPath,
                    const CFX_RectF& rtWidget,
                    const CFX_Matrix& matrix);
 };

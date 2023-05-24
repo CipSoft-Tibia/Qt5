@@ -7,26 +7,42 @@
 
 #include "src/core/SkGlyph.h"
 
-#include "src/core/SkArenaAlloc.h"
+#include "include/core/SkDrawable.h"
+#include "include/core/SkScalar.h"
+#include "include/private/base/SkFloatingPoint.h"
+#include "include/private/base/SkTo.h"
+#include "src/base/SkArenaAlloc.h"
 #include "src/core/SkScalerContext.h"
 #include "src/pathops/SkPathOpsCubic.h"
+#include "src/pathops/SkPathOpsPoint.h"
 #include "src/pathops/SkPathOpsQuad.h"
+#include "src/text/StrikeForGPU.h"
 
-constexpr SkIPoint SkPackedGlyphID::kXYFieldMask;
+#include <cstring>
+#include <tuple>
+#include <utility>
+
+using namespace skglyph;
+using namespace sktext;
+
+//-- SkGlyph ---------------------------------------------------------------------------------------
+SkGlyph::SkGlyph(const SkGlyph&) = default;
+SkGlyph& SkGlyph::operator=(const SkGlyph&) = default;
+SkGlyph::SkGlyph(SkGlyph&&) = default;
+SkGlyph& SkGlyph::operator=(SkGlyph&&) = default;
+SkGlyph::~SkGlyph() = default;
 
 SkMask SkGlyph::mask() const {
-    // getMetrics had to be called.
-    SkASSERT(fMaskFormat != MASK_FORMAT_UNKNOWN);
-
     SkMask mask;
     mask.fImage = (uint8_t*)fImage;
     mask.fBounds.setXYWH(fLeft, fTop, fWidth, fHeight);
     mask.fRowBytes = this->rowBytes();
-    mask.fFormat = static_cast<SkMask::Format>(fMaskFormat);
+    mask.fFormat = fMaskFormat;
     return mask;
 }
 
 SkMask SkGlyph::mask(SkPoint position) const {
+    SkASSERT(SkScalarIsInt(position.x()) && SkScalarIsInt(position.y()));
     SkMask answer = this->mask();
     answer.fBounds.offset(SkScalarFloorToInt(position.x()), SkScalarFloorToInt(position.y()));
     return answer;
@@ -105,7 +121,7 @@ bool SkGlyph::setImage(SkArenaAlloc* alloc, const void* image) {
 size_t SkGlyph::setMetricsAndImage(SkArenaAlloc* alloc, const SkGlyph& from) {
     // Since the code no longer tries to find replacement glyphs, the image should always be
     // nullptr.
-    SkASSERT(fImage == nullptr);
+    SkASSERT(fImage == nullptr || from.fImage == nullptr);
 
     // TODO(herb): remove "if" when we are sure there are no colliding glyphs.
     if (fImage == nullptr) {
@@ -115,19 +131,21 @@ size_t SkGlyph::setMetricsAndImage(SkArenaAlloc* alloc, const SkGlyph& from) {
         fHeight = from.fHeight;
         fTop = from.fTop;
         fLeft = from.fLeft;
-        fForceBW = from.fForceBW;
+        fScalerContextBits = from.fScalerContextBits;
         fMaskFormat = from.fMaskFormat;
 
         // From glyph may not have an image because the glyph is too large.
         if (from.fImage != nullptr && this->setImage(alloc, from.image())) {
             return this->imageSize();
         }
+
+        SkDEBUGCODE(fAdvancesBoundsFormatAndInitialPathDone = from.fAdvancesBoundsFormatAndInitialPathDone;)
     }
     return 0;
 }
 
 size_t SkGlyph::rowBytes() const {
-    return format_rowbytes(fWidth, (SkMask::Format)fMaskFormat);
+    return format_rowbytes(fWidth, fMaskFormat);
 }
 
 size_t SkGlyph::rowBytesUsingFormat(SkMask::Format format) const {
@@ -146,7 +164,7 @@ size_t SkGlyph::imageSize() const {
     return size;
 }
 
-void SkGlyph::installPath(SkArenaAlloc* alloc, const SkPath* path) {
+void SkGlyph::installPath(SkArenaAlloc* alloc, const SkPath* path, bool hairline) {
     SkASSERT(fPathData == nullptr);
     SkASSERT(!this->setPathHasBeenCalled());
     fPathData = alloc->make<SkGlyph::PathData>();
@@ -155,26 +173,23 @@ void SkGlyph::installPath(SkArenaAlloc* alloc, const SkPath* path) {
         fPathData->fPath.updateBoundsCache();
         fPathData->fPath.getGenerationID();
         fPathData->fHasPath = true;
+        fPathData->fHairline = hairline;
     }
 }
 
 bool SkGlyph::setPath(SkArenaAlloc* alloc, SkScalerContext* scalerContext) {
     if (!this->setPathHasBeenCalled()) {
-        SkPath path;
-        if (scalerContext->getPath(this->getPackedID(), &path)) {
-            this->installPath(alloc, &path);
-        } else {
-            this->installPath(alloc, nullptr);
-        }
+        scalerContext->getPath(*this, alloc);
+        SkASSERT(this->setPathHasBeenCalled());
         return this->path() != nullptr;
     }
 
     return false;
 }
 
-bool SkGlyph::setPath(SkArenaAlloc* alloc, const SkPath* path) {
+bool SkGlyph::setPath(SkArenaAlloc* alloc, const SkPath* path, bool hairline) {
     if (!this->setPathHasBeenCalled()) {
-        this->installPath(alloc, path);
+        this->installPath(alloc, path, hairline);
         return this->path() != nullptr;
     }
     return false;
@@ -185,6 +200,49 @@ const SkPath* SkGlyph::path() const {
     SkASSERT(this->setPathHasBeenCalled());
     if (fPathData->fHasPath) {
         return &fPathData->fPath;
+    }
+    return nullptr;
+}
+
+bool SkGlyph::pathIsHairline() const {
+    // setPath must have been called previously.
+    SkASSERT(this->setPathHasBeenCalled());
+    return fPathData->fHairline;
+}
+
+void SkGlyph::installDrawable(SkArenaAlloc* alloc, sk_sp<SkDrawable> drawable) {
+    SkASSERT(fDrawableData == nullptr);
+    SkASSERT(!this->setDrawableHasBeenCalled());
+    fDrawableData = alloc->make<SkGlyph::DrawableData>();
+    if (drawable != nullptr) {
+        fDrawableData->fDrawable = std::move(drawable);
+        fDrawableData->fDrawable->getGenerationID();
+        fDrawableData->fHasDrawable = true;
+    }
+}
+
+bool SkGlyph::setDrawable(SkArenaAlloc* alloc, SkScalerContext* scalerContext) {
+    if (!this->setDrawableHasBeenCalled()) {
+        sk_sp<SkDrawable> drawable = scalerContext->getDrawable(*this);
+        this->installDrawable(alloc, std::move(drawable));
+        return this->drawable() != nullptr;
+    }
+    return false;
+}
+
+bool SkGlyph::setDrawable(SkArenaAlloc* alloc, sk_sp<SkDrawable> drawable) {
+    if (!this->setDrawableHasBeenCalled()) {
+        this->installDrawable(alloc, std::move(drawable));
+        return this->drawable() != nullptr;
+    }
+    return false;
+}
+
+SkDrawable* SkGlyph::drawable() const {
+    // setDrawable must have been called previously.
+    SkASSERT(this->setDrawableHasBeenCalled());
+    if (fDrawableData->fHasDrawable) {
+        return fDrawableData->fDrawable.get();
     }
     return nullptr;
 }
@@ -349,3 +407,122 @@ void SkGlyph::ensureIntercepts(const SkScalar* bounds, SkScalar scale, SkScalar 
     }
     offsetResults(intercept, array, count);
 }
+
+namespace {
+uint32_t init_actions(const SkGlyph& glyph) {
+    constexpr uint32_t kAllUnset = 0;
+    constexpr uint32_t kDrop = SkTo<uint32_t>(GlyphAction::kDrop);
+    constexpr uint32_t kAllDrop =
+            kDrop << kDirectMask |
+            kDrop << kDirectMaskCPU |
+            kDrop << kMask |
+            kDrop << kSDFT |
+            kDrop << kPath |
+            kDrop << kDrawable;
+    return glyph.isEmpty() ? kAllDrop : kAllUnset;
+}
+}  // namespace
+
+// -- SkGlyphDigest --------------------------------------------------------------------------------
+SkGlyphDigest::SkGlyphDigest(size_t index, const SkGlyph& glyph)
+        : fIndex{SkTo<uint32_t>(index)}
+        , fIsEmpty(glyph.isEmpty())
+        , fFormat(glyph.maskFormat())
+        , fActions{init_actions(glyph)}
+        , fLeft{SkTo<int16_t>(glyph.left())}
+        , fTop{SkTo<int16_t>(glyph.top())}
+        , fWidth{SkTo<uint16_t>(glyph.width())}
+        , fHeight{SkTo<uint16_t>(glyph.height())} {}
+
+void SkGlyphDigest::setActionFor(skglyph::ActionType actionType,
+                                 SkGlyph* glyph,
+                                 StrikeForGPU* strike) {
+    // We don't have to do any more if the glyph is marked as kDrop because it was isEmpty().
+    if (this->actionFor(actionType) == GlyphAction::kUnset) {
+        GlyphAction action = GlyphAction::kReject;
+        switch (actionType) {
+            case kDirectMask: {
+                if (this->fitsInAtlasDirect()) {
+                    action = GlyphAction::kAccept;
+                }
+                break;
+            }
+            case kDirectMaskCPU: {
+                if (strike->prepareForImage(glyph)) {
+                    action = GlyphAction::kAccept;
+                }
+                break;
+            }
+            case kMask: {
+                if (this->fitsInAtlasInterpolated()) {
+                    action = GlyphAction::kAccept;
+                }
+                break;
+            }
+            case kSDFT: {
+                if (this->fitsInAtlasDirect() &&
+                    this->maskFormat() == SkMask::Format::kSDF_Format) {
+                    action = GlyphAction::kAccept;
+                }
+                break;
+            }
+            case kPath: {
+                if (strike->prepareForPath(glyph)) {
+                    action = GlyphAction::kAccept;
+                }
+                break;
+            }
+            case kDrawable: {
+                if (strike->prepareForDrawable(glyph)) {
+                    action = GlyphAction::kAccept;
+                }
+                break;
+            }
+        }
+        this->setAction(actionType, action);
+    }
+}
+
+bool SkGlyphDigest::FitsInAtlas(const SkGlyph& glyph) {
+    return glyph.maxDimension() <= kSkSideTooBigForAtlas;
+}
+
+// -- SkGlyphPositionRoundingSpec ------------------------------------------------------------------
+SkVector SkGlyphPositionRoundingSpec::HalfAxisSampleFreq(
+        bool isSubpixel, SkAxisAlignment axisAlignment) {
+    if (!isSubpixel) {
+        return {SK_ScalarHalf, SK_ScalarHalf};
+    } else {
+        switch (axisAlignment) {
+            case SkAxisAlignment::kX:
+                return {SkPackedGlyphID::kSubpixelRound, SK_ScalarHalf};
+            case SkAxisAlignment::kY:
+                return {SK_ScalarHalf, SkPackedGlyphID::kSubpixelRound};
+            case SkAxisAlignment::kNone:
+                return {SkPackedGlyphID::kSubpixelRound, SkPackedGlyphID::kSubpixelRound};
+        }
+    }
+
+    // Some compilers need this.
+    return {0, 0};
+}
+
+SkIPoint SkGlyphPositionRoundingSpec::IgnorePositionMask(
+        bool isSubpixel, SkAxisAlignment axisAlignment) {
+    return SkIPoint::Make((!isSubpixel || axisAlignment == SkAxisAlignment::kY) ? 0 : ~0,
+                          (!isSubpixel || axisAlignment == SkAxisAlignment::kX) ? 0 : ~0);
+}
+
+SkIPoint SkGlyphPositionRoundingSpec::IgnorePositionFieldMask(bool isSubpixel,
+                                                              SkAxisAlignment axisAlignment) {
+    SkIPoint ignoreMask = IgnorePositionMask(isSubpixel, axisAlignment);
+    SkIPoint answer{ignoreMask.x() & SkPackedGlyphID::kXYFieldMask.x(),
+                    ignoreMask.y() & SkPackedGlyphID::kXYFieldMask.y()};
+    return answer;
+}
+
+SkGlyphPositionRoundingSpec::SkGlyphPositionRoundingSpec(
+        bool isSubpixel, SkAxisAlignment axisAlignment)
+    : halfAxisSampleFreq{HalfAxisSampleFreq(isSubpixel, axisAlignment)}
+    , ignorePositionMask{IgnorePositionMask(isSubpixel, axisAlignment)}
+    , ignorePositionFieldMask {IgnorePositionFieldMask(isSubpixel, axisAlignment)} {}

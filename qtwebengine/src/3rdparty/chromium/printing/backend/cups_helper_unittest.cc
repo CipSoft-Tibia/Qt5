@@ -1,15 +1,19 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "printing/backend/cups_helper.h"
 
+#include "base/files/file_util.h"
+#include "base/files/scoped_temp_dir.h"
+#include "base/scoped_environment_variable_override.h"
 #include "base/strings/stringprintf.h"
 #include "build/build_config.h"
 #include "printing/backend/print_backend.h"
 #include "printing/mojom/print.mojom.h"
 #include "printing/print_settings.h"
 #include "printing/printing_utils.h"
+#include "printing/units.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -25,7 +29,7 @@ bool PapersEqual(const PrinterSemanticCapsAndDefaults::Paper& lhs,
 }
 
 void VerifyCapabilityColorModels(const PrinterSemanticCapsAndDefaults& caps) {
-  base::Optional<bool> maybe_color = IsColorModelSelected(caps.color_model);
+  absl::optional<bool> maybe_color = IsColorModelSelected(caps.color_model);
   ASSERT_TRUE(maybe_color.has_value());
   EXPECT_TRUE(maybe_color.value());
   maybe_color = IsColorModelSelected(caps.bw_model);
@@ -44,7 +48,7 @@ std::string GeneratePpdResolutionTestData(const char* res_name) {
 
 }  // namespace
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingNoColorDuplexShortEdge) {
+TEST(PrintBackendCupsHelperTest, PpdParsingNoColorDuplexShortEdge) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *OpenGroup: General/General
@@ -82,7 +86,7 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingNoColorDuplexShortEdge) {
 }
 
 // Test duplex detection code, which regressed in http://crbug.com/103999.
-TEST(PrintBackendCupsHelperTest, TestPpdParsingNoColorDuplexSimples) {
+TEST(PrintBackendCupsHelperTest, PpdParsingNoColorDuplexSimples) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *OpenGroup: General/General
@@ -112,7 +116,7 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingNoColorDuplexSimples) {
   EXPECT_FALSE(caps.color_default);
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingNoColorNoDuplex) {
+TEST(PrintBackendCupsHelperTest, PpdParsingNoColorNoDuplex) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *OpenGroup: General/General
@@ -137,7 +141,7 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingNoColorNoDuplex) {
   EXPECT_FALSE(caps.color_default);
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingColorTrueDuplexShortEdge) {
+TEST(PrintBackendCupsHelperTest, PpdParsingColorTrueDuplexShortEdge) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *ColorDevice: True
@@ -174,7 +178,7 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingColorTrueDuplexShortEdge) {
   EXPECT_TRUE(caps.color_default);
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingColorFalseDuplexLongEdge) {
+TEST(PrintBackendCupsHelperTest, PpdParsingColorFalseDuplexLongEdge) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *ColorDevice: True
@@ -217,7 +221,7 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingColorFalseDuplexLongEdge) {
   EXPECT_FALSE(caps.color_default);
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingPageSize) {
+TEST(PrintBackendCupsHelperTest, PpdParsingPageSize) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *OpenUI *PageSize: PickOne
@@ -250,7 +254,7 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingPageSize) {
   EXPECT_TRUE(PapersEqual(caps.papers[1], caps.default_paper));
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingPageSizeNoDefaultSpecified) {
+TEST(PrintBackendCupsHelperTest, PpdParsingPageSizeNoDefaultSpecified) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *OpenUI *PageSize: PickOne
@@ -300,7 +304,58 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingPageSizeNoDefaultSpecified) {
   }
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingBrotherPrinters) {
+TEST(PrintBackendCupsHelperTest, PpdParsingPrintableArea) {
+  constexpr char kTestPpdData[] =
+      R"(*PPD-Adobe: "4.3"
+*OpenUI *PageSize: PickOne
+*DefaultPageSize: Legal
+*PageSize Letter/US Letter: "
+  <</DeferredMediaSelection true /PageSize [612 792]
+  /ImagingBBox null /MediaClass null >> setpagedevice"
+*End
+*PageSize Legal/US Legal: "
+  <</DeferredMediaSelection true /PageSize [612 1008]
+  /ImagingBBox null /MediaClass null >> setpagedevice"
+*End
+*DefaultPaperDimension: Legal
+*PaperDimension Letter/US Letter: "612   792"
+*PaperDimension Legal/US Legal: "612  1008"
+*CloseUI: *PageSize
+*DefaultImageableArea: Legal
+*ImageableArea Letter/US Letter:  "24 30 600 710"
+*ImageableArea Legal/US Legal:    "12 12 600 996")";
+
+  PrinterSemanticCapsAndDefaults caps;
+  EXPECT_TRUE(ParsePpdCapabilities(/*dest=*/nullptr, /*locale=*/"",
+                                   kTestPpdData, &caps));
+  ASSERT_EQ(2UL, caps.papers.size());
+
+  {
+    EXPECT_EQ("Letter", caps.papers[0].vendor_id);
+    EXPECT_EQ("US Letter", caps.papers[0].display_name);
+    EXPECT_EQ(215900, caps.papers[0].size_um.width());
+    EXPECT_EQ(279400, caps.papers[0].size_um.height());
+    const gfx::Rect& printable_area_um = caps.papers[0].printable_area_um;
+    EXPECT_EQ(8467, printable_area_um.x());
+    EXPECT_EQ(10583, printable_area_um.y());
+    EXPECT_EQ(203200, printable_area_um.width());
+    EXPECT_EQ(239889, printable_area_um.height());
+  }
+  {
+    EXPECT_EQ("Legal", caps.papers[1].vendor_id);
+    EXPECT_EQ("US Legal", caps.papers[1].display_name);
+    EXPECT_EQ(215900, caps.papers[1].size_um.width());
+    EXPECT_EQ(355600, caps.papers[1].size_um.height());
+    const gfx::Rect& printable_area_um = caps.papers[1].printable_area_um;
+    EXPECT_EQ(4233, printable_area_um.x());
+    EXPECT_EQ(4233, printable_area_um.y());
+    EXPECT_EQ(207434, printable_area_um.width());
+    EXPECT_EQ(347134, printable_area_um.height());
+    EXPECT_TRUE(PapersEqual(caps.papers[1], caps.default_paper));
+  }
+}
+
+TEST(PrintBackendCupsHelperTest, PpdParsingBrotherPrinters) {
   {
     constexpr char kTestPpdData[] =
         R"(*PPD-Adobe: "4.3"
@@ -363,7 +418,7 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingBrotherPrinters) {
   }
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingHpPrinters) {
+TEST(PrintBackendCupsHelperTest, PpdParsingHpPrinters) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *ColorDevice: True
@@ -385,7 +440,50 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingHpPrinters) {
   VerifyCapabilityColorModels(caps);
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingEpsonPrinters) {
+TEST(PrintBackendCupsHelperTest, PpdParsingCanonPrinters) {
+  {
+    constexpr char kTestPpdData[] =
+        R"(*PPD-Adobe: "4.3"
+*ColorDevice: True
+*OpenUI *CNColorMode/Color Mode: PickOne
+*DefaultCNColorMode: color
+*CNColorMode mono/Black and White: "<< >>setpagedevice"
+*CNColorMode color/Color: "<< >>setpagedevice"
+*CloseUI: *CNColorMode)";
+
+    PrinterSemanticCapsAndDefaults caps;
+    EXPECT_TRUE(ParsePpdCapabilities(/*dest=*/nullptr, /*locale=*/"",
+                                     kTestPpdData, &caps));
+    EXPECT_TRUE(caps.color_changeable);
+    EXPECT_TRUE(caps.color_default);
+    EXPECT_EQ(mojom::ColorModel::kCanonCNColorModeColor, caps.color_model);
+    EXPECT_EQ(mojom::ColorModel::kCanonCNColorModeMono, caps.bw_model);
+    VerifyCapabilityColorModels(caps);
+  }
+
+  {
+    constexpr char kTestPpdData[] =
+        R"(*PPD-Adobe: "4.3"
+*ColorDevice: True
+*OpenUI *CNIJGrayScale/Grayscale Printing: PickOne
+*OrderDependency: 0 AnySetup *CNIJGrayScale
+*DefaultCNIJGrayScale: 0
+*CNIJGrayScale 0/OFF: ""
+*CNIJGrayScale 1/ON: ""
+*CloseUI: *CNIJGrayScale)";
+
+    PrinterSemanticCapsAndDefaults caps;
+    EXPECT_TRUE(ParsePpdCapabilities(/*dest=*/nullptr, /*locale=*/"",
+                                     kTestPpdData, &caps));
+    EXPECT_TRUE(caps.color_changeable);
+    EXPECT_TRUE(caps.color_default);
+    EXPECT_EQ(mojom::ColorModel::kCanonCNIJGrayScaleZero, caps.color_model);
+    EXPECT_EQ(mojom::ColorModel::kCanonCNIJGrayScaleOne, caps.bw_model);
+    VerifyCapabilityColorModels(caps);
+  }
+}
+
+TEST(PrintBackendCupsHelperTest, PpdParsingEpsonPrinters) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *ColorDevice: True
@@ -409,7 +507,108 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingEpsonPrinters) {
   VerifyCapabilityColorModels(caps);
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingSamsungPrinters) {
+TEST(PrintBackendCupsHelperTest, PpdParsingKonicaMinoltaPrinters) {
+  constexpr char kTestPpdData[] =
+      R"(*PPD-Adobe: "4.3"
+*ColorDevice: True
+*OpenUI  *SelectColor/Select Color: PickOne
+*OrderDependency: 10 AnySetup *SelectColor
+*DefaultSelectColor: Color
+*SelectColor Color/Color:  "
+  <</ProcessColorModel /DeviceCMYK>> setpagedevice"
+*SelectColor Grayscale/Grayscale:  "
+  <</ProcessColorModel /DeviceGray>> setpagedevice"
+*CloseUI: *SelectColor)";
+
+  PrinterSemanticCapsAndDefaults caps;
+  EXPECT_TRUE(ParsePpdCapabilities(/*dest=*/nullptr, /*locale=*/"",
+                                   kTestPpdData, &caps));
+  EXPECT_TRUE(caps.color_changeable);
+  EXPECT_TRUE(caps.color_default);
+  EXPECT_EQ(mojom::ColorModel::kColor, caps.color_model);
+  EXPECT_EQ(mojom::ColorModel::kGrayscale, caps.bw_model);
+  VerifyCapabilityColorModels(caps);
+}
+
+TEST(PrintBackendCupsHelperTest, PpdParsingLexmarkPrinters) {
+  constexpr char kTestPpdData[] =
+      R"(*PPD-Adobe: "4.3"
+*ColorDevice: True
+*OpenUI *BLW/Black & White: PickOne
+*OrderDependency: 13.0 AnySetup *BLW
+*DefaultBLW: PrinterS
+*BLW PrinterS/Printer Setting: ""
+*BLW FalseM/Off: "<< /ProcessColorModel /DeviceCMYK >> setpagedevice"
+*BLW TrueM/On: "<< /ProcessColorModel /DeviceGray >> setpagedevice"
+*?BLW: "
+  gsave
+  currentpagedevice /ProcessColorModel get /DeviceGray
+  (True) eq {(TrueM)}{(FalseM)} ifelse
+  = flush
+  grestore
+*End
+*CloseUI: *BLW)";
+
+  PrinterSemanticCapsAndDefaults caps;
+  EXPECT_TRUE(ParsePpdCapabilities(/*dest=*/nullptr, /*locale=*/"",
+                                   kTestPpdData, &caps));
+  EXPECT_TRUE(caps.color_changeable);
+  EXPECT_FALSE(caps.color_default);
+  EXPECT_EQ(mojom::ColorModel::kColor, caps.color_model);
+  EXPECT_EQ(mojom::ColorModel::kGray, caps.bw_model);
+  VerifyCapabilityColorModels(caps);
+}
+
+TEST(PrintBackendCupsHelperTest, PpdParsingOkiPrinters) {
+  constexpr char kTestPpdData[] =
+      R"(*PPD-Adobe: "4.3"
+*ColorDevice: True
+*OpenUI *OKControl/Color Mode: PickOne
+*OrderDependency: 105.0 DocumentSetup *OKControl
+*DefaultOKControl: Auto
+*OKControl Auto/Automatic: "
+ globaldict /OK@ColorMono 2 copy known{pop pop}{0 put}ifelse
+ /DriverOps /ProcSet 2 copy resourcestatus{
+  pop pop findresource
+  globaldict /OK@ColorMono get 1 eq{
+   5 4 false <</SelectHalftone 1>> true 6 -1 roll }{
+   dup dup
+   currentpagedevice /UseCIEColor 2 copy known{get not{
+   dup dup
+   1 exch /setdri_cm get exec 0 exch /setcrd get exec
+   }if}{pop pop}ifelse
+   <</CMYKTransform 1>> exch /setdrinfo get exec
+   0 exch /setdri_bk get exec
+   1 0 false <</SelectColorMode 0 /SelectHalftone 1>> false 6 -1 roll
+  }ifelse
+  /setcolmode 2 copy known{get exec}{7{pop}repeat}ifelse
+ }{pop pop}ifelse"
+*End
+*OKControl Gray/Gray Scale Print: "
+ /DriverOps /ProcSet 2 copy resourcestatus{
+  pop pop findresource
+  5 4 false <</SelectHalftone 1>> true 6 -1 roll
+  /setcolmode 2 copy known{get exec}{7{pop}repeat}ifelse
+ }{pop pop}ifelse
+ /DriverOps /ProcSet 2 copy resourcestatus{
+ pop pop findresource dup 1 exch /setprtspeed get exec
+ /unloadscreenobo get exec
+ userdict /setcolorspace 2 copy known {undef}{pop pop}ifelse
+ }{pop pop}ifelse"
+*End
+*CloseUI: *OKControl)";
+
+  PrinterSemanticCapsAndDefaults caps;
+  EXPECT_TRUE(ParsePpdCapabilities(/*dest=*/nullptr, /*locale=*/"",
+                                   kTestPpdData, &caps));
+  EXPECT_TRUE(caps.color_changeable);
+  EXPECT_TRUE(caps.color_default);
+  EXPECT_EQ(mojom::ColorModel::kOkiOKControlColor, caps.color_model);
+  EXPECT_EQ(mojom::ColorModel::kOkiOKControlGray, caps.bw_model);
+  VerifyCapabilityColorModels(caps);
+}
+
+TEST(PrintBackendCupsHelperTest, PpdParsingSamsungPrinters) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *ColorDevice: True
@@ -429,7 +628,7 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingSamsungPrinters) {
   VerifyCapabilityColorModels(caps);
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingSharpPrinters) {
+TEST(PrintBackendCupsHelperTest, PpdParsingSharpPrinters) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *ColorDevice: True
@@ -454,9 +653,10 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingSharpPrinters) {
   VerifyCapabilityColorModels(caps);
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingXeroxPrinters) {
-  constexpr char kTestPpdData[] =
-      R"(*PPD-Adobe: "4.3"
+TEST(PrintBackendCupsHelperTest, PpdParsingXeroxPrinters) {
+  {
+    constexpr char kTestPpdData[] =
+        R"(*PPD-Adobe: "4.3"
 *ColorDevice: True
 *OpenUI *XRXColor/Color Correction: PickOne
 *OrderDependency: 48.0 AnySetup *XRXColor
@@ -467,17 +667,43 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingXeroxPrinters) {
   <</ProcessColorModel /DeviceGray>> setpagedevice"
 *CloseUI: *XRXColor)";
 
-  PrinterSemanticCapsAndDefaults caps;
-  EXPECT_TRUE(ParsePpdCapabilities(/*dest=*/nullptr, /*locale=*/"",
-                                   kTestPpdData, &caps));
-  EXPECT_TRUE(caps.color_changeable);
-  EXPECT_TRUE(caps.color_default);
-  EXPECT_EQ(mojom::ColorModel::kXeroxXRXColorAutomatic, caps.color_model);
-  EXPECT_EQ(mojom::ColorModel::kXeroxXRXColorBW, caps.bw_model);
-  VerifyCapabilityColorModels(caps);
+    PrinterSemanticCapsAndDefaults caps;
+    EXPECT_TRUE(ParsePpdCapabilities(/*dest=*/nullptr, /*locale=*/"",
+                                     kTestPpdData, &caps));
+    EXPECT_TRUE(caps.color_changeable);
+    EXPECT_TRUE(caps.color_default);
+    EXPECT_EQ(mojom::ColorModel::kXeroxXRXColorAutomatic, caps.color_model);
+    EXPECT_EQ(mojom::ColorModel::kXeroxXRXColorBW, caps.bw_model);
+    VerifyCapabilityColorModels(caps);
+  }
+
+  {
+    constexpr char kTestPpdData[] =
+        R"(*PPD-Adobe: "4.3"
+*ColorDevice: True
+*OpenUI *XROutputColor/Xerox Black and White: PickOne
+*OrderDependency: 10 AnySetup *XROutputColor
+*DefaultXROutputColor: PrintAsColor
+*XROutputColor Unspecified/Printer Default: ""
+*XROutputColor PrintAsColor/Off (Use Document Color): ""
+*XROutputColor PrintAsGrayscale/On: "
+  <</ProcessColorModel /DeviceGray >> setpagedevice "
+*CloseUI: *XROutputColor)";
+
+    PrinterSemanticCapsAndDefaults caps;
+    EXPECT_TRUE(ParsePpdCapabilities(/*dest=*/nullptr, /*locale=*/"",
+                                     kTestPpdData, &caps));
+    EXPECT_TRUE(caps.color_changeable);
+    EXPECT_TRUE(caps.color_default);
+    EXPECT_EQ(mojom::ColorModel::kXeroxXROutputColorPrintAsColor,
+              caps.color_model);
+    EXPECT_EQ(mojom::ColorModel::kXeroxXROutputColorPrintAsGrayscale,
+              caps.bw_model);
+    VerifyCapabilityColorModels(caps);
+  }
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingCupsMaxCopies) {
+TEST(PrintBackendCupsHelperTest, PpdParsingCupsMaxCopies) {
   {
     constexpr char kTestPpdData[] =
         R"(*PPD-Adobe: "4.3"
@@ -507,10 +733,10 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingCupsMaxCopies) {
   }
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingResolutionTagNames) {
-  constexpr const char* kTestResNames[] = {"Resolution",     "JCLResolution",
-                                           "SetResolution",  "CNRes_PGP",
-                                           "HPPrintQuality", "LXResolution"};
+TEST(PrintBackendCupsHelperTest, PpdParsingResolutionTagNames) {
+  constexpr const char* kTestResNames[] = {
+      "Resolution",     "JCLResolution", "SetResolution", "CNRes_PGP",
+      "HPPrintQuality", "LXResolution",  "BRResolution"};
   const std::vector<gfx::Size> kExpectedResolutions = {gfx::Size(600, 600)};
   PrinterSemanticCapsAndDefaults caps;
   for (const char* res_name : kTestResNames) {
@@ -538,7 +764,17 @@ TEST(PrintBackendCupsHelperTest,
   EXPECT_TRUE(caps.default_dpi.IsEmpty());
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingResolutionNoResolution) {
+TEST(PrintBackendCupsHelperTest, PpdParsingResolutionNoResolution) {
+  // If the PPD does not have a valid resolution, the DPI should still be set to
+  // an OS-dependent default value.
+#if BUILDFLAG(IS_MAC)
+  constexpr gfx::Size kExpectedDpi(kDefaultMacDpi, kDefaultMacDpi);
+#elif BUILDFLAG(IS_LINUX)
+  constexpr gfx::Size kExpectedDpi(kPixelsPerInch, kPixelsPerInch);
+#else
+  constexpr gfx::Size kExpectedDpi(kDefaultPdfDpi, kDefaultPdfDpi);
+#endif
+
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *OpenUI *Resolution/Resolution: PickOne
@@ -547,15 +783,15 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingResolutionNoResolution) {
   PrinterSemanticCapsAndDefaults caps;
   EXPECT_TRUE(ParsePpdCapabilities(/*dest=*/nullptr, /*locale=*/"",
                                    kTestPpdData, &caps));
-  EXPECT_TRUE(caps.dpis.empty());
-  EXPECT_TRUE(caps.default_dpi.IsEmpty());
+  EXPECT_EQ(std::vector<gfx::Size>{kExpectedDpi}, caps.dpis);
+  EXPECT_EQ(caps.default_dpi, kExpectedDpi);
   EXPECT_TRUE(ParsePpdCapabilities(/*dest=*/nullptr, /*locale=*/"",
                                    "*PPD-Adobe: \"4.3\"", &caps));
-  EXPECT_TRUE(caps.dpis.empty());
-  EXPECT_TRUE(caps.default_dpi.IsEmpty());
+  EXPECT_EQ(std::vector<gfx::Size>{kExpectedDpi}, caps.dpis);
+  EXPECT_EQ(caps.default_dpi, kExpectedDpi);
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingResolutionNoDefaultResolution) {
+TEST(PrintBackendCupsHelperTest, PpdParsingResolutionNoDefaultResolution) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *OpenUI *Resolution/Resolution: PickOne
@@ -569,7 +805,7 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingResolutionNoDefaultResolution) {
   EXPECT_TRUE(caps.default_dpi.IsEmpty());
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdParsingResolutionDpiFormat) {
+TEST(PrintBackendCupsHelperTest, PpdParsingResolutionDpiFormat) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *JCLOpenUI *Resolution/Resolution: PickOne
@@ -599,7 +835,7 @@ TEST(PrintBackendCupsHelperTest, TestPpdParsingResolutionDpiFormat) {
   EXPECT_EQ(kExpectedResolutions[1], caps.default_dpi);
 }
 
-TEST(PrintBackendCupsHelperTest, TestPpdSetsDestOptions) {
+TEST(PrintBackendCupsHelperTest, PpdSetsDestOptions) {
   constexpr char kTestPpdData[] =
       R"(*PPD-Adobe: "4.3"
 *OpenUI *Duplex/2-Sided Printing: PickOne
@@ -636,6 +872,33 @@ TEST(PrintBackendCupsHelperTest, TestPpdSetsDestOptions) {
   EXPECT_EQ(mojom::DuplexMode::kLongEdge, caps.duplex_default);
 
   cupsFreeDests(num_dests, dest);
+}
+
+// For crbug.com/1245412
+TEST(PrintBackendCupsHelperTest, NoTempFileLeftBehind) {
+  // Create a temp dir and set it as the global temp dir, so
+  // ParsePpdCapabilities() will put its temporary files there.
+  base::ScopedTempDir temp_dir;
+  ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+  EXPECT_TRUE(base::IsDirectoryEmpty(temp_dir.GetPath()));
+
+  {
+#if BUILDFLAG(IS_MAC)
+    const char kTempDirEnvVar[] = "MAC_CHROMIUM_TMPDIR";
+#else
+    const char kTempDirEnvVar[] = "TMPDIR";
+#endif
+    base::ScopedEnvironmentVariableOverride env_override(
+        kTempDirEnvVar, temp_dir.GetPath().value());
+
+    // Make sure ParsePpdCapabilities() does some work and succeeds.
+    PrinterSemanticCapsAndDefaults dummy_caps;
+    EXPECT_TRUE(ParsePpdCapabilities(
+        /*dest=*/nullptr, /*locale=*/"",
+        GeneratePpdResolutionTestData("Resolution").c_str(), &dummy_caps));
+  }
+
+  EXPECT_TRUE(base::IsDirectoryEmpty(temp_dir.GetPath()));
 }
 
 }  // namespace printing

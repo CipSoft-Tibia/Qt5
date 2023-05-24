@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,7 +15,7 @@ class SkottieWrapper;
 
 // Client/ServiceSkottieTransferCacheEntry implements a transfer cache entry
 // for transferring skottie data.
-class CC_PAINT_EXPORT ClientSkottieTransferCacheEntry
+class CC_PAINT_EXPORT ClientSkottieTransferCacheEntry final
     : public ClientTransferCacheEntryBase<TransferCacheEntryType::kSkottie> {
  public:
   explicit ClientSkottieTransferCacheEntry(
@@ -32,7 +32,7 @@ class CC_PAINT_EXPORT ClientSkottieTransferCacheEntry
   scoped_refptr<SkottieWrapper> skottie_;
 };
 
-class CC_PAINT_EXPORT ServiceSkottieTransferCacheEntry
+class CC_PAINT_EXPORT ServiceSkottieTransferCacheEntry final
     : public ServiceTransferCacheEntryBase<TransferCacheEntryType::kSkottie> {
  public:
   ServiceSkottieTransferCacheEntry();

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -73,6 +73,9 @@ class ViewsHostableView {
   // Set the WebContentsView's parent accessibility element.
   virtual void ViewsHostableSetParentAccessible(
       gfx::NativeViewAccessible parent_accessibility_element) = 0;
+
+  // Get the WebContentsView's parent accessibility element.
+  virtual gfx::NativeViewAccessible ViewsHostableGetParentAccessible() = 0;
 
   // Retrieve the WebContentsView's accessibility element.
   virtual gfx::NativeViewAccessible ViewsHostableGetAccessibilityElement() = 0;

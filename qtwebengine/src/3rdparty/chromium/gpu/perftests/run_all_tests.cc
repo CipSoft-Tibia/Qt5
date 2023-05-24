@@ -1,10 +1,10 @@
-// Copyright (c) 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/bind.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/task/single_thread_task_executor.h"
 #include "base/test/launcher/unit_test_launcher.h"
@@ -12,29 +12,26 @@
 #include "build/build_config.h"
 #include "ui/gl/init/gl_factory.h"
 
-#if defined(USE_OZONE)
-#include "ui/base/ui_base_features.h"  // nogncheck
+#if BUILDFLAG(IS_OZONE)
 #include "ui/ozone/public/ozone_platform.h"
 #endif
 
 static int RunHelper(base::TestSuite* test_suite) {
   base::FeatureList::InitializeInstance(std::string(), std::string());
   std::unique_ptr<base::SingleThreadTaskExecutor> executor;
-#if defined(USE_OZONE)
-  if (features::IsUsingOzonePlatform()) {
-    executor = std::make_unique<base::SingleThreadTaskExecutor>(
-        base::MessagePumpType::UI);
-    ui::OzonePlatform::InitParams params;
-    params.single_process = true;
-    ui::OzonePlatform::InitializeForGPU(params);
-  } else
+#if BUILDFLAG(IS_OZONE)
+  executor = std::make_unique<base::SingleThreadTaskExecutor>(
+      base::MessagePumpType::UI);
+  ui::OzonePlatform::InitParams params;
+  params.single_process = true;
+  ui::OzonePlatform::InitializeForGPU(params);
+#else
+  executor = std::make_unique<base::SingleThreadTaskExecutor>(
+      base::MessagePumpType::IO);
 #endif
-  {
-    executor = std::make_unique<base::SingleThreadTaskExecutor>(
-        base::MessagePumpType::IO);
-  }
 
-  CHECK(gl::init::InitializeGLOneOff());
+  CHECK(gl::init::InitializeGLOneOff(
+      /*gpu_preference=*/gl::GpuPreference::kDefault));
   return test_suite->Run();
 }
 

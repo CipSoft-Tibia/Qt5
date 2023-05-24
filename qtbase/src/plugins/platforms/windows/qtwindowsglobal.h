@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 Samuel Gaist <samuel.gaist@edeltech.ch>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 Samuel Gaist <samuel.gaist@edeltech.ch>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTWINDOWSGLOBAL_H
 #define QTWINDOWSGLOBAL_H
@@ -44,8 +8,16 @@
 #include <QtCore/qt_windows.h>
 #include <QtCore/qnamespace.h>
 
-#ifndef WM_DWMCOMPOSITIONCHANGED // MinGW.
-#    define WM_DWMCOMPOSITIONCHANGED 0x31E
+#ifndef WM_DWMCOMPOSITIONCHANGED
+#  define WM_DWMCOMPOSITIONCHANGED 0x31E
+#endif
+
+#ifndef WM_DWMCOLORIZATIONCOLORCHANGED
+#  define WM_DWMCOLORIZATIONCOLORCHANGED 0x0320
+#endif
+
+#ifndef WM_SYSCOLORCHANGE
+#  define WM_SYSCOLORCHANGE 0x0015
 #endif
 
 #ifndef WM_TOUCH
@@ -58,6 +30,10 @@
 
 #ifndef WM_DPICHANGED
 #  define WM_DPICHANGED 0x02E0
+#endif
+
+#ifndef WM_GETDPISCALEDSIZE
+#  define WM_GETDPISCALEDSIZE 0x02E4
 #endif
 
 // WM_POINTER support from Windows 8 onwards (WINVER >= 0x0602)
@@ -76,12 +52,20 @@
 #  define WM_POINTERHWHEEL   0x024F
 #endif // WM_POINTERUPDATE
 
+#if !defined(_DPI_AWARENESS_CONTEXTS_)
+#  define DPI_AWARENESS_CONTEXT_UNAWARE              ((HANDLE)-1)
+#  define DPI_AWARENESS_CONTEXT_SYSTEM_AWARE         ((HANDLE)-2)
+#  define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE    ((HANDLE)-3)
+#  define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((HANDLE)-4)
+#  define DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED    ((HANDLE)-5)
+#endif
+
 QT_BEGIN_NAMESPACE
 
 namespace QtWindows
 {
 
-enum
+enum WindowsEventTypeFlags
 {
     WindowEventFlag = 0x10000,
     MouseEventFlag = 0x20000,
@@ -121,6 +105,9 @@ enum WindowsEventType // Simplify event types
     EnterSizeMoveEvent = WindowEventFlag + 22,
     ExitSizeMoveEvent = WindowEventFlag + 23,
     PointerActivateWindowEvent = WindowEventFlag + 24,
+    DpiScaledSizeEvent = WindowEventFlag + 25,
+    DpiChangedAfterParentEvent = WindowEventFlag + 27,
+    TaskbarButtonCreated = WindowEventFlag + 28,
     MouseEvent = MouseEventFlag + 1,
     MouseWheelEvent = MouseEventFlag + 2,
     CursorEvent = MouseEventFlag + 3,
@@ -154,26 +141,37 @@ enum WindowsEventType // Simplify event types
     InputMethodRequest = InputMethodEventFlag + 6,
     ThemeChanged = ThemingEventFlag + 1,
     CompositionSettingsChanged = ThemingEventFlag + 2,
-    DisplayChangedEvent = 437,
-    SettingChangedEvent = DisplayChangedEvent + 1,
+    SettingChangedEvent = 438,
     ScrollEvent = GenericEventFlag + 1,
     ContextMenu = 123,
     GestureEvent = 124,
     UnknownEvent = 542
 };
+Q_DECLARE_MIXED_ENUM_OPERATORS(bool, WindowsEventTypeFlags, WindowsEventType);
+Q_DECLARE_MIXED_ENUM_OPERATORS(bool, WindowsEventType, WindowsEventTypeFlags);
 
-// Matches Process_DPI_Awareness (Windows 8.1 onwards), used for SetProcessDpiAwareness()
-enum ProcessDpiAwareness
+enum class DpiAwareness
 {
-    ProcessDpiUnaware,
-    ProcessSystemDpiAware,
-    ProcessPerMonitorDpiAware
+    Invalid = -1,
+    Unaware,
+    System,
+    PerMonitor,
+    PerMonitorVersion2,
+    Unaware_GdiScaled
 };
 
 } // namespace QtWindows
 
 inline QtWindows::WindowsEventType windowsEventType(UINT message, WPARAM wParamIn, LPARAM lParamIn)
 {
+    static const UINT WM_TASKBAR_BUTTON_CREATED = []{
+        UINT message = RegisterWindowMessage(L"TaskbarButtonCreated");
+        // In case the application is run elevated, allow the
+        // TaskbarButtonCreated message through.
+        ChangeWindowMessageFilter(message, MSGFLT_ADD);
+        return message;
+    }();
+
     switch (message) {
     case WM_PAINT:
     case WM_ERASEBKGND:
@@ -271,12 +269,9 @@ inline QtWindows::WindowsEventType windowsEventType(UINT message, WPARAM wParamI
     // http://msdn.microsoft.com/en-us/library/ms695534(v=vs.85).aspx
     case WM_SETTINGCHANGE:
         return QtWindows::SettingChangedEvent;
-    case WM_DISPLAYCHANGE:
-        return QtWindows::DisplayChangedEvent;
     case WM_THEMECHANGED:
-#ifdef WM_SYSCOLORCHANGE // Windows 7: Handle color change as theme change (QTBUG-34170).
-    case WM_SYSCOLORCHANGE:
-#endif
+    case WM_SYSCOLORCHANGE: // Handle color change as theme change (QTBUG-34170).
+    case WM_DWMCOLORIZATIONCOLORCHANGED:
         return QtWindows::ThemeChanged;
     case WM_DWMCOMPOSITIONCHANGED:
         return QtWindows::CompositionSettingsChanged;
@@ -307,6 +302,10 @@ inline QtWindows::WindowsEventType windowsEventType(UINT message, WPARAM wParamI
         return HIWORD(wParamIn) ? QtWindows::AcceleratorCommandEvent : QtWindows::MenuCommandEvent;
     case WM_DPICHANGED:
         return QtWindows::DpiChangedEvent;
+    case WM_DPICHANGED_AFTERPARENT:
+        return QtWindows::DpiChangedAfterParentEvent;
+    case WM_GETDPISCALEDSIZE:
+        return QtWindows::DpiScaledSizeEvent;
     case WM_ENTERSIZEMOVE:
         return QtWindows::EnterSizeMoveEvent;
     case WM_EXITSIZEMOVE:
@@ -323,8 +322,14 @@ inline QtWindows::WindowsEventType windowsEventType(UINT message, WPARAM wParamI
         return QtWindows::NonClientPointerEvent;
     if (message >= WM_POINTERUPDATE && message <= WM_POINTERHWHEEL)
         return QtWindows::PointerEvent;
+    if (message == WM_TASKBAR_BUTTON_CREATED)
+        return QtWindows::TaskbarButtonCreated;
     return QtWindows::UnknownEvent;
 }
+
+#ifndef QT_NO_DEBUG_STREAM
+extern QDebug operator<<(QDebug, QtWindows::DpiAwareness);
+#endif
 
 QT_END_NAMESPACE
 

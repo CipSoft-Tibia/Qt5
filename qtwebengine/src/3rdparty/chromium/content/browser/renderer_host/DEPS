@@ -19,7 +19,6 @@ include_rules = [
 
 specific_include_rules = {
   ".*_(unit|browser)test\.(cc|mm)": [
-    "+components/rappor/test_rappor_service.h",
     "+content/browser/web_contents",
     "+content/public/browser/web_contents.h",
     "+content/public/browser/web_contents_delegate.h",
@@ -29,10 +28,14 @@ specific_include_rules = {
     "+content/app_shim_remote_cocoa",
     "+components/remote_cocoa",
   ],
+  "blocked_scheme_navigation_browsertest\.cc": [
+    "+pdf/buildflags.h",
+  ],
   "embedded_frame_sink_provider_impl_unittest\.cc": [
     "+components/viz/service",
   ],
   "render_process_host_impl\.cc": [
+    "+google_apis/gaia/gaia_config.h",
     "+google_apis/gaia/gaia_switches.h",
     # TODO(crbug.com/734668): Dependencies on ozone should be removed, as content
     # embedded in mus won't be able to talk to the native ozone.

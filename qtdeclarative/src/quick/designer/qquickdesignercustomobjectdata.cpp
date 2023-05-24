@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickdesignersupportmetainfo_p.h"
 #include "qquickdesignersupportproperties_p.h"
@@ -46,9 +10,11 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 
-#include <private/qqmlbinding_p.h>
+#include <private/qqmlanybinding_p.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 typedef QHash<QObject*, QQuickDesignerCustomObjectData*> CustomObjectDataHash;
 Q_GLOBAL_STATIC(CustomObjectDataHash, s_designerObjectToDataHash)
@@ -163,7 +129,7 @@ void QQuickDesignerCustomObjectData::populateResetHashes()
 
         QQmlProperty property(object(), QString::fromUtf8(propertyName), QQmlEngine::contextForObject(object()));
 
-        QQmlAbstractBinding::Ptr binding = QQmlAbstractBinding::Ptr(QQmlPropertyPrivate::binding(property));
+        auto binding = QQmlAnyBinding::ofProperty(property);
 
         if (binding) {
             m_resetBindingHash.insert(propertyName, binding);
@@ -190,25 +156,18 @@ void QQuickDesignerCustomObjectData::doResetProperty(QQmlContext *context, const
     if (!property.isValid())
         return;
 
-    QQmlAbstractBinding *binding = QQmlPropertyPrivate::binding(property);
-    if (binding && !(hasValidResetBinding(propertyName) && getResetBinding(propertyName) == binding)) {
-        binding->setEnabled(false, {});
-    }
+    // remove existing binding
+    QQmlAnyBinding::takeFrom(property);
 
 
     if (hasValidResetBinding(propertyName)) {
-        QQmlAbstractBinding *binding = getResetBinding(propertyName);
+        QQmlAnyBinding binding = getResetBinding(propertyName);
+        binding.installOn(property);
 
-#if defined(QT_NO_DYNAMIC_CAST)
-        QQmlBinding *qmlBinding = static_cast<QQmlBinding*>(binding);
-#else
-        QQmlBinding *qmlBinding = dynamic_cast<QQmlBinding*>(binding);
-#endif
-        if (qmlBinding)
-            qmlBinding->setTarget(property);
-        QQmlPropertyPrivate::setBinding(binding, QQmlPropertyPrivate::None, QQmlPropertyData::DontRemoveBinding);
-        if (qmlBinding)
-            qmlBinding->update();
+        if (binding.isAbstractPropertyBinding()) {
+            // for new style properties, we will evaluate during setBinding anyway
+            static_cast<QQmlBinding *>(binding.asAbstractBinding())->update();
+        }
 
     } else if (property.isResettable()) {
         property.reset();
@@ -231,12 +190,12 @@ void QQuickDesignerCustomObjectData::doResetProperty(QQmlContext *context, const
 
 bool QQuickDesignerCustomObjectData::hasValidResetBinding(const QQuickDesignerSupport::PropertyName &propertyName) const
 {
-    return m_resetBindingHash.contains(propertyName) &&  m_resetBindingHash.value(propertyName).data();
+    return m_resetBindingHash.contains(propertyName) &&  m_resetBindingHash.value(propertyName);
 }
 
-QQmlAbstractBinding *QQuickDesignerCustomObjectData::getResetBinding(const QQuickDesignerSupport::PropertyName &propertyName) const
+QQmlAnyBinding QQuickDesignerCustomObjectData::getResetBinding(const QQuickDesignerSupport::PropertyName &propertyName) const
 {
-    return m_resetBindingHash.value(propertyName).data();
+    return m_resetBindingHash.value(propertyName);
 }
 
 bool QQuickDesignerCustomObjectData::hasBindingForProperty(QQmlContext *context,
@@ -248,7 +207,7 @@ bool QQuickDesignerCustomObjectData::hasBindingForProperty(QQmlContext *context,
 
     QQmlProperty property(object(), QString::fromUtf8(propertyName), context);
 
-    bool hasBinding = QQmlPropertyPrivate::binding(property);
+    bool hasBinding = QQmlAnyBinding::ofProperty(property);
 
     if (hasChanged) {
         *hasChanged = hasBinding != m_hasBindingHash.value(propertyName, false);
@@ -256,7 +215,7 @@ bool QQuickDesignerCustomObjectData::hasBindingForProperty(QQmlContext *context,
             m_hasBindingHash.insert(propertyName, hasBinding);
     }
 
-    return QQmlPropertyPrivate::binding(property);
+    return hasBinding;
 }
 
 void QQuickDesignerCustomObjectData::setPropertyBinding(QQmlContext *context,
@@ -269,15 +228,18 @@ void QQuickDesignerCustomObjectData::setPropertyBinding(QQmlContext *context,
         return;
 
     if (property.isProperty()) {
-        QQmlBinding *binding = QQmlBinding::create(&QQmlPropertyPrivate::get(property)->core,
-                                                   expression, object(), QQmlContextData::get(context));
-        binding->setTarget(property);
-        binding->setNotifyOnValueChanged(true);
+        QString url = u"@designer"_s;
+        int lineNumber = 0;
+        QQmlAnyBinding binding = QQmlAnyBinding::createFromCodeString(property,
+                                                                      expression, object(), QQmlContextData::get(context), url, lineNumber);
 
-        QQmlPropertyPrivate::setBinding(binding, QQmlPropertyPrivate::None, QQmlPropertyData::DontRemoveBinding);
-        //Refcounting is taking take care of deletion
-        binding->update();
-        if (binding->hasError()) {
+        binding.installOn(property);
+        if (binding.isAbstractPropertyBinding()) {
+            // for new style properties, we will evaluate during setBinding anyway
+            static_cast<QQmlBinding *>(binding.asAbstractBinding())->update();
+        }
+
+        if (binding.hasError()) {
             if (property.property().userType() == QMetaType::QString)
                 property.write(QVariant(QLatin1Char('#') + expression + QLatin1Char('#')));
         }
@@ -291,8 +253,8 @@ void QQuickDesignerCustomObjectData::keepBindingFromGettingDeleted(QQmlContext *
                                                              const QQuickDesignerSupport::PropertyName &propertyName)
 {
     //Refcounting is taking care
-    Q_UNUSED(context)
-    Q_UNUSED(propertyName)
+    Q_UNUSED(context);
+    Q_UNUSED(propertyName);
 }
 
 void QQuickDesignerCustomObjectData::handleDestroyed()

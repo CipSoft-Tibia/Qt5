@@ -1,10 +1,10 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/video_capture/video_source_provider_impl.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "services/video_capture/public/mojom/producer.mojom.h"
 #include "services/video_capture/video_source_impl.h"
 #include "services/video_capture/virtual_device_enabled_device_factory.h"
@@ -54,13 +54,10 @@ void VideoSourceProviderImpl::GetVideoSource(
 void VideoSourceProviderImpl::AddSharedMemoryVirtualDevice(
     const media::VideoCaptureDeviceInfo& device_info,
     mojo::PendingRemote<mojom::Producer> producer,
-    bool send_buffer_handles_to_producer_as_raw_file_descriptors,
     mojo::PendingReceiver<mojom::SharedMemoryVirtualDevice>
         virtual_device_receiver) {
   device_factory_->AddSharedMemoryVirtualDevice(
-      device_info, std::move(producer),
-      send_buffer_handles_to_producer_as_raw_file_descriptors,
-      std::move(virtual_device_receiver));
+      device_info, std::move(producer), std::move(virtual_device_receiver));
 }
 
 void VideoSourceProviderImpl::AddTextureVirtualDevice(

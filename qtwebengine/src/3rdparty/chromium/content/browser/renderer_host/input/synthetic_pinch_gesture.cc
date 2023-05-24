@@ -1,8 +1,10 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/renderer_host/input/synthetic_pinch_gesture.h"
+
+#include <memory>
 
 #include "content/browser/renderer_host/input/synthetic_touchpad_pinch_gesture.h"
 #include "content/browser/renderer_host/input/synthetic_touchscreen_pinch_gesture.h"
@@ -17,20 +19,22 @@ SyntheticPinchGesture::~SyntheticPinchGesture() {}
 SyntheticGesture::Result SyntheticPinchGesture::ForwardInputEvents(
     const base::TimeTicks& timestamp,
     SyntheticGestureTarget* target) {
+  DCHECK(dispatching_controller_);
   if (!lazy_gesture_) {
-    SyntheticGestureParams::GestureSourceType source_type =
-        params_.gesture_source_type;
-    if (source_type == SyntheticGestureParams::DEFAULT_INPUT) {
+    content::mojom::GestureSourceType source_type = params_.gesture_source_type;
+    if (source_type == content::mojom::GestureSourceType::kDefaultInput) {
       source_type = target->GetDefaultSyntheticGestureSourceType();
     }
 
-    DCHECK_NE(SyntheticGestureParams::DEFAULT_INPUT, source_type);
-    if (source_type == SyntheticGestureParams::TOUCH_INPUT) {
-      lazy_gesture_.reset(new SyntheticTouchscreenPinchGesture(params_));
+    DCHECK_NE(content::mojom::GestureSourceType::kDefaultInput, source_type);
+    if (source_type == content::mojom::GestureSourceType::kTouchInput) {
+      lazy_gesture_ =
+          std::make_unique<SyntheticTouchscreenPinchGesture>(params_);
     } else {
-      DCHECK_EQ(SyntheticGestureParams::MOUSE_INPUT, source_type);
-      lazy_gesture_.reset(new SyntheticTouchpadPinchGesture(params_));
+      DCHECK_EQ(content::mojom::GestureSourceType::kMouseInput, source_type);
+      lazy_gesture_ = std::make_unique<SyntheticTouchpadPinchGesture>(params_);
     }
+    lazy_gesture_->DidQueue(dispatching_controller_);
   }
 
   return lazy_gesture_->ForwardInputEvents(timestamp, target);

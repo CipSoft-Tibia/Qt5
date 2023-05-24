@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,17 +10,20 @@
 #include <string>
 #include <vector>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/views/animation/scroll_animator.h"
 #include "ui/views/controls/menu/menu_delegate.h"
+#include "ui/views/controls/menu/menu_host.h"
 #include "ui/views/controls/prefix_delegate.h"
 #include "ui/views/controls/prefix_selector.h"
 #include "ui/views/view.h"
 
+namespace ui {
+struct OwnedWindowAnchor;
+}  // namespace ui
+
 namespace views {
 
-class MenuHost;
 class MenuItemView;
 class MenuScrollViewContainer;
 
@@ -53,6 +56,10 @@ class VIEWS_EXPORT SubmenuView : public View,
 
   // Creates a SubmenuView for the specified menu item.
   explicit SubmenuView(MenuItemView* parent);
+
+  SubmenuView(const SubmenuView&) = delete;
+  SubmenuView& operator=(const SubmenuView&) = delete;
+
   ~SubmenuView() override;
 
   // Returns true if the submenu has at least one empty menu item.
@@ -65,7 +72,7 @@ class VIEWS_EXPORT SubmenuView : public View,
   MenuItems GetMenuItems() const;
 
   // Returns the MenuItemView at the specified index.
-  MenuItemView* GetMenuItemAt(int index);
+  MenuItemView* GetMenuItemAt(size_t index);
 
   PrefixSelector* GetPrefixSelector();
 
@@ -88,7 +95,8 @@ class VIEWS_EXPORT SubmenuView : public View,
   void OnDragEntered(const ui::DropTargetEvent& event) override;
   int OnDragUpdated(const ui::DropTargetEvent& event) override;
   void OnDragExited() override;
-  int OnPerformDrop(const ui::DropTargetEvent& event) override;
+  views::View::DropCallback GetDropCallback(
+      const ui::DropTargetEvent& event) override;
 
   // Scrolls on menu item boundaries.
   bool OnMouseWheel(const ui::MouseWheelEvent& e) override;
@@ -98,20 +106,20 @@ class VIEWS_EXPORT SubmenuView : public View,
   void OnGestureEvent(ui::GestureEvent* event) override;
 
   // Overridden from PrefixDelegate.
-  int GetRowCount() override;
-  int GetSelectedRow() override;
-  void SetSelectedRow(int row) override;
-  base::string16 GetTextForRow(int row) override;
+  size_t GetRowCount() override;
+  absl::optional<size_t> GetSelectedRow() override;
+  void SetSelectedRow(absl::optional<size_t> row) override;
+  std::u16string GetTextForRow(size_t row) override;
 
   // Returns true if the menu is showing.
   virtual bool IsShowing() const;
 
-  // Shows the menu at the specified location. Coordinates are in screen
-  // coordinates. max_width gives the max width the view should be.
-  void ShowAt(Widget* parent, const gfx::Rect& bounds, bool do_capture);
+  // Shows the menu using the specified |init_params|. |init_params.bounds| are
+  // in screen coordinates.
+  void ShowAt(const MenuHost::InitParams& init_params);
 
-  // Resets the bounds of the submenu to |bounds|.
-  void Reposition(const gfx::Rect& bounds);
+  // Resets the bounds of the submenu to |bounds| and its anchor to |anchor|.
+  void Reposition(const gfx::Rect& bounds, const ui::OwnedWindowAnchor& anchor);
 
   // Closes the menu, destroying the host.
   void Close();
@@ -143,7 +151,7 @@ class VIEWS_EXPORT SubmenuView : public View,
   // Returns whether the selection should be shown for the specified item.
   // The selection is NOT shown during drag and drop when the drop is over
   // the menu.
-  bool GetShowSelection(MenuItemView* item);
+  bool GetShowSelection(const MenuItemView* item) const;
 
   // Returns the container for the SubmenuView.
   MenuScrollViewContainer* GetScrollViewContainer();
@@ -194,30 +202,30 @@ class VIEWS_EXPORT SubmenuView : public View,
   bool OnScroll(float dx, float dy) override;
 
   // Parent menu item.
-  MenuItemView* parent_menu_item_;
+  raw_ptr<MenuItemView> parent_menu_item_;
 
   // Widget subclass used to show the children. This is deleted when we invoke
   // |DestroyMenuHost|, or |MenuHostDestroyed| is invoked back on us.
-  MenuHost* host_;
+  raw_ptr<MenuHost> host_;
 
   // If non-null, indicates a drop is in progress and drop_item is the item
   // the drop is over.
-  MenuItemView* drop_item_;
+  raw_ptr<MenuItemView> drop_item_;
 
   // Position of the drop.
-  MenuDelegate::DropPosition drop_position_;
+  MenuDelegate::DropPosition drop_position_ = MenuDelegate::DropPosition::kNone;
 
   // Ancestor of the SubmenuView, lazily created.
-  MenuScrollViewContainer* scroll_view_container_;
+  raw_ptr<MenuScrollViewContainer, DanglingUntriaged> scroll_view_container_;
 
   // See description above getter.
-  mutable int max_minor_text_width_;
+  mutable int max_minor_text_width_ = 0;
 
   // Minimum width returned in GetPreferredSize().
-  int minimum_preferred_width_;
+  int minimum_preferred_width_ = 0;
 
   // Reposition open menu when contained views change size.
-  bool resize_open_menu_;
+  bool resize_open_menu_ = false;
 
   // The submenu's scroll animator
   std::unique_ptr<ScrollAnimator> scroll_animator_;
@@ -226,11 +234,9 @@ class VIEWS_EXPORT SubmenuView : public View,
   // OnScroll.
   // TODO(tdresser): This should be removed when raw pixel scrolling for views
   // is enabled. See crbug.com/329354.
-  float roundoff_error_;
+  float roundoff_error_ = 0;
 
   PrefixSelector prefix_selector_;
-
-  DISALLOW_COPY_AND_ASSIGN(SubmenuView);
 };
 
 }  // namespace views

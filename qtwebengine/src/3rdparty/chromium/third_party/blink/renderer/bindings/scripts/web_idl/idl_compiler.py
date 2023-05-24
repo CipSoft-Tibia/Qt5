@@ -1,7 +1,8 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import collections
 import functools
 import itertools
 import posixpath
@@ -10,6 +11,7 @@ from blinkbuild.name_style_converter import NameStyleConverter
 
 from .callback_function import CallbackFunction
 from .callback_interface import CallbackInterface
+from .composition_parts import DebugInfo
 from .composition_parts import Identifier
 from .constructor import Constructor
 from .constructor import ConstructorGroup
@@ -23,16 +25,18 @@ from .extended_attribute import ExtendedAttributesMutable
 from .idl_type import IdlTypeFactory
 from .interface import Interface
 from .interface import LegacyWindowAlias
+from .interface import SyncIterator
 from .ir_map import IRMap
 from .make_copy import make_copy
 from .namespace import Namespace
+from .observable_array import ObservableArray
+from .operation import Operation
 from .operation import OperationGroup
 from .reference import RefByIdFactory
 from .typedef import Typedef
 from .union import Union
 from .user_defined_type import StubUserDefinedType
 from .user_defined_type import UserDefinedType
-from .validator import validate_after_resolve_references
 
 
 class IdlCompiler(object):
@@ -84,11 +88,6 @@ class IdlCompiler(object):
         assert not self._did_run
         self._did_run = True
 
-        # Remove the interface members that are specific to the old bindings
-        # generator, i.e. that are not necessary for (or even harmful to) the
-        # new bindings generator.
-        self._remove_legacy_interface_members()
-
         # Merge partial definitions.
         self._record_defined_in_partial_and_mixin()
         self._propagate_extattrs_per_idl_fragment()
@@ -108,6 +107,8 @@ class IdlCompiler(object):
 
         self._copy_named_constructor_extattrs()
 
+        self._create_sync_iterators()
+
         # Make groups of overloaded functions including inherited ones.
         self._group_overloaded_functions()
         self._propagate_extattrs_to_overload_group()
@@ -123,10 +124,12 @@ class IdlCompiler(object):
         # Resolve references.
         self._resolve_references_to_idl_def()
         self._resolve_references_to_idl_type()
-        validate_after_resolve_references(self._ir_map)
 
         # Build union API objects.
         self._create_public_unions()
+
+        # Build observable array API objects.
+        self._create_public_observable_arrays()
 
         return Database(self._db)
 
@@ -134,23 +137,6 @@ class IdlCompiler(object):
         # You can make this function return make_copy(ir) for debugging
         # purpose, etc.
         return ir  # Skip copying as an optimization.
-
-    def _remove_legacy_interface_members(self):
-        old_irs = self._ir_map.irs_of_kinds(
-            IRMap.IR.Kind.INTERFACE, IRMap.IR.Kind.INTERFACE_MIXIN,
-            IRMap.IR.Kind.PARTIAL_INTERFACE,
-            IRMap.IR.Kind.PARTIAL_INTERFACE_MIXIN)
-
-        not_disabled = (
-            lambda x: 'DisableInNewIDLCompiler' not in x.extended_attributes)
-
-        self._ir_map.move_to_new_phase()
-
-        for old_ir in old_irs:
-            new_ir = make_copy(old_ir)
-            self._ir_map.add(new_ir)
-            new_ir.attributes = filter(not_disabled, new_ir.attributes)
-            new_ir.operations = filter(not_disabled, new_ir.operations)
 
     def _record_defined_in_partial_and_mixin(self):
         old_irs = self._ir_map.irs_of_kinds(
@@ -231,7 +217,7 @@ class IdlCompiler(object):
                       only_to_members_of_partial_or_mixin=False)
             propagate_to_exposure(propagate)
 
-            map(process_member_like, ir.iter_all_members())
+            list(map(process_member_like, ir.iter_all_members()))
 
         def process_member_like(ir):
             propagate = functools.partial(propagate_extattr, ir=ir)
@@ -244,6 +230,10 @@ class IdlCompiler(object):
             propagate(('Exposed', 'add_global_name_and_feature'))
             propagate(('RuntimeEnabled', 'add_runtime_enabled_feature'))
             propagate(('ContextEnabled', 'add_context_enabled_feature'))
+            propagate(('CrossOriginIsolated', 'set_only_in_coi_contexts'),
+                      default_value=True)
+            propagate(('IsolatedContext', 'set_only_in_isolated_contexts'),
+                      default_value=True)
             propagate(('SecureContext', 'set_only_in_secure_contexts'),
                       default_value=True)
 
@@ -257,7 +247,7 @@ class IdlCompiler(object):
 
         self._ir_map.move_to_new_phase()
 
-        map(process_interface_like, old_irs)
+        list(map(process_interface_like, old_irs))
 
     def _determine_blink_headers(self):
         irs = self._ir_map.irs_of_kinds(
@@ -286,7 +276,27 @@ class IdlCompiler(object):
                                     posixpath.extsep.join([filename, 'h']))
             new_ir.code_generator_info.set_blink_headers([header])
 
+    def _check_existence_of_non_partials(self, non_partial_kind, partial_kind):
+        non_partials = self._ir_map.find_by_kind(non_partial_kind)
+        partials = self._ir_map.find_by_kind(partial_kind)
+        for identifier, partial_irs in partials.items():
+            if not non_partials.get(identifier):
+                locations = ''.join(
+                    map(lambda ir: '  {}\n'.format(ir.debug_info.location),
+                        partial_irs))
+                raise ValueError(
+                    '{} {} is defined without a non-partial definition.\n'
+                    '{}'.format(partial_irs[0].kind, identifier, locations))
+
     def _merge_partial_interface_likes(self):
+        self._check_existence_of_non_partials(IRMap.IR.Kind.INTERFACE,
+                                              IRMap.IR.Kind.PARTIAL_INTERFACE)
+        self._check_existence_of_non_partials(
+            IRMap.IR.Kind.INTERFACE_MIXIN,
+            IRMap.IR.Kind.PARTIAL_INTERFACE_MIXIN)
+        self._check_existence_of_non_partials(IRMap.IR.Kind.NAMESPACE,
+                                              IRMap.IR.Kind.PARTIAL_NAMESPACE)
+
         irs = self._ir_map.irs_of_kinds(IRMap.IR.Kind.INTERFACE,
                                         IRMap.IR.Kind.INTERFACE_MIXIN,
                                         IRMap.IR.Kind.NAMESPACE)
@@ -304,6 +314,9 @@ class IdlCompiler(object):
         self._merge_interface_like_irs(ir_sets_to_merge)
 
     def _merge_partial_dictionaries(self):
+        self._check_existence_of_non_partials(IRMap.IR.Kind.DICTIONARY,
+                                              IRMap.IR.Kind.PARTIAL_DICTIONARY)
+
         old_dictionaries = self._ir_map.find_by_kind(IRMap.IR.Kind.DICTIONARY)
         old_partial_dictionaries = self._ir_map.find_by_kind(
             IRMap.IR.Kind.PARTIAL_DICTIONARY)
@@ -422,9 +435,9 @@ class IdlCompiler(object):
             assert not new_interface.deriveds
             derived_set = identifier_to_derived_set.get(
                 new_interface.identifier, set())
-            new_interface.deriveds = map(
-                lambda id_: self._ref_to_idl_def_factory.create(id_),
-                sorted(derived_set))
+            new_interface.deriveds = list(
+                map(lambda id_: self._ref_to_idl_def_factory.create(id_),
+                    sorted(derived_set)))
 
     def _supplement_missing_html_constructor_operation(self):
         # Temporary mitigation of misuse of [HTMLConstructor]
@@ -477,6 +490,44 @@ class IdlCompiler(object):
             for named_constructor_ir in new_ir.named_constructors:
                 copy_extattrs(new_ir.extended_attributes, named_constructor_ir)
 
+    def _create_sync_iterators(self):
+        old_irs = self._ir_map.irs_of_kind(IRMap.IR.Kind.INTERFACE)
+
+        self._ir_map.move_to_new_phase()
+
+        for old_ir in old_irs:
+            new_ir = self._maybe_make_copy(old_ir)
+            self._ir_map.add(new_ir)
+
+            if not ((new_ir.iterable and new_ir.iterable.key_type)
+                    or new_ir.maplike or new_ir.setlike):
+                continue
+
+            assert not new_ir.sync_iterator
+            sync_iterable = (new_ir.iterable or new_ir.maplike
+                             or new_ir.setlike)
+            component = new_ir.components[0]
+            debug_info = DebugInfo()
+            debug_info.add_locations(sync_iterable.debug_info.all_locations)
+            # 'next' property is defined at:
+            # https://webidl.spec.whatwg.org/#es-iterator-prototype-object
+            next_op = Operation.IR(
+                identifier=Identifier('next'),
+                arguments=[],
+                return_type=self._idl_type_factory.simple_type('object'),
+                extended_attributes=ExtendedAttributesMutable([
+                    ExtendedAttribute(key="CallWith", values="ScriptState"),
+                    ExtendedAttribute(key="RaisesException"),
+                ]),
+                component=component)
+            new_ir.sync_iterator = SyncIterator.IR(
+                interface_ir=new_ir,
+                component=component,
+                debug_info=debug_info,
+                key_type=sync_iterable.key_type,
+                value_type=sync_iterable.value_type,
+                operations=[next_op])
+
     def _group_overloaded_functions(self):
         old_irs = self._ir_map.irs_of_kinds(IRMap.IR.Kind.CALLBACK_INTERFACE,
                                             IRMap.IR.Kind.INTERFACE,
@@ -485,12 +536,12 @@ class IdlCompiler(object):
         self._ir_map.move_to_new_phase()
 
         def make_groups(group_ir_class, operations):
-            sort_key = lambda x: x.identifier
+            sort_key = lambda x: (x.is_static, x.identifier)
             return [
                 group_ir_class(list(operations_in_group))
-                for identifier, operations_in_group in itertools.groupby(
+                for key, operations_in_group in itertools.groupby(
                     sorted(operations, key=sort_key), key=sort_key)
-                if identifier
+                if key[1]  # This is the operation identifier.
             ]
 
         for old_ir in old_irs:
@@ -516,10 +567,17 @@ class IdlCompiler(object):
                     item.operation_groups = make_groups(
                         OperationGroup.IR, item.operations)
 
+            for item in (new_ir.sync_iterator, ):
+                if item:
+                    assert not item.operation_groups
+                    item.operation_groups = make_groups(
+                        OperationGroup.IR, item.operations)
+
     def _propagate_extattrs_to_overload_group(self):
-        ANY_OF = ('CrossOrigin', 'Custom', 'LegacyLenientThis',
-                  'LegacyUnforgeable', 'NoAllocDirectCall', 'NotEnumerable',
-                  'PerWorldBindings', 'SecureContext', 'Unscopable')
+        ANY_OF = ('CrossOrigin', 'CrossOriginIsolated', 'Custom',
+                  'IsolatedContext', 'LegacyLenientThis', 'LegacyUnforgeable',
+                  'NoAllocDirectCall', 'NotEnumerable', 'PerWorldBindings',
+                  'SecureContext', 'Unscopable')
 
         old_irs = self._ir_map.irs_of_kinds(IRMap.IR.Kind.INTERFACE,
                                             IRMap.IR.Kind.NAMESPACE)
@@ -536,10 +594,18 @@ class IdlCompiler(object):
                            for overload in group):
                         group.extended_attributes.append(
                             ExtendedAttribute(key=key))
-                if all((overload.extended_attributes.value_of('Affects') ==
-                        'Nothing') for overload in group):
+
+                affects_values = set()
+                for overload in group:
+                    affects_values.add(
+                        overload.extended_attributes.value_of('Affects'))
+                assert len(affects_values) == 1, (
+                    "Overloaded operations have inconsistent extended "
+                    "attributes of [Affects].")
+                affects_value = affects_values.pop()
+                if affects_value:
                     group.extended_attributes.append(
-                        ExtendedAttribute(key='Affects', values='Nothing'))
+                        ExtendedAttribute(key='Affects', values=affects_value))
 
     def _calculate_group_exposure(self):
         old_irs = self._ir_map.irs_of_kinds(IRMap.IR.Kind.CALLBACK_INTERFACE,
@@ -553,7 +619,8 @@ class IdlCompiler(object):
             self._ir_map.add(new_ir)
 
             for group in new_ir.iter_all_overload_groups():
-                exposures = map(lambda overload: overload.exposure, group)
+                exposures = list(map(lambda overload: overload.exposure,
+                                     group))
 
                 # [Exposed]
                 if any(not exposure.global_names_and_features
@@ -564,6 +631,7 @@ class IdlCompiler(object):
                         for entry in exposure.global_names_and_features:
                             group.exposure.add_global_name_and_feature(
                                 entry.global_name, entry.feature)
+
 
                 # [RuntimeEnabled]
                 if any(not exposure.runtime_enabled_features
@@ -582,6 +650,20 @@ class IdlCompiler(object):
                     for exposure in exposures:
                         for name in exposure.context_enabled_features:
                             group.exposure.add_context_enabled_feature(name)
+
+                # [CrossOriginIsolated]
+                if any(not exposure.only_in_coi_contexts
+                       for exposure in exposures):
+                    pass  # Exposed by default.
+                else:
+                    group.exposure.set_only_in_coi_contexts(True)
+
+                # [IsolatedContext]
+                if any(not exposure.only_in_isolated_contexts
+                       for exposure in exposures):
+                    pass  # Exposed by default.
+                else:
+                    group.exposure.set_only_in_isolated_contexts(True)
 
                 # [SecureContext]
                 if any(exposure.only_in_secure_contexts is False
@@ -647,14 +729,23 @@ class IdlCompiler(object):
             self._ir_map.add(new_ir)
 
             assert not new_ir.exposed_constructs
+            # Not only [Global] but also [TargetOfExposed] will expose IDL
+            # constructs with [Exposed].
             global_names = new_ir.extended_attributes.values_of('Global')
-            if not global_names:
+            toe_names = new_ir.extended_attributes.values_of('TargetOfExposed')
+            if not (global_names or toe_names):
                 continue
             constructs = set()
             for global_name in global_names:
                 constructs.update(exposed_map.get(global_name, []))
-            new_ir.exposed_constructs = map(
-                self._ref_to_idl_def_factory.create, sorted(constructs))
+            if global_names:
+                # If it's a global object, then expose the constructs with the
+                # wildcard exposure ([Exposed=*]).
+                constructs.update(exposed_map.get('*', []))
+            for toe_name in toe_names:
+                constructs.update(exposed_map.get(toe_name, []))
+            new_ir.exposed_constructs = list(
+                map(self._ref_to_idl_def_factory.create, sorted(constructs)))
 
             assert not new_ir.legacy_window_aliases
             if new_ir.identifier != 'Window':
@@ -743,43 +834,81 @@ class IdlCompiler(object):
 
         self._idl_type_factory.for_each(collect_unions)
 
-        def unique_key(union_type):
-            """
-            Returns an unique (but meaningless) key.  Returns the same key for
-            the identical union types.
-            """
-            # TODO(peria, yukishiino): Produce unique union names.  Trying to
-            # produce the names compatible to the old bindings generator for
-            # the time being.
-            key_pieces = []
-
-            def flatten_member_types(idl_type):
-                idl_type = idl_type.unwrap()
-                if idl_type.is_union:
-                    for member_type in idl_type.member_types:
-                        flatten_member_types(member_type)
-                else:
-                    key_pieces.append(idl_type.syntactic_form)
-
-            flatten_member_types(union_type)
-            return '|'.join(key_pieces)
-
-        grouped_unions = {}  # {unique key: list of union types}
+        grouped_unions = {}  # {unique token: list of union types}
         for union_type in all_union_types:
-            key = unique_key(union_type)
-            grouped_unions.setdefault(key, []).append(union_type)
+            token = Union.unique_token(union_type)
+            grouped_unions.setdefault(token, []).append(union_type)
 
-        grouped_typedefs = {}  # {unique key: list of typedefs to the union}
+        irs = {}  # {token: Union.IR}
+        for token, union_types in grouped_unions.items():
+            irs[token] = Union.IR(token, union_types)
+
         all_typedefs = self._db.find_by_kind(DatabaseBody.Kind.TYPEDEF)
         for typedef in all_typedefs.values():
             if not typedef.idl_type.is_union:
                 continue
-            key = unique_key(typedef.idl_type)
-            grouped_typedefs.setdefault(key, []).append(typedef)
+            token = Union.unique_token(typedef.idl_type)
+            irs[token].typedefs.append(typedef)
 
-        for key, union_types in grouped_unions.items():
-            self._db.register(
-                DatabaseBody.Kind.UNION,
-                Union(
-                    union_types=union_types,
-                    typedef_backrefs=grouped_typedefs.get(key, [])))
+        for ir_i in irs.values():
+            for ir_j in irs.values():
+                if ir_i.contains(ir_j):
+                    ir_i.sub_union_irs.append(ir_j)
+
+        for ir in sorted(irs.values()):
+            union = Union(ir)
+            # Make all UnionType instances point to the same Union.
+            for union_idl_type in union.idl_types:
+                union_idl_type.set_union_definition_object(union)
+            self._db.register(DatabaseBody.Kind.UNION, union)
+
+    def _create_public_observable_arrays(self):
+        # ObservableArrayType instances with the same element type are
+        # indistinguishable (in an __eq__() and __hash__() sense).
+        #
+        # We go through all attributes that are ObservableArrayTypes, group the
+        # indistinguishable ones together and later assign one ObservableArray
+        # to all items in the group.
+
+        # This can become a dataclasses.dataclass once we can start using
+        # Python 3 language features in this file.
+        class ObservableArrayTypeInfo(object):
+            def __init__(self):
+                self.attributes = []
+                self.for_testing = True
+                self.idl_types = []
+
+        grouped_type_info = collections.defaultdict(ObservableArrayTypeInfo)
+
+        for interface in (self._db.find_by_kind(
+                DatabaseBody.Kind.INTERFACE).values()):
+            for attribute in interface.attributes:
+                idl_type = attribute.idl_type.unwrap()
+                if not idl_type.is_observable_array:
+                    continue
+                if not interface.code_generator_info.for_testing:
+                    grouped_type_info[idl_type].for_testing = False
+                grouped_type_info[idl_type].attributes.append(attribute)
+                grouped_type_info[idl_type].idl_types.append(idl_type)
+
+        for idl_type_info in grouped_type_info.values():
+            # All the types in idl_types are indistinguishable; pick one for
+            # ObservableArray.
+            observable_array = ObservableArray(idl_type_info.idl_types[0],
+                                               idl_type_info.attributes,
+                                               idl_type_info.for_testing)
+            for idl_type in idl_type_info.idl_types:
+                if idl_type.observable_array_definition_object:
+                    # When an IDL attribute is declared in an IDL interface
+                    # mixin, it's possible that the exactly same
+                    # web_idl.Attribute is held in two (or more)
+                    # web_idl.Interfaces. Then, it's possible that
+                    # set_observable_array_definition_object has already been
+                    # called.
+                    assert (idl_type.observable_array_definition_object is
+                            observable_array)
+                    continue
+                idl_type.set_observable_array_definition_object(
+                    observable_array)
+            self._db.register(DatabaseBody.Kind.OBSERVABLE_ARRAY,
+                              observable_array)

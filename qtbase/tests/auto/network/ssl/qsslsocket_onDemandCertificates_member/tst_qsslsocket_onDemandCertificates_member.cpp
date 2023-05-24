@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtNetwork>
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <QNetworkProxy>
 #include <QAuthenticator>
@@ -219,6 +194,7 @@ static bool waitForEncrypted(QSslSocket *socket)
 
 void tst_QSslSocket_onDemandCertificates_member::onDemandRootCertLoadingMemberMethods()
 {
+#define ERR(socket) socket->errorString().toLatin1()
     const QString host("www.qt.io");
 
     // not using any root certs -> should not work
@@ -228,13 +204,13 @@ void tst_QSslSocket_onDemandCertificates_member::onDemandRootCertLoadingMemberMe
     sslConfig.setCaCertificates(QList<QSslCertificate>());
     socket2->setSslConfiguration(sslConfig);
     socket2->connectToHostEncrypted(host, 443);
-    QVERIFY(!waitForEncrypted(socket2.data()));
+    QVERIFY2(!waitForEncrypted(socket2.data()), ERR(socket2));
 
     // default: using on demand loading -> should work
     QSslSocketPtr socket = newSocket();
     this->socket = socket.data();
     socket->connectToHostEncrypted(host, 443);
-    QVERIFY2(waitForEncrypted(socket.data()), qPrintable(socket->errorString()));
+    QVERIFY2(waitForEncrypted(socket.data()), ERR(socket));
 
     // not using any root certs again -> should not work
     QSslSocketPtr socket3 = newSocket();
@@ -243,7 +219,7 @@ void tst_QSslSocket_onDemandCertificates_member::onDemandRootCertLoadingMemberMe
     sslConfig.setCaCertificates(QList<QSslCertificate>());
     socket3->setSslConfiguration(sslConfig);
     socket3->connectToHostEncrypted(host, 443);
-    QVERIFY(!waitForEncrypted(socket3.data()));
+    QVERIFY2(!waitForEncrypted(socket3.data()), ERR(socket3));
 
     // setting empty SSL configuration explicitly -> depends on on-demand loading
     QSslSocketPtr socket4 = newSocket();
@@ -254,16 +230,20 @@ void tst_QSslSocket_onDemandCertificates_member::onDemandRootCertLoadingMemberMe
 #ifdef QT_BUILD_INTERNAL
     const bool works = QSslSocketPrivate::rootCertOnDemandLoadingSupported();
 #if defined(Q_OS_LINUX) || defined(Q_OS_WIN)
-    QCOMPARE(works, true);
+    QVERIFY2(works, ERR(socket4));
 #elif defined(Q_OS_MAC)
-    QCOMPARE(works, false);
+    QVERIFY2(!works, ERR(socket4));
 #endif // other platforms: undecided.
     // When we *allow* on-demand loading, we enable it by default; so, on Unix,
     // it will work without setting any certificates.  Otherwise, the configuration
     // contains an empty set of certificates, so on-demand loading shall fail.
-   QCOMPARE(waitForEncrypted(socket4.data()), works);
+    const bool result = waitForEncrypted(socket4.data());
+    if (result != works)
+        qDebug() << socket4->errorString();
+    QCOMPARE(waitForEncrypted(socket4.data()), works);
 #endif // QT_BUILD_INTERNAL
 }
+#undef ERR
 
 #endif // QT_NO_OPENSSL
 

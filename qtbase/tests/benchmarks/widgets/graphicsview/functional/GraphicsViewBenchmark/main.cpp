@@ -1,36 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
-#include <QtGui/qgraphicsview.h>
+#include <QTest>
 #include <QtGui/qpixmapcache.h>
-#include <QtGui/qdesktopwidget.h>
+#include <QtGui/QScreen>
 
 #include "mainview.h"
 #include "dummydatagen.h"
@@ -308,7 +282,8 @@ void tst_GraphicsViewBenchmark::initTestCase()
     if (mSettings->size().width() > 0 && mSettings->size().height() > 0) {
         mMainView->resize(mSettings->size().width(), mSettings->size().height());
         mMainView->show();
-    } else if (QApplication::desktop()->width() < 360 || QApplication::desktop()->height() < 640) {
+    } else if (QGuiApplication::primaryScreen()->geometry().width() < 360
+            || QGuiApplication::primaryScreen()->geometry().height() < 640) {
         mMainView->showFullScreen();
     } else {
         mMainView->resize(360, 640);
@@ -326,7 +301,7 @@ void tst_GraphicsViewBenchmark::initTestCase()
     currentListSize = -1;
     currentListType = None;
 
-    QVERIFY(QTest::qWaitForWindowShown(mMainView));
+    QVERIFY(QTest::qWaitForWindowExposed(mMainView));
 }
 
 void tst_GraphicsViewBenchmark::cleanupTestCase()
@@ -760,7 +735,8 @@ int main(int argc, char *argv[])
         if (settings.size().width() > 0 && settings.size().height() > 0) {
             view.resize(settings.size().width(), settings.size().height());
             view.show();
-        } else if (QApplication::desktop()->width() < 360 || QApplication::desktop()->height() < 640) {
+        } else if (QGuiApplication::primaryScreen()->geometry().width() < 360
+                || QApplication::primaryScreen()->geometry().height() < 640) {
             view.showFullScreen();
         } else {
             view.resize(360, 640);

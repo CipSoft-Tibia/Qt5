@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,7 +15,7 @@ namespace ui_util {
 // Returns true if an extension with the given |type| and |location| should be
 // displayed in the extension settings page (e.g. chrome://extensions).
 bool ShouldDisplayInExtensionSettings(Manifest::Type type,
-                                      Manifest::Location location);
+                                      mojom::ManifestLocation location);
 // Convenience method of the above taking an Extension object.
 bool ShouldDisplayInExtensionSettings(const Extension& extension);
 

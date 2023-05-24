@@ -1,47 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qwindowdump.h"
 
-#if QT_VERSION > 0x050000
-#  include <QtGui/QGuiApplication>
-#  include <QtGui/QScreen>
-#  include <QtGui/QWindow>
-#  include <qpa/qplatformwindow.h>
-#  include <private/qwindow_p.h>
-#  if QT_VERSION >= 0x050600
-#    include <private/qhighdpiscaling_p.h>
-#  endif
-#endif
+#include <QtGui/QGuiApplication>
+#include <QtGui/QScreen>
+#include <QtGui/QWindow>
+#include <QtCore/QDebug>
 #include <QtCore/QMetaObject>
 #include <QtCore/QRect>
-#include <QtCore/QDebug>
 #include <QtCore/QTextStream>
+
+#include <qpa/qplatformwindow.h>
+#include <private/qwindow_p.h>
+#include <private/qhighdpiscaling_p.h>
 
 namespace QtDiag {
 
@@ -61,8 +33,8 @@ void formatObject(QTextStream &str, const QObject *o)
 
 void formatRect(QTextStream &str, const QRect &geom)
 {
-    str << geom.width() << 'x' << geom.height()
-        << Qt::forcesign << geom.x() << geom.y() << Qt::noforcesign;
+    str << geom.width() << 'x' << geom.height() << Qt::forcesign
+        << geom.x() << geom.y() << Qt::noforcesign;
 }
 
 #define debugType(s, type, typeConstant) \
@@ -87,10 +59,8 @@ void formatWindowFlags(QTextStream &str, Qt::WindowFlags flags)
     debugType(str, windowType, Qt::SplashScreen)
     debugType(str, windowType, Qt::Desktop)
     debugType(str, windowType, Qt::SubWindow)
-#if QT_VERSION > 0x050000
     debugType(str, windowType, Qt::ForeignWindow)
     debugType(str, windowType, Qt::CoverWindow)
-#endif
     debugFlag(str, flags, Qt::MSWindowsFixedSizeDialogHint)
     debugFlag(str, flags, Qt::MSWindowsOwnDC)
     debugFlag(str, flags, Qt::X11BypassWindowManagerHint)
@@ -103,19 +73,15 @@ void formatWindowFlags(QTextStream &str, Qt::WindowFlags flags)
     debugFlag(str, flags, Qt::WindowShadeButtonHint)
     debugFlag(str, flags, Qt::WindowStaysOnTopHint)
     debugFlag(str, flags, Qt::CustomizeWindowHint)
-#if QT_VERSION > 0x050000
     debugFlag(str, flags, Qt::WindowTransparentForInput)
     debugFlag(str, flags, Qt::WindowOverridesSystemGestures)
     debugFlag(str, flags, Qt::WindowDoesNotAcceptFocus)
     debugFlag(str, flags, Qt::NoDropShadowWindowHint)
     debugFlag(str, flags, Qt::WindowFullscreenButtonHint)
-#endif
     debugFlag(str, flags, Qt::WindowStaysOnBottomHint)
     debugFlag(str, flags, Qt::MacWindowToolBarButtonHint)
     debugFlag(str, flags, Qt::BypassGraphicsProxyWidget)
 }
-
-#if QT_VERSION > 0x050000
 
 void formatWindow(QTextStream &str, const QWindow *w, FormatWindowOptions options)
 {
@@ -123,7 +89,8 @@ void formatWindow(QTextStream &str, const QWindow *w, FormatWindowOptions option
     formatObject(str, w);
     str << ' ' << (w->isVisible() ? "[visible] " : "[hidden] ");
     if (const WId nativeWinId = pw ? pw->winId() : WId(0))
-        str << "[native: " << Qt::hex << Qt::showbase << nativeWinId << Qt::dec << Qt::noshowbase << "] ";
+        str << "[native: " << Qt::hex << Qt::showbase << nativeWinId << Qt::dec << Qt::noshowbase
+            << "] ";
     if (w->isTopLevel())
         str << "[top] ";
     if (w->isExposed())
@@ -136,10 +103,8 @@ void formatWindow(QTextStream &str, const QWindow *w, FormatWindowOptions option
     formatRect(str, w->geometry());
     if (w->isTopLevel()) {
         str << " \"" << w->screen()->name() << "\" ";
-#if QT_VERSION >= 0x050600
         if (QHighDpiScaling::isActive())
             str << "factor=" << QHighDpiScaling::factor(w) << " dpr=" << w->devicePixelRatio();
-#endif
     }
     if (!(options & DontPrintWindowFlags)) {
         str << ' ';
@@ -175,24 +140,7 @@ void dumpAllWindows(FormatWindowOptions options)
     str << "### QWindows:\n";
     for (QWindow *w : QGuiApplication::topLevelWindows())
         dumpWindowRecursion(str, w, options);
-#if QT_VERSION >= 0x050400
     qDebug().noquote() << d;
-#else
-    qDebug() << d;
-#endif
 }
-
-#else // Qt 5
-class QWindow {};
-
-void formatWindow(QTextStream &, const QWindow *, FormatWindowOptions)
-{
-}
-
-void dumpAllWindows(FormatWindowOptions options)
-{
-}
-
-#endif // Qt 4
 
 } // namespace QtDiag

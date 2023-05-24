@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "abstractformeditor.h"
 #include "abstractmetadatabase.h"
@@ -152,7 +127,7 @@ void QView3DWidget::addTexture(QWidget *w, const QPixmap &pm)
 
 void QView3DWidget::addWidget(int depth, QWidget *widget)
 {
-    TextureMap::const_iterator it = m_texture_map.find(widget);
+    const auto it = m_texture_map.find(widget);
     Q_ASSERT(it != m_texture_map.end());
 
     makeCurrent();
@@ -188,7 +163,7 @@ void QView3DWidget::clear()
 {
     makeCurrent();
     glDeleteLists(m_form_list_id, 1);
-    for (TextureMap::iterator it = m_texture_map.begin(), end = m_texture_map.end(); it != end; ++it)
+    for (auto it = m_texture_map.begin(), end = m_texture_map.end(); it != end; ++it)
         glDeleteTextures(1, &(it.value()));
     m_texture_map.clear();
     m_widget_name_map.clear();
@@ -217,7 +192,7 @@ void QView3DWidget::initializeGL()
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    qglClearColor(palette().color(QPalette::Window).dark());
+    qglClearColor(palette().color(QPalette::Window).darker());
     glColor3f (1.0, 1.0, 1.0);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -399,9 +374,8 @@ static void grabWidget_helper(QWidget *widget, QPixmap &res, QPixmap &buf,
         pt.drawPixmap(offset.x(), offset.y(), buf, 0, 0, r.width(), r.height());
     }
 
-    const QObjectList children = widget->children();
-    for (int i = 0; i < children.size(); ++i) {
-        QWidget *child = qobject_cast<QWidget*>(children.at(i));
+    for (auto *o : widget->children()) {
+        QWidget *child = qobject_cast<QWidget*>(o);
         if (child == 0 || child->isWindow())
             continue;
         if (child->isHidden() || !child->geometry().intersects(r))

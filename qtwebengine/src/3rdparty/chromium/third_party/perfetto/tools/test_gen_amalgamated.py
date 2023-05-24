@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright (C) 2019 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,7 +43,7 @@ def call(cmd, *args):
   try:
     return subprocess.check_output(command, cwd=ROOT_DIR).decode()
   except subprocess.CalledProcessError as e:
-    assert False, 'Command: %s failed: %s'.format(' '.join(command))
+    assert False, 'Command: %s failed: %s' % (' '.join(command), e)
 
 
 def check_amalgamated_output():
@@ -52,7 +52,7 @@ def check_amalgamated_output():
 
 def check_amalgamated_build():
   args = [
-      '-std=c++11', '-Werror', '-Wall', '-Wextra',
+      '-std=c++17', '-Werror', '-Wall', '-Wextra',
       '-DPERFETTO_AMALGAMATED_SDK_TEST', '-I' + OUT_DIR,
       OUT_DIR + '/perfetto.cc', 'test/client_api_example.cc', '-o',
       OUT_DIR + '/test'
@@ -63,7 +63,7 @@ def check_amalgamated_build():
   if sys.platform.startswith('linux'):
     llvm_script = os.path.join(ROOT_DIR, 'gn', 'standalone', 'toolchain',
                                'linux_find_llvm.py')
-    cxx = subprocess.check_output([llvm_script]).splitlines()[2]
+    cxx = subprocess.check_output([llvm_script]).splitlines()[2].decode()
   else:
     cxx = 'clang++'
   call(cxx, *args)

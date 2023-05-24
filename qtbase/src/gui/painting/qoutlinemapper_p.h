@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QOUTLINEMAPPER_P_H
 #define QOUTLINEMAPPER_P_H
@@ -66,10 +30,13 @@
 
 QT_BEGIN_NAMESPACE
 
-// This limitations comes from qgrayraster.c. Any higher and
-// rasterization of shapes will produce incorrect results.
-const int QT_RASTER_COORD_LIMIT = 32767;
-
+// These limitations comes from qrasterizer.cpp, qcosmeticstroker.cpp, and qgrayraster.c.
+// Any higher and rasterization of shapes will produce incorrect results.
+#if Q_PROCESSOR_WORDSIZE == 8
+constexpr int QT_RASTER_COORD_LIMIT = ((1<<23) - 1); // F24dot8 in qgrayraster.c
+#else
+constexpr int QT_RASTER_COORD_LIMIT = ((1<<15) - 1); // F16dot16 in qrasterizer.cpp and qcosmeticstroker.cpp
+#endif
 //#define QT_DEBUG_CONVERT
 
 Q_GUI_EXPORT bool qt_scaleForTransform(const QTransform &transform, qreal *scale);
@@ -78,7 +45,7 @@ Q_GUI_EXPORT bool qt_scaleForTransform(const QTransform &transform, qreal *scale
  * class QOutlineMapper
  *
  * Used to map between QPainterPath and the QT_FT_Outline structure used by the
- * freetype scanconvertor.
+ * freetype scanconverter.
  *
  * The outline mapper uses a path iterator to get points from the path,
  * so that it is possible to transform the points as they are converted. The
@@ -111,6 +78,8 @@ public:
         qt_scaleForTransform(m, &scale);
         m_curve_threshold = scale == 0 ? qreal(0.25) : (qreal(0.25) / scale);
     }
+
+    void setClipRect(QRect clipRect);
 
     void beginOutline(Qt::FillRule fillRule)
     {
@@ -196,6 +165,7 @@ public:
     QDataBuffer<int> m_contours;
 
     QRect m_clip_rect;
+    QRectF m_clip_trigger_rect;
     QRectF controlPointRect; // only valid after endOutline()
 
     QT_FT_Outline m_outline;

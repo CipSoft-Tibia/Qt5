@@ -1,84 +1,74 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-import QtQuick 2.0
+import QtQuick
 
 Rectangle {
     id: page
     width: 320; height: 480;
     color: "#1e1b18"
 
+    state: "right"
+    states: [
+        State {
+            name: "left"
+            PropertyChanges {
+                leftBat {
+                    y: (ball.y + ball.height / 2) - leftBat.height / 2
+                }
+                rightBat {
+                    y: page.height / 2 - rightBat.height / 2
+                }
+            }
+        },
+        State {
+            name: "right"
+            PropertyChanges {
+                rightBat {
+                    y: (ball.y + ball.height / 2) - rightBat.height / 2
+                }
+                leftBat {
+                    y: page.height / 2 - leftBat.height / 2
+                }
+            }
+        }
+    ]
+
+    transitions: [
+        Transition {
+            from: "left"; to: "right"
+            NumberAnimation { property: "y"; easing.type: Easing.InOutQuad; duration: 200}
+        },
+        Transition {
+            from: "right"; to: "left"
+            NumberAnimation { property: "y"; easing.type: Easing.InOutQuad; duration: 200}
+        }
+    ]
+
     // Make a ball to bounce
     Rectangle {
         id: ball
 
-        // Add a property for the target y coordinate
-        property variant direction : "right"
-
-        x: 20; width: 20; height: 20; z: 1
+        width: 20
+        height: 20
+        z: 1
         color: "#80c342"
 
         // Move the ball to the right and back to the left repeatedly
         SequentialAnimation on x {
             loops: Animation.Infinite
             NumberAnimation { to: page.width - 40; duration: 2000 }
-            PropertyAction { target: ball; property: "direction"; value: "left" }
+            PropertyAction { target: page; property: "state"; value: "left" }
             NumberAnimation { to: 20; duration: 2000 }
-            PropertyAction { target: ball; property: "direction"; value: "right" }
+            PropertyAction { target: page; property: "state"; value: "right" }
         }
 
         // Make y move with a velocity of 200
-        Behavior on y { SpringAnimation{ velocity: 200; }
+        Behavior on y {
+            SpringAnimation { velocity: 200; }
         }
 
-        Component.onCompleted: y = page.height-10; // start the ball motion
+        Component.onCompleted: y = page.height - 10; // start the ball motion
 
         // Detect the ball hitting the top or bottom of the view and bounce it
         onYChanged: {
@@ -95,31 +85,27 @@ Rectangle {
     Rectangle {
         id: leftBat
         color: "#328930"
-        x: 2; width: 20; height: 90
-        // ![0]
-        y: ball.direction == 'left' ? ball.y - 45 : page.height/2 -45;
-        Behavior on y { SpringAnimation{ velocity: 300 } }
-        // ![0]
+        width: 20; height: 90
+        x: 2;
     }
     Rectangle {
         id: rightBat
         color: "#328930"
-        x: page.width - 22; width: 20; height: 90
-        y: ball.direction == 'right' ? ball.y - 45 : page.height/2 -45;
-        Behavior on y { SpringAnimation{ velocity: 300 } }
+        width: 20; height: 90
+        x: page.width - width - 2
     }
 
     // The rest, to make it look realistic, if neither ever scores...
-    Rectangle { color: "#328930"; x: page.width/2-80; y: 0; width: 40; height: 60 }
-    Rectangle { color: "#1e1b18"; x: page.width/2-70; y: 10; width: 20; height: 40 }
-    Rectangle { color: "#328930"; x: page.width/2+40; y: 0; width: 40; height: 60 }
-    Rectangle { color: "#1e1b18"; x: page.width/2+50; y: 10; width: 20; height: 40 }
+    Rectangle { color: "#328930"; x: page.width / 2 - 80; y: 0; width: 40; height: 60 }
+    Rectangle { color: "#1e1b18"; x: page.width / 2 - 70; y: 10; width: 20; height: 40 }
+    Rectangle { color: "#328930"; x: page.width / 2 + 40; y: 0; width: 40; height: 60 }
+    Rectangle { color: "#1e1b18"; x: page.width / 2 + 50; y: 10; width: 20; height: 40 }
     Repeater {
         model: page.height / 20
-        Rectangle {
+        delegate: Rectangle {
             required property int index
             color: "#328930"
-            x: page.width / 2 - 5
+            x: parent.width / 2 - 5
             y: index * 20
             width: 10
             height: 10

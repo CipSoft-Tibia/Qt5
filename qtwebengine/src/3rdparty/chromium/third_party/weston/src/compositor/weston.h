@@ -95,6 +95,21 @@ text_backend_init(struct weston_compositor *ec);
 void
 text_backend_destroy(struct text_backend *text_backend);
 
+int
+wet_main(int argc, char *argv[]);
+
+
+/* test suite utilities */
+
+/** Opaque type for a test suite to define. */
+struct wet_testsuite_data;
+
+void
+wet_testsuite_data_set(struct wet_testsuite_data *data);
+
+struct wet_testsuite_data *
+wet_testsuite_data_get(void);
+
 #ifdef  __cplusplus
 }
 #endif

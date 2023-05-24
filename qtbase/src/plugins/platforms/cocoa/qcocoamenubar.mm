@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author James Turner <james.turner@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author James Turner <james.turner@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <AppKit/AppKit.h>
 
@@ -45,9 +9,13 @@
 #include "qcocoamenuloader.h"
 #include "qcocoaapplication.h" // for custom application category
 #include "qcocoaapplicationdelegate.h"
+#include "qcocoahelpers.h"
 
 #include <QtGui/QGuiApplication>
 #include <QtCore/QDebug>
+
+#include <QtCore/private/qcore_mac_p.h>
+#include <QtGui/private/qguiapplication_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -57,18 +25,19 @@ QCocoaMenuBar::QCocoaMenuBar()
 {
     static_menubars.append(this);
 
+    // clicks into the menu bar should close all popup windows
+    static QMacNotificationObserver menuBarClickObserver(nil, NSMenuDidBeginTrackingNotification, ^{
+        QGuiApplicationPrivate::instance()->closeAllPopups();
+    });
+
     m_nativeMenu = [[NSMenu alloc] init];
-#ifdef QT_COCOA_ENABLE_MENU_DEBUG
-    qDebug() << "Construct QCocoaMenuBar" << this << m_nativeMenu;
-#endif
+    qCDebug(lcQpaMenus) << "Constructed" << this << "with" << m_nativeMenu;
 }
 
 QCocoaMenuBar::~QCocoaMenuBar()
 {
-#ifdef QT_COCOA_ENABLE_MENU_DEBUG
-    qDebug() << "~QCocoaMenuBar" << this;
-#endif
-    for (auto menu : qAsConst(m_menus)) {
+    qCDebug(lcQpaMenus) << "Destructing" << this << "with" << m_nativeMenu;;
+    for (auto menu : std::as_const(m_menus)) {
         if (!menu)
             continue;
         NSMenuItem *item = nativeItemForMenu(menu);
@@ -121,17 +90,16 @@ void QCocoaMenuBar::insertMenu(QPlatformMenu *platformMenu, QPlatformMenu *befor
 {
     QCocoaMenu *menu = static_cast<QCocoaMenu *>(platformMenu);
     QCocoaMenu *beforeMenu = static_cast<QCocoaMenu *>(before);
-#ifdef QT_COCOA_ENABLE_MENU_DEBUG
-    qDebug() << "QCocoaMenuBar" << this << "insertMenu" << menu << "before" << before;
-#endif
+
+    qCDebug(lcQpaMenus) << "Inserting" << menu << "before" << before << "into" << this;
 
     if (m_menus.contains(QPointer<QCocoaMenu>(menu))) {
-        qWarning("This menu already belongs to the menubar, remove it first");
+        qCWarning(lcQpaMenus, "This menu already belongs to the menubar, remove it first");
         return;
     }
 
     if (beforeMenu && !m_menus.contains(QPointer<QCocoaMenu>(beforeMenu))) {
-        qWarning("The before menu does not belong to the menubar");
+        qCWarning(lcQpaMenus, "The before menu does not belong to the menubar");
         return;
     }
 
@@ -165,7 +133,7 @@ void QCocoaMenuBar::removeMenu(QPlatformMenu *platformMenu)
 {
     QCocoaMenu *menu = static_cast<QCocoaMenu *>(platformMenu);
     if (!m_menus.contains(menu)) {
-        qWarning("Trying to remove a menu that does not belong to the menubar");
+        qCWarning(lcQpaMenus) << "Trying to remove" << menu << "that does not belong to" << this;
         return;
     }
 
@@ -196,7 +164,7 @@ void QCocoaMenuBar::syncMenu_helper(QPlatformMenu *menu, bool menubarUpdate)
 
     BOOL shouldHide = YES;
     if (cocoaMenu->isVisible()) {
-        // If the NSMenu has no visble items, or only separators, we should hide it
+        // If the NSMenu has no visible items, or only separators, we should hide it
         // on the menubar. This can happen after syncing the menu items since they
         // can be moved to other menus.
         for (NSMenuItem *item in cocoaMenu->nsMenu().itemArray)
@@ -206,10 +174,45 @@ void QCocoaMenuBar::syncMenu_helper(QPlatformMenu *menu, bool menubarUpdate)
             }
     }
 
-    if (NSMenuItem *attachedItem = cocoaMenu->attachedItem()) {
-        // Non-nil attached item means the item's submenu is set
-        attachedItem.title = cocoaMenu->nsMenu().title;
-        attachedItem.hidden = shouldHide;
+    if (NSMenuItem *menuItem = cocoaMenu->attachedItem()) {
+        // Non-nil menu item means the item's sub menu is set
+
+        NSString *menuTitle = cocoaMenu->nsMenu().title;
+
+        // The NSMenu's title is what's visible to the user, and AppKit uses this
+        // for some of its heuristics of when to add special items to the menus,
+        // such as 'Enter Full Screen' in the View menu, the search bare in the
+        // Help menu, and the "Send App feedback to Apple" in the Help menu.
+        // This relies on the title matching AppKit's localized value from the
+        // MenuCommands table, which in turn depends on the preferredLocalizations
+        // of the AppKit bundle. We don't do any automatic translation of menu
+        // titles visible to the user, so this relies on the application developer
+        // having chosen translated titles that match AppKit's, and that the Qt
+        // preferred UI languages match AppKit's preferredLocalizations.
+
+        // In the case of the Edit menu, AppKit uses the NSMenuItem's title
+        // for its heuristics of when to add the dictation and emoji entries,
+        // and this title is not visible to the user. But like above, the
+        // heuristics are based on the localized title of the menu, so we need
+        // to ensure the title matches AppKit's localization.
+
+        // Unfortunately, the title we have at this point may have gone through
+        // Qt's i18n machinery already, via e.g. tr("Edit") in the application,
+        // in which case we don't know the context of the translation, and can't
+        // do a reverse lookup to go back to the untranslated title to pass to
+        // AppKit. As a workaround we translate the title via a our context,
+        // and document that the user needs to ensure their application matches
+        // this translation.
+        if ([menuTitle isEqual:@"Edit"] || [menuTitle isEqual:tr("Edit").toNSString()]) {
+            static const NSBundle *appKit = [NSBundle bundleForClass:NSApplication.class];
+            menuItem.title = [appKit localizedStringForKey:@"Edit" value:menuTitle table:@"InputManager"];
+        } else {
+            // The Edit menu is the only case we know of so far, but to be on
+            // the safe side we always sync the menu title.
+            menuItem.title = menuTitle;
+        }
+
+        menuItem.hidden = shouldHide;
     }
 }
 
@@ -223,9 +226,7 @@ NSMenuItem *QCocoaMenuBar::nativeItemForMenu(QCocoaMenu *menu) const
 
 void QCocoaMenuBar::handleReparent(QWindow *newParentWindow)
 {
-#ifdef QT_COCOA_ENABLE_MENU_DEBUG
-    qDebug() << "QCocoaMenuBar" << this << "handleReparent" << newParentWindow;
-#endif
+    qCDebug(lcQpaMenus) << "Reparenting" << this << "to" << newParentWindow;
 
     if (!m_window.isNull())
         m_window->setMenubar(nullptr);
@@ -257,7 +258,7 @@ QCocoaWindow *QCocoaMenuBar::findWindowForMenubar()
 
 QCocoaMenuBar *QCocoaMenuBar::findGlobalMenubar()
 {
-    for (auto *menubar : qAsConst(static_menubars)) {
+    for (auto *menubar : std::as_const(static_menubars)) {
         if (menubar->m_window.isNull())
             return menubar;
     }
@@ -293,12 +294,11 @@ void QCocoaMenuBar::updateMenuBarImmediately()
     if (!mb)
         return;
 
-#ifdef QT_COCOA_ENABLE_MENU_DEBUG
-    qDebug() << "QCocoaMenuBar" << "updateMenuBarImmediately" << cw;
-#endif
+    qCDebug(lcQpaMenus) << "Updating" << mb << "immediately for" << cw;
+
     bool disableForModal = mb->shouldDisable(cw);
 
-    for (auto menu : qAsConst(mb->m_menus)) {
+    for (auto menu : std::as_const(mb->m_menus)) {
         if (!menu)
             continue;
         NSMenuItem *item = mb->nativeItemForMenu(menu);
@@ -327,15 +327,74 @@ void QCocoaMenuBar::updateMenuBarImmediately()
     }
 
     [mergedItems release];
-    [NSApp setMainMenu:mb->nsMenu()];
+
+    NSMenu *newMainMenu = mb->nsMenu();
+    if (NSApp.mainMenu == newMainMenu) {
+        // NSApplication triggers _customizeMainMenu when the menu
+        // changes, which takes care of adding text input items to
+        // the edit menu e.g., but this doesn't happen if the menu
+        // is the same. In our case we might be re-using an existing
+        // menu, but the menu might have new sub menus that need to
+        // be customized. To ensure NSApplication does the right
+        // thing we reset the main menu first.
+        qCDebug(lcQpaMenus) << "Clearing main menu temporarily";
+        NSApp.mainMenu = nil;
+    }
+    NSApp.mainMenu = newMainMenu;
+
+    insertWindowMenu();
     [loader qtTranslateApplicationMenu];
+}
+
+void QCocoaMenuBar::insertWindowMenu()
+{
+    // For such an item/menu we get for 'free' an additional feature -
+    // a list of windows the application has created in the Dock's menu.
+
+    NSApplication *app = NSApplication.sharedApplication;
+    if (app.windowsMenu)
+        return;
+
+    NSMenu *mainMenu = app.mainMenu;
+    NSMenuItem *winMenuItem = [[[NSMenuItem alloc] initWithTitle:@"QtWindowMenu"
+                                                   action:nil keyEquivalent:@""] autorelease];
+    // We don't want to show this menu, nobody asked us to do so:
+    winMenuItem.hidden = YES;
+
+    winMenuItem.submenu = [[[NSMenu alloc] initWithTitle:@"QtWindowMenu"] autorelease];
+
+    // AppKit has a bug in [NSApplication setWindowsMenu:] where it will resolve
+    // the last item of the window menu's itemArray, but not account for the array
+    // being empty, resulting in a lookup of itemAtIndex:-1. To work around this,
+    // we insert a hidden dummy item into the menu. See FB13369198.
+    auto *dummyItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    dummyItem.hidden = YES;
+    [winMenuItem.submenu addItem:[dummyItem autorelease]];
+
+    [mainMenu insertItem:winMenuItem atIndex:mainMenu.itemArray.count];
+    app.windowsMenu = winMenuItem.submenu;
+
+    // Windows that have already been ordered in at this point have already been
+    // evaluated by AppKit via _addToWindowsMenuIfNecessary and added to the menu,
+    // but since the menu didn't exist at that point the addition was a noop.
+    // Instead of trying to duplicate the logic AppKit uses for deciding if
+    // a window should be part of the Window menu we toggle one of the settings
+    // that definitely will affect this, which results in AppKit reevaluating the
+    // situation and adding the window to the menu if necessary.
+    for (NSWindow *win in app.windows) {
+        win.excludedFromWindowsMenu = !win.excludedFromWindowsMenu;
+        win.excludedFromWindowsMenu = !win.excludedFromWindowsMenu;
+    }
 }
 
 QList<QCocoaMenuItem*> QCocoaMenuBar::merged() const
 {
     QList<QCocoaMenuItem*> r;
-    for (auto menu : qAsConst(m_menus))
+    for (auto menu : std::as_const(m_menus)) {
+        if (!menu)
+            continue;
         r.append(menu->merged());
+    }
 
     return r;
 }
@@ -354,10 +413,10 @@ bool QCocoaMenuBar::shouldDisable(QCocoaWindow *active) const
     // When there is an application modal window on screen, the entries of
     // the menubar should be disabled. The exception in Qt is that if the
     // modal window is the only window on screen, then we enable the menu bar.
-    for (auto *window : qAsConst(topWindows)) {
+    for (auto *window : std::as_const(topWindows)) {
         if (window->isVisible() && window->modality() == Qt::ApplicationModal) {
             // check for other visible windows
-            for (auto *other : qAsConst(topWindows)) {
+            for (auto *other : std::as_const(topWindows)) {
                 if ((window != other) && (other->isVisible())) {
                     // INVARIANT: we found another visible window
                     // on screen other than our modalWidget. We therefore
@@ -378,8 +437,8 @@ bool QCocoaMenuBar::shouldDisable(QCocoaWindow *active) const
 
 QPlatformMenu *QCocoaMenuBar::menuForTag(quintptr tag) const
 {
-    for (auto menu : qAsConst(m_menus))
-        if (menu->tag() ==  tag)
+    for (auto menu : std::as_const(m_menus))
+        if (menu && menu->tag() == tag)
             return menu;
 
     return nullptr;
@@ -387,10 +446,13 @@ QPlatformMenu *QCocoaMenuBar::menuForTag(quintptr tag) const
 
 NSMenuItem *QCocoaMenuBar::itemForRole(QPlatformMenuItem::MenuRole role)
 {
-    for (auto menu : qAsConst(m_menus))
-        for (auto *item : menu->items())
-            if (item->effectiveRole() == role)
-                return item->nsItem();
+    for (auto menu : std::as_const(m_menus)) {
+        if (menu) {
+            for (auto *item : menu->items())
+                if (item->effectiveRole() == role)
+                    return item->nsItem();
+        }
+    }
 
     return nil;
 }

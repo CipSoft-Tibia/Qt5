@@ -6,13 +6,14 @@
 #define V8_DEBUG_INTERFACE_TYPES_H_
 
 #include <cstdint>
-#include <string>
-#include <vector>
 
-#include "include/v8.h"
-#include "src/common/globals.h"
+#include "include/v8-function-callback.h"
+#include "include/v8-local-handle.h"
+#include "src/base/macros.h"
 
 namespace v8 {
+
+class String;
 
 namespace internal {
 class BuiltinArguments;
@@ -43,13 +44,12 @@ class V8_EXPORT_PRIVATE Location {
 };
 
 enum DebugAsyncActionType {
+  kDebugAwait,
   kDebugPromiseThen,
   kDebugPromiseCatch,
   kDebugPromiseFinally,
   kDebugWillHandle,
-  kDebugDidHandle,
-  kAsyncFunctionSuspended,
-  kAsyncFunctionFinished
+  kDebugDidHandle
 };
 
 enum BreakLocationType {
@@ -76,11 +76,6 @@ enum class CoverageMode {
   // lower granularity. Design doc: goo.gl/lA2swZ.
   kBlockCount,
   kBlockBinary,
-};
-
-enum class TypeProfileMode {
-  kNone,
-  kCollect,
 };
 
 class V8_EXPORT_PRIVATE BreakLocation : public Location {

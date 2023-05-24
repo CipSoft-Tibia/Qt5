@@ -1,97 +1,50 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page supported-platforms.html
     \title Supported Platforms
     \brief The platforms supported by Qt.
 
-    Qt is a commercial and open source licensed cross-platform application
-    and UI framework. It is developed by The Qt Company, together with the
-    Qt Project Community under an open source governance model.
-
-    Using Qt, you can write GUI applications once and deploy them
-    across desktop, mobile and embedded operating systems without
-    rewriting the source code.
-
-    Qt is supported on a variety of 32-bit and 64-bit platforms, and can usually
-    be built on each platform with GCC, a vendor-supplied compiler, or a third
-    party compiler as indicated in the overview below.
-
-    Open GL (ES) 2.0, DirectX 9 or 11 (with ANGLE), or an \l {Qt Quick 2D Renderer} {alternative
-    renderer} is required for \l [QtQuick] {Qt Quick} 2.
-    \l [QtWidgets] {Qt Widgets}{Widgets} can be used without
-    hardware acceleration.
-
-    In Qt 5 all platforms are created using the \l{Qt Platform Abstraction}
-    (QPA), which makes it easy to port Qt into a new operating system.
-
-    The following platforms are supported in Qt \qtver. For support information
-    for prior Qt releases, please consult the relevant version in the
+    The following platforms are supported in Qt \qtver. For information
+    about prior Qt releases, please consult the relevant version in the
     \l {http://doc.qt.io/archives/}{Qt Documentation Archives}.
 
-    Configurations in \b bold are \l {Reference Configurations}.
+    Supported platforms are actively maintained, subjected to testing, and
+    bugs discovered in these platforms are prioritized for correction.
+    Significant errors discovered in testing can impact release dates.
+
+    The Qt Company offers commercial support for all officially supported
+    platforms and configurations.
+
+    \note Some of the platforms are only supported for certain types of
+    commercial licenses. For details, please refer to
+    \l{Qt Support Terms and Conditions} and your commercial license agreement.
+
+    Configurations not listed below are not officially supported by the Qt Project.
+    However, Qt may still run on unsupported platforms and configurations. The Qt
+    Company, Qt partners, open source developers, and community users are able to
+    provide assistance in this situation.
 
     \note Support for specific configurations or operating system versions may
           end before the support for Qt \qtver does. A subsequent patch release
-          of Qt \qtver may drop support for a configuration as a \e {reference
-          configuration} or replace it with a currently-supported version.
+          of Qt \qtver may drop support for a configuration or replace it with
+          a currently-supported version.
 
     \include supported-platforms.qdocinc all
 
-    \section1 Reference Configurations
-
-    Reference configurations are the primary focus of development. They are subjected
-    to unit test suite and other internal testing tools on a frequent basis (prior to
-    new version releases, source tree branching, and at other significant period points
-    in the development process). Errors or bugs discovered in these platforms are
-    prioritized for correction. Significant errors discovered in tested configurations
-    can impact release dates.
-
-    Any configurations not listed above are not actively tested by the Qt
-    Project. However, Qt may run on configurations other than those actively
-    tested on, and additional configurations may be raised to tested state, if
-    sufficient effort is made to bring continuous integration to an acceptable
-    state for that particular configuration. The reference configurations are
-    subject to change during the lifetime of a Qt release.
-
-    The Qt Company provides support for the officially supported platforms and
-    configurations. The Qt Company, Qt partners, open source projects and community
-    users are also able to provide assistance with various different platforms and
-    configurations.
-
     \section1 Availability of Packages
 
-    You can download the Qt 5 installers and source packages from the \l Downloads page.
+    You can download the Qt installers and source packages from the \l Downloads page.
     For more information, visit the \l{Getting Started with Qt} page.
 
     \note All the supported configurations are not provided as binary packages
-    in the Qt installer. However, the intention is to provide the most widely-used
-    reference configurations for the developer's convenience.
+    in \QOI. However, the intention is to provide the most widely-used
+    configurations for the developer's convenience.
+
+    \note Linux binary packages are linked against glibc 2.28. If you are using
+    a glibc version older than that you need to build Qt from sources or upgrade
+    glibc to 2.28 or newer.
 
     \section2 Exceptions
     Individual modules might be available only on some platforms, or they might
@@ -118,6 +71,131 @@
             \li \l{Qt for Windows - Deployment}{Windows}
         \endlist
     \endlist
+
+    \section1 Supported Qt Versions
+
+    \table
+    \header
+        \li Version
+        \li Release date
+        \li Standard Support Until
+        \li Extended Support Availability
+    \row
+        \li 5.0 (5.0.1)
+        \li 2012-12-19
+        \li Ended
+        \li Yes
+    \row
+        \li 5.1 (5.1.1)
+        \li 2013-07-03
+        \li Ended
+        \li Yes
+    \row
+        \li 5.2 (5.2.1)
+        \li 2013-12-12
+        \li Ended
+        \li Yes
+    \row
+        \li 5.3 (5.3.2)
+        \li 2014-05-20
+        \li Ended
+        \li Yes
+    \row
+        \li 5.4 (5.4.2)
+        \li 2014-12-10
+        \li Ended
+        \li Yes
+    \row
+        \li 5.5 (5.5.1)
+        \li 2015-07-01
+        \li Ended
+        \li Yes
+    \row
+        \li 5.6 (5.6.3)
+        \li 2016-03-16
+        \li Ended
+        \li Yes
+    \row
+        \li 5.7 (5.7.1)
+        \li 2016-06-16
+        \li Ended
+        \li Yes
+    \row
+        \li 5.8
+        \li 2017-01-23
+        \li Ended
+        \li Yes
+    \row
+        \li 5.9 (5.9.9)
+        \li 2017-05-31
+        \li Ended
+        \li Yes
+    \row
+        \li 5.10 (5.10.1)
+        \li 2017-11-30
+        \li Ended
+        \li Yes
+    \row
+        \li 5.11 (5.11.3)
+        \li 2018-05-22
+        \li Ended
+        \li Yes
+    \row
+        \li 5.12 (5.12.11) LTS
+        \li 2018-12-05
+        \li Ended
+        \li Yes
+    \row
+        \li 5.13 (5.13.2)
+        \li 2019-06-19
+        \li Ended
+        \li Yes
+    \row
+        \li 5.14 (5.14.2)
+        \li 2019-12-12
+        \li Ended
+        \li Yes
+    \row
+        \li 5.15 (5.15.16) LTS
+        \li 2020-05-26
+        \li 2023-05-26 (Qt Legacy licenses) / 2025-05-26 (Qt Subscription license holders only)
+        \li Yes
+    \row
+        \li 6.0 (6.0.4)
+        \li 2020-12-08
+        \li Ended
+        \li Yes
+    \row
+        \li 6.1 (6.1.3)
+        \li 2021-05-06
+        \li Ended
+        \li Yes
+    \row
+        \li 6.2 (6.2.11) LTS
+        \li 2021-09-30
+        \li 2024-09-30
+        \li Yes
+    \row
+        \li 6.3 (6.3.2)
+        \li 2022-04-12
+        \li Ended
+        \li Yes
+    \row
+        \li 6.4 (6.4.3)
+        \li 2022-09-29
+        \li Ended
+        \li Yes
+    \row
+        \li 6.5 (6.5.5) LTS
+        \li 2023-03-30
+        \li 2026-03-30
+        \li Yes
+    \row
+        \li 6.6 (6.6.3)
+        \li 2023-10-10
+        \li 2024-10-10
+        \li Yes
+    \endtable
 
     \section1 General Legal Disclaimer
 

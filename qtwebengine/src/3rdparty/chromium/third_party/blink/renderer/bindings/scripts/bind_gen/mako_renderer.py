@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -105,7 +105,7 @@ class MakoRenderer(object):
             on_error = self._caller_stack_on_error
             if (len(current) <= len(on_error)
                     and all(current[i] == on_error[i]
-                            for i in xrange(len(current)))):
+                            for i in range(len(current)))):
                 pass  # Error happened in a deeper caller.
             else:
                 self._caller_stack_on_error = list(self._caller_stack)

@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,17 +12,18 @@
 
 #include <string>
 
-#include "base/macros.h"
-#include "base/strings/string16.h"
+#include "base/memory/raw_ref.h"
 #include "base/strings/string_piece.h"
 #include "net/base/net_export.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/third_party/mozilla/url_parse.h"
 
 class GURL;
 
 namespace url {
 struct CanonHostInfo;
-}
+class SchemeHostPort;
+}  // namespace url
 
 namespace net {
 
@@ -37,13 +38,14 @@ namespace net {
 // AppendQueryParameter(GURL("http://example.com?x=y"), "name", "value").spec()
 // => "http://example.com?x=y&name=value"
 NET_EXPORT GURL AppendQueryParameter(const GURL& url,
-                                     const std::string& name,
-                                     const std::string& value);
+                                     base::StringPiece name,
+                                     base::StringPiece value);
 
 // Returns a new GURL by appending or replacing the given query parameter name
-// and the value. If |name| appears more than once, only the first name-value
+// and the value. If `name` appears more than once, only the first name-value
 // pair is replaced. Unsafe characters in the name and the value are escaped
 // like %XX%XX. The original query component is preserved if it's present.
+// Using `absl::nullopt` for `value` will remove the `name` parameter.
 //
 // Examples:
 //
@@ -53,39 +55,62 @@ NET_EXPORT GURL AppendQueryParameter(const GURL& url,
 // AppendOrReplaceQueryParameter(
 //     GURL("http://example.com?x=y&name=old"), "name", "new").spec()
 // => "http://example.com?x=y&name=new"
-NET_EXPORT GURL AppendOrReplaceQueryParameter(const GURL& url,
-                                              const std::string& name,
-                                              const std::string& value);
+// AppendOrReplaceQueryParameter(
+//     GURL("http://example.com?x=y&name=old"), "name", absl::nullopt).spec()
+// => "http://example.com?x=y&"
+NET_EXPORT GURL
+AppendOrReplaceQueryParameter(const GURL& url,
+                              base::StringPiece name,
+                              absl::optional<base::StringPiece> value);
+
+// Returns a new GURL by appending the provided ref (also named fragment).
+// Unsafe characters are escaped. The original fragment is replaced
+// if it's present.
+//
+// Examples:
+//
+// AppendOrReplaceRef(
+//     GURL("http://example.com"), "ref").spec()
+// => "http://example.com#ref"
+// AppendOrReplaceRef(
+//     GURL("http://example.com#ref"), "ref2").spec()
+// => "http://example.com#ref2"
+NET_EXPORT GURL AppendOrReplaceRef(const GURL& url,
+                                   const base::StringPiece& ref);
 
 // Iterates over the key-value pairs in the query portion of |url|.
+// NOTE: QueryIterator stores reference to |url| and creates base::StringPiece
+// instances which refer to the data inside |url| query. Therefore |url| must
+// outlive QueryIterator and all base::StringPiece objects returned from GetKey
+// and GetValue methods.
 class NET_EXPORT QueryIterator {
  public:
   explicit QueryIterator(const GURL& url);
+  QueryIterator(const QueryIterator&) = delete;
+  QueryIterator& operator=(const QueryIterator&) = delete;
   ~QueryIterator();
 
-  std::string GetKey() const;
-  std::string GetValue() const;
+  base::StringPiece GetKey() const;
+  base::StringPiece GetValue() const;
   const std::string& GetUnescapedValue();
 
   bool IsAtEnd() const;
   void Advance();
 
  private:
-  const GURL& url_;
+  const raw_ref<const GURL> url_;
   url::Component query_;
   bool at_end_;
   url::Component key_;
   url::Component value_;
   std::string unescaped_value_;
-
-  DISALLOW_COPY_AND_ASSIGN(QueryIterator);
 };
 
 // Looks for |search_key| in the query portion of |url|. Returns true if the
 // key is found and sets |out_value| to the unescaped value for the key.
 // Returns false if the key is not found.
 NET_EXPORT bool GetValueForKeyInQuery(const GURL& url,
-                                      const std::string& search_key,
+                                      base::StringPiece search_key,
                                       std::string* out_value);
 
 // Splits an input of the form <host>[":"<port>] into its consitituent parts.
@@ -108,6 +133,10 @@ NET_EXPORT std::string GetHostAndPort(const GURL& url);
 // Returns a host[:port] string for the given URL, where the port is omitted
 // if it is the default for the URL's scheme.
 NET_EXPORT std::string GetHostAndOptionalPort(const GURL& url);
+
+// Just like above, but takes a SchemeHostPort.
+NET_EXPORT std::string GetHostAndOptionalPort(
+    const url::SchemeHostPort& scheme_host_port);
 
 // Returns the hostname by trimming the ending dot, if one exists.
 NET_EXPORT std::string TrimEndingDot(base::StringPiece host);
@@ -146,19 +175,22 @@ NET_EXPORT std::string CanonicalizeHost(base::StringPiece host,
 // Returns true if |host| is not an IP address and is compliant with a set of
 // rules based on RFC 1738 and tweaked to be compatible with the real world.
 // The rules are:
-//   * One or more components separated by '.'
+//   * One or more non-empty labels separated by '.', each no more than 63
+//     characters.
 //   * Each component contains only alphanumeric characters and '-' or '_'
 //   * The last component begins with an alphanumeric character
 //   * Optional trailing dot after last component (means "treat as FQDN")
+//   * Total size (including optional trailing dot, whether or not actually
+//     present in `host`) no more than 254 characters.
 //
 // NOTE: You should only pass in hosts that have been returned from
 // CanonicalizeHost(), or you may not get accurate results.
-NET_EXPORT bool IsCanonicalizedHostCompliant(const std::string& host);
+NET_EXPORT bool IsCanonicalizedHostCompliant(base::StringPiece host);
 
 // Returns true if |hostname| contains a non-registerable or non-assignable
 // domain name (eg: a gTLD that has not been assigned by IANA) or an IP address
 // that falls in an range reserved for non-publicly routable networks.
-NET_EXPORT bool IsHostnameNonUnique(const std::string& hostname);
+NET_EXPORT bool IsHostnameNonUnique(base::StringPiece hostname);
 
 // Returns true if the host part of |url| is a local host name according to
 // HostStringIsLocalhost.
@@ -185,11 +217,16 @@ NET_EXPORT GURL SimplifyUrlForRequest(const GURL& url);
 // than "ws" or "wss".
 NET_EXPORT GURL ChangeWebSocketSchemeToHttpScheme(const GURL& url);
 
+// Returns whether the given url scheme is of a standard scheme type that can
+// have hostnames representing domains (i.e. network hosts).
+// See url::SchemeType.
+NET_EXPORT bool IsStandardSchemeWithNetworkHost(base::StringPiece scheme);
+
 // Extracts the unescaped username/password from |url|, saving the results
 // into |*username| and |*password|.
 NET_EXPORT_PRIVATE void GetIdentityFromURL(const GURL& url,
-                                           base::string16* username,
-                                           base::string16* password);
+                                           std::u16string* username,
+                                           std::u16string* password);
 
 // Returns true if the url's host is a Google server. This should only be used
 // for histograms and shouldn't be used to affect behavior.
@@ -199,16 +236,19 @@ NET_EXPORT_PRIVATE bool HasGoogleHost(const GURL& url);
 // be used for histograms and shouldn't be used to affect behavior.
 NET_EXPORT_PRIVATE bool IsGoogleHost(base::StringPiece host);
 
-// This function tests |host| to see if its one used in the initial TLS 1.3
-// deployment. TLS connections to them form the basis of our comparisons.
-NET_EXPORT_PRIVATE bool IsTLS13ExperimentHost(base::StringPiece host);
+// Returns true if |host| is the hostname of a Google server and HTTPS DNS
+// record of |host| is expected to indicate H3 support. This should only be used
+// for histograms and shouldn't be used to affect behavior.
+NET_EXPORT_PRIVATE bool IsGoogleHostWithAlpnH3(base::StringPiece host);
 
 // This function tests |host| to see if it is of any local hostname form.
-// |host| is normalized before being tested and if |is_local6| is not NULL then
-// it it will be set to true if the localhost name implies an IPv6 interface (
-// for instance localhost6.localdomain6).
-NET_EXPORT_PRIVATE bool IsLocalHostname(base::StringPiece host,
-                                        bool* is_local6);
+// |host| is normalized before being tested.
+NET_EXPORT_PRIVATE bool IsLocalHostname(base::StringPiece host);
+
+// The notion of unescaping used in the application/x-www-form-urlencoded
+// parser. https://url.spec.whatwg.org/#concept-urlencoded-parser
+NET_EXPORT_PRIVATE std::string UnescapePercentEncodedUrl(
+    base::StringPiece input);
 
 }  // namespace net
 

@@ -1,44 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickwheelhandler_p.h"
 #include "qquickwheelhandler_p_p.h"
+#include <QtQuick/private/qquickitem_p.h>
 #include <QLoggingCategory>
 #include <QtMath>
 
@@ -78,28 +43,20 @@ Q_LOGGING_CATEGORY(lcWheelHandler, "qt.quick.handler.wheel")
     property, or you can implement \c onWheel and handle the wheel event
     directly.
 
-    WheelHandler handles only a rotating mouse wheel by default.
-    Optionally it can handle smooth-scrolling events from touchpad gestures,
-    by setting \l {QtQuick::PointerDeviceHandler::}{acceptedDevices} to
-    \c{PointerDevice.Mouse | PointerDevice.TouchPad}.
+    WheelHandler handles only a rotating mouse wheel by default; this
+    can be changed by setting acceptedDevices.
 
-    \note Some non-mouse hardware (such as a touch-sensitive Wacom tablet, or
-    a Linux laptop touchpad) generates real wheel events from gestures.
-    WheelHandler will respond to those events as wheel events regardless of the
-    setting of the \l {QtQuick::PointerDeviceHandler::}{acceptedDevices}
-    property.
-
-    \sa MouseArea, Flickable
+    \sa MouseArea, Flickable, {Qt Quick Examples - Pointer Handlers}
 */
 
 QQuickWheelHandler::QQuickWheelHandler(QQuickItem *parent)
     : QQuickSinglePointHandler(*(new QQuickWheelHandlerPrivate), parent)
 {
-    setAcceptedDevices(QQuickPointerDevice::Mouse);
+    setAcceptedDevices(QInputDevice::DeviceType::Mouse);
 }
 
 /*!
-    \qmlproperty enum QtQuick::WheelHandler::orientation
+    \qmlproperty enumeration QtQuick::WheelHandler::orientation
 
     Which wheel to react to.  The default is \c Qt.Vertical.
 
@@ -127,7 +84,7 @@ void QQuickWheelHandler::setOrientation(Qt::Orientation orientation)
     \qmlproperty bool QtQuick::WheelHandler::invertible
 
     Whether or not to reverse the direction of property change if
-    QQuickPointerScrollEvent::inverted is true. The default is \c true.
+    \l QWheelEvent::inverted is \c true. The default is \c true.
 
     If the operating system has a "natural scrolling" setting that causes
     scrolling to be in the same direction as the finger movement, then if this
@@ -163,10 +120,12 @@ void QQuickWheelHandler::setInvertible(bool invertible)
     \l {Qt::ScrollPhase}{scroll phase} information, such as events from some
     touchpads, the \l active property will become \c false as soon as an event
     with phase \l Qt::ScrollEnd is received; in that case the timeout is not
-    necessary. But a conventional mouse with a wheel does not provide the
-    \l {QQuickPointerScrollEvent::phase}{scroll phase}: the mouse cannot detect
-    when the user has decided to stop scrolling, so the \l active property
-    transitions to \c false after this much time has elapsed.
+    necessary. But a conventional mouse with a wheel does not provide a scroll
+    phase: the mouse cannot detect when the user has decided to stop
+    scrolling, so the \l active property transitions to \c false after this
+    much time has elapsed.
+
+    \sa QWheelEvent::phase()
 */
 qreal QQuickWheelHandler::activeTimeout() const
 {
@@ -360,60 +319,90 @@ void QQuickWheelHandler::setTargetTransformAroundCursor(bool ttac)
     emit targetTransformAroundCursorChanged();
 }
 
-bool QQuickWheelHandler::wantsPointerEvent(QQuickPointerEvent *event)
+/*!
+    \qmlproperty bool QtQuick::WheelHandler::blocking
+    \since 6.3
+
+    Whether this handler prevents other items or handlers behind it from
+    handling the same wheel event. This property is \c true by default.
+*/
+bool QQuickWheelHandler::isBlocking() const
+{
+    Q_D(const QQuickWheelHandler);
+    return d->blocking;
+}
+
+void QQuickWheelHandler::setBlocking(bool blocking)
+{
+    Q_D(QQuickWheelHandler);
+    if (d->blocking == blocking)
+        return;
+
+    d->blocking = blocking;
+    emit blockingChanged();
+}
+
+bool QQuickWheelHandler::wantsPointerEvent(QPointerEvent *event)
 {
     if (!event)
         return false;
-    QQuickPointerScrollEvent *scroll = event->asPointerScrollEvent();
-    if (!scroll)
+    if (event->type() != QEvent::Wheel)
         return false;
-    if (!acceptedDevices().testFlag(QQuickPointerDevice::DeviceType::TouchPad)
-            && scroll->synthSource() != Qt::MouseEventNotSynthesized)
+    QWheelEvent *we = static_cast<QWheelEvent *>(event);
+    if (!acceptedDevices().testFlag(QPointingDevice::DeviceType::TouchPad)
+            && we->source() != Qt::MouseEventNotSynthesized)
         return false;
     if (!active()) {
         switch (orientation()) {
         case Qt::Horizontal:
-            if (qFuzzyIsNull(scroll->angleDelta().x()) && qFuzzyIsNull(scroll->pixelDelta().x()))
+            if (!(we->angleDelta().x()) && !(we->pixelDelta().x()))
                 return false;
             break;
         case Qt::Vertical:
-            if (qFuzzyIsNull(scroll->angleDelta().y()) && qFuzzyIsNull(scroll->pixelDelta().y()))
+            if (!(we->angleDelta().y()) && !(we->pixelDelta().y()))
                 return false;
             break;
         }
     }
-    QQuickEventPoint *point = event->point(0);
-    if (QQuickPointerDeviceHandler::wantsPointerEvent(event) && wantsEventPoint(point) && parentContains(point)) {
-        setPointId(point->pointId());
+    auto &point = event->point(0);
+    if (QQuickPointerDeviceHandler::wantsPointerEvent(event) && wantsEventPoint(event, point) && parentContains(point)) {
+        setPointId(point.id());
         return true;
     }
     return false;
 }
 
-void QQuickWheelHandler::handleEventPoint(QQuickEventPoint *point)
+void QQuickWheelHandler::handleEventPoint(QPointerEvent *ev, QEventPoint &point)
 {
     Q_D(QQuickWheelHandler);
-    QQuickPointerScrollEvent *event = point->pointerEvent()->asPointerScrollEvent();
+    QQuickSinglePointHandler::handleEventPoint(ev, point);
+
+    if (ev->type() != QEvent::Wheel)
+        return;
+    const QWheelEvent *event = static_cast<const QWheelEvent *>(ev);
     setActive(true); // ScrollEnd will not happen unless it was already active (see setActive(false) below)
-    point->setAccepted();
+    if (d->blocking)
+        point.setAccepted();
     qreal inversion = !d->invertible && event->isInverted() ? -1 : 1;
     qreal angleDelta = inversion * qreal(orientation() == Qt::Horizontal ? event->angleDelta().x() :
                                                                            event->angleDelta().y()) / 8;
     d->rotation += angleDelta;
     emit rotationChanged();
-    emit wheel(event);
+
+    d->wheelEvent.reset(event);
+    emit wheel(&d->wheelEvent);
     if (!d->propertyName.isEmpty() && target()) {
         QQuickItem *t = target();
         // writing target()'s property is done via QMetaProperty::write() so that any registered interceptors can react.
         if (d->propertyName == QLatin1String("scale")) {
             qreal multiplier = qPow(d->targetScaleMultiplier, angleDelta * d->rotationScale / 15); // wheel "clicks"
-            const QPointF centroidParentPos = t->parentItem()->mapFromScene(point->scenePosition());
+            const QPointF centroidParentPos = t->parentItem()->mapFromScene(point.scenePosition());
             const QPointF positionWas = t->position();
             const qreal scaleWas = t->scale();
             const qreal activePropertyValue = scaleWas * multiplier;
             qCDebug(lcWheelHandler) << objectName() << "angle delta" << event->angleDelta() << "pixel delta" << event->pixelDelta()
-                                    << "@" << point->position() << "in parent" << centroidParentPos
-                                    << "in scene" << point->scenePosition()
+                                    << "@" << point.position() << "in parent" << centroidParentPos
+                                    << "in scene" << point.scenePosition()
                                     << "multiplier" << multiplier << "scale" << scaleWas
                                     << "->" << activePropertyValue;
             d->targetMetaProperty().write(t, activePropertyValue);
@@ -429,10 +418,10 @@ void QQuickWheelHandler::handleEventPoint(QQuickEventPoint *point)
             const QPointF positionWas = t->position();
             const qreal rotationWas = t->rotation();
             const qreal activePropertyValue = rotationWas + angleDelta * d->rotationScale;
-            const QPointF centroidParentPos = t->parentItem()->mapFromScene(point->scenePosition());
+            const QPointF centroidParentPos = t->parentItem()->mapFromScene(point.scenePosition());
             qCDebug(lcWheelHandler) << objectName() << "angle delta" << event->angleDelta() << "pixel delta" << event->pixelDelta()
-                                    << "@" << point->position() << "in parent" << centroidParentPos
-                                    << "in scene" << point->scenePosition() << "rotation" << t->rotation()
+                                    << "@" << point.position() << "in parent" << centroidParentPos
+                                    << "in scene" << point.scenePosition() << "rotation" << t->rotation()
                                     << "->" << activePropertyValue;
             d->targetMetaProperty().write(t, activePropertyValue);
             if (d->targetTransformAroundCursor) {
@@ -444,8 +433,9 @@ void QQuickWheelHandler::handleEventPoint(QQuickEventPoint *point)
                 t->setPosition(adjPos);
             }
         } else {
-            qCDebug(lcWheelHandler) << objectName() << "angle delta" << event->angleDelta() << "scaled" << angleDelta << "total" << d->rotation << "pixel delta" << event->pixelDelta()
-                                    << "@" << point->position() << "in scene" << point->scenePosition() << "rotation" << t->rotation();
+            qCDebug(lcWheelHandler) << objectName() << "angle delta" << event->angleDelta() << "scaled" << angleDelta
+                                    << "total" << d->rotation << "pixel delta" << event->pixelDelta()
+                                    << "@" << point.position() << "in scene" << point.scenePosition() << "rotation" << t->rotation();
             qreal delta = 0;
             if (event->hasPixelDelta()) {
                 delta = inversion * d->rotationScale * qreal(orientation() == Qt::Horizontal ? event->pixelDelta().x() : event->pixelDelta().y());
@@ -479,7 +469,7 @@ void QQuickWheelHandler::handleEventPoint(QQuickEventPoint *point)
 
 void QQuickWheelHandler::onTargetChanged(QQuickItem *oldTarget)
 {
-    Q_UNUSED(oldTarget)
+    Q_UNUSED(oldTarget);
     Q_D(QQuickWheelHandler);
     d->metaPropertyDirty = true;
 }
@@ -501,10 +491,11 @@ void QQuickWheelHandler::timerEvent(QTimerEvent *event)
 }
 
 /*!
-    \qmlsignal QtQuick::WheelHandler::wheel(PointerScrollEvent event)
+    \qmlsignal QtQuick::WheelHandler::wheel(WheelEvent event)
 
-    This signal is emitted every time this handler receives a \l QWheelEvent:
-    that is, every time the wheel is moved or the scrolling gesture is updated.
+    This signal is emitted every time this handler receives an \a event
+    of type \l QWheelEvent: that is, every time the wheel is moved or the
+    scrolling gesture is updated.
 */
 
 QQuickWheelHandlerPrivate::QQuickWheelHandlerPrivate()
@@ -526,4 +517,25 @@ QMetaProperty &QQuickWheelHandlerPrivate::targetMetaProperty() const
     return metaProperty;
 }
 
+/*!
+    \qmlproperty flags WheelHandler::acceptedDevices
+
+    The types of pointing devices that can activate this handler.
+
+    By default, this property is set to
+    \l{QInputDevice::DeviceType}{PointerDevice.Mouse}, so as to react only to
+    events from an actual mouse wheel.
+
+    WheelHandler can be made to respond to both mouse wheel and touchpad
+    scrolling by setting acceptedDevices to
+    \c{PointerDevice.Mouse | PointerDevice.TouchPad}.
+
+    \note Some non-mouse hardware (such as a touch-sensitive Wacom tablet, or a
+    Linux laptop touchpad) generates real wheel events from gestures.
+    WheelHandler will respond to those events as wheel events even if
+    \c acceptedDevices remains set to its default value.
+*/
+
 QT_END_NAMESPACE
+
+#include "moc_qquickwheelhandler_p.cpp"

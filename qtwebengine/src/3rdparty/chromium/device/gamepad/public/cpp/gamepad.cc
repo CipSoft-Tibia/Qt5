@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,7 +26,9 @@ Gamepad::Gamepad()
 
 Gamepad::Gamepad(const Gamepad& other) = default;
 
-void Gamepad::SetID(const base::string16& src) {
+Gamepad& Gamepad::operator=(const Gamepad& other) = default;
+
+void Gamepad::SetID(const std::u16string& src) {
   memset(id, 0, sizeof(id));
   src.copy(id, kIdLengthCap - 1);
 }

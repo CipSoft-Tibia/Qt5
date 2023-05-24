@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,13 +8,14 @@
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_document.h"
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fpdfapi/parser/cpdf_stream_acc.h"
 #include "core/fpdfdoc/cpdf_nametree.h"
-#include "core/fxcrt/cfx_readonlymemorystream.h"
+#include "core/fxcrt/cfx_read_only_span_stream.h"
 #include "core/fxcrt/fx_extension.h"
 #include "core/fxcrt/xml/cfx_xmldocument.h"
 #include "core/fxcrt/xml/cfx_xmlelement.h"
@@ -22,9 +23,10 @@
 #include "core/fxcrt/xml/cfx_xmlparser.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
 #include "fxjs/xfa/cjx_object.h"
-#include "third_party/base/ptr_util.h"
+#include "third_party/base/check.h"
 #include "v8/include/cppgc/allocation.h"
 #include "v8/include/cppgc/heap.h"
+#include "xfa/fgas/font/cfgas_gefont.h"
 #include "xfa/fgas/font/cfgas_pdffontmgr.h"
 #include "xfa/fwl/cfwl_notedriver.h"
 #include "xfa/fxfa/cxfa_ffapp.h"
@@ -53,7 +55,7 @@ FX_IMAGEDIB_AND_DPI::FX_IMAGEDIB_AND_DPI(const RetainPtr<CFX_DIBBase>& pDib,
 FX_IMAGEDIB_AND_DPI::~FX_IMAGEDIB_AND_DPI() = default;
 
 CXFA_FFDoc::CXFA_FFDoc(CXFA_FFApp* pApp,
-                       IXFA_DocEnvironment* pDocEnvironment,
+                       CallbackIface* pDocEnvironment,
                        CPDF_Document* pPDFDoc,
                        cppgc::Heap* pHeap)
     : m_pDocEnvironment(pDocEnvironment),
@@ -89,8 +91,7 @@ void CXFA_FFDoc::Trace(cppgc::Visitor* visitor) const {
 }
 
 bool CXFA_FFDoc::BuildDoc(CFX_XMLDocument* pXML) {
-  if (!pXML)
-    return false;
+  DCHECK(pXML);
 
   CXFA_DocumentBuilder builder(m_pDocument);
   if (!builder.BuildDocument(pXML, XFA_PacketType::Xdp))
@@ -136,8 +137,9 @@ bool CXFA_FFDoc::PopupMenu(CXFA_FFWidget* hWidget, const CFX_PointF& ptPopup) {
   return m_pDocEnvironment->PopupMenu(hWidget, ptPopup);
 }
 
-void CXFA_FFDoc::PageViewEvent(CXFA_FFPageView* pPageView, uint32_t dwFlags) {
-  m_pDocEnvironment->PageViewEvent(pPageView, dwFlags);
+void CXFA_FFDoc::OnPageViewEvent(CXFA_FFPageView* pPageView,
+                                 PageViewEvent eEvent) {
+  m_pDocEnvironment->OnPageViewEvent(pPageView, eEvent);
 }
 
 void CXFA_FFDoc::WidgetPostAdd(CXFA_FFWidget* hWidget) {
@@ -198,7 +200,7 @@ void CXFA_FFDoc::SetFocusWidget(CXFA_FFWidget* hWidget) {
 
 void CXFA_FFDoc::Print(int32_t nStartPage,
                        int32_t nEndPage,
-                       uint32_t dwOptions) {
+                       Mask<XFA_PrintOpt> dwOptions) {
   m_pDocEnvironment->Print(this, nStartPage, nEndPage, dwOptions);
 }
 
@@ -263,10 +265,19 @@ bool CXFA_FFDoc::OpenDoc(CFX_XMLDocument* pXML) {
   return true;
 }
 
+RetainPtr<CFGAS_GEFont> CXFA_FFDoc::GetPDFFont(const WideString& family,
+                                               uint32_t styles,
+                                               bool strict) {
+  if (!m_pPDFFontMgr)
+    return nullptr;
+
+  return m_pPDFFontMgr->GetFont(family, styles, strict);
+}
+
 RetainPtr<CFX_DIBitmap> CXFA_FFDoc::GetPDFNamedImage(WideStringView wsName,
                                                      int32_t& iImageXDpi,
                                                      int32_t& iImageYDpi) {
-  uint32_t dwHash = FX_HashCode_GetW(wsName, false);
+  uint32_t dwHash = FX_HashCode_GetW(wsName);
   auto it = m_HashToDibDpiMap.find(dwHash);
   if (it != m_HashToDibDpiMap.end()) {
     iImageXDpi = it->second.iImageXDpi;
@@ -274,42 +285,43 @@ RetainPtr<CFX_DIBitmap> CXFA_FFDoc::GetPDFNamedImage(WideStringView wsName,
     return it->second.pDibSource.As<CFX_DIBitmap>();
   }
 
-  auto name_tree = CPDF_NameTree::Create(m_pPDFDoc.Get(), "XFAImages");
+  auto name_tree = CPDF_NameTree::Create(m_pPDFDoc, "XFAImages");
   size_t count = name_tree ? name_tree->GetCount() : 0;
   if (count == 0)
     return nullptr;
 
-  CPDF_Object* pObject = name_tree->LookupValue(WideString(wsName));
+  RetainPtr<const CPDF_Object> pObject =
+      name_tree->LookupValue(WideString(wsName));
   if (!pObject) {
     for (size_t i = 0; i < count; ++i) {
       WideString wsTemp;
-      CPDF_Object* pTempObject = name_tree->LookupValueAndName(i, &wsTemp);
+      RetainPtr<CPDF_Object> pTempObject =
+          name_tree->LookupValueAndName(i, &wsTemp);
       if (wsTemp == wsName) {
-        pObject = pTempObject;
+        pObject = std::move(pTempObject);
         break;
       }
     }
   }
 
-  CPDF_Stream* pStream = ToStream(pObject);
+  RetainPtr<const CPDF_Stream> pStream = ToStream(pObject);
   if (!pStream)
     return nullptr;
 
-  auto pAcc = pdfium::MakeRetain<CPDF_StreamAcc>(pStream);
+  auto pAcc = pdfium::MakeRetain<CPDF_StreamAcc>(std::move(pStream));
   pAcc->LoadAllDataFiltered();
 
   auto pImageFileRead =
-      pdfium::MakeRetain<CFX_ReadOnlyMemoryStream>(pAcc->GetSpan());
-
+      pdfium::MakeRetain<CFX_ReadOnlySpanStream>(pAcc->GetSpan());
   RetainPtr<CFX_DIBitmap> pDibSource = XFA_LoadImageFromBuffer(
-      pImageFileRead, FXCODEC_IMAGE_UNKNOWN, iImageXDpi, iImageYDpi);
+      std::move(pImageFileRead), FXCODEC_IMAGE_UNKNOWN, iImageXDpi, iImageYDpi);
   m_HashToDibDpiMap[dwHash] = {pDibSource, iImageXDpi, iImageYDpi};
   return pDibSource;
 }
 
 bool CXFA_FFDoc::SavePackage(CXFA_Node* pNode,
                              const RetainPtr<IFX_SeekableStream>& pFile) {
-  ASSERT(pNode || GetXFADoc()->GetRoot());
+  DCHECK(pNode || GetXFADoc()->GetRoot());
 
   CXFA_DataExporter exporter;
   return exporter.Export(pFile, pNode ? pNode : GetXFADoc()->GetRoot());

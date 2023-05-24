@@ -1,44 +1,31 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QApplication>
-#include <QDebug>
-#include <QMouseEvent>
-#include <QTabletEvent>
-#include <QMainWindow>
-#include <QMenuBar>
-#include <QMenu>
 #include <QAction>
-#include <QStatusBar>
-#include <QVector>
+#include <QApplication>
+#include <QCursor>
+#include <QDebug>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QList>
+#include <QMainWindow>
+#include <QMenu>
+#include <QMenuBar>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
-#include <QCursor>
+#include <QPlainTextEdit>
+#include <QPointingDevice>
+#include <QPointer>
+#include <QPushButton>
+#include <QStatusBar>
+#include <QTabletEvent>
+#include <QVBoxLayout>
+
+#ifdef Q_OS_WIN
+#  include <QtGui/private/qguiapplication_p.h>
+#  include <QtGui/qpa/qplatformintegration.h>
+#endif
 
 enum TabletPointType {
     TabletButtonPress,
@@ -46,16 +33,32 @@ enum TabletPointType {
     TabletMove
 };
 
+#ifdef Q_OS_WIN
+using QWindowsApplication = QNativeInterface::Private::QWindowsApplication;
+
+static void setWinTabEnabled(bool e)
+{
+    if (auto nativeWindowsApp = dynamic_cast<QWindowsApplication *>(QGuiApplicationPrivate::platformIntegration()))
+        nativeWindowsApp->setWinTabEnabled(e);
+}
+
+static bool isWinTabEnabled()
+{
+    auto nativeWindowsApp = dynamic_cast<QWindowsApplication *>(QGuiApplicationPrivate::platformIntegration());
+    return nativeWindowsApp && nativeWindowsApp->isWinTabEnabled();
+}
+#endif // Q_OS_WIN
+
 struct TabletPoint
 {
-    TabletPoint(const QPointF &p = QPointF(), TabletPointType t = TabletMove,
-                Qt::MouseButton b = Qt::LeftButton, QTabletEvent::PointerType pt = QTabletEvent::UnknownPointer, qreal prs = 0, qreal rotation = 0) :
+    TabletPoint(const QPointF &p = QPointF(), TabletPointType t = TabletMove, Qt::MouseButton b = Qt::LeftButton,
+                QPointingDevice::PointerType pt = QPointingDevice::PointerType::Unknown, qreal prs = 0, qreal rotation = 0) :
         pos(p), type(t), button(b), ptype(pt), pressure(prs), angle(rotation) {}
 
     QPointF pos;
     TabletPointType type;
     Qt::MouseButton button;
-    QTabletEvent::PointerType ptype;
+    QPointingDevice::PointerType ptype;
     qreal pressure;
     qreal angle;
 };
@@ -125,8 +128,8 @@ private:
     bool m_lastIsMouseMove = false;
     bool m_lastIsTabletMove = false;
     Qt::MouseButton m_lastButton = Qt::NoButton;
-    QVector<TabletPoint> m_points;
-    QVector<QPointF> m_touchPoints;
+    QList<TabletPoint> m_points;
+    QList<QPointF> m_touchPoints;
     QPointF m_tabletPos;
     int m_tabletMoveCount = 0;
     int m_paintEventCount = 0;
@@ -149,7 +152,7 @@ void EventReportWidget::paintEvent(QPaintEvent *)
     p.setPen(Qt::white);
     QPainterPath ellipse;
     ellipse.addEllipse(0, 0, halfLineSpacing * 5, halfLineSpacing);
-    for (const TabletPoint &t : qAsConst(m_points)) {
+    for (const TabletPoint &t : std::as_const(m_points)) {
         if (geom.contains(t.pos)) {
               QPainterPath pp;
               pp.addEllipse(t.pos, halfLineSpacing, halfLineSpacing);
@@ -167,7 +170,7 @@ void EventReportWidget::paintEvent(QPaintEvent *)
                   break;
               case TabletMove:
                   if (t.pressure > 0.0) {
-                      p.setPen(t.ptype == QTabletEvent::Eraser ? Qt::red : Qt::black);
+                      p.setPen(t.ptype == QPointingDevice::PointerType::Eraser ? Qt::red : Qt::black);
                       if (t.angle != 0.0) {
                           p.save();
                           p.translate(t.pos);
@@ -205,7 +208,7 @@ void EventReportWidget::tabletEvent(QTabletEvent *event)
 {
     QWidget::tabletEvent(event);
     bool isMove = false;
-    m_tabletPos = event->posF();
+    m_tabletPos = event->position();
     switch (event->type()) {
     case QEvent::TabletMove:
         m_points.push_back(TabletPoint(m_tabletPos, TabletMove, m_lastButton, event->pointerType(), event->pressure(), event->rotation()));
@@ -229,7 +232,7 @@ void EventReportWidget::tabletEvent(QTabletEvent *event)
 
     if (!(isMove && m_lastIsTabletMove)) {
         QDebug d = qDebug();
-        d << event << " global position = " << event->globalPos()
+        d << event << " global position = " << event->globalPosition()
                    << " cursor at " << QCursor::pos();
         if (event->button() != Qt::NoButton)
             d << " changed button " << event->button();
@@ -244,8 +247,8 @@ bool EventReportWidget::event(QEvent *event)
     case QEvent::TouchUpdate:
         event->accept();
         m_touchPoints.clear();
-        for (const QTouchEvent::TouchPoint &p : static_cast<const QTouchEvent *>(event)->touchPoints())
-            m_touchPoints.append(p.pos());
+        for (const QEventPoint &p : static_cast<const QPointerEvent *>(event)->points())
+            m_touchPoints.append(p.position());
         update();
         break;
     case QEvent::TouchEnd:
@@ -275,25 +278,108 @@ void EventReportWidget::timerEvent(QTimerEvent *)
     m_paintEventCount = 0;
 }
 
+class DevicesDialog : public QDialog
+{
+    Q_OBJECT
+public:
+    explicit DevicesDialog(QWidget *p);
+
+public slots:
+    void refresh();
+
+private:
+    QPlainTextEdit *m_edit;
+};
+
+DevicesDialog::DevicesDialog(QWidget *p) : QDialog(p)
+{
+    auto layout = new QVBoxLayout(this);
+    m_edit = new QPlainTextEdit(this);
+    m_edit->setReadOnly(true);
+    layout->addWidget(m_edit);
+    auto box = new QDialogButtonBox(QDialogButtonBox::Close, this);
+    connect(box, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    auto refreshButton = box->addButton("Refresh", QDialogButtonBox::ActionRole);
+    connect(refreshButton, &QAbstractButton::clicked, this, &DevicesDialog::refresh);
+    layout->addWidget(box);
+    setWindowTitle("Devices");
+    refresh();
+}
+
+void DevicesDialog::refresh()
+{
+    QString text;
+    QDebug d(&text);
+    d.noquote();
+    d.nospace();
+    for (auto device : QInputDevice::devices())
+        d << device<< "\n\n";
+    m_edit->setPlainText(text);
+}
+
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
+public:
+    explicit MainWindow(ProximityEventFilter *proximityEventFilter);
+
+public slots:
+    void showDevices();
+
+private:
+    QPointer<DevicesDialog> m_devicesDialog;
+};
+
+MainWindow::MainWindow(ProximityEventFilter *proximityEventFilter)
+{
+    setWindowTitle(QString::fromLatin1("Tablet Test %1").arg(QT_VERSION_STR));
+    auto widget = new EventReportWidget;
+    QObject::connect(proximityEventFilter, &ProximityEventFilter::proximityChanged,
+                     widget, QOverload<>::of(&QWidget::update));
+    widget->setMinimumSize(640, 480);
+    auto fileMenu = menuBar()->addMenu("File");
+    fileMenu->addAction("Clear", widget, &EventReportWidget::clearPoints);
+    auto showAction = fileMenu->addAction("Show Devices", this, &MainWindow::showDevices);
+    showAction->setShortcut(Qt::CTRL | Qt::Key_D);
+    QObject::connect(widget, &EventReportWidget::stats,
+                     statusBar(), &QStatusBar::showMessage);
+    QAction *quitAction = fileMenu->addAction("Quit", qApp, &QCoreApplication::quit);
+    quitAction->setShortcut(Qt::CTRL | Qt::Key_Q);
+
+    auto settingsMenu = menuBar()->addMenu("Settings");
+    auto winTabAction = settingsMenu->addAction("WinTab");
+    winTabAction->setCheckable(true);
+#ifdef Q_OS_WIN
+    winTabAction->setChecked(isWinTabEnabled());
+    connect(winTabAction, &QAction::toggled, this, setWinTabEnabled);
+#else
+    winTabAction->setEnabled(false);
+#endif
+
+    setCentralWidget(widget);
+}
+
+void MainWindow::showDevices()
+{
+    if (m_devicesDialog.isNull()) {
+        m_devicesDialog = new DevicesDialog(nullptr);
+        m_devicesDialog->setModal(false);
+        m_devicesDialog->resize(500, 300);
+        m_devicesDialog->move(frameGeometry().topRight() + QPoint(20, 0));
+        m_devicesDialog->setAttribute(Qt::WA_DeleteOnClose);
+    }
+    m_devicesDialog->show();
+    m_devicesDialog->raise();
+    m_devicesDialog->refresh();
+}
+
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
 
     ProximityEventFilter *proximityEventFilter = new ProximityEventFilter(&app);
     app.installEventFilter(proximityEventFilter);
-    QMainWindow mainWindow;
-    mainWindow.setWindowTitle(QString::fromLatin1("Tablet Test %1").arg(QT_VERSION_STR));
-    EventReportWidget *widget = new EventReportWidget;
-    QObject::connect(proximityEventFilter, &ProximityEventFilter::proximityChanged,
-                     widget, QOverload<>::of(&QWidget::update));
-    widget->setMinimumSize(640, 480);
-    QMenu *fileMenu = mainWindow.menuBar()->addMenu("File");
-    fileMenu->addAction("Clear", widget, &EventReportWidget::clearPoints);
-    QObject::connect(widget, &EventReportWidget::stats,
-                     mainWindow.statusBar(), &QStatusBar::showMessage);
-    QAction *quitAction = fileMenu->addAction("Quit", qApp, &QCoreApplication::quit);
-    quitAction->setShortcut(Qt::CTRL + Qt::Key_Q);
-    mainWindow.setCentralWidget(widget);
+    MainWindow mainWindow(proximityEventFilter);
     mainWindow.show();
     return app.exec();
 }

@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <qcoreapplication.h>
 #include <qthread.h>
 #include <qsemaphore.h>
+
+#include <chrono>
+
+using namespace std::chrono_literals;
 
 class tst_QSemaphore : public QObject
 {
@@ -47,9 +26,10 @@ private slots:
     void tryAcquireWithTimeoutForever();
     void producerConsumer();
     void raii();
+    void stdCompat();
 };
 
-static QSemaphore *semaphore = 0;
+static QSemaphore *semaphore = nullptr;
 
 class ThreadOne : public QThread
 {
@@ -57,7 +37,7 @@ public:
     ThreadOne() {}
 
 protected:
-    void run()
+    void run() override
     {
         int i = 0;
         while ( i < 100 ) {
@@ -76,7 +56,7 @@ public:
     ThreadN(int n) :N(n) { }
 
 protected:
-    void run()
+    void run() override
     {
         int i = 0;
         while ( i < 100 ) {
@@ -106,7 +86,7 @@ void tst_QSemaphore::acquire()
         QVERIFY(t2.wait(4000));
 
         delete semaphore;
-        semaphore = 0;
+        semaphore = nullptr;
     }
 
     // old incrementN() test
@@ -126,7 +106,7 @@ void tst_QSemaphore::acquire()
         QVERIFY(t2.wait(4000));
 
         delete semaphore;
-        semaphore = 0;
+        semaphore = nullptr;
     }
 
     QSemaphore semaphore;
@@ -166,7 +146,7 @@ void tst_QSemaphore::multiRelease()
     };
 
     QSemaphore sem;
-    QVector<Thread *> threads;
+    QList<Thread *> threads;
     threads.resize(4);
 
     for (Thread *&t : threads)
@@ -177,7 +157,7 @@ void tst_QSemaphore::multiRelease()
     // wait for all threads to reach the sem.acquire() and then
     // release them all
     QTest::qSleep(1);
-    sem.release(threads.size());
+    sem.release(int(threads.size()));
 
     for (Thread *&t : threads)
         t->wait();
@@ -200,7 +180,7 @@ void tst_QSemaphore::multiAcquireRelease()
     };
 
     QSemaphore sem;
-    QVector<Thread *> threads;
+    QList<Thread *> threads;
     threads.resize(4);
 
     for (Thread *&t : threads)
@@ -323,69 +303,69 @@ void tst_QSemaphore::tryAcquireWithTimeout()
     QCOMPARE(semaphore.available(), 1);
     time.start();
     QVERIFY(!semaphore.tryAcquire(2, timeout));
-    FUZZYCOMPARE(time.elapsed(), timeout);
+    FUZZYCOMPARE(int(time.elapsed()), timeout);
     QCOMPARE(semaphore.available(), 1);
 
     semaphore.release();
     QCOMPARE(semaphore.available(), 2);
     time.start();
     QVERIFY(!semaphore.tryAcquire(3, timeout));
-    FUZZYCOMPARE(time.elapsed(), timeout);
+    FUZZYCOMPARE(int(time.elapsed()), timeout);
     QCOMPARE(semaphore.available(), 2);
 
     semaphore.release(10);
     QCOMPARE(semaphore.available(), 12);
     time.start();
     QVERIFY(!semaphore.tryAcquire(100, timeout));
-    FUZZYCOMPARE(time.elapsed(), timeout);
+    FUZZYCOMPARE(int(time.elapsed()), timeout);
     QCOMPARE(semaphore.available(), 12);
 
     semaphore.release(10);
     QCOMPARE(semaphore.available(), 22);
     time.start();
     QVERIFY(!semaphore.tryAcquire(100, timeout));
-    FUZZYCOMPARE(time.elapsed(), timeout);
+    FUZZYCOMPARE(int(time.elapsed()), timeout);
     QCOMPARE(semaphore.available(), 22);
 
     time.start();
     QVERIFY(semaphore.tryAcquire(1, timeout));
-    FUZZYCOMPARE(time.elapsed(), 0);
+    FUZZYCOMPARE(int(time.elapsed()), 0);
     QCOMPARE(semaphore.available(), 21);
 
     time.start();
     QVERIFY(semaphore.tryAcquire(1, timeout));
-    FUZZYCOMPARE(time.elapsed(), 0);
+    FUZZYCOMPARE(int(time.elapsed()), 0);
     QCOMPARE(semaphore.available(), 20);
 
     time.start();
     QVERIFY(semaphore.tryAcquire(10, timeout));
-    FUZZYCOMPARE(time.elapsed(), 0);
+    FUZZYCOMPARE(int(time.elapsed()), 0);
     QCOMPARE(semaphore.available(), 10);
 
     time.start();
     QVERIFY(semaphore.tryAcquire(10, timeout));
-    FUZZYCOMPARE(time.elapsed(), 0);
+    FUZZYCOMPARE(int(time.elapsed()), 0);
     QCOMPARE(semaphore.available(), 0);
 
     // should not be able to acquire more
     time.start();
     QVERIFY(!semaphore.tryAcquire(1, timeout));
-    FUZZYCOMPARE(time.elapsed(), timeout);
+    FUZZYCOMPARE(int(time.elapsed()), timeout);
     QCOMPARE(semaphore.available(), 0);
 
     time.start();
     QVERIFY(!semaphore.tryAcquire(1, timeout));
-    FUZZYCOMPARE(time.elapsed(), timeout);
+    FUZZYCOMPARE(int(time.elapsed()), timeout);
     QCOMPARE(semaphore.available(), 0);
 
     time.start();
     QVERIFY(!semaphore.tryAcquire(10, timeout));
-    FUZZYCOMPARE(time.elapsed(), timeout);
+    FUZZYCOMPARE(int(time.elapsed()), timeout);
     QCOMPARE(semaphore.available(), 0);
 
     time.start();
     QVERIFY(!semaphore.tryAcquire(10, timeout));
-    FUZZYCOMPARE(time.elapsed(), timeout);
+    FUZZYCOMPARE(int(time.elapsed()), timeout);
     QCOMPARE(semaphore.available(), 0);
 
 #undef FUZZYCOMPARE
@@ -400,7 +380,7 @@ void tst_QSemaphore::tryAcquireWithTimeoutStarvation()
         QSemaphore *semaphore;
         int amountToConsume, timeout;
 
-        void run()
+        void run() override
         {
             startup.release();
             forever {
@@ -481,7 +461,7 @@ const char alphabet[] = "ACGTH";
 const int AlphabetSize = sizeof(alphabet) - 1;
 
 const int BufferSize = 4096; // GCD of BufferSize and alphabet size must be 1
-char buffer[BufferSize];
+static char buffer[BufferSize];
 
 const int ProducerChunkSize = 3;
 const int ConsumerChunkSize = 7;
@@ -491,16 +471,16 @@ const int Multiplier = 10;
 // ProducerChunkSize, ConsumerChunkSize, and BufferSize
 const int DataSize = ProducerChunkSize * ConsumerChunkSize * BufferSize * Multiplier;
 
-QSemaphore freeSpace(BufferSize);
-QSemaphore usedSpace;
+static QSemaphore freeSpace(BufferSize);
+static QSemaphore usedSpace;
 
 class Producer : public QThread
 {
 public:
-    void run();
+    void run() override;
 };
 
-static const int Timeout = 60 * 1000; // 1min
+static const auto Timeout = 1min;
 
 void Producer::run()
 {
@@ -521,7 +501,7 @@ void Producer::run()
 class Consumer : public QThread
 {
 public:
-    void run();
+    void run() override;
 };
 
 void Consumer::run()
@@ -597,6 +577,35 @@ void tst_QSemaphore::raii()
     }
 
     QCOMPARE(sem.available(), 49);
+}
+
+void tst_QSemaphore::stdCompat()
+{
+    QSemaphore sem(1);
+
+    auto now = [] { return std::chrono::steady_clock::now(); };
+
+    QVERIFY(sem.try_acquire());
+    QCOMPARE(sem.available(), 0);
+    QVERIFY(!sem.try_acquire_for(10ms));
+    QCOMPARE(sem.available(), 0);
+    QVERIFY(!sem.try_acquire_until(now() + 10ms));
+    QCOMPARE(sem.available(), 0);
+
+    sem.release(2);
+
+    QVERIFY(sem.try_acquire());
+    QVERIFY(sem.try_acquire_for(5ms));
+    QCOMPARE(sem.available(), 0);
+    QVERIFY(!sem.try_acquire_until(now() + 5ms));
+    QCOMPARE(sem.available(), 0);
+
+    sem.release(3);
+
+    QVERIFY(sem.try_acquire());
+    QVERIFY(sem.try_acquire_for(5s));
+    QVERIFY(sem.try_acquire_until(now() + 5s));
+    QCOMPARE(sem.available(), 0);
 }
 
 QTEST_MAIN(tst_QSemaphore)

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,19 +7,23 @@
 
 #include <memory>
 
-#include "base/macros.h"
+#include "base/scoped_multi_source_observation.h"
 #include "content/browser/devtools/protocol/devtools_domain_handler.h"
 #include "content/browser/devtools/protocol/web_authn.h"
+#include "content/browser/webauth/virtual_authenticator.h"
 #include "content/common/content_export.h"
+#include "device/fido/virtual_fido_device.h"
 
-namespace content {
-class VirtualAuthenticator;
-namespace protocol {
+namespace content::protocol {
 
-class WebAuthnHandler : public DevToolsDomainHandler, public WebAuthn::Backend {
+class WebAuthnHandler : public DevToolsDomainHandler,
+                        public WebAuthn::Backend,
+                        public VirtualAuthenticator::Observer {
  public:
   CONTENT_EXPORT WebAuthnHandler();
   CONTENT_EXPORT ~WebAuthnHandler() override;
+  WebAuthnHandler(const WebAuthnHandler&) = delete;
+  WebAuthnHandler operator=(const WebAuthnHandler&) = delete;
 
   // DevToolsDomainHandler:
   void SetRenderer(int process_host_id,
@@ -27,23 +31,25 @@ class WebAuthnHandler : public DevToolsDomainHandler, public WebAuthn::Backend {
   void Wire(UberDispatcher* dispatcher) override;
 
   // WebAuthn::Backend
-  CONTENT_EXPORT Response Enable() override;
+  CONTENT_EXPORT Response Enable(Maybe<bool> enable_ui) override;
   CONTENT_EXPORT Response Disable() override;
   Response AddVirtualAuthenticator(
       std::unique_ptr<WebAuthn::VirtualAuthenticatorOptions> options,
       String* out_authenticator_id) override;
   Response RemoveVirtualAuthenticator(const String& authenticator_id) override;
-  Response AddCredential(
+  Response SetResponseOverrideBits(const String& authenticator_id,
+                                   Maybe<bool> is_bogus_signature,
+                                   Maybe<bool> is_bad_uv,
+                                   Maybe<bool> is_bad_up) override;
+  void AddCredential(const String& authenticator_id,
+                     std::unique_ptr<protocol::WebAuthn::Credential> credential,
+                     std::unique_ptr<AddCredentialCallback> callback) override;
+  void GetCredential(const String& authenticator_id,
+                     const Binary& credential_id,
+                     std::unique_ptr<GetCredentialCallback> callback) override;
+  void GetCredentials(
       const String& authenticator_id,
-      std::unique_ptr<protocol::WebAuthn::Credential> credential) override;
-  Response GetCredential(
-      const String& authenticator_id,
-      const Binary& credential_id,
-      std::unique_ptr<WebAuthn::Credential>* out_credential) override;
-  Response GetCredentials(
-      const String& authenticator_id,
-      std::unique_ptr<protocol::Array<protocol::WebAuthn::Credential>>*
-          out_credentials) override;
+      std::unique_ptr<GetCredentialsCallback> callback) override;
   Response RemoveCredential(const String& in_authenticator_id,
                             const Binary& credential_id) override;
   Response ClearCredentials(const String& in_authenticator_id) override;
@@ -57,11 +63,24 @@ class WebAuthnHandler : public DevToolsDomainHandler, public WebAuthn::Backend {
   // successful, an error otherwise.
   Response FindAuthenticator(const String& id,
                              VirtualAuthenticator** out_authenticator);
+
+  // VirtualAuthenticator::Observer:
+  void OnCredentialCreated(
+      VirtualAuthenticator* authenticator,
+      const device::VirtualFidoDevice::Credential& credential) override;
+  void OnAssertion(
+      VirtualAuthenticator* authenticator,
+      const device::VirtualFidoDevice::Credential& credential) override;
+  void OnAuthenticatorWillBeDestroyed(
+      VirtualAuthenticator* authenticator) override;
+
   RenderFrameHostImpl* frame_host_ = nullptr;
-  DISALLOW_COPY_AND_ASSIGN(WebAuthnHandler);
+  std::unique_ptr<WebAuthn::Frontend> frontend_;
+  base::ScopedMultiSourceObservation<VirtualAuthenticator,
+                                     VirtualAuthenticator::Observer>
+      observations_{this};
 };
 
-}  // namespace protocol
-}  // namespace content
+}  // namespace content::protocol
 
 #endif  // CONTENT_BROWSER_DEVTOOLS_PROTOCOL_WEBAUTHN_HANDLER_H_

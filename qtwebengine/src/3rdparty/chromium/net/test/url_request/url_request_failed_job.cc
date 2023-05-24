@@ -1,16 +1,14 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "net/test/url_request/url_request_failed_job.h"
 
-#include "base/bind.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/single_thread_task_runner.h"
-#include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "net/base/net_errors.h"
 #include "net/base/url_util.h"
 #include "net/http/http_response_headers.h"
@@ -31,13 +29,17 @@ const char* kFailurePhase[]{
     "readasync",  // READ_ASYNC
 };
 
-static_assert(base::size(kFailurePhase) ==
+static_assert(std::size(kFailurePhase) ==
                   URLRequestFailedJob::FailurePhase::MAX_FAILURE_PHASE,
               "kFailurePhase must match FailurePhase enum");
 
 class MockJobInterceptor : public URLRequestInterceptor {
  public:
   MockJobInterceptor() = default;
+
+  MockJobInterceptor(const MockJobInterceptor&) = delete;
+  MockJobInterceptor& operator=(const MockJobInterceptor&) = delete;
+
   ~MockJobInterceptor() override = default;
 
   // URLRequestJobFactory::ProtocolHandler implementation:
@@ -46,7 +48,7 @@ class MockJobInterceptor : public URLRequestInterceptor {
     int net_error = OK;
     URLRequestFailedJob::FailurePhase phase =
         URLRequestFailedJob::FailurePhase::MAX_FAILURE_PHASE;
-    for (size_t i = 0; i < base::size(kFailurePhase); i++) {
+    for (size_t i = 0; i < std::size(kFailurePhase); i++) {
       std::string phase_error_string;
       if (GetValueForKeyInQuery(request->url(), kFailurePhase[i],
                                 &phase_error_string)) {
@@ -58,9 +60,6 @@ class MockJobInterceptor : public URLRequestInterceptor {
     }
     return std::make_unique<URLRequestFailedJob>(request, phase, net_error);
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MockJobInterceptor);
 };
 
 GURL GetMockUrl(const std::string& scheme,
@@ -79,10 +78,7 @@ GURL GetMockUrl(const std::string& scheme,
 URLRequestFailedJob::URLRequestFailedJob(URLRequest* request,
                                          FailurePhase phase,
                                          int net_error)
-    : URLRequestJob(request),
-      phase_(phase),
-      net_error_(net_error),
-      total_received_bytes_(0) {
+    : URLRequestJob(request), phase_(phase), net_error_(net_error) {
   CHECK_GE(phase, URLRequestFailedJob::FailurePhase::START);
   CHECK_LE(phase, URLRequestFailedJob::FailurePhase::READ_ASYNC);
   CHECK_LT(net_error, OK);
@@ -94,7 +90,7 @@ URLRequestFailedJob::URLRequestFailedJob(URLRequest* request, int net_error)
 URLRequestFailedJob::~URLRequestFailedJob() = default;
 
 void URLRequestFailedJob::Start() {
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&URLRequestFailedJob::StartAsync,
                                 weak_factory_.GetWeakPtr()));
 }
@@ -104,7 +100,7 @@ int URLRequestFailedJob::ReadRawData(IOBuffer* buf, int buf_size) {
   if (net_error_ == ERR_IO_PENDING || phase_ == READ_SYNC)
     return net_error_;
 
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&URLRequestFailedJob::ReadRawDataComplete,
                                 weak_factory_.GetWeakPtr(), net_error_));
   return ERR_IO_PENDING;
@@ -138,12 +134,10 @@ void URLRequestFailedJob::AddUrlHandlerForHostname(
     const std::string& hostname) {
   URLRequestFilter* filter = URLRequestFilter::GetInstance();
   // Add |hostname| to URLRequestFilter for HTTP and HTTPS.
-  filter->AddHostnameInterceptor(
-      "http", hostname,
-      std::unique_ptr<URLRequestInterceptor>(new MockJobInterceptor()));
-  filter->AddHostnameInterceptor(
-      "https", hostname,
-      std::unique_ptr<URLRequestInterceptor>(new MockJobInterceptor()));
+  filter->AddHostnameInterceptor("http", hostname,
+                                 std::make_unique<MockJobInterceptor>());
+  filter->AddHostnameInterceptor("https", hostname,
+                                 std::make_unique<MockJobInterceptor>());
 }
 
 // static
@@ -185,7 +179,8 @@ void URLRequestFailedJob::StartAsync() {
     return;
   }
   const std::string headers = "HTTP/1.1 200 OK";
-  response_info_.headers = new net::HttpResponseHeaders(headers);
+  response_info_.headers =
+      base::MakeRefCounted<net::HttpResponseHeaders>(headers);
   total_received_bytes_ = headers.size();
   NotifyHeadersComplete();
 }

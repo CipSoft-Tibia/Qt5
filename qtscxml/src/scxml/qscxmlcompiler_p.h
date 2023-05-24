@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSCXMLCOMPILER_P_H
 #define QSCXMLCOMPILER_P_H
@@ -60,6 +24,9 @@
 #include <QtCore/qstringlist.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qxmlstream.h>
+#include <QtCore/private/qglobal_p.h>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -129,7 +96,7 @@ struct DoneData: public Node
 {
     QString contents;
     QString expr;
-    QVector<Param *> params;
+    QList<Param *> params;
 
     DoneData(const XmlLocation &xmlLocation): Node(xmlLocation) {}
     void accept(NodeVisitor *visitor) override;
@@ -141,8 +108,8 @@ struct Instruction: public Node
     virtual ~Instruction() {}
 };
 
-typedef QVector<Instruction *> InstructionSequence;
-typedef QVector<InstructionSequence *> InstructionSequences;
+typedef QList<Instruction *> InstructionSequence;
+typedef QList<InstructionSequence *> InstructionSequences;
 
 struct Send: public Instruction
 {
@@ -157,7 +124,7 @@ struct Send: public Instruction
     QString delay;
     QString delayexpr;
     QStringList namelist;
-    QVector<Param *> params;
+    QList<Param *> params;
     QString content;
     QString contentexpr;
 
@@ -177,7 +144,7 @@ struct Invoke: public Instruction
     QString idLocation;
     QStringList namelist;
     bool autoforward;
-    QVector<Param *> params;
+    QList<Param *> params;
     InstructionSequence finalize;
 
     QSharedPointer<ScxmlDocument> content;
@@ -285,12 +252,12 @@ struct State: public AbstractState, public StateOrTransition
     enum Type { Normal, Parallel, Final };
 
     QStringList initial;
-    QVector<DataElement *> dataElements;
-    QVector<StateOrTransition *> children;
+    QList<DataElement *> dataElements;
+    QList<StateOrTransition *> children;
     InstructionSequences onEntry;
     InstructionSequences onExit;
     DoneData *doneData;
-    QVector<Invoke *> invokes;
+    QList<Invoke *> invokes;
     Type type;
 
     Transition *initialTransition; // when not set, it is filled during verification
@@ -322,7 +289,7 @@ struct Transition: public StateOrTransition
     InstructionSequence instructionsOnTransition;
     Type type;
 
-    QVector<AbstractState *> targetStates; // when not set, it is filled during verification
+    QList<AbstractState *> targetStates; // when not set, it is filled during verification
 
     Transition(const XmlLocation &xmlLocation)
         : StateOrTransition(xmlLocation)
@@ -338,7 +305,7 @@ struct HistoryState: public AbstractState, public StateOrTransition
 {
     enum Type { Deep, Shallow };
     Type type;
-    QVector<StateOrTransition *> children;
+    QList<StateOrTransition *> children;
 
     HistoryState(const XmlLocation &xmlLocation)
         : StateOrTransition(xmlLocation)
@@ -376,8 +343,8 @@ struct Scxml: public StateContainer, public Node
     QString cppDataModelClassName;
     QString cppDataModelHeaderName;
     BindingMethod binding;
-    QVector<StateOrTransition *> children;
-    QVector<DataElement *> dataElements;
+    QList<StateOrTransition *> children;
+    QList<DataElement *> dataElements;
     QScopedPointer<Script> script;
     InstructionSequence initialSetup;
 
@@ -405,11 +372,11 @@ struct ScxmlDocument
 {
     const QString fileName;
     Scxml *root;
-    QVector<AbstractState *> allStates;
-    QVector<Transition *> allTransitions;
-    QVector<Node *> allNodes;
-    QVector<InstructionSequence *> allSequences;
-    QVector<ScxmlDocument *> allSubDocuments; // weak pointers
+    QList<AbstractState *> allStates;
+    QList<Transition *> allTransitions;
+    QList<Node *> allNodes;
+    QList<InstructionSequence *> allSequences;
+    QList<ScxmlDocument *> allSubDocuments; // weak pointers
     bool isVerified;
 
     ScxmlDocument(const QString &fileName)
@@ -508,13 +475,13 @@ public:
     void visit(InstructionSequence *sequence)
     {
         Q_ASSERT(sequence);
-        for (Instruction *instruction : qAsConst(*sequence)) {
+        for (Instruction *instruction : std::as_const(*sequence)) {
             Q_ASSERT(instruction);
             instruction->accept(this);
         }
     }
 
-    void visit(const QVector<DataElement *> &dataElements)
+    void visit(const QList<DataElement *> &dataElements)
     {
         for (DataElement *dataElement : dataElements) {
             Q_ASSERT(dataElement);
@@ -522,7 +489,7 @@ public:
         }
     }
 
-    void visit(const QVector<StateOrTransition *> &children)
+    void visit(const QList<StateOrTransition *> &children)
     {
         for (StateOrTransition *child : children) {
             Q_ASSERT(child);
@@ -538,7 +505,7 @@ public:
         }
     }
 
-    void visit(const QVector<Param *> &params)
+    void visit(const QList<Param *> &params)
     {
         for (Param *param : params) {
             Q_ASSERT(param);
@@ -574,7 +541,7 @@ public:
                          const QString &fileName);
     QByteArray load(const QString &name, bool *ok);
 
-    QVector<QScxmlError> errors() const;
+    QList<QScxmlError> errors() const;
 
     void addError(const QString &msg);
     void addError(const DocumentModel::XmlLocation &location, const QString &msg);
@@ -694,7 +661,7 @@ private:
         bool validChild(ParserState::Kind child) const;
         static bool validChild(ParserState::Kind parent, ParserState::Kind child);
         static bool isExecutableContent(ParserState::Kind kind);
-        static Kind nameToParserStateKind(const QStringRef &name);
+        static Kind nameToParserStateKind(QStringView name);
         static QStringList requiredAttributes(Kind kind);
         static QStringList optionalAttributes(Kind kind);
     };
@@ -719,14 +686,14 @@ private:
     QString m_fileName;
     QSet<QString> m_allIds;
 
-    QScopedPointer<DocumentModel::ScxmlDocument> m_doc;
+    std::unique_ptr<DocumentModel::ScxmlDocument> m_doc;
     DocumentModel::StateContainer *m_currentState;
     DefaultLoader m_defaultLoader;
     QScxmlCompiler::Loader *m_loader;
 
     QXmlStreamReader *m_reader;
-    QVector<ParserState> m_stack;
-    QVector<QScxmlError> m_errors;
+    QList<ParserState> m_stack;
+    QList<QScxmlError> m_errors;
 };
 
 QT_END_NAMESPACE

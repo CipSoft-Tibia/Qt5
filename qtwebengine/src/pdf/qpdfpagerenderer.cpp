@@ -1,44 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Tobias König <tobias.koenig@kdab.com>
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtPDF module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Tobias König <tobias.koenig@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpdfpagerenderer.h"
 
 #include <private/qobject_p.h>
 #include <QMutex>
-#include <QPdfDocument>
 #include <QPointer>
 #include <QThread>
 
@@ -67,10 +33,8 @@ private:
     QMutex m_mutex;
 };
 
-class QPdfPageRendererPrivate : public QObjectPrivate
+class QPdfPageRendererPrivate
 {
-    Q_DECLARE_PUBLIC(QPdfPageRenderer)
-
 public:
     QPdfPageRendererPrivate();
     ~QPdfPageRendererPrivate();
@@ -90,8 +54,8 @@ public:
         QPdfDocumentRenderOptions options;
     };
 
-    QVector<PageRequest> m_requests;
-    QVector<PageRequest> m_pendingRequests;
+    QList<PageRequest> m_requests;
+    QList<PageRequest> m_pendingRequests;
     quint64 m_requestIdCounter = 1;
 
     QThread *m_renderThread = nullptr;
@@ -125,7 +89,7 @@ void RenderWorker::requestPage(quint64 requestId, int pageNumber, QSize imageSiz
 {
     const QMutexLocker locker(&m_mutex);
 
-    if (!m_document || m_document->status() != QPdfDocument::Ready)
+    if (!m_document || m_document->status() != QPdfDocument::Status::Ready)
         return;
 
     const QImage image = m_document->render(pageNumber, imageSize, options);
@@ -133,12 +97,7 @@ void RenderWorker::requestPage(quint64 requestId, int pageNumber, QSize imageSiz
     emit pageRendered(pageNumber, imageSize, image, options, requestId);
 }
 
-
-QPdfPageRendererPrivate::QPdfPageRendererPrivate()
-    : QObjectPrivate()
-    , m_renderWorker(new RenderWorker)
-{
-}
+QPdfPageRendererPrivate::QPdfPageRendererPrivate() : m_renderWorker(new RenderWorker) { }
 
 QPdfPageRendererPrivate::~QPdfPageRendererPrivate()
 {
@@ -194,18 +153,17 @@ void QPdfPageRendererPrivate::requestFinished(int page, QSize imageSize, const Q
     Constructs a page renderer object with parent object \a parent.
 */
 QPdfPageRenderer::QPdfPageRenderer(QObject *parent)
-    : QObject(*new QPdfPageRendererPrivate(), parent)
+    : QObject(parent), d_ptr(new QPdfPageRendererPrivate)
 {
-    Q_D(QPdfPageRenderer);
-
     qRegisterMetaType<QPdfDocumentRenderOptions>();
 
-    connect(d->m_renderWorker.data(), &RenderWorker::pageRendered, this,
-            [this,d](int page, QSize imageSize, const QImage &image, QPdfDocumentRenderOptions options, quint64 requestId) {
-                d->requestFinished(page, imageSize, image, options, requestId);
+    connect(d_ptr->m_renderWorker.data(), &RenderWorker::pageRendered, this,
+            [this](int page, QSize imageSize, const QImage &image,
+                   QPdfDocumentRenderOptions options, quint64 requestId) {
+                d_ptr->requestFinished(page, imageSize, image, options, requestId);
                 emit pageRendered(page, imageSize, image, options, requestId);
-                d->handleNextRequest();
-           });
+                d_ptr->handleNextRequest();
+            });
 }
 
 /*!
@@ -242,9 +200,7 @@ QPdfPageRenderer::~QPdfPageRenderer()
 */
 QPdfPageRenderer::RenderMode QPdfPageRenderer::renderMode() const
 {
-    Q_D(const QPdfPageRenderer);
-
-    return d->m_renderMode;
+    return d_ptr->m_renderMode;
 }
 
 /*!
@@ -254,26 +210,24 @@ QPdfPageRenderer::RenderMode QPdfPageRenderer::renderMode() const
 */
 void QPdfPageRenderer::setRenderMode(RenderMode mode)
 {
-    Q_D(QPdfPageRenderer);
-
-    if (d->m_renderMode == mode)
+    if (d_ptr->m_renderMode == mode)
         return;
 
-    d->m_renderMode = mode;
-    emit renderModeChanged(d->m_renderMode);
+    d_ptr->m_renderMode = mode;
+    emit renderModeChanged(d_ptr->m_renderMode);
 
-    if (d->m_renderMode == RenderMode::MultiThreaded) {
-        d->m_renderThread = new QThread;
-        d->m_renderWorker->moveToThread(d->m_renderThread);
-        d->m_renderThread->start();
+    if (d_ptr->m_renderMode == RenderMode::MultiThreaded) {
+        d_ptr->m_renderThread = new QThread;
+        d_ptr->m_renderWorker->moveToThread(d_ptr->m_renderThread);
+        d_ptr->m_renderThread->start();
     } else {
-        d->m_renderThread->quit();
-        d->m_renderThread->wait();
-        delete d->m_renderThread;
-        d->m_renderThread = nullptr;
+        d_ptr->m_renderThread->quit();
+        d_ptr->m_renderThread->wait();
+        delete d_ptr->m_renderThread;
+        d_ptr->m_renderThread = nullptr;
 
         // pulling the object from another thread should be fine, once that thread is deleted
-        d->m_renderWorker->moveToThread(this->thread());
+        d_ptr->m_renderWorker->moveToThread(this->thread());
     }
 }
 
@@ -294,9 +248,7 @@ void QPdfPageRenderer::setRenderMode(RenderMode mode)
 */
 QPdfDocument* QPdfPageRenderer::document() const
 {
-    Q_D(const QPdfPageRenderer);
-
-    return d->m_document;
+    return d_ptr->m_document;
 }
 
 /*!
@@ -306,15 +258,13 @@ QPdfDocument* QPdfPageRenderer::document() const
 */
 void QPdfPageRenderer::setDocument(QPdfDocument *document)
 {
-    Q_D(QPdfPageRenderer);
-
-    if (d->m_document == document)
+    if (d_ptr->m_document == document)
         return;
 
-    d->m_document = document;
-    emit documentChanged(d->m_document);
+    d_ptr->m_document = document;
+    emit documentChanged(d_ptr->m_document);
 
-    d->m_renderWorker->setDocument(d->m_document);
+    d_ptr->m_renderWorker->setDocument(d_ptr->m_document);
 }
 
 /*!
@@ -329,19 +279,17 @@ void QPdfPageRenderer::setDocument(QPdfDocument *document)
 quint64 QPdfPageRenderer::requestPage(int pageNumber, QSize imageSize,
                                       QPdfDocumentRenderOptions options)
 {
-    Q_D(QPdfPageRenderer);
-
-    if (!d->m_document || d->m_document->status() != QPdfDocument::Ready)
+    if (!d_ptr->m_document || d_ptr->m_document->status() != QPdfDocument::Status::Ready)
         return 0;
 
-    for (const auto &request : qAsConst(d->m_pendingRequests)) {
+    for (const auto &request : std::as_const(d_ptr->m_pendingRequests)) {
         if (request.pageNumber == pageNumber
             && request.imageSize == imageSize
             && request.options == options)
             return request.id;
     }
 
-    const auto id = d->m_requestIdCounter++;
+    const auto id = d_ptr->m_requestIdCounter++;
 
     QPdfPageRendererPrivate::PageRequest request;
     request.id = id;
@@ -349,9 +297,9 @@ quint64 QPdfPageRenderer::requestPage(int pageNumber, QSize imageSize,
     request.imageSize = imageSize;
     request.options = options;
 
-    d->m_requests.append(request);
+    d_ptr->m_requests.append(request);
 
-    d->handleNextRequest();
+    d_ptr->handleNextRequest();
 
     return id;
 }
@@ -359,3 +307,4 @@ quint64 QPdfPageRenderer::requestPage(int pageNumber, QSize imageSize,
 QT_END_NAMESPACE
 
 #include "qpdfpagerenderer.moc"
+#include "moc_qpdfpagerenderer.cpp"

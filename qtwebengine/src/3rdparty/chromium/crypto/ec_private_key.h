@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,6 @@
 #include <vector>
 
 #include "base/containers/span.h"
-#include "base/macros.h"
 #include "build/build_config.h"
 #include "crypto/crypto_export.h"
 #include "third_party/boringssl/src/include/openssl/base.h"
@@ -27,11 +26,13 @@ namespace crypto {
 // tricky.)
 class CRYPTO_EXPORT ECPrivateKey {
  public:
+  ECPrivateKey(const ECPrivateKey&) = delete;
+  ECPrivateKey& operator=(const ECPrivateKey&) = delete;
+
   ~ECPrivateKey();
 
   // Creates a new random instance. Can return nullptr if initialization fails.
   // The created key will use the NIST P-256 curve.
-  // TODO(mattm): Add a curve parameter.
   static std::unique_ptr<ECPrivateKey> Create();
 
   // Create a new instance by importing an existing private key. The format is
@@ -50,12 +51,6 @@ class CRYPTO_EXPORT ECPrivateKey {
   static std::unique_ptr<ECPrivateKey> CreateFromEncryptedPrivateKeyInfo(
       base::span<const uint8_t> encrypted_private_key_info);
 
-  // Creates a new instance by deriving private key from |secret|, and generates
-  // public key points accordingly. The created key will use the NIST P-256
-  // curve. This can return nullptr if initialization fails.
-  static std::unique_ptr<ECPrivateKey> DeriveFromSecret(
-      base::span<const uint8_t> secret);
-
   // Returns a copy of the object.
   std::unique_ptr<ECPrivateKey> Copy() const;
 
@@ -64,18 +59,11 @@ class CRYPTO_EXPORT ECPrivateKey {
   // Exports the private key to a PKCS #8 PrivateKeyInfo block.
   bool ExportPrivateKey(std::vector<uint8_t>* output) const;
 
-  // Exports the private key as an ASN.1-encoded PKCS #8 EncryptedPrivateKeyInfo
-  // block wth empty password. This was historically used as a workaround for
-  // NSS API deficiencies and does not provide security.
-  //
-  // This function is deprecated. Use ExportPrivateKey for new code. See
-  // https://crbug.com/603319.
-  bool ExportEncryptedPrivateKey(std::vector<uint8_t>* output) const;
-
   // Exports the public key to an X.509 SubjectPublicKeyInfo block.
   bool ExportPublicKey(std::vector<uint8_t>* output) const;
 
-  // Exports the public key as an EC point in the uncompressed point format.
+  // Exports the public key as an EC point in X9.62 uncompressed form. Note this
+  // includes the leading 0x04 byte.
   bool ExportRawPublicKey(std::string* output) const;
 
  private:
@@ -83,8 +71,6 @@ class CRYPTO_EXPORT ECPrivateKey {
   ECPrivateKey();
 
   bssl::UniquePtr<EVP_PKEY> key_;
-
-  DISALLOW_COPY_AND_ASSIGN(ECPrivateKey);
 };
 
 }  // namespace crypto

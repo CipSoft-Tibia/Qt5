@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,12 +7,14 @@
 #include "base/command_line.h"
 #include "content/browser/media/media_internals_handler.h"
 #include "content/browser/resources/media/grit/media_internals_resources.h"
+#include "content/browser/resources/media/grit/media_internals_resources_map.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/url_constants.h"
 #include "media/base/media_switches.h"
+#include "services/network/public/mojom/content_security_policy.mojom.h"
 
 namespace content {
 namespace {
@@ -22,8 +24,12 @@ WebUIDataSource* CreateMediaInternalsHTMLSource() {
       WebUIDataSource::Create(kChromeUIMediaInternalsHost);
 
   source->UseStringsJs();
-  source->AddResourcePath("media_internals.js", IDR_MEDIA_INTERNALS_JS);
-  source->SetDefaultResource(IDR_MEDIA_INTERNALS_HTML);
+  source->AddResourcePaths(
+      base::make_span(kMediaInternalsResources, kMediaInternalsResourcesSize));
+  source->SetDefaultResource(IDR_MEDIA_INTERNALS_MEDIA_INTERNALS_HTML);
+  source->OverrideContentSecurityPolicy(
+      network::mojom::CSPDirectiveName::TrustedTypes,
+      "trusted-types static-types;");
   return source;
 }
 

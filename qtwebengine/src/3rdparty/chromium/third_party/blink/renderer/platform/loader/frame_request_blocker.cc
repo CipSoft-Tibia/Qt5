@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -34,17 +34,15 @@ class RequestBlockerThrottle : public URLLoaderThrottle,
     *defer = true;
   }
 
+  const char* NameForLoggingWillStartRequest() override {
+    return "FrameRequestBlockerThrottle";
+  }
+
   // FrameRequestBlocker::Client implementation:
   void Resume() override {
     frame_request_blocker_->RemoveObserver(this);
     frame_request_blocker_ = nullptr;
     delegate_->Resume();
-  }
-
-  void Cancel() override {
-    frame_request_blocker_->RemoveObserver(this);
-    frame_request_blocker_ = nullptr;
-    delegate_->CancelWithError(net::ERR_FAILED);
   }
 
  private:
@@ -66,12 +64,6 @@ void FrameRequestBlocker::Resume() {
 
   blocked_.Decrement();
   clients_->Notify(FROM_HERE, &Client::Resume);
-}
-
-void FrameRequestBlocker::Cancel() {
-  DCHECK(blocked_.IsOne());
-  blocked_.Decrement();
-  clients_->Notify(FROM_HERE, &Client::Cancel);
 }
 
 std::unique_ptr<URLLoaderThrottle>

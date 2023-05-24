@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -97,6 +97,9 @@ const char kPaymentManifestCrossSiteRedirectNotAllowed[] =
 const char kPaymentManifestDownloadFailed[] =
     "Unable to download payment manifest \"$1\".";
 
+const char kPaymentManifestCSPDenied[] =
+    "Content Security Policy denied the download of payment manifest \"$1\".";
+
 const char kPaymentDetailsNotObject[] =
     "Payment app returned invalid response. \"details\" field is not a "
     "dictionary.";
@@ -134,6 +137,15 @@ const char kPaymentHandlerInsecureNavigation[] =
     "The payment handler navigated to a page with insecure context, invalid "
     "certificate state, or malicious content.";
 
+const char kPaymentHandlerInstallFailed[] =
+    "Failed to install the payment handler.";
+
+const char kPaymentHandlerActivityDied[] =
+    "The payment handler is closed because the Android activity is destroyed.";
+
+const char kPaymentHandlerFailToLoadMainFrame[] =
+    "The payment handler fails to load the page.";
+
 const char kSinglePaymentMethodNotSupportedFormat[] =
     "The payment method $ is not supported.";
 
@@ -147,10 +159,6 @@ const char kCanMakePaymentEventTimeout[] =
 const char kCanMakePaymentEventNoResponse[] =
     "Payment handler did not respond to \"canmakepayment\" event.";
 
-const char kCanMakePaymentEventNoReadyForMinimalUiValue[] =
-    "Payment handler did not specify a value for \"readyForMinimalUI\" in "
-    "CanMakePaymentEvent.respondWithMinimalUI()..";
-
 const char kCanMakePaymentEventBooleanConversionError[] =
     "Unable to convert the value of \"canmakepayment\" response to a boolean.";
 
@@ -161,22 +169,6 @@ const char kCanMakePaymentEventBrowserError[] =
 const char kCanMakePaymentEventInternalError[] =
     "Payment handler encountered an error (e.g., threw a JavaScript exception) "
     "while responding to \"canmakepayment\" event.";
-
-const char kCanMakePaymentEventInvalidAccountBalanceValue[] =
-    "Payment handler provided invalid account balance value in "
-    "CanMakePaymentEvent.respondWithMinimalUI().";
-
-const char kCanMakePaymentEventMinimalUiResponseConversionError[] =
-    "Unable to parse the object that the payment handler passed into "
-    "CanMakePaymentEvent.respondWithMinimalUI().";
-
-const char kCanMakePaymentEventNoAccountBalanceValue[] =
-    "Payment handler did not specify account balance in "
-    "CanMakePaymentEvent.respondWithMinimalUI().";
-
-const char kCanMakePaymentEventNoCanMakePaymentValue[] =
-    "Payment handler did not specify a value for \"canMakePayment\" in "
-    "CanMakePaymentEvent.respondWithMinimalUI().";
 
 const char kCanMakePaymentEventNoUrlBasedPaymentMethods[] =
     "Browser did not fire \"canmakepayment\" event because the payment handler "
@@ -217,6 +209,37 @@ const char kCredentialIdsRequired[] =
 const char kTimeoutTooLong[] =
     "The \"secure-payment-confirmation\" method requires at most 1 hour "
     "\"timeout\" field.";
+
+const char kChallengeRequired[] =
+    "The \"secure-payment-confirmation\" method requires a non-empty "
+    "\"challenge\" field.";
+
+const char kInstrumentRequired[] =
+    "The \"secure-payment-confirmation\" method requires a "
+    "\"instrument\" field.";
+
+const char kInstrumentDisplayNameRequired[] =
+    "The \"secure-payment-confirmation\" method requires a non-empty "
+    "\"instrument.displayName\" field.";
+
+const char kValidInstrumentIconRequired[] =
+    "The \"secure-payment-confirmation\" method requires a valid URL in the "
+    "\"instrument.icon\" field.";
+
+const char kInvalidIcon[] =
+    "The \"instrument.icon\" either could not be downloaded or decoded.";
+
+const char kRpIdRequired[] =
+    "The \"secure-payment-confirmation\" method requires a valid domain in the "
+    "\"rpId\" field.";
+
+const char kPayeeOriginOrPayeeNameRequired[] =
+    "The \"secure-payment-confirmation\" method requires a non-empty "
+    "\"payeeOrigin\" or \"payeeName\" field.";
+
+const char kPayeeOriginMustBeHttps[] =
+    "The \"secure-payment-confirmation\" method requires that the "
+    "\"payeeOrigin\" field must be https.";
 
 }  // namespace errors
 }  // namespace payments

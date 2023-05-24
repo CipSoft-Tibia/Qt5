@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/gfx/animation/animation.h"
 #include "ui/gfx/animation/animation_test_api.h"
@@ -21,8 +20,7 @@
 #include "ui/views/animation/test/square_ink_drop_ripple_test_api.h"
 #include "ui/views/animation/test/test_ink_drop_ripple_observer.h"
 
-namespace views {
-namespace test {
+namespace views::test {
 
 const float kVisibleOpacity = 0.175f;
 
@@ -45,6 +43,10 @@ class InkDropRippleTest
     : public testing::TestWithParam<InkDropRippleTestTypes> {
  public:
   InkDropRippleTest();
+
+  InkDropRippleTest(const InkDropRippleTest&) = delete;
+  InkDropRippleTest& operator=(const InkDropRippleTest&) = delete;
+
   ~InkDropRippleTest() override;
 
  protected:
@@ -56,9 +58,6 @@ class InkDropRippleTest
 
   std::unique_ptr<base::AutoReset<gfx::Animation::RichAnimationRenderMode>>
       animation_mode_reset_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(InkDropRippleTest);
 };
 
 InkDropRippleTest::InkDropRippleTest()
@@ -66,9 +65,9 @@ InkDropRippleTest::InkDropRippleTest()
           gfx::Animation::RichAnimationRenderMode::FORCE_DISABLED)) {
   switch (GetParam()) {
     case SQUARE_INK_DROP_RIPPLE: {
-      SquareInkDropRipple* square_ink_drop_ripple =
-          new SquareInkDropRipple(gfx::Size(10, 10), 2, gfx::Size(8, 8), 1,
-                                  gfx::Point(), SK_ColorBLACK, kVisibleOpacity);
+      SquareInkDropRipple* square_ink_drop_ripple = new SquareInkDropRipple(
+          nullptr, gfx::Size(10, 10), 2, gfx::Size(8, 8), 1, gfx::Point(),
+          SK_ColorBLACK, kVisibleOpacity);
       ink_drop_ripple_.reset(square_ink_drop_ripple);
       test_api_ =
           std::make_unique<SquareInkDropRippleTestApi>(square_ink_drop_ripple);
@@ -76,7 +75,7 @@ InkDropRippleTest::InkDropRippleTest()
     }
     case FLOOD_FILL_INK_DROP_RIPPLE: {
       FloodFillInkDropRipple* flood_fill_ink_drop_ripple =
-          new FloodFillInkDropRipple(gfx::Size(10, 10), gfx::Point(),
+          new FloodFillInkDropRipple(nullptr, gfx::Size(10, 10), gfx::Point(),
                                      SK_ColorBLACK, kVisibleOpacity);
       ink_drop_ripple_.reset(flood_fill_ink_drop_ripple);
       test_api_ = std::make_unique<FloodFillInkDropRippleTestApi>(
@@ -408,5 +407,4 @@ TEST_P(InkDropRippleTest, RipplePendingToActivatedObserverOrder) {
       {InkDropState::ACTION_PENDING, InkDropState::ACTIVATED}));
 }
 
-}  // namespace test
-}  // namespace views
+}  // namespace views::test

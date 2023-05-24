@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,15 +9,13 @@
 #include <memory>
 #include <string>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
-#include "base/macros.h"
 #include "base/memory/ref_counted.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 #include "content/public/test/browser_task_environment.h"
 #include "media/audio/audio_system_impl.h"
@@ -37,6 +35,12 @@ class MockAudioInputDeviceManagerListener
     : public MediaStreamProviderListener {
  public:
   MockAudioInputDeviceManagerListener() {}
+
+  MockAudioInputDeviceManagerListener(
+      const MockAudioInputDeviceManagerListener&) = delete;
+  MockAudioInputDeviceManagerListener& operator=(
+      const MockAudioInputDeviceManagerListener&) = delete;
+
   ~MockAudioInputDeviceManagerListener() override {}
 
   MOCK_METHOD2(Opened,
@@ -48,16 +52,13 @@ class MockAudioInputDeviceManagerListener
   MOCK_METHOD2(Aborted,
                void(blink::mojom::MediaStreamType,
                     const base::UnguessableToken&));
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MockAudioInputDeviceManagerListener);
 };
 
 // TODO(henrika): there are special restrictions for Android since
 // AudioInputDeviceManager::Open() must be called on the audio thread.
 // This test suite must be modified to run on Android.
 // Flaky on Linux. See http://crbug.com/867397.
-#if defined(OS_ANDROID) || defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #define MAYBE_AudioInputDeviceManagerTest DISABLED_AudioInputDeviceManagerTest
 #else
 #define MAYBE_AudioInputDeviceManagerTest AudioInputDeviceManagerTest
@@ -66,6 +67,11 @@ class MockAudioInputDeviceManagerListener
 class MAYBE_AudioInputDeviceManagerTest : public testing::Test {
  public:
   MAYBE_AudioInputDeviceManagerTest() {}
+
+  MAYBE_AudioInputDeviceManagerTest(const MAYBE_AudioInputDeviceManagerTest&) =
+      delete;
+  MAYBE_AudioInputDeviceManagerTest& operator=(
+      const MAYBE_AudioInputDeviceManagerTest&) = delete;
 
  protected:
   virtual void Initialize() {
@@ -120,9 +126,6 @@ class MAYBE_AudioInputDeviceManagerTest : public testing::Test {
   scoped_refptr<AudioInputDeviceManager> manager_;
   std::unique_ptr<MockAudioInputDeviceManagerListener> audio_input_listener_;
   blink::MediaStreamDevices devices_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MAYBE_AudioInputDeviceManagerTest);
 };
 
 // Opens and closes the devices.
@@ -327,6 +330,11 @@ class AudioInputDeviceManagerNoDevicesTest
  public:
   AudioInputDeviceManagerNoDevicesTest() {}
 
+  AudioInputDeviceManagerNoDevicesTest(
+      const AudioInputDeviceManagerNoDevicesTest&) = delete;
+  AudioInputDeviceManagerNoDevicesTest& operator=(
+      const AudioInputDeviceManagerNoDevicesTest&) = delete;
+
  protected:
   void Initialize() override {
     // MockAudioManager has no input and no output audio devices.
@@ -342,9 +350,6 @@ class AudioInputDeviceManagerNoDevicesTest
     devices_.emplace_back(blink::mojom::MediaStreamType::DEVICE_AUDIO_CAPTURE,
                           "fake_device", "Fake Device");
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(AudioInputDeviceManagerNoDevicesTest);
 };
 
 TEST_F(AudioInputDeviceManagerNoDevicesTest,

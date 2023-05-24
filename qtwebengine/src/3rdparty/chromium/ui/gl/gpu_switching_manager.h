@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,11 +14,15 @@
 #include "ui/gl/gpu_switching_observer.h"
 
 namespace ui {
-
+// GpuSwitchingManager is not thread safe. It is running on the browser main
+// thread in the browser and/or on the gpu main thread in the GPU process.
 class GL_EXPORT GpuSwitchingManager {
  public:
   // Getter for the singleton. This will return NULL on failure.
   static GpuSwitchingManager* GetInstance();
+
+  GpuSwitchingManager(const GpuSwitchingManager&) = delete;
+  GpuSwitchingManager& operator=(const GpuSwitchingManager&) = delete;
 
   void AddObserver(GpuSwitchingObserver* observer);
   void RemoveObserver(GpuSwitchingObserver* observer);
@@ -26,7 +30,7 @@ class GL_EXPORT GpuSwitchingManager {
   // Called when a GPU switch is noticed by the system. In the browser process
   // this is occurs as a result of a system observer. In the GPU process, this
   // occurs as a result of an IPC from the browser. The system observer is kept
-  // in the browser process only so that any workarounds or blacklisting can
+  // in the browser process only so that any workarounds or blocklisting can
   // be applied there.
   //
   // The GpuPreference argument is a heuristic indicating whether the
@@ -41,6 +45,10 @@ class GL_EXPORT GpuSwitchingManager {
   // Called when a monitor is unplugged.  Only Windows is supported for now.
   void NotifyDisplayRemoved();
 
+  // Called when the display metrics changed.  Only Windows is supported for
+  // now.
+  void NotifyDisplayMetricsChanged();
+
  private:
   friend struct base::DefaultSingletonTraits<GpuSwitchingManager>;
 
@@ -49,8 +57,6 @@ class GL_EXPORT GpuSwitchingManager {
 
   base::Lock lock_;
   base::ObserverList<GpuSwitchingObserver>::Unchecked GUARDED_BY(lock_) observer_list_;
-
-  DISALLOW_COPY_AND_ASSIGN(GpuSwitchingManager);
 };
 
 }  // namespace ui

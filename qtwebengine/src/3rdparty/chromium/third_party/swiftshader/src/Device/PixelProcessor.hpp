@@ -24,13 +24,11 @@
 
 namespace sw {
 
-class PixelShader;
-class Rasterizer;
-struct Texture;
 struct DrawData;
 struct Primitive;
+class SpirvShader;
 
-using RasterizerFunction = FunctionT<void(const Primitive *primitive, int count, int cluster, int clusterCount, DrawData *draw)>;
+using RasterizerFunction = FunctionT<void(const vk::Device *device, const Primitive *primitive, int count, int cluster, int clusterCount, DrawData *draw)>;
 
 class PixelProcessor
 {
@@ -45,8 +43,9 @@ public:
 			VkStencilOp passOp;
 			VkStencilOp depthFailOp;
 			VkCompareOp compareOp;
-			uint32_t compareMask;
-			uint32_t writeMask;
+			bool useCompareMask;
+			bool useWriteMask;
+			bool writeEnabled;
 
 			void operator=(const VkStencilOpState &rhs)
 			{
@@ -54,8 +53,9 @@ public:
 				passOp = rhs.passOp;
 				depthFailOp = rhs.depthFailOp;
 				compareOp = rhs.compareOp;
-				compareMask = rhs.compareMask;
-				writeMask = rhs.writeMask;
+				useCompareMask = (rhs.compareMask != 0xff);
+				useWriteMask = ((rhs.writeMask & 0xFF) != 0xFF);
+				writeEnabled = (rhs.writeMask != 0);
 			}
 		};
 
@@ -74,26 +74,37 @@ public:
 		VkCompareOp depthCompareMode;
 		bool depthWriteEnable;
 
+		bool robustBufferAccess;
+
 		bool stencilActive;
 		StencilOpState frontStencil;
 		StencilOpState backStencil;
 
 		bool depthTestActive;
+		bool depthBoundsTestActive;
 		bool occlusionEnabled;
 		bool perspective;
 
-		BlendState blendState[RENDERTARGETS];
+		vk::BlendState blendState[MAX_COLOR_BUFFERS];
 
 		unsigned int colorWriteMask;
-		vk::Format targetFormat[RENDERTARGETS];
+		vk::Format colorFormat[MAX_COLOR_BUFFERS];
 		unsigned int multiSampleCount;
 		unsigned int multiSampleMask;
 		bool enableMultiSampling;
 		bool alphaToCoverage;
 		bool centroid;
+		bool sampleShadingEnabled;
+		float minSampleShading;
+		float minDepthBounds;
+		float maxDepthBounds;
 		VkFrontFace frontFace;
 		vk::Format depthFormat;
+		bool depthBias;
 		bool depthClamp;
+
+		float minDepthClamp;
+		float maxDepthClamp;
 	};
 
 	struct State : States
@@ -137,12 +148,12 @@ public:
 
 	struct Factor
 	{
-		word4 alphaReference4;
-
-		word4 blendConstant4W[4];
-		float4 blendConstant4F[4];
-		word4 invBlendConstant4W[4];
-		float4 invBlendConstant4F[4];
+		float4 blendConstantF;     // Unclamped for floating-point attachment formats.
+		float4 invBlendConstantF;  // Unclamped for floating-point attachment formats.
+		float4 blendConstantU;     // Clamped to [0,1] for unsigned fixed-point attachment formats.
+		float4 invBlendConstantU;  // Clamped to [0,1] for unsigned fixed-point attachment formats.
+		float4 blendConstantS;     // Clamped to [-1,1] for signed fixed-point attachment formats.
+		float4 invBlendConstantS;  // Clamped to [-1,1] for signed fixed-point attachment formats.
 	};
 
 public:
@@ -152,9 +163,9 @@ public:
 
 	void setBlendConstant(const float4 &blendConstant);
 
-	const State update(const Context *context) const;
-	RoutineType routine(const State &state, vk::PipelineLayout const *pipelineLayout,
-	                    SpirvShader const *pixelShader, const vk::DescriptorSet::Bindings &descriptorSets);
+	const State update(const vk::GraphicsState &pipelineState, const sw::SpirvShader *fragmentShader, const sw::SpirvShader *vertexShader, const vk::Attachments &attachments, bool occlusionEnabled) const;
+	RoutineType routine(const State &state, const vk::PipelineLayout *pipelineLayout,
+	                    const SpirvShader *pixelShader, const vk::DescriptorSet::Bindings &descriptorSets);
 	void setRoutineCacheSize(int routineCacheSize);
 
 	// Other semi-constants

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,18 +6,19 @@
 
 #include <memory>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/callback.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
+#include "base/task/single_thread_task_runner.h"
 #include "build/buildflag.h"
+#include "components/cast_streaming/public/decoder_buffer_reader.h"
 #include "media/media_buildflags.h"
 #include "media/remoting/renderer_controller.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 #if BUILDFLAG(ENABLE_MEDIA_REMOTING_RPC)
-#include "media/remoting/proto_utils.h"  // nogncheck
+#include "components/cast_streaming/public/remoting_proto_utils.h"  // nogncheck
 #endif
 
 namespace media {
@@ -27,32 +28,33 @@ FakeRemotingDataStreamSender::FakeRemotingDataStreamSender(
     mojo::PendingReceiver<mojom::RemotingDataStreamSender> stream_sender,
     mojo::ScopedDataPipeConsumerHandle consumer_handle)
     : receiver_(this, std::move(stream_sender)),
-      data_pipe_reader_(std::move(consumer_handle)),
-      send_frame_count_(0),
-      cancel_in_flight_count_(0) {}
+      decoder_buffer_reader_(
+          std::make_unique<cast_streaming::DecoderBufferReader>(
+              base::BindRepeating(&FakeRemotingDataStreamSender::OnFrameRead,
+                                  base::Unretained(this)),
+              std::move(consumer_handle))) {
+  decoder_buffer_reader_->ReadBufferAsync();
+}
 
 FakeRemotingDataStreamSender::~FakeRemotingDataStreamSender() = default;
 
 void FakeRemotingDataStreamSender::ResetHistory() {
   send_frame_count_ = 0;
   cancel_in_flight_count_ = 0;
-  next_frame_data_.resize(0);
-  received_frame_list.clear();
+  received_frame_list_.clear();
 }
 
 bool FakeRemotingDataStreamSender::ValidateFrameBuffer(size_t index,
                                                        size_t size,
                                                        bool key_frame,
                                                        int pts_ms) {
-  if (index >= received_frame_list.size()) {
+  if (index >= received_frame_list_.size()) {
     VLOG(1) << "There is no such frame";
     return false;
   }
 
 #if BUILDFLAG(ENABLE_MEDIA_REMOTING_RPC)
-  const std::vector<uint8_t>& data = received_frame_list[index];
-  scoped_refptr<DecoderBuffer> media_buffer =
-      ByteArrayToDecoderBuffer(data.data(), data.size());
+  scoped_refptr<DecoderBuffer> media_buffer = received_frame_list_[index];
 
   // Checks if pts is correct or not
   if (media_buffer->timestamp().InMilliseconds() != pts_ms) {
@@ -93,20 +95,33 @@ bool FakeRemotingDataStreamSender::ValidateFrameBuffer(size_t index,
 #endif  // BUILDFLAG(ENABLE_MEDIA_REMOTING_RPC)
 }
 
-void FakeRemotingDataStreamSender::SendFrame(uint32_t frame_size) {
-  next_frame_data_.resize(frame_size);
-  data_pipe_reader_.Read(
-      next_frame_data_.data(), frame_size,
-      base::BindOnce(&FakeRemotingDataStreamSender::OnFrameRead,
-                     base::Unretained(this)));
+void FakeRemotingDataStreamSender::CloseDataPipe() {
+  decoder_buffer_reader_.reset();
 }
 
-void FakeRemotingDataStreamSender::OnFrameRead(bool success) {
-  EXPECT_TRUE(success);
+void FakeRemotingDataStreamSender::SendFrame(
+    media::mojom::DecoderBufferPtr buffer,
+    SendFrameCallback callback) {
+  if (!decoder_buffer_reader_) {
+    std::move(callback).Run();
+    return;
+  }
+
+  DCHECK(!send_frame_callback_);
+  send_frame_callback_ = std::move(callback);
+  decoder_buffer_reader_->ProvideBuffer(std::move(buffer));
+}
+
+void FakeRemotingDataStreamSender::OnFrameRead(
+    scoped_refptr<media::DecoderBuffer> buffer) {
+  DCHECK(decoder_buffer_reader_);
+  DCHECK(send_frame_callback_);
+
+  decoder_buffer_reader_->ReadBufferAsync();
+  std::move(send_frame_callback_).Run();
 
   ++send_frame_count_;
-  received_frame_list.push_back(std::move(next_frame_data_));
-  EXPECT_EQ(send_frame_count_, received_frame_list.size());
+  received_frame_list_.push_back(std::move(buffer));
 }
 
 void FakeRemotingDataStreamSender::CancelInFlightData() {
@@ -121,14 +136,18 @@ FakeRemoter::~FakeRemoter() = default;
 
 void FakeRemoter::Start() {
   if (start_will_fail_) {
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE,
         base::BindOnce(&FakeRemoter::StartFailed, weak_factory_.GetWeakPtr()));
   } else {
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE,
         base::BindOnce(&FakeRemoter::Started, weak_factory_.GetWeakPtr()));
   }
+}
+
+void FakeRemoter::StartWithPermissionAlreadyGranted() {
+  Start();
 }
 
 void FakeRemoter::StartDataStreams(
@@ -138,19 +157,19 @@ void FakeRemoter::StartDataStreams(
     mojo::PendingReceiver<mojom::RemotingDataStreamSender> video_sender) {
   if (audio_pipe.is_valid()) {
     VLOG(2) << "Has audio";
-    audio_stream_sender_.reset(new FakeRemotingDataStreamSender(
-        std::move(audio_sender), std::move(audio_pipe)));
+    audio_stream_sender_ = std::make_unique<FakeRemotingDataStreamSender>(
+        std::move(audio_sender), std::move(audio_pipe));
   }
 
   if (video_pipe.is_valid()) {
     VLOG(2) << "Has video";
-    video_stream_sender_.reset(new FakeRemotingDataStreamSender(
-        std::move(video_sender), std::move(video_pipe)));
+    video_stream_sender_ = std::make_unique<FakeRemotingDataStreamSender>(
+        std::move(video_sender), std::move(video_pipe));
   }
 }
 
 void FakeRemoter::Stop(mojom::RemotingStopReason reason) {
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&FakeRemoter::Stopped,
                                 weak_factory_.GetWeakPtr(), reason));
 }

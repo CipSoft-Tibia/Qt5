@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,16 +8,14 @@
 #include "content/common/content_export.h"
 
 namespace blink {
-namespace mojom {
-class RendererPreferences;
-}
+struct RendererPreferences;
 }  // namespace blink
 
 namespace content {
 
 // Updates |prefs| from system settings.
 CONTENT_EXPORT void UpdateFontRendererPreferencesFromSystemSettings(
-    blink::mojom::RendererPreferences* prefs);
+    blink::RendererPreferences* prefs);
 
 }  // namespace content
 

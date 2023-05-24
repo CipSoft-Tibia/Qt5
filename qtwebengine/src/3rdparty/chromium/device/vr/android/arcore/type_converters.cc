@@ -1,10 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "device/vr/android/arcore/type_converters.h"
 
-#include "ui/gfx/transform_util.h"
+#include "ui/gfx/geometry/decomposed_transform.h"
+#include "ui/gfx/geometry/transform.h"
 
 namespace mojo {
 
@@ -33,7 +34,7 @@ gfx::Transform TypeConverter<gfx::Transform, device::mojom::VRPosePtr>::Convert(
     decomposed.translate[2] = pose->position->z();
   }
 
-  return gfx::ComposeTransform(decomposed);
+  return gfx::Transform::Compose(decomposed);
 }
 
 gfx::Transform TypeConverter<gfx::Transform, device::mojom::Pose>::Convert(
@@ -45,7 +46,7 @@ gfx::Transform TypeConverter<gfx::Transform, device::mojom::Pose>::Convert(
   decomposed.translate[1] = pose.position.y();
   decomposed.translate[2] = pose.position.z();
 
-  return gfx::ComposeTransform(decomposed);
+  return gfx::Transform::Compose(decomposed);
 }
 
 }  // namespace mojo

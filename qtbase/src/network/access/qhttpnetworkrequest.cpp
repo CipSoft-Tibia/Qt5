@@ -1,51 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhttpnetworkrequest_p.h"
 #include "private/qnoncontiguousbytedevice_p.h"
 
 QT_BEGIN_NAMESPACE
 
+QT_IMPL_METATYPE_EXTERN(QHttpNetworkRequest)
+
 QHttpNetworkRequestPrivate::QHttpNetworkRequestPrivate(QHttpNetworkRequest::Operation op,
         QHttpNetworkRequest::Priority pri, const QUrl &newUrl)
     : QHttpNetworkHeaderPrivate(newUrl), operation(op), priority(pri), uploadByteDevice(nullptr),
-      autoDecompress(false), pipeliningAllowed(false), spdyAllowed(false), http2Allowed(false),
+      autoDecompress(false), pipeliningAllowed(false), http2Allowed(true),
       http2Direct(false), withCredentials(true), preConnect(false), redirectCount(0),
       redirectPolicy(QNetworkRequest::ManualRedirectPolicy)
 {
@@ -59,9 +25,9 @@ QHttpNetworkRequestPrivate::QHttpNetworkRequestPrivate(const QHttpNetworkRequest
       uploadByteDevice(other.uploadByteDevice),
       autoDecompress(other.autoDecompress),
       pipeliningAllowed(other.pipeliningAllowed),
-      spdyAllowed(other.spdyAllowed),
       http2Allowed(other.http2Allowed),
       http2Direct(other.http2Direct),
+      h2cAllowed(other.h2cAllowed),
       withCredentials(other.withCredentials),
       ssl(other.ssl),
       preConnect(other.preConnect),
@@ -84,9 +50,9 @@ bool QHttpNetworkRequestPrivate::operator==(const QHttpNetworkRequestPrivate &ot
         && (uploadByteDevice == other.uploadByteDevice)
         && (autoDecompress == other.autoDecompress)
         && (pipeliningAllowed == other.pipeliningAllowed)
-        && (spdyAllowed == other.spdyAllowed)
         && (http2Allowed == other.http2Allowed)
         && (http2Direct == other.http2Direct)
+        && (h2cAllowed == other.h2cAllowed)
         // we do not clear the customVerb in setOperation
         && (operation != QHttpNetworkRequest::Custom || (customVerb == other.customVerb))
         && (withCredentials == other.withCredentials)
@@ -94,7 +60,8 @@ bool QHttpNetworkRequestPrivate::operator==(const QHttpNetworkRequestPrivate &ot
         && (preConnect == other.preConnect)
         && (redirectPolicy == other.redirectPolicy)
         && (peerVerifyName == other.peerVerifyName)
-        && (needResendWithCredentials == other.needResendWithCredentials);
+        && (needResendWithCredentials == other.needResendWithCredentials)
+        ;
 }
 
 QByteArray QHttpNetworkRequest::methodName() const
@@ -147,7 +114,7 @@ QByteArray QHttpNetworkRequestPrivate::header(const QHttpNetworkRequest &request
 {
     QList<QPair<QByteArray, QByteArray> > fields = request.header();
     QByteArray ba;
-    ba.reserve(40 + fields.length()*25); // very rough lower bound estimation
+    ba.reserve(40 + fields.size()*25); // very rough lower bound estimation
 
     ba += request.methodName();
     ba += ' ';
@@ -272,7 +239,7 @@ void QHttpNetworkRequest::setContentLength(qint64 length)
 
 QList<QPair<QByteArray, QByteArray> > QHttpNetworkRequest::header() const
 {
-    return d->fields;
+    return d->parser.headers();
 }
 
 QByteArray QHttpNetworkRequest::headerField(const QByteArray &name, const QByteArray &defaultValue) const
@@ -346,16 +313,6 @@ void QHttpNetworkRequest::setPipeliningAllowed(bool b)
     d->pipeliningAllowed = b;
 }
 
-bool QHttpNetworkRequest::isSPDYAllowed() const
-{
-    return d->spdyAllowed;
-}
-
-void QHttpNetworkRequest::setSPDYAllowed(bool b)
-{
-    d->spdyAllowed = b;
-}
-
 bool QHttpNetworkRequest::isHTTP2Allowed() const
 {
     return d->http2Allowed;
@@ -374,6 +331,16 @@ bool QHttpNetworkRequest::isHTTP2Direct() const
 void QHttpNetworkRequest::setHTTP2Direct(bool b)
 {
     d->http2Direct = b;
+}
+
+bool QHttpNetworkRequest::isH2cAllowed() const
+{
+    return d->h2cAllowed;
+}
+
+void QHttpNetworkRequest::setH2cAllowed(bool b)
+{
+    d->h2cAllowed = b;
 }
 
 bool QHttpNetworkRequest::withCredentials() const

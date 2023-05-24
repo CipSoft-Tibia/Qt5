@@ -12,10 +12,12 @@
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "p2p/base/fake_port_allocator.h"
 #include "rtc_base/thread.h"
 #include "rtc_base/virtual_socket_server.h"
 #include "test/gtest.h"
+#include "test/scoped_key_value_config.h"
 
 static const char kContentName[] = "test content";
 // Based on ICE_UFRAG_LENGTH
@@ -24,13 +26,20 @@ static const char kIceUfrag[] = "UF00";
 static const char kIcePwd[] = "TESTICEPWD00000000000000";
 static const char kTurnUsername[] = "test";
 static const char kTurnPassword[] = "test";
+constexpr uint64_t kTiebreakerDefault = 44444;
 
 class PortAllocatorTest : public ::testing::Test, public sigslot::has_slots<> {
  public:
   PortAllocatorTest()
-      : vss_(new rtc::VirtualSocketServer()), main_(vss_.get()) {
-    allocator_.reset(
-        new cricket::FakePortAllocator(rtc::Thread::Current(), nullptr));
+      : vss_(std::make_unique<rtc::VirtualSocketServer>()),
+        main_(vss_.get()),
+        packet_socket_factory_(
+            std::make_unique<rtc::BasicPacketSocketFactory>(vss_.get())),
+        allocator_(std::make_unique<cricket::FakePortAllocator>(
+            rtc::Thread::Current(),
+            packet_socket_factory_.get(),
+            &field_trials_)) {
+    allocator_->SetIceTiebreaker(kTiebreakerDefault);
   }
 
  protected:
@@ -47,10 +56,10 @@ class PortAllocatorTest : public ::testing::Test, public sigslot::has_slots<> {
   }
 
   std::unique_ptr<cricket::FakePortAllocatorSession> CreateSession(
-      const std::string& content_name,
+      absl::string_view content_name,
       int component,
-      const std::string& ice_ufrag,
-      const std::string& ice_pwd) {
+      absl::string_view ice_ufrag,
+      absl::string_view ice_pwd) {
     return std::unique_ptr<cricket::FakePortAllocatorSession>(
         static_cast<cricket::FakePortAllocatorSession*>(
             allocator_
@@ -78,8 +87,10 @@ class PortAllocatorTest : public ::testing::Test, public sigslot::has_slots<> {
     return count;
   }
 
+  webrtc::test::ScopedKeyValueConfig field_trials_;
   std::unique_ptr<rtc::VirtualSocketServer> vss_;
   rtc::AutoSocketServerThread main_;
+  std::unique_ptr<rtc::PacketSocketFactory> packet_socket_factory_;
   std::unique_ptr<cricket::FakePortAllocator> allocator_;
   rtc::SocketAddress stun_server_1{"11.11.11.11", 3478};
   rtc::SocketAddress stun_server_2{"22.22.22.22", 3478};
@@ -304,4 +315,57 @@ TEST_F(PortAllocatorTest, RestrictIceCredentialsChange) {
             allocator_->TakePooledSession(kContentName, 0, credentials[0].ufrag,
                                           credentials[0].pwd));
   allocator_->DiscardCandidatePool();
+}
+
+// Constants for testing candidates
+const char kIpv4Address[] = "12.34.56.78";
+const char kIpv4AddressWithPort[] = "12.34.56.78:443";
+
+TEST_F(PortAllocatorTest, SanitizeEmptyCandidateDefaultConfig) {
+  cricket::Candidate input;
+  cricket::Candidate output = allocator_->SanitizeCandidate(input);
+  EXPECT_EQ("", output.address().ipaddr().ToString());
+}
+
+TEST_F(PortAllocatorTest, SanitizeIpv4CandidateDefaultConfig) {
+  cricket::Candidate input(1, "udp", rtc::SocketAddress(kIpv4Address, 443), 1,
+                           "username", "password", cricket::LOCAL_PORT_TYPE, 1,
+                           "foundation", 1, 1);
+  cricket::Candidate output = allocator_->SanitizeCandidate(input);
+  EXPECT_EQ(kIpv4AddressWithPort, output.address().ToString());
+  EXPECT_EQ(kIpv4Address, output.address().ipaddr().ToString());
+}
+
+TEST_F(PortAllocatorTest, SanitizeIpv4CandidateMdnsObfuscationEnabled) {
+  allocator_->SetMdnsObfuscationEnabledForTesting(true);
+  cricket::Candidate input(1, "udp", rtc::SocketAddress(kIpv4Address, 443), 1,
+                           "username", "password", cricket::LOCAL_PORT_TYPE, 1,
+                           "foundation", 1, 1);
+  cricket::Candidate output = allocator_->SanitizeCandidate(input);
+  EXPECT_NE(kIpv4AddressWithPort, output.address().ToString());
+  EXPECT_EQ("", output.address().ipaddr().ToString());
+}
+
+TEST_F(PortAllocatorTest, SanitizePrflxCandidateMdnsObfuscationEnabled) {
+  allocator_->SetMdnsObfuscationEnabledForTesting(true);
+  // Create the candidate from an IP literal. This populates the hostname.
+  cricket::Candidate input(1, "udp", rtc::SocketAddress(kIpv4Address, 443), 1,
+                           "username", "password", cricket::PRFLX_PORT_TYPE, 1,
+                           "foundation", 1, 1);
+  cricket::Candidate output = allocator_->SanitizeCandidate(input);
+  EXPECT_NE(kIpv4AddressWithPort, output.address().ToString());
+  EXPECT_EQ("", output.address().ipaddr().ToString());
+}
+
+TEST_F(PortAllocatorTest, SanitizeIpv4NonLiteralMdnsObfuscationEnabled) {
+  // Create the candidate with an empty hostname.
+  allocator_->SetMdnsObfuscationEnabledForTesting(true);
+  rtc::IPAddress ip;
+  EXPECT_TRUE(IPFromString(kIpv4Address, &ip));
+  cricket::Candidate input(1, "udp", rtc::SocketAddress(ip, 443), 1, "username",
+                           "password", cricket::LOCAL_PORT_TYPE, 1,
+                           "foundation", 1, 1);
+  cricket::Candidate output = allocator_->SanitizeCandidate(input);
+  EXPECT_NE(kIpv4AddressWithPort, output.address().ToString());
+  EXPECT_EQ("", output.address().ipaddr().ToString());
 }

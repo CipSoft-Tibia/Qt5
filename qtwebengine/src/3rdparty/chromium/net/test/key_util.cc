@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,9 +15,7 @@
 #include "third_party/boringssl/src/include/openssl/evp.h"
 #include "third_party/boringssl/src/include/openssl/pem.h"
 
-namespace net {
-
-namespace key_util {
+namespace net::key_util {
 
 bssl::UniquePtr<EVP_PKEY> LoadEVP_PKEYFromPEM(const base::FilePath& filepath) {
   std::string data;
@@ -40,6 +38,26 @@ bssl::UniquePtr<EVP_PKEY> LoadEVP_PKEYFromPEM(const base::FilePath& filepath) {
   return result;
 }
 
+std::string PEMFromPrivateKey(EVP_PKEY* key) {
+  bssl::UniquePtr<BIO> temp_memory_bio(BIO_new(BIO_s_mem()));
+  if (!temp_memory_bio) {
+    LOG(ERROR) << "Failed to allocate temporary memory bio";
+    return std::string();
+  }
+  if (!PEM_write_bio_PrivateKey(temp_memory_bio.get(), key, nullptr, nullptr, 0,
+                                nullptr, nullptr)) {
+    LOG(ERROR) << "Failed to write private key";
+    return std::string();
+  }
+  const uint8_t* buffer;
+  size_t len;
+  if (!BIO_mem_contents(temp_memory_bio.get(), &buffer, &len)) {
+    LOG(ERROR) << "BIO_mem_contents failed";
+    return std::string();
+  }
+  return std::string(reinterpret_cast<const char*>(buffer), len);
+}
+
 scoped_refptr<SSLPrivateKey> LoadPrivateKeyOpenSSL(
     const base::FilePath& filepath) {
   bssl::UniquePtr<EVP_PKEY> key = LoadEVP_PKEYFromPEM(filepath);
@@ -48,6 +66,4 @@ scoped_refptr<SSLPrivateKey> LoadPrivateKeyOpenSSL(
   return WrapOpenSSLPrivateKey(std::move(key));
 }
 
-}  // namespace key_util
-
-}  // namespace net
+}  // namespace net::key_util

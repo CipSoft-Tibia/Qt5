@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,12 +8,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <list>
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/host_port_pair.h"
@@ -30,7 +29,7 @@
 #include "net/spdy/spdy_read_queue.h"
 #include "net/spdy/spdy_session.h"
 #include "net/spdy/spdy_stream.h"
-#include "net/third_party/quiche/src/spdy/core/spdy_protocol.h"
+#include "net/third_party/quiche/src/quiche/spdy/core/spdy_protocol.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 
 namespace net {
@@ -39,6 +38,7 @@ class IOBuffer;
 class ProxyDelegate;
 class SpdyStream;
 
+// Tunnels a stream socket over an HTTP/2 connection.
 class NET_EXPORT_PRIVATE SpdyProxyClientSocket : public ProxyClientSocket,
                                                  public SpdyStream::Delegate {
  public:
@@ -51,8 +51,11 @@ class NET_EXPORT_PRIVATE SpdyProxyClientSocket : public ProxyClientSocket,
                         const std::string& user_agent,
                         const HostPortPair& endpoint,
                         const NetLogWithSource& source_net_log,
-                        HttpAuthController* auth_controller,
+                        scoped_refptr<HttpAuthController> auth_controller,
                         ProxyDelegate* proxy_delegate);
+
+  SpdyProxyClientSocket(const SpdyProxyClientSocket&) = delete;
+  SpdyProxyClientSocket& operator=(const SpdyProxyClientSocket&) = delete;
 
   // On destruction Disconnect() is called.
   ~SpdyProxyClientSocket() override;
@@ -61,8 +64,6 @@ class NET_EXPORT_PRIVATE SpdyProxyClientSocket : public ProxyClientSocket,
   const HttpResponseInfo* GetConnectResponseInfo() const override;
   const scoped_refptr<HttpAuthController>& GetAuthController() const override;
   int RestartWithAuth(CompletionOnceCallback callback) override;
-  bool IsUsingSpdy() const override;
-  NextProto GetProxyNegotiatedProtocol() const override;
   void SetStreamPriority(RequestPriority priority) override;
 
   // StreamSocket implementation.
@@ -75,9 +76,6 @@ class NET_EXPORT_PRIVATE SpdyProxyClientSocket : public ProxyClientSocket,
   bool WasAlpnNegotiated() const override;
   NextProto GetNegotiatedProtocol() const override;
   bool GetSSLInfo(SSLInfo* ssl_info) override;
-  void GetConnectionAttempts(ConnectionAttempts* out) const override;
-  void ClearConnectionAttempts() override {}
-  void AddConnectionAttempts(const ConnectionAttempts& attempts) override {}
   int64_t GetTotalReceivedBytes() const override;
   void ApplySocketTag(const SocketTag& tag) override;
 
@@ -100,12 +98,13 @@ class NET_EXPORT_PRIVATE SpdyProxyClientSocket : public ProxyClientSocket,
 
   // SpdyStream::Delegate implementation.
   void OnHeadersSent() override;
+  void OnEarlyHintsReceived(const spdy::Http2HeaderBlock& headers) override;
   void OnHeadersReceived(
-      const spdy::SpdyHeaderBlock& response_headers,
-      const spdy::SpdyHeaderBlock* pushed_request_headers) override;
+      const spdy::Http2HeaderBlock& response_headers,
+      const spdy::Http2HeaderBlock* pushed_request_headers) override;
   void OnDataReceived(std::unique_ptr<SpdyBuffer> buffer) override;
   void OnDataSent() override;
-  void OnTrailers(const spdy::SpdyHeaderBlock& trailers) override;
+  void OnTrailers(const spdy::Http2HeaderBlock& trailers) override;
   void OnClose(int status) override;
   bool CanGreaseFrameType() const override;
   NetLogSource source_dependency() const override;
@@ -122,9 +121,9 @@ class NET_EXPORT_PRIVATE SpdyProxyClientSocket : public ProxyClientSocket,
     STATE_CLOSED
   };
 
-  // Calls |callback.Run(result)|. Used to run a callback posted to the
+  // Calls `write_callback_(result)`. Used to run a callback posted to the
   // message loop.
-  void RunCallback(CompletionOnceCallback callback, int result) const;
+  void RunWriteCallback(int result);
 
   void OnIOComplete(int result);
 
@@ -139,7 +138,10 @@ class NET_EXPORT_PRIVATE SpdyProxyClientSocket : public ProxyClientSocket,
   // and returns the number of bytes read.
   size_t PopulateUserReadBuffer(char* out, size_t len);
 
-  State next_state_;
+  // Called when the peer sent END_STREAM.
+  void MaybeSendEndStream();
+
+  State next_state_ = STATE_DISCONNECTED;
 
   // Pointer to the SPDY Stream that this sits on top of.
   base::WeakPtr<SpdyStream> spdy_stream_;
@@ -162,7 +164,7 @@ class NET_EXPORT_PRIVATE SpdyProxyClientSocket : public ProxyClientSocket,
   const ProxyServer proxy_server_;
 
   // This delegate must outlive this proxy client socket.
-  ProxyDelegate* const proxy_delegate_;
+  const raw_ptr<ProxyDelegate> proxy_delegate_;
 
   std::string user_agent_;
 
@@ -171,26 +173,29 @@ class NET_EXPORT_PRIVATE SpdyProxyClientSocket : public ProxyClientSocket,
 
   // User provided buffer for the Read() response.
   scoped_refptr<IOBuffer> user_buffer_;
-  size_t user_buffer_len_;
+  size_t user_buffer_len_ = 0;
 
   // User specified number of bytes to be written.
-  int write_buffer_len_;
+  int write_buffer_len_ = 0;
 
   // True if the transport socket has ever sent data.
-  bool was_ever_used_;
+  bool was_ever_used_ = false;
 
   const NetLogWithSource net_log_;
   const NetLogSource source_dependency_;
 
-  // The default weak pointer factory.
+  // State for handling END_STREAM. When the peer sends a DATA frame with
+  // END_STREAM, it should be treated as being equivalent to the TCP FIN bit.
+  // We should send a DATA frame with END_STREAM after receiving END_STREAM
+  // as the spec requires.
+  enum class EndStreamState {
+    kNone,
+    kEndStreamReceived,
+    kEndStreamSent,
+  };
+  EndStreamState end_stream_state_ = EndStreamState::kNone;
+
   base::WeakPtrFactory<SpdyProxyClientSocket> weak_factory_{this};
-
-  // Only used for posting write callbacks. Weak pointers created by this
-  // factory are invalidated in Disconnect().
-  base::WeakPtrFactory<SpdyProxyClientSocket> write_callback_weak_factory_{
-      this};
-
-  DISALLOW_COPY_AND_ASSIGN(SpdyProxyClientSocket);
 };
 
 }  // namespace net

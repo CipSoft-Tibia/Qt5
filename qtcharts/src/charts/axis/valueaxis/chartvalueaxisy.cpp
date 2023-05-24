@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/chartvalueaxisy_p.h>
 #include <QtCharts/QAbstractAxis>
@@ -37,7 +11,7 @@
 #include <QtCore/QtMath>
 #include <QtCore/QDebug>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 ChartValueAxisY::ChartValueAxisY(QValueAxis *axis, QGraphicsItem *item)
     : VerticalAxis(axis, item),
@@ -57,41 +31,38 @@ ChartValueAxisY::~ChartValueAxisY()
 {
 }
 
-QVector<qreal> ChartValueAxisY::calculateLayout() const
+QList<qreal> ChartValueAxisY::calculateLayout() const
 {
     if (m_axis->tickType() == QValueAxis::TicksFixed) {
         int tickCount = m_axis->tickCount();
 
         Q_ASSERT(tickCount >= 2);
 
-        QVector<qreal> points;
+        QList<qreal> points;
         points.resize(tickCount);
 
         const QRectF &gridRect = gridGeometry();
-
         const qreal deltaY = gridRect.height() / (qreal(tickCount) - 1.0);
         for (int i = 0; i < tickCount; ++i)
             points[i] = qreal(i) * -deltaY + gridRect.bottom();
-
         return points;
     } else {
         const qreal interval = m_axis->tickInterval();
-        qreal value = m_axis->tickAnchor();
+        const qreal anchor = m_axis->tickAnchor();
         const qreal maxValue = max();
         const qreal minValue = min();
 
-        // Find the first major tick right after the min of range
-        if (value > minValue)
-            value = value - int((value - minValue) / interval) * interval;
-        else
-            value = value + qCeil((minValue - value) / interval) * interval;
+        // Find the first major tick right after the min of the range
+        const qreal ticksFromAnchor = (anchor - minValue) / interval;
+        const qreal firstMajorTick = anchor - std::floor(ticksFromAnchor) * interval;
 
         const QRectF &gridRect = gridGeometry();
         const qreal deltaY = gridRect.height() / (maxValue - minValue);
 
-        QVector<qreal> points;
+        QList<qreal> points;
         const qreal bottomPos = gridRect.bottom();
-        while (value <= maxValue || qFuzzyCompare(value, maxValue)) {
+        qreal value = firstMajorTick;
+        while (value <= maxValue) {
             points << (value - minValue) * -deltaY + bottomPos;
             value += interval;
         }
@@ -102,8 +73,8 @@ QVector<qreal> ChartValueAxisY::calculateLayout() const
 
 void ChartValueAxisY::updateGeometry()
 {
-    const QVector<qreal> &layout = ChartAxisElement::layout();
-    const QVector<qreal>& dynamicMinorTicklayout = ChartAxisElement::dynamicMinorTicklayout();
+    const QList<qreal> &layout = ChartAxisElement::layout();
+    const QList<qreal> &dynamicMinorTicklayout = ChartAxisElement::dynamicMinorTicklayout();
     if (layout.isEmpty() && dynamicMinorTicklayout.isEmpty())
         return;
     setLabels(createValueLabels(min(), max(), layout.size(), m_axis->tickInterval(),
@@ -136,28 +107,28 @@ void ChartValueAxisY::handleLabelFormatChanged(const QString &format)
 
 void ChartValueAxisY::handleTickIntervalChanged(qreal interval)
 {
-    Q_UNUSED(interval)
+    Q_UNUSED(interval);
     QGraphicsLayoutItem::updateGeometry();
     if (presenter()) presenter()->layout()->invalidate();
 }
 
 void ChartValueAxisY::handleTickAnchorChanged(qreal anchor)
 {
-    Q_UNUSED(anchor)
+    Q_UNUSED(anchor);
     QGraphicsLayoutItem::updateGeometry();
     if (presenter()) presenter()->layout()->invalidate();
 }
 
 void ChartValueAxisY::handleTickTypeChanged(QValueAxis::TickType type)
 {
-    Q_UNUSED(type)
+    Q_UNUSED(type);
     QGraphicsLayoutItem::updateGeometry();
     if (presenter()) presenter()->layout()->invalidate();
 }
 
 QSizeF ChartValueAxisY::sizeHint(Qt::SizeHint which, const QSizeF &constraint) const
 {
-    Q_UNUSED(constraint)
+    Q_UNUSED(constraint);
 
     QSizeF sh;
     QSizeF base = VerticalAxis::sizeHint(which, constraint);
@@ -171,26 +142,36 @@ QSizeF ChartValueAxisY::sizeHint(Qt::SizeHint which, const QSizeF &constraint) c
 
     switch (which) {
     case Qt::MinimumSize: {
-        QRectF boundingRect = ChartPresenter::textBoundingRect(axis()->labelsFont(),
+        if (labelsVisible()) {
+            QRectF boundingRect = ChartPresenter::textBoundingRect(axis()->labelsFont(),
                                                                QStringLiteral("..."),
                                                                axis()->labelsAngle());
-        width = boundingRect.width() + labelPadding() + base.width() + 1.0;
-        height = boundingRect.height() / 2.0;
+            width = boundingRect.width() + labelPadding() + base.width() + 1.0;
+            height = boundingRect.height() / 2.0;
+        } else {
+            width = base.width() + 1.0;
+            height = 0;
+        }
         sh = QSizeF(width, height);
         break;
     }
     case Qt::PreferredSize: {
-        qreal labelWidth = 0.0;
-        qreal firstHeight = -1.0;
-        foreach (const QString& s, ticksList) {
-            QRectF rect = ChartPresenter::textBoundingRect(axis()->labelsFont(), s, axis()->labelsAngle());
-            labelWidth = qMax(rect.width(), labelWidth);
-            height = rect.height();
-            if (firstHeight < 0.0)
-                firstHeight = height;
+        if (labelsVisible()) {
+            qreal labelWidth = 0.0;
+            qreal firstHeight = -1.0;
+            foreach (const QString& s, ticksList) {
+                QRectF rect = ChartPresenter::textBoundingRect(axis()->labelsFont(), s, axis()->labelsAngle());
+                labelWidth = qMax(rect.width(), labelWidth);
+                height = rect.height();
+                if (firstHeight < 0.0)
+                    firstHeight = height;
+            }
+            width = labelWidth + labelPadding() + base.width() + 2.0; //two pixels of tolerance
+            height = qMax(height, firstHeight) / 2.0;
+        } else {
+            width = base.width() + 2.0; //two pixels of tolerance
+            height = 0;
         }
-        width = labelWidth + labelPadding() + base.width() + 2.0; //two pixels of tolerance
-        height = qMax(height, firstHeight) / 2.0;
         sh = QSizeF(width, height);
         break;
     }
@@ -200,6 +181,6 @@ QSizeF ChartValueAxisY::sizeHint(Qt::SizeHint which, const QSizeF &constraint) c
     return sh;
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_chartvalueaxisy_p.cpp"

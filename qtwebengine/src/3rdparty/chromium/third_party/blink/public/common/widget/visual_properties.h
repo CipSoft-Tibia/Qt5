@@ -1,16 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_PUBLIC_COMMON_WIDGET_VISUAL_PROPERTIES_H_
 #define THIRD_PARTY_BLINK_PUBLIC_COMMON_WIDGET_VISUAL_PROPERTIES_H_
 
-#include "base/optional.h"
-#include "base/time/time.h"
 #include "cc/trees/browser_controls_params.h"
 #include "components/viz/common/surfaces/local_surface_id.h"
-#include "third_party/blink/public/common/widget/screen_info.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/public/common/common_export.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom.h"
+#include "ui/display/screen_infos.h"
 #include "ui/gfx/geometry/size.h"
 
 namespace blink {
@@ -49,9 +49,9 @@ namespace blink {
 // In between (1) and (3), frames associated with RenderWidget A' will see
 // updated page properties from (1) but are still seeing old widget properties.
 
-struct VisualProperties {
-  // Information about the screen (dpi, depth, etc..).
-  ScreenInfo screen_info;
+struct BLINK_COMMON_EXPORT VisualProperties {
+  // Info about all screens, including the one currently showing the widget.
+  display::ScreenInfos screen_infos;
 
   // Whether or not blink should be in auto-resize mode.
   bool auto_resize_enabled = false;
@@ -88,12 +88,17 @@ struct VisualProperties {
   // controls shrink blink size etc.
   cc::BrowserControlsParams browser_controls_params;
 
+  // If shown and resizing the renderer, returns the height of the virtual
+  // keyboard in physical pixels. Otherwise, returns 0. Always 0 in a
+  // non-outermost main frame.
+  int virtual_keyboard_resize_height_physical_px = 0;
+
   // Whether or not the focused node should be scrolled into view after the
   // resize.
   bool scroll_focused_node_into_view = false;
 
   // The local surface ID to use (if valid).
-  base::Optional<viz::LocalSurfaceId> local_surface_id;
+  absl::optional<viz::LocalSurfaceId> local_surface_id;
 
   // Indicates whether tab-initiated fullscreen was granted.
   bool is_fullscreen_granted = false;
@@ -114,6 +119,13 @@ struct VisualProperties {
   // It needs to be shared with subframes.
   float page_scale_factor = 1.f;
 
+  // This represents the child frame's raster scale factor which takes into
+  // account the transform from child frame space to main frame space.
+  float compositing_scale_factor = 1.f;
+
+  // The OS cursor accessibility scale factor.
+  float cursor_accessibility_scale_factor = 1.f;
+
   // The logical segments of the root widget, in widget-relative DIPs. This
   // property is set by the root RenderWidget in the renderer process, then
   // propagated to child local frame roots via RenderFrameProxy/
@@ -123,6 +135,20 @@ struct VisualProperties {
   // Indicates whether a pinch gesture is currently active. Originates in the
   // main frame's renderer, and needs to be shared with subframes.
   bool is_pinch_gesture_active = false;
+
+  // The rect of the Windows Control Overlay, which contains system UX
+  // affordances (e.g. close), for installed desktop Progress Web Apps (PWAs),
+  // if the app specifies the 'window-controls-overlay' DisplayMode in its
+  // manifest. This is only valid and to be consumed by the outermost main
+  // frame.
+  gfx::Rect window_controls_overlay_rect;
+
+  VisualProperties();
+  VisualProperties(const VisualProperties& other);
+  ~VisualProperties();
+  VisualProperties& operator=(const VisualProperties& other);
+  bool operator==(const VisualProperties& other) const;
+  bool operator!=(const VisualProperties& other) const;
 };
 
 }  // namespace blink

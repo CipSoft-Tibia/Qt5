@@ -6,11 +6,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import collections
+import sys
 import gzip
 import json
 import logging
 import os
-import platform
 import shutil
 import subprocess
 import tempfile
@@ -18,6 +18,10 @@ import time
 import traceback
 import six
 
+if sys.version_info.major == 3:
+  JSON_FILE_MODE = 'w+'
+else:
+  JSON_FILE_MODE = 'w+b'
 
 try:
   StringTypes = six.string_types # pylint: disable=invalid-name
@@ -126,7 +130,7 @@ class TraceDataBuilder(object):
   def __exit__(self, *args):
     self.CleanUpTraceData()
 
-  def OpenTraceHandleFor(self, part, suffix):
+  def OpenTraceHandleFor(self, part, suffix, mode=None):
     """Open a file handle for writing trace data into it.
 
     Args:
@@ -139,10 +143,16 @@ class TraceDataBuilder(object):
       raise TypeError('part must be a TraceDataPart instance')
     if self._frozen:
       raise RuntimeError('trace data builder is no longer open for writing')
-    trace = _TraceItem(
-        part_name=part.raw_field_name,
-        handle=tempfile.NamedTemporaryFile(
-            delete=False, dir=self._temp_dir, suffix=suffix))
+    if mode:
+      trace = _TraceItem(
+          part_name=part.raw_field_name,
+          handle=tempfile.NamedTemporaryFile(
+              mode=mode, delete=False, dir=self._temp_dir, suffix=suffix))
+    else:
+      trace = _TraceItem(
+          part_name=part.raw_field_name,
+          handle=tempfile.NamedTemporaryFile(
+              delete=False, dir=self._temp_dir, suffix=suffix))
     self._traces.append(trace)
     return trace.handle
 
@@ -190,7 +200,7 @@ class TraceDataBuilder(object):
       suffix = '.json'
     else:
       raise TypeError('invalid trace data type')
-    with self.OpenTraceHandleFor(part, suffix) as handle:
+    with self.OpenTraceHandleFor(part, suffix, JSON_FILE_MODE) as handle:
       do_write(data, handle)
 
   def Freeze(self):
@@ -324,14 +334,7 @@ def SerializeAsHtml(trace_files, html_file, trace_title=None):
 
   input_size = sum(os.path.getsize(trace_file) for trace_file in trace_files)
 
-  cmd = []
-  if platform.system() == 'Windows':
-    version_cmd = ['python', '-c',
-                   'import sys\nprint(sys.version_info.major)']
-    version = subprocess.check_output(version_cmd)
-    if version.strip() == '3':
-      raise RuntimeError('trace2html cannot run with python 3.')
-    cmd.append('python')
+  cmd = [sys.executable]
   cmd.append(_TRACE2HTML_PATH)
   cmd.extend(trace_files)
   cmd.extend(['--output', html_file])

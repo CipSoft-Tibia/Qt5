@@ -1,10 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/xr/service/isolated_device_provider.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "content/browser/xr/service/xr_device_service.h"
 #include "content/browser/xr/xr_utils.h"
 #include "content/public/browser/xr_integration_client.h"
@@ -16,18 +16,8 @@ constexpr int kMaxRetries = 3;
 namespace content {
 
 void IsolatedVRDeviceProvider::Initialize(
-    base::RepeatingCallback<void(device::mojom::XRDeviceId,
-                                 device::mojom::VRDisplayInfoPtr,
-                                 device::mojom::XRDeviceDataPtr,
-                                 mojo::PendingRemote<device::mojom::XRRuntime>)>
-        add_device_callback,
-    base::RepeatingCallback<void(device::mojom::XRDeviceId)>
-        remove_device_callback,
-    base::OnceClosure initialization_complete) {
-  add_device_callback_ = std::move(add_device_callback);
-  remove_device_callback_ = std::move(remove_device_callback);
-  initialization_complete_ = std::move(initialization_complete);
-
+    device::VRDeviceProviderClient* client) {
+  client_ = client;
   SetupDeviceProvider();
 }
 
@@ -40,8 +30,7 @@ void IsolatedVRDeviceProvider::OnDeviceAdded(
     mojo::PendingRemote<device::mojom::XRCompositorHost> compositor_host,
     device::mojom::XRDeviceDataPtr device_data,
     device::mojom::XRDeviceId device_id) {
-  add_device_callback_.Run(device_id, nullptr, std::move(device_data),
-                           std::move(device));
+  client_->AddRuntime(device_id, std::move(device_data), std::move(device));
 
   auto* integration_client = GetXrIntegrationClient();
   if (!integration_client)
@@ -55,7 +44,7 @@ void IsolatedVRDeviceProvider::OnDeviceAdded(
 }
 
 void IsolatedVRDeviceProvider::OnDeviceRemoved(device::mojom::XRDeviceId id) {
-  remove_device_callback_.Run(id);
+  client_->RemoveRuntime(id);
   ui_host_map_.erase(id);
 }
 
@@ -64,7 +53,7 @@ void IsolatedVRDeviceProvider::OnServerError() {
   // should be removed.
   for (auto& entry : ui_host_map_) {
     auto id = entry.first;
-    remove_device_callback_.Run(id);
+    client_->RemoveRuntime(id);
   }
   ui_host_map_.clear();
 
@@ -87,7 +76,7 @@ void IsolatedVRDeviceProvider::OnServerError() {
 void IsolatedVRDeviceProvider::OnDevicesEnumerated() {
   if (!initialized_) {
     initialized_ = true;
-    std::move(initialization_complete_).Run();
+    client_->OnProviderInitialized();
   }
 
   // Either we've hit the max retries and given up (in which case we don't have
@@ -99,7 +88,8 @@ void IsolatedVRDeviceProvider::OnDevicesEnumerated() {
 
 void IsolatedVRDeviceProvider::SetupDeviceProvider() {
   GetXRDeviceService()->BindRuntimeProvider(
-      device_provider_.BindNewPipeAndPassReceiver());
+      device_provider_.BindNewPipeAndPassReceiver(),
+      CreateXRDeviceServiceHost());
   device_provider_.set_disconnect_handler(base::BindOnce(
       &IsolatedVRDeviceProvider::OnServerError, base::Unretained(this)));
 

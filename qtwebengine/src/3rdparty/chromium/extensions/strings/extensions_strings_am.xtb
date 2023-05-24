@@ -4,10 +4,11 @@
 <translation id="1135328998467923690">ጥቅል ልክ የሆነ አይደለም፦ «<ph name="ERROR_CODE" />»።</translation>
 <translation id="1140871961407805696">አካባቢውን የሚመለከት</translation>
 <translation id="1196338895211115272">ግላዊ ቁልፍን መላክ አልተሳካም።</translation>
+<translation id="132960226125594336">ፋይል «<ph name="RELATIVE_PATH" />» ከፍተኛውን የስክሪፕት መጠን ወይም የቅጥያዎቹን ከፍተኛ ጠቅላላ የይዘት ስክሪፕት መጠን ስለሚበልጥ እሱን ለይዘት ስክሪፕት መጫን አልተቻለም።</translation>
 <translation id="1420684932347524586">አይይ! RSA የግል ኩልፍ በዘፈቀደ ለመፍጠር አልተቻለም።</translation>
 <translation id="1445572445564823378">ይህ ቅጥያ <ph name="PRODUCT_NAME" /> እያንቀራፈፈው ነው። የ<ph name="PRODUCT_NAME" /> አፈጻጸም ወደነበረበት ለመመለስ ቅጥያውን ማሰናከል አለብዎት።</translation>
 <translation id="1468038450257740950">WebGL አይደገፍም።</translation>
-<translation id="1803557475693955505">የጀርባ ገጽ «<ph name="BACKGROUND_PAGE" />»ን መጫን አልተቻለም።</translation>
+<translation id="1803557475693955505">የጀርባ ገፅ «<ph name="BACKGROUND_PAGE" />»ን መጫን አልተቻለም።</translation>
 <translation id="2159915644201199628">የዚህ ምስል ስውሩን መግለጥ አልተቻለም፦ «<ph name="IMAGE_NAME" />»</translation>
 <translation id="2350172092385603347">አካባቢያዊነት ተጠቅሟል ነገር ግን በማኒፌስት ወስጥ default_locale አልተገለጸም።</translation>
 <translation id="2576842806987913196">ይህን ስም የያዘ የCRX ፋይል አስቀድሞ ነበር።</translation>
@@ -22,7 +23,7 @@
 <translation id="3393440416772303020"><ph name="PRODUCT_NAME" /> (ተከታታይ ቁጥር <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="3466070586188012397"><ph name="PRODUCT_NAME" /> ከ<ph name="VENDOR_ID" /> ሻጭ (ተከታታይ ቁጥር <ph name="SERIAL_NUMBER" />)</translation>
 <translation id="3561217442734750519">ለግላዊ ቁልፍ የሚገባ እሴት ትክክለኛ ዱካ መሆን አለበት።</translation>
-<translation id="388442998277590542">የአማራጮች ገጽ «<ph name="OPTIONS_PAGE" />»ን መጫን አልተቻለም።</translation>
+<translation id="388442998277590542">የአማራጮች ገፅ «<ph name="OPTIONS_PAGE" />»ን መጫን አልተቻለም።</translation>
 <translation id="3984413272403535372">ቅጥያዎችን በመፈረም ጊዜ ስህተት።</translation>
 <translation id="39964277676607559">ለይዘት ስክሪፕት ጃቫስክሪፕት «<ph name="RELATIVE_PATH" />»ን መጫን አልተቻለም።</translation>
 <translation id="4115165561519362854">የዚህ ማሽን አስተዳዳሪ <ph name="EXTENSION_NAME" /> ቢያንስ የ<ph name="EXTENSION_VERSION" /> ስሪት እንዲሆን ይፈልጋሉል። ወደዚያ ስሪት (ወይም ከዚያ በላይ) ካልተዘመነ በስተቀር ሊነቃ አይችልም።</translation>
@@ -61,6 +62,7 @@
 <translation id="8636666366616799973">ጥቅሉ ልክ አይደለም። ዝርዝሮች፦ «<ph name="ERROR_MESSAGE" />»።</translation>
 <translation id="8761756413268424715">«<ph name="APP_NAME" />» የአንዱ መሣሪያዎ መዳረሻ እየጠየቀ ነው።</translation>
 <translation id="8885905466771744233">ለተጠቀሰው ቅጥያ ቀድሞውንም ግላዊ ቁልፍ አለ። ይህን ቁልፍ ዳግም ይጠቀሙ ወይም  ይሰርዙት።</translation>
+<translation id="9039223174332979184">የዚህ ማሽን አስተዳዳሪ <ph name="EXTENSION_NAME" /> ቢያንስ 3 የዝርዝር ሰነድ ስሪት እንዲኖረው ይጠይቃል።</translation>
 <translation id="907841381057066561">በመጠቅለል ጊዜ ጊዜያዊ ዚፕ ፋይል መፍጠር አልተሳካም።</translation>
 <translation id="941543339607623937">ልክ ያልሆነ ግላዊ ቁልፍ።</translation>
 </translationbundle>

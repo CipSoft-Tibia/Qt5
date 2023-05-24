@@ -1,10 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/device/hid/hid_connection_impl.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/ref_counted_memory.h"
 
 namespace device {
@@ -54,11 +54,12 @@ void HidConnectionImpl::OnInputReport(
     scoped_refptr<base::RefCountedBytes> buffer,
     size_t size) {
   DCHECK(client_);
-  uint8_t report_id = buffer->data()[0];
-  uint8_t* begin = &buffer->data()[1];
-  uint8_t* end = buffer->data().data() + size;
-  std::vector<uint8_t> data(begin, end);
-  client_->OnInputReport(report_id, data);
+  DCHECK_GE(size, 1u);
+  std::vector<uint8_t> data;
+  if (size > 1) {
+    data = std::vector<uint8_t>(buffer->front() + 1, buffer->front() + size);
+  }
+  client_->OnInputReport(/*report_id=*/buffer->data()[0], data);
 }
 
 void HidConnectionImpl::Read(ReadCallback callback) {
@@ -73,7 +74,7 @@ void HidConnectionImpl::OnRead(ReadCallback callback,
                                scoped_refptr<base::RefCountedBytes> buffer,
                                size_t size) {
   if (!success) {
-    std::move(callback).Run(false, 0, base::nullopt);
+    std::move(callback).Run(false, 0, absl::nullopt);
     return;
   }
   DCHECK(buffer);
@@ -117,7 +118,7 @@ void HidConnectionImpl::OnGetFeatureReport(
     scoped_refptr<base::RefCountedBytes> buffer,
     size_t size) {
   if (!success) {
-    std::move(callback).Run(false, base::nullopt);
+    std::move(callback).Run(false, absl::nullopt);
     return;
   }
   DCHECK(buffer);

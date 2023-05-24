@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "filedialogpanel.h"
 #include "utils.h"
@@ -65,18 +40,8 @@ const FlagData fileModeComboData[] =
     {"AnyFile", QFileDialog::AnyFile},
     {"ExistingFile", QFileDialog::ExistingFile},
     {"ExistingFiles", QFileDialog::ExistingFiles},
-    {"Directory", QFileDialog::Directory},
-    {"DirectoryOnly", QFileDialog::DirectoryOnly}
+    {"Directory", QFileDialog::Directory}
 };
-
-static inline QPushButton *addButton(const QString &description, QGridLayout *layout,
-                                     int &row, int column, QObject *receiver, const char *slotFunc)
-{
-    QPushButton *button = new QPushButton(description);
-    QObject::connect(button, SIGNAL(clicked()), receiver, slotFunc);
-    layout->addWidget(button, row++, column);
-    return button;
-}
 
 // A line edit for editing the label fields of the dialog, keeping track of whether it has
 // been modified by the user to avoid applying Qt's default texts to native dialogs.
@@ -85,7 +50,7 @@ class LabelLineEdit : public QLineEdit
 {
     Q_OBJECT
 public:
-    explicit LabelLineEdit(QFileDialog::DialogLabel label, QWidget *parent = 0) : QLineEdit(parent), m_label(label), m_dirty(false)
+    explicit LabelLineEdit(QFileDialog::DialogLabel label, QWidget *parent = nullptr) : QLineEdit(parent), m_label(label), m_dirty(false)
     {
         connect(this, SIGNAL(textEdited(QString)), this, SLOT(setDirty()));
     }
@@ -119,6 +84,7 @@ FileDialogPanel::FileDialogPanel(QWidget *parent)
     , m_resolveSymLinks(new QCheckBox(tr("Resolve symlinks")))
     , m_native(new QCheckBox(tr("Use native dialog")))
     , m_customDirIcons(new QCheckBox(tr("Don't use custom directory icons")))
+    , m_noIconProvider(new QCheckBox(tr("Null icon provider")))
     , m_acceptMode(createCombo(this, acceptModeComboData, sizeof(acceptModeComboData)/sizeof(FlagData)))
     , m_fileMode(createCombo(this, fileModeComboData, sizeof(fileModeComboData)/sizeof(FlagData)))
     , m_viewMode(createCombo(this, viewModeComboData, sizeof(viewModeComboData)/sizeof(FlagData)))
@@ -146,6 +112,7 @@ FileDialogPanel::FileDialogPanel(QWidget *parent)
     optionsLayout->addRow(m_resolveSymLinks);
     optionsLayout->addRow(m_readOnly);
     optionsLayout->addRow(m_customDirIcons);
+    optionsLayout->addRow(m_noIconProvider);
 
     // Files
     QGroupBox *filesGroupBox = new QGroupBox(tr("Files / Filters"));
@@ -178,9 +145,12 @@ FileDialogPanel::FileDialogPanel(QWidget *parent)
     int row = 0;
     int column = 0;
     addButton(tr("Exec modal"), buttonLayout, row, column, this, SLOT(execModal()));
-    addButton(tr("Show modal"), buttonLayout, row, column, this, SLOT(showModal()));
-    m_deleteModalDialogButton =
-        addButton(tr("Delete modal"), buttonLayout, row, column, this, SLOT(deleteModalDialog()));
+    addButton(tr("Show application modal"), buttonLayout, row, column,
+              [this]() { showModal(Qt::ApplicationModal); });
+    addButton(tr("Show window modal"), buttonLayout, row, column,
+              [this]() { showModal(Qt::WindowModal); });
+    m_deleteModalDialogButton = addButton(tr("Delete modal"), buttonLayout, row, column, this,
+                                          SLOT(deleteModalDialog()));
     addButton(tr("Show non-modal"), buttonLayout, row, column, this, SLOT(showNonModal()));
     m_deleteNonModalDialogButton =
         addButton(tr("Delete non-modal"), buttonLayout, row, column, this, SLOT(deleteNonModalDialog()));
@@ -219,7 +189,7 @@ void FileDialogPanel::execModal()
     dialog.exec();
 }
 
-void FileDialogPanel::showModal()
+void FileDialogPanel::showModal(Qt::WindowModality modality)
 {
     if (m_modalDialog.isNull()) {
         static int  n = 0;
@@ -231,6 +201,7 @@ void FileDialogPanel::showModal()
                                       .arg(QLatin1String(QT_VERSION_STR)));
         enableDeleteModalDialogButton();
     }
+    m_modalDialog->setWindowModality(modality);
     applySettings(m_modalDialog);
     m_modalDialog->show();
 }
@@ -327,7 +298,6 @@ void FileDialogPanel::getOpenFileNames()
 
 void FileDialogPanel::getOpenFileUrls()
 {
-#if QT_VERSION >= 0x050000
     QString selectedFilter = m_selectedNameFilter->text().trimmed();
     const QList<QUrl> files =
         QFileDialog::getOpenFileUrls(this, tr("getOpenFileNames Qt %1").arg(QLatin1String(QT_VERSION_STR)),
@@ -340,7 +310,6 @@ void FileDialogPanel::getOpenFileUrls()
             << "\nName filter: " << selectedFilter;
         QMessageBox::information(this, tr("getOpenFileNames"), result, QMessageBox::Ok);
     }
-#endif // Qt 5
 }
 
 void FileDialogPanel::getOpenFileName()
@@ -360,7 +329,6 @@ void FileDialogPanel::getOpenFileName()
 
 void FileDialogPanel::getOpenFileUrl()
 {
-#if QT_VERSION >= 0x050000
     QString selectedFilter = m_selectedNameFilter->text().trimmed();
     const QUrl file =
         QFileDialog::getOpenFileUrl(this, tr("getOpenFileUrl Qt %1").arg(QLatin1String(QT_VERSION_STR)),
@@ -373,7 +341,6 @@ void FileDialogPanel::getOpenFileUrl()
             << "\nName filter: " << selectedFilter;
         QMessageBox::information(this, tr("getOpenFileName"), result, QMessageBox::Ok);
     }
-#endif // Qt 5
 }
 
 void FileDialogPanel::getSaveFileName()
@@ -393,7 +360,6 @@ void FileDialogPanel::getSaveFileName()
 
 void FileDialogPanel::getSaveFileUrl()
 {
-#if QT_VERSION >= 0x050000
     QString selectedFilter = m_selectedNameFilter->text().trimmed();
     const QUrl file =
         QFileDialog::getSaveFileUrl(this, tr("getSaveFileName Qt %1").arg(QLatin1String(QT_VERSION_STR)),
@@ -406,7 +372,6 @@ void FileDialogPanel::getSaveFileUrl()
             << "\nName filter: " << selectedFilter;
         QMessageBox::information(this, tr("getSaveFileNames"), result, QMessageBox::Ok);
     }
-#endif // Qt 5
 }
 
 void FileDialogPanel::getExistingDirectory()
@@ -420,14 +385,12 @@ void FileDialogPanel::getExistingDirectory()
 
 void FileDialogPanel::getExistingDirectoryUrl()
 {
-#if QT_VERSION >= 0x050000
     const QUrl dir =
         QFileDialog::getExistingDirectoryUrl(this, tr("getExistingDirectory Qt %1").arg(QLatin1String(QT_VERSION_STR)),
                                              currentDirectoryUrl(), options() | QFileDialog::ShowDirsOnly,
                                           allowedSchemes());
     if (!dir.isEmpty())
         QMessageBox::information(this, tr("getExistingDirectory"), QLatin1String("Directory: ") + dir.toString(), QMessageBox::Ok);
-#endif // Qt 5
 }
 
 void FileDialogPanel::restoreDefaults()
@@ -441,7 +404,7 @@ void FileDialogPanel::restoreDefaults()
     m_confirmOverWrite->setChecked(!d.testOption(QFileDialog::DontConfirmOverwrite));
     m_nameFilterDetailsVisible->setChecked(!d.testOption(QFileDialog::HideNameFilterDetails));
     m_resolveSymLinks->setChecked(!d.testOption(QFileDialog::DontResolveSymlinks));
-    m_readOnly->setChecked(d.isReadOnly());
+    m_readOnly->setChecked(d.testOption(QFileDialog::ReadOnly));
     m_native->setChecked(true);
     m_customDirIcons->setChecked(d.testOption(QFileDialog::DontUseCustomDirectoryIcons));
     m_directory->setText(QDir::homePath());
@@ -454,12 +417,19 @@ void FileDialogPanel::restoreDefaults()
         l->restoreDefault(&d);
 }
 
-void FileDialogPanel::applySettings(QFileDialog *d) const
+void FileDialogPanel::applySettings(QFileDialog *d)
 {
     d->setAcceptMode(comboBoxValue<QFileDialog::AcceptMode>(m_acceptMode));
     d->setViewMode(comboBoxValue<QFileDialog::ViewMode>(m_viewMode));
     d->setFileMode(comboBoxValue<QFileDialog::FileMode>(m_fileMode));
     d->setOptions(options());
+    if (m_noIconProvider->isChecked()) {
+        m_origIconProvider = d->iconProvider();
+        d->setIconProvider(nullptr);
+    } else if (m_origIconProvider) {
+        d->setIconProvider(m_origIconProvider);
+    }
+
     d->setDefaultSuffix(m_defaultSuffix->text().trimmed());
     const QString directory = m_directory->text().trimmed();
     if (!directory.isEmpty())
@@ -474,11 +444,9 @@ void FileDialogPanel::applySettings(QFileDialog *d) const
         if (!filter.isEmpty())
             d->selectNameFilter(filter);
     } else {
-#if QT_VERSION >= 0x050000
         d->setMimeTypeFilters(filters);
         if (!filter.isEmpty())
             d->selectMimeTypeFilter(filter);
-#endif // Qt 5
     }
     foreach (LabelLineEdit *l, m_labelLineEdits)
         l->apply(d);
@@ -505,14 +473,10 @@ void FileDialogPanel::accepted()
     Q_ASSERT(d);
     m_result.clear();
     QDebug(&m_result).nospace()
-#if QT_VERSION >= 0x050000
         << "URLs: " << d->selectedUrls() << '\n'
-#endif
         << "Files: " << d->selectedFiles()
         << "\nDirectory: "
-#if QT_VERSION >= 0x050000
         << d->directoryUrl() << ", "
-#endif
         << d->directory().absolutePath()
         << "\nName filter: " << d->selectedNameFilter();
     QTimer::singleShot(0, this, SLOT(showAcceptedResult())); // Avoid problems with the closing (modal) dialog as parent.

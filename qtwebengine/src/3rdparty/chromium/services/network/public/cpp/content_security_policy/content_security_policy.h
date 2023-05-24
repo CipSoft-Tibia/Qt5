@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,6 +22,14 @@ class HttpResponseHeaders;
 namespace network {
 class CSPContext;
 
+// Return the next Content Security Policy directive after |directive| in
+// |original_directive|'s fallback list:
+// https://w3c.github.io/webappsec-csp/#directive-fallback-list.
+COMPONENT_EXPORT(NETWORK_CPP)
+mojom::CSPDirectiveName CSPFallbackDirective(
+    mojom::CSPDirectiveName directive,
+    mojom::CSPDirectiveName original_directive);
+
 // Parses the Content-Security-Policy headers specified in |headers| and appends
 // the results into |out|.
 //
@@ -34,11 +42,11 @@ void AddContentSecurityPolicyFromHeaders(
     std::vector<mojom::ContentSecurityPolicyPtr>* out);
 
 COMPONENT_EXPORT(NETWORK_CPP)
-void AddContentSecurityPolicyFromHeaders(
+std::vector<mojom::ContentSecurityPolicyPtr> ParseContentSecurityPolicies(
     base::StringPiece header,
     mojom::ContentSecurityPolicyType type,
-    const GURL& base_url,
-    std::vector<mojom::ContentSecurityPolicyPtr>* out);
+    mojom::ContentSecurityPolicySource source,
+    const GURL& base_url);
 
 // Parse and return the Allow-CSP-From header value from |headers|.
 COMPONENT_EXPORT(NETWORK_CPP)
@@ -52,11 +60,13 @@ COMPONENT_EXPORT(NETWORK_CPP)
 bool CheckContentSecurityPolicy(const mojom::ContentSecurityPolicyPtr& policy,
                                 mojom::CSPDirectiveName directive,
                                 const GURL& url,
+                                const GURL& url_before_redirects,
                                 bool has_followed_redirect,
                                 bool is_response_check,
                                 CSPContext* context,
                                 const mojom::SourceLocationPtr& source_location,
-                                bool is_form_submission);
+                                bool is_form_submission,
+                                bool is_opaque_fenced_frame = false);
 
 // Return true if the set of |policies| contains one "Upgrade-Insecure-request"
 // directive.
@@ -83,22 +93,27 @@ COMPONENT_EXPORT(NETWORK_CPP)
 bool IsValidRequiredCSPAttr(
     const std::vector<mojom::ContentSecurityPolicyPtr>& policy,
     const mojom::ContentSecurityPolicy* context,
-    const url::Origin& url,
     std::string& error_message);
 
-// Checks whether |policy_a| subsumes the policy list
-// |policies_b| with origin |origin_b| according to the algorithm
-// https://w3c.github.io/webappsec-cspee/#subsume-policy-list.
+// Checks whether |policy_a| subsumes the policy list |policies_b| according to
+// the algorithm https://w3c.github.io/webappsec-cspee/#subsume-policy-list.
 COMPONENT_EXPORT(NETWORK_CPP)
 bool Subsumes(const mojom::ContentSecurityPolicy& policy_a,
-              const std::vector<mojom::ContentSecurityPolicyPtr>& policies_b,
-              const url::Origin& origin_b);
-
-COMPONENT_EXPORT(NETWORK_CPP)
-mojom::CSPDirectiveName ToCSPDirectiveName(const std::string& name);
+              const std::vector<mojom::ContentSecurityPolicyPtr>& policies_b);
 
 COMPONENT_EXPORT(NETWORK_CPP)
 std::string ToString(mojom::CSPDirectiveName name);
+
+// Return true if the response allows the embedder to enforce arbitrary policy
+// on its behalf. |required_csp| is modified so that its self_origin matches the
+// correct origin. Specification:
+// https://w3c.github.io/webappsec-cspee/#origin-allowed
+COMPONENT_EXPORT(NETWORK_CPP)
+bool AllowsBlanketEnforcementOfRequiredCSP(
+    const url::Origin& request_origin,
+    const GURL& response_url,
+    const network::mojom::AllowCSPFromHeaderValue* allow_csp_from,
+    network::mojom::ContentSecurityPolicyPtr& required_csp);
 
 }  // namespace network
 

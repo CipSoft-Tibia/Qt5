@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,17 +7,22 @@
 
 #include <memory>
 #include <vector>
-#include "base/callback.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
-#include "base/optional.h"
 #include "components/feed/core/proto/v2/store.pb.h"
-#include "components/feed/core/proto/v2/wire/discover_actions_service.pb.h"
 #include "components/feed/core/proto/v2/wire/feed_action.pb.h"
+#include "components/feed/core/proto/v2/wire/upload_actions_request.pb.h"
+#include "components/feed/core/proto/v2/wire/upload_actions_response.pb.h"
 #include "components/feed/core/v2/enums.h"
 #include "components/feed/core/v2/feed_network.h"
 #include "components/feed/core/v2/feed_store.h"
+#include "components/feed/core/v2/launch_reliability_logger.h"
+#include "components/feed/core/v2/public/logging_parameters.h"
 #include "components/feed/core/v2/types.h"
 #include "components/offline_pages/task/task.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace feed {
 class FeedStream;
@@ -50,7 +55,7 @@ class UploadActionsTask : public offline_pages::Task {
     // staleness.
     size_t stale_count;
     // Information about the last network request, if one was attempted.
-    base::Optional<NetworkResponseInfo> last_network_response_info;
+    absl::optional<NetworkResponseInfo> last_network_response_info;
   };
 
   // Store an action. Use |upload_now|=true to kick off an upload of all pending
@@ -58,16 +63,19 @@ class UploadActionsTask : public offline_pages::Task {
   // string if no token was received).
   UploadActionsTask(feedwire::FeedAction action,
                     bool upload_now,
+                    const LoggingParameters& logging_parameters,
                     FeedStream* stream,
                     base::OnceCallback<void(Result)> callback);
   // Upload |pending_actions| and update the store. Note: |pending_actions|
   // should already be in the store before running the task.
   UploadActionsTask(std::vector<feedstore::StoredAction> pending_actions,
                     FeedStream* stream,
+                    LaunchReliabilityLogger* launch_reliability_logger,
                     base::OnceCallback<void(Result)> callback);
   // Same as above, but reads pending actions and consistency token from the
   // store and uploads those.
   UploadActionsTask(FeedStream* stream,
+                    LaunchReliabilityLogger* launch_reliability_logger,
                     base::OnceCallback<void(Result)> callback);
 
   ~UploadActionsTask() override;
@@ -75,6 +83,9 @@ class UploadActionsTask : public offline_pages::Task {
   UploadActionsTask& operator=(const UploadActionsTask&) = delete;
 
  private:
+  explicit UploadActionsTask(
+      FeedStream* stream,
+      base::OnceCallback<void(UploadActionsTask::Result)> callback);
   class Batch;
 
   void Run() override;
@@ -87,18 +98,20 @@ class UploadActionsTask : public offline_pages::Task {
   void UploadPendingActions();
   void UpdateAndUploadNextBatch();
   void OnUpdateActionsFinished(std::unique_ptr<Batch> batch, bool update_ok);
-  void OnUploadFinished(std::unique_ptr<Batch> batch,
-                        FeedNetwork::ActionRequestResult result);
+  void OnUploadFinished(
+      std::unique_ptr<Batch> batch,
+      FeedNetwork::ApiResult<feedwire::UploadActionsResponse> result);
   void OnUploadedActionsRemoved(bool remove_ok);
   void UpdateTokenAndFinish();
   void BatchComplete(UploadActionsBatchStatus status);
   void Done(UploadActionsStatus status);
 
-  FeedStream* stream_;
+  const raw_ref<FeedStream> stream_;
   bool upload_now_ = false;
   bool read_pending_actions_ = false;
+  LoggingParameters logging_parameters_;
   // Pending action to be stored.
-  base::Optional<feedwire::FeedAction> wire_action_;
+  absl::optional<feedwire::FeedAction> wire_action_;
 
   // Pending actions to be uploaded, set either by the constructor or by
   // OnReadPendingActionsFinished(). Not set if we're just storing an action.
@@ -113,7 +126,10 @@ class UploadActionsTask : public offline_pages::Task {
   size_t upload_attempt_count_ = 0;
   // Number of stale actions.
   size_t stale_count_ = 0;
-  base::Optional<NetworkResponseInfo> last_network_response_info_;
+  absl::optional<NetworkResponseInfo> last_network_response_info_;
+  AccountInfo account_info_;
+  raw_ptr<LaunchReliabilityLogger> launch_reliability_logger_ = nullptr;
+  NetworkRequestId last_network_request_id_;
 
   base::WeakPtrFactory<UploadActionsTask> weak_ptr_factory_{this};
 };

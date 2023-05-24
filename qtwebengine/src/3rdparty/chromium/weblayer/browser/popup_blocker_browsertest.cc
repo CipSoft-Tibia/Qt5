@@ -1,9 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/memory/raw_ptr.h"
+#include "base/strings/stringprintf.h"
 #include "build/build_config.h"
 #include "components/blocked_content/popup_blocker_tab_helper.h"
+#include "third_party/blink/public/common/switches.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
 #include "weblayer/browser/browser_impl.h"
@@ -29,7 +32,7 @@ class PopupBlockerBrowserTest : public WebLayerBrowserTest,
   void SetUpOnMainThread() override {
     ASSERT_TRUE(embedded_test_server()->Start());
     original_tab_ = shell()->tab();
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
     // Android does this in Java.
     original_tab_->SetNewTabDelegate(this);
 #endif
@@ -40,6 +43,13 @@ class PopupBlockerBrowserTest : public WebLayerBrowserTest,
   }
   void TearDownOnMainThread() override {
     shell()->browser()->RemoveObserver(this);
+  }
+
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    WebLayerBrowserTest::SetUpCommandLine(command_line);
+    // Some bots are flaky due to slower loading interacting with
+    // deferred commits.
+    command_line->AppendSwitch(blink::switches::kAllowPreCommitInput);
   }
 
   // NewTabDelegate:
@@ -116,22 +126,23 @@ class PopupBlockerBrowserTest : public WebLayerBrowserTest,
   std::unique_ptr<base::RunLoop> new_tab_run_loop_;
   std::unique_ptr<base::RunLoop> close_tab_run_loop_;
 
-  Tab* original_tab_ = nullptr;
-  Tab* new_tab_ = nullptr;
+  raw_ptr<Tab> original_tab_ = nullptr;
+  raw_ptr<Tab> new_tab_ = nullptr;
 };
 
-IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest, BlocksPopup) {
+IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest, DISABLED_BlocksPopup) {
   ExecuteScript(original_tab(), "window.open('https://google.com')", true);
   EXPECT_EQ(GetBlockedPopupCount(), 1u);
 }
 
-IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest, BlocksMultiplePopups) {
+IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest, DISABLED_BlocksMultiplePopups) {
   ExecuteScript(original_tab(), "window.open('https://google.com')", true);
   ExecuteScript(original_tab(), "window.open('https://google.com')", true);
   EXPECT_EQ(GetBlockedPopupCount(), 2u);
 }
 
-IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest, DoesNotBlockUserGesture) {
+IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest,
+                       DISABLED_DoesNotBlockUserGesture) {
   GURL popup_url = embedded_test_server()->GetURL("/echo?popup");
   ExecuteScriptWithUserGesture(
       original_tab(),
@@ -142,7 +153,7 @@ IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest, DoesNotBlockUserGesture) {
   EXPECT_EQ(GetBlockedPopupCount(), 0u);
 }
 
-IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest, OpensBlockedPopup) {
+IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest, DISABLED_OpensBlockedPopup) {
   GURL popup_url = embedded_test_server()->GetURL("/echo?popup");
   ExecuteScript(
       original_tab(),
@@ -160,13 +171,13 @@ IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest, OpensBlockedPopup) {
 }
 
 IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest,
-                       AllowsPopupThroughContentSettingException) {
+                       DISABLED_AllowsPopupThroughContentSettingException) {
   GURL popup_url = embedded_test_server()->GetURL("/echo?popup");
   HostContentSettingsMapFactory::GetForBrowserContext(
       GetWebContents(original_tab())->GetBrowserContext())
       ->SetContentSettingDefaultScope(popup_url, GURL(),
                                       ContentSettingsType::POPUPS,
-                                      std::string(), CONTENT_SETTING_ALLOW);
+                                      CONTENT_SETTING_ALLOW);
   ExecuteScript(
       original_tab(),
       base::StringPrintf("window.open('%s')", popup_url.spec().c_str()), true);
@@ -176,7 +187,7 @@ IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest,
 }
 
 IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest,
-                       AllowsPopupThroughContentSettingDefaultValue) {
+                       DISABLED_AllowsPopupThroughContentSettingDefaultValue) {
   GURL popup_url = embedded_test_server()->GetURL("/echo?popup");
   HostContentSettingsMapFactory::GetForBrowserContext(
       GetWebContents(original_tab())->GetBrowserContext())
@@ -191,7 +202,7 @@ IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest,
 }
 
 IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest,
-                       BlockPopupThroughContentSettingException) {
+                       DISABLED_BlockPopupThroughContentSettingException) {
   GURL popup_url = embedded_test_server()->GetURL("/echo?popup");
   HostContentSettingsMapFactory::GetForBrowserContext(
       GetWebContents(original_tab())->GetBrowserContext())
@@ -201,7 +212,7 @@ IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest,
       GetWebContents(original_tab())->GetBrowserContext())
       ->SetContentSettingDefaultScope(popup_url, GURL(),
                                       ContentSettingsType::POPUPS,
-                                      std::string(), CONTENT_SETTING_BLOCK);
+                                      CONTENT_SETTING_BLOCK);
   ExecuteScript(
       original_tab(),
       base::StringPrintf("window.open('%s')", popup_url.spec().c_str()), true);
@@ -209,7 +220,7 @@ IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest,
 }
 
 IN_PROC_BROWSER_TEST_F(PopupBlockerBrowserTest,
-                       BlocksAndOpensPopupFromOpenURL) {
+                       DISABLED_BlocksAndOpensPopupFromOpenURL) {
   GURL popup_url = embedded_test_server()->GetURL("/echo?popup");
   content::OpenURLParams params(popup_url, content::Referrer(),
                                 WindowOpenDisposition::NEW_FOREGROUND_TAB,

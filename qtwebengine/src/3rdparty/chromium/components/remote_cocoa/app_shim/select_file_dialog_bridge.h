@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 
 #include <vector>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/mac/scoped_nsobject.h"
 #include "base/memory/weak_ptr.h"
 #include "components/remote_cocoa/app_shim/remote_cocoa_app_shim_export.h"
@@ -32,11 +32,15 @@ class REMOTE_COCOA_APP_SHIM_EXPORT SelectFileDialogBridge
                               int index)>;
 
   SelectFileDialogBridge(NSWindow* owning_window);
+
+  SelectFileDialogBridge(const SelectFileDialogBridge&) = delete;
+  SelectFileDialogBridge& operator=(const SelectFileDialogBridge&) = delete;
+
   ~SelectFileDialogBridge() override;
 
   // mojom::SelectFileDialog:
   void Show(mojom::SelectFileDialogType type,
-            const base::string16& title,
+            const std::u16string& title,
             const base::FilePath& default_path,
             mojom::SelectFileTypeInfoPtr file_types,
             int file_type_index,
@@ -50,10 +54,12 @@ class REMOTE_COCOA_APP_SHIM_EXPORT SelectFileDialogBridge
 
  private:
   // Sets the accessory view for |dialog_| and sets
-  // |extension_dropdown_handler_|.
+  // |extension_dropdown_handler_|. |is_save_panel| specifies whether this is
+  // for a save panel or not.
   void SetAccessoryView(mojom::SelectFileTypeInfoPtr file_types,
                         int file_type_index,
-                        const base::FilePath::StringType& default_extension);
+                        const base::FilePath::StringType& default_extension,
+                        bool is_save_panel);
 
   // Called when the panel completes.
   void OnPanelEnded(bool did_cancel);
@@ -77,7 +83,6 @@ class REMOTE_COCOA_APP_SHIM_EXPORT SelectFileDialogBridge
   base::scoped_nsobject<ExtensionDropdownHandler> extension_dropdown_handler_;
 
   base::WeakPtrFactory<SelectFileDialogBridge> weak_factory_;
-  DISALLOW_COPY_AND_ASSIGN(SelectFileDialogBridge);
 };
 
 }  // namespace remote_cocoa

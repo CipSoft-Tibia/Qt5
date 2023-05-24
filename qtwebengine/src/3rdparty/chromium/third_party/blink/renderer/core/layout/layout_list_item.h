@@ -58,6 +58,8 @@ class LayoutListItem final : public LayoutBlockFlow {
 
   void UpdateMarkerTextIfNeeded();
 
+  void UpdateCounterStyle();
+
  private:
   bool IsOfType(LayoutObjectType type) const override {
     NOT_DESTROYED();
@@ -82,6 +84,8 @@ class LayoutListItem final : public LayoutBlockFlow {
 
   void AddLayoutOverflowFromChildren() override;
 
+  void WillBeDestroyed() override;
+
   void AlignMarkerInBlockDirection();
 
   bool PrepareForBlockDirectionAlign(const LayoutObject*);
@@ -92,7 +96,12 @@ class LayoutListItem final : public LayoutBlockFlow {
   bool need_block_direction_align_;
 };
 
-DEFINE_LAYOUT_OBJECT_TYPE_CASTS(LayoutListItem, IsListItem());
+template <>
+struct DowncastTraits<LayoutListItem> {
+  static bool AllowFrom(const LayoutObject& object) {
+    return object.IsListItem();
+  }
+};
 
 }  // namespace blink
 

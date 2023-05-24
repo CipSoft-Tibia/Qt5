@@ -1,8 +1,7 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "third_party/blink/renderer/core/layout/layout_geometry_map.h"
 #include "third_party/blink/renderer/core/paint/paint_layer.h"
 #include "third_party/blink/renderer/core/testing/core_unit_test_helper.h"
 
@@ -30,7 +29,7 @@ TEST_F(LayoutSVGForeignObjectTest, DivInForeignObject) {
   const auto& foreign_object = *GetLayoutObjectByElementId("foreign");
   const auto& div = *GetLayoutObjectByElementId("div");
 
-  EXPECT_EQ(FloatRect(100, 100, 300, 200), foreign_object.ObjectBoundingBox());
+  EXPECT_EQ(gfx::RectF(100, 100, 300, 200), foreign_object.ObjectBoundingBox());
   EXPECT_EQ(AffineTransform(), foreign_object.LocalSVGTransform());
   EXPECT_EQ(AffineTransform(), foreign_object.LocalToSVGParentTransform());
 
@@ -48,12 +47,6 @@ TEST_F(LayoutSVGForeignObjectTest, DivInForeignObject) {
   EXPECT_EQ(PhysicalOffset(-150, -150),
             div.AncestorToLocalPoint(&GetLayoutView(), PhysicalOffset(),
                                      kTraverseDocumentBoundaries));
-
-  // PushMappingToContainer
-  LayoutGeometryMap rgm(kTraverseDocumentBoundaries);
-  rgm.PushMappingsToAncestor(&div, nullptr);
-  EXPECT_EQ(PhysicalRect(150, 150, 1, 2),
-            rgm.MapToAncestor(PhysicalRect(0, 0, 1, 2), nullptr));
 
   // Hit testing
   EXPECT_EQ(svg, HitTest(1, 1));
@@ -100,7 +93,7 @@ TEST_F(LayoutSVGForeignObjectTest, IframeInForeignObject) {
   const auto& iframe = *GetDocument().getElementById("iframe");
   const auto& div = *ChildDocument().getElementById("div")->GetLayoutObject();
 
-  EXPECT_EQ(FloatRect(100, 100, 300, 250), foreign_object.ObjectBoundingBox());
+  EXPECT_EQ(gfx::RectF(100, 100, 300, 250), foreign_object.ObjectBoundingBox());
   EXPECT_EQ(AffineTransform(), foreign_object.LocalSVGTransform());
   EXPECT_EQ(AffineTransform(), foreign_object.LocalToSVGParentTransform());
 
@@ -118,12 +111,6 @@ TEST_F(LayoutSVGForeignObjectTest, IframeInForeignObject) {
   EXPECT_EQ(PhysicalOffset(-200, -200),
             div.AncestorToLocalPoint(&GetLayoutView(), PhysicalOffset(),
                                      kTraverseDocumentBoundaries));
-
-  // PushMappingToContainer
-  LayoutGeometryMap rgm(kTraverseDocumentBoundaries);
-  rgm.PushMappingsToAncestor(&div, nullptr);
-  EXPECT_EQ(PhysicalRect(200, 200, 1, 2),
-            rgm.MapToAncestor(PhysicalRect(0, 0, 1, 2), nullptr));
 
   // Hit testing
   EXPECT_EQ(svg, HitTest(90, 90));
@@ -166,7 +153,7 @@ TEST_F(LayoutSVGForeignObjectTest, HitTestZoomedForeignObject) {
   const auto& foreign_object = *GetLayoutObjectByElementId("foreign");
   const auto& div = *GetDocument().getElementById("div");
 
-  EXPECT_EQ(FloatRect(10, 10, 100, 150), foreign_object.ObjectBoundingBox());
+  EXPECT_EQ(gfx::RectF(10, 10, 100, 150), foreign_object.ObjectBoundingBox());
   EXPECT_EQ(AffineTransform(), foreign_object.LocalSVGTransform());
   AffineTransform zoom;
   zoom.Scale(1 / foreign_object.StyleRef().EffectiveZoom());
@@ -385,6 +372,39 @@ TEST_F(LayoutSVGForeignObjectTest, HitTestUnderScrollingAncestor) {
   GetDocument().GetLayoutView()->HitTest(location, result);
   EXPECT_EQ(target, result.InnerNode());
   EXPECT_EQ(PhysicalOffset(450, 450), result.PointInInnerNodeFrame());
+}
+
+TEST_F(LayoutSVGForeignObjectTest, BBoxPropagationZoomed) {
+  GetFrame().SetPageZoomFactor(2);
+  SetBodyInnerHTML(R"HTML(
+    <svg>
+      <g>
+        <foreignObject x="6" y="5" width="100" height="50" id="target"/>
+      </g>
+    </svg>
+  )HTML");
+  UpdateAllLifecyclePhasesForTest();
+
+  const auto& target = *GetLayoutObjectByElementId("target");
+  ASSERT_EQ(target.StyleRef().EffectiveZoom(), 2);
+
+  EXPECT_EQ(target.ObjectBoundingBox(), gfx::RectF(6, 5, 100, 50));
+  EXPECT_EQ(target.StrokeBoundingBox(), gfx::RectF(12, 10, 200, 100));
+  const auto& parent_g = *target.Parent();
+  EXPECT_EQ(parent_g.ObjectBoundingBox(), gfx::RectF(6, 5, 100, 50));
+  EXPECT_EQ(parent_g.StrokeBoundingBox(), gfx::RectF(6, 5, 100, 50));
+}
+
+// crbug.com/1335655
+TEST_F(LayoutSVGForeignObjectTest, SetNeedsCollectInlines) {
+  SetBodyInnerHTML(R"HTML(
+    <svg><foreignObject id="target">abc</foreignObject></svg>)HTML");
+  UpdateAllLifecyclePhasesForTest();
+
+  auto* target = GetElementById("target");
+  target->setAttribute("unicode-bidi", "bidi-override");
+  GetDocument().body()->innerText();
+  // Pass if no crash.
 }
 
 }  // namespace blink

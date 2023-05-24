@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,23 +8,18 @@
 #include <stdint.h>
 #include <string>
 
-#include "base/macros.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/plugin.mojom.h"
-#include "chrome/renderer/plugins/power_saver_info.h"
+#include "components/no_state_prefetch/renderer/prerender_observer.h"
 #include "components/plugins/renderer/loadable_plugin_placeholder.h"
-#include "components/prerender/common/prerender_types.mojom.h"
-#include "components/prerender/renderer/prerender_observer.h"
-#include "content/public/renderer/context_menu_client.h"
 #include "content/public/renderer/render_thread_observer.h"
-#include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
+#include "third_party/blink/public/mojom/context_menu/context_menu.mojom.h"
 
 class ChromePluginPlaceholder final
     : public plugins::LoadablePluginPlaceholder,
       public content::RenderThreadObserver,
-      public content::ContextMenuClient,
-      public chrome::mojom::PluginRenderer,
+      public blink::mojom::ContextMenuClient,
       public prerender::PrerenderObserver,
       public gin::Wrappable<ChromePluginPlaceholder> {
  public:
@@ -35,38 +30,38 @@ class ChromePluginPlaceholder final
       const blink::WebPluginParams& params,
       const content::WebPluginInfo& info,
       const std::string& identifier,
-      const base::string16& name,
+      const std::u16string& name,
       int resource_id,
-      const base::string16& message,
-      const PowerSaverInfo& power_saver_info);
+      const std::u16string& message);
 
   // Creates a new WebViewPlugin with a MissingPlugin as a delegate.
   static ChromePluginPlaceholder* CreateLoadableMissingPlugin(
       content::RenderFrame* render_frame,
       const blink::WebPluginParams& params);
 
-  void SetStatus(chrome::mojom::PluginStatus status);
+  ChromePluginPlaceholder(const ChromePluginPlaceholder&) = delete;
+  ChromePluginPlaceholder& operator=(const ChromePluginPlaceholder&) = delete;
 
-  mojo::PendingRemote<chrome::mojom::PluginRenderer> BindPluginRenderer();
+  // Runs |callback| over each plugin placeholder for the given RenderFrame.
+  static void ForEach(
+      content::RenderFrame* render_frame,
+      const base::RepeatingCallback<void(ChromePluginPlaceholder*)>& callback);
+
+  void SetStatus(chrome::mojom::PluginStatus status);
 
  private:
   ChromePluginPlaceholder(content::RenderFrame* render_frame,
                           const blink::WebPluginParams& params,
                           const std::string& html_data,
-                          const base::string16& title);
+                          const std::u16string& title);
   ~ChromePluginPlaceholder() override;
 
   // content::LoadablePluginPlaceholder overrides.
   blink::WebPlugin* CreatePlugin() override;
-  void OnBlockedContent(content::RenderFrame::PeripheralContentStatus status,
-                        bool is_same_origin) override;
 
   // gin::Wrappable (via PluginPlaceholder) method
   gin::ObjectTemplateBuilder GetObjectTemplateBuilder(
       v8::Isolate* isolate) final;
-
-  // content::RenderViewObserver (via PluginPlaceholder) override:
-  bool OnMessageReceived(const IPC::Message& message) override;
 
   // WebViewPlugin::Delegate (via PluginPlaceholder) methods:
   v8::Local<v8::Value> GetV8Handle(v8::Isolate* isolate) override;
@@ -75,32 +70,21 @@ class ChromePluginPlaceholder final
   // content::RenderThreadObserver methods:
   void PluginListChanged() override;
 
-  // content::ContextMenuClient methods:
-  void OnMenuAction(int request_id, unsigned action) override;
-  void OnMenuClosed(int request_id) override;
-
-  // Show the Plugins permission bubble.
-  void ShowPermissionBubbleCallback();
-
-  // chrome::mojom::PluginRenderer methods.
-  void FinishedDownloading() override;
-  void UpdateDownloading() override;
-  void UpdateSuccess() override;
-  void UpdateFailure() override;
+  // blink::mojom::ContextMenuClient methods.
+  void CustomContextMenuAction(uint32_t action) override;
+  void ContextMenuClosed(const GURL& link_followed) override;
 
   // prerender::PrerenderObserver methods:
   void SetIsPrerendering(bool is_prerendering) override;
 
   chrome::mojom::PluginStatus status_;
 
-  base::string16 title_;
+  std::u16string title_;
 
-  int context_menu_request_id_;  // Nonzero when request pending.
-  base::string16 plugin_name_;
+  std::u16string plugin_name_;
 
-  mojo::Receiver<chrome::mojom::PluginRenderer> plugin_renderer_receiver_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(ChromePluginPlaceholder);
+  mojo::AssociatedReceiver<blink::mojom::ContextMenuClient>
+      context_menu_client_receiver_{this};
 };
 
 #endif  // CHROME_RENDERER_PLUGINS_CHROME_PLUGIN_PLACEHOLDER_H_

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QCoreApplication>
 #include <QFile>
@@ -123,13 +87,14 @@ private:
     QByteArray m_scannerName;
     QByteArray m_headerPath;
     QByteArray m_prefix;
-    QVector <QByteArray> m_includes;
+    QByteArray m_buildMacro;
+    QList <QByteArray> m_includes;
     QXmlStreamReader *m_xml = nullptr;
 };
 
 bool Scanner::parseArguments(int argc, char **argv)
 {
-    QVector<QByteArray> args;
+    QList<QByteArray> args;
     args.reserve(argc);
     for (int i = 0; i < argc; ++i)
         args << QByteArray(argv[i]);
@@ -156,6 +121,8 @@ bool Scanner::parseArguments(int argc, char **argv)
                 m_headerPath = option.mid(14);
             } else if (option.startsWith("--prefix=")) {
                 m_prefix = option.mid(10);
+            } else if (option.startsWith("--build-macro=")) {
+                m_buildMacro = option.mid(14);
             } else if (option.startsWith("--add-include=")) {
                 auto include = option.mid(14);
                 if (!include.isEmpty())
@@ -223,7 +190,7 @@ Scanner::WaylandEvent Scanner::readEvent(QXmlStreamReader &xml, bool request)
         .arguments = {},
     };
     while (xml.readNextStartElement()) {
-        if (xml.name() == "arg") {
+        if (xml.name() == u"arg") {
             WaylandArgument argument = {
                 .name      = byteArrayValue(xml, "name"),
                 .type      = byteArrayValue(xml, "type"),
@@ -247,7 +214,7 @@ Scanner::WaylandEnum Scanner::readEnum(QXmlStreamReader &xml)
     };
 
     while (xml.readNextStartElement()) {
-        if (xml.name() == "entry") {
+        if (xml.name() == u"entry") {
             WaylandEnumEntry entry = {
                 .name    = byteArrayValue(xml, "name"),
                 .value   = byteArrayValue(xml, "value"),
@@ -273,11 +240,11 @@ Scanner::WaylandInterface Scanner::readInterface(QXmlStreamReader &xml)
     };
 
     while (xml.readNextStartElement()) {
-        if (xml.name() == "event")
+        if (xml.name() == u"event")
             interface.events.push_back(readEvent(xml, false));
-        else if (xml.name() == "request")
+        else if (xml.name() == u"request")
             interface.requests.push_back(readEvent(xml, true));
-        else if (xml.name() == "enum")
+        else if (xml.name() == u"enum")
             interface.enums.push_back(readEnum(xml));
         else
             xml.skipCurrentElement();
@@ -438,7 +405,7 @@ bool Scanner::process()
     if (!m_xml->readNextStartElement())
         return false;
 
-    if (m_xml->name() != "protocol") {
+    if (m_xml->name() != u"protocol") {
         m_xml->raiseError(QStringLiteral("The file is not a wayland protocol file."));
         return false;
     }
@@ -458,7 +425,7 @@ bool Scanner::process()
     std::vector<WaylandInterface> interfaces;
 
     while (m_xml->readNextStartElement()) {
-        if (m_xml->name() == "interface")
+        if (m_xml->name() == u"interface")
             interfaces.push_back(readInterface(*m_xml));
         else
             m_xml->skipCurrentElement();
@@ -470,8 +437,28 @@ bool Scanner::process()
     printf("// This file was generated by qtwaylandscanner\n");
     printf("// source file is %s\n\n", qPrintable(m_protocolFilePath));
 
-    for (auto b : qAsConst(m_includes))
+    for (auto b : std::as_const(m_includes))
         printf("#include %s\n", b.constData());
+
+    auto printExportMacro = [this](const char *prefix, const QByteArray &preProcessorProtocolName) {
+        QByteArray exportMacro = prefix + preProcessorProtocolName + "_EXPORT";
+        printf("#if !defined(%s)\n", exportMacro.constData());
+        printf("#  if defined(QT_SHARED) && !defined(QT_STATIC)\n");
+        if (m_buildMacro.isEmpty()) {
+            printf("#    define %s Q_DECL_EXPORT\n", exportMacro.constData());
+        } else {
+            printf("#    if defined(%s)\n", m_buildMacro.constData());
+            printf("#      define %s Q_DECL_EXPORT\n", exportMacro.constData());
+            printf("#    else\n");
+            printf("#      define %s Q_DECL_IMPORT\n", exportMacro.constData());
+            printf("#    endif\n");
+        }
+        printf("#  else\n");
+        printf("#    define %s\n", exportMacro.constData());
+        printf("#  endif\n");
+        printf("#endif\n");
+        return exportMacro;
+    };
 
     if (m_option == ServerHeader) {
         QByteArray inclusionGuard = QByteArray("QT_WAYLAND_SERVER_") + preProcessorProtocolName.constData();
@@ -501,17 +488,8 @@ bool Scanner::process()
         printf("QT_WARNING_DISABLE_GCC(\"-Wmissing-field-initializers\")\n");
         printf("QT_WARNING_DISABLE_CLANG(\"-Wmissing-field-initializers\")\n");
         QByteArray serverExport;
-        if (m_headerPath.size()) {
-            serverExport = QByteArray("Q_WAYLAND_SERVER_") + preProcessorProtocolName + "_EXPORT";
-            printf("\n");
-            printf("#if !defined(%s)\n", serverExport.constData());
-            printf("#  if defined(QT_SHARED)\n");
-            printf("#    define %s Q_DECL_EXPORT\n", serverExport.constData());
-            printf("#  else\n");
-            printf("#    define %s\n", serverExport.constData());
-            printf("#  endif\n");
-            printf("#endif\n");
-        }
+        if (m_headerPath.size())
+            serverExport = printExportMacro("Q_WAYLAND_SERVER_", preProcessorProtocolName);
         printf("\n");
         printf("namespace QtWaylandServer {\n");
 
@@ -532,7 +510,7 @@ bool Scanner::process()
 
             printf("    class %s %s\n    {\n", serverExport.constData(), interfaceName);
             printf("    public:\n");
-            printf("        %s(struct ::wl_client *client, int id, int version);\n", interfaceName);
+            printf("        %s(struct ::wl_client *client, uint32_t id, int version);\n", interfaceName);
             printf("        %s(struct ::wl_display *display, int version);\n", interfaceName);
             printf("        %s(struct ::wl_resource *resource);\n", interfaceName);
             printf("        %s();\n", interfaceName);
@@ -555,13 +533,13 @@ bool Scanner::process()
             printf("            static Resource *fromResource(struct ::wl_resource *resource);\n");
             printf("        };\n");
             printf("\n");
-            printf("        void init(struct ::wl_client *client, int id, int version);\n");
+            printf("        void init(struct ::wl_client *client, uint32_t id, int version);\n");
             printf("        void init(struct ::wl_display *display, int version);\n");
             printf("        void init(struct ::wl_resource *resource);\n");
             printf("\n");
             printf("        Resource *add(struct ::wl_client *client, int version);\n");
-            printf("        Resource *add(struct ::wl_client *client, int id, int version);\n");
-            printf("        Resource *add(struct wl_list *resource_list, struct ::wl_client *client, int id, int version);\n");
+            printf("        Resource *add(struct ::wl_client *client, uint32_t id, int version);\n");
+            printf("        Resource *add(struct wl_list *resource_list, struct ::wl_client *client, uint32_t id, int version);\n");
             printf("\n");
             printf("        Resource *resource() { return m_resource; }\n");
             printf("        const Resource *resource() const { return m_resource; }\n");
@@ -637,7 +615,6 @@ bool Scanner::process()
             printf("        QMultiMap<struct ::wl_client*, Resource*> m_resource_map;\n");
             printf("        Resource *m_resource;\n");
             printf("        struct ::wl_global *m_global;\n");
-            printf("        uint32_t m_globalVersion;\n");
             printf("        struct DisplayDestroyedListener : ::wl_listener {\n");
             printf("            %s *parent;\n", interfaceName);
             printf("        };\n");
@@ -662,6 +639,7 @@ bool Scanner::process()
         printf("QT_BEGIN_NAMESPACE\n");
         printf("QT_WARNING_PUSH\n");
         printf("QT_WARNING_DISABLE_GCC(\"-Wmissing-field-initializers\")\n");
+        printf("QT_WARNING_DISABLE_CLANG(\"-Wmissing-field-initializers\")\n");
         printf("\n");
         printf("namespace QtWaylandServer {\n");
 
@@ -681,7 +659,7 @@ bool Scanner::process()
             QByteArray stripped = stripInterfaceName(interface.name);
             const char *interfaceNameStripped = stripped.constData();
 
-            printf("    %s::%s(struct ::wl_client *client, int id, int version)\n", interfaceName, interfaceName);
+            printf("    %s::%s(struct ::wl_client *client, uint32_t id, int version)\n", interfaceName, interfaceName);
             printf("        : m_resource_map()\n");
             printf("        , m_resource(nullptr)\n");
             printf("        , m_global(nullptr)\n");
@@ -718,7 +696,7 @@ bool Scanner::process()
 
             printf("    %s::~%s()\n", interfaceName, interfaceName);
             printf("    {\n");
-            printf("        for (auto resource : qAsConst(m_resource_map))\n");
+            printf("        for (auto resource : std::as_const(m_resource_map))\n");
             printf("            resource->%s_object = nullptr;\n", interfaceNameStripped);
             printf("\n");
             printf("        if (m_resource)\n");
@@ -731,7 +709,7 @@ bool Scanner::process()
             printf("    }\n");
             printf("\n");
 
-            printf("    void %s::init(struct ::wl_client *client, int id, int version)\n", interfaceName);
+            printf("    void %s::init(struct ::wl_client *client, uint32_t id, int version)\n", interfaceName);
             printf("    {\n");
             printf("        m_resource = bind(client, id, version);\n");
             printf("    }\n");
@@ -751,7 +729,7 @@ bool Scanner::process()
             printf("    }\n");
             printf("\n");
 
-            printf("    %s::Resource *%s::add(struct ::wl_client *client, int id, int version)\n", interfaceName, interfaceName);
+            printf("    %s::Resource *%s::add(struct ::wl_client *client, uint32_t id, int version)\n", interfaceName, interfaceName);
             printf("    {\n");
             printf("        Resource *resource = bind(client, id, version);\n");
             printf("        m_resource_map.insert(client, resource);\n");
@@ -762,7 +740,6 @@ bool Scanner::process()
             printf("    void %s::init(struct ::wl_display *display, int version)\n", interfaceName);
             printf("    {\n");
             printf("        m_global = wl_global_create(display, &::%s_interface, version, this, bind_func);\n", interfaceName);
-            printf("        m_globalVersion = version;\n");
             printf("        m_displayDestroyedListener.notify = %s::display_destroy_func;\n", interfaceName);
             printf("        m_displayDestroyedListener.parent = this;\n");
             printf("        wl_display_add_destroy_listener(display, &m_displayDestroyedListener);\n");
@@ -794,7 +771,7 @@ bool Scanner::process()
             printf("    void %s::bind_func(struct ::wl_client *client, void *data, uint32_t version, uint32_t id)\n", interfaceName);
             printf("    {\n");
             printf("        %s *that = static_cast<%s *>(data);\n", interfaceName, interfaceName);
-            printf("        that->add(client, id, qMin(that->m_globalVersion, version));\n");
+            printf("        that->add(client, id, version);\n");
             printf("    }\n");
             printf("\n");
 
@@ -996,20 +973,12 @@ bool Scanner::process()
         printf("QT_BEGIN_NAMESPACE\n");
         printf("QT_WARNING_PUSH\n");
         printf("QT_WARNING_DISABLE_GCC(\"-Wmissing-field-initializers\")\n");
+        printf("QT_WARNING_DISABLE_CLANG(\"-Wmissing-field-initializers\")\n");
 
         QByteArray clientExport;
+        if (m_headerPath.size())
+            clientExport = printExportMacro("Q_WAYLAND_CLIENT_", preProcessorProtocolName);
 
-        if (m_headerPath.size()) {
-            clientExport = QByteArray("Q_WAYLAND_CLIENT_") + preProcessorProtocolName + "_EXPORT";
-            printf("\n");
-            printf("#if !defined(%s)\n", clientExport.constData());
-            printf("#  if defined(QT_SHARED)\n");
-            printf("#    define %s Q_DECL_EXPORT\n", clientExport.constData());
-            printf("#  else\n");
-            printf("#    define %s\n", clientExport.constData());
-            printf("#  endif\n");
-            printf("#endif\n");
-        }
         printf("\n");
         printf("namespace QtWayland {\n");
 
@@ -1030,13 +999,13 @@ bool Scanner::process()
 
             printf("    class %s %s\n    {\n", clientExport.constData(), interfaceName);
             printf("    public:\n");
-            printf("        %s(struct ::wl_registry *registry, int id, int version);\n", interfaceName);
+            printf("        %s(struct ::wl_registry *registry, uint32_t id, int version);\n", interfaceName);
             printf("        %s(struct ::%s *object);\n", interfaceName, interfaceName);
             printf("        %s();\n", interfaceName);
             printf("\n");
             printf("        virtual ~%s();\n", interfaceName);
             printf("\n");
-            printf("        void init(struct ::wl_registry *registry, int id, int version);\n");
+            printf("        void init(struct ::wl_registry *registry, uint32_t id, int version);\n");
             printf("        void init(struct ::%s *object);\n", interfaceName);
             printf("\n");
             printf("        struct ::%s *object() { return m_%s; }\n", interfaceName, interfaceName);
@@ -1044,6 +1013,8 @@ bool Scanner::process()
             printf("        static %s *fromObject(struct ::%s *object);\n", interfaceName, interfaceName);
             printf("\n");
             printf("        bool isInitialized() const;\n");
+            printf("\n");
+            printf("        uint32_t version() const;");
             printf("\n");
             printf("        static const struct ::wl_interface *interface();\n");
 
@@ -1110,6 +1081,7 @@ bool Scanner::process()
         printf("QT_BEGIN_NAMESPACE\n");
         printf("QT_WARNING_PUSH\n");
         printf("QT_WARNING_DISABLE_GCC(\"-Wmissing-field-initializers\")\n");
+        printf("QT_WARNING_DISABLE_CLANG(\"-Wmissing-field-initializers\")\n");
         printf("\n");
         printf("namespace QtWayland {\n");
         printf("\n");
@@ -1119,13 +1091,8 @@ bool Scanner::process()
         printf("static inline void *wlRegistryBind(struct ::wl_registry *registry, uint32_t name, const struct ::wl_interface *interface, uint32_t version)\n");
         printf("{\n");
         printf("    const uint32_t bindOpCode = 0;\n");
-        printf("#if (WAYLAND_VERSION_MAJOR == 1 && WAYLAND_VERSION_MINOR > 10) || WAYLAND_VERSION_MAJOR > 1\n");
         printf("    return (void *) wl_proxy_marshal_constructor_versioned((struct wl_proxy *) registry,\n");
-        printf("        bindOpCode, interface, version, name, interface->name, version, nullptr);\n");
-        printf("#else\n");
-        printf("    return (void *) wl_proxy_marshal_constructor((struct wl_proxy *) registry,\n");
-        printf("        bindOpCode, interface, name, interface->name, version, nullptr);\n");
-        printf("#endif\n");
+        printf("    bindOpCode, interface, version, name, interface->name, version, nullptr);\n");
         printf("}\n");
         printf("\n");
 
@@ -1146,7 +1113,7 @@ bool Scanner::process()
 
             bool hasEvents = !interface.events.empty();
 
-            printf("    %s::%s(struct ::wl_registry *registry, int id, int version)\n", interfaceName, interfaceName);
+            printf("    %s::%s(struct ::wl_registry *registry, uint32_t id, int version)\n", interfaceName, interfaceName);
             printf("    {\n");
             printf("        init(registry, id, version);\n");
             printf("    }\n");
@@ -1171,7 +1138,7 @@ bool Scanner::process()
             printf("    }\n");
             printf("\n");
 
-            printf("    void %s::init(struct ::wl_registry *registry, int id, int version)\n", interfaceName);
+            printf("    void %s::init(struct ::wl_registry *registry, uint32_t id, int version)\n", interfaceName);
             printf("    {\n");
             printf("        m_%s = static_cast<struct ::%s *>(wlRegistryBind(registry, id, &%s_interface, version));\n", interfaceName, interfaceName, interfaceName);
             if (hasEvents)
@@ -1200,6 +1167,12 @@ bool Scanner::process()
             printf("    bool %s::isInitialized() const\n", interfaceName);
             printf("    {\n");
             printf("        return m_%s != nullptr;\n", interfaceName);
+            printf("    }\n");
+            printf("\n");
+
+            printf("    uint32_t %s::version() const\n", interfaceName);
+            printf("    {\n");
+            printf("        return wl_proxy_get_version(reinterpret_cast<wl_proxy*>(m_%s));\n", interfaceName);
             printf("    }\n");
             printf("\n");
 
@@ -1235,7 +1208,7 @@ bool Scanner::process()
                     printf("\n");
                 }
                 int actualArgumentCount = new_id ? int(e.arguments.size()) - 1 : int(e.arguments.size());
-                printf("        %s%s_%s(\n", new_id ? "return " : "", interfaceName, e.name.constData());
+                printf("        %s::%s_%s(\n", new_id ? "return " : "", interfaceName, e.name.constData());
                 printf("            m_%s%s", interfaceName, actualArgumentCount > 0 ? "," : "");
                 bool needsComma = false;
                 for (const WaylandArgument &a : e.arguments) {

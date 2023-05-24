@@ -1,4 +1,4 @@
-// Copyright 2015 PDFium Authors. All rights reserved.
+// Copyright 2015 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,8 @@
 #include "core/fxcodec/jbig2/JBig2_BitStream.h"
 
 #include <algorithm>
+
+#include "third_party/base/numerics/safe_conversions.h"
 
 namespace {
 
@@ -19,8 +21,8 @@ pdfium::span<const uint8_t> ValidatedSpan(pdfium::span<const uint8_t> sp) {
 }  // namespace
 
 CJBig2_BitStream::CJBig2_BitStream(pdfium::span<const uint8_t> pSrcStream,
-                                   uint32_t dwObjNum)
-    : m_Span(ValidatedSpan(pSrcStream)), m_dwObjNum(dwObjNum) {}
+                                   uint64_t key)
+    : m_Span(ValidatedSpan(pSrcStream)), m_Key(key) {}
 
 CJBig2_BitStream::~CJBig2_BitStream() = default;
 
@@ -143,7 +145,7 @@ uint32_t CJBig2_BitStream::getOffset() const {
 }
 
 void CJBig2_BitStream::setOffset(uint32_t dwOffset) {
-  m_dwByteIdx = std::min<size_t>(dwOffset, m_Span.size());
+  m_dwByteIdx = std::min(dwOffset, getLength());
 }
 
 uint32_t CJBig2_BitStream::getBitPos() const {
@@ -159,6 +161,10 @@ const uint8_t* CJBig2_BitStream::getBuf() const {
   return m_Span.data();
 }
 
+uint32_t CJBig2_BitStream::getLength() const {
+  return pdfium::base::checked_cast<uint32_t>(m_Span.size());
+}
+
 const uint8_t* CJBig2_BitStream::getPointer() const {
   return getBuf() + m_dwByteIdx;
 }
@@ -168,7 +174,7 @@ void CJBig2_BitStream::offset(uint32_t dwOffset) {
 }
 
 uint32_t CJBig2_BitStream::getByteLeft() const {
-  return m_Span.size() - m_dwByteIdx;
+  return getLength() - m_dwByteIdx;
 }
 
 void CJBig2_BitStream::AdvanceBit() {
@@ -181,13 +187,9 @@ void CJBig2_BitStream::AdvanceBit() {
 }
 
 bool CJBig2_BitStream::IsInBounds() const {
-  return m_dwByteIdx < m_Span.size();
+  return m_dwByteIdx < getLength();
 }
 
 uint32_t CJBig2_BitStream::LengthInBits() const {
-  return m_Span.size() << 3;
-}
-
-uint32_t CJBig2_BitStream::getObjNum() const {
-  return m_dwObjNum;
+  return getLength() << 3;
 }

@@ -1,13 +1,13 @@
-// Copyright (c) 2010 The Chromium Authors. All rights reserved.
+// Copyright 2010 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/strings/utf_string_conversions.h"
+
 #include <stddef.h>
 
-#include "base/stl_util.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
-#include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -180,27 +180,23 @@ TEST(UTFStringConversionsTest, ConvertUTF32ToUTF8) {
 #endif  // defined(WCHAR_T_IS_UTF32)
 
 TEST(UTFStringConversionsTest, ConvertMultiString) {
-  static char16 multi16[] = {
-    'f', 'o', 'o', '\0',
-    'b', 'a', 'r', '\0',
-    'b', 'a', 'z', '\0',
-    '\0'
-  };
+  static char16_t multi16[] = {'f',  'o', 'o', '\0', 'b',  'a', 'r',
+                               '\0', 'b', 'a', 'z',  '\0', '\0'};
   static char multi[] = {
     'f', 'o', 'o', '\0',
     'b', 'a', 'r', '\0',
     'b', 'a', 'z', '\0',
     '\0'
   };
-  string16 multistring16;
-  memcpy(WriteInto(&multistring16, base::size(multi16)), multi16,
+  std::u16string multistring16;
+  memcpy(WriteInto(&multistring16, std::size(multi16)), multi16,
          sizeof(multi16));
-  EXPECT_EQ(base::size(multi16) - 1, multistring16.length());
+  EXPECT_EQ(std::size(multi16) - 1, multistring16.length());
   std::string expected;
-  memcpy(WriteInto(&expected, base::size(multi)), multi, sizeof(multi));
-  EXPECT_EQ(base::size(multi) - 1, expected.length());
+  memcpy(WriteInto(&expected, std::size(multi)), multi, sizeof(multi));
+  EXPECT_EQ(std::size(multi) - 1, expected.length());
   const std::string& converted = UTF16ToUTF8(multistring16);
-  EXPECT_EQ(base::size(multi) - 1, converted.length());
+  EXPECT_EQ(std::size(multi) - 1, converted.length());
   EXPECT_EQ(expected, converted);
 }
 

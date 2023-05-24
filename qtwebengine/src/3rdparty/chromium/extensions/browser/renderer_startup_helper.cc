@@ -1,16 +1,16 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/browser/renderer_startup_helper.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "base/bind_helpers.h"
+#include "base/containers/contains.h"
 #include "base/debug/dump_without_crashing.h"
-#include "base/feature_list.h"
-#include "base/stl_util.h"
+#include "base/functional/callback_helpers.h"
 #include "base/strings/string_util.h"
 #include "base/values.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
@@ -23,52 +23,69 @@
 #include "extensions/browser/extension_util.h"
 #include "extensions/browser/extensions_browser_client.h"
 #include "extensions/browser/guest_view/web_view/web_view_guest.h"
+#include "extensions/browser/network_permissions_updater.h"
 #include "extensions/browser/service_worker_task_queue.h"
 #include "extensions/common/activation_sequence.h"
-#include "extensions/common/cors_util.h"
 #include "extensions/common/extension_messages.h"
 #include "extensions/common/extension_set.h"
 #include "extensions/common/extensions_client.h"
 #include "extensions/common/features/feature_channel.h"
+#include "extensions/common/features/feature_developer_mode_only.h"
 #include "extensions/common/features/feature_session_type.h"
 #include "extensions/common/manifest_handlers/background_info.h"
 #include "extensions/common/permissions/permissions_data.h"
+#include "ipc/ipc_channel_proxy.h"
 #include "ui/base/webui/web_ui_util.h"
 #include "url/origin.h"
-
-using content::BrowserContext;
 
 namespace extensions {
 
 namespace {
 
-// Returns whether the |extension| should be loaded in the given
-// |browser_context|.
-bool IsExtensionVisibleToContext(const Extension& extension,
-                                 content::BrowserContext* browser_context) {
-  // Renderers don't need to know about themes.
-  if (extension.is_theme())
-    return false;
-
-  // Only extensions enabled in incognito mode should be loaded in an incognito
-  // renderer. However extensions which can't be enabled in the incognito mode
-  // (e.g. platform apps) should also be loaded in an incognito renderer to
-  // ensure connections from incognito tabs to such extensions work.
-  return !browser_context->IsOffTheRecord() ||
-         !util::CanBeIncognitoEnabled(&extension) ||
-         util::IsIncognitoEnabled(extension.id(), browser_context);
-}
+using ::content::BrowserContext;
 
 // Returns the current ActivationSequence of |extension| if the extension is
-// Service Worker-based, otherwise returns base::nullopt.
-base::Optional<ActivationSequence> GetWorkerActivationSequence(
+// Service Worker-based, otherwise returns absl::nullopt.
+absl::optional<ActivationSequence> GetWorkerActivationSequence(
     BrowserContext* browser_context,
     const Extension& extension) {
   if (BackgroundInfo::IsServiceWorkerBased(&extension)) {
     return ServiceWorkerTaskQueue::Get(browser_context)
         ->GetCurrentSequence(extension.id());
   }
-  return base::nullopt;
+  return absl::nullopt;
+}
+
+PermissionSet CreatePermissionSet(const PermissionSet& set) {
+  return PermissionSet(set.apis().Clone(), set.manifest_permissions().Clone(),
+                       set.explicit_hosts().Clone(),
+                       set.scriptable_hosts().Clone());
+}
+
+mojom::ExtensionLoadedParamsPtr CreateExtensionLoadedParams(
+    const Extension& extension,
+    bool include_tab_permissions,
+    BrowserContext* browser_context) {
+  const PermissionsData* permissions_data = extension.permissions_data();
+
+  base::flat_map<int, PermissionSet> tab_specific_permissions;
+  if (include_tab_permissions) {
+    for (const auto& pair : permissions_data->tab_specific_permissions()) {
+      tab_specific_permissions[pair.first] = CreatePermissionSet(*pair.second);
+    }
+  }
+
+  return mojom::ExtensionLoadedParams::New(
+      extension.manifest()->value()->Clone(), extension.location(),
+      extension.path(),
+      CreatePermissionSet(permissions_data->active_permissions()),
+      CreatePermissionSet(permissions_data->withheld_permissions()),
+      std::move(tab_specific_permissions),
+      permissions_data->policy_blocked_hosts(),
+      permissions_data->policy_allowed_hosts(),
+      permissions_data->UsesDefaultPolicyHostRestrictions(), extension.id(),
+      GetWorkerActivationSequence(browser_context, extension),
+      extension.creation_flags(), extension.guid());
 }
 
 }  // namespace
@@ -79,8 +96,8 @@ RendererStartupHelper::RendererStartupHelper(BrowserContext* browser_context)
 }
 
 RendererStartupHelper::~RendererStartupHelper() {
-  for (auto* process : initialized_processes_)
-    process->RemoveObserver(this);
+  for (auto& process_entry : process_mojo_map_)
+    process_entry.first->RemoveObserver(this);
 }
 
 void RendererStartupHelper::OnRenderProcessHostCreated(
@@ -105,79 +122,82 @@ void RendererStartupHelper::InitializeProcess(
   if (!client->IsSameContext(browser_context_, process->GetBrowserContext()))
     return;
 
+  mojom::Renderer* renderer =
+      process_mojo_map_.emplace(process, BindNewRendererRemote(process))
+          .first->second.get();
+  process->AddObserver(this);
+
   bool activity_logging_enabled =
       client->IsActivityLoggingEnabled(process->GetBrowserContext());
   // We only send the ActivityLoggingEnabled message if it is enabled; otherwise
   // the default (not enabled) is correct.
-  if (activity_logging_enabled) {
-    process->Send(
-        new ExtensionMsg_SetActivityLoggingEnabled(activity_logging_enabled));
-  }
+  if (activity_logging_enabled)
+    renderer->SetActivityLoggingEnabled(activity_logging_enabled);
+
+  // extensions need to know the developer mode value for api restrictions.
+  renderer->SetDeveloperMode(
+      GetCurrentDeveloperMode(util::GetBrowserContextId(browser_context_)));
 
   // Extensions need to know the channel and the session type for API
   // restrictions. The values are sent to all renderers, as the non-extension
   // renderers may have content scripts.
   bool is_lock_screen_context =
       client->IsLockScreenContext(process->GetBrowserContext());
-  process->Send(new ExtensionMsg_SetSessionInfo(GetCurrentChannel(),
-                                                GetCurrentFeatureSessionType(),
-                                                is_lock_screen_context));
+  renderer->SetSessionInfo(GetCurrentChannel(), GetCurrentFeatureSessionType(),
+                           is_lock_screen_context);
 
   // Platform apps need to know the system font.
   // TODO(dbeam): this is not the system font in all cases.
-  process->Send(new ExtensionMsg_SetSystemFont(webui::GetFontFamily(),
-                                               webui::GetFontSize()));
+  renderer->SetSystemFont(webui::GetFontFamily(), webui::GetFontSize());
 
   // Scripting allowlist. This is modified by tests and must be communicated
   // to renderers.
-  process->Send(new ExtensionMsg_SetScriptingAllowlist(
-      extensions::ExtensionsClient::Get()->GetScriptingAllowlist()));
+  renderer->SetScriptingAllowlist(
+      ExtensionsClient::Get()->GetScriptingAllowlist());
 
   // If the new render process is a WebView guest process, propagate the WebView
   // partition ID to it.
   std::string webview_partition_id = WebViewGuest::GetPartitionID(process);
   if (!webview_partition_id.empty()) {
-    process->Send(new ExtensionMsg_SetWebViewPartitionID(
-        WebViewGuest::GetPartitionID(process)));
+    renderer->SetWebViewPartitionID(webview_partition_id);
   }
 
   BrowserContext* renderer_context = process->GetBrowserContext();
 
   // Load default policy_blocked_hosts and policy_allowed_hosts settings, part
   // of the ExtensionSettings policy.
-  ExtensionMsg_UpdateDefaultPolicyHostRestrictions_Params params;
   int context_id = util::GetBrowserContextId(renderer_context);
-  params.default_policy_blocked_hosts =
-      PermissionsData::GetDefaultPolicyBlockedHosts(context_id);
-  params.default_policy_allowed_hosts =
-      PermissionsData::GetDefaultPolicyAllowedHosts(context_id);
-  process->Send(new ExtensionMsg_UpdateDefaultPolicyHostRestrictions(params));
+  renderer->UpdateDefaultPolicyHostRestrictions(
+      PermissionsData::GetDefaultPolicyBlockedHosts(context_id),
+      PermissionsData::GetDefaultPolicyAllowedHosts(context_id));
+
+  renderer->UpdateUserHostRestrictions(
+      PermissionsData::GetUserBlockedHosts(context_id),
+      PermissionsData::GetUserAllowedHosts(context_id));
 
   // Loaded extensions.
-  std::vector<ExtensionMsg_Loaded_Params> loaded_extensions;
+  std::vector<mojom::ExtensionLoadedParamsPtr> loaded_extensions;
   const ExtensionSet& extensions =
       ExtensionRegistry::Get(browser_context_)->enabled_extensions();
   for (const auto& ext : extensions) {
-    // OnLoadedExtension should have already been called for the extension.
+    // OnExtensionLoaded should have already been called for the extension.
     DCHECK(base::Contains(extension_process_map_, ext->id()));
     DCHECK(!base::Contains(extension_process_map_[ext->id()], process));
 
-    if (!IsExtensionVisibleToContext(*ext, renderer_context))
+    if (!util::IsExtensionVisibleToContext(*ext, renderer_context))
       continue;
 
     // TODO(kalman): Only include tab specific permissions for extension
     // processes, no other process needs it, so it's mildly wasteful.
     // I am not sure this is possible to know this here, at such a low
     // level of the stack. Perhaps site isolation can help.
-    bool include_tab_permissions = true;
-    loaded_extensions.push_back(ExtensionMsg_Loaded_Params(
-        ext.get(), include_tab_permissions,
-        GetWorkerActivationSequence(renderer_context, *ext)));
+    loaded_extensions.push_back(CreateExtensionLoadedParams(
+        *ext, true /* include tab permissions*/, renderer_context));
     extension_process_map_[ext->id()].insert(process);
   }
 
   // Activate pending extensions.
-  process->Send(new ExtensionMsg_Loaded(loaded_extensions));
+  renderer->LoadExtensions(std::move(loaded_extensions));
   auto iter = pending_active_extensions_.find(process);
   if (iter != pending_active_extensions_.end()) {
     for (const ExtensionId& id : iter->second) {
@@ -185,13 +205,11 @@ void RendererStartupHelper::InitializeProcess(
       DCHECK(extensions.Contains(id));
       DCHECK(base::Contains(extension_process_map_, id));
       DCHECK(base::Contains(extension_process_map_[id], process));
-      process->Send(new ExtensionMsg_ActivateExtension(id));
+      renderer->ActivateExtension(id);
     }
   }
 
-  initialized_processes_.insert(process);
   pending_active_extensions_.erase(process);
-  process->AddObserver(this);
 }
 
 void RendererStartupHelper::UntrackProcess(
@@ -202,7 +220,7 @@ void RendererStartupHelper::UntrackProcess(
   }
 
   process->RemoveObserver(this);
-  initialized_processes_.erase(process);
+  process_mojo_map_.erase(process);
   pending_active_extensions_.erase(process);
   for (auto& extension_process_pair : extension_process_map_)
     extension_process_pair.second.erase(process);
@@ -216,93 +234,200 @@ void RendererStartupHelper::ActivateExtensionInProcess(
   if (!base::Contains(extension_process_map_, extension.id())) {
 #if DCHECK_IS_ON()
     NOTREACHED() << "Extension " << extension.id()
-                 << "activated before loading";
+                 << " activated before loading";
 #else
     base::debug::DumpWithoutCrashing();
     return;
 #endif
   }
 
-  if (!IsExtensionVisibleToContext(extension, process->GetBrowserContext()))
+  if (!util::IsExtensionVisibleToContext(extension,
+                                         process->GetBrowserContext()))
     return;
 
-  if (base::Contains(initialized_processes_, process)) {
+  // Populate NetworkContext's OriginAccessList for this extension.
+  //
+  // Doing it in ActivateExtensionInProcess rather than in OnExtensionLoaded
+  // ensures that we cover both the regular profile and incognito profiles.  See
+  // also https://crbug.com/1197798.
+  //
+  // This is guaranteed to happen before the extension can make any network
+  // requests (so there is no race) because ActivateExtensionInProcess will
+  // always be called before creating URLLoaderFactory for any extension frames
+  // that might be eventually hosted inside the renderer `process` (this
+  // Browser-side ordering will be replicated within the NetworkService because
+  // `SetCorsOriginAccessListsForOrigin()`, which is used in
+  // NetworkPermissionsUpdater, and `CreateURLLoaderFactory()` are 2 methods
+  // of the same mojom::NetworkContext interface).
+  NetworkPermissionsUpdater::UpdateExtension(
+      *process->GetBrowserContext(), extension,
+      NetworkPermissionsUpdater::ContextSet::kCurrentContextOnly,
+      base::DoNothing());
+
+  auto remote = process_mojo_map_.find(process);
+  if (remote != process_mojo_map_.end()) {
     DCHECK(base::Contains(extension_process_map_[extension.id()], process));
-    process->Send(new ExtensionMsg_ActivateExtension(extension.id()));
+    remote->second->ActivateExtension(extension.id());
   } else {
     pending_active_extensions_[process].insert(extension.id());
   }
 }
 
 void RendererStartupHelper::OnExtensionLoaded(const Extension& extension) {
-  // Extension was already loaded.
-  // TODO(crbug.com/708230): Ensure that clients don't call this for an
-  // already loaded extension and change this to a DCHECK.
-  if (base::Contains(extension_process_map_, extension.id()))
-    return;
+  DCHECK(!base::Contains(extension_process_map_, extension.id()));
 
   // Mark the extension as loaded.
   std::set<content::RenderProcessHost*>& loaded_process_set =
       extension_process_map_[extension.id()];
 
-  // IsExtensionVisibleToContext() would filter out themes, but we choose to
-  // return early for performance reasons.
+  // util::IsExtensionVisibleToContext() would filter out themes, but we choose
+  // to return early for performance reasons.
   if (extension.is_theme())
     return;
 
-  // Registers the initial origin access lists to the BrowserContext
-  // asynchronously.
-  url::Origin extension_origin = url::Origin::Create(extension.url());
-  std::vector<network::mojom::CorsOriginPatternPtr> allow_list =
-      CreateCorsOriginAccessAllowList(
-          extension,
-          PermissionsData::EffectiveHostPermissionsMode::kOmitTabSpecific);
-  browser_context_->SetCorsOriginAccessListForOrigin(
-      extension_origin, std::move(allow_list),
-      CreateCorsOriginAccessBlockList(extension), base::DoNothing::Once());
-
-  // We don't need to include tab permisisons here, since the extension
-  // was just loaded.
-  // Uninitialized renderers will be informed of the extension load during the
-  // first batch of messages.
-  std::vector<ExtensionMsg_Loaded_Params> params;
-  params.emplace_back(&extension, false /* no tab permissions */,
-                      GetWorkerActivationSequence(browser_context_, extension));
-
-  for (content::RenderProcessHost* process : initialized_processes_) {
-    if (!IsExtensionVisibleToContext(extension, process->GetBrowserContext()))
+  for (auto& process_entry : process_mojo_map_) {
+    content::RenderProcessHost* process = process_entry.first;
+    if (!util::IsExtensionVisibleToContext(extension,
+                                           process->GetBrowserContext()))
       continue;
-    process->Send(new ExtensionMsg_Loaded(params));
+
+    // We don't need to include tab permissions here, since the extension
+    // was just loaded.
+    // Uninitialized renderers will be informed of the extension load during the
+    // first batch of messages.
+    std::vector<mojom::ExtensionLoadedParamsPtr> params;
+    params.emplace_back(CreateExtensionLoadedParams(
+        extension, false /* no tab permissions */, browser_context_));
+
+    mojom::Renderer* renderer = GetRenderer(process);
+    if (renderer)
+      renderer->LoadExtensions(std::move(params));
+
     loaded_process_set.insert(process);
   }
 }
 
 void RendererStartupHelper::OnExtensionUnloaded(const Extension& extension) {
-  // Extension is not loaded.
-  // TODO(crbug.com/708230): Ensure that clients call this for a loaded
-  // extension only and change this to a DCHECK.
-  if (!base::Contains(extension_process_map_, extension.id()))
-    return;
+  DCHECK(base::Contains(extension_process_map_, extension.id()));
 
   const std::set<content::RenderProcessHost*>& loaded_process_set =
       extension_process_map_[extension.id()];
   for (content::RenderProcessHost* process : loaded_process_set) {
-    DCHECK(base::Contains(initialized_processes_, process));
-    process->Send(new ExtensionMsg_Unloaded(extension.id()));
+    mojom::Renderer* renderer = GetRenderer(process);
+    if (renderer)
+      renderer->UnloadExtension(extension.id());
   }
 
   // Resets registered origin access lists in the BrowserContext asynchronously.
-  url::Origin extension_origin = url::Origin::Create(extension.url());
-  browser_context_->SetCorsOriginAccessListForOrigin(
-      extension_origin, std::vector<network::mojom::CorsOriginPatternPtr>(),
-      std::vector<network::mojom::CorsOriginPatternPtr>(),
-      base::DoNothing::Once());
+  NetworkPermissionsUpdater::ResetOriginAccessForExtension(*browser_context_,
+                                                           extension);
 
   for (auto& process_extensions_pair : pending_active_extensions_)
     process_extensions_pair.second.erase(extension.id());
 
   // Mark the extension as unloaded.
   extension_process_map_.erase(extension.id());
+}
+
+void RendererStartupHelper::OnDeveloperModeChanged(bool in_developer_mode) {
+  for (auto& process_entry : process_mojo_map_) {
+    content::RenderProcessHost* process = process_entry.first;
+    mojom::Renderer* renderer = GetRenderer(process);
+    if (renderer)
+      renderer->SetDeveloperMode(in_developer_mode);
+  }
+}
+
+void RendererStartupHelper::UnloadAllExtensionsForTest() {
+  extension_process_map_.clear();
+}
+
+mojo::PendingAssociatedRemote<mojom::Renderer>
+RendererStartupHelper::BindNewRendererRemote(
+    content::RenderProcessHost* process) {
+  mojo::AssociatedRemote<mojom::Renderer> renderer_interface;
+  process->GetChannel()->GetRemoteAssociatedInterface(&renderer_interface);
+  return renderer_interface.Unbind();
+}
+
+mojom::Renderer* RendererStartupHelper::GetRenderer(
+    content::RenderProcessHost* process) {
+  auto it = process_mojo_map_.find(process);
+  if (it == process_mojo_map_.end())
+    return nullptr;
+  return it->second.get();
+}
+
+BrowserContext* RendererStartupHelper::GetRendererBrowserContext() {
+  // `browser_context_` is redirected to remove incognito mode. This method
+  // returns the original browser context associated with the renderer.
+  auto* host = content::RenderProcessHost::FromID(receivers_.current_context());
+  if (!host) {
+    return nullptr;
+  }
+
+  return host->GetBrowserContext();
+}
+
+void RendererStartupHelper::AddAPIActionToActivityLog(
+    const ExtensionId& extension_id,
+    const std::string& call_name,
+    base::Value::List args,
+    const std::string& extra) {
+  auto* browser_context = GetRendererBrowserContext();
+  if (!browser_context) {
+    return;
+  }
+
+  ExtensionsBrowserClient::Get()->AddAPIActionToActivityLog(
+      browser_context, extension_id, call_name, std::move(args), extra);
+}
+
+void RendererStartupHelper::AddEventToActivityLog(
+    const ExtensionId& extension_id,
+    const std::string& call_name,
+    base::Value::List args,
+    const std::string& extra) {
+  auto* browser_context = GetRendererBrowserContext();
+  if (!browser_context) {
+    return;
+  }
+
+  ExtensionsBrowserClient::Get()->AddEventToActivityLog(
+      browser_context, extension_id, call_name, std::move(args), extra);
+}
+
+void RendererStartupHelper::AddDOMActionToActivityLog(
+    const ExtensionId& extension_id,
+    const std::string& call_name,
+    base::Value::List args,
+    const GURL& url,
+    const std::u16string& url_title,
+    int32_t call_type) {
+  auto* browser_context = GetRendererBrowserContext();
+  if (!browser_context) {
+    return;
+  }
+
+  ExtensionsBrowserClient::Get()->AddDOMActionToActivityLog(
+      browser_context, extension_id, call_name, std::move(args), url, url_title,
+      call_type);
+}
+
+// static
+void RendererStartupHelper::BindForRenderer(
+    int process_id,
+    mojo::PendingAssociatedReceiver<mojom::RendererHost> receiver) {
+  auto* host = content::RenderProcessHost::FromID(process_id);
+  if (!host) {
+    return;
+  }
+
+  auto* renderer_startup_helper =
+      RendererStartupHelperFactory::GetForBrowserContext(
+          host->GetBrowserContext());
+  renderer_startup_helper->receivers_.Add(renderer_startup_helper,
+                                          std::move(receiver), process_id);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -326,17 +451,18 @@ RendererStartupHelperFactory::RendererStartupHelperFactory()
   // No dependencies on other services.
 }
 
-RendererStartupHelperFactory::~RendererStartupHelperFactory() {}
+RendererStartupHelperFactory::~RendererStartupHelperFactory() = default;
 
 KeyedService* RendererStartupHelperFactory::BuildServiceInstanceFor(
-    content::BrowserContext* context) const {
+    BrowserContext* context) const {
   return new RendererStartupHelper(context);
 }
 
 BrowserContext* RendererStartupHelperFactory::GetBrowserContextToUse(
     BrowserContext* context) const {
   // Redirected in incognito.
-  return ExtensionsBrowserClient::Get()->GetOriginalContext(context);
+  return ExtensionsBrowserClient::Get()->GetRedirectedContextInIncognito(
+      context, /*force_guest_profile=*/true, /*force_system_profile=*/false);
 }
 
 bool RendererStartupHelperFactory::ServiceIsCreatedWithBrowserContext() const {

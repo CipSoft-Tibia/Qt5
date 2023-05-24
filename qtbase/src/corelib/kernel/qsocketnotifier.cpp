@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #define BUILDING_QSOCKETNOTIFIER
 #include "qsocketnotifier.h"
@@ -58,13 +22,16 @@ QT_BEGIN_NAMESPACE
 Q_DECLARE_LOGGING_CATEGORY(lcSocketNotifierDeprecation)
 Q_LOGGING_CATEGORY(lcSocketNotifierDeprecation, "qt.core.socketnotifier_deprecation");
 
+QT_IMPL_METATYPE_EXTERN_TAGGED(QSocketNotifier::Type, QSocketNotifier_Type)
+QT_IMPL_METATYPE_EXTERN(QSocketDescriptor)
+
 class QSocketNotifierPrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QSocketNotifier)
 public:
     QSocketDescriptor sockfd;
     QSocketNotifier::Type sntype;
-    bool snenabled;
+    bool snenabled = false;
 };
 
 /*!
@@ -85,11 +52,16 @@ public:
 
     Once you have opened a device using a low-level (usually
     platform-specific) API, you can create a socket notifier to
-    monitor the file descriptor. The socket notifier is enabled by
-    default, i.e. it emits the activated() signal whenever a socket
-    event corresponding to its type occurs. Connect the activated()
-    signal to the slot you want to be called when an event
-    corresponding to your socket notifier's type occurs.
+    monitor the file descriptor. If the descriptor is passed to the
+    notifier's constructor, the socket notifier is enabled by default,
+    i.e. it emits the activated() signal whenever a socket event
+    corresponding to its type occurs. Connect the activated() signal
+    to the slot you want to be called when an event corresponding to
+    your socket notifier's type occurs.
+
+    You can create a socket notifier with no descriptor assigned. In
+    this case, you should call the setSocket() function after the
+    descriptor has been obtained.
 
     There are three types of socket notifiers: read, write, and
     exception. The type is described by the \l Type enum, and must be
@@ -136,6 +108,29 @@ public:
 */
 
 /*!
+    \since 6.1
+
+    Constructs a socket notifier with the given \a type that has no
+    descriptor assigned. The \a parent argument is passed to QObject's
+    constructor.
+
+    Call the setSocket() function to set the descriptor for monitoring.
+
+    \sa setSocket(), isValid(), isEnabled()
+*/
+
+QSocketNotifier::QSocketNotifier(Type type, QObject *parent)
+    : QObject(*new QSocketNotifierPrivate, parent)
+{
+    Q_D(QSocketNotifier);
+
+    qRegisterMetaType<QSocketDescriptor>();
+    qRegisterMetaType<QSocketNotifier::Type>();
+
+    d->sntype = type;
+}
+
+/*!
     Constructs a socket notifier with the given \a parent. It enables
     the \a socket, and watches for events of the given \a type.
 
@@ -149,15 +144,11 @@ public:
 */
 
 QSocketNotifier::QSocketNotifier(qintptr socket, Type type, QObject *parent)
-    : QObject(*new QSocketNotifierPrivate, parent)
+    : QSocketNotifier(type, parent)
 {
     Q_D(QSocketNotifier);
 
-    qRegisterMetaType<QSocketDescriptor>();
-    qRegisterMetaType<QSocketNotifier::Type>();
-
     d->sockfd = socket;
-    d->sntype = type;
     d->snenabled = true;
 
     auto thisThreadData = d->threadData.loadRelaxed();
@@ -182,7 +173,7 @@ QSocketNotifier::~QSocketNotifier()
 
 /*!
     \fn void QSocketNotifier::activated(int socket)
-    \obsolete To avoid unintended truncation of the descriptor, use
+    \deprecated To avoid unintended truncation of the descriptor, use
     the QSocketDescriptor overload of this function. If you need
     compatibility with versions older than 5.15 you need to change
     the slot to accept qintptr if it currently accepts an int, and
@@ -208,11 +199,28 @@ QSocketNotifier::~QSocketNotifier()
     \sa type(), socket()
 */
 
+/*!
+    \since 6.1
+
+    Assigns the \a socket to this notifier.
+
+    \note The notifier will be disabled as a side effect and needs
+    to be re-enabled.
+
+    \sa setEnabled(), isValid()
+*/
+void QSocketNotifier::setSocket(qintptr socket)
+{
+    Q_D(QSocketNotifier);
+
+    setEnabled(false);
+    d->sockfd = socket;
+}
 
 /*!
-    Returns the socket identifier specified to the constructor.
+    Returns the socket identifier assigned to this object.
 
-    \sa type()
+    \sa isValid(), type()
 */
 qintptr QSocketNotifier::socket() const
 {
@@ -232,6 +240,20 @@ QSocketNotifier::Type QSocketNotifier::type() const
 }
 
 /*!
+    \since 6.1
+
+    Returns \c true if the notifier is valid (that is, it has
+    a descriptor assigned); otherwise returns \c false.
+
+    \sa setSocket()
+*/
+bool QSocketNotifier::isValid() const
+{
+    Q_D(const QSocketNotifier);
+    return d->sockfd.isValid();
+}
+
+/*!
     Returns \c true if the notifier is enabled; otherwise returns \c false.
 
     \sa setEnabled()
@@ -246,10 +268,10 @@ bool QSocketNotifier::isEnabled() const
     If \a enable is true, the notifier is enabled; otherwise the notifier
     is disabled.
 
-    The notifier is enabled by default, i.e. it emits the activated()
-    signal whenever a socket event corresponding to its
-    \l{type()}{type} occurs. If it is disabled, it ignores socket
-    events (the same effect as not creating the socket notifier).
+    When the notifier is enabled, it emits the activated() signal whenever
+    a socket event corresponding to its \l{type()}{type} occurs. When it is
+    disabled, it ignores socket events (the same effect as not creating
+    the socket notifier).
 
     Write notifiers should normally be disabled immediately after the
     activated() signal has been emitted
@@ -289,24 +311,28 @@ bool QSocketNotifier::event(QEvent *e)
     Q_D(QSocketNotifier);
     // Emits the activated() signal when a QEvent::SockAct or QEvent::SockClose is
     // received.
-    if (e->type() == QEvent::ThreadChange) {
+    switch (e->type()) {
+    case QEvent::ThreadChange:
         if (d->snenabled) {
             QMetaObject::invokeMethod(this, "setEnabled", Qt::QueuedConnection,
                                       Q_ARG(bool, d->snenabled));
             setEnabled(false);
         }
-    }
-    QObject::event(e);                        // will activate filters
-    if ((e->type() == QEvent::SockAct) || (e->type() == QEvent::SockClose)) {
-        QPointer<QSocketNotifier> alive(this);
-        emit activated(d->sockfd, d->sntype, QPrivateSignal());
-        // ### Qt7: Remove emission if the activated(int) signal is removed
-        if (alive)
-            emit activated(int(qintptr(d->sockfd)), QPrivateSignal());
-
+        break;
+    case QEvent::SockAct:
+    case QEvent::SockClose:
+        {
+            QPointer<QSocketNotifier> alive(this);
+            emit activated(d->sockfd, d->sntype, QPrivateSignal());
+            // ### Qt7: Remove emission if the activated(int) signal is removed
+            if (alive)
+                emit activated(int(qintptr(d->sockfd)), QPrivateSignal());
+        }
         return true;
+    default:
+        break;
     }
-    return false;
+    return QObject::event(e);
 }
 
 /*!

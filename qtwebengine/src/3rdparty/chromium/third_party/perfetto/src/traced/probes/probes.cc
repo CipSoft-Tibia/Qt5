@@ -15,54 +15,81 @@
  */
 
 #include <fcntl.h>
-#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 #include "perfetto/base/logging.h"
+#include "perfetto/ext/base/file_utils.h"
+#include "perfetto/ext/base/getopt.h"
 #include "perfetto/ext/base/unix_task_runner.h"
+#include "perfetto/ext/base/utils.h"
+#include "perfetto/ext/base/version.h"
 #include "perfetto/ext/traced/traced.h"
 #include "perfetto/ext/tracing/ipc/default_socket.h"
 
 #include "src/traced/probes/ftrace/ftrace_procfs.h"
+#include "src/traced/probes/kmem_activity_trigger.h"
 #include "src/traced/probes/probes_producer.h"
-
-#if PERFETTO_BUILDFLAG(PERFETTO_VERSION_GEN)
-#include "perfetto_version.gen.h"
-#else
-#define PERFETTO_GET_GIT_REVISION() "unknown"
-#endif
 
 namespace perfetto {
 
-int __attribute__((visibility("default"))) ProbesMain(int argc, char** argv) {
+int PERFETTO_EXPORT_ENTRYPOINT ProbesMain(int argc, char** argv) {
   enum LongOption {
     OPT_CLEANUP_AFTER_CRASH = 1000,
     OPT_VERSION,
+    OPT_BACKGROUND,
+    OPT_RESET_FTRACE,
   };
 
-  static const struct option long_options[] = {
+  bool background = false;
+  bool reset_ftrace = false;
+
+  static const option long_options[] = {
+      {"background", no_argument, nullptr, OPT_BACKGROUND},
       {"cleanup-after-crash", no_argument, nullptr, OPT_CLEANUP_AFTER_CRASH},
+      {"reset-ftrace", no_argument, nullptr, OPT_RESET_FTRACE},
       {"version", no_argument, nullptr, OPT_VERSION},
       {nullptr, 0, nullptr, 0}};
 
-  int option_index;
   for (;;) {
-    int option = getopt_long(argc, argv, "", long_options, &option_index);
+    int option = getopt_long(argc, argv, "", long_options, nullptr);
     if (option == -1)
       break;
     switch (option) {
+      case OPT_BACKGROUND:
+        background = true;
+        break;
       case OPT_CLEANUP_AFTER_CRASH:
+        // Used by perfetto.rc in Android.
+        PERFETTO_LOG("Hard resetting ftrace state.");
         HardResetFtraceState();
         return 0;
+      case OPT_RESET_FTRACE:
+        // This is like --cleanup-after-crash but doesn't quit.
+        reset_ftrace = true;
+        break;
       case OPT_VERSION:
-        printf("%s\n", PERFETTO_GET_GIT_REVISION());
+        printf("%s\n", base::GetVersionString());
         return 0;
       default:
-        PERFETTO_ELOG("Usage: %s [--cleanup-after-crash|--version]", argv[0]);
+        fprintf(
+            stderr,
+            "Usage: %s [--background] [--reset-ftrace] [--cleanup-after-crash] "
+            "[--version]\n",
+            argv[0]);
         return 1;
     }
+  }
+
+  if (reset_ftrace && !HardResetFtraceState()) {
+    PERFETTO_ELOG(
+        "Failed to reset ftrace. Either run this as root or run "
+        "`sudo chown -R $USER /sys/kernel/tracing`");
+  }
+
+  if (background) {
+    base::Daemonize([] { return 0; });
   }
 
   base::Watchdog* watchdog = base::Watchdog::GetInstance();
@@ -90,7 +117,25 @@ int __attribute__((visibility("default"))) ProbesMain(int argc, char** argv) {
 
   base::UnixTaskRunner task_runner;
   ProbesProducer producer;
+  // If the TRACED_PROBES_NOTIFY_FD env var is set, write 1 and close the FD,
+  // when all data sources have been registered. This is used for //src/tracebox
+  // --background-wait, to make sure that the data sources are registered before
+  // waiting for them to be started.
+  const char* env_notif = getenv("TRACED_PROBES_NOTIFY_FD");
+  if (env_notif) {
+    int notif_fd = atoi(env_notif);
+    producer.SetAllDataSourcesRegisteredCb([notif_fd] {
+      PERFETTO_CHECK(base::WriteAll(notif_fd, "1", 1) == 1);
+      PERFETTO_CHECK(base::CloseFile(notif_fd) == 0);
+    });
+  }
   producer.ConnectWithRetries(GetProducerSocket(), &task_runner);
+
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
+  // Start the thread that polls mm_event instance and triggers
+  KmemActivityTrigger kmem_activity_trigger;
+#endif
+
   task_runner.Run();
   return 0;
 }

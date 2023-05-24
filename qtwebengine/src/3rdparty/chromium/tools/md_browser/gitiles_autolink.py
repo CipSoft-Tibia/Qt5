@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -9,7 +9,7 @@ This extention auto links basic URLs that aren't bracketed by <...>.
 https://gerrit.googlesource.com/gitiles/+/master/java/com/google/gitiles/Linkifier.java
 """
 
-from markdown.inlinepatterns import (AutolinkPattern, Pattern)
+from markdown.inlinepatterns import (AutolinkInlineProcessor, Pattern)
 from markdown.extensions import Extension
 
 
@@ -23,11 +23,12 @@ AUTOLINK_RE = (r'(https?://[a-zA-Z0-9$_.+!*\',%;:@=?#/~<>-]+'
 
 
 class _GitilesSmartQuotesExtension(Extension):
-  """Add Gitiles' simpler linkifier to Markdown."""
-  def extendMarkdown(self, md, md_globals):
-    md.inlinePatterns.add('gitilesautolink',
-                          AutolinkPattern(AUTOLINK_RE, md),
-                          '<autolink')
+  """Add Gitiles' simpler linkifier to Markdown, with a priority just higher
+  than that of the builtin ''autolink''."""
+
+  def extendMarkdown(self, md):
+    md.inlinePatterns.register(AutolinkInlineProcessor(AUTOLINK_RE, md),
+                               'gitilesautolink', 122)
 
 
 def makeExtension(*args, **kwargs):

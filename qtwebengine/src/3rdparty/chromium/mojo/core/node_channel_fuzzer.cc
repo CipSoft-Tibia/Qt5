@@ -1,10 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <stdint.h>
 
-#include "base/bind_helpers.h"
+#include <algorithm>
+
+#include "base/functional/callback_helpers.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/no_destructor.h"
 #include "base/run_loop.h"
@@ -17,7 +19,7 @@
 #include "mojo/core/test/mock_node_channel_delegate.h"
 #include "mojo/public/cpp/platform/platform_channel.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include <windows.h>
 #endif
 
@@ -62,7 +64,7 @@ extern "C" int LLVMFuzzerTestOneInput(const unsigned char* data, size_t size) {
       Channel::HandlePolicy::kRejectHandles,
       environment->main_thread_task_executor.task_runner(), base::DoNothing());
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // On Windows, it's important that the receiver behaves like a broker process
   // receiving messages from a non-broker process. This is because that case can
   // safely handle invalid HANDLE attachments without crashing. The same is not
@@ -70,12 +72,7 @@ extern "C" int LLVMFuzzerTestOneInput(const unsigned char* data, size_t size) {
   // receiver has to assume that the broker has already duplicated the HANDLE
   // into the non-broker's process), but fuzzing that direction is not
   // interesting since a compromised broker process has much bigger problems.
-  //
-  // Note that in order for this hack to work properly, the remote process
-  // handle needs to be a "real" process handle rather than the pseudo-handle
-  // returned by GetCurrentProcessHandle(). Hence the use of OpenProcess().
-  receiver->SetRemoteProcessHandle(mojo::core::ScopedProcessHandle(
-      ::OpenProcess(PROCESS_ALL_ACCESS, FALSE, ::GetCurrentProcessId())));
+  receiver->SetRemoteProcessHandle(base::Process::Current());
 #endif
 
   receiver->Start();
@@ -91,7 +88,7 @@ extern "C" int LLVMFuzzerTestOneInput(const unsigned char* data, size_t size) {
       Channel::HandlePolicy::kRejectHandles,
       environment->main_thread_task_executor.task_runner());
   sender->Start();
-  auto message = std::make_unique<Channel::Message>(size, 0 /* num_handles */);
+  auto message = Channel::Message::CreateMessage(size, 0 /* num_handles */);
   std::copy(data, data + size,
             static_cast<unsigned char*>(message->mutable_payload()));
   sender->Write(std::move(message));

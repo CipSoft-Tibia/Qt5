@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,16 +17,12 @@ TEST(HTMLTokenizerTest, ZeroOffsetAttributeNameRange) {
   HTMLParserOptions options;
   std::unique_ptr<HTMLTokenizer> tokenizer =
       std::make_unique<HTMLTokenizer>(options);
-  HTMLToken token;
-
   SegmentedString input("<script ");
-  EXPECT_FALSE(tokenizer->NextToken(input, token));
-
-  EXPECT_EQ(HTMLToken::kStartTag, token.GetType());
+  EXPECT_EQ(nullptr, tokenizer->NextToken(input));
 
   SegmentedString input2("type='javascript'");
   // Below should not fail ASSERT
-  EXPECT_FALSE(tokenizer->NextToken(input2, token));
+  EXPECT_EQ(nullptr, tokenizer->NextToken(input2));
 }
 
 }  // namespace blink

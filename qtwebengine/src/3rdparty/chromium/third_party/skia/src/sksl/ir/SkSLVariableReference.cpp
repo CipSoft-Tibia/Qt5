@@ -7,65 +7,27 @@
 
 #include "src/sksl/ir/SkSLVariableReference.h"
 
-#include "src/sksl/SkSLIRGenerator.h"
-#include "src/sksl/ir/SkSLConstructor.h"
-#include "src/sksl/ir/SkSLFloatLiteral.h"
-#include "src/sksl/ir/SkSLSetting.h"
+#include "src/sksl/ir/SkSLVariable.h"
 
 namespace SkSL {
 
-VariableReference::VariableReference(int offset, const Variable* variable, RefKind refKind)
-        : INHERITED(offset, kExpressionKind, &variable->type())
-        , fVariable(variable)
-        , fRefKind(refKind) {
-    SkASSERT(fVariable);
-    this->incrementRefs();
+VariableReference::VariableReference(Position pos, const Variable* variable, RefKind refKind)
+    : INHERITED(pos, kIRNodeKind, &variable->type())
+    , fVariable(variable)
+    , fRefKind(refKind) {
+    SkASSERT(this->variable());
 }
 
-VariableReference::~VariableReference() {
-    this->decrementRefs();
-}
-
-void VariableReference::incrementRefs() const {
-    if (fRefKind != kRead_RefKind) {
-        fVariable->fWriteCount++;
-    }
-    if (fRefKind != kWrite_RefKind) {
-        fVariable->fReadCount++;
-    }
-}
-
-void VariableReference::decrementRefs() const {
-    if (fRefKind != kRead_RefKind) {
-        fVariable->fWriteCount--;
-    }
-    if (fRefKind != kWrite_RefKind) {
-        fVariable->fReadCount--;
-    }
+std::string VariableReference::description(OperatorPrecedence) const {
+    return std::string(this->variable()->name());
 }
 
 void VariableReference::setRefKind(RefKind refKind) {
-    this->decrementRefs();
     fRefKind = refKind;
-    this->incrementRefs();
 }
 
-std::unique_ptr<Expression> VariableReference::constantPropagate(const IRGenerator& irGenerator,
-                                                                 const DefinitionMap& definitions) {
-    if (fRefKind != kRead_RefKind) {
-        return nullptr;
-    }
-    if ((fVariable->fModifiers.fFlags & Modifiers::kConst_Flag) && fVariable->fInitialValue &&
-        fVariable->fInitialValue->isCompileTimeConstant() &&
-        this->type().typeKind() != Type::TypeKind::kArray) {
-        return fVariable->fInitialValue->clone();
-    }
-    auto exprIter = definitions.find(fVariable);
-    if (exprIter != definitions.end() && exprIter->second &&
-        (*exprIter->second)->isCompileTimeConstant()) {
-        return (*exprIter->second)->clone();
-    }
-    return nullptr;
+void VariableReference::setVariable(const Variable* variable) {
+    fVariable = variable;
 }
 
 }  // namespace SkSL

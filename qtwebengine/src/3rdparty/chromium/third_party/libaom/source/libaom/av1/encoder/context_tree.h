@@ -21,6 +21,7 @@
 extern "C" {
 #endif
 
+struct AV1_PRIMARY;
 struct AV1_COMP;
 struct AV1Common;
 struct ThreadData;
@@ -52,14 +53,20 @@ typedef struct PICK_MODE_CONTEXT {
 #if CONFIG_INTERNAL_STATS
   THR_MODES best_mode_index;
 #endif  // CONFIG_INTERNAL_STATS
-  int hybrid_pred_diff;
-  int comp_pred_diff;
-  int single_pred_diff;
-
   RD_STATS rd_stats;
 
   int rd_mode_is_ready;  // Flag to indicate whether rd pick mode decision has
                          // been made.
+#if CONFIG_AV1_TEMPORAL_DENOISING
+  int64_t newmv_sse;
+  int64_t zeromv_sse;
+  int64_t zeromv_lastref_sse;
+  PREDICTION_MODE best_sse_inter_mode;
+  int_mv best_sse_mv;
+  MV_REFERENCE_FRAME best_reference_frame;
+  MV_REFERENCE_FRAME best_zeromv_reference_frame;
+  int sb_skip_denoising;
+#endif
 } PICK_MODE_CONTEXT;
 
 typedef struct PC_TREE {
@@ -68,12 +75,14 @@ typedef struct PC_TREE {
   PICK_MODE_CONTEXT *none;
   PICK_MODE_CONTEXT *horizontal[2];
   PICK_MODE_CONTEXT *vertical[2];
+#if !CONFIG_REALTIME_ONLY
   PICK_MODE_CONTEXT *horizontala[3];
   PICK_MODE_CONTEXT *horizontalb[3];
   PICK_MODE_CONTEXT *verticala[3];
   PICK_MODE_CONTEXT *verticalb[3];
   PICK_MODE_CONTEXT *horizontal4[4];
   PICK_MODE_CONTEXT *vertical4[4];
+#endif
   struct PC_TREE *split[4];
   int index;
 } PC_TREE;
@@ -91,19 +100,34 @@ typedef struct SIMPLE_MOTION_DATA_TREE {
   int sms_rect_valid;
 } SIMPLE_MOTION_DATA_TREE;
 
-void av1_setup_shared_coeff_buffer(AV1_COMMON *cm,
-                                   PC_TREE_SHARED_BUFFERS *shared_bufs);
+void av1_setup_shared_coeff_buffer(const SequenceHeader *const seq_params,
+                                   PC_TREE_SHARED_BUFFERS *shared_bufs,
+                                   struct aom_internal_error_info *error);
 void av1_free_shared_coeff_buffer(PC_TREE_SHARED_BUFFERS *shared_bufs);
 
 PC_TREE *av1_alloc_pc_tree_node(BLOCK_SIZE bsize);
 void av1_free_pc_tree_recursive(PC_TREE *tree, int num_planes, int keep_best,
                                 int keep_none);
 
-PICK_MODE_CONTEXT *av1_alloc_pmc(const AV1_COMMON *cm, BLOCK_SIZE bsize,
+PICK_MODE_CONTEXT *av1_alloc_pmc(const struct AV1_COMP *const cpi,
+                                 BLOCK_SIZE bsize,
                                  PC_TREE_SHARED_BUFFERS *shared_bufs);
+void av1_reset_pmc(PICK_MODE_CONTEXT *ctx);
 void av1_free_pmc(PICK_MODE_CONTEXT *ctx, int num_planes);
 void av1_copy_tree_context(PICK_MODE_CONTEXT *dst_ctx,
                            PICK_MODE_CONTEXT *src_ctx);
+
+static const BLOCK_SIZE square[MAX_SB_SIZE_LOG2 - 1] = {
+  BLOCK_4X4, BLOCK_8X8, BLOCK_16X16, BLOCK_32X32, BLOCK_64X64, BLOCK_128X128,
+};
+
+static AOM_INLINE int av1_get_pc_tree_nodes(const int is_sb_size_128,
+                                            int stat_generation_stage) {
+  const int tree_nodes_inc = is_sb_size_128 ? 1024 : 0;
+  const int tree_nodes =
+      stat_generation_stage ? 1 : (tree_nodes_inc + 256 + 64 + 16 + 4 + 1);
+  return tree_nodes;
+}
 
 void av1_setup_sms_tree(struct AV1_COMP *const cpi, struct ThreadData *td);
 void av1_free_sms_tree(struct ThreadData *td);

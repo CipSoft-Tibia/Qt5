@@ -50,6 +50,7 @@ class CORE_EXPORT LayoutImage : public LayoutReplaced {
  public:
   LayoutImage(Element*);
   ~LayoutImage() override;
+  void Trace(Visitor*) const override;
 
   static LayoutImage* CreateAnonymous(PseudoElement&);
 
@@ -106,9 +107,24 @@ class CORE_EXPORT LayoutImage : public LayoutReplaced {
 
   void UpdateAfterLayout() override;
 
+  class MutableForPainting : public LayoutObject::MutableForPainting {
+   public:
+    void UpdatePaintedRect(const PhysicalRect& paint_rect);
+
+   private:
+    friend class LayoutImage;
+    explicit MutableForPainting(const LayoutImage& image)
+        : LayoutObject::MutableForPainting(image) {}
+  };
+  MutableForPainting GetMutableForPainting() const {
+    NOT_DESTROYED();
+    return MutableForPainting(*this);
+  }
+
  protected:
   bool NeedsPreferredWidthsRecalculation() const final;
   SVGImage* EmbeddedSVGImage() const;
+  bool CanApplyObjectViewBox() const override;
   void ComputeIntrinsicSizingInfo(IntrinsicSizingInfo&) const override;
 
   void ImageChanged(WrappedImagePtr, CanDeferInvalidation) override;
@@ -117,7 +133,7 @@ class CORE_EXPORT LayoutImage : public LayoutReplaced {
 
   bool IsOfType(LayoutObjectType type) const override {
     NOT_DESTROYED();
-    return type == kLayoutObjectLayoutImage || LayoutReplaced::IsOfType(type);
+    return type == kLayoutObjectImage || LayoutReplaced::IsOfType(type);
   }
 
   void WillBeDestroyed() override;
@@ -148,13 +164,10 @@ class CORE_EXPORT LayoutImage : public LayoutReplaced {
     return true;
   }
 
-  LayoutUnit MinimumReplacedHeight() const override;
-
-  void ImageNotifyFinished(ImageResourceContent*) final;
   bool NodeAtPoint(HitTestResult&,
                    const HitTestLocation&,
                    const PhysicalOffset& accumulated_offset,
-                   HitTestAction) final;
+                   HitTestPhase) final;
 
   void InvalidatePaintAndMarkForLayoutIfNeeded(CanDeferInvalidation);
   void UpdateIntrinsicSizeIfNeeded(const LayoutSize&);
@@ -163,7 +176,7 @@ class CORE_EXPORT LayoutImage : public LayoutReplaced {
   // is disabled and the element has no sizing info.
   bool OverrideIntrinsicSizingInfo(IntrinsicSizingInfo&) const;
   bool HasOverriddenIntrinsicSize() const;
-  FloatSize ImageSizeOverriddenByIntrinsicSize(float multiplier) const;
+  gfx::SizeF ImageSizeOverriddenByIntrinsicSize(float multiplier) const;
 
   // This member wraps the associated decoded image.
   //
@@ -174,15 +187,23 @@ class CORE_EXPORT LayoutImage : public LayoutReplaced {
   // * For generated content, the resource is loaded during style resolution
   // and thus is stored in ComputedStyle (see ContentData::image) that gets
   // propagated to the anonymous LayoutImage in LayoutObject::createObject.
-  Persistent<LayoutImageResource> image_resource_;
-  bool did_increment_visually_non_empty_pixel_count_;
+  Member<LayoutImageResource> image_resource_;
+  float image_device_pixel_ratio_ = 1.0f;
+  bool did_increment_visually_non_empty_pixel_count_ = false;
 
   // This field stores whether this image is generated with 'content'.
-  bool is_generated_content_;
-  float image_device_pixel_ratio_;
+  bool is_generated_content_ = false;
+
+  friend class MutableForPainting;
+  PhysicalRect last_paint_rect_;
 };
 
-DEFINE_LAYOUT_OBJECT_TYPE_CASTS(LayoutImage, IsLayoutImage());
+template <>
+struct DowncastTraits<LayoutImage> {
+  static bool AllowFrom(const LayoutObject& object) {
+    return object.IsLayoutImage();
+  }
+};
 
 }  // namespace blink
 

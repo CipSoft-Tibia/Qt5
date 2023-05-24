@@ -1,40 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
-
-
+#include <QTest>
+#include <QSignalSpy>
 
 #include <qapplication.h>
 #include <qpainter.h>
 #include <qstyleoption.h>
-#include <qkeysequence.h>
+#if QT_CONFIG(shortcut)
+#  include <qkeysequence.h>
+#endif
 #include <qevent.h>
 #include <qgridlayout.h>
 #include <qabstractbutton.h>
@@ -42,6 +18,8 @@
 #include <private/qguiapplication_p.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformtheme.h>
+
+#include <QtWidgets/private/qapplication_p.h>
 
 class tst_QAbstractButton : public QObject
 {
@@ -60,7 +38,9 @@ private slots:
     void setText();
     void setIcon();
 
+#if QT_CONFIG(shortcut)
     void setShortcut();
+#endif
 
     void animateClick();
 
@@ -69,7 +49,9 @@ private slots:
     void isChecked();
     void toggled();
     void setEnabled();
+#if QT_CONFIG(shortcut)
     void shortcutEvents();
+#endif
     void stopRepeatTimer();
 
     void mouseReleased(); // QTBUG-53244
@@ -99,8 +81,8 @@ private:
 class MyButton : public QAbstractButton
 {
 public:
-    MyButton(QWidget *p = 0) : QAbstractButton(p) {}
-    void paintEvent(QPaintEvent *)
+    MyButton(QWidget *p = nullptr) : QAbstractButton(p) {}
+    void paintEvent(QPaintEvent *) override
     {
         QPainter p(this);
         QRect r = rect();
@@ -121,7 +103,7 @@ public:
 #endif
         }
     }
-    QSize sizeHint() const
+    QSize sizeHint() const override
     {
         QSize sh(8, 8);
         if (!text().isEmpty())
@@ -136,7 +118,7 @@ private:
 
     int timerEvents;
 
-    void timerEvent(QTimerEvent *event)
+    void timerEvent(QTimerEvent *event) override
     {
         ++timerEvents;
         QAbstractButton::timerEvent(event);
@@ -167,8 +149,10 @@ void tst_QAbstractButton::init()
     testWidget->setEnabled( true );
     testWidget->setDown( false );
     testWidget->setAutoRepeat( false );
+#if QT_CONFIG(shortcut)
     QKeySequence seq;
     testWidget->setShortcut( seq );
+#endif
 
     toggle_count = 0;
     press_count = 0;
@@ -353,17 +337,17 @@ void tst_QAbstractButton::setText()
     QCOMPARE( testWidget->text(), QString("simple") );
     testWidget->setText("&ampersand");
     QCOMPARE( testWidget->text(), QString("&ampersand") );
-#ifndef Q_OS_MAC // no mneonics on Mac.
+#if QT_CONFIG(shortcut) && !defined(Q_OS_DARWIN) // no mnemonics on Mac.
     QCOMPARE( testWidget->shortcut(), QKeySequence("ALT+A"));
 #endif
     testWidget->setText("te&st");
     QCOMPARE( testWidget->text(), QString("te&st") );
-#ifndef Q_OS_MAC // no mneonics on Mac.
+#if QT_CONFIG(shortcut) && !defined(Q_OS_DARWIN) // no mnemonics on Mac.
     QCOMPARE( testWidget->shortcut(), QKeySequence("ALT+S"));
 #endif
     testWidget->setText("foo");
     QCOMPARE( testWidget->text(), QString("foo") );
-#ifndef Q_OS_MAC // no mneonics on Mac.
+#if QT_CONFIG(shortcut) && !defined(Q_OS_DARWIN) // no mnemonics on Mac.
     QCOMPARE( testWidget->shortcut(), QKeySequence());
 #endif
 }
@@ -488,6 +472,7 @@ void tst_QAbstractButton::toggled()
     testWidget->setCheckable(false);
 }
 
+#if QT_CONFIG(shortcut)
 void tst_QAbstractButton::setShortcut()
 {
     if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
@@ -495,7 +480,7 @@ void tst_QAbstractButton::setShortcut()
 
     QKeySequence seq( Qt::Key_A );
     testWidget->setShortcut( seq );
-    QApplication::setActiveWindow(testWidget);
+    QApplicationPrivate::setActiveWindow(testWidget);
     testWidget->activateWindow();
     // must be active to get shortcuts
     QVERIFY(QTest::qWaitForWindowActive(testWidget));
@@ -519,15 +504,41 @@ void tst_QAbstractButton::setShortcut()
 //     qDebug() << click_count;
 
 }
+#endif // QT_CONFIG(shortcut)
 
 void tst_QAbstractButton::animateClick()
 {
-    testWidget->animateClick();
-    QVERIFY( testWidget->isDown() );
-    qApp->processEvents();
-    QVERIFY( testWidget->isDown() );
-    QTRY_VERIFY( !testWidget->isDown() );
+    MyButton button;
+    QSignalSpy pressedSpy(&button, &QAbstractButton::pressed);
+    QSignalSpy releasedSpy(&button, &QAbstractButton::released);
+    QSignalSpy clickedSpy(&button, &QAbstractButton::clicked);
+
+    QElapsedTimer elapsed;
+    elapsed.start();
+    button.animateClick();
+
+    QVERIFY(button.isDown());
+    QCOMPARE(pressedSpy.size(), 1);
+    QCOMPARE(releasedSpy.size(), 0);
+    QCOMPARE(clickedSpy.size(), 0);
+    qApp->processEvents(QEventLoop::AllEvents, 10);
+    // QAbstractButton starts a 100ms timer which performs the click. If it
+    // took more than 100ms to get here, then the button might no longer be down.
+    if (elapsed.elapsed() < 100) {
+        QVERIFY(button.isDown());
+        QCOMPARE(pressedSpy.size(), 1);
+        QCOMPARE(releasedSpy.size(), 0);
+        QCOMPARE(clickedSpy.size(), 0);
+    }
+    QTRY_VERIFY(!button.isDown());
+    // but once the button has been clicked, it must have taken at least 100ms
+    QVERIFY(elapsed.elapsed() >= 100);
+    QCOMPARE(pressedSpy.size(), 1);
+    QCOMPARE(releasedSpy.size(), 1);
+    QCOMPARE(clickedSpy.size(), 1);
 }
+
+#if QT_CONFIG(shortcut)
 
 void tst_QAbstractButton::shortcutEvents()
 {
@@ -547,10 +558,12 @@ void tst_QAbstractButton::shortcutEvents()
 
     QTest::qWait(1000); // ensure animate timer is expired
 
-    QCOMPARE(pressedSpy.count(), 3);
-    QCOMPARE(releasedSpy.count(), 3);
-    QCOMPARE(clickedSpy.count(), 3);
+    QCOMPARE(pressedSpy.size(), 3);
+    QCOMPARE(releasedSpy.size(), 3);
+    QCOMPARE(clickedSpy.size(), 3);
 }
+
+#endif // QT_CONFIG(shortcut)
 
 void tst_QAbstractButton::stopRepeatTimer()
 {
@@ -589,26 +602,26 @@ void tst_QAbstractButton::mouseReleased() // QTBUG-53244
     QSignalSpy spyRelease(&button, &QAbstractButton::released);
 
     QTest::mousePress(&button, Qt::LeftButton);
-    QCOMPARE(spyPress.count(), 1);
+    QCOMPARE(spyPress.size(), 1);
     QCOMPARE(button.isDown(), true);
-    QCOMPARE(spyRelease.count(), 0);
+    QCOMPARE(spyRelease.size(), 0);
 
     QTest::mouseClick(&button, Qt::RightButton);
-    QCOMPARE(spyPress.count(), 1);
+    QCOMPARE(spyPress.size(), 1);
     QCOMPARE(button.isDown(), true);
-    QCOMPARE(spyRelease.count(), 0);
+    QCOMPARE(spyRelease.size(), 0);
 
     QPointF posOutOfWidget = QPointF(30, 30);
     QMouseEvent me(QEvent::MouseMove,
-                     posOutOfWidget, Qt::NoButton,
-                     Qt::MouseButtons(Qt::LeftButton),
-                     Qt::NoModifier); // mouse press and move
+                   posOutOfWidget, button.mapToGlobal(posOutOfWidget),
+                   Qt::NoButton, Qt::MouseButtons(Qt::LeftButton),
+                   Qt::NoModifier); // mouse press and move
 
     qApp->sendEvent(&button, &me);
     // should emit released signal once mouse is dragging out of boundary
-    QCOMPARE(spyPress.count(), 1);
+    QCOMPARE(spyPress.size(), 1);
     QCOMPARE(button.isDown(), false);
-    QCOMPARE(spyRelease.count(), 1);
+    QCOMPARE(spyRelease.size(), 1);
 }
 
 #ifdef QT_KEYPAD_NAVIGATION
@@ -628,7 +641,7 @@ void tst_QAbstractButton::keyNavigation()
     }
 
     widget.show();
-    qApp->setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
     widget.activateWindow();
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
@@ -673,7 +686,7 @@ void tst_QAbstractButton::buttonPressKeys()
     const auto buttonPressKeys = QGuiApplicationPrivate::platformTheme()
                                          ->themeHint(QPlatformTheme::ButtonPressKeys)
                                          .value<QList<Qt::Key>>();
-    for (int i = 0; i < buttonPressKeys.length(); ++i) {
+    for (uint i = 0; i < buttonPressKeys.size(); ++i) {
         QTest::keyClick(testWidget, buttonPressKeys[i]);
         QCOMPARE(click_count, i + 1);
     }

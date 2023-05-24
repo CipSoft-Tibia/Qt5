@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,13 @@
 
 #include <memory>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/views/controls/menu/menu_runner_impl_interface.h"
 #include "ui/views/views_export.h"
+
+namespace gfx {
+class RoundedCornersF;
+}  // namespace gfx
 
 namespace views {
 
@@ -27,14 +31,20 @@ class VIEWS_EXPORT MenuRunnerImplAdapter : public MenuRunnerImplInterface {
   MenuRunnerImplAdapter(ui::MenuModel* menu_model,
                         base::RepeatingClosure on_menu_closed_callback);
 
+  MenuRunnerImplAdapter(const MenuRunnerImplAdapter&) = delete;
+  MenuRunnerImplAdapter& operator=(const MenuRunnerImplAdapter&) = delete;
+
   // MenuRunnerImplInterface:
   bool IsRunning() const override;
   void Release() override;
-  void RunMenuAt(Widget* parent,
-                 MenuButtonController* button_controller,
-                 const gfx::Rect& bounds,
-                 MenuAnchorPosition anchor,
-                 int32_t types) override;
+  void RunMenuAt(
+      Widget* parent,
+      MenuButtonController* button_controller,
+      const gfx::Rect& bounds,
+      MenuAnchorPosition anchor,
+      int32_t types,
+      gfx::NativeView native_view_for_gestures,
+      absl::optional<gfx::RoundedCornersF> corners = absl::nullopt) override;
   void Cancel() override;
   base::TimeTicks GetClosingEventTime() const override;
 
@@ -42,9 +52,7 @@ class VIEWS_EXPORT MenuRunnerImplAdapter : public MenuRunnerImplInterface {
   ~MenuRunnerImplAdapter() override;
 
   std::unique_ptr<MenuModelAdapter> menu_model_adapter_;
-  MenuRunnerImpl* impl_;
-
-  DISALLOW_COPY_AND_ASSIGN(MenuRunnerImplAdapter);
+  raw_ptr<MenuRunnerImpl, DanglingUntriaged> impl_;
 };
 
 }  // namespace internal

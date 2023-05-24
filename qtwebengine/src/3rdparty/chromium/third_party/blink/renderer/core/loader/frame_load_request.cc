@@ -1,12 +1,15 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/loader/frame_load_request.h"
 
+#include "base/types/optional_util.h"
 #include "third_party/blink/public/common/blob/blob_utils.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
 #include "third_party/blink/public/platform/web_url_request.h"
+#include "third_party/blink/renderer/bindings/core/v8/capture_source_location.h"
 #include "third_party/blink/renderer/core/events/current_input_event.h"
 #include "third_party/blink/renderer/core/fileapi/public_url_manager.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
@@ -49,6 +52,8 @@ FrameLoadRequest::FrameLoadRequest(LocalDOMWindow* origin_window,
   resource_request_.CopyHeadFrom(resource_request);
   resource_request_.SetHttpBody(resource_request.HttpBody());
   resource_request_.SetMode(network::mojom::RequestMode::kNavigate);
+  resource_request_.SetTargetAddressSpace(
+      network::mojom::IPAddressSpace::kUnknown);
   resource_request_.SetCredentialsMode(
       network::mojom::CredentialsMode::kInclude);
   resource_request_.SetRedirectMode(network::mojom::RedirectMode::kManual);
@@ -61,6 +66,14 @@ FrameLoadRequest::FrameLoadRequest(LocalDOMWindow* origin_window,
 
     DCHECK(!resource_request_.RequestorOrigin());
     resource_request_.SetRequestorOrigin(origin_window->GetSecurityOrigin());
+    // Note: `resource_request_` is owned by this FrameLoadRequest instance, and
+    // its url doesn't change after this point, so it's ok to check for
+    // about:blank and about:srcdoc here.
+    if (blink::features::IsNewBaseUrlInheritanceBehaviorEnabled() &&
+        (resource_request_.Url().IsAboutBlankURL() ||
+         resource_request_.Url().IsAboutSrcdocURL())) {
+      requestor_base_url_ = origin_window->BaseURL();
+    }
 
     if (resource_request.Url().ProtocolIs("blob")) {
       blob_url_token_ = base::MakeRefCounted<
@@ -71,6 +84,8 @@ FrameLoadRequest::FrameLoadRequest(LocalDOMWindow* origin_window,
     }
 
     SetReferrerForRequest(origin_window, resource_request_);
+
+    SetSourceLocation(CaptureSourceLocation(origin_window));
   }
 }
 
@@ -79,23 +94,14 @@ FrameLoadRequest::FrameLoadRequest(
     const ResourceRequestHead& resource_request_head)
     : FrameLoadRequest(origin_window, ResourceRequest(resource_request_head)) {}
 
-ClientRedirectPolicy FrameLoadRequest::ClientRedirect() const {
-  // Form submissions and anchor clicks have not historically been reported
-  // to the extensions API as client redirects.
-  if (client_navigation_reason_ == ClientNavigationReason::kNone ||
-      client_navigation_reason_ == ClientNavigationReason::kFormSubmissionGet ||
-      client_navigation_reason_ ==
-          ClientNavigationReason::kFormSubmissionPost ||
-      client_navigation_reason_ == ClientNavigationReason::kAnchorClick) {
-    return ClientRedirectPolicy::kNotClientRedirect;
-  }
-  return ClientRedirectPolicy::kClientRedirect;
-}
-
 bool FrameLoadRequest::CanDisplay(const KURL& url) const {
   DCHECK(!origin_window_ || origin_window_->GetSecurityOrigin() ==
                                 resource_request_.RequestorOrigin());
   return resource_request_.CanDisplay(url);
+}
+
+const LocalFrameToken* FrameLoadRequest::GetInitiatorFrameToken() const {
+  return base::OptionalToPtr(initiator_frame_token_);
 }
 
 }  // namespace blink

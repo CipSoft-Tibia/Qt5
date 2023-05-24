@@ -1,6 +1,6 @@
 <style>
   :host {
-    --focus-border-color: var(--google-blue-refresh-300);
+    --focus-border-color: var(--google-blue-300);
     display: block;
   }
 
@@ -11,10 +11,12 @@
   #thumbnail {
     align-items: center;
     display: inline-flex;
+    height: 140px;
     justify-content: center;
     margin-bottom: 12px;
     margin-inline-end: auto;
     margin-inline-start: auto;
+    width: 108px;
   }
 
   :host([is-active]) #thumbnail {
@@ -23,11 +25,11 @@
     box-shadow: 0 0 0 6px var(--focus-border-color);
   }
 
-  :host-context(.focus-outline-visible):host(:focus) #thumbnail {
+  :host(:focus-visible) #thumbnail {
     box-shadow: 0 0 0 2px var(--focus-border-color);
   }
 
-  :host-context(.focus-outline-visible):host([is-active]:focus) #thumbnail {
+  :host([is-active]:focus-visible) #thumbnail {
     box-shadow: 0 0 0 8px var(--focus-border-color);
   }
 
@@ -49,7 +51,5 @@
     line-height: 1;
   }
 </style>
-<div id="thumbnail" on-click="onClick_">
-  <canvas width="108" height="140"></canvas>
-</div>
+<div id="thumbnail" on-click="onClick_" role="button"></div>
 <div id="pageNumber">[[pageNumber]]</div>

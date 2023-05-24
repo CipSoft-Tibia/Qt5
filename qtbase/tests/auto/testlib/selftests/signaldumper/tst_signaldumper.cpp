@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/QCoreApplication>
-#include <QtTest/QtTest>
+#include <QTest>
 #include <private/qtestlog_p.h>
 
 class tst_Signaldumper : public QObject
@@ -79,7 +54,7 @@ public:
 
 public slots:
     void slotWithoutParameters() {}
-    void slotWithParameters(int i, char c) { Q_UNUSED(i); Q_UNUSED(c); }
+    void slotWithParameters(int, char) {}
     void emitSecondSignal() { emit nestedSignal(); }
 
 signals:
@@ -95,18 +70,18 @@ signals:
     void qStringConstRefSignal(const QString &string);
     void qByteArraySignal(QByteArray byteArray);
     void qListSignal(QList<int> list);
-    void qVectorSignal(QVector<int> vector);
-    void qVectorRefSignal(QVector<int> &vector);
-    void qVectorConstRefSignal(const QVector<int> &vector);
-    void qVectorConstPointerSignal(const QVector<int> *vector);
-    void qVectorPointerConstSignal(QVector<int> *const vector);
+    void qVectorSignal(QList<int> vector);
+    void qVectorRefSignal(QList<int> &vector);
+    void qVectorConstRefSignal(const QList<int> &vector);
+    void qVectorConstPointerSignal(const QList<int> *vector);
+    void qVectorPointerConstSignal(QList<int> *const vector);
     void qVariantSignal(QVariant variant);
 };
 
 SignalSlotClass::SignalSlotClass()
 {
     // For printing signal argument in "variousTypes" test
-    qRegisterMetaType<QVector<int>>();
+    qRegisterMetaType<QList<int>>();
     qRegisterMetaType<QList<int>>();
 }
 
@@ -402,7 +377,7 @@ void tst_Signaldumper::variousTypes()
     QList<int> list{1, 2, 3, 242};
     emit signalSlotOwner.qListSignal(list);
 
-    QVector<int> vector{1, 2, 3, 242};
+    QList<int> vector { 1, 2, 3, 242 };
     emit signalSlotOwner.qVectorSignal(vector);
     emit signalSlotOwner.qVectorRefSignal(vector);
     emit signalSlotOwner.qVectorConstRefSignal(vector);
@@ -424,14 +399,11 @@ void tst_Signaldumper::deletingSender()
     emit signalSlotOwner->signalWithoutParameters();
 }
 
-int main(int argc, char *argv[])
-{
+QTEST_MAIN_WRAPPER(tst_Signaldumper,
     std::vector<const char*> args(argv, argv + argc);
     args.push_back("-vs");
-    argc = args.size();
+    argc = int(args.size());
     argv = const_cast<char**>(&args[0]);
-
-    QTEST_MAIN_IMPL(tst_Signaldumper)
-}
+    QTEST_MAIN_SETUP())
 
 #include "tst_signaldumper.moc"

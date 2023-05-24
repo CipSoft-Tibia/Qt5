@@ -1,11 +1,13 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_VIEWS_WINDOW_NATIVE_FRAME_VIEW_H_
 #define UI_VIEWS_WINDOW_NATIVE_FRAME_VIEW_H_
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
+#include "ui/base/metadata/metadata_header_macros.h"
+#include "ui/views/metadata/view_factory.h"
 #include "ui/views/window/non_client_view.h"
 
 namespace views {
@@ -14,9 +16,10 @@ class Widget;
 
 class VIEWS_EXPORT NativeFrameView : public NonClientFrameView {
  public:
-  static const char kViewClassName[];
-
+  METADATA_HEADER(NativeFrameView);
   explicit NativeFrameView(Widget* frame);
+  NativeFrameView(const NativeFrameView&) = delete;
+  NativeFrameView& operator=(const NativeFrameView&) = delete;
   ~NativeFrameView() override;
 
   // NonClientFrameView overrides:
@@ -34,15 +37,17 @@ class VIEWS_EXPORT NativeFrameView : public NonClientFrameView {
   gfx::Size CalculatePreferredSize() const override;
   gfx::Size GetMinimumSize() const override;
   gfx::Size GetMaximumSize() const override;
-  const char* GetClassName() const override;
 
  private:
   // Our containing frame.
-  Widget* frame_;
-
-  DISALLOW_COPY_AND_ASSIGN(NativeFrameView);
+  raw_ptr<Widget> frame_;
 };
 
+BEGIN_VIEW_BUILDER(VIEWS_EXPORT, NativeFrameView, NonClientFrameView)
+END_VIEW_BUILDER
+
 }  // namespace views
+
+DEFINE_VIEW_BUILDER(VIEWS_EXPORT, NativeFrameView)
 
 #endif  // UI_VIEWS_WINDOW_NATIVE_FRAME_VIEW_H_

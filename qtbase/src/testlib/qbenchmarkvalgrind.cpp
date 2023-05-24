@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtTest/private/qbenchmark_p.h>
 
@@ -48,7 +12,12 @@
 #include <QtCore/qset.h>
 #include <QtTest/private/callgrind_p.h>
 
+#include <charconv>
+#include <optional>
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 // Returns \c true if valgrind is available.
 bool QBenchmarkValgrindUtils::haveValgrind()
@@ -57,7 +26,7 @@ bool QBenchmarkValgrindUtils::haveValgrind()
     return false;
 #else
     QProcess process;
-    process.start(QLatin1String("valgrind"), QStringList(QLatin1String("--version")));
+    process.start(u"valgrind"_s, QStringList(u"--version"_s));
     return process.waitForStarted() && process.waitForFinished(-1);
 #endif
 }
@@ -87,23 +56,24 @@ qint64 QBenchmarkValgrindUtils::extractResult(const QString &fileName)
     Q_ASSERT(openOk);
     Q_UNUSED(openOk);
 
-    qint64 val = -1;
-    bool valSeen = false;
-    QRegularExpression rxValue(QLatin1String("^summary: (\\d+)"));
+    std::optional<qint64> val = std::nullopt;
     while (!file.atEnd()) {
-        const QString line(QLatin1String(file.readLine()));
-        QRegularExpressionMatch match = rxValue.match(line);
-        if (match.hasMatch()) {
-            bool ok;
-            val = match.captured(1).toLongLong(&ok);
-            Q_ASSERT(ok);
-            valSeen = true;
-            break;
+        const QByteArray line = file.readLine();
+        constexpr QByteArrayView tag = "summary: ";
+        if (line.startsWith(tag)) {
+            const auto maybeNumber = line.data() + tag.size();
+            const auto end = line.data() + line.size();
+            qint64 v;
+            const auto r = std::from_chars(maybeNumber, end, v);
+            if (r.ec == std::errc{}) {
+                val = v;
+                break;
+            }
         }
     }
-    if (Q_UNLIKELY(!valSeen))
+    if (Q_UNLIKELY(!val))
         qFatal("Failed to extract result");
-    return val;
+    return *val;
 }
 
 // Gets the newest file name (i.e. the one with the highest integer suffix).
@@ -169,22 +139,20 @@ QString QBenchmarkValgrindUtils::outFileBase(qint64 pid)
 bool QBenchmarkValgrindUtils::runCallgrindSubProcess(const QStringList &origAppArgs, int &exitCode)
 {
     const QString &execFile = origAppArgs.at(0);
-    QStringList args;
-    args << QLatin1String("--tool=callgrind") << QLatin1String("--instr-atstart=yes")
-         << QLatin1String("--quiet")
-         << execFile << QLatin1String("-callgrindchild");
+    QStringList args{ u"--tool=callgrind"_s, u"--instr-atstart=yes"_s,
+                      u"--quiet"_s, execFile, u"-callgrindchild"_s };
 
     // pass on original arguments that make sense (e.g. avoid wasting time producing output
     // that will be ignored anyway) ...
     for (int i = 1; i < origAppArgs.size(); ++i) {
         const QString &arg = origAppArgs.at(i);
-        if (arg == QLatin1String("-callgrind"))
+        if (arg == "-callgrind"_L1)
             continue;
         args << arg; // ok to pass on
     }
 
     QProcess process;
-    process.start(QLatin1String("valgrind"), args);
+    process.start(u"valgrind"_s, args);
     process.waitForStarted(-1);
     QBenchmarkGlobalData::current->callgrindOutFileBase =
         QBenchmarkValgrindUtils::outFileBase(process.processId());
@@ -202,19 +170,14 @@ void QBenchmarkCallgrindMeasurer::start()
     CALLGRIND_ZERO_STATS;
 }
 
-qint64 QBenchmarkCallgrindMeasurer::checkpoint()
+QList<QBenchmarkMeasurerBase::Measurement> QBenchmarkCallgrindMeasurer::stop()
 {
     CALLGRIND_DUMP_STATS;
     const qint64 result = QBenchmarkValgrindUtils::extractLastResult();
-    return result;
+    return { { qreal(result), QTest::InstructionReads } };
 }
 
-qint64 QBenchmarkCallgrindMeasurer::stop()
-{
-    return checkpoint();
-}
-
-bool QBenchmarkCallgrindMeasurer::isMeasurementAccepted(qint64 measurement)
+bool QBenchmarkCallgrindMeasurer::isMeasurementAccepted(Measurement measurement)
 {
     Q_UNUSED(measurement);
     return true;
@@ -233,11 +196,6 @@ int QBenchmarkCallgrindMeasurer::adjustMedianCount(int)
 bool QBenchmarkCallgrindMeasurer::needsWarmupIteration()
 {
     return true;
-}
-
-QTest::QBenchmarkMetric QBenchmarkCallgrindMeasurer::metricType()
-{
-    return QTest::InstructionReads;
 }
 
 QT_END_NAMESPACE

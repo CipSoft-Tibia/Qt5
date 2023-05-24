@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,12 +8,13 @@
 #define CORE_FPDFAPI_PAGE_CPDF_GENERALSTATE_H_
 
 #include "constants/transparency.h"
+#include "core/fxcrt/bytestring.h"
 #include "core/fxcrt/fx_coordinates.h"
-#include "core/fxcrt/fx_string.h"
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/shared_copy_on_write.h"
-#include "core/fxge/fx_dib.h"
+#include "core/fxge/dib/fx_dib.h"
 
+class CPDF_Dictionary;
 class CPDF_Object;
 class CPDF_TransferFunc;
 
@@ -38,14 +39,15 @@ class CPDF_GeneralState {
   float GetStrokeAlpha() const;
   void SetStrokeAlpha(float alpha);
 
-  CPDF_Object* GetSoftMask() const;
-  void SetSoftMask(CPDF_Object* pObject);
+  RetainPtr<const CPDF_Dictionary> GetSoftMask() const;
+  RetainPtr<CPDF_Dictionary> GetMutableSoftMask();
+  void SetSoftMask(RetainPtr<CPDF_Dictionary> pDict);
 
-  const CPDF_Object* GetTR() const;
-  void SetTR(CPDF_Object* pObject);
+  RetainPtr<const CPDF_Object> GetTR() const;
+  void SetTR(RetainPtr<const CPDF_Object> pObject);
 
   RetainPtr<CPDF_TransferFunc> GetTransferFunc() const;
-  void SetTransferFunc(const RetainPtr<CPDF_TransferFunc>& pFunc);
+  void SetTransferFunc(RetainPtr<CPDF_TransferFunc> pFunc);
 
   void SetBlendMode(const ByteString& mode);
 
@@ -61,9 +63,9 @@ class CPDF_GeneralState {
   int GetOPMode() const;
   void SetOPMode(int mode);
 
-  void SetBG(CPDF_Object* pObject);
-  void SetUCR(CPDF_Object* pObject);
-  void SetHT(CPDF_Object* pObject);
+  void SetBG(RetainPtr<const CPDF_Object> pObject);
+  void SetUCR(RetainPtr<const CPDF_Object> pObject);
+  void SetHT(RetainPtr<const CPDF_Object> pObject);
 
   void SetFlatness(float flatness);
   void SetSmoothness(float smoothness);
@@ -86,7 +88,7 @@ class CPDF_GeneralState {
 
     ByteString m_BlendMode = pdfium::transparency::kNormal;
     BlendMode m_BlendType = BlendMode::kNormal;
-    RetainPtr<CPDF_Object> m_pSoftMask;
+    RetainPtr<CPDF_Dictionary> m_pSoftMask;
     CFX_Matrix m_SMaskMatrix;
     float m_StrokeAlpha = 1.0f;
     float m_FillAlpha = 1.0f;

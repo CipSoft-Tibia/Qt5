@@ -10,6 +10,7 @@
 #include "include/v8-internal.h"
 #include "src/api/api.h"
 #include "src/base/macros.h"
+#include "src/execution/isolate.h"
 #include "src/objects/visitors.h"
 #include "testing/gtest/include/gtest/gtest_prod.h"  // nogncheck
 
@@ -43,6 +44,8 @@ class PersistentHandles {
   Handle<T> NewHandle(Handle<T> obj) {
     return NewHandle(*obj);
   }
+
+  Isolate* isolate() const { return isolate_; }
 
 #ifdef DEBUG
   V8_EXPORT_PRIVATE bool Contains(Address* location);
@@ -102,7 +105,7 @@ class PersistentHandlesList {
 
 // PersistentHandlesScope sets up a scope in which all created main thread
 // handles become persistent handles that can be sent to another thread.
-class PersistentHandlesScope {
+class V8_NODISCARD PersistentHandlesScope {
  public:
   V8_EXPORT_PRIVATE explicit PersistentHandlesScope(Isolate* isolate);
   V8_EXPORT_PRIVATE ~PersistentHandlesScope();
@@ -111,6 +114,7 @@ class PersistentHandlesScope {
   V8_EXPORT_PRIVATE std::unique_ptr<PersistentHandles> Detach();
 
  private:
+  Address* first_block_;
   Address* prev_limit_;
   Address* prev_next_;
   HandleScopeImplementer* const impl_;

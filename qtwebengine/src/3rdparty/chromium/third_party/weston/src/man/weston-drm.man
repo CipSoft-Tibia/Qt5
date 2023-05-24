@@ -31,7 +31,7 @@ If seat identifiers are not set, it looks for the graphics device
 that was used in boot. If that is not found, it finally chooses
 the first DRM device returned by
 .BR udev (7).
-Combining multiple graphics devices are not supported yet.
+Combining multiple graphics devices is not supported yet.
 
 The DRM backend relies on
 .B weston-launch
@@ -119,8 +119,9 @@ can generate detailed mode lines.
 \fBtransform\fR=\fItransform\fR
 Transform for the output, which can be rotated in 90-degree steps
 and possibly flipped. Possible values are
-.BR normal ", " 90 ", " 180 ", " 270 ", "
-.BR flipped ", " flipped-90 ", " flipped-180 ", and " flipped-270 .
+.BR normal ", " rotate-90 ", " rotate-180 ", " rotate-270 ", "
+.BR flipped ", " flipped-rotate-90 ", " flipped-rotate-180 ", and "
+.BR flipped-rotate-270 .
 .TP
 \fBpixman-shadow\fR=\fIboolean\fR
 If using the Pixman-renderer, use shadow framebuffers. Defaults to
@@ -204,6 +205,9 @@ instead of the seat defined in the environment variable
 Launch Weston on tty
 .I x
 instead of using the current tty.
+.TP
+.B \-\-continue\-without\-input
+Allow Weston to start without input devices. Used for testing purposes.
 .
 .\" ***************************************************************
 .SH ENVIRONMENT

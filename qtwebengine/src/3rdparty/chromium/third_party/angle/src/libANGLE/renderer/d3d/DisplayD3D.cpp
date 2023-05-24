@@ -240,10 +240,15 @@ ShareGroupImpl *DisplayD3D::createShareGroup()
     return new ShareGroupD3D();
 }
 
-egl::Error DisplayD3D::makeCurrent(egl::Surface *drawSurface,
+egl::Error DisplayD3D::makeCurrent(egl::Display *display,
+                                   egl::Surface *drawSurface,
                                    egl::Surface *readSurface,
                                    gl::Context *context)
 {
+    // Ensure the appropriate global DebugAnnotator is used
+    ASSERT(mRenderer != nullptr);
+    mRenderer->setGlobalDebugAnnotator();
+
     return egl::NoError();
 }
 
@@ -317,7 +322,7 @@ egl::Error DisplayD3D::validateClientBuffer(const egl::Config *config,
         case EGL_D3D_TEXTURE_ANGLE:
             return mRenderer->getD3DTextureInfo(config, static_cast<IUnknown *>(clientBuffer),
                                                 attribs, nullptr, nullptr, nullptr, nullptr,
-                                                nullptr);
+                                                nullptr, nullptr);
 
         default:
             return DisplayImpl::validateClientBuffer(config, buftype, clientBuffer, attribs);
@@ -335,7 +340,7 @@ egl::Error DisplayD3D::validateImageClientBuffer(const gl::Context *context,
         {
             return mRenderer->getD3DTextureInfo(nullptr, static_cast<IUnknown *>(clientBuffer),
                                                 attribs, nullptr, nullptr, nullptr, nullptr,
-                                                nullptr);
+                                                nullptr, nullptr);
         }
 
         default:
@@ -348,15 +353,31 @@ void DisplayD3D::generateExtensions(egl::DisplayExtensions *outExtensions) const
     mRenderer->generateDisplayExtensions(outExtensions);
 }
 
-std::string DisplayD3D::getVendorString() const
+std::string DisplayD3D::getRendererDescription()
 {
-    std::string vendorString = "Google Inc.";
     if (mRenderer)
     {
-        vendorString += " " + mRenderer->getVendorString();
+        return mRenderer->getRendererDescription();
     }
+    return std::string();
+}
 
-    return vendorString;
+std::string DisplayD3D::getVendorString()
+{
+    if (mRenderer)
+    {
+        return mRenderer->getVendorString();
+    }
+    return std::string();
+}
+
+std::string DisplayD3D::getVersionString(bool includeFullVersion)
+{
+    if (mRenderer)
+    {
+        return mRenderer->getVersionString(includeFullVersion);
+    }
+    return std::string();
 }
 
 void DisplayD3D::generateCaps(egl::Caps *outCaps) const
@@ -364,7 +385,7 @@ void DisplayD3D::generateCaps(egl::Caps *outCaps) const
     // Display must be initialized to generate caps
     ASSERT(mRenderer != nullptr);
 
-    outCaps->textureNPOT = mRenderer->getNativeExtensions().textureNPOTOES;
+    outCaps->textureNPOT = mRenderer->getNativeExtensions().textureNpotOES;
 }
 
 egl::Error DisplayD3D::waitClient(const gl::Context *context)
@@ -408,6 +429,11 @@ gl::Version DisplayD3D::getMaxConformantESVersion() const
     return mRenderer->getMaxConformantESVersion();
 }
 
+Optional<gl::Version> DisplayD3D::getMaxSupportedDesktopVersion() const
+{
+    return Optional<gl::Version>::Invalid();
+}
+
 void DisplayD3D::handleResult(HRESULT hr,
                               const char *message,
                               const char *file,
@@ -421,6 +447,11 @@ void DisplayD3D::handleResult(HRESULT hr,
                 << ":" << line << ". " << message;
 
     mStoredErrorString = errorStream.str();
+}
+
+void DisplayD3D::initializeFrontendFeatures(angle::FrontendFeatures *features) const
+{
+    mRenderer->initializeFrontendFeatures(features);
 }
 
 void DisplayD3D::populateFeatureList(angle::FeatureList *features)

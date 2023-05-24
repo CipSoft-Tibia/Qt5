@@ -1,38 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/abstractdomain_p.h>
 #include <private/qabstractaxis_p.h>
 #include <QtCore/QtMath>
 #include <cmath>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 AbstractDomain::AbstractDomain(QObject *parent)
     : QObject(parent),
@@ -182,8 +156,8 @@ void AbstractDomain::looseNiceNumbers(qreal &min, qreal &max, int &ticksCount)
 {
     qreal range = niceNumber(max - min, true); //range with ceiling
     qreal step = niceNumber(range / (ticksCount - 1), false);
-    min = qFloor(min / step);
-    max = qCeil(max / step);
+    min = std::floor(min / step);
+    max = std::ceil(max / step);
     ticksCount = int(max - min) + 1;
     min *= step;
     max *= step;
@@ -213,16 +187,26 @@ qreal AbstractDomain::niceNumber(qreal x, bool ceiling)
 bool AbstractDomain::attachAxis(QAbstractAxis *axis)
 {
     if (axis->orientation() == Qt::Vertical) {
-        QObject::connect(axis->d_ptr.data(), SIGNAL(rangeChanged(qreal,qreal)), this, SLOT(handleVerticalAxisRangeChanged(qreal,qreal)));
-        QObject::connect(this, SIGNAL(rangeVerticalChanged(qreal,qreal)), axis->d_ptr.data(), SLOT(handleRangeChanged(qreal,qreal)));
+        // Color axis isn't connected to range-related slots/signals as it doesn't need
+        // geometry domain and it doesn't need to handle zooming or scrolling.
+        if (axis->type() != QAbstractAxis::AxisTypeColor) {
+            QObject::connect(axis->d_ptr.data(), SIGNAL(rangeChanged(qreal, qreal)), this,
+                             SLOT(handleVerticalAxisRangeChanged(qreal, qreal)));
+            QObject::connect(this, SIGNAL(rangeVerticalChanged(qreal, qreal)), axis->d_ptr.data(),
+                             SLOT(handleRangeChanged(qreal, qreal)));
+        }
         QObject::connect(axis, &QAbstractAxis::reverseChanged,
                          this, &AbstractDomain::handleReverseYChanged);
         m_reverseY = axis->isReverse();
     }
 
     if (axis->orientation() == Qt::Horizontal) {
-        QObject::connect(axis->d_ptr.data(), SIGNAL(rangeChanged(qreal,qreal)), this, SLOT(handleHorizontalAxisRangeChanged(qreal,qreal)));
-        QObject::connect(this, SIGNAL(rangeHorizontalChanged(qreal,qreal)), axis->d_ptr.data(), SLOT(handleRangeChanged(qreal,qreal)));
+        if (axis->type() != QAbstractAxis::AxisTypeColor) {
+            QObject::connect(axis->d_ptr.data(), SIGNAL(rangeChanged(qreal, qreal)), this,
+                             SLOT(handleHorizontalAxisRangeChanged(qreal, qreal)));
+            QObject::connect(this, SIGNAL(rangeHorizontalChanged(qreal, qreal)), axis->d_ptr.data(),
+                             SLOT(handleRangeChanged(qreal, qreal)));
+        }
         QObject::connect(axis, &QAbstractAxis::reverseChanged,
                          this, &AbstractDomain::handleReverseXChanged);
         m_reverseX = axis->isReverse();
@@ -270,7 +254,7 @@ bool Q_AUTOTEST_EXPORT operator!= (const AbstractDomain &domain1, const Abstract
 QDebug Q_AUTOTEST_EXPORT operator<<(QDebug dbg, const AbstractDomain &domain)
 {
 #ifdef QT_NO_TEXTSTREAM
-    Q_UNUSED(domain)
+    Q_UNUSED(domain);
 #else
     dbg.nospace() << "AbstractDomain(" << domain.m_minX << ',' << domain.m_maxX << ',' << domain.m_minY << ',' << domain.m_maxY << ')' << domain.m_size;
 #endif
@@ -303,6 +287,6 @@ QRectF AbstractDomain::fixZoomRect(const QRectF &rect)
     return fixRect;
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_abstractdomain_p.cpp"

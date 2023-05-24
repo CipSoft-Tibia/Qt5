@@ -1,39 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QXYLegendMarker>
 #include <private/qxylegendmarker_p.h>
 #include <private/qxyseries_p.h>
 #include <QtCharts/QXYSeries>
+#if QT_CONFIG(charts_scatter_chart)
 #include <QtCharts/QScatterSeries>
+#endif
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 /*!
     \class QXYLegendMarker
@@ -91,8 +67,9 @@ QXYLegendMarkerPrivate::QXYLegendMarkerPrivate(QXYLegendMarker *q, QXYSeries *se
     q_ptr(q),
     m_series(series)
 {
-    QObject::connect(m_series, SIGNAL(nameChanged()), this, SLOT(updated()));
-    QObject::connect(m_series->d_func(), SIGNAL(updated()), this, SLOT(updated()));
+    connect(m_series->d_func(), &QXYSeriesPrivate::seriesUpdated,
+            this, &QXYLegendMarkerPrivate::updated);
+    connect(m_series, &QXYSeries::nameChanged, this, &QXYLegendMarkerPrivate::updated);
 }
 
 QXYLegendMarkerPrivate::~QXYLegendMarkerPrivate()
@@ -118,7 +95,7 @@ void QXYLegendMarkerPrivate::updated()
         m_item->setLabel(m_series->name());
         labelChanged = true;
     }
-
+#if QT_CONFIG(charts_scatter_chart)
     if (m_series->type()== QAbstractSeries::SeriesTypeScatter)  {
         if (!m_customBrush && (m_item->brush() != m_series->brush())) {
             m_item->setBrush(m_series->brush());
@@ -136,7 +113,9 @@ void QXYLegendMarkerPrivate::updated()
                     m_item->updateMarkerShapeAndSize();
             }
         }
-    } else {
+    } else
+#endif
+    {
         QBrush emptyBrush;
         if (!m_customBrush
             && (m_item->brush() == emptyBrush
@@ -144,9 +123,17 @@ void QXYLegendMarkerPrivate::updated()
             m_item->setBrush(QBrush(m_series->pen().color()));
             brushChanged = true;
         }
+
+        if (m_item->effectiveMarkerShape() == QLegend::MarkerShapeFromSeries
+            && m_series->markerSize() != m_item->markerRect().width()) {
+            m_item->updateMarkerShapeAndSize();
+        }
     }
     m_item->setSeriesBrush(m_series->brush());
     m_item->setSeriesPen(m_series->pen());
+
+    if (m_item->effectiveMarkerShape() == QLegend::MarkerShapeFromSeries)
+        m_item->setSeriesLightMarker(m_series->lightMarker());
 
     invalidateLegend();
 
@@ -156,7 +143,7 @@ void QXYLegendMarkerPrivate::updated()
         emit q_ptr->brushChanged();
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qxylegendmarker.cpp"
 #include "moc_qxylegendmarker_p.cpp"

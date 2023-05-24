@@ -1,51 +1,82 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuite errors="13" failures="5" tests="6" name="tst_BadXml">
+<testsuite name="tst_BadXml" timestamp="@TEST_START_TIME@" hostname="@HOSTNAME@" tests="16" failures="5" errors="0" skipped="0" time="@TEST_DURATION@">
   <properties>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QTestVersion"/>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QtVersion"/>
-    <property value="" name="QtBuild"/>
+    <property name="QTestVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtBuild" value=""/>
   </properties>
-  <testcase result="pass" name="initTestCase"/>
-  <testcase result="fail" name="badDataTag">
-    <!-- tag="fail end cdata ]]&gt; text ]]&gt; more text" message="a message" type="qdebug" -->
-    <failure tag="fail end cdata ]]&gt; text ]]&gt; more text" message="a failure" result="fail"/>
-    <!-- tag="pass end cdata ]]&gt; text ]]&gt; more text" message="a message" type="qdebug" -->
-    <!-- tag="fail quotes &quot; text&quot; more text" message="a message" type="qdebug" -->
-    <failure tag="fail quotes &quot; text&quot; more text" message="a failure" result="fail"/>
-    <!-- tag="pass quotes &quot; text&quot; more text" message="a message" type="qdebug" -->
-    <!-- tag="fail xml close &gt; open &lt; tags &lt; text" message="a message" type="qdebug" -->
-    <failure tag="fail xml close &gt; open &lt; tags &lt; text" message="a failure" result="fail"/>
-    <!-- tag="pass xml close &gt; open &lt; tags &lt; text" message="a message" type="qdebug" -->
-    <!-- tag="fail all &gt; &quot; mixed ]]&gt; up &gt; &quot; in &lt; the ]]&gt; hopes &lt; of triggering &quot;&lt; ]]&gt; bugs" message="a message" type="qdebug" -->
-    <failure tag="fail all &gt; &quot; mixed ]]&gt; up &gt; &quot; in &lt; the ]]&gt; hopes &lt; of triggering &quot;&lt; ]]&gt; bugs" message="a failure" result="fail"/>
-    <!-- tag="pass all &gt; &quot; mixed ]]&gt; up &gt; &quot; in &lt; the ]]&gt; hopes &lt; of triggering &quot;&lt; ]]&gt; bugs" message="a message" type="qdebug" -->
+  <testcase name="initTestCase" classname="tst_BadXml" time="@TEST_DURATION@"/>
+  <testcase name="badDataTag(fail end cdata ]]&gt; text ]]&gt; more text)" classname="tst_BadXml" time="@TEST_DURATION@">
+    <failure type="fail" message="a failure"/>
+    <system-out>
+      <![CDATA[a message]]>
+    </system-out>
   </testcase>
-  <testcase result="pass" name="badMessage">
-    <!-- tag="string 0" message="end cdata ]]&gt; text ]]&gt; more text" type="qdebug" -->
-    <!-- tag="string 1" message="quotes &quot; text&quot; more text" type="qdebug" -->
-    <!-- tag="string 2" message="xml close &gt; open &lt; tags &lt; text" type="qdebug" -->
-    <!-- tag="string 3" message="all &gt; &quot; mixed ]]&gt; up &gt; &quot; in &lt; the ]]&gt; hopes &lt; of triggering &quot;&lt; ]]&gt; bugs" type="qdebug" -->
+  <testcase name="badDataTag(pass end cdata ]]&gt; text ]]&gt; more text)" classname="tst_BadXml" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[a message]]>
+    </system-out>
   </testcase>
-  <testcase result="fail" name="failWithNoFile">
-    <failure message="failure message" result="fail"/>
+  <testcase name="badDataTag(fail quotes &quot; text&quot; more text)" classname="tst_BadXml" time="@TEST_DURATION@">
+    <failure type="fail" message="a failure"/>
+    <system-out>
+      <![CDATA[a message]]>
+    </system-out>
   </testcase>
-  <testcase result="pass" name="encoding">
-    <!-- message="&quot;Ülrich Ümläut&quot;" type="qdebug" -->
+  <testcase name="badDataTag(pass quotes &quot; text&quot; more text)" classname="tst_BadXml" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[a message]]>
+    </system-out>
   </testcase>
-  <testcase result="pass" name="cleanupTestCase"/>
-  <system-err>
-<![CDATA[a message]]>
-<![CDATA[a message]]>
-<![CDATA[a message]]>
-<![CDATA[a message]]>
-<![CDATA[a message]]>
-<![CDATA[a message]]>
-<![CDATA[a message]]>
-<![CDATA[a message]]>
-<![CDATA[end cdata ]]]><![CDATA[]> text ]]]><![CDATA[]> more text]]>
-<![CDATA[quotes " text" more text]]>
-<![CDATA[xml close > open < tags < text]]>
-<![CDATA[all > " mixed ]]]><![CDATA[]> up > " in < the ]]]><![CDATA[]> hopes < of triggering "< ]]]><![CDATA[]> bugs]]>
-<![CDATA["Ülrich Ümläut"]]>
-  </system-err>
+  <testcase name="badDataTag(fail xml close &gt; open &lt; tags &lt; text)" classname="tst_BadXml" time="@TEST_DURATION@">
+    <failure type="fail" message="a failure"/>
+    <system-out>
+      <![CDATA[a message]]>
+    </system-out>
+  </testcase>
+  <testcase name="badDataTag(pass xml close &gt; open &lt; tags &lt; text)" classname="tst_BadXml" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[a message]]>
+    </system-out>
+  </testcase>
+  <testcase name="badDataTag(fail all &gt; &quot; mixed ]]&gt; up &gt; &quot; in &lt; the ]]&gt; hopes &lt; of triggering &quot;&lt; ]]&gt; bugs)" classname="tst_BadXml" time="@TEST_DURATION@">
+    <failure type="fail" message="a failure"/>
+    <system-out>
+      <![CDATA[a message]]>
+    </system-out>
+  </testcase>
+  <testcase name="badDataTag(pass all &gt; &quot; mixed ]]&gt; up &gt; &quot; in &lt; the ]]&gt; hopes &lt; of triggering &quot;&lt; ]]&gt; bugs)" classname="tst_BadXml" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[a message]]>
+    </system-out>
+  </testcase>
+  <testcase name="badMessage(string 0)" classname="tst_BadXml" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[end cdata ]]]><![CDATA[]> text ]]]><![CDATA[]> more text]]>
+    </system-out>
+  </testcase>
+  <testcase name="badMessage(string 1)" classname="tst_BadXml" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[quotes " text" more text]]>
+    </system-out>
+  </testcase>
+  <testcase name="badMessage(string 2)" classname="tst_BadXml" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[xml close > open < tags < text]]>
+    </system-out>
+  </testcase>
+  <testcase name="badMessage(string 3)" classname="tst_BadXml" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[all > " mixed ]]]><![CDATA[]> up > " in < the ]]]><![CDATA[]> hopes < of triggering "< ]]]><![CDATA[]> bugs]]>
+    </system-out>
+  </testcase>
+  <testcase name="failWithNoFile" classname="tst_BadXml" time="@TEST_DURATION@">
+    <failure type="fail" message="failure message"/>
+  </testcase>
+  <testcase name="encoding" classname="tst_BadXml" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA["Ülrich Ümläut"]]>
+    </system-out>
+  </testcase>
+  <testcase name="cleanupTestCase" classname="tst_BadXml" time="@TEST_DURATION@"/>
 </testsuite>

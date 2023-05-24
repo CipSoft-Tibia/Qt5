@@ -1,12 +1,12 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_SERVICES_UNZIP_CONTENT_UNZIP_SERVICE_H_
 #define COMPONENTS_SERVICES_UNZIP_CONTENT_UNZIP_SERVICE_H_
 
-#include "base/callback.h"
-#include "components/services/unzip/public/mojom/unzipper.mojom.h"
+#include "base/functional/callback.h"
+#include "components/services/unzip/public/mojom/unzipper.mojom-forward.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 

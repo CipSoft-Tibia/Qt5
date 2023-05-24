@@ -5,9 +5,9 @@
 #include "third_party/base/memory/aligned_memory.h"
 
 #include "build/build_config.h"
-#include "third_party/base/logging.h"
+#include "third_party/base/check_op.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include <malloc.h>
 #endif
 
@@ -19,9 +19,9 @@ void* AlignedAlloc(size_t size, size_t alignment) {
   DCHECK(bits::IsPowerOfTwo(alignment));
   DCHECK_EQ(alignment % sizeof(void*), 0U);
   void* ptr = nullptr;
-#if defined(COMPILER_MSVC)
+#if defined(COMPILER_MSVC) || defined( __MINGW64__)
   ptr = _aligned_malloc(size, alignment);
-#elif defined(OS_ANDROID)
+#elif BUILDFLAG(IS_ANDROID)
   // Android technically supports posix_memalign(), but does not expose it in
   // the current version of the library headers used by Chrome.  Luckily,
   // memalign() on Android returns pointers which can safely be used with

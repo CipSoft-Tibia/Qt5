@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -30,21 +30,21 @@ IN_PROC_BROWSER_TEST_F(SocketsTcpServerApiTest, SocketTCPCreateGood) {
   socket_create_function->set_extension(empty_extension.get());
   socket_create_function->set_has_callback(true);
 
-  std::unique_ptr<base::Value> result(
+  absl::optional<base::Value> result(
       api_test_utils::RunFunctionAndReturnSingleResult(
           socket_create_function.get(), "[]", browser_context()));
-  ASSERT_EQ(base::Value::Type::DICTIONARY, result->type());
-  std::unique_ptr<base::DictionaryValue> value =
-      base::DictionaryValue::From(std::move(result));
-  int socketId = -1;
-  EXPECT_TRUE(value->GetInteger("socketId", &socketId));
-  ASSERT_TRUE(socketId > 0);
+  ASSERT_TRUE(result);
+  ASSERT_TRUE(result->is_dict());
+  absl::optional<int> socket_id = result->GetDict().FindInt("socketId");
+  ASSERT_TRUE(socket_id);
+  ASSERT_GT(*socket_id, 0);
 }
 
 IN_PROC_BROWSER_TEST_F(SocketsTcpServerApiTest, SocketTCPServerExtension) {
   ResultCatcher catcher;
   catcher.RestrictToBrowserContext(browser_context());
-  ExtensionTestMessageListener listener("info_please", true);
+  ExtensionTestMessageListener listener("info_please",
+                                        ReplyBehavior::kWillReply);
   ASSERT_TRUE(LoadApp("sockets_tcp_server/api"));
   EXPECT_TRUE(listener.WaitUntilSatisfied());
   listener.Reply(base::StringPrintf("tcp_server:127.0.0.1:%d", kPort));

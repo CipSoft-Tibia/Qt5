@@ -1,0 +1,51 @@
+Version: 2
+Include: [
+  macos.yaml: [
+     "macos-universal-on-x86_64",
+     "macos-12-x86_64-tests",
+     "macos-12-arm-on-arm64-tests"
+  ],
+  cmake_platforms.yaml: [
+    "ubuntu-22.04",
+    "ubuntu-22.04-documentation",
+    "opensuse-15.5-developer-build",
+    "sles-15_sp5-static",
+    "windows-10_22h2-msvc2019",
+    "windows-10_22h2-msvc2022",
+    "windows-10_22h2-msvc2019-developer-build",
+    "rhel-8.8",
+    "windows-10_22h2-mingw11",
+    "windows-10_22h2-mingw11-developer-build",
+    "windows-10_22h2-llvm",
+    "windows-11_22h2-msvc2019"
+  ],
+  cmake_platforms_qemu_qnx710.yaml: [
+    "qnx-710-x86_64-developer-build-on-linux",
+    "qnx-710-arm64-on-linux",
+    "qnx-710-armv7-on-linux"
+  ],
+  integrity.yaml: [
+    "integrity-arm64"
+  ]
+]
+Configurations:
+-
+    Id: 'Axivion-QEMU_build'
+    Template: 'qtci-linux-Ubuntu-22.04-x86_64-51'
+    Target os: 'QEMU'
+    Target arch: 'arm64'
+    Compiler: 'GCC'
+    Platform dependency: 'ubuntu-22.04'
+    Features: ['UseConfigure', 'DoNotRunTests', 'DisableTests', 'Axivion_QSR']
+    Configure arguments: '-nomake examples -release -force-debug-info -separate-debug-info -headersclean -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-doubleconversion -no-libudev -bundled-xcb-xinput'
+    Environment variables: [
+        'TARGET_CONFIGURE_ARGS=-release -force-debug-info -developer-build -no-warnings-are-errors -nomake examples -qt-harfbuzz -device linux-generic-g++ -device-option "CROSS_COMPILE={{.Env.QEMUARM64_TOOLCHAIN_CROSS_COMPILE}}" -device-option "DISTRO_OPTS=boot2qt" -no-feature-forkfd_pidfd -qtlibinfix TestInfix',
+        'TARGET_CMAKE_ARGS=-DCMAKE_TOOLCHAIN_FILE={{.Env.QEMUARM64_TOOLCHAIN_FILE}} -DQT_FORCE_BUILD_TOOLS=ON',
+        'QT_YOCTO_ENVSETUP={{.Env.QEMUARM64_TOOLCHAIN_ENVSETUP}}',
+        "QT_CMAKE_DIR=/opt/cmake-3.27.7/bin",
+        'QT_SYSROOT_FOR_RUNNING_TESTS={{.Env.QEMUARM64_TOOLCHAIN_SYSROOT}}',
+        'GST_PLUGIN_SCANNER={{.Env.QEMUARM64_TOOLCHAIN_SYSROOT}}/usr/libexec/gstreamer-1.0/gst-plugin-scanner',
+        'QT_QUICK_BACKEND=software',
+    ]
+
+

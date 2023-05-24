@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,24 +11,23 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
+#include "base/no_destructor.h"
 #include "content/browser/tracing/background_tracing_config_impl.h"
+#include "content/common/content_export.h"
 #include "content/public/browser/background_tracing_manager.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/tracing/public/cpp/perfetto/trace_event_data_source.h"
 #include "services/tracing/public/mojom/background_tracing_agent.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
-template <typename T>
-class NoDestructor;
+class Value;
 }  // namespace base
 
-namespace tracing {
-namespace mojom {
+namespace tracing::mojom {
 class BackgroundTracingAgent;
 class BackgroundTracingAgentProvider;
-}  // namespace mojom
-}  // namespace tracing
+}  // namespace tracing::mojom
 
 namespace content {
 namespace mojom {
@@ -55,8 +54,7 @@ class BackgroundTracingManagerImpl : public BackgroundTracingManager {
 
     // Called after tracing is enabled on all processes because the rule was
     // triggered.
-    virtual void OnTracingEnabled(
-        BackgroundTracingConfigImpl::CategoryPreset preset) = 0;
+    virtual void OnTracingEnabled() = 0;
 
     virtual ~EnabledStateObserver() = default;
   };
@@ -87,26 +85,35 @@ class BackgroundTracingManagerImpl : public BackgroundTracingManager {
     LARGE_UPLOAD_WAITING_TO_RETRY = 13,
     SYSTEM_TRIGGERED = 14,
     REACHED_CODE_SCENARIO_TRIGGERED = 15,
+    FINALIZATION_STARTED_WITH_LOCAL_OUTPUT = 16,
     NUMBER_OF_BACKGROUND_TRACING_METRICS,
   };
   static void RecordMetric(Metrics metric);
 
-  CONTENT_EXPORT static BackgroundTracingManagerImpl* GetInstance();
+  CONTENT_EXPORT static BackgroundTracingManagerImpl& GetInstance();
+
+  BackgroundTracingManagerImpl(const BackgroundTracingManagerImpl&) = delete;
+  BackgroundTracingManagerImpl& operator=(const BackgroundTracingManagerImpl&) =
+      delete;
 
   // Callable from any thread.
   static void ActivateForProcess(int child_process_id,
                                  mojom::ChildProcess* child_process);
 
   bool SetActiveScenario(std::unique_ptr<BackgroundTracingConfig>,
-                         ReceiveCallback,
                          DataFiltering data_filtering) override;
+  bool SetActiveScenarioWithReceiveCallback(
+      std::unique_ptr<BackgroundTracingConfig>,
+      ReceiveCallback receive_callback,
+      DataFiltering data_filtering) override;
   void AbortScenario();
   bool HasActiveScenario() override;
 
   // Named triggers
   void TriggerNamedEvent(TriggerHandle, StartedFinalizingCallback) override;
-  TriggerHandle RegisterTriggerType(const char* trigger_name) override;
-  std::string GetTriggerNameFromHandle(TriggerHandle handle) const;
+  TriggerHandle RegisterTriggerType(base::StringPiece trigger_name) override;
+  const std::string& GetTriggerNameFromHandle(
+      TriggerHandle trigger_handle) override;
 
   void OnHistogramTrigger(const std::string& histogram_name);
 
@@ -115,6 +122,8 @@ class BackgroundTracingManagerImpl : public BackgroundTracingManager {
   bool HasTraceToUpload() override;
   std::string GetLatestTraceToUpload() override;
   void SetTraceToUpload(std::unique_ptr<std::string> trace_data);
+  std::unique_ptr<BackgroundTracingConfig> GetBackgroundTracingConfig(
+      const std::string& trial_name) override;
 
   // Add/remove EnabledStateObserver.
   CONTENT_EXPORT void AddEnabledStateObserver(EnabledStateObserver* observer);
@@ -129,10 +138,10 @@ class BackgroundTracingManagerImpl : public BackgroundTracingManager {
 
   void AddMetadataGeneratorFunction();
 
-  bool IsAllowedFinalization() const;
+  bool IsAllowedFinalization(bool is_crash_scenario) const;
 
   // Called by BackgroundTracingActiveScenario
-  void OnStartTracingDone(BackgroundTracingConfigImpl::CategoryPreset preset);
+  void OnStartTracingDone();
 
   // For tests
   CONTENT_EXPORT BackgroundTracingActiveScenario* GetActiveScenarioForTesting();
@@ -142,6 +151,8 @@ class BackgroundTracingManagerImpl : public BackgroundTracingManager {
   CONTENT_EXPORT void AbortScenarioForTesting() override;
   CONTENT_EXPORT void SetTraceToUploadForTesting(
       std::unique_ptr<std::string> trace_data) override;
+  void SetConfigTextFilterForTesting(
+      ConfigTextFilterForTesting predicate) override;
 
  private:
   friend class base::NoDestructor<BackgroundTracingManagerImpl>;
@@ -149,9 +160,7 @@ class BackgroundTracingManagerImpl : public BackgroundTracingManager {
   BackgroundTracingManagerImpl();
   ~BackgroundTracingManagerImpl() override;
 
-  void ValidateStartupScenario();
-  bool IsSupportedConfig(BackgroundTracingConfigImpl* config);
-  std::unique_ptr<base::DictionaryValue> GenerateMetadataDict();
+  absl::optional<base::Value::Dict> GenerateMetadataDict();
   void GenerateMetadataProto(
       perfetto::protos::pbzero::ChromeMetadataPacket* metadata,
       bool privacy_filtering_enabled);
@@ -180,12 +189,12 @@ class BackgroundTracingManagerImpl : public BackgroundTracingManager {
       pending_agents_;
 
   IdleCallback idle_callback_;
-  base::RepeatingClosure tracing_enabled_callback_for_testing_;
 
   // This field contains serialized trace log proto.
   std::string trace_to_upload_;
 
-  DISALLOW_COPY_AND_ASSIGN(BackgroundTracingManagerImpl);
+  // Callback to override the background tracing config for testing.
+  ConfigTextFilterForTesting config_text_filter_for_testing_;
 };
 
 }  // namespace content

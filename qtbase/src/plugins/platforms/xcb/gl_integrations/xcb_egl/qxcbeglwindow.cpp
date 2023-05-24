@@ -1,48 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qxcbeglwindow.h"
 
 #include "qxcbeglintegration.h"
 
-#include <QtEglSupport/private/qeglconvenience_p.h>
-#include <QtEglSupport/private/qxlibeglintegration_p.h>
+#include <QtGui/private/qeglconvenience_p.h>
+
+#ifndef EGL_EXT_platform_base
+typedef EGLSurface (EGLAPIENTRYP PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC) (EGLDisplay dpy, EGLConfig config, void *native_window, const EGLint *attrib_list);
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -65,35 +32,30 @@ void QXcbEglWindow::resolveFormat(const QSurfaceFormat &format)
     m_format = q_glFormatFromConfig(m_glIntegration->eglDisplay(), m_config, format);
 }
 
-#if QT_CONFIG(xcb_xlib)
 const xcb_visualtype_t *QXcbEglWindow::createVisual()
 {
     QXcbScreen *scr = xcbScreen();
     if (!scr)
         return QXcbWindow::createVisual();
 
-    Display *xdpy = static_cast<Display *>(m_glIntegration->xlib_display());
-    VisualID id = QXlibEglIntegration::getCompatibleVisualId(xdpy, m_glIntegration->eglDisplay(), m_config);
-
-    XVisualInfo visualInfoTemplate;
-    memset(&visualInfoTemplate, 0, sizeof(XVisualInfo));
-    visualInfoTemplate.visualid = id;
-
-    XVisualInfo *visualInfo;
-    int matchingCount = 0;
-    visualInfo = XGetVisualInfo(xdpy, VisualIDMask, &visualInfoTemplate, &matchingCount);
-    const xcb_visualtype_t *xcb_visualtype = scr->visualForId(visualInfo->visualid);
-    XFree(visualInfo);
-
-    return xcb_visualtype;
+    xcb_visualid_t id = m_glIntegration->getCompatibleVisualId(scr->screen(), m_config);
+    return scr->visualForId(id);
 }
-#endif
 
 void QXcbEglWindow::create()
 {
     QXcbWindow::create();
 
+#if QT_CONFIG(egl_x11)
     m_surface = eglCreateWindowSurface(m_glIntegration->eglDisplay(), m_config, m_window, nullptr);
+#else
+    auto createPlatformWindowSurface = reinterpret_cast<PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC>(
+        eglGetProcAddress("eglCreatePlatformWindowSurfaceEXT"));
+    m_surface = createPlatformWindowSurface(m_glIntegration->eglDisplay(),
+                                            m_config,
+                                            reinterpret_cast<void *>(m_window),
+                                            nullptr);
+#endif
 }
 
 QT_END_NAMESPACE

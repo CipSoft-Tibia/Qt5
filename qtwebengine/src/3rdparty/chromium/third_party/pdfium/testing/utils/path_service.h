@@ -1,4 +1,4 @@
-// Copyright 2015 PDFium Authors. All rights reserved.
+// Copyright 2015 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -37,5 +37,9 @@ class PathService {
 
   // Get the full path for a test file under the test data directory.
   static bool GetTestFilePath(const std::string& file_name, std::string* path);
+
+  // Get the full path for a file under the third-party directory.
+  static bool GetThirdPartyFilePath(const std::string& file_name,
+                                    std::string* path);
 };
 #endif  // TESTING_UTILS_PATH_SERVICE_H_

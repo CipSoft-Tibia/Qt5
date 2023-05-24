@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtVirtualKeyboard/qvirtualkeyboardtrace.h>
 #include <QtCore/private/qobject_p.h>
@@ -40,7 +14,8 @@ public:
         traceId(0),
         final(false),
         canceled(false),
-        opacity(1.0)
+        opacity(1.0),
+        hideTimer(0)
     { }
 
     int traceId;
@@ -49,11 +24,13 @@ public:
     bool final;
     bool canceled;
     qreal opacity;
+    int hideTimer;
 };
 
 /*!
     \class QVirtualKeyboardTrace
     \inmodule QtVirtualKeyboard
+    \ingroup qtvirtualkeyboard-cpp-for-devs
     \since QtQuick.VirtualKeyboard 2.0
     \brief Trace is a data model for touch input data.
 
@@ -115,7 +92,7 @@ public:
     \qmltype Trace
     \instantiates QVirtualKeyboardTrace
     \inqmlmodule QtQuick.VirtualKeyboard
-    \ingroup qtvirtualkeyboard-qml
+    \ingroup qtvirtualkeyboard-internal-qml
     \since QtQuick.VirtualKeyboard 2.0
     \brief Trace is a data model for touch input data.
 
@@ -177,6 +154,7 @@ public:
 QVirtualKeyboardTrace::QVirtualKeyboardTrace(QObject *parent) :
     QObject(*new QVirtualKeyboardTracePrivate(), parent)
 {
+    Q_ASSERT(parent);
 }
 
 /*! \internal */
@@ -382,6 +360,45 @@ void QVirtualKeyboardTrace::setOpacity(qreal opacity)
         d->opacity = opacity;
         emit opacityChanged(opacity);
     }
+}
+
+/*! \qmlmethod void Trace::startHideTimer(int delayMs)
+
+    Starts a timer to set opacity to zero after \a delayMs. If called again
+    within \a delayMs, the timer is restarted.
+
+    With this function the input method can hide the trace from screen before
+    destroying the trace object, for example, to indicate that the trace has
+    been processed.
+
+    \since QtQuick.VirtualKeyboard.Styles 6.1
+*/
+
+/*! Starts a timer to set opacity to zero after \a delayMs. If called again
+    within \a delayMs, the timer is restarted.
+
+    With this function the input method can hide the trace from screen before
+    destroying the trace object, for example, to indicate that the trace has
+    been processed.
+
+    \since QtQuick.VirtualKeyboard.Styles 6.1
+*/
+
+void QVirtualKeyboardTrace::startHideTimer(int delayMs)
+{
+    Q_D(QVirtualKeyboardTrace);
+    if (d->hideTimer != 0) {
+        killTimer(d->hideTimer);
+    }
+    d->hideTimer = startTimer(delayMs);
+}
+
+void QVirtualKeyboardTrace::timerEvent(QTimerEvent *event)
+{
+    Q_UNUSED(event)
+    Q_D(QVirtualKeyboardTrace);
+    d->hideTimer = 0;
+    setOpacity(0);
 }
 
 /*! \qmlproperty int Trace::traceId

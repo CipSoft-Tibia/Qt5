@@ -1,4 +1,4 @@
-// Copyright (c) 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,8 @@
 #include <wrl/client.h>
 #include <wrl/event.h>
 
+#include <memory>
+
 #include "base/lazy_instance.h"
 #include "base/logging.h"
 #include "base/strings/string_piece.h"
@@ -17,10 +19,8 @@
 #include "base/win/core_winrt_util.h"
 #include "base/win/scoped_com_initializer.h"
 #include "base/win/scoped_hstring.h"
-#include "base/win/windows_version.h"
 
-namespace display {
-namespace win {
+namespace display::win {
 
 namespace {
 
@@ -52,9 +52,8 @@ bool g_default_instance_cleaned_up = false;
 bool CreateUiSettingsComObject(ComPtr<IUISettings2>& ptr) {
   DCHECK(!ptr);
 
-  // This is required setup before using ScopedHString.
-  if (!(base::win::ResolveCoreWinRTDelayload() &&
-        base::win::ScopedHString::ResolveCoreWinRTStringDelayload())) {
+  // Need to do this check before using WinRT functions.
+  if (!base::win::ResolveCoreWinRTDelayload()) {
     DLOG(ERROR) << "Failed loading functions from combase.dll";
     return false;
   }
@@ -89,11 +88,6 @@ class UwpTextScaleFactorImpl : public UwpTextScaleFactor {
  public:
   UwpTextScaleFactorImpl()
       : text_scale_factor_changed_token_(kInvalidEventRegistrationToken) {
-    // There's no point in doing this initialization if we're earlier than
-    // Windows 10, since UWP is a Win10 feature.
-    if (base::win::GetVersion() < base::win::Version::WIN10)
-      return;
-
     // We want to bracket all use of our COM object with COM initialization
     // in order to be sure we don't leak COM listeners into the OS. This may
     // extend the lifetime of COM on this thread but we do not expect it to be
@@ -163,7 +157,7 @@ class UwpTextScaleFactorImpl : public UwpTextScaleFactor {
     // equal to 1. Let's make sure that's the case - if we don't, we could get
     // bizarre behavior and divide-by-zeros later on.
     DCHECK_GE(result, 1.0);
-    return float(result);
+    return static_cast<float>(result);
   }
 
  private:
@@ -233,5 +227,4 @@ void UwpTextScaleFactor::Observer::OnUwpTextScaleFactorCleanup(
   source->RemoveObserver(this);
 }
 
-}  // namespace win
-}  // namespace display
+}  // namespace display::win

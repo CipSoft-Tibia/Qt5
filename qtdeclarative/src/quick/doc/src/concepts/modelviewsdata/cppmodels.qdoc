@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page qtquick-modelviewsdata-cppmodels.html
@@ -36,7 +12,7 @@
 Models can be defined in C++ and then made available to QML. This is useful
 for exposing existing C++ data models or otherwise complex datasets to QML.
 
-A C++ model class can be defined as a \l QStringList, a \l QVariantList, a
+A C++ model class can be defined as a \l QStringList, a \l {QVariant::}{QVariantList}, a
 QObjectList or a \l QAbstractItemModel. The first three are useful for exposing
 simpler datasets, while QAbstractItemModel provides a more flexible solution for
 more complex models.
@@ -67,12 +43,12 @@ within the Qt install directory.
 
 \note There is no way for the view to know that the contents of a QStringList
 have changed. If the QStringList changes, it will be necessary to reset
-the model by calling QQmlContext::setContextProperty() again.
+the model by setting the view's \c model property again.
 
 \section2 QVariantList-based Model
 
-A model may be a single \l QVariantList, which provides the contents of the list
-via the \e modelData role.
+A model may be a single \l {QVariant::}{QVariantList}, which provides the contents
+of the list via the \e modelData role.
 
 The API works just like with \l QStringList, as shown in the previous section.
 
@@ -103,10 +79,8 @@ the ListView delegate:
 
 \snippet models/objectlistmodel/view.qml 0
 
-Note the use of \c color property with qualifier.
-The properties of the object are not replicated in the \c model
-object, as they are easily available via the \c modelData
-object.
+Note the use of the \c color property. You can require existing properties
+by declaring them as \c required in a derived type.
 
 The complete source code for this example is available in
 \l {models/objectlistmodel}{examples/quick/models/objectlistmodel}
@@ -114,7 +88,7 @@ within the Qt install directory.
 
 Note: There is no way for the view to know that the contents of a QList
 has changed.  If the QList changes, it is necessary to reset
-the model by calling QQmlContext::setContextProperty() again.
+the model by setting the \c model property again.
 
 
 \section2 QAbstractItemModel Subclass
@@ -254,12 +228,10 @@ model:
 
 \section2 Exposing C++ Data Models to QML
 
-The above examples use QQmlContext::setContextProperty() to set
+The above examples use required properties on the view to set
 model values directly in QML components. An alternative to this is to
-register the C++ model class as a QML type (either
-\l{Defining QML Types from C++}{directly} from a C++ entry-point, or within
-the initialization function of a \l{Creating C++ Plugins for QML}
-{QML C++ plugin}, as shown below).  This would allow the model classes to be
+register the C++ model class as a QML type (see
+\l{Defining QML Types from C++}). This allows the model classes to be
 created directly as types within QML:
 
 \table
@@ -268,16 +240,12 @@ created directly as types within QML:
 \li C++
 \li
 \code
-class MyModelPlugin : public QQmlExtensionPlugin
+class MyModel : public QAbstractItemModel
 {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID "org.qt-project.QmlExtension.MyModel" FILE "mymodel.json")
-public:
-    void registerTypes(const char *uri)
-    {
-        qmlRegisterType<MyModel>(uri, 1, 0,
-                "MyModel");
-    }
+    QML_ELEMENT
+
+    // [...]
 }
 \endcode
 \row
@@ -286,7 +254,6 @@ public:
 \qml
 MyModel {
     id: myModel
-    ListElement { someProperty: "some value" }
 }
 \endqml
 
@@ -294,14 +261,17 @@ MyModel {
 ListView {
     width: 200; height: 250
     model: myModel
-    delegate: Text { text: someProperty }
+    delegate: Text {
+        required property string someProperty
+        text: someProperty
+    }
 }
 \endqml
 
 \endtable
 
-See \l {Writing QML Extensions with C++} for details on writing QML C++
-plugins.
+See \l {Writing QML Extensions with C++} for details on writing QML types
+in C++.
 
 \section2 Changing Model Data
 

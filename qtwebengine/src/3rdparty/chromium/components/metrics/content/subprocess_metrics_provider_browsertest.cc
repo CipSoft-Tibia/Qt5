@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -66,26 +66,26 @@ class SubprocessMetricsProviderBrowserTest
     return provider_->allocators_by_id_;
   }
 
-  ScopedObserver<content::RenderProcessHost,
-                 content::RenderProcessHostObserver>&
-  get_scoped_observer() {
-    return provider_->scoped_observer_;
+  base::ScopedMultiSourceObservation<content::RenderProcessHost,
+                                     content::RenderProcessHostObserver>&
+  get_scoped_observations() {
+    return provider_->scoped_observations_;
   }
 
   base::PersistentHistogramAllocator* GetMainFrameAllocator() {
     return get_allocators_by_id().Lookup(
-        shell()->web_contents()->GetMainFrame()->GetProcess()->GetID());
+        shell()->web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID());
   }
 
   void SimulateRenderProcessExit() {
     provider_->RenderProcessExited(
-        shell()->web_contents()->GetMainFrame()->GetProcess(),
+        shell()->web_contents()->GetPrimaryMainFrame()->GetProcess(),
         content::ChildProcessTerminationInfo());
   }
 
   void SimulateRenderProcessHostDestroyed() {
     provider_->RenderProcessHostDestroyed(
-        shell()->web_contents()->GetMainFrame()->GetProcess());
+        shell()->web_contents()->GetPrimaryMainFrame()->GetProcess());
   }
 
  protected:
@@ -114,7 +114,7 @@ IN_PROC_BROWSER_TEST_F(SubprocessMetricsProviderBrowserTest,
                        RegisterExistingNotReadyRenderProcesses) {
   ASSERT_TRUE(GetRenderProcessHostCount() > 0);
   CreateSubprocessMetricsProvider();
-  EXPECT_EQ(get_scoped_observer().GetSourcesCount(),
+  EXPECT_EQ(get_scoped_observations().GetSourcesCount(),
             GetRenderProcessHostCount());
   EXPECT_EQ(get_allocators_by_id().size(), 0u);
 
@@ -123,7 +123,7 @@ IN_PROC_BROWSER_TEST_F(SubprocessMetricsProviderBrowserTest,
 
   // Verify that the number of scoped observer matches the number of
   // RenderProcessHost and the main frame allocator exists.
-  EXPECT_EQ(get_scoped_observer().GetSourcesCount(),
+  EXPECT_EQ(get_scoped_observations().GetSourcesCount(),
             GetRenderProcessHostCount());
   auto* main_frame_allocator = GetMainFrameAllocator();
   EXPECT_TRUE(main_frame_allocator);
@@ -153,10 +153,11 @@ IN_PROC_BROWSER_TEST_F(SubprocessMetricsProviderBrowserTest,
       << " The histogram in the context is " << render_process_histogram;
 
   auto* main_frame_process_host =
-      shell()->web_contents()->GetMainFrame()->GetProcess();
+      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess();
   SimulateRenderProcessHostDestroyed();
   // Verify the observer removed.
-  EXPECT_FALSE(get_scoped_observer().IsObserving(main_frame_process_host));
+  EXPECT_FALSE(
+      get_scoped_observations().IsObservingSource(main_frame_process_host));
 }
 
 IN_PROC_BROWSER_TEST_F(SubprocessMetricsProviderBrowserTest,
@@ -169,7 +170,7 @@ IN_PROC_BROWSER_TEST_F(SubprocessMetricsProviderBrowserTest,
 
   // Verify that the number of scoped observer matches the number of
   // RenderProcessHost and the main frame allocator exists.
-  EXPECT_EQ(get_scoped_observer().GetSourcesCount(),
+  EXPECT_EQ(get_scoped_observations().GetSourcesCount(),
             GetRenderProcessHostCount());
   auto* main_frame_allocator = GetMainFrameAllocator();
   EXPECT_TRUE(main_frame_allocator);
@@ -199,10 +200,11 @@ IN_PROC_BROWSER_TEST_F(SubprocessMetricsProviderBrowserTest,
       << " The histogram in the context is " << render_process_histogram;
 
   auto* main_frame_process_host =
-      shell()->web_contents()->GetMainFrame()->GetProcess();
+      shell()->web_contents()->GetPrimaryMainFrame()->GetProcess();
   SimulateRenderProcessHostDestroyed();
   // Verify the observer removed.
-  EXPECT_FALSE(get_scoped_observer().IsObserving(main_frame_process_host));
+  EXPECT_FALSE(
+      get_scoped_observations().IsObservingSource(main_frame_process_host));
 }
 
 }  // namespace metrics

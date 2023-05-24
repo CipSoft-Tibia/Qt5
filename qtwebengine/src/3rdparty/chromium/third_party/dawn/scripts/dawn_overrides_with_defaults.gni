@@ -41,24 +41,12 @@ if (!defined(dawn_glfw_dir)) {
   dawn_glfw_dir = "//third_party/glfw"
 }
 
-if (!defined(dawn_glm_dir)) {
-  dawn_glm_dir = "//third_party/glm"
-}
-
 if (!defined(dawn_googletest_dir)) {
   dawn_googletest_dir = "//third_party/googletest"
 }
 
-if (!defined(dawn_shaderc_dir)) {
-  dawn_shaderc_dir = "//third_party/shaderc"
-}
-
-if (!defined(dawn_spirv_cross_dir)) {
-  dawn_spirv_cross_dir = "//third_party/spirv-cross"
-}
-
 if (!defined(dawn_spirv_tools_dir)) {
-  dawn_spirv_tools_dir = "//third_party/SPIRV-Tools"
+  dawn_spirv_tools_dir = "//third_party/vulkan-deps/spirv-tools/src"
 }
 
 if (!defined(dawn_swiftshader_dir)) {
@@ -66,9 +54,27 @@ if (!defined(dawn_swiftshader_dir)) {
   dawn_swiftshader_dir = ""
 }
 
+if (!defined(dawn_vulkan_deps_dir)) {
+  dawn_vulkan_deps_dir = "//third_party/vulkan-deps"
+  if (dawn_standalone) {
+    dawn_vulkan_deps_dir = "${dawn_root}/third_party/vulkan-deps"
+  }
+}
+
+if (!defined(dawn_vulkan_headers_dir)) {
+  dawn_vulkan_headers_dir = "${dawn_vulkan_deps_dir}/vulkan-headers/src"
+}
+
 if (!defined(dawn_vulkan_loader_dir)) {
-  # Default to the Vulkan loader not being available.
+  # Default to the Vulkan loader not being available except in standalone.
   dawn_vulkan_loader_dir = ""
+  if (dawn_standalone) {
+    dawn_vulkan_loader_dir = "//third_party/vulkan-deps/vulkan-loader/src"
+  }
+}
+
+if (!defined(dawn_vulkan_tools_dir)) {
+  dawn_vulkan_tools_dir = "${dawn_vulkan_deps_dir}/vulkan-tools/src"
 }
 
 if (!defined(dawn_vulkan_validation_layers_dir)) {
@@ -76,7 +82,10 @@ if (!defined(dawn_vulkan_validation_layers_dir)) {
   dawn_vulkan_validation_layers_dir = ""
 }
 
-if (!defined(dawn_tint_dir)) {
-  # Default to Tint not being available.
-  dawn_tint_dir = ""
+if (!defined(dawn_abseil_dir)) {
+  dawn_abseil_dir = "//third_party/abseil-cpp"
+}
+
+if (!defined(dawn_version_file)) {
+  dawn_version_file = ""
 }

@@ -1,43 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QtEndian>
+
 #include <cbor.h>
 
 namespace {
@@ -67,7 +33,7 @@ qint64 LargeIODevice::readData(char *data, qint64 maxlen)
     qint64 p = pos();
     if (maxlen > realSize - p)
         maxlen = realSize - p;
-    memset(data, '\0', maxlen);
+    memset(data, '\0', qMin(maxlen, qint64(32 * 1024)));
 
     qint64 fromstart = start.size() - p;
     if (fromstart > maxlen)
@@ -87,25 +53,28 @@ void addValidationLargeData(qsizetype minInvalid, qsizetype maxInvalid)
         toolong[0] = sizeof(v) > 4 ? 0x5b : 0x5a;
         qToBigEndian(v, toolong + 1);
 
-        QTest::addRow("bytearray-too-big-for-qbytearray-%llx", v)
-                << QByteArray(toolong, sizeof(toolong)) << 0 << CborErrorDataTooLarge;
-        QTest::addRow("bytearray-chunked-too-big-for-qbytearray-%llx", v)
+        bool overflows = v > std::numeric_limits<qsizetype>::max() - 1 - qsizetype(sizeof(v));
+        CborError err = overflows ? CborErrorDataTooLarge : CborErrorUnexpectedEOF;
+
+        QTest::addRow("bytearray-too-big-for-qbytearray-%zx", size_t(v))
+                << QByteArray(toolong, sizeof(toolong)) << 0 << err;
+        QTest::addRow("bytearray-chunked-too-big-for-qbytearray-%zx", size_t(v))
                 << ('\x5f' + QByteArray(toolong, sizeof(toolong)) + '\xff')
-                << 0 << CborErrorDataTooLarge;
-        QTest::addRow("bytearray-2chunked-too-big-for-qbytearray-%llx", v)
+                << 0 << err;
+        QTest::addRow("bytearray-2chunked-too-big-for-qbytearray-%zx", size_t(v))
                 << ("\x5f\x40" + QByteArray(toolong, sizeof(toolong)) + '\xff')
-                << 0 << CborErrorDataTooLarge;
+                << 0 << err;
         toolong[0] |= 0x20;
 
         // QCborStreamReader::readString copies to a QByteArray first
-        QTest::addRow("string-too-big-for-qbytearray-%llx", v)
-                << QByteArray(toolong, sizeof(toolong)) << 0 << CborErrorDataTooLarge;
-        QTest::addRow("string-chunked-too-big-for-qbytearray-%llx", v)
+        QTest::addRow("string-too-big-for-qbytearray-%zx", size_t(v))
+                << QByteArray(toolong, sizeof(toolong)) << 0 << err;
+        QTest::addRow("string-chunked-too-big-for-qbytearray-%zx", size_t(v))
                 << ('\x7f' + QByteArray(toolong, sizeof(toolong)) + '\xff')
-                << 0 << CborErrorDataTooLarge;
-        QTest::addRow("string-2chunked-too-big-for-qbytearray-%llx", v)
+                << 0 << err;
+        QTest::addRow("string-2chunked-too-big-for-qbytearray-%zx", size_t(v))
                 << ("\x7f\x60" + QByteArray(toolong, sizeof(toolong)) + '\xff')
-                << 0 << CborErrorDataTooLarge;
+                << 0 << err;
     }
 }
 
@@ -114,6 +83,7 @@ void addValidationHugeDevice(qsizetype byteArrayInvalid, qsizetype stringInvalid
     qRegisterMetaType<QSharedPointer<QIODevice>>();
     QTest::addColumn<QSharedPointer<QIODevice>>("device");
     QTest::addColumn<CborError>("expectedError");
+    QTest::addColumn<CborError>("expectedValidationError");
 
     char buf[1 + sizeof(quint64)];
     auto device = [&buf](QCborStreamReader::Type t, quint64 size) {
@@ -127,17 +97,21 @@ void addValidationHugeDevice(qsizetype byteArrayInvalid, qsizetype stringInvalid
 
     // do the exact limits
     QTest::newRow("bytearray-just-too-big")
-            << device(QCborStreamReader::ByteArray, byteArrayInvalid) << CborErrorDataTooLarge;
+            << device(QCborStreamReader::ByteArray, byteArrayInvalid)
+            << CborErrorDataTooLarge << CborNoError;
     QTest::newRow("string-just-too-big")
-            << device(QCborStreamReader::String, stringInvalid) << CborErrorDataTooLarge;
+            << device(QCborStreamReader::String, stringInvalid)
+            << CborErrorDataTooLarge << CborErrorDataTooLarge;
 
     auto addSize = [=](const char *sizename, qint64 size) {
         if (byteArrayInvalid < size)
             QTest::addRow("bytearray-%s", sizename)
-                << device(QCborStreamReader::ByteArray, size) << CborErrorDataTooLarge;
+                << device(QCborStreamReader::ByteArray, size)
+                << CborErrorDataTooLarge << CborNoError;
         if (stringInvalid < size)
             QTest::addRow("string-%s", sizename)
-                << device(QCborStreamReader::String, size) << CborErrorDataTooLarge;
+                << device(QCborStreamReader::String, size)
+                << CborErrorDataTooLarge << CborErrorDataTooLarge;
     };
     addSize("1GB", quint64(1) << 30);
     addSize("2GB", quint64(1) << 31);

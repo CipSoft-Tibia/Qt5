@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,7 +15,6 @@
 #include "content/browser/renderer_host/render_view_host_impl.h"
 #include "content/browser/renderer_host/render_widget_host_view_mac.h"
 #include "content/browser/renderer_host/webmenurunner_mac.h"
-#include "content/common/buildflags.h"
 #import "ui/base/cocoa/base_view.h"
 
 namespace content {
@@ -36,7 +35,7 @@ PopupMenuHelper::PopupMenuHelper(
       popup_client_(std::move(popup_client)) {
   RenderWidgetHost* widget_host =
       render_frame_host->GetRenderViewHost()->GetWidget();
-  observer_.Add(widget_host);
+  observation_.Observe(widget_host);
 
   popup_client_.set_disconnect_handler(
       base::BindOnce(&PopupMenuHelper::Hide, weak_ptr_factory_.GetWeakPtr()));
@@ -60,13 +59,11 @@ void PopupMenuHelper::ShowPopupMenu(
   if (!g_allow_showing_popup_menus)
     return;
 
-#if BUILDFLAG(USE_EXTERNAL_POPUP_MENU)
   // Retain the Cocoa view for the duration of the pop-up so that it can't be
   // dealloced if my Destroy() method is called while the pop-up's up (which
   // would in turn delete me, causing a crash once the -runMenuInView
   // call returns. That's what was happening in <http://crbug.com/33250>).
-  RenderWidgetHostViewMac* rwhvm =
-      static_cast<RenderWidgetHostViewMac*>(GetRenderWidgetHostView());
+  RenderWidgetHostViewMac* rwhvm = GetRenderWidgetHostView();
   base::scoped_nsobject<RenderWidgetHostViewCocoa> cocoa_view(
       [rwhvm->GetInProcessNSView() retain]);
 
@@ -83,7 +80,7 @@ void PopupMenuHelper::ShowPopupMenu(
 
   {
     // Make sure events can be pumped while the menu is up.
-    base::CurrentThread::ScopedNestableTaskAllower allow;
+    base::CurrentThread::ScopedAllowApplicationTasksInNativeNestedLoop allow;
 
     // One of the events that could be pumped is |window.close()|.
     // User-initiated event-tracking loops protect against this by
@@ -120,7 +117,7 @@ void PopupMenuHelper::ShowPopupMenu(
       popup_client_->DidCancel();
     }
   }
-#endif
+
   delegate_->OnMenuClosed();  // May delete |this|.
 }
 
@@ -146,11 +143,7 @@ void PopupMenuHelper::DontShowPopupMenuForTesting() {
 
 RenderWidgetHostViewMac* PopupMenuHelper::GetRenderWidgetHostView() const {
   return static_cast<RenderWidgetHostViewMac*>(
-      render_frame_host_->frame_tree_node()
-          ->frame_tree()
-          ->root()
-          ->current_frame_host()
-          ->GetView());
+      render_frame_host_->GetOutermostMainFrameOrEmbedder()->GetView());
 }
 
 void PopupMenuHelper::RenderWidgetHostVisibilityChanged(
@@ -161,7 +154,8 @@ void PopupMenuHelper::RenderWidgetHostVisibilityChanged(
 }
 
 void PopupMenuHelper::RenderWidgetHostDestroyed(RenderWidgetHost* widget_host) {
-  observer_.Remove(widget_host);
+  DCHECK(observation_.IsObservingSource(widget_host));
+  observation_.Reset();
 }
 
 }  // namespace content

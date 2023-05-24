@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //
 //  W A R N I N G
@@ -46,7 +20,7 @@
 #include <QtGui/QImage>
 #include <QtGui/QColor>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 class QCustom3DItem;
 class Abstract3DRenderer;
@@ -59,7 +33,7 @@ public:
 
     inline void setTexture(GLuint texture) { m_texture = texture; }
     inline GLuint texture() const { return m_texture; }
-    void setMesh(const QString &meshFile);
+    bool setMesh(const QString &meshFile);
     inline ObjectHelper *mesh() const { return m_object; }
     inline void setScaling(const QVector3D &scaling) { m_scaling = scaling; }
     inline const QVector3D &scaling() const { return m_scaling; }
@@ -99,9 +73,9 @@ public:
     inline void setTextureDepth(int depth) { m_textureDepth = depth; setSliceIndexZ(m_sliceIndexZ); }
     inline int textureDepth() const { return m_textureDepth; }
     inline int textureSize() const { return m_textureWidth * m_textureHeight * m_textureDepth; }
-    inline void setColorTable(const QVector<QVector4D> &colors) { m_colorTable = colors; }
-    void setColorTable(const QVector<QRgb> &colors);
-    inline const QVector<QVector4D> &colorTable() const { return m_colorTable; }
+    inline void setColorTable(const QList<QVector4D> &colors) { m_colorTable = colors; }
+    void setColorTable(const QList<QRgb> &colors);
+    inline const QList<QVector4D> &colorTable() const { return m_colorTable; }
     inline void setVolume(bool volume) { m_isVolume = volume; }
     inline bool isVolume() const { return m_isVolume; }
     inline void setTextureFormat(QImage::Format format) { m_textureFormat = format; }
@@ -175,7 +149,7 @@ private:
     int m_textureWidth;
     int m_textureHeight;
     int m_textureDepth;
-    QVector<QVector4D> m_colorTable;
+    QList<QVector4D> m_colorTable;
     bool m_isVolume;
     QImage::Format m_textureFormat;
     int m_sliceIndexX;
@@ -198,6 +172,6 @@ private:
 };
 typedef QHash<QCustom3DItem *, CustomRenderItem *> CustomRenderItemArray;
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE
 
 #endif

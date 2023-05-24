@@ -14,9 +14,12 @@
 #include <utility>
 
 #include "core/fxcrt/unowned_ptr.h"
-#include "third_party/base/logging.h"
+#include "third_party/base/check.h"
+#include "third_party/base/compiler_specific.h"
 
 namespace pdfium {
+
+constexpr size_t dynamic_extent = static_cast<size_t>(-1);
 
 template <typename T>
 class span;
@@ -149,9 +152,6 @@ using EnableIfConstSpanCompatibleContainer =
 // static extent template parameter. Other differences are documented in
 // subsections below.
 //
-// Differences from [views.constants]:
-// - no dynamic_extent constant
-//
 // Differences in constants and types:
 // - no element_type type alias
 // - no index_type type alias
@@ -160,7 +160,6 @@ using EnableIfConstSpanCompatibleContainer =
 //
 // Differences from [span.cons]:
 // - no constructor from a pointer range
-// - no constructor from std::array
 //
 // Differences from [span.sub]:
 // - no templated first()
@@ -177,7 +176,7 @@ using EnableIfConstSpanCompatibleContainer =
 
 // [span], class template span
 template <typename T>
-class span {
+class TRIVIAL_ABI GSL_POINTER span {
  public:
   using value_type = typename std::remove_cv<T>::type;
   using pointer = T*;
@@ -189,12 +188,17 @@ class span {
 
   // [span.cons], span constructors, copy, assignment, and destructor
   constexpr span() noexcept : data_(nullptr), size_(0) {}
-  constexpr span(T* data, size_t size) noexcept : data_(data), size_(size) {}
+  constexpr span(T* data, size_t size) noexcept : data_(data), size_(size) {
+    DCHECK(data_ || size_ == 0);
+  }
 
   // TODO(dcheng): Implement construction from a |begin| and |end| pointer.
   template <size_t N>
   constexpr span(T (&array)[N]) noexcept : span(array, N) {}
-  // TODO(dcheng): Implement construction from std::array.
+
+  template <size_t N>
+  constexpr span(std::array<T, N>& array) noexcept : span(array.data(), N) {}
+
   // Conversion from a container that provides |T* data()| and |integral_type
   // size()|.
   template <typename Container,
@@ -210,31 +214,32 @@ class span {
   // seamlessly used as a span<const T>, but not the other way around.
   template <typename U, typename = internal::EnableIfLegalSpanConversion<U, T>>
   constexpr span(const span<U>& other) : span(other.data(), other.size()) {}
-  span& operator=(const span& other) noexcept = default;
-  ~span() noexcept {
-    if (!size_) {
-      // Empty spans might point to byte N+1 of a N-byte object, legal for
-      // C pointers but not UnownedPtrs.
-      data_.ReleaseBadPointer();
+  span& operator=(const span& other) noexcept {
+    if (this != &other) {
+      ReleaseEmptySpan();
+      data_ = other.data_;
+      size_ = other.size_;
     }
+    return *this;
   }
+  ~span() noexcept { ReleaseEmptySpan(); }
 
   // [span.sub], span subviews
   const span first(size_t count) const {
     CHECK(count <= size_);
-    return span(data_.Get(), count);
+    return span(static_cast<T*>(data_), count);
   }
 
   const span last(size_t count) const {
     CHECK(count <= size_);
-    return span(data_.Get() + (size_ - count), count);
+    return span(static_cast<T*>(data_) + (size_ - count), count);
   }
 
-  const span subspan(size_t pos, size_t count = -1) const {
-    const auto npos = static_cast<size_t>(-1);
+  const span subspan(size_t pos, size_t count = dynamic_extent) const {
     CHECK(pos <= size_);
-    CHECK(count == npos || count <= size_ - pos);
-    return span(data_.Get() + pos, count == npos ? size_ - pos : count);
+    CHECK(count == dynamic_extent || count <= size_ - pos);
+    return span(static_cast<T*>(data_) + pos,
+                count == dynamic_extent ? size_ - pos : count);
   }
 
   // [span.obs], span observers
@@ -245,13 +250,24 @@ class span {
   // [span.elem], span element access
   T& operator[](size_t index) const noexcept {
     CHECK(index < size_);
-    return data_.Get()[index];
+    return static_cast<T*>(data_)[index];
   }
-  constexpr T* data() const noexcept { return data_.Get(); }
+
+  constexpr T& front() const noexcept {
+    CHECK(!empty());
+    return *data();
+  }
+
+  constexpr T& back() const noexcept {
+    CHECK(!empty());
+    return *(data() + size() - 1);
+  }
+
+  constexpr T* data() const noexcept { return static_cast<T*>(data_); }
 
   // [span.iter], span iterator support
-  constexpr iterator begin() const noexcept { return data_.Get(); }
-  constexpr iterator end() const noexcept { return data_.Get() + size_; }
+  constexpr iterator begin() const noexcept { return static_cast<T*>(data_); }
+  constexpr iterator end() const noexcept { return begin() + size_; }
 
   constexpr const_iterator cbegin() const noexcept { return begin(); }
   constexpr const_iterator cend() const noexcept { return end(); }
@@ -271,6 +287,13 @@ class span {
   }
 
  private:
+  void ReleaseEmptySpan() noexcept {
+    // Empty spans might point to byte N+1 of a N-byte object, legal for
+    // C pointers but not UnownedPtrs.
+    if (!size_)
+      data_.ReleaseBadPointer();
+  }
+
   UnownedPtr<T> data_;
   size_t size_;
 };
@@ -329,6 +352,11 @@ constexpr span<T> make_span(T* data, size_t size) noexcept {
 
 template <typename T, size_t N>
 constexpr span<T> make_span(T (&array)[N]) noexcept {
+  return span<T>(array);
+}
+
+template <typename T, size_t N>
+constexpr span<T> make_span(std::array<T, N>& array) noexcept {
   return span<T>(array);
 }
 

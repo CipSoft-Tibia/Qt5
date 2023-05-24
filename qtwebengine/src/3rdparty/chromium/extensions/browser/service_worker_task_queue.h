@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,20 +10,24 @@
 #include <unordered_map>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_util.h"
 #include "base/version.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "content/public/browser/service_worker_context.h"
+#include "content/public/browser/service_worker_context_observer.h"
 #include "extensions/browser/lazy_context_id.h"
 #include "extensions/browser/lazy_context_task_queue.h"
 #include "extensions/browser/service_worker/worker_id.h"
 #include "extensions/common/activation_sequence.h"
 #include "extensions/common/extension_id.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/public/common/service_worker/service_worker_status_code.h"
 #include "url/gurl.h"
 
 namespace content {
 class BrowserContext;
-class ServiceWorkerContext;
 }
 
 namespace extensions {
@@ -72,9 +76,14 @@ class Extension;
 //
 // TODO(lazyboy): Clean up queue when extension is unloaded/uninstalled.
 class ServiceWorkerTaskQueue : public KeyedService,
-                               public LazyContextTaskQueue {
+                               public LazyContextTaskQueue,
+                               public content::ServiceWorkerContextObserver {
  public:
   explicit ServiceWorkerTaskQueue(content::BrowserContext* browser_context);
+
+  ServiceWorkerTaskQueue(const ServiceWorkerTaskQueue&) = delete;
+  ServiceWorkerTaskQueue& operator=(const ServiceWorkerTaskQueue&) = delete;
+
   ~ServiceWorkerTaskQueue() override;
 
   // Convenience method to return the ServiceWorkerTaskQueue for a given
@@ -117,14 +126,28 @@ class ServiceWorkerTaskQueue : public KeyedService,
                                    int thread_id);
 
   // Returns the current ActivationSequence for an extension, if the extension
-  // is currently activated. Returns base::nullopt if the extension isn't
+  // is currently activated. Returns absl::nullopt if the extension isn't
   // activated.
-  base::Optional<ActivationSequence> GetCurrentSequence(
+  absl::optional<ActivationSequence> GetCurrentSequence(
       const ExtensionId& extension_id) const;
+
+  // Activates incognito split mode extensions that are activated in |other|
+  // task queue.
+  void ActivateIncognitoSplitModeExtensions(ServiceWorkerTaskQueue* other);
+
+  // content::ServiceWorkerContextObserver:
+  void OnReportConsoleMessage(int64_t version_id,
+                              const GURL& scope,
+                              const content::ConsoleMessage& message) override;
+  void OnDestruct(content::ServiceWorkerContext* context) override;
 
   class TestObserver {
    public:
     TestObserver();
+
+    TestObserver(const TestObserver&) = delete;
+    TestObserver& operator=(const TestObserver&) = delete;
+
     virtual ~TestObserver();
 
     // Called when an extension with id |extension_id| is going to be activated.
@@ -132,11 +155,14 @@ class ServiceWorkerTaskQueue : public KeyedService,
     // registered.
     virtual void OnActivateExtension(const ExtensionId& extension_id,
                                      bool will_register_service_worker) {}
-    virtual void DidStartWorkerFail(const ExtensionId& extension_id,
-                                    size_t num_pending_tasks) {}
+    virtual void DidStartWorkerFail(
+        const ExtensionId& extension_id,
+        size_t num_pending_tasks,
+        blink::ServiceWorkerStatusCode status_code) {}
 
-   private:
-    DISALLOW_COPY_AND_ASSIGN(TestObserver);
+    // Called when SW was re-registered to fix missing registration, and that
+    // step finished to mitigate the problem.
+    virtual void RegistrationMismatchMitigated(bool mitigation_succeeded) {}
   };
 
   static void SetObserverForTest(TestObserver* observer);
@@ -148,26 +174,21 @@ class ServiceWorkerTaskQueue : public KeyedService,
 
   class WorkerState;
 
-  static void DidStartWorkerForScopeOnCoreThread(
-      const SequencedContextId& context_id,
-      base::Time start_time,
-      base::WeakPtr<ServiceWorkerTaskQueue> task_queue,
-      int64_t version_id,
-      int process_id,
-      int thread_id);
-  static void DidStartWorkerFailOnCoreThread(
-      const SequencedContextId& context_id,
-      base::WeakPtr<ServiceWorkerTaskQueue> task_queue);
-  static void StartServiceWorkerOnCoreThreadToRunTasks(
-      base::WeakPtr<ServiceWorkerTaskQueue> task_queue_weak,
-      const SequencedContextId& context_id,
-      content::ServiceWorkerContext* service_worker_context);
+  enum class RegistrationReason {
+    REGISTER_ON_EXTENSION_LOAD,
+    RE_REGISTER_ON_STATE_MISMATCH,
+  };
+
+  void RegisterServiceWorker(RegistrationReason reason,
+                             const SequencedContextId& context_id,
+                             const Extension& extension);
 
   void RunTasksAfterStartWorker(const SequencedContextId& context_id);
 
   void DidRegisterServiceWorker(const SequencedContextId& context_id,
+                                RegistrationReason reason,
                                 base::Time start_time,
-                                bool success);
+                                blink::ServiceWorkerStatusCode status);
   void DidUnregisterServiceWorker(const ExtensionId& extension_id,
                                   ActivationSequence sequence,
                                   bool success);
@@ -177,7 +198,8 @@ class ServiceWorkerTaskQueue : public KeyedService,
                               int64_t version_id,
                               int process_id,
                               int thread_id);
-  void DidStartWorkerFail(const SequencedContextId& context_id);
+  void DidStartWorkerFail(const SequencedContextId& context_id,
+                          blink::ServiceWorkerStatusCode status_code);
 
   // The following three methods retrieve, store, and remove information
   // about Service Worker registration of SW based background pages:
@@ -206,12 +228,32 @@ class ServiceWorkerTaskQueue : public KeyedService,
 
   WorkerState* GetWorkerState(const SequencedContextId& context_id);
 
+  content::ServiceWorkerContext* GetServiceWorkerContext(
+      const ExtensionId& extension_id);
+
+  // Starts and stops observing |service_worker_context|.
+  //
+  // The methods ensure that many:1 relationship of SWContext:SWContextObserver
+  // is preserved correctly.
+  void StartObserving(content::ServiceWorkerContext* service_worker_context);
+  void StopObserving(content::ServiceWorkerContext* service_worker_context);
+
+  // Asynchronously verifies whether an expected SW registration (denoted by
+  // |scope|) is there.
+  void VerifyRegistration(content::ServiceWorkerContext* service_worker_context,
+                          const SequencedContextId& context_id,
+                          const GURL& scope);
+  void DidVerifyRegistration(const SequencedContextId& context_id,
+                             content::ServiceWorkerCapability capability);
+
   int next_activation_sequence_ = 0;
+
+  std::multiset<content::ServiceWorkerContext*> observing_worker_contexts_;
 
   // The state of worker of each activated extension.
   std::map<SequencedContextId, WorkerState> worker_state_map_;
 
-  content::BrowserContext* const browser_context_ = nullptr;
+  const raw_ptr<content::BrowserContext> browser_context_ = nullptr;
 
   // A map of Service Worker registrations if this instance is for an
   // off-the-record BrowserContext. These are stored in the ExtensionPrefs
@@ -224,8 +266,6 @@ class ServiceWorkerTaskQueue : public KeyedService,
   std::map<ExtensionId, ActivationSequence> activation_sequences_;
 
   base::WeakPtrFactory<ServiceWorkerTaskQueue> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(ServiceWorkerTaskQueue);
 };
 
 }  // namespace extensions

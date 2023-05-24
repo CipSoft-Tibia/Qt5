@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLGUARD_P_H
 #define QQMLGUARD_P_H
@@ -51,87 +15,106 @@
 // We mean it.
 //
 
-#include <QtCore/qglobal.h>
-#include <QtCore/qvariant.h>
 #include <private/qqmldata_p.h>
+#include <private/qqmlglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
 class QQmlGuardImpl
 {
 public:
+    using ObjectDestroyedFn = void(*)(QQmlGuardImpl *);
+
     inline QQmlGuardImpl();
     inline QQmlGuardImpl(QObject *);
     inline QQmlGuardImpl(const QQmlGuardImpl &);
+protected:
     inline ~QQmlGuardImpl();
 
+public: // ### make so it can be private
     QObject *o = nullptr;
     QQmlGuardImpl  *next = nullptr;
     QQmlGuardImpl **prev = nullptr;
+    ObjectDestroyedFn objectDestroyed = nullptr;
 
     inline void addGuard();
     inline void remGuard();
+
+    inline void setObject(QObject *g);
+    bool isNull() const noexcept { return !o; }
 };
 
 class QObject;
 template<class T>
-class QQmlGuard : private QQmlGuardImpl
+class QQmlGuard : protected QQmlGuardImpl
 {
     friend class QQmlData;
 public:
-    inline QQmlGuard();
-    inline QQmlGuard(T *);
-    inline QQmlGuard(const QQmlGuard<T> &);
-    inline virtual ~QQmlGuard();
+    Q_NODISCARD_CTOR inline QQmlGuard();
+    Q_NODISCARD_CTOR inline QQmlGuard(ObjectDestroyedFn objectDestroyed, T *);
+    Q_NODISCARD_CTOR inline QQmlGuard(T *);
+    Q_NODISCARD_CTOR inline QQmlGuard(const QQmlGuard<T> &);
 
     inline QQmlGuard<T> &operator=(const QQmlGuard<T> &o);
     inline QQmlGuard<T> &operator=(T *);
 
-    inline T *object() const;
-    inline void setObject(T *g);
+    T *object() const noexcept { return static_cast<T *>(o); }
+    void setObject(T *g) { QQmlGuardImpl::setObject(g); }
 
-    inline bool isNull() const
-        { return !o; }
+    using QQmlGuardImpl::isNull;
 
-    inline T* operator->() const
-        { return static_cast<T*>(const_cast<QObject*>(o)); }
-    inline T& operator*() const
-        { return *static_cast<T*>(const_cast<QObject*>(o)); }
-    inline operator T*() const
-        { return static_cast<T*>(const_cast<QObject*>(o)); }
-    inline T* data() const
-        { return static_cast<T*>(const_cast<QObject*>(o)); }
-
-protected:
-    virtual void objectDestroyed(T *) {}
+    T *operator->() const noexcept { return object(); }
+    T &operator*() const { return *object(); }
+    operator T *() const noexcept { return object(); }
+    T *data() const noexcept { return object(); }
 };
 
+/* used in QQmlStrongJSQObjectReference to indicate that the
+ * object has JS ownership
+ * We save it in objectDestroyFn to save space
+ * (implemented in qqmlengine.cpp)
+ */
+void Q_QML_PRIVATE_EXPORT hasJsOwnershipIndicator(QQmlGuardImpl *);
+
 template <typename T>
-class QQmlStrongJSQObjectReference : public QQmlGuard<T>
+class QQmlStrongJSQObjectReference final : protected QQmlGuardImpl
 {
 public:
-    void setObject(T *o, QObject *parent) {
-        T *old = this->object();
-        if (o == old)
+    T *object() const noexcept { return static_cast<T *>(o); }
+
+    using QQmlGuardImpl::isNull;
+
+    T *operator->() const noexcept { return object(); }
+    T &operator*() const { return *object(); }
+    operator T *() const noexcept { return object(); }
+    T *data() const noexcept { return object(); }
+
+    void setObject(T *obj, QObject *parent) {
+        T *old = object();
+        if (obj == old)
             return;
 
-        if (m_jsOwnership && old && old->parent() == parent)
+        if (hasJsOwnership() && old && old->parent() == parent)
             QQml_setParent_noEvent(old, nullptr);
 
-        this->QQmlGuard<T>::operator=(o);
+        QQmlGuardImpl::setObject(obj);
 
-        if (o && !o->parent() && !QQmlData::keepAliveDuringGarbageCollection(o)) {
-            m_jsOwnership = true;
-            QQml_setParent_noEvent(o, parent);
+        if (obj && !obj->parent() && !QQmlData::keepAliveDuringGarbageCollection(obj)) {
+            setJsOwnership(true);
+            QQml_setParent_noEvent(obj, parent);
         } else {
-            m_jsOwnership = false;
+            setJsOwnership(false);
         }
     }
 
 private:
-    using QQmlGuard<T>::setObject;
-    using QQmlGuard<T>::operator=;
-    bool m_jsOwnership = false;
+    bool hasJsOwnership() {
+        return objectDestroyed == hasJsOwnershipIndicator;
+    }
+
+    void setJsOwnership(bool itHasOwnership) {
+        objectDestroyed = itHasOwnership ? hasJsOwnershipIndicator : nullptr;
+    }
 };
 
 QT_END_NAMESPACE
@@ -150,8 +133,15 @@ QQmlGuardImpl::QQmlGuardImpl(QObject *g)
     if (o) addGuard();
 }
 
+/*
+    \internal
+    Copying a QQmlGuardImpl leaves the old one in the intrinsic linked list of guards.
+    The fresh copy does not contain the list pointer of the existing guard; instead
+    only the object and objectDestroyed pointers are copied, and if there is an object
+    we add the new guard to the object's list of guards.
+ */
 QQmlGuardImpl::QQmlGuardImpl(const QQmlGuardImpl &g)
-: o(g.o)
+: o(g.o), objectDestroyed(g.objectDestroyed)
 {
     if (o) addGuard();
 }
@@ -192,6 +182,13 @@ QQmlGuard<T>::QQmlGuard()
 }
 
 template<class T>
+QQmlGuard<T>::QQmlGuard(ObjectDestroyedFn objDestroyed, T *obj)
+    : QQmlGuardImpl(obj)
+{
+    objectDestroyed = objDestroyed;
+}
+
+template<class T>
 QQmlGuard<T>::QQmlGuard(T *g)
 : QQmlGuardImpl(g)
 {
@@ -204,13 +201,9 @@ QQmlGuard<T>::QQmlGuard(const QQmlGuard<T> &g)
 }
 
 template<class T>
-QQmlGuard<T>::~QQmlGuard()
-{
-}
-
-template<class T>
 QQmlGuard<T> &QQmlGuard<T>::operator=(const QQmlGuard<T> &g)
 {
+    objectDestroyed = g.objectDestroyed;
     setObject(g.object());
     return *this;
 }
@@ -218,18 +211,15 @@ QQmlGuard<T> &QQmlGuard<T>::operator=(const QQmlGuard<T> &g)
 template<class T>
 QQmlGuard<T> &QQmlGuard<T>::operator=(T *g)
 {
+    /* this does not touch objectDestroyed, as operator= is only a convenience
+     * for setObject. All logic involving objectDestroyed is (sub-)class specific
+     * and remains unaffected.
+     */
     setObject(g);
     return *this;
 }
 
-template<class T>
-T *QQmlGuard<T>::object() const
-{
-    return static_cast<T *>(o);
-}
-
-template<class T>
-void QQmlGuard<T>::setObject(T *g)
+void QQmlGuardImpl::setObject(QObject *g)
 {
     if (g != o) {
         if (prev) remGuard();

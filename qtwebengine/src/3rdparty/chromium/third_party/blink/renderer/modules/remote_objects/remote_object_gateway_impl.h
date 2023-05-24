@@ -1,17 +1,17 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_REMOTE_OBJECTS_REMOTE_OBJECT_GATEWAY_IMPL_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_REMOTE_OBJECTS_REMOTE_OBJECT_GATEWAY_IMPL_H_
 
-#include "base/util/type_safety/pass_key.h"
+#include "base/types/pass_key.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "third_party/blink/public/mojom/remote_objects/remote_objects.mojom-blink.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_receiver.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_remote.h"
@@ -21,6 +21,7 @@
 namespace blink {
 
 class LocalFrame;
+class RemoteObject;
 
 class MODULES_EXPORT RemoteObjectGatewayImpl
     : public GarbageCollected<RemoteObjectGatewayImpl>,
@@ -30,7 +31,7 @@ class MODULES_EXPORT RemoteObjectGatewayImpl
   static const char kSupplementName[];
 
   RemoteObjectGatewayImpl(
-      util::PassKey<RemoteObjectGatewayImpl>,
+      base::PassKey<RemoteObjectGatewayImpl>,
       LocalFrame&,
       mojo::PendingReceiver<mojom::blink::RemoteObjectGateway>,
       mojo::PendingRemote<mojom::blink::RemoteObjectHost>);
@@ -56,7 +57,8 @@ class MODULES_EXPORT RemoteObjectGatewayImpl
   void BindRemoteObjectReceiver(
       int32_t object_id,
       mojo::PendingReceiver<mojom::blink::RemoteObject>);
-  void ReleaseObject(int32_t object_id);
+  void ReleaseObject(int32_t object_id, RemoteObject* remote_object);
+  RemoteObject* GetRemoteObject(v8::Isolate* isolate, int32_t object_id);
 
  private:
   // mojom::blink::RemoteObjectGateway
@@ -66,6 +68,8 @@ class MODULES_EXPORT RemoteObjectGatewayImpl
   void InjectNamed(const WTF::String& object_name, int32_t object_id);
 
   HashMap<String, int32_t> named_objects_;
+  HashMap<int32_t, RemoteObject*, IntWithZeroKeyHashTraits<int32_t>>
+      remote_objects_;
 
   HeapMojoReceiver<mojom::blink::RemoteObjectGateway,
                    RemoteObjectGatewayImpl,
@@ -77,14 +81,28 @@ class MODULES_EXPORT RemoteObjectGatewayImpl
 };
 
 class RemoteObjectGatewayFactoryImpl
-    : public mojom::blink::RemoteObjectGatewayFactory {
+    : public GarbageCollected<RemoteObjectGatewayFactoryImpl>,
+      public mojom::blink::RemoteObjectGatewayFactory,
+      public Supplement<LocalFrame> {
  public:
-  static void Create(
+  static const char kSupplementName[];
+
+  explicit RemoteObjectGatewayFactoryImpl(
+      base::PassKey<RemoteObjectGatewayFactoryImpl>,
+      LocalFrame& frame,
+      mojo::PendingReceiver<mojom::blink::RemoteObjectGatewayFactory> receiver);
+
+  // This supplement is only installed if the RemoteObjectGatewayFactory mojom
+  // interface is requested to be bound (currently only for Android WebView).
+  static RemoteObjectGatewayFactoryImpl* From(LocalFrame&);
+
+  static void Bind(
       LocalFrame* frame,
       mojo::PendingReceiver<mojom::blink::RemoteObjectGatewayFactory> receiver);
 
+  void Trace(Visitor* visitor) const override;
+
  private:
-  explicit RemoteObjectGatewayFactoryImpl(LocalFrame& frame);
   // Not copyable or movable
   RemoteObjectGatewayFactoryImpl(const RemoteObjectGatewayFactoryImpl&) =
       delete;
@@ -97,7 +115,10 @@ class RemoteObjectGatewayFactoryImpl
       mojo::PendingReceiver<mojom::blink::RemoteObjectGateway> receiver)
       override;
 
-  WeakPersistent<LocalFrame> frame_;
+  HeapMojoReceiver<mojom::blink::RemoteObjectGatewayFactory,
+                   RemoteObjectGatewayFactoryImpl,
+                   HeapMojoWrapperMode::kForceWithoutContextObserver>
+      receiver_;
 };
 
 }  // namespace blink

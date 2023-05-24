@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,6 +16,11 @@ base::RepeatingClosure& GetShowEmojiKeyboardCallback() {
   return *callback;
 }
 
+base::RepeatingClosure& GetTabletModeShowEmojiKeyboardCallback() {
+  static base::NoDestructor<base::RepeatingClosure> callback;
+  return *callback;
+}
+
 }  // namespace
 
 bool IsEmojiPanelSupported() {
@@ -29,8 +34,17 @@ void ShowEmojiPanel() {
   GetShowEmojiKeyboardCallback().Run();
 }
 
+void ShowTabletModeEmojiPanel() {
+  DCHECK(GetTabletModeShowEmojiKeyboardCallback());
+  GetTabletModeShowEmojiKeyboardCallback().Run();
+}
+
 void SetShowEmojiKeyboardCallback(base::RepeatingClosure callback) {
   GetShowEmojiKeyboardCallback() = callback;
+}
+
+void SetTabletModeShowEmojiKeyboardCallback(base::RepeatingClosure callback) {
+  GetTabletModeShowEmojiKeyboardCallback() = callback;
 }
 
 }  // namespace ui

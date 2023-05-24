@@ -1,9 +1,6 @@
 # Primary
-dmurph@chromium.org
-mek@chromium.org
+asully@chromium.org
 
 # Secondary
-pwnall@chromium.org
-
-# TEAM: storage-dev@chromium.org
-# COMPONENT: Blink>Storage>FileAPI
+ayui@chromium.org
+dmurph@chromium.org

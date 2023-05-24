@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2008-2012 NVIDIA Corporation.
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2008-2012 NVIDIA Corporation.
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSG_RENDER_SHADER_KEY_H
 #define QSSG_RENDER_SHADER_KEY_H
@@ -43,11 +17,9 @@
 //
 
 #include <QtQuick3DUtils/private/qssgdataref_p.h>
-
-#include <QtQuick3DRender/private/qssgrenderbasetypes_p.h>
-
+#include <QtQuick3DUtils/private/qssgrenderbasetypes_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrenderdefaultmaterial_p.h>
-#include <QtQuick3DRuntimeRender/private/qssgrendertessmodevalues_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrhicontext_p.h>
 
 QT_BEGIN_NAMESPACE
 // We have an ever expanding set of properties we like to hash into one or more 32 bit
@@ -56,13 +28,13 @@ QT_BEGIN_NAMESPACE
 // So the shader cache file itself is somewhat human readable/diagnosable.
 // To do this we create a set of objects that act as properties to the master shader key.
 // These objects are tallied in order to figure out their actual offset into the shader key's
-// data store.  They are also run through in order to create the string shader cache key.
+// data store. They are also run through in order to create the string shader cache key.
 
 struct QSSGShaderKeyPropertyBase
 {
-    const char *name;
+    QByteArrayView name;
     quint32 offset;
-    QSSGShaderKeyPropertyBase(const char *inName = "") : name(inName), offset(0) {}
+    explicit constexpr QSSGShaderKeyPropertyBase(const char *inName = "") : name(inName), offset(0) {}
     quint32 getOffset() const { return offset; }
     void setOffset(quint32 of) { offset = of; }
 
@@ -78,20 +50,32 @@ struct QSSGShaderKeyPropertyBase
     quint32 getIdx() const { return offset / 32; }
 
 protected:
-    void internalToString(QString &ioStr, const char *inBuffer) const
+    void internalToString(QByteArray &ioStr, const QByteArrayView &inBuffer) const
     {
-        ioStr.append(QString::fromLocal8Bit(name));
-        ioStr.append(QStringLiteral("="));
-        ioStr.append(QString::fromLocal8Bit(inBuffer));
+        ioStr.append(name);
+        ioStr.append('=');
+        ioStr.append(inBuffer);
     }
 
-    static void internalToString(QString &ioStr, const char *name, bool inValue)
+    static void internalToString(QByteArray &ioStr, const QByteArrayView &name, bool inValue)
     {
         if (inValue) {
-            ioStr.append(QString::fromLocal8Bit(name));
-            ioStr.append(QStringLiteral("="));
-            ioStr.append(inValue ? QStringLiteral("true") : QStringLiteral("false"));
+            ioStr.append(name);
+            ioStr.append('=');
+            ioStr.append(inValue ? QByteArrayView("true") : QByteArrayView("false"));
         }
+    }
+    static bool getBoolValue(const QByteArray& str, const QByteArrayView &name)
+    {
+        const int index = str.indexOf(name);
+        if (index < 0)
+            return false;
+        const qsizetype nameLen = name.size();
+        if (str[index + nameLen] != '=')
+            return false;
+        if (str.mid(index + nameLen + 1, 4) == QByteArrayView("true"))
+            return true;
+        return false;
     }
 };
 
@@ -101,7 +85,7 @@ struct QSSGShaderKeyBoolean : public QSSGShaderKeyPropertyBase
         BitWidth = 1,
     };
 
-    QSSGShaderKeyBoolean(const char *inName = "") : QSSGShaderKeyPropertyBase(inName) {}
+    explicit constexpr QSSGShaderKeyBoolean(const char *inName = "") : QSSGShaderKeyPropertyBase(inName) {}
 
     quint32 getMask() const { return getMaskTemplate<BitWidth>(); }
     void setValue(QSSGDataRef<quint32> inDataStore, bool inValue) const
@@ -127,10 +111,14 @@ struct QSSGShaderKeyBoolean : public QSSGShaderKeyPropertyBase
         return (target & mask) ? true : false;
     }
 
-    void toString(QString &ioStr, QSSGDataView<quint32> inKeySet) const
+    void toString(QByteArray &ioStr, QSSGDataView<quint32> inKeySet) const
     {
         bool isHigh = getValue(inKeySet);
         internalToString(ioStr, name, isHigh);
+    }
+    void fromString(const QByteArray &ioStr, QSSGDataRef<quint32> inKeySet)
+    {
+        setValue(inKeySet, getBoolValue(ioStr, name));
     }
 };
 
@@ -140,7 +128,7 @@ struct QSSGShaderKeyUnsigned : public QSSGShaderKeyPropertyBase
     enum {
         BitWidth = TBitWidth,
     };
-    QSSGShaderKeyUnsigned(const char *inName = "") : QSSGShaderKeyPropertyBase(inName) {}
+    explicit constexpr QSSGShaderKeyUnsigned(const char *inName = "") : QSSGShaderKeyPropertyBase(inName) {}
     quint32 getMask() const { return getMaskTemplate<BitWidth>(); }
     void setValue(QSSGDataRef<quint32> inDataStore, quint32 inValue) const
     {
@@ -170,12 +158,30 @@ struct QSSGShaderKeyUnsigned : public QSSGShaderKeyPropertyBase
         return retval;
     }
 
-    void toString(QString &ioStr, QSSGDataView<quint32> inKeySet) const
+    void toString(QByteArray &ioStr, QSSGDataView<quint32> inKeySet) const
     {
         quint32 value = getValue(inKeySet);
         char buf[64];
+        memset(buf, 0, sizeof (buf));
         toStr(value, toDataRef(buf, 64));
         internalToString(ioStr, buf);
+    }
+
+    void fromString(const QByteArray &ioStr, QSSGDataRef<quint32> inKeySet)
+    {
+        const qsizetype nameLen = name.size();
+        const qsizetype strOffset = ioStr.indexOf(name);
+        if (strOffset >= 0) {
+            /* The key is stored as name=val */
+            if (ioStr[strOffset + nameLen] != '=')
+                return;
+            const QByteArray s = ioStr.right(ioStr.size() - strOffset - nameLen - 1);
+            int i = 0;
+            while (QChar(QLatin1Char(s[i])).isDigit())
+                i++;
+            const quint32 value = s.left(i).toInt();
+            setValue(inKeySet, value);
+        }
     }
 
 private:
@@ -183,98 +189,6 @@ private:
     {
         // hope the buffer is big enough...
         return static_cast<quint32>(::snprintf(buffer.begin(), buffer.size(), "%u", item));
-    }
-};
-
-struct QSSGShaderKeyTessellation : public QSSGShaderKeyUnsigned<4>
-{
-    enum TessellationBits {
-        noTessellation = 1 << 0,
-        linearTessellation = 1 << 1,
-        phongTessellation = 1 << 2,
-        npatchTessellation = 1 << 3
-    };
-
-    QSSGShaderKeyTessellation(const char *inName = "") : QSSGShaderKeyUnsigned<4>(inName) {}
-
-    bool getBitValue(TessellationBits swizzleBit, QSSGDataView<quint32> inKeySet) const
-    {
-        return (getValue(inKeySet) & swizzleBit) ? true : false;
-    }
-
-    void setBitValue(TessellationBits swizzleBit, bool inValue, QSSGDataRef<quint32> inKeySet)
-    {
-        quint32 theValue = getValue(inKeySet);
-        quint32 mask = swizzleBit;
-        if (inValue) {
-            theValue = theValue | mask;
-        } else {
-            mask = ~mask;
-            theValue = theValue & mask;
-        }
-        setValue(inKeySet, theValue);
-    }
-
-    void setTessellationMode(QSSGDataRef<quint32> inKeySet, TessellationModeValues tessellationMode, bool val)
-    {
-        switch (tessellationMode) {
-        case TessellationModeValues::NoTessellation:
-            setBitValue(noTessellation, val, inKeySet);
-            break;
-        case TessellationModeValues::Linear:
-            setBitValue(linearTessellation, val, inKeySet);
-            break;
-        case TessellationModeValues::NPatch:
-            setBitValue(npatchTessellation, val, inKeySet);
-            break;
-        case TessellationModeValues::Phong:
-            setBitValue(phongTessellation, val, inKeySet);
-            break;
-        }
-    }
-
-    bool isNoTessellation(QSSGDataView<quint32> inKeySet) const { return getBitValue(noTessellation, inKeySet); }
-    void setNoTessellation(QSSGDataRef<quint32> inKeySet, bool val) { setBitValue(noTessellation, val, inKeySet); }
-
-    bool isLinearTessellation(QSSGDataView<quint32> inKeySet) const
-    {
-        return getBitValue(linearTessellation, inKeySet);
-    }
-    void setLinearTessellation(QSSGDataRef<quint32> inKeySet, bool val)
-    {
-        setBitValue(linearTessellation, val, inKeySet);
-    }
-
-    bool isNPatchTessellation(QSSGDataView<quint32> inKeySet) const
-    {
-        return getBitValue(npatchTessellation, inKeySet);
-    }
-    void setNPatchTessellation(QSSGDataRef<quint32> inKeySet, bool val)
-    {
-        setBitValue(npatchTessellation, val, inKeySet);
-    }
-
-    bool isPhongTessellation(QSSGDataView<quint32> inKeySet) const
-    {
-        return getBitValue(phongTessellation, inKeySet);
-    }
-    void setPhongTessellation(QSSGDataRef<quint32> inKeySet, bool val)
-    {
-        setBitValue(phongTessellation, val, inKeySet);
-    }
-
-    void toString(QString &ioStr, QSSGDataView<quint32> inKeySet) const
-    {
-        ioStr.append(QString::fromLocal8Bit(name));
-        ioStr.append(QStringLiteral("={"));
-        internalToString(ioStr, "noTessellation", isNoTessellation(inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "linearTessellation", isLinearTessellation(inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "npatchTessellation", isNPatchTessellation(inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "phongTessellation", isPhongTessellation(inKeySet));
-        ioStr.append(QStringLiteral("}"));
     }
 };
 
@@ -286,7 +200,7 @@ struct QSSGShaderKeyTextureChannel : public QSSGShaderKeyUnsigned<2>
         B = 2,
         A = 3,
     };
-    QSSGShaderKeyTextureChannel(const char *inName = "") : QSSGShaderKeyUnsigned<2>(inName) {}
+    explicit QSSGShaderKeyTextureChannel(const char *inName = "") : QSSGShaderKeyUnsigned<2>(inName) {}
 
     TexturChannelBits getTextureChannel(QSSGDataView<quint32> inKeySet) const
     {
@@ -297,115 +211,50 @@ struct QSSGShaderKeyTextureChannel : public QSSGShaderKeyUnsigned<2>
     {
         setValue(inKeySet, quint32(channel));
     }
-    const QString enumToStr[4] = {
-        QStringLiteral("R"),
-        QStringLiteral("G"),
-        QStringLiteral("B"),
-        QStringLiteral("A"),
+    static constexpr char textureChannelToChar[4] = {
+        'R',
+        'G',
+        'B',
+        'A'
     };
-    void toString(QString &ioStr, QSSGDataView<quint32> inKeySet) const
+    void toString(QByteArray &ioStr, QSSGDataView<quint32> inKeySet) const
     {
-        ioStr.append(QString::fromLocal8Bit(name));
-        ioStr.append(QStringLiteral("="));
-        ioStr.append(enumToStr[getTextureChannel(inKeySet)]);
+        ioStr.append(name);
+        ioStr.append('=');
+        ioStr.append(textureChannelToChar[getTextureChannel(inKeySet)]);
+    }
+    void fromString(const QByteArray &ioStr, QSSGDataRef<quint32> inKeySet)
+    {
+        const qsizetype nameLen = name.size();
+        const qsizetype strOffset = ioStr.indexOf(name);
+        if (strOffset >= 0) {
+            /* The key is stored as name=ch */
+            if (ioStr[strOffset + nameLen] != '=')
+                return;
+            const char ch = ioStr[strOffset + nameLen + 1];
+            if (ch == 'R')
+                setValue(inKeySet, TexturChannelBits::R);
+            else if (ch == 'G')
+                setValue(inKeySet, TexturChannelBits::G);
+            else if (ch == 'B')
+                setValue(inKeySet, TexturChannelBits::B);
+            else if (ch == 'A')
+                setValue(inKeySet, TexturChannelBits::A);
+        }
     }
 };
 
-struct QSSGShaderKeyTextureSwizzle : public QSSGShaderKeyUnsigned<5>
-{
-    enum TextureSwizzleBits {
-        noSwizzle = 1 << 0,
-        L8toR8 = 1 << 1,
-        A8toR8 = 1 << 2,
-        L8A8toRG8 = 1 << 3,
-        L16toR16 = 1 << 4
-    };
-
-    QSSGShaderKeyTextureSwizzle(const char *inName = "") : QSSGShaderKeyUnsigned<5>(inName) {}
-
-    bool getBitValue(TextureSwizzleBits swizzleBit, QSSGDataView<quint32> inKeySet) const
-    {
-        return (getValue(inKeySet) & swizzleBit) ? true : false;
-    }
-
-    void setBitValue(TextureSwizzleBits swizzleBit, bool inValue, QSSGDataRef<quint32> inKeySet)
-    {
-        quint32 theValue = getValue(inKeySet);
-        quint32 mask = swizzleBit;
-        if (inValue) {
-            theValue = theValue | mask;
-        } else {
-            mask = ~mask;
-            theValue = theValue & mask;
-        }
-        setValue(inKeySet, theValue);
-    }
-
-    void setSwizzleMode(QSSGDataRef<quint32> inKeySet, QSSGRenderTextureSwizzleMode swizzleMode, bool val)
-    {
-        switch (swizzleMode) {
-        case QSSGRenderTextureSwizzleMode::NoSwizzle:
-            setBitValue(noSwizzle, val, inKeySet);
-            break;
-        case QSSGRenderTextureSwizzleMode::L8toR8:
-            setBitValue(L8toR8, val, inKeySet);
-            break;
-        case QSSGRenderTextureSwizzleMode::A8toR8:
-            setBitValue(A8toR8, val, inKeySet);
-            break;
-        case QSSGRenderTextureSwizzleMode::L8A8toRG8:
-            setBitValue(L8A8toRG8, val, inKeySet);
-            break;
-        case QSSGRenderTextureSwizzleMode::L16toR16:
-            setBitValue(L16toR16, val, inKeySet);
-            break;
-        }
-    }
-
-    bool isNoSwizzled(QSSGDataView<quint32> inKeySet) const { return getBitValue(noSwizzle, inKeySet); }
-    void setNoSwizzled(QSSGDataRef<quint32> inKeySet, bool val) { setBitValue(noSwizzle, val, inKeySet); }
-
-    bool isL8Swizzled(QSSGDataView<quint32> inKeySet) const { return getBitValue(L8toR8, inKeySet); }
-    void setL8Swizzled(QSSGDataRef<quint32> inKeySet, bool val) { setBitValue(L8toR8, val, inKeySet); }
-
-    bool isA8Swizzled(QSSGDataView<quint32> inKeySet) const { return getBitValue(A8toR8, inKeySet); }
-    void setA8Swizzled(QSSGDataRef<quint32> inKeySet, bool val) { setBitValue(A8toR8, val, inKeySet); }
-
-    bool isL8A8Swizzled(QSSGDataView<quint32> inKeySet) const { return getBitValue(L8A8toRG8, inKeySet); }
-    void setL8A8Swizzled(QSSGDataRef<quint32> inKeySet, bool val) { setBitValue(L8A8toRG8, val, inKeySet); }
-
-    bool isL16Swizzled(QSSGDataView<quint32> inKeySet) const { return getBitValue(L16toR16, inKeySet); }
-    void setL16Swizzled(QSSGDataRef<quint32> inKeySet, bool val) { setBitValue(L16toR16, val, inKeySet); }
-
-    void toString(QString &ioStr, QSSGDataView<quint32> inKeySet) const
-    {
-        ioStr.append(QString::fromLocal8Bit(name));
-        ioStr.append(QStringLiteral("={"));
-        internalToString(ioStr, "noswizzle", isNoSwizzled(inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "l8swizzle", isL8Swizzled(inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "a8swizzle", isA8Swizzled(inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "l8a8swizzle", isL8A8Swizzled(inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "l16swizzle", isL16Swizzled(inKeySet));
-        ioStr.append(QStringLiteral("}"));
-    }
-};
-
-struct QSSGShaderKeyImageMap : public QSSGShaderKeyUnsigned<6>
+struct QSSGShaderKeyImageMap : public QSSGShaderKeyUnsigned<5>
 {
     enum ImageMapBits {
         Enabled = 1 << 0,
         EnvMap = 1 << 1,
         LightProbe = 1 << 2,
-        InvertUV = 1 << 3,
-        Premultiplied = 1 << 4,
-        Identity = 1 << 5
+        Identity = 1 << 3,
+        UsesUV1 = 1 << 4
     };
 
-    QSSGShaderKeyImageMap(const char *inName = "") : QSSGShaderKeyUnsigned<6>(inName) {}
+    explicit QSSGShaderKeyImageMap(const char *inName = "") : QSSGShaderKeyUnsigned<5>(inName) {}
 
     bool getBitValue(ImageMapBits imageBit, QSSGDataView<quint32> inKeySet) const
     {
@@ -434,37 +283,32 @@ struct QSSGShaderKeyImageMap : public QSSGShaderKeyUnsigned<6>
     bool isLightProbe(QSSGDataView<quint32> inKeySet) const { return getBitValue(LightProbe, inKeySet); }
     void setLightProbe(QSSGDataRef<quint32> inKeySet, bool val) { setBitValue(LightProbe, val, inKeySet); }
 
-    bool isInvertUVMap(QSSGDataView<quint32> inKeySet) const { return getBitValue(InvertUV, inKeySet); }
-    void setInvertUVMap(QSSGDataRef<quint32> inKeySet, bool val) { setBitValue(InvertUV, val, inKeySet); }
-
-    bool isPremultiplied(QSSGDataView<quint32> inKeySet) const { return getBitValue(Premultiplied, inKeySet); }
-    void setPremultiplied(QSSGDataRef<quint32> inKeySet, bool val) { setBitValue(Premultiplied, val, inKeySet); }
-
     bool isIdentityTransform(QSSGDataView<quint32> inKeySet) const { return getBitValue(Identity, inKeySet); }
     void setIdentityTransform(QSSGDataRef<quint32> inKeySet, bool val) { setBitValue(Identity, val, inKeySet); }
 
-    void toString(QString &ioStr, QSSGDataView<quint32> inKeySet) const
+    bool isUsingUV1(QSSGDataView<quint32> inKeySet) const { return getBitValue(UsesUV1, inKeySet); }
+    void setUsesUV1(QSSGDataRef<quint32> inKeySet, bool val) { setBitValue(UsesUV1, val, inKeySet); }
+
+    void toString(QByteArray &ioStr, QSSGDataView<quint32> inKeySet) const
     {
-        ioStr.append(QString::fromLocal8Bit(name));
-        ioStr.append(QStringLiteral("={"));
-        internalToString(ioStr, "enabled", isEnabled(inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "envMap", isEnvMap(inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "lightProbe", isLightProbe(inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "invertUV", isInvertUVMap(inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "premultiplied", isPremultiplied(inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "identity", isIdentityTransform(inKeySet));
-        ioStr.append(QStringLiteral("}"));
+        ioStr.append(name);
+        ioStr.append(QByteArrayView("={"));
+        internalToString(ioStr, QByteArrayView("enabled"), isEnabled(inKeySet));
+        ioStr.append(';');
+        internalToString(ioStr, QByteArrayView("envMap"), isEnvMap(inKeySet));
+        ioStr.append(';');
+        internalToString(ioStr, QByteArrayView("lightProbe"), isLightProbe(inKeySet));
+        ioStr.append(';');
+        internalToString(ioStr, QByteArrayView("identity"), isIdentityTransform(inKeySet));
+        ioStr.append(';');
+        internalToString(ioStr, QByteArrayView("usesUV1"), isUsingUV1(inKeySet));
+        ioStr.append('}');
     }
 };
 
 struct QSSGShaderKeySpecularModel : QSSGShaderKeyUnsigned<2>
 {
-    QSSGShaderKeySpecularModel(const char *inName = "") : QSSGShaderKeyUnsigned<2>(inName) {}
+    explicit QSSGShaderKeySpecularModel(const char *inName = "") : QSSGShaderKeyUnsigned<2>(inName) {}
 
     void setSpecularModel(QSSGDataRef<quint32> inKeySet, QSSGRenderDefaultMaterial::MaterialSpecularModel inModel)
     {
@@ -476,28 +320,44 @@ struct QSSGShaderKeySpecularModel : QSSGShaderKeyUnsigned<2>
         return static_cast<QSSGRenderDefaultMaterial::MaterialSpecularModel>(getValue(inKeySet));
     }
 
-    void toString(QString &ioStr, QSSGDataView<quint32> inKeySet) const
+    void toString(QByteArray &ioStr, QSSGDataView<quint32> inKeySet) const
     {
-        ioStr.append(QString::fromLocal8Bit(name));
-        ioStr.append(QStringLiteral("="));
+        ioStr.append(name);
+        ioStr.append('=');
         switch (getSpecularModel(inKeySet)) {
         case QSSGRenderDefaultMaterial::MaterialSpecularModel::KGGX:
-            ioStr.append(QStringLiteral("KGGX"));
-            break;
-        case QSSGRenderDefaultMaterial::MaterialSpecularModel::KWard:
-            ioStr.append(QStringLiteral("KWard"));
+            ioStr.append(QByteArrayView("KGGX"));
             break;
         case QSSGRenderDefaultMaterial::MaterialSpecularModel::Default:
-            ioStr.append(QStringLiteral("Default"));
+            ioStr.append(QByteArrayView("Default"));
             break;
         }
-        ioStr.append(QStringLiteral(";"));
+        ioStr.append(';');
+    }
+    void fromString(const QByteArray &ioStr, QSSGDataRef<quint32> inKeySet)
+    {
+        const qsizetype nameLen = name.size();
+        const int strOffset = ioStr.indexOf(name);
+        if (strOffset >= 0) {
+            /* The key is stored as name=specularMode; */
+            if (ioStr[strOffset + nameLen] != '=')
+                return;
+            const int codeOffsetBegin = strOffset + nameLen + 1;
+            int codeOffset = 0;
+            while (ioStr[codeOffsetBegin + codeOffset] != ';')
+                codeOffset++;
+            const QByteArray val = ioStr.mid(codeOffsetBegin, codeOffset);
+            if (val == QByteArrayView("KGGX"))
+                setSpecularModel(inKeySet, QSSGRenderDefaultMaterial::MaterialSpecularModel::KGGX);
+            if (val == QByteArrayView("Default"))
+                setSpecularModel(inKeySet, QSSGRenderDefaultMaterial::MaterialSpecularModel::Default);
+        }
     }
 };
 
 struct QSSGShaderKeyAlphaMode : QSSGShaderKeyUnsigned<2>
 {
-    QSSGShaderKeyAlphaMode(const char *inName = "") : QSSGShaderKeyUnsigned<2>(inName) {}
+    explicit QSSGShaderKeyAlphaMode(const char *inName = "") : QSSGShaderKeyUnsigned<2>(inName) {}
 
     void setAlphaMode(QSSGDataRef<quint32> inKeySet, QSSGRenderDefaultMaterial::MaterialAlphaMode inMode)
     {
@@ -509,29 +369,52 @@ struct QSSGShaderKeyAlphaMode : QSSGShaderKeyUnsigned<2>
         return static_cast<QSSGRenderDefaultMaterial::MaterialAlphaMode>(getValue(inKeySet));
     }
 
-    void toString(QString &ioStr, QSSGDataView<quint32> inKeySet) const
+    void toString(QByteArray &ioStr, QSSGDataView<quint32> inKeySet) const
     {
-        ioStr.append(QString::fromLocal8Bit(name));
-        ioStr.append(QStringLiteral("="));
+        ioStr.append(name);
+        ioStr.append('=');
         switch (getAlphaMode(inKeySet)) {
-        case QSSGRenderDefaultMaterial::MaterialAlphaMode::Opaque:
-            ioStr.append(QStringLiteral("Opaque"));
+        case QSSGRenderDefaultMaterial::MaterialAlphaMode::Default:
+            ioStr.append(QByteArrayView("Default"));
             break;
         case QSSGRenderDefaultMaterial::MaterialAlphaMode::Mask:
-            ioStr.append(QStringLiteral("Mask"));
+            ioStr.append(QByteArrayView("Mask"));
             break;
         case QSSGRenderDefaultMaterial::MaterialAlphaMode::Blend:
-            ioStr.append(QStringLiteral("Blend"));
+            ioStr.append(QByteArrayView("Blend"));
             break;
-        case QSSGRenderDefaultMaterial::MaterialAlphaMode::Default:
-            ioStr.append(QStringLiteral("Default"));
+        case QSSGRenderDefaultMaterial::MaterialAlphaMode::Opaque:
+            ioStr.append(QByteArrayView("Opaque"));
             break;
         }
-        ioStr.append(QStringLiteral(";"));
+        ioStr.append(';');
+    }
+    void fromString(const QByteArray &ioStr, QSSGDataRef<quint32> inKeySet)
+    {
+        const qsizetype nameLen = name.size();
+        const qsizetype strOffset = ioStr.indexOf(name);
+        if (strOffset >= 0) {
+            /* The key is stored as name=alphaMode; */
+            if (ioStr[strOffset + nameLen] != '=')
+                return;
+            const int codeOffsetBegin = strOffset + nameLen + 1;
+            int codeOffset = 0;
+            while (ioStr[codeOffsetBegin + codeOffset] != ';')
+                codeOffset++;
+            const QByteArray val = ioStr.mid(codeOffsetBegin, codeOffset);
+            if (val == QByteArrayView("Default"))
+                setAlphaMode(inKeySet, QSSGRenderDefaultMaterial::MaterialAlphaMode::Default);
+            if (val == QByteArrayView("Mask"))
+                setAlphaMode(inKeySet, QSSGRenderDefaultMaterial::MaterialAlphaMode::Mask);
+            if (val == QByteArrayView("Blend"))
+                setAlphaMode(inKeySet, QSSGRenderDefaultMaterial::MaterialAlphaMode::Blend);
+            if (val == QByteArrayView("Opaque"))
+                setAlphaMode(inKeySet, QSSGRenderDefaultMaterial::MaterialAlphaMode::Opaque);
+        }
     }
 };
 
-struct QSSGShaderKeyVertexAttribute : public QSSGShaderKeyUnsigned<7>
+struct QSSGShaderKeyVertexAttribute : public QSSGShaderKeyUnsigned<9>
 {
     enum VertexAttributeBits {
         Position = 1 << 0,
@@ -540,44 +423,84 @@ struct QSSGShaderKeyVertexAttribute : public QSSGShaderKeyUnsigned<7>
         TexCoord1 = 1 << 3,
         Tangent = 1 << 4,
         Binormal = 1 << 5,
-        Color = 1 << 6
+        Color = 1 << 6,
+        JointAndWeight = 1 << 7,
+        TexCoordLightmap = 1 << 8
     };
 
-    QSSGShaderKeyVertexAttribute(const char *inName = "") : QSSGShaderKeyUnsigned<7>(inName) {}
+    explicit QSSGShaderKeyVertexAttribute(const char *inName = "") : QSSGShaderKeyUnsigned<9>(inName) {}
 
     bool getBitValue(VertexAttributeBits bit, QSSGDataView<quint32> inKeySet) const
     {
         return (getValue(inKeySet) & bit) ? true : false;
     }
-
-    void toString(QString &ioStr, QSSGDataView<quint32> inKeySet) const
+    void setBitValue(VertexAttributeBits bit, QSSGDataRef<quint32> inKeySet, bool value) const
     {
-        ioStr.append(QString::fromLocal8Bit(name));
-        ioStr.append(QStringLiteral("={"));
-        internalToString(ioStr, "position", getBitValue(Position, inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "normal", getBitValue(Normal, inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "texcoord0", getBitValue(TexCoord0, inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "texcoord1", getBitValue(TexCoord1, inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "tangent", getBitValue(Tangent, inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "binormal", getBitValue(Binormal, inKeySet));
-        ioStr.append(QStringLiteral(";"));
-        internalToString(ioStr, "color", getBitValue(Color, inKeySet));
-        ioStr.append(QStringLiteral("}"));
+        quint32 v = getValue(inKeySet);
+        v = value ? (v | bit) : (v & ~bit);
+        setValue(inKeySet, v);
+    }
+
+    void toString(QByteArray &ioStr, QSSGDataView<quint32> inKeySet) const
+    {
+        ioStr.append(name);
+        ioStr.append(QByteArrayView("={"));
+        internalToString(ioStr, QByteArrayView("position"), getBitValue(Position, inKeySet));
+        ioStr.append(';');
+        internalToString(ioStr, QByteArrayView("normal"), getBitValue(Normal, inKeySet));
+        ioStr.append(';');
+        internalToString(ioStr, QByteArrayView("texcoord0"), getBitValue(TexCoord0, inKeySet));
+        ioStr.append(';');
+        internalToString(ioStr, QByteArrayView("texcoord1"), getBitValue(TexCoord1, inKeySet));
+        ioStr.append(';');
+        internalToString(ioStr, QByteArrayView("tangent"), getBitValue(Tangent, inKeySet));
+        ioStr.append(';');
+        internalToString(ioStr, QByteArrayView("binormal"), getBitValue(Binormal, inKeySet));
+        ioStr.append(';');
+        internalToString(ioStr, QByteArrayView("color"), getBitValue(Color, inKeySet));
+        ioStr.append(';');
+        internalToString(ioStr, QByteArrayView("texcoordlightmap"), getBitValue(TexCoordLightmap, inKeySet));
+        ioStr.append('}');
+        internalToString(ioStr, QByteArrayView("joint&weight"), getBitValue(JointAndWeight, inKeySet));
+        ioStr.append('}');
+    }
+    void fromString(const QByteArray &ioStr, QSSGDataRef<quint32> inKeySet)
+    {
+        const qsizetype nameLen = name.size();
+        const qsizetype strOffset = ioStr.indexOf(name);
+        if (strOffset >= 0) {
+            /* The key is stored as name={;;;;;;} */
+            if (ioStr[strOffset + nameLen] != '=')
+                return;
+            if (ioStr[strOffset + nameLen + 1] != '{')
+                return;
+            const int codeOffsetBegin = strOffset + nameLen + 2;
+            int codeOffset = 0;
+            while (ioStr[codeOffsetBegin + codeOffset] != '}')
+                codeOffset++;
+            const QByteArray val = ioStr.mid(codeOffsetBegin, codeOffset);
+            const QVector<QByteArray> list = val.split(';');
+            if (list.size() != 8)
+                return;
+            setBitValue(Position, inKeySet, getBoolValue(list[0], QByteArrayView("position")));
+            setBitValue(Normal, inKeySet, getBoolValue(list[1], QByteArrayView("normal")));
+            setBitValue(TexCoord0, inKeySet, getBoolValue(list[2], QByteArrayView("texcoord0")));
+            setBitValue(TexCoord1, inKeySet, getBoolValue(list[3], QByteArrayView("texcoord1")));
+            setBitValue(Tangent, inKeySet, getBoolValue(list[4], QByteArrayView("tangent")));
+            setBitValue(Binormal, inKeySet, getBoolValue(list[5], QByteArrayView("binormal")));
+            setBitValue(Color, inKeySet, getBoolValue(list[6], QByteArrayView("color")));
+            setBitValue(TexCoordLightmap, inKeySet, getBoolValue(list[7], QByteArrayView("texcoordlightmap")));
+        }
     }
 };
 
 struct QSSGShaderDefaultMaterialKeyProperties
 {
     enum {
-        LightCount = 7,
+        LightCount = QSSG_MAX_NUM_LIGHTS,
     };
     enum {
-        SingleChannelImageCount = 5,
+        SingleChannelImageCount = 10,
     };
     enum ImageMapNames {
         DiffuseMap = 0,
@@ -587,16 +510,18 @@ struct QSSGShaderDefaultMaterialKeyProperties
         BumpMap,
         SpecularAmountMap,
         NormalMap,
-        DisplacementMap,
-        LightmapIndirect,
-        LightmapRadiosity,
-        LightmapShadow,
+        ClearcoatNormalMap,
         // single channel images
         OpacityMap,
         RoughnessMap,
         MetalnessMap,
         OcclusionMap,
         TranslucencyMap,
+        HeightMap,
+        ClearcoatMap,
+        ClearcoatRoughnessMap,
+        TransmissionMap,
+        ThicknessMap,
 
         ImageMapCount,
         SingleChannelImagesFirst = OpacityMap
@@ -607,11 +532,16 @@ struct QSSGShaderDefaultMaterialKeyProperties
         MetalnessChannel,
         OcclusionChannel,
         TranslucencyChannel,
+        HeightChannel,
+        ClearcoatChannel,
+        ClearcoatRoughnessChannel,
+        TransmissionChannel,
+        ThicknessChannel
     };
 
     QSSGShaderKeyBoolean m_hasLighting;
     QSSGShaderKeyBoolean m_hasIbl;
-    QSSGShaderKeyUnsigned<3> m_lightCount;
+    QSSGShaderKeyUnsigned<4> m_lightCount;
     QSSGShaderKeyBoolean m_lightFlags[LightCount];
     QSSGShaderKeyBoolean m_lightSpotFlags[LightCount];
     QSSGShaderKeyBoolean m_lightAreaFlags[LightCount];
@@ -621,14 +551,35 @@ struct QSSGShaderDefaultMaterialKeyProperties
     QSSGShaderKeyBoolean m_vertexColorsEnabled;
     QSSGShaderKeySpecularModel m_specularModel;
     QSSGShaderKeyImageMap m_imageMaps[ImageMapCount];
-    QSSGShaderKeyTextureSwizzle m_textureSwizzle[ImageMapCount];
     QSSGShaderKeyTextureChannel m_textureChannels[SingleChannelImageCount];
-    QSSGShaderKeyTessellation m_tessellationMode;
-    QSSGShaderKeyBoolean m_hasSkinning;
-    QSSGShaderKeyBoolean m_wireframeMode;
+    QSSGShaderKeyUnsigned<16> m_boneCount;
     QSSGShaderKeyBoolean m_isDoubleSided;
+    QSSGShaderKeyBoolean m_overridesPosition;
+    QSSGShaderKeyBoolean m_usesProjectionMatrix;
+    QSSGShaderKeyBoolean m_usesInverseProjectionMatrix;
+    QSSGShaderKeyBoolean m_usesPointsTopology;
+    QSSGShaderKeyBoolean m_usesVarColor;
     QSSGShaderKeyAlphaMode m_alphaMode;
     QSSGShaderKeyVertexAttribute m_vertexAttributes;
+    QSSGShaderKeyBoolean m_usesFloatJointIndices;
+    qsizetype m_stringBufferSizeHint = 0;
+    QSSGShaderKeyBoolean m_usesInstancing;
+    QSSGShaderKeyUnsigned<8> m_targetCount;
+    QSSGShaderKeyUnsigned<8> m_targetPositionOffset;
+    QSSGShaderKeyUnsigned<8> m_targetNormalOffset;
+    QSSGShaderKeyUnsigned<8> m_targetTangentOffset;
+    QSSGShaderKeyUnsigned<8> m_targetBinormalOffset;
+    QSSGShaderKeyUnsigned<8> m_targetTexCoord0Offset;
+    QSSGShaderKeyUnsigned<8> m_targetTexCoord1Offset;
+    QSSGShaderKeyUnsigned<8> m_targetColorOffset;
+    QSSGShaderKeyBoolean m_blendParticles;
+    QSSGShaderKeyBoolean m_clearcoatEnabled;
+    QSSGShaderKeyBoolean m_transmissionEnabled;
+    QSSGShaderKeyBoolean m_specularAAEnabled;
+    QSSGShaderKeyBoolean m_lightmapEnabled;
+    QSSGShaderKeyBoolean m_specularGlossyEnabled;
+    QSSGShaderKeyUnsigned<4> m_debugMode;
+    QSSGShaderKeyBoolean m_fogEnabled;
 
     QSSGShaderDefaultMaterialKeyProperties()
         : m_hasLighting("hasLighting")
@@ -638,12 +589,33 @@ struct QSSGShaderDefaultMaterialKeyProperties
         , m_fresnelEnabled("fresnelEnabled")
         , m_vertexColorsEnabled("vertexColorsEnabled")
         , m_specularModel("specularModel")
-        , m_tessellationMode("tessellationMode")
-        , m_hasSkinning("hasSkinning")
-        , m_wireframeMode("wireframeMode")
+        , m_boneCount("boneCount")
         , m_isDoubleSided("isDoubleSided")
+        , m_overridesPosition("overridesPosition")
+        , m_usesProjectionMatrix("usesProjectionMatrix")
+        , m_usesInverseProjectionMatrix("usesInverseProjectionMatrix")
+        , m_usesPointsTopology("usesPointsTopology")
+        , m_usesVarColor("usesVarColor")
         , m_alphaMode("alphaMode")
         , m_vertexAttributes("vertexAttributes")
+        , m_usesFloatJointIndices("usesFloatJointIndices")
+        , m_usesInstancing("usesInstancing")
+        , m_targetCount("targetCount")
+        , m_targetPositionOffset("targetPositionOffset")
+        , m_targetNormalOffset("targetNormalOffset")
+        , m_targetTangentOffset("targetTangentOffset")
+        , m_targetBinormalOffset("targetBinormalOffset")
+        , m_targetTexCoord0Offset("targetTexCoord0Offset")
+        , m_targetTexCoord1Offset("targetTexCoord1Offset")
+        , m_targetColorOffset("targetColorOffset")
+        , m_blendParticles("blendParticles")
+        , m_clearcoatEnabled("clearcoatEnabled")
+        , m_transmissionEnabled("transmissionEnabled")
+        , m_specularAAEnabled("specularAAEnabled")
+        , m_lightmapEnabled("lightmapEnabled")
+        , m_specularGlossyEnabled("specularGlossyEnabled")
+        , m_debugMode("debugMode")
+        , m_fogEnabled("fogEnabled")
     {
         m_lightFlags[0].name = "light0HasPosition";
         m_lightFlags[1].name = "light1HasPosition";
@@ -652,6 +624,15 @@ struct QSSGShaderDefaultMaterialKeyProperties
         m_lightFlags[4].name = "light4HasPosition";
         m_lightFlags[5].name = "light5HasPosition";
         m_lightFlags[6].name = "light6HasPosition";
+        m_lightFlags[7].name = "light7HasPosition";
+        m_lightFlags[8].name = "light8HasPosition";
+        m_lightFlags[9].name = "light9HasPosition";
+        m_lightFlags[10].name = "light10HasPosition";
+        m_lightFlags[11].name = "light11HasPosition";
+        m_lightFlags[12].name = "light12HasPosition";
+        m_lightFlags[13].name = "light13HasPosition";
+        m_lightFlags[14].name = "light14HasPosition";
+
         m_lightSpotFlags[0].name = "light0HasSpot";
         m_lightSpotFlags[1].name = "light1HasSpot";
         m_lightSpotFlags[2].name = "light2HasSpot";
@@ -659,6 +640,15 @@ struct QSSGShaderDefaultMaterialKeyProperties
         m_lightSpotFlags[4].name = "light4HasSpot";
         m_lightSpotFlags[5].name = "light5HasSpot";
         m_lightSpotFlags[6].name = "light6HasSpot";
+        m_lightSpotFlags[7].name = "light7HasSpot";
+        m_lightSpotFlags[8].name = "light8HasSpot";
+        m_lightSpotFlags[9].name = "light9HasSpot";
+        m_lightSpotFlags[10].name = "light10HasSpot";
+        m_lightSpotFlags[11].name = "light11HasSpot";
+        m_lightSpotFlags[12].name = "light12HasSpot";
+        m_lightSpotFlags[13].name = "light13HasSpot";
+        m_lightSpotFlags[14].name = "light14HasSpot";
+
         m_lightAreaFlags[0].name = "light0HasArea";
         m_lightAreaFlags[1].name = "light1HasArea";
         m_lightAreaFlags[2].name = "light2HasArea";
@@ -666,6 +656,15 @@ struct QSSGShaderDefaultMaterialKeyProperties
         m_lightAreaFlags[4].name = "light4HasArea";
         m_lightAreaFlags[5].name = "light5HasArea";
         m_lightAreaFlags[6].name = "light6HasArea";
+        m_lightAreaFlags[7].name = "light7HasArea";
+        m_lightAreaFlags[8].name = "light8HasArea";
+        m_lightAreaFlags[9].name = "light9HasArea";
+        m_lightAreaFlags[10].name = "light10HasArea";
+        m_lightAreaFlags[11].name = "light11HasArea";
+        m_lightAreaFlags[12].name = "light12HasArea";
+        m_lightAreaFlags[13].name = "light13HasArea";
+        m_lightAreaFlags[14].name = "light14HasArea";
+
         m_lightShadowFlags[0].name = "light0HasShadow";
         m_lightShadowFlags[1].name = "light1HasShadow";
         m_lightShadowFlags[2].name = "light2HasShadow";
@@ -673,6 +672,14 @@ struct QSSGShaderDefaultMaterialKeyProperties
         m_lightShadowFlags[4].name = "light4HasShadow";
         m_lightShadowFlags[5].name = "light5HasShadow";
         m_lightShadowFlags[6].name = "light6HasShadow";
+        m_lightShadowFlags[7].name = "light7HasShadow";
+        m_lightShadowFlags[8].name = "light8HasShadow";
+        m_lightShadowFlags[9].name = "light9HasShadow";
+        m_lightShadowFlags[10].name = "light10HasShadow";
+        m_lightShadowFlags[11].name = "light11HasShadow";
+        m_lightShadowFlags[12].name = "light12HasShadow";
+        m_lightShadowFlags[13].name = "light13HasShadow";
+        m_lightShadowFlags[14].name = "light14HasShadow";
 
         m_imageMaps[0].name = "diffuseMap";
         m_imageMaps[1].name = "emissiveMap";
@@ -681,40 +688,30 @@ struct QSSGShaderDefaultMaterialKeyProperties
         m_imageMaps[4].name = "bumpMap";
         m_imageMaps[5].name = "specularAmountMap";
         m_imageMaps[6].name = "normalMap";
-        m_imageMaps[7].name = "displacementMap";
-        m_imageMaps[8].name = "lightmapIndirect";
-        m_imageMaps[9].name = "lightmapRadiosity";
-        m_imageMaps[10].name = "lightmapShadow";
-        m_imageMaps[11].name = "opacityMap";
-        m_imageMaps[12].name = "roughnessMap";
-        m_imageMaps[13].name = "metalnessMap";
-        m_imageMaps[14].name = "occlusionMap";
-        m_imageMaps[15].name = "translucencyMap";
-
-        m_textureSwizzle[0].name = "diffuseMap_swizzle";
-        m_textureSwizzle[1].name = "emissiveMap_swizzle";
-        m_textureSwizzle[2].name = "specularMap_swizzle";
-        m_textureSwizzle[3].name = "baseColorMap_swizzle";
-        m_textureSwizzle[4].name = "bumpMap_swizzle";
-        m_textureSwizzle[5].name = "specularAmountMap_swizzle";
-        m_textureSwizzle[6].name = "normalMap_swizzle";
-        m_textureSwizzle[7].name = "displacementMap_swizzle";
-        m_textureSwizzle[8].name = "lightmapIndirect_swizzle";
-        m_textureSwizzle[9].name = "lightmapRadiosity_swizzle";
-        m_textureSwizzle[10].name = "lightmapShadow_swizzle";
-        m_textureSwizzle[11].name = "opacityMap_swizzle";
-        m_textureSwizzle[12].name = "roughnessMap_swizzle";
-        m_textureSwizzle[13].name = "metalnessMap_swizzle";
-        m_textureSwizzle[14].name = "occlusionMap_swizzle";
-        m_textureSwizzle[15].name = "translucencyMap_swizzle";
+        m_imageMaps[7].name = "clearcoatNormalMap";
+        m_imageMaps[8].name = "opacityMap";
+        m_imageMaps[9].name = "roughnessMap";
+        m_imageMaps[10].name = "metalnessMap";
+        m_imageMaps[11].name = "occlusionMap";
+        m_imageMaps[12].name = "translucencyMap";
+        m_imageMaps[13].name = "heightMap";
+        m_imageMaps[14].name = "clearcoatMap";
+        m_imageMaps[15].name = "clearcoatRoughnessMap";
+        m_imageMaps[16].name = "transmissionMap";
+        m_imageMaps[17].name = "thicknessMap";
 
         m_textureChannels[0].name = "opacityMap_channel";
         m_textureChannels[1].name = "roughnessMap_channel";
         m_textureChannels[2].name = "metalnessMap_channel";
         m_textureChannels[3].name = "occlusionMap_channel";
         m_textureChannels[4].name = "translucencyMap_channel";
+        m_textureChannels[5].name = "heightMap_channel";
+        m_textureChannels[6].name = "clearcoatMap_channel";
+        m_textureChannels[7].name = "clearcoatRoughnessMap_channel";
+        m_textureChannels[8].name = "transmissionMap_channel";
+        m_textureChannels[9].name = "thicknessMap_channel";
 
-        setPropertyOffsets();
+        init();
     }
 
     template<typename TVisitor>
@@ -724,40 +721,56 @@ struct QSSGShaderDefaultMaterialKeyProperties
         inVisitor.visit(m_hasIbl);
         inVisitor.visit(m_lightCount);
 
-        for (quint32 idx = 0, end = LightCount; idx < end; ++idx) {
-            inVisitor.visit(m_lightFlags[idx]);
-        }
+        for (auto &lightFlag : m_lightFlags)
+            inVisitor.visit(lightFlag);
 
-        for (quint32 idx = 0, end = LightCount; idx < end; ++idx) {
-            inVisitor.visit(m_lightSpotFlags[idx]);
-        }
+        for (auto &lightSpotFlag : m_lightSpotFlags)
+            inVisitor.visit(lightSpotFlag);
 
-        for (quint32 idx = 0, end = LightCount; idx < end; ++idx) {
-            inVisitor.visit(m_lightAreaFlags[idx]);
-        }
+        for (auto &lightAreaFlag : m_lightAreaFlags)
+            inVisitor.visit(lightAreaFlag);
 
-        for (quint32 idx = 0, end = LightCount; idx < end; ++idx) {
-            inVisitor.visit(m_lightShadowFlags[idx]);
-        }
+        for (auto &lightShadowFlag : m_lightShadowFlags)
+            inVisitor.visit(lightShadowFlag);
 
         inVisitor.visit(m_specularEnabled);
         inVisitor.visit(m_fresnelEnabled);
         inVisitor.visit(m_vertexColorsEnabled);
         inVisitor.visit(m_specularModel);
 
-        for (quint32 idx = 0, end = ImageMapCount; idx < end; ++idx) {
+        for (quint32 idx = 0, end = ImageMapCount; idx < end; ++idx)
             inVisitor.visit(m_imageMaps[idx]);
-            inVisitor.visit(m_textureSwizzle[idx]);
-        }
-        for (quint32 idx = 0, end = SingleChannelImageCount; idx < end; ++idx)
-            inVisitor.visit(m_textureChannels[idx]);
 
-        inVisitor.visit(m_tessellationMode);
-        inVisitor.visit(m_hasSkinning);
-        inVisitor.visit(m_wireframeMode);
+        for (auto &textureChannel : m_textureChannels)
+            inVisitor.visit(textureChannel);
+
+        inVisitor.visit(m_boneCount);
         inVisitor.visit(m_isDoubleSided);
+        inVisitor.visit(m_overridesPosition);
+        inVisitor.visit(m_usesProjectionMatrix);
+        inVisitor.visit(m_usesInverseProjectionMatrix);
+        inVisitor.visit(m_usesPointsTopology);
+        inVisitor.visit(m_usesVarColor);
         inVisitor.visit(m_alphaMode);
         inVisitor.visit(m_vertexAttributes);
+        inVisitor.visit(m_usesFloatJointIndices);
+        inVisitor.visit(m_usesInstancing);
+        inVisitor.visit(m_targetCount);
+        inVisitor.visit(m_targetPositionOffset);
+        inVisitor.visit(m_targetNormalOffset);
+        inVisitor.visit(m_targetTangentOffset);
+        inVisitor.visit(m_targetBinormalOffset);
+        inVisitor.visit(m_targetTexCoord0Offset);
+        inVisitor.visit(m_targetTexCoord1Offset);
+        inVisitor.visit(m_targetColorOffset);
+        inVisitor.visit(m_blendParticles);
+        inVisitor.visit(m_clearcoatEnabled);
+        inVisitor.visit(m_transmissionEnabled);
+        inVisitor.visit(m_specularAAEnabled);
+        inVisitor.visit(m_lightmapEnabled);
+        inVisitor.visit(m_specularGlossyEnabled);
+        inVisitor.visit(m_debugMode);
+        inVisitor.visit(m_fogEnabled);
     }
 
     struct OffsetVisitor
@@ -772,7 +785,7 @@ struct QSSGShaderDefaultMaterialKeyProperties
             // This cost a few extra bits but prevents tedious errors like
             // loosing shader key bits because they got moved beyond the 32 border
             quint32 bit = m_offset % 32;
-            if (bit + TPropType::BitWidth > 31) {
+            if (bit + TPropType::BitWidth > 32) {
                 m_offset += 32 - bit;
             }
 
@@ -781,24 +794,51 @@ struct QSSGShaderDefaultMaterialKeyProperties
         }
     };
 
-    void setPropertyOffsets()
+    struct StringSizeVisitor
     {
-        OffsetVisitor visitor;
+        qsizetype size = 0;
+        template<typename P>
+        constexpr void visit(const P &prop)
+        {
+            size += prop.name.size();
+        }
+    };
+
+    struct InitVisitor
+    {
+        OffsetVisitor offsetVisitor;
+        StringSizeVisitor stringSizeVisitor;
+
+        template<typename P>
+        void visit(P &prop)
+        {
+            offsetVisitor.visit(prop);
+            stringSizeVisitor.visit(prop);
+        }
+    };
+
+    void init()
+    {
+        InitVisitor visitor;
         visitProperties(visitor);
+
         // If this assert fires, then the default material key needs more bits.
-        Q_ASSERT(visitor.m_offset < 320);
+        Q_ASSERT(visitor.offsetVisitor.m_offset < 416);
+        // This is so we can do some guestimate of how big the string buffer needs
+        // to be to avoid doing a lot of allocations when concatenating the strings.
+        m_stringBufferSizeHint = visitor.stringSizeVisitor.size;
     }
 };
 
 struct QSSGShaderDefaultMaterialKey
 {
     enum {
-        DataBufferSize = 10,
+        DataBufferSize = 13,
     };
-    quint32 m_dataBuffer[DataBufferSize];
-    uint m_featureSetHash;
+    quint32 m_dataBuffer[DataBufferSize]; // 13 * 4 * 8 = 416 bits
+    size_t m_featureSetHash;
 
-    QSSGShaderDefaultMaterialKey(uint inFeatureSetHash) : m_featureSetHash(inFeatureSetHash)
+    explicit QSSGShaderDefaultMaterialKey(size_t inFeatureSetHash) : m_featureSetHash(inFeatureSetHash)
     {
         for (size_t idx = 0; idx < DataBufferSize; ++idx)
             m_dataBuffer[idx] = 0;
@@ -810,9 +850,9 @@ struct QSSGShaderDefaultMaterialKey
             m_dataBuffer[idx] = 0;
     }
 
-    uint hash() const
+    size_t hash() const
     {
-        uint retval = 0;
+        size_t retval = 0;
         for (size_t idx = 0; idx < DataBufferSize; ++idx)
             retval = retval ^ qHash(m_dataBuffer[idx]);
         return retval ^ m_featureSetHash;
@@ -838,30 +878,61 @@ struct QSSGShaderDefaultMaterialKey
         template<typename TPropType>
         void visit(const TPropType &prop)
         {
-            quint32 originalSize = m_str.size();
+            const qsizetype originalSize = m_str.size();
             if (m_str.size())
-                m_str.append(";");
-            QString str = QString::fromUtf8(m_str);
-            prop.toString(str, m_keyStore);
+                m_str.append(';');
+            prop.toString(m_str, m_keyStore);
             // if the only thing we added was the semicolon
             // then nuke the semicolon
-            m_str = str.toLocal8Bit();
-            if (originalSize && m_str.size() == int(originalSize + 1))
-                m_str.resize(int(originalSize));
+            if (originalSize && m_str.size() == (originalSize + 1))
+                m_str.resize(originalSize);
         }
     };
 
-    void toString(QByteArray &ioString, QSSGShaderDefaultMaterialKeyProperties &inProperties) const
+    struct StringInVisitor
     {
+        const QByteArray &m_str;
+        QSSGDataRef<quint32> m_keyStore;
+        StringInVisitor(const QByteArray &s, QSSGDataRef<quint32> ks) : m_str(s), m_keyStore(ks) {}
+
+        template<typename TPropType>
+        void visit(TPropType &prop)
+        {
+            prop.fromString(m_str, m_keyStore);
+        }
+    };
+
+    void toString(QByteArray &ioString, const QSSGShaderDefaultMaterialKeyProperties &inProperties) const
+    {
+        ioString.reserve(inProperties.m_stringBufferSizeHint);
         StringVisitor theVisitor(ioString, *this);
+        const_cast<QSSGShaderDefaultMaterialKeyProperties &>(inProperties).visitProperties(theVisitor);
+    }
+    void fromString(QByteArray &ioString, QSSGShaderDefaultMaterialKeyProperties &inProperties)
+    {
+        StringInVisitor theVisitor(ioString, *this);
         inProperties.visitProperties(theVisitor);
+    }
+    QByteArray toByteArray() const
+    {
+        QByteArray ret;
+        ret.resize(sizeof(m_dataBuffer));
+        memcpy(ret.data(), m_dataBuffer, sizeof(m_dataBuffer));
+        return ret;
+    }
+    bool fromByteArray(const QByteArray &data) const
+    {
+        if (data.size() != sizeof(m_dataBuffer))
+            return false;
+        memcpy((void *)m_dataBuffer, data.data(), sizeof(m_dataBuffer));
+        return true;
     }
 };
 
 Q_STATIC_ASSERT(std::is_trivially_destructible<QSSGShaderDefaultMaterialKey>::value);
 
 
-inline uint qHash(const QSSGShaderDefaultMaterialKey &key)
+inline size_t qHash(const QSSGShaderDefaultMaterialKey &key)
 {
     return key.hash();
 }

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef MOCKCOMPOSITOR_COREPROTOCOL_H
 #define MOCKCOMPOSITOR_COREPROTOCOL_H
@@ -36,6 +11,8 @@
 namespace MockCompositor {
 
 class WlCompositor;
+class WlShell;
+class WlShellSurface;
 class Output;
 class Pointer;
 class Touch;
@@ -96,17 +73,17 @@ class Surface : public QObject, public QtWaylandServer::wl_surface
 {
     Q_OBJECT
 public:
-    explicit Surface(WlCompositor *wlCompositor, wl_client *client, int id, int version)
-        : QtWaylandServer::wl_surface(client, id, version)
-        , m_wlCompositor(wlCompositor)
-    {
-    }
-    ~Surface() override { qDeleteAll(m_commits); } // TODO: maybe make sure buffers are released?
+    explicit Surface(WlCompositor *wlCompositor, wl_client *client, int id, int version);
+    ~Surface() override;
     void sendFrameCallbacks();
     void sendEnter(Output *output);
     void send_enter(::wl_resource *output) = delete;
     void sendLeave(Output *output);
     void send_leave(::wl_resource *output) = delete;
+
+    void map();
+    bool isMapped() const { return m_mapped; }
+    WlShellSurface *wlShellSurface() const { return m_wlShellSurface; }
 
     WlCompositor *m_wlCompositor;
     struct PerCommitData {
@@ -120,10 +97,18 @@ public:
         uint configureSerial = 0;
         int bufferScale = 1;
     } m_pending, m_committed;
-    QVector<DoubleBufferedState *> m_commits;
-    QVector<Callback *> m_waitingFrameCallbacks;
-    QVector<Output *> m_outputs;
+    QList<DoubleBufferedState *> m_commits;
+    QList<Callback *> m_waitingFrameCallbacks;
+    QList<Output *> m_outputs;
     SurfaceRole *m_role = nullptr;
+
+    WlShellSurface *m_wlShellSurface = nullptr;
+    bool m_mapped = false;
+    QList<wl_resource *> m_frameCallbackList;
+
+    wl_resource *m_buffer = nullptr;
+    QImage m_image; // checking backingStore
+    bool m_wlshell = false;
 
 signals:
     void attach(void *buffer, QPoint offset);
@@ -132,7 +117,7 @@ signals:
 
 protected:
     void surface_destroy_resource(Resource *resource) override;
-    void surface_destroy(Resource *resource) override { wl_resource_destroy(resource->handle); }
+    void surface_destroy(Resource *resource) override;
     void surface_attach(Resource *resource, wl_resource *buffer, int32_t x, int32_t y) override;
     void surface_set_buffer_scale(Resource *resource, int32_t scale) override;
     void surface_commit(Resource *resource) override;
@@ -164,7 +149,7 @@ public:
     {}
     bool isClean() override;
     QString dirtyMessage() override;
-    QVector<Surface *> m_surfaces;
+    QList<Surface *> m_surfaces;
     CoreCompositor *m_compositor = nullptr;
 
 signals:
@@ -184,6 +169,36 @@ protected:
     }
 };
 
+class WlShell : public Global, public QtWaylandServer::wl_shell
+{
+    Q_OBJECT
+public:
+    explicit WlShell(CoreCompositor *compositor, int version = 1);
+    QList<WlShellSurface *> m_wlShellSurfaces;
+    CoreCompositor *m_compositor = nullptr;
+
+signals:
+    void wlShellSurfaceCreated(WlShellSurface *wlShellSurface);
+
+protected:
+    void shell_get_shell_surface(Resource *resource, uint32_t id, ::wl_resource *surface) override;
+};
+
+class WlShellSurface : public QObject, public QtWaylandServer::wl_shell_surface
+{
+    Q_OBJECT
+public:
+    explicit WlShellSurface(WlShell *wlShell, wl_client *client, int id, Surface *surface);
+    ~WlShellSurface() override;
+    void sendConfigure(uint32_t edges, int32_t width, int32_t height);
+    void send_configure(uint32_t edges, int32_t width, int32_t height) = delete;
+
+    void shell_surface_destroy_resource(Resource *) override { delete this; }
+
+    WlShell *m_wlShell = nullptr;
+    Surface *m_surface = nullptr;
+};
+
 class Subsurface : public QObject, public QtWaylandServer::wl_subsurface
 {
     Q_OBJECT
@@ -201,7 +216,7 @@ public:
     explicit SubCompositor(CoreCompositor *compositor, int version = 1)
         : QtWaylandServer::wl_subcompositor(compositor->m_display, version)
     {}
-    QVector<Subsurface *> m_subsurfaces;
+    QList<Subsurface *> m_subsurfaces;
 
 signals:
     void subsurfaceCreated(Subsurface *subsurface);
@@ -273,6 +288,9 @@ public:
     OutputData m_data;
     int m_version = 1; // TODO: remove on libwayland upgrade
 
+Q_SIGNALS:
+    void outputBound(Resource *resource);
+
 protected:
     void output_bind_resource(Resource *resource) override;
 };
@@ -281,7 +299,7 @@ class Seat : public Global, public QtWaylandServer::wl_seat
 {
     Q_OBJECT
 public:
-    explicit Seat(CoreCompositor *compositor, uint capabilities = Seat::capability_pointer | Seat::capability_keyboard | Seat::capability_touch, int version = 5);
+    explicit Seat(CoreCompositor *compositor, uint capabilities = Seat::capability_pointer | Seat::capability_keyboard | Seat::capability_touch, int version = 9);
     ~Seat() override;
     void send_capabilities(Resource *resource, uint capabilities) = delete; // Use wrapper instead
     void send_capabilities(uint capabilities) = delete; // Use wrapper instead
@@ -290,13 +308,13 @@ public:
     CoreCompositor *m_compositor = nullptr;
 
     Pointer* m_pointer = nullptr;
-    QVector<Pointer *> m_oldPointers;
+    QList<Pointer *> m_oldPointers;
 
     Touch* m_touch = nullptr;
-    QVector<Touch *> m_oldTouchs;
+    QList<Touch *> m_oldTouchs;
 
     Keyboard* m_keyboard = nullptr;
-    QVector<Keyboard *> m_oldKeyboards;
+    QList<Keyboard *> m_oldKeyboards;
 
     uint m_capabilities = 0;
 
@@ -319,7 +337,7 @@ class Pointer : public QObject, public QtWaylandServer::wl_pointer
 public:
     explicit Pointer(Seat *seat) : m_seat(seat) {}
     Surface *cursorSurface();
-    CursorRole* m_cursorRole = nullptr; //TODO: cleanup
+    QPointer<CursorRole> m_cursorRole;
     void send_enter() = delete;
     uint sendEnter(Surface *surface, const QPointF &position);
     void send_leave() = delete;
@@ -331,9 +349,11 @@ public:
     void sendAxisSource(wl_client *client, axis_source source);
     void sendAxisStop(wl_client *client, axis axis);
     void sendFrame(wl_client *client);
+    void sendAxisValue120(wl_client *client, axis axis, int value120);
+    void sendAxisRelativeDirection(wl_client *client, axis axis, axis_relative_direction direction);
 
     Seat *m_seat = nullptr;
-    QVector<uint> m_enterSerials;
+    QList<uint> m_enterSerials;
     QPoint m_hotspot;
 
 signals:
@@ -350,6 +370,7 @@ public:
     explicit CursorRole(Surface *surface) // TODO: needs some more args
         : m_surface(surface)
     {
+        connect(m_surface, &QObject::destroyed, this, &QObject::deleteLater);
     }
     static CursorRole *fromSurface(Surface *surface) { return qobject_cast<CursorRole *>(surface->m_role); }
     Surface *m_surface = nullptr;
@@ -386,17 +407,17 @@ class Shm : public Global, public QtWaylandServer::wl_shm
 {
     Q_OBJECT
 public:
-    explicit Shm(CoreCompositor *compositor, QVector<format> formats = {format_argb8888, format_xrgb8888, format_rgb888}, int version = 1);
+    explicit Shm(CoreCompositor *compositor, QList<format> formats = {format_argb8888, format_xrgb8888, format_rgb888}, int version = 1);
     bool isClean() override;
     CoreCompositor *m_compositor = nullptr;
-    QVector<ShmPool *> m_pools;
-    const QVector<format> m_formats;
+    QList<ShmPool *> m_pools;
+    const QList<format> m_formats;
 
 protected:
     void shm_create_pool(Resource *resource, uint32_t id, int32_t fd, int32_t size) override;
     void shm_bind_resource(Resource *resource) override
     {
-        for (auto format : qAsConst(m_formats))
+        for (auto format : std::as_const(m_formats))
             send_format(resource->handle, format);
     }
 };
@@ -407,7 +428,7 @@ class ShmPool : QObject, public QtWaylandServer::wl_shm_pool
 public:
     explicit ShmPool(Shm *shm, wl_client *client, int id, int version = 1);
     Shm *m_shm = nullptr;
-    QVector<ShmBuffer *> m_buffers;
+    QList<ShmBuffer *> m_buffers;
 
 protected:
     void shm_pool_create_buffer(Resource *resource, uint32_t id, int32_t offset, int32_t width, int32_t height, int32_t stride, uint32_t format) override;

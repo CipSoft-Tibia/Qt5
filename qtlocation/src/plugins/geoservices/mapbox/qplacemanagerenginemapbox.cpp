@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Mapbox, Inc.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtFoo module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Mapbox, Inc.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplacemanagerenginemapbox.h"
 #include "qplacesearchreplymapbox.h"
@@ -50,6 +14,8 @@
 #include <QtNetwork/QNetworkRequest>
 #include <QtNetwork/QNetworkReply>
 #include <QtPositioning/QGeoCircle>
+#include <QtLocation/QPlaceCategory>
+#include <QtLocation/QPlaceSearchRequest>
 #include <QtLocation/private/unsupportedreplies_p.h>
 
 #include <QtCore/QElapsedTimer>
@@ -146,8 +112,9 @@ QPlaceReply *QPlaceManagerEngineMapbox::doSearch(const QPlaceSearchRequest &requ
         else
             reply = new QPlaceSearchSuggestionReplyMapbox(0, this);
 
-        connect(reply, &QPlaceReply::finished, this, &QPlaceManagerEngineMapbox::onReplyFinished);
-        connect(reply, QOverload<QPlaceReply::Error, const QString &>::of(&QPlaceReply::error),
+        connect(reply, &QPlaceReply::finished,
+                this, &QPlaceManagerEngineMapbox::onReplyFinished);
+        connect(reply, &QPlaceReply::errorOccurred,
                 this, &QPlaceManagerEngineMapbox::onReplyError);
 
         QMetaObject::invokeMethod(reply, "setError", Qt::QueuedConnection,
@@ -179,7 +146,7 @@ QPlaceReply *QPlaceManagerEngineMapbox::doSearch(const QPlaceSearchRequest &requ
     // XXX: Investigate situations where we need to filter by 'country'.
 
     QStringList languageCodes;
-    for (const QLocale& locale: qAsConst(m_locales)) {
+    for (const QLocale& locale: std::as_const(m_locales)) {
         // Returns the language and country of this locale as a string of the
         // form "language_country", where language is a lowercase, two-letter
         // ISO 639 language code, and country is an uppercase, two- or
@@ -232,8 +199,9 @@ QPlaceReply *QPlaceManagerEngineMapbox::doSearch(const QPlaceSearchRequest &requ
     else
         reply = new QPlaceSearchSuggestionReplyMapbox(networkReply, this);
 
-    connect(reply, &QPlaceReply::finished, this, &QPlaceManagerEngineMapbox::onReplyFinished);
-    connect(reply, QOverload<QPlaceReply::Error, const QString &>::of(&QPlaceReply::error),
+    connect(reply, &QPlaceReply::finished,
+            this, &QPlaceManagerEngineMapbox::onReplyFinished);
+    connect(reply, &QPlaceReply::errorOccurred,
             this, &QPlaceManagerEngineMapbox::onReplyError);
 
     return reply;
@@ -252,8 +220,9 @@ QPlaceReply *QPlaceManagerEngineMapbox::initializeCategories()
     }
 
     QPlaceCategoriesReplyMapbox *reply = new QPlaceCategoriesReplyMapbox(this);
-    connect(reply, &QPlaceReply::finished, this, &QPlaceManagerEngineMapbox::onReplyFinished);
-    connect(reply, QOverload<QPlaceReply::Error, const QString &>::of(&QPlaceReply::error),
+    connect(reply, &QPlaceReply::finished,
+            this, &QPlaceManagerEngineMapbox::onReplyFinished);
+    connect(reply, &QPlaceReply::errorOccurred,
             this, &QPlaceManagerEngineMapbox::onReplyError);
 
     // Queue a future finished() emission from the reply.
@@ -314,5 +283,5 @@ void QPlaceManagerEngineMapbox::onReplyError(QPlaceReply::Error errorCode, const
 {
     QPlaceReply *reply = qobject_cast<QPlaceReply *>(sender());
     if (reply)
-        emit error(reply, errorCode, errorString);
+        emit errorOccurred(reply, errorCode, errorString);
 }

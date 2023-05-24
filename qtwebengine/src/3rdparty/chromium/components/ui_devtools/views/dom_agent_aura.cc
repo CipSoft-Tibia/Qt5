@@ -1,10 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/ui_devtools/views/dom_agent_aura.h"
 
-#include "base/stl_util.h"
+#include "base/containers/cxx20_erase.h"
+#include "base/ranges/algorithm.h"
 #include "components/ui_devtools/views/widget_element.h"
 #include "components/ui_devtools/views/window_element.h"
 #include "ui/aura/env.h"
@@ -24,6 +25,8 @@ DOMAgentAura::DOMAgentAura() {
   DCHECK(!dom_agent_aura_);
   dom_agent_aura_ = this;
   aura::Env::GetInstance()->AddObserver(this);
+  for (auto* window_tree_host : aura::Env::GetInstance()->window_tree_hosts())
+    OnHostInitialized(window_tree_host);
 }
 
 DOMAgentAura::~DOMAgentAura() {
@@ -36,10 +39,27 @@ DOMAgentAura::~DOMAgentAura() {
 void DOMAgentAura::OnHostInitialized(aura::WindowTreeHost* host) {
   roots_.push_back(host->window());
   host->window()->AddObserver(this);
+
+  if (element_root() && !element_root()->is_updating()) {
+    // The tree is already built, needs to update.
+    UIElement* window_element =
+        new WindowElement(host->window(), this, element_root());
+    element_root()->AddChild(window_element);
+  }
 }
 
 void DOMAgentAura::OnWindowDestroying(aura::Window* window) {
   base::Erase(roots_, window);
+
+  if (element_root() && !element_root()->is_updating()) {
+    const auto& children = element_root()->children();
+    auto iter = base::ranges::find(children, window, &WindowElement::From);
+    if (iter != children.end()) {
+      UIElement* child_element = *iter;
+      element_root()->RemoveChild(child_element);
+      delete child_element;
+    }
+  }
 }
 
 std::vector<UIElement*> DOMAgentAura::CreateChildrenForRoot() {

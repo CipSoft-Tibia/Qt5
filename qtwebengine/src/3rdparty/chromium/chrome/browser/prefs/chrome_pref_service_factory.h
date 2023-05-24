@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,17 +8,17 @@
 #include <memory>
 
 #include "base/memory/ref_counted.h"
+#include "base/values.h"
 #include "components/prefs/persistent_pref_store.h"
 #include "components/prefs/pref_value_store.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/preferences/public/mojom/tracked_preference_validation_delegate.mojom-forward.h"
 
 namespace base {
-class DictionaryValue;
 class FilePath;
 class SequencedTaskRunner;
 class Time;
-}
+}  // namespace base
 
 namespace policy {
 class PolicyService;
@@ -38,19 +38,12 @@ class PrefService;
 
 class PrefStore;
 class Profile;
+
+namespace supervised_user {
 class SupervisedUserSettingsService;
+}  // namespace supervised_user
 
 namespace chrome_prefs {
-
-namespace internals {
-
-extern const char kSettingsEnforcementTrialName[];
-extern const char kSettingsEnforcementGroupNoEnforcement[];
-extern const char kSettingsEnforcementGroupEnforceAlways[];
-extern const char kSettingsEnforcementGroupEnforceAlwaysWithDSE[];
-extern const char kSettingsEnforcementGroupEnforceAlwaysWithExtensionsAndDSE[];
-
-}  // namespace internals
 
 // Factory methods that create and initialize a new instance of a
 // PrefService for Chrome with the applicable PrefStores. The
@@ -61,16 +54,15 @@ extern const char kSettingsEnforcementGroupEnforceAlwaysWithExtensionsAndDSE[];
 // |policy_service| is used as the source for mandatory or recommended
 // policies.
 // |pref_registry| keeps the list of registered prefs and their default values.
-// If |async| is true, asynchronous version is used.
 // Notifies using PREF_INITIALIZATION_COMPLETED in the end. Details is set to
 // the created PrefService or NULL if creation has failed. Note, it is
 // guaranteed that in asynchronous version initialization happens after this
 // function returned.
 std::unique_ptr<PrefService> CreateLocalState(
     const base::FilePath& pref_filename,
+    scoped_refptr<PersistentPrefStore> pref_store,
     policy::PolicyService* policy_service,
     scoped_refptr<PrefRegistry> pref_registry,
-    bool async,
     policy::BrowserPolicyConnector* policy_connector);
 
 std::unique_ptr<sync_preferences::PrefServiceSyncable> CreateProfilePrefs(
@@ -78,7 +70,7 @@ std::unique_ptr<sync_preferences::PrefServiceSyncable> CreateProfilePrefs(
     mojo::PendingRemote<prefs::mojom::TrackedPreferenceValidationDelegate>
         validation_delegate,
     policy::PolicyService* policy_service,
-    SupervisedUserSettingsService* supervised_user_settings,
+    supervised_user::SupervisedUserSettingsService* supervised_user_settings,
     scoped_refptr<PrefStore> extension_prefs,
     scoped_refptr<user_prefs::PrefRegistrySyncable> pref_registry,
     policy::BrowserPolicyConnector* connector,
@@ -90,9 +82,8 @@ void DisableDomainCheckForTesting();
 
 // Initializes the preferences for the profile at |profile_path| with the
 // preference values in |master_prefs|. Returns true on success.
-bool InitializePrefsFromMasterPrefs(
-    const base::FilePath& profile_path,
-    std::unique_ptr<base::DictionaryValue> master_prefs);
+bool InitializePrefsFromMasterPrefs(const base::FilePath& profile_path,
+                                    base::Value::Dict master_prefs);
 
 // Retrieves the time of the last preference reset event, if any, for the
 // provided profile. If no reset has occurred, returns a null |Time|.

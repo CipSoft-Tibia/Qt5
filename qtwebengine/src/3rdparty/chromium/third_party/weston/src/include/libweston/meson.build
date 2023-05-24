@@ -3,7 +3,6 @@ install_headers(
 	'libweston.h',
 	'matrix.h',
 	'plugin-registry.h',
-	'timeline-object.h',
 	'windowed-output-api.h',
 	'weston-log.h',
 	'zalloc.h',

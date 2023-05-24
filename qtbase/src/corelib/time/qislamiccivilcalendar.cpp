@@ -1,46 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qglobal.h"
 #include "qislamiccivilcalendar_p.h"
 #include "qcalendarmath_p.h"
-#include <QtCore/qmath.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -72,23 +35,20 @@ using namespace QRoundingDown;
     \sa QHijriCalendar, QCalendar
 */
 
-QIslamicCivilCalendar::QIslamicCivilCalendar()
-    : QHijriCalendar(QStringLiteral("Islamic Civil"), QCalendar::System::IslamicCivil)
-{
-    registerAlias(QStringLiteral("islamic-civil")); // CLDR name
-    registerAlias(QStringLiteral("islamicc")); // old CLDR name, still (2018) used by Mozilla
-    // Until we have a oncrete implementation that knows all the needed ephemerides:
-    registerAlias(QStringLiteral("Islamic"));
-}
-
 QString QIslamicCivilCalendar::name() const
 {
     return QStringLiteral("Islamic Civil");
 }
 
-QCalendar::System QIslamicCivilCalendar::calendarSystem() const
+QStringList QIslamicCivilCalendar::nameList()
 {
-    return QCalendar::System::IslamicCivil;
+    return {
+        QStringLiteral("Islamic Civil"),
+        QStringLiteral("islamic-civil"), // CLDR name
+        QStringLiteral("islamicc"), // old CLDR name, still (2018) used by Mozilla
+        // Until we have a concrete implementation that knows all the needed ephemerides:
+        QStringLiteral("Islamic"),
+    };
 }
 
 bool QIslamicCivilCalendar::isLeapYear(int year) const
@@ -97,30 +57,37 @@ bool QIslamicCivilCalendar::isLeapYear(int year) const
         return false;
     if (year < 0)
         ++year;
-    return qMod(year * 11 + 14, 30) < 11;
+    return qMod<30>(year * 11 + 14) < 11;
 }
+
+// First day of first year (Gregorian 622 CE July 19th) is the base date here:
+constexpr qint64 EpochJd = 1948440;
+// Each 30 years has 11 leap years of 355 days and 19 ordinary years of 354:
+constexpr unsigned ThirtyYears = 11 * 355 + 19 * 354;
+// The first eleven months of the year alternate 30, 29, ..., 29, 30 days in length.
+constexpr unsigned ElevenMonths = 6 * 30 + 5 * 29;
 
 bool QIslamicCivilCalendar::dateToJulianDay(int year, int month, int day, qint64 *jd) const
 {
     Q_ASSERT(jd);
     if (!isDateValid(year, month, day))
         return false;
-    if (year <= 0)
-        ++year;
-    *jd = qDiv(10631 * year - 10617, 30)
-            + qDiv(325 * month - 320, 11)
-            + day + 1948439;
+
+    *jd = qDiv<30>(qint64(ThirtyYears) * (year > 0 ? year - 1 : year) + 14)
+        + qDiv<11>(ElevenMonths * (month - 1) + 5)
+        + day + EpochJd - 1;
     return true;
 }
 
 QCalendar::YearMonthDay QIslamicCivilCalendar::julianDayToDate(qint64 jd) const
 {
-    const qint64 epoch = 1948440;
-    const int32_t k2 = 30 * (jd - epoch) + 15;
-    const int32_t k1 = 11 * qDiv(qMod(k2, 10631), 30) + 5;
-    int y = qDiv(k2, 10631) + 1;
-    const int month = qDiv(k1, 325) + 1;
-    const int day = qDiv(qMod(k1, 325), 11) + 1;
+    const auto year30Day = qDivMod<ThirtyYears>(30 * (jd - EpochJd) + 15);
+    // Its remainder changes by 30 per day, except roughly yearly.
+    const auto month11Day = qDivMod<ElevenMonths>(11 * qDiv<30>(year30Day.remainder) + 5);
+    // Its remainder changes by 11 per day except roughly monthly.
+    const int month = month11Day.quotient + 1;
+    const int day = qDiv<11>(month11Day.remainder) + 1;
+    const int y = year30Day.quotient + 1;
     return QCalendar::YearMonthDay(y > 0 ? y : y - 1, month, day);
 }
 

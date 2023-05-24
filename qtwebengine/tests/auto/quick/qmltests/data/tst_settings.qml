@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-import QtQuick 2.0
-import QtTest 1.0
-import QtWebEngine 1.2
+import QtQuick
+import QtTest
+import QtWebEngine
 
 TestWebEngineView {
     id: webEngineView
@@ -102,6 +77,42 @@ TestWebEngineView {
             tryCompare(webEngineView2, "title", "New Title");
 
             webEngineView2.destroy();
+        }
+
+        function test_disableReadingFromCanvas_data() {
+            return [
+                { tag: 'disabled', disableReadingFromCanvas: false, result: true },
+                { tag: 'enabled', disableReadingFromCanvas: true, result: false },
+            ]
+        }
+
+        function test_disableReadingFromCanvas(data) {
+            webEngineView.settings.readingFromCanvasEnabled = !data.disableReadingFromCanvas;
+            webEngineView.loadHtml("<html><body>" +
+                                   "<canvas id='myCanvas' width='200' height='40' style='border:1px solid #000000;'></canvas>" +
+                                   "</body></html>");
+            verify(webEngineView.waitForLoadSucceeded());
+            verify(webEngineView.settings.readingFromCanvasEnabled === !data.disableReadingFromCanvas )
+
+            var jsCode = "(function(){" +
+                       "   var canvas = document.getElementById(\"myCanvas\");" +
+                       "   var ctx = canvas.getContext(\"2d\");" +
+                       "   ctx.fillStyle = \"rgb(255,0,255)\";" +
+                       "   ctx.fillRect(0, 0, 200, 40);" +
+                       "   try {" +
+                       "      src = canvas.toDataURL();" +
+                       "   }" +
+                       "   catch(err) {" +
+                       "      src = \"\";" +
+                       "   }" +
+                       "   return src.length ? true : false;" +
+                       "})();";
+
+            var isDataRead = false;
+            runJavaScript(jsCode, function(result) {
+                isDataRead = result
+            });
+            tryVerify(function() { return isDataRead === data.result });
         }
     }
 }

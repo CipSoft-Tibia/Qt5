@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qplatformdefs.h>
 
 #include <QCoreApplication>
@@ -96,7 +71,7 @@ void tst_QFileSelector::basicTest_data()
     expectedPlatform2File = QString(":/platforms/test2");
 #else
     QString distributionName;
-#  if (defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)) || defined(Q_OS_FREEBSD) || defined(Q_OS_WINRT)
+#  if (defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)) || defined(Q_OS_FREEBSD)
     distributionName = QSysInfo::productType();
 #  endif
     foreach (const QString &selector, QFileSelectorPrivate::platformSelectors()) {
@@ -125,14 +100,6 @@ void tst_QFileSelector::basicTest_data()
 
     QTest::newRow("platform3") << QString(":/platforms/test3") << QStringList()
                                << expectedPlatform3File;
-
-#ifdef Q_OS_MACOS
-    // special case for compatibility code
-    QTest::newRow("osx-compat") << QString(":/platforms/test4") << QStringList()
-                                << ":/platforms/+osx/test4";
-    QTest::newRow("mac-compat") << QString(":/platforms/test5") << QStringList()
-                                << ":/platforms/+mac/test5";
-#endif
 
     QString resourceTestPath(":/extras/test");
     QString custom1("custom1");
@@ -222,6 +189,9 @@ void tst_QFileSelector::urlConvenience_data()
     QTest::newRow("file with query and fragment") << QUrl(strUrlWithFragment) << (QStringList()) << QUrl(strUrlWithFragment);
     strUrlWithFragment = QString("file:") + testWithQueryAndFragment;
     QTest::newRow("file with query and fragment too") << QUrl(strUrlWithFragment) << (QStringList()) << QUrl(strUrlWithFragment);
+
+    // preserve path to root
+    QTest::newRow("path to root") << QUrl("file:///") << (QStringList()) << QUrl("file:///");
 
     // http://qt-project.org/images/qtdn/sprites-combined-latest.png is chosen as a representative real world URL
     // But note that this test is checking that http urls are NOT selected so it shouldn't be checked

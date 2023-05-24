@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QBoxPlotModelMapper>
 #include <private/qboxplotmodelmapper_p.h>
@@ -34,7 +8,7 @@
 #include <QtCharts/QChart>
 #include <QtCore/QAbstractItemModel>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 /*!
     \class QBoxPlotModelMapper
@@ -272,8 +246,8 @@ void QBoxPlotModelMapperPrivate::handleSeriesDestroyed()
 
 void QBoxPlotModelMapperPrivate::modelUpdated(QModelIndex topLeft, QModelIndex bottomRight)
 {
-    Q_UNUSED(topLeft)
-    Q_UNUSED(bottomRight)
+    Q_UNUSED(topLeft);
+    Q_UNUSED(bottomRight);
 
     if (m_model == 0 || m_series == 0)
         return;
@@ -307,7 +281,7 @@ void QBoxPlotModelMapperPrivate::modelHeaderDataUpdated(Qt::Orientation orientat
 
 void QBoxPlotModelMapperPrivate::modelRowsAdded(QModelIndex parent, int start, int end)
 {
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
     if (m_modelSignalsBlock)
         return;
 
@@ -321,7 +295,7 @@ void QBoxPlotModelMapperPrivate::modelRowsAdded(QModelIndex parent, int start, i
 
 void QBoxPlotModelMapperPrivate::modelRowsRemoved(QModelIndex parent, int start, int end)
 {
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
     if (m_modelSignalsBlock)
         return;
 
@@ -335,7 +309,7 @@ void QBoxPlotModelMapperPrivate::modelRowsRemoved(QModelIndex parent, int start,
 
 void QBoxPlotModelMapperPrivate::modelColumnsAdded(QModelIndex parent, int start, int end)
 {
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
     if (m_modelSignalsBlock)
         return;
 
@@ -349,7 +323,7 @@ void QBoxPlotModelMapperPrivate::modelColumnsAdded(QModelIndex parent, int start
 
 void QBoxPlotModelMapperPrivate::modelColumnsRemoved(QModelIndex parent, int start, int end)
 {
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
     if (m_modelSignalsBlock)
         return;
 
@@ -368,9 +342,9 @@ void QBoxPlotModelMapperPrivate::handleModelDestroyed()
 
 void QBoxPlotModelMapperPrivate::insertData(int start, int end)
 {
-    Q_UNUSED(end)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(end);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
     // Currently boxplotchart needs to be fully recalculated when change is made.
     // Re-initialize
     initializeBoxFromModel();
@@ -378,20 +352,20 @@ void QBoxPlotModelMapperPrivate::insertData(int start, int end)
 
 void QBoxPlotModelMapperPrivate::removeData(int start, int end)
 {
-    Q_UNUSED(end)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(end);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
     // Currently boxplotchart needs to be fully recalculated when change is made.
     // Re-initialize
     initializeBoxFromModel();
 }
 
-void QBoxPlotModelMapperPrivate::boxSetsAdded(QList<QBoxSet *> sets)
+void QBoxPlotModelMapperPrivate::boxSetsAdded(const QList<QBoxSet *> &sets)
 {
     if (m_seriesSignalsBlock)
         return;
 
-    if (sets.count() == 0)
+    if (sets.size() == 0)
         return;
 
     int firstIndex = m_series->boxSets().indexOf(sets.at(0));
@@ -399,7 +373,7 @@ void QBoxPlotModelMapperPrivate::boxSetsAdded(QList<QBoxSet *> sets)
         return;
 
     int maxCount = 0;
-    for (int i = 0; i < sets.count(); i++) {
+    for (int i = 0; i < sets.size(); i++) {
         if (sets.at(i)->count() > m_count)
             maxCount = sets.at(i)->count();
     }
@@ -407,7 +381,7 @@ void QBoxPlotModelMapperPrivate::boxSetsAdded(QList<QBoxSet *> sets)
     if (m_count != -1 && m_count < maxCount)
         m_count = maxCount;
 
-    m_lastBoxSetSection += sets.count();
+    m_lastBoxSetSection += sets.size();
 
     blockModelSignals();
     int modelCapacity = m_orientation == Qt::Vertical ? m_model->rowCount() - m_first : m_model->columnCount() - m_first;
@@ -419,12 +393,12 @@ void QBoxPlotModelMapperPrivate::boxSetsAdded(QList<QBoxSet *> sets)
     }
 
     if (m_orientation == Qt::Vertical)
-        m_model->insertColumns(firstIndex + m_firstBoxSetSection, sets.count());
+        m_model->insertColumns(firstIndex + m_firstBoxSetSection, sets.size());
     else
-        m_model->insertRows(firstIndex + m_firstBoxSetSection, sets.count());
+        m_model->insertRows(firstIndex + m_firstBoxSetSection, sets.size());
 
 
-    for (int i = firstIndex + m_firstBoxSetSection; i < firstIndex + m_firstBoxSetSection + sets.count(); i++) {
+    for (int i = firstIndex + m_firstBoxSetSection; i < firstIndex + m_firstBoxSetSection + sets.size(); i++) {
         for (int j = 0; j < sets.at(i - firstIndex - m_firstBoxSetSection)->count(); j++)
             m_model->setData(boxModelIndex(i, j), sets.at(i - firstIndex - m_firstBoxSetSection)->at(j));
     }
@@ -432,28 +406,28 @@ void QBoxPlotModelMapperPrivate::boxSetsAdded(QList<QBoxSet *> sets)
     initializeBoxFromModel();
 }
 
-void QBoxPlotModelMapperPrivate::boxSetsRemoved(QList<QBoxSet *> sets)
+void QBoxPlotModelMapperPrivate::boxSetsRemoved(const QList<QBoxSet *> &sets)
 {
     if (m_seriesSignalsBlock)
         return;
 
-    if (sets.count() == 0)
+    if (sets.size() == 0)
         return;
 
     int firstIndex = m_boxSets.indexOf(sets.at(0));
     if (firstIndex == -1)
         return;
 
-    m_lastBoxSetSection -= sets.count();
+    m_lastBoxSetSection -= sets.size();
 
-    for (int i = firstIndex + sets.count() - 1; i >= firstIndex; i--)
+    for (int i = firstIndex + sets.size() - 1; i >= firstIndex; i--)
         m_boxSets.removeAt(i);
 
     blockModelSignals();
     if (m_orientation == Qt::Vertical)
-        m_model->removeColumns(firstIndex + m_firstBoxSetSection, sets.count());
+        m_model->removeColumns(firstIndex + m_firstBoxSetSection, sets.size());
     else
-        m_model->removeRows(firstIndex + m_firstBoxSetSection, sets.count());
+        m_model->removeRows(firstIndex + m_firstBoxSetSection, sets.size());
     blockModelSignals(false);
     initializeBoxFromModel();
 }
@@ -503,7 +477,7 @@ void QBoxPlotModelMapperPrivate::initializeBoxFromModel()
     blockSeriesSignals(false);
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qboxplotmodelmapper.cpp"
 #include "moc_qboxplotmodelmapper_p.cpp"

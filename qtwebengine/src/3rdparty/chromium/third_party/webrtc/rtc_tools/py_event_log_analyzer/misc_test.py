@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
 #
 #  Use of this source code is governed by a BSD-style license
@@ -6,7 +6,6 @@
 #  tree. An additional intellectual property rights grant can be found
 #  in the file PATENTS.  All contributing project authors may
 #  be found in the AUTHORS file in the root of the source tree.
-
 """Run the tests with
 
       python misc_test.py
@@ -15,11 +14,13 @@ or
 """
 
 from __future__ import division
+from __future__ import absolute_import
 import random
 import unittest
+from six.moves import range
+from six.moves import zip
 
 import misc
-
 
 class TestMisc(unittest.TestCase):
   def testUnwrapMod3(self):
@@ -67,6 +68,7 @@ class TestMisc(unittest.TestCase):
       _ = misc.Unwrap(random_data, mod)
 
       self.assertEqual(random_data, random_data_copy)
+
 
 if __name__ == "__main__":
   unittest.main()

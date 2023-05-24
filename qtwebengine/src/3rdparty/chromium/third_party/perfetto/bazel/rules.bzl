@@ -22,7 +22,7 @@ load("@perfetto//bazel:proto_gen.bzl", "proto_descriptor_gen", "proto_gen")
 def default_cc_args():
     return {
         "deps": PERFETTO_CONFIG.deps.build_config,
-        "copts": [
+        "copts": PERFETTO_CONFIG.default_copts + [
             "-Wno-pragma-system-header-outside-header",
         ],
         "includes": ["include"],
@@ -33,6 +33,18 @@ def default_cc_args():
             "//conditions:default": ["-ldl"],
         }),
     }
+
+def perfetto_build_config_cc_library(**kwargs):
+    if not _rule_override("cc_library", **kwargs):
+        native.cc_library(**kwargs)
+
+def perfetto_filegroup(**kwargs):
+    if not _rule_override("filegroup", **kwargs):
+        native.filegroup(**kwargs)
+
+def perfetto_genrule(**kwargs):
+    if not _rule_override("genrule", **kwargs):
+        native.genrule(**kwargs)
 
 def perfetto_cc_library(**kwargs):
     args = _merge_dicts(default_cc_args(), kwargs)
@@ -72,14 +84,19 @@ def perfetto_java_lite_proto_library(**kwargs):
     if not _rule_override("java_lite_proto_library", **kwargs):
         native.java_lite_proto_library(**kwargs)
 
+# Unlike the other rules, this is an noop by default because Bazel does not
+# support Go proto libraries.
+def perfetto_go_proto_library(**kwargs):
+    _rule_override("go_proto_library", **kwargs)
+
+# Unlike the other rules, this is an noop by default because Bazel does not
+# support Python proto libraries.
+def perfetto_py_proto_library(**kwargs):
+    _rule_override("py_proto_library", **kwargs)
+
 # +----------------------------------------------------------------------------+
 # | Misc rules.                                                                |
 # +----------------------------------------------------------------------------+
-
-# Unlike all the other rules, this is an noop by default because Bazel does not
-# support gensignature.
-def perfetto_gensignature_internal_only(**kwargs):
-    _rule_override("gensignature_internal_only", **kwargs)
 
 # Generates .pbzero.{cc,h} from .proto(s). We deliberately do NOT generate
 # conventional .pb.{cc,h} from here as protozero gen sources do not have any
@@ -93,17 +110,30 @@ def perfetto_cc_protozero_library(name, deps, **kwargs):
     ):
         return
 
-    proto_gen(
-        name = name + "_src",
-        deps = deps,
-        suffix = "pbzero",
-        plugin = PERFETTO_CONFIG.root + ":protozero_plugin",
-        wrapper_namespace = "pbzero",
-        protoc = PERFETTO_CONFIG.deps.protoc[0],
-        root = PERFETTO_CONFIG.root,
-    )
+    # A perfetto_cc_protozero_library has two types of dependencies:
+    # 1. Exactly one dependency on a proto_library target. This defines the
+    #    .proto sources for the target
+    # 2. Zero or more deps on other perfetto_cc_protozero_library targets. This
+    #    to deal with the case of foo.proto including common.proto from another
+    #    target.
+    _proto_deps = [d for d in deps if d.endswith("_protos")]
+    _cc_deps = [d for d in deps if d not in _proto_deps]
+    if len(_proto_deps) != 1:
+        fail("Too many proto deps for target %s" % name)
 
-    native.filegroup(
+    args = {
+        'name': name + "_src",
+        'deps': _proto_deps,
+        'suffix': "pbzero",
+        'plugin': PERFETTO_CONFIG.root + ":protozero_plugin",
+        'wrapper_namespace': "pbzero",
+        'protoc': PERFETTO_CONFIG.deps.protoc[0],
+        'root': PERFETTO_CONFIG.root,
+    }
+    if not _rule_override("proto_gen", **args):
+        proto_gen(**args)
+
+    perfetto_filegroup(
         name = name + "_h",
         srcs = [":" + name + "_src"],
         output_group = "h",
@@ -113,7 +143,7 @@ def perfetto_cc_protozero_library(name, deps, **kwargs):
         name = name,
         srcs = [":" + name + "_src"],
         hdrs = [":" + name + "_h"],
-        deps = [PERFETTO_CONFIG.root + ":libprotozero"],
+        deps = [PERFETTO_CONFIG.root + ":protozero"] + _cc_deps,
         **kwargs
     )
 
@@ -135,17 +165,19 @@ def perfetto_cc_ipc_library(name, deps, **kwargs):
         fail("Too many proto deps for target %s" % name)
 
     # Generates .ipc.{cc,h}.
-    proto_gen(
-        name = name + "_src",
-        deps = _proto_deps,
-        suffix = "ipc",
-        plugin = PERFETTO_CONFIG.root + ":ipc_plugin",
-        wrapper_namespace = "gen",
-        protoc = PERFETTO_CONFIG.deps.protoc[0],
-        root = PERFETTO_CONFIG.root,
-    )
+    args = {
+        'name': name + "_src",
+        'deps': _proto_deps,
+        'suffix': "ipc",
+        'plugin': PERFETTO_CONFIG.root + ":ipc_plugin",
+        'wrapper_namespace': "gen",
+        'protoc': PERFETTO_CONFIG.deps.protoc[0],
+        'root': PERFETTO_CONFIG.root,
+    }
+    if not _rule_override("proto_gen", **args):
+        proto_gen(**args)
 
-    native.filegroup(
+    perfetto_filegroup(
         name = name + "_h",
         srcs = [":" + name + "_src"],
         output_group = "h",
@@ -158,7 +190,7 @@ def perfetto_cc_ipc_library(name, deps, **kwargs):
         deps = [
             # Generated .ipc.{cc,h} depend on this and protozero.
             PERFETTO_CONFIG.root + ":perfetto_ipc",
-            PERFETTO_CONFIG.root + ":libprotozero",
+            PERFETTO_CONFIG.root + ":protozero",
         ] + _cc_deps,
         **kwargs
     )
@@ -184,17 +216,19 @@ def perfetto_cc_protocpp_library(name, deps, **kwargs):
     if len(_proto_deps) != 1:
         fail("Too many proto deps for target %s" % name)
 
-    proto_gen(
-        name = name + "_gen",
-        deps = _proto_deps,
-        suffix = "gen",
-        plugin = PERFETTO_CONFIG.root + ":cppgen_plugin",
-        wrapper_namespace = "gen",
-        protoc = PERFETTO_CONFIG.deps.protoc[0],
-        root = PERFETTO_CONFIG.root,
-    )
+    args = {
+        'name': name + "_gen",
+        'deps': _proto_deps,
+        'suffix': "gen",
+        'plugin': PERFETTO_CONFIG.root + ":cppgen_plugin",
+        'wrapper_namespace': "gen",
+        'protoc': PERFETTO_CONFIG.deps.protoc[0],
+        'root': PERFETTO_CONFIG.root,
+    }
+    if not _rule_override("proto_gen", **args):
+        proto_gen(**args)
 
-    native.filegroup(
+    perfetto_filegroup(
         name = name + "_gen_h",
         srcs = [":" + name + "_gen"],
         output_group = "h",
@@ -208,17 +242,19 @@ def perfetto_cc_protocpp_library(name, deps, **kwargs):
         srcs = [":" + name + "_gen"],
         textual_hdrs = [":" + name + "_gen_h"],
         deps = [
-            PERFETTO_CONFIG.root + ":libprotozero",
+            PERFETTO_CONFIG.root + ":protozero",
         ] + _cc_deps,
         **kwargs
     )
 
 def perfetto_proto_descriptor(name, deps, outs, **kwargs):
-    proto_descriptor_gen(
-        name = name,
-        deps = deps,
-        outs = outs,
-    )
+    args = {
+        'name': name,
+        'deps': deps,
+        'outs': outs,
+    }
+    if not _rule_override("proto_descriptor_gen", **args):
+        proto_descriptor_gen(**args)
 
 # Generator .descriptor.h from protos
 def perfetto_cc_proto_descriptor(name, deps, outs, **kwargs):
@@ -228,7 +264,7 @@ def perfetto_cc_proto_descriptor(name, deps, outs, **kwargs):
         "--gen_dir=$(GENDIR)",
         "$<"
     ]
-    native.genrule(
+    perfetto_genrule(
         name = name + "_gen",
         cmd = " ".join(cmd),
         exec_tools = [
@@ -242,6 +278,73 @@ def perfetto_cc_proto_descriptor(name, deps, outs, **kwargs):
         name = name,
         hdrs = [":" + name + "_gen"],
         **kwargs
+    )
+
+def perfetto_cc_amalgamated_sql(name, deps, outs, namespace, **kwargs):
+    if PERFETTO_CONFIG.root[:2] != "//":
+        fail("Expected PERFETTO_CONFIG.root to start with //")
+
+    cmd = [
+        "$(location gen_amalgamated_sql_py)",
+        "--namespace",
+        namespace,
+        "--cpp-out=$@",
+        "$(SRCS)",
+    ]
+
+    perfetto_genrule(
+        name = name + "_gen",
+        cmd = " ".join(cmd),
+        exec_tools = [
+            ":gen_amalgamated_sql_py",
+        ],
+        srcs = deps,
+        outs = outs,
+    )
+
+    perfetto_cc_library(
+        name = name,
+        hdrs = [":" + name + "_gen"],
+        **kwargs,
+    )
+
+def perfetto_cc_tp_tables(name, srcs, outs, **kwargs):
+    if PERFETTO_CONFIG.root == "//":
+      python_path = PERFETTO_CONFIG.root + "python"
+    else:
+      python_path = PERFETTO_CONFIG.root + "/python"
+
+    perfetto_py_binary(
+        name = name + "_tool",
+        deps = [
+            python_path + ":trace_processor_table_generator",
+        ],
+        srcs = srcs + [
+            "tools/gen_tp_table_headers.py",
+        ],
+        main = "tools/gen_tp_table_headers.py",
+        python_version = "PY3",
+    )
+
+    cmd = ["$(location " + name + "_tool)"]
+    cmd += ["--gen-dir", "$(RULEDIR)"]
+    cmd += ["--inputs", "$(SRCS)"]
+    cmd += ["--outputs", "$(OUTS)"]
+
+    perfetto_genrule(
+        name = name + "_gen",
+        cmd = " ".join(cmd),
+        exec_tools = [
+            ":" + name + "_tool",
+        ],
+        srcs = srcs,
+        outs = outs,
+    )
+
+    perfetto_filegroup(
+        name = name,
+        srcs = [":" + name + "_gen"],
+        **kwargs,
     )
 
 # +----------------------------------------------------------------------------+

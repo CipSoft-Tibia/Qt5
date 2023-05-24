@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,10 @@
 
 #include "fxjs/js_define.h"
 
+#include <math.h>
+#include <stdarg.h>
+
 #include <algorithm>
-#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -16,43 +18,45 @@
 #include "fxjs/cjs_object.h"
 #include "fxjs/fx_date_helpers.h"
 #include "fxjs/fxv8.h"
+#include "third_party/base/check.h"
+#include "v8/include/v8-context.h"
+#include "v8/include/v8-function.h"
+#include "v8/include/v8-isolate.h"
 
 void JSDestructor(v8::Local<v8::Object> obj) {
   CFXJS_Engine::SetObjectPrivate(obj, nullptr);
 }
 
-double JS_DateParse(const WideString& str) {
-  v8::Isolate* pIsolate = v8::Isolate::GetCurrent();
+double JS_DateParse(v8::Isolate* pIsolate, const WideString& str) {
   v8::Isolate::Scope isolate_scope(pIsolate);
   v8::HandleScope scope(pIsolate);
 
   v8::Local<v8::Context> context = pIsolate->GetCurrentContext();
 
   // Use the built-in object method.
-  v8::Local<v8::Value> v =
-      context->Global()
-          ->Get(context, fxv8::NewStringHelper(pIsolate, "Date"))
-          .ToLocalChecked();
-  if (v->IsObject()) {
-    v8::Local<v8::Object> o = v->ToObject(context).ToLocalChecked();
-    v = o->Get(context, fxv8::NewStringHelper(pIsolate, "parse"))
-            .ToLocalChecked();
-    if (v->IsFunction()) {
-      v8::Local<v8::Function> funC = v8::Local<v8::Function>::Cast(v);
-      const int argc = 1;
-      v8::Local<v8::String> timeStr =
-          fxv8::NewStringHelper(pIsolate, str.AsStringView());
-      v8::Local<v8::Value> argv[argc] = {timeStr};
-      v = funC->Call(context, context->Global(), argc, argv).ToLocalChecked();
-      if (v->IsNumber()) {
-        double date = v->ToNumber(context).ToLocalChecked()->Value();
-        if (!std::isfinite(date))
-          return date;
-        return FX_LocalTime(date);
-      }
-    }
-  }
-  return 0;
+  v8::MaybeLocal<v8::Value> maybe_value =
+      context->Global()->Get(context, fxv8::NewStringHelper(pIsolate, "Date"));
+
+  v8::Local<v8::Value> value;
+  if (!maybe_value.ToLocal(&value) || !value->IsObject())
+    return 0;
+
+  v8::Local<v8::Object> obj = value.As<v8::Object>();
+  maybe_value = obj->Get(context, fxv8::NewStringHelper(pIsolate, "parse"));
+  if (!maybe_value.ToLocal(&value) || !value->IsFunction())
+    return 0;
+
+  v8::Local<v8::Function> func = value.As<v8::Function>();
+  static constexpr int argc = 1;
+  v8::Local<v8::Value> argv[argc] = {
+      fxv8::NewStringHelper(pIsolate, str.AsStringView()),
+  };
+  maybe_value = func->Call(context, context->Global(), argc, argv);
+  if (!maybe_value.ToLocal(&value) || !value->IsNumber())
+    return 0;
+
+  double date = value.As<v8::Number>()->Value();
+  return isfinite(date) ? FX_LocalTime(date) : date;
 }
 
 std::vector<v8::Local<v8::Value>> ExpandKeywordParams(
@@ -60,7 +64,7 @@ std::vector<v8::Local<v8::Value>> ExpandKeywordParams(
     const std::vector<v8::Local<v8::Value>>& originals,
     size_t nKeywords,
     ...) {
-  ASSERT(nKeywords);
+  DCHECK(nKeywords);
 
   std::vector<v8::Local<v8::Value>> result(nKeywords, v8::Local<v8::Value>());
   size_t size = std::min(originals.size(), nKeywords);

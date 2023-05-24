@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,8 @@
 
 #include <vector>
 
-#include "base/callback.h"
 #include "base/containers/flat_set.h"
+#include "base/functional/callback.h"
 #include "base/task/cancelable_task_tracker.h"
 #include "components/favicon_base/favicon_callback.h"
 #include "components/favicon_base/favicon_types.h"
@@ -50,7 +50,7 @@ class CoreFaviconService : public KeyedService {
   // from page URLs to favicons at different icon URLs will be deleted.
   // A favicon bitmap is added for each image rep in |image|. Any preexisting
   // bitmap data for |icon_url| is deleted. It is important that |image|
-  // contains image reps for all of ui::GetSupportedScaleFactors(). Use
+  // contains image reps for all of ui::GetSupportedResourceScaleFactors(). Use
   // MergeFavicon() if it does not.
   // TODO(pkotwicz): Save unresized favicon bitmaps to the database.
   // TODO(pkotwicz): Support adding favicons for multiple icon URLs to the

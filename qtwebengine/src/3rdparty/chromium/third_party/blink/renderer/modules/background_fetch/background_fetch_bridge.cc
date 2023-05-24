@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -59,19 +59,19 @@ void BackgroundFetchBridge::Fetch(
     const SkBitmap& icon,
     mojom::blink::BackgroundFetchUkmDataPtr ukm_data,
     RegistrationCallback callback) {
-  GetService()->Fetch(
-      GetSupplementable()->RegistrationId(), developer_id, std::move(requests),
-      std::move(options), icon, std::move(ukm_data),
-      WTF::Bind(&BackgroundFetchBridge::DidGetRegistration,
-                WrapPersistent(this), WTF::Passed(std::move(callback))));
+  GetService()->Fetch(GetSupplementable()->RegistrationId(), developer_id,
+                      std::move(requests), std::move(options), icon,
+                      std::move(ukm_data),
+                      WTF::BindOnce(&BackgroundFetchBridge::DidGetRegistration,
+                                    WrapPersistent(this), std::move(callback)));
 }
 
 void BackgroundFetchBridge::GetRegistration(const String& developer_id,
                                             RegistrationCallback callback) {
   GetService()->GetRegistration(
       GetSupplementable()->RegistrationId(), developer_id,
-      WTF::Bind(&BackgroundFetchBridge::DidGetRegistration,
-                WrapPersistent(this), WTF::Passed(std::move(callback))));
+      WTF::BindOnce(&BackgroundFetchBridge::DidGetRegistration,
+                    WrapPersistent(this), std::move(callback)));
 }
 
 void BackgroundFetchBridge::DidGetRegistration(

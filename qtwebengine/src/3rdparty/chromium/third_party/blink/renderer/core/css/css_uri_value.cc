@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -28,16 +28,18 @@ CSSURIValue::CSSURIValue(const AtomicString& relative_url, const KURL& url)
 CSSURIValue::~CSSURIValue() = default;
 
 SVGResource* CSSURIValue::EnsureResourceReference() const {
-  if (!resource_)
+  if (!resource_) {
     resource_ = MakeGarbageCollected<ExternalSVGResource>(AbsoluteUrl());
+  }
   return resource_;
 }
 
 void CSSURIValue::ReResolveUrl(const Document& document) const {
   KURL url = document.CompleteURL(relative_url_);
   AtomicString url_string(url.GetString());
-  if (url_string == absolute_url_)
+  if (url_string == absolute_url_) {
     return;
+  }
   absolute_url_ = url_string;
   resource_ = nullptr;
 }
@@ -52,6 +54,24 @@ AtomicString CSSURIValue::FragmentIdentifier() const {
   return AtomicString(AbsoluteUrl().FragmentIdentifier());
 }
 
+const AtomicString& CSSURIValue::NormalizedFragmentIdentifier() const {
+  if (normalized_fragment_identifier_cache_.IsNull()) {
+    normalized_fragment_identifier_cache_ =
+        AtomicString(DecodeURLEscapeSequences(
+            FragmentIdentifier(), DecodeURLMode::kUTF8OrIsomorphic));
+  }
+
+  // NOTE: If is_local_ is true, the normalized URL may be different
+  // (we don't invalidate the cache when the base URL changes),
+  // but it should not matter for the fragment. We DCHECK that we get
+  // the right result, to be sure.
+  DCHECK_EQ(normalized_fragment_identifier_cache_,
+            AtomicString(DecodeURLEscapeSequences(
+                FragmentIdentifier(), DecodeURLMode::kUTF8OrIsomorphic)));
+
+  return normalized_fragment_identifier_cache_;
+}
+
 KURL CSSURIValue::AbsoluteUrl() const {
   return KURL(absolute_url_);
 }
@@ -63,14 +83,16 @@ bool CSSURIValue::IsLocal(const Document& document) const {
 
 bool CSSURIValue::Equals(const CSSURIValue& other) const {
   // If only one has the 'local url' flag set, the URLs can't match.
-  if (is_local_ != other.is_local_)
+  if (is_local_ != other.is_local_) {
     return false;
-  if (is_local_)
+  }
+  if (is_local_) {
     return relative_url_ == other.relative_url_;
+  }
   return absolute_url_ == other.absolute_url_;
 }
 
-CSSURIValue* CSSURIValue::ValueWithURLMadeAbsolute(
+CSSURIValue* CSSURIValue::ComputedCSSValue(
     const KURL& base_url,
     const WTF::TextEncoding& charset) const {
   if (!charset.IsValid()) {

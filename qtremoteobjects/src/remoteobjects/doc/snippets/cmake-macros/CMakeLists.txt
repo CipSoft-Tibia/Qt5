@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 3.1.0)
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
+cmake_minimum_required(VERSION 3.16)
 
 project(directconnectserver)
 
@@ -10,17 +13,40 @@ if(CMAKE_VERSION VERSION_LESS "3.7.0")
     set(CMAKE_INCLUDE_CURRENT_DIR ON)
 endif()
 
-
-#! [qt5_generate_repc]
-find_package(Qt5 COMPONENTS RemoteObjects REQUIRED)
+#! [remote_objects_cmake]
+find_package(Qt6 REQUIRED COMPONENTS RemoteObjects)
+#! [remote_objects_cmake]
 
 set(SOURCES
     main.cpp
     simpleswitch.cpp
 )
 
-qt5_generate_repc(SOURCES simpleswitch.rep SOURCE)
+#! [simpleSwitch_cmake_add_repc_source]
+qt6_add_repc_sources(directconnectserver
+    simpleswitch.rep
+)
+#! [simpleSwitch_cmake_add_repc_source]
+
+#! [simpleSwitch_cmake_add_repc_replica]
+qt6_add_repc_replicas(directconnectclient
+    simpleswitch.rep
+)
+#! [simpleSwitch_cmake_add_repc_replica]
+
+#! [simpleSwitch_cmake_add_repc_merged]
+qt6_add_repc_merged(directconnectexample
+    simpleswitch.rep
+)
+#! [simpleSwitch_cmake_add_repc_merged]
 
 add_executable(directconnectserver ${SOURCES})
-target_link_libraries(directconnectserver Qt5::RemoteObjects)
-#! [qt5_generate_repc]
+#! [remote_objects_cmake_link]
+target_link_libraries(directconnectserver PRIVATE Qt6::RemoteObjects)
+#! [remote_objects_cmake_link]
+
+#! [simpleSwitch_cmake_rep_from_header]
+qt6_reps_from_headers(directconnectexample
+    simpleswitch.h
+)
+#! [simpleSwitch_cmake_rep_from_header]

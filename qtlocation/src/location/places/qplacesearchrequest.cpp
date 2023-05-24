@@ -1,43 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplacesearchrequest.h"
 #include "qplacesearchrequest_p.h"
 #include "qgeocoordinate.h"
 #include "qgeoshape.h"
+
+#include <QtLocation/QPlaceCategory>
 
 #include <QtCore/QSharedData>
 #include <QtCore/QList>
@@ -46,50 +15,7 @@
 
 QT_BEGIN_NAMESPACE
 
-QPlaceSearchRequestPrivate::QPlaceSearchRequestPrivate()
-:   QSharedData(),
-    visibilityScope(QLocation::UnspecifiedVisibility),
-    relevanceHint(QPlaceSearchRequest::UnspecifiedHint),
-    limit(-1)
-{
-}
-
-QPlaceSearchRequestPrivate::QPlaceSearchRequestPrivate(const QPlaceSearchRequestPrivate &other)
-    : QSharedData(other),
-      searchTerm(other.searchTerm),
-      categories(other.categories),
-      searchArea(other.searchArea),
-      recommendationId(other.recommendationId),
-      visibilityScope(other.visibilityScope),
-      relevanceHint(other.relevanceHint),
-      limit(other.limit),
-      searchContext(other.searchContext),
-      related(other.related),
-      page(other.page)
-{
-}
-
-QPlaceSearchRequestPrivate::~QPlaceSearchRequestPrivate()
-{
-}
-
-QPlaceSearchRequestPrivate &QPlaceSearchRequestPrivate::operator=(const QPlaceSearchRequestPrivate &other)
-{
-    if (this != &other) {
-        searchTerm = other.searchTerm;
-        categories = other.categories;
-        searchArea = other.searchArea;
-        recommendationId = other.recommendationId;
-        visibilityScope = other.visibilityScope;
-        relevanceHint = other.relevanceHint;
-        limit = other.limit;
-        searchContext = other.searchContext;
-        related = other.related;
-        page = other.page;
-    }
-
-    return *this;
-}
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QPlaceSearchRequestPrivate)
 
 bool QPlaceSearchRequestPrivate::operator==(const QPlaceSearchRequestPrivate &other) const
 {
@@ -183,23 +109,18 @@ QPlaceSearchRequest::QPlaceSearchRequest()
 /*!
     Constructs a copy of \a other.
 */
-QPlaceSearchRequest::QPlaceSearchRequest(const QPlaceSearchRequest &other)
-    : d_ptr(other.d_ptr)
-{
-}
+QPlaceSearchRequest::QPlaceSearchRequest(const QPlaceSearchRequest &other) noexcept = default;
 
 /*!
     Destroys the request object.
 */
-QPlaceSearchRequest::~QPlaceSearchRequest()
-{
-}
+QPlaceSearchRequest::~QPlaceSearchRequest() = default;
 
 /*!
     Assigns \a other to this search request and returns a reference
     to this search request.
 */
-QPlaceSearchRequest &QPlaceSearchRequest::operator= (const QPlaceSearchRequest & other)
+QPlaceSearchRequest &QPlaceSearchRequest::operator=(const QPlaceSearchRequest & other) noexcept
 {
     if (this == &other)
         return *this;
@@ -209,23 +130,21 @@ QPlaceSearchRequest &QPlaceSearchRequest::operator= (const QPlaceSearchRequest &
 }
 
 /*!
-    Returns true if \a other is equal to this search request,
-    otherwise returns false.
+    \fn bool QPlaceSearchRequest::operator==(const QPlaceSearchRequest &lhs, const QPlaceSearchRequest &rhs) noexcept
+
+    Returns true if \a lhs is equal to \a rhs, otherwise returns false.
 */
-bool QPlaceSearchRequest::operator== (const QPlaceSearchRequest &other) const
+
+/*!
+    \fn bool QPlaceSearchRequest::operator!=(const QPlaceSearchRequest &lhs, const QPlaceSearchRequest &rhs) noexcept
+
+    Returns true if \a lhs is not equal to \a rhs, otherwise returns false.
+*/
+
+bool QPlaceSearchRequest::isEqual(const QPlaceSearchRequest &other) const noexcept
 {
     Q_D(const QPlaceSearchRequest);
     return *d == *other.d_func();
-}
-
-/*!
-    Returns true if \a other is not equal to this search request,
-    otherwise returns false.
-*/
-bool QPlaceSearchRequest::operator!= (const QPlaceSearchRequest &other) const
-{
-    Q_D(const QPlaceSearchRequest);
-    return !(*d == *other.d_func());
 }
 
 /*!

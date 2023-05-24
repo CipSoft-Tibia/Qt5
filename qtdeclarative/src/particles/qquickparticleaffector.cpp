@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickparticleaffector_p.h"
 #include <QDebug>
@@ -44,7 +8,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype Affector
-    \instantiates QQuickParticleAffector
+//!    \instantiates QQuickParticleAffector
     \inqmlmodule QtQuick.Particles
     \brief Applies alterations to the attributes of logical particles at any
     point in their lifetime.
@@ -53,22 +17,26 @@ QT_BEGIN_NAMESPACE
     The base Affector does not alter any attributes, but can be used to emit a signal
     when a particle meets certain conditions.
 
-    If an affector has a defined size, then it will only affect particles within its size and position on screen.
+    If an affector has a defined size, then it will only affect particles within its size and
+position on screen.
 
-    Affectors have different performance characteristics to the other particle system elements. In particular,
-    they have some simplifications to try to maintain a simulation at real-time or faster. When running a system
-    with Affectors, irregular frame timings that grow too large ( > one second per frame) will cause the Affectors
-    to try and cut corners with a faster but less accurate simulation. If the system has multiple affectors the order
-    in which they are applied is not guaranteed, and when simulating larger time shifts they will simulate the whole
-    shift each, which can lead to different results compared to smaller time shifts.
+    Affectors have different performance characteristics to the other particle system elements. In
+particular, they have some simplifications to try to maintain a simulation at real-time or faster.
+When running a system with Affectors, irregular frame timings that grow too large ( > one second per
+frame) will cause the Affectors to try and cut corners with a faster but less accurate simulation.
+If the system has multiple affectors the order in which they are applied is not guaranteed, and when
+simulating larger time shifts they will simulate the whole shift each, which can lead to different
+results compared to smaller time shifts.
 
-    Accurate simulation for large numbers of particles (hundreds) with multiple affectors may be possible on some hardware,
-    but on less capable hardware you should expect small irregularties in the simulation as simulates with worse granularity.
+    Accurate simulation for large numbers of particles (hundreds) with multiple affectors may be
+possible on some hardware, but on less capable hardware you should expect small irregularties in the
+simulation as simulates with worse granularity.
 */
 /*!
     \qmlproperty ParticleSystem QtQuick.Particles::Affector::system
     This is the system which will be affected by the element.
-    If the Affector is a direct child of a ParticleSystem, it will automatically be associated with it.
+    If the Affector is a direct child of a ParticleSystem, it will automatically be associated with
+   it.
 */
 /*!
     \qmlproperty list<string> QtQuick.Particles::Affector::groups
@@ -147,6 +115,9 @@ void QQuickParticleAffector::componentComplete()
 }
 
 bool QQuickParticleAffector::activeGroup(int g) {
+    if (!m_system)
+        return false;
+
     if (m_updateIntSet){ //This can occur before group ids are properly assigned, but that resets the flag
         m_groupIds.clear();
         foreach (const QString &p, m_groups)
@@ -160,6 +131,9 @@ bool QQuickParticleAffector::shouldAffect(QQuickParticleData* d)
 {
     if (!d)
         return false;
+    if (!m_system)
+        return false;
+
     if (activeGroup(d->groupId)){
         if ((m_onceOff && m_onceOffed.contains(qMakePair(d->groupId, d->index)))
                 || !d->stillAlive(m_system))
@@ -178,6 +152,9 @@ bool QQuickParticleAffector::shouldAffect(QQuickParticleData* d)
 
 void QQuickParticleAffector::postAffect(QQuickParticleData* d)
 {
+    if (!m_system)
+        return;
+
     m_system->needsReset << d;
     if (m_onceOff)
         m_onceOffed << qMakePair(d->groupId, d->index);
@@ -192,14 +169,17 @@ void QQuickParticleAffector::affectSystem(qreal dt)
 {
     if (!m_enabled)
         return;
+    if (!m_system)
+        return;
+
     //If not reimplemented, calls affectParticle per particle
     //But only on particles in targeted system/area
     updateOffsets();//### Needed if an ancestor is transformed.
     if (m_onceOff)
         dt = 1.0;
-    foreach (QQuickParticleGroupData* gd, m_system->groupData) {
+    for (QQuickParticleGroupData* gd : std::as_const(m_system->groupData)) {
         if (activeGroup(gd->index)) {
-            foreach (QQuickParticleData* d, gd->data) {
+            for (QQuickParticleData* d : std::as_const(gd->data)) {
                 if (shouldAffect(d)) {
                     bool affected = false;
                     qreal myDt = dt;
@@ -244,6 +224,9 @@ void QQuickParticleAffector::updateOffsets()
 
 bool QQuickParticleAffector::isColliding(QQuickParticleData *d) const
 {
+    if (!m_system)
+        return false;
+
     qreal myCurX = d->curX(m_system);
     qreal myCurY = d->curY(m_system);
     qreal myCurSize = d->curSize(m_system) / 2;

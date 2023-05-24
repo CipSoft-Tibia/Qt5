@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,8 @@ class MenuListInnerElement : public HTMLDivElement {
   explicit MenuListInnerElement(Document& document);
 
  private:
-  scoped_refptr<ComputedStyle> CustomStyleForLayoutObject() override;
+  scoped_refptr<const ComputedStyle> CustomStyleForLayoutObject(
+      const StyleRecalcContext&) override;
 };
 
 }  // namespace blink

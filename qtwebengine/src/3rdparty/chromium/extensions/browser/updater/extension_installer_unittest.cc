@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,13 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/run_loop.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "components/update_client/update_client.h"
 #include "components/update_client/update_client_errors.h"
 #include "content/public/test/test_utils.h"
@@ -35,6 +34,10 @@ class ExtensionInstallerTest : public ExtensionsTest {
   using InstallError = update_client::InstallError;
 
   ExtensionInstallerTest();
+
+  ExtensionInstallerTest(const ExtensionInstallerTest&) = delete;
+  ExtensionInstallerTest& operator=(const ExtensionInstallerTest&) = delete;
+
   ~ExtensionInstallerTest() override;
 
   void InstallCompleteCallback(const Result& result);
@@ -53,8 +56,6 @@ class ExtensionInstallerTest : public ExtensionsTest {
   base::RunLoop run_loop_;
   Result result_;
   bool executed_;
-
-  DISALLOW_COPY_AND_ASSIGN(ExtensionInstallerTest);
 };
 
 ExtensionInstallerTest::ExtensionInstallerTest()

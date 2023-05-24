@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,6 +20,8 @@ namespace blink {
 
 LayoutUnit LayoutBoxUtils::AvailableLogicalWidth(const LayoutBox& box,
                                                  const LayoutBlock* cb) {
+  // SVG <text> and <foreignObject> should not refer to its containing block.
+  DCHECK(!box.IsSVGChild());
   auto writing_mode = box.StyleRef().GetWritingMode();
   bool parallel_containing_block = IsParallelWritingMode(
       cb ? cb->StyleRef().GetWritingMode() : writing_mode, writing_mode);
@@ -45,6 +47,8 @@ LayoutUnit LayoutBoxUtils::AvailableLogicalWidth(const LayoutBox& box,
 
 LayoutUnit LayoutBoxUtils::AvailableLogicalHeight(const LayoutBox& box,
                                                   const LayoutBlock* cb) {
+  // SVG <text> and <foreignObject> should not refer to its containing block.
+  DCHECK(!box.IsSVGChild());
   auto writing_mode = box.StyleRef().GetWritingMode();
   bool parallel_containing_block = IsParallelWritingMode(
       cb ? cb->StyleRef().GetWritingMode() : writing_mode, writing_mode);
@@ -72,8 +76,7 @@ NGLogicalStaticPosition LayoutBoxUtils::ComputeStaticPositionFromLegacy(
     const LayoutBox& box,
     const NGBoxStrut& container_border_scrollbar,
     const NGBoxFragmentBuilder* container_builder) {
-  const LayoutBoxModelObject* css_container =
-      ToLayoutBoxModelObject(box.Container());
+  const auto* css_container = To<LayoutBoxModelObject>(box.Container());
   const TextDirection parent_direction = box.Parent()->StyleRef().Direction();
 
   // These two values represent the available-size for the OOF-positioned
@@ -140,7 +143,7 @@ NGLogicalStaticPosition LayoutBoxUtils::ComputeStaticPositionFromLegacy(
                      box.StyleRef().GetWritingMode());
 
   const LayoutBox* container = css_container->IsBox()
-                                   ? ToLayoutBox(css_container)
+                                   ? To<LayoutBox>(css_container)
                                    : box.ContainingBlock();
   const WritingMode container_writing_mode =
       container->StyleRef().GetWritingMode();
@@ -171,6 +174,17 @@ bool LayoutBoxUtils::SkipContainingBlockForPercentHeightCalculation(
   return LayoutBox::SkipContainingBlockForPercentHeightCalculation(cb);
 }
 
+LayoutUnit LayoutBoxUtils::InlineSize(const LayoutBox& box) {
+  DCHECK_GT(box.PhysicalFragmentCount(), 0u);
+
+  // TODO(almaher): We can't assume all fragments will have the same inline
+  // size.
+  return box.GetPhysicalFragment(0u)
+      ->Size()
+      .ConvertToLogical(box.StyleRef().GetWritingMode())
+      .inline_size;
+}
+
 LayoutUnit LayoutBoxUtils::TotalBlockSize(const LayoutBox& box) {
   wtf_size_t num_fragments = box.PhysicalFragmentCount();
   DCHECK_GT(num_fragments, 0u);
@@ -192,12 +206,42 @@ LayoutUnit LayoutBoxUtils::TotalBlockSize(const LayoutBox& box) {
   }
 
   if (num_fragments > 1) {
-    total_block_size +=
-        To<NGBlockBreakToken>(
-            box.GetPhysicalFragment(num_fragments - 2)->BreakToken())
-            ->ConsumedBlockSize();
+    total_block_size += box.GetPhysicalFragment(num_fragments - 2)
+                            ->BreakToken()
+                            ->ConsumedBlockSize();
   }
   return total_block_size;
+}
+
+// static
+LayoutPoint LayoutBoxUtils::ComputeLocation(
+    const NGPhysicalBoxFragment& child_fragment,
+    PhysicalOffset offset,
+    const NGPhysicalBoxFragment& container_fragment,
+    const NGBlockBreakToken* previous_container_break_token) {
+  if (UNLIKELY(container_fragment.Style().IsFlippedBlocksWritingMode())) {
+    // Move the physical offset to the right side of the child fragment,
+    // relative to the right edge of the container fragment. This is the
+    // block-start offset in vertical-rl, and the legacy engine expects always
+    // expects the block offset to be relative to block-start.
+    offset.left = container_fragment.Size().width - offset.left -
+                  child_fragment.Size().width;
+  }
+
+  if (UNLIKELY(previous_container_break_token)) {
+    // Add the amount of block-size previously (in previous fragmentainers)
+    // consumed by the container fragment. This will map the child's offset
+    // nicely into the flow thread coordinate system used by the legacy engine.
+    LayoutUnit consumed =
+        previous_container_break_token->ConsumedBlockSizeForLegacy();
+    if (container_fragment.Style().IsHorizontalWritingMode()) {
+      offset.top += consumed;
+    } else {
+      offset.left += consumed;
+    }
+  }
+
+  return offset.ToLayoutPoint();
 }
 
 }  // namespace blink

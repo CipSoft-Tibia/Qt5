@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,29 +9,27 @@
 #include <string>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/strings/string16.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/strings/string_piece.h"
+#include "base/values.h"
 #include "services/preferences/public/cpp/scoped_pref_update.h"
-
-namespace base {
-class DictionaryValue;
-class ListValue;
-class Value;
-}  // namespace base
 
 namespace prefs {
 
-// A wrapper around base::DictionaryValue that reports changes to its contents
+// A wrapper around base::Value::Dict that reports changes to its contents
 // via a callback.
 class DictionaryValueUpdate {
  public:
   using UpdateCallback =
-      base::RepeatingCallback<void(const std::vector<std::string>&)>;
+      base::RepeatingCallback<void(std::vector<std::string>)>;
 
   DictionaryValueUpdate(UpdateCallback report_update,
-                        base::DictionaryValue* value,
+                        base::Value::Dict* value,
                         std::vector<std::string> path);
+
+  DictionaryValueUpdate(const DictionaryValueUpdate&) = delete;
+  DictionaryValueUpdate& operator=(const DictionaryValueUpdate&) = delete;
 
   ~DictionaryValueUpdate();
   bool HasKey(base::StringPiece key) const;
@@ -51,13 +49,8 @@ class DictionaryValueUpdate {
   // within a key, but there are no other restrictions on keys.
   // If the key at any step of the way doesn't exist, or exists but isn't
   // a DictionaryValue, a new DictionaryValue will be created and attached
-  // to the path in that location. |in_value| must be non-null.
-  void Set(base::StringPiece path, std::unique_ptr<base::Value> in_value);
-
-  // This is similar to |Set|, but lets callers explicitly specify the path
-  // components and thus allows nested keys with periods in them.
-  void SetPath(std::initializer_list<base::StringPiece> path,
-               base::Value value);
+  // to the path in that location.
+  void Set(base::StringPiece path, base::Value in_value);
 
   // Convenience forms of Set().  These methods will replace any existing
   // value at that path, even if it has a different type.
@@ -65,21 +58,20 @@ class DictionaryValueUpdate {
   void SetInteger(base::StringPiece path, int in_value);
   void SetDouble(base::StringPiece path, double in_value);
   void SetString(base::StringPiece path, base::StringPiece in_value);
-  void SetString(base::StringPiece path, const base::string16& in_value);
+  void SetString(base::StringPiece path, const std::u16string& in_value);
   std::unique_ptr<DictionaryValueUpdate> SetDictionary(
       base::StringPiece path,
-      std::unique_ptr<base::DictionaryValue> in_value);
+      base::Value::Dict in_value);
 
   // Like Set(), but without special treatment of '.'.  This allows e.g. URLs to
-  // be used as paths.
-  void SetKey(base::StringPiece key, base::Value value);
-  void SetWithoutPathExpansion(base::StringPiece key,
-                               std::unique_ptr<base::Value> in_value);
+  // be used as paths. Returns a pointer to the set `value`.
+  base::Value* SetKey(base::StringPiece key, base::Value value);
+  void SetWithoutPathExpansion(base::StringPiece key, base::Value in_value);
 
   // Convenience forms of SetWithoutPathExpansion().
   std::unique_ptr<DictionaryValueUpdate> SetDictionaryWithoutPathExpansion(
       base::StringPiece path,
-      std::unique_ptr<base::DictionaryValue> in_value);
+      base::Value::Dict in_value);
 
   // These are convenience forms of Get().  The value will be retrieved
   // and the return value will be true if the path is valid and the value at
@@ -91,57 +83,30 @@ class DictionaryValueUpdate {
   // doubles.
   bool GetDouble(base::StringPiece path, double* out_value) const;
   bool GetString(base::StringPiece path, std::string* out_value) const;
-  bool GetString(base::StringPiece path, base::string16* out_value) const;
   bool GetDictionary(base::StringPiece path,
-                     const base::DictionaryValue** out_value) const;
+                     const base::Value::Dict** out_value) const;
   bool GetDictionary(base::StringPiece path,
                      std::unique_ptr<DictionaryValueUpdate>* out_value);
-  bool GetList(base::StringPiece path, const base::ListValue** out_value) const;
-  bool GetList(base::StringPiece path, base::ListValue** out_value);
 
-  // Like Get(), but without special treatment of '.'.  This allows e.g. URLs to
-  // be used as paths.
-  bool GetBooleanWithoutPathExpansion(base::StringPiece key,
-                                      bool* out_value) const;
-  bool GetIntegerWithoutPathExpansion(base::StringPiece key,
-                                      int* out_value) const;
-  bool GetDoubleWithoutPathExpansion(base::StringPiece key,
-                                     double* out_value) const;
-  bool GetStringWithoutPathExpansion(base::StringPiece key,
-                                     std::string* out_value) const;
-  bool GetStringWithoutPathExpansion(base::StringPiece key,
-                                     base::string16* out_value) const;
-  bool GetDictionaryWithoutPathExpansion(
-      base::StringPiece key,
-      const base::DictionaryValue** out_value) const;
   bool GetDictionaryWithoutPathExpansion(
       base::StringPiece key,
       std::unique_ptr<DictionaryValueUpdate>* out_value);
   bool GetListWithoutPathExpansion(base::StringPiece key,
-                                   const base::ListValue** out_value) const;
-  bool GetListWithoutPathExpansion(base::StringPiece key,
-                                   base::ListValue** out_value);
+                                   base::Value::List** out_value);
 
   // Removes the Value with the specified path from this dictionary (or one
   // of its child dictionaries, if the path is more than just a local key).
-  // If |out_value| is non-NULL, the removed Value will be passed out via
-  // |out_value|.  If |out_value| is NULL, the removed value will be deleted.
   // This method returns true if |path| is a valid path; otherwise it will
   // return false and the DictionaryValue object will be unchanged.
-  bool Remove(base::StringPiece path, std::unique_ptr<base::Value>* out_value);
+  bool Remove(base::StringPiece path);
 
   // Like Remove(), but without special treatment of '.'.  This allows e.g. URLs
   // to be used as paths.
   bool RemoveWithoutPathExpansion(base::StringPiece key,
-                                  std::unique_ptr<base::Value>* out_value);
+                                  base::Value* out_value);
 
-  // Removes a path, clearing out all dictionaries on |path| that remain empty
-  // after removing the value at |path|.
-  bool RemovePath(base::StringPiece path,
-                  std::unique_ptr<base::Value>* out_value);
-
-  base::DictionaryValue* AsDictionary();
-  const base::DictionaryValue* AsConstDictionary() const;
+  base::Value::Dict* AsDict();
+  const base::Value::Dict* AsConstDict() const;
 
  private:
   void RecordPath(base::StringPiece path);
@@ -156,10 +121,10 @@ class DictionaryValueUpdate {
       const std::vector<base::StringPiece>& path);
 
   UpdateCallback report_update_;
-  base::DictionaryValue* const value_;
+  // `value_` is not a raw_ptr<...> for performance reasons (based on analysis
+  // of sampling profiler data).
+  RAW_PTR_EXCLUSION base::Value::Dict* const value_;
   const std::vector<std::string> path_;
-
-  DISALLOW_COPY_AND_ASSIGN(DictionaryValueUpdate);
 };
 
 }  // namespace prefs

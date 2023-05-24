@@ -1,44 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/QCoreApplication>
 #include "render_view_context_menu_qt.h"
+#include "qwebenginecontextmenurequest.h"
 
 namespace QtWebEngineCore {
 
@@ -74,8 +39,8 @@ namespace QtWebEngineCore {
         return QCoreApplication::translate("RenderViewContextMenuQt", qUtf8Printable(names[menuItem]));
     }
 
-    RenderViewContextMenuQt::RenderViewContextMenuQt(const WebEngineContextMenuData &data)
-        : m_contextData(data)
+    RenderViewContextMenuQt::RenderViewContextMenuQt(QWebEngineContextMenuRequest *request)
+        : m_contextData(request)
     {
     }
 
@@ -86,15 +51,17 @@ namespace QtWebEngineCore {
             appendSeparatorItem();
         }
 
-        if (m_contextData.isEditable() && !m_contextData.spellCheckerSuggestions().isEmpty()) {
+        if (m_contextData->isContentEditable()
+            && !m_contextData->spellCheckerSuggestions().isEmpty()) {
             appendSpellingSuggestionItems();
             appendSeparatorItem();
         }
 
-        if (m_contextData.linkText().isEmpty() && !m_contextData.linkUrl().isValid() && !m_contextData.mediaUrl().isValid()) {
-            if (m_contextData.isEditable())
+        if (m_contextData->linkText().isEmpty() && !m_contextData->filteredLinkUrl().isValid()
+            && !m_contextData->mediaUrl().isValid()) {
+            if (m_contextData->isContentEditable())
                 appendEditableItems();
-            else if (!m_contextData.selectedText().isEmpty())
+            else if (!m_contextData->selectedText().isEmpty())
                 appendCopyItem();
             else
                 appendPageItems();
@@ -102,27 +69,29 @@ namespace QtWebEngineCore {
             appendPageItems();
         }
 
-        if (m_contextData.linkUrl().isValid() || !m_contextData.unfilteredLinkUrl().isEmpty() || !m_contextData.linkUrl().isEmpty())
+        if (m_contextData->filteredLinkUrl().isValid()
+            || !m_contextData->linkUrl().isEmpty()
+            || !m_contextData->filteredLinkUrl().isEmpty())
             appendLinkItems();
 
-        if (m_contextData.mediaUrl().isValid()) {
-            switch (m_contextData.mediaType()) {
-            case WebEngineContextMenuData::MediaTypeImage:
+        if (m_contextData->mediaUrl().isValid()) {
+            switch (m_contextData->mediaType()) {
+            case QWebEngineContextMenuRequest::MediaTypeImage:
                 appendSeparatorItem();
                 appendImageItems();
                 break;
-            case WebEngineContextMenuData::MediaTypeCanvas:
+            case QWebEngineContextMenuRequest::MediaTypeCanvas:
                 Q_UNREACHABLE();    // mediaUrl is invalid for canvases
                 break;
-            case WebEngineContextMenuData::MediaTypeAudio:
-            case WebEngineContextMenuData::MediaTypeVideo:
+            case QWebEngineContextMenuRequest::MediaTypeAudio:
+            case QWebEngineContextMenuRequest::MediaTypeVideo:
                 appendSeparatorItem();
                 appendMediaItems();
                 break;
             default:
                 break;
             }
-        } else if (m_contextData.mediaType() == WebEngineContextMenuData::MediaTypeCanvas) {
+        } else if (m_contextData->mediaType() == QWebEngineContextMenuRequest::MediaTypeCanvas) {
             appendSeparatorItem();
             appendCanvasItems();
         }
@@ -160,7 +129,7 @@ namespace QtWebEngineCore {
         addMenuItem(RenderViewContextMenuQt::Cut);
         addMenuItem(RenderViewContextMenuQt::Copy);
         addMenuItem(RenderViewContextMenuQt::Paste);
-        if (m_contextData.misspelledWord().isEmpty()) {
+        if (m_contextData->misspelledWord().isEmpty()) {
             addMenuItem(RenderViewContextMenuQt::PasteAndMatchStyle);
             addMenuItem(RenderViewContextMenuQt::SelectAll);
         }
@@ -190,7 +159,7 @@ namespace QtWebEngineCore {
     void RenderViewContextMenuQt::appendMediaItems()
     {
         addMenuItem(RenderViewContextMenuQt::ToggleMediaLoop);
-        if (m_contextData.mediaFlags() & QtWebEngineCore::WebEngineContextMenuData::MediaCanToggleControls)
+        if (m_contextData->mediaFlags() & QWebEngineContextMenuRequest::MediaCanToggleControls)
             addMenuItem(RenderViewContextMenuQt::ToggleMediaControls);
         addMenuItem(RenderViewContextMenuQt::DownloadMediaToDisk);
         addMenuItem(RenderViewContextMenuQt::CopyMediaUrlToClipboard);
@@ -217,10 +186,8 @@ namespace QtWebEngineCore {
 
     bool RenderViewContextMenuQt::canViewSource()
     {
-        return m_contextData.linkText().isEmpty()
-               && !m_contextData.linkUrl().isValid()
-               && !m_contextData.mediaUrl().isValid()
-               && !m_contextData.isEditable()
-               && m_contextData.selectedText().isEmpty();
+        return m_contextData->linkText().isEmpty() && !m_contextData->filteredLinkUrl().isValid()
+                && !m_contextData->mediaUrl().isValid() && !m_contextData->isContentEditable()
+                && m_contextData->selectedText().isEmpty();
     }
 }

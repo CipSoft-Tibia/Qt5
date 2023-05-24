@@ -1,13 +1,13 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "fxbarcode/pdf417/BC_PDF417Writer.h"
 
-#include <vector>
+#include <stdint.h>
 
+#include "core/fxcrt/data_vector.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/base/stl_util.h"
 
 class CBC_PDF417WriterTest : public testing::Test {
  public:
@@ -414,12 +414,11 @@ TEST_F(CBC_PDF417WriterTest, Encode) {
         1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1,
         0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 1,
         1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1};
-    std::vector<uint8_t, FxAllocAllocator<uint8_t>> data =
-        writer.Encode(L"", &width, &height);
-    ASSERT_EQ(pdfium::size(kExpectedData), data.size());
+    DataVector<uint8_t> data = writer.Encode(L"", &width, &height);
+    ASSERT_EQ(std::size(kExpectedData), data.size());
     ASSERT_EQ(kExpectedWidth, width);
     ASSERT_EQ(kExpectedHeight, height);
-    for (size_t i = 0; i < pdfium::size(kExpectedData); ++i)
+    for (size_t i = 0; i < std::size(kExpectedData); ++i)
       EXPECT_EQ(kExpectedData[i], data[i]) << i;
   }
   {
@@ -812,12 +811,11 @@ TEST_F(CBC_PDF417WriterTest, Encode) {
         1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0,
         0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 1,
         1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1};
-    std::vector<uint8_t, FxAllocAllocator<uint8_t>> data =
-        writer.Encode(L"hello world", &width, &height);
-    ASSERT_EQ(pdfium::size(kExpectedData), data.size());
+    DataVector<uint8_t> data = writer.Encode(L"hello world", &width, &height);
+    ASSERT_EQ(std::size(kExpectedData), data.size());
     ASSERT_EQ(kExpectedWidth, width);
     ASSERT_EQ(kExpectedHeight, height);
-    for (size_t i = 0; i < pdfium::size(kExpectedData); ++i)
+    for (size_t i = 0; i < std::size(kExpectedData); ++i)
       EXPECT_EQ(kExpectedData[i], data[i]) << i;
   }
 }

@@ -1,13 +1,9 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_BASE_COCOA_FIND_PASTEBOARD_H_
 #define UI_BASE_COCOA_FIND_PASTEBOARD_H_
-
-#include "base/strings/string16.h"
-
-#ifdef __OBJC__
 
 #import <Cocoa/Cocoa.h>
 
@@ -20,7 +16,7 @@ COMPONENT_EXPORT(UI_BASE) extern NSString* kFindPasteboardChangedNotification;
 // to get the text currently on the find pasteboard, and to receive
 // notifications when the text on the find pasteboard has changed. You should
 // always use this class instead of accessing
-// [NSPasteboard pasteboardWithName:NSFindPboard] directly.
+// [NSPasteboard pasteboardWithName:NSPasteboardNameFind] directly.
 //
 // This is not thread-safe and must be used on the main thread.
 //
@@ -38,22 +34,17 @@ COMPONENT_EXPORT(UI_BASE)
 // find pasteboard, this returns an empty string.
 - (NSString*)findText;
 
-// Sets the current find text to |newText| and sends a
-// |kFindPasteboardChangedNotification| to the default notification center if
-// it the new text different from the current text. |newText| must not be nil.
+// Sets the current find text to `newText` and sends a
+// `kFindPasteboardChangedNotification` to the default notification center if
+// it the new text different from the current text. `newText` must not be nil.
 - (void)setFindText:(NSString*)newText;
 @end
 
 @interface FindPasteboard (TestingAPI)
 - (void)loadTextFromPasteboard:(NSNotification*)notification;
 
-// This methods is meant to be overridden in tests.
-- (NSPasteboard*)findPboard;
+// This method is meant to be overridden in tests.
+- (NSPasteboard*)findPasteboard;
 @end
-
-#endif  // __OBJC__
-
-// Also provide a c++ interface
-COMPONENT_EXPORT(UI_BASE) base::string16 GetFindPboardText();
 
 #endif  // UI_BASE_COCOA_FIND_PASTEBOARD_H_

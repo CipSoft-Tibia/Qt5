@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLATFORMINTEGRATION_H
 #define QPLATFORMINTEGRATION_H
@@ -81,6 +45,30 @@ class QOffscreenSurface;
 class QPlatformVulkanInstance;
 class QVulkanInstance;
 
+namespace QNativeInterface::Private {
+
+template <typename R, typename I, auto func, typename... Args>
+struct QInterfaceProxyImp
+{
+    template <typename T>
+    static R apply(T *obj, Args... args)
+    {
+        if (auto *iface = dynamic_cast<I*>(obj))
+            return (iface->*func)(args...);
+        else
+            return R();
+    }
+};
+
+template <auto func>
+struct QInterfaceProxy;
+template <typename R, typename I, typename... Args, R(I::*func)(Args...)>
+struct QInterfaceProxy<func> : public QInterfaceProxyImp<R, I, func, Args...> {};
+template <typename R, typename I, typename... Args, R(I::*func)(Args...) const>
+struct QInterfaceProxy<func> : public QInterfaceProxyImp<R, I, func, Args...> {};
+
+} // QNativeInterface::Private
+
 class Q_GUI_EXPORT QPlatformIntegration
 {
 public:
@@ -107,7 +95,10 @@ public:
         SwitchableWidgetComposition,
         TopStackedNativeChildWindows,
         OpenGLOnRasterSurface,
-        MaximizeUsingFullscreenGeometry
+        MaximizeUsingFullscreenGeometry,
+        PaintEvents,
+        RhiBasedRendering,
+        ScreenWindowGrabbing // whether QScreen::grabWindow() is supported
     };
 
     virtual ~QPlatformIntegration() { }
@@ -138,7 +129,7 @@ public:
     virtual QPlatformDrag *drag() const;
 #endif
     virtual QPlatformInputContext *inputContext() const;
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     virtual QPlatformAccessibility *accessibility() const;
 #endif
 
@@ -169,7 +160,12 @@ public:
         UiEffects,
         WheelScrollLines,
         ShowShortcutsInContextMenus,
-        MouseQuickSelectionThreshold
+        MouseQuickSelectionThreshold,
+        MouseDoubleClickDistance,
+        FlickStartDistance,
+        FlickMaximumVelocity,
+        FlickDeceleration,
+        UnderlineShortcut,
     };
 
     virtual QVariant styleHint(StyleHint hint) const;
@@ -193,12 +189,21 @@ public:
     virtual QOpenGLContext::OpenGLModuleType openGLModuleType();
 #endif
     virtual void setApplicationIcon(const QIcon &icon) const;
+    virtual void setApplicationBadge(qint64 number);
 
     virtual void beep() const;
+    virtual void quit() const;
 
-#if QT_CONFIG(vulkan) || defined(Q_CLANG_QDOC)
+#if QT_CONFIG(vulkan) || defined(Q_QDOC)
     virtual QPlatformVulkanInstance *createPlatformVulkanInstance(QVulkanInstance *instance) const;
 #endif
+
+    template <auto func, typename... Args>
+    auto call(Args... args)
+    {
+        using namespace QNativeInterface::Private;
+        return QInterfaceProxy<func>::apply(this, args...);
+    }
 
 protected:
     QPlatformIntegration() = default;

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlthread_p.h"
 
@@ -47,6 +11,8 @@
 #include <QtCore/qwaitcondition.h>
 #include <QtCore/qcoreapplication.h>
 
+#include <QtCore/private/qthread_p.h>
+
 QT_BEGIN_NAMESPACE
 
 class QQmlThreadPrivate : public QThread
@@ -55,19 +21,16 @@ public:
     QQmlThreadPrivate(QQmlThread *);
     QQmlThread *q;
 
-    void run() override;
-
     inline QMutex &mutex() { return _mutex; }
     inline void lock() { _mutex.lock(); }
     inline void unlock() { _mutex.unlock(); }
     inline void wait() { _wait.wait(&_mutex); }
     inline void wakeOne() { _wait.wakeOne(); }
-    inline void wakeAll() { _wait.wakeAll(); }
 
-    quint32 m_threadProcessing:1; // Set when the thread is processing messages
-    quint32 m_mainProcessing:1; // Set when the main thread is processing messages
-    quint32 m_shutdown:1; // Set by main thread to request a shutdown
-    quint32 m_mainThreadWaiting:1; // Set by main thread if it is waiting for the message queue to empty
+    bool m_threadProcessing; // Set when the thread is processing messages
+    bool m_mainProcessing; // Set when the main thread is processing messages
+    bool m_shutdown; // Set by main thread to request a shutdown
+    bool m_mainThreadWaiting; // Set by main thread if it is waiting for the message queue to empty
 
     typedef QFieldList<QQmlThread::Message, &QQmlThread::Message::next> MessageList;
     MessageList threadList;
@@ -143,19 +106,6 @@ bool QQmlThreadPrivate::event(QEvent *e)
     return QThread::event(e);
 }
 
-void QQmlThreadPrivate::run()
-{
-    lock();
-
-    wakeOne();
-
-    unlock();
-
-    q->startupThread();
-    exec();
-    q->shutdownThread();
-}
-
 void QQmlThreadPrivate::mainEvent()
 {
     lock();
@@ -228,12 +178,13 @@ QQmlThread::~QQmlThread()
     delete d;
 }
 
+/*!
+    \internal
+    Starts the actual worker thread.
+ */
 void QQmlThread::startup()
 {
-    d->lock();
     d->start();
-    d->wait();
-    d->unlock();
     d->moveToThread(d);
 }
 
@@ -289,11 +240,6 @@ void QQmlThread::wakeOne()
     d->wakeOne();
 }
 
-void QQmlThread::wakeAll()
-{
-    d->wakeAll();
-}
-
 void QQmlThread::wait()
 {
     d->wait();
@@ -301,22 +247,12 @@ void QQmlThread::wait()
 
 bool QQmlThread::isThisThread() const
 {
-    return QThread::currentThread() == d;
+    return QThread::currentThreadId() == static_cast<QThreadPrivate *>(QObjectPrivate::get(d))->threadData.loadRelaxed()->threadId.loadRelaxed();
 }
 
 QThread *QQmlThread::thread() const
 {
     return const_cast<QThread *>(static_cast<const QThread *>(d));
-}
-
-// Called when the thread starts.  Do startup stuff in here.
-void QQmlThread::startupThread()
-{
-}
-
-// Called when the thread shuts down.  Do cleanup in here.
-void QQmlThread::shutdownThread()
-{
 }
 
 void QQmlThread::internalCallMethodInThread(Message *message)
@@ -356,6 +292,13 @@ void QQmlThread::internalCallMethodInThread(Message *message)
     d->unlock();
 }
 
+/*!
+    \internal
+    \note This method needs to run in the worker/QQmlThread
+
+    This runs \a message in the main thread, and blocks the
+    worker thread until the call has completed
+ */
 void QQmlThread::internalCallMethodInMain(Message *message)
 {
 #if !QT_CONFIG(thread)
@@ -419,12 +362,22 @@ void QQmlThread::internalPostMethodToMain(Message *message)
     d->unlock();
 }
 
+/*!
+    \internal
+    \note This method must be called in the main thread
+    \warning This method requires that the lock is held!
+
+    A call to this method will either:
+    - run a message requested to run synchronously on the main thread if there is one
+      (and return afterrwards),
+    - wait for the worker thread to notify it if the worker thread has pending work,
+    - or simply return if neither of the conditions above hold
+ */
 void QQmlThread::waitForNextMessage()
 {
 #if QT_CONFIG(thread)
     Q_ASSERT(!isThisThread());
 #endif
-    d->lock();
     Q_ASSERT(d->m_mainThreadWaiting == false);
 
     d->m_mainThreadWaiting = true;
@@ -444,7 +397,6 @@ void QQmlThread::waitForNextMessage()
     }
 
     d->m_mainThreadWaiting = false;
-    d->unlock();
 }
 
 

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,9 +29,9 @@ void IntersectionObserverController::PostTaskToDeliverNotifications() {
       ->GetTaskRunner(TaskType::kInternalIntersectionObserver)
       ->PostTask(
           FROM_HERE,
-          WTF::Bind(&IntersectionObserverController::DeliverNotifications,
-                    WrapWeakPersistent(this),
-                    IntersectionObserver::kPostTaskToDeliver));
+          WTF::BindOnce(&IntersectionObserverController::DeliverNotifications,
+                        WrapWeakPersistent(this),
+                        IntersectionObserver::kPostTaskToDeliver));
 }
 
 void IntersectionObserverController::ScheduleIntersectionObserverForDelivery(
@@ -60,27 +60,61 @@ void IntersectionObserverController::DeliverNotifications(
   }
 }
 
-bool IntersectionObserverController::ComputeIntersections(unsigned flags) {
+bool IntersectionObserverController::ComputeIntersections(
+    unsigned flags,
+    LocalFrameUkmAggregator* metrics_aggregator,
+    absl::optional<base::TimeTicks>& monotonic_time) {
   needs_occlusion_tracking_ = false;
-  if (GetExecutionContext()) {
-    TRACE_EVENT0("blink",
-                 "IntersectionObserverController::"
-                 "computeIntersections");
-    HeapVector<Member<IntersectionObserver>> observers_to_process;
-    CopyToVector(tracked_explicit_root_observers_, observers_to_process);
+  if (!GetExecutionContext())
+    return false;
+  TRACE_EVENT0("blink,devtools.timeline",
+               "IntersectionObserverController::"
+               "computeIntersections");
+  HeapVector<Member<IntersectionObserver>> observers_to_process(
+      tracked_explicit_root_observers_);
+  HeapVector<Member<IntersectionObservation>> observations_to_process(
+      tracked_implicit_root_observations_);
+  int64_t internal_observation_count = 0;
+  int64_t javascript_observation_count = 0;
+  {
+    absl::optional<LocalFrameUkmAggregator::IterativeTimer> metrics_timer;
+    if (metrics_aggregator)
+      metrics_timer.emplace(*metrics_aggregator);
     for (auto& observer : observers_to_process) {
-      if (observer->HasObservations())
-        needs_occlusion_tracking_ |= observer->ComputeIntersections(flags);
-      else
+      if (observer->HasObservations()) {
+        if (metrics_timer)
+          metrics_timer->StartInterval(observer->GetUkmMetricId());
+        int64_t count = observer->ComputeIntersections(flags, monotonic_time);
+        if (observer->IsInternal())
+          internal_observation_count += count;
+        else
+          javascript_observation_count += count;
+        needs_occlusion_tracking_ |= observer->trackVisibility();
+      } else {
         tracked_explicit_root_observers_.erase(observer);
+      }
     }
-    HeapVector<Member<IntersectionObservation>> observations_to_process;
-    CopyToVector(tracked_implicit_root_observations_, observations_to_process);
     for (auto& observation : observations_to_process) {
-      observation->ComputeIntersection(flags);
+      if (metrics_timer)
+        metrics_timer->StartInterval(observation->Observer()->GetUkmMetricId());
+      int64_t count = observation->ComputeIntersection(flags, monotonic_time);
+      if (observation->Observer()->IsInternal())
+        internal_observation_count += count;
+      else
+        javascript_observation_count += count;
       needs_occlusion_tracking_ |= observation->Observer()->trackVisibility();
     }
   }
+
+  if (metrics_aggregator) {
+    metrics_aggregator->RecordCountSample(
+        LocalFrameUkmAggregator::kIntersectionObservationInternalCount,
+        internal_observation_count);
+    metrics_aggregator->RecordCountSample(
+        LocalFrameUkmAggregator::kIntersectionObservationJavascriptCount,
+        javascript_observation_count);
+  }
+
   return needs_occlusion_tracking_;
 }
 

@@ -26,7 +26,7 @@ if (NOT DAWN_JINJA2_DIR)
         message(FATAL_ERROR "Dawn: Missing dependencies for code generation, please ensure you have python-jinja2 installed.")
     endif()
 else()
-    message(STATUS "Dawn: Using jinja2 at ${DAWN_JINJA2_DIR}")
+    message(STATUS "Dawn: using jinja2 at ${DAWN_JINJA2_DIR}")
 endif()
 
 # Function to invoke a generator_lib.py generator.
@@ -62,7 +62,7 @@ function(DawnGenerator)
         RESULT_VARIABLE RET
     )
     if (NOT RET EQUAL 0)
-        message(FATAL_ERROR "Dawn: Failed to get the dependencies for ${G_PRINT_NAME}.")
+        message(FATAL_ERROR "Dawn: Failed to get the dependencies for ${G_PRINT_NAME}. Base args are '${BASE_ARGS}'.")
     endif()
 
     # Ask CMake to re-run if any of the dependencies changed as it might modify the build graph.
@@ -77,7 +77,7 @@ function(DawnGenerator)
         RESULT_VARIABLE RET
     )
     if (NOT RET EQUAL 0)
-        message(FATAL_ERROR "Dawn: Failed to get the outputs for ${G_PRINT_NAME}.")
+        message(FATAL_ERROR "Dawn: Failed to get the outputs for ${G_PRINT_NAME}. Base args are '${BASE_ARGS}'.")
     endif()
 
     # Add the custom command that calls the generator.

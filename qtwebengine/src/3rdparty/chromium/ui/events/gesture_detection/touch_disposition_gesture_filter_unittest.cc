@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,7 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/events/test/motion_event_test_utils.h"
+#include "ui/events/types/event_type.h"
 
 using ui::test::MockMotionEvent;
 
@@ -142,29 +143,29 @@ class TouchDispositionGestureFilterTest
 
   void SendTouchEventAck(uint32_t touch_event_id,
                          bool event_consumed,
-                         bool is_source_touch_event_set_non_blocking) {
+                         bool is_source_touch_event_set_blocking) {
     queue_->OnTouchEventAck(touch_event_id, event_consumed,
-                            is_source_touch_event_set_non_blocking);
+                            is_source_touch_event_set_blocking);
   }
 
   void SendTouchConsumedAck(uint32_t touch_event_id) {
     SendTouchEventAck(touch_event_id, true /* event_consumed */,
-                      false /* is_source_touch_event_set_non_blocking */);
+                      false /* is_source_touch_event_set_blocking */);
   }
 
   void SendTouchNotConsumedAck(uint32_t touch_event_id) {
     SendTouchEventAck(touch_event_id, false /* event_consumed */,
-                      false /* is_source_touch_event_set_non_blocking */);
+                      false /* is_source_touch_event_set_blocking */);
   }
 
   void SendTouchConsumedAckForLastTouch() {
     SendTouchEventAck(last_sent_touch_event_id_, true /* event_consumed */,
-                      false /* is_source_touch_event_set_non_blocking */);
+                      false /* is_source_touch_event_set_blocking */);
   }
 
   void SendTouchNotConsumedAckForLastTouch() {
     SendTouchEventAck(last_sent_touch_event_id_, false /* event_consumed */,
-                      false /* is_source_touch_event_set_non_blocking */);
+                      false /* is_source_touch_event_set_blocking */);
   }
 
   void PushGesture(EventType type) {
@@ -311,6 +312,15 @@ TEST_F(TouchDispositionGestureFilterTest, BasicNoGestures) {
   SendTouchConsumedAck(touch_move_event_id);
   SendTouchConsumedAck(touch_release_event_id);
   EXPECT_FALSE(GesturesSent());
+}
+
+// On some platforms we can get a cancel per touch point. This should result
+// in an empty sequence. https://crbug.com/1407442
+TEST_F(TouchDispositionGestureFilterTest, ExtraCancel) {
+  GestureEventDataPacket packet = GestureEventDataPacket::FromTouch(
+      MockMotionEvent(MotionEvent::Action::CANCEL, base::TimeTicks(), 0, 0));
+  EXPECT_EQ(TouchDispositionGestureFilter::PacketResult::EMPTY_GESTURE_SEQUENCE,
+            SendGesturePacket(packet));
 }
 
 TEST_F(TouchDispositionGestureFilterTest, BasicGestures) {

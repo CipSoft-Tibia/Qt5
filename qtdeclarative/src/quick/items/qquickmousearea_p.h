@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKMOUSEAREA_P_H
 #define QQUICKMOUSEAREA_P_H
@@ -66,26 +30,27 @@ class Q_QUICK_PRIVATE_EXPORT QQuickMouseArea : public QQuickItem
 {
     Q_OBJECT
 
-    Q_PROPERTY(qreal mouseX READ mouseX NOTIFY mouseXChanged)
-    Q_PROPERTY(qreal mouseY READ mouseY NOTIFY mouseYChanged)
-    Q_PROPERTY(bool containsMouse READ hovered NOTIFY hoveredChanged)
-    Q_PROPERTY(bool pressed READ pressed NOTIFY pressedChanged)
-    Q_PROPERTY(bool enabled READ isEnabled WRITE setEnabled NOTIFY enabledChanged)
-    Q_PROPERTY(bool scrollGestureEnabled READ isScrollGestureEnabled WRITE setScrollGestureEnabled NOTIFY scrollGestureEnabledChanged REVISION 5)
-    Q_PROPERTY(Qt::MouseButtons pressedButtons READ pressedButtons NOTIFY pressedButtonsChanged)
-    Q_PROPERTY(Qt::MouseButtons acceptedButtons READ acceptedButtons WRITE setAcceptedButtons NOTIFY acceptedButtonsChanged)
-    Q_PROPERTY(bool hoverEnabled READ hoverEnabled WRITE setHoverEnabled NOTIFY hoverEnabledChanged)
+    Q_PROPERTY(qreal mouseX READ mouseX NOTIFY mouseXChanged FINAL)
+    Q_PROPERTY(qreal mouseY READ mouseY NOTIFY mouseYChanged FINAL)
+    Q_PROPERTY(bool containsMouse READ hovered NOTIFY hoveredChanged FINAL)
+    Q_PROPERTY(bool pressed READ isPressed NOTIFY pressedChanged FINAL)
+    Q_PROPERTY(bool enabled READ isEnabled WRITE setEnabled NOTIFY enabledChanged FINAL)
+    Q_PROPERTY(bool scrollGestureEnabled READ isScrollGestureEnabled WRITE setScrollGestureEnabled NOTIFY scrollGestureEnabledChanged REVISION(2, 5) FINAL)
+    Q_PROPERTY(Qt::MouseButtons pressedButtons READ pressedButtons NOTIFY pressedButtonsChanged FINAL)
+    Q_PROPERTY(Qt::MouseButtons acceptedButtons READ acceptedButtons WRITE setAcceptedButtons NOTIFY acceptedButtonsChanged FINAL)
+    Q_PROPERTY(bool hoverEnabled READ hoverEnabled WRITE setHoverEnabled NOTIFY hoverEnabledChanged FINAL)
 #if QT_CONFIG(quick_draganddrop)
-    Q_PROPERTY(QQuickDrag *drag READ drag CONSTANT) //### add flicking to QQuickDrag or add a QQuickFlick ???
+    Q_PROPERTY(QQuickDrag *drag READ drag CONSTANT FINAL) //### add flicking to QQuickDrag or add a QQuickFlick ???
 #endif
-    Q_PROPERTY(bool preventStealing READ preventStealing WRITE setPreventStealing NOTIFY preventStealingChanged)
-    Q_PROPERTY(bool propagateComposedEvents READ propagateComposedEvents WRITE setPropagateComposedEvents NOTIFY propagateComposedEventsChanged)
+    Q_PROPERTY(bool preventStealing READ preventStealing WRITE setPreventStealing NOTIFY preventStealingChanged FINAL)
+    Q_PROPERTY(bool propagateComposedEvents READ propagateComposedEvents WRITE setPropagateComposedEvents NOTIFY propagateComposedEventsChanged FINAL)
 #if QT_CONFIG(cursor)
-    Q_PROPERTY(Qt::CursorShape cursorShape READ cursorShape WRITE setCursorShape RESET unsetCursor NOTIFY cursorShapeChanged)
+    Q_PROPERTY(Qt::CursorShape cursorShape READ cursorShape WRITE setCursorShape RESET unsetCursor NOTIFY cursorShapeChanged FINAL)
 #endif
-    Q_PROPERTY(bool containsPress READ containsPress NOTIFY containsPressChanged REVISION 4)
-    Q_PROPERTY(int pressAndHoldInterval READ pressAndHoldInterval WRITE setPressAndHoldInterval NOTIFY pressAndHoldIntervalChanged RESET resetPressAndHoldInterval REVISION 9)
+    Q_PROPERTY(bool containsPress READ containsPress NOTIFY containsPressChanged REVISION(2, 4) FINAL)
+    Q_PROPERTY(int pressAndHoldInterval READ pressAndHoldInterval WRITE setPressAndHoldInterval NOTIFY pressAndHoldIntervalChanged RESET resetPressAndHoldInterval REVISION(2, 9) FINAL)
     QML_NAMED_ELEMENT(MouseArea)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickMouseArea(QQuickItem *parent=nullptr);
@@ -101,7 +66,7 @@ public:
     void setScrollGestureEnabled(bool);
 
     bool hovered() const;
-    bool pressed() const;
+    bool isPressed() const;
     bool containsPress() const;
 
     Qt::MouseButtons pressedButtons() const;
@@ -135,7 +100,7 @@ Q_SIGNALS:
     void hoveredChanged();
     void pressedChanged();
     void enabledChanged();
-    Q_REVISION(5) void scrollGestureEnabledChanged();
+    Q_REVISION(2, 5) void scrollGestureEnabledChanged();
     void pressedButtonsChanged();
     void acceptedButtonsChanged();
     void hoverEnabledChanged();
@@ -153,12 +118,14 @@ Q_SIGNALS:
     void released(QQuickMouseEvent *mouse);
     void clicked(QQuickMouseEvent *mouse);
     void doubleClicked(QQuickMouseEvent *mouse);
+#if QT_CONFIG(wheelevent)
     void wheel(QQuickWheelEvent *wheel);
+#endif
     void entered();
     void exited();
     void canceled();
-    Q_REVISION(4) void containsPressChanged();
-    Q_REVISION(9) void pressAndHoldIntervalChanged();
+    Q_REVISION(2, 4) void containsPressChanged();
+    Q_REVISION(2, 9) void pressAndHoldIntervalChanged();
 
 protected:
     void setHovered(bool);
@@ -179,10 +146,8 @@ protected:
 #endif
     bool childMouseEventFilter(QQuickItem *i, QEvent *e) override;
     void timerEvent(QTimerEvent *event) override;
-    void windowDeactivateEvent() override;
 
-    void geometryChanged(const QRectF &newGeometry,
-                                 const QRectF &oldGeometry) override;
+    void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
     void itemChange(ItemChange change, const ItemChangeData& value) override;
     QSGNode *updatePaintNode(QSGNode *, UpdatePaintNodeData *) override;
 

@@ -15,23 +15,23 @@
 import {
   decode as b64Decode,
   encode as b64Encode,
-  length as b64Len
+  length as b64Len,
 } from '@protobufjs/base64';
 import {
   length as utf8Len,
   read as utf8Read,
-  write as utf8Write
+  write as utf8Write,
 } from '@protobufjs/utf8';
 
 import {assertTrue} from './logging';
 
 // TextDecoder/Decoder requires the full DOM and isn't available in all types
 // of tests. Use fallback implementation from protbufjs.
-let UTF8Decoder: {decode: (buf: Uint8Array) => string;};
-let UTF8Encoder: {encode: (str: string) => Uint8Array;};
+let Utf8Decoder: {decode: (buf: Uint8Array) => string;};
+let Utf8Encoder: {encode: (str: string) => Uint8Array;};
 try {
-  UTF8Decoder = new TextDecoder('utf-8');
-  UTF8Encoder = new TextEncoder();
+  Utf8Decoder = new TextDecoder('utf-8');
+  Utf8Encoder = new TextEncoder();
 } catch (_) {
   if (typeof process === 'undefined') {
     // Silence the warning when we know we are running under NodeJS.
@@ -39,14 +39,14 @@ try {
         'Using fallback UTF8 Encoder/Decoder, This should happen only in ' +
         'tests and NodeJS-based environments, not in browsers.');
   }
-  UTF8Decoder = {decode: (buf: Uint8Array) => utf8Read(buf, 0, buf.length)};
-  UTF8Encoder = {
+  Utf8Decoder = {decode: (buf: Uint8Array) => utf8Read(buf, 0, buf.length)};
+  Utf8Encoder = {
     encode: (str: string) => {
       const arr = new Uint8Array(utf8Len(str));
       const written = utf8Write(str, arr, 0);
       assertTrue(written === arr.length);
       return arr;
-    }
+    },
   };
 }
 
@@ -55,20 +55,28 @@ export function base64Encode(buffer: Uint8Array): string {
 }
 
 export function base64Decode(str: string): Uint8Array {
-  const arr = new Uint8Array(b64Len(str));
-  const written = b64Decode(str, arr, 0);
+  // if the string is in base64url format, convert to base64
+  const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  const arr = new Uint8Array(b64Len(b64));
+  const written = b64Decode(b64, arr, 0);
   assertTrue(written === arr.length);
   return arr;
 }
 
+// encode binary array to hex string
+export function hexEncode(bytes: Uint8Array): string {
+  return bytes.reduce(
+      (prev, cur) => prev + ('0' + cur.toString(16)).slice(-2), '');
+}
+
 export function utf8Encode(str: string): Uint8Array {
-  return UTF8Encoder.encode(str);
+  return Utf8Encoder.encode(str);
 }
 
 // Note: not all byte sequences can be converted to<>from UTF8. This can be
 // used only with valid unicode strings, not arbitrary byte buffers.
 export function utf8Decode(buffer: Uint8Array): string {
-  return UTF8Decoder.decode(buffer);
+  return Utf8Decoder.decode(buffer);
 }
 
 // The binaryEncode/Decode functions below allow to encode an arbitrary binary
@@ -95,4 +103,15 @@ export function binaryDecode(str: string): Uint8Array {
     buf[i] = str.charCodeAt(i);
   }
   return buf;
+}
+
+// A function used to interpolate strings into SQL query. The only replacement
+// is done is that single quote replaced with two single quotes, according to
+// SQLite documentation:
+// https://www.sqlite.org/lang_expr.html#literal_values_constants_
+//
+// The purpose of this function is to use in simple comparisons, to escape
+// strings used in GLOB clauses see escapeQuery function.
+export function sqliteString(str: string): string {
+  return `'${str.replace(/'/g, '\'\'')}'`;
 }

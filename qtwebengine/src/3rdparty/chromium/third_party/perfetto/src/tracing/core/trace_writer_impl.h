@@ -33,7 +33,15 @@ namespace perfetto {
 
 class SharedMemoryArbiterImpl;
 
-// See //include/perfetto/tracing/core/trace_writer.h for docs.
+// See //include/perfetto/ext/tracing/core/trace_writer.h for docs.
+//
+// Locking will happen only when a chunk is exhausted and a new one is
+// acquired from the arbiter.
+//
+// TODO: TraceWriter needs to keep the shared memory buffer alive (refcount?).
+// Otherwise if the shared memory buffer goes away (e.g. the Service crashes)
+// the TraceWriter will keep writing into unmapped memory.
+//
 class TraceWriterImpl : public TraceWriter,
                         public protozero::ScatteredStreamWriter::Delegate {
  public:
@@ -46,6 +54,12 @@ class TraceWriterImpl : public TraceWriter,
 
   // TraceWriter implementation. See documentation in trace_writer.h.
   TracePacketHandle NewTracePacket() override;
+  void FinishTracePacket() override;
+  // Commits the data pending for the current chunk into the shared memory
+  // buffer and sends a CommitDataRequest() to the service.
+  // TODO(primiano): right now the |callback| will be called on the IPC thread.
+  // This is fine in the current single-thread scenario, but long-term
+  // trace_writer_impl.cc should be smarter and post it on the right thread.
   void Flush(std::function<void()> callback = {}) override;
   WriterID writer_id() const override;
   uint64_t written() const override {
@@ -61,6 +75,7 @@ class TraceWriterImpl : public TraceWriter,
 
   // ScatteredStreamWriter::Delegate implementation.
   protozero::ContiguousMemoryRange GetNewBuffer() override;
+  uint8_t* AnnotatePatch(uint8_t*) override;
 
   // The per-producer arbiter that coordinates access to the shared memory
   // buffer from several threads.
@@ -93,6 +108,14 @@ class TraceWriterImpl : public TraceWriter,
 
   // The packet returned via NewTracePacket(). Its owned by this class,
   // TracePacketHandle has just a pointer to it.
+  //
+  // The caller of NewTracePacket can use TakeStreamWriter() and use the stream
+  // writer directly: in that case:
+  // * cur_packet_->size() is not up to date. Only the stream writer has the
+  //   correct information.
+  // * cur_packet_->nested_message() is always nullptr.
+  // * cur_packet_->size_field() is still used to track the start of the current
+  //   fragment.
   std::unique_ptr<protozero::RootMessage<protos::pbzero::TracePacket>>
       cur_packet_;
 
@@ -135,6 +158,10 @@ class TraceWriterImpl : public TraceWriter,
   // PID of the process that created the trace writer. Used for a DCHECK that
   // aims to detect unsupported process forks while tracing.
   const base::PlatformProcessId process_id_;
+
+  // True for the first packet on sequence. See the comment for
+  // TracePacket.first_packet_on_sequence for more details.
+  bool first_packet_on_sequence_ = true;
 };
 
 }  // namespace perfetto

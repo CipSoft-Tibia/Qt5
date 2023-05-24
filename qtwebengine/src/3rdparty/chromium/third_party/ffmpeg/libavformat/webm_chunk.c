@@ -28,6 +28,7 @@
 #include "avio.h"
 #include "avio_internal.h"
 #include "internal.h"
+#include "mux.h"
 
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
@@ -50,7 +51,7 @@ typedef struct WebMChunkContext {
 static int webm_chunk_init(AVFormatContext *s)
 {
     WebMChunkContext *wc = s->priv_data;
-    ff_const59 AVOutputFormat *oformat;
+    const AVOutputFormat *oformat;
     AVFormatContext *oc;
     AVStream *st, *ost = s->streams[0];
     AVDictionary *dict = NULL;
@@ -90,17 +91,9 @@ static int webm_chunk_init(AVFormatContext *s)
     if ((ret = av_dict_copy(&oc->metadata, s->metadata, 0)) < 0)
         return ret;
 
-    if (!(st = avformat_new_stream(oc, NULL)))
+    st = ff_stream_clone(oc, ost);
+    if (!st)
         return AVERROR(ENOMEM);
-
-    if ((ret = avcodec_parameters_copy(st->codecpar, ost->codecpar)) < 0 ||
-        (ret = av_dict_copy(&st->metadata, ost->metadata, 0))        < 0)
-        return ret;
-
-    st->sample_aspect_ratio = ost->sample_aspect_ratio;
-    st->disposition         = ost->disposition;
-    avpriv_set_pts_info(st, ost->pts_wrap_bits, ost->time_base.num,
-                                                ost->time_base.den);
 
     if (wc->http_method)
         if ((ret = av_dict_set(&dict, "method", wc->http_method, 0)) < 0)
@@ -131,9 +124,10 @@ fail:
     // This ensures that the timestamps will already be properly shifted
     // when the packets arrive here, so we don't need to shift again.
     s->avoid_negative_ts  = oc->avoid_negative_ts;
-    s->internal->avoid_negative_ts_use_pts =
-        oc->internal->avoid_negative_ts_use_pts;
-    oc->avoid_negative_ts = 0;
+    ffformatcontext(s)->avoid_negative_ts_use_pts =
+        ffformatcontext(oc)->avoid_negative_ts_use_pts;
+    oc->avoid_negative_ts = AVFMT_AVOID_NEG_TS_DISABLED;
+    ffformatcontext(oc)->avoid_negative_ts_status = AVOID_NEGATIVE_TS_DISABLED;
 
     return 0;
 }
@@ -156,10 +150,13 @@ static int webm_chunk_write_header(AVFormatContext *s)
 {
     WebMChunkContext *wc = s->priv_data;
     AVFormatContext *oc = wc->avf;
+    AVStream *st = s->streams[0], *ost = oc->streams[0];
     int ret;
 
     ret = avformat_write_header(oc, NULL);
     ff_format_io_close(s, &oc->pb);
+    ffstream(st)->lowest_ts_allowed = ffstream(ost)->lowest_ts_allowed;
+    ffstream(ost)->lowest_ts_allowed = 0;
     wc->header_written = 1;
     if (ret < 0)
         return ret;
@@ -295,7 +292,7 @@ static const AVClass webm_chunk_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVOutputFormat ff_webm_chunk_muxer = {
+const AVOutputFormat ff_webm_chunk_muxer = {
     .name           = "webm_chunk",
     .long_name      = NULL_IF_CONFIG_SMALL("WebM Chunk Muxer"),
     .mime_type      = "video/webm",

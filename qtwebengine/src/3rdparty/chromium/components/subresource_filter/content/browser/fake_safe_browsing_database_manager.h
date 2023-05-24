@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,9 @@
 #include <map>
 #include <set>
 
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
-#include "components/safe_browsing/core/db/test_database_manager.h"
-#include "third_party/blink/public/mojom/loader/resource_load_info.mojom-shared.h"
+#include "components/safe_browsing/core/browser/db/test_database_manager.h"
+#include "services/network/public/mojom/fetch_api.mojom.h"
 
 class GURL;
 
@@ -21,6 +20,11 @@ class FakeSafeBrowsingDatabaseManager
     : public safe_browsing::TestSafeBrowsingDatabaseManager {
  public:
   FakeSafeBrowsingDatabaseManager();
+
+  FakeSafeBrowsingDatabaseManager(const FakeSafeBrowsingDatabaseManager&) =
+      delete;
+  FakeSafeBrowsingDatabaseManager& operator=(
+      const FakeSafeBrowsingDatabaseManager&) = delete;
 
   void AddBlocklistedUrl(const GURL& url,
                          safe_browsing::SBThreatType threat_type,
@@ -44,11 +48,11 @@ class FakeSafeBrowsingDatabaseManager
   // safe_browsing::TestSafeBrowsingDatabaseManager:
   bool CheckUrlForSubresourceFilter(const GURL& url, Client* client) override;
   bool CheckResourceUrl(const GURL& url, Client* client) override;
-  bool IsSupported() const override;
   void CancelCheck(Client* client) override;
   bool ChecksAreAlwaysAsync() const override;
-  bool CanCheckResourceType(
-      blink::mojom::ResourceType /* resource_type */) const override;
+  bool CanCheckRequestDestination(
+      network::mojom::RequestDestination /* request_destination */)
+      const override;
   safe_browsing::ThreatSource GetThreatSource() const override;
   bool CheckExtensionIDs(const std::set<std::string>& extension_ids,
                          Client* client) override;
@@ -65,8 +69,6 @@ class FakeSafeBrowsingDatabaseManager
   bool synchronous_failure_ = false;
 
   base::WeakPtrFactory<FakeSafeBrowsingDatabaseManager> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(FakeSafeBrowsingDatabaseManager);
 };
 
 #endif  // COMPONENTS_SUBRESOURCE_FILTER_CONTENT_BROWSER_FAKE_SAFE_BROWSING_DATABASE_MANAGER_H_

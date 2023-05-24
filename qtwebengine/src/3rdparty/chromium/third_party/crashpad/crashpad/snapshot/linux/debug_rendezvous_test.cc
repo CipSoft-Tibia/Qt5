@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@
 #include "build/build_config.h"
 #include "gtest/gtest.h"
 #include "snapshot/elf/elf_image_reader.h"
+#include "snapshot/linux/test_modules.h"
 #include "test/linux/fake_ptrace_connection.h"
 #include "test/main_arguments.h"
 #include "test/multiprocess.h"
@@ -34,16 +35,33 @@
 #include "util/linux/auxiliary_vector.h"
 #include "util/linux/direct_ptrace_connection.h"
 #include "util/linux/memory_map.h"
+#include "util/misc/address_sanitizer.h"
+#include "util/misc/memory_sanitizer.h"
+#include "util/numeric/safe_assignment.h"
 #include "util/process/process_memory_linux.h"
 #include "util/process/process_memory_range.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include <android/api-level.h>
 #endif
 
 namespace crashpad {
 namespace test {
 namespace {
+
+void ExpectLoadBias(bool is_64_bit,
+                    VMAddress unsigned_bias,
+                    VMOffset signed_bias) {
+  if (is_64_bit) {
+    EXPECT_EQ(unsigned_bias, static_cast<VMAddress>(signed_bias));
+  } else {
+    uint32_t unsigned_bias32;
+    ASSERT_TRUE(AssignIfInRange(&unsigned_bias32, unsigned_bias));
+
+    uint32_t casted_bias32 = static_cast<uint32_t>(signed_bias);
+    EXPECT_EQ(unsigned_bias32, casted_bias32);
+  }
+}
 
 void TestAgainstTarget(PtraceConnection* connection) {
   // Use ElfImageReader on the main executable which can tell us the debug
@@ -65,8 +83,7 @@ void TestAgainstTarget(PtraceConnection* connection) {
   ASSERT_EQ(exe_mappings->Count(), 1u);
   LinuxVMAddress elf_address = exe_mappings->Next()->range.Base();
 
-  ProcessMemoryLinux memory;
-  ASSERT_TRUE(memory.Initialize(connection->GetProcessID()));
+  ProcessMemoryLinux memory(connection);
   ProcessMemoryRange range;
   ASSERT_TRUE(range.Initialize(&memory, connection->Is64Bit()));
 
@@ -86,7 +103,7 @@ void TestAgainstTarget(PtraceConnection* connection) {
   DebugRendezvous debug;
   ASSERT_TRUE(debug.Initialize(range, debug_address));
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   const int android_runtime_api = android_get_device_api_level();
   ASSERT_GE(android_runtime_api, 1);
 
@@ -108,13 +125,15 @@ void TestAgainstTarget(PtraceConnection* connection) {
   // glibc's loader does not set the name for the executable.
   EXPECT_TRUE(debug.Executable()->name.empty());
   EXPECT_EQ(debug.Executable()->dynamic_array, exe_dynamic_address);
-#endif  // OS_ANDROID
+#endif  // BUILDFLAG(IS_ANDROID)
 
   // Android's loader doesn't set the load bias until Android 4.3 (API 18).
   if (android_runtime_api >= 18) {
-    EXPECT_EQ(debug.Executable()->load_bias, exe_reader.GetLoadBias());
+    ExpectLoadBias(connection->Is64Bit(),
+                   debug.Executable()->load_bias,
+                   exe_reader.GetLoadBias());
   } else {
-    EXPECT_EQ(debug.Executable()->load_bias, 0);
+    EXPECT_EQ(debug.Executable()->load_bias, 0u);
   }
 
   for (const DebugRendezvous::LinkEntry& module : debug.Modules()) {
@@ -130,7 +149,7 @@ void TestAgainstTarget(PtraceConnection* connection) {
     // (API 17).
     if (is_android_loader && android_runtime_api < 17) {
       EXPECT_EQ(module.dynamic_array, 0u);
-      EXPECT_EQ(module.load_bias, 0);
+      EXPECT_EQ(module.load_bias, 0u);
       continue;
     }
 
@@ -143,7 +162,9 @@ void TestAgainstTarget(PtraceConnection* connection) {
     ASSERT_GE(possible_mappings->Count(), 1u);
 
     std::unique_ptr<ElfImageReader> module_reader;
+#if !BUILDFLAG(IS_ANDROID)
     const MemoryMap::Mapping* module_mapping = nullptr;
+#endif
     const MemoryMap::Mapping* mapping = nullptr;
     while ((mapping = possible_mappings->Next())) {
       auto parsed_module = std::make_unique<ElfImageReader>();
@@ -153,13 +174,15 @@ void TestAgainstTarget(PtraceConnection* connection) {
           parsed_module->GetDynamicArrayAddress(&dynamic_address) &&
           dynamic_address == module.dynamic_array) {
         module_reader = std::move(parsed_module);
+#if !BUILDFLAG(IS_ANDROID)
         module_mapping = mapping;
+#endif
         break;
       }
     }
     ASSERT_TRUE(module_reader.get());
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
     EXPECT_FALSE(module.name.empty());
 #else
     // glibc's loader doesn't always set the name in the link map for the vdso.
@@ -170,7 +193,11 @@ void TestAgainstTarget(PtraceConnection* connection) {
            const std::string& module_name) {
           const bool is_vdso_mapping =
               device == 0 && inode == 0 && mapping_name == "[vdso]";
+#if defined(ARCH_CPU_X86)
+          static constexpr char kPrefix[] = "linux-gate.so.";
+#else
           static constexpr char kPrefix[] = "linux-vdso.so.";
+#endif
           return is_vdso_mapping ==
                  (module_name.empty() ||
                   module_name.compare(0, strlen(kPrefix), kPrefix) == 0);
@@ -179,15 +206,17 @@ void TestAgainstTarget(PtraceConnection* connection) {
         module_mapping->device,
         module_mapping->inode,
         module.name);
-#endif  // OS_ANDROID
+#endif  // BUILDFLAG(IS_ANDROID)
 
     // Android's loader stops setting its own load bias after Android 4.4.4
     // (API 20) until Android 6.0 (API 23).
     if (is_android_loader && android_runtime_api > 20 &&
         android_runtime_api < 23) {
-      EXPECT_EQ(module.load_bias, 0);
+      EXPECT_EQ(module.load_bias, 0u);
     } else {
-      EXPECT_EQ(module.load_bias, module_reader->GetLoadBias());
+      ExpectLoadBias(connection->Is64Bit(),
+                     module.load_bias,
+                     static_cast<VMAddress>(module_reader->GetLoadBias()));
     }
 
     CheckedLinuxAddressRange module_range(
@@ -197,6 +226,14 @@ void TestAgainstTarget(PtraceConnection* connection) {
 }
 
 TEST(DebugRendezvous, Self) {
+#if !defined(ADDRESS_SANITIZER) && !defined(MEMORY_SANITIZER)
+  const std::string module_name = "test_module.so";
+  const std::string module_soname = "test_module_soname";
+  ScopedModuleHandle empty_test_module(
+      LoadTestModule(module_name, module_soname));
+  ASSERT_TRUE(empty_test_module.valid());
+#endif  // !ADDRESS_SANITIZER && !MEMORY_SANITIZER
+
   FakePtraceConnection connection;
   ASSERT_TRUE(connection.Initialize(getpid()));
 
@@ -206,6 +243,10 @@ TEST(DebugRendezvous, Self) {
 class ChildTest : public Multiprocess {
  public:
   ChildTest() {}
+
+  ChildTest(const ChildTest&) = delete;
+  ChildTest& operator=(const ChildTest&) = delete;
+
   ~ChildTest() {}
 
  private:
@@ -217,8 +258,6 @@ class ChildTest : public Multiprocess {
   }
 
   void MultiprocessChild() { CheckedReadFileAtEOF(ReadPipeHandle()); }
-
-  DISALLOW_COPY_AND_ASSIGN(ChildTest);
 };
 
 TEST(DebugRendezvous, Child) {

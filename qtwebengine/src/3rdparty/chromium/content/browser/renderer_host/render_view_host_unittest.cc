@@ -1,22 +1,18 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <stdint.h>
 
-#include "base/bind.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/path_service.h"
 #include "base/strings/strcat.h"
 #include "base/strings/utf_string_conversions.h"
 #include "content/browser/child_process_security_policy_impl.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
-#include "content/browser/renderer_host/render_frame_message_filter.h"
 #include "content/browser/renderer_host/render_view_host_delegate_view.h"
 #include "content/browser/renderer_host/render_widget_helper.h"
-#include "content/common/frame_messages.h"
-#include "content/common/input_messages.h"
-#include "content/common/view_messages.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/storage_partition.h"
@@ -35,26 +31,34 @@
 #include "skia/ext/skia_utils_base.h"
 #include "third_party/blink/public/common/page/drag_operation.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/gfx/skia_util.h"
+#include "ui/gfx/geometry/skia_conversions.h"
+#include "ui/gfx/image/image_skia.h"
 
 namespace content {
 
 class RenderViewHostTestBrowserClient : public TestContentBrowserClient {
  public:
   RenderViewHostTestBrowserClient() {}
+
+  RenderViewHostTestBrowserClient(const RenderViewHostTestBrowserClient&) =
+      delete;
+  RenderViewHostTestBrowserClient& operator=(
+      const RenderViewHostTestBrowserClient&) = delete;
+
   ~RenderViewHostTestBrowserClient() override {}
 
   bool IsHandledURL(const GURL& url) override {
     return url.scheme() == url::kFileScheme;
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(RenderViewHostTestBrowserClient);
 };
 
 class RenderViewHostTest : public RenderViewHostImplTestHarness {
  public:
   RenderViewHostTest() : old_browser_client_(nullptr) {}
+
+  RenderViewHostTest(const RenderViewHostTest&) = delete;
+  RenderViewHostTest& operator=(const RenderViewHostTest&) = delete;
+
   ~RenderViewHostTest() override {}
 
   void SetUp() override {
@@ -69,25 +73,14 @@ class RenderViewHostTest : public RenderViewHostImplTestHarness {
 
  private:
   RenderViewHostTestBrowserClient test_browser_client_;
-  ContentBrowserClient* old_browser_client_;
-
-  DISALLOW_COPY_AND_ASSIGN(RenderViewHostTest);
+  raw_ptr<ContentBrowserClient> old_browser_client_;
 };
-
-// All about URLs reported by the renderer should get rewritten to about:blank.
-// See RenderViewHost::OnNavigate for a discussion.
-TEST_F(RenderViewHostTest, FilterAbout) {
-  NavigationSimulator::NavigateAndCommitFromDocument(GURL("about:cache"),
-                                                     main_test_rfh());
-  ASSERT_TRUE(controller().GetVisibleEntry());
-  EXPECT_EQ(GURL(kBlockedURL), controller().GetVisibleEntry()->GetURL());
-}
 
 // Ensure we do not grant bindings to a process shared with unprivileged views.
 TEST_F(RenderViewHostTest, DontGrantBindingsToSharedProcess) {
   // Create another view in the same process.
-  std::unique_ptr<TestWebContents> new_web_contents(
-      TestWebContents::Create(browser_context(), rvh()->GetSiteInstance()));
+  std::unique_ptr<TestWebContents> new_web_contents(TestWebContents::Create(
+      browser_context(), main_rfh()->GetSiteInstance()));
 
   main_rfh()->AllowBindings(BINDINGS_POLICY_WEB_UI);
   EXPECT_FALSE(main_rfh()->GetEnabledBindings() & BINDINGS_POLICY_WEB_UI);
@@ -100,12 +93,12 @@ class MockDraggingRenderViewHostDelegateView
   void StartDragging(const DropData& drop_data,
                      blink::DragOperationsMask allowed_ops,
                      const gfx::ImageSkia& image,
-                     const gfx::Vector2d& image_offset,
+                     const gfx::Vector2d& cursor_offset,
+                     const gfx::Rect& drag_obj_rect,
                      const blink::mojom::DragEventSourceInfo& event_info,
                      RenderWidgetHostImpl* source_rwh) override {
     drag_url_ = drop_data.url;
     html_base_url_ = drop_data.html_base_url;
-    image_ = image;
   }
 
   GURL drag_url() {
@@ -116,12 +109,9 @@ class MockDraggingRenderViewHostDelegateView
     return html_base_url_;
   }
 
-  const gfx::ImageSkia& image() { return image_; }
-
  private:
   GURL drag_url_;
   GURL html_base_url_;
-  gfx::ImageSkia image_;
 };
 
 TEST_F(RenderViewHostTest, StartDragging) {
@@ -132,7 +122,7 @@ TEST_F(RenderViewHostTest, StartDragging) {
   DropData drop_data;
   // If `html` is not populated, `html_base_url` won't be populated when
   // converting to `DragData` with `DropDataToDragData`.
-  drop_data.html = base::string16();
+  drop_data.html = std::u16string();
 
   GURL blocked_url = GURL(kBlockedURL);
   GURL file_url = GURL("file:///home/user/secrets.txt");
@@ -164,37 +154,6 @@ TEST_F(RenderViewHostTest, StartDragging) {
   EXPECT_EQ(http_url, delegate_view.html_base_url());
 }
 
-TEST_F(RenderViewHostTest, StartDraggingWithInvalidBitmap) {
-  TestWebContents* web_contents = contents();
-  MockDraggingRenderViewHostDelegateView delegate_view;
-  web_contents->set_delegate_view(&delegate_view);
-
-  GURL http_url = GURL("http://www.domain.com/index.html");
-
-  DropData drop_data;
-  // If `html` is not populated, `html_base_url` won't be populated when
-  // converting to `DragData` with `DropDataToDragData`.
-  drop_data.html = base::string16();
-  drop_data.url = http_url;
-  drop_data.html_base_url = http_url;
-
-  SkBitmap badbitmap;
-  badbitmap.allocPixels(
-      SkImageInfo::Make(1, 1, kARGB_4444_SkColorType, kPremul_SkAlphaType));
-  badbitmap.eraseColor(SK_ColorGREEN);
-
-  SkBitmap n32bitmap;
-  EXPECT_TRUE(skia::SkBitmapToN32OpaqueOrPremul(badbitmap, &n32bitmap));
-
-  // An N32 bitmap is a valid drag image.
-  test_rvh()->TestStartDragging(drop_data, n32bitmap);
-  EXPECT_TRUE(gfx::BitmapsAreEqual(n32bitmap, *delegate_view.image().bitmap()));
-
-  // Other bitmap types are not, and are converted.
-  test_rvh()->TestStartDragging(drop_data, badbitmap);
-  EXPECT_TRUE(gfx::BitmapsAreEqual(n32bitmap, *delegate_view.image().bitmap()));
-}
-
 TEST_F(RenderViewHostTest, DragEnteredFileURLsStillBlocked) {
   DropData dropped_data;
   gfx::PointF client_point;
@@ -215,7 +174,8 @@ TEST_F(RenderViewHostTest, DragEnteredFileURLsStillBlocked) {
   // RenderWidgetHost to work with OOPIFs. See crbug.com/647249.
   rvh()->GetWidget()->FilterDropData(&dropped_data);
   rvh()->GetWidget()->DragTargetDragEnter(
-      dropped_data, client_point, screen_point, blink::kDragOperationNone, 0);
+      dropped_data, client_point, screen_point, blink::kDragOperationNone, 0,
+      base::DoNothing());
 
   int id = process()->GetID();
   ChildProcessSecurityPolicyImpl* policy =
@@ -254,7 +214,7 @@ TEST_F(RenderViewHostTest, NavigationWithBadHistoryItemFiles) {
   auto navigation1 =
       NavigationSimulatorImpl::CreateRendererInitiated(url, main_test_rfh());
   navigation1->set_page_state(
-      PageState::CreateForTesting(url, false, "data", &file_path));
+      blink::PageState::CreateForTesting(url, false, "data", &file_path));
   navigation1->Commit();
   EXPECT_EQ(1, process()->bad_msg_count());
 
@@ -263,17 +223,17 @@ TEST_F(RenderViewHostTest, NavigationWithBadHistoryItemFiles) {
   auto navigation2 =
       NavigationSimulatorImpl::CreateRendererInitiated(url, main_test_rfh());
   navigation2->set_page_state(
-      PageState::CreateForTesting(url, false, "data", &file_path));
+      blink::PageState::CreateForTesting(url, false, "data", &file_path));
   navigation2->Commit();
   EXPECT_EQ(1, process()->bad_msg_count());
 }
 
 TEST_F(RenderViewHostTest, RoutingIdSane) {
   RenderFrameHostImpl* root_rfh =
-      contents()->GetFrameTree()->root()->current_frame_host();
-  EXPECT_EQ(contents()->GetMainFrame(), root_rfh);
+      contents()->GetPrimaryFrameTree().root()->current_frame_host();
+  EXPECT_EQ(contents()->GetPrimaryMainFrame(), root_rfh);
   EXPECT_EQ(test_rvh()->GetProcess(), root_rfh->GetProcess());
-  EXPECT_NE(test_rvh()->GetRoutingID(), root_rfh->routing_id());
+  EXPECT_NE(test_rvh()->GetRoutingID(), root_rfh->GetRoutingID());
 }
 
 }  // namespace content

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,17 +10,17 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/containers/contains.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/pickle.h"
-#include "base/stl_util.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 
 namespace storage {
 
 namespace {
-constexpr base::TimeDelta kCloseDelay = base::TimeDelta::FromSeconds(5);
+constexpr base::TimeDelta kCloseDelay = base::Seconds(5);
 const size_t kMaxHandleCacheSize = 2;
 }  // namespace
 
@@ -36,7 +36,7 @@ FileSystemUsageCache::~FileSystemUsageCache() {
 const base::FilePath::CharType FileSystemUsageCache::kUsageFileName[] =
     FILE_PATH_LITERAL(".usage");
 const char FileSystemUsageCache::kUsageFileHeader[] = "FSU5";
-const int FileSystemUsageCache::kUsageFileHeaderSize = 4;
+const size_t FileSystemUsageCache::kUsageFileHeaderSize = 4;
 
 // Pickle::{Read,Write}Bool treat bool as int
 const int FileSystemUsageCache::kUsageFileSize =
@@ -300,14 +300,9 @@ bool FileSystemUsageCache::FlushFile(const base::FilePath& file_path) {
 void FileSystemUsageCache::ScheduleCloseTimer() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  if (timer_.IsRunning()) {
-    timer_.Reset();
-    return;
-  }
-
-  timer_.Start(FROM_HERE, kCloseDelay,
-               base::BindOnce(&FileSystemUsageCache::CloseCacheFiles,
-                              weak_factory_.GetWeakPtr()));
+  // This will restart the timer if it is already running.
+  timer_.Start(FROM_HERE, kCloseDelay, this,
+               &FileSystemUsageCache::CloseCacheFiles);
 }
 
 bool FileSystemUsageCache::HasCacheFileHandle(const base::FilePath& file_path) {

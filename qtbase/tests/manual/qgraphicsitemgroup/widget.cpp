@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "widget.h"
 #include "ui_widget.h"
@@ -120,15 +95,15 @@ void Widget::on_scaleItem_valueChanged(int value)
 
 void Widget::on_group_clicked()
 {
-    QList<QGraphicsItem*> all = scene->selectedItems();
+    const QList<QGraphicsItem*> all = scene->selectedItems();
     if (all.size() < 2)
         return;
 
-    QList<CustomItem*> items = scene->selectedCustomItems();
+    const QList<CustomItem*> items = scene->selectedCustomItems();
     QList<CustomGroup*> groups = scene->selectedCustomGroups();
 
     if (groups.size() == 1) {
-        foreach (CustomItem *item, items) {
+        for (CustomItem *item : items) {
             item->setSelected(false);
             groups[0]->addToGroup(item);
         }
@@ -138,7 +113,7 @@ void Widget::on_group_clicked()
 
     CustomGroup* group = new CustomGroup;
     scene->addItem(group);
-    foreach (QGraphicsItem *item, all) {
+    for (QGraphicsItem *item : all) {
         item->setSelected(false);
         group->addToGroup(item);
     }
@@ -149,9 +124,9 @@ void Widget::on_group_clicked()
 
 void Widget::on_dismantle_clicked()
 {
-    QList<CustomGroup*> groups = scene->selectedCustomGroups();
+    const QList<CustomGroup*> groups = scene->selectedCustomGroups();
 
-    foreach (CustomGroup *group, groups) {
+    for (CustomGroup *group : groups) {
         foreach (QGraphicsItem *item, group->childItems())
             group->removeFromGroup(item);
 

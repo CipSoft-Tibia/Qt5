@@ -1,7 +1,8 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//build/config/ui.gni")
 import("//media/media_options.gni")
@@ -17,31 +18,53 @@ if (is_mac) {
   import("//third_party/icu/config.gni")
 }
 
-# This file depends on the legacy global sources assignment filter. It should
-# be converted to check target platform before assigning source files to the
-# sources variable. Remove this import and set_sources_assignment_filter call
-# when the file has been converted. See https://crbug.com/1018739 for details.
-import("//build/config/deprecated_default_sources_assignment_filter.gni")
-set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
+source_set("constants") {
+  sources = [
+    "it2me_constants.cc",
+    "it2me_constants.h",
+  ]
+  deps = [ "//remoting/host/native_messaging" ]
+}
+
+source_set("helpers") {
+  sources = [
+    "it2me_helpers.cc",
+    "it2me_helpers.h",
+  ]
+  deps = [
+    ":constants",
+    "//base",
+    "//remoting/base",
+  ]
+}
 
 source_set("common") {
   sources = [
     "it2me_confirmation_dialog.h",
-    "it2me_confirmation_dialog_linux.cc",
-    "it2me_confirmation_dialog_mac.mm",
     "it2me_confirmation_dialog_proxy.cc",
     "it2me_confirmation_dialog_proxy.h",
-    "it2me_confirmation_dialog_win.cc",
     "it2me_host.cc",
     "it2me_host.h",
     "it2me_native_messaging_host.cc",
     "it2me_native_messaging_host.h",
   ]
 
-  if (is_chromeos) {
-    sources += [ "it2me_confirmation_dialog_chromeos.cc" ]
+  deps = []
 
-    sources -= [ "it2me_confirmation_dialog_linux.cc" ]
+  if (is_linux) {
+    sources += [ "it2me_confirmation_dialog_linux.cc" ]
+  }
+
+  if (is_chromeos_ash) {
+    sources += [ "it2me_confirmation_dialog_chromeos.cc" ]
+  }
+
+  if (is_mac) {
+    sources += [ "it2me_confirmation_dialog_mac.mm" ]
+  }
+
+  if (is_win) {
+    sources += [ "it2me_confirmation_dialog_win.cc" ]
   }
 
   configs += [
@@ -49,24 +72,59 @@ source_set("common") {
     "//remoting/build/config:version",
   ]
 
-  deps = [
+  public_deps = [
+    ":constants",
+    ":helpers",
+  ]
+
+  deps += [
     "//base:i18n",
+    "//build:chromeos_buildflags",
+    "//components/policy:policy_code_generate",
+    "//components/webrtc:thread_wrapper",
+    "//extensions/browser/api/messaging:native_messaging",
+    "//google_apis:google_apis",
     "//mojo/core/embedder",
     "//net",
     "//remoting/base",
+    "//remoting/base:authorization",
     "//remoting/host:common",
+    "//remoting/host/base",
+    "//remoting/host/native_messaging:native_messaging",
     "//remoting/protocol",
     "//remoting/resources",
     "//remoting/signaling",
+    "//services/network/public/cpp:cpp",
   ]
+
   if (use_gtk) {
     deps += [
       "//build/config/linux/gtk",
+      "//ui/base:base",
 
       # GTK pulls pangoft2, which requires HarfBuzz symbols. When linking
       # our own HarfBuzz avoid mixing symbols from system HarfBuzz and
       # our own through the indirect dependency to harfbuzz-ng here.
+      "//remoting/host/linux:wayland",
       "//third_party:freetype_harfbuzz",
+    ]
+  }
+  if (is_chromeos_ash) {
+    deps += [
+      "//chromeos/ui/vector_icons",
+      "//remoting/host/chromeos",
+      "//remoting/host/chromeos:host_event_reporter_impl",
+      "//ui/message_center",
+      "//ui/message_center/public/cpp",
+    ]
+  }
+  if (is_mac) {
+    deps += [ "//ui/base:base" ]
+  }
+  if (is_win) {
+    deps += [
+      "//remoting/host/win",
+      "//remoting/host/win:elevated_native_messaging_host",
     ]
   }
 }
@@ -74,28 +132,108 @@ source_set("common") {
 if (is_chromeos) {
   source_set("chrome_os_host") {
     sources = [
-      "it2me_native_messaging_host_chromeos.cc",
-      "it2me_native_messaging_host_chromeos.h",
+      "it2me_native_messaging_host_allowed_origins.cc",
+      "it2me_native_messaging_host_allowed_origins.h",
     ]
 
-    deps = [
-      ":common",
-      "//skia",
-    ]
+    if (is_chromeos_lacros) {
+      sources += [
+        "it2me_native_messaging_host_lacros.cc",
+        "it2me_native_messaging_host_lacros.h",
+      ]
+      deps = [
+        ":constants",
+        ":helpers",
+        "//base",
+        "//chromeos/crosapi/mojom",
+        "//chromeos/lacros",
+        "//extensions/browser/api/messaging:native_messaging",
+        "//google_apis:google_apis",
+        "//remoting/host/native_messaging",
+        "//remoting/protocol:errors",
+      ]
+    } else {
+      sources += [
+        "it2me_native_messaging_host_ash.cc",
+        "it2me_native_messaging_host_ash.h",
+        "it2me_native_messaging_host_chromeos.cc",
+        "it2me_native_messaging_host_chromeos.h",
+      ]
 
-    if (use_ozone) {
-      deps += [ "//ui/ozone" ]
+      deps = [
+        ":common",
+        "//extensions/browser/api/messaging:native_messaging",
+        "//remoting/base:base",
+        "//remoting/host:common",
+        "//remoting/host/chromeos:enterprise_support",
+        "//remoting/host/chromeos:features",
+        "//remoting/host/mojom:mojom",
+        "//remoting/host/native_messaging",
+        "//skia",
+      ]
+
+      public_deps = [ ":constants" ]
+
+      if (use_ozone) {
+        deps += [ "//ui/ozone" ]
+      }
     }
   }
 }
 
-if (!is_chromeos && enable_remoting_host) {
+if (!is_chromeos_ash && enable_remoting_host) {
+  source_set("main_headers") {
+    sources = [ "it2me_native_messaging_host_main.h" ]
+    deps = [ "//remoting/host:host_main_headers" ]
+  }
+
+  source_set("main") {
+    configs += [
+      "//build/config/compiler:wexit_time_destructors",
+      "//remoting/build/config:host_implementation",
+      "//remoting/build/config:version",
+    ]
+    sources = [ "it2me_native_messaging_host_main.cc" ]
+    deps = [
+      ":common",
+      ":main_headers",
+      "//mojo/core/embedder",
+      "//net",
+      "//remoting/base",
+      "//remoting/base:breakpad",
+      "//remoting/host",
+      "//remoting/host:resources",
+      "//remoting/host:settings",
+      "//remoting/host/base",
+      "//remoting/host/native_messaging",
+      "//remoting/proto",
+      "//third_party/webrtc_overrides:webrtc_component",
+      "//ui/gfx",
+    ]
+
+    if (is_linux) {
+      deps += [ "//remoting/host/linux:wayland" ]
+    }
+    if (is_linux && remoting_use_x11) {
+      defines = [ "REMOTING_USE_X11" ]
+      deps += [
+        "//build/config/linux/gtk",
+        "//ui/events/platform/x11",
+        "//ui/gtk:gtk_config",
+      ]
+    }
+
+    if (is_mac) {
+      deps += [ "//remoting/host/mac:permission_checking" ]
+    }
+  }
+
   if (is_win) {
     executable("remote_assistance_host") {
       configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
       deps = [
-        "//base/allocator",
+        ":main_headers",
         "//remoting/host/win:dpi_aware_exe_manifest",
         "//remoting/host/win:remoting_core",
         "//remoting/host/win:remoting_windows_resources",
@@ -120,7 +258,7 @@ if (!is_chromeos && enable_remoting_host) {
       configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
       deps = [
-        "//base/allocator",
+        ":main_headers",
         "//remoting/host/win:remoting_core",
         "//remoting/host/win:remoting_windows_resources",
       ]
@@ -203,19 +341,15 @@ if (!is_chromeos && enable_remoting_host) {
         ]
       }
 
-      sources = [
-        "it2me_native_messaging_host_entry_point.cc",
-        "it2me_native_messaging_host_main.cc",
-        "it2me_native_messaging_host_main.h",
-      ]
+      sources = [ "it2me_native_messaging_host_entry_point.cc" ]
 
-      deps = [
-        ":common",
-        "//remoting/host",
-        "//remoting/host/native_messaging",
-        "//remoting/proto",
-        "//ui/gfx",
-      ]
+      deps = [ ":main_headers" ]
+      if (is_mac) {
+        deps += [ ":main" ]
+      } else {
+        deps += [ "//remoting/host:remoting_core" ]
+      }
+
       if (is_mac) {
         foreach(locale, remoting_locales_with_underscores) {
           deps += [
@@ -226,20 +360,14 @@ if (!is_chromeos && enable_remoting_host) {
         deps += [
           ":remote_assistance_host_icons",
           "//remoting/host:remoting_infoplist_strings",
-          "//remoting/host/mac:permission_checking",
           "//remoting/resources:copy_locales",
         ]
         if (icu_use_data_file) {
           deps += [ ":remote_assistance_host_resources" ]
         }
       }
-
       if (enable_webrtc) {
         deps += [ "//third_party/webrtc_overrides:webrtc_component" ]
-      }
-
-      if (use_gtk) {
-        deps += [ "//build/config/linux/gtk" ]
       }
     }
   }

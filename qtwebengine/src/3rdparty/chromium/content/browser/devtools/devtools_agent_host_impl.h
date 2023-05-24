@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,7 @@
 
 #include <string>
 
-#include "base/compiler_specific.h"
 #include "base/containers/flat_map.h"
-#include "base/containers/flat_set.h"
-#include "base/macros.h"
 #include "base/process/kill.h"
 #include "content/browser/devtools/devtools_io_context.h"
 #include "content/browser/devtools/devtools_renderer_channel.h"
@@ -21,16 +18,25 @@
 #include "content/public/browser/certificate_request_result_type.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "net/cookies/site_for_cookies.h"
+#include "services/network/public/cpp/cross_origin_embedder_policy.h"
+#include "services/network/public/cpp/cross_origin_opener_policy.h"
 
 namespace content {
 
 class BrowserContext;
+
+namespace protocol {
+class TargetAutoAttacher;
+}  // namespace protocol
 
 // Describes interface for managing devtools agents from the browser process.
 class CONTENT_EXPORT DevToolsAgentHostImpl : public DevToolsAgentHost {
  public:
   // Returns DevToolsAgentHost with a given |id| or nullptr of it doesn't exist.
   static scoped_refptr<DevToolsAgentHostImpl> GetForId(const std::string& id);
+
+  DevToolsAgentHostImpl(const DevToolsAgentHostImpl&) = delete;
+  DevToolsAgentHostImpl& operator=(const DevToolsAgentHostImpl&) = delete;
 
   // DevToolsAgentHost implementation.
   bool AttachClient(DevToolsAgentHostClient* client) override;
@@ -74,6 +80,8 @@ class CONTENT_EXPORT DevToolsAgentHostImpl : public DevToolsAgentHost {
   virtual NetworkLoaderFactoryParamsAndInfo
   CreateNetworkFactoryParamsForDevTools();
 
+  virtual DevToolsSession::Mode GetSessionMode();
+
   bool Inspect();
 
   template <typename Handler>
@@ -89,6 +97,14 @@ class CONTENT_EXPORT DevToolsAgentHostImpl : public DevToolsAgentHost {
     return result;
   }
 
+  virtual absl::optional<network::CrossOriginEmbedderPolicy>
+  cross_origin_embedder_policy(const std::string& id);
+  virtual absl::optional<network::CrossOriginOpenerPolicy>
+  cross_origin_opener_policy(const std::string& id);
+
+  virtual protocol::TargetAutoAttacher* auto_attacher();
+  virtual std::string GetSubtype();
+
  protected:
   explicit DevToolsAgentHostImpl(const std::string& id);
   ~DevToolsAgentHostImpl() override;
@@ -103,15 +119,24 @@ class CONTENT_EXPORT DevToolsAgentHostImpl : public DevToolsAgentHost {
   void NotifyCreated();
   void NotifyNavigated();
   void NotifyCrashed(base::TerminationStatus status);
-  void ForceDetachAllSessions();
   void ForceDetachRestrictedSessions(
       const std::vector<DevToolsSession*>& restricted_sessions);
   DevToolsIOContext* GetIOContext() { return &io_context_; }
   DevToolsRendererChannel* GetRendererChannel() { return &renderer_channel_; }
 
   const std::vector<DevToolsSession*>& sessions() const { return sessions_; }
+  // Returns refptr retaining `this`. All other references may be removed
+  // at this point, so `this` will become invalid as soon as returned refptr
+  // gets destroyed.
+  [[nodiscard]] scoped_refptr<DevToolsAgentHost> ForceDetachAllSessionsImpl();
 
  private:
+  // Note that calling this may result in the instance being deleted,
+  // as instance may be owned by client sessions. This should not be
+  // used by methods of derived classes, use `ForceDetachAllSessionsImpl()`
+  // above instead.
+  void ForceDetachAllSessions() override;
+
   friend class DevToolsAgentHost;  // for static methods
   friend class DevToolsSession;
   friend class DevToolsRendererChannel;
@@ -132,8 +157,6 @@ class CONTENT_EXPORT DevToolsAgentHostImpl : public DevToolsAgentHost {
   DevToolsIOContext io_context_;
   DevToolsRendererChannel renderer_channel_;
   static int s_force_creation_count_;
-
-  DISALLOW_COPY_AND_ASSIGN(DevToolsAgentHostImpl);
 };
 
 }  // namespace content

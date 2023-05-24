@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,19 +11,15 @@
 
 #include "base/containers/flat_set.h"
 #include "base/containers/id_map.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/time/default_tick_clock.h"
+#include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "content/common/content_export.h"
 #include "content/public/renderer/render_frame_observer.h"
 #include "third_party/blink/public/platform/media/webmediaplayer_delegate.h"
-
-#if defined(OS_ANDROID)
-#include "base/time/time.h"
-#endif  // OS_ANDROID
+#include "third_party/blink/public/web/web_view_observer.h"
 
 namespace blink {
 enum class WebFullscreenVideoStatus;
@@ -37,10 +33,17 @@ enum class MediaContentType;
 // the MediaPlayerDelegateHost.
 class CONTENT_EXPORT RendererWebMediaPlayerDelegate
     : public content::RenderFrameObserver,
+      public blink::WebViewObserver,
       public blink::WebMediaPlayerDelegate,
       public base::SupportsWeakPtr<RendererWebMediaPlayerDelegate> {
  public:
   explicit RendererWebMediaPlayerDelegate(content::RenderFrame* render_frame);
+
+  RendererWebMediaPlayerDelegate(const RendererWebMediaPlayerDelegate&) =
+      delete;
+  RendererWebMediaPlayerDelegate& operator=(
+      const RendererWebMediaPlayerDelegate&) = delete;
+
   ~RendererWebMediaPlayerDelegate() override;
 
   // Returns true if this RenderFrame has ever seen media playback before.
@@ -48,7 +51,6 @@ class CONTENT_EXPORT RendererWebMediaPlayerDelegate
 
   // blink::WebMediaPlayerDelegate implementation.
   bool IsFrameHidden() override;
-  bool IsFrameClosed() override;
   int AddObserver(Observer* observer) override;
   void RemoveObserver(int player_id) override;
   void DidMediaMetadataChange(int player_id,
@@ -62,26 +64,17 @@ class CONTENT_EXPORT RendererWebMediaPlayerDelegate
   bool IsIdle(int player_id) override;
   void ClearStaleFlag(int player_id) override;
   bool IsStale(int player_id) override;
-  void SetIsEffectivelyFullscreen(
-      int player_id,
-      blink::WebFullscreenVideoStatus fullscreen_video_status) override;
-  void DidPlayerSizeChange(int delegate_id, const gfx::Size& size) override;
-  void DidPlayerMutedStatusChange(int delegate_id, bool muted) override;
-  void DidPlayerMediaPositionStateChange(
-      int delegate_id,
-      const media_session::MediaPosition& position) override;
-  void DidPictureInPictureAvailabilityChange(int delegate_id,
-                                             bool available) override;
-  void DidAudioOutputSinkChange(int delegate_id,
-                                const std::string& hashed_device_id) override;
-  void DidDisableAudioOutputSinkChanges(int delegate_id) override;
-  void DidBufferUnderflow(int player_id) override;
 
   // content::RenderFrameObserver overrides.
-  void WasHidden() override;
-  void WasShown() override;
-  bool OnMessageReceived(const IPC::Message& msg) override;
   void OnDestruct() override;
+
+  // blink::WebViewObserver overrides.
+  void OnPageVisibilityChanged(
+      blink::mojom::PageVisibilityState visibility_state) override;
+
+  // Returns the number of WebMediaPlayers that are associated with this
+  // delegate.
+  size_t web_media_player_count() const { return id_map_.size(); }
 
   // Zeros out |idle_cleanup_interval_|, sets |idle_timeout_| to |idle_timeout|,
   // and |is_low_end_| to |is_low_end|. A zero cleanup interval
@@ -98,27 +91,11 @@ class CONTENT_EXPORT RendererWebMediaPlayerDelegate
   friend class RendererWebMediaPlayerDelegateTest;
 
  private:
-  void OnMediaDelegatePause(int player_id, bool triggered_by_user);
-  void OnMediaDelegatePlay(int player_id);
-  void OnMediaDelegateMuted(int player_id, bool muted);
-  void OnMediaDelegateSeekForward(int player_id, base::TimeDelta seek_time);
-  void OnMediaDelegateSeekBackward(int player_id, base::TimeDelta seek_time);
-  void OnMediaDelegateSuspendAllMediaPlayers();
-  void OnMediaDelegateVolumeMultiplierUpdate(int player_id, double multiplier);
-  void OnMediaDelegateBecamePersistentVideo(int player_id, bool value);
-  void OnMediaDelegateEnterPictureInPicture(int player_id);
-  void OnMediaDelegateExitPictureInPicture(int player_id);
-  void OnMediaDelegateSetAudioSink(int player_id, std::string sink_id);
-  void OnMediaDelegatePowerExperimentState(int player_id, bool state);
-
   // Schedules UpdateTask() to run soon.
   void ScheduleUpdateTask();
 
   // Processes state changes, dispatches CleanupIdlePlayers().
   void UpdateTask();
-
-  // Records UMAs about background playback.
-  void RecordBackgroundVideoPlayback();
 
   // Runs periodically to notify stale players in |idle_player_map_| which
   // have been idle for longer than |timeout|.
@@ -128,7 +105,6 @@ class CONTENT_EXPORT RendererWebMediaPlayerDelegate
   // autoplay logic in RenderFrameImpl.
   bool has_played_media_ = false;
 
-  bool is_frame_closed_ = false;
   bool is_frame_hidden_for_testing_ = false;
 
   // State related to scheduling UpdateTask(). These are cleared each time
@@ -160,13 +136,6 @@ class CONTENT_EXPORT RendererWebMediaPlayerDelegate
   // overridden for testing.
   const base::TickClock* tick_clock_;
 
-#if defined(OS_ANDROID)
-  bool was_playing_background_video_ = false;
-
-  // Keeps track of when the background video playback started for metrics.
-  base::TimeTicks background_video_start_time_;
-#endif  // OS_ANDROID
-
   // Players with a video track.
   base::flat_set<int> players_with_video_;
 
@@ -179,7 +148,9 @@ class CONTENT_EXPORT RendererWebMediaPlayerDelegate
   // when the idle cleanup timer should be fired more aggressively.
   bool is_low_end_;
 
-  DISALLOW_COPY_AND_ASSIGN(RendererWebMediaPlayerDelegate);
+  // Last page shown/hidden state sent to the player.  Unset if we have not sent
+  // any message.  Used to elide duplicates.
+  absl::optional<bool> is_shown_;
 };
 
 }  // namespace media

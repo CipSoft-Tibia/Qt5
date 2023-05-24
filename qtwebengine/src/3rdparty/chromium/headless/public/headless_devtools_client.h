@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,13 +8,9 @@
 #include <memory>
 
 #include "base/containers/span.h"
-#include "base/macros.h"
+#include "base/values.h"
 #include "headless/public/headless_devtools_channel.h"
 #include "headless/public/headless_export.h"
-
-namespace base {
-class DictionaryValue;
-}  // namespace base
 
 namespace headless {
 
@@ -22,9 +18,6 @@ namespace accessibility {
 class Domain;
 }
 namespace animation {
-class Domain;
-}
-namespace application_cache {
 class Domain;
 }
 namespace browser {
@@ -124,16 +117,20 @@ class Domain;
 // An interface for controlling and receiving events from a devtools target.
 class HEADLESS_EXPORT HeadlessDevToolsClient {
  public:
+  HeadlessDevToolsClient(const HeadlessDevToolsClient&) = delete;
+  HeadlessDevToolsClient& operator=(const HeadlessDevToolsClient&) = delete;
+
   virtual ~HeadlessDevToolsClient() {}
 
   class HEADLESS_EXPORT ExternalHost {
    public:
     ExternalHost() {}
+
+    ExternalHost(const ExternalHost&) = delete;
+    ExternalHost& operator=(const ExternalHost&) = delete;
+
     virtual ~ExternalHost() {}
     virtual void SendProtocolMessage(base::span<const uint8_t> message) = 0;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(ExternalHost);
   };
 
   static std::unique_ptr<HeadlessDevToolsClient> Create();
@@ -149,7 +146,6 @@ class HEADLESS_EXPORT HeadlessDevToolsClient {
   // the capabilities of each domain.
   virtual accessibility::Domain* GetAccessibility() = 0;
   virtual animation::Domain* GetAnimation() = 0;
-  virtual application_cache::Domain* GetApplicationCache() = 0;
   virtual browser::Domain* GetBrowser() = 0;
   virtual cache_storage::Domain* GetCacheStorage() = 0;
   virtual console::Domain* GetConsole() = 0;
@@ -185,15 +181,15 @@ class HEADLESS_EXPORT HeadlessDevToolsClient {
   class HEADLESS_EXPORT RawProtocolListener {
    public:
     RawProtocolListener() {}
+
+    RawProtocolListener(const RawProtocolListener&) = delete;
+    RawProtocolListener& operator=(const RawProtocolListener&) = delete;
+
     virtual ~RawProtocolListener() {}
 
     // Returns true if the listener handled the message.
-    virtual bool OnProtocolMessage(
-        base::span<const uint8_t> json_message,
-        const base::DictionaryValue& parsed_message) = 0;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(RawProtocolListener);
+    virtual bool OnProtocolMessage(base::span<const uint8_t> json_message,
+                                   const base::Value::Dict& parsed_message) = 0;
   };
 
   virtual void AttachToChannel(
@@ -222,8 +218,6 @@ class HEADLESS_EXPORT HeadlessDevToolsClient {
   friend class HeadlessDevToolsClientImpl;
 
   HeadlessDevToolsClient() {}
-
-  DISALLOW_COPY_AND_ASSIGN(HeadlessDevToolsClient);
 };
 
 }  // namespace headless

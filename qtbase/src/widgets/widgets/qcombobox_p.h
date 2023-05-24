@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCOMBOBOX_P_H
 #define QCOMBOBOX_P_H
@@ -56,7 +20,7 @@
 
 #include "QtWidgets/qabstractslider.h"
 #include "QtWidgets/qapplication.h"
-#include "QtWidgets/qitemdelegate.h"
+#include "QtWidgets/qstyleditemdelegate.h"
 #include "QtGui/qstandarditemmodel.h"
 #include "QtWidgets/qlineedit.h"
 #include "QtWidgets/qlistview.h"
@@ -85,7 +49,11 @@ class QComboBoxListView : public QListView
 {
     Q_OBJECT
 public:
-    QComboBoxListView(QComboBox *cmb = nullptr) : combo(cmb) {}
+    QComboBoxListView(QComboBox *cmb = nullptr) : combo(cmb)
+    {
+        if (cmb)
+            setScreen(cmb->screen());
+    }
 
 protected:
     void resizeEvent(QResizeEvent *event) override
@@ -94,13 +62,12 @@ protected:
         QListView::resizeEvent(event);
     }
 
-    QStyleOptionViewItem viewOptions() const override
+    void initViewItemOption(QStyleOptionViewItem *option) const override
     {
-        QStyleOptionViewItem option = QListView::viewOptions();
-        option.showDecorationSelected = true;
+        QListView::initViewItemOption(option);
+        option->showDecorationSelected = true;
         if (combo)
-            option.font = combo->font();
-        return option;
+            option->font = combo->font();
     }
 
     void paintEvent(QPaintEvent *e) override
@@ -118,7 +85,7 @@ protected:
                 menuOpt.checkType = QStyleOptionMenuItem::NotCheckable;
                 menuOpt.menuRect = e->rect();
                 menuOpt.maxIconWidth = 0;
-                menuOpt.tabWidth = 0;
+                menuOpt.reservedShortcutWidth = 0;
                 QPainter p(viewport());
                 combo->style()->drawControl(QStyle::CE_MenuEmptyArea, &menuOpt, &p, this);
             }
@@ -155,7 +122,7 @@ protected:
         fast = false;
     }
 
-    void enterEvent(QEvent *) override {
+    void enterEvent(QEnterEvent *) override {
         startTimer();
     }
 
@@ -178,8 +145,8 @@ protected:
     void mouseMoveEvent(QMouseEvent *e) override
     {
         // Enable fast scrolling if the cursor is directly above or below the popup.
-        const int mouseX = e->pos().x();
-        const int mouseY = e->pos().y();
+        const int mouseX = e->position().toPoint().x();
+        const int mouseY = e->position().toPoint().y();
         const bool horizontallyInside = pos().x() < mouseX && mouseX < rect().right() + 1;
         const bool verticallyOutside = (sliderAction == QAbstractSlider::SliderSingleStepAdd) ?
                                         rect().bottom() + 1 < mouseY : mouseY < pos().y();
@@ -190,11 +157,11 @@ protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         QStyleOptionMenuItem menuOpt;
-        menuOpt.init(this);
+        menuOpt.initFrom(this);
         menuOpt.checkType = QStyleOptionMenuItem::NotCheckable;
         menuOpt.menuRect = rect();
         menuOpt.maxIconWidth = 0;
-        menuOpt.tabWidth = 0;
+        menuOpt.reservedShortcutWidth = 0;
         menuOpt.menuItemType = QStyleOptionMenuItem::Scroller;
         if (sliderAction == QAbstractSlider::SliderSingleStepAdd)
             menuOpt.state |= QStyle::State_DownArrow;
@@ -217,6 +184,7 @@ class Q_WIDGETS_EXPORT QComboBoxPrivateContainer : public QFrame
 
 public:
     QComboBoxPrivateContainer(QAbstractItemView *itemView, QComboBox *parent);
+    ~QComboBoxPrivateContainer();
     QAbstractItemView *itemView() const;
     void setItemView(QAbstractItemView *itemView);
     int spacing() const;
@@ -295,17 +263,17 @@ private:
     int pressedIndex;
 };
 
-// ### Qt6: QStyledItemDelegate ?
-// Note that this class is intentionally not using QStyledItemDelegate
-// Vista does not use the new theme for combo boxes and there might
-// be other side effects from using the new class
-class Q_AUTOTEST_EXPORT QComboBoxDelegate : public QItemDelegate
-{ Q_OBJECT
+class Q_AUTOTEST_EXPORT QComboBoxDelegate : public QStyledItemDelegate
+{
+    Q_OBJECT
 public:
-    QComboBoxDelegate(QObject *parent, QComboBox *cmb) : QItemDelegate(parent), mCombo(cmb) {}
+    QComboBoxDelegate(QObject *parent, QComboBox *cmb)
+        : QStyledItemDelegate(parent), mCombo(cmb)
+    {}
 
     static bool isSeparator(const QModelIndex &index) {
-        return index.data(Qt::AccessibleDescriptionRole).toString() == QLatin1String("separator");
+        return index.data(Qt::AccessibleDescriptionRole).toString()
+                == QLatin1StringView("separator");
     }
     static void setSeparator(QAbstractItemModel *model, const QModelIndex &index) {
         model->setData(index, QString::fromLatin1("separator"), Qt::AccessibleDescriptionRole);
@@ -326,7 +294,7 @@ protected:
             opt.rect = rect;
             mCombo->style()->drawPrimitive(QStyle::PE_IndicatorToolBarSeparator, &opt, painter, mCombo);
         } else {
-            QItemDelegate::paint(painter, option, index);
+            QStyledItemDelegate::paint(painter, option, index);
         }
     }
 
@@ -336,7 +304,7 @@ protected:
             int pm = mCombo->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, mCombo);
             return QSize(pm, pm);
         }
-        return QItemDelegate::sizeHint(option, index);
+        return QStyledItemDelegate::sizeHint(option, index);
     }
 private:
     QComboBox *mCombo;
@@ -352,28 +320,29 @@ public:
     QComboBoxPrivateContainer* viewContainer();
     void updateLineEditGeometry();
     Qt::MatchFlags matchFlags() const;
-    void _q_editingFinished();
-    void _q_returnPressed();
-    void _q_complete();
-    void _q_itemSelected(const QModelIndex &item);
+    void editingFinished();
+    void returnPressed();
+    void complete();
+    void itemSelected(const QModelIndex &item);
     bool contains(const QString &text, int role);
     void emitActivated(const QModelIndex &index);
-    void _q_emitHighlighted(const QModelIndex &index);
-    void _q_emitCurrentIndexChanged(const QModelIndex &index);
-    void _q_modelDestroyed();
-    void _q_modelReset();
+    void emitHighlighted(const QModelIndex &index);
+    void emitCurrentIndexChanged(const QModelIndex &index);
+    void modelDestroyed();
+    void modelReset();
+    void updateMicroFocus() { q_func()->updateMicroFocus(); } // PMF connect doesn't handle default args
 #if QT_CONFIG(completer)
-    void _q_completerActivated(const QModelIndex &index);
+    void completerActivated(const QModelIndex &index);
 #endif
-    void _q_resetButton();
-    void _q_dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight);
-    void _q_updateIndexBeforeChange();
-    void _q_rowsInserted(const QModelIndex &parent, int start, int end);
-    void _q_rowsRemoved(const QModelIndex &parent, int start, int end);
+    void resetButton();
+    void dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight);
+    void updateIndexBeforeChange();
+    void rowsInserted(const QModelIndex &parent, int start, int end);
+    void rowsRemoved(const QModelIndex &parent, int start, int end);
     void updateArrow(QStyle::StateFlag state);
     bool updateHoverControl(const QPoint &pos);
     void trySetValidIndex();
-    QRect popupGeometry(int screen = -1) const;
+    QRect popupGeometry(const QPoint &globalPos) const;
     QStyle::SubControl newHoverControl(const QPoint &pos);
     int computeWidthHint() const;
     QSize recomputeSizeHint(QSize &sh) const;
@@ -389,6 +358,10 @@ public:
     void updateViewContainerPaletteAndOpacity();
     void updateFocusPolicy();
     void showPopupFromMouseEvent(QMouseEvent *e);
+    void doHidePopup();
+    void updateCurrentText(const QString &text);
+    void connectModel();
+    void disconnectModel();
 
 #ifdef Q_OS_MAC
     void cleanupNativePopup();
@@ -405,18 +378,17 @@ public:
     };
 #endif
 
+    std::array<QMetaObject::Connection, 8> modelConnections;
     QAbstractItemModel *model = nullptr;
     QLineEdit *lineEdit = nullptr;
     QComboBoxPrivateContainer *container = nullptr;
 #ifdef Q_OS_MAC
     QPlatformMenu *m_platformMenu = nullptr;
 #endif
-#if QT_CONFIG(completer)
-    QPointer<QCompleter> completer;
-#endif
     QPersistentModelIndex currentIndex;
     QPersistentModelIndex root;
     QString placeholderText;
+    QString currentText;
     QRect hoverRect;
     QSize iconSize;
     mutable QSize minimumSizeHint;
@@ -425,18 +397,17 @@ public:
     QComboBox::SizeAdjustPolicy sizeAdjustPolicy = QComboBox::AdjustToContentsOnFirstShow;
     QStyle::StateFlag arrowState = QStyle::State_None;
     QStyle::SubControl hoverControl = QStyle::SC_None;
-    Qt::CaseSensitivity autoCompletionCaseSensitivity = Qt::CaseInsensitive;
     int minimumContentsLength = 0;
     int indexBeforeChange = -1;
     int maxVisibleItems = 10;
-    int maxCount = std::numeric_limits<int>::max();
+    int maxCount = (std::numeric_limits<int>::max)();
     int modelColumn = 0;
     int placeholderIndex = -1;
     bool shownOnce : 1;
-    bool autoCompletion : 1;
     bool duplicatesEnabled : 1;
     bool frame : 1;
     bool inserting : 1;
+    bool hidingPopup : 1;
 };
 
 QT_END_NAMESPACE

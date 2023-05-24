@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QApplication>
 #include <QDebug>
@@ -84,7 +59,7 @@ class ClickableLabel : public QLabel
 {
     Q_OBJECT
 public:
-    explicit ClickableLabel(const QString &text, QWidget *parent = 0) : QLabel(text, parent) {}
+    explicit ClickableLabel(const QString &text, QWidget *parent = nullptr) : QLabel(text, parent) {}
 
 signals:
     void pressed();
@@ -224,13 +199,9 @@ bool MainWindow::eventFilter(QObject *o, QEvent *e)
         case QEvent::Enter: {
             QString message;
             QDebug debug(&message);
-#if QT_VERSION >= 0x050000
             const QEnterEvent *ee = static_cast<QEnterEvent *>(e);
             debug.nospace()  << '#' << m_enterLeaveEventCount++ << " Enter for " << o->objectName()
                              << " at " << ee->localPos() << " global: " << ee->globalPos();
-#else
-            debug.nospace()  << '#' << m_enterLeaveEventCount++ << " Enter for " << o->objectName();
-#endif
             m_logEdit->appendPlainText(message);
         }
             break;
@@ -357,11 +328,7 @@ void MainWindow::grabKeyboardWindowToggled(bool g)
 void MainWindow::forceNativeWidgets()
 {
     const WId platformWid = m_forceNativeButton->winId();
-#if QT_VERSION < 0x050000 && defined(Q_OS_WIN)
-    const quintptr wid = quintptr(platformWid); // HWND on Qt 4.8/Windows.
-#else
     const WId wid = platformWid;
-#endif
     m_logEdit->appendPlainText(QString::fromLatin1("Created native widget %1").arg(wid));
     m_forceNativeButton->setEnabled(false);
     m_forceNativeButton->setText(QLatin1String("Native widgets created"));

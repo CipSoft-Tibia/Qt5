@@ -7,10 +7,10 @@
 
 #include "tools/sk_app/DawnWindowContext.h"
 #include "tools/sk_app/mac/WindowContextFactory_mac.h"
-#include "dawn/webgpu_cpp.h"
+#include "webgpu/webgpu_cpp.h"
 #include "dawn/dawn_wsi.h"
-#include "dawn_native/DawnNative.h"
-#include "dawn_native/MetalBackend.h"
+#include "dawn/native/DawnNative.h"
+#include "dawn/native/MetalBackend.h"
 
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -49,6 +49,7 @@ public:
     DawnSwapChainImplementation createSwapChainImplementation(int width, int height,
                                                               const DisplayParams& params) override;
     void onSwapBuffers() override;
+    void resize(int width, int height) override;
 private:
     NSView*              fMainView;
     id<MTLDevice>        fMTLDevice;
@@ -105,7 +106,10 @@ private:
 DawnMTLWindowContext::DawnMTLWindowContext(const MacWindowInfo& info, const DisplayParams& params)
     : DawnWindowContext(params, wgpu::TextureFormat::BGRA8Unorm)
     , fMainView(info.fMainView) {
+    CGFloat backingScaleFactor = sk_app::GetBackingScaleFactor(fMainView);
     CGSize size = fMainView.bounds.size;
+    size.width *= backingScaleFactor;
+    size.height *= backingScaleFactor;
     this->initializeContext(size.width, size.height);
 }
 
@@ -119,12 +123,13 @@ DawnSwapChainImplementation DawnMTLWindowContext::createSwapChainImplementation(
 }
 
 wgpu::Device DawnMTLWindowContext::onInitializeContext() {
-    wgpu::Device device = this->createDevice(dawn_native::BackendType::Metal);
+    wgpu::Device device = this->createDevice(wgpu::BackendType::Metal);
     if (!device) {
         return nullptr;
     }
 
-    fMTLDevice = dawn_native::metal::GetMetalDevice(device.Get());
+    // We assume that Dawn is using the default device. This could be wrong on multi-GPU systems.
+    fMTLDevice = MTLCreateSystemDefaultDevice();
 
     CGSize size;
     size.width = width();
@@ -136,6 +141,9 @@ wgpu::Device DawnMTLWindowContext::onInitializeContext() {
     [fLayer setFramebufferOnly: YES];
     [fLayer setDrawableSize: size];
     [fLayer setColorspace: CGColorSpaceCreateDeviceRGB()];
+    [fLayer setContentsScale: sk_app::GetBackingScaleFactor(fMainView)];
+    [fLayer setContentsGravity: kCAGravityTopLeft];
+    [fLayer setAutoresizingMask: kCALayerHeightSizable | kCALayerWidthSizable];
 
     [fMainView setWantsLayer: YES];
     [fMainView setLayer: fLayer];
@@ -147,6 +155,18 @@ void DawnMTLWindowContext::onDestroyContext() {
 }
 
 void DawnMTLWindowContext::onSwapBuffers() {
+}
+
+void DawnMTLWindowContext::resize(int w, int h) {
+    CGFloat backingScaleFactor = sk_app::GetBackingScaleFactor(fMainView);
+    CGSize size = fMainView.bounds.size;
+    size.width *= backingScaleFactor;
+    size.height *= backingScaleFactor;
+
+    fLayer.drawableSize = size;
+    fLayer.contentsScale = backingScaleFactor;
+
+    DawnWindowContext::resize(size.width, size.height);
 }
 
 namespace window_context_factory {

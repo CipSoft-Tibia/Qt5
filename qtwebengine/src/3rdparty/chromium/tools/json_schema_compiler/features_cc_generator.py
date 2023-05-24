@@ -1,10 +1,10 @@
-# Copyright 2013 The Chromium Authors. All rights reserved.
+# Copyright 2013 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import os.path
 
-from code import Code
+from code_util import Code
 import cpp_util
 
 
@@ -29,11 +29,13 @@ class _Generator(object):
     c = Code()
     (c.Append(cpp_util.CHROMIUM_LICENSE)
       .Append()
-      .Append(cpp_util.GENERATED_FEATURE_MESSAGE % self._source_file)
+      .Append(cpp_util.GENERATED_FEATURE_MESSAGE %
+              cpp_util.ToPosixPath(self._source_file))
       .Append()
       .Append('#include <string>')
       .Append()
-      .Append('#include "%s.h"' % self._source_file_filename)
+      .Append('#include "%s.h"' %
+              cpp_util.ToPosixPath(self._source_file_filename))
       .Append()
       .Append('#include "base/notreached.h"')
       .Append()

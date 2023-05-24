@@ -1,41 +1,30 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include <QDateTime>
+#include <QTest>
+
+#include <QLocale>
+#include <QMap>
+#include <QTimeZone>
 
 #include <private/qglobal_p.h> // for the icu feature test
-#include <QtTest/QtTest>
-#include <qdatetime.h>
-#include <qlocale.h>
+#include <private/qdatetime_p.h>
+#if !QT_CONFIG(timezone)
+#  include <private/qtenvironmentvariables_p.h> // for qTzName()
+#endif
+
+using namespace QtPrivate::DateTimeConstants;
+
+#if defined(Q_OS_WIN) && !QT_CONFIG(icu)
+#  define USING_WIN_TZ
+#endif
 
 class tst_QDate : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void isNull_data();
     void isNull();
     void isValid_data();
@@ -55,10 +44,8 @@ private slots:
     void weekNumber_invalid();
     void weekNumber_data();
     void weekNumber();
-#if QT_CONFIG(timezone)
     void startOfDay_endOfDay_data();
     void startOfDay_endOfDay();
-#endif
     void startOfDay_endOfDay_fixed_data();
     void startOfDay_endOfDay_fixed();
     void startOfDay_endOfDay_bounds();
@@ -78,33 +65,38 @@ private slots:
     void operator_gt_eq();
     void operator_insert_extract_data();
     void operator_insert_extract();
+#if QT_CONFIG(datestring)
     void fromStringDateFormat_data();
     void fromStringDateFormat();
+# if QT_CONFIG(datetimeparser)
     void fromStringFormat_data();
     void fromStringFormat();
+# endif
     void toStringFormat_data();
     void toStringFormat();
     void toStringDateFormat_data();
     void toStringDateFormat();
+#endif
     void isLeapYear();
     void yearsZeroToNinetyNine();
     void printNegativeYear_data() const;
     void printNegativeYear() const;
-#if QT_CONFIG(textdate) && QT_DEPRECATED_SINCE(5, 10)
-    void shortDayName() const;
-    void standaloneShortDayName() const;
-    void longDayName() const;
-    void standaloneLongDayName() const;
-    void shortMonthName() const;
-    void standaloneShortMonthName() const;
-    void longMonthName() const;
-    void standaloneLongMonthName() const;
+#if QT_CONFIG(datestring)
     void roundtripString() const;
-#endif // textdate
+#endif
     void roundtrip() const;
     void qdebug() const;
 private:
     QDate defDate() const { return QDate(1900, 1, 1); }
+
+    QDate epochDate() const {
+        using namespace QtPrivate::DateTimeConstants;
+        Q_ASSERT(JULIAN_DAY_FOR_EPOCH == QDate(1970, 1, 1).toJulianDay());
+        return QDate::fromJulianDay(JULIAN_DAY_FOR_EPOCH);
+    }
+
+    static constexpr qint64 minJd = JulianDayMin;
+    static constexpr qint64 maxJd = JulianDayMax;
     QDate invalidDate() const { return QDate(); }
 };
 
@@ -114,9 +106,6 @@ void tst_QDate::isNull_data()
 {
     QTest::addColumn<qint64>("jd");
     QTest::addColumn<bool>("null");
-
-    qint64 minJd = Q_INT64_C(-784350574879);
-    qint64 maxJd = Q_INT64_C( 784354017364);
 
     QTest::newRow("qint64 min") << std::numeric_limits<qint64>::min() << true;
     QTest::newRow("minJd - 1")  << minJd - 1                          << true;
@@ -201,6 +190,32 @@ void tst_QDate::isValid_data()
     QTest::newRow("jd latest formula")   << 1400000 << 12 << 31 << qint64(513060925) << true;
 }
 
+#if __cpp_lib_chrono >= 201907L
+// QDate has a bigger range than year_month_date. The tests use this bigger
+// range. However building a year_month_time with "out of range" data has
+// unspecified results, so don't do that. See [time.cal.year],
+// [time.cal.month], [time.cal.day]. Also, std::chrono::year has a year 0, so
+// take that into account.
+static std::optional<std::chrono::year_month_day> convertToStdYearMonthDay(int y, int m, int d)
+{
+    using namespace std::chrono;
+
+    if (y >= int((year::min)())
+            && y <= int((year::max)())
+            && m >= 0
+            && m <= 255
+            && d >= 0
+            && d <= 255)
+    {
+        if (y < 0)
+            ++y;
+        return std::make_optional(year(y) / m / d);
+    }
+
+    return std::nullopt;
+}
+#endif
+
 void tst_QDate::isValid()
 {
     QFETCH(int, year);
@@ -220,6 +235,19 @@ void tst_QDate::isValid()
         QCOMPARE(d.year(), year);
         QCOMPARE(d.month(), month);
         QCOMPARE(d.day(), day);
+#if __cpp_lib_chrono >= 201907L
+        std::optional<std::chrono::year_month_day> ymd = convertToStdYearMonthDay(year, month, day);
+        if (ymd) {
+            QDate d = *ymd;
+            QCOMPARE(d.year(), year);
+            QCOMPARE(d.month(), month);
+            QCOMPARE(d.day(), day);
+
+            const std::chrono::sys_days qdateSysDays = d.toStdSysDays();
+            const std::chrono::sys_days ymdSysDays = *ymd;
+            QCOMPARE(qdateSysDays, ymdSysDays);
+        }
+#endif
     } else {
         QCOMPARE(d.year(), 0);
         QCOMPARE(d.month(), 0);
@@ -466,113 +494,155 @@ void tst_QDate::weekNumber_invalid()
     QCOMPARE( dt.weekNumber( &yearNumber ), 0 );
 }
 
-#if QT_CONFIG(timezone)
+/* The MS backend tends to lack data for historical transitions.  So some of the
+   transition-based tests will get wrong results, that we can't do anything
+   about, when using that backend.  Rather than complicating the #if-ery more,
+   overtly record, in a flags column, which we need to ignore and merely make
+   the testing of these flags subject to #if-ery.
+*/
+enum MsKludge { IgnoreStart = 1, IgnoreEnd = 2, };
+Q_DECLARE_FLAGS(MsKludges, MsKludge)
+Q_DECLARE_OPERATORS_FOR_FLAGS(MsKludges)
+
 void tst_QDate::startOfDay_endOfDay_data()
 {
     QTest::addColumn<QDate>("date"); // Typically a spring-forward.
     // A zone in which that date's start and end are worth checking:
-    QTest::addColumn<QByteArray>("zoneName");
+    QTest::addColumn<QTimeZone>("zone");
     // The start and end times in that zone:
     QTest::addColumn<QTime>("start");
     QTest::addColumn<QTime>("end");
+    QTest::addColumn<MsKludges>("msKludge");
 
-    const QTime initial(0, 0), final(23, 59, 59, 999), invalid(QDateTime().time());
+    const QTime early(0, 0), late(23, 59, 59, 999), invalid(QDateTime().time());
+    constexpr MsKludges IgnoreBoth = IgnoreStart | IgnoreEnd;
+    const QTimeZone UTC(QTimeZone::UTC);
 
-    QTest::newRow("epoch")
-        << QDate(1970, 1, 1) << QByteArray("UTC")
-        << initial << final;
-    QTest::newRow("Brazil")
-        << QDate(2008, 10, 19) << QByteArray("America/Sao_Paulo")
-        << QTime(1, 0) << final;
-#if QT_CONFIG(icu) || !defined(Q_OS_WIN) // MS's TZ APIs lack data
-    QTest::newRow("Sofia")
-        << QDate(1994, 3, 27) << QByteArray("Europe/Sofia")
-        << QTime(1, 0) << final;
-#endif
-    QTest::newRow("Kiritimati")
-        << QDate(1994, 12, 31) << QByteArray("Pacific/Kiritimati")
-        << invalid << invalid;
-    QTest::newRow("Samoa")
-        << QDate(2011, 12, 30) << QByteArray("Pacific/Apia")
-        << invalid << invalid;
-    // TODO: find other zones with transitions at/crossing midnight.
+    using Bound = std::numeric_limits<qint64>;
+    const auto dateAtMillis = [UTC](qint64 millis) {
+        return QDateTime::fromMSecsSinceEpoch(millis, UTC).date();
+    };
+
+    // UTC and fixed offset are always available and predictable:
+    QTest::newRow("epoch") << epochDate() << UTC << early << late << MsKludges{};
+
+    // First and last days in QDateTime's supported range:
+    QTest::newRow("earliest")
+        << dateAtMillis(Bound::min()) << UTC << invalid << late << MsKludges{};
+    QTest::newRow("latest")
+        << dateAtMillis(Bound::max()) << UTC << early << invalid << MsKludges{};
+
+    const struct {
+        const char *test;
+        const char *zone;
+        const QDate day;
+        const QTime start;
+        const QTime end;
+        const MsKludges msOpt;
+    } transitions[] = {
+        // The western Mexico time-zones skipped the first hour of 1970.
+        { "BajaMexico", "America/Hermosillo", QDate(1970, 1, 1), QTime(1, 0), late, IgnoreStart },
+
+        // Compare tst_QDateTime::fromStringDateFormat(ISO 24:00 in DST).
+        { "Brazil", "America/Sao_Paulo", QDate(2008, 10, 19), QTime(1, 0), late, MsKludges{} },
+
+        // Several southern zones within EET (but not the northern ones) spent
+        // part of the 1990s using midnight as spring transition.
+        { "Sofia", "Europe/Sofia", QDate(1994, 3, 27), QTime(1, 0), late, IgnoreStart },
+
+        // Two Pacific zones skipped days to get on the west of the
+        // International Date Line; those days have neither start nor end.
+        { "Kiritimati", "Pacific/Kiritimati", QDate(1994, 12, 31), invalid, invalid, IgnoreBoth },
+        { "Samoa", "Pacific/Apia", QDate(2011, 12, 30), invalid, invalid, IgnoreBoth },
+
+        // TODO: find other zones with transitions at/crossing midnight.
+    };
+    const QTimeZone local = QTimeZone::LocalTime;
+
+#if QT_CONFIG(timezone)
+    const QTimeZone sys = QTimeZone::systemTimeZone();
+    for (const auto &tran : transitions) {
+        if (QTimeZone zone(tran.zone); zone.isValid()) {
+            QTest::newRow(tran.test)
+                << tran.day << zone << tran.start << tran.end << tran.msOpt;
+            if (zone == sys) {
+                QTest::addRow("Local=%s", tran.test)
+                    << tran.day << local << tran.start << tran.end << tran.msOpt;
+            }
+        }
+    }
+#else
+    const auto isLocalZone = [](const char *zone) {
+        const QLatin1StringView name(zone);
+        for (int i = 0; i < 2; ++i) {
+            if (qTzName(i) == name)
+                return true;
+        }
+        return false;
+    };
+    for (const auto &tran : transitions) {
+        if (isLocalZone(tran.zone)) { // Might need a different name to match
+            QTest::addRow("Local=%s", tran.test)
+                << tran.day << local << tran.start << tran.end << tran.msOpt;
+        }
+    }
+#endif // timezone
 }
 
 void tst_QDate::startOfDay_endOfDay()
 {
-    QFETCH(QDate, date);
-    QFETCH(QByteArray, zoneName);
-    QFETCH(QTime, start);
-    QFETCH(QTime, end);
-    const QTimeZone zone(zoneName);
-    const bool isSystem = QTimeZone::systemTimeZone() == zone;
+    QFETCH(const QDate, date);
+    QFETCH(const QTimeZone, zone);
+    QFETCH(const QTime, start);
+    QFETCH(const QTime, end);
+#ifdef USING_WIN_TZ // Coping with MS limitations.
+    QFETCH(const MsKludges, msKludge);
+#define UNLESSMS(flag) if (!msKludge.testFlag(flag))
+#else
+#define UNLESSMS(flag)
+#endif
+    QVERIFY(zone.isValid());
+
     QDateTime front(date.startOfDay(zone)), back(date.endOfDay(zone));
     if (end.isValid())
         QCOMPARE(date.addDays(1).startOfDay(zone).addMSecs(-1), back);
     if (start.isValid())
         QCOMPARE(date.addDays(-1).endOfDay(zone).addMSecs(1), front);
-    do { // Avoids duplicating these tests for local-time when it *is* zone:
-        if (start.isValid()) {
-            QCOMPARE(front.date(), date);
-            QCOMPARE(front.time(), start);
-        }
-        if (end.isValid()) {
-            QCOMPARE(back.date(), date);
-            QCOMPARE(back.time(), end);
-        }
-        if (front.timeSpec() == Qt::LocalTime)
-            break;
-        front = date.startOfDay(Qt::LocalTime);
-        back = date.endOfDay(Qt::LocalTime);
-    } while (isSystem);
-    if (end.isValid())
-        QCOMPARE(date.addDays(1).startOfDay(Qt::LocalTime).addMSecs(-1), back);
-    if (start.isValid())
-        QCOMPARE(date.addDays(-1).endOfDay(Qt::LocalTime).addMSecs(1), front);
-    if (!isSystem) {
-        // These might fail if system zone coincides with zone; but only if it
-        // did something similarly unusual on the date picked for this test.
-        if (start.isValid()) {
-            QCOMPARE(front.date(), date);
-            QCOMPARE(front.time(), QTime(0, 0));
-        }
-        if (end.isValid()) {
-            QCOMPARE(back.date(), date);
-            QCOMPARE(back.time(), QTime(23, 59, 59, 999));
-        }
+
+    if (start.isValid()) {
+        QCOMPARE(front.date(), date);
+        UNLESSMS(IgnoreStart) QCOMPARE(front.time(), start);
     }
+    if (end.isValid()) {
+        QCOMPARE(back.date(), date);
+        UNLESSMS(IgnoreEnd) QCOMPARE(back.time(), end);
+    }
+#undef UNLESSMS
 }
-#endif // timezone
 
 void tst_QDate::startOfDay_endOfDay_fixed_data()
 {
+    QTest::addColumn<QDate>("date");
+
     const qint64 kilo(1000);
     using Bounds = std::numeric_limits<qint64>;
-    const QDateTime
-        first(QDateTime::fromMSecsSinceEpoch(Bounds::min() + 1, Qt::UTC)),
-        start32sign(QDateTime::fromMSecsSinceEpoch(-0x80000000L * kilo, Qt::UTC)),
-        end32sign(QDateTime::fromMSecsSinceEpoch(0x80000000L * kilo, Qt::UTC)),
-        end32unsign(QDateTime::fromMSecsSinceEpoch(0x100000000L * kilo, Qt::UTC)),
-        last(QDateTime::fromMSecsSinceEpoch(Bounds::max(), Qt::UTC));
+    const auto UTC = QTimeZone::UTC;
+    const QDateTime first(QDateTime::fromMSecsSinceEpoch(Bounds::min() + 1, UTC));
+    const QDateTime start32sign(QDateTime::fromMSecsSinceEpoch(Q_INT64_C(-0x80000000) * kilo, UTC));
+    const QDateTime end32sign(QDateTime::fromMSecsSinceEpoch(Q_INT64_C(0x80000000) * kilo, UTC));
+    const QDateTime end32unsign(QDateTime::fromMSecsSinceEpoch(Q_INT64_C(0x100000000) * kilo, UTC));
+    const QDateTime last(QDateTime::fromMSecsSinceEpoch(Bounds::max(), UTC));
 
-    const struct {
-        const char *name;
-        QDate date;
-    } data[] = {
-        { "epoch", QDate(1970, 1, 1) },
-        { "y2k-leap-day", QDate(2000, 2, 29) },
-        // Just outside the start and end of 32-bit time_t:
-        { "pre-sign32", QDate(start32sign.date().year(), 1, 1) },
-        { "post-sign32", QDate(end32sign.date().year(), 12, 31) },
-        { "post-uint32", QDate(end32unsign.date().year(), 12, 31) },
-        // Just inside the start and end of QDateTime's range:
-        { "first-full", first.date().addDays(1) },
-        { "last-full", last.date().addDays(-1) }
-    };
-
-    QTest::addColumn<QDate>("date");
-    for (const auto &r : data)
-        QTest::newRow(r.name) << r.date;
+    QTest::newRow("epoch") <<  epochDate();
+    QTest::newRow("y2k-leap-day") << QDate(2000, 2, 29);
+    QTest::newRow("start-1900") << QDate(1900, 1, 1); // QTBUG-99747
+   // Just outside the start and end of 32-bit time_t:
+    QTest::newRow("pre-sign32") << QDate(start32sign.date().year(), 1, 1);
+    QTest::newRow("post-sign32") << QDate(end32sign.date().year(), 12, 31);
+    QTest::newRow("post-uint32") << QDate(end32unsign.date().year(), 12, 31);
+    // Just inside the start and end of QDateTime's range:
+    QTest::newRow("first-full") << first.date().addDays(1);
+    QTest::newRow("last-full") << last.date().addDays(-1);
 }
 
 void tst_QDate::startOfDay_endOfDay_fixed()
@@ -580,56 +650,77 @@ void tst_QDate::startOfDay_endOfDay_fixed()
     const QTime early(0, 0), late(23, 59, 59, 999);
     QFETCH(QDate, date);
 
-    QDateTime start(date.startOfDay(Qt::UTC));
-    QDateTime end(date.endOfDay(Qt::UTC));
+    QDateTime start(date.startOfDay(QTimeZone::UTC));
+    QDateTime end(date.endOfDay(QTimeZone::UTC));
     QCOMPARE(start.date(), date);
     QCOMPARE(end.date(), date);
     QCOMPARE(start.time(), early);
     QCOMPARE(end.time(), late);
-    QCOMPARE(date.addDays(1).startOfDay(Qt::UTC).addMSecs(-1), end);
-    QCOMPARE(date.addDays(-1).endOfDay(Qt::UTC).addMSecs(1), start);
+    QCOMPARE(date.addDays(1).startOfDay(QTimeZone::UTC).addMSecs(-1), end);
+    QCOMPARE(date.addDays(-1).endOfDay(QTimeZone::UTC).addMSecs(1), start);
     for (int offset = -60 * 16; offset <= 60 * 16; offset += 65) {
-        start = date.startOfDay(Qt::OffsetFromUTC, offset);
-        end = date.endOfDay(Qt::OffsetFromUTC, offset);
+        const auto zone = QTimeZone::fromSecondsAheadOfUtc(offset);
+        start = date.startOfDay(zone);
+        end = date.endOfDay(zone);
         QCOMPARE(start.date(), date);
         QCOMPARE(end.date(), date);
         QCOMPARE(start.time(), early);
         QCOMPARE(end.time(), late);
-        QCOMPARE(date.addDays(1).startOfDay(Qt::OffsetFromUTC, offset).addMSecs(-1), end);
-        QCOMPARE(date.addDays(-1).endOfDay(Qt::OffsetFromUTC, offset).addMSecs(1), start);
+        QCOMPARE(date.addDays(1).startOfDay(zone).addMSecs(-1), end);
+        QCOMPARE(date.addDays(-1).endOfDay(zone).addMSecs(1), start);
     }
+
+    // Minimal testing for LocalTime and TimeZone
+    QCOMPARE(date.startOfDay().date(), date);
+    QCOMPARE(date.endOfDay().date(), date);
+#if QT_CONFIG(timezone)
+    const QTimeZone cet("Europe/Oslo");
+    if (cet.isValid()) {
+        QCOMPARE(date.startOfDay(cet).date(), date);
+        QCOMPARE(date.endOfDay(cet).date(), date);
+    }
+#endif
 }
 
 void tst_QDate::startOfDay_endOfDay_bounds()
 {
     // Check the days in which QDateTime's range starts and ends:
     using Bounds = std::numeric_limits<qint64>;
+    const auto UTC = QTimeZone::UTC;
     const QDateTime
-        first(QDateTime::fromMSecsSinceEpoch(Bounds::min(), Qt::UTC)),
-        last(QDateTime::fromMSecsSinceEpoch(Bounds::max(), Qt::UTC)),
-        epoch(QDateTime::fromMSecsSinceEpoch(0, Qt::UTC));
+        first(QDateTime::fromMSecsSinceEpoch(Bounds::min(), UTC)),
+        last(QDateTime::fromMSecsSinceEpoch(Bounds::max(), UTC)),
+        epoch(QDateTime::fromMSecsSinceEpoch(0, UTC));
     // First, check these *are* the start and end of QDateTime's range:
     QVERIFY(first.isValid());
     QVERIFY(last.isValid());
     QVERIFY(first < epoch);
     QVERIFY(last > epoch);
-    // QDateTime's addMSecs doesn't check against {und,ov}erflow ...
     QVERIFY(!first.addMSecs(-1).isValid() || first.addMSecs(-1) > first);
     QVERIFY(!last.addMSecs(1).isValid() || last.addMSecs(1) < last);
 
     // Now test start/end methods with them:
-    QCOMPARE(first.date().endOfDay(Qt::UTC).time(), QTime(23, 59, 59, 999));
-    QCOMPARE(last.date().startOfDay(Qt::UTC).time(), QTime(0, 0));
-    QVERIFY(!first.date().startOfDay(Qt::UTC).isValid());
-    QVERIFY(!last.date().endOfDay(Qt::UTC).isValid());
+    QCOMPARE(first.date().endOfDay(UTC).time(), QTime(23, 59, 59, 999));
+    QCOMPARE(last.date().startOfDay(UTC).time(), QTime(0, 0));
+    QVERIFY(!first.date().startOfDay(UTC).isValid());
+    QVERIFY(!last.date().endOfDay(UTC).isValid());
+
+    // Test for QTBUG-100873, shouldn't assert:
+    const QDate qdteMin(1752, 9, 14); // Used by QDateTimeEdit
+    QCOMPARE(qdteMin.startOfDay(UTC).date(), qdteMin);
+    QCOMPARE(qdteMin.startOfDay().date(), qdteMin);
+#if QT_CONFIG(timezone)
+    QCOMPARE(qdteMin.startOfDay(QTimeZone::systemTimeZone()).date(), qdteMin);
+    QTimeZone berlin("Europe/Berlin");
+    if (berlin.isValid())
+        QCOMPARE(qdteMin.startOfDay(berlin).date(), qdteMin);
+#endif
 }
 
 void tst_QDate::julianDaysLimits()
 {
     qint64 min = std::numeric_limits<qint64>::min();
     qint64 max = std::numeric_limits<qint64>::max();
-    qint64 minJd = Q_INT64_C(-784350574879);
-    qint64 maxJd = Q_INT64_C( 784354017364);
 
     QDate maxDate = QDate::fromJulianDay(maxJd);
     QDate minDate = QDate::fromJulianDay(minJd);
@@ -697,11 +788,19 @@ void tst_QDate::addDays()
     QFETCH( int, expectedDay );
 
     QDate dt( year, month, day );
-    dt = dt.addDays( amountToAdd );
+    QDate dt2 = dt.addDays( amountToAdd );
 
-    QCOMPARE( dt.year(), expectedYear );
-    QCOMPARE( dt.month(), expectedMonth );
-    QCOMPARE( dt.day(), expectedDay );
+    QCOMPARE( dt2.year(), expectedYear );
+    QCOMPARE( dt2.month(), expectedMonth );
+    QCOMPARE( dt2.day(), expectedDay );
+
+#if __cpp_lib_chrono >= 201907L
+    QDate dt3 = dt.addDuration( std::chrono::days( amountToAdd ) );
+
+    QCOMPARE( dt3.year(), expectedYear );
+    QCOMPARE( dt3.month(), expectedMonth );
+    QCOMPARE( dt3.day(), expectedDay );
+#endif
 }
 
 void tst_QDate::addDays_data()
@@ -844,9 +943,6 @@ void tst_QDate::addYears_data()
 
 void tst_QDate::daysTo()
 {
-    qint64 minJd = Q_INT64_C(-784350574879);
-    qint64 maxJd = Q_INT64_C( 784354017364);
-
     QDate dt1(2000, 1, 1);
     QDate dt2(2000, 1, 5);
     QCOMPARE(dt1.daysTo(dt2), (qint64) 4);
@@ -1099,6 +1195,7 @@ void tst_QDate::operator_insert_extract()
     QCOMPARE(deserialised, date);
 }
 
+#if QT_CONFIG(datetimeparser)
 void tst_QDate::fromStringDateFormat_data()
 {
     QTest::addColumn<QString>("dateStr");
@@ -1140,18 +1237,20 @@ void tst_QDate::fromStringDateFormat_data()
         << QString::fromLatin1(" 13 Feb 1987 13:24:51 +0100")
         << Qt::RFC2822Date << QDate(1987, 2, 13);
     QTest::newRow("RFC 2822 with day") << QString::fromLatin1("Thu, 01 Jan 1970 00:12:34 +0000")
-        << Qt::RFC2822Date << QDate(1970, 1, 1);
+        << Qt::RFC2822Date << epochDate();
     QTest::newRow("RFC 2822 with day after space")
         << QString::fromLatin1(" Thu, 01 Jan 1970 00:12:34 +0000")
-        << Qt::RFC2822Date << QDate(1970, 1, 1);
+        << Qt::RFC2822Date << epochDate();
     // No timezone
     QTest::newRow("RFC 2822 no timezone") << QString::fromLatin1("01 Jan 1970 00:12:34")
-        << Qt::RFC2822Date << QDate(1970, 1, 1);
+        << Qt::RFC2822Date << epochDate();
     // No time specified
     QTest::newRow("RFC 2822 date only") << QString::fromLatin1("01 Nov 2002")
         << Qt::RFC2822Date << QDate(2002, 11, 1);
     QTest::newRow("RFC 2822 with day date only") << QString::fromLatin1("Fri, 01 Nov 2002")
         << Qt::RFC2822Date << QDate(2002, 11, 1);
+    QTest::newRow("RFC 2822 malformed time")
+        << QString::fromLatin1("01 Nov 2002 0:") << Qt::RFC2822Date << QDate();
     // Test invalid month, day, year
     QTest::newRow("RFC 2822 invalid month name") << QString::fromLatin1("13 Fev 1987 13:24:51 +0100")
         << Qt::RFC2822Date << QDate();
@@ -1159,10 +1258,8 @@ void tst_QDate::fromStringDateFormat_data()
         << Qt::RFC2822Date << QDate();
     QTest::newRow("RFC 2822 invalid year") << QString::fromLatin1("13 Fev 0000 13:24:51 +0100")
         << Qt::RFC2822Date << QDate();
-    // Test invalid characters (currently ignoring trailing junk, but see QTBUG-80038).
     QTest::newRow("RFC 2822 invalid character at end")
-        << QString::fromLatin1("01 Jan 2012 08:00:00 +0100!")
-        << Qt::RFC2822Date << QDate(2012, 1, 1);
+        << QString::fromLatin1("01 Jan 2012 08:00:00 +0100!") << Qt::RFC2822Date << QDate();
     QTest::newRow("RFC 2822 invalid character at front")
         << QString::fromLatin1("!01 Jan 2012 08:00:00 +0100") << Qt::RFC2822Date << QDate();
     QTest::newRow("RFC 2822 invalid character both ends")
@@ -1185,14 +1282,14 @@ void tst_QDate::fromStringDateFormat_data()
         << Qt::RFC2822Date << QDate(1987, 2, 13);
     // No timezone
     QTest::newRow("RFC 850 and 1036 no timezone") << QString::fromLatin1("Thu Jan 01 00:12:34 1970")
-        << Qt::RFC2822Date << QDate(1970, 1, 1);
+        << Qt::RFC2822Date << epochDate();
     // No time specified
     QTest::newRow("RFC 850 and 1036 date only") << QString::fromLatin1("Fri Nov 01 2002")
         << Qt::RFC2822Date << QDate(2002, 11, 1);
-    // Test invalid characters (currently ignoring trailing junk, but see QTBUG-80038).
+    // Test invalid characters.
     QTest::newRow("RFC 850 and 1036 invalid character at end")
         << QString::fromLatin1("Sun Jan 01 08:00:00 2012 +0100!")
-        << Qt::RFC2822Date << QDate(2012, 1, 1);
+        << Qt::RFC2822Date << QDate();
     QTest::newRow("RFC 850 and 1036 invalid character at front")
         << QString::fromLatin1("!Sun Jan 01 08:00:00 2012 +0100")
         << Qt::RFC2822Date << QDate();
@@ -1228,20 +1325,19 @@ void tst_QDate::fromStringFormat_data()
     QTest::addColumn<QString>("format");
     QTest::addColumn<QDate>("expected");
 
-    // Undo this (inline the C-locale versions) for ### Qt 6
-    // Get localized names:
-    QString january = QLocale::system().monthName(1, QLocale::LongFormat);
-    QString february = QLocale::system().monthName(2, QLocale::LongFormat);
-    QString march = QLocale::system().monthName(3, QLocale::LongFormat);
-    QString august = QLocale::system().monthName(8, QLocale::LongFormat);
-    QString mon = QLocale::system().dayName(1, QLocale::ShortFormat);
-    QString monday = QLocale::system().dayName(1, QLocale::LongFormat);
-    QString tuesday = QLocale::system().dayName(2, QLocale::LongFormat);
-    QString wednesday = QLocale::system().dayName(3, QLocale::LongFormat);
-    QString thursday = QLocale::system().dayName(4, QLocale::LongFormat);
-    QString friday = QLocale::system().dayName(5, QLocale::LongFormat);
-    QString saturday = QLocale::system().dayName(6, QLocale::LongFormat);
-    QString sunday = QLocale::system().dayName(7, QLocale::LongFormat);
+    // Get names:
+    const QString january = QStringLiteral("January");
+    const QString february = QStringLiteral("February");
+    const QString march = QStringLiteral("March");
+    const QString august = QStringLiteral("August");
+    const QString mon = QStringLiteral("Mon");
+    const QString monday = QStringLiteral("Monday");
+    const QString tuesday = QStringLiteral("Tuesday");
+    const QString wednesday = QStringLiteral("Wednesday");
+    const QString thursday = QStringLiteral("Thursday");
+    const QString friday = QStringLiteral("Friday");
+    const QString saturday = QStringLiteral("Saturday");
+    const QString sunday = QStringLiteral("Sunday");
 
     QTest::newRow("data0") << QString("") << QString("") << defDate();
     QTest::newRow("data1") << QString(" ") << QString("") << invalidDate();
@@ -1295,6 +1391,96 @@ void tst_QDate::fromStringFormat_data()
     QTest::newRow("data43") << QString("060521") << QString("yyMMdd") << QDate(1906,5,21);
     QTest::newRow("lateMarch") << QString("9999-03-06") << QString("yyyy-MM-dd") << QDate(9999, 3, 6);
     QTest::newRow("late") << QString("9999-12-31") << QString("yyyy-MM-dd") << QDate(9999, 12, 31);
+
+    QTest::newRow("quoted-dd") << QString("21dd-05-2006") << QString("dd'dd'-MM-yyyy")
+                               << QDate(2006, 5, 21);
+    QTest::newRow("quoted-MM") << QString("21-MM05-2006") << QString("dd-'MM'MM-yyyy")
+                               << QDate(2006, 5, 21);
+    QTest::newRow("quotes-empty") << QString("21-'05-2006") << QString("dd-MM-''yy")
+                                  << QDate(2006, 5, 21);
+
+    // Test unicode handling.
+    QTest::newRow("Unicode in format string")
+        << QString(u8"2020🤣09🤣21") << QString(u8"yyyy🤣MM🤣dd") << QDate(2020, 9, 21);
+    QTest::newRow("Unicode-in-format-string-quoted-emoji")
+        << QString(u8"🤣🤣2020👍09🤣21") << QString(u8"'🤣🤣'yyyy👍MM🤣dd") << QDate(2020, 9, 21);
+    QTest::newRow("Unicode-in-quoted-dd-format-string")
+            << QString(u8"🤣🤣2020👍09🤣21dd") << QString(u8"🤣🤣yyyy👍MM🤣dd'dd'") << QDate(2020, 9, 21);
+    QTest::newRow("Unicode-in-all-formats-quoted-string")
+            << QString(u8"🤣🤣yyyy2020👍MM09🤣21dd") << QString(u8"🤣🤣'yyyy'yyyy👍'MM'MM🤣dd'dd'")
+            << QDate(2020, 9, 21);
+
+    // QTBUG-84334
+    QTest::newRow("-ve year: front, nosep")
+            << QString("-20060521") << QString("yyyyMMdd") << QDate(-2006, 5, 21);
+    QTest::newRow("-ve year: mid, nosep")
+            << QString("05-200621") << QString("MMyyyydd") << QDate(-2006, 5, 21);
+    QTest::newRow("-ve year: back, nosep")
+            << QString("0521-2006") << QString("MMddyyyy") << QDate(-2006, 5, 21);
+    // - as separator should not interfere with negative year numbers:
+    QTest::newRow("-ve year: front, dash")
+            << QString("-2006-05-21") << QString("yyyy-MM-dd") << QDate(-2006, 5, 21);
+    QTest::newRow("positive year: front, dash")
+            << QString("-2006-05-21") << QString("-yyyy-MM-dd") << QDate(2006, 5, 21);
+    QTest::newRow("-ve year: mid, dash")
+            << QString("05--2006-21") << QString("MM-yyyy-dd") << QDate(-2006, 5, 21);
+    QTest::newRow("-ve year: back, dash")
+            << QString("05-21--2006") << QString("MM-dd-yyyy") << QDate(-2006, 5, 21);
+    // negative three digit year numbers should be rejected:
+    QTest::newRow("-ve 3digit year: front")
+            << QString("-206-05-21") << QString("yyyy-MM-dd") << QDate();
+    QTest::newRow("-ve 3digit year: mid")
+            << QString("05--206-21") << QString("MM-yyyy-dd") << QDate();
+    QTest::newRow("-ve 3digit year: back")
+            << QString("05-21--206") << QString("MM-dd-yyyy") << QDate();
+    // negative month numbers should be rejected:
+    QTest::newRow("-ve 2digit month: mid")
+            << QString("2060--05-21") << QString("yyyy-MM-dd") << QDate();
+    QTest::newRow("-ve 2digit month: front")
+            << QString("-05-2060-21") << QString("MM-yyyy-dd") << QDate();
+    QTest::newRow("-ve 2digit month: back")
+            << QString("21-2060--05") << QString("dd-yyyy-MM") << QDate();
+    // negative single digit month numbers should be rejected:
+    QTest::newRow("-ve 1digit month: mid")
+            << QString("2060--5-21") << QString("yyyy-MM-dd") << QDate();
+    QTest::newRow("-ve 1digit month: front")
+            << QString("-5-2060-21") << QString("MM-yyyy-dd") << QDate();
+    QTest::newRow("-ve 1digit month: back")
+            << QString("21-2060--5") << QString("dd-yyyy-MM") << QDate();
+    // negative day numbers should be rejected:
+    QTest::newRow("-ve 2digit day: front")
+            << QString("-21-2060-05") << QString("dd-yyyy-MM") << QDate();
+    QTest::newRow("-ve 2digit day: mid")
+            << QString("2060--21-05") << QString("yyyy-dd-MM") << QDate();
+    QTest::newRow("-ve 2digit day: back")
+            << QString("05-2060--21") << QString("MM-yyyy-dd") << QDate();
+    // negative single digit day numbers should be rejected:
+    QTest::newRow("-ve 1digit day: front")
+            << QString("-2-2060-05") << QString("dd-yyyy-MM") << QDate();
+    QTest::newRow("-ve 1digit day: mid")
+            << QString("05--2-2060") << QString("MM-dd-yyyy") << QDate();
+    QTest::newRow("-ve 1digit day: back")
+            << QString("2060-05--2") << QString("yyyy-MM-dd") << QDate();
+    // positive three digit year numbers should be rejected:
+    QTest::newRow("3digit year, front") << QString("206-05-21") << QString("yyyy-MM-dd") << QDate();
+    QTest::newRow("3digit year, mid") << QString("05-206-21") << QString("MM-yyyy-dd") << QDate();
+    QTest::newRow("3digit year, back") << QString("05-21-206") << QString("MM-dd-yyyy") << QDate();
+    // positive five digit year numbers should be rejected:
+    QTest::newRow("5digit year, front")
+            << QString("00206-05-21") << QString("yyyy-MM-dd") << QDate();
+    QTest::newRow("5digit year, mid") << QString("05-00206-21") << QString("MM-yyyy-dd") << QDate();
+    QTest::newRow("5digit year, back")
+            << QString("05-21-00206") << QString("MM-dd-yyyy") << QDate();
+
+    QTest::newRow("dash separator, no year at end")
+            << QString("05-21-") << QString("dd-MM-yyyy") << QDate();
+    QTest::newRow("slash separator, no year at end")
+            << QString("11/05/") << QString("d/MM/yyyy") << QDate();
+
+    // QTBUG-84349
+    QTest::newRow("+ sign in year field") << QString("+0200322") << QString("yyyyMMdd") << QDate();
+    QTest::newRow("+ sign in month field") << QString("2020+322") << QString("yyyyMMdd") << QDate();
+    QTest::newRow("+ sign in day field") << QString("202003+1") << QString("yyyyMMdd") << QDate();
 }
 
 
@@ -1305,9 +1491,13 @@ void tst_QDate::fromStringFormat()
     QFETCH(QDate, expected);
 
     QDate dt = QDate::fromString(string, format);
+    QEXPECT_FAIL("quotes-empty", "QTBUG-110669: doubled single-quotes in format mishandled",
+                 Continue);
     QCOMPARE(dt, expected);
 }
+#endif // datetimeparser
 
+#if QT_CONFIG(datestring)
 void tst_QDate::toStringFormat_data()
 {
     QTest::addColumn<QDate>("t");
@@ -1341,7 +1531,7 @@ void tst_QDate::toStringDateFormat_data()
     QTest::newRow("data2") << QDate(111,1,1) << Qt::ISODate << QString("0111-01-01");
     QTest::newRow("data3") << QDate(1974,12,1) << Qt::ISODate << QString("1974-12-01");
     QTest::newRow("year < 0") << QDate(-1,1,1) << Qt::ISODate << QString();
-    QTest::newRow("year > 9999") << QDate(-1,1,1) << Qt::ISODate << QString();
+    QTest::newRow("year > 9999") << QDate(10000, 1, 1) << Qt::ISODate << QString();
     QTest::newRow("RFC2822Date") << QDate(1974,12,1) << Qt::RFC2822Date << QString("01 Dec 1974");
     QTest::newRow("ISODateWithMs") << QDate(1974,12,1) << Qt::ISODateWithMs << QString("1974-12-01");
 }
@@ -1352,20 +1542,9 @@ void tst_QDate::toStringDateFormat()
     QFETCH(Qt::DateFormat, format);
     QFETCH(QString, expectedStr);
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    QCOMPARE(date.toString(Qt::SystemLocaleShortDate), QLocale::system().toString(date, QLocale::ShortFormat));
-    QCOMPARE(date.toString(Qt::DefaultLocaleShortDate), QLocale().toString(date, QLocale::ShortFormat));
-    QCOMPARE(date.toString(Qt::SystemLocaleLongDate), QLocale::system().toString(date, QLocale::LongFormat));
-    QCOMPARE(date.toString(Qt::DefaultLocaleLongDate), QLocale().toString(date, QLocale::LongFormat));
-    QLocale::setDefault(QLocale::German);
-    QCOMPARE(date.toString(Qt::SystemLocaleShortDate), QLocale::system().toString(date, QLocale::ShortFormat));
-    QCOMPARE(date.toString(Qt::DefaultLocaleShortDate), QLocale().toString(date, QLocale::ShortFormat));
-    QCOMPARE(date.toString(Qt::SystemLocaleLongDate), QLocale::system().toString(date, QLocale::LongFormat));
-    QCOMPARE(date.toString(Qt::DefaultLocaleLongDate), QLocale().toString(date, QLocale::LongFormat));
-#endif // ### Qt 6: remove
-
     QCOMPARE(date.toString(format), expectedStr);
 }
+#endif // datestring
 
 void tst_QDate::isLeapYear()
 {
@@ -1438,16 +1617,6 @@ void tst_QDate::yearsZeroToNinetyNine()
     QVERIFY(QDate::isValid(1, 2, 3));
     QVERIFY(QDate::isValid(-1, 2, 3));
 
-#if QT_DEPRECATED_SINCE(5,0)
-    {
-        QDate dt;
-        dt.setYMD(1, 2, 3);
-        QCOMPARE(dt.year(), 1901);
-        QCOMPARE(dt.month(), 2);
-        QCOMPARE(dt.day(), 3);
-    }
-#endif
-
     {
         QDate dt;
         dt.setDate(1, 2, 3);
@@ -1474,9 +1643,7 @@ void tst_QDate::printNegativeYear() const
 {
     QFETCH(int, year);
     QFETCH(QString, expect);
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     expect.replace(QLatin1Char('-'), QLocale().negativeSign());
-#endif
 
     QDate date(year, 3, 4);
     QVERIFY(date.isValid());
@@ -1484,150 +1651,19 @@ void tst_QDate::printNegativeYear() const
     QCOMPARE(date.toString(QLatin1String("yyyy")), expect);
 }
 
-#if QT_CONFIG(textdate) && QT_DEPRECATED_SINCE(5, 10)
-QT_WARNING_PUSH // the methods tested here are all deprecated
-QT_WARNING_DISABLE_GCC("-Wdeprecated-declarations")
-
-void tst_QDate::shortDayName() const
-{
-    QCOMPARE(QDate::shortDayName(0), QString());
-    QCOMPARE(QDate::shortDayName(8), QString());
-
-    if (QLocale::system().language() == QLocale::C) {
-        QCOMPARE(QDate::shortDayName(1), QLatin1String("Mon"));
-        QCOMPARE(QDate::shortDayName(7), QLatin1String("Sun"));
-    }
-
-    QLocale locale = QLocale::system();
-    for(int i = 1; i <= 7; ++i) {
-        QCOMPARE(QDate::shortDayName(i), locale.dayName(i, QLocale::ShortFormat));
-    }
-}
-
-void tst_QDate::standaloneShortDayName() const
-{
-    QCOMPARE(QDate::shortDayName(0, QDate::StandaloneFormat), QString());
-    QCOMPARE(QDate::shortDayName(8, QDate::StandaloneFormat), QString());
-
-    if (QLocale::system().language() == QLocale::C) {
-        QCOMPARE(QDate::shortDayName(1, QDate::StandaloneFormat), QLatin1String("Mon"));
-        QCOMPARE(QDate::shortDayName(7, QDate::StandaloneFormat), QLatin1String("Sun"));
-    }
-
-    QLocale locale = QLocale::system();
-    for(int i = 1; i <= 7; ++i) {
-        QCOMPARE(QDate::shortDayName(i, QDate::StandaloneFormat), locale.standaloneDayName(i, QLocale::ShortFormat));
-    }
-}
-
-void tst_QDate::longDayName() const
-{
-    QCOMPARE(QDate::longDayName(0), QString());
-    QCOMPARE(QDate::longDayName(8), QString());
-
-    if (QLocale::system().language() == QLocale::C) {
-        QCOMPARE(QDate::longDayName(1), QLatin1String("Monday"));
-        QCOMPARE(QDate::longDayName(7), QLatin1String("Sunday"));
-    }
-
-    QLocale locale = QLocale::system();
-    for(int i = 1; i <= 7; ++i) {
-        QCOMPARE(QDate::longDayName(i), locale.dayName(i, QLocale::LongFormat));
-    }
-}
-
-void tst_QDate::standaloneLongDayName() const
-{
-    QCOMPARE(QDate::longDayName(0, QDate::StandaloneFormat), QString());
-    QCOMPARE(QDate::longDayName(8, QDate::StandaloneFormat), QString());
-
-    if (QLocale::system().language() == QLocale::C) {
-        QCOMPARE(QDate::longDayName(1, QDate::StandaloneFormat), QLatin1String("Monday"));
-        QCOMPARE(QDate::longDayName(7, QDate::StandaloneFormat), QLatin1String("Sunday"));
-    }
-
-    QLocale locale = QLocale::system();
-    for(int i = 1; i <= 7; ++i) {
-        QCOMPARE(QDate::longDayName(i, QDate::StandaloneFormat), locale.standaloneDayName(i, QLocale::LongFormat));
-    }
-}
-
-void tst_QDate::shortMonthName() const
-{
-    QCOMPARE(QDate::shortMonthName(0), QString());
-    QCOMPARE(QDate::shortMonthName(13), QString());
-
-    if (QLocale::system().language() == QLocale::C) {
-        QCOMPARE(QDate::shortMonthName(1), QLatin1String("Jan"));
-        QCOMPARE(QDate::shortMonthName(8), QLatin1String("Aug"));
-    }
-
-    QLocale locale = QLocale::system();
-    for(int i = 1; i <= 12; ++i) {
-        QCOMPARE(QDate::shortMonthName(i), locale.monthName(i, QLocale::ShortFormat));
-    }
-}
-
-void tst_QDate::standaloneShortMonthName() const
-{
-    QCOMPARE(QDate::shortMonthName(0, QDate::StandaloneFormat), QString());
-    QCOMPARE(QDate::shortMonthName(13, QDate::StandaloneFormat), QString());
-
-    if (QLocale::system().language() == QLocale::C) {
-        QCOMPARE(QDate::shortMonthName(1, QDate::StandaloneFormat), QLatin1String("Jan"));
-        QCOMPARE(QDate::shortMonthName(8, QDate::StandaloneFormat), QLatin1String("Aug"));
-    }
-
-    QLocale locale = QLocale::system();
-    for(int i = 1; i <= 12; ++i) {
-        QCOMPARE(QDate::shortMonthName(i, QDate::StandaloneFormat), locale.standaloneMonthName(i, QLocale::ShortFormat));
-    }
-}
-
-void tst_QDate::longMonthName() const
-{
-    QCOMPARE(QDate::longMonthName(0), QString());
-    QCOMPARE(QDate::longMonthName(13), QString());
-
-    if (QLocale::system().language() == QLocale::C) {
-        QCOMPARE(QDate::longMonthName(1), QLatin1String("January"));
-        QCOMPARE(QDate::longMonthName(8), QLatin1String("August"));
-    }
-
-    QLocale locale = QLocale::system();
-    for(int i = 1; i <= 12; ++i) {
-        QCOMPARE(QDate::longMonthName(i), locale.monthName(i, QLocale::LongFormat));
-    }
-}
-
-void tst_QDate::standaloneLongMonthName() const
-{
-    QCOMPARE(QDate::longMonthName(0, QDate::StandaloneFormat), QString());
-    QCOMPARE(QDate::longMonthName(13, QDate::StandaloneFormat), QString());
-
-    if (QLocale::system().language() == QLocale::C) {
-        QCOMPARE(QDate::longMonthName(1, QDate::StandaloneFormat), QLatin1String("January"));
-        QCOMPARE(QDate::longMonthName(8, QDate::StandaloneFormat), QLatin1String("August"));
-    }
-
-    QLocale locale = QLocale::system();
-    for(int i = 1; i <= 12; ++i) {
-        QCOMPARE(QDate::longMonthName(i, QDate::StandaloneFormat), locale.standaloneMonthName(i, QLocale::LongFormat));
-    }
-}
-QT_WARNING_POP
-
+#if QT_CONFIG(datestring)
 void tst_QDate::roundtripString() const
 {
-    /* This code path should not result in warnings, no matter what locale is set. */
+    /* This code path should not result in warnings. */
     const QDate date(QDate::currentDate());
     QCOMPARE(date.fromString(date.toString(Qt::TextDate), Qt::TextDate), date);
 
     const QDateTime now(QDateTime::currentDateTime());
-    const QDateTime when = now.addMSecs(-now.time().msec()); // TextDate rounds to whole seconds.
+    // TextDate discards milliseconds, so clip to whole second:
+    const QDateTime when = now.addMSecs(-now.time().msec());
     QCOMPARE(when.fromString(when.toString(Qt::TextDate), Qt::TextDate), when);
 }
-#endif // textdate
+#endif
 
 void tst_QDate::roundtrip() const
 {
@@ -1668,9 +1704,6 @@ void tst_QDate::roundtrip() const
         QCOMPARE(loopDate.toJulianDay(), testDate.toJulianDay());
         loopDate = loopDate.addDays(1);
     }
-
-    qint64 minJd = Q_INT64_C(-784350574879);
-    qint64 maxJd = Q_INT64_C( 784354017364);
 
     // Test Gregorian round trip at top end of conversion range
     loopDate = QDate::fromJulianDay(maxJd);

@@ -1,43 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtCore/qvector.h>
+#include <QtCore/qlist.h>
+
 #include <QtGui/qevent.h>
+#include <QtGui/qpainter.h>
+#include <QtGui/qpainterpath.h>
+
+#include <QtWidgets/qdialogbuttonbox.h>
 #include <QtWidgets/qgridlayout.h>
 #include <QtWidgets/qlabel.h>
 #include <QtWidgets/qpushbutton.h>
-#include <QtWidgets/qdialogbuttonbox.h>
-#include <QtGui/qpainter.h>
-#include <QtGui/qpainterpath.h>
 #include <QtWidgets/qstyleoption.h>
+
 #include "versiondialog.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 class VersionLabel : public QLabel
 {
@@ -54,8 +34,8 @@ protected:
     void mouseReleaseEvent(QMouseEvent *me) override;
     void paintEvent(QPaintEvent *pe) override;
 private:
-    QVector<QPoint> hitPoints;
-    QVector<QPoint> missPoints;
+    QList<QPoint> hitPoints;
+    QList<QPoint> missPoints;
     QPainterPath m_path;
     bool secondStage = false;
     bool m_pushed = false;
@@ -64,7 +44,9 @@ private:
 VersionLabel::VersionLabel(QWidget *parent)
         : QLabel(parent)
 {
-    setPixmap(QPixmap(QStringLiteral(":/qt-project.org/designer/images/designer.png")));
+    QPixmap pixmap(u":/qt-project.org/designer/images/designer.png"_s);
+    pixmap.setDevicePixelRatio(devicePixelRatioF());
+    setPixmap(pixmap);
     hitPoints.append(QPoint(56, 25));
     hitPoints.append(QPoint(29, 55));
     hitPoints.append(QPoint(56, 87));
@@ -100,14 +82,14 @@ void VersionLabel::mouseReleaseEvent(QMouseEvent *me)
         if (!secondStage) {
             m_path.lineTo(me->pos());
             bool gotIt = true;
-            for (const QPoint &pt : qAsConst(hitPoints)) {
+            for (const QPoint &pt : std::as_const(hitPoints)) {
                 if (!m_path.contains(pt)) {
                     gotIt = false;
                     break;
                 }
             }
             if (gotIt) {
-                for (const QPoint &pt : qAsConst(missPoints)) {
+                for (const QPoint &pt : std::as_const(missPoints)) {
                     if (m_path.contains(pt)) {
                         gotIt = false;
                         break;
@@ -132,7 +114,7 @@ void VersionLabel::paintEvent(QPaintEvent *pe)
     if (secondStage) {
         QPainter p(this);
         QStyleOptionButton opt;
-        opt.init(this);
+        opt.initFrom(this);
         if (!m_pushed)
             opt.state |= QStyle::State_Raised;
         else
@@ -150,22 +132,22 @@ VersionDialog::VersionDialog(QWidget *parent)
 #endif
             )
 {
-    setWindowFlags((windowFlags() & ~Qt::WindowContextHelpButtonHint) | Qt::MSWindowsFixedSizeDialogHint);
+    setWindowFlag(Qt::MSWindowsFixedSizeDialogHint, true);
     QGridLayout *layout = new QGridLayout(this);
-    VersionLabel *label = new VersionLabel;
-    QLabel *lbl = new QLabel;
+    VersionLabel *label = new VersionLabel(this);
+    QLabel *lbl = new QLabel(this);
     QString version = tr("<h3>%1</h3><br/><br/>Version %2");
-    version = version.arg(tr("Qt Designer")).arg(QLatin1String(QT_VERSION_STR));
+    version = version.arg(tr("Qt Designer")).arg(QLatin1StringView(QT_VERSION_STR));
     version.append(tr("<br/>Qt Designer is a graphical user interface designer for Qt applications.<br/>"));
 
     lbl->setText(tr("%1"
                     "<br/>Copyright (C) %2 The Qt Company Ltd."
-                    ).arg(version, QStringLiteral("2021")));
+                    ).arg(version, QString()));
 
     lbl->setWordWrap(true);
     lbl->setOpenExternalLinks(true);
 
-    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Close);
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Close, this);
     connect(buttonBox , &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(label, &VersionLabel::triggered, this, &QDialog::accept);
     layout->addWidget(label, 0, 0, 1, 1);

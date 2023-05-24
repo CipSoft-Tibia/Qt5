@@ -33,7 +33,7 @@ interface CallsiteInfoWidth {
 // below the box.
 const NODE_HEIGHT = 18;
 
-export const HEAP_PROFILE_HOVERED_COLOR = 'hsl(224, 45%, 55%)';
+export const FLAMEGRAPH_HOVERED_COLOR = 'hsl(224, 45%, 55%)';
 
 export function findRootSize(data: CallsiteInfo[]) {
   let totalSize = 0;
@@ -53,6 +53,7 @@ export interface NodeRendering {
 export class Flamegraph {
   private nodeRendering: NodeRendering = {};
   private flamegraphData: CallsiteInfo[];
+  private highlightSomeNodes = false;
   private maxDepth = -1;
   private totalSize = -1;
   // Initialised on first draw() call
@@ -76,10 +77,19 @@ export class Flamegraph {
   }
 
   private findMaxDepth() {
-    this.maxDepth = Math.max(...this.flamegraphData.map(value => value.depth));
+    this.maxDepth =
+        Math.max(...this.flamegraphData.map((value) => value.depth));
   }
 
-  generateColor(name: string, isGreyedOut = false): string {
+  // Instead of highlighting the interesting nodes, we actually want to
+  // de-emphasize the non-highlighted nodes. Returns true if there
+  // are any highlighted nodes in the flamegraph.
+  private highlightingExists() {
+    this.highlightSomeNodes = this.flamegraphData.some((e) => e.highlighted);
+  }
+
+  generateColor(name: string, isGreyedOut = false, highlighted: boolean):
+      string {
     if (isGreyedOut) {
       return '#d9d9d9';
     }
@@ -91,13 +101,16 @@ export class Flamegraph {
       x += name.charCodeAt(i) % 64;
     }
     x = x % 360;
-    return `hsl(${x}deg, 45%, 76%)`;
+    let l = '76';
+    // Make non-highlighted node lighter.
+    if (this.highlightSomeNodes && !highlighted) {
+      l = '90';
+    }
+    return `hsl(${x}deg, 45%, ${l}%)`;
   }
 
-  /**
-   * Caller will have to call draw method after updating data to have updated
-   * graph.
-   */
+  // Caller will have to call draw method after updating data to have updated
+  // graph.
   updateDataIfChanged(
       nodeRendering: NodeRendering, flamegraphData: CallsiteInfo[],
       clickedCallsite?: CallsiteInfo) {
@@ -109,6 +122,7 @@ export class Flamegraph {
     this.flamegraphData = flamegraphData;
     this.clickedCallsite = clickedCallsite;
     this.findMaxDepth();
+    this.highlightingExists();
     // Finding total size of roots.
     this.totalSize = findRootSize(flamegraphData);
   }
@@ -116,7 +130,6 @@ export class Flamegraph {
   draw(
       ctx: CanvasRenderingContext2D, width: number, height: number, x = 0,
       y = 0, unit = 'B') {
-
     if (this.flamegraphData === undefined) {
       return;
     }
@@ -141,7 +154,7 @@ export class Flamegraph {
     this.xStartsPerDepth = new Map();
 
     // Draw root node.
-    ctx.fillStyle = this.generateColor('root', false);
+    ctx.fillStyle = this.generateColor('root', false, false);
     ctx.fillRect(x, currentY, width, NODE_HEIGHT - 1);
     const text = cropText(
         `root: ${
@@ -184,7 +197,7 @@ export class Flamegraph {
 
       // Draw node.
       const name = this.getCallsiteName(value);
-      ctx.fillStyle = this.generateColor(name, isGreyedOut);
+      ctx.fillStyle = this.generateColor(name, isGreyedOut, value.highlighted);
       ctx.fillRect(currentX, currentY, width, NODE_HEIGHT - 1);
 
       // Set current node's data in map for children to use.
@@ -192,14 +205,14 @@ export class Flamegraph {
         width,
         nextXForChildren: currentX,
         size: value.totalSize,
-        x: currentX
+        x: currentX,
       });
       // Update next x coordinate in parent.
       nodesMap.set(value.parentId, {
         width: parentNode.width,
         nextXForChildren: currentX + width,
         size: parentNode.size,
-        x: parentNode.x
+        x: parentNode.x,
       });
 
       // Draw name.
@@ -252,19 +265,21 @@ export class Flamegraph {
       const offsetPx = 4;
 
       const lines: string[] = [];
-      let lineSplitter: LineSplitter;
-      const nameText = this.getCallsiteName(this.hoveredCallsite);
-      const nameTextSize = ctx.measureText(nameText);
-      lineSplitter =
-          splitIfTooBig(nameText, width - paddingPx, nameTextSize.width);
-      let textWidth = lineSplitter.lineWidth;
-      lines.push(...lineSplitter.lines);
 
-      const mappingText = this.hoveredCallsite.mapping;
-      lineSplitter =
-          splitIfTooBig(mappingText, width, ctx.measureText(mappingText).width);
-      textWidth = Math.max(textWidth, lineSplitter.lineWidth);
-      lines.push(...lineSplitter.lines);
+      let textWidth = this.addToTooltip(
+          this.getCallsiteName(this.hoveredCallsite),
+          width - paddingPx,
+          ctx,
+          lines);
+      if (this.hoveredCallsite.location != null) {
+        textWidth = Math.max(
+            textWidth,
+            this.addToTooltip(
+                this.hoveredCallsite.location, width, ctx, lines));
+      }
+      textWidth = Math.max(
+          textWidth,
+          this.addToTooltip(this.hoveredCallsite.mapping, width, ctx, lines));
 
       if (this.nodeRendering.totalSize !== undefined) {
         const percentage =
@@ -274,10 +289,8 @@ export class Flamegraph {
                 this.hoveredCallsite.totalSize,
                 unit,
                 unit === 'B' ? 1024 : 1000)} (${percentage.toFixed(2)}%)`;
-        lineSplitter = splitIfTooBig(
-            totalSizeText, width, ctx.measureText(totalSizeText).width);
-        textWidth = Math.max(textWidth, lineSplitter.lineWidth);
-        lines.push(...lineSplitter.lines);
+        textWidth = Math.max(
+            textWidth, this.addToTooltip(totalSizeText, width, ctx, lines));
       }
 
       if (this.nodeRendering.selfSize !== undefined &&
@@ -289,10 +302,8 @@ export class Flamegraph {
                 this.hoveredCallsite.selfSize,
                 unit,
                 unit === 'B' ? 1024 : 1000)} (${selfPercentage.toFixed(2)}%)`;
-        lineSplitter = splitIfTooBig(
-            selfSizeText, width, ctx.measureText(selfSizeText).width);
-        textWidth = Math.max(textWidth, lineSplitter.lineWidth);
-        lines.push(...lineSplitter.lines);
+        textWidth = Math.max(
+            textWidth, this.addToTooltip(selfSizeText, width, ctx, lines));
       }
 
       // Compute a line height as the bounding box height + 50%:
@@ -329,6 +340,15 @@ export class Flamegraph {
     }
   }
 
+  private addToTooltip(
+      text: string, width: number, ctx: CanvasRenderingContext2D,
+      lines: string[]): number {
+    const lineSplitter: LineSplitter =
+        splitIfTooBig(text, width, ctx.measureText(text).width);
+    lines.push(...lineSplitter.lines);
+    return lineSplitter.lineWidth;
+  }
+
   private getCallsiteName(value: CallsiteInfo): string {
     return value.name === undefined || value.name === '' ? 'unknown' :
                                                            value.name;
@@ -341,7 +361,7 @@ export class Flamegraph {
       ['', 1],
       ['K', step],
       ['M', Math.pow(step, 2)],
-      ['G', Math.pow(step, 3)]
+      ['G', Math.pow(step, 3)],
     ];
     let unitsIndex = Math.trunc(Math.log(totalSize) / Math.log(step));
     unitsIndex = unitsIndex > units.length - 1 ? units.length - 1 : unitsIndex;
@@ -396,7 +416,7 @@ export class Flamegraph {
 
   searchSmallest(haystack: number[], needle: number): number {
     haystack = haystack.sort((n1, n2) => n1 - n2);
-    const [left, ] = searchSegment(haystack, needle);
+    const [left] = searchSegment(haystack, needle);
     return left === -1 ? -1 : haystack[left];
   }
 

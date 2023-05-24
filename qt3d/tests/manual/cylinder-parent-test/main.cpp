@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QGuiApplication>
 #include <QTimer>
@@ -59,12 +34,12 @@ int main(int argc, char **argv)
     QGuiApplication app(argc, argv);
     Qt3DExtras::Qt3DWindow view;
 
-    QLoggingCategory::setFilterRules("Qt3D.Renderer.RenderNodes=true");
+    QLoggingCategory::setFilterRules(QLatin1String("Qt3D.Renderer.RenderNodes=true"));
 
     // Root entity
     Qt3DCore::QEntity *rootEntity = new Qt3DCore::QEntity();
     view.setRootEntity(rootEntity);
-    rootEntity->setObjectName("Root Entity");
+    rootEntity->setObjectName(QLatin1String("Root Entity"));
 
     // Set root object of the scene
     view.show();
@@ -90,18 +65,18 @@ int main(int argc, char **argv)
     {
         Qt3DCore::QTransform *leftTransform = new Qt3DCore::QTransform;
         leftTransform->setTranslation(QVector3D(-5, -2, 0));
-        leftTransform->setObjectName("Green transform");
+        leftTransform->setObjectName(QLatin1String("Green transform"));
 
         Qt3DExtras::QPhongMaterial *greenMaterial = new Qt3DExtras::QPhongMaterial(rootEntity);
-        greenMaterial->setObjectName("Green Material");
+        greenMaterial->setObjectName(QLatin1String("Green Material"));
         greenMaterial->setDiffuse(Qt::green);
 
         Qt3DCore::QEntity *grandParentNode = new Qt3DCore::QEntity();
         Qt3DCore::QEntity *parentNode = new Qt3DCore::QEntity();
         Qt3DCore::QEntity *leafNode = new Qt3DCore::QEntity();
-        grandParentNode->setObjectName("Green Grandparent");
-        parentNode->setObjectName("Green Parent");
-        leafNode->setObjectName("Green Leaf");
+        grandParentNode->setObjectName(QLatin1String("Green Grandparent"));
+        parentNode->setObjectName(QLatin1String("Green Parent"));
+        leafNode->setObjectName(QLatin1String("Green Leaf"));
 
         leafNode->addComponent(mesh);
         leafNode->addComponent(greenMaterial);
@@ -117,18 +92,18 @@ int main(int argc, char **argv)
     {
         Qt3DCore::QTransform *leftTransform = new Qt3DCore::QTransform;
         leftTransform->setTranslation(QVector3D(-5, 2, 0));
-        leftTransform->setObjectName("Yellow Transform");
+        leftTransform->setObjectName(QLatin1String("Yellow Transform"));
 
         Qt3DExtras::QPhongMaterial *yellowMaterial = new Qt3DExtras::QPhongMaterial(rootEntity);
-        yellowMaterial->setObjectName("Yellow Material");
+        yellowMaterial->setObjectName(QLatin1String("Yellow Material"));
         yellowMaterial->setDiffuse(Qt::yellow);
 
         Qt3DCore::QEntity *grandParentNode = new Qt3DCore::QEntity(rootEntity);
         Qt3DCore::QEntity *parentNode = new Qt3DCore::QEntity(rootEntity);
         Qt3DCore::QEntity *leafNode = new Qt3DCore::QEntity(rootEntity);
-        leafNode->setObjectName("Yellow Leaf");
-        grandParentNode->setObjectName("Yellow Grandparent");
-        parentNode->setObjectName("Yellow Parent");
+        leafNode->setObjectName(QLatin1String("Yellow Leaf"));
+        grandParentNode->setObjectName(QLatin1String("Yellow Grandparent"));
+        parentNode->setObjectName(QLatin1String("Yellow Parent"));
 
         leafNode->addComponent(mesh);
         leafNode->addComponent(yellowMaterial);
@@ -148,29 +123,30 @@ int main(int argc, char **argv)
         Qt3DCore::QNode *tree1node1 = new Qt3DCore::QNode();
         Qt3DCore::QEntity *tree1node2 = new Qt3DCore::QEntity();
         Qt3DCore::QNode *tree1node3 = new Qt3DCore::QNode();
-        tree1node1->setObjectName("Red Tree1-Node1");
-        tree1node2->setObjectName("Red Tree1-Node2");
-        tree1node3->setObjectName("Red Tree1-Node3");
+        tree1node1->setObjectName(QLatin1String("Red Tree1-Node1"));
+        tree1node2->setObjectName(QLatin1String("Red Tree1-Node2"));
+        tree1node3->setObjectName(QLatin1String("Red Tree1-Node3"));
 
         Qt3DCore::QNode *tree2node1 = new Qt3DCore::QNode();
         Qt3DCore::QEntity *tree2node2 = new Qt3DCore::QEntity();
         Qt3DCore::QNode *tree2node3 = new Qt3DCore::QNode();
-        tree2node1->setObjectName("Red Tree2-Node1");
-        tree2node2->setObjectName("Red Tree2-Node2");
-        tree2node3->setObjectName("Red Tree2-Node3");
+        tree2node1->setObjectName(QLatin1String("Red Tree2-Node1"));
+        tree2node2->setObjectName(QLatin1String("Red Tree2-Node2"));
+        tree2node3->setObjectName(QLatin1String("Red Tree2-Node3"));
 
         Qt3DCore::QTransform *wrongRedTransform = new Qt3DCore::QTransform;
         wrongRedTransform->setTranslation(QVector3D(1, -1, 0));
         Qt3DCore::QTransform *bottomRightTransform = new Qt3DCore::QTransform;
         bottomRightTransform->setTranslation(QVector3D(5, -2, 0));
-        bottomRightTransform->setObjectName("Red BR Transform");
-        wrongRedTransform->setObjectName("Red Wrong Transform");
+        bottomRightTransform->setObjectName(QLatin1String("Red BR Transform"));
+        wrongRedTransform->setObjectName(QLatin1String("Red Wrong Transform"));
 
         Qt3DExtras::QPhongMaterial *redMaterial = new Qt3DExtras::QPhongMaterial(rootEntity);
         redMaterial->setDiffuse(Qt::red);
-        redMaterial->setObjectName("Red Material");
+        redMaterial->setObjectName(QLatin1String("Red Material"));
+
         Qt3DCore::QEntity *leafNode = new Qt3DCore::QEntity();
-        leafNode->setObjectName("Red Leaf");
+        leafNode->setObjectName(QLatin1String("Red Leaf"));
         leafNode->addComponent(mesh);
         leafNode->addComponent(redMaterial);
 
@@ -195,31 +171,31 @@ int main(int argc, char **argv)
         Qt3DCore::QNode *tree1node1 = new Qt3DCore::QNode(rootEntity);
         Qt3DCore::QEntity *tree1node2 = new Qt3DCore::QEntity(rootEntity);
         Qt3DCore::QNode *tree1node3 = new Qt3DCore::QNode(rootEntity);
-        tree1node1->setObjectName("Blue Tree1-Node1");
-        tree1node2->setObjectName("Blue Tree1-Node2");
-        tree1node3->setObjectName("Blue Tree1-Node3");
+        tree1node1->setObjectName(QLatin1String("Blue Tree1-Node1"));
+        tree1node2->setObjectName(QLatin1String("Blue Tree1-Node2"));
+        tree1node3->setObjectName(QLatin1String("Blue Tree1-Node3"));
 
         Qt3DCore::QNode *tree2node1 = new Qt3DCore::QNode(rootEntity);
         Qt3DCore::QEntity *tree2node2 = new Qt3DCore::QEntity(rootEntity);
         Qt3DCore::QNode *tree2node3 = new Qt3DCore::QNode(rootEntity);
-        tree2node1->setObjectName("Blue Tree2-Node1");
-        tree2node2->setObjectName("Blue Tree2-Node2");
-        tree2node3->setObjectName("Blue Tree2-Node3");
+        tree2node1->setObjectName(QLatin1String("Blue Tree2-Node1"));
+        tree2node2->setObjectName(QLatin1String("Blue Tree2-Node2"));
+        tree2node3->setObjectName(QLatin1String("Blue Tree2-Node3"));
 
         Qt3DCore::QTransform *wrongBlueTransform = new Qt3DCore::QTransform;
         wrongBlueTransform->setTranslation(QVector3D(1, 1, 0));
         Qt3DCore::QTransform *topRightTransform = new Qt3DCore::QTransform;
         topRightTransform->setTranslation(QVector3D(5, 2, 0));
-        wrongBlueTransform->setObjectName("Blue Wrong Transform");
-        topRightTransform->setObjectName("Blue TR Transform");
+        wrongBlueTransform->setObjectName(QLatin1String("Blue Wrong Transform"));
+        topRightTransform->setObjectName(QLatin1String("Blue TR Transform"));
 
         Qt3DExtras::QPhongMaterial *blueMaterial = new Qt3DExtras::QPhongMaterial(rootEntity);
-        blueMaterial->setObjectName("Blue Material");
+        blueMaterial->setObjectName(QLatin1String("Blue Material"));
         blueMaterial->setDiffuse(Qt::blue);
         Qt3DCore::QEntity *leafNode = new Qt3DCore::QEntity(rootEntity);
         leafNode->addComponent(mesh);
         leafNode->addComponent(blueMaterial);
-        leafNode->setObjectName("Blue Leaf");
+        leafNode->setObjectName(QLatin1String("Blue Leaf"));
 
         // sometimes this can change things
         //QCoreApplication::processEvents();

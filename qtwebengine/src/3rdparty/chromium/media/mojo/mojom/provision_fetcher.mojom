@@ -1,8 +1,10 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 module media.mojom;
+
+import "url/mojom/url.mojom";
 
 // An interface to retrieve provision information for CDM. This includes Android
 // MediaDrm. See Android documentation about MediaDrm provisioning:
@@ -13,7 +15,6 @@ interface ProvisionFetcher {
   // and returns |result| and the |response|. On Android, the input parameters
   // |default_url| and |request_data| corresponds to Java class
   // MediaDrm.ProvisionRequest. |response| will be empty iff |result| is false.
-  // TODO(slan): Pass |default_url| as a url.mojom.Url (crbug.com/662752).
-  Retrieve(string default_url, string request_data)
+  Retrieve(url.mojom.Url default_url, string request_data)
       => (bool result, string response);
 };

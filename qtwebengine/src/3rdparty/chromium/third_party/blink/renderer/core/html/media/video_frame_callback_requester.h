@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,16 +23,19 @@ class CORE_EXPORT VideoFrameCallbackRequester
 
   static VideoFrameCallbackRequester* From(HTMLVideoElement&);
 
+  VideoFrameCallbackRequester(const VideoFrameCallbackRequester&) = delete;
+  VideoFrameCallbackRequester& operator=(const VideoFrameCallbackRequester&) =
+      delete;
   virtual ~VideoFrameCallbackRequester() = default;
 
   void Trace(Visitor*) const override;
 
   virtual void OnWebMediaPlayerCreated() = 0;
+  virtual void OnWebMediaPlayerCleared() = 0;
   virtual void OnRequestVideoFrameCallback() = 0;
 
  protected:
   explicit VideoFrameCallbackRequester(HTMLVideoElement&);
-  DISALLOW_COPY_AND_ASSIGN(VideoFrameCallbackRequester);
 };
 
 }  // namespace blink

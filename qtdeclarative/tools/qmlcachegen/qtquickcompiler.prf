@@ -10,8 +10,8 @@ if(qtc_run|lupdate_run): return()
     unset(qt_modules)
 }
 
-qtPrepareTool(QML_CACHEGEN, qmlcachegen, _FILTER)
-qtPrepareTool(QMAKE_RCC, rcc, _DEP)
+qtPrepareLibExecTool(QML_CACHEGEN, qmlcachegen, _FILTER)
+qtPrepareLibExecTool(QMAKE_RCC, rcc, _DEP)
 
 isEmpty(QMLCACHE_DIR): QMLCACHE_DIR = .
 
@@ -77,6 +77,7 @@ for(res, QMLCACHE_RESOURCE_FILES) {
 defineReplace(qmlCacheOutputName) {
     name = $$absolute_path($$1, $$OUT_PWD)
     name = $$relative_path($$name, $$_PRO_FILE_PWD_)
+    contains(name, ^\\.\\..*): name = $$relative_path($$1, $$OUT_PWD)
     name = $$replace(name, \\.qml$, _qml)
     name = $$replace(name, \\.js$, _js)
     name = $$replace(name, \\.mjs$, _mjs)

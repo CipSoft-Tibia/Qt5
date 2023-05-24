@@ -10,7 +10,7 @@ srcs_fbdev = [
 ]
 
 deps_fbdev = [
-	dep_libweston,
+	dep_libweston_private,
 	dep_session_helper,
 	dep_libinput_backend,
 	dependency('libudev', version: '>= 136'),
@@ -19,7 +19,7 @@ deps_fbdev = [
 plugin_fbdev = shared_library(
 	'fbdev-backend',
 	srcs_fbdev,
-	include_directories: include_directories('../..', '../../shared'),
+	include_directories: common_inc,
 	dependencies: deps_fbdev,
 	name_prefix: '',
 	install: true,

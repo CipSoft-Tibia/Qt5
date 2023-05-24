@@ -1,13 +1,13 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <algorithm>
-
-#include "base/bind.h"
-#include "base/callback.h"
-#include "components/cbor/values.h"
 #include "device/fido/cbor_extract.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr_exclusion.h"
+#include "base/ranges/algorithm.h"
+#include "components/cbor/values.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -20,24 +20,21 @@ using cbor_extract::Map;
 using cbor_extract::Stop;
 using cbor_extract::StringKey;
 
-template <typename T>
-bool VectorSpanEqual(const std::vector<T>& v, base::span<const T> s) {
-  if (v.size() != s.size()) {
-    return false;
-  }
-  return std::equal(v.begin(), v.end(), s.begin());
-}
-
 struct MakeCredRequest {
-  const std::vector<uint8_t>* client_data_hash;
-  const std::string* rp_id;
-  const std::vector<uint8_t>* user_id;
-  const std::vector<cbor::Value>* cred_params;
-  const std::vector<cbor::Value>* excluded_credentials;
-  const bool* resident_key;
-  const bool* user_verification;
-  const bool* large_test;
-  const bool* negative_test;
+  // All fields below are not a raw_ptr<T> because cbor_extract.cc would
+  // cast the raw_ptr<T> to a void*, skipping an AddRef() call and causing a
+  // ref-counting mismatch.
+  RAW_PTR_EXCLUSION const std::vector<uint8_t>* client_data_hash;
+  RAW_PTR_EXCLUSION const std::string* rp_id;
+  RAW_PTR_EXCLUSION const std::vector<uint8_t>* user_id;
+  RAW_PTR_EXCLUSION const std::vector<cbor::Value>* cred_params;
+  RAW_PTR_EXCLUSION const std::vector<cbor::Value>* excluded_credentials;
+  RAW_PTR_EXCLUSION const bool* resident_key;
+  RAW_PTR_EXCLUSION const bool* user_verification;
+  RAW_PTR_EXCLUSION const bool* large_test;
+  RAW_PTR_EXCLUSION const bool* negative_test;
+  RAW_PTR_EXCLUSION const bool* skipped_1;
+  RAW_PTR_EXCLUSION const bool* skipped_2;
 };
 
 TEST(CBORExtract, Basic) {
@@ -113,6 +110,20 @@ TEST(CBORExtract, Basic) {
         StringKey<MakeCredRequest>(), 'u', 'v', '\0',
       Stop<MakeCredRequest>(),
 
+      // This map doesn't exist in the CBOR. It's optional, so that should be
+      // fine.
+      Map<MakeCredRequest>(Is::kOptional),
+      IntKey<MakeCredRequest>(8),
+        Map<MakeCredRequest>(Is::kRequired),
+        IntKey<MakeCredRequest>(1),
+          ELEMENT(Is::kRequired, MakeCredRequest, skipped_1),
+          StringKey<MakeCredRequest>(), 't', 'e', 's', 't', '\0',
+        Stop<MakeCredRequest>(),
+
+        ELEMENT(Is::kRequired, MakeCredRequest, skipped_2),
+        IntKey<MakeCredRequest>(1),
+      Stop<MakeCredRequest>(),
+
       ELEMENT(Is::kRequired, MakeCredRequest, large_test),
       IntKey<MakeCredRequest>(100),
 
@@ -126,16 +137,18 @@ TEST(CBORExtract, Basic) {
   MakeCredRequest make_cred_request;
   ASSERT_TRUE(cbor_extract::Extract<MakeCredRequest>(
       &make_cred_request, kMakeCredParseSteps, make_cred));
-  EXPECT_TRUE(VectorSpanEqual<uint8_t>(*make_cred_request.client_data_hash,
-                                       kClientDataHash));
+  EXPECT_TRUE(base::ranges::equal(*make_cred_request.client_data_hash,
+                                  kClientDataHash));
   EXPECT_EQ(*make_cred_request.rp_id, "example.com");
-  EXPECT_TRUE(VectorSpanEqual<uint8_t>(*make_cred_request.user_id, kUserId));
+  EXPECT_TRUE(base::ranges::equal(*make_cred_request.user_id, kUserId));
   EXPECT_EQ(make_cred_request.cred_params->size(), 2u);
   EXPECT_EQ(make_cred_request.excluded_credentials->size(), 3u);
   EXPECT_TRUE(*make_cred_request.resident_key);
   EXPECT_TRUE(make_cred_request.user_verification == nullptr);
   EXPECT_FALSE(*make_cred_request.large_test);
   EXPECT_TRUE(*make_cred_request.negative_test);
+  EXPECT_EQ(make_cred_request.skipped_1, nullptr);
+  EXPECT_EQ(make_cred_request.skipped_2, nullptr);
 
   std::vector<int64_t> algs;
   EXPECT_TRUE(cbor_extract::ForEachPublicKeyEntry(
@@ -150,7 +163,7 @@ TEST(CBORExtract, Basic) {
           },
           base::Unretained(&algs))));
 
-  EXPECT_TRUE(VectorSpanEqual<int64_t>(algs, kAlgs));
+  EXPECT_TRUE(base::ranges::equal(algs, kAlgs));
 }
 
 TEST(CBORExtract, MissingRequired) {
@@ -185,6 +198,36 @@ TEST(CBORExtract, WrongType) {
 
   Dummy dummy;
   EXPECT_FALSE(cbor_extract::Extract<Dummy>(&dummy, kSteps, map));
+}
+
+TEST(CBORExtract, RequiredInOptionalMap) {
+  struct Dummy {
+    const int64_t* value;
+  };
+
+  static constexpr cbor_extract::StepOrByte<Dummy> kSteps[] = {
+      // clang-format off
+      Map<Dummy>(Is::kOptional),
+      IntKey<Dummy>(1),
+        ELEMENT(Is::kRequired, Dummy, value),
+        IntKey<Dummy>(1),
+      Stop<Dummy>(),
+
+      Stop<Dummy>(),
+      // clang-format on
+  };
+
+  for (const bool required_field_present : {false, true}) {
+    cbor::Value::MapValue sub_map;
+    if (required_field_present) {
+      sub_map.emplace(1, 1);
+    }
+    cbor::Value::MapValue map;
+    map.emplace(1, std::move(sub_map));
+    Dummy dummy;
+    EXPECT_EQ(cbor_extract::Extract<Dummy>(&dummy, kSteps, map),
+              required_field_present);
+  }
 }
 
 }  // namespace

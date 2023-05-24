@@ -27,9 +27,160 @@
 #include "av1/encoder/rdopt.h"
 #include "av1/encoder/tokenize.h"
 
+static AOM_INLINE int av1_fast_palette_color_index_context_on_edge(
+    const uint8_t *color_map, int stride, int r, int c, int *color_idx) {
+  const bool has_left = (c - 1 >= 0);
+  const bool has_above = (r - 1 >= 0);
+  assert(r > 0 || c > 0);
+  assert(has_above ^ has_left);
+  assert(color_idx);
+  (void)has_left;
+
+  const uint8_t color_neighbor = has_above
+                                     ? color_map[(r - 1) * stride + (c - 0)]
+                                     : color_map[(r - 0) * stride + (c - 1)];
+  // If the neighbor color has higher index than current color index, then we
+  // move up by 1.
+  const uint8_t current_color = *color_idx = color_map[r * stride + c];
+  if (color_neighbor > current_color) {
+    (*color_idx)++;
+  } else if (color_neighbor == current_color) {
+    *color_idx = 0;
+  }
+
+  // Get hash value of context.
+  // The non-diagonal neighbors get a weight of 2.
+  const uint8_t color_score = 2;
+  const uint8_t hash_multiplier = 1;
+  const uint8_t color_index_ctx_hash = color_score * hash_multiplier;
+
+  // Lookup context from hash.
+  const int color_index_ctx =
+      av1_palette_color_index_context_lookup[color_index_ctx_hash];
+  assert(color_index_ctx == 0);
+  (void)color_index_ctx;
+  return 0;
+}
+
+#define SWAP(i, j)                           \
+  do {                                       \
+    const uint8_t tmp_score = score_rank[i]; \
+    const uint8_t tmp_color = color_rank[i]; \
+    score_rank[i] = score_rank[j];           \
+    color_rank[i] = color_rank[j];           \
+    score_rank[j] = tmp_score;               \
+    color_rank[j] = tmp_color;               \
+  } while (0)
+#define INVALID_COLOR_IDX (UINT8_MAX)
+
+// A faster version of av1_get_palette_color_index_context used by the encoder
+// exploiting the fact that the encoder does not need to maintain a color order.
+static AOM_INLINE int av1_fast_palette_color_index_context(
+    const uint8_t *color_map, int stride, int r, int c, int *color_idx) {
+  assert(r > 0 || c > 0);
+
+  const bool has_above = (r - 1 >= 0);
+  const bool has_left = (c - 1 >= 0);
+  assert(has_above || has_left);
+  if (has_above ^ has_left) {
+    return av1_fast_palette_color_index_context_on_edge(color_map, stride, r, c,
+                                                        color_idx);
+  }
+
+  // This goes in the order of left, top, and top-left. This has the advantage
+  // that unless anything here are not distinct or invalid, this will already
+  // be in sorted order. Furthermore, if either of the first two is
+  // invalid, we know the last one is also invalid.
+  uint8_t color_neighbors[NUM_PALETTE_NEIGHBORS];
+  color_neighbors[0] = color_map[(r - 0) * stride + (c - 1)];
+  color_neighbors[1] = color_map[(r - 1) * stride + (c - 0)];
+  color_neighbors[2] = color_map[(r - 1) * stride + (c - 1)];
+
+  // Aggregate duplicated values.
+  // Since our array is so small, using a couple if statements is faster
+  uint8_t scores[NUM_PALETTE_NEIGHBORS] = { 2, 2, 1 };
+  uint8_t num_invalid_colors = 0;
+  if (color_neighbors[0] == color_neighbors[1]) {
+    scores[0] += scores[1];
+    color_neighbors[1] = INVALID_COLOR_IDX;
+    num_invalid_colors += 1;
+
+    if (color_neighbors[0] == color_neighbors[2]) {
+      scores[0] += scores[2];
+      num_invalid_colors += 1;
+    }
+  } else if (color_neighbors[0] == color_neighbors[2]) {
+    scores[0] += scores[2];
+    num_invalid_colors += 1;
+  } else if (color_neighbors[1] == color_neighbors[2]) {
+    scores[1] += scores[2];
+    num_invalid_colors += 1;
+  }
+
+  const uint8_t num_valid_colors = NUM_PALETTE_NEIGHBORS - num_invalid_colors;
+
+  uint8_t *color_rank = color_neighbors;
+  uint8_t *score_rank = scores;
+
+  // Sort everything
+  if (num_valid_colors > 1) {
+    if (color_neighbors[1] == INVALID_COLOR_IDX) {
+      scores[1] = scores[2];
+      color_neighbors[1] = color_neighbors[2];
+    }
+
+    // We need to swap the first two elements if they have the same score but
+    // the color indices are not in the right order
+    if (score_rank[0] < score_rank[1] ||
+        (score_rank[0] == score_rank[1] && color_rank[0] > color_rank[1])) {
+      SWAP(0, 1);
+    }
+    if (num_valid_colors > 2) {
+      if (score_rank[0] < score_rank[2]) {
+        SWAP(0, 2);
+      }
+      if (score_rank[1] < score_rank[2]) {
+        SWAP(1, 2);
+      }
+    }
+  }
+
+  // If any of the neighbor colors has higher index than current color index,
+  // then we move up by 1 unless the current color is the same as one of the
+  // neighbors.
+  const uint8_t current_color = *color_idx = color_map[r * stride + c];
+  for (int idx = 0; idx < num_valid_colors; idx++) {
+    if (color_rank[idx] > current_color) {
+      (*color_idx)++;
+    } else if (color_rank[idx] == current_color) {
+      *color_idx = idx;
+      break;
+    }
+  }
+
+  // Get hash value of context.
+  uint8_t color_index_ctx_hash = 0;
+  static const uint8_t hash_multipliers[NUM_PALETTE_NEIGHBORS] = { 1, 2, 2 };
+  for (int idx = 0; idx < num_valid_colors; ++idx) {
+    color_index_ctx_hash += score_rank[idx] * hash_multipliers[idx];
+  }
+  assert(color_index_ctx_hash > 0);
+  assert(color_index_ctx_hash <= MAX_COLOR_CONTEXT_HASH);
+
+  // Lookup context from hash.
+  const int color_index_ctx = 9 - color_index_ctx_hash;
+  assert(color_index_ctx ==
+         av1_palette_color_index_context_lookup[color_index_ctx_hash]);
+  assert(color_index_ctx >= 0);
+  assert(color_index_ctx < PALETTE_COLOR_INDEX_CONTEXTS);
+  return color_index_ctx;
+}
+#undef INVALID_COLOR_IDX
+#undef SWAP
+
 static int cost_and_tokenize_map(Av1ColorMapParam *param, TokenExtra **t,
                                  int plane, int calc_rate, int allow_update_cdf,
-                                 FRAME_COUNTS *counts, MapCdf map_pb_cdf) {
+                                 FRAME_COUNTS *counts) {
   const uint8_t *const color_map = param->color_map;
   MapCdf map_cdf = param->map_cdf;
   ColorCost color_cost = param->color_cost;
@@ -51,10 +202,10 @@ static int cost_and_tokenize_map(Av1ColorMapParam *param, TokenExtra **t,
           color_map, plane_block_width, i, j, &color_new_idx);
       assert(color_new_idx >= 0 && color_new_idx < n);
       if (calc_rate) {
-        this_rate += (*color_cost)[palette_size_idx][color_ctx][color_new_idx];
+        this_rate += color_cost[palette_size_idx][color_ctx][color_new_idx];
       } else {
         (*t)->token = color_new_idx;
-        (*t)->color_map_cdf = map_pb_cdf[palette_size_idx][color_ctx];
+        (*t)->color_ctx = color_ctx;
         ++(*t);
         if (allow_update_cdf)
           update_cdf(map_cdf[palette_size_idx][color_ctx], color_new_idx, n);
@@ -82,8 +233,8 @@ static void get_palette_params(const MACROBLOCK *const x, int plane,
   params->color_map = xd->plane[plane].color_index_map;
   params->map_cdf = plane ? xd->tile_ctx->palette_uv_color_index_cdf
                           : xd->tile_ctx->palette_y_color_index_cdf;
-  params->color_cost = plane ? &x->mode_costs.palette_uv_color_cost
-                             : &x->mode_costs.palette_y_color_cost;
+  params->color_cost = plane ? x->mode_costs.palette_uv_color_cost
+                             : x->mode_costs.palette_y_color_cost;
   params->n_colors = pmi->palette_size[plane];
   av1_get_block_dimensions(bsize, plane, xd, &params->plane_width, NULL,
                            &params->rows, &params->cols);
@@ -107,10 +258,7 @@ int av1_cost_color_map(const MACROBLOCK *const x, int plane, BLOCK_SIZE bsize,
   assert(plane == 0 || plane == 1);
   Av1ColorMapParam color_map_params;
   get_color_map_params(x, plane, bsize, tx_size, type, &color_map_params);
-  MapCdf map_pb_cdf = plane ? x->tile_pb_ctx->palette_uv_color_index_cdf
-                            : x->tile_pb_ctx->palette_y_color_index_cdf;
-  return cost_and_tokenize_map(&color_map_params, NULL, plane, 1, 0, NULL,
-                               map_pb_cdf);
+  return cost_and_tokenize_map(&color_map_params, NULL, plane, 1, 0, NULL);
 }
 
 void av1_tokenize_color_map(const MACROBLOCK *const x, int plane,
@@ -122,12 +270,10 @@ void av1_tokenize_color_map(const MACROBLOCK *const x, int plane,
   get_color_map_params(x, plane, bsize, tx_size, type, &color_map_params);
   // The first color index does not use context or entropy.
   (*t)->token = color_map_params.color_map[0];
-  (*t)->color_map_cdf = NULL;
+  (*t)->color_ctx = -1;
   ++(*t);
-  MapCdf map_pb_cdf = plane ? x->tile_pb_ctx->palette_uv_color_index_cdf
-                            : x->tile_pb_ctx->palette_y_color_index_cdf;
   cost_and_tokenize_map(&color_map_params, t, plane, 0, allow_update_cdf,
-                        counts, map_pb_cdf);
+                        counts);
 }
 
 static void tokenize_vartx(ThreadData *td, TX_SIZE tx_size,
@@ -143,16 +289,22 @@ static void tokenize_vartx(ThreadData *td, TX_SIZE tx_size,
   if (blk_row >= max_blocks_high || blk_col >= max_blocks_wide) return;
 
   const TX_SIZE plane_tx_size =
-      plane ? av1_get_max_uv_txsize(mbmi->sb_type, pd->subsampling_x,
+      plane ? av1_get_max_uv_txsize(mbmi->bsize, pd->subsampling_x,
                                     pd->subsampling_y)
             : mbmi->inter_tx_size[av1_get_txb_size_index(plane_bsize, blk_row,
                                                          blk_col)];
 
   if (tx_size == plane_tx_size || plane) {
-    plane_bsize = get_plane_block_size(mbmi->sb_type, pd->subsampling_x,
-                                       pd->subsampling_y);
-    av1_update_and_record_txb_context(plane, block, blk_row, blk_col,
-                                      plane_bsize, tx_size, arg);
+    plane_bsize =
+        get_plane_block_size(mbmi->bsize, pd->subsampling_x, pd->subsampling_y);
+
+    struct tokenize_b_args *args = arg;
+    if (args->allow_update_cdf)
+      av1_update_and_record_txb_context(plane, block, blk_row, blk_col,
+                                        plane_bsize, tx_size, arg);
+    else
+      av1_record_txb_context(plane, block, blk_row, blk_col, plane_bsize,
+                             tx_size, arg);
 
   } else {
     // Half the block size in transform block unit.
@@ -160,15 +312,17 @@ static void tokenize_vartx(ThreadData *td, TX_SIZE tx_size,
     const int bsw = tx_size_wide_unit[sub_txs];
     const int bsh = tx_size_high_unit[sub_txs];
     const int step = bsw * bsh;
+    const int row_end =
+        AOMMIN(tx_size_high_unit[tx_size], max_blocks_high - blk_row);
+    const int col_end =
+        AOMMIN(tx_size_wide_unit[tx_size], max_blocks_wide - blk_col);
 
     assert(bsw > 0 && bsh > 0);
 
-    for (int row = 0; row < tx_size_high_unit[tx_size]; row += bsh) {
-      for (int col = 0; col < tx_size_wide_unit[tx_size]; col += bsw) {
-        const int offsetr = blk_row + row;
+    for (int row = 0; row < row_end; row += bsh) {
+      const int offsetr = blk_row + row;
+      for (int col = 0; col < col_end; col += bsw) {
         const int offsetc = blk_col + col;
-
-        if (offsetr >= max_blocks_high || offsetc >= max_blocks_wide) continue;
 
         tokenize_vartx(td, sub_txs, plane_bsize, offsetr, offsetc, block, plane,
                        arg);

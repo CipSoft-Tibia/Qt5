@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "formbuilderextra_p.h"
 #include "abstractformbuilder.h"
@@ -70,6 +23,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 #ifdef QFORMINTERNAL_NAMESPACE
 namespace QFormInternal {
 #endif
@@ -91,7 +46,7 @@ QFormBuilderExtra::CustomWidgetData::CustomWidgetData(const DomCustomWidget *dcw
 QFormBuilderExtra::QFormBuilderExtra() :
     m_defaultMargin(INT_MIN),
     m_defaultSpacing(INT_MIN),
-    m_language(QStringLiteral("c++"))
+    m_language(u"c++"_s)
 {
 }
 
@@ -123,7 +78,6 @@ static inline QString msgXmlError(const QXmlStreamReader &reader)
 static bool inline readUiAttributes(QXmlStreamReader &reader, const QString &language,
                                     QString *errorMessage)
 {
-    const QString uiElement = QStringLiteral("ui");
     // Read up to first element
     while (!reader.atEnd()) {
         switch (reader.readNext()) {
@@ -131,9 +85,9 @@ static bool inline readUiAttributes(QXmlStreamReader &reader, const QString &lan
             *errorMessage = msgXmlError(reader);
             return false;
         case QXmlStreamReader::StartElement:
-            if (reader.name().compare(uiElement, Qt::CaseInsensitive) == 0) {
-                const QString versionAttribute = QStringLiteral("version");
-                const QString languageAttribute = QStringLiteral("language");
+            if (reader.name().compare("ui"_L1, Qt::CaseInsensitive) == 0) {
+                const QString versionAttribute = u"version"_s;
+                const QString languageAttribute = u"language"_s;
                 const QXmlStreamAttributes attributes = reader.attributes();
                 if (attributes.hasAttribute(versionAttribute)) {
                     const QVersionNumber version =
@@ -198,7 +152,7 @@ bool QFormBuilderExtra::applyPropertyInternally(QObject *o, const QString &prope
 {
     // Store buddies and apply them later on as the widgets might not exist yet.
     QLabel *label = qobject_cast<QLabel*>(o);
-    if (!label || propertyName != QFormBuilderStrings::instance().buddyProperty)
+    if (label == nullptr || propertyName != "buddy"_L1)
         return false;
 
     m_buddies.insert(label, value.toString());
@@ -207,11 +161,7 @@ bool QFormBuilderExtra::applyPropertyInternally(QObject *o, const QString &prope
 
 void QFormBuilderExtra::applyInternalProperties() const
 {
-    if (m_buddies.isEmpty())
-        return;
-
-    const BuddyHash::const_iterator cend = m_buddies.constEnd();
-    for (BuddyHash::const_iterator it = m_buddies.constBegin(); it != cend; ++it )
+    for (auto it = m_buddies.cbegin(), cend = m_buddies.cend(); it != cend; ++it )
         applyBuddy(it.value(), BuddyApplyAll, it.key());
 }
 
@@ -228,10 +178,9 @@ bool QFormBuilderExtra::applyBuddy(const QString &buddyName, BuddyMode applyMode
         return false;
     }
 
-    const QWidgetList::const_iterator cend = widgets.constEnd();
-    for ( QWidgetList::const_iterator it =  widgets.constBegin(); it !=  cend; ++it) {
-        if (applyMode == BuddyApplyAll || !(*it)->isHidden()) {
-            label->setBuddy(*it);
+    for (auto *w : widgets) {
+        if (applyMode == BuddyApplyAll || !w->isHidden()) {
+            label->setBuddy(w);
             return true;
         }
     }
@@ -265,15 +214,15 @@ void QFormBuilderExtra::storeCustomWidgetData(const QString &className, const Do
 
 QString QFormBuilderExtra::customWidgetBaseClass(const QString &className) const
 {
-    const QHash<QString, CustomWidgetData>::const_iterator it = m_customWidgetDataHash.constFind(className);
+    const auto it = m_customWidgetDataHash.constFind(className);
     if (it != m_customWidgetDataHash.constEnd())
-            return it.value().baseClass;
+        return it.value().baseClass;
     return QString();
 }
 
 QString QFormBuilderExtra::customWidgetAddPageMethod(const QString &className) const
 {
-    const QHash<QString, CustomWidgetData>::const_iterator it = m_customWidgetDataHash.constFind(className);
+    const auto it = m_customWidgetDataHash.constFind(className);
     if (it != m_customWidgetDataHash.constEnd())
         return it.value().addPageMethod;
     return QString();
@@ -281,7 +230,7 @@ QString QFormBuilderExtra::customWidgetAddPageMethod(const QString &className) c
 
 bool QFormBuilderExtra::isCustomWidgetContainer(const QString &className) const
 {
-    const QHash<QString, CustomWidgetData>::const_iterator it = m_customWidgetDataHash.constFind(className);
+    const auto it = m_customWidgetDataHash.constFind(className);
     if (it != m_customWidgetDataHash.constEnd())
         return it.value().isContainer;
     return false;
@@ -361,7 +310,7 @@ inline QString perCellPropertyToString(const Layout *l, int count, int (Layout::
         QTextStream str(&rc);
         for (int i = 0; i < count; i++) {
             if (i)
-                str << QLatin1Char(',');
+                str << ',';
             str << (l->*getter)(i);
         }
     }
@@ -386,7 +335,7 @@ inline bool parsePerCellProperty(Layout *l, int count, void (Layout::*setter)(in
         clearPerCellValue(l, count, setter, defaultValue);
         return true;
     }
-    const auto list = s.splitRef(QLatin1Char(','));
+    const auto list = QStringView{s}.split(u',');
     if (list.isEmpty()) {
         clearPerCellValue(l, count, setter, defaultValue);
         return true;
@@ -412,6 +361,19 @@ static QString msgInvalidStretch(const QString &objectName, const QString &stret
 {
     //: Parsing layout stretch values
     return QCoreApplication::translate("FormBuilder", "Invalid stretch value for '%1': '%2'").arg(objectName, stretch);
+}
+
+void QFormBuilderExtra::getLayoutMargins(const QList<DomProperty*> &properties,
+                                         int *left, int *top, int *right, int *bottom)
+{
+    if (const auto *p = propertyByName(properties, "leftMargin"))
+        *left = p->elementNumber();
+    if (const auto *p = propertyByName(properties, "topMargin"))
+        *top = p->elementNumber();
+    if (const auto *p = propertyByName(properties, "rightMargin"))
+        *right = p->elementNumber();
+    if (const auto *p = propertyByName(properties, "bottomMargin"))
+        *bottom = p->elementNumber();
 }
 
 QString QFormBuilderExtra::boxLayoutStretch(const QBoxLayout *box)
@@ -520,7 +482,7 @@ void QFormBuilderExtra::setPixmapProperty(DomProperty *p, const QPair<QString, Q
 
     pix->setText(ip.first);
 
-    p->setAttributeName(QFormBuilderStrings::instance().pixmapAttribute);
+    p->setAttributeName("pixmap"_L1);
     p->setElementPixmap(pix);
 }
 
@@ -557,16 +519,15 @@ DomColorGroup *QFormBuilderExtra::saveColorGroup(const QPalette &palette,
     const QMetaEnum colorRole_enum = metaEnum<QAbstractFormBuilderGadget>("colorRole");
 
     DomColorGroup *group = new DomColorGroup();
-    QVector<DomColorRole *> colorRoles;
+    QList<DomColorRole *> colorRoles;
 
-    const uint mask = palette.resolve();
-    for (int role = QPalette::WindowText; role < QPalette::NColorRoles; ++role) {
-        if (mask & (1 << role)) {
-            const QBrush &br = palette.brush(colorGroup, QPalette::ColorRole(role));
-
+    for (int r = QPalette::WindowText; r < QPalette::NColorRoles; ++r) {
+        const auto role = static_cast<QPalette::ColorRole>(r);
+        if (palette.isBrushSet(colorGroup, role)) {
+            const QBrush &br = palette.brush(colorGroup, role);
             DomColorRole *colorRole = new DomColorRole();
             colorRole->setElementBrush(saveBrush(br));
-            colorRole->setAttributeRole(QLatin1String(colorRole_enum.valueToKey(role)));
+            colorRole->setAttributeRole(QLatin1StringView(colorRole_enum.valueToKey(role)));
             colorRoles.append(colorRole);
         }
     }
@@ -672,7 +633,7 @@ DomBrush *QFormBuilderExtra::saveBrush(const QBrush &br)
 
     DomBrush *brush = new DomBrush();
     const Qt::BrushStyle style = br.style();
-    brush->setAttributeBrushStyle(QLatin1String(brushStyle_enum.valueToKey(style)));
+    brush->setAttributeBrushStyle(QLatin1StringView(brushStyle_enum.valueToKey(style)));
     if (style == Qt::LinearGradientPattern ||
                 style == Qt::RadialGradientPattern ||
                 style == Qt::ConicalGradientPattern) {
@@ -683,10 +644,10 @@ DomBrush *QFormBuilderExtra::saveBrush(const QBrush &br)
         DomGradient *gradient = new DomGradient();
         const QGradient *gr = br.gradient();
         const QGradient::Type type = gr->type();
-        gradient->setAttributeType(QLatin1String(gradientType_enum.valueToKey(type)));
-        gradient->setAttributeSpread(QLatin1String(gradientSpread_enum.valueToKey(gr->spread())));
-        gradient->setAttributeCoordinateMode(QLatin1String(gradientCoordinate_enum.valueToKey(gr->coordinateMode())));
-        QVector<DomGradientStop *> stops;
+        gradient->setAttributeType(QLatin1StringView(gradientType_enum.valueToKey(type)));
+        gradient->setAttributeSpread(QLatin1StringView(gradientSpread_enum.valueToKey(gr->spread())));
+        gradient->setAttributeCoordinateMode(QLatin1StringView(gradientCoordinate_enum.valueToKey(gr->coordinateMode())));
+        QList<DomGradientStop *> stops;
         const QGradientStops st = gr->stops();
         for (const QGradientStop &pair : st) {
             DomGradientStop *stop = new DomGradientStop();
@@ -740,68 +701,34 @@ DomBrush *QFormBuilderExtra::saveBrush(const QBrush &br)
     return brush;
 }
 
+DomProperty *QFormBuilderExtra::propertyByName(const QList<DomProperty*> &properties,
+                                               QAnyStringView needle)
+{
+    auto it = std::find_if(properties.cbegin(), properties.cend(),
+                           [needle](const DomProperty *p) {
+                               return p->attributeName() == needle; });
+    return it != properties.cend() ? *it : nullptr;
+}
+
 // ------------ QFormBuilderStrings
 
 QFormBuilderStrings::QFormBuilderStrings() :
-    buddyProperty(QStringLiteral("buddy")),
-    cursorProperty(QStringLiteral("cursor")),
-    objectNameProperty(QStringLiteral("objectName")),
-    trueValue(QStringLiteral("true")),
-    falseValue(QStringLiteral("false")),
-    horizontalPostFix(QStringLiteral("Horizontal")),
-    separator(QStringLiteral("separator")),
-    defaultTitle(QStringLiteral("Page")),
-    titleAttribute(QStringLiteral("title")),
-    labelAttribute(QStringLiteral("label")),
-    toolTipAttribute(QStringLiteral("toolTip")),
-    whatsThisAttribute(QStringLiteral("whatsThis")),
-    flagsAttribute(QStringLiteral("flags")),
-    iconAttribute(QStringLiteral("icon")),
-    pixmapAttribute(QStringLiteral("pixmap")),
-    textAttribute(QStringLiteral("text")),
-    currentIndexProperty(QStringLiteral("currentIndex")),
-    toolBarAreaAttribute(QStringLiteral("toolBarArea")),
-    toolBarBreakAttribute(QStringLiteral("toolBarBreak")),
-    dockWidgetAreaAttribute(QStringLiteral("dockWidgetArea")),
-    marginProperty(QStringLiteral("margin")),
-    spacingProperty(QStringLiteral("spacing")),
-    leftMarginProperty(QStringLiteral("leftMargin")),
-    topMarginProperty(QStringLiteral("topMargin")),
-    rightMarginProperty(QStringLiteral("rightMargin")),
-    bottomMarginProperty(QStringLiteral("bottomMargin")),
-    horizontalSpacingProperty(QStringLiteral("horizontalSpacing")),
-    verticalSpacingProperty(QStringLiteral("verticalSpacing")),
-    sizeHintProperty(QStringLiteral("sizeHint")),
-    sizeTypeProperty(QStringLiteral("sizeType")),
-    orientationProperty(QStringLiteral("orientation")),
-    styleSheetProperty(QStringLiteral("styleSheet")),
-    qtHorizontal(QStringLiteral("Qt::Horizontal")),
-    qtVertical(QStringLiteral("Qt::Vertical")),
-    currentRowProperty(QStringLiteral("currentRow")),
-    tabSpacingProperty(QStringLiteral("tabSpacing")),
-    qWidgetClass(QStringLiteral("QWidget")),
-    lineClass(QStringLiteral("Line")),
-    geometryProperty(QStringLiteral("geometry")),
-    scriptWidgetVariable(QStringLiteral("widget")),
-    scriptChildWidgetsVariable(QStringLiteral("childWidgets"))
+    itemRoles {
+        {Qt::FontRole, "font"_L1},
+        {Qt::TextAlignmentRole, "textAlignment"_L1},
+        {Qt::BackgroundRole, "background"_L1},
+        {Qt::ForegroundRole, "foreground"_L1},
+        {Qt::CheckStateRole, "checkState"_L1}
+    },
+    itemTextRoles { // This must be first for the loop below
+        { {Qt::EditRole, Qt::DisplayPropertyRole}, textAttribute},
+        { {Qt::ToolTipRole, Qt::ToolTipPropertyRole}, toolTipAttribute},
+        { {Qt::StatusTipRole, Qt::StatusTipPropertyRole}, "statusTip"_L1},
+        { {Qt::WhatsThisRole, Qt::WhatsThisPropertyRole}, whatsThisAttribute}
+    }
 {
-    itemRoles.append(qMakePair(Qt::FontRole, QString::fromLatin1("font")));
-    itemRoles.append(qMakePair(Qt::TextAlignmentRole, QString::fromLatin1("textAlignment")));
-    itemRoles.append(qMakePair(Qt::BackgroundRole, QString::fromLatin1("background")));
-    itemRoles.append(qMakePair(Qt::ForegroundRole, QString::fromLatin1("foreground")));
-    itemRoles.append(qMakePair(Qt::CheckStateRole, QString::fromLatin1("checkState")));
-
-    for (const RoleNName &it : qAsConst(itemRoles))
+    for (const RoleNName &it : std::as_const(itemRoles))
         treeItemRoleHash.insert(it.second, it.first);
-
-    itemTextRoles.append(qMakePair(qMakePair(Qt::EditRole, Qt::DisplayPropertyRole),
-                                   textAttribute)); // This must be first for the loop below
-    itemTextRoles.append(qMakePair(qMakePair(Qt::ToolTipRole, Qt::ToolTipPropertyRole),
-                                   toolTipAttribute));
-    itemTextRoles.append(qMakePair(qMakePair(Qt::StatusTipRole, Qt::StatusTipPropertyRole),
-                                   QString::fromLatin1("statusTip")));
-    itemTextRoles.append(qMakePair(qMakePair(Qt::WhatsThisRole, Qt::WhatsThisPropertyRole),
-                                   whatsThisAttribute));
 
     // Note: this skips the first item!
     auto it = itemTextRoles.constBegin();

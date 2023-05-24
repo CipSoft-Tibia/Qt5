@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -30,6 +30,8 @@ class VIEWS_EXPORT WidgetFocusManager {
   // Returns the singleton instance.
   static WidgetFocusManager* GetInstance();
 
+  WidgetFocusManager(const WidgetFocusManager&) = delete;
+  WidgetFocusManager& operator=(const WidgetFocusManager&) = delete;
   ~WidgetFocusManager();
 
   // Adds/removes a WidgetFocusChangeListener |listener| to the set of
@@ -52,8 +54,6 @@ class VIEWS_EXPORT WidgetFocusManager {
   friend class base::NoDestructor<WidgetFocusManager>;
 
   WidgetFocusManager();
-  WidgetFocusManager(const WidgetFocusManager&) = delete;
-  WidgetFocusManager& operator=(const WidgetFocusManager&) = delete;
 
   base::ObserverList<WidgetFocusChangeListener>::Unchecked
       focus_change_listeners_;

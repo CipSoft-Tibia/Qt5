@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,14 @@
 
 #include <memory>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_base.h"
 #include "base/sequence_checker.h"
-#include "base/sequenced_task_runner.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "components/metrics/metrics_provider.h"
 #include "net/base/network_interfaces.h"
 #include "net/nqe/effective_connection_type.h"
@@ -35,6 +36,11 @@ class NetworkMetricsProvider
   // Class that provides |this| with the network quality estimator.
   class NetworkQualityEstimatorProvider {
    public:
+    NetworkQualityEstimatorProvider(const NetworkQualityEstimatorProvider&) =
+        delete;
+    NetworkQualityEstimatorProvider& operator=(
+        const NetworkQualityEstimatorProvider&) = delete;
+
     virtual ~NetworkQualityEstimatorProvider() {}
 
     // Provides |this| with |callback| that would be invoked by |this| every
@@ -45,9 +51,6 @@ class NetworkMetricsProvider
 
    protected:
     NetworkQualityEstimatorProvider() {}
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(NetworkQualityEstimatorProvider);
   };
 
   // Creates a NetworkMetricsProvider, where
@@ -57,6 +60,10 @@ class NetworkMetricsProvider
                              network_connection_tracker_async_getter,
                          std::unique_ptr<NetworkQualityEstimatorProvider>
                              network_quality_estimator_provider = nullptr);
+
+  NetworkMetricsProvider(const NetworkMetricsProvider&) = delete;
+  NetworkMetricsProvider& operator=(const NetworkMetricsProvider&) = delete;
+
   ~NetworkMetricsProvider() override;
 
  private:
@@ -69,8 +76,6 @@ class NetworkMetricsProvider
                            ConnectionTypeIsAmbiguous);
 
   // MetricsProvider:
-  void ProvideCurrentSessionData(
-      ChromeUserMetricsExtension* uma_proto) override;
   void ProvideSystemProfileMetrics(SystemProfileProto* system_profile) override;
 
   // NetworkConnectionObserver:
@@ -86,9 +91,6 @@ class NetworkMetricsProvider
   // net::GetWifiPHYLayerProtocol.
   void OnWifiPHYLayerProtocolResult(net::WifiPHYLayerProtocol mode);
 
-  // Logs metrics that are functions of other metrics being uploaded.
-  void LogAggregatedMetrics();
-
   void OnEffectiveConnectionTypeChanged(net::EffectiveConnectionType type);
 
   // Used as a callback to be given to NetworkConnectionTracker async getter to
@@ -96,17 +98,12 @@ class NetworkMetricsProvider
   void SetNetworkConnectionTracker(
       network::NetworkConnectionTracker* network_connection_tracker);
 
-  // Invoked at the time a new user metrics log record is being finalized, on
-  // the main thread. NCN Histograms that want to be logged once per record
-  // should be logged in this method.
-  void FinalizingMetricsLogRecord();
-
   // Watches for network connection changes.
   // This |network_connection_tracker_| raw pointer is not owned by this class.
   // It is obtained from the global |g_network_connection_tracker| pointer in
   // //content/public/browser/network_service_instance.cc and points to the same
   // object.
-  network::NetworkConnectionTracker* network_connection_tracker_;
+  raw_ptr<network::NetworkConnectionTracker> network_connection_tracker_;
 
   // True if |connection_type_| changed during the lifetime of the log.
   bool connection_type_is_ambiguous_;
@@ -120,11 +117,6 @@ class NetworkMetricsProvider
   // The PHY mode of the currently associated access point obtained via
   // net::GetWifiPHYLayerProtocol.
   net::WifiPHYLayerProtocol wifi_phy_layer_protocol_;
-
-  // These metrics track histogram totals for the Net.ErrorCodesForMainFrame4
-  // histogram. They are used to compute deltas at upload time.
-  base::HistogramBase::Count total_aborts_;
-  base::HistogramBase::Count total_codes_;
 
   // Provides the network quality estimator. May be null.
   std::unique_ptr<NetworkQualityEstimatorProvider>
@@ -141,8 +133,6 @@ class NetworkMetricsProvider
   SEQUENCE_CHECKER(sequence_checker_);
 
   base::WeakPtrFactory<NetworkMetricsProvider> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(NetworkMetricsProvider);
 };
 
 }  // namespace metrics

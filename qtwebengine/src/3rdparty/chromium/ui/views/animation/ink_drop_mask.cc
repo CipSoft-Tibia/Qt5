@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,7 +31,7 @@ PathInkDropMask::PathInkDropMask(const gfx::Size& layer_size,
 
 void PathInkDropMask::OnPaintLayer(const ui::PaintContext& context) {
   cc::PaintFlags flags;
-  flags.setAlpha(255);
+  flags.setAlphaf(1.0f);
   flags.setStyle(cc::PaintFlags::kFill_Style);
   flags.setAntiAlias(true);
 

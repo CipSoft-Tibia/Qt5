@@ -1,9 +1,14 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "device/fido/large_blob.h"
+
+#include <algorithm>
+#include <ostream>
+
 #include "base/containers/span.h"
+#include "base/ranges/algorithm.h"
 #include "components/cbor/reader.h"
 #include "components/cbor/writer.h"
 #include "crypto/aead.h"
@@ -25,14 +30,27 @@ std::array<uint8_t, kAssociatedDataLength> GenerateLargeBlobAdditionalData(
   std::array<uint8_t, kAssociatedDataLength> additional_data;
   const std::array<uint8_t, 8>& size_array =
       fido_parsing_utils::Uint64LittleEndian(size);
-  std::copy(kLargeBlobADPrefix.begin(), kLargeBlobADPrefix.end(),
-            additional_data.begin());
-  std::copy(size_array.begin(), size_array.end(),
-            additional_data.begin() + kLargeBlobADPrefix.size());
+  base::ranges::copy(kLargeBlobADPrefix, additional_data.begin());
+  base::ranges::copy(size_array,
+                     additional_data.begin() + kLargeBlobADPrefix.size());
   return additional_data;
 }
 
 }  // namespace
+
+LargeBlob::LargeBlob(std::vector<uint8_t> compressed_data,
+                     uint64_t original_size)
+    : compressed_data(std::move(compressed_data)),
+      original_size(original_size) {}
+LargeBlob::~LargeBlob() = default;
+LargeBlob::LargeBlob(const LargeBlob&) = default;
+LargeBlob& LargeBlob::operator=(const LargeBlob&) = default;
+LargeBlob::LargeBlob(LargeBlob&&) = default;
+LargeBlob& LargeBlob::operator=(LargeBlob&&) = default;
+bool LargeBlob::operator==(const LargeBlob& other) const {
+  return other.compressed_data == compressed_data &&
+         other.original_size == original_size;
+}
 
 LargeBlobArrayFragment::LargeBlobArrayFragment(const std::vector<uint8_t> bytes,
                                                const size_t offset)
@@ -83,7 +101,7 @@ LargeBlobsRequest::~LargeBlobsRequest() = default;
 
 void LargeBlobsRequest::SetPinParam(
     const pin::TokenResponse& pin_uv_auth_token) {
-  pin_uv_auth_protocol_ = pin::kProtocolVersion;
+  DCHECK(set_) << "SetPinParam should only be used for write requests";
   std::vector<uint8_t> pin_auth(pin::kPinUvAuthTokenSafetyPadding.begin(),
                                 pin::kPinUvAuthTokenSafetyPadding.end());
   pin_auth.insert(pin_auth.end(), kLargeBlobPinPrefix.begin(),
@@ -91,62 +109,63 @@ void LargeBlobsRequest::SetPinParam(
   const std::array<uint8_t, 4> offset_array =
       fido_parsing_utils::Uint32LittleEndian(offset_);
   pin_auth.insert(pin_auth.end(), offset_array.begin(), offset_array.end());
-  if (set_) {
-    pin_auth.insert(pin_auth.end(), set_->begin(), set_->end());
-  }
-  pin_uv_auth_param_ = pin_uv_auth_token.PinAuth(pin_auth);
+  std::array<uint8_t, crypto::kSHA256Length> set_hash =
+      crypto::SHA256Hash(*set_);
+  pin_auth.insert(pin_auth.end(), set_hash.begin(), set_hash.end());
+  std::tie(pin_uv_auth_protocol_, pin_uv_auth_param_) =
+      pin_uv_auth_token.PinAuth(pin_auth);
 }
 
 // static
-base::Optional<LargeBlobsResponse> LargeBlobsResponse::ParseForRead(
+absl::optional<LargeBlobsResponse> LargeBlobsResponse::ParseForRead(
     const size_t bytes_to_read,
-    const base::Optional<cbor::Value>& cbor_response) {
+    const absl::optional<cbor::Value>& cbor_response) {
   if (!cbor_response || !cbor_response->is_map()) {
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   const cbor::Value::MapValue& map = cbor_response->GetMap();
   auto it =
       map.find(cbor::Value(static_cast<int>(LargeBlobsResponseKey::kConfig)));
   if (it == map.end() || !it->second.is_bytestring()) {
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   const std::vector<uint8_t>& config = it->second.GetBytestring();
   if (config.size() > bytes_to_read) {
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   return LargeBlobsResponse(std::move(config));
 }
 
 // static
-base::Optional<LargeBlobsResponse> LargeBlobsResponse::ParseForWrite(
-    const base::Optional<cbor::Value>& cbor_response) {
+absl::optional<LargeBlobsResponse> LargeBlobsResponse::ParseForWrite(
+    const absl::optional<cbor::Value>& cbor_response) {
   // For writing, we expect an empty response.
   if (cbor_response) {
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   return LargeBlobsResponse();
 }
 
 LargeBlobsResponse::LargeBlobsResponse(
-    base::Optional<std::vector<uint8_t>> config)
+    absl::optional<std::vector<uint8_t>> config)
     : config_(std::move(config)) {}
 LargeBlobsResponse::LargeBlobsResponse(LargeBlobsResponse&& other) = default;
 LargeBlobsResponse& LargeBlobsResponse::operator=(LargeBlobsResponse&& other) =
     default;
 LargeBlobsResponse::~LargeBlobsResponse() = default;
 
-std::pair<CtapRequestCommand, base::Optional<cbor::Value>>
+std::pair<CtapRequestCommand, absl::optional<cbor::Value>>
 AsCTAPRequestValuePair(const LargeBlobsRequest& request) {
   cbor::Value::MapValue map;
   if (request.get_) {
     map.emplace(static_cast<int>(LargeBlobsRequestKey::kGet), *request.get_);
   }
   if (request.set_) {
-    map.emplace(static_cast<int>(LargeBlobsRequestKey::kSet), cbor::Value(*request.set_));
+    map.emplace(static_cast<int>(LargeBlobsRequestKey::kSet), *request.set_);
   }
   map.emplace(static_cast<int>(LargeBlobsRequestKey::kOffset), request.offset_);
   if (request.length_) {
@@ -155,37 +174,37 @@ AsCTAPRequestValuePair(const LargeBlobsRequest& request) {
   }
   if (request.pin_uv_auth_param_) {
     map.emplace(static_cast<int>(LargeBlobsRequestKey::kPinUvAuthParam),
-                cbor::Value(*request.pin_uv_auth_param_));
+                *request.pin_uv_auth_param_);
   }
   if (request.pin_uv_auth_protocol_) {
     map.emplace(static_cast<int>(LargeBlobsRequestKey::kPinUvAuthProtocol),
-                *request.pin_uv_auth_protocol_);
+                static_cast<uint8_t>(*request.pin_uv_auth_protocol_));
   }
   return std::make_pair(CtapRequestCommand::kAuthenticatorLargeBlobs,
                         cbor::Value(std::move(map)));
 }
 
 // static.
-base::Optional<LargeBlobData> LargeBlobData::Parse(const cbor::Value& value) {
+absl::optional<LargeBlobData> LargeBlobData::Parse(const cbor::Value& value) {
   if (!value.is_map()) {
-    return base::nullopt;
+    return absl::nullopt;
   }
   const cbor::Value::MapValue& map = value.GetMap();
   auto ciphertext_it =
       map.find(cbor::Value(static_cast<int>(LargeBlobDataKeys::kCiphertext)));
   if (ciphertext_it == map.end() || !ciphertext_it->second.is_bytestring()) {
-    return base::nullopt;
+    return absl::nullopt;
   }
   auto nonce_it =
       map.find(cbor::Value(static_cast<int>(LargeBlobDataKeys::kNonce)));
   if (nonce_it == map.end() || !nonce_it->second.is_bytestring() ||
       nonce_it->second.GetBytestring().size() != kLargeBlobArrayNonceLength) {
-    return base::nullopt;
+    return absl::nullopt;
   }
   auto orig_size_it =
       map.find(cbor::Value(static_cast<int>(LargeBlobDataKeys::kOrigSize)));
   if (orig_size_it == map.end() || !orig_size_it->second.is_unsigned()) {
-    return base::nullopt;
+    return absl::nullopt;
   }
   return LargeBlobData(ciphertext_it->second.GetBytestring(),
                        base::make_span<kLargeBlobArrayNonceLength>(
@@ -198,15 +217,15 @@ LargeBlobData::LargeBlobData(
     base::span<const uint8_t, kLargeBlobArrayNonceLength> nonce,
     int64_t orig_size)
     : ciphertext_(std::move(ciphertext)), orig_size_(std::move(orig_size)) {
-  std::copy(nonce.begin(), nonce.end(), nonce_.begin());
+  base::ranges::copy(nonce, nonce_.begin());
 }
-LargeBlobData::LargeBlobData(LargeBlobKey key, std::vector<uint8_t> blob) {
-  orig_size_ = blob.size();
+LargeBlobData::LargeBlobData(LargeBlobKey key, LargeBlob large_blob)
+    : orig_size_(large_blob.original_size) {
   crypto::Aead aead(crypto::Aead::AeadAlgorithm::AES_256_GCM);
   aead.Init(key);
   crypto::RandBytes(nonce_);
-  ciphertext_ =
-      aead.Seal(blob, nonce_, GenerateLargeBlobAdditionalData(orig_size_));
+  ciphertext_ = aead.Seal(large_blob.compressed_data, nonce_,
+                          GenerateLargeBlobAdditionalData(orig_size_));
 }
 LargeBlobData::LargeBlobData(LargeBlobData&&) = default;
 LargeBlobData& LargeBlobData::operator=(LargeBlobData&&) = default;
@@ -217,20 +236,23 @@ bool LargeBlobData::operator==(const LargeBlobData& other) const {
          orig_size_ == other.orig_size_;
 }
 
-base::Optional<std::vector<uint8_t>> LargeBlobData::Decrypt(
-    LargeBlobKey key) const {
+absl::optional<LargeBlob> LargeBlobData::Decrypt(LargeBlobKey key) const {
   crypto::Aead aead(crypto::Aead::AeadAlgorithm::AES_256_GCM);
   aead.Init(key);
-  return aead.Open(ciphertext_, nonce_,
-                   GenerateLargeBlobAdditionalData(orig_size_));
+  absl::optional<std::vector<uint8_t>> compressed_data = aead.Open(
+      ciphertext_, nonce_, GenerateLargeBlobAdditionalData(orig_size_));
+  if (!compressed_data) {
+    return absl::nullopt;
+  }
+  return LargeBlob(*compressed_data, orig_size_);
 }
 
-cbor::Value::MapValue LargeBlobData::AsCBOR() const {
+cbor::Value LargeBlobData::AsCBOR() const {
   cbor::Value::MapValue map;
-  map.emplace(static_cast<int>(LargeBlobDataKeys::kCiphertext), cbor::Value(ciphertext_));
-  map.emplace(static_cast<int>(LargeBlobDataKeys::kNonce), cbor::Value(nonce_));
+  map.emplace(static_cast<int>(LargeBlobDataKeys::kCiphertext), ciphertext_);
+  map.emplace(static_cast<int>(LargeBlobDataKeys::kNonce), nonce_);
   map.emplace(static_cast<int>(LargeBlobDataKeys::kOrigSize), orig_size_);
-  return map;
+  return cbor::Value(map);
 }
 
 LargeBlobArrayReader::LargeBlobArrayReader() = default;
@@ -241,40 +263,30 @@ void LargeBlobArrayReader::Append(const std::vector<uint8_t>& fragment) {
   bytes_.insert(bytes_.end(), fragment.begin(), fragment.end());
 }
 
-base::Optional<std::vector<LargeBlobData>> LargeBlobArrayReader::Materialize() {
+absl::optional<cbor::Value::ArrayValue> LargeBlobArrayReader::Materialize() {
   if (!VerifyLargeBlobArrayIntegrity(bytes_)) {
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   base::span<const uint8_t> cbor_bytes =
       base::make_span(bytes_.data(), bytes_.size() - kTruncatedHashBytes);
-  base::Optional<cbor::Value> cbor = cbor::Reader::Read(cbor_bytes);
+  absl::optional<cbor::Value> cbor = cbor::Reader::Read(cbor_bytes);
   if (!cbor || !cbor->is_array()) {
-    return base::nullopt;
+    return absl::nullopt;
   }
 
-  std::vector<LargeBlobData> large_blob_array;
+  cbor::Value::ArrayValue large_blob_array;
   const cbor::Value::ArrayValue& array = cbor->GetArray();
   for (const cbor::Value& value : array) {
-    base::Optional<LargeBlobData> large_blob_data = LargeBlobData::Parse(value);
-    if (!large_blob_data) {
-      continue;
-    }
-
-    large_blob_array.emplace_back(std::move(*large_blob_data));
+    large_blob_array.push_back(value.Clone());
   }
 
-  return std::move(large_blob_array);
+  return large_blob_array;
 }
 
 LargeBlobArrayWriter::LargeBlobArrayWriter(
-    const std::vector<LargeBlobData>& large_blob_array) {
-  cbor::Value::ArrayValue array;
-  for (const LargeBlobData& large_blob_data : large_blob_array) {
-    array.emplace_back(large_blob_data.AsCBOR());
-  }
-  bytes_ = *cbor::Writer::Write(cbor::Value(array));
-
+    cbor::Value::ArrayValue large_blob_array) {
+  bytes_ = *cbor::Writer::Write(cbor::Value(std::move(large_blob_array)));
   std::array<uint8_t, crypto::kSHA256Length> large_blob_hash =
       crypto::SHA256Hash(bytes_);
   bytes_.insert(bytes_.end(), large_blob_hash.begin(),

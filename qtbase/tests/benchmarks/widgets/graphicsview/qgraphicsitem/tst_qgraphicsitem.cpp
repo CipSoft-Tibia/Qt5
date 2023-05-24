@@ -1,35 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QGraphicsItem>
 #include <QGraphicsScene>
 #include <QGraphicsView>
+#include <QTextDocument>
 
 class tst_QGraphicsItem : public QObject
 {
@@ -57,6 +33,8 @@ private slots:
     void scale();
     void shear();
     void translate();
+    void createTextItem();
+    void createTextItemNoLayouting();
 };
 
 tst_QGraphicsItem::tst_QGraphicsItem()
@@ -227,6 +205,33 @@ void tst_QGraphicsItem::translate()
     const QTransform translate = QTransform::fromTranslate(100, 100);
     QBENCHMARK {
         item->setTransform(translate, true);
+    }
+}
+
+void tst_QGraphicsItem::createTextItem()
+{
+    // Ensure QFontDatabase loaded the font beforehand
+    QFontInfo(qApp->font()).family();
+    const QString text = "This is some text";
+    QBENCHMARK {
+        QGraphicsTextItem item(text);
+    }
+}
+
+void tst_QGraphicsItem::createTextItemNoLayouting()
+{
+    // Ensure QFontDatabase loaded the font beforehand
+    QFontInfo(qApp->font()).family();
+    const QString text = "This is some text";
+    QBENCHMARK {
+        QGraphicsTextItem item;
+        item.document()->setLayoutEnabled(false);
+        // Prepare everything
+        item.setPlainText(text);
+        QTextOption option = item.document()->defaultTextOption();
+        option.setAlignment(Qt::AlignHCenter);
+        item.document()->setDefaultTextOption(option);
+        // And (in a real app) enable layouting here
     }
 }
 

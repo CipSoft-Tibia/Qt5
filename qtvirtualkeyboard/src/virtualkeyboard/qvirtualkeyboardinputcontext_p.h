@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QVIRTUALKEYBOARDINPUTCONTEXT_P_H
 #define QVIRTUALKEYBOARDINPUTCONTEXT_P_H
@@ -43,9 +17,13 @@
 
 #include <QObject>
 #include <QRectF>
+#include <QSet>
 #include <QInputMethodEvent>
+#include <QQuickItem>
 #include <QtVirtualKeyboard/qvirtualkeyboardinputcontext.h>
 #include <QtVirtualKeyboard/private/shadowinputcontext_p.h>
+#include <QtVirtualKeyboard/qvirtualkeyboardobserver.h>
+#include <QtVirtualKeyboard/private/qvirtualkeyboardnamespace_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -63,7 +41,7 @@ class ShiftHandler;
 class QVirtualKeyboardInputEngine;
 class QVirtualKeyboardInputContextPrivate;
 
-class QVIRTUALKEYBOARD_EXPORT QVirtualKeyboardInputContextPrivate : public QObject
+class Q_VIRTUALKEYBOARD_EXPORT QVirtualKeyboardInputContextPrivate : public QObject
 {
     Q_OBJECT
     Q_DECLARE_PUBLIC(QVirtualKeyboardInputContext)
@@ -75,7 +53,10 @@ class QVIRTUALKEYBOARD_EXPORT QVirtualKeyboardInputContextPrivate : public QObje
     Q_PROPERTY(QObject *inputItem READ inputItem NOTIFY inputItemChanged)
     Q_PROPERTY(QtVirtualKeyboard::ShiftHandler *shiftHandler READ shiftHandler CONSTANT)
     Q_PROPERTY(QtVirtualKeyboard::ShadowInputContext *shadow READ shadow CONSTANT)
-    Q_PROPERTY(QStringList inputMethods READ inputMethods CONSTANT)
+    Q_MOC_INCLUDE("shifthandler_p.h")
+    QML_NAMED_ELEMENT(InputContextPrivate)
+    QML_UNCREATABLE("InputContextPrivate is only available via InputContext.priv")
+    QML_ADDED_IN_VERSION(2, 0)
 
     explicit QVirtualKeyboardInputContextPrivate(QVirtualKeyboardInputContext *q_ptr);
     void init();
@@ -86,7 +67,8 @@ public:
         InputMethodEvent = 0x2,
         KeyEvent = 0x4,
         InputMethodClick = 0x8,
-        SyncShadowInput = 0x10
+        SyncShadowInput = 0x10,
+        SetFocus = 0x20
     };
     Q_FLAG(State)
     Q_DECLARE_FLAGS(StateFlags, QVirtualKeyboardInputContextPrivate::State)
@@ -106,12 +88,14 @@ public:
     QObject *inputItem() const;
     QtVirtualKeyboard::ShiftHandler *shiftHandler() const;
     QtVirtualKeyboard::ShadowInputContext *shadow() const;
-    QStringList inputMethods() const;
+    Q_INVOKABLE void setKeyboardObserver(QVirtualKeyboardObserver *keyboardObserver);
 
     // Helper functions
     Q_INVOKABLE bool fileExists(const QUrl &fileUrl);
     Q_INVOKABLE bool hasEnterKeyAction(QObject *item) const;
     Q_INVOKABLE void registerInputPanel(QObject *inputPanel);
+    Q_INVOKABLE bool contains(const QPointF &point) const;
+    Q_INVOKABLE QtVirtualKeyboard::KeyboardFunctionKey keyboardFunctionKey(QtVirtualKeyboard::KeyboardFunction keyboardFunction) const;
 
 Q_SIGNALS:
     void focusChanged();
@@ -146,6 +130,7 @@ private:
     inline void clearState(const State &state) { stateFlags &= ~StateFlags(state); }
     inline bool testState(const State &state) const { return stateFlags.testFlag(state); }
     inline bool isEmptyState() const { return !stateFlags; }
+    void updateSelectionControlVisible(bool inputPanelVisible);
 
 private:
     QVirtualKeyboardInputContext *q_ptr;
@@ -153,8 +138,7 @@ private:
     QVirtualKeyboardInputEngine *inputEngine;
     QtVirtualKeyboard::ShiftHandler *_shiftHandler;
     QPointer<QObject> inputPanel;
-    QPointer<QObject> inputPanelParentItem;
-    qreal inputPanelZ = .0;
+    QPointer<QQuickItem> dimmer;
     QRectF keyboardRect;
     QRectF previewRect;
     bool _previewVisible;
@@ -180,6 +164,7 @@ private:
 #endif
     QSet<quint32> activeKeys;
     QtVirtualKeyboard::ShadowInputContext _shadow;
+    QPointer<QVirtualKeyboardObserver> keyboardObserver;
 
     friend class QtVirtualKeyboard::PlatformInputContext;
     friend class QVirtualKeyboardScopedState;
@@ -207,6 +192,23 @@ private:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QVirtualKeyboardInputContextPrivate::StateFlags)
+
+/*!
+    TODO: Remove this type and move the registration back into QVirtualKeyboardInputContext when
+          QML stops creating separate singleton instances for each version.
+ */
+struct QVirtualKeyboardInputContextForeign
+{
+    Q_GADGET
+    QML_FOREIGN(QVirtualKeyboardInputContext)
+    QML_NAMED_ELEMENT(InputContext)
+    QML_SINGLETON
+    QML_ADDED_IN_VERSION(1, 0)
+    QML_EXTRA_VERSION(2, 0)
+
+public:
+    static QVirtualKeyboardInputContext *create(QQmlEngine *qmlEngine, QJSEngine *);
+};
 
 QT_END_NAMESPACE
 

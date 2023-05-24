@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,7 +24,7 @@ bool CJX_Delta::DynamicTypeIs(TypeTag eType) const {
   return eType == static_type__ || ParentType__::DynamicTypeIs(eType);
 }
 
-CJS_Result CJX_Delta::restore(CFX_V8* runtime,
+CJS_Result CJX_Delta::restore(CFXJSE_Engine* runtime,
                               const std::vector<v8::Local<v8::Value>>& params) {
   if (!params.empty())
     return CJS_Result::Failure(JSMessage::kParamError);
@@ -32,14 +32,17 @@ CJS_Result CJX_Delta::restore(CFX_V8* runtime,
   return CJS_Result::Success();
 }
 
-void CJX_Delta::currentValue(CFXJSE_Value* pValue,
+void CJX_Delta::currentValue(v8::Isolate* pIsolate,
+                             v8::Local<v8::Value>* pValue,
                              bool bSetting,
                              XFA_Attribute eAttribute) {}
 
-void CJX_Delta::savedValue(CFXJSE_Value* pValue,
+void CJX_Delta::savedValue(v8::Isolate* pIsolate,
+                           v8::Local<v8::Value>* pValue,
                            bool bSetting,
                            XFA_Attribute eAttribute) {}
 
-void CJX_Delta::target(CFXJSE_Value* pValue,
+void CJX_Delta::target(v8::Isolate* pIsolate,
+                       v8::Local<v8::Value>* pValue,
                        bool bSetting,
                        XFA_Attribute eAttribute) {}

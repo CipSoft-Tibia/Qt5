@@ -4,7 +4,5 @@
     <dependencies>
         <dependency catalog="qtbase_nl"/>
         <dependency catalog="qtmultimedia_nl"/>
-        <dependency catalog="qtscript_nl"/>
-        <dependency catalog="qtxmlpatterns_nl"/>
     </dependencies>
 </TS>

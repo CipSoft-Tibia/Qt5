@@ -1,11 +1,11 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/css/parser/css_parser_fast_paths.h"
 
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/blink/renderer/core/css/css_color_value.h"
+#include "third_party/blink/renderer/core/css/css_color.h"
 #include "third_party/blink/renderer/core/css/css_identifier_value.h"
 #include "third_party/blink/renderer/core/css/css_value_list.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
@@ -55,42 +55,46 @@ TEST(CSSParserFastPathsTest, ParseCSSWideKeywords) {
 }
 
 TEST(CSSParserFastPathsTest, ParseRevert) {
-  // Revert enabled, IsKeywordPropertyID=false
+  // Revert enabled, IsHandledByKeywordFastPath=false
   {
-    DCHECK(!CSSParserFastPaths::IsKeywordPropertyID(CSSPropertyID::kMarginTop));
-    ScopedCSSRevertForTest scoped_revert(true);
+    DCHECK(!CSSParserFastPaths::IsHandledByKeywordFastPath(
+        CSSPropertyID::kMarginTop));
     CSSValue* value = CSSParserFastPaths::MaybeParseValue(
         CSSPropertyID::kMarginTop, "revert", kHTMLStandardMode);
     ASSERT_TRUE(value);
     EXPECT_TRUE(value->IsRevertValue());
   }
 
-  // Revert enabled, IsKeywordPropertyID=true
+  // Revert enabled, IsHandledByKeywordFastPath=true
   {
-    DCHECK(CSSParserFastPaths::IsKeywordPropertyID(CSSPropertyID::kDirection));
-    ScopedCSSRevertForTest scoped_revert(true);
+    DCHECK(CSSParserFastPaths::IsHandledByKeywordFastPath(
+        CSSPropertyID::kDirection));
     CSSValue* value = CSSParserFastPaths::MaybeParseValue(
         CSSPropertyID::kDirection, "revert", kHTMLStandardMode);
     ASSERT_TRUE(value);
     EXPECT_TRUE(value->IsRevertValue());
   }
+}
 
-  // Revert disabled, IsKeywordPropertyID=false
+TEST(CSSParserFastPathsTest, ParseRevertLayer) {
+  // 'revert-layer' enabled, IsHandledByKeywordFastPath=false
   {
-    DCHECK(!CSSParserFastPaths::IsKeywordPropertyID(CSSPropertyID::kMarginTop));
-    ScopedCSSRevertForTest scoped_revert(false);
+    DCHECK(!CSSParserFastPaths::IsHandledByKeywordFastPath(
+        CSSPropertyID::kMarginTop));
     CSSValue* value = CSSParserFastPaths::MaybeParseValue(
-        CSSPropertyID::kMarginTop, "revert", kHTMLStandardMode);
-    EXPECT_FALSE(value);
+        CSSPropertyID::kMarginTop, "revert-layer", kHTMLStandardMode);
+    ASSERT_TRUE(value);
+    EXPECT_TRUE(value->IsRevertLayerValue());
   }
 
-  // Revert disabled, IsKeywordPropertyID=true
+  // 'revert-layer' enabled, IsHandledByKeywordFastPath=true
   {
-    DCHECK(CSSParserFastPaths::IsKeywordPropertyID(CSSPropertyID::kDirection));
-    ScopedCSSRevertForTest scoped_revert(false);
+    DCHECK(CSSParserFastPaths::IsHandledByKeywordFastPath(
+        CSSPropertyID::kDirection));
     CSSValue* value = CSSParserFastPaths::MaybeParseValue(
-        CSSPropertyID::kDirection, "revert", kHTMLStandardMode);
-    EXPECT_FALSE(value);
+        CSSPropertyID::kDirection, "revert-layer", kHTMLStandardMode);
+    ASSERT_TRUE(value);
+    EXPECT_TRUE(value->IsRevertLayerValue());
   }
 }
 
@@ -151,93 +155,221 @@ TEST(CSSParserFastPathsTest, ParseInvalidTransform) {
 }
 
 TEST(CSSParserFastPathsTest, ParseColorWithLargeAlpha) {
-  CSSValue* value = CSSParserFastPaths::ParseColor("rgba(0,0,0,1893205797.13)",
-                                                   kHTMLStandardMode);
-  EXPECT_NE(nullptr, value);
-  EXPECT_TRUE(value->IsColorValue());
-  EXPECT_EQ(Color::kBlack, To<cssvalue::CSSColorValue>(*value).Value());
+  Color color;
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("rgba(0,0,0,1893205797.13)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ(Color::kBlack, color);
 }
 
 TEST(CSSParserFastPathsTest, ParseColorWithNewSyntax) {
-  CSSValue* value =
-      CSSParserFastPaths::ParseColor("rgba(0 0 0)", kHTMLStandardMode);
-  EXPECT_NE(nullptr, value);
-  EXPECT_TRUE(value->IsColorValue());
-  EXPECT_EQ(Color::kBlack, To<cssvalue::CSSColorValue>(*value).Value());
+  Color color;
+  EXPECT_EQ(
+      ParseColorResult::kColor,
+      CSSParserFastPaths::ParseColor("rgba(0 0 0)", kHTMLStandardMode, color));
+  EXPECT_EQ(Color::kBlack, color);
 
-  value = CSSParserFastPaths::ParseColor("rgba(0 0 0 / 1)", kHTMLStandardMode);
-  EXPECT_NE(nullptr, value);
-  EXPECT_TRUE(value->IsColorValue());
-  EXPECT_EQ(Color::kBlack, To<cssvalue::CSSColorValue>(*value).Value());
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("rgba(0 0 0 / 1)", kHTMLStandardMode,
+                                           color));
+  EXPECT_EQ(Color::kBlack, color);
 
-  value = CSSParserFastPaths::ParseColor("rgba(0, 0, 0, 1)", kHTMLStandardMode);
-  EXPECT_NE(nullptr, value);
-  EXPECT_TRUE(value->IsColorValue());
-  EXPECT_EQ(Color::kBlack, To<cssvalue::CSSColorValue>(*value).Value());
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("rgba(0, 0, 0, 1)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ(Color::kBlack, color);
 
-  value = CSSParserFastPaths::ParseColor("RGBA(0 0 0 / 1)", kHTMLStandardMode);
-  EXPECT_NE(nullptr, value);
-  EXPECT_TRUE(value->IsColorValue());
-  EXPECT_EQ(Color::kBlack, To<cssvalue::CSSColorValue>(*value).Value());
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("rgba(0 0 0 0)", kHTMLStandardMode,
+                                           color));
 
-  value = CSSParserFastPaths::ParseColor("RGB(0 0 0 / 1)", kHTMLStandardMode);
-  EXPECT_NE(nullptr, value);
-  EXPECT_TRUE(value->IsColorValue());
-  EXPECT_EQ(Color::kBlack, To<cssvalue::CSSColorValue>(*value).Value());
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("rgba(0, 0 0 1)", kHTMLStandardMode,
+                                           color));
 
-  value = CSSParserFastPaths::ParseColor("rgba(0 0 0 0)", kHTMLStandardMode);
-  EXPECT_EQ(nullptr, value);
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("rgba(0, 0, 0 / 1)",
+                                           kHTMLStandardMode, color));
 
-  value = CSSParserFastPaths::ParseColor("rgba(0, 0 0 1)", kHTMLStandardMode);
-  EXPECT_EQ(nullptr, value);
-
-  value =
-      CSSParserFastPaths::ParseColor("rgba(0, 0, 0 / 1)", kHTMLStandardMode);
-  EXPECT_EQ(nullptr, value);
-
-  value = CSSParserFastPaths::ParseColor("rgba(0 0 0, 1)", kHTMLStandardMode);
-  EXPECT_EQ(nullptr, value);
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("rgba(0 0 0, 1)", kHTMLStandardMode,
+                                           color));
 }
 
 TEST(CSSParserFastPathsTest, ParseColorWithDecimal) {
-  CSSValue* value = CSSParserFastPaths::ParseColor("rgba(0.0, 0.0, 0.0, 1.0)",
-                                                   kHTMLStandardMode);
-  EXPECT_NE(nullptr, value);
-  EXPECT_TRUE(value->IsColorValue());
-  EXPECT_EQ(Color::kBlack, To<cssvalue::CSSColorValue>(*value).Value());
+  Color color;
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("rgba(0.0, 0.0, 0.0, 1.0)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ(Color::kBlack, color);
 
-  value =
-      CSSParserFastPaths::ParseColor("rgb(0.0, 0.0, 0.0)", kHTMLStandardMode);
-  EXPECT_NE(nullptr, value);
-  EXPECT_TRUE(value->IsColorValue());
-  EXPECT_EQ(Color::kBlack, To<cssvalue::CSSColorValue>(*value).Value());
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("rgb(0.0, 0.0, 0.0)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ(Color::kBlack, color);
 
-  value =
-      CSSParserFastPaths::ParseColor("rgb(0.0 , 0.0,0.0)", kHTMLStandardMode);
-  EXPECT_NE(nullptr, value);
-  EXPECT_TRUE(value->IsColorValue());
-  EXPECT_EQ(Color::kBlack, To<cssvalue::CSSColorValue>(*value).Value());
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("rgb(0.0 , 0.0,0.0)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ(Color::kBlack, color);
 
-  value = CSSParserFastPaths::ParseColor("rgb(254.5, 254.5, 254.5)",
-                                         kHTMLStandardMode);
-  EXPECT_NE(nullptr, value);
-  EXPECT_TRUE(value->IsColorValue());
-  EXPECT_EQ(Color::kWhite, To<cssvalue::CSSColorValue>(*value).Value());
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("rgb(254.5, 254.5, 254.5)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ(Color::kWhite, color);
+}
+
+TEST(CSSParserFastPathsTest, ParseHSL) {
+  Color color;
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsl(90deg, 50%, 25%)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgb(64, 96, 32)", color.SerializeAsCSSColor());
+
+  // Implicit “deg” angle.
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsl(180, 50%, 50%)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgb(64, 191, 191)", color.SerializeAsCSSColor());
+
+  // turn.
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsl(0.25turn, 25%, 50%)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgb(128, 159, 96)", color.SerializeAsCSSColor());
+
+  // rad.
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsl(1.0rad, 50%, 50%)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgb(191, 186, 64)", color.SerializeAsCSSColor());
+
+  // Wraparound.
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsl(450deg, 50%, 50%)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgb(128, 191, 64)", color.SerializeAsCSSColor());
+
+  // Lots of wraparound.
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsl(4050deg, 50%, 50%)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgb(128, 191, 64)", color.SerializeAsCSSColor());
+
+  // Negative wraparound.
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsl(-270deg, 50%, 50%)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgb(128, 191, 64)", color.SerializeAsCSSColor());
+
+  // Saturation clamping.
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsl(45deg, 150%, 50%)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgb(255, 191, 0)", color.SerializeAsCSSColor());
+
+  // Lightness clamping to negative.
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsl(45deg, 150%, -1000%)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgb(0, 0, 0)", color.SerializeAsCSSColor());
+
+  // Writing hsla() without alpha.
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsla(45deg, 150%, 50%)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgb(255, 191, 0)", color.SerializeAsCSSColor());
+}
+
+TEST(CSSParserFastPathsTest, ParseHSLWithAlpha) {
+  // With alpha, using hsl().
+  Color color;
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsl(30 , 1%,75%, 0.5)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgba(192, 191, 191, 0.5)", color.SerializeAsCSSColor());
+
+  // With alpha, using hsla().
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsla(30 , 1%,75%, 0.5)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgba(192, 191, 191, 0.5)", color.SerializeAsCSSColor());
+
+  // With alpha, using space-separated syntax.
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsla(30 1% 75% / 0.1)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgba(192, 191, 191, 0.1)", color.SerializeAsCSSColor());
+
+  // Clamp alpha.
+  EXPECT_EQ(ParseColorResult::kColor,
+            CSSParserFastPaths::ParseColor("hsla(30 1% 75% / 1.2)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ("rgb(192, 191, 191)", color.SerializeAsCSSColor());
+}
+
+TEST(CSSParserFastPathsTest, ParseHSLInvalid) {
+  // Invalid unit.
+  Color color;
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("hsl(20dag, 50%, 20%)",
+                                           kHTMLStandardMode, color));
+
+  // Mix of new and old space syntax.
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("hsl(0.2, 50%, 20% 0.3)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("hsl(0.2, 50%, 20% / 0.3)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("hsl(0.2 50% 20%, 0.3)",
+                                           kHTMLStandardMode, color));
+
+  // Junk after percentage.
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("hsl(0.2, 50% foo, 20% 0.3)",
+                                           kHTMLStandardMode, color));
+
+  // Stopping right before an expected %.
+  EXPECT_EQ(
+      ParseColorResult::kFailure,
+      CSSParserFastPaths::ParseColor("hsl(9,0.6", kHTMLStandardMode, color));
 }
 
 TEST(CSSParserFastPathsTest, IsValidKeywordPropertyAndValueOverflowClip) {
-  {
-    ScopedOverflowClipForTest overflow_clip_feature_enabler(false);
-    EXPECT_FALSE(CSSParserFastPaths::IsValidKeywordPropertyAndValue(
-        CSSPropertyID::kOverflowX, CSSValueID::kClip,
-        CSSParserMode::kHTMLStandardMode));
-  }
-  {
-    ScopedOverflowClipForTest overflow_clip_feature_enabler(true);
-    EXPECT_TRUE(CSSParserFastPaths::IsValidKeywordPropertyAndValue(
-        CSSPropertyID::kOverflowX, CSSValueID::kClip,
-        CSSParserMode::kHTMLStandardMode));
-  }
+  EXPECT_TRUE(CSSParserFastPaths::IsValidKeywordPropertyAndValue(
+      CSSPropertyID::kOverflowX, CSSValueID::kClip,
+      CSSParserMode::kHTMLStandardMode));
+}
+
+TEST(CSSParserFastPathsTest, InternalColorsOnlyAllowedInUaMode) {
+  Color color;
+  EXPECT_EQ(ParseColorResult::kKeyword,
+            CSSParserFastPaths::ParseColor("blue", kHTMLStandardMode, color));
+  EXPECT_EQ(ParseColorResult::kKeyword,
+            CSSParserFastPaths::ParseColor("blue", kHTMLQuirksMode, color));
+  EXPECT_EQ(ParseColorResult::kKeyword,
+            CSSParserFastPaths::ParseColor("blue", kUASheetMode, color));
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("-internal-spelling-error-color",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("-internal-spelling-error-color",
+                                           kHTMLQuirksMode, color));
+  EXPECT_EQ(ParseColorResult::kKeyword,
+            CSSParserFastPaths::ParseColor("-internal-spelling-error-color",
+                                           kUASheetMode, color));
+
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("-internal-grammar-error-color",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("-internal-grammar-error-color",
+                                           kHTMLQuirksMode, color));
+  EXPECT_EQ(ParseColorResult::kKeyword,
+            CSSParserFastPaths::ParseColor("-internal-grammar-error-color",
+                                           kUASheetMode, color));
 }
 
 }  // namespace blink

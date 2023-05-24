@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -88,3 +88,32 @@ def origin_trials(features):
             dfs(str(feature['name']))
 
     return origin_trials_set
+
+
+def browser_read_access(features):
+    return [
+        f for f in features if f['browser_process_read_access']
+        or f['browser_process_read_write_access']
+    ]
+
+
+def browser_write_access(features):
+    return [f for f in features if f['browser_process_read_write_access']]
+
+
+def override_from_pref(features):
+    return [f for f in features if f['override_from_pref']]
+
+
+# The list of features we want to generate getters/setters for may contain
+# duplicates, so this function will return a deduped list.
+def overridable_features(features):
+    combined_list = override_from_pref(features) + browser_read_access(
+        features)
+    seen = set()
+    final_list = []
+    for f in combined_list:
+        if f['name'] not in seen:
+            seen.add(f['name'])
+            final_list.append(f)
+    return final_list

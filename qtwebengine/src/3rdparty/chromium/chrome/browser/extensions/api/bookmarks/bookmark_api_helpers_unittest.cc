@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 
 #include <memory>
 
+#include "base/memory/raw_ptr.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
@@ -55,31 +56,28 @@ class ExtensionBookmarksTest : public testing::Test {
     managed_ = ManagedBookmarkServiceFactory::GetForProfile(profile_.get());
     bookmarks::test::WaitForBookmarkModelToLoad(model_);
 
-    node_ = model_->AddURL(model_->other_node(), 0, base::ASCIIToUTF16("Digg"),
+    node_ = model_->AddURL(model_->other_node(), 0, u"Digg",
                            GURL("http://www.reddit.com"));
     model_->SetNodeMetaInfo(node_, "some_key1", "some_value1");
     model_->SetNodeMetaInfo(node_, "some_key2", "some_value2");
-    model_->AddURL(model_->other_node(), 0, base::ASCIIToUTF16("News"),
+    model_->AddURL(model_->other_node(), 0, u"News",
                    GURL("http://www.foxnews.com"));
-    folder_ = model_->AddFolder(
-        model_->other_node(), 0, base::ASCIIToUTF16("outer folder"));
+    folder_ = model_->AddFolder(model_->other_node(), 0, u"outer folder");
     model_->SetNodeMetaInfo(folder_, "some_key1", "some_value1");
-    model_->AddFolder(folder_, 0, base::ASCIIToUTF16("inner folder 1"));
-    model_->AddFolder(folder_, 0, base::ASCIIToUTF16("inner folder 2"));
-    node2_ = model_->AddURL(
-        folder_, 0, base::ASCIIToUTF16("Digg"), GURL("http://reddit.com"));
+    model_->AddFolder(folder_, 0, u"inner folder 1");
+    model_->AddFolder(folder_, 0, u"inner folder 2");
+    node2_ = model_->AddURL(folder_, 0, u"Digg", GURL("http://reddit.com"));
     model_->SetNodeMetaInfo(node2_, "some_key2", "some_value2");
-    model_->AddURL(
-        folder_, 0, base::ASCIIToUTF16("CNet"), GURL("http://cnet.com"));
+    model_->AddURL(folder_, 0, u"CNet", GURL("http://cnet.com"));
   }
 
   content::BrowserTaskEnvironment task_environment_;
   std::unique_ptr<TestingProfile> profile_;
-  bookmarks::ManagedBookmarkService* managed_;
-  BookmarkModel* model_;
-  const BookmarkNode* node_;
-  const BookmarkNode* node2_;
-  const BookmarkNode* folder_;
+  raw_ptr<bookmarks::ManagedBookmarkService> managed_;
+  raw_ptr<BookmarkModel> model_;
+  raw_ptr<const BookmarkNode> node_;
+  raw_ptr<const BookmarkNode> node2_;
+  raw_ptr<const BookmarkNode> folder_;
 };
 
 TEST_F(ExtensionBookmarksTest, GetFullTreeFromRoot) {
@@ -127,9 +125,7 @@ TEST_F(ExtensionBookmarksTest, GetModifiableNode) {
 
 TEST_F(ExtensionBookmarksTest, GetManagedNode) {
   const BookmarkNode* managed_bookmark =
-      model_->AddURL(managed_->managed_node(),
-                     0,
-                     base::ASCIIToUTF16("Chromium"),
+      model_->AddURL(managed_->managed_node(), 0, u"Chromium",
                      GURL("http://www.chromium.org/"));
   BookmarkTreeNode tree = GetBookmarkTreeNode(managed_, managed_bookmark,
                                               false,   // Recurse.
@@ -156,9 +152,7 @@ TEST_F(ExtensionBookmarksTest, RemoveNodePermanent) {
 
 TEST_F(ExtensionBookmarksTest, RemoveNodeManaged) {
   const BookmarkNode* managed_bookmark =
-      model_->AddURL(managed_->managed_node(),
-                     0,
-                     base::ASCIIToUTF16("Chromium"),
+      model_->AddURL(managed_->managed_node(), 0, u"Chromium",
                      GURL("http://www.chromium.org"));
   std::string error;
   EXPECT_FALSE(
@@ -180,62 +174,58 @@ TEST_F(ExtensionBookmarksTest, RemoveNodeRecursive) {
 }
 
 TEST_F(ExtensionBookmarksTest, GetMetaInfo) {
-  base::DictionaryValue id_to_meta_info_map;
-  GetMetaInfo(*model_->other_node(), &id_to_meta_info_map);
+  base::Value::Dict id_to_meta_info_map;
+  GetMetaInfo(*model_->other_node(), id_to_meta_info_map);
   EXPECT_EQ(8u, id_to_meta_info_map.size());
 
   // Verify top level node.
-  const base::Value* value = NULL;
-  EXPECT_TRUE(id_to_meta_info_map.Get(
-      base::NumberToString(model_->other_node()->id()), &value));
-  ASSERT_TRUE(NULL != value);
-  const base::DictionaryValue* dictionary_value = NULL;
-  EXPECT_TRUE(value->GetAsDictionary(&dictionary_value));
-  ASSERT_TRUE(NULL != dictionary_value);
-  EXPECT_EQ(0u, dictionary_value->size());
+  {
+    const base::Value* value = id_to_meta_info_map.Find(
+        base::NumberToString(model_->other_node()->id()));
+    ASSERT_NE(value, nullptr);
+    ASSERT_TRUE(value->is_dict());
+    const base::Value::Dict& dict = value->GetDict();
+    EXPECT_EQ(0u, dict.size());
+  }
 
   // Verify bookmark with two meta info key/value pairs.
-  value = NULL;
-  EXPECT_TRUE(
-      id_to_meta_info_map.Get(base::NumberToString(node_->id()), &value));
-  ASSERT_TRUE(NULL != value);
-  dictionary_value = NULL;
-  EXPECT_TRUE(value->GetAsDictionary(&dictionary_value));
-  ASSERT_TRUE(NULL != dictionary_value);
-  EXPECT_EQ(2u, dictionary_value->size());
-  std::string string_value;
-  EXPECT_TRUE(dictionary_value->GetString("some_key1", &string_value));
-  EXPECT_EQ("some_value1", string_value);
-  EXPECT_TRUE(dictionary_value->GetString("some_key2", &string_value));
-  EXPECT_EQ("some_value2", string_value);
+  {
+    const base::Value* value =
+        id_to_meta_info_map.Find(base::NumberToString(node_->id()));
+    ASSERT_NE(value, nullptr);
+    ASSERT_TRUE(value->is_dict());
+    const base::Value::Dict& dict = value->GetDict();
+    EXPECT_EQ(2u, dict.size());
+    ASSERT_TRUE(dict.FindString("some_key1"));
+    EXPECT_EQ("some_value1", *(dict.FindString("some_key1")));
+    ASSERT_TRUE(dict.FindString("some_key2"));
+    EXPECT_EQ("some_value2", *(dict.FindString("some_key2")));
+  }
 
   // Verify folder with one meta info key/value pair.
-  value = NULL;
-  EXPECT_TRUE(
-      id_to_meta_info_map.Get(base::NumberToString(folder_->id()), &value));
-  ASSERT_TRUE(NULL != value);
-  dictionary_value = NULL;
-  EXPECT_TRUE(value->GetAsDictionary(&dictionary_value));
-  ASSERT_TRUE(NULL != dictionary_value);
-  EXPECT_EQ(1u, dictionary_value->size());
-  EXPECT_TRUE(dictionary_value->GetString("some_key1", &string_value));
-  EXPECT_EQ("some_value1", string_value);
+  {
+    const base::Value* value =
+        id_to_meta_info_map.Find(base::NumberToString(folder_->id()));
+    ASSERT_NE(value, nullptr);
+    ASSERT_TRUE(value->is_dict());
+    const base::Value::Dict& dict = value->GetDict();
+    EXPECT_EQ(1u, dict.size());
+    ASSERT_TRUE(dict.FindString("some_key1"));
+    EXPECT_EQ("some_value1", *(dict.FindString("some_key1")));
+  }
 
   // Verify bookmark in a subfolder with one meta info key/value pairs.
-  value = NULL;
-  EXPECT_TRUE(
-      id_to_meta_info_map.Get(base::NumberToString(node2_->id()), &value));
-  ASSERT_TRUE(NULL != value);
-  dictionary_value = NULL;
-  EXPECT_TRUE(value->GetAsDictionary(&dictionary_value));
-  ASSERT_TRUE(NULL != dictionary_value);
-  EXPECT_EQ(1u, dictionary_value->size());
-  string_value.clear();
-  EXPECT_FALSE(dictionary_value->GetString("some_key1", &string_value));
-  EXPECT_EQ("", string_value);
-  EXPECT_TRUE(dictionary_value->GetString("some_key2", &string_value));
-  EXPECT_EQ("some_value2", string_value);
-
+  {
+    const base::Value* value =
+        id_to_meta_info_map.Find(base::NumberToString(node2_->id()));
+    ASSERT_NE(value, nullptr);
+    ASSERT_TRUE(value->is_dict());
+    const base::Value::Dict& dict = value->GetDict();
+    EXPECT_EQ(1u, dict.size());
+    ASSERT_FALSE(dict.FindString("some_key1"));
+    ASSERT_TRUE(dict.FindString("some_key2"));
+    EXPECT_EQ("some_value2", *(dict.FindString("some_key2")));
+  }
 }
 
 }  // namespace bookmark_api_helpers

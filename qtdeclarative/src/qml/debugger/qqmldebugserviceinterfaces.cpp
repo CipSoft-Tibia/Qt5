@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmldebugserviceinterfaces_p.h"
 
@@ -48,7 +12,84 @@ const QString QQmlProfilerService::s_key = QStringLiteral("CanvasFrameRate");
 const QString QDebugMessageService::s_key = QStringLiteral("DebugMessages");
 const QString QQmlEngineControlService::s_key = QStringLiteral("EngineControl");
 const QString QQmlNativeDebugService::s_key = QStringLiteral("NativeQmlDebugger");
+#if QT_CONFIG(translation)
 const QString QQmlDebugTranslationService::s_key = QStringLiteral("DebugTranslation");
+#endif
+
+QV4DebugService::~QV4DebugService()
+    = default;
+QQmlEngineDebugService::~QQmlEngineDebugService()
+    = default;
+QQmlInspectorService::~QQmlInspectorService()
+    = default;
+QQmlProfilerService::~QQmlProfilerService()
+    = default;
+QDebugMessageService::~QDebugMessageService()
+    = default;
+QQmlEngineControlService::~QQmlEngineControlService()
+    = default;
+QQmlNativeDebugService::~QQmlNativeDebugService()
+    = default;
+
+static QQmlDebugStatesDelegate *(*statesDelegateFactory)() = nullptr;
+void QQmlEngineDebugService::setStatesDelegateFactory(QQmlDebugStatesDelegate *(*factory)())
+{
+    statesDelegateFactory = factory;
+}
+
+QQmlDebugStatesDelegate *QQmlEngineDebugService::createStatesDelegate()
+{
+    return statesDelegateFactory ? statesDelegateFactory() : nullptr;
+}
+
+#if QT_CONFIG(translation)
+QQmlDebugTranslationService::~QQmlDebugTranslationService()
+    = default;
+
+const TranslationBindingInformation TranslationBindingInformation::create(
+        const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
+        const QV4::CompiledData::Binding *binding, QObject *scopeObject,
+        QQmlRefPointer<QQmlContextData> ctxt)
+{
+    QQmlTranslation translation;
+    if (binding->type() == QV4::CompiledData::Binding::Type_TranslationById) {
+        const QV4::CompiledData::TranslationData data =
+                compilationUnit->data->translations()[binding->value.translationDataIndex];
+        const QString id = compilationUnit->stringAt(data.stringIndex);
+        const int n = data.number;
+
+        translation = QQmlTranslation(QQmlTranslation::QsTrIdData(id, n));
+    } else {
+        Q_ASSERT(binding->type() == QV4::CompiledData::Binding::Type_Translation);
+
+        const QV4::CompiledData::TranslationData data =
+                compilationUnit->data->translations()[binding->value.translationDataIndex];
+        const QString text = compilationUnit->stringAt(data.stringIndex);
+        const QString comment = compilationUnit->stringAt(data.commentIndex);
+        const bool hasContext
+                = data.contextIndex != QV4::CompiledData::TranslationData::NoContextIndex;
+        const int n = data.number;
+
+        translation = QQmlTranslation(
+                    QQmlTranslation::QsTrData(
+                        hasContext
+                                ? compilationUnit->stringAt(data.contextIndex)
+                                : QQmlTranslation::contextFromQmlFilename(
+                                        compilationUnit->fileName()),
+                        text, comment, n));
+    }
+
+    return { compilationUnit,
+             scopeObject,
+             ctxt,
+
+             compilationUnit->stringAt(binding->propertyNameIndex),
+             translation,
+
+             binding->location.line(),
+             binding->location.column() };
+}
+#endif
 
 QT_END_NAMESPACE
 

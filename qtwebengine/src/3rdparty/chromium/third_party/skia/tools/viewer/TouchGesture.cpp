@@ -155,7 +155,7 @@ void TouchGesture::touchBegin(void* owner, float x, float y) {
         SkDebugf("---- already exists, removing\n");
     }
 
-    if (fTouches.count() == 2) {
+    if (fTouches.size() == 2) {
         return;
     }
 
@@ -164,7 +164,7 @@ void TouchGesture::touchBegin(void* owner, float x, float y) {
 
     this->appendNewRec(owner, x, y);
 
-    switch (fTouches.count()) {
+    switch (fTouches.size()) {
         case 1:
             fState = kTranslate_State;
             break;
@@ -177,7 +177,7 @@ void TouchGesture::touchBegin(void* owner, float x, float y) {
 }
 
 int TouchGesture::findRec(void* owner) const {
-    for (int i = 0; i < fTouches.count(); i++) {
+    for (int i = 0; i < fTouches.size(); i++) {
         if (owner == fTouches[i].fOwner) {
             return i;
         }
@@ -189,28 +189,11 @@ static SkScalar center(float pos0, float pos1) {
     return (pos0 + pos1) * 0.5f;
 }
 
-static const float MAX_ZOOM_SCALE = 4;
-static const float MIN_ZOOM_SCALE = 0.25f;
-
-float TouchGesture::limitTotalZoom(float scale) const {
-    // this query works 'cause we know that we're square-scale w/ no skew/rotation
-    const float curr = SkScalarToFloat(fGlobalM[0]);
-
-    if (scale > 1 && curr * scale > MAX_ZOOM_SCALE) {
-        scale = MAX_ZOOM_SCALE / curr;
-    } else if (scale < 1 && curr * scale < MIN_ZOOM_SCALE) {
-        scale = MIN_ZOOM_SCALE / curr;
-    }
-    return scale;
-}
-
 void TouchGesture::startZoom() {
     fState = kZoom_State;
 }
 
 void TouchGesture::updateZoom(float scale, float startX, float startY, float lastX, float lastY) {
-    scale = this->limitTotalZoom(scale);
-
     fLocalM.setTranslate(-startX, -startY);
     fLocalM.postScale(scale, scale);
     fLocalM.postTranslate(lastX, lastY);
@@ -238,7 +221,7 @@ void TouchGesture::touchMoved(void* owner, float x, float y) {
     Rec& rec = fTouches[index];
 
     // not sure how valuable this is
-    if (fTouches.count() == 2) {
+    if (fTouches.size() == 2) {
         if (close_enough_for_jitter(rec.fLastX, rec.fLastY, x, y)) {
 //            SkDebugf("--- drop touchMove, within jitter tolerance %g %g\n", rec.fLastX - x, rec.fLastY - y);
             return;
@@ -250,7 +233,7 @@ void TouchGesture::touchMoved(void* owner, float x, float y) {
     rec.fPrevT = rec.fLastT;
     rec.fLastT = static_cast<float>(SkTime::GetSecs());
 
-    switch (fTouches.count()) {
+    switch (fTouches.size()) {
         case 1: {
             float dx = rec.fLastX - rec.fStartX;
             float dy = rec.fLastY - rec.fStartY;
@@ -290,7 +273,7 @@ void TouchGesture::touchEnd(void* owner) {
     }
 
     // count() reflects the number before we removed the owner
-    switch (fTouches.count()) {
+    switch (fTouches.size()) {
         case 1: {
             this->flushLocalM();
             float dx = rec.fLastX - rec.fPrevX;

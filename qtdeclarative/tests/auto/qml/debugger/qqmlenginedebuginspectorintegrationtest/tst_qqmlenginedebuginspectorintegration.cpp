@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "../shared/debugutil_p.h"
-#include "../../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 #include <private/qqmldebugconnection_p.h>
 #include <private/qqmlenginedebugclient_p.h>
@@ -44,6 +19,9 @@
 class tst_QQmlEngineDebugInspectorIntegration : public QQmlDebugTest
 {
     Q_OBJECT
+
+public:
+    tst_QQmlEngineDebugInspectorIntegration();
 
 private:
     ConnectResult init(bool restrictServices);
@@ -77,7 +55,7 @@ QQmlEngineDebugObjectReference tst_QQmlEngineDebugInspectorIntegration::findRoot
     if (!QQmlDebugTest::waitForSignal(m_engineDebugClient, SIGNAL(result())))
         return QQmlEngineDebugObjectReference();
 
-    int count = m_engineDebugClient->rootContext().contexts.count();
+    int count = m_engineDebugClient->rootContext().contexts.size();
     m_engineDebugClient->queryObject(
                 m_engineDebugClient->rootContext().contexts[count - 1].objects[0], &success);
     if (!QQmlDebugTest::waitForSignal(m_engineDebugClient, SIGNAL(result())))
@@ -85,10 +63,15 @@ QQmlEngineDebugObjectReference tst_QQmlEngineDebugInspectorIntegration::findRoot
     return m_engineDebugClient->object();
 }
 
+tst_QQmlEngineDebugInspectorIntegration::tst_QQmlEngineDebugInspectorIntegration()
+    : QQmlDebugTest(QT_QMLTEST_DATADIR)
+{
+}
+
 QQmlDebugTest::ConnectResult tst_QQmlEngineDebugInspectorIntegration::init(bool restrictServices)
 {
     return QQmlDebugTest::connectTo(
-                QLibraryInfo::location(QLibraryInfo::BinariesPath) + "/qml",
+                QLibraryInfo::path(QLibraryInfo::BinariesPath) + "/qml",
                 restrictServices ? QStringLiteral("QmlDebugger,QmlInspector") : QString(),
                 testFile("qtquick2.qml"), true);
 }
@@ -173,7 +156,7 @@ void tst_QQmlEngineDebugInspectorIntegration::createObject()
 
     QQmlEngineDebugObjectReference rootObject = findRootObject();
     QVERIFY(rootObject.debugId != -1);
-    QCOMPARE(rootObject.children.length(), 2);
+    QCOMPARE(rootObject.children.size(), 2);
 
     int requestId = m_inspectorClient->createObject(
                 qml, rootObject.debugId, QStringList() << QLatin1String("import QtQuick 2.0"),
@@ -183,7 +166,7 @@ void tst_QQmlEngineDebugInspectorIntegration::createObject()
 
     rootObject = findRootObject();
     QVERIFY(rootObject.debugId != -1);
-    QCOMPARE(rootObject.children.length(), 3);
+    QCOMPARE(rootObject.children.size(), 3);
     QCOMPARE(rootObject.children[2].idString, QLatin1String("xxxyxxx"));
 }
 
@@ -194,7 +177,7 @@ void tst_QQmlEngineDebugInspectorIntegration::moveObject()
     QCOMPARE(m_inspectorClient->state(), QQmlDebugClient::Enabled);
     QQmlEngineDebugObjectReference rootObject = findRootObject();
     QVERIFY(rootObject.debugId != -1);
-    QCOMPARE(rootObject.children.length(), 2);
+    QCOMPARE(rootObject.children.size(), 2);
 
     int childId = rootObject.children[0].debugId;
     int requestId = m_inspectorClient->moveObject(childId, rootObject.children[1].debugId);
@@ -203,12 +186,12 @@ void tst_QQmlEngineDebugInspectorIntegration::moveObject()
 
     rootObject = findRootObject();
     QVERIFY(rootObject.debugId != -1);
-    QCOMPARE(rootObject.children.length(), 1);
+    QCOMPARE(rootObject.children.size(), 1);
     bool success = false;
     m_engineDebugClient->queryObject(rootObject.children[0], &success);
     QVERIFY(success);
     QVERIFY(QQmlDebugTest::waitForSignal(m_engineDebugClient, SIGNAL(result())));
-    QCOMPARE(m_engineDebugClient->object().children.length(), 1);
+    QCOMPARE(m_engineDebugClient->object().children.size(), 1);
     QCOMPARE(m_engineDebugClient->object().children[0].debugId, childId);
 }
 
@@ -219,7 +202,7 @@ void tst_QQmlEngineDebugInspectorIntegration::destroyObject()
     QCOMPARE(m_inspectorClient->state(), QQmlDebugClient::Enabled);
     QQmlEngineDebugObjectReference rootObject = findRootObject();
     QVERIFY(rootObject.debugId != -1);
-    QCOMPARE(rootObject.children.length(), 2);
+    QCOMPARE(rootObject.children.size(), 2);
 
     int requestId = m_inspectorClient->destroyObject(rootObject.children[0].debugId);
     QTRY_COMPARE(m_recipient->lastResponseId, requestId);
@@ -227,12 +210,12 @@ void tst_QQmlEngineDebugInspectorIntegration::destroyObject()
 
     rootObject = findRootObject();
     QVERIFY(rootObject.debugId != -1);
-    QCOMPARE(rootObject.children.length(), 1);
+    QCOMPARE(rootObject.children.size(), 1);
     bool success = false;
     m_engineDebugClient->queryObject(rootObject.children[0], &success);
     QVERIFY(success);
     QVERIFY(QQmlDebugTest::waitForSignal(m_engineDebugClient, SIGNAL(result())));
-    QCOMPARE(m_engineDebugClient->object().children.length(), 0);
+    QCOMPARE(m_engineDebugClient->object().children.size(), 0);
 }
 
 QTEST_MAIN(tst_QQmlEngineDebugInspectorIntegration)

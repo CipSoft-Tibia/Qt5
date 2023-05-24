@@ -1,68 +1,31 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTCORE_RESULTSTORE_H
 #define QTCORE_RESULTSTORE_H
 
 #include <QtCore/qmap.h>
-#include <QtCore/qdebug.h>
+
+#include <utility>
 
 QT_REQUIRE_CONFIG(future);
 
 QT_BEGIN_NAMESPACE
 
-
 /*
     ResultStore stores indexed results. Results can be added and retrieved
-    either individually batched in a QVector. Retriveing results and checking
+    either individually batched in a QList. Retriveing results and checking
     which indexes are in the store can be done either by iterating or by random
-    accees. In addition results kan be removed from the front of the store,
+    access. In addition results can be removed from the front of the store,
     either individually or in batches.
 */
-
 
 namespace QtPrivate {
 
 class ResultItem
 {
 public:
-    ResultItem(const void *_result, int _count) : m_count(_count), result(_result) { } // contruct with vector of results
+    ResultItem(const void *_result, int _count) : m_count(_count), result(_result) { } // construct with vector of results
     ResultItem(const void *_result) : m_count(0), result(_result) { } // construct with result
     ResultItem() : m_count(0), result(nullptr) { }
     bool isValid() const { return result != nullptr; }
@@ -87,6 +50,8 @@ public:
     bool operator!=(const ResultIteratorBase &other) const;
     bool isVector() const;
     bool canIncrementVectorIndex() const;
+    bool isValid() const;
+
 protected:
     QMap<int, ResultItem>::const_iterator mapIterator;
     int m_vectorIndex;
@@ -97,17 +62,30 @@ public:
         return *pointer<T>();
     }
 
+    template<typename T>
+    T &value()
+    {
+        return *pointer<T>();
+    }
+
+    template <typename T>
+    T *pointer()
+    {
+        const T *p = std::as_const(*this).pointer<T>();
+        return const_cast<T *>(p);
+    }
+
     template <typename T>
     const T *pointer() const
     {
         if (mapIterator.value().isVector())
-            return &(reinterpret_cast<const QVector<T> *>(mapIterator.value().result)->at(m_vectorIndex));
+            return &(reinterpret_cast<const QList<T> *>(mapIterator.value().result)->at(m_vectorIndex));
         else
             return reinterpret_cast<const T *>(mapIterator.value().result);
     }
 };
 
-class Q_CORE_EXPORT ResultStoreBase
+class Q_CORE_EXPORT ResultStoreBase final
 {
 public:
     ResultStoreBase();
@@ -121,11 +99,14 @@ public:
     ResultIteratorBase resultAt(int index) const;
     bool contains(int index) const;
     int count() const;
+    // ### Qt 7: 'virtual' isn't required, can be removed, along with renaming
+    // the class to ResultStore and changing the members below to be private.
     virtual ~ResultStoreBase();
 
 protected:
     int insertResultItem(int index, ResultItem &resultItem);
     void insertResultItemIfValid(int index, ResultItem &resultItem);
+    bool containsValidResultItem(int index) const;
     void syncPendingResults();
     void syncResultCount();
     int updateInsertIndex(int index, int _count);
@@ -138,63 +119,103 @@ protected:
     QMap<int, ResultItem> pendingResults;
     int filteredResults;
 
-public:
     template <typename T>
-    int addResult(int index, const T *result)
+    static void clear(QMap<int, ResultItem> &store)
     {
-        if (result == nullptr)
-            return addResult(index, static_cast<void *>(nullptr));
-        else
-            return addResult(index, static_cast<void *>(new T(*result)));
+        QMap<int, ResultItem>::const_iterator mapIterator = store.constBegin();
+        while (mapIterator != store.constEnd()) {
+            if (mapIterator.value().isVector())
+                delete reinterpret_cast<const QList<T> *>(mapIterator.value().result);
+            else
+                delete reinterpret_cast<const T *>(mapIterator.value().result);
+            ++mapIterator;
+        }
+        store.clear();
+    }
+
+public:
+    template <typename T, typename...Args>
+    int emplaceResult(int index, Args&&...args)
+    {
+        if (containsValidResultItem(index)) // reject if already present
+            return -1;
+        return addResult(index, static_cast<void *>(new T(std::forward<Args>(args)...)));
     }
 
     template <typename T>
-    int addResults(int index, const QVector<T> *results)
+    int addResult(int index, const T *result)
+    {
+        if (containsValidResultItem(index)) // reject if already present
+            return -1;
+
+        if (result == nullptr)
+            return addResult(index, static_cast<void *>(nullptr));
+
+        return addResult(index, static_cast<void *>(new T(*result)));
+    }
+
+    template <typename T>
+    int moveResult(int index, T &&result)
+    {
+        static_assert(!std::is_reference_v<T>, "trying to move from an lvalue!");
+
+        return emplaceResult<std::remove_cv_t<T>>(index, std::forward<T>(result));
+    }
+
+    template<typename T>
+    int addResults(int index, const QList<T> *results)
     {
         if (results->empty()) // reject if results are empty
             return -1;
 
-        return addResults(index, new QVector<T>(*results), results->count(), results->count());
-    }
-
-    template <typename T>
-    int addResults(int index, const QVector<T> *results, int totalCount)
-    {
-        // reject if results are empty, and nothing is filtered away
-        if ((m_filterMode == false || results->count() == totalCount) && results->empty())
+        if (containsValidResultItem(index)) // reject if already present
             return -1;
 
-        if (m_filterMode == true && results->count() != totalCount && 0 == results->count())
+        return addResults(index, new QList<T>(*results), results->size(), results->size());
+    }
+
+    template<typename T>
+    int addResults(int index, const QList<T> *results, int totalCount)
+    {
+        // reject if results are empty, and nothing is filtered away
+        if ((m_filterMode == false || results->size() == totalCount) && results->empty())
+            return -1;
+
+        if (containsValidResultItem(index)) // reject if already present
+            return -1;
+
+        if (m_filterMode == true && results->size() != totalCount && 0 == results->size())
             return addResults(index, nullptr, 0, totalCount);
-        else
-            return addResults(index, new QVector<T>(*results), results->count(), totalCount);
+
+        return addResults(index, new QList<T>(*results), results->size(), totalCount);
     }
 
     int addCanceledResult(int index)
     {
+        if (containsValidResultItem(index)) // reject if already present
+            return -1;
+
         return addResult(index, static_cast<void *>(nullptr));
     }
 
     template <typename T>
     int addCanceledResults(int index, int _count)
     {
-        QVector<T> empty;
+        if (containsValidResultItem(index)) // reject if already present
+            return -1;
+
+        QList<T> empty;
         return addResults(index, &empty, _count);
     }
 
     template <typename T>
     void clear()
     {
-        QMap<int, ResultItem>::const_iterator mapIterator = m_results.constBegin();
-        while (mapIterator != m_results.constEnd()) {
-            if (mapIterator.value().isVector())
-                delete reinterpret_cast<const QVector<T> *>(mapIterator.value().result);
-            else
-                delete reinterpret_cast<const T *>(mapIterator.value().result);
-            ++mapIterator;
-        }
+        ResultStoreBase::clear<T>(m_results);
         resultCount = 0;
-        m_results.clear();
+        insertIndex = 0;
+        ResultStoreBase::clear<T>(pendingResults);
+        filteredResults = 0;
     }
 };
 

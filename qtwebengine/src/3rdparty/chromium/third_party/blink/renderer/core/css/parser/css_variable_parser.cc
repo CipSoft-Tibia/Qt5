@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 #include "third_party/blink/renderer/core/css/css_variable_reference_value.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser_token_range.h"
 #include "third_party/blink/renderer/core/css/properties/css_parsing_utils.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 
 namespace blink {
 
@@ -30,13 +29,15 @@ bool ClassifyBlock(CSSParserTokenRange range, bool& has_references) {
       // and used as fallbacks.
       switch (token.FunctionId()) {
         case CSSValueID::kVar:
-          if (!IsValidVariableReference(range.ConsumeBlock()))
+          if (!IsValidVariableReference(range.ConsumeBlock())) {
             return false;  // Invalid reference.
+          }
           has_references = true;
           continue;
         case CSSValueID::kEnv:
-          if (!IsValidEnvVariableReference(range.ConsumeBlock()))
+          if (!IsValidEnvVariableReference(range.ConsumeBlock())) {
             return false;  // Invalid reference.
+          }
           has_references = true;
           continue;
         default:
@@ -52,8 +53,9 @@ bool ClassifyBlock(CSSParserTokenRange range, bool& has_references) {
     } else {
       switch (token.GetType()) {
         case kDelimiterToken: {
-          if (token.Delimiter() == '!' && block_stack_size == 0)
+          if (token.Delimiter() == '!' && block_stack_size == 0) {
             return false;
+          }
           break;
         }
         case kRightParenthesisToken:
@@ -63,8 +65,9 @@ bool ClassifyBlock(CSSParserTokenRange range, bool& has_references) {
         case kBadUrlToken:
           return false;
         case kSemicolonToken:
-          if (block_stack_size == 0)
+          if (block_stack_size == 0) {
             return false;
+          }
           break;
         default:
           break;
@@ -77,15 +80,16 @@ bool ClassifyBlock(CSSParserTokenRange range, bool& has_references) {
 bool IsValidVariableReference(CSSParserTokenRange range) {
   range.ConsumeWhitespace();
   if (!CSSVariableParser::IsValidVariableName(
-          range.ConsumeIncludingWhitespace()))
+          range.ConsumeIncludingWhitespace())) {
     return false;
-  if (range.AtEnd())
+  }
+  if (range.AtEnd()) {
     return true;
+  }
 
-  if (range.Consume().GetType() != kCommaToken)
+  if (range.Consume().GetType() != kCommaToken) {
     return false;
-  if (range.AtEnd())
-    return false;
+  }
 
   bool has_references = false;
   return ClassifyBlock(range, has_references);
@@ -93,99 +97,120 @@ bool IsValidVariableReference(CSSParserTokenRange range) {
 
 bool IsValidEnvVariableReference(CSSParserTokenRange range) {
   range.ConsumeWhitespace();
-  if (range.ConsumeIncludingWhitespace().GetType() !=
-      CSSParserTokenType::kIdentToken)
+  auto token = range.ConsumeIncludingWhitespace();
+  if (token.GetType() != CSSParserTokenType::kIdentToken) {
     return false;
-  if (range.AtEnd())
+  }
+  if (range.AtEnd()) {
     return true;
+  }
 
-  if (range.Consume().GetType() != kCommaToken)
+  if (RuntimeEnabledFeatures::CSSFoldablesEnabled()) {
+    // Consume any number of integer values that indicate the indices for a
+    // multi-dimensional variable.
+    token = range.ConsumeIncludingWhitespace();
+    while (token.GetType() == kNumberToken) {
+      if (token.GetNumericValueType() != kIntegerValueType) {
+        return false;
+      }
+      if (token.NumericValue() < 0.) {
+        return false;
+      }
+      token = range.ConsumeIncludingWhitespace();
+    }
+
+    // If that's all we had (either ident then integers or just the ident) then
+    // the env() is valid.
+    if (token.GetType() == kEOFToken) {
+      return true;
+    }
+  } else {
+    token = range.Consume();
+  }
+
+  // Otherwise we need a comma followed by an optional fallback value.
+  if (token.GetType() != kCommaToken) {
     return false;
-  if (range.AtEnd())
-    return false;
+  }
 
   bool has_references = false;
   return ClassifyBlock(range, has_references);
 }
 
-CSSValueID ClassifyVariableRange(CSSParserTokenRange range,
-                                 bool& has_references) {
+bool IsValidVariable(CSSParserTokenRange range, bool& has_references) {
   has_references = false;
+  return ClassifyBlock(range, has_references);
+}
 
+CSSValue* ParseCSSWideValue(CSSParserTokenRange range) {
   range.ConsumeWhitespace();
-  if (range.Peek().GetType() == kIdentToken) {
-    CSSValueID id = range.ConsumeIncludingWhitespace().Id();
-    if (range.AtEnd() && css_parsing_utils::IsCSSWideKeyword(id))
-      return id;
-  }
-
-  if (ClassifyBlock(range, has_references))
-    return CSSValueID::kInternalVariableValue;
-  return CSSValueID::kInvalid;
+  CSSValue* value = css_parsing_utils::ConsumeCSSWideKeyword(range);
+  return range.AtEnd() ? value : nullptr;
 }
 
 }  // namespace
 
 bool CSSVariableParser::IsValidVariableName(const CSSParserToken& token) {
-  if (token.GetType() != kIdentToken)
+  if (token.GetType() != kIdentToken) {
     return false;
+  }
 
   StringView value = token.Value();
-  return value.length() >= 2 && value[0] == '-' && value[1] == '-';
+  return value.length() >= 3 && value[0] == '-' && value[1] == '-';
 }
 
 bool CSSVariableParser::IsValidVariableName(const String& string) {
-  return string.length() >= 2 && string[0] == '-' && string[1] == '-';
+  return string.length() >= 3 && string[0] == '-' && string[1] == '-';
 }
 
 bool CSSVariableParser::ContainsValidVariableReferences(
     CSSParserTokenRange range) {
   bool has_references;
-  CSSValueID type = ClassifyVariableRange(range, has_references);
-  return type == CSSValueID::kInternalVariableValue && has_references;
+  return IsValidVariable(range, has_references) && has_references;
+}
+
+CSSValue* CSSVariableParser::ParseDeclarationIncludingCSSWide(
+    const CSSTokenizedValue& tokenized_value,
+    bool is_animation_tainted,
+    const CSSParserContext& context) {
+  if (CSSValue* css_wide = ParseCSSWideValue(tokenized_value.range)) {
+    return css_wide;
+  }
+  return ParseDeclarationValue(tokenized_value, is_animation_tainted, context);
 }
 
 CSSCustomPropertyDeclaration* CSSVariableParser::ParseDeclarationValue(
-    const AtomicString& variable_name,
-    CSSParserTokenRange range,
+    const CSSTokenizedValue& tokenized_value,
     bool is_animation_tainted,
     const CSSParserContext& context) {
-  if (range.AtEnd())
-    return nullptr;
-
   bool has_references;
-  CSSValueID type = ClassifyVariableRange(range, has_references);
-
-  if (!IsValidCSSValueID(type))
+  if (!IsValidVariable(tokenized_value.range, has_references)) {
     return nullptr;
-  if (type == CSSValueID::kInternalVariableValue) {
-    return MakeGarbageCollected<CSSCustomPropertyDeclaration>(
-        variable_name,
-        CSSVariableData::Create(range, is_animation_tainted, has_references,
-                                context.BaseURL(), context.Charset()));
   }
-  return MakeGarbageCollected<CSSCustomPropertyDeclaration>(variable_name,
-                                                            type);
+  return MakeGarbageCollected<CSSCustomPropertyDeclaration>(
+      CSSVariableData::Create(tokenized_value, is_animation_tainted,
+                              has_references),
+      &context);
 }
 
-CSSVariableReferenceValue* CSSVariableParser::ParseRegisteredPropertyValue(
+CSSVariableReferenceValue* CSSVariableParser::ParseVariableReferenceValue(
     CSSParserTokenRange range,
     const CSSParserContext& context,
-    bool require_var_reference,
     bool is_animation_tainted) {
-  if (range.AtEnd())
+  if (range.AtEnd()) {
     return nullptr;
+  }
 
   bool has_references;
-  CSSValueID type = ClassifyVariableRange(range, has_references);
-
-  if (type != CSSValueID::kInternalVariableValue)
-    return nullptr;  // Invalid or a css-wide keyword
-  if (require_var_reference && !has_references)
+  if (!IsValidVariable(range, has_references)) {
     return nullptr;
+  }
+  if (ParseCSSWideValue(range)) {
+    return nullptr;
+  }
   return MakeGarbageCollected<CSSVariableReferenceValue>(
-      CSSVariableData::Create(range, is_animation_tainted, has_references,
-                              context.BaseURL(), context.Charset()),
+      CSSVariableData::Create({range, StringView()}, is_animation_tainted,
+                              has_references),
       context);
 }
 

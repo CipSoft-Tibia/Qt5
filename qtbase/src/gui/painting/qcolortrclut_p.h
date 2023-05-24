@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCOLORTRCLUT_P_H
 #define QCOLORTRCLUT_P_H
@@ -52,11 +16,11 @@
 //
 
 #include <QtGui/private/qtguiglobal_p.h>
-#include <QtCore/qsharedpointer.h>
 #include <QtGui/qrgb.h>
 #include <QtGui/qrgba64.h>
 
 #include <cmath>
+#include <memory>
 
 #if defined(__SSE2__)
 #include <emmintrin.h>
@@ -69,12 +33,12 @@ QT_BEGIN_NAMESPACE
 class QColorTransferFunction;
 class QColorTransferTable;
 
-class Q_GUI_EXPORT QColorTrcLut : public QEnableSharedFromThis<QColorTrcLut>
+class Q_GUI_EXPORT QColorTrcLut
 {
 public:
-    static QColorTrcLut *fromGamma(qreal gamma);
-    static QColorTrcLut *fromTransferFunction(const QColorTransferFunction &transfn);
-    static QColorTrcLut *fromTransferTable(const QColorTransferTable &transTable);
+    static std::shared_ptr<QColorTrcLut> fromGamma(qreal gamma);
+    static std::shared_ptr<QColorTrcLut> fromTransferFunction(const QColorTransferFunction &transfn);
+    static std::shared_ptr<QColorTrcLut> fromTransferTable(const QColorTransferTable &transTable);
 
     // The following methods all convert opaque or unpremultiplied colors:
 
@@ -228,7 +192,9 @@ public:
     ushort m_fromLinear[(255 * 16) + 1]; // [0-4080] -> [0-65280]
 
 private:
-    QColorTrcLut() { }
+    QColorTrcLut() { } // force uninitialized members
+
+    static std::shared_ptr<QColorTrcLut> create();
 
     Q_ALWAYS_INLINE static QRgb convertWithTable(QRgb rgb32, const ushort *table)
     {

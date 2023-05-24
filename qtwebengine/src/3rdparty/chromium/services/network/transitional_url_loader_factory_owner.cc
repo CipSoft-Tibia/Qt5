@@ -1,15 +1,16 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/network/transitional_url_loader_factory_owner.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/ref_counted_delete_on_sequence.h"
 #include "base/no_destructor.h"
 #include "base/synchronization/atomic_flag.h"
+#include "base/task/sequenced_task_runner.h"
 #include "net/url_request/url_request_context_getter.h"
 #include "services/network/network_context.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
@@ -49,7 +50,6 @@ class TransitionalURLLoaderFactoryOwner::Core {
   }
 
  private:
-  friend class base::DeleteHelper<Core>;
   friend struct std::default_delete<Core>;
 
   ~Core() {

@@ -1,9 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef DEVICE_FIDO_FIDO_TYPES_H_
 #define DEVICE_FIDO_FIDO_TYPES_H_
+
+#include <cstdint>
 
 // The definitions below are for mojo-mappable types that need to be transferred
 // from Blink. Types that do not have mojo equivalents are better placed in
@@ -68,6 +70,24 @@ enum class AttestationConveyancePreference : uint8_t {
   // permitted without further checks.
   kEnterpriseIfRPListedOnAuthenticator,
   kEnterpriseApprovedByBrowser,
+};
+
+// https://w3c.github.io/webauthn#enumdef-largeblobsupport
+enum class LargeBlobSupport {
+  kNotRequested,
+  kRequired,
+  kPreferred,
+};
+
+// LargeBlobSupportType enumerates the methods by which an authenticator may
+// support large blobs.
+enum class LargeBlobSupportType {
+  // The `largeBlobKey` extension and `authenticatorLargeBlobs` command. See
+  // https://fidoalliance.org/specs/fido-v2.1-rd-20210309/fido-client-to-authenticator-protocol-v2.1-rd-20210309.html#authenticatorLargeBlobs
+  kKey,
+  // The `largeBlob` extension that includes blob data directly in getAssertion
+  // commands.
+  kExtension,
 };
 
 }  // namespace device

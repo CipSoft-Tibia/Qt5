@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,9 @@
 
 namespace chrome {
 
-std::string GetVersionString() {
-  return version_info::GetVersionStringWithModifier(GetChannelName());
+std::string GetVersionString(WithExtendedStable with_extended_stable) {
+  return version_info::GetVersionStringWithModifier(
+      GetChannelName(with_extended_stable));
 }
 
 }  // namespace chrome

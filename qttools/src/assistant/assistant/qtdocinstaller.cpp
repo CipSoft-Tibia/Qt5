@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "tracer.h"
 
 #include <QtCore/QDir>
@@ -63,11 +38,11 @@ void QtDocInstaller::installDocs()
 void QtDocInstaller::run()
 {
     TRACE_OBJ
-    m_qchDir.setPath(QLibraryInfo::location(QLibraryInfo::DocumentationPath));
+    m_qchDir.setPath(QLibraryInfo::path(QLibraryInfo::DocumentationPath));
     m_qchFiles = m_qchDir.entryList(QStringList() << QLatin1String("*.qch"));
 
     bool changes = false;
-    for (const DocInfo &docInfo : qAsConst(m_docInfos)) {
+    for (const DocInfo &docInfo : std::as_const(m_docInfos)) {
         changes |= installDoc(docInfo);
         m_mutex.lock();
         if (m_abort) {
@@ -89,14 +64,14 @@ bool QtDocInstaller::installDoc(const DocInfo &docInfo)
         dt = QDateTime::fromString(info.first(), Qt::ISODate);
 
     QString qchFile;
-    if (info.count() == 2)
+    if (info.size() == 2)
         qchFile = info.last();
 
     if (m_qchFiles.isEmpty()) {
         emit qchFileNotFound(component);
         return false;
     }
-    for (const QString &f : qAsConst(m_qchFiles)) {
+    for (const QString &f : std::as_const(m_qchFiles)) {
         if (f.startsWith(component)) {
             QFileInfo fi(m_qchDir.absolutePath() + QDir::separator() + f);
             if (dt.isValid() && fi.lastModified().toSecsSinceEpoch() == dt.toSecsSinceEpoch()

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "signalsloteditor.h"
 #include "signalsloteditor_p.h"
@@ -33,6 +8,7 @@
 
 #include <metadatabase_p.h>
 #include <qdesigner_formwindowcommand_p.h>
+#include <signalslotdialog_p.h>
 
 #include <QtDesigner/private/ui4_p.h>
 #include <QtDesigner/abstractformwindow.h>
@@ -40,13 +16,16 @@
 #include <QtDesigner/abstractmetadatabase.h>
 
 #include <QtWidgets/qapplication.h>
-#include <QtWidgets/qundostack.h>
 #include <QtWidgets/qmenu.h>
+
+#include <QtGui/qundostack.h>
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qdebug.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace qdesigner_internal {
 
@@ -69,19 +48,19 @@ DomConnection *SignalSlotConnection::toUi() const
     result->setElementSlot(slot());
 
     DomConnectionHints *hints = new DomConnectionHints;
-    QVector<DomConnectionHint *> list;
+    QList<DomConnectionHint *> list;
 
     QPoint sp = endPointPos(EndPoint::Source);
     QPoint tp = endPointPos(EndPoint::Target);
 
     DomConnectionHint *hint = new DomConnectionHint;
-    hint->setAttributeType(QStringLiteral("sourcelabel"));
+    hint->setAttributeType(u"sourcelabel"_s);
     hint->setElementX(sp.x());
     hint->setElementY(sp.y());
     list.append(hint);
 
     hint = new DomConnectionHint;
-    hint->setAttributeType(QStringLiteral("destinationlabel"));
+    hint->setAttributeType(u"destinationlabel"_s);
     hint->setElementX(tp.x());
     hint->setElementY(tp.y());
     list.append(hint);
@@ -321,7 +300,7 @@ Connection *SignalSlotEditor::createConnection(QWidget *source, QWidget *destina
 DomConnections *SignalSlotEditor::toUi() const
 {
     DomConnections *result = new DomConnections;
-    QVector<DomConnection *> list;
+    QList<DomConnection *> list;
 
     const int count = connectionCount();
     list.reserve(count);
@@ -372,6 +351,21 @@ void SignalSlotEditor::fromUi(const DomConnections *connections, QWidget *parent
     if (connections == nullptr)
         return;
 
+    // For old forms, that were saved before Qt 4 times, there was no <slots>
+    // section inside ui file. Currently, when we specify custom signals or slots
+    // for the form, we add them into the <slots> section. For all signals / slots
+    // inside <slots> section uic creates string-based connections.
+    // In order to fix old forms, we detect if a signal or slot used inside connection
+    // is a custom (fake) one, like it's being done inside SignalSlotDialog.
+    // In case of a fake signal / slot we register it inside meta data base, so that
+    // the next save will add a missing <slots> section.
+    QStringList existingSlots, existingSignals;
+    SignalSlotDialog::existingMethodsFromMemberSheet(m_form_window->core(), parent,
+                                                     existingSlots, existingSignals);
+    QStringList fakeSlots, fakeSignals;
+    SignalSlotDialog::fakeMethodsFromMetaDataBase(m_form_window->core(), parent,
+                                                  fakeSlots, fakeSignals);
+
     setBackground(parent);
     clear();
     const auto &list = connections->elementConnection();
@@ -396,33 +390,48 @@ void SignalSlotEditor::fromUi(const DomConnections *connections, QWidget *parent
             for (DomConnectionHint *hint : hints) {
                 QString attr_type = hint->attributeType();
                 QPoint p = QPoint(hint->elementX(), hint->elementY());
-                if (attr_type == QStringLiteral("sourcelabel"))
+                if (attr_type == "sourcelabel"_L1)
                     sp = p;
-                else if (attr_type == QStringLiteral("destinationlabel"))
+                else if (attr_type == "destinationlabel"_L1)
                     tp = p;
             }
         }
+
+        const QString sourceSignal = dom_con->elementSignal();
+        if (source == parent && !existingSignals.contains(sourceSignal)
+                && !fakeSignals.contains(sourceSignal)) {
+            fakeSignals.append(sourceSignal);
+        }
+
+        const QString destSlot = dom_con->elementSlot();
+        if (destination == parent && !existingSlots.contains(destSlot)
+                && !fakeSlots.contains(destSlot)) {
+            fakeSlots.append(destSlot);
+        }
+
 
         SignalSlotConnection *con = new SignalSlotConnection(this);
 
         con->setEndPoint(EndPoint::Source, source, sp);
         con->setEndPoint(EndPoint::Target, destination, tp);
-        con->setSignal(dom_con->elementSignal());
-        con->setSlot(dom_con->elementSlot());
+        con->setSignal(sourceSignal);
+        con->setSlot(destSlot);
         addConnection(con);
     }
+    SignalSlotDialog::fakeMethodsToMetaDataBase(m_form_window->core(), parent,
+                                                fakeSlots, fakeSignals);
 }
 
 static bool skipWidget(const QWidget *w)
 {
-    const QString name = QLatin1String(w->metaObject()->className());
-    if (name == QStringLiteral("QDesignerWidget"))
+    const QString name = QLatin1StringView(w->metaObject()->className());
+    if (name == "QDesignerWidget"_L1)
         return true;
-    if (name == QStringLiteral("QLayoutWidget"))
+    if (name == "QLayoutWidget"_L1)
         return true;
-    if (name == QStringLiteral("qdesigner_internal::FormWindow"))
+    if (name == "qdesigner_internal::FormWindow"_L1)
         return true;
-    if (name == QStringLiteral("Spacer"))
+    if (name == "Spacer"_L1)
         return true;
     return false;
 }

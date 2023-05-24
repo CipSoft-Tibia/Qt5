@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,11 @@
 #define UI_EVENTS_ANDROID_DRAG_EVENT_ANDROID_H_
 
 #include <jni.h>
+#include <string>
 #include <vector>
 
 #include "base/android/scoped_java_ref.h"
-#include "base/macros.h"
-#include "base/strings/string16.h"
+#include "base/memory/raw_ref.h"
 #include "ui/events/events_export.h"
 #include "ui/gfx/geometry/point_conversions.h"
 
@@ -28,17 +28,19 @@ class EVENTS_EXPORT DragEventAndroid {
                    int action,
                    const gfx::PointF& location,
                    const gfx::PointF& screen_location,
-                   const std::vector<base::string16>& mime_types,
+                   const std::vector<std::u16string>& mime_types,
                    jstring content);
+
+  DragEventAndroid(const DragEventAndroid&) = delete;
+  DragEventAndroid& operator=(const DragEventAndroid&) = delete;
+
   ~DragEventAndroid();
 
   int action() const { return action_; }
-  const gfx::PointF& location_f() const { return location_; }
-  const gfx::PointF& screen_location_f() const { return screen_location_; }
-  const std::vector<base::string16>& mime_types() const { return mime_types_; }
+  const gfx::PointF& location() const { return location_; }
+  const gfx::PointF& screen_location() const { return screen_location_; }
+  const std::vector<std::u16string>& mime_types() const { return *mime_types_; }
 
-  const gfx::Point GetLocation() const;
-  const gfx::Point GetScreenLocation() const;
   base::android::ScopedJavaLocalRef<jstring> GetJavaContent() const;
 
   // Creates a new DragEventAndroid instance different from |this| only by
@@ -52,11 +54,9 @@ class EVENTS_EXPORT DragEventAndroid {
   gfx::PointF location_;
   // Location relative to the screen coordinate.
   gfx::PointF screen_location_;
-  const std::vector<base::string16>& mime_types_;
+  const raw_ref<const std::vector<std::u16string>> mime_types_;
   // The Java reference to the drop content to avoid unnecessary copying.
   base::android::ScopedJavaGlobalRef<jstring> content_;
-
-  DISALLOW_COPY_AND_ASSIGN(DragEventAndroid);
 };
 
 }  // namespace ui

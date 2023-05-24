@@ -1,44 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qvulkaninstance.h"
-#include <private/qvulkanfunctions_p.h>
+#include "qvulkaninstance_p.h"
 #include <qpa/qplatformvulkaninstance.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformnativeinterface.h>
@@ -49,6 +12,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \class QVulkanInstance
     \since 5.10
+    \ingroup painting-3D
     \inmodule QtGui
 
     \brief The QVulkanInstance class represents a native Vulkan instance, enabling
@@ -141,7 +105,7 @@ QT_BEGIN_NAMESPACE
     \note It is up to the component creating the external instance to ensure
     the necessary extensions are enabled on it. These are: \c{VK_KHR_surface},
     the WSI-specific \c{VK_KHR_*_surface} that is appropriate for the platform
-    in question, and \c{VK_EXT_debug_report} in case QVulkanInstance's debug
+    in question, and \c{VK_EXT_debug_utils} in case QVulkanInstance's debug
     output redirection is desired.
 
     \section1 Accessing Core Vulkan Commands
@@ -154,9 +118,9 @@ QT_BEGIN_NAMESPACE
 
     \note QVulkanFunctions and QVulkanDeviceFunctions are generated from the
     Vulkan API XML specifications when building the Qt libraries. Therefore no
-    documentation is provided for them. They contain the Vulkan 1.0 functions
+    documentation is provided for them. They contain the Vulkan 1.2 functions
     with the same signatures as described in the
-    \l{https://www.khronos.org/registry/vulkan/specs/1.0/html/}{Vulkan API
+    \l{https://www.khronos.org/registry/vulkan/specs/1.2/html/}{Vulkan API
     documentation}.
 
     \section1 Getting a Native Vulkan Surface for a Window
@@ -242,34 +206,9 @@ QT_BEGIN_NAMESPACE
     This enum describes the flags that can be passed to setFlags(). These control
     the behavior of create().
 
-    \value NoDebugOutputRedirect Disables Vulkan debug output (\c{VK_EXT_debug_report}) redirection to qDebug.
+    \value NoDebugOutputRedirect Disables Vulkan debug output (\c{VK_EXT_debug_utils}) redirection to qDebug.
+    \value [since 6.5] NoPortabilityDrivers Disables enumerating physical devices marked as Vulkan Portability.
 */
-
-class QVulkanInstancePrivate
-{
-public:
-    QVulkanInstancePrivate(QVulkanInstance *q)
-        : q_ptr(q),
-          vkInst(VK_NULL_HANDLE),
-          errorCode(VK_SUCCESS)
-    { }
-    ~QVulkanInstancePrivate() { reset(); }
-
-    bool ensureVulkan();
-    void reset();
-
-    QVulkanInstance *q_ptr;
-    QScopedPointer<QPlatformVulkanInstance> platformInst;
-    VkInstance vkInst;
-    QVulkanInstance::Flags flags;
-    QByteArrayList layers;
-    QByteArrayList extensions;
-    QVersionNumber apiVersion;
-    VkResult errorCode;
-    QScopedPointer<QVulkanFunctions> funcs;
-    QHash<VkDevice, QVulkanDeviceFunctions *> deviceFuncs;
-    QVector<QVulkanInstance::DebugFilter> debugFilters;
-};
 
 bool QVulkanInstancePrivate::ensureVulkan()
 {
@@ -306,7 +245,8 @@ QVulkanInstance::QVulkanInstance()
 /*!
     Destructor.
 
-    \note current() will return \nullptr once the instance is destroyed.
+    \note \l {QVulkanInstance::}{vkInstance()} will return \nullptr once the
+    instance is destroyed.
  */
 QVulkanInstance::~QVulkanInstance()
 {
@@ -315,6 +255,7 @@ QVulkanInstance::~QVulkanInstance()
 
 /*!
     \class QVulkanLayer
+    \inmodule QtGui
     \brief Represents information about a Vulkan layer.
  */
 
@@ -358,7 +299,7 @@ QVulkanInstance::~QVulkanInstance()
 */
 
 /*!
-    \fn uint qHash(const QVulkanLayer &key, uint seed)
+    \fn size_t qHash(const QVulkanLayer &key, size_t seed = 0)
     \since 5.10
     \relates QVulkanLayer
 
@@ -368,6 +309,7 @@ QVulkanInstance::~QVulkanInstance()
 
 /*!
     \class QVulkanExtension
+    \inmodule QtGui
     \brief Represents information about a Vulkan extension.
  */
 
@@ -401,7 +343,7 @@ QVulkanInstance::~QVulkanInstance()
 */
 
 /*!
-    \fn uint qHash(const QVulkanExtension &key, uint seed)
+    \fn size_t qHash(const QVulkanExtension &key, size_t seed = 0)
     \since 5.10
     \relates QVulkanExtension
 
@@ -411,26 +353,32 @@ QVulkanInstance::~QVulkanInstance()
 
 /*!
     \class QVulkanInfoVector
-    \brief A specialized QVector for QVulkanLayer and QVulkanExtension.
+    \inmodule QtGui
+    \brief A specialized QList for QVulkanLayer and QVulkanExtension.
  */
 
 /*!
     \fn template<typename T> bool QVulkanInfoVector<T>::contains(const QByteArray &name) const
 
-    \return true if the vector contains a layer or extension with the given \a name.
+    \return true if the list contains a layer or extension with the given \a name.
  */
 
 /*!
     \fn template<typename T> bool QVulkanInfoVector<T>::contains(const QByteArray &name, int minVersion) const
 
-    \return true if the vector contains a layer or extension with the given
+    \return true if the list contains a layer or extension with the given
     \a name and a version same as or newer than \a minVersion.
  */
 
 /*!
+    \fn QVulkanInfoVector<QVulkanLayer> QVulkanInstance::supportedLayers() const
     \return the list of supported instance-level layers.
 
     \note This function can be called before create().
+ */
+
+/*!
+    \internal
  */
 QVulkanInfoVector<QVulkanLayer> QVulkanInstance::supportedLayers()
 {
@@ -438,13 +386,40 @@ QVulkanInfoVector<QVulkanLayer> QVulkanInstance::supportedLayers()
 }
 
 /*!
+    \fn QVulkanInfoVector<QVulkanExtension> QVulkanInstance::supportedExtensions() const
     \return the list of supported instance-level extensions.
 
     \note This function can be called before create().
  */
+
+/*!
+    \internal
+ */
 QVulkanInfoVector<QVulkanExtension> QVulkanInstance::supportedExtensions()
 {
     return d_ptr->ensureVulkan() ? d_ptr->platformInst->supportedExtensions() : QVulkanInfoVector<QVulkanExtension>();
+}
+
+/*!
+    \return the version of instance-level functionality supported by the Vulkan
+    implementation.
+
+    In practice this is either the value returned from
+    vkEnumerateInstanceVersion, if that function is available (with Vulkan 1.1
+    and newer), or 1.0.
+
+    Applications that want to branch in their Vulkan feature and API usage
+    based on what Vulkan version is available at run time, can use this function
+    to determine what version to pass in to setApiVersion() before calling
+    create().
+
+    \note This function can be called before create().
+
+    \sa setApiVersion()
+ */
+QVersionNumber QVulkanInstance::supportedApiVersion() const
+{
+    return d_ptr->ensureVulkan() ? d_ptr->platformInst->supportedApiVersion() : QVersionNumber();
 }
 
 /*!
@@ -453,7 +428,7 @@ QVulkanInfoVector<QVulkanExtension> QVulkanInstance::supportedExtensions()
 
     \note \a existingVkInstance must have at least \c{VK_KHR_surface} and the
     appropriate WSI-specific \c{VK_KHR_*_surface} extensions enabled. To ensure
-    debug output redirection is functional, \c{VK_EXT_debug_report} is needed as
+    debug output redirection is functional, \c{VK_EXT_debug_utils} is needed as
     well.
 
     \note This function can only be called before create() and has no effect if
@@ -506,9 +481,14 @@ void QVulkanInstance::setLayers(const QByteArrayList &layers)
 /*!
     Specifies the list of additional instance \a extensions to enable. It is
     safe to specify unsupported extensions as well because these get ignored
-    when not supported at run time. The surface-related extensions required by
-    Qt will always be added automatically, no need to include them in this
-    list.
+    when not supported at run time.
+
+    \note The surface-related extensions required by Qt (for example, \c
+    VK_KHR_win32_surface) will always be added automatically, no need to
+    include them in this list.
+
+    \note \c VK_KHR_portability_enumeration is added automatically unless the
+    NoPortabilityDrivers flag is set. This value was introduced in Qt 6.5.
 
     \note This function can only be called before create() and has no effect if
     called afterwards.
@@ -524,13 +504,26 @@ void QVulkanInstance::setExtensions(const QByteArrayList &extensions)
 }
 
 /*!
-    Specifies the Vulkan API against which the application expects to run.
+    Specifies the highest Vulkan API version the application is designed to use.
 
-    By default no \a vulkanVersion is specified, and so no version check is performed
-    during Vulkan instance creation.
+    By default \a vulkanVersion is 0, which maps to Vulkan 1.0.
 
     \note This function can only be called before create() and has no effect if
     called afterwards.
+
+    \note Be aware that Vulkan 1.1 changes the behavior with regards to the
+    Vulkan API version field. In Vulkan 1.0 specifying an unsupported \a
+    vulkanVersion led to failing create() with \c VK_ERROR_INCOMPATIBLE_DRIVER,
+    as was mandated by the specification. Starting with Vulkan 1.1, the
+    specification disallows this, the driver must accept any version without
+    failing the instance creation.
+
+    Application developers are advised to familiarize themselves with the \c
+    apiVersion notes in
+    \l{https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkApplicationInfo.html}{the
+    Vulkan specification}.
+
+    \sa supportedApiVersion()
  */
 void QVulkanInstance::setApiVersion(const QVersionNumber &vulkanVersion)
 {
@@ -548,11 +541,16 @@ void QVulkanInstance::setApiVersion(const QVersionNumber &vulkanVersion)
 
     \return true if successful, false on error or when Vulkan is not supported.
 
-    When successful, the pointer to this QVulkanInstance is retrievable via the
-    static function current().
+    When successful, the pointer to this QVulkanInstance is retrievable via
+    \l {QVulkanInstance::}{vkInstance()}.
 
     The Vulkan instance and library is available as long as this
     QVulkanInstance exists, or until destroy() is called.
+
+    By default the VkInstance is created with the flag
+    \l{https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkInstanceCreateFlagBits.html}{VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR}
+    set. This means that Vulkan Portability physical devices get enumerated as
+    well. If this is not desired, set the NoPortabilityDrivers flag.
  */
 bool QVulkanInstance::create()
 {
@@ -571,6 +569,7 @@ bool QVulkanInstance::create()
         d_ptr->errorCode = VK_SUCCESS;
         d_ptr->funcs.reset(new QVulkanFunctions(this));
         d_ptr->platformInst->setDebugFilters(d_ptr->debugFilters);
+        d_ptr->platformInst->setDebugUtilsFilters(d_ptr->debugUtilsFilters);
         return true;
     }
 
@@ -691,7 +690,17 @@ QPlatformVulkanInstance *QVulkanInstance::handle() const
     \note The returned object is owned and managed by the QVulkanInstance. Do
     not destroy or alter it.
 
-    \sa deviceFunctions()
+    The functions from the core Vulkan 1.0 API will be available always. When it
+    comes to higher Vulkan versions, such as, 1.1 and 1.2, the QVulkanFunctions
+    object will try to resolve the core API functions for those as well, but if
+    the Vulkan instance implementation at run time has no support for those,
+    calling any such unsupported function will lead to unspecified behavior. In
+    addition, to properly enable support for Vulkan versions higher than 1.0, an
+    appropriate instance API version may need to be set by calling
+    setApiVersion() before create(). To query the Vulkan implementation's
+    instance-level version, call supportedApiVersion().
+
+    \sa deviceFunctions(), supportedApiVersion()
  */
 QVulkanFunctions *QVulkanInstance::functions() const
 {
@@ -715,6 +724,16 @@ QVulkanFunctions *QVulkanInstance::functions() const
     again is a cheap operation. However, when the device gets destroyed, it is up
     to the application to notify the QVulkanInstance by calling
     resetDeviceFunctions().
+
+    The functions from the core Vulkan 1.0 API will be available always. When
+    it comes to higher Vulkan versions, such as, 1.1 and 1.2, the
+    QVulkanDeviceFunctions object will try to resolve the core API functions
+    for those as well, but if the Vulkan physical device at run time has no
+    support for those, calling any such unsupported function will lead to
+    unspecified behavior. To properly enable support for Vulkan versions higher
+    than 1.0, an appropriate instance API version may need to be set by calling
+    setApiVersion() before create(). In addition, applications are expected to
+    check the physical device's apiVersion in VkPhysicalDeviceProperties.
 
     \sa functions(), resetDeviceFunctions()
  */
@@ -805,12 +824,28 @@ void QVulkanInstance::presentQueued(QWindow *window)
 /*!
     \typedef QVulkanInstance::DebugFilter
 
-    Typedef for debug filtering callback functions.
+    Typedef for debug filtering callback functions, with the following signature:
+
+    \code
+    bool myDebugFilter(VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objectType, uint64_t object,
+                       size_t location, int32_t messageCode, const char *pLayerPrefix, const char *pMessage)
+    \endcode
+
+    Returning \c true suppresses the printing of the message.
+
+    \note Starting with Qt 6.5 \c{VK_EXT_debug_utils} is used instead of the
+    deprecated \c{VK_EXT_debug_report}. The callback signature is based on
+    VK_EXT_debug_report. Therefore, not all arguments can be expected to be
+    valid anymore. Avoid relying on arguments other than \c pMessage, \c
+    messageCode, and \c object. Applications wishing to access all the callback
+    data as specified in VK_EXT_debug_utils should migrate to DebugUtilsFilter.
 
     \sa installDebugOutputFilter(), removeDebugOutputFilter()
  */
 
 /*!
+    \overload
+
     Installs a \a filter function that is called for every Vulkan debug
     message. When the callback returns \c true, the message is stopped (filtered
     out) and will not appear on the debug output.
@@ -832,6 +867,8 @@ void QVulkanInstance::installDebugOutputFilter(DebugFilter filter)
 }
 
 /*!
+    \overload
+
     Removes a \a filter function previously installed by
     installDebugOutputFilter().
 
@@ -844,6 +881,84 @@ void QVulkanInstance::removeDebugOutputFilter(DebugFilter filter)
     d_ptr->debugFilters.removeOne(filter);
     if (d_ptr->platformInst)
         d_ptr->platformInst->setDebugFilters(d_ptr->debugFilters);
+}
+
+/*!
+    \typedef QVulkanInstance::DebugUtilsFilter
+
+    Typedef for debug filtering callback functions, with the following signature:
+
+    \code
+    std::function<bool(DebugMessageSeverityFlags severity, DebugMessageTypeFlags type, const void *message)>;
+    \endcode
+
+    The \c message argument is a pointer to the
+    VkDebugUtilsMessengerCallbackDataEXT structure. Refer to the documentation
+    of \c{VK_EXT_debug_utils} for details. The Qt headers do not use the real
+    type in order to avoid introducing a dependency on post-1.0 Vulkan headers.
+
+    Returning \c true suppresses the printing of the message.
+
+    \sa installDebugOutputFilter(), removeDebugOutputFilter()
+    \since 6.5
+ */
+
+/*!
+    \enum QVulkanInstance::DebugMessageSeverityFlag
+    \since 6.5
+
+    \value VerboseSeverity
+    \value InfoSeverity
+    \value WarningSeverity
+    \value ErrorSeverity
+ */
+
+/*!
+    \enum QVulkanInstance::DebugMessageTypeFlag
+    \since 6.5
+
+    \value GeneralMessage
+    \value ValidationMessage
+    \value PerformanceMessage
+ */
+
+/*!
+    Installs a \a filter function that is called for every Vulkan debug
+    message. When the callback returns \c true, the message is stopped (filtered
+    out) and will not appear on the debug output.
+
+    \note Filtering is only effective when NoDebugOutputRedirect is not
+    \l{setFlags()}{set}. Installing filters has no effect otherwise.
+
+    \note This function can be called before create().
+
+    \sa clearDebugOutputFilters()
+    \since 6.5
+ */
+void QVulkanInstance::installDebugOutputFilter(DebugUtilsFilter filter)
+{
+    d_ptr->debugUtilsFilters.append(filter);
+    if (d_ptr->platformInst)
+        d_ptr->platformInst->setDebugUtilsFilters(d_ptr->debugUtilsFilters);
+}
+
+/*!
+    Removes all filter functions installed previously by
+    installDebugOutputFilter().
+
+    \note This function can be called before create().
+
+    \sa installDebugOutputFilter()
+    \since 6.5
+ */
+void QVulkanInstance::clearDebugOutputFilters()
+{
+    d_ptr->debugFilters.clear();
+    d_ptr->debugUtilsFilters.clear();
+    if (d_ptr->platformInst) {
+        d_ptr->platformInst->setDebugFilters(d_ptr->debugFilters);
+        d_ptr->platformInst->setDebugUtilsFilters(d_ptr->debugUtilsFilters);
+    }
 }
 
 #ifndef QT_NO_DEBUG_STREAM

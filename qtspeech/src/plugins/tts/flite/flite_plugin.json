@@ -2,5 +2,11 @@
     "Keys": ["flite"],
     "Provider": "flite",
     "Version": 100,
-    "Features": []
+    "Priority": 50,
+    "Capabilities": [
+        "Speak",
+        "PauseResume",
+        "WordByWordProgress",
+        "Synthesize"
+    ]
 }

@@ -45,8 +45,8 @@
 
 #define NUM_COMPLEX_REGION_RECTS 9
 
-static int32_t option_complex_confine_region;
-static int32_t option_help;
+static bool option_complex_confine_region;
+static bool option_help;
 
 struct confine {
 	struct display *display;

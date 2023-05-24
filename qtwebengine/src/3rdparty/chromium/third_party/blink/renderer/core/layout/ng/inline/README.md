@@ -3,7 +3,7 @@
 This directory contains the inline layout implementation
 of Blink's new layout engine "LayoutNG".
 
-This README can be viewed in formatted form [here](https://chromium.googlesource.com/chromium/src/+/master/third_party/blink/renderer/core/layout/ng/inline/README.md).
+This README can be viewed in formatted form [here](https://chromium.googlesource.com/chromium/src/+/main/third_party/blink/renderer/core/layout/ng/inline/README.md).
 
 Other parts of LayoutNG is explained [here](../README.md).
 
@@ -355,6 +355,8 @@ In a bird's‐eye view, it consists of two parts:
    The core logic uses [ICU BiDi] `ubidi_reorderVisual()` function.
 
    This is part of the Line Box Construction phase above.
+
+Initial design doc: [Using ICU BiDi in LayoutNG](https://docs.google.com/document/d/182H1Sj_FCEHcl6eC69J4KcIc5m3ohSzgo297KYB0S_c/edit?usp=sharing)
 
 ### Interface for Editing ###
 

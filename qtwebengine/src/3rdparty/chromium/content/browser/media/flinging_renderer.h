@@ -1,11 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_BROWSER_MEDIA_FLINGING_RENDERER_H_
 #define CONTENT_BROWSER_MEDIA_FLINGING_RENDERER_H_
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "content/common/content_export.h"
 #include "media/base/flinging_controller.h"
 #include "media/base/media_resource.h"
@@ -41,18 +42,22 @@ class CONTENT_EXPORT FlingingRenderer : public media::Renderer,
       const std::string& presentation_id,
       mojo::PendingRemote<ClientExtension> client_extension);
 
+  FlingingRenderer(const FlingingRenderer&) = delete;
+  FlingingRenderer& operator=(const FlingingRenderer&) = delete;
+
   ~FlingingRenderer() override;
 
   // media::Renderer implementation
   void Initialize(media::MediaResource* media_resource,
                   media::RendererClient* client,
                   media::PipelineStatusCallback init_cb) override;
-  void SetLatencyHint(base::Optional<base::TimeDelta> latency_hint) override;
+  void SetLatencyHint(absl::optional<base::TimeDelta> latency_hint) override;
   void Flush(base::OnceClosure flush_cb) override;
   void StartPlayingFrom(base::TimeDelta time) override;
   void SetPlaybackRate(double playback_rate) override;
   void SetVolume(float volume) override;
   base::TimeDelta GetMediaTime() override;
+  media::RendererType GetRendererType() override;
 
   // media::MediaStatusObserver implementation.
   void OnMediaStatusUpdated(const media::MediaStatus& status) override;
@@ -79,13 +84,11 @@ class CONTENT_EXPORT FlingingRenderer : public media::Renderer,
   // Only updated when |play_state_is_stable_| is true.
   PlayState last_play_state_received_ = PlayState::UNKNOWN;
 
-  media::RendererClient* client_;
+  raw_ptr<media::RendererClient> client_;
 
   mojo::Remote<ClientExtension> client_extension_;
 
   std::unique_ptr<media::FlingingController> controller_;
-
-  DISALLOW_COPY_AND_ASSIGN(FlingingRenderer);
 };
 
 }  // namespace content

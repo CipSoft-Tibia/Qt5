@@ -1,47 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qstring.h>
 
 #include "qxmlutils_p.h"
 
+#include <private/qtools_p.h>
+
 QT_BEGIN_NAMESPACE
+
+using namespace QtMiscUtils;
 
 /* TODO:
  * - isNameChar() doesn't have to be public, it's only needed in
@@ -80,7 +48,7 @@ bool QXmlUtils::rangeContains(RangeIter begin, RangeIter end, const QChar c)
         return cp >= begin->min;
 
     while (begin != end) {
-        int delta = (end - begin) / 2;
+        qptrdiff delta = (end - begin) / 2;
         RangeIter mid = begin + delta;
 
         if (mid->min > cp)
@@ -233,16 +201,12 @@ bool QXmlUtils::isEncName(QStringView encName)
     if (encName.isEmpty())
         return false;
     const auto first = encName.front().unicode();
-    if (!((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')))
+    if (!(isAsciiLower(first) || isAsciiUpper(first)))
         return false;
     for (QChar ch : encName.mid(1)) {
         const auto cp = ch.unicode();
-        if ((cp >= 'a' && cp <= 'z')
-            || (cp >= 'A' && cp <= 'Z')
-            || (cp >= '0' && cp <= '9')
-            || cp == '.' || cp == '_' || cp == '-') {
+        if (isAsciiLetterOrNumber(cp) || cp == '.' || cp == '_' || cp == '-')
             continue;
-        }
         return false;
     }
     return true;
@@ -271,13 +235,16 @@ bool QXmlUtils::isLetter(const QChar c)
     \sa {http://www.w3.org/TR/REC-xml/#NT-Char},
            {Extensible Markup Language (XML) 1.0 (Fourth Edition), [2] Char}
  */
-bool QXmlUtils::isChar(const QChar c)
+bool QXmlUtils::isChar(const char32_t c)
 {
-    return (c.unicode() >= 0x0020 && c.unicode() <= 0xD7FF)
-           || c.unicode() == 0x0009
-           || c.unicode() == 0x000A
-           || c.unicode() == 0x000D
-           || (c.unicode() >= 0xE000 && c.unicode() <= 0xFFFD);
+    // The valid range is defined by https://www.w3.org/TR/REC-xml/#NT-Char as following:
+    // Char ::= #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
+    return (c >= 0x0020 && c <= 0xD7FF)
+           || c == 0x0009
+           || c == 0x000A
+           || c == 0x000D
+           || (c >= 0xE000 && c <= 0xFFFD)
+           || (c >= 0x10000 && c <= 0x10FFFF);
 }
 
 /*!
@@ -318,12 +285,8 @@ bool QXmlUtils::isPublicID(QStringView candidate)
     for (QChar ch : candidate) {
         const ushort cp = ch.unicode();
 
-        if ((cp >= 'a' && cp <= 'z')
-            || (cp >= 'A' && cp <= 'Z')
-            || (cp >= '0' && cp <= '9'))
-        {
+        if (isAsciiLetterOrNumber(cp))
             continue;
-        }
 
         switch (cp)
         {
@@ -371,16 +334,16 @@ bool QXmlUtils::isPublicID(QStringView candidate)
  */
 bool QXmlUtils::isNCName(QStringView ncName)
 {
-    if(ncName.isEmpty())
+    if (ncName.isEmpty())
         return false;
 
     const QChar first(ncName.at(0));
 
-    if(!QXmlUtils::isLetter(first) && first.unicode() != '_' && first.unicode() != ':')
+    if (!QXmlUtils::isLetter(first) && first.unicode() != '_' && first.unicode() != ':')
         return false;
 
     for (QChar at : ncName) {
-        if(!QXmlUtils::isNameChar(at) || at == QLatin1Char(':'))
+        if (!QXmlUtils::isNameChar(at) || at == u':')
             return false;
     }
 

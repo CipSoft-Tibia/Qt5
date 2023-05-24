@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,10 +11,6 @@ namespace mojo {
 
 int MojoSSLVersionToNetSSLVersion(network::mojom::SSLVersion mojo_version) {
   switch (mojo_version) {
-    case network::mojom::SSLVersion::kTLS1:
-      return net::SSL_PROTOCOL_VERSION_TLS1;
-    case network::mojom::SSLVersion::kTLS11:
-      return net::SSL_PROTOCOL_VERSION_TLS1_1;
     case network::mojom::SSLVersion::kTLS12:
       return net::SSL_PROTOCOL_VERSION_TLS1_2;
     case network::mojom::SSLVersion::kTLS13:
@@ -30,13 +26,13 @@ net::SSLContextConfig MojoSSLConfigToSSLContextConfig(
 
   net_config.version_min =
       MojoSSLVersionToNetSSLVersion(mojo_config->version_min);
-  net_config.version_min_warn =
-      MojoSSLVersionToNetSSLVersion(mojo_config->version_min_warn);
   net_config.version_max =
       MojoSSLVersionToNetSSLVersion(mojo_config->version_max);
   DCHECK_LE(net_config.version_min, net_config.version_max);
 
   net_config.disabled_cipher_suites = mojo_config->disabled_cipher_suites;
+  net_config.cecpq2_enabled = mojo_config->cecpq2_enabled;
+  net_config.ech_enabled = mojo_config->ech_enabled;
   return net_config;
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,11 +9,11 @@
 #include "base/metrics/field_trial_params.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/system/sys_info.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/time/default_tick_clock.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/renderer/platform/bindings/v8_per_isolate_data.h"
-#include "third_party/blink/renderer/platform/scheduler/public/thread.h"
-#include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
+#include "third_party/blink/renderer/platform/scheduler/public/main_thread_scheduler.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/partitions.h"
 
 namespace blink {
@@ -65,38 +65,23 @@ base::TimeDelta MinimumIntervalSeconds() {
   static const base::FeatureParam<double> kMinimumIntervalSeconds{
       &blink::features::kUserLevelMemoryPressureSignal, "minimum_interval_s",
       kDefaultMinimumIntervalSeconds};
-  return base::TimeDelta::FromSeconds(kMinimumIntervalSeconds.Get());
+  return base::Seconds(kMinimumIntervalSeconds.Get());
 }
 
 double MemoryThresholdParam() {
-  int64_t physical_memory = base::SysInfo::AmountOfPhysicalMemory();
-  double memory_threshold_mb = kDefaultMemoryThresholdMB;
-
-  if (physical_memory > 3.1 * 1024 * 1024 * 1024)
-    memory_threshold_mb = MemoryThresholdParamOf4GbDevices();
-  else if (physical_memory > 2.1 * 1024 * 1024 * 1024)
-    memory_threshold_mb = MemoryThresholdParamOf3GbDevices();
-  else if (physical_memory > 1.1 * 1024 * 1024 * 1024)
-    memory_threshold_mb = MemoryThresholdParamOf2GbDevices();
-  else if (physical_memory > 600 * 1024 * 1024)
-    memory_threshold_mb = MemoryThresholdParamOf1GbDevices();
-  else
-    memory_threshold_mb = MemoryThresholdParamOf512MbDevices();
-
-  return memory_threshold_mb;
-}
-
-}  // namespace
-
-// static
-UserLevelMemoryPressureSignalGenerator&
-UserLevelMemoryPressureSignalGenerator::Instance() {
-  DEFINE_STATIC_LOCAL(UserLevelMemoryPressureSignalGenerator, generator, ());
-  return generator;
+  int physical_memory_mb = base::SysInfo::AmountOfPhysicalMemoryMB();
+  if (physical_memory_mb > 3.1 * 1024)
+    return MemoryThresholdParamOf4GbDevices();
+  if (physical_memory_mb > 2.1 * 1024)
+    return MemoryThresholdParamOf3GbDevices();
+  if (physical_memory_mb > 1.1 * 1024)
+    return MemoryThresholdParamOf2GbDevices();
+  return (physical_memory_mb > 600) ? MemoryThresholdParamOf1GbDevices()
+                                    : MemoryThresholdParamOf512MbDevices();
 }
 
 // static
-bool UserLevelMemoryPressureSignalGenerator::Enabled() {
+bool IsUserLevelMemoryPressureSignalGeneratorEnabled() {
   if (!base::FeatureList::IsEnabled(
           blink::features::kUserLevelMemoryPressureSignal))
     return false;
@@ -106,31 +91,48 @@ bool UserLevelMemoryPressureSignalGenerator::Enabled() {
   return !std::isinf(MemoryThresholdParam());
 }
 
-UserLevelMemoryPressureSignalGenerator::UserLevelMemoryPressureSignalGenerator()
+}  // namespace
+
+// static
+void UserLevelMemoryPressureSignalGenerator::Initialize(
+    scoped_refptr<base::SingleThreadTaskRunner> task_runner) {
+  if (!IsUserLevelMemoryPressureSignalGeneratorEnabled())
+    return;
+  DEFINE_STATIC_LOCAL(UserLevelMemoryPressureSignalGenerator, generator,
+                      (std::move(task_runner)));
+  (void)generator;
+}
+
+UserLevelMemoryPressureSignalGenerator::UserLevelMemoryPressureSignalGenerator(
+    scoped_refptr<base::SingleThreadTaskRunner> task_runner)
+    : UserLevelMemoryPressureSignalGenerator(
+          std::move(task_runner),
+          base::DefaultTickClock::GetInstance()) {}
+
+UserLevelMemoryPressureSignalGenerator::UserLevelMemoryPressureSignalGenerator(
+    scoped_refptr<base::SingleThreadTaskRunner> task_runner,
+    const base::TickClock* clock)
     : memory_threshold_mb_(MemoryThresholdParam()),
       minimum_interval_(MinimumIntervalSeconds()),
       delayed_report_timer_(
-          Thread::MainThread()->GetTaskRunner(),
+          std::move(task_runner),
           this,
           &UserLevelMemoryPressureSignalGenerator::OnTimerFired),
-      clock_(base::DefaultTickClock::GetInstance()) {
+      clock_(clock) {
   DCHECK(base::FeatureList::IsEnabled(
       blink::features::kUserLevelMemoryPressureSignal));
   DCHECK(!std::isinf(memory_threshold_mb_));
 
   MemoryUsageMonitor::Instance().AddObserver(this);
-  ThreadScheduler::Current()->AddRAILModeObserver(this);
+  ThreadScheduler::Current()->ToMainThreadScheduler()->AddRAILModeObserver(
+      this);
 }
 
 UserLevelMemoryPressureSignalGenerator::
     ~UserLevelMemoryPressureSignalGenerator() {
   MemoryUsageMonitor::Instance().RemoveObserver(this);
-  ThreadScheduler::Current()->RemoveRAILModeObserver(this);
-}
-
-void UserLevelMemoryPressureSignalGenerator::SetTickClockForTesting(
-    const base::TickClock* clock) {
-  clock_ = clock;
+  ThreadScheduler::Current()->ToMainThreadScheduler()->RemoveRAILModeObserver(
+      this);
 }
 
 void UserLevelMemoryPressureSignalGenerator::OnRAILModeChanged(
@@ -161,8 +163,7 @@ void UserLevelMemoryPressureSignalGenerator::Generate(MemoryUsage usage) {
       base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL);
   last_generated_ = clock_->NowTicks();
 
-  delayed_report_timer_.StartOneShot(base::TimeDelta::FromSeconds(10),
-                                     FROM_HERE);
+  delayed_report_timer_.StartOneShot(base::Seconds(10), FROM_HERE);
 }
 
 void UserLevelMemoryPressureSignalGenerator::OnTimerFired(TimerBase*) {

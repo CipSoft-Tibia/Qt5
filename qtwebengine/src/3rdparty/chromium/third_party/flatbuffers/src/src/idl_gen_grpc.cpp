@@ -24,7 +24,8 @@
 #include "src/compiler/go_generator.h"
 #include "src/compiler/java_generator.h"
 #include "src/compiler/python_generator.h"
-#include "src/compiler/python_private_generator.h"
+#include "src/compiler/swift_generator.h"
+#include "src/compiler/ts_generator.h"
 
 #if defined(_MSC_VER)
 #  pragma warning(push)
@@ -58,11 +59,21 @@ class FlatBufMethod : public grpc_generator::Method {
 
   std::string name() const { return method_->name; }
 
+  // TODO: This method need to incorporate namespace for C++ side. Other
+  // language bindings simply don't use this method.
   std::string GRPCType(const StructDef &sd) const {
     return "flatbuffers::grpc::Message<" + sd.name + ">";
   }
 
+  std::vector<std::string> get_input_namespace_parts() const {
+    return (*method_->request).defined_namespace->components;
+  }
+
   std::string get_input_type_name() const { return (*method_->request).name; }
+
+  std::vector<std::string> get_output_namespace_parts() const {
+    return (*method_->response).defined_namespace->components;
+  }
 
   std::string get_output_type_name() const { return (*method_->response).name; }
 
@@ -79,9 +90,7 @@ class FlatBufMethod : public grpc_generator::Method {
     return true;
   }
 
-  std::string get_fb_builder() const {
-    return "builder";
-  }
+  std::string get_fb_builder() const { return "builder"; }
 
   std::string input_type_name() const { return GRPCType(*method_->request); }
 
@@ -112,7 +121,14 @@ class FlatBufService : public grpc_generator::Service {
     return service_->doc_comment;
   }
 
+  std::vector<grpc::string> namespace_parts() const {
+    return service_->defined_namespace->components;
+  }
+
   std::string name() const { return service_->name; }
+  bool is_internal() const {
+    return service_->Definition::attributes.Lookup("private") ? true : false;
+  }
 
   int method_count() const {
     return static_cast<int>(service_->calls.vec.size());
@@ -129,7 +145,12 @@ class FlatBufService : public grpc_generator::Service {
 
 class FlatBufPrinter : public grpc_generator::Printer {
  public:
-  FlatBufPrinter(std::string *str) : str_(str), escape_char_('$'), indent_(0) {}
+  FlatBufPrinter(std::string *str, const char indentation_type)
+      : str_(str),
+        escape_char_('$'),
+        indent_(0),
+        indentation_size_(2),
+        indentation_type_(indentation_type) {}
 
   void Print(const std::map<std::string, std::string> &vars,
              const char *string_template) {
@@ -156,7 +177,7 @@ class FlatBufPrinter : public grpc_generator::Printer {
     // Add this string, but for each part separated by \n, add indentation.
     for (;;) {
       // Current indentation.
-      str_->insert(str_->end(), indent_ * 2, ' ');
+      str_->insert(str_->end(), indent_ * indentation_size_, indentation_type_);
       // See if this contains more than one line.
       const char *lf = strchr(s, '\n');
       if (lf) {
@@ -170,23 +191,35 @@ class FlatBufPrinter : public grpc_generator::Printer {
     }
   }
 
+  void SetIndentationSize(const size_t size) {
+    FLATBUFFERS_ASSERT(str_->empty());
+    indentation_size_ = size;
+  }
+
   void Indent() { indent_++; }
 
   void Outdent() {
+    FLATBUFFERS_ASSERT(indent_ > 0);
     indent_--;
-    FLATBUFFERS_ASSERT(indent_ >= 0);
   }
 
  private:
   std::string *str_;
   char escape_char_;
-  int indent_;
+  size_t indent_;
+  size_t indentation_size_;
+  char indentation_type_;
 };
 
 class FlatBufFile : public grpc_generator::File {
  public:
   enum Language {
-    kLanguageGo, kLanguageCpp, kLanguageJava, kLanguagePython
+    kLanguageGo,
+    kLanguageCpp,
+    kLanguageJava,
+    kLanguagePython,
+    kLanguageSwift,
+    kLanguageTS
   };
 
   FlatBufFile(const Parser &parser, const std::string &file_name,
@@ -208,10 +241,6 @@ class FlatBufFile : public grpc_generator::File {
   std::string filename_without_ext() const {
     return StripExtension(file_name_);
   }
-
-  std::string message_header_ext() const { return "_generated.h"; }
-
-  std::string service_header_ext() const { return ".grpc.fb.h"; }
 
   std::string package() const {
     return parser_.current_namespace_->GetFullyQualifiedName("");
@@ -235,6 +264,12 @@ class FlatBufFile : public grpc_generator::File {
       case kLanguagePython: {
         return "";
       }
+      case kLanguageSwift: {
+        return "";
+      }
+      case kLanguageTS: {
+        return "";
+      }
     }
     return "";
   }
@@ -249,8 +284,9 @@ class FlatBufFile : public grpc_generator::File {
   }
 
   std::unique_ptr<grpc_generator::Printer> CreatePrinter(
-      std::string *str) const {
-    return std::unique_ptr<grpc_generator::Printer>(new FlatBufPrinter(str));
+      std::string *str, const char indentation_type = ' ') const {
+    return std::unique_ptr<grpc_generator::Printer>(
+        new FlatBufPrinter(str, indentation_type));
   }
 
  private:
@@ -263,7 +299,7 @@ class GoGRPCGenerator : public flatbuffers::BaseGenerator {
  public:
   GoGRPCGenerator(const Parser &parser, const std::string &path,
                   const std::string &file_name)
-      : BaseGenerator(parser, path, file_name, "", "" /*Unused*/),
+      : BaseGenerator(parser, path, file_name, "", "" /*Unused*/, "go"),
         parser_(parser),
         path_(path),
         file_name_(file_name) {}
@@ -305,6 +341,7 @@ bool GenerateGoGRPC(const Parser &parser, const std::string &path,
 
 bool GenerateCppGRPC(const Parser &parser, const std::string &path,
                      const std::string &file_name) {
+  const auto &opts = parser.opts;
   int nservices = 0;
   for (auto it = parser.services_.vec.begin(); it != parser.services_.vec.end();
        ++it) {
@@ -312,9 +349,15 @@ bool GenerateCppGRPC(const Parser &parser, const std::string &path,
   }
   if (!nservices) return true;
 
+  std::string suffix = "";
+  suffix += opts.filename_suffix.empty() ? "_generated" : opts.filename_suffix;
+  suffix += ".";
+  suffix += opts.filename_extension.empty() ? "h" : opts.filename_extension;
+
   grpc_cpp_generator::Parameters generator_parameters;
   // TODO(wvo): make the other parameters in this struct configurable.
   generator_parameters.use_system_headers = true;
+  generator_parameters.message_header_extension = suffix;
 
   FlatBufFile fbfile(parser, file_name, FlatBufFile::kLanguageCpp);
 
@@ -340,7 +383,7 @@ class JavaGRPCGenerator : public flatbuffers::BaseGenerator {
  public:
   JavaGRPCGenerator(const Parser &parser, const std::string &path,
                     const std::string &file_name)
-      : BaseGenerator(parser, path, file_name, "", "." /*separator*/) {}
+      : BaseGenerator(parser, path, file_name, "", "." /*separator*/, "java") {}
 
   bool generate() {
     FlatBufFile file(parser_, file_name_, FlatBufFile::kLanguageJava);
@@ -371,9 +414,47 @@ bool GenerateJavaGRPC(const Parser &parser, const std::string &path,
   return JavaGRPCGenerator(parser, path, file_name).generate();
 }
 
+class PythonGRPCGenerator : public flatbuffers::BaseGenerator {
+ private:
+  CodeWriter code_;
+
+ public:
+  PythonGRPCGenerator(const Parser &parser, const std::string &filename)
+      : BaseGenerator(parser, "", filename, "", "" /*Unused*/, "swift") {}
+
+  bool generate() {
+    code_.Clear();
+    code_ +=
+        "# Generated by the gRPC Python protocol compiler plugin. "
+        "DO NOT EDIT!\n";
+    code_ += "import grpc\n";
+
+    FlatBufFile file(parser_, file_name_, FlatBufFile::kLanguagePython);
+
+    for (int i = 0; i < file.service_count(); i++) {
+      auto service = file.service(i);
+      code_ += grpc_python_generator::Generate(&file, service.get());
+    }
+    const auto final_code = code_.ToString();
+    const auto filename = GenerateFileName();
+    return SaveFile(filename.c_str(), final_code, false);
+  }
+
+  std::string GenerateFileName() {
+    std::string namespace_dir;
+    auto &namespaces = parser_.namespaces_.back()->components;
+    for (auto it = namespaces.begin(); it != namespaces.end(); ++it) {
+      if (it != namespaces.begin()) namespace_dir += kPathSeparator;
+      namespace_dir += *it;
+    }
+    std::string grpc_py_filename = namespace_dir;
+    if (!namespace_dir.empty()) grpc_py_filename += kPathSeparator;
+    return grpc_py_filename + file_name_ + "_grpc_fb.py";
+  }
+};
+
 bool GeneratePythonGRPC(const Parser &parser, const std::string & /*path*/,
                         const std::string &file_name) {
-
   int nservices = 0;
   for (auto it = parser.services_.vec.begin(); it != parser.services_.vec.end();
        ++it) {
@@ -381,26 +462,95 @@ bool GeneratePythonGRPC(const Parser &parser, const std::string & /*path*/,
   }
   if (!nservices) return true;
 
-  grpc_python_generator::GeneratorConfiguration config;
-  config.grpc_package_root = "grpc";
-  config.beta_package_root = "grpc.beta";
-  config.import_prefix = "";
+  return PythonGRPCGenerator(parser, file_name).generate();
+}
 
-  FlatBufFile fbfile(parser, file_name, FlatBufFile::kLanguagePython);
+class SwiftGRPCGenerator : public flatbuffers::BaseGenerator {
+ private:
+  CodeWriter code_;
 
-  grpc_python_generator::PrivateGenerator generator(config, &fbfile);
+ public:
+  SwiftGRPCGenerator(const Parser &parser, const std::string &path,
+                     const std::string &filename)
+      : BaseGenerator(parser, path, filename, "", "" /*Unused*/, "swift") {}
 
-  std::string code = generator.GetGrpcServices();
-  std::string namespace_dir;
-  auto &namespaces = parser.namespaces_.back()->components;
-  for (auto it = namespaces.begin(); it != namespaces.end(); ++it) {
-    if (it != namespaces.begin()) namespace_dir += kPathSeparator;
-    namespace_dir += *it;
+  bool generate() {
+    code_.Clear();
+    code_ += "// Generated GRPC code for FlatBuffers swift!";
+    code_ += grpc_swift_generator::GenerateHeader();
+    FlatBufFile file(parser_, file_name_, FlatBufFile::kLanguageSwift);
+    for (int i = 0; i < file.service_count(); i++) {
+      auto service = file.service(i);
+      code_ += grpc_swift_generator::Generate(&file, service.get());
+    }
+    const auto final_code = code_.ToString();
+    const auto filename = GeneratedFileName(path_, file_name_);
+    return SaveFile(filename.c_str(), final_code, false);
   }
 
-  std::string grpc_py_filename =
-      namespace_dir + kPathSeparator + file_name + "_grpc_fb.py";
-  return flatbuffers::SaveFile(grpc_py_filename.c_str(), code, false);
+  static std::string GeneratedFileName(const std::string &path,
+                                       const std::string &file_name) {
+    return path + file_name + ".grpc.swift";
+  }
+};
+
+bool GenerateSwiftGRPC(const Parser &parser, const std::string &path,
+                       const std::string &file_name) {
+  int nservices = 0;
+  for (auto it = parser.services_.vec.begin(); it != parser.services_.vec.end();
+       ++it) {
+    if (!(*it)->generated) nservices++;
+  }
+  if (!nservices) return true;
+  return SwiftGRPCGenerator(parser, path, file_name).generate();
+}
+
+class TSGRPCGenerator : public flatbuffers::BaseGenerator {
+ private:
+  CodeWriter code_;
+
+ public:
+  TSGRPCGenerator(const Parser &parser, const std::string &path,
+                  const std::string &filename)
+      : BaseGenerator(parser, path, filename, "", "" /*Unused*/, "ts") {}
+
+  bool generate() {
+    code_.Clear();
+    FlatBufFile file(parser_, file_name_, FlatBufFile::kLanguageTS);
+
+    for (int i = 0; i < file.service_count(); i++) {
+      auto service = file.service(i);
+      code_ += grpc_ts_generator::Generate(&file, service.get(), file_name_);
+      const auto ts_name = GeneratedFileName(path_, file_name_);
+      if (!SaveFile(ts_name.c_str(), code_.ToString(), false)) return false;
+
+      code_.Clear();
+      code_ += grpc_ts_generator::GenerateInterface(&file, service.get(),
+                                                    file_name_);
+      const auto ts_interface_name = GeneratedFileName(path_, file_name_, true);
+      if (!SaveFile(ts_interface_name.c_str(), code_.ToString(), false))
+        return false;
+    }
+    return true;
+  }
+
+  static std::string GeneratedFileName(const std::string &path,
+                                       const std::string &file_name,
+                                       const bool is_interface = false) {
+    if (is_interface) return path + file_name + "_grpc.d.ts";
+    return path + file_name + "_grpc.js";
+  }
+};
+
+bool GenerateTSGRPC(const Parser &parser, const std::string &path,
+                    const std::string &file_name) {
+  int nservices = 0;
+  for (auto it = parser.services_.vec.begin(); it != parser.services_.vec.end();
+       ++it) {
+    if (!(*it)->generated) nservices++;
+  }
+  if (!nservices) return true;
+  return TSGRPCGenerator(parser, path, file_name).generate();
 }
 
 }  // namespace flatbuffers

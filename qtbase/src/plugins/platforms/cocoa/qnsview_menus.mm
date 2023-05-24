@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // This file is included from qnsview.mm, and only used to organize the code
 
@@ -45,22 +9,56 @@
 #include "qcocoamenu.h"
 #include "qcocoamenubar.h"
 
-static bool selectorIsCutCopyPaste(SEL selector)
+@implementation QNSView (Menus)
+
+// Qt does not (yet) have a mechanism for propagating generic actions,
+// so we can only support actions that originate from a QCocoaNSMenuItem,
+// where we can forward the action by emitting QPlatformMenuItem::activated().
+// But waiting for forwardInvocation to check that the sender is a
+// QCocoaNSMenuItem is too late, as AppKit has at that point chosen
+// our view as the target for the action, and if we can't handle it
+// the action will not propagate up the responder chain as it should.
+// Instead, we hook in early in the process of determining the target
+// via the supplementalTargetForAction API, and if we can support the
+// action we forward it to a helper. The helper must be tied to the
+// view, as the menu validation logic depends on the view's state.
+
+- (id)supplementalTargetForAction:(SEL)action sender:(id)sender
 {
-    return (selector == @selector(cut:)
-            || selector == @selector(copy:)
-            || selector == @selector(paste:)
-            || selector == @selector(selectAll:));
+    qCDebug(lcQpaMenus) << "Resolving action target for" << action << "from" << sender << "via" << self;
+
+    if (qt_objc_cast<QCocoaNSMenuItem *>(sender)) {
+        // The supplemental target must support the selector, but we
+        // determine so dynamically, so check here before continuing.
+        if ([self.menuHelper respondsToSelector:action])
+            return self.menuHelper;
+    } else {
+        qCDebug(lcQpaMenus) << "Ignoring action for menu item we didn't create";
+    }
+
+    return [super supplementalTargetForAction:action sender:sender];
 }
 
-@interface QNSView (Menus)
-- (void)qt_itemFired:(QCocoaNSMenuItem *)item;
 @end
 
-@implementation QNSView (Menus)
+@interface QNSViewMenuHelper ()
+@property (assign) QNSView* view;
+@end
+
+@implementation QNSViewMenuHelper
+
+- (instancetype)initWithView:(QNSView *)theView
+{
+    if ((self = [super init]))
+        self.view = theView;
+
+    return self;
+}
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item
 {
+    qCDebug(lcQpaMenus) << "Validating" << item << "for" << self.view;
+
     auto *nativeItem = qt_objc_cast<QCocoaNSMenuItem *>(item);
     if (!nativeItem)
         return item.enabled; // FIXME Test with with Qt as plugin or embedded QWindow.
@@ -87,7 +85,7 @@ static bool selectorIsCutCopyPaste(SEL selector)
         }
 
         if ((!menuWindow || menuWindow->window() != QGuiApplication::modalWindow())
-            && (!menubar || menubar->cocoaWindow() != self.platformWindow))
+            && (!menubar || menubar->cocoaWindow() != self.view.platformWindow))
             return NO;
     }
 
@@ -96,41 +94,42 @@ static bool selectorIsCutCopyPaste(SEL selector)
 
 - (BOOL)respondsToSelector:(SEL)selector
 {
-    // Not exactly true. Both copy: and selectAll: can work on non key views.
-    if (selectorIsCutCopyPaste(selector))
-        return ([NSApp keyWindow] == self.window) && (self.window.firstResponder == self);
+    // See QCocoaMenuItem::resolveTargetAction()
+
+    if (selector == @selector(cut:)
+     || selector == @selector(copy:)
+     || selector == @selector(paste:)
+     || selector == @selector(selectAll:)) {
+        // Not exactly true. Both copy: and selectAll: can work on non key views.
+        return NSApp.keyWindow == self.view.window
+            && self.view.window.firstResponder == self.view;
+    }
+
+    if (selector == @selector(qt_itemFired:))
+        return YES;
 
     return [super respondsToSelector:selector];
 }
 
-- (void)qt_itemFired:(QCocoaNSMenuItem *)item
-{
-    auto *appDelegate = [QCocoaApplicationDelegate sharedDelegate];
-    [appDelegate qt_itemFired:item];
-}
-
 - (NSMethodSignature *)methodSignatureForSelector:(SEL)selector
 {
-    if (selectorIsCutCopyPaste(selector)) {
-        NSMethodSignature *itemFiredSign = [super methodSignatureForSelector:@selector(qt_itemFired:)];
-        return itemFiredSign;
-    }
+    // Double check, in case something has cached that we respond
+    // to the selector, but the result has changed since then.
+    if (![self respondsToSelector:selector])
+        return nil;
 
-    return [super methodSignatureForSelector:selector];
+    auto *appDelegate = [QCocoaApplicationDelegate sharedDelegate];
+    return [appDelegate methodSignatureForSelector:@selector(qt_itemFired:)];
 }
 
 - (void)forwardInvocation:(NSInvocation *)invocation
 {
-    if (selectorIsCutCopyPaste(invocation.selector)) {
-        NSObject *sender;
-        [invocation getArgument:&sender atIndex:2];
-        if (auto *nativeItem = qt_objc_cast<QCocoaNSMenuItem *>(sender)) {
-            [self qt_itemFired:nativeItem];
-            return;
-        }
-    }
-
-    [super forwardInvocation:invocation];
+    NSObject *sender;
+    [invocation getArgument:&sender atIndex:2];
+    qCDebug(lcQpaMenus) << "Forwarding" << invocation.selector << "from" << sender;
+    Q_ASSERT(qt_objc_cast<QCocoaNSMenuItem *>(sender));
+    invocation.selector = @selector(qt_itemFired:);
+    [invocation invokeWithTarget:[QCocoaApplicationDelegate sharedDelegate]];
 }
 
 @end

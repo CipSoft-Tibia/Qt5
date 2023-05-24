@@ -1,17 +1,29 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 """Presubmit checks used in viz"""
 
 import re
-import string
 
 def CheckChangeLintsClean(input_api, output_api, allowlist, denylist=None):
   source_filter = lambda x: input_api.FilterSourceFile(x, allowlist, denylist)
 
   return input_api.canned_checks.CheckChangeLintsClean(
       input_api, output_api, source_filter, lint_filters=[], verbose_level=1)
+
+def CheckChangeInBundle(input_api, output_api):
+  import sys
+  old_sys_path = sys.path[:]
+  results = []
+  try:
+      sys.path.append(input_api.change.RepositoryRoot())
+      from build.ios import presubmit_support
+      results += presubmit_support.CheckBundleData(input_api, output_api,
+                                                   'unit_tests_bundle_data')
+  finally:
+      sys.path = old_sys_path
+  return results
 
 def CheckAsserts(input_api, output_api, allowlist, denylist=None):
   denylist = tuple(denylist or input_api.DEFAULT_FILES_TO_SKIP)
@@ -97,7 +109,7 @@ def CheckPassByValue(input_api,
     contents = input_api.ReadFile(f, 'rb')
     match = re.search(
       r'\bconst +' + '(?P<type>(%s))&' %
-        string.join(pass_by_value_types, '|'),
+        '|'.join(pass_by_value_types),
       contents)
     if match:
       local_errors.append(output_api.PresubmitError(
@@ -300,6 +312,7 @@ def RunAllChecks(input_api, output_api, allowlist):
   results += CheckStdAbs(input_api, output_api, allowlist)
   results += CheckPassByValue(input_api, output_api, allowlist)
   results += CheckChangeLintsClean(input_api, output_api, allowlist)
+  results += CheckChangeInBundle(input_api, output_api)
   results += CheckTodos(input_api, output_api)
   results += CheckDoubleAngles(input_api, output_api, allowlist)
   results += CheckNamespace(input_api, output_api)

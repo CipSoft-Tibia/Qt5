@@ -1,18 +1,19 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef TESTING_XFA_JS_EMBEDDER_TEST_H_
 #define TESTING_XFA_JS_EMBEDDER_TEST_H_
 
-#include <memory>
 #include <string>
 
 #include "core/fxcrt/string_view_template.h"
 #include "testing/js_embedder_test.h"
+#include "v8/include/v8-local-handle.h"
+#include "v8/include/v8-persistent-handle.h"
+#include "v8/include/v8-value.h"
 
 class CFXJSE_Engine;
-class CFXJSE_Value;
 class CXFA_Document;
 
 class XFAJSEmbedderTest : public JSEmbedderTest {
@@ -30,7 +31,7 @@ class XFAJSEmbedderTest : public JSEmbedderTest {
 
   CXFA_Document* GetXFADocument() const;
   CFXJSE_Engine* GetScriptContext() const { return script_context_; }
-  CFXJSE_Value* GetValue() const { return value_.get(); }
+  v8::Local<v8::Value> GetValue() const;
 
   bool Execute(ByteStringView input);
   bool ExecuteSilenceFailure(ByteStringView input);
@@ -38,7 +39,7 @@ class XFAJSEmbedderTest : public JSEmbedderTest {
  private:
   bool ExecuteHelper(ByteStringView input);
 
-  std::unique_ptr<CFXJSE_Value> value_;
+  v8::Global<v8::Value> value_;
   CFXJSE_Engine* script_context_ = nullptr;
 };
 

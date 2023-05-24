@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page qtquick-cppextensionpoints.html
@@ -32,8 +8,8 @@
 
 All QML applications can be extended from C++ in order to use additional
 functionality implemented in C++ code or to provide a C++ based QML plugin.
-This topic of extending QML from C++ is covered in the \l {Integrating QML and C++}
-documentation.
+This topic of extending QML from C++ is covered in the
+\l {Writing QML Extensions with C++} documentation.
 
 Additionally, the Qt Quick module provides several extension and integration points for C++
 developers, specific to this module. In particular, it allows C++ developers to create and register custom
@@ -54,17 +30,16 @@ for more details.
 \target scene-graph-related-classes
 \section1 Scene Graph-Related Classes
 
-Qt Quick 2 makes use of a dedicated scene graph based on OpenGL ES 2.0 or OpenGL 2.0
-for its rendering. Using a scene graph for graphics rather than the traditional imperative
-painting systems (QPainter and similar), means the scene to be rendered can be retained
-between frames and the complete set of primitives to render is known before rendering
-starts. This opens up for a number of optimizations, such as batching the OpenGL draw calls
-to minimize state changes or discarding obscured primitives.
-
+Qt Quick 2 makes use of a dedicated scene graph based on graphics APIs such as
+OpenGL ES, OpenGL, Vulkan, Metal, or Direct 3D for its rendering. Using a scene
+graph for graphics rather than the traditional imperative painting systems
+(QPainter and similar), means the scene to be rendered can be retained between
+frames and the complete set of primitives to render is known before rendering
+starts. This opens up for a number of optimizations, such as batching the
+OpenGL draw calls to minimize state changes or discarding obscured primitives.
 The \l {Qt Quick C++ Classes}{Qt Quick C++ API} provides various classes to
-enable custom nodes to be created in C++.
-
-See the \l {Qt Quick Scene Graph} documentation for details.
+enable custom nodes to be created in C++. See the \l {Qt Quick Scene Graph}
+documentation for details.
 
 \target pixmap-and-threaded-image-support
 \section1 Pixmap and Threaded Image Support

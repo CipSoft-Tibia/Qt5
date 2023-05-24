@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'authenticationdialog.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -10,6 +10,7 @@
 #define AUTHENTICATIONDIALOG_H
 
 #include <QtCore/QVariant>
+#include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
@@ -37,66 +38,65 @@ public:
     void setupUi(QDialog *Dialog)
     {
         if (Dialog->objectName().isEmpty())
-            Dialog->setObjectName(QString::fromUtf8("Dialog"));
+            Dialog->setObjectName("Dialog");
         Dialog->resize(389, 243);
         gridLayout = new QGridLayout(Dialog);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
+        gridLayout->setObjectName("gridLayout");
         label = new QLabel(Dialog);
-        label->setObjectName(QString::fromUtf8("label"));
+        label->setObjectName("label");
         label->setWordWrap(false);
 
         gridLayout->addWidget(label, 0, 0, 1, 2);
 
         label_2 = new QLabel(Dialog);
-        label_2->setObjectName(QString::fromUtf8("label_2"));
+        label_2->setObjectName("label_2");
 
         gridLayout->addWidget(label_2, 2, 0, 1, 1);
 
         userEdit = new QLineEdit(Dialog);
-        userEdit->setObjectName(QString::fromUtf8("userEdit"));
+        userEdit->setObjectName("userEdit");
 
         gridLayout->addWidget(userEdit, 2, 1, 1, 1);
 
         label_3 = new QLabel(Dialog);
-        label_3->setObjectName(QString::fromUtf8("label_3"));
+        label_3->setObjectName("label_3");
 
         gridLayout->addWidget(label_3, 3, 0, 1, 1);
 
         passwordEdit = new QLineEdit(Dialog);
-        passwordEdit->setObjectName(QString::fromUtf8("passwordEdit"));
+        passwordEdit->setObjectName("passwordEdit");
 
         gridLayout->addWidget(passwordEdit, 3, 1, 1, 1);
 
         buttonBox = new QDialogButtonBox(Dialog);
-        buttonBox->setObjectName(QString::fromUtf8("buttonBox"));
+        buttonBox->setObjectName("buttonBox");
         buttonBox->setOrientation(Qt::Horizontal);
         buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
 
         gridLayout->addWidget(buttonBox, 5, 0, 1, 2);
 
         label_4 = new QLabel(Dialog);
-        label_4->setObjectName(QString::fromUtf8("label_4"));
+        label_4->setObjectName("label_4");
 
         gridLayout->addWidget(label_4, 1, 0, 1, 1);
 
         siteDescription = new QLabel(Dialog);
-        siteDescription->setObjectName(QString::fromUtf8("siteDescription"));
+        siteDescription->setObjectName("siteDescription");
         QFont font;
         font.setBold(true);
-        font.setWeight(75);
         siteDescription->setFont(font);
         siteDescription->setWordWrap(true);
 
         gridLayout->addWidget(siteDescription, 1, 1, 1, 1);
 
-        spacerItem = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout->addItem(spacerItem, 4, 0, 1, 1);
 
 
         retranslateUi(Dialog);
-        QObject::connect(buttonBox, SIGNAL(accepted()), Dialog, SLOT(accept()));
-        QObject::connect(buttonBox, SIGNAL(rejected()), Dialog, SLOT(reject()));
+        QObject::connect(buttonBox, &QDialogButtonBox::accepted, Dialog, qOverload<>(&QDialog::accept));
+        QObject::connect(buttonBox, &QDialogButtonBox::rejected, Dialog, qOverload<>(&QDialog::reject));
 
         QMetaObject::connectSlotsByName(Dialog);
     } // setupUi

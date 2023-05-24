@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -28,11 +28,15 @@ void RemoteObjectGatewayImpl::InjectNamed(const WTF::String& object_name,
   ScriptState* script_state = ToScriptStateForMainWorld(GetSupplementable());
   ScriptState::Scope scope(script_state);
   v8::Isolate* isolate = script_state->GetIsolate();
+  v8::MicrotasksScope microtasks_scope(
+      isolate, ToMicrotaskQueue(script_state),
+      v8::MicrotasksScope::kDoNotRunMicrotasks);
   v8::Local<v8::Context> context = script_state->GetContext();
   if (context.IsEmpty())
     return;
 
-  RemoteObject* object = new RemoteObject(isolate, this, object_id);
+  remote_objects_.erase(object_id);
+  RemoteObject* object = GetRemoteObject(isolate, object_id);
 
   v8::Context::Scope context_scope(context);
   v8::Local<v8::Object> global = context->Global();
@@ -45,6 +49,7 @@ void RemoteObjectGatewayImpl::InjectNamed(const WTF::String& object_name,
 
   global->Set(context, V8AtomicString(isolate, object_name), controller.ToV8())
       .Check();
+  object_host_->AcquireObject(object_id);
 }
 
 // static
@@ -52,19 +57,19 @@ void RemoteObjectGatewayImpl::BindMojoReceiver(
     LocalFrame* frame,
     mojo::PendingRemote<mojom::blink::RemoteObjectHost> host,
     mojo::PendingReceiver<mojom::blink::RemoteObjectGateway> receiver) {
-  if (!frame)
+  if (!frame || !frame->IsAttached())
     return;
 
   DCHECK(!RemoteObjectGatewayImpl::From(*frame));
 
   auto* self = MakeGarbageCollected<RemoteObjectGatewayImpl>(
-      util::PassKey<RemoteObjectGatewayImpl>(), *frame, std::move(receiver),
+      base::PassKey<RemoteObjectGatewayImpl>(), *frame, std::move(receiver),
       std::move(host));
   Supplement<LocalFrame>::ProvideTo(*frame, self);
 }
 
 RemoteObjectGatewayImpl::RemoteObjectGatewayImpl(
-    util::PassKey<RemoteObjectGatewayImpl>,
+    base::PassKey<RemoteObjectGatewayImpl>,
     LocalFrame& frame,
     mojo::PendingReceiver<mojom::blink::RemoteObjectGateway>
         object_gateway_receiver,
@@ -110,34 +115,71 @@ void RemoteObjectGatewayImpl::BindRemoteObjectReceiver(
   object_host_->GetObject(object_id, std::move(receiver));
 }
 
-void RemoteObjectGatewayImpl::ReleaseObject(int32_t object_id) {
+void RemoteObjectGatewayImpl::ReleaseObject(int32_t object_id,
+                                            RemoteObject* remote_object) {
+  auto iter = remote_objects_.find(object_id);
+  DCHECK(iter != remote_objects_.end());
+  if (iter->value == remote_object)
+    remote_objects_.erase(iter);
   object_host_->ReleaseObject(object_id);
-  for (const auto& pair : named_objects_) {
-    if (pair.value == object_id) {
-      named_objects_.erase(pair.key);
-      break;
-    }
+}
+
+RemoteObject* RemoteObjectGatewayImpl::GetRemoteObject(v8::Isolate* isolate,
+                                                       int32_t object_id) {
+  auto iter = remote_objects_.find(object_id);
+  if (iter != remote_objects_.end()) {
+    // Decrease a reference count in the browser side when we reuse RemoteObject
+    // getting from the map.
+    object_host_->ReleaseObject(object_id);
+    return iter->value;
   }
+
+  auto* remote_object = new RemoteObject(isolate, this, object_id);
+  remote_objects_.insert(object_id, remote_object);
+  return remote_object;
 }
 
 // static
-void RemoteObjectGatewayFactoryImpl::Create(
+const char RemoteObjectGatewayFactoryImpl::kSupplementName[] =
+    "RemoteObjectGatewayFactoryImpl";
+
+// static
+RemoteObjectGatewayFactoryImpl* RemoteObjectGatewayFactoryImpl::From(
+    LocalFrame& frame) {
+  return Supplement<LocalFrame>::From<RemoteObjectGatewayFactoryImpl>(frame);
+}
+
+// static
+void RemoteObjectGatewayFactoryImpl::Bind(
     LocalFrame* frame,
     mojo::PendingReceiver<mojom::blink::RemoteObjectGatewayFactory> receiver) {
-  mojo::MakeSelfOwnedReceiver(std::unique_ptr<RemoteObjectGatewayFactoryImpl>(
-                                  new RemoteObjectGatewayFactoryImpl(*frame)),
-                              std::move(receiver));
+  DCHECK(frame);
+  DCHECK(!RemoteObjectGatewayFactoryImpl::From(*frame));
+  auto* factory = MakeGarbageCollected<RemoteObjectGatewayFactoryImpl>(
+      base::PassKey<RemoteObjectGatewayFactoryImpl>(), *frame,
+      std::move(receiver));
+  Supplement<LocalFrame>::ProvideTo(*frame, factory);
 }
 
 RemoteObjectGatewayFactoryImpl::RemoteObjectGatewayFactoryImpl(
-    LocalFrame& frame)
-    : frame_(frame) {}
+    base::PassKey<RemoteObjectGatewayFactoryImpl>,
+    LocalFrame& frame,
+    mojo::PendingReceiver<mojom::blink::RemoteObjectGatewayFactory> receiver)
+    : Supplement<LocalFrame>(frame), receiver_(this, frame.DomWindow()) {
+  receiver_.Bind(std::move(receiver),
+                 frame.GetTaskRunner(TaskType::kMiscPlatformAPI));
+}
+
+void RemoteObjectGatewayFactoryImpl::Trace(Visitor* visitor) const {
+  visitor->Trace(receiver_);
+  Supplement<LocalFrame>::Trace(visitor);
+}
 
 void RemoteObjectGatewayFactoryImpl::CreateRemoteObjectGateway(
     mojo::PendingRemote<mojom::blink::RemoteObjectHost> host,
     mojo::PendingReceiver<mojom::blink::RemoteObjectGateway> receiver) {
-  RemoteObjectGatewayImpl::BindMojoReceiver(frame_, std::move(host),
-                                            std::move(receiver));
+  RemoteObjectGatewayImpl::BindMojoReceiver(
+      GetSupplementable(), std::move(host), std::move(receiver));
 }
 
 }  // namespace blink

@@ -19,7 +19,7 @@ namespace internal {
 // ES6 section 26.1.3 Reflect.defineProperty
 BUILTIN(ReflectDefineProperty) {
   HandleScope scope(isolate);
-  DCHECK_EQ(4, args.length());
+  DCHECK_LE(4, args.length());
   Handle<Object> target = args.at(1);
   Handle<Object> key = args.at(2);
   Handle<Object> attributes = args.at(3);
@@ -46,36 +46,10 @@ BUILTIN(ReflectDefineProperty) {
   return *isolate->factory()->ToBoolean(result.FromJust());
 }
 
-// ES6 section 26.1.7 Reflect.getOwnPropertyDescriptor
-BUILTIN(ReflectGetOwnPropertyDescriptor) {
-  HandleScope scope(isolate);
-  DCHECK_EQ(3, args.length());
-  Handle<Object> target = args.at(1);
-  Handle<Object> key = args.at(2);
-
-  if (!target->IsJSReceiver()) {
-    THROW_NEW_ERROR_RETURN_FAILURE(
-        isolate, NewTypeError(MessageTemplate::kCalledOnNonObject,
-                              isolate->factory()->NewStringFromAsciiChecked(
-                                  "Reflect.getOwnPropertyDescriptor")));
-  }
-
-  Handle<Name> name;
-  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(isolate, name,
-                                     Object::ToName(isolate, key));
-
-  PropertyDescriptor desc;
-  Maybe<bool> found = JSReceiver::GetOwnPropertyDescriptor(
-      isolate, Handle<JSReceiver>::cast(target), name, &desc);
-  MAYBE_RETURN(found, ReadOnlyRoots(isolate).exception());
-  if (!found.FromJust()) return ReadOnlyRoots(isolate).undefined_value();
-  return *desc.ToObject(isolate);
-}
-
 // ES6 section 26.1.11 Reflect.ownKeys
 BUILTIN(ReflectOwnKeys) {
   HandleScope scope(isolate);
-  DCHECK_EQ(2, args.length());
+  DCHECK_LE(2, args.length());
   Handle<Object> target = args.at(1);
 
   if (!target->IsJSReceiver()) {
@@ -88,7 +62,7 @@ BUILTIN(ReflectOwnKeys) {
   Handle<FixedArray> keys;
   ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
       isolate, keys,
-      KeyAccumulator::GetKeys(Handle<JSReceiver>::cast(target),
+      KeyAccumulator::GetKeys(isolate, Handle<JSReceiver>::cast(target),
                               KeyCollectionMode::kOwnOnly, ALL_PROPERTIES,
                               GetKeysConversion::kConvertToString));
   return *isolate->factory()->NewJSArrayWithElements(keys);
@@ -113,7 +87,7 @@ BUILTIN(ReflectSet) {
   ASSIGN_RETURN_FAILURE_ON_EXCEPTION(isolate, name,
                                      Object::ToName(isolate, key));
 
-  LookupIterator::Key lookup_key(isolate, name);
+  PropertyKey lookup_key(isolate, name);
   LookupIterator it(isolate, receiver, lookup_key,
                     Handle<JSReceiver>::cast(target));
   Maybe<bool> result = Object::SetSuperProperty(

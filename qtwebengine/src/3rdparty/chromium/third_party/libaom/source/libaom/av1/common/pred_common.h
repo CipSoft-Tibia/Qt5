@@ -12,6 +12,8 @@
 #ifndef AOM_AV1_COMMON_PRED_COMMON_H_
 #define AOM_AV1_COMMON_PRED_COMMON_H_
 
+#include <stdint.h>
+
 #include "av1/common/av1_common_int.h"
 #include "av1/common/blockd.h"
 #include "av1/common/mvref_common.h"
@@ -21,56 +23,57 @@
 extern "C" {
 #endif
 
-static INLINE int get_segment_id(const CommonModeInfoParams *const mi_params,
-                                 const uint8_t *segment_ids, BLOCK_SIZE bsize,
-                                 int mi_row, int mi_col) {
+static INLINE uint8_t get_segment_id(
+    const CommonModeInfoParams *const mi_params, const uint8_t *segment_ids,
+    BLOCK_SIZE bsize, int mi_row, int mi_col) {
   const int mi_offset = mi_row * mi_params->mi_cols + mi_col;
   const int bw = mi_size_wide[bsize];
   const int bh = mi_size_high[bsize];
   const int xmis = AOMMIN(mi_params->mi_cols - mi_col, bw);
   const int ymis = AOMMIN(mi_params->mi_rows - mi_row, bh);
-  int segment_id = MAX_SEGMENTS;
+  const int seg_stride = mi_params->mi_cols;
+  uint8_t segment_id = MAX_SEGMENTS;
 
   for (int y = 0; y < ymis; ++y) {
     for (int x = 0; x < xmis; ++x) {
-      segment_id = AOMMIN(segment_id,
-                          segment_ids[mi_offset + y * mi_params->mi_cols + x]);
+      segment_id =
+          AOMMIN(segment_id, segment_ids[mi_offset + y * seg_stride + x]);
     }
   }
 
-  assert(segment_id >= 0 && segment_id < MAX_SEGMENTS);
+  assert(segment_id < MAX_SEGMENTS);
   return segment_id;
 }
 
-static INLINE int av1_get_spatial_seg_pred(const AV1_COMMON *const cm,
-                                           const MACROBLOCKD *const xd,
-                                           int *cdf_index) {
-  int prev_ul = -1;  // top left segment_id
-  int prev_l = -1;   // left segment_id
-  int prev_u = -1;   // top segment_id
+static INLINE uint8_t av1_get_spatial_seg_pred(const AV1_COMMON *const cm,
+                                               const MACROBLOCKD *const xd,
+                                               int *cdf_index,
+                                               int skip_over4x4) {
+  const int step_size = skip_over4x4 ? 2 : 1;
+  uint8_t prev_ul = UINT8_MAX;  // top left segment_id
+  uint8_t prev_l = UINT8_MAX;   // left segment_id
+  uint8_t prev_u = UINT8_MAX;   // top segment_id
   const int mi_row = xd->mi_row;
   const int mi_col = xd->mi_col;
   const CommonModeInfoParams *const mi_params = &cm->mi_params;
   const uint8_t *seg_map = cm->cur_frame->seg_map;
   if ((xd->up_available) && (xd->left_available)) {
-    prev_ul =
-        get_segment_id(mi_params, seg_map, BLOCK_4X4, mi_row - 1, mi_col - 1);
+    prev_ul = get_segment_id(mi_params, seg_map, BLOCK_4X4, mi_row - step_size,
+                             mi_col - step_size);
   }
   if (xd->up_available) {
-    prev_u =
-        get_segment_id(mi_params, seg_map, BLOCK_4X4, mi_row - 1, mi_col - 0);
+    prev_u = get_segment_id(mi_params, seg_map, BLOCK_4X4, mi_row - step_size,
+                            mi_col - 0);
   }
   if (xd->left_available) {
-    prev_l =
-        get_segment_id(mi_params, seg_map, BLOCK_4X4, mi_row - 0, mi_col - 1);
+    prev_l = get_segment_id(mi_params, seg_map, BLOCK_4X4, mi_row - 0,
+                            mi_col - step_size);
   }
-  // This property follows from the fact that get_segment_id() returns a
-  // nonnegative value. This allows us to test for all edge cases with a simple
-  // prev_ul < 0 check.
-  assert(IMPLIES(prev_ul >= 0, prev_u >= 0 && prev_l >= 0));
+  assert(IMPLIES(prev_ul != UINT8_MAX,
+                 prev_u != UINT8_MAX && prev_l != UINT8_MAX));
 
   // Pick CDF index based on number of matching/out-of-bounds segment IDs.
-  if (prev_ul < 0) /* Edge cases */
+  if (prev_ul == UINT8_MAX) /* Edge cases */
     *cdf_index = 0;
   else if ((prev_ul == prev_u) && (prev_ul == prev_l))
     *cdf_index = 2;
@@ -80,14 +83,14 @@ static INLINE int av1_get_spatial_seg_pred(const AV1_COMMON *const cm,
     *cdf_index = 0;
 
   // If 2 or more are identical returns that as predictor, otherwise prev_l.
-  if (prev_u == -1)  // edge case
-    return prev_l == -1 ? 0 : prev_l;
-  if (prev_l == -1)  // edge case
+  if (prev_u == UINT8_MAX)  // edge case
+    return prev_l == UINT8_MAX ? 0 : prev_l;
+  if (prev_l == UINT8_MAX)  // edge case
     return prev_u;
   return (prev_ul == prev_u) ? prev_u : prev_l;
 }
 
-static INLINE int av1_get_pred_context_seg_id(const MACROBLOCKD *xd) {
+static INLINE uint8_t av1_get_pred_context_seg_id(const MACROBLOCKD *xd) {
   const MB_MODE_INFO *const above_mi = xd->above_mbmi;
   const MB_MODE_INFO *const left_mi = xd->left_mbmi;
   const int above_sip = (above_mi != NULL) ? above_mi->seg_id_predicted : 0;
@@ -107,9 +110,9 @@ static INLINE int get_comp_index_context(const AV1_COMMON *cm,
   if (bck_buf != NULL) bck_frame_index = bck_buf->order_hint;
   if (fwd_buf != NULL) fwd_frame_index = fwd_buf->order_hint;
 
-  int fwd = abs(get_relative_dist(&cm->seq_params.order_hint_info,
+  int fwd = abs(get_relative_dist(&cm->seq_params->order_hint_info,
                                   fwd_frame_index, cur_frame_index));
-  int bck = abs(get_relative_dist(&cm->seq_params.order_hint_info,
+  int bck = abs(get_relative_dist(&cm->seq_params->order_hint_info,
                                   cur_frame_index, bck_frame_index));
 
   const MB_MODE_INFO *const above_mi = xd->above_mbmi;
@@ -340,7 +343,7 @@ static INLINE int get_tx_size_context(const MACROBLOCKD *xd) {
   const MB_MODE_INFO *mbmi = xd->mi[0];
   const MB_MODE_INFO *const above_mbmi = xd->above_mbmi;
   const MB_MODE_INFO *const left_mbmi = xd->left_mbmi;
-  const TX_SIZE max_tx_size = max_txsize_rect_lookup[mbmi->sb_type];
+  const TX_SIZE max_tx_size = max_txsize_rect_lookup[mbmi->bsize];
   const int max_tx_wide = tx_size_wide[max_tx_size];
   const int max_tx_high = tx_size_high[max_tx_size];
   const int has_above = xd->up_available;
@@ -351,11 +354,11 @@ static INLINE int get_tx_size_context(const MACROBLOCKD *xd) {
 
   if (has_above)
     if (is_inter_block(above_mbmi))
-      above = block_size_wide[above_mbmi->sb_type] >= max_tx_wide;
+      above = block_size_wide[above_mbmi->bsize] >= max_tx_wide;
 
   if (has_left)
     if (is_inter_block(left_mbmi))
-      left = block_size_high[left_mbmi->sb_type] >= max_tx_high;
+      left = block_size_high[left_mbmi->bsize] >= max_tx_high;
 
   if (has_above && has_left)
     return (above + left);

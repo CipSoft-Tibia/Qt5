@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,8 @@
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_WIDGET_COMPOSITING_QUEUE_REPORT_TIME_SWAP_PROMISE_H_
 
 #include "base/memory/scoped_refptr.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "cc/trees/swap_promise.h"
 
@@ -32,16 +33,16 @@ class QueueReportTimeSwapPromise : public cc::SwapPromise {
 
   void WillSwap(viz::CompositorFrameMetadata* metadata) override;
   void DidSwap() override;
-  cc::SwapPromise::DidNotSwapAction DidNotSwap(
-      DidNotSwapReason reason) override;
+  cc::SwapPromise::DidNotSwapAction DidNotSwap(DidNotSwapReason reason,
+                                               base::TimeTicks now) override;
   void DidActivate() override;
-  int64_t TraceId() const override { return 0; }
+  int64_t GetTraceId() const override { return 0; }
 
  private:
   int source_frame_number_;
   DrainCallback drain_callback_;
   base::OnceClosure swap_callback_;
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   const bool call_swap_on_activate_;
 #endif
   scoped_refptr<base::SingleThreadTaskRunner> compositor_task_runner_;

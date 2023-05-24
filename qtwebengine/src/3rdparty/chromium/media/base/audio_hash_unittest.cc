@@ -1,10 +1,9 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <memory>
 
-#include "base/macros.h"
 #include "media/base/audio_bus.h"
 #include "media/base/audio_hash.h"
 #include "media/base/fake_audio_render_callback.h"
@@ -36,10 +35,13 @@ class AudioHashTest : public testing::Test {
     // audio data, we need to fill each channel manually.
     for (int ch = 0; ch < audio_bus->channels(); ++ch) {
       wrapped_bus->SetChannelData(0, audio_bus->channel(ch));
-      fake_callback_.Render(base::TimeDelta(), base::TimeTicks::Now(), 0,
+      fake_callback_.Render(base::TimeDelta(), base::TimeTicks::Now(), {},
                             wrapped_bus.get());
     }
   }
+
+  AudioHashTest(const AudioHashTest&) = delete;
+  AudioHashTest& operator=(const AudioHashTest&) = delete;
 
   ~AudioHashTest() override = default;
 
@@ -47,8 +49,6 @@ class AudioHashTest : public testing::Test {
   std::unique_ptr<AudioBus> bus_one_;
   std::unique_ptr<AudioBus> bus_two_;
   FakeAudioRenderCallback fake_callback_;
-
-  DISALLOW_COPY_AND_ASSIGN(AudioHashTest);
 };
 
 // Ensure the same data hashes the same.

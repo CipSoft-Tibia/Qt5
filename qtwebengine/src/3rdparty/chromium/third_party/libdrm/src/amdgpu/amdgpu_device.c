@@ -285,9 +285,17 @@ drm_public int amdgpu_device_deinitialize(amdgpu_device_handle dev)
 	return 0;
 }
 
+drm_public int amdgpu_device_get_fd(amdgpu_device_handle device_handle)
+{
+	return device_handle->fd;
+}
+
 drm_public const char *amdgpu_get_marketing_name(amdgpu_device_handle dev)
 {
-	return dev->marketing_name;
+	if (dev->marketing_name)
+		return dev->marketing_name;
+	else
+		return "AMD Radeon Graphics";
 }
 
 drm_public int amdgpu_query_sw_info(amdgpu_device_handle dev,

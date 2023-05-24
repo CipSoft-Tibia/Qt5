@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page qml-codingconventions.html
@@ -43,8 +19,6 @@ Throughout our documentation and examples, \l{QML Object Attributes}{QML object 
 \li JavaScript functions
 \li object properties
 \li child objects
-\li states
-\li transitions
 \endlist
 
 For better readability, we separate these different parts with an empty line.
@@ -69,21 +43,26 @@ could be written like this:
 
 \snippet qmlapp/codingconventions/dotproperties.qml 1
 
+\section1 Unqualified access
 
-\section1 Lists
+In order to improve readability and performance always reference properties of parent components by their id explicitly:
 
-If a list contains only one element, we generally omit the square brackets.
+\snippet qmlapp/codingconventions/qualifiedaccess.qml 0
 
-For example, it is very common for a component to only have one state.
+\section1 Required properties
 
-In this case, instead of:
+When requiring data defined outside the component, make this explicit by using \l{Required Properties}.
+Required properties must be set or else the creation of the component will fail.
+These are preferable to unqualified lookups because they are more performant and allow for both
+users and tooling to reason about an external property's type.
+Additionally they remove assumptions that a component otherwise has to make about the environment
+in which it is created.
 
-\snippet qmlapp/codingconventions/lists.qml 0
+\section1 Signal handlers
 
-we will write this:
+When handling parameters in signal handlers use functions which name them explicitly:
 
-\snippet qmlapp/codingconventions/lists.qml 1
-
+\snippet qmlapp/codingconventions/signalhandler.qml 0
 
 \section1 JavaScript Code
 
@@ -98,6 +77,10 @@ If the script is only a couple of lines long, we generally use a block:
 If the script is more than a couple of lines long or can be used by different objects, we recommend creating a function and calling it like this:
 
 \snippet qmlapp/codingconventions/javascript.qml 2
+
+Also note that is recommended to add type annotations to your function in order
+to more easily reason about and refactor your application since both parameter
+and return types are immediately visible from the function signature.
 
 For long scripts, we will put the functions in their own JavaScript file and import it like this:
 

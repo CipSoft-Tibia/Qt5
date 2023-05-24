@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSGSOFTWARELAYER_H
 #define QSGSOFTWARELAYER_H
@@ -58,11 +22,9 @@
 QT_BEGIN_NAMESPACE
 
 class QSGSoftwarePixmapRenderer;
-class QSGSoftwareLayerPrivate;
 
 class QSGSoftwareLayer : public QSGLayer
 {
-    Q_DECLARE_PRIVATE(QSGSoftwareLayer)
     Q_OBJECT
 public:
     QSGSoftwareLayer(QSGRenderContext *renderContext);
@@ -72,11 +34,10 @@ public:
 
     // QSGTexture interface
 public:
-    int textureId() const override;
+    qint64 comparisonKey() const override;
     QSize textureSize() const override;
     bool hasAlphaChannel() const override;
     bool hasMipmaps() const override;
-    void bind() override;
 
     // QSGDynamicTexture interface
 public:
@@ -91,14 +52,14 @@ public:
     QImage toImage() const override;
     void setLive(bool live) override;
     void setRecursive(bool recursive) override;
-    void setFormat(uint) override;
+    void setFormat(Format) override;
     void setHasMipmaps(bool) override;
     void setDevicePixelRatio(qreal ratio) override;
     void setMirrorHorizontal(bool mirror) override;
     void setMirrorVertical(bool mirror) override;
     void setSamples(int) override { }
 
-public slots:
+public Q_SLOTS:
     void markDirtyTexture() override;
     void invalidated() override;
 
@@ -118,13 +79,6 @@ private:
     bool m_grab;
     bool m_recursive;
     bool m_dirtyTexture;
-};
-
-class QSGSoftwareLayerPrivate : public QSGTexturePrivate
-{
-    Q_DECLARE_PUBLIC(QSGSoftwareLayer)
-public:
-    int comparisonKey() const override;
 };
 
 QT_END_NAMESPACE

@@ -1,53 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 Denis Shienkov <denis.shienkov@gmail.com>
-** Copyright (C) 2012 Laszlo Papp <lpapp@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSerialPort module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 Denis Shienkov <denis.shienkov@gmail.com>
+// Copyright (C) 2012 Laszlo Papp <lpapp@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
@@ -56,19 +9,25 @@
 
 #include <QLabel>
 #include <QMessageBox>
+#include <QTimer>
+
+#include <chrono>
+
+static constexpr std::chrono::seconds kWriteTimeout = std::chrono::seconds{5};
 
 //! [0]
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     m_ui(new Ui::MainWindow),
+//! [0]
     m_status(new QLabel),
     m_console(new Console),
-    m_settings(new SettingsDialog),
+    m_settings(new SettingsDialog(this)),
+    m_timer(new QTimer(this)),
 //! [1]
     m_serial(new QSerialPort(this))
-//! [1]
 {
-//! [0]
+//! [1]
     m_ui->setupUi(this);
     m_console->setEnabled(false);
     setCentralWidget(m_console);
@@ -83,9 +42,12 @@ MainWindow::MainWindow(QWidget *parent) :
     initActionsConnections();
 
     connect(m_serial, &QSerialPort::errorOccurred, this, &MainWindow::handleError);
+    connect(m_timer, &QTimer::timeout, this, &MainWindow::handleWriteTimeout);
+    m_timer->setSingleShot(true);
 
 //! [2]
     connect(m_serial, &QSerialPort::readyRead, this, &MainWindow::readData);
+    connect(m_serial, &QSerialPort::bytesWritten, this, &MainWindow::handleBytesWritten);
 //! [2]
     connect(m_console, &Console::getData, this, &MainWindow::writeData);
 //! [3]
@@ -115,8 +77,8 @@ void MainWindow::openSerialPort()
         m_ui->actionDisconnect->setEnabled(true);
         m_ui->actionConfigure->setEnabled(false);
         showStatusMessage(tr("Connected to %1 : %2, %3, %4, %5, %6")
-                          .arg(p.name).arg(p.stringBaudRate).arg(p.stringDataBits)
-                          .arg(p.stringParity).arg(p.stringStopBits).arg(p.stringFlowControl));
+                          .arg(p.name, p.stringBaudRate, p.stringDataBits,
+                               p.stringParity, p.stringStopBits, p.stringFlowControl));
     } else {
         QMessageBox::critical(this, tr("Error"), m_serial->errorString());
 
@@ -140,8 +102,8 @@ void MainWindow::closeSerialPort()
 
 void MainWindow::about()
 {
-    QMessageBox::about(this, tr("About Simple Terminal"),
-                       tr("The <b>Simple Terminal</b> example demonstrates how to "
+    QMessageBox::about(this, tr("About Serial Terminal"),
+                       tr("The <b>Serial Terminal</b> example demonstrates how to "
                           "use the Qt Serial Port module in modern GUI applications "
                           "using Qt, with a menu bar, toolbars, and a status bar."));
 }
@@ -149,7 +111,16 @@ void MainWindow::about()
 //! [6]
 void MainWindow::writeData(const QByteArray &data)
 {
-    m_serial->write(data);
+    const qint64 written = m_serial->write(data);
+    if (written == data.size()) {
+        m_bytesToWrite += written;
+        m_timer->start(kWriteTimeout);
+    } else {
+        const QString error = tr("Failed to write all data to port %1.\n"
+                                 "Error: %2").arg(m_serial->portName(),
+                                                  m_serial->errorString());
+        showWriteError(error);
+    }
 }
 //! [6]
 
@@ -171,6 +142,23 @@ void MainWindow::handleError(QSerialPort::SerialPortError error)
 }
 //! [8]
 
+//! [9]
+void MainWindow::handleBytesWritten(qint64 bytes)
+{
+    m_bytesToWrite -= bytes;
+    if (m_bytesToWrite == 0)
+        m_timer->stop();
+}
+//! [9]
+
+void MainWindow::handleWriteTimeout()
+{
+    const QString error = tr("Write operation timed out for port %1.\n"
+                             "Error: %2").arg(m_serial->portName(),
+                                              m_serial->errorString());
+    showWriteError(error);
+}
+
 void MainWindow::initActionsConnections()
 {
     connect(m_ui->actionConnect, &QAction::triggered, this, &MainWindow::openSerialPort);
@@ -185,4 +173,9 @@ void MainWindow::initActionsConnections()
 void MainWindow::showStatusMessage(const QString &message)
 {
     m_status->setText(message);
+}
+
+void MainWindow::showWriteError(const QString &message)
+{
+    QMessageBox::warning(this, tr("Warning"), message);
 }

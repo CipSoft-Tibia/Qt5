@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,8 +31,15 @@ export function parse(data) {
     bytes.push(decoded.charCodeAt(i));
   }
 
-
-  const parsed = ClientVariations.deserializeBinary(bytes);
+  let parsed = null;
+  try {
+    parsed = ClientVariations.deserializeBinary(bytes);
+  } catch (e) {
+    // Deserialization is never expected to fail in Chromium,
+    // but might fail in downstream repositories such as Edgium or
+    // if any website uses the same header name 'x-client-data'
+    parsed = ClientVariations.deserializeBinary([]);
+  }
   return {
     'variationIds': parsed.getVariationIdList(),
     'triggerVariationIds': parsed.getTriggerVariationIdList(),
@@ -42,7 +49,7 @@ export function parse(data) {
 /**
  * Formats a parsed ClientVariations proto into a human-readable representation
  * of the proto, which echoes the proto definition in
- * https://source.chromium.org/chromium/chromium/src/+/master:components/variations/proto/client_variations.proto;l=14-22
+ * https://source.chromium.org/chromium/chromium/src/+/main:components/variations/proto/client_variations.proto;l=14-22
  *
  * @param {{
  *   variationIds: !Array<number>,

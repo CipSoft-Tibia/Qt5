@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 #include "base/strings/stringprintf.h"
 #include "build/build_config.h"
 #include "extensions/browser/api/sockets_udp/sockets_udp_api.h"
+#include "extensions/browser/api/sockets_udp/test_udp_echo_server.h"
 #include "extensions/browser/api_test_utils.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_builder.h"
@@ -14,7 +15,6 @@
 #include "extensions/test/extension_test_message_listener.h"
 #include "extensions/test/result_catcher.h"
 #include "net/dns/mock_host_resolver.h"
-#include "net/test/spawned_test_server/spawned_test_server.h"
 
 namespace extensions {
 
@@ -38,34 +38,31 @@ IN_PROC_BROWSER_TEST_F(SocketsUdpApiTest, SocketsUdpCreateGood) {
   socket_create_function->set_extension(empty_extension.get());
   socket_create_function->set_has_callback(true);
 
-  std::unique_ptr<base::Value> result(
+  absl::optional<base::Value> result(
       api_test_utils::RunFunctionAndReturnSingleResult(
           socket_create_function.get(), "[]", browser_context()));
 
-  base::DictionaryValue* value = NULL;
-  ASSERT_TRUE(result->GetAsDictionary(&value));
-  int socketId = -1;
-  EXPECT_TRUE(value->GetInteger("socketId", &socketId));
-  ASSERT_TRUE(socketId > 0);
+  ASSERT_TRUE(result);
+  ASSERT_TRUE(result->is_dict());
+  absl::optional<int> socket_id = result->GetDict().FindInt("socketId");
+  ASSERT_TRUE(socket_id);
+  ASSERT_GT(*socket_id, 0);
 }
 
 // Disable SocketsUdpExtension on Mac due to time out.
 // See https://crbug.com/844402.
 // Disable on Linux for flakiness. See https://crbug.com/875920.
-#if defined(OS_MAC) || defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #define MAYBE_SocketsUdpExtension DISABLED_SocketsUdpExtension
 #else
 #define MAYBE_SocketsUdpExtension SocketsUdpExtension
 #endif
 
 IN_PROC_BROWSER_TEST_F(SocketsUdpApiTest, MAYBE_SocketsUdpExtension) {
-  std::unique_ptr<net::SpawnedTestServer> test_server(
-      new net::SpawnedTestServer(
-          net::SpawnedTestServer::TYPE_UDP_ECHO,
-          base::FilePath(FILE_PATH_LITERAL("net/data"))));
-  EXPECT_TRUE(test_server->Start());
+  TestUdpEchoServer udp_echo_server;
+  net::HostPortPair host_port_pair;
+  ASSERT_TRUE(udp_echo_server.Start(&host_port_pair));
 
-  net::HostPortPair host_port_pair = test_server->host_port_pair();
   int port = host_port_pair.port();
   ASSERT_TRUE(port > 0);
 
@@ -75,7 +72,8 @@ IN_PROC_BROWSER_TEST_F(SocketsUdpApiTest, MAYBE_SocketsUdpExtension) {
   ResultCatcher catcher;
   catcher.RestrictToBrowserContext(browser_context());
 
-  ExtensionTestMessageListener listener("info_please", true);
+  ExtensionTestMessageListener listener("info_please",
+                                        ReplyBehavior::kWillReply);
 
   ASSERT_TRUE(LoadApp("sockets_udp/api"));
   EXPECT_TRUE(listener.WaitUntilSatisfied());
@@ -89,7 +87,8 @@ IN_PROC_BROWSER_TEST_F(SocketsUdpApiTest, MAYBE_SocketsUdpExtension) {
 IN_PROC_BROWSER_TEST_F(SocketsUdpApiTest, DISABLED_SocketsUdpMulticast) {
   ResultCatcher catcher;
   catcher.RestrictToBrowserContext(browser_context());
-  ExtensionTestMessageListener listener("info_please", true);
+  ExtensionTestMessageListener listener("info_please",
+                                        ReplyBehavior::kWillReply);
   ASSERT_TRUE(LoadApp("sockets_udp/api"));
   EXPECT_TRUE(listener.WaitUntilSatisfied());
   listener.Reply(base::StringPrintf("multicast:%s:%d", kHostname, kPort));

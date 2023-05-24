@@ -1,4 +1,5 @@
 include_rules = [
+  "+components/remote_cocoa/browser",
   "+components/viz/common",
   "+third_party/libyuv",  # For scaling in desktop_capture_device.cc.
 ]
@@ -8,4 +9,9 @@ specific_include_rules = {
     # Allow inclusion of specific components that we depend on for testing
     "+ui/base/resource/resource_bundle.h",
   ],
+  "desktop_capture_device_unittest.cc": [
+    # Some test cases are not yet supported depending on platform.
+    "+ui/ozone/buildflags.h",
+    "+ui/ozone/public/ozone_platform.h",
+  ]
 }

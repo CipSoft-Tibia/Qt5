@@ -1,32 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+
+#include <QtCore/private/qcore_mac_p.h>
 
 #include <Foundation/Foundation.h>
 
@@ -37,7 +14,6 @@ private slots:
     void noPool();
     void rootLevelPool();
     void stackAllocatedPool();
-    void heapAllocatedPool();
 };
 
 static id lastDeallocedObject = nil;
@@ -84,26 +60,6 @@ void tst_QMacAutoreleasePool::stackAllocatedPool()
     }
     QCOMPARE(lastDeallocedObject, allocedObject);
     [pool drain];
-}
-
-void tst_QMacAutoreleasePool::heapAllocatedPool()
-{
-    // The special case, a pool allocated on the heap, or as a member of a
-    // heap allocated object. This is not a supported use of QMacAutoReleasePool,
-    // and will result in warnings if the pool is prematurely drained.
-
-    NSObject *allocedObject = nil;
-    {
-        NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-        QMacAutoReleasePool *qtPool = nullptr;
-        {
-            qtPool = new QMacAutoReleasePool;
-            allocedObject = [[[DeallocTracker alloc] init] autorelease];
-        }
-        [pool drain];
-        delete qtPool;
-    }
-    QCOMPARE(lastDeallocedObject, allocedObject);
 }
 
 QTEST_APPLESS_MAIN(tst_QMacAutoreleasePool)

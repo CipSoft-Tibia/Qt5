@@ -1,15 +1,8 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//third_party/protobuf/proto_library.gni")
-
-# This file depends on the legacy global sources assignment filter. It should
-# be converted to check target platform before assigning source files to the
-# sources variable. Remove this import and set_sources_assignment_filter call
-# when the file has been converted. See https://crbug.com/1018739 for details.
-import("//build/config/deprecated_default_sources_assignment_filter.gni")
-set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
 
 static_library("test_support") {
   testonly = true
@@ -18,8 +11,13 @@ static_library("test_support") {
     "mock_node_channel_delegate.h",
     "mojo_test_base.cc",
     "mojo_test_base.h",
+    "mojo_test_suite_base.cc",
+    "mojo_test_suite_base.h",
+    "scoped_mojo_support.cc",
+    "scoped_mojo_support.h",
+    "test_switches.cc",
+    "test_switches.h",
     "test_utils.h",
-    "test_utils_win.cc",
   ]
 
   if (!is_ios) {
@@ -27,6 +25,10 @@ static_library("test_support") {
       "multiprocess_test_helper.cc",
       "multiprocess_test_helper.h",
     ]
+  }
+
+  if (is_win) {
+    sources += [ "test_utils_win.cc" ]
   }
 
   if (is_fuchsia || is_posix) {
@@ -41,6 +43,11 @@ static_library("test_support") {
     "//mojo/public/cpp/system",
     "//testing/gmock",
     "//testing/gtest",
+  ]
+
+  deps = [
+    ":test_support_impl",
+    "//mojo/public/c/test_support",
   ]
 }
 

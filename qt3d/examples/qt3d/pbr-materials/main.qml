@@ -1,58 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import QtQuick 2.1
 import Qt3D.Core 2.0
 import Qt3D.Render 2.9
 import Qt3D.Input 2.0
-import Qt3D.Extras 2.9
+import Qt3D.Extras 2.15
 
 Entity {
     id: root
@@ -91,7 +44,7 @@ Entity {
                 enabled: parent.enabled
 
                 irradiance: TextureLoader {
-                    source: "assets/cubemaps/default/default_irradiance.dds"
+                    source: "qrc:/assets/cubemaps/default/default_irradiance.dds"
                     wrapMode {
                         x: WrapMode.ClampToEdge
                         y: WrapMode.ClampToEdge
@@ -99,7 +52,7 @@ Entity {
                     generateMipMaps: false
                 }
                 specular: TextureLoader {
-                    source: "assets/cubemaps/default/default_specular.dds"
+                    source: "qrc:/assets/cubemaps/default/default_specular.dds"
                     wrapMode {
                         x: WrapMode.ClampToEdge
                         y: WrapMode.ClampToEdge
@@ -115,18 +68,18 @@ Entity {
 
         components: [
             Mesh {
-                source: "assets/obj/plane-10x10.obj"
+                source: "qrc:/assets/obj/plane-10x10.obj"
             },
-            TexturedMetalRoughMaterial {
+            MetalRoughMaterial {
                 baseColor: TextureLoader {
-                    source: "assets/textures/ceramic_small_diamond/ceramic_small_diamond_basecolor.png"
+                    source: "qrc:/assets/textures/ceramic_small_diamond/ceramic_small_diamond_basecolor.png"
                     format: Texture.SRGB8_Alpha8
                     generateMipMaps: true
                 }
-                metalness: TextureLoader { source: "assets/textures/ceramic_small_diamond/ceramic_small_diamond_metallic.png"; generateMipMaps: true }
-                roughness: TextureLoader { source: "assets/textures/ceramic_small_diamond/ceramic_small_diamond_roughness.png"; generateMipMaps: true }
-                normal: TextureLoader { source: "assets/textures/ceramic_small_diamond/ceramic_small_diamond_normal.png"; generateMipMaps: true }
-                ambientOcclusion: TextureLoader { source: "assets/textures/ceramic_small_diamond/ceramic_small_diamond_ambient_occlusion.png" }
+                metalness: TextureLoader { source: "qrc:/assets/textures/ceramic_small_diamond/ceramic_small_diamond_metallic.png"; generateMipMaps: true }
+                roughness: TextureLoader { source: "qrc:/assets/textures/ceramic_small_diamond/ceramic_small_diamond_roughness.png"; generateMipMaps: true }
+                normal: TextureLoader { source: "qrc:/assets/textures/ceramic_small_diamond/ceramic_small_diamond_normal.png"; generateMipMaps: true }
+                ambientOcclusion: TextureLoader { source: "qrc:/assets/textures/ceramic_small_diamond/ceramic_small_diamond_ambient_occlusion.png" }
             }
         ]
     }
@@ -159,7 +112,7 @@ Entity {
 
     Mesh {
         id: matSphere
-        source: "assets/obj/material-sphere.obj"
+        source: "qrc:/assets/obj/material-sphere.obj"
     }
 
     Entity {
@@ -177,17 +130,17 @@ Entity {
             rotationY: -90
         }
 
-        TexturedMetalRoughMaterial {
+        MetalRoughMaterial {
             id: matSphere1Material
             baseColor:  TextureLoader {
-                source: "assets/textures/aluminium_random_brushed/aluminium_random_brushed_basecolor.png"
+                source: "qrc:/assets/textures/aluminium_random_brushed/aluminium_random_brushed_basecolor.png"
                 format: Texture.SRGB8_Alpha8
                 generateMipMaps: true
             }
-            metalness: TextureLoader { source: "assets/textures/aluminium_random_brushed/aluminium_random_brushed_metallic.png"; generateMipMaps: true }
-            roughness: TextureLoader { source: "assets/textures/aluminium_random_brushed/aluminium_random_brushed_roughness.png"; generateMipMaps: true}
-            normal: TextureLoader { source: "assets/textures/aluminium_random_brushed/aluminium_random_brushed_normal.png"; generateMipMaps: true }
-            ambientOcclusion: TextureLoader { source: "assets/textures/no-ao.png" }
+            metalness: TextureLoader { source: "qrc:/assets/textures/aluminium_random_brushed/aluminium_random_brushed_metallic.png"; generateMipMaps: true }
+            roughness: TextureLoader { source: "qrc:/assets/textures/aluminium_random_brushed/aluminium_random_brushed_roughness.png"; generateMipMaps: true}
+            normal: TextureLoader { source: "qrc:/assets/textures/aluminium_random_brushed/aluminium_random_brushed_normal.png"; generateMipMaps: true }
+            ambientOcclusion: TextureLoader { source: "qrc:/assets/textures/no-ao.png" }
         }
     }
 
@@ -206,17 +159,17 @@ Entity {
             rotationY: -90
         }
 
-        TexturedMetalRoughMaterial {
+        MetalRoughMaterial {
             id: matSphere2Material
             baseColor:  TextureLoader {
-                source: "assets/textures/american_walnut_crown_cut/american_walnut_crown_cut_basecolor.png"
+                source: "qrc:/assets/textures/american_walnut_crown_cut/american_walnut_crown_cut_basecolor.png"
                 format: Texture.SRGB8_Alpha8
                 generateMipMaps: true
             }
-            metalness: TextureLoader { source: "assets/textures/american_walnut_crown_cut/american_walnut_crown_cut_metallic.png"; generateMipMaps: true }
-            roughness: TextureLoader { source: "assets/textures/american_walnut_crown_cut/american_walnut_crown_cut_roughness.png"; generateMipMaps: true }
-            normal: TextureLoader { source: "assets/textures/american_walnut_crown_cut/american_walnut_crown_cut_normal.png"; generateMipMaps: true }
-            ambientOcclusion: TextureLoader { source: "assets/textures/no-ao.png" }
+            metalness: TextureLoader { source: "qrc:/assets/textures/american_walnut_crown_cut/american_walnut_crown_cut_metallic.png"; generateMipMaps: true }
+            roughness: TextureLoader { source: "qrc:/assets/textures/american_walnut_crown_cut/american_walnut_crown_cut_roughness.png"; generateMipMaps: true }
+            normal: TextureLoader { source: "qrc:/assets/textures/american_walnut_crown_cut/american_walnut_crown_cut_normal.png"; generateMipMaps: true }
+            ambientOcclusion: TextureLoader { source: "qrc:/assets/textures/no-ao.png" }
         }
     }
 
@@ -235,17 +188,17 @@ Entity {
             rotationY: -90
         }
 
-        TexturedMetalRoughMaterial {
+        MetalRoughMaterial {
             id: matSphere3Material
             baseColor:  TextureLoader {
-                source: "assets/textures/ceramic_tiles_brown_tomato/ceramic_tiles_brown_tomato_basecolor.png"
+                source: "qrc:/assets/textures/ceramic_tiles_brown_tomato/ceramic_tiles_brown_tomato_basecolor.png"
                 format: Texture.SRGB8_Alpha8
                 generateMipMaps: true
             }
-            metalness: TextureLoader { source: "assets/textures/ceramic_tiles_brown_tomato/ceramic_tiles_brown_tomato_metallic.png"; generateMipMaps: true }
-            roughness: TextureLoader { source: "assets/textures/ceramic_tiles_brown_tomato/ceramic_tiles_brown_tomato_roughness.png"; generateMipMaps: true }
-            normal: TextureLoader { source: "assets/textures/ceramic_tiles_brown_tomato/ceramic_tiles_brown_tomato_normal.png"; generateMipMaps: true }
-            ambientOcclusion: TextureLoader { source: "assets/textures/no-ao.png" }
+            metalness: TextureLoader { source: "qrc:/assets/textures/ceramic_tiles_brown_tomato/ceramic_tiles_brown_tomato_metallic.png"; generateMipMaps: true }
+            roughness: TextureLoader { source: "qrc:/assets/textures/ceramic_tiles_brown_tomato/ceramic_tiles_brown_tomato_roughness.png"; generateMipMaps: true }
+            normal: TextureLoader { source: "qrc:/assets/textures/ceramic_tiles_brown_tomato/ceramic_tiles_brown_tomato_normal.png"; generateMipMaps: true }
+            ambientOcclusion: TextureLoader { source: "qrc:/assets/textures/no-ao.png" }
         }
     }
 
@@ -264,17 +217,17 @@ Entity {
             rotationY: -90
         }
 
-        TexturedMetalRoughMaterial {
+        MetalRoughMaterial {
             id: matSphere4Material
             baseColor:  TextureLoader {
-                source: "assets/textures/copper_brushed/copper_brushed_basecolor.png"
+                source: "qrc:/assets/textures/copper_brushed/copper_brushed_basecolor.png"
                 format: Texture.SRGB8_Alpha8
                 generateMipMaps: true
             }
-            metalness: TextureLoader { source: "assets/textures/copper_brushed/copper_brushed_metallic.png"; generateMipMaps: true }
-            roughness: TextureLoader { source: "assets/textures/copper_brushed/copper_brushed_roughness.png"; generateMipMaps: true }
-            normal: TextureLoader { source: "assets/textures/copper_brushed/copper_brushed_normal.png"; generateMipMaps: true }
-            ambientOcclusion: TextureLoader { source: "assets/textures/no-ao.png" }
+            metalness: TextureLoader { source: "qrc:/assets/textures/copper_brushed/copper_brushed_metallic.png"; generateMipMaps: true }
+            roughness: TextureLoader { source: "qrc:/assets/textures/copper_brushed/copper_brushed_roughness.png"; generateMipMaps: true }
+            normal: TextureLoader { source: "qrc:/assets/textures/copper_brushed/copper_brushed_normal.png"; generateMipMaps: true }
+            ambientOcclusion: TextureLoader { source: "qrc:/assets/textures/no-ao.png" }
         }
     }
 
@@ -293,17 +246,17 @@ Entity {
             rotationY: -90
         }
 
-        TexturedMetalRoughMaterial {
+        MetalRoughMaterial {
             id: matSphere5Material
             baseColor:  TextureLoader {
-                source: "assets/textures/gold_leaf_waste/gold_leaf_waste_basecolor.png"
+                source: "qrc:/assets/textures/gold_leaf_waste/gold_leaf_waste_basecolor.png"
                 format: Texture.SRGB8_Alpha8
                 generateMipMaps: true
             }
-            metalness: TextureLoader { source: "assets/textures/gold_leaf_waste/gold_leaf_waste_metallic.png"; generateMipMaps: true }
-            roughness: TextureLoader { source: "assets/textures/gold_leaf_waste/gold_leaf_waste_roughness.png"; generateMipMaps: true }
-            normal: TextureLoader { source: "assets/textures/gold_leaf_waste/gold_leaf_waste_normal.png"; generateMipMaps: true }
-            ambientOcclusion: TextureLoader { source: "assets/textures/no-ao.png" }
+            metalness: TextureLoader { source: "qrc:/assets/textures/gold_leaf_waste/gold_leaf_waste_metallic.png"; generateMipMaps: true }
+            roughness: TextureLoader { source: "qrc:/assets/textures/gold_leaf_waste/gold_leaf_waste_roughness.png"; generateMipMaps: true }
+            normal: TextureLoader { source: "qrc:/assets/textures/gold_leaf_waste/gold_leaf_waste_normal.png"; generateMipMaps: true }
+            ambientOcclusion: TextureLoader { source: "qrc:/assets/textures/no-ao.png" }
         }
     }
 }

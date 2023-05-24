@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -113,11 +113,9 @@ leveldb::Status TransactionalLevelDBIterator::Next() {
   CheckState();
 
   bool iterator_is_loaded = (iterator_ != nullptr);
-  std::string key_before_eviction;
-  leveldb::Status s;
-  std::tie(key_before_eviction, s) = WillUseDBIterator(/*perform_seek=*/true);
-  if (!s.ok())
-    return s;
+  auto [key_before_eviction, status] = WillUseDBIterator(/*perform_seek=*/true);
+  if (!status.ok())
+    return status;
   DCHECK(iterator_);
 
   // Exit early if not valid.
@@ -210,18 +208,18 @@ TransactionalLevelDBIterator::WillUseDBIterator(bool perform_seek) {
   leveldb::Status s;
   db_->OnIteratorUsed(this);
   if (!IsEvicted())
-    return std::make_tuple("", s);
+    return {"", s};
 
   s = ReloadIterator();
   if (!s.ok())
-    return std::make_tuple("", s);
+    return {"", s};
 
   if (iterator_state_ == IteratorState::kEvictedAndValid && perform_seek)
     iterator_->Seek(key_before_eviction_);
 
   iterator_state_ = IteratorState::kActive;
   value_before_eviction_.clear();
-  return std::make_tuple(std::move(key_before_eviction_), s);
+  return {std::move(key_before_eviction_), s};
 }
 
 leveldb::Status TransactionalLevelDBIterator::ReloadIterator() {
@@ -248,8 +246,8 @@ void TransactionalLevelDBIterator::NextPastScopesMetadata() {
   DCHECK(db_);
   DCHECK(iterator_);
   auto prefix_slice = leveldb::Slice(
-      reinterpret_cast<const char*>(scopes_metadata_prefix_.data()),
-      scopes_metadata_prefix_.size());
+      reinterpret_cast<const char*>(scopes_metadata_prefix_->data()),
+      scopes_metadata_prefix_->size());
   while (iterator_->Valid() && iterator_->key().starts_with(prefix_slice)) {
     iterator_->Next();
   }
@@ -259,8 +257,8 @@ void TransactionalLevelDBIterator::PrevPastScopesMetadata() {
   DCHECK(db_);
   DCHECK(iterator_);
   auto prefix_slice = leveldb::Slice(
-      reinterpret_cast<const char*>(scopes_metadata_prefix_.data()),
-      scopes_metadata_prefix_.size());
+      reinterpret_cast<const char*>(scopes_metadata_prefix_->data()),
+      scopes_metadata_prefix_->size());
   while (iterator_->Valid() && iterator_->key().starts_with(prefix_slice)) {
     iterator_->Prev();
   }

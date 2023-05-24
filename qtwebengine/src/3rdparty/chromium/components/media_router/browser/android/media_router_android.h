@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include <unordered_map>
 
 #include "base/containers/id_map.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/observer_list.h"
 #include "components/media_router/browser/android/media_router_android_bridge.h"
 #include "components/media_router/browser/media_router_base.h"
@@ -30,6 +30,7 @@ class MediaRouterAndroid : public MediaRouterBase {
   const MediaRoute* FindRouteBySource(const MediaSource::Id& source_id) const;
 
   // MediaRouter implementation.
+  void Initialize() override;
   void CreateRoute(const MediaSource::Id& source_id,
                    const MediaSink::Id& sink_id,
                    const url::Origin& origin,
@@ -44,14 +45,7 @@ class MediaRouterAndroid : public MediaRouterBase {
                  MediaRouteResponseCallback callback,
                  base::TimeDelta timeout,
                  bool incognito) override;
-  void ConnectRouteByRouteId(const MediaSource::Id& source,
-                             const MediaRoute::Id& route_id,
-                             const url::Origin& origin,
-                             content::WebContents* web_contents,
-                             MediaRouteResponseCallback callback,
-                             base::TimeDelta timeout,
-                             bool incognito) override;
-  void DetachRoute(const MediaRoute::Id& route_id) override;
+  void DetachRoute(MediaRoute::Id route_id) override;
   void TerminateRoute(const MediaRoute::Id& route_id) override;
   void SendRouteMessage(const MediaRoute::Id& route_id,
                         const std::string& message) override;
@@ -59,6 +53,8 @@ class MediaRouterAndroid : public MediaRouterBase {
       const MediaRoute::Id& route_id,
       std::unique_ptr<std::vector<uint8_t>> data) override;
   void OnUserGesture() override;
+  std::vector<MediaRoute> GetCurrentRoutes() const override;
+
   std::unique_ptr<media::FlingingController> GetFlingingController(
       const MediaRoute::Id& route_id) override;
 
@@ -75,7 +71,8 @@ class MediaRouterAndroid : public MediaRouterBase {
                       bool is_local);
 
   // Notifies the media router that route creation or joining failed.
-  void OnRouteRequestError(const std::string& error_text, int request_id);
+  void OnCreateRouteRequestError(const std::string& error_text, int request_id);
+  void OnJoinRouteRequestError(const std::string& error_text, int request_id);
 
   // Notifies the media router when the route was terminated.
   void OnRouteTerminated(const MediaRoute::Id& route_id);
@@ -83,7 +80,7 @@ class MediaRouterAndroid : public MediaRouterBase {
   // Notifies the media router when the route was closed with an optional error.
   // Null error indicates no error.
   void OnRouteClosed(const MediaRoute::Id& route_id,
-                     const base::Optional<std::string>& error);
+                     const absl::optional<std::string>& error);
 
   // Notifies the media router about a message received from the media route.
   void OnMessage(const MediaRoute::Id& route_id, const std::string& message);
@@ -100,6 +97,11 @@ class MediaRouterAndroid : public MediaRouterBase {
 
     PresentationConnectionProxy(MediaRouterAndroid* media_router_android,
                                 const MediaRoute::Id& route_id);
+
+    PresentationConnectionProxy(const PresentationConnectionProxy&) = delete;
+    PresentationConnectionProxy& operator=(const PresentationConnectionProxy&) =
+        delete;
+
     ~PresentationConnectionProxy() override;
 
     // Initializes the connection binding and interface request and returns that
@@ -127,10 +129,8 @@ class MediaRouterAndroid : public MediaRouterBase {
     mojo::Remote<blink::mojom::PresentationConnection> peer_;
     mojo::Receiver<blink::mojom::PresentationConnection> receiver_{this};
     // |media_router_android_| owns |this|, so it will outlive |this|.
-    MediaRouterAndroid* media_router_android_;
+    raw_ptr<MediaRouterAndroid> media_router_android_;
     MediaRoute::Id route_id_;
-
-    DISALLOW_COPY_AND_ASSIGN(PresentationConnectionProxy);
   };
 
   // Removes the route with the given id from |active_routes_| and updates the
@@ -142,10 +142,18 @@ class MediaRouterAndroid : public MediaRouterBase {
   void UnregisterMediaSinksObserver(MediaSinksObserver* observer) override;
   void RegisterMediaRoutesObserver(MediaRoutesObserver* observer) override;
   void UnregisterMediaRoutesObserver(MediaRoutesObserver* observer) override;
-  void RegisterRouteMessageObserver(RouteMessageObserver* observer) override;
-  void UnregisterRouteMessageObserver(RouteMessageObserver* observer) override;
+  void RegisterPresentationConnectionMessageObserver(
+      PresentationConnectionMessageObserver* observer) override;
+  void UnregisterPresentationConnectionMessageObserver(
+      PresentationConnectionMessageObserver* observer) override;
 
   void OnPresentationConnectionError(const std::string& route_id);
+  void OnRouteRequestError(
+      const std::string& error_text,
+      int route_request_id,
+      base::OnceCallback<void(mojom::RouteRequestResultCode,
+                              absl::optional<mojom::MediaRouteProviderId>)>
+          callback);
 
   void SetMediaRouterBridgeForTest(MediaRouterAndroidBridge* bridge) {
     bridge_.reset(bridge);
@@ -160,7 +168,7 @@ class MediaRouterAndroid : public MediaRouterBase {
                          std::unique_ptr<MediaSinksObserverList>>;
   MediaSinkObservers sinks_observers_;
 
-  base::ObserverList<MediaRoutesObserver>::Unchecked routes_observers_;
+  base::ObserverList<MediaRoutesObserver> routes_observers_;
 
   struct MediaRouteRequest {
     MediaRouteRequest(const MediaSource& source,
@@ -182,8 +190,6 @@ class MediaRouterAndroid : public MediaRouterBase {
   std::unordered_map<MediaRoute::Id,
                      std::vector<std::unique_ptr<PresentationConnectionProxy>>>
       presentation_connections_;
-
-  DISALLOW_COPY_AND_ASSIGN(MediaRouterAndroid);
 };
 
 }  // namespace media_router

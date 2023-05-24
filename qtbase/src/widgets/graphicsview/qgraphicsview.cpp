@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 static const int QGRAPHICSVIEW_REGION_RECT_THRESHOLD = 50;
 
@@ -97,7 +61,7 @@ static const int QGRAPHICSVIEW_PREALLOC_STYLE_OPTIONS = 503; // largest prime < 
     convenience functions rotate(), scale(), translate() or shear(). The most
     two common transformations are scaling, which is used to implement
     zooming, and rotation. QGraphicsView keeps the center of the view fixed
-    during a transformation. Because of the scene alignment (setAligment()),
+    during a transformation. Because of the scene alignment (setAlignment()),
     translating the view will have no visual impact.
 
     You can interact with the items on the scene by using the mouse and
@@ -107,7 +71,7 @@ static const int QGRAPHICSVIEW_PREALLOC_STYLE_OPTIONS = 503; // largest prime < 
     the events and reacts to them. For example, if you click on a selectable
     item, the item will typically let the scene know that it has been
     selected, and it will also redraw itself to display a selection
-    rectangle. Similiary, if you click and drag the mouse to move a movable
+    rectangle. Similarly, if you click and drag the mouse to move a movable
     item, it's the item that handles the mouse moves and moves itself.  Item
     interaction is enabled by default, and you can toggle it by calling
     setInteractive().
@@ -120,6 +84,16 @@ static const int QGRAPHICSVIEW_PREALLOC_STYLE_OPTIONS = 503; // largest prime < 
     functions allow you to map points, rectangles, polygons and paths between
     view coordinates and scene coordinates, and to find items on the scene
     using view coordinates.
+
+    When using a QOpenGLWidget as a viewport, stereoscopic rendering is
+    supported. This is done using the same pattern as QOpenGLWidget::paintGL.
+    To enable it, enable the QSurfaceFormat::StereoBuffers flag. Because of
+    how the flag is handled internally, set QSurfaceFormat::StereoBuffers flag
+    globally before the window is created using QSurfaceFormat::setDefaultFormat().
+    If the flag is enabled and there is hardware support for stereoscopic
+    rendering, then drawBackground() and drawForeground() will be triggered twice
+    each frame. Call QOpenGLWidget::currentTargetBuffer() to query which buffer
+    is currently being drawn to.
 
     \image graphicsview-view.png
 
@@ -197,8 +171,6 @@ static const int QGRAPHICSVIEW_PREALLOC_STYLE_OPTIONS = 503; // largest prime < 
     performance in QGraphicsView. By default, none of these flags are set.
     Note that setting a flag usually imposes a side effect, and this effect
     can vary between paint devices and platforms.
-
-    \value DontClipPainter This value is obsolete and has no effect.
 
     \value DontSavePainterState When rendering, QGraphicsView protects the
     painter state (see QPainter::save()) when rendering the background or
@@ -287,18 +259,16 @@ static const int QGRAPHICSVIEW_PREALLOC_STYLE_OPTIONS = 503; // largest prime < 
 #include <QtCore/qmath.h>
 #include <QtCore/qscopedvaluerollback.h>
 #include <QtWidgets/qapplication.h>
-#include <QtWidgets/qdesktopwidget.h>
-#include <private/qdesktopwidget_p.h>
 #include <QtGui/qevent.h>
 #include <QtWidgets/qlayout.h>
 #include <QtGui/qtransform.h>
-#include <QtGui/qmatrix.h>
 #include <QtGui/qpainter.h>
 #include <QtGui/qpainterpath.h>
 #include <QtWidgets/qscrollbar.h>
 #include <QtWidgets/qstyleoption.h>
 
 #include <private/qevent_p.h>
+#include <QtGui/private/qeventpoint_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -315,21 +285,13 @@ inline int q_round_bound(qreal d) //### (int)(qreal) INT_MAX != INT_MAX for sing
 
 void QGraphicsViewPrivate::translateTouchEvent(QGraphicsViewPrivate *d, QTouchEvent *touchEvent)
 {
-    QList<QTouchEvent::TouchPoint> touchPoints = touchEvent->touchPoints();
-    for (int i = 0; i < touchPoints.count(); ++i) {
-        QTouchEvent::TouchPoint &touchPoint = touchPoints[i];
-        const QSizeF ellipseDiameters = touchPoint.ellipseDiameters();
+    for (int i = 0; i < touchEvent->pointCount(); ++i) {
+        auto &pt = touchEvent->point(i);
         // the scene will set the item local pos, startPos, lastPos, and rect before delivering to
         // an item, but for now those functions are returning the view's local coordinates
-        touchPoint.setScenePos(d->mapToScene(touchPoint.pos()));
-        touchPoint.setStartScenePos(d->mapToScene(touchPoint.startPos()));
-        touchPoint.setLastScenePos(d->mapToScene(touchPoint.lastPos()));
-        touchPoint.setEllipseDiameters(ellipseDiameters);
-
+        QMutableEventPoint::setScenePosition(pt, d->mapToScene(pt.position()));
         // screenPos, startScreenPos, and lastScreenPos are already set
     }
-
-    touchEvent->setTouchPoints(touchPoints);
 }
 
 /*!
@@ -353,7 +315,6 @@ QGraphicsViewPrivate::QGraphicsViewPrivate()
       hasUpdateClip(false),
       mousePressButton(Qt::NoButton),
       leftIndent(0), topIndent(0),
-      lastMouseEvent(QEvent::None, QPointF(), QPointF(), QPointF(), Qt::NoButton, { }, { }),
       alignment(Qt::AlignCenter),
       transformationAnchor(QGraphicsView::AnchorViewCenter), resizeAnchor(QGraphicsView::NoAnchor),
       viewportUpdateMode(QGraphicsView::MinimalViewportUpdate),
@@ -384,10 +345,10 @@ void QGraphicsViewPrivate::recalculateContentSize()
 {
     Q_Q(QGraphicsView);
 
-    QSize maxSize = q->maximumViewportSize();
+    const QSize maxSize = q->maximumViewportSize();
     int width = maxSize.width();
     int height = maxSize.height();
-    QRectF viewRect = matrix.mapRect(q->sceneRect());
+    const QRectF viewRect = matrix.mapRect(q->sceneRect());
 
     bool frameOnlyAround = (q->style()->styleHint(QStyle::SH_ScrollView_FrameOnlyAroundContents, nullptr, q));
     if (frameOnlyAround) {
@@ -399,9 +360,8 @@ void QGraphicsViewPrivate::recalculateContentSize()
 
     // Adjust the maximum width and height of the viewport based on the width
     // of visible scroll bars.
-    int scrollBarExtent = q->style()->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, q);
-    if (frameOnlyAround)
-        scrollBarExtent += frameWidth * 2;
+    const int scrollBarExtent = q->style()->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, q)
+                              + (frameOnlyAround ? frameWidth * 2 : 0);
 
     // We do not need to subtract the width scrollbars whose policy is
     // Qt::ScrollBarAlwaysOn, this was already done by maximumViewportSize().
@@ -423,62 +383,70 @@ void QGraphicsViewPrivate::recalculateContentSize()
     // Setting the ranges of these scroll bars can/will cause the values to
     // change, and scrollContentsBy() will be called correspondingly. This
     // will reset the last center point.
-    QPointF savedLastCenterPoint = lastCenterPoint;
+    const QPointF savedLastCenterPoint = lastCenterPoint;
 
     // Remember the former indent settings
-    qreal oldLeftIndent = leftIndent;
-    qreal oldTopIndent = topIndent;
+    const qreal oldLeftIndent = leftIndent;
+    const qreal oldTopIndent = topIndent;
 
     // If the whole scene fits horizontally, we center the scene horizontally,
     // and ignore the horizontal scroll bars.
-    int left =  q_round_bound(viewRect.left());
-    int right = q_round_bound(viewRect.right() - width);
+    const int left =  q_round_bound(viewRect.left());
+    const int right = q_round_bound(viewRect.right() - width);
     if (left >= right) {
-        hbar->setRange(0, 0);
-
         switch (alignment & Qt::AlignHorizontal_Mask) {
         case Qt::AlignLeft:
             leftIndent = -viewRect.left();
             break;
         case Qt::AlignRight:
-            leftIndent = width - viewRect.width() - viewRect.left() - 1;
+            leftIndent = maxSize.width() - viewRect.width() - viewRect.left() - 1;
             break;
         case Qt::AlignHCenter:
         default:
-            leftIndent = width / 2 - (viewRect.left() + viewRect.right()) / 2;
+            leftIndent = maxSize.width() / 2 - (viewRect.left() + viewRect.right()) / 2;
             break;
         }
+
+        hbar->setRange(0, 0);
     } else {
+        leftIndent = 0;
+
         hbar->setRange(left, right);
         hbar->setPageStep(width);
         hbar->setSingleStep(width / 20);
-        leftIndent = 0;
+
+        if (oldLeftIndent != 0)
+            hbar->setValue(-oldLeftIndent);
     }
 
     // If the whole scene fits vertically, we center the scene vertically, and
     // ignore the vertical scroll bars.
-    int top = q_round_bound(viewRect.top());
-    int bottom = q_round_bound(viewRect.bottom()  - height);
+    const int top = q_round_bound(viewRect.top());
+    const int bottom = q_round_bound(viewRect.bottom()  - height);
     if (top >= bottom) {
-        vbar->setRange(0, 0);
-
         switch (alignment & Qt::AlignVertical_Mask) {
         case Qt::AlignTop:
             topIndent = -viewRect.top();
             break;
         case Qt::AlignBottom:
-            topIndent = height - viewRect.height() - viewRect.top() - 1;
+            topIndent = maxSize.height() - viewRect.height() - viewRect.top() - 1;
             break;
         case Qt::AlignVCenter:
         default:
-            topIndent = height / 2 - (viewRect.top() + viewRect.bottom()) / 2;
+            topIndent = maxSize.height() / 2 - (viewRect.top() + viewRect.bottom()) / 2;
             break;
         }
+
+        vbar->setRange(0, 0);
     } else {
+        topIndent = 0;
+
         vbar->setRange(top, bottom);
         vbar->setPageStep(height);
         vbar->setSingleStep(height / 20);
-        topIndent = 0;
+
+        if (oldTopIndent != 0)
+            vbar->setValue(-oldTopIndent);
     }
 
     // Restorethe center point from before the ranges changed.
@@ -515,8 +483,8 @@ void QGraphicsViewPrivate::centerView(QGraphicsView::ViewportAnchor anchor)
         if (q->underMouse()) {
             // Last scene pos: lastMouseMoveScenePoint
             // Current mouse pos:
-            QPointF transformationDiff = q->mapToScene(viewport->rect().center())
-                                         - q->mapToScene(viewport->mapFromGlobal(QCursor::pos()));
+            QPointF transformationDiff = mapToScene(viewport->rect().toRectF().center())
+                                         - mapToScene(viewport->mapFromGlobal(QCursor::pos().toPointF()));
             q->centerOn(lastMouseMoveScenePoint + transformationDiff);
         } else {
             q->centerOn(lastCenterPoint);
@@ -536,8 +504,7 @@ void QGraphicsViewPrivate::centerView(QGraphicsView::ViewportAnchor anchor)
 */
 void QGraphicsViewPrivate::updateLastCenterPoint()
 {
-    Q_Q(QGraphicsView);
-    lastCenterPoint = q->mapToScene(viewport->rect().center());
+    lastCenterPoint = mapToScene(viewport->rect().toRectF().center());
 }
 
 /*!
@@ -616,12 +583,33 @@ void QGraphicsViewPrivate::updateScroll()
 
 /*!
     \internal
+
+    * don't start scrolling when a drag mode has been set
+    * don't start scrolling on a movable item
+*/
+bool QGraphicsViewPrivate::canStartScrollingAt(const QPoint &startPos) const
+{
+    Q_Q(const QGraphicsView);
+    if (q->dragMode() != QGraphicsView::NoDrag)
+        return false;
+
+    const QGraphicsItem *childItem = q->itemAt(startPos);
+
+    if (!startPos.isNull() && childItem && (childItem->flags() & QGraphicsItem::ItemIsMovable))
+        return false;
+
+    return QAbstractScrollAreaPrivate::canStartScrollingAt(startPos);
+}
+
+/*!
+    \internal
 */
 void QGraphicsViewPrivate::replayLastMouseEvent()
 {
     if (!useLastMouseEvent || !scene)
         return;
-    mouseMoveEventHandler(&lastMouseEvent);
+    QSinglePointEvent *spe = static_cast<QSinglePointEvent *>(&lastMouseEvent);
+    mouseMoveEventHandler(static_cast<QMouseEvent *>(spe));
 }
 
 /*!
@@ -630,8 +618,7 @@ void QGraphicsViewPrivate::replayLastMouseEvent()
 void QGraphicsViewPrivate::storeMouseEvent(QMouseEvent *event)
 {
     useLastMouseEvent = true;
-    lastMouseEvent = QMouseEvent(QEvent::MouseMove, event->localPos(), event->windowPos(), event->screenPos(),
-                                 event->button(), event->buttons(), event->modifiers());
+    lastMouseEvent = *event;
 }
 
 void QGraphicsViewPrivate::mouseMoveEventHandler(QMouseEvent *event)
@@ -656,8 +643,8 @@ void QGraphicsViewPrivate::mouseMoveEventHandler(QMouseEvent *event)
     mouseEvent.setWidget(viewport);
     mouseEvent.setButtonDownScenePos(mousePressButton, mousePressScenePoint);
     mouseEvent.setButtonDownScreenPos(mousePressButton, mousePressScreenPoint);
-    mouseEvent.setScenePos(q->mapToScene(event->pos()));
-    mouseEvent.setScreenPos(event->globalPos());
+    mouseEvent.setScenePos(q->mapToScene(event->position().toPoint()));
+    mouseEvent.setScreenPos(event->globalPosition().toPoint());
     mouseEvent.setLastScenePos(lastMouseMoveScenePoint);
     mouseEvent.setLastScreenPos(lastMouseMoveScreenPoint);
     mouseEvent.setButtons(event->buttons());
@@ -665,6 +652,7 @@ void QGraphicsViewPrivate::mouseMoveEventHandler(QMouseEvent *event)
     mouseEvent.setModifiers(event->modifiers());
     mouseEvent.setSource(event->source());
     mouseEvent.setFlags(event->flags());
+    mouseEvent.setTimestamp(event->timestamp());
     lastMouseMoveScenePoint = mouseEvent.scenePos();
     lastMouseMoveScreenPoint = mouseEvent.screenPos();
     mouseEvent.setAccepted(false);
@@ -694,7 +682,7 @@ void QGraphicsViewPrivate::mouseMoveEventHandler(QMouseEvent *event)
                                                                                   mouseEvent.widget());
     }
     // Find the topmost item under the mouse with a cursor.
-    foreach (QGraphicsItem *item, scene->d_func()->cachedItemsUnderMouse) {
+    for (QGraphicsItem *item : std::as_const(scene->d_func()->cachedItemsUnderMouse)) {
         if (item->isEnabled() && item->hasCursor()) {
             _q_setViewportCursor(item->cursor());
             return;
@@ -724,7 +712,7 @@ QRegion QGraphicsViewPrivate::rubberBandRegion(const QWidget *widget, const QRec
     option.shape = QRubberBand::Rectangle;
 
     QRegion tmp;
-    tmp += rect;
+    tmp += rect.adjusted(-1, -1, 1, 1);
     if (widget->style()->styleHint(QStyle::SH_RubberBand_Mask, &option, widget, &mask))
         tmp &= mask.region;
     return tmp;
@@ -736,7 +724,7 @@ void QGraphicsViewPrivate::updateRubberBand(const QMouseEvent *event)
     if (dragMode != QGraphicsView::RubberBandDrag || !sceneInteractionAllowed || !rubberBanding)
         return;
     // Check for enough drag distance
-    if ((mousePressViewPoint - event->pos()).manhattanLength() < QApplication::startDragDistance())
+    if ((mousePressViewPoint - event->position().toPoint()).manhattanLength() < QApplication::startDragDistance())
         return;
 
     // Update old rubberband
@@ -763,7 +751,7 @@ void QGraphicsViewPrivate::updateRubberBand(const QMouseEvent *event)
 
     // Update rubberband position
     const QPoint mp = q->mapFromScene(mousePressScenePoint);
-    const QPoint ep = event->pos();
+    const QPoint ep = event->position().toPoint();
     rubberBandRect = QRect(qMin(mp.x(), ep.x()), qMin(mp.y(), ep.y()),
                            qAbs(mp.x() - ep.x()) + 1, qAbs(mp.y() - ep.y()) + 1);
 
@@ -831,7 +819,7 @@ void QGraphicsViewPrivate::_q_setViewportCursor(const QCursor &cursor)
 void QGraphicsViewPrivate::_q_unsetViewportCursor()
 {
     Q_Q(QGraphicsView);
-    const auto items = q->items(lastMouseEvent.pos());
+    const auto items = q->items(lastMouseEvent.position().toPoint());
     for (QGraphicsItem *item : items) {
         if (item->isEnabled() && item->hasCursor()) {
             _q_setViewportCursor(item->cursor());
@@ -867,6 +855,7 @@ void QGraphicsViewPrivate::storeDragDropEvent(const QGraphicsSceneDragDropEvent 
     lastDragDropEvent->setMimeData(event->mimeData());
     lastDragDropEvent->setWidget(event->widget());
     lastDragDropEvent->setSource(event->source());
+    lastDragDropEvent->setTimestamp(event->timestamp());
 }
 
 /*!
@@ -877,10 +866,10 @@ void QGraphicsViewPrivate::populateSceneDragDropEvent(QGraphicsSceneDragDropEven
 {
 #if QT_CONFIG(draganddrop)
     Q_Q(QGraphicsView);
-    dest->setScenePos(q->mapToScene(source->pos()));
-    dest->setScreenPos(q->mapToGlobal(source->pos()));
-    dest->setButtons(source->mouseButtons());
-    dest->setModifiers(source->keyboardModifiers());
+    dest->setScenePos(q->mapToScene(source->position().toPoint()));
+    dest->setScreenPos(q->mapToGlobal(source->position().toPoint()));
+    dest->setButtons(source->buttons());
+    dest->setModifiers(source->modifiers());
     dest->setPossibleActions(source->possibleActions());
     dest->setProposedAction(source->proposedAction());
     dest->setDropAction(source->dropAction());
@@ -888,8 +877,8 @@ void QGraphicsViewPrivate::populateSceneDragDropEvent(QGraphicsSceneDragDropEven
     dest->setWidget(viewport);
     dest->setSource(qobject_cast<QWidget *>(source->source()));
 #else
-    Q_UNUSED(dest)
-    Q_UNUSED(source)
+    Q_UNUSED(dest);
+    Q_UNUSED(source);
 #endif
 }
 
@@ -1276,7 +1265,7 @@ QSize QGraphicsView::sizeHint() const
     if (d->scene) {
         QSizeF baseSize = d->matrix.mapRect(sceneRect()).size();
         baseSize += QSizeF(d->frameWidth * 2, d->frameWidth * 2);
-        return baseSize.boundedTo((3 * QDesktopWidgetPrivate::size()) / 4).toSize();
+        return baseSize.boundedTo((3 * QGuiApplication::primaryScreen()->virtualSize()) / 4).toSize();
     }
     return QAbstractScrollArea::sizeHint();
 }
@@ -1747,7 +1736,7 @@ void QGraphicsView::setScene(QGraphicsScene *scene)
             QEvent windowDeactivate(QEvent::WindowDeactivate);
             QCoreApplication::sendEvent(d->scene, &windowDeactivate);
         }
-        if(hasFocus())
+        if (hasFocus())
             d->scene->clearFocus();
     }
 
@@ -1824,75 +1813,6 @@ void QGraphicsView::setSceneRect(const QRectF &rect)
     d->sceneRect = rect;
     d->recalculateContentSize();
 }
-
-#if QT_DEPRECATED_SINCE(5, 15)
-
-/*!
-    \obsolete
-
-    Use transform() instead.
-
-    Returns the current transformation matrix for the view. If no current
-    transformation is set, the identity matrix is returned.
-
-    \sa setMatrix(), transform(), rotate(), scale(), shear(), translate()
-*/
-QMatrix QGraphicsView::matrix() const
-{
-    Q_D(const QGraphicsView);
-    return d->matrix.toAffine();
-}
-
-/*!
-    \obsolete
-
-    Use setTransform() instead.
-
-    Sets the view's current transformation matrix to \a matrix.
-
-    If \a combine is true, then \a matrix is combined with the current matrix;
-    otherwise, \a matrix \e replaces the current matrix. \a combine is false
-    by default.
-
-    The transformation matrix tranforms the scene into view coordinates. Using
-    the default transformation, provided by the identity matrix, one pixel in
-    the view represents one unit in the scene (e.g., a 10x10 rectangular item
-    is drawn using 10x10 pixels in the view). If a 2x2 scaling matrix is
-    applied, the scene will be drawn in 1:2 (e.g., a 10x10 rectangular item is
-    then drawn using 20x20 pixels in the view).
-
-    Example:
-
-    \snippet code/src_gui_graphicsview_qgraphicsview.cpp 3
-
-    To simplify interation with items using a transformed view, QGraphicsView
-    provides mapTo... and mapFrom... functions that can translate between
-    scene and view coordinates. For example, you can call mapToScene() to map
-    a view coordinate to a floating point scene coordinate, or mapFromScene()
-    to map from floating point scene coordinates to view coordinates.
-
-    \sa matrix(), setTransform(), rotate(), scale(), shear(), translate()
-*/
-void QGraphicsView::setMatrix(const QMatrix &matrix, bool combine)
-{
-    setTransform(QTransform(matrix), combine);
-}
-
-/*!
-    \obsolete
-
-    Use resetTransform() instead.
-
-    Resets the view transformation matrix to the identity matrix.
-
-    \sa resetTransform()
-*/
-void QGraphicsView::resetMatrix()
-{
-    resetTransform();
-}
-
-#endif // QT_DEPRECATED_SINCE(5, 15)
 
 /*!
     Rotates the current view transformation \a angle degrees clockwise.
@@ -1971,14 +1891,14 @@ void QGraphicsView::centerOn(const QPointF &pos)
             qint64 horizontal = 0;
             horizontal += horizontalScrollBar()->minimum();
             horizontal += horizontalScrollBar()->maximum();
-            horizontal -= int(viewPoint.x() - width / 2.0);
+            horizontal -= qRound(viewPoint.x() - width / 2.0);
             horizontalScrollBar()->setValue(horizontal);
         } else {
-            horizontalScrollBar()->setValue(int(viewPoint.x() - width / 2.0));
+            horizontalScrollBar()->setValue(qRound(viewPoint.x() - width / 2.0));
         }
     }
     if (!d->topIndent)
-        verticalScrollBar()->setValue(int(viewPoint.y() - height / 2.0));
+        verticalScrollBar()->setValue(qRound(viewPoint.y() - height / 2.0));
     d->lastCenterPoint = oldCenterPoint;
 }
 
@@ -2509,7 +2429,7 @@ QPolygonF QGraphicsView::mapToScene(const QRect &rect) const
 QPolygonF QGraphicsView::mapToScene(const QPolygon &polygon) const
 {
     QPolygonF poly;
-    poly.reserve(polygon.count());
+    poly.reserve(polygon.size());
     for (const QPoint &point : polygon)
         poly << mapToScene(point);
     return poly;
@@ -2605,7 +2525,7 @@ QPolygon QGraphicsView::mapFromScene(const QRectF &rect) const
 QPolygon QGraphicsView::mapFromScene(const QPolygonF &polygon) const
 {
     QPolygon poly;
-    poly.reserve(polygon.count());
+    poly.reserve(polygon.size());
     for (const QPointF &point : polygon)
         poly << mapFromScene(point);
     return poly;
@@ -2718,8 +2638,8 @@ void QGraphicsView::updateScene(const QList<QRectF> &rects)
         return;
 
     // Extract and reset dirty scene rect info.
-    QVector<QRect> dirtyViewportRects;
-    dirtyViewportRects.reserve(d->dirtyRegion.rectCount() + rects.count());
+    QList<QRect> dirtyViewportRects;
+    dirtyViewportRects.reserve(d->dirtyRegion.rectCount() + rects.size());
     for (const QRect &dirtyRect : d->dirtyRegion)
         dirtyViewportRects += dirtyRect;
     d->dirtyRegion = QRegion();
@@ -2748,7 +2668,7 @@ void QGraphicsView::updateScene(const QList<QRectF> &rects)
         dirtyViewportRects << xrect;
     }
 
-    for (const QRect &rect : qAsConst(dirtyViewportRects)) {
+    for (const QRect &rect : std::as_const(dirtyViewportRects)) {
         // Add the exposed rect to the update region. In rect update
         // mode, we only count the bounding rect of items.
         if (!boundingRectUpdate) {
@@ -2807,11 +2727,14 @@ void QGraphicsView::setupViewport(QWidget *widget)
         return;
     }
 
-    const bool isGLWidget = widget->inherits("QGLWidget") || widget->inherits("QOpenGLWidget");
+    const bool isGLWidget = widget->inherits("QOpenGLWidget");
 
     d->accelerateScrolling = !(isGLWidget);
 
     widget->setFocusPolicy(Qt::StrongFocus);
+
+    if (isGLWidget)
+        d->stereoEnabled = QWidgetPrivate::get(widget)->isStereoEnabled();
 
     if (!isGLWidget) {
         // autoFillBackground enables scroll acceleration.
@@ -2933,14 +2856,13 @@ bool QGraphicsView::viewportEvent(QEvent *event)
                 d->scene->d_func()->removePopup(d->scene->d_func()->popupWidgets.constFirst());
         }
         d->useLastMouseEvent = false;
-        // a hack to pass a viewport pointer to the scene inside the leave event
-        Q_ASSERT(event->d == nullptr);
-        QScopedValueRollback<QEventPrivate *> rb(event->d);
-        event->d = reinterpret_cast<QEventPrivate *>(viewport());
-        QCoreApplication::sendEvent(d->scene, event);
+        QGraphicsSceneEvent leaveEvent(QEvent::GraphicsSceneLeave);
+        leaveEvent.setWidget(viewport());
+        QCoreApplication::sendEvent(d->scene, &leaveEvent);
+        event->setAccepted(leaveEvent.isAccepted());
         break;
     }
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
     case QEvent::ToolTip: {
         QHelpEvent *toolTip = static_cast<QHelpEvent *>(event);
         QGraphicsSceneHelpEvent helpEvent(QEvent::GraphicsSceneHelp);
@@ -2983,7 +2905,7 @@ bool QGraphicsView::viewportEvent(QEvent *event)
         if (d->scene && d->sceneInteractionAllowed) {
             // Convert and deliver the touch event to the scene.
             QTouchEvent *touchEvent = static_cast<QTouchEvent *>(event);
-            touchEvent->setTarget(viewport());
+            QMutableTouchEvent::from(touchEvent)->setTarget(viewport());
             QGraphicsViewPrivate::translateTouchEvent(d, touchEvent);
             QCoreApplication::sendEvent(d->scene, touchEvent);
         } else {
@@ -3037,6 +2959,7 @@ void QGraphicsView::contextMenuEvent(QContextMenuEvent *event)
     contextEvent.setModifiers(event->modifiers());
     contextEvent.setReason((QGraphicsSceneContextMenuEvent::Reason)(event->reason()));
     contextEvent.setAccepted(event->isAccepted());
+    contextEvent.setTimestamp(event->timestamp());
     QCoreApplication::sendEvent(d->scene, &contextEvent);
     event->setAccepted(contextEvent.isAccepted());
 }
@@ -3231,9 +3154,9 @@ void QGraphicsView::mouseDoubleClickEvent(QMouseEvent *event)
         return;
 
     d->storeMouseEvent(event);
-    d->mousePressViewPoint = event->pos();
+    d->mousePressViewPoint = event->position().toPoint();
     d->mousePressScenePoint = mapToScene(d->mousePressViewPoint);
-    d->mousePressScreenPoint = event->globalPos();
+    d->mousePressScreenPoint = event->globalPosition().toPoint();
     d->lastMouseMoveScenePoint = d->mousePressScenePoint;
     d->lastMouseMoveScreenPoint = d->mousePressScreenPoint;
     d->mousePressButton = event->button();
@@ -3252,6 +3175,7 @@ void QGraphicsView::mouseDoubleClickEvent(QMouseEvent *event)
     mouseEvent.setModifiers(event->modifiers());
     mouseEvent.setSource(event->source());
     mouseEvent.setFlags(event->flags());
+    mouseEvent.setTimestamp(event->timestamp());
     if (event->spontaneous())
         qt_sendSpontaneousEvent(d->scene, &mouseEvent);
     else
@@ -3280,9 +3204,9 @@ void QGraphicsView::mousePressEvent(QMouseEvent *event)
 
     if (d->sceneInteractionAllowed) {
         // Store some of the event's button-down data.
-        d->mousePressViewPoint = event->pos();
+        d->mousePressViewPoint = event->position().toPoint();
         d->mousePressScenePoint = mapToScene(d->mousePressViewPoint);
-        d->mousePressScreenPoint = event->globalPos();
+        d->mousePressScreenPoint = event->globalPosition().toPoint();
         d->lastMouseMoveScenePoint = d->mousePressScenePoint;
         d->lastMouseMoveScreenPoint = d->mousePressScreenPoint;
         d->mousePressButton = event->button();
@@ -3303,6 +3227,7 @@ void QGraphicsView::mousePressEvent(QMouseEvent *event)
             mouseEvent.setSource(event->source());
             mouseEvent.setFlags(event->flags());
             mouseEvent.setAccepted(false);
+            mouseEvent.setTimestamp(event->timestamp());
             if (event->spontaneous())
                 qt_sendSpontaneousEvent(d->scene, &mouseEvent);
             else
@@ -3362,7 +3287,7 @@ void QGraphicsView::mouseMoveEvent(QMouseEvent *event)
         if (d->handScrolling) {
             QScrollBar *hBar = horizontalScrollBar();
             QScrollBar *vBar = verticalScrollBar();
-            QPoint delta = event->pos() - d->lastMouseEvent.pos();
+            QPoint delta = event->position().toPoint() - d->lastMouseEvent.position().toPoint();
             hBar->setValue(hBar->value() + (isRightToLeft() ? delta.x() : -delta.x()));
             vBar->setValue(vBar->value() - delta.y());
 
@@ -3416,8 +3341,8 @@ void QGraphicsView::mouseReleaseEvent(QMouseEvent *event)
     mouseEvent.setWidget(viewport());
     mouseEvent.setButtonDownScenePos(d->mousePressButton, d->mousePressScenePoint);
     mouseEvent.setButtonDownScreenPos(d->mousePressButton, d->mousePressScreenPoint);
-    mouseEvent.setScenePos(mapToScene(event->pos()));
-    mouseEvent.setScreenPos(event->globalPos());
+    mouseEvent.setScenePos(mapToScene(event->position().toPoint()));
+    mouseEvent.setScreenPos(event->globalPosition().toPoint());
     mouseEvent.setLastScenePos(d->lastMouseMoveScenePoint);
     mouseEvent.setLastScreenPos(d->lastMouseMoveScreenPoint);
     mouseEvent.setButtons(event->buttons());
@@ -3426,6 +3351,7 @@ void QGraphicsView::mouseReleaseEvent(QMouseEvent *event)
     mouseEvent.setSource(event->source());
     mouseEvent.setFlags(event->flags());
     mouseEvent.setAccepted(false);
+    mouseEvent.setTimestamp(event->timestamp());
     if (event->spontaneous())
         qt_sendSpontaneousEvent(d->scene, &mouseEvent);
     else
@@ -3464,8 +3390,12 @@ void QGraphicsView::wheelEvent(QWheelEvent *event)
     wheelEvent.setModifiers(event->modifiers());
     const bool horizontal = qAbs(event->angleDelta().x()) > qAbs(event->angleDelta().y());
     wheelEvent.setDelta(horizontal ? event->angleDelta().x() : event->angleDelta().y());
+    wheelEvent.setPixelDelta(event->pixelDelta());
+    wheelEvent.setPhase(event->phase());
+    wheelEvent.setInverted(event->isInverted());
     wheelEvent.setOrientation(horizontal ? Qt::Horizontal : Qt::Vertical);
     wheelEvent.setAccepted(false);
+    wheelEvent.setTimestamp(event->timestamp());
     QCoreApplication::sendEvent(d->scene, &wheelEvent);
     event->setAccepted(wheelEvent.isAccepted());
     if (!event->isAccepted())
@@ -3507,132 +3437,146 @@ void QGraphicsView::paintEvent(QPaintEvent *event)
         painter.setWorldTransform(viewportTransform());
     const QTransform viewTransform = painter.worldTransform();
 
-    // Draw background
-    if (d->cacheMode & CacheBackground) {
-        // Recreate the background pixmap, and flag the whole background as
-        // exposed.
-        if (d->mustResizeBackgroundPixmap) {
-            const qreal dpr = d->viewport->devicePixelRatioF();
-            d->backgroundPixmap = QPixmap(viewport()->size() * dpr);
-            d->backgroundPixmap.setDevicePixelRatio(dpr);
-            QBrush bgBrush = viewport()->palette().brush(viewport()->backgroundRole());
-            if (!bgBrush.isOpaque())
-                d->backgroundPixmap.fill(Qt::transparent);
-            QPainter p(&d->backgroundPixmap);
-            p.fillRect(0, 0, d->backgroundPixmap.width(), d->backgroundPixmap.height(), bgBrush);
-            d->backgroundPixmapExposed = QRegion(viewport()->rect());
-            d->mustResizeBackgroundPixmap = false;
+    const auto actuallyDraw = [&]() {
+        // Draw background
+        if (d->cacheMode & CacheBackground) {
+            // Recreate the background pixmap, and flag the whole background as
+            // exposed.
+            if (d->mustResizeBackgroundPixmap) {
+                const qreal dpr = d->viewport->devicePixelRatio();
+                d->backgroundPixmap = QPixmap(viewport()->size() * dpr);
+                d->backgroundPixmap.setDevicePixelRatio(dpr);
+                QBrush bgBrush = viewport()->palette().brush(viewport()->backgroundRole());
+                if (!bgBrush.isOpaque())
+                    d->backgroundPixmap.fill(Qt::transparent);
+                QPainter p(&d->backgroundPixmap);
+                p.fillRect(0, 0, d->backgroundPixmap.width(), d->backgroundPixmap.height(), bgBrush);
+                d->backgroundPixmapExposed = QRegion(viewport()->rect());
+                d->mustResizeBackgroundPixmap = false;
+            }
+
+            // Redraw exposed areas
+            if (!d->backgroundPixmapExposed.isEmpty()) {
+                QPainter backgroundPainter(&d->backgroundPixmap);
+                backgroundPainter.setClipRegion(d->backgroundPixmapExposed, Qt::ReplaceClip);
+                if (viewTransformed)
+                    backgroundPainter.setTransform(viewTransform);
+                QRectF backgroundExposedSceneRect = mapToScene(d->backgroundPixmapExposed.boundingRect()).boundingRect();
+                drawBackground(&backgroundPainter, backgroundExposedSceneRect);
+                d->backgroundPixmapExposed = QRegion();
+            }
+
+            // Blit the background from the background pixmap
+            if (viewTransformed) {
+                painter.setWorldTransform(QTransform());
+                painter.drawPixmap(QPoint(), d->backgroundPixmap);
+                painter.setWorldTransform(viewTransform);
+            } else {
+                painter.drawPixmap(QPoint(), d->backgroundPixmap);
+            }
+        } else {
+            if (!(d->optimizationFlags & DontSavePainterState))
+                painter.save();
+
+            drawBackground(&painter, exposedSceneRect);
+            if (!(d->optimizationFlags & DontSavePainterState))
+                painter.restore();
         }
 
-        // Redraw exposed areas
-        if (!d->backgroundPixmapExposed.isEmpty()) {
-            QPainter backgroundPainter(&d->backgroundPixmap);
-            backgroundPainter.setClipRegion(d->backgroundPixmapExposed, Qt::ReplaceClip);
-            if (viewTransformed)
-                backgroundPainter.setTransform(viewTransform);
-            QRectF backgroundExposedSceneRect = mapToScene(d->backgroundPixmapExposed.boundingRect()).boundingRect();
-            drawBackground(&backgroundPainter, backgroundExposedSceneRect);
-            d->backgroundPixmapExposed = QRegion();
-        }
-
-        // Blit the background from the background pixmap
-        if (viewTransformed) {
-            painter.setWorldTransform(QTransform());
-            painter.drawPixmap(QPoint(), d->backgroundPixmap);
+        // Items
+        if (!(d->optimizationFlags & IndirectPainting)) {
+            const quint32 oldRectAdjust = d->scene->d_func()->rectAdjust;
+            if (d->optimizationFlags & QGraphicsView::DontAdjustForAntialiasing)
+                d->scene->d_func()->rectAdjust = 1;
+            else
+                d->scene->d_func()->rectAdjust = 2;
+            d->scene->d_func()->drawItems(&painter, viewTransformed ? &viewTransform : nullptr,
+                                          &d->exposedRegion, viewport());
+            d->scene->d_func()->rectAdjust = oldRectAdjust;
+            // Make sure the painter's world transform is restored correctly when
+            // drawing without painter state protection (DontSavePainterState).
+            // We only change the worldTransform() so there's no need to do a full-blown
+            // save() and restore(). Also note that we don't have to do this in case of
+            // IndirectPainting (the else branch), because in that case we always save()
+            // and restore() in QGraphicsScene::drawItems().
+            if (!d->scene->d_func()->painterStateProtection)
+                painter.setOpacity(1.0);
             painter.setWorldTransform(viewTransform);
         } else {
-            painter.drawPixmap(QPoint(), d->backgroundPixmap);
-        }
-    } else {
-        if (!(d->optimizationFlags & DontSavePainterState))
-            painter.save();
-        drawBackground(&painter, exposedSceneRect);
-        if (!(d->optimizationFlags & DontSavePainterState))
-            painter.restore();
-    }
+            // Make sure we don't have unpolished items before we draw
+            if (!d->scene->d_func()->unpolishedItems.isEmpty())
+                d->scene->d_func()->_q_polishItems();
+            // We reset updateAll here (after we've issued polish events)
+            // so that we can discard update requests coming from polishEvent().
+            d->scene->d_func()->updateAll = false;
 
-    // Items
-    if (!(d->optimizationFlags & IndirectPainting)) {
-        const quint32 oldRectAdjust = d->scene->d_func()->rectAdjust;
-        if (d->optimizationFlags & QGraphicsView::DontAdjustForAntialiasing)
-            d->scene->d_func()->rectAdjust = 1;
-        else
-            d->scene->d_func()->rectAdjust = 2;
-        d->scene->d_func()->drawItems(&painter, viewTransformed ? &viewTransform : nullptr,
-                                      &d->exposedRegion, viewport());
-        d->scene->d_func()->rectAdjust = oldRectAdjust;
-        // Make sure the painter's world transform is restored correctly when
-        // drawing without painter state protection (DontSavePainterState).
-        // We only change the worldTransform() so there's no need to do a full-blown
-        // save() and restore(). Also note that we don't have to do this in case of
-        // IndirectPainting (the else branch), because in that case we always save()
-        // and restore() in QGraphicsScene::drawItems().
-        if (!d->scene->d_func()->painterStateProtection)
-            painter.setOpacity(1.0);
-        painter.setWorldTransform(viewTransform);
-    } else {
-        // Make sure we don't have unpolished items before we draw
-        if (!d->scene->d_func()->unpolishedItems.isEmpty())
-            d->scene->d_func()->_q_polishItems();
-        // We reset updateAll here (after we've issued polish events)
-        // so that we can discard update requests coming from polishEvent().
-        d->scene->d_func()->updateAll = false;
-
-        // Find all exposed items
-        bool allItems = false;
-        QList<QGraphicsItem *> itemList = d->findItems(d->exposedRegion, &allItems, viewTransform);
-        if (!itemList.isEmpty()) {
-            // Generate the style options.
-            const int numItems = itemList.size();
-            QGraphicsItem **itemArray = &itemList[0]; // Relies on QList internals, but is perfectly valid.
-            QStyleOptionGraphicsItem *styleOptionArray = d->allocStyleOptionsArray(numItems);
-            QTransform transform(Qt::Uninitialized);
-            for (int i = 0; i < numItems; ++i) {
-                QGraphicsItem *item = itemArray[i];
-                QGraphicsItemPrivate *itemd = item->d_ptr.data();
-                itemd->initStyleOption(&styleOptionArray[i], viewTransform, d->exposedRegion, allItems);
-                // Cache the item's area in view coordinates.
-                // Note that we have to do this here in case the base class implementation
-                // (QGraphicsScene::drawItems) is not called. If it is, we'll do this
-                // operation twice, but that's the price one has to pay for using indirect
-                // painting :-/.
-                const QRectF brect = adjustedItemEffectiveBoundingRect(item);
-                if (!itemd->itemIsUntransformable()) {
-                    transform = item->sceneTransform();
-                    if (viewTransformed)
-                        transform *= viewTransform;
-                } else {
-                    transform = item->deviceTransform(viewTransform);
+            // Find all exposed items
+            bool allItems = false;
+            QList<QGraphicsItem *> itemList = d->findItems(d->exposedRegion, &allItems, viewTransform);
+            if (!itemList.isEmpty()) {
+                // Generate the style options.
+                const int numItems = itemList.size();
+                QGraphicsItem **itemArray = &itemList[0]; // Relies on QList internals, but is perfectly valid.
+                QStyleOptionGraphicsItem *styleOptionArray = d->allocStyleOptionsArray(numItems);
+                QTransform transform(Qt::Uninitialized);
+                for (int i = 0; i < numItems; ++i) {
+                    QGraphicsItem *item = itemArray[i];
+                    QGraphicsItemPrivate *itemd = item->d_ptr.data();
+                    itemd->initStyleOption(&styleOptionArray[i], viewTransform, d->exposedRegion, allItems);
+                    // Cache the item's area in view coordinates.
+                    // Note that we have to do this here in case the base class implementation
+                    // (QGraphicsScene::drawItems) is not called. If it is, we'll do this
+                    // operation twice, but that's the price one has to pay for using indirect
+                    // painting :-/.
+                    const QRectF brect = adjustedItemEffectiveBoundingRect(item);
+                    if (!itemd->itemIsUntransformable()) {
+                        transform = item->sceneTransform();
+                        if (viewTransformed)
+                            transform *= viewTransform;
+                    } else {
+                        transform = item->deviceTransform(viewTransform);
+                    }
+                    itemd->paintedViewBoundingRects.insert(d->viewport, transform.mapRect(brect).toRect());
                 }
-                itemd->paintedViewBoundingRects.insert(d->viewport, transform.mapRect(brect).toRect());
+                // Draw the items.
+                drawItems(&painter, numItems, itemArray, styleOptionArray);
+                d->freeStyleOptionsArray(styleOptionArray);
             }
-            // Draw the items.
-            drawItems(&painter, numItems, itemArray, styleOptionArray);
-            d->freeStyleOptionsArray(styleOptionArray);
-        }
-    }
-
-    // Foreground
-    drawForeground(&painter, exposedSceneRect);
-
-#if QT_CONFIG(rubberband)
-    // Rubberband
-    if (d->rubberBanding && !d->rubberBandRect.isEmpty()) {
-        painter.restore();
-        QStyleOptionRubberBand option;
-        option.initFrom(viewport());
-        option.rect = d->rubberBandRect;
-        option.shape = QRubberBand::Rectangle;
-
-        QStyleHintReturnMask mask;
-        if (viewport()->style()->styleHint(QStyle::SH_RubberBand_Mask, &option, viewport(), &mask)) {
-            // painter clipping for masked rubberbands
-            painter.setClipRegion(mask.region, Qt::IntersectClip);
         }
 
-        viewport()->style()->drawControl(QStyle::CE_RubberBand, &option, &painter, viewport());
+        // Foreground
+        drawForeground(&painter, exposedSceneRect);
+
+    #if QT_CONFIG(rubberband)
+        // Rubberband
+        if (d->rubberBanding && !d->rubberBandRect.isEmpty()) {
+            painter.restore();
+            QStyleOptionRubberBand option;
+            option.initFrom(viewport());
+            option.rect = d->rubberBandRect;
+            option.shape = QRubberBand::Rectangle;
+
+            QStyleHintReturnMask mask;
+            if (viewport()->style()->styleHint(QStyle::SH_RubberBand_Mask, &option, viewport(), &mask)) {
+                // painter clipping for masked rubberbands
+                painter.setClipRegion(mask.region, Qt::IntersectClip);
+            }
+
+            viewport()->style()->drawControl(QStyle::CE_RubberBand, &option, &painter, viewport());
+        }
+    #endif
+    };
+
+    actuallyDraw();
+
+    // For stereo we want to draw everything twice, once to each buffer
+    if (d->stereoEnabled) {
+        QWidgetPrivate* w = QWidgetPrivate::get(viewport());
+        if (w->toggleStereoTargetBuffer()) {
+            actuallyDraw();
+            w->toggleStereoTargetBuffer();
+        }
     }
-#endif
 
     painter.end();
 
@@ -3773,7 +3717,12 @@ void QGraphicsView::drawBackground(QPainter *painter, const QRectF &rect)
         return;
     }
 
+    const bool wasAa = painter->testRenderHint(QPainter::Antialiasing);
+    if (wasAa)
+        painter->setRenderHints(QPainter::Antialiasing, false);
     painter->fillRect(rect, d->backgroundBrush);
+    if (wasAa)
+        painter->setRenderHints(QPainter::Antialiasing, true);
 }
 
 /*!
@@ -3805,7 +3754,7 @@ void QGraphicsView::drawForeground(QPainter *painter, const QRectF &rect)
 }
 
 /*!
-    \obsolete
+    \deprecated
 
     Draws the items \a items in the scene using \a painter, after the
     background and before the foreground are drawn. \a numItems is the number
@@ -3877,7 +3826,7 @@ bool QGraphicsView::isTransformed() const
     otherwise, \a matrix \e replaces the current matrix. \a combine is false
     by default.
 
-    The transformation matrix tranforms the scene into view coordinates. Using
+    The transformation matrix transforms the scene into view coordinates. Using
     the default transformation, provided by the identity matrix, one pixel in
     the view represents one unit in the scene (e.g., a 10x10 rectangular item
     is drawn using 10x10 pixels in the view). If a 2x2 scaling matrix is
@@ -3888,13 +3837,13 @@ bool QGraphicsView::isTransformed() const
 
     \snippet code/src_gui_graphicsview_qgraphicsview.cpp 7
 
-    To simplify interation with items using a transformed view, QGraphicsView
+    To simplify interaction with items using a transformed view, QGraphicsView
     provides mapTo... and mapFrom... functions that can translate between
     scene and view coordinates. For example, you can call mapToScene() to map
-    a view coordiate to a floating point scene coordinate, or mapFromScene()
+    a view coordinate to a floating point scene coordinate, or mapFromScene()
     to map from floating point scene coordinates to view coordinates.
 
-    \sa transform(), rotate(), scale(), shear(), translate()
+    \sa transform(), resetTransform(), rotate(), scale(), shear(), translate()
 */
 void QGraphicsView::setTransform(const QTransform &matrix, bool combine )
 {

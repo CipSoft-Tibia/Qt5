@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "scene3ditem_p.h"
 
@@ -62,16 +26,17 @@
 
 #include <QtGui/qguiapplication.h>
 #include <QtGui/qoffscreensurface.h>
+#include <QtQml/private/qqmlglobal_p.h>
 #include <QtQuick/qquickwindow.h>
 #include <QtQuick/qquickrendercontrol.h>
 
 #include <Qt3DRender/private/qrendersurfaceselector_p.h>
 #include <Qt3DRender/private/qrenderaspect_p.h>
 #include <Qt3DRender/private/rendersettings_p.h>
+#include <Qt3DRender/qt3drender-config.h>
 #include <scene3dlogging_p.h>
 #include <scene3drenderer_p.h>
 #include <scene3dsgnode_p.h>
-#include <scene3dview_p.h>
 
 #include <Qt3DCore/private/qaspectengine_p.h>
 #include <Qt3DCore/private/qaspectmanager_p.h>
@@ -100,31 +65,13 @@ public:
         m_targetAllowed = targetCount;
     }
 
-    Qt3DCore::QAspectEngine *aspectEngine() const
-    {
-        if (children().empty())
-            return nullptr;
-        return qobject_cast<Qt3DCore::QAspectEngine *>(children().first());
-    }
-
-    bool releaseRootEntity() const { return m_releaseRootEntity; }
-    void setReleaseRootEntity(bool release) { m_releaseRootEntity = release; }
-
     void allowRelease()
     {
         ++m_allowed;
-        const bool shouldSelfDestruct = m_allowed == m_targetAllowed;
-        if (QThread::currentThread() == thread()) {
-            // Force Backend Tree to be cleaned up
-            Qt3DCore::QAspectEngine *engine = aspectEngine();
-            // If used in the regular Scene3D, take this opportunity to release the root
-            // Entity which will release the backend entities of Qt3D
-            if (m_releaseRootEntity && engine && engine->rootEntity())
-                engine->setRootEntity(Qt3DCore::QEntityPtr());
-            if (shouldSelfDestruct)
+        if (m_allowed == m_targetAllowed) {
+            if (QThread::currentThread() == thread())
                 delete this;
-        } else {
-            if (shouldSelfDestruct)
+            else
                 deleteLater();
         }
     }
@@ -136,7 +83,6 @@ private:
     int m_allowed = 0;
     int m_targetAllowed = 0;
     bool m_sgNodeAlive = false;
-    bool m_releaseRootEntity = true;
 };
 
 /*!
@@ -184,16 +130,7 @@ private:
     It is not recommended to instantiate more than a single Scene3D instance
     per application. The reason for this is that a Scene3D instance
     instantiates the entire Qt 3D engine (memory managers, thread pool, render
-    ...) under the scene. You should instead look into using \l Scene3DView
-    instances in conjunction with a single Scene3D instance.
-
-    When using Scene3D with Scene3DViews the following conditions are expected:
-    \list
-    \li The compositingMode is set to FBO
-    \li The Scene3D is sized to occupy the full window size
-    \li The Scene3D instance is instantiated prior to any Scene3DView
-    \li The Scene3D entity property is left unset
-    \endlist
+    ...) under the scene.
 
     \note Śetting the visibility of the Scene3D element to false will halt the
     Qt 3D simulation loop. This means that binding the visible property to an
@@ -203,17 +140,12 @@ private:
 Scene3DItem::Scene3DItem(QQuickItem *parent)
     : QQuickItem(parent)
     , m_entity(nullptr)
-    , m_viewHolderEntity(nullptr)
-    , m_viewHolderFG(nullptr)
     , m_aspectEngine(nullptr)
     , m_aspectToDelete(nullptr)
     , m_lastManagerNode(nullptr)
     , m_aspectEngineDestroyer()
     , m_multisample(true)
     , m_dirty(true)
-    , m_dirtyViews(false)
-    , m_clearsWindowByDefault(true)
-    , m_disableClearWindow(false)
     , m_wasFrameProcessed(false)
     , m_wasSGUpdated(false)
     , m_cameraAspectRatioMode(AutomaticAspectRatio)
@@ -230,6 +162,14 @@ Scene3DItem::Scene3DItem(QQuickItem *parent)
     // we still won't get ignored by the QtQuick SG when in Underlay mode
     setWidth(1);
     setHeight(1);
+
+    if (qgetenv("QT3D_RENDERER").isEmpty()) {
+#if QT_CONFIG(qt3d_rhi_renderer)
+        qputenv("QT3D_RENDERER", "rhi"); // QtQuick requires RHI
+#else
+        qputenv("QT3D_RENDERER", "opengl"); // QtQuick requires OpenGL
+#endif
+    }
 }
 
 Scene3DItem::~Scene3DItem()
@@ -267,7 +207,7 @@ QStringList Scene3DItem::aspects() const
 /*!
     \qmlproperty Entity Scene3D::entity
 
-    \default
+    \qmldefault
 
     The root entity of the 3D scene to be displayed.
  */
@@ -282,7 +222,7 @@ void Scene3DItem::applyAspects()
         return;
 
     // Aspects are owned by the aspect engine
-    for (const QString &aspect : qAsConst(m_aspects)) {
+    for (const QString &aspect : std::as_const(m_aspects)) {
         if (aspect == QLatin1String("render")) // This one is hardwired anyway
             continue;
         if (aspect == QLatin1String("input"))  {
@@ -408,66 +348,6 @@ Scene3DItem::CameraAspectRatioMode Scene3DItem::cameraAspectRatioMode() const
 Scene3DItem::CompositingMode Scene3DItem::compositingMode() const
 {
     return m_compositingMode;
-}
-
-// MainThread called by Scene3DView
-void Scene3DItem::addView(Scene3DView *view)
-{
-    if (m_views.contains(view))
-        return;
-
-    Qt3DRender::QFrameGraphNode *viewFG = view->viewFrameGraph();
-    Qt3DCore::QEntity *subtreeRoot = view->viewSubtree();
-
-    if (m_viewHolderEntity == nullptr) {
-        m_viewHolderEntity = new Qt3DCore::QEntity;
-
-        if (m_entity != nullptr) {
-            qCWarning(Scene3D) << "Scene3DView is not supported if the Scene3D entity property has been set";
-        }
-
-        Qt3DRender::QRenderSettings *settings = new Qt3DRender::QRenderSettings();
-        Qt3DRender::QRenderSurfaceSelector *surfaceSelector = new Qt3DRender::QRenderSurfaceSelector();
-        m_viewHolderFG = surfaceSelector;
-        surfaceSelector->setSurface(window());
-
-        // Copy setting properties from first View
-        QVector<Qt3DRender::QRenderSettings *> viewRenderSettings = subtreeRoot->componentsOfType<Qt3DRender::QRenderSettings>();
-        if (viewRenderSettings.size() > 0) {
-            Qt3DRender::QRenderSettings *viewRenderSetting = viewRenderSettings.first();
-            settings->setRenderPolicy(viewRenderSetting->renderPolicy());
-            settings->pickingSettings()->setPickMethod(viewRenderSetting->pickingSettings()->pickMethod());
-            settings->pickingSettings()->setPickResultMode(viewRenderSetting->pickingSettings()->pickResultMode());
-        }
-        settings->setActiveFrameGraph(m_viewHolderFG);
-        m_viewHolderEntity->addComponent(settings);
-
-        setEntity(m_viewHolderEntity);
-    }
-
-    // Parent FG and Subtree
-    viewFG->setParent(m_viewHolderFG);
-    subtreeRoot->setParent(m_viewHolderEntity);
-
-    m_views.push_back(view);
-    m_dirtyViews |= true;
-}
-
-// MainThread called by Scene3DView
-void Scene3DItem::removeView(Scene3DView *view)
-{
-    if (!m_views.contains(view))
-        return;
-
-    Qt3DRender::QFrameGraphNode *viewFG = view->viewFrameGraph();
-    Qt3DCore::QEntity *subtreeRoot = view->viewSubtree();
-
-    // Unparent FG and Subtree
-    viewFG->setParent(Q_NODE_NULLPTR);
-    subtreeRoot->setParent(Q_NODE_NULLPTR);
-
-    m_views.removeOne(view);
-    m_dirtyViews |= true;
 }
 
 void Scene3DItem::applyRootEntityChange()
@@ -613,8 +493,6 @@ void Scene3DItem::requestUpdate()
     const bool usesFBO = m_compositingMode == FBO;
     if (usesFBO) {
         QQuickItem::update();
-        for (Scene3DView *view : m_views)
-            view->update();
     } else {
         window()->update();
     }
@@ -670,8 +548,11 @@ void Scene3DItem::createDummySurface(QWindow *rw, Qt3DRender::QRenderSurfaceSele
  */
 void Scene3DItem::setItemAreaAndDevicePixelRatio(QSize area, qreal devicePixelRatio)
 {
-    Qt3DRender::QRenderSurfaceSelector *surfaceSelector
-            = Qt3DRender::QRenderSurfaceSelectorPrivate::find(entity());
+    Qt3DCore::QEntity *rootEntity = entity();
+    if (!rootEntity) {
+        return;
+    }
+    Qt3DRender::QRenderSurfaceSelector *surfaceSelector = Qt3DRender::QRenderSurfaceSelectorPrivate::find(rootEntity);
     if (surfaceSelector) {
         surfaceSelector->setExternalRenderTargetSize(area);
         surfaceSelector->setSurfacePixelRatio(devicePixelRatio);
@@ -770,7 +651,7 @@ public:
                                AspectEngineDestroyer *destroyer)
         : m_aspectEngine(aspectEngine)
         , m_destroyer(destroyer)
-        , m_renderAspect(new QRenderAspect(QRenderAspect::Synchronous))
+        , m_renderAspect(new QRenderAspect(QRenderAspect::Manual))
         , m_renderer(new Scene3DRenderer())
     {
         m_destroyer->setSGNodeAlive(true);
@@ -782,8 +663,7 @@ public:
         auto engineD = Qt3DCore::QAspectEnginePrivate::get(m_aspectEngine);
         engineD->exitSimulationLoop();
 
-        // Shutdown GL renderer
-        static_cast<QRenderAspectPrivate*>(QRenderAspectPrivate::get(m_renderAspect))->renderShutdown();
+        // Shutdown renderer
         delete m_renderer;
 
         m_destroyer->setSGNodeAlive(false);
@@ -848,10 +728,12 @@ void Scene3DItem::synchronize()
 QSGNode *Scene3DItem::updatePaintNode(QSGNode *node, QQuickItem::UpdatePaintNodeData *)
 {
     Scene3DManagerNode *managerNode = static_cast<Scene3DManagerNode *>(node);
+    QSGRendererInterface::GraphicsApi windowApi = window()->rendererInterface()->graphicsApi();
 
     // In case we have no GL context, return early
     // m_wasSGUpdated will not be set to true and nothing will take place
-    if (!QOpenGLContext::currentContext()) {
+    if ((windowApi == QSGRendererInterface::OpenGLRhi ||
+         windowApi == QSGRendererInterface::OpenGL) && !QOpenGLContext::currentContext()) {
         QQuickItem::update();
         return node;
     }
@@ -864,9 +746,13 @@ QSGNode *Scene3DItem::updatePaintNode(QSGNode *node, QQuickItem::UpdatePaintNode
             qCWarning(Scene3D) << "Renderer for Scene3DItem has requested a reset due to the item "
                                   "moving to another window";
             QObject::disconnect(m_windowConnection);
+            // We are in the Render thread, and the m_aspectEngineDestroyer lives in the Main
+            // thread, so we must avoid sending ChildRemoved or ChildAdded events to it with a
+            // QObject::setParent(). QCoreApplication::sendEvent() would fail with "Cannot
+            // send events to objects owned by a different thread."
+            QQml_setParent_noEvent(m_aspectEngine, nullptr);
             // Note: AspectEngine can only be deleted once we have set the root
             // entity on the new instance
-            m_aspectEngine->setParent(nullptr);
             m_aspectToDelete = m_aspectEngine;
             m_aspectEngine = nullptr;
         }
@@ -883,6 +769,7 @@ QSGNode *Scene3DItem::updatePaintNode(QSGNode *node, QQuickItem::UpdatePaintNode
             // Needs to belong in the same thread as the item which is the same as
             // the original QAspectEngine
             m_aspectEngineDestroyer->moveToThread(thread());
+            m_aspectEngine->moveToThread(thread());
 
             // To destroy AspectEngine
             m_aspectEngineDestroyer->reset(2);
@@ -903,18 +790,30 @@ QSGNode *Scene3DItem::updatePaintNode(QSGNode *node, QQuickItem::UpdatePaintNode
     Scene3DRenderer *renderer = managerNode->renderer();
     QRenderAspect *renderAspect = managerNode->renderAspect();
 
+    renderer->setBoundingSize(boundingRect().size().toSize());
+    renderer->setMultisample(m_multisample);
+    // Ensure Renderer is working on current window
+    renderer->setWindow(window());
+    // Set compositing mode on renderer
+    renderer->setCompositingMode(m_compositingMode);
+
     // If the render aspect wasn't created yet, do so now
     if (!managerNode->isInitialized()) {
         auto *rw = QQuickRenderControl::renderWindowFor(window());
-
-        // When using a RenderControl, the AspectEngineDestroyer shouldn't release the root entity
-        // as it could be reused if render control was moved to another window
-        if (rw)
-            m_aspectEngineDestroyer->setReleaseRootEntity(false);
-
         auto renderAspectPriv = static_cast<QRenderAspectPrivate*>(QRenderAspectPrivate::get(renderAspect));
         renderAspectPriv->m_screen = (rw ? rw->screen() : window()->screen());
         updateWindowSurface();
+
+#if !QT_CONFIG(qt3d_rhi_renderer)
+        QSGRendererInterface::GraphicsApi windowApi = window()->rendererInterface()->graphicsApi();
+
+        if (windowApi != QSGRendererInterface::OpenGLRhi &&
+            windowApi != QSGRendererInterface::OpenGL) {
+
+            qFatal("Qt3D's RHI Renderer is not enabled, please configure RHI to use the OpenGL backend "
+                   "by calling qputenv(\"QSG_RHI_BACKEND\", \"opengl\")");
+        }
+#endif
         managerNode->init();
         // Note: ChangeArbiter is only set after aspect was registered
         QObject::connect(
@@ -925,72 +824,40 @@ QSGNode *Scene3DItem::updatePaintNode(QSGNode *node, QQuickItem::UpdatePaintNode
                     m_framesToRender = ms_framesNeededToFlushPipeline;
                 },
                 Qt::DirectConnection);
+
         // Give the window a nudge to trigger an update.
         QMetaObject::invokeMethod(window(), "requestUpdate", Qt::QueuedConnection);
     }
 
     const bool usesFBO = m_compositingMode == FBO;
-    const bool hasScene3DViews = !m_views.empty();
     Scene3DSGNode *fboNode = static_cast<Scene3DSGNode *>(managerNode->firstChild());
 
-    // When usin Scene3DViews or Scene3D in Underlay mode
+    // When using Scene3D in Underlay mode
     // we shouldn't be managing a Scene3DSGNode
-    if (!usesFBO || hasScene3DViews) {
+    if (!usesFBO) {
         if (fboNode != nullptr) {
             managerNode->removeChildNode(fboNode);
             delete fboNode;
             fboNode = nullptr;
-            renderer->setSGNode(fboNode);
         }
     } else {
         // Regular Scene3D only case
         // Create SGNode if using FBO and no Scene3DViews
-        if (fboNode == nullptr) {
-            fboNode = new Scene3DSGNode();
-            renderer->setSGNode(fboNode);
-            managerNode->appendChildNode(fboNode);
+        fboNode = renderer->sgNode();
+        if (fboNode) {
+            if (!fboNode->parent())
+                managerNode->appendChildNode(fboNode);
+
+            // Depending on the backend in use, we might or might not have
+            // to flip content
+            fboNode->setRect(boundingRect(), !renderer->isYUp());
         }
-        fboNode->setRect(boundingRect());
     }
 
-    if (usesFBO) {
-        // Reset clear flag if we've set it to false it's still set to that
-        if (m_disableClearWindow && !window()->clearBeforeRendering())
-            window()->setClearBeforeRendering(m_clearsWindowByDefault);
-        m_disableClearWindow = false;
-    } else {
-        // Record clearBeforeRendering value before we force it to false
-        m_clearsWindowByDefault = window()->clearBeforeRendering();
-        m_disableClearWindow = true;
-        if (m_clearsWindowByDefault)
-            window()->setClearBeforeRendering(false);
-    }
-
-    renderer->setBoundingSize(boundingRect().size().toSize());
-    renderer->setMultisample(m_multisample);
-    // Ensure Renderer is working on current window
-    renderer->setWindow(window());
-    // Set compositing mode on renderer
-    renderer->setCompositingMode(m_compositingMode);
     // Set whether we want the Renderer to be allowed to render or not
     const bool skipFrame = !needsRender(renderAspect);
     renderer->setSkipFrame(skipFrame);
     renderer->allowRender();
-
-    // Make renderer aware of any Scene3DView we are dealing with
-    if (m_dirtyViews) {
-        const bool usesFBO = m_compositingMode == FBO;
-        // Scene3DViews checks
-        if (entity() != m_viewHolderEntity) {
-            qCWarning(Scene3D) << "Scene3DView is not supported if the Scene3D entity property has been set";
-        }
-        if (!usesFBO) {
-            qCWarning(Scene3D) << "Scene3DView is only supported when Scene3D compositingMode is set to FBO";
-        }
-        // The Scene3DRender will take care of providing the texture containing the 3D scene
-        renderer->setScene3DViews(m_views);
-        m_dirtyViews = false;
-    }
 
     // Let the renderer prepare anything it needs to prior to the rendering
     if (m_wasFrameProcessed)
@@ -1014,4 +881,5 @@ void Scene3DItem::mousePressEvent(QMouseEvent *event)
 
 QT_END_NAMESPACE
 
+#include "moc_scene3ditem_p.cpp"
 #include "scene3ditem.moc"

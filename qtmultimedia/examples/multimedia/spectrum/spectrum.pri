@@ -23,8 +23,6 @@ DEFINES += LOG_ENGINE
 # If this macro is defined, the FFTReal DLL will not be built
 #DEFINES += DISABLE_FFT
 
-static: DEFINES += DISABLE_FFT
-
 # Disables rendering of the waveform
 #DEFINES += DISABLE_WAVEFORM
 
@@ -48,4 +46,3 @@ win32 {
         CONFIG(debug, release|debug): spectrum_build_dir = /debug
     }
 }
-

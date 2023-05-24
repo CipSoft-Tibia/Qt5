@@ -15,6 +15,7 @@
  */
 
 #include "perfetto/tracing/track_event_legacy.h"
+#include "perfetto/ext/base/hash.h"
 
 #include "perfetto/tracing/track.h"
 
@@ -22,12 +23,11 @@ namespace perfetto {
 namespace legacy {
 
 template <>
-bool ConvertThreadId(const PerfettoLegacyCurrentThreadId&,
-                     uint64_t*,
-                     int32_t*,
-                     int32_t*) {
-  // No need to override anything for events on to the current thread.
-  return false;
+ThreadTrack ConvertThreadId(const PerfettoLegacyCurrentThreadId&) {
+  // Because of the short-circuit in PERFETTO_INTERNAL_LEGACY_EVENT, we should
+  // never get here.
+  PERFETTO_DCHECK(false);
+  return ThreadTrack::Current();
 }
 
 }  // namespace legacy
@@ -52,15 +52,20 @@ void LegacyTraceId::Write(protos::pbzero::TrackEvent::LegacyEvent* event,
   uint32_t scope_flags = id_flags_ & (legacy::kTraceEventFlagHasId |
                                       legacy::kTraceEventFlagHasLocalId |
                                       legacy::kTraceEventFlagHasGlobalId);
+  uint64_t id = raw_id_;
+  if (scope_ && scope_flags != legacy::kTraceEventFlagHasGlobalId) {
+    id = base::Hasher::Combine(id, scope_);
+  }
+
   switch (scope_flags) {
     case legacy::kTraceEventFlagHasId:
-      event->set_unscoped_id(raw_id_);
+      event->set_unscoped_id(id);
       break;
     case legacy::kTraceEventFlagHasLocalId:
-      event->set_local_id(raw_id_);
+      event->set_local_id(id);
       break;
     case legacy::kTraceEventFlagHasGlobalId:
-      event->set_global_id(raw_id_);
+      event->set_global_id(id);
       break;
   }
   if (scope_)

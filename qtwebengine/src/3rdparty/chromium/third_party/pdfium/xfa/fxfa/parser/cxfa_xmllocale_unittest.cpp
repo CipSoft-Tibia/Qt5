@@ -1,10 +1,8 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "xfa/fxfa/parser/cxfa_xmllocale.h"
-
-#include <memory>
 
 #include "testing/fxgc_unittest.h"
 #include "testing/gtest/include/gtest/gtest.h"

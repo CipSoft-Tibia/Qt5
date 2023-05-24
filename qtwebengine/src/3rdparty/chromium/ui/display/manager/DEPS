@@ -4,6 +4,7 @@ include_rules = [
   "+ui/base",
   "+ui/events/devices",
   "+ui/events/platform_event.h",
+  "+ui/ozone/public/ozone_switches.h",
   "+ui/strings",
 ]
 

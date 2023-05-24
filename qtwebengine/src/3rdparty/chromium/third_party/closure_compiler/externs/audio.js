@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,12 @@
 // NOTE: The format of types has changed. 'FooType' is now
 //   'chrome.audio.FooType'.
 // Please run the closure compiler before committing changes.
-// See https://chromium.googlesource.com/chromium/src/+/master/docs/closure_compilation.md
+// See https://chromium.googlesource.com/chromium/src/+/main/docs/closure_compilation.md
 
-/** @fileoverview Externs generated from namespace: audio */
+/**
+ * @fileoverview Externs generated from namespace: audio
+ * @externs
+ */
 
 /** @const */
 chrome.audio = {};
@@ -49,30 +52,6 @@ chrome.audio.DeviceType = {
 /**
  * @typedef {{
  *   id: string,
- *   name: string,
- *   isActive: boolean,
- *   isMuted: boolean,
- *   volume: number
- * }}
- * @see https://developer.chrome.com/extensions/audio#type-OutputDeviceInfo
- */
-chrome.audio.OutputDeviceInfo;
-
-/**
- * @typedef {{
- *   id: string,
- *   name: string,
- *   isActive: boolean,
- *   isMuted: boolean,
- *   gain: number
- * }}
- * @see https://developer.chrome.com/extensions/audio#type-InputDeviceInfo
- */
-chrome.audio.InputDeviceInfo;
-
-/**
- * @typedef {{
- *   id: string,
  *   streamType: !chrome.audio.StreamType,
  *   deviceType: !chrome.audio.DeviceType,
  *   displayName: string,
@@ -96,9 +75,6 @@ chrome.audio.DeviceFilter;
 
 /**
  * @typedef {{
- *   isMuted: (boolean|undefined),
- *   volume: (number|undefined),
- *   gain: (number|undefined),
  *   level: (number|undefined)
  * }}
  * @see https://developer.chrome.com/extensions/audio#type-DeviceProperties
@@ -146,14 +122,10 @@ chrome.audio.getDevices = function(filter, callback) {};
 
 /**
  * Sets lists of active input and/or output devices.
- * @param {(!chrome.audio.DeviceIdLists|!Array<string>)} ids <p>Specifies IDs of
- *     devices that should be active. If either the     input or output list is
- *     not set, devices in that category are     unaffected.     </p>     <p>It
- *     is an error to pass in a non-existent device ID.</p>     <p><b>NOTE:</b>
- *     While the method signature allows device IDs to be     passed as a list
- *     of strings, this method of setting active devices     is deprecated and
- *     should not be relied upon to work. Please use     $(ref:DeviceIdLists)
- *     instead.     </p>
+ * @param {!chrome.audio.DeviceIdLists} ids <p>Specifies IDs of devices that
+ *     should be active. If either the     input or output list is not set,
+ *     devices in that category are     unaffected.     </p>     <p>It is an
+ *     error to pass in a non-existent device ID.</p>
  * @param {function(): void} callback
  * @see https://developer.chrome.com/extensions/audio#method-setActiveDevices
  */
@@ -190,15 +162,6 @@ chrome.audio.getMute = function(streamType, callback) {};
 chrome.audio.setMute = function(streamType, isMuted, callback) {};
 
 /**
- * Gets the information of all audio output and input devices.
- * @param {function(!Array<!chrome.audio.OutputDeviceInfo>, !Array<!chrome.audio.InputDeviceInfo>): void}
- *     callback
- * @deprecated Use $(ref:getDevices) instead.
- * @see https://developer.chrome.com/extensions/audio#method-getInfo
- */
-chrome.audio.getInfo = function(callback) {};
-
-/**
  * Fired when sound level changes for an active audio device.
  * @type {!ChromeEvent}
  * @see https://developer.chrome.com/extensions/audio#event-onLevelChanged
@@ -221,10 +184,3 @@ chrome.audio.onMuteChanged;
  * @see https://developer.chrome.com/extensions/audio#event-onDeviceListChanged
  */
 chrome.audio.onDeviceListChanged;
-
-/**
- * Fired when anything changes to the audio device configuration.
- * @type {!ChromeEvent}
- * @see https://developer.chrome.com/extensions/audio#event-onDeviceChanged
- */
-chrome.audio.onDeviceChanged;

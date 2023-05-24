@@ -29,14 +29,14 @@
 #include <memory>
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_offset.h"
-#include "third_party/blink/renderer/platform/geometry/float_point.h"
-#include "third_party/blink/renderer/platform/geometry/float_quad.h"
-#include "third_party/blink/renderer/platform/geometry/int_size.h"
 #include "third_party/blink/renderer/platform/geometry/layout_point.h"
 #include "third_party/blink/renderer/platform/geometry/layout_size.h"
 #include "third_party/blink/renderer/platform/transforms/affine_transform.h"
-#include "third_party/blink/renderer/platform/transforms/transformation_matrix.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
+#include "ui/gfx/geometry/point_f.h"
+#include "ui/gfx/geometry/quad_f.h"
+#include "ui/gfx/geometry/size.h"
+#include "ui/gfx/geometry/transform.h"
 
 namespace blink {
 
@@ -44,6 +44,8 @@ namespace blink {
 // This is mainly used by other layout geometry mapping functions/classes (e.g.
 // LayoutObject::LocalToAncestorPoint() and LayoutGeometryMap). In most cases
 // other code should not use this class directly.
+// TODO(crbug.com/1222769): This class should go away and its users should use
+// GeometryMapper instead.
 class CORE_EXPORT TransformState {
   STACK_ALLOCATED();
 
@@ -55,36 +57,32 @@ class CORE_EXPORT TransformState {
   enum TransformAccumulation { kFlattenTransform, kAccumulateTransform };
 
   TransformState(TransformDirection mapping_direction,
-                 const FloatPoint& p,
-                 const FloatQuad& quad)
+                 const gfx::PointF& p,
+                 const gfx::QuadF& quad)
       : last_planar_point_(p),
         last_planar_quad_(quad),
-        accumulating_transform_(false),
         force_accumulating_transform_(false),
         map_point_(true),
         map_quad_(true),
         direction_(mapping_direction) {}
 
-  TransformState(TransformDirection mapping_direction, const FloatPoint& p)
+  TransformState(TransformDirection mapping_direction, const gfx::PointF& p)
       : last_planar_point_(p),
-        accumulating_transform_(false),
         force_accumulating_transform_(false),
         map_point_(true),
         map_quad_(false),
         direction_(mapping_direction) {}
 
-  TransformState(TransformDirection mapping_direction, const FloatQuad& quad)
+  TransformState(TransformDirection mapping_direction, const gfx::QuadF& quad)
       : last_planar_quad_(quad),
-        accumulating_transform_(false),
         force_accumulating_transform_(false),
         map_point_(false),
         map_quad_(true),
         direction_(mapping_direction) {}
 
   // Accumulate a transform but don't map any points directly.
-  TransformState(TransformDirection mapping_direction)
-      : accumulated_transform_(std::make_unique<TransformationMatrix>()),
-        accumulating_transform_(true),
+  explicit TransformState(TransformDirection mapping_direction)
+      : accumulated_transform_(std::make_unique<gfx::Transform>()),
         force_accumulating_transform_(true),
         map_point_(false),
         map_quad_(false),
@@ -96,8 +94,8 @@ class CORE_EXPORT TransformState {
 
   // Note: this overrides the quad and ignores any accumulatedOffset.
   // If it's desired to include the offset, call flatten() first.
-  void SetQuad(const FloatQuad& quad) {
-    DCHECK(!accumulating_transform_);
+  void SetQuad(const gfx::QuadF& quad) {
+    DCHECK(!accumulated_transform_ || accumulated_transform_->IsIdentity());
     // FIXME: this assumes that the quad being added is in the coordinate system
     // of the current state.  This breaks if we're simultaneously mapping a
     // point.  https://bugs.webkit.org/show_bug.cgi?id=106680
@@ -110,34 +108,33 @@ class CORE_EXPORT TransformState {
             TransformAccumulation accumulate = kFlattenTransform);
   void ApplyTransform(const AffineTransform& transform_from_container,
                       TransformAccumulation = kFlattenTransform);
-  void ApplyTransform(const TransformationMatrix& transform_from_container,
+  void ApplyTransform(const gfx::Transform& transform_from_container,
                       TransformAccumulation = kFlattenTransform);
   void Flatten();
 
   // Return the coords of the point or quad in the last flattened layer
-  FloatPoint LastPlanarPoint() const { return last_planar_point_; }
-  FloatQuad LastPlanarQuad() const { return last_planar_quad_; }
+  gfx::PointF LastPlanarPoint() const { return last_planar_point_; }
+  gfx::QuadF LastPlanarQuad() const { return last_planar_quad_; }
 
   // Return the point or quad mapped through the current transform
   PhysicalOffset MappedPoint() const;
-  FloatQuad MappedQuad() const;
+  gfx::QuadF MappedQuad() const;
 
   // Return the accumulated transform.
-  const TransformationMatrix& AccumulatedTransform() const;
+  const gfx::Transform& AccumulatedTransform() const;
 
  private:
   void TranslateTransform(const PhysicalOffset&);
   void TranslateMappedCoordinates(const PhysicalOffset&);
-  void FlattenWithTransform(const TransformationMatrix&);
+  void FlattenWithTransform(const gfx::Transform&);
   void ApplyAccumulatedOffset();
 
-  FloatPoint last_planar_point_;
-  FloatQuad last_planar_quad_;
+  gfx::PointF last_planar_point_;
+  gfx::QuadF last_planar_quad_;
 
   // We only allocate the transform if we need to
-  std::unique_ptr<TransformationMatrix> accumulated_transform_;
+  std::unique_ptr<gfx::Transform> accumulated_transform_;
   PhysicalOffset accumulated_offset_;
-  bool accumulating_transform_;
   bool force_accumulating_transform_;
   bool map_point_, map_quad_;
   TransformDirection direction_;

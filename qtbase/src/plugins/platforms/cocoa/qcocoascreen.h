@@ -1,51 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCOCOASCREEN_H
 #define QCOCOASCREEN_H
-
-#include <AppKit/AppKit.h>
 
 #include "qcocoacursor.h"
 
 #include <qpa/qplatformintegration.h>
 #include <QtCore/private/qcore_mac_p.h>
+
+#include <CoreGraphics/CoreGraphics.h>
+#include <CoreVideo/CoreVideo.h>
+
+Q_FORWARD_DECLARE_OBJC_CLASS(NSScreen);
+Q_FORWARD_DECLARE_OBJC_CLASS(NSArray);
 
 QT_BEGIN_NAMESPACE
 
@@ -63,10 +31,10 @@ public:
     QRect availableGeometry() const override { return m_availableGeometry; }
     int depth() const override { return m_depth; }
     QImage::Format format() const override { return m_format; }
+    QColorSpace colorSpace() const override { return m_colorSpace; }
     qreal devicePixelRatio() const override { return m_devicePixelRatio; }
     QSizeF physicalSize() const override { return m_physicalSize; }
-    QDpi logicalDpi() const override { return m_logicalDpi; }
-    QDpi logicalBaseDpi() const override { return m_logicalDpi; }
+    QDpi logicalBaseDpi() const override { return QDpi(72, 72); }
     qreal refreshRate() const override { return m_refreshRate; }
     QString name() const override { return m_name; }
     QPlatformCursor *cursor() const override { return m_cursor; }
@@ -76,9 +44,10 @@ public:
 
     // ----------------------------------------------------
 
+    static NSScreen *nativeScreenForDisplayId(CGDirectDisplayID displayId);
     NSScreen *nativeScreen() const;
 
-    void requestUpdate();
+    bool requestUpdate();
     void deliverUpdateRequests();
     bool isRunningDisplayLink() const;
 
@@ -113,11 +82,11 @@ private:
 
     QRect m_geometry;
     QRect m_availableGeometry;
-    QDpi m_logicalDpi;
     qreal m_refreshRate = 0;
     int m_depth = 0;
     QString m_name;
     QImage::Format m_format;
+    QColorSpace m_colorSpace;
     QSizeF m_physicalSize;
     QCocoaCursor *m_cursor;
     qreal m_devicePixelRatio = 0;
@@ -137,8 +106,14 @@ QDebug operator<<(QDebug debug, const QCocoaScreen *screen);
 
 QT_END_NAMESPACE
 
+#if defined(__OBJC__)
+
+// @compatibility_alias doesn't work with categories or their methods
+#define qt_displayId QT_MANGLE_NAMESPACE(qt_displayId)
+
 @interface NSScreen (QtExtras)
 @property(readonly) CGDirectDisplayID qt_displayId;
 @end
+#endif
 
 #endif // QCOCOASCREEN_H

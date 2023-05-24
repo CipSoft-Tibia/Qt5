@@ -3,6 +3,9 @@
 
 #include "avif/internal.h"
 
+#include <assert.h>
+#include <limits.h>
+#include <stdint.h>
 #include <string.h>
 
 #define STR_HELPER(x) #x
@@ -26,6 +29,7 @@ const char * avifPixelFormatToString(avifPixelFormat format)
         case AVIF_PIXEL_FORMAT_YUV400:
             return "YUV400";
         case AVIF_PIXEL_FORMAT_NONE:
+        case AVIF_PIXEL_FORMAT_COUNT:
         default:
             break;
     }
@@ -59,6 +63,7 @@ void avifGetPixelFormatInfo(avifPixelFormat format, avifPixelFormatInfo * info)
             break;
 
         case AVIF_PIXEL_FORMAT_NONE:
+        case AVIF_PIXEL_FORMAT_COUNT:
         default:
             break;
     }
@@ -87,6 +92,15 @@ const char * avifResultToString(avifResult result)
         case AVIF_RESULT_INVALID_EXIF_PAYLOAD:          return "Invalid Exif payload";
         case AVIF_RESULT_INVALID_IMAGE_GRID:            return "Invalid image grid";
         case AVIF_RESULT_INVALID_CODEC_SPECIFIC_OPTION: return "Invalid codec-specific option";
+        case AVIF_RESULT_TRUNCATED_DATA:                return "Truncated data";
+        case AVIF_RESULT_IO_NOT_SET:                    return "IO not set";
+        case AVIF_RESULT_IO_ERROR:                      return "IO Error";
+        case AVIF_RESULT_WAITING_ON_IO:                 return "Waiting on IO";
+        case AVIF_RESULT_INVALID_ARGUMENT:              return "Invalid argument";
+        case AVIF_RESULT_NOT_IMPLEMENTED:               return "Not implemented";
+        case AVIF_RESULT_OUT_OF_MEMORY:                 return "Out of memory";
+        case AVIF_RESULT_CANNOT_CHANGE_SETTING:         return "Cannot change some setting during encoding";
+        case AVIF_RESULT_INCOMPATIBLE_IMAGE:            return "The image is incompatible with already encoded images";
         case AVIF_RESULT_UNKNOWN_ERROR:
         default:
             break;
@@ -95,18 +109,30 @@ const char * avifResultToString(avifResult result)
     return "Unknown Error";
 }
 
-// This function assumes nothing in this struct needs to be freed; use avifImageClear() externally
-static void avifImageSetDefaults(avifImage * image)
+const char * avifProgressiveStateToString(avifProgressiveState progressiveState)
+{
+    // clang-format off
+    switch (progressiveState) {
+        case AVIF_PROGRESSIVE_STATE_UNAVAILABLE: return "Unavailable";
+        case AVIF_PROGRESSIVE_STATE_AVAILABLE:   return "Available";
+        case AVIF_PROGRESSIVE_STATE_ACTIVE:      return "Active";
+        default:
+            break;
+    }
+    // clang-format on
+    return "Unknown";
+}
+
+void avifImageSetDefaults(avifImage * image)
 {
     memset(image, 0, sizeof(avifImage));
     image->yuvRange = AVIF_RANGE_FULL;
-    image->alphaRange = AVIF_RANGE_FULL;
     image->colorPrimaries = AVIF_COLOR_PRIMARIES_UNSPECIFIED;
     image->transferCharacteristics = AVIF_TRANSFER_CHARACTERISTICS_UNSPECIFIED;
     image->matrixCoefficients = AVIF_MATRIX_COEFFICIENTS_UNSPECIFIED;
 }
 
-avifImage * avifImageCreate(int width, int height, int depth, avifPixelFormat yuvFormat)
+avifImage * avifImageCreate(uint32_t width, uint32_t height, uint32_t depth, avifPixelFormat yuvFormat)
 {
     avifImage * image = (avifImage *)avifAlloc(sizeof(avifImage));
     avifImageSetDefaults(image);
@@ -122,67 +148,102 @@ avifImage * avifImageCreateEmpty(void)
     return avifImageCreate(0, 0, 0, AVIF_PIXEL_FORMAT_NONE);
 }
 
-void avifImageCopy(avifImage * dstImage, const avifImage * srcImage, uint32_t planes)
+void avifImageCopyNoAlloc(avifImage * dstImage, const avifImage * srcImage)
 {
-    avifImageFreePlanes(dstImage, AVIF_PLANES_ALL);
-
     dstImage->width = srcImage->width;
     dstImage->height = srcImage->height;
     dstImage->depth = srcImage->depth;
     dstImage->yuvFormat = srcImage->yuvFormat;
     dstImage->yuvRange = srcImage->yuvRange;
     dstImage->yuvChromaSamplePosition = srcImage->yuvChromaSamplePosition;
-    dstImage->alphaRange = srcImage->alphaRange;
+    dstImage->alphaPremultiplied = srcImage->alphaPremultiplied;
 
     dstImage->colorPrimaries = srcImage->colorPrimaries;
     dstImage->transferCharacteristics = srcImage->transferCharacteristics;
     dstImage->matrixCoefficients = srcImage->matrixCoefficients;
+    dstImage->clli = srcImage->clli;
 
     dstImage->transformFlags = srcImage->transformFlags;
-    memcpy(&dstImage->pasp, &srcImage->pasp, sizeof(dstImage->pasp));
-    memcpy(&dstImage->clap, &srcImage->clap, sizeof(dstImage->clap));
-    memcpy(&dstImage->irot, &srcImage->irot, sizeof(dstImage->irot));
-    memcpy(&dstImage->imir, &srcImage->imir, sizeof(dstImage->pasp));
+    dstImage->pasp = srcImage->pasp;
+    dstImage->clap = srcImage->clap;
+    dstImage->irot = srcImage->irot;
+    dstImage->imir = srcImage->imir;
+}
+
+avifResult avifImageCopy(avifImage * dstImage, const avifImage * srcImage, avifPlanesFlags planes)
+{
+    avifImageFreePlanes(dstImage, AVIF_PLANES_ALL);
+    avifImageCopyNoAlloc(dstImage, srcImage);
 
     avifImageSetProfileICC(dstImage, srcImage->icc.data, srcImage->icc.size);
 
-    avifImageSetMetadataExif(dstImage, srcImage->exif.data, srcImage->exif.size);
+    avifRWDataSet(&dstImage->exif, srcImage->exif.data, srcImage->exif.size);
     avifImageSetMetadataXMP(dstImage, srcImage->xmp.data, srcImage->xmp.size);
 
     if ((planes & AVIF_PLANES_YUV) && srcImage->yuvPlanes[AVIF_CHAN_Y]) {
-        avifImageAllocatePlanes(dstImage, AVIF_PLANES_YUV);
-
-        avifPixelFormatInfo formatInfo;
-        avifGetPixelFormatInfo(srcImage->yuvFormat, &formatInfo);
-        uint32_t uvHeight = (dstImage->height + formatInfo.chromaShiftY) >> formatInfo.chromaShiftY;
-        for (int yuvPlane = 0; yuvPlane < 3; ++yuvPlane) {
-            uint32_t planeHeight = (yuvPlane == AVIF_CHAN_Y) ? dstImage->height : uvHeight;
-
-            if (!srcImage->yuvRowBytes[yuvPlane]) {
-                // plane is absent. If we're copying from a source without
-                // them, mimic the source image's state by removing our copy.
-                avifFree(dstImage->yuvPlanes[yuvPlane]);
-                dstImage->yuvPlanes[yuvPlane] = NULL;
-                dstImage->yuvRowBytes[yuvPlane] = 0;
-                continue;
-            }
-
-            for (uint32_t j = 0; j < planeHeight; ++j) {
-                uint8_t * srcRow = &srcImage->yuvPlanes[yuvPlane][j * srcImage->yuvRowBytes[yuvPlane]];
-                uint8_t * dstRow = &dstImage->yuvPlanes[yuvPlane][j * dstImage->yuvRowBytes[yuvPlane]];
-                memcpy(dstRow, srcRow, dstImage->yuvRowBytes[yuvPlane]);
-            }
+        if ((srcImage->yuvFormat != AVIF_PIXEL_FORMAT_YUV400) &&
+            (!srcImage->yuvPlanes[AVIF_CHAN_U] || !srcImage->yuvPlanes[AVIF_CHAN_V])) {
+            return AVIF_RESULT_INVALID_ARGUMENT;
+        }
+        const avifResult allocationResult = avifImageAllocatePlanes(dstImage, AVIF_PLANES_YUV);
+        if (allocationResult != AVIF_RESULT_OK) {
+            return allocationResult;
         }
     }
-
     if ((planes & AVIF_PLANES_A) && srcImage->alphaPlane) {
-        avifImageAllocatePlanes(dstImage, AVIF_PLANES_A);
-        for (uint32_t j = 0; j < dstImage->height; ++j) {
-            uint8_t * srcAlphaRow = &srcImage->alphaPlane[j * srcImage->alphaRowBytes];
-            uint8_t * dstAlphaRow = &dstImage->alphaPlane[j * dstImage->alphaRowBytes];
-            memcpy(dstAlphaRow, srcAlphaRow, dstImage->alphaRowBytes);
+        const avifResult allocationResult = avifImageAllocatePlanes(dstImage, AVIF_PLANES_A);
+        if (allocationResult != AVIF_RESULT_OK) {
+            return allocationResult;
         }
     }
+    for (int plane = AVIF_CHAN_Y; plane <= AVIF_CHAN_A; ++plane) {
+        uint8_t * dstRow = avifImagePlane(dstImage, plane);
+        if (!dstRow) {
+            continue;
+        }
+        const uint8_t * srcRow = avifImagePlane(srcImage, plane);
+        uint32_t srcRowBytes = avifImagePlaneRowBytes(srcImage, plane);
+        uint32_t dstRowBytes = avifImagePlaneRowBytes(dstImage, plane);
+        uint32_t planeWidthBytes = avifImagePlaneWidth(dstImage, plane) << (dstImage->depth > 8);
+        uint32_t planeHeight = avifImagePlaneHeight(dstImage, plane);
+        for (uint32_t j = 0; j < planeHeight; ++j) {
+            memcpy(dstRow, srcRow, planeWidthBytes);
+            srcRow += srcRowBytes;
+            dstRow += dstRowBytes;
+        }
+    }
+    return AVIF_RESULT_OK;
+}
+
+avifResult avifImageSetViewRect(avifImage * dstImage, const avifImage * srcImage, const avifCropRect * rect)
+{
+    avifPixelFormatInfo formatInfo;
+    avifGetPixelFormatInfo(srcImage->yuvFormat, &formatInfo);
+    if ((rect->width > srcImage->width) || (rect->height > srcImage->height) || (rect->x > (srcImage->width - rect->width)) ||
+        (rect->y > (srcImage->height - rect->height)) || (rect->x & formatInfo.chromaShiftX) || (rect->y & formatInfo.chromaShiftY)) {
+        return AVIF_RESULT_INVALID_ARGUMENT;
+    }
+    avifImageFreePlanes(dstImage, AVIF_PLANES_ALL); // dstImage->imageOwnsYUVPlanes and dstImage->imageOwnsAlphaPlane set to AVIF_FALSE.
+    avifImageCopyNoAlloc(dstImage, srcImage);
+    dstImage->width = rect->width;
+    dstImage->height = rect->height;
+    const uint32_t pixelBytes = (srcImage->depth > 8) ? 2 : 1;
+    if (srcImage->yuvPlanes[AVIF_CHAN_Y]) {
+        for (int yuvPlane = AVIF_CHAN_Y; yuvPlane <= AVIF_CHAN_V; ++yuvPlane) {
+            if (srcImage->yuvRowBytes[yuvPlane]) {
+                const size_t planeX = (yuvPlane == AVIF_CHAN_Y) ? rect->x : (rect->x >> formatInfo.chromaShiftX);
+                const size_t planeY = (yuvPlane == AVIF_CHAN_Y) ? rect->y : (rect->y >> formatInfo.chromaShiftY);
+                dstImage->yuvPlanes[yuvPlane] =
+                    srcImage->yuvPlanes[yuvPlane] + planeY * srcImage->yuvRowBytes[yuvPlane] + planeX * pixelBytes;
+                dstImage->yuvRowBytes[yuvPlane] = srcImage->yuvRowBytes[yuvPlane];
+            }
+        }
+    }
+    if (srcImage->alphaPlane) {
+        dstImage->alphaPlane = srcImage->alphaPlane + (size_t)rect->y * srcImage->alphaRowBytes + (size_t)rect->x * pixelBytes;
+        dstImage->alphaRowBytes = srcImage->alphaRowBytes;
+    }
+    return AVIF_RESULT_OK;
 }
 
 void avifImageDestroy(avifImage * image)
@@ -199,58 +260,73 @@ void avifImageSetProfileICC(avifImage * image, const uint8_t * icc, size_t iccSi
     avifRWDataSet(&image->icc, icc, iccSize);
 }
 
-void avifImageSetMetadataExif(avifImage * image, const uint8_t * exif, size_t exifSize)
-{
-    avifRWDataSet(&image->exif, exif, exifSize);
-}
-
 void avifImageSetMetadataXMP(avifImage * image, const uint8_t * xmp, size_t xmpSize)
 {
     avifRWDataSet(&image->xmp, xmp, xmpSize);
 }
 
-void avifImageAllocatePlanes(avifImage * image, uint32_t planes)
+avifResult avifImageAllocatePlanes(avifImage * image, avifPlanesFlags planes)
 {
-    int channelSize = avifImageUsesU16(image) ? 2 : 1;
-    int fullRowBytes = channelSize * image->width;
-    int fullSize = fullRowBytes * image->height;
+    if (image->width == 0 || image->height == 0) {
+        return AVIF_RESULT_INVALID_ARGUMENT;
+    }
+    const size_t channelSize = avifImageUsesU16(image) ? 2 : 1;
+    if (image->width > SIZE_MAX / channelSize) {
+        return AVIF_RESULT_INVALID_ARGUMENT;
+    }
+    const size_t fullRowBytes = channelSize * image->width;
+    if ((fullRowBytes > UINT32_MAX) || (image->height > SIZE_MAX / fullRowBytes)) {
+        return AVIF_RESULT_INVALID_ARGUMENT;
+    }
+    const size_t fullSize = fullRowBytes * image->height;
+
     if ((planes & AVIF_PLANES_YUV) && (image->yuvFormat != AVIF_PIXEL_FORMAT_NONE)) {
         avifPixelFormatInfo info;
         avifGetPixelFormatInfo(image->yuvFormat, &info);
 
-        int shiftedW = (image->width + info.chromaShiftX) >> info.chromaShiftX;
-        int shiftedH = (image->height + info.chromaShiftY) >> info.chromaShiftY;
+        // Intermediary computation as 64 bits in case width or height is exactly UINT32_MAX.
+        const uint32_t shiftedW = (uint32_t)(((uint64_t)image->width + info.chromaShiftX) >> info.chromaShiftX);
+        const uint32_t shiftedH = (uint32_t)(((uint64_t)image->height + info.chromaShiftY) >> info.chromaShiftY);
 
-        int uvRowBytes = channelSize * shiftedW;
-        int uvSize = uvRowBytes * shiftedH;
+        // These are less than or equal to fullRowBytes/fullSize. No need to check overflows.
+        const size_t uvRowBytes = channelSize * shiftedW;
+        const size_t uvSize = uvRowBytes * shiftedH;
 
+        image->imageOwnsYUVPlanes = AVIF_TRUE;
         if (!image->yuvPlanes[AVIF_CHAN_Y]) {
-            image->yuvRowBytes[AVIF_CHAN_Y] = fullRowBytes;
+            image->yuvRowBytes[AVIF_CHAN_Y] = (uint32_t)fullRowBytes;
             image->yuvPlanes[AVIF_CHAN_Y] = avifAlloc(fullSize);
+            if (!image->yuvPlanes[AVIF_CHAN_Y]) {
+                return AVIF_RESULT_OUT_OF_MEMORY;
+            }
         }
 
         if (image->yuvFormat != AVIF_PIXEL_FORMAT_YUV400) {
-            if (!image->yuvPlanes[AVIF_CHAN_U]) {
-                image->yuvRowBytes[AVIF_CHAN_U] = uvRowBytes;
-                image->yuvPlanes[AVIF_CHAN_U] = avifAlloc(uvSize);
-            }
-            if (!image->yuvPlanes[AVIF_CHAN_V]) {
-                image->yuvRowBytes[AVIF_CHAN_V] = uvRowBytes;
-                image->yuvPlanes[AVIF_CHAN_V] = avifAlloc(uvSize);
+            for (int uvPlane = AVIF_CHAN_U; uvPlane <= AVIF_CHAN_V; ++uvPlane) {
+                if (!image->yuvPlanes[uvPlane]) {
+                    image->yuvRowBytes[uvPlane] = (uint32_t)uvRowBytes;
+                    image->yuvPlanes[uvPlane] = avifAlloc(uvSize);
+                    if (!image->yuvPlanes[uvPlane]) {
+                        return AVIF_RESULT_OUT_OF_MEMORY;
+                    }
+                }
             }
         }
-        image->imageOwnsYUVPlanes = AVIF_TRUE;
     }
     if (planes & AVIF_PLANES_A) {
-        if (!image->alphaPlane) {
-            image->alphaRowBytes = fullRowBytes;
-            image->alphaPlane = avifAlloc(fullSize);
-        }
         image->imageOwnsAlphaPlane = AVIF_TRUE;
+        if (!image->alphaPlane) {
+            image->alphaRowBytes = (uint32_t)fullRowBytes;
+            image->alphaPlane = avifAlloc(fullSize);
+            if (!image->alphaPlane) {
+                return AVIF_RESULT_OUT_OF_MEMORY;
+            }
+        }
     }
+    return AVIF_RESULT_OK;
 }
 
-void avifImageFreePlanes(avifImage * image, uint32_t planes)
+void avifImageFreePlanes(avifImage * image, avifPlanesFlags planes)
 {
     if ((planes & AVIF_PLANES_YUV) && (image->yuvFormat != AVIF_PIXEL_FORMAT_NONE)) {
         if (image->imageOwnsYUVPlanes) {
@@ -276,7 +352,7 @@ void avifImageFreePlanes(avifImage * image, uint32_t planes)
     }
 }
 
-void avifImageStealPlanes(avifImage * dstImage, avifImage * srcImage, uint32_t planes)
+void avifImageStealPlanes(avifImage * dstImage, avifImage * srcImage, avifPlanesFlags planes)
 {
     avifImageFreePlanes(dstImage, planes);
 
@@ -316,6 +392,105 @@ avifBool avifImageUsesU16(const avifImage * image)
     return (image->depth > 8);
 }
 
+avifBool avifImageIsOpaque(const avifImage * image)
+{
+    if (!image->alphaPlane) {
+        return AVIF_TRUE;
+    }
+
+    const uint32_t opaqueValue = (1u << image->depth) - 1u;
+    const uint8_t * row = image->alphaPlane;
+    for (uint32_t y = 0; y < image->height; ++y) {
+        if (avifImageUsesU16(image)) {
+            const uint16_t * row16 = (const uint16_t *)row;
+            for (uint32_t x = 0; x < image->width; ++x) {
+                if (row16[x] != opaqueValue) {
+                    return AVIF_FALSE;
+                }
+            }
+        } else {
+            for (uint32_t x = 0; x < image->width; ++x) {
+                if (row[x] != opaqueValue) {
+                    return AVIF_FALSE;
+                }
+            }
+        }
+        row += image->alphaRowBytes;
+    }
+    return AVIF_TRUE;
+}
+
+uint8_t * avifImagePlane(const avifImage * image, int channel)
+{
+    if ((channel == AVIF_CHAN_Y) || (channel == AVIF_CHAN_U) || (channel == AVIF_CHAN_V)) {
+        return image->yuvPlanes[channel];
+    }
+    if (channel == AVIF_CHAN_A) {
+        return image->alphaPlane;
+    }
+    return NULL;
+}
+
+uint32_t avifImagePlaneRowBytes(const avifImage * image, int channel)
+{
+    if ((channel == AVIF_CHAN_Y) || (channel == AVIF_CHAN_U) || (channel == AVIF_CHAN_V)) {
+        return image->yuvRowBytes[channel];
+    }
+    if (channel == AVIF_CHAN_A) {
+        return image->alphaRowBytes;
+    }
+    return 0;
+}
+
+uint32_t avifImagePlaneWidth(const avifImage * image, int channel)
+{
+    if (channel == AVIF_CHAN_Y) {
+        return image->width;
+    }
+    if ((channel == AVIF_CHAN_U) || (channel == AVIF_CHAN_V)) {
+        avifPixelFormatInfo formatInfo;
+        avifGetPixelFormatInfo(image->yuvFormat, &formatInfo);
+        if (formatInfo.monochrome) {
+            return 0;
+        }
+        return (image->width + formatInfo.chromaShiftX) >> formatInfo.chromaShiftX;
+    }
+    if ((channel == AVIF_CHAN_A) && image->alphaPlane) {
+        return image->width;
+    }
+    return 0;
+}
+
+uint32_t avifImagePlaneHeight(const avifImage * image, int channel)
+{
+    if (channel == AVIF_CHAN_Y) {
+        return image->height;
+    }
+    if ((channel == AVIF_CHAN_U) || (channel == AVIF_CHAN_V)) {
+        avifPixelFormatInfo formatInfo;
+        avifGetPixelFormatInfo(image->yuvFormat, &formatInfo);
+        if (formatInfo.monochrome) {
+            return 0;
+        }
+        return (image->height + formatInfo.chromaShiftY) >> formatInfo.chromaShiftY;
+    }
+    if ((channel == AVIF_CHAN_A) && image->alphaPlane) {
+        return image->height;
+    }
+    return 0;
+}
+
+avifBool avifDimensionsTooLarge(uint32_t width, uint32_t height, uint32_t imageSizeLimit, uint32_t imageDimensionLimit)
+{
+    if (width > (imageSizeLimit / height)) {
+        return AVIF_TRUE;
+    }
+    if ((imageDimensionLimit != 0) && ((width > imageDimensionLimit) || (height > imageDimensionLimit))) {
+        return AVIF_TRUE;
+    }
+    return AVIF_FALSE;
+}
+
 // avifCodecCreate*() functions are in their respective codec_*.c files
 
 void avifCodecDestroy(avifCodec * codec)
@@ -331,7 +506,7 @@ void avifCodecDestroy(avifCodec * codec)
 
 avifBool avifRGBFormatHasAlpha(avifRGBFormat format)
 {
-    return (format != AVIF_RGB_FORMAT_RGB) && (format != AVIF_RGB_FORMAT_BGR);
+    return (format != AVIF_RGB_FORMAT_RGB) && (format != AVIF_RGB_FORMAT_BGR) && (format != AVIF_RGB_FORMAT_RGB_565);
 }
 
 uint32_t avifRGBFormatChannelCount(avifRGBFormat format)
@@ -341,6 +516,9 @@ uint32_t avifRGBFormatChannelCount(avifRGBFormat format)
 
 uint32_t avifRGBImagePixelSize(const avifRGBImage * rgb)
 {
+    if (rgb->format == AVIF_RGB_FORMAT_RGB_565) {
+        return 2;
+    }
     return avifRGBFormatChannelCount(rgb->format) * ((rgb->depth > 8) ? 2 : 1);
 }
 
@@ -350,10 +528,16 @@ void avifRGBImageSetDefaults(avifRGBImage * rgb, const avifImage * image)
     rgb->height = image->height;
     rgb->depth = image->depth;
     rgb->format = AVIF_RGB_FORMAT_RGBA;
-    rgb->chromaUpsampling = AVIF_CHROMA_UPSAMPLING_BILINEAR;
+    rgb->chromaUpsampling = AVIF_CHROMA_UPSAMPLING_AUTOMATIC;
+    rgb->chromaDownsampling = AVIF_CHROMA_DOWNSAMPLING_AUTOMATIC;
+    rgb->avoidLibYUV = AVIF_FALSE;
     rgb->ignoreAlpha = AVIF_FALSE;
     rgb->pixels = NULL;
     rgb->rowBytes = 0;
+    rgb->alphaPremultiplied = AVIF_FALSE; // Most expect RGBA output to *not* be premultiplied. Those that do can opt-in by
+                                          // setting this to match image->alphaPremultiplied or forcing this to true
+                                          // after calling avifRGBImageSetDefaults(),
+    rgb->isFloat = AVIF_FALSE;
 }
 
 void avifRGBImageAllocatePixels(avifRGBImage * rgb)
@@ -363,7 +547,7 @@ void avifRGBImageAllocatePixels(avifRGBImage * rgb)
     }
 
     rgb->rowBytes = rgb->width * avifRGBImagePixelSize(rgb);
-    rgb->pixels = avifAlloc(rgb->rowBytes * rgb->height);
+    rgb->pixels = avifAlloc((size_t)rgb->rowBytes * rgb->height);
 }
 
 void avifRGBImageFreePixels(avifRGBImage * rgb)
@@ -374,6 +558,279 @@ void avifRGBImageFreePixels(avifRGBImage * rgb)
 
     rgb->pixels = NULL;
     rgb->rowBytes = 0;
+}
+
+// ---------------------------------------------------------------------------
+// avifCropRect
+
+static avifFraction calcCenter(int32_t dim)
+{
+    avifFraction f;
+    f.n = dim >> 1;
+    f.d = 1;
+    if ((dim % 2) != 0) {
+        f.n = dim;
+        f.d = 2;
+    }
+    return f;
+}
+
+static avifBool overflowsInt32(int64_t x)
+{
+    return (x < INT32_MIN) || (x > INT32_MAX);
+}
+
+static avifBool avifCropRectIsValid(const avifCropRect * cropRect, uint32_t imageW, uint32_t imageH, avifPixelFormat yuvFormat, avifDiagnostics * diag)
+
+{
+    // ISO/IEC 23000-22:2019/DAM 2:2021, Section 7.3.6.7:
+    //   The clean aperture property is restricted according to the chroma
+    //   sampling format of the input image (4:4:4, 4:2:2:, 4:2:0, or 4:0:0) as
+    //   follows:
+    //   - when the image is 4:0:0 (monochrome) or 4:4:4, the horizontal and
+    //     vertical cropped offsets and widths shall be integers;
+    //   - when the image is 4:2:2 the horizontal cropped offset and width
+    //     shall be even numbers and the vertical values shall be integers;
+    //   - when the image is 4:2:0 both the horizontal and vertical cropped
+    //     offsets and widths shall be even numbers.
+
+    if ((cropRect->width == 0) || (cropRect->height == 0)) {
+        avifDiagnosticsPrintf(diag, "[Strict] crop rect width and height must be nonzero");
+        return AVIF_FALSE;
+    }
+    if ((cropRect->x > (UINT32_MAX - cropRect->width)) || ((cropRect->x + cropRect->width) > imageW) ||
+        (cropRect->y > (UINT32_MAX - cropRect->height)) || ((cropRect->y + cropRect->height) > imageH)) {
+        avifDiagnosticsPrintf(diag, "[Strict] crop rect is out of the image's bounds");
+        return AVIF_FALSE;
+    }
+
+    if ((yuvFormat == AVIF_PIXEL_FORMAT_YUV420) || (yuvFormat == AVIF_PIXEL_FORMAT_YUV422)) {
+        if (((cropRect->x % 2) != 0) || ((cropRect->width % 2) != 0)) {
+            avifDiagnosticsPrintf(diag, "[Strict] crop rect X offset and width must both be even due to this image's YUV subsampling");
+            return AVIF_FALSE;
+        }
+    }
+    if (yuvFormat == AVIF_PIXEL_FORMAT_YUV420) {
+        if (((cropRect->y % 2) != 0) || ((cropRect->height % 2) != 0)) {
+            avifDiagnosticsPrintf(diag, "[Strict] crop rect Y offset and height must both be even due to this image's YUV subsampling");
+            return AVIF_FALSE;
+        }
+    }
+    return AVIF_TRUE;
+}
+
+avifBool avifCropRectConvertCleanApertureBox(avifCropRect * cropRect,
+                                             const avifCleanApertureBox * clap,
+                                             uint32_t imageW,
+                                             uint32_t imageH,
+                                             avifPixelFormat yuvFormat,
+                                             avifDiagnostics * diag)
+{
+    avifDiagnosticsClearError(diag);
+
+    // ISO/IEC 14496-12:2020, Section 12.1.4.1:
+    //   For horizOff and vertOff, D shall be strictly positive and N may be
+    //   positive or negative. For cleanApertureWidth and cleanApertureHeight,
+    //   N shall be positive and D shall be strictly positive.
+
+    const int32_t widthN = (int32_t)clap->widthN;
+    const int32_t widthD = (int32_t)clap->widthD;
+    const int32_t heightN = (int32_t)clap->heightN;
+    const int32_t heightD = (int32_t)clap->heightD;
+    const int32_t horizOffN = (int32_t)clap->horizOffN;
+    const int32_t horizOffD = (int32_t)clap->horizOffD;
+    const int32_t vertOffN = (int32_t)clap->vertOffN;
+    const int32_t vertOffD = (int32_t)clap->vertOffD;
+    if ((widthD <= 0) || (heightD <= 0) || (horizOffD <= 0) || (vertOffD <= 0)) {
+        avifDiagnosticsPrintf(diag, "[Strict] clap contains a denominator that is not strictly positive");
+        return AVIF_FALSE;
+    }
+    if ((widthN < 0) || (heightN < 0)) {
+        avifDiagnosticsPrintf(diag, "[Strict] clap width or height is negative");
+        return AVIF_FALSE;
+    }
+
+    if ((widthN % widthD) != 0) {
+        avifDiagnosticsPrintf(diag, "[Strict] clap width %d/%d is not an integer", widthN, widthD);
+        return AVIF_FALSE;
+    }
+    if ((heightN % heightD) != 0) {
+        avifDiagnosticsPrintf(diag, "[Strict] clap height %d/%d is not an integer", heightN, heightD);
+        return AVIF_FALSE;
+    }
+    const int32_t clapW = widthN / widthD;
+    const int32_t clapH = heightN / heightD;
+
+    if ((imageW > INT32_MAX) || (imageH > INT32_MAX)) {
+        avifDiagnosticsPrintf(diag, "[Strict] image width %u or height %u is greater than INT32_MAX", imageW, imageH);
+        return AVIF_FALSE;
+    }
+    avifFraction uncroppedCenterX = calcCenter((int32_t)imageW);
+    avifFraction uncroppedCenterY = calcCenter((int32_t)imageH);
+
+    avifFraction horizOff;
+    horizOff.n = horizOffN;
+    horizOff.d = horizOffD;
+    avifFraction croppedCenterX;
+    if (!avifFractionAdd(uncroppedCenterX, horizOff, &croppedCenterX)) {
+        avifDiagnosticsPrintf(diag, "[Strict] croppedCenterX overflowed");
+        return AVIF_FALSE;
+    }
+
+    avifFraction vertOff;
+    vertOff.n = vertOffN;
+    vertOff.d = vertOffD;
+    avifFraction croppedCenterY;
+    if (!avifFractionAdd(uncroppedCenterY, vertOff, &croppedCenterY)) {
+        avifDiagnosticsPrintf(diag, "[Strict] croppedCenterY overflowed");
+        return AVIF_FALSE;
+    }
+
+    avifFraction halfW;
+    halfW.n = clapW;
+    halfW.d = 2;
+    avifFraction cropX;
+    if (!avifFractionSub(croppedCenterX, halfW, &cropX)) {
+        avifDiagnosticsPrintf(diag, "[Strict] cropX overflowed");
+        return AVIF_FALSE;
+    }
+    if ((cropX.n % cropX.d) != 0) {
+        avifDiagnosticsPrintf(diag, "[Strict] calculated crop X offset %d/%d is not an integer", cropX.n, cropX.d);
+        return AVIF_FALSE;
+    }
+
+    avifFraction halfH;
+    halfH.n = clapH;
+    halfH.d = 2;
+    avifFraction cropY;
+    if (!avifFractionSub(croppedCenterY, halfH, &cropY)) {
+        avifDiagnosticsPrintf(diag, "[Strict] cropY overflowed");
+        return AVIF_FALSE;
+    }
+    if ((cropY.n % cropY.d) != 0) {
+        avifDiagnosticsPrintf(diag, "[Strict] calculated crop Y offset %d/%d is not an integer", cropY.n, cropY.d);
+        return AVIF_FALSE;
+    }
+
+    if ((cropX.n < 0) || (cropY.n < 0)) {
+        avifDiagnosticsPrintf(diag, "[Strict] at least one crop offset is not positive");
+        return AVIF_FALSE;
+    }
+
+    cropRect->x = (uint32_t)(cropX.n / cropX.d);
+    cropRect->y = (uint32_t)(cropY.n / cropY.d);
+    cropRect->width = (uint32_t)clapW;
+    cropRect->height = (uint32_t)clapH;
+    return avifCropRectIsValid(cropRect, imageW, imageH, yuvFormat, diag);
+}
+
+avifBool avifCleanApertureBoxConvertCropRect(avifCleanApertureBox * clap,
+                                             const avifCropRect * cropRect,
+                                             uint32_t imageW,
+                                             uint32_t imageH,
+                                             avifPixelFormat yuvFormat,
+                                             avifDiagnostics * diag)
+{
+    avifDiagnosticsClearError(diag);
+
+    if (!avifCropRectIsValid(cropRect, imageW, imageH, yuvFormat, diag)) {
+        return AVIF_FALSE;
+    }
+
+    if ((imageW > INT32_MAX) || (imageH > INT32_MAX)) {
+        avifDiagnosticsPrintf(diag, "[Strict] image width %u or height %u is greater than INT32_MAX", imageW, imageH);
+        return AVIF_FALSE;
+    }
+    avifFraction uncroppedCenterX = calcCenter((int32_t)imageW);
+    avifFraction uncroppedCenterY = calcCenter((int32_t)imageH);
+
+    if ((cropRect->width > INT32_MAX) || (cropRect->height > INT32_MAX)) {
+        avifDiagnosticsPrintf(diag,
+                              "[Strict] crop rect width %u or height %u is greater than INT32_MAX",
+                              cropRect->width,
+                              cropRect->height);
+        return AVIF_FALSE;
+    }
+    avifFraction croppedCenterX = calcCenter((int32_t)cropRect->width);
+    const int64_t croppedCenterXN = croppedCenterX.n + (int64_t)cropRect->x * croppedCenterX.d;
+    if (overflowsInt32(croppedCenterXN)) {
+        avifDiagnosticsPrintf(diag, "[Strict] croppedCenterX overflowed");
+        return AVIF_FALSE;
+    }
+    croppedCenterX.n = (int32_t)croppedCenterXN;
+    avifFraction croppedCenterY = calcCenter((int32_t)cropRect->height);
+    const int64_t croppedCenterYN = croppedCenterY.n + (int64_t)cropRect->y * croppedCenterY.d;
+    if (overflowsInt32(croppedCenterYN)) {
+        avifDiagnosticsPrintf(diag, "[Strict] croppedCenterY overflowed");
+        return AVIF_FALSE;
+    }
+    croppedCenterY.n = (int32_t)croppedCenterYN;
+
+    avifFraction horizOff;
+    if (!avifFractionSub(croppedCenterX, uncroppedCenterX, &horizOff)) {
+        avifDiagnosticsPrintf(diag, "[Strict] horizOff overflowed");
+        return AVIF_FALSE;
+    }
+    avifFraction vertOff;
+    if (!avifFractionSub(croppedCenterY, uncroppedCenterY, &vertOff)) {
+        avifDiagnosticsPrintf(diag, "[Strict] vertOff overflowed");
+        return AVIF_FALSE;
+    }
+
+    clap->widthN = cropRect->width;
+    clap->widthD = 1;
+    clap->heightN = cropRect->height;
+    clap->heightD = 1;
+    clap->horizOffN = horizOff.n;
+    clap->horizOffD = horizOff.d;
+    clap->vertOffN = vertOff.n;
+    clap->vertOffD = vertOff.d;
+    return AVIF_TRUE;
+}
+
+// ---------------------------------------------------------------------------
+
+avifBool avifAreGridDimensionsValid(avifPixelFormat yuvFormat, uint32_t imageW, uint32_t imageH, uint32_t tileW, uint32_t tileH, avifDiagnostics * diag)
+{
+    // ISO/IEC 23000-22:2019, Section 7.3.11.4.2:
+    //   - the tile_width shall be greater than or equal to 64, and should be a multiple of 64
+    //   - the tile_height shall be greater than or equal to 64, and should be a multiple of 64
+    // The "should" part is ignored here.
+    if ((tileW < 64) || (tileH < 64)) {
+        avifDiagnosticsPrintf(diag,
+                              "Grid image tile width (%u) or height (%u) cannot be smaller than 64. "
+                              "See MIAF (ISO/IEC 23000-22:2019), Section 7.3.11.4.2",
+                              tileW,
+                              tileH);
+        return AVIF_FALSE;
+    }
+
+    // ISO/IEC 23000-22:2019, Section 7.3.11.4.2:
+    //   - when the images are in the 4:2:2 chroma sampling format the horizontal tile offsets and widths,
+    //     and the output width, shall be even numbers;
+    //   - when the images are in the 4:2:0 chroma sampling format both the horizontal and vertical tile
+    //     offsets and widths, and the output width and height, shall be even numbers.
+    // If the rules above were not respected, the following problematic situation may happen:
+    //   Some 4:2:0 image is 650 pixels wide and has 10 cell columns, each being 65 pixels wide.
+    //   The chroma plane of the whole image is 325 pixels wide. The chroma plane of each cell is 33 pixels wide.
+    //   33*10 - 325 gives 5 extra pixels with no specified destination in the reconstructed image.
+
+    // Tile offsets are not enforced since they depend on tile size (ISO/IEC 23008-12:2017, Section 6.6.2.3.1):
+    //   The reconstructed image is formed by tiling the input images into a grid [...] without gap or overlap
+    if ((((yuvFormat == AVIF_PIXEL_FORMAT_YUV420) || (yuvFormat == AVIF_PIXEL_FORMAT_YUV422)) &&
+         (((imageW % 2) != 0) || ((tileW % 2) != 0))) ||
+        ((yuvFormat == AVIF_PIXEL_FORMAT_YUV420) && (((imageH % 2) != 0) || ((tileH % 2) != 0)))) {
+        avifDiagnosticsPrintf(diag,
+                              "Grid image width (%u) or height (%u) or tile width (%u) or height (%u) "
+                              "shall be even if chroma is subsampled in that dimension. "
+                              "See MIAF (ISO/IEC 23000-22:2019), Section 7.3.11.4.2",
+                              imageW,
+                              imageH,
+                              tileW,
+                              tileH);
+        return AVIF_FALSE;
+    }
+    return AVIF_TRUE;
 }
 
 // ---------------------------------------------------------------------------
@@ -390,8 +847,25 @@ static char * avifStrdup(const char * str)
 avifCodecSpecificOptions * avifCodecSpecificOptionsCreate(void)
 {
     avifCodecSpecificOptions * ava = avifAlloc(sizeof(avifCodecSpecificOptions));
-    avifArrayCreate(ava, sizeof(avifCodecSpecificOption), 4);
+    if (!avifArrayCreate(ava, sizeof(avifCodecSpecificOption), 4)) {
+        goto error;
+    }
     return ava;
+
+error:
+    avifFree(ava);
+    return NULL;
+}
+
+void avifCodecSpecificOptionsClear(avifCodecSpecificOptions * csOptions)
+{
+    for (uint32_t i = 0; i < csOptions->count; ++i) {
+        avifCodecSpecificOption * entry = &csOptions->entries[i];
+        avifFree(entry->key);
+        avifFree(entry->value);
+    }
+
+    csOptions->count = 0;
 }
 
 void avifCodecSpecificOptionsDestroy(avifCodecSpecificOptions * csOptions)
@@ -400,11 +874,7 @@ void avifCodecSpecificOptionsDestroy(avifCodecSpecificOptions * csOptions)
         return;
     }
 
-    for (uint32_t i = 0; i < csOptions->count; ++i) {
-        avifCodecSpecificOption * entry = &csOptions->entries[i];
-        avifFree(entry->key);
-        avifFree(entry->value);
-    }
+    avifCodecSpecificOptionsClear(csOptions);
     avifArrayDestroy(csOptions);
     avifFree(csOptions);
 }
@@ -425,17 +895,19 @@ void avifCodecSpecificOptionsSet(avifCodecSpecificOptions * csOptions, const cha
                 avifFree(entry->value);
                 --csOptions->count;
                 if (csOptions->count > 0) {
-                    memmove(&csOptions->entries[i], &csOptions->entries[i + 1], (csOptions->count - i) * csOptions->elementSize);
+                    memmove(&csOptions->entries[i], &csOptions->entries[i + 1], (csOptions->count - i) * (size_t)csOptions->elementSize);
                 }
             }
             return;
         }
     }
 
-    // Add a new key
-    avifCodecSpecificOption * entry = (avifCodecSpecificOption *)avifArrayPushPtr(csOptions);
-    entry->key = avifStrdup(key);
-    entry->value = avifStrdup(value);
+    if (value) {
+        // Add a new key
+        avifCodecSpecificOption * entry = (avifCodecSpecificOption *)avifArrayPushPtr(csOptions);
+        entry->key = avifStrdup(key);
+        entry->value = avifStrdup(value);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -465,17 +937,33 @@ static struct AvailableCodec availableCodecs[] = {
     { AVIF_CODEC_CHOICE_LIBGAV1, "libgav1", avifCodecVersionGav1, avifCodecCreateGav1, AVIF_CODEC_FLAG_CAN_DECODE },
 #endif
 #if defined(AVIF_CODEC_AOM)
-    { AVIF_CODEC_CHOICE_AOM, "aom", avifCodecVersionAOM, avifCodecCreateAOM, AVIF_CODEC_FLAG_CAN_DECODE | AVIF_CODEC_FLAG_CAN_ENCODE },
+    { AVIF_CODEC_CHOICE_AOM,
+      "aom",
+      avifCodecVersionAOM,
+      avifCodecCreateAOM,
+#if defined(AVIF_CODEC_AOM_DECODE) && defined(AVIF_CODEC_AOM_ENCODE)
+      AVIF_CODEC_FLAG_CAN_DECODE | AVIF_CODEC_FLAG_CAN_ENCODE
+#elif defined(AVIF_CODEC_AOM_DECODE)
+      AVIF_CODEC_FLAG_CAN_DECODE
+#elif defined(AVIF_CODEC_AOM_ENCODE)
+      AVIF_CODEC_FLAG_CAN_ENCODE
+#else
+#error AVIF_CODEC_AOM_DECODE or AVIF_CODEC_AOM_ENCODE must be defined
+#endif
+    },
 #endif
 #if defined(AVIF_CODEC_RAV1E)
     { AVIF_CODEC_CHOICE_RAV1E, "rav1e", avifCodecVersionRav1e, avifCodecCreateRav1e, AVIF_CODEC_FLAG_CAN_ENCODE },
+#endif
+#if defined(AVIF_CODEC_SVT)
+    { AVIF_CODEC_CHOICE_SVT, "svt", avifCodecVersionSvt, avifCodecCreateSvt, AVIF_CODEC_FLAG_CAN_ENCODE },
 #endif
     { AVIF_CODEC_CHOICE_AUTO, NULL, NULL, NULL, 0 }
 };
 
 static const int availableCodecsCount = (sizeof(availableCodecs) / sizeof(availableCodecs[0])) - 1;
 
-static struct AvailableCodec * findAvailableCodec(avifCodecChoice choice, uint32_t requiredFlags)
+static struct AvailableCodec * findAvailableCodec(avifCodecChoice choice, avifCodecFlags requiredFlags)
 {
     for (int i = 0; i < availableCodecsCount; ++i) {
         if ((choice != AVIF_CODEC_CHOICE_AUTO) && (availableCodecs[i].choice != choice)) {
@@ -489,7 +977,7 @@ static struct AvailableCodec * findAvailableCodec(avifCodecChoice choice, uint32
     return NULL;
 }
 
-const char * avifCodecName(avifCodecChoice choice, uint32_t requiredFlags)
+const char * avifCodecName(avifCodecChoice choice, avifCodecFlags requiredFlags)
 {
     struct AvailableCodec * availableCodec = findAvailableCodec(choice, requiredFlags);
     if (availableCodec) {
@@ -508,7 +996,7 @@ avifCodecChoice avifCodecChoiceFromName(const char * name)
     return AVIF_CODEC_CHOICE_AUTO;
 }
 
-avifCodec * avifCodecCreate(avifCodecChoice choice, uint32_t requiredFlags)
+avifCodec * avifCodecCreate(avifCodecChoice choice, avifCodecFlags requiredFlags)
 {
     struct AvailableCodec * availableCodec = findAvailableCodec(choice, requiredFlags);
     if (availableCodec) {
@@ -541,6 +1029,14 @@ void avifCodecVersions(char outBuffer[256])
             append(&writePos, &remainingLen, ", ");
         }
         append(&writePos, &remainingLen, availableCodecs[i].name);
+        if ((availableCodecs[i].flags & (AVIF_CODEC_FLAG_CAN_ENCODE | AVIF_CODEC_FLAG_CAN_DECODE)) ==
+            (AVIF_CODEC_FLAG_CAN_ENCODE | AVIF_CODEC_FLAG_CAN_DECODE)) {
+            append(&writePos, &remainingLen, " [enc/dec]");
+        } else if (availableCodecs[i].flags & AVIF_CODEC_FLAG_CAN_ENCODE) {
+            append(&writePos, &remainingLen, " [enc]");
+        } else if (availableCodecs[i].flags & AVIF_CODEC_FLAG_CAN_DECODE) {
+            append(&writePos, &remainingLen, " [dec]");
+        }
         append(&writePos, &remainingLen, ":");
         append(&writePos, &remainingLen, availableCodecs[i].version());
     }

@@ -30,9 +30,9 @@ class StreamSocketPosix : public StreamSocket {
   // StreamSocketPosix is non-copyable, due to directly managing the file
   // descriptor.
   StreamSocketPosix(const StreamSocketPosix& other) = delete;
-  StreamSocketPosix(StreamSocketPosix&& other) = default;
+  StreamSocketPosix(StreamSocketPosix&& other) noexcept;
   StreamSocketPosix& operator=(const StreamSocketPosix& other) = delete;
-  StreamSocketPosix& operator=(StreamSocketPosix&& other) = default;
+  StreamSocketPosix& operator=(StreamSocketPosix&& other);
   virtual ~StreamSocketPosix();
 
   WeakPtr<StreamSocketPosix> GetWeakPtr() const;
@@ -49,14 +49,14 @@ class StreamSocketPosix : public StreamSocket {
   const SocketHandle& socket_handle() const override { return handle_; }
   absl::optional<IPEndpoint> remote_address() const override;
   absl::optional<IPEndpoint> local_address() const override;
-  SocketState state() const override;
+  TcpSocketState state() const override;
   IPAddress::Version version() const override;
 
  private:
   // StreamSocketPosix is lazy initialized on first usage. For simplicitly,
   // the ensure method returns a boolean of whether or not the socket was
   // initialized successfully.
-  bool EnsureInitialized();
+  bool EnsureInitializedAndOpen();
   Error Initialize();
 
   Error CloseOnError(Error error);
@@ -76,8 +76,7 @@ class StreamSocketPosix : public StreamSocket {
   absl::optional<IPEndpoint> remote_address_;
 
   bool is_bound_ = false;
-  bool is_initialized_ = false;
-  SocketState state_ = SocketState::kNotConnected;
+  TcpSocketState state_ = TcpSocketState::kNotConnected;
 
   WeakPtrFactory<StreamSocketPosix> weak_factory_{this};
 };

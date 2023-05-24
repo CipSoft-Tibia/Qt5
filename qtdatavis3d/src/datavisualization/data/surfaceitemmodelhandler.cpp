@@ -1,37 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "surfaceitemmodelhandler_p.h"
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
-
-static const int noRoleIndex = -1;
+QT_BEGIN_NAMESPACE
 
 SurfaceItemModelHandler::SurfaceItemModelHandler(QItemModelSurfaceDataProxy *proxy, QObject *parent)
     : AbstractItemModelHandler(parent),
@@ -52,7 +24,7 @@ SurfaceItemModelHandler::~SurfaceItemModelHandler()
 
 void SurfaceItemModelHandler::handleDataChanged(const QModelIndex &topLeft,
                                                 const QModelIndex &bottomRight,
-                                                const QVector<int> &roles)
+                                                const QList<int> &roles)
 {
     // Do nothing if full reset already pending
     if (!m_fullReset) {
@@ -123,8 +95,8 @@ void SurfaceItemModelHandler::resolveModel()
     }
 
     // Position patterns can be reused on single item changes, so store them to member variables.
-    QRegExp rowPattern(m_proxy->rowRolePattern());
-    QRegExp colPattern(m_proxy->columnRolePattern());
+    QRegularExpression rowPattern(m_proxy->rowRolePattern());
+    QRegularExpression colPattern(m_proxy->columnRolePattern());
     m_xPosPattern = m_proxy->xPosRolePattern();
     m_yPosPattern = m_proxy->yPosRolePattern();
     m_zPosPattern = m_proxy->zPosRolePattern();
@@ -133,11 +105,11 @@ void SurfaceItemModelHandler::resolveModel()
     m_xPosReplace = m_proxy->xPosRoleReplace();
     m_yPosReplace = m_proxy->yPosRoleReplace();
     m_zPosReplace = m_proxy->zPosRoleReplace();
-    bool haveRowPattern = !rowPattern.isEmpty() && rowPattern.isValid();
-    bool haveColPattern = !colPattern.isEmpty() && colPattern.isValid();
-    m_haveXPosPattern = !m_xPosPattern.isEmpty() && m_xPosPattern.isValid();
-    m_haveYPosPattern = !m_yPosPattern.isEmpty() && m_yPosPattern.isValid();
-    m_haveZPosPattern = !m_zPosPattern.isEmpty() && m_zPosPattern.isValid();
+    bool haveRowPattern = !rowPattern.namedCaptureGroups().isEmpty() && rowPattern.isValid();
+    bool haveColPattern = !colPattern.namedCaptureGroups().isEmpty() && colPattern.isValid();
+    m_haveXPosPattern = !m_xPosPattern.namedCaptureGroups().isEmpty() && m_xPosPattern.isValid();
+    m_haveYPosPattern = !m_yPosPattern.namedCaptureGroups().isEmpty() && m_yPosPattern.isValid();
+    m_haveZPosPattern = !m_zPosPattern.namedCaptureGroups().isEmpty() && m_zPosPattern.isValid();
 
     QHash<int, QByteArray> roleHash = m_itemModel->roleNames();
 
@@ -313,12 +285,14 @@ void SurfaceItemModelHandler::resolveModel()
             for (int j = 0; j < columnList.size(); j++) {
                 QVector3D &itemPos = itemValueMap[rowKey][columnList.at(j)];
                 if (cumulative) {
-                    if (average) {
-                        itemPos /= float((*matchCountMap)[rowKey][columnList.at(j)]);
-                    } else { // cumulativeY
-                        float divisor = float((*matchCountMap)[rowKey][columnList.at(j)]);
-                        itemPos.setX(itemPos.x() / divisor);
-                        itemPos.setZ(itemPos.z() / divisor);
+                    float divisor = float((*matchCountMap)[rowKey][columnList.at(j)]);
+                    if (divisor) {
+                        if (average) {
+                            itemPos /= divisor;
+                        } else { // cumulativeY
+                            itemPos.setX(itemPos.x() / divisor);
+                            itemPos.setZ(itemPos.z() / divisor);
+                        }
                     }
                 }
                 newProxyRow[j].setPosition(itemPos);
@@ -331,4 +305,4 @@ void SurfaceItemModelHandler::resolveModel()
     m_proxy->resetArray(m_proxyArray);
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

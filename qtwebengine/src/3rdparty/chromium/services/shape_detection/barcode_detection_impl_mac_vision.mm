@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,9 @@
 
 #include <vector>
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/containers/flat_set.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/logging.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/system/sys_info.h"
@@ -21,8 +21,7 @@ namespace shape_detection {
 
 namespace {
 
-mojom::BarcodeFormat ToBarcodeFormat(NSString* symbology)
-    API_AVAILABLE(macos(10.13)) {
+mojom::BarcodeFormat ToBarcodeFormat(NSString* symbology) {
   if ([symbology isEqual:VNBarcodeSymbologyAztec])
     return mojom::BarcodeFormat::AZTEC;
   if ([symbology isEqual:VNBarcodeSymbologyCode128])
@@ -58,8 +57,7 @@ mojom::BarcodeFormat ToBarcodeFormat(NSString* symbology)
 }
 
 void UpdateSymbologyHint(mojom::BarcodeFormat format,
-                         NSMutableArray<VNBarcodeSymbology>* hint)
-    API_AVAILABLE(macos(10.13)) {
+                         NSMutableArray<VNBarcodeSymbology>* hint) {
   switch (format) {
     case mojom::BarcodeFormat::AZTEC:
       [hint addObject:VNBarcodeSymbologyAztec];

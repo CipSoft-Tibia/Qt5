@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef QMAKEEVALUATOR_H
 #define QMAKEEVALUATOR_H
@@ -180,7 +155,7 @@ public:
 
     void setTemplate();
 
-    ProStringList split_value_list(const QStringRef &vals, int source = 0);
+    ProStringList split_value_list(QStringView vals, int source = 0);
     VisitReturn expandVariableReferences(const ushort *&tokPtr, int sizeHint, ProStringList *ret, bool joined);
 
     QString currentFileName() const;
@@ -224,7 +199,7 @@ public:
     VisitReturn evaluateBuiltinConditional(const QMakeInternal::QMakeBuiltin &adef,
                                            const ProKey &function, const ProStringList &args);
 
-    VisitReturn evaluateConditional(const QStringRef &cond, const QString &where, int line = -1);
+    VisitReturn evaluateConditional(QStringView cond, const QString &where, int line = -1);
 #ifdef PROEVALUATOR_FULL
     VisitReturn checkRequirements(const ProStringList &deps);
 #endif
@@ -232,7 +207,7 @@ public:
     void updateMkspecPaths();
     void updateFeaturePaths();
 
-    bool isActiveConfig(const QStringRef &config, bool regex = false);
+    bool isActiveConfig(QStringView config, bool regex = false);
 
     void populateDeps(
             const ProStringList &deps, const ProString &prefix, const ProStringList &suffixes,

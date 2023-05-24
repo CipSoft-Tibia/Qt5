@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the QtSerialBus module.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "canbusutil.h"
 
@@ -82,7 +49,7 @@ bool CanBusUtil::start(const QString &pluginName, const QString &deviceName, con
     if (m_listening) {
         if (m_readTask->isShowFlags())
              m_canDevice->setConfigurationParameter(QCanBusDevice::CanFdKey, true);
-        connect(m_canDevice.data(), &QCanBusDevice::framesReceived,
+        connect(m_canDevice.get(), &QCanBusDevice::framesReceived,
                 m_readTask, &ReadTask::handleFrames);
     } else {
         if (!sendData())
@@ -125,7 +92,7 @@ int CanBusUtil::printDevices(const QString &pluginName)
     return 0;
 }
 
-bool CanBusUtil::parseDataField(quint32 &id, QString &payload)
+bool CanBusUtil::parseDataField(QCanBusFrame::FrameId &id, QString &payload)
 {
     int hashMarkPos = m_data.indexOf('#');
     if (hashMarkPos < 0) {
@@ -133,7 +100,7 @@ bool CanBusUtil::parseDataField(quint32 &id, QString &payload)
         return false;
     }
 
-    id = m_data.leftRef(hashMarkPos).toUInt(nullptr, 16);
+    id = QStringView{m_data}.left(hashMarkPos).toUInt(nullptr, 16);
     payload = m_data.right(m_data.size() - hashMarkPos - 1);
 
     return true;
@@ -148,7 +115,7 @@ bool CanBusUtil::setFrameFromPayload(QString payload, QCanBusFrame *frame)
             return true;
 
         bool ok = false;
-        int rtrFrameLength = payload.midRef(1).toInt(&ok);
+        int rtrFrameLength = QStringView{payload}.mid(1).toInt(&ok);
         if (ok && rtrFrameLength >= 0 && rtrFrameLength <= 8) { // payload = "R8"
             frame->setPayload(QByteArray(rtrFrameLength, 0));
             return true;
@@ -172,7 +139,7 @@ bool CanBusUtil::setFrameFromPayload(QString payload, QCanBusFrame *frame)
     if (payload.size() % 2 != 0) {
         if (frame->hasFlexibleDataRateFormat()) {
             enum { BitrateSwitchFlag = 1, ErrorStateIndicatorFlag = 2 };
-            const int flags = payload.leftRef(1).toInt(nullptr, 16);
+            const int flags = QStringView{payload}.left(1).toInt(nullptr, 16);
             frame->setBitrateSwitch(flags & BitrateSwitchFlag);
             frame->setErrorStateIndicator(flags & ErrorStateIndicatorFlag);
             payload.remove(0, 1);
@@ -212,7 +179,7 @@ bool CanBusUtil::connectCanDevice()
     for (auto i = m_configurationParameter.constBegin(); i != constEnd; ++i)
         m_canDevice->setConfigurationParameter(i.key(), i.value());
 
-    connect(m_canDevice.data(), &QCanBusDevice::errorOccurred, m_readTask, &ReadTask::handleError);
+    connect(m_canDevice.get(), &QCanBusDevice::errorOccurred, m_readTask, &ReadTask::handleError);
     if (!m_canDevice->connectDevice()) {
         m_output << tr("Cannot create CAN bus device: '%1'").arg(m_deviceName) << Qt::endl;
         return false;

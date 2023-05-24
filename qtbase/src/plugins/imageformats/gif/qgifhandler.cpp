@@ -1,54 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-** WARNING:
-**      A separate license from Unisys may be required to use the gif
-**      reader. See http://www.unisys.com/about__unisys/lzw/
-**      for information from Unisys
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgifhandler_p.h"
 
 #include <qimage.h>
 #include <qiodevice.h>
+#include <qloggingcategory.h>
 #include <qvariant.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_LOGGING_CATEGORY(lcGif, "qt.gui.imageio.gif")
 
 #define Q_TRANSPARENT 0x00ffffff
 
@@ -69,7 +31,7 @@ public:
 
     int decode(QImage *image, const uchar* buffer, int length,
                int *nextFrameDelay, int *loopCount);
-    static void scan(QIODevice *device, QVector<QSize> *imageSizes, int *loopCount);
+    static void scan(QIODevice *device, QList<QSize> *imageSizes, int *loopCount);
 
     bool newFrame;
     bool partialNewFrame;
@@ -249,7 +211,7 @@ int QGIFFormat::decode(QImage *image, const uchar *buffer, int length,
     }
 
     image->detach();
-    int bpl = image->bytesPerLine();
+    qsizetype bpl = image->bytesPerLine();
     unsigned char *bits = image->bits();
 
 #define LM(l, m) (((m)<<8)|l)
@@ -358,7 +320,10 @@ int QGIFFormat::decode(QImage *image, const uchar *buffer, int length,
                         state = Error;
                         return -1;
                     }
-                    (*image) = QImage(swidth, sheight, format);
+                    if (!QImageIOHandler::allocateImage(QSize(swidth, sheight), format, image)) {
+                        state = Error;
+                        return -1;
+                    }
                     bpl = image->bytesPerLine();
                     bits = image->bits();
                     if (bits)
@@ -425,16 +390,15 @@ int QGIFFormat::decode(QImage *image, const uchar *buffer, int length,
                             return -1;
                         }
                         // We just use the backing store as a byte array
-                        backingstore = QImage(qMax(backingstore.width(), w),
-                                              qMax(backingstore.height(), h),
-                                              QImage::Format_RGB32);
-                        if (backingstore.isNull()) {
+                        QSize bsSize(qMax(backingstore.width(), w), qMax(backingstore.height(), h));
+                        if (!QImageIOHandler::allocateImage(bsSize, QImage::Format_RGB32,
+                                                            &backingstore)) {
                             state = Error;
                             return -1;
                         }
                         memset(backingstore.bits(), 0, backingstore.sizeInBytes());
                     }
-                    const int dest_bpl = backingstore.bytesPerLine();
+                    const qsizetype dest_bpl = backingstore.bytesPerLine();
                     unsigned char *dest_data = backingstore.bits();
                     for (int ln=0; ln<h; ln++) {
                         memcpy(FAST_SCAN_LINE(dest_data, dest_bpl, ln),
@@ -688,9 +652,9 @@ int QGIFFormat::decode(QImage *image, const uchar *buffer, int length,
 
 /*!
    Scans through the data stream defined by \a device and returns the image
-   sizes found in the stream in the \a imageSizes vector.
+   sizes found in the stream in the \a imageSizes list.
 */
-void QGIFFormat::scan(QIODevice *device, QVector<QSize> *imageSizes, int *loopCount)
+void QGIFFormat::scan(QIODevice *device, QList<QSize> *imageSizes, int *loopCount)
 {
     if (!device)
         return;
@@ -1119,7 +1083,7 @@ bool QGifHandler::canRead() const
 bool QGifHandler::canRead(QIODevice *device)
 {
     if (!device) {
-        qWarning("QGifHandler::canRead() called with no device");
+        qCWarning(lcGif, "QGifHandler::canRead() called with no device");
         return false;
     }
 
@@ -1182,9 +1146,9 @@ QVariant QGifHandler::option(ImageOption option) const
         }
         // before the first frame is read, or we have an empty data stream
         if (frameNumber == -1)
-            return (imageSizes.count() > 0) ? QVariant(imageSizes.at(0)) : QVariant();
+            return (imageSizes.size() > 0) ? QVariant(imageSizes.at(0)) : QVariant();
         // after the last frame has been read, the next size is undefined
-        if (frameNumber >= imageSizes.count() - 1)
+        if (frameNumber >= imageSizes.size() - 1)
             return QVariant();
         // and the last case: the size of the next frame
         return imageSizes.at(frameNumber + 1);
@@ -1211,7 +1175,7 @@ int QGifHandler::imageCount() const
         QGIFFormat::scan(device(), &imageSizes, &loopCnt);
         scanIsCached = true;
     }
-    return imageSizes.count();
+    return imageSizes.size();
 }
 
 int QGifHandler::loopCount() const

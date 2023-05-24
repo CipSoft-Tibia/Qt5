@@ -1,17 +1,12 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SERVICES_DEVICE_GENERIC_SENSOR_PLATFORM_SENSOR_READER_LINUX_H_
 #define SERVICES_DEVICE_GENERIC_SENSOR_PLATFORM_SENSOR_READER_LINUX_H_
 
-#include "base/callback.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
-
-namespace base {
-class SingleThreadTaskRunner;
-}
 
 namespace device {
 
@@ -28,8 +23,10 @@ class SensorReader {
   // reader is supported.
   static std::unique_ptr<SensorReader> Create(
       const SensorInfoLinux& sensor_info,
-      base::WeakPtr<PlatformSensorLinux> sensor,
-      scoped_refptr<base::SingleThreadTaskRunner> task_runner);
+      base::WeakPtr<PlatformSensorLinux> sensor);
+
+  SensorReader(const SensorReader&) = delete;
+  SensorReader& operator=(const SensorReader&) = delete;
 
   virtual ~SensorReader();
 
@@ -42,8 +39,7 @@ class SensorReader {
   virtual void StopFetchingData() = 0;
 
  protected:
-  SensorReader(base::WeakPtr<PlatformSensorLinux> sensor,
-               scoped_refptr<base::SingleThreadTaskRunner> task_runner);
+  explicit SensorReader(base::WeakPtr<PlatformSensorLinux> sensor);
 
   // Notifies |sensor_| about an error.
   void NotifyReadError();
@@ -52,14 +48,8 @@ class SensorReader {
   // readings to.
   base::WeakPtr<PlatformSensorLinux> sensor_;
 
-  // A task runner that is used to report about new readings and errors
-  // to a |sensor_|.
-  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
-
   // Indicates if reading is active.
   bool is_reading_active_;
-
-  DISALLOW_COPY_AND_ASSIGN(SensorReader);
 };
 
 }  // namespace device

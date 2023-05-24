@@ -1,10 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/script/module_record_resolver_impl.h"
 
 #include "third_party/blink/renderer/bindings/core/v8/module_record.h"
+#include "third_party/blink/renderer/core/loader/modulescript/module_script_creation_params.h"
 #include "third_party/blink/renderer/core/script/modulator.h"
 #include "third_party/blink/renderer/core/script/module_script.h"
 
@@ -20,8 +21,8 @@ void ModuleRecordResolverImpl::RegisterModuleScript(
   v8::Isolate* isolate = modulator_->GetScriptState()->GetIsolate();
   BoxedV8Module* record = MakeGarbageCollected<BoxedV8Module>(isolate, module);
   DVLOG(1) << "ModuleRecordResolverImpl::RegisterModuleScript(url="
-           << module_script->BaseURL().GetString()
-           << ", hash=" << BoxedV8ModuleHash::GetHash(record) << ")";
+           << module_script->BaseUrl().GetString()
+           << ", hash=" << WTF::GetHash(record) << ")";
 
   auto result = record_to_module_script_map_.Set(record, module_script);
 
@@ -38,8 +39,8 @@ void ModuleRecordResolverImpl::UnregisterModuleScript(
   v8::Isolate* isolate = modulator_->GetScriptState()->GetIsolate();
   BoxedV8Module* record = MakeGarbageCollected<BoxedV8Module>(isolate, module);
   DVLOG(1) << "ModuleRecordResolverImpl::UnregisterModuleScript(url="
-           << module_script->BaseURL().GetString()
-           << ", hash=" << BoxedV8ModuleHash::GetHash(record) << ")";
+           << module_script->BaseUrl().GetString()
+           << ", hash=" << WTF::GetHash(record) << ")";
 
   record_to_module_script_map_.erase(record);
 }
@@ -59,13 +60,13 @@ const ModuleScript* ModuleRecordResolverImpl::GetModuleScriptFromModuleRecord(
 // <specdef
 // href="https://html.spec.whatwg.org/C/#hostresolveimportedmodule(referencingscriptormodule,-specifier)">
 v8::Local<v8::Module> ModuleRecordResolverImpl::Resolve(
-    const String& specifier,
+    const ModuleRequest& module_request,
     v8::Local<v8::Module> referrer,
     ExceptionState& exception_state) {
   v8::Isolate* isolate = modulator_->GetScriptState()->GetIsolate();
-  DVLOG(1) << "ModuleRecordResolverImpl::resolve(specifier=\"" << specifier
-           << ", referrer.hash="
-           << BoxedV8ModuleHash::GetHash(
+  DVLOG(1) << "ModuleRecordResolverImpl::resolve(specifier=\""
+           << module_request.specifier << ", referrer.hash="
+           << WTF::GetHash(
                   MakeGarbageCollected<BoxedV8Module>(isolate, referrer))
            << ")";
 
@@ -91,16 +92,20 @@ v8::Local<v8::Module> ModuleRecordResolverImpl::Resolve(
   // <spec step="3.3">Set base URL to referencing script's base URL.</spec>
   // <spec step="5">Let url be the result of resolving a module specifier given
   // base URL and specifier.</spec>
-  KURL url = referrer_module->ResolveModuleSpecifier(specifier);
+  KURL url = referrer_module->ResolveModuleSpecifier(module_request.specifier);
+  ModuleType child_module_type =
+      modulator_->ModuleTypeFromRequest(module_request);
 
   // <spec step="6">Assert: url is never failure, because resolving a module
   // specifier must have been previously successful with these same two
   // arguments ...</spec>
   DCHECK(url.IsValid());
+  CHECK_NE(child_module_type, ModuleType::kInvalid);
 
   // <spec step="7">Let resolved module script be moduleMap[url]. (This entry
   // must exist for us to have gotten to this point.)</spec>
-  ModuleScript* module_script = modulator_->GetFetchedModuleScript(url);
+  ModuleScript* module_script =
+      modulator_->GetFetchedModuleScript(url, child_module_type);
 
   // <spec step="8">Assert: resolved module script is a module script (i.e., is
   // not null or "fetching").</spec>

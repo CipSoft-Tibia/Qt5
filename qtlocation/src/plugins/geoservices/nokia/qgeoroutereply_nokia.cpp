@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeoroutereply_nokia.h"
 #include "qgeoroutexmlparser.h"
@@ -54,14 +21,15 @@ QGeoRouteReplyNokia::QGeoRouteReplyNokia(const QGeoRouteRequest &request,
     qRegisterMetaType<QList<QGeoRoute> >();
 
     bool failure = false;
-    foreach (QNetworkReply *reply, replies) {
+    for (QNetworkReply *reply : replies) {
         if (!reply) {
             failure = true;
             continue;
         }
-        connect(reply, SIGNAL(finished()), this, SLOT(networkFinished()));
-        connect(reply, SIGNAL(errorOccurred(QNetworkReply::NetworkError)),
-                this, SLOT(networkError(QNetworkReply::NetworkError)));
+        connect(reply, &QNetworkReply::finished,
+                this, &QGeoRouteReplyNokia::networkFinished);
+        connect(reply, &QNetworkReply::errorOccurred,
+                this, &QGeoRouteReplyNokia::networkError);
         connect(this, &QGeoRouteReply::aborted, reply, &QNetworkReply::abort);
         connect(this, &QObject::destroyed, reply, &QObject::deleteLater);
     }
@@ -86,9 +54,10 @@ void QGeoRouteReplyNokia::networkFinished()
     }
 
     QGeoRouteXmlParser *parser = new QGeoRouteXmlParser(request());
-    connect(parser, SIGNAL(results(QList<QGeoRoute>)),
-            this, SLOT(appendResults(QList<QGeoRoute>)));
-    connect(parser, SIGNAL(error(QString)), this, SLOT(parserError(QString)));
+    connect(parser, &QGeoRouteXmlParser::results,
+            this, &QGeoRouteReplyNokia::appendResults);
+    connect(parser, &QGeoRouteXmlParser::errorOccurred,
+            this, &QGeoRouteReplyNokia::parserError);
 
     ++m_parsers;
     parser->parse(reply->readAll());

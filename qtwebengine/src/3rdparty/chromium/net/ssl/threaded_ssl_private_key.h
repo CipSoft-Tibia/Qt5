@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,7 @@
 #include <vector>
 
 #include "base/containers/span.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "net/base/net_export.h"
 #include "net/ssl/ssl_private_key.h"
@@ -32,8 +31,12 @@ class NET_EXPORT ThreadedSSLPrivateKey : public SSLPrivateKey {
   // operation.
   class Delegate {
    public:
-    Delegate() {}
-    virtual ~Delegate() {}
+    Delegate() = default;
+
+    Delegate(const Delegate&) = delete;
+    Delegate& operator=(const Delegate&) = delete;
+
+    virtual ~Delegate() = default;
 
     // Returns a human-readable name of the provider that backs this
     // SSLPrivateKey, for debugging. If not applicable or available, return the
@@ -43,9 +46,7 @@ class NET_EXPORT ThreadedSSLPrivateKey : public SSLPrivateKey {
     virtual std::string GetProviderName() = 0;
 
     // Returns the algorithms that are supported by the key in decreasing
-    // preference for TLS 1.2 and later. Note that
-    // |SSL_SIGN_RSA_PKCS1_MD5_SHA1| is only used by TLS 1.1 and earlier and
-    // should not be in this list.
+    // preference for TLS 1.2 and later.
     //
     // This method must be efficiently callable on any thread.
     virtual std::vector<uint16_t> GetAlgorithmPreferences() = 0;
@@ -60,14 +61,14 @@ class NET_EXPORT ThreadedSSLPrivateKey : public SSLPrivateKey {
     virtual Error Sign(uint16_t algorithm,
                        base::span<const uint8_t> input,
                        std::vector<uint8_t>* signature) = 0;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(Delegate);
   };
 
   ThreadedSSLPrivateKey(
       std::unique_ptr<Delegate> delegate,
       scoped_refptr<base::SingleThreadTaskRunner> task_runner);
+
+  ThreadedSSLPrivateKey(const ThreadedSSLPrivateKey&) = delete;
+  ThreadedSSLPrivateKey& operator=(const ThreadedSSLPrivateKey&) = delete;
 
   // SSLPrivateKey implementation.
   std::string GetProviderName() override;
@@ -83,8 +84,6 @@ class NET_EXPORT ThreadedSSLPrivateKey : public SSLPrivateKey {
   scoped_refptr<Core> core_;
   scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
   base::WeakPtrFactory<ThreadedSSLPrivateKey> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(ThreadedSSLPrivateKey);
 };
 
 }  // namespace net

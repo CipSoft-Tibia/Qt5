@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \class QImageIOHandler
@@ -160,18 +124,15 @@
     variants should return a list of supported variant names
     (QList<QByteArray>) in this option.
 
-    \value OptimizedWrite. A handler which supports this option
+    \value OptimizedWrite A handler which supports this option
     is expected to turn on optimization flags when writing.
 
-    \value ProgressiveScanWrite. A handler which supports
+    \value ProgressiveScanWrite A handler which supports
     this option is expected to write the image as a progressive scan image.
 
-    \value ImageTransformation. A handler which supports this option can read
+    \value ImageTransformation A handler which supports this option can read
     the transformation metadata of an image. A handler that supports this option
     should not apply the transformation itself.
-
-    \value TransformedByDefault. A handler that reports support for this feature
-    will have image transformation metadata applied by default on read.
 */
 
 /*! \enum QImageIOHandler::Transformation
@@ -224,7 +185,7 @@
 
     An image format plugin can support three capabilities: reading (\l
     CanRead), writing (\l CanWrite) and \e incremental reading (\l
-    CanReadIncremental). Reimplement capabilities() in you subclass to
+    CanReadIncremental). Reimplement capabilities() in your subclass to
     expose the capabilities of your image format.
 
     create() should create an instance of your QImageIOHandler
@@ -264,12 +225,16 @@
 */
 
 #include "qimageiohandler.h"
+#include "qimage_p.h"
 
 #include <qbytearray.h>
-#include <qimage.h>
+#include <qimagereader.h>
+#include <qloggingcategory.h>
 #include <qvariant.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_LOGGING_CATEGORY(lcImageIo, "qt.gui.imageio")
 
 class QIODevice;
 
@@ -417,17 +382,6 @@ QByteArray QImageIOHandler::format() const
 */
 
 /*!
-    \obsolete
-
-    Use format() instead.
-*/
-
-QByteArray QImageIOHandler::name() const // ### Qt6: remove
-{
-    return format();
-}
-
-/*!
     Writes the image \a image to the assigned device. Returns \c true on
     success; otherwise returns \c false.
 
@@ -563,6 +517,45 @@ int QImageIOHandler::nextImageDelay() const
     return 0;
 }
 
+/*!
+    \since 6.0
+
+    This is a convenience method for the reading function in subclasses. Image
+    format handlers must reject loading an image if the required allocation
+    would exceeed the current allocation limit. This function checks the
+    parameters and limit, and does the allocation if it is valid and required.
+    Upon successful return, \a image will be a valid, detached QImage of the
+    given \a size and \a format.
+
+    \sa QImageReader::allocationLimit()
+*/
+bool QImageIOHandler::allocateImage(QSize size, QImage::Format format, QImage *image)
+{
+    Q_ASSERT(image);
+    if (size.isEmpty() || format <= QImage::Format_Invalid || format >= QImage::NImageFormats)
+        return false;
+
+    if (image->size() == size && image->format() == format) {
+        image->detach();
+    } else {
+        if (const int mbLimit = QImageReader::allocationLimit()) {
+            qsizetype depth = qMax(qt_depthForFormat(format), 32); // Effective gui depth = 32
+            QImageData::ImageSizeParameters szp =
+                    QImageData::calculateImageParameters(size.width(), size.height(), depth);
+            if (!szp.isValid())
+                return false;
+            const qsizetype mb = szp.totalSize >> 20;
+            if (mb > mbLimit || (mb == mbLimit && szp.totalSize % (1 << 20))) {
+                qCWarning(lcImageIo, "QImageIOHandler: Rejecting image as it exceeds the current "
+                                     "allocation limit of %i megabytes", mbLimit);
+                return false;
+            }
+        }
+        *image = QImage(size, format);
+    }
+    return !image->isNull();
+}
+
 #ifndef QT_NO_IMAGEFORMATPLUGIN
 
 /*!
@@ -618,3 +611,5 @@ QImageIOPlugin::~QImageIOPlugin()
 #endif // QT_NO_IMAGEFORMATPLUGIN
 
 QT_END_NAMESPACE
+
+#include "moc_qimageiohandler.cpp"

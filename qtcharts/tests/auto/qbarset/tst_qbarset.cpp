@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QtCharts/QBarSet>
@@ -33,7 +7,7 @@
 #include <QtCharts/QChartView>
 #include "tst_definitions.h"
 
-QT_CHARTS_USE_NAMESPACE
+QT_USE_NAMESPACE
 
 class tst_QBarSet : public QObject
 {
@@ -122,7 +96,7 @@ void tst_QBarSet::label()
     QSignalSpy labelSpy(m_barset,SIGNAL(labelChanged()));
     m_barset->setLabel(label);
     QCOMPARE(m_barset->label(), result);
-    QVERIFY(labelSpy.count() == 1);
+    QVERIFY(labelSpy.size() == 1);
 }
 
 void tst_QBarSet::append_data()
@@ -156,7 +130,7 @@ void tst_QBarSet::append()
     QCOMPARE(m_barset->count(), count);
     QVERIFY(qFuzzyCompare(m_barset->sum(), sum));
 
-    QCOMPARE(valueSpy.count(), count);
+    QCOMPARE(valueSpy.size(), count);
 }
 
 void tst_QBarSet::appendOperator_data()
@@ -185,7 +159,7 @@ void tst_QBarSet::appendOperator()
 
     QCOMPARE(m_barset->count(), count);
     QVERIFY(qFuzzyCompare(m_barset->sum(), sum));
-    QCOMPARE(valueSpy.count(), count);
+    QCOMPARE(valueSpy.size(), count);
 }
 
 void tst_QBarSet::insert_data()
@@ -215,7 +189,7 @@ void tst_QBarSet::insert()
     QCOMPARE(m_barset->at(2), 1.0);
     QCOMPARE(m_barset->count(), 3);
     QVERIFY(qFuzzyCompare(m_barset->sum(), (qreal)6.0));
-    QCOMPARE(valueSpy.count(), 3);
+    QCOMPARE(valueSpy.size(), 3);
 }
 
 void tst_QBarSet::remove_data()
@@ -244,14 +218,14 @@ void tst_QBarSet::remove()
     QCOMPARE(m_barset->at(2), 4.0);
     QCOMPARE(m_barset->count(), 3);
     QCOMPARE(m_barset->sum(), 7.0);
-    QCOMPARE(valueSpy.count(), 1);
+    QCOMPARE(valueSpy.size(), 1);
 
     QList<QVariant> valueSpyArg = valueSpy.takeFirst();
     // Verify index of removed signal
-    QVERIFY(valueSpyArg.at(0).type() == QVariant::Int);
+    QVERIFY(valueSpyArg.at(0).metaType().id() == QMetaType::Int);
     QVERIFY(valueSpyArg.at(0).toInt() == 2);
     // Verify count of removed signal
-    QVERIFY(valueSpyArg.at(1).type() == QVariant::Int);
+    QVERIFY(valueSpyArg.at(1).metaType().id() == QMetaType::Int);
     QVERIFY(valueSpyArg.at(1).toInt() == 1);
 
     // Remove first
@@ -261,13 +235,13 @@ void tst_QBarSet::remove()
     QCOMPARE(m_barset->count(), 2);
     QCOMPARE(m_barset->sum(), 6.0);
 
-    QCOMPARE(valueSpy.count(), 1);
+    QCOMPARE(valueSpy.size(), 1);
     valueSpyArg = valueSpy.takeFirst();
     // Verify index of removed signal
-    QVERIFY(valueSpyArg.at(0).type() == QVariant::Int);
+    QVERIFY(valueSpyArg.at(0).metaType().id() == QMetaType::Int);
     QVERIFY(valueSpyArg.at(0).toInt() == 0);
     // Verify count of removed signal
-    QVERIFY(valueSpyArg.at(1).type() == QVariant::Int);
+    QVERIFY(valueSpyArg.at(1).metaType().id() == QMetaType::Int);
     QVERIFY(valueSpyArg.at(1).toInt() == 1);
 
 
@@ -280,21 +254,21 @@ void tst_QBarSet::remove()
     QCOMPARE(m_barset->sum(), 6.0);
 
     // nothing removed, no signals should be emitted
-    QCOMPARE(valueSpy.count(), 0);
+    QCOMPARE(valueSpy.size(), 0);
 
     // Remove more items than list has
     m_barset->remove(0,312);
     QCOMPARE(m_barset->count(), 0);
     QVERIFY(qFuzzyCompare(m_barset->sum(), 0));
 
-    QCOMPARE(valueSpy.count(), 1);
+    QCOMPARE(valueSpy.size(), 1);
     valueSpyArg = valueSpy.takeFirst();
 
     // Verify index of removed signal
-    QVERIFY(valueSpyArg.at(0).type() == QVariant::Int);
+    QVERIFY(valueSpyArg.at(0).metaType().id() == QMetaType::Int);
     QVERIFY(valueSpyArg.at(0).toInt() == 0);
     // Verify count of removed signal (expect 2 values removed, because list had only 2 items)
-    QVERIFY(valueSpyArg.at(1).type() == QVariant::Int);
+    QVERIFY(valueSpyArg.at(1).metaType().id() == QMetaType::Int);
     QVERIFY(valueSpyArg.at(1).toInt() == 2);
 }
 
@@ -346,7 +320,7 @@ void tst_QBarSet::replace()
     QCOMPARE(m_barset->count(), 4);     // 5.0 2.0 3.0 6.0
     QCOMPARE(m_barset->sum(), 16.0);
 
-    QVERIFY(valueSpy.count() == 2);
+    QVERIFY(valueSpy.size() == 2);
 }
 
 void tst_QBarSet::at_data()

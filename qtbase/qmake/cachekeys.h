@@ -1,34 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef CACHEKEYS_H
 #define CACHEKEYS_H
 
+#include "option.h"
 #include "project.h"
 #include <qstring.h>
 #include <qstringlist.h>
@@ -41,7 +17,7 @@ QT_BEGIN_NAMESPACE
 // -------------------------------------------------------------------------------------------------
 struct FixStringCacheKey
 {
-    mutable uint hash;
+    mutable size_t hash;
     QString string, pwd;
     uchar flags;
     FixStringCacheKey(const QString &s, uchar f)
@@ -58,18 +34,18 @@ struct FixStringCacheKey
                 f.string == string &&
                 f.pwd == pwd);
     }
-    inline uint hashCode() const {
+    inline size_t hashCode() const {
         if(!hash)
             hash = qHash(string) ^ qHash(flags) /*^ qHash(pwd)*/;
         return hash;
     }
 };
-inline uint qHash(const FixStringCacheKey &f) { return f.hashCode(); }
+inline size_t qHash(const FixStringCacheKey &f) { return f.hashCode(); }
 
 // -------------------------------------------------------------------------------------------------
 struct FileInfoCacheKey
 {
-    mutable uint hash;
+    mutable size_t hash;
     QString file, pwd;
     FileInfoCacheKey(const QString &f)
     {
@@ -83,18 +59,18 @@ struct FileInfoCacheKey
         return (hashCode() == f.hashCode() && f.file == file &&
                 f.pwd == pwd);
     }
-    inline uint hashCode() const {
+    inline size_t hashCode() const {
         if(!hash)
             hash = qHash(file) /*^ qHash(pwd)*/;
         return hash;
     }
     inline bool isRelativePath(const QString &file) {
-        int length = file.length();
+        int length = file.size();
         if (!length)
             return true;
 
         const QChar c0 = file.at(0);
-        const QChar c1 = length >= 2 ? file.at(1) : QChar(0);
+        const QChar c1 = length >= 2 ? file.at(1) : QChar::Null;
         return !(c0 == QLatin1Char('/')
                 || c0 == QLatin1Char('\\')
                 || (c0.isLetter() && c1 == QLatin1Char(':'))
@@ -102,7 +78,7 @@ struct FileInfoCacheKey
                 || (c0 == QLatin1Char('\\') && c1 == QLatin1Char('\\')));
     }
 };
-inline uint qHash(const FileInfoCacheKey &f) { return f.hashCode(); }
+inline size_t qHash(const FileInfoCacheKey &f) { return f.hashCode(); }
 
 // -------------------------------------------------------------------------------------------------
 template <typename T>

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,7 +15,7 @@
 #include "net/cert/x509_util.h"
 #include "net/ssl/ssl_cipher_suite_names.h"
 #include "net/ssl/ssl_connection_status_flags.h"
-#include "third_party/blink/public/common/loader/network_utils.h"
+#include "services/network/public/cpp/is_potentially_trustworthy.h"
 #include "third_party/boringssl/src/include/openssl/ssl.h"
 
 namespace {
@@ -34,7 +34,6 @@ const char kRanContentWithCertErrorSecurityStateIssueId[] =
     "ran-content-with-cert-error";
 const char kPkpBypassedSecurityStateIssueId[] = "pkp-bypassed";
 const char kIsErrorPageSecurityStateIssueId[] = "is-error-page";
-const char kInsecureInputEventsSecurityStateIssueId[] = "insecure-input-events";
 const char kCertMissingSubjectAltName[] = "cert-missing-subject-alt-name";
 
 std::string SecurityLevelToProtocolSecurityState(
@@ -43,9 +42,7 @@ std::string SecurityLevelToProtocolSecurityState(
     case security_state::NONE:
       return protocol::Security::SecurityStateEnum::Neutral;
     case security_state::WARNING:
-      if (security_state::ShouldShowDangerTriangleForWarningLevel())
-        return protocol::Security::SecurityStateEnum::Insecure;
-      return protocol::Security::SecurityStateEnum::Neutral;
+      return protocol::Security::SecurityStateEnum::Insecure;
     case security_state::SECURE_WITH_POLICY_INSTALLED_CERT:
     case security_state::SECURE:
       return protocol::Security::SecurityStateEnum::Secure;
@@ -155,13 +152,6 @@ CreateCertificateSecurityState(
 std::unique_ptr<protocol::Security::SafetyTipInfo> CreateSafetyTipInfo(
     const security_state::SafetyTipInfo& safety_tip_info) {
   switch (safety_tip_info.status) {
-    case security_state::SafetyTipStatus::kBadReputation:
-    case security_state::SafetyTipStatus::kBadReputationIgnored:
-      return protocol::Security::SafetyTipInfo::Create()
-          .SetSafetyTipStatus(
-              protocol::Security::SafetyTipStatusEnum::BadReputation)
-          .Build();
-
     case security_state::SafetyTipStatus::kLookalike:
     case security_state::SafetyTipStatus::kLookalikeIgnored:
       return protocol::Security::SafetyTipInfo::Create()
@@ -169,10 +159,6 @@ std::unique_ptr<protocol::Security::SafetyTipInfo> CreateSafetyTipInfo(
               protocol::Security::SafetyTipStatusEnum::Lookalike)
           .SetSafeUrl(safety_tip_info.safe_url.spec())
           .Build();
-
-    case security_state::SafetyTipStatus::kBadKeyword:
-      NOTREACHED();
-      return nullptr;
 
     case security_state::SafetyTipStatus::kNone:
     case security_state::SafetyTipStatus::kUnknown:
@@ -193,12 +179,10 @@ CreateVisibleSecurityState(content::WebContents* web_contents) {
       security_state::IsSchemeCryptographic(state->url);
   bool malicious_content = state->malicious_content_status !=
                            security_state::MALICIOUS_CONTENT_STATUS_NONE;
-  bool insecure_input_events =
-      state->insecure_input_events.insecure_field_edited;
 
   bool secure_origin = scheme_is_cryptographic;
   if (!scheme_is_cryptographic)
-    secure_origin = blink::network_utils::IsOriginSecure(state->url);
+    secure_origin = network::IsUrlPotentiallyTrustworthy(state->url);
 
   bool cert_missing_subject_alt_name =
       state->certificate &&
@@ -229,9 +213,6 @@ CreateVisibleSecurityState(content::WebContents* web_contents) {
     security_state_issue_ids.push_back(kPkpBypassedSecurityStateIssueId);
   if (state->is_error_page)
     security_state_issue_ids.push_back(kIsErrorPageSecurityStateIssueId);
-  if (insecure_input_events)
-    security_state_issue_ids.push_back(
-        kInsecureInputEventsSecurityStateIssueId);
   if (cert_missing_subject_alt_name)
     security_state_issue_ids.push_back(kCertMissingSubjectAltName);
 

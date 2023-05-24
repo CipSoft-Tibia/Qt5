@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,9 @@ dictionary HIDCollectionInfo {
 
     // The 16-bit usage value associated with this collection. Zero if not set.
     unsigned short usage;
+
+    // The 8-bit collection type for this collection.
+    octet type;
 
     // The subcollections of this collection, in the order they were encountered
     // in the report descriptor.

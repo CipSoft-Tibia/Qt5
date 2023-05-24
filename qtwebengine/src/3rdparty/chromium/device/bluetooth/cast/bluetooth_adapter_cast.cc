@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,13 +6,11 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/no_destructor.h"
-#include "base/task/post_task.h"
-#include "base/threading/sequenced_task_runner_handle.h"
 #include "chromecast/device/bluetooth/bluetooth_util.h"
 #include "chromecast/device/bluetooth/le/gatt_client_manager.h"
 #include "chromecast/device/bluetooth/le/le_scan_manager.h"
@@ -175,6 +173,15 @@ void BluetoothAdapterCast::SetAdvertisingInterval(
       .Run(BluetoothAdvertisement::ERROR_UNSUPPORTED_PLATFORM);
 }
 
+void BluetoothAdapterCast::ConnectDevice(
+    const std::string& address,
+    const absl::optional<BluetoothDevice::AddressType>& address_type,
+    ConnectDeviceCallback callback,
+    ConnectDeviceErrorCallback error_callback) {
+  NOTIMPLEMENTED() << __func__ << " GATT server mode not supported";
+  std::move(error_callback).Run(/*error_message=*/std::string());
+}
+
 void BluetoothAdapterCast::ResetAdvertising(
     base::OnceClosure callback,
     AdvertisementErrorCallback error_callback) {
@@ -205,23 +212,24 @@ bool BluetoothAdapterCast::SetPoweredImpl(bool powered) {
 }
 
 void BluetoothAdapterCast::StartScanWithFilter(
-    std::unique_ptr<device::BluetoothDiscoveryFilter> discovery_filter,
+    [[maybe_unused]] std::unique_ptr<device::BluetoothDiscoveryFilter>
+        discovery_filter,
     DiscoverySessionResultCallback callback) {
   // The discovery filter is unused for now, as the Cast bluetooth stack does
   // not expose scan filters yet. However, implementation of filtering would
   // save numerous UI<->IO threadhops by eliminating unnecessary calls to
   // GetDevice().
-  // TODO(bcf|slan): Wire this up once scan filters are implemented.
-  (void)discovery_filter;
+  // TODO(bcf|slan): Wire this up once scan filters are implemented and remove
+  // the [[maybe_unused]].
 
-  auto copyable_callback = base::AdaptCallbackForRepeating(std::move(callback));
+  auto split_callback = base::SplitOnceCallback(std::move(callback));
 
   // Add this request to the queue.
   pending_discovery_requests_.emplace(BluetoothAdapterCast::DiscoveryParams(
       std::move(discovery_filter),
-      base::BindOnce(copyable_callback, /*is_error=*/false,
+      base::BindOnce(std::move(split_callback.first), /*is_error=*/false,
                      UMABluetoothDiscoverySessionOutcome::SUCCESS),
-      base::BindOnce(copyable_callback, /*is_error=*/true)));
+      base::BindOnce(std::move(split_callback.second), /*is_error=*/true)));
 
   // If the queue length is greater than 1 (i.e. there was a pending request
   // when this method was called), exit early. This request will be processed

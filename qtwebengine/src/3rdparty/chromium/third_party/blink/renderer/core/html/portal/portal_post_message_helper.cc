@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,11 +14,11 @@
 #include "third_party/blink/renderer/core/frame/user_activation.h"
 #include "third_party/blink/renderer/core/html/portal/html_portal_element.h"
 #include "third_party/blink/renderer/core/inspector/main_thread_debugger.h"
-#include "third_party/blink/renderer/core/inspector/thread_debugger.h"
 #include "third_party/blink/renderer/core/messaging/blink_transferable_message.h"
 #include "third_party/blink/renderer/core/messaging/message_port.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
+#include "third_party/blink/renderer/platform/bindings/thread_debugger.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 
 namespace blink {
@@ -50,6 +50,9 @@ BlinkTransferableMessage PortalPostMessageHelper::CreateMessage(
   transferable_message.sender_origin =
       execution_context->GetSecurityOrigin()->IsolatedCopy();
 
+  transferable_message.sender_agent_cluster_id =
+      execution_context->GetAgentClusterID();
+
   if (ThreadDebugger* debugger =
           ThreadDebugger::From(script_state->GetIsolate())) {
     transferable_message.sender_stack_trace_id =
@@ -73,17 +76,22 @@ void PortalPostMessageHelper::CreateAndDispatchMessageEvent(
   DCHECK(source_origin->IsSameOriginWith(
       event_target->GetExecutionContext()->GetSecurityOrigin()));
 
-  UserActivation* user_activation = nullptr;
-  if (message.user_activation) {
-    user_activation = MakeGarbageCollected<UserActivation>(
-        message.user_activation->has_been_active,
-        message.user_activation->was_active);
+  ExecutionContext* context = event_target->GetExecutionContext();
+  MessageEvent* event;
+  if (message.message->CanDeserializeIn(context)) {
+    UserActivation* user_activation = nullptr;
+    if (message.user_activation) {
+      user_activation = MakeGarbageCollected<UserActivation>(
+          message.user_activation->has_been_active,
+          message.user_activation->was_active);
+    }
+    event = MessageEvent::Create(message.ports, message.message,
+                                 source_origin->ToString(), String(),
+                                 event_target, user_activation);
+    event->EntangleMessagePorts(context);
+  } else {
+    event = MessageEvent::CreateError(source_origin->ToString(), event_target);
   }
-
-  MessageEvent* event = MessageEvent::Create(
-      message.ports, message.message, source_origin->ToString(), String(),
-      event_target, user_activation);
-  event->EntangleMessagePorts(event_target->GetExecutionContext());
 
   ThreadDebugger* debugger = MainThreadDebugger::Instance();
   if (debugger)

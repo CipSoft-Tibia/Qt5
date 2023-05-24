@@ -31,23 +31,23 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_TESTING_DUMMY_PAGE_HOLDER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_TESTING_DUMMY_PAGE_HOLDER_H_
 
-#include <memory>
-
-#include "base/bind_helpers.h"
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/time/default_tick_clock.h"
 #include "third_party/blink/renderer/core/frame/local_frame_client.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/testing/scoped_mock_overlay_scrollbars.h"
-#include "third_party/blink/renderer/platform/geometry/int_size.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
+#include "ui/gfx/geometry/size.h"
+
+namespace gfx {
+class Size;
+}
 
 namespace blink {
 
 class Document;
-class IntSize;
 class LocalFrame;
 class LocalFrameView;
 class Settings;
@@ -70,12 +70,14 @@ class DummyPageHolder {
 
  public:
   DummyPageHolder(
-      const IntSize& initial_view_size = IntSize(),
-      Page::PageClients* = nullptr,
+      const gfx::Size& initial_view_size = gfx::Size(),
+      ChromeClient* = nullptr,
       LocalFrameClient* = nullptr,
       base::OnceCallback<void(Settings&)> setting_overrider =
           base::NullCallback(),
       const base::TickClock* clock = base::DefaultTickClock::GetInstance());
+  DummyPageHolder(const DummyPageHolder&) = delete;
+  DummyPageHolder& operator=(const DummyPageHolder&) = delete;
   ~DummyPageHolder();
 
   Page& GetPage() const;
@@ -99,7 +101,7 @@ class DummyPageHolder {
   CrossThreadPersistent<LocalFrame> frame_;
 
   Persistent<LocalFrameClient> local_frame_client_;
-  DISALLOW_COPY_AND_ASSIGN(DummyPageHolder);
+  Persistent<AgentGroupScheduler> agent_group_scheduler_;
 };
 
 }  // namespace blink

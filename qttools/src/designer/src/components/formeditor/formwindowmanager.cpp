@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 // components/formeditor
 #include "formwindowmanager.h"
@@ -60,22 +35,25 @@
 #include <QtDesigner/abstractwidgetbox.h>
 #include <QtDesigner/abstractintegration.h>
 
-#include <QtWidgets/qundogroup.h>
-#include <QtWidgets/qaction.h>
-#include <QtWidgets/qsplitter.h>
-#include <QtGui/qevent.h>
 #include <QtWidgets/qapplication.h>
 #include <QtWidgets/qsizegrip.h>
-#if QT_CONFIG(clipboard)
-#include <QtGui/qclipboard.h>
-#endif
 #include <QtWidgets/qmdiarea.h>
 #include <QtWidgets/qmdisubwindow.h>
 #include <QtWidgets/qmessagebox.h>
+#include <QtWidgets/qsplitter.h>
+
+#include <QtGui/qaction.h>
+#if QT_CONFIG(clipboard)
+#  include <QtGui/qclipboard.h>
+#endif
+#include <QtGui/qevent.h>
+#include <QtGui/qundogroup.h>
 
 #include <QtCore/qdebug.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace {
     enum { debugFWM = 0 };
@@ -364,151 +342,162 @@ QWidget *FormWindowManager::findManagedWidget(FormWindow *fw, QWidget *w)
 void FormWindowManager::setupActions()
 {
 #if QT_CONFIG(clipboard)
-    const QIcon cutIcon = QIcon::fromTheme(QStringLiteral("edit-cut"), createIconSet(QStringLiteral("editcut.png")));
+    const QIcon cutIcon = QIcon::fromTheme(u"edit-cut"_s, createIconSet(u"editcut.png"_s));
     m_actionCut = new QAction(cutIcon, tr("Cu&t"), this);
-    m_actionCut->setObjectName(QStringLiteral("__qt_cut_action"));
+    m_actionCut->setObjectName(u"__qt_cut_action"_s);
     m_actionCut->setShortcut(QKeySequence::Cut);
     m_actionCut->setStatusTip(tr("Cuts the selected widgets and puts them on the clipboard"));
-    m_actionCut->setWhatsThis(whatsThisFrom(QStringLiteral("Edit|Cut")));
+    m_actionCut->setWhatsThis(whatsThisFrom(u"Edit|Cut"_s));
     connect(m_actionCut, &QAction::triggered, this, &FormWindowManager::slotActionCutActivated);
     m_actionCut->setEnabled(false);
 
-    const QIcon copyIcon = QIcon::fromTheme(QStringLiteral("edit-copy"), createIconSet(QStringLiteral("editcopy.png")));
+    const QIcon copyIcon = QIcon::fromTheme(u"edit-copy"_s,
+                                            createIconSet(u"editcopy.png"_s));
     m_actionCopy = new QAction(copyIcon, tr("&Copy"), this);
-    m_actionCopy->setObjectName(QStringLiteral("__qt_copy_action"));
+    m_actionCopy->setObjectName(u"__qt_copy_action"_s);
     m_actionCopy->setShortcut(QKeySequence::Copy);
     m_actionCopy->setStatusTip(tr("Copies the selected widgets to the clipboard"));
-    m_actionCopy->setWhatsThis(whatsThisFrom(QStringLiteral("Edit|Copy")));
+    m_actionCopy->setWhatsThis(whatsThisFrom(u"Edit|Copy"_s));
     connect(m_actionCopy, &QAction::triggered, this, &FormWindowManager::slotActionCopyActivated);
     m_actionCopy->setEnabled(false);
 
-    const QIcon pasteIcon = QIcon::fromTheme(QStringLiteral("edit-paste"), createIconSet(QStringLiteral("editpaste.png")));
+    const QIcon pasteIcon = QIcon::fromTheme(u"edit-paste"_s,
+                                             createIconSet(u"editpaste.png"_s));
     m_actionPaste = new QAction(pasteIcon, tr("&Paste"), this);
-    m_actionPaste->setObjectName(QStringLiteral("__qt_paste_action"));
+    m_actionPaste->setObjectName(u"__qt_paste_action"_s);
     m_actionPaste->setShortcut(QKeySequence::Paste);
     m_actionPaste->setStatusTip(tr("Pastes the clipboard's contents"));
-    m_actionPaste->setWhatsThis(whatsThisFrom(QStringLiteral("Edit|Paste")));
+    m_actionPaste->setWhatsThis(whatsThisFrom(u"Edit|Paste"_s));
     connect(m_actionPaste, &QAction::triggered, this, &FormWindowManager::slotActionPasteActivated);
     m_actionPaste->setEnabled(false);
 #endif
 
-    m_actionDelete = new QAction(QIcon::fromTheme(QStringLiteral("edit-delete")), tr("&Delete"), this);
-    m_actionDelete->setObjectName(QStringLiteral("__qt_delete_action"));
+    m_actionDelete = new QAction(QIcon::fromTheme(u"edit-delete"_s),
+                                 tr("&Delete"), this);
+    m_actionDelete->setObjectName(u"__qt_delete_action"_s);
     m_actionDelete->setStatusTip(tr("Deletes the selected widgets"));
-    m_actionDelete->setWhatsThis(whatsThisFrom(QStringLiteral("Edit|Delete")));
+    m_actionDelete->setWhatsThis(whatsThisFrom(u"Edit|Delete"_s));
     connect(m_actionDelete, &QAction::triggered, this, &FormWindowManager::slotActionDeleteActivated);
     m_actionDelete->setEnabled(false);
 
     m_actionSelectAll = new QAction(tr("Select &All"), this);
-    m_actionSelectAll->setObjectName(QStringLiteral("__qt_select_all_action"));
+    m_actionSelectAll->setObjectName(u"__qt_select_all_action"_s);
     m_actionSelectAll->setShortcut(QKeySequence::SelectAll);
     m_actionSelectAll->setStatusTip(tr("Selects all widgets"));
-    m_actionSelectAll->setWhatsThis(whatsThisFrom(QStringLiteral("Edit|Select All")));
+    m_actionSelectAll->setWhatsThis(whatsThisFrom(u"Edit|Select All"_s));
     connect(m_actionSelectAll, &QAction::triggered, this, &FormWindowManager::slotActionSelectAllActivated);
     m_actionSelectAll->setEnabled(false);
 
-    m_actionRaise = new QAction(createIconSet(QStringLiteral("editraise.png")), tr("Bring to &Front"), this);
-    m_actionRaise->setObjectName(QStringLiteral("__qt_raise_action"));
+    m_actionRaise = new QAction(createIconSet(u"editraise.png"_s),
+                                tr("Bring to &Front"), this);
+    m_actionRaise->setObjectName(u"__qt_raise_action"_s);
     m_actionRaise->setShortcut(Qt::CTRL | Qt::Key_L);
     m_actionRaise->setStatusTip(tr("Raises the selected widgets"));
     m_actionRaise->setWhatsThis(tr("Raises the selected widgets"));
     connect(m_actionRaise, &QAction::triggered, this, &FormWindowManager::slotActionRaiseActivated);
     m_actionRaise->setEnabled(false);
 
-    m_actionLower = new QAction(createIconSet(QStringLiteral("editlower.png")), tr("Send to &Back"), this);
-    m_actionLower->setObjectName(QStringLiteral("__qt_lower_action"));
+    m_actionLower = new QAction(createIconSet(u"editlower.png"_s),
+                                tr("Send to &Back"), this);
+    m_actionLower->setObjectName(u"__qt_lower_action"_s);
     m_actionLower->setShortcut(Qt::CTRL | Qt::Key_K);
     m_actionLower->setStatusTip(tr("Lowers the selected widgets"));
     m_actionLower->setWhatsThis(tr("Lowers the selected widgets"));
     connect(m_actionLower, &QAction::triggered, this, &FormWindowManager::slotActionLowerActivated);
     m_actionLower->setEnabled(false);
 
-    m_actionAdjustSize = new QAction(createIconSet(QStringLiteral("adjustsize.png")), tr("Adjust &Size"), this);
-    m_actionAdjustSize->setObjectName(QStringLiteral("__qt_adjust_size_action"));
+    m_actionAdjustSize = new QAction(createIconSet(u"adjustsize.png"_s),
+                                     tr("Adjust &Size"), this);
+    m_actionAdjustSize->setObjectName(u"__qt_adjust_size_action"_s);
     m_actionAdjustSize->setShortcut(Qt::CTRL | Qt::Key_J);
     m_actionAdjustSize->setStatusTip(tr("Adjusts the size of the selected widget"));
-    m_actionAdjustSize->setWhatsThis(whatsThisFrom(QStringLiteral("Layout|Adjust Size")));
+    m_actionAdjustSize->setWhatsThis(whatsThisFrom(u"Layout|Adjust Size"_s));
     connect(m_actionAdjustSize, &QAction::triggered, this, &FormWindowManager::slotActionAdjustSizeActivated);
     m_actionAdjustSize->setEnabled(false);
 
 
-    m_actionHorizontalLayout = new QAction(createIconSet(QStringLiteral("edithlayout.png")), tr("Lay Out &Horizontally"), this);
-    m_actionHorizontalLayout->setObjectName(QStringLiteral("__qt_horizontal_layout_action"));
+    m_actionHorizontalLayout = new QAction(createIconSet(u"edithlayout.png"_s),
+                                           tr("Lay Out &Horizontally"), this);
+    m_actionHorizontalLayout->setObjectName(u"__qt_horizontal_layout_action"_s);
     m_actionHorizontalLayout->setShortcut(Qt::CTRL | Qt::Key_1);
     m_actionHorizontalLayout->setStatusTip(tr("Lays out the selected widgets horizontally"));
-    m_actionHorizontalLayout->setWhatsThis(whatsThisFrom(QStringLiteral("Layout|Lay Out Horizontally")));
+    m_actionHorizontalLayout->setWhatsThis(whatsThisFrom(u"Layout|Lay Out Horizontally"_s));
     m_actionHorizontalLayout->setData(LayoutInfo::HBox);
     m_actionHorizontalLayout->setEnabled(false);
     connect(m_actionHorizontalLayout, &QAction::triggered, this, &FormWindowManager::createLayout);
 
-    m_actionVerticalLayout = new QAction(createIconSet(QStringLiteral("editvlayout.png")), tr("Lay Out &Vertically"), this);
-    m_actionVerticalLayout->setObjectName(QStringLiteral("__qt_vertical_layout_action"));
+    m_actionVerticalLayout = new QAction(createIconSet(u"editvlayout.png"_s),
+                                         tr("Lay Out &Vertically"), this);
+    m_actionVerticalLayout->setObjectName(u"__qt_vertical_layout_action"_s);
     m_actionVerticalLayout->setShortcut(Qt::CTRL | Qt::Key_2);
     m_actionVerticalLayout->setStatusTip(tr("Lays out the selected widgets vertically"));
-    m_actionVerticalLayout->setWhatsThis(whatsThisFrom(QStringLiteral("Layout|Lay Out Vertically")));
+    m_actionVerticalLayout->setWhatsThis(whatsThisFrom(u"Layout|Lay Out Vertically"_s));
     m_actionVerticalLayout->setData(LayoutInfo::VBox);
     m_actionVerticalLayout->setEnabled(false);
     connect(m_actionVerticalLayout, &QAction::triggered, this, &FormWindowManager::createLayout);
 
-    QIcon formIcon = QIcon::fromTheme(QStringLiteral("designer-form-layout"), createIconSet(QStringLiteral("editform.png")));
+    QIcon formIcon = QIcon::fromTheme(u"designer-form-layout"_s,
+                                      createIconSet(u"editform.png"_s));
     m_actionFormLayout = new QAction(formIcon, tr("Lay Out in a &Form Layout"), this);
-    m_actionFormLayout->setObjectName(QStringLiteral("__qt_form_layout_action"));
+    m_actionFormLayout->setObjectName(u"__qt_form_layout_action"_s);
     m_actionFormLayout->setShortcut(Qt::CTRL | Qt::Key_6);
     m_actionFormLayout->setStatusTip(tr("Lays out the selected widgets in a form layout"));
-    m_actionFormLayout->setWhatsThis(whatsThisFrom(QStringLiteral("Layout|Lay Out in a Form")));
+    m_actionFormLayout->setWhatsThis(whatsThisFrom(u"Layout|Lay Out in a Form"_s));
     m_actionFormLayout->setData(LayoutInfo::Form);
     m_actionFormLayout->setEnabled(false);
     connect(m_actionFormLayout, &QAction::triggered, this, &FormWindowManager::createLayout);
 
-    m_actionGridLayout = new QAction(createIconSet(QStringLiteral("editgrid.png")), tr("Lay Out in a &Grid"), this);
-    m_actionGridLayout->setObjectName(QStringLiteral("__qt_grid_layout_action"));
+    m_actionGridLayout = new QAction(createIconSet(u"editgrid.png"_s),
+                                     tr("Lay Out in a &Grid"), this);
+    m_actionGridLayout->setObjectName(u"__qt_grid_layout_action"_s);
     m_actionGridLayout->setShortcut(Qt::CTRL | Qt::Key_5);
     m_actionGridLayout->setStatusTip(tr("Lays out the selected widgets in a grid"));
-    m_actionGridLayout->setWhatsThis(whatsThisFrom(QStringLiteral("Layout|Lay Out in a Grid")));
+    m_actionGridLayout->setWhatsThis(whatsThisFrom(u"Layout|Lay Out in a Grid"_s));
     m_actionGridLayout->setData(LayoutInfo::Grid);
     m_actionGridLayout->setEnabled(false);
     connect(m_actionGridLayout, &QAction::triggered, this, &FormWindowManager::createLayout);
 
-    m_actionSplitHorizontal = new QAction(createIconSet(QStringLiteral("edithlayoutsplit.png")),
+    m_actionSplitHorizontal = new QAction(createIconSet(u"edithlayoutsplit.png"_s),
                                           tr("Lay Out Horizontally in S&plitter"), this);
-    m_actionSplitHorizontal->setObjectName(QStringLiteral("__qt_split_horizontal_action"));
+    m_actionSplitHorizontal->setObjectName(u"__qt_split_horizontal_action"_s);
     m_actionSplitHorizontal->setShortcut(Qt::CTRL | Qt::Key_3);
     m_actionSplitHorizontal->setStatusTip(tr("Lays out the selected widgets horizontally in a splitter"));
-    m_actionSplitHorizontal->setWhatsThis(whatsThisFrom(QStringLiteral("Layout|Lay Out Horizontally in Splitter")));
+    m_actionSplitHorizontal->setWhatsThis(whatsThisFrom(u"Layout|Lay Out Horizontally in Splitter"_s));
     m_actionSplitHorizontal->setData(LayoutInfo::HSplitter);
     m_actionSplitHorizontal->setEnabled(false);
     connect(m_actionSplitHorizontal, &QAction::triggered, this, &FormWindowManager::createLayout);
 
-    m_actionSplitVertical = new QAction(createIconSet(QStringLiteral("editvlayoutsplit.png")),
+    m_actionSplitVertical = new QAction(createIconSet(u"editvlayoutsplit.png"_s),
                                         tr("Lay Out Vertically in Sp&litter"), this);
-    m_actionSplitVertical->setObjectName(QStringLiteral("__qt_split_vertical_action"));
+    m_actionSplitVertical->setObjectName(u"__qt_split_vertical_action"_s);
     m_actionSplitVertical->setShortcut(Qt::CTRL | Qt::Key_4);
     m_actionSplitVertical->setStatusTip(tr("Lays out the selected widgets vertically in a splitter"));
-    m_actionSplitVertical->setWhatsThis(whatsThisFrom(QStringLiteral("Layout|Lay Out Vertically in Splitter")));
+    m_actionSplitVertical->setWhatsThis(whatsThisFrom(u"Layout|Lay Out Vertically in Splitter"_s));
     connect(m_actionSplitVertical, &QAction::triggered, this, &FormWindowManager::createLayout);
     m_actionSplitVertical->setData(LayoutInfo::VSplitter);
 
     m_actionSplitVertical->setEnabled(false);
 
-    m_actionBreakLayout = new QAction(createIconSet(QStringLiteral("editbreaklayout.png")), tr("&Break Layout"), this);
-    m_actionBreakLayout->setObjectName(QStringLiteral("__qt_break_layout_action"));
+    m_actionBreakLayout = new QAction(createIconSet(u"editbreaklayout.png"_s),
+                                      tr("&Break Layout"), this);
+    m_actionBreakLayout->setObjectName(u"__qt_break_layout_action"_s);
     m_actionBreakLayout->setShortcut(Qt::CTRL | Qt::Key_0);
     m_actionBreakLayout->setStatusTip(tr("Breaks the selected layout"));
-    m_actionBreakLayout->setWhatsThis(whatsThisFrom(QStringLiteral("Layout|Break Layout")));
+    m_actionBreakLayout->setWhatsThis(whatsThisFrom(u"Layout|Break Layout"_s));
     connect(m_actionBreakLayout, &QAction::triggered, this, &FormWindowManager::slotActionBreakLayoutActivated);
     m_actionBreakLayout->setEnabled(false);
 
     m_actionSimplifyLayout = new QAction(tr("Si&mplify Grid Layout"), this);
-    m_actionSimplifyLayout->setObjectName(QStringLiteral("__qt_simplify_layout_action"));
+    m_actionSimplifyLayout->setObjectName(u"__qt_simplify_layout_action"_s);
     m_actionSimplifyLayout->setStatusTip(tr("Removes empty columns and rows"));
-    m_actionSimplifyLayout->setWhatsThis(whatsThisFrom(QStringLiteral("Layout|Simplify Layout")));
+    m_actionSimplifyLayout->setWhatsThis(whatsThisFrom(u"Layout|Simplify Layout"_s));
     connect(m_actionSimplifyLayout, &QAction::triggered, this, &FormWindowManager::slotActionSimplifyLayoutActivated);
     m_actionSimplifyLayout->setEnabled(false);
 
     m_actionDefaultPreview = new QAction(tr("&Preview..."), this);
-    m_actionDefaultPreview->setObjectName(QStringLiteral("__qt_default_preview_action"));
+    m_actionDefaultPreview->setObjectName(u"__qt_default_preview_action"_s);
     m_actionDefaultPreview->setStatusTip(tr("Preview current form"));
-    m_actionDefaultPreview->setWhatsThis(whatsThisFrom(QStringLiteral("Form|Preview")));
+    m_actionDefaultPreview->setWhatsThis(whatsThisFrom(u"Form|Preview"_s));
     connect(m_actionDefaultPreview, &QAction::triggered,
             this, &FormWindowManager::showPreview);
 
@@ -517,13 +506,13 @@ void FormWindowManager::setupActions()
     m_actionUndo = m_undoGroup->createUndoAction(this);
     m_actionUndo->setEnabled(false);
 
-    m_actionUndo->setIcon(QIcon::fromTheme(QStringLiteral("edit-undo"), createIconSet(QStringLiteral("undo.png"))));
+    m_actionUndo->setIcon(QIcon::fromTheme(u"edit-undo"_s, createIconSet(u"undo.png"_s)));
     m_actionRedo = m_undoGroup->createRedoAction(this);
     m_actionRedo->setEnabled(false);
-    m_actionRedo->setIcon(QIcon::fromTheme(QStringLiteral("edit-redo"), createIconSet(QStringLiteral("redo.png"))));
+    m_actionRedo->setIcon(QIcon::fromTheme(u"edit-redo"_s, createIconSet(u"redo.png"_s)));
 
     m_actionShowFormWindowSettingsDialog = new QAction(tr("Form &Settings..."), this);
-    m_actionShowFormWindowSettingsDialog->setObjectName(QStringLiteral("__qt_form_settings_action"));
+    m_actionShowFormWindowSettingsDialog->setObjectName(u"__qt_form_settings_action"_s);
     connect(m_actionShowFormWindowSettingsDialog, &QAction::triggered,
             this, &FormWindowManager::slotActionShowFormWindowSettingsDialog);
     m_actionShowFormWindowSettingsDialog->setEnabled(false);
@@ -638,7 +627,7 @@ void FormWindowManager::slotActionAdjustSizeActivated()
     }
 
     // Always count the main container as unlaid-out
-    for (QWidget *widget : qAsConst(selectedWidgets)) {
+    for (QWidget *widget : std::as_const(selectedWidgets)) {
         bool unlaidout = LayoutInfo::layoutType(core(), widget->parentWidget()) == LayoutInfo::NoLayout;
         bool isMainContainer = m_activeFormWindow->isMainContainer(widget);
 
@@ -750,7 +739,7 @@ QSet<QWidget *> FormWindowManager::getUnsortedLayoutsToBeBroken(bool firstOnly) 
     if (selection.isEmpty() && m_activeFormWindow->mainContainer())
         selection.append(m_activeFormWindow->mainContainer());
 
-    for (QWidget *selectedWidget : qAsConst(selection)) {
+    for (QWidget *selectedWidget : std::as_const(selection)) {
         // find all layouts
         const QWidgetList &list = layoutsToBeBroken(selectedWidget);
         if (!list.isEmpty()) {
@@ -779,7 +768,7 @@ QWidgetList FormWindowManager::layoutsToBeBroken() const
     for (QWidget *wToBeInserted : unsortedLayouts) {
         if (!orderedLayoutList.contains(wToBeInserted)) {
             // try to find first child, use as insertion position, else append
-            const QWidgetList::iterator firstChildPos = findFirstChildOf(orderedLayoutList.begin(), orderedLayoutList.end(), wToBeInserted);
+            const auto firstChildPos = findFirstChildOf(orderedLayoutList.begin(), orderedLayoutList.end(), wToBeInserted);
             if (firstChildPos == orderedLayoutList.end()) {
                 orderedLayoutList.push_back(wToBeInserted);
             } else {
@@ -810,8 +799,7 @@ void FormWindowManager::slotUpdateActions()
     bool canMorphIntoHBoxLayout = false;
     bool canMorphIntoGridLayout = false;
     bool canMorphIntoFormLayout = false;
-    int selectedWidgetCount = 0;
-    int laidoutWidgetCount = 0;
+    bool hasSelectedWidgets = false;
     int unlaidoutWidgetCount = 0;
 #if QT_CONFIG(clipboard)
     bool pasteAvailable = false;
@@ -830,7 +818,7 @@ void FormWindowManager::slotUpdateActions()
 
         QWidgetList simplifiedSelection = m_activeFormWindow->selectedWidgets();
 
-        selectedWidgetCount = simplifiedSelection.count();
+        hasSelectedWidgets = !simplifiedSelection.isEmpty();
 #if QT_CONFIG(clipboard)
         pasteAvailable = qApp->clipboard()->mimeData() && qApp->clipboard()->mimeData()->hasText();
 #endif
@@ -841,19 +829,16 @@ void FormWindowManager::slotUpdateActions()
             simplifiedSelection.append(mainContainer);
 
         // Always count the main container as unlaid-out
-        const QWidgetList::const_iterator cend = simplifiedSelection.constEnd();
-        for (QWidgetList::const_iterator it = simplifiedSelection.constBegin(); it != cend; ++it) {
-            if (*it != mainContainer && LayoutInfo::isWidgetLaidout(m_core, *it)) {
-                ++laidoutWidgetCount;
-            } else {
+        for (auto *w : std::as_const(simplifiedSelection)) {
+            if (w == mainContainer || !LayoutInfo::isWidgetLaidout(m_core, w))
                 ++unlaidoutWidgetCount;
-            }
-            if (qobject_cast<const QLayoutWidget *>(*it) || qobject_cast<const Spacer *>(*it))
+
+            if (qobject_cast<const QLayoutWidget *>(w) || qobject_cast<const Spacer *>(w))
                 canChangeZOrder = false;
         }
 
         // Figure out layouts: Looking at a group of dangling widgets
-        if (simplifiedSelection.count() != 1) {
+        if (simplifiedSelection.size() != 1) {
             layoutAvailable = unlaidoutWidgetCount > 1;
             //breakAvailable = false;
             break;
@@ -902,13 +887,13 @@ void FormWindowManager::slotUpdateActions()
     } while(false);
 
 #if QT_CONFIG(clipboard)
-    m_actionCut->setEnabled(selectedWidgetCount > 0);
-    m_actionCopy->setEnabled(selectedWidgetCount > 0);
+    m_actionCut->setEnabled(hasSelectedWidgets);
+    m_actionCopy->setEnabled(hasSelectedWidgets);
     m_actionPaste->setEnabled(pasteAvailable);
 #endif
-    m_actionDelete->setEnabled(selectedWidgetCount > 0);
-    m_actionLower->setEnabled(canChangeZOrder && selectedWidgetCount > 0);
-    m_actionRaise->setEnabled(canChangeZOrder && selectedWidgetCount > 0);
+    m_actionDelete->setEnabled(hasSelectedWidgets);
+    m_actionLower->setEnabled(canChangeZOrder && hasSelectedWidgets);
+    m_actionRaise->setEnabled(canChangeZOrder && hasSelectedWidgets);
 
 
     m_actionSelectAll->setEnabled(m_activeFormWindow != nullptr);

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,14 @@
 #define CONTENT_BROWSER_ANDROID_SYNCHRONOUS_COMPOSITOR_SYNC_CALL_BRIDGE_H_
 
 #include "base/containers/circular_deque.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
+#include "base/synchronization/condition_variable.h"
 #include "base/thread_annotations.h"
 #include "components/viz/common/quads/compositor_frame.h"
 #include "content/public/browser/android/synchronous_compositor.h"
+#include "mojo/public/cpp/bindings/self_owned_receiver.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/input/synchronous_compositor.mojom.h"
 
 namespace content {
@@ -71,6 +74,11 @@ class SynchronousCompositorSyncCallBridge
  public:
   explicit SynchronousCompositorSyncCallBridge(SynchronousCompositorHost* host);
 
+  SynchronousCompositorSyncCallBridge(
+      const SynchronousCompositorSyncCallBridge&) = delete;
+  SynchronousCompositorSyncCallBridge& operator=(
+      const SynchronousCompositorSyncCallBridge&) = delete;
+
   // Indicatation that the remote is now ready to process requests. Called
   // on either UI or IO thread.
   void RemoteReady();
@@ -82,8 +90,9 @@ class SynchronousCompositorSyncCallBridge
   bool ReceiveFrameOnIOThread(
       int frame_sink_id,
       uint32_t metadata_version,
-      base::Optional<viz::CompositorFrame>,
-      base::Optional<viz::HitTestRegionList> hit_test_region_list);
+      absl::optional<viz::LocalSurfaceId> local_surface_id,
+      absl::optional<viz::CompositorFrame>,
+      absl::optional<viz::HitTestRegionList> hit_test_region_list);
 
   // Receive a BeginFrameResponse. Returns true if handling the response was
   // successful or not.
@@ -105,6 +114,12 @@ class SynchronousCompositorSyncCallBridge
   // Return whether the remote side is ready.
   bool IsRemoteReadyOnUIThread();
 
+  // Set a weak reference to host control receiver then we can close the host
+  // control when the host was destroyed.
+  void SetHostControlReceiverOnIOThread(
+      mojo::SelfOwnedReceiverRef<blink::mojom::SynchronousCompositorControlHost>
+          host_control_receiver);
+
  private:
   friend class base::RefCountedThreadSafe<SynchronousCompositorSyncCallBridge>;
   ~SynchronousCompositorSyncCallBridge();
@@ -114,12 +129,17 @@ class SynchronousCompositorSyncCallBridge
   void BeginFrameCompleteOnUIThread();
 
   // Process metadata.
-  void ProcessFrameMetadataOnUIThread(uint32_t metadata_version,
-                                      viz::CompositorFrameMetadata metadata);
+  void ProcessFrameMetadataOnUIThread(
+      uint32_t metadata_version,
+      viz::CompositorFrameMetadata metadata,
+      const viz::LocalSurfaceId& local_surface_id);
 
   // Signal all waiters for closure. Callee must host a lock to |lock_|.
   void SignalRemoteClosedToAllWaitersOnIOThread()
       EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Close the host control on io thread.
+  void CloseHostControlOnIOThread();
 
   using FrameFutureQueue =
       base::circular_deque<scoped_refptr<SynchronousCompositor::FrameFuture>>;
@@ -127,7 +147,10 @@ class SynchronousCompositorSyncCallBridge
   enum class RemoteState { INIT, READY, CLOSED };
 
   // UI thread only.
-  SynchronousCompositorHost* host_;
+  raw_ptr<SynchronousCompositorHost> host_;
+  // This handles the host control receiver in browser side.
+  mojo::SelfOwnedReceiverRef<blink::mojom::SynchronousCompositorControlHost>
+      host_control_receiver_;
 
   // Shared variables between the IO thread and UI thread.
   base::Lock lock_;
@@ -137,8 +160,6 @@ class SynchronousCompositorSyncCallBridge
       GUARDED_BY(lock_);
   base::ConditionVariable begin_frame_condition_ GUARDED_BY(lock_);
   RemoteState remote_state_ GUARDED_BY(lock_) = RemoteState::INIT;
-
-  DISALLOW_COPY_AND_ASSIGN(SynchronousCompositorSyncCallBridge);
 };
 
 }  // namespace content

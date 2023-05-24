@@ -1,11 +1,12 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/command_line.h"
+#include "base/functional/bind.h"
 #include "build/build_config.h"
 #include "chrome/browser/extensions/activity_log/activity_log.h"
 #include "chrome/browser/extensions/extension_apitest.h"
@@ -17,7 +18,7 @@
 #include "net/test/embedded_test_server/http_request.h"
 #include "net/test/embedded_test_server/http_response.h"
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 #include "base/mac/mac_util.h"
 #endif
 
@@ -58,9 +59,9 @@ class ActivityLogApiTest : public ExtensionApiTest {
   base::CommandLine saved_cmdline_;
 };
 
-#if !defined(NDEBUG) || defined(ADDRESS_SANITIZER)
-// TODO(crbug.com/299393): This test is very long and can time out in debug or
-// ASAN builds.
+#if !defined(NDEBUG)
+// TODO(crbug.com/299393): This test is very long and can time out in debug
+// builds.
 #define MAYBE_TriggerEvent DISABLED_TriggerEvent
 #else
 #define MAYBE_TriggerEvent TriggerEvent
@@ -74,8 +75,9 @@ IN_PROC_BROWSER_TEST_F(ActivityLogApiTest, MAYBE_TriggerEvent) {
       &ActivityLogApiTest::HandleRequest, base::Unretained(this)));
   ASSERT_TRUE(StartEmbeddedTestServer());
 
-  const Extension* friend_extension = LoadExtensionIncognito(
-      test_data_dir_.AppendASCII("activity_log_private/friend"));
+  const Extension* friend_extension =
+      LoadExtension(test_data_dir_.AppendASCII("activity_log_private/friend"),
+                    {.allow_in_incognito = true});
   ASSERT_TRUE(friend_extension);
   ASSERT_TRUE(RunExtensionTest("activity_log_private/test"));
   ActivityLog::GetInstance(profile())->SetWatchdogAppActiveForTesting(false);

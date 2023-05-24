@@ -1,52 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "volumetric.h"
 #include <QtDataVisualization/qvalue3daxis.h>
-#include <QtDataVisualization/q3dscene.h>
-#include <QtDataVisualization/q3dcamera.h>
-#include <QtDataVisualization/q3dtheme.h>
 #include <QtDataVisualization/qcustom3dlabel.h>
-#include <QtDataVisualization/q3dscatter.h>
 #include <QtDataVisualization/q3dinputhandler.h>
 #include <QtCore/qmath.h>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QRadioButton>
-#include <QtWidgets/QSlider>
-#include <QtCore/QDebug>
-#include <QtGui/QOpenGLContext>
+#include <QtGui/qopenglcontext.h>
 
-using namespace QtDataVisualization;
-
-const int lowDetailSize(128);
-const int mediumDetailSize(256);
-const int highDetailSize(512);
+const int lowDetailSize(256);
+const int mediumDetailSize(512);
+const int highDetailSize(1024);
 const int colorTableSize(256);
 const int layerDataSize(512);
 const int mineShaftDiameter(1);
@@ -67,10 +31,8 @@ const int terrainTransparency(12);
 
 static bool isOpenGLES()
 {
-#if defined(QT_OPENGL_ES_2)
+#if QT_CONFIG(opengles2)
     return true;
-#elif (QT_VERSION < QT_VERSION_CHECK(5, 3, 0))
-    return false;
 #else
     return QOpenGLContext::currentContext()->isOpenGLES();
 #endif
@@ -78,36 +40,16 @@ static bool isOpenGLES()
 
 VolumetricModifier::VolumetricModifier(Q3DScatter *scatter)
     : m_graph(scatter),
-      m_volumeItem(0),
       m_sliceIndexX(lowDetailSize / 2),
       m_sliceIndexY(lowDetailSize / 4),
-      m_sliceIndexZ(lowDetailSize / 2),
-      m_slicingX(false),
-      m_slicingY(false),
-      m_slicingZ(false),
-      m_mediumDetailRB(0),
-      m_highDetailRB(0),
-      m_lowDetailData(0),
-      m_mediumDetailData(0),
-      m_highDetailData(0),
-      m_mediumDetailIndex(0),
-      m_highDetailIndex(0),
-      m_mediumDetailShaftIndex(0),
-      m_highDetailShaftIndex(0),
-      m_sliceSliderX(0),
-      m_sliceSliderY(0),
-      m_sliceSliderZ(0),
-      m_usingPrimaryTable(true),
-      m_sliceLabelX(0),
-      m_sliceLabelY(0),
-      m_sliceLabelZ(0)
+      m_sliceIndexZ(lowDetailSize / 2)
 {
-    m_graph->activeTheme()->setType(Q3DTheme::ThemeQt);
+    m_graph->activeTheme()->setType(Q3DTheme::ThemePrimaryColors);
     m_graph->setShadowQuality(QAbstract3DGraph::ShadowQualityNone);
-    m_graph->scene()->activeCamera()->setCameraPreset(Q3DCamera::CameraPresetFront);
-    //! [6]
+    m_graph->scene()->activeCamera()->setCameraPreset(Q3DCamera::CameraPresetIsometricLeft);
+    //! [0]
     m_graph->setOrthoProjection(true);
-    //! [6]
+    //! [0]
     m_graph->activeTheme()->setBackgroundEnabled(false);
 
     // Only allow zooming at the center and limit the zoom to 200% to avoid clipping issues
@@ -117,9 +59,12 @@ VolumetricModifier::VolumetricModifier(Q3DScatter *scatter)
     toggleAreaAll(true);
 
     if (!isOpenGLES()) {
-        m_lowDetailData = new QVector<uchar>(lowDetailSize * lowDetailSize * lowDetailSize / 2);
-        m_mediumDetailData = new QVector<uchar>(mediumDetailSize * mediumDetailSize * mediumDetailSize / 2);
-        m_highDetailData = new QVector<uchar>(highDetailSize * highDetailSize * highDetailSize / 2);
+        m_lowDetailData
+                = new QList<uchar>(lowDetailSize * lowDetailSize * lowDetailSize / 2);
+        m_mediumDetailData
+                = new QList<uchar>(mediumDetailSize * mediumDetailSize * mediumDetailSize / 2);
+        m_highDetailData
+                = new QList<uchar>(highDetailSize * highDetailSize * highDetailSize / 2);
 
         initHeightMap(QStringLiteral(":/heightmaps/layer_ground.png"), m_groundLayer);
         initHeightMap(QStringLiteral(":/heightmaps/layer_water.png"), m_waterLayer);
@@ -130,7 +75,7 @@ VolumetricModifier::VolumetricModifier(Q3DScatter *scatter)
         createVolume(lowDetailSize, 0, lowDetailSize, m_lowDetailData);
         excavateMineShaft(lowDetailSize, 0, m_mineShaftArray.size(), m_lowDetailData);
 
-        //! [0]
+        //! [1]
         m_volumeItem = new QCustom3DVolume;
         // Adjust water level to zero with a minor tweak to y-coordinate position and scaling
         m_volumeItem->setScaling(
@@ -143,16 +88,16 @@ VolumetricModifier::VolumetricModifier(Q3DScatter *scatter)
                               (m_graph->axisY()->max() + m_graph->axisY()->min()) / 2.0f,
                               (m_graph->axisZ()->max() + m_graph->axisZ()->min()) / 2.0f));
         m_volumeItem->setScalingAbsolute(false);
-        //! [0]
         //! [1]
+        //! [2]
         m_volumeItem->setTextureWidth(lowDetailSize);
         m_volumeItem->setTextureHeight(lowDetailSize / 2);
         m_volumeItem->setTextureDepth(lowDetailSize);
         m_volumeItem->setTextureFormat(QImage::Format_Indexed8);
-        m_volumeItem->setTextureData(new QVector<uchar>(*m_lowDetailData));
-        //! [1]
+        m_volumeItem->setTextureData(new QList<uchar>(*m_lowDetailData));
+        //! [2]
 
-        // Generate color tables.
+        // Generate color tables
         m_colorTable1.resize(colorTableSize);
         m_colorTable2.resize(colorTableSize);
 
@@ -183,13 +128,17 @@ VolumetricModifier::VolumetricModifier(Q3DScatter *scatter)
             if (i < magmaColorsMax) {
                 m_colorTable2[i] = qRgba(((i - aboveWaterGroundColorsMax) * 2),
                                          ((i - aboveWaterGroundColorsMax) * 2),
-                                         ((i - aboveWaterGroundColorsMax) * 2), 255);
+                                         ((i - aboveWaterGroundColorsMax) * 2),
+                                         255);
             } else if (i < underWaterGroundColorsMax) {
                 m_colorTable2[i] = qRgba(((i - aboveWaterGroundColorsMax) * 2),
                                          ((i - aboveWaterGroundColorsMax) * 2),
-                                         ((i - aboveWaterGroundColorsMax) * 2), terrainTransparency);
+                                         ((i - aboveWaterGroundColorsMax) * 2),
+                                         terrainTransparency);
             } else if (i < waterColorsMax) {
-                m_colorTable2[i] = qRgba(0, 0, ((i - underWaterGroundColorsMax) * 2) + 120,
+                m_colorTable2[i] = qRgba(0,
+                                         0,
+                                         ((i - underWaterGroundColorsMax) * 2) + 120,
                                          terrainTransparency);
             } else {
                 m_colorTable2[i] = qRgba(0, 0, 0, 0); // Not used
@@ -198,21 +147,21 @@ VolumetricModifier::VolumetricModifier(Q3DScatter *scatter)
         m_colorTable2[airColorIndex] = qRgba(0, 0, 0, 0);
         m_colorTable2[mineShaftColorIndex] = qRgba(255, 255, 0, 255);
 
-        //! [2]
+        //! [3]
         m_volumeItem->setColorTable(m_colorTable1);
-        //! [2]
+        //! [3]
 
-        //! [5]
+        //! [4]
         m_volumeItem->setSliceFrameGaps(QVector3D(0.01f, 0.02f, 0.01f));
         m_volumeItem->setSliceFrameThicknesses(QVector3D(0.0025f, 0.005f, 0.0025f));
         m_volumeItem->setSliceFrameWidths(QVector3D(0.0025f, 0.005f, 0.0025f));
         m_volumeItem->setDrawSliceFrames(false);
-        //! [5]
+        //! [4]
         handleSlicingChanges();
 
-        //! [3]
+        //! [5]
         m_graph->addCustomItem(m_volumeItem);
-        //! [3]
+        //! [5]
 
         m_timer.start(0);
     } else {
@@ -296,13 +245,13 @@ void VolumetricModifier::adjustSliceX(int value)
         if (m_sliceIndexX == m_volumeItem->textureWidth())
             m_sliceIndexX--;
         if (m_volumeItem->sliceIndexX() != -1)
-            //! [7]
+            //! [6]
             m_volumeItem->setSliceIndexX(m_sliceIndexX);
-            //! [7]
-        //! [9]
+            //! [6]
+        //! [8]
         m_sliceLabelX->setPixmap(
                     QPixmap::fromImage(m_volumeItem->renderSlice(Qt::XAxis, m_sliceIndexX)));
-        //! [9]
+        //! [8]
     }
 }
 
@@ -372,7 +321,7 @@ void VolumetricModifier::handleTimeout()
 void VolumetricModifier::toggleLowDetail(bool enabled)
 {
     if (enabled && m_volumeItem) {
-        m_volumeItem->setTextureData(new QVector<uchar>(*m_lowDetailData));
+        m_volumeItem->setTextureData(new QList<uchar>(*m_lowDetailData));
         m_volumeItem->setTextureDimensions(lowDetailSize, lowDetailSize / 2, lowDetailSize);
         adjustSliceX(m_sliceSliderX->value());
         adjustSliceY(m_sliceSliderY->value());
@@ -383,7 +332,7 @@ void VolumetricModifier::toggleLowDetail(bool enabled)
 void VolumetricModifier::toggleMediumDetail(bool enabled)
 {
     if (enabled && m_volumeItem) {
-        m_volumeItem->setTextureData(new QVector<uchar>(*m_mediumDetailData));
+        m_volumeItem->setTextureData(new QList<uchar>(*m_mediumDetailData));
         m_volumeItem->setTextureDimensions(mediumDetailSize, mediumDetailSize / 2, mediumDetailSize);
         adjustSliceX(m_sliceSliderX->value());
         adjustSliceY(m_sliceSliderY->value());
@@ -394,7 +343,7 @@ void VolumetricModifier::toggleMediumDetail(bool enabled)
 void VolumetricModifier::toggleHighDetail(bool enabled)
 {
     if (enabled && m_volumeItem) {
-        m_volumeItem->setTextureData(new QVector<uchar>(*m_highDetailData));
+        m_volumeItem->setTextureData(new QList<uchar>(*m_highDetailData));
         m_volumeItem->setTextureDimensions(highDetailSize, highDetailSize / 2, highDetailSize);
         adjustSliceX(m_sliceSliderX->value());
         adjustSliceY(m_sliceSliderY->value());
@@ -458,7 +407,7 @@ void VolumetricModifier::setPreserveOpacity(bool enabled)
 void VolumetricModifier::setTransparentGround(bool enabled)
 {
     if (m_volumeItem) {
-        //! [12]
+        //! [11]
         int newAlpha = enabled ? terrainTransparency : 255;
         for (int i = aboveWaterGroundColorsMin; i < underWaterGroundColorsMax; i++) {
             QRgb oldColor1 = m_colorTable1.at(i);
@@ -470,7 +419,7 @@ void VolumetricModifier::setTransparentGround(bool enabled)
             m_volumeItem->setColorTable(m_colorTable1);
         else
             m_volumeItem->setColorTable(m_colorTable2);
-        //! [12]
+        //! [11]
         adjustSliceX(m_sliceSliderX->value());
         adjustSliceY(m_sliceSliderY->value());
         adjustSliceZ(m_sliceSliderZ->value());
@@ -480,9 +429,9 @@ void VolumetricModifier::setTransparentGround(bool enabled)
 void VolumetricModifier::setUseHighDefShader(bool enabled)
 {
     if (m_volumeItem) {
-        //! [13]
+        //! [12]
         m_volumeItem->setUseHighDefShader(enabled);
-        //! [13]
+        //! [12]
     }
 }
 
@@ -494,9 +443,9 @@ void VolumetricModifier::adjustAlphaMultiplier(int value)
             mult = float(value - 99) / 2.0f;
         else
             mult = float(value) / float(500 - value * 4);
-        //! [11]
+        //! [9]
         m_volumeItem->setAlphaMultiplier(mult);
-        //! [11]
+        //! [9]
         QString labelFormat = QStringLiteral("Alpha multiplier: %1");
         m_alphaMultiplierLabel->setText(labelFormat.arg(
                                             QString::number(m_volumeItem->alphaMultiplier(), 'f', 3)));
@@ -550,14 +499,14 @@ void VolumetricModifier::setDrawSliceFrames(int enabled)
         m_volumeItem->setDrawSliceFrames(enabled);
 }
 
-void VolumetricModifier::initHeightMap(QString fileName, QVector<uchar> &layerData)
+void VolumetricModifier::initHeightMap(QString fileName, QList<uchar> &layerData)
 {
     QImage heightImage(fileName);
 
     layerData.resize(layerDataSize * layerDataSize);
     const uchar *bits = heightImage.bits();
     int index = 0;
-    QVector<QRgb> colorTable = heightImage.colorTable();
+    QList<QRgb> colorTable = heightImage.colorTable();
     for (int i = 0; i < layerDataSize; i++) {
         for (int j = 0; j < layerDataSize; j++) {
             layerData[index] = qRed(colorTable.at(bits[index]));
@@ -567,16 +516,16 @@ void VolumetricModifier::initHeightMap(QString fileName, QVector<uchar> &layerDa
 }
 
 int VolumetricModifier::createVolume(int textureSize, int startIndex, int count,
-                                     QVector<uchar> *textureData)
+                                     QList<uchar> *textureData)
 {
     // Generate volume from layer data.
     int index = startIndex * textureSize * textureSize / 2.0f;
     int endIndex = startIndex + count;
     if (endIndex > textureSize)
         endIndex = textureSize;
-    QVector<uchar> magmaHeights(textureSize);
-    QVector<uchar> waterHeights(textureSize);
-    QVector<uchar> groundHeights(textureSize);
+    QList<uchar> magmaHeights(textureSize);
+    QList<uchar> waterHeights(textureSize);
+    QList<uchar> groundHeights(textureSize);
     float multiplier = float(layerDataSize) / float(textureSize);
     for (int i = startIndex; i < endIndex; i++) {
         // Generate layer height arrays
@@ -620,7 +569,7 @@ int VolumetricModifier::createVolume(int textureSize, int startIndex, int count,
 }
 
 int VolumetricModifier::excavateMineShaft(int textureSize, int startIndex, int count,
-                                          QVector<uchar> *textureData)
+                                          QList<uchar> *textureData)
 {
     int endIndex = startIndex + count;
     if (endIndex > m_mineShaftArray.size())
@@ -651,17 +600,15 @@ int VolumetricModifier::excavateMineShaft(int textureSize, int startIndex, int c
                 dataIndex += (textureSize * textureSize / 2) * shaftSize;
             }
         }
-
-
     }
     return endIndex;
 }
 
 void VolumetricModifier::excavateMineBlock(int textureSize, int dataIndex, int size,
-                                           QVector<uchar> *textureData)
+                                           QList<uchar> *textureData)
 {
     for (int k = 0; k < size; k++) {
-        int curIndex = dataIndex + (k * textureSize * textureSize / 2);
+        int curIndex = 0;
         for (int l = 0; l < size; l++) {
             curIndex = dataIndex + (k * textureSize * textureSize / 2)
                     + (l * textureSize);
@@ -670,7 +617,6 @@ void VolumetricModifier::excavateMineBlock(int textureSize, int dataIndex, int s
                     (*textureData)[curIndex] = mineShaftColorIndex;
                 curIndex++;
             }
-
         }
     }
 }
@@ -680,9 +626,9 @@ void VolumetricModifier::handleSlicingChanges()
     if (m_volumeItem) {
         if (m_slicingX || m_slicingY || m_slicingZ) {
             // Only show slices of selected dimensions
-            //! [8]
+            //! [7]
             m_volumeItem->setDrawSlices(true);
-            //! [8]
+            //! [7]
             m_volumeItem->setSliceIndexX(m_slicingX ? m_sliceIndexX : -1);
             m_volumeItem->setSliceIndexY(m_slicingY ? m_sliceIndexY : -1);
             m_volumeItem->setSliceIndexZ(m_slicingZ ? m_sliceIndexZ : -1);

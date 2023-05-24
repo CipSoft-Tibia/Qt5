@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include "third_party/blink/renderer/core/animation/path_interpolation_functions.h"
 #include "third_party/blink/renderer/core/svg/svg_path.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -16,8 +16,8 @@ InterpolationValue SVGPathInterpolationType::MaybeConvertSVGValue(
     return nullptr;
 
   return PathInterpolationFunctions::ConvertValue(
-      To<SVGPath>(svg_value).ByteStream(),
-      PathInterpolationFunctions::PreserveCoordinates);
+      To<SVGPath>(svg_value).GetStylePath(),
+      PathInterpolationFunctions::kPreserveCoordinates);
 }
 
 InterpolationValue SVGPathInterpolationType::MaybeConvertNeutral(
@@ -47,7 +47,7 @@ SVGPropertyBase* SVGPathInterpolationType::AppliedSVGValue(
     const InterpolableValue& interpolable_value,
     const NonInterpolableValue* non_interpolable_value) const {
   return MakeGarbageCollected<SVGPath>(
-      MakeGarbageCollected<cssvalue::CSSPathValue>(
+      *MakeGarbageCollected<cssvalue::CSSPathValue>(
           PathInterpolationFunctions::AppliedValue(interpolable_value,
                                                    non_interpolable_value)));
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -18,12 +18,11 @@
 #include <limits>
 
 #include "base/base_export.h"
-#include "base/macros.h"
 
 namespace base {
 namespace win {
 
-using EtwEventClass = GUID;
+using EtwEventClass = ::GUID;
 using EtwEventType = UCHAR;
 using EtwEventLevel = UCHAR;
 using EtwEventVersion = USHORT;
@@ -73,6 +72,9 @@ class EtwMofEvent : public EtwMofEventBase<N> {
     header.Flags = WNODE_FLAG_TRACED_GUID | WNODE_FLAG_USE_MOF_PTR;
   }
 
+  EtwMofEvent(const EtwMofEvent&) = delete;
+  EtwMofEvent& operator=(const EtwMofEvent&) = delete;
+
   void SetField(size_t field, size_t size, const void* data) {
     // DCHECK(field < N);
     if ((field < N) && (size <= std::numeric_limits<uint32_t>::max())) {
@@ -82,9 +84,6 @@ class EtwMofEvent : public EtwMofEventBase<N> {
   }
 
   EVENT_TRACE_HEADER* get() { return &header; }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(EtwMofEvent);
 };
 
 // Trace provider with Event Tracing for Windows. The trace provider
@@ -99,11 +98,15 @@ class BASE_EXPORT EtwTraceProvider {
  public:
   // Creates an event trace provider identified by provider_name, which
   // will be the name registered with Event Tracing for Windows (ETW).
-  explicit EtwTraceProvider(const GUID& provider_name);
+  explicit EtwTraceProvider(const ::GUID& provider_name);
 
   // Creates an unnamed event trace provider, the provider must be given
   // a name before registration.
   EtwTraceProvider();
+
+  EtwTraceProvider(const EtwTraceProvider&) = delete;
+  EtwTraceProvider& operator=(const EtwTraceProvider&) = delete;
+
   virtual ~EtwTraceProvider();
 
   // Registers the trace provider with Event Tracing for Windows.
@@ -116,10 +119,10 @@ class BASE_EXPORT EtwTraceProvider {
   ULONG Unregister();
 
   // Accessors.
-  void set_provider_name(const GUID& provider_name) {
+  void set_provider_name(const ::GUID& provider_name) {
     provider_name_ = provider_name;
   }
-  const GUID& provider_name() const { return provider_name_; }
+  const ::GUID& provider_name() const { return provider_name_; }
   TRACEHANDLE registration_handle() const { return registration_handle_; }
   TRACEHANDLE session_handle() const { return session_handle_; }
   EtwEventFlags enable_flags() const { return enable_flags_; }
@@ -176,7 +179,7 @@ class BASE_EXPORT EtwTraceProvider {
                                       ULONG* reserved,
                                       PVOID buffer);
 
-  GUID provider_name_ = GUID_NULL;
+  ::GUID provider_name_ = GUID_NULL;
   TRACEHANDLE registration_handle_ = NULL;
   TRACEHANDLE session_handle_ = NULL;
   EtwEventFlags enable_flags_ = 0;
@@ -185,8 +188,6 @@ class BASE_EXPORT EtwTraceProvider {
   // We don't use this, but on XP we're obliged to pass one in to
   // RegisterTraceGuids. Non-const, because that's how the API needs it.
   static TRACE_GUID_REGISTRATION obligatory_guid_registration_;
-
-  DISALLOW_COPY_AND_ASSIGN(EtwTraceProvider);
 };
 
 }  // namespace win

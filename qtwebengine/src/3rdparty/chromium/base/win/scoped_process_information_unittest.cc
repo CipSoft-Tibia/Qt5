@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -55,7 +55,7 @@ void ScopedProcessInformationTest::DoCreateProcess(
   STARTUPINFO startup_info = {};
   startup_info.cb = sizeof(startup_info);
 
-  EXPECT_TRUE(::CreateProcess(nullptr, base::data(cmd_line), nullptr, nullptr,
+  EXPECT_TRUE(::CreateProcess(nullptr, std::data(cmd_line), nullptr, nullptr,
                               false, 0, nullptr, nullptr, &startup_info,
                               process_handle));
 }

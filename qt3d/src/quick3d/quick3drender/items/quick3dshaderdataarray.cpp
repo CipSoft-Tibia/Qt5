@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <Qt3DQuickRender/private/quick3dshaderdataarray_p.h>
 #include <Qt3DRender/private/qshaderdata_p.h>
@@ -53,7 +17,7 @@ public:
         : QNodePrivate()
     {}
 
-    QVector<QShaderData *> m_values;
+    QList<QShaderData *> m_values;
 };
 
 Quick3DShaderDataArray::Quick3DShaderDataArray(QNode *parent)
@@ -63,14 +27,29 @@ Quick3DShaderDataArray::Quick3DShaderDataArray(QNode *parent)
 
 QQmlListProperty<QShaderData> Quick3DShaderDataArray::valuesList()
 {
-    return QQmlListProperty<QShaderData>(this, 0,
-                                         &Quick3DShaderDataArray::appendValue,
-                                         &Quick3DShaderDataArray::valueCount,
-                                         &Quick3DShaderDataArray::valueAt,
-                                         &Quick3DShaderDataArray::clearValues);
+    using qt_size_type = qsizetype;
+    using ListContentType = QShaderData;
+    auto appendFunction = [](QQmlListProperty<ListContentType> *list, ListContentType *bar) {
+        Quick3DShaderDataArray *self = static_cast<Quick3DShaderDataArray *>(list->object);
+        static_cast<Quick3DShaderDataArrayPrivate *>(Quick3DShaderDataArrayPrivate::get(self))->m_values.append(bar);
+    };
+    auto countFunction = [](QQmlListProperty<ListContentType> *list) -> qt_size_type {
+        Quick3DShaderDataArray *self = static_cast<Quick3DShaderDataArray *>(list->object);
+        return static_cast<Quick3DShaderDataArrayPrivate *>(Quick3DShaderDataArrayPrivate::get(self))->m_values.size();
+    };
+    auto atFunction = [](QQmlListProperty<ListContentType> *list, qt_size_type index) -> ListContentType * {
+        Quick3DShaderDataArray *self = static_cast<Quick3DShaderDataArray *>(list->object);
+        return static_cast<Quick3DShaderDataArrayPrivate *>(Quick3DShaderDataArrayPrivate::get(self))->m_values.at(index);
+    };
+    auto clearFunction = [](QQmlListProperty<ListContentType> *list) {
+        Quick3DShaderDataArray *self = static_cast<Quick3DShaderDataArray *>(list->object);
+        static_cast<Quick3DShaderDataArrayPrivate *>(Quick3DShaderDataArrayPrivate::get(self))->m_values.clear();
+    };
+
+    return QQmlListProperty<ListContentType>(this, nullptr, appendFunction, countFunction, atFunction, clearFunction);
 }
 
-QVector<QShaderData *> Quick3DShaderDataArray::values() const
+QList<QShaderData *> Quick3DShaderDataArray::values() const
 {
     Q_D(const Quick3DShaderDataArray);
     return d->m_values;
@@ -85,32 +64,10 @@ QVector<QShaderData *> Quick3DShaderDataArray::values() const
 //        d_func()->m_values.append(static_cast<QShaderData *>(QNode::clone(v)));
 //}
 
-void Quick3DShaderDataArray::appendValue(QQmlListProperty<QShaderData> *list, QShaderData *bar)
-{
-    Quick3DShaderDataArray *self = static_cast<Quick3DShaderDataArray *>(list->object);
-    static_cast<Quick3DShaderDataArrayPrivate *>(Quick3DShaderDataArrayPrivate::get(self))->m_values.append(bar);
-}
-
-QShaderData *Quick3DShaderDataArray::valueAt(QQmlListProperty<QShaderData> *list, int index)
-{
-    Quick3DShaderDataArray *self = static_cast<Quick3DShaderDataArray *>(list->object);
-    return static_cast<Quick3DShaderDataArrayPrivate *>(Quick3DShaderDataArrayPrivate::get(self))->m_values.at(index);
-}
-
-int Quick3DShaderDataArray::valueCount(QQmlListProperty<QShaderData> *list)
-{
-    Quick3DShaderDataArray *self = static_cast<Quick3DShaderDataArray *>(list->object);
-    return static_cast<Quick3DShaderDataArrayPrivate *>(Quick3DShaderDataArrayPrivate::get(self))->m_values.count();
-}
-
-void Quick3DShaderDataArray::clearValues(QQmlListProperty<QShaderData> *list)
-{
-    Quick3DShaderDataArray *self = static_cast<Quick3DShaderDataArray *>(list->object);
-    static_cast<Quick3DShaderDataArrayPrivate *>(Quick3DShaderDataArrayPrivate::get(self))->m_values.clear();
-}
-
 } // namespace Quick
 } // namespace Render
 } // namespace Qt3DRender
 
 QT_END_NAMESPACE
+
+#include "moc_quick3dshaderdataarray_p.cpp"

@@ -1,38 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/boxwhiskers_p.h>
 #include <QtGui/QPainter>
 #include <QtWidgets/QWidget>
 #include <QtWidgets/QGraphicsSceneMouseEvent>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 BoxWhiskers::BoxWhiskers(QBoxSet *set, AbstractDomain *domain, QGraphicsObject *parent) :
     QGraphicsObject(parent),
@@ -51,26 +25,26 @@ BoxWhiskers::~BoxWhiskers()
 
 void BoxWhiskers::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(event)
+    Q_UNUSED(event);
     emit pressed(m_boxSet);
     m_mousePressed = true;
 }
 
 void BoxWhiskers::hoverEnterEvent(QGraphicsSceneHoverEvent *event)
 {
-    Q_UNUSED(event)
+    Q_UNUSED(event);
     emit hovered(true, m_boxSet);
 }
 
 void BoxWhiskers::hoverLeaveEvent(QGraphicsSceneHoverEvent *event)
 {
-    Q_UNUSED(event)
+    Q_UNUSED(event);
     emit hovered(false, m_boxSet);
 }
 
 void BoxWhiskers::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(event)
+    Q_UNUSED(event);
     emit released(m_boxSet);
     if (m_mousePressed)
         emit clicked(m_boxSet);
@@ -78,7 +52,7 @@ void BoxWhiskers::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 
 void BoxWhiskers::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
 {
-    Q_UNUSED(event)
+    Q_UNUSED(event);
     // For Box a press signal needs to be explicitly fired for mouseDoubleClickEvent
     emit pressed(m_boxSet);
     emit doubleClicked(m_boxSet);
@@ -121,15 +95,15 @@ void BoxWhiskers::setLayout(const BoxWhiskersData &data)
 
 QSizeF BoxWhiskers::sizeHint(Qt::SizeHint which, const QSizeF &constraint) const
 {
-    Q_UNUSED(which)
-    Q_UNUSED(constraint)
+    Q_UNUSED(which);
+    Q_UNUSED(constraint);
 
     return QSizeF();
 }
 
 void BoxWhiskers::setGeometry(const QRectF &rect)
 {
-    Q_UNUSED(rect)
+    Q_UNUSED(rect);
 }
 
 QRectF BoxWhiskers::boundingRect() const
@@ -139,8 +113,8 @@ QRectF BoxWhiskers::boundingRect() const
 
 void BoxWhiskers::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
 {
-    Q_UNUSED(option)
-    Q_UNUSED(widget)
+    Q_UNUSED(option);
+    Q_UNUSED(widget);
 
     painter->save();
     painter->setBrush(m_brush);
@@ -218,6 +192,6 @@ void BoxWhiskers::updateGeometry(AbstractDomain *domain)
     m_boundingRect.adjust(-extra, -extra, extra, extra);
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_boxwhiskers_p.cpp"

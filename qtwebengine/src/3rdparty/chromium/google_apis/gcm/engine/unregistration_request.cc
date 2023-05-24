@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,15 +6,16 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/stl_util.h"
+#include "base/strings/escape.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
+#include "google_apis/credentials_mode.h"
 #include "google_apis/gcm/base/gcm_util.h"
 #include "google_apis/gcm/monitoring/gcm_stats_recorder.h"
-#include "net/base/escape.h"
 #include "net/base/load_flags.h"
 #include "net/http/http_request_headers.h"
 #include "net/http/http_status_code.h"
@@ -22,6 +23,7 @@
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
 
 namespace gcm {
 
@@ -162,7 +164,8 @@ void UnregistrationRequest::Start() {
   auto request = std::make_unique<network::ResourceRequest>();
   request->url = registration_url_;
   request->method = "POST";
-  request->credentials_mode = network::mojom::CredentialsMode::kOmit;
+  request->credentials_mode =
+      google_apis::GetOmitCredentialsModeForGaiaRequests();
   BuildRequestHeaders(&request->headers);
 
   std::string body;
@@ -217,7 +220,7 @@ UnregistrationRequest::Status UnregistrationRequest::ParseResponse(
   // some errors will have HTTP_OK response code!
   if (response.find(kErrorPrefix) != std::string::npos) {
     std::string error = response.substr(response.find(kErrorPrefix) +
-                                        base::size(kErrorPrefix) - 1);
+                                        std::size(kErrorPrefix) - 1);
     DVLOG(1) << "Unregistration response error message: " << error;
     return GetStatusFromError(error);
   }

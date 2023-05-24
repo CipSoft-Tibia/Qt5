@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebSocket module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlwebsocketserver.h"
 #include "qqmlwebsocket.h"
@@ -56,29 +20,35 @@ QT_USE_NAMESPACE
   \qmlproperty QUrl WebSocketServer::url
   Server url that client WebSockets can connect to. The url uses the \e ws:// scheme and includes the
   port the server listens to and the host address of the server.
-  */
+*/
 
 /*!
   \qmlproperty QString WebSocketServer::host
   The host address of the server. By default, localhost is used.
-  */
+*/
 
 /*!
   \qmlproperty int WebSocketServer::port
   The port this server is listening on. The value must be in the range 0-65535.
 
   By default, a port is chosen automatically.
-  */
+*/
 
 /*!
   \qmlproperty QString WebSocketServer::name
   The name of this server used during the http handshake phase.
-  */
+*/
+
+/*!
+  \qmlproperty QStringList WebSocketServer::supportedSubprotocols
+  \since 6.4
+  The list of protocols supported by the server.
+*/
 
 /*!
   \qmlproperty QString WebSocketServer::errorString
   The stringified error message in case an error occurred.
-  */
+*/
 
 /*!
   \qmlproperty bool WebSocketServer::listen
@@ -86,18 +56,18 @@ QT_USE_NAMESPACE
   When set to true, the server will listen on the specified url defined by host and port
   and, when accept is true, accepts incoming client connections. Otherwise the server is closed.
   By default, the server is not listening.
-  */
+*/
 
 /*!
   \qmlproperty bool WebSocketServer::accept
   Set to true to accept incoming client connections when the server is listening. When set to false,
   incoming connections are rejected. By default, connections are accepted.
-  */
+*/
 
 /*!
   \qmlsignal WebSocketServer::clientConnected(WebSocket webSocket)
   This signal is emitted when a client connects to this server. \a webSocket is the newly created \l [QML]{WebSocket}.
-  */
+*/
 
 QQmlWebSocketServer::QQmlWebSocketServer(QObject *parent)
     : QObject(parent)
@@ -200,6 +170,19 @@ void QQmlWebSocketServer::setName(const QString &name)
     }
 }
 
+void QQmlWebSocketServer::setSupportedSubprotocols(const QStringList &supportedSubprotocols)
+{
+    if (m_supportedSubprotocols == supportedSubprotocols)
+        return;
+
+    m_supportedSubprotocols = supportedSubprotocols;
+
+    if (m_server)
+        m_server->setSupportedSubprotocols(m_supportedSubprotocols);
+
+    emit supportedSubprotocolsChanged(m_supportedSubprotocols);
+}
+
 bool QQmlWebSocketServer::listen() const
 {
     return m_listen;
@@ -252,6 +235,8 @@ void QQmlWebSocketServer::init()
     connect(m_server.data(), &QWebSocketServer::closed,
             this, &QQmlWebSocketServer::closed);
 
+    m_server->setSupportedSubprotocols(m_supportedSubprotocols);
+
     updateListening();
 }
 
@@ -287,3 +272,7 @@ void QQmlWebSocketServer::closed()
     setListen(false);
 }
 
+QStringList QQmlWebSocketServer::supportedSubprotocols() const
+{
+    return m_supportedSubprotocols;
+}

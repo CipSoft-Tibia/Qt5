@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt SVG module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSVGHANDLER_P_H
 #define QSVGHANDLER_P_H
@@ -56,7 +20,9 @@
 #include "QtCore/qstack.h"
 #include <QtCore/QLoggingCategory>
 #include "qsvgstyle_p.h"
+#if QT_CONFIG(cssparser)
 #include "private/qcssparser_p.h"
+#endif
 #include "qsvggraphics_p.h"
 #include "qtsvgglobal_p.h"
 
@@ -67,14 +33,13 @@ class QSvgTinyDocument;
 class QSvgHandler;
 class QColor;
 class QSvgStyleSelector;
-class QXmlStreamReader;
 
 #ifndef QT_NO_CSSPARSER
 
 struct QSvgCssAttribute
 {
-    QXmlStreamStringRef name;
-    QXmlStreamStringRef value;
+    QString name;
+    QString value;
 };
 
 #endif
@@ -128,31 +93,35 @@ public:
     int animationDuration() const;
 
 #ifndef QT_NO_CSSPARSER
-    void parseCSStoXMLAttrs(const QString &css, QVector<QSvgCssAttribute> *attributes);
+    void parseCSStoXMLAttrs(const QString &css, QList<QSvgCssAttribute> *attributes);
 #endif
 
     inline QPen defaultPen() const
     { return m_defaultPen; }
 
+    bool trustedSourceMode() const;
+
 public:
     bool startElement(const QString &localName, const QXmlStreamAttributes &attributes);
-    bool endElement(const QStringRef &localName);
-    bool characters(const QStringRef &str);
+    bool endElement(QStringView localName);
+    bool characters(QStringView str);
     bool processingInstruction(const QString &target, const QString &data);
 
 private:
     void init();
 
     QSvgTinyDocument *m_doc;
-    QStack<QSvgNode*> m_nodes;
-
-    QList<QSvgNode*>  m_resolveNodes;
+    QStack<QSvgNode *> m_nodes;
+    // TODO: This is only needed during parsing, so it unnecessarily takes up space after that.
+    // Temporary container for <use> nodes which haven't been resolved yet.
+    QList<QSvgUse *> m_toBeResolved;
 
     enum CurrentNode
     {
         Unknown,
         Graphics,
-        Style
+        Style,
+        Doc
     };
     QStack<CurrentNode> m_skipNodes;
 

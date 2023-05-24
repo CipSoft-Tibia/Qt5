@@ -1,7 +1,8 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/features.gni")
 import("//build/config/jumbo.gni")
 import("//build/config/ui.gni")
 
@@ -14,18 +15,20 @@ jumbo_component("codec") {
     "png_codec.h",
     "vector_wstream.cc",
     "vector_wstream.h",
+    "webp_codec.cc",
+    "webp_codec.h",
   ]
 
   deps = [
     "//base",
     "//skia",
     "//third_party/libpng",
-    "//ui/gfx:geometry_skia",
     "//ui/gfx:gfx_export",
+    "//ui/gfx:gfx_skia",
     "//ui/gfx/geometry",
   ]
 
-  if (is_ios) {
+  if (!use_blink) {
     sources -= [
       "jpeg_codec.cc",
       "jpeg_codec.h",

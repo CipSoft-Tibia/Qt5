@@ -47,6 +47,7 @@
 #define AOM_AOM_INTERNAL_AOM_CODEC_INTERNAL_H_
 #include "../aom_decoder.h"
 #include "../aom_encoder.h"
+#include "common/args_helper.h"
 #include <stdarg.h>
 
 #ifdef __cplusplus
@@ -152,6 +153,23 @@ typedef aom_codec_err_t (*aom_codec_get_si_fn_t)(aom_codec_alg_priv_t *ctx,
  */
 typedef aom_codec_err_t (*aom_codec_control_fn_t)(aom_codec_alg_priv_t *ctx,
                                                   va_list ap);
+
+/*!\brief codec option setter function pointer prototype
+ * This function is used to set a codec option using a key (option name) & value
+ * pair.
+ *
+ * \param[in]     ctx              Pointer to this instance's context
+ * \param[in]     name             A string of the option's name (key)
+ * \param[in]     value            A string of the value to be set to
+ *
+ * \retval #AOM_CODEC_OK
+ *     The option is successfully set to the value
+ * \retval #AOM_CODEC_INVALID_PARAM
+ *     The data was not valid.
+ */
+typedef aom_codec_err_t (*aom_codec_set_option_fn_t)(aom_codec_alg_priv_t *ctx,
+                                                     const char *name,
+                                                     const char *value);
 
 /*!\brief control function pointer mapping
  *
@@ -260,7 +278,7 @@ typedef aom_fixed_buf_t *(*aom_codec_get_global_headers_fn_t)(
 typedef aom_image_t *(*aom_codec_get_preview_frame_fn_t)(
     aom_codec_alg_priv_t *ctx);
 
-/*!\brief Decoder algorithm interface interface
+/*!\brief Decoder algorithm interface
  *
  * All decoders \ref MUST expose a variable of this type.
  */
@@ -292,6 +310,7 @@ struct aom_codec_iface {
     aom_codec_get_preview_frame_fn_t
         get_preview; /**< \copydoc ::aom_codec_get_preview_frame_fn_t */
   } enc;
+  aom_codec_set_option_fn_t set_option;
 };
 
 /*!\brief Instance private storage
@@ -351,7 +370,7 @@ const aom_codec_cx_pkt_t *aom_codec_pkt_list_get(
 struct aom_internal_error_info {
   aom_codec_err_t error_code;
   int has_detail;
-  char detail[80];
+  char detail[ARG_ERR_MSG_MAX_LEN];
   int setjmp;  // Boolean: whether 'jmp' is valid.
   jmp_buf jmp;
 };
@@ -364,9 +383,21 @@ struct aom_internal_error_info {
 #endif
 #endif
 
+// Tells the compiler to perform `printf` format string checking if the
+// compiler supports it; see the 'format' attribute in
+// <https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html>.
+#define LIBAOM_FORMAT_PRINTF(string_index, first_to_check)
+#if defined(__has_attribute)
+#if __has_attribute(format)
+#undef LIBAOM_FORMAT_PRINTF
+#define LIBAOM_FORMAT_PRINTF(string_index, first_to_check) \
+  __attribute__((__format__(__printf__, string_index, first_to_check)))
+#endif
+#endif
+
 void aom_internal_error(struct aom_internal_error_info *info,
-                        aom_codec_err_t error, const char *fmt,
-                        ...) CLANG_ANALYZER_NORETURN;
+                        aom_codec_err_t error, const char *fmt, ...)
+    LIBAOM_FORMAT_PRINTF(3, 4) CLANG_ANALYZER_NORETURN;
 
 void aom_merge_corrupted_flag(int *corrupted, int value);
 #ifdef __cplusplus

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include "content/common/content_export.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/network/public/mojom/cross_origin_embedder_policy.mojom-forward.h"
+#include "services/network/public/mojom/early_hints.mojom-forward.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 #include "services/network/public/mojom/url_loader.mojom-shared.h"
 #include "url/origin.h"
@@ -19,6 +20,7 @@ class IsolationInfo;
 
 namespace content {
 
+class NavigationRequest;
 class RenderFrameHostImpl;
 class RenderProcessHost;
 
@@ -47,25 +49,33 @@ class URLLoaderFactoryParamsHelper {
   CreateForFrame(
       RenderFrameHostImpl* frame,
       const url::Origin& origin,
+      const net::IsolationInfo& isolation_info,
       network::mojom::ClientSecurityStatePtr client_security_state,
       mojo::PendingRemote<network::mojom::CrossOriginEmbedderPolicyReporter>
           coep_reporter,
       RenderProcessHost* process,
       network::mojom::TrustTokenRedemptionPolicy trust_token_redemption_policy,
+      net::CookieSettingOverrides cookie_setting_overrides,
       base::StringPiece debug_tag);
 
   // Creates URLLoaderFactoryParams to be used by |isolated_world_origin| hosted
   // within the |frame|.
+  //
+  // TODO(https://crbug.com/1098410): Remove the CreateForIsolatedWorld method
+  // once Chrome Platform Apps are gone.
   static network::mojom::URLLoaderFactoryParamsPtr CreateForIsolatedWorld(
       RenderFrameHostImpl* frame,
       const url::Origin& isolated_world_origin,
       const url::Origin& main_world_origin,
+      const net::IsolationInfo& isolation_info,
       network::mojom::ClientSecurityStatePtr client_security_state,
-      network::mojom::TrustTokenRedemptionPolicy trust_token_redemption_policy);
+      network::mojom::TrustTokenRedemptionPolicy trust_token_redemption_policy,
+      net::CookieSettingOverrides cookie_setting_overrides);
 
   static network::mojom::URLLoaderFactoryParamsPtr CreateForPrefetch(
       RenderFrameHostImpl* frame,
-      network::mojom::ClientSecurityStatePtr client_security_state);
+      network::mojom::ClientSecurityStatePtr client_security_state,
+      net::CookieSettingOverrides cookie_setting_overrides);
 
   // Creates URLLoaderFactoryParams for either fetching the worker script or for
   // fetches initiated from a worker.
@@ -75,14 +85,23 @@ class URLLoaderFactoryParamsHelper {
       const net::IsolationInfo& isolation_info,
       mojo::PendingRemote<network::mojom::CrossOriginEmbedderPolicyReporter>
           coep_reporter,
+      mojo::PendingRemote<network::mojom::URLLoaderNetworkServiceObserver>
+          url_loader_network_observer,
+      mojo::PendingRemote<network::mojom::DevToolsObserver> devtools_observer,
+      network::mojom::ClientSecurityStatePtr client_security_state,
       base::StringPiece debug_tag);
 
-  // TODO(kinuko, lukasza): https://crbug.com/1114822: Remove, once all
-  // URLLoaderFactories vended to a renderer process are associated with a
-  // specific origin and an execution context (e.g. a frame, a service worker or
-  // any other kind of worker).
-  static network::mojom::URLLoaderFactoryParamsPtr CreateForRendererProcess(
-      RenderProcessHost* process);
+  // Creates URLLoaderFactoryParams for Early Hints preload.
+  // When a redirect happens, a URLLoaderFactory created from the
+  // URLLoaderFactoryParams must be destroyed since some parameters are
+  // calculated from speculative state of `navigation_request`.
+  static network::mojom::URLLoaderFactoryParamsPtr CreateForEarlyHintsPreload(
+      RenderProcessHost* process,
+      const url::Origin& tentative_origin,
+      NavigationRequest& navigation_request,
+      const network::mojom::EarlyHints& early_hints,
+      mojo::PendingRemote<network::mojom::CookieAccessObserver>
+          cookie_observer);
 
  private:
   // Only static methods.

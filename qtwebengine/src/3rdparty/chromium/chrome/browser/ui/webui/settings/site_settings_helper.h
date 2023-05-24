@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "base/strings/string16.h"
+#include "base/strings/string_piece.h"
 #include "base/values.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_pattern.h"
@@ -32,7 +32,7 @@ class ExtensionRegistry;
 }
 
 namespace permissions {
-class ChooserContextBase;
+class ObjectPermissionContextBase;
 }
 
 namespace site_settings {
@@ -45,13 +45,9 @@ typedef std::map<std::pair<ContentSettingsPattern, std::string>,
                  OnePatternSettings>
     AllPatternsSettings;
 
-// TODO(https://crbug.com/854329): Once the Site Settings WebUI is capable of
-// displaying the new chooser exception object format, remove the typedefs that
-// are currently used for organizing the chooser exceptions.
-// Maps from a primary URL pattern/source pair to a set of secondary URL
-// patterns/incognito status pair.
-using ChooserExceptionDetails =
-    std::map<std::pair<GURL, std::string>, std::set<std::pair<GURL, bool>>>;
+// A set of <origin, source, incognito> tuple for organizing granted permission
+// objects that belong to the same device.
+using ChooserExceptionDetails = std::set<std::tuple<GURL, std::string, bool>>;
 
 constexpr char kChooserType[] = "chooserType";
 constexpr char kDisplayName[] = "displayName";
@@ -59,6 +55,7 @@ constexpr char kEmbeddingOrigin[] = "embeddingOrigin";
 constexpr char kIncognito[] = "incognito";
 constexpr char kObject[] = "object";
 constexpr char kDisabled[] = "disabled";
+constexpr char kIsolatedWebAppName[] = "isolatedWebAppName";
 constexpr char kOrigin[] = "origin";
 constexpr char kOriginForFavicon[] = "originForFavicon";
 constexpr char kRecentPermissions[] = "recentPermissions";
@@ -67,16 +64,26 @@ constexpr char kSites[] = "sites";
 constexpr char kPolicyIndicator[] = "indicator";
 constexpr char kSource[] = "source";
 constexpr char kType[] = "type";
+constexpr char kIsDirectory[] = "isDirectory";
 constexpr char kIsEmbargoed[] = "isEmbargoed";
-constexpr char kIsDiscarded[] = "isDiscarded";
+constexpr char kIsWritable[] = "isWritable";
+constexpr char kDirectoryReadGrants[] = "directoryReadGrants";
+constexpr char kDirectoryWriteGrants[] = "directoryWriteGrants";
+constexpr char kFilePath[] = "filePath";
+constexpr char kFileReadGrants[] = "fileReadGrants";
+constexpr char kFileWriteGrants[] = "fileWriteGrants";
+constexpr char kNotificationInfoString[] = "notificationInfoString";
+constexpr char kPermissions[] = "permissions";
+constexpr char kExtensionName[] = "extensionName";
+constexpr char kExtensionNameWithId[] = "extensionNameWithId";
 
 enum class SiteSettingSource {
   kAllowlist,
   kAdsFilterBlocklist,
   kDefault,
-  kDrmDisabled,
   kEmbargo,
   kExtension,
+  kHostedApp,
   kInsecureOrigin,
   kKillSwitch,
   kPolicy,
@@ -84,60 +91,48 @@ enum class SiteSettingSource {
   kNumSources,
 };
 
-// Possible policy indicators that can be shown in settings.
-// Must be kept in sync with the CrPolicyIndicatorType enum located in
-// src/ui/webui/resources/cr_elements/policy/cr_policy_indicator_behavior.js
-enum class PolicyIndicatorType {
-  kDevicePolicy,
-  kExtension,
-  kNone,
-  kOwner,
-  kPrimaryUser,
-  kRecommended,
-  kUserPolicy,
-  kParent,
-  kChildRestriction,
-  kNumIndicators,
-};
-
-// Represents the managed state for a single settings control.
-struct ManagedState {
-  bool disabled = false;
-  PolicyIndicatorType indicator = PolicyIndicatorType::kNone;
-};
-
 // Returns whether a group name has been registered for the given type.
 bool HasRegisteredGroupName(ContentSettingsType type);
 
 // Converts a ContentSettingsType to/from its group name identifier.
-ContentSettingsType ContentSettingsTypeFromGroupName(const std::string& name);
-std::string ContentSettingsTypeToGroupName(ContentSettingsType type);
+ContentSettingsType ContentSettingsTypeFromGroupName(base::StringPiece name);
+base::StringPiece ContentSettingsTypeToGroupName(ContentSettingsType type);
 
-// Converts a ListValue of group names to a list of ContentSettingsTypes
-std::vector<ContentSettingsType> ContentSettingsTypesFromGroupNames(
-    const base::Value::ConstListView types);
+// Returns a list of all content settings types that correspond to permissions
+// and which should be displayed in chrome://settings, for any situation not
+// tied to particular a origin.
+const std::vector<ContentSettingsType>& GetVisiblePermissionCategories();
 
 // Converts a SiteSettingSource to its string identifier.
 std::string SiteSettingSourceToString(const SiteSettingSource source);
 
-// Converts a ManagedState to a base::Value suitable for sending to JavaScript.
-base::Value GetValueForManagedState(const ManagedState& state);
+// Helper function to construct a dictionary for a File System exception.
+base::Value::Dict GetFileSystemExceptionForPage(
+    ContentSettingsType content_type,
+    Profile* profile,
+    const std::string& origin,
+    const base::FilePath& file_path,
+    const ContentSetting& setting,
+    const std::string& provider_name,
+    bool incognito,
+    bool is_embargoed = false);
 
 // Helper function to construct a dictionary for an exception.
-std::unique_ptr<base::DictionaryValue> GetExceptionForPage(
+base::Value::Dict GetExceptionForPage(
+    ContentSettingsType content_type,
+    Profile* profile,
     const ContentSettingsPattern& pattern,
     const ContentSettingsPattern& secondary_pattern,
     const std::string& display_name,
     const ContentSetting& setting,
     const std::string& provider_name,
     bool incognito,
-    bool is_embargoed = false,
-    bool is_discarded = false);
+    bool is_embargoed = false);
 
 // Helper function to construct a dictionary for a hosted app exception.
 void AddExceptionForHostedApp(const std::string& url_pattern,
                               const extensions::Extension& app,
-                              base::ListValue* exceptions);
+                              base::Value::List* exceptions);
 
 // Fills in |exceptions| with Values for the given |type| from |profile|.
 void GetExceptionsForContentType(
@@ -146,33 +141,36 @@ void GetExceptionsForContentType(
     const extensions::ExtensionRegistry* extension_registry,
     content::WebUI* web_ui,
     bool incognito,
-    base::ListValue* exceptions);
+    base::Value::List* exceptions);
 
 // Fills in object saying what the current settings is for the category (such as
 // enabled or blocked) and the source of that setting (such preference, policy,
 // or extension).
 void GetContentCategorySetting(const HostContentSettingsMap* map,
                                ContentSettingsType content_type,
-                               base::DictionaryValue* object);
+                               base::Value::Dict* object);
 
 // Retrieves the current setting for a given origin, category pair, the source
 // of that setting, and its display name, which will be different if it's an
 // extension. Note this is similar to GetContentCategorySetting() above but this
 // goes through the PermissionManager (preferred, see https://crbug.com/739241).
-ContentSetting GetContentSettingForOrigin(
-    Profile* profile,
-    const HostContentSettingsMap* map,
-    const GURL& origin,
-    ContentSettingsType content_type,
-    std::string* source_string,
-    const extensions::ExtensionRegistry* extension_registry,
-    std::string* display_name);
+ContentSetting GetContentSettingForOrigin(Profile* profile,
+                                          const HostContentSettingsMap* map,
+                                          const GURL& origin,
+                                          ContentSettingsType content_type,
+                                          std::string* source_string,
+                                          std::string* display_name);
+
+// Returns URLs with granted entries from the File System Access API.
+void GetFileSystemGrantedEntries(std::vector<base::Value::Dict>* exceptions,
+                                 Profile* profile,
+                                 bool incognito);
 
 // Returns exceptions constructed from the policy-set allowed URLs
 // for the content settings |type| mic or camera.
 void GetPolicyAllowedUrls(
     ContentSettingsType type,
-    std::vector<std::unique_ptr<base::DictionaryValue>>* exceptions,
+    std::vector<base::Value::Dict>* exceptions,
     const extensions::ExtensionRegistry* extension_registry,
     content::WebUI* web_ui,
     bool incognito);
@@ -186,7 +184,7 @@ std::vector<ContentSettingPatternSource> GetSiteExceptionsForContentType(
 // for a given content settings type and is declared early so that it can used
 // by functions below.
 struct ChooserTypeNameEntry {
-  permissions::ChooserContextBase* (*get_context)(Profile*);
+  permissions::ObjectPermissionContextBase* (*get_context)(Profile*);
   const char* name;
 };
 
@@ -195,7 +193,7 @@ struct ContentSettingsTypeNameEntry {
   const char* name;
 };
 
-const ChooserTypeNameEntry* ChooserTypeFromGroupName(const std::string& name);
+const ChooserTypeNameEntry* ChooserTypeFromGroupName(base::StringPiece name);
 
 // Creates a chooser exception object for the object with |display_name|. The
 // object contains the following properties
@@ -205,23 +203,26 @@ const ChooserTypeNameEntry* ChooserTypeFromGroupName(const std::string& name);
 // * sites: Array<SiteException>
 // The structure of the SiteException objects is the same as the objects
 // returned by GetExceptionForPage().
-base::Value CreateChooserExceptionObject(
-    const base::string16& display_name,
+base::Value::Dict CreateChooserExceptionObject(
+    const std::u16string& display_name,
     const base::Value& object,
     const std::string& chooser_type,
-    const ChooserExceptionDetails& chooser_exception_details);
+    const ChooserExceptionDetails& chooser_exception_details,
+    Profile* profile);
 
 // Returns an array of chooser exception objects.
-base::Value GetChooserExceptionListFromProfile(
+base::Value::List GetChooserExceptionListFromProfile(
     Profile* profile,
     const ChooserTypeNameEntry& chooser_type);
 
-// Concerts a PolicyIndicatorType to its string identifier.
-std::string PolicyIndicatorTypeToString(const PolicyIndicatorType type);
+// Returns the short name of a web app in case of an Isolated Web App.
+absl::optional<std::string> GetIsolatedWebAppName(Profile* profile,
+                                                  GURL origin);
 
-// Returns the appropriate indicator for the source of a preference.
-PolicyIndicatorType GetPolicyIndicatorFromPref(
-    const PrefService::Preference* pref);
+// Returns the short name of a browser extension, or nullopt if `origin` is not
+// an extension URL.
+absl::optional<std::string> GetExtensionDisplayName(Profile* profile,
+                                                    GURL origin);
 
 }  // namespace site_settings
 

@@ -1,17 +1,18 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ppapi/shared_impl/tracked_callback.h"
 
-#include "base/bind.h"
+#include <memory>
+
 #include "base/check.h"
 #include "base/compiler_specific.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/notreached.h"
-#include "base/single_thread_task_runner.h"
 #include "base/synchronization/lock.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "ppapi/c/pp_completion_callback.h"
 #include "ppapi/c/pp_errors.h"
 #include "ppapi/c/ppb_message_loop.h"
@@ -34,7 +35,7 @@ bool IsMainThread() {
 int32_t RunCompletionTask(TrackedCallback::CompletionTask completion_task,
                           int32_t result) {
   ProxyLock::AssertAcquired();
-  int32_t task_result = completion_task.Run(result);
+  int32_t task_result = std::move(completion_task).Run(result);
   if (result != PP_ERROR_ABORTED)
     result = task_result;
   return result;
@@ -74,7 +75,8 @@ TrackedCallback::TrackedCallback(Resource* resource,
     if (is_blocking()) {
       // This is a blocking completion callback, so we will need a condition
       // variable for blocking & signalling the calling thread.
-      operation_completed_condvar_.reset(new base::ConditionVariable(&lock_));
+      operation_completed_condvar_ =
+          std::make_unique<base::ConditionVariable>(&lock_);
     } else {
       // It's a non-blocking callback, so we should have a MessageLoopResource
       // to dispatch to. Note that we don't error check here, though. Later,
@@ -132,8 +134,8 @@ void TrackedCallback::Run(int32_t result) {
     // the completion callback.
     MarkAsCompletedWithLock();
 
-    if (!completion_task_.is_null())
-      result = RunCompletionTask(completion_task_, result);
+    if (completion_task_)
+      result = RunCompletionTask(std::move(completion_task_), result);
 
     {
       base::AutoUnlock release(lock_);
@@ -148,11 +150,10 @@ void TrackedCallback::PostRun(int32_t result) {
   PostRunWithLock(result);
 }
 
-void TrackedCallback::set_completion_task(
-    const CompletionTask& completion_task) {
+void TrackedCallback::set_completion_task(CompletionTask completion_task) {
   base::AutoLock acquire(lock_);
   DCHECK(completion_task_.is_null());
-  completion_task_ = completion_task;
+  completion_task_ = std::move(completion_task);
 }
 
 // static
@@ -207,10 +208,9 @@ int32_t TrackedCallback::BlockUntilComplete() {
     ProxyLock::Acquire();
   }
 
-  if (!completion_task_.is_null()) {
-    result_for_blocked_callback_ =
-        RunCompletionTask(completion_task_, result_for_blocked_callback_);
-    completion_task_.Reset();
+  if (completion_task_) {
+    result_for_blocked_callback_ = RunCompletionTask(
+        std::move(completion_task_), result_for_blocked_callback_);
   }
   return result_for_blocked_callback_;
 }
@@ -266,7 +266,7 @@ void TrackedCallback::PostRunWithLock(int32_t result) {
       // classes protect against having a null target_loop_ otherwise).
       DCHECK(IsMainThread());
       DCHECK(PpapiGlobals::Get()->IsHostGlobals());
-      base::ThreadTaskRunnerHandle::Get()->PostTask(
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
           FROM_HERE, std::move(callback_closure));
     }
   }

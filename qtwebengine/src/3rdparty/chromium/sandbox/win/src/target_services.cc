@@ -1,8 +1,11 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "sandbox/win/src/target_services.h"
+
+#include <windows.h>
+#include <winsock2.h>
 
 #include <new>
 
@@ -10,7 +13,8 @@
 #include <stdint.h>
 
 #include "base/logging.h"
-#include "base/win/windows_version.h"
+#include "base/win/access_token.h"
+#include "sandbox/win/src/acl.h"
 #include "sandbox/win/src/crosscall_client.h"
 #include "sandbox/win/src/handle_closer_agent.h"
 #include "sandbox/win/src/heap_helper.h"
@@ -108,6 +112,22 @@ bool WarmupWindowsLocales() {
   return (0 != ::GetUserDefaultLocaleName(localeName, LOCALE_NAME_MAX_LENGTH));
 }
 
+bool SetProcessIntegrityLevel(IntegrityLevel integrity_level) {
+  absl::optional<DWORD> rid = GetIntegrityLevelRid(integrity_level);
+  if (!rid) {
+    // No mandatory level specified, we don't change it.
+    return true;
+  }
+
+  absl::optional<base::win::AccessToken> token =
+      base::win::AccessToken::FromCurrentProcess(/*impersonation=*/false,
+                                                 TOKEN_ADJUST_DEFAULT);
+  if (!token) {
+    return false;
+  }
+  return token->SetIntegrityLevel(*rid);
+}
+
 // Used as storage for g_target_services, because other allocation facilities
 // are not available early. We can't use a regular function static because on
 // VS2015, because the CRT tries to acquire a lock to guard initialization, but
@@ -117,9 +137,8 @@ TargetServicesBase* g_target_services = nullptr;
 
 }  // namespace
 
-SANDBOX_INTERCEPT IntegrityLevel g_shared_delayed_integrity_level =
-    INTEGRITY_LEVEL_LAST;
-SANDBOX_INTERCEPT MitigationFlags g_shared_delayed_mitigations = 0;
+SANDBOX_INTERCEPT IntegrityLevel g_shared_delayed_integrity_level;
+SANDBOX_INTERCEPT MitigationFlags g_shared_delayed_mitigations;
 
 TargetServicesBase::TargetServicesBase() {}
 
@@ -130,9 +149,9 @@ ResultCode TargetServicesBase::Init() {
 
 // Failure here is a breach of security so the process is terminated.
 void TargetServicesBase::LowerToken() {
-  if (ERROR_SUCCESS !=
-      SetProcessIntegrityLevel(g_shared_delayed_integrity_level))
+  if (!SetProcessIntegrityLevel(g_shared_delayed_integrity_level)) {
     ::TerminateProcess(::GetCurrentProcess(), SBOX_FATAL_INTEGRITY);
+  }
   process_state_.SetRevertedToSelf();
   // If the client code as called RegOpenKey, advapi32.dll has cached some
   // handles. The following code gets rid of them.
@@ -150,8 +169,9 @@ void TargetServicesBase::LowerToken() {
   process_state_.SetCsrssConnected(is_csrss_connected);
   // Enabling mitigations must happen last otherwise handle closing breaks
   if (g_shared_delayed_mitigations &&
-      !ApplyProcessMitigationsToCurrentProcess(g_shared_delayed_mitigations))
+      !LockDownSecurityMitigations(g_shared_delayed_mitigations)) {
     ::TerminateProcess(::GetCurrentProcess(), SBOX_FATAL_MITIGATION);
+  }
 }
 
 ProcessState* TargetServicesBase::GetState() {

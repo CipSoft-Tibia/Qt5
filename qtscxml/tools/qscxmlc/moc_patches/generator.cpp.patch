@@ -1,0 +1,252 @@
+--- .upstream/generator.cpp	2023-08-11 10:37:23.940392525 +0200
++++ generator.cpp	2023-08-21 11:25:19.407307372 +0200
+@@ -4,7 +4,9 @@
+ // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+ 
+ #include "generator.h"
++#if 0 // -- QtScxml
+ #include "cbordevice.h"
++#endif // -- QtScxml
+ #include "outputrevision.h"
+ #include "utils.h"
+ #include <QtCore/qmetatype.h>
+@@ -23,6 +25,29 @@
+ 
+ QT_BEGIN_NAMESPACE
+ 
++// -- QtScxml
++void fprintf(QIODevice &out, const char *fmt, ...)
++{
++    va_list argp;
++    va_start(argp, fmt);
++    const int bufSize = 4096;
++    char buf[bufSize];
++    vsnprintf(buf, bufSize, fmt, argp);
++    va_end(argp);
++    out.write(buf);
++}
++
++void fputc(char c, QIODevice &out)
++{
++    out.write(&c, 1);
++}
++
++void fputs(const char *s, QIODevice &out)
++{
++    out.write(s);
++}
++// -- QtScxml
++
+ uint nameToBuiltinType(const QByteArray &name)
+ {
+     if (name.isEmpty())
+@@ -55,20 +80,23 @@
+     return nullptr;
+  }
+ 
+- Generator::Generator(ClassDef *classDef, const QList<QByteArray> &metaTypes,
+-                      const QHash<QByteArray, QByteArray> &knownQObjectClasses,
+-                      const QHash<QByteArray, QByteArray> &knownGadgets, FILE *outfile,
+-                      bool requireCompleteTypes)
+-     : out(outfile),
+-       cdef(classDef),
+-       metaTypes(metaTypes),
+-       knownQObjectClasses(knownQObjectClasses),
+-       knownGadgets(knownGadgets),
+-       requireCompleteTypes(requireCompleteTypes)
+- {
+-     if (cdef->superclassList.size())
+-         purestSuperClass = cdef->superclassList.constFirst().first;
++// -- QtScxml
++Generator::Generator(ClassDef *classDef, const QList<QByteArray> &metaTypes,
++                     const QHash<QByteArray, QByteArray> &knownQObjectClasses,
++                     const QHash<QByteArray, QByteArray> &knownGadgets,
++                     QIODevice &outfile,
++                     bool requireCompleteTypes)
++    : out(outfile),
++      cdef(classDef),
++      metaTypes(metaTypes),
++      knownQObjectClasses(knownQObjectClasses),
++      knownGadgets(knownGadgets),
++      requireCompleteTypes(requireCompleteTypes)
++{
++    if (cdef->superclassList.size())
++        purestSuperClass = cdef->superclassList.constFirst().first;
+ }
++// -- QtScxml
+ 
+ static inline qsizetype lengthOfEscapeSequence(const QByteArray &s, qsizetype i)
+ {
+@@ -108,7 +136,7 @@
+ 
+ // Prints \a s to \a out, breaking it into lines of at most ColumnWidth. The
+ // opening and closing quotes are NOT included (it's up to the caller).
+-static void printStringWithIndentation(FILE *out, const QByteArray &s)
++static void printStringWithIndentation(QIODevice &out, const QByteArray &s) // -- QtScxml
+ {
+     static constexpr int ColumnWidth = 72;
+     const qsizetype len = s.size();
+@@ -301,7 +329,9 @@
+     fprintf(out, "    uint offsetsAndSizes[%d];\n", int(strings.size() * 2));
+     for (int i = 0; i < strings.size(); ++i) {
+         int thisLength = lengthOfEscapedString(strings.at(i)) + 1;
++// -- QtScxml
+         fprintf(out, "    char stringdata%d[%d];\n", i, thisLength);
++// -- QtScxml
+     }
+     fprintf(out, "};\n");
+ 
+@@ -332,10 +362,19 @@
+ //
+ // Build stringdata arrays
+ //
+-    for (const QByteArray &s : std::as_const(strings)) {
+-        fputc(',', out);
+-        printStringWithIndentation(out, s);
++// -- QtScxml
++    for (qsizetype i = 0, end = strings.size(); i < end; ++i) {
++        if (i == 0)
++            fprintf(out, ",");
++        fprintf(out, "\n    {");
++        const QByteArray s = strings.at(i);
++        const qsizetype len = s.size();
++        for (qsizetype charPos = 0; charPos < len; ++charPos)
++            fprintf(out, "char(0x%.2x),", static_cast<quint8>(s.at(charPos)));
++        const bool isLast = (i == end - 1);
++        fprintf(out, "0%s // %d: %s", isLast ? "}" : "},", i, s.constData());
+     }
++// -- QtScxml
+ 
+ // Terminate stringdata struct
+     fprintf(out, "\n};\n");
+@@ -682,7 +721,9 @@
+ //
+ // Generate plugin meta data
+ //
++#if 0 // -- QtScxml
+     generatePluginMetaData();
++#endif // -- QtScxml
+ 
+ //
+ // Generate function to make sure the non-class signals exist in the parent classes
+@@ -1134,6 +1175,13 @@
+             const FunctionDef &f = methodList.at(methodindex);
+             Q_ASSERT(!f.normalizedType.isEmpty());
+             fprintf(out, "        case %d: ", methodindex);
++            // -- QtScxml
++            if (f.implementation) {
++                fprintf(out, f.implementation, "_o", methodindex);
++                fprintf(out, " break;\n");
++                continue;
++            }
++            // -- QtScxml
+             if (f.normalizedType != "void")
+                 fprintf(out, "{ %s _r = ", noRef(f.normalizedType).constData());
+             fprintf(out, "_t->");
+@@ -1212,6 +1260,10 @@
+             const FunctionDef &f = cdef->signalList.at(methodindex);
+             if (f.wasCloned || !f.inPrivateClass.isEmpty() || f.isStatic)
+                 continue;
++            // -- QtScxml
++            if (f.mangledName.isEmpty())
++                continue;
++            // -- QtScxml
+             anythingUsed = true;
+             fprintf(out, "        {\n");
+             fprintf(out, "            using _t = %s (%s::*)(",f.type.rawName.constData() , cdef->classname.constData());
+@@ -1234,7 +1286,7 @@
+             else
+                 fprintf(out, ");\n");
+             fprintf(out, "            if (_t _q_method = &%s::%s; *reinterpret_cast<_t *>(_a[1]) == _q_method) {\n",
+-                    cdef->classname.constData(), f.name.constData());
++                    cdef->classname.constData(), f.mangledName.constData()); // -- QtScxml
+             fprintf(out, "                *result = %d;\n", methodindex);
+             fprintf(out, "                return;\n");
+             fprintf(out, "            }\n        }\n");
+@@ -1329,8 +1381,11 @@
+                     fprintf(out, "        case %d: *reinterpret_cast< %s*>(_v) = %s%s().value(); break;\n",
+                             propindex, p.type.constData(), prefix.constData(), p.bind.constData());
+                 else if (!p.read.isEmpty())
+-                    fprintf(out, "        case %d: *reinterpret_cast< %s*>(_v) = %s%s(); break;\n",
+-                            propindex, p.type.constData(), prefix.constData(), p.read.constData());
++                    // -- QtScxml
++                        fprintf(out, "        case %d: *reinterpret_cast< %s*>(_v) = %s%s%s; break;\n",
++                                propindex, p.type.constData(), prefix.constData(), p.read.constData(),
++                                p.read.endsWith(')') ? "" : "()");
++                    // -- QtScxml
+                 else
+                     fprintf(out, "        case %d: *reinterpret_cast< %s*>(_v) = %s%s; break;\n",
+                             propindex, p.type.constData(), prefix.constData(), p.member.constData());
+@@ -1462,6 +1517,10 @@
+ {
+     if (def->wasCloned || def->isAbstract)
+         return;
++// -- QtScxml
++    if (def->implementation)
++        return;
++// -- QtScxml
+     fprintf(out, "\n// SIGNAL %d\n%s %s::%s(",
+             index, def->type.name.constData(), cdef->qualified.constData(), def->name.constData());
+ 
+@@ -1510,10 +1569,8 @@
+     if (def->normalizedType == "void") {
+         fprintf(out, "nullptr");
+     } else {
+-        if (def->returnTypeIsVolatile)
+-             fprintf(out, "const_cast<void*>(reinterpret_cast<const volatile void*>(std::addressof(_t0)))");
+-        else
+-             fprintf(out, "const_cast<void*>(reinterpret_cast<const void*>(std::addressof(_t0)))");
++        // -- QtScxml removed unused returnTypeIsVolatile
++        fprintf(out, "const_cast<void*>(reinterpret_cast<const void*>(std::addressof(_t0)))");
+     }
+     int i;
+     for (i = 1; i < offset; ++i)
+@@ -1528,6 +1585,36 @@
+     fprintf(out, "}\n");
+ }
+ 
++// -- QtScxml
++void Generator::generateAccessorDefs()
++{
++    for (int propindex = 0; propindex < cdef->propertyList.size(); ++propindex) {
++        const PropertyDef &p = cdef->propertyList.at(propindex);
++        if (p.read.isEmpty() || p.mangledName.isEmpty())
++            continue;
++
++        fprintf(out, "bool %s::%s() const\n{\n    return %s;\n}\n\n", cdef->classname.constData(),
++                p.mangledName.constData(), p.read.constData());
++    }
++}
++
++void Generator::generateSignalDefs()
++{
++    for (int methodindex = 0; methodindex < cdef->signalList.size(); ++methodindex) {
++        const FunctionDef &f = cdef->signalList.at(methodindex);
++        if (!f.implementation || f.mangledName.isEmpty())
++            continue;
++
++        fprintf(out, "void %s::%s(bool _t1)\n{\n", cdef->classname.constData(),
++                f.mangledName.constData());
++        fprintf(out, "    void *_a[] = { nullptr, "
++                     "const_cast<void*>(reinterpret_cast<const void*>(&_t1)) };\n    ");
++        fprintf(out, f.implementation, "this", methodindex);
++        fprintf(out, "\n}\n\n");
++    }
++}
++
++#if 0
+ static CborError jsonValueToCbor(CborEncoder *parent, const QJsonValue &v);
+ static CborError jsonObjectToCbor(CborEncoder *parent, const QJsonObject &o)
+ {
+@@ -1663,7 +1750,11 @@
+ 
+ #define CBOR_ENCODER_WRITER_CONTROL     1
+ #define CBOR_ENCODER_WRITE_FUNCTION     CborDevice::callback
++#endif
++// -- QtScxml
+ 
+ QT_END_NAMESPACE
+ 
++#if 0 // -- QtScxml
+ #include "cborencoder.c"
++#endif // -- QtScxml

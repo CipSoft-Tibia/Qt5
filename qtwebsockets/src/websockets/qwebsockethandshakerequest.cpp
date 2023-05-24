@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebSockets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwebsockethandshakerequest_p.h"
 #include "qwebsocketprotocol.h"
@@ -59,7 +23,7 @@ QWebSocketHandshakeRequest::QWebSocketHandshakeRequest(int port, bool isSecure) 
     m_port(port),
     m_isSecure(isSecure),
     m_isValid(false),
-    m_headers(),
+    m_parser(),
     m_versions(),
     m_key(),
     m_origin(),
@@ -83,7 +47,7 @@ QWebSocketHandshakeRequest::~QWebSocketHandshakeRequest()
 void QWebSocketHandshakeRequest::clear()
 {
     m_isValid = false;
-    m_headers.clear();
+    m_parser.clear();
     m_versions.clear();
     m_key.clear();
     m_origin.clear();
@@ -119,9 +83,17 @@ bool QWebSocketHandshakeRequest::isValid() const
 /*!
     \internal
  */
-QMap<QString, QString> QWebSocketHandshakeRequest::headers() const
+QList<QPair<QByteArray, QByteArray>> QWebSocketHandshakeRequest::headers() const
 {
-    return m_headers;
+    return m_parser.headers();
+}
+
+/*!
+    \internal
+ */
+bool QWebSocketHandshakeRequest::hasHeader(const QByteArray &name) const
+{
+    return !m_parser.firstHeaderField(name).isEmpty();
 }
 
 /*!
@@ -189,49 +161,50 @@ QUrl QWebSocketHandshakeRequest::requestUrl() const
 }
 
 /*!
-    Reads a line of text from the given textstream (terminated by CR/LF).
+    Reads a line of text from the given QByteArrayView (terminated by CR/LF),
+    and removes the read bytes from the QByteArrayView.
     If an empty line was detected, an empty string is returned.
     When an error occurs, a null string is returned.
     \internal
  */
-static QString readLine(QTextStream &stream, int maxHeaderLineLength)
+static QByteArrayView readLine(QByteArrayView &header, int maxHeaderLineLength)
 {
-    QString line;
-    char c;
-    while (!stream.atEnd()) {
-        stream >> c;
-        if (stream.status() != QTextStream::Ok)
-            return QString();
-        if (c == char('\r')) {
-            //eat the \n character
-            stream >> c;
-            line.append(QStringLiteral(""));
-            break;
-        } else {
-            line.append(QChar::fromLatin1(c));
-            if (line.length() > maxHeaderLineLength)
-                return QString();
-        }
+    qsizetype length = qMin(maxHeaderLineLength, header.size());
+    QByteArrayView line = header.first(length);
+    qsizetype end = line.indexOf('\n');
+    if (end != -1) {
+        line = line.first(end);
+        if (line.endsWith('\r'))
+            line.chop(1);
+        header = header.sliced(end + 1);
+        return line;
     }
-    return line;
+    return QByteArrayView();
 }
 
 /*!
     \internal
  */
-void QWebSocketHandshakeRequest::readHandshake(QTextStream &textStream, int maxHeaderLineLength,
-                                               int maxHeaders)
+static void appendCommmaSeparatedLineToList(QStringList &list, QByteArrayView line)
+{
+    for (auto &c : QLatin1String(line).tokenize(QLatin1String(","), Qt::SkipEmptyParts))
+        list << c.trimmed().toString();
+}
+
+/*!
+    \internal
+ */
+void QWebSocketHandshakeRequest::readHandshake(QByteArrayView header, int maxHeaderLineLength)
 {
     clear();
-    if (Q_UNLIKELY(textStream.status() != QTextStream::Ok))
-        return;
-    const QString requestLine = readLine(textStream, maxHeaderLineLength);
+    m_parser.setMaxHeaderFieldSize(maxHeaderLineLength);
+    QString requestLine = QString::fromLatin1(readLine(header, maxHeaderLineLength));
     if (requestLine.isNull()) {
         clear();
         return;
     }
-    const QStringList tokens = requestLine.split(' ', Qt::SkipEmptyParts);
-    if (Q_UNLIKELY(tokens.length() < 3)) {
+    const QStringList tokens = requestLine.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (Q_UNLIKELY(tokens.size() < 3)) {
         clear();
         return;
     }
@@ -239,53 +212,23 @@ void QWebSocketHandshakeRequest::readHandshake(QTextStream &textStream, int maxH
     const QString resourceName(tokens.at(1));
     const QString httpProtocol(tokens.at(2));
     bool conversionOk = false;
-    const float httpVersion = httpProtocol.midRef(5).toFloat(&conversionOk);
+    const float httpVersion = QStringView(httpProtocol).mid(5).toFloat(&conversionOk);
 
     if (Q_UNLIKELY(!conversionOk)) {
         clear();
         return;
     }
-    QString headerLine = readLine(textStream, maxHeaderLineLength);
-    if (headerLine.isNull()) {
+
+    bool parsed = m_parser.parseHeaders(header);
+    if (!parsed) {
         clear();
         return;
     }
-    m_headers.clear();
-    // TODO: this should really use the existing code from QHttpNetworkReplyPrivate::parseHeader
-    auto lastHeader = m_headers.end();
-    while (!headerLine.isEmpty()) {
-        if (headerLine.startsWith(QLatin1Char(' ')) || headerLine.startsWith(QLatin1Char('\t'))) {
-            // continuation line -- add this to the last header field
-            if (Q_UNLIKELY(lastHeader == m_headers.end())) {
-                clear();
-                return;
-            }
-            lastHeader.value().append(QLatin1Char(' '));
-            lastHeader.value().append(headerLine.trimmed());
-        } else {
-            int colonPos = headerLine.indexOf(QLatin1Char(':'));
-            if (Q_UNLIKELY(colonPos <= 0)) {
-               clear();
-               return;
-            }
-            lastHeader = m_headers.insert(headerLine.left(colonPos).trimmed().toLower(),
-                                          headerLine.mid(colonPos + 1).trimmed());
-        }
-        if (m_headers.size() > maxHeaders) {
-            clear();
-            return;
-        }
-        headerLine = readLine(textStream, maxHeaderLineLength);
-        if (headerLine.isNull()) {
-            clear();
-            return;
-        }
-    }
 
     m_requestUrl = QUrl::fromEncoded(resourceName.toLatin1());
-    QString host = m_headers.value(QStringLiteral("host"), QString());
+    QString host = QString::fromLatin1(m_parser.firstHeaderField("host"));
     if (m_requestUrl.isRelative()) {
-        // see http://tools.ietf.org/html/rfc6455#page-17
+        // see https://tools.ietf.org/html/rfc6455#page-17
         // No. 4 item in "The requirements for this handshake"
         m_requestUrl.setAuthority(host);
         if (!m_requestUrl.userName().isNull()) { // If the username is null, the password must be too.
@@ -299,59 +242,45 @@ void QWebSocketHandshakeRequest::readHandshake(QTextStream &textStream, int maxH
         m_requestUrl.setScheme(scheme);
     }
 
-    const QStringList versionLines = m_headers.values(QStringLiteral("sec-websocket-version"));
-    for (QStringList::const_iterator v = versionLines.begin(); v != versionLines.end(); ++v) {
-        const QStringList versions = (*v).split(QStringLiteral(","), Qt::SkipEmptyParts);
-        for (QStringList::const_iterator i = versions.begin(); i != versions.end(); ++i) {
+    const QList<QByteArray> versionLines = m_parser.headerFieldValues("sec-websocket-version");
+    for (auto v = versionLines.begin(); v != versionLines.end(); ++v) {
+        for (const auto &version :
+             QString::fromLatin1(*v).tokenize(QStringLiteral(","), Qt::SkipEmptyParts)) {
             bool ok = false;
-            (void)(*i).toUInt(&ok);
+            (void)version.toUInt(&ok);
             if (!ok) {
                 clear();
                 return;
             }
             const QWebSocketProtocol::Version ver =
-                    QWebSocketProtocol::versionFromString((*i).trimmed());
+                    QWebSocketProtocol::versionFromString(version.trimmed());
             m_versions << ver;
         }
     }
     //sort in descending order
     std::sort(m_versions.begin(), m_versions.end(), std::greater<QWebSocketProtocol::Version>());
-    m_key = m_headers.value(QStringLiteral("sec-websocket-key"), QString());
-    //must contain "Upgrade", case-insensitive
-    const QString upgrade = m_headers.value(QStringLiteral("upgrade"), QString());
-    //must be equal to "websocket", case-insensitive
-    const QString connection = m_headers.value(QStringLiteral("connection"), QString());
-    const QStringList connectionLine = connection.split(QStringLiteral(","), Qt::SkipEmptyParts);
+
+    m_key = QString::fromLatin1(m_parser.firstHeaderField("sec-websocket-key"));
+    const QByteArray upgrade = m_parser.firstHeaderField("upgrade");
     QStringList connectionValues;
-    for (QStringList::const_iterator c = connectionLine.begin(); c != connectionLine.end(); ++c)
-        connectionValues << (*c).trimmed();
+    appendCommmaSeparatedLineToList(connectionValues, m_parser.firstHeaderField("connection"));
 
     //optional headers
-    m_origin = m_headers.value(QStringLiteral("origin"), QString());
-    const QStringList protocolLines = m_headers.values(QStringLiteral("sec-websocket-protocol"));
-    for (const QString& pl : protocolLines) {
-        const QStringList protocols = pl.split(QStringLiteral(","), Qt::SkipEmptyParts);
-        for (const QString& p : protocols)
-            m_protocols << p.trimmed();
-    }
+    m_origin = QString::fromLatin1(m_parser.firstHeaderField("origin"));
+    const QList<QByteArray> protocolLines = m_parser.headerFieldValues("sec-websocket-protocol");
+    for (const QByteArray &pl : protocolLines)
+        appendCommmaSeparatedLineToList(m_protocols, pl);
 
-    const QStringList extensionLines = m_headers.values(QStringLiteral("sec-websocket-extensions"));
-    for (const QString& el : extensionLines) {
-        const QStringList extensions = el.split(QStringLiteral(","), Qt::SkipEmptyParts);
-        for (const QString& e : extensions)
-            m_extensions << e.trimmed();
-    }
+    const QList<QByteArray> extensionLines = m_parser.headerFieldValues("sec-websocket-extensions");
+    for (const QByteArray &el : extensionLines)
+        appendCommmaSeparatedLineToList(m_extensions, el);
 
     //TODO: authentication field
 
-    m_isValid = !(m_requestUrl.host().isEmpty() ||
-                  resourceName.isEmpty() ||
-                  m_versions.isEmpty() ||
-                  m_key.isEmpty() ||
-                  (verb != QStringLiteral("GET")) ||
-                  (!conversionOk || (httpVersion < 1.1f)) ||
-                  (upgrade.toLower() != QStringLiteral("websocket")) ||
-                  (!connectionValues.contains(QStringLiteral("upgrade"), Qt::CaseInsensitive)));
+    m_isValid = !(m_requestUrl.host().isEmpty() || resourceName.isEmpty() || m_versions.isEmpty()
+                  || m_key.isEmpty() || verb != QStringLiteral("GET") || !conversionOk
+                  || httpVersion < 1.1f || upgrade.compare("websocket", Qt::CaseInsensitive) != 0
+                  || !connectionValues.contains(QStringLiteral("upgrade"), Qt::CaseInsensitive));
     if (Q_UNLIKELY(!m_isValid))
         clear();
 }

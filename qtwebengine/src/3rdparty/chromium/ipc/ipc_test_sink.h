@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,6 @@
 #include <utility>
 #include <vector>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
 #include "base/observer_list.h"
 #include "build/build_config.h"
 #include "ipc/ipc_channel.h"
@@ -59,7 +57,7 @@ class Message;
 //
 //   class MyListener : public IPC::Listener {
 //    public:
-//     MyListener(const base::Closure& closure)
+//     MyListener(const base::RepeatingClosure& closure)
 //       : message_received_closure_(closure) {}
 //     virtual bool OnMessageReceived(const IPC::Message& msg) {
 //       <do something with the message>
@@ -67,7 +65,7 @@ class Message;
 //       return false;  // to store the message in the sink, or true to drop it
 //     }
 //    private:
-//     base::Closure message_received_closure_;
+//     base::RepeatingClosure message_received_closure_;
 //   };
 //
 //   base::RunLoop run_loop;
@@ -83,12 +81,16 @@ class Message;
 class TestSink : public Channel {
  public:
   TestSink();
+
+  TestSink(const TestSink&) = delete;
+  TestSink& operator=(const TestSink&) = delete;
+
   ~TestSink() override;
 
   // Interface in IPC::Channel. This copies the message to the sink and then
   // deletes it.
   bool Send(IPC::Message* message) override;
-  bool Connect() override WARN_UNUSED_RESULT;
+  [[nodiscard]] bool Connect() override;
   void Close() override;
 
   // Used by the source of the messages to send the message to the sink. This
@@ -132,8 +134,6 @@ class TestSink : public Channel {
   // The actual list of received messages.
   std::vector<Message> messages_;
   base::ObserverList<Listener>::Unchecked filter_list_;
-
-  DISALLOW_COPY_AND_ASSIGN(TestSink);
 };
 
 }  // namespace IPC

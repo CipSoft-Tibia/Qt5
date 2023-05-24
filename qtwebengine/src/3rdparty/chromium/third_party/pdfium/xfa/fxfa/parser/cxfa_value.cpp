@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,23 +17,23 @@
 
 namespace {
 
-const CXFA_Node::PropertyData kValuePropertyData[] = {
-    {XFA_Element::Arc, 1, XFA_PROPERTYFLAG_OneOf},
-    {XFA_Element::Text, 1, XFA_PROPERTYFLAG_OneOf},
-    {XFA_Element::Time, 1, XFA_PROPERTYFLAG_OneOf},
-    {XFA_Element::DateTime, 1, XFA_PROPERTYFLAG_OneOf},
-    {XFA_Element::Image, 1, XFA_PROPERTYFLAG_OneOf},
-    {XFA_Element::Decimal, 1, XFA_PROPERTYFLAG_OneOf},
-    {XFA_Element::Boolean, 1, XFA_PROPERTYFLAG_OneOf},
-    {XFA_Element::Integer, 1, XFA_PROPERTYFLAG_OneOf},
-    {XFA_Element::ExData, 1, XFA_PROPERTYFLAG_OneOf},
-    {XFA_Element::Rectangle, 1, XFA_PROPERTYFLAG_OneOf},
-    {XFA_Element::Date, 1, XFA_PROPERTYFLAG_OneOf},
-    {XFA_Element::Float, 1, XFA_PROPERTYFLAG_OneOf},
-    {XFA_Element::Line, 1, XFA_PROPERTYFLAG_OneOf},
+constexpr CXFA_Node::PropertyData kValuePropertyData[] = {
+    {XFA_Element::Arc, 1, XFA_PropertyFlag::kOneOf},
+    {XFA_Element::Text, 1, XFA_PropertyFlag::kOneOf},
+    {XFA_Element::Time, 1, XFA_PropertyFlag::kOneOf},
+    {XFA_Element::DateTime, 1, XFA_PropertyFlag::kOneOf},
+    {XFA_Element::Image, 1, XFA_PropertyFlag::kOneOf},
+    {XFA_Element::Decimal, 1, XFA_PropertyFlag::kOneOf},
+    {XFA_Element::Boolean, 1, XFA_PropertyFlag::kOneOf},
+    {XFA_Element::Integer, 1, XFA_PropertyFlag::kOneOf},
+    {XFA_Element::ExData, 1, XFA_PropertyFlag::kOneOf},
+    {XFA_Element::Rectangle, 1, XFA_PropertyFlag::kOneOf},
+    {XFA_Element::Date, 1, XFA_PropertyFlag::kOneOf},
+    {XFA_Element::Float, 1, XFA_PropertyFlag::kOneOf},
+    {XFA_Element::Line, 1, XFA_PropertyFlag::kOneOf},
 };
 
-const CXFA_Node::AttributeData kValueAttributeData[] = {
+constexpr CXFA_Node::AttributeData kValueAttributeData[] = {
     {XFA_Attribute::Id, XFA_AttributeType::CData, nullptr},
     {XFA_Attribute::Use, XFA_AttributeType::CData, nullptr},
     {XFA_Attribute::Relevant, XFA_AttributeType::CData, nullptr},
@@ -46,7 +46,7 @@ const CXFA_Node::AttributeData kValueAttributeData[] = {
 CXFA_Value::CXFA_Value(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                (XFA_XDPPACKET_Template | XFA_XDPPACKET_Form),
+                {XFA_XDPPACKET::kTemplate, XFA_XDPPACKET::kForm},
                 XFA_ObjectType::Node,
                 XFA_Element::Value,
                 kValuePropertyData,
@@ -70,43 +70,25 @@ WideString CXFA_Value::GetChildValueContent() const {
 }
 
 CXFA_Arc* CXFA_Value::GetArcIfExists() const {
-  CXFA_Node* node = GetFirstChild();
-  if (!node || node->GetElementType() != XFA_Element::Arc)
-    return nullptr;
-  return static_cast<CXFA_Arc*>(node);
+  return CXFA_Arc::FromNode(GetFirstChild());
 }
 
 CXFA_Line* CXFA_Value::GetLineIfExists() const {
-  CXFA_Node* node = GetFirstChild();
-  if (!node || node->GetElementType() != XFA_Element::Line)
-    return nullptr;
-  return static_cast<CXFA_Line*>(node);
+  return CXFA_Line::FromNode(GetFirstChild());
 }
 
 CXFA_Rectangle* CXFA_Value::GetRectangleIfExists() const {
-  CXFA_Node* node = GetFirstChild();
-  if (!node || node->GetElementType() != XFA_Element::Rectangle)
-    return nullptr;
-  return static_cast<CXFA_Rectangle*>(node);
+  return CXFA_Rectangle::FromNode(GetFirstChild());
 }
 
 CXFA_Text* CXFA_Value::GetTextIfExists() const {
-  CXFA_Node* node = GetFirstChild();
-  if (!node || node->GetElementType() != XFA_Element::Text)
-    return nullptr;
-  return static_cast<CXFA_Text*>(node);
+  return CXFA_Text::FromNode(GetFirstChild());
 }
 
 CXFA_ExData* CXFA_Value::GetExDataIfExists() const {
-  CXFA_Node* node = GetFirstChild();
-  if (!node || node->GetElementType() != XFA_Element::ExData)
-    return nullptr;
-  return static_cast<CXFA_ExData*>(node);
+  return CXFA_ExData::FromNode(GetFirstChild());
 }
 
 CXFA_Image* CXFA_Value::GetImageIfExists() const {
-  CXFA_Node* node = GetFirstChild();
-  if (!node || node->GetElementType() != XFA_Element::Image)
-    return nullptr;
-  return static_cast<CXFA_Image*>(node);
+  return CXFA_Image::FromNode(GetFirstChild());
 }

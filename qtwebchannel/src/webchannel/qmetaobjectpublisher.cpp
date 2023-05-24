@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>
-** Copyright (C) 2019 Menlo Systems GmbH, author Arno Rehn <a.rehn@menlosystems.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebChannel module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>
+// Copyright (C) 2019 Menlo Systems GmbH, author Arno Rehn <a.rehn@menlosystems.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmetaobjectpublisher_p.h"
 #include "qwebchannel.h"
@@ -44,6 +8,9 @@
 #include "qwebchannelabstracttransport.h"
 
 #include <QEvent>
+#if QT_CONFIG(future)
+#include <QFuture>
+#endif
 #include <QJsonDocument>
 #include <QDebug>
 #include <QJsonObject>
@@ -52,6 +19,8 @@
 #include <QJSValue>
 #endif
 #include <QUuid>
+
+#include <QtCore/private/qmetaobject_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -78,7 +47,7 @@ bool isQFlagsType(uint id)
         return false;
     }
 
-    QByteArray name = QMetaType::typeName(id);
+    QByteArray name = type.name();
     name = name.mid(name.lastIndexOf(":") + 1);
     return mo->indexOfEnumerator(name.constData()) > -1;
 }
@@ -123,7 +92,7 @@ int doubleToNumberConversionScore(int userType)
         break;
     }
 
-    if (QMetaType::typeFlags(userType) & QMetaType::IsEnumeration)
+    if (QMetaType(userType).flags() & QMetaType::IsEnumeration)
         return doubleToNumberConversionScore(QMetaType::Int);
 
     return IncompatibleScore;
@@ -177,17 +146,112 @@ QJsonObject createResponse(const QJsonValue &id, const QJsonValue &data)
     return response;
 }
 
-/// TODO: what is the proper value here?
-const int PROPERTY_UPDATE_INTERVAL = 50;
+#if QT_CONFIG(future)
+QMetaType resultTypeOfQFuture(QByteArrayView typeName)
+{
+    if (!typeName.startsWith("QFuture<") || !typeName.endsWith('>'))
+        return {};
+
+    return QMetaType::fromName(typeName.sliced(8, typeName.size() - 9));
 }
 
-Q_DECLARE_TYPEINFO(OverloadResolutionCandidate, Q_MOVABLE_TYPE);
+template<typename Func>
+void attachContinuationToFutureInVariant(const QVariant &result, QPointer<QObject> contextObject,
+                                         Func continuation)
+{
+    Q_ASSERT(result.canConvert<QFuture<void>>());
+
+    // QMetaObject::invokeMethod() indirection to work around an issue with passing
+    // a context object to QFuture::then(). See below.
+    const auto safeContinuation = [contextObject, continuation=std::move(continuation)]
+            (const QVariant &result)
+    {
+        if (!contextObject)
+            return;
+
+        QMetaObject::invokeMethod(contextObject.get(), [continuation, result] {
+            continuation(result);
+        });
+    };
+
+    auto f = result.value<QFuture<void>>();
+
+    // Be explicit about what we capture so that we don't accidentally run into
+    // threading issues.
+    f.then([resultType=resultTypeOfQFuture(result.typeName()), f, continuation=safeContinuation]
+    {
+        if (!resultType.isValid() || resultType == QMetaType::fromType<void>()) {
+            continuation(QVariant{});
+            return;
+        }
+
+        auto iface = QFutureInterfaceBase::get(f);
+        // If we pass a context object to f.then() and the future originates in a
+        // different thread, this assertions fails. Why?
+        // For the time being, work around that with QMetaObject::invokeMethod()
+        // in safeSendResponse().
+        Q_ASSERT(iface.resultCount() > 0);
+
+        QMutexLocker<QMutex> locker(&iface.mutex());
+        if (iface.resultStoreBase().resultAt(0).isVector()) {
+            locker.unlock();
+            // This won't work because we cannot generically get a QList<T> into
+            // a QVariant with T only known at runtime.
+            // TBH, I don't know how to trigger this.
+            qWarning() << "Result lists in a QFuture return value are not supported!";
+            continuation(QVariant{});
+            return;
+        }
+
+        // pointer<void>() wouldn't compile because of the isVector-codepath
+        // using QList<T> in that method. We're not taking that path anyway (see the
+        // above check), so we can use char instead to not break strict aliasing
+        // requirements.
+        const auto data = iface.resultStoreBase().resultAt(0).pointer<char>();
+        locker.unlock();
+
+        const QVariant result(resultType, data);
+        continuation(result);
+    }).onCanceled([continuation=safeContinuation] {
+        // Will catch both failure and cancellation.
+        // Maybe send something more meaningful?
+        continuation(QVariant{});
+    });
+}
+#endif
+
+}
+
+Q_DECLARE_TYPEINFO(OverloadResolutionCandidate, Q_RELOCATABLE_TYPE);
+
+void QWebChannelPropertyChangeNotifier::notify(
+        QPropertyObserver *self, QUntypedPropertyData *)
+{
+    auto This = static_cast<QWebChannelPropertyChangeNotifier*>(self);
+
+    // Use the indirection with Qt::AutoConnection to ensure invocation
+    // in the correct thread.
+    // Explicitly copy the parameters into the lambda so that this instance can be destroyed after posting a queued
+    // invocation. The current design doesn't allow this anyway, but I don't want bad surprises in a possible future
+    // commit.
+    QMetaObject::invokeMethod(
+                This->publisher,
+                [publisher=This->publisher, object=This->object, propertyIndex=This->propertyIndex]
+    {
+        publisher->propertyValueChanged(object, propertyIndex);
+    }, Qt::AutoConnection);
+}
 
 QMetaObjectPublisher::QMetaObjectPublisher(QWebChannel *webChannel)
-    : QObject(webChannel)
-    , webChannel(webChannel)
-    , blockUpdates(false)
-    , propertyUpdatesInitialized(false)
+    : QObject(webChannel),
+      webChannel(webChannel),
+      blockUpdatesStatus(false),
+      blockUpdatesHandler(blockUpdatesStatus.onValueChanged(
+              std::function<void()>([&]() { this->onBlockUpdatesChanged(); }))),
+      propertyUpdatesInitialized(false),
+      propertyUpdateIntervalTime(50),
+      propertyUpdateIntervalHandler(propertyUpdateIntervalTime.onValueChanged(
+              std::function<void()>([&]() { this->startPropertyUpdateTimer(true); })))
 {
 }
 
@@ -205,7 +269,7 @@ void QMetaObjectPublisher::registerObject(const QString &id, QObject *object)
             qWarning("Registered new object after initialization, existing clients won't be notified!");
             // TODO: send a message to clients that an object was added
         }
-        initializePropertyUpdates(object, classInfoForObject(object, Q_NULLPTR));
+        initializePropertyUpdates(object, classInfoForObject(object, nullptr));
     }
 }
 
@@ -238,7 +302,7 @@ QJsonObject QMetaObjectPublisher::classInfoForObject(const QObject *object, QWeb
             // optimize: compress the common propertyChanged notification names, just send a 1
             const QByteArray &notifySignal = prop.notifySignal().name();
             static const QByteArray changedSuffix = QByteArrayLiteral("Changed");
-            if (notifySignal.length() == changedSuffix.length() + propertyName.length() &&
+            if (notifySignal.size() == changedSuffix.size() + propertyName.size() &&
                 notifySignal.endsWith(changedSuffix) && notifySignal.startsWith(prop.name()))
             {
                 signalInfo.append(1);
@@ -246,8 +310,8 @@ QJsonObject QMetaObjectPublisher::classInfoForObject(const QObject *object, QWeb
                 signalInfo.append(QString::fromLatin1(notifySignal));
             }
             signalInfo.append(prop.notifySignalIndex());
-        } else if (!prop.isConstant()) {
-            qWarning("Property '%s'' of object '%s' has no notify signal and is not constant, "
+        } else if (!prop.isConstant() && !prop.isBindable()) {
+            qWarning("Property '%s'' of object '%s' has no notify signal, is not bindable and is not constant, "
                      "value updates in HTML will be broken!",
                      prop.name(), object->metaObject()->className());
         }
@@ -329,10 +393,11 @@ QJsonObject QMetaObjectPublisher::initializeClient(QWebChannelAbstractTransport 
     return objectInfos;
 }
 
-void QMetaObjectPublisher::initializePropertyUpdates(const QObject *const object, const QJsonObject &objectInfo)
+void QMetaObjectPublisher::initializePropertyUpdates(QObject *const object, const QJsonObject &objectInfo)
 {
+    auto *metaObject = object->metaObject();
     auto *signalHandler = signalHandlerFor(object);
-    foreach (const QJsonValue &propertyInfoVar, objectInfo[KEY_PROPERTIES].toArray()) {
+    for (const auto propertyInfoVar : objectInfo[KEY_PROPERTIES].toArray()) {
         const QJsonArray &propertyInfo = propertyInfoVar.toArray();
         if (propertyInfo.size() < 2) {
             qWarning() << "Invalid property info encountered:" << propertyInfoVar;
@@ -340,22 +405,32 @@ void QMetaObjectPublisher::initializePropertyUpdates(const QObject *const object
         }
         const int propertyIndex = propertyInfo.at(0).toInt();
         const QJsonArray &signalData = propertyInfo.at(2).toArray();
+        const QMetaProperty metaProp = metaObject->property(propertyIndex);
 
-        if (signalData.isEmpty()) {
-            // Property without NOTIFY signal
-            continue;
+        if (!signalData.isEmpty()) {
+            // Property with a NOTIFY signal
+            const int signalIndex = signalData.at(1).toInt();
+
+            QSet<int> &connectedProperties = signalToPropertyMap[object][signalIndex];
+
+            // Only connect for a property update once
+            if (connectedProperties.isEmpty()) {
+                signalHandler->connectTo(object, signalIndex);
+            }
+
+            connectedProperties.insert(propertyIndex);
+        } else if (metaProp.isBindable()) {
+            const auto [begin, end] = propertyObservers.equal_range(object);
+            const auto it = std::find_if(begin, end, [&](auto &n) {
+                return n.second.propertyIndex == propertyIndex;
+            });
+            // Only connect for a property update once
+            if (it == end) {
+                auto it = propertyObservers.emplace(
+                            object, QWebChannelPropertyChangeNotifier{this, object, propertyIndex});
+                metaProp.bindable(object).observe(&it->second);
+            }
         }
-
-        const int signalIndex = signalData.at(1).toInt();
-
-        QSet<int> &connectedProperties = signalToPropertyMap[object][signalIndex];
-
-        // Only connect for a property update once
-        if (connectedProperties.isEmpty()) {
-            signalHandler->connectTo(object, signalIndex);
-        }
-
-        connectedProperties.insert(propertyIndex);
     }
 
     // also always connect to destroyed signal
@@ -364,7 +439,7 @@ void QMetaObjectPublisher::initializePropertyUpdates(const QObject *const object
 
 void QMetaObjectPublisher::sendPendingPropertyUpdates()
 {
-    if (blockUpdates) {
+    if (blockUpdatesStatus) {
         return;
     }
 
@@ -382,16 +457,21 @@ void QMetaObjectPublisher::sendPendingPropertyUpdates()
         QJsonObject properties;
         // maps signal index to list of arguments of the last emit
         QJsonObject sigs;
-        const SignalToArgumentsMap::const_iterator sigEnd = it.value().constEnd();
-        for (SignalToArgumentsMap::const_iterator sigIt = it.value().constBegin(); sigIt != sigEnd; ++sigIt) {
-            // TODO: can we get rid of the int <-> string conversions here?
-            foreach (const int propertyIndex, objectsSignalToPropertyMap.value(sigIt.key())) {
-                const QMetaProperty &property = metaObject->property(propertyIndex);
-                Q_ASSERT(property.isValid());
-                properties[QString::number(propertyIndex)] = wrapResult(property.read(object), Q_NULLPTR, objectId);
-            }
+
+        const auto indexes = it.value().propertyIndices(objectsSignalToPropertyMap);
+
+        // TODO: can we get rid of the int <-> string conversions here?
+        for (const int propertyIndex : indexes) {
+            const QMetaProperty &property = metaObject->property(propertyIndex);
+            Q_ASSERT(property.isValid());
+            properties[QString::number(propertyIndex)] = wrapResult(property.read(object), nullptr, objectId);
+        }
+
+        const auto sigMap = it.value().signalMap;
+        for (auto sigIt = sigMap.constBegin(); sigIt != sigMap.constEnd(); ++sigIt) {
             sigs[QString::number(sigIt.key())] = QJsonArray::fromVariantList(sigIt.value());
         }
+
         QJsonObject obj;
         obj[KEY_OBJECT] = objectId;
         obj[KEY_SIGNALS] = sigs;
@@ -399,7 +479,7 @@ void QMetaObjectPublisher::sendPendingPropertyUpdates()
 
         // if the object is auto registered, just send the update only to clients which know this object
         if (wrappedObjects.contains(objectId)) {
-            foreach (QWebChannelAbstractTransport *transport, wrappedObjects.value(objectId).transports) {
+            for (QWebChannelAbstractTransport *transport : wrappedObjects.value(objectId).transports) {
                 QJsonArray &arr = specificUpdates[transport];
                 arr.push_back(obj);
             }
@@ -429,6 +509,66 @@ void QMetaObjectPublisher::sendPendingPropertyUpdates()
         sendEnqueuedPropertyUpdates(state.key());
 }
 
+QVariant QMetaObjectPublisher::invokeMethod_helper(QObject *const object, const QMetaMethod &method,
+                                                   const QJsonArray &args)
+{
+    // a good value for the number of arguments we'll preallocate in QVLA
+    constexpr qsizetype ArgumentCount = 16;
+
+    QVarLengthArray<QVariant, ArgumentCount> variants;
+    QVarLengthArray<const char *, ArgumentCount> names(method.parameterCount() + 1);
+    QVarLengthArray<void *, ArgumentCount> parameters(names.size());
+    QVarLengthArray<const QtPrivate::QMetaTypeInterface *, ArgumentCount> metaTypes(names.size());
+    variants.reserve(names.size());
+    variants << QVariant();
+
+    // start with the formal parameters
+    for (qsizetype i = 0; i < names.size() - 1; ++i) {
+        QMetaType mt = method.parameterMetaType(i);
+        QVariant &v = variants.emplace_back(toVariant(args.at(i), mt.id()));
+        parameters[i + 1] = v.data();
+        names[i + 1] = mt.name();
+        metaTypes[i + 1] = mt.iface();
+    }
+
+    // now, the return type
+    QMetaType mt = method.returnMetaType();
+    names[0] = mt.name();
+    metaTypes[0] = mt.iface();
+    if (int id = mt.id(); id != QMetaType::Void) {
+        // Only init variant with return type if its not a variant itself,
+        // which would lead to nested variants which is not what we want.
+        if (id == QMetaType::QVariant) {
+            parameters[0] = &variants[0];
+        } else {
+            variants[0] = QVariant(mt);
+            parameters[0] = variants[0].data();
+        }
+    } else {
+        parameters[0] = nullptr;
+    }
+
+    // step 3: make the call
+    QMetaMethodInvoker::InvokeFailReason r =
+            QMetaMethodInvoker::invokeImpl(method, object, Qt::AutoConnection,
+                                           parameters.size(), parameters.constData(),
+                                           names.constData(), metaTypes.constData());
+
+    if (r == QMetaMethodInvoker::InvokeFailReason::None)
+        return variants.first();
+
+    // print warnings for failures to match
+    if (int(r) >= int(QMetaMethodInvoker::InvokeFailReason::FormalParameterMismatch)) {
+        int n = int(r) - int(QMetaMethodInvoker::InvokeFailReason::FormalParameterMismatch);
+        QByteArray callee = object->metaObject()->className() + QByteArrayView("::")
+                + method.methodSignature();
+        qWarning() << "Cannot convert formal parameter" << n << "from" << names[n + 1]
+                   << "in call to" << callee.constData();
+    }
+
+    return QJsonValue();
+}
+
 QVariant QMetaObjectPublisher::invokeMethod(QObject *const object, const QMetaMethod &method,
                                               const QJsonArray &args)
 {
@@ -445,40 +585,12 @@ QVariant QMetaObjectPublisher::invokeMethod(QObject *const object, const QMetaMe
     } else if (method.methodType() != QMetaMethod::Method && method.methodType() != QMetaMethod::Slot) {
         qWarning() << "Cannot invoke non-public method" << method.name() << "on object" << object << '.';
         return QJsonValue();
-    } else if (args.size() > 10) {
-        qWarning() << "Cannot invoke method" << method.name() << "on object" << object << "with more than 10 arguments, as that is not supported by QMetaMethod::invoke.";
-        return QJsonValue();
     } else if (args.size() > method.parameterCount()) {
         qWarning() << "Ignoring additional arguments while invoking method" << method.name() << "on object" << object << ':'
                    << args.size() << "arguments given, but method only takes" << method.parameterCount() << '.';
     }
 
-    // construct converter objects of QVariant to QGenericArgument
-    VariantArgument arguments[10];
-    for (int i = 0; i < qMin(args.size(), method.parameterCount()); ++i) {
-        arguments[i].value = toVariant(args.at(i), method.parameterType(i));
-    }
-    // construct QGenericReturnArgument
-    QVariant returnValue;
-    if (method.returnType() == QMetaType::Void) {
-        // Skip return for void methods (prevents runtime warnings inside Qt), and allows
-        // QMetaMethod to invoke void-returning methods on QObjects in a different thread.
-        method.invoke(object,
-                  arguments[0], arguments[1], arguments[2], arguments[3], arguments[4],
-                  arguments[5], arguments[6], arguments[7], arguments[8], arguments[9]);
-    } else {
-        // Only init variant with return type if its not a variant itself, which would
-        // lead to nested variants which is not what we want.
-        if (method.returnType() != QMetaType::QVariant)
-            returnValue = QVariant(method.returnType(), 0);
-
-        QGenericReturnArgument returnArgument(method.typeName(), returnValue.data());
-        method.invoke(object, returnArgument,
-                  arguments[0], arguments[1], arguments[2], arguments[3], arguments[4],
-                  arguments[5], arguments[6], arguments[7], arguments[8], arguments[9]);
-    }
-    // now we can call the method
-    return returnValue;
+    return invokeMethod_helper(object, method, args);
 }
 
 QVariant QMetaObjectPublisher::invokeMethod(QObject *const object, const int methodIndex,
@@ -496,7 +608,7 @@ QVariant QMetaObjectPublisher::invokeMethod(QObject *const object, const int met
 QVariant QMetaObjectPublisher::invokeMethod(QObject *const object, const QByteArray &methodName,
                                             const QJsonArray &args)
 {
-    QVector<OverloadResolutionCandidate> candidates;
+    QList<OverloadResolutionCandidate> candidates;
 
     const QMetaObject *mo = object->metaObject();
     for (int i = 0; i < mo->methodCount(); ++i) {
@@ -504,8 +616,7 @@ QVariant QMetaObjectPublisher::invokeMethod(QObject *const object, const QByteAr
         if (method.name() != methodName || method.parameterCount() != args.count()
                 || method.access() != QMetaMethod::Public
                 || (method.methodType() != QMetaMethod::Method
-                        && method.methodType() != QMetaMethod::Slot)
-                || method.parameterCount() > 10)
+                        && method.methodType() != QMetaMethod::Slot))
         {
             // Not a candidate
             continue;
@@ -521,13 +632,13 @@ QVariant QMetaObjectPublisher::invokeMethod(QObject *const object, const QByteAr
     }
 
     std::sort(candidates.begin(), candidates.end());
-
     if (candidates.size() > 1 && candidates[0].badness == candidates[1].badness) {
         qWarning().nospace() << "Ambiguous overloads for method " << methodName << ". Choosing "
                              << candidates.first().method.methodSignature();
+
     }
 
-    return invokeMethod(object, candidates.first().method, args);
+    return invokeMethod_helper(object, candidates.first().method, args);
 }
 
 void QMetaObjectPublisher::setProperty(QObject *object, const int propertyIndex, const QJsonValue &value)
@@ -554,13 +665,13 @@ void QMetaObjectPublisher::signalEmitted(const QObject *object, const int signal
         message[KEY_OBJECT] = objectName;
         message[KEY_SIGNAL] = signalIndex;
         if (!arguments.isEmpty()) {
-            message[KEY_ARGS] = wrapList(arguments, Q_NULLPTR, objectName);
+            message[KEY_ARGS] = wrapList(arguments, nullptr, objectName);
         }
         message[KEY_TYPE] = TypeSignal;
 
         // if the object is wrapped, just send the response to clients which know this object
         if (wrappedObjects.contains(objectName)) {
-            foreach (QWebChannelAbstractTransport *transport, wrappedObjects.value(objectName).transports) {
+            for (QWebChannelAbstractTransport *transport : wrappedObjects.value(objectName).transports) {
                 transport->sendMessage(message);
             }
         } else {
@@ -571,10 +682,28 @@ void QMetaObjectPublisher::signalEmitted(const QObject *object, const int signal
             objectDestroyed(object);
         }
     } else {
-        pendingPropertyUpdates[object][signalIndex] = arguments;
-        if (!blockUpdates && !timer.isActive()) {
-            timer.start(PROPERTY_UPDATE_INTERVAL, this);
-        }
+        auto &propertyUpdate = pendingPropertyUpdates[object];
+        propertyUpdate.signalMap[signalIndex] = arguments;
+        startPropertyUpdateTimer();
+    }
+}
+
+void QMetaObjectPublisher::propertyValueChanged(const QObject *object, const int propertyIndex)
+{
+    pendingPropertyUpdates[object].plainProperties.insert(propertyIndex);
+    startPropertyUpdateTimer();
+}
+
+void QMetaObjectPublisher::startPropertyUpdateTimer(bool forceRestart)
+{
+    if (blockUpdatesStatus)
+        return;
+
+    if (propertyUpdateIntervalTime >= 0) {
+        if (forceRestart || !timer.isActive())
+            timer.start(propertyUpdateIntervalTime, this);
+    } else {
+        sendPendingPropertyUpdates();
     }
 }
 
@@ -594,6 +723,7 @@ void QMetaObjectPublisher::objectDestroyed(const QObject *object)
         signalToPropertyMap.remove(object);
     }
     pendingPropertyUpdates.remove(object);
+    propertyObservers.erase(object);
 }
 
 QObject *QMetaObjectPublisher::unwrapObject(const QString &objectId) const
@@ -608,49 +738,85 @@ QObject *QMetaObjectPublisher::unwrapObject(const QString &objectId) const
     }
 
     qWarning() << "No wrapped object" << objectId;
-    return Q_NULLPTR;
+    return nullptr;
+}
+
+QVariant QMetaObjectPublisher::unwrapMap(QVariantMap map) const
+{
+    const auto qobj = map.value(KEY_QOBJECT).toBool();
+    const auto id = qobj ? map.value(KEY_ID).toString() : QString();
+
+    if (!id.isEmpty()) // it's probably a QObject
+        return QVariant::fromValue(unwrapObject(id));
+
+    // it's probably just a normal JS object, continue searching for objects
+    // that look like QObject*
+    for (auto &value : map)
+        value = unwrapVariant(value);
+
+    return map;
+}
+
+QVariant QMetaObjectPublisher::unwrapList(QVariantList list) const
+{
+    for (auto &value : list)
+        value = unwrapVariant(value);
+
+    return list;
+}
+
+QVariant QMetaObjectPublisher::unwrapVariant(const QVariant &value) const
+{
+    switch (value.metaType().id())
+    {
+        case QMetaType::QVariantList:
+            return unwrapList(value.toList());
+        case QMetaType::QVariantMap:
+            return unwrapMap(value.toMap());
+        default:
+            break;
+    }
+    return value;
 }
 
 QVariant QMetaObjectPublisher::toVariant(const QJsonValue &value, int targetType) const
 {
-    if (targetType == QMetaType::QJsonValue) {
-        return QVariant::fromValue(value);
-    } else if (targetType == QMetaType::QJsonArray) {
-        if (!value.isArray())
-            qWarning() << "Cannot not convert non-array argument" << value << "to QJsonArray.";
-        return QVariant::fromValue(value.toArray());
-    } else if (targetType == QMetaType::QJsonObject) {
-        if (!value.isObject())
-            qWarning() << "Cannot not convert non-object argument" << value << "to QJsonObject.";
-        return QVariant::fromValue(value.toObject());
-    } else if (QMetaType::typeFlags(targetType) & QMetaType::PointerToQObject) {
+    QMetaType target(targetType);
+
+    if (target.flags() & QMetaType::PointerToQObject) {
         QObject *unwrappedObject = unwrapObject(value.toObject()[KEY_ID].toString());
-        if (unwrappedObject == Q_NULLPTR)
+        if (unwrappedObject == nullptr)
             qWarning() << "Cannot not convert non-object argument" << value << "to QObject*.";
         return QVariant::fromValue(unwrappedObject);
     } else if (isQFlagsType(targetType)) {
         int flagsValue = value.toInt();
-        return QVariant(targetType, reinterpret_cast<const void*>(&flagsValue));
+        return QVariant(target, reinterpret_cast<const void*>(&flagsValue));
     }
 
-    // this converts QJsonObjects to QVariantMaps, which is not desired when
-    // we want to get a QJsonObject or QJsonValue (see above)
     QVariant variant = value.toVariant();
-    if (targetType != QMetaType::QVariant && !variant.convert(targetType)) {
-        qWarning() << "Could not convert argument" << value << "to target type" << QVariant::typeToName(targetType) << '.';
+    // Try variant conversion to the target type first. If that fails,
+    // try conversion over QJsonvalue.
+    if (auto converted = variant; converted.convert(target)) {
+        variant = std::move(converted);
+    } else if (targetType != QMetaType::QVariant) {
+        if (QVariant converted = value; converted.convert(target))
+            variant = std::move(converted);
+        else
+            qWarning() << "Could not convert argument" << value << "to target type" << target.name() << '.';
     }
-    return variant;
+    return unwrapVariant(variant);
 }
 
 int QMetaObjectPublisher::conversionScore(const QJsonValue &value, int targetType) const
 {
+    QMetaType target(targetType);
     if (targetType == QMetaType::QJsonValue) {
         return PerfectMatchScore;
     } else if (targetType == QMetaType::QJsonArray) {
         return value.isArray() ? PerfectMatchScore : IncompatibleScore;
     } else if (targetType == QMetaType::QJsonObject) {
         return value.isObject() ? PerfectMatchScore : IncompatibleScore;
-    } else if (QMetaType::typeFlags(targetType) & QMetaType::PointerToQObject) {
+    } else if (target.flags() & QMetaType::PointerToQObject) {
         if (value.isNull())
             return PerfectMatchScore;
         if (!value.isObject())
@@ -661,7 +827,7 @@ int QMetaObjectPublisher::conversionScore(const QJsonValue &value, int targetTyp
             return IncompatibleScore;
 
         QObject *unwrappedObject = unwrapObject(object[KEY_ID].toString());
-        return unwrappedObject != Q_NULLPTR ? PerfectMatchScore : IncompatibleScore;
+        return unwrappedObject != nullptr ? PerfectMatchScore : IncompatibleScore;
     } else if (targetType == QMetaType::QVariant) {
         return VariantScore;
     }
@@ -677,7 +843,7 @@ int QMetaObjectPublisher::conversionScore(const QJsonValue &value, int targetTyp
     QVariant variant = value.toVariant();
     if (variant.userType() == targetType) {
         return PerfectMatchScore;
-    } else if (variant.canConvert(targetType)) {
+    } else if (variant.canConvert(target)) {
         return GenericConversionScore;
     }
 
@@ -698,10 +864,10 @@ void QMetaObjectPublisher::transportRemoved(QWebChannelAbstractTransport *transp
     auto it = transportedWrappedObjects.find(transport);
     // It is not allowed to modify a container while iterating over it. So save
     // objects which should be removed and call objectDestroyed() on them later.
-    QVector<QObject*> objectsForDeletion;
+    QList<QObject *> objectsForDeletion;
     while (it != transportedWrappedObjects.end() && it.key() == transport) {
         if (wrappedObjects.contains(it.value())) {
-            QVector<QWebChannelAbstractTransport*> &transports = wrappedObjects[it.value()].transports;
+            QList<QWebChannelAbstractTransport *> &transports = wrappedObjects[it.value()].transports;
             transports.removeOne(transport);
             if (transports.isEmpty())
                 objectsForDeletion.append(wrappedObjects[it.value()].object);
@@ -712,7 +878,7 @@ void QMetaObjectPublisher::transportRemoved(QWebChannelAbstractTransport *transp
 
     transportedWrappedObjects.remove(transport);
 
-    foreach (QObject *obj, objectsForDeletion)
+    for (QObject *obj : std::as_const(objectsForDeletion))
         objectDestroyed(obj);
 }
 
@@ -747,7 +913,7 @@ QJsonValue QMetaObjectPublisher::wrapResult(const QVariant &result, QWebChannelA
                 if (oi.transports.isEmpty())
                     oi.transports = webChannel->d_func()->transports;
 
-                for (auto transport : qAsConst(oi.transports)) {
+                for (auto transport : std::as_const(oi.transports)) {
                     transportedWrappedObjects.insert(transport, id);
                 }
             }
@@ -778,7 +944,7 @@ QJsonValue QMetaObjectPublisher::wrapResult(const QVariant &result, QWebChannelA
             objectInfo[KEY_DATA] = classInfo;
 
         return objectInfo;
-    } else if (QMetaType::typeFlags(result.userType()).testFlag(QMetaType::IsEnumeration)) {
+    } else if (result.metaType().flags().testFlag(QMetaType::IsEnumeration)) {
         return result.toInt();
     } else if (isQFlagsType(result.userType())) {
         return *reinterpret_cast<const int*>(result.constData());
@@ -790,6 +956,9 @@ QJsonValue QMetaObjectPublisher::wrapResult(const QVariant &result, QWebChannelA
         // TODO: Improve QJSValue-QJsonValue conversion in Qt.
         return wrapResult(result.value<QJSValue>().toVariant(), transport, parentObjectId);
 #endif
+    } else if (result.metaType().id() == QMetaType::QString ||
+               result.metaType().id() == QMetaType::QByteArray) {
+        // avoid conversion to QVariantList
     } else if (result.canConvert<QVariantList>()) {
         // recurse and potentially wrap contents of the array
         // *don't* use result.toList() as that *only* works for QVariantList and QStringList!
@@ -799,15 +968,18 @@ QJsonValue QMetaObjectPublisher::wrapResult(const QVariant &result, QWebChannelA
         // but recover when conversion fails and fall back to the .value<QVariantList> conversion
         // see also: https://bugreports.qt.io/browse/QTBUG-80751
         auto list = result;
-        if (!list.convert(qMetaTypeId<QVariantList>()))
+        if (!list.convert(QMetaType::fromType<QVariantList>()))
             list = result;
         return wrapList(list.value<QVariantList>(), transport);
     } else if (result.canConvert<QVariantMap>()) {
         // recurse and potentially wrap contents of the map
         auto map = result;
-        if (!map.convert(qMetaTypeId<QVariantMap>()))
+        if (!map.convert(QMetaType::fromType<QVariantMap>()))
             map = result;
         return wrapMap(map.value<QVariantMap>(), transport);
+    } else if (auto v = result; v.convert(QMetaType::fromType<QJsonValue>())) {
+        // Support custom converters to QJsonValue
+        return v.value<QJsonValue>();
     }
 
     return QJsonValue::fromVariant(result);
@@ -816,7 +988,7 @@ QJsonValue QMetaObjectPublisher::wrapResult(const QVariant &result, QWebChannelA
 QJsonArray QMetaObjectPublisher::wrapList(const QVariantList &list, QWebChannelAbstractTransport *transport, const QString &parentObjectId)
 {
     QJsonArray array;
-    foreach (const QVariant &arg, list) {
+    for (const QVariant &arg : list) {
         array.append(wrapResult(arg, transport, parentObjectId));
     }
     return array;
@@ -843,11 +1015,10 @@ void QMetaObjectPublisher::deleteWrappedObject(QObject *object) const
 void QMetaObjectPublisher::broadcastMessage(const QJsonObject &message) const
 {
     if (webChannel->d_func()->transports.isEmpty()) {
-        qWarning("QWebChannel is not connected to any transports, cannot send message: %s", QJsonDocument(message).toJson().constData());
         return;
     }
 
-    foreach (QWebChannelAbstractTransport *transport, webChannel->d_func()->transports) {
+    for (QWebChannelAbstractTransport *transport : webChannel->d_func()->transports) {
         transport->sendMessage(message);
     }
 }
@@ -855,8 +1026,6 @@ void QMetaObjectPublisher::broadcastMessage(const QJsonObject &message) const
 void QMetaObjectPublisher::enqueueBroadcastMessage(const QJsonObject &message)
 {
     if (webChannel->d_func()->transports.isEmpty()) {
-        qWarning("QWebChannel is not connected to any transports, cannot send message: %s",
-                 QJsonDocument(message).toJson().constData());
         return;
     }
 
@@ -955,9 +1124,29 @@ void QMetaObjectPublisher::handleMessage(const QJsonObject &message, QWebChannel
                                       method.toInt(-1),
                                       message.value(KEY_ARGS).toArray());
             }
-            if (!publisherExists || !transportExists)
-                return;
-            transport->sendMessage(createResponse(message.value(KEY_ID), wrapResult(result, transport)));
+
+            auto sendResponse = [publisherExists, transportExists, id=message.value(KEY_ID)]
+                    (const QVariant &result)
+            {
+                if (!publisherExists || !transportExists)
+                    return;
+
+                Q_ASSERT(QThread::currentThread() == publisherExists->thread());
+
+                const auto wrappedResult =
+                        publisherExists->wrapResult(result, transportExists.get());
+                transportExists->sendMessage(createResponse(id, wrappedResult));
+            };
+
+#if QT_CONFIG(future)
+            if (result.canConvert<QFuture<void>>()) {
+                attachContinuationToFutureInVariant(result, publisherExists.get(), sendResponse);
+            } else {
+                sendResponse(result);
+            }
+#else
+            sendResponse(result);
+#endif
         } else if (type == TypeConnectToSignal) {
             signalHandlerFor(object)->connectTo(object, message.value(KEY_SIGNAL).toInt(-1));
         } else if (type == TypeDisconnectFromSignal) {
@@ -969,26 +1158,43 @@ void QMetaObjectPublisher::handleMessage(const QJsonObject &message, QWebChannel
     }
 }
 
+int QMetaObjectPublisher::propertyUpdateInterval()
+{
+    return propertyUpdateIntervalTime;
+}
+
+void QMetaObjectPublisher::setPropertyUpdateInterval(int ms)
+{
+    propertyUpdateIntervalTime = ms;
+}
+
 void QMetaObjectPublisher::setBlockUpdates(bool block)
 {
-    if (blockUpdates == block) {
-        return;
-    }
-    blockUpdates = block;
+    blockUpdatesStatus = block;
+}
 
-    if (!blockUpdates) {
-        timer.start(PROPERTY_UPDATE_INTERVAL, this);
+void QMetaObjectPublisher::onBlockUpdatesChanged()
+{
+    if (!blockUpdatesStatus) {
+        startPropertyUpdateTimer();
         sendPendingPropertyUpdates();
     } else if (timer.isActive()) {
         timer.stop();
     }
 
-    emit blockUpdatesChanged(block);
+    emit blockUpdatesChanged(blockUpdatesStatus);
+}
+
+bool QMetaObjectPublisher::blockUpdates() const
+{
+    return blockUpdatesStatus;
 }
 
 void QMetaObjectPublisher::timerEvent(QTimerEvent *event)
 {
     if (event->timerId() == timer.timerId()) {
+        if (propertyUpdateIntervalTime <= 0)
+            timer.stop();
         sendPendingPropertyUpdates();
     } else {
         QObject::timerEvent(event);

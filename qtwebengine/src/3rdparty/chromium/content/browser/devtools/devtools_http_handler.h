@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,18 +7,18 @@
 
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 
 #include "base/files/file_path.h"
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
+#include "base/values.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "net/http/http_status_code.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
-class DictionaryValue;
 class Thread;
-class Value;
 }
 
 namespace content {
@@ -52,6 +52,10 @@ class DevToolsHttpHandler {
       std::unique_ptr<DevToolsSocketFactory> server_socket_factory,
       const base::FilePath& active_port_output_directory,
       const base::FilePath& debug_frontend_dir);
+
+  DevToolsHttpHandler(const DevToolsHttpHandler&) = delete;
+  DevToolsHttpHandler& operator=(const DevToolsHttpHandler&) = delete;
+
   ~DevToolsHttpHandler();
 
  private:
@@ -82,12 +86,13 @@ class DevToolsHttpHandler {
 
   void SendJson(int connection_id,
                 net::HttpStatusCode status_code,
-                base::Value* value,
+                absl::optional<base::ValueView> value,
                 const std::string& message);
   void Send200(int connection_id,
                const std::string& data,
                const std::string& mime_type);
   void Send404(int connection_id);
+  void Send403(int connection_id, const std::string& message);
   void Send500(int connection_id,
                const std::string& message);
   void AcceptWebSocket(int connection_id,
@@ -101,10 +106,11 @@ class DevToolsHttpHandler {
       const std::string& target_id,
       const std::string& host);
 
-  std::unique_ptr<base::DictionaryValue> SerializeDescriptor(
+  base::Value::Dict SerializeDescriptor(
       scoped_refptr<DevToolsAgentHost> agent_host,
       const std::string& host);
 
+  std::set<std::string> remote_allow_origins_;
   // The thread used by the devtools handler to run server socket.
   std::unique_ptr<base::Thread> thread_;
   std::string browser_guid_;
@@ -116,8 +122,6 @@ class DevToolsHttpHandler {
   DevToolsManagerDelegate* delegate_;
   std::unique_ptr<DevToolsSocketFactory> socket_factory_;
   base::WeakPtrFactory<DevToolsHttpHandler> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(DevToolsHttpHandler);
 };
 
 }  // namespace content

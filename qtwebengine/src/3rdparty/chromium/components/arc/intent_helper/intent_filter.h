@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,6 @@
 
 #include <string>
 #include <vector>
-
-#include "base/macros.h"
 
 class GURL;
 
@@ -30,20 +28,18 @@ class IntentFilter {
     AuthorityEntry();
     AuthorityEntry(AuthorityEntry&& other);
     AuthorityEntry(const std::string& host, int port);
-
+    AuthorityEntry(const AuthorityEntry&) = delete;
+    AuthorityEntry& operator=(const AuthorityEntry&) = delete;
     AuthorityEntry& operator=(AuthorityEntry&& other);
-
-    bool Match(const GURL& url) const;
 
     const std::string& host() const { return host_; }
     int port() const { return port_; }
+    bool wild() const { return wild_; }
 
    private:
     std::string host_;
     bool wild_;
     int port_;
-
-    DISALLOW_COPY_AND_ASSIGN(AuthorityEntry);
   };
 
   // A helper class for handling matching of various patterns in the URL.
@@ -52,10 +48,9 @@ class IntentFilter {
     PatternMatcher();
     PatternMatcher(PatternMatcher&& other);
     PatternMatcher(const std::string& pattern, mojom::PatternType match_type);
-
+    PatternMatcher(const PatternMatcher&) = delete;
+    PatternMatcher& operator=(const PatternMatcher&) = delete;
     PatternMatcher& operator=(PatternMatcher&& other);
-
-    bool Match(const std::string& match) const;
 
     const std::string& pattern() const { return pattern_; }
     mojom::PatternType match_type() const { return match_type_; }
@@ -63,8 +58,6 @@ class IntentFilter {
    private:
     std::string pattern_;
     mojom::PatternType match_type_;
-
-    DISALLOW_COPY_AND_ASSIGN(PatternMatcher);
   };
 
   IntentFilter();
@@ -83,9 +76,10 @@ class IntentFilter {
                std::vector<IntentFilter::PatternMatcher> paths,
                std::vector<std::string> schemes,
                std::vector<std::string> mime_types);
-  ~IntentFilter();
-
+  IntentFilter(const IntentFilter&) = delete;
+  IntentFilter& operator=(const IntentFilter&) = delete;
   IntentFilter& operator=(IntentFilter&& other);
+  ~IntentFilter();
 
   bool Match(const GURL& url) const;
 
@@ -101,9 +95,6 @@ class IntentFilter {
   const std::vector<std::string>& mime_types() const { return mime_types_; }
 
  private:
-  bool MatchDataAuthority(const GURL& url) const;
-  bool HasDataPath(const GURL& url) const;
-
   std::string package_name_;
   std::string activity_name_;
   std::string activity_label_;
@@ -112,8 +103,6 @@ class IntentFilter {
   std::vector<PatternMatcher> paths_;
   std::vector<std::string> schemes_;
   std::vector<std::string> mime_types_;
-
-  DISALLOW_COPY_AND_ASSIGN(IntentFilter);
 };
 
 }  // namespace arc

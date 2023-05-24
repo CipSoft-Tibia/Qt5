@@ -1,44 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <QtTest/QSignalSpy>
 #include <QtGui/qstylehints.h>
 #include <QtQuick/qquickitem.h>
 #include <QtQuick/qquickview.h>
+#include <QtQml/QQmlComponent>
 #include <QtQml/qqmlcontext.h>
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlexpression.h>
 
 #include <qpa/qplatformdrag.h>
 #include <qpa/qwindowsysteminterface.h>
-#include "../../shared/util.h"
-#include "../shared/viewtestutil.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/viewtestutils_p.h>
+
+using namespace Qt::StringLiterals;
 
 template <typename T> static T evaluate(QObject *scope, const QString &expression)
 {
@@ -60,9 +38,16 @@ template <> void evaluate<void>(QObject *scope, const QString &expression)
 class tst_QQuickDropArea: public QQmlDataTest
 {
     Q_OBJECT
+
+public:
+    tst_QQuickDropArea();
+
 private slots:
     void containsDrag_internal();
     void containsDrag_external();
+
+    void ignoreRetriggerEvent();
+
     void keys_internal();
     void keys_external();
     void source_internal();
@@ -76,10 +61,16 @@ private slots:
     void dropStuff();
     void nestedDropAreas_data();
     void nestedDropAreas();
+    void signalOrder();
 
 private:
     QQmlEngine engine;
 };
+
+tst_QQuickDropArea::tst_QQuickDropArea()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
+{
+}
 
 void tst_QQuickDropArea::containsDrag_internal()
 {
@@ -134,17 +125,14 @@ void tst_QQuickDropArea::containsDrag_internal()
     QCOMPARE(evaluate<int>(dropArea, "exitEvents"), 0);
 
     dragItem->setPosition(QPointF(50, 50));
-    QCoreApplication::processEvents();
-    QCOMPARE(evaluate<bool>(dropArea, "containsDrag"), true);
+    QTRY_COMPARE(evaluate<bool>(dropArea, "containsDrag"), true);
     QCOMPARE(evaluate<bool>(dropArea, "hasDrag"), true);
     QCOMPARE(evaluate<int>(dropArea, "enterEvents"), 1);
     QCOMPARE(evaluate<int>(dropArea, "exitEvents"), 0);
 
     evaluate<void>(dropArea, "{ enterEvents = 0; exitEvents = 0 }");
     dragItem->setPosition(QPointF(150, 50));
-    QCoreApplication::processEvents();
-
-    QCOMPARE(evaluate<bool>(dropArea, "containsDrag"), false);
+    QTRY_COMPARE(evaluate<bool>(dropArea, "containsDrag"), false);
     QCOMPARE(evaluate<bool>(dropArea, "hasDrag"), false);
     QCOMPARE(evaluate<int>(dropArea, "enterEvents"), 0);
     QCOMPARE(evaluate<int>(dropArea, "exitEvents"), 1);
@@ -822,6 +810,32 @@ void tst_QQuickDropArea::competingDrags()
     QCOMPARE(evaluate<QString>(dropArea1, "statuslol"), QStringLiteral("parent"));
 }
 
+void tst_QQuickDropArea::ignoreRetriggerEvent()
+{
+    QQuickView window;
+    QByteArray errorMessage;
+    QVERIFY2(QQuickTest::initView(window, testFileUrl("ignoreRetriggerEvent.qml"), true, &errorMessage), errorMessage.constData());
+
+    QQuickItem *dropArea = window.rootObject();
+    QVERIFY(dropArea);
+    QQuickItem *dragItem = dropArea->findChild<QQuickItem *>("dragItem");
+    QVERIFY(dragItem);
+
+    evaluate<void>(dragItem, "Drag.active = true");
+    // Drag the item within the drop area
+    dragItem->setPosition(QPointF(25, 25));
+    QCoreApplication::processEvents();
+    dragItem->setPosition(QPointF(50, 50));
+    QCoreApplication::processEvents();
+    dragItem->setPosition(QPointF(75, 75));
+    QCoreApplication::processEvents();
+
+    QCOMPARE(evaluate<bool>(dropArea, "containsDrag"), false);
+    QCOMPARE(evaluate<int>(dropArea, "enterEvents"), 1);
+    QCOMPARE(evaluate<int>(dropArea, "exitEvents"), 0);
+}
+
+
 void tst_QQuickDropArea::simultaneousDrags()
 {
     QQuickWindow window;
@@ -952,8 +966,8 @@ void tst_QQuickDropArea::simultaneousDrags()
                                        Qt::MouseButtons(), Qt::KeyboardModifiers());
     //Same as in the first case, dropArea2 already contains a drag, dropArea1 will get the event
     QCOMPARE(evaluate<bool>(dropArea1, "containsDrag"), true);
-    QCOMPARE(evaluate<int>(dropArea1, "enterEvents"), 1);
-    QCOMPARE(evaluate<int>(dropArea1, "exitEvents"), 0);
+    QCOMPARE(evaluate<int>(dropArea1, "enterEvents"), 2);
+    QCOMPARE(evaluate<int>(dropArea1, "exitEvents"), 1);
     QCOMPARE(evaluate<bool>(dropArea2, "containsDrag"), true);
     QCOMPARE(evaluate<int>(dropArea2, "enterEvents"), 0);
     QCOMPARE(evaluate<int>(dropArea2, "exitEvents"), 0);
@@ -961,8 +975,8 @@ void tst_QQuickDropArea::simultaneousDrags()
     QWindowSystemInterface::handleDrag(&alternateWindow, &data, QPoint(50, 50), Qt::CopyAction,
                                        Qt::MouseButtons(), Qt::KeyboardModifiers());
     QCOMPARE(evaluate<bool>(dropArea1, "containsDrag"), false);
-    QCOMPARE(evaluate<int>(dropArea1, "enterEvents"), 1);
-    QCOMPARE(evaluate<int>(dropArea1, "exitEvents"), 1);
+    QCOMPARE(evaluate<int>(dropArea1, "enterEvents"), 2);
+    QCOMPARE(evaluate<int>(dropArea1, "exitEvents"), 2);
     QCOMPARE(evaluate<bool>(dropArea2, "containsDrag"), true);
     QCOMPARE(evaluate<int>(dropArea2, "enterEvents"), 0);
     QCOMPARE(evaluate<int>(dropArea2, "exitEvents"), 0);
@@ -970,16 +984,16 @@ void tst_QQuickDropArea::simultaneousDrags()
     QWindowSystemInterface::handleDrag(&window, &data, QPoint(50, 50), Qt::CopyAction,
                                        Qt::MouseButtons(), Qt::KeyboardModifiers());
     QCOMPARE(evaluate<bool>(dropArea1, "containsDrag"), true);
-    QCOMPARE(evaluate<int>(dropArea1, "enterEvents"), 2);
-    QCOMPARE(evaluate<int>(dropArea1, "exitEvents"), 1);
+    QCOMPARE(evaluate<int>(dropArea1, "enterEvents"), 4);
+    QCOMPARE(evaluate<int>(dropArea1, "exitEvents"), 3);
     QCOMPARE(evaluate<bool>(dropArea2, "containsDrag"), true);
     QCOMPARE(evaluate<int>(dropArea2, "enterEvents"), 0);
     QCOMPARE(evaluate<int>(dropArea2, "exitEvents"), 0);
 
     evaluate<void>(dragItem1, "Drag.active = false");
     QCOMPARE(evaluate<bool>(dropArea1, "containsDrag"), true);
-    QCOMPARE(evaluate<int>(dropArea1, "enterEvents"), 2);
-    QCOMPARE(evaluate<int>(dropArea1, "exitEvents"), 1);
+    QCOMPARE(evaluate<int>(dropArea1, "enterEvents"), 4);
+    QCOMPARE(evaluate<int>(dropArea1, "exitEvents"), 3);
     QCOMPARE(evaluate<bool>(dropArea2, "containsDrag"), false);
     QCOMPARE(evaluate<int>(dropArea2, "enterEvents"), 0);
     QCOMPARE(evaluate<int>(dropArea2, "exitEvents"), 1);
@@ -1193,9 +1207,14 @@ void tst_QQuickDropArea::dropStuff()
     component.setData(
             "import QtQuick 2.3\n"
             "DropArea {\n"
+                "id: root\n"
                 "width: 100; height: 100\n"
                 "property var array\n"
-                "onDropped: { array = drop.getDataAsArrayBuffer('text/x-red'); }\n"
+                "property string text\n"
+                "onDropped: {\n"
+                "    root.array = drop.getDataAsArrayBuffer('text/x-red'); \n"
+                "    root.text = drop.getDataAsString('text/x-red').arg('no-op'); \n"
+                "}\n"
             "}", QUrl());
 
     QScopedPointer<QObject> object(component.create());
@@ -1207,6 +1226,7 @@ void tst_QQuickDropArea::dropStuff()
     data.setData("text/x-red", "red");
 
     QCOMPARE(evaluate<QVariant>(dropArea, "array"), QVariant());
+    QCOMPARE(evaluate<QString>(dropArea, "text"), QString());
 
     QWindowSystemInterface::handleDrag(&window, &data, QPoint(50, 50), Qt::CopyAction,
                                        Qt::MouseButtons(), Qt::KeyboardModifiers());
@@ -1214,6 +1234,7 @@ void tst_QQuickDropArea::dropStuff()
                                        Qt::MouseButtons(), Qt::KeyboardModifiers());
     QCOMPARE(evaluate<int>(dropArea, "array.byteLength"), 3);
     QCOMPARE(evaluate<QByteArray>(dropArea, "array"), QByteArray("red"));
+    QCOMPARE(evaluate<QString>(dropArea, "text"), QString("red"));
 }
 
 void tst_QQuickDropArea::nestedDropAreas_data()
@@ -1282,6 +1303,48 @@ void tst_QQuickDropArea::nestedDropAreas()
     QCOMPARE(window.rootObject()->property("outerExitEvents"), 1);
     QCOMPARE(window.rootObject()->property("innerEnterEvents"), 2);
     QCOMPARE(window.rootObject()->property("innerExitEvents"), 2);
+}
+
+void tst_QQuickDropArea::signalOrder()
+{
+    QQuickWindow window;
+    QQmlComponent component(&engine);
+    component.setData("import QtQuick\n"
+                      "Item {\n"
+                      "    id: root\n"
+                      "    property var eventOrder: []\n"
+                      "    DropArea {\n"
+                      "    width: 100; height: 100\n"
+                      "    x: 0; y: 0\n"
+                      "    onEntered: eventOrder.push('entered1');\n"
+                      "    onExited: eventOrder.push('exited1');\n"
+                      "    }\n"
+                      "    DropArea {\n"
+                      "    width: 100; height: 100\n"
+                      "    x: 0; y: 100\n"
+                      "    onEntered: eventOrder.push('entered2');\n"
+                      "    onExited: eventOrder.push('exited2');\n"
+                      "    }\n"
+                      "}",
+                      QUrl());
+
+    QScopedPointer<QObject> object(component.create());
+    QQuickItem *item = qobject_cast<QQuickItem *>(object.data());
+    QVERIFY(item);
+    item->setParentItem(window.contentItem());
+
+    QMimeData data;
+
+    QWindowSystemInterface::handleDrag(&window, &data, QPoint(50, 50), Qt::CopyAction,
+                                       Qt::MouseButtons(), Qt::KeyboardModifiers());
+    QWindowSystemInterface::handleDrag(&window, &data, QPoint(50, 150), Qt::CopyAction,
+                                       Qt::MouseButtons(), Qt::KeyboardModifiers());
+    QWindowSystemInterface::handleDrag(&window, &data, QPoint(50, 250), Qt::CopyAction,
+                                       Qt::MouseButtons(), Qt::KeyboardModifiers());
+
+    const QList<QVariant> eventOrder = item->property("eventOrder").toList();
+    QCOMPARE(eventOrder,
+             QList<QVariant>({ u"entered1"_s, u"exited1"_s, u"entered2"_s, u"exited2"_s }));
 }
 
 QTEST_MAIN(tst_QQuickDropArea)

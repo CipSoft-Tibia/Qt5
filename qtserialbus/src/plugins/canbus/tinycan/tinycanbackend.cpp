@@ -1,39 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Denis Shienkov <denis.shienkov@gmail.com>
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Denis Shienkov <denis.shienkov@gmail.com>
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "tinycanbackend.h"
 #include "tinycanbackend_p.h"
@@ -74,7 +41,8 @@ bool TinyCanBackend::canCreate(QString *errorReason)
 QList<QCanBusDeviceInfo> TinyCanBackend::interfaces()
 {
     QList<QCanBusDeviceInfo> result;
-    result.append(createDeviceInfo(QStringLiteral("can0.0")));
+    result.append(createDeviceInfo(QStringLiteral("tinycan"), QStringLiteral("can0.0"),
+                                   false, false));
     return result;
 }
 
@@ -121,7 +89,7 @@ static void DRV_CALLBACK_TYPE canRxEventCallback(quint32 index, TCanMsg *frame, 
     Q_UNUSED(count);
 
     QMutexLocker lock(&gTinyCan->mutex);
-    for (TinyCanBackendPrivate *p : qAsConst(gTinyCan->channels)) {
+    for (TinyCanBackendPrivate *p : std::as_const(gTinyCan->channels)) {
         if (p->channelIndex == int(index)) {
             p->startRead();
             return;
@@ -232,7 +200,8 @@ void TinyCanBackendPrivate::close()
     isOpen = false;
 }
 
-bool TinyCanBackendPrivate::setConfigurationParameter(int key, const QVariant &value)
+bool TinyCanBackendPrivate::setConfigurationParameter(QCanBusDevice::ConfigurationKey key,
+                                                      const QVariant &value)
 {
     Q_Q(TinyCanBackend);
 
@@ -351,27 +320,23 @@ void TinyCanBackendPrivate::startWrite()
 
     const QCanBusFrame frame = q->dequeueOutgoingFrame();
     const QByteArray payload = frame.payload();
+    const qsizetype payloadSize = payload.size();
 
     TCanMsg message = {};
+    message.Id = frame.frameId();
+    message.Flags.Flag.Len = payloadSize;
+    message.Flags.Flag.Error = (frame.frameType() == QCanBusFrame::ErrorFrame);
+    message.Flags.Flag.RTR = (frame.frameType() == QCanBusFrame::RemoteRequestFrame);
+    message.Flags.Flag.TxD = 1;
+    message.Flags.Flag.EFF = frame.hasExtendedFrameFormat();
 
-    if (Q_UNLIKELY(payload.size() > int(sizeof(message.Data.Bytes)))) {
-        qCWarning(QT_CANBUS_PLUGINS_TINYCAN, "Cannot write frame with payload size %d.", payload.size());
-    } else {
-        message.Id = frame.frameId();
-        message.Flags.Flag.Len = payload.size();
-        message.Flags.Flag.Error = (frame.frameType() == QCanBusFrame::ErrorFrame);
-        message.Flags.Flag.RTR = (frame.frameType() == QCanBusFrame::RemoteRequestFrame);
-        message.Flags.Flag.TxD = 1;
-        message.Flags.Flag.EFF = frame.hasExtendedFrameFormat();
-
-        const qint32 messagesToWrite = 1;
-        ::memcpy(message.Data.Bytes, payload.constData(), sizeof(message.Data.Bytes));
-        const int ret = ::CanTransmit(channelIndex, &message, messagesToWrite);
-        if (Q_UNLIKELY(ret < 0))
-            q->setError(systemErrorString(ret), QCanBusDevice::CanBusError::WriteError);
-        else
-            emit q->framesWritten(messagesToWrite);
-    }
+    const qint32 messagesToWrite = 1;
+    ::memcpy(message.Data.Bytes, payload.constData(), payloadSize);
+    const int ret = ::CanTransmit(channelIndex, &message, messagesToWrite);
+    if (Q_UNLIKELY(ret < 0))
+        q->setError(systemErrorString(ret), QCanBusDevice::CanBusError::WriteError);
+    else
+        emit q->framesWritten(messagesToWrite);
 
     if (q->hasOutgoingFrames() && !writeNotifier->isActive())
         writeNotifier->start();
@@ -382,7 +347,7 @@ void TinyCanBackendPrivate::startRead()
 {
     Q_Q(TinyCanBackend);
 
-    QVector<QCanBusFrame> newFrames;
+    QList<QCanBusFrame> newFrames;
 
     for (;;) {
         if (!::CanReceiveGetCount(channelIndex))
@@ -506,9 +471,6 @@ TinyCanBackend::TinyCanBackend(const QString &name, QObject *parent)
 
     d->setupChannel(name);
     d->setupDefaultConfigurations();
-
-    std::function<void()> f = std::bind(&TinyCanBackend::resetController, this);
-    setResetControllerFunction(f);
 }
 
 TinyCanBackend::~TinyCanBackend()
@@ -529,7 +491,7 @@ bool TinyCanBackend::open()
 
         // apply all stored configurations
         const auto keys = configurationKeys();
-        for (int key : keys) {
+        for (ConfigurationKey key : keys) {
             const QVariant param = configurationParameter(key);
             const bool success = d->setConfigurationParameter(key, param);
             if (Q_UNLIKELY(!success)) {
@@ -552,7 +514,7 @@ void TinyCanBackend::close()
     setState(QCanBusDevice::UnconnectedState);
 }
 
-void TinyCanBackend::setConfigurationParameter(int key, const QVariant &value)
+void TinyCanBackend::setConfigurationParameter(ConfigurationKey key, const QVariant &value)
 {
     Q_D(TinyCanBackend);
 
@@ -606,6 +568,11 @@ void TinyCanBackend::resetController()
 {
     Q_D(TinyCanBackend);
     d->resetController();
+}
+
+QCanBusDeviceInfo TinyCanBackend::deviceInfo() const
+{
+    return createDeviceInfo(QStringLiteral("tinycan"), QStringLiteral("can0.0"), false, false);
 }
 
 QT_END_NAMESPACE

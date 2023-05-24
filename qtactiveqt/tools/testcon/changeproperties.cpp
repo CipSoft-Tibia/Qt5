@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "changeproperties.h"
 
@@ -34,7 +9,7 @@
 #include <QtCore/QMetaObject>
 #include <QtCore/QMetaProperty>
 #include <QtCore/QRegularExpression>
-#include <ActiveQt/QAxWidget>
+#include <QtAxContainer/QAxWidget>
 
 QT_BEGIN_NAMESPACE
 
@@ -87,17 +62,16 @@ void ChangeProperties::on_buttonSet_clicked()
 
     QString prop = item->text(0);
     QVariant value = activex->property(prop.toLatin1());
-    QVariant::Type type = value.type();
+    int type = value.metaType().id();
     if (!value.isValid()) {
         const QMetaObject *mo = activex->metaObject();
         const QMetaProperty property = mo->property(mo->indexOfProperty(prop.toLatin1()));
-        type = QVariant::nameToType(property.typeName());
+        type = QMetaType::fromName(property.typeName()).id();
     }
     switch (type) {
-    case QVariant::Color:
+    case QMetaType::QColor:
         {
-            QColor col;
-            col.setNamedColor(editValue->text());
+            const QColor col = QColor::fromString(editValue->text());
             if (col.isValid()) {
                 value = QVariant::fromValue(col);
             } else {
@@ -109,7 +83,7 @@ void ChangeProperties::on_buttonSet_clicked()
             }
         }
         break;
-    case QVariant::Font:
+    case QMetaType::QFont:
         {
             QFont fnt;
             if (fnt.fromString(editValue->text())) {
@@ -123,7 +97,7 @@ void ChangeProperties::on_buttonSet_clicked()
             }
         }
         break;
-    case QVariant::Pixmap:
+    case QMetaType::QPixmap:
         {
             QString fileName = editValue->text();
             if (fileName.isEmpty())
@@ -135,17 +109,17 @@ void ChangeProperties::on_buttonSet_clicked()
             value = QVariant::fromValue(pm);
         }
         break;
-    case QVariant::Bool:
+    case QMetaType::Bool:
         {
             const QString txt = editValue->text();
             value = QVariant(txt != QLatin1String("0") && txt.compare(QLatin1String("false"), Qt::CaseInsensitive));
         }
         break;
-    case QVariant::List:
+    case QMetaType::QVariantList:
         {
             QStringList txtList = editValue->text().split(QRegularExpression(QLatin1String("[,;]")));
             QVariantList varList;
-            for (int i = 0; i < txtList.count(); ++i) {
+            for (qsizetype i = 0; i < txtList.size(); ++i) {
                 QVariant svar(txtList.at(i));
                 QString str = svar.toString();
                 str = str.trimmed();
@@ -208,31 +182,31 @@ void ChangeProperties::updateProperties()
             }
             QVariant var = activex->property(property.name());
 
-            switch (var.type()) {
-            case QVariant::Color:
+            switch (var.metaType().id()) {
+            case QMetaType::QColor:
                 {
                     QColor col = qvariant_cast<QColor>(var);
                     item->setText(2, col.name());
                 }
                 break;
-            case QVariant::Font:
+            case QMetaType::QFont:
                 {
                     QFont fnt = qvariant_cast<QFont>(var);
                     item->setText(2, fnt.toString());
                 }
                 break;
-            case QVariant::Bool:
+            case QMetaType::Bool:
                 {
                     item->setText(2, var.toBool() ? QLatin1String("true") : QLatin1String("false"));
                 }
                 break;
-            case QVariant::Pixmap:
+            case QMetaType::QPixmap:
                 {
                     QPixmap pm = qvariant_cast<QPixmap>(var);
                     item->setIcon(2, pm);
                 }
                 break;
-            case QVariant::List:
+            case QMetaType::QVariantList:
                 {
                     const auto varList = var.toList();
                     QStringList strList;
@@ -241,7 +215,7 @@ void ChangeProperties::updateProperties()
                     item->setText(2, strList.join(QLatin1String(", ")));
                 }
                 break;
-            case QVariant::Int:
+            case QMetaType::Int:
                 if (property.isEnumType()) {
                     const QMetaEnum enumerator = mo->enumerator(mo->indexOfEnumerator(property.typeName()));
                     item->setText(2, QString::fromLatin1(enumerator.valueToKey(var.toInt())));

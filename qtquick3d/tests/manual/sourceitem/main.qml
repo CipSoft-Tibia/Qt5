@@ -1,7 +1,7 @@
-import QtQuick 2.15
-import QtQuick.Window 2.12
-import QtQuick3D 1.15
-import QtQuick.Controls 2.12
+import QtQuick
+import QtQuick.Window
+import QtQuick3D
+import QtQuick.Controls
 
 Window {
     id: window
@@ -37,7 +37,7 @@ Window {
 
         environment: SceneEnvironment {
             id: environment
-            probeBrightness: 5
+            probeExposure: 0.05
             clearColor: "#cceeff"
             backgroundMode: SceneEnvironment.Color
         }
@@ -184,7 +184,15 @@ Window {
             height: 1024
             sourceSize.width: 1024
             sourceSize.height: 1024
-            source: "qt_logo_rect.png"
+            property string src: "qt_logo_rect.png"
+            source: src // url, so use a separate src string property
+            function switchSource() {
+                if (src === "qt_logo_rect.png")
+                    src = "qt_logo.png";
+                else
+                    src = "qt_logo_rect.png";
+                console.log("Image.source is now " + source);
+            }
         }
     }
     Component {
@@ -222,12 +230,18 @@ Window {
                 texture.sourceItem = item;
             }
         }
-        Button {
-            text: "Assign new sourceItem (texture provider, non-layer)"
-            onClicked: {
-                console.log("assigning new non-layer sourceItem");
-                const item = textureProviderSourceItemComponent.createObject(sourceItemContainer);
-                texture.sourceItem = item;
+        Row {
+            Button {
+                text: "Assign new sourceItem (texture provider, non-layer)"
+                onClicked: {
+                    console.log("assigning new non-layer sourceItem");
+                    const item = textureProviderSourceItemComponent.createObject(sourceItemContainer);
+                    texture.sourceItem = item;
+                }
+            }
+            Button {
+                text: "Change Image.source"
+                onClicked: texture.sourceItem.switchSource()
             }
         }
         Button {

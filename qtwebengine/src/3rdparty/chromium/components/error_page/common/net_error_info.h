@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -74,6 +74,9 @@ enum NetworkErrorPageEvent {
   // The error page was shown because the device is offline (this is the dino
   // page).
   NETWORK_ERROR_PAGE_OFFLINE_ERROR_SHOWN = 29,
+
+  // "Sign in to network" button clicked.
+  NETWORK_ERROR_PORTAL_SIGNIN_BUTTON_CLICKED = 30,
 
   NETWORK_ERROR_PAGE_EVENT_MAX,
 };

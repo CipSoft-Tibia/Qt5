@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QDECLARATIVEGEOROUTEMODEL_H
 #define QDECLARATIVEGEOROUTEMODEL_H
@@ -48,22 +15,19 @@
 // We mean it.
 //
 
+#include <QObject>
+#include <QAbstractListModel>
+#include <QtPositioning/QGeoCoordinate>
+#include <QtPositioning/QGeoRectangle>
+#include <qgeorouterequest.h>
+#include <qgeoroutereply.h>
+#include <QtQml/qqml.h>
+#include <QtQml/QQmlParserStatus>
+
 #include <QtLocation/private/qlocationglobal_p.h>
 #include <QtLocation/private/qdeclarativegeoserviceprovider_p.h>
 
-#include <QtPositioning/QGeoCoordinate>
-#include <QtPositioning/QGeoRectangle>
 #include <QtPositioning/private/qgeocoordinateobject_p.h>
-
-#include <qgeorouterequest.h>
-#include <qgeoroutereply.h>
-
-#include <QtQml/qqml.h>
-#include <QtQml/QQmlParserStatus>
-#include <QtQml/private/qv4engine_p.h>
-#include <QAbstractListModel>
-
-#include <QObject>
 
 QT_BEGIN_NAMESPACE
 
@@ -75,6 +39,8 @@ class QDeclarativeGeoRouteQuery;
 class Q_LOCATION_PRIVATE_EXPORT QDeclarativeGeoRouteModel : public QAbstractListModel, public QQmlParserStatus
 {
     Q_OBJECT
+    QML_NAMED_ELEMENT(RouteModel)
+    QML_ADDED_IN_VERSION(5, 0)
     Q_ENUMS(Status)
     Q_ENUMS(RouteError)
 
@@ -115,17 +81,16 @@ public:
         MissingRequiredParameterError
     };
 
-    explicit QDeclarativeGeoRouteModel(QObject *parent = 0);
-    ~QDeclarativeGeoRouteModel();
+    explicit QDeclarativeGeoRouteModel(QObject *parent = nullptr);
 
     // From QQmlParserStatus
-    void classBegin() {}
-    void componentComplete();
+    void classBegin() override {}
+    void componentComplete() override;
 
     // From QAbstractListModel
-    int rowCount(const QModelIndex &parent) const;
-    QVariant data(const QModelIndex &index, int role) const;
-    virtual QHash<int,QByteArray> roleNames() const;
+    int rowCount(const QModelIndex &parent) const override;
+    QVariant data(const QModelIndex &index, int role) const override;
+    QHash<int,QByteArray> roleNames() const override;
 
     void setPlugin(QDeclarativeGeoServiceProvider *plugin);
     QDeclarativeGeoServiceProvider *plugin() const;
@@ -144,7 +109,7 @@ public:
     RouteError error() const;
 
     int count() const;
-    Q_INVOKABLE QDeclarativeGeoRoute *get(int index);
+    Q_INVOKABLE QGeoRoute get(int index);
     Q_INVOKABLE void reset();
     Q_INVOKABLE void cancel();
 
@@ -174,108 +139,23 @@ private:
     void setStatus(Status status);
     void setError(RouteError error, const QString &errorString);
 
-    bool complete_;
+    bool complete_ = false;
 
-    QDeclarativeGeoServiceProvider *plugin_;
-    QDeclarativeGeoRouteQuery *routeQuery_;
+    QDeclarativeGeoServiceProvider *plugin_ = nullptr;
+    QDeclarativeGeoRouteQuery *routeQuery_ = nullptr;
 
-    QList<QDeclarativeGeoRoute *> routes_;
-    bool autoUpdate_;
-    Status status_;
+    QList<QGeoRoute> routes_;
+    bool autoUpdate_ = false;
+    Status status_ = QDeclarativeGeoRouteModel::Null;
     QString errorString_;
-    RouteError error_;
+    RouteError error_ = QDeclarativeGeoRouteModel::NoError;
 };
-
-
-
-// purpose of this class is to be convertible to a QGeoCoordinate (through QGeoWaypoint), but also
-// to behave like it, so that in QML source compatibility would be preserved. This is, however, not possible to achieve at the present.
-class Q_LOCATION_PRIVATE_EXPORT QDeclarativeGeoWaypoint : public QGeoCoordinateObject, public QQmlParserStatus
-{
-    Q_OBJECT
-
-    Q_PROPERTY(double latitude READ latitude WRITE setLatitude STORED false)
-    Q_PROPERTY(double longitude READ longitude WRITE setLongitude STORED false)
-    Q_PROPERTY(double altitude READ altitude WRITE setAltitude STORED false)
-    Q_PROPERTY(bool isValid READ isValid STORED false)
-
-    Q_PROPERTY(qreal bearing READ bearing WRITE setBearing NOTIFY bearingChanged)
-    Q_PROPERTY(QVariantMap metadata READ metadata)
-    Q_PROPERTY(QQmlListProperty<QObject> quickChildren READ declarativeChildren DESIGNABLE false)
-    Q_CLASSINFO("DefaultProperty", "quickChildren")
-    Q_INTERFACES(QQmlParserStatus)
-
-public:
-    QDeclarativeGeoWaypoint(QObject *parent = 0);
-    virtual ~QDeclarativeGeoWaypoint();
-
-    bool operator==(const QDeclarativeGeoWaypoint &other) const;
-
-    qreal latitude() const;
-    void setLatitude(qreal latitude);
-
-    qreal longitude() const;
-    void setLongitude(qreal longitude);
-
-    qreal altitude() const;
-    void setAltitude(qreal altitude);
-
-    bool isValid() const;
-
-    qreal bearing() const;
-    void setBearing(qreal bearing);
-
-    template <typename T = QObject>
-    QList<T*> quickChildren() const
-    {
-        QList<T*> res;
-        for (auto kid : qAsConst(m_children)) {
-            auto val = qobject_cast<T*>(kid);
-            if (val)
-                res.push_back(val);
-        }
-        return res;
-    }
-
-    QVariantMap metadata();
-    void setMetadata(const QVariantMap &meta);
-
-Q_SIGNALS:
-    void completed();
-    void waypointDetailsChanged();
-    void bearingChanged();
-    void extraParametersChanged();
-
-private Q_SLOTS:
-    void extraParameterChanged();
-
-protected:
-    // From QQmlParserStatus
-    void classBegin() override {}
-    void componentComplete() override { m_complete = true; emit completed(); }
-
-    // For quickChildren
-    static void append(QQmlListProperty<QObject> *p, QObject *v);
-    static int count(QQmlListProperty<QObject> *p);
-    static QObject *at(QQmlListProperty<QObject> *p, int idx);
-    static void clear(QQmlListProperty<QObject> *p);
-    QQmlListProperty<QObject> declarativeChildren();
-    QList<QObject*> m_children;
-
-    // other data members
-    bool m_metadataChanged = false;
-    bool m_complete = false;
-
-    qreal m_bearing = Q_QNAN;
-    QVariantMap m_metadata;
-};
-
-
-
 
 class Q_LOCATION_PRIVATE_EXPORT QDeclarativeGeoRouteQuery : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
+    QML_NAMED_ELEMENT(RouteQuery)
+    QML_ADDED_IN_VERSION(5, 0)
     Q_ENUMS(TravelMode)
     Q_ENUMS(FeatureType)
     Q_ENUMS(FeatureWeight)
@@ -292,27 +172,23 @@ class Q_LOCATION_PRIVATE_EXPORT QDeclarativeGeoRouteQuery : public QObject, publ
     Q_PROPERTY(RouteOptimizations routeOptimizations READ routeOptimizations WRITE setRouteOptimizations NOTIFY routeOptimizationsChanged)
     Q_PROPERTY(SegmentDetail segmentDetail READ segmentDetail WRITE setSegmentDetail NOTIFY segmentDetailChanged)
     Q_PROPERTY(ManeuverDetail maneuverDetail READ maneuverDetail WRITE setManeuverDetail NOTIFY maneuverDetailChanged)
-    Q_PROPERTY(QVariantList waypoints READ waypoints WRITE setWaypoints NOTIFY waypointsChanged)
-    Q_PROPERTY(QJSValue excludedAreas READ excludedAreas WRITE setExcludedAreas NOTIFY excludedAreasChanged)
+    Q_PROPERTY(QList<QGeoCoordinate> waypoints READ waypoints WRITE setWaypoints NOTIFY waypointsChanged)
+    Q_PROPERTY(QList<QGeoRectangle> excludedAreas READ excludedAreas WRITE setExcludedAreas NOTIFY excludedAreasChanged)
     Q_PROPERTY(QList<int> featureTypes READ featureTypes NOTIFY featureTypesChanged)
-    Q_PROPERTY(QVariantMap extraParameters READ extraParameters REVISION 11)
-    Q_PROPERTY(QDateTime departureTime READ departureTime WRITE setDepartureTime NOTIFY departureTimeChanged REVISION 13)
-    Q_PROPERTY(QQmlListProperty<QObject> quickChildren READ declarativeChildren DESIGNABLE false)
-    Q_CLASSINFO("DefaultProperty", "quickChildren")
+    Q_PROPERTY(QDateTime departureTime READ departureTime WRITE setDepartureTime NOTIFY departureTimeChanged REVISION(5, 13))
     Q_INTERFACES(QQmlParserStatus)
 
 public:
 
-    explicit QDeclarativeGeoRouteQuery(QObject *parent = 0);
-    QDeclarativeGeoRouteQuery(const QGeoRouteRequest &request, QObject *parent = 0); // init from request. For instances intended to be read only
+    explicit QDeclarativeGeoRouteQuery(QObject *parent = nullptr);
+    QDeclarativeGeoRouteQuery(const QGeoRouteRequest &request, QObject *parent = nullptr); // init from request. For instances intended to be read only
     ~QDeclarativeGeoRouteQuery();
 
     // From QQmlParserStatus
-    void classBegin() {}
-    void componentComplete();
+    void classBegin() override {}
+    void componentComplete() override;
 
-    QGeoRouteRequest routeRequest();
-    QVariantMap extraParameters();
+    QGeoRouteRequest routeRequest() const;
 
     enum TravelMode {
         CarTravel = QGeoRouteRequest::CarTravel,
@@ -370,21 +246,18 @@ public:
     int numberAlternativeRoutes() const;
 
     //QList<FeatureType> featureTypes();
-    QList<int> featureTypes();
+    QList<int> featureTypes() const;
 
 
-    QVariantList waypoints();
-    Q_INVOKABLE QVariantList waypointObjects();
-    void setWaypoints(const QVariantList &value);
+    QList<QGeoCoordinate> waypoints() const;
+    void setWaypoints(const QList<QGeoCoordinate> &value);
 
-    // READ functions for list properties
-    QJSValue excludedAreas() const;
-    void setExcludedAreas(const QJSValue &value);
+    QList<QGeoRectangle> excludedAreas() const;
+    void setExcludedAreas(const QList<QGeoRectangle> &value);
 
-    Q_INVOKABLE void addWaypoint(const QVariant &w);
-    Q_INVOKABLE void removeWaypoint(const QVariant &waypoint);
+    Q_INVOKABLE void addWaypoint(const QGeoCoordinate &w);
+    Q_INVOKABLE void removeWaypoint(const QGeoCoordinate &waypoint);
     Q_INVOKABLE void clearWaypoints();
-    void flushWaypoints(QList<QDeclarativeGeoWaypoint *> &waypoints);
 
     Q_INVOKABLE void addExcludedArea(const QGeoRectangle &area);
     Q_INVOKABLE void removeExcludedArea(const QGeoRectangle &area);
@@ -413,18 +286,6 @@ public:
     void setDepartureTime(const QDateTime &departureTime);
     QDateTime departureTime() const;
 
-    template <typename T = QObject>
-    QList<T*> quickChildren() const
-    {
-        QList<T*> res;
-        for (auto kid : qAsConst(m_children)) {
-            auto val = qobject_cast<T*>(kid);
-            if (val)
-                res.push_back(val);
-        }
-        return res;
-    }
-
 Q_SIGNALS:
     void numberAlternativeRoutesChanged();
     void travelModesChanged();
@@ -438,36 +299,22 @@ Q_SIGNALS:
     void segmentDetailChanged();
 
     void queryDetailsChanged();
-    Q_REVISION(11) void extraParametersChanged();
     void departureTimeChanged();
 
 private Q_SLOTS:
     void excludedAreaCoordinateChanged();
-    void extraParameterChanged();
     void waypointChanged();
-
-protected:
-    static void append(QQmlListProperty<QObject> *p, QObject *v);
-    static int count(QQmlListProperty<QObject> *p);
-    static QObject *at(QQmlListProperty<QObject> *p, int idx);
-    static void clear(QQmlListProperty<QObject> *p);
-
-    QQmlListProperty<QObject> declarativeChildren();
-    QList<QObject*> m_children;
 
 private:
     Q_INVOKABLE void doCoordinateChanged();
 
-    QGeoRouteRequest request_;
-    bool complete_;
-    bool m_excludedAreaCoordinateChanged;
-    bool m_extraParametersChanged = false;
-    bool m_waypointsChanged = false;
-    QList<QDeclarativeGeoWaypoint *> m_waypoints;
+    mutable QGeoRouteRequest request_;
+    bool complete_ = false;
+    bool m_excludedAreaCoordinateChanged = false;
+    mutable bool m_waypointsChanged = false;
+    QList<QGeoCoordinate> m_waypoints;
 };
 
 QT_END_NAMESPACE
-
-Q_DECLARE_METATYPE(QDeclarativeGeoWaypoint*)
 
 #endif

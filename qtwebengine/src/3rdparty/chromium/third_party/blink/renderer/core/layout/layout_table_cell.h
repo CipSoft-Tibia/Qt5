@@ -158,7 +158,7 @@ class CORE_EXPORT LayoutTableCell : public LayoutBlockFlow,
     return Row()->RowIndex();
   }
 
-  Length StyleOrColLogicalWidth() const final {
+  Length StyleOrColLogicalWidth() const {
     NOT_DESTROYED();
     const Length& style_width = StyleRef().LogicalWidth();
     if (!style_width.IsAuto())
@@ -175,9 +175,7 @@ class CORE_EXPORT LayoutTableCell : public LayoutBlockFlow,
     NOT_DESTROYED();
     const Length& height = StyleRef().LogicalHeight();
     int style_logical_height =
-        height.IsIntrinsicOrAuto()
-            ? 0
-            : ValueForLength(height, LayoutUnit()).ToInt();
+        height.IsSpecified() ? ValueForLength(height, LayoutUnit()).ToInt() : 0;
 
     // In strict mode, box-sizing: content-box do the right thing and actually
     // add in the border and padding.
@@ -238,11 +236,11 @@ class CORE_EXPORT LayoutTableCell : public LayoutBlockFlow,
     SetIntrinsicPadding(0, 0);
   }
 
-  int IntrinsicPaddingBefore() const final {
+  int IntrinsicPaddingBefore() const {
     NOT_DESTROYED();
     return intrinsic_padding_before_;
   }
-  int IntrinsicPaddingAfter() const final {
+  int IntrinsicPaddingAfter() const {
     NOT_DESTROYED();
     return intrinsic_padding_after_;
   }
@@ -251,6 +249,12 @@ class CORE_EXPORT LayoutTableCell : public LayoutBlockFlow,
   LayoutUnit PaddingBottom() const override;
   LayoutUnit PaddingLeft() const override;
   LayoutUnit PaddingRight() const override;
+
+  // TODO(crbug.com/962299): This is incorrect in some cases.
+  gfx::Size PixelSnappedSize() const {
+    NOT_DESTROYED();
+    return FrameRect().PixelSnappedSize();
+  }
 
   void SetOverrideLogicalHeightFromRowHeight(LayoutUnit);
 
@@ -407,10 +411,6 @@ class CORE_EXPORT LayoutTableCell : public LayoutBlockFlow,
     NOT_DESTROYED();
     return this;
   }
-  const LayoutTableCell* ToLayoutTableCell() const final {
-    NOT_DESTROYED();
-    return this;
-  }
   const LayoutObject* ToLayoutObject() const final {
     NOT_DESTROYED();
     return this;
@@ -490,9 +490,8 @@ class CORE_EXPORT LayoutTableCell : public LayoutBlockFlow,
     NOT_DESTROYED();
     return LogicalToPhysical<CollapsedBorderValuesMethod>(
         // Collapsed border logical directions are in table's directions.
-        TableStyle().GetWritingMode(), TableStyle().Direction(),
-        &CollapsedBorderValues::StartBorder, &CollapsedBorderValues::EndBorder,
-        &CollapsedBorderValues::BeforeBorder,
+        TableStyle().GetWritingDirection(), &CollapsedBorderValues::StartBorder,
+        &CollapsedBorderValues::EndBorder, &CollapsedBorderValues::BeforeBorder,
         &CollapsedBorderValues::AfterBorder);
   }
 
@@ -506,9 +505,9 @@ class CORE_EXPORT LayoutTableCell : public LayoutBlockFlow,
     NOT_DESTROYED();
     return PhysicalToLogical<bool>(
         // Collapsed border logical directions are in table's directions.
-        TableStyle().GetWritingMode(), TableStyle().Direction(),
-        kInnerHalfPixelAsOneTop, kInnerHalfPixelAsOneRight,
-        kInnerHalfPixelAsOneBottom, kInnerHalfPixelAsOneLeft);
+        TableStyle().GetWritingDirection(), kInnerHalfPixelAsOneTop,
+        kInnerHalfPixelAsOneRight, kInnerHalfPixelAsOneBottom,
+        kInnerHalfPixelAsOneLeft);
   }
 
   unsigned CollapsedBorderHalfLeft(bool outer) const {
@@ -566,9 +565,9 @@ class CORE_EXPORT LayoutTableCell : public LayoutBlockFlow,
 
   LogicalToPhysical<int> LogicalIntrinsicPaddingToPhysical() const {
     NOT_DESTROYED();
-    return LogicalToPhysical<int>(
-        StyleRef().GetWritingMode(), StyleRef().Direction(), 0, 0,
-        intrinsic_padding_before_, intrinsic_padding_after_);
+    return LogicalToPhysical<int>(StyleRef().GetWritingDirection(), 0, 0,
+                                  intrinsic_padding_before_,
+                                  intrinsic_padding_after_);
   }
   void SetIntrinsicPaddingBefore(int p) {
     NOT_DESTROYED();

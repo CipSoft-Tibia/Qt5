@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLDATAMODEL_P_P_H
 #define QQMLDATAMODEL_P_P_H
@@ -73,7 +37,8 @@ typedef QQmlListCompositor Compositor;
 class QQmlDelegateModelAttachedMetaObject;
 class QQmlAbstractDelegateComponent;
 
-class Q_QMLMODELS_PRIVATE_EXPORT QQmlDelegateModelItemMetaType : public QQmlRefCount
+class Q_QMLMODELS_PRIVATE_EXPORT QQmlDelegateModelItemMetaType
+    : public QQmlRefCounted<QQmlDelegateModelItemMetaType>
 {
 public:
     QQmlDelegateModelItemMetaType(QV4::ExecutionEngine *engine, QQmlDelegateModel *model, const QStringList &groupNames);
@@ -100,8 +65,8 @@ class QQmlDelegateModelItem : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(int index READ modelIndex NOTIFY modelIndexChanged)
-    Q_PROPERTY(int row READ modelRow NOTIFY rowChanged REVISION 12)
-    Q_PROPERTY(int column READ modelColumn NOTIFY columnChanged REVISION 12)
+    Q_PROPERTY(int row READ modelRow NOTIFY rowChanged REVISION(2, 12))
+    Q_PROPERTY(int column READ modelColumn NOTIFY columnChanged REVISION(2, 12))
     Q_PROPERTY(QObject *model READ modelObject CONSTANT)
 public:
     QQmlDelegateModelItem(const QQmlRefPointer<QQmlDelegateModelItemMetaType> &metaType,
@@ -110,7 +75,11 @@ public:
     ~QQmlDelegateModelItem();
 
     void referenceObject() { ++objectRef; }
-    bool releaseObject() { return --objectRef == 0 && !(groups & Compositor::PersistedFlag); }
+    bool releaseObject()
+    {
+        Q_ASSERT(objectRef > 0);
+        return --objectRef == 0 && !(groups & Compositor::PersistedFlag);
+    }
     bool isObjectReferenced() const { return objectRef != 0 || (groups & Compositor::PersistedFlag); }
     void childContextObjectDestroyed(QObject *childContextObject);
 
@@ -149,7 +118,7 @@ public:
 
     QV4::ExecutionEngine *v4;
     QQmlRefPointer<QQmlDelegateModelItemMetaType> const metaType;
-    QQmlContextDataRef contextData;
+    QQmlRefPointer<QQmlContextData> contextData;
     QPointer<QObject> object;
     QPointer<QQmlDelegateModelAttached> attached;
     QQDMIncubationTask *incubationTask;
@@ -162,8 +131,8 @@ public:
 
 Q_SIGNALS:
     void modelIndexChanged();
-    Q_REVISION(12) void rowChanged();
-    Q_REVISION(12) void columnChanged();
+    Q_REVISION(2, 12) void rowChanged();
+    Q_REVISION(2, 12) void columnChanged();
 
 protected:
     void objectDestroyed(QObject *);
@@ -222,7 +191,7 @@ public:
 
     QQmlDelegateModelItem *incubating = nullptr;
     QQmlDelegateModelPrivate *vdm = nullptr;
-    QQmlContextData *proxyContext = nullptr;
+    QQmlRefPointer<QQmlContextData> proxyContext;
     QPointer<QObject> proxiedObject  = nullptr; // the proxied object might disapear, so we use a QPointer instead of a raw one
     int index[QQmlListCompositor::MaximumGroupCount];
 };
@@ -333,13 +302,18 @@ public:
     void emitModelUpdated(const QQmlChangeSet &changeSet, bool reset) override;
     void delegateChanged(bool add = true, bool remove = true);
 
-    bool insert(Compositor::insert_iterator &before, const QV4::Value &object, int groups);
+    enum class InsertionResult {
+        Success,
+        Error,
+        Retry
+    };
+    InsertionResult insert(Compositor::insert_iterator &before, const QV4::Value &object, int groups);
 
     int adaptorModelCount() const;
 
     static void group_append(QQmlListProperty<QQmlDelegateModelGroup> *property, QQmlDelegateModelGroup *group);
-    static int group_count(QQmlListProperty<QQmlDelegateModelGroup> *property);
-    static QQmlDelegateModelGroup *group_at(QQmlListProperty<QQmlDelegateModelGroup> *property, int index);
+    static qsizetype group_count(QQmlListProperty<QQmlDelegateModelGroup> *property);
+    static QQmlDelegateModelGroup *group_at(QQmlListProperty<QQmlDelegateModelGroup> *property, qsizetype index);
 
     void releaseIncubator(QQDMIncubationTask *incubationTask);
     void incubatorStatusChanged(QQDMIncubationTask *incubationTask, QQmlIncubator::Status status);
@@ -386,7 +360,7 @@ public:
 class QQmlPartsModel : public QQmlInstanceModel, public QQmlDelegateModelGroupEmitter
 {
     Q_OBJECT
-    Q_PROPERTY(QString filterOnGroup READ filterGroup WRITE setFilterGroup NOTIFY filterGroupChanged RESET resetFilterGroup)
+    Q_PROPERTY(QString filterOnGroup READ filterGroup WRITE setFilterGroup NOTIFY filterGroupChanged RESET resetFilterGroup FINAL)
 public:
     QQmlPartsModel(QQmlDelegateModel *model, const QString &part, QObject *parent = nullptr);
     ~QQmlPartsModel();
@@ -451,7 +425,9 @@ public:
     QList<QQmlPartsModel *> models;
 };
 
-class QQmlDelegateModelAttachedMetaObject : public QAbstractDynamicMetaObject, public QQmlRefCount
+class QQmlDelegateModelAttachedMetaObject
+    : public QAbstractDynamicMetaObject,
+      public QQmlRefCounted<QQmlDelegateModelAttachedMetaObject>
 {
 public:
     QQmlDelegateModelAttachedMetaObject(
@@ -466,20 +442,6 @@ private:
     QMetaObject * const metaObject;
     const int memberPropertyOffset;
     const int indexPropertyOffset;
-};
-
-class PropertyUpdater : public QObject
-{
-    Q_OBJECT
-
-public:
-    PropertyUpdater(QObject *parent);
-    QHash<int, QMetaObject::Connection> senderToConnection;
-    QHash<int, int> changeSignalIndexToPropertyIndex;
-    int updateCount = 0;
-public Q_SLOTS:
-    void doUpdate();
-    void breakBinding();
 };
 
 QT_END_NAMESPACE

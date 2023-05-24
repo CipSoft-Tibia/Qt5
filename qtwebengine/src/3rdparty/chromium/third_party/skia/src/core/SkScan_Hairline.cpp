@@ -6,10 +6,10 @@
  */
 
 #include "include/core/SkPaint.h"
+#include "src/base/SkMathPriv.h"
 #include "src/core/SkBlitter.h"
 #include "src/core/SkFDot6.h"
 #include "src/core/SkLineClipper.h"
-#include "src/core/SkMathPriv.h"
 #include "src/core/SkPathPriv.h"
 #include "src/core/SkRasterClip.h"
 #include "src/core/SkScan.h"
@@ -212,11 +212,13 @@ void SkScan::HairRect(const SkRect& rect, const SkRasterClip& clip, SkBlitter* b
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "include/core/SkPath.h"
-#include "include/private/SkNx.h"
+#include "src/base/SkVx.h"
 #include "src/core/SkGeometry.h"
 
 #define kMaxCubicSubdivideLevel 9
 #define kMaxQuadSubdivideLevel  5
+
+using float2 = skvx::float2;
 
 static uint32_t compute_int_quad_dist(const SkPoint pts[3]) {
     // compute the vector between the control point ([1]) and the middle of the
@@ -246,16 +248,16 @@ static void hair_quad(const SkPoint pts[3], const SkRegion* clip,
     SkQuadCoeff coeff(pts);
 
     const int lines = 1 << level;
-    Sk2s t(0);
-    Sk2s dt(SK_Scalar1 / lines);
+    float2 t(0);
+    float2 dt(SK_Scalar1 / lines);
 
     SkPoint tmp[(1 << kMaxQuadSubdivideLevel) + 1];
-    SkASSERT((unsigned)lines < SK_ARRAY_COUNT(tmp));
+    SkASSERT((unsigned)lines < std::size(tmp));
 
     tmp[0] = pts[0];
-    Sk2s A = coeff.fA;
-    Sk2s B = coeff.fB;
-    Sk2s C = coeff.fC;
+    float2 A = coeff.fA;
+    float2 B = coeff.fB;
+    float2 C = coeff.fC;
     for (int i = 1; i < lines; ++i) {
         t = t + dt;
         ((A * t + B) * t + C).store(&tmp[i]);
@@ -267,12 +269,12 @@ static void hair_quad(const SkPoint pts[3], const SkRegion* clip,
 static SkRect compute_nocheck_quad_bounds(const SkPoint pts[3]) {
     SkASSERT(SkScalarsAreFinite(&pts[0].fX, 6));
 
-    Sk2s min = Sk2s::Load(pts);
-    Sk2s max = min;
+    float2 min = float2::Load(pts);
+    float2 max = min;
     for (int i = 1; i < 3; ++i) {
-        Sk2s pair = Sk2s::Load(pts+i);
-        min = Sk2s::Min(min, pair);
-        max = Sk2s::Max(max, pair);
+        float2 pair = float2::Load(pts+i);
+        min = skvx::min(min, pair);
+        max = skvx::max(max, pair);
     }
     return { min[0], min[1], max[0], max[1] };
 }
@@ -312,29 +314,25 @@ static inline void hairquad(const SkPoint pts[3], const SkRegion* clip, const Sk
     hair_quad(pts, clip, blitter, level, lineproc);
 }
 
-static inline Sk2s abs(const Sk2s& value) {
-    return Sk2s::Max(value, Sk2s(0)-value);
-}
-
-static inline SkScalar max_component(const Sk2s& value) {
+static inline SkScalar max_component(const float2& value) {
     SkScalar components[2];
     value.store(components);
     return std::max(components[0], components[1]);
 }
 
 static inline int compute_cubic_segs(const SkPoint pts[4]) {
-    Sk2s p0 = from_point(pts[0]);
-    Sk2s p1 = from_point(pts[1]);
-    Sk2s p2 = from_point(pts[2]);
-    Sk2s p3 = from_point(pts[3]);
+    float2 p0 = from_point(pts[0]);
+    float2 p1 = from_point(pts[1]);
+    float2 p2 = from_point(pts[2]);
+    float2 p3 = from_point(pts[3]);
 
-    const Sk2s oneThird(1.0f / 3.0f);
-    const Sk2s twoThird(2.0f / 3.0f);
+    const float2 oneThird(1.0f / 3.0f);
+    const float2 twoThird(2.0f / 3.0f);
 
-    Sk2s p13 = oneThird * p3 + twoThird * p0;
-    Sk2s p23 = oneThird * p0 + twoThird * p3;
+    float2 p13 = oneThird * p3 + twoThird * p0;
+    float2 p23 = oneThird * p0 + twoThird * p3;
 
-    SkScalar diff = max_component(Sk2s::Max(abs(p1 - p13), abs(p2 - p23)));
+    SkScalar diff = max_component(max(abs(p1 - p13), abs(p2 - p23)));
     SkScalar tol = SK_Scalar1 / 8;
 
     for (int i = 0; i < kMaxCubicSubdivideLevel; ++i) {
@@ -358,11 +356,11 @@ static bool quick_cubic_niceness_check(const SkPoint pts[4]) {
            lt_90(pts[2], pts[3], pts[0]);
 }
 
-typedef SkNx<2, uint32_t> Sk2x32;
+using mask2 = skvx::Vec<2, uint32_t>;
 
-static inline Sk2x32 sk2s_is_finite(const Sk2s& x) {
-    const Sk2x32 exp_mask = Sk2x32(0xFF << 23);
-    return (Sk2x32::Load(&x) & exp_mask) != exp_mask;
+static inline mask2 float2_is_finite(const float2& x) {
+    const mask2 exp_mask = mask2(0xFF << 23);
+    return (skvx::bit_pun<mask2>(x) & exp_mask) != exp_mask;
 }
 
 static void hair_cubic(const SkPoint pts[4], const SkRegion* clip, SkBlitter* blitter,
@@ -377,25 +375,25 @@ static void hair_cubic(const SkPoint pts[4], const SkRegion* clip, SkBlitter* bl
 
     SkCubicCoeff coeff(pts);
 
-    const Sk2s dt(SK_Scalar1 / lines);
-    Sk2s t(0);
+    const float2 dt(SK_Scalar1 / lines);
+    float2 t(0);
 
     SkPoint tmp[(1 << kMaxCubicSubdivideLevel) + 1];
-    SkASSERT((unsigned)lines < SK_ARRAY_COUNT(tmp));
+    SkASSERT((unsigned)lines < std::size(tmp));
 
     tmp[0] = pts[0];
-    Sk2s A = coeff.fA;
-    Sk2s B = coeff.fB;
-    Sk2s C = coeff.fC;
-    Sk2s D = coeff.fD;
-    Sk2x32 is_finite(~0);   // start out as true
+    float2 A = coeff.fA;
+    float2 B = coeff.fB;
+    float2 C = coeff.fC;
+    float2 D = coeff.fD;
+    mask2 is_finite(~0);   // start out as true
     for (int i = 1; i < lines; ++i) {
         t = t + dt;
-        Sk2s p = ((A * t + B) * t + C) * t + D;
-        is_finite &= sk2s_is_finite(p);
+        float2 p = ((A * t + B) * t + C) * t + D;
+        is_finite &= float2_is_finite(p);
         p.store(&tmp[i]);
     }
-    if (is_finite.allTrue()) {
+    if (all(is_finite)) {
         tmp[lines] = pts[3];
         lineproc(tmp, lines + 1, clip, blitter);
     } // else some point(s) are non-finite, so don't draw
@@ -404,12 +402,12 @@ static void hair_cubic(const SkPoint pts[4], const SkRegion* clip, SkBlitter* bl
 static SkRect compute_nocheck_cubic_bounds(const SkPoint pts[4]) {
     SkASSERT(SkScalarsAreFinite(&pts[0].fX, 8));
 
-    Sk2s min = Sk2s::Load(pts);
-    Sk2s max = min;
+    float2 min = float2::Load(pts);
+    float2 max = min;
     for (int i = 1; i < 4; ++i) {
-        Sk2s pair = Sk2s::Load(pts+i);
-        min = Sk2s::Min(min, pair);
-        max = Sk2s::Max(max, pair);
+        float2 pair = float2::Load(pts+i);
+        min = skvx::min(min, pair);
+        max = skvx::max(max, pair);
     }
     return { min[0], min[1], max[0], max[1] };
 }
@@ -507,7 +505,7 @@ void extend_pts(SkPath::Verb prevVerb, SkPath::Verb nextVerb, SkPoint* pts, int 
 }
 
 template <SkPaint::Cap capStyle>
-void hair_path(const SkPathView& path, const SkRasterClip& rclip, SkBlitter* blitter,
+void hair_path(const SkPath& path, const SkRasterClip& rclip, SkBlitter* blitter,
                       SkScan::HairRgnProc lineproc) {
     if (path.isEmpty()) {
         return;
@@ -521,7 +519,7 @@ void hair_path(const SkPathView& path, const SkRasterClip& rclip, SkBlitter* bli
 
     {
         const int capOut = SkPaint::kButt_Cap == capStyle ? 1 : 2;
-        const SkIRect ibounds = path.fBounds.roundOut().makeOutset(capOut, capOut);
+        const SkIRect ibounds = path.getBounds().roundOut().makeOutset(capOut, capOut);
         if (rclip.quickReject(ibounds)) {
             return;
         }
@@ -577,10 +575,7 @@ void hair_path(const SkPathView& path, const SkRasterClip& rclip, SkBlitter* bli
         prevVerb = SkPath::kDone_Verb;
     }
     while (iter != end) {
-        auto t = *iter++;
-        auto pathVerb = std::get<0>(t);
-        auto pathPts = std::get<1>(t);
-        auto w = std::get<2>(t);
+        auto [pathVerb, pathPts, w] = *iter++;
         SkPath::Verb verb = (SkPath::Verb)pathVerb;
         SkPath::Verb nextVerb = (iter != end) ? (SkPath::Verb)iter.peekVerb() : SkPath::kDone_Verb;
         memcpy(pts, pathPts, SkPathPriv::PtsInIter(verb) * sizeof(SkPoint));
@@ -646,27 +641,27 @@ void hair_path(const SkPathView& path, const SkRasterClip& rclip, SkBlitter* bli
     }
 }
 
-void SkScan::HairPath(const SkPathView& path, const SkRasterClip& clip, SkBlitter* blitter) {
+void SkScan::HairPath(const SkPath& path, const SkRasterClip& clip, SkBlitter* blitter) {
     hair_path<SkPaint::kButt_Cap>(path, clip, blitter, SkScan::HairLineRgn);
 }
 
-void SkScan::AntiHairPath(const SkPathView& path, const SkRasterClip& clip, SkBlitter* blitter) {
+void SkScan::AntiHairPath(const SkPath& path, const SkRasterClip& clip, SkBlitter* blitter) {
     hair_path<SkPaint::kButt_Cap>(path, clip, blitter, SkScan::AntiHairLineRgn);
 }
 
-void SkScan::HairSquarePath(const SkPathView& path, const SkRasterClip& clip, SkBlitter* blitter) {
+void SkScan::HairSquarePath(const SkPath& path, const SkRasterClip& clip, SkBlitter* blitter) {
     hair_path<SkPaint::kSquare_Cap>(path, clip, blitter, SkScan::HairLineRgn);
 }
 
-void SkScan::AntiHairSquarePath(const SkPathView& path, const SkRasterClip& clip, SkBlitter* blitter) {
+void SkScan::AntiHairSquarePath(const SkPath& path, const SkRasterClip& clip, SkBlitter* blitter) {
     hair_path<SkPaint::kSquare_Cap>(path, clip, blitter, SkScan::AntiHairLineRgn);
 }
 
-void SkScan::HairRoundPath(const SkPathView& path, const SkRasterClip& clip, SkBlitter* blitter) {
+void SkScan::HairRoundPath(const SkPath& path, const SkRasterClip& clip, SkBlitter* blitter) {
     hair_path<SkPaint::kRound_Cap>(path, clip, blitter, SkScan::HairLineRgn);
 }
 
-void SkScan::AntiHairRoundPath(const SkPathView& path, const SkRasterClip& clip, SkBlitter* blitter) {
+void SkScan::AntiHairRoundPath(const SkPath& path, const SkRasterClip& clip, SkBlitter* blitter) {
     hair_path<SkPaint::kRound_Cap>(path, clip, blitter, SkScan::AntiHairLineRgn);
 }
 

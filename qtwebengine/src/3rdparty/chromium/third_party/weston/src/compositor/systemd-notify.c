@@ -127,10 +127,12 @@ wet_module_init(struct weston_compositor *compositor,
 	if (notifier == NULL)
 		return -1;
 
-	notifier->compositor_destroy_listener.notify =
-		weston_compositor_destroy_listener;
-	wl_signal_add(&compositor->destroy_signal,
-		      &notifier->compositor_destroy_listener);
+	if (!weston_compositor_add_destroy_listener_once(compositor,
+							 &notifier->compositor_destroy_listener,
+							 weston_compositor_destroy_listener)) {
+		free(notifier);
+		return 0;
+	}
 
 	if (add_systemd_sockets(compositor) < 0)
 		return -1;

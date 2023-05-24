@@ -1,41 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DAnimation/qskeletonmapping.h>
 #include <Qt3DAnimation/private/qskeletonmapping_p.h>
 #include <Qt3DCore/qskeleton.h>
 #include <Qt3DCore/qentity.h>
-#include <Qt3DCore/qnodecreatedchange.h>
-#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
 #include <QObject>
 #include <QSignalSpy>
-#include <testpostmanarbiter.h>
+#include <testarbiter.h>
 
 class tst_QSkeletonMapping : public QObject
 {
@@ -70,7 +43,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(mapping.skeleton(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -78,62 +51,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(mapping.skeleton(), newValue);
-            QCOMPARE(spy.count(), 0);
-        }
-    }
-
-    void checkCreationData()
-    {
-        // GIVEN
-        Qt3DAnimation::QSkeletonMapping mapping;
-        auto target = new Qt3DCore::QSkeleton;
-
-        mapping.setSkeleton(target);
-
-        // WHEN
-        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges;
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&mapping);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            QCOMPARE(creationChanges.size(), 2); // 1 for mapping, 1 for skeleton
-
-            const auto creationChangeData = qSharedPointerCast<Qt3DAnimation::QChannelMappingCreatedChange<Qt3DAnimation::QSkeletonMappingData>>(creationChanges.first());
-            const Qt3DAnimation::QSkeletonMappingData data = creationChangeData->data;
-
-            QCOMPARE(mapping.id(), creationChangeData->subjectId());
-            QCOMPARE(mapping.isEnabled(), true);
-            QCOMPARE(mapping.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(mapping.metaObject(), creationChangeData->metaObject());
-            QCOMPARE(creationChangeData->type(), Qt3DAnimation::QChannelMappingCreatedChangeBase::SkeletonMapping);
-            QCOMPARE(mapping.skeleton()->id(), data.skeletonId);
-        }
-
-        // WHEN
-        mapping.setEnabled(false);
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&mapping);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            QCOMPARE(creationChanges.size(), 2); // 1 for mapping, 1 for skeleton
-
-            const auto creationChangeData = qSharedPointerCast<Qt3DAnimation::QChannelMappingCreatedChange<Qt3DAnimation::QSkeletonMappingData>>(creationChanges.first());
-            const Qt3DAnimation::QSkeletonMappingData data = creationChangeData->data;
-
-            QCOMPARE(mapping.id(), creationChangeData->subjectId());
-            QCOMPARE(mapping.isEnabled(), false);
-            QCOMPARE(mapping.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(mapping.metaObject(), creationChangeData->metaObject());
-            QCOMPARE(creationChangeData->type(), Qt3DAnimation::QChannelMappingCreatedChangeBase::SkeletonMapping);
-            QCOMPARE(mapping.skeleton()->id(), data.skeletonId);
+            QCOMPARE(spy.size(), 0);
         }
     }
 
@@ -150,16 +68,16 @@ private Q_SLOTS:
             mapping.setSkeleton(target);
 
             // THEN
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &mapping);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &mapping);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
 
             // WHEN
             mapping.setSkeleton(target);
 
             // THEN
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
     }
 };

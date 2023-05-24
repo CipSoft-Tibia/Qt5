@@ -1,12 +1,12 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/renderer_host/media/audio_output_authorization_handler.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/task_runner_util.h"
+#include "base/task/bind_post_task.h"
 #include "base/trace_event/trace_event.h"
 #include "content/browser/media/media_devices_permission_checker.h"
 #include "content/browser/media/media_devices_util.h"
@@ -16,8 +16,9 @@
 #include "content/public/browser/media_device_id.h"
 #include "content/public/browser/render_frame_host.h"
 #include "media/audio/audio_system.h"
-#include "media/base/bind_to_current_loop.h"
 #include "media/base/limits.h"
+
+using blink::mojom::MediaDeviceType;
 
 namespace content {
 
@@ -56,8 +57,8 @@ void CheckAccessOnUIThread(
   std::move(cb).Run(std::move(salt_and_origin.device_id_salt),
                     std::move(salt_and_origin.origin),
                     MediaDevicesPermissionChecker().CheckPermissionOnUIThread(
-                        blink::MEDIA_DEVICE_TYPE_AUDIO_OUTPUT,
-                        render_process_id, render_frame_id));
+                        MediaDeviceType::MEDIA_AUDIO_OUTPUT, render_process_id,
+                        render_frame_id));
 }
 
 }  // namespace
@@ -70,6 +71,9 @@ class AudioOutputAuthorizationHandler::TraceScope {
     TRACE_EVENT_NESTABLE_ASYNC_BEGIN1("audio", "Request for device", this,
                                       "device id", device_id);
   }
+
+  TraceScope(const TraceScope&) = delete;
+  TraceScope& operator=(const TraceScope&) = delete;
 
   ~TraceScope() {
     if (waiting_for_params_) {
@@ -122,8 +126,6 @@ class AudioOutputAuthorizationHandler::TraceScope {
  private:
   bool checking_access_ = false;
   bool waiting_for_params_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(TraceScope);
 };
 
 AudioOutputAuthorizationHandler::AudioOutputAuthorizationHandler(
@@ -195,7 +197,7 @@ void AudioOutputAuthorizationHandler::RequestDeviceAuthorization(
       base::BindOnce(&CheckAccessOnUIThread, render_process_id_,
                      render_frame_id, override_permissions_,
                      permissions_override_value_,
-                     media::BindToCurrentLoop(base::BindOnce(
+                     base::BindPostTaskToCurrentDefault(base::BindOnce(
                          &AudioOutputAuthorizationHandler::AccessChecked,
                          weak_factory_.GetWeakPtr(), std::move(trace_scope),
                          std::move(cb), device_id))));
@@ -217,8 +219,8 @@ void AudioOutputAuthorizationHandler::UMALogDeviceAuthorizationTime(
     base::TimeTicks auth_start_time) {
   UMA_HISTOGRAM_CUSTOM_TIMES("Media.Audio.OutputDeviceAuthorizationTime",
                              base::TimeTicks::Now() - auth_start_time,
-                             base::TimeDelta::FromMilliseconds(1),
-                             base::TimeDelta::FromMilliseconds(5000), 50);
+                             base::Milliseconds(1), base::Milliseconds(5000),
+                             50);
 }
 
 void AudioOutputAuthorizationHandler::HashDeviceId(
@@ -262,7 +264,8 @@ void AudioOutputAuthorizationHandler::AccessChecked(
   }
 
   MediaDevicesManager::BoolDeviceTypes devices_to_enumerate;
-  devices_to_enumerate[blink::MEDIA_DEVICE_TYPE_AUDIO_OUTPUT] = true;
+  devices_to_enumerate[static_cast<size_t>(
+      MediaDeviceType::MEDIA_AUDIO_OUTPUT)] = true;
   media_stream_manager_->media_devices_manager()->EnumerateDevices(
       devices_to_enumerate,
       base::BindOnce(&AudioOutputAuthorizationHandler::TranslateDeviceID,
@@ -282,7 +285,7 @@ void AudioOutputAuthorizationHandler::TranslateDeviceID(
   DCHECK(!media::AudioDeviceDescription::IsDefaultDevice(device_id));
 
   for (const blink::WebMediaDeviceInfo& device_info :
-       enumeration[blink::MEDIA_DEVICE_TYPE_AUDIO_OUTPUT]) {
+       enumeration[static_cast<size_t>(MediaDeviceType::MEDIA_AUDIO_OUTPUT)]) {
     if (DoesMediaDeviceIDMatchHMAC(salt, security_origin, device_id,
                                    device_info.device_id)) {
       GetDeviceParameters(std::move(trace_scope), std::move(cb),
@@ -317,7 +320,7 @@ void AudioOutputAuthorizationHandler::DeviceParametersReceived(
     AuthorizationCompletedCallback cb,
     const std::string& id_for_renderer,
     const std::string& raw_device_id,
-    const base::Optional<media::AudioParameters>& params) const {
+    const absl::optional<media::AudioParameters>& params) const {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
   DCHECK(!raw_device_id.empty());
   DCHECK(!params || params->IsValid());

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QMULTIMEDIAUTILS_P_H
 #define QMULTIMEDIAUTILS_P_H
@@ -51,11 +15,91 @@
 // We mean it.
 //
 
-#include <QtMultimedia/qmultimedia.h>
+#include <QtMultimedia/qtmultimediaglobal.h>
+#include <QtCore/private/qglobal_p.h>
+#include <qstring.h>
+#include <qsize.h>
+#include <utility>
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
-Q_MULTIMEDIA_EXPORT void qt_real_to_fraction(qreal value, int *numerator, int *denominator);
+struct QUnexpect
+{
+};
+
+static constexpr QUnexpect unexpect{};
+
+template<typename Value, typename Error = QString>
+class QMaybe
+{
+public:
+    QMaybe(const Value &v)
+    {
+        if constexpr (std::is_pointer_v<Value>) {
+            if (!v)
+                return; // nullptr is treated as nullopt (for raw pointer types only)
+        }
+        m_value = v;
+    }
+
+    QMaybe(Value &&v)
+    {
+        if constexpr (std::is_pointer_v<Value>) {
+            if (!v)
+                return; // nullptr is treated as nullopt (for raw pointer types only)
+        }
+        m_value = std::move(v);
+    }
+
+    QMaybe(const QMaybe &other) = default;
+
+    QMaybe &operator=(const QMaybe &other) = default;
+
+    QMaybe(const Error& error) : m_error(error) { }
+
+    template<class... Args>
+    QMaybe(QUnexpect, Args &&...args) : m_error{ std::forward<Args>(args)... }
+    {
+        static_assert(std::is_constructible_v<Error, Args &&...>,
+                      "Invalid arguments for creating an error type");
+    }
+
+    constexpr explicit operator bool() const noexcept { return m_value.has_value(); }
+
+    constexpr Value &value()
+    {
+        Q_ASSERT(m_value.has_value());
+        return *m_value;
+    }
+
+    constexpr const Value &value() const
+    {
+        Q_ASSERT(m_value.has_value());
+        return *m_value;
+    }
+
+    constexpr Value *operator->() noexcept { return &value(); }
+    constexpr const Value *operator->() const noexcept { return &value(); }
+
+    constexpr Value &operator*() & noexcept { return value(); }
+    constexpr const Value &operator*() const & noexcept { return value(); }
+
+    constexpr const Error &error() const { return m_error; }
+
+private:
+    std::optional<Value> m_value;
+    Error m_error;
+};
+
+struct Fraction {
+    int numerator;
+    int denominator;
+};
+
+Q_MULTIMEDIA_EXPORT Fraction qRealToFraction(qreal value);
+
+Q_MULTIMEDIA_EXPORT QSize qCalculateFrameSize(QSize resolution, Fraction pixelAspectRatio);
 
 QT_END_NAMESPACE
 

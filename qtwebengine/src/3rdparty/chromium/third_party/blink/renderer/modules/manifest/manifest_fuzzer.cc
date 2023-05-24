@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,7 +15,8 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   String string = String::FromUTF8(reinterpret_cast<const char*>(data), size);
   KURL manifest_url("https://whatever.test/manifest.json");
   KURL document_url("https://whatever.test/");
-  ManifestParser parser(string, manifest_url, document_url);
+  ManifestParser parser(string, manifest_url, document_url,
+                        /*feature_context=*/nullptr);
   parser.Parse();
   return 0;
 }

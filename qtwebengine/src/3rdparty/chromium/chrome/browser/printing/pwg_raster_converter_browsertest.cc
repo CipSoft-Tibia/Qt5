@@ -1,11 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/test/base/in_process_browser_test.h"
 
-#include "base/bind.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/hash/sha1.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/path_service.h"
@@ -26,7 +26,7 @@ namespace {
 
 // Note that for some reason the generated PWG varies depending on the
 // platform (32 or 64 bits) on Linux.
-#if (defined(OS_LINUX) || defined(OS_CHROMEOS)) && defined(ARCH_CPU_32_BITS)
+#if (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(ARCH_CPU_32_BITS)
 constexpr char kPdfToPwgRasterColorTestFile[] = "pdf_to_pwg_raster_test_32.pwg";
 constexpr char kPdfToPwgRasterMonoTestFile[] =
     "pdf_to_pwg_raster_mono_test_32.pwg";
@@ -58,7 +58,8 @@ void GetPdfData(const char* file_name,
   std::string pdf_data_str;
   ASSERT_TRUE(base::ReadFileToString(pdf_file, &pdf_data_str));
   ASSERT_GT(pdf_data_str.length(), 0U);
-  *pdf_data = base::RefCountedString::TakeString(&pdf_data_str);
+  *pdf_data =
+      base::MakeRefCounted<base::RefCountedString>(std::move(pdf_data_str));
 }
 
 std::string HashData(const char* data, size_t len) {

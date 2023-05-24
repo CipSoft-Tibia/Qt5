@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,18 +7,22 @@
 #ifndef CORE_FXCRT_BYTESTRING_H_
 #define CORE_FXCRT_BYTESTRING_H_
 
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
 #include <functional>
+#include <iosfwd>
 #include <iterator>
-#include <ostream>
-#include <sstream>
 #include <utility>
 
-#include "core/fxcrt/fx_system.h"
+#include "core/fxcrt/fx_string_wrappers.h"
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/string_data_template.h"
 #include "core/fxcrt/string_view_template.h"
-#include "third_party/base/logging.h"
-#include "third_party/base/optional.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/base/check.h"
 #include "third_party/base/span.h"
 
 namespace fxcrt {
@@ -31,11 +35,10 @@ class ByteString {
   using const_iterator = const CharType*;
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
-  static ByteString FormatInteger(int i) WARN_UNUSED_RESULT;
-  static ByteString FormatFloat(float f) WARN_UNUSED_RESULT;
-  static ByteString Format(const char* pFormat, ...) WARN_UNUSED_RESULT;
-  static ByteString FormatV(const char* pFormat,
-                            va_list argList) WARN_UNUSED_RESULT;
+  [[nodiscard]] static ByteString FormatInteger(int i);
+  [[nodiscard]] static ByteString FormatFloat(float f);
+  [[nodiscard]] static ByteString Format(const char* pFormat, ...);
+  [[nodiscard]] static ByteString FormatV(const char* pFormat, va_list argList);
 
   ByteString();
   ByteString(const ByteString& other);
@@ -43,9 +46,10 @@ class ByteString {
   // Move-construct a ByteString. After construction, |other| is empty.
   ByteString(ByteString&& other) noexcept;
 
+  // Make a one-character string from a char.
+  explicit ByteString(char ch);
+
   // Deliberately implicit to avoid calling on every string literal.
-  // NOLINTNEXTLINE(runtime/explicit)
-  ByteString(char ch);
   // NOLINTNEXTLINE(runtime/explicit)
   ByteString(const char* ptr);
 
@@ -59,11 +63,13 @@ class ByteString {
   explicit ByteString(ByteStringView bstrc);
   ByteString(ByteStringView str1, ByteStringView str2);
   ByteString(const std::initializer_list<ByteStringView>& list);
-  explicit ByteString(const std::ostringstream& outStream);
+  explicit ByteString(const fxcrt::ostringstream& outStream);
 
   ~ByteString();
 
-  void clear() { m_pData.Reset(); }
+  // Holds on to buffer if possible for later re-use. Assign ByteString()
+  // to force immediate release if desired.
+  void clear();
 
   // Explicit conversion to C-style string.
   // Note: Any subsequent modification of |this| will invalidate the result.
@@ -163,13 +169,14 @@ class ByteString {
   pdfium::span<char> GetBuffer(size_t nMinBufLength);
   void ReleaseBuffer(size_t nNewLength);
 
+  ByteString Substr(size_t offset) const;
   ByteString Substr(size_t first, size_t count) const;
   ByteString First(size_t count) const;
   ByteString Last(size_t count) const;
 
-  Optional<size_t> Find(ByteStringView subStr, size_t start = 0) const;
-  Optional<size_t> Find(char ch, size_t start = 0) const;
-  Optional<size_t> ReverseFind(char ch) const;
+  absl::optional<size_t> Find(ByteStringView subStr, size_t start = 0) const;
+  absl::optional<size_t> Find(char ch, size_t start = 0) const;
+  absl::optional<size_t> ReverseFind(char ch) const;
 
   bool Contains(ByteStringView lpszSub, size_t start = 0) const {
     return Find(lpszSub, start).has_value();
@@ -232,6 +239,12 @@ inline bool operator!=(ByteStringView lhs, const ByteString& rhs) {
 inline bool operator<(const char* lhs, const ByteString& rhs) {
   return rhs.Compare(lhs) > 0;
 }
+inline bool operator<(const ByteStringView& lhs, const ByteString& rhs) {
+  return rhs.Compare(lhs) > 0;
+}
+inline bool operator<(const ByteStringView& lhs, const char* rhs) {
+  return lhs < ByteStringView(rhs);
+}
 
 inline ByteString operator+(ByteStringView str1, ByteStringView str2) {
   return ByteString(str1, str2);
@@ -246,7 +259,7 @@ inline ByteString operator+(ByteStringView str1, char ch) {
   return ByteString(str1, ByteStringView(ch));
 }
 inline ByteString operator+(char ch, ByteStringView str2) {
-  return ByteString(ch, str2);
+  return ByteString(ByteStringView(ch), str2);
 }
 inline ByteString operator+(const ByteString& str1, const ByteString& str2) {
   return ByteString(str1.AsStringView(), str2.AsStringView());
@@ -255,7 +268,7 @@ inline ByteString operator+(const ByteString& str1, char ch) {
   return ByteString(str1.AsStringView(), ByteStringView(ch));
 }
 inline ByteString operator+(char ch, const ByteString& str2) {
-  return ByteString(ch, str2.AsStringView());
+  return ByteString(ByteStringView(ch), str2.AsStringView());
 }
 inline ByteString operator+(const ByteString& str1, const char* str2) {
   return ByteString(str1.AsStringView(), str2);
@@ -277,15 +290,17 @@ std::ostream& operator<<(std::ostream& os, ByteStringView str);
 
 using ByteString = fxcrt::ByteString;
 
-uint32_t FX_HashCode_GetA(ByteStringView str, bool bIgnoreCase);
-uint32_t FX_HashCode_GetAsIfW(ByteStringView str, bool bIgnoreCase);
+uint32_t FX_HashCode_GetA(ByteStringView str);
+uint32_t FX_HashCode_GetLoweredA(ByteStringView str);
+uint32_t FX_HashCode_GetAsIfW(ByteStringView str);
+uint32_t FX_HashCode_GetLoweredAsIfW(ByteStringView str);
 
 namespace std {
 
 template <>
 struct hash<ByteString> {
-  std::size_t operator()(const ByteString& str) const {
-    return FX_HashCode_GetA(str.AsStringView(), false);
+  size_t operator()(const ByteString& str) const {
+    return FX_HashCode_GetA(str.AsStringView());
   }
 };
 

@@ -1,10 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/spellchecker/spell_check_panel_host_impl.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/no_destructor.h"
 #include "components/spellcheck/browser/spellcheck_platform.h"
 #include "content/public/browser/browser_thread.h"
@@ -48,7 +48,7 @@ void SpellCheckPanelHostImpl::ShowSpellingPanel(bool show) {
 }
 
 void SpellCheckPanelHostImpl::UpdateSpellingPanelWithMisspelledWord(
-    const base::string16& word) {
+    const std::u16string& word) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   spellcheck_platform::UpdateSpellingPanelWithMisspelledWord(word);
 }

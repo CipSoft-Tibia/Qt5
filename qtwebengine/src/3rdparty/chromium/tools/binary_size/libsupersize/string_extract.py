@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -29,6 +29,12 @@ ResolveStringPieces():
     each string_section. If found, translates to string_range and annotates it
     to the string_section.
   - Returns [{path: [string_ranges]} for each string_section].
+
+GetNameOfStringLiteralBytes():
+  Converts string literal bytes to printable form, useful for assigning
+  full_name of string literal symbols. If any non-printable character is found
+  then returns models.STRING_LITERAL_NAME. Otherwise the returned string is
+  quoted, and may be truncated (with "[...]" appended).
 """
 
 import ast
@@ -36,6 +42,7 @@ import collections
 import itertools
 import logging
 import os
+import string
 import subprocess
 
 import ar
@@ -44,9 +51,16 @@ import parallel
 import path_util
 
 
-def LookupElfRodataInfo(elf_path, tool_prefix):
+_STRING_LITERAL_LENGTH_CUTOFF = 30
+
+_PRINTABLE_TABLE = [False] * 256
+for ch in string.printable:
+  _PRINTABLE_TABLE[ord(ch)] = True
+
+
+def LookupElfRodataInfo(elf_path):
   """Returns (address, offset, size) for the .rodata section."""
-  args = [path_util.GetReadElfPath(tool_prefix), '-S', '--wide', elf_path]
+  args = [path_util.GetReadElfPath(), '-S', '--wide', elf_path]
   output = subprocess.check_output(args).decode('ascii')
   lines = output.splitlines()
   for line in lines:
@@ -82,14 +96,14 @@ def _ExtractArchivePath(path):
   return None
 
 
-def _LookupStringSectionPositions(target, tool_prefix, output_directory):
+def _LookupStringSectionPositions(target, output_directory):
   """Returns a dict of object_path -> [(offset, size)...] of .rodata sections.
 
   Args:
     target: An archive path string (e.g., "foo.a") or a list of object paths.
   """
   is_archive = isinstance(target, str)
-  args = [path_util.GetReadElfPath(tool_prefix), '-S', '--wide']
+  args = [path_util.GetReadElfPath(), '-S', '--wide']
   if is_archive:
     args.append(target)
   else:
@@ -254,7 +268,7 @@ def _AnnotateStringData(string_data, path_value_gen):
 
 # This is a target for BulkForkAndCall().
 def ResolveStringPiecesIndirect(encoded_string_addresses_by_path, string_data,
-                                tool_prefix, output_directory):
+                                output_directory):
   string_addresses_by_path = parallel.DecodeDictOfLists(
       encoded_string_addresses_by_path)
   # Assign |target| as archive path, or a list of object paths.
@@ -265,7 +279,7 @@ def ResolveStringPiecesIndirect(encoded_string_addresses_by_path, string_data,
 
   # Run readelf to find location of .rodata within the .o files.
   section_positions_by_path = _LookupStringSectionPositions(
-      target, tool_prefix, output_directory)
+      target, output_directory)
   # Load the .rodata sections (from object files) as strings.
   string_sections_by_path = _ReadStringSections(
       target, output_directory, section_positions_by_path)
@@ -295,8 +309,10 @@ def ResolveStringPieces(encoded_strings_by_path, string_data):
   return [parallel.EncodeDictOfLists(x) for x in ret]
 
 
-def ReadStringLiterals(symbols, elf_path, tool_prefix, all_rodata=False):
-  """Returns an iterable of (symbol, string) for all string literal symbols.
+def ReadStringLiterals(symbols, elf_path, all_rodata=False):
+  """Returns an iterable of (symbol, data) for all string literal symbols.
+
+  Emitted string literal data are null-terminated bytes.
 
   Args:
     symbols: An iterable of Symbols
@@ -304,7 +320,7 @@ def ReadStringLiterals(symbols, elf_path, tool_prefix, all_rodata=False):
     all_rodata: Assume every symbol within .rodata that ends with a \0 is a
          string literal.
   """
-  address, offset, _ = LookupElfRodataInfo(elf_path, tool_prefix)
+  address, offset, _ = LookupElfRodataInfo(elf_path)
   adjust = offset - address
   with open(elf_path, 'rb') as f:
     for symbol in symbols:
@@ -319,3 +335,15 @@ def ReadStringLiterals(symbols, elf_path, tool_prefix, all_rodata=False):
       # ** merge strings (less common).
       if symbol.IsStringLiteral() or (all_rodata and data and data[-1] == 0):
         yield ((symbol, data))
+
+
+def GetNameOfStringLiteralBytes(b):
+  """Converts string literal bytes to printable form, may be truncated."""
+  b = b.replace(b'\n', b'').replace(b'\t', b'').strip(b'\00')
+  is_printable = all(_PRINTABLE_TABLE[c] for c in b)
+  if is_printable:
+    s = b.decode('ascii')
+    if len(s) > _STRING_LITERAL_LENGTH_CUTOFF:
+      return '"{}[...]"'.format(s[:_STRING_LITERAL_LENGTH_CUTOFF])
+    return '"{}"'.format(s)
+  return models.STRING_LITERAL_NAME

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,16 @@
 #include <type_traits>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/bits.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ptr_util.h"
+#include "base/notreached.h"
 #include "base/task/common/checked_lock.h"
 #include "base/task/task_features.h"
 #include "base/task/thread_pool/pooled_task_runner_delegate.h"
+#include "base/template_util.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
 #include "base/time/time_override.h"
@@ -29,8 +31,9 @@ namespace {
 constexpr size_t kMaxWorkersPerJob = 32;
 static_assert(
     kMaxWorkersPerJob <=
-        std::numeric_limits<std::result_of<
-            decltype (&JobDelegate::GetTaskId)(JobDelegate)>::type>::max(),
+        std::numeric_limits<
+            std::invoke_result<decltype(&JobDelegate::GetTaskId),
+                               JobDelegate>::type>::max(),
     "AcquireTaskId return type isn't big enough to fit kMaxWorkersPerJob");
 
 }  // namespace
@@ -43,15 +46,17 @@ JobTaskSource::State::Value JobTaskSource::State::Cancel() {
 }
 
 JobTaskSource::State::Value JobTaskSource::State::DecrementWorkerCount() {
-  const size_t value_before_sub =
+  const uint32_t value_before_sub =
       value_.fetch_sub(kWorkerCountIncrement, std::memory_order_relaxed);
   DCHECK((value_before_sub >> kWorkerCountBitOffset) > 0);
   return {uint32_t(value_before_sub)};
 }
 
 JobTaskSource::State::Value JobTaskSource::State::IncrementWorkerCount() {
-  size_t value_before_add =
+  uint32_t value_before_add =
       value_.fetch_add(kWorkerCountIncrement, std::memory_order_relaxed);
+  // The worker count must not overflow a uint8_t.
+  DCHECK((value_before_add >> kWorkerCountBitOffset) < ((1 << 8) - 1));
   return {uint32_t(value_before_add)};
 }
 
@@ -61,6 +66,10 @@ JobTaskSource::State::Value JobTaskSource::State::Load() const {
 
 JobTaskSource::JoinFlag::JoinFlag() = default;
 JobTaskSource::JoinFlag::~JoinFlag() = default;
+
+void JobTaskSource::JoinFlag::Reset() {
+  value_.store(kNotWaiting, std::memory_order_relaxed);
+}
 
 void JobTaskSource::JoinFlag::SetWaiting() {
   value_.store(kWaitingForWorkerToYield, std::memory_order_relaxed);
@@ -149,11 +158,10 @@ bool JobTaskSource::RunJoinTask() {
 }
 
 void JobTaskSource::Cancel(TaskSource::Transaction* transaction) {
-  CheckedAutoLock auto_lock(worker_lock_);
   // Sets the kCanceledMask bit on |state_| so that further calls to
-  // WillRunTask() never succeed. std::memory_order_relaxed is sufficient
-  // because this task source never needs to be re-enqueued after Cancel().
-  state_.Cancel();
+  // WillRunTask() never succeed. std::memory_order_relaxed without a lock is
+  // safe because this task source never needs to be re-enqueued after Cancel().
+  TS_UNCHECKED_READ(state_).Cancel();
 }
 
 // EXCLUSIVE_LOCK_REQUIRED(worker_lock_)
@@ -185,6 +193,10 @@ bool JobTaskSource::WaitForParticipationOpportunity() {
     // |worker_count - 1| to exclude the joining thread which is not active.
     max_concurrency = GetMaxConcurrency(state.worker_count() - 1);
   }
+  // It's possible though unlikely that the joining thread got a participation
+  // opportunity without a worker signaling.
+  join_flag_.Reset();
+
   // Case A:
   if (state.worker_count() <= max_concurrency && !state.is_canceled())
     return true;
@@ -238,11 +250,11 @@ size_t JobTaskSource::GetRemainingConcurrency() const {
   return max_concurrency - state.worker_count();
 }
 
-bool JobTaskSource::IsCompleted() const {
+bool JobTaskSource::IsActive() const {
   CheckedAutoLock auto_lock(worker_lock_);
   auto state = state_.Load();
-  return GetMaxConcurrency(state.worker_count()) == 0 &&
-         state.worker_count() == 0;
+  return GetMaxConcurrency(state.worker_count()) != 0 ||
+         state.worker_count() != 0;
 }
 
 size_t JobTaskSource::GetWorkerCount() const {
@@ -287,7 +299,7 @@ uint8_t JobTaskSource::AcquireTaskId() {
   uint32_t assigned_task_ids =
       assigned_task_ids_.load(std::memory_order_relaxed);
   uint32_t new_assigned_task_ids = 0;
-  uint8_t task_id = 0;
+  int task_id = 0;
   // memory_order_acquire on success, matched with memory_order_release in
   // ReleaseTaskId() so that operations done by previous threads that had
   // the same task_id become visible to the current thread.
@@ -299,7 +311,7 @@ uint8_t JobTaskSource::AcquireTaskId() {
   } while (!assigned_task_ids_.compare_exchange_weak(
       assigned_task_ids, new_assigned_task_ids, std::memory_order_acquire,
       std::memory_order_relaxed));
-  return task_id;
+  return static_cast<uint8_t>(task_id);
 }
 
 void JobTaskSource::ReleaseTaskId(uint8_t task_id) {
@@ -322,7 +334,7 @@ Task JobTaskSource::TakeTask(TaskSource::Transaction* transaction) {
   // if |transaction| is nullptr.
   DCHECK_GT(TS_UNCHECKED_READ(state_).Load().worker_count(), 0U);
   DCHECK(primary_task_);
-  return Task(from_here_, primary_task_, TimeDelta());
+  return Task(from_here_, primary_task_, TimeTicks(), TimeDelta());
 }
 
 bool JobTaskSource::DidProcessTask(TaskSource::Transaction* /*transaction*/) {
@@ -347,9 +359,33 @@ bool JobTaskSource::DidProcessTask(TaskSource::Transaction* /*transaction*/) {
          GetMaxConcurrency(state_before_sub.worker_count() - 1);
 }
 
+// This is a no-op and should always return true.
+bool JobTaskSource::WillReEnqueue(TimeTicks now,
+                                  TaskSource::Transaction* /*transaction*/) {
+  return true;
+}
+
+// This is a no-op.
+bool JobTaskSource::OnBecomeReady() {
+  return false;
+}
+
 TaskSourceSortKey JobTaskSource::GetSortKey() const {
   return TaskSourceSortKey(priority_racy(), ready_time_,
                            TS_UNCHECKED_READ(state_).Load().worker_count());
+}
+
+// This function isn't expected to be called since a job is never delayed.
+// However, the class still needs to provide an override.
+TimeTicks JobTaskSource::GetDelayedSortKey() const {
+  return TimeTicks();
+}
+
+// This function isn't expected to be called since a job is never delayed.
+// However, the class still needs to provide an override.
+bool JobTaskSource::HasReadyTasks(TimeTicks now) const {
+  NOTREACHED();
+  return true;
 }
 
 Task JobTaskSource::Clear(TaskSource::Transaction* transaction) {
@@ -357,7 +393,7 @@ Task JobTaskSource::Clear(TaskSource::Transaction* transaction) {
   // Nothing is cleared since other workers might still racily run tasks. For
   // simplicity, the destructor will take care of it once all references are
   // released.
-  return Task(from_here_, DoNothing(), TimeDelta());
+  return Task(from_here_, DoNothing(), TimeTicks(), TimeDelta());
 }
 
 }  // namespace internal

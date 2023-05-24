@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,8 +33,9 @@ Response TargetHandler::CreateTarget(const std::string& url,
                                      Maybe<bool> enable_begin_frame_control,
                                      Maybe<bool> new_window,
                                      Maybe<bool> background,
+                                     Maybe<bool> for_tab,
                                      std::string* out_target_id) {
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   if (enable_begin_frame_control.fromMaybe(false)) {
     return Response::ServerError(
         "BeginFrameControl is not supported on MacOS yet");
@@ -56,14 +57,20 @@ Response TargetHandler::CreateTarget(const std::string& url,
     }
   }
 
+  GURL gurl(url);
+  if (gurl.is_empty()) {
+    gurl = GURL(url::kAboutBlankURL);
+  }
+
   HeadlessWebContentsImpl* web_contents_impl = HeadlessWebContentsImpl::From(
       context->CreateWebContentsBuilder()
-          .SetInitialURL(GURL(url))
+          .SetInitialURL(gurl)
           .SetWindowSize(gfx::Size(
               width.fromMaybe(browser_->options()->window_size.width()),
               height.fromMaybe(browser_->options()->window_size.height())))
           .SetEnableBeginFrameControl(
               enable_begin_frame_control.fromMaybe(false))
+          .SetUseTabTarget(for_tab.fromMaybe(false))
           .Build());
 
   *out_target_id = web_contents_impl->GetDevToolsAgentHostId();

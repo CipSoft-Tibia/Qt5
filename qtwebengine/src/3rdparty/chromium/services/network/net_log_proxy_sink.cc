@@ -1,13 +1,15 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/network/net_log_proxy_sink.h"
+#include "base/task/sequenced_task_runner.h"
+#include "mojo/public/cpp/bindings/message.h"
 
 namespace network {
 
 NetLogProxySink::NetLogProxySink()
-    : task_runner_(base::SequencedTaskRunnerHandle::Get()) {
+    : task_runner_(base::SequencedTaskRunner::GetCurrentDefault()) {
   // Initialize a WeakPtr instance that can be safely referred to from other
   // threads when binding tasks posted back to this thread.
   weak_this_ = weak_factory_.GetWeakPtr();
@@ -63,6 +65,11 @@ void NetLogProxySink::AddEntry(uint32_t type,
   // TODO(mattm): Remote side could send the capture mode along with the event,
   // and then check here before logging that the current capture mode still is
   // compatible.
+  if (source_type >= static_cast<uint32_t>(net::NetLogSourceType::COUNT) ||
+      source_id == net::NetLogSource::kInvalidId) {
+    mojo::ReportBadMessage("invalid NetLogSource");
+    return;
+  }
   AddEntryAtTimeWithMaterializedParams(
       static_cast<net::NetLogEventType>(type),
       net::NetLogSource(static_cast<net::NetLogSourceType>(source_type),

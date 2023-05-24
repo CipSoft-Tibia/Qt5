@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,9 @@
 
 #include <utility>
 
+#include "base/files/file_path.h"
 #include "base/memory/ptr_util.h"
+#include "base/ranges/algorithm.h"
 #include "build/chromeos_buildflags.h"
 #include "components/feedback/feedback_report.h"
 #include "components/feedback/feedback_util.h"
@@ -18,7 +20,7 @@
 
 namespace {
 
-#if defined(OS_CHROMEOS) || BUILDFLAG(IS_LACROS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 constexpr int kChromeOSProductId = 208;
 #else
 constexpr int kChromeBrowserProductId = 237;
@@ -44,7 +46,7 @@ constexpr char kArbitraryMimeType[] = "application/octet-stream";
 bool BelowCompressionThreshold(const std::string& content) {
   if (content.length() > kFeedbackMaxLength)
     return false;
-  const size_t line_count = std::count(content.begin(), content.end(), '\n');
+  const size_t line_count = base::ranges::count(content, '\n');
   if (line_count > kFeedbackMaxLineCount)
     return false;
   return true;
@@ -124,7 +126,7 @@ void FeedbackCommon::PrepareReport(
 
   // Set whether we're reporting from ChromeOS or Chrome on another platform.
   userfeedback::ChromeData chrome_data;
-#if defined(OS_CHROMEOS) || BUILDFLAG(IS_LACROS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   const userfeedback::ChromeData_ChromePlatform chrome_platform =
       userfeedback::ChromeData_ChromePlatform_CHROME_OS;
   const int default_product_id = kChromeOSProductId;
@@ -140,7 +142,7 @@ void FeedbackCommon::PrepareReport(
   chrome_browser_data.set_category(
       userfeedback::ChromeBrowserData_ChromeBrowserCategory_OTHER);
   *(chrome_data.mutable_chrome_browser_data()) = chrome_browser_data;
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
   chrome_data.set_chrome_platform(chrome_platform);
   *(feedback_data->mutable_chrome_data()) = chrome_data;
 
@@ -180,7 +182,14 @@ void FeedbackCommon::PrepareReport(
     feedback_data->set_bucket(category_tag());
 }
 
-FeedbackCommon::~FeedbackCommon() {}
+// static
+bool FeedbackCommon::IncludeInSystemLogs(const std::string& key,
+                                         bool is_google_email) {
+  return is_google_email ||
+         key != feedback::FeedbackReport::kAllCrashReportIdsKey;
+}
+
+FeedbackCommon::~FeedbackCommon() = default;
 
 void FeedbackCommon::CompressFile(const base::FilePath& filename,
                                   const std::string& zipname,
@@ -216,19 +225,17 @@ void FeedbackCommon::AddFilesAndLogsToReport(
     AddAttachment(feedback_data, file->name.c_str(), file->data);
   }
 
+  const bool is_google_email = gaia::IsGoogleInternalAccountEmail(user_email());
   for (const auto& iter : logs_) {
     if (BelowCompressionThreshold(iter.second)) {
       // We only send the list of all the crash report IDs if the user has a
       // @google.com email. We do this also in feedback_private_api, but not all
       // code paths go through that so we need to check again here.
-      if (iter.first == feedback::FeedbackReport::kAllCrashReportIdsKey &&
-          !gaia::IsGoogleInternalAccountEmail(user_email())) {
-        continue;
+      if (FeedbackCommon::IncludeInSystemLogs(iter.first, is_google_email)) {
+        // Small enough logs should end up in the report data itself. However,
+        // they're still added as part of the system_logs.zip file.
+        AddFeedbackData(feedback_data, iter.first, iter.second);
       }
-
-      // Small enough logs should end up in the report data itself. However,
-      // they're still added as part of the system_logs.zip file.
-      AddFeedbackData(feedback_data, iter.first, iter.second);
     }
   }
 }

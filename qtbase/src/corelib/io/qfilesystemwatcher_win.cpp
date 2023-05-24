@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qfilesystemwatcher.h"
 #include "qfilesystemwatcher_win_p.h"
@@ -52,7 +16,6 @@
 
 #include <qt_windows.h>
 
-#ifndef Q_OS_WINRT
 #  include <qabstractnativeeventfilter.h>
 #  include <qcoreapplication.h>
 #  include <qdir.h>
@@ -61,9 +24,10 @@
 #  include <dbt.h>
 #  include <algorithm>
 #  include <vector>
-#endif // !Q_OS_WINRT
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 // #define WINQFSW_DEBUG
 #ifdef WINQFSW_DEBUG
@@ -77,15 +41,14 @@ static Qt::HANDLE createChangeNotification(const QString &path, uint flags)
     // Volume and folder paths need a trailing slash for proper notification
     // (e.g. "c:" -> "c:/").
     QString nativePath = QDir::toNativeSeparators(path);
-    if ((flags & FILE_NOTIFY_CHANGE_ATTRIBUTES) == 0 && !nativePath.endsWith(QLatin1Char('\\')))
-        nativePath.append(QLatin1Char('\\'));
+    if ((flags & FILE_NOTIFY_CHANGE_ATTRIBUTES) == 0 && !nativePath.endsWith(u'\\'))
+        nativePath.append(u'\\');
     const HANDLE result = FindFirstChangeNotification(reinterpret_cast<const wchar_t *>(nativePath.utf16()),
                                                       FALSE, flags);
     DEBUG() << __FUNCTION__ << nativePath << Qt::hex << Qt::showbase << flags << "returns" << result;
     return result;
 }
 
-#ifndef Q_OS_WINRT
 ///////////
 // QWindowsRemovableDriveListener
 // Listen for the various WM_DEVICECHANGE message indicating drive addition/removal
@@ -110,11 +73,7 @@ public:
     // Call from QFileSystemWatcher::addPaths() to set up notifications on drives
     void addPath(const QString &path);
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     bool nativeEventFilter(const QByteArray &, void *messageIn, qintptr *) override;
-#else
-    bool nativeEventFilter(const QByteArray &, void *messageIn, long *) override;
-#endif
 
 signals:
     void driveAdded();
@@ -261,11 +220,7 @@ inline void QWindowsRemovableDriveListener::handleDbtDriveArrivalRemoval(const M
     }
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 bool QWindowsRemovableDriveListener::nativeEventFilter(const QByteArray &, void *messageIn, qintptr *)
-#else
-bool QWindowsRemovableDriveListener::nativeEventFilter(const QByteArray &, void *messageIn, long *)
-#endif
 {
     const MSG *msg = reinterpret_cast<const MSG *>(messageIn);
     if (msg->message == WM_DEVICECHANGE) {
@@ -285,7 +240,7 @@ bool QWindowsRemovableDriveListener::nativeEventFilter(const QByteArray &, void 
 // Set up listening for WM_DEVICECHANGE+DBT_CUSTOMEVENT for a removable drive path,
 void QWindowsRemovableDriveListener::addPath(const QString &p)
 {
-    const wchar_t drive = p.size() >= 2 && p.at(0).isLetter() && p.at(1) == QLatin1Char(':')
+    const wchar_t drive = p.size() >= 2 && p.at(0).isLetter() && p.at(1) == u':'
         ? wchar_t(p.at(0).toUpper().unicode()) : L'\0';
     if (!drive)
         return;
@@ -330,7 +285,6 @@ void QWindowsRemovableDriveListener::addPath(const QString &p)
 
     m_removableDrives.push_back(re);
 }
-#endif // !Q_OS_WINRT
 
 ///////////
 // QWindowsFileSystemWatcherEngine
@@ -343,7 +297,6 @@ QWindowsFileSystemWatcherEngine::Handle::Handle()
 QWindowsFileSystemWatcherEngine::QWindowsFileSystemWatcherEngine(QObject *parent)
     : QFileSystemWatcherEngine(parent)
 {
-#ifndef Q_OS_WINRT
     if (QAbstractEventDispatcher *eventDispatcher = QAbstractEventDispatcher::instance()) {
         m_driveListener = new QWindowsRemovableDriveListener(this);
         eventDispatcher->installNativeEventFilter(m_driveListener);
@@ -360,14 +313,13 @@ QWindowsFileSystemWatcherEngine::QWindowsFileSystemWatcherEngine(QObject *parent
         qWarning("QFileSystemWatcher: Removable drive notification will not work"
                  " if there is no QCoreApplication instance.");
     }
-#endif // !Q_OS_WINRT
 }
 
 QWindowsFileSystemWatcherEngine::~QWindowsFileSystemWatcherEngine()
 {
-    for (auto *thread : qAsConst(threads))
+    for (auto *thread : std::as_const(threads))
         thread->stop();
-    for (auto *thread : qAsConst(threads))
+    for (auto *thread : std::as_const(threads))
         thread->wait();
     qDeleteAll(threads);
 }
@@ -380,12 +332,8 @@ QStringList QWindowsFileSystemWatcherEngine::addPaths(const QStringList &paths,
     QStringList unhandled;
     for (const QString &path : paths) {
         auto sg = qScopeGuard([&] { unhandled.push_back(path); });
-        QString normalPath = path;
-        if ((normalPath.endsWith(QLatin1Char('/')) && !normalPath.endsWith(QLatin1String(":/")))
-            || (normalPath.endsWith(QLatin1Char('\\')) && !normalPath.endsWith(QLatin1String(":\\")))) {
-            normalPath.chop(1);
-        }
-        QFileInfo fileInfo(normalPath);
+        QFileInfo fileInfo(path);
+        fileInfo.stat();
         if (!fileInfo.exists())
             continue;
 
@@ -398,7 +346,7 @@ QStringList QWindowsFileSystemWatcherEngine::addPaths(const QStringList &paths,
                 continue;
         }
 
-        DEBUG() << "Looking for a thread/handle for" << normalPath;
+        DEBUG() << "Looking for a thread/handle for" << fileInfo.path();
 
         const QString absolutePath = isDir ? fileInfo.absoluteFilePath() : fileInfo.absolutePath();
         const uint flags = isDir
@@ -419,7 +367,7 @@ QStringList QWindowsFileSystemWatcherEngine::addPaths(const QStringList &paths,
         pathInfo = fileInfo;
 
         // Look for a thread
-        QWindowsFileSystemWatcherEngineThread *thread = 0;
+        QWindowsFileSystemWatcherEngineThread *thread = nullptr;
         QWindowsFileSystemWatcherEngine::Handle handle;
         QList<QWindowsFileSystemWatcherEngineThread *>::const_iterator jt, end;
         end = threads.constEnd();
@@ -443,8 +391,9 @@ QStringList QWindowsFileSystemWatcherEngine::addPaths(const QStringList &paths,
                     FindCloseChangeNotification(hit.value().handle);
                     thread->handles[index] = hit.value().handle = fileHandle;
                     hit.value().flags = flags;
-                    thread->pathInfoForHandle.insert(fileHandle, pit.value());
+                    auto value = std::move(*pit);
                     thread->pathInfoForHandle.erase(pit);
+                    thread->pathInfoForHandle.insert(fileHandle, std::move(value));
                 }
             }
             // In addition, check on flags for sufficient notification attributes
@@ -479,7 +428,7 @@ QStringList QWindowsFileSystemWatcherEngine::addPaths(const QStringList &paths,
 
             // now look for a thread to insert
             bool found = false;
-            for (QWindowsFileSystemWatcherEngineThread *thread : qAsConst(threads)) {
+            for (QWindowsFileSystemWatcherEngineThread *thread : std::as_const(threads)) {
                 const auto locker = qt_scoped_lock(thread->mutex);
                 if (thread->handles.count() < MAXIMUM_WAIT_OBJECTS) {
                     DEBUG() << "Added handle" << handle.handle << "for" << absolutePath << "to watch" << fileInfo.absoluteFilePath()
@@ -524,14 +473,12 @@ QStringList QWindowsFileSystemWatcherEngine::addPaths(const QStringList &paths,
         }
     }
 
-#ifndef Q_OS_WINRT
     if (Q_LIKELY(m_driveListener)) {
         for (const QString &path : paths) {
             if (!unhandled.contains(path))
                 m_driveListener->addPath(path);
         }
     }
-#endif // !Q_OS_WINRT
     return unhandled;
 }
 
@@ -543,11 +490,8 @@ QStringList QWindowsFileSystemWatcherEngine::removePaths(const QStringList &path
     QStringList unhandled;
     for (const QString &path : paths) {
         auto sg = qScopeGuard([&] { unhandled.push_back(path); });
-        QString normalPath = path;
-        if (normalPath.endsWith(QLatin1Char('/')) || normalPath.endsWith(QLatin1Char('\\')))
-            normalPath.chop(1);
-        QFileInfo fileInfo(normalPath);
-        DEBUG() << "removing" << normalPath;
+        QFileInfo fileInfo(path);
+        DEBUG() << "removing" << fileInfo.path();
         QString absolutePath = fileInfo.absoluteFilePath();
         QList<QWindowsFileSystemWatcherEngineThread *>::iterator jt, end;
         end = threads.end();
@@ -611,7 +555,7 @@ QStringList QWindowsFileSystemWatcherEngine::removePaths(const QStringList &path
         }
     }
 
-    threads.removeAll(0);
+    threads.removeAll(nullptr);
     return unhandled;
 }
 
@@ -634,7 +578,7 @@ QWindowsFileSystemWatcherEngineThread::~QWindowsFileSystemWatcherEngineThread()
     CloseHandle(handles.at(0));
     handles[0] = INVALID_HANDLE_VALUE;
 
-    for (HANDLE h : qAsConst(handles)) {
+    for (HANDLE h : std::as_const(handles)) {
         if (h == INVALID_HANDLE_VALUE)
             continue;
         FindCloseChangeNotification(h);
@@ -645,10 +589,10 @@ Q_DECL_COLD_FUNCTION
 static QString msgFindNextFailed(const QWindowsFileSystemWatcherEngineThread::PathInfoHash &pathInfos)
 {
     QString str;
-    str += QLatin1String("QFileSystemWatcher: FindNextChangeNotification failed for");
+    str += "QFileSystemWatcher: FindNextChangeNotification failed for"_L1;
     for (const QWindowsFileSystemWatcherEngine::PathInfo &pathInfo : pathInfos)
-        str += QLatin1String(" \"") + QDir::toNativeSeparators(pathInfo.absolutePath) + QLatin1Char('"');
-    str += QLatin1Char(' ');
+        str += " \""_L1 + QDir::toNativeSeparators(pathInfo.absolutePath) + u'"';
+    str += u' ';
     return str;
 }
 
@@ -656,7 +600,7 @@ void QWindowsFileSystemWatcherEngineThread::run()
 {
     auto locker = qt_unique_lock(mutex);
     forever {
-        QVector<HANDLE> handlesCopy = handles;
+        QList<HANDLE> handlesCopy = handles;
         locker.unlock();
         DEBUG() << "QWindowsFileSystemWatcherThread" << this << "waiting on" << handlesCopy.count() << "handles";
         DWORD r = WaitForMultipleObjects(handlesCopy.count(), handlesCopy.constData(), false, INFINITE);
@@ -697,21 +641,20 @@ void QWindowsFileSystemWatcherEngineThread::run()
 
                         qErrnoWarning(error, "%ls", qUtf16Printable(msgFindNextFailed(h)));
                     }
-                    for (auto it = h.begin(), end = h.end(); it != end; /*erasing*/ ) {
-                        auto x = it++;
-                        QString absolutePath = x.value().absolutePath;
-                        QFileInfo fileInfo(x.value().path);
-                        DEBUG() << "checking" << x.key();
+                    for (auto it = h.begin(); it != h.end(); /*erasing*/ ) {
+                        QString absolutePath = it.value().absolutePath;
+                        QFileInfo fileInfo(it.value().path);
+                        DEBUG() << "checking" << it.key();
 
                         // i'm not completely sure the fileInfo.exist() check will ever work... see QTBUG-2331
                         // ..however, I'm not completely sure enough to remove it.
                         if (fakeRemove || !fileInfo.exists()) {
-                            DEBUG() << x.key() << "removed!";
-                            if (x.value().isDir)
-                                emit directoryChanged(x.value().path, true);
+                            DEBUG() << it.key() << "removed!";
+                            if (it.value().isDir)
+                                emit directoryChanged(it.value().path, true);
                             else
-                                emit fileChanged(x.value().path, true);
-                            h.erase(x);
+                                emit fileChanged(it.value().path, true);
+                            it = h.erase(it);
 
                             // close the notification handle if the directory has been removed
                             if (h.isEmpty()) {
@@ -726,15 +669,17 @@ void QWindowsFileSystemWatcherEngineThread::run()
                                 // h is now invalid
                                 break;
                             }
-                        } else if (x.value().isDir) {
-                            DEBUG() << x.key() << "directory changed!";
-                            emit directoryChanged(x.value().path, false);
-                            x.value() = fileInfo;
-                        } else if (x.value() != fileInfo) {
-                            DEBUG() << x.key() << "file changed!";
-                            emit fileChanged(x.value().path, false);
-                            x.value() = fileInfo;
+                            continue;
+                        } else if (it.value().isDir) {
+                            DEBUG() << it.key() << "directory changed!";
+                            emit directoryChanged(it.value().path, false);
+                            it.value() = fileInfo;
+                        } else if (it.value() != fileInfo) {
+                            DEBUG() << it.key() << "file changed!";
+                            emit fileChanged(it.value().path, false);
+                            it.value() = fileInfo;
                         }
+                        ++it;
                     }
                 }
             } else {
@@ -762,6 +707,4 @@ void QWindowsFileSystemWatcherEngineThread::wakeup()
 
 QT_END_NAMESPACE
 
-#ifndef Q_OS_WINRT
 #  include "qfilesystemwatcher_win.moc"
-#endif

@@ -1,15 +1,15 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef UI_EVENTS_OZONE_EVDEV_DEVICE_EVENT_DISPATCHER_H_
-#define UI_EVENTS_OZONE_EVDEV_DEVICE_EVENT_DISPATCHER_H_
+#ifndef UI_EVENTS_OZONE_EVDEV_DEVICE_EVENT_DISPATCHER_EVDEV_H_
+#define UI_EVENTS_OZONE_EVDEV_DEVICE_EVENT_DISPATCHER_EVDEV_H_
 
 #include <vector>
 
 #include "base/component_export.h"
-#include "base/optional.h"
 #include "base/time/time.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/events/devices/gamepad_device.h"
 #include "ui/events/devices/input_device.h"
 #include "ui/events/devices/touchscreen_device.h"
@@ -59,9 +59,16 @@ struct COMPONENT_EXPORT(EVDEV) MouseMoveEventParams {
   int device_id;
   int flags;
   gfx::PointF location;
-  base::Optional<gfx::Vector2dF> ordinal_delta;
+  absl::optional<gfx::Vector2dF> ordinal_delta;
   PointerDetails pointer_details;
   base::TimeTicks timestamp;
+};
+
+enum class COMPONENT_EXPORT(EVDEV) MouseButtonMapType : int {
+  kNone,
+  kMouse,
+  kPointingStick,
+  kMaxValue = kPointingStick,
 };
 
 struct COMPONENT_EXPORT(EVDEV) MouseButtonEventParams {
@@ -70,7 +77,7 @@ struct COMPONENT_EXPORT(EVDEV) MouseButtonEventParams {
                          const gfx::PointF& location,
                          unsigned int button,
                          bool down,
-                         bool allow_remap,
+                         MouseButtonMapType map_type,
                          const PointerDetails& details,
                          base::TimeTicks timestamp);
   MouseButtonEventParams(const MouseButtonEventParams& other);
@@ -82,7 +89,7 @@ struct COMPONENT_EXPORT(EVDEV) MouseButtonEventParams {
   gfx::PointF location;
   unsigned int button;
   bool down;
-  bool allow_remap;
+  MouseButtonMapType map_type;
   PointerDetails pointer_details;
   base::TimeTicks timestamp;
 };
@@ -185,26 +192,31 @@ class COMPONENT_EXPORT(EVDEV) DeviceEventDispatcherEvdev {
   virtual void DispatchScrollEvent(const ScrollEventParams& params) = 0;
   virtual void DispatchTouchEvent(const TouchEventParams& params) = 0;
   virtual void DispatchGamepadEvent(const GamepadEvent& event) = 0;
+  virtual void DispatchMicrophoneMuteSwitchValueChanged(bool muted) = 0;
 
   // Device lifecycle events.
   virtual void DispatchKeyboardDevicesUpdated(
-      const std::vector<InputDevice>& devices) = 0;
+      const std::vector<InputDevice>& devices,
+      base::flat_map<int, std::vector<uint64_t>> key_bits_mapping) = 0;
   virtual void DispatchTouchscreenDevicesUpdated(
       const std::vector<TouchscreenDevice>& devices) = 0;
   virtual void DispatchMouseDevicesUpdated(
       const std::vector<InputDevice>& devices,
-      bool has_mouse,
-      bool has_pointing_stick) = 0;
-  virtual void DispatchTouchpadDevicesUpdated(
+      bool has_mouse) = 0;
+  virtual void DispatchPointingStickDevicesUpdated(
       const std::vector<InputDevice>& devices) = 0;
+  virtual void DispatchTouchpadDevicesUpdated(
+      const std::vector<InputDevice>& devices,
+      bool has_haptic_touchpad) = 0;
   virtual void DispatchDeviceListsComplete() = 0;
   virtual void DispatchStylusStateChanged(StylusState stylus_state) = 0;
   virtual void DispatchGamepadDevicesUpdated(
-      const std::vector<GamepadDevice>& devices) = 0;
+      const std::vector<GamepadDevice>& devices,
+      base::flat_map<int, std::vector<uint64_t>> key_bits_mapping) = 0;
   virtual void DispatchUncategorizedDevicesUpdated(
       const std::vector<InputDevice>& devices) = 0;
 };
 
 }  // namespace ui
 
-#endif  // UI_EVENTS_OZONE_EVDEV_DEVICE_EVENT_DISPATCHER_H_
+#endif  // UI_EVENTS_OZONE_EVDEV_DEVICE_EVENT_DISPATCHER_EVDEV_H_

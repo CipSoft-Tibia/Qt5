@@ -1,11 +1,13 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/editing/finder/find_buffer.h"
 
+#include "base/time/time.h"
 #include "third_party/blink/renderer/core/css/style_change_reason.h"
 #include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/dom/range.h"
 #include "third_party/blink/renderer/core/dom/text.h"
 #include "third_party/blink/renderer/core/editing/editing_utilities.h"
@@ -13,6 +15,7 @@
 #include "third_party/blink/renderer/core/editing/iterators/text_searcher_icu.h"
 #include "third_party/blink/renderer/core/html/forms/html_form_control_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_select_element.h"
+#include "third_party/blink/renderer/core/html/forms/text_control_element.h"
 #include "third_party/blink/renderer/core/layout/layout_block_flow.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_node.h"
@@ -37,6 +40,8 @@ bool ShouldIgnoreContents(const Node& node) {
     return false;
   return (!element->ShouldSerializeEndTag() &&
           !IsA<HTMLInputElement>(*element)) ||
+         (IsA<TextControlElement>(*element) &&
+          !To<TextControlElement>(*element).SuggestedValue().empty()) ||
          IsA<HTMLIFrameElement>(*element) || IsA<HTMLImageElement>(*element) ||
          IsA<HTMLMeterElement>(*element) || IsA<HTMLObjectElement>(*element) ||
          IsA<HTMLProgressElement>(*element) ||
@@ -50,30 +55,26 @@ bool ShouldIgnoreContents(const Node& node) {
               DisplayLockActivationReason::kFindInPage));
 }
 
-// Returns the first ancestor that isn't searchable. In other words, either
-// ShouldIgnoreContents() returns true for it or it has a display: none style.
-// Returns nullptr if no such ancestor exists.
-Node* GetNonSearchableAncestor(const Node& node) {
+// Returns the first ancestor element that isn't searchable. In other words,
+// either ShouldIgnoreContents() returns true for it or it has a display: none
+// style.  Returns nullptr if no such ancestor exists.
+Node* GetOutermostNonSearchableAncestor(const Node& node) {
+  Node* display_none = nullptr;
   for (Node& ancestor : FlatTreeTraversal::InclusiveAncestorsOf(node)) {
-    const ComputedStyle* style = ancestor.EnsureComputedStyle();
-    if (ancestor.IsDocumentNode())
-      return nullptr;
-    if ((style && style->Display() == EDisplay::kNone) ||
-        ShouldIgnoreContents(ancestor))
-      return &ancestor;
+    Element* element_ancestor = DynamicTo<Element>(&ancestor);
+    if (!element_ancestor)
+      continue;
+    const ComputedStyle* style = element_ancestor->GetComputedStyle();
+    if (!style || style->IsEnsuredInDisplayNone()) {
+      display_none = element_ancestor;
+      continue;
+    }
+    if (ShouldIgnoreContents(*element_ancestor))
+      return element_ancestor;
+    if (display_none)
+      return display_none;
   }
   return nullptr;
-}
-
-// TODO(gayane): Consider using |ComputedStyle::IsDisplayInlineType| or
-// |ElementInnerTextCollector::IsDisplayBlockLevel|. See
-// http://crrev.com/c/2283244/10/third_party/blink/renderer/core/editing/finder/find_buffer.cc#69
-// for context.
-// Returns true if the given |display| is considered a 'block'
-bool IsBlockLevel(EDisplay display) {
-  return display == EDisplay::kBlock || display == EDisplay::kTable ||
-         display == EDisplay::kFlowRoot || display == EDisplay::kGrid ||
-         display == EDisplay::kFlex || display == EDisplay::kListItem;
 }
 
 // Returns the next/previous node after |start_node| (including start node) that
@@ -82,10 +83,10 @@ template <class Direction>
 Node* GetVisibleTextNode(Node& start_node) {
   Node* node = &start_node;
   // Move to outside display none subtree if we're inside one.
-  while (Node* ancestor = GetNonSearchableAncestor(*node)) {
+  while (Node* ancestor = GetOutermostNonSearchableAncestor(*node)) {
     if (!ancestor)
       return nullptr;
-    node = Direction::NextSkippingChildren(*ancestor);
+    node = Direction::NextSkippingSubtree(*ancestor);
     if (!node)
       return nullptr;
   }
@@ -95,7 +96,7 @@ Node* GetVisibleTextNode(Node& start_node) {
     if (ShouldIgnoreContents(*node) ||
         (style && style->Display() == EDisplay::kNone)) {
       // This element and its descendants are not visible, skip it.
-      node = Direction::NextSkippingChildren(*node);
+      node = Direction::NextSkippingSubtree(*node);
       continue;
     }
     if (style && style->Visibility() == EVisibility::kVisible &&
@@ -107,6 +108,23 @@ Node* GetVisibleTextNode(Node& start_node) {
     node = Direction::Next(*node);
   }
   return nullptr;
+}
+
+// Returns true if the given |node| is considered a 'block' for find-in-page,
+// scroll-to-text and link-to-text even though it might not have a separate
+// LayoutBlockFlow. For example, input fields should be considered a block
+// boundary.
+bool IsExplicitFindBoundary(const Node& node) {
+  return IsTextControl(node);
+}
+
+// Checks if |start| appears before |end| in flat-tree order.
+bool AreInOrder(const Node& start, const Node& end) {
+  const Node* node = &start;
+  while (node && !node->isSameNode(&end)) {
+    node = FlatTreeTraversal::Next(*node);
+  }
+  return node->isSameNode(&end);
 }
 
 }  // namespace
@@ -140,16 +158,30 @@ bool FindBuffer::IsInvalidMatch(MatchResultICU match) const {
 EphemeralRangeInFlatTree FindBuffer::FindMatchInRange(
     const EphemeralRangeInFlatTree& range,
     String search_text,
-    FindOptions options) {
+    FindOptions options,
+    absl::optional<base::TimeDelta> timeout_ms) {
   if (!range.StartPosition().IsConnected())
     return EphemeralRangeInFlatTree();
+
+  base::TimeTicks start_time;
 
   EphemeralRangeInFlatTree last_match_range;
   Node* first_node = range.StartPosition().NodeAsRangeFirstNode();
   Node* past_last_node = range.EndPosition().NodeAsRangePastLastNode();
   Node* node = first_node;
   while (node && node != past_last_node) {
-    if (GetNonSearchableAncestor(*node)) {
+    if (start_time.is_null()) {
+      start_time = base::TimeTicks::Now();
+    } else {
+      auto time_elapsed = base::TimeTicks::Now() - start_time;
+      if (timeout_ms.has_value() && time_elapsed > timeout_ms.value()) {
+        return EphemeralRangeInFlatTree(
+            PositionInFlatTree::FirstPositionInNode(*node),
+            PositionInFlatTree::FirstPositionInNode(*node));
+      }
+    }
+
+    if (GetOutermostNonSearchableAncestor(*node)) {
       node = FlatTreeTraversal::NextSkippingChildren(*node);
       continue;
     }
@@ -183,17 +215,62 @@ EphemeralRangeInFlatTree FindBuffer::FindMatchInRange(
   return last_match_range;
 }
 
-Node& FindBuffer::GetFirstBlockLevelAncestorInclusive(const Node& start_node) {
+const Node& FindBuffer::GetFirstBlockLevelAncestorInclusive(const Node& node) {
   // Gets lowest inclusive ancestor that has block display value.
   // <div id=outer>a<div id=inner>b</div>c</div>
   // If we run this on "a" or "c" text node in we will get the outer div.
   // If we run it on the "b" text node we will get the inner div.
-  for (Node& ancestor : FlatTreeTraversal::InclusiveAncestorsOf(start_node)) {
-    const ComputedStyle* style = ancestor.EnsureComputedStyle();
-    if (style && !ancestor.IsTextNode() && IsBlockLevel(style->Display()))
+  if (!node.GetLayoutObject())
+    return *node.GetDocument().documentElement();
+
+  for (const Node& ancestor : FlatTreeTraversal::InclusiveAncestorsOf(node)) {
+    if (!ancestor.GetLayoutObject())
+      continue;
+    if (!IsInSameUninterruptedBlock(ancestor, node))
       return ancestor;
   }
-  return *start_node.GetDocument().documentElement();
+
+  return *node.GetDocument().documentElement();
+}
+
+bool FindBuffer::IsInSameUninterruptedBlock(const Node& start_node,
+                                            const Node& end_node) {
+  DCHECK(AreInOrder(start_node, end_node));
+  DCHECK(start_node.GetLayoutObject());
+  DCHECK(end_node.GetLayoutObject());
+
+  if (start_node.isSameNode(&end_node))
+    return true;
+
+  if (IsExplicitFindBoundary(start_node) || IsExplicitFindBoundary(end_node))
+    return false;
+
+  LayoutBlockFlow& start_block_flow =
+      *NGOffsetMapping::GetInlineFormattingContextOf(
+          *start_node.GetLayoutObject());
+  LayoutBlockFlow& end_block_flow =
+      *NGOffsetMapping::GetInlineFormattingContextOf(
+          *end_node.GetLayoutObject());
+  if (start_block_flow != end_block_flow)
+    return false;
+
+  // It's possible that 2 nodes are in the same block flow but there is a node
+  // in between that has a separate block flow. An example is an input field.
+  for (const Node* node = &start_node; !node->isSameNode(&end_node);
+       node = FlatTreeTraversal::Next(*node)) {
+    const ComputedStyle* style = node->GetComputedStyle();
+    if (ShouldIgnoreContents(*node) || !style ||
+        style->Display() == EDisplay::kNone ||
+        style->Visibility() != EVisibility::kVisible)
+      continue;
+
+    if (node->GetLayoutObject() &&
+        *NGOffsetMapping::GetInlineFormattingContextOf(
+            *node->GetLayoutObject()) != start_block_flow)
+      return false;
+  }
+
+  return true;
 }
 
 Node* FindBuffer::ForwardVisibleTextNode(Node& start_node) {
@@ -201,7 +278,7 @@ Node* FindBuffer::ForwardVisibleTextNode(Node& start_node) {
     static Node* Next(const Node& node) {
       return FlatTreeTraversal::Next(node);
     }
-    static Node* NextSkippingChildren(const Node& node) {
+    static Node* NextSkippingSubtree(const Node& node) {
       return FlatTreeTraversal::NextSkippingChildren(node);
     }
   };
@@ -213,16 +290,13 @@ Node* FindBuffer::BackwardVisibleTextNode(Node& start_node) {
     static Node* Next(const Node& node) {
       return FlatTreeTraversal::Previous(node);
     }
-    static Node* NextSkippingChildren(const Node& node) {
-      return FlatTreeTraversal::PreviousSkippingChildren(node);
+    static Node* NextSkippingSubtree(const Node& node) {
+      // Unlike |NextSkippingChildren|, |Previous| already skips given nodes
+      // subtree.
+      return FlatTreeTraversal::Previous(node);
     }
   };
   return GetVisibleTextNode<BackwardDirection>(start_node);
-}
-
-bool FindBuffer::IsNodeBlockLevel(Node& node) {
-  const ComputedStyle* style = node.EnsureComputedStyle();
-  return style && !node.IsTextNode() && IsBlockLevel(style->Display());
 }
 
 FindBuffer::Results FindBuffer::FindMatches(const WebString& search_text,
@@ -230,7 +304,7 @@ FindBuffer::Results FindBuffer::FindMatches(const WebString& search_text,
   // We should return empty result if it's impossible to get a match (buffer is
   // empty or too short), or when something went wrong in layout, in which case
   // |offset_mapping_| is null.
-  if (buffer_.IsEmpty() || search_text.length() > buffer_.size() ||
+  if (buffer_.empty() || search_text.length() > buffer_.size() ||
       !offset_mapping_)
     return Results();
   String search_text_16_bit = search_text;
@@ -244,7 +318,6 @@ void FindBuffer::CollectTextUntilBlockBoundary(
   // Collects text until block boundary located at or after |start_node|
   // to |buffer_|. Saves the next starting node after the block to
   // |node_after_block_|.
-
   DCHECK(range.IsNotNull() && !range.IsCollapsed()) << range;
 
   node_after_block_ = nullptr;
@@ -257,17 +330,19 @@ void FindBuffer::CollectTextUntilBlockBoundary(
   if (!node || !node->isConnected())
     return;
 
-  Node& block_ancestor = GetFirstBlockLevelAncestorInclusive(*node);
+  const Node& block_ancestor = GetFirstBlockLevelAncestorInclusive(*node);
   const Node* just_after_block = FlatTreeTraversal::Next(
       FlatTreeTraversal::LastWithinOrSelf(block_ancestor));
-  const LayoutBlockFlow* last_block_flow = nullptr;
 
   // Collect all text under |block_ancestor| to |buffer_|,
   // unless we meet another block on the way. If so, we should split.
   // Example: <div id="outer">a<span>b</span>c<div>d</div></div>
   // Will try to collect all text in outer div but will actually
   // stop when it encounters the inner div. So buffer will be "abc".
-  Node* const first_traversed_node = node;
+
+  // Used for checking if we reached a new block.
+  Node* last_added_text_node = nullptr;
+
   // We will also stop if we encountered/passed |end_node|.
   Node* end_node = range.EndPosition().NodeAsRangeLastNode();
 
@@ -279,12 +354,9 @@ void FindBuffer::CollectTextUntilBlockBoundary(
         node = FlatTreeTraversal::NextSkippingChildren(*node);
         break;
       }
-      // Move the node so we wouldn't encounter this node or its descendants
-      // later.
-      if (IsA<HTMLElement>(*node) &&
-          !IsA<HTMLWBRElement>(To<HTMLElement>(*node))) {
-        buffer_.push_back(kMaxCodepoint);
-      }
+      // Replace the node with char constants so we wouldn't encounter this node
+      // or its descendants later.
+      ReplaceNodeWithCharConstants(*node);
       node = FlatTreeTraversal::NextSkippingChildren(*node);
       continue;
     }
@@ -304,26 +376,22 @@ void FindBuffer::CollectTextUntilBlockBoundary(
         break;
       continue;
     }
-    // This node is in its own sub-block separate from our starting position.
-    const auto* text_node = DynamicTo<Text>(node);
-    if (first_traversed_node != node && !text_node &&
-        IsBlockLevel(style->Display())) {
-      break;
-    }
 
-    if (style->Visibility() == EVisibility::kVisible && text_node &&
+    if (style->Visibility() == EVisibility::kVisible &&
         node->GetLayoutObject()) {
-      LayoutBlockFlow& block_flow =
-          *NGOffsetMapping::GetInlineFormattingContextOf(
-              *text_node->GetLayoutObject());
-      if (last_block_flow && last_block_flow != block_flow) {
-        // We enter another block flow.
+      // This node is in its own sub-block separate from our starting position.
+      if (last_added_text_node && last_added_text_node->GetLayoutObject() &&
+          !IsInSameUninterruptedBlock(*last_added_text_node, *node))
         break;
+
+      const auto* text_node = DynamicTo<Text>(node);
+      if (text_node) {
+        last_added_text_node = node;
+        LayoutBlockFlow& block_flow =
+            *NGOffsetMapping::GetInlineFormattingContextOf(
+                *text_node->GetLayoutObject());
+        AddTextToBuffer(*text_node, block_flow, range);
       }
-      if (!last_block_flow) {
-        last_block_flow = &block_flow;
-      }
-      AddTextToBuffer(*text_node, block_flow, range);
     }
     if (node == end_node) {
       node = FlatTreeTraversal::Next(*node);
@@ -333,6 +401,21 @@ void FindBuffer::CollectTextUntilBlockBoundary(
   }
   node_after_block_ = node;
   FoldQuoteMarksAndSoftHyphens(buffer_.data(), buffer_.size());
+}
+
+void FindBuffer::ReplaceNodeWithCharConstants(const Node& node) {
+  if (!IsA<HTMLElement>(node))
+    return;
+
+  if (IsA<HTMLWBRElement>(To<HTMLElement>(node)))
+    return;
+
+  if (IsA<HTMLBRElement>(To<HTMLElement>(node))) {
+    buffer_.push_back(kNewlineCharacter);
+    return;
+  }
+
+  buffer_.push_back(kMaxCodepoint);
 }
 
 EphemeralRangeInFlatTree FindBuffer::RangeFromBufferIndex(
@@ -453,7 +536,7 @@ FindBuffer::Results::Iterator FindBuffer::Results::begin() const {
   if (empty_result_)
     return end();
   text_searcher_->SetOffset(0);
-  return Iterator(*find_buffer_, text_searcher_, search_text_);
+  return Iterator(*find_buffer_, text_searcher_);
 }
 
 FindBuffer::Results::Iterator FindBuffer::Results::end() const {
@@ -486,8 +569,7 @@ unsigned FindBuffer::Results::CountForTesting() const {
 
 // Findbuffer::Results::Iterator implementation.
 FindBuffer::Results::Iterator::Iterator(const FindBuffer& find_buffer,
-                                        TextSearcherICU* text_searcher,
-                                        const String& search_text)
+                                        TextSearcherICU* text_searcher)
     : find_buffer_(&find_buffer),
       text_searcher_(text_searcher),
       has_match_(true) {

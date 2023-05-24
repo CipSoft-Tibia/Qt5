@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,19 +11,24 @@
 #include <utility>
 #include <vector>
 
+#include "base/base_paths.h"
 #include "base/command_line.h"
+#include "base/files/file_path.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
-#include "base/stl_util.h"
+#include "base/path_service.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/trace_event/trace_event.h"
+#include "build/build_config.h"
 #include "gpu/config/gpu_switches.h"
+#include "skia/buildflags.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/angle/src/gpu_info_util/SystemInfo.h"  // nogncheck
 #include "third_party/skia/include/core/SkGraphics.h"
-#include "third_party/skia/include/gpu/GrDirectContext.h"
+#include "ui/gl/buildflags.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_context.h"
 #include "ui/gl/gl_implementation.h"
@@ -35,15 +40,21 @@
 #include "ui/gl/init/create_gr_gl_interface.h"
 #include "ui/gl/init/gl_factory.h"
 
-#if defined(USE_X11)
-#include "ui/base/ui_base_features.h"  // nogncheck
-#include "ui/gfx/linux/gpu_memory_buffer_support_x11.h"
-#include "ui/gfx/switches.h"
-#include "ui/gl/gl_visual_picker_glx.h"
+#if BUILDFLAG(IS_MAC)
+#include "base/mac/bundle_locations.h"
+#include "base/mac/foundation_util.h"
 #endif
 
-#ifndef GL_RESET_NOTIFICATION_STRATEGY_ARB
-#define GL_RESET_NOTIFICATION_STRATEGY_ARB 0x8256
+#if BUILDFLAG(IS_OZONE)
+#include "ui/ozone/public/ozone_platform.h"           // nogncheck
+#include "ui/ozone/public/platform_gl_egl_utility.h"  // nogncheck
+#endif
+
+#if BUILDFLAG(USE_DAWN) || BUILDFLAG(SKIA_USE_DAWN)
+#include "third_party/dawn/include/dawn/dawn_proc.h"          // nogncheck
+#include "third_party/dawn/include/dawn/native/DawnNative.h"  // nogncheck
+#include "third_party/dawn/include/dawn/webgpu.h"             // nogncheck
+#include "third_party/dawn/include/dawn/webgpu_cpp.h"         // nogncheck
 #endif
 
 namespace {
@@ -62,9 +73,9 @@ namespace {
 #define EGL_FEATURE_CONDITION_ANGLE 0x3468
 #endif /* EGL_ANGLE_feature_control */
 
-scoped_refptr<gl::GLSurface> InitializeGLSurface() {
+scoped_refptr<gl::GLSurface> InitializeGLSurface(gl::GLDisplay* display) {
   scoped_refptr<gl::GLSurface> surface(
-      gl::init::CreateOffscreenGLSurface(gfx::Size()));
+      gl::init::CreateOffscreenGLSurface(display, gfx::Size()));
   if (!surface.get()) {
     LOG(ERROR) << "gl::GLContext::CreateOffscreenGLSurface failed";
     return nullptr;
@@ -142,23 +153,128 @@ int StringContainsName(const std::string& str,
   return -1;
 }
 
-bool SupportsOOPRaster(const gl::GLVersionInfo& gl_info) {
-  const bool use_version_es2 = false;
-  sk_sp<const GrGLInterface> gl_interface(
-      gl::init::CreateGrGLInterface(gl_info, use_version_es2));
-  if (!gl_interface) {
-    return false;
+#if BUILDFLAG(USE_DAWN) || BUILDFLAG(SKIA_USE_DAWN)
+std::string GetDawnAdapterTypeString(wgpu::AdapterType type) {
+  switch (type) {
+    case wgpu::AdapterType::IntegratedGPU:
+      return "<Integrated GPU> ";
+    case wgpu::AdapterType::DiscreteGPU:
+      return "<Discrete GPU> ";
+    case wgpu::AdapterType::CPU:
+      return "<CPU> ";
+    default:
+      return "<Unknown GPU> ";
   }
-
-  sk_sp<GrDirectContext> gr_context =
-      GrDirectContext::MakeGL(std::move(gl_interface));
-  if (gr_context) {
-    // TODO(backer): Stash this GrContext for future use. For now, destroy.
-    return true;
-  }
-
-  return false;
 }
+
+std::string GetDawnBackendTypeString(wgpu::BackendType type) {
+  switch (type) {
+    case wgpu::BackendType::D3D11:
+      return "D3D11 backend";
+    case wgpu::BackendType::D3D12:
+      return "D3D12 backend";
+    case wgpu::BackendType::Metal:
+      return "Metal backend";
+    case wgpu::BackendType::Vulkan:
+      return "Vulkan backend";
+    case wgpu::BackendType::OpenGL:
+      return "OpenGL backend";
+    case wgpu::BackendType::OpenGLES:
+      return "OpenGLES backend";
+    default:
+      NOTREACHED();
+      return "";
+  }
+}
+
+void AddTogglesToDawnInfoList(dawn::native::Instance* instance,
+                              const std::vector<const char*>& toggle_names,
+                              std::vector<std::string>* dawn_info_list) {
+  for (auto* name : toggle_names) {
+    const dawn::native::ToggleInfo* info = instance->GetToggleInfo(name);
+    dawn_info_list->push_back(info->name);
+    dawn_info_list->push_back(info->url);
+    dawn_info_list->push_back(info->description);
+  }
+}
+#endif
+
+std::string GetDisplayTypeString(gl::DisplayType type) {
+  switch (type) {
+    case gl::DEFAULT:
+      return "DEFAULT";
+    case gl::SWIFT_SHADER:
+      return "SWIFT_SHADER";
+    case gl::ANGLE_WARP:
+      return "ANGLE_WARP";
+    case gl::ANGLE_D3D9:
+      return "ANGLE_D3D9";
+    case gl::ANGLE_D3D11:
+      return "ANGLE_D3D11";
+    case gl::ANGLE_OPENGL:
+      return "ANGLE_OPENGL";
+    case gl::ANGLE_OPENGLES:
+      return "ANGLE_OPENGLES";
+    case gl::ANGLE_NULL:
+      return "ANGLE_NULL";
+    case gl::ANGLE_D3D11_NULL:
+      return "ANGLE_D3D11_NULL";
+    case gl::ANGLE_OPENGL_NULL:
+      return "ANGLE_OPENGL_NULL";
+    case gl::ANGLE_OPENGLES_NULL:
+      return "ANGLE_OPENGLES_NULL";
+    case gl::ANGLE_VULKAN:
+      return "ANGLE_VULKAN";
+    case gl::ANGLE_VULKAN_NULL:
+      return "ANGLE_VULKAN_NULL";
+    case gl::ANGLE_D3D11on12:
+      return "ANGLE_D3D11on12";
+    case gl::ANGLE_SWIFTSHADER:
+      return "ANGLE_SWIFTSHADER";
+    case gl::ANGLE_OPENGL_EGL:
+      return "ANGLE_OPENGL_EGL";
+    case gl::ANGLE_OPENGLES_EGL:
+      return "ANGLE_OPENGLES_EGL";
+    case gl::ANGLE_METAL:
+      return "ANGLE_METAL";
+    case gl::ANGLE_METAL_NULL:
+      return "ANGLE_METAL_NULL";
+    default:
+      NOTREACHED();
+      return "";
+  }
+}
+
+#if BUILDFLAG(USE_DAWN)
+void ForceDawnTogglesForWebGPU(
+    bool enable_unsafe_webgpu,
+    const std::vector<std::string>& enabled_preference,
+    const std::vector<std::string>& disabled_preference,
+    std::vector<const char*>* force_enabled_toggles,
+    std::vector<const char*>* force_disabled_toggles) {
+  // Disallows usage of SPIR-V by default for security (we only ensure that WGSL
+  // is secure), unless --enable-unsafe-webgpu is used.
+  if (!enable_unsafe_webgpu) {
+    force_enabled_toggles->push_back("disallow_spirv");
+  }
+
+  for (const std::string& toggle : enabled_preference) {
+    force_enabled_toggles->push_back(toggle.c_str());
+  }
+
+  for (const std::string& toggle : disabled_preference) {
+    force_disabled_toggles->push_back(toggle.c_str());
+  }
+}
+#endif
+#if BUILDFLAG(SKIA_USE_DAWN)
+void ForceDawnTogglesForSkia(std::vector<const char*>* force_enabled_toggles,
+                             std::vector<const char*>* force_disabled_toggles) {
+#if !DCHECK_IS_ON()
+  force_enabled_toggles->push_back("skip_validation");
+#endif
+}
+#endif
 
 }  // namespace
 
@@ -181,7 +297,7 @@ bool CollectGraphicsDeviceInfoFromCommandLine(
     base::StringToUint(device_id_str, &gpu.device_id);
   }
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   if (command_line->HasSwitch(switches::kGpuSubSystemId)) {
     const std::string syb_system_id_str =
         command_line->GetSwitchValueASCII(switches::kGpuSubSystemId);
@@ -201,8 +317,11 @@ bool CollectGraphicsDeviceInfoFromCommandLine(
   }
 
   bool info_updated = gpu.vendor_id || gpu.device_id ||
-#if defined(OS_WIN)
-                      gpu.sub_sys_id || gpu.revision ||
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
+                      gpu.revision ||
+#endif
+#if BUILDFLAG(IS_WIN)
+                      gpu.sub_sys_id ||
 #endif
                       !gpu.driver_version.empty();
 
@@ -216,26 +335,30 @@ bool CollectBasicGraphicsInfo(const base::CommandLine* command_line,
   if (CollectGraphicsDeviceInfoFromCommandLine(command_line, gpu_info))
     return true;
 
-  std::string use_gl = command_line->GetSwitchValueASCII(switches::kUseGL);
-  std::string use_angle =
-      command_line->GetSwitchValueASCII(switches::kUseANGLE);
+  // We can't check if passthrough is supported yet because GL may not be
+  // initialized.
   gpu_info->passthrough_cmd_decoder =
-      gl::UsePassthroughCommandDecoder(command_line) &&
-      gl::PassthroughCommandDecoderSupported();
+      gl::UsePassthroughCommandDecoder(command_line);
 
-  // If GL is disabled then we don't need GPUInfo.
-  if (use_gl == gl::kGLImplementationDisabledName) {
-    gpu_info->gl_vendor = "Disabled";
-    gpu_info->gl_renderer = "Disabled";
-    gpu_info->gl_version = "Disabled";
+  bool fallback_to_software = false;
+  absl::optional<gl::GLImplementationParts> implementation =
+      gl::GetRequestedGLImplementationFromCommandLine(command_line,
+                                                      &fallback_to_software);
 
-    return true;
+  if (implementation.has_value()) {
+    gpu_info->gl_implementation = implementation->GLString();
+    gpu_info->angle_implementation = implementation->ANGLEString();
+
+    // If GL is disabled then we don't need GPUInfo.
+    if (implementation == gl::kGLImplementationDisabled) {
+      gpu_info->gl_vendor = "Disabled";
+      gpu_info->gl_renderer = "Disabled";
+      gpu_info->gl_version = "Disabled";
+      return true;
+    }
   }
 
-  base::StringPiece software_gl_impl_name =
-      gl::GetGLImplementationName(gl::GetSoftwareGLImplementation());
-  if (use_gl == software_gl_impl_name ||
-      command_line->HasSwitch(switches::kOverrideUseSoftwareGLForTests)) {
+  if (implementation == gl::GetSoftwareGLImplementation()) {
     // If using the software GL implementation, use fake vendor and
     // device ids to make sure it never gets blocklisted. It allows us
     // to proceed with loading the blocklist which may have non-device
@@ -244,23 +367,17 @@ bool CollectBasicGraphicsInfo(const base::CommandLine* command_line,
     gpu_info->gpu.vendor_id = 0xffff;
     gpu_info->gpu.device_id = 0xffff;
 
-    // Also declare the driver_vendor to be <software GL> to be able to
-    // specify exceptions based on driver_vendor==<software GL> for some
-    // blocklist rules.
-    gpu_info->gpu.driver_vendor = software_gl_impl_name.as_string();
-
-    return true;
-  } else if (use_gl == gl::kGLImplementationANGLEName &&
-             use_angle == gl::kANGLEImplementationSwiftShaderName) {
-    // Similarly to the above, use fake vendor and device ids
-    // to make sure they never gets blocklisted for SwANGLE as well.
-    gpu_info->gpu.vendor_id = 0xffff;
-    gpu_info->gpu.device_id = 0xffff;
-
     // Also declare the driver_vendor to be <SwANGLE> to be able to
     // specify exceptions based on driver_vendor==<SwANGLE> for some
     // blocklist rules.
     gpu_info->gpu.driver_vendor = "SwANGLE";
+
+    GPUInfo swangle_gpu_info(*gpu_info);
+    if (CollectBasicGraphicsInfo(&swangle_gpu_info)) {
+      // Also store the machine model and version
+      gpu_info->machine_model_name = swangle_gpu_info.machine_model_name;
+      gpu_info->machine_model_version = swangle_gpu_info.machine_model_version;
+    }
 
     return true;
   }
@@ -268,11 +385,18 @@ bool CollectBasicGraphicsInfo(const base::CommandLine* command_line,
   return CollectBasicGraphicsInfo(gpu_info);
 }
 
-bool CollectGraphicsInfoGL(GPUInfo* gpu_info) {
+bool CollectGraphicsInfoGL(GPUInfo* gpu_info, gl::GLDisplay* display) {
   TRACE_EVENT0("startup", "gpu_info_collector::CollectGraphicsInfoGL");
-  DCHECK_NE(gl::GetGLImplementation(), gl::kGLImplementationNone);
+  gl::GLImplementationParts implementation = gl::GetGLImplementationParts();
+  DCHECK_NE(implementation, gl::kGLImplementationNone);
+  gl::GLDisplayEGL* egl_display = display->GetAs<gl::GLDisplayEGL>();
 
-  scoped_refptr<gl::GLSurface> surface(InitializeGLSurface());
+  // Now that we can check GL extensions, update passthrough support info.
+  if (!gl::PassthroughCommandDecoderSupported()) {
+    gpu_info->passthrough_cmd_decoder = false;
+  }
+
+  scoped_refptr<gl::GLSurface> surface(InitializeGLSurface(display));
   if (!surface.get()) {
     LOG(ERROR) << "Could not create surface for info collection.";
     return false;
@@ -284,6 +408,12 @@ bool CollectGraphicsInfoGL(GPUInfo* gpu_info) {
     return false;
   }
 
+  gpu_info->gl_implementation = implementation.GLString();
+  gpu_info->angle_implementation = implementation.ANGLEString();
+  if (egl_display) {
+    gpu_info->display_type =
+        GetDisplayTypeString(egl_display->GetDisplayType());
+  }
   gpu_info->gl_renderer = GetGLString(GL_RENDERER);
   gpu_info->gl_vendor = GetGLString(GL_VENDOR);
   gpu_info->gl_version = GetGLString(GL_VERSION);
@@ -314,11 +444,11 @@ bool CollectGraphicsInfoGL(GPUInfo* gpu_info) {
   gpu_info->max_msaa_samples = base::NumberToString(max_samples);
   base::UmaHistogramSparse("GPU.MaxMSAASampleCount", max_samples);
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   gpu_info->can_support_threaded_texture_mailbox =
-      gl::GLSurfaceEGL::HasEGLExtension("EGL_KHR_fence_sync") &&
-      gl::GLSurfaceEGL::HasEGLExtension("EGL_KHR_image_base") &&
-      gl::GLSurfaceEGL::HasEGLExtension("EGL_KHR_gl_texture_2D_image") &&
+      egl_display->ext->b_EGL_KHR_fence_sync &&
+      egl_display->ext->b_EGL_KHR_image_base &&
+      egl_display->ext->b_EGL_KHR_gl_texture_2D_image &&
       gfx::HasExtension(extension_set, "GL_OES_EGL_image");
 #else
   gl::GLWindowSystemBindingInfo window_system_binding_info;
@@ -330,7 +460,7 @@ bool CollectGraphicsInfoGL(GPUInfo* gpu_info) {
     gpu_info->direct_rendering_version =
         window_system_binding_info.direct_rendering_version;
   }
-#endif  // OS_ANDROID
+#endif  // BUILDFLAG(IS_ANDROID)
 
   bool supports_robustness =
       gfx::HasExtension(extension_set, "GL_EXT_robustness") ||
@@ -342,10 +472,6 @@ bool CollectGraphicsInfoGL(GPUInfo* gpu_info) {
         reinterpret_cast<GLint*>(&gpu_info->gl_reset_notification_strategy));
   }
 
-  // Unconditionally check oop raster status regardless of preferences
-  // so that finch trials can turn it on.
-  gpu_info->oop_rasterization_supported = SupportsOOPRaster(gl_info);
-
   // TODO(kbr): remove once the destruction of a current context automatically
   // clears the current context.
   context->ReleaseCurrent(surface.get());
@@ -355,9 +481,9 @@ bool CollectGraphicsInfoGL(GPUInfo* gpu_info) {
   gpu_info->vertex_shader_version = glsl_version;
 
   bool active_gpu_identified = false;
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   active_gpu_identified = IdentifyActiveGPUWithLuid(gpu_info);
-#endif  // OS_WIN
+#endif  // BUILDFLAG(IS_WIN)
 
   if (!active_gpu_identified)
     IdentifyActiveGPU(gpu_info);
@@ -394,7 +520,7 @@ void IdentifyActiveGPU(GPUInfo* gpu_info) {
   if (!gpu_info->gl_vendor.empty()) {
     std::string gl_vendor_lower = base::ToLowerASCII(gpu_info->gl_vendor);
     int index = StringContainsName(gl_vendor_lower, kVendorNames,
-                                   base::size(kVendorNames));
+                                   std::size(kVendorNames));
     if (index >= 0) {
       active_vendor_id = kVendorIDs[index];
     }
@@ -402,7 +528,7 @@ void IdentifyActiveGPU(GPUInfo* gpu_info) {
   if (active_vendor_id == 0 && !gpu_info->gl_renderer.empty()) {
     std::string gl_renderer_lower = base::ToLowerASCII(gpu_info->gl_renderer);
     int index = StringContainsName(gl_renderer_lower, kVendorNames,
-                                   base::size(kVendorNames));
+                                   std::size(kVendorNames));
     if (index >= 0) {
       active_vendor_id = kVendorIDs[index];
     }
@@ -446,6 +572,12 @@ void FillGPUInfoFromSystemInfo(GPUInfo* gpu_info,
 
   gpu_info->gpu.vendor_id = active->vendorId;
   gpu_info->gpu.device_id = active->deviceId;
+#if BUILDFLAG(IS_CHROMEOS)
+  gpu_info->gpu.revision = active->revisionId;
+#endif  // BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(IS_MAC)
+  gpu_info->gpu.register_id = active->systemDeviceId;
+#endif  // BUILDFLAG(IS_MAC)
   gpu_info->gpu.driver_vendor = std::move(active->driverVendor);
   gpu_info->gpu.driver_version = std::move(active->driverVersion);
   gpu_info->gpu.active = true;
@@ -458,6 +590,12 @@ void FillGPUInfoFromSystemInfo(GPUInfo* gpu_info,
     GPUInfo::GPUDevice device;
     device.vendor_id = system_info->gpus[i].vendorId;
     device.device_id = system_info->gpus[i].deviceId;
+#if BUILDFLAG(IS_CHROMEOS)
+    device.revision = system_info->gpus[i].revisionId;
+#endif  // BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(IS_MAC)
+    device.register_id = system_info->gpus[i].systemDeviceId;
+#endif  // BUILDFLAG(IS_MAC)
     device.driver_vendor = std::move(system_info->gpus[i].driverVendor);
     device.driver_version = std::move(system_info->gpus[i].driverVersion);
 
@@ -473,19 +611,19 @@ void FillGPUInfoFromSystemInfo(GPUInfo* gpu_info,
 
 void CollectGraphicsInfoForTesting(GPUInfo* gpu_info) {
   DCHECK(gpu_info);
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   CollectContextGraphicsInfo(gpu_info);
 #else
   CollectBasicGraphicsInfo(gpu_info);
-#endif  // OS_ANDROID
+#endif  // BUILDFLAG(IS_ANDROID)
 }
 
-bool CollectGpuExtraInfo(GpuExtraInfo* gpu_extra_info,
+bool CollectGpuExtraInfo(gfx::GpuExtraInfo* gpu_extra_info,
                          const GpuPreferences& prefs) {
   // Populate the list of ANGLE features by querying the functions exposed by
   // EGL_ANGLE_feature_control if it's available.
-  if (gl::GLSurfaceEGL::IsANGLEFeatureControlSupported()) {
-    EGLDisplay display = gl::GLSurfaceEGL::GetHardwareDisplay();
+  if (gl::g_driver_egl.client_ext.b_EGL_ANGLE_feature_control) {
+    EGLDisplay display = gl::GLSurfaceEGL::GetGLDisplayEGL()->GetDisplay();
     EGLAttrib feature_count = 0;
     eglQueryDisplayAttribANGLE(display, EGL_FEATURE_COUNT_ANGLE,
                                &feature_count);
@@ -506,45 +644,138 @@ bool CollectGpuExtraInfo(GpuExtraInfo* gpu_extra_info,
     }
   }
 
-#if defined(USE_X11)
-  if (features::IsUsingOzonePlatform())
-    return true;
-  // Create the GLVisualPickerGLX singleton now while the GbmSupportX11
-  // singleton is busy being created on another thread.
-  gl::GLVisualPickerGLX* visual_picker;
-  if (gl::GetGLImplementation() == gl::kGLImplementationDesktopGL)
-    visual_picker = gl::GLVisualPickerGLX::GetInstance();
-
-  // TODO(https://crbug.com/1031269): Enable by default.
-  if (prefs.enable_native_gpu_memory_buffers) {
-    gpu_extra_info->gpu_memory_buffer_support_x11 =
-        ui::GpuMemoryBufferSupportX11::GetInstance()->supported_configs();
-  }
-
-  if (gl::GetGLImplementation() == gl::kGLImplementationDesktopGL) {
-    gpu_extra_info->system_visual =
-        static_cast<uint32_t>(visual_picker->system_visual());
-    gpu_extra_info->rgba_visual =
-        static_cast<uint32_t>(visual_picker->rgba_visual());
-
-    // With GLX, only BGR(A) buffer formats are supported.  EGL does not have
-    // this restriction.
-    gpu_extra_info->gpu_memory_buffer_support_x11.erase(
-        std::remove_if(gpu_extra_info->gpu_memory_buffer_support_x11.begin(),
-                       gpu_extra_info->gpu_memory_buffer_support_x11.end(),
-                       [&](gfx::BufferUsageAndFormat usage_and_format) {
-                         return visual_picker->GetFbConfigForFormat(
-                                    usage_and_format.format) ==
-                                x11::Glx::FbConfig{};
-                       }),
-        gpu_extra_info->gpu_memory_buffer_support_x11.end());
-  } else if (gl::GetGLImplementation() == gl::kGLImplementationEGLANGLE) {
-    // ANGLE does not yet support EGL_EXT_image_dma_buf_import[_modifiers].
-    gpu_extra_info->gpu_memory_buffer_support_x11.clear();
+#if BUILDFLAG(IS_OZONE)
+  if (const auto* const egl_utility =
+          ui::OzonePlatform::GetInstance()->GetPlatformGLEGLUtility()) {
+    egl_utility->CollectGpuExtraInfo(prefs.enable_native_gpu_memory_buffers,
+                                     *gpu_extra_info);
   }
 #endif
-
   return true;
+}
+
+void CollectDawnInfo(const gpu::GpuPreferences& gpu_preferences,
+                     std::vector<std::string>* dawn_info_list) {
+#if BUILDFLAG(USE_DAWN) || BUILDFLAG(SKIA_USE_DAWN)
+  DawnProcTable procs = dawn::native::GetProcs();
+  dawnProcSetProcs(&procs);
+
+  std::string dawn_search_path;
+  base::FilePath module_path;
+#if BUILDFLAG(IS_MAC)
+  if (base::mac::AmIBundled()) {
+    dawn_search_path = base::mac::FrameworkBundlePath()
+                           .Append("Libraries")
+                           .AsEndingWithSeparator()
+                           .MaybeAsASCII();
+  }
+  if (dawn_search_path.empty())
+#endif
+  {
+    if (base::PathService::Get(base::DIR_MODULE, &module_path)) {
+      dawn_search_path = module_path.AsEndingWithSeparator().MaybeAsASCII();
+    }
+  }
+  const char* dawn_search_path_c_str = dawn_search_path.c_str();
+
+  wgpu::DawnInstanceDescriptor dawn_instance_desc = {};
+  dawn_instance_desc.additionalRuntimeSearchPathsCount =
+      dawn_search_path.empty() ? 0u : 1u;
+  dawn_instance_desc.additionalRuntimeSearchPaths = &dawn_search_path_c_str;
+
+  wgpu::InstanceDescriptor instance_desc = {};
+  instance_desc.nextInChain = &dawn_instance_desc;
+
+  auto instance = std::make_unique<dawn::native::Instance>(
+      reinterpret_cast<const WGPUInstanceDescriptor*>(&instance_desc));
+  instance->DiscoverDefaultAdapters();
+  std::vector<dawn::native::Adapter> adapters = instance->GetAdapters();
+
+  for (dawn::native::Adapter& adapter : adapters) {
+    wgpu::AdapterProperties properties;
+    adapter.GetProperties(&properties);
+    wgpu::BackendType backend_type = properties.backendType;
+    wgpu::AdapterType adapter_type = properties.adapterType;
+    std::string adapter_name(properties.name);
+
+    // Both Integrated-GPU and Discrete-GPU backend types will be displayed.
+    if (backend_type != wgpu::BackendType::Null &&
+        adapter_type != wgpu::AdapterType::Unknown) {
+      // Get the adapter and the device name.
+      std::string gpu_str = GetDawnAdapterTypeString(adapter_type);
+      gpu_str += " " + GetDawnBackendTypeString(backend_type);
+      gpu_str += " - " + adapter_name;
+      dawn_info_list->push_back(gpu_str);
+
+      // Scope the lifetime of |device| to avoid accidental use after release.
+      {
+        auto* device = adapter.CreateDevice();
+        // CreateDevice can return null if the device has been removed or we've
+        // run out of memory. Ensure we don't crash in these instances.
+        if (device) {
+          // Get the list of enabled toggles on the device
+          dawn_info_list->push_back("[Default Toggle Names]");
+          std::vector<const char*> toggle_names =
+              dawn::native::GetTogglesUsed(device);
+          AddTogglesToDawnInfoList(instance.get(), toggle_names,
+                                   dawn_info_list);
+          procs.deviceRelease(device);
+        }
+      }
+
+#if BUILDFLAG(USE_DAWN)
+      // Get the list of forced toggles for WebGPU.
+      std::vector<const char*> force_enabled_toggles_webgpu;
+      std::vector<const char*> force_disabled_toggles_webgpu;
+      ForceDawnTogglesForWebGPU(gpu_preferences.enable_unsafe_webgpu,
+                                gpu_preferences.enabled_dawn_features_list,
+                                gpu_preferences.disabled_dawn_features_list,
+                                &force_enabled_toggles_webgpu,
+                                &force_disabled_toggles_webgpu);
+
+      if (!force_enabled_toggles_webgpu.empty()) {
+        dawn_info_list->push_back("[WebGPU Forced Toggles - enabled]");
+        AddTogglesToDawnInfoList(instance.get(), force_enabled_toggles_webgpu,
+                                 dawn_info_list);
+      }
+
+      if (!force_disabled_toggles_webgpu.empty()) {
+        dawn_info_list->push_back("[WebGPU Forced Toggles - disabled]");
+        AddTogglesToDawnInfoList(instance.get(), force_disabled_toggles_webgpu,
+                                 dawn_info_list);
+      }
+#endif
+
+#if BUILDFLAG(SKIA_USE_DAWN)
+      if (gpu_preferences.gr_context_type == gpu::GrContextType::kDawn) {
+        // Get the list of forced toggles for Skia.
+        std::vector<const char*> force_enabled_toggles_skia;
+        std::vector<const char*> force_disabled_toggles_skia;
+        ForceDawnTogglesForSkia(&force_enabled_toggles_skia,
+                                &force_disabled_toggles_skia);
+
+        if (!force_enabled_toggles_skia.empty()) {
+          dawn_info_list->push_back("[Skia Forced Toggles - enabled]");
+          AddTogglesToDawnInfoList(instance.get(), force_enabled_toggles_skia,
+                                   dawn_info_list);
+        }
+
+        if (!force_disabled_toggles_skia.empty()) {
+          dawn_info_list->push_back("[Skia Forced Toggles - disabled]");
+          AddTogglesToDawnInfoList(instance.get(), force_disabled_toggles_skia,
+                                   dawn_info_list);
+        }
+      }
+#endif
+
+      // Get supported features
+      dawn_info_list->push_back("[Supported Features]");
+      for (const char* name : adapter.GetSupportedFeatures()) {
+        dawn_info_list->push_back(name);
+      }
+    }
+  }
+#endif
 }
 
 }  // namespace gpu

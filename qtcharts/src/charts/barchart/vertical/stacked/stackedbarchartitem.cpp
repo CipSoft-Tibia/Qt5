@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/stackedbarchartitem_p.h>
 #include <private/bar_p.h>
@@ -33,7 +7,7 @@
 #include <private/qabstractbarseries_p.h>
 #include <QtCharts/QBarSet>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 StackedBarChartItem::StackedBarChartItem(QAbstractBarSeries *series, QGraphicsItem* item) :
     AbstractBarChartItem(series, item)
@@ -47,8 +21,8 @@ StackedBarChartItem::StackedBarChartItem(QAbstractBarSeries *series, QGraphicsIt
 void StackedBarChartItem::initializeLayout(int set, int category,
                                            int layoutIndex, bool resetAnimation)
 {
-    Q_UNUSED(set)
-    Q_UNUSED(resetAnimation)
+    Q_UNUSED(set);
+    Q_UNUSED(resetAnimation);
 
     QRectF rect;
 
@@ -113,16 +87,16 @@ QPointF StackedBarChartItem::bottomRightPoint(int category, qreal barWidth, qrea
                 QPointF(m_seriesPosAdjustment + category + (barWidth / 2), value), m_validData);
 }
 
-QVector<QRectF> StackedBarChartItem::calculateLayout()
+QList<QRectF> StackedBarChartItem::calculateLayout()
 {
-    QVector<QRectF> layout;
+    QList<QRectF> layout;
     layout.resize(m_layout.size());
 
     const int setCount = m_series->count();
     const qreal barWidth = m_series->d_func()->barWidth() * m_seriesWidth;
 
-    QVector<qreal> positiveSums(m_categoryCount, 0.0);
-    QVector<qreal> negativeSums(m_categoryCount, 0.0);
+    QList<qreal> positiveSums(m_categoryCount, 0.0);
+    QList<qreal> negativeSums(m_categoryCount, 0.0);
 
     for (int set = 0; set < setCount; set++) {
         QBarSet *barSet = m_series->barSets().at(set);
@@ -189,6 +163,6 @@ void StackedBarChartItem::positionLabels()
     positionLabelsVertical();
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_stackedbarchartitem_p.cpp"

@@ -11,12 +11,15 @@
 #ifndef PC_SRTP_SESSION_H_
 #define PC_SRTP_SESSION_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <vector>
 
+#include "api/field_trials_view.h"
 #include "api/scoped_refptr.h"
-#include "rtc_base/constructor_magic.h"
+#include "api/sequence_checker.h"
 #include "rtc_base/synchronization/mutex.h"
-#include "rtc_base/thread_checker.h"
 
 // Forward declaration to avoid pulling in libsrtp headers here
 struct srtp_event_data_t;
@@ -33,7 +36,11 @@ void ProhibitLibsrtpInitialization();
 class SrtpSession {
  public:
   SrtpSession();
+  explicit SrtpSession(const webrtc::FieldTrialsView& field_trials);
   ~SrtpSession();
+
+  SrtpSession(const SrtpSession&) = delete;
+  SrtpSession& operator=(const SrtpSession&) = delete;
 
   // Configures the session for sending data using the specified
   // cipher-suite and key. Receiving must be done by a separate session.
@@ -109,28 +116,29 @@ class SrtpSession {
   // Returns send stream current packet index from srtp db.
   bool GetSendStreamPacketIndex(void* data, int in_len, int64_t* index);
 
-  // These methods are responsible for initializing libsrtp (if the usage count
-  // is incremented from 0 to 1) or deinitializing it (when decremented from 1
-  // to 0).
-  //
-  // Returns true if successful (will always be successful if already inited).
-  static bool IncrementLibsrtpUsageCountAndMaybeInit();
-  static void DecrementLibsrtpUsageCountAndMaybeDeinit();
+  // Writes unencrypted packets in text2pcap format to the log file
+  // for debugging.
+  void DumpPacket(const void* buf, int len, bool outbound);
 
   void HandleEvent(const srtp_event_data_t* ev);
   static void HandleEventThunk(srtp_event_data_t* ev);
 
-  rtc::ThreadChecker thread_checker_;
+  webrtc::SequenceChecker thread_checker_;
   srtp_ctx_t_* session_ = nullptr;
+
+  // Overhead of the SRTP auth tag for RTP and RTCP in bytes.
+  // Depends on the cipher suite used and is usually the same with the exception
+  // of the kCsAesCm128HmacSha1_32 cipher suite. The additional four bytes
+  // required for RTCP protection are not included.
   int rtp_auth_tag_len_ = 0;
   int rtcp_auth_tag_len_ = 0;
+
   bool inited_ = false;
-  static webrtc::GlobalMutex lock_;
   int last_send_seq_num_ = -1;
   bool external_auth_active_ = false;
   bool external_auth_enabled_ = false;
   int decryption_failure_count_ = 0;
-  RTC_DISALLOW_COPY_AND_ASSIGN(SrtpSession);
+  bool dump_plain_rtp_ = false;
 };
 
 }  // namespace cricket

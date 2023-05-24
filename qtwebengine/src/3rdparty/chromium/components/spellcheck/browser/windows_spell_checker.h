@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 
 #include <string>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "build/build_config.h"
 #include "components/spellcheck/browser/platform_spell_checker.h"
 #include "components/spellcheck/browser/spellcheck_host_metrics.h"
@@ -47,27 +47,25 @@ class WindowsSpellChecker : public PlatformSpellChecker {
 
   void RequestTextCheck(
       int document_tag,
-      const base::string16& text,
+      const std::u16string& text,
       spellcheck_platform::TextCheckCompleteCallback callback) override;
 
 #if BUILDFLAG(USE_BROWSER_SPELLCHECKER)
   void GetPerLanguageSuggestions(
-      const base::string16& word,
+      const std::u16string& word,
       spellcheck_platform::GetSuggestionsCallback callback);
 #endif
 
-  void AddWordForAllLanguages(const base::string16& word);
+  void AddWordForAllLanguages(const std::u16string& word);
 
-  void RemoveWordForAllLanguages(const base::string16& word);
+  void RemoveWordForAllLanguages(const std::u16string& word);
 
-  void IgnoreWordForAllLanguages(const base::string16& word);
+  void IgnoreWordForAllLanguages(const std::u16string& word);
 
-  void RecordChromeLocalesStats(const std::vector<std::string> chrome_locales,
-                                SpellCheckHostMetrics* metrics);
+  void RecordChromeLocalesStats(const std::vector<std::string> chrome_locales);
 
   void RecordSpellcheckLocalesStats(
-      const std::vector<std::string> spellcheck_locales,
-      SpellCheckHostMetrics* metrics);
+      const std::vector<std::string> spellcheck_locales);
 
   void IsLanguageSupported(const std::string& lang_tag,
                            base::OnceCallback<void(bool)> callback);

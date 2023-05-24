@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,8 +15,8 @@
 #include "v8/include/cppgc/garbage-collected.h"
 #include "v8/include/cppgc/member.h"
 #include "v8/include/cppgc/visitor.h"
+#include "xfa/fgas/graphics/cfgas_gegraphics.h"
 #include "xfa/fwl/cfwl_widget.h"
-#include "xfa/fxgraphics/cxfa_graphics.h"
 
 class CFWL_Event;
 
@@ -45,7 +45,7 @@ class CFWL_NoteDriver final : public cppgc::GarbageCollected<CFWL_NoteDriver> {
     void SetEventSource(CFWL_Widget* pSource);
     bool ProcessEvent(CFWL_Event* pEvent);
     bool IsValid() const { return m_bValid; }
-    void FlagInvalid() { m_bValid = false; }
+    void Invalidate() { m_bValid = false; }
 
    private:
     bool m_bValid = true;

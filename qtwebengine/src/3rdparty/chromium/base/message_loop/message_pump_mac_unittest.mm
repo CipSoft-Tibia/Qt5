@@ -1,18 +1,17 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/message_loop/message_pump_mac.h"
 
-#include "base/bind.h"
 #include "base/cancelable_callback.h"
+#include "base/functional/bind.h"
 #include "base/mac/scoped_cftyperef.h"
 #import "base/mac/scoped_nsobject.h"
-#include "base/macros.h"
 #include "base/task/current_thread.h"
-#include "base/test/bind_test_util.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/bind.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 @interface TestModalAlertCloser : NSObject
@@ -38,9 +37,10 @@ namespace {
 // This function posts |task| and runs the given |mode|.
 void RunTaskInMode(CFRunLoopMode mode, OnceClosure task) {
   // Since this task is "ours" rather than a system task, allow nesting.
-  CurrentThread::ScopedNestableTaskAllower allow;
+  CurrentThread::ScopedAllowApplicationTasksInNativeNestedLoop allow;
   CancelableOnceClosure cancelable(std::move(task));
-  ThreadTaskRunnerHandle::Get()->PostTask(FROM_HERE, cancelable.callback());
+  SingleThreadTaskRunner::GetCurrentDefault()->PostTask(FROM_HERE,
+                                                        cancelable.callback());
   while (CFRunLoopRunInMode(mode, 0, true) == kCFRunLoopRunHandledSource)
     ;
 }
@@ -56,13 +56,13 @@ TEST(MessagePumpMacTest, ScopedPumpMessagesInPrivateModes) {
   CFRunLoopMode kPrivate = CFSTR("NSUnhighlightMenuRunLoopMode");
 
   // Work is seen when running in the default mode.
-  ThreadTaskRunnerHandle::Get()->PostTask(
+  SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       BindOnce(&RunTaskInMode, kRegular, MakeExpectedRunClosure(FROM_HERE)));
   EXPECT_NO_FATAL_FAILURE(RunLoop().RunUntilIdle());
 
   // But not seen when running in a private mode.
-  ThreadTaskRunnerHandle::Get()->PostTask(
+  SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       BindOnce(&RunTaskInMode, kPrivate, MakeExpectedNotRunClosure(FROM_HERE)));
   EXPECT_NO_FATAL_FAILURE(RunLoop().RunUntilIdle());
@@ -70,26 +70,26 @@ TEST(MessagePumpMacTest, ScopedPumpMessagesInPrivateModes) {
   {
     ScopedPumpMessagesInPrivateModes allow_private;
     // Now the work should be seen.
-    ThreadTaskRunnerHandle::Get()->PostTask(
+    SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE,
         BindOnce(&RunTaskInMode, kPrivate, MakeExpectedRunClosure(FROM_HERE)));
     EXPECT_NO_FATAL_FAILURE(RunLoop().RunUntilIdle());
 
     // The regular mode should also work the same.
-    ThreadTaskRunnerHandle::Get()->PostTask(
+    SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE,
         BindOnce(&RunTaskInMode, kRegular, MakeExpectedRunClosure(FROM_HERE)));
     EXPECT_NO_FATAL_FAILURE(RunLoop().RunUntilIdle());
   }
 
   // And now the scoper is out of scope, private modes should no longer see it.
-  ThreadTaskRunnerHandle::Get()->PostTask(
+  SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       BindOnce(&RunTaskInMode, kPrivate, MakeExpectedNotRunClosure(FROM_HERE)));
   EXPECT_NO_FATAL_FAILURE(RunLoop().RunUntilIdle());
 
   // Only regular modes see it.
-  ThreadTaskRunnerHandle::Get()->PostTask(
+  SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       BindOnce(&RunTaskInMode, kRegular, MakeExpectedRunClosure(FROM_HERE)));
   EXPECT_NO_FATAL_FAILURE(RunLoop().RunUntilIdle());
@@ -124,24 +124,24 @@ TEST(MessagePumpMacTest, QuitWithModalWindow) {
       test::SingleThreadTaskEnvironment::MainThreadType::UI);
   NSWindow* window =
       [[[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 100, 100)
-                                   styleMask:NSBorderlessWindowMask
+                                   styleMask:NSWindowStyleMaskBorderless
                                      backing:NSBackingStoreBuffered
                                        defer:NO] autorelease];
 
   // Check that quitting the run loop while a modal window is shown applies to
   // |run_loop| rather than the internal NSApplication modal run loop.
   RunLoop run_loop;
-  ThreadTaskRunnerHandle::Get()->PostTask(
+  SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindLambdaForTesting([&] {
-        CurrentThread::ScopedNestableTaskAllower allow;
+        CurrentThread::ScopedAllowApplicationTasksInNativeNestedLoop allow;
         ScopedPumpMessagesInPrivateModes pump_private;
         [NSApp runModalForWindow:window];
       }));
-  ThreadTaskRunnerHandle::Get()->PostTask(FROM_HERE,
-                                          base::BindLambdaForTesting([&] {
-                                            [NSApp stopModal];
-                                            run_loop.Quit();
-                                          }));
+  SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindLambdaForTesting([&] {
+        [NSApp stopModal];
+        run_loop.Quit();
+      }));
 
   EXPECT_NO_FATAL_FAILURE(run_loop.Run());
 }

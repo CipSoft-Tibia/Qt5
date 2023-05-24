@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,37 +7,36 @@
 
 #include <string>
 
-#include "base/strings/string16.h"
+#include "base/containers/span.h"
 #include "base/strings/string_piece.h"
 
 namespace extensions {
 
 class ErrorUtils {
  public:
-  // Creates an error messages from a pattern.
-  static std::string FormatErrorMessage(base::StringPiece format,
-                                        base::StringPiece s1);
+  static std::string FormatErrorMessage(
+      base::StringPiece format,
+      base::span<const base::StringPiece> args);
 
-  static std::string FormatErrorMessage(base::StringPiece format,
-                                        base::StringPiece s1,
-                                        base::StringPiece s2);
-
+  template <typename... Args>
   static std::string FormatErrorMessage(base::StringPiece format,
                                         base::StringPiece s1,
-                                        base::StringPiece s2,
-                                        base::StringPiece s3);
+                                        const Args&... args) {
+    const base::StringPiece pieces[] = {s1, args...};
+    return FormatErrorMessage(format, pieces);
+  }
 
-  static base::string16 FormatErrorMessageUTF16(base::StringPiece format,
-                                                base::StringPiece s1);
+  static std::u16string FormatErrorMessageUTF16(
+      base::StringPiece format,
+      base::span<const base::StringPiece> args);
 
-  static base::string16 FormatErrorMessageUTF16(base::StringPiece format,
+  template <typename... Args>
+  static std::u16string FormatErrorMessageUTF16(base::StringPiece format,
                                                 base::StringPiece s1,
-                                                base::StringPiece s2);
-
-  static base::string16 FormatErrorMessageUTF16(base::StringPiece format,
-                                                base::StringPiece s1,
-                                                base::StringPiece s2,
-                                                base::StringPiece s3);
+                                                const Args&... args) {
+    const base::StringPiece pieces[] = {s1, args...};
+    return FormatErrorMessageUTF16(format, pieces);
+  }
 };
 
 }  // namespace extensions

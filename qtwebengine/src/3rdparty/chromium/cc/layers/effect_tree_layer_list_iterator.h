@@ -1,10 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CC_LAYERS_EFFECT_TREE_LAYER_LIST_ITERATOR_H_
 #define CC_LAYERS_EFFECT_TREE_LAYER_LIST_ITERATOR_H_
 
+#include "base/memory/raw_ptr.h"
+#include "base/notreached.h"
 #include "cc/cc_export.h"
 #include "cc/trees/effect_node.h"
 #include "cc/trees/layer_tree_impl.h"
@@ -73,9 +75,9 @@ class CC_EXPORT EffectTreeLayerListIterator {
 
   struct Position {
     State state = State::END;
-    LayerImpl* current_layer = nullptr;
-    RenderSurfaceImpl* current_render_surface = nullptr;
-    RenderSurfaceImpl* target_render_surface = nullptr;
+    raw_ptr<LayerImpl> current_layer = nullptr;
+    raw_ptr<RenderSurfaceImpl> current_render_surface = nullptr;
+    raw_ptr<RenderSurfaceImpl> target_render_surface = nullptr;
   };
 
   operator const Position() const {
@@ -115,8 +117,8 @@ class CC_EXPORT EffectTreeLayerListIterator {
   // render surface.
   int lowest_common_effect_tree_ancestor_index_;
 
-  LayerTreeImpl* layer_tree_impl_;
-  EffectTree* effect_tree_;
+  raw_ptr<LayerTreeImpl> layer_tree_impl_;
+  raw_ptr<EffectTree> effect_tree_;
 };
 
 }  // namespace cc

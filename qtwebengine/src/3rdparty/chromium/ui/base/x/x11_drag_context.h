@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,11 +9,10 @@
 #include <vector>
 
 #include "base/component_export.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/base/x/selection_utils.h"
-#include "ui/events/platform/x11/x11_event_source.h"
 #include "ui/gfx/geometry/point.h"
 #include "ui/gfx/x/event.h"
-#include "ui/gfx/x/x11.h"
 #include "ui/gfx/x/xproto.h"
 
 namespace ui {
@@ -73,7 +72,7 @@ class COMPONENT_EXPORT(UI_BASE_X) XDragContext {
   x11::Window source_window_;
 
   // The client we inform once we're done with requesting data.
-  XDragDropClient* drag_drop_client_ = nullptr;
+  raw_ptr<XDragDropClient> drag_drop_client_ = nullptr;
 
   // Whether we're blocking the handling of an XdndPosition message by waiting
   // for |unfetched_targets_| to be fetched.

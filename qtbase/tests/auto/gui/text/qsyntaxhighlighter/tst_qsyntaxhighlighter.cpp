@@ -1,38 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QTextDocument>
 #include <QTextLayout>
 #include <QDebug>
 #include <QAbstractTextDocumentLayout>
 #include <QSyntaxHighlighter>
+#include <QSignalSpy>
 
 #ifndef QT_NO_WIDGETS
 #include <QTextEdit>
@@ -45,18 +21,18 @@ public:
     inline QTestDocumentLayout(QTextDocument *doc)
         : QAbstractTextDocumentLayout(doc), documentChangedCalled(false) {}
 
-        virtual void draw(QPainter *, const QAbstractTextDocumentLayout::PaintContext &)  {}
+        virtual void draw(QPainter *, const QAbstractTextDocumentLayout::PaintContext &) override {}
 
-        virtual int hitTest(const QPointF &, Qt::HitTestAccuracy ) const { return 0; }
+        virtual int hitTest(const QPointF &, Qt::HitTestAccuracy ) const override { return 0; }
 
-        virtual void documentChanged(int, int, int) { documentChangedCalled = true; }
+        virtual void documentChanged(int, int, int) override { documentChangedCalled = true; }
 
-        virtual int pageCount() const { return 1; }
+        virtual int pageCount() const override { return 1; }
 
-        virtual QSizeF documentSize() const { return QSize(); }
+        virtual QSizeF documentSize() const override { return QSize(); }
 
-        virtual QRectF frameBoundingRect(QTextFrame *) const { return QRectF(); }
-        virtual QRectF blockBoundingRect(const QTextBlock &) const { return QRectF(); }
+        virtual QRectF frameBoundingRect(QTextFrame *) const override { return QRectF(); }
+        virtual QRectF blockBoundingRect(const QTextBlock &) const override { return QRectF(); }
 
         bool documentChangedCalled;
 };
@@ -113,16 +89,18 @@ void tst_QSyntaxHighlighter::cleanup()
 class TestHighlighter : public QSyntaxHighlighter
 {
 public:
-    inline TestHighlighter(const QVector<QTextLayout::FormatRange> &fmts, QTextDocument *parent)
-        : QSyntaxHighlighter(parent), formats(fmts), highlighted(false), callCount(0) {}
+    inline TestHighlighter(const QList<QTextLayout::FormatRange> &fmts, QTextDocument *parent)
+        : QSyntaxHighlighter(parent), formats(fmts), highlighted(false), callCount(0)
+    {
+    }
     inline TestHighlighter(QObject *parent)
         : QSyntaxHighlighter(parent) {}
         inline TestHighlighter(QTextDocument *parent)
             : QSyntaxHighlighter(parent), highlighted(false), callCount(0) {}
 
-            virtual void highlightBlock(const QString &text)
+            virtual void highlightBlock(const QString &text) override
             {
-                for (int i = 0; i < formats.count(); ++i) {
+                for (int i = 0; i < formats.size(); ++i) {
                     const QTextLayout::FormatRange &range = formats.at(i);
                     setFormat(range.start, range.length, range.format);
                 }
@@ -131,7 +109,7 @@ public:
                 ++callCount;
             }
 
-            QVector<QTextLayout::FormatRange> formats;
+            QList<QTextLayout::FormatRange> formats;
             bool highlighted;
             int callCount;
             QString highlightedText;
@@ -139,7 +117,7 @@ public:
 
 void tst_QSyntaxHighlighter::basic()
 {
-    QVector<QTextLayout::FormatRange> formats;
+    QList<QTextLayout::FormatRange> formats;
     QTextLayout::FormatRange range;
     range.start = 0;
     range.length = 2;
@@ -177,13 +155,13 @@ public:
             highlighted = false;
         }
 
-        virtual void highlightBlock(const QString &text)
+        virtual void highlightBlock(const QString &text) override
         {
             QTextCharFormat commentFormat;
             commentFormat.setForeground(Qt::darkGreen);
             commentFormat.setFontWeight(QFont::StyleItalic);
             commentFormat.setFontFixedPitch(true);
-            int textLength = text.length();
+            int textLength = text.size();
 
             if (text.startsWith(QLatin1Char(';'))){
                 // The entire line is a comment
@@ -206,7 +184,7 @@ void tst_QSyntaxHighlighter::basicTwo()
 
 void tst_QSyntaxHighlighter::removeFormatsOnDelete()
 {
-    QVector<QTextLayout::FormatRange> formats;
+    QList<QTextLayout::FormatRange> formats;
     QTextLayout::FormatRange range;
     range.start = 0;
     range.length = 9;
@@ -292,7 +270,7 @@ public:
             state = 0;
         }
 
-        virtual void highlightBlock(const QString &text)
+        virtual void highlightBlock(const QString &text) override
         {
             highlighted = true;
             if (text == QLatin1String("changestate"))
@@ -403,7 +381,7 @@ void tst_QSyntaxHighlighter::highlightToEndOfDocument2()
 
 void tst_QSyntaxHighlighter::preservePreeditArea()
 {
-    QVector<QTextLayout::FormatRange> formats;
+    QList<QTextLayout::FormatRange> formats;
     QTextLayout::FormatRange range;
     range.start = 0;
     range.length = 8;
@@ -436,7 +414,7 @@ void tst_QSyntaxHighlighter::preservePreeditArea()
     QCOMPARE(hl->callCount, 1);
 
     formats = layout->formats();
-    QCOMPARE(formats.count(), 3);
+    QCOMPARE(formats.size(), 3);
 
     range = formats.at(0);
 
@@ -500,7 +478,7 @@ void tst_QSyntaxHighlighter::avoidUnnecessaryDelayedRehighlight()
 
 void tst_QSyntaxHighlighter::noContentsChangedDuringHighlight()
 {
-    QVector<QTextLayout::FormatRange> formats;
+    QList<QTextLayout::FormatRange> formats;
     QTextLayout::FormatRange range;
     range.start = 0;
     range.length = 10;
@@ -515,7 +493,7 @@ void tst_QSyntaxHighlighter::noContentsChangedDuringHighlight()
     QSignalSpy contentsChangedSpy(doc, SIGNAL(contentsChanged()));
     cursor.insertText("Hello World");
 
-    QCOMPARE(contentsChangedSpy.count(), 1);
+    QCOMPARE(contentsChangedSpy.size(), 1);
     QVERIFY(hl->highlighted);
     QVERIFY(lout->documentChangedCalled);
 }

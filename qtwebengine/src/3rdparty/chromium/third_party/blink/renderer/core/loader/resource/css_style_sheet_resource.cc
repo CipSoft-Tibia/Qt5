@@ -26,29 +26,39 @@
 
 #include "third_party/blink/renderer/core/loader/resource/css_style_sheet_resource.h"
 
+#include "base/metrics/histogram_functions.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/trace_event/trace_event.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/public/mojom/loader/request_context_frame_type.mojom-blink.h"
 #include "third_party/blink/renderer/core/css/style_sheet_contents.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
+#include "third_party/blink/renderer/platform/heap/cross_thread_persistent.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_parameters.h"
 #include "third_party/blink/renderer/platform/loader/fetch/memory_cache.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_fetcher.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_loader_options.h"
+#include "third_party/blink/renderer/platform/loader/fetch/response_body_loader.h"
 #include "third_party/blink/renderer/platform/loader/fetch/text_resource_decoder_options.h"
 #include "third_party/blink/renderer/platform/network/http_names.h"
 #include "third_party/blink/renderer/platform/network/mime/mime_type_registry.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
+#include "third_party/blink/renderer/platform/scheduler/public/worker_pool.h"
 #include "third_party/blink/renderer/platform/weborigin/security_policy.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_mojo.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "third_party/blink/renderer/platform/wtf/text/text_encoding.h"
 
 namespace blink {
-
 CSSStyleSheetResource* CSSStyleSheetResource::Fetch(FetchParameters& params,
                                                     ResourceFetcher* fetcher,
                                                     ResourceClient* client) {
-  params.SetRequestContext(mojom::RequestContextType::STYLE);
+  params.SetRequestContext(mojom::blink::RequestContextType::STYLE);
   params.SetRequestDestination(network::mojom::RequestDestination::kStyle);
-  CSSStyleSheetResource* resource = ToCSSStyleSheetResource(
+  auto* resource = To<CSSStyleSheetResource>(
       fetcher->RequestResource(params, CSSStyleSheetResourceFactory(), client));
   return resource;
 }
@@ -133,7 +143,7 @@ const String CSSStyleSheetResource::SheetText(
     return decoded_sheet_text_;
   }
 
-  if (!Data() || Data()->IsEmpty())
+  if (!Data() || Data()->empty())
     return String();
 
   return DecodedText();
@@ -141,11 +151,11 @@ const String CSSStyleSheetResource::SheetText(
 
 void CSSStyleSheetResource::NotifyFinished() {
   // Decode the data to find out the encoding and cache the decoded sheet text.
-  if (Data())
+  if (Data()) {
     SetDecodedSheetText(DecodedText());
+  }
 
   Resource::NotifyFinished();
-
   // Clear raw bytes as now we have the full decoded sheet text.
   // We wait for all LinkStyle::setCSSStyleSheet to run (at least once)
   // as SubresourceIntegrity checks require raw bytes.
@@ -206,7 +216,7 @@ bool CSSStyleSheetResource::CanUseSheet(const CSSParserContext* parser_context,
   if (mime_type_check == MIMETypeCheck::kLax)
     return true;
   AtomicString content_type = HttpContentType();
-  return content_type.IsEmpty() ||
+  return content_type.empty() ||
          EqualIgnoringASCIICase(content_type, "text/css") ||
          EqualIgnoringASCIICase(content_type,
                                 "application/x-unknown-content-type");
@@ -243,7 +253,7 @@ void CSSStyleSheetResource::SaveParsedStyleSheet(StyleSheetContents* sheet) {
   DCHECK(sheet);
   DCHECK(sheet->IsCacheableForResource());
 
-  if (!GetMemoryCache()->Contains(this)) {
+  if (!MemoryCache::Get()->Contains(this)) {
     // This stylesheet resource did conflict with another resource and was not
     // added to the cache.
     SetParsedStyleSheetCache(nullptr);

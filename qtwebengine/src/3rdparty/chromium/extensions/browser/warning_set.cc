@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include <tuple>
 
 #include "base/files/file_path.h"
+#include "base/strings/escape.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "content/public/browser/browser_thread.h"
@@ -16,7 +17,6 @@
 #include "extensions/common/extension_set.h"
 #include "extensions/common/extensions_client.h"
 #include "extensions/strings/grit/extensions_strings.h"
-#include "net/base/escape.h"
 #include "ui/base/l10n/l10n_util.h"
 
 using content::BrowserThread;
@@ -128,6 +128,14 @@ Warning Warning::CreateRulesetFailedToLoadWarning(
                  {} /*message_parameters*/);
 }
 
+// static
+Warning Warning::CreateEnabledRuleCountExceededWarning(
+    const ExtensionId& extension_id) {
+  return Warning(kEnabledRuleCountExceeded, extension_id,
+                 IDS_EXTENSION_WARNING_ENABLED_RULE_COUNT_EXCEEDED,
+                 {} /*message_parameters*/);
+}
+
 bool Warning::operator<(const Warning& other) const {
   return std::tie(extension_id_, type_) <
          std::tie(other.extension_id_, other.type_);
@@ -139,7 +147,7 @@ std::string Warning::GetLocalizedMessage(const ExtensionSet* extensions) const {
   // These parameters may be unsafe (URLs and Extension names) and need
   // to be HTML-escaped before being embedded in the UI. Also extension IDs
   // are translated to full extension names.
-  std::vector<base::string16> final_parameters;
+  std::vector<std::u16string> final_parameters;
   for (size_t i = 0; i < message_parameters_.size(); ++i) {
     std::string message = message_parameters_[i];
     if (base::StartsWith(message, kTranslate, base::CompareCase::SENSITIVE)) {
@@ -148,7 +156,7 @@ std::string Warning::GetLocalizedMessage(const ExtensionSet* extensions) const {
           extensions->GetByID(extension_id);
       message = extension ? extension->name() : extension_id;
     }
-    final_parameters.push_back(base::UTF8ToUTF16(net::EscapeForHTML(message)));
+    final_parameters.push_back(base::UTF8ToUTF16(base::EscapeForHTML(message)));
   }
 
   static_assert(kMaxNumberOfParameters == 4u,

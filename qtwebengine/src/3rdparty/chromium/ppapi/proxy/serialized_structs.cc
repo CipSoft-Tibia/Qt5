@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -60,55 +60,6 @@ SerializedNetworkInfo::SerializedNetworkInfo()
 }
 
 SerializedNetworkInfo::~SerializedNetworkInfo() {}
-
-SerializedTrueTypeFontDesc::SerializedTrueTypeFontDesc()
-    : family(),
-      generic_family(),
-      style(),
-      weight(),
-      width(),
-      charset() {
-}
-
-SerializedTrueTypeFontDesc::~SerializedTrueTypeFontDesc() {}
-
-void SerializedTrueTypeFontDesc::SetFromPPTrueTypeFontDesc(
-    const PP_TrueTypeFontDesc_Dev& desc) {
-  StringVar* string_var = StringVar::FromPPVar(desc.family);
-  family = string_var ? string_var->value() : std::string();
-
-  generic_family = desc.generic_family;
-  style = desc.style;
-  weight = desc.weight;
-  width = desc.width;
-  charset = desc.charset;
-}
-
-void SerializedTrueTypeFontDesc::CopyToPPTrueTypeFontDesc(
-    PP_TrueTypeFontDesc_Dev* desc) const {
-  desc->family = StringVar::StringToPPVar(family);
-
-  desc->generic_family = generic_family;
-  desc->style = style;
-  desc->weight = weight;
-  desc->width = width;
-  desc->charset = charset;
-}
-
-PPBFlash_DrawGlyphs_Params::PPBFlash_DrawGlyphs_Params()
-    : instance(0),
-      font_desc(),
-      color(0) {
-  clip.point.x = 0;
-  clip.point.y = 0;
-  clip.size.height = 0;
-  clip.size.width = 0;
-  position.x = 0;
-  position.y = 0;
-  allow_subpixel_aa = PP_FALSE;
-}
-
-PPBFlash_DrawGlyphs_Params::~PPBFlash_DrawGlyphs_Params() {}
 
 }  // namespace proxy
 }  // namespace ppapi

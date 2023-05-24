@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,6 +12,7 @@
 #include "base/numerics/safe_conversions.h"
 #include "cc/paint/paint_flags.h"
 #include "cc/paint/paint_shader.h"
+#include "cc/paint/skottie_wrapper.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkPath.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
@@ -23,11 +24,12 @@
 #include "ui/gfx/geometry/rect_conversions.h"
 #include "ui/gfx/geometry/rect_f.h"
 #include "ui/gfx/geometry/size_conversions.h"
+#include "ui/gfx/geometry/skia_conversions.h"
+#include "ui/gfx/geometry/transform.h"
+#include "ui/gfx/image/image_skia_rep.h"
 #include "ui/gfx/scoped_canvas.h"
 #include "ui/gfx/skia_paint_util.h"
-#include "ui/gfx/skia_util.h"
 #include "ui/gfx/switches.h"
-#include "ui/gfx/transform.h"
 
 namespace gfx {
 
@@ -63,7 +65,7 @@ void Canvas::RecreateBackingCanvas(const Size& size,
 }
 
 // static
-void Canvas::SizeStringInt(const base::string16& text,
+void Canvas::SizeStringInt(const std::u16string& text,
                            const FontList& font_list,
                            int* width,
                            int* height,
@@ -78,7 +80,7 @@ void Canvas::SizeStringInt(const base::string16& text,
 }
 
 // static
-int Canvas::GetStringWidth(const base::string16& text,
+int Canvas::GetStringWidth(const std::u16string& text,
                            const FontList& font_list) {
   int width = 0, height = 0;
   SizeStringInt(text, font_list, &width, &height, 0, NO_ELLIPSIS);
@@ -86,7 +88,7 @@ int Canvas::GetStringWidth(const base::string16& text,
 }
 
 // static
-float Canvas::GetStringWidthF(const base::string16& text,
+float Canvas::GetStringWidthF(const std::u16string& text,
                               const FontList& font_list) {
   float width = 0, height = 0;
   SizeStringFloat(text, font_list, &width, &height, 0, NO_ELLIPSIS);
@@ -109,16 +111,15 @@ void Canvas::Save() {
 }
 
 void Canvas::SaveLayerAlpha(uint8_t alpha) {
-  canvas_->saveLayerAlpha(NULL, alpha);
+  canvas_->saveLayerAlphaf(alpha / 255.0f);
 }
 
 void Canvas::SaveLayerAlpha(uint8_t alpha, const Rect& layer_bounds) {
-  SkRect bounds(RectToSkRect(layer_bounds));
-  canvas_->saveLayerAlpha(&bounds, alpha);
+  canvas_->saveLayerAlphaf(RectToSkRect(layer_bounds), alpha / 255.0f);
 }
 
 void Canvas::SaveLayerWithFlags(const cc::PaintFlags& flags) {
-  canvas_->saveLayer(nullptr /* bounds */, &flags);
+  canvas_->saveLayer(flags);
 }
 
 void Canvas::Restore() {
@@ -160,7 +161,7 @@ void Canvas::DrawColor(SkColor color) {
 }
 
 void Canvas::DrawColor(SkColor color, SkBlendMode mode) {
-  canvas_->drawColor(color, mode);
+  canvas_->drawColor(SkColor4f::FromColor(color), mode);
 }
 
 void Canvas::FillRect(const Rect& rect, SkColor color) {
@@ -299,7 +300,7 @@ void Canvas::DrawImageInt(const ImageSkia& image, int x, int y) {
 
 void Canvas::DrawImageInt(const ImageSkia& image, int x, int y, uint8_t a) {
   cc::PaintFlags flags;
-  flags.setAlpha(a);
+  flags.setAlphaf(a / 255.0f);
   DrawImageInt(image, x, y, flags);
 }
 
@@ -317,7 +318,7 @@ void Canvas::DrawImageInt(const ImageSkia& image,
                  SkFloatToScalar(1.0f / bitmap_scale));
   canvas_->translate(SkFloatToScalar(std::round(x * bitmap_scale)),
                      SkFloatToScalar(std::round(y * bitmap_scale)));
-  canvas_->saveLayer(nullptr, &flags);
+  canvas_->saveLayer(flags);
   canvas_->drawPicture(image_rep.GetPaintRecord());
   canvas_->restore();
 }
@@ -393,11 +394,15 @@ void Canvas::DrawImageInPath(const ImageSkia& image,
 
 void Canvas::DrawSkottie(scoped_refptr<cc::SkottieWrapper> skottie,
                          const Rect& dst,
-                         float t) {
-  canvas_->drawSkottie(std::move(skottie), RectToSkRect(dst), t);
+                         float t,
+                         cc::SkottieFrameDataMap images,
+                         const cc::SkottieColorMap& color_map,
+                         cc::SkottieTextPropertyValueMap text_map) {
+  canvas_->drawSkottie(std::move(skottie), RectToSkRect(dst), t,
+                       std::move(images), color_map, std::move(text_map));
 }
 
-void Canvas::DrawStringRect(const base::string16& text,
+void Canvas::DrawStringRect(const std::u16string& text,
                             const FontList& font_list,
                             SkColor color,
                             const Rect& display_rect) {
@@ -466,7 +471,7 @@ bool Canvas::InitPaintFlagsForTiling(const ImageSkia& image,
 }
 
 void Canvas::Transform(const gfx::Transform& transform) {
-  canvas_->concat(SkMatrix(transform.matrix()));
+  canvas_->concat(TransformToSkM44(transform));
 }
 
 SkBitmap Canvas::GetBitmap() const {
@@ -519,7 +524,8 @@ void Canvas::DrawImageIntHelper(const ImageSkiaRep& image_rep,
   shader_scale.postTranslate(SkIntToScalar(dest_x), SkIntToScalar(dest_y));
 
   cc::PaintFlags flags(original_flags);
-  flags.setFilterQuality(filter ? kLow_SkFilterQuality : kNone_SkFilterQuality);
+  flags.setFilterQuality(filter ? cc::PaintFlags::FilterQuality::kLow
+                                : cc::PaintFlags::FilterQuality::kNone);
   flags.setShader(CreateImageRepShaderForScale(
       image_rep, SkTileMode::kRepeat, SkTileMode::kRepeat, shader_scale,
       remove_image_scale ? image_rep.scale() : 1.f));

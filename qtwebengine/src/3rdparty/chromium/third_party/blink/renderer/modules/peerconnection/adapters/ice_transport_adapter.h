@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,6 @@
 #include "third_party/webrtc/p2p/base/p2p_transport_channel.h"
 
 namespace blink {
-
-class P2PQuicPacketTransport;
 
 // Defines the ICE candidate policy the browser uses to surface the permitted
 // candidates to the application.
@@ -83,10 +81,6 @@ class IceTransportAdapter {
   // Adds a remote candidate to potentially start connectivity checks with.
   // The caller must ensure Start() has already bene called.
   virtual void AddRemoteCandidate(const cricket::Candidate& candidate) = 0;
-
-  // Gets a P2PQuicPacketTransport that is backed by this ICE connection. The
-  // returned instance lives the same lifetime as the IceTransportAdapter.
-  virtual P2PQuicPacketTransport* packet_transport() const = 0;
 };
 
 }  // namespace blink

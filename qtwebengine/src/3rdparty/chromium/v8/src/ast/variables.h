@@ -8,7 +8,6 @@
 #include "src/ast/ast-value-factory.h"
 #include "src/base/threaded-list.h"
 #include "src/common/globals.h"
-#include "src/execution/isolate.h"
 #include "src/zone/zone.h"
 
 namespace v8 {
@@ -125,8 +124,9 @@ class Variable final : public ZoneObject {
   bool IsLookupSlot() const { return location() == VariableLocation::LOOKUP; }
   bool IsGlobalObjectProperty() const;
 
-  // True for 'let' variables declared in the script scope of a REPL script.
-  bool IsReplGlobalLet() const;
+  // True for 'let' and 'const' variables declared in the script scope of a REPL
+  // script.
+  bool IsReplGlobal() const;
 
   bool is_dynamic() const { return IsDynamicVariableMode(mode()); }
 

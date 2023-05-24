@@ -28,13 +28,14 @@
 
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 
+#include "base/notreached.h"
 
 namespace blink {
 
 namespace {
 
 // Name, decription, and legacy code name and value of DOMExceptions.
-// https://heycam.github.io/webidl/#idl-DOMException-error-names
+// https://webidl.spec.whatwg.org/#idl-DOMException-error-names
 const struct DOMExceptionEntry {
   DOMExceptionCode code;
   const char* name;
@@ -126,6 +127,8 @@ const struct DOMExceptionEntry {
     {DOMExceptionCode::kNotAllowedError, "NotAllowedError",
      "The request is not allowed by the user agent or the platform in the "
      "current context."},
+    {DOMExceptionCode::kOptOutError, "OptOutError",
+     "The user opted out of the process."},
 
     // DOMError (obsolete, not DOMException) defined in File system (obsolete).
     // https://www.w3.org/TR/2012/WD-file-system-api-20120417/
@@ -150,7 +153,13 @@ const struct DOMExceptionEntry {
      "A framing error has been detected."},
     {DOMExceptionCode::kParityError, "ParityError",
      "A parity error has been detected."},
-};
+    {DOMExceptionCode::kWebTransportError, "WebTransportError",
+     "The WebTransport operation failed."},
+
+    // Smart Card API
+    // https://github.com/WICG/web-smart-card/blob/main/README.md#web-idl
+    {DOMExceptionCode::kSmartCardError, "SmartCardError",
+     "A Smart Card operation failed."}};
 
 uint16_t ToLegacyErrorCode(DOMExceptionCode exception_code) {
   if (DOMExceptionCode::kLegacyErrorCodeMin <= exception_code &&

@@ -1,18 +1,40 @@
 <!doctype refentry PUBLIC "-//OASIS//DTD DocBook V4.1//EN" [
 
+<!--
+Copyright © 2008 Patrick Lam
+
+Permission to use, copy, modify, distribute, and sell this software and its
+documentation for any purpose is hereby granted without fee, provided that
+the above copyright notice appear in all copies and that both that
+copyright notice and this permission notice appear in supporting
+documentation, and that the name of the author(s) not be used in
+advertising or publicity pertaining to distribution of the software without
+specific, written prior permission.  The authors make no
+representations about the suitability of this software for any purpose.  It
+is provided "as is" without express or implied warranty.
+
+THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+-->
+
 <!-- Process this file with docbook-to-man to generate an nroff manual
      page: `docbook-to-man manpage.sgml > manpage.1'.  You may view
      the manual page with: `docbook-to-man manpage.sgml | nroff -man |
      less'.  A typical entry in a Makefile or Makefile.am is:
 
 manpage.1: manpage.sgml
-	docbook-to-man $< > $@
+        docbook-to-man $< > $@
 
-    
-	The docbook-to-man binary is found in the docbook-to-man package.
-	Please remember that if you create the nroff version in one of the
-	debian/rules file targets (such as build), you will need to include
-	docbook-to-man in your Build-Depends control field.
+
+        The docbook-to-man binary is found in the docbook-to-man package.
+        Please remember that if you create the nroff version in one of the
+        debian/rules file targets (such as build), you will need to include
+        docbook-to-man in your Build-Depends control field.
 
   -->
 
@@ -75,7 +97,7 @@ manpage.1: manpage.sgml
       <arg><option>--help</option></arg>
       <sbr>
       <arg><option><replaceable>pattern</replaceable></option> <arg rep="repeat"><option><replaceable>element</replaceable></option></arg> </arg>
-      
+
      </cmdsynopsis>
   </refsynopsisdiv>
   <refsect1>
@@ -106,7 +128,7 @@ output is requested.</para>
         </term>
         <listitem>
           <para>Displays sorted list of best matching fonts, but do not do any
-		pruning on the list.</para>
+                pruning on the list.</para>
         </listitem>
       </varlistentry>
       <varlistentry>
@@ -123,18 +145,18 @@ output is requested.</para>
         </term>
         <listitem>
           <para>Print verbose output of the whole font pattern for each match,
-	        or <replaceable>element</replaceable>s if any is
-		provided.</para>
+                or <replaceable>element</replaceable>s if any is
+                provided.</para>
         </listitem>
       </varlistentry>
       <varlistentry>
         <term><option>-f</option>
           <option>--format</option>
-	  <option><replaceable>format</replaceable></option>
+          <option><replaceable>format</replaceable></option>
         </term>
         <listitem>
           <para>Format output according to the format specifier
-	  <replaceable>format</replaceable>.</para>
+          <replaceable>format</replaceable>.</para>
         </listitem>
       </varlistentry>
       <varlistentry>
@@ -170,6 +192,32 @@ output is requested.</para>
         </listitem>
       </varlistentry>
     </variablelist>
+  </refsect1>
+
+  <refsect1>
+    <title>EXAMPLES</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>fc-match sans</term>
+        <listitem><para>Display the best matching font categorized into sans-serif generic family, filtered by current locale</para></listitem>
+      </varlistentry>
+    </variablelist>
+
+    <variablelist>
+      <varlistentry>
+        <term>fc-match sans:lang=en</term>
+        <listitem><para>Display the best matching font categorized into sans-serif generic family, filtered by English language</para></listitem>
+      </varlistentry>
+    </variablelist>
+
+    <variablelist>
+      <varlistentry>
+        <term>fc-match sans:lang=en:weight=bold</term>
+        <listitem><para>Display the best matching font categorized into sans-serif generic family, filtered by English language and weight is bold.</para></listitem>
+      </varlistentry>
+    </variablelist>
+
   </refsect1>
 
   <refsect1>

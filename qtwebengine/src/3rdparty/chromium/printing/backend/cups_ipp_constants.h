@@ -1,40 +1,56 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef PRINTING_BACKEND_CUPS_IPP_CONSTANTS_H_
 #define PRINTING_BACKEND_CUPS_IPP_CONSTANTS_H_
 
-#include "printing/printing_export.h"
+#include "base/component_export.h"
+#include "build/build_config.h"
 
 namespace printing {
 
-// property names
-PRINTING_EXPORT extern const char kIppCollate[];
-PRINTING_EXPORT extern const char kIppCopies[];
-PRINTING_EXPORT extern const char kIppColor[];
-PRINTING_EXPORT extern const char kIppMedia[];
-PRINTING_EXPORT extern const char kIppDuplex[];
-PRINTING_EXPORT extern const char kIppRequestingUserName[];
-PRINTING_EXPORT extern const char kIppResolution[];
-PRINTING_EXPORT extern const char kIppPin[];
-PRINTING_EXPORT extern const char kIppPinEncryption[];
+// operation attributes
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppDocumentFormat[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppDocumentName[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppJobId[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppJobName[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppLastDocument[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppPin[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppPinEncryption[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppPrinterUri[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppRequestingUserName[];
+
+// job attributes
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppCollate[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppCopies[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppColor[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppMedia[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppDuplex[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppResolution[];
 
 // collation values
-PRINTING_EXPORT extern const char kCollated[];
-PRINTING_EXPORT extern const char kUncollated[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kCollated[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kUncollated[];
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
 
-PRINTING_EXPORT extern const char kIppDocumentAttributes[];
-PRINTING_EXPORT extern const char kIppJobAttributes[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppDocumentAttributes[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppJobAttributes[];
 
-PRINTING_EXPORT extern const char kPinEncryptionNone[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kPinEncryptionNone[];
 
-PRINTING_EXPORT extern const char kOptionFalse[];
-PRINTING_EXPORT extern const char kOptionTrue[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kOptionFalse[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kOptionTrue[];
 
-#endif  // defined(OS_CHROMEOS)
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppClientInfo[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppClientName[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppClientPatches[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppClientStringVersion[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppClientType[];
+COMPONENT_EXPORT(PRINT_BACKEND) extern const char kIppClientVersion[];
+
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 }  // namespace printing
 

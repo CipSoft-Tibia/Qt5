@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,17 +7,26 @@
 
 #include <memory>
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/timer/timer.h"
+#include "components/cast_streaming/public/rpc_call_message_handler.h"
 #include "media/base/buffering_state.h"
 #include "media/base/demuxer_stream.h"
 #include "media/base/renderer.h"
 #include "media/base/renderer_client.h"
-#include "media/remoting/media_remoting_rpc.pb.h"
-#include "media/remoting/rpc_broker.h"
+#include "third_party/openscreen/src/cast/streaming/remoting.pb.h"
+#include "third_party/openscreen/src/cast/streaming/rpc_messenger.h"
+
+namespace openscreen {
+namespace cast {
+class RpcMessenger;
+}
+}  // namespace openscreen
 
 namespace base {
 class SingleThreadTaskRunner;
@@ -27,7 +36,6 @@ namespace media {
 namespace remoting {
 
 class ReceiverController;
-class RpcBroker;
 
 // Receiver runs on a remote device, and forwards the information sent from a
 // CourierRenderer to |renderer_|, which actually renders the media.
@@ -39,12 +47,15 @@ class RpcBroker;
 // via RPC calls. When Receiver receives RPC calls, it will call the
 // corresponding functions of |renderer_| to control the media playback of
 // the remoting media.
-class Receiver final : public Renderer, public RendererClient {
+class Receiver final
+    : public Renderer,
+      public RendererClient,
+      public cast_streaming::remoting::RpcRendererCallMessageHandler {
  public:
   Receiver(int rpc_handle,
            int remote_handle,
            ReceiverController* receiver_controller,
-           const scoped_refptr<base::SingleThreadTaskRunner>& media_task_runner,
+           const scoped_refptr<base::SequencedTaskRunner>& media_task_runner,
            std::unique_ptr<Renderer> renderer,
            base::OnceCallback<void(int)> acquire_renderer_done_cb);
   ~Receiver() override;
@@ -54,15 +65,17 @@ class Receiver final : public Renderer, public RendererClient {
                   RendererClient* client,
                   PipelineStatusCallback init_cb) override;
   void SetCdm(CdmContext* cdm_context, CdmAttachedCB cdm_attached_cb) override;
-  void SetLatencyHint(base::Optional<base::TimeDelta> latency_hint) override;
+  void SetLatencyHint(absl::optional<base::TimeDelta> latency_hint) override;
   void Flush(base::OnceClosure flush_cb) override;
   void StartPlayingFrom(base::TimeDelta time) override;
   void SetPlaybackRate(double playback_rate) override;
   void SetVolume(float volume) override;
   base::TimeDelta GetMediaTime() override;
+  RendererType GetRendererType() override;
 
   // RendererClient implementation.
   void OnError(PipelineStatus status) override;
+  void OnFallback(PipelineStatus status) override;
   void OnEnded() override;
   void OnStatisticsUpdate(const PipelineStatistics& stats) override;
   void OnBufferingStateChange(BufferingState state,
@@ -72,7 +85,7 @@ class Receiver final : public Renderer, public RendererClient {
   void OnVideoConfigChange(const VideoDecoderConfig& config) override;
   void OnVideoNaturalSizeChange(const gfx::Size& size) override;
   void OnVideoOpacityChange(bool opaque) override;
-  void OnVideoFrameRateChange(base::Optional<int>) override;
+  void OnVideoFrameRateChange(absl::optional<int>) override;
 
   // Used to set |remote_handle_| after Receiver is created, because the remote
   // handle might be received after Receiver is created.
@@ -81,18 +94,19 @@ class Receiver final : public Renderer, public RendererClient {
   base::WeakPtr<Receiver> GetWeakPtr() { return weak_factory_.GetWeakPtr(); }
 
  private:
+  // cast_streaming::remoting::RpcCallMessageHandler overrides.
+  void OnRpcInitialize() override;
+  void OnRpcSetPlaybackRate(double playback_rate) override;
+  void OnRpcFlush(uint32_t audio_count, uint32_t video_count) override;
+  void OnRpcStartPlayingFrom(base::TimeDelta time) override;
+  void OnRpcSetVolume(double volume) override;
+
   // Send RPC message on |main_task_runner_|.
-  void SendRpcMessageOnMainThread(std::unique_ptr<pb::RpcMessage> message);
+  void SendRpcMessageOnMainThread(
+      std::unique_ptr<openscreen::cast::RpcMessage> message);
 
   // Callback function when RPC message is received.
-  void OnReceivedRpc(std::unique_ptr<pb::RpcMessage> message);
-
-  // RPC message handlers.
-  void RpcInitialize(std::unique_ptr<pb::RpcMessage> message);
-  void RpcSetPlaybackRate(std::unique_ptr<pb::RpcMessage> message);
-  void RpcFlushUntil(std::unique_ptr<pb::RpcMessage> message);
-  void RpcStartPlayingFrom(std::unique_ptr<pb::RpcMessage> message);
-  void RpcSetVolume(std::unique_ptr<pb::RpcMessage> message);
+  void OnReceivedRpc(std::unique_ptr<openscreen::cast::RpcMessage> message);
 
   void ShouldInitializeRenderer();
   void OnRendererInitialized(PipelineStatus status);
@@ -110,7 +124,7 @@ class Receiver final : public Renderer, public RendererClient {
   bool rpc_initialize_received_ = false;
 
   // Owns by the WebMediaPlayerImpl instance.
-  MediaResource* demuxer_ = nullptr;
+  raw_ptr<MediaResource> demuxer_ = nullptr;
 
   // The handle of |this| for listening RPC messages.
   const int rpc_handle_;
@@ -119,14 +133,16 @@ class Receiver final : public Renderer, public RendererClient {
   // through the ctor or SetRemoteHandle().
   int remote_handle_;
 
-  ReceiverController* const receiver_controller_;  // Outlives this class.
-  RpcBroker* const rpc_broker_;                    // Outlives this class.
+  const raw_ptr<ReceiverController>
+      receiver_controller_;  // Outlives this class.
+  const raw_ptr<openscreen::cast::RpcMessenger>
+      rpc_messenger_;  // Outlives this class.
 
-  // Calling SendMessageCallback() of |rpc_broker_| should be on main thread.
+  // Calling SendMessageCallback() of |rpc_messenger_| should be on main thread.
   const scoped_refptr<base::SingleThreadTaskRunner> main_task_runner_;
 
   // Media tasks should run on media thread.
-  const scoped_refptr<base::SingleThreadTaskRunner> media_task_runner_;
+  const scoped_refptr<base::SequencedTaskRunner> media_task_runner_;
 
   // |renderer_| is the real renderer to render media.
   std::unique_ptr<Renderer> renderer_;

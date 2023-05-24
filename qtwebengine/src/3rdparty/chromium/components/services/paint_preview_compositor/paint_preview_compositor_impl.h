@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@
 
 #include <stdint.h>
 
-#include "base/callback.h"
 #include "base/containers/flat_map.h"
-#include "base/optional.h"
+#include "base/functional/callback.h"
+#include "components/discardable_memory/client/client_discardable_shared_memory_manager.h"
 #include "components/paint_preview/common/proto/paint_preview.pb.h"
 #include "components/paint_preview/common/recording_map.h"
 #include "components/services/paint_preview_compositor/paint_preview_frame.h"
@@ -36,8 +36,14 @@ class PaintPreviewCompositorImpl : public mojom::PaintPreviewCompositor {
   // connected to a remote) and |disconnect_handler| should be a no-op.
   explicit PaintPreviewCompositorImpl(
       mojo::PendingReceiver<mojom::PaintPreviewCompositor> receiver,
+      scoped_refptr<discardable_memory::ClientDiscardableSharedMemoryManager>
+          discardable_shared_memory_manager,
       base::OnceClosure disconnect_handler);
   ~PaintPreviewCompositorImpl() override;
+
+  PaintPreviewCompositorImpl(const PaintPreviewCompositorImpl&) = delete;
+  PaintPreviewCompositorImpl& operator=(const PaintPreviewCompositorImpl&) =
+      delete;
 
   // PaintPreviewCompositor implementation.
   void BeginSeparatedFrameComposite(
@@ -96,9 +102,10 @@ class PaintPreviewCompositorImpl : public mojom::PaintPreviewCompositor {
   // Must be modified only by |BeginMainFrameComposite|.
   sk_sp<SkPicture> root_frame_;
 
-  PaintPreviewCompositorImpl(const PaintPreviewCompositorImpl&) = delete;
-  PaintPreviewCompositorImpl& operator=(const PaintPreviewCompositorImpl&) =
-      delete;
+  scoped_refptr<discardable_memory::ClientDiscardableSharedMemoryManager>
+      discardable_shared_memory_manager_;
+
+  base::WeakPtrFactory<PaintPreviewCompositorImpl> weak_ptr_factory_{this};
 };
 
 }  // namespace paint_preview

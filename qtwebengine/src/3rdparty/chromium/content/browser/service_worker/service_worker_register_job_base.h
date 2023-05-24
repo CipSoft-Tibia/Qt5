@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,9 +23,6 @@ class ServiceWorkerRegisterJobBase {
   // Aborts the job. This method should be called once and only once per job.
   // It can be called regardless of whether Start() was called.
   virtual void Abort() = 0;
-
-  // Notifies the job that the context is shutting down.
-  virtual void WillShutDown() = 0;
 
   // Returns true if this job is identical to |job| for the purpose of
   // collapsing them together in a ServiceWorkerJobCoordinator queue.

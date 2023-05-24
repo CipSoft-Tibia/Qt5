@@ -1,20 +1,14 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef EXTENSIONS_COMMON_API_EXTENSION_ACTION_ACTION_INFO_TEST_UTIL_H_
 #define EXTENSIONS_COMMON_API_EXTENSION_ACTION_ACTION_INFO_TEST_UTIL_H_
 
-#include <memory>
-
 #include "extensions/common/api/extension_action/action_info.h"
 
 namespace extensions {
 class Extension;
-class ScopedCurrentChannel;
-
-// Retrieves the manifest key for the given action |type|.
-const char* GetManifestKeyForActionType(ActionInfo::Type type);
 
 // Given an |action_type|, returns the corresponding API name to be referenced
 // from JavaScript.
@@ -27,13 +21,10 @@ const char* GetAPINameForActionType(ActionInfo::Type action_type);
 const ActionInfo* GetActionInfoOfType(const Extension& extension,
                                       ActionInfo::Type type);
 
-// Returns a ScopedCurrentChannel object to use in tests if one is necessary for
-// the given |action_type| specified in the manifest. This will only return
-// non-null if the "action" manifest key is used.
-// TODO(https://crbug.com/893373): Remove this once the "action" key is launched
-// to stable.
-std::unique_ptr<ScopedCurrentChannel> GetOverrideChannelForActionType(
-    ActionInfo::Type action_type);
+// Retrieves the appropriate manifest version for the given |type|; necessary
+// because the chrome.action API is restricted to MV3, while browser and page
+// actions are restricted to MV2.
+int GetManifestVersionForActionType(ActionInfo::Type type);
 
 }  // namespace extensions
 

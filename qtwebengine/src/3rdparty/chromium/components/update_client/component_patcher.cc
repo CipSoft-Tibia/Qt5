@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,15 +6,14 @@
 
 #include <string>
 #include <utility>
-#include <vector>
 
-#include "base/bind.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/json/json_file_value_serializer.h"
 #include "base/location.h"
 #include "base/memory/weak_ptr.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
 #include "components/update_client/component_patcher_operation.h"
 #include "components/update_client/patcher.h"
@@ -27,19 +26,20 @@ namespace {
 
 // Deserialize the commands file (present in delta update packages). The top
 // level must be a list.
-base::ListValue* ReadCommands(const base::FilePath& unpack_path) {
+absl::optional<base::Value::List> ReadCommands(
+    const base::FilePath& unpack_path) {
   const base::FilePath commands =
       unpack_path.Append(FILE_PATH_LITERAL("commands.json"));
   if (!base::PathExists(commands))
-    return nullptr;
+    return absl::nullopt;
 
   JSONFileValueDeserializer deserializer(commands);
   std::unique_ptr<base::Value> root =
       deserializer.Deserialize(nullptr, nullptr);
 
   return (root.get() && root->is_list())
-             ? static_cast<base::ListValue*>(root.release())
-             : nullptr;
+             ? absl::make_optional(std::move(*root).TakeList())
+             : absl::nullopt;
 }
 
 }  // namespace
@@ -57,13 +57,13 @@ ComponentPatcher::~ComponentPatcher() = default;
 
 void ComponentPatcher::Start(Callback callback) {
   callback_ = std::move(callback);
-  base::SequencedTaskRunnerHandle::Get()->PostTask(
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&ComponentPatcher::StartPatching,
                                 scoped_refptr<ComponentPatcher>(this)));
 }
 
 void ComponentPatcher::StartPatching() {
-  commands_.reset(ReadCommands(input_dir_));
+  commands_ = ReadCommands(input_dir_);
   if (!commands_) {
     DonePatching(UnpackerError::kDeltaBadCommands, 0);
   } else {
@@ -77,15 +77,14 @@ void ComponentPatcher::PatchNextFile() {
     DonePatching(UnpackerError::kNone, 0);
     return;
   }
-  const base::DictionaryValue* command_args;
-  if (!next_command_->GetAsDictionary(&command_args)) {
+  if (!next_command_->is_dict()) {
     DonePatching(UnpackerError::kDeltaBadCommands, 0);
     return;
   }
+  const base::Value::Dict& command_args = next_command_->GetDict();
 
-  std::string operation;
-  if (command_args->GetString(kOp, &operation)) {
-    current_operation_ = CreateDeltaUpdateOp(operation, patcher_);
+  if (const std::string* operation = command_args.FindString(kOp)) {
+    current_operation_ = CreateDeltaUpdateOp(*operation, patcher_);
   }
 
   if (!current_operation_) {
@@ -110,7 +109,7 @@ void ComponentPatcher::DonePatchingFile(UnpackerError error,
 
 void ComponentPatcher::DonePatching(UnpackerError error, int extended_error) {
   current_operation_ = nullptr;
-  base::SequencedTaskRunnerHandle::Get()->PostTask(
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(std::move(callback_), error, extended_error));
 }
 

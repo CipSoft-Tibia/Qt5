@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -35,6 +35,10 @@ class CORE_EXPORT TimeZoneController final
     TimeZoneOverride() = default;
 
    public:
+    void change(const String& timezone_id) {
+      ChangeTimeZoneOverride(timezone_id);
+    }
+
     ~TimeZoneOverride() { ClearTimeZoneOverride(); }
   };
 
@@ -42,6 +46,7 @@ class CORE_EXPORT TimeZoneController final
       const String& timezone_id);
 
   static bool HasTimeZoneOverride();
+  static const String& TimeZoneIdOverride();
 
   static void ChangeTimeZoneForTesting(const String&);
 
@@ -49,6 +54,7 @@ class CORE_EXPORT TimeZoneController final
   TimeZoneController();
   static TimeZoneController& instance();
   static void ClearTimeZoneOverride();
+  static void ChangeTimeZoneOverride(const String&);
 
   // device::mojom::blink::TimeZoneMonitorClient:
   void OnTimeZoneChange(const String& timezone_id) override;
@@ -58,7 +64,7 @@ class CORE_EXPORT TimeZoneController final
   mojo::Receiver<device::mojom::blink::TimeZoneMonitorClient> receiver_{this};
 
   String host_timezone_id_;
-  bool has_timezone_id_override_ = false;
+  String override_timezone_id_;
 };
 
 }  // namespace blink

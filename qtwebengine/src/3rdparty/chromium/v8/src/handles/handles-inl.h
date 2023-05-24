@@ -5,11 +5,12 @@
 #ifndef V8_HANDLES_HANDLES_INL_H_
 #define V8_HANDLES_HANDLES_INL_H_
 
+#include "src/base/sanitizer/msan.h"
 #include "src/execution/isolate.h"
 #include "src/execution/local-isolate.h"
 #include "src/handles/handles.h"
 #include "src/handles/local-handles-inl.h"
-#include "src/sanitizer/msan.h"
+#include "src/objects/objects.h"
 
 namespace v8 {
 namespace internal {
@@ -25,8 +26,15 @@ HandleBase::HandleBase(Address object, LocalIsolate* isolate)
 HandleBase::HandleBase(Address object, LocalHeap* local_heap)
     : location_(LocalHandleScope::GetHandle(local_heap, object)) {}
 
-// Allocate a new handle for the object, do not canonicalize.
+bool HandleBase::is_identical_to(const HandleBase that) const {
+  SLOW_DCHECK((this->location_ == nullptr || this->IsDereferenceAllowed()) &&
+              (that.location_ == nullptr || that.IsDereferenceAllowed()));
+  if (this->location_ == that.location_) return true;
+  if (this->location_ == nullptr || that.location_ == nullptr) return false;
+  return Object(*this->location_) == Object(*that.location_);
+}
 
+// Allocate a new handle for the object, do not canonicalize.
 template <typename T>
 Handle<T> Handle<T>::New(T object, Isolate* isolate) {
   return Handle(HandleScope::CreateHandle(isolate, object.ptr()));
@@ -87,7 +95,7 @@ HandleScope::HandleScope(HandleScope&& other) V8_NOEXCEPT
 }
 
 HandleScope::~HandleScope() {
-  if (isolate_ == nullptr) return;
+  if (V8_UNLIKELY(isolate_ == nullptr)) return;
   CloseScope(isolate_, prev_next_, prev_limit_);
 }
 
@@ -107,7 +115,7 @@ HandleScope& HandleScope::operator=(HandleScope&& other) V8_NOEXCEPT {
 void HandleScope::CloseScope(Isolate* isolate, Address* prev_next,
                              Address* prev_limit) {
 #ifdef DEBUG
-  int before = FLAG_check_handle_count ? NumberOfHandles(isolate) : 0;
+  int before = v8_flags.check_handle_count ? NumberOfHandles(isolate) : 0;
 #endif
   DCHECK_NOT_NULL(isolate);
   HandleScopeData* current = isolate->handle_scope_data();
@@ -115,7 +123,7 @@ void HandleScope::CloseScope(Isolate* isolate, Address* prev_next,
   std::swap(current->next, prev_next);
   current->level--;
   Address* limit = prev_next;
-  if (current->limit != prev_limit) {
+  if (V8_UNLIKELY(current->limit != prev_limit)) {
     current->limit = prev_limit;
     limit = prev_limit;
     DeleteExtensions(isolate);
@@ -128,7 +136,7 @@ void HandleScope::CloseScope(Isolate* isolate, Address* prev_next,
       static_cast<size_t>(reinterpret_cast<Address>(limit) -
                           reinterpret_cast<Address>(current->next)));
 #ifdef DEBUG
-  int after = FLAG_check_handle_count ? NumberOfHandles(isolate) : 0;
+  int after = v8_flags.check_handle_count ? NumberOfHandles(isolate) : 0;
   DCHECK_LT(after - before, kCheckHandleThreshold);
   DCHECK_LT(before, kCheckHandleThreshold);
 #endif
@@ -170,6 +178,9 @@ Address* HandleScope::CreateHandle(Isolate* isolate, Address value) {
 
 Address* HandleScope::GetHandle(Isolate* isolate, Address value) {
   DCHECK(AllowHandleAllocation::IsAllowed());
+  DCHECK(isolate->main_thread_local_heap()->IsRunning());
+  DCHECK_WITH_MSG(isolate->thread_id() == ThreadId::Current(),
+                  "main-thread handle can only be created on the main thread.");
   HandleScopeData* data = isolate->handle_scope_data();
   CanonicalHandleScope* canonical = data->canonical_scope;
   return canonical ? canonical->Lookup(value) : CreateHandle(isolate, value);

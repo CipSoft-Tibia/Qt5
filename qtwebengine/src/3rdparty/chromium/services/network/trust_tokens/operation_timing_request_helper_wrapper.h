@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@
 #include "base/memory/weak_ptr.h"
 #include "services/network/trust_tokens/trust_token_operation_metrics_recorder.h"
 #include "services/network/trust_tokens/trust_token_request_helper.h"
+#include "services/network/trust_tokens/trust_token_request_issuance_helper.h"
 
 namespace network {
 
@@ -19,23 +20,29 @@ namespace network {
 class OperationTimingRequestHelperWrapper : public TrustTokenRequestHelper {
  public:
   explicit OperationTimingRequestHelperWrapper(
-      mojom::TrustTokenOperationType type,
+      std::unique_ptr<TrustTokenOperationMetricsRecorder> metrics_recorder,
       std::unique_ptr<TrustTokenRequestHelper> helper);
   ~OperationTimingRequestHelperWrapper() override;
 
   // TrustTokenRequestHelper implementation:
   void Begin(
-      net::URLRequest* request,
-      base::OnceCallback<void(mojom::TrustTokenOperationStatus)> done) override;
+      const GURL& url,
+      base::OnceCallback<void(absl::optional<net::HttpRequestHeaders>,
+                              mojom::TrustTokenOperationStatus)> done) override;
 
   void Finalize(
-      mojom::URLResponseHead* response,
+      net::HttpResponseHeaders& response_headers,
       base::OnceCallback<void(mojom::TrustTokenOperationStatus)> done) override;
+
+  mojom::TrustTokenOperationResultPtr CollectOperationResultWithStatus(
+      mojom::TrustTokenOperationStatus status) override;
 
  private:
   // Records timing metrics, then calls the callback.
   void FinishBegin(
-      base::OnceCallback<void(mojom::TrustTokenOperationStatus)> done,
+      base::OnceCallback<void(absl::optional<net::HttpRequestHeaders>,
+                              mojom::TrustTokenOperationStatus)> done,
+      absl::optional<net::HttpRequestHeaders> request_headers,
       mojom::TrustTokenOperationStatus status);
 
   // Records timing metrics, then calls the callback.
@@ -43,8 +50,7 @@ class OperationTimingRequestHelperWrapper : public TrustTokenRequestHelper {
       base::OnceCallback<void(mojom::TrustTokenOperationStatus)> done,
       mojom::TrustTokenOperationStatus status);
 
-  mojom::TrustTokenOperationType type_;
-  TrustTokenOperationMetricsRecorder recorder_;
+  std::unique_ptr<TrustTokenOperationMetricsRecorder> recorder_;
   std::unique_ptr<TrustTokenRequestHelper> helper_;
 
   base::WeakPtrFactory<OperationTimingRequestHelperWrapper> weak_factory_{this};

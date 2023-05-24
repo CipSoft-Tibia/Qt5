@@ -1,38 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNfc module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 
-#include <private/qnearfieldmanager_emulator_p.h>
-#include <qnearfieldmanager.h>
-#include <qndefmessage.h>
-#include <private/qnearfieldtagtype1_p.h>
-#include <qndefnfctextrecord.h>
+#include <qnearfieldtarget_emulator_p.h>
+#include <qnearfieldtagtype1_p.h>
+
+#include <QtNfc/qndefmessage.h>
+#include <QtNfc/qndefnfctextrecord.h>
 
 QT_USE_NAMESPACE
 
@@ -57,48 +32,45 @@ private slots:
 private:
     void waitForMatchingTarget();
 
-    QNearFieldManagerPrivateImpl *emulatorBackend;
-    QNearFieldManager *manager;
+    QObject *targetParent;
     QNearFieldTagType1 *target;
 };
 
 tst_QNearFieldTagType1::tst_QNearFieldTagType1()
-:   emulatorBackend(0), manager(0), target(0)
+:   targetParent(0), target(0)
 {
     QDir::setCurrent(QLatin1String(SRCDIR));
 
     qRegisterMetaType<QNdefMessage>();
+    qRegisterMetaType<TagBase *>();
     qRegisterMetaType<QNearFieldTarget *>();
 }
 
 void tst_QNearFieldTagType1::init()
 {
-    emulatorBackend = new QNearFieldManagerPrivateImpl;
-    manager = new QNearFieldManager(emulatorBackend, 0);
+    targetParent = new QObject();
+
+    TagActivator::instance()->initialize();
+    TagActivator::instance()->start();
 }
 
 void tst_QNearFieldTagType1::cleanup()
 {
-    emulatorBackend->reset();
+    TagActivator::instance()->reset();
 
-    delete manager;
-    manager = 0;
-    emulatorBackend = 0;
+    delete targetParent;
+    targetParent = 0;
     target = 0;
 }
 
 void tst_QNearFieldTagType1::waitForMatchingTarget()
 {
-    QSignalSpy targetDetectedSpy(manager, SIGNAL(targetDetected(QNearFieldTarget*)));
-
-    manager->startTargetDetection();
+    TagActivator *activator = TagActivator::instance();
+    QSignalSpy targetDetectedSpy(activator, SIGNAL(tagActivated(TagBase*)));
 
     QTRY_VERIFY(!targetDetectedSpy.isEmpty());
 
-    target =
-        qobject_cast<QNearFieldTagType1 *>(targetDetectedSpy.first().at(0).value<QNearFieldTarget *>());
-
-    manager->stopTargetDetection();
+    target = new TagType1(targetDetectedSpy.first().at(0).value<TagBase *>(), targetParent);
 
     QVERIFY(target);
 
@@ -108,6 +80,8 @@ void tst_QNearFieldTagType1::waitForMatchingTarget()
 void tst_QNearFieldTagType1::staticMemoryModel()
 {
     waitForMatchingTarget();
+    if (QTest::currentTestFailed())
+        return;
 
     QVERIFY(target->accessMethods() & QNearFieldTarget::TagTypeSpecificAccess);
 
@@ -120,7 +94,7 @@ void tst_QNearFieldTagType1::staticMemoryModel()
 
         const QByteArray data = target->requestResponse(id).toByteArray();
 
-        QCOMPARE(data.length(), 6);
+        QCOMPARE(data.size(), 6);
 
         quint8 hr0 = data.at(0);
         //quint8 hr1 = data.at(1);
@@ -139,7 +113,7 @@ void tst_QNearFieldTagType1::staticMemoryModel()
         QVERIFY(target->waitForRequestCompleted(id));
 
         const QByteArray data = target->requestResponse(id).toByteArray();
-        QCOMPARE(data.length(), 122);
+        QCOMPARE(data.size(), 122);
 
         // verify NfcTagType1.
         QVERIFY(data.at(0) & 0x10);
@@ -243,6 +217,8 @@ void tst_QNearFieldTagType1::dynamicMemoryModel()
     QList<QByteArray> seenIds;
     forever {
         waitForMatchingTarget();
+        if (QTest::currentTestFailed())
+            return;
 
         QNearFieldTarget::RequestId id = target->readIdentification();
         QVERIFY(target->waitForRequestCompleted(id));
@@ -372,6 +348,8 @@ void tst_QNearFieldTagType1::ndefMessages()
     QByteArray firstId;
     forever {
         waitForMatchingTarget();
+        if (QTest::currentTestFailed())
+            return;
 
         QNearFieldTarget::RequestId id = target->readIdentification();
         QVERIFY(target->waitForRequestCompleted(id));
@@ -404,7 +382,7 @@ void tst_QNearFieldTagType1::ndefMessages()
         }
 
         QList<QNdefMessage> ndefMessages;
-        for (int i = 0; i < ndefMessageReadSpy.count(); ++i)
+        for (qsizetype i = 0; i < ndefMessageReadSpy.size(); ++i)
             ndefMessages.append(ndefMessageReadSpy.at(i).first().value<QNdefMessage>());
 
         QList<QNdefMessage> messages;
@@ -427,7 +405,6 @@ void tst_QNearFieldTagType1::ndefMessages()
         requestCompletedSpy.clear();
         errorSpy.clear();
 
-        QSignalSpy ndefMessageWriteSpy(target, SIGNAL(ndefMessagesWritten()));
         QNearFieldTarget::RequestId writeId = target->writeNdefMessages(messages);
 
         QVERIFY(writeId.isValid());
@@ -440,8 +417,6 @@ void tst_QNearFieldTagType1::ndefMessages()
             completedId =
                 requestCompletedSpy.takeFirst().first().value<QNearFieldTarget::RequestId>();
         }
-
-        QVERIFY(!ndefMessageWriteSpy.isEmpty());
 
         QVERIFY(target->hasNdefMessage());
 
@@ -463,7 +438,7 @@ void tst_QNearFieldTagType1::ndefMessages()
         }
 
         QList<QNdefMessage> storedMessages;
-        for (int i = 0; i < ndefMessageReadSpy.count(); ++i)
+        for (qsizetype i = 0; i < ndefMessageReadSpy.size(); ++i)
             storedMessages.append(ndefMessageReadSpy.at(i).first().value<QNdefMessage>());
 
         QVERIFY(ndefMessages != storedMessages);

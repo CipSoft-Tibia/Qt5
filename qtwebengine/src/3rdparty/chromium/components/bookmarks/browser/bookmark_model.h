@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,16 +16,18 @@
 
 #include "base/check_op.h"
 #include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "base/sequence_checker.h"
-#include "base/strings/string16.h"
+#include "base/supports_user_data.h"
 #include "components/bookmarks/browser/bookmark_client.h"
 #include "components/bookmarks/browser/bookmark_node.h"
 #include "components/bookmarks/browser/bookmark_undo_provider.h"
+#include "components/bookmarks/common/bookmark_metrics.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/image/image.h"
 #include "url/gurl.h"
 
@@ -33,6 +35,7 @@ class PrefService;
 
 namespace base {
 class FilePath;
+class GUID;
 }
 
 namespace favicon_base {
@@ -71,9 +74,14 @@ struct TitledUrlMatch;
 // You should NOT directly create a BookmarkModel, instead go through the
 // BookmarkModelFactory.
 class BookmarkModel : public BookmarkUndoProvider,
-                      public KeyedService {
+                      public KeyedService,
+                      public base::SupportsUserData {
  public:
   explicit BookmarkModel(std::unique_ptr<BookmarkClient> client);
+
+  BookmarkModel(const BookmarkModel&) = delete;
+  BookmarkModel& operator=(const BookmarkModel&) = delete;
+
   ~BookmarkModel() override;
 
   // Triggers the loading of bookmarks, which is an asynchronous operation with
@@ -172,10 +180,14 @@ class BookmarkModel : public BookmarkUndoProvider,
   const gfx::Image& GetFavicon(const BookmarkNode* node);
 
   // Sets the title of |node|.
-  void SetTitle(const BookmarkNode* node, const base::string16& title);
+  void SetTitle(const BookmarkNode* node,
+                const std::u16string& title,
+                metrics::BookmarkEditSource source);
 
   // Sets the URL of |node|.
-  void SetURL(const BookmarkNode* node, const GURL& url);
+  void SetURL(const BookmarkNode* node,
+              const GURL& url,
+              metrics::BookmarkEditSource source);
 
   // Sets the date added time of |node|.
   void SetDateAdded(const BookmarkNode* node, base::Time date_added);
@@ -203,27 +215,44 @@ class BookmarkModel : public BookmarkUndoProvider,
   // same or not.
   void GetBookmarks(std::vector<UrlAndTitle>* urls);
 
-  // Adds a new folder node at the specified position with the given |guid| and
-  // |meta_info|. If a GUID is provided, it must be a valid version 4 GUID,
-  // otherwise a new one is generated to replace it.
+  // Adds a new folder node at the specified position with the given
+  // |creation_time|, |guid| and |meta_info|. If no GUID is provided (i.e.
+  // nullopt), then a random one will be generated. If a GUID is provided, it
+  // must be valid.
   const BookmarkNode* AddFolder(
       const BookmarkNode* parent,
       size_t index,
-      const base::string16& title,
+      const std::u16string& title,
       const BookmarkNode::MetaInfoMap* meta_info = nullptr,
-      base::Optional<std::string> guid = base::nullopt);
+      absl::optional<base::Time> creation_time = absl::nullopt,
+      absl::optional<base::GUID> guid = absl::nullopt);
 
-  // Adds a url at the specified position with the given |creation_time|,
-  // |meta_info| and |guid|. If a GUID is provided, it must be a valid version 4
-  // GUID, otherwise a new one is generated to replace it.
+  // Adds a new bookmark for the given `url` at the specified position with the
+  // given `meta_info`. Used for bookmarks being added through some direct user
+  // action (e.g. the bookmark star).
+  const BookmarkNode* AddNewURL(
+      const BookmarkNode* parent,
+      size_t index,
+      const std::u16string& title,
+      const GURL& url,
+      const BookmarkNode::MetaInfoMap* meta_info = nullptr);
+
+  // Adds a url at the specified position with the given `creation_time`,
+  // `meta_info`, `guid`, and `last_used_time`. If no GUID is provided
+  // (i.e. nullopt), then a random one will be generated. If a GUID is
+  // provided, it must be valid. Used for bookmarks not being added from
+  // direct user actions (e.g. created via sync, locally modified bookmark
+  // or pre-existing bookmark). `added_by_user` is true when a new bookmark was
+  // added by the user and false when a node is added by sync or duplicated.
   const BookmarkNode* AddURL(
       const BookmarkNode* parent,
       size_t index,
-      const base::string16& title,
+      const std::u16string& title,
       const GURL& url,
       const BookmarkNode::MetaInfoMap* meta_info = nullptr,
-      base::Optional<base::Time> creation_time = base::nullopt,
-      base::Optional<std::string> guid = base::nullopt);
+      absl::optional<base::Time> creation_time = absl::nullopt,
+      absl::optional<base::GUID> guid = absl::nullopt,
+      bool added_by_user = false);
 
   // Sorts the children of |parent|, notifying observers by way of the
   // BookmarkNodeChildrenReordered method.
@@ -244,18 +273,28 @@ class BookmarkModel : public BookmarkUndoProvider,
   // combobox of most recently modified folders.
   void ResetDateFolderModified(const BookmarkNode* node);
 
-  // Returns up to |max_count| of bookmarks containing each term from |text|
-  // in either the title or the URL. It uses default matching algorithm.
-  void GetBookmarksMatching(const base::string16& text,
-                            size_t max_count,
-                            std::vector<TitledUrlMatch>* matches);
+  // Updates the last used `time` for the given `id` / `url`. `just_opened`
+  // indicates whether this is being called as a result of the bookmark being
+  // opened.`just_opened` being false means that this update didn't come from
+  // a user such as sync or history updating a node automatically.
+  void UpdateLastUsedTime(const BookmarkNode* node,
+                          const base::Time time,
+                          bool just_opened = false);
 
-  // Returns up to |max_count| of bookmarks containing each term from |text|
-  // in either the title or the URL.
-  void GetBookmarksMatching(const base::string16& text,
-                            size_t max_count,
-                            query_parser::MatchingAlgorithm matching_algorithm,
-                            std::vector<TitledUrlMatch>* matches);
+  // Clears the last used time for the given time range. Called when the user
+  // clears their history. Time() and Time::Max() are used for min/max values.
+  void ClearLastUsedTimeInRange(const base::Time delete_begin,
+                                const base::Time delete_end);
+
+  // Returns up to |max_count| bookmarks containing each term from |query| in
+  // either the title, URL, or, if |match_ancestor_titles| is true, the titles
+  // of ancestors. |matching_algorithm| determines the algorithm used by
+  // QueryParser internally to parse |query|.
+  std::vector<TitledUrlMatch> GetBookmarksMatching(
+      const std::u16string& query,
+      size_t max_count,
+      query_parser::MatchingAlgorithm matching_algorithm,
+      bool match_ancestor_titles = false);
 
   // Sets the store to NULL, making it so the BookmarkModel does not persist
   // any changes to disk. This is only useful during testing to speed up
@@ -279,6 +318,16 @@ class BookmarkModel : public BookmarkUndoProvider,
                           const BookmarkNode::MetaInfoMap& meta_info_map);
   void DeleteNodeMetaInfo(const BookmarkNode* node,
                           const std::string& key);
+
+  // Sets/deletes local meta info of |node|.
+  void SetNodeUnsyncedMetaInfo(const BookmarkNode* node,
+                               const std::string& key,
+                               const std::string& value);
+  void SetNodeUnsyncedMetaInfoMap(
+      const BookmarkNode* node,
+      const BookmarkNode::MetaInfoMap& meta_info_map);
+  void DeleteUnsyncedNodeMetaInfo(const BookmarkNode* node,
+                                  const std::string& key);
 
   // Adds |key| to the set of meta info keys that are not copied when a node is
   // cloned.
@@ -319,8 +368,8 @@ class BookmarkModel : public BookmarkUndoProvider,
                           size_t index,
                           std::unique_ptr<BookmarkNode> node) override;
 
-  // Notifies the observers for adding every descedent of |node|.
-  void NotifyNodeAddedForAllDescendents(const BookmarkNode* node);
+  // Notifies the observers for adding every descendant of |node|.
+  void NotifyNodeAddedForAllDescendants(const BookmarkNode* node);
 
   // Removes the node from internal maps and recurses through all children. If
   // the node is a url, its url is added to removed_urls.
@@ -331,14 +380,16 @@ class BookmarkModel : public BookmarkUndoProvider,
   // Called when done loading. Updates internal state and notifies observers.
   void DoneLoading(std::unique_ptr<BookmarkLoadDetails> details);
 
-  // Adds the |node| at |parent| in the specified |index| and notifies its
-  // observers.
+  // Adds the `node` at `parent` in the specified `index` and notifies its
+  // observers. `added_by_user` is true when a new bookmark was added by the
+  // user and false when a node is added by sync or duplicated.
   BookmarkNode* AddNode(BookmarkNode* parent,
                         size_t index,
-                        std::unique_ptr<BookmarkNode> node);
+                        std::unique_ptr<BookmarkNode> node,
+                        bool added_by_user = false);
 
-  // Adds |node| to |index_| and recursisvely invokes this for all children.
-  void AddNodeToIndexRecursive(BookmarkNode* node);
+  // Adds |node| to |index_| and recursively invokes this for all children.
+  void AddNodeToIndexRecursive(const BookmarkNode* node);
 
   // Returns true if the parent and index are valid.
   bool IsValidIndex(const BookmarkNode* parent, size_t index, bool allow_end);
@@ -374,6 +425,15 @@ class BookmarkModel : public BookmarkUndoProvider,
 
   BookmarkUndoDelegate* undo_delegate() const;
 
+  // Implementation of `UpdateLastUsedTime` which gives the option to skip
+  // saving the change to `BookmarkStorage. Used to efficiently make changes
+  // to multiple bookmarks.
+  void UpdateLastUsedTimeImpl(const BookmarkNode* node, base::Time time);
+
+  void ClearLastUsedTimeInRangeRecursive(BookmarkNode* node,
+                                         const base::Time delete_begin,
+                                         const base::Time delete_end);
+
   std::unique_ptr<BookmarkClient> client_;
 
   // Whether the initial set of data has been loaded.
@@ -387,11 +447,12 @@ class BookmarkModel : public BookmarkUndoProvider,
   // |owned_root_|. Once loading has completed, |owned_root_| is destroyed and
   // this is set to url_index_->root(). |owned_root_| is done as lots of
   // existing code assumes the root is non-null while loading.
-  BookmarkNode* root_ = nullptr;
+  raw_ptr<BookmarkNode, DanglingUntriaged> root_ = nullptr;
 
-  BookmarkPermanentNode* bookmark_bar_node_ = nullptr;
-  BookmarkPermanentNode* other_node_ = nullptr;
-  BookmarkPermanentNode* mobile_node_ = nullptr;
+  raw_ptr<BookmarkPermanentNode, DanglingUntriaged> bookmark_bar_node_ =
+      nullptr;
+  raw_ptr<BookmarkPermanentNode, DanglingUntriaged> other_node_ = nullptr;
+  raw_ptr<BookmarkPermanentNode, DanglingUntriaged> mobile_node_ = nullptr;
 
   // The maximum ID assigned to the bookmark nodes in the model.
   int64_t next_node_id_ = 1;
@@ -407,11 +468,6 @@ class BookmarkModel : public BookmarkUndoProvider,
 
   std::unique_ptr<TitledUrlIndex> titled_url_index_;
 
-#if DCHECK_IS_ON()
-  // GUID index used to verify uniqueness in DCHECK-enabled builds.
-  std::set<std::string> guid_index_;
-#endif  // DCHECK_IS_ON()
-
   // Owned by |model_loader_|.
   // WARNING: in some tests this does *not* refer to
   // |ModelLoader::history_bookmark_model_|. This is because some tests
@@ -426,7 +482,7 @@ class BookmarkModel : public BookmarkUndoProvider,
 
   std::set<std::string> non_cloned_keys_;
 
-  BookmarkUndoDelegate* undo_delegate_ = nullptr;
+  raw_ptr<BookmarkUndoDelegate, DanglingUntriaged> undo_delegate_ = nullptr;
   std::unique_ptr<BookmarkUndoDelegate> empty_undo_delegate_;
 
   scoped_refptr<ModelLoader> model_loader_;
@@ -434,8 +490,6 @@ class BookmarkModel : public BookmarkUndoProvider,
   SEQUENCE_CHECKER(sequence_checker_);
 
   base::WeakPtrFactory<BookmarkModel> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(BookmarkModel);
 };
 
 }  // namespace bookmarks

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,7 @@ callback ResizeObserverCallback = void (sequence<ResizeObserverEntry> entries, R
     ActiveScriptWrappable
 ] interface ResizeObserver {
     [CallWith=ScriptState, MeasureAs=ResizeObserver_Constructor] constructor(ResizeObserverCallback callback);
-    [RuntimeEnabled=ResizeObserverUpdates] void observe(Element target, ResizeObserverOptions options);
+    void observe(Element target, ResizeObserverOptions options);
     void observe(Element target);
     void unobserve(Element target);
     void disconnect();

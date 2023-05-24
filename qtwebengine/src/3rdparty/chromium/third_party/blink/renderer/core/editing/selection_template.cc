@@ -1,13 +1,14 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/editing/selection_template.h"
 
 #include <ostream>  // NOLINT
+
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/editing/ephemeral_range.h"
 #include "third_party/blink/renderer/core/editing/position_with_affinity.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
 
 namespace blink {
 
@@ -55,7 +56,7 @@ void SelectionTemplate<Strategy>::Trace(Visitor* visitor) const {
 }
 
 template <typename Strategy>
-PositionTemplate<Strategy> SelectionTemplate<Strategy>::Base() const {
+const PositionTemplate<Strategy>& SelectionTemplate<Strategy>::Base() const {
   DCHECK(AssertValid());
   DCHECK(!base_.IsOrphan()) << base_;
   return base_;
@@ -68,7 +69,7 @@ Document* SelectionTemplate<Strategy>::GetDocument() const {
 }
 
 template <typename Strategy>
-PositionTemplate<Strategy> SelectionTemplate<Strategy>::Extent() const {
+const PositionTemplate<Strategy>& SelectionTemplate<Strategy>::Extent() const {
   DCHECK(AssertValid());
   DCHECK(!extent_.IsOrphan()) << extent_;
   return extent_;
@@ -139,14 +140,14 @@ void SelectionTemplate<Strategy>::ShowTreeForThis() const {
 #endif
 
 template <typename Strategy>
-PositionTemplate<Strategy> SelectionTemplate<Strategy>::ComputeEndPosition()
-    const {
+const PositionTemplate<Strategy>&
+SelectionTemplate<Strategy>::ComputeEndPosition() const {
   return IsBaseFirst() ? extent_ : base_;
 }
 
 template <typename Strategy>
-PositionTemplate<Strategy> SelectionTemplate<Strategy>::ComputeStartPosition()
-    const {
+const PositionTemplate<Strategy>&
+SelectionTemplate<Strategy>::ComputeStartPosition() const {
   return IsBaseFirst() ? base_ : extent_;
 }
 
@@ -183,15 +184,6 @@ bool SelectionTemplate<Strategy>::IsBaseFirst() const {
 template <typename Strategy>
 void SelectionTemplate<Strategy>::ResetDirectionCache() const {
   direction_ = base_ == extent_ ? Direction::kForward : Direction::kNotComputed;
-}
-
-template <typename Strategy>
-SelectionType SelectionTemplate<Strategy>::Type() const {
-  if (base_.IsNull())
-    return kNoSelection;
-  if (base_ == extent_)
-    return kCaretSelection;
-  return kRangeSelection;
 }
 
 template <typename Strategy>
@@ -282,6 +274,8 @@ SelectionTemplate<Strategy>::Builder::Extend(
   DCHECK_EQ(selection_.GetDocument(), position.GetDocument());
   DCHECK(selection_.Base().IsConnected()) << selection_.Base();
   DCHECK(selection_.AssertValid());
+  if (selection_.extent_.IsEquivalent(position))
+    return *this;
   selection_.extent_ = position;
   selection_.direction_ = Direction::kNotComputed;
   return *this;
@@ -415,11 +409,17 @@ SelectionInDOMTree ConvertToSelectionInDOMTree(
 
 SelectionInFlatTree ConvertToSelectionInFlatTree(
     const SelectionInDOMTree& selection) {
-  return SelectionInFlatTree::Builder()
-      .SetAffinity(selection.Affinity())
-      .SetBaseAndExtent(ToPositionInFlatTree(selection.Base()),
-                        ToPositionInFlatTree(selection.Extent()))
-      .Build();
+  SelectionInFlatTree::Builder builder;
+  const PositionInFlatTree& base = ToPositionInFlatTree(selection.Base());
+  const PositionInFlatTree& extent = ToPositionInFlatTree(selection.Extent());
+  if (base.IsConnected() && extent.IsConnected())
+    builder.SetBaseAndExtent(base, extent);
+  else if (base.IsConnected())
+    builder.Collapse(base);
+  else if (extent.IsConnected())
+    builder.Collapse(extent);
+  builder.SetAffinity(selection.Affinity());
+  return builder.Build();
 }
 
 template <typename Strategy>

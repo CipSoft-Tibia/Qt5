@@ -9,23 +9,32 @@ found in the LICENSE file.
   <meta charset="utf-8">
   <title>Debug</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <link rel="stylesheet" href="/out/Default/resources/inspector_overlay/common.css">
-  <script type="module" src="/out/Default/resources/inspector_overlay/tool_highlight.js"></script>
+  <script type="module" src="/out/Default/resources/inspector_overlay/main.js"></script>
   <style>
     body { background: #ccc; }
   </style>
 </head>
 <body>
   <script type="module">
-    window.viewportSize = {
-      width: document.documentElement.clientWidth,
-      height: document.documentElement.clientHeight
-    };
+    const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
 
-    setPlatform("mac");
-    reset(window);
+    dispatch(["setPlatform", "mac"]);
+    dispatch(["setOverlay", "highlight"]);
+    dispatch(["reset", {
+      viewportSize: {
+        width: viewportWidth,
+        height: viewportHeight,
+      },
+      deviceScaleFactor: 1,
+      pageScaleFactor: 1,
+      pageZoomFactor: 1,
+      emulationScaleFactor: 1,
+      scrollX: 0,
+      scrollY: 0,
+    }]);
 
-    drawHighlight({
+    dispatch(["drawHighlight", {
       "paths":[
       ],
       "gridInfo":[
@@ -43,7 +52,7 @@ found in the LICENSE file.
           "isPrimaryGrid":true
         }
       ]
-    });
+    }]);
   </script>
 </body>
 </html>

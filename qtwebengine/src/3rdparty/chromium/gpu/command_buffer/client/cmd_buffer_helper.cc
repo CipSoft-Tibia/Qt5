@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,6 @@
 #include <algorithm>
 #include "base/logging.h"
 #include "base/strings/stringprintf.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "base/time/time.h"
 #include "base/trace_event/memory_allocator_dump.h"
 #include "base/trace_event/memory_dump_manager.h"
@@ -105,14 +104,15 @@ bool CommandBufferHelper::AllocateRingBuffer() {
 void CommandBufferHelper::SetGetBuffer(int32_t id,
                                        scoped_refptr<Buffer> buffer) {
   command_buffer_->SetGetBuffer(id);
+  entries_ = nullptr;
+  total_entry_count_ = 0;
   ring_buffer_ = std::move(buffer);
   ring_buffer_id_ = id;
   ++set_get_buffer_count_;
-  entries_ = ring_buffer_
-                 ? static_cast<CommandBufferEntry*>(ring_buffer_->memory())
-                 : 0;
-  total_entry_count_ =
-      ring_buffer_ ? ring_buffer_size_ / sizeof(CommandBufferEntry) : 0;
+  if (ring_buffer_) {
+    entries_ = static_cast<CommandBufferEntry*>(ring_buffer_->memory());
+    total_entry_count_ = ring_buffer_size_ / sizeof(CommandBufferEntry);
+  }
   // Call to SetGetBuffer(id) above resets get and put offsets to 0.
   // No need to query it through IPC.
   put_ = 0;
@@ -157,7 +157,8 @@ void CommandBufferHelper::UpdateCachedState(const CommandBuffer::State& state) {
       (state.set_get_buffer_count != set_get_buffer_count_);
   cached_get_offset_ = service_on_old_buffer_ ? 0 : state.get_offset;
   cached_last_token_read_ = state.token;
-  context_lost_ = error::IsError(state.error);
+  // Don't transition from a lost context to a working context.
+  context_lost_ |= error::IsError(state.error);
 }
 
 bool CommandBufferHelper::WaitForGetOffsetInRange(int32_t start, int32_t end) {
@@ -208,7 +209,7 @@ void CommandBufferHelper::OrderingBarrier() {
 void CommandBufferHelper::PeriodicFlushCheck() {
   base::TimeTicks current_time = base::TimeTicks::Now();
   if (current_time - last_flush_time_ >
-      base::TimeDelta::FromMicroseconds(kPeriodicFlushDelayInMicroseconds)) {
+      base::Microseconds(kPeriodicFlushDelayInMicroseconds)) {
     Flush();
   }
 }
@@ -296,7 +297,6 @@ void CommandBufferHelper::WaitForAvailableEntries(int32_t count) {
   if (!AllocateRingBuffer())
     return;
   DCHECK(HaveRingBuffer());
-  DCHECK(count < total_entry_count_);
   if (put_ + count > total_entry_count_) {
     // There's not enough room between the current put and the end of the
     // buffer, so we need to wrap. We will add noops all the way to the end,
@@ -344,7 +344,16 @@ void CommandBufferHelper::WaitForAvailableEntries(int32_t count) {
                                    put_))
         return;
       CalcImmediateEntries(count);
-      DCHECK_GE(immediate_entry_count_, count);
+      if (immediate_entry_count_ < count) {
+        // Tell the underlying command buffer to signal a lost context to higher
+        // levels.
+        command_buffer_->ForceLostContext(error::kGuilty);
+        // Free the ring buffer and lose context.
+        FreeRingBuffer();
+        usable_ = false;
+        context_lost_ = true;
+        return;
+      }
     }
   }
 }

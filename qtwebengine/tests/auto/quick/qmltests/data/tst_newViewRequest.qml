@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-import QtQuick 2.0
-import QtTest 1.0
-import QtWebEngine 1.5
+import QtQuick
+import QtTest
+import QtWebEngine
 
 TestWebEngineView {
     id: webEngineView
@@ -40,19 +15,19 @@ TestWebEngineView {
     property string viewType: ""
     property var loadRequestArray: []
 
-    onLoadingChanged: {
+    onLoadingChanged: function(load) {
         loadRequestArray.push({
-            "status": loadRequest.status,
+            "status": load.status,
         });
     }
 
     SignalSpy {
         id: newViewRequestedSpy
         target: webEngineView
-        signalName: "newViewRequested"
+        signalName: "newWindowRequested"
     }
 
-    onNewViewRequested: {
+    onNewWindowRequested: function(request) {
         newViewRequest = {
             "destination": request.destination,
             "userInitiated": request.userInitiated,
@@ -60,7 +35,7 @@ TestWebEngineView {
         };
 
         dialog = Qt.createQmlObject(
-            "import QtQuick.Window 2.0\n" +
+            "import QtQuick.Window\n" +
             "Window {\n" +
             "    width: 100; height: 100\n" +
             "    visible: true; flags: Qt.Dialog\n" +
@@ -78,7 +53,7 @@ TestWebEngineView {
 
     TestCase {
         id: testCase
-        name: "NewViewRequest"
+        name: "NewWindowRequest"
         when: windowShown
 
         function init() {
@@ -96,7 +71,7 @@ TestWebEngineView {
                 dialog.destroy();
         }
 
-        function test_loadNewViewRequest_data() {
+        function test_loadNewWindowRequest_data() {
             return [
                    { tag: "dialog", viewType: "dialog" },
                    { tag: "invalid", viewType: "null" },
@@ -105,7 +80,7 @@ TestWebEngineView {
             ];
         }
 
-        function test_loadNewViewRequest(row) {
+        function test_loadNewWindowRequest(row) {
             viewType = row.viewType;
             var url = 'data:text/html,%3Chtml%3E%3Cbody%3ETest+Page%3C%2Fbody%3E%3C%2Fhtml%3E';
 
@@ -118,12 +93,12 @@ TestWebEngineView {
             verify(webEngineView.waitForLoadSucceeded());
             tryCompare(newViewRequestedSpy, "count", 1);
 
-            compare(newViewRequest.destination, WebEngineView.NewViewInTab);
+            compare(newViewRequest.destination, WebEngineNewWindowRequest.InNewTab);
             verify(!newViewRequest.userInitiated);
 
             if (viewType === "dialog") {
-                verify(dialog.webEngineView.waitForLoadSucceeded());
-                compare(dialog.webEngineView.url, "");
+                tryVerify(dialog.webEngineView.loadSucceeded)
+                compare(dialog.webEngineView.url, Qt.url("about:blank"));
                 dialog.destroy();
             }
             // https://chromium-review.googlesource.com/c/chromium/src/+/1300395
@@ -139,11 +114,11 @@ TestWebEngineView {
             verify(webEngineView.waitForLoadSucceeded());
             tryCompare(newViewRequestedSpy, "count", 1);
 
-            compare(newViewRequest.destination, WebEngineView.NewViewInDialog);
+            compare(newViewRequest.destination, WebEngineNewWindowRequest.InNewDialog);
             compare(newViewRequest.requestedUrl, url);
             verify(!newViewRequest.userInitiated);
             if (viewType === "dialog") {
-                verify(dialog.webEngineView.waitForLoadSucceeded());
+                tryVerify(dialog.webEngineView.loadSucceeded)
                 dialog.destroy();
             }
             newViewRequestedSpy.clear();
@@ -163,10 +138,10 @@ TestWebEngineView {
                 tryCompare(newViewRequestedSpy, "count", 1);
                 compare(newViewRequest.requestedUrl, url);
 
-                compare(newViewRequest.destination, WebEngineView.NewViewInDialog);
+                compare(newViewRequest.destination, WebEngineNewWindowRequest.InNewDialog);
                 verify(newViewRequest.userInitiated);
                 if (viewType === "dialog") {
-                    verify(dialog.webEngineView.waitForLoadSucceeded());
+                    tryVerify(dialog.webEngineView.loadSucceeded)
                     dialog.destroy();
                 }
                 newViewRequestedSpy.clear();
@@ -180,7 +155,7 @@ TestWebEngineView {
             mouseClick(webEngineView, center.x, center.y, Qt.LeftButton, Qt.ControlModifier);
             tryCompare(newViewRequestedSpy, "count", 1);
             compare(newViewRequest.requestedUrl, Qt.resolvedUrl("test1.html"));
-            compare(newViewRequest.destination, WebEngineView.NewViewInBackgroundTab);
+            compare(newViewRequest.destination, WebEngineNewWindowRequest.InNewBackgroundTab);
             verify(newViewRequest.userInitiated);
             if (viewType === "" || viewType === "null") {
                 compare(loadRequestArray[0].status, WebEngineView.LoadStartedStatus);

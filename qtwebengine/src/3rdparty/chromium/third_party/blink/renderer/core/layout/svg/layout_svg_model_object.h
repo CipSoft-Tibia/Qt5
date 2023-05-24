@@ -50,14 +50,14 @@ class LayoutSVGModelObject : public LayoutObject {
   PhysicalRect VisualRectInDocument(
       VisualRectFlags = kDefaultVisualRectFlags) const override;
 
-  FloatRect VisualRectInLocalSVGCoordinates() const override {
+  gfx::RectF VisualRectInLocalSVGCoordinates() const override {
     NOT_DESTROYED();
-    return local_visual_rect_;
+    return StrokeBoundingBox();
   }
 
-  void AbsoluteQuads(Vector<FloatQuad>&,
+  void AbsoluteQuads(Vector<gfx::QuadF>&,
                      MapCoordinatesFlags mode = 0) const override;
-  FloatRect LocalBoundingBoxRectForAccessibility() const final;
+  gfx::RectF LocalBoundingBoxRectForAccessibility() const final;
 
   void MapLocalToAncestor(const LayoutBoxModelObject* ancestor,
                           TransformState&,
@@ -65,9 +65,6 @@ class LayoutSVGModelObject : public LayoutObject {
   void MapAncestorToLocal(const LayoutBoxModelObject* ancestor,
                           TransformState&,
                           MapCoordinatesFlags) const final;
-  const LayoutObject* PushMappingToContainer(
-      const LayoutBoxModelObject* ancestor_to_stop_at,
-      LayoutGeometryMap&) const final;
   void StyleDidChange(StyleDifference, const ComputedStyle* old_style) override;
 
   SVGElement* GetElement() const {
@@ -94,13 +91,11 @@ class LayoutSVGModelObject : public LayoutObject {
   void GetNode() const = delete;
 
   void AddOutlineRects(Vector<PhysicalRect>&,
+                       OutlineInfo*,
                        const PhysicalOffset& additional_offset,
                        NGOutlineType) const final;
-
- protected:
-  FloatRect local_visual_rect_;
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_SVG_LAYOUT_SVG_MODEL_OBJECT_H_

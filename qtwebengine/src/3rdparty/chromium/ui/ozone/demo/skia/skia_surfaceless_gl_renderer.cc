@@ -1,32 +1,35 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/ozone/demo/skia/skia_surfaceless_gl_renderer.h"
 
 #include <stddef.h>
+
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/command_line.h"
-#include "base/stl_util.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/trace_event/trace_event.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkDeferredDisplayListRecorder.h"
 #include "third_party/skia/include/core/SkTypeface.h"
 #include "third_party/skia/include/gpu/GrBackendSurface.h"
+#include "third_party/skia/include/gpu/GrDirectContext.h"
 #include "third_party/skia/include/gpu/gl/GrGLAssembleInterface.h"
 #include "third_party/skia/include/gpu/gl/GrGLInterface.h"
 #include "ui/display/types/display_snapshot.h"
 #include "ui/gfx/geometry/rect_conversions.h"
+#include "ui/gfx/geometry/rrect_f.h"
 #include "ui/gfx/gpu_fence.h"
+#include "ui/gfx/native_pixmap.h"
+#include "ui/gfx/overlay_plane_data.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_context.h"
-#include "ui/gl/gl_image.h"
-#include "ui/gl/gl_image_native_pixmap.h"
 #include "ui/gl/gl_surface.h"
+#include "ui/ozone/public/native_pixmap_gl_binding.h"
 #include "ui/ozone/public/overlay_candidates_ozone.h"
 #include "ui/ozone/public/overlay_manager_ozone.h"
 #include "ui/ozone/public/ozone_platform.h"
@@ -65,7 +68,6 @@ OverlaySurfaceCandidate MakeOverlayCandidate(int z_order,
 
   // The demo overlay instance is always ontop and not clipped. Clipped quads
   // cannot be placed in overlays.
-  overlay_candidate.is_clipped = false;
 
   return overlay_candidate;
 }
@@ -77,10 +79,10 @@ class SurfacelessSkiaGlRenderer::BufferWrapper {
   BufferWrapper();
   ~BufferWrapper();
 
-  gl::GLImage* image() const { return image_.get(); }
+  scoped_refptr<gfx::NativePixmap> image() const { return pixmap_; }
   SkSurface* sk_surface() const { return sk_surface_.get(); }
 
-  bool Initialize(GrContext* gr_context,
+  bool Initialize(GrDirectContext* gr_context,
                   gfx::AcceleratedWidget widget,
                   const gfx::Size& size);
   void BindFramebuffer();
@@ -91,7 +93,8 @@ class SurfacelessSkiaGlRenderer::BufferWrapper {
   gfx::AcceleratedWidget widget_ = gfx::kNullAcceleratedWidget;
   gfx::Size size_;
 
-  scoped_refptr<gl::GLImage> image_;
+  scoped_refptr<gfx::NativePixmap> pixmap_;
+  std::unique_ptr<NativePixmapGLBinding> pixmap_gl_binding_;
   unsigned int gl_tex_ = 0;
   sk_sp<SkSurface> sk_surface_;
 };
@@ -100,32 +103,34 @@ SurfacelessSkiaGlRenderer::BufferWrapper::BufferWrapper() = default;
 
 SurfacelessSkiaGlRenderer::BufferWrapper::~BufferWrapper() {
   if (gl_tex_) {
-    image_->ReleaseTexImage(GL_TEXTURE_2D);
     glDeleteTextures(1, &gl_tex_);
   }
 }
 
 bool SurfacelessSkiaGlRenderer::BufferWrapper::Initialize(
-    GrContext* gr_context,
+    GrDirectContext* gr_context,
     gfx::AcceleratedWidget widget,
     const gfx::Size& size) {
   glGenTextures(1, &gl_tex_);
 
   gfx::BufferFormat format = display::DisplaySnapshot::PrimaryFormat();
-  scoped_refptr<gfx::NativePixmap> pixmap =
+
+  pixmap_ = OzonePlatform::GetInstance()
+                ->GetSurfaceFactoryOzone()
+                ->CreateNativePixmap(widget, nullptr, size, format,
+                                     gfx::BufferUsage::SCANOUT);
+
+  pixmap_gl_binding_ =
       OzonePlatform::GetInstance()
           ->GetSurfaceFactoryOzone()
-          ->CreateNativePixmap(widget, nullptr, size, format,
-                               gfx::BufferUsage::SCANOUT);
-  auto image = base::MakeRefCounted<gl::GLImageNativePixmap>(size, format);
-  if (!image->Initialize(std::move(pixmap))) {
-    LOG(ERROR) << "Failed to create GLImage";
+          ->GetCurrentGLOzone()
+          ->ImportNativePixmap(pixmap_, format, gfx::BufferPlane::DEFAULT, size,
+                               gfx::ColorSpace(), GL_TEXTURE_2D, gl_tex_);
+
+  if (!pixmap_gl_binding_) {
+    LOG(ERROR) << "Failed to create NativePixmapEGLBinding";
     return false;
   }
-  image_ = image;
-
-  glBindTexture(GL_TEXTURE_2D, gl_tex_);
-  image_->BindTexImage(GL_TEXTURE_2D);
 
   widget_ = widget;
   size_ = size;
@@ -150,15 +155,17 @@ bool SurfacelessSkiaGlRenderer::BufferWrapper::Initialize(
 SurfacelessSkiaGlRenderer::SurfacelessSkiaGlRenderer(
     gfx::AcceleratedWidget widget,
     std::unique_ptr<PlatformWindowSurface> window_surface,
-    const scoped_refptr<gl::GLSurface>& gl_surface,
+    const scoped_refptr<gl::GLSurface>& offscreen_surface,
+    const scoped_refptr<gl::Presenter>& presenter,
     const gfx::Size& size)
     : SkiaGlRenderer(widget,
                      std::move(window_surface),
-                     std::move(gl_surface),
+                     std::move(offscreen_surface),
                      size),
       overlay_checker_(ui::OzonePlatform::GetInstance()
                            ->GetOverlayManager()
-                           ->CreateOverlayCandidates(widget)) {}
+                           ->CreateOverlayCandidates(widget)),
+      presenter_(presenter) {}
 
 SurfacelessSkiaGlRenderer::~SurfacelessSkiaGlRenderer() {
   // Need to make current when deleting the framebuffer resources allocated in
@@ -170,13 +177,15 @@ bool SurfacelessSkiaGlRenderer::Initialize() {
   if (!SkiaGlRenderer::Initialize())
     return false;
 
+  presenter_->Resize(size_, 1.f, gfx::ColorSpace(), true);
+
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(kPartialPrimaryPlane))
     primary_plane_rect_ = gfx::Rect(200, 200, 800, 800);
   else
     primary_plane_rect_ = gfx::Rect(size_);
 
-  for (size_t i = 0; i < base::size(buffers_); ++i) {
+  for (size_t i = 0; i < std::size(buffers_); ++i) {
     buffers_[i] = std::make_unique<BufferWrapper>();
     if (!buffers_[i]->Initialize(gr_context_.get(), widget_,
                                  primary_plane_rect_.size()))
@@ -185,7 +194,7 @@ bool SurfacelessSkiaGlRenderer::Initialize() {
 
   if (command_line->HasSwitch(kEnableOverlay)) {
     gfx::Size overlay_size = gfx::Size(size_.width() / 8, size_.height() / 8);
-    for (size_t i = 0; i < base::size(overlay_buffer_); ++i) {
+    for (size_t i = 0; i < std::size(overlay_buffer_); ++i) {
       overlay_buffer_[i] = std::make_unique<BufferWrapper>();
       overlay_buffer_[i]->Initialize(gr_context_.get(),
                                      gfx::kNullAcceleratedWidget, overlay_size);
@@ -248,40 +257,51 @@ void SurfacelessSkiaGlRenderer::RenderFrame() {
 
   if (!disable_primary_plane_) {
     CHECK(overlay_list.front().overlay_handled);
-    gl_surface_->ScheduleOverlayPlane(
-        0, gfx::OVERLAY_TRANSFORM_NONE, buffers_[back_buffer_]->image(),
-        primary_plane_rect_, unity_rect, /* enable_blend */ true,
-        /* gpu_fence */ nullptr);
+    presenter_->ScheduleOverlayPlane(
+        buffers_[back_buffer_]->image(), /* gpu_fence */ nullptr,
+        gfx::OverlayPlaneData(
+            0, gfx::OVERLAY_TRANSFORM_NONE, gfx::RectF(primary_plane_rect_),
+            unity_rect,
+            /* enable_blend */ true, gfx::Rect(buffers_[back_buffer_]->size()),
+            /* opacity */ 1.0f, gfx::OverlayPriorityHint::kNone,
+            /* rounded_corners */ gfx::RRectF(), gfx::ColorSpace::CreateSRGB(),
+            /*hdr_metadata=*/absl::nullopt));
   }
 
   if (overlay_buffer_[0] && overlay_list.back().overlay_handled) {
-    gl_surface_->ScheduleOverlayPlane(
-        1, gfx::OVERLAY_TRANSFORM_NONE, overlay_buffer_[back_buffer_]->image(),
-        overlay_rect, unity_rect, /* enable_blend */ true,
-        /* gpu_fence */ nullptr);
+    presenter_->ScheduleOverlayPlane(
+        overlay_buffer_[back_buffer_]->image(), /* gpu_fence */ nullptr,
+        gfx::OverlayPlaneData(
+            1, gfx::OVERLAY_TRANSFORM_NONE, gfx::RectF(overlay_rect),
+            unity_rect,
+            /* enable_blend */ true, gfx::Rect(buffers_[back_buffer_]->size()),
+            /* opacity */ 1.0f, gfx::OverlayPriorityHint::kNone,
+            /* rounded_corners */ gfx::RRectF(), gfx::ColorSpace::CreateSRGB(),
+            /*hdr_metadata=*/absl::nullopt));
   }
 
   back_buffer_ ^= 1;
-  gl_surface_->SwapBuffersAsync(
+  presenter_->Present(
       base::BindOnce(&SurfacelessSkiaGlRenderer::PostRenderFrameTask,
                      weak_ptr_factory_.GetWeakPtr()),
-      base::DoNothing());
+      base::DoNothing(), gfx::FrameData());
 }
 
 void SurfacelessSkiaGlRenderer::PostRenderFrameTask(
     gfx::SwapCompletionResult result) {
   switch (result.swap_result) {
     case gfx::SwapResult::SWAP_NAK_RECREATE_BUFFERS:
-      for (size_t i = 0; i < base::size(buffers_); ++i) {
+      for (size_t i = 0; i < std::size(buffers_); ++i) {
         buffers_[i] = std::make_unique<BufferWrapper>();
         if (!buffers_[i]->Initialize(gr_context_.get(), widget_,
                                      primary_plane_rect_.size()))
           LOG(FATAL) << "Failed to recreate buffer";
       }
-      FALLTHROUGH;  // We want to render a new frame anyways.
+      [[fallthrough]];  // We want to render a new frame anyways.
     case gfx::SwapResult::SWAP_ACK:
       SkiaGlRenderer::PostRenderFrameTask(std::move(result));
       break;
+    case gfx::SwapResult::SWAP_SKIPPED:
     case gfx::SwapResult::SWAP_FAILED:
       LOG(FATAL) << "Failed to swap buffers";
       break;

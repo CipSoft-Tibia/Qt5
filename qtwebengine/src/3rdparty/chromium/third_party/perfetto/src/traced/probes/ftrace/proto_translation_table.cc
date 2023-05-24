@@ -61,7 +61,7 @@ ProtoTranslationTable::FtracePageHeaderSpec MakeFtracePageHeaderSpec(
 // matches the userspace bitness.
 ProtoTranslationTable::FtracePageHeaderSpec GuessFtracePageHeaderSpec() {
   ProtoTranslationTable::FtracePageHeaderSpec spec{};
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID) && __i386__
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID) && defined(__i386__)
   // local_t is arch-specific and models the largest size of an integer that is
   // still atomic across bus transactions, exceptions and IRQ. On android x86
   // this is always size 8
@@ -239,6 +239,7 @@ void SetProtoType(FtraceFieldType ftrace_type,
     case kFtraceUint64:
     case kFtraceInode32:
     case kFtraceInode64:
+    case kFtraceSymAddr64:
       *proto_type = ProtoSchemaType::kUint64;
       *proto_field_id = GenericFtraceEvent::Field::kUintValueFieldNumber;
       break;
@@ -255,12 +256,20 @@ bool InferFtraceType(const std::string& type_and_name,
                      size_t size,
                      bool is_signed,
                      FtraceFieldType* out) {
-  // Fixed length strings: e.g. "char foo[16]" we don't care about the number
-  // since we get the size as it's own field. Somewhat awkwardly these fields
-  // are both fixed size and null terminated meaning that we can't just drop
-  // them directly into the protobuf (since if the string is shorter than 15
-  // characters we want only the bit up to the null terminator).
-  if (Match(type_and_name.c_str(), R"(char [a-zA-Z_]+\[[0-9]+\])")) {
+  // Fixed length strings: e.g. "char foo[16]".
+  //
+  // We don't care about the number, since we get the size as it's own field and
+  // since it can be a string defined elsewhere in a kernel header file.
+  //
+  // Somewhat awkwardly these fields are both fixed size and null terminated
+  // meaning that we can't just drop them directly into the protobuf (since if
+  // the string is shorter than 15 characters we want only the bit up to the
+  // null terminator).
+  //
+  // In some rare cases (e.g. old kernel bugs) these strings might not be null
+  // terminated (b/205763418).
+  if (Match(type_and_name.c_str(),
+            R"(char [a-zA-Z_][a-zA-Z_0-9]*\[[a-zA-Z_0-9]+\])")) {
     *out = kFtraceFixedCString;
     return true;
   }
@@ -278,12 +287,35 @@ bool InferFtraceType(const std::string& type_and_name,
     return true;
   }
 
+  // Parsing of sys_enter argument field declared as
+  //    field:unsigned long args[6];
+  if (type_and_name == "unsigned long args[6]") {
+    if (size == 24) {
+      // 24 / 6 = 4 -> 32bit system
+      *out = kFtraceUint32;
+      return true;
+    } else if (size == 48) {
+      // 48 / 6 = 8 -> 64bit system
+      *out = kFtraceUint64;
+      return true;
+    }
+  }
+
   if (Contains(type_and_name, "char[] ")) {
     *out = kFtraceStringPtr;
     return true;
   }
   if (Contains(type_and_name, "char * ")) {
     *out = kFtraceStringPtr;
+    return true;
+  }
+
+  // Kernel addresses that need symbolization via kallsyms. Only 64-bit kernels
+  // are supported for now. 32-bit kernels seems to be going away.
+  if ((base::StartsWith(type_and_name, "void*") ||
+       base::StartsWith(type_and_name, "void *")) &&
+      size == 8) {
+    *out = kFtraceSymAddr64;
     return true;
   }
 
@@ -428,6 +460,20 @@ std::unique_ptr<ProtoTranslationTable> ProtoTranslationTable::Create(
       }
     }
 
+    // Special case function_graph events as they use a u64 field for kernel
+    // function pointers. Fudge the type so that |MergeFields| correctly tags
+    // the fields for kernel address symbolization (kFtraceSymAddr64).
+    if (!strcmp(event.group, "ftrace") &&
+        (!strcmp(event.name, "funcgraph_entry") ||
+         !strcmp(event.name, "funcgraph_exit"))) {
+      for (auto& field : ftrace_event.fields) {
+        if (GetNameFromTypeAndName(field.type_and_name) == "func") {
+          field.type_and_name = "void * func";
+          break;
+        }
+      }
+    }
+
     event.ftrace_event_id = ftrace_event.id;
 
     if (!common_fields_processed) {
@@ -453,9 +499,12 @@ std::unique_ptr<ProtoTranslationTable> ProtoTranslationTable::Create(
   // about their format hold for this kernel.
   CompactSchedEventFormat compact_sched = ValidateFormatForCompactSched(events);
 
-  auto table = std::unique_ptr<ProtoTranslationTable>(
-      new ProtoTranslationTable(ftrace_procfs, events, std::move(common_fields),
-                                header_spec, compact_sched));
+  std::string text = ftrace_procfs->ReadPrintkFormats();
+  PrintkMap printk_formats = ParsePrintkFormats(text);
+
+  auto table = std::unique_ptr<ProtoTranslationTable>(new ProtoTranslationTable(
+      ftrace_procfs, events, std::move(common_fields), header_spec,
+      compact_sched, std::move(printk_formats)));
   return table;
 }
 
@@ -464,13 +513,15 @@ ProtoTranslationTable::ProtoTranslationTable(
     const std::vector<Event>& events,
     std::vector<Field> common_fields,
     FtracePageHeaderSpec ftrace_page_header_spec,
-    CompactSchedEventFormat compact_sched_format)
+    CompactSchedEventFormat compact_sched_format,
+    PrintkMap printk_formats)
     : ftrace_procfs_(ftrace_procfs),
       events_(BuildEventsDeque(events)),
       largest_id_(events_.size() - 1),
       common_fields_(std::move(common_fields)),
       ftrace_page_header_spec_(ftrace_page_header_spec),
-      compact_sched_format_(compact_sched_format) {
+      compact_sched_format_(compact_sched_format),
+      printk_formats_(printk_formats) {
   for (const Event& event : events) {
     group_and_name_to_event_[GroupAndName(event.group, event.name)] =
         &events_.at(event.ftrace_event_id);

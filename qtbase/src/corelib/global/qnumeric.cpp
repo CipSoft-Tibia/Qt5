@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qnumeric.h"
 #include "qnumeric_p.h"
@@ -44,67 +8,81 @@
 QT_BEGIN_NAMESPACE
 
 /*!
+    \headerfile <QtNumeric>
+    \inmodule QtCore
+    \title Qt Numeric Functions
+
+    \brief The <QtNumeric> header file provides common numeric functions.
+
+    The <QtNumeric> header file contains various numeric functions
+    for comparing and adjusting a numeric value.
+*/
+
+/*!
     Returns \c true if the double \a {d} is equivalent to infinity.
-    \relates <QtGlobal>
+    \relates <QtNumeric>
     \sa qInf()
 */
 Q_CORE_EXPORT bool qIsInf(double d) { return qt_is_inf(d); }
 
 /*!
     Returns \c true if the double \a {d} is not a number (NaN).
-    \relates <QtGlobal>
+    \relates <QtNumeric>
 */
 Q_CORE_EXPORT bool qIsNaN(double d) { return qt_is_nan(d); }
 
 /*!
     Returns \c true if the double \a {d} is a finite number.
-    \relates <QtGlobal>
+    \relates <QtNumeric>
 */
 Q_CORE_EXPORT bool qIsFinite(double d) { return qt_is_finite(d); }
 
 /*!
     Returns \c true if the float \a {f} is equivalent to infinity.
-    \relates <QtGlobal>
+    \relates <QtNumeric>
     \sa qInf()
 */
 Q_CORE_EXPORT bool qIsInf(float f) { return qt_is_inf(f); }
 
 /*!
     Returns \c true if the float \a {f} is not a number (NaN).
-    \relates <QtGlobal>
+    \relates <QtNumeric>
 */
 Q_CORE_EXPORT bool qIsNaN(float f) { return qt_is_nan(f); }
 
 /*!
     Returns \c true if the float \a {f} is a finite number.
-    \relates <QtGlobal>
+    \relates <QtNumeric>
 */
 Q_CORE_EXPORT bool qIsFinite(float f) { return qt_is_finite(f); }
 
 #if QT_CONFIG(signaling_nan)
 /*!
     Returns the bit pattern of a signalling NaN as a double.
-    \relates <QtGlobal>
+    \relates <QtNumeric>
 */
 Q_CORE_EXPORT double qSNaN() { return qt_snan(); }
 #endif
 
 /*!
     Returns the bit pattern of a quiet NaN as a double.
-    \relates <QtGlobal>
+    \relates <QtNumeric>
     \sa qIsNaN()
 */
 Q_CORE_EXPORT double qQNaN() { return qt_qnan(); }
 
 /*!
     Returns the bit pattern for an infinite number as a double.
-    \relates <QtGlobal>
+    \relates <QtNumeric>
     \sa qIsInf()
 */
 Q_CORE_EXPORT double qInf() { return qt_inf(); }
 
 /*!
-    \relates <QtGlobal>
+    \fn int qFpClassify(double val)
+    \fn int qFpClassify(float val)
+
+    \relates <QtNumeric>
     Classifies a floating-point value.
 
     The return values are defined in \c{<cmath>}: returns one of the following,
@@ -118,10 +96,6 @@ Q_CORE_EXPORT double qInf() { return qt_inf(); }
     \endlist
 */
 Q_CORE_EXPORT int qFpClassify(double val) { return qt_fpclassify(val); }
-
-/*!
-    \overload
-*/
 Q_CORE_EXPORT int qFpClassify(float val) { return qt_fpclassify(val); }
 
 
@@ -160,7 +134,7 @@ static inline quint32 f2i(float f)
 
     \sa qFuzzyCompare()
     \since 5.2
-    \relates <QtGlobal>
+    \relates <QtNumeric>
 */
 Q_CORE_EXPORT quint32 qFloatDistance(float a, float b)
 {
@@ -169,7 +143,7 @@ Q_CORE_EXPORT quint32 qFloatDistance(float a, float b)
        * IEE754 format.
        * Integers and floats have the same endian
     */
-    Q_STATIC_ASSERT(sizeof(quint32) == sizeof(float));
+    static_assert(sizeof(quint32) == sizeof(float));
     Q_ASSERT(qIsFinite(a) && qIsFinite(b));
     if (a == b)
         return 0;
@@ -218,7 +192,7 @@ static inline quint64 d2i(double d)
 
     \sa qFuzzyCompare()
     \since 5.2
-    \relates <QtGlobal>
+    \relates <QtNumeric>
 */
 Q_CORE_EXPORT quint64 qFloatDistance(double a, double b)
 {
@@ -227,7 +201,7 @@ Q_CORE_EXPORT quint64 qFloatDistance(double a, double b)
        * IEE754 format double precision
        * Integers and floats have the same endian
     */
-    Q_STATIC_ASSERT(sizeof(quint64) == sizeof(double));
+    static_assert(sizeof(quint64) == sizeof(double));
     Q_ASSERT(qIsFinite(a) && qIsFinite(b));
     if (a == b)
         return 0;
@@ -255,5 +229,268 @@ Q_CORE_EXPORT quint64 qFloatDistance(double a, double b)
     return a > b ? d2i(a) - d2i(b) : d2i(b) - d2i(a);
 }
 
+/*!
+    \fn template<typename T> bool qAddOverflow(T v1, T v2, T *result)
+    \relates <QtNumeric>
+    \since 6.1
+
+    Adds two values \a v1 and \a v2, of a numeric type \c T and records the
+    value in \a result. If the addition overflows the valid range for type \c T,
+    returns \c true, otherwise returns \c false.
+
+    An implementation is guaranteed to be available for 8-, 16-, and 32-bit
+    integer types, as well as integer types of the size of a pointer. Overflow
+    math for other types, if available, is considered private API.
+*/
+
+/*!
+    \fn template <typename T, T V2> bool qAddOverflow(T v1, std::integral_constant<T, V2>, T *r)
+    \since 6.1
+    \internal
+
+    Equivalent to qAddOverflow(v1, v2, r) with \a v1 as first argument, the
+    compile time constant \c V2 as second argument, and \a r as third argument.
+*/
+
+/*!
+    \fn template <auto V2, typename T> bool qAddOverflow(T v1, T *r)
+    \since 6.1
+    \internal
+
+    Equivalent to qAddOverflow(v1, v2, r) with \a v1 as first argument, the
+    compile time constant \c V2 as second argument, and \a r as third argument.
+*/
+
+/*!
+    \fn template<typename T> bool qSubOverflow(T v1, T v2, T *result)
+    \relates <QtNumeric>
+    \since 6.1
+
+    Subtracts \a v2 from \a v1 and records the resulting value in \a result. If
+    the subtraction overflows the valid range for type \c T, returns \c true,
+    otherwise returns \c false.
+
+    An implementation is guaranteed to be available for 8-, 16-, and 32-bit
+    integer types, as well as integer types of the size of a pointer. Overflow
+    math for other types, if available, is considered private API.
+*/
+
+/*!
+    \fn template <typename T, T V2> bool qSubOverflow(T v1, std::integral_constant<T, V2>, T *r)
+    \since 6.1
+    \internal
+
+    Equivalent to qSubOverflow(v1, v2, r) with \a v1 as first argument, the
+    compile time constant \c V2 as second argument, and \a r as third argument.
+*/
+
+/*!
+    \fn template <auto V2, typename T> bool qSubOverflow(T v1, T *r)
+    \since 6.1
+    \internal
+
+    Equivalent to qSubOverflow(v1, v2, r) with \a v1 as first argument, the
+    compile time constant \c V2 as second argument, and \a r as third argument.
+*/
+
+/*!
+    \fn template<typename T> bool qMulOverflow(T v1, T v2, T *result)
+    \relates <QtNumeric>
+    \since 6.1
+
+    Multiplies \a v1 and \a v2, and records the resulting value in \a result. If
+    the multiplication overflows the valid range for type \c T, returns
+    \c true, otherwise returns \c false.
+
+    An implementation is guaranteed to be available for 8-, 16-, and 32-bit
+    integer types, as well as integer types of the size of a pointer. Overflow
+    math for other types, if available, is considered private API.
+*/
+
+/*!
+    \fn template <typename T, T V2> bool qMulOverflow(T v1, std::integral_constant<T, V2>, T *r)
+    \since 6.1
+    \internal
+
+    Equivalent to qMulOverflow(v1, v2, r) with \a v1 as first argument, the
+    compile time constant \c V2 as second argument, and \a r as third argument.
+    This can be faster than calling the version with only variable arguments.
+*/
+
+/*!
+    \fn template <auto V2, typename T> bool qMulOverflow(T v1, T *r)
+    \since 6.1
+    \internal
+
+    Equivalent to qMulOverflow(v1, v2, r) with \a v1 as first argument, the
+    compile time constant \c V2 as second argument, and \a r as third argument.
+    This can be faster than calling the version with only variable arguments.
+*/
+
+/*! \fn template <typename T> T qAbs(const T &t)
+    \relates <QtNumeric>
+
+    Compares \a t to the 0 of type T and returns the absolute
+    value. Thus if T is \e {double}, then \a t is compared to
+    \e{(double) 0}.
+
+    Example:
+
+    \snippet code/src_corelib_global_qglobal.cpp 10
+*/
+
+/*! \fn int qRound(double d)
+    \relates <QtNumeric>
+
+    Rounds \a d to the nearest integer.
+
+    Rounds half away from zero (e.g. 0.5 -> 1, -0.5 -> -1).
+
+    \note This function does not guarantee correctness for high precisions.
+
+    Example:
+
+    \snippet code/src_corelib_global_qglobal.cpp 11A
+
+    \note If the value \a d is outside the range of \c int,
+    the behavior is undefined.
+*/
+
+/*! \fn int qRound(float d)
+    \relates <QtNumeric>
+
+    Rounds \a d to the nearest integer.
+
+    Rounds half away from zero (e.g. 0.5f -> 1, -0.5f -> -1).
+
+    \note This function does not guarantee correctness for high precisions.
+
+    Example:
+
+    \snippet code/src_corelib_global_qglobal.cpp 11B
+
+    \note If the value \a d is outside the range of \c int,
+    the behavior is undefined.
+*/
+
+/*! \fn qint64 qRound64(double d)
+    \relates <QtNumeric>
+
+    Rounds \a d to the nearest 64-bit integer.
+
+    Rounds half away from zero (e.g. 0.5 -> 1, -0.5 -> -1).
+
+    \note This function does not guarantee correctness for high precisions.
+
+    Example:
+
+    \snippet code/src_corelib_global_qglobal.cpp 12A
+
+    \note If the value \a d is outside the range of \c qint64,
+    the behavior is undefined.
+*/
+
+/*! \fn qint64 qRound64(float d)
+    \relates <QtNumeric>
+
+    Rounds \a d to the nearest 64-bit integer.
+
+    Rounds half away from zero (e.g. 0.5f -> 1, -0.5f -> -1).
+
+    \note This function does not guarantee correctness for high precisions.
+
+    Example:
+
+    \snippet code/src_corelib_global_qglobal.cpp 12B
+
+    \note If the value \a d is outside the range of \c qint64,
+    the behavior is undefined.
+*/
+
+/*!
+    \fn bool qFuzzyCompare(double p1, double p2)
+    \relates <QtNumeric>
+    \since 4.4
+    \threadsafe
+
+    Compares the floating point value \a p1 and \a p2 and
+    returns \c true if they are considered equal, otherwise \c false.
+
+    Note that comparing values where either \a p1 or \a p2 is 0.0 will not work,
+    nor does comparing values where one of the values is NaN or infinity.
+    If one of the values is always 0.0, use qFuzzyIsNull instead. If one of the
+    values is likely to be 0.0, one solution is to add 1.0 to both values.
+
+    \snippet code/src_corelib_global_qglobal.cpp 46
+
+    The two numbers are compared in a relative way, where the
+    exactness is stronger the smaller the numbers are.
+*/
+
+/*!
+    \fn bool qFuzzyCompare(float p1, float p2)
+    \relates <QtNumeric>
+    \since 4.4
+    \threadsafe
+
+    Compares the floating point value \a p1 and \a p2 and
+    returns \c true if they are considered equal, otherwise \c false.
+
+    The two numbers are compared in a relative way, where the
+    exactness is stronger the smaller the numbers are.
+*/
+
+/*!
+    \fn bool qFuzzyIsNull(double d)
+    \relates <QtNumeric>
+    \since 4.4
+    \threadsafe
+
+    Returns true if the absolute value of \a d is within 0.000000000001 of 0.0.
+*/
+
+/*!
+    \fn bool qFuzzyIsNull(float f)
+    \relates <QtNumeric>
+    \since 4.4
+    \threadsafe
+
+    Returns true if the absolute value of \a f is within 0.00001f of 0.0.
+*/
+
+namespace QtNumericTests {
+
+template <typename T> static constexpr T max = std::numeric_limits<T>::max();
+template <typename T> static constexpr T min = std::numeric_limits<T>::min();
+
+static_assert(qt_saturate<short>(max<unsigned>) == max<short>);
+static_assert(qt_saturate<int>(max<unsigned>) == max<int>);
+static_assert(qt_saturate<qint64>(max<unsigned>) == qint64(max<unsigned>));
+
+static_assert(qt_saturate<short>(max<int>) == max<short>);
+static_assert(qt_saturate<unsigned>(max<int>) == unsigned(max<int>));
+static_assert(qt_saturate<qint64>(max<int>) == qint64(max<int>));
+
+static_assert(qt_saturate<short>(max<qint64>) == max<short>);
+static_assert(qt_saturate<int>(max<qint64>) == max<int>);
+static_assert(qt_saturate<unsigned>(max<qint64>) == max<unsigned>);
+static_assert(qt_saturate<quint64>(max<qint64>) == quint64(max<qint64>));
+
+static_assert(qt_saturate<short>(max<quint64>) == max<short>);
+static_assert(qt_saturate<int>(max<quint64>) == max<int>);
+static_assert(qt_saturate<unsigned>(max<quint64>) == max<unsigned>);
+static_assert(qt_saturate<qint64>(max<quint64>) == max<qint64>);
+
+static_assert(qt_saturate<short>(min<int>) == min<short>);
+static_assert(qt_saturate<qint64>(min<int>) == qint64(min<int>));
+static_assert(qt_saturate<unsigned>(min<int>) == 0);
+static_assert(qt_saturate<quint64>(min<int>) == 0);
+
+static_assert(qt_saturate<short>(min<qint64>) == min<short>);
+static_assert(qt_saturate<int>(min<qint64>) == min<int>);
+static_assert(qt_saturate<unsigned>(min<qint64>) == 0);
+static_assert(qt_saturate<quint64>(min<qint64>) == 0);
+
+} // namespace QtNumericTests
 
 QT_END_NAMESPACE

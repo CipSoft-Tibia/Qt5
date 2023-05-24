@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest>
+#include <QTest>
 #include <QGraphicsLayout>
 #include <QGraphicsLinearLayout>
 #include <QGraphicsWidget>
@@ -47,9 +22,9 @@ private slots:
 class RectWidget : public QGraphicsWidget
 {
 public:
-    RectWidget(QGraphicsItem *parent = 0, Qt::WindowFlags wFlags = { }) : QGraphicsWidget(parent, wFlags), setGeometryCalls(0) {}
+    RectWidget(QGraphicsItem *parent = nullptr, Qt::WindowFlags wFlags = { }) : QGraphicsWidget(parent, wFlags), setGeometryCalls(0) {}
 
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override
     {
         Q_UNUSED(option);
         Q_UNUSED(widget);
@@ -58,7 +33,7 @@ public:
         painter->drawLine(rect().bottomLeft(), rect().topRight());
     }
 
-    void setGeometry(const QRectF &rect)
+    void setGeometry(const QRectF &rect) override
     {
         //qDebug() << "setGeometry():" << this->data(0).toString();
         setGeometryCalls->insert(this, rect);
@@ -114,15 +89,13 @@ void tst_QGraphicsLayout::invalidate()
 
     // ...then measure...
 
-    int pass = 1;
-
     // should be as small as possible, to reduce overhead of painting
     QSizeF size(1, 1);
     setGeometryCalls->clear();
     QBENCHMARK {
         leaf->setMinimumSize(size);
         leaf->setMaximumSize(size);
-        while (setGeometryCalls->count() < depth) {
+        while (setGeometryCalls->size() < depth) {
             QApplication::sendPostedEvents();
         }
         // force a resize on each widget, this will ensure

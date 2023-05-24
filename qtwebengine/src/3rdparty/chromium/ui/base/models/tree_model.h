@@ -1,21 +1,19 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_BASE_MODELS_TREE_MODEL_H_
 #define UI_BASE_MODELS_TREE_MODEL_H_
 
+#include <string>
 #include <vector>
 
 #include "base/component_export.h"
-#include "base/strings/string16.h"
-
-namespace gfx {
-class ImageSkia;
-}
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace ui {
 
+class ImageModel;
 class TreeModel;
 
 // TreeModelNode --------------------------------------------------------------
@@ -27,7 +25,10 @@ class TreeModel;
 class TreeModelNode {
  public:
   // Returns the title for the node.
-  virtual const base::string16& GetTitle() const = 0;
+  virtual const std::u16string& GetTitle() const = 0;
+
+  // Returns the accessible title for the node.
+  virtual const std::u16string& GetAccessibleTitle() const = 0;
 
  protected:
   virtual ~TreeModelNode() {}
@@ -73,7 +74,8 @@ class COMPONENT_EXPORT(UI_BASE) TreeModel {
   virtual Nodes GetChildren(const TreeModelNode* parent) const = 0;
 
   // Returns the index of |child| in |parent|.
-  virtual int GetIndexOf(TreeModelNode* parent, TreeModelNode* child) const = 0;
+  virtual absl::optional<size_t> GetIndexOf(TreeModelNode* parent,
+                                            TreeModelNode* child) const = 0;
 
   // Returns the parent of |node|, or NULL if |node| is the root.
   virtual TreeModelNode* GetParent(TreeModelNode* node) const = 0;
@@ -86,16 +88,16 @@ class COMPONENT_EXPORT(UI_BASE) TreeModel {
 
   // Sets the title of |node|.
   // This is only invoked if the node is editable and the user edits a node.
-  virtual void SetTitle(TreeModelNode* node, const base::string16& title);
+  virtual void SetTitle(TreeModelNode* node, const std::u16string& title);
 
   // Returns the set of icons for the nodes in the tree. You only need override
   // this if you don't want to use the default folder icons.
-  virtual void GetIcons(std::vector<gfx::ImageSkia>* icons) {}
+  virtual void GetIcons(std::vector<ui::ImageModel>* icons) {}
 
-  // Returns the index of the icon to use for |node|. Return -1 to use the
+  // Returns the index of the icon to use for |node|. Return nullopt to use the
   // default icon. The index is relative to the list of icons returned from
   // GetIcons.
-  virtual int GetIconIndex(TreeModelNode* node);
+  virtual absl::optional<size_t> GetIconIndex(TreeModelNode* node);
 
  protected:
   virtual ~TreeModel() {}

@@ -1,9 +1,10 @@
-// Copyright (c) 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/command_line.h"
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/run_loop.h"
 #include "base/threading/thread_restrictions.h"
@@ -57,8 +58,9 @@ class WebRTCInternalsIntegrationBrowserTest : public WebRtcTestBase {
   base::ScopedTempDir local_logs_dir_;
 };
 
+// Sheriff 2022-04-18: disabling due to flakiness: crbug/1317072
 IN_PROC_BROWSER_TEST_F(WebRTCInternalsIntegrationBrowserTest,
-                       IntegrationWithWebRtcEventLogger) {
+                       DISABLED_IntegrationWithWebRtcEventLogger) {
   ASSERT_TRUE(embedded_test_server()->Start());
 
   content::WebContents* tab =

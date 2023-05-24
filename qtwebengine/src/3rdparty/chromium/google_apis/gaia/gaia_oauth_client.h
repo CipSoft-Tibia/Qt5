@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
+#include "base/component_export.h"
 #include "base/memory/ref_counted.h"
 #include "base/values.h"
 
@@ -24,15 +24,15 @@ class SharedURLLoaderFactory;
 // instances.
 namespace gaia {
 
-struct OAuthClientInfo {
+struct COMPONENT_EXPORT(GOOGLE_APIS) OAuthClientInfo {
   std::string client_id;
   std::string client_secret;
   std::string redirect_uri;
 };
 
-class GaiaOAuthClient {
+class COMPONENT_EXPORT(GOOGLE_APIS) GaiaOAuthClient {
  public:
-  class Delegate {
+  class COMPONENT_EXPORT(GOOGLE_APIS) Delegate {
    public:
     // Invoked on a successful response to the GetTokensFromAuthCode request.
     virtual void OnGetTokensResponse(const std::string& refresh_token,
@@ -46,11 +46,11 @@ class GaiaOAuthClient {
     // Invoked on a successful response to the GetUserId request.
     virtual void OnGetUserIdResponse(const std::string& user_id) {}
     // Invoked on a successful response to the GetUserInfo request.
-    virtual void OnGetUserInfoResponse(
-        std::unique_ptr<base::DictionaryValue> user_info) {}
+    virtual void OnGetUserInfoResponse(const base::Value::Dict& user_info) {}
     // Invoked on a successful response to the GetTokenInfo request.
-    virtual void OnGetTokenInfoResponse(
-        std::unique_ptr<base::DictionaryValue> token_info) {}
+    virtual void OnGetTokenInfoResponse(const base::Value::Dict& token_info) {}
+    virtual void OnGetAccountCapabilitiesResponse(
+        const base::Value::Dict& account_capabilities) {}
     // Invoked when there is an OAuth error with one of the requests.
     virtual void OnOAuthError() = 0;
     // Invoked when there is a network error or upon receiving an invalid
@@ -64,6 +64,10 @@ class GaiaOAuthClient {
 
   GaiaOAuthClient(
       scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory);
+
+  GaiaOAuthClient(const GaiaOAuthClient&) = delete;
+  GaiaOAuthClient& operator=(const GaiaOAuthClient&) = delete;
+
   ~GaiaOAuthClient();
 
   // In the below methods, |max_retries| specifies the maximum number of times
@@ -135,12 +139,23 @@ class GaiaOAuthClient {
                           int max_retries,
                           Delegate* delegate);
 
+  // Call the account capabilities API, returning a dictionary of response
+  // values. Only fetches values for capabilities listed in
+  // |capabilities_names|. The provided access token must have
+  // https://www.googleapis.com/auth/account.capabilities in its scopes. See
+  // |max_retries| docs above.
+  void GetAccountCapabilities(
+      const std::string& oauth_access_token,
+      const std::vector<std::string>& capabilities_names,
+      int max_retries,
+      Delegate* delegate);
+
  private:
   // The guts of the implementation live in this class.
   class Core;
   scoped_refptr<Core> core_;
-  DISALLOW_COPY_AND_ASSIGN(GaiaOAuthClient);
 };
-}
+
+}  // namespace gaia
 
 #endif  // GOOGLE_APIS_GAIA_GAIA_OAUTH_CLIENT_H_

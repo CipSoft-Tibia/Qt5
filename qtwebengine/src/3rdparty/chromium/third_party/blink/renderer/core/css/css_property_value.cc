@@ -47,13 +47,15 @@ CSSPropertyValueMetadata::CSSPropertyValueMetadata(
       index_in_shorthands_vector_(index_in_shorthands_vector),
       important_(important),
       implicit_(implicit) {
-  if (name.IsCustomProperty())
+  if (name.IsCustomProperty()) {
     custom_name_ = name.ToAtomicString();
+  }
 }
 
 CSSPropertyID CSSPropertyValueMetadata::ShorthandID() const {
-  if (!is_set_from_shorthand_)
+  if (!is_set_from_shorthand_) {
     return CSSPropertyID::kInvalid;
+  }
 
   Vector<StylePropertyShorthand, 4> shorthands;
   getMatchingShorthandsForLonghand(PropertyID(), &shorthands);
@@ -63,18 +65,15 @@ CSSPropertyID CSSPropertyValueMetadata::ShorthandID() const {
   return shorthands.at(index_in_shorthands_vector_).id();
 }
 
-CSSPropertyID CSSPropertyValueMetadata::PropertyID() const {
-  return convertToCSSPropertyID(property_id_);
-}
-
 CSSPropertyName CSSPropertyValueMetadata::Name() const {
-  if (PropertyID() != CSSPropertyID::kVariable)
+  if (PropertyID() != CSSPropertyID::kVariable) {
     return CSSPropertyName(PropertyID());
+  }
   return CSSPropertyName(custom_name_);
 }
 
 bool CSSPropertyValue::operator==(const CSSPropertyValue& other) const {
-  return DataEquivalent(value_, other.value_) &&
+  return base::ValuesEquivalent(value_, other.value_) &&
          IsImportant() == other.IsImportant();
 }
 

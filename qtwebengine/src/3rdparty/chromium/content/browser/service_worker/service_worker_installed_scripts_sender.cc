@@ -1,15 +1,15 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/service_worker/service_worker_installed_scripts_sender.h"
 
 #include "base/memory/ref_counted.h"
+#include "base/stl_util.h"
 #include "base/trace_event/trace_event.h"
 #include "content/browser/service_worker/service_worker_consts.h"
 #include "content/browser/service_worker/service_worker_context_core.h"
 #include "content/browser/service_worker/service_worker_script_cache_map.h"
-#include "content/browser/service_worker/service_worker_storage.h"
 
 namespace content {
 
@@ -33,8 +33,8 @@ blink::mojom::ServiceWorkerInstalledScriptsInfoPtr
 ServiceWorkerInstalledScriptsSender::CreateInfoAndBind() {
   DCHECK_EQ(State::kNotStarted, state_);
 
-  std::vector<storage::mojom::ServiceWorkerResourceRecordPtr> resources;
-  owner_->script_cache_map()->GetResources(&resources);
+  std::vector<storage::mojom::ServiceWorkerResourceRecordPtr> resources =
+      owner_->script_cache_map()->GetResources();
   std::vector<GURL> installed_urls;
   for (const auto& resource : resources) {
     installed_urls.emplace_back(resource->url);
@@ -90,7 +90,7 @@ void ServiceWorkerInstalledScriptsSender::StartSendingScript(
 
 void ServiceWorkerInstalledScriptsSender::OnStarted(
     network::mojom::URLResponseHeadPtr response_head,
-    base::Optional<mojo_base::BigBuffer> metadata,
+    absl::optional<mojo_base::BigBuffer> metadata,
     mojo::ScopedDataPipeConsumerHandle body_handle,
     mojo::ScopedDataPipeConsumerHandle meta_data_handle) {
   DCHECK(response_head);
@@ -186,7 +186,8 @@ void ServiceWorkerInstalledScriptsSender::Abort(
     case ServiceWorkerInstalledScriptReader::FinishedReason::kSuccess:
       NOTREACHED();
       return;
-    case ServiceWorkerInstalledScriptReader::FinishedReason::kNoHttpInfoError:
+    case ServiceWorkerInstalledScriptReader::FinishedReason::
+        kNoResponseHeadError:
     case ServiceWorkerInstalledScriptReader::FinishedReason::
         kResponseReaderError:
       owner_->SetStartWorkerStatusCode(
@@ -202,10 +203,15 @@ void ServiceWorkerInstalledScriptsSender::Abort(
 
       // Delete the registration data since the data was corrupted.
       if (owner_->context()) {
-        ServiceWorkerRegistration* registration =
+        scoped_refptr<ServiceWorkerRegistration> registration =
             owner_->context()->GetLiveRegistration(owner_->registration_id());
-        // This can destruct |this|.
-        registration->ForceDelete();
+        DCHECK(registration);
+        // Check if the registation is still alive. The registration may have
+        // already been deleted while this service worker was running.
+        if (!registration->is_uninstalled()) {
+          // This can destruct |this|.
+          registration->ForceDelete();
+        }
       }
       return;
     case ServiceWorkerInstalledScriptReader::FinishedReason::
@@ -242,7 +248,7 @@ void ServiceWorkerInstalledScriptsSender::RequestInstalledScript(
       owner_->script_cache_map()->LookupResourceId(script_url);
 
   if (resource_id == blink::mojom::kInvalidServiceWorkerResourceId) {
-    mojo::ReportBadMessage("Requested script was not installed.");
+    receiver_.ReportBadMessage("Requested script was not installed.");
     return;
   }
 

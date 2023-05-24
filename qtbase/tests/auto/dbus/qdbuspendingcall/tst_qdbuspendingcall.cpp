@@ -1,38 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-#include <QtCore/QObject>
-#include <QtCore/QVariant>
-#include <QtCore/QList>
-#include <QtCore/QThread>
-#include <QtCore/QVector>
-#include <QtTest/QtTest>
-#include <QtDBus>
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include <QTest>
+#include <QTestEventLoop>
+#include <QObject>
+#include <QVariant>
+#include <QList>
+#include <QThread>
+#include <QDBusAbstractAdaptor>
+#include <QDBusMessage>
+#include <QDBusConnection>
+#include <QDBusPendingCallWatcher>
+#include <QDBusInterface>
 
 #define TEST_INTERFACE_NAME "org.qtproject.QtDBus.MyObject"
 
@@ -177,10 +157,10 @@ void tst_QDBusPendingCall::waitForFinished()
     QCOMPARE(reply.signature(), QString("as"));
 
     const QVariantList args = ac.reply().arguments();
-    QCOMPARE(args.count(), 1);
+    QCOMPARE(args.size(), 1);
 
     const QVariant &arg = args.at(0);
-    QCOMPARE(arg.type(), QVariant::StringList);
+    QCOMPARE(arg.userType(), QMetaType::QStringList);
     QVERIFY(arg.toStringList().contains(conn.baseService()));
 }
 
@@ -324,7 +304,7 @@ void tst_QDBusPendingCall::watcher_waitForFinished_threaded()
     public:
         tst_QDBusPendingCall *tst;
         WorkerThread(tst_QDBusPendingCall *tst) : tst(tst) {}
-        void run()
+        void run() override
         {
             QDBusPendingCall ac = tst->sendMessage();
 //            QVERIFY(!ac.isFinished());

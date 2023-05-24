@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 // TODO Remove in Qt6
 #include <QtCore/qcompilerdetection.h>
@@ -33,19 +8,18 @@ QT_WARNING_DISABLE_DEPRECATED
 #include <QtTest/QTest>
 #include <qbackendnodetester.h>
 #include <Qt3DRender/private/geometry_p.h>
-#include <Qt3DRender/qgeometry.h>
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DCore/qpropertyupdatedchange.h>
+#include <Qt3DCore/qgeometry.h>
+#include <Qt3DCore/qattribute.h>
 #include <Qt3DCore/private/qbackendnode_p.h>
 #include "testrenderer.h"
-#include "testpostmanarbiter.h"
+#include "testarbiter.h"
 
-class DummyAttribute : public Qt3DRender::QAttribute
+class DummyAttribute : public Qt3DCore::QAttribute
 {
     Q_OBJECT
 public:
     DummyAttribute(Qt3DCore::QNode *parent = nullptr)
-        : Qt3DRender::QAttribute(parent)
+        : Qt3DCore::QAttribute(parent)
     {}
 };
 
@@ -61,11 +35,11 @@ private Q_SLOTS:
         Qt3DRender::Render::Geometry renderGeometry;
         TestRenderer renderer;
 
-        Qt3DRender::QGeometry geometry;
-        Qt3DRender::QAttribute attr1;
-        Qt3DRender::QAttribute attr2;
-        Qt3DRender::QAttribute attr4;
-        Qt3DRender::QAttribute attr3;
+        Qt3DCore::QGeometry geometry;
+        Qt3DCore::QAttribute attr1;
+        Qt3DCore::QAttribute attr2;
+        Qt3DCore::QAttribute attr4;
+        Qt3DCore::QAttribute attr3;
 
         geometry.addAttribute(&attr1);
         geometry.addAttribute(&attr2);
@@ -80,7 +54,7 @@ private Q_SLOTS:
         // THEN
         QCOMPARE(renderGeometry.peerId(), geometry.id());
         QCOMPARE(renderGeometry.isDirty(), true);
-        QCOMPARE(renderGeometry.attributes().count(), 4);
+        QCOMPARE(renderGeometry.attributes().size(), 4);
         QCOMPARE(renderGeometry.boundingPositionAttribute(), attr1.id());
 
         Qt3DCore::QNodeIdVector attribs = Qt3DCore::qIdsForNodes(geometry.attributes());
@@ -92,7 +66,7 @@ private Q_SLOTS:
     {
         // GIVEN
         Qt3DRender::Render::Geometry renderGeometry;
-        Qt3DRender::QGeometry geometry;
+        Qt3DCore::QGeometry geometry;
         TestRenderer renderer;
 
         renderGeometry.setRenderer(&renderer);
@@ -121,11 +95,11 @@ private Q_SLOTS:
         QCOMPARE(renderGeometry.boundingPositionAttribute(), Qt3DCore::QNodeId());
 
         // GIVEN
-        Qt3DRender::QGeometry geometry;
-        Qt3DRender::QAttribute attr1;
-        Qt3DRender::QAttribute attr2;
-        Qt3DRender::QAttribute attr4;
-        Qt3DRender::QAttribute attr3;
+        Qt3DCore::QGeometry geometry;
+        Qt3DCore::QAttribute attr1;
+        Qt3DCore::QAttribute attr2;
+        Qt3DCore::QAttribute attr4;
+        Qt3DCore::QAttribute attr3;
         geometry.setBoundingVolumePositionAttribute(&attr1);
 
         geometry.addAttribute(&attr1);
@@ -149,7 +123,7 @@ private Q_SLOTS:
         TestRenderer renderer;
         Qt3DRender::Render::Geometry renderGeometry;
         renderGeometry.setRenderer(&renderer);
-        Qt3DRender::QGeometry geometry;
+        Qt3DCore::QGeometry geometry;
 
         simulateInitializationSync(&geometry, &renderGeometry);
 
@@ -160,7 +134,7 @@ private Q_SLOTS:
         renderGeometry.syncFromFrontEnd(&geometry, false);
 
         // THEN
-        QCOMPARE(renderGeometry.attributes().count(), 1);
+        QCOMPARE(renderGeometry.attributes().size(), 1);
         QVERIFY(renderGeometry.isDirty());
         QVERIFY(renderer.dirtyBits() & Qt3DRender::Render::AbstractRenderer::GeometryDirty);
         renderer.clearDirtyBits(Qt3DRender::Render::AbstractRenderer::AllDirty);
@@ -173,7 +147,7 @@ private Q_SLOTS:
         renderGeometry.syncFromFrontEnd(&geometry, false);
 
         // THEN
-        QCOMPARE(renderGeometry.attributes().count(), 0);
+        QCOMPARE(renderGeometry.attributes().size(), 0);
         QVERIFY(renderGeometry.isDirty());
         QVERIFY(renderer.dirtyBits() & Qt3DRender::Render::AbstractRenderer::GeometryDirty);
         renderer.clearDirtyBits(Qt3DRender::Render::AbstractRenderer::AllDirty);
@@ -199,23 +173,16 @@ private Q_SLOTS:
         TestArbiter arbiter;
         Qt3DRender::Render::Geometry renderGeometry;
 
-        Qt3DCore::QBackendNodePrivate::get(&renderGeometry)->setArbiter(&arbiter);
         renderGeometry.setRenderer(&renderer);
 
         // WHEN
         renderGeometry.updateExtent(QVector3D(-1.0f, -1.0f, -1.0f), QVector3D(1.0f, 1.0f, 1.0f));
-        renderGeometry.notifyExtentChanged();
 
         // THEN
-        QCOMPARE(arbiter.events.count(), 1);
+        QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
-        Qt3DCore::QPropertyUpdatedChangePtr change = arbiter.events.first().staticCast<Qt3DCore::QPropertyUpdatedChange>();
-        QCOMPARE(change->propertyName(), "extent");
-        const QPair<QVector3D, QVector3D> v = change->value().value<QPair<QVector3D, QVector3D>>();
-        QCOMPARE(v.first, QVector3D(-1.0f, -1.0f, -1.0f));
-        QCOMPARE(v.second, QVector3D(1.0f, 1.0f, 1.0f));
-
-        arbiter.events.clear();
+        QCOMPARE(renderGeometry.min(), QVector3D(-1.0f, -1.0f, -1.0f));
+        QCOMPARE(renderGeometry.max(), QVector3D(1.0f, 1.0f, 1.0f));
     }
 };
 

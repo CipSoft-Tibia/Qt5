@@ -1,37 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNfc module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 
 #include <qndefrecord.h>
 #include <qndefnfctextrecord.h>
 #include <qndefnfcurirecord.h>
-#include <qqmlndefrecord.h>
 
 QT_USE_NAMESPACE
 
@@ -47,6 +21,9 @@ public:
 
 private slots:
     void tst_record();
+    void tst_comparison();
+    void tst_comparison_data();
+    void tst_isRecordType();
 
     void tst_textRecord_data();
     void tst_textRecord();
@@ -54,10 +31,8 @@ private slots:
     void tst_uriRecord_data();
     void tst_uriRecord();
 
-    void tst_declarative_record_data();
-    void tst_declarative_record();
-
-    void tst_declarativeChangedSignals();
+    void tst_ndefRecord_data();
+    void tst_ndefRecord();
 };
 
 tst_QNdefRecord::tst_QNdefRecord()
@@ -85,11 +60,6 @@ void tst_QNdefRecord::tst_record()
 
         QCOMPARE(record, QNdefRecord());
         QVERIFY(!(record != QNdefRecord()));
-
-        QQmlNdefRecord declRecord;
-        QCOMPARE(declRecord.record(), record);
-        QCOMPARE(declRecord.type(), QString());
-        QCOMPARE(declRecord.typeNameFormat(), QQmlNdefRecord::Empty);
     }
 
     // test type name format
@@ -179,22 +149,113 @@ void tst_QNdefRecord::tst_record()
         QVERIFY(record != QNdefRecord());
     }
 
-    // test comparison
+    // test clear
     {
         QNdefRecord record;
-        record.setTypeNameFormat(QNdefRecord::ExternalRtd);
-        record.setType("qt-project.org:test-rtd");
-        record.setId("test id");
-        record.setPayload("test payload");
+        record.setTypeNameFormat(QNdefRecord::NfcRtd);
+        record.setId("id");
+        record.setType("type");
+        record.setPayload("Some random data");
 
-        QNdefRecord other;
-        other.setTypeNameFormat(QNdefRecord::ExternalRtd);
-        other.setType("qt-project.org:test-other-rtd");
-        other.setId("test other id");
-        other.setPayload("test other payload");
-
-        QVERIFY(record != other);
+        record.clear();
+        QCOMPARE(record.typeNameFormat(), QNdefRecord::Empty);
+        QVERIFY(record.id().isEmpty());
+        QVERIFY(record.type().isEmpty());
+        QVERIFY(record.payload().isEmpty());
+        QVERIFY(record.isEmpty());
     }
+}
+
+void tst_QNdefRecord::tst_comparison()
+{
+    QFETCH(QNdefRecord, lhs);
+    QFETCH(QNdefRecord, rhs);
+    QFETCH(bool, result);
+
+    QCOMPARE(lhs == rhs, result);
+    QCOMPARE(lhs != rhs, !result);
+
+    QCOMPARE(rhs == lhs, result);
+    QCOMPARE(rhs != lhs, !result);
+}
+
+void tst_QNdefRecord::tst_comparison_data()
+{
+    QTest::addColumn<QNdefRecord>("lhs");
+    QTest::addColumn<QNdefRecord>("rhs");
+    QTest::addColumn<bool>("result");
+
+    QTest::newRow("default-constructed records") << QNdefRecord() << QNdefRecord() << true;
+    {
+        QNdefRecord rec;
+        rec.setTypeNameFormat(QNdefRecord::Empty);
+
+        QTest::newRow("default-constructed vs empty") << QNdefRecord() << rec << false;
+    }
+
+    QNdefRecord record;
+    record.setTypeNameFormat(QNdefRecord::NfcRtd);
+    record.setType("T");
+    record.setId("text-record");
+    record.setPayload("Some random text");
+
+    {
+        QNdefRecord lhs = record;
+        QNdefRecord rhs = record;
+        rhs.setTypeNameFormat(QNdefRecord::ExternalRtd);
+
+        QTest::newRow("typeNameFormat mismatch") << lhs << rhs << false;
+    }
+    {
+        QNdefRecord lhs = record;
+        QNdefRecord rhs = record;
+        rhs.setType("t");
+
+        QTest::newRow("type mismatch") << lhs << rhs << false;
+    }
+    {
+        QNdefRecord lhs = record;
+        QNdefRecord rhs = record;
+        rhs.setId("random id");
+
+        QTest::newRow("id mismatch") << lhs << rhs << false;
+    }
+    {
+        QNdefRecord lhs = record;
+        QNdefRecord rhs = record;
+        rhs.setPayload("another random text");
+
+        QTest::newRow("payload mismatch") << lhs << rhs << false;
+    }
+    {
+        QNdefRecord lhs = record;
+        QNdefRecord rhs = record;
+
+        QTest::newRow("same records") << lhs << rhs << true;
+    }
+}
+
+class PngNdefRecord : public QNdefRecord
+{
+public:
+    PngNdefRecord() : QNdefRecord(QNdefRecord::Mime, "image/png") { }
+};
+
+class JpegNdefRecord : public QNdefRecord
+{
+public:
+    JpegNdefRecord() : QNdefRecord(QNdefRecord::Mime, "image/jpeg") { }
+};
+
+void tst_QNdefRecord::tst_isRecordType()
+{
+    QNdefRecord rec;
+    rec.setTypeNameFormat(QNdefRecord::Mime);
+    rec.setType("image/png");
+
+    QVERIFY(!rec.isRecordType<QNdefRecord>());
+    QVERIFY(!rec.isRecordType<JpegNdefRecord>());
+    QVERIFY(rec.isRecordType<PngNdefRecord>());
 }
 
 void tst_QNdefRecord::tst_textRecord_data()
@@ -239,14 +300,11 @@ void tst_QNdefRecord::tst_textRecord()
         record.setText(text);
         record.setEncoding(utf8 ? QNdefNfcTextRecord::Utf8 : QNdefNfcTextRecord::Utf16);
 
+        QCOMPARE(record.typeNameFormat(), QNdefRecord::NfcRtd);
+        QCOMPARE(record.type(), QByteArray("T"));
         QCOMPARE(record.payload(), payload);
 
         QVERIFY(record != QNdefRecord());
-
-        QQmlNdefRecord declRecord(record);
-        QCOMPARE(declRecord.record(), QNdefRecord(record));
-        QCOMPARE(declRecord.type(), QString("T"));
-        QCOMPARE(declRecord.typeNameFormat(), QQmlNdefRecord::NfcRtd);
     }
 
     // test getters
@@ -308,14 +366,11 @@ void tst_QNdefRecord::tst_uriRecord()
         QNdefNfcUriRecord record;
         record.setUri(QUrl(url));
 
+        QCOMPARE(record.typeNameFormat(), QNdefRecord::NfcRtd);
+        QCOMPARE(record.type(), QByteArray("U"));
         QCOMPARE(record.payload(), payload);
 
         QVERIFY(record != QNdefRecord());
-
-        QQmlNdefRecord declRecord(record);
-        QCOMPARE(declRecord.record(), QNdefRecord(record));
-        QCOMPARE(declRecord.type(), QString("U"));
-        QCOMPARE(declRecord.typeNameFormat(), QQmlNdefRecord::NfcRtd);
     }
 
     // test getters
@@ -347,7 +402,7 @@ void tst_QNdefRecord::tst_uriRecord()
     }
 }
 
-void tst_QNdefRecord::tst_declarative_record_data()
+void tst_QNdefRecord::tst_ndefRecord_data()
 {
     QTest::addColumn<QNdefRecord::TypeNameFormat>("typeNameFormat");
     QTest::addColumn<QByteArray>("type");
@@ -359,9 +414,10 @@ void tst_QNdefRecord::tst_declarative_record_data()
     QTest::newRow("Unknown") << QNdefRecord::Unknown << QByteArray("BLAHfoo");
     QTest::newRow("Mime") << QNdefRecord::Mime << QByteArray("foobar");
     QTest::newRow("ExternalRtd") << QNdefRecord::ExternalRtd << QByteArray("");
+    QTest::newRow("Uri") << QNdefRecord::Uri << QByteArray("example.com/uri");
 }
 
-void tst_QNdefRecord::tst_declarative_record()
+void tst_QNdefRecord::tst_ndefRecord()
 {
     QFETCH(QNdefRecord::TypeNameFormat, typeNameFormat);
     QFETCH(QByteArray, type);
@@ -372,99 +428,7 @@ void tst_QNdefRecord::tst_declarative_record()
         record.setType(type);
         QCOMPARE(record.typeNameFormat(), typeNameFormat);
         QCOMPARE(record.type(), type);
-
-        QQmlNdefRecord declRecord(record);
-        QCOMPARE(declRecord.record(), record);
-        QCOMPARE(declRecord.record().typeNameFormat(), typeNameFormat);
-        QCOMPARE(declRecord.record().type(), type);
-        QCOMPARE(declRecord.type(), QString(type));
-        QCOMPARE(declRecord.typeNameFormat(), static_cast<QQmlNdefRecord::TypeNameFormat>(typeNameFormat));
-
-        QQmlNdefRecord declRecord2;
-        declRecord2.setRecord(record);
-        QCOMPARE(declRecord2.record(), record);
-        QCOMPARE(declRecord2.record().typeNameFormat(), typeNameFormat);
-        QCOMPARE(declRecord2.record().type(), type);
-        QCOMPARE(declRecord2.type(), QString(type));
-        QCOMPARE(declRecord2.typeNameFormat(), static_cast<QQmlNdefRecord::TypeNameFormat>(typeNameFormat));
-
-        QQmlNdefRecord declRecord3;
-        declRecord3.setTypeNameFormat((QQmlNdefRecord::TypeNameFormat)typeNameFormat);
-        declRecord3.setType(type);
-        QCOMPARE(declRecord3.type(), QString(type));
-        QCOMPARE(declRecord3.record().typeNameFormat(), typeNameFormat);
-        QCOMPARE(declRecord3.record().type(), type);
-        QCOMPARE(declRecord3.typeNameFormat(), static_cast<QQmlNdefRecord::TypeNameFormat>(typeNameFormat));
     }
-}
-
-void tst_QNdefRecord::tst_declarativeChangedSignals()
-{
-    QQmlNdefRecord record;
-    QSignalSpy typeSpy(&record, SIGNAL(typeChanged()));
-    QSignalSpy tnfSpy(&record, SIGNAL(typeNameFormatChanged()));
-    QSignalSpy recordSpy(&record, SIGNAL(recordChanged()));
-
-    QCOMPARE(typeSpy.count(), 0);
-    QCOMPARE(recordSpy.count(), 0);
-
-    record.setType("U");
-    record.setTypeNameFormat(QQmlNdefRecord::NfcRtd);
-    QCOMPARE(typeSpy.count(), 1);
-    QCOMPARE(tnfSpy.count(), 1);
-    QCOMPARE(recordSpy.count(), 0);
-    QCOMPARE(record.type(), QString("U"));
-    QCOMPARE(record.record().type(), QByteArray("U"));
-    QCOMPARE(record.record().typeNameFormat(), QNdefRecord::NfcRtd);
-    QCOMPARE(record.typeNameFormat(), QQmlNdefRecord::NfcRtd);
-
-    record.setType("U"); //same value, no signal
-    QCOMPARE(typeSpy.count(), 1);
-    QCOMPARE(tnfSpy.count(), 1);
-    QCOMPARE(recordSpy.count(), 0);
-    QCOMPARE(record.type(), QString("U"));
-    QCOMPARE(record.record().type(), QByteArray("U"));
-    QCOMPARE(record.record().typeNameFormat(), QNdefRecord::NfcRtd);
-    QCOMPARE(record.typeNameFormat(), QQmlNdefRecord::NfcRtd);
-
-    record.setType("blah");
-    record.setType("blah2");
-    record.setTypeNameFormat(QQmlNdefRecord::ExternalRtd);
-    QCOMPARE(typeSpy.count(), 3);
-    QCOMPARE(tnfSpy.count(), 2);
-    QCOMPARE(recordSpy.count(), 0);
-    QCOMPARE(record.type(), QString("blah2"));
-    QCOMPARE(record.record().type(), QByteArray("blah2"));
-    QCOMPARE(record.record().typeNameFormat(), QNdefRecord::ExternalRtd);
-    QCOMPARE(record.typeNameFormat(), QQmlNdefRecord::ExternalRtd);
-
-    record.setType("Rubbish");
-    QCOMPARE(typeSpy.count(), 4);
-    QCOMPARE(tnfSpy.count(), 2);
-    QCOMPARE(recordSpy.count(), 0);
-    QCOMPARE(record.type(), QString("Rubbish"));
-    QCOMPARE(record.record().type(), QByteArray("Rubbish"));
-    QCOMPARE(record.record().typeNameFormat(), QNdefRecord::ExternalRtd);
-    QCOMPARE(record.typeNameFormat(), QQmlNdefRecord::ExternalRtd);
-
-    record.setType("QQQQ");
-    record.setTypeNameFormat(QQmlNdefRecord::Mime);
-    QCOMPARE(typeSpy.count(), 5);
-    QCOMPARE(tnfSpy.count(), 3);
-    QCOMPARE(recordSpy.count(), 0);
-    QCOMPARE(record.type(), QString("QQQQ"));
-    QCOMPARE(record.record().type(), QByteArray("QQQQ"));
-    QCOMPARE(record.record().typeNameFormat(), QNdefRecord::Mime);
-    QCOMPARE(record.typeNameFormat(), QQmlNdefRecord::Mime);
-
-    record.setRecord(QNdefRecord());
-    QCOMPARE(typeSpy.count(), 5);  //setting record -> no recordChanged signal
-    QCOMPARE(tnfSpy.count(), 3);
-    QCOMPARE(recordSpy.count(), 1);
-    QCOMPARE(record.type(), QString(""));
-    QCOMPARE(record.record().type(), QByteArray());
-    QCOMPARE(record.record().typeNameFormat(), QNdefRecord::Empty);
-    QCOMPARE(record.typeNameFormat(), QQmlNdefRecord::Empty);
 }
 
 QTEST_MAIN(tst_QNdefRecord)

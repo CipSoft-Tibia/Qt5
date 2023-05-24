@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -30,13 +30,14 @@ class CONTENT_EXPORT FileURLLoaderObserver
     : public mojo::FilteredDataSource::Filter {
  public:
   FileURLLoaderObserver() {}
+
+  FileURLLoaderObserver(const FileURLLoaderObserver&) = delete;
+  FileURLLoaderObserver& operator=(const FileURLLoaderObserver&) = delete;
+
   ~FileURLLoaderObserver() override {}
 
   virtual void OnStart() {}
   virtual void OnSeekComplete(int64_t result) {}
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(FileURLLoaderObserver);
 };
 
 // Helper to create a self-owned URLLoader instance which fulfills |request|
@@ -51,6 +52,13 @@ class CONTENT_EXPORT FileURLLoaderObserver
 // The URLLoader created by this function does *not* automatically follow
 // filesytem links (e.g. Windows shortcuts) or support directory listing.
 // A directory path will always yield a FILE_NOT_FOUND network error.
+//
+// TODO(lukasza): Responding with file contents is (a little bit, not quite)
+// duplicated across FileURLLoaderFactory, ContentURLLoaderFactory and
+// ExtensionURLLoaderFactory.  Consider moving file-handling functionality
+// into a shared base class of network::mojom::URLLoaderFactory (similarly to
+// how SelfDeletingURLLoaderFactory provides lifetime management for its derived
+// classes).
 CONTENT_EXPORT void CreateFileURLLoaderBypassingSecurityChecks(
     const network::ResourceRequest& request,
     mojo::PendingReceiver<network::mojom::URLLoader> loader,
@@ -62,7 +70,7 @@ CONTENT_EXPORT void CreateFileURLLoaderBypassingSecurityChecks(
 // Helper to create a FileURLLoaderFactory. This exposes the ability to load
 // file:// URLs through SimpleURLLoader to non-content classes.
 //
-// When non-empty, |profile_path| is used to whitelist specific directories on
+// When non-empty, |profile_path| is used to allowlist specific directories on
 // ChromeOS and Android. It is checked by
 // ContentBrowserClient::IsFileAccessAllowed.
 // |shared_cors_origin_access_list| can be specified if caller wants only

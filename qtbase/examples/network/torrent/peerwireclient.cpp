@@ -1,86 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "peerwireclient.h"
 
 #include <QHostAddress>
 #include <QTimerEvent>
+#include <QtEndian>
 
-static const int PendingRequestTimeout = 60 * 1000;
-static const int ClientTimeout = 120 * 1000;
-static const int ConnectTimeout = 60 * 1000;
-static const int KeepAliveInterval = 30 * 1000;
-static const int RateControlTimerDelay = 2000;
+#include <chrono>
+
+static constexpr std::chrono::seconds PendingRequestTimeout(60);
+static constexpr std::chrono::seconds ClientTimeout(120);
+static constexpr std::chrono::seconds ConnectTimeout(60);
+static constexpr std::chrono::seconds KeepAliveInterval(30);
+static constexpr std::chrono::seconds PeerRateControlTimerDelay(2);
 static const int MinimalHeaderSize = 48;
 static const char ProtocolId[] = "BitTorrent protocol";
 static const char ProtocolIdSize = 19;
-
-// Reads a 32bit unsigned int from data in network order.
-static inline quint32 fromNetworkData(const char *data)
-{
-    const unsigned char *udata = (const unsigned char *)data;
-    return (quint32(udata[0]) << 24)
-        | (quint32(udata[1]) << 16)
-        | (quint32(udata[2]) << 8)
-        | (quint32(udata[3]));
-}
-
-// Writes a 32bit unsigned int from num to data in network order.
-static inline void toNetworkData(quint32 num, char *data)
-{
-    unsigned char *udata = (unsigned char *)data;
-    udata[3] = (num & 0xff);
-    udata[2] = (num & 0xff00) >> 8;
-    udata[1] = (num & 0xff0000) >> 16;
-    udata[0] = (num & 0xff000000) >> 24;
-}
 
 // Constructs an unconnected PeerWire client and starts the connect timer.
 PeerWireClient::PeerWireClient(const QByteArray &peerId, QObject *parent)
@@ -92,7 +28,7 @@ PeerWireClient::PeerWireClient(const QByteArray &peerId, QObject *parent)
     memset(uploadSpeedData, 0, sizeof(uploadSpeedData));
     memset(downloadSpeedData, 0, sizeof(downloadSpeedData));
 
-    transferSpeedTimer = startTimer(RateControlTimerDelay);
+    transferSpeedTimer = startTimer(PeerRateControlTimerDelay);
     timeoutTimer = startTimer(ConnectTimeout);
     peerIdString = peerId;
 
@@ -118,7 +54,7 @@ PeerWireClient::PeerWireClient(const QByteArray &peerId, QObject *parent)
 
 // Registers the peer ID and SHA1 sum of the torrent, and initiates
 // the handshake.
-void PeerWireClient::initialize(const QByteArray &infoHash, int pieceCount)
+void PeerWireClient::initialize(const QByteArray &infoHash, qint32 pieceCount)
 {
     this->infoHash = infoHash;
     peerPieces.resize(pieceCount);
@@ -206,13 +142,13 @@ void PeerWireClient::sendNotInterested()
 
 // Sends a piece notification / a "have" message, informing the peer
 // that we have just downloaded a new piece.
-void PeerWireClient::sendPieceNotification(int piece)
+void PeerWireClient::sendPieceNotification(qint32 piece)
 {
     if (!sentHandShake)
         sendHandShake();
 
     char message[] = {0, 0, 0, 5, 4, 0, 0, 0, 0};
-    toNetworkData(piece, &message[5]);
+    qToBigEndian(piece, &message[5]);
     write(message, sizeof(message));
 }
 
@@ -241,22 +177,22 @@ void PeerWireClient::sendPieceList(const QBitArray &bitField)
     }
 
     char message[] = {0, 0, 0, 1, 5};
-    toNetworkData(bits.size() + 1, &message[0]);
+    qToBigEndian<qint32>(bits.size() + 1, &message[0]);
     write(message, sizeof(message));
     write(bits);
 }
 
 // Sends a request for a block.
-void PeerWireClient::requestBlock(int piece, int offset, int length)
+void PeerWireClient::requestBlock(qint32 piece, qint32 offset, qint32 length)
 {
     char message[] = {0, 0, 0, 1, 6};
-    toNetworkData(13, &message[0]);
+    qToBigEndian(13, &message[0]);
     write(message, sizeof(message));
 
     char numbers[4 * 3];
-    toNetworkData(piece, &numbers[0]);
-    toNetworkData(offset, &numbers[4]);
-    toNetworkData(length, &numbers[8]);
+    qToBigEndian(piece, &numbers[0]);
+    qToBigEndian(offset, &numbers[4]);
+    qToBigEndian(length, &numbers[8]);
     write(numbers, sizeof(numbers));
 
     incoming << TorrentBlock(piece, offset, length);
@@ -270,33 +206,33 @@ void PeerWireClient::requestBlock(int piece, int offset, int length)
 }
 
 // Cancels a request for a block.
-void PeerWireClient::cancelRequest(int piece, int offset, int length)
+void PeerWireClient::cancelRequest(qint32 piece, qint32 offset, qint32 length)
 {
     char message[] = {0, 0, 0, 1, 8};
-    toNetworkData(13, &message[0]);
+    qToBigEndian(13, &message[0]);
     write(message, sizeof(message));
 
     char numbers[4 * 3];
-    toNetworkData(piece, &numbers[0]);
-    toNetworkData(offset, &numbers[4]);
-    toNetworkData(length, &numbers[8]);
+    qToBigEndian(piece, &numbers[0]);
+    qToBigEndian(offset, &numbers[4]);
+    qToBigEndian(length, &numbers[8]);
     write(numbers, sizeof(numbers));
 
     incoming.removeAll(TorrentBlock(piece, offset, length));
 }
 
 // Sends a block to the peer.
-void PeerWireClient::sendBlock(int piece, int offset, const QByteArray &data)
+void PeerWireClient::sendBlock(qint32 piece, qint32 offset, const QByteArray &data)
 {
     QByteArray block;
 
     char message[] = {0, 0, 0, 1, 7};
-    toNetworkData(9 + data.size(), &message[0]);
+    qToBigEndian<qint32>(9 + data.size(), &message[0]);
     block += QByteArray(message, sizeof(message));
 
     char numbers[4 * 2];
-    toNetworkData(piece, &numbers[0]);
-    toNetworkData(offset, &numbers[4]);
+    qToBigEndian(piece, &numbers[0]);
+    qToBigEndian(offset, &numbers[4]);
     block += QByteArray(numbers, sizeof(numbers));
     block += data;
 
@@ -397,12 +333,11 @@ bool PeerWireClient::canTransferMore() const
         || !outgoingBuffer.isEmpty() || !pendingBlocks.isEmpty();
 }
 
-void PeerWireClient::connectToHost(const QHostAddress &address,
-                                   quint16 port, OpenMode openMode)
-
+void PeerWireClient::connectToHost(const QString &address, quint16 port, OpenMode openMode,
+                                   NetworkLayerProtocol protocol)
 {
     setOpenMode(openMode);
-    socket.connectToHost(address, port, openMode);
+    socket.connectToHost(address, port, openMode, protocol);
 }
 
 void PeerWireClient::diconnectFromHost()
@@ -516,7 +451,7 @@ void PeerWireClient::processIncomingData()
 
             char tmp[4];
             read(tmp, sizeof(tmp));
-            nextPacketLength = fromNetworkData(tmp);
+            nextPacketLength = qFromBigEndian<qint32>(tmp);
 
             if (nextPacketLength < 0 || nextPacketLength > 200000) {
                 // Prevent DoS
@@ -568,7 +503,7 @@ void PeerWireClient::processIncomingData()
             break;
         case HavePacket: {
             // The peer has a new piece available.
-            quint32 index = fromNetworkData(&packet.data()[1]);
+            quint32 index = qFromBigEndian<quint32>(&packet.data()[1]);
             if (index < quint32(peerPieces.size())) {
                 // Only accept indexes within the valid range.
                 peerPieces.setBit(int(index));
@@ -581,7 +516,7 @@ void PeerWireClient::processIncomingData()
             for (int i = 1; i < packet.size(); ++i) {
                 for (int bit = 0; bit < 8; ++bit) {
                     if (packet.at(i) & (1 << (7 - bit))) {
-                        int bitIndex = int(((i - 1) * 8) + bit);
+                        qint32 bitIndex = qint32(((i - 1) * 8) + bit);
                         if (bitIndex >= 0 && bitIndex < peerPieces.size()) {
                             // Occasionally, broken clients claim to have
                             // pieces whose index is outside the valid range.
@@ -596,15 +531,15 @@ void PeerWireClient::processIncomingData()
             break;
         case RequestPacket: {
             // The peer requests a block.
-            quint32 index = fromNetworkData(&packet.data()[1]);
-            quint32 begin = fromNetworkData(&packet.data()[5]);
-            quint32 length = fromNetworkData(&packet.data()[9]);
-            emit blockRequested(int(index), int(begin), int(length));
+            quint32 index = qFromBigEndian<quint32>(&packet.data()[1]);
+            quint32 begin = qFromBigEndian<quint32>(&packet.data()[5]);
+            quint32 length = qFromBigEndian<quint32>(&packet.data()[9]);
+            emit blockRequested(qint32(index), qint32(begin), qint32(length));
             break;
         }
         case PiecePacket: {
-            int index = int(fromNetworkData(&packet.data()[1]));
-            int begin = int(fromNetworkData(&packet.data()[5]));
+            qint32 index = qint32(qFromBigEndian<quint32>(&packet.data()[1]));
+            qint32 begin = qint32(qFromBigEndian<quint32>(&packet.data()[5]));
 
             incoming.removeAll(TorrentBlock(index, begin, packet.size() - 9));
 
@@ -620,14 +555,14 @@ void PeerWireClient::processIncomingData()
         }
         case CancelPacket: {
             // The peer cancels a block request.
-            quint32 index = fromNetworkData(&packet.data()[1]);
-            quint32 begin = fromNetworkData(&packet.data()[5]);
-            quint32 length = fromNetworkData(&packet.data()[9]);
+            quint32 index = qFromBigEndian<quint32>(&packet.data()[1]);
+            quint32 begin = qFromBigEndian<quint32>(&packet.data()[5]);
+            quint32 length = qFromBigEndian<quint32>(&packet.data()[9]);
             for (int i = 0; i < pendingBlocks.size(); ++i) {
                 const BlockInfo &blockInfo = pendingBlocks.at(i);
-                if (blockInfo.pieceIndex == int(index)
-                    && blockInfo.offset == int(begin)
-                    && blockInfo.length == int(length)) {
+                if (blockInfo.pieceIndex == qint32(index)
+                    && blockInfo.offset == qint32(begin)
+                    && blockInfo.length == qint32(length)) {
                     pendingBlocks.removeAt(i);
                     break;
                 }

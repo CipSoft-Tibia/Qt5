@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickscalegrid_p_p.h"
 
@@ -50,10 +14,6 @@ QT_BEGIN_NAMESPACE
 */
 
 QQuickScaleGrid::QQuickScaleGrid(QObject *parent) : QObject(parent), _left(0), _top(0), _right(0), _bottom(0)
-{
-}
-
-QQuickScaleGrid::~QQuickScaleGrid()
 {
 }
 
@@ -140,8 +100,8 @@ QQuickGridScaledImage::QQuickGridScaledImage(QIODevice *data)
         if (colonId <= 0)
             return;
 
-        const QStringRef property = line.leftRef(colonId).trimmed();
-        QStringRef value = line.midRef(colonId + 1).trimmed();
+        const QStringView property = QStringView{line}.left(colonId).trimmed();
+        QStringView value = QStringView{line}.mid(colonId + 1).trimmed();
 
         if (property == QLatin1String("border.left")) {
             l = value.toInt();
@@ -169,9 +129,9 @@ QQuickGridScaledImage::QQuickGridScaledImage(QIODevice *data)
     _pix = imgFile;
 }
 
-QQuickBorderImage::TileMode QQuickGridScaledImage::stringToRule(const QStringRef &s)
+QQuickBorderImage::TileMode QQuickGridScaledImage::stringToRule(QStringView s)
 {
-    QStringRef string = s;
+    QStringView string = s;
     if (string.startsWith(QLatin1Char('"')) && string.endsWith(QLatin1Char('"')))
         string = string.mid(1, string.size() - 2); // remove leading/trailing quotes.
 
@@ -217,3 +177,5 @@ QString QQuickGridScaledImage::pixmapUrl() const
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qquickscalegrid_p_p.cpp"

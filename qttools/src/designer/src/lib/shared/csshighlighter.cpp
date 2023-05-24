@@ -1,39 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "csshighlighter_p.h"
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 namespace qdesigner_internal {
 
-CssHighlighter::CssHighlighter(QTextDocument *document)
-: QSyntaxHighlighter(document)
+CssHighlighter::CssHighlighter(const CssHighlightColors &colors,
+                               QTextDocument *document)
+    : QSyntaxHighlighter(document), m_colors(colors)
 {
 }
 
@@ -53,7 +31,7 @@ void CssHighlighter::highlightBlock(const QString& text)
         { Comment, Comment, Comment, Comment, Comment, Comment, Comment, -1, MaybeCommentEnd } // MaybeCommentEnd
     };
 
-    int lastIndex = 0;
+    qsizetype lastIndex = 0;
     bool lastWasSlash = false;
     int state = previousBlockState(), save_state;
     if (state == -1) {
@@ -65,8 +43,8 @@ void CssHighlighter::highlightBlock(const QString& text)
         // The initial state is based on the precense of a : and the absense of a {.
         // This is because Qt style sheets support both a full stylesheet as well as
         // an inline form with just properties.
-        state = save_state = (text.indexOf(QLatin1Char(':')) > -1 &&
-                              text.indexOf(QLatin1Char('{')) == -1) ? Property : Selector;
+        state = save_state = (text.indexOf(u':') > -1 &&
+                              text.indexOf(u'{') == -1) ? Property : Selector;
     } else {
         save_state = state>>16;
         state &= 0x00ff;
@@ -78,7 +56,7 @@ void CssHighlighter::highlightBlock(const QString& text)
         state = save_state;
     }
 
-    for (int i = 0; i < text.length(); i++) {
+    for (qsizetype i = 0; i < text.size(); ++i) {
         int token = ALNUM;
         const QChar c = text.at(i);
         const char a = c.toLatin1();
@@ -130,39 +108,39 @@ void CssHighlighter::highlightBlock(const QString& text)
         }
     }
 
-    highlight(text, lastIndex, text.length() - lastIndex, state);
+    highlight(text, lastIndex, text.size() - lastIndex, state);
     setCurrentBlockState(state + (save_state<<16));
 }
 
 void CssHighlighter::highlight(const QString &text, int start, int length, int state)
 {
-    if (start >= text.length() || length <= 0)
+    if (start >= text.size() || length <= 0)
         return;
 
     QTextCharFormat format;
 
     switch (state) {
     case Selector:
-        setFormat(start, length, Qt::darkRed);
+        setFormat(start, length, m_colors.selector);
         break;
     case Property:
-        setFormat(start, length, Qt::blue);
+        setFormat(start, length, m_colors.property);
         break;
     case Value:
-        setFormat(start, length, Qt::black);
+        setFormat(start, length, m_colors.value);
         break;
     case Pseudo1:
-        setFormat(start, length, Qt::darkRed);
+        setFormat(start, length, m_colors.pseudo1);
         break;
     case Pseudo2:
-        setFormat(start, length, Qt::darkRed);
+        setFormat(start, length, m_colors.pseudo2);
         break;
     case Quote:
-        setFormat(start, length, Qt::darkMagenta);
+        setFormat(start, length, m_colors.quote);
         break;
     case Comment:
     case MaybeCommentEnd:
-        format.setForeground(Qt::darkGreen);
+        format.setForeground(m_colors.comment);
         setFormat(start, length, format);
         break;
     default:

@@ -1,52 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformdefs.h"
 #include "qlibrary_p.h"
-#include "qfile.h"
+
 #include "qdir.h"
+#include "qfile.h"
 #include "qfileinfo.h"
 #include <private/qfilesystementry_p.h>
 
 #include <qt_windows.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 extern QString qt_error_string(int code);
 
@@ -63,10 +30,8 @@ QStringList QLibraryPrivate::prefixes_sys()
 
 bool QLibraryPrivate::load_sys()
 {
-#ifndef Q_OS_WINRT
     //avoid 'Bad Image' message box
     UINT oldmode = SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX);
-#endif
     // We make the following attempts at locating the library:
     //
     // Windows
@@ -82,7 +47,7 @@ bool QLibraryPrivate::load_sys()
     QStringList attempts;
 
     if (pluginState != IsAPlugin)
-        attempts.append(fileName + QLatin1String(".dll"));
+        attempts.append(fileName + ".dll"_L1);
 
     // If the fileName is an absolute path we try that first, otherwise we
     // use the system-specific suffix first
@@ -91,22 +56,11 @@ bool QLibraryPrivate::load_sys()
         attempts.prepend(fileName);
     else
         attempts.append(fileName);
-#ifdef Q_OS_WINRT
-    if (fileName.startsWith(QLatin1Char('/')))
-        attempts.prepend(QDir::rootPath() + fileName);
-#endif
 
     locker.unlock();
     Handle hnd = nullptr;
-    for (const QString &attempt : qAsConst(attempts)) {
-#ifndef Q_OS_WINRT
+    for (const QString &attempt : std::as_const(attempts)) {
         hnd = LoadLibrary(reinterpret_cast<const wchar_t*>(QDir::toNativeSeparators(attempt).utf16()));
-#else // Q_OS_WINRT
-        QString path = QDir::toNativeSeparators(QDir::current().relativeFilePath(attempt));
-        hnd = LoadPackagedLibrary(reinterpret_cast<LPCWSTR>(path.utf16()), 0);
-        if (hnd)
-            qualifiedFileName = attempt;
-#endif // !Q_OS_WINRT
 
         // If we have a handle or the last error is something other than "unable
         // to find the module", then bail out
@@ -114,9 +68,7 @@ bool QLibraryPrivate::load_sys()
             break;
     }
 
-#ifndef Q_OS_WINRT
     SetErrorMode(oldmode);
-#endif
     locker.relock();
     if (!hnd) {
         errorString = QLibrary::tr("Cannot load library %1: %2").arg(
@@ -125,14 +77,13 @@ bool QLibraryPrivate::load_sys()
         // Query the actual name of the library that was loaded
         errorString.clear();
 
-#ifndef Q_OS_WINRT
         wchar_t buffer[MAX_PATH];
         ::GetModuleFileName(hnd, buffer, MAX_PATH);
 
         QString moduleFileName = QString::fromWCharArray(buffer);
-        moduleFileName.remove(0, 1 + moduleFileName.lastIndexOf(QLatin1Char('\\')));
+        moduleFileName.remove(0, 1 + moduleFileName.lastIndexOf(u'\\'));
         const QDir dir(fsEntry.path());
-        if (dir.path() == QLatin1String("."))
+        if (dir.path() == "."_L1)
             qualifiedFileName = moduleFileName;
         else
             qualifiedFileName = dir.filePath(moduleFileName);
@@ -147,7 +98,6 @@ bool QLibraryPrivate::load_sys()
             Q_ASSERT(!ok || hmod == hnd);
             Q_UNUSED(ok);
         }
-#endif // !Q_OS_WINRT
     }
     pHnd.storeRelaxed(hnd);
     return (pHnd != nullptr);
@@ -164,7 +114,7 @@ bool QLibraryPrivate::unload_sys()
     return true;
 }
 
-QFunctionPointer QLibraryPrivate::resolve_sys(const char* symbol)
+QFunctionPointer QLibraryPrivate::resolve_sys(const char *symbol)
 {
     FARPROC address = GetProcAddress(pHnd.loadAcquire(), symbol);
     return QFunctionPointer(address);

@@ -5,6 +5,7 @@ deps_libweston = [
 	dep_libdl,
 	dep_libdrm_headers,
 	dep_xkbcommon,
+	dep_matrix_c
 ]
 srcs_libweston = [
 	git_version_h,
@@ -30,8 +31,8 @@ srcs_libweston = [
 	'weston-log-file.c',
 	'weston-log-flight-rec.c',
 	'weston-log.c',
+	'weston-direct-display.c',
 	'zoom.c',
-	'../shared/matrix.c',
 	linux_dmabuf_unstable_v1_protocol_c,
 	linux_dmabuf_unstable_v1_server_protocol_h,
 	linux_explicit_synchronization_unstable_v1_protocol_c,
@@ -62,6 +63,8 @@ srcs_libweston = [
 	xdg_output_unstable_v1_server_protocol_h,
 	weston_debug_protocol_c,
 	weston_debug_server_protocol_h,
+	weston_direct_display_protocol_c,
+	weston_direct_display_server_protocol_h,
 ]
 
 if get_option('renderer-gl')
@@ -75,30 +78,44 @@ endif
 lib_weston = shared_library(
 	'weston-@0@'.format(libweston_major),
 	srcs_libweston,
-	include_directories: [ include_directories('..', '../shared'), public_inc ],
+	include_directories: common_inc,
 	install: true,
 	version: '0.0.@0@'.format(libweston_revision),
 	link_whole: lib_libshared,
 	dependencies: deps_libweston
 )
 
-dep_libweston = declare_dependency(
+deps_for_libweston_users = [
+	dep_wayland_server,
+	dep_pixman,
+	dep_xkbcommon,
+]
+
+# For external users, like Weston.
+dep_libweston_public = declare_dependency(
 	link_with: lib_weston,
-	include_directories: [ include_directories('.'), public_inc ],
-	dependencies: deps_libweston
+	include_directories: public_inc,
+	dependencies: deps_for_libweston_users
 )
 
-# XXX: We should be able to use dep_libweston.partial_dependency() instead
+# For internal users, like the backends.
+dep_libweston_private = declare_dependency(
+	link_with: lib_weston,
+	include_directories: [ include_directories('.'), public_inc ],
+	dependencies: deps_for_libweston_users
+)
+
+# XXX: We should be able to use dep_libweston_private.partial_dependency() instead
 # of this, but a Meson bug makes it not work. It will be fixed with
 # https://github.com/mesonbuild/meson/pull/5167
 # in hopefully Meson 0.51.
-dep_libweston_h = declare_dependency(
+dep_libweston_private_h_deps = []
+foreach d : deps_for_libweston_users
+	dep_libweston_private_h_deps += d.partial_dependency(compile_args: true)
+endforeach
+dep_libweston_private_h = declare_dependency(
 	include_directories: [ include_directories('.'), public_inc ],
-	dependencies: [
-		dep_pixman.partial_dependency(compile_args: true),
-		dep_xkbcommon.partial_dependency(compile_args: true),
-		dep_wayland_server.partial_dependency(compile_args: true)
-	]
+	dependencies: dep_libweston_private_h_deps
 )
 
 pkgconfig.generate(
@@ -107,7 +124,7 @@ pkgconfig.generate(
 	name: 'libweston API',
 	version: version_weston,
 	description: 'Header files for libweston compositors development',
-	requires_private: [ dep_wayland_server, dep_pixman, dep_xkbcommon ],
+	requires_private: deps_for_libweston_users,
 	subdirs: dir_include_libweston
 )
 
@@ -128,7 +145,7 @@ srcs_session_helper = [
 	'launcher-util.c',
 	'launcher-weston-launch.c',
 ]
-deps_session_helper = [ dep_libweston_h ]
+deps_session_helper = [ dep_libweston_private_h ]
 
 if get_option('backend-drm')
 	deps_session_helper += dep_libdrm
@@ -167,7 +184,7 @@ endif
 lib_session_helper = static_library(
 	'session-helper',
 	srcs_session_helper,
-	include_directories: include_directories('..', '../shared'),
+	include_directories: common_inc,
 	dependencies: deps_session_helper,
 	install: false
 )
@@ -181,11 +198,11 @@ lib_libinput_backend = static_library(
 		'libinput-seat.c'
 	],
 	dependencies: [
-		dep_libweston,
+		dep_libweston_private,
 		dep_libinput,
 		dependency('libudev', version: '>= 136')
 	],
-	include_directories: include_directories('..'),
+	include_directories: common_inc,
 	install: false
 )
 dep_libinput_backend = declare_dependency(
@@ -209,7 +226,7 @@ if get_option('weston-launch')
 		'weston-launch',
 		'weston-launch.c',
 		dependencies: [dep_pam, systemd_dep, dep_libdrm],
-		include_directories: include_directories('..'),
+		include_directories: common_inc,
 		install: true
 	)
 

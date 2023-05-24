@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,99 +9,86 @@
  * Served from chrome://bluetooth-internals/.
  */
 
-cr.define('object_fieldset', function() {
+import {assert} from 'chrome://resources/js/assert_ts.js';
+import {CustomElement} from 'chrome://resources/js/custom_element.js';
+
+import {getTemplate} from './object_fieldset.html.js';
+
+/**
+ * A fieldset that lists the properties of a given object. These properties
+ * are displayed as a series of rows for each key-value pair.
+ * Only the object's own properties are displayed. Boolean values are
+ * displayed using images: a green check for 'true', and a red cancel 'x' for
+ * 'false'. All other types are converted to their string representation for
+ * display.
+ */
+export class ObjectFieldSetElement extends CustomElement {
+  static get template() {
+    return getTemplate();
+  }
+
+  static get is() {
+    return 'object-field-set';
+  }
+
+  static get observedAttributes() {
+    return ['data-value', 'show-all'];
+  }
+
+  /** @return {boolean} */
+  get showAll() {
+    return this.hasAttribute('show-all');
+  }
+
+  /** @return {Object} */
+  get value() {
+    return this.dataset.value ? JSON.parse(this.dataset.value) : null;
+  }
 
   /**
-   * A fieldset that lists the properties of a given object. These properties
-   * are displayed as a series of rows for each key-value pair.
-   * Only the object's own properties are displayed. Boolean values are
-   * displayed using images: a green check for 'true', and a red cancel 'x' for
-   * 'false'. All other types are converted to their string representation for
-   * display.
-   * @constructor
-   * @extends {HTMLFieldSetElement}
+   * Deletes and recreates the table structure with current object data if the
+   * object data or "show-all" property have changed.
    */
-  const ObjectFieldSet = cr.ui.define('fieldset');
+  attributeChangedCallback(name, oldValue, newValue) {
+    assert(name === 'data-value' || name === 'show-all');
+    if (newValue === oldValue || !this.dataset.value) {
+      return;
+    }
 
-  ObjectFieldSet.prototype = {
-    __proto__: HTMLFieldSetElement.prototype,
+    const fieldset = this.shadowRoot.querySelector('fieldset');
+    fieldset.innerHTML = trustedTypes.emptyHTML;
 
-    set showAll(showAll) {
-      this.showAll_ = showAll;
-    },
+    const nameMap = JSON.parse(this.dataset.nameMap);
+    const valueObject = JSON.parse(this.dataset.value);
+    assert(valueObject);
+    Object.keys(valueObject).forEach(function(propName) {
+      const value = valueObject[propName];
+      if (value === false && !this.showAll) {
+        return;
+      }
 
-    get showAll() {
-      return this.showAll_;
-    },
+      const name = nameMap[propName] || propName;
+      const newField = document.createElement('div');
+      newField.classList.add('status');
 
-    /**
-     * Decorates the element as an ObjectFieldset.
-     */
-    decorate() {
-      this.classList.add('object-fieldset');
+      const nameDiv = document.createElement('div');
+      nameDiv.textContent = name + ':';
+      newField.appendChild(nameDiv);
 
-      /** @type {?Object} */
-      this.value = null;
-      /** @private {?Object<string, string>} */
-      this.nameMap_ = null;
-      this.showAll_ = true;
-    },
+      const valueDiv = document.createElement('div');
+      valueDiv.dataset.field = propName;
 
-    /**
-     * Sets the object data to be displayed in the fieldset.
-     * @param {!Object} value
-     */
-    setObject(value) {
-      this.value = value;
-      this.redraw();
-    },
+      if (typeof (value) === 'boolean') {
+        valueDiv.classList.add('toggle-status');
+        valueDiv.classList.toggle('checked', value);
+      } else {
+        valueDiv.textContent = String(value);
+      }
 
-    /**
-     * Sets the object used to map property names to display names. If a display
-     * name is not provided, the default property name will be used.
-     * @param {!Object<string, string>} nameMap
-     */
-    setPropertyDisplayNames(nameMap) {
-      this.nameMap_ = nameMap;
-    },
+      newField.appendChild(valueDiv);
+      fieldset.appendChild(newField);
+    }, this);
+  }
+}
 
-    /**
-     * Deletes and recreates the table structure with current object data.
-     */
-    redraw() {
-      this.innerHTML = trustedTypes.emptyHTML;
-
-      Object.keys(assert(this.value)).forEach(function(propName) {
-        const value = this.value[propName];
-        if (value === false && !this.showAll_) {
-          return;
-        }
-
-        const name = this.nameMap_[propName] || propName;
-        const newField = document.createElement('div');
-        newField.classList.add('status');
-
-        const nameDiv = document.createElement('div');
-        nameDiv.textContent = name + ':';
-        newField.appendChild(nameDiv);
-
-        const valueDiv = document.createElement('div');
-        valueDiv.dataset.field = propName;
-
-        if (typeof(value) === 'boolean') {
-          valueDiv.classList.add('toggle-status');
-          valueDiv.classList.toggle('checked', value);
-        } else {
-          valueDiv.textContent = String(value);
-        }
-
-        newField.appendChild(valueDiv);
-        this.appendChild(newField);
-      }, this);
-    },
-  };
-
-  return {
-    ObjectFieldSet: ObjectFieldSet,
-  };
-});
+customElements.define('object-field-set', ObjectFieldSetElement);

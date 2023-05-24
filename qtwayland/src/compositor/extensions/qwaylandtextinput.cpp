@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017-2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017-2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwaylandtextinput.h"
 #include "qwaylandtextinput_p.h"
@@ -36,12 +10,13 @@
 #include "qwaylandsurface.h"
 #include "qwaylandview.h"
 #include "qwaylandinputmethodeventbuilder_p.h"
+#include "qwaylandinputmethodcontrol.h"
 
 #include <QGuiApplication>
 #include <QInputMethodEvent>
 
 #if QT_CONFIG(xkbcommon)
-#include <QtXkbCommonSupport/private/qxkbcommon_p.h>
+#include <QtGui/private/qxkbcommon_p.h>
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -130,10 +105,10 @@ void QWaylandTextInputPrivate::sendInputMethodEvent(QInputMethodEvent *event)
 
     if (event->replacementLength() > 0 || event->replacementStart() != 0) {
         // Remove replacement
-        afterCommit.cursorPosition = qBound(0, afterCommit.cursorPosition + event->replacementStart(), afterCommit.surroundingText.length());
+        afterCommit.cursorPosition = qBound(0, afterCommit.cursorPosition + event->replacementStart(), afterCommit.surroundingText.size());
         afterCommit.surroundingText.remove(afterCommit.cursorPosition,
                                            qMin(event->replacementLength(),
-                                                afterCommit.surroundingText.length() - afterCommit.cursorPosition));
+                                                afterCommit.surroundingText.size() - afterCommit.cursorPosition));
 
         if (event->replacementStart() <= 0 && (event->replacementLength() >= -event->replacementStart())) {
             const int selectionStart = qMin(currentState->cursorPosition, currentState->anchorPosition);
@@ -149,7 +124,7 @@ void QWaylandTextInputPrivate::sendInputMethodEvent(QInputMethodEvent *event)
 
     // Insert commit string
     afterCommit.surroundingText.insert(afterCommit.cursorPosition, event->commitString());
-    afterCommit.cursorPosition += event->commitString().length();
+    afterCommit.cursorPosition += event->commitString().size();
     afterCommit.anchorPosition = afterCommit.cursorPosition;
 
     for (const QInputMethodEvent::Attribute &attribute : event->attributes()) {
@@ -194,13 +169,22 @@ void QWaylandTextInputPrivate::sendKeyEvent(QKeyEvent *event)
     if (!focusResource || !focusResource->handle)
         return;
 
-    // TODO add support for modifiers
+    uint mods = 0;
+    const auto &qtMods = event->modifiers();
+    if (qtMods & Qt::ShiftModifier)
+        mods |= shiftModifierMask;
+    if (qtMods & Qt::ControlModifier)
+        mods |= controlModifierMask;
+    if (qtMods & Qt::AltModifier)
+        mods |= altModifierMask;
+    if (qtMods & Qt::MetaModifier)
+        mods |= metaModifierMask;
 
 #if QT_CONFIG(xkbcommon)
     for (xkb_keysym_t keysym : QXkbCommon::toKeysym(event)) {
         send_keysym(focusResource->handle, event->timestamp(), keysym,
                     event->type() == QEvent::KeyPress ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED,
-                    0);
+                    mods);
     }
 #else
     Q_UNUSED(event);
@@ -313,9 +297,24 @@ void QWaylandTextInputPrivate::setFocus(QWaylandSurface *surface)
     focus = surface;
 }
 
+void QWaylandTextInputPrivate::sendModifiersMap(const QByteArray &modifiersMap)
+{
+    send_modifiers_map(focusResource->handle, modifiersMap);
+}
+
+#if !QT_CONFIG(xkbcommon)
+#define XKB_MOD_NAME_SHIFT   "Shift"
+#define XKB_MOD_NAME_CTRL    "Control"
+#define XKB_MOD_NAME_ALT     "Mod1"
+#define XKB_MOD_NAME_LOGO    "Mod4"
+#endif
 void QWaylandTextInputPrivate::zwp_text_input_v2_bind_resource(Resource *resource)
 {
-    send_modifiers_map(resource->handle, QByteArray(""));
+    QByteArray modifiers = XKB_MOD_NAME_SHIFT + QByteArray(1, '\0');
+    modifiers += XKB_MOD_NAME_CTRL + QByteArray(1, '\0');
+    modifiers += XKB_MOD_NAME_ALT + QByteArray(1, '\0');
+    modifiers += XKB_MOD_NAME_LOGO + QByteArray(1, '\0');
+    send_modifiers_map(resource->handle, modifiers);
 }
 
 void QWaylandTextInputPrivate::zwp_text_input_v2_destroy_resource(Resource *resource)
@@ -335,6 +334,11 @@ void QWaylandTextInputPrivate::zwp_text_input_v2_enable(Resource *resource, wl_r
 
     QWaylandSurface *s = QWaylandSurface::fromResource(surface);
     enabledSurfaces.insert(resource, s);
+
+    QWaylandInputMethodControl *control = s->inputMethodControl();
+    if (control)
+        control->updateTextInput();
+
     emit q->surfaceEnabled(s);
 }
 
@@ -388,9 +392,9 @@ void QWaylandTextInputPrivate::zwp_text_input_v2_update_state(Resource *resource
 
     Qt::InputMethodQueries queries;
     if (flags == update_state_change) {
-        queries = currentState->mergeChanged(*pendingState.data());
+        queries = currentState->mergeChanged(*pendingState);
     } else {
-        queries = pendingState->updatedQueries(*currentState.data());
+        queries = pendingState->updatedQueries(*currentState);
         currentState.swap(pendingState);
     }
 
@@ -601,4 +605,33 @@ QByteArray QWaylandTextInput::interfaceName()
     return QWaylandTextInputPrivate::interfaceName();
 }
 
+
+void QWaylandTextInput::sendModifiersMap(const QByteArray &modifiersMap)
+{
+    Q_D(QWaylandTextInput);
+
+    const QList<QByteArray> modifiers = modifiersMap.split('\0');
+
+    int numModifiers = modifiers.size();
+    if (modifiers.last().isEmpty())
+        numModifiers--;
+
+    for (int i = 0; i < numModifiers; ++i) {
+        const auto modString = modifiers.at(i);
+        if (modString == XKB_MOD_NAME_SHIFT)
+            d->shiftModifierMask = 1 << i;
+        else if (modString == XKB_MOD_NAME_CTRL)
+            d->controlModifierMask = 1 << i;
+        else if (modString == XKB_MOD_NAME_ALT)
+            d->altModifierMask = 1 << i;
+        else if (modString == XKB_MOD_NAME_LOGO)
+            d->metaModifierMask = 1 << i;
+        else
+            qCDebug(qLcWaylandCompositorInputMethods) << "unsupported modifier name " << modString;
+    }
+    d->sendModifiersMap(modifiersMap);
+}
+
 QT_END_NAMESPACE
+
+#include "moc_qwaylandtextinput.cpp"

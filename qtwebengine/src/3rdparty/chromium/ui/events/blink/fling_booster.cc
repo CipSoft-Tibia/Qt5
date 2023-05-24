@@ -1,10 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/events/blink/fling_booster.h"
 
 #include "base/trace_event/trace_event.h"
+#include "ui/events/blink/blink_features.h"
 
 using blink::WebGestureEvent;
 using blink::WebInputEvent;
@@ -22,8 +23,7 @@ const double kMinBoostTouchScrollSpeedSquare = 150 * 150.;
 // ticks, scrolls or flings of sufficient velocity relative to the current fling
 // are received. The default value on Android native views is 40ms, but we use a
 // slightly increased value to accomodate small IPC message delays.
-constexpr base::TimeDelta kFlingBoostTimeoutDelay =
-    base::TimeDelta::FromSecondsD(0.05);
+constexpr base::TimeDelta kFlingBoostTimeoutDelay = base::Seconds(0.05);
 }  // namespace
 
 namespace ui {
@@ -34,6 +34,13 @@ gfx::Vector2dF FlingBooster::GetVelocityForFlingStart(
             fling_start.GetType());
   gfx::Vector2dF velocity(fling_start.data.fling_start.velocity_x,
                           fling_start.data.fling_start.velocity_y);
+
+  static const bool reduce_horizontal_fling_velocity =
+      base::FeatureList::IsEnabled(features::kReduceHorizontalFlingVelocity);
+  if (reduce_horizontal_fling_velocity) {
+    // Reduce the horizontal velocity of flings.
+    velocity.Scale(0.2f, 1.0f);
+  }
   TRACE_EVENT2("input", "FlingBooster::GetVelocityForFlingStart", "vx",
                velocity.x(), "vy", velocity.y());
 

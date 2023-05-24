@@ -1,4 +1,4 @@
-// Copyright (c) 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,12 +11,13 @@
 #include "third_party/blink/renderer/platform/fonts/font_test_utilities.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_spacing.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_test_info.h"
+#include "third_party/blink/renderer/platform/testing/font_test_base.h"
 #include "third_party/blink/renderer/platform/testing/font_test_helpers.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 
 namespace blink {
 
-class ShapeResultTest : public testing::Test {
+class ShapeResultTest : public FontTestBase {
  protected:
   void SetUp() override {
     font_description.SetComputedSize(12.0);
@@ -251,12 +252,53 @@ TEST_F(ShapeResultTest, CopyRangeArabicMultiRun) {
   TestCopyRangesArabic(result.get());
 }
 
+static struct IsStartSafeToBreakData {
+  bool expected;
+  const char16_t* text;
+  TextDirection direction = TextDirection::kLtr;
+  unsigned start_offset = 0;
+  unsigned end_offset = 0;
+} is_start_safe_to_break_data[] = {
+    {true, u"XX", TextDirection::kLtr},
+    {true, u"XX", TextDirection::kRtl},
+    // SubRange, assuming there is no kerning between "XX".
+    {true, u"XX", TextDirection::kLtr, 1, 2},
+    {true, u"XX", TextDirection::kRtl, 1, 2},
+    // Between "A" and "V" usually have a kerning.
+    {false, u"AV", TextDirection::kLtr, 1, 2},
+    {false, u"AV", TextDirection::kRtl, 1, 2},
+    // SubRange at the middle of a cluster.
+    // U+06D7 ARABIC SMALL HIGH LIGATURE QAF WITH LAM WITH ALEF MAKSURA
+    {false, u" \u06D7", TextDirection::kLtr, 1, 2},
+    {false, u" \u06D7", TextDirection::kRtl, 1, 2},
+    {false, u" \u06D7.", TextDirection::kLtr, 1, 3},
+    {false, u" \u06D7.", TextDirection::kRtl, 1, 3},
+};
+
+class IsStartSafeToBreakDataTest
+    : public ShapeResultTest,
+      public testing::WithParamInterface<IsStartSafeToBreakData> {};
+
+INSTANTIATE_TEST_SUITE_P(ShapeResultTest,
+                         IsStartSafeToBreakDataTest,
+                         testing::ValuesIn(is_start_safe_to_break_data));
+
+TEST_P(IsStartSafeToBreakDataTest, IsStartSafeToBreakData) {
+  const IsStartSafeToBreakData data = GetParam();
+  String string(data.text);
+  HarfBuzzShaper shaper(string);
+  scoped_refptr<ShapeResult> result = shaper.Shape(&font, data.direction);
+  if (data.end_offset)
+    result = result->SubRange(data.start_offset, data.end_offset);
+  EXPECT_EQ(result->IsStartSafeToBreak(), data.expected);
+}
+
 TEST_F(ShapeResultTest, ComputeInkBoundsWithZeroOffset) {
   String string(u"abc");
   HarfBuzzShaper shaper(string);
   auto result = shaper.Shape(&font, TextDirection::kLtr);
   EXPECT_FALSE(HasNonZeroGlyphOffsets(*result));
-  EXPECT_FALSE(result->ComputeInkBounds().IsZero());
+  EXPECT_FALSE(result->ComputeInkBounds().IsEmpty());
 }
 
 // TDOO(yosin): We should use a font including U+0A81 or other code point
@@ -267,7 +309,7 @@ TEST_F(ShapeResultTest, DISABLED_ComputeInkBoundsWithNonZeroOffset) {
   HarfBuzzShaper shaper(string);
   auto result = shaper.Shape(&font, TextDirection::kLtr);
   ASSERT_TRUE(HasNonZeroGlyphOffsets(*result));
-  EXPECT_FALSE(result->ComputeInkBounds().IsZero());
+  EXPECT_FALSE(result->ComputeInkBounds().IsEmpty());
 }
 
 }  // namespace blink

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium OS Authors. All rights reserved.
+// Copyright 2019 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@ syntax = "proto2";
 option optimize_for = LITE_RUNTIME;
 
 package login_manager;
+option go_package = "chromiumos/system_api/login_manager_proto";
 
 // Metadata sent with a 'store' request to the login screen storage.
 message LoginScreenStorageMetadata {

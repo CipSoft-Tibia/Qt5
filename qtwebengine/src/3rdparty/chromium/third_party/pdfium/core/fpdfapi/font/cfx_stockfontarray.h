@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,8 +18,7 @@ class CFX_StockFontArray {
   ~CFX_StockFontArray();
 
   RetainPtr<CPDF_Font> GetFont(CFX_FontMapper::StandardFont index) const;
-  void SetFont(CFX_FontMapper::StandardFont index,
-               const RetainPtr<CPDF_Font>& pFont);
+  void SetFont(CFX_FontMapper::StandardFont index, RetainPtr<CPDF_Font> pFont);
 
  private:
   RetainPtr<CPDF_Font> m_StockFonts[14];

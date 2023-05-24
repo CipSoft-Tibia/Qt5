@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -34,7 +34,7 @@ class CXFA_NodeLocale final : public GCedLocaleIface {
   WideString GetMonthName(int32_t nMonth, bool bAbbr) const override;
   WideString GetDayName(int32_t nWeek, bool bAbbr) const override;
   WideString GetMeridiemName(bool bAM) const override;
-  FX_TIMEZONE GetTimeZone() const override;
+  int GetTimeZoneInMinutes() const override;
   WideString GetEraName(bool bAD) const override;
 
   WideString GetDatePattern(DateTimeSubcategory eType) const override;

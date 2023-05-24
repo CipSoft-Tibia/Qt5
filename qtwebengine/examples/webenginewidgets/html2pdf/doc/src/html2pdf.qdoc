@@ -1,32 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example webenginewidgets/html2pdf
+    \examplecategory {Web Technologies}
     \title WebEngine Widgets Html2Pdf Example
     \ingroup webengine-widgetexamples
     \brief Converts web pages to PDF documents using \QWE.
@@ -43,9 +20,9 @@
     In order to convert a web page into a PDF document we need to:
 
     \list 1
-        \li Create a \l QWebEnginePage.
-        \li Tell the \l QWebEnginePage to begin loading the target URL and wait for it to finish.
-        \li Tell the \l QWebEnginePage to begin converting the loaded page into a PDF file and again wait for it to finish.
+        \li Create a \l QWebEngineView.
+        \li Tell the \l QWebEngineView to begin loading the target URL and wait for it to finish.
+        \li Tell the \l QWebEngineView to begin converting the loaded page into a PDF file and again wait for it to finish.
         \li Once the conversion is finished, exit the program.
     \endlist
 
@@ -56,8 +33,8 @@
     \printuntil Html2PdfConverter
     \printuntil /^\};/
 
-    In the constructor we create the \l QWebEnginePage and connect to its \l
-    QWebEnginePage::loadFinished and \l QWebEnginePage::pdfPrintingFinished
+    In the constructor we create the \l QWebEngineView and connect to its \l
+    QWebEngineView::loadFinished and \l QWebEngineView::pdfPrintingFinished
     signals:
 
     \skipto Html2PdfConverter::Html2PdfConverter

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,51 +9,24 @@
 #include <algorithm>
 #include <string>
 #include <utility>
-#include <vector>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/callback_forward.h"
 #include "base/compiler_specific.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/sparse_histogram.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
-#include "base/task/post_task.h"
 #include "base/task/thread_pool.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
 #include "net/base/net_errors.h"
 #include "net/nqe/effective_connection_type_observer.h"
 #include "net/nqe/network_quality_estimator.h"
 
-#if defined(OS_ANDROID)
-#include "base/metrics/histogram_functions.h"
-#include "net/android/network_library.h"
+#if BUILDFLAG(IS_ANDROID)
 #include "services/network/public/cpp/network_connection_tracker.h"
 #endif
-
-namespace {
-
-#if defined(OS_ANDROID)
-// Log the |NCN.NetworkOperatorMCCMNC| histogram.
-void LogOperatorCodeHistogram(network::mojom::ConnectionType type) {
-  // On a connection type change to cellular, log the network operator MCC/MNC.
-  // Log zero in other cases.
-  unsigned mcc_mnc = 0;
-  if (network::NetworkConnectionTracker::IsConnectionCellular(type)) {
-    // Log zero if not perfectly converted.
-    if (!base::StringToUint(net::android::GetTelephonyNetworkOperator(),
-                            &mcc_mnc)) {
-      mcc_mnc = 0;
-    }
-  }
-  base::UmaHistogramSparse("NCN.NetworkOperatorMCCMNC", mcc_mnc);
-}
-#endif
-
-}  // namespace
 
 namespace metrics {
 
@@ -92,8 +65,6 @@ NetworkMetricsProvider::NetworkMetricsProvider(
       network_connection_tracker_initialized_(false),
       wifi_phy_layer_protocol_is_ambiguous_(false),
       wifi_phy_layer_protocol_(net::WIFI_PHY_LAYER_PROTOCOL_UNKNOWN),
-      total_aborts_(0),
-      total_codes_(0),
       network_quality_estimator_provider_(
           std::move(network_quality_estimator_provider)),
       effective_connection_type_(net::EFFECTIVE_CONNECTION_TYPE_UNKNOWN),
@@ -131,32 +102,6 @@ void NetworkMetricsProvider::SetNetworkConnectionTracker(
                      weak_ptr_factory_.GetWeakPtr()));
   if (connection_type_ != network::mojom::ConnectionType::CONNECTION_UNKNOWN)
     network_connection_tracker_initialized_ = true;
-}
-
-void NetworkMetricsProvider::FinalizingMetricsLogRecord() {
-#if defined(OS_ANDROID)
-  // Metrics logged here will be included in every metrics log record.  It's not
-  // yet clear if these metrics are generally useful enough to warrant being
-  // added to the SystemProfile proto, so they are logged here as histograms for
-  // now.
-  LogOperatorCodeHistogram(connection_type_);
-  if (network::NetworkConnectionTracker::IsConnectionCellular(
-          connection_type_)) {
-    UMA_HISTOGRAM_ENUMERATION(
-        "NCN.CellularConnectionSubtype",
-        net::NetworkChangeNotifier::GetConnectionSubtype(),
-        net::NetworkChangeNotifier::ConnectionSubtype::SUBTYPE_LAST + 1);
-  }
-#endif
-}
-
-void NetworkMetricsProvider::ProvideCurrentSessionData(
-    ChromeUserMetricsExtension*) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  // ProvideCurrentSessionData is called on the main thread, at the time a
-  // metrics record is being finalized.
-  FinalizingMetricsLogRecord();
-  LogAggregatedMetrics();
 }
 
 void NetworkMetricsProvider::ProvideSystemProfileMetrics(
@@ -276,6 +221,12 @@ NetworkMetricsProvider::GetWifiPHYLayerProtocol() const {
       return SystemProfileProto::Network::WIFI_PHY_LAYER_PROTOCOL_G;
     case net::WIFI_PHY_LAYER_PROTOCOL_N:
       return SystemProfileProto::Network::WIFI_PHY_LAYER_PROTOCOL_N;
+    case net::WIFI_PHY_LAYER_PROTOCOL_AC:
+      return SystemProfileProto::Network::WIFI_PHY_LAYER_PROTOCOL_AC;
+    case net::WIFI_PHY_LAYER_PROTOCOL_AD:
+      return SystemProfileProto::Network::WIFI_PHY_LAYER_PROTOCOL_AD;
+    case net::WIFI_PHY_LAYER_PROTOCOL_AX:
+      return SystemProfileProto::Network::WIFI_PHY_LAYER_PROTOCOL_AX;
     case net::WIFI_PHY_LAYER_PROTOCOL_UNKNOWN:
       return SystemProfileProto::Network::WIFI_PHY_LAYER_PROTOCOL_UNKNOWN;
   }
@@ -302,26 +253,6 @@ void NetworkMetricsProvider::OnWifiPHYLayerProtocolResult(
     wifi_phy_layer_protocol_is_ambiguous_ = true;
   }
   wifi_phy_layer_protocol_ = mode;
-}
-
-void NetworkMetricsProvider::LogAggregatedMetrics() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  base::HistogramBase* error_codes = base::SparseHistogram::FactoryGet(
-      "Net.ErrorCodesForMainFrame4",
-      base::HistogramBase::kUmaTargetedHistogramFlag);
-  std::unique_ptr<base::HistogramSamples> samples =
-      error_codes->SnapshotSamples();
-  base::HistogramBase::Count new_aborts =
-      samples->GetCount(-net::ERR_ABORTED) - total_aborts_;
-  base::HistogramBase::Count new_codes = samples->TotalCount() - total_codes_;
-  if (new_codes > 0) {
-    UMA_HISTOGRAM_CUSTOM_COUNTS("Net.ErrAborted.CountPerUpload2", new_aborts, 1,
-                                100000000, 50);
-    UMA_HISTOGRAM_PERCENTAGE("Net.ErrAborted.ProportionPerUpload",
-                             (100 * new_aborts) / new_codes);
-    total_codes_ += new_codes;
-    total_aborts_ += new_aborts;
-  }
 }
 
 void NetworkMetricsProvider::OnEffectiveConnectionTypeChanged(

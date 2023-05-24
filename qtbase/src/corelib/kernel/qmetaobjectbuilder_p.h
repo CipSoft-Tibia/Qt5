@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QMETAOBJECTBUILDER_P_H
 #define QMETAOBJECTBUILDER_P_H
@@ -58,6 +22,7 @@
 #include <QtCore/qhash.h>
 #include <QtCore/qmap.h>
 
+#include <private/qmetaobject_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -93,14 +58,6 @@ public:
     };
     Q_DECLARE_FLAGS(AddMembers, AddMember)
 
-    // ### TODO Qt6: remove me and use the MetaObjectFlags enum from qmetaobject_p.h
-    enum MetaObjectFlag { // keep it in sync with enum MetaObjectFlags from qmetaobject_p.h
-        DynamicMetaObject = 0x01,
-        RequiresVariantMetaObject = 0x02,
-        PropertyAccessInStaticMetaCall = 0x04 // since Qt 5.5, property code is in the static metacall
-    };
-    Q_DECLARE_FLAGS(MetaObjectFlags, MetaObjectFlag)
-
     QMetaObjectBuilder();
     explicit QMetaObjectBuilder(const QMetaObject *prototype, QMetaObjectBuilder::AddMembers members = AllMembers);
     virtual ~QMetaObjectBuilder();
@@ -132,6 +89,7 @@ public:
     QMetaMethodBuilder addConstructor(const QMetaMethod& prototype);
 
     QMetaPropertyBuilder addProperty(const QByteArray& name, const QByteArray& type, int notifierId=-1);
+    QMetaPropertyBuilder addProperty(const QByteArray& name, const QByteArray& type, QMetaType metaType, int notifierId=-1);
     QMetaPropertyBuilder addProperty(const QMetaProperty& prototype);
 
     QMetaEnumBuilder addEnumerator(const QByteArray& name);
@@ -173,15 +131,6 @@ public:
     void setStaticMetacallFunction(QMetaObjectBuilder::StaticMetacallFunction value);
 
     QMetaObject *toMetaObject() const;
-    QByteArray toRelocatableData(bool * = nullptr) const;
-    static void fromRelocatableData(QMetaObject *, const QMetaObject *, const QByteArray &);
-
-#ifndef QT_NO_DATASTREAM
-    void serialize(QDataStream& stream) const;
-    void deserialize
-        (QDataStream& stream,
-         const QMap<QByteArray, const QMetaObject *>& references);
-#endif
 
 private:
     Q_DISABLE_COPY_MOVE(QMetaObjectBuilder)
@@ -218,6 +167,9 @@ public:
 
     int attributes() const;
     void setAttributes(int value);
+
+    int isConst() const;
+    void setConst(bool methodIsConst=true);
 
     int revision() const;
     void setRevision(int revision);
@@ -262,6 +214,8 @@ public:
     bool isEnumOrFlag() const;
     bool isConstant() const;
     bool isFinal() const;
+    bool isAlias() const;
+    bool isBindable() const;
 
     void setReadable(bool value);
     void setWritable(bool value);
@@ -269,12 +223,13 @@ public:
     void setDesignable(bool value);
     void setScriptable(bool value);
     void setStored(bool value);
-    void setEditable(bool value);
     void setUser(bool value);
     void setStdCppSet(bool value);
     void setEnumOrFlag(bool value);
     void setConstant(bool value);
     void setFinal(bool value);
+    void setAlias(bool value);
+    void setBindable(bool value);
 
     int revision() const;
     void setRevision(int revision);
@@ -303,6 +258,9 @@ public:
     QByteArray enumName() const;
     void setEnumName(const QByteArray &alias);
 
+    QMetaType metaType() const;
+    void setMetaType(QMetaType metaType);
+
     bool isFlag() const;
     void setIsFlag(bool value);
 
@@ -330,6 +288,7 @@ private:
 
 class Q_CORE_EXPORT QMetaStringTable
 {
+    Q_DISABLE_COPY_MOVE(QMetaStringTable)
 public:
     explicit QMetaStringTable(const QByteArray &className);
 
@@ -347,7 +306,6 @@ private:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QMetaObjectBuilder::AddMembers)
-Q_DECLARE_OPERATORS_FOR_FLAGS(QMetaObjectBuilder::MetaObjectFlags)
 
 QT_END_NAMESPACE
 

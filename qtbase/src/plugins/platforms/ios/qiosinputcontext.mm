@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qiosinputcontext.h"
 
@@ -155,12 +119,12 @@ static QUIView *focusView()
 {
     [self keyboardWillOrDidChange:notification];
 
-    UIResponder *firstResponder = [UIResponder currentFirstResponder];
+    UIResponder *firstResponder = [UIResponder qt_currentFirstResponder];
     if (![firstResponder isKindOfClass:[QIOSTextInputResponder class]])
         return;
 
     // Enable hide-keyboard gesture
-    self.enabled = YES;
+    self.enabled = m_context->isInputPanelVisible();
 
     m_context->scrollToCursor();
 }
@@ -264,7 +228,7 @@ static QUIView *focusView()
 
     if (self.state == UIGestureRecognizerStateBegan) {
         qImDebug("hide keyboard gesture was triggered");
-        UIResponder *firstResponder = [UIResponder currentFirstResponder];
+        UIResponder *firstResponder = [UIResponder qt_currentFirstResponder];
         Q_ASSERT([firstResponder isKindOfClass:[QIOSTextInputResponder class]]);
         [firstResponder resignFirstResponder];
     }
@@ -297,7 +261,7 @@ QT_BEGIN_NAMESPACE
 Qt::InputMethodQueries ImeState::update(Qt::InputMethodQueries properties)
 {
     if (!properties)
-        return 0;
+        return {};
 
     QInputMethodQueryEvent newState(properties);
 
@@ -402,7 +366,7 @@ void QIOSInputContext::updateKeyboardState(NSNotification *notification)
         // The isInputPanelVisible() property is based on whether or not the virtual keyboard
         // is visible on screen, and does not follow the logic of the iOS WillShow and WillHide
         // notifications which are not emitted for undocked keyboards, and are buggy when dealing
-        // with input-accesosory-views. The reason for using frameEnd here (the future state),
+        // with input-accessory-views. The reason for using frameEnd here (the future state),
         // instead of the current state reflected in frameBegin, is that QInputMethod::isVisible()
         // is documented to reflect the future state in the case of animated transitions.
         m_keyboardState.keyboardVisible = CGRectIntersectsRect(frameEnd, [UIScreen mainScreen].bounds);
@@ -499,8 +463,9 @@ void QIOSInputContext::scrollToCursor()
         return;
     }
 
-    QWindow *focusWindow = qApp->focusWindow();
-    QRect cursorRect = qApp->inputMethod()->cursorRectangle().translated(focusWindow->geometry().topLeft()).toRect();
+    QPlatformWindow *focusWindow = qApp->focusWindow()->handle();
+    QRect windowCurosorRect = QPlatformInputContext::cursorRectangle().toRect();
+    QRect cursorRect = QRect(focusWindow->mapToGlobal(windowCurosorRect.topLeft()), windowCurosorRect.size());
 
     // We explicitly ask for the geometry of the screen instead of the availableGeometry,
     // as we hide the status bar when scrolling the screen, so the available geometry will
@@ -674,16 +639,23 @@ void QIOSInputContext::update(Qt::InputMethodQueries updatedProperties)
     }
 
     // Mask for properties that we are interested in and see if any of them changed
-    updatedProperties &= (Qt::ImEnabled | Qt::ImHints | Qt::ImQueryInput | Qt::ImEnterKeyType | Qt::ImPlatformData);
+    updatedProperties &= (Qt::ImEnabled | Qt::ImHints | Qt::ImQueryInput | Qt::ImEnterKeyType | Qt::ImPlatformData | Qt::ImReadOnly);
 
     // Perform update first, so we can trust the value of inputMethodAccepted()
     Qt::InputMethodQueries changedProperties = m_imeState.update(updatedProperties);
 
-    if (inputMethodAccepted()) {
+    const bool inputIsReadOnly = m_imeState.currentState.value(Qt::ImReadOnly).toBool();
+
+    if (inputMethodAccepted() || inputIsReadOnly) {
         if (!m_textResponder || [m_textResponder needsKeyboardReconfigure:changedProperties]) {
-            qImDebug("creating new text responder");
             [m_textResponder autorelease];
-            m_textResponder = [[QIOSTextInputResponder alloc] initWithInputContext:this];
+            if (inputIsReadOnly) {
+                qImDebug("creating new read-only text responder");
+                m_textResponder = [[QIOSTextResponder alloc] initWithInputContext:this];
+            } else {
+                qImDebug("creating new read/write text responder");
+                m_textResponder = [[QIOSTextInputResponder alloc] initWithInputContext:this];
+            }
         } else {
             qImDebug("no need to reconfigure keyboard, just notifying input delegate");
             [m_textResponder notifyInputDelegate:changedProperties];
@@ -727,12 +699,33 @@ bool QIOSInputContext::inputMethodAccepted() const
 */
 void QIOSInputContext::reset()
 {
-    qImDebug("updating Qt::ImQueryAll and unmarking text");
+    qImDebug("releasing text responder");
+
+    // UIKit will sometimes, for unknown reasons, unset the input delegate on the
+    // current text responder. This seems to happen as a result of us calling
+    // [self.inputDelegate textDidChange:self] from [m_textResponder reset].
+    // But it won't be set to nil directly, only after a character is typed on
+    // the input panel after the reset. This strange behavior seems to be related
+    // to us overriding [QUIView setInteraction] to ignore UITextInteraction. If we
+    // didn't do that, the delegate would be kept. But not overriding that function
+    // has its own share of issues, so it seems better to keep that way for now.
+    // Instead, we choose to recreate the text responder as a brute-force solution
+    // until we have better knowledge of what is going on (or implement the new
+    // UITextInteraction protocol).
+    const auto oldResponder = m_textResponder;
+    [m_textResponder reset];
+    [m_textResponder autorelease];
+    m_textResponder = nullptr;
 
     update(Qt::ImQueryAll);
 
-    [m_textResponder setMarkedText:@"" selectedRange:NSMakeRange(0, 0)];
-    [m_textResponder notifyInputDelegate:Qt::ImQueryInput];
+    // If update() didn't end up creating a new text responder, oldResponder will still be
+    // the first responder. In that case we need to resign it, so that the input panel hides.
+    // (the input panel will apparently not hide if the first responder is only released).
+    if ([oldResponder isFirstResponder]) {
+        qImDebug("IM not enabled, resigning autoreleased text responder as first responder");
+        [oldResponder resignFirstResponder];
+    }
 }
 
 /*!
@@ -746,9 +739,7 @@ void QIOSInputContext::reset()
 void QIOSInputContext::commit()
 {
     qImDebug("unmarking text");
-
-    [m_textResponder unmarkText];
-    [m_textResponder notifyInputDelegate:Qt::ImSurroundingText];
+    [m_textResponder commit];
 }
 
 QLocale QIOSInputContext::locale() const

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLPROPERTYCACHEVECTOR_P_H
 #define QQMLPROPERTYCACHEVECTOR_P_H
@@ -51,52 +15,129 @@
 // We mean it.
 //
 
-#include <private/qflagpointer_p.h>
 #include <private/qqmlpropertycache_p.h>
+#include <private/qbipointer_p.h>
+
+#include <QtCore/qtaggedpointer.h>
 
 QT_BEGIN_NAMESPACE
 
 class QQmlPropertyCacheVector
 {
 public:
-    QQmlPropertyCacheVector() {}
-    QQmlPropertyCacheVector(QQmlPropertyCacheVector &&other)
-        : data(std::move(other.data)) {}
-    QQmlPropertyCacheVector &operator=(QQmlPropertyCacheVector &&other) {
-        QVector<QFlagPointer<QQmlPropertyCache>> moved(std::move(other.data));
-        data.swap(moved);
-        return *this;
-    }
+    QQmlPropertyCacheVector() = default;
+    QQmlPropertyCacheVector(QQmlPropertyCacheVector &&) = default;
+    QQmlPropertyCacheVector &operator=(QQmlPropertyCacheVector &&) = default;
 
     ~QQmlPropertyCacheVector() { clear(); }
-    void resize(int size) { return data.resize(size); }
-    int count() const { return data.count(); }
+    void resize(int size)
+    {
+        Q_ASSERT(size >= data.size());
+        return data.resize(size);
+    }
+
+    int count() const {
+        // the property cache vector will never contain more thant INT_MAX many elements
+        return int(data.size());
+    }
     void clear()
     {
-        for (int i = 0; i < data.count(); ++i) {
-            if (QQmlPropertyCache *cache = data.at(i).data())
-                cache->release();
-        }
+        for (int i = 0; i < data.size(); ++i)
+            releaseElement(i);
         data.clear();
     }
 
-    void append(QQmlPropertyCache *cache) { cache->addref(); data.append(cache); }
-    QQmlPropertyCache *at(int index) const { return data.at(index).data(); }
-    void set(int index, const QQmlRefPointer<QQmlPropertyCache> &replacement) {
-        if (QQmlPropertyCache *oldCache = data.at(index).data()) {
-            if (replacement.data() == oldCache)
+    void resetAndResize(int size)
+    {
+        for (int i = 0; i < data.size(); ++i) {
+            releaseElement(i);
+            data[i] = BiPointer();
+        }
+        data.resize(size);
+    }
+
+    void append(const QQmlPropertyCache::ConstPtr &cache) {
+        cache->addref();
+        data.append(BiPointer(cache.data()));
+        Q_ASSERT(data.last().isT1());
+        Q_ASSERT(data.size() <= std::numeric_limits<int>::max());
+    }
+
+    void appendOwn(const QQmlPropertyCache::Ptr &cache) {
+        cache->addref();
+        data.append(BiPointer(cache.data()));
+        Q_ASSERT(data.last().isT2());
+        Q_ASSERT(data.size() <= std::numeric_limits<int>::max());
+    }
+
+    QQmlPropertyCache::ConstPtr at(int index) const
+    {
+        const auto entry = data.at(index);
+        if (entry.isT2())
+            return entry.asT2();
+        return entry.asT1();
+    }
+
+    QQmlPropertyCache::Ptr ownAt(int index) const
+    {
+        const auto entry = data.at(index);
+        if (entry.isT2())
+            return entry.asT2();
+        return QQmlPropertyCache::Ptr();
+    }
+
+    void set(int index, const QQmlPropertyCache::ConstPtr &replacement) {
+        if (QQmlPropertyCache::ConstPtr oldCache = at(index)) {
+            // If it is our own, we keep it our own
+            if (replacement.data() == oldCache.data())
                 return;
             oldCache->release();
         }
         data[index] = replacement.data();
         replacement->addref();
+        Q_ASSERT(data[index].isT1());
+    }
+
+    void setOwn(int index, const QQmlPropertyCache::Ptr &replacement) {
+        if (QQmlPropertyCache::ConstPtr oldCache = at(index)) {
+            if (replacement.data() != oldCache.data()) {
+                oldCache->release();
+                replacement->addref();
+            }
+        } else {
+            replacement->addref();
+        }
+        data[index] = replacement.data();
+        Q_ASSERT(data[index].isT2());
     }
 
     void setNeedsVMEMetaObject(int index) { data[index].setFlag(); }
     bool needsVMEMetaObject(int index) const { return data.at(index).flag(); }
+
+    void seal()
+    {
+        for (auto &entry: data) {
+            if (entry.isT2())
+                entry = static_cast<const QQmlPropertyCache *>(entry.asT2());
+            Q_ASSERT(entry.isT1());
+        }
+    }
+
 private:
+    void releaseElement(int i)
+    {
+        const auto &cache = data.at(i);
+        if (cache.isT2()) {
+            if (QQmlPropertyCache *data = cache.asT2())
+                data->release();
+        } else if (const QQmlPropertyCache *data = cache.asT1()) {
+            data->release();
+        }
+    }
+
     Q_DISABLE_COPY(QQmlPropertyCacheVector)
-    QVector<QFlagPointer<QQmlPropertyCache>> data;
+    using BiPointer = QBiPointer<const QQmlPropertyCache, QQmlPropertyCache>;
+    QVector<BiPointer> data;
 };
 
 QT_END_NAMESPACE

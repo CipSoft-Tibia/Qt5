@@ -1,44 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtgradientstopsmodel.h"
+
 #include <QtGui/QColor>
+#include <QtCore/QHash>
 
 QT_BEGIN_NAMESPACE
 
@@ -93,8 +59,8 @@ class QtGradientStopsModelPrivate
     Q_DECLARE_PUBLIC(QtGradientStopsModel)
 public:
     QMap<qreal, QtGradientStop *> m_posToStop;
-    QMap<QtGradientStop *, qreal> m_stopToPos;
-    QMap<QtGradientStop *, bool> m_selection;
+    QHash<QtGradientStop *, qreal> m_stopToPos;
+    QHash<QtGradientStop *, bool> m_selection;
     QtGradientStop *m_current;
 };
 
@@ -133,7 +99,7 @@ QColor QtGradientStopsModel::color(qreal pos) const
         return gradStops[pos]->color();
 
     gradStops[pos] = 0;
-    PositionStopMap::ConstIterator itStop = gradStops.constFind(pos);
+    auto itStop = gradStops.constFind(pos);
     if (itStop == gradStops.constBegin()) {
         ++itStop;
         return itStop.value()->color();
@@ -142,8 +108,8 @@ QColor QtGradientStopsModel::color(qreal pos) const
         --itStop;
         return itStop.value()->color();
     }
-    PositionStopMap::ConstIterator itPrev = itStop;
-    PositionStopMap::ConstIterator itNext = itStop;
+    auto itPrev = itStop;
+    auto itNext = itStop;
     --itPrev;
     ++itNext;
 
@@ -301,7 +267,7 @@ void QtGradientStopsModel::setCurrentStop(QtGradientStop *stop)
 QtGradientStop *QtGradientStopsModel::firstSelected() const
 {
     PositionStopMap stopList = stops();
-    PositionStopMap::ConstIterator itStop = stopList.constBegin();
+    auto itStop = stopList.cbegin();
     while (itStop != stopList.constEnd()) {
         QtGradientStop *stop = itStop.value();
         if (isSelected(stop))
@@ -314,7 +280,7 @@ QtGradientStop *QtGradientStopsModel::firstSelected() const
 QtGradientStop *QtGradientStopsModel::lastSelected() const
 {
     PositionStopMap stopList = stops();
-    PositionStopMap::ConstIterator itStop = stopList.constEnd();
+    auto itStop = stopList.cend();
     while (itStop != stopList.constBegin()) {
         --itStop;
 
@@ -380,7 +346,7 @@ void QtGradientStopsModel::moveStops(double newPosition)
         stopList[stop->position()] = stop;
     stopList[current->position()] = current;
 
-    PositionStopMap::ConstIterator itStop = forward ? stopList.constBegin() : stopList.constEnd();
+    auto itStop = forward ? stopList.cbegin() : stopList.cend();
     while (itStop != (forward ? stopList.constEnd() : stopList.constBegin())) {
         if (!forward)
             --itStop;
@@ -418,17 +384,12 @@ void QtGradientStopsModel::clearSelection()
         selectStop(stop, false);
 }
 
-namespace {
-    template <typename BidirectionalIterator>
-    std::reverse_iterator<BidirectionalIterator> rev(BidirectionalIterator it)
-    { return std::reverse_iterator<BidirectionalIterator>(it); }
-}
-
 void QtGradientStopsModel::flipAll()
 {
     QMap<qreal, QtGradientStop *> stopsMap = stops();
-    QMap<QtGradientStop *, bool> swappedList;
-    for (auto itStop = rev(stopsMap.keyValueEnd()), end = rev(stopsMap.keyValueBegin()); itStop != end; ++itStop) {
+    QHash<QtGradientStop *, bool> swappedList;
+    for (auto itStop = stopsMap.keyValueEnd(), begin = stopsMap.keyValueBegin(); itStop != begin;) {
+        --itStop;
         QtGradientStop *stop = (*itStop).second;
         if (swappedList.contains(stop))
             continue;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -51,6 +51,23 @@ class AnalyzeTest(unittest.TestCase):
     self.assertEqual('ClassName#mField', actual[2])
     self.assertEqual('org.ClassName#mField', actual[1])
     self.assertEqual('org.ClassName#mField: some.Type', actual[0])
+    self.assertEqual(actual, function_signature.ParseJava(actual[0]))
+
+    # Class merging: Method
+    SIG = 'org.NewClass int org.OldClass.readShort(int,int)'
+    actual = function_signature.ParseJava(SIG)
+    self.assertEqual('OldClass#readShort', actual[2])
+    self.assertEqual('org.OldClass#readShort', actual[1])
+    self.assertEqual('org.NewClass#org.OldClass.readShort(int,int): int',
+                     actual[0])
+    self.assertEqual(actual, function_signature.ParseJava(actual[0]))
+
+    # Class merging: Field
+    SIG = 'org.NewClass some.Type org.OldClass.mField'
+    actual = function_signature.ParseJava(SIG)
+    self.assertEqual('OldClass#mField', actual[2])
+    self.assertEqual('org.OldClass#mField', actual[1])
+    self.assertEqual('org.NewClass#org.OldClass.mField: some.Type', actual[0])
     self.assertEqual(actual, function_signature.ParseJava(actual[0]))
 
   def testParseFunctionSignature(self):
@@ -182,6 +199,29 @@ class AnalyzeTest(unittest.TestCase):
           '::value_word_list')
     check('', 'foo::Bar<Z<Y> >::foo<bar>', '(abc)', '::var<baz>',
           name_without_templates='foo::Bar<>::foo<>::var<>')
+
+    # ABI Tag Attributes
+    SIG = 'std::make_unique[abi:v15000]<Foo>(Bar const*&)'
+    got_full_name, got_template_name, got_name = function_signature.Parse(SIG)
+    self.assertEqual('std::make_unique<>', got_name)
+    self.assertEqual('std::make_unique<Foo>', got_template_name)
+    self.assertEqual(SIG, got_full_name)
+
+    SIG = 'foo::kBar[abi:baz]'
+    got_full_name, got_template_name, got_name = function_signature.Parse(SIG)
+    self.assertEqual('foo::kBar', got_name)
+    self.assertEqual('foo::kBar', got_template_name)
+    self.assertEqual(SIG, got_full_name)
+
+    # Make sure operator[] is not considered an attribute.
+    check('', 'foo::operator[]', '(abc)')
+
+    SIG = 'foo<char []>::operator[][abi:v1500]<Bar[99]>()'
+    got_full_name, got_template_name, got_name = function_signature.Parse(SIG)
+    self.assertEqual('foo<>::operator[]<>', got_name)
+    self.assertEqual('foo<char []>::operator[]<Bar[99]>', got_template_name)
+    self.assertEqual(SIG, got_full_name)
+
 
 if __name__ == '__main__':
   logging.basicConfig(level=logging.DEBUG,

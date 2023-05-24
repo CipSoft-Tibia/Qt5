@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,17 +6,18 @@
 
 #include "core/fxcrt/fx_string.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/base/span.h"
 
-char* TerminatedFloatToString(float value, char* buf) {
+char* TerminatedFloatToString(float value, pdfium::span<char> buf) {
   size_t buflen = FloatToString(value, buf);
   buf[buflen] = '\0';
-  return buf;
+  return buf.data();
 }
 
-char* TerminatedDoubleToString(double value, char* buf) {
+char* TerminatedDoubleToString(double value, pdfium::span<char> buf) {
   size_t buflen = DoubleToString(value, buf);
   buf[buflen] = '\0';
-  return buf;
+  return buf.data();
 }
 
 TEST(fxstring, FX_UTF8Encode) {

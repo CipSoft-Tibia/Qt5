@@ -1,12 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/query_tiles/internal/init_aware_tile_service.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/task/single_thread_task_runner.h"
 
 namespace query_tiles {
 
@@ -37,7 +37,7 @@ void InitAwareTileService::GetQueryTiles(GetTilesCallback callback) {
   }
 
   if (IsFailed()) {
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(std::move(callback), TileList()));
     return;
   }
@@ -55,8 +55,8 @@ void InitAwareTileService::GetTile(const std::string& tile_id,
   }
 
   if (IsFailed()) {
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
-        FROM_HERE, base::BindOnce(std::move(callback), base::nullopt));
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback), absl::nullopt));
     return;
   }
 
@@ -75,7 +75,7 @@ void InitAwareTileService::StartFetchForTiles(
   }
 
   if (IsFailed()) {
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE,
         base::BindOnce(std::move(callback), false /*need_reschedule*/));
     return;
@@ -123,8 +123,8 @@ void InitAwareTileService::OnTileClicked(const std::string& tile_id) {
 }
 
 void InitAwareTileService::OnQuerySelected(
-    const base::Optional<std::string>& parent_tile_id,
-    const base::string16& query_text) {
+    const absl::optional<std::string>& parent_tile_id,
+    const std::u16string& query_text) {
   if (IsReady()) {
     tile_service_->OnQuerySelected(std::move(parent_tile_id), query_text);
   } else if (!IsFailed()) {

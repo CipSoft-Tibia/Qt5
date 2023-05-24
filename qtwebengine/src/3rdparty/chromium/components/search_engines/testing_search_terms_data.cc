@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,7 +17,7 @@ std::string TestingSearchTermsData::GoogleBaseURLValue() const {
   return google_base_url_;
 }
 
-base::string16 TestingSearchTermsData::GetRlzParameterValue(
+std::u16string TestingSearchTermsData::GetRlzParameterValue(
     bool from_app_list) const {
   return base::ASCIIToUTF16(
       from_app_list ? "rlz_parameter_from_app_list" : "rlz_parameter");
@@ -25,6 +25,11 @@ base::string16 TestingSearchTermsData::GetRlzParameterValue(
 
 std::string TestingSearchTermsData::GetSearchClient() const {
   return search_client_;
+}
+
+std::string TestingSearchTermsData::GetSuggestClient(
+    RequestSource request_source) const {
+  return suggest_client_;
 }
 
 std::string TestingSearchTermsData::GoogleImageSearchSource() const {

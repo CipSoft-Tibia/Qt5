@@ -59,12 +59,12 @@ BasicBlockProfilerData* BasicBlockInstrumentor::Instrument(
   AllowHandleDereference allow_handle_dereference;
   // Skip the exit block in profiles, since the register allocator can't handle
   // it and entry into it means falling off the end of the function anyway.
-  size_t n_blocks = schedule->RpoBlockCount() - 1;
+  size_t n_blocks = schedule->RpoBlockCount();
   BasicBlockProfilerData* data = BasicBlockProfiler::Get()->NewData(n_blocks);
   // Set the function name.
   data->SetFunctionName(info->GetDebugName());
   // Capture the schedule string before instrumentation.
-  if (FLAG_turbo_profiling_verbose) {
+  if (v8_flags.turbo_profiling_verbose) {
     std::ostringstream os;
     os << *schedule;
     data->SetSchedule(os);
@@ -84,7 +84,7 @@ BasicBlockProfilerData* BasicBlockInstrumentor::Instrument(
     // PatchBasicBlockCountersReference). An important and subtle point: we
     // cannot use the root handle basic_block_counters_marker_handle() and must
     // create a new separate handle. Otherwise
-    // TurboAssemblerBase::IndirectLoadConstant would helpfully emit a
+    // MacroAssemblerBase::IndirectLoadConstant would helpfully emit a
     // root-relative load rather than putting this value in the constants table
     // where we expect it to be for patching.
     counters_array = graph->NewNode(common.HeapConstant(Handle<HeapObject>::New(
@@ -92,12 +92,14 @@ BasicBlockProfilerData* BasicBlockInstrumentor::Instrument(
   } else {
     counters_array = graph->NewNode(PointerConstant(&common, data->counts()));
   }
+  Node* zero = graph->NewNode(common.Int32Constant(0));
   Node* one = graph->NewNode(common.Int32Constant(1));
   BasicBlockVector* blocks = schedule->rpo_order();
   size_t block_number = 0;
   for (BasicBlockVector::iterator it = blocks->begin(); block_number < n_blocks;
        ++it, ++block_number) {
     BasicBlock* block = (*it);
+    if (block == schedule->end()) continue;
     // Iteration is already in reverse post-order.
     DCHECK_EQ(block->rpo_number(), block_number);
     data->SetBlockId(block_number, block->id().ToInt());
@@ -114,22 +116,41 @@ BasicBlockProfilerData* BasicBlockInstrumentor::Instrument(
         graph->NewNode(machine.Load(MachineType::Uint32()), counters_array,
                        offset_to_counter, graph->start(), graph->start());
     Node* inc = graph->NewNode(machine.Int32Add(), load, one);
-    Node* store = graph->NewNode(
-        machine.Store(StoreRepresentation(MachineRepresentation::kWord32,
-                                          kNoWriteBarrier)),
-        counters_array, offset_to_counter, inc, graph->start(), graph->start());
+
+    // Branchless saturation, because we've already run the scheduler, so
+    // introducing extra control flow here would be surprising.
+    Node* overflow = graph->NewNode(machine.Uint32LessThan(), inc, load);
+    Node* overflow_mask = graph->NewNode(machine.Int32Sub(), zero, overflow);
+    Node* saturated_inc =
+        graph->NewNode(machine.Word32Or(), inc, overflow_mask);
+
+    Node* store =
+        graph->NewNode(machine.Store(StoreRepresentation(
+                           MachineRepresentation::kWord32, kNoWriteBarrier)),
+                       counters_array, offset_to_counter, saturated_inc,
+                       graph->start(), graph->start());
     // Insert the new nodes.
-    static const int kArraySize = 6;
-    Node* to_insert[kArraySize] = {counters_array, one, offset_to_counter,
-                                   load,           inc, store};
-    // The first two Nodes are constant across all blocks.
-    int insertion_start = block_number == 0 ? 0 : 2;
+    static const int kArraySize = 10;
+    Node* to_insert[kArraySize] = {
+        counters_array, zero, one,      offset_to_counter,
+        load,           inc,  overflow, overflow_mask,
+        saturated_inc,  store};
+    // The first three Nodes are constant across all blocks.
+    int insertion_start = block_number == 0 ? 0 : 3;
     NodeVector::iterator insertion_point = FindInsertionPoint(block);
     block->InsertNodes(insertion_point, &to_insert[insertion_start],
                        &to_insert[kArraySize]);
     // Tell the scheduler about the new nodes.
     for (int i = insertion_start; i < kArraySize; ++i) {
       schedule->SetBlockForNode(block, to_insert[i]);
+    }
+    // The exit block is not instrumented and so we must ignore that block
+    // count.
+    if (block->control() == BasicBlock::kBranch &&
+        block->successors()[0] != schedule->end() &&
+        block->successors()[1] != schedule->end()) {
+      data->AddBranch(block->successors()[0]->id().ToInt(),
+                      block->successors()[1]->id().ToInt());
     }
   }
   return data;

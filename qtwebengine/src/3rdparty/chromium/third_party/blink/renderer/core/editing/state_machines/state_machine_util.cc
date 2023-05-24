@@ -1,12 +1,10 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/editing/state_machines/state_machine_util.h"
 
-#include "base/stl_util.h"
 #include "third_party/blink/renderer/platform/text/character.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
 #include "third_party/blink/renderer/platform/wtf/text/character_names.h"
 #include "third_party/blink/renderer/platform/wtf/text/unicode.h"
 
@@ -28,7 +26,7 @@ const uint32_t kIndicSyllabicCategoryViramaList[] = {
 // Returns true if the code point has Indic_Syllabic_Category=Virama property.
 // See http://www.unicode.org/Public/9.0.0/ucd/IndicSyllabicCategory-9.0.0d2.txt
 bool IsIndicSyllabicCategoryVirama(uint32_t code_point) {
-  const int length = base::size(kIndicSyllabicCategoryViramaList);
+  const int length = std::size(kIndicSyllabicCategoryViramaList);
   return std::binary_search(kIndicSyllabicCategoryViramaList,
                             kIndicSyllabicCategoryViramaList + length,
                             code_point);
@@ -84,13 +82,6 @@ bool IsGraphemeBreak(UChar32 prev_code_point, UChar32 next_code_point) {
   if (Character::IsRegionalIndicator(prev_code_point) &&
       Character::IsRegionalIndicator(next_code_point))
     NOTREACHED() << "Do not use this function for regional indicators.";
-
-  // This is an exception for Myanmar IMEs that uses zwnj character as base
-  // character during a composition to avoid merging the actively composed text
-  // into the previous character. We intentionally diverge from UAX#29.
-  // Please see crbug.com/1027695 for more details.
-  if (next_code_point == kZeroWidthNonJoinerCharacter)
-    return true;
 
   // Rule GB9, x (Extend | ZWJ)
   // Rule GB9a, x SpacingMark

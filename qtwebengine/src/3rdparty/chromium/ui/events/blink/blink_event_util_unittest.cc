@@ -1,10 +1,9 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/events/blink/blink_event_util.h"
 
-#include "base/stl_util.h"
 #include "base/time/time.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/input/web_gesture_event.h"
@@ -31,12 +30,12 @@ TEST(BlinkEventUtilTest, NoScalingWith1DSF) {
   EXPECT_TRUE(ScaleWebInputEvent(event, 2.f));
 }
 
-TEST(BlinkEventUtilTest, NonPaginatedWebMouseWheelEvent) {
+void RunTest(ui::ScrollGranularity granularity) {
   blink::WebMouseWheelEvent event(
       blink::WebInputEvent::Type::kMouseWheel,
       blink::WebInputEvent::kNoModifiers,
       blink::WebInputEvent::GetStaticTimeStampForTests());
-  event.delta_units = ui::ScrollGranularity::kScrollByPixel;
+  event.delta_units = granularity;
   event.delta_x = 1.f;
   event.delta_y = 1.f;
   event.wheel_ticks_x = 1.f;
@@ -50,6 +49,14 @@ TEST(BlinkEventUtilTest, NonPaginatedWebMouseWheelEvent) {
   EXPECT_EQ(2.f, mouseWheelEvent->delta_y);
   EXPECT_EQ(2.f, mouseWheelEvent->wheel_ticks_x);
   EXPECT_EQ(2.f, mouseWheelEvent->wheel_ticks_y);
+}
+
+TEST(BlinkEventUtilTest, NonPaginatedWebMouseWheelEvent) {
+  RunTest(ui::ScrollGranularity::kScrollByPixel);
+}
+
+TEST(BlinkEventUtilTest, NonPaginatedWebMouseWheelEventPercentBased) {
+  RunTest(ui::ScrollGranularity::kScrollByPercentage);
 }
 
 TEST(BlinkEventUtilTest, PaginatedWebMouseWheelEvent) {
@@ -158,9 +165,9 @@ TEST(BlinkEventUtilTest, LineAndDocumentScrollEvents) {
       ui::ScrollGranularity::kScrollByDocument,
   };
 
-  for (size_t i = 0; i < base::size(types); i++) {
+  for (size_t i = 0; i < std::size(types); i++) {
     ui::EventType type = types[i];
-    for (size_t j = 0; j < base::size(units); j++) {
+    for (size_t j = 0; j < std::size(units); j++) {
       ui::ScrollGranularity unit = units[j];
       ui::GestureEventDetails details(type, 1, 1, unit);
       details.set_device_type(ui::GestureDeviceType::DEVICE_TOUCHSCREEN);

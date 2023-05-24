@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlirloader_p.h"
 #include <private/qqmlirbuilder_p.h>
@@ -58,12 +22,71 @@ void QQmlIRLoader::load()
     for (quint32 i = 0; i < qmlUnit->nImports; ++i)
         output->imports << qmlUnit->importAt(i);
 
-    if (unit->flags & QV4::CompiledData::Unit::IsSingleton) {
-        QmlIR::Pragma *p = New<QmlIR::Pragma>();
+    using QmlIR::Pragma;
+    const auto createPragma = [&](Pragma::PragmaType type) {
+        Pragma *p = New<Pragma>();
         p->location = QV4::CompiledData::Location();
-        p->type = QmlIR::Pragma::PragmaSingleton;
+        p->type = type;
         output->pragmas << p;
-    }
+        return p;
+    };
+
+    const auto createListPragma = [&](
+            Pragma::PragmaType type,
+            Pragma::ListPropertyAssignBehaviorValue value) {
+        createPragma(type)->listPropertyAssignBehavior = value;
+    };
+
+    const auto createComponentPragma = [&](
+            Pragma::PragmaType type,
+            Pragma::ComponentBehaviorValue value) {
+        createPragma(type)->componentBehavior = value;
+    };
+
+    const auto createFunctionSignaturePragma = [&](
+            Pragma::PragmaType type,
+            Pragma::FunctionSignatureBehaviorValue value) {
+        createPragma(type)->functionSignatureBehavior = value;
+    };
+
+    const auto createNativeMethodPragma = [&](
+            Pragma::PragmaType type,
+            Pragma::NativeMethodBehaviorValue value) {
+        createPragma(type)->nativeMethodBehavior = value;
+    };
+
+    const auto createValueTypePragma = [&](
+            Pragma::PragmaType type,
+            Pragma::ValueTypeBehaviorValues value) {
+        createPragma(type)->valueTypeBehavior = value;
+    };
+
+    if (unit->flags & QV4::CompiledData::Unit::IsSingleton)
+        createPragma(Pragma::Singleton);
+    if (unit->flags & QV4::CompiledData::Unit::IsStrict)
+        createPragma(Pragma::Strict);
+
+    if (unit->flags & QV4::CompiledData::Unit::ListPropertyAssignReplace)
+        createListPragma(Pragma::ListPropertyAssignBehavior, Pragma::Replace);
+    else if (unit->flags & QV4::CompiledData::Unit::ListPropertyAssignReplaceIfNotDefault)
+        createListPragma(Pragma::ListPropertyAssignBehavior, Pragma::ReplaceIfNotDefault);
+
+    if (unit->flags & QV4::CompiledData::Unit::ComponentsBound)
+        createComponentPragma(Pragma::ComponentBehavior, Pragma::Bound);
+
+    if (unit->flags & QV4::CompiledData::Unit::FunctionSignaturesEnforced)
+        createFunctionSignaturePragma(Pragma::FunctionSignatureBehavior, Pragma::Enforced);
+
+    if (unit->flags & QV4::CompiledData::Unit::NativeMethodsAcceptThisObject)
+        createNativeMethodPragma(Pragma::NativeMethodBehavior, Pragma::AcceptThisObject);
+
+    Pragma::ValueTypeBehaviorValues valueTypeBehavior = {};
+    if (unit->flags & QV4::CompiledData::Unit::ValueTypesCopied)
+        valueTypeBehavior |= Pragma::Copy;
+    if (unit->flags & QV4::CompiledData::Unit::ValueTypesAddressable)
+        valueTypeBehavior |= Pragma::Addressable;
+    if (valueTypeBehavior)
+        createValueTypePragma(Pragma::ValueTypeBehavior, valueTypeBehavior);
 
     for (uint i = 0; i < qmlUnit->nObjects; ++i) {
         const QV4::CompiledData::Object *serializedObject = qmlUnit->objectAt(i);
@@ -78,10 +101,10 @@ struct FakeExpression : public QQmlJS::AST::NullExpression
         : location(start, length)
     {}
 
-    virtual QQmlJS::SourceLocation firstSourceLocation() const
+    QQmlJS::SourceLocation firstSourceLocation() const override
     { return location; }
 
-    virtual QQmlJS::SourceLocation lastSourceLocation() const
+    QQmlJS::SourceLocation lastSourceLocation() const override
     { return location; }
 
 private:
@@ -91,14 +114,13 @@ private:
 QmlIR::Object *QQmlIRLoader::loadObject(const QV4::CompiledData::Object *serializedObject)
 {
     QmlIR::Object *object = pool->New<QmlIR::Object>();
-    object->init(pool, serializedObject->inheritedTypeNameIndex, serializedObject->idNameIndex);
+    object->init(pool, serializedObject->inheritedTypeNameIndex, serializedObject->idNameIndex,
+                 serializedObject->location);
 
     object->indexOfDefaultPropertyOrAlias = serializedObject->indexOfDefaultPropertyOrAlias;
-    object->defaultPropertyIsAlias = serializedObject->defaultPropertyIsAlias;
-    object->isInlineComponent = serializedObject->flags & QV4::CompiledData::Object::IsInlineComponentRoot;
-    object->flags = serializedObject->flags;
-    object->id = serializedObject->id;
-    object->location = serializedObject->location;
+    object->defaultPropertyIsAlias = serializedObject->hasAliasAsDefaultProperty();
+    object->flags = serializedObject->flags();
+    object->id = serializedObject->objectId();
     object->locationOfIdProperty = serializedObject->locationOfIdProperty;
 
     QVector<int> functionIndices;
@@ -108,9 +130,9 @@ QmlIR::Object *QQmlIRLoader::loadObject(const QV4::CompiledData::Object *seriali
         QmlIR::Binding *b = pool->New<QmlIR::Binding>();
         *static_cast<QV4::CompiledData::Binding*>(b) = serializedObject->bindingTable()[i];
         object->bindings->append(b);
-        if (b->type == QV4::CompiledData::Binding::Type_Script) {
+        if (b->type() == QV4::CompiledData::Binding::Type_Script) {
             functionIndices.append(b->value.compiledScriptIndex);
-            b->value.compiledScriptIndex = functionIndices.count() - 1;
+            b->value.compiledScriptIndex = functionIndices.size() - 1;
 
             QmlIR::CompiledFunctionOrExpression *foe = pool->New<QmlIR::CompiledFunctionOrExpression>();
             foe->nameIndex = 0;
@@ -118,9 +140,9 @@ QmlIR::Object *QQmlIRLoader::loadObject(const QV4::CompiledData::Object *seriali
             QQmlJS::AST::ExpressionNode *expr;
 
             if (b->stringIndex != quint32(0)) {
-                const int start = output->code.length();
+                const int start = output->code.size();
                 const QString script = output->stringAt(b->stringIndex);
-                const int length = script.length();
+                const int length = script.size();
                 output->code.append(script);
                 expr = new (pool) FakeExpression(start, length);
             } else
@@ -130,7 +152,7 @@ QmlIR::Object *QQmlIRLoader::loadObject(const QV4::CompiledData::Object *seriali
         }
     }
 
-    Q_ASSERT(object->functionsAndExpressions->count == functionIndices.count());
+    Q_ASSERT(object->functionsAndExpressions->count == functionIndices.size());
 
     for (uint i = 0; i < serializedObject->nSignals; ++i) {
         const QV4::CompiledData::Signal *serializedSignal = serializedObject->signalAt(i);
@@ -186,7 +208,7 @@ QmlIR::Object *QQmlIRLoader::loadObject(const QV4::CompiledData::Object *seriali
         const QV4::CompiledData::Function *compiledFunction = unit->functionAt(*functionIdx);
 
         functionIndices.append(*functionIdx);
-        f->index = functionIndices.count() - 1;
+        f->index = functionIndices.size() - 1;
         f->location = compiledFunction->location;
         f->nameIndex = compiledFunction->nameIndex;
         f->returnType = compiledFunction->returnType;

@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \group richtext-processing
@@ -35,10 +11,9 @@
     \page richtext.html
     \title Rich Text Processing
     \brief An overview of Qt's rich text processing, editing and display features.
-
+    \ingroup explanations-ui
     \ingroup frameworks-technologies
     \ingroup qt-basic-concepts
-    \ingroup best-practices
 
     \nextpage Rich Text Document Structure
 
@@ -179,8 +154,7 @@
 
     We obtain the root frame in the following manner:
 
-    \snippet textdocument-frames/xmlwriter.h 0
-    \snippet textdocument-frames/xmlwriter.cpp 0
+    \snippet textdocument-frames/mainwindow.cpp rootframe
 
     When navigating the document structure, it is useful to begin at the
     root frame because it provides access to the entire document structure.
@@ -266,8 +240,7 @@
     child frames. We can inspect the contents of a frame by using a
     QTextFrame::iterator to traverse the frame's child elements:
 
-    \snippet textdocument-frames/xmlwriter.cpp 1
-    \snippet textdocument-frames/xmlwriter.cpp 2
+    \snippet textdocument-frames/mainwindow.cpp 4
 
     Note that the iterator selects both frames and blocks, so it is necessary
     to check which it is referring to. This allows us to navigate the document
@@ -291,8 +264,7 @@
     document, we can test whether it represents a table, and deal with it in a
     different way:
 
-    \snippet textdocument-tables/xmlwriter.cpp 0
-    \snippet textdocument-tables/xmlwriter.cpp 1
+    \snippet textdocument-tables/mainwindow.cpp 13
 
     The cells within an existing table can be examined by iterating through
     the rows and columns.

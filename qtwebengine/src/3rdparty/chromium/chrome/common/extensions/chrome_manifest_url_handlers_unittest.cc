@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,14 +20,14 @@ TEST(ChromeURLOverridesHandlerTest, TestFileMissing) {
   manifest.Set("description", "description");
   manifest.Set("chrome_url_overrides",
                DictionaryBuilder().Set("newtab", "newtab.html").Build());
-  std::unique_ptr<base::DictionaryValue> manifest_value = manifest.Build();
+  base::Value::Dict manifest_value = manifest.Build();
   std::string error;
   std::vector<InstallWarning> warnings;
   base::ScopedTempDir dir;
   ASSERT_TRUE(dir.CreateUniqueTempDir());
-  scoped_refptr<Extension> extension =
-      Extension::Create(dir.GetPath(), Manifest::INTERNAL, *manifest_value,
-                        Extension::NO_FLAGS, std::string(), &error);
+  scoped_refptr<Extension> extension = Extension::Create(
+      dir.GetPath(), mojom::ManifestLocation::kInternal, manifest_value,
+      Extension::NO_FLAGS, std::string(), &error);
   ASSERT_TRUE(extension);
   EXPECT_FALSE(
       file_util::ValidateExtension(extension.get(), &error, &warnings));

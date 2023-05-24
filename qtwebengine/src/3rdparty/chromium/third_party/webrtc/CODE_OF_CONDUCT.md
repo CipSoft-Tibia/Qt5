@@ -1,3 +1,6 @@
+<!-- go/cmark -->
+<!--* freshness: {owner: 'hta' reviewed: '2021-01-01'} *-->
+
 # Contributors Code of Conduct
 
 Google and the WebRTC team are committed to preserving and fostering a diverse, welcoming and open
@@ -61,7 +64,7 @@ The decisions of the WebRTC community managers may be appealed via community-app
 ## Acknowledgements
 
 This Code of Conduct is based on Contributor Covenant, version 1.4,
-available [here](http://contributor-covenant.org/version/1/4) and [Chromium](https://chromium.googlesource.com/chromium/src/+/master/CODE_OF_CONDUCT.md)
+available [here](http://contributor-covenant.org/version/1/4) and [Chromium](https://chromium.googlesource.com/chromium/src/+/main/CODE_OF_CONDUCT.md)
 
 ## License
 

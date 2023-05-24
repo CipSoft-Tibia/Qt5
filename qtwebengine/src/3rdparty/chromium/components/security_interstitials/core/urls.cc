@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,5 +11,8 @@ const char kSafeBrowsingPrivacyPolicyUrl[] =
 const char kSafeBrowsingWhitePaperUrl[] =
     "https://www.google.com/chrome/browser/privacy/"
     "whitepaper.html#extendedreport";
+
+const char kEnterpriseInterstitialHelpLink[] =
+    "https://support.google.com/chrome/a/?p=block_warn";
 
 }  // namespace security_interstitials

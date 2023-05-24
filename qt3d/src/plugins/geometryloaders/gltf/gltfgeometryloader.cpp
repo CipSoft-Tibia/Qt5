@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "gltfgeometryloader.h"
 
@@ -46,8 +10,8 @@
 
 #include <QOpenGLTexture>
 
-#include <Qt3DRender/QGeometry>
 #include <Qt3DRender/private/renderlogging_p.h>
+#include <Qt3DCore/QGeometry>
 #include <Qt3DCore/private/qloadgltf_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -56,6 +20,8 @@ QT_BEGIN_NAMESPACE
 #  define qUtf16PrintableImpl(string) \
     static_cast<const wchar_t*>(static_cast<const void*>(string.utf16()))
 #endif
+
+using namespace Qt3DCore;
 
 namespace Qt3DRender {
 
@@ -291,7 +257,7 @@ void GLTFGeometryLoader::processJSONBufferV2(const QJsonObject &json)
 void GLTFGeometryLoader::processJSONBufferView(const QString &id, const QJsonObject &json)
 {
     QString bufName = json.value(KEY_BUFFER).toString();
-    const auto it = qAsConst(m_gltf1.m_bufferDatas).find(bufName);
+    const auto it = std::as_const(m_gltf1.m_bufferDatas).find(bufName);
     if (Q_UNLIKELY(it == m_gltf1.m_bufferDatas.cend())) {
         qCWarning(GLTFGeometryLoaderLog, "unknown buffer: %ls processing view: %ls",
                   qUtf16PrintableImpl(bufName), qUtf16PrintableImpl(id));
@@ -321,12 +287,12 @@ void GLTFGeometryLoader::processJSONBufferView(const QString &id, const QJsonObj
     const quint64 len = json.value(KEY_BYTE_LENGTH).toInt();
 
     QByteArray bytes = bufferData.data->mid(offset, len);
-    if (Q_UNLIKELY(bytes.count() != int(len))) {
+    if (Q_UNLIKELY(bytes.size() != qsizetype(len))) {
         qCWarning(GLTFGeometryLoaderLog, "failed to read sufficient bytes from: %ls for view %ls",
                   qUtf16PrintableImpl(bufferData.path), qUtf16PrintableImpl(id));
     }
 
-    Qt3DRender::QBuffer *b = new Qt3DRender::QBuffer();
+    Qt3DCore::QBuffer *b = new Qt3DCore::QBuffer();
     b->setData(bytes);
     m_gltf1.m_buffers[id] = b;
 }
@@ -340,15 +306,6 @@ void GLTFGeometryLoader::processJSONBufferViewV2(const QJsonObject &json)
     }
     const auto bufferData = m_gltf2.m_bufferDatas[bufferIndex];
 
-    int target = json.value(KEY_TARGET).toInt();
-    switch (target) {
-    case GL_ARRAY_BUFFER:
-    case GL_ELEMENT_ARRAY_BUFFER:
-        break;
-    default:
-        return;
-    }
-
     quint64 offset = 0;
     const auto byteOffset = json.value(KEY_BYTE_OFFSET);
     if (!byteOffset.isUndefined()) {
@@ -358,12 +315,12 @@ void GLTFGeometryLoader::processJSONBufferViewV2(const QJsonObject &json)
 
     const quint64 len = json.value(KEY_BYTE_LENGTH).toInt();
     QByteArray bytes = bufferData.data->mid(offset, len);
-    if (Q_UNLIKELY(bytes.count() != int(len))) {
+    if (Q_UNLIKELY(bytes.size() != qsizetype(len))) {
         qCWarning(GLTFGeometryLoaderLog, "failed to read sufficient bytes from: %ls for view",
                   qUtf16PrintableImpl(bufferData.path));
     }
 
-    auto b = new Qt3DRender::QBuffer;
+    auto b = new Qt3DCore::QBuffer;
     b->setData(bytes);
     m_gltf2.m_buffers.push_back(b);
 }
@@ -396,7 +353,7 @@ void GLTFGeometryLoader::processJSONMesh(const QString &id, const QJsonObject &j
         const QJsonObject attrs = primitiveObject.value(KEY_ATTRIBUTES).toObject();
         for (auto it = attrs.begin(), end = attrs.end(); it != end; ++it) {
             QString k = it.value().toString();
-            const auto accessorIt = qAsConst(m_gltf1.m_accessorDict).find(k);
+            const auto accessorIt = std::as_const(m_gltf1.m_accessorDict).find(k);
             if (Q_UNLIKELY(accessorIt == m_gltf1.m_accessorDict.cend())) {
                 qCWarning(GLTFGeometryLoaderLog, "unknown attribute accessor: %ls on mesh %ls",
                           qUtf16PrintableImpl(k), qUtf16PrintableImpl(id));
@@ -409,7 +366,7 @@ void GLTFGeometryLoader::processJSONMesh(const QString &id, const QJsonObject &j
                 attributeName = attrName;
 
             //Get buffer handle for accessor
-            Qt3DRender::QBuffer *buffer = m_gltf1.m_buffers.value(accessorIt->bufferViewName, nullptr);
+            Qt3DCore::QBuffer *buffer = m_gltf1.m_buffers.value(accessorIt->bufferViewName, nullptr);
             if (Q_UNLIKELY(!buffer)) {
                 qCWarning(GLTFGeometryLoaderLog, "unknown buffer-view: %ls processing accessor: %ls",
                           qUtf16PrintableImpl(accessorIt->bufferViewName), qUtf16PrintableImpl(id));
@@ -430,13 +387,13 @@ void GLTFGeometryLoader::processJSONMesh(const QString &id, const QJsonObject &j
         const auto indices = primitiveObject.value(KEY_INDICES);
         if (!indices.isUndefined()) {
             QString k = indices.toString();
-            const auto accessorIt = qAsConst(m_gltf1.m_accessorDict).find(k);
+            const auto accessorIt = std::as_const(m_gltf1.m_accessorDict).find(k);
             if (Q_UNLIKELY(accessorIt == m_gltf1.m_accessorDict.cend())) {
                 qCWarning(GLTFGeometryLoaderLog, "unknown index accessor: %ls on mesh %ls",
                           qUtf16PrintableImpl(k), qUtf16PrintableImpl(id));
             } else {
                 //Get buffer handle for accessor
-                Qt3DRender::QBuffer *buffer = m_gltf1.m_buffers.value(accessorIt->bufferViewName, nullptr);
+                Qt3DCore::QBuffer *buffer = m_gltf1.m_buffers.value(accessorIt->bufferViewName, nullptr);
                 if (Q_UNLIKELY(!buffer)) {
                     qCWarning(GLTFGeometryLoaderLog, "unknown buffer-view: %ls processing accessor: %ls",
                               qUtf16PrintableImpl(accessorIt->bufferViewName), qUtf16PrintableImpl(id));
@@ -489,7 +446,7 @@ void GLTFGeometryLoader::processJSONMeshV2(const QJsonObject &json)
                           accessor.bufferViewIndex, qUtf16PrintableImpl(json.value(KEY_NAME).toString()));
                 continue;
             }
-            Qt3DRender::QBuffer *buffer = m_gltf2.m_buffers[accessor.bufferViewIndex];
+            Qt3DCore::QBuffer *buffer = m_gltf2.m_buffers[accessor.bufferViewIndex];
 
             QAttribute *attribute = new QAttribute(buffer,
                                                    attributeName,
@@ -517,7 +474,7 @@ void GLTFGeometryLoader::processJSONMeshV2(const QJsonObject &json)
                               accessor.bufferViewIndex, qUtf16PrintableImpl(json.value(KEY_NAME).toString()));
                     continue;
                 }
-                Qt3DRender::QBuffer *buffer = m_gltf2.m_buffers[accessor.bufferViewIndex];
+                Qt3DCore::QBuffer *buffer = m_gltf2.m_buffers[accessor.bufferViewIndex];
 
                 QAttribute *attribute = new QAttribute(buffer,
                                                        accessor.type,
@@ -547,7 +504,7 @@ void GLTFGeometryLoader::loadBufferData()
 
 void GLTFGeometryLoader::unloadBufferData()
 {
-    for (const auto &bufferData : qAsConst(m_gltf1.m_bufferDatas)) {
+    for (const auto &bufferData : std::as_const(m_gltf1.m_bufferDatas)) {
         QByteArray *data = bufferData.data;
         delete data;
     }
@@ -563,7 +520,7 @@ void GLTFGeometryLoader::loadBufferDataV2()
 
 void GLTFGeometryLoader::unloadBufferDataV2()
 {
-    for (const auto &bufferData : qAsConst(m_gltf2.m_bufferDatas)) {
+    for (const auto &bufferData : std::as_const(m_gltf2.m_bufferDatas)) {
         QByteArray *data = bufferData.data;
         delete data;
     }
@@ -624,3 +581,5 @@ uint GLTFGeometryLoader::accessorDataSizeFromJson(const QString &type)
 } // namespace Qt3DRender
 
 QT_END_NAMESPACE
+
+#include "moc_gltfgeometryloader.cpp"

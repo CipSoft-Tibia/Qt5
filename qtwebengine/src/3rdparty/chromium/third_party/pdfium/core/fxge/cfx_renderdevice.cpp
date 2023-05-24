@@ -1,10 +1,12 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // Original code copyright 2014 Foxit Software Inc. http://www.foxitsoftware.com
 
 #include "core/fxge/cfx_renderdevice.h"
+
+#include <math.h>
 
 #include <algorithm>
 #include <memory>
@@ -21,7 +23,7 @@
 #include "core/fxge/cfx_glyphbitmap.h"
 #include "core/fxge/cfx_glyphcache.h"
 #include "core/fxge/cfx_graphstatedata.h"
-#include "core/fxge/cfx_pathdata.h"
+#include "core/fxge/cfx_path.h"
 #include "core/fxge/cfx_textrenderoptions.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
 #include "core/fxge/dib/cfx_imagerenderer.h"
@@ -29,16 +31,19 @@
 #include "core/fxge/renderdevicedriver_iface.h"
 #include "core/fxge/text_char_pos.h"
 #include "core/fxge/text_glyph_pos.h"
+#include "third_party/base/check.h"
+#include "third_party/base/check_op.h"
+#include "third_party/base/notreached.h"
 #include "third_party/base/span.h"
 
-#if defined(_SKIA_SUPPORT_) || defined(_SKIA_SUPPORT_PATHS_)
+#ifdef _SKIA_SUPPORT_
 #include "third_party/skia/include/core/SkTypes.h"  // nogncheck
 #endif
 
 namespace {
 
 void AdjustGlyphSpace(std::vector<TextGlyphPos>* pGlyphAndPos) {
-  ASSERT(pGlyphAndPos->size() > 1);
+  DCHECK_GT(pGlyphAndPos->size(), 1u);
   std::vector<TextGlyphPos>& glyphs = *pGlyphAndPos;
   bool bVertical = glyphs.back().m_Origin.x == glyphs.front().m_Origin.x;
   if (!bVertical && (glyphs.back().m_Origin.y != glyphs.front().m_Origin.y))
@@ -75,7 +80,7 @@ void AdjustGlyphSpace(std::vector<TextGlyphPos>* pGlyphAndPos) {
   }
 }
 
-const uint8_t g_TextGammaAdjust[256] = {
+constexpr uint8_t kTextGammaAdjust[256] = {
     0,   2,   3,   4,   6,   7,   8,   10,  11,  12,  13,  15,  16,  17,  18,
     19,  21,  22,  23,  24,  25,  26,  27,  29,  30,  31,  32,  33,  34,  35,
     36,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,  48,  49,  51,  52,
@@ -97,9 +102,9 @@ const uint8_t g_TextGammaAdjust[256] = {
 };
 
 int TextGammaAdjust(int value) {
-  ASSERT(value >= 0);
-  ASSERT(value <= 255);
-  return g_TextGammaAdjust[value];
+  DCHECK_GE(value, 0);
+  DCHECK_LE(value, 255);
+  return kTextGammaAdjust[value];
 }
 
 int CalcAlpha(int src, int alpha) {
@@ -196,7 +201,7 @@ void NormalizeSrc(bool has_alpha,
     NormalizeArgb(src_value, r, g, b, a, dest, src_alpha);
 }
 
-void NextPixel(uint8_t** src_scan, uint8_t** dst_scan, int bpp) {
+void NextPixel(const uint8_t** src_scan, uint8_t** dst_scan, int bpp) {
   *src_scan += 3;
   *dst_scan += bpp;
 }
@@ -219,19 +224,17 @@ void DrawNormalTextHelper(const RetainPtr<CFX_DIBitmap>& bitmap,
                           int r,
                           int g,
                           int b) {
-  const bool has_alpha = bitmap->GetFormat() == FXDIB_Argb;
-  uint8_t* src_buf = pGlyph->GetBuffer();
-  int src_pitch = pGlyph->GetPitch();
-  uint8_t* dest_buf = bitmap->GetBuffer();
-  int dest_pitch = bitmap->GetPitch();
+  const bool has_alpha = bitmap->GetFormat() == FXDIB_Format::kArgb;
   const int Bpp = has_alpha ? 4 : bitmap->GetBPP() / 8;
   for (int row = 0; row < nrows; ++row) {
     int dest_row = row + top;
     if (dest_row < 0 || dest_row >= bitmap->GetHeight())
       continue;
 
-    uint8_t* src_scan = src_buf + row * src_pitch + (start_col - left) * 3;
-    uint8_t* dest_scan = dest_buf + dest_row * dest_pitch + start_col * Bpp;
+    const uint8_t* src_scan =
+        pGlyph->GetScanline(row).subspan((start_col - left) * 3).data();
+    uint8_t* dest_scan =
+        bitmap->GetWritableScanline(dest_row).subspan(start_col * Bpp).data();
     if (x_subpixel == 0) {
       for (int col = start_col; col < end_col; ++col) {
         if (normalize) {
@@ -298,7 +301,7 @@ void DrawNormalTextHelper(const RetainPtr<CFX_DIBitmap>& bitmap,
 
 bool ShouldDrawDeviceText(const CFX_Font* pFont,
                           const CFX_TextRenderOptions& options) {
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
   if (options.font_is_cid)
     return false;
 
@@ -312,14 +315,181 @@ bool ShouldDrawDeviceText(const CFX_Font* pFont,
   return true;
 }
 
+// Returns true if the path is a 3-point path that draws A->B->A and forms a
+// zero area, or a 2-point path which draws A->B.
+bool CheckSimpleLinePath(pdfium::span<const CFX_Path::Point> points,
+                         const CFX_Matrix* matrix,
+                         bool adjust,
+                         CFX_Path* new_path,
+                         bool* thin,
+                         bool* set_identity) {
+  if (points.size() != 2 && points.size() != 3)
+    return false;
+
+  if (points[0].m_Type != CFX_Path::Point::Type::kMove ||
+      points[1].m_Type != CFX_Path::Point::Type::kLine ||
+      (points.size() == 3 &&
+       (points[2].m_Type != CFX_Path::Point::Type::kLine ||
+        points[0].m_Point != points[2].m_Point))) {
+    return false;
+  }
+
+  // A special case that all points are identical, zero area is formed and no
+  // thin line needs to be drawn.
+  if (points[0].m_Point == points[1].m_Point)
+    return true;
+
+  for (size_t i = 0; i < 2; i++) {
+    CFX_PointF point = points[i].m_Point;
+    if (adjust) {
+      if (matrix)
+        point = matrix->Transform(point);
+
+      point = CFX_PointF(static_cast<int>(point.x) + 0.5f,
+                         static_cast<int>(point.y) + 0.5f);
+    }
+    new_path->AppendPoint(point, points[i].m_Type);
+  }
+  if (adjust && matrix)
+    *set_identity = true;
+
+  *thin = true;
+  return true;
+}
+
+// Returns true if `points` is palindromic and forms zero area. Otherwise,
+// returns false.
+bool CheckPalindromicPath(pdfium::span<const CFX_Path::Point> points,
+                          CFX_Path* new_path,
+                          bool* thin) {
+  if (points.size() <= 3 || !(points.size() % 2))
+    return false;
+
+  const size_t mid = points.size() / 2;
+  CFX_Path temp_path;
+  for (size_t i = 0; i < mid; i++) {
+    const CFX_Path::Point& left = points[mid - i - 1];
+    const CFX_Path::Point& right = points[mid + i + 1];
+    bool zero_area = left.m_Point == right.m_Point &&
+                     left.m_Type != CFX_Path::Point::Type::kBezier &&
+                     right.m_Type != CFX_Path::Point::Type::kBezier;
+    if (!zero_area)
+      return false;
+
+    temp_path.AppendPoint(points[mid - i].m_Point,
+                          CFX_Path::Point::Type::kMove);
+    temp_path.AppendPoint(left.m_Point, CFX_Path::Point::Type::kLine);
+  }
+
+  new_path->Append(temp_path, nullptr);
+  *thin = true;
+  return true;
+}
+
+bool IsFoldingVerticalLine(const CFX_PointF& a,
+                           const CFX_PointF& b,
+                           const CFX_PointF& c) {
+  return a.x == b.x && b.x == c.x && (b.y - a.y) * (b.y - c.y) > 0;
+}
+
+bool IsFoldingHorizontalLine(const CFX_PointF& a,
+                             const CFX_PointF& b,
+                             const CFX_PointF& c) {
+  return a.y == b.y && b.y == c.y && (b.x - a.x) * (b.x - c.x) > 0;
+}
+
+bool IsFoldingDiagonalLine(const CFX_PointF& a,
+                           const CFX_PointF& b,
+                           const CFX_PointF& c) {
+  return a.x != b.x && c.x != b.x && a.y != b.y && c.y != b.y &&
+         (a.y - b.y) * (c.x - b.x) == (c.y - b.y) * (a.x - b.x);
+}
+
+bool GetZeroAreaPath(pdfium::span<const CFX_Path::Point> points,
+                     const CFX_Matrix* matrix,
+                     bool adjust,
+                     CFX_Path* new_path,
+                     bool* thin,
+                     bool* set_identity) {
+  *set_identity = false;
+
+  if (points.size() < 2)
+    return false;
+
+  if (CheckSimpleLinePath(points, matrix, adjust, new_path, thin,
+                          set_identity)) {
+    return true;
+  }
+
+  if (CheckPalindromicPath(points, new_path, thin))
+    return true;
+
+  for (size_t i = 0; i < points.size(); i++) {
+    CFX_Path::Point::Type point_type = points[i].m_Type;
+    if (point_type == CFX_Path::Point::Type::kMove) {
+      DCHECK_EQ(0, i);
+      continue;
+    }
+
+    if (point_type == CFX_Path::Point::Type::kBezier) {
+      i += 2;
+      DCHECK_LT(i, points.size());
+      continue;
+    }
+
+    DCHECK_EQ(point_type, CFX_Path::Point::Type::kLine);
+    size_t next_index = (i + 1) % (points.size());
+    const CFX_Path::Point& next = points[next_index];
+    if (next.m_Type != CFX_Path::Point::Type::kLine)
+      continue;
+
+    const CFX_Path::Point& prev = points[i - 1];
+    const CFX_Path::Point& cur = points[i];
+    if (IsFoldingVerticalLine(prev.m_Point, cur.m_Point, next.m_Point)) {
+      bool use_prev = fabs(cur.m_Point.y - prev.m_Point.y) <
+                      fabs(cur.m_Point.y - next.m_Point.y);
+      const CFX_Path::Point& start = use_prev ? prev : cur;
+      const CFX_Path::Point& end = use_prev ? cur : next;
+      new_path->AppendPoint(start.m_Point, CFX_Path::Point::Type::kMove);
+      new_path->AppendPoint(end.m_Point, CFX_Path::Point::Type::kLine);
+      continue;
+    }
+
+    if (IsFoldingHorizontalLine(prev.m_Point, cur.m_Point, next.m_Point) ||
+        IsFoldingDiagonalLine(prev.m_Point, cur.m_Point, next.m_Point)) {
+      bool use_prev = fabs(cur.m_Point.x - prev.m_Point.x) <
+                      fabs(cur.m_Point.x - next.m_Point.x);
+      const CFX_Path::Point& start = use_prev ? prev : cur;
+      const CFX_Path::Point& end = use_prev ? cur : next;
+      new_path->AppendPoint(start.m_Point, CFX_Path::Point::Type::kMove);
+      new_path->AppendPoint(end.m_Point, CFX_Path::Point::Type::kLine);
+      continue;
+    }
+  }
+
+  size_t new_path_size = new_path->GetPoints().size();
+  if (points.size() > 3 && new_path_size > 0)
+    *thin = true;
+  return new_path_size != 0;
+}
+
+FXDIB_Format GetCreateCompatibleBitmapFormat(int render_caps) {
+  if (render_caps & FXRC_BYTEMASK_OUTPUT)
+    return FXDIB_Format::k8bppMask;
+  if (render_caps & FXRC_ALPHA_OUTPUT)
+    return FXDIB_Format::kArgb;
+  return CFX_DIBBase::kPlatformRGBFormat;
+}
+
 }  // namespace
 
 CFX_RenderDevice::CFX_RenderDevice() = default;
 
 CFX_RenderDevice::~CFX_RenderDevice() {
   RestoreState(false);
-#if defined(_SKIA_SUPPORT_) || defined(_SKIA_SUPPORT_PATHS_)
-  Flush(true);
+#ifdef _SKIA_SUPPORT_
+  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    Flush(true);
 #endif
 }
 
@@ -331,7 +501,7 @@ CFX_Matrix CFX_RenderDevice::GetFlipMatrix(float width,
   return CFX_Matrix(width, 0, 0, -height, left, top + height);
 }
 
-#if defined(_SKIA_SUPPORT_) || defined(_SKIA_SUPPORT_PATHS_)
+#ifdef _SKIA_SUPPORT_
 void CFX_RenderDevice::Flush(bool release) {
   if (release)
     m_pDeviceDriver.reset();
@@ -342,8 +512,8 @@ void CFX_RenderDevice::Flush(bool release) {
 
 void CFX_RenderDevice::SetDeviceDriver(
     std::unique_ptr<RenderDeviceDriverIface> pDriver) {
-  ASSERT(pDriver);
-  ASSERT(!m_pDeviceDriver);
+  DCHECK(pDriver);
+  DCHECK(!m_pDeviceDriver);
   m_pDeviceDriver = std::move(pDriver);
   InitDeviceInfo();
 }
@@ -389,21 +559,8 @@ bool CFX_RenderDevice::CreateCompatibleBitmap(
     const RetainPtr<CFX_DIBitmap>& pDIB,
     int width,
     int height) const {
-  if (m_RenderCaps & FXRC_CMYK_OUTPUT) {
-    return pDIB->Create(
-        width, height,
-        m_RenderCaps & FXRC_ALPHA_OUTPUT ? FXDIB_Cmyka : FXDIB_Cmyk);
-  }
-  if (m_RenderCaps & FXRC_BYTEMASK_OUTPUT)
-    return pDIB->Create(width, height, FXDIB_8bppMask);
-#if defined(OS_APPLE) || defined(_SKIA_SUPPORT_PATHS_)
-  constexpr FXDIB_Format kPlatformFormat = FXDIB_Rgb32;
-#else
-  constexpr FXDIB_Format kPlatformFormat = FXDIB_Rgb;
-#endif
-  return pDIB->Create(
-      width, height,
-      m_RenderCaps & FXRC_ALPHA_OUTPUT ? FXDIB_Argb : kPlatformFormat);
+  return pDIB->Create(width, height,
+                      GetCreateCompatibleBitmapFormat(m_RenderCaps));
 }
 
 void CFX_RenderDevice::SetBaseClip(const FX_RECT& rect) {
@@ -411,34 +568,31 @@ void CFX_RenderDevice::SetBaseClip(const FX_RECT& rect) {
 }
 
 bool CFX_RenderDevice::SetClip_PathFill(
-    const CFX_PathData* pPathData,
+    const CFX_Path& path,
     const CFX_Matrix* pObject2Device,
     const CFX_FillRenderOptions& fill_options) {
-  if (!m_pDeviceDriver->SetClip_PathFill(pPathData, pObject2Device,
-                                         fill_options)) {
+  if (!m_pDeviceDriver->SetClip_PathFill(path, pObject2Device, fill_options))
     return false;
-  }
+
   UpdateClipBox();
   return true;
 }
 
 bool CFX_RenderDevice::SetClip_PathStroke(
-    const CFX_PathData* pPathData,
+    const CFX_Path& path,
     const CFX_Matrix* pObject2Device,
     const CFX_GraphStateData* pGraphState) {
-  if (!m_pDeviceDriver->SetClip_PathStroke(pPathData, pObject2Device,
-                                           pGraphState)) {
+  if (!m_pDeviceDriver->SetClip_PathStroke(path, pObject2Device, pGraphState))
     return false;
-  }
+
   UpdateClipBox();
   return true;
 }
 
 bool CFX_RenderDevice::SetClip_Rect(const FX_RECT& rect) {
-  CFX_PathData path;
+  CFX_Path path;
   path.AppendRect(rect.left, rect.bottom, rect.right, rect.top);
-  if (!SetClip_PathFill(&path, nullptr,
-                        CFX_FillRenderOptions::WindingOptions()))
+  if (!SetClip_PathFill(path, nullptr, CFX_FillRenderOptions::WindingOptions()))
     return false;
 
   UpdateClipBox();
@@ -454,18 +608,18 @@ void CFX_RenderDevice::UpdateClipBox() {
   m_ClipBox.bottom = m_Height;
 }
 
-bool CFX_RenderDevice::DrawPath(const CFX_PathData* pPathData,
+bool CFX_RenderDevice::DrawPath(const CFX_Path& path,
                                 const CFX_Matrix* pObject2Device,
                                 const CFX_GraphStateData* pGraphState,
                                 uint32_t fill_color,
                                 uint32_t stroke_color,
                                 const CFX_FillRenderOptions& fill_options) {
-  return DrawPathWithBlend(pPathData, pObject2Device, pGraphState, fill_color,
+  return DrawPathWithBlend(path, pObject2Device, pGraphState, fill_color,
                            stroke_color, fill_options, BlendMode::kNormal);
 }
 
 bool CFX_RenderDevice::DrawPathWithBlend(
-    const CFX_PathData* pPathData,
+    const CFX_Path& path,
     const CFX_Matrix* pObject2Device,
     const CFX_GraphStateData* pGraphState,
     uint32_t fill_color,
@@ -476,7 +630,7 @@ bool CFX_RenderDevice::DrawPathWithBlend(
       fill_options.fill_type != CFX_FillRenderOptions::FillType::kNoFill;
   uint8_t fill_alpha = fill ? FXARGB_A(fill_color) : 0;
   uint8_t stroke_alpha = pGraphState ? FXARGB_A(stroke_color) : 0;
-  pdfium::span<const FX_PATHPOINT> points = pPathData->GetPoints();
+  pdfium::span<const CFX_Path::Point> points = path.GetPoints();
   if (stroke_alpha == 0 && points.size() == 2) {
     CFX_PointF pos1 = points[0].m_Point;
     CFX_PointF pos2 = points[1].m_Point;
@@ -488,9 +642,8 @@ bool CFX_RenderDevice::DrawPathWithBlend(
     return true;
   }
 
-  if ((points.size() == 5 || points.size() == 4) && stroke_alpha == 0 &&
-      !fill_options.rect_aa) {
-    Optional<CFX_FloatRect> maybe_rect_f = pPathData->GetRect(pObject2Device);
+  if (stroke_alpha == 0 && !fill_options.rect_aa) {
+    absl::optional<CFX_FloatRect> maybe_rect_f = path.GetRect(pObject2Device);
     if (maybe_rect_f.has_value()) {
       const CFX_FloatRect& rect_f = maybe_rect_f.value();
       FX_RECT rect_i = rect_f.GetOuterRect();
@@ -533,53 +686,73 @@ bool CFX_RenderDevice::DrawPathWithBlend(
         return true;
     }
   }
+
   if (fill && stroke_alpha == 0 && !fill_options.stroke &&
       !fill_options.text_mode) {
-    CFX_PathData newPath;
-    bool bThin = false;
-    bool setIdentity = false;
-    if (pPathData->GetZeroAreaPath(pObject2Device,
-                                   !!m_pDeviceDriver->GetDriverType(), &newPath,
-                                   &bThin, &setIdentity)) {
-      CFX_GraphStateData graphState;
-      graphState.m_LineWidth = 0.0f;
+    bool adjust = !!m_pDeviceDriver->GetDriverType();
+    std::vector<CFX_Path::Point> sub_path;
+    for (size_t i = 0; i < points.size(); i++) {
+      CFX_Path::Point::Type point_type = points[i].m_Type;
+      if (point_type == CFX_Path::Point::Type::kMove) {
+        // Process the existing sub path.
+        DrawZeroAreaPath(sub_path, pObject2Device, adjust,
+                         fill_options.aliased_path, fill_color, fill_alpha,
+                         blend_type);
+        sub_path.clear();
 
-      uint32_t strokecolor = fill_color;
-      if (bThin)
-        strokecolor = (((fill_alpha >> 2) << 24) | (strokecolor & 0x00ffffff));
+        // Start forming the next sub path.
+        sub_path.push_back(points[i]);
+        continue;
+      }
 
-      const CFX_Matrix* pMatrix = nullptr;
-      if (pObject2Device && !pObject2Device->IsIdentity() && !setIdentity)
-        pMatrix = pObject2Device;
+      if (point_type == CFX_Path::Point::Type::kBezier) {
+        sub_path.push_back(points[i]);
+        sub_path.push_back(points[i + 1]);
+        sub_path.push_back(points[i + 2]);
+        i += 2;
+        continue;
+      }
 
-      CFX_FillRenderOptions path_options;
-      path_options.zero_area = true;
-      if (fill_options.aliased_path)
-        path_options.aliased_path = true;
-
-      m_pDeviceDriver->DrawPath(&newPath, pMatrix, &graphState, 0, strokecolor,
-                                path_options, blend_type);
+      DCHECK_EQ(point_type, CFX_Path::Point::Type::kLine);
+      sub_path.push_back(points[i]);
     }
+    // Process the last sub paths.
+    DrawZeroAreaPath(sub_path, pObject2Device, adjust,
+                     fill_options.aliased_path, fill_color, fill_alpha,
+                     blend_type);
   }
 
   if (fill && fill_alpha && stroke_alpha < 0xff && fill_options.stroke) {
     if (m_RenderCaps & FXRC_FILLSTROKE_PATH) {
-      return m_pDeviceDriver->DrawPath(pPathData, pObject2Device, pGraphState,
-                                       fill_color, stroke_color, fill_options,
-                                       blend_type);
+#if defined(_SKIA_SUPPORT_)
+      if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+        m_pDeviceDriver->SetGroupKnockout(true);
+      }
+#endif
+      bool draw_fillstroke_path_result = m_pDeviceDriver->DrawPath(
+          path, pObject2Device, pGraphState, fill_color, stroke_color,
+          fill_options, blend_type);
+
+#if defined(_SKIA_SUPPORT_)
+      if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+        // Restore the group knockout status for `m_pDeviceDriver` after
+        // finishing painting a fill-and-stroke path.
+        m_pDeviceDriver->SetGroupKnockout(false);
+      }
+#endif
+      return draw_fillstroke_path_result;
     }
-    return DrawFillStrokePath(pPathData, pObject2Device, pGraphState,
-                              fill_color, stroke_color, fill_options,
-                              blend_type);
+    return DrawFillStrokePath(path, pObject2Device, pGraphState, fill_color,
+                              stroke_color, fill_options, blend_type);
   }
-  return m_pDeviceDriver->DrawPath(pPathData, pObject2Device, pGraphState,
+  return m_pDeviceDriver->DrawPath(path, pObject2Device, pGraphState,
                                    fill_color, stroke_color, fill_options,
                                    blend_type);
 }
 
 // This can be removed once PDFium entirely relies on Skia
 bool CFX_RenderDevice::DrawFillStrokePath(
-    const CFX_PathData* pPathData,
+    const CFX_Path& path,
     const CFX_Matrix* pObject2Device,
     const CFX_GraphStateData* pGraphState,
     uint32_t fill_color,
@@ -590,10 +763,10 @@ bool CFX_RenderDevice::DrawFillStrokePath(
     return false;
   CFX_FloatRect bbox;
   if (pGraphState) {
-    bbox = pPathData->GetBoundingBox(pGraphState->m_LineWidth,
-                                     pGraphState->m_MiterLimit);
+    bbox = path.GetBoundingBoxForStrokePath(pGraphState->m_LineWidth,
+                                            pGraphState->m_MiterLimit);
   } else {
-    bbox = pPathData->GetBoundingBox();
+    bbox = path.GetBoundingBox();
   }
   if (pObject2Device)
     bbox = pObject2Device->TransformRect(bbox);
@@ -607,7 +780,7 @@ bool CFX_RenderDevice::DrawFillStrokePath(
   if (!CreateCompatibleBitmap(bitmap, rect.Width(), rect.Height()))
     return false;
 
-  if (bitmap->HasAlpha()) {
+  if (bitmap->IsAlphaFormat()) {
     bitmap->Clear(0);
     backdrop->Copy(bitmap);
   } else {
@@ -616,19 +789,21 @@ bool CFX_RenderDevice::DrawFillStrokePath(
     backdrop->Copy(bitmap);
   }
   CFX_DefaultRenderDevice bitmap_device;
-  bitmap_device.Attach(bitmap, false, backdrop, true);
+  bitmap_device.AttachWithBackdropAndGroupKnockout(bitmap, std::move(backdrop),
+                                                   /*bGroupKnockout=*/true);
 
   CFX_Matrix matrix;
   if (pObject2Device)
     matrix = *pObject2Device;
   matrix.Translate(-rect.left, -rect.top);
-  if (!bitmap_device.GetDeviceDriver()->DrawPath(
-          pPathData, &matrix, pGraphState, fill_color, stroke_color,
-          fill_options, blend_type)) {
+  if (!bitmap_device.GetDeviceDriver()->DrawPath(path, &matrix, pGraphState,
+                                                 fill_color, stroke_color,
+                                                 fill_options, blend_type)) {
     return false;
   }
-#if defined(_SKIA_SUPPORT_) || defined(_SKIA_SUPPORT_PATHS_)
-  bitmap_device.GetDeviceDriver()->Flush();
+#ifdef _SKIA_SUPPORT_
+  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    bitmap_device.GetDeviceDriver()->Flush();
 #endif
   FX_RECT src_rect(0, 0, rect.Width(), rect.Height());
   return m_pDeviceDriver->SetDIBits(bitmap, 0, src_rect, rect.left, rect.top,
@@ -651,10 +826,9 @@ bool CFX_RenderDevice::FillRectWithBlend(const FX_RECT& rect,
   if (!m_pDeviceDriver->GetDIBits(bitmap, rect.left, rect.top))
     return false;
 
-  if (!bitmap->CompositeRect(0, 0, rect.Width(), rect.Height(), fill_color,
-                             0)) {
+  if (!bitmap->CompositeRect(0, 0, rect.Width(), rect.Height(), fill_color))
     return false;
-  }
+
   FX_RECT src_rect(0, 0, rect.Width(), rect.Height());
   m_pDeviceDriver->SetDIBits(bitmap, 0, src_rect, rect.left, rect.top,
                              BlendMode::kNormal);
@@ -672,11 +846,48 @@ bool CFX_RenderDevice::DrawCosmeticLine(
     return true;
   }
   CFX_GraphStateData graph_state;
-  CFX_PathData path;
-  path.AppendPoint(ptMoveTo, FXPT_TYPE::MoveTo);
-  path.AppendPoint(ptLineTo, FXPT_TYPE::LineTo);
-  return m_pDeviceDriver->DrawPath(&path, nullptr, &graph_state, 0, color,
+  CFX_Path path;
+  path.AppendPoint(ptMoveTo, CFX_Path::Point::Type::kMove);
+  path.AppendPoint(ptLineTo, CFX_Path::Point::Type::kLine);
+  return m_pDeviceDriver->DrawPath(path, nullptr, &graph_state, 0, color,
                                    fill_options, blend_type);
+}
+
+void CFX_RenderDevice::DrawZeroAreaPath(
+    const std::vector<CFX_Path::Point>& path,
+    const CFX_Matrix* matrix,
+    bool adjust,
+    bool aliased_path,
+    uint32_t fill_color,
+    uint8_t fill_alpha,
+    BlendMode blend_type) {
+  if (path.empty())
+    return;
+
+  CFX_Path new_path;
+  bool thin = false;
+  bool set_identity = false;
+
+  if (!GetZeroAreaPath(path, matrix, adjust, &new_path, &thin, &set_identity))
+    return;
+
+  CFX_GraphStateData graph_state;
+  graph_state.m_LineWidth = 0.0f;
+
+  uint32_t stroke_color = fill_color;
+  if (thin)
+    stroke_color = (((fill_alpha >> 2) << 24) | (stroke_color & 0x00ffffff));
+
+  const CFX_Matrix* new_matrix = nullptr;
+  if (matrix && !matrix->IsIdentity() && !set_identity)
+    new_matrix = matrix;
+
+  CFX_FillRenderOptions path_options;
+  path_options.zero_area = true;
+  path_options.aliased_path = aliased_path;
+
+  m_pDeviceDriver->DrawPath(new_path, new_matrix, &graph_state, 0, stroke_color,
+                            path_options, blend_type);
 }
 
 bool CFX_RenderDevice::GetDIBits(const RetainPtr<CFX_DIBitmap>& pBitmap,
@@ -694,7 +905,7 @@ bool CFX_RenderDevice::SetDIBitsWithBlend(const RetainPtr<CFX_DIBBase>& pBitmap,
                                           int left,
                                           int top,
                                           BlendMode blend_mode) {
-  ASSERT(!pBitmap->IsAlphaMask());
+  DCHECK(!pBitmap->IsMaskFormat());
   FX_RECT dest_rect(left, top, left + pBitmap->GetWidth(),
                     top + pBitmap->GetHeight());
   dest_rect.Intersect(m_ClipBox);
@@ -705,7 +916,7 @@ bool CFX_RenderDevice::SetDIBitsWithBlend(const RetainPtr<CFX_DIBBase>& pBitmap,
                    dest_rect.left - left + dest_rect.Width(),
                    dest_rect.top - top + dest_rect.Height());
   if ((blend_mode == BlendMode::kNormal || (m_RenderCaps & FXRC_BLEND_MODE)) &&
-      (!pBitmap->HasAlpha() || (m_RenderCaps & FXRC_ALPHA_IMAGE))) {
+      (!pBitmap->IsAlphaFormat() || (m_RenderCaps & FXRC_ALPHA_IMAGE))) {
     return m_pDeviceDriver->SetDIBits(pBitmap, 0, src_rect, dest_rect.left,
                                       dest_rect.top, blend_mode);
   }
@@ -715,14 +926,13 @@ bool CFX_RenderDevice::SetDIBitsWithBlend(const RetainPtr<CFX_DIBBase>& pBitmap,
   int bg_pixel_width = dest_rect.Width();
   int bg_pixel_height = dest_rect.Height();
   auto background = pdfium::MakeRetain<CFX_DIBitmap>();
-  if (!background->Create(
-          bg_pixel_width, bg_pixel_height,
-          (m_RenderCaps & FXRC_CMYK_OUTPUT) ? FXDIB_Cmyk : FXDIB_Rgb32)) {
+  if (!background->Create(bg_pixel_width, bg_pixel_height,
+                          FXDIB_Format::kRgb32)) {
     return false;
   }
-  if (!m_pDeviceDriver->GetDIBits(background, dest_rect.left, dest_rect.top)) {
+  if (!m_pDeviceDriver->GetDIBits(background, dest_rect.left, dest_rect.top))
     return false;
-  }
+
   if (!background->CompositeBitmap(0, 0, bg_pixel_width, bg_pixel_height,
                                    pBitmap, src_rect.left, src_rect.top,
                                    blend_mode, nullptr, false)) {
@@ -817,14 +1027,13 @@ bool CFX_RenderDevice::SetBitsWithMask(const RetainPtr<CFX_DIBBase>& pBitmap,
 }
 #endif
 
-bool CFX_RenderDevice::DrawNormalText(int nChars,
-                                      const TextCharPos* pCharPos,
+bool CFX_RenderDevice::DrawNormalText(pdfium::span<const TextCharPos> pCharPos,
                                       CFX_Font* pFont,
                                       float font_size,
                                       const CFX_Matrix& mtText2Device,
                                       uint32_t fill_color,
                                       const CFX_TextRenderOptions& options) {
-  // |anti_alias| and |normalize| don't affect Skia/SkiaPaths rendering.
+  // `anti_alias` and `normalize` don't affect Skia rendering.
   int anti_alias = FT_RENDER_MODE_MONO;
   bool normalize = false;
   const bool is_text_smooth = options.IsSmooth();
@@ -840,14 +1049,14 @@ bool CFX_RenderDevice::DrawNormalText(int nChars,
         // one expires 10/7/19.  This makes LCD anti-aliasing very ugly, so we
         // instead fall back on NORMAL anti-aliasing.
         anti_alias = FT_RENDER_MODE_NORMAL;
-#if defined(_SKIA_SUPPORT_) || defined(_SKIA_SUPPORT_PATHS_)
-        // Since |anti_alias| doesn't affect Skia rendering, and Skia only
-        // follows strictly to the options provided by |text_options|, we need
-        // to update |text_options| so that Skia falls back on normal
-        // anti-aliasing as well.
-        text_options.aliasing_type = CFX_TextRenderOptions::kAntiAliasing;
-#endif
-      } else if ((m_RenderCaps & (FXRC_ALPHA_OUTPUT | FXRC_CMYK_OUTPUT))) {
+        if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+          // Since |anti_alias| doesn't affect Skia rendering, and Skia only
+          // follows strictly to the options provided by |text_options|, we need
+          // to update |text_options| so that Skia falls back on normal
+          // anti-aliasing as well.
+          text_options.aliasing_type = CFX_TextRenderOptions::kAntiAliasing;
+        }
+      } else if ((m_RenderCaps & FXRC_ALPHA_OUTPUT)) {
         // Whether Skia uses LCD optimization should strictly follow the
         // rendering options provided by |text_options|. No change needs to be
         // done for |text_options| here.
@@ -869,7 +1078,7 @@ bool CFX_RenderDevice::DrawNormalText(int nChars,
 
   if (GetDeviceType() != DeviceType::kDisplay) {
     if (ShouldDrawDeviceText(pFont, options) &&
-        m_pDeviceDriver->DrawDeviceText(nChars, pCharPos, pFont, mtText2Device,
+        m_pDeviceDriver->DrawDeviceText(pCharPos, pFont, mtText2Device,
                                         font_size, fill_color, text_options)) {
       return true;
     }
@@ -877,7 +1086,7 @@ bool CFX_RenderDevice::DrawNormalText(int nChars,
       return false;
   } else if (options.native_text) {
     if (ShouldDrawDeviceText(pFont, options) &&
-        m_pDeviceDriver->DrawDeviceText(nChars, pCharPos, pFont, mtText2Device,
+        m_pDeviceDriver->DrawDeviceText(pCharPos, pFont, mtText2Device,
                                         font_size, fill_color, text_options)) {
       return true;
     }
@@ -891,14 +1100,11 @@ bool CFX_RenderDevice::DrawNormalText(int nChars,
     if (pFont->GetFaceRec()) {
       CFX_FillRenderOptions path_options;
       path_options.aliased_path = !is_text_smooth;
-      return DrawTextPath(nChars, pCharPos, pFont, font_size, mtText2Device,
-                          nullptr, nullptr, fill_color, 0, nullptr,
-                          path_options);
+      return DrawTextPath(pCharPos, pFont, font_size, mtText2Device, nullptr,
+                          nullptr, fill_color, 0, nullptr, path_options);
     }
   }
-  std::vector<TextGlyphPos> glyphs(nChars);
-  CFX_Matrix deviceCtm = char2device;
-
+  std::vector<TextGlyphPos> glyphs(pCharPos.size());
   for (size_t i = 0; i < glyphs.size(); ++i) {
     TextGlyphPos& glyph = glyphs[i];
     const TextCharPos& charpos = pCharPos[i];
@@ -910,19 +1116,10 @@ bool CFX_RenderDevice::DrawNormalText(int nChars,
       glyph.m_Origin.x = static_cast<int>(floor(glyph.m_fDeviceOrigin.x));
     glyph.m_Origin.y = FXSYS_roundf(glyph.m_fDeviceOrigin.y);
 
-    if (charpos.m_bGlyphAdjust) {
-      CFX_Matrix new_matrix(
-          charpos.m_AdjustMatrix[0], charpos.m_AdjustMatrix[1],
-          charpos.m_AdjustMatrix[2], charpos.m_AdjustMatrix[3], 0, 0);
-      new_matrix.Concat(deviceCtm);
-      glyph.m_pGlyph = pFont->LoadGlyphBitmap(
-          charpos.m_GlyphIndex, charpos.m_bFontStyle, new_matrix,
-          charpos.m_FontCharWidth, anti_alias, &text_options);
-    } else {
-      glyph.m_pGlyph = pFont->LoadGlyphBitmap(
-          charpos.m_GlyphIndex, charpos.m_bFontStyle, deviceCtm,
-          charpos.m_FontCharWidth, anti_alias, &text_options);
-    }
+    CFX_Matrix matrix = charpos.GetEffectiveMatrix(char2device);
+    glyph.m_pGlyph = pFont->LoadGlyphBitmap(
+        charpos.m_GlyphIndex, charpos.m_bFontStyle, matrix,
+        charpos.m_FontCharWidth, anti_alias, &text_options);
   }
   if (anti_alias < FT_RENDER_MODE_LCD && glyphs.size() > 1)
     AdjustGlyphSpace(&glyphs);
@@ -938,40 +1135,39 @@ bool CFX_RenderDevice::DrawNormalText(int nChars,
   int pixel_top = bmp_rect.top;
   if (anti_alias == FT_RENDER_MODE_MONO) {
     auto bitmap = pdfium::MakeRetain<CFX_DIBitmap>();
-    if (!bitmap->Create(pixel_width, pixel_height, FXDIB_1bppMask))
+    if (!bitmap->Create(pixel_width, pixel_height, FXDIB_Format::k1bppMask))
       return false;
     bitmap->Clear(0);
     for (const TextGlyphPos& glyph : glyphs) {
       if (!glyph.m_pGlyph)
         continue;
 
-      Optional<CFX_Point> point = glyph.GetOrigin({pixel_left, pixel_top});
+      absl::optional<CFX_Point> point =
+          glyph.GetOrigin({pixel_left, pixel_top});
       if (!point.has_value())
         continue;
 
       const RetainPtr<CFX_DIBitmap>& pGlyph = glyph.m_pGlyph->GetBitmap();
-      bitmap->TransferBitmap(point.value().x, point.value().y,
-                             pGlyph->GetWidth(), pGlyph->GetHeight(), pGlyph, 0,
-                             0);
+      bitmap->CompositeOneBPPMask(point.value().x, point.value().y,
+                                  pGlyph->GetWidth(), pGlyph->GetHeight(),
+                                  pGlyph, 0, 0);
     }
     return SetBitMask(bitmap, bmp_rect.left, bmp_rect.top, fill_color);
   }
   auto bitmap = pdfium::MakeRetain<CFX_DIBitmap>();
   if (m_bpp == 8) {
-    if (!bitmap->Create(pixel_width, pixel_height, FXDIB_8bppMask))
+    if (!bitmap->Create(pixel_width, pixel_height, FXDIB_Format::k8bppMask))
       return false;
   } else {
     if (!CreateCompatibleBitmap(bitmap, pixel_width, pixel_height))
       return false;
   }
-  if (!bitmap->HasAlpha() && !bitmap->IsAlphaMask()) {
+  if (!bitmap->IsAlphaFormat() && !bitmap->IsMaskFormat()) {
     bitmap->Clear(0xFFFFFFFF);
     if (!GetDIBits(bitmap, bmp_rect.left, bmp_rect.top))
       return false;
   } else {
     bitmap->Clear(0);
-    if (bitmap->m_pAlphaMask)
-      bitmap->m_pAlphaMask->Clear(0);
   }
   int dest_width = pixel_width;
   int a = 0;
@@ -985,7 +1181,7 @@ bool CFX_RenderDevice::DrawNormalText(int nChars,
     if (!glyph.m_pGlyph)
       continue;
 
-    Optional<CFX_Point> point = glyph.GetOrigin({pixel_left, pixel_top});
+    absl::optional<CFX_Point> point = glyph.GetOrigin({pixel_left, pixel_top});
     if (!point.has_value())
       continue;
 
@@ -1015,15 +1211,24 @@ bool CFX_RenderDevice::DrawNormalText(int nChars,
     DrawNormalTextHelper(bitmap, pGlyph, nrows, point->x, point->y, start_col,
                          end_col, normalize, x_subpixel, a, r, g, b);
   }
-  if (bitmap->IsAlphaMask())
+
+#if defined(_SKIA_SUPPORT_) || defined(_SKIA_SUPPORT_PATH_)
+  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+    // DrawNormalTextHelper() can result in unpremultiplied bitmaps for
+    // rendering glyphs. Make sure `bitmap` is premultiplied before proceeding
+    // or CFX_DIBBase::DebugVerifyBitmapIsPreMultiplied() check will fail.
+    bitmap->PreMultiply();
+  }
+#endif
+
+  if (bitmap->IsMaskFormat())
     SetBitMask(bitmap, bmp_rect.left, bmp_rect.top, fill_color);
   else
     SetDIBits(bitmap, bmp_rect.left, bmp_rect.top);
   return true;
 }
 
-bool CFX_RenderDevice::DrawTextPath(int nChars,
-                                    const TextCharPos* pCharPos,
+bool CFX_RenderDevice::DrawTextPath(pdfium::span<const TextCharPos> pCharPos,
                                     CFX_Font* pFont,
                                     float font_size,
                                     const CFX_Matrix& mtText2User,
@@ -1031,40 +1236,34 @@ bool CFX_RenderDevice::DrawTextPath(int nChars,
                                     const CFX_GraphStateData* pGraphState,
                                     uint32_t fill_color,
                                     FX_ARGB stroke_color,
-                                    CFX_PathData* pClippingPath,
+                                    CFX_Path* pClippingPath,
                                     const CFX_FillRenderOptions& fill_options) {
-  for (int iChar = 0; iChar < nChars; ++iChar) {
-    const TextCharPos& charpos = pCharPos[iChar];
-    CFX_Matrix matrix;
-    if (charpos.m_bGlyphAdjust) {
-      matrix = CFX_Matrix(charpos.m_AdjustMatrix[0], charpos.m_AdjustMatrix[1],
-                          charpos.m_AdjustMatrix[2], charpos.m_AdjustMatrix[3],
-                          0, 0);
-    }
-    matrix.Concat(CFX_Matrix(font_size, 0, 0, font_size, charpos.m_Origin.x,
-                             charpos.m_Origin.y));
-    const CFX_PathData* pPath =
+  for (const auto& charpos : pCharPos) {
+    const CFX_Path* pPath =
         pFont->LoadGlyphPath(charpos.m_GlyphIndex, charpos.m_FontCharWidth);
     if (!pPath)
       continue;
 
+    CFX_Matrix matrix(font_size, 0, 0, font_size, charpos.m_Origin.x,
+                      charpos.m_Origin.y);
+    matrix = charpos.GetEffectiveMatrix(matrix);
     matrix.Concat(mtText2User);
 
-    CFX_PathData TransformedPath(*pPath);
-    TransformedPath.Transform(matrix);
+    CFX_Path transformed_path(*pPath);
+    transformed_path.Transform(matrix);
     if (fill_color || stroke_color) {
       CFX_FillRenderOptions options(fill_options);
       if (fill_color)
         options.fill_type = CFX_FillRenderOptions::FillType::kWinding;
       options.text_mode = true;
-      if (!DrawPathWithBlend(&TransformedPath, pUser2Device, pGraphState,
+      if (!DrawPathWithBlend(transformed_path, pUser2Device, pGraphState,
                              fill_color, stroke_color, options,
                              BlendMode::kNormal)) {
         return false;
       }
     }
     if (pClippingPath)
-      pClippingPath->Append(&TransformedPath, pUser2Device);
+      pClippingPath->Append(transformed_path, pUser2Device);
   }
   return true;
 }
@@ -1072,22 +1271,22 @@ bool CFX_RenderDevice::DrawTextPath(int nChars,
 void CFX_RenderDevice::DrawFillRect(const CFX_Matrix* pUser2Device,
                                     const CFX_FloatRect& rect,
                                     const FX_COLORREF& color) {
-  CFX_PathData path;
+  CFX_Path path;
   path.AppendFloatRect(rect);
-  DrawPath(&path, pUser2Device, nullptr, color, 0,
+  DrawPath(path, pUser2Device, nullptr, color, 0,
            CFX_FillRenderOptions::WindingOptions());
 }
 
 void CFX_RenderDevice::DrawFillArea(const CFX_Matrix& mtUser2Device,
                                     const std::vector<CFX_PointF>& points,
                                     const FX_COLORREF& color) {
-  ASSERT(!points.empty());
-  CFX_PathData path;
-  path.AppendPoint(points[0], FXPT_TYPE::MoveTo);
+  DCHECK(!points.empty());
+  CFX_Path path;
+  path.AppendPoint(points[0], CFX_Path::Point::Type::kMove);
   for (size_t i = 1; i < points.size(); ++i)
-    path.AppendPoint(points[i], FXPT_TYPE::LineTo);
+    path.AppendPoint(points[i], CFX_Path::Point::Type::kLine);
 
-  DrawPath(&path, &mtUser2Device, nullptr, color, 0,
+  DrawPath(path, &mtUser2Device, nullptr, color, 0,
            CFX_FillRenderOptions::EvenOddOptions());
 }
 
@@ -1098,9 +1297,9 @@ void CFX_RenderDevice::DrawStrokeRect(const CFX_Matrix& mtUser2Device,
   CFX_GraphStateData gsd;
   gsd.m_LineWidth = fWidth;
 
-  CFX_PathData path;
+  CFX_Path path;
   path.AppendFloatRect(rect);
-  DrawPath(&path, &mtUser2Device, &gsd, 0, color,
+  DrawPath(path, &mtUser2Device, &gsd, 0, color,
            CFX_FillRenderOptions::EvenOddOptions());
 }
 
@@ -1109,14 +1308,14 @@ void CFX_RenderDevice::DrawStrokeLine(const CFX_Matrix* pUser2Device,
                                       const CFX_PointF& ptLineTo,
                                       const FX_COLORREF& color,
                                       float fWidth) {
-  CFX_PathData path;
-  path.AppendPoint(ptMoveTo, FXPT_TYPE::MoveTo);
-  path.AppendPoint(ptLineTo, FXPT_TYPE::LineTo);
+  CFX_Path path;
+  path.AppendPoint(ptMoveTo, CFX_Path::Point::Type::kMove);
+  path.AppendPoint(ptLineTo, CFX_Path::Point::Type::kLine);
 
   CFX_GraphStateData gsd;
   gsd.m_LineWidth = fWidth;
 
-  DrawPath(&path, pUser2Device, &gsd, 0, color,
+  DrawPath(path, pUser2Device, &gsd, 0, color,
            CFX_FillRenderOptions::EvenOddOptions());
 }
 
@@ -1128,8 +1327,6 @@ void CFX_RenderDevice::DrawFillRect(const CFX_Matrix* pUser2Device,
 }
 
 void CFX_RenderDevice::DrawShadow(const CFX_Matrix& mtUser2Device,
-                                  bool bVertical,
-                                  bool bHorizontal,
                                   const CFX_FloatRect& rect,
                                   int32_t nTransparency,
                                   int32_t nStartGray,
@@ -1138,35 +1335,27 @@ void CFX_RenderDevice::DrawShadow(const CFX_Matrix& mtUser2Device,
   constexpr float kSegmentWidth = 1.0f;
   constexpr float kLineWidth = 1.5f;
 
-  if (bVertical) {
-    float fStepGray = (nEndGray - nStartGray) / rect.Height();
-    CFX_PointF start(rect.left, 0);
-    CFX_PointF end(rect.right, 0);
+  float fStepGray = (nEndGray - nStartGray) / rect.Height();
+  CFX_PointF start(rect.left, 0);
+  CFX_PointF end(rect.right, 0);
 
-    for (float fy = rect.bottom + kBorder; fy <= rect.top - kBorder;
-         fy += kSegmentWidth) {
-      start.y = fy;
-      end.y = fy;
-      int nGray = nStartGray + static_cast<int>(fStepGray * (fy - rect.bottom));
-      FX_ARGB color = ArgbEncode(nTransparency, nGray, nGray, nGray);
-      DrawStrokeLine(&mtUser2Device, start, end, color, kLineWidth);
-    }
+  for (float fy = rect.bottom + kBorder; fy <= rect.top - kBorder;
+       fy += kSegmentWidth) {
+    start.y = fy;
+    end.y = fy;
+    int nGray = nStartGray + static_cast<int>(fStepGray * (fy - rect.bottom));
+    FX_ARGB color = ArgbEncode(nTransparency, nGray, nGray, nGray);
+    DrawStrokeLine(&mtUser2Device, start, end, color, kLineWidth);
   }
+}
 
-  if (bHorizontal) {
-    float fStepGray = (nEndGray - nStartGray) / rect.Width();
-    CFX_PointF start(0, rect.bottom);
-    CFX_PointF end(0, rect.top);
-
-    for (float fx = rect.left + kBorder; fx <= rect.right - kBorder;
-         fx += kSegmentWidth) {
-      start.x = fx;
-      end.x = fx;
-      int nGray = nStartGray + static_cast<int>(fStepGray * (fx - rect.left));
-      FX_ARGB color = ArgbEncode(nTransparency, nGray, nGray, nGray);
-      DrawStrokeLine(&mtUser2Device, start, end, color, kLineWidth);
-    }
-  }
+bool CFX_RenderDevice::DrawShading(const CPDF_ShadingPattern* pPattern,
+                                   const CFX_Matrix* pMatrix,
+                                   const FX_RECT& clip_rect,
+                                   int alpha,
+                                   bool bAlphaMode) {
+  return m_pDeviceDriver->DrawShading(pPattern, pMatrix, clip_rect, alpha,
+                                      bAlphaMode);
 }
 
 void CFX_RenderDevice::DrawBorder(const CFX_Matrix* pUser2Device,
@@ -1189,11 +1378,11 @@ void CFX_RenderDevice::DrawBorder(const CFX_Matrix* pUser2Device,
   switch (nStyle) {
     default:
     case BorderStyle::kSolid: {
-      CFX_PathData path;
+      CFX_Path path;
       path.AppendRect(fLeft, fBottom, fRight, fTop);
       path.AppendRect(fLeft + fWidth, fBottom + fWidth, fRight - fWidth,
                       fTop - fWidth);
-      DrawPath(&path, pUser2Device, nullptr, color.ToFXColor(nTransparency), 0,
+      DrawPath(path, pUser2Device, nullptr, color.ToFXColor(nTransparency), 0,
                CFX_FillRenderOptions::EvenOddOptions());
       break;
     }
@@ -1203,18 +1392,18 @@ void CFX_RenderDevice::DrawBorder(const CFX_Matrix* pUser2Device,
       gsd.m_DashPhase = 0;
       gsd.m_LineWidth = fWidth;
 
-      CFX_PathData path;
+      CFX_Path path;
       path.AppendPoint(CFX_PointF(fLeft + fHalfWidth, fBottom + fHalfWidth),
-                       FXPT_TYPE::MoveTo);
+                       CFX_Path::Point::Type::kMove);
       path.AppendPoint(CFX_PointF(fLeft + fHalfWidth, fTop - fHalfWidth),
-                       FXPT_TYPE::LineTo);
+                       CFX_Path::Point::Type::kLine);
       path.AppendPoint(CFX_PointF(fRight - fHalfWidth, fTop - fHalfWidth),
-                       FXPT_TYPE::LineTo);
+                       CFX_Path::Point::Type::kLine);
       path.AppendPoint(CFX_PointF(fRight - fHalfWidth, fBottom + fHalfWidth),
-                       FXPT_TYPE::LineTo);
+                       CFX_Path::Point::Type::kLine);
       path.AppendPoint(CFX_PointF(fLeft + fHalfWidth, fBottom + fHalfWidth),
-                       FXPT_TYPE::LineTo);
-      DrawPath(&path, pUser2Device, &gsd, 0, color.ToFXColor(nTransparency),
+                       CFX_Path::Point::Type::kLine);
+      DrawPath(path, pUser2Device, &gsd, 0, color.ToFXColor(nTransparency),
                CFX_FillRenderOptions::WindingOptions());
       break;
     }
@@ -1223,56 +1412,59 @@ void CFX_RenderDevice::DrawBorder(const CFX_Matrix* pUser2Device,
       CFX_GraphStateData gsd;
       gsd.m_LineWidth = fHalfWidth;
 
-      CFX_PathData path_left_top;
+      CFX_Path path_left_top;
       path_left_top.AppendPoint(
           CFX_PointF(fLeft + fHalfWidth, fBottom + fHalfWidth),
-          FXPT_TYPE::MoveTo);
+          CFX_Path::Point::Type::kMove);
       path_left_top.AppendPoint(
-          CFX_PointF(fLeft + fHalfWidth, fTop - fHalfWidth), FXPT_TYPE::LineTo);
+          CFX_PointF(fLeft + fHalfWidth, fTop - fHalfWidth),
+          CFX_Path::Point::Type::kLine);
       path_left_top.AppendPoint(
           CFX_PointF(fRight - fHalfWidth, fTop - fHalfWidth),
-          FXPT_TYPE::LineTo);
+          CFX_Path::Point::Type::kLine);
       path_left_top.AppendPoint(CFX_PointF(fRight - fWidth, fTop - fWidth),
-                                FXPT_TYPE::LineTo);
+                                CFX_Path::Point::Type::kLine);
       path_left_top.AppendPoint(CFX_PointF(fLeft + fWidth, fTop - fWidth),
-                                FXPT_TYPE::LineTo);
+                                CFX_Path::Point::Type::kLine);
       path_left_top.AppendPoint(CFX_PointF(fLeft + fWidth, fBottom + fWidth),
-                                FXPT_TYPE::LineTo);
+                                CFX_Path::Point::Type::kLine);
       path_left_top.AppendPoint(
           CFX_PointF(fLeft + fHalfWidth, fBottom + fHalfWidth),
-          FXPT_TYPE::LineTo);
-      DrawPath(&path_left_top, pUser2Device, &gsd,
+          CFX_Path::Point::Type::kLine);
+      DrawPath(path_left_top, pUser2Device, &gsd,
                crLeftTop.ToFXColor(nTransparency), 0,
                CFX_FillRenderOptions::EvenOddOptions());
 
-      CFX_PathData path_right_bottom;
+      CFX_Path path_right_bottom;
       path_right_bottom.AppendPoint(
           CFX_PointF(fRight - fHalfWidth, fTop - fHalfWidth),
-          FXPT_TYPE::MoveTo);
+          CFX_Path::Point::Type::kMove);
       path_right_bottom.AppendPoint(
           CFX_PointF(fRight - fHalfWidth, fBottom + fHalfWidth),
-          FXPT_TYPE::LineTo);
+          CFX_Path::Point::Type::kLine);
       path_right_bottom.AppendPoint(
           CFX_PointF(fLeft + fHalfWidth, fBottom + fHalfWidth),
-          FXPT_TYPE::LineTo);
+          CFX_Path::Point::Type::kLine);
       path_right_bottom.AppendPoint(
-          CFX_PointF(fLeft + fWidth, fBottom + fWidth), FXPT_TYPE::LineTo);
+          CFX_PointF(fLeft + fWidth, fBottom + fWidth),
+          CFX_Path::Point::Type::kLine);
       path_right_bottom.AppendPoint(
-          CFX_PointF(fRight - fWidth, fBottom + fWidth), FXPT_TYPE::LineTo);
+          CFX_PointF(fRight - fWidth, fBottom + fWidth),
+          CFX_Path::Point::Type::kLine);
       path_right_bottom.AppendPoint(CFX_PointF(fRight - fWidth, fTop - fWidth),
-                                    FXPT_TYPE::LineTo);
+                                    CFX_Path::Point::Type::kLine);
       path_right_bottom.AppendPoint(
           CFX_PointF(fRight - fHalfWidth, fTop - fHalfWidth),
-          FXPT_TYPE::LineTo);
-      DrawPath(&path_right_bottom, pUser2Device, &gsd,
+          CFX_Path::Point::Type::kLine);
+      DrawPath(path_right_bottom, pUser2Device, &gsd,
                crRightBottom.ToFXColor(nTransparency), 0,
                CFX_FillRenderOptions::EvenOddOptions());
 
-      CFX_PathData path;
+      CFX_Path path;
       path.AppendRect(fLeft, fBottom, fRight, fTop);
       path.AppendRect(fLeft + fHalfWidth, fBottom + fHalfWidth,
                       fRight - fHalfWidth, fTop - fHalfWidth);
-      DrawPath(&path, pUser2Device, &gsd, color.ToFXColor(nTransparency), 0,
+      DrawPath(path, pUser2Device, &gsd, color.ToFXColor(nTransparency), 0,
                CFX_FillRenderOptions::EvenOddOptions());
       break;
     }
@@ -1280,12 +1472,12 @@ void CFX_RenderDevice::DrawBorder(const CFX_Matrix* pUser2Device,
       CFX_GraphStateData gsd;
       gsd.m_LineWidth = fWidth;
 
-      CFX_PathData path;
+      CFX_Path path;
       path.AppendPoint(CFX_PointF(fLeft, fBottom + fHalfWidth),
-                       FXPT_TYPE::MoveTo);
+                       CFX_Path::Point::Type::kMove);
       path.AppendPoint(CFX_PointF(fRight, fBottom + fHalfWidth),
-                       FXPT_TYPE::LineTo);
-      DrawPath(&path, pUser2Device, &gsd, 0, color.ToFXColor(nTransparency),
+                       CFX_Path::Point::Type::kLine);
+      DrawPath(path, pUser2Device, &gsd, 0, color.ToFXColor(nTransparency),
                CFX_FillRenderOptions::EvenOddOptions());
       break;
     }

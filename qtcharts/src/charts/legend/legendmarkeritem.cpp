@@ -1,32 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "legendmarkeritem_p.h"
+#include "qlegendmarker_p.h"
+#include "chartpresenter_p.h"
+#include "qlegend.h"
+#include "qlegend_p.h"
+#include "qlegendmarker.h"
+#if QT_CONFIG(charts_scatter_chart)
+#include "qscatterseries.h"
+#include "scatterchartitem_p.h"
+#endif
+#if QT_CONFIG(charts_line_chart)
+#include "qlineseries.h"
+#endif
+#if QT_CONFIG(charts_spline_chart)
+#include "qsplineseries.h"
+#endif
 #include <QtGui/QPainter>
 #include <QtWidgets/QGraphicsSceneEvent>
 #include <QtWidgets/QGraphicsTextItem>
@@ -36,17 +26,7 @@
 #include <QtGui/QTextDocument>
 #include <QtCore/QtMath>
 
-#include <QtCharts/QLegend>
-#include <QtCharts/QScatterSeries>
-#include <QtCharts/QLineSeries>
-#include <QtCharts/QSplineSeries>
-#include <private/qlegend_p.h>
-#include <QtCharts/QLegendMarker>
-#include <private/qlegendmarker_p.h>
-#include <private/legendmarkeritem_p.h>
-#include <private/chartpresenter_p.h>
-
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 LegendMarkerItem::LegendMarkerItem(QLegendMarkerPrivate *marker, QGraphicsObject *parent) :
     QGraphicsObject(parent),
@@ -107,6 +87,21 @@ void LegendMarkerItem::setSeriesBrush(const QBrush &brush)
     setItemBrushAndPen();
 }
 
+void LegendMarkerItem::setSeriesLightMarker(const QImage &image)
+{
+    m_seriesLightMarker = image;
+
+    if (m_markerItem) {
+        if (image.isNull()) {
+            m_markerItem->setFlag(QGraphicsItem::ItemStacksBehindParent, false);
+        } else {
+            m_markerItem->setFlag(QGraphicsItem::ItemStacksBehindParent,
+                (effectiveMarkerShape() == QLegend::MarkerShapeFromSeries));
+        }
+    }
+    updateMarkerShapeAndSize();
+}
+
 void LegendMarkerItem::setFont(const QFont &font)
 {
     QFontMetrics fn(font);
@@ -126,7 +121,7 @@ QFont LegendMarkerItem::font() const
 void LegendMarkerItem::setLabel(const QString label)
 {
     m_label = label;
-    updateGeometry();
+    m_marker->invalidateLegend();
 }
 
 QString LegendMarkerItem::label() const
@@ -155,12 +150,15 @@ void LegendMarkerItem::setGeometry(const QRectF &rect)
     QRectF truncatedRect;
     const QString html = ChartPresenter::truncatedText(m_font, m_label, qreal(0.0),
                                                        width - x, rect.height(), truncatedRect);
-    m_textItem->setHtml(html);
+    m_textItem->setHtml(html.compare(QLatin1String("...")) ? html : QString());
 #if QT_CONFIG(tooltip)
-    if (m_marker->m_legend->showToolTips() && html != m_label)
+    if (m_marker->m_legend->showToolTips() && html != m_label) {
         m_textItem->setToolTip(m_label);
-    else
+        m_markerItem->setToolTip(m_label);
+    } else {
         m_textItem->setToolTip(QString());
+        m_markerItem->setToolTip(QString());
+    }
 #endif
     m_textItem->setFont(m_font);
     m_textItem->setTextWidth(truncatedRect.width());
@@ -193,14 +191,24 @@ QRectF LegendMarkerItem::markerRect() const
 
 void LegendMarkerItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
 {
-    Q_UNUSED(option)
-    Q_UNUSED(widget)
-    Q_UNUSED(painter)
+    Q_UNUSED(option);
+    Q_UNUSED(widget);
+
+    // Draw the light marker, if it is present.
+    if (!m_seriesLightMarker.isNull()) {
+        QRectF rect(m_markerItem->pos(), m_markerRect.size());
+
+        // shrink the image so the line is visible behind the marker
+        if (m_itemType == TypeLine && rect.width() > 4 && rect.height() > 4)
+            rect.adjust(1.0, 1.0, -1.0, -1.0);
+
+        painter->drawImage(rect, m_seriesLightMarker);
+    }
 }
 
 QSizeF LegendMarkerItem::sizeHint(Qt::SizeHint which, const QSizeF& constraint) const
 {
-    Q_UNUSED(constraint)
+    Q_UNUSED(constraint);
 
     QSizeF sh;
     const qreal markerWidth = effectiveMarkerWidth();
@@ -214,7 +222,7 @@ QSizeF LegendMarkerItem::sizeHint(Qt::SizeHint which, const QSizeF& constraint) 
     }
     case Qt::PreferredSize: {
         const QRectF labelRect = ChartPresenter::textBoundingRect(m_font, m_label);
-        sh = QSizeF(labelRect.width() + (2.0 * m_margin) + m_space + markerWidth,
+        sh = QSizeF(labelRect.width() + (2.0 * m_margin) + m_space + markerWidth + 1,
                     qMax(m_markerRect.height(), labelRect.height()) + (2.0 * m_margin));
         break;
     }
@@ -227,16 +235,20 @@ QSizeF LegendMarkerItem::sizeHint(Qt::SizeHint which, const QSizeF& constraint) 
 
 void LegendMarkerItem::hoverEnterEvent(QGraphicsSceneHoverEvent *event)
 {
-    Q_UNUSED(event)
+    event->setAccepted(false);
     m_hovering = true;
     emit m_marker->q_ptr->hovered(true);
+
+    QGraphicsObject::hoverEnterEvent(event);
 }
 
 void LegendMarkerItem::hoverLeaveEvent(QGraphicsSceneHoverEvent *event)
 {
-    Q_UNUSED(event)
+    event->setAccepted(false);
     m_hovering = false;
     emit m_marker->q_ptr->hovered(false);
+
+    QGraphicsObject::hoverLeaveEvent(event);
 }
 
 QString LegendMarkerItem::displayedLabel() const
@@ -248,6 +260,7 @@ void LegendMarkerItem::setToolTip(const QString &tip)
 {
 #if QT_CONFIG(tooltip)
     m_textItem->setToolTip(tip);
+    m_markerItem->setToolTip(tip);
 #endif
 }
 
@@ -267,20 +280,82 @@ void LegendMarkerItem::updateMarkerShapeAndSize()
 
     ItemType itemType = TypeRect;
     QRectF newRect = m_defaultMarkerRect;
-    if (shape == QLegend::MarkerShapeFromSeries) {
-        QScatterSeries *scatter = qobject_cast<QScatterSeries *>(m_marker->series());
-        if (scatter) {
-            newRect.setSize(QSizeF(scatter->markerSize(), scatter->markerSize()));
-            if (scatter->markerShape() == QScatterSeries::MarkerShapeCircle)
-                itemType = TypeCircle;
-        } else if (qobject_cast<QLineSeries *>(m_marker->series())
-                   || qobject_cast<QSplineSeries *>(m_marker->series())) {
-            newRect.setHeight(m_seriesPen.width());
-            newRect.setWidth(qRound(m_defaultMarkerRect.width() * 1.5));
-            itemType = TypeLine;
+    QXYSeries *xySeries = qobject_cast<QXYSeries *>(m_marker->series());
+
+    switch (shape) {
+    case QLegend::MarkerShapeFromSeries: {
+        if (xySeries) {
+            m_seriesLightMarker = xySeries->lightMarker();
+            switch (xySeries->type()) {
+#if QT_CONFIG(charts_scatter_chart)
+            case QAbstractSeries::SeriesTypeScatter: {
+                newRect.setSize(QSizeF(xySeries->markerSize(), xySeries->markerSize()));
+
+                QScatterSeries *scatter = qobject_cast<QScatterSeries *>(m_marker->series());
+                Q_ASSERT(scatter != nullptr);
+                switch (scatter->markerShape()) {
+                case QScatterSeries::MarkerShapeRectangle:
+                    itemType = TypeRect;
+                    break;
+                case QScatterSeries::MarkerShapeCircle:
+                    itemType = TypeCircle;
+                    break;
+                case QScatterSeries::MarkerShapeRotatedRectangle:
+                    itemType = TypeRotatedRect;
+                    break;
+                case QScatterSeries::MarkerShapeTriangle:
+                    itemType = TypeTriangle;
+                    break;
+                case QScatterSeries::MarkerShapeStar:
+                    itemType = TypeStar;
+                    break;
+                case QScatterSeries::MarkerShapePentagon:
+                    itemType = TypePentagon;
+                    break;
+                default:
+                    qWarning() << "Unsupported marker type, TypeRect used";
+                    break;
+                }
+            }
+                break;
+#endif
+#if QT_CONFIG(charts_line_chart)
+            case QAbstractSeries::SeriesTypeLine:
+            case QAbstractSeries::SeriesTypeSpline: {
+                if (m_seriesLightMarker.isNull()) {
+                    newRect.setHeight(m_seriesPen.width());
+                    newRect.setWidth(qRound(m_defaultMarkerRect.width() * 1.5));
+                } else {
+                    newRect.setSize(QSizeF(xySeries->markerSize(), xySeries->markerSize()));
+                }
+                itemType = TypeLine;
+            }
+                break;
+#endif
+            default:
+                // Use defaults specified above.
+                break;
+            }
         }
-    } else if (shape == QLegend::MarkerShapeCircle) {
+    }
+        break;
+    case QLegend::MarkerShapeCircle:
         itemType = TypeCircle;
+        break;
+    case QLegend::MarkerShapeRotatedRectangle:
+        itemType = TypeRotatedRect;
+        break;
+    case QLegend::MarkerShapeTriangle:
+        itemType = TypeTriangle;
+        break;
+    case QLegend::MarkerShapeStar:
+        itemType = TypeStar;
+        break;
+    case QLegend::MarkerShapePentagon:
+        itemType = TypePentagon;
+        break;
+    default:
+        break;
     }
 
     if (!m_markerItem || m_itemType != itemType) {
@@ -290,12 +365,52 @@ void LegendMarkerItem::updateMarkerShapeAndSize()
             oldPos = m_markerItem->pos();
             delete m_markerItem;
         }
-        if (itemType == TypeRect)
+
+        switch (itemType) {
+        case LegendMarkerItem::TypeRect: {
             m_markerItem = new QGraphicsRectItem(this);
-        else if (itemType == TypeCircle)
+            break;
+        }
+        case LegendMarkerItem::TypeCircle: {
             m_markerItem = new QGraphicsEllipseItem(this);
-        else
+            break;
+        }
+#if QT_CONFIG(charts_scatter_chart)
+        case LegendMarkerItem::TypeRotatedRect: {
+            QGraphicsPolygonItem *item = new QGraphicsPolygonItem(this);
+            item->setPolygon(RotatedRectangleMarker::polygon());
+            m_markerItem = item;
+            break;
+        }
+        case LegendMarkerItem::TypeTriangle: {
+            QGraphicsPolygonItem *item = new QGraphicsPolygonItem(this);
+            item->setPolygon(TriangleMarker::polygon());
+            m_markerItem = item;
+            break;
+        }
+        case LegendMarkerItem::TypeStar: {
+            QGraphicsPolygonItem *item = new QGraphicsPolygonItem(this);
+            item->setPolygon(StarMarker::polygon());
+            m_markerItem = item;
+            break;
+        }
+        case LegendMarkerItem::TypePentagon: {
+            QGraphicsPolygonItem *item = new QGraphicsPolygonItem(this);
+            item->setPolygon(PentagonMarker::polygon());
+            m_markerItem = item;
+            break;
+        }
+#endif
+        default:
             m_markerItem =  new QGraphicsLineItem(this);
+            break;
+        }
+
+        if (xySeries && shape == QLegend::MarkerShapeFromSeries
+            && !m_seriesLightMarker.isNull()) {
+                m_markerItem->setFlag(QGraphicsItem::ItemStacksBehindParent, true);
+        }
+
         // Immediately update the position to the approximate correct position to avoid marker
         // jumping around when changing markers
         m_markerItem->setPos(oldPos);
@@ -333,10 +448,23 @@ void LegendMarkerItem::setItemBrushAndPen()
                 qgraphicsitem_cast<QGraphicsRectItem *>(m_markerItem);
         if (!shapeItem)
             shapeItem = qgraphicsitem_cast<QGraphicsEllipseItem *>(m_markerItem);
+
+        if (!shapeItem)
+            shapeItem = qgraphicsitem_cast<QGraphicsPolygonItem *>(m_markerItem);
+
         if (shapeItem) {
             if (effectiveMarkerShape() == QLegend::MarkerShapeFromSeries) {
-                shapeItem->setPen(m_seriesPen);
-                shapeItem->setBrush(m_seriesBrush);
+                QPen pen = m_seriesPen;
+                QBrush brush = m_seriesBrush;
+                if (!m_seriesLightMarker.isNull()) {
+                    // If there's a light marker set, don't draw the regular marker.
+                    pen.setColor(Qt::transparent);
+                    brush = QBrush();
+                    brush.setColor(Qt::transparent);
+                }
+
+                shapeItem->setPen(pen);
+                shapeItem->setBrush(brush);
             } else {
                 shapeItem->setPen(m_pen);
                 shapeItem->setBrush(m_brush);
@@ -353,14 +481,48 @@ void LegendMarkerItem::setItemBrushAndPen()
 
 void LegendMarkerItem::setItemRect()
 {
-    if (m_itemType == TypeRect) {
+    switch (m_itemType) {
+    case LegendMarkerItem::TypeRect: {
         static_cast<QGraphicsRectItem *>(m_markerItem)->setRect(m_markerRect);
-    } else if (m_itemType == TypeCircle) {
+        break;
+    }
+    case LegendMarkerItem::TypeCircle: {
         static_cast<QGraphicsEllipseItem *>(m_markerItem)->setRect(m_markerRect);
-    } else {
+        break;
+    }
+#if QT_CONFIG(charts_scatter_chart)
+    case LegendMarkerItem::TypeRotatedRect: {
+        static_cast<QGraphicsPolygonItem *>(m_markerItem)
+                ->setPolygon(RotatedRectangleMarker::polygon(m_markerRect.x(), m_markerRect.y(),
+                                                             m_markerRect.width(),
+                                                             m_markerRect.height()));
+        break;
+    }
+    case LegendMarkerItem::TypeTriangle: {
+        static_cast<QGraphicsPolygonItem *>(m_markerItem)
+                ->setPolygon(TriangleMarker::polygon(m_markerRect.x(), m_markerRect.y(),
+                                                     m_markerRect.width(), m_markerRect.height()));
+        break;
+    }
+    case LegendMarkerItem::TypeStar: {
+        static_cast<QGraphicsPolygonItem *>(m_markerItem)
+                ->setPolygon(StarMarker::polygon(m_markerRect.x(), m_markerRect.y(),
+                                                 m_markerRect.width(), m_markerRect.height()));
+        break;
+    }
+    case LegendMarkerItem::TypePentagon: {
+        static_cast<QGraphicsPolygonItem *>(m_markerItem)
+                ->setPolygon(PentagonMarker::polygon(m_markerRect.x(), m_markerRect.y(),
+                                                     m_markerRect.width(), m_markerRect.height()));
+        break;
+    }
+#endif
+    default: {
         qreal y = m_markerRect.height() / 2.0;
         QLineF line(0.0, y, m_markerRect.width(), y);
         static_cast<QGraphicsLineItem *>(m_markerItem)->setLine(line);
+        break;
+    }
     }
 }
 
@@ -370,6 +532,6 @@ bool LegendMarkerItem::useMaxWidth() const
             || m_marker->m_legend->alignment() == Qt::AlignRight);
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_legendmarkeritem_p.cpp"

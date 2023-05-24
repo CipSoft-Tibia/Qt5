@@ -1,15 +1,15 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <stdint.h>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/memory/ref_counted.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
 #include "base/synchronization/waitable_event.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/simple_thread.h"
 #include "ppapi/c/pp_completion_callback.h"
 #include "ppapi/c/pp_errors.h"
@@ -353,19 +353,18 @@ class CallbackMockResource : public Resource {
         PP_MakeCompletionCallback(&TestCallback,
                                   &info_did_run_with_completion_task_));
     callback_did_run_with_completion_task_->set_completion_task(
-        Bind(&CallbackMockResource::CompletionTask,
-             this,
-             &info_did_run_with_completion_task_));
+        base::BindOnce(&CallbackMockResource::CompletionTask, this,
+                       &info_did_run_with_completion_task_));
 
     callback_did_abort_ = new TrackedCallback(
         this, PP_MakeCompletionCallback(&TestCallback, &info_did_abort_));
-    callback_did_abort_->set_completion_task(
-        Bind(&CallbackMockResource::CompletionTask, this, &info_did_abort_));
+    callback_did_abort_->set_completion_task(base::BindOnce(
+        &CallbackMockResource::CompletionTask, this, &info_did_abort_));
 
     callback_didnt_run_ = new TrackedCallback(
         this, PP_MakeCompletionCallback(&TestCallback, &info_didnt_run_));
-    callback_didnt_run_->set_completion_task(
-        Bind(&CallbackMockResource::CompletionTask, this, &info_didnt_run_));
+    callback_didnt_run_->set_completion_task(base::BindOnce(
+        &CallbackMockResource::CompletionTask, this, &info_didnt_run_));
 
     callbacks_created_event_.Signal();
   }

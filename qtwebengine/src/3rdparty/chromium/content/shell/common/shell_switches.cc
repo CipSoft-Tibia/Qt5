@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,9 @@
 namespace switches {
 
 // Makes Content Shell use the given path for its data directory.
+// NOTE: If changing this value, change the corresponding Java-side value in
+// ContentShellBrowserTestActivity.java#getUserDataDirectoryCommandLineSwitch()
+// to match.
 const char kContentShellDataPath[] = "data-path";
 
 // The directory breakpad should store minidumps in.
@@ -26,6 +29,15 @@ const char kContentShellHostWindowSize[] = "content-shell-host-window-size";
 
 // Hides toolbar from content_shell's host window.
 const char kContentShellHideToolbar[] = "content-shell-hide-toolbar";
+
+// Let DevTools front-end talk to the target of type "tab" rather than
+// "frame" when inspecting a WebContents.
+const char kContentShellDevToolsTabTarget[] =
+    "content-shell-devtools-tab-target";
+
+// Enables APIs guarded with the [IsolatedContext] IDL attribute for the given
+// comma-separated list of origins.
+const char kIsolatedContextOrigins[] = "isolated-context-origins";
 
 // Runs Content Shell in web test mode, injecting test-only behaviour for
 // blink web tests.

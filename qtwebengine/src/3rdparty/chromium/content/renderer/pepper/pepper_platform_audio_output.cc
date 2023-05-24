@@ -1,20 +1,19 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/renderer/pepper/pepper_platform_audio_output.h"
 
-#include "base/bind.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/notreached.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 #include "content/child/child_process.h"
 #include "content/renderer/pepper/audio_helper.h"
 #include "ppapi/shared_impl/ppb_audio_config_shared.h"
-#include "third_party/blink/public/web/modules/media/audio/web_audio_output_ipc_factory.h"
+#include "third_party/blink/public/web/modules/media/audio/audio_output_ipc_factory.h"
 
 namespace content {
 
@@ -92,14 +91,15 @@ void PepperPlatformAudioOutput::OnStreamCreated(
     base::SyncSocket::ScopedHandle socket_handle,
     bool playing_automatically) {
   DCHECK(shared_memory_region.IsValid());
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   DCHECK(socket_handle.IsValid());
 #else
   DCHECK(socket_handle.is_valid());
 #endif
   DCHECK_GT(shared_memory_region.GetSize(), 0u);
 
-  if (base::ThreadTaskRunnerHandle::Get().get() == main_task_runner_.get()) {
+  if (base::SingleThreadTaskRunner::GetCurrentDefault().get() ==
+      main_task_runner_.get()) {
     // Must dereference the client only on the main thread. Shutdown may have
     // occurred while the request was in-flight, so we need to NULL check.
     if (client_)
@@ -125,7 +125,7 @@ PepperPlatformAudioOutput::~PepperPlatformAudioOutput() {
 
 PepperPlatformAudioOutput::PepperPlatformAudioOutput()
     : client_(nullptr),
-      main_task_runner_(base::ThreadTaskRunnerHandle::Get()),
+      main_task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
       io_task_runner_(ChildProcess::current()->io_task_runner()) {}
 
 bool PepperPlatformAudioOutput::Initialize(
@@ -136,14 +136,13 @@ bool PepperPlatformAudioOutput::Initialize(
   DCHECK(client);
   client_ = client;
 
-  ipc_ = blink::WebAudioOutputIPCFactory::GetInstance().CreateAudioOutputIPC(
+  ipc_ = blink::AudioOutputIPCFactory::GetInstance().CreateAudioOutputIPC(
       source_frame_token);
   CHECK(ipc_);
 
   media::AudioParameters params(media::AudioParameters::AUDIO_PCM_LOW_LATENCY,
-                                media::CHANNEL_LAYOUT_STEREO,
-                                sample_rate,
-                                frames_per_buffer);
+                                media::ChannelLayoutConfig::Stereo(),
+                                sample_rate, frames_per_buffer);
 
   io_task_runner_->PostTask(
       FROM_HERE,
@@ -156,7 +155,7 @@ void PepperPlatformAudioOutput::InitializeOnIOThread(
     const media::AudioParameters& params) {
   DCHECK(io_task_runner_->BelongsToCurrentThread());
   if (ipc_)
-    ipc_->CreateStream(this, params, base::nullopt);
+    ipc_->CreateStream(this, params);
 }
 
 void PepperPlatformAudioOutput::StartPlaybackOnIOThread() {

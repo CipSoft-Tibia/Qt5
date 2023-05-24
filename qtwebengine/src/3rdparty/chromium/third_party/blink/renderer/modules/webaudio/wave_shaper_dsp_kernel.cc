@@ -31,37 +31,39 @@
 #include "build/build_config.h"
 #include "third_party/blink/renderer/platform/audio/audio_utilities.h"
 #include "third_party/blink/renderer/platform/audio/vector_math.h"
+#include "third_party/blink/renderer/platform/wtf/math_extras.h"
 #include "third_party/blink/renderer/platform/wtf/threading.h"
+
+#if defined(ARCH_CPU_X86_FAMILY)
+#include <xmmintrin.h>
+#elif defined(CPU_ARM_NEON)
+#include <arm_neon.h>
+#endif
 
 namespace blink {
 
 WaveShaperDSPKernel::WaveShaperDSPKernel(WaveShaperProcessor* processor)
     : AudioDSPKernel(processor),
-      tail_time_(0),
       // 4 times render size to handle 4x oversampling.
-      virtual_index_(4 * audio_utilities::kRenderQuantumFrames),
-      index_(4 * audio_utilities::kRenderQuantumFrames),
-      v1_(4 * audio_utilities::kRenderQuantumFrames),
-      v2_(4 * audio_utilities::kRenderQuantumFrames),
-      f_(4 * audio_utilities::kRenderQuantumFrames) {
-  if (processor->Oversample() != WaveShaperProcessor::kOverSampleNone)
+      virtual_index_(4 * RenderQuantumFrames()),
+      index_(4 * RenderQuantumFrames()),
+      v1_(4 * RenderQuantumFrames()),
+      v2_(4 * RenderQuantumFrames()),
+      f_(4 * RenderQuantumFrames()) {
+  if (processor->Oversample() != WaveShaperProcessor::kOverSampleNone) {
     LazyInitializeOversampling();
+  }
 }
 
 void WaveShaperDSPKernel::LazyInitializeOversampling() {
   if (!temp_buffer_) {
-    temp_buffer_ = std::make_unique<AudioFloatArray>(
-        audio_utilities::kRenderQuantumFrames * 2);
-    temp_buffer2_ = std::make_unique<AudioFloatArray>(
-        audio_utilities::kRenderQuantumFrames * 4);
-    up_sampler_ =
-        std::make_unique<UpSampler>(audio_utilities::kRenderQuantumFrames);
-    down_sampler_ = std::make_unique<DownSampler>(
-        audio_utilities::kRenderQuantumFrames * 2);
-    up_sampler2_ =
-        std::make_unique<UpSampler>(audio_utilities::kRenderQuantumFrames * 2);
-    down_sampler2_ = std::make_unique<DownSampler>(
-        audio_utilities::kRenderQuantumFrames * 4);
+    temp_buffer_ = std::make_unique<AudioFloatArray>(RenderQuantumFrames() * 2);
+    temp_buffer2_ =
+        std::make_unique<AudioFloatArray>(RenderQuantumFrames() * 4);
+    up_sampler_ = std::make_unique<UpSampler>(RenderQuantumFrames());
+    down_sampler_ = std::make_unique<DownSampler>(RenderQuantumFrames() * 2);
+    up_sampler2_ = std::make_unique<UpSampler>(RenderQuantumFrames() * 2);
+    down_sampler2_ = std::make_unique<DownSampler>(RenderQuantumFrames() * 4);
   }
 }
 
@@ -126,7 +128,7 @@ void WaveShaperDSPKernel::WaveShaperCurveValues(float* destination,
   float* virtual_index = virtual_index_.Data();
 
   // virtual_index[k] =
-  //   clampTo(0.5 * (source[k] + 1) * (curve_length - 1),
+  //   ClampTo(0.5 * (source[k] + 1) * (curve_length - 1),
   //           0.0f,
   //           static_cast<float>(curve_length - 1))
 
@@ -189,14 +191,14 @@ void WaveShaperDSPKernel::WaveShaperCurveValues(float* destination,
       // Get the curve_data values and save them in v1 and v2,
       // carfully clamping the values.  If the input is NaN, index1
       // could be 0x8000000.
-      v1[k] = curve_data[clampTo(i1[0], 0, max_index)];
-      v2[k] = curve_data[clampTo(i2[0], 0, max_index)];
-      v1[k + 1] = curve_data[clampTo(i1[1], 0, max_index)];
-      v2[k + 1] = curve_data[clampTo(i2[1], 0, max_index)];
-      v1[k + 2] = curve_data[clampTo(i1[2], 0, max_index)];
-      v2[k + 2] = curve_data[clampTo(i2[2], 0, max_index)];
-      v1[k + 3] = curve_data[clampTo(i1[3], 0, max_index)];
-      v2[k + 3] = curve_data[clampTo(i2[3], 0, max_index)];
+      v1[k] = curve_data[ClampTo(i1[0], 0, max_index)];
+      v2[k] = curve_data[ClampTo(i2[0], 0, max_index)];
+      v1[k + 1] = curve_data[ClampTo(i1[1], 0, max_index)];
+      v2[k + 1] = curve_data[ClampTo(i2[1], 0, max_index)];
+      v1[k + 2] = curve_data[ClampTo(i1[2], 0, max_index)];
+      v2[k + 2] = curve_data[ClampTo(i2[2], 0, max_index)];
+      v1[k + 3] = curve_data[ClampTo(i1[3], 0, max_index)];
+      v2[k + 3] = curve_data[ClampTo(i2[3], 0, max_index)];
     }
   }
 #elif defined(CPU_ARM_NEON)
@@ -251,8 +253,8 @@ void WaveShaperDSPKernel::WaveShaperCurveValues(float* destination,
   // Compute values for index1 and load the curve_data corresponding to indices.
   for (; k < frames_to_process; ++k) {
     unsigned index1 =
-        clampTo(static_cast<unsigned>(virtual_index[k]), 0, max_index);
-    unsigned index2 = clampTo(index1 + 1, 0, max_index);
+        ClampTo(static_cast<unsigned>(virtual_index[k]), 0, max_index);
+    unsigned index2 = ClampTo(index1 + 1, 0, max_index);
     index[k] = index1;
     v1[k] = curve_data[index1];
     v2[k] = curve_data[index2];
@@ -305,7 +307,7 @@ void WaveShaperDSPKernel::ProcessCurve(const float* source,
 void WaveShaperDSPKernel::ProcessCurve2x(const float* source,
                                          float* destination,
                                          uint32_t frames_to_process) {
-  DCHECK_EQ(frames_to_process, audio_utilities::kRenderQuantumFrames);
+  DCHECK_EQ(frames_to_process, RenderQuantumFrames());
 
   float* temp_p = temp_buffer_->Data();
 
@@ -320,7 +322,7 @@ void WaveShaperDSPKernel::ProcessCurve2x(const float* source,
 void WaveShaperDSPKernel::ProcessCurve4x(const float* source,
                                          float* destination,
                                          uint32_t frames_to_process) {
-  DCHECK_EQ(frames_to_process, audio_utilities::kRenderQuantumFrames);
+  DCHECK_EQ(frames_to_process, RenderQuantumFrames());
 
   float* temp_p = temp_buffer_->Data();
   float* temp_p2 = temp_buffer2_->Data();

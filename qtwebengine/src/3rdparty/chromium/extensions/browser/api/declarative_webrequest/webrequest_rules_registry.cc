@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,8 @@
 #include <limits>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/stl_util.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
 #include "content/public/browser/browser_thread.h"
 #include "extensions/browser/api/declarative_webrequest/webrequest_condition.h"
 #include "extensions/browser/api/declarative_webrequest/webrequest_constants.h"
@@ -62,7 +62,8 @@ std::set<const WebRequestRule*> WebRequestRulesRegistry::GetMatches(
   // 1st phase -- add all rules with some conditions without UrlFilter
   // attributes.
   for (const auto* rule : rules_with_untriggered_conditions_) {
-    if (rule->conditions().IsFulfilled(-1, request_data))
+    if (rule->conditions().IsFulfilled(base::MatcherStringPattern::kInvalidId,
+                                       request_data))
       result.insert(rule);
   }
 
@@ -129,9 +130,9 @@ WebRequestRulesRegistry::CreateDeltas(PermissionHelper* permission_helper,
 
     std::list<extension_web_request_api_helpers::EventResponseDelta>
         rule_result;
-    WebRequestAction::ApplyInfo apply_info = {permission_helper, request_data,
-                                              crosses_incognito, &rule_result,
-                                              &ignore_tags[extension_id]};
+    WebRequestAction::ApplyInfo apply_info = {
+        permission_helper, raw_ref(request_data), crosses_incognito,
+        &rule_result, &ignore_tags[extension_id]};
     rule->Apply(&apply_info);
     result.splice(result.begin(), std::move(rule_result));
 
@@ -164,7 +165,7 @@ std::string WebRequestRulesRegistry::AddRulesImpl(
     std::unique_ptr<WebRequestRule> webrequest_rule = WebRequestRule::Create(
         url_matcher_.condition_factory(), browser_context(), extension,
         extension_installation_time, *rule,
-        base::Bind(&Checker, base::Unretained(extension)), &error);
+        base::BindOnce(&Checker, base::Unretained(extension)), &error);
     if (!error.empty()) {
       // We don't return here, because we want to clear temporary
       // condition sets in the url_matcher_.
@@ -215,7 +216,7 @@ std::string WebRequestRulesRegistry::RemoveRulesImpl(
     const std::string& extension_id,
     const std::vector<std::string>& rule_identifiers) {
   // URLMatcherConditionSet IDs that can be removed from URLMatcher.
-  std::vector<URLMatcherConditionSet::ID> remove_from_url_matcher;
+  std::vector<base::MatcherStringPattern::ID> remove_from_url_matcher;
   RulesMap& registered_rules = webrequest_rules_[extension_id];
 
   for (const std::string& identifier : rule_identifiers) {
@@ -246,7 +247,7 @@ std::string WebRequestRulesRegistry::RemoveAllRulesImpl(
     const std::string& extension_id) {
   // First we get out all URLMatcherConditionSets and remove the rule references
   // from |rules_with_untriggered_conditions_|.
-  std::vector<URLMatcherConditionSet::ID> remove_from_url_matcher;
+  std::vector<base::MatcherStringPattern::ID> remove_from_url_matcher;
   for (const auto& rule_id_rule_pair : webrequest_rules_[extension_id])
     CleanUpAfterRule(rule_id_rule_pair.second.get(), &remove_from_url_matcher);
   url_matcher_.RemoveConditionSets(remove_from_url_matcher);
@@ -258,7 +259,7 @@ std::string WebRequestRulesRegistry::RemoveAllRulesImpl(
 
 void WebRequestRulesRegistry::CleanUpAfterRule(
     const WebRequestRule* rule,
-    std::vector<URLMatcherConditionSet::ID>* remove_from_url_matcher) {
+    std::vector<base::MatcherStringPattern::ID>* remove_from_url_matcher) {
   URLMatcherConditionSet::Vector condition_sets;
   rule->conditions().GetURLMatcherConditionSets(&condition_sets);
   for (const scoped_refptr<URLMatcherConditionSet>& condition_set :
@@ -282,11 +283,11 @@ bool WebRequestRulesRegistry::IsEmpty() const {
   return true;
 }
 
-WebRequestRulesRegistry::~WebRequestRulesRegistry() {}
+WebRequestRulesRegistry::~WebRequestRulesRegistry() = default;
 
 base::Time WebRequestRulesRegistry::GetExtensionInstallationTime(
     const std::string& extension_id) const {
-  return ExtensionPrefs::Get(browser_context_)->GetInstallTime(extension_id);
+  return ExtensionPrefs::Get(browser_context_)->GetLastUpdateTime(extension_id);
 }
 
 void WebRequestRulesRegistry::ClearCacheOnNavigation() {

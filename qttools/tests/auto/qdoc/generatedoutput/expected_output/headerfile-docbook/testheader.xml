@@ -15,6 +15,13 @@
 <db:para>TestHeader</db:para>
 </db:listitem>
 </db:varlistentry>
+<db:varlistentry>
+<db:term>Group</db:term>
+<db:listitem>
+<db:para><db:para>&lt;TestHeader&gt; is part of <db:simplelist><db:member><db:link xlink:href="headers.xml">Headers</db:link></db:member><db:member><db:link xlink:href="tests.xml">Tests</db:link></db:member></db:simplelist></db:para>
+</db:para>
+</db:listitem>
+</db:varlistentry>
 </db:variablelist>
 <db:section xml:id="details">
 <db:title>Detailed Description</db:title>
@@ -23,20 +30,10 @@
 <db:title>Type Documentation</db:title>
 <db:section xml:id="Globals-enum">
 <db:title>enum Globals</db:title>
-<db:enumsynopsis>
-<db:enumname>Globals</db:enumname>
-<db:synopsisinfo db:role="access">public</db:synopsisinfo>
-<db:synopsisinfo db:role="status">active</db:synopsisinfo>
-<db:synopsisinfo db:role="threadsafeness">unspecified</db:synopsisinfo>
-<db:synopsisinfo db:role="module">HeaderFile</db:synopsisinfo>
-<db:enumitem db:enumidentifier="Glo" db:enumvalue="0"/>
-<db:enumitem db:enumidentifier="Bal" db:enumvalue="1"/>
-</db:enumsynopsis>
 <db:informaltable>
 <db:thead>
 <db:tr>
 <db:th>Constant</db:th>
-<db:th>Description</db:th>
 </db:tr>
 </db:thead>
 <db:tr>
@@ -58,14 +55,6 @@
 <db:title>Variable Documentation</db:title>
 <db:section xml:id="globalVar-var">
 <db:title>const int globalVar</db:title>
-<db:fieldsynopsis>
-<db:type>const int</db:type>
-<db:varname>globalVar</db:varname>
-<db:synopsisinfo db:role="access">public</db:synopsisinfo>
-<db:synopsisinfo db:role="status">active</db:synopsisinfo>
-<db:synopsisinfo db:role="threadsafeness">unspecified</db:synopsisinfo>
-<db:synopsisinfo db:role="module">HeaderFile</db:synopsisinfo>
-</db:fieldsynopsis>
 <db:para>Global variable.</db:para>
 </db:section>
 </db:section>
@@ -73,17 +62,6 @@
 <db:title>Function Documentation</db:title>
 <db:section xml:id="globalFunc">
 <db:title>void globalFunc()</db:title>
-<db:methodsynopsis>
-<db:void/>
-<db:methodname>globalFunc</db:methodname>
-<db:void/>
-<db:synopsisinfo db:role="meta">plain</db:synopsisinfo>
-<db:synopsisinfo db:role="signature">void globalFunc()</db:synopsisinfo>
-<db:synopsisinfo db:role="access">public</db:synopsisinfo>
-<db:synopsisinfo db:role="status">active</db:synopsisinfo>
-<db:synopsisinfo db:role="threadsafeness">unspecified</db:synopsisinfo>
-<db:synopsisinfo db:role="module">HeaderFile</db:synopsisinfo>
-</db:methodsynopsis>
 <db:para>Global function.</db:para>
 </db:section>
 </db:section>

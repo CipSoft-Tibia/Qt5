@@ -45,6 +45,8 @@ namespace {
 // Import all the constants in the anonymous namespace.
 #include "src/inter_intra_masks.inc"
 
+// Precision bits when scaling reference frames.
+constexpr int kReferenceScaleShift = 14;
 constexpr int kAngleStep = 3;
 constexpr int kPredictionModeToAngle[kIntraPredictionModesUV] = {
     0, 90, 180, 45, 135, 113, 157, 203, 67, 0, 0, 0, 0};
@@ -224,8 +226,8 @@ void Tile::IntraPrediction(const Block& block, Plane plane, int x, int y,
                            bool has_left, bool has_top, bool has_top_right,
                            bool has_bottom_left, PredictionMode mode,
                            TransformSize tx_size) {
-  const int width = 1 << kTransformWidthLog2[tx_size];
-  const int height = 1 << kTransformHeightLog2[tx_size];
+  const int width = kTransformWidth[tx_size];
+  const int height = kTransformHeight[tx_size];
   const int x_shift = subsampling_x_[plane];
   const int y_shift = subsampling_y_[plane];
   const int max_x = (MultiplyBy4(frame_header_.columns4x4) >> x_shift) - 1;
@@ -384,43 +386,21 @@ template void Tile::IntraPrediction<uint16_t>(const Block& block, Plane plane,
                                               TransformSize tx_size);
 #endif
 
-constexpr BitMaskSet kPredictionModeSmoothMask(kPredictionModeSmooth,
-                                               kPredictionModeSmoothHorizontal,
-                                               kPredictionModeSmoothVertical);
-
-bool Tile::IsSmoothPrediction(int row, int column, Plane plane) const {
-  const BlockParameters& bp = *block_parameters_holder_.Find(row, column);
-  PredictionMode mode;
-  if (plane == kPlaneY) {
-    mode = bp.y_mode;
-  } else {
-    if (bp.reference_frame[0] > kReferenceFrameIntra) return false;
-    mode = bp.uv_mode;
-  }
-  return kPredictionModeSmoothMask.Contains(mode);
-}
-
 int Tile::GetIntraEdgeFilterType(const Block& block, Plane plane) const {
-  const int subsampling_x = subsampling_x_[plane];
-  const int subsampling_y = subsampling_y_[plane];
-  if (block.top_available[plane]) {
-    const int row =
-        block.row4x4 - 1 -
-        static_cast<int>(subsampling_y != 0 && (block.row4x4 & 1) != 0);
-    const int column =
-        block.column4x4 +
-        static_cast<int>(subsampling_x != 0 && (block.column4x4 & 1) == 0);
-    if (IsSmoothPrediction(row, column, plane)) return 1;
+  bool top;
+  bool left;
+  if (plane == kPlaneY) {
+    top = block.top_available[kPlaneY] &&
+          kPredictionModeSmoothMask.Contains(block.bp_top->y_mode);
+    left = block.left_available[kPlaneY] &&
+           kPredictionModeSmoothMask.Contains(block.bp_left->y_mode);
+  } else {
+    top = block.top_available[plane] &&
+          block.bp->prediction_parameters->chroma_top_uses_smooth_prediction;
+    left = block.left_available[plane] &&
+           block.bp->prediction_parameters->chroma_left_uses_smooth_prediction;
   }
-  if (block.left_available[plane]) {
-    const int row = block.row4x4 + static_cast<int>(subsampling_y != 0 &&
-                                                    (block.row4x4 & 1) == 0);
-    const int column =
-        block.column4x4 - 1 -
-        static_cast<int>(subsampling_x != 0 && (block.column4x4 & 1) != 0);
-    if (IsSmoothPrediction(row, column, plane)) return 1;
-  }
-  return 0;
+  return static_cast<int>(top || left);
 }
 
 template <typename Pixel>
@@ -515,7 +495,8 @@ void Tile::PalettePrediction(const Block& block, const Plane plane,
                              const int y, const TransformSize tx_size) {
   const int tx_width = kTransformWidth[tx_size];
   const int tx_height = kTransformHeight[tx_size];
-  const uint16_t* const palette = block.bp->palette_mode_info.color[plane];
+  const uint16_t* const palette =
+      block.bp->prediction_parameters->palette_mode_info.color[plane];
   const PlaneType plane_type = GetPlaneType(plane);
   const int x4 = MultiplyBy4(x);
   const int y4 = MultiplyBy4(y);
@@ -700,7 +681,7 @@ GlobalMotion* Tile::GetWarpParams(
             ? global_motion_params->type
             : kNumGlobalMotionTransformationTypes;
     const bool is_global_valid =
-        IsGlobalMvBlock(block.bp->is_global_mv_block, global_motion_type) &&
+        IsGlobalMvBlock(*block.bp, global_motion_type) &&
         SetupShear(global_motion_params);
     // Valid global motion type implies reference type can't be intra.
     assert(!is_global_valid || reference_type != kReferenceFrameIntra);
@@ -790,11 +771,10 @@ bool Tile::InterPrediction(const Block& block, const Plane plane, const int x,
                       [static_cast<int>(prediction_parameters.mask_is_inverse)](
                           block.scratch_buffer->prediction_buffer[0],
                           block.scratch_buffer->prediction_buffer[1],
-                          block.scratch_buffer->weight_mask,
-                          kMaxSuperBlockSizeInPixels);
+                          block.scratch_buffer->weight_mask, block.width);
     }
     prediction_mask = block.scratch_buffer->weight_mask;
-    prediction_mask_stride = kMaxSuperBlockSizeInPixels;
+    prediction_mask_stride = block.width;
   }
 
   if (is_compound) {
@@ -945,6 +925,68 @@ void Tile::DistanceWeightedPrediction(void* prediction_0, void* prediction_1,
                                width, height, dest, dest_stride);
 }
 
+void Tile::ScaleMotionVector(const MotionVector& mv, const Plane plane,
+                             const int reference_frame_index, const int x,
+                             const int y, int* const start_x,
+                             int* const start_y, int* const step_x,
+                             int* const step_y) {
+  const int reference_upscaled_width =
+      (reference_frame_index == -1)
+          ? frame_header_.upscaled_width
+          : reference_frames_[reference_frame_index]->upscaled_width();
+  const int reference_height =
+      (reference_frame_index == -1)
+          ? frame_header_.height
+          : reference_frames_[reference_frame_index]->frame_height();
+  assert(2 * frame_header_.width >= reference_upscaled_width &&
+         2 * frame_header_.height >= reference_height &&
+         frame_header_.width <= 16 * reference_upscaled_width &&
+         frame_header_.height <= 16 * reference_height);
+  const bool is_scaled_x = reference_upscaled_width != frame_header_.width;
+  const bool is_scaled_y = reference_height != frame_header_.height;
+  const int half_sample = 1 << (kSubPixelBits - 1);
+  int orig_x = (x << kSubPixelBits) + ((2 * mv.mv[1]) >> subsampling_x_[plane]);
+  int orig_y = (y << kSubPixelBits) + ((2 * mv.mv[0]) >> subsampling_y_[plane]);
+  const int rounding_offset =
+      DivideBy2(1 << (kScaleSubPixelBits - kSubPixelBits));
+  if (is_scaled_x) {
+    const int scale_x = ((reference_upscaled_width << kReferenceScaleShift) +
+                         DivideBy2(frame_header_.width)) /
+                        frame_header_.width;
+    *step_x = RightShiftWithRoundingSigned(
+        scale_x, kReferenceScaleShift - kScaleSubPixelBits);
+    orig_x += half_sample;
+    // When frame size is 4k and above, orig_x can be above 16 bits, scale_x can
+    // be up to 15 bits. So we use int64_t to hold base_x.
+    const int64_t base_x = static_cast<int64_t>(orig_x) * scale_x -
+                           (half_sample << kReferenceScaleShift);
+    *start_x =
+        RightShiftWithRoundingSigned(
+            base_x, kReferenceScaleShift + kSubPixelBits - kScaleSubPixelBits) +
+        rounding_offset;
+  } else {
+    *step_x = 1 << kScaleSubPixelBits;
+    *start_x = LeftShift(orig_x, 6) + rounding_offset;
+  }
+  if (is_scaled_y) {
+    const int scale_y = ((reference_height << kReferenceScaleShift) +
+                         DivideBy2(frame_header_.height)) /
+                        frame_header_.height;
+    *step_y = RightShiftWithRoundingSigned(
+        scale_y, kReferenceScaleShift - kScaleSubPixelBits);
+    orig_y += half_sample;
+    const int64_t base_y = static_cast<int64_t>(orig_y) * scale_y -
+                           (half_sample << kReferenceScaleShift);
+    *start_y =
+        RightShiftWithRoundingSigned(
+            base_y, kReferenceScaleShift + kSubPixelBits - kScaleSubPixelBits) +
+        rounding_offset;
+  } else {
+    *step_y = 1 << kScaleSubPixelBits;
+    *start_y = LeftShift(orig_y, 6) + rounding_offset;
+  }
+}
+
 // static.
 bool Tile::GetReferenceBlockPosition(
     const int reference_frame_index, const bool is_scaled, const int width,
@@ -953,7 +995,7 @@ bool Tile::GetReferenceBlockPosition(
     const int start_y, const int step_x, const int step_y,
     const int left_border, const int right_border, const int top_border,
     const int bottom_border, int* ref_block_start_x, int* ref_block_start_y,
-    int* ref_block_end_x) {
+    int* ref_block_end_x, int* ref_block_end_y) {
   *ref_block_start_x = GetPixelPositionFromHighScale(start_x, 0, 0);
   *ref_block_start_y = GetPixelPositionFromHighScale(start_y, 0, 0);
   if (reference_frame_index == -1) {
@@ -963,7 +1005,7 @@ bool Tile::GetReferenceBlockPosition(
   *ref_block_start_y -= kConvolveBorderLeftTop;
   *ref_block_end_x = GetPixelPositionFromHighScale(start_x, step_x, width - 1) +
                      kConvolveBorderRight;
-  int ref_block_end_y =
+  *ref_block_end_y =
       GetPixelPositionFromHighScale(start_y, step_y, height - 1) +
       kConvolveBorderBottom;
   if (is_scaled) {
@@ -971,13 +1013,14 @@ bool Tile::GetReferenceBlockPosition(
         (((height - 1) * step_y + (1 << kScaleSubPixelBits) - 1) >>
          kScaleSubPixelBits) +
         kSubPixelTaps;
-    ref_block_end_y = *ref_block_start_y + block_height - 1;
+    *ref_block_end_x += kConvolveScaleBorderRight - kConvolveBorderRight;
+    *ref_block_end_y = *ref_block_start_y + block_height - 1;
   }
   // Determines if we need to extend beyond the left/right/top/bottom border.
   return *ref_block_start_x < (ref_start_x - left_border) ||
          *ref_block_end_x > (ref_last_x + right_border) ||
          *ref_block_start_y < (ref_start_y - top_border) ||
-         ref_block_end_y > (ref_last_y + bottom_border);
+         *ref_block_end_y > (ref_last_y + bottom_border);
 }
 
 // Builds a block as the input for convolve, by copying the content of
@@ -1096,6 +1139,7 @@ bool Tile::BlockInterPrediction(
   int ref_block_start_x;
   int ref_block_start_y;
   int ref_block_end_x;
+  int ref_block_end_y;
   const bool extend_block = GetReferenceBlockPosition(
       reference_frame_index, is_scaled, width, height, ref_start_x, ref_last_x,
       ref_start_y, ref_last_y, start_x, start_y, step_x, step_y,
@@ -1103,24 +1147,15 @@ bool Tile::BlockInterPrediction(
       reference_buffer->right_border(plane),
       reference_buffer->top_border(plane),
       reference_buffer->bottom_border(plane), &ref_block_start_x,
-      &ref_block_start_y, &ref_block_end_x);
+      &ref_block_start_y, &ref_block_end_x, &ref_block_end_y);
 
   // In frame parallel mode, ensure that the reference block has been decoded
   // and available for referencing.
   if (reference_frame_index != -1 && frame_parallel_) {
-    int reference_y_max;
-    if (is_scaled) {
-      // TODO(vigneshv): For now, we wait for the entire reference frame to be
-      // decoded if we are using scaled references. This will eventually be
-      // fixed.
-      reference_y_max = reference_height;
-    } else {
-      reference_y_max =
-          std::min(ref_block_start_y + height + kSubPixelTaps, ref_last_y);
-      // For U and V planes with subsampling, we need to multiply
-      // reference_y_max by 2 since we only track the progress of Y planes.
-      reference_y_max = LeftShift(reference_y_max, subsampling_y);
-    }
+    // For U and V planes with subsampling, we need to multiply the value of
+    // ref_block_end_y by 2 since we only track the progress of the Y planes.
+    const int reference_y_max = LeftShift(
+        std::min(ref_block_end_y + kSubPixelTaps, ref_last_y), subsampling_y);
     if (reference_frame_progress_cache_[reference_frame_index] <
             reference_y_max &&
         !reference_frames_[reference_frame_index]->WaitUntil(
@@ -1149,11 +1184,12 @@ bool Tile::BlockInterPrediction(
                     (ref_block_start_x + kConvolveBorderLeftTop) * pixel_size;
     }
   } else {
+    const int border_right =
+        is_scaled ? kConvolveScaleBorderRight : kConvolveBorderRight;
     // The block width can be at most 2 times as much as current
     // block's width because of scaling.
     auto block_extended_width = Align<ptrdiff_t>(
-        (2 * width + kConvolveBorderLeftTop + kConvolveBorderRight) *
-            pixel_size,
+        (2 * width + kConvolveBorderLeftTop + border_right) * pixel_size,
         kMaxAlignment);
     convolve_buffer_stride = block.scratch_buffer->convolve_block_buffer_stride;
 #if LIBGAV1_MAX_BITDEPTH >= 10
@@ -1252,11 +1288,12 @@ bool Tile::BlockWarpProcess(const Block& block, const Plane plane,
            start_x += 8) {
         const int src_x = (start_x + 4) << subsampling_x_[plane];
         const int src_y = (start_y + 4) << subsampling_y_[plane];
-        const int dst_y = src_x * warp_params->params[4] +
-                          src_y * warp_params->params[5] +
-                          warp_params->params[1];
-        const int y4 = dst_y >> subsampling_y_[plane];
-        const int iy4 = y4 >> kWarpedModelPrecisionBits;
+        const int64_t dst_y =
+            src_x * warp_params->params[4] +
+            static_cast<int64_t>(src_y) * warp_params->params[5] +
+            warp_params->params[1];
+        const int64_t y4 = dst_y >> subsampling_y_[plane];
+        const int iy4 = static_cast<int>(y4 >> kWarpedModelPrecisionBits);
         reference_y_max = std::max(iy4 + 8, reference_y_max);
       }
     }

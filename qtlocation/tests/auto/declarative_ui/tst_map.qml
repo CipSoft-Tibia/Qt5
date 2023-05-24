@@ -1,36 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-import QtQuick 2.0
-import QtTest 1.0
-import QtPositioning 5.5
-import QtLocation 5.10
-import QtLocation.Test 5.6
+import QtQuick
+import QtTest
+import QtPositioning
+import QtLocation
+import QtLocation.Test
 
 Item {
     width:100
@@ -49,6 +24,9 @@ Item {
         PluginParameter { name: "extraMapTypeName"; value: testPluginLazyParameter.extraTypeName}
 
         Component.onCompleted: {
+            // This can't work because onCompleted is called *after* the
+            // componentComplete() method is invoked and the plugin is
+            // initialized
             extraTypeName = "SomeString"
         }
     }
@@ -128,12 +106,6 @@ Item {
         height: 200
     }
 
-    MapParameter {
-        id: testParameter
-        type: "cameraCenter_test"
-        property var center: QtPositioning.coordinate(-33.0, -47.0)
-    }
-
     Map {
         id: mapVisibleArea
         width: 256; height: 256;
@@ -163,6 +135,8 @@ Item {
 
         function test_lazy_parameter() {
             compare(mapWithLazyPlugin.supportedMapTypes.length, 5)
+            expectFail("", "Component.onCompleted is called after componentComplete(), " +
+                            "so the plugin is already initialized and extraTypeName is empty")
             compare(mapWithLazyPlugin.supportedMapTypes[4].name, "SomeString")
         }
 
@@ -224,54 +198,6 @@ Item {
             verify(mapVisibleRegion.visibleRegion.contains(coordinateVisible1))
             verify(mapVisibleRegion.visibleRegion.contains(coordinateVisible2))
             verify(mapVisibleRegion.visibleRegion.contains(coordinateVisible3))
-        }
-
-        function test_map_parameters()
-        {
-            // coordinate is set at map element declaration
-            var center = mapPar.toCoordinate(Qt.point((mapPar.width - 1) / 2.0, (mapPar.height - 1) / 2.0))
-            fuzzyCompare(center.latitude, 10, 0.1)
-            fuzzyCompare(center.longitude, 11, 0.1)
-
-            compare(mapPar.mapParameters.length, 0)
-
-            mapPar.addMapParameter(testParameter)
-
-            compare(mapPar.mapParameters.length, 1)
-
-            // Using toCoordinate, below, to verify the actual value of the center, and not what is in the map.center property
-            center = mapPar.toCoordinate(Qt.point((mapPar.width - 1) / 2.0, (mapPar.height - 1) / 2.0))
-            fuzzyCompare(center.latitude, -33, 0.1)
-            fuzzyCompare(center.longitude, -47, 0.1)
-
-            mapPar.addMapParameter(testParameter)
-            compare(mapPar.mapParameters.length, 1)
-
-            mapPar.removeMapParameter(testParameter)
-            compare(mapPar.mapParameters.length, 0)
-
-            center = mapPar.toCoordinate(Qt.point((mapPar.width - 1) / 2.0, (mapPar.height - 1) / 2.0))
-            fuzzyCompare(center.latitude, -33, 0.1)
-            fuzzyCompare(center.longitude, -47, 0.1)
-
-            testParameter.center = mapPar.center  // map.center has been affected as the Declarative Map has received the QGeoMap::cameraDataChanged signal
-            mapPar.addMapParameter(testParameter)
-            compare(mapPar.mapParameters.length, 1)
-
-            center = mapPar.toCoordinate(Qt.point((mapPar.width - 1) / 2.0, (mapPar.height - 1) / 2.0))
-            fuzzyCompare(center.latitude, -33, 0.1)
-            fuzzyCompare(center.longitude, -47, 0.1)
-
-            testParameter.center = QtPositioning.coordinate(-30.0, -40.0)
-
-            center = mapPar.toCoordinate(Qt.point((mapPar.width - 1) / 2.0, (mapPar.height - 1) / 2.0))
-            fuzzyCompare(center.latitude, -30, 0.1)
-            fuzzyCompare(center.longitude, -40, 0.1)
-            fuzzyCompare(mapPar.center.latitude, -30, 0.1)
-            fuzzyCompare(mapPar.center.longitude, -40, 0.1)
-
-            mapPar.removeMapParameter(testParameter)
-            compare(mapPar.mapParameters.length, 0)
         }
 
         function test_map_clamp()
@@ -672,9 +598,6 @@ Item {
             //coordinateMap.zoomLevel = oldZoomLevel
             // invalid coordinates
             point = coordinateMap.fromCoordinate(invalidCoordinate)
-            verify(isNaN(point.x))
-            verify(isNaN(point.y))
-            point = coordinateMap.fromCoordinate(null)
             verify(isNaN(point.x))
             verify(isNaN(point.y))
             // valid point to coordinate

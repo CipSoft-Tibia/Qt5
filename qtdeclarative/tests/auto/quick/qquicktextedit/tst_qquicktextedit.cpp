@@ -1,41 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <qtest.h>
 #include <QtTest/QSignalSpy>
-#include "../../shared/testhttpserver.h"
+#include <QtQuickTestUtils/private/testhttpserver_p.h>
 #include <math.h>
 #include <QFile>
+#include <QtQuick/QQuickTextDocument>
+#include <QtQuickTest/QtQuickTest>
 #include <QTextDocument>
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcontext.h>
 #include <QtQml/qqmlexpression.h>
 #include <QtQml/qqmlcomponent.h>
 #include <QtGui/qguiapplication.h>
+#include <QtGui/private/qguiapplication_p.h>
+#include <private/qquickflickable_p.h>
 #include <private/qquickrectangle_p.h>
 #include <private/qquicktextedit_p.h>
 #include <private/qquicktextedit_p_p.h>
@@ -44,45 +23,29 @@
 #include <QFontMetrics>
 #include <QtQuick/QQuickView>
 #include <QDir>
+#include <QRegularExpression>
 #include <QInputMethod>
 #include <QClipboard>
 #include <QMimeData>
 #include <private/qquicktextcontrol_p.h>
-#include "../../shared/util.h"
-#include "../shared/viewtestutil.h"
-#include "../../shared/platformquirks.h"
-#include "../../shared/platforminputcontext.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/viewtestutils_p.h>
+#include <QtQuickTestUtils/private/visualtestutils_p.h>
+#include <QtQuickTestUtils/private/platformquirks_p.h>
+#include <QtQuickTestUtils/private/platforminputcontext_p.h>
 #include <private/qinputmethod_p.h>
 #include <QtGui/qstylehints.h>
 #include <qmath.h>
-
-#ifdef Q_OS_MAC
-#include <Carbon/Carbon.h>
-#endif
 
 Q_DECLARE_METATYPE(QQuickTextEdit::SelectionMode)
 Q_DECLARE_METATYPE(Qt::Key)
 DEFINE_BOOL_CONFIG_OPTION(qmlDisableDistanceField, QML_DISABLE_DISTANCEFIELD)
 
+Q_LOGGING_CATEGORY(lcTests, "qt.quick.tests")
+
 static bool isPlatformWayland()
 {
     return !QGuiApplication::platformName().compare(QLatin1String("wayland"), Qt::CaseInsensitive);
-}
-
-QString createExpectedFileIfNotFound(const QString& filebasename, const QImage& actual)
-{
-    // XXX This will be replaced by some clever persistent platform image store.
-    QString persistent_dir = QQmlDataTest::instance()->dataDirectory();
-    QString arch = "unknown-architecture"; // QTest needs to help with this.
-
-    QString expectfile = persistent_dir + QDir::separator() + filebasename + QLatin1Char('-') + arch + ".png";
-
-    if (!QFile::exists(expectfile)) {
-        actual.save(expectfile);
-        qWarning() << "created" << expectfile;
-    }
-
-    return expectfile;
 }
 
 typedef QPair<int, QChar> Key;
@@ -95,6 +58,8 @@ public:
     tst_qquicktextedit();
 
 private slots:
+    void initTestCase() override;
+
     void cleanup();
     void text();
     void width();
@@ -174,6 +139,10 @@ private slots:
     void clipRect();
     void implicitSizeBinding_data();
     void implicitSizeBinding();
+    void largeTextObservesViewport_data();
+    void largeTextObservesViewport();
+    void largeTextSelection();
+    void renderingAroundSelection();
 
     void signal_editingfinished();
 
@@ -222,6 +191,28 @@ private slots:
     void keys_shortcutoverride();
 
     void transparentSelectionColor();
+
+    void inFlickableMouse_data();
+    void inFlickableMouse();
+    void inFlickableTouch_data();
+    void inFlickableTouch();
+
+    void keyEventPropagation();
+
+    void markdown();
+#if QT_CONFIG(clipboard)
+    void pasteHtmlIntoMarkdown();
+#endif
+
+    void touchscreenDoesNotSelect_data();
+    void touchscreenDoesNotSelect();
+    void touchscreenSetsFocusAndMovesCursor();
+
+    void longPressInputMethod();
+
+    void rtlAlignmentInColumnLayout_QTBUG_112858();
+
+    void resizeTextEditPolish();
 private:
     void simulateKeys(QWindow *window, const QList<Key> &keys);
 #if QT_CONFIG(shortcut)
@@ -229,6 +220,8 @@ private:
 #endif
 
     void simulateKey(QWindow *, int key, Qt::KeyboardModifiers modifiers = {});
+    bool isMainFontFixed();
+    static bool hasWindowActivation();
 
     QStringList standard;
     QStringList richText;
@@ -242,6 +235,8 @@ private:
     QStringList colorStrings;
 
     QQmlEngine engine;
+
+    QPointingDevice *touchDevice = QTest::createTouchDevice();
 };
 
 typedef QList<int> IntList;
@@ -256,7 +251,7 @@ Q_DECLARE_METATYPE(QQuickTextEdit::TextFormat)
 
 void tst_qquicktextedit::simulateKeys(QWindow *window, const QList<Key> &keys)
 {
-    for (int i = 0; i < keys.count(); ++i) {
+    for (int i = 0; i < keys.size(); ++i) {
         const int key = keys.at(i).first;
         const int modifiers = key & Qt::KeyboardModifierMask;
         const QString text = !keys.at(i).second.isNull() ? QString(keys.at(i).second) : QString();
@@ -273,18 +268,14 @@ void tst_qquicktextedit::simulateKeys(QWindow *window, const QList<Key> &keys)
 
 void tst_qquicktextedit::simulateKeys(QWindow *window, const QKeySequence &sequence)
 {
-    for (int i = 0; i < sequence.count(); ++i) {
-        const int key = sequence[i];
-        const int modifiers = key & Qt::KeyboardModifierMask;
-
-        QTest::keyClick(window, Qt::Key(key & ~modifiers), Qt::KeyboardModifiers(modifiers));
-    }
+    for (int i = 0; i < sequence.count(); ++i)
+        QTest::keyClick(window, sequence[i].key(), sequence[i].keyboardModifiers());
 }
 
 QList<Key> &operator <<(QList<Key> &keys, const QKeySequence &sequence)
 {
     for (int i = 0; i < sequence.count(); ++i)
-        keys << Key(sequence[i], QChar());
+        keys << Key(sequence[i].toCombined(), QChar());
     return keys;
 }
 
@@ -307,6 +298,7 @@ QList<Key> &operator <<(QList<Key> &keys, Qt::Key key)
 }
 
 tst_qquicktextedit::tst_qquicktextedit()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
 {
     qRegisterMetaType<QQuickTextEdit::TextFormat>();
     qRegisterMetaType<QQuickTextEdit::SelectionMode>();
@@ -354,6 +346,54 @@ tst_qquicktextedit::tst_qquicktextedit()
                  //
 }
 
+class NodeCheckerTextEdit : public QQuickTextEdit
+{
+public:
+    NodeCheckerTextEdit(QQuickItem *parent = nullptr) : QQuickTextEdit(parent) {}
+
+    void populateLinePositions(QSGNode *node)
+    {
+        sortedLinePositions.clear();
+        lastLinePosition = 0;
+        QSGNode *ch = node->firstChild();
+        while (ch != node->lastChild()) {
+            QCOMPARE(ch->type(), QSGNode::TransformNodeType);
+            QSGTransformNode *tn = static_cast<QSGTransformNode *>(ch);
+            int y = 0;
+            if (!tn->matrix().isIdentity())
+                y = tn->matrix().column(3).y();
+            if (tn->childCount() == 0) {
+                // A TransformNode with no children is a waste of memory.
+                // So far, QQuickTextEdit still creates a couple of extras.
+                qCDebug(lcTests) << "ignoring leaf TransformNode" << tn << "@ y" << y;
+            } else {
+                qCDebug(lcTests) << "child" << tn << "@ y" << y << "has children" << tn->childCount();
+                sortedLinePositions.append(y);
+                lastLinePosition = qMax(lastLinePosition, y);
+            }
+            ch = ch->nextSibling();
+        }
+        std::sort(sortedLinePositions.begin(), sortedLinePositions.end());
+    }
+
+    QSGNode *updatePaintNode(QSGNode *node, UpdatePaintNodeData *data) override
+    {
+       QSGNode *ret = QQuickTextEdit::updatePaintNode(node, data);
+       qCDebug(lcTests) << "updated root node" << ret;
+       populateLinePositions(ret);
+       return ret;
+    }
+
+    QList<int> sortedLinePositions;
+    int lastLinePosition;
+};
+
+void tst_qquicktextedit::initTestCase()
+{
+    QQmlDataTest::initTestCase();
+    qmlRegisterType<NodeCheckerTextEdit>("Qt.test", 1, 0, "NodeCheckerTextEdit");
+}
+
 void tst_qquicktextedit::cleanup()
 {
     // ensure not even skipped tests with custom input context leave it dangling
@@ -382,7 +422,7 @@ void tst_qquicktextedit::text()
 
         QVERIFY(textEditObject != nullptr);
         QCOMPARE(textEditObject->text(), standard.at(i));
-        QCOMPARE(textEditObject->length(), standard.at(i).length());
+        QCOMPARE(textEditObject->length(), standard.at(i).size());
     }
 
     for (int i = 0; i < richText.size(); i++)
@@ -396,9 +436,9 @@ void tst_qquicktextedit::text()
         QVERIFY(textEditObject != nullptr);
 
         QString expected = richText.at(i);
-        expected.replace(QRegExp("\\\\(.)"),"\\1");
+        expected.replace(QRegularExpression("\\\\(.)"),"\\1");
         QCOMPARE(textEditObject->text(), expected);
-        QCOMPARE(textEditObject->length(), expected.length());
+        QCOMPARE(textEditObject->length(), expected.size());
     }
 
     for (int i = 0; i < standard.size(); i++)
@@ -412,11 +452,12 @@ void tst_qquicktextedit::text()
 
         QString actual = textEditObject->text();
         QString expected = standard.at(i);
-        actual.remove(QRegExp(".*<body[^>]*>"));
-        actual.remove(QRegExp("(<[^>]*>)+"));
+        actual.remove("\n");
+        actual.remove(QRegularExpression(".*<body[^>]*>"));
+        actual.remove(QRegularExpression("(<[^>]*>)+"));
         expected.remove("\n");
         QCOMPARE(actual.simplified(), expected);
-        QCOMPARE(textEditObject->length(), expected.length());
+        QCOMPARE(textEditObject->length(), expected.size());
     }
 
     for (int i = 0; i < richText.size(); i++)
@@ -429,13 +470,14 @@ void tst_qquicktextedit::text()
         QVERIFY(textEditObject != nullptr);
         QString actual = textEditObject->text();
         QString expected = richText.at(i);
-        actual.replace(QRegExp(".*<body[^>]*>"),"");
-        actual.replace(QRegExp("(<[^>]*>)+"),"<>");
-        expected.replace(QRegExp("(<[^>]*>)+"),"<>");
+        actual.remove("\n");
+        actual.replace(QRegularExpression(".*<body[^>]*>"),"");
+        actual.replace(QRegularExpression("(<[^>]*>)+"),"<>");
+        expected.replace(QRegularExpression("(<[^>]*>)+"),"<>");
         QCOMPARE(actual.simplified(),expected.simplified());
 
         expected.replace("<>", " ");
-        QCOMPARE(textEditObject->length(), expected.simplified().length());
+        QCOMPARE(textEditObject->length(), expected.simplified().size());
     }
 
     for (int i = 0; i < standard.size(); i++)
@@ -447,7 +489,7 @@ void tst_qquicktextedit::text()
 
         QVERIFY(textEditObject != nullptr);
         QCOMPARE(textEditObject->text(), standard.at(i));
-        QCOMPARE(textEditObject->length(), standard.at(i).length());
+        QCOMPARE(textEditObject->length(), standard.at(i).size());
     }
 
     for (int i = 0; i < richText.size(); i++)
@@ -460,13 +502,14 @@ void tst_qquicktextedit::text()
         QVERIFY(textEditObject != nullptr);
         QString actual = textEditObject->text();
         QString expected = richText.at(i);
-        actual.replace(QRegExp(".*<body[^>]*>"),"");
-        actual.replace(QRegExp("(<[^>]*>)+"),"<>");
-        expected.replace(QRegExp("(<[^>]*>)+"),"<>");
+        actual.remove("\n");
+        actual.replace(QRegularExpression(".*<body[^>]*>"),"");
+        actual.replace(QRegularExpression("(<[^>]*>)+"),"<>");
+        expected.replace(QRegularExpression("(<[^>]*>)+"),"<>");
         QCOMPARE(actual.simplified(),expected.simplified());
 
         expected.replace("<>", " ");
-        QCOMPARE(textEditObject->length(), expected.simplified().length());
+        QCOMPARE(textEditObject->length(), expected.simplified().size());
     }
 }
 
@@ -584,14 +627,14 @@ void tst_qquicktextedit::wrap()
 
         edit->setWrapMode(QQuickTextEdit::Wrap);
         QCOMPARE(edit->wrapMode(), QQuickTextEdit::Wrap);
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
 
         edit->setWrapMode(QQuickTextEdit::Wrap);
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
 
         edit->setWrapMode(QQuickTextEdit::NoWrap);
         QCOMPARE(edit->wrapMode(), QQuickTextEdit::NoWrap);
-        QCOMPARE(spy.count(), 2);
+        QCOMPARE(spy.size(), 2);
     }
 
 }
@@ -615,6 +658,19 @@ void tst_qquicktextedit::textFormat()
         QCOMPARE(textObject->textFormat(), QQuickTextEdit::PlainText);
     }
     {
+        QQmlComponent textComponent(&engine);
+        textComponent.setData("import QtQuick 2.0\nTextEdit { text: \"_Hello_\"; textFormat: Text.MarkdownText }", QUrl::fromLocalFile(""));
+        QQuickTextEdit *textObject = qobject_cast<QQuickTextEdit*>(textComponent.create());
+
+        QVERIFY(textObject != nullptr);
+        QCOMPARE(textObject->textFormat(), QQuickTextEdit::MarkdownText);
+        QVERIFY(textObject->textDocument());
+        auto doc = textObject->textDocument()->textDocument();
+        QVERIFY(doc);
+        QTextCursor cursor(doc);
+        QVERIFY(cursor.charFormat().fontUnderline());
+    }
+    {
         QQmlComponent component(&engine);
         component.setData("import QtQuick 2.0\n TextEdit {}", QUrl());
         QScopedPointer<QObject> object(component.create());
@@ -627,14 +683,18 @@ void tst_qquicktextedit::textFormat()
 
         edit->setTextFormat(QQuickTextEdit::RichText);
         QCOMPARE(edit->textFormat(), QQuickTextEdit::RichText);
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
 
         edit->setTextFormat(QQuickTextEdit::RichText);
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
 
         edit->setTextFormat(QQuickTextEdit::PlainText);
         QCOMPARE(edit->textFormat(), QQuickTextEdit::PlainText);
-        QCOMPARE(spy.count(), 2);
+        QCOMPARE(spy.size(), 2);
+
+        edit->setTextFormat(QQuickTextEdit::MarkdownText);
+        QCOMPARE(edit->textFormat(), QQuickTextEdit::MarkdownText);
+        QCOMPARE(spy.size(), 3);
     }
 }
 
@@ -659,9 +719,9 @@ void tst_qquicktextedit::lineCount_data()
 
 void tst_qquicktextedit::lineCount()
 {
-    QFETCH(QStringList, texts);
+    QFETCH(const QStringList, texts);
 
-    foreach (const QString& text, texts) {
+    for (const QString& text : texts) {
         QQmlComponent component(&engine);
         component.setData("import QtQuick 2.0\nTextEdit { }", QUrl());
 
@@ -836,7 +896,7 @@ void tst_qquicktextedit::hAlign_RightToLeft()
     QSignalSpy cursorRectangleSpy(textEdit, SIGNAL(cursorRectangleChanged()));
 
     platformInputContext.setInputDirection(Qt::RightToLeft);
-    QCOMPARE(cursorRectangleSpy.count(), 1);
+    QCOMPARE(cursorRectangleSpy.size(), 1);
     QCOMPARE(qApp->inputMethod()->inputDirection(), Qt::RightToLeft);
     QCOMPARE(textEdit->hAlign(), QQuickTextEdit::AlignRight);
     QVERIFY(textEdit->positionToRectangle(0).x() > window.width()/2);
@@ -917,7 +977,7 @@ void tst_qquicktextedit::hAlignVisual()
 
     // Try to check whether alignment works by checking the number of black
     // pixels in the thirds of the grabbed image.
-    const int windowWidth = 200;
+    const int windowWidth = view.width();
     const int textWidth = qCeil(text->implicitWidth());
     QVERIFY2(textWidth < windowWidth, "System font too large.");
     const int sectionWidth = textWidth / 3;
@@ -927,9 +987,8 @@ void tst_qquicktextedit::hAlignVisual()
     const int centeredSection3End = centeredSection3 + sectionWidth;
 
     {
-        if ((QGuiApplication::platformName() == QLatin1String("offscreen"))
-            || (QGuiApplication::platformName() == QLatin1String("minimal")))
-            QEXPECT_FAIL("", "Failure due to grabWindow not functional on offscreen/minimal platforms", Abort);
+        if (QGuiApplication::platformName() == QLatin1String("minimal"))
+            QSKIP("Skipping due to grabWindow not functional on minimal platforms");
 
         // Left Align
         QImage image = view.grabWindow();
@@ -965,7 +1024,7 @@ void tst_qquicktextedit::hAlignVisual()
     {
         // Left Align
         QImage image = view.grabWindow();
-        int x = qCeil(text->implicitWidth());
+        int x = qCeil(text->implicitWidth() * view.devicePixelRatio());
         int left = numberOfNonWhitePixels(0, x, image);
         int right = numberOfNonWhitePixels(x, image.width() - x, image);
         QVERIFY2(left > 0, msgNotGreaterThan(left, 0).constData());
@@ -975,7 +1034,7 @@ void tst_qquicktextedit::hAlignVisual()
         // HCenter Align
         text->setHAlign(QQuickText::AlignHCenter);
         QImage image = view.grabWindow();
-        int x1 = qFloor(image.width() - text->implicitWidth()) / 2;
+        int x1 = qFloor(image.width() - text->implicitWidth() * view.devicePixelRatio()) / 2;
         int x2 = image.width() - x1;
         int left = numberOfNonWhitePixels(0, x1, image);
         int mid = numberOfNonWhitePixels(x1, x2 - x1, image);
@@ -988,7 +1047,7 @@ void tst_qquicktextedit::hAlignVisual()
         // Right Align
         text->setHAlign(QQuickText::AlignRight);
         QImage image = view.grabWindow();
-        int x = image.width() - qCeil(text->implicitWidth());
+        int x = image.width() - qCeil(text->implicitWidth() * view.devicePixelRatio());
         int left = numberOfNonWhitePixels(0, x, image);
         int right = numberOfNonWhitePixels(x, image.width() - x, image);
         QCOMPARE(left, 0);
@@ -1148,36 +1207,36 @@ void tst_qquicktextedit::color()
 
         textEditObject->setColor(QColor("white"));
         QCOMPARE(textEditObject->color(), QColor("white"));
-        QCOMPARE(colorSpy.count(), 1);
+        QCOMPARE(colorSpy.size(), 1);
 
         textEditObject->setSelectionColor(QColor("black"));
         QCOMPARE(textEditObject->selectionColor(), QColor("black"));
-        QCOMPARE(selectionColorSpy.count(), 1);
+        QCOMPARE(selectionColorSpy.size(), 1);
 
         textEditObject->setSelectedTextColor(QColor("blue"));
         QCOMPARE(textEditObject->selectedTextColor(), QColor("blue"));
-        QCOMPARE(selectedTextColorSpy.count(), 1);
+        QCOMPARE(selectedTextColorSpy.size(), 1);
 
         textEditObject->setColor(QColor("white"));
-        QCOMPARE(colorSpy.count(), 1);
+        QCOMPARE(colorSpy.size(), 1);
 
         textEditObject->setSelectionColor(QColor("black"));
-        QCOMPARE(selectionColorSpy.count(), 1);
+        QCOMPARE(selectionColorSpy.size(), 1);
 
         textEditObject->setSelectedTextColor(QColor("blue"));
-        QCOMPARE(selectedTextColorSpy.count(), 1);
+        QCOMPARE(selectedTextColorSpy.size(), 1);
 
         textEditObject->setColor(QColor("black"));
         QCOMPARE(textEditObject->color(), QColor("black"));
-        QCOMPARE(colorSpy.count(), 2);
+        QCOMPARE(colorSpy.size(), 2);
 
         textEditObject->setSelectionColor(QColor("blue"));
         QCOMPARE(textEditObject->selectionColor(), QColor("blue"));
-        QCOMPARE(selectionColorSpy.count(), 2);
+        QCOMPARE(selectionColorSpy.size(), 2);
 
         textEditObject->setSelectedTextColor(QColor("white"));
         QCOMPARE(textEditObject->selectedTextColor(), QColor("white"));
-        QCOMPARE(selectedTextColorSpy.count(), 2);
+        QCOMPARE(selectedTextColorSpy.size(), 2);
     }
 
     //test normal
@@ -1258,7 +1317,7 @@ void tst_qquicktextedit::persistentSelection()
 
     edit->setPersistentSelection(false);
     QCOMPARE(edit->persistentSelection(), false);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     edit->select(1, 4);
     QCOMPARE(edit->property("selected").toString(), QLatin1String("ell"));
@@ -1271,7 +1330,7 @@ void tst_qquicktextedit::persistentSelection()
 
     edit->setPersistentSelection(true);
     QCOMPARE(edit->persistentSelection(), true);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     edit->select(1, 4);
     QCOMPARE(edit->property("selected").toString(), QLatin1String("ell"));
@@ -1287,7 +1346,7 @@ void tst_qquicktextedit::persistentSelection()
 
     edit->setPersistentSelection(false);
     QCOMPARE(edit->persistentSelection(), false);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     edit->select(1, 4);
     QCOMPARE(edit->property("selected").toString(), QLatin1String("ell"));
@@ -1300,7 +1359,7 @@ void tst_qquicktextedit::persistentSelection()
 
     edit->setPersistentSelection(true);
     QCOMPARE(edit->persistentSelection(), true);
-    QCOMPARE(spy.count(), 3);
+    QCOMPARE(spy.size(), 3);
 
     edit->select(1, 4);
     QCOMPARE(edit->property("selected").toString(), QLatin1String("ell"));
@@ -1350,7 +1409,7 @@ void tst_qquicktextedit::selectionOnFocusOut()
     QVERIFY(edit2->hasActiveFocus());
 
     edit2->setFocus(false, Qt::PopupFocusReason);
-    QVERIFY(edit2->hasActiveFocus());
+    QVERIFY(!edit2->hasActiveFocus());
     QCOMPARE(edit2->selectedText(), QLatin1String("text 2"));
 }
 
@@ -1378,7 +1437,7 @@ void tst_qquicktextedit::focusOnPress()
 
     textEditObject->setFocusOnPress(true);
     QCOMPARE(textEditObject->focusOnPress(), true);
-    QCOMPARE(activeFocusOnPressSpy.count(), 0);
+    QCOMPARE(activeFocusOnPressSpy.size(), 0);
 
     QQuickWindow window;
     window.resize(100, 50);
@@ -1396,20 +1455,20 @@ void tst_qquicktextedit::focusOnPress()
     QGuiApplication::processEvents();
     QCOMPARE(textEditObject->hasFocus(), true);
     QCOMPARE(textEditObject->hasActiveFocus(), true);
-    QCOMPARE(focusSpy.count(), 1);
-    QCOMPARE(activeFocusSpy.count(), 1);
+    QCOMPARE(focusSpy.size(), 1);
+    QCOMPARE(activeFocusSpy.size(), 1);
     QCOMPARE(textEditObject->selectedText(), QString());
     QTest::mouseRelease(&window, Qt::LeftButton, noModifiers, centerPoint);
 
     textEditObject->setFocusOnPress(false);
     QCOMPARE(textEditObject->focusOnPress(), false);
-    QCOMPARE(activeFocusOnPressSpy.count(), 1);
+    QCOMPARE(activeFocusOnPressSpy.size(), 1);
 
     textEditObject->setFocus(false);
     QCOMPARE(textEditObject->hasFocus(), false);
     QCOMPARE(textEditObject->hasActiveFocus(), false);
-    QCOMPARE(focusSpy.count(), 2);
-    QCOMPARE(activeFocusSpy.count(), 2);
+    QCOMPARE(focusSpy.size(), 2);
+    QCOMPARE(activeFocusSpy.size(), 2);
 
     // Wait for double click timeout to expire before clicking again.
     QTest::qWait(400);
@@ -1417,13 +1476,13 @@ void tst_qquicktextedit::focusOnPress()
     QGuiApplication::processEvents();
     QCOMPARE(textEditObject->hasFocus(), false);
     QCOMPARE(textEditObject->hasActiveFocus(), false);
-    QCOMPARE(focusSpy.count(), 2);
-    QCOMPARE(activeFocusSpy.count(), 2);
+    QCOMPARE(focusSpy.size(), 2);
+    QCOMPARE(activeFocusSpy.size(), 2);
     QTest::mouseRelease(&window, Qt::LeftButton, noModifiers, centerPoint);
 
     textEditObject->setFocusOnPress(true);
     QCOMPARE(textEditObject->focusOnPress(), true);
-    QCOMPARE(activeFocusOnPressSpy.count(), 2);
+    QCOMPARE(activeFocusOnPressSpy.size(), 2);
 
     // Test a selection made in the on(Active)FocusChanged handler isn't overwritten.
     textEditObject->setProperty("selectOnFocus", true);
@@ -1433,8 +1492,8 @@ void tst_qquicktextedit::focusOnPress()
     QGuiApplication::processEvents();
     QCOMPARE(textEditObject->hasFocus(), true);
     QCOMPARE(textEditObject->hasActiveFocus(), true);
-    QCOMPARE(focusSpy.count(), 3);
-    QCOMPARE(activeFocusSpy.count(), 3);
+    QCOMPARE(focusSpy.size(), 3);
+    QCOMPARE(activeFocusSpy.size(), 3);
     QCOMPARE(textEditObject->selectedText(), textEditObject->text());
     QTest::mouseRelease(&window, Qt::LeftButton, noModifiers, centerPoint);
 }
@@ -1471,7 +1530,7 @@ void tst_qquicktextedit::selection()
     QCOMPARE(textEditObject->selectionEnd(), 0);
     QVERIFY(textEditObject->selectedText().isNull());
 
-    textEditObject->setCursorPosition(textEditObject->text().count()+1);
+    textEditObject->setCursorPosition(textEditObject->text().size()+1);
     QCOMPARE(textEditObject->cursorPosition(), 0);
     QCOMPARE(textEditObject->selectionStart(), 0);
     QCOMPARE(textEditObject->selectionEnd(), 0);
@@ -1542,37 +1601,37 @@ void tst_qquicktextedit::overwriteMode()
     QVERIFY(textEdit->hasActiveFocus());
 
     textEdit->setOverwriteMode(true);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QCOMPARE(true, textEdit->overwriteMode());
     textEdit->setOverwriteMode(false);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
     QCOMPARE(false, textEdit->overwriteMode());
 
     QVERIFY(!textEdit->overwriteMode());
     QString insertString = "Some first text";
-    for (int j = 0; j < insertString.length(); j++)
+    for (int j = 0; j < insertString.size(); j++)
         QTest::keyClick(&window, insertString.at(j).toLatin1());
 
     QCOMPARE(textEdit->text(), QString("Some first text"));
 
     textEdit->setOverwriteMode(true);
-    QCOMPARE(spy.count(), 3);
+    QCOMPARE(spy.size(), 3);
     textEdit->setCursorPosition(5);
 
     insertString = "shiny";
-    for (int j = 0; j < insertString.length(); j++)
+    for (int j = 0; j < insertString.size(); j++)
         QTest::keyClick(&window, insertString.at(j).toLatin1());
     QCOMPARE(textEdit->text(), QString("Some shiny text"));
 
-    textEdit->setCursorPosition(textEdit->text().length());
+    textEdit->setCursorPosition(textEdit->text().size());
     QTest::keyClick(&window, Qt::Key_Enter);
 
     textEdit->setOverwriteMode(false);
-    QCOMPARE(spy.count(), 4);
+    QCOMPARE(spy.size(), 4);
 
     insertString = "Second paragraph";
 
-    for (int j = 0; j < insertString.length(); j++)
+    for (int j = 0; j < insertString.size(); j++)
         QTest::keyClick(&window, insertString.at(j).toLatin1());
     QCOMPARE(textEdit->lineCount(), 2);
 
@@ -1581,10 +1640,10 @@ void tst_qquicktextedit::overwriteMode()
     QCOMPARE(textEdit->cursorPosition(), 15);
 
     textEdit->setOverwriteMode(true);
-    QCOMPARE(spy.count(), 5);
+    QCOMPARE(spy.size(), 5);
 
     insertString = " blah";
-    for (int j = 0; j < insertString.length(); j++)
+    for (int j = 0; j < insertString.size(); j++)
         QTest::keyClick(&window, insertString.at(j).toLatin1());
     QCOMPARE(textEdit->lineCount(), 2);
 
@@ -1602,7 +1661,7 @@ void tst_qquicktextedit::isRightToLeft_data()
     QTest::addColumn<bool>("midString");
     QTest::addColumn<bool>("endString");
 
-    const quint16 arabic_str[] = { 0x0638, 0x0643, 0x00646, 0x0647, 0x0633, 0x0638, 0x0643, 0x00646, 0x0647, 0x0633, 0x0647};
+    const char16_t arabic_str[] = { 0x0638, 0x0643, 0x0646, 0x0647, 0x0633, 0x0638, 0x0643, 0x0646, 0x0647, 0x0633, 0x0647};
     QTest::newRow("Empty") << "" << false << false << false << false << false << false << false;
     QTest::newRow("Neutral") << "23244242" << false << false << false << false << false << false << false;
     QTest::newRow("LTR") << "Hello world" << false << false << false << false << false << false << false;
@@ -1628,24 +1687,24 @@ void tst_qquicktextedit::isRightToLeft()
     // first test that the right string is delivered to the QString::isRightToLeft()
     QCOMPARE(textEdit.isRightToLeft(0,0), text.mid(0,0).isRightToLeft());
     QCOMPARE(textEdit.isRightToLeft(0,1), text.mid(0,1).isRightToLeft());
-    QCOMPARE(textEdit.isRightToLeft(text.count()-2, text.count()-1), text.mid(text.count()-2, text.count()-1).isRightToLeft());
-    QCOMPARE(textEdit.isRightToLeft(text.count()/2, text.count()/2 + 1), text.mid(text.count()/2, text.count()/2 + 1).isRightToLeft());
-    QCOMPARE(textEdit.isRightToLeft(0,text.count()/4), text.mid(0,text.count()/4).isRightToLeft());
-    QCOMPARE(textEdit.isRightToLeft(text.count()/4,3*text.count()/4), text.mid(text.count()/4,3*text.count()/4).isRightToLeft());
+    QCOMPARE(textEdit.isRightToLeft(text.size()-2, text.size()-1), text.mid(text.size()-2, text.size()-1).isRightToLeft());
+    QCOMPARE(textEdit.isRightToLeft(text.size()/2, text.size()/2 + 1), text.mid(text.size()/2, text.size()/2 + 1).isRightToLeft());
+    QCOMPARE(textEdit.isRightToLeft(0,text.size()/4), text.mid(0,text.size()/4).isRightToLeft());
+    QCOMPARE(textEdit.isRightToLeft(text.size()/4,3*text.size()/4), text.mid(text.size()/4,3*text.size()/4).isRightToLeft());
     if (text.isEmpty())
         QTest::ignoreMessage(QtWarningMsg, "<Unknown File>: QML TextEdit: isRightToLeft(start, end) called with the end property being smaller than the start.");
-    QCOMPARE(textEdit.isRightToLeft(3*text.count()/4,text.count()-1), text.mid(3*text.count()/4,text.count()-1).isRightToLeft());
+    QCOMPARE(textEdit.isRightToLeft(3*text.size()/4,text.size()-1), text.mid(3*text.size()/4,text.size()-1).isRightToLeft());
 
     // then test that the feature actually works
     QCOMPARE(textEdit.isRightToLeft(0,0), emptyString);
     QCOMPARE(textEdit.isRightToLeft(0,1), firstCharacter);
-    QCOMPARE(textEdit.isRightToLeft(text.count()-2, text.count()-1), lastCharacter);
-    QCOMPARE(textEdit.isRightToLeft(text.count()/2, text.count()/2 + 1), middleCharacter);
-    QCOMPARE(textEdit.isRightToLeft(0,text.count()/4), startString);
-    QCOMPARE(textEdit.isRightToLeft(text.count()/4,3*text.count()/4), midString);
+    QCOMPARE(textEdit.isRightToLeft(text.size()-2, text.size()-1), lastCharacter);
+    QCOMPARE(textEdit.isRightToLeft(text.size()/2, text.size()/2 + 1), middleCharacter);
+    QCOMPARE(textEdit.isRightToLeft(0,text.size()/4), startString);
+    QCOMPARE(textEdit.isRightToLeft(text.size()/4,3*text.size()/4), midString);
     if (text.isEmpty())
         QTest::ignoreMessage(QtWarningMsg, "<Unknown File>: QML TextEdit: isRightToLeft(start, end) called with the end property being smaller than the start.");
-    QCOMPARE(textEdit.isRightToLeft(3*text.count()/4,text.count()-1), endString);
+    QCOMPARE(textEdit.isRightToLeft(3*text.size()/4,text.size()-1), endString);
 }
 
 void tst_qquicktextedit::keySelection()
@@ -1667,31 +1726,31 @@ void tst_qquicktextedit::keySelection()
     simulateKey(&window, Qt::Key_Right, Qt::ShiftModifier);
     QVERIFY(input->hasActiveFocus());
     QCOMPARE(input->selectedText(), QString("a"));
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     simulateKey(&window, Qt::Key_Right);
     QVERIFY(input->hasActiveFocus());
     QCOMPARE(input->selectedText(), QString());
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
     simulateKey(&window, Qt::Key_Right);
     QVERIFY(!input->hasActiveFocus());
     QCOMPARE(input->selectedText(), QString());
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     simulateKey(&window, Qt::Key_Left);
     QVERIFY(input->hasActiveFocus());
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
     simulateKey(&window, Qt::Key_Left, Qt::ShiftModifier);
     QVERIFY(input->hasActiveFocus());
     QCOMPARE(input->selectedText(), QString("a"));
-    QCOMPARE(spy.count(), 3);
+    QCOMPARE(spy.size(), 3);
     simulateKey(&window, Qt::Key_Left);
     QVERIFY(input->hasActiveFocus());
     QCOMPARE(input->selectedText(), QString());
-    QCOMPARE(spy.count(), 4);
+    QCOMPARE(spy.size(), 4);
     simulateKey(&window, Qt::Key_Left);
     QVERIFY(!input->hasActiveFocus());
     QCOMPARE(input->selectedText(), QString());
-    QCOMPARE(spy.count(), 4);
+    QCOMPARE(spy.size(), 4);
 }
 
 void tst_qquicktextedit::moveCursorSelection_data()
@@ -2043,7 +2102,7 @@ void tst_qquicktextedit::mouseSelection_data()
     // import installed
     QTest::newRow("on") << testFile("mouseselection_true.qml") << 4 << 9 << "45678" << true << true << 1;
     QTest::newRow("off") << testFile("mouseselection_false.qml") << 4 << 9 << QString() << true << true << 1;
-    QTest::newRow("default") << testFile("mouseselection_default.qml") << 4 << 9 << QString() << true << true << 1;
+    QTest::newRow("default") << testFile("mouseselectionmode_default.qml") << 4 << 9 << "45678" << true << true << 1;
     QTest::newRow("off word selection") << testFile("mouseselection_false_words.qml") << 4 << 9 << QString() << true << true << 1;
     QTest::newRow("on word selection (4,9)") << testFile("mouseselection_true_words.qml") << 4 << 9 << "0123456789" << true << true << 1;
 
@@ -2130,8 +2189,6 @@ void tst_qquicktextedit::mouseSelection()
         QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, p1, moreThanDoubleClickInterval);
     else if (clicks == 3)
         QTest::mouseDClick(&window, Qt::LeftButton, Qt::NoModifier, p1, moreThanDoubleClickInterval);
-    // cancel the 500ms delta QTestLib adds in order to properly synthesize a triple click within the required interval
-    QTest::lastMouseTimestamp -= QTest::mouseDoubleClickInterval;
     QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, p1);
     QTest::mouseMove(&window, p2);
     QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, p2);
@@ -2139,13 +2196,10 @@ void tst_qquicktextedit::mouseSelection()
 
     // Clicking and shift to clicking between the same points should select the same text.
     textEditObject->setCursorPosition(0);
-    if (clicks > 1) {
-        QTest::mouseDClick(&window, Qt::LeftButton, Qt::NoModifier, p1);
-        // cancel the 500ms delta QTestLib adds in order to properly synthesize a triple click within the required interval
-        QTest::lastMouseTimestamp -= QTest::mouseDoubleClickInterval;
-    }
+    if (clicks > 1)
+        QTest::mouseDClick(&window, Qt::LeftButton, Qt::NoModifier, p1, 10);
     if (clicks != 2)
-        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, p1);
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, p1, 10);
     QTest::mouseClick(&window, Qt::LeftButton, Qt::ShiftModifier, p2);
     QTRY_COMPARE(textEditObject->selectedText(), selectedText);
 }
@@ -2173,7 +2227,7 @@ void tst_qquicktextedit::dragMouseSelection()
     QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, QPoint(x2,y));
     QTest::qWait(300);
     QString str1;
-    QTRY_VERIFY((str1 = textEditObject->selectedText()).length() > 3);
+    QTRY_VERIFY((str1 = textEditObject->selectedText()).size() > 3);
 
     // press and drag the current selection.
     x1 = 40;
@@ -2183,7 +2237,7 @@ void tst_qquicktextedit::dragMouseSelection()
     QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, QPoint(x2,y));
     QTest::qWait(300);
     QString str2;
-    QTRY_VERIFY((str2 = textEditObject->selectedText()).length() > 3);
+    QTRY_VERIFY((str2 = textEditObject->selectedText()).size() > 3);
 
     QVERIFY(str1 != str2); // Verify the second press and drag is a new selection and not the first moved.
 
@@ -2191,31 +2245,28 @@ void tst_qquicktextedit::dragMouseSelection()
 
 void tst_qquicktextedit::mouseSelectionMode_data()
 {
-    QTest::addColumn<QString>("qmlfile");
+    QTest::addColumn<QUrl>("qmlfile");
     QTest::addColumn<bool>("selectWords");
 
     // import installed
-    QTest::newRow("SelectWords") << testFile("mouseselectionmode_words.qml") << true;
-    QTest::newRow("SelectCharacters") << testFile("mouseselectionmode_characters.qml") << false;
-    QTest::newRow("default") << testFile("mouseselectionmode_default.qml") << false;
+    QTest::newRow("SelectWords") << testFileUrl("mouseselectionmode_words.qml") << true;
+    QTest::newRow("SelectCharacters") << testFileUrl("mouseselectionmode_characters.qml") << false;
+    QTest::newRow("default") << testFileUrl("mouseselectionmode_default.qml") << false;
 }
 
 void tst_qquicktextedit::mouseSelectionMode()
 {
-    QFETCH(QString, qmlfile);
+    QFETCH(QUrl, qmlfile);
     QFETCH(bool, selectWords);
 
-    QString text = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const QString text = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-    QQuickView window(QUrl::fromLocalFile(qmlfile));
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, qmlfile));
 
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
-
-    QVERIFY(window.rootObject() != nullptr);
     QQuickTextEdit *textEditObject = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(textEditObject != nullptr);
+    textEditObject->setSelectByMouse(true);
 
     // press-and-drag-and-release from x1 to x2
     int x1 = 10;
@@ -2228,7 +2279,7 @@ void tst_qquicktextedit::mouseSelectionMode()
     if (selectWords) {
         QTRY_COMPARE(textEditObject->selectedText(), text);
     } else {
-        QTRY_VERIFY(textEditObject->selectedText().length() > 3);
+        QTRY_VERIFY(textEditObject->selectedText().size() > 3);
         QVERIFY(str != text);
     }
 }
@@ -2247,14 +2298,14 @@ void tst_qquicktextedit::mouseSelectionMode_accessors()
 
     edit->setMouseSelectionMode(QQuickTextEdit::SelectWords);
     QCOMPARE(edit->mouseSelectionMode(), QQuickTextEdit::SelectWords);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     edit->setMouseSelectionMode(QQuickTextEdit::SelectWords);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     edit->setMouseSelectionMode(QQuickTextEdit::SelectCharacters);
     QCOMPARE(edit->mouseSelectionMode(), QQuickTextEdit::SelectCharacters);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 }
 
 void tst_qquicktextedit::selectByMouse()
@@ -2271,15 +2322,15 @@ void tst_qquicktextedit::selectByMouse()
 
     edit->setSelectByMouse(true);
     QCOMPARE(edit->selectByMouse(), true);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QCOMPARE(spy.at(0).at(0).toBool(), true);
 
     edit->setSelectByMouse(true);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     edit->setSelectByMouse(false);
     QCOMPARE(edit->selectByMouse(), false);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
     QCOMPARE(spy.at(1).at(0).toBool(), false);
 }
 
@@ -2302,21 +2353,21 @@ void tst_qquicktextedit::selectByKeyboard()
 
     edit->setReadOnly(true);
     QCOMPARE(edit->selectByKeyboard(), false);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QCOMPARE(spy.at(0).at(0).toBool(), false);
 
     edit->setSelectByKeyboard(true);
     QCOMPARE(edit->selectByKeyboard(), true);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
     QCOMPARE(spy.at(1).at(0).toBool(), true);
 
     edit->setReadOnly(false);
     QCOMPARE(edit->selectByKeyboard(), true);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     edit->setSelectByKeyboard(false);
     QCOMPARE(edit->selectByKeyboard(), false);
-    QCOMPARE(spy.count(), 3);
+    QCOMPARE(spy.size(), 3);
     QCOMPARE(spy.at(2).at(0).toBool(), false);
 }
 
@@ -2422,14 +2473,14 @@ void tst_qquicktextedit::renderType()
 
     edit->setRenderType(QQuickTextEdit::NativeRendering);
     QCOMPARE(edit->renderType(), QQuickTextEdit::NativeRendering);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     edit->setRenderType(QQuickTextEdit::NativeRendering);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     edit->setRenderType(QQuickTextEdit::QtRendering);
     QCOMPARE(edit->renderType(), QQuickTextEdit::QtRendering);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 }
 
 void tst_qquicktextedit::inputMethodHints()
@@ -2445,9 +2496,9 @@ void tst_qquicktextedit::inputMethodHints()
     QSignalSpy inputMethodHintSpy(textEditObject, SIGNAL(inputMethodHintsChanged()));
     textEditObject->setInputMethodHints(Qt::ImhUppercaseOnly);
     QVERIFY(textEditObject->inputMethodHints() & Qt::ImhUppercaseOnly);
-    QCOMPARE(inputMethodHintSpy.count(), 1);
+    QCOMPARE(inputMethodHintSpy.size(), 1);
     textEditObject->setInputMethodHints(Qt::ImhUppercaseOnly);
-    QCOMPARE(inputMethodHintSpy.count(), 1);
+    QCOMPARE(inputMethodHintSpy.size(), 1);
 
     QQuickTextEdit plainTextEdit;
     QCOMPARE(plainTextEdit.inputMethodHints(), Qt::ImhNone);
@@ -2570,8 +2621,8 @@ void tst_qquicktextedit::linkHover()
     QQuickView window(testFileUrl("linkInteraction.qml"));
     window.setFlag(Qt::FramelessWindowHint);
     QVERIFY(window.rootObject() != nullptr);
-    QQuickViewTestUtil::centerOnScreen(&window);
-    QQuickViewTestUtil::moveMouseAway(&window);
+    QQuickVisualTestUtils::centerOnScreen(&window);
+    QQuickVisualTestUtils::moveMouseAway(&window);
     window.show();
     window.requestActivate();
     QVERIFY(QTest::qWaitForWindowActive(&window));
@@ -2585,25 +2636,23 @@ void tst_qquicktextedit::linkHover()
     const QPoint textPos = window.mapToGlobal(texteditObject->positionToRectangle(2).center().toPoint());
 
     QCursor::setPos(linkPos);
-    QTRY_COMPARE(hover.count(), 1);
+    QTRY_COMPARE(hover.size(), 1);
     QCOMPARE(window.cursor().shape(), Qt::PointingHandCursor);
     QCOMPARE(hover.last()[0].toString(), link);
 
     QCursor::setPos(textPos);
-    QTRY_COMPARE(hover.count(), 2);
+    QTRY_COMPARE(hover.size(), 2);
     QCOMPARE(window.cursor().shape(), Qt::IBeamCursor);
     QCOMPARE(hover.last()[0].toString(), QString());
 
-    texteditObject->setCursor(Qt::OpenHandCursor);
-
     QCursor::setPos(linkPos);
-    QTRY_COMPARE(hover.count(), 3);
+    QTRY_COMPARE(hover.size(), 3);
     QCOMPARE(window.cursor().shape(), Qt::PointingHandCursor);
     QCOMPARE(hover.last()[0].toString(), link);
 
     QCursor::setPos(textPos);
-    QTRY_COMPARE(hover.count(), 4);
-    QCOMPARE(window.cursor().shape(), Qt::OpenHandCursor);
+    QTRY_COMPARE(hover.size(), 4);
+    QCOMPARE(window.cursor().shape(), Qt::IBeamCursor);
     QCOMPARE(hover.last()[0].toString(), QString());
 }
 #endif
@@ -2612,8 +2661,8 @@ void tst_qquicktextedit::linkInteraction()
 {
     QQuickView window(testFileUrl("linkInteraction.qml"));
     QVERIFY(window.rootObject() != nullptr);
-    QQuickViewTestUtil::centerOnScreen(&window);
-    QQuickViewTestUtil::moveMouseAway(&window);
+    QQuickVisualTestUtils::centerOnScreen(&window);
+    QQuickVisualTestUtils::moveMouseAway(&window);
     window.show();
     window.requestActivate();
     QVERIFY(QTest::qWaitForWindowActive(&window));
@@ -2630,16 +2679,16 @@ void tst_qquicktextedit::linkInteraction()
     const QPointF textPos = texteditObject->positionToRectangle(2).center();
 
     QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, linkPos.toPoint());
-    QTRY_COMPARE(spy.count(), 1);
-    QTRY_COMPARE(hover.count(), 1);
+    QTRY_COMPARE(spy.size(), 1);
+    QTRY_COMPARE(hover.size(), 1);
     QCOMPARE(spy.last()[0].toString(), link);
     QCOMPARE(hover.last()[0].toString(), link);
     QCOMPARE(texteditObject->hoveredLink(), link);
     QCOMPARE(texteditObject->linkAt(linkPos.x(), linkPos.y()), link);
 
     QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, textPos.toPoint());
-    QTRY_COMPARE(spy.count(), 1);
-    QTRY_COMPARE(hover.count(), 2);
+    QTRY_COMPARE(spy.size(), 1);
+    QTRY_COMPARE(hover.size(), 2);
     QCOMPARE(hover.last()[0].toString(), QString());
     QCOMPARE(texteditObject->hoveredLink(), QString());
     QCOMPARE(texteditObject->linkAt(textPos.x(), textPos.y()), QString());
@@ -2647,16 +2696,16 @@ void tst_qquicktextedit::linkInteraction()
     texteditObject->setReadOnly(true);
 
     QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, linkPos.toPoint());
-    QTRY_COMPARE(spy.count(), 2);
-    QTRY_COMPARE(hover.count(), 3);
+    QTRY_COMPARE(spy.size(), 2);
+    QTRY_COMPARE(hover.size(), 3);
     QCOMPARE(spy.last()[0].toString(), link);
     QCOMPARE(hover.last()[0].toString(), link);
     QCOMPARE(texteditObject->hoveredLink(), link);
     QCOMPARE(texteditObject->linkAt(linkPos.x(), linkPos.y()), link);
 
     QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, textPos.toPoint());
-    QTRY_COMPARE(spy.count(), 2);
-    QTRY_COMPARE(hover.count(), 4);
+    QTRY_COMPARE(spy.size(), 2);
+    QTRY_COMPARE(hover.size(), 4);
     QCOMPARE(hover.last()[0].toString(), QString());
     QCOMPARE(texteditObject->hoveredLink(), QString());
     QCOMPARE(texteditObject->linkAt(textPos.x(), textPos.y()), QString());
@@ -2689,7 +2738,7 @@ void tst_qquicktextedit::cursorDelegate()
     QVERIFY(delegateObject);
     QCOMPARE(delegateObject->property("localProperty").toString(), QString("Hello"));
     //Test Delegate gets moved
-    for (int i=0; i<= textEditObject->text().length(); i++) {
+    for (int i=0; i<= textEditObject->text().size(); i++) {
         textEditObject->setCursorPosition(i);
         QCOMPARE(textEditObject->cursorRectangle().x(), delegateObject->x());
         QCOMPARE(textEditObject->cursorRectangle().y(), delegateObject->y());
@@ -2711,7 +2760,8 @@ void tst_qquicktextedit::cursorDelegate()
     const QPoint point2 = textEditObject->positionToRectangle(10).center().toPoint();
     QTest::qWait(400);  //ensure this isn't treated as a double-click
     QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, point1);
-    QMouseEvent mv(QEvent::MouseMove, point2, Qt::LeftButton, Qt::LeftButton,Qt::NoModifier);
+    QMouseEvent mv(QEvent::MouseMove, point2, view.mapToGlobal(point2),
+                   Qt::LeftButton, Qt::LeftButton,Qt::NoModifier);
     QGuiApplication::sendEvent(&view, &mv);
     QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, point2);
     QTest::qWait(50);
@@ -2824,27 +2874,27 @@ void tst_qquicktextedit::cursorVisible()
 
     edit.setCursorVisible(true);
     QCOMPARE(edit.isCursorVisible(), true);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     edit.setCursorVisible(false);
     QCOMPARE(edit.isCursorVisible(), false);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     edit.setFocus(true);
     QCOMPARE(edit.isCursorVisible(), false);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     edit.setParentItem(view.rootObject());
     QCOMPARE(edit.isCursorVisible(), true);
-    QCOMPARE(spy.count(), 3);
+    QCOMPARE(spy.size(), 3);
 
     edit.setFocus(false);
     QCOMPARE(edit.isCursorVisible(), false);
-    QCOMPARE(spy.count(), 4);
+    QCOMPARE(spy.size(), 4);
 
     edit.setFocus(true);
     QCOMPARE(edit.isCursorVisible(), true);
-    QCOMPARE(spy.count(), 5);
+    QCOMPARE(spy.size(), 5);
 
     QWindow alternateView;
     alternateView.show();
@@ -2852,12 +2902,12 @@ void tst_qquicktextedit::cursorVisible()
     QVERIFY(QTest::qWaitForWindowActive(&alternateView));
 
     QCOMPARE(edit.isCursorVisible(), false);
-    QCOMPARE(spy.count(), 6);
+    QCOMPARE(spy.size(), 6);
 
     view.requestActivate();
     QVERIFY(QTest::qWaitForWindowActive(&view));
     QCOMPARE(edit.isCursorVisible(), true);
-    QCOMPARE(spy.count(), 7);
+    QCOMPARE(spy.size(), 7);
 
     {   // Cursor attribute with 0 length hides cursor.
         QInputMethodEvent ev(QString(), QList<QInputMethodEvent::Attribute>()
@@ -2865,7 +2915,7 @@ void tst_qquicktextedit::cursorVisible()
         QCoreApplication::sendEvent(&edit, &ev);
     }
     QCOMPARE(edit.isCursorVisible(), false);
-    QCOMPARE(spy.count(), 8);
+    QCOMPARE(spy.size(), 8);
 
     {   // Cursor attribute with non zero length shows cursor.
         QInputMethodEvent ev(QString(), QList<QInputMethodEvent::Attribute>()
@@ -2873,7 +2923,7 @@ void tst_qquicktextedit::cursorVisible()
         QCoreApplication::sendEvent(&edit, &ev);
     }
     QCOMPARE(edit.isCursorVisible(), true);
-    QCOMPARE(spy.count(), 9);
+    QCOMPARE(spy.size(), 9);
 
 
     {   // If the cursor is hidden by the input method and the text is changed it should be visible again.
@@ -2882,11 +2932,11 @@ void tst_qquicktextedit::cursorVisible()
         QCoreApplication::sendEvent(&edit, &ev);
     }
     QCOMPARE(edit.isCursorVisible(), false);
-    QCOMPARE(spy.count(), 10);
+    QCOMPARE(spy.size(), 10);
 
     edit.setText("something");
     QCOMPARE(edit.isCursorVisible(), true);
-    QCOMPARE(spy.count(), 11);
+    QCOMPARE(spy.size(), 11);
 
     {   // If the cursor is hidden by the input method and the cursor position is changed it should be visible again.
         QInputMethodEvent ev(QString(), QList<QInputMethodEvent::Attribute>()
@@ -2894,11 +2944,11 @@ void tst_qquicktextedit::cursorVisible()
         QCoreApplication::sendEvent(&edit, &ev);
     }
     QCOMPARE(edit.isCursorVisible(), false);
-    QCOMPARE(spy.count(), 12);
+    QCOMPARE(spy.size(), 12);
 
     edit.setCursorPosition(5);
     QCOMPARE(edit.isCursorVisible(), true);
-    QCOMPARE(spy.count(), 13);
+    QCOMPARE(spy.size(), 13);
 }
 
 void tst_qquicktextedit::delegateLoading_data()
@@ -3045,16 +3095,16 @@ void tst_qquicktextedit::copyAndPaste()
     QVERIFY(textEdit != nullptr);
 
     // copy and paste
-    QCOMPARE(textEdit->text().length(), 12);
-    textEdit->select(0, textEdit->text().length());;
+    QCOMPARE(textEdit->text().size(), 12);
+    textEdit->select(0, textEdit->text().size());;
     textEdit->copy();
     QCOMPARE(textEdit->selectedText(), QString("Hello world!"));
-    QCOMPARE(textEdit->selectedText().length(), 12);
+    QCOMPARE(textEdit->selectedText().size(), 12);
     textEdit->setCursorPosition(0);
     QVERIFY(textEdit->canPaste());
     textEdit->paste();
     QCOMPARE(textEdit->text(), QString("Hello world!Hello world!"));
-    QCOMPARE(textEdit->text().length(), 24);
+    QCOMPARE(textEdit->text().size(), 24);
 
     // canPaste
     QVERIFY(textEdit->canPaste());
@@ -3062,7 +3112,7 @@ void tst_qquicktextedit::copyAndPaste()
     QVERIFY(!textEdit->canPaste());
     textEdit->paste();
     QCOMPARE(textEdit->text(), QString("Hello world!Hello world!"));
-    QCOMPARE(textEdit->text().length(), 24);
+    QCOMPARE(textEdit->text().size(), 24);
     textEdit->setReadOnly(false);
     QVERIFY(textEdit->canPaste());
 
@@ -3090,10 +3140,10 @@ void tst_qquicktextedit::copyAndPaste()
     // select all and cut
     textEdit->selectAll();
     textEdit->cut();
-    QCOMPARE(textEdit->text().length(), 0);
+    QCOMPARE(textEdit->text().size(), 0);
     textEdit->paste();
     QCOMPARE(textEdit->text(), QString("Hello world!Hello world!"));
-    QCOMPARE(textEdit->text().length(), 24);
+    QCOMPARE(textEdit->text().size(), 24);
 
     // Copy first word.
     textEdit->setCursorPosition(0);
@@ -3179,7 +3229,7 @@ void tst_qquicktextedit::middleClickPaste()
     QTest::mouseClick(&window, Qt::MiddleButton, Qt::NoModifier, p3);
 
     if (QGuiApplication::clipboard()->supportsSelection())
-        QCOMPARE(textEditObject->text().mid(1, selectedText.length()), selectedText);
+        QCOMPARE(textEditObject->text().mid(1, selectedText.size()), selectedText);
     else
         QCOMPARE(textEditObject->text(), originalText);
 }
@@ -3209,7 +3259,111 @@ void tst_qquicktextedit::readOnly()
     edit->setCursorPosition(3);
     edit->setReadOnly(false);
     QCOMPARE(edit->isReadOnly(), false);
-    QCOMPARE(edit->cursorPosition(), edit->text().length());
+    QCOMPARE(edit->cursorPosition(), edit->text().size());
+}
+
+void tst_qquicktextedit::inFlickableMouse_data()
+{
+    QTest::addColumn<bool>("readonly");
+    QTest::addColumn<bool>("enabled");
+    QTest::addColumn<int>("expectFlickingAfter");
+    QTest::newRow("editable") << false << true << 3;
+    QTest::newRow("readonly") << true << true << 3;
+    QTest::newRow("disabled") << false << false << 3;
+}
+
+void tst_qquicktextedit::inFlickableMouse()
+{
+    QFETCH(bool, readonly);
+    QFETCH(bool, enabled);
+    QFETCH(int, expectFlickingAfter);
+
+    const int dragThreshold = QGuiApplication::styleHints()->startDragDistance();
+    QQuickView view(testFileUrl("inFlickable.qml"));
+    view.show();
+    view.requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QQuickFlickable *flick = qobject_cast<QQuickFlickable *>(view.rootObject());
+    QVERIFY(flick);
+    QQuickTextEdit *edit = flick->findChild<QQuickTextEdit*>("text");
+    QVERIFY(edit);
+    edit->setReadOnly(readonly);
+    edit->setEnabled(enabled);
+
+    // flick with mouse
+    QPoint p(10, 100);
+    QTest::mousePress(&view, Qt::LeftButton, {}, p);
+    QObject *pressGrabber = QPointingDevicePrivate::get(QPointingDevice::primaryPointingDevice())->firstPointExclusiveGrabber();
+    // even if TextEdit is readonly, it still grabs on press.  But not if it's disabled.
+    if (enabled)
+        QCOMPARE(pressGrabber, edit);
+    else
+        QCOMPARE(pressGrabber, flick);
+    int i = 0;
+    // after a couple of events, Flickable steals the grab and starts moving
+    for (; i < 4 && !flick->isMoving(); ++i) {
+        p -= QPoint(0, dragThreshold);
+        QTest::mouseMove(&view, p);
+    }
+    QCOMPARE(flick->isMoving(), bool(expectFlickingAfter));
+    if (expectFlickingAfter) {
+        qCDebug(lcTests) << "flickable started moving after" << i << "moves, when we got to" << p;
+        QCOMPARE(i, expectFlickingAfter);
+    }
+    QTest::mouseRelease(&view, Qt::LeftButton, {}, p);
+}
+
+void tst_qquicktextedit::inFlickableTouch_data()
+{
+    QTest::addColumn<bool>("readonly");
+    QTest::addColumn<bool>("enabled");
+    QTest::addColumn<int>("expectFlickingAfter");
+    QTest::newRow("editable") << false << true << 3;
+    QTest::newRow("readonly") << true << true << 3;
+    QTest::newRow("disabled") << false << false << 3;
+}
+
+void tst_qquicktextedit::inFlickableTouch()
+{
+    QFETCH(bool, readonly);
+    QFETCH(bool, enabled);
+    QFETCH(int, expectFlickingAfter);
+
+    const int dragThreshold = QGuiApplication::styleHints()->startDragDistance();
+    QQuickView view(testFileUrl("inFlickable.qml"));
+    view.show();
+    view.requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QQuickFlickable *flick = qobject_cast<QQuickFlickable *>(view.rootObject());
+    QVERIFY(flick);
+    QQuickTextEdit *edit = flick->findChild<QQuickTextEdit*>("text");
+    QVERIFY(edit);
+    edit->setReadOnly(readonly);
+    edit->setEnabled(enabled);
+
+    // flick with touch
+    QPoint p(10, 100);
+    QTest::touchEvent(&view, touchDevice).press(1, p, &view);
+    QQuickTouchUtils::flush(&view);
+    QObject *pressGrabber = QPointingDevicePrivate::get(touchDevice)->firstPointExclusiveGrabber();
+    // even if TextEdit is readonly, it still grabs on press.  But not if it's disabled.
+    if (enabled)
+        QCOMPARE(pressGrabber, edit);
+    else
+        QCOMPARE(pressGrabber, flick);
+    int i = 0;
+    // after a couple of events, Flickable steals the grab and starts moving
+    for (; i < 4 && !flick->isMoving(); ++i) {
+        p -= QPoint(0, dragThreshold);
+        QTest::touchEvent(&view, touchDevice).move(1, p, &view);
+        QQuickTouchUtils::flush(&view);
+    }
+    QCOMPARE(flick->isMoving(), bool(expectFlickingAfter));
+    if (expectFlickingAfter) {
+        qCDebug(lcTests) << "flickable started moving after" << i << "moves, when we got to" << p;
+        QCOMPARE(i, expectFlickingAfter);
+    }
+    QTest::touchEvent(&view, touchDevice).release(1, p, &view);
 }
 
 void tst_qquicktextedit::simulateKey(QWindow *view, int key, Qt::KeyboardModifiers modifiers)
@@ -3219,6 +3373,21 @@ void tst_qquicktextedit::simulateKey(QWindow *view, int key, Qt::KeyboardModifie
 
     QGuiApplication::sendEvent(view, &press);
     QGuiApplication::sendEvent(view, &release);
+}
+
+bool tst_qquicktextedit::isMainFontFixed()
+{
+    bool ret = QFontInfo(QGuiApplication::font()).fixedPitch();
+    if (ret) {
+        qCWarning(lcTests) << "QFontDatabase::GeneralFont is monospaced: markdown writing is likely to use too many backticks"
+                           << QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+    }
+    return ret;
+}
+
+bool tst_qquicktextedit::hasWindowActivation()
+{
+    return (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation));
 }
 
 void tst_qquicktextedit::textInput()
@@ -3237,7 +3406,7 @@ void tst_qquicktextedit::textInput()
     event.setCommitString( "Hello world!", 0, 0);
     QGuiApplication::sendEvent(edit, &event);
     QCOMPARE(edit->text(), QString("Hello world!"));
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     // QTBUG-12339
     // test that document and internal text attribute are in sync
@@ -3407,7 +3576,7 @@ void tst_qquicktextedit::openInputPanel()
     anotherEdit.setFocus(true);
     QCOMPARE(qApp->inputMethod()->isVisible(), true);
     QCOMPARE(qApp->focusObject(), qobject_cast<QObject*>(&anotherEdit));
-    QCOMPARE(inputPanelVisibilitySpy.count(), 0);
+    QCOMPARE(inputPanelVisibilitySpy.size(), 0);
 
     anotherEdit.setFocus(false);
     QVERIFY(qApp->focusObject() != &anotherEdit);
@@ -3523,18 +3692,18 @@ void tst_qquicktextedit::contentSize()
 
     QVERIFY(textObject->contentWidth() > textObject->width());
     QVERIFY(textObject->contentHeight() < textObject->height());
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     textObject->setWrapMode(QQuickTextEdit::WordWrap);
     QVERIFY(textObject->contentWidth() <= textObject->width());
     QVERIFY(textObject->contentHeight() > textObject->height());
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     textObject->setText("The quickredfoxjumpedoverthe lazy brown dog");
 
     QVERIFY(textObject->contentWidth() > textObject->width());
     QVERIFY(textObject->contentHeight() > textObject->height());
-    QCOMPARE(spy.count(), 3);
+    QCOMPARE(spy.size(), 3);
 }
 
 void tst_qquicktextedit::implicitSizeBinding_data()
@@ -3565,6 +3734,223 @@ void tst_qquicktextedit::implicitSizeBinding()
     QCOMPARE(textObject->height(), textObject->implicitHeight());
 }
 
+void tst_qquicktextedit::largeTextObservesViewport_data()
+{
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<QQuickTextEdit::TextFormat>("textFormat");
+    QTest::addColumn<bool>("parentIsViewport");
+    QTest::addColumn<int>("cursorPos");
+    QTest::addColumn<int>("scrollDelta");   // non-zero to move TextEdit in viewport
+
+    QTest::addColumn<int>("expectedBlockTolerance");
+    QTest::addColumn<int>("expectedBlocksAboveViewport");
+    QTest::addColumn<int>("expectedBlocksPastViewport");
+    QTest::addColumn<int>("expectedRenderedRegionMin");
+    QTest::addColumn<int>("expectedRenderedRegionMax");
+
+    QString text;
+    {
+        QStringList lines;
+        // "line 100" is 8 characters; many lines are longer, some are shorter
+        // so we populate 1250 lines, 11389 characters
+        const int lineCount = QQuickTextEditPrivate::largeTextSizeThreshold / 8;
+        lines.reserve(lineCount);
+        for (int i = 0; i < lineCount; ++i)
+            lines << QLatin1String("line ") + QString::number(i);
+        text = lines.join('\n');
+    }
+    Q_ASSERT(text.size() > QQuickTextEditPrivate::largeTextSizeThreshold);
+
+    // by default, the root item acts as the viewport:
+    // QQuickTextEdit doesn't populate lines of text beyond the bottom of the window
+    // cursor position 1000 is on line 121
+    QTest::newRow("default plain text") << text << QQuickTextEdit::PlainText << false << 1000 << 2
+                                        << 3 << 118 << 144 << 2150 << 3000;
+    // make the rectangle into a viewport item, and move the text upwards:
+    // QQuickTextEdit doesn't populate lines of text beyond the bottom of the viewport rectangle
+    QTest::newRow("clipped plain text") << text << QQuickTextEdit::PlainText << true << 1000 << 0
+                                        << 3 << 123 << 137 << 2200 << 3000;
+
+    // scroll backwards
+    QTest::newRow("scroll backwards in plain text") << text << QQuickTextEdit::PlainText << true << 1000 << 600
+                                                    << 3 << 91 << 108 << 1475 << 2300;
+
+    {
+        QStringList lines;
+        // "line 100" is 8 characters; many lines are longer, some are shorter
+        // so we populate 1250 lines, 11389 characters
+        const int lineCount = QQuickTextEditPrivate::largeTextSizeThreshold / 8;
+        lines.reserve(lineCount);
+        // add a table (of contents, perhaps): ensure that doesn't get included in renderedRegion after we've scrolled past it
+        lines << QLatin1String("<table border='1'><tr><td>Chapter 1<td></tr><tr><td>Chapter 2</td></tr><tr><td>etc</td></tr></table>");
+        for (int i = 0; i < lineCount; ++i) {
+            if (i > 0 && i % 50 == 0)
+                // chapter heading with floating image: ensure that doesn't get included in renderedRegion after we've scrolled past it
+                lines << QLatin1String("<img style='float:left;' src='http/exists.png' height='32'/><h1>chapter ") +
+                         QString::number(i / 50) + QLatin1String("</h1>");
+            lines << QLatin1String("<p>line ") + QString::number(i) + QLatin1String("</p>");
+        }
+        text = lines.join('\n');
+    }
+    Q_ASSERT(text.size() > QQuickTextEditPrivate::largeTextSizeThreshold);
+
+    // by default, the root item acts as the viewport:
+    // QQuickTextEdit doesn't populate blocks beyond the bottom of the window
+    QTest::newRow("default styled text") << text << QQuickTextEdit::RichText << false << 1000 << 0
+                                         << 3 << 122 << 139 << 3600 << 4500;
+    // make the rectangle into a viewport item, and move the text upwards:
+    // QQuickTextEdit doesn't populate blocks that don't intersect the viewport rectangle
+    QTest::newRow("clipped styled text") << text << QQuickTextEdit::RichText << true << 1000 << 0
+                                         << 3 << 127 << 136 << 3700 << 4360;
+    // get the "chapter 2" heading into the viewport
+    QTest::newRow("heading visible") << text << QQuickTextEdit::RichText << true << 800 << 0
+                                     << 3 << 105 << 113 << 3050 << 3600;
+    // get the "chapter 2" heading into the viewport, and then scroll backwards
+    QTest::newRow("scroll backwards") << text << QQuickTextEdit::RichText << true << 800 << 20
+                                     << 3 << 104 << 113 << 3000 << 3600;
+    // get the "chapter 2" heading into the viewport, and then scroll forwards
+    QTest::newRow("scroll forwards") << text << QQuickTextEdit::RichText << true << 800 << -50
+                                     << 3 << 106 << 115 << 3000 << 3670;
+}
+
+void tst_qquicktextedit::largeTextObservesViewport()
+{
+    if ((QGuiApplication::platformName() == QLatin1String("offscreen"))
+        || (QGuiApplication::platformName() == QLatin1String("minimal")))
+        QSKIP("Skipping due to grabWindow not functional on offscreen/minimal platforms");
+    QFETCH(QString, text);
+    QFETCH(QQuickTextEdit::TextFormat, textFormat);
+    QFETCH(bool, parentIsViewport);
+    QFETCH(int, cursorPos);
+    QFETCH(int, scrollDelta);
+    QFETCH(int, expectedBlockTolerance);
+    QFETCH(int, expectedBlocksAboveViewport);
+    QFETCH(int, expectedBlocksPastViewport);
+    QFETCH(int, expectedRenderedRegionMin);
+    QFETCH(int, expectedRenderedRegionMax);
+
+    QQuickView window;
+    QByteArray errorMessage;
+    QVERIFY2(QQuickTest::initView(window, testFileUrl("viewport.qml"), true, &errorMessage), errorMessage.constData());
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QQuickTextEdit *textItem = window.rootObject()->findChild<QQuickTextEdit*>();
+    QVERIFY(textItem);
+    QQuickItem *viewportItem = textItem->parentItem();
+    QQuickTextEditPrivate *textPriv = QQuickTextEditPrivate::get(textItem);
+
+    viewportItem->setFlag(QQuickItem::ItemIsViewport, parentIsViewport);
+    textItem->setTextFormat(textFormat);
+    textItem->setText(text);
+    textItem->setFocus(true);
+    if (lcTests().isDebugEnabled())
+        QTest::qWait(1000);
+    textItem->setCursorPosition(cursorPos);
+    auto cursorRect = textItem->cursorRectangle();
+    textItem->setY(-cursorRect.top());
+    if (lcTests().isDebugEnabled())
+        QTest::qWait(500);
+    if (scrollDelta) {
+        textItem->setY(textItem->y() + scrollDelta);
+        if (lcTests().isDebugEnabled())
+            QTest::qWait(500);
+    }
+    qCDebug(lcTests) << "text size" << textItem->text().size() << "lines" << textItem->lineCount() << "font" << textItem->font();
+    Q_ASSERT(textItem->text().size() > QQuickTextEditPrivate::largeTextSizeThreshold);
+    QVERIFY(textItem->flags().testFlag(QQuickItem::ItemObservesViewport)); // large text sets this flag automatically
+    QCOMPARE(textItem->viewportItem(), parentIsViewport ? viewportItem : viewportItem->parentItem());
+    QTRY_COMPARE_GT(textPriv->firstBlockInViewport, 0); // wait for rendering
+    qCDebug(lcTests) << "first block rendered" << textPriv->firstBlockInViewport
+                     << "expected" << expectedBlocksAboveViewport
+                     << "first block past viewport" << textPriv->firstBlockPastViewport
+                     << "expected" << expectedBlocksPastViewport
+                     << "region" << textPriv->renderedRegion << "bottom" << textPriv->renderedRegion.bottom()
+                     << "expected range" << expectedRenderedRegionMin << expectedRenderedRegionMax;
+    if (scrollDelta >= 0) { // unfortunately firstBlockInViewport isn't always reliable after scrolling
+        QTRY_IMPL((qAbs(textPriv->firstBlockInViewport - expectedBlocksAboveViewport) <= expectedBlockTolerance), 5000);
+    }
+    QVERIFY2((qAbs(textPriv->firstBlockInViewport - expectedBlocksAboveViewport) <= expectedBlockTolerance),
+             qPrintable(QString::fromLatin1("Expected first block in viewport %1 to be near %2 (tolerance: %3)")
+                        .arg(textPriv->firstBlockInViewport).arg(expectedBlocksAboveViewport).arg(expectedBlockTolerance)));
+    QVERIFY2((qAbs(textPriv->firstBlockPastViewport - expectedBlocksPastViewport) <= expectedBlockTolerance),
+             qPrintable(QString::fromLatin1("Expected first block past viewport %1 to be near %2 (tolerance: %3)")
+                        .arg(textPriv->firstBlockPastViewport).arg(expectedBlocksPastViewport).arg(expectedBlockTolerance)));
+    QCOMPARE_GT(textPriv->renderedRegion.top(), expectedRenderedRegionMin);
+    QCOMPARE_LT(textPriv->renderedRegion.bottom(), expectedRenderedRegionMax);
+    QVERIFY(textPriv->cursorItem);
+    qCDebug(lcTests) << "cursor rect" << textItem->cursorRectangle() << "visible?" << textPriv->cursorItem->isVisible();
+    QCOMPARE(textPriv->cursorItem->isVisible(), textPriv->renderedRegion.intersects(textItem->cursorRectangle()));
+}
+
+void tst_qquicktextedit::largeTextSelection()
+{
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("qtConfigureHelp.qml")));
+    NodeCheckerTextEdit *textItem = qmlobject_cast<NodeCheckerTextEdit *>(window.rootObject());
+    QVERIFY(textItem);
+    QTRY_VERIFY(textItem->sortedLinePositions.size() > 0);
+    const auto sortedLinePositions = textItem->sortedLinePositions;
+
+    QQuickTextEditPrivate *textPriv = QQuickTextEditPrivate::get(textItem);
+    QSignalSpy renderSpy(&window, &QQuickWindow::afterRendering);
+    if (lcTests().isDebugEnabled())
+        QTest::qWait(500); // for visual check; not needed in CI
+
+    const int renderCount = renderSpy.size();
+    textItem->setCursorPosition(200);
+    textItem->moveCursorSelection(220);
+    QTRY_COMPARE_GT(renderSpy.size(), renderCount);
+
+    if (lcTests().isDebugEnabled())
+        QTest::qWait(500); // for visual check; not needed in CI
+
+    qCDebug(lcTests) << "TextEdit's nodes" << textPriv->textNodeMap;
+    qCDebug(lcTests) << "font" << textItem->font() << "line positions"
+                     << textItem->sortedLinePositions << "expected" << sortedLinePositions;
+
+    const bool eachTextNodeRenderedOnlyOnce = [textItem]() -> bool {
+        for (auto i = 1; i < textItem->sortedLinePositions.count(); ++i)
+            if (textItem->sortedLinePositions[i - 1] == textItem->sortedLinePositions[i])
+                return false;
+        return true;
+    }();
+    QVERIFY(eachTextNodeRenderedOnlyOnce);
+}
+
+void tst_qquicktextedit::renderingAroundSelection()
+{
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("threeLines.qml")));
+    NodeCheckerTextEdit *textItem = qmlobject_cast<NodeCheckerTextEdit*>(window.rootObject());
+    QVERIFY(textItem);
+    QTRY_VERIFY(textItem->sortedLinePositions.size() > 0);
+    const auto sortedLinePositions = textItem->sortedLinePositions;
+    const int lastLinePosition = textItem->lastLinePosition;
+    QQuickTextEditPrivate *textPriv = QQuickTextEditPrivate::get(textItem);
+    QSignalSpy renderSpy(&window, &QQuickWindow::afterRendering);
+
+    if (lcTests().isDebugEnabled())
+        QTest::qWait(500); // for visual check; not needed in CI
+
+    const int renderCount = renderSpy.size();
+    QPoint p1 = textItem->mapToScene(textItem->positionToRectangle(8).center()).toPoint();
+    QPoint p2 = textItem->mapToScene(textItem->positionToRectangle(10).center()).toPoint();
+    qCDebug(lcTests) << "drag from" << p1 << "to" << p2;
+    QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, p1);
+    QTest::mouseMove(&window, p2);
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, p2);
+    // ensure that QQuickTextEdit::updatePaintNode() has a chance to run
+    QTRY_COMPARE_GT(renderSpy.size(), renderCount);
+
+    if (lcTests().isDebugEnabled())
+        QTest::qWait(500); // for visual check; not needed in CI
+
+    qCDebug(lcTests) << "TextEdit's nodes" << textPriv->textNodeMap;
+    qCDebug(lcTests) << "font" << textItem->font() << "line positions" << textItem->sortedLinePositions << "should be" << sortedLinePositions;
+    QCOMPARE(textItem->lastLinePosition, lastLinePosition);
+    QTRY_COMPARE(textItem->sortedLinePositions, sortedLinePositions);
+}
+
 void tst_qquicktextedit::signal_editingfinished()
 {
     QQuickView *window = new QQuickView(nullptr);
@@ -3589,13 +3975,15 @@ void tst_qquicktextedit::signal_editingfinished()
     QTRY_VERIFY(input1->hasActiveFocus());
     QTRY_VERIFY(!input2->hasActiveFocus());
 
-    QKeyEvent key(QEvent::KeyPress, Qt::Key_Tab, Qt::ShiftModifier, "", false, 1);
-    QGuiApplication::sendEvent(window, &key);
-    QVERIFY(key.isAccepted());
-    QTRY_COMPARE(editingFinished1Spy.count(), 1);
+    {
+        QKeyEvent key(QEvent::KeyPress, Qt::Key_Tab, Qt::ShiftModifier, "", false, 1);
+        QGuiApplication::sendEvent(window, &key);
+        QVERIFY(key.isAccepted());
+        QTRY_COMPARE(editingFinished1Spy.size(), 1);
 
-    QTRY_VERIFY(!input1->hasActiveFocus());
-    QTRY_VERIFY(input2->hasActiveFocus());
+        QTRY_VERIFY(!input1->hasActiveFocus());
+        QTRY_VERIFY(input2->hasActiveFocus());
+    }
 
     QSignalSpy editingFinished2Spy(input2, SIGNAL(editingFinished()));
 
@@ -3603,13 +3991,15 @@ void tst_qquicktextedit::signal_editingfinished()
     QTRY_VERIFY(!input1->hasActiveFocus());
     QTRY_VERIFY(input2->hasActiveFocus());
 
-    key = QKeyEvent(QEvent::KeyPress, Qt::Key_Tab, Qt::ShiftModifier, "", false, 1);
-    QGuiApplication::sendEvent(window, &key);
-    QVERIFY(key.isAccepted());
-    QTRY_COMPARE(editingFinished2Spy.count(), 1);
+    {
+        QKeyEvent key = QKeyEvent(QEvent::KeyPress, Qt::Key_Tab, Qt::ShiftModifier, "", false, 1);
+        QGuiApplication::sendEvent(window, &key);
+        QVERIFY(key.isAccepted());
+        QTRY_COMPARE(editingFinished2Spy.size(), 1);
 
-    QTRY_VERIFY(input1->hasActiveFocus());
-    QTRY_VERIFY(!input2->hasActiveFocus());
+        QTRY_VERIFY(input1->hasActiveFocus());
+        QTRY_VERIFY(!input2->hasActiveFocus());
+    }
 }
 
 void tst_qquicktextedit::clipRect()
@@ -3714,6 +4104,15 @@ void tst_qquicktextedit::boundingRect()
     QCOMPARE(edit->boundingRect().x(), qreal(0));
     QCOMPARE(edit->boundingRect().y(), qreal(0));
     QCOMPARE(edit->boundingRect().width(), line.naturalTextWidth() + edit->cursorRectangle().width() + 3);
+
+    QFontMetricsF fontMetrics(QGuiApplication::font());
+    qreal leading = fontMetrics.leading();
+    qreal ascent = fontMetrics.ascent();
+    qreal descent = fontMetrics.descent();
+
+    bool leadingOverflow = qCeil(ascent + descent) < qCeil(ascent + descent + leading);
+    if (leadingOverflow)
+        QEXPECT_FAIL("", "See QTBUG-82954", Continue);
     QCOMPARE(edit->boundingRect().height(), line.height());
 
     // the size of the bounding rect shouldn't be bounded by the size of item.
@@ -3721,12 +4120,18 @@ void tst_qquicktextedit::boundingRect()
     QCOMPARE(edit->boundingRect().x(), qreal(0));
     QCOMPARE(edit->boundingRect().y(), qreal(0));
     QCOMPARE(edit->boundingRect().width(), line.naturalTextWidth() + edit->cursorRectangle().width() + 3);
+
+    if (leadingOverflow)
+        QEXPECT_FAIL("", "See QTBUG-82954", Continue);
     QCOMPARE(edit->boundingRect().height(), line.height());
 
     edit->setHeight(edit->height() * 2);
     QCOMPARE(edit->boundingRect().x(), qreal(0));
     QCOMPARE(edit->boundingRect().y(), qreal(0));
     QCOMPARE(edit->boundingRect().width(), line.naturalTextWidth() + edit->cursorRectangle().width() + 3);
+
+    if (leadingOverflow)
+        QEXPECT_FAIL("", "See QTBUG-82954", Continue);
     QCOMPARE(edit->boundingRect().height(), line.height());
 
     QQmlComponent cursorComponent(&engine);
@@ -3739,12 +4144,18 @@ void tst_qquicktextedit::boundingRect()
     QCOMPARE(edit->boundingRect().x(), qreal(0));
     QCOMPARE(edit->boundingRect().y(), qreal(0));
     QCOMPARE(edit->boundingRect().width(), line.naturalTextWidth());
+
+    if (leadingOverflow)
+        QEXPECT_FAIL("", "See QTBUG-82954", Continue);
     QCOMPARE(edit->boundingRect().height(), line.height());
 
     edit->setHAlign(QQuickTextEdit::AlignRight);
     QCOMPARE(edit->boundingRect().x(), edit->width() - line.naturalTextWidth());
     QCOMPARE(edit->boundingRect().y(), qreal(0));
     QCOMPARE(edit->boundingRect().width(), line.naturalTextWidth());
+
+    if (leadingOverflow)
+        QEXPECT_FAIL("", "See QTBUG-82954", Continue);
     QCOMPARE(edit->boundingRect().height(), line.height());
 
     edit->setWrapMode(QQuickTextEdit::Wrap);
@@ -3788,7 +4199,7 @@ void tst_qquicktextedit::preeditCursorRectangle()
     // Verify that the micro focus rect is positioned the same for position 0 as
     // it would be if there was no preedit text.
     QInputMethodEvent imEvent(preeditText, QList<QInputMethodEvent::Attribute>()
-            << QInputMethodEvent::Attribute(QInputMethodEvent::Cursor, 0, preeditText.length(), QVariant()));
+            << QInputMethodEvent::Attribute(QInputMethodEvent::Cursor, 0, preeditText.size(), QVariant()));
     QCoreApplication::sendEvent(edit, &imEvent);
     QCoreApplication::sendEvent(edit, &query);
     currentRect = query.value(Qt::ImCursorRectangle).toRectF();
@@ -3802,15 +4213,15 @@ void tst_qquicktextedit::preeditCursorRectangle()
     panelSpy.clear();
     for (int i = 1; i <= 5; ++i) {
         QInputMethodEvent imEvent(preeditText, QList<QInputMethodEvent::Attribute>()
-                << QInputMethodEvent::Attribute(QInputMethodEvent::Cursor, i, preeditText.length(), QVariant()));
+                << QInputMethodEvent::Attribute(QInputMethodEvent::Cursor, i, preeditText.size(), QVariant()));
         QCoreApplication::sendEvent(edit, &imEvent);
         QCoreApplication::sendEvent(edit, &query);
         currentRect = query.value(Qt::ImCursorRectangle).toRectF();
         QCOMPARE(edit->cursorRectangle(), currentRect);
         QCOMPARE(cursor->position(), currentRect.topLeft());
         QVERIFY(previousRect.left() < currentRect.left());
-        QCOMPARE(editSpy.count(), 1); editSpy.clear();
-        QCOMPARE(panelSpy.count(), 1); panelSpy.clear();
+        QCOMPARE(editSpy.size(), 1); editSpy.clear();
+        QCOMPARE(panelSpy.size(), 1); panelSpy.clear();
         previousRect = currentRect;
     }
 
@@ -3825,8 +4236,8 @@ void tst_qquicktextedit::preeditCursorRectangle()
     currentRect = query.value(Qt::ImCursorRectangle).toRectF();
     QCOMPARE(edit->cursorRectangle(), currentRect);
     QCOMPARE(cursor->position(), currentRect.topLeft());
-    QCOMPARE(editSpy.count(), 1);
-    QCOMPARE(panelSpy.count(), 1);
+    QCOMPARE(editSpy.size(), 1);
+    QCOMPARE(panelSpy.size(), 1);
 
     // Verify that if there is no preedit cursor then the micro focus rect is the
     // same as it would be if it were positioned at the end of the preedit text.
@@ -3839,8 +4250,8 @@ void tst_qquicktextedit::preeditCursorRectangle()
     QCOMPARE(edit->cursorRectangle(), currentRect);
     QCOMPARE(cursor->position(), currentRect.topLeft());
     QCOMPARE(currentRect, previousRect);
-    QCOMPARE(editSpy.count(), 1);
-    QCOMPARE(panelSpy.count(), 1);
+    QCOMPARE(editSpy.size(), 1);
+    QCOMPARE(panelSpy.size(), 1);
 }
 
 void tst_qquicktextedit::inputMethodComposing()
@@ -3867,37 +4278,37 @@ void tst_qquicktextedit::inputMethodComposing()
     }
 
     QCOMPARE(edit->isInputMethodComposing(), true);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     {
         QInputMethodEvent event(text.mid(12), QList<QInputMethodEvent::Attribute>());
         QGuiApplication::sendEvent(edit, &event);
     }
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     {
         QInputMethodEvent event;
         QGuiApplication::sendEvent(edit, &event);
     }
     QCOMPARE(edit->isInputMethodComposing(), false);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     // Changing the text while not composing doesn't alter the composing state.
     edit->setText(text.mid(0, 16));
     QCOMPARE(edit->isInputMethodComposing(), false);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     {
         QInputMethodEvent event(text.mid(16), QList<QInputMethodEvent::Attribute>());
         QGuiApplication::sendEvent(edit, &event);
     }
     QCOMPARE(edit->isInputMethodComposing(), true);
-    QCOMPARE(spy.count(), 3);
+    QCOMPARE(spy.size(), 3);
 
     // Changing the text while composing cancels composition.
     edit->setText(text.mid(0, 12));
     QCOMPARE(edit->isInputMethodComposing(), false);
-    QCOMPARE(spy.count(), 4);
+    QCOMPARE(spy.size(), 4);
 
     {   // Preedit cursor positioned outside (empty) preedit; composing.
         QInputMethodEvent event(QString(), QList<QInputMethodEvent::Attribute>()
@@ -3905,7 +4316,7 @@ void tst_qquicktextedit::inputMethodComposing()
         QGuiApplication::sendEvent(edit, &event);
     }
     QCOMPARE(edit->isInputMethodComposing(), true);
-    QCOMPARE(spy.count(), 5);
+    QCOMPARE(spy.size(), 5);
 
     {   // Cursor hidden; composing
         QInputMethodEvent event(QString(), QList<QInputMethodEvent::Attribute>()
@@ -3913,7 +4324,7 @@ void tst_qquicktextedit::inputMethodComposing()
         QGuiApplication::sendEvent(edit, &event);
     }
     QCOMPARE(edit->isInputMethodComposing(), true);
-    QCOMPARE(spy.count(), 5);
+    QCOMPARE(spy.size(), 5);
 
     {   // Default cursor attributes; composing.
         QInputMethodEvent event(QString(), QList<QInputMethodEvent::Attribute>()
@@ -3921,7 +4332,7 @@ void tst_qquicktextedit::inputMethodComposing()
         QGuiApplication::sendEvent(edit, &event);
     }
     QCOMPARE(edit->isInputMethodComposing(), true);
-    QCOMPARE(spy.count(), 5);
+    QCOMPARE(spy.size(), 5);
 
     {   // Selections are persisted: not composing
         QInputMethodEvent event(QString(), QList<QInputMethodEvent::Attribute>()
@@ -3929,7 +4340,7 @@ void tst_qquicktextedit::inputMethodComposing()
         QGuiApplication::sendEvent(edit, &event);
     }
     QCOMPARE(edit->isInputMethodComposing(), false);
-    QCOMPARE(spy.count(), 6);
+    QCOMPARE(spy.size(), 6);
 
     edit->setCursorPosition(0);
 
@@ -3941,14 +4352,14 @@ void tst_qquicktextedit::inputMethodComposing()
         QGuiApplication::sendEvent(edit, &event);
     }
     QCOMPARE(edit->isInputMethodComposing(), true);
-    QCOMPARE(spy.count(), 7);
+    QCOMPARE(spy.size(), 7);
 
     {
         QInputMethodEvent event;
         QGuiApplication::sendEvent(edit, &event);
     }
     QCOMPARE(edit->isInputMethodComposing(), false);
-    QCOMPARE(spy.count(), 8);
+    QCOMPARE(spy.size(), 8);
 }
 
 void tst_qquicktextedit::cursorRectangleSize_data()
@@ -4024,7 +4435,7 @@ void tst_qquicktextedit::getText_data()
 
     QTest::newRow("all plain text")
             << standard.at(0)
-            << 0 << standard.at(0).length()
+            << 0 << standard.at(0).size()
             << standard.at(0);
 
     QTest::newRow("plain text sub string")
@@ -4044,17 +4455,17 @@ void tst_qquicktextedit::getText_data()
 
     QTest::newRow("plain text cropped end")
             << standard.at(0)
-            << 23 << standard.at(0).length() + 8
+            << 23 << standard.at(0).size() + 8
             << standard.at(0).mid(23);
 
     QTest::newRow("plain text cropped beginning and end")
             << standard.at(0)
-            << -9 << standard.at(0).length() + 4
+            << -9 << standard.at(0).size() + 4
             << standard.at(0);
 
     QTest::newRow("all rich text")
             << richBoldText
-            << 0 << plainBoldText.length()
+            << 0 << plainBoldText.size()
             << plainBoldText;
 
     QTest::newRow("rich text sub string")
@@ -4065,7 +4476,7 @@ void tst_qquicktextedit::getText_data()
     // Line break.
     QTest::newRow("all plain text (line break)")
             << standard.at(1)
-            << 0 << standard.at(1).length()
+            << 0 << standard.at(1).size()
             << standard.at(1);
 
     QTest::newRow("plain text sub string (line break)")
@@ -4085,17 +4496,17 @@ void tst_qquicktextedit::getText_data()
 
     QTest::newRow("plain text cropped end (line break)")
             << standard.at(1)
-            << 23 << standard.at(1).length() + 8
+            << 23 << standard.at(1).size() + 8
             << standard.at(1).mid(23);
 
     QTest::newRow("plain text cropped beginning and end (line break)")
             << standard.at(1)
-            << -9 << standard.at(1).length() + 4
+            << -9 << standard.at(1).size() + 4
             << standard.at(1);
 
     QTest::newRow("all rich text (line break)")
             << richBoldTextLB
-            << 0 << plainBoldTextLB.length()
+            << 0 << plainBoldTextLB.size()
             << plainBoldTextLB;
 
     QTest::newRow("rich text sub string (line break)")
@@ -4134,7 +4545,7 @@ void tst_qquicktextedit::getFormattedText_data()
     QTest::newRow("all plain text")
             << standard.at(0)
             << QQuickTextEdit::PlainText
-            << 0 << standard.at(0).length()
+            << 0 << standard.at(0).size()
             << standard.at(0);
 
     QTest::newRow("plain text sub string")
@@ -4158,31 +4569,31 @@ void tst_qquicktextedit::getFormattedText_data()
     QTest::newRow("plain text cropped end")
             << standard.at(0)
             << QQuickTextEdit::PlainText
-            << 23 << standard.at(0).length() + 8
+            << 23 << standard.at(0).size() + 8
             << standard.at(0).mid(23);
 
     QTest::newRow("plain text cropped beginning and end")
             << standard.at(0)
             << QQuickTextEdit::PlainText
-            << -9 << standard.at(0).length() + 4
+            << -9 << standard.at(0).size() + 4
             << standard.at(0);
 
     QTest::newRow("all rich (Auto) text")
             << richBoldText
             << QQuickTextEdit::AutoText
-            << 0 << plainBoldText.length()
+            << 0 << plainBoldText.size()
             << QString("This is some \\<.*\\>bold\\</.*\\> text");
 
     QTest::newRow("all rich (Rich) text")
             << richBoldText
             << QQuickTextEdit::RichText
-            << 0 << plainBoldText.length()
+            << 0 << plainBoldText.size()
             << QString("This is some \\<.*\\>bold\\</.*\\> text");
 
     QTest::newRow("all rich (Plain) text")
             << richBoldText
             << QQuickTextEdit::PlainText
-            << 0 << richBoldText.length()
+            << 0 << richBoldText.size()
             << richBoldText;
 
     QTest::newRow("rich (Auto) text sub string")
@@ -4223,7 +4634,7 @@ void tst_qquicktextedit::getFormattedText()
 
     if (textFormat == QQuickTextEdit::RichText
             || (textFormat == QQuickTextEdit::AutoText && Qt::mightBeRichText(text))) {
-        QVERIFY(textEdit->getFormattedText(start, end).contains(QRegExp(expectedText)));
+        QVERIFY(textEdit->getFormattedText(start, end).contains(QRegularExpression(expectedText)));
     } else {
         QCOMPARE(textEdit->getFormattedText(start, end), expectedText);
     }
@@ -4261,10 +4672,10 @@ void tst_qquicktextedit::append_data()
 
     QTest::newRow("cursor follows (end)")
             << standard.at(0) << QQuickTextEdit::PlainText
-            << standard.at(0).length() << standard.at(0).length()
+            << standard.at(0).size() << standard.at(0).size()
             << QString("Hello")
             << standard.at(0) + QString("\nHello")
-            << standard.at(0).length() + 6 << standard.at(0).length() + 6 << standard.at(0).length() + 6
+            << standard.at(0).size() + 6 << standard.at(0).size() + 6 << standard.at(0).size() + 6
             << false << true;
 
     QTest::newRow("selection kept intact (beginning)")
@@ -4285,10 +4696,10 @@ void tst_qquicktextedit::append_data()
 
     QTest::newRow("selection kept intact, cursor follows (end)")
             << standard.at(0) << QQuickTextEdit::PlainText
-            << 18 << standard.at(0).length()
+            << 18 << standard.at(0).size()
             << QString("Hello")
             << standard.at(0) + QString("\nHello")
-            << 18 << standard.at(0).length() + 6 << standard.at(0).length() + 6
+            << 18 << standard.at(0).size() + 6 << standard.at(0).size() + 6
             << true << true;
 
     QTest::newRow("reversed selection kept intact")
@@ -4320,6 +4731,22 @@ void tst_qquicktextedit::append_data()
             << 0 << 0
             << QString("<b>Hello</b>")
             << standard.at(0) + QString("\nHello")
+            << 0 << 0 << 0
+            << false << false;
+
+    QTest::newRow("markdown into markdown")
+            << QString("**Hello**") << QQuickTextEdit::MarkdownText
+            << 0 << 0
+            << QString(" *world*")
+            << QString("Hello\u2029world")
+            << 0 << 0 << 0
+            << false << false;
+
+    QTest::newRow("rich text into markdown")
+            << QString("**Hello**") << QQuickTextEdit::MarkdownText
+            << 0 << 0
+            << QString(" <i>world</i>")
+            << QString("Hello\u2029world")
             << 0 << 0 << 0
             << false << false;
 }
@@ -4355,14 +4782,15 @@ void tst_qquicktextedit::append()
 
     textEdit->append(appendText);
 
-    if (textFormat == QQuickTextEdit::RichText || (textFormat == QQuickTextEdit::AutoText && (
-            Qt::mightBeRichText(text) || Qt::mightBeRichText(appendText)))) {
-        QCOMPARE(textEdit->getText(0, expectedText.length()), expectedText);
+    if (textFormat == QQuickTextEdit::RichText || textFormat == QQuickTextEdit::MarkdownText ||
+            (textFormat == QQuickTextEdit::AutoText &&
+             (Qt::mightBeRichText(text) || Qt::mightBeRichText(appendText)))) {
+        QCOMPARE(textEdit->getText(0, expectedText.size()), expectedText);
     } else {
         QCOMPARE(textEdit->text(), expectedText);
 
     }
-    QCOMPARE(textEdit->length(), expectedText.length());
+    QCOMPARE(textEdit->length(), expectedText.size());
 
     QCOMPARE(textEdit->selectionStart(), expectedSelectionStart);
     QCOMPARE(textEdit->selectionEnd(), expectedSelectionEnd);
@@ -4371,11 +4799,11 @@ void tst_qquicktextedit::append()
     if (selectionStart > selectionEnd)
         qSwap(selectionStart, selectionEnd);
 
-    QCOMPARE(selectionSpy.count() > 0, selectionChanged);
-    QCOMPARE(selectionStartSpy.count() > 0, selectionStart != expectedSelectionStart);
-    QCOMPARE(selectionEndSpy.count() > 0, selectionEnd != expectedSelectionEnd);
-    QCOMPARE(textSpy.count() > 0, text != expectedText);
-    QCOMPARE(cursorPositionSpy.count() > 0, cursorPositionChanged);
+    QCOMPARE(selectionSpy.size() > 0, selectionChanged);
+    QCOMPARE(selectionStartSpy.size() > 0, selectionStart != expectedSelectionStart);
+    QCOMPARE(selectionEndSpy.size() > 0, selectionEnd != expectedSelectionEnd);
+    QCOMPARE(textSpy.size() > 0, text != expectedText);
+    QCOMPARE(cursorPositionSpy.size() > 0, cursorPositionChanged);
 }
 
 void tst_qquicktextedit::insert_data()
@@ -4403,10 +4831,10 @@ void tst_qquicktextedit::insert_data()
 
     QTest::newRow("at cursor position (end)")
             << standard.at(0) << QQuickTextEdit::PlainText
-            << standard.at(0).length() << standard.at(0).length() << standard.at(0).length()
+            << standard.at(0).size() << standard.at(0).size() << standard.at(0).size()
             << QString("Hello")
             << standard.at(0) + QString("Hello")
-            << standard.at(0).length() + 5 << standard.at(0).length() + 5 << standard.at(0).length() + 5
+            << standard.at(0).size() + 5 << standard.at(0).size() + 5 << standard.at(0).size() + 5
             << false << true;
 
     QTest::newRow("at cursor position (middle)")
@@ -4427,10 +4855,10 @@ void tst_qquicktextedit::insert_data()
 
     QTest::newRow("before cursor position (end)")
             << standard.at(0) << QQuickTextEdit::PlainText
-            << standard.at(0).length() << standard.at(0).length() << 18
+            << standard.at(0).size() << standard.at(0).size() << 18
             << QString("Hello")
             << standard.at(0).mid(0, 18) + QString("Hello") + standard.at(0).mid(18)
-            << standard.at(0).length() + 5 << standard.at(0).length() + 5 << standard.at(0).length() + 5
+            << standard.at(0).size() + 5 << standard.at(0).size() + 5 << standard.at(0).size() + 5
             << false << true;
 
     QTest::newRow("before cursor position (middle)")
@@ -4443,7 +4871,7 @@ void tst_qquicktextedit::insert_data()
 
     QTest::newRow("after cursor position (middle)")
             << standard.at(0) << QQuickTextEdit::PlainText
-            << 18 << 18 << standard.at(0).length()
+            << 18 << 18 << standard.at(0).size()
             << QString("Hello")
             << standard.at(0) + QString("Hello")
             << 18 << 18 << 18
@@ -4467,7 +4895,7 @@ void tst_qquicktextedit::insert_data()
 
     QTest::newRow("after selection")
             << standard.at(0) << QQuickTextEdit::PlainText
-            << 14 << 19 << standard.at(0).length()
+            << 14 << 19 << standard.at(0).size()
             << QString("Hello")
             << standard.at(0) + QString("Hello")
             << 14 << 19 << 19
@@ -4475,7 +4903,7 @@ void tst_qquicktextedit::insert_data()
 
     QTest::newRow("after reversed selection")
             << standard.at(0) << QQuickTextEdit::PlainText
-            << 19 << 14 << standard.at(0).length()
+            << 19 << 14 << standard.at(0).size()
             << QString("Hello")
             << standard.at(0) + QString("Hello")
             << 14 << 19 << 14
@@ -4531,9 +4959,42 @@ void tst_qquicktextedit::insert_data()
 
     QTest::newRow("past end")
             << standard.at(0) << QQuickTextEdit::PlainText
-            << 0 << 0 << standard.at(0).length() + 3
+            << 0 << 0 << standard.at(0).size() + 3
             << QString("Hello")
             << standard.at(0)
+            << 0 << 0 << 0
+            << false << false;
+
+    const QString markdownBaseString("# Hello\nWorld\n");
+    QTest::newRow("markdown into markdown at end")
+            << markdownBaseString << QQuickTextEdit::MarkdownText
+            << 0 << 0 << 11
+            << QString("\n## Other\ntext")
+            << QString("Hello\u2029World\u2029Other\u2029text")
+            << 0 << 0 << 0
+            << false << false;
+
+    QTest::newRow("markdown into markdown in the middle")
+            << markdownBaseString << QQuickTextEdit::MarkdownText
+            << 0 << 0 << 6
+            << QString("## Other\ntext\n")
+            << QString("Hello\u2029Other\u2029text\u2029World")
+            << 0 << 0 << 0
+            << false << false;
+
+    QTest::newRow("markdown into markdown in the middle no newlines")
+            << markdownBaseString << QQuickTextEdit::MarkdownText
+            << 0 << 0 << 6
+            << QString("## Other\ntext")
+            << QString("Hello\u2029Other\u2029textWorld")
+            << 0 << 0 << 0
+            << false << false;
+
+    QTest::newRow("markdown with bold span into markdown")
+            << QString("# Heading\n text") << QQuickTextEdit::MarkdownText
+            << 0 << 0 << 8
+            << QString("*Body*")
+            << QString("Heading\u2029Bodytext")
             << 0 << 0 << 0
             << false << false;
 }
@@ -4570,14 +5031,15 @@ void tst_qquicktextedit::insert()
 
     textEdit->insert(insertPosition, insertText);
 
-    if (textFormat == QQuickTextEdit::RichText || (textFormat == QQuickTextEdit::AutoText && (
-            Qt::mightBeRichText(text) || Qt::mightBeRichText(insertText)))) {
-        QCOMPARE(textEdit->getText(0, expectedText.length()), expectedText);
+    if (textFormat == QQuickTextEdit::RichText || textFormat == QQuickTextEdit::MarkdownText ||
+            (textFormat == QQuickTextEdit::AutoText &&
+                (Qt::mightBeRichText(text) || Qt::mightBeRichText(insertText)))) {
+        QCOMPARE(textEdit->getText(0, expectedText.size()), expectedText);
+        qCDebug(lcTests) << "with formatting:" << textEdit->getFormattedText(0, 100);
     } else {
         QCOMPARE(textEdit->text(), expectedText);
-
     }
-    QCOMPARE(textEdit->length(), expectedText.length());
+    QCOMPARE(textEdit->length(), expectedText.size());
 
     QCOMPARE(textEdit->selectionStart(), expectedSelectionStart);
     QCOMPARE(textEdit->selectionEnd(), expectedSelectionEnd);
@@ -4586,11 +5048,11 @@ void tst_qquicktextedit::insert()
     if (selectionStart > selectionEnd)
         qSwap(selectionStart, selectionEnd);
 
-    QCOMPARE(selectionSpy.count() > 0, selectionChanged);
-    QCOMPARE(selectionStartSpy.count() > 0, selectionStart != expectedSelectionStart);
-    QCOMPARE(selectionEndSpy.count() > 0, selectionEnd != expectedSelectionEnd);
-    QCOMPARE(textSpy.count() > 0, text != expectedText);
-    QCOMPARE(cursorPositionSpy.count() > 0, cursorPositionChanged);
+    QCOMPARE(selectionSpy.size() > 0, selectionChanged);
+    QCOMPARE(selectionStartSpy.size() > 0, selectionStart != expectedSelectionStart);
+    QCOMPARE(selectionEndSpy.size() > 0, selectionEnd != expectedSelectionEnd);
+    QCOMPARE(textSpy.size() > 0, text != expectedText);
+    QCOMPARE(cursorPositionSpy.size() > 0, cursorPositionChanged);
 }
 
 void tst_qquicktextedit::remove_data()
@@ -4629,18 +5091,18 @@ void tst_qquicktextedit::remove_data()
 
     QTest::newRow("to cursor position (end)")
             << standard.at(0) << QQuickTextEdit::PlainText
-            << standard.at(0).length() << standard.at(0).length()
-            << standard.at(0).length() << standard.at(0).length() - 5
-            << standard.at(0).mid(0, standard.at(0).length() - 5)
-            << standard.at(0).length() - 5 << standard.at(0).length() - 5 << standard.at(0).length() - 5
+            << standard.at(0).size() << standard.at(0).size()
+            << standard.at(0).size() << standard.at(0).size() - 5
+            << standard.at(0).mid(0, standard.at(0).size() - 5)
+            << standard.at(0).size() - 5 << standard.at(0).size() - 5 << standard.at(0).size() - 5
             << false << true;
 
     QTest::newRow("to cursor position (end)")
             << standard.at(0) << QQuickTextEdit::PlainText
-            << standard.at(0).length() << standard.at(0).length()
-            << standard.at(0).length() - 5 << standard.at(0).length()
-            << standard.at(0).mid(0, standard.at(0).length() - 5)
-            << standard.at(0).length() - 5 << standard.at(0).length() - 5 << standard.at(0).length() - 5
+            << standard.at(0).size() << standard.at(0).size()
+            << standard.at(0).size() - 5 << standard.at(0).size()
+            << standard.at(0).mid(0, standard.at(0).size() - 5)
+            << standard.at(0).size() - 5 << standard.at(0).size() - 5 << standard.at(0).size() - 5
             << false << true;
 
     QTest::newRow("from cursor position (middle)")
@@ -4669,10 +5131,10 @@ void tst_qquicktextedit::remove_data()
 
     QTest::newRow("before cursor position (end)")
             << standard.at(0) << QQuickTextEdit::PlainText
-            << standard.at(0).length() << standard.at(0).length()
+            << standard.at(0).size() << standard.at(0).size()
             << 18 << 23
             << standard.at(0).mid(0, 18) + standard.at(0).mid(23)
-            << standard.at(0).length() - 5 << standard.at(0).length() - 5 << standard.at(0).length() - 5
+            << standard.at(0).size() - 5 << standard.at(0).size() - 5 << standard.at(0).size() - 5
             << false << true;
 
     QTest::newRow("before cursor position (middle)")
@@ -4710,16 +5172,16 @@ void tst_qquicktextedit::remove_data()
     QTest::newRow("after selection")
             << standard.at(0) << QQuickTextEdit::PlainText
             << 14 << 19
-            << standard.at(0).length() - 5 << standard.at(0).length()
-            << standard.at(0).mid(0, standard.at(0).length() - 5)
+            << standard.at(0).size() - 5 << standard.at(0).size()
+            << standard.at(0).mid(0, standard.at(0).size() - 5)
             << 14 << 19 << 19
             << false << false;
 
     QTest::newRow("after reversed selection")
             << standard.at(0) << QQuickTextEdit::PlainText
             << 19 << 14
-            << standard.at(0).length() - 5 << standard.at(0).length()
-            << standard.at(0).mid(0, standard.at(0).length() - 5)
+            << standard.at(0).size() - 5 << standard.at(0).size()
+            << standard.at(0).mid(0, standard.at(0).size() - 5)
             << 14 << 19 << 14
             << false << false;
 
@@ -4750,7 +5212,7 @@ void tst_qquicktextedit::remove_data()
     QTest::newRow("plain text cropped end")
             << standard.at(0) << QQuickTextEdit::PlainText
             << 0 << 0
-            << 23 << standard.at(0).length() + 8
+            << 23 << standard.at(0).size() + 8
             << standard.at(0).mid(0, 23)
             << 0 << 0 << 0
             << false << false;
@@ -4758,7 +5220,7 @@ void tst_qquicktextedit::remove_data()
     QTest::newRow("plain text cropped beginning and end")
             << standard.at(0) << QQuickTextEdit::PlainText
             << 0 << 0
-            << -9 << standard.at(0).length() + 4
+            << -9 << standard.at(0).size() + 4
             << QString()
             << 0 << 0 << 0
             << false << false;
@@ -4766,7 +5228,7 @@ void tst_qquicktextedit::remove_data()
     QTest::newRow("all rich text")
             << richBoldText << QQuickTextEdit::RichText
             << 0 << 0
-            << 0 << plainBoldText.length()
+            << 0 << plainBoldText.size()
             << QString()
             << 0 << 0 << 0
             << false << false;
@@ -4814,11 +5276,11 @@ void tst_qquicktextedit::remove()
 
     if (textFormat == QQuickTextEdit::RichText
             || (textFormat == QQuickTextEdit::AutoText && Qt::mightBeRichText(text))) {
-        QCOMPARE(textEdit->getText(0, expectedText.length()), expectedText);
+        QCOMPARE(textEdit->getText(0, expectedText.size()), expectedText);
     } else {
         QCOMPARE(textEdit->text(), expectedText);
     }
-    QCOMPARE(textEdit->length(), expectedText.length());
+    QCOMPARE(textEdit->length(), expectedText.size());
 
     if (selectionStart > selectionEnd)  //
         qSwap(selectionStart, selectionEnd);
@@ -4827,14 +5289,14 @@ void tst_qquicktextedit::remove()
     QCOMPARE(textEdit->selectionEnd(), expectedSelectionEnd);
     QCOMPARE(textEdit->cursorPosition(), expectedCursorPosition);
 
-    QCOMPARE(selectionSpy.count() > 0, selectionChanged);
-    QCOMPARE(selectionStartSpy.count() > 0, selectionStart != expectedSelectionStart);
-    QCOMPARE(selectionEndSpy.count() > 0, selectionEnd != expectedSelectionEnd);
-    QCOMPARE(textSpy.count() > 0, text != expectedText);
+    QCOMPARE(selectionSpy.size() > 0, selectionChanged);
+    QCOMPARE(selectionStartSpy.size() > 0, selectionStart != expectedSelectionStart);
+    QCOMPARE(selectionEndSpy.size() > 0, selectionEnd != expectedSelectionEnd);
+    QCOMPARE(textSpy.size() > 0, text != expectedText);
 
 
     if (cursorPositionChanged)  //
-        QVERIFY(cursorPositionSpy.count() > 0);
+        QVERIFY(cursorPositionSpy.size() > 0);
 }
 
 #if QT_CONFIG(shortcut)
@@ -5173,11 +5635,11 @@ void tst_qquicktextedit::undo()
             // QTest::keyClick(testWidget, Qt::Key_End, Qt::ShiftModifier);
         }
 
-        for (int j = 0; j < insertString.at(i).length(); j++)
+        for (int j = 0; j < insertString.at(i).size(); j++)
             QTest::keyClick(&window, insertString.at(i).at(j).toLatin1());
     }
 
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
 // STEP 2: Next call undo several times and see if we can restore to the previous state
     for (i = 0; i < expectedString.size() - 1; ++i) {
@@ -5189,7 +5651,7 @@ void tst_qquicktextedit::undo()
 // STEP 3: Verify that we have undone everything
     QVERIFY(textEdit->text().isEmpty());
     QVERIFY(!textEdit->canUndo());
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 }
 
 void tst_qquicktextedit::redo_data()
@@ -5250,13 +5712,13 @@ void tst_qquicktextedit::redo()
     for (i = 0; i < insertString.size(); ++i) {
         if (insertIndex[i] > -1)
             textEdit->setCursorPosition(insertIndex[i]);
-        for (int j = 0; j < insertString.at(i).length(); j++)
+        for (int j = 0; j < insertString.at(i).size(); j++)
             QTest::keyClick(&window, insertString.at(i).at(j).toLatin1());
         QVERIFY(textEdit->canUndo());
         QVERIFY(!textEdit->canRedo());
     }
 
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     // undo everything
     while (!textEdit->text().isEmpty()) {
@@ -5265,7 +5727,7 @@ void tst_qquicktextedit::redo()
         QVERIFY(textEdit->canRedo());
     }
 
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     for (i = 0; i < expectedString.size(); ++i) {
         QVERIFY(textEdit->canRedo());
@@ -5274,7 +5736,7 @@ void tst_qquicktextedit::redo()
         QVERIFY(textEdit->canUndo());
     }
     QVERIFY(!textEdit->canRedo());
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 }
 
 #if QT_CONFIG(shortcut)
@@ -5496,12 +5958,12 @@ void tst_qquicktextedit::clear()
     textEdit->clear();
     QVERIFY(textEdit->text().isEmpty());
 
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     // checks that clears can be undone
     textEdit->undo();
     QVERIFY(!textEdit->canUndo());
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
     QCOMPARE(textEdit->text(), QString("I am Legend"));
 
     textEdit->setCursorPosition(4);
@@ -5513,12 +5975,12 @@ void tst_qquicktextedit::clear()
     textEdit->clear();
     QVERIFY(textEdit->text().isEmpty());
 
-    QCOMPARE(spy.count(), 3);
+    QCOMPARE(spy.size(), 3);
 
     // checks that clears can be undone
     textEdit->undo();
     QVERIFY(!textEdit->canUndo());
-    QCOMPARE(spy.count(), 4);
+    QCOMPARE(spy.size(), 4);
     QCOMPARE(textEdit->text(), QString("I am Legend"));
 
     textEdit->setText(QString("<i>I am Legend</i>"));
@@ -5526,11 +5988,11 @@ void tst_qquicktextedit::clear()
     textEdit->clear();
     QVERIFY(textEdit->text().isEmpty());
 
-    QCOMPARE(spy.count(), 5);
+    QCOMPARE(spy.size(), 5);
 
     // checks that clears can be undone
     textEdit->undo();
-    QCOMPARE(spy.count(), 6);
+    QCOMPARE(spy.size(), 6);
     QCOMPARE(textEdit->text(), QString("<i>I am Legend</i>"));
 }
 
@@ -5549,15 +6011,15 @@ void tst_qquicktextedit::baseUrl()
 
     textObject->setBaseUrl(localUrl);
     QCOMPARE(textObject->baseUrl(), localUrl);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     textObject->setBaseUrl(remoteUrl);
     QCOMPARE(textObject->baseUrl(), remoteUrl);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     textObject->resetBaseUrl();
     QCOMPARE(textObject->baseUrl(), localUrl);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 }
 
 void tst_qquicktextedit::embeddedImages_data()
@@ -5655,7 +6117,7 @@ void tst_qquicktextedit::cursorRectangle_QTBUG_38947()
         QRectF rect = edit->positionToRectangle(i);
         QTest::mouseMove(&window, rect.center().toPoint());
         QCOMPARE(edit->cursorRectangle(), rect);
-        QCOMPARE(spy.count(), i);
+        QCOMPARE(spy.size(), i);
     }
 
     QPoint to = edit->positionToRectangle(edit->length() - 1).center().toPoint();
@@ -5684,13 +6146,13 @@ void tst_qquicktextedit::doubleSelect_QTBUG_38704()
     QSignalSpy selectionSpy(textEdit, SIGNAL(selectedTextChanged()));
 
     textEdit->select(0,1); //Select some text initially
-    QCOMPARE(selectionSpy.count(), 1);
+    QCOMPARE(selectionSpy.size(), 1);
     textEdit->select(0,1); //No change to selection start/end
-    QCOMPARE(selectionSpy.count(), 1);
+    QCOMPARE(selectionSpy.size(), 1);
     textEdit->select(0,2); //Change selection end
-    QCOMPARE(selectionSpy.count(), 2);
+    QCOMPARE(selectionSpy.size(), 2);
     textEdit->select(1,2); //Change selection start
-    QCOMPARE(selectionSpy.count(), 3);
+    QCOMPARE(selectionSpy.size(), 3);
 }
 
 void tst_qquicktextedit::padding()
@@ -5838,9 +6300,8 @@ void tst_qquicktextedit::keys_shortcutoverride()
 
 void tst_qquicktextedit::transparentSelectionColor()
 {
-    if ((QGuiApplication::platformName() == QLatin1String("offscreen"))
-        || (QGuiApplication::platformName() == QLatin1String("minimal")))
-        QSKIP("Skipping due to grabToImage not functional on offscreen/minimal platforms");
+    if (QGuiApplication::platformName() == QLatin1String("minimal"))
+        QSKIP("Skipping due to grabWindow not functional on minimal platforms");
 
     QQuickView view;
     view.setSource(testFileUrl("transparentSelectionColor.qml"));
@@ -5860,6 +6321,301 @@ void tst_qquicktextedit::transparentSelectionColor()
     QVERIFY(color.red() > 250);
     QVERIFY(color.blue() < 10);
     QVERIFY(color.green() < 10);
+}
+
+void tst_qquicktextedit::keyEventPropagation()
+{
+    QQuickView view;
+    view.setSource(testFileUrl("keyEventPropagation.qml"));
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    QObject *root = view.rootObject();
+    QVERIFY(root);
+
+    QSignalSpy downSpy(root, SIGNAL(keyDown(int)));
+    QSignalSpy upSpy(root, SIGNAL(keyUp(int)));
+
+    QQuickTextEdit *textEdit = root->findChild<QQuickTextEdit *>();
+    QVERIFY(textEdit->hasActiveFocus());
+    simulateKey(&view, Qt::Key_Back);
+    QCOMPARE(downSpy.size(), 1);
+    QCOMPARE(upSpy.size(), 1);
+    auto downKey = downSpy.takeFirst();
+    auto upKey = upSpy.takeFirst();
+    QCOMPARE(downKey.at(0).toInt(), Qt::Key_Back);
+    QCOMPARE(upKey.at(0).toInt(), Qt::Key_Back);
+
+    simulateKey(&view, Qt::Key_Shift);
+    QCOMPARE(downSpy.size(), 1);
+    QCOMPARE(upSpy.size(), 1);
+    downKey = downSpy.takeFirst();
+    upKey = upSpy.takeFirst();
+    QCOMPARE(downKey.at(0).toInt(), Qt::Key_Shift);
+    QCOMPARE(upKey.at(0).toInt(), Qt::Key_Shift);
+
+    simulateKey(&view, Qt::Key_A);
+    QCOMPARE(downSpy.size(), 0);
+    QCOMPARE(upSpy.size(), 0);
+
+    simulateKey(&view, Qt::Key_Right);
+    QCOMPARE(downSpy.size(), 0);
+    QCOMPARE(upSpy.size(), 1);
+    upKey = upSpy.takeFirst();
+    QCOMPARE(upKey.at(0).toInt(), Qt::Key_Right);
+}
+
+void tst_qquicktextedit::markdown()
+{
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("markdown.qml")));
+    QQuickTextEdit *te = qobject_cast<QQuickTextEdit *>(window.rootObject());
+    QVERIFY(te);
+    QVERIFY(te->textDocument());
+    auto doc = te->textDocument()->textDocument();
+    QVERIFY(doc);
+    const QString mdSource("# Heading\n\nBody\n\n");
+
+    // Component.onCompleted has pre-populated a string in italics
+    QCOMPARE(te->text(), "*whee*\n\n");
+    QCOMPARE(te->getText(0, 100), "whee");
+    QCOMPARE(te->getFormattedText(0, 100), "*whee*\n\n");
+    QVERIFY(QTextCursor(doc).charFormat().font().italic());
+
+    if (isMainFontFixed())
+        QSKIP("fixed-pitch main font (QTBUG-103484)");
+    te->clear();
+    te->insert(0, mdSource);
+    QCOMPARE(te->text(), mdSource);
+    QCOMPARE(te->getText(0, 12), "Heading\u2029Body");
+    QCOMPARE(te->getFormattedText(0, 12), "# Heading\n\nBody\n\n");
+    QCOMPARE(QTextCursor(doc).blockFormat().headingLevel(), 1);
+
+    te->selectAll();
+    QCOMPARE(te->selectedText(), "Heading\u2029Body");
+
+    te->clear();
+    te->setText(mdSource);
+    QCOMPARE(te->text(), mdSource);
+    QCOMPARE(te->getText(0, 12), "Heading\u2029Body");
+    QCOMPARE(te->getFormattedText(0, 12), "# Heading\n\nBody\n\n");
+    QCOMPARE(QTextCursor(doc).blockFormat().headingLevel(), 1);
+
+    te->insert(12, "_text_");
+    QCOMPARE(te->text(), "# Heading\n\nBody_text_\n\n");
+    QCOMPARE(te->getText(0, 100), "Heading\u2029Bodytext");
+    QCOMPARE(te->getFormattedText(0, 100), "# Heading\n\nBody_text_\n\n");
+    QTextCursor cursor(doc);
+    cursor.movePosition(QTextCursor::End);
+    QVERIFY(cursor.charFormat().fontUnderline());
+}
+
+#if QT_CONFIG(clipboard)
+void tst_qquicktextedit::pasteHtmlIntoMarkdown()
+{
+    if (isMainFontFixed())
+        QSKIP("fixed-pitch main font (QTBUG-103484)");
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("markdown.qml")));
+    QQuickTextEdit *te = qobject_cast<QQuickTextEdit *>(window.rootObject());
+    QVERIFY(te);
+    QVERIFY(te->textDocument());
+    auto doc = te->textDocument()->textDocument();
+    QVERIFY(doc);
+
+    QMimeData *mData = new QMimeData; // not a leak: if it's stack-allocated, we get a double free
+    mData->setHtml("<b>Hello <i>world</i></b>");
+    QGuiApplication::clipboard()->setMimeData(mData);
+
+    te->selectAll();
+    te->paste();
+    QTRY_COMPARE(te->text(), "**Hello *world***\n\n");
+    QCOMPARE(te->getFormattedText(0, 100), "**Hello *world***\n\n");
+    QCOMPARE(te->textFormat(), QQuickTextEdit::MarkdownText);
+    QCOMPARE(te->getText(0, 100), "Hello world");
+
+    QGuiApplication::clipboard()->clear();
+    te->selectAll();
+    te->copy();
+    QTRY_VERIFY(QGuiApplication::clipboard()->mimeData()->hasHtml());
+    QVERIFY(QGuiApplication::clipboard()->mimeData()->hasText());
+    const auto *md = QGuiApplication::clipboard()->mimeData();
+    qCDebug(lcTests) << "mime types available" << md->formats();
+    qCDebug(lcTests) << "HTML" << md->html();
+    // QTextDocumentFragment::toHtml() is subject to change, so we don't QCOMPARE this verbose HTML
+    QVERIFY(md->html().toLatin1().startsWith('<'));
+}
+#endif
+
+void tst_qquicktextedit::touchscreenDoesNotSelect_data()
+{
+    QTest::addColumn<QUrl>("src");
+    QTest::addColumn<bool>("mouseOnly");
+    QTest::newRow("new") << testFileUrl("mouseselectionmode_default.qml") << true;
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    QTest::newRow("old") << testFileUrl("mouseselection_old_default.qml") << false;
+#endif
+}
+
+void tst_qquicktextedit::touchscreenDoesNotSelect()
+{
+    QFETCH(QUrl, src);
+    QFETCH(bool, mouseOnly);
+
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, src));
+
+    QQuickTextEdit *textEditObject = qobject_cast<QQuickTextEdit *>(window.rootObject());
+    QVERIFY(textEditObject != nullptr);
+    QCOMPARE(textEditObject->selectByMouse(), mouseOnly);
+    textEditObject->setSelectByMouse(true); // enable selection with pre-6.4 import version
+
+    // press-drag-and-release from x1 to x2
+    int x1 = 10;
+    int x2 = 70;
+    int y = QFontMetrics(textEditObject->font()).height() / 2;
+    QTest::touchEvent(&window, touchDevice).press(0, QPoint(x1,y), &window);
+    QTest::touchEvent(&window, touchDevice).move(0, QPoint(x2,y), &window);
+    QTest::touchEvent(&window, touchDevice).release(0, QPoint(x2,y), &window);
+    QQuickTouchUtils::flush(&window);
+    // if the import version is old enough, fall back to old behavior: touch swipe _does_ select text
+    QCOMPARE(textEditObject->selectedText().isEmpty(), mouseOnly);
+}
+
+void tst_qquicktextedit::touchscreenSetsFocusAndMovesCursor()
+{
+    if (!hasWindowActivation())
+        QSKIP("Window activation is not supported");
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("twoInAColumn.qml")));
+    window.requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+
+    QQuickTextEdit *top = window.rootObject()->findChild<QQuickTextEdit*>("top");
+    QVERIFY(top);
+    QQuickTextEdit *bottom = window.rootObject()->findChild<QQuickTextEdit*>("bottom");
+    QVERIFY(bottom);
+    const auto len = bottom->text().size();
+
+    // tap the bottom field
+    QPoint p1 = bottom->mapToScene({6, 6}).toPoint();
+    QTest::touchEvent(&window, touchDevice).press(0, p1, &window);
+    QQuickTouchUtils::flush(&window);
+    QCOMPARE(qApp->focusObject(), bottom);
+    // text cursor is at 0 by default, on press
+    QCOMPARE(bottom->cursorPosition(), 0);
+    // so typing a character prepends it
+    QVERIFY(!bottom->text().startsWith('q'));
+    QTest::keyClick(&window, Qt::Key_Q);
+    QVERIFY(bottom->text().startsWith('q'));
+    QCOMPARE(bottom->text().size(), len + 1);
+    QTest::touchEvent(&window, touchDevice).release(0, p1, &window);
+    QQuickTouchUtils::flush(&window);
+    // the cursor gets moved on release, as long as TextInput's grab wasn't stolen (e.g. by Flickable)
+    QVERIFY(bottom->cursorPosition() < 5);
+
+    // press-drag-and-release from p1 to p2 on the top field
+    p1 = top->mapToScene({6, 6}).toPoint();
+    QPoint p2 = top->mapToScene({76, 6}).toPoint();
+    QTest::touchEvent(&window, touchDevice).press(0, p1, &window);
+    QTest::touchEvent(&window, touchDevice).move(0, p2, &window);
+    QTest::touchEvent(&window, touchDevice).release(0, p2, &window);
+    QQuickTouchUtils::flush(&window);
+    QCOMPARE(qApp->focusObject(), top);
+    QVERIFY(top->selectedText().isEmpty());
+}
+
+void tst_qquicktextedit::longPressInputMethod() // QTBUG-115004
+{
+    QQuickView window;
+    window.setMinimumWidth(200);
+    window.setMinimumHeight(100);
+    QVERIFY(QQuickTest::showView(window, testFileUrl("positionAt.qml")));
+    QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(window.rootObject());
+    QVERIFY(edit);
+
+    // Realistically there are touch events. But QQuickTextEdit doesn't handle them yet;
+    // so we only test the synth-mouse events for now.
+    QPoint pos = edit->positionToRectangle(20).center().toPoint(); // in the word "pi|ece"
+    QTest::mousePress(&window, Qt::LeftButton, {}, pos);
+
+    // Simulate input method events as seen on Android during long-press
+    {
+        QInputMethodEvent imEvent({}, QList<QInputMethodEvent::Attribute>()
+                                          << QInputMethodEvent::Attribute(QInputMethodEvent::Selection, 20, 0, {}));
+        QCoreApplication::sendEvent(edit, &imEvent);
+    }
+    {
+        QInputMethodEvent imEvent({}, QList<QInputMethodEvent::Attribute>()
+                                          << QInputMethodEvent::Attribute(QInputMethodEvent::Cursor, 0, 0, {})
+                                          << QInputMethodEvent::Attribute(QInputMethodEvent::Selection, 13, -5, {}));
+        QCoreApplication::sendEvent(edit, &imEvent);
+    }
+
+    // Release later => long press
+    QTest::mouseRelease(&window, Qt::LeftButton, {}, pos, 1500);
+
+    QTRY_COMPARE(edit->selectedText(), "piece");
+}
+
+void tst_qquicktextedit::rtlAlignmentInColumnLayout_QTBUG_112858()
+{
+    QQuickView window(testFileUrl("qtbug-112858.qml"));
+    QVERIFY(window.rootObject() != nullptr);
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QQuickTextEdit *edit = window.rootObject()->findChild<QQuickTextEdit *>();
+    QVERIFY(edit != nullptr);
+
+    const auto text = edit->text();
+    const auto lines = text.split("\n");
+    QCOMPARE(lines.size(), edit->lineCount());
+
+    int currentLineStartPos = 0;
+    QRectF firstLineStartPosRect;
+
+    // check that all lines are aligned, for RTL text it means that they have the same pos at the right
+    for (int i = 0; i < lines.size(); ++i) {
+        const auto lineStartPosRect = edit->positionToRectangle(currentLineStartPos);
+        QVERIFY(lineStartPosRect.isValid());
+
+        if (i == 0)
+            firstLineStartPosRect = lineStartPosRect;
+        else
+            QCOMPARE(lineStartPosRect.right(), firstLineStartPosRect.right());
+
+        currentLineStartPos += lines.at(i).size() + 1;
+    }
+}
+
+void tst_qquicktextedit::resizeTextEditPolish()
+{
+    QQuickView window(testFileUrl("resizeTextEditPolish.qml"));
+    QVERIFY(window.rootObject() != nullptr);
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *edit = window.rootObject()->findChild<QQuickTextEdit *>();
+    QVERIFY(edit != nullptr);
+    QCOMPARE(edit->lineCount(), 1);
+
+    QSignalSpy spy(edit, SIGNAL(lineCountChanged()));
+
+    // Resize item and check for item polished
+    auto *item = edit->parentItem();
+    item->setWidth(item->width() - (item->width() / 2));
+
+    QVERIFY(QQuickTest::qIsPolishScheduled(edit));
+    QVERIFY(QQuickTest::qWaitForPolish(edit));
+
+    QTRY_COMPARE(spy.size(), 1);
+    QVERIFY(edit->lineCount() > 1);
+    QCOMPARE(edit->state(), QString("multi-line"));
+    auto *editPriv = QQuickTextEditPrivate::get(edit);
+    QCOMPARE(editPriv->xoff, 0);
+    QCOMPARE(editPriv->yoff, 0);
 }
 
 QTEST_MAIN(tst_qquicktextedit)

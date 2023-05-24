@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,7 +25,8 @@ TEST(StyleRetainScopeTest, Current) {
 }
 
 TEST(StyleRetainScopeTest, Retain) {
-  scoped_refptr<const ComputedStyle> style = ComputedStyle::Create();
+  scoped_refptr<const ComputedStyle> style =
+      ComputedStyle::CreateInitialStyleSingleton();
   EXPECT_TRUE(style->HasOneRef());
   {
     StyleRetainScope scope;

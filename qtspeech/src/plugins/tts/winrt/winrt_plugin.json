@@ -2,5 +2,11 @@
     "Keys": ["winrt"],
     "Provider": "winrt",
     "Version": 100,
-    "Features": []
+    "Priority": 80,
+    "Capabilities": [
+        "Speak",
+        "PauseResume",
+        "WordByWordProgress",
+        "Synthesize"
+    ]
 }

@@ -1,11 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/audio/public/cpp/fake_system_info.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "services/audio/service.h"
 
 namespace audio {
@@ -29,13 +29,13 @@ void FakeSystemInfo::ClearGlobalBinderForAudioService() {
 void FakeSystemInfo::GetInputStreamParameters(
     const std::string& device_id,
     GetInputStreamParametersCallback callback) {
-  std::move(callback).Run(base::nullopt);
+  std::move(callback).Run(absl::nullopt);
 }
 
 void FakeSystemInfo::GetOutputStreamParameters(
     const std::string& device_id,
     GetOutputStreamParametersCallback callback) {
-  std::move(callback).Run(base::nullopt);
+  std::move(callback).Run(absl::nullopt);
 }
 
 void FakeSystemInfo::HasInputDevices(HasInputDevicesCallback callback) {
@@ -59,12 +59,12 @@ void FakeSystemInfo::GetOutputDeviceDescriptions(
 void FakeSystemInfo::GetAssociatedOutputDeviceID(
     const std::string& input_device_id,
     GetAssociatedOutputDeviceIDCallback callback) {
-  std::move(callback).Run(base::nullopt);
+  std::move(callback).Run(absl::nullopt);
 }
 
 void FakeSystemInfo::GetInputDeviceInfo(const std::string& input_device_id,
                                         GetInputDeviceInfoCallback callback) {
-  std::move(callback).Run(base::nullopt, base::nullopt);
+  std::move(callback).Run(absl::nullopt, absl::nullopt);
 }
 
 void FakeSystemInfo::Bind(mojo::PendingReceiver<mojom::SystemInfo> receiver) {

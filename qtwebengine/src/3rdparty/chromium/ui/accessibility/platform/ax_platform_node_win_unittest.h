@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,11 @@
 #include <unordered_set>
 
 #include "base/test/scoped_feature_list.h"
+#include "base/win/atl.h"  // Must be before UIAutomationCore.h
+#include "ui/accessibility/ax_position.h"
 #include "ui/accessibility/platform/ax_fragment_root_delegate_win.h"
-#include "ui/base/win/accessibility_misc_utils.h"
+
+#include <UIAutomationCore.h>
 
 struct IAccessible;
 struct IAccessible2;
@@ -86,11 +89,11 @@ class AXPlatformNodeWinTest : public AXPlatformNodeTest {
   void TearDown() override;
 
  protected:
-  static const base::string16 kEmbeddedCharacterAsString;
+  static const std::u16string kEmbeddedCharacterAsString;
 
   AXPlatformNode* AXPlatformNodeFromNode(AXNode* node);
   template <typename T>
-  Microsoft::WRL::ComPtr<T> QueryInterfaceFromNodeId(AXNode::AXID id);
+  Microsoft::WRL::ComPtr<T> QueryInterfaceFromNodeId(AXNodeID id);
   template <typename T>
   Microsoft::WRL::ComPtr<T> QueryInterfaceFromNode(AXNode* node);
   Microsoft::WRL::ComPtr<IRawElementProviderSimple>
@@ -99,7 +102,7 @@ class AXPlatformNodeWinTest : public AXPlatformNodeTest {
   GetIRawElementProviderSimpleFromChildIndex(int child_index);
   Microsoft::WRL::ComPtr<IRawElementProviderSimple>
   GetIRawElementProviderSimpleFromTree(const ui::AXTreeID tree_id,
-                                       const AXNode::AXID node_id);
+                                       const AXNodeID node_id);
   Microsoft::WRL::ComPtr<IRawElementProviderFragment>
   GetRootIRawElementProviderFragment();
   Microsoft::WRL::ComPtr<IRawElementProviderFragment>
@@ -124,12 +127,14 @@ class AXPlatformNodeWinTest : public AXPlatformNodeTest {
   Microsoft::WRL::ComPtr<IRawElementProviderFragmentRoot> GetFragmentRoot();
 
   using PatternSet = std::unordered_set<LONG>;
-  PatternSet GetSupportedPatternsFromNodeId(AXNode::AXID id);
+  PatternSet GetSupportedPatternsFromNodeId(AXNodeID id);
+
+  void TestGetColumnHeadersForRole(ax::mojom::Role role);
 
   std::unique_ptr<AXFragmentRootWin> ax_fragment_root_;
 
   std::unique_ptr<TestFragmentRootDelegate> test_fragment_root_delegate_;
-
+  ScopedAXEmbeddedObjectBehaviorSetter ax_embedded_object_behavior_;
   base::test::ScopedFeatureList scoped_feature_list_;
 };
 

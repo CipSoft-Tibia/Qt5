@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QV4DATEOBJECT_P_H
 #define QV4DATEOBJECT_P_H
 
@@ -52,7 +16,9 @@
 
 #include "qv4object_p.h"
 #include "qv4functionobject_p.h"
+#include "qv4referenceobject_p.h"
 #include <QtCore/private/qnumeric_p.h>
+#include <QtCore/qdatetime.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -60,24 +26,165 @@ class QDateTime;
 
 namespace QV4 {
 
+struct Date
+{
+    static constexpr quint64 MaxDateVal = 8.64e15;
+
+    void init() { storage = InvalidDateVal; }
+    void init(double value);
+    void init(const QDateTime &dateTime);
+    void init(QDate date);
+    void init(QTime time, ExecutionEngine *engine);
+
+    Date &operator=(double value)
+    {
+        storage = (storage & (HasQDate | HasQTime)) | encode(value);
+        return *this;
+    }
+
+    operator double() const
+    {
+        const quint64 raw = (storage & ~(HasQDate | HasQTime));
+        if (raw == 0)
+            return qt_qnan();
+
+        if (raw > MaxDateVal)
+            return double(raw - MaxDateVal - Extra);
+
+        return double(raw) - double(MaxDateVal) - double(Extra);
+    }
+
+    QDate toQDate() const;
+    QTime toQTime() const;
+    QDateTime toQDateTime() const;
+    QVariant toVariant() const;
+
+    template<typename Function>
+    bool withStoragePointer(Function function)
+    {
+        switch (storage & (HasQDate | HasQTime)) {
+        case HasQDate: {
+            QDate date = toQDate();
+            return function(&date);
+        }
+        case HasQTime: {
+            QTime time = toQTime();
+            return function(&time);
+        }
+        case (HasQTime | HasQDate): {
+            QDateTime dateTime = toQDateTime();
+            return function(&dateTime);
+        }
+        default:
+            return false;
+        }
+    }
+
+private:
+    static constexpr quint64 InvalidDateVal = 0;
+    static constexpr quint64 Extra = 1;
+    static constexpr quint64 HasQDate = 1ull << 63;
+    static constexpr quint64 HasQTime = 1ull << 62;
+
+    // Make all our dates fit into quint64, leaving space for the flags
+    static_assert(((MaxDateVal * 2 + Extra) & (HasQDate | HasQTime)) == 0ull);
+
+    static quint64 encode(double value);
+    static quint64 encode(const QDateTime &dateTime);
+
+    quint64 storage;
+};
+
 namespace Heap {
 
-struct DateObject : Object {
+#define DateObjectMembers(class, Member)
+DECLARE_HEAP_OBJECT(DateObject, ReferenceObject) {
+    DECLARE_MARKOBJECTS(DateObject);
+
+    void doSetLocation()
+    {
+        if (CppStackFrame *frame = internalClass->engine->currentStackFrame)
+            setLocation(frame->v4Function, frame->statementNumber());
+    }
+
     void init()
     {
-        Object::init();
-        date = qt_qnan();
+        ReferenceObject::init(nullptr, -1, {});
+        m_date.init();
     }
 
-    void init(const Value &date)
+    void init(double dateTime)
     {
-        Object::init();
-        this->date = date.toNumber();
+        ReferenceObject::init(nullptr, -1, {});
+        m_date.init(dateTime);
     }
-    void init(const QDateTime &date);
-    void init(const QTime &time);
 
-    double date;
+    void init(const QDateTime &dateTime)
+    {
+        ReferenceObject::init(nullptr, -1, {});
+        m_date.init(dateTime);
+    }
+
+    void init(const QDateTime &dateTime, Heap::Object *parent, int property, Flags flags)
+    {
+        ReferenceObject::init(parent, property, flags | EnforcesLocation);
+        doSetLocation();
+        m_date.init(dateTime);
+    };
+
+    void init(QDate date, Heap::Object *parent, int property, Flags flags)
+    {
+        ReferenceObject::init(parent, property, flags | EnforcesLocation);
+        doSetLocation();
+        m_date.init(date);
+    };
+
+    void init(QTime time, Heap::Object *parent, int property, Flags flags)
+    {
+        ReferenceObject::init(parent, property, flags | EnforcesLocation);
+        doSetLocation();
+        m_date.init(time, internalClass->engine);
+    };
+
+    void setDate(double newDate)
+    {
+        m_date = newDate;
+        if (isAttachedToProperty())
+            writeBack();
+    }
+
+    double date() const
+    {
+        return m_date;
+    }
+
+    QVariant toVariant() const { return m_date.toVariant(); }
+    QDateTime toQDateTime() const { return m_date.toQDateTime(); }
+
+private:
+    bool writeBack()
+    {
+        if (!object() || !canWriteBack())
+            return false;
+
+        QV4::Scope scope(internalClass->engine);
+        QV4::ScopedObject o(scope, object());
+
+        int flags = 0;
+        int status = -1;
+        if (isVariant()) {
+            QVariant variant = toVariant();
+            void *a[] = { &variant, nullptr, &status, &flags };
+            return o->metacall(QMetaObject::WriteProperty, property(), a);
+        }
+
+        return m_date.withStoragePointer([&](void *storagePointer) {
+            void *a[] = { storagePointer, nullptr, &status, &flags };
+            return o->metacall(QMetaObject::WriteProperty, property(), a);
+        });
+    }
+
+    Date m_date;
 };
 
 
@@ -87,16 +194,20 @@ struct DateCtor : FunctionObject {
 
 }
 
-struct DateObject: Object {
-    V4_OBJECT2(DateObject, Object)
+struct DateObject: ReferenceObject {
+    V4_OBJECT2(DateObject, ReferenceObject)
     Q_MANAGED_TYPE(DateObject)
     V4_PROTOTYPE(datePrototype)
 
-
-    double date() const { return d()->date; }
-    void setDate(double date) { d()->date = date; }
+    void setDate(double date) { d()->setDate(date); }
+    double date() const { return d()->date(); }
 
     Q_QML_PRIVATE_EXPORT QDateTime toQDateTime() const;
+    QString toString() const;
+
+    static QString dateTimeToString(const QDateTime &dateTime, ExecutionEngine *engine);
+    static QDate dateTimeToDate(const QDateTime &dateTime);
+    static QDateTime stringToDateTime(const QString &string, ExecutionEngine *engine);
 };
 
 template<>

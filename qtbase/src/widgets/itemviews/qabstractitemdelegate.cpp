@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qabstractitemdelegate.h"
 
@@ -45,7 +9,9 @@
 #if QT_CONFIG(whatsthis)
 #include <qwhatsthis.h>
 #endif
+#if QT_CONFIG(tooltip)
 #include <qtooltip.h>
+#endif
 #include <qevent.h>
 #include <qstring.h>
 #include <qdebug.h>
@@ -115,8 +81,8 @@ QT_BEGIN_NAMESPACE
     The second approach is to handle user events directly by reimplementing
     editorEvent().
 
-    \sa {model-view-programming}{Model/View Programming}, QStyledItemDelegate,
-        {Pixelator Example}, QStyledItemDelegate, QStyle
+    \sa {model-view-programming}{Model/View Programming},
+        QStyledItemDelegate, QStyle
 */
 
 /*!
@@ -345,28 +311,6 @@ bool QAbstractItemDelegate::editorEvent(QEvent *,
     return false;
 }
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \obsolete
-
-    Use QFontMetrics::elidedText() instead.
-
-    \oldcode
-        QFontMetrics fm = ...
-        QString str = QAbstractItemDelegate::elidedText(fm, width, mode, text);
-    \newcode
-        QFontMetrics fm = ...
-        QString str = fm.elidedText(text, mode, width);
-    \endcode
-*/
-
-QString QAbstractItemDelegate::elidedText(const QFontMetrics &fontMetrics, int width,
-                                          Qt::TextElideMode mode, const QString &text)
-{
-    return fontMetrics.elidedText(text, mode, width);
-}
-#endif
-
 /*!
     \since 4.3
     Whenever a help event occurs, this function is called with the \a event
@@ -392,7 +336,7 @@ bool QAbstractItemDelegate::helpEvent(QHelpEvent *event,
     Q_UNUSED(index);
     Q_UNUSED(option);
     switch (event->type()) {
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
     case QEvent::ToolTip: {
         Q_D(QAbstractItemDelegate);
         QHelpEvent *he = static_cast<QHelpEvent*>(event);
@@ -433,9 +377,9 @@ bool QAbstractItemDelegate::helpEvent(QHelpEvent *event,
 
     This virtual method is reserved and will be used in Qt 5.1.
 */
-QVector<int> QAbstractItemDelegate::paintingRoles() const
+QList<int> QAbstractItemDelegate::paintingRoles() const
 {
-    return QVector<int>();
+    return QList<int>();
 }
 
 QAbstractItemDelegatePrivate::QAbstractItemDelegatePrivate()
@@ -536,12 +480,13 @@ bool QAbstractItemDelegatePrivate::editorEventFilter(QObject *object, QEvent *ev
             // If the application loses focus while editing, then the focus needs to go back
             // to the itemview when the editor closes. This ensures that when the application
             // is active again it will have the focus on the itemview as expected.
+            QWidget *editorParent = editor->parentWidget();
             const bool manuallyFixFocus = (event->type() == QEvent::FocusOut) && !editor->hasFocus() &&
-                    editor->parentWidget() &&
+                    editorParent &&
                     (static_cast<QFocusEvent *>(event)->reason() == Qt::ActiveWindowFocusReason);
             emit q->closeEditor(editor, QAbstractItemDelegate::NoHint);
             if (manuallyFixFocus)
-                editor->parentWidget()->setFocus();
+                editorParent->setFocus();
         }
 #ifndef QT_NO_SHORTCUT
     } else if (event->type() == QEvent::ShortcutOverride) {
@@ -569,8 +514,16 @@ bool QAbstractItemDelegatePrivate::tryFixup(QWidget *editor)
             return e->hasAcceptableInput();
         }
     }
+#endif
+#if QT_CONFIG(spinbox)
+    // Give a chance to the spinbox to interpret the text and emit
+    // the appropriate signals before committing data.
+    if (QAbstractSpinBox *sb = qobject_cast<QAbstractSpinBox *>(editor)) {
+        if (!sb->keyboardTracking())
+            sb->interpretText();
+    }
 #else
-    Q_UNUSED(editor)
+    Q_UNUSED(editor);
 #endif // QT_CONFIG(lineedit)
 
     return true;
@@ -620,7 +573,7 @@ QString QAbstractItemDelegatePrivate::textForRole(Qt::ItemDataRole role, const Q
     default: {
         text = value.toString();
         if (role == Qt::DisplayRole)
-            text.replace(QLatin1Char('\n'), QChar::LineSeparator);
+            text.replace(u'\n', QChar::LineSeparator);
         break;
     }
     }

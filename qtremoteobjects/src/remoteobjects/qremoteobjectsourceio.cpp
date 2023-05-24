@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qremoteobjectsourceio_p.h"
 
@@ -105,9 +69,8 @@ bool QRemoteObjectSourceIo::enableRemoting(QObject *object, const SourceApiMap *
     }
 
     new QRemoteObjectRootSource(object, api, adapter, this);
-    QRemoteObjectPackets::serializeObjectListPacket(m_packet, {QRemoteObjectPackets::ObjectInfo{api->name(), api->typeName(), api->objectSignature()}});
-    for (auto conn : m_connections)
-        conn->write(m_packet.array, m_packet.size);
+    m_codec->serializeObjectListPacket({QRemoteObjectPackets::ObjectInfo{api->name(), api->typeName(), api->objectSignature()}});
+    m_codec->send(m_connections);
     if (const int count = m_connections.size())
         qRODebug(this) << "Wrote new QObjectListPacket for" << api->name() << "to" << count << "connections";
     return true;
@@ -156,12 +119,12 @@ void QRemoteObjectSourceIo::unregisterSource(QRemoteObjectSourceBase *source)
 
 void QRemoteObjectSourceIo::onServerDisconnect(QObject *conn)
 {
-    IoDeviceBase *connection = qobject_cast<IoDeviceBase*>(conn);
+    QtROIoDeviceBase *connection = qobject_cast<QtROIoDeviceBase*>(conn);
     m_connections.remove(connection);
 
     qRODebug(this) << "OnServerDisconnect";
 
-    for (QRemoteObjectRootSource *root : qAsConst(m_sourceRoots))
+    for (QRemoteObjectRootSource *root : std::as_const(m_sourceRoots))
         root->removeListener(connection);
 
     const QUrl location = m_registryMapping.value(connection);
@@ -174,7 +137,7 @@ void QRemoteObjectSourceIo::onServerDisconnect(QObject *conn)
 void QRemoteObjectSourceIo::onServerRead(QObject *conn)
 {
     // Assert the invariant here conn is of type QIODevice
-    IoDeviceBase *connection = qobject_cast<IoDeviceBase*>(conn);
+    QtROIoDeviceBase *connection = qobject_cast<QtROIoDeviceBase*>(conn);
     QRemoteObjectPacketTypeEnum packetType;
 
     do {
@@ -186,13 +149,13 @@ void QRemoteObjectSourceIo::onServerRead(QObject *conn)
 
         switch (packetType) {
         case Ping:
-            serializePongPacket(m_packet, m_rxName);
-            connection->write(m_packet.array, m_packet.size);
+            m_codec->serializePongPacket(m_rxName);
+            m_codec->send(connection);
             break;
         case AddObject:
         {
             bool isDynamic;
-            deserializeAddObjectPacket(connection->stream(), isDynamic);
+            m_codec->deserializeAddObjectPacket(connection->d_func()->stream(), isDynamic);
             qRODebug(this) << "AddObject" << m_rxName << isDynamic;
             if (m_sourceRoots.contains(m_rxName)) {
                 QRemoteObjectRootSource *root = m_sourceRoots[m_rxName];
@@ -219,7 +182,7 @@ void QRemoteObjectSourceIo::onServerRead(QObject *conn)
         case InvokePacket:
         {
             int call, index, serialId, propertyId;
-            deserializeInvokePacket(connection->stream(), call, index, m_rxArgs, serialId, propertyId);
+            m_codec->deserializeInvokePacket(connection->d_func()->stream(), call, index, m_rxArgs, serialId, propertyId);
             if (m_rxName == QLatin1String("Registry") && !m_registryMapping.contains(connection)) {
                 const QRemoteObjectSourceLocation loc = m_rxArgs.first().value<QRemoteObjectSourceLocation>();
                 m_registryMapping[connection] = loc.second.hostUrl;
@@ -240,12 +203,12 @@ void QRemoteObjectSourceIo::onServerRead(QObject *conn)
                         auto method = source->m_object->metaObject()->method(resolvedIndex);
                         const int parameterCount = method.parameterCount();
                         for (int i = 0; i < parameterCount; i++)
-                            decodeVariant(m_rxArgs[i], method.parameterType(i));
+                            m_rxArgs[i] = decodeVariant(std::move(m_rxArgs[i]), method.parameterMetaType(i));
                     }
-                    int typeId = QMetaType::type(source->m_api->typeName(index).constData());
-                    if (!QMetaType(typeId).sizeOf())
-                        typeId = QVariant::Invalid;
-                    QVariant returnValue(typeId, nullptr);
+                    auto metaType = QMetaType::fromName(source->m_api->typeName(index).constData());
+                    if (!metaType.sizeOf())
+                        metaType = QMetaType(QMetaType::UnknownType);
+                    QVariant returnValue(metaType, nullptr);
                     // If a Replica is used as a Source (which node->proxy() does) we can have a PendingCall return value.
                     // In this case, we need to wait for the pending call and send that.
                     if (source->m_api->typeName(index) == QByteArrayLiteral("QRemoteObjectPendingCall"))
@@ -259,14 +222,14 @@ void QRemoteObjectSourceIo::onServerRead(QObject *conn)
                             QRemoteObjectPendingCallWatcher *watcher = new QRemoteObjectPendingCallWatcher(call, connection);
                             QObject::connect(watcher, &QRemoteObjectPendingCallWatcher::finished, connection, [this, serialId, connection, watcher]() {
                                 if (watcher->error() == QRemoteObjectPendingCall::NoError) {
-                                    serializeInvokeReplyPacket(this->m_packet, this->m_rxName, serialId, encodeVariant(watcher->returnValue()));
-                                    connection->write(m_packet.array, m_packet.size);
+                                    m_codec->serializeInvokeReplyPacket(this->m_rxName, serialId, encodeVariant(watcher->returnValue()));
+                                    m_codec->send(connection);
                                 }
                                 watcher->deleteLater();
                             });
                         } else {
-                            serializeInvokeReplyPacket(m_packet, m_rxName, serialId, encodeVariant(returnValue));
-                            connection->write(m_packet.array, m_packet.size);
+                            m_codec->serializeInvokeReplyPacket(m_rxName, serialId, encodeVariant(returnValue));
+                            m_codec->send(connection);
                         }
                     }
                 } else {
@@ -295,30 +258,30 @@ void QRemoteObjectSourceIo::handleConnection()
 {
     qRODebug(this) << "handleConnection" << m_connections;
 
-    ServerIoDevice *conn = m_server->nextPendingConnection();
+    QtROServerIoDevice *conn = m_server->nextPendingConnection();
     newConnection(conn);
 }
 
-void QRemoteObjectSourceIo::newConnection(IoDeviceBase *conn)
+void QRemoteObjectSourceIo::newConnection(QtROIoDeviceBase *conn)
 {
     m_connections.insert(conn);
-    connect(conn, &IoDeviceBase::readyRead, this, [this, conn]() {
+    connect(conn, &QtROIoDeviceBase::readyRead, this, [this, conn]() {
         onServerRead(conn);
     });
-    connect(conn, &IoDeviceBase::disconnected, this, [this, conn]() {
+    connect(conn, &QtROIoDeviceBase::disconnected, this, [this, conn]() {
         onServerDisconnect(conn);
     });
 
-    serializeHandshakePacket(m_packet);
-    conn->write(m_packet.array, m_packet.size);
+    m_codec->serializeHandshakePacket();
+    m_codec->send(conn);
 
     QRemoteObjectPackets::ObjectInfoList infos;
     infos.reserve(m_sourceRoots.size());
-    for (auto remoteObject : qAsConst(m_sourceRoots)) {
+    for (auto remoteObject : std::as_const(m_sourceRoots)) {
         infos << QRemoteObjectPackets::ObjectInfo{remoteObject->m_api->name(), remoteObject->m_api->typeName(), remoteObject->m_api->objectSignature()};
     }
-    serializeObjectListPacket(m_packet, infos);
-    conn->write(m_packet.array, m_packet.size);
+    m_codec->serializeObjectListPacket(infos);
+    m_codec->send(conn);
     qRODebug(this) << "Wrote ObjectList packet from Server" << QStringList(m_sourceRoots.keys());
 }
 

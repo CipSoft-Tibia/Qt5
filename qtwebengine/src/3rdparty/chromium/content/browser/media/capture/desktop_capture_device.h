@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,10 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "base/memory/ref_counted.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread.h"
+#include "base/time/time.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/desktop_media_id.h"
 #include "media/capture/video/video_capture_device.h"
@@ -41,12 +42,16 @@ class CONTENT_EXPORT DesktopCaptureDevice : public media::VideoCaptureDevice {
   static std::unique_ptr<media::VideoCaptureDevice> Create(
       const DesktopMediaID& source);
 
+  DesktopCaptureDevice(const DesktopCaptureDevice&) = delete;
+  DesktopCaptureDevice& operator=(const DesktopCaptureDevice&) = delete;
+
   ~DesktopCaptureDevice() override;
 
   // VideoCaptureDevice interface.
   void AllocateAndStart(const media::VideoCaptureParams& params,
                         std::unique_ptr<Client> client) override;
   void StopAndDeAllocate() override;
+  void RequestRefreshFrame() override;
 
   // Set the platform-dependent window id for the notification window.
   void SetNotificationWindowId(gfx::NativeViewId window_id);
@@ -75,8 +80,6 @@ class CONTENT_EXPORT DesktopCaptureDevice : public media::VideoCaptureDevice {
   // cases may mean that there is either not a chance for it to be called, or it
   // may have been called but not yet scheduled to run.
   base::Thread thread_;
-
-  DISALLOW_COPY_AND_ASSIGN(DesktopCaptureDevice);
 };
 
 }  // namespace content

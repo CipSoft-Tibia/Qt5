@@ -26,11 +26,11 @@
 
 #include "libavutil/common.h"
 #include "libavutil/frame.h"
-#include "libavutil/lfg.h"
 #include "libavutil/xga_font_data.h"
 #include "avcodec.h"
 #include "cga_data.h"
-#include "internal.h"
+#include "codec_internal.h"
+#include "decode.h"
 
 #define ATTR_BOLD         0x01  /**< Bold/Bright-foreground (mode 1) */
 #define ATTR_FAINT        0x02  /**< Faint (mode 2) */
@@ -353,12 +353,11 @@ static int execute_code(AVCodecContext * avctx, int c)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx,
-                            void *data, int *got_frame,
-                            AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
+                        int *got_frame, AVPacket *avpkt)
 {
     AnsiContext *s = avctx->priv_data;
-    uint8_t *buf = avpkt->data;
+    const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     const uint8_t *buf_end   = buf+buf_size;
     int ret, i, count;
@@ -431,7 +430,8 @@ static int decode_frame(AVCodecContext *avctx,
                     s->args[s->nb_args] = FFMAX(s->args[s->nb_args], 0) * 10 + buf[0] - '0';
                 break;
             case ';':
-                s->nb_args++;
+                if (s->nb_args < MAX_NB_ARGS)
+                    s->nb_args++;
                 if (s->nb_args < MAX_NB_ARGS)
                     s->args[s->nb_args] = 0;
                 break;
@@ -461,7 +461,7 @@ static int decode_frame(AVCodecContext *avctx,
     }
 
     *got_frame = 1;
-    if ((ret = av_frame_ref(data, s->frame)) < 0)
+    if ((ret = av_frame_ref(rframe, s->frame)) < 0)
         return ret;
     return buf_size;
 }
@@ -474,15 +474,20 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_ansi_decoder = {
-    .name           = "ansi",
-    .long_name      = NULL_IF_CONFIG_SMALL("ASCII/ANSI art"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_ANSI,
+static const FFCodecDefault ansi_defaults[] = {
+    { "max_pixels", "640*480" },
+    { NULL },
+};
+
+const FFCodec ff_ansi_decoder = {
+    .p.name         = "ansi",
+    CODEC_LONG_NAME("ASCII/ANSI art"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_ANSI,
     .priv_data_size = sizeof(AnsiContext),
     .init           = decode_init,
     .close          = decode_close,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
+    FF_CODEC_DECODE_CB(decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
+    .defaults       = ansi_defaults,
 };

@@ -27,140 +27,12 @@
 #	include <sys/types.h>
 #endif
 
+#if defined(__i386__) || defined(__x86_64__)
+#	include <xmmintrin.h>
+#	include <pmmintrin.h>
+#endif
+
 namespace sw {
-
-bool CPUID::MMX = detectMMX();
-bool CPUID::CMOV = detectCMOV();
-bool CPUID::SSE = detectSSE();
-bool CPUID::SSE2 = detectSSE2();
-bool CPUID::SSE3 = detectSSE3();
-bool CPUID::SSSE3 = detectSSSE3();
-bool CPUID::SSE4_1 = detectSSE4_1();
-int CPUID::cores = detectCoreCount();
-int CPUID::affinity = detectAffinity();
-
-bool CPUID::enableMMX = true;
-bool CPUID::enableCMOV = true;
-bool CPUID::enableSSE = true;
-bool CPUID::enableSSE2 = true;
-bool CPUID::enableSSE3 = true;
-bool CPUID::enableSSSE3 = true;
-bool CPUID::enableSSE4_1 = true;
-
-void CPUID::setEnableMMX(bool enable)
-{
-	enableMMX = enable;
-
-	if(!enableMMX)
-	{
-		enableSSE = false;
-		enableSSE2 = false;
-		enableSSE3 = false;
-		enableSSSE3 = false;
-		enableSSE4_1 = false;
-	}
-}
-
-void CPUID::setEnableCMOV(bool enable)
-{
-	enableCMOV = enable;
-
-	if(!CMOV)
-	{
-		enableSSE = false;
-		enableSSE2 = false;
-		enableSSE3 = false;
-		enableSSSE3 = false;
-		enableSSE4_1 = false;
-	}
-}
-
-void CPUID::setEnableSSE(bool enable)
-{
-	enableSSE = enable;
-
-	if(enableSSE)
-	{
-		enableMMX = true;
-		enableCMOV = true;
-	}
-	else
-	{
-		enableSSE2 = false;
-		enableSSE3 = false;
-		enableSSSE3 = false;
-		enableSSE4_1 = false;
-	}
-}
-
-void CPUID::setEnableSSE2(bool enable)
-{
-	enableSSE2 = enable;
-
-	if(enableSSE2)
-	{
-		enableMMX = true;
-		enableCMOV = true;
-		enableSSE = true;
-	}
-	else
-	{
-		enableSSE3 = false;
-		enableSSSE3 = false;
-		enableSSE4_1 = false;
-	}
-}
-
-void CPUID::setEnableSSE3(bool enable)
-{
-	enableSSE3 = enable;
-
-	if(enableSSE3)
-	{
-		enableMMX = true;
-		enableCMOV = true;
-		enableSSE = true;
-		enableSSE2 = true;
-	}
-	else
-	{
-		enableSSSE3 = false;
-		enableSSE4_1 = false;
-	}
-}
-
-void CPUID::setEnableSSSE3(bool enable)
-{
-	enableSSSE3 = enable;
-
-	if(enableSSSE3)
-	{
-		enableMMX = true;
-		enableCMOV = true;
-		enableSSE = true;
-		enableSSE2 = true;
-		enableSSE3 = true;
-	}
-	else
-	{
-		enableSSE4_1 = false;
-	}
-}
-
-void CPUID::setEnableSSE4_1(bool enable)
-{
-	enableSSE4_1 = enable;
-
-	if(enableSSE4_1)
-	{
-		enableMMX = true;
-		enableCMOV = true;
-		enableSSE = true;
-		enableSSE2 = true;
-		enableSSE3 = true;
-		enableSSSE3 = true;
-	}
-}
 
 static void cpuid(int registers[4], int info)
 {
@@ -180,56 +52,56 @@ static void cpuid(int registers[4], int info)
 #endif
 }
 
-bool CPUID::detectMMX()
+bool CPUID::supportsMMX()
 {
 	int registers[4];
 	cpuid(registers, 1);
-	return MMX = (registers[3] & 0x00800000) != 0;
+	return (registers[3] & 0x00800000) != 0;
 }
 
-bool CPUID::detectCMOV()
+bool CPUID::supportsCMOV()
 {
 	int registers[4];
 	cpuid(registers, 1);
-	return CMOV = (registers[3] & 0x00008000) != 0;
+	return (registers[3] & 0x00008000) != 0;
 }
 
-bool CPUID::detectSSE()
+bool CPUID::supportsSSE()
 {
 	int registers[4];
 	cpuid(registers, 1);
-	return SSE = (registers[3] & 0x02000000) != 0;
+	return (registers[3] & 0x02000000) != 0;
 }
 
-bool CPUID::detectSSE2()
+bool CPUID::supportsSSE2()
 {
 	int registers[4];
 	cpuid(registers, 1);
-	return SSE2 = (registers[3] & 0x04000000) != 0;
+	return (registers[3] & 0x04000000) != 0;
 }
 
-bool CPUID::detectSSE3()
+bool CPUID::supportsSSE3()
 {
 	int registers[4];
 	cpuid(registers, 1);
-	return SSE3 = (registers[2] & 0x00000001) != 0;
+	return (registers[2] & 0x00000001) != 0;
 }
 
-bool CPUID::detectSSSE3()
+bool CPUID::supportsSSSE3()
 {
 	int registers[4];
 	cpuid(registers, 1);
-	return SSSE3 = (registers[2] & 0x00000200) != 0;
+	return (registers[2] & 0x00000200) != 0;
 }
 
-bool CPUID::detectSSE4_1()
+bool CPUID::supportsSSE4_1()
 {
 	int registers[4];
 	cpuid(registers, 1);
-	return SSE4_1 = (registers[2] & 0x00080000) != 0;
+	return (registers[2] & 0x00080000) != 0;
 }
 
-int CPUID::detectCoreCount()
+int CPUID::coreCount()
 {
 	int cores = 0;
 
@@ -258,7 +130,7 @@ int CPUID::detectCoreCount()
 	return cores;  // FIXME: Number of physical cores
 }
 
-int CPUID::detectAffinity()
+int CPUID::processAffinity()
 {
 	int cores = 0;
 
@@ -278,7 +150,7 @@ int CPUID::detectAffinity()
 		processAffinityMask >>= 1;
 	}
 #else
-	return detectCoreCount();  // FIXME: Assumes no affinity limitation
+	return coreCount();  // FIXME: Assumes no affinity limitation
 #endif
 
 	if(cores < 1) cores = 1;
@@ -287,18 +159,42 @@ int CPUID::detectAffinity()
 	return cores;
 }
 
-void CPUID::setFlushToZero(bool enable)
+void CPUID::setFlushToZero(bool enableFTZ)
 {
 #if defined(_MSC_VER)
-	_controlfp(enable ? _DN_FLUSH : _DN_SAVE, _MCW_DN);
+	unsigned int current = _controlfp(0, 0) & _MCW_DN;
+	if(current == _DN_SAVE || current == _DN_SAVE_OPERANDS_FLUSH_RESULTS)  // DAZ off
+	{
+		_controlfp(enableFTZ ? _DN_SAVE_OPERANDS_FLUSH_RESULTS : _DN_SAVE, _MCW_DN);
+	}
+	else  // DAZ on
+	{
+		_controlfp(enableFTZ ? _DN_FLUSH : _DN_FLUSH_OPERANDS_SAVE_RESULTS, _MCW_DN);
+	}
+#elif defined(__i386__) || defined(__x86_64__)
+	_MM_SET_FLUSH_ZERO_MODE(enableFTZ ? _MM_FLUSH_ZERO_ON : _MM_FLUSH_ZERO_OFF);
 #else
-	                           // Unimplemented
+	// Unimplemented
 #endif
 }
 
-void CPUID::setDenormalsAreZero(bool enable)
+void CPUID::setDenormalsAreZero(bool enableDAZ)
 {
+#if defined(_MSC_VER)
+	unsigned int current = _controlfp(0, 0) & _MCW_DN;
+	if(current == _DN_SAVE || current == _DN_FLUSH_OPERANDS_SAVE_RESULTS)  // FTZ off
+	{
+		_controlfp(enableDAZ ? _DN_FLUSH_OPERANDS_SAVE_RESULTS : _DN_SAVE, _MCW_DN);
+	}
+	else  // FTZ on
+	{
+		_controlfp(enableDAZ ? _DN_FLUSH : _DN_SAVE_OPERANDS_FLUSH_RESULTS, _MCW_DN);
+	}
+#elif defined(__i386__) || defined(__x86_64__)
+	_MM_SET_DENORMALS_ZERO_MODE(enableDAZ ? _MM_DENORMALS_ZERO_ON : _MM_DENORMALS_ZERO_OFF);
+#else
 	// Unimplemented
+#endif
 }
 
 }  // namespace sw

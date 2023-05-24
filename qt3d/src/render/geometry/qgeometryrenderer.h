@@ -1,47 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DRENDER_QGEOMETRYRENDERER_H
 #define QT3DRENDER_QGEOMETRYRENDERER_H
 
-#include <Qt3DCore/qcomponent.h>
-#include <Qt3DRender/qgeometry.h>
+#include <Qt3DCore/qboundingvolume.h>
+#include <Qt3DCore/qgeometry.h>
+#include <Qt3DCore/qgeometryview.h>
 #include <Qt3DRender/qt3drender_global.h>
 
 QT_BEGIN_NAMESPACE
@@ -49,11 +14,8 @@ QT_BEGIN_NAMESPACE
 namespace Qt3DRender {
 
 class QGeometryRendererPrivate;
-class QGeometryFactory;
 
-typedef QSharedPointer<QGeometryFactory> QGeometryFactoryPtr;
-
-class Q_3DRENDERSHARED_EXPORT QGeometryRenderer : public Qt3DCore::QComponent
+class Q_3DRENDERSHARED_EXPORT QGeometryRenderer : public Qt3DCore::QBoundingVolume
 {
     Q_OBJECT
     Q_PROPERTY(int instanceCount READ instanceCount WRITE setInstanceCount NOTIFY instanceCountChanged)
@@ -65,9 +27,9 @@ class Q_3DRENDERSHARED_EXPORT QGeometryRenderer : public Qt3DCore::QComponent
     Q_PROPERTY(int restartIndexValue READ restartIndexValue WRITE setRestartIndexValue NOTIFY restartIndexValueChanged)
     Q_PROPERTY(int verticesPerPatch READ verticesPerPatch WRITE setVerticesPerPatch NOTIFY verticesPerPatchChanged)
     Q_PROPERTY(bool primitiveRestartEnabled READ primitiveRestartEnabled WRITE setPrimitiveRestartEnabled NOTIFY primitiveRestartEnabledChanged)
-    Q_PROPERTY(Qt3DRender::QGeometry* geometry READ geometry WRITE setGeometry NOTIFY geometryChanged)
+    Q_PROPERTY(Qt3DCore::QGeometry* geometry READ geometry WRITE setGeometry NOTIFY geometryChanged)
     Q_PROPERTY(PrimitiveType primitiveType READ primitiveType WRITE setPrimitiveType NOTIFY primitiveTypeChanged)
-
+    Q_PROPERTY(float sortIndex READ sortIndex WRITE setSortIndex NOTIFY sortIndexChanged)
 public:
     explicit QGeometryRenderer(Qt3DCore::QNode *parent = nullptr);
     ~QGeometryRenderer();
@@ -100,11 +62,9 @@ public:
     int restartIndexValue() const;
     int verticesPerPatch() const;
     bool primitiveRestartEnabled() const;
-    QGeometry *geometry() const;
+    Qt3DCore::QGeometry *geometry() const;
     PrimitiveType primitiveType() const;
-
-    Q3D_DECL_DEPRECATED QGeometryFactoryPtr geometryFactory() const;
-    Q3D_DECL_DEPRECATED void setGeometryFactory(const QGeometryFactoryPtr &factory);
+    float sortIndex() const;
 
 public Q_SLOTS:
     void setInstanceCount(int instanceCount);
@@ -116,8 +76,9 @@ public Q_SLOTS:
     void setRestartIndexValue(int index);
     void setVerticesPerPatch(int verticesPerPatch);
     void setPrimitiveRestartEnabled(bool enabled);
-    void setGeometry(QGeometry *geometry);
+    void setGeometry(Qt3DCore::QGeometry *geometry);
     void setPrimitiveType(PrimitiveType primitiveType);
+    void setSortIndex(float sortIndex);
 
 Q_SIGNALS:
     void instanceCountChanged(int instanceCount);
@@ -129,17 +90,17 @@ Q_SIGNALS:
     void restartIndexValueChanged(int restartIndexValue);
     void verticesPerPatchChanged(int verticesPerPatch);
     void primitiveRestartEnabledChanged(bool primitiveRestartEnabled);
-    void geometryChanged(QGeometry *geometry);
+    void geometryChanged(Qt3DCore::QGeometry *geometry);
     void primitiveTypeChanged(PrimitiveType primitiveType);
+
+    void sortIndexChanged(float sortIndex);
 
 protected:
     explicit QGeometryRenderer(QGeometryRendererPrivate &dd, Qt3DCore::QNode *parent = nullptr);
-    // TODO Unused remove in Qt6
-    void sceneChangeEvent(const Qt3DCore::QSceneChangePtr &change) override;
 
 private:
     Q_DECLARE_PRIVATE(QGeometryRenderer)
-    Qt3DCore::QNodeCreatedChangeBasePtr createNodeCreationChange() const override;
+    float m_sortIndex; // TODO Remove in Qt 7
 };
 
 } // namespace Qt3DRender

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind_helpers.h"
-#include "base/macros.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/ref_counted.h"
 #include "base/task/task_traits.h"
@@ -41,17 +40,20 @@ class PriorityQueueWithSequencesTest : public testing::Test {
       const TaskTraits& traits) {
     // FastForward time to ensure that queue order between task sources is well
     // defined.
-    task_environment.FastForwardBy(TimeDelta::FromMicroseconds(1));
+    task_environment.FastForwardBy(Microseconds(1));
     scoped_refptr<Sequence> sequence = MakeRefCounted<Sequence>(
         traits, nullptr, TaskSourceExecutionMode::kParallel);
-    sequence->BeginTransaction().PushTask(
-        Task(FROM_HERE, DoNothing(), TimeDelta()));
+    auto transaction = sequence->BeginTransaction();
+    transaction.WillPushImmediateTask();
+    transaction.PushImmediateTask(
+        Task(FROM_HERE, DoNothing(), TimeTicks::Now(), TimeDelta()));
     return sequence;
   }
 
   void Push(scoped_refptr<TaskSource> task_source) {
-    pq.Push(TransactionWithRegisteredTaskSource::FromTaskSource(
-        RegisteredTaskSource::CreateForTesting(std::move(task_source))));
+    auto sort_key = task_source->GetSortKey();
+    pq.Push(RegisteredTaskSource::CreateForTesting(std::move(task_source)),
+            sort_key);
   }
 
   test::TaskEnvironment task_environment{

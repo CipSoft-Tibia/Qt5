@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,10 +24,10 @@ void InitializeBrowserMemoryInstrumentationClient() {
   mojo::PendingRemote<memory_instrumentation::mojom::Coordinator> coordinator;
   mojo::PendingRemote<memory_instrumentation::mojom::ClientProcess> process;
   auto process_receiver = process.InitWithNewPipeAndPassReceiver();
-  GetMemoryInstrumentationCoordinatorController()->RegisterClientProcess(
+  GetMemoryInstrumentationRegistry()->RegisterClientProcess(
       coordinator.InitWithNewPipeAndPassReceiver(), std::move(process),
       memory_instrumentation::mojom::ProcessType::BROWSER,
-      base::GetCurrentProcId(), /*service_name=*/base::nullopt);
+      base::GetCurrentProcId(), /*service_name=*/absl::nullopt);
   memory_instrumentation::ClientProcessImpl::CreateInstance(
       std::move(process_receiver), std::move(coordinator),
       /*is_browser_process=*/true);

@@ -20,15 +20,13 @@
 
 #include "third_party/blink/renderer/core/css/css_value_list.h"
 
-#include "third_party/blink/renderer/core/css/css_primitive_value.h"
-#include "third_party/blink/renderer/core/css/parser/css_parser.h"
 #include "third_party/blink/renderer/platform/wtf/size_assertions.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
 namespace blink {
 
 struct SameSizeAsCSSValueList : CSSValue {
-  Vector<Member<CSSValue>, 4> list_values;
+  HeapVector<Member<CSSValue>, 4> list_values;
 };
 ASSERT_SIZE(CSSValueList, SameSizeAsCSSValueList);
 
@@ -43,6 +41,17 @@ CSSValueList::CSSValueList(ValueListSeparator list_separator)
   value_list_separator_ = list_separator;
 }
 
+void CSSValueList::Append(const CSSValue& value) {
+  values_.push_back(value);
+  // Note: this will be changed if we need to support tree scoped names and
+  // references in any subclass.
+  // TODO(crbug.com/1410362): Make CSSValueList immutable so that we don't need
+  // to track it here.
+  if (IsBaseValueList() && !value.IsScopedValue()) {
+    needs_tree_scope_population_ = true;
+  }
+}
+
 bool CSSValueList::RemoveAll(const CSSValue& val) {
   bool found = false;
   for (int index = values_.size() - 1; index >= 0; --index) {
@@ -52,13 +61,24 @@ bool CSSValueList::RemoveAll(const CSSValue& val) {
       found = true;
     }
   }
-
+  // Note: this will be changed if we need to support tree scoped names and
+  // references in any subclass.
+  // TODO(crbug.com/1410362): Make CSSValueList immutable so that we don't need
+  // to track it here.
+  if (IsBaseValueList()) {
+    needs_tree_scope_population_ = false;
+    for (const CSSValue* value : values_) {
+      if (!value->IsScopedValue()) {
+        needs_tree_scope_population_ = true;
+        break;
+      }
+    }
+  }
   return found;
 }
 
 bool CSSValueList::HasValue(const CSSValue& val) const {
-  for (wtf_size_t index = 0; index < values_.size(); index++) {
-    const Member<const CSSValue>& value = values_.at(index);
+  for (const auto& value : values_) {
     if (value && *value == val) {
       return true;
     }
@@ -82,12 +102,40 @@ CSSValueList* CSSValueList::Copy() const {
       NOTREACHED();
   }
   new_list->values_ = values_;
+  new_list->needs_tree_scope_population_ = needs_tree_scope_population_;
   return new_list;
 }
 
+const CSSValueList& CSSValueList::PopulateWithTreeScope(
+    const TreeScope* tree_scope) const {
+  // Note: this will be changed if any subclass also involves values that need
+  // TreeScope population, as in that case, we will need to return an instance
+  // of the subclass.
+  DCHECK(IsBaseValueList());
+  DCHECK(!IsScopedValue());
+  CSSValueList* new_list = nullptr;
+  switch (value_list_separator_) {
+    case kSpaceSeparator:
+      new_list = CreateSpaceSeparated();
+      break;
+    case kCommaSeparator:
+      new_list = CreateCommaSeparated();
+      break;
+    case kSlashSeparator:
+      new_list = CreateSlashSeparated();
+      break;
+    default:
+      NOTREACHED();
+  }
+  new_list->values_.ReserveInitialCapacity(values_.size());
+  for (const CSSValue* value : values_) {
+    new_list->values_.push_back(&value->EnsureScopedValue(tree_scope));
+  }
+  return *new_list;
+}
+
 String CSSValueList::CustomCSSText() const {
-  StringBuilder result;
-  String separator;
+  StringView separator;
   switch (value_list_separator_) {
     case kSpaceSeparator:
       separator = " ";
@@ -102,14 +150,18 @@ String CSSValueList::CustomCSSText() const {
       NOTREACHED();
   }
 
-  unsigned size = values_.size();
-  for (unsigned i = 0; i < size; i++) {
-    if (!result.IsEmpty())
+  StringBuilder result;
+  for (const auto& value : values_) {
+    if (!result.empty()) {
       result.Append(separator);
-    result.Append(values_[i]->CssText());
+    }
+    // TODO(crbug.com/1213338): value_[i] can be null by CSSMathExpressionNode
+    // which is implemented by css-values-3. Until fully implement the
+    // css-values-4 features, we should append empty string to remove
+    // null-pointer exception.
+    result.Append(value ? value->CssText() : " ");
   }
-
-  return result.ToString();
+  return result.ReleaseString();
 }
 
 bool CSSValueList::Equals(const CSSValueList& other) const {
@@ -118,24 +170,27 @@ bool CSSValueList::Equals(const CSSValueList& other) const {
 }
 
 bool CSSValueList::HasFailedOrCanceledSubresources() const {
-  for (unsigned i = 0; i < values_.size(); ++i) {
-    if (values_[i]->HasFailedOrCanceledSubresources())
+  for (const auto& value : values_) {
+    if (value->HasFailedOrCanceledSubresources()) {
       return true;
+    }
   }
   return false;
 }
 
 bool CSSValueList::MayContainUrl() const {
   for (const auto& value : values_) {
-    if (value->MayContainUrl())
+    if (value->MayContainUrl()) {
       return true;
+    }
   }
   return false;
 }
 
 void CSSValueList::ReResolveUrl(const Document& document) const {
-  for (const auto& value : values_)
+  for (const auto& value : values_) {
     value->ReResolveUrl(document);
+  }
 }
 
 void CSSValueList::TraceAfterDispatch(blink::Visitor* visitor) const {

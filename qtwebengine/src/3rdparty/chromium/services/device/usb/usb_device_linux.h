@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,6 @@
 #include <utility>
 
 #include "base/files/scoped_file.h"
-#include "base/macros.h"
 #include "base/sequence_checker.h"
 #include "build/build_config.h"
 #include "services/device/usb/usb_device.h"
@@ -27,15 +26,18 @@ struct UsbDeviceDescriptor;
 
 class UsbDeviceLinux : public UsbDevice {
  public:
+  UsbDeviceLinux(const UsbDeviceLinux&) = delete;
+  UsbDeviceLinux& operator=(const UsbDeviceLinux&) = delete;
+
 // UsbDevice implementation:
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
   void CheckUsbAccess(ResultCallback callback) override;
-#endif  // OS_CHROMEOS
+#endif  // BUILDFLAG(IS_CHROMEOS)
   void Open(OpenCallback callback) override;
 
   const std::string& device_path() const { return device_path_; }
 
-  // These functions are used during enumeration only. The values must not
+  // This function is used during enumeration only. The values must not
   // change during the object's lifetime.
   void set_webusb_landing_page(const GURL& url) {
     device_info_->webusb_landing_page = url;
@@ -51,8 +53,11 @@ class UsbDeviceLinux : public UsbDevice {
   ~UsbDeviceLinux() override;
 
  private:
-#if defined(OS_CHROMEOS)
-  void OnOpenRequestComplete(OpenCallback callback, base::ScopedFD fd);
+#if BUILDFLAG(IS_CHROMEOS)
+  void OnOpenRequestComplete(OpenCallback callback,
+                             base::ScopedFD fd,
+                             const std::string& client_id,
+                             base::ScopedFD lifeline_fd);
   void OnOpenRequestError(OpenCallback callback,
                           const std::string& error_name,
                           const std::string& error_message);
@@ -61,16 +66,16 @@ class UsbDeviceLinux : public UsbDevice {
       OpenCallback callback,
       scoped_refptr<base::SequencedTaskRunner> task_runner,
       scoped_refptr<base::SequencedTaskRunner> blocking_task_runner);
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS)
   void Opened(base::ScopedFD fd,
+              base::ScopedFD lifeline_fd,
+              const std::string& client_id,
               OpenCallback callback,
               scoped_refptr<base::SequencedTaskRunner> blocking_task_runner);
 
   SEQUENCE_CHECKER(sequence_checker_);
 
   const std::string device_path_;
-
-  DISALLOW_COPY_AND_ASSIGN(UsbDeviceLinux);
 };
 
 }  // namespace device

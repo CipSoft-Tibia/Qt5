@@ -12,7 +12,7 @@
 namespace openscreen {
 namespace cast {
 
-using openscreen::operator<<;  // For std::chrono::duration logging.
+using clock_operators::operator<<;
 
 namespace {
 

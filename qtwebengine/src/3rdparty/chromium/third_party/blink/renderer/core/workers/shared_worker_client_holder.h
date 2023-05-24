@@ -31,10 +31,8 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_WORKERS_SHARED_WORKER_CLIENT_HOLDER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_WORKERS_SHARED_WORKER_CLIENT_HOLDER_H_
 
-#include <memory>
-
-#include "base/macros.h"
 #include "base/memory/ptr_util.h"
+#include "base/task/single_thread_task_runner.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "third_party/blink/public/mojom/blob/blob_url_store.mojom-blink-forward.h"
@@ -70,6 +68,8 @@ class CORE_EXPORT SharedWorkerClientHolder final
   static SharedWorkerClientHolder* From(LocalDOMWindow&);
 
   explicit SharedWorkerClientHolder(LocalDOMWindow&);
+  SharedWorkerClientHolder(const SharedWorkerClientHolder&) = delete;
+  SharedWorkerClientHolder& operator=(const SharedWorkerClientHolder&) = delete;
   virtual ~SharedWorkerClientHolder() = default;
 
   // Establishes a connection with SharedWorkerHost in the browser process.
@@ -87,8 +87,6 @@ class CORE_EXPORT SharedWorkerClientHolder final
   HeapMojoUniqueReceiverSet<mojom::blink::SharedWorkerClient> client_receivers_;
 
   scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(SharedWorkerClientHolder);
 };
 
 }  // namespace blink

@@ -1,10 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "device/vr/public/mojom/pose.h"
 
-#include "ui/gfx/transform_util.h"
+#include "ui/gfx/geometry/decomposed_transform.h"
+#include "ui/gfx/geometry/transform.h"
 
 namespace device {
 
@@ -18,19 +19,19 @@ Pose::Pose(const gfx::Point3F& position, const gfx::Quaternion& orientation)
   decomposed_pose.translate[2] = position.z();
   decomposed_pose.quaternion = orientation;
 
-  other_from_this_ = gfx::ComposeTransform(decomposed_pose);
+  other_from_this_ = gfx::Transform::Compose(decomposed_pose);
 }
 
-base::Optional<Pose> Pose::Create(const gfx::Transform& other_from_this) {
-  gfx::DecomposedTransform decomposed_other_from_this;
-  if (!gfx::DecomposeTransform(&decomposed_other_from_this, other_from_this)) {
-    return base::nullopt;
-  }
+absl::optional<Pose> Pose::Create(const gfx::Transform& other_from_this) {
+  absl::optional<gfx::DecomposedTransform> decomposed_other_from_this =
+      other_from_this.Decompose();
+  if (!decomposed_other_from_this)
+    return absl::nullopt;
 
-  return Pose(gfx::Point3F(decomposed_other_from_this.translate[0],
-                           decomposed_other_from_this.translate[1],
-                           decomposed_other_from_this.translate[2]),
-              decomposed_other_from_this.quaternion);
+  return Pose(gfx::Point3F(decomposed_other_from_this->translate[0],
+                           decomposed_other_from_this->translate[1],
+                           decomposed_other_from_this->translate[2]),
+              decomposed_other_from_this->quaternion);
 }
 
 const gfx::Transform& Pose::ToTransform() const {

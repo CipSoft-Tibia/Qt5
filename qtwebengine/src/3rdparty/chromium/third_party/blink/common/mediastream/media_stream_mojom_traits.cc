@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "base/check_op.h"
 #include "media/base/ipc/media_param_traits.h"
+#include "media/capture/mojom/video_capture_types.mojom.h"
 #include "media/capture/mojom/video_capture_types_mojom_traits.h"
 #include "media/mojo/mojom/display_media_information.mojom.h"
 #include "mojo/public/cpp/base/unguessable_token_mojom_traits.h"
@@ -21,6 +22,7 @@ bool StructTraits<blink::mojom::MediaStreamDeviceDataView,
     return false;
   if (!input.ReadId(&out->id))
     return false;
+  out->display_id = input.display_id();
   if (!input.ReadVideoFacing(&out->video_facing))
     return false;
   if (!input.ReadGroupId(&out->group_id))
@@ -31,7 +33,7 @@ bool StructTraits<blink::mojom::MediaStreamDeviceDataView,
     return false;
   if (!input.ReadInput(&out->input))
     return false;
-  base::Optional<base::UnguessableToken> session_id;
+  absl::optional<base::UnguessableToken> session_id;
   if (input.ReadSessionId(&session_id)) {
     out->set_session_id(session_id ? *session_id : base::UnguessableToken());
   } else {
@@ -45,7 +47,6 @@ bool StructTraits<blink::mojom::MediaStreamDeviceDataView,
 // static
 bool StructTraits<blink::mojom::TrackControlsDataView, blink::TrackControls>::
     Read(blink::mojom::TrackControlsDataView input, blink::TrackControls* out) {
-  out->requested = input.requested();
   if (!input.ReadStreamType(&out->stream_type))
     return false;
   if (!input.ReadDeviceId(&out->device_id))
@@ -61,14 +62,20 @@ bool StructTraits<blink::mojom::StreamControlsDataView, blink::StreamControls>::
     return false;
   if (!input.ReadVideo(&out->video))
     return false;
-#if DCHECK_IS_ON()
-  if (input.hotword_enabled() || input.disable_local_echo())
-    DCHECK(out->audio.requested);
-#endif
+  DCHECK(out->audio.requested() ||
+         (!input.hotword_enabled() && !input.disable_local_echo() &&
+          !input.suppress_local_audio_playback()));
   out->hotword_enabled = input.hotword_enabled();
   out->disable_local_echo = input.disable_local_echo();
+  out->suppress_local_audio_playback = input.suppress_local_audio_playback();
+  out->exclude_system_audio = input.exclude_system_audio();
+  out->exclude_self_browser_surface = input.exclude_self_browser_surface();
   out->request_pan_tilt_zoom_permission =
       input.request_pan_tilt_zoom_permission();
+  out->request_all_screens = input.request_all_screens();
+  out->preferred_display_surface = input.preferred_display_surface();
+  out->dynamic_surface_switching_requested =
+      input.dynamic_surface_switching_requested();
   return true;
 }
 

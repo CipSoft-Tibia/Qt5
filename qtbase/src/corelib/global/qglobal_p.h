@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Copyright (C) 2015 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// Copyright (C) 2015 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGLOBAL_P_H
 #define QGLOBAL_P_H
@@ -60,17 +24,37 @@
 #include <QtCore/private/qtcore-config_p.h>
 #endif
 
-#if defined(__cplusplus)
-#ifdef Q_CC_MINGW
-#  include <unistd.h> // Define _POSIX_THREAD_SAFE_FUNCTIONS to obtain localtime_r()
-#endif
-#include <time.h>
+#if defined(Q_CC_MSVC)
+// By default, dynamic initialization uses subsection "$XCU", which is
+// equivalent to #pragma init_seg(user). Additionally, #pragma
+// init_seg(compiler) and init_seg(lib) use "$XCC" and "$XCL" respectively. So
+// place us between "compiler" and "lib".
+#  define QT_SUPPORTS_INIT_PRIORITY     1
 
+// warning C4075: initializers put in unrecognized initialization area
+#  define Q_DECL_INIT_PRIORITY(nn)      \
+    __pragma(warning(disable: 4075)) \
+    __pragma(init_seg(".CRT$XCK" QT_STRINGIFY(nn))) Q_DECL_UNUSED
+#elif defined(Q_OS_QNX)
+// init_priority fails on QNX and we didn't bother investigating why
+#  define QT_SUPPORTS_INIT_PRIORITY     0
+#elif defined(Q_OS_WIN) || defined(Q_OF_ELF)
+#  define QT_SUPPORTS_INIT_PRIORITY     1
+// priorities 0 to 1000 are reserved to the runtime;
+// we use above 2000 in case someone REALLY needs to go before us
+#  define Q_DECL_INIT_PRIORITY(nn)      __attribute__((init_priority(2000 + nn), used))
+#elif defined(QT_SHARED)
+// it doesn't support this exactly, but we can work around it
+#  define QT_SUPPORTS_INIT_PRIORITY     -1
+#  define Q_DECL_INIT_PRIORITY(nn)      Q_DECL_UNUSED
+#else
+#  define QT_SUPPORTS_INIT_PRIORITY     0
+#endif
+
+#if defined(__cplusplus)
 QT_BEGIN_NAMESPACE
 
-// These behave as if they consult the environment, so need to share its locking:
-Q_CORE_EXPORT void qTzSet();
-Q_CORE_EXPORT time_t qMkTime(struct tm *when);
+Q_NORETURN Q_CORE_EXPORT void qAbort();
 
 QT_END_NAMESPACE
 
@@ -146,4 +130,3 @@ QT_END_NAMESPACE
 #endif // defined(__cplusplus)
 
 #endif // QGLOBAL_P_H
-

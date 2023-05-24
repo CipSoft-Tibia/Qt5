@@ -1,10 +1,10 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/public/browser/provision_fetcher_impl.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "content/public/browser/provision_fetcher_factory.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
@@ -30,7 +30,7 @@ ProvisionFetcherImpl::ProvisionFetcherImpl(
 
 ProvisionFetcherImpl::~ProvisionFetcherImpl() {}
 
-void ProvisionFetcherImpl::Retrieve(const std::string& default_url,
+void ProvisionFetcherImpl::Retrieve(const GURL& default_url,
                                     const std::string& request_data,
                                     RetrieveCallback callback) {
   DVLOG(1) << __FUNCTION__ << ": " << default_url;

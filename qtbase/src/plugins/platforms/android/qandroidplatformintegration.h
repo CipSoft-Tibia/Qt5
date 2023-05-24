@@ -1,62 +1,27 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QANDROIDPLATFORMINTERATION_H
 #define QANDROIDPLATFORMINTERATION_H
 
-#include <QtGui/qtguiglobal.h>
+#include "qandroidinputcontext.h"
+#include "qandroidplatformscreen.h"
 
+#include <QtGui/qtguiglobal.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformmenu.h>
 #include <qpa/qplatformnativeinterface.h>
+#include <qpa/qplatformopenglcontext.h>
+#include <qpa/qplatformoffscreensurface.h>
+#include <qpa/qplatformtheme.h>
+#include <private/qflatmap_p.h>
+#include <QtCore/qvarlengtharray.h>
 
 #include <EGL/egl.h>
-#include <jni.h>
-#include "qandroidinputcontext.h"
-
-#include "qandroidplatformscreen.h"
-
 #include <memory>
 
 QT_BEGIN_NAMESPACE
 
-class QDesktopWidget;
 class QAndroidPlatformServices;
 class QAndroidSystemLocale;
 class QPlatformAccessibility;
@@ -67,6 +32,7 @@ class QAndroidPlatformNativeInterface: public QPlatformNativeInterface
 public:
     void *nativeResourceForIntegration(const QByteArray &resource) override;
     void *nativeResourceForWindow(const QByteArray &resource, QWindow *window) override;
+    void *nativeResourceForContext(const QByteArray &resource, QOpenGLContext *context) override;
     std::shared_ptr<AndroidStyle> m_androidStyle;
 
 protected:
@@ -74,6 +40,8 @@ protected:
 };
 
 class QAndroidPlatformIntegration : public QPlatformIntegration
+                                  , QNativeInterface::Private::QEGLIntegration
+                                  , QNativeInterface::Private::QAndroidOffScreenIntegration
 {
     friend class QAndroidPlatformScreen;
 
@@ -89,16 +57,29 @@ public:
     QPlatformWindow *createForeignWindow(QWindow *window, WId nativeHandle) const override;
     QPlatformBackingStore *createPlatformBackingStore(QWindow *window) const override;
     QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const override;
+    QOpenGLContext *createOpenGLContext(EGLContext context, EGLDisplay display, QOpenGLContext *shareContext) const override;
     QAbstractEventDispatcher *createEventDispatcher() const override;
     QAndroidPlatformScreen *screen() { return m_primaryScreen; }
     QPlatformOffscreenSurface *createPlatformOffscreenSurface(QOffscreenSurface *surface) const override;
+    QOffscreenSurface *createOffscreenSurface(ANativeWindow *nativeSurface) const override;
 
-    virtual void setDesktopSize(int width, int height);
-    virtual void setDisplayMetrics(int width, int height);
+    void setAvailableGeometry(const QRect &availableGeometry);
+    void setPhysicalSize(int width, int height);
     void setScreenSize(int width, int height);
+    // The 3 methods above were replaced by a new one, so that we could have
+    // a better control over "geometry changed" event handling. Technically
+    // they are no longer used and can be removed. Not doing it now, because
+    // I'm not sure if it might be helpful to have them or not.
+    void setScreenSizeParameters(const QSize &physicalSize, const QSize &screenSize,
+                                 const QRect &availableGeometry);
+    void setRefreshRate(qreal refreshRate);
     bool isVirtualDesktop() { return true; }
 
     QPlatformFontDatabase *fontDatabase() const override;
+
+    void handleScreenAdded(int displayId);
+    void handleScreenChanged(int displayId);
+    void handleScreenRemoved(int displayId);
 
 #ifndef QT_NO_CLIPBOARD
     QPlatformClipboard *clipboard() const override;
@@ -108,7 +89,7 @@ public:
     QPlatformNativeInterface *nativeInterface() const override;
     QPlatformServices *services() const override;
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     virtual QPlatformAccessibility *accessibility() const override;
 #endif
 
@@ -118,39 +99,36 @@ public:
     QStringList themeNames() const override;
     QPlatformTheme *createPlatformTheme(const QString &name) const override;
 
-    static void setDefaultDisplayMetrics(int gw, int gh, int sw, int sh, int width, int height);
-    static void setDefaultDesktopSize(int gw, int gh);
+    static void setDefaultDisplayMetrics(int availableLeft, int availableTop, int availableWidth,
+                                         int availableHeight, int physicalWidth, int physicalHeight,
+                                         int screenWidth, int screenHeight);
     static void setScreenOrientation(Qt::ScreenOrientation currentOrientation,
                                      Qt::ScreenOrientation nativeOrientation);
 
-    static QSize defaultDesktopSize()
-    {
-        return QSize(m_defaultGeometryWidth, m_defaultGeometryHeight);
-    }
-
-    QTouchDevice *touchDevice() const { return m_touchDevice; }
-    void setTouchDevice(QTouchDevice *touchDevice) { m_touchDevice = touchDevice; }
+    QPointingDevice *touchDevice() const { return m_touchDevice; }
+    void setTouchDevice(QPointingDevice *touchDevice) { m_touchDevice = touchDevice; }
 
     void flushPendingUpdates();
 
+    static void setColorScheme(Qt::ColorScheme colorScheme);
+    static Qt::ColorScheme colorScheme() { return m_colorScheme; }
 #if QT_CONFIG(vulkan)
     QPlatformVulkanInstance *createPlatformVulkanInstance(QVulkanInstance *instance) const override;
 #endif
 
 private:
     EGLDisplay m_eglDisplay;
-    QTouchDevice *m_touchDevice;
+    QPointingDevice *m_touchDevice;
 
     QAndroidPlatformScreen *m_primaryScreen;
 
     QThread *m_mainThread;
 
-    static int m_defaultGeometryWidth;
-    static int m_defaultGeometryHeight;
-    static int m_defaultPhysicalSizeWidth;
-    static int m_defaultPhysicalSizeHeight;
-    static int m_defaultScreenWidth;
-    static int m_defaultScreenHeight;
+    static Qt::ColorScheme m_colorScheme;
+
+    static QRect m_defaultAvailableGeometry;
+    static QSize m_defaultPhysicalSize;
+    static QSize m_defaultScreenSize;
 
     static Qt::ScreenOrientation m_orientation;
     static Qt::ScreenOrientation m_nativeOrientation;
@@ -160,12 +138,23 @@ private:
     QAndroidPlatformNativeInterface *m_androidPlatformNativeInterface;
     QAndroidPlatformServices *m_androidPlatformServices;
 
+    // Handling the multiple screens connected. Every display is identified
+    // with an unique (autoincremented) displayID. The values of this ID will
+    // not repeat during the OS runtime. We use this value as the key in the
+    // storage of screens.
+    QFlatMap<int, QAndroidPlatformScreen *, std::less<int>
+            , QVarLengthArray<int, 10>
+            , QVarLengthArray<QAndroidPlatformScreen *, 10> > m_screens;
+    // ID of the primary display, in documentation it is said to be always 0,
+    // but nevertheless it is retrieved
+    int m_primaryDisplayId = 0;
+
 #ifndef QT_NO_CLIPBOARD
     QPlatformClipboard *m_androidPlatformClipboard;
 #endif
 
     QAndroidSystemLocale *m_androidSystemLocale;
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     mutable QPlatformAccessibility *m_accessibility;
 #endif
 

@@ -31,14 +31,13 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_BINDINGS_V8_DOM_WRAPPER_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_BINDINGS_V8_DOM_WRAPPER_H_
 
-#include "base/stl_util.h"
+#include "base/check_op.h"
 #include "third_party/blink/renderer/platform/bindings/binding_security_for_platform.h"
 #include "third_party/blink/renderer/platform/bindings/custom_wrappable.h"
 #include "third_party/blink/renderer/platform/bindings/dom_data_store.h"
 #include "third_party/blink/renderer/platform/bindings/runtime_call_stats.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
 #include "third_party/blink/renderer/platform/bindings/v8_binding.h"
-#include "third_party/blink/renderer/platform/heap/unified_heap_marking_visitor.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 #include "v8/include/v8.h"
@@ -53,9 +52,8 @@ class V8DOMWrapper {
   STATIC_ONLY(V8DOMWrapper);
 
  public:
-  PLATFORM_EXPORT static v8::Local<v8::Object> CreateWrapper(
-      v8::Isolate*,
-      v8::Local<v8::Object> creation_context,
+  PLATFORM_EXPORT static v8::MaybeLocal<v8::Object> CreateWrapper(
+      ScriptState*,
       const WrapperTypeInfo*);
   PLATFORM_EXPORT static bool IsWrapper(v8::Isolate*, v8::Local<v8::Value>);
 
@@ -63,7 +61,7 @@ class V8DOMWrapper {
   // ScriptWrappable is not yet associated with any wrapper.  Returns the
   // wrapper already associated or |wrapper| if not yet associated.
   // The caller should always use the returned value rather than |wrapper|.
-  PLATFORM_EXPORT WARN_UNUSED_RESULT static v8::Local<v8::Object>
+  [[nodiscard]] PLATFORM_EXPORT static v8::Local<v8::Object>
   AssociateObjectWithWrapper(v8::Isolate*,
                              ScriptWrappable*,
                              const WrapperTypeInfo*,
@@ -111,20 +109,15 @@ inline void V8DOMWrapper::SetNativeInfoInternal(
   DCHECK(wrapper_type_info);
   int indices[] = {kV8DOMWrapperObjectIndex, kV8DOMWrapperTypeIndex};
   void* values[] = {wrappable, const_cast<WrapperTypeInfo*>(wrapper_type_info)};
-  wrapper->SetAlignedPointerInInternalFields(base::size(indices), indices,
+  wrapper->SetAlignedPointerInInternalFields(std::size(indices), indices,
                                              values);
-  // The following write barrier is necessary as V8 might not see the newly
-  // created object during garbage collection, e.g., when the object is black
-  // allocated.
-  UnifiedHeapMarkingVisitor::WriteBarrier(isolate, wrapper_type_info,
-                                          wrappable);
 }
 
 inline void V8DOMWrapper::ClearNativeInfo(v8::Isolate* isolate,
                                           v8::Local<v8::Object> wrapper) {
   int indices[] = {kV8DOMWrapperObjectIndex, kV8DOMWrapperTypeIndex};
   void* values[] = {nullptr, nullptr};
-  wrapper->SetAlignedPointerInInternalFields(base::size(indices), indices,
+  wrapper->SetAlignedPointerInInternalFields(std::size(indices), indices,
                                              values);
 }
 
@@ -159,20 +152,13 @@ class V8WrapperInstantiationScope {
   STACK_ALLOCATED();
 
  public:
-  V8WrapperInstantiationScope(v8::Local<v8::Object> creation_context,
-                              v8::Isolate* isolate,
+  // This is an overload of constructor for CreateWrapperV2.
+  V8WrapperInstantiationScope(ScriptState* script_state,
                               const WrapperTypeInfo* type)
-      : did_enter_context_(false),
-        context_(isolate->GetCurrentContext()),
-        try_catch_(isolate),
-        type_(type),
-        access_check_failed_(false) {
-    // creationContext should not be empty. Because if we have an
-    // empty creationContext, we will end up creating
-    // a new object in the context currently entered. This is wrong.
-    CHECK(!creation_context.IsEmpty());
-    v8::Local<v8::Context> context_for_wrapper =
-        creation_context->CreationContext();
+      : context_(script_state->GetIsolate()->GetCurrentContext()),
+        try_catch_(script_state->GetIsolate()),
+        type_(type) {
+    v8::Local<v8::Context> context_for_wrapper = script_state->GetContext();
 
     // For performance, we enter the context only if the currently running
     // context is different from the context that we are about to enter.
@@ -180,7 +166,8 @@ class V8WrapperInstantiationScope {
       return;
 
     if (!BindingSecurityForPlatform::ShouldAllowWrapperCreationOrThrowException(
-            isolate->GetCurrentContext(), context_for_wrapper, type_)) {
+            script_state->GetIsolate()->GetCurrentContext(),
+            context_for_wrapper, type_)) {
       DCHECK(try_catch_.HasCaught());
       try_catch_.ReThrow();
       access_check_failed_ = true;
@@ -218,11 +205,11 @@ class V8WrapperInstantiationScope {
   bool AccessCheckFailed() const { return access_check_failed_; }
 
  private:
-  bool did_enter_context_;
+  bool did_enter_context_ = false;
   v8::Local<v8::Context> context_;
   v8::TryCatch try_catch_;
   const WrapperTypeInfo* type_;
-  bool access_check_failed_;
+  bool access_check_failed_ = false;
 };
 
 }  // namespace blink

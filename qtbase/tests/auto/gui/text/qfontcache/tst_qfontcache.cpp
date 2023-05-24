@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 
 #include <qfont.h>
@@ -47,6 +22,7 @@ private slots:
     void engineData();
     void engineDataFamilies_data();
     void engineDataFamilies();
+    void threadedAccess();
 
     void clear();
 };
@@ -72,23 +48,29 @@ tst_QFontCache::~tst_QFontCache()
 void tst_QFontCache::engineData_data()
 {
     QTest::addColumn<QString>("family");
-    QTest::addColumn<QString>("cacheKey");
+    QTest::addColumn<QStringList>("cacheKey");
 
-    QTest::newRow("unquoted-family-name") << QString("Times New Roman") << QString("Times New Roman");
-    QTest::newRow("quoted-family-name") << QString("'Times New Roman'") << QString("Times New Roman");
-    QTest::newRow("invalid") << QString("invalid") << QString("invalid");
-    QTest::newRow("multiple") << QString("invalid, Times New Roman") << QString("invalid,Times New Roman");
-    QTest::newRow("multiple spaces") << QString("invalid,  Times New Roman ") << QString("invalid,Times New Roman");
-    QTest::newRow("multiple spaces quotes") << QString("'invalid',  Times New Roman ") << QString("invalid,Times New Roman");
-    QTest::newRow("multiple2") << QString("invalid, Times New Roman  , foobar, 'baz'") << QString("invalid,Times New Roman,foobar,baz");
-    QTest::newRow("invalid spaces") << QString("invalid spaces, Times New Roman ") << QString("invalid spaces,Times New Roman");
-    QTest::newRow("invalid spaces quotes") << QString("'invalid spaces', 'Times New Roman' ") << QString("invalid spaces,Times New Roman");
+    QTest::newRow("unquoted-family-name") << QString("Times New Roman") << QStringList({"Times New Roman"});
+    QTest::newRow("quoted-family-name") << QString("'Times New Roman'") << QStringList({"Times New Roman"});
+    QTest::newRow("invalid") << QString("invalid") << QStringList({"invalid"});
+    QTest::newRow("multiple") << QString("invalid, Times New Roman")
+                              << QStringList({"invalid", "Times New Roman"});
+    QTest::newRow("multiple spaces") << QString("invalid,  Times New Roman ")
+                                     << QStringList({"invalid", "Times New Roman"});
+    QTest::newRow("multiple spaces quotes") << QString("'invalid',  Times New Roman ")
+                                            << QStringList({"invalid", "Times New Roman"});
+    QTest::newRow("multiple2") << QString("invalid, Times New Roman  , foobar, 'baz'")
+                               << QStringList({"invalid", "Times New Roman", "foobar", "baz"});
+    QTest::newRow("invalid spaces") << QString("invalid spaces, Times New Roman ")
+                                    << QStringList({"invalid spaces", "Times New Roman"});
+    QTest::newRow("invalid spaces quotes") << QString("'invalid spaces', 'Times New Roman' ")
+                                           << QStringList({"invalid spaces", "Times New Roman"});
 }
 
 void tst_QFontCache::engineData()
 {
     QFETCH(QString, family);
-    QFETCH(QString, cacheKey);
+    QFETCH(QStringList, cacheKey);
 
     QFont f(family);
     f.exactMatch(); // loads engine
@@ -104,7 +86,7 @@ void tst_QFontCache::engineData()
     if (req.pointSize < 0)
         req.pointSize = req.pixelSize*72.0/d->dpi;
 
-    req.family = cacheKey;
+    req.families = cacheKey;
 
     QFontEngineData *engineData = QFontCache::instance()->findEngineData(req);
 
@@ -176,14 +158,12 @@ void tst_QFontCache::clear()
     }
 #endif
     {
-        QFontDatabase db;
-
         QFont f;
         f.setStyleHint(QFont::Serif);
         const QString familyForHint(f.defaultFamily());
 
         // it should at least return a family that is available
-        QVERIFY(db.hasFamily(familyForHint));
+        QVERIFY(QFontDatabase::hasFamily(familyForHint));
         f.exactMatch(); // loads engine
 
         fontEngine = QFontPrivate::get(f)->engineForScript(QChar::Script_Common);
@@ -221,6 +201,52 @@ for (int i = 0; i < leakedEngines.size(); ++i) qWarning() << i << leakedEngines.
     // and we are not leaking!
     QCOMPARE(leakedEngines.size(), 0);
 #endif
+}
+
+struct MessageHandler
+{
+    MessageHandler()
+    {
+        oldMessageHandler = qInstallMessageHandler(myMessageHandler);
+        messages.clear();
+    }
+    ~MessageHandler()
+    {
+        qInstallMessageHandler(oldMessageHandler);
+    }
+
+    inline static bool receivedMessage = false;
+    inline static QtMessageHandler oldMessageHandler = nullptr;
+    inline static QStringList messages;
+    static void myMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &text)
+    {
+        if (!text.startsWith("Populating font family aliases took")) {
+            receivedMessage = true;
+            messages += text;
+        }
+        if (oldMessageHandler)
+            oldMessageHandler(type, context, text);
+    }
+};
+
+
+void tst_QFontCache::threadedAccess()
+{
+    MessageHandler messageHandler;
+    auto lambda = []{
+        for (const auto &family : QFontDatabase::families()) {
+            QFont font(family);
+            QFontMetrics fontMetrics(font);
+            fontMetrics.height();
+        }
+    };
+    auto *qThread = QThread::create(lambda);
+    qThread->start();
+    qThread->wait();
+
+    std::thread stdThread(lambda);
+    stdThread.join();
+    QVERIFY2(!messageHandler.receivedMessage, qPrintable(messageHandler.messages.join('\n')));
 }
 
 QTEST_MAIN(tst_QFontCache)

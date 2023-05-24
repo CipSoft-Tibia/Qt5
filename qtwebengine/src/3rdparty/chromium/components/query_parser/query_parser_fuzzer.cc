@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,12 +26,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   FuzzedDataProvider data_provider(data, size);
   const query_parser::MatchingAlgorithm matching_alg =
       data_provider.ConsumeEnum<query_parser::MatchingAlgorithm>();
-  const base::string16 query16 = base::UTF8ToUTF16(
+  const std::u16string query16 = base::UTF8ToUTF16(
       data_provider.ConsumeBytesAsString(data_provider.remaining_bytes()));
 
-  query_parser::QueryParser parser;
-  std::vector<base::string16> words;
-  parser.ParseQueryWords(query16, matching_alg, &words);
+  std::vector<std::u16string> words;
+  query_parser::QueryParser::ParseQueryWords(query16, matching_alg, &words);
 
   return 0;
 }

@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "hangul_p.h"
 
@@ -63,7 +37,7 @@ const int Hangul::SCount = Hangul::LCount * Hangul::NCount; // 11172
 QString Hangul::decompose(const QString &source)
 {
     QString result;
-    const int len = source.length();
+    const int len = source.size();
     for (int i = 0; i < len; i++) {
         QChar ch = source.at(i);
         int SIndex = (int)ch.unicode() - SBase;
@@ -106,7 +80,7 @@ QString Hangul::decompose(const QString &source)
 
 QString Hangul::compose(const QString &source)
 {
-    const int len = source.length();
+    const int len = source.size();
     if (len == 0)
         return QString();
 
@@ -138,7 +112,7 @@ QString Hangul::compose(const QString &source)
                     TIndex = finals.indexOf(unicode);
                     if (TIndex != -1) {
                         last = QChar((int)lastUnicode + TIndex);
-                        result.replace(result.length() - 1, 1, last);
+                        result.replace(result.size() - 1, 1, last);
                         continue;
                     }
 
@@ -163,7 +137,7 @@ QString Hangul::compose(const QString &source)
                                 HangulMedialIndex VIndexD = it.value();
                                 int VDiff = (int)VIndexD - (int)VIndexA;
                                 last = QChar((int)lastUnicode + VDiff * TCount);
-                                result.replace(result.length() - 1, 1, last);
+                                result.replace(result.size() - 1, 1, last);
                                 continue;
                             }
                         }
@@ -188,7 +162,7 @@ QString Hangul::compose(const QString &source)
                             // Remove the previous final jamo from the syllable,
                             // making the current syllable of form LV
                             last = QChar((int)lastUnicode - TIndex);
-                            result.replace(result.length() - 1, 1, last);
+                            result.replace(result.size() - 1, 1, last);
 
                             // Make new syllable of form LV
                             last = QChar(SBase + (LIndex * VCount + VIndex) * TCount);
@@ -209,7 +183,7 @@ QString Hangul::compose(const QString &source)
                             HangulFinalIndex TIndexA, TIndexB;
                             unpackDoubleFinal(key, TIndexA, TIndexB);
                             last = QChar((int)lastUnicode - TIndex + (int)TIndexA);
-                            result.replace(result.length() - 1, 1, last);
+                            result.replace(result.size() - 1, 1, last);
 
                             // Add new syllable by combining the initial jamo
                             // and the current vowel
@@ -238,7 +212,7 @@ QString Hangul::compose(const QString &source)
                                 HangulFinalIndex TIndexD = it.value();
                                 int TDiff = (int)TIndexD - (int)TIndexA;
                                 last = QChar((int)lastUnicode + TDiff);
-                                result.replace(result.length() - 1, 1, last);
+                                result.replace(result.size() - 1, 1, last);
                                 continue;
                             }
                         }
@@ -257,7 +231,7 @@ QString Hangul::compose(const QString &source)
                     int VIndex = (int)unicode - VBase;
                     if (VIndex >= 0 && VIndex < VCount) {
                         last = QChar(SBase + (LIndex * VCount + VIndex) * TCount);
-                        result.replace(result.length() - 1, 1, last);
+                        result.replace(result.size() - 1, 1, last);
                         continue;
                     }
                 }

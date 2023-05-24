@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,8 @@
 #include <windows.h>
 #include <wtsapi32.h>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/no_destructor.h"
-#include "base/win/windows_version.h"
 #include "ui/base/win/session_change_observer.h"
 
 namespace ui {
@@ -25,13 +24,8 @@ bool IsSessionLocked() {
                                    WTSSessionInfoEx, &buffer, &buffer_length) &&
       buffer_length >= sizeof(WTSINFOEXW)) {
     auto* info = reinterpret_cast<WTSINFOEXW*>(buffer);
-    auto session_flags = info->Data.WTSInfoExLevel1.SessionFlags;
-    // For Windows 7 SessionFlags has inverted logic:
-    // https://msdn.microsoft.com/en-us/library/windows/desktop/ee621019.
-    if (base::win::GetVersion() == base::win::Version::WIN7)
-      is_locked = session_flags == WTS_SESSIONSTATE_UNLOCK;
-    else
-      is_locked = session_flags == WTS_SESSIONSTATE_LOCK;
+    is_locked =
+        info->Data.WTSInfoExLevel1.SessionFlags == WTS_SESSIONSTATE_LOCK;
   }
   if (buffer)
     ::WTSFreeMemory(buffer);
@@ -50,6 +44,9 @@ class SessionLockedObserver {
                                 base::Unretained(this))),
         screen_locked_(IsSessionLocked()) {}
 
+  SessionLockedObserver(const SessionLockedObserver&) = delete;
+  SessionLockedObserver& operator=(const SessionLockedObserver&) = delete;
+
   bool IsLocked() const { return screen_locked_; }
 
  private:
@@ -63,8 +60,6 @@ class SessionLockedObserver {
   }
   SessionChangeObserver session_change_observer_;
   bool screen_locked_;
-
-  DISALLOW_COPY_AND_ASSIGN(SessionLockedObserver);
 };
 
 }  // namespace

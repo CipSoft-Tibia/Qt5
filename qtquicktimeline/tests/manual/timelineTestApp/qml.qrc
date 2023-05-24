@@ -11,5 +11,10 @@
         <file>test08.qml</file>
         <file>Circle.qml</file>
         <file>test09.qml</file>
+        <file>test10.qml</file>
+        <file>animate_color.cbor</file>
+        <file>animate_vector3d.cbor</file>
+        <file>animate_bool.cbor</file>
+        <file>animate_real.cbor</file>
     </qresource>
 </RCC>

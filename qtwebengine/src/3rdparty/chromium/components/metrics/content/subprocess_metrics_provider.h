@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 #include "base/gtest_prod_util.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/statistics_recorder.h"
-#include "base/scoped_observer.h"
+#include "base/scoped_multi_source_observation.h"
 #include "base/threading/thread_checker.h"
 #include "components/metrics/metrics_provider.h"
 #include "content/public/browser/browser_child_process_observer.h"
@@ -38,6 +38,11 @@ class SubprocessMetricsProvider
       public content::RenderProcessHostObserver {
  public:
   SubprocessMetricsProvider();
+
+  SubprocessMetricsProvider(const SubprocessMetricsProvider&) = delete;
+  SubprocessMetricsProvider& operator=(const SubprocessMetricsProvider&) =
+      delete;
+
   ~SubprocessMetricsProvider() override;
 
   // Merge histograms for all subprocesses. This is used by tests that don't
@@ -74,7 +79,7 @@ class SubprocessMetricsProvider
   void MergeHistogramDeltas() override;
 
   // content::BrowserChildProcessObserver:
-  void BrowserChildProcessHostConnected(
+  void BrowserChildProcessLaunchedAndConnected(
       const content::ChildProcessData& data) override;
   void BrowserChildProcessHostDisconnected(
       const content::ChildProcessData& data) override;
@@ -96,11 +101,6 @@ class SubprocessMetricsProvider
       const content::ChildProcessTerminationInfo& info) override;
   void RenderProcessHostDestroyed(content::RenderProcessHost* host) override;
 
-  // Gets a histogram allocator from a subprocess. This must be called on
-  // the IO thread.
-  static std::unique_ptr<base::PersistentHistogramAllocator>
-  GetSubprocessHistogramAllocatorOnIOThread(int id);
-
   THREAD_CHECKER(thread_checker_);
 
   // All of the shared-persistent-allocators for known sub-processes.
@@ -109,12 +109,11 @@ class SubprocessMetricsProvider
   AllocatorByIdMap allocators_by_id_;
 
   // Track all observed render processes to un-observe them on exit.
-  ScopedObserver<content::RenderProcessHost, content::RenderProcessHostObserver>
-      scoped_observer_{this};
+  base::ScopedMultiSourceObservation<content::RenderProcessHost,
+                                     content::RenderProcessHostObserver>
+      scoped_observations_{this};
 
   base::WeakPtrFactory<SubprocessMetricsProvider> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(SubprocessMetricsProvider);
 };
 
 }  // namespace metrics

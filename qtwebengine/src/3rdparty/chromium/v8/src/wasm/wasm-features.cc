@@ -15,21 +15,37 @@ namespace wasm {
 WasmFeatures WasmFeatures::FromFlags() {
   WasmFeatures features = WasmFeatures::None();
 #define FLAG_REF(feat, ...) \
-  if (FLAG_experimental_wasm_##feat) features.Add(kFeature_##feat);
-  FOREACH_WASM_FEATURE(FLAG_REF)
+  if (v8_flags.experimental_wasm_##feat) features.Add(kFeature_##feat);
+  FOREACH_WASM_FEATURE_FLAG(FLAG_REF)
 #undef FLAG_REF
+#define NON_FLAG_REF(feat, ...) features.Add(kFeature_##feat);
+  FOREACH_WASM_NON_FLAG_FEATURE(NON_FLAG_REF)
+#undef NON_FLAG_REF
   return features;
 }
 
 // static
 WasmFeatures WasmFeatures::FromIsolate(Isolate* isolate) {
+  return FromContext(isolate, handle(isolate->context(), isolate));
+}
+
+// static
+WasmFeatures WasmFeatures::FromContext(Isolate* isolate,
+                                       Handle<Context> context) {
   WasmFeatures features = WasmFeatures::FromFlags();
-  if (isolate->AreWasmThreadsEnabled(handle(isolate->context(), isolate))) {
-    features.Add(kFeature_threads);
+  if (isolate->IsWasmGCEnabled(context)) {
+    features.Add(kFeature_gc);
+    // Also enable typed function references, since the commandline flag
+    // implication won't do that for us in this case.
+    features.Add(kFeature_typed_funcref);
   }
-  if (isolate->IsWasmSimdEnabled(handle(isolate->context(), isolate))) {
-    features.Add(kFeature_simd);
+  if (isolate->IsWasmStringRefEnabled(context)) {
+    features.Add(kFeature_stringref);
   }
+  if (isolate->IsWasmInliningEnabled(context)) {
+    features.Add(kFeature_inlining);
+  }
+  // This space intentionally left blank for future Wasm origin trials.
   return features;
 }
 

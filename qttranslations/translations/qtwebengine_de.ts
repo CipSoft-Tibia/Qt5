@@ -132,85 +132,6 @@
     </message>
 </context>
 <context>
-    <name>QQuickWebEngineView</name>
-    <message>
-        <source>Stop</source>
-        <translation>Stop</translation>
-    </message>
-    <message>
-        <source>Reload and Bypass Cache</source>
-        <translation>Unter Umgehung des Caches neu laden</translation>
-    </message>
-    <message>
-        <source>Open link in this window</source>
-        <translation>Link in diesem Fenster öffnen</translation>
-    </message>
-    <message>
-        <source>Toggle Play/Pause</source>
-        <translation>Abspielen/Pausieren umschalten</translation>
-    </message>
-    <message>
-        <source>Toggle Mute</source>
-        <translation>Stummschaltung umschalten</translation>
-    </message>
-    <message>
-        <source>Close Page</source>
-        <translation>Seite schließen</translation>
-    </message>
-    <message>
-        <source>Unselect</source>
-        <translation>Auswahl aufheben</translation>
-    </message>
-    <message>
-        <source>&amp;Bold</source>
-        <translation>&amp;Fett</translation>
-    </message>
-    <message>
-        <source>&amp;Italic</source>
-        <translation>&amp;Kursiv</translation>
-    </message>
-    <message>
-        <source>&amp;Underline</source>
-        <translation>&amp;Unterstrichen</translation>
-    </message>
-    <message>
-        <source>&amp;Strikethrough</source>
-        <translation>&amp;Durchgestrichen</translation>
-    </message>
-    <message>
-        <source>Align &amp;Left</source>
-        <translation>&amp;Linksbündig ausrichten</translation>
-    </message>
-    <message>
-        <source>Align &amp;Center</source>
-        <translation>&amp;Mittig ausrichten</translation>
-    </message>
-    <message>
-        <source>Align &amp;Right</source>
-        <translation>&amp;Rechtsbündig ausrichten</translation>
-    </message>
-    <message>
-        <source>Align &amp;Justified</source>
-        <translation>&amp;Blocksatz</translation>
-    </message>
-    <message>
-        <source>&amp;Indent</source>
-        <translation>&amp;Einrücken</translation>
-    </message>
-    <message>
-        <source>&amp;Outdent</source>
-        <translation>&amp;Ausrücken</translation>
-    </message>
-    <message>
-        <source>Insert &amp;Ordered List</source>
-        <translation>&amp;Nummerierte Liste einfügen</translation>
-    </message>
-    <message>
-        <source>Insert &amp;Unordered List</source>
-        <translation>&amp;Liste einfügen</translation>
-    </message>
-</context>
-<context>
     <name>QWebEnginePage</name>
     <message>
         <source>Stop</source>
@@ -235,6 +156,14 @@
     <message>
         <source>Unselect</source>
         <translation>Auswahl aufheben</translation>
+    </message>
+    <message>
+        <source>Change text direction left to right</source>
+        <translation>Schriftrichtung auf links nach rechts ändern</translation>
+    </message>
+    <message>
+        <source>Change text direction right to left</source>
+        <translation>Schriftrichtung auf rechts nach links ändern</translation>
     </message>
     <message>
         <source>Are you sure you want to leave this page? Changes that you made may not be saved.</source>
@@ -295,32 +224,6 @@
     <message>
         <source>Insert &amp;Unordered List</source>
         <translation>&amp;Liste einfügen</translation>
-    </message>
-    <message>
-        <source>Select folder to upload</source>
-        <translation>Verzeichnis zum Hochladen</translation>
-    </message>
-</context>
-<context>
-    <name>QtWebEnginePlugin</name>
-    <message>
-        <source>Cannot create separate instance of WebEngineNewViewRequest</source>
-        <translation>Es kann keine separate Instanz der Klasse WebEngineNewViewRequest erstellt werden</translation>
-    </message>
-    <message>
-        <source>Cannot create separate instance of %1</source>
-        <translation>Es kann keine separate Instanz der Klasse %1 erstellt werden</translation>
-    </message>
-</context>
-<context>
-    <name>QtWebEngineTestSupportPlugin</name>
-    <message>
-        <source>Cannot create a separate instance of WebEngineErrorPage</source>
-        <translation>Es kann keine separate Instanz der Klasse WebEngineErrorPage erstellt werden</translation>
-    </message>
-    <message>
-        <source>Cannot create a separate instance of WebEngineTestEvent</source>
-        <translation>Es kann keine separate Instanz der Klasse WebEngineTestEvent erstellt werden</translation>
     </message>
 </context>
 <context>
@@ -462,6 +365,140 @@
     <message>
         <source>HTTP-POST data can only be sent over HTTP(S) protocol</source>
         <translation>HTTP-POST-Daten können nur über das HTTP(S)-Protokoll versendet werden</translation>
+    </message>
+</context>
+<context>
+    <name>FilePickerController</name>
+    <message>
+        <source>Accepted types (%1)</source>
+        <translation>Zulässige Typen (%1)</translation>
+    </message>
+</context>
+<context>
+    <name>QWebEngineView</name>
+    <message>
+        <source>Select folder to upload</source>
+        <translation>Verzeichnis zum Hochladen</translation>
+    </message>
+</context>
+<context>
+    <name>AlertDialog</name>
+    <message>
+        <source>Alert Dialog</source>
+        <translation>Benachrichtigungsdialog</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>OK</translation>
+    </message>
+</context>
+<context>
+    <name>AuthenticationDialog</name>
+    <message>
+        <source>Authentication Required</source>
+        <translation>Authentifizierung erforderlich</translation>
+    </message>
+    <message>
+        <source>Username:</source>
+        <translation>Benutzername:</translation>
+    </message>
+    <message>
+        <source>Password:</source>
+        <translation>Passwort:</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Abbrechen</translation>
+    </message>
+    <message>
+        <source>Log In</source>
+        <translation>Einloggen</translation>
+    </message>
+</context>
+<context>
+    <name>ColorDialog</name>
+    <message>
+        <source>Color Picker Dialog</source>
+        <translation>Farbauswahldialog</translation>
+    </message>
+    <message>
+        <source>Copy color</source>
+        <translation>Farbe kopieren</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>Einfügen</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>Anwenden</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Abbrechen</translation>
+    </message>
+</context>
+<context>
+    <name>ConfirmDialog</name>
+    <message>
+        <source>Confirm Dialog</source>
+        <translation>Bestätigungsdialog</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>OK</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Abbrechen</translation>
+    </message>
+</context>
+<context>
+    <name>PromptDialog</name>
+    <message>
+        <source>Prompt Dialog</source>
+        <translation>Abfragedialog</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>OK</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Abbrechen</translation>
+    </message>
+</context>
+<context>
+    <name>PdfLinkDelegate</name>
+    <message>
+        <source>Page %1 location %2, %3 zoom %4</source>
+        <translation>Seite %1 Stelle %2, %3 Vergrößerung %4</translation>
+    </message>
+</context>
+<context>
+    <name>QPdfLinkModel</name>
+    <message>
+        <source>Page %1 location %2, %3 zoom %4</source>
+        <translation>Seite %1 Stelle %2, %3 Vergrößerung %4</translation>
+    </message>
+</context>
+<context>
+    <name>QtWebEngineWidgetUI::TouchSelectionMenuWidget</name>
+    <message>
+        <source>Cut</source>
+        <translation>Ausschneiden</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Kopieren</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>Einfügen</translation>
+    </message>
+    <message>
+        <source>...</source>
+        <translation>...</translation>
     </message>
 </context>
 </TS>

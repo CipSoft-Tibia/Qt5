@@ -26,11 +26,11 @@
 #include "third_party/blink/renderer/core/layout/layout_theme_mobile.h"
 
 #include "build/build_config.h"
-#include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_theme_engine.h"
 #include "third_party/blink/public/resources/grit/blink_resources.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/platform/data_resource_helper.h"
+#include "third_party/blink/renderer/platform/theme/web_theme_engine_helper.h"
 #include "third_party/blink/renderer/platform/web_test_support.h"
 
 namespace blink {
@@ -52,17 +52,13 @@ String LayoutThemeMobile::ExtraFullscreenStyleSheet() {
   return UncompressResourceAsASCIIString(IDR_UASTYLE_FULLSCREEN_ANDROID_CSS);
 }
 
-void LayoutThemeMobile::AdjustInnerSpinButtonStyle(ComputedStyle& style) const {
-  if (WebTestSupport::IsRunningWebTest()) {
-    // Match Linux spin button style in web tests.
-    // FIXME: Consider removing the conditional if a future Android theme
-    // matches this.
-    IntSize size = Platform::Current()->ThemeEngine()->GetSize(
-        WebThemeEngine::kPartInnerSpinButton);
-
-    style.SetWidth(Length::Fixed(size.Width()));
-    style.SetMinWidth(Length::Fixed(size.Width()));
-  }
+void LayoutThemeMobile::AdjustInnerSpinButtonStyle(
+    ComputedStyleBuilder& builder) const {
+  // Match Linux spin button style in web tests.
+  // FIXME: Consider removing the conditional if a future Android theme matches
+  // this.
+  if (WebTestSupport::IsRunningWebTest())
+    LayoutThemeDefault::AdjustInnerSpinButtonStyle(builder);
 }
 
 }  // namespace blink

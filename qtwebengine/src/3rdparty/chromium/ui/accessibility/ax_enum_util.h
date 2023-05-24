@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,10 @@
 #include <map>
 #include <string>
 
+#include "base/containers/contains.h"
 #include "base/logging.h"
 #include "base/no_destructor.h"
 #include "base/notreached.h"
-#include "base/stl_util.h"
 #include "ui/accessibility/ax_base_export.h"
 #include "ui/accessibility/ax_enums.mojom-forward.h"
 
@@ -35,10 +35,6 @@ AX_BASE_EXPORT const char* ToString(ax::mojom::ActionFlags action_flags);
 // ax::mojom::DefaultActionVerb
 AX_BASE_EXPORT const char* ToString(
     ax::mojom::DefaultActionVerb default_action_verb);
-
-// Returns a localized string that corresponds to the name of the given action.
-AX_BASE_EXPORT std::string ToLocalizedString(
-    ax::mojom::DefaultActionVerb action_verb);
 
 // ax::mojom::Mutation
 AX_BASE_EXPORT const char* ToString(ax::mojom::Mutation mutation);
@@ -69,6 +65,9 @@ AX_BASE_EXPORT const char* ToString(ax::mojom::ListStyle list_style);
 
 // ax::mojom::MarkerType
 AX_BASE_EXPORT const char* ToString(ax::mojom::MarkerType marker_type);
+
+// ax::mojom::HighlightType
+AX_BASE_EXPORT const char* ToString(ax::mojom::HighlightType highlight_type);
 
 // ax::mojom::MoveDirection
 AX_BASE_EXPORT const char* ToString(ax::mojom::MoveDirection move_direction);
@@ -105,6 +104,9 @@ AX_BASE_EXPORT const char* ToString(
 
 // ax::mojom::HasPopup
 AX_BASE_EXPORT const char* ToString(ax::mojom::HasPopup has_popup);
+
+// ax::mojom::IsPopup
+AX_BASE_EXPORT const char* ToString(ax::mojom::IsPopup is_popup);
 
 // ax::mojom::InvalidState
 AX_BASE_EXPORT const char* ToString(ax::mojom::InvalidState invalid_state);
@@ -143,11 +145,8 @@ AX_BASE_EXPORT const char* ToString(ax::mojom::ImageAnnotationStatus status);
 // ax::mojom::Dropeffect
 AX_BASE_EXPORT const char* ToString(ax::mojom::Dropeffect dropeffect);
 
-// Convert from the string representation of an enum defined in ax_enums.mojom
-// into the enum value. The first time this is called, builds up a map.
-// Relies on the existence of ui::ToString(enum).
 template <typename T>
-T ParseAXEnum(const char* attribute) {
+bool MaybeParseAXEnum(const char* attribute, T* result) {
   static base::NoDestructor<std::map<std::string, T>> attr_map;
   if (attr_map->empty()) {
     (*attr_map)[""] = T::kNone;
@@ -160,8 +159,21 @@ T ParseAXEnum(const char* attribute) {
     }
   }
   auto iter = attr_map->find(attribute);
-  if (iter != attr_map->end())
-    return iter->second;
+  if (iter != attr_map->end()) {
+    *result = iter->second;
+    return true;
+  }
+  return false;
+}
+
+// Convert from the string representation of an enum defined in ax_enums.mojom
+// into the enum value. The first time this is called, builds up a map.
+// Relies on the existence of ui::ToString(enum).
+template <typename T>
+T ParseAXEnum(const char* attribute) {
+  T result;
+  if (MaybeParseAXEnum(attribute, &result))
+    return result;
 
   LOG(ERROR) << "Could not parse: " << attribute;
   NOTREACHED();

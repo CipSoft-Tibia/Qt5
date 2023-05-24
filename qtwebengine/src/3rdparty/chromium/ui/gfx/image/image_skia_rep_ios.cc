@@ -1,9 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/gfx/image/image_skia_rep_ios.h"
 
+#include "base/check_op.h"
 #include "ui/gfx/color_palette.h"
 
 namespace gfx {
@@ -22,6 +23,8 @@ ImageSkiaRep::ImageSkiaRep(const SkBitmap& src, float scale)
     : pixel_size_(gfx::Size(src.width(), src.height())),
       bitmap_(src),
       scale_(scale) {
+  CHECK_EQ(src.colorType(), kN32_SkColorType);
+  DCHECK(!bitmap_.drawsNothing());
   bitmap_.setImmutable();
 }
 

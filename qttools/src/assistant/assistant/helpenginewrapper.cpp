@@ -1,41 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "tracer.h"
 
 #include "helpenginewrapper.h"
 #include "../shared/collectionconfiguration.h"
-#include "../help/qhelpengine_p.h"
 
 #include <QtCore/QDateTime>
 #include <QtCore/QFileInfo>
 #include <QtCore/QFileSystemWatcher>
-#include <QtCore/QPair>
-#include <QtCore/QSharedPointer>
 #include <QtCore/QTimer>
 #include <QtHelp/QHelpContentModel>
 #include <QtHelp/QHelpEngine>
@@ -43,6 +15,9 @@
 #include <QtHelp/QHelpIndexModel>
 #include <QtHelp/QHelpLink>
 #include <QtHelp/QHelpSearchEngine>
+
+#include <map>
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -101,11 +76,19 @@ private:
 
     QHelpEngine * const m_helpEngine;
     QFileSystemWatcher * const m_qchWatcher;
-    typedef QPair<QDateTime, QSharedPointer<TimeoutForwarder> > RecentSignal;
-    QMap<QString, RecentSignal> m_recentQchUpdates;
+    struct RecentSignal {
+        QDateTime timestamp;
+        std::unique_ptr<TimeoutForwarder> forwarder;
+    };
+    std::map<QString, RecentSignal> m_recentQchUpdates;
 };
 
 HelpEngineWrapper *HelpEngineWrapper::helpEngineWrapper = nullptr;
+
+HelpEngineWrapper &HelpEngineWrapper::instance()
+{
+    return instance({});
+}
 
 HelpEngineWrapper &HelpEngineWrapper::instance(const QString &collectionFile)
 {
@@ -698,8 +681,9 @@ HelpEngineWrapperPrivate::HelpEngineWrapperPrivate(const QString &collectionFile
       m_qchWatcher(new QFileSystemWatcher(this))
 {
     TRACE_OBJ
-    initFileSystemWatchers();
+    m_helpEngine->setReadOnly(false);
     m_helpEngine->setUsesFilterEngine(true);
+    initFileSystemWatchers();
 }
 
 void HelpEngineWrapperPrivate::initFileSystemWatchers()
@@ -722,8 +706,8 @@ void HelpEngineWrapperPrivate::qchFileChanged(const QString &fileName)
 void HelpEngineWrapperPrivate::checkDocFilesWatched()
 {
     TRACE_OBJ
-    const int watchedFilesCount = m_qchWatcher->files().count();
-    const int docFilesCount = m_helpEngine->registeredDocumentations().count();
+    const int watchedFilesCount = m_qchWatcher->files().size();
+    const int docFilesCount = m_helpEngine->registeredDocumentations().size();
     if (watchedFilesCount != docFilesCount) {
         qWarning("Strange: Have %d docs, but %d are being watched",
                  watchedFilesCount, docFilesCount);
@@ -752,7 +736,7 @@ void HelpEngineWrapperPrivate::qchFileChanged(const QString &fileName,
      * signal more than  once.
      */
     if (ns.isEmpty()) {
-        m_recentQchUpdates.remove(fileName);
+        m_recentQchUpdates.erase(fileName);
         return;
     }
 
@@ -763,23 +747,26 @@ void HelpEngineWrapperPrivate::qchFileChanged(const QString &fileName,
      */
 
     const auto &it = m_recentQchUpdates.find(fileName);
-    const QDateTime &now = QDateTime::currentDateTime();
+    const QDateTime now = QDateTime::currentDateTimeUtc();
 
      // Case 1: This is the first recent signal for the file.
     if (it == m_recentQchUpdates.end()) {
-        QSharedPointer<TimeoutForwarder> forwarder(new TimeoutForwarder(fileName));
-        m_recentQchUpdates.insert(fileName, RecentSignal(now, forwarder));
-        QTimer::singleShot(UpdateGracePeriod, forwarder.data(),
+        auto forwarder = std::make_unique<TimeoutForwarder>(fileName);
+        QTimer::singleShot(UpdateGracePeriod, forwarder.get(),
                            &TimeoutForwarder::forward);
+        m_recentQchUpdates.emplace(fileName,
+                                   RecentSignal{std::move(now), std::move(forwarder)});
         return;
     }
 
+    auto &[key, entry] = *it;
+
     // Case 2: The last signal for this file has not expired yet.
-    if (it.value().first > now.addMSecs(-UpdateGracePeriod)) {
+    if (entry.timestamp > now.addMSecs(-UpdateGracePeriod)) {
         if (!fromTimeout)
-            it.value().first = now;
+            entry.timestamp = now;
         else
-            QTimer::singleShot(UpdateGracePeriod, it.value().second.data(),
+            QTimer::singleShot(UpdateGracePeriod, entry.forwarder.get(),
                                &TimeoutForwarder::forward);
         return;
     }

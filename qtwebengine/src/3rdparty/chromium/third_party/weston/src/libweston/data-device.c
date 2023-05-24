@@ -33,6 +33,7 @@
 #include <assert.h>
 
 #include <libweston/libweston.h>
+#include "libweston-internal.h"
 #include "shared/helpers.h"
 #include "shared/timespec-util.h"
 
@@ -1152,7 +1153,9 @@ weston_seat_set_selection(struct weston_seat *seat,
 
 	seat->selection_data_source = source;
 	seat->selection_serial = serial;
-	source->set_selection = true;
+
+	if (source)
+		source->set_selection = true;
 
 	if (keyboard)
 		focus = keyboard->focus;

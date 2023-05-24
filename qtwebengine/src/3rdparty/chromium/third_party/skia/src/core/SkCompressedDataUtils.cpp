@@ -7,10 +7,12 @@
 
 #include "src/core/SkCompressedDataUtils.h"
 
+#include "include/core/SkBitmap.h"
 #include "include/core/SkColorPriv.h"
 #include "include/core/SkData.h"
 #include "include/private/SkColorData.h"
-#include "src/core/SkMathPriv.h"
+#include "include/private/base/SkTPin.h"
+#include "src/base/SkMathPriv.h"
 #include "src/core/SkMipmap.h"
 
 struct ETC1Block {
@@ -238,15 +240,14 @@ bool SkDecompress(sk_sp<SkData> data,
     }
 
     SkUNREACHABLE;
-    return false;
 }
 
 size_t SkCompressedDataSize(SkImage::CompressionType type, SkISize dimensions,
-                            SkTArray<size_t>* individualMipOffsets, bool mipMapped) {
-    SkASSERT(!individualMipOffsets || !individualMipOffsets->count());
+                            SkTArray<size_t>* individualMipOffsets, bool mipmapped) {
+    SkASSERT(!individualMipOffsets || !individualMipOffsets->size());
 
     int numMipLevels = 1;
-    if (mipMapped) {
+    if (mipmapped) {
         numMipLevels = SkMipmap::ComputeLevelCount(dimensions.width(), dimensions.height()) + 1;
     }
 
@@ -265,7 +266,7 @@ size_t SkCompressedDataSize(SkImage::CompressionType type, SkISize dimensions,
                     individualMipOffsets->push_back(totalSize);
                 }
 
-                static_assert(sizeof(ETC1Block) == sizeof(BC1Block), "");
+                static_assert(sizeof(ETC1Block) == sizeof(BC1Block));
                 totalSize += numBlocks * sizeof(ETC1Block);
 
                 dimensions = {std::max(1, dimensions.width()/2), std::max(1, dimensions.height()/2)};
@@ -291,6 +292,6 @@ size_t SkCompressedBlockSize(SkImage::CompressionType type) {
 }
 
 size_t SkCompressedFormatDataSize(SkImage::CompressionType compressionType,
-                                  SkISize dimensions, bool mipMapped) {
-    return SkCompressedDataSize(compressionType, dimensions, nullptr, mipMapped);
+                                  SkISize dimensions, bool mipmapped) {
+    return SkCompressedDataSize(compressionType, dimensions, nullptr, mipmapped);
 }

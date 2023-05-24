@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,7 +18,7 @@ import org.chromium.base.test.util.Feature;
  * Unit tests for the {@link NfcBlocklist} class.
  */
 @RunWith(BaseRobolectricTestRunner.class)
-@Config(sdk = 21, manifest = Config.NONE)
+@Config(manifest = Config.NONE)
 public class NfcBlocklistTest {
     // Static historical bytes
     private static final byte[] YUBIKEY_NEO_HISTORICAL_BYTES = new byte[] {

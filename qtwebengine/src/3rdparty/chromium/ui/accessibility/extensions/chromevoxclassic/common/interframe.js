@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -132,7 +132,7 @@ cvox.Interframe.addListener = function(listener) {
 cvox.Interframe.sendMessageToWindow = function(message, window) {
   var encodedMessage = cvox.Interframe.IF_MSG_PREFIX +
       cvox.ChromeVoxJSON.stringify(message, null, null);
-  window.postMessage(encodedMessage, '*');
+  window.postMessage(encodedMessage, '*' /* target origin */);
 };
 
 /**

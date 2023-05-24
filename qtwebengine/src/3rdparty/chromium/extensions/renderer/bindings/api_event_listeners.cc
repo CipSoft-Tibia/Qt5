@@ -1,15 +1,16 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/renderer/bindings/api_event_listeners.h"
 
-#include <algorithm>
 #include <memory>
 
+#include "base/containers/contains.h"
+#include "base/ranges/algorithm.h"
 #include "content/public/renderer/v8_value_converter.h"
-#include "extensions/common/event_filtering_info.h"
 #include "extensions/common/event_matcher.h"
+#include "extensions/common/mojom/event_dispatcher.mojom.h"
 #include "extensions/renderer/bindings/listener_tracker.h"
 #include "gin/converter.h"
 
@@ -25,19 +26,19 @@ const int kIgnoreRoutingId = 0;
 const char kErrorTooManyListeners[] = "Too many listeners.";
 
 // Pseudo-validates the given |filter| and converts it into a
-// base::DictionaryValue. Returns true on success.
+// base::Value::Dict. Returns true on success.
 // TODO(devlin): This "validation" is pretty terrible. It matches the JS
 // equivalent, but it's lousy and makes it easy for users to get it wrong.
 // We should generate an argument spec for it and match it exactly.
 bool ValidateFilter(v8::Local<v8::Context> context,
                     v8::Local<v8::Object> filter,
-                    std::unique_ptr<base::DictionaryValue>* filter_dict,
+                    std::unique_ptr<base::Value::Dict>* filter_dict,
                     std::string* error) {
   v8::Isolate* isolate = context->GetIsolate();
   v8::HandleScope handle_scope(isolate);
 
   if (filter.IsEmpty()) {
-    *filter_dict = std::make_unique<base::DictionaryValue>();
+    *filter_dict = std::make_unique<base::Value::Dict>();
     return true;
   }
 
@@ -70,7 +71,7 @@ bool ValidateFilter(v8::Local<v8::Context> context,
     return false;
   }
 
-  *filter_dict = base::DictionaryValue::From(std::move(value));
+  *filter_dict = std::make_unique<base::Value::Dict>(value->GetDict().Clone());
   return true;
 }
 
@@ -139,7 +140,7 @@ bool UnfilteredEventListeners::AddListener(v8::Local<v8::Function> listener,
 
 void UnfilteredEventListeners::RemoveListener(v8::Local<v8::Function> listener,
                                               v8::Local<v8::Context> context) {
-  auto iter = std::find(listeners_.begin(), listeners_.end(), listener);
+  auto iter = base::ranges::find(listeners_, listener);
   if (iter == listeners_.end())
     return;
 
@@ -151,8 +152,7 @@ void UnfilteredEventListeners::RemoveListener(v8::Local<v8::Function> listener,
 }
 
 bool UnfilteredEventListeners::HasListener(v8::Local<v8::Function> listener) {
-  return std::find(listeners_.begin(), listeners_.end(), listener) !=
-         listeners_.end();
+  return base::Contains(listeners_, listener);
 }
 
 size_t UnfilteredEventListeners::GetNumListeners() {
@@ -160,7 +160,7 @@ size_t UnfilteredEventListeners::GetNumListeners() {
 }
 
 std::vector<v8::Local<v8::Function>> UnfilteredEventListeners::GetListeners(
-    const EventFilteringInfo* filter,
+    mojom::EventFilteringInfoPtr filter,
     v8::Local<v8::Context> context) {
   std::vector<v8::Local<v8::Function>> listeners;
   listeners.reserve(listeners_.size());
@@ -258,11 +258,11 @@ bool FilteredEventListeners::AddListener(v8::Local<v8::Function> listener,
     return false;
   }
 
-  std::unique_ptr<base::DictionaryValue> filter_dict;
+  std::unique_ptr<base::Value::Dict> filter_dict;
   if (!ValidateFilter(context, filter, &filter_dict, error))
     return false;
 
-  base::DictionaryValue* filter_weak = filter_dict.get();
+  base::Value::Dict* filter_weak = filter_dict.get();
   int filter_id = -1;
   bool was_first_of_kind = false;
   LazilySetContextOwner(context);
@@ -290,7 +290,7 @@ bool FilteredEventListeners::AddListener(v8::Local<v8::Function> listener,
 
 void FilteredEventListeners::RemoveListener(v8::Local<v8::Function> listener,
                                             v8::Local<v8::Context> context) {
-  auto iter = std::find(listeners_.begin(), listeners_.end(), listener);
+  auto iter = base::ranges::find(listeners_, listener);
   if (iter == listeners_.end())
     return;
 
@@ -301,8 +301,7 @@ void FilteredEventListeners::RemoveListener(v8::Local<v8::Function> listener,
 }
 
 bool FilteredEventListeners::HasListener(v8::Local<v8::Function> listener) {
-  return std::find(listeners_.begin(), listeners_.end(), listener) !=
-         listeners_.end();
+  return base::Contains(listeners_, listener);
 }
 
 size_t FilteredEventListeners::GetNumListeners() {
@@ -310,10 +309,12 @@ size_t FilteredEventListeners::GetNumListeners() {
 }
 
 std::vector<v8::Local<v8::Function>> FilteredEventListeners::GetListeners(
-    const EventFilteringInfo* filter,
+    mojom::EventFilteringInfoPtr filter,
     v8::Local<v8::Context> context) {
   std::set<int> ids = listener_tracker_->GetMatchingFilteredListeners(
-      event_name_, filter ? *filter : EventFilteringInfo(), kIgnoreRoutingId);
+      event_name_,
+      filter ? std::move(filter) : mojom::EventFilteringInfo::New(),
+      kIgnoreRoutingId);
 
   std::vector<v8::Local<v8::Function>> listeners;
   listeners.reserve(ids.size());
@@ -347,7 +348,7 @@ void FilteredEventListeners::InvalidateListener(
       << "The context owner must be instantiated if listeners were removed.";
 
   bool was_last_of_kind = false;
-  std::unique_ptr<base::DictionaryValue> filter;
+  std::unique_ptr<base::Value::Dict> filter;
   std::tie(was_last_of_kind, filter) =
       listener_tracker_->RemoveFilteredListener(context_owner_id_, event_name_,
                                                 listener.filter_id);

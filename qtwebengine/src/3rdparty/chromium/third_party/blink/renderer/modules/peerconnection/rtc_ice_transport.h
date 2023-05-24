@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,12 +8,14 @@
 #include <memory>
 #include <utility>
 
+#include "base/task/single_thread_task_runner.h"
 #include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_rtc_ice_candidate_pair.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_rtc_ice_parameters.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
 #include "third_party/blink/renderer/modules/event_target_modules.h"
 #include "third_party/blink/renderer/modules/peerconnection/adapters/ice_transport_proxy.h"
+#include "third_party/blink/renderer/platform/heap/prefinalizer.h"
 #include "third_party/blink/renderer/platform/scheduler/public/frame_scheduler.h"
 #include "third_party/webrtc/api/transport/enums.h"
 
@@ -27,7 +29,6 @@ class ExceptionState;
 class RTCIceCandidate;
 class RTCIceGatherOptions;
 class IceTransportAdapterCrossThreadFactory;
-class RTCQuicTransport;
 class RTCPeerConnection;
 
 // Blink bindings for the RTCIceTransport JavaScript object.
@@ -57,7 +58,6 @@ class MODULES_EXPORT RTCIceTransport final
     kDisposed,
   };
 
-  static RTCIceTransport* Create(ExecutionContext* context);
   static RTCIceTransport* Create(
       ExecutionContext* context,
       rtc::scoped_refptr<webrtc::IceTransportInterface> ice_transport_channel,
@@ -92,14 +92,6 @@ class MODULES_EXPORT RTCIceTransport final
   // Returns true if the RTCIceTransport is in a terminal state.
   bool IsClosed() const { return state_ == webrtc::IceTransportState::kClosed; }
 
-  // An RTCQuicTransport can be connected to this RTCIceTransport. Only one can
-  // be connected at a time. The consumer will be automatically disconnected
-  // if stop() is called on this object. Otherwise, the RTCQuicTransport is
-  // responsible for disconnecting itself when it is done.
-  // ConnectConsumer returns an IceTransportProxy that can be used to connect
-  // a QuicTransportProxy. It may be called repeatedly with the same
-  // RTCQuicTransport.
-  bool HasConsumer() const;
   // If |this| was created from an RTCPeerConnection.
   //
   // Background: This is because we don't reuse an RTCIceTransport that has been
@@ -115,8 +107,6 @@ class MODULES_EXPORT RTCIceTransport final
   // -Asynchronously connect to the P2PTransport - if the count of connected
   // transports to the P2PTransportChannel is > 1, then throw an exception.
   bool IsFromPeerConnection() const;
-  IceTransportProxy* ConnectConsumer(RTCQuicTransport* consumer);
-  void DisconnectConsumer(RTCQuicTransport* consumer);
 
   // rtc_ice_transport.idl
   String role() const;
@@ -185,7 +175,6 @@ class MODULES_EXPORT RTCIceTransport final
   Member<RTCIceParameters> remote_parameters_;
   Member<RTCIceCandidatePair> selected_candidate_pair_;
 
-  Member<RTCQuicTransport> consumer_;
   const WeakMember<RTCPeerConnection> peer_connection_;
 
   // Handle to the WebRTC ICE transport. Created when this binding is

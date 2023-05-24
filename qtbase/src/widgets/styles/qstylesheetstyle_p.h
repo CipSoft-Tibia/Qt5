@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSTYLESHEETSTYLE_P_H
 #define QSTYLESHEETSTYLE_P_H
@@ -45,14 +9,14 @@
 
 #ifndef QT_NO_STYLE_STYLESHEET
 
+#include "QtWidgets/qapplication.h"
 #include "QtWidgets/qstyleoption.h"
 #include "QtCore/qhash.h"
-#include "QtGui/qevent.h"
-#include "QtCore/qvector.h"
+#include "QtCore/qlist.h"
 #include "QtCore/qset.h"
-#include "QtWidgets/qapplication.h"
-#include "private/qcssparser_p.h"
 #include "QtGui/qbrush.h"
+#include "QtGui/qevent.h"
+#include "private/qcssparser_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -158,7 +122,7 @@ private:
     void setProperties(QWidget *);
     void setGeometry(QWidget *);
     void unsetStyleSheetFont(QWidget *) const;
-    QVector<QCss::StyleRule> styleRules(const QObject *obj) const;
+    QList<QCss::StyleRule> styleRules(const QObject *obj) const;
     bool hasStyleRule(const QObject *obj, int part) const;
 
     QHash<QStyle::SubControl, QRect> titleBarLayout(const QWidget *w, const QStyleOptionTitleBar *tb) const;
@@ -169,6 +133,8 @@ private:
     static bool isNaturalChild(const QObject *obj);
     static QPixmap loadPixmap(const QString &fileName, const QObject *context);
     bool initObject(const QObject *obj) const;
+    void renderMenuItemIcon(const QStyleOptionMenuItem *mi, QPainter *p, const QWidget *w,
+                            const QRect &rect, QRenderRule &subRule) const;
 public:
     static int numinstances;
 
@@ -184,7 +150,7 @@ public Q_SLOTS:
     void objectDestroyed(QObject *);
     void styleDestroyed(QObject *);
 public:
-    QHash<const QObject *, QVector<QCss::StyleRule> > styleRulesCache;
+    QHash<const QObject *, QList<QCss::StyleRule>> styleRulesCache;
     QHash<const QObject *, QHash<int, bool> > hasStyleRuleCache;
     typedef QHash<int, QHash<quint64, QRenderRule> > QRenderRules;
     QHash<const QObject *, QRenderRules> renderRulesCache;
@@ -194,7 +160,7 @@ public:
     template <typename T>
     struct Tampered {
         T oldWidgetValue;
-        uint resolveMask;
+        decltype(std::declval<T>().resolveMask()) resolveMask;
 
         // only call this function on an rvalue *this (it mangles oldWidgetValue)
         T reverted(T current)
@@ -202,10 +168,10 @@ public:
         &&
 #endif
         {
-            oldWidgetValue.resolve(oldWidgetValue.resolve() & resolveMask);
-            current.resolve(current.resolve() & ~resolveMask);
+            oldWidgetValue.setResolveMask(oldWidgetValue.resolveMask() & resolveMask);
+            current.setResolveMask(current.resolveMask() & ~resolveMask);
             current.resolve(oldWidgetValue);
-            current.resolve(current.resolve() | oldWidgetValue.resolve());
+            current.setResolveMask(current.resolveMask() | oldWidgetValue.resolveMask());
             return current;
         }
     };
@@ -214,7 +180,7 @@ public:
 };
 template <typename T>
 class QTypeInfo<QStyleSheetStyleCaches::Tampered<T>>
-    : QTypeInfoMerger<QStyleSheetStyleCaches::Tampered<T>, T> {};
+    : public QTypeInfoMerger<QStyleSheetStyleCaches::Tampered<T>, T> {};
 
 
 // Returns a QStyleSheet from the given style.

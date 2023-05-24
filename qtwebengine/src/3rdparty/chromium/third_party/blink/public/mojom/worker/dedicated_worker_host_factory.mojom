@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,10 +11,12 @@ import "third_party/blink/public/mojom/browser_interface_broker.mojom";
 import "third_party/blink/public/mojom/loader/fetch_client_settings_object.mojom";
 import "third_party/blink/public/mojom/worker/subresource_loader_updater.mojom";
 import "third_party/blink/public/mojom/loader/url_loader_factory_bundle.mojom";
+import "third_party/blink/public/mojom/worker/dedicated_worker_host.mojom";
 import "third_party/blink/public/mojom/worker/worker_main_script_load_params.mojom";
 import "third_party/blink/public/mojom/service_worker/controller_service_worker.mojom";
 import "third_party/blink/public/mojom/service_worker/service_worker_container.mojom";
 import "third_party/blink/public/mojom/tokens/tokens.mojom";
+import "third_party/blink/public/mojom/frame/back_forward_cache_controller.mojom";
 import "url/mojom/url.mojom";
 
 // The name of the InterfaceProviderSpec in service manifests used by the
@@ -30,7 +32,9 @@ interface DedicatedWorkerHostFactoryClient {
   OnWorkerHostCreated(
       // Used for accessing services from the worker.
       pending_remote<blink.mojom.BrowserInterfaceBroker>
-          browser_interface_broker);
+          browser_interface_broker,
+      // Used for updating its state from the worker.
+      pending_remote<DedicatedWorkerHost> host);
 
   // Called when the worker host started loading the main worker script. This
   // is called after OnWorkerHostCreated(). This is never called when
@@ -57,7 +61,12 @@ interface DedicatedWorkerHostFactoryClient {
 
       // Used to make fetches from the worker go through the controller service
       // worker. This is null when there're no controller service worker.
-      ControllerServiceWorkerInfo? controller_info);
+      ControllerServiceWorkerInfo? controller_info,
+
+      // Used to notify feature usages that might affect back-forward cache
+      // usages.
+      pending_remote<BackForwardCacheControllerHost>
+      back_forward_cache_controller_host);
 
   // Called when the worker host fails to start loading the main worker script.
   // This is called after OnWorkerHostCreated(). This is never called when
@@ -68,27 +77,35 @@ interface DedicatedWorkerHostFactoryClient {
 // An interface used to instantiate a dedicated worker host. The implementation
 // of this interface lives in the browser process.
 interface DedicatedWorkerHostFactory {
+  // TODO(crbug.com/906991): Remove this after PlzDedicatedWorker ships.
   // Non-PlzDedicatedWorker:
   // The factory client should call this instead of
   // CreateWorkerHostAndStartScriptLoad() when PlzDedicatedWorker is disabled.
   //
-  // Creates a new DedicatedWorkerHost, and requests |browser_interface_broker|
+  // Creates a new DedicatedWorkerHost, and requests `browser_interface_broker`
   // to provide the worker access to mojo interfaces.
+  // `script_url` is used only for UMA purposes.
   CreateWorkerHost(
       blink.mojom.DedicatedWorkerToken token,
+      url.mojom.Url script_url,
       pending_receiver<blink.mojom.BrowserInterfaceBroker>
-          browser_interface_broker) =>
-    (network.mojom.CrossOriginEmbedderPolicy parent_coep);
+          browser_interface_broker,
+      pending_receiver<DedicatedWorkerHost> host) =>
+    (network.mojom.CrossOriginEmbedderPolicy parent_coep,
+     // Used to notify feature usages that might affect back-forward cache
+     // usages.
+     pending_remote<BackForwardCacheControllerHost>?
+         back_forward_cache_controller_host);
 
   // PlzDedicatedWorker:
   // The factory client should call this instead of CreateWorkerHost() when
   // PlzDedicatedWorker is enabled.
   //
   // Creates a new DedicatedWorkerHost, and requests to start top-level worker
-  // script loading for |script_url| using |credentials_mode| and
-  // |outside_fetch_client_settings_object|.
-  // |blob_url_token| should be non-null when |script_url| is a blob URL.
-  // |client| is used for notifying the renderer process of results of worker
+  // script loading for `script_url` using `credentials_mode` and
+  // `outside_fetch_client_settings_object`.
+  // `blob_url_token` should be non-null when `script_url` is a blob URL.
+  // `client` is used for notifying the renderer process of results of worker
   // host creation and script loading.
   CreateWorkerHostAndStartScriptLoad(
       blink.mojom.DedicatedWorkerToken token,

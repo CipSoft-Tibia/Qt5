@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,7 +19,7 @@ class CORE_EXPORT CSSAnimation : public Animation {
   CSSAnimation(ExecutionContext*,
                AnimationTimeline*,
                AnimationEffect*,
-               int animation_index,
+               wtf_size_t animation_index,
                const String& animation_name);
 
   bool IsCSSAnimation() const final { return true; }
@@ -28,7 +28,7 @@ class CORE_EXPORT CSSAnimation : public Animation {
   Element* OwningElement() const override { return owning_element_; }
 
   const String& animationName() const { return animation_name_; }
-  int AnimationIndex() const { return animation_index_; }
+  wtf_size_t AnimationIndex() const { return animation_index_; }
   void SetAnimationIndex(wtf_size_t absolute_position) {
     animation_index_ = absolute_position;
   }
@@ -50,13 +50,17 @@ class CORE_EXPORT CSSAnimation : public Animation {
   void pause(ExceptionState& = ASSERT_NO_EXCEPTION) override;
   void play(ExceptionState& = ASSERT_NO_EXCEPTION) override;
   void reverse(ExceptionState& = ASSERT_NO_EXCEPTION) override;
-  void setStartTime(base::Optional<double>, ExceptionState&) override;
+  void setTimeline(AnimationTimeline*) override;
+  void setStartTime(const V8CSSNumberish* start_time,
+                    ExceptionState& exception_state) override;
 
   // When set, subsequent changes to animation-play-state no longer affect the
   // play state.
   // https://drafts.csswg.org/css-animations-2/#interaction-between-animation-play-state-and-web-animations-API
   bool getIgnoreCSSPlayState() { return ignore_css_play_state_; }
   void resetIgnoreCSSPlayState() { ignore_css_play_state_ = false; }
+  bool GetIgnoreCSSTimeline() const { return ignore_css_timeline_; }
+  void ResetIgnoreCSSTimeline() { ignore_css_timeline_ = false; }
   void Trace(blink::Visitor* visitor) const override {
     Animation::Trace(visitor);
     visitor->Trace(owning_element_);
@@ -90,12 +94,14 @@ class CORE_EXPORT CSSAnimation : public Animation {
   // animation_index_ represents the absolute position of an animation within
   // the same owning element. This index helps resolve the animation ordering
   // when comparing two animations with the same owning element.
-  int animation_index_;
+  wtf_size_t animation_index_;
   AtomicString animation_name_;
 
   // When set, the web-animation API is overruling the animation-play-state
   // style.
   bool ignore_css_play_state_;
+  // When set, changes to the 'animation-timeline' property will be ignored.
+  bool ignore_css_timeline_;
   // The owning element of an animation refers to the element or pseudo-element
   // whose animation-name property was applied that generated the animation
   // The spec: https://drafts.csswg.org/css-animations-2/#owning-element-section

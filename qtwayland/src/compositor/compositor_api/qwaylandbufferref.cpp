@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Jolla Ltd, author: <giulio.camuffo@jollamobile.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Jolla Ltd, author: <giulio.camuffo@jollamobile.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QDebug>
 #include <QAtomicInt>
@@ -33,7 +7,33 @@
 #include "qwaylandbufferref.h"
 #include "wayland_wrapper/qwlclientbuffer_p.h"
 
+#include <type_traits>
+
 QT_BEGIN_NAMESPACE
+
+#define CHECK1(l, r, op) \
+    static_assert(std::is_same_v< \
+        bool, \
+        decltype(std::declval<QWaylandBufferRef l >() op \
+                 std::declval<QWaylandBufferRef r >()) \
+    >)
+#define CHECK2(l, r) \
+    CHECK1(l, r, ==); \
+    CHECK1(l, r, !=)
+#define CHECK(l, r) \
+    CHECK2(l, r); \
+    CHECK2(l &, r); \
+    CHECK2(l &, r &); \
+    CHECK2(l, r &)
+
+CHECK(, );
+CHECK(const, );
+CHECK(const, const);
+CHECK(, const);
+
+#undef CHECK
+#undef CHECK2
+#undef CHECK1
 
 class QWaylandBufferRefPrivate
 {
@@ -114,22 +114,22 @@ QWaylandBufferRef &QWaylandBufferRef::operator=(const QWaylandBufferRef &ref)
 }
 
 /*!
- * Returns true if this QWaylandBufferRef references the same buffer as \a ref.
- * Otherwise returns false.
+    \fn bool QWaylandBufferRef::operator==(const QWaylandBufferRef &lhs, const QWaylandBufferRef &rhs)
+
+    Returns \c true if \a lhs references the same buffer as \a rhs.
+    Otherwise returns \c{false}.
  */
-bool QWaylandBufferRef::operator==(const QWaylandBufferRef &ref)
+bool operator==(const QWaylandBufferRef &lhs, const QWaylandBufferRef &rhs) noexcept
 {
-    return d->buffer == ref.d->buffer;
+    return lhs.d->buffer == rhs.d->buffer;
 }
 
 /*!
- * Returns false if this QWaylandBufferRef references the same buffer as \a ref.
- * Otherwise returns true.
+    \fn bool QWaylandBufferRef::operator!=(const QWaylandBufferRef &lhs, const QWaylandBufferRef &rhs)
+
+    Returns \c false if \a lhs references the same buffer as \a rhs.
+    Otherwise returns \c {true}.
  */
-bool QWaylandBufferRef::operator!=(const QWaylandBufferRef &ref)
-{
-    return d->buffer != ref.d->buffer;
-}
 
 /*!
  * Returns true if this QWaylandBufferRef does not reference a buffer.
@@ -159,6 +159,19 @@ bool QWaylandBufferRef::hasBuffer() const
 bool QWaylandBufferRef::hasContent() const
 {
     return QtWayland::ClientBuffer::hasContent(d->buffer);
+}
+/*!
+ * Returns true if this QWaylandBufferRef references a buffer that has protected content. Otherwise returns false.
+ *
+ * \note This is an enabler which presumes support in the client buffer integration. None of the
+ *       client buffer integrations included with Qt currently support protected content buffers.
+ *
+ * \since 6.2
+ * \sa hasContent()
+ */
+bool QWaylandBufferRef::hasProtectedContent() const
+{
+    return QtWayland::ClientBuffer::hasProtectedContent(d->buffer);
 }
 
 /*!

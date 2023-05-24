@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,7 +18,7 @@ IndexedDBDatabaseError::IndexedDBDatabaseError(blink::mojom::IDBException code,
     : code_(code), message_(base::ASCIIToUTF16(message)) {}
 
 IndexedDBDatabaseError::IndexedDBDatabaseError(blink::mojom::IDBException code,
-                                               const base::string16& message)
+                                               const std::u16string& message)
     : code_(code), message_(message) {}
 
 IndexedDBDatabaseError::~IndexedDBDatabaseError() = default;

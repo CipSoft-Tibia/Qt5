@@ -1,10 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/xr/xr_light_probe.h"
 
 #include "device/vr/public/mojom/vr_service.mojom-blink.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_xr_light_probe_init.h"
 #include "third_party/blink/renderer/core/geometry/dom_point_read_only.h"
 #include "third_party/blink/renderer/modules/event_modules.h"
 #include "third_party/blink/renderer/modules/event_target_modules.h"
@@ -22,7 +23,14 @@ const double kReflectionChangeDelta = 1000.0;
 
 }  // namespace
 
-XRLightProbe::XRLightProbe(XRSession* session) : session_(session) {}
+XRLightProbe::XRLightProbe(XRSession* session, XRLightProbeInit* options)
+    : session_(session) {
+  if (options->reflectionFormat() == "rgba16f") {
+    reflection_format_ = kReflectionFormatRGBA16F;
+  } else {
+    reflection_format_ = kReflectionFormatSRGBA8;
+  }
+}
 
 XRSpace* XRLightProbe::probeSpace() const {
   if (!probe_space_) {
@@ -33,7 +41,13 @@ XRSpace* XRLightProbe::probeSpace() const {
   return probe_space_;
 }
 
-base::Optional<TransformationMatrix> XRLightProbe::MojoFromObject() const {
+device::mojom::blink::XRNativeOriginInformationPtr XRLightProbe::NativeOrigin()
+    const {
+  return device::mojom::blink::XRNativeOriginInformation::NewReferenceSpaceType(
+      device::mojom::XRReferenceSpaceType::kLocal);
+}
+
+absl::optional<gfx::Transform> XRLightProbe::MojoFromObject() const {
   // For the moment we're making an assumption that the lighting estimations
   // are always generated from the local space origin. This is the case for
   // ARCore, but will need to be made more flexible as other runtimes or methods
@@ -89,7 +103,7 @@ void XRLightProbe::Trace(Visitor* visitor) const {
   visitor->Trace(session_);
   visitor->Trace(probe_space_);
   visitor->Trace(light_estimate_);
-  ScriptWrappable::Trace(visitor);
+  EventTargetWithInlineData::Trace(visitor);
 }
 
 }  // namespace blink

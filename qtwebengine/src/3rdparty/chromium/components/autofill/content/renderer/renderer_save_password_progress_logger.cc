@@ -1,10 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/autofill/content/renderer/renderer_save_password_progress_logger.h"
 
-#include "base/strings/string16.h"
+#include <string>
+
 #include "base/strings/string_number_conversions.h"
 #include "base/values.h"
 #include "third_party/blink/public/web/web_form_control_element.h"

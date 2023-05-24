@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example widgets/tablet
     \title Tablet Example
+    \examplecategory {User Interface Components}
     \ingroup examples-widgets
     \brief This example shows how to use a Wacom tablet in Qt applications.
 
@@ -37,7 +14,7 @@
     generated. You need to reimplement the \l{QWidget::}{tabletEvent()} event
     handler if you want to handle tablet events. Events are generated when the
     tool (stylus) used for drawing enters and leaves the proximity of the
-    tablet (i.e., when it is close but not pressed down on it), when the tool
+    tablet (i.e., when it is closed but not pressed down on it), when the tool
     is pressed down and released from it, when the tool is moved across the
     tablet, and when one of the buttons on the tool is pressed or released.
 
@@ -55,7 +32,7 @@
     draw on the tablet as you use a pencil on paper. When you draw with the
     airbrush you get a spray of virtual paint; the finger wheel is used to
     change the density of the spray. When you draw with the art pen, you get a
-    a line whose width and endpoint angle depend on the rotation of the pen.
+    line whose width and endpoint angle depend on the rotation of the pen.
     The pressure and tilt can also be assigned to change the alpha and
     saturation values of the color and the width of the stroke.
 
@@ -112,8 +89,6 @@
     in a submenu of the \b Tablet menu, for selecting which property of each
     QTabletEvent will be used to vary the translucency (alpha channel) of the
     line being drawn or color being airbrushed.
-    (See the \l{Application Example}{application example} if you want a
-    high-level introduction to QActions.)
 
     \snippet widgets/tablet/mainwindow.cpp 9
 
@@ -251,7 +226,7 @@
     rendering to, we can create a pixmap with the appropriate resolution.
     The size of the pixmap with which we fill the window depends on the screen
     resolution, as the example does not support zoom; and it may be that one
-    screen is \l {High DPI Displays}{high DPI} while another is not. We need to
+    screen is \l {High DPI}{high DPI} while another is not. We need to
     draw the background too, as the default is gray.
 
     After that, we simply draw the pixmap to the top left of the widget.
@@ -329,7 +304,7 @@
     receive tablet proximity events and forward them to \c TabletCanvas.
     The \c TabletEnterProximity and \c TabletLeaveProximity events are sent to
     the QApplication object, while other tablet events are sent to the QWidget's
-    \c event() hander, which sends them on to \l{QWidget::}{tabletEvent()}.
+    \c event() handler, which sends them on to \l{QWidget::}{tabletEvent()}.
 
 
     \section1 TabletApplication Class Implementation

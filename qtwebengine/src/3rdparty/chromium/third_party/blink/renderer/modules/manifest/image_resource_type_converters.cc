@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 #include "third_party/blink/public/common/mime_util/mime_util.h"
 #include "third_party/blink/public/mojom/manifest/manifest.mojom-blink.h"
 #include "third_party/blink/public/platform/web_icon_sizes_parser.h"
-#include "third_party/blink/public/platform/web_size.h"
 #include "third_party/blink/public/platform/web_string.h"
 #include "third_party/blink/public/platform/web_vector.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_image_resource.h"
@@ -21,7 +20,6 @@ namespace mojo {
 namespace {
 
 using Purpose = blink::mojom::blink::ManifestImageResource::Purpose;
-using blink::WebSize;
 using blink::WebString;
 using blink::WebVector;
 
@@ -29,9 +27,9 @@ using blink::WebVector;
 WTF::Vector<gfx::Size> ParseSizes(const WTF::String& sizes) {
   WebVector<gfx::Size> parsed_sizes = blink::WebIconSizesParser::ParseIconSizes(
       WebString::FromASCII(sizes.Ascii()));
-  WTF::HashSet<std::pair<int, int>, WTF::PairHash<int, int>,
-               WTF::PairHashTraits<WTF::UnsignedWithZeroKeyHashTraits<int>,
-                                   WTF::UnsignedWithZeroKeyHashTraits<int>>>
+  WTF::HashSet<std::pair<int, int>,
+               PairHashTraits<IntWithZeroKeyHashTraits<int>,
+                              IntWithZeroKeyHashTraits<int>>>
       unique_sizes;
 
   WTF::Vector<gfx::Size> results;
@@ -84,7 +82,7 @@ WTF::Vector<Purpose> ParsePurpose(const WTF::String& purpose) {
 }
 
 WTF::String ParseType(const WTF::String& type) {
-  if (type.IsNull() || type.IsEmpty())
+  if (type.IsNull() || type.empty())
     return "";
 
   if (!blink::IsSupportedMimeType(type.Ascii())) {
@@ -122,7 +120,7 @@ namespace blink {
 Manifest::ImageResource ConvertManifestImageResource(
     const ManifestImageResource* icon) {
   Manifest::ImageResource manifest_icon;
-  manifest_icon.src = blink::KURL(icon->src());
+  manifest_icon.src = GURL(icon->src().Utf8());
   if (icon->hasType())
     manifest_icon.type = WebString(mojo::ParseType(icon->type())).Utf16();
 
@@ -134,15 +132,15 @@ Manifest::ImageResource ConvertManifestImageResource(
       switch (purpose) {
         case mojo::Purpose::ANY:
           manifest_icon.purpose.emplace_back(
-              Manifest::ImageResource::Purpose::ANY);
+              mojom::ManifestImageResource_Purpose::ANY);
           break;
         case mojo::Purpose::MONOCHROME:
           manifest_icon.purpose.emplace_back(
-              Manifest::ImageResource::Purpose::MONOCHROME);
+              mojom::ManifestImageResource_Purpose::MONOCHROME);
           break;
         case mojo::Purpose::MASKABLE:
           manifest_icon.purpose.emplace_back(
-              Manifest::ImageResource::Purpose::MASKABLE);
+              mojom::ManifestImageResource_Purpose::MASKABLE);
           break;
       }
     }

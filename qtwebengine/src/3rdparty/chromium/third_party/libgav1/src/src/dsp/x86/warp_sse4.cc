@@ -15,7 +15,7 @@
 #include "src/dsp/warp.h"
 #include "src/utils/cpu.h"
 
-#if LIBGAV1_ENABLE_SSE4_1
+#if LIBGAV1_TARGETING_SSE4_1
 
 #include <smmintrin.h>
 
@@ -101,7 +101,7 @@ inline void HorizontalFilter(const int sx4, const int16_t alpha,
 template <bool is_compound>
 inline void WriteVerticalFilter(const __m128i filter[8],
                                 const int16_t intermediate_result[15][8], int y,
-                                void* dst_row) {
+                                void* LIBGAV1_RESTRICT dst_row) {
   constexpr int kRoundBitsVertical =
       is_compound ? kInterRoundBitsCompoundVertical : kInterRoundBitsVertical;
   __m128i sum_low = _mm_set1_epi32(kOffsetRemoval);
@@ -136,8 +136,9 @@ inline void WriteVerticalFilter(const __m128i filter[8],
 
 template <bool is_compound>
 inline void WriteVerticalFilter(const __m128i filter[8],
-                                const int16_t* intermediate_result_column,
-                                void* dst_row) {
+                                const int16_t* LIBGAV1_RESTRICT
+                                    intermediate_result_column,
+                                void* LIBGAV1_RESTRICT dst_row) {
   constexpr int kRoundBitsVertical =
       is_compound ? kInterRoundBitsCompoundVertical : kInterRoundBitsVertical;
   __m128i sum_low = _mm_setzero_si128();
@@ -166,8 +167,8 @@ inline void WriteVerticalFilter(const __m128i filter[8],
 }
 
 template <bool is_compound, typename DestType>
-inline void VerticalFilter(const int16_t source[15][8], int y4, int gamma,
-                           int delta, DestType* dest_row,
+inline void VerticalFilter(const int16_t source[15][8], int64_t y4, int gamma,
+                           int delta, DestType* LIBGAV1_RESTRICT dest_row,
                            ptrdiff_t dest_stride) {
   int sy4 = (y4 & ((1 << kWarpedModelPrecisionBits) - 1)) - MultiplyBy4(delta);
   for (int y = 0; y < 8; ++y) {
@@ -187,8 +188,9 @@ inline void VerticalFilter(const int16_t source[15][8], int y4, int gamma,
 }
 
 template <bool is_compound, typename DestType>
-inline void VerticalFilter(const int16_t* source_cols, int y4, int gamma,
-                           int delta, DestType* dest_row,
+inline void VerticalFilter(const int16_t* LIBGAV1_RESTRICT source_cols,
+                           int64_t y4, int gamma, int delta,
+                           DestType* LIBGAV1_RESTRICT dest_row,
                            ptrdiff_t dest_stride) {
   int sy4 = (y4 & ((1 << kWarpedModelPrecisionBits) - 1)) - MultiplyBy4(delta);
   for (int y = 0; y < 8; ++y) {
@@ -208,9 +210,11 @@ inline void VerticalFilter(const int16_t* source_cols, int y4, int gamma,
 }
 
 template <bool is_compound, typename DestType>
-inline void WarpRegion1(const uint8_t* src, ptrdiff_t source_stride,
-                        int source_width, int source_height, int ix4, int iy4,
-                        DestType* dst_row, ptrdiff_t dest_stride) {
+inline void WarpRegion1(const uint8_t* LIBGAV1_RESTRICT src,
+                        ptrdiff_t source_stride, int source_width,
+                        int source_height, int ix4, int iy4,
+                        DestType* LIBGAV1_RESTRICT dst_row,
+                        ptrdiff_t dest_stride) {
   // Region 1
   // Points to the left or right border of the first row of |src|.
   const uint8_t* first_row_border =
@@ -244,10 +248,12 @@ inline void WarpRegion1(const uint8_t* src, ptrdiff_t source_stride,
 }
 
 template <bool is_compound, typename DestType>
-inline void WarpRegion2(const uint8_t* src, ptrdiff_t source_stride,
-                        int source_width, int y4, int ix4, int iy4, int gamma,
-                        int delta, int16_t intermediate_result_column[15],
-                        DestType* dst_row, ptrdiff_t dest_stride) {
+inline void WarpRegion2(const uint8_t* LIBGAV1_RESTRICT src,
+                        ptrdiff_t source_stride, int source_width, int64_t y4,
+                        int ix4, int iy4, int gamma, int delta,
+                        int16_t intermediate_result_column[15],
+                        DestType* LIBGAV1_RESTRICT dst_row,
+                        ptrdiff_t dest_stride) {
   // Region 2.
   // Points to the left or right border of the first row of |src|.
   const uint8_t* first_row_border =
@@ -283,9 +289,10 @@ inline void WarpRegion2(const uint8_t* src, ptrdiff_t source_stride,
 }
 
 template <bool is_compound, typename DestType>
-inline void WarpRegion3(const uint8_t* src, ptrdiff_t source_stride,
-                        int source_height, int alpha, int beta, int x4, int ix4,
-                        int iy4, int16_t intermediate_result[15][8]) {
+inline void WarpRegion3(const uint8_t* LIBGAV1_RESTRICT src,
+                        ptrdiff_t source_stride, int source_height, int alpha,
+                        int beta, int64_t x4, int ix4, int iy4,
+                        int16_t intermediate_result[15][8]) {
   // Region 3
   // At this point, we know ix4 - 7 < source_width - 1 and ix4 + 7 > 0.
 
@@ -315,8 +322,9 @@ inline void WarpRegion3(const uint8_t* src, ptrdiff_t source_stride,
 }
 
 template <bool is_compound, typename DestType>
-inline void WarpRegion4(const uint8_t* src, ptrdiff_t source_stride, int alpha,
-                        int beta, int x4, int ix4, int iy4,
+inline void WarpRegion4(const uint8_t* LIBGAV1_RESTRICT src,
+                        ptrdiff_t source_stride, int alpha, int beta,
+                        int64_t x4, int ix4, int iy4,
                         int16_t intermediate_result[15][8]) {
   // Region 4.
   // At this point, we know ix4 - 7 < source_width - 1 and ix4 + 7 > 0.
@@ -351,12 +359,14 @@ inline void WarpRegion4(const uint8_t* src, ptrdiff_t source_stride, int alpha,
 }
 
 template <bool is_compound, typename DestType>
-inline void HandleWarpBlock(const uint8_t* src, ptrdiff_t source_stride,
-                            int source_width, int source_height,
-                            const int* warp_params, int subsampling_x,
-                            int subsampling_y, int src_x, int src_y,
-                            int16_t alpha, int16_t beta, int16_t gamma,
-                            int16_t delta, DestType* dst_row,
+inline void HandleWarpBlock(const uint8_t* LIBGAV1_RESTRICT src,
+                            ptrdiff_t source_stride, int source_width,
+                            int source_height,
+                            const int* LIBGAV1_RESTRICT warp_params,
+                            int subsampling_x, int subsampling_y, int src_x,
+                            int src_y, int16_t alpha, int16_t beta,
+                            int16_t gamma, int16_t delta,
+                            DestType* LIBGAV1_RESTRICT dst_row,
                             ptrdiff_t dest_stride) {
   union {
     // Intermediate_result is the output of the horizontal filtering and
@@ -370,14 +380,8 @@ inline void HandleWarpBlock(const uint8_t* src, ptrdiff_t source_stride,
     int16_t intermediate_result_column[15];
   };
 
-  const int dst_x =
-      src_x * warp_params[2] + src_y * warp_params[3] + warp_params[0];
-  const int dst_y =
-      src_x * warp_params[4] + src_y * warp_params[5] + warp_params[1];
-  const int x4 = dst_x >> subsampling_x;
-  const int y4 = dst_y >> subsampling_y;
-  const int ix4 = x4 >> kWarpedModelPrecisionBits;
-  const int iy4 = y4 >> kWarpedModelPrecisionBits;
+  const WarpFilterParams filter_params = GetWarpFilterParams(
+      src_x, src_y, subsampling_x, subsampling_y, warp_params);
   // A prediction block may fall outside the frame's boundaries. If a
   // prediction block is calculated using only samples outside the frame's
   // boundary, the filtering can be simplified. We can divide the plane
@@ -430,41 +434,47 @@ inline void HandleWarpBlock(const uint8_t* src, ptrdiff_t source_stride,
   // border index (source_width - 1 or 0, respectively). Then for each x,
   // the inner for loop of the horizontal filter is reduced to multiplying
   // the border pixel by the sum of the filter coefficients.
-  if (ix4 - 7 >= source_width - 1 || ix4 + 7 <= 0) {
-    if ((iy4 - 7 >= source_height - 1 || iy4 + 7 <= 0)) {
+  if (filter_params.ix4 - 7 >= source_width - 1 || filter_params.ix4 + 7 <= 0) {
+    if ((filter_params.iy4 - 7 >= source_height - 1 ||
+         filter_params.iy4 + 7 <= 0)) {
       // Outside the frame in both directions. One repeated value.
-      WarpRegion1<is_compound, DestType>(src, source_stride, source_width,
-                                         source_height, ix4, iy4, dst_row,
-                                         dest_stride);
+      WarpRegion1<is_compound, DestType>(
+          src, source_stride, source_width, source_height, filter_params.ix4,
+          filter_params.iy4, dst_row, dest_stride);
       return;
     }
     // Outside the frame horizontally. Rows repeated.
     WarpRegion2<is_compound, DestType>(
-        src, source_stride, source_width, y4, ix4, iy4, gamma, delta,
-        intermediate_result_column, dst_row, dest_stride);
+        src, source_stride, source_width, filter_params.y4, filter_params.ix4,
+        filter_params.iy4, gamma, delta, intermediate_result_column, dst_row,
+        dest_stride);
     return;
   }
 
-  if ((iy4 - 7 >= source_height - 1 || iy4 + 7 <= 0)) {
+  if ((filter_params.iy4 - 7 >= source_height - 1 ||
+       filter_params.iy4 + 7 <= 0)) {
     // Outside the frame vertically.
-    WarpRegion3<is_compound, DestType>(src, source_stride, source_height, alpha,
-                                       beta, x4, ix4, iy4, intermediate_result);
+    WarpRegion3<is_compound, DestType>(
+        src, source_stride, source_height, alpha, beta, filter_params.x4,
+        filter_params.ix4, filter_params.iy4, intermediate_result);
   } else {
     // Inside the frame.
-    WarpRegion4<is_compound, DestType>(src, source_stride, alpha, beta, x4, ix4,
-                                       iy4, intermediate_result);
+    WarpRegion4<is_compound, DestType>(src, source_stride, alpha, beta,
+                                       filter_params.x4, filter_params.ix4,
+                                       filter_params.iy4, intermediate_result);
   }
   // Region 3 and 4 vertical filter.
-  VerticalFilter<is_compound, DestType>(intermediate_result, y4, gamma, delta,
-                                        dst_row, dest_stride);
+  VerticalFilter<is_compound, DestType>(intermediate_result, filter_params.y4,
+                                        gamma, delta, dst_row, dest_stride);
 }
 
 template <bool is_compound>
-void Warp_SSE4_1(const void* source, ptrdiff_t source_stride, int source_width,
-                 int source_height, const int* warp_params, int subsampling_x,
+void Warp_SSE4_1(const void* LIBGAV1_RESTRICT source, ptrdiff_t source_stride,
+                 int source_width, int source_height,
+                 const int* LIBGAV1_RESTRICT warp_params, int subsampling_x,
                  int subsampling_y, int block_start_x, int block_start_y,
                  int block_width, int block_height, int16_t alpha, int16_t beta,
-                 int16_t gamma, int16_t delta, void* dest,
+                 int16_t gamma, int16_t delta, void* LIBGAV1_RESTRICT dest,
                  ptrdiff_t dest_stride) {
   const auto* const src = static_cast<const uint8_t*>(source);
   using DestType =
@@ -513,7 +523,7 @@ void WarpInit_SSE4_1() { low_bitdepth::Init8bpp(); }
 
 }  // namespace dsp
 }  // namespace libgav1
-#else  // !LIBGAV1_ENABLE_SSE4_1
+#else   // !LIBGAV1_TARGETING_SSE4_1
 
 namespace libgav1 {
 namespace dsp {
@@ -522,4 +532,4 @@ void WarpInit_SSE4_1() {}
 
 }  // namespace dsp
 }  // namespace libgav1
-#endif  // LIBGAV1_ENABLE_SSE4_1
+#endif  // LIBGAV1_TARGETING_SSE4_1

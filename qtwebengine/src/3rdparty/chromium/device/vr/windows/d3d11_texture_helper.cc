@@ -1,19 +1,20 @@
-// Copyright (c) 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "device/vr/windows/d3d11_texture_helper.h"
-#include "base/stl_util.h"
+
 #include "base/trace_event/common/trace_event_common.h"
 #include "base/trace_event/trace_event.h"
+#include "device/vr/windows/compositor_base.h"
+#include "gpu/command_buffer/client/gles2_interface.h"
+#include "gpu/command_buffer/common/constants.h"
 #include "mojo/public/c/system/platform_handle.h"
 
 namespace {
 #include "device/vr/windows/flip_pixel_shader.h"
 #include "device/vr/windows/geometry_shader.h"
 #include "device/vr/windows/vertex_shader.h"
-
-constexpr int kAcquireWaitMS = 2000;
 
 struct Vertex2D {
   float x;
@@ -71,7 +72,8 @@ D3D11TextureHelper::RenderState::~RenderState() {}
 D3D11TextureHelper::LayerData::LayerData() = default;
 D3D11TextureHelper::LayerData::~LayerData() = default;
 
-D3D11TextureHelper::D3D11TextureHelper() {}
+D3D11TextureHelper::D3D11TextureHelper(XRCompositorCommon* compositor)
+    : compositor_(compositor) {}
 
 D3D11TextureHelper::~D3D11TextureHelper() {}
 
@@ -185,15 +187,33 @@ bool D3D11TextureHelper::CompositeToBackBuffer() {
   CleanupLayerData(render_state_.source_);
   CleanupLayerData(render_state_.overlay_);
 
-  if (!render_state_.source_.source_texture_ &&
-      !render_state_.overlay_.source_texture_)
-    return false;
+  // We should always have a target texture that WebXR
+  // is rendering into.
   if (!render_state_.target_texture_)
     return false;
 
+  // Source texture is optional depending on whether we're using
+  // shared images for the destination.
+  if (!render_state_.source_.source_texture_ &&
+      !render_state_.overlay_.source_texture_)
+    return true;
+
   HRESULT hr = S_OK;
   if (render_state_.source_.keyed_mutex_) {
-    hr = render_state_.source_.keyed_mutex_->AcquireSync(1, kAcquireWaitMS);
+    if (render_state_.source_.sync_token_.HasData()) {
+      // Ensure work has been issused to write to source texture by blocking
+      // until GPU process has passed the sync token. This must happen before
+      // AcquireSync(0) below otherwise the GPU process will be unable to
+      // acquire the mutex and work will happen out of order.
+      gpu::gles2::GLES2Interface* gl = compositor_->GetContextGL();
+      gl->WaitSyncTokenCHROMIUM(
+          render_state_.source_.sync_token_.GetConstData());
+      gl->Finish();
+      render_state_.source_.sync_token_.Clear();
+    }
+
+    hr = render_state_.source_.keyed_mutex_->AcquireSync(
+        gpu::kDXGIKeyedMutexAcquireKey, INFINITE);
     if (FAILED(hr) || hr == WAIT_TIMEOUT || hr == WAIT_ABANDONED) {
       // We failed to acquire the lock.  We'll drop this frame, but subsequent
       // frames won't be affected.
@@ -203,7 +223,20 @@ bool D3D11TextureHelper::CompositeToBackBuffer() {
   }
 
   if (render_state_.overlay_.keyed_mutex_) {
-    hr = render_state_.overlay_.keyed_mutex_->AcquireSync(1, kAcquireWaitMS);
+    if (render_state_.overlay_.sync_token_.HasData()) {
+      // Ensure work has been issused to write to overlay texture by blocking
+      // until GPU process has passed the sync token. This must happen before
+      // AcquireSync(0) below otherwise the GPU process will be unable to
+      // acquire the mutex and work will happen out of order.
+      gpu::gles2::GLES2Interface* gl = compositor_->GetContextGL();
+      gl->WaitSyncTokenCHROMIUM(
+          render_state_.overlay_.sync_token_.GetConstData());
+      gl->Finish();
+      render_state_.overlay_.sync_token_.Clear();
+    }
+
+    hr = render_state_.overlay_.keyed_mutex_->AcquireSync(
+        gpu::kDXGIKeyedMutexAcquireKey, INFINITE);
     if (FAILED(hr) || hr == WAIT_TIMEOUT || hr == WAIT_ABANDONED) {
       // We failed to acquire the lock.  We'll drop this frame, but subsequent
       // frames won't be affected.
@@ -325,7 +358,7 @@ bool D3D11TextureHelper::EnsureInputLayout() {
          D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     HRESULT hr = render_state_.d3d11_device_->CreateInputLayout(
-        vertex_desc, base::size(vertex_desc), g_vertex, _countof(g_vertex),
+        vertex_desc, std::size(vertex_desc), g_vertex, _countof(g_vertex),
         &render_state_.input_layout_);
     if (FAILED(hr)) {
       TraceDXError(ErrorLocation::InputLayout, hr);
@@ -470,7 +503,9 @@ bool D3D11TextureHelper::CompositeLayer(LayerData& layer) {
 
   D3D11_TEXTURE2D_DESC desc;
   render_state_.target_texture_->GetDesc(&desc);
-  D3D11_VIEWPORT viewport = {0, 0, desc.Width, desc.Height, 0, 1};
+  D3D11_VIEWPORT viewport = {
+      0, 0, static_cast<float>(desc.Width), static_cast<float>(desc.Height),
+      0, 1};
   render_state_.d3d11_device_context_->RSSetViewports(1, &viewport);
   render_state_.d3d11_device_context_->IASetPrimitiveTopology(
       D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -482,42 +517,50 @@ bool D3D11TextureHelper::CompositeLayer(LayerData& layer) {
   return true;
 }
 
-bool D3D11TextureHelper::SetSourceTexture(
+void D3D11TextureHelper::SetSourceTexture(
     base::win::ScopedHandle texture_handle,
+    const gpu::SyncToken& sync_token,
     gfx::RectF left,
     gfx::RectF right) {
   TRACE_EVENT0("xr", "SetSourceTexture");
   render_state_.source_.source_texture_ = nullptr;
   render_state_.source_.keyed_mutex_ = nullptr;
+  render_state_.source_.sync_token_.Clear();
   render_state_.source_.left_ = left;
   render_state_.source_.right_ = right;
   render_state_.source_.submitted_this_frame_ = true;
 
+  if (!texture_handle.IsValid()) {
+    return;
+  }
+
   if (!EnsureInitialized())
-    return false;
+    return;
+
   HRESULT hr = render_state_.d3d11_device_->OpenSharedResource1(
       texture_handle.Get(),
       IID_PPV_ARGS(&(render_state_.source_.keyed_mutex_)));
   if (FAILED(hr)) {
     TraceDXError(ErrorLocation::OpenSource, hr);
-    return false;
+    return;
   }
   hr = render_state_.source_.keyed_mutex_.As(
       &(render_state_.source_.source_texture_));
   if (FAILED(hr)) {
     render_state_.source_.keyed_mutex_ = nullptr;
-    return false;
+    return;
   }
-
-  return true;
+  render_state_.source_.sync_token_ = sync_token;
 }
 
 bool D3D11TextureHelper::SetOverlayTexture(
     base::win::ScopedHandle texture_handle,
+    const gpu::SyncToken& sync_token,
     gfx::RectF left,
     gfx::RectF right) {
   render_state_.overlay_.source_texture_ = nullptr;
   render_state_.overlay_.keyed_mutex_ = nullptr;
+  render_state_.overlay_.sync_token_.Clear();
   render_state_.overlay_.left_ = left;
   render_state_.overlay_.right_ = right;
   render_state_.overlay_.submitted_this_frame_ = true;
@@ -537,6 +580,7 @@ bool D3D11TextureHelper::SetOverlayTexture(
     render_state_.overlay_.keyed_mutex_ = nullptr;
     return false;
   }
+  render_state_.overlay_.sync_token_ = sync_token;
 
   return true;
 }
@@ -545,9 +589,11 @@ bool D3D11TextureHelper::UpdateBackbufferSizes() {
   if (!EnsureInitialized())
     return false;
 
+  // Source texture is optional depending on whether we're using
+  // shared images for the destination.
   if (!render_state_.source_.source_texture_ &&
       !render_state_.overlay_.source_texture_)
-    return false;
+    return true;
 
   if (force_viewport_) {
     target_size_ = default_size_;
@@ -574,68 +620,6 @@ bool D3D11TextureHelper::UpdateBackbufferSizes() {
   return true;
 }
 
-void D3D11TextureHelper::AllocateBackBuffer() {
-  if (!EnsureInitialized())
-    return;
-
-  // If we don't have anything to composite, just return.
-  if (!render_state_.source_.source_texture_ &&
-      !render_state_.overlay_.source_texture_)
-    return;
-
-  LayerData* layer = render_state_.overlay_.source_texture_
-                         ? &render_state_.overlay_
-                         : &render_state_.source_;
-
-  D3D11_TEXTURE2D_DESC desc_desired;
-  layer->source_texture_->GetDesc(&desc_desired);
-  desc_desired.MiscFlags = 0;
-  desc_desired.Width = target_size_.width();
-  desc_desired.Height = target_size_.height();
-
-  if (render_state_.target_texture_) {
-    D3D11_TEXTURE2D_DESC desc_target;
-    render_state_.target_texture_->GetDesc(&desc_target);
-    // If the target should change size, format, or other properties reallocate
-    // a new texture and new render target view.
-    if (desc_desired.Width != desc_target.Width ||
-        desc_desired.Height != desc_target.Height ||
-        desc_desired.MipLevels != desc_target.MipLevels ||
-        desc_desired.ArraySize != desc_target.ArraySize ||
-        desc_desired.Format != desc_target.Format ||
-        desc_desired.SampleDesc.Count != desc_target.SampleDesc.Count ||
-        desc_desired.SampleDesc.Quality != desc_target.SampleDesc.Quality ||
-        desc_desired.Usage != desc_target.Usage ||
-        desc_desired.BindFlags != desc_target.BindFlags ||
-        desc_desired.CPUAccessFlags != desc_target.CPUAccessFlags ||
-        desc_desired.MiscFlags != desc_target.MiscFlags) {
-      render_state_.target_texture_ = nullptr;
-      render_state_.render_target_view_ = nullptr;
-    }
-  }
-
-  if (!render_state_.target_texture_) {
-    // Ignoring error - target_texture_ will be null on failure.
-    render_state_.d3d11_device_->CreateTexture2D(
-        &desc_desired, nullptr, &(render_state_.target_texture_));
-  }
-}
-
-const Microsoft::WRL::ComPtr<ID3D11Texture2D>&
-D3D11TextureHelper::GetBackbuffer() {
-  return render_state_.target_texture_;
-}
-
-void D3D11TextureHelper::DiscardView() {
-  if (render_state_.render_target_view_ &&
-      render_state_.d3d11_device_context_) {
-    Microsoft::WRL::ComPtr<ID3D11DeviceContext1> context1;
-    if (SUCCEEDED(render_state_.d3d11_device_context_.As(&context1))) {
-      context1->DiscardView(render_state_.render_target_view_.Get());
-    }
-  }
-}
-
 void D3D11TextureHelper::SetBackbuffer(
     Microsoft::WRL::ComPtr<ID3D11Texture2D> back_buffer) {
   if (render_state_.target_texture_ != back_buffer) {
@@ -650,16 +634,12 @@ Microsoft::WRL::ComPtr<IDXGIAdapter> D3D11TextureHelper::GetAdapter() {
   HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&dxgi_factory));
   if (FAILED(hr))
     return nullptr;
-  if (adapter_index_ >= 0) {
-    dxgi_factory->EnumAdapters(adapter_index_, &adapter);
-  } else {
-    // We don't have a valid adapter index, lets see if we have a valid LUID.
-    Microsoft::WRL::ComPtr<IDXGIFactory4> dxgi_factory4;
-    hr = dxgi_factory.As(&dxgi_factory4);
-    if (FAILED(hr))
-      return nullptr;
-    dxgi_factory4->EnumAdapterByLuid(adapter_luid_, IID_PPV_ARGS(&adapter));
-  }
+  // We don't have a valid adapter index, lets see if we have a valid LUID.
+  Microsoft::WRL::ComPtr<IDXGIFactory4> dxgi_factory4;
+  hr = dxgi_factory.As(&dxgi_factory4);
+  if (FAILED(hr))
+    return nullptr;
+  dxgi_factory4->EnumAdapterByLuid(adapter_luid_, IID_PPV_ARGS(&adapter));
   return adapter;
 }
 
@@ -689,7 +669,7 @@ bool D3D11TextureHelper::EnsureInitialized() {
   Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device;
   HRESULT hr = D3D11CreateDevice(
       adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, NULL, flags, feature_levels,
-      base::size(feature_levels), D3D11_SDK_VERSION, &d3d11_device,
+      std::size(feature_levels), D3D11_SDK_VERSION, &d3d11_device,
       &feature_level_out, &(render_state_.d3d11_device_context_));
   if (SUCCEEDED(hr)) {
     hr = d3d11_device.As(&render_state_.d3d11_device_);
@@ -701,14 +681,8 @@ bool D3D11TextureHelper::EnsureInitialized() {
   return SUCCEEDED(hr);
 }
 
-bool D3D11TextureHelper::SetAdapterIndex(int32_t index) {
-  adapter_index_ = index;
-  return (index >= 0);
-}
-
 bool D3D11TextureHelper::SetAdapterLUID(const LUID& luid) {
   adapter_luid_ = luid;
-  adapter_index_ = -1;
   return true;
 }
 

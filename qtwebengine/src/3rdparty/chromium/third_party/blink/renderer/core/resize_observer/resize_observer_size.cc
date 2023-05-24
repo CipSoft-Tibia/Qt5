@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,5 +18,10 @@ ResizeObserverSize::ResizeObserverSize(double inline_size, double block_size)
     : inline_size_(inline_size), block_size_(block_size) {}
 
 ResizeObserverSize::ResizeObserverSize() = default;
+
+void ResizeObserverSize::Trace(Visitor* visitor) const {
+  ScriptWrappable::Trace(visitor);
+  ElementRareDataField::Trace(visitor);
+}
 
 }  // namespace blink

@@ -42,18 +42,18 @@ class SVGAnimateMotionElement final : public SVGAnimationElement {
 
   void ParseAttribute(const AttributeModificationParams&) override;
 
-  void ResetAnimatedType(bool needs_underlying_value) override;
-  void ClearAnimatedType() override;
+  SMILAnimationValue CreateAnimationValue() const override;
+  void ClearAnimationValue() override;
   bool CalculateToAtEndOfDurationValue(
       const String& to_at_end_of_duration_string) override;
   bool CalculateFromAndToValues(const String& from_string,
                                 const String& to_string) override;
   bool CalculateFromAndByValues(const String& from_string,
                                 const String& by_string) override;
-  void CalculateAnimatedValue(float percentage,
-                              unsigned repeat_count,
-                              SVGSMILElement* result_element) const override;
-  void ApplyResultsToTarget() override;
+  void CalculateAnimationValue(SMILAnimationValue&,
+                               float percentage,
+                               unsigned repeat_count) const override;
+  void ApplyResultsToTarget(const SMILAnimationValue&) override;
   float CalculateDistance(const String& from_string,
                           const String& to_string) override;
 
@@ -62,13 +62,11 @@ class SVGAnimateMotionElement final : public SVGAnimationElement {
 
   void UpdateAnimationMode() override;
 
-  void InvalidateForAnimateMotionTransformChange(LayoutObject& target);
-
   // Note: we do not support percentage values for to/from coords as the spec
   // implies we should (opera doesn't either)
-  FloatPoint from_point_;
-  FloatPoint to_point_;
-  FloatPoint to_point_at_end_of_duration_;
+  gfx::PointF from_point_;
+  gfx::PointF to_point_;
+  gfx::PointF to_point_at_end_of_duration_;
 
   Path path_;
   Path animation_path_;

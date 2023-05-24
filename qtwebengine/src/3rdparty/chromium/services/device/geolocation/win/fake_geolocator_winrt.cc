@@ -1,12 +1,12 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/device/geolocation/win/fake_geolocator_winrt.h"
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/task/sequenced_task_runner.h"
 #include "services/device/geolocation/win/fake_geocoordinate_winrt.h"
 #include "services/device/geolocation/win/fake_position_changed_event_args_winrt.h"
 #include "services/device/geolocation/win/fake_status_changed_event_args_winrt.h"
@@ -97,7 +97,7 @@ IFACEMETHODIMP FakeGeolocatorWinrt::add_PositionChanged(
     EventRegistrationToken* token) {
   position_changed_token_ = EventRegistrationToken();
   *token = position_changed_token_.value();
-  base::SequencedTaskRunnerHandle::Get()->PostTask(
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       base::BindOnce(
           &FakeGeolocatorWinrt::RunPositionChangedHandler,
@@ -129,7 +129,7 @@ IFACEMETHODIMP FakeGeolocatorWinrt::add_StatusChanged(
     EventRegistrationToken* token) {
   status_changed_token_ = EventRegistrationToken();
   *token = status_changed_token_.value();
-  base::SequencedTaskRunnerHandle::Get()->PostTask(
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       base::BindOnce(
           &FakeGeolocatorWinrt::RunStatusChangedHandler,

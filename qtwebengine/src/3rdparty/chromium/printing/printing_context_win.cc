@@ -1,17 +1,18 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "printing/printing_context_win.h"
 
-#include <windows.h>
 #include <winspool.h>
 
 #include <algorithm>
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
+#include "base/check.h"
+#include "base/check_op.h"
+#include "base/functional/bind.h"
 #include "base/memory/free_deleter.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
@@ -19,10 +20,13 @@
 #include "printing/backend/print_backend.h"
 #include "printing/backend/win_helper.h"
 #include "printing/buildflags/buildflags.h"
+#include "printing/metafile.h"
 #include "printing/metafile_skia.h"
 #include "printing/mojom/print.mojom.h"
+#include "printing/page_setup.h"
 #include "printing/print_settings_initializer_win.h"
 #include "printing/printed_document.h"
+#include "printing/printed_page_win.h"
 #include "printing/printing_context_system_dialog_win.h"
 #include "printing/printing_features.h"
 #include "printing/printing_utils.h"
@@ -35,22 +39,53 @@ namespace printing {
 
 namespace {
 
-void AssignResult(PrintingContext::Result* out, PrintingContext::Result in) {
+// Helper class to ensure that a saved device context state gets restored at end
+// of scope.
+class ScopedSavedState {
+ public:
+  ScopedSavedState(HDC context)
+      : context_(context), saved_state_(SaveDC(context)) {
+    DCHECK_NE(saved_state_, 0);
+  }
+  ~ScopedSavedState() {
+    BOOL res = RestoreDC(context_, saved_state_);
+    DCHECK_NE(res, 0);
+  }
+
+ private:
+  HDC context_;
+  int saved_state_;
+};
+
+void AssignResult(mojom::ResultCode* out, mojom::ResultCode in) {
   *out = in;
+}
+
+void SimpleModifyWorldTransform(HDC context,
+                                int offset_x,
+                                int offset_y,
+                                float shrink_factor) {
+  XFORM xform = {0};
+  xform.eDx = static_cast<float>(offset_x);
+  xform.eDy = static_cast<float>(offset_y);
+  xform.eM11 = xform.eM22 = 1.f / shrink_factor;
+  BOOL res = ModifyWorldTransform(context, &xform, MWT_LEFTMULTIPLY);
+  DCHECK_NE(res, 0);
 }
 
 }  // namespace
 
 // static
-std::unique_ptr<PrintingContext> PrintingContext::Create(Delegate* delegate) {
-#if BUILDFLAG(ENABLE_PRINTING)
-  return std::make_unique<PrintingContextSystemDialogWin>(delegate);
-#else
-  // The code in printing/ is still built when the GN |enable_basic_printing|
-  // variable is set to false. Just return PrintingContextWin as a dummy
-  // context.
-  return std::make_unique<PrintingContextWin>(delegate);
+std::unique_ptr<PrintingContext> PrintingContext::CreateImpl(
+    Delegate* delegate,
+    bool skip_system_calls) {
+  std::unique_ptr<PrintingContext> context;
+  context = std::make_unique<PrintingContextSystemDialogWin>(delegate);
+#if BUILDFLAG(ENABLE_OOP_PRINTING)
+  if (skip_system_calls)
+    context->set_skip_system_calls();
 #endif
+  return context;
 }
 
 PrintingContextWin::PrintingContextWin(Delegate* delegate)
@@ -60,12 +95,6 @@ PrintingContextWin::~PrintingContextWin() {
   ReleaseContext();
 }
 
-void PrintingContextWin::PrintDocument(const base::string16& device_name,
-                                       const MetafileSkia& metafile) {
-  // TODO(crbug.com/1008222)
-  NOTIMPLEMENTED();
-}
-
 void PrintingContextWin::AskUserForSettings(int max_pages,
                                             bool has_selection,
                                             bool is_scripted,
@@ -73,20 +102,27 @@ void PrintingContextWin::AskUserForSettings(int max_pages,
   NOTIMPLEMENTED();
 }
 
-PrintingContext::Result PrintingContextWin::UseDefaultSettings() {
+mojom::ResultCode PrintingContextWin::UseDefaultSettings() {
   DCHECK(!in_print_job_);
 
   scoped_refptr<PrintBackend> backend =
       PrintBackend::CreateInstance(delegate_->GetAppLocale());
-  base::string16 default_printer =
-      base::UTF8ToWide(backend->GetDefaultPrinterName());
+  std::string default_printer_name;
+  mojom::ResultCode result =
+      backend->GetDefaultPrinterName(default_printer_name);
+  if (result != mojom::ResultCode::kSuccess)
+    return result;
+
+  std::wstring default_printer = base::UTF8ToWide(default_printer_name);
   if (!default_printer.empty()) {
     ScopedPrinterHandle printer;
     if (printer.OpenPrinterWithName(default_printer.c_str())) {
       std::unique_ptr<DEVMODE, base::FreeDeleter> dev_mode =
           CreateDevMode(printer.Get(), nullptr);
-      if (InitializeSettings(default_printer, dev_mode.get()) == OK)
-        return OK;
+      if (InitializeSettings(default_printer, dev_mode.get()) ==
+          mojom::ResultCode::kSuccess) {
+        return mojom::ResultCode::kSuccess;
+      }
     }
   }
 
@@ -114,11 +150,13 @@ PrintingContext::Result PrintingContextWin::UseDefaultSettings() {
           continue;
         std::unique_ptr<DEVMODE, base::FreeDeleter> dev_mode =
             CreateDevMode(printer.Get(), nullptr);
-        if (InitializeSettings(info_2->pPrinterName, dev_mode.get()) == OK)
-          return OK;
+        if (InitializeSettings(info_2->pPrinterName, dev_mode.get()) ==
+            mojom::ResultCode::kSuccess) {
+          return mojom::ResultCode::kSuccess;
+        }
       }
       if (context_)
-        return OK;
+        return mojom::ResultCode::kSuccess;
     }
   }
 
@@ -154,21 +192,19 @@ gfx::Size PrintingContextWin::GetPdfPaperSizeDeviceUnits() {
                    paper_size.height() * settings_->device_units_per_inch());
 }
 
-PrintingContext::Result PrintingContextWin::UpdatePrinterSettings(
-    bool external_preview,
-    bool show_system_dialog,
-    int page_count) {
+mojom::ResultCode PrintingContextWin::UpdatePrinterSettings(
+    const PrinterSettings& printer_settings) {
   DCHECK(!in_print_job_);
-  DCHECK(!external_preview) << "Not implemented";
 
   ScopedPrinterHandle printer;
-  if (!printer.OpenPrinterWithName(settings_->device_name().c_str()))
+  if (!printer.OpenPrinterWithName(base::as_wcstr(settings_->device_name())))
     return OnError();
 
   // Make printer changes local to Chrome.
   // See MSDN documentation regarding DocumentProperties.
   std::unique_ptr<DEVMODE, base::FreeDeleter> scoped_dev_mode =
-      CreateDevModeWithColor(printer.Get(), settings_->device_name(),
+      CreateDevModeWithColor(printer.Get(),
+                             base::UTF16ToWide(settings_->device_name()),
                              settings_->color() != mojom::ColorModel::kGray);
   if (!scoped_dev_mode)
     return OnError();
@@ -229,9 +265,10 @@ PrintingContext::Result PrintingContextWin::UpdatePrinterSettings(
   }
 
   // Update data using DocumentProperties.
-  if (show_system_dialog) {
-    PrintingContext::Result result = PrintingContext::FAILED;
-    AskUserForSettings(page_count, false, false,
+  if (printer_settings.show_system_dialog) {
+    mojom::ResultCode result = mojom::ResultCode::kFailed;
+    AskUserForSettings(printer_settings.page_count, /*has_selection=*/false,
+                       /*is_scripted=*/false,
                        base::BindOnce(&AssignResult, &result));
     return result;
   }
@@ -247,10 +284,11 @@ PrintingContext::Result PrintingContextWin::UpdatePrinterSettings(
                                  ? DMCOLOR_COLOR
                                  : DMCOLOR_MONOCHROME;
 
-  return InitializeSettings(settings_->device_name(), scoped_dev_mode.get());
+  return InitializeSettings(base::UTF16ToWide(settings_->device_name()),
+                            scoped_dev_mode.get());
 }
 
-PrintingContext::Result PrintingContextWin::InitWithSettingsForTest(
+mojom::ResultCode PrintingContextWin::InitWithSettingsForTest(
     std::unique_ptr<PrintSettings> settings) {
   DCHECK(!in_print_job_);
 
@@ -258,19 +296,23 @@ PrintingContext::Result PrintingContextWin::InitWithSettingsForTest(
 
   // TODO(maruel): settings_.ToDEVMODE()
   ScopedPrinterHandle printer;
-  if (!printer.OpenPrinterWithName(settings_->device_name().c_str()))
-    return FAILED;
+  if (!printer.OpenPrinterWithName(base::as_wcstr(settings_->device_name()))) {
+    return logging::GetLastSystemErrorCode() == ERROR_ACCESS_DENIED
+               ? mojom::ResultCode::kAccessDenied
+               : mojom::ResultCode::kFailed;
+  }
 
   std::unique_ptr<DEVMODE, base::FreeDeleter> dev_mode =
       CreateDevMode(printer.Get(), nullptr);
 
-  return InitializeSettings(settings_->device_name(), dev_mode.get());
+  return InitializeSettings(base::UTF16ToWide(settings_->device_name()),
+                            dev_mode.get());
 }
 
-PrintingContext::Result PrintingContextWin::NewDocument(
-    const base::string16& document_name) {
+mojom::ResultCode PrintingContextWin::NewDocument(
+    const std::u16string& document_name) {
   DCHECK(!in_print_job_);
-  if (!context_)
+  if (!context_ && !skip_system_calls())
     return OnError();
 
   // Set the flag used by the AbortPrintJob dialog procedure.
@@ -278,8 +320,13 @@ PrintingContext::Result PrintingContextWin::NewDocument(
 
   in_print_job_ = true;
 
-  if (base::FeatureList::IsEnabled(printing::features::kUseXpsForPrinting))
-    return OK;  // This is all the new document context needed when using XPS.
+  if (skip_system_calls())
+    return mojom::ResultCode::kSuccess;
+
+  if (base::FeatureList::IsEnabled(printing::features::kUseXpsForPrinting)) {
+    // This is all the new document context needed when using XPS.
+    return mojom::ResultCode::kSuccess;
+  }
 
   // Need more context setup when using GDI.
 
@@ -289,7 +336,7 @@ PrintingContext::Result PrintingContextWin::NewDocument(
 
   DCHECK(SimplifyDocumentTitle(document_name) == document_name);
   DOCINFO di = {sizeof(DOCINFO)};
-  di.lpszDocName = document_name.c_str();
+  di.lpszDocName = base::as_wcstr(document_name);
 
   // Is there a debug dump directory specified? If so, force to print to a file.
   if (PrintedDocument::HasDebugDumpPath()) {
@@ -300,8 +347,9 @@ PrintingContext::Result PrintingContextWin::NewDocument(
   }
 
   // No message loop running in unit tests.
-  DCHECK(!base::CurrentThread::Get() ||
-         !base::CurrentThread::Get()->NestableTasksAllowed());
+  DCHECK(
+      !base::CurrentThread::Get() ||
+      !base::CurrentThread::Get()->ApplicationTasksAllowedInNativeNestedLoop());
 
   // Begin a print job by calling the StartDoc function.
   // NOTE: StartDoc() starts a message loop. That causes a lot of problems with
@@ -309,35 +357,59 @@ PrintingContext::Result PrintingContextWin::NewDocument(
   if (StartDoc(context_, &di) <= 0)
     return OnError();
 
-  return OK;
+  return mojom::ResultCode::kSuccess;
 }
 
-PrintingContext::Result PrintingContextWin::NewPage() {
+mojom::ResultCode PrintingContextWin::RenderPage(const PrintedPage& page,
+                                                 const PageSetup& page_setup) {
   if (abort_printing_)
-    return CANCEL;
+    return mojom::ResultCode::kCanceled;
   DCHECK(context_);
   DCHECK(in_print_job_);
 
-  // Intentional No-op. MetafileSkia::SafePlayback takes care of calling
-  // ::StartPage().
+  gfx::Rect content_area = GetCenteredPageContentRect(
+      page_setup.physical_size(), page.page_size(), page.page_content_rect());
 
-  return OK;
+  // Save the state to make sure the context this function call does not modify
+  // the device context.
+  ScopedSavedState saved_state(context_);
+  skia::InitializeDC(context_);
+  {
+    // Save the state (again) to apply the necessary world transformation.
+    ScopedSavedState saved_state_inner(context_);
+
+    // Setup the matrix to translate and scale to the right place. Take in
+    // account the actual shrinking factor.
+    // Note that the printing output is relative to printable area of the page.
+    // That is 0,0 is offset by PHYSICALOFFSETX/Y from the page.
+    SimpleModifyWorldTransform(
+        context_, content_area.x() - page_setup.printable_area().x(),
+        content_area.y() - page_setup.printable_area().y(),
+        page.shrink_factor());
+
+    if (::StartPage(context_) <= 0)
+      return mojom::ResultCode::kFailed;
+    bool played_back = page.metafile()->SafePlayback(context_);
+    DCHECK(played_back);
+    if (::EndPage(context_) <= 0)
+      return mojom::ResultCode::kFailed;
+  }
+
+  return mojom::ResultCode::kSuccess;
 }
 
-PrintingContext::Result PrintingContextWin::PageDone() {
-  if (abort_printing_)
-    return CANCEL;
-  DCHECK(in_print_job_);
-
-  // Intentional No-op. MetafileSkia::SafePlayback takes care of calling
-  // ::EndPage().
-
-  return OK;
+mojom::ResultCode PrintingContextWin::PrintDocument(
+    const MetafilePlayer& metafile,
+    const PrintSettings& settings,
+    uint32_t num_pages) {
+  // TODO(crbug.com/1008222)
+  NOTIMPLEMENTED();
+  return mojom::ResultCode::kFailed;
 }
 
-PrintingContext::Result PrintingContextWin::DocumentDone() {
+mojom::ResultCode PrintingContextWin::DocumentDone() {
   if (abort_printing_)
-    return CANCEL;
+    return mojom::ResultCode::kCanceled;
   DCHECK(in_print_job_);
   DCHECK(context_);
 
@@ -346,7 +418,7 @@ PrintingContext::Result PrintingContextWin::DocumentDone() {
     return OnError();
 
   ResetSettings();
-  return OK;
+  return mojom::ResultCode::kSuccess;
 }
 
 void PrintingContextWin::Cancel() {
@@ -377,7 +449,7 @@ BOOL PrintingContextWin::AbortProc(HDC hdc, int nCode) {
   return true;
 }
 
-PrintingContext::Result PrintingContextWin::InitializeSettings(
+mojom::ResultCode PrintingContextWin::InitializeSettings(
     const std::wstring& device_name,
     DEVMODE* dev_mode) {
   if (!dev_mode)
@@ -391,11 +463,32 @@ PrintingContext::Result PrintingContextWin::InitializeSettings(
   skia::InitializeDC(context_);
 
   DCHECK(!in_print_job_);
-  settings_->set_device_name(device_name);
+  settings_->set_device_name(base::WideToUTF16(device_name));
   PrintSettingsInitializerWin::InitPrintSettings(context_, *dev_mode,
                                                  settings_.get());
 
-  return OK;
+  return mojom::ResultCode::kSuccess;
+}
+
+mojom::ResultCode PrintingContextWin::OnError() {
+  mojom::ResultCode result;
+  if (abort_printing_) {
+    result = mojom::ResultCode::kCanceled;
+  } else {
+    switch (logging::GetLastSystemErrorCode()) {
+      case ERROR_ACCESS_DENIED:
+        result = mojom::ResultCode::kAccessDenied;
+        break;
+      case ERROR_CANCELLED:
+        result = mojom::ResultCode::kCanceled;
+        break;
+      default:
+        result = mojom::ResultCode::kFailed;
+        break;
+    }
+  }
+  ResetSettings();
+  return result;
 }
 
 HWND PrintingContextWin::GetRootWindow(gfx::NativeView view) {

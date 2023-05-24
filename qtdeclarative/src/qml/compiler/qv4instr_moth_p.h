@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QV4INSTR_MOTH_P_H
 #define QV4INSTR_MOTH_P_H
@@ -89,7 +53,9 @@ QT_BEGIN_NAMESPACE
 #define INSTR_StoreNameSloppy(op) INSTRUCTION(op, StoreNameSloppy, 1, name)
 #define INSTR_StoreNameStrict(op) INSTRUCTION(op, StoreNameStrict, 1, name)
 #define INSTR_LoadProperty(op) INSTRUCTION(op, LoadProperty, 1, name)
+#define INSTR_LoadOptionalProperty(op) INSTRUCTION(op, LoadOptionalProperty, 2, name, offset)
 #define INSTR_GetLookup(op) INSTRUCTION(op, GetLookup, 1, index)
+#define INSTR_GetOptionalLookup(op) INSTRUCTION(op, GetOptionalLookup, 2, index, offset)
 #define INSTR_LoadIdObject(op) INSTRUCTION(op, LoadIdObject, 2, index, base)
 #define INSTR_Yield(op) INSTRUCTION(op, Yield, 0)
 #define INSTR_YieldStar(op) INSTRUCTION(op, YieldStar, 0)
@@ -105,7 +71,6 @@ QT_BEGIN_NAMESPACE
 #define INSTR_CallWithReceiver(op) INSTRUCTION(op, CallWithReceiver, 4, name, thisObject, argc, argv)
 #define INSTR_CallProperty(op) INSTRUCTION(op, CallProperty, 4, name, base, argc, argv)
 #define INSTR_CallPropertyLookup(op) INSTRUCTION(op, CallPropertyLookup, 4, lookupIndex, base, argc, argv)
-#define INSTR_CallElement(op) INSTRUCTION(op, CallElement, 4, base, index, argc, argv)
 #define INSTR_CallName(op) INSTRUCTION(op, CallName, 3, name, argc, argv)
 #define INSTR_CallPossiblyDirectEval(op) INSTRUCTION(op, CallPossiblyDirectEval, 2, argc, argv)
 #define INSTR_CallGlobalLookup(op) INSTRUCTION(op, CallGlobalLookup, 3, index, argc, argv)
@@ -190,6 +155,7 @@ QT_BEGIN_NAMESPACE
 #define INSTR_Div(op) INSTRUCTION(op, Div, 1, lhs)
 #define INSTR_Mod(op) INSTRUCTION(op, Mod, 1, lhs)
 #define INSTR_Sub(op) INSTRUCTION(op, Sub, 1, lhs)
+#define INSTR_As(op) INSTRUCTION(op, As, 1, lhs)
 #define INSTR_LoadQmlImportedScripts(op) INSTRUCTION(op, LoadQmlImportedScripts, 1, result)
 #define INSTR_InitializeBlockDeadTemporalZone(op) INSTRUCTION(op, InitializeBlockDeadTemporalZone, 2, firstReg, count)
 #define INSTR_ThrowOnNullOrUndefined(op) INSTRUCTION(op, ThrowOnNullOrUndefined, 0)
@@ -229,7 +195,9 @@ QT_BEGIN_NAMESPACE
     F(LoadElement) \
     F(StoreElement) \
     F(LoadProperty) \
+    F(LoadOptionalProperty) \
     F(GetLookup) \
+    F(GetOptionalLookup) \
     F(StoreProperty) \
     F(SetLookup) \
     F(LoadSuperProperty) \
@@ -280,11 +248,11 @@ QT_BEGIN_NAMESPACE
     F(Div) \
     F(Mod) \
     F(Sub) \
+    F(As) \
     F(CallValue) \
     F(CallWithReceiver) \
     F(CallProperty) \
     F(CallPropertyLookup) \
-    F(CallElement) \
     F(CallName) \
     F(CallPossiblyDirectEval) \
     F(CallGlobalLookup) \
@@ -336,11 +304,7 @@ QT_BEGIN_NAMESPACE
 #define MOTH_NUM_INSTRUCTIONS() (static_cast<int>(Moth::Instr::Type::Debug_Wide) + 1)
 
 #if defined(Q_CC_GNU)
-#if defined(Q_CC_INTEL)
-// icc before version 1200 doesn't support computed goto, and at least up to version 18.0.0 the
-// current use results in an internal compiler error. We could enable this if/when it gets fixed
-// in a later version.
-# elif defined(Q_OS_WASM) && !defined(__asmjs)
+#if defined(Q_OS_WASM) && !defined(__asmjs)
 // Upstream llvm does not support computed goto for the wasm target, unlike the 'fastcomp' llvm fork
 // shipped with the emscripten SDK. Disable computed goto usage for non-fastcomp llvm on Wasm.
 #else
@@ -348,7 +312,7 @@ QT_BEGIN_NAMESPACE
 #endif
 #endif
 
-#define MOTH_INSTR_ALIGN_MASK (Q_ALIGNOF(QV4::Moth::Instr) - 1)
+#define MOTH_INSTR_ALIGN_MASK (alignof(QV4::Moth::Instr) - 1)
 
 #define MOTH_INSTR_ENUM(I)  I, I##_Wide,
 #define MOTH_INSTR_SIZE(I) (sizeof(QV4::Moth::Instr::instr_##I))
@@ -508,7 +472,7 @@ QT_BEGIN_NAMESPACE
 namespace QV4 {
 
 namespace CompiledData {
-struct CodeOffsetToLine;
+struct CodeOffsetToLineAndStatement;
 }
 
 namespace Moth {
@@ -534,10 +498,13 @@ inline bool operator!=(const StackSlot &l, const StackSlot &r) { return l.stackS
 // When making changes to the instructions, make sure to bump QV4_DATA_STRUCTURE_VERSION in qv4compileddata_p.h
 
 void dumpBytecode(const char *bytecode, int len, int nLocals, int nFormals, int startLine = 1,
-                  const QVector<CompiledData::CodeOffsetToLine> &lineNumberMapping = QVector<CompiledData::CodeOffsetToLine>());
+                  const QVector<CompiledData::CodeOffsetToLineAndStatement> &lineAndStatementNumberMapping
+                        = QVector<CompiledData::CodeOffsetToLineAndStatement>());
 inline void dumpBytecode(const QByteArray &bytecode, int nLocals, int nFormals, int startLine = 1,
-                         const QVector<CompiledData::CodeOffsetToLine> &lineNumberMapping = QVector<CompiledData::CodeOffsetToLine>()) {
-    dumpBytecode(bytecode.constData(), bytecode.length(), nLocals, nFormals, startLine, lineNumberMapping);
+                         const QVector<CompiledData::CodeOffsetToLineAndStatement> &lineAndStatementNumberMapping
+                            = QVector<CompiledData::CodeOffsetToLineAndStatement>()) {
+    dumpBytecode(bytecode.constData(), bytecode.size(), nLocals, nFormals, startLine,
+                 lineAndStatementNumberMapping);
 }
 
 union Instr

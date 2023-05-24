@@ -1,52 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "type_conversion.h"
 
+#include "base/containers/contains.h"
+#include <components/favicon_base/favicon_util.h>
 #include <net/cert/x509_certificate.h>
 #include <net/cert/x509_util.h>
 #include <ui/events/event_constants.h>
-#include <ui/gfx/image/image_skia.h>
+#include "ui/gfx/image/image.h"
+#include "ui/gfx/image/image_skia.h"
+#include "ui/gfx/image/image_skia_rep.h"
 #include "third_party/blink/public/mojom/favicon/favicon_url.mojom.h"
 
 #include <QtCore/qcoreapplication.h>
-#include <QtGui/qmatrix4x4.h>
 #include <QtNetwork/qsslcertificate.h>
 
 namespace QtWebEngineCore {
@@ -64,6 +31,7 @@ QImage toQImage(const SkBitmap &bitmap)
     case kA16_unorm_SkColorType:
     case kR16G16_float_SkColorType:
     case kR16G16_unorm_SkColorType:
+    case kR8_unorm_SkColorType:
         qWarning("Unknown or unsupported skia image format");
         break;
     case kAlpha_8_SkColorType:
@@ -86,6 +54,7 @@ QImage toQImage(const SkBitmap &bitmap)
             break;
         }
         break;
+    case kSRGBA_8888_SkColorType:
     case kRGB_888x_SkColorType:
     case kRGBA_8888_SkColorType:
         switch (bitmap.alphaType()) {
@@ -134,6 +103,7 @@ QImage toQImage(const SkBitmap &bitmap)
         }
         break;
     case kBGR_101010x_SkColorType:
+    case kBGR_101010x_XR_SkColorType:
     case kBGRA_1010102_SkColorType:
         switch (bitmap.alphaType()) {
         case kUnknown_SkAlphaType:
@@ -216,6 +186,23 @@ SkBitmap toSkBitmap(const QImage &image)
     return bitmapCopy;
 }
 
+QIcon toQIcon(const gfx::Image &image)
+{
+    // Based on ExtractSkBitmapsToStore in chromium/components/favicon/core/favicon_service_impl.cc
+    gfx::ImageSkia image_skia = image.AsImageSkia();
+    image_skia.EnsureRepsForSupportedScales();
+    const std::vector<gfx::ImageSkiaRep> &image_reps = image_skia.image_reps();
+    std::vector<SkBitmap> bitmaps;
+    const std::vector<float> favicon_scales = favicon_base::GetFaviconScales();
+    for (size_t i = 0; i < image_reps.size(); ++i) {
+        // Don't save if the scale isn't one of supported favicon scales.
+        if (!base::Contains(favicon_scales, image_reps[i].scale()))
+            continue;
+        bitmaps.push_back(image_reps[i].GetBitmap());
+    }
+    return toQIcon(bitmaps);
+}
+
 QIcon toQIcon(const std::vector<SkBitmap> &bitmaps)
 {
     if (!bitmaps.size())
@@ -257,44 +244,6 @@ int flagsFromModifiers(Qt::KeyboardModifiers modifiers)
     return modifierFlags;
 }
 
-FaviconInfo::FaviconTypeFlags toQt(blink::mojom::FaviconIconType type)
-{
-    switch (type) {
-    case blink::mojom::FaviconIconType::kFavicon:
-        return FaviconInfo::Favicon;
-    case blink::mojom::FaviconIconType::kTouchIcon:
-        return FaviconInfo::TouchIcon;
-    case blink::mojom::FaviconIconType::kTouchPrecomposedIcon:
-        return FaviconInfo::TouchPrecomposedIcon;
-    case blink::mojom::FaviconIconType::kInvalid:
-        return FaviconInfo::InvalidIcon;
-    }
-    Q_UNREACHABLE();
-    return FaviconInfo::InvalidIcon;
-}
-
-FaviconInfo toFaviconInfo(const blink::mojom::FaviconURLPtr &favicon_url)
-{
-    FaviconInfo info;
-    info.url = toQt(favicon_url->icon_url);
-    info.type = toQt(favicon_url->icon_type);
-    // TODO: Add support for rel sizes attribute (favicon_url.icon_sizes):
-    // http://www.w3schools.com/tags/att_link_sizes.asp
-    info.size = QSize(0, 0);
-    return info;
-}
-
-void convertToQt(const SkMatrix44 &m, QMatrix4x4 &c)
-{
-    QMatrix4x4 qtMatrix(
-        m.get(0, 0), m.get(0, 1), m.get(0, 2), m.get(0, 3),
-        m.get(1, 0), m.get(1, 1), m.get(1, 2), m.get(1, 3),
-        m.get(2, 0), m.get(2, 1), m.get(2, 2), m.get(2, 3),
-        m.get(3, 0), m.get(3, 1), m.get(3, 2), m.get(3, 3));
-    qtMatrix.optimize();
-    c = qtMatrix;
-}
-
 static QSslCertificate toCertificate(CRYPTO_BUFFER *buffer)
 {
     auto derCert = net::x509_util::CryptoBufferAsStringPiece(buffer);
@@ -309,6 +258,42 @@ QList<QSslCertificate> toCertificateChain(net::X509Certificate *certificate)
     for (auto &&buffer : certificate->intermediate_buffers())
         chain.append(toCertificate(buffer.get()));
     return chain;
+}
+
+Qt::InputMethodHints toQtInputMethodHints(ui::TextInputType inputType)
+{
+    switch (inputType) {
+    case ui::TEXT_INPUT_TYPE_TEXT:
+        return Qt::ImhPreferLowercase;
+    case ui::TEXT_INPUT_TYPE_SEARCH:
+        return Qt::ImhPreferLowercase | Qt::ImhNoAutoUppercase;
+    case ui::TEXT_INPUT_TYPE_PASSWORD:
+        return Qt::ImhSensitiveData | Qt::ImhNoPredictiveText | Qt::ImhNoAutoUppercase
+                | Qt::ImhHiddenText;
+    case ui::TEXT_INPUT_TYPE_EMAIL:
+        return Qt::ImhEmailCharactersOnly;
+    case ui::TEXT_INPUT_TYPE_NUMBER:
+        return Qt::ImhFormattedNumbersOnly;
+    case ui::TEXT_INPUT_TYPE_TELEPHONE:
+        return Qt::ImhDialableCharactersOnly;
+    case ui::TEXT_INPUT_TYPE_URL:
+        return Qt::ImhUrlCharactersOnly | Qt::ImhNoPredictiveText | Qt::ImhNoAutoUppercase;
+    case ui::TEXT_INPUT_TYPE_DATE_TIME:
+    case ui::TEXT_INPUT_TYPE_DATE_TIME_LOCAL:
+    case ui::TEXT_INPUT_TYPE_DATE_TIME_FIELD:
+        return Qt::ImhDate | Qt::ImhTime;
+    case ui::TEXT_INPUT_TYPE_DATE:
+    case ui::TEXT_INPUT_TYPE_MONTH:
+    case ui::TEXT_INPUT_TYPE_WEEK:
+        return Qt::ImhDate;
+    case ui::TEXT_INPUT_TYPE_TIME:
+        return Qt::ImhTime;
+    case ui::TEXT_INPUT_TYPE_TEXT_AREA:
+    case ui::TEXT_INPUT_TYPE_CONTENT_EDITABLE:
+        return Qt::ImhMultiLine | Qt::ImhPreferLowercase;
+    default:
+        return Qt::ImhNone;
+    }
 }
 
 } // namespace QtWebEngineCore

@@ -13,8 +13,6 @@
       "multi_gpu_category": "any",
       "features": [
         "accelerated_webgl",
-        "flash3d",
-        "flash_stage3d",
         "gpu_rasterization"
       ]
     },
@@ -38,44 +36,7 @@
       "device_id": ["0x27AE", "0x27A2"],
       "features": [
         "accelerated_webgl",
-        "flash3d",
-        "flash_stage3d",
         "accelerated_2d_canvas"
-      ]
-    },
-    {
-      "id": 5,
-      "description": "ATI/AMD cards with older drivers in Linux are crash-prone",
-      "cr_bugs": [71381, 76428, 73910, 101225, 136240, 357314, 719213],
-      "os": {
-        "type": "linux"
-      },
-      "vendor_id": "0x1002",
-      "exceptions": [
-        {
-          "driver_vendor": ".*AMD.*",
-          "driver_version": {
-            "op": ">=",
-            "style": "lexical",
-            "value": "8.98"
-          }
-        },
-        {
-          "driver_vendor": "Mesa",
-          "driver_version": {
-            "op": ">=",
-            "value": "10.0.4"
-          }
-        },
-        {
-          "driver_vendor": ".*ANGLE.*"
-        },
-        {
-          "driver_vendor": ".*Brahma.*"
-        }
-      ],
-      "features": [
-        "all"
       ]
     },
     {
@@ -100,8 +61,6 @@
       "multi_gpu_category": "any",
       "features": [
         "accelerated_webgl",
-        "flash3d",
-        "flash_stage3d",
         "gpu_rasterization"
       ]
     },
@@ -358,16 +317,6 @@
       ]
     },
     {
-      "id": 53,
-      "description": "The Intel GMA500 is too slow for Stage3D",
-      "cr_bugs": [152096],
-      "vendor_id": "0x8086",
-      "device_id": ["0x8108", "0x8109"],
-      "features": [
-        "flash_stage3d"
-      ]
-    },
-    {
       "id": 56,
       "description": "NVIDIA linux drivers are unstable when using multiple Open GL contexts and with low memory",
       "cr_bugs": [145600],
@@ -381,9 +330,7 @@
         "value": "331.38"
       },
       "features": [
-        "accelerated_video_decode",
-        "flash3d",
-        "flash_stage3d"
+        "accelerated_video_decode"
       ]
     },
     {
@@ -436,57 +383,6 @@
       },
       "features": [
         "all"
-      ]
-    },
-    {
-      "id": 69,
-      "description": "NVIDIA driver 196.21 is buggy with Stage3D baseline mode",
-      "cr_bugs": [172771],
-      "os": {
-        "type": "win"
-      },
-      "vendor_id": "0x10de",
-      "driver_version": {
-        "comment": "INF_version: 8.17.11.9621; date: 01/11/2010",
-        "op": "=",
-        "value": "8.17.11.9621"
-      },
-      "features": [
-        "flash_stage3d_baseline"
-      ]
-    },
-    {
-      "id": 70,
-      "description": "NVIDIA driver 182.67 is buggy with Stage3D baseline mode",
-      "cr_bugs": [172771],
-      "os": {
-        "type": "win"
-      },
-      "vendor_id": "0x10de",
-      "driver_version": {
-        "comment": "INF_version: 7.15.11.8267; date: 05/12/2009",
-        "op": "=",
-        "value": "7.15.11.8267"
-      },
-      "features": [
-        "flash_stage3d_baseline"
-      ]
-    },
-    {
-      "id": 71,
-      "description": "All Intel drivers before 8.15.10.2021 are buggy with Stage3D baseline mode",
-      "cr_bugs": [172771],
-      "os": {
-        "type": "win"
-      },
-      "vendor_id": "0x8086",
-      "driver_version": {
-        "comment": "INF_version: 8.15.10.2021; date: 12/14/2009",
-        "op": "<",
-        "value": "8.15.10.2021"
-      },
-      "features": [
-        "flash_stage3d_baseline"
       ]
     },
     {
@@ -806,11 +702,11 @@
     {
       "id": 105,
       "description": "GPU raster broken on PowerVR SGX even on Lollipop",
-      "cr_bugs": [461456],
+      "cr_bugs": [461456, 1243361],
       "os": {
         "type": "android"
       },
-      "gl_renderer": "PowerVR SGX.*",
+      "gl_renderer": "PowerVR SGX \\d+",
       "features": [
         "accelerated_2d_canvas",
         "gpu_rasterization"
@@ -867,14 +763,14 @@
     {
       "id": 111,
       "description": "Apple Software Renderer used under VMWare experiences synchronization issues with GPU Raster",
-      "cr_bugs": [607829],
+      "cr_bugs": [607829, 1342540],
       "os": {
         "type": "macosx"
       },
       "vendor_id": "0x15ad",
       "multi_gpu_category": "any",
       "features": [
-        "gpu_rasterization"
+        "all"
       ]
     },
     {
@@ -1058,6 +954,7 @@
       },
       "exceptions": [
         {
+          "vendor_id": "0x1002",
           "driver_version": {
             "comment": "INF_version: 21.19.384.0; date: 12/04/2016",
             "op": ">=",
@@ -1247,10 +1144,17 @@
     },
     {
       "id": 140,
-      "comment": "Corresponds to GPU driver bugs #19, #214",
-      "description": "MSAA and depth texture buggy on Adreno 3xx, also disable WebGL2",
-      "cr_bugs": [449116, 698197],
+      "comment": "Corresponds to GPU driver bugs #19, #214, #359",
+      "description": "MSAA and depth texture buggy on Adreno 3xx prior to Android 9, also disable WebGL2",
+      "cr_bugs": [449116, 698197, 1042214],
       "gl_renderer": "Adreno \\(TM\\) 3.*",
+      "os": {
+        "type": "android",
+        "version": {
+          "op": "<",
+          "value": "9.0"
+        }
+      },
       "features": [
         "accelerated_webgl2"
       ]
@@ -1341,6 +1245,7 @@
           "value": "10"
         }
       },
+      "vendor_id": "0x1002",
       "driver_version": {
         "op": "<",
         "value": "20.19.0.32837"
@@ -1356,7 +1261,7 @@
       "cr_bugs": [710273],
       "os": {
         "type": "android",
-	"version": {
+        "version": {
           "op": "<",
           "value": "7.0"
         }
@@ -1450,99 +1355,6 @@
       ]
     },
     {
-      "id": 154,
-      "description": "Protected video decoding with swap chain is for certain Intel and AMD GPUs on Windows",
-      "cr_bugs": [1093625],
-      "exceptions": [
-        {
-          "vendor_id": "0x8086",
-          "os": {
-            "type": "win",
-            "version": {
-              "op": ">=",
-              "value": "10"
-            }
-          }
-        },
-        {
-          "vendor_id": "0x1002",
-          "device_id": ["0x15d8"],
-          "device_revision": ["0xe1", "0xe2"],
-          "driver_version": {
-            "op": ">=",
-            "value": "26.20.12055.1000"
-          },
-          "os": {
-            "type": "win",
-            "version": {
-              "op": ">=",
-              "value": "10"
-            }
-          }
-        },
-        {
-          "vendor_id": "0x1002",
-          "device_id": ["0x15d8", "0x15dd"],
-          "device_revision": ["0x93", "0x86"],
-          "driver_version": {
-            "op": ">=",
-            "value": "26.20.15023.6032"
-          },
-          "os": {
-            "type": "win",
-            "version": {
-              "op": ">=",
-              "value": "10"
-            }
-          }
-        },
-        {
-          "vendor_id": "0x1002",
-          "device_id": ["0x15d8", "0x15dd"],
-          "driver_version": {
-            "op": ">=",
-            "value": "27.20.1002.34"
-          },
-          "os": {
-            "type": "win",
-            "version": {
-              "op": ">=",
-              "value": "10"
-            }
-          }
-        }
-      ],
-      "features": [
-        "protected_video_decode"
-      ]
-    },
-    {
-      "id": 155,
-      "description": "Older Intel GPUs cannot support protected video decoding in swap chains",
-      "features": [
-        "protected_video_decode"
-      ],
-      "os": {
-        "type": "win",
-        "version": {
-          "op": ">=",
-          "value": "10.0"
-         }
-      },
-      "vendor_id": "0x8086",
-      "intel_gpu_series": [
-        "sandybridge",
-        "baytrail",
-        "ivybridge",
-        "haswell",
-        "cherrytrail",
-        "broadwell",
-        "apollolake",
-        "skylake",
-        "geminilake"
-      ]
-    },
-    {
       "id": 157,
       "description": "VMware can crash with older drivers and WebGL content",
       "cr_bugs": [879098],
@@ -1557,6 +1369,23 @@
       "features": [
         "accelerated_webgl",
         "accelerated_webgl2"
+      ]
+    },
+    {
+      "id": 158,
+      "description": "Canvas rendering issues with Intel drivers on Windows since 94-based: https://bugreports.qt.io/browse/QTBUG-104065",
+      "cr_bugs": [1316442],
+      "os": {
+        "type": "win"
+      },
+      "exceptions": [
+        {
+          "gl_renderer": "ANGLE.*"
+        }
+      ],
+      "vendor_id": "0x8086",
+      "features": [
+        "accelerated_2d_canvas"
       ]
     },
     {
@@ -1632,8 +1461,6 @@
       },
       "features": [
         "accelerated_webgl",
-        "flash3d",
-        "flash_stage3d",
         "accelerated_2d_canvas"
       ]
     },
@@ -1651,8 +1478,6 @@
       },
       "features": [
         "accelerated_webgl",
-        "flash3d",
-        "flash_stage3d",
         "accelerated_2d_canvas"
       ]
     },
@@ -1685,8 +1510,217 @@
         "op": "=",
         "value": "8.17.10"
       },
+      "exceptions": [
+        {
+          "vendor_id": "0x1002",
+          "driver_version": {
+            "op": ">=",
+            "value": "8.17.10.1433"
+          }
+        }
+      ],
       "features": [
         "all"
+      ]
+    },
+    {
+      "id": 167,
+      "description": "8.17.10.* AMD drivers trigger hangs in video stack",
+      "cr_bugs": [1160623],
+      "os": {
+        "type": "win"
+      },
+      "vendor_id": "0x1002",
+      "driver_version": {
+        "op": "=",
+        "value": "8.17.10"
+      },
+      "features": [
+        "accelerated_video_decode"
+      ]
+    },
+    {
+      "id": 168,
+      "description": "PowerVR Driver crashes with ANGLE",
+      "cr_bugs": [1203652,1221321],
+      "os": {
+        "type": "android",
+        "version": {
+          "op": "<=",
+          "value": "5.1.1"
+        }
+      },
+      "gl_renderer": "ANGLE \\(Imagination Technologies, PowerVR .*",
+      "features": [
+        "all"
+      ]
+    },
+    {
+      "id": 169,
+      "description": "Many crashes with the old Intel Haswell driver on Windows 8.1.",
+      "driver_update_url": "https://www.intel.com/content/www/us/en/download-center/home.html",
+      "cr_bugs": [620885],
+      "os": {
+        "type": "win",
+        "version": {
+          "op": "=",
+          "value": "8.1"
+        }
+      },
+      "vendor_id": "0x0806",
+      "device_id": ["0x0a16"],
+      "driver_version": {
+        "op": "=",
+        "value": "10.18.10.3496"
+      },
+      "features": [
+        "all"
+      ]
+    },
+    {
+      "id": 170,
+      "description": "Disable hardware MFT video encoder on older Intel drivers",
+      "cr_bugs": [1251071],
+      "os": {
+        "type": "win"
+      },
+      "vendor_id": "0x8086",
+      "multi_gpu_category": "any",
+      "driver_version": {
+        "schema": "intel_driver",
+        "op": "between",
+        "value": "0.0.10.0",
+        "value2": "0.0.10.4425"
+      },
+      "features": [
+        "accelerated_video_encode"
+      ]
+    },
+    {
+      "id": 171,
+      "description": "Disable hardware MFT video encoder on older Intel drivers",
+      "cr_bugs": [1251071],
+      "os": {
+        "type": "win"
+      },
+      "vendor_id": "0x8086",
+      "multi_gpu_category": "any",
+      "driver_version": {
+        "schema": "intel_driver",
+        "op": "between",
+        "value": "0.0.13.0",
+        "value2": "0.0.13.5435"
+      },
+      "features": [
+        "accelerated_video_encode"
+      ]
+    },
+    {
+      "id": 172,
+      "description": "Disable hardware MFT video encoder on older Intel drivers",
+      "cr_bugs": [1251071],
+      "os": {
+        "type": "win"
+      },
+      "vendor_id": "0x8086",
+      "multi_gpu_category": "any",
+      "driver_version": {
+        "schema": "intel_driver",
+        "op": "between",
+        "value": "0.0.14.0",
+        "value2": "0.0.14.4264"
+      },
+      "features": [
+        "accelerated_video_encode"
+      ]
+    },
+    {
+      "id": 173,
+      "description": "Disable hardware MFT video encoder on older Intel drivers",
+      "cr_bugs": [1251071],
+      "os": {
+        "type": "win"
+      },
+      "vendor_id": "0x8086",
+      "multi_gpu_category": "any",
+      "driver_version": {
+        "schema": "intel_driver",
+        "op": "between",
+        "value": "0.0.15.0",
+        "value2": "0.0.15.4256"
+      },
+      "features": [
+        "accelerated_video_encode"
+      ]
+    },
+    {
+      "id": 174,
+      "description": "Disable canvas acceleration on some Haswell GPUs on ChromeOS",
+      "os": {
+        "type": "chromeos"
+      },
+      "vendor_id": "0x8086",
+      "device_id": ["0x0a16", "0x0a1e"],
+      "features": [
+        "accelerated_2d_canvas"
+      ]
+    },
+    {
+      "id": 175,
+      "description": "Disable video encoding on NVidia drivers older than summer 2018",
+      "cr_bugs": [1263058],
+      "os": {
+        "type": "win"
+      },
+      "vendor_id": "0x10de",
+      "multi_gpu_category": "any",
+      "driver_version": {
+        "op": "<=",
+        "value": "24.21.13.9826"
+      },
+      "features": [
+        "accelerated_video_encode"
+      ]
+    },
+    {
+      "id": 176,
+      "description": "VMware is buggy on Linux",
+      "cr_bugs": [1327939],
+      "os": {
+        "type": "linux"
+      },
+      "vendor_id": "0x15ad",
+      "features": [
+        "all"
+      ]
+    },
+    {
+      "id": 177,
+      "description": "Apple Software Renderer used under VMWare experiences synchronization issues with GPU Raster",
+      "cr_bugs": [607829, 1342540],
+      "os": {
+        "type": "macosx"
+      },
+      "gl_renderer": ".*Apple Software Renderer.*",
+      "multi_gpu_category": "any",
+      "features": [
+        "all"
+      ]
+    },
+    {
+      "id": 178,
+      "description": "Intel IronLake only shows black in hardware decoded H264 [b/202962575, b/233244020]",
+      "os": {
+        "type": "chromeos"
+      },
+      "intel_gpu_generation": {
+        "op": "=",
+        "value": "5"
+      },
+      "driver_vendor": "Mesa",
+      "gl_vendor": "Intel.*",
+      "features": [
+        "accelerated_video_decode"
       ]
     }
   ]

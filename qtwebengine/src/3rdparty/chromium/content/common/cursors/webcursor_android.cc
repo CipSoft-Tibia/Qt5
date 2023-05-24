@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,9 +17,5 @@ gfx::NativeCursor WebCursor::GetNativeCursor() {
 // implementation here.
 void WebCursor::SetDisplayInfo(const display::Display& display) {}
 #endif
-
-void WebCursor::CleanupPlatformData() {}
-
-void WebCursor::CopyPlatformData(const WebCursor& other) {}
 
 }  // namespace content

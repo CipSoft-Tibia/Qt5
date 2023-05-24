@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "metamakefile.h"
 #include "qdir.h"
@@ -77,7 +52,7 @@ public:
 void
 BuildsMetaMakefileGenerator::clearBuilds()
 {
-    for(int i = 0; i < makefiles.count(); i++) {
+    for(int i = 0; i < makefiles.size(); i++) {
         Build *build = makefiles[i];
         if(QMakeProject *p = build->makefile->projectFile()) {
             if(p != project)
@@ -98,12 +73,12 @@ BuildsMetaMakefileGenerator::init()
 
     const ProStringList &builds = project->values("BUILDS");
     bool use_single_build = builds.isEmpty();
-    if(builds.count() > 1 && Option::output.fileName() == "-") {
+    if(builds.size() > 1 && Option::output.fileName() == "-") {
         use_single_build = true;
         warn_msg(WarnLogic, "Cannot direct to stdout when using multiple BUILDS.");
     }
     if(!use_single_build) {
-        for(int i = 0; i < builds.count(); i++) {
+        for(int i = 0; i < builds.size(); i++) {
             ProString build = builds[i];
             MakefileGenerator *makefile = processBuild(build);
             if(!makefile)
@@ -116,7 +91,7 @@ BuildsMetaMakefileGenerator::init()
             } else {
                 Build *b = new Build;
                 b->name = name;
-                if(builds.count() != 1)
+                if(builds.size() != 1)
                     b->build = build.toQString();
                 b->makefile = makefile;
                 makefiles += b;
@@ -151,7 +126,7 @@ BuildsMetaMakefileGenerator::write()
 
     bool ret = true;
     const QString &output_name = Option::output.fileName();
-    for(int i = 0; ret && i < makefiles.count(); i++) {
+    for(int i = 0; ret && i < makefiles.size(); i++) {
         Option::output.setFileName(output_name);
         Build *build = makefiles[i];
 
@@ -248,7 +223,7 @@ void BuildsMetaMakefileGenerator::accumulateVariableFromBuilds(const ProKey &nam
 
 void BuildsMetaMakefileGenerator::checkForConflictingTargets() const
 {
-    if (makefiles.count() < 3) {
+    if (makefiles.size() < 3) {
         // Checking for conflicts only makes sense if we have more than one BUILD,
         // and the last entry in makefiles is the "glue" Build.
         return;
@@ -258,8 +233,8 @@ void BuildsMetaMakefileGenerator::checkForConflictingTargets() const
         return;
     }
     using TargetInfo = std::pair<Build *, ProString>;
-    QVector<TargetInfo> targets;
-    const int last = makefiles.count() - 1;
+    QList<TargetInfo> targets;
+    const int last = makefiles.size() - 1;
     targets.resize(last);
     for (int i = 0; i < last; ++i) {
         Build *b = makefiles.at(i);
@@ -326,7 +301,7 @@ SubdirsMetaMakefileGenerator::init()
         if(!thispwd.endsWith('/'))
            thispwd += '/';
         const ProStringList &subdirs = project->values("SUBDIRS");
-        static int recurseDepth = -1;
+        Q_CONSTINIT static int recurseDepth = -1;
         ++recurseDepth;
         for(int i = 0; i < subdirs.size(); ++i) {
             Subdir *sub = new Subdir;
@@ -335,11 +310,11 @@ SubdirsMetaMakefileGenerator::init()
             QFileInfo subdir(subdirs.at(i).toQString());
             const ProKey fkey(subdirs.at(i) + ".file");
             if (!project->isEmpty(fkey)) {
-                subdir = project->first(fkey).toQString();
+                subdir = QFileInfo(project->first(fkey).toQString());
             } else {
                 const ProKey skey(subdirs.at(i) + ".subdir");
                 if (!project->isEmpty(skey))
-                    subdir = project->first(skey).toQString();
+                    subdir = QFileInfo(project->first(skey).toQString());
             }
             QString sub_name;
             if(subdir.isDir())
@@ -349,7 +324,7 @@ SubdirsMetaMakefileGenerator::init()
             if(!subdir.isRelative()) { //we can try to make it relative
                 QString subdir_path = subdir.filePath();
                 if(subdir_path.startsWith(thispwd))
-                    subdir = QFileInfo(subdir_path.mid(thispwd.length()));
+                    subdir = QFileInfo(subdir_path.mid(thispwd.size()));
             }
 
             //handle sub project
@@ -416,12 +391,12 @@ SubdirsMetaMakefileGenerator::write()
     const QString &pwd = qmake_getpwd();
     const QString &output_dir = Option::output_dir;
     const QString &output_name = Option::output.fileName();
-    for(int i = 0; ret && i < subs.count(); i++) {
+    for(int i = 0; ret && i < subs.size(); i++) {
         const Subdir *sub = subs.at(i);
         qmake_setpwd(sub->input_dir);
         Option::output_dir = QFileInfo(sub->output_dir).absoluteFilePath();
         Option::output.setFileName(sub->output_file);
-        if(i != subs.count()-1) {
+        if(i != subs.size()-1) {
             for (int ind = 0; ind < sub->indent; ++ind)
                 printf(" ");
             printf("Writing %s\n", QDir::cleanPath(Option::output_dir+"/"+
@@ -439,7 +414,7 @@ SubdirsMetaMakefileGenerator::write()
 
 SubdirsMetaMakefileGenerator::~SubdirsMetaMakefileGenerator()
 {
-    for(int i = 0; i < subs.count(); i++)
+    for(int i = 0; i < subs.size(); i++)
         delete subs[i];
     subs.clear();
 }

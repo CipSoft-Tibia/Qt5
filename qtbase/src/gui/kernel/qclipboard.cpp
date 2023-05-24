@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qclipboard.h"
 
@@ -46,15 +10,15 @@
 #include "qvariant.h"
 #include "qbuffer.h"
 #include "qimage.h"
-#if QT_CONFIG(textcodec)
-#include "qtextcodec.h"
-#endif
+#include "private/qstringconverter_p.h"
 
 #include "private/qguiapplication_p.h"
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformclipboard.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \class QClipboard
@@ -85,7 +49,7 @@ QT_BEGIN_NAMESPACE
 
     A typical example of the use of these functions follows:
 
-    \snippet droparea.cpp 0
+    \snippet droparea/droparea.cpp 0
 
     \section1 Notes for X11 Users
 
@@ -139,16 +103,9 @@ QT_BEGIN_NAMESPACE
 
     \endlist
 
-    \section1 Notes for Universal Windows Platform Users
+    \section1 Notes for Android Users
 
-    \list
-
-    \li The Universal Windows Platform only allows to query the
-    clipboard in case the application is active and an application
-    window has focus. Accessing the clipboard data when in background
-    will fail due to access denial.
-
-    \endlist
+    On Android only these mime types are supported: text/plain, text/html, and text/uri-list.
 
     \sa QGuiApplication
 */
@@ -283,33 +240,27 @@ QString QClipboard::text(QString &subtype, Mode mode) const
 
     const QStringList formats = data->formats();
     if (subtype.isEmpty()) {
-        if (formats.contains(QLatin1String("text/plain")))
-            subtype = QLatin1String("plain");
+        if (formats.contains("text/plain"_L1))
+            subtype = "plain"_L1;
         else {
-            for (int i = 0; i < formats.size(); ++i)
-                if (formats.at(i).startsWith(QLatin1String("text/"))) {
-                    subtype = formats.at(i).mid(5);
+            for (const auto &format : formats) {
+                if (format.startsWith("text/"_L1)) {
+                    subtype = format.sliced(5);
                     break;
                 }
+            }
             if (subtype.isEmpty())
                 return QString();
         }
-    } else if (!formats.contains(QLatin1String("text/") + subtype)) {
+    } else if (!formats.contains("text/"_L1 + subtype)) {
         return QString();
     }
 
-    const QByteArray rawData = data->data(QLatin1String("text/") + subtype);
-
-#if QT_CONFIG(textcodec)
-    QTextCodec* codec = QTextCodec::codecForMib(106); // utf-8 is default
-    if (subtype == QLatin1String("html"))
-        codec = QTextCodec::codecForHtml(rawData, codec);
-    else
-        codec = QTextCodec::codecForUtfText(rawData, codec);
-    return codec->toUnicode(rawData);
-#else // textcodec
-    return rawData;
-#endif // textcodec
+    const QByteArray rawData = data->data("text/"_L1 + subtype);
+    auto encoding = QStringConverter::encodingForData(rawData);
+    if (!encoding)
+        encoding = QStringConverter::Utf8;
+    return QStringDecoder(*encoding).decode(rawData);
 }
 
 /*!
@@ -602,12 +553,13 @@ void QClipboard::emitChanged(Mode mode)
         case FindBuffer:
             emit findBufferChanged();
         break;
-        default:
-        break;
     }
+
     emit changed(mode);
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qclipboard.cpp"
 
 #endif // QT_NO_CLIPBOARD

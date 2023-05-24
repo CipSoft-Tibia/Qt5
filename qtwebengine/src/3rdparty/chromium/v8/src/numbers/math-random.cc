@@ -34,7 +34,7 @@ void MathRandom::ResetContext(Context native_context) {
 
 Address MathRandom::RefillCache(Isolate* isolate, Address raw_native_context) {
   Context native_context = Context::cast(Object(raw_native_context));
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   PodArray<State> pod =
       PodArray<State>::cast(native_context.math_random_state());
   State state = pod.get(0);
@@ -44,8 +44,8 @@ Address MathRandom::RefillCache(Isolate* isolate, Address raw_native_context) {
   // sequence.
   if (state.s0 == 0 && state.s1 == 0) {
     uint64_t seed;
-    if (FLAG_random_seed != 0) {
-      seed = FLAG_random_seed;
+    if (v8_flags.random_seed != 0) {
+      seed = v8_flags.random_seed;
     } else {
       isolate->random_number_generator()->NextBytes(&seed, sizeof(seed));
     }

@@ -1,46 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickgraphicsinfo_p.h"
-#include "qquickwindow.h"
-#include "qquickitem.h"
-#include <QtGui/qopenglcontext.h>
+#include <private/qquickitem_p.h>
+#include <qopenglcontext.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -51,10 +14,10 @@ QT_BEGIN_NAMESPACE
     \ingroup qtquick-visual
     \since 5.8
     \since QtQuick 2.8
-    \brief Provides information about the used Qt Quick backend.
+    \brief Provides information about the scenegraph backend and the graphics API used by Qt Quick.
 
     The GraphicsInfo attached type provides information about the scenegraph
-    backend used to render the contents of the associated window.
+    backend and the graphics API used to render the contents of the associated window.
 
     If the item to which the properties are attached is not currently
     associated with any window, the properties are set to default values. When
@@ -73,8 +36,10 @@ QQuickGraphicsInfo::QQuickGraphicsInfo(QQuickItem *item)
     , m_profile(OpenGLNoProfile)
     , m_renderableType(SurfaceFormatUnspecified)
 {
-    connect(item, SIGNAL(windowChanged(QQuickWindow*)), this, SLOT(setWindow(QQuickWindow*)));
-    setWindow(item->window());
+    if (Q_LIKELY(item)) {
+        connect(item, &QQuickItem::windowChanged, this, &QQuickGraphicsInfo::setWindow);
+        setWindow(item->window());
+    }
 }
 
 QQuickGraphicsInfo *QQuickGraphicsInfo::qmlAttachedProperties(QObject *object)
@@ -91,18 +56,16 @@ QQuickGraphicsInfo *QQuickGraphicsInfo::qmlAttachedProperties(QObject *object)
     This property describes the graphics API that is currently in use.
 
     The possible values are:
-    \list
-    \li GraphicsInfo.Unknown - the default value when no active scenegraph is associated with the item
-    \li GraphicsInfo.Software - Qt Quick's software renderer based on QPainter with the raster paint engine
-    \li GraphicsInfo.OpenGL - OpenGL or OpenGL ES
-    \li GraphicsInfo.Direct3D12 - Direct3D 12
-    \li GraphicsInfo.OpenVG - OpenVG
-    \li GraphicsInfo.OpenGLRhi - OpenGL on top of QRhi, a graphics abstraction layer
-    \li GraphicsInfo.Direct3D11Rhi - Direct3D 11 on top of QRhi, a graphics abstraction layer
-    \li GraphicsInfo.VulkanRhi - Vulkan on top of QRhi, a graphics abstraction layer
-    \li GraphicsInfo.MetalRhi - Metal on top of QRhi, a graphics abstraction layer
-    \li GraphicsInfo.NullRhi - Null (no output) on top of QRhi, a graphics abstraction layer
-    \endlist
+
+    \value GraphicsInfo.Unknown     the default value when no active scenegraph is associated with the item
+    \value GraphicsInfo.Software    Qt Quick's software renderer based on QPainter with the raster paint engine
+    \value GraphicsInfo.OpenVG      OpenVG
+    \value GraphicsInfo.OpenGL      OpenGL or OpenGL ES on top of QRhi, a graphics abstraction layer
+    \value GraphicsInfo.Direct3D11  Direct3D 11 on top of QRhi, a graphics abstraction layer
+    \value GraphicsInfo.Direct3D12  Direct3D 12 on top of QRhi, a graphics abstraction layer
+    \value GraphicsInfo.Vulkan      Vulkan on top of QRhi, a graphics abstraction layer
+    \value GraphicsInfo.Metal       Metal on top of QRhi, a graphics abstraction layer
+    \value GraphicsInfo.Null        Null (no output) on top of QRhi, a graphics abstraction layer
  */
 
 /*!
@@ -111,12 +74,10 @@ QQuickGraphicsInfo *QQuickGraphicsInfo::qmlAttachedProperties(QObject *object)
     This property contains the shading language supported by the Qt Quick
     backend the application is using.
 
-    \list
-    \li GraphicsInfo.UnknownShadingLanguage - Not yet known due to no window and scenegraph associated
-    \li GraphicsInfo.GLSL - GLSL or GLSL ES
-    \li GraphicsInfo.HLSL - HLSL
-    \li GraphicsInfo.RhiShader - QShader
-    \endlist
+    \value GraphicsInfo.UnknownShadingLanguage  Not yet known due to no window and scenegraph associated
+    \value GraphicsInfo.GLSL                    GLSL or GLSL ES
+    \value GraphicsInfo.HLSL                    HLSL
+    \value GraphicsInfo.RhiShader               QShader
 
     \note The value is only up-to-date once the item is associated with a
     window. Bindings relying on the value have to keep this in mind since the
@@ -137,10 +98,8 @@ QQuickGraphicsInfo *QQuickGraphicsInfo::qmlAttachedProperties(QObject *object)
     This property contains a bitmask of the shader compilation approaches
     supported by the Qt Quick backend the application is using.
 
-    \list
-    \li GraphicsInfo.RuntimeCompilation
-    \li GraphicsInfo.OfflineCompilation
-    \endlist
+    \value GraphicsInfo.RuntimeCompilation
+    \value GraphicsInfo.OfflineCompilation
 
     With OpenGL the value is GraphicsInfo.RuntimeCompilation, which corresponds
     to the traditional way of using ShaderEffect. Non-OpenGL backends are
@@ -164,11 +123,9 @@ QQuickGraphicsInfo *QQuickGraphicsInfo::qmlAttachedProperties(QObject *object)
     This property contains a bitmask of the supported ways of providing shader
     sources.
 
-    \list
-    \li GraphicsInfo.ShaderSourceString
-    \li GraphicsInfo.ShaderSourceFile
-    \li GraphicsInfo.ShaderByteCode
-    \endlist
+    \value GraphicsInfo.ShaderSourceString
+    \value GraphicsInfo.ShaderSourceFile
+    \value GraphicsInfo.ShaderByteCode
 
     With OpenGL the value is GraphicsInfo.ShaderSourceString, which corresponds
     to the traditional way of inlining GLSL source code into QML. Other,
@@ -196,6 +153,8 @@ QQuickGraphicsInfo *QQuickGraphicsInfo::qmlAttachedProperties(QObject *object)
 
     With OpenGL the default version is \c 2.0.
 
+    \note This is applicable only to OpenGL.
+
     \sa minorVersion, profile
  */
 
@@ -206,6 +165,8 @@ QQuickGraphicsInfo *QQuickGraphicsInfo::qmlAttachedProperties(QObject *object)
 
     With OpenGL the default version is \c 2.0.
 
+    \note This is applicable only to OpenGL.
+
     \sa majorVersion, profile
  */
 
@@ -215,14 +176,15 @@ QQuickGraphicsInfo *QQuickGraphicsInfo::qmlAttachedProperties(QObject *object)
     This property holds the configured OpenGL context profile.
 
     The possible values are:
-    \list
-    \li GraphicsInfo.OpenGLNoProfile (default) - OpenGL version is lower than 3.2 or OpenGL is not in use.
-    \li GraphicsInfo.OpenGLCoreProfile - Functionality deprecated in OpenGL version 3.0 is not available.
-    \li GraphicsInfo.OpenGLCompatibilityProfile - Functionality from earlier OpenGL versions is available.
-    \endlist
+
+    \value GraphicsInfo.OpenGLNoProfile             (default) OpenGL version is lower than 3.2 or OpenGL is not in use.
+    \value GraphicsInfo.OpenGLCoreProfile           Functionality deprecated in OpenGL version 3.0 is not available.
+    \value GraphicsInfo.OpenGLCompatibilityProfile  Functionality from earlier OpenGL versions is available.
 
     Reusable QML components will typically use this property in bindings in order to
     choose between core and non core profile compatible shader sources.
+
+    \note This is applicable only to OpenGL.
 
     \sa majorVersion, minorVersion, QSurfaceFormat
  */
@@ -234,11 +196,12 @@ QQuickGraphicsInfo *QQuickGraphicsInfo::qmlAttachedProperties(QObject *object)
     other than OpenGL.
 
     The possible values are:
-    \list
-    \li GraphicsInfo.SurfaceFormatUnspecified (default) - Unspecified rendering method
-    \li GraphicsInfo.SurfaceFormatOpenGL - Desktop OpenGL or other graphics API
-    \li GraphicsInfo.SurfaceFormatOpenGLES - OpenGL ES
-    \endlist
+
+    \value GraphicsInfo.SurfaceFormatUnspecified    (default) Unspecified rendering method
+    \value GraphicsInfo.SurfaceFormatOpenGL         Desktop OpenGL or other graphics API
+    \value GraphicsInfo.SurfaceFormatOpenGLES       OpenGL ES
+
+    \note This is applicable only to OpenGL.
 
     \sa QSurfaceFormat
  */
@@ -266,7 +229,7 @@ void QQuickGraphicsInfo::updateInfo()
     QSurfaceFormat format = QSurfaceFormat::defaultFormat();
 #if QT_CONFIG(opengl)
     if (m_window && m_window->isSceneGraphInitialized()) {
-        QOpenGLContext *context = m_window->openglContext();
+        QOpenGLContext *context = QQuickWindowPrivate::get(m_window)->openglContext();
         if (context)
             format = context->format();
     }

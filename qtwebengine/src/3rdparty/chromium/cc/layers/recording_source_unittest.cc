@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,10 +15,6 @@
 
 namespace cc {
 namespace {
-
-gfx::ColorSpace DefaultColorSpace() {
-  return gfx::ColorSpace::CreateSRGB();
-}
 
 std::unique_ptr<FakeRecordingSource> CreateRecordingSource(
     const gfx::Rect& viewport) {
@@ -48,12 +44,6 @@ TEST(RecordingSourceTest, DiscardableImagesWithTransform) {
   rotate_transform.Rotate(45);
   discardable_image[1][1] = CreateDiscardablePaintImage(gfx::Size(32, 32));
 
-  gfx::RectF rect(0, 0, 32, 32);
-  gfx::RectF translate_rect = rect;
-  translate_transform.TransformRect(&translate_rect);
-  gfx::RectF rotate_rect = rect;
-  rotate_transform.TransformRect(&rotate_rect);
-
   recording_source->add_draw_image_with_transform(discardable_image[0][0],
                                                   identity_transform);
   recording_source->add_draw_image_with_transform(discardable_image[1][0],
@@ -71,8 +61,10 @@ TEST(RecordingSourceTest, DiscardableImagesWithTransform) {
     raster_source->GetDiscardableImagesInRect(gfx::Rect(0, 0, 128, 128),
                                               &images);
     EXPECT_EQ(2u, images.size());
-    EXPECT_TRUE(images[0]->paint_image() == discardable_image[0][0]);
-    EXPECT_TRUE(images[1]->paint_image() == discardable_image[1][1]);
+    EXPECT_TRUE(
+        images[0]->paint_image().IsSameForTesting(discardable_image[0][0]));
+    EXPECT_TRUE(
+        images[1]->paint_image().IsSameForTesting(discardable_image[1][1]));
   }
 
   // Shifted tile sized iterators. These should find only one pixel ref.
@@ -81,7 +73,8 @@ TEST(RecordingSourceTest, DiscardableImagesWithTransform) {
     raster_source->GetDiscardableImagesInRect(gfx::Rect(130, 140, 128, 128),
                                               &images);
     EXPECT_EQ(1u, images.size());
-    EXPECT_TRUE(images[0]->paint_image() == discardable_image[1][1]);
+    EXPECT_TRUE(
+        images[0]->paint_image().IsSameForTesting(discardable_image[1][1]));
   }
 
   // The rotated bitmap would still be in the top right tile.
@@ -90,7 +83,8 @@ TEST(RecordingSourceTest, DiscardableImagesWithTransform) {
     raster_source->GetDiscardableImagesInRect(gfx::Rect(130, 0, 128, 128),
                                               &images);
     EXPECT_EQ(1u, images.size());
-    EXPECT_TRUE(images[0]->paint_image() == discardable_image[1][1]);
+    EXPECT_TRUE(
+        images[0]->paint_image().IsSameForTesting(discardable_image[1][1]));
   }
 
   // Layer sized iterators. These should find all pixel refs.
@@ -100,9 +94,12 @@ TEST(RecordingSourceTest, DiscardableImagesWithTransform) {
                                               &images);
     EXPECT_EQ(3u, images.size());
     // Top left tile with bitmap[0][0] and bitmap[1][1].
-    EXPECT_TRUE(images[0]->paint_image() == discardable_image[0][0]);
-    EXPECT_TRUE(images[1]->paint_image() == discardable_image[1][0]);
-    EXPECT_TRUE(images[2]->paint_image() == discardable_image[1][1]);
+    EXPECT_TRUE(
+        images[0]->paint_image().IsSameForTesting(discardable_image[0][0]));
+    EXPECT_TRUE(
+        images[1]->paint_image().IsSameForTesting(discardable_image[1][0]));
+    EXPECT_TRUE(
+        images[2]->paint_image().IsSameForTesting(discardable_image[1][1]));
   }
 
   // Verify different raster scales
@@ -111,7 +108,7 @@ TEST(RecordingSourceTest, DiscardableImagesWithTransform) {
     raster_source->GetDiscardableImagesInRect(gfx::Rect(130, 0, 128, 128),
                                               &images);
     DrawImage image(*images[0], scale, PaintImage::kDefaultFrameIndex,
-                    DefaultColorSpace());
+                    TargetColorParams());
     EXPECT_EQ(1u, images.size());
     EXPECT_FLOAT_EQ(scale, image.scale().width());
     EXPECT_FLOAT_EQ(scale, image.scale().height());
@@ -233,7 +230,8 @@ TEST(RecordingSourceTest, DiscardableImages) {
     raster_source->GetDiscardableImagesInRect(gfx::Rect(0, 0, 128, 128),
                                               &images);
     EXPECT_EQ(1u, images.size());
-    EXPECT_TRUE(images[0]->paint_image() == discardable_image[0][0]);
+    EXPECT_TRUE(
+        images[0]->paint_image().IsSameForTesting(discardable_image[0][0]));
   }
 
   // Shifted tile sized iterators. These should find only one image.
@@ -242,7 +240,8 @@ TEST(RecordingSourceTest, DiscardableImages) {
     raster_source->GetDiscardableImagesInRect(gfx::Rect(140, 140, 128, 128),
                                               &images);
     EXPECT_EQ(1u, images.size());
-    EXPECT_TRUE(images[0]->paint_image() == discardable_image[1][1]);
+    EXPECT_TRUE(
+        images[0]->paint_image().IsSameForTesting(discardable_image[1][1]));
   }
 
   // Ensure there's no discardable images in the empty cell
@@ -259,9 +258,12 @@ TEST(RecordingSourceTest, DiscardableImages) {
     raster_source->GetDiscardableImagesInRect(gfx::Rect(0, 0, 256, 256),
                                               &images);
     EXPECT_EQ(3u, images.size());
-    EXPECT_TRUE(images[0]->paint_image() == discardable_image[0][0]);
-    EXPECT_TRUE(images[1]->paint_image() == discardable_image[1][0]);
-    EXPECT_TRUE(images[2]->paint_image() == discardable_image[1][1]);
+    EXPECT_TRUE(
+        images[0]->paint_image().IsSameForTesting(discardable_image[0][0]));
+    EXPECT_TRUE(
+        images[1]->paint_image().IsSameForTesting(discardable_image[1][0]));
+    EXPECT_TRUE(
+        images[2]->paint_image().IsSameForTesting(discardable_image[1][1]));
   }
 }
 
@@ -301,7 +303,8 @@ TEST(RecordingSourceTest, DiscardableImagesBaseNonDiscardable) {
     raster_source->GetDiscardableImagesInRect(gfx::Rect(0, 0, 256, 256),
                                               &images);
     EXPECT_EQ(1u, images.size());
-    EXPECT_TRUE(images[0]->paint_image() == discardable_image[0][0]);
+    EXPECT_TRUE(
+        images[0]->paint_image().IsSameForTesting(discardable_image[0][0]));
   }
   // Shifted tile sized iterators. These should find only one image.
   {
@@ -309,7 +312,8 @@ TEST(RecordingSourceTest, DiscardableImagesBaseNonDiscardable) {
     raster_source->GetDiscardableImagesInRect(gfx::Rect(260, 260, 256, 256),
                                               &images);
     EXPECT_EQ(1u, images.size());
-    EXPECT_TRUE(images[0]->paint_image() == discardable_image[1][1]);
+    EXPECT_TRUE(
+        images[0]->paint_image().IsSameForTesting(discardable_image[1][1]));
   }
   // Ensure there's no discardable images in the empty cell
   {
@@ -324,9 +328,12 @@ TEST(RecordingSourceTest, DiscardableImagesBaseNonDiscardable) {
     raster_source->GetDiscardableImagesInRect(gfx::Rect(0, 0, 512, 512),
                                               &images);
     EXPECT_EQ(3u, images.size());
-    EXPECT_TRUE(images[0]->paint_image() == discardable_image[0][0]);
-    EXPECT_TRUE(images[1]->paint_image() == discardable_image[0][1]);
-    EXPECT_TRUE(images[2]->paint_image() == discardable_image[1][1]);
+    EXPECT_TRUE(
+        images[0]->paint_image().IsSameForTesting(discardable_image[0][0]));
+    EXPECT_TRUE(
+        images[1]->paint_image().IsSameForTesting(discardable_image[0][1]));
+    EXPECT_TRUE(
+        images[2]->paint_image().IsSameForTesting(discardable_image[1][1]));
   }
 }
 
@@ -340,10 +347,10 @@ TEST(RecordingSourceTest, AnalyzeIsSolid) {
     recording_source->SetRecordingScaleFactor(recording_scale);
 
     PaintFlags solid_flags;
-    SkColor solid_color = SkColorSetARGB(255, 12, 23, 34);
+    SkColor4f solid_color{0.1f, 0.2f, 0.3f, 1.0f};
     solid_flags.setColor(solid_color);
 
-    SkColor non_solid_color = SkColorSetARGB(128, 45, 56, 67);
+    SkColor4f non_solid_color{0.2f, 0.3f, 0.4f, 0.5f};
     PaintFlags non_solid_flags;
     non_solid_flags.setColor(non_solid_color);
 

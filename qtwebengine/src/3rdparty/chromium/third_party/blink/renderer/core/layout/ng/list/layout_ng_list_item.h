@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,23 +16,31 @@ class CORE_EXPORT LayoutNGListItem final : public LayoutNGBlockFlow {
  public:
   explicit LayoutNGListItem(Element*);
 
-  ListItemOrdinal& Ordinal() { return ordinal_; }
+  ListItemOrdinal& Ordinal() {
+    NOT_DESTROYED();
+    return ordinal_;
+  }
 
   int Value() const;
 
   LayoutObject* Marker() const {
+    NOT_DESTROYED();
     Element* list_item = To<Element>(GetNode());
     return list_item->PseudoElementLayoutObject(kPseudoIdMarker);
   }
 
   void UpdateMarkerTextIfNeeded();
+  void UpdateCounterStyle();
 
   void OrdinalValueChanged();
   void WillCollectInlines() override;
 
   static const LayoutObject* FindSymbolMarkerLayoutText(const LayoutObject*);
 
-  const char* GetName() const override { return "LayoutNGListItem"; }
+  const char* GetName() const override {
+    NOT_DESTROYED();
+    return "LayoutNGListItem";
+  }
 
  private:
   bool IsOfType(LayoutObjectType) const override;
@@ -41,11 +49,17 @@ class CORE_EXPORT LayoutNGListItem final : public LayoutNGBlockFlow {
   void WillBeRemovedFromTree() override;
   void StyleDidChange(StyleDifference, const ComputedStyle* old_style) override;
   void SubtreeDidChange() final;
+  void WillBeDestroyed() override;
 
   ListItemOrdinal ordinal_;
 };
 
-DEFINE_LAYOUT_OBJECT_TYPE_CASTS(LayoutNGListItem, IsLayoutNGListItem());
+template <>
+struct DowncastTraits<LayoutNGListItem> {
+  static bool AllowFrom(const LayoutObject& object) {
+    return object.IsLayoutNGListItem();
+  }
+};
 
 }  // namespace blink
 

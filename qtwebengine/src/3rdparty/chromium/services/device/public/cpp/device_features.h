@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,17 +16,10 @@ namespace features {
 
 // The features should be documented alongside the definition of their values
 // in the .cc file.
-DEVICE_FEATURES_EXPORT extern const base::Feature kGenericSensorExtraClasses;
-DEVICE_FEATURES_EXPORT extern const base::Feature kWinrtSensorsImplementation;
-DEVICE_FEATURES_EXPORT extern const base::Feature
-    kWinrtGeolocationImplementation;
-DEVICE_FEATURES_EXPORT extern const base::Feature
-    kMacCoreLocationImplementation;
-DEVICE_FEATURES_EXPORT extern const base::Feature kMacCoreLocationBackend;
-
-#if defined(OS_WIN)
-DEVICE_FEATURES_EXPORT extern const base::Feature kUseSerialBusEnumerator;
-#endif  // defined(OS_WIN)
+DEVICE_FEATURES_EXPORT BASE_DECLARE_FEATURE(kGenericSensorExtraClasses);
+DEVICE_FEATURES_EXPORT BASE_DECLARE_FEATURE(kWinrtGeolocationImplementation);
+DEVICE_FEATURES_EXPORT BASE_DECLARE_FEATURE(kMacCoreLocationBackend);
+DEVICE_FEATURES_EXPORT BASE_DECLARE_FEATURE(kAsyncSensorCalls);
 
 }  // namespace features
 

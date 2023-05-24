@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,37 +15,71 @@
 
 namespace blink {
 
+class GPU;
 class GPUDeviceDescriptor;
+class GPUSupportedFeatures;
+class GPUSupportedLimits;
 class ScriptPromiseResolver;
 
 class GPUAdapter final : public ScriptWrappable, public DawnObjectBase {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
-  GPUAdapter(const String& name,
-             uint32_t adapter_service_id,
-             const WGPUDeviceProperties& properties,
+  GPUAdapter(GPU* gpu,
+             const String& name,
+             WGPUAdapter handle,
              scoped_refptr<DawnControlClientHolder> dawn_control_client);
 
+  GPUAdapter(const GPUAdapter&) = delete;
+  GPUAdapter& operator=(const GPUAdapter&) = delete;
+
+  void Trace(Visitor* visitor) const override;
+
   const String& name() const;
-  Vector<String> extensions(ScriptState* script_state) const;
+  GPU* gpu() const { return gpu_; }
+  GPUSupportedFeatures* features() const;
+  GPUSupportedLimits* limits() const { return limits_; }
+  bool isFallbackAdapter() const;
+  void invalidate() { is_invalid_ = true; }
+  bool SupportsMultiPlanarFormats() const;
 
   ScriptPromise requestDevice(ScriptState* script_state,
-                              const GPUDeviceDescriptor* descriptor);
+                              GPUDeviceDescriptor* descriptor);
+
+  ScriptPromise requestAdapterInfo(ScriptState* script_state,
+                                   const Vector<String>& unmask_hints);
+
+  // Console warnings should generally be attributed to a GPUDevice, but in
+  // cases where there is no device warnings can be surfaced here. It's expected
+  // that very few warning will need to be shown for a given adapter, and as a
+  // result the maximum allowed warnings is lower than the per-device count.
+  void AddConsoleWarning(ExecutionContext* execution_context,
+                         const char* message);
 
  private:
-  void OnRequestDeviceCallback(ScriptPromiseResolver* resolver,
+  void OnRequestDeviceCallback(ScriptState* script_state,
+                               ScriptPromiseResolver* resolver,
                                const GPUDeviceDescriptor* descriptor,
-                               bool is_request_device_success,
-                               uint64_t device_client_id);
-  void InitializeExtensionNameList();
+                               WGPURequestDeviceStatus status,
+                               WGPUDevice dawn_device,
+                               const char* error_message);
 
   String name_;
-  uint32_t adapter_service_id_;
-  WGPUDeviceProperties adapter_properties_;
-  Vector<String> extension_name_list_;
+  WGPUAdapter handle_;
+  Member<GPU> gpu_;
+  bool is_fallback_adapter_;
+  bool is_invalid_ = false;
+  Member<GPUSupportedLimits> limits_;
+  Member<GPUSupportedFeatures> features_;
 
-  DISALLOW_COPY_AND_ASSIGN(GPUAdapter);
+  String vendor_;
+  String architecture_;
+  String device_;
+  String description_;
+  String driver_;
+
+  static constexpr int kMaxAllowedConsoleWarnings = 50;
+  int allowed_console_warnings_remaining_ = kMaxAllowedConsoleWarnings;
 };
 
 }  // namespace blink

@@ -1,74 +1,39 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qandroidplatformintegration.h"
 
-#include <QtCore/private/qjni_p.h>
-#include <QtGui/private/qguiapplication_p.h>
-#include <QGuiApplication>
-#include <QOpenGLContext>
-#include <QThread>
-#include <QOffscreenSurface>
-
-#include <QtEglSupport/private/qeglpbuffer_p.h>
-#include <qpa/qwindowsysteminterface.h>
-#include <qpa/qplatformwindow.h>
-#include <qpa/qplatformoffscreensurface.h>
-
-#include "androidjnimain.h"
 #include "androidjniaccessibility.h"
+#include "androidjnimain.h"
 #include "qabstracteventdispatcher.h"
 #include "qandroideventdispatcher.h"
-#include "qandroidplatformbackingstore.h"
 #include "qandroidplatformaccessibility.h"
+#include "qandroidplatformbackingstore.h"
 #include "qandroidplatformclipboard.h"
-#include "qandroidplatformforeignwindow.h"
 #include "qandroidplatformfontdatabase.h"
+#include "qandroidplatformforeignwindow.h"
+#include "qandroidplatformoffscreensurface.h"
 #include "qandroidplatformopenglcontext.h"
 #include "qandroidplatformopenglwindow.h"
 #include "qandroidplatformscreen.h"
 #include "qandroidplatformservices.h"
 #include "qandroidplatformtheme.h"
 #include "qandroidsystemlocale.h"
-#include "qandroidplatformoffscreensurface.h"
 
-#include <QtPlatformHeaders/QEGLNativeContext>
+#include <QGuiApplication>
+#include <QOffscreenSurface>
+#include <QOpenGLContext>
+#include <QThread>
+#include <QtCore/QJniObject>
+#include <QtGui/private/qeglpbuffer_p.h>
+#include <QtGui/private/qguiapplication_p.h>
+#include <QtGui/private/qoffscreensurface_p.h>
+#include <qpa/qplatformoffscreensurface.h>
+#include <qpa/qplatformwindow.h>
+#include <qpa/qwindowsysteminterface.h>
+
+#include <jni.h>
 
 #if QT_CONFIG(vulkan)
 #include "qandroidplatformvulkanwindow.h"
@@ -79,18 +44,37 @@
 
 QT_BEGIN_NAMESPACE
 
-int QAndroidPlatformIntegration::m_defaultGeometryWidth = 320;
-int QAndroidPlatformIntegration::m_defaultGeometryHeight = 455;
-int QAndroidPlatformIntegration::m_defaultScreenWidth = 320;
-int QAndroidPlatformIntegration::m_defaultScreenHeight = 455;
-int QAndroidPlatformIntegration::m_defaultPhysicalSizeWidth = 50;
-int QAndroidPlatformIntegration::m_defaultPhysicalSizeHeight = 71;
+using namespace Qt::StringLiterals;
+
+Q_CONSTINIT QSize QAndroidPlatformIntegration::m_defaultScreenSize = QSize(320, 455);
+Q_CONSTINIT QRect QAndroidPlatformIntegration::m_defaultAvailableGeometry = QRect(0, 0, 320, 455);
+Q_CONSTINIT QSize QAndroidPlatformIntegration::m_defaultPhysicalSize = QSize(50, 71);
 
 Qt::ScreenOrientation QAndroidPlatformIntegration::m_orientation = Qt::PrimaryOrientation;
 Qt::ScreenOrientation QAndroidPlatformIntegration::m_nativeOrientation = Qt::PrimaryOrientation;
 
 bool QAndroidPlatformIntegration::m_showPasswordEnabled = false;
 static bool m_running = false;
+
+Q_DECLARE_JNI_CLASS(QtNative, "org/qtproject/qt/android/QtNative")
+Q_DECLARE_JNI_CLASS(Display, "android/view/Display")
+
+Q_DECLARE_JNI_TYPE(List, "Ljava/util/List;")
+
+namespace {
+
+QAndroidPlatformScreen* createScreenForDisplayId(int displayId)
+{
+    const QJniObject display = QJniObject::callStaticObjectMethod<QtJniTypes::Display>(
+        QtJniTypes::className<QtJniTypes::QtNative>(),
+        "getDisplay",
+        displayId);
+    if (!display.isValid())
+        return nullptr;
+    return new QAndroidPlatformScreen(display);
+}
+
+} // anonymous namespace
 
 void *QAndroidPlatformNativeInterface::nativeResourceForIntegration(const QByteArray &resource)
 {
@@ -112,14 +96,14 @@ void *QAndroidPlatformNativeInterface::nativeResourceForIntegration(const QByteA
     if (resource == "AndroidStandardPalette") {
         if (m_androidStyle)
             return &m_androidStyle->m_standardPalette;
-        else
-            return nullptr;
+
+        return nullptr;
     }
     if (resource == "AndroidQWidgetFonts") {
         if (m_androidStyle)
             return &m_androidStyle->m_QWidgetsFonts;
-        else
-            return nullptr;
+
+        return nullptr;
     }
     if (resource == "AndroidDeviceName") {
         static QString deviceName = QtAndroid::deviceName();
@@ -145,6 +129,19 @@ void *QAndroidPlatformNativeInterface::nativeResourceForWindow(const QByteArray 
     return nullptr;
 }
 
+void *QAndroidPlatformNativeInterface::nativeResourceForContext(const QByteArray &resource, QOpenGLContext *context)
+{
+    if (QEGLPlatformContext *platformContext = static_cast<QEGLPlatformContext *>(context->handle())) {
+        if (resource == "eglcontext")
+            return platformContext->eglContext();
+        else if (resource == "eglconfig")
+            return platformContext->eglConfig();
+        else if (resource == "egldisplay")
+            return platformContext->eglDisplay();
+    }
+    return nullptr;
+}
+
 void QAndroidPlatformNativeInterface::customEvent(QEvent *event)
 {
     if (event->type() != QEvent::User)
@@ -154,10 +151,10 @@ void QAndroidPlatformNativeInterface::customEvent(QEvent *event)
     QAndroidPlatformIntegration *api = static_cast<QAndroidPlatformIntegration *>(QGuiApplicationPrivate::platformIntegration());
     QtAndroid::setAndroidPlatformIntegration(api);
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     // Android accessibility activation event might have been already received
     api->accessibility()->setActive(QtAndroidAccessibility::isActive());
-#endif // QT_NO_ACCESSIBILITY
+#endif // QT_CONFIG(accessibility)
 
     if (!m_running) {
         m_running = true;
@@ -168,7 +165,7 @@ void QAndroidPlatformNativeInterface::customEvent(QEvent *event)
 
 QAndroidPlatformIntegration::QAndroidPlatformIntegration(const QStringList &paramList)
     : m_touchDevice(nullptr)
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     , m_accessibility(nullptr)
 #endif
 {
@@ -186,11 +183,34 @@ QAndroidPlatformIntegration::QAndroidPlatformIntegration(const QStringList &para
     if (Q_UNLIKELY(!eglBindAPI(EGL_OPENGL_ES_API)))
         qFatal("Could not bind GL_ES API");
 
-    m_primaryScreen = new QAndroidPlatformScreen();
-    QWindowSystemInterface::handleScreenAdded(m_primaryScreen);
-    m_primaryScreen->setPhysicalSize(QSize(m_defaultPhysicalSizeWidth, m_defaultPhysicalSizeHeight));
-    m_primaryScreen->setSize(QSize(m_defaultScreenWidth, m_defaultScreenHeight));
-    m_primaryScreen->setAvailableGeometry(QRect(0, 0, m_defaultGeometryWidth, m_defaultGeometryHeight));
+    m_primaryDisplayId = QJniObject::getStaticField<jint>(
+        QtJniTypes::className<QtJniTypes::Display>(), "DEFAULT_DISPLAY");
+
+    const QJniObject nativeDisplaysList = QJniObject::callStaticObjectMethod<QtJniTypes::List>(
+                QtJniTypes::className<QtJniTypes::QtNative>(),
+                "getAvailableDisplays");
+
+    const int numberOfAvailableDisplays = nativeDisplaysList.callMethod<jint>("size");
+    for (int i = 0; i < numberOfAvailableDisplays; ++i) {
+        const QJniObject display =
+                nativeDisplaysList.callObjectMethod<jobject, jint>("get", jint(i));
+        const int displayId = display.callMethod<jint>("getDisplayId");
+        const bool isPrimary = (m_primaryDisplayId == displayId);
+        auto screen = new QAndroidPlatformScreen(display);
+
+        if (isPrimary)
+            m_primaryScreen = screen;
+
+        QWindowSystemInterface::handleScreenAdded(screen, isPrimary);
+        m_screens[displayId] = screen;
+    }
+
+    if (numberOfAvailableDisplays == 0) {
+        // If no displays are found, add a dummy display
+        auto defaultScreen = new QAndroidPlatformScreen(QJniObject {});
+        m_primaryScreen = defaultScreen;
+        QWindowSystemInterface::handleScreenAdded(defaultScreen, true);
+    }
 
     m_mainThread = QThread::currentThread();
 
@@ -203,51 +223,68 @@ QAndroidPlatformIntegration::QAndroidPlatformIntegration(const QStringList &para
 
     m_androidSystemLocale = new QAndroidSystemLocale;
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
         m_accessibility = new QAndroidPlatformAccessibility();
-#endif // QT_NO_ACCESSIBILITY
+#endif // QT_CONFIG(accessibility)
 
-    QJNIObjectPrivate javaActivity(QtAndroid::activity());
+    QJniObject javaActivity(QtAndroid::activity());
     if (!javaActivity.isValid())
         javaActivity = QtAndroid::service();
 
     if (javaActivity.isValid()) {
-        QJNIObjectPrivate resources = javaActivity.callObjectMethod("getResources", "()Landroid/content/res/Resources;");
-        QJNIObjectPrivate configuration = resources.callObjectMethod("getConfiguration", "()Landroid/content/res/Configuration;");
+        QJniObject resources = javaActivity.callObjectMethod("getResources", "()Landroid/content/res/Resources;");
+        QJniObject configuration = resources.callObjectMethod("getConfiguration", "()Landroid/content/res/Configuration;");
 
         int touchScreen = configuration.getField<jint>("touchscreen");
-        if (touchScreen == QJNIObjectPrivate::getStaticField<jint>("android/content/res/Configuration", "TOUCHSCREEN_FINGER")
-                || touchScreen == QJNIObjectPrivate::getStaticField<jint>("android/content/res/Configuration", "TOUCHSCREEN_STYLUS"))
+        if (touchScreen == QJniObject::getStaticField<jint>("android/content/res/Configuration", "TOUCHSCREEN_FINGER")
+                || touchScreen == QJniObject::getStaticField<jint>("android/content/res/Configuration", "TOUCHSCREEN_STYLUS"))
         {
-            m_touchDevice = new QTouchDevice;
-            m_touchDevice->setType(QTouchDevice::TouchScreen);
-            m_touchDevice->setCapabilities(QTouchDevice::Position
-                                         | QTouchDevice::Area
-                                         | QTouchDevice::Pressure
-                                         | QTouchDevice::NormalizedPosition);
-
-            QJNIObjectPrivate pm = javaActivity.callObjectMethod("getPackageManager", "()Landroid/content/pm/PackageManager;");
+            QJniObject pm = javaActivity.callObjectMethod("getPackageManager", "()Landroid/content/pm/PackageManager;");
             Q_ASSERT(pm.isValid());
+            int maxTouchPoints = 1;
             if (pm.callMethod<jboolean>("hasSystemFeature","(Ljava/lang/String;)Z",
-                                     QJNIObjectPrivate::getStaticObjectField("android/content/pm/PackageManager", "FEATURE_TOUCHSCREEN_MULTITOUCH_JAZZHAND", "Ljava/lang/String;").object())) {
-                m_touchDevice->setMaximumTouchPoints(10);
+                                     QJniObject::getStaticObjectField("android/content/pm/PackageManager",
+                                                                      "FEATURE_TOUCHSCREEN_MULTITOUCH_JAZZHAND",
+                                                                      "Ljava/lang/String;").object())) {
+                maxTouchPoints = 10;
             } else if (pm.callMethod<jboolean>("hasSystemFeature","(Ljava/lang/String;)Z",
-                                            QJNIObjectPrivate::getStaticObjectField("android/content/pm/PackageManager", "FEATURE_TOUCHSCREEN_MULTITOUCH_DISTINCT", "Ljava/lang/String;").object())) {
-                m_touchDevice->setMaximumTouchPoints(4);
+                                            QJniObject::getStaticObjectField("android/content/pm/PackageManager",
+                                                                             "FEATURE_TOUCHSCREEN_MULTITOUCH_DISTINCT",
+                                                                             "Ljava/lang/String;").object())) {
+                maxTouchPoints = 4;
             } else if (pm.callMethod<jboolean>("hasSystemFeature","(Ljava/lang/String;)Z",
-                                            QJNIObjectPrivate::getStaticObjectField("android/content/pm/PackageManager", "FEATURE_TOUCHSCREEN_MULTITOUCH", "Ljava/lang/String;").object())) {
-                m_touchDevice->setMaximumTouchPoints(2);
+                                            QJniObject::getStaticObjectField("android/content/pm/PackageManager",
+                                                                             "FEATURE_TOUCHSCREEN_MULTITOUCH",
+                                                                             "Ljava/lang/String;").object())) {
+                maxTouchPoints = 2;
             }
-            QWindowSystemInterface::registerTouchDevice(m_touchDevice);
+
+            m_touchDevice = new QPointingDevice("Android touchscreen", 1,
+                                                QInputDevice::DeviceType::TouchScreen,
+                                                QPointingDevice::PointerType::Finger,
+                                                QPointingDevice::Capability::Position
+                                                    | QPointingDevice::Capability::Area
+                                                    | QPointingDevice::Capability::Pressure
+                                                    | QPointingDevice::Capability::NormalizedPosition,
+                                                maxTouchPoints,
+                                                0);
+            QWindowSystemInterface::registerInputDevice(m_touchDevice);
+
+            QWindowSystemInterface::registerInputDevice(
+                    new QInputDevice("Virtual keyboard"_L1, 0, QInputDevice::DeviceType::Keyboard,
+                                     {}, qApp));
         }
 
         auto contentResolver = javaActivity.callObjectMethod("getContentResolver", "()Landroid/content/ContentResolver;");
         Q_ASSERT(contentResolver.isValid());
-        QJNIObjectPrivate txtShowPassValue = QJNIObjectPrivate::callStaticObjectMethod("android/provider/Settings$System",
-                                                                                       "getString",
-                                                                                       "(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;",
-                                                                                       contentResolver.object(),
-                                                                                       QJNIObjectPrivate::getStaticObjectField("android/provider/Settings$System", "TEXT_SHOW_PASSWORD", "Ljava/lang/String;").object());
+        QJniObject txtShowPassValue = QJniObject::callStaticObjectMethod(
+                                                        "android/provider/Settings$System",
+                                                        "getString",
+                                                        "(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;",
+                                                        contentResolver.object(),
+                                                        QJniObject::getStaticObjectField("android/provider/Settings$System",
+                                                                                         "TEXT_SHOW_PASSWORD",
+                                                                                         "Ljava/lang/String;").object());
         if (txtShowPassValue.isValid()) {
             bool ok = false;
             const int txtShowPass = txtShowPassValue.toString().toInt(&ok);
@@ -263,9 +300,9 @@ QAndroidPlatformIntegration::QAndroidPlatformIntegration(const QStringList &para
 static bool needsBasicRenderloopWorkaround()
 {
     static bool needsWorkaround =
-            QtAndroid::deviceName().compare(QLatin1String("samsung SM-T211"), Qt::CaseInsensitive) == 0
-            || QtAndroid::deviceName().compare(QLatin1String("samsung SM-T210"), Qt::CaseInsensitive) == 0
-            || QtAndroid::deviceName().compare(QLatin1String("samsung SM-T215"), Qt::CaseInsensitive) == 0;
+            QtAndroid::deviceName().compare("samsung SM-T211"_L1, Qt::CaseInsensitive) == 0
+            || QtAndroid::deviceName().compare("samsung SM-T210"_L1, Qt::CaseInsensitive) == 0
+            || QtAndroid::deviceName().compare("samsung SM-T215"_L1, Qt::CaseInsensitive) == 0;
     return needsWorkaround;
 }
 
@@ -289,6 +326,7 @@ bool QAndroidPlatformIntegration::hasCapability(Capability cap) const
         case ThreadedOpenGL: return !needsBasicRenderloopWorkaround() && QtAndroid::activity();
         case RasterGLSurface: return QtAndroid::activity();
         case TopStackedNativeChildWindows: return false;
+        case MaximizeUsingFullscreenGeometry: return true;
         default:
             return QPlatformIntegration::hasCapability(cap);
     }
@@ -298,6 +336,7 @@ QPlatformBackingStore *QAndroidPlatformIntegration::createPlatformBackingStore(Q
 {
     if (!QtAndroid::activity())
         return nullptr;
+
     return new QAndroidPlatformBackingStore(window);
 }
 
@@ -310,9 +349,13 @@ QPlatformOpenGLContext *QAndroidPlatformIntegration::createPlatformOpenGLContext
     format.setRedBufferSize(8);
     format.setGreenBufferSize(8);
     format.setBlueBufferSize(8);
-    auto ctx = new QAndroidPlatformOpenGLContext(format, context->shareHandle(), m_eglDisplay, context->nativeHandle());
-    context->setNativeHandle(QVariant::fromValue<QEGLNativeContext>(QEGLNativeContext(ctx->eglContext(), m_eglDisplay)));
+    auto ctx = new QAndroidPlatformOpenGLContext(format, context->shareHandle(), m_eglDisplay);
     return ctx;
+}
+
+QOpenGLContext *QAndroidPlatformIntegration::createOpenGLContext(EGLContext context, EGLDisplay display, QOpenGLContext *shareContext) const
+{
+    return QEGLPlatformContext::createFrom<QAndroidPlatformOpenGLContext>(context, display, m_eglDisplay, shareContext);
 }
 
 QPlatformOffscreenSurface *QAndroidPlatformIntegration::createPlatformOffscreenSurface(QOffscreenSurface *surface) const
@@ -326,14 +369,18 @@ QPlatformOffscreenSurface *QAndroidPlatformIntegration::createPlatformOffscreenS
     format.setGreenBufferSize(8);
     format.setBlueBufferSize(8);
 
-    if (surface->nativeHandle()) {
-        // Adopt existing offscreen Surface
-        // The expectation is that nativeHandle is an ANativeWindow* representing
-        // an android.view.Surface
-        return new QAndroidPlatformOffscreenSurface(m_eglDisplay, format, surface);
-    }
-
     return new QEGLPbuffer(m_eglDisplay, format, surface);
+}
+
+QOffscreenSurface *QAndroidPlatformIntegration::createOffscreenSurface(ANativeWindow *nativeSurface) const
+{
+    if (!QtAndroid::activity() || !nativeSurface)
+        return nullptr;
+
+    auto *surface = new QOffscreenSurface;
+    auto *surfacePrivate = QOffscreenSurfacePrivate::get(surface);
+    surfacePrivate->platformOffscreenSurface = new QAndroidPlatformOffscreenSurface(nativeSurface, m_eglDisplay, surface);
+    return surface;
 }
 
 QPlatformWindow *QAndroidPlatformIntegration::createPlatformWindow(QWindow *window) const
@@ -424,7 +471,7 @@ Qt::WindowState QAndroidPlatformIntegration::defaultWindowState(Qt::WindowFlags 
     return QPlatformIntegration::defaultWindowState(flags);
 }
 
-static const QLatin1String androidThemeName("android");
+static const auto androidThemeName = "android"_L1;
 QStringList QAndroidPlatformIntegration::themeNames() const
 {
     return QStringList(QString(androidThemeName));
@@ -433,25 +480,20 @@ QStringList QAndroidPlatformIntegration::themeNames() const
 QPlatformTheme *QAndroidPlatformIntegration::createPlatformTheme(const QString &name) const
 {
     if (androidThemeName == name)
-        return new QAndroidPlatformTheme(m_androidPlatformNativeInterface);
+        return QAndroidPlatformTheme::instance(m_androidPlatformNativeInterface);
 
     return 0;
 }
 
-void QAndroidPlatformIntegration::setDefaultDisplayMetrics(int gw, int gh, int sw, int sh, int screenWidth, int screenHeight)
+void QAndroidPlatformIntegration::setDefaultDisplayMetrics(int availableLeft, int availableTop,
+                                                           int availableWidth, int availableHeight,
+                                                           int physicalWidth, int physicalHeight,
+                                                           int screenWidth, int screenHeight)
 {
-    m_defaultGeometryWidth = gw;
-    m_defaultGeometryHeight = gh;
-    m_defaultPhysicalSizeWidth = sw;
-    m_defaultPhysicalSizeHeight = sh;
-    m_defaultScreenWidth = screenWidth;
-    m_defaultScreenHeight = screenHeight;
-}
-
-void QAndroidPlatformIntegration::setDefaultDesktopSize(int gw, int gh)
-{
-    m_defaultGeometryWidth = gw;
-    m_defaultGeometryHeight = gh;
+    m_defaultAvailableGeometry = QRect(availableLeft, availableTop,
+                                       availableWidth, availableHeight);
+    m_defaultPhysicalSize = QSize(physicalWidth, physicalHeight);
+    m_defaultScreenSize = QSize(screenWidth, screenHeight);
 }
 
 void QAndroidPlatformIntegration::setScreenOrientation(Qt::ScreenOrientation currentOrientation,
@@ -463,26 +505,26 @@ void QAndroidPlatformIntegration::setScreenOrientation(Qt::ScreenOrientation cur
 
 void QAndroidPlatformIntegration::flushPendingUpdates()
 {
-    m_primaryScreen->setPhysicalSize(QSize(m_defaultPhysicalSizeWidth,
-                                           m_defaultPhysicalSizeHeight));
-    m_primaryScreen->setSize(QSize(m_defaultScreenWidth, m_defaultScreenHeight));
-    m_primaryScreen->setAvailableGeometry(QRect(0, 0, m_defaultGeometryWidth, m_defaultGeometryHeight));
+    if (m_primaryScreen) {
+        m_primaryScreen->setSizeParameters(m_defaultPhysicalSize, m_defaultScreenSize,
+                                           m_defaultAvailableGeometry);
+    }
 }
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 QPlatformAccessibility *QAndroidPlatformIntegration::accessibility() const
 {
     return m_accessibility;
 }
 #endif
 
-void QAndroidPlatformIntegration::setDesktopSize(int width, int height)
+void QAndroidPlatformIntegration::setAvailableGeometry(const QRect &availableGeometry)
 {
     if (m_primaryScreen)
-        QMetaObject::invokeMethod(m_primaryScreen, "setAvailableGeometry", Qt::AutoConnection, Q_ARG(QRect, QRect(0,0,width, height)));
+        QMetaObject::invokeMethod(m_primaryScreen, "setAvailableGeometry", Qt::AutoConnection, Q_ARG(QRect, availableGeometry));
 }
 
-void QAndroidPlatformIntegration::setDisplayMetrics(int width, int height)
+void QAndroidPlatformIntegration::setPhysicalSize(int width, int height)
 {
     if (m_primaryScreen)
         QMetaObject::invokeMethod(m_primaryScreen, "setPhysicalSize", Qt::AutoConnection, Q_ARG(QSize, QSize(width, height)));
@@ -492,6 +534,78 @@ void QAndroidPlatformIntegration::setScreenSize(int width, int height)
 {
     if (m_primaryScreen)
         QMetaObject::invokeMethod(m_primaryScreen, "setSize", Qt::AutoConnection, Q_ARG(QSize, QSize(width, height)));
+}
+
+Qt::ColorScheme QAndroidPlatformIntegration::m_colorScheme = Qt::ColorScheme::Light;
+
+void QAndroidPlatformIntegration::setColorScheme(Qt::ColorScheme colorScheme)
+{
+    if (m_colorScheme == colorScheme)
+        return;
+    m_colorScheme = colorScheme;
+
+    QMetaObject::invokeMethod(qGuiApp,
+                    [] () { QAndroidPlatformTheme::instance()->updateColorScheme();});
+}
+
+void QAndroidPlatformIntegration::setScreenSizeParameters(const QSize &physicalSize,
+                                                          const QSize &screenSize,
+                                                          const QRect &availableGeometry)
+{
+    if (m_primaryScreen) {
+        QMetaObject::invokeMethod(m_primaryScreen, "setSizeParameters", Qt::AutoConnection,
+                                  Q_ARG(QSize, physicalSize), Q_ARG(QSize, screenSize),
+                                  Q_ARG(QRect, availableGeometry));
+    }
+}
+
+void QAndroidPlatformIntegration::setRefreshRate(qreal refreshRate)
+{
+    if (m_primaryScreen)
+        QMetaObject::invokeMethod(m_primaryScreen, "setRefreshRate", Qt::AutoConnection,
+                                  Q_ARG(qreal, refreshRate));
+}
+
+void QAndroidPlatformIntegration::handleScreenAdded(int displayId)
+{
+    auto result = m_screens.insert(displayId, nullptr);
+    if (result.first->second == nullptr) {
+        auto it = result.first;
+        it->second = createScreenForDisplayId(displayId);
+        if (it->second == nullptr)
+            return;
+        const bool isPrimary = (m_primaryDisplayId == displayId);
+        if (isPrimary)
+            m_primaryScreen = it->second;
+        QWindowSystemInterface::handleScreenAdded(it->second, isPrimary);
+    } else {
+        qWarning() << "Display with id" << displayId << "already exists.";
+    }
+}
+
+void QAndroidPlatformIntegration::handleScreenChanged(int displayId)
+{
+    auto it = m_screens.find(displayId);
+    if (it == m_screens.end() || it->second == nullptr) {
+        handleScreenAdded(displayId);
+    }
+    // We do not do anything more here as handling of change of
+    // rotation and refresh rate is done in QtActivityDelegate java class
+    // which calls QAndroidPlatformIntegration::setOrientation, and
+    // QAndroidPlatformIntegration::setRefreshRate accordingly.
+}
+
+void QAndroidPlatformIntegration::handleScreenRemoved(int displayId)
+{
+    auto it = m_screens.find(displayId);
+
+    if (it == m_screens.end())
+        return;
+
+    if (it->second != nullptr)
+        QWindowSystemInterface::handleScreenRemoved(it->second);
+
+    m_screens.erase(it);
 }
 
 #if QT_CONFIG(vulkan)

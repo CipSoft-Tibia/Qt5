@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,16 +8,12 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/macros.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "base/trace_event/trace_event.h"
 #include "components/viz/service/display/output_surface_client.h"
 #include "components/viz/service/display/output_surface_frame.h"
 #include "gpu/GLES2/gl2extchromium.h"
-#include "gpu/command_buffer/client/context_support.h"
-#include "gpu/command_buffer/client/gles2_interface.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/swap_result.h"
 
@@ -26,17 +22,14 @@ namespace viz {
 OutputSurface::Capabilities::Capabilities() = default;
 OutputSurface::Capabilities::Capabilities(const Capabilities& capabilities) =
     default;
+OutputSurface::Capabilities& OutputSurface::Capabilities::operator=(
+    const Capabilities& capabilities) = default;
 
 OutputSurface::OutputSurface(Type type) : type_(type) {}
 
-OutputSurface::OutputSurface(scoped_refptr<ContextProvider> context_provider)
-    : context_provider_(std::move(context_provider)), type_(Type::kOpenGL) {
-  DCHECK(context_provider_);
-}
-
 OutputSurface::OutputSurface(
     std::unique_ptr<SoftwareOutputDevice> software_device)
-    : software_device_(std::move(software_device)), type_(Type::kSoftware) {
+    : type_(Type::kSoftware), software_device_(std::move(software_device)) {
   DCHECK(software_device_);
 }
 
@@ -76,7 +69,7 @@ void OutputSurface::UpdateLatencyInfoOnSwap(
 
 void OutputSurface::SetNeedsSwapSizeNotifications(
     bool needs_swap_size_notifications) {
-  DCHECK(!needs_swap_size_notifications);
+//  DCHECK(!needs_swap_size_notifications);
 }
 
 base::ScopedClosureRunner OutputSurface::GetCacheBackBufferCb() {
@@ -93,6 +86,12 @@ void OutputSurface::SetGpuVSyncEnabled(bool enabled) {
 
 gpu::Mailbox OutputSurface::GetOverlayMailbox() const {
   return gpu::Mailbox();
+}
+
+void OutputSurface::InitDelegatedInkPointRendererReceiver(
+    mojo::PendingReceiver<gfx::mojom::DelegatedInkPointRenderer>
+        pending_receiver) {
+  NOTREACHED();
 }
 
 }  // namespace viz

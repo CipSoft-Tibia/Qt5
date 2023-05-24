@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@
 #include <string>
 #include <vector>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/storage_partition.h"
 #include "net/cookies/cookie_access_result.h"
@@ -22,7 +22,7 @@ namespace content {
 network::mojom::CookieManager* GetCookieManager(
     BrowserContext* browser_context) {
   StoragePartition* storage_partition =
-      BrowserContext::GetDefaultStoragePartition(browser_context);
+      browser_context->GetDefaultStoragePartition();
   return storage_partition->GetCookieManagerForBrowserProcess();
 }
 
@@ -37,13 +37,13 @@ void CreateCookieForTest(
   net::CookieOptions options;
   options.set_same_site_cookie_context(cookie_context);
   bool result_out;
-  net::CanonicalCookie cookie(cookie_name, "1", cookie_domain, "/",
-                              base::Time(), base::Time(), base::Time(),
-                              is_cookie_secure, false, same_site,
-                              net::COOKIE_PRIORITY_LOW);
+  auto cookie = net::CanonicalCookie::CreateUnsafeCookieForTesting(
+      cookie_name, "1", cookie_domain, "/", base::Time(), base::Time(),
+      base::Time(), base::Time(), is_cookie_secure, false, same_site,
+      net::COOKIE_PRIORITY_LOW, false);
   GetCookieManager(browser_context)
       ->SetCanonicalCookie(
-          cookie, net::cookie_util::SimulatedCookieSource(cookie, "https"),
+          *cookie, net::cookie_util::SimulatedCookieSource(*cookie, "https"),
           options,
           base::BindLambdaForTesting([&](net::CookieAccessResult result) {
             result_out = result.status.IsInclude();

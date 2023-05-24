@@ -1,53 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Ivan Komissarov <ABBAPOH@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Ivan Komissarov <ABBAPOH@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qstorageinfo_p.h"
 
 #include <QtCore/qdir.h>
 #include <QtCore/qfileinfo.h>
+#include <QtCore/qmutex.h>
 #include <QtCore/qvarlengtharray.h>
 
 #include "qfilesystementry_p.h"
+#include "private/qsystemlibrary_p.h"
 
-#include <qt_windows.h>
+#include "qntdll_p.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 static const int defaultBufferSize = MAX_PATH + 1;
 
@@ -57,16 +25,16 @@ static QString canonicalPath(const QString &rootPath)
     if (path.isEmpty())
         return path;
 
-    if (path.startsWith(QLatin1String("\\\\?\\")))
+    if (path.startsWith("\\\\?\\"_L1))
         path.remove(0, 4);
-    if (path.length() < 2 || path.at(1) != QLatin1Char(':'))
+    if (path.length() < 2 || path.at(1) != u':')
         return QString();
 
     path[0] = path[0].toUpper();
     if (!(path.at(0).unicode() >= 'A' && path.at(0).unicode() <= 'Z'))
         return QString();
-    if (!path.endsWith(QLatin1Char('\\')))
-        path.append(QLatin1Char('\\'));
+    if (!path.endsWith(u'\\'))
+        path.append(u'\\');
     return path;
 }
 
@@ -134,6 +102,9 @@ void QStorageInfoPrivate::doStat()
         return;
     device = getDevice(rootPath);
     retrieveDiskFreeSpace();
+
+    if (!queryStorageProperty())
+        queryFileFsSectorSizeInformation();
 }
 
 void QStorageInfoPrivate::retrieveVolumeInfo()
@@ -192,7 +163,7 @@ QList<QStorageInfo> QStorageInfoPrivate::mountedVolumes()
             if (!drive.rootPath().isEmpty()) // drive exists, but not mounted
                 volumes.append(drive);
         }
-        driveName[0] = driveName[0].unicode() + 1;
+        driveName[0] = QChar(driveName[0].unicode() + 1);
         driveBits = driveBits >> 1;
     }
 
@@ -202,6 +173,141 @@ QList<QStorageInfo> QStorageInfoPrivate::mountedVolumes()
 QStorageInfo QStorageInfoPrivate::root()
 {
     return QStorageInfo(QDir::fromNativeSeparators(QFile::decodeName(qgetenv("SystemDrive"))));
+}
+
+bool QStorageInfoPrivate::queryStorageProperty()
+{
+    QString path = QDir::toNativeSeparators(uR"(\\.\)" + rootPath);
+    if (path.endsWith(u'\\'))
+        path.chop(1);
+
+    HANDLE handle = CreateFile(reinterpret_cast<const wchar_t *>(path.utf16()),
+                               0, // no access to the drive
+                               FILE_SHARE_READ | FILE_SHARE_WRITE,
+                               nullptr,
+                               OPEN_EXISTING,
+                               0,
+                               nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+        return false;
+
+    STORAGE_PROPERTY_QUERY spq;
+    memset(&spq, 0, sizeof(spq));
+    spq.PropertyId = StorageAccessAlignmentProperty;
+    spq.QueryType = PropertyStandardQuery;
+
+    STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR saad;
+    memset(&saad, 0, sizeof(saad));
+
+    DWORD bytes = 0;
+    BOOL result = DeviceIoControl(handle,
+                                  IOCTL_STORAGE_QUERY_PROPERTY,
+                                  &spq, sizeof(spq),
+                                  &saad, sizeof(saad),
+                                  &bytes,
+                                  nullptr);
+    CloseHandle(handle);
+    if (result)
+        blockSize = saad.BytesPerPhysicalSector;
+    return result;
+}
+
+struct Helper
+{
+    QBasicMutex mutex;
+    QSystemLibrary ntdll {u"ntdll"_s};
+};
+Q_GLOBAL_STATIC(Helper, gNtdllHelper)
+
+inline QFunctionPointer resolveSymbol(QSystemLibrary *ntdll, const char *name)
+{
+    QFunctionPointer symbolFunctionPointer = ntdll->resolve(name);
+    if (Q_UNLIKELY(!symbolFunctionPointer))
+        qWarning("Failed to resolve the symbol: %s", name);
+    return symbolFunctionPointer;
+}
+
+#define GENERATE_SYMBOL(symbolName, returnType, ...) \
+using Qt##symbolName = returnType (NTAPI *) (__VA_ARGS__); \
+static Qt##symbolName qt##symbolName = nullptr;
+
+#define RESOLVE_SYMBOL(name) \
+    do { \
+        qt##name = reinterpret_cast<Qt##name>(resolveSymbol(ntdll, #name)); \
+        if (!qt##name) \
+            return false; \
+    } while (false)
+
+GENERATE_SYMBOL(RtlInitUnicodeString, void, PUNICODE_STRING, PCWSTR);
+GENERATE_SYMBOL(NtCreateFile, NTSTATUS, PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES,
+    PIO_STATUS_BLOCK, PLARGE_INTEGER, ULONG, ULONG, ULONG, ULONG, PVOID, ULONG);
+GENERATE_SYMBOL(NtQueryVolumeInformationFile, NTSTATUS, HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG,
+    FS_INFORMATION_CLASS);
+
+void QStorageInfoPrivate::queryFileFsSectorSizeInformation()
+{
+    static bool symbolsResolved = [](auto ntdllHelper) {
+        QMutexLocker locker(&ntdllHelper->mutex);
+        auto ntdll = &ntdllHelper->ntdll;
+        if (!ntdll->isLoaded()) {
+            if (!ntdll->load()) {
+                qWarning("Unable to load ntdll.dll.");
+                return false;
+            }
+        }
+
+        RESOLVE_SYMBOL(RtlInitUnicodeString);
+        RESOLVE_SYMBOL(NtCreateFile);
+        RESOLVE_SYMBOL(NtQueryVolumeInformationFile);
+
+        return true;
+    }(gNtdllHelper());
+    if (!symbolsResolved)
+        return;
+
+    FILE_FS_SECTOR_SIZE_INFORMATION ffssi;
+    memset(&ffssi, 0, sizeof(ffssi));
+
+    HANDLE handle = nullptr;
+
+    OBJECT_ATTRIBUTES attrs;
+    memset(&attrs, 0, sizeof(attrs));
+
+    IO_STATUS_BLOCK isb;
+    memset(&isb, 0, sizeof(isb));
+
+    QString path = QDir::toNativeSeparators(uR"(\??\\)" + rootPath);
+    if (!path.endsWith(u'\\'))
+        path.append(u'\\');
+
+    UNICODE_STRING name;
+    qtRtlInitUnicodeString(&name, reinterpret_cast<const wchar_t *>(path.utf16()));
+
+    InitializeObjectAttributes(&attrs, &name, 0, nullptr, nullptr);
+
+    NTSTATUS status = qtNtCreateFile(&handle,
+                                     FILE_READ_ATTRIBUTES,
+                                     &attrs,
+                                     &isb,
+                                     nullptr,
+                                     FILE_ATTRIBUTE_NORMAL,
+                                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                     FILE_OPEN,
+                                     0,
+                                     nullptr,
+                                     0);
+    if (!NT_SUCCESS(status))
+        return;
+
+    memset(&isb, 0, sizeof(isb));
+    status = qtNtQueryVolumeInformationFile(handle,
+                                            &isb,
+                                            &ffssi,
+                                            sizeof(ffssi),
+                                            FS_INFORMATION_CLASS(10)); // FileFsSectorSizeInformation
+    CloseHandle(handle);
+    if (NT_SUCCESS(status))
+        blockSize = ffssi.PhysicalBytesPerSectorForAtomicity;
 }
 
 QT_END_NAMESPACE

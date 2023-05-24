@@ -1,8 +1,9 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <windows.h>
+
 #include <KnownFolders.h>
 #include <shlobj.h>
 
@@ -61,7 +62,7 @@ bool PathProviderWin(int key, FilePath* result) {
         break;
       }
       // Fall through to base::DIR_PROGRAM_FILES if we're on an X86 machine.
-      FALLTHROUGH;
+      [[fallthrough]];
     case base::DIR_PROGRAM_FILES:
       if (FAILED(SHGetFolderPath(NULL, CSIDL_PROGRAM_FILES, NULL,
                                  SHGFP_TYPE_CURRENT, system_buffer)))
@@ -70,8 +71,7 @@ bool PathProviderWin(int key, FilePath* result) {
       break;
     case base::DIR_PROGRAM_FILES6432:
 #if !defined(_WIN64)
-      if (base::win::OSInfo::GetInstance()->wow64_status() ==
-          base::win::OSInfo::WOW64_ENABLED) {
+      if (base::win::OSInfo::GetInstance()->IsWowX86OnAMD64()) {
         std::unique_ptr<base::Environment> env(base::Environment::Create());
         std::string programfiles_w6432;
         // 32-bit process running in WOW64 sets ProgramW6432 environment
@@ -119,7 +119,7 @@ bool PathProviderWin(int key, FilePath* result) {
         return false;
       cur = FilePath(system_buffer);
       break;
-    case base::DIR_APP_DATA:
+    case base::DIR_ROAMING_APP_DATA:
       if (FAILED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, SHGFP_TYPE_CURRENT,
                                  system_buffer)))
         return false;
@@ -137,7 +137,7 @@ bool PathProviderWin(int key, FilePath* result) {
         return false;
       cur = FilePath(system_buffer);
       break;
-    case base::DIR_SOURCE_ROOT: {
+    case base::DIR_SRC_TEST_DATA_ROOT: {
       FilePath executableDir;
       // On Windows, unit tests execute two levels deep from the source root.
       // For example:  chrome/{Debug|Release}/ui_tests.exe
@@ -146,9 +146,6 @@ bool PathProviderWin(int key, FilePath* result) {
       break;
     }
     case base::DIR_APP_SHORTCUTS: {
-      if (win::GetVersion() < win::Version::WIN8)
-        return false;
-
       base::win::ScopedCoMem<wchar_t> path_buf;
       if (FAILED(SHGetKnownFolderPath(FOLDERID_ApplicationShortcuts, 0, NULL,
                                       &path_buf)))
@@ -172,7 +169,7 @@ bool PathProviderWin(int key, FilePath* result) {
       cur = FilePath(system_buffer);
       break;
     case base::DIR_USER_QUICK_LAUNCH:
-      if (!PathService::Get(base::DIR_APP_DATA, &cur))
+      if (!PathService::Get(base::DIR_ROAMING_APP_DATA, &cur))
         return false;
       // According to various sources, appending
       // "Microsoft\Internet Explorer\Quick Launch" to %appdata% is the only

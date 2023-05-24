@@ -26,16 +26,19 @@
 #include "perfetto/base/build_config.h"
 #include "perfetto/ext/base/event_fd.h"
 #include "perfetto/ext/base/optional.h"
+#include "perfetto/ext/base/pipe.h"
 #include "perfetto/ext/base/scoped_file.h"
 #include "perfetto/ext/base/unix_task_runner.h"
+#include "perfetto/ext/base/weak_ptr.h"
 #include "perfetto/ext/tracing/core/consumer.h"
 #include "perfetto/ext/tracing/ipc/consumer_ipc_client.h"
-#include "src/perfetto_cmd/perfetto_atoms.h"
+#include "src/android_stats/perfetto_atoms.h"
 #include "src/perfetto_cmd/rate_limiter.h"
 
 namespace perfetto {
 
 class PacketWriter;
+class RateLimiter;
 
 // Directory for local state and temporary files. This is automatically
 // created by the system by setting setprop persist.traced.enable=1.
@@ -43,17 +46,29 @@ extern const char* kStateDir;
 
 class PerfettoCmd : public Consumer {
  public:
-  int Main(int argc, char** argv);
+  PerfettoCmd();
+  ~PerfettoCmd() override;
+
+  // The main() is split in two stages: cmdline parsing and actual interaction
+  // with traced. This is to allow tools like tracebox to avoid spawning the
+  // service for no reason if the cmdline parsing fails.
+  // Return value:
+  //   nullopt: no error, the caller should call
+  //   ConnectToServiceRunAndMaybeNotify.
+  //   0-N: the caller should exit() with the given exit code.
+  base::Optional<int> ParseCmdlineAndMaybeDaemonize(int argc, char** argv);
+  int ConnectToServiceRunAndMaybeNotify();
 
   // perfetto::Consumer implementation.
   void OnConnect() override;
   void OnDisconnect() override;
-  void OnTracingDisabled() override;
+  void OnTracingDisabled(const std::string& error) override;
   void OnTraceData(std::vector<TracePacket>, bool has_more) override;
   void OnDetach(bool) override;
   void OnAttach(bool, const TraceConfig&) override;
   void OnTraceStats(bool, const TraceStats&) override;
   void OnObservableEvents(const ObservableEvents&) override;
+  void OnSessionCloned(bool, const std::string&) override;
 
   void SignalCtrlC() { ctrl_c_evt_.Notify(); }
 
@@ -61,7 +76,7 @@ class PerfettoCmd : public Consumer {
   bool OpenOutputFile();
   void SetupCtrlCSignalHandler();
   void FinalizeTraceAndExit();
-  int PrintUsage(const char* argv0);
+  void PrintUsage(const char* argv0);
   void PrintServiceState(bool success, const TracingServiceState&);
   void OnTimeout();
   bool is_detach() const { return !detach_key_.empty(); }
@@ -75,27 +90,60 @@ class PerfettoCmd : public Consumer {
   // within OnTraceDataTimeoutMs of when we expected to.
   void CheckTraceDataTimeout();
 
+  int ConnectToServiceAndRun();
+
+  void ReadbackTraceDataAndQuit(const std::string& error);
+
+  enum BgProcessStatus : char {
+    kBackgroundOk = 0,
+    kBackgroundOtherError = 1,
+    kBackgroundTimeout = 2,
+  };
+
+  // Used to implement the --background-wait flag.
+  //
+  // Waits (up to 30s) for the child process to signal (success or an error).
+  //
+  // Returns the status received from the child process or kTimeout, in case of
+  // timeout.
+  BgProcessStatus WaitOnBgProcessPipe();
+
+  // Used to implement the --background-wait flag.
+  //
+  // Signals the parent process (if there is one) that it can exit (successfully
+  // or with an error).
+  //
+  // Only the first time this function is called is significant. Further calls
+  // will have no effect.
+  void NotifyBgProcessPipe(BgProcessStatus status);
+
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
-  static base::ScopedFile OpenDropboxTmpFile();
-  void SaveTraceIntoDropboxAndIncidentOrCrash();
+  static base::ScopedFile CreateUnlinkedTmpFile();
+  void SaveTraceIntoIncidentOrCrash();
   void SaveOutputToIncidentTraceOrCrash();
-  void LogUploadEventAndroid(PerfettoStatsdAtom atom);
+  void ReportTraceToAndroidFrameworkOrCrash();
 #endif
   void LogUploadEvent(PerfettoStatsdAtom atom);
+  void LogTriggerEvents(PerfettoTriggerAtom atom,
+                        const std::vector<std::string>& trigger_names);
 
   base::UnixTaskRunner task_runner_;
 
+  std::unique_ptr<RateLimiter> limiter_;
   std::unique_ptr<perfetto::TracingService::ConsumerEndpoint>
       consumer_endpoint_;
   std::unique_ptr<TraceConfig> trace_config_;
-
   std::unique_ptr<PacketWriter> packet_writer_;
   base::ScopedFstream trace_out_stream_;
-
+  std::vector<std::string> triggers_to_activate_;
   std::string trace_out_path_;
   base::EventFd ctrl_c_evt_;
-  bool is_uploading_ = false;
-  bool did_process_full_trace_ = false;
+  bool ctrl_c_handler_installed_ = false;
+  base::Pipe background_wait_pipe_;
+  bool save_to_incidentd_ = false;
+  bool report_to_android_framework_ = false;
+  bool statsd_logging_ = false;
+  bool update_guardrail_state_ = false;
   uint64_t bytes_written_ = 0;
   std::string detach_key_;
   std::string attach_key_;
@@ -103,11 +151,19 @@ class PerfettoCmd : public Consumer {
   bool redetach_once_attached_ = false;
   bool query_service_ = false;
   bool query_service_output_raw_ = false;
+  bool bugreport_ = false;
+  bool background_ = false;
+  bool background_wait_ = false;
+  bool ignore_guardrails_ = false;
+  bool upload_flag_ = false;
+  bool connected_ = false;
   std::string uuid_;
+  base::Optional<TracingSessionID> clone_tsid_{};
 
   // How long we expect to trace for or 0 if the trace is indefinite.
   uint32_t expected_duration_ms_ = 0;
   bool trace_data_timeout_armed_ = false;
+  base::WeakPtrFactory<PerfettoCmd> weak_factory_{this};
 };
 
 }  // namespace perfetto

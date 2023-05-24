@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtriangulator_p.h"
 
@@ -66,8 +30,8 @@ struct QVertexSet
     QVertexSet<T> &operator = (const QVertexSet<T> &other) {vertices = other.vertices; indices = other.indices; return *this;}
 
     // The vertices of a triangle are given by: (x[i[n]], y[i[n]]), (x[j[n]], y[j[n]]), (x[k[n]], y[k[n]]), n = 0, 1, ...
-    QVector<qreal> vertices; // [x[0], y[0], x[1], y[1], x[2], ...]
-    QVector<T> indices; // [i[0], j[0], k[0], i[1], j[1], k[1], i[2], ...]
+    QList<qreal> vertices; // [x[0], y[0], x[1], y[1], x[2], ...]
+    QList<T> indices; // [i[0], j[0], k[0], i[1], j[1], k[1], i[2], ...]
 };
 
 //============================================================================//
@@ -570,8 +534,8 @@ public:
     class ComplexToSimple
     {
     public:
-        inline ComplexToSimple(QTriangulator<T> *parent) : m_parent(parent),
-            m_edges(0), m_events(0), m_splits(0) { }
+        inline ComplexToSimple(QTriangulator<T> *parent)
+            : m_parent(parent), m_edges(0), m_events(0), m_splits(0), m_initialPointCount(0) { }
         void decompose();
     private:
         struct Edge
@@ -674,7 +638,8 @@ public:
     class SimpleToMonotone
     {
     public:
-        inline SimpleToMonotone(QTriangulator<T> *parent) : m_parent(parent), m_edges(0), m_upperVertex(0) { }
+        inline SimpleToMonotone(QTriangulator<T> *parent)
+            : m_parent(parent), m_edges(0), m_upperVertex(0), m_clockwiseOrder(false) { }
         void decompose();
     private:
         enum VertexType {MergeVertex, EndVertex, RegularVertex, StartVertex, SplitVertex};
@@ -730,7 +695,8 @@ public:
     class MonotoneToTriangles
     {
     public:
-        inline MonotoneToTriangles(QTriangulator<T> *parent) : m_parent(parent) { }
+        inline MonotoneToTriangles(QTriangulator<T> *parent)
+            : m_parent(parent), m_first(0), m_length(0) { }
         void decompose();
     private:
         inline T indices(int index) const {return m_parent->m_indices.at(index + m_first);}
@@ -748,7 +714,8 @@ public:
         int m_length;
     };
 
-    inline QTriangulator() : m_vertices(0) { }
+    inline QTriangulator()
+        : m_vertices(0), m_hint(0) { }
 
     // Call this only once.
     void initialize(const qreal *polygon, int count, uint hint, const QTransform &matrix);
@@ -761,7 +728,7 @@ public:
     QVertexSet<T> polyline();
 private:
     QDataBuffer<QPodPoint> m_vertices;
-    QVector<T> m_indices;
+    QList<T> m_indices;
     uint m_hint;
 };
 
@@ -1061,7 +1028,7 @@ template <typename T>
 QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> QTriangulator<T>::ComplexToSimple::bounds(const QPodPoint &point) const
 {
     QRBTree<int>::Node *current = m_edgeList.root;
-    QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> result(0, 0);
+    QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> result(nullptr, nullptr);
     while (current) {
         const QPodPoint &v1 = m_parent->m_vertices.at(m_edges.at(current->data).lower());
         const QPodPoint &v2 = m_parent->m_vertices.at(m_edges.at(current->data).upper());
@@ -1110,7 +1077,7 @@ template <typename T>
 QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> QTriangulator<T>::ComplexToSimple::outerBounds(const QPodPoint &point) const
 {
     QRBTree<int>::Node *current = m_edgeList.root;
-    QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> result(0, 0);
+    QPair<QRBTree<int>::Node *, QRBTree<int>::Node *> result(nullptr, nullptr);
 
     while (current) {
         const QPodPoint &v1 = m_parent->m_vertices.at(m_edges.at(current->data).lower());
@@ -1309,7 +1276,7 @@ void QTriangulator<T>::ComplexToSimple::calculateIntersections()
         int vertex = (event.type == Event::Upper ? m_edges.at(event.edge).upper() : m_edges.at(event.edge).lower());
         QIntersectionPoint eventPoint = QT_PREPEND_NAMESPACE(qIntersectionPoint)(event.point);
 
-        if (range.first != 0) {
+        if (range.first != nullptr) {
             splitEdgeListRange(range.first, range.second, vertex, eventPoint);
             reorderEdgeListRange(range.first, range.second);
         }
@@ -2155,7 +2122,7 @@ bool QTriangulator<T>::SimpleToMonotone::CompareVertices::operator () (int i, in
 template <typename T>
 void QTriangulator<T>::MonotoneToTriangles::decompose()
 {
-    QVector<T> result;
+    QList<T> result;
     QDataBuffer<int> stack(m_parent->m_indices.size());
     m_first = 0;
     // Require at least three more indices.
@@ -2354,3 +2321,5 @@ QPolylineSet qPolyline(const QPainterPath &path,
 }
 
 QT_END_NAMESPACE
+
+#undef Q_FIXED_POINT_SCALE

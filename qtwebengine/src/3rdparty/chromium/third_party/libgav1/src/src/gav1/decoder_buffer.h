@@ -115,6 +115,27 @@ typedef enum Libgav1ColorRange {
   kLibgav1ColorRangeFull     // YUV/RGB [0..255]
 } Libgav1ColorRange;
 
+typedef struct Libgav1ObuMetadataHdrCll {  // NOLINT
+  uint16_t max_cll;                        // Maximum content light level.
+  uint16_t max_fall;                       // Maximum frame-average light level.
+} Libgav1ObuMetadataHdrCll;
+
+typedef struct Libgav1ObuMetadataHdrMdcv {  // NOLINT
+  uint16_t primary_chromaticity_x[3];
+  uint16_t primary_chromaticity_y[3];
+  uint16_t white_point_chromaticity_x;
+  uint16_t white_point_chromaticity_y;
+  uint32_t luminance_max;
+  uint32_t luminance_min;
+} Libgav1ObuMetadataHdrMdcv;
+
+typedef struct Libgav1ObuMetadataItutT35 {  // NOLINT
+  uint8_t country_code;
+  uint8_t country_code_extension_byte;  // Valid if country_code is 0xFF.
+  uint8_t* payload_bytes;
+  int payload_size;
+} Libgav1ObuMetadataItutT35;
+
 typedef struct Libgav1DecoderBuffer {
 #if defined(__cplusplus)
   LIBGAV1_PUBLIC int NumPlanes() const {
@@ -129,29 +150,34 @@ typedef struct Libgav1DecoderBuffer {
   Libgav1TransferCharacteristics transfer_characteristics;
   Libgav1MatrixCoefficients matrix_coefficients;
 
-  // Image storage dimensions.
-  // NOTE: These fields are named w and h in vpx_image_t and aom_image_t.
-  // uint32_t width;  // Stored image width.
-  // uint32_t height;  // Stored image height.
   int bitdepth;  // Stored image bitdepth.
 
-  // Image display dimensions.
-  // NOTES:
-  // 1. These fields are named d_w and d_h in vpx_image_t and aom_image_t.
-  // 2. libvpx and libaom clients use d_w and d_h much more often than w and h.
-  // 3. These fields can just be stored for the Y plane and the clients can
-  //    calculate the values for the U and V planes if the image format or
-  //    subsampling is exposed.
+  // Image display dimensions in Y/U/V order.
   int displayed_width[3];   // Displayed image width.
   int displayed_height[3];  // Displayed image height.
 
-  int stride[3];
-  uint8_t* plane[3];
+  // Values are given in Y/U/V order.
+  int stride[3];      // The width in bytes of one row of the |plane| buffer.
+                      // This may include padding bytes for alignment or
+                      // internal use by the decoder.
+  uint8_t* plane[3];  // The reconstructed image plane(s).
 
   // Spatial id of this frame.
   int spatial_id;
   // Temporal id of this frame.
   int temporal_id;
+
+  Libgav1ObuMetadataHdrCll hdr_cll;
+  int has_hdr_cll;  // 1 if the values in hdr_cll are valid for this frame. 0
+                    // otherwise.
+
+  Libgav1ObuMetadataHdrMdcv hdr_mdcv;
+  int has_hdr_mdcv;  // 1 if the values in hdr_mdcv are valid for this frame. 0
+                     // otherwise.
+
+  Libgav1ObuMetadataItutT35 itut_t35;
+  int has_itut_t35;  // 1 if the values in itut_t35 are valid for this frame. 0
+                     // otherwise.
 
   // The |user_private_data| argument passed to Decoder::EnqueueFrame().
   int64_t user_private_data;
@@ -270,6 +296,10 @@ constexpr MatrixCoefficients kMaxMatrixCoefficients =
 using ColorRange = Libgav1ColorRange;
 constexpr ColorRange kColorRangeStudio = kLibgav1ColorRangeStudio;
 constexpr ColorRange kColorRangeFull = kLibgav1ColorRangeFull;
+
+using ObuMetadataHdrCll = Libgav1ObuMetadataHdrCll;
+using ObuMetadataHdrMdcv = Libgav1ObuMetadataHdrMdcv;
+using ObuMetadataItutT35 = Libgav1ObuMetadataItutT35;
 
 using DecoderBuffer = Libgav1DecoderBuffer;
 

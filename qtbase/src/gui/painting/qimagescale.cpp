@@ -1,51 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include <private/qimagescale_p.h>
 #include <private/qdrawhelper_p.h>
+#include <private/qimage_p.h>
 
 #include "qimage.h"
 #include "qcolor.h"
 #include "qrgba64_p.h"
+#include "qrgbafloat.h"
 
 #if QT_CONFIG(thread) && !defined(Q_OS_WASM)
-#include "qsemaphore.h"
-#include "qthreadpool.h"
+#include <qsemaphore.h>
+#include <qthreadpool.h>
+#include <private/qthreadpool_p.h>
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -307,7 +274,7 @@ static inline void multithread_pixels_function(QImageScaleInfo *isi, int dh, con
 #if QT_CONFIG(thread) && !defined(Q_OS_WASM)
     int segments = (qsizetype(isi->sh) * isi->sw) / (1<<16);
     segments = std::min(segments, dh);
-    QThreadPool *threadPool = QThreadPool::globalInstance();
+    QThreadPool *threadPool = QThreadPoolPrivate::qtGuiInstance();
     if (segments > 1 && threadPool && !threadPool->contains(QThread::currentThread())) {
         QSemaphore semaphore;
         int y = 0;
@@ -322,6 +289,8 @@ static inline void multithread_pixels_function(QImageScaleInfo *isi, int dh, con
         semaphore.acquire(segments);
         return;
     }
+#else
+    Q_UNUSED(isi);
 #endif
     scaleSection(0, dh);
 }
@@ -787,6 +756,221 @@ static void qt_qimageScaleRgba64_down_xy(QImageScaleInfo *isi, QRgba64 *dest,
 }
 #endif
 
+#if QT_CONFIG(raster_fp)
+static void qt_qimageScaleRgbaFP_up_x_down_y(QImageScaleInfo *isi, QRgbaFloat32 *dest,
+                                             int dw, int dh, int dow, int sow);
+
+static void qt_qimageScaleRgbaFP_down_x_up_y(QImageScaleInfo *isi, QRgbaFloat32 *dest,
+                                             int dw, int dh, int dow, int sow);
+
+static void qt_qimageScaleRgbaFP_down_xy(QImageScaleInfo *isi, QRgbaFloat32 *dest,
+                                         int dw, int dh, int dow, int sow);
+
+static void qt_qimageScaleRgbaFP_up_xy(QImageScaleInfo *isi, QRgbaFloat32 *dest,
+                                       int dw, int dh, int dow, int sow)
+{
+    const QRgbaFloat32 **ypoints = (const QRgbaFloat32 **)isi->ypoints;
+    int *xpoints = isi->xpoints;
+    int *xapoints = isi->xapoints;
+    int *yapoints = isi->yapoints;
+
+    auto scaleSection = [&] (int yStart, int yEnd) {
+        for (int y = yStart; y < yEnd; ++y) {
+            const QRgbaFloat32 *sptr = ypoints[y];
+            QRgbaFloat32 *dptr = dest + (y * dow);
+            const int yap = yapoints[y];
+            if (yap > 0) {
+                for (int x = 0; x < dw; x++) {
+                    const QRgbaFloat32 *pix = sptr + xpoints[x];
+                    const int xap = xapoints[x];
+                    if (xap > 0)
+                        *dptr = interpolate_4_pixels_rgba32f(pix, pix + sow, xap * 256, yap * 256);
+                    else
+                        *dptr = interpolate_rgba32f(pix[0], 256 - yap, pix[sow], yap);
+                    dptr++;
+                }
+            } else {
+                for (int x = 0; x < dw; x++) {
+                    const QRgbaFloat32 *pix = sptr + xpoints[x];
+                    const int xap = xapoints[x];
+                    if (xap > 0)
+                        *dptr = interpolate_rgba32f(pix[0], 256 - xap, pix[1], xap);
+                    else
+                        *dptr = pix[0];
+                    dptr++;
+                }
+            }
+        }
+    };
+    multithread_pixels_function(isi, dh, scaleSection);
+}
+
+void qt_qimageScaleRgbaFP(QImageScaleInfo *isi, QRgbaFloat32 *dest,
+                          int dw, int dh, int dow, int sow)
+{
+    if (isi->xup_yup == 3)
+        qt_qimageScaleRgbaFP_up_xy(isi, dest, dw, dh, dow, sow);
+    else if (isi->xup_yup == 1)
+        qt_qimageScaleRgbaFP_up_x_down_y(isi, dest, dw, dh, dow, sow);
+    else if (isi->xup_yup == 2)
+        qt_qimageScaleRgbaFP_down_x_up_y(isi, dest, dw, dh, dow, sow);
+    else
+        qt_qimageScaleRgbaFP_down_xy(isi, dest, dw, dh, dow, sow);
+}
+
+inline static void qt_qimageScaleRgbaFP_helper(const QRgbaFloat32 *pix, int xyap, int Cxy, int step, float &r, float &g, float &b, float &a)
+{
+    constexpr float f = (1.0f / float(1<<14));
+    const float xyapf = xyap * f;
+    const float Cxyf = Cxy * f;
+    r = pix->red()   * xyapf;
+    g = pix->green() * xyapf;
+    b = pix->blue()  * xyapf;
+    a = pix->alpha() * xyapf;
+    int j;
+    for (j = (1 << 14) - xyap; j > Cxy; j -= Cxy ){
+        pix += step;
+        r += pix->red()   * Cxyf;
+        g += pix->green() * Cxyf;
+        b += pix->blue()  * Cxyf;
+        a += pix->alpha() * Cxyf;
+    }
+    pix += step;
+    const float jf = j * f;
+    r += pix->red()   * jf;
+    g += pix->green() * jf;
+    b += pix->blue()  * jf;
+    a += pix->alpha() * jf;
+}
+
+static void qt_qimageScaleRgbaFP_up_x_down_y(QImageScaleInfo *isi, QRgbaFloat32 *dest,
+                                             int dw, int dh, int dow, int sow)
+{
+    const QRgbaFloat32 **ypoints = (const QRgbaFloat32 **)isi->ypoints;
+    int *xpoints = isi->xpoints;
+    int *xapoints = isi->xapoints;
+    int *yapoints = isi->yapoints;
+
+    auto scaleSection = [&] (int yStart, int yEnd) {
+        for (int y = yStart; y < yEnd; ++y) {
+            int Cy = (yapoints[y]) >> 16;
+            int yap = (yapoints[y]) & 0xffff;
+
+            QRgbaFloat32 *dptr = dest + (y * dow);
+            for (int x = 0; x < dw; x++) {
+                const QRgbaFloat32 *sptr = ypoints[y] + xpoints[x];
+                float r, g, b, a;
+                qt_qimageScaleRgbaFP_helper(sptr, yap, Cy, sow, r, g, b, a);
+
+                int xap = xapoints[x];
+                float xapf = xap * (1.f / 256.f);
+                if (xap > 0) {
+                    float rr, gg, bb, aa;
+                    qt_qimageScaleRgbaFP_helper(sptr + 1, yap, Cy, sow, rr, gg, bb, aa);
+
+                    r = (r * (1.0f - xapf) + (rr * xapf));
+                    g = (g * (1.0f - xapf) + (gg * xapf));
+                    b = (b * (1.0f - xapf) + (bb * xapf));
+                    a = (a * (1.0f - xapf) + (aa * xapf));
+                }
+                *dptr++ = QRgbaFloat32{r, g, b, a};
+            }
+        }
+    };
+    multithread_pixels_function(isi, dh, scaleSection);
+}
+
+static void qt_qimageScaleRgbaFP_down_x_up_y(QImageScaleInfo *isi, QRgbaFloat32 *dest,
+                                             int dw, int dh, int dow, int sow)
+{
+    const QRgbaFloat32 **ypoints = (const QRgbaFloat32 **)isi->ypoints;
+    int *xpoints = isi->xpoints;
+    int *xapoints = isi->xapoints;
+    int *yapoints = isi->yapoints;
+
+    auto scaleSection = [&] (int yStart, int yEnd) {
+        for (int y = yStart; y < yEnd; ++y) {
+            QRgbaFloat32 *dptr = dest + (y * dow);
+            for (int x = 0; x < dw; x++) {
+                int Cx = xapoints[x] >> 16;
+                int xap = xapoints[x] & 0xffff;
+
+                const QRgbaFloat32 *sptr = ypoints[y] + xpoints[x];
+                float r, g, b, a;
+                qt_qimageScaleRgbaFP_helper(sptr, xap, Cx, 1, r, g, b, a);
+
+                int yap = yapoints[y];
+                float yapf = yap * (1.f / 256.f);
+                if (yap > 0) {
+                    float rr, gg, bb, aa;
+                    qt_qimageScaleRgbaFP_helper(sptr + sow, xap, Cx, 1, rr, gg, bb, aa);
+
+                    r = (r * (1.0f - yapf) + (rr * yapf));
+                    g = (g * (1.0f - yapf) + (gg * yapf));
+                    b = (b * (1.0f - yapf) + (bb * yapf));
+                    a = (a * (1.0f - yapf) + (aa * yapf));
+                }
+                *dptr++ = QRgbaFloat32{r, g, b, a};
+            }
+        }
+    };
+    multithread_pixels_function(isi, dh, scaleSection);
+}
+
+static void qt_qimageScaleRgbaFP_down_xy(QImageScaleInfo *isi, QRgbaFloat32 *dest,
+                                         int dw, int dh, int dow, int sow)
+{
+    const QRgbaFloat32 **ypoints = (const QRgbaFloat32 **)isi->ypoints;
+    int *xpoints = isi->xpoints;
+    int *xapoints = isi->xapoints;
+    int *yapoints = isi->yapoints;
+
+    auto scaleSection = [&] (int yStart, int yEnd) {
+        constexpr float f = 1.f / float(1 << 14);
+        for (int y = yStart; y < yEnd; ++y) {
+            int Cy = (yapoints[y]) >> 16;
+            int yap = (yapoints[y]) & 0xffff;
+
+            QRgbaFloat32 *dptr = dest + (y * dow);
+            for (int x = 0; x < dw; x++) {
+                int Cx = xapoints[x] >> 16;
+                int xap = xapoints[x] & 0xffff;
+
+                const QRgbaFloat32 *sptr = ypoints[y] + xpoints[x];
+                float rx, gx, bx, ax;
+                qt_qimageScaleRgbaFP_helper(sptr, xap, Cx, 1, rx, gx, bx, ax);
+
+                const float yapf = yap * f;
+                const float Cyf = Cy * f;
+                float r = rx * yapf;
+                float g = gx * yapf;
+                float b = bx * yapf;
+                float a = ax * yapf;
+                int j;
+                for (j = (1 << 14) - yap; j > Cy; j -= Cy) {
+                    sptr += sow;
+                    qt_qimageScaleRgbaFP_helper(sptr, xap, Cx, 1, rx, gx, bx, ax);
+                    r += rx * Cyf;
+                    g += gx * Cyf;
+                    b += bx * Cyf;
+                    a += ax * Cyf;
+                }
+                sptr += sow;
+                qt_qimageScaleRgbaFP_helper(sptr, xap, Cx, 1, rx, gx, bx, ax);
+                const float jf = j * f;
+                r += rx * jf;
+                g += gx * jf;
+                b += bx * jf;
+                a += ax * jf;
+
+                *dptr++ = QRgbaFloat32{r, g, b, a};
+            }
+        }
+    };
+    multithread_pixels_function(isi, dh, scaleSection);
+}
+#endif
+
 static void qt_qimageScaleAARGB_up_x_down_y(QImageScaleInfo *isi, unsigned int *dest,
                                             int dw, int dh, int dow, int sow);
 
@@ -1012,6 +1196,12 @@ QImage qSmoothScaleImage(const QImage &src, int dw, int dh)
         return QImage();
     }
 
+#if QT_CONFIG(raster_fp)
+    if (qt_fpColorPrecision(src.format()))
+        qt_qimageScaleRgbaFP(scaleinfo, (QRgbaFloat32 *)buffer.scanLine(0),
+                             dw, dh, dw, src.bytesPerLine() / 16);
+    else
+#endif
 #if QT_CONFIG(raster_64bit)
     if (src.depth() > 32)
         qt_qimageScaleRgba64(scaleinfo, (QRgba64 *)buffer.scanLine(0),

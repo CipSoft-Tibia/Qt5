@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page classesandfunctions.html
@@ -45,20 +21,21 @@
 
 /*!
     \page classes.html
-    \title All Classes
+    \title All C++ Classes
+    \keyword All Classes
     \ingroup classlists
 
     \brief If you know the name of the class you want, find it here.
 
-    This is a list of all Qt 5 classes. The following pages contain different
-    API listings in different categories:
+    This page lists all Qt C++ classes. In addition, the following links provide
+    different API listings:
 
     \list
     \li \l{All Functions}
     \li \l{All Namespaces}
     \li \l{All Classes by Module}
     \li \l{Obsolete Classes}
-    \li \l{New Classes and Functions in Qt 5.15}
+    \li \l{New Classes and Functions}
     \endlist
 
     For more reference pages including QML types, visit \l{Qt Reference Pages}.
@@ -69,25 +46,24 @@
 */
 
 /*!
-    \page qmlbasictypes.html
-    \title All QML Basic Types
-    \ingroup classlists
+    \page qmlvaluetypes.html
+    \title All QML Value Types
 
-    \brief A list of QML basic types in this Qt release.
+    \brief A list of QML value types in this Qt release.
 
-    This is a list of all QML basic types. The following pages contain different
+    This is a list of all QML value types. The following pages contain different
     API listings in different categories:
 
     \list
     \li \l{All QML Types}
     \li \l{All QML APIs by Module}
     \li \l{Obsolete QML Types}
-    \li \l{New Classes and Functions in Qt 5.15}
+    \li \l{New Classes and Functions}
     \endlist
 
     For more reference pages including C++ APIs, visit \l{Qt Reference Pages}.
 
-    \generatelist qmlbasictypes
+    \generatelist qmlvaluetypes
 
 */
 
@@ -98,14 +74,14 @@
 
     \brief A list of QML types in this Qt release.
 
-    This is a list of all QML types, including QML basic types. The following
+    This is a list of all QML types, including QML value types. The following
     pages contain different API listings in different categories:
 
     \list
-    \li \l{All QML Basic Types}
+    \li \l{All QML Value Types}
     \li \l{All QML APIs by Module}
     \li \l{Obsolete QML Types}
-    \li \l{New Classes and Functions in Qt 5.15}
+    \li \l{New Classes and Functions}
     \endlist
 
     For more reference pages including C++ APIs, visit \l{Qt Reference Pages}.
@@ -167,7 +143,7 @@
 
     \generatelist obsoleteclasses
 
-    \section1 C++ classes that contain one or more members that are deprecated
+    \section1 C++ classes that contain deprecated members
 
     The following Qt C++ classes contain one or more members that are
     now obsolete. Obsolete members are no longer maintained. They are
@@ -185,13 +161,15 @@
     \ingroup classlists
     \brief A list of obsolete QML types that should not be used in new code.
 
+    \section1 QML types that are deprecated
+
     The following QML types are now obsolete. Obsolete types
     are no longer maintained. They are provided to keep old source
     code working, but they can be removed in a future release. We
     strongly advise against using these classes in new code.
 
     \generatelist obsoleteqmltypes
-    \section1 QML Types with Obsolete Properties or Methods
+    \section1 QML types that contain deprecated properties or methods
 
     The following QML types contain one or more properties or methods that are
     now obsolete. Obsolete members are no longer maintained. They are
@@ -206,7 +184,8 @@
 
 /*!
     \page functions.html
-    \title All Functions
+    \title All Functions and Macros
+    \keyword All Functions
     \ingroup funclists
 
     \brief All documented Qt functions listed alphabetically with a

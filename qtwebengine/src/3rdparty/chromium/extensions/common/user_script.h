@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,9 @@
 
 #include "base/files/file_path.h"
 #include "base/strings/string_piece.h"
-#include "extensions/common/host_id.h"
+#include "extensions/common/mojom/execution_world.mojom-shared.h"
+#include "extensions/common/mojom/host_id.mojom.h"
+#include "extensions/common/mojom/run_location.mojom-shared.h"
 #include "extensions/common/script_constants.h"
 #include "extensions/common/url_pattern.h"
 #include "extensions/common/url_pattern_set.h"
@@ -31,59 +33,22 @@ class UserScript {
   // The file extension for standalone user scripts.
   static const char kFileExtension[];
 
-  static int GenerateUserScriptID();
+  // The prefix for all generated user script IDs (i.e. the ID is not provided
+  // by the extension).
+  static const char kGeneratedIDPrefix;
+
+  static std::string GenerateUserScriptID();
 
   // Check if a URL should be treated as a user script and converted to an
   // extension.
   static bool IsURLUserScript(const GURL& url, const std::string& mime_type);
 
   // Get the valid user script schemes for the current process. If
-  // canExecuteScriptEverywhere is true, this will return ALL_SCHEMES.
-  static int ValidUserScriptSchemes(bool canExecuteScriptEverywhere = false);
+  // `can_execute_script_everywhere` is true, this will return ALL_SCHEMES.
+  static int ValidUserScriptSchemes(bool can_execute_script_everywhere = false);
 
-  // TODO(rdevlin.cronin) This and RunLocation don't really belong here, since
-  // they are used for more than UserScripts (e.g., tabs.executeScript()).
-  // The type of injected script.
-  enum InjectionType {
-    // A content script specified in the extension's manifest.
-    CONTENT_SCRIPT,
-    // A script injected via, e.g. tabs.executeScript().
-    PROGRAMMATIC_SCRIPT
-  };
-  // The last type of injected script; used for enum verification in IPC.
-  // Update this if you add more injected script types!
-  static const InjectionType INJECTION_TYPE_LAST = PROGRAMMATIC_SCRIPT;
-
-  // The type of the content being added or removed by the extension.
-  enum ActionType {
-    ADD_JAVASCRIPT,
-    ADD_CSS,
-    REMOVE_CSS,
-  };
-  // The last type of action taken; used for enum verification in IPC.
-  // Update this if you add more injected script types!
-  static const ActionType ACTION_TYPE_LAST = REMOVE_CSS;
-
-  // Locations that user scripts can be run inside the document.
-  // The three run locations must strictly follow each other in both load order
-  // (i.e., start *always* comes before end) and numerically, as we use
-  // arithmetic checking (e.g., curr == last + 1). So, no bitmasks here!!
-  enum RunLocation {
-    UNDEFINED,
-    DOCUMENT_START,  // After the documentElement is created, but before
-                     // anything else happens.
-    DOCUMENT_END,  // After the entire document is parsed. Same as
-                   // DOMContentLoaded.
-    DOCUMENT_IDLE,  // Sometime after DOMContentLoaded, as soon as the document
-                    // is "idle". Currently this uses the simple heuristic of:
-                    // min(DOM_CONTENT_LOADED + TIMEOUT, ONLOAD), but no
-                    // particular injection point is guaranteed.
-    RUN_DEFERRED,  // The user script's injection was deferred for permissions
-                   // reasons, and was executed at a later time.
-    BROWSER_DRIVEN,  // The user script will be injected when triggered by an
-                     // IPC in the browser process.
-    RUN_LOCATION_LAST  // Leave this as the last item.
-  };
+  // Returns if a user script's ID is generated.
+  static bool IsIDGenerated(const std::string& id);
 
   // Holds script file info.
   class File {
@@ -146,6 +111,10 @@ class UserScript {
   // Constructor. Default the run location to document end, which is like
   // Greasemonkey and probably more useful for typical scripts.
   UserScript();
+
+  UserScript(const UserScript&) = delete;
+  UserScript& operator=(const UserScript&) = delete;
+
   ~UserScript();
 
   // Performs a copy of all fields except file contents.
@@ -170,8 +139,10 @@ class UserScript {
   }
 
   // The place in the document to run the script.
-  RunLocation run_location() const { return run_location_; }
-  void set_run_location(RunLocation location) { run_location_ = location; }
+  mojom::RunLocation run_location() const { return run_location_; }
+  void set_run_location(mojom::RunLocation location) {
+    run_location_ = location;
+  }
 
   // Whether to emulate greasemonkey when running this script.
   bool emulate_greasemonkey() const { return emulate_greasemonkey_; }
@@ -220,10 +191,10 @@ class UserScript {
   FileList& css_scripts() { return css_scripts_; }
   const FileList& css_scripts() const { return css_scripts_; }
 
-  const std::string& extension_id() const { return host_id_.id(); }
+  const std::string& extension_id() const { return host_id_.id; }
 
-  const HostID& host_id() const { return host_id_; }
-  void set_host_id(const HostID& host_id) { host_id_ = host_id; }
+  const mojom::HostID& host_id() const { return host_id_; }
+  void set_host_id(const mojom::HostID& host_id) { host_id_ = host_id; }
 
   const ConsumerInstanceType& consumer_instance_type() const {
     return consumer_instance_type_;
@@ -233,14 +204,19 @@ class UserScript {
     consumer_instance_type_ = consumer_instance_type;
   }
 
-  int id() const { return user_script_id_; }
-  void set_id(int id) { user_script_id_ = id; }
+  const std::string& id() const { return user_script_id_; }
+  void set_id(std::string id) { user_script_id_ = std::move(id); }
 
   // TODO(lazyboy): Incognito information is extension specific, it doesn't
   // belong here. We should be able to determine this in the renderer/ where it
   // is used.
   bool is_incognito_enabled() const { return incognito_enabled_; }
   void set_incognito_enabled(bool enabled) { incognito_enabled_ = enabled; }
+
+  mojom::ExecutionWorld execution_world() const { return execution_world_; }
+  void set_execution_world(mojom::ExecutionWorld world) {
+    execution_world_ = world;
+  }
 
   // Returns true if the script should be applied to the specified URL, false
   // otherwise.
@@ -261,12 +237,15 @@ class UserScript {
   // correctly.
   void Unpickle(const base::Pickle& pickle, base::PickleIterator* iter);
 
+  // Returns if this script's ID is generated.
+  bool IsIDGenerated() const;
+
  private:
   // base::Pickle helper functions used to pickle the individual types of
   // components.
   void PickleGlobs(base::Pickle* pickle,
                    const std::vector<std::string>& globs) const;
-  void PickleHostID(base::Pickle* pickle, const HostID& host_id) const;
+  void PickleHostID(base::Pickle* pickle, const mojom::HostID& host_id) const;
   void PickleURLPatternSet(base::Pickle* pickle,
                            const URLPatternSet& pattern_list) const;
   void PickleScripts(base::Pickle* pickle, const FileList& scripts) const;
@@ -277,7 +256,7 @@ class UserScript {
                      std::vector<std::string>* globs);
   void UnpickleHostID(const base::Pickle& pickle,
                       base::PickleIterator* iter,
-                      HostID* host_id);
+                      mojom::HostID* host_id);
   void UnpickleURLPatternSet(const base::Pickle& pickle,
                              base::PickleIterator* iter,
                              URLPatternSet* pattern_list);
@@ -286,7 +265,7 @@ class UserScript {
                        FileList* scripts);
 
   // The location to run the script inside the document.
-  RunLocation run_location_ = DOCUMENT_IDLE;
+  mojom::RunLocation run_location_ = mojom::RunLocation::kDocumentIdle;
 
   // The namespace of the script. This is used by Greasemonkey in the same way
   // as XML namespaces. Only used when parsing Greasemonkey-style scripts.
@@ -320,14 +299,14 @@ class UserScript {
 
   // The ID of the host this script is a part of. The |ID| of the
   // |host_id| can be empty if the script is a "standlone" user script.
-  HostID host_id_;
+  mojom::HostID host_id_;
 
   // The type of the consumer instance that the script will be injected.
   ConsumerInstanceType consumer_instance_type_ = TAB;
 
-  // The globally-unique id associated with this user script. -1 indicates
-  // "invalid".
-  int user_script_id_ = -1;
+  // The globally-unique id associated with this user script. An empty string
+  // indicates an invalid id.
+  std::string user_script_id_;
 
   // Whether we should try to emulate Greasemonkey's APIs when running this
   // script.
@@ -346,19 +325,8 @@ class UserScript {
   // True if the script should be injected into an incognito tab.
   bool incognito_enabled_ = false;
 
-  DISALLOW_COPY_AND_ASSIGN(UserScript);
+  mojom::ExecutionWorld execution_world_ = mojom::ExecutionWorld::kIsolated;
 };
-
-// Information we need while removing scripts from a UserScriptLoader.
-struct UserScriptIDPair {
-  UserScriptIDPair(int id, const HostID& host_id);
-  explicit UserScriptIDPair(int id);
-
-  int id;
-  HostID host_id;
-};
-
-bool operator<(const UserScriptIDPair& a, const UserScriptIDPair& b);
 
 using UserScriptList = std::vector<std::unique_ptr<UserScript>>;
 

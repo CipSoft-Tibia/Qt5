@@ -1,4 +1,4 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,7 +16,7 @@
 // testing environment which needs the executable path in order to
 // find the external V8 binary data files.
 int main(int argc, char** argv) {
-  FXMEM_InitializePartitionAlloc();
+  FX_InitializeMemoryAllocators();
 
 #ifdef PDF_ENABLE_V8
   // The env will be deleted by gtest.
@@ -28,6 +28,9 @@ int main(int argc, char** argv) {
 
   testing::InitGoogleTest(&argc, argv);
   testing::InitGoogleMock(&argc, argv);
+
+  // Anything remaining in argc/argv is an embedder_tests flag.
+  EmbedderTestEnvironment::GetInstance()->AddFlags(argc, argv);
 
   return RUN_ALL_TESTS();
 }

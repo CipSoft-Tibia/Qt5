@@ -1,3 +1,134 @@
+# [5.4.0](https://github.com/wasdk/wasmparser/compare/v5.3.0...v5.4.0) (2021-10-12)
+
+
+### Bug Fixes
+
+* prevent negative name subsection entry length ([c9eeec7](https://github.com/wasdk/wasmparser/commit/c9eeec7a26d45cf436422a0f20c16dcf14c511bd))
+
+
+### Features
+
+* add tests for negative name subsection length ([b5d8d83](https://github.com/wasdk/wasmparser/commit/b5d8d83811785c8b3a0877e5e52c01cad4b4951e))
+
+# [5.3.0](https://github.com/wasdk/wasmparser/compare/v5.2.0...v5.3.0) (2021-09-20)
+
+
+### Bug Fixes
+
+* escape export name strings §6.3.3 ([1c0d874](https://github.com/wasdk/wasmparser/commit/1c0d874bde1544c03661ccfa63575be321eb6f73))
+
+
+### Features
+
+* add tests for escaped export name strings ([8c27bdf](https://github.com/wasdk/wasmparser/commit/8c27bdf516ab91d63595d0b283e57a9e7762d4fc))
+* update GC proposal support to "milestone 4" ([5d63bb6](https://github.com/wasdk/wasmparser/commit/5d63bb6b441ff064abf13559ca308b16c222c18f))
+
+# [5.2.0](https://github.com/wasdk/wasmparser/compare/v5.1.1...v5.2.0) (2021-05-31)
+
+
+### Features
+
+* implement br_on_non_null too ([e5415ae](https://github.com/wasdk/wasmparser/commit/e5415aed971a6fa1919498dbce5ac537dbf00582))
+* implement more instructions ([08c1f87](https://github.com/wasdk/wasmparser/commit/08c1f877d81cb2b7d603b8998e22840deebd1072))
+
+## [5.1.1](https://github.com/wasdk/wasmparser/compare/v5.1.0...v5.1.1) (2021-04-26)
+
+
+### Bug Fixes
+
+* missing initializer in devtools name generator for exceptions ([a35948b](https://github.com/wasdk/wasmparser/commit/a35948b999aaa375da426714c54e6c86febe4854))
+
+# [5.1.0](https://github.com/wasdk/wasmparser/compare/v5.0.2...v5.1.0) (2021-04-15)
+
+
+### Features
+
+* add support for "exception handling" proposal ([8dbd8c8](https://github.com/wasdk/wasmparser/commit/8dbd8c8964eae722f011851b35914c1c5b61f9f5))
+
+## [5.0.2](https://github.com/wasdk/wasmparser/compare/v5.0.1...v5.0.2) (2021-03-25)
+
+
+### Bug Fixes
+
+* **simd:** update wabt.js and remove/unskip simd tests ([#95](https://github.com/wasdk/wasmparser/issues/95)) ([ce582b7](https://github.com/wasdk/wasmparser/commit/ce582b7bfcce15812ac7dd37bcf5aa03933622d5))
+
+## [5.0.1](https://github.com/wasdk/wasmparser/compare/v5.0.0...v5.0.1) (2021-03-04)
+
+
+### Bug Fixes
+
+* **simd:** update SIMD opcodes ([648fff5](https://github.com/wasdk/wasmparser/commit/648fff52d2a186fb6bee97dc1f37b97640e26fbf))
+
+# [5.0.0](https://github.com/wasdk/wasmparser/compare/v4.0.0...v5.0.0) (2021-02-24)
+
+
+### Features
+
+* add support for WasmGC proposal ([5d4e5a0](https://github.com/wasdk/wasmparser/commit/5d4e5a0a21f9fc4958c8c1a834c2af49dafd8641))
+
+
+### BREAKING CHANGES
+
+* IFunctionType is replaced by the more general ITypeEntry.
+* Type is now a class; the former enum is now called TypeKind. Several other interfaces now use Type instances instead of numbers to describe types.
+
+# [4.0.0](https://github.com/wasdk/wasmparser/compare/v3.3.1...v4.0.0) (2020-11-03)
+
+
+### Bug Fixes
+
+* both members of IFunctionBodyOffset are mandatory numbers ([7383b87](https://github.com/wasdk/wasmparser/commit/7383b87960e09844c094588424bc0acb3076838c))
+
+
+### BREAKING CHANGES
+
+* the `start` and `end` fields of `IFunctionBodyOffset`
+were optional members before.
+
+## [3.3.1](https://github.com/wasdk/wasmparser/compare/v3.3.0...v3.3.1) (2020-10-27)
+
+
+### Bug Fixes
+
+* update data section support ([1dc9f39](https://github.com/wasdk/wasmparser/commit/1dc9f392551153a7f2a45aac280b6af1552c8509))
+
+# [3.3.0](https://github.com/wasdk/wasmparser/compare/v3.2.1...v3.3.0) (2020-10-24)
+
+
+### Features
+
+* add support for i32x4.dot_i16x8_s ([ebd88d6](https://github.com/wasdk/wasmparser/commit/ebd88d65be345b55170c047231845d964123d46d))
+* add support for pmin/pmax ([2f03191](https://github.com/wasdk/wasmparser/commit/2f03191e3df7329d6a44b1de4192f1a1b724744e))
+* add support for v128.load32_zero and v128.load64_zero ([51f00f5](https://github.com/wasdk/wasmparser/commit/51f00f5d2b874198b6c057c0dbbe769a7eac1703))
+
+## [3.2.1](https://github.com/wasdk/wasmparser/compare/v3.2.0...v3.2.1) (2020-10-23)
+
+
+### Bug Fixes
+
+* print opcodes in errors in hexadecimal form ([687ba47](https://github.com/wasdk/wasmparser/commit/687ba47c0cafb5cec040d1bee7796d37f9627071))
+
+# [3.2.0](https://github.com/wasdk/wasmparser/compare/v3.1.3...v3.2.0) (2020-10-13)
+
+
+### Features
+
+* support some extended name subsections ([d3efc60](https://github.com/wasdk/wasmparser/commit/d3efc60a93326c09502d8bbace5d2d6231df03e3))
+
+## [3.1.3](https://github.com/wasdk/wasmparser/compare/v3.1.2...v3.1.3) (2020-10-12)
+
+
+### Bug Fixes
+
+* ignore unsupported "name" subsections ([652f0f7](https://github.com/wasdk/wasmparser/commit/652f0f7c79db00edcc21d9049bb73e4d41383740))
+
+## [3.1.2](https://github.com/wasdk/wasmparser/compare/v3.1.1...v3.1.2) (2020-08-26)
+
+
+### Bug Fixes
+
+* extensions have an leb128 opcode ([#77](https://github.com/wasdk/wasmparser/issues/77)) ([149816c](https://github.com/wasdk/wasmparser/commit/149816c5aa42f7c30bcced7d36742ad9984683fa))
+
 ## [3.1.1](https://github.com/wasdk/wasmparser/compare/v3.1.0...v3.1.1) (2020-08-19)
 
 

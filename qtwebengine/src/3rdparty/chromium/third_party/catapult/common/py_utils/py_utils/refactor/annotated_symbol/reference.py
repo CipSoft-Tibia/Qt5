@@ -47,7 +47,7 @@ class Reference(base_symbol.AnnotatedSymbol):
     return [cls(nodes[:i])] + nodes[i:]
 
   def __init__(self, children):
-    super(Reference, self).__init__(-1, children)
+    super().__init__(-1, children)
 
   @property
   def type_name(self):

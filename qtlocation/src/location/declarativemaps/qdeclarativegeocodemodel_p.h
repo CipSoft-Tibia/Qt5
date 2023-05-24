@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QDECLARATIVEGEOCODEMODEL_H
 #define QDECLARATIVEGEOCODEMODEL_H
@@ -70,6 +37,7 @@ class QDeclarativeGeoLocation;
 class Q_LOCATION_PRIVATE_EXPORT QDeclarativeGeocodeModel : public QAbstractListModel, public QQmlParserStatus
 {
     Q_OBJECT
+    QML_NAMED_ELEMENT(GeocodeModel)
     Q_ENUMS(Status)
     Q_ENUMS(GeocodeError)
 
@@ -112,17 +80,17 @@ public:
         LocationRole = Qt::UserRole + 1
     };
 
-    explicit QDeclarativeGeocodeModel(QObject *parent = 0);
+    explicit QDeclarativeGeocodeModel(QObject *parent = nullptr);
     virtual ~QDeclarativeGeocodeModel();
 
     // From QQmlParserStatus
-    virtual void classBegin() {}
-    virtual void componentComplete();
+    void classBegin() override {}
+    void componentComplete() override;
 
     // From QAbstractListModel
-    virtual int rowCount(const QModelIndex &parent) const;
-    virtual QVariant data(const QModelIndex &index, int role) const;
-    virtual QHash<int,QByteArray> roleNames() const;
+    int rowCount(const QModelIndex &parent) const override;
+    QVariant data(const QModelIndex &index, int role) const override;
+    QHash<int,QByteArray> roleNames() const override;
 
     void setPlugin(QDeclarativeGeoServiceProvider *plugin);
     QDeclarativeGeoServiceProvider *plugin() const;
@@ -177,29 +145,29 @@ protected:
     QGeoCodingManager *searchManager();
     void setStatus(Status status);
     void setError(GeocodeError error, const QString &errorString);
-    bool autoUpdate_;
-    bool complete_;
+    bool autoUpdate_ = false;
+    bool complete_ = false;
 
 private:
     void setLocations(const QList<QGeoLocation> &locations);
     void abortRequest();
-    QGeoCodeReply *reply_;
+    QGeoCodeReply *reply_ = nullptr;
 
-    QDeclarativeGeoServiceProvider *plugin_;
+    QDeclarativeGeoServiceProvider *plugin_ = nullptr;
     QGeoShape boundingArea_;
 
     QList<QDeclarativeGeoLocation *> declarativeLocations_;
 
-    Status status_;
+    Status status_ = QDeclarativeGeocodeModel::Null;
     QString errorString_;
-    GeocodeError error_;
+    GeocodeError error_ = QDeclarativeGeocodeModel::NoError;
     QVariant queryVariant_;
     QGeoCoordinate coordinate_;
-    QDeclarativeGeoAddress *address_;
+    QDeclarativeGeoAddress *address_ = nullptr;
     QString searchString_;
 
-    int limit_;
-    int offset_;
+    int limit_ = -1;
+    int offset_ = 0;
 };
 
 QT_END_NAMESPACE

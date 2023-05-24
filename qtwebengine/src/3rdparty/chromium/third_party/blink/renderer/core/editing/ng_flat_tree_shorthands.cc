@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,16 +22,6 @@ const LayoutBlockFlow* NGInlineFormattingContextOf(
 NGCaretPosition ComputeNGCaretPosition(
     const PositionInFlatTreeWithAffinity& position) {
   return ComputeNGCaretPosition(ToPositionInDOMTreeWithAffinity(position));
-}
-
-LocalCaretRect ComputeNGLocalCaretRect(
-    const PositionInFlatTreeWithAffinity& position) {
-  return ComputeNGLocalCaretRect(ToPositionInDOMTreeWithAffinity(position));
-}
-
-LocalCaretRect ComputeNGLocalSelectionRect(
-    const PositionInFlatTreeWithAffinity& position) {
-  return ComputeNGLocalSelectionRect(ToPositionInDOMTreeWithAffinity(position));
 }
 
 bool InSameNGLineBox(const PositionInFlatTreeWithAffinity& position1,

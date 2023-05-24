@@ -17,10 +17,10 @@
 #ifndef SRC_TRACE_PROCESSOR_IMPORTERS_COMMON_CLOCK_TRACKER_H_
 #define SRC_TRACE_PROCESSOR_IMPORTERS_COMMON_CLOCK_TRACKER_H_
 
-#include <inttypes.h>
 #include <stdint.h>
 
 #include <array>
+#include <cinttypes>
 #include <map>
 #include <random>
 #include <set>
@@ -28,6 +28,8 @@
 
 #include "perfetto/base/logging.h"
 #include "perfetto/ext/base/optional.h"
+#include "perfetto/ext/base/string_utils.h"
+#include "src/trace_processor/storage/trace_storage.h"
 
 namespace perfetto {
 namespace trace_processor {
@@ -134,7 +136,7 @@ class ClockTracker {
     return (global_clock_id >> 32) > 0;
   }
 
-  explicit ClockTracker(TraceProcessorContext*);
+  explicit ClockTracker(TraceStorage*);
   virtual ~ClockTracker();
 
   // Clock description and its value in a snapshot.
@@ -154,7 +156,8 @@ class ClockTracker {
 
   // Appends a new snapshot for the given clock domains.
   // This is typically called by the code that reads the ClockSnapshot packet.
-  void AddSnapshot(const std::vector<ClockValue>&);
+  // Returns the internal snapshot id of this set of clocks.
+  uint32_t AddSnapshot(const std::vector<ClockValue>&);
 
   // Converts a timestamp between two clock domains. Tries to use the cache
   // first (only for single-path resolutions), then falls back on path finding
@@ -185,9 +188,20 @@ class ClockTracker {
     return Convert(clock_id, timestamp, trace_time_clock_id_);
   }
 
+  base::Optional<int64_t> FromTraceTime(ClockId to_clock_id,
+                                        int64_t timestamp) {
+    trace_time_clock_id_used_for_conversion_ = true;
+    if (to_clock_id == trace_time_clock_id_)
+      return timestamp;
+    return Convert(trace_time_clock_id_, timestamp, to_clock_id);
+  }
+
+  base::Optional<std::string> FromTraceTimeAsISO8601(int64_t timestamp);
+
   void SetTraceTimeClock(ClockId clock_id) {
     PERFETTO_DCHECK(!IsReservedSeqScopedClockId(clock_id));
-    if (trace_time_clock_id_used_for_conversion_) {
+    if (trace_time_clock_id_used_for_conversion_ &&
+        trace_time_clock_id_ != clock_id) {
       PERFETTO_ELOG("Not updating trace time clock from %" PRIu64 " to %" PRIu64
                     " because the old clock was already used for timestamp "
                     "conversion - ClockSnapshot too late in trace?",
@@ -299,7 +313,7 @@ class ClockTracker {
     return &it->second;
   }
 
-  TraceProcessorContext* const context_;
+  TraceStorage* const storage_;
   ClockId trace_time_clock_id_ = 0;
   std::map<ClockId, ClockDomain> clocks_;
   std::set<ClockGraphEdge> graph_;

@@ -39,7 +39,7 @@ AudioNodeInput::AudioNodeInput(AudioHandler& handler)
       handler_(handler) {
   // Set to mono by default.
   internal_summing_bus_ =
-      AudioBus::Create(1, audio_utilities::kRenderQuantumFrames);
+      AudioBus::Create(1, GetDeferredTaskHandler().RenderQuantumFrames());
 }
 
 AudioNodeInput::~AudioNodeInput() {
@@ -56,17 +56,19 @@ void AudioNodeInput::UpdateInternalBus() {
 
   unsigned number_of_input_channels = NumberOfChannels();
 
-  if (number_of_input_channels == internal_summing_bus_->NumberOfChannels())
+  if (number_of_input_channels == internal_summing_bus_->NumberOfChannels()) {
     return;
+  }
 
   internal_summing_bus_ = AudioBus::Create(
-      number_of_input_channels, audio_utilities::kRenderQuantumFrames);
+      number_of_input_channels, GetDeferredTaskHandler().RenderQuantumFrames());
 }
 
 unsigned AudioNodeInput::NumberOfChannels() const {
   AudioHandler::ChannelCountMode mode = Handler().InternalChannelCountMode();
-  if (mode == AudioHandler::kExplicit)
+  if (mode == AudioHandler::kExplicit) {
     return Handler().ChannelCount();
+  }
 
   // Find the number of channels of the connection with the largest number of
   // channels.
@@ -79,9 +81,10 @@ unsigned AudioNodeInput::NumberOfChannels() const {
     max_channels = std::max(max_channels, output->NumberOfChannels());
   }
 
-  if (mode == AudioHandler::kClampedMax)
+  if (mode == AudioHandler::kClampedMax) {
     max_channels =
         std::min(max_channels, static_cast<unsigned>(Handler().ChannelCount()));
+  }
 
   return max_channels;
 }
@@ -91,8 +94,9 @@ scoped_refptr<AudioBus> AudioNodeInput::Bus() {
 
   // Handle single connection specially to allow for in-place processing.
   if (NumberOfRenderingConnections() == 1 &&
-      Handler().InternalChannelCountMode() == AudioHandler::kMax)
+      Handler().InternalChannelCountMode() == AudioHandler::kMax) {
     return RenderingOutput(0)->Bus();
+  }
 
   // Multiple connections case or complex ChannelCountMode (or no connections).
   return InternalSummingBus();
@@ -140,11 +144,11 @@ scoped_refptr<AudioBus> AudioNodeInput::Pull(AudioBus* in_place_bus,
   if (NumberOfRenderingConnections() == 1 &&
       Handler().InternalChannelCountMode() == AudioHandler::kMax) {
     // The output will optimize processing using inPlaceBus if it's able.
-    AudioNodeOutput* output = this->RenderingOutput(0);
+    AudioNodeOutput* output = RenderingOutput(0);
     return output->Pull(in_place_bus, frames_to_process);
   }
 
-  scoped_refptr<AudioBus> internal_summing_bus = this->InternalSummingBus();
+  scoped_refptr<AudioBus> internal_summing_bus = InternalSummingBus();
 
   if (!NumberOfRenderingConnections()) {
     // At least, generate silence if we're not connected to anything.

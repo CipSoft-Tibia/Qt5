@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,9 +12,9 @@
 namespace {
 
 const CXFA_Node::PropertyData kCertificatesPropertyData[] = {
-    {XFA_Element::KeyUsage, 1, 0}, {XFA_Element::SubjectDNs, 1, 0},
-    {XFA_Element::Issuers, 1, 0},  {XFA_Element::Signing, 1, 0},
-    {XFA_Element::Oids, 1, 0},
+    {XFA_Element::KeyUsage, 1, {}}, {XFA_Element::SubjectDNs, 1, {}},
+    {XFA_Element::Issuers, 1, {}},  {XFA_Element::Signing, 1, {}},
+    {XFA_Element::Oids, 1, {}},
 };
 
 const CXFA_Node::AttributeData kCertificatesAttributeData[] = {
@@ -32,7 +32,7 @@ const CXFA_Node::AttributeData kCertificatesAttributeData[] = {
 CXFA_Certificates::CXFA_Certificates(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                (XFA_XDPPACKET_Template | XFA_XDPPACKET_Form),
+                {XFA_XDPPACKET::kTemplate, XFA_XDPPACKET::kForm},
                 XFA_ObjectType::Node,
                 XFA_Element::Certificates,
                 kCertificatesPropertyData,

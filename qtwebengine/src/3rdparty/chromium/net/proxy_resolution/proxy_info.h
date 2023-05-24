@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -36,31 +36,21 @@ class NET_EXPORT ProxyInfo {
 
   // Uses a direct connection. did_bypass_proxy() will return true to indicate
   // that the direct connection is the result of configured proxy bypass rules.
-  //
-  // See also the note for UseDirect().
   void UseDirectWithBypassedProxy();
 
   // Uses a specific proxy server, of the form:
   //   proxy-uri = [<scheme> "://"] <hostname> [":" <port>]
   // This may optionally be a semi-colon delimited list of <proxy-uri>.
   // It is OK to have LWS between entries.
-  //
-  // See also the note for UseDirect().
   void UseNamedProxy(const std::string& proxy_uri_list);
 
   // Sets the proxy list to a single entry, |proxy_server|.
-  //
-  // See also the note for UseDirect().
   void UseProxyServer(const ProxyServer& proxy_server);
 
   // Parses from the given PAC result.
-  //
-  // See also the note for UseDirect().
   void UsePacString(const std::string& pac_string);
 
   // Uses the proxies from the given list.
-  //
-  // See also the note for UseDirect().
   void UseProxyList(const ProxyList& proxy_list);
 
   // Uses the proxies from the given list, but does not otherwise reset the
@@ -203,7 +193,7 @@ class NET_EXPORT ProxyInfo {
   MutableNetworkTrafficAnnotationTag traffic_annotation_;
 
   // Whether the proxy result represent a proxy bypass.
-  bool did_bypass_proxy_;
+  bool did_bypass_proxy_ = false;
 
   // How long it took to resolve the proxy.  Times are both null if proxy was
   // determined synchronously without running a PAC.

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,17 +7,19 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
+
+namespace gfx {
+class Transform;
+}
 
 namespace blink {
 
 class DOMPointInit;
 class DOMPointReadOnly;
 class ExceptionState;
-class TransformationMatrix;
 
 // MODULES_EXPORT is required for unit tests using XRRigidTransform (currently
 // just xr_rigid_transform_test.cc) to build without linker errors.
@@ -25,11 +27,14 @@ class MODULES_EXPORT XRRigidTransform : public ScriptWrappable {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
-  explicit XRRigidTransform(const TransformationMatrix&);
+  explicit XRRigidTransform(const gfx::Transform&);
   XRRigidTransform(DOMPointInit*, DOMPointInit*);
   static XRRigidTransform* Create(DOMPointInit*,
                                   DOMPointInit*,
                                   ExceptionState&);
+
+  XRRigidTransform(const XRRigidTransform&) = delete;
+  XRRigidTransform& operator=(const XRRigidTransform&) = delete;
 
   ~XRRigidTransform() override = default;
 
@@ -38,8 +43,8 @@ class MODULES_EXPORT XRRigidTransform : public ScriptWrappable {
   DOMFloat32Array* matrix();
   XRRigidTransform* inverse();
 
-  TransformationMatrix InverseTransformMatrix();
-  TransformationMatrix TransformMatrix();  // copies matrix_
+  gfx::Transform InverseTransformMatrix();
+  gfx::Transform TransformMatrix();  // copies matrix_
 
   void Trace(Visitor*) const override;
 
@@ -52,9 +57,7 @@ class MODULES_EXPORT XRRigidTransform : public ScriptWrappable {
   Member<DOMPointReadOnly> orientation_;
   Member<XRRigidTransform> inverse_;
   Member<DOMFloat32Array> matrix_array_;
-  std::unique_ptr<TransformationMatrix> matrix_;
-
-  DISALLOW_COPY_AND_ASSIGN(XRRigidTransform);
+  std::unique_ptr<gfx::Transform> matrix_;
 };
 
 }  // namespace blink

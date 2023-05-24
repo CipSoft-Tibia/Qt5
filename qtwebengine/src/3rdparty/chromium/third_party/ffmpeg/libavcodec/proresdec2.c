@@ -21,20 +21,25 @@
 
 /**
  * @file
- * Known FOURCCs: 'apch' (HQ), 'apcn' (SD), 'apcs' (LT), 'acpo' (Proxy), 'ap4h' (4444)
+ * Known FOURCCs: 'apch' (HQ), 'apcn' (SD), 'apcs' (LT), 'apco' (Proxy), 'ap4h' (4444), 'ap4x' (4444 XQ)
  */
 
 //#define DEBUG
 
 #define LONG_BITSTREAM_READER
 
+#include "config_components.h"
+
 #include "libavutil/internal.h"
+#include "libavutil/mem_internal.h"
+
 #include "avcodec.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
+#include "hwconfig.h"
 #include "idctdsp.h"
-#include "internal.h"
 #include "profiles.h"
-#include "simple_idct.h"
 #include "proresdec.h"
 #include "proresdata.h"
 #include "thread.h"
@@ -172,7 +177,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
         av_log(avctx, AV_LOG_DEBUG, "Auto bitdepth precision. Use 12b decoding based on codec tag.\n");
     }
 
-    ff_blockdsp_init(&ctx->bdsp, avctx);
+    ff_blockdsp_init(&ctx->bdsp);
     ret = ff_proresdsp_init(&ctx->prodsp, avctx);
     if (ret < 0) {
         av_log(avctx, AV_LOG_ERROR, "Fail to init proresdsp for bits per raw sample %d\n", avctx->bits_per_raw_sample);
@@ -184,6 +189,8 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     permute(ctx->progressive_scan, ff_prores_progressive_scan, idct_permutation);
     permute(ctx->interlaced_scan, ff_prores_interlaced_scan, idct_permutation);
+
+    ctx->pix_fmt = AV_PIX_FMT_NONE;
 
     if (avctx->bits_per_raw_sample == 10){
         ctx->unpack_alpha = unpack_alpha_10;
@@ -202,6 +209,7 @@ static int decode_frame_header(ProresContext *ctx, const uint8_t *buf,
     int hdr_size, width, height, flags;
     int version;
     const uint8_t *ptr;
+    enum AVPixelFormat pix_fmt;
 
     hdr_size = AV_RB16(buf);
     ff_dlog(avctx, "header size %d\n", hdr_size);
@@ -250,22 +258,41 @@ static int decode_frame_header(ProresContext *ctx, const uint8_t *buf,
 
     if (ctx->alpha_info) {
         if (avctx->bits_per_raw_sample == 10) {
-            avctx->pix_fmt = (buf[12] & 0xC0) == 0xC0 ? AV_PIX_FMT_YUVA444P10 : AV_PIX_FMT_YUVA422P10;
+            pix_fmt = (buf[12] & 0xC0) == 0xC0 ? AV_PIX_FMT_YUVA444P10 : AV_PIX_FMT_YUVA422P10;
         } else { /* 12b */
-            avctx->pix_fmt = (buf[12] & 0xC0) == 0xC0 ? AV_PIX_FMT_YUVA444P12 : AV_PIX_FMT_YUVA422P12;
+            pix_fmt = (buf[12] & 0xC0) == 0xC0 ? AV_PIX_FMT_YUVA444P12 : AV_PIX_FMT_YUVA422P12;
         }
     } else {
         if (avctx->bits_per_raw_sample == 10) {
-            avctx->pix_fmt = (buf[12] & 0xC0) == 0xC0 ? AV_PIX_FMT_YUV444P10 : AV_PIX_FMT_YUV422P10;
+            pix_fmt = (buf[12] & 0xC0) == 0xC0 ? AV_PIX_FMT_YUV444P10 : AV_PIX_FMT_YUV422P10;
         } else { /* 12b */
-            avctx->pix_fmt = (buf[12] & 0xC0) == 0xC0 ? AV_PIX_FMT_YUV444P12 : AV_PIX_FMT_YUV422P12;
+            pix_fmt = (buf[12] & 0xC0) == 0xC0 ? AV_PIX_FMT_YUV444P12 : AV_PIX_FMT_YUV422P12;
         }
     }
 
-    avctx->color_primaries = buf[14];
-    avctx->color_trc       = buf[15];
-    avctx->colorspace      = buf[16];
-    avctx->color_range     = AVCOL_RANGE_MPEG;
+    if (pix_fmt != ctx->pix_fmt) {
+#define HWACCEL_MAX (CONFIG_PRORES_VIDEOTOOLBOX_HWACCEL)
+        enum AVPixelFormat pix_fmts[HWACCEL_MAX + 2], *fmtp = pix_fmts;
+        int ret;
+
+        ctx->pix_fmt = pix_fmt;
+
+#if CONFIG_PRORES_VIDEOTOOLBOX_HWACCEL
+        *fmtp++ = AV_PIX_FMT_VIDEOTOOLBOX;
+#endif
+        *fmtp++ = ctx->pix_fmt;
+        *fmtp = AV_PIX_FMT_NONE;
+
+        if ((ret = ff_thread_get_format(avctx, pix_fmts)) < 0)
+            return ret;
+
+        avctx->pix_fmt = ret;
+    }
+
+    ctx->frame->color_primaries = buf[14];
+    ctx->frame->color_trc       = buf[15];
+    ctx->frame->colorspace      = buf[16];
+    ctx->frame->color_range     = AVCOL_RANGE_MPEG;
 
     ptr   = buf + 20;
     flags = buf[19];
@@ -338,7 +365,7 @@ static int decode_picture_header(AVCodecContext *avctx, const uint8_t *buf, cons
     if (ctx->slice_count != slice_count || !ctx->slices) {
         av_freep(&ctx->slices);
         ctx->slice_count = 0;
-        ctx->slices = av_mallocz_array(slice_count, sizeof(*ctx->slices));
+        ctx->slices = av_calloc(slice_count, sizeof(*ctx->slices));
         if (!ctx->slices)
             return AVERROR(ENOMEM);
         ctx->slice_count = slice_count;
@@ -472,7 +499,7 @@ static const uint8_t lev_to_cb[10] = { 0x04, 0x0A, 0x05, 0x06, 0x04, 0x28, 0x28,
 static av_always_inline int decode_ac_coeffs(AVCodecContext *avctx, GetBitContext *gb,
                                              int16_t *out, int blocks_per_slice)
 {
-    ProresContext *ctx = avctx->priv_data;
+    const ProresContext *ctx = avctx->priv_data;
     int block_mask, sign;
     unsigned pos, run, level;
     int max_coeffs, i, bits_left;
@@ -517,7 +544,7 @@ static int decode_slice_luma(AVCodecContext *avctx, SliceContext *slice,
                              const uint8_t *buf, unsigned buf_size,
                              const int16_t *qmat)
 {
-    ProresContext *ctx = avctx->priv_data;
+    const ProresContext *ctx = avctx->priv_data;
     LOCAL_ALIGNED_32(int16_t, blocks, [8*4*64]);
     int16_t *block;
     GetBitContext gb;
@@ -583,7 +610,7 @@ static int decode_slice_chroma(AVCodecContext *avctx, SliceContext *slice,
 /**
  * Decode alpha slice plane.
  */
-static void decode_slice_alpha(ProresContext *ctx,
+static void decode_slice_alpha(const ProresContext *ctx,
                                uint16_t *dst, int dst_stride,
                                const uint8_t *buf, int buf_size,
                                int blocks_per_slice)
@@ -615,14 +642,14 @@ static void decode_slice_alpha(ProresContext *ctx,
 
 static int decode_slice_thread(AVCodecContext *avctx, void *arg, int jobnr, int threadnr)
 {
-    ProresContext *ctx = avctx->priv_data;
+    const ProresContext *ctx = avctx->priv_data;
     SliceContext *slice = &ctx->slices[jobnr];
     const uint8_t *buf = slice->data;
     AVFrame *pic = ctx->frame;
     int i, hdr_size, qscale, log2_chroma_blocks_per_mb;
     int luma_stride, chroma_stride;
-    int y_data_size, u_data_size, v_data_size, a_data_size;
-    uint8_t *dest_y, *dest_u, *dest_v, *dest_a;
+    int y_data_size, u_data_size, v_data_size, a_data_size, offset;
+    uint8_t *dest_y, *dest_u, *dest_v;
     LOCAL_ALIGNED_16(int16_t, qmat_luma_scaled,  [64]);
     LOCAL_ALIGNED_16(int16_t, qmat_chroma_scaled,[64]);
     int mb_x_shift;
@@ -674,16 +701,16 @@ static int decode_slice_thread(AVCodecContext *avctx, void *arg, int jobnr, int 
         log2_chroma_blocks_per_mb = 1;
     }
 
-    dest_y = pic->data[0] + (slice->mb_y << 4) * luma_stride + (slice->mb_x << 5);
+    offset = (slice->mb_y << 4) * luma_stride + (slice->mb_x << 5);
+    dest_y = pic->data[0] + offset;
     dest_u = pic->data[1] + (slice->mb_y << 4) * chroma_stride + (slice->mb_x << mb_x_shift);
     dest_v = pic->data[2] + (slice->mb_y << 4) * chroma_stride + (slice->mb_x << mb_x_shift);
-    dest_a = pic->data[3] + (slice->mb_y << 4) * luma_stride + (slice->mb_x << 5);
 
     if (ctx->frame_type && ctx->first_field ^ ctx->frame->top_field_first) {
         dest_y += pic->linesize[0];
         dest_u += pic->linesize[1];
         dest_v += pic->linesize[2];
-        dest_a += pic->linesize[3];
+        offset += pic->linesize[3];
     }
 
     ret = decode_slice_luma(avctx, slice, (uint16_t*)dest_y, luma_stride,
@@ -720,10 +747,12 @@ static int decode_slice_thread(AVCodecContext *avctx, void *arg, int jobnr, int 
     }
 
     /* decode alpha plane if available */
-    if (ctx->alpha_info && pic->data[3] && a_data_size)
+    if (ctx->alpha_info && pic->data[3] && a_data_size) {
+        uint8_t *dest_a = pic->data[3] + offset;
         decode_slice_alpha(ctx, (uint16_t*)dest_a, luma_stride,
                            buf + y_data_size + u_data_size + v_data_size,
                            a_data_size, slice->mb_count);
+    }
 
     slice->ret = 0;
     return 0;
@@ -748,12 +777,10 @@ static int decode_picture(AVCodecContext *avctx)
     return ctx->slices[0].ret;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
-                        AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                        int *got_frame, AVPacket *avpkt)
 {
     ProresContext *ctx = avctx->priv_data;
-    ThreadFrame tframe = { .f = data };
-    AVFrame *frame = data;
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     int frame_hdr_size, pic_size, ret;
@@ -778,16 +805,29 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     buf += frame_hdr_size;
     buf_size -= frame_hdr_size;
 
+    if ((ret = ff_thread_get_buffer(avctx, frame, 0)) < 0)
+        return ret;
+    ff_thread_finish_setup(avctx);
+
+    if (avctx->hwaccel) {
+        ret = avctx->hwaccel->start_frame(avctx, NULL, 0);
+        if (ret < 0)
+            return ret;
+        ret = avctx->hwaccel->decode_slice(avctx, avpkt->data, avpkt->size);
+        if (ret < 0)
+            return ret;
+        ret = avctx->hwaccel->end_frame(avctx);
+        if (ret < 0)
+            return ret;
+        goto finish;
+    }
+
  decode_picture:
     pic_size = decode_picture_header(avctx, buf, buf_size);
     if (pic_size < 0) {
         av_log(avctx, AV_LOG_ERROR, "error decoding picture header\n");
         return pic_size;
     }
-
-    if (ctx->first_field)
-        if ((ret = ff_thread_get_buffer(avctx, &tframe, 0)) < 0)
-            return ret;
 
     if ((ret = decode_picture(avctx)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "error decoding picture\n");
@@ -802,6 +842,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
         goto decode_picture;
     }
 
+finish:
     *got_frame      = 1;
 
     return avpkt->size;
@@ -816,15 +857,34 @@ static av_cold int decode_close(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_prores_decoder = {
-    .name           = "prores",
-    .long_name      = NULL_IF_CONFIG_SMALL("ProRes (iCodec Pro)"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_PRORES,
+#if HAVE_THREADS
+static int update_thread_context(AVCodecContext *dst, const AVCodecContext *src)
+{
+    ProresContext *csrc = src->priv_data;
+    ProresContext *cdst = dst->priv_data;
+
+    cdst->pix_fmt = csrc->pix_fmt;
+
+    return 0;
+}
+#endif
+
+const FFCodec ff_prores_decoder = {
+    .p.name         = "prores",
+    CODEC_LONG_NAME("Apple ProRes (iCodec Pro)"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_PRORES,
     .priv_data_size = sizeof(ProresContext),
     .init           = decode_init,
     .close          = decode_close,
-    .decode         = decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS,
-    .profiles       = NULL_IF_CONFIG_SMALL(ff_prores_profiles),
+    FF_CODEC_DECODE_CB(decode_frame),
+    UPDATE_THREAD_CONTEXT(update_thread_context),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS,
+    .p.profiles     = NULL_IF_CONFIG_SMALL(ff_prores_profiles),
+    .hw_configs     = (const AVCodecHWConfigInternal *const []) {
+#if CONFIG_PRORES_VIDEOTOOLBOX_HWACCEL
+        HWACCEL_VIDEOTOOLBOX(prores),
+#endif
+        NULL
+    },
 };

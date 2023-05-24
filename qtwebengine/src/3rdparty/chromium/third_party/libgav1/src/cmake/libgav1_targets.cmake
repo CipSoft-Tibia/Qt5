@@ -17,6 +17,14 @@ if(LIBGAV1_CMAKE_GAV1_TARGETS_CMAKE_)
 endif() # LIBGAV1_CMAKE_GAV1_TARGETS_CMAKE_
 set(LIBGAV1_CMAKE_GAV1_TARGETS_CMAKE_ 1)
 
+if(LIBGAV1_IDE_FOLDER)
+  set(LIBGAV1_EXAMPLES_IDE_FOLDER "${LIBGAV1_IDE_FOLDER}/examples")
+  set(LIBGAV1_TESTS_IDE_FOLDER "${LIBGAV1_IDE_FOLDER}/tests")
+else()
+  set(LIBGAV1_EXAMPLES_IDE_FOLDER "libgav1_examples")
+  set(LIBGAV1_TESTS_IDE_FOLDER "libgav1_tests")
+endif()
+
 # Resets list variables used to track libgav1 targets.
 macro(libgav1_reset_target_lists)
   unset(libgav1_targets)
@@ -29,7 +37,7 @@ endmacro()
 
 # Creates an executable target. The target name is passed as a parameter to the
 # NAME argument, and the sources passed as a parameter to the SOURCES argument:
-# libgav1_add_test(NAME <name> SOURCES <sources> [optional args])
+# libgav1_add_executable(NAME <name> SOURCES <sources> [optional args])
 #
 # Optional args:
 # cmake-format: off
@@ -100,6 +108,13 @@ macro(libgav1_add_executable)
   endif()
 
   add_executable(${exe_NAME} ${exe_SOURCES})
+  if(exe_TEST)
+    add_test(NAME ${exe_NAME} COMMAND ${exe_NAME})
+    set_property(TARGET ${exe_NAME} PROPERTY FOLDER ${LIBGAV1_TESTS_IDE_FOLDER})
+  else()
+    set_property(TARGET ${exe_NAME}
+                 PROPERTY FOLDER ${LIBGAV1_EXAMPLES_IDE_FOLDER})
+  endif()
 
   if(exe_OUTPUT_NAME)
     set_target_properties(${exe_NAME} PROPERTIES OUTPUT_NAME ${exe_OUTPUT_NAME})
@@ -115,15 +130,35 @@ macro(libgav1_add_executable)
     target_include_directories(${exe_NAME} PRIVATE ${exe_INCLUDES})
   endif()
 
-  if(exe_COMPILE_FLAGS OR LIBGAV1_CXX_FLAGS)
+  unset(exe_LIBGAV1_COMPILE_FLAGS)
+  if(exe_TEST)
+    list(FILTER exe_SOURCES INCLUDE REGEX "\\.c$")
+    list(LENGTH exe_SOURCES exe_SOURCES_length)
+    if(exe_SOURCES_length EQUAL 0)
+      set(exe_LIBGAV1_COMPILE_FLAGS ${LIBGAV1_TEST_CXX_FLAGS})
+    else()
+      set(exe_LIBGAV1_COMPILE_FLAGS ${LIBGAV1_TEST_C_FLAGS})
+    endif()
+  else()
+    set(exe_LIBGAV1_COMPILE_FLAGS ${LIBGAV1_CXX_FLAGS})
+  endif()
+
+  if(exe_COMPILE_FLAGS OR exe_LIBGAV1_COMPILE_FLAGS)
     target_compile_options(${exe_NAME}
-                           PRIVATE ${exe_COMPILE_FLAGS} ${LIBGAV1_CXX_FLAGS})
+                           PRIVATE ${exe_COMPILE_FLAGS}
+                                   ${exe_LIBGAV1_COMPILE_FLAGS})
   endif()
 
   if(exe_LINK_FLAGS OR LIBGAV1_EXE_LINKER_FLAGS)
-    set_target_properties(${exe_NAME}
-                          PROPERTIES LINK_FLAGS ${exe_LINK_FLAGS}
-                                     ${LIBGAV1_EXE_LINKER_FLAGS})
+    list(APPEND exe_LINK_FLAGS "${LIBGAV1_EXE_LINKER_FLAGS}")
+    if(${CMAKE_VERSION} VERSION_LESS "3.13")
+      # LINK_FLAGS is managed as a string.
+      libgav1_set_and_stringify(SOURCE "${exe_LINK_FLAGS}" DEST exe_LINK_FLAGS)
+      set_target_properties(${exe_NAME}
+                            PROPERTIES LINK_FLAGS "${exe_LINK_FLAGS}")
+    else()
+      target_link_options(${exe_NAME} PRIVATE ${exe_LINK_FLAGS})
+    endif()
   endif()
 
   if(exe_OBJLIB_DEPS)
@@ -137,7 +172,7 @@ macro(libgav1_add_executable)
   endif()
 
   if(BUILD_SHARED_LIBS AND (MSVC OR WIN32))
-    target_compile_definitions(${lib_NAME} PRIVATE "LIBGAV1_BUILDING_DLL=0")
+    target_compile_definitions(${exe_NAME} PRIVATE "LIBGAV1_BUILDING_DLL=0")
   endif()
 
   if(exe_LIB_DEPS)
@@ -321,7 +356,9 @@ macro(libgav1_add_library)
   endif()
 
   if(lib_TYPE STREQUAL SHARED AND NOT MSVC)
-    set_target_properties(${lib_NAME} PROPERTIES SOVERSION ${LIBGAV1_SOVERSION})
+    set_target_properties(${lib_NAME}
+                          PROPERTIES VERSION ${LIBGAV1_SOVERSION} SOVERSION
+                                     ${LIBGAV1_SOVERSION_MAJOR})
   endif()
 
   if(BUILD_SHARED_LIBS AND (MSVC OR WIN32))
@@ -342,6 +379,19 @@ macro(libgav1_add_library)
     else()
       # The Xcode generator ignores LINKER_LANGUAGE. Add a dummy cc file.
       libgav1_create_dummy_source_file(TARGET ${lib_NAME} BASENAME ${lib_NAME})
+    endif()
+  endif()
+
+  if(lib_TEST)
+    set_property(TARGET ${lib_NAME} PROPERTY FOLDER ${LIBGAV1_TESTS_IDE_FOLDER})
+  else()
+    set(sources_list ${lib_SOURCES})
+    list(FILTER sources_list INCLUDE REGEX examples)
+    if(sources_list)
+      set_property(TARGET ${lib_NAME}
+                   PROPERTY FOLDER ${LIBGAV1_EXAMPLES_IDE_FOLDER})
+    else()
+      set_property(TARGET ${lib_NAME} PROPERTY FOLDER ${LIBGAV1_IDE_FOLDER})
     endif()
   endif()
 endmacro()

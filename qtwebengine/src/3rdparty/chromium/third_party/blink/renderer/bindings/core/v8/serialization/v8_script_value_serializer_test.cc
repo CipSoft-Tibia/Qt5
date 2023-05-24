@@ -1,17 +1,21 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/bindings/core/v8/serialization/v8_script_value_serializer.h"
 
+#include "base/test/scoped_feature_list.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/platform/web_blob_info.h"
-#include "third_party/blink/renderer/bindings/core/v8/script_source_code.h"
+#include "third_party/blink/renderer/bindings/core/v8/script_evaluation_result.h"
+#include "third_party/blink/renderer/bindings/core/v8/serialization/trailer_reader.h"
 #include "third_party/blink/renderer/bindings/core/v8/serialization/unpacked_serialized_script_value.h"
 #include "third_party/blink/renderer/bindings/core/v8/serialization/v8_script_value_deserializer.h"
+#include "third_party/blink/renderer/bindings/core/v8/to_v8_traits.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_testing.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_blob.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_dom_exception.h"
@@ -33,9 +37,13 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_offscreen_canvas.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_readable_stream.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_string_resource.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_union_float32array_uint16array_uint8clampedarray.h"
+#include "third_party/blink/renderer/core/context_features/context_feature_settings.h"
+#include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/core/fileapi/blob.h"
 #include "third_party/blink/renderer/core/fileapi/file.h"
 #include "third_party/blink/renderer/core/fileapi/file_list.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/geometry/dom_matrix.h"
 #include "third_party/blink/renderer/core/geometry/dom_matrix_read_only.h"
@@ -45,6 +53,7 @@
 #include "third_party/blink/renderer/core/geometry/dom_rect.h"
 #include "third_party/blink/renderer/core/geometry/dom_rect_read_only.h"
 #include "third_party/blink/renderer/core/html/canvas/image_data.h"
+#include "third_party/blink/renderer/core/imagebitmap/image_bitmap.h"
 #include "third_party/blink/renderer/core/messaging/message_port.h"
 #include "third_party/blink/renderer/core/mojo/mojo_handle.h"
 #include "third_party/blink/renderer/core/offscreencanvas/offscreen_canvas.h"
@@ -52,9 +61,11 @@
 #include "third_party/blink/renderer/core/streams/readable_stream.h"
 #include "third_party/blink/renderer/core/streams/transform_stream.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/blob/blob_data.h"
 #include "third_party/blink/renderer/platform/file_metadata.h"
 #include "third_party/blink/renderer/platform/graphics/unaccelerated_static_bitmap_image.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 #include "third_party/blink/renderer/platform/wtf/date_math.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkImage.h"
@@ -108,8 +119,9 @@ v8::Local<v8::Value> RoundTrip(
 }
 
 v8::Local<v8::Value> Eval(const String& source, V8TestingScope& scope) {
-  return ClassicScript::CreateUnspecifiedScript(ScriptSourceCode(source))
-      ->RunScriptAndReturnValue(&scope.GetFrame());
+  return ClassicScript::CreateUnspecifiedScript(source)
+      ->RunScriptAndReturnValue(&scope.GetWindow())
+      .GetSuccessValueOrEmpty();
 }
 
 String ToJSON(v8::Local<v8::Object> object, const V8TestingScope& scope) {
@@ -121,11 +133,7 @@ String ToJSON(v8::Local<v8::Object> object, const V8TestingScope& scope) {
 
 scoped_refptr<SerializedScriptValue> SerializedValue(
     const Vector<uint8_t>& bytes) {
-  // TODO(jbroman): Fix this once SerializedScriptValue can take bytes without
-  // endianness swapping.
-  DCHECK_EQ(bytes.size() % 2, 0u);
-  return SerializedScriptValue::Create(
-      String(reinterpret_cast<const UChar*>(&bytes[0]), bytes.size() / 2));
+  return SerializedScriptValue::Create(bytes);
 }
 
 // Checks for a DOM exception, including a rethrown one.
@@ -236,7 +244,8 @@ TEST(V8ScriptValueSerializerTest, RoundTripDOMPoint) {
   V8TestingScope scope;
   DOMPoint* point = DOMPoint::Create(1, 2, 3, 4);
   v8::Local<v8::Value> wrapper =
-      ToV8(point, scope.GetContext()->Global(), scope.GetIsolate());
+      ToV8Traits<DOMPoint>::ToV8(scope.GetScriptState(), point)
+          .ToLocalChecked();
   v8::Local<v8::Value> result = RoundTrip(wrapper, scope);
   ASSERT_TRUE(V8DOMPoint::HasInstance(result, scope.GetIsolate()));
   DOMPoint* new_point = V8DOMPoint::ToImpl(result.As<v8::Object>());
@@ -759,8 +768,12 @@ TEST(V8ScriptValueSerializerTest, DecodeDOMMatrixReadOnly) {
 TEST(V8ScriptValueSerializerTest, RoundTripImageData) {
   // ImageData objects should serialize and deserialize correctly.
   V8TestingScope scope;
-  ImageData* image_data = ImageData::Create(2, 1, ASSERT_NO_EXCEPTION);
-  image_data->data().GetAsUint8ClampedArray()->Data()[0] = 200;
+  ImageData* image_data = ImageData::ValidateAndCreate(
+      2, 1, absl::nullopt, nullptr, ImageData::ValidateAndCreateParams(),
+      ASSERT_NO_EXCEPTION);
+  SkPixmap pm = image_data->GetSkPixmap();
+  pm.writable_addr32(0, 0)[0] = 200u;
+  pm.writable_addr32(1, 0)[0] = 100u;
   v8::Local<v8::Value> wrapper =
       ToV8(image_data, scope.GetContext()->Global(), scope.GetIsolate());
   v8::Local<v8::Value> result = RoundTrip(wrapper, scope);
@@ -768,21 +781,42 @@ TEST(V8ScriptValueSerializerTest, RoundTripImageData) {
   ImageData* new_image_data = V8ImageData::ToImpl(result.As<v8::Object>());
   EXPECT_NE(image_data, new_image_data);
   EXPECT_EQ(image_data->Size(), new_image_data->Size());
-  EXPECT_EQ(image_data->data().GetAsUint8ClampedArray()->lengthAsSizeT(),
-            new_image_data->data().GetAsUint8ClampedArray()->lengthAsSizeT());
-  EXPECT_EQ(200, new_image_data->data().GetAsUint8ClampedArray()->Data()[0]);
+  SkPixmap new_pm = new_image_data->GetSkPixmap();
+  EXPECT_EQ(200u, new_pm.addr32(0, 0)[0]);
+  EXPECT_EQ(100u, new_pm.addr32(1, 0)[0]);
+}
+
+TEST(V8ScriptValueSerializerTest, RoundTripDetachedImageData) {
+  // If an ImageData is detached, it can be serialized, but will fail when being
+  // deserialized.
+  V8TestingScope scope;
+  ImageData* image_data = ImageData::ValidateAndCreate(
+      2, 1, absl::nullopt, nullptr, ImageData::ValidateAndCreateParams(),
+      ASSERT_NO_EXCEPTION);
+  SkPixmap pm = image_data->GetSkPixmap();
+  pm.writable_addr32(0, 0)[0] = 200u;
+  image_data->data()->GetAsUint8ClampedArray()->BufferBase()->Detach();
+
+  v8::Local<v8::Value> wrapper =
+      ToV8(image_data, scope.GetContext()->Global(), scope.GetIsolate());
+  v8::Local<v8::Value> result = RoundTrip(wrapper, scope);
+  EXPECT_FALSE(V8ImageData::HasInstance(result, scope.GetIsolate()));
 }
 
 TEST(V8ScriptValueSerializerTest, RoundTripImageDataWithColorSpaceInfo) {
   // ImageData objects with color space information should serialize and
   // deserialize correctly.
   V8TestingScope scope;
-  ImageDataColorSettings* color_settings = ImageDataColorSettings::Create();
-  color_settings->setColorSpace("p3");
-  color_settings->setStorageFormat("float32");
-  ImageData* image_data =
-      ImageData::CreateImageData(2, 1, color_settings, ASSERT_NO_EXCEPTION);
-  static_cast<unsigned char*>(image_data->BufferBase()->Data())[0] = 200;
+  ImageDataSettings* image_data_settings = ImageDataSettings::Create();
+  image_data_settings->setColorSpace("display-p3");
+  image_data_settings->setStorageFormat("float32");
+  ImageData* image_data = ImageData::ValidateAndCreate(
+      2, 1, absl::nullopt, image_data_settings,
+      ImageData::ValidateAndCreateParams(), ASSERT_NO_EXCEPTION);
+  SkPixmap pm = image_data->GetSkPixmap();
+  EXPECT_EQ(kRGBA_F32_SkColorType, pm.info().colorType());
+  static_cast<float*>(pm.writable_addr(0, 0))[0] = 200.f;
+
   v8::Local<v8::Value> wrapper =
       ToV8(image_data, scope.GetContext()->Global(), scope.GetIsolate());
   v8::Local<v8::Value> result = RoundTrip(wrapper, scope);
@@ -790,14 +824,12 @@ TEST(V8ScriptValueSerializerTest, RoundTripImageDataWithColorSpaceInfo) {
   ImageData* new_image_data = V8ImageData::ToImpl(result.As<v8::Object>());
   EXPECT_NE(image_data, new_image_data);
   EXPECT_EQ(image_data->Size(), new_image_data->Size());
-  ImageDataColorSettings* new_color_settings =
-      new_image_data->getColorSettings();
-  EXPECT_EQ("p3", new_color_settings->colorSpace());
-  EXPECT_EQ("float32", new_color_settings->storageFormat());
-  EXPECT_EQ(image_data->BufferBase()->ByteLengthAsSizeT(),
-            new_image_data->BufferBase()->ByteLengthAsSizeT());
-  EXPECT_EQ(200, static_cast<unsigned char*>(
-                     new_image_data->BufferBase()->Data())[0]);
+  ImageDataSettings* new_image_data_settings = new_image_data->getSettings();
+  EXPECT_EQ("display-p3", new_image_data_settings->colorSpace());
+  EXPECT_EQ("float32", new_image_data_settings->storageFormat());
+  SkPixmap new_pm = new_image_data->GetSkPixmap();
+  EXPECT_EQ(kRGBA_F32_SkColorType, new_pm.info().colorType());
+  EXPECT_EQ(200.f, reinterpret_cast<const float*>(new_pm.addr(0, 0))[0]);
 }
 
 TEST(V8ScriptValueSerializerTest, DecodeImageDataV9) {
@@ -813,10 +845,10 @@ TEST(V8ScriptValueSerializerTest, DecodeImageDataV9) {
       V8ScriptValueDeserializer(script_state, input).Deserialize();
   ASSERT_TRUE(V8ImageData::HasInstance(result, scope.GetIsolate()));
   ImageData* new_image_data = V8ImageData::ToImpl(result.As<v8::Object>());
-  EXPECT_EQ(IntSize(2, 1), new_image_data->Size());
-  EXPECT_EQ(8u,
-            new_image_data->data().GetAsUint8ClampedArray()->lengthAsSizeT());
-  EXPECT_EQ(200, new_image_data->data().GetAsUint8ClampedArray()->Data()[0]);
+  EXPECT_EQ(gfx::Size(2, 1), new_image_data->Size());
+  SkPixmap new_pm = new_image_data->GetSkPixmap();
+  EXPECT_EQ(8u, new_pm.computeByteSize());
+  EXPECT_EQ(200u, new_pm.addr32()[0]);
 }
 
 TEST(V8ScriptValueSerializerTest, DecodeImageDataV16) {
@@ -829,10 +861,11 @@ TEST(V8ScriptValueSerializerTest, DecodeImageDataV16) {
       V8ScriptValueDeserializer(script_state, input).Deserialize();
   ASSERT_TRUE(V8ImageData::HasInstance(result, scope.GetIsolate()));
   ImageData* new_image_data = V8ImageData::ToImpl(result.As<v8::Object>());
-  EXPECT_EQ(IntSize(2, 1), new_image_data->Size());
-  EXPECT_EQ(8u,
-            new_image_data->data().GetAsUint8ClampedArray()->lengthAsSizeT());
-  EXPECT_EQ(200, new_image_data->data().GetAsUint8ClampedArray()->Data()[0]);
+  EXPECT_EQ(gfx::Size(2, 1), new_image_data->Size());
+  SkPixmap new_pm = new_image_data->GetSkPixmap();
+  EXPECT_EQ(kRGBA_8888_SkColorType, new_pm.info().colorType());
+  EXPECT_EQ(8u, new_pm.computeByteSize());
+  EXPECT_EQ(200u, new_pm.addr32()[0]);
 }
 
 TEST(V8ScriptValueSerializerTest, DecodeImageDataV18) {
@@ -847,14 +880,13 @@ TEST(V8ScriptValueSerializerTest, DecodeImageDataV18) {
       V8ScriptValueDeserializer(script_state, input).Deserialize();
   ASSERT_TRUE(V8ImageData::HasInstance(result, scope.GetIsolate()));
   ImageData* new_image_data = V8ImageData::ToImpl(result.As<v8::Object>());
-  EXPECT_EQ(IntSize(2, 1), new_image_data->Size());
-  ImageDataColorSettings* new_color_settings =
-      new_image_data->getColorSettings();
-  EXPECT_EQ("p3", new_color_settings->colorSpace());
-  EXPECT_EQ("float32", new_color_settings->storageFormat());
-  EXPECT_EQ(32u, new_image_data->BufferBase()->ByteLengthAsSizeT());
-  EXPECT_EQ(200, static_cast<unsigned char*>(
-                     new_image_data->BufferBase()->Data())[0]);
+  EXPECT_EQ(gfx::Size(2, 1), new_image_data->Size());
+  ImageDataSettings* new_image_data_settings = new_image_data->getSettings();
+  EXPECT_EQ("display-p3", new_image_data_settings->colorSpace());
+  EXPECT_EQ("float32", new_image_data_settings->storageFormat());
+  SkPixmap new_pm = new_image_data->GetSkPixmap();
+  EXPECT_EQ(kRGBA_F32_SkColorType, new_pm.info().colorType());
+  EXPECT_EQ(200u, static_cast<const uint8_t*>(new_pm.addr(0, 0))[0]);
 }
 
 TEST(V8ScriptValueSerializerTest, InvalidImageDataDecodeV18) {
@@ -973,6 +1005,10 @@ TEST(V8ScriptValueSerializerTest, OutOfRangeMessagePortIndex) {
 
 TEST(V8ScriptValueSerializerTest, RoundTripMojoHandle) {
   V8TestingScope scope;
+  ContextFeatureSettings::From(
+      scope.GetExecutionContext(),
+      ContextFeatureSettings::CreationMode::kCreateIfNotExists)
+      ->EnableMojoJS(true);
 
   mojo::MessagePipe pipe;
   auto* handle = MakeGarbageCollected<MojoHandle>(
@@ -1027,7 +1063,7 @@ TEST(V8ScriptValueSerializerTest, RoundTripImageBitmap) {
   ImageBitmap* new_image_bitmap =
       V8ImageBitmap::ToImpl(result.As<v8::Object>());
   ASSERT_TRUE(new_image_bitmap->BitmapImage());
-  ASSERT_EQ(IntSize(10, 7), new_image_bitmap->Size());
+  ASSERT_EQ(gfx::Size(10, 7), new_image_bitmap->Size());
 
   // Check that the pixel at (3, 3) is red.
   uint8_t pixel[4] = {};
@@ -1038,13 +1074,44 @@ TEST(V8ScriptValueSerializerTest, RoundTripImageBitmap) {
   ASSERT_THAT(pixel, testing::ElementsAre(255, 0, 0, 255));
 }
 
+TEST(V8ScriptValueSerializerTest, ImageBitmapEXIFImageOrientation) {
+  // More complete end-to-end testing is provided by WPT test
+  // imagebitmap-replication-exif-orientation.html.
+  // The purpose of this complementary test is to get complete code coverage
+  // for all possible values of ImageOrientationEnum.
+  V8TestingScope scope;
+  const uint32_t kImageWidth = 10;
+  const uint32_t kImageHeight = 5;
+  for (uint8_t i = static_cast<uint8_t>(ImageOrientationEnum::kOriginTopLeft);
+       i <= static_cast<uint8_t>(ImageOrientationEnum::kMaxValue); i++) {
+    ImageOrientationEnum orientation = static_cast<ImageOrientationEnum>(i);
+    sk_sp<SkSurface> surface =
+        SkSurface::MakeRasterN32Premul(kImageWidth, kImageHeight);
+    auto static_image =
+        UnacceleratedStaticBitmapImage::Create(surface->makeImageSnapshot());
+    static_image->SetOrientation(orientation);
+    auto* image_bitmap = MakeGarbageCollected<ImageBitmap>(static_image);
+    ASSERT_TRUE(image_bitmap->BitmapImage());
+    // Serialize and deserialize it.
+    v8::Local<v8::Value> wrapper = ToV8(image_bitmap, scope.GetScriptState());
+    v8::Local<v8::Value> result = RoundTrip(wrapper, scope);
+    ASSERT_TRUE(V8ImageBitmap::HasInstance(result, scope.GetIsolate()));
+    ImageBitmap* new_image_bitmap =
+        V8ImageBitmap::ToImpl(result.As<v8::Object>());
+    ASSERT_TRUE(new_image_bitmap->BitmapImage());
+    // Ensure image orientation did not confuse (e.g transpose) the image size
+    ASSERT_EQ(new_image_bitmap->Size(), image_bitmap->Size());
+    ASSERT_EQ(new_image_bitmap->ImageOrientation(), orientation);
+  }
+}
+
 TEST(V8ScriptValueSerializerTest, RoundTripImageBitmapWithColorSpaceInfo) {
+  sk_sp<SkColorSpace> p3 =
+      SkColorSpace::MakeRGB(SkNamedTransferFn::kSRGB, SkNamedGamut::kDisplayP3);
   V8TestingScope scope;
   // Make a 10x7 red ImageBitmap in P3 color space.
   SkImageInfo info =
-      SkImageInfo::Make(10, 7, kRGBA_F16_SkColorType, kPremul_SkAlphaType,
-                        SkColorSpace::MakeRGB(SkNamedTransferFn::kSRGB,
-                                              SkNamedGamut::kDisplayP3));
+      SkImageInfo::Make(10, 7, kRGBA_F16_SkColorType, kPremul_SkAlphaType, p3);
   sk_sp<SkSurface> surface = SkSurface::MakeRaster(info);
   surface->getCanvas()->clear(SK_ColorRED);
   auto* image_bitmap = MakeGarbageCollected<ImageBitmap>(
@@ -1058,12 +1125,12 @@ TEST(V8ScriptValueSerializerTest, RoundTripImageBitmapWithColorSpaceInfo) {
   ImageBitmap* new_image_bitmap =
       V8ImageBitmap::ToImpl(result.As<v8::Object>());
   ASSERT_TRUE(new_image_bitmap->BitmapImage());
-  ASSERT_EQ(IntSize(10, 7), new_image_bitmap->Size());
+  ASSERT_EQ(gfx::Size(10, 7), new_image_bitmap->Size());
 
   // Check the color settings.
-  CanvasColorParams color_params = new_image_bitmap->GetCanvasColorParams();
-  EXPECT_EQ(CanvasColorSpace::kP3, color_params.ColorSpace());
-  EXPECT_EQ(CanvasPixelFormat::kF16, color_params.PixelFormat());
+  SkImageInfo bitmap_info = new_image_bitmap->GetBitmapSkImageInfo();
+  EXPECT_EQ(kRGBA_F16_SkColorType, bitmap_info.colorType());
+  EXPECT_TRUE(SkColorSpace::Equals(p3.get(), bitmap_info.colorSpace()));
 
   // Check that the pixel at (3, 3) is red. We expect red in P3 to be
   // {0x57, 0x3B, 0x68, 0x32, 0x6E, 0x30, 0x00, 0x3C} when each color
@@ -1097,7 +1164,7 @@ TEST(V8ScriptValueSerializerTest, DecodeImageBitmap) {
 // this test intends to ensure that a platform can decode images it has
 // previously written. At format version 9, Android writes RGBA and every
 // other platform writes BGRA.
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   scoped_refptr<SerializedScriptValue> input =
       SerializedValue({0xff, 0x09, 0x3f, 0x00, 0x67, 0x01, 0x01, 0x02, 0x01,
                        0x08, 0xff, 0x00, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff});
@@ -1112,7 +1179,7 @@ TEST(V8ScriptValueSerializerTest, DecodeImageBitmap) {
   ASSERT_TRUE(V8ImageBitmap::HasInstance(result, scope.GetIsolate()));
   ImageBitmap* new_image_bitmap =
       V8ImageBitmap::ToImpl(result.As<v8::Object>());
-  ASSERT_EQ(IntSize(2, 1), new_image_bitmap->Size());
+  ASSERT_EQ(gfx::Size(2, 1), new_image_bitmap->Size());
 
   // Check that the pixels are opaque red and green, respectively.
   uint8_t pixels[8] = {};
@@ -1121,6 +1188,9 @@ TEST(V8ScriptValueSerializerTest, DecodeImageBitmap) {
           SkImageInfo::Make(2, 1, kRGBA_8888_SkColorType, kPremul_SkAlphaType),
           &pixels, 8, 0, 0));
   ASSERT_THAT(pixels, testing::ElementsAre(255, 0, 0, 255, 0, 255, 0, 255));
+  // Check that orientation is top left (default).
+  ASSERT_EQ(new_image_bitmap->ImageOrientation(),
+            ImageOrientationEnum::kOriginTopLeft);
 }
 
 TEST(V8ScriptValueSerializerTest, DecodeImageBitmapV18) {
@@ -1130,25 +1200,25 @@ TEST(V8ScriptValueSerializerTest, DecodeImageBitmapV18) {
       {0xff, 0x12, 0xff, 0x0d, 0x5c, 0x67, 0x01, 0x03, 0x02, 0x01, 0x04, 0x01,
        0x05, 0x01, 0x00, 0x02, 0x01, 0x10, 0x94, 0x3a, 0x3f, 0x28, 0x5f, 0x24,
        0x00, 0x3c, 0x94, 0x3a, 0x3f, 0x28, 0x5f, 0x24, 0x00, 0x3c});
+  sk_sp<SkColorSpace> p3 =
+      SkColorSpace::MakeRGB(SkNamedTransferFn::kSRGB, SkNamedGamut::kDisplayP3);
 
   v8::Local<v8::Value> result =
       V8ScriptValueDeserializer(script_state, input).Deserialize();
   ASSERT_TRUE(V8ImageBitmap::HasInstance(result, scope.GetIsolate()));
   ImageBitmap* new_image_bitmap =
       V8ImageBitmap::ToImpl(result.As<v8::Object>());
-  ASSERT_EQ(IntSize(2, 1), new_image_bitmap->Size());
+  ASSERT_EQ(gfx::Size(2, 1), new_image_bitmap->Size());
 
   // Check the color settings.
-  CanvasColorParams color_params = new_image_bitmap->GetCanvasColorParams();
-  EXPECT_EQ(CanvasColorSpace::kP3, color_params.ColorSpace());
-  EXPECT_EQ(CanvasPixelFormat::kF16, color_params.PixelFormat());
+  SkImageInfo bitmap_info = new_image_bitmap->GetBitmapSkImageInfo();
+  EXPECT_EQ(kRGBA_F16_SkColorType, bitmap_info.colorType());
+  EXPECT_TRUE(SkColorSpace::Equals(p3.get(), bitmap_info.colorSpace()));
 
   // Check that the pixel at (1, 0) is red.
   uint8_t pixel[8] = {};
   SkImageInfo info =
-      SkImageInfo::Make(1, 1, kRGBA_F16_SkColorType, kPremul_SkAlphaType,
-                        SkColorSpace::MakeRGB(SkNamedTransferFn::kSRGB,
-                                              SkNamedGamut::kDisplayP3));
+      SkImageInfo::Make(1, 1, kRGBA_F16_SkColorType, kPremul_SkAlphaType, p3);
   ASSERT_TRUE(
       new_image_bitmap->BitmapImage()->PaintImageForCurrentFrame().readPixels(
           info, &pixel, 8, 1, 0));
@@ -1156,6 +1226,133 @@ TEST(V8ScriptValueSerializerTest, DecodeImageBitmapV18) {
   // in half floats by Skia).
   ASSERT_THAT(pixel, testing::ElementsAre(0x94, 0x3A, 0x3F, 0x28, 0x5F, 0x24,
                                           0x0, 0x3C));
+  // Check that orientation is top left (default).
+  ASSERT_EQ(new_image_bitmap->ImageOrientation(),
+            ImageOrientationEnum::kOriginTopLeft);
+}
+
+TEST(V8ScriptValueSerializerTest, DecodeImageBitmapV20WithoutImageOrientation) {
+  V8TestingScope scope;
+  ScriptState* script_state = scope.GetScriptState();
+  scoped_refptr<SerializedScriptValue> input = SerializedValue({
+      0xff,  // kVersionTag
+      0x14,  // 20
+      0xff,  // Value serializer header
+      0x0f,  // Value serializer version 15 (varint format)
+      0x5c,  // kHostObjectTag
+      0x67,  // kImageBitmapTag
+      0x07,  // kParametricColorSpaceTag
+      // srgb colorspace
+      0x00, 0x00, 0x00, 0x40, 0x33, 0x33, 0x03, 0x40, 0x00, 0x00, 0x00, 0xc0,
+      0xed, 0x54, 0xee, 0x3f, 0x00, 0x00, 0x00, 0x20, 0x23, 0xb1, 0xaa, 0x3f,
+      0x00, 0x00, 0x00, 0x20, 0x72, 0xd0, 0xb3, 0x3f, 0x00, 0x00, 0x00, 0xc0,
+      0xdc, 0xb5, 0xa4, 0x3f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x80, 0xe8, 0xdb, 0x3f, 0x00, 0x00, 0x00, 0x00, 0x40, 0xa6, 0xd8, 0x3f,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x50, 0xc2, 0x3f, 0x00, 0x00, 0x00, 0x00,
+      0x80, 0x7a, 0xcc, 0x3f, 0x00, 0x00, 0x00, 0x00, 0xa0, 0xf0, 0xe6, 0x3f,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0xaf, 0x3f, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x80, 0x8c, 0x3f, 0x00, 0x00, 0x00, 0x00, 0x00, 0xda, 0xb8, 0x3f,
+      0x00, 0x00, 0x00, 0x00, 0xe0, 0xd9, 0xe6, 0x3f, 0x02,
+      0x03,        // kCanvasPixelFormatTag kBGRA8
+      0x06, 0x00,  // kCanvasOpacityModeTag
+      0x04, 0x01,  // kOriginCleanTag
+      0x05, 0x01,  // kIsPremultipliedTag
+      // Image orientation omitted
+      0x0,         // kEndTag
+      0x01, 0x01,  // width, height (varint format)
+      0x04,        // pixel size (varint format)
+      0xee, 0xaa, 0x77, 0xff,
+      0x00  // padding: even number of bytes for endianness swapping.
+  });
+
+  v8::Local<v8::Value> result =
+      V8ScriptValueDeserializer(script_state, input).Deserialize();
+  ASSERT_TRUE(V8ImageBitmap::HasInstance(result, scope.GetIsolate()));
+  ImageBitmap* new_image_bitmap =
+      V8ImageBitmap::ToImpl(result.As<v8::Object>());
+  // Check image size
+  ASSERT_EQ(gfx::Size(1, 1), new_image_bitmap->Size());
+  // Check the color settings.
+  SkImageInfo bitmap_info = new_image_bitmap->GetBitmapSkImageInfo();
+  EXPECT_EQ(kBGRA_8888_SkColorType, bitmap_info.colorType());
+  sk_sp<SkColorSpace> srgb =
+      SkColorSpace::MakeRGB(SkNamedTransferFn::kSRGB, SkNamedGamut::kSRGB);
+  EXPECT_TRUE(SkColorSpace::Equals(srgb.get(), bitmap_info.colorSpace()));
+  // Check that orientation is bottom left.
+  ASSERT_EQ(new_image_bitmap->ImageOrientation(),
+            ImageOrientationEnum::kOriginTopLeft);
+  // Check pixel value
+  SkImageInfo info = SkImageInfo::Make(1, 1, kRGBA_8888_SkColorType,
+                                       kPremul_SkAlphaType, srgb);
+  uint8_t pixel[4] = {};
+  ASSERT_TRUE(
+      new_image_bitmap->BitmapImage()->PaintImageForCurrentFrame().readPixels(
+          info, &pixel, 4, 0, 0));
+  // BGRA encoding, swapped to RGBA
+  ASSERT_THAT(pixel, testing::ElementsAre(0x77, 0xaa, 0xee, 0xff));
+}
+
+TEST(V8ScriptValueSerializerTest, DecodeImageBitmapV20WithImageOrientation) {
+  V8TestingScope scope;
+  ScriptState* script_state = scope.GetScriptState();
+  scoped_refptr<SerializedScriptValue> input = SerializedValue({
+      0xff,  // kVersionTag
+      0x14,  // 20
+      0xff,  // Value serializer header
+      0x0f,  // Value serializer version 15, varint encoding
+      0x5c,  // kHostObjectTag
+      0x67,  // kImageBitmapTag
+      0x07,  // kParametricColorSpaceTag
+      // srgb colorspace
+      0x00, 0x00, 0x00, 0x40, 0x33, 0x33, 0x03, 0x40, 0x00, 0x00, 0x00, 0xc0,
+      0xed, 0x54, 0xee, 0x3f, 0x00, 0x00, 0x00, 0x20, 0x23, 0xb1, 0xaa, 0x3f,
+      0x00, 0x00, 0x00, 0x20, 0x72, 0xd0, 0xb3, 0x3f, 0x00, 0x00, 0x00, 0xc0,
+      0xdc, 0xb5, 0xa4, 0x3f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x80, 0xe8, 0xdb, 0x3f, 0x00, 0x00, 0x00, 0x00, 0x40, 0xa6, 0xd8, 0x3f,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x50, 0xc2, 0x3f, 0x00, 0x00, 0x00, 0x00,
+      0x80, 0x7a, 0xcc, 0x3f, 0x00, 0x00, 0x00, 0x00, 0xa0, 0xf0, 0xe6, 0x3f,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0xaf, 0x3f, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x80, 0x8c, 0x3f, 0x00, 0x00, 0x00, 0x00, 0x00, 0xda, 0xb8, 0x3f,
+      0x00, 0x00, 0x00, 0x00, 0xe0, 0xd9, 0xe6, 0x3f, 0x02,
+      0x03,        // kCanvasPixelFormatTag kBGRA8
+      0x06, 0x00,  // kCanvasOpacityModeTag
+      0x04, 0x01,  // kOriginCleanTag
+      0x05, 0x01,  // kIsPremultipliedTag
+      0x08, 0x03,  // kImageOrientationTag -> kBottomLeft
+      0x0,         // kEndTag
+      0x01, 0x01,  // width, height (varint format)
+      0x04,        // pixel size (varint format)
+      0xee, 0xaa, 0x77, 0xff,
+      0x00  // padding: even number of bytes for endianness swapping.
+  });
+
+  v8::Local<v8::Value> result =
+      V8ScriptValueDeserializer(script_state, input).Deserialize();
+  ASSERT_TRUE(V8ImageBitmap::HasInstance(result, scope.GetIsolate()));
+  ImageBitmap* new_image_bitmap =
+      V8ImageBitmap::ToImpl(result.As<v8::Object>());
+  // Check image size
+  ASSERT_EQ(gfx::Size(1, 1), new_image_bitmap->Size());
+  // Check the color settings.
+  SkImageInfo bitmap_info = new_image_bitmap->GetBitmapSkImageInfo();
+  EXPECT_EQ(kBGRA_8888_SkColorType, bitmap_info.colorType());
+  sk_sp<SkColorSpace> srgb =
+      SkColorSpace::MakeRGB(SkNamedTransferFn::kSRGB, SkNamedGamut::kSRGB);
+  EXPECT_TRUE(SkColorSpace::Equals(srgb.get(), bitmap_info.colorSpace()));
+  // Check that orientation is bottom left.
+  ASSERT_EQ(new_image_bitmap->ImageOrientation(),
+            ImageOrientationEnum::kOriginBottomLeft);
+  // Check pixel value
+  SkImageInfo info = SkImageInfo::Make(1, 1, kRGBA_8888_SkColorType,
+                                       kPremul_SkAlphaType, srgb);
+  uint8_t pixel[4] = {};
+  ASSERT_TRUE(
+      new_image_bitmap->BitmapImage()->PaintImageForCurrentFrame().readPixels(
+          info, &pixel, 4, 0, 0));
+  // BGRA encoding, swapped to RGBA
+  ASSERT_THAT(pixel, testing::ElementsAre(0x77, 0xaa, 0xee, 0xff));
 }
 
 TEST(V8ScriptValueSerializerTest, InvalidImageBitmapDecode) {
@@ -1293,7 +1490,7 @@ TEST(V8ScriptValueSerializerTest, TransferImageBitmap) {
   ImageBitmap* new_image_bitmap =
       V8ImageBitmap::ToImpl(result.As<v8::Object>());
   ASSERT_TRUE(new_image_bitmap->BitmapImage());
-  ASSERT_EQ(IntSize(10, 7), new_image_bitmap->Size());
+  ASSERT_EQ(gfx::Size(10, 7), new_image_bitmap->Size());
 
   // Check that the pixel at (3, 3) is red.
   uint8_t pixel[4] = {};
@@ -1324,7 +1521,7 @@ TEST(V8ScriptValueSerializerTest, TransferOffscreenCanvas) {
   ASSERT_TRUE(V8OffscreenCanvas::HasInstance(result, scope.GetIsolate()));
   OffscreenCanvas* new_canvas =
       V8OffscreenCanvas::ToImpl(result.As<v8::Object>());
-  EXPECT_EQ(IntSize(10, 7), new_canvas->Size());
+  EXPECT_EQ(gfx::Size(10, 7), new_canvas->Size());
   EXPECT_EQ(519, new_canvas->PlaceholderCanvasId());
   EXPECT_TRUE(canvas->IsNeutered());
   EXPECT_FALSE(new_canvas->IsNeutered());
@@ -1337,7 +1534,7 @@ TEST(V8ScriptValueSerializerTest, RoundTripBlob) {
       Blob::Create(reinterpret_cast<const unsigned char*>(&kHelloWorld),
                    sizeof(kHelloWorld), "text/plain");
   String uuid = blob->Uuid();
-  EXPECT_FALSE(uuid.IsEmpty());
+  EXPECT_FALSE(uuid.empty());
   v8::Local<v8::Value> wrapper = ToV8(blob, scope.GetScriptState());
   v8::Local<v8::Value> result = RoundTrip(wrapper, scope);
   ASSERT_TRUE(V8Blob::HasInstance(result, scope.GetIsolate()));
@@ -1371,7 +1568,7 @@ TEST(V8ScriptValueSerializerTest, RoundTripBlobIndex) {
       Blob::Create(reinterpret_cast<const unsigned char*>(&kHelloWorld),
                    sizeof(kHelloWorld), "text/plain");
   String uuid = blob->Uuid();
-  EXPECT_FALSE(uuid.IsEmpty());
+  EXPECT_FALSE(uuid.empty());
   v8::Local<v8::Value> wrapper = ToV8(blob, scope.GetScriptState());
   WebBlobInfoArray blob_info_array;
   v8::Local<v8::Value> result =
@@ -1456,7 +1653,7 @@ TEST(V8ScriptValueSerializerTest, RoundTripFileBackedByBlob) {
   ASSERT_TRUE(V8File::HasInstance(result, scope.GetIsolate()));
   File* new_file = V8File::ToImpl(result.As<v8::Object>());
   EXPECT_FALSE(new_file->HasBackingFile());
-  EXPECT_TRUE(file->GetPath().IsEmpty());
+  EXPECT_TRUE(file->GetPath().empty());
   EXPECT_TRUE(new_file->FileSystemURL().IsEmpty());
 }
 
@@ -1477,18 +1674,18 @@ TEST(V8ScriptValueSerializerTest, RoundTripFileNativeSnapshot) {
 
 TEST(V8ScriptValueSerializerTest, RoundTripFileNonNativeSnapshot) {
   // Preserving behavior, filesystem URL is not preserved across cloning.
-  V8TestingScope scope;
   KURL url("filesystem:http://example.com/isolated/hash/non-native-file");
+  V8TestingScope scope;
   FileMetadata metadata;
   metadata.length = 0;
-  File* file =
-      File::CreateForFileSystemFile(url, metadata, File::kIsUserVisible);
+  File* file = File::CreateForFileSystemFile(
+      url, metadata, File::kIsUserVisible, BlobDataHandle::Create());
   v8::Local<v8::Value> wrapper = ToV8(file, scope.GetScriptState());
   v8::Local<v8::Value> result = RoundTrip(wrapper, scope);
   ASSERT_TRUE(V8File::HasInstance(result, scope.GetIsolate()));
   File* new_file = V8File::ToImpl(result.As<v8::Object>());
   EXPECT_FALSE(new_file->HasBackingFile());
-  EXPECT_TRUE(file->GetPath().IsEmpty());
+  EXPECT_TRUE(file->GetPath().empty());
   EXPECT_TRUE(new_file->FileSystemURL().IsEmpty());
 }
 
@@ -1582,7 +1779,7 @@ TEST(V8ScriptValueSerializerTest, DecodeFileV4WithSnapshot) {
   // From v4 to v7, the last modified time is written in seconds.
   // So -0.25 represents 250 ms before the Unix epoch.
   EXPECT_EQ(-250, new_file->lastModified());
-  EXPECT_EQ(base::TimeDelta::FromMillisecondsD(-250.0),
+  EXPECT_EQ(base::Milliseconds(-250.0),
             new_file->LastModifiedTime() - base::Time::UnixEpoch());
 }
 
@@ -1634,7 +1831,7 @@ TEST(V8ScriptValueSerializerTest, DecodeFileV8WithSnapshot) {
   EXPECT_EQ(512u, new_file->size());
   // From v8, the last modified time is written in milliseconds.
   // So -0.25 represents 0.25 ms before the Unix epoch.
-  EXPECT_EQ(base::TimeDelta::FromMillisecondsD(-0.25),
+  EXPECT_EQ(base::Milliseconds(-0.25),
             new_file->LastModifiedTime() - base::Time::UnixEpoch());
   // lastModified IDL attribute can't represent -0.25 ms.
   EXPECT_EQ(INT64_C(0), new_file->lastModified());
@@ -1684,7 +1881,7 @@ TEST(V8ScriptValueSerializerTest, DecodeFileIndex) {
   File* new_file = V8File::ToImpl(result.As<v8::Object>());
   EXPECT_EQ("d875dfc2-4505-461b-98fe-0cf6cc5eaf44", new_file->Uuid());
   EXPECT_EQ("text/plain", new_file->type());
-  EXPECT_TRUE(new_file->GetPath().IsEmpty());
+  EXPECT_TRUE(new_file->GetPath().empty());
   EXPECT_EQ("path", new_file->name());
 }
 
@@ -1843,7 +2040,7 @@ TEST(V8ScriptValueSerializerTest, DecodeFileListIndex) {
   FileList* new_file_list = V8FileList::ToImpl(result.As<v8::Object>());
   EXPECT_EQ(1u, new_file_list->length());
   File* new_file = new_file_list->item(0);
-  EXPECT_TRUE(new_file->GetPath().IsEmpty());
+  EXPECT_TRUE(new_file->GetPath().empty());
   EXPECT_EQ("name", new_file->name());
   EXPECT_EQ("d875dfc2-4505-461b-98fe-0cf6cc5eaf44", new_file->Uuid());
   EXPECT_EQ("text/plain", new_file->type());
@@ -1868,7 +2065,7 @@ TEST(V8ScriptValueSerializerTest, DecodeHardcodedNullValue) {
 TEST(V8ScriptValueSerializerTest, DecodeWithInefficientVersionEnvelope) {
   V8TestingScope scope;
   scoped_refptr<SerializedScriptValue> input =
-      SerializedValue({0xff, 0x80, 0x09, 0xff, 0x09, 0x54});
+      SerializedValue({0xff, 0x90, 0x00, 0xff, 0x09, 0x54});
   EXPECT_TRUE(
       V8ScriptValueDeserializer(scope.GetScriptState(), std::move(input))
           .Deserialize()
@@ -1929,13 +2126,13 @@ TEST(V8ScriptValueSerializerTest, TransformStreamIntegerOverflow) {
   // The final 5 bytes is the offset of the two message ports inside the
   // transferred message port array. In order to trigger integer overflow this
   // is set to 0xffffffff, encoded as a varint.
-  char serialized_value[] = {0xff, 0x14, 0xff, 0x0d, 0x5c, 0x6d,
-                             0xff, 0xff, 0xff, 0xff, 0x0f};
+  uint8_t serialized_value[] = {0xff, 0x14, 0xff, 0x0d, 0x5c, 0x6d,
+                                0xff, 0xff, 0xff, 0xff, 0x0f};
 
   auto corrupted_serialized_script_value =
-      SerializedScriptValue::Create(serialized_value, sizeof(serialized_value));
-  corrupted_serialized_script_value->GetStreamChannels() =
-      serialized_script_value->GetStreamChannels();
+      SerializedScriptValue::Create(serialized_value);
+  corrupted_serialized_script_value->GetStreams() =
+      std::move(serialized_script_value->GetStreams());
 
   // Entangle the message ports.
   MessagePortArray* transferred_message_ports = MessagePort::EntanglePorts(
@@ -1976,6 +2173,98 @@ TEST(V8ScriptValueSerializerTest, DecodeDOMExceptionWithInvalidNameString) {
   v8::Local<v8::Value> result =
       V8ScriptValueDeserializer(scope.GetScriptState(), input).Deserialize();
   EXPECT_TRUE(result->IsNull());
+}
+
+TEST(V8ScriptValueSerializerTest, NoSharedValueConveyor) {
+  V8TestingScope scope;
+  scoped_refptr<SerializedScriptValue> input =
+      SerializedValue({0xff, 0x14, 0xff, 0x0f, 'p', 0x00});
+  v8::Local<v8::Value> result =
+      V8ScriptValueDeserializer(scope.GetScriptState(), input).Deserialize();
+  EXPECT_TRUE(result->IsNull());
+}
+
+TEST(V8ScriptValueSerializerTest, CanDeserializeIn_OldValues) {
+  // This is `true` serialized in version 9. It should still return true from
+  // CanDeserializeIn.
+  V8TestingScope scope;
+  scoped_refptr<SerializedScriptValue> input =
+      SerializedValue({0xff, 0x09, 'T', 0x00});
+  EXPECT_TRUE(input->CanDeserializeIn(scope.GetExecutionContext()));
+}
+
+// TODO(crbug.com/1341844): Remove this along with the rest of the plumbing for
+// `features::kSSVTrailerWriteNewVersion.
+TEST(V8ScriptValueSerializerTest, SSVTrailerWriteNewVersionDisabled) {
+  base::test::ScopedFeatureList scoped_features;
+  scoped_features.InitAndDisableFeature(features::kSSVTrailerWriteNewVersion);
+  V8TestingScope scope;
+  v8::Isolate* isolate = scope.GetIsolate();
+
+  // Should still be able to write and read the old version.
+  EXPECT_TRUE(RoundTrip(v8::True(isolate), scope)->IsTrue());
+
+  // Should actually be the old version (decimal 20).
+  V8ScriptValueSerializer serializer(scope.GetScriptState());
+  auto value = serializer.Serialize(v8::True(isolate), ASSERT_NO_EXCEPTION);
+  EXPECT_THAT(value->GetWireData().first(2), ::testing::ElementsAre(0xff, 20));
+}
+
+// TODO(crbug.com/1341844): Remove this along with the rest of the plumbing for
+// `features::kSSVTrailerWriteExposureAssertion`.
+TEST(V8ScriptValueSerializerTest, SSVTrailerWriteExposureAssertionDisabled) {
+  base::test::ScopedFeatureList scoped_features;
+  scoped_features.InitAndDisableFeature(
+      features::kSSVTrailerWriteExposureAssertion);
+  V8TestingScope scope;
+
+  // Even though this has an exposure restriction, it should not be reflected
+  // while the feature to write the assertion is disabled.
+  DOMPoint* point = DOMPoint::Create(0, 0);
+  v8::Local<v8::Value> wrapper =
+      ToV8Traits<DOMPoint>::ToV8(scope.GetScriptState(), point)
+          .ToLocalChecked();
+  V8ScriptValueSerializer serializer(scope.GetScriptState());
+  auto value = serializer.Serialize(wrapper, ASSERT_NO_EXCEPTION);
+  TrailerReader trailer_reader(value->GetWireData());
+  ASSERT_TRUE(trailer_reader.SkipToTrailer().has_value());
+  ASSERT_TRUE(trailer_reader.Read().has_value());
+  EXPECT_THAT(trailer_reader.required_exposed_interfaces(),
+              ::testing::IsEmpty());
+}
+
+// TODO(crbug.com/1341844): Remove this along with the rest of the plumbing for
+// `features::kSSVTrailerWriteExposureAssertion`.
+TEST(V8ScriptValueSerializerTest, SSVTrailerEnforceExposureAssertionDisabled) {
+  base::test::ScopedFeatureList scoped_features;
+  scoped_features.InitAndDisableFeature(
+      features::kSSVTrailerEnforceExposureAssertion);
+  scoped_refptr<SerializedScriptValue> ssv;
+  mojo::MessagePipe pipe;
+
+  {
+    V8TestingScope scope;
+    ContextFeatureSettings::From(
+        scope.GetExecutionContext(),
+        ContextFeatureSettings::CreationMode::kCreateIfNotExists)
+        ->EnableMojoJS(true);
+    auto* handle = MakeGarbageCollected<MojoHandle>(
+        mojo::ScopedHandle::From(std::move(pipe.handle0)));
+    Transferables transferables;
+    transferables.mojo_handles.push_back(handle);
+
+    V8ScriptValueSerializer::Options options;
+    options.transferables = &transferables;
+    V8ScriptValueSerializer serializer(scope.GetScriptState(), options);
+    ssv = serializer.Serialize(ToV8(handle, scope.GetScriptState()),
+                               ASSERT_NO_EXCEPTION);
+  }
+
+  {
+    ScopedMojoJSForTest disable_mojo_js(false);
+    V8TestingScope scope;
+    EXPECT_TRUE(ssv->CanDeserializeIn(scope.GetExecutionContext()));
+  }
 }
 
 }  // namespace blink

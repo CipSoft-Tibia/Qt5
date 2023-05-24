@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/chartdataset_p.h>
 #include <private/chartpresenter_p.h>
@@ -35,6 +9,7 @@
 #include <QtCharts/QBarCategoryAxis>
 #include <private/qvalueaxis_p.h>
 #include <QtCharts/QCategoryAxis>
+#include <QtCharts/QColorAxis>
 #include <private/qabstractseries_p.h>
 #include <QtCharts/QAbstractBarSeries>
 #include <QtCharts/QStackedBarSeries>
@@ -51,11 +26,11 @@
 #include <private/logxlogypolardomain_p.h>
 #include <private/glxyseriesdata_p.h>
 
-#ifndef QT_QREAL_IS_FLOAT
+#if QT_CONFIG(charts_datetime_axis)
 #include <QtCharts/QDateTimeAxis>
 #endif
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 ChartDataSet::ChartDataSet(QChart *chart)
     : QObject(chart),
@@ -118,14 +93,14 @@ void ChartDataSet::addSeries(QAbstractSeries *series)
 /*
  * This method adds axis to chartdataset, axis ownership is taken from caller.
  */
-void ChartDataSet::addAxis(QAbstractAxis *axis, Qt::Alignment aligment)
+void ChartDataSet::addAxis(QAbstractAxis *axis, Qt::Alignment alignment)
 {
     if (m_axisList.contains(axis)) {
         qWarning() << QObject::tr("Can not add axis. Axis already on the chart.");
         return;
     }
 
-    axis->d_ptr->setAlignment(aligment);
+    axis->d_ptr->setAlignment(alignment);
 
     if (!axis->alignment()) {
         qWarning() << QObject::tr("No alignment specified !");
@@ -218,7 +193,7 @@ bool ChartDataSet::attachAxis(QAbstractSeries *series,QAbstractAxis *axis)
         return false;
     }
 
-    if (axis && !m_axisList.contains(axis)) {
+    if (!m_axisList.contains(axis)) {
         qWarning() << QObject::tr("Can not find axis on the chart.");
         return false;
     }
@@ -234,9 +209,10 @@ bool ChartDataSet::attachAxis(QAbstractSeries *series,QAbstractAxis *axis)
     }
 
     AbstractDomain *domain = series->d_ptr->domain();
-    AbstractDomain::DomainType type = selectDomain(attachedAxisList<<axis);
+    AbstractDomain::DomainType type = selectDomain(attachedAxisList << axis);
 
-    if (type == AbstractDomain::UndefinedDomain) return false;
+    if (type == AbstractDomain::UndefinedDomain)
+        return false;
 
     if (domain->type() != type) {
         AbstractDomain *old = domain;
@@ -253,9 +229,8 @@ bool ChartDataSet::attachAxis(QAbstractSeries *series,QAbstractAxis *axis)
     if (!domain->attachAxis(axis))
         return false;
 
-    QList<AbstractDomain *> blockedDomains;
     domain->blockRangeSignals(true);
-    blockedDomains << domain;
+    QList<AbstractDomain *> blockedDomains { domain };
 
     if (domain != series->d_ptr->domain()) {
         foreach (QAbstractAxis *axis, series->d_ptr->m_axes) {
@@ -279,8 +254,8 @@ bool ChartDataSet::attachAxis(QAbstractSeries *series,QAbstractAxis *axis)
             oldAxis->d_ptr->initializeDomain(domain);
     }
 
-    series->d_ptr->m_axes<<axis;
-    axis->d_ptr->m_series<<series;
+    series->d_ptr->m_axes << axis;
+    axis->d_ptr->m_series << series;
 
     series->d_ptr->initializeAxes();
     axis->d_ptr->initializeDomain(domain);
@@ -356,21 +331,24 @@ void ChartDataSet::createAxes(QAbstractAxis::AxisTypes type, Qt::Orientation ori
     //decide what axis should be created
 
     switch (type) {
-        case QAbstractAxis::AxisTypeValue:
+    case QAbstractAxis::AxisTypeValue:
         axis = new QValueAxis(this);
         break;
-        case QAbstractAxis::AxisTypeBarCategory:
+    case QAbstractAxis::AxisTypeBarCategory:
         axis = new QBarCategoryAxis(this);
         break;
-        case QAbstractAxis::AxisTypeCategory:
+    case QAbstractAxis::AxisTypeCategory:
         axis = new QCategoryAxis(this);
         break;
-#ifndef QT_QREAL_IS_FLOAT
-        case QAbstractAxis::AxisTypeDateTime:
+    case QAbstractAxis::AxisTypeColor:
+        axis = new QColorAxis(this);
+        break;
+#if QT_CONFIG(charts_datetime_axis)
+    case QAbstractAxis::AxisTypeDateTime:
         axis = new QDateTimeAxis(this);
         break;
 #endif
-        default:
+    default:
         axis = 0;
         break;
     }
@@ -398,7 +376,8 @@ void ChartDataSet::createAxes(QAbstractAxis::AxisTypes type, Qt::Orientation ori
     }
 }
 
-void ChartDataSet::findMinMaxForSeries(QList<QAbstractSeries *> series,Qt::Orientations orientation, qreal &min, qreal &max)
+void ChartDataSet::findMinMaxForSeries(const QList<QAbstractSeries *> &series,
+                                       Qt::Orientations orientation, qreal &min, qreal &max)
 {
     Q_ASSERT(!series.isEmpty());
 
@@ -407,7 +386,7 @@ void ChartDataSet::findMinMaxForSeries(QList<QAbstractSeries *> series,Qt::Orien
     max = (orientation == Qt::Vertical) ? domain->maxY() : domain->maxX();
 
     for (int i = 1; i< series.size(); i++) {
-        AbstractDomain *domain = series[i]->d_ptr->domain();
+        AbstractDomain *domain = series.at(i)->d_ptr->domain();
         min = qMin((orientation == Qt::Vertical) ? domain->minY() : domain->minX(), min);
         max = qMax((orientation == Qt::Vertical) ? domain->maxY() : domain->maxX(), max);
     }
@@ -423,7 +402,7 @@ void ChartDataSet::deleteAllSeries()
         removeSeries(s);
         delete s;
     }
-    Q_ASSERT(m_seriesList.count() == 0);
+    Q_ASSERT(m_seriesList.size() == 0);
 }
 
 void ChartDataSet::deleteAllAxes()
@@ -432,7 +411,7 @@ void ChartDataSet::deleteAllAxes()
         removeAxis(a);
         delete a;
     }
-    Q_ASSERT(m_axisList.count() == 0);
+    Q_ASSERT(m_axisList.size() == 0);
 }
 
 void ChartDataSet::zoomInDomain(const QRectF &rect)
@@ -547,7 +526,7 @@ QList<QAbstractSeries *> ChartDataSet::series() const
     return m_seriesList;
 }
 
-AbstractDomain::DomainType ChartDataSet::selectDomain(QList<QAbstractAxis *> axes)
+AbstractDomain::DomainType ChartDataSet::selectDomain(const QList<QAbstractAxis *> &axes)
 {
     enum Type {
         Undefined = 0,
@@ -563,8 +542,7 @@ AbstractDomain::DomainType ChartDataSet::selectDomain(QList<QAbstractAxis *> axe
     if (m_chart)
         chartType = m_chart->chartType();
 
-    foreach (QAbstractAxis *axis, axes)
-    {
+    for (auto *axis : axes) {
         switch (axis->type()) {
         case QAbstractAxis::AxisTypeLogValue:
             if (axis->orientation() == Qt::Horizontal)
@@ -575,6 +553,7 @@ AbstractDomain::DomainType ChartDataSet::selectDomain(QList<QAbstractAxis *> axe
         case QAbstractAxis::AxisTypeValue:
         case QAbstractAxis::AxisTypeBarCategory:
         case QAbstractAxis::AxisTypeCategory:
+        case QAbstractAxis::AxisTypeColor:
         case QAbstractAxis::AxisTypeDateTime:
             if (axis->orientation() == Qt::Horizontal)
                 horizontal |= ValueType;
@@ -661,6 +640,6 @@ void ChartDataSet::reverseChanged()
         m_glXYSeriesDataManager->handleAxisReverseChanged(axis->d_ptr->m_series);
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_chartdataset_p.cpp"

@@ -1,8 +1,9 @@
-// Copyright 2015 PDFium Authors. All rights reserved.
+// Copyright 2015 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <cmath>
+#include <math.h>
+
 #include <vector>
 
 #include "core/fxcrt/fx_string.h"
@@ -11,6 +12,11 @@
 #include "fxjs/cjs_publicmethods.h"
 #include "testing/external_engine_embedder_test.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "v8/include/v8-container.h"
+#include "v8/include/v8-context.h"
+#include "v8/include/v8-isolate.h"
+#include "v8/include/v8-local-handle.h"
+#include "v8/include/v8-value.h"
 
 namespace {
 
@@ -31,80 +37,80 @@ TEST_F(CJS_PublicMethodsEmbedderTest, ParseDateUsingFormat) {
 
   // 1968
   bWrongFormat = false;
-  date = CJS_PublicMethods::ParseDateUsingFormat(L"06/25/1968", L"mm/dd/yyyy",
-                                                 &bWrongFormat);
+  date = CJS_PublicMethods::ParseDateUsingFormat(isolate(), L"06/25/1968",
+                                                 L"mm/dd/yyyy", &bWrongFormat);
   date = RoundDownDate(date);
   EXPECT_DOUBLE_EQ(-47865600000, date);
   EXPECT_FALSE(bWrongFormat);
 
   // 1968
   bWrongFormat = false;
-  date = CJS_PublicMethods::ParseDateUsingFormat(L"25061968", L"ddmmyyyy",
-                                                 &bWrongFormat);
+  date = CJS_PublicMethods::ParseDateUsingFormat(isolate(), L"25061968",
+                                                 L"ddmmyyyy", &bWrongFormat);
   date = RoundDownDate(date);
   EXPECT_DOUBLE_EQ(-47865600000, date);
   EXPECT_FALSE(bWrongFormat);
 
   // 1968
   bWrongFormat = false;
-  date = CJS_PublicMethods::ParseDateUsingFormat(L"19680625", L"yyyymmdd",
-                                                 &bWrongFormat);
+  date = CJS_PublicMethods::ParseDateUsingFormat(isolate(), L"19680625",
+                                                 L"yyyymmdd", &bWrongFormat);
   date = RoundDownDate(date);
   EXPECT_DOUBLE_EQ(-47865600000, date);
   EXPECT_FALSE(bWrongFormat);
 
   // 1985
   bWrongFormat = false;
-  date = CJS_PublicMethods::ParseDateUsingFormat(L"31121985", L"ddmmyyyy",
-                                                 &bWrongFormat);
+  date = CJS_PublicMethods::ParseDateUsingFormat(isolate(), L"31121985",
+                                                 L"ddmmyyyy", &bWrongFormat);
   date = RoundDownDate(date);
   EXPECT_DOUBLE_EQ(504835200000.0, date);
   EXPECT_FALSE(bWrongFormat);
 
   // 2085, the other '85.
   bWrongFormat = false;
-  date = CJS_PublicMethods::ParseDateUsingFormat(L"311285", L"ddmmyy",
-                                                 &bWrongFormat);
+  date = CJS_PublicMethods::ParseDateUsingFormat(isolate(), L"311285",
+                                                 L"ddmmyy", &bWrongFormat);
   date = RoundDownDate(date);
   EXPECT_DOUBLE_EQ(3660595200000.0, date);
   EXPECT_FALSE(bWrongFormat);
 
   // 1995
   bWrongFormat = false;
-  date = CJS_PublicMethods::ParseDateUsingFormat(L"01021995", L"ddmmyyyy",
-                                                 &bWrongFormat);
+  date = CJS_PublicMethods::ParseDateUsingFormat(isolate(), L"01021995",
+                                                 L"ddmmyyyy", &bWrongFormat);
   date = RoundDownDate(date);
   EXPECT_DOUBLE_EQ(791596800000.0, date);
   EXPECT_FALSE(bWrongFormat);
 
   // 2095, the other '95.
   bWrongFormat = false;
-  date = CJS_PublicMethods::ParseDateUsingFormat(L"010295", L"ddmmyy",
-                                                 &bWrongFormat);
+  date = CJS_PublicMethods::ParseDateUsingFormat(isolate(), L"010295",
+                                                 L"ddmmyy", &bWrongFormat);
   date = RoundDownDate(date);
   EXPECT_DOUBLE_EQ(3947356800000.0, date);
   EXPECT_FALSE(bWrongFormat);
 
   // 2005
   bWrongFormat = false;
-  date = CJS_PublicMethods::ParseDateUsingFormat(L"01022005", L"ddmmyyyy",
-                                                 &bWrongFormat);
+  date = CJS_PublicMethods::ParseDateUsingFormat(isolate(), L"01022005",
+                                                 L"ddmmyyyy", &bWrongFormat);
   date = RoundDownDate(date);
   EXPECT_DOUBLE_EQ(1107216000000.0, date);
   EXPECT_FALSE(bWrongFormat);
 
   // 2005
   bWrongFormat = false;
-  date = CJS_PublicMethods::ParseDateUsingFormat(L"010205", L"ddmmyy",
-                                                 &bWrongFormat);
+  date = CJS_PublicMethods::ParseDateUsingFormat(isolate(), L"010205",
+                                                 L"ddmmyy", &bWrongFormat);
   date = RoundDownDate(date);
   EXPECT_DOUBLE_EQ(1107216000000.0, date);
   EXPECT_FALSE(bWrongFormat);
 
   // 2005 in a different format. https://crbug.com/436572
   bWrongFormat = false;
-  date = CJS_PublicMethods::ParseDateUsingFormat(L"050201", L"yymmdd",
-                                                 &bWrongFormat);
+  date = CJS_PublicMethods::ParseDateUsingFormat(isolate(), L"050201",
+                                                 L"yymmdd", &bWrongFormat);
   date = RoundDownDate(date);
   EXPECT_DOUBLE_EQ(1107216000000.0, date);
   EXPECT_FALSE(bWrongFormat);
@@ -191,8 +197,7 @@ TEST_F(CJS_PublicMethodsEmbedderTest, AFSimple_CalculateSum) {
   runtime.NewEventContext();
 
   WideString result;
-  runtime.GetCurrentEventContext()->GetEventRecorder()->SetValueForTest(
-      &result);
+  runtime.GetCurrentEventContext()->SetValueForTest(&result);
 
   auto ary = runtime.NewArray();
   runtime.PutArrayElement(ary, 0, runtime.NewString("Calc1_A"));
@@ -205,8 +210,7 @@ TEST_F(CJS_PublicMethodsEmbedderTest, AFSimple_CalculateSum) {
   CJS_Result ret = CJS_PublicMethods::AFSimple_Calculate(&runtime, params);
   UnloadPage(page);
 
-  runtime.GetCurrentEventContext()->GetEventRecorder()->SetValueForTest(
-      nullptr);
+  runtime.GetCurrentEventContext()->SetValueForTest(nullptr);
 
   ASSERT_TRUE(!ret.HasError());
   ASSERT_TRUE(!ret.HasReturn());
@@ -226,7 +230,7 @@ TEST_F(CJS_PublicMethodsEmbedderTest, AFNumber_Keystroke) {
       CPDFSDKFormFillEnvironmentFromFPDFFormHandle(form_handle()));
   runtime.NewEventContext();
 
-  auto* handler = runtime.GetCurrentEventContext()->GetEventRecorder();
+  auto* handler = runtime.GetCurrentEventContext();
 
   bool valid = true;
   WideString result = L"-10";

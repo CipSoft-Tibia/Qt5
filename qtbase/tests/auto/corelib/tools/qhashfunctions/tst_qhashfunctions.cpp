@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QVarLengthArray>
 
 #include <qhash.h>
+#include <qfloat16.h>
 
 #include <iterator>
 #include <sstream>
@@ -40,11 +17,13 @@ class tst_QHashFunctions : public QObject
 {
     Q_OBJECT
 public:
-    enum {
-        // random value
-        RandomSeed = 1045982819
-    };
-    uint seed;
+    // random values
+    static constexpr quint64 ZeroSeed = 0;
+    static constexpr quint64 RandomSeed32 = 1045982819;
+    static constexpr quint64 RandomSeed64 = QtPrivate::QHashCombine{}(RandomSeed32, RandomSeed32);
+    size_t seed;
+
+    template <typename T1, typename T2> void stdPair_template(const T1 &t1, const T2 &t2);
 
 public slots:
     void initTestCase();
@@ -55,7 +34,7 @@ private Q_SLOTS:
     void qhash();
     void qhash_of_empty_and_null_qstring();
     void qhash_of_empty_and_null_qbytearray();
-    void fp_qhash_of_zero_is_seed();
+    void qhash_of_zero_floating_points();
     void qthash_data();
     void qthash();
     void range();
@@ -63,33 +42,118 @@ private Q_SLOTS:
 
     void stdHash();
 
+    void stdPair_int_int()          { stdPair_template(1, 2); }
+    void stdPair_ulong_llong()      { stdPair_template(1UL, -2LL); }
+    void stdPair_ullong_long()      { stdPair_template(1ULL, -2L); }
+    void stdPair_string_int()       { stdPair_template(QString("Hello"), 2); }
+    void stdPair_int_string()       { stdPair_template(1, QString("Hello")); }
+    void stdPair_bytearray_string() { stdPair_template(QByteArray("Hello"), QString("World")); }
+    void stdPair_string_bytearray() { stdPair_template(QString("Hello"), QByteArray("World")); }
+    void stdPair_int_pairIntInt()   { stdPair_template(1, std::make_pair(2, 3)); }
+    void stdPair_2x_pairIntInt()    { stdPair_template(std::make_pair(1, 2), std::make_pair(2, 3)); }
+    void stdPair_string_pairIntInt()    { stdPair_template(QString("Hello"), std::make_pair(42, -47)); } // QTBUG-92910
+    void stdPair_int_pairIntPairIntInt() { stdPair_template(1, std::make_pair(2, std::make_pair(3, 4))); }
+
+    void enum_int_consistent_hash_qtbug108032();
+
+#if QT_DEPRECATED_SINCE(6, 6)
     void setGlobalQHashSeed();
+#endif
 };
 
 void tst_QHashFunctions::consistent()
 {
     // QString-like
-    {
-        const QString s = QStringLiteral("abcdefghijklmnopqrstuvxyz").repeated(16);
+    const QString s = QStringLiteral("abcdefghijklmnopqrstuvxyz").repeated(16);
+    QCOMPARE(qHash(s, seed), qHash(QStringView(s), seed));
 
-        QCOMPARE(qHash(s), qHash(QStringRef(&s)));
-        QCOMPARE(qHash(s), qHash(QStringView(s)));
+    // unsigned integers
+    {
+        constexpr unsigned char ae = 0xE4; // LATIN SMALL LETTER A WITH DIAERESIS
+        const auto h8   = qHash(quint8(ae), seed);
+        const auto h16  = qHash(quint16(ae), seed);
+        const auto h32  = qHash(quint32(ae), seed);
+        const auto h64  = qHash(quint64(ae), seed);
+        QCOMPARE(h8, h16);
+        QCOMPARE(h16, h32);
+        QCOMPARE(h32, h64);
+       // there are a few more unsigned types:
+#ifdef __cpp_char8_t
+        const auto hc8 = qHash(char8_t(ae), seed);
+#endif
+        const auto hc16  = qHash(char16_t(ae), seed);
+        const auto hc32  = qHash(char32_t(ae), seed);
+#ifdef __cpp_char8_t
+        QCOMPARE(hc8, h8);
+#endif
+        QCOMPARE(hc16, h16);
+        QCOMPARE(hc32, h32);
+    }
+
+    // signed integers
+    {
+        constexpr signed char ae = 0xE4; // LATIN SMALL LETTER A WITH DIAERESIS
+        const auto h8   = qHash(qint8(ae), seed);
+        const auto h16  = qHash(qint16(ae), seed);
+        const auto h32  = qHash(qint32(ae), seed);
+        const auto h64  = qHash(qint64(ae), seed);
+        QCOMPARE(h8, h16);
+        QCOMPARE(h16, h32);
+        if constexpr (sizeof(size_t) == sizeof(int)) // 32-bit
+            QEXPECT_FAIL("", "QTBUG-116080", Continue);
+        QCOMPARE(h32, h64);
+    }
+
+    // mixed signed/unsigned
+    {
+        const auto hu8 = qHash(quint8(42), seed);
+        const auto hs8 = qHash(qint8(42),  seed);
+        QCOMPARE(hu8, hs8);
+
+        const auto hu16 = qHash(quint16(4242), seed);
+        const auto hs16 = qHash(qint16(4242),  seed);
+        QCOMPARE(hu16, hs16);
+
+        const auto hu32 = qHash(quint32(4242'4242), seed);
+        const auto hs32 = qHash(qint32(4242'4242),  seed);
+        QCOMPARE(hu32, hs32);
+
+        const auto hu64 = qHash(quint64(4242'424242), seed);
+        const auto hs64 = qHash(qint64(4242'424242),  seed);
+        QCOMPARE(hu64, hs64);
+    }
+
+    // floats
+    {
+        const/*expr broken: QTBUG-116079*/ qfloat16 f16 = qfloat16(-42.f);
+        const auto h16 = qHash(f16, seed);
+        const auto h32 = qHash(float(f16), seed);
+        const auto h64 = qHash(double(f16), seed);
+        QCOMPARE(h16, h32);
+        QEXPECT_FAIL("", "QTBUG-116077", Continue);
+        QCOMPARE(h32, h64);
     }
 }
 
 void tst_QHashFunctions::initTestCase()
 {
-    Q_STATIC_ASSERT(int(RandomSeed) > 0);
+    QTest::addColumn<quint64>("seedValue");
 
-    QTest::addColumn<uint>("seedValue");
-    QTest::newRow("zero-seed") << 0U;
-    QTest::newRow("non-zero-seed") << uint(RandomSeed);
+    QTest::newRow("zero-seed") << ZeroSeed;
+    QTest::newRow("zero-seed-negated") << ~ZeroSeed;
+    QTest::newRow("non-zero-seed-32bit") << RandomSeed32;
+    QTest::newRow("non-zero-seed-32bit-negated")
+            << quint64{~quint32(RandomSeed32)}; // ensure this->seed gets same value on 32/64-bit
+    if constexpr (sizeof(size_t) == sizeof(quint64)) {
+        QTest::newRow("non-zero-seed-64bit") << RandomSeed64;
+        QTest::newRow("non-zero-seed-64bit-negated") << ~RandomSeed64;
+    }
 }
 
 void tst_QHashFunctions::init()
 {
-    QFETCH_GLOBAL(uint, seedValue);
-    seed = seedValue;
+    QFETCH_GLOBAL(quint64, seedValue);
+    seed = size_t(seedValue);
 }
 
 void tst_QHashFunctions::qhash()
@@ -97,7 +161,6 @@ void tst_QHashFunctions::qhash()
     {
         QBitArray a1;
         QBitArray a2;
-        QCOMPARE(qHash(a1, seed), seed);
 
         a1.resize(1);
         a1.setBit(0, true);
@@ -105,8 +168,8 @@ void tst_QHashFunctions::qhash()
         a2.resize(1);
         a2.setBit(0, false);
 
-        uint h1 = qHash(a1, seed);
-        uint h2 = qHash(a2, seed);
+        size_t h1 = qHash(a1, seed);
+        size_t h2 = qHash(a2, seed);
 
         QVERIFY(h1 != h2);  // not guaranteed
 
@@ -124,14 +187,14 @@ void tst_QHashFunctions::qhash()
         QVERIFY(h1 == h2);
 
         a2.setBit(0, false);
-        uint h3 = qHash(a2, seed);
+        size_t h3 = qHash(a2, seed);
         QVERIFY(h2 != h3);  // not guaranteed
 
         a2.setBit(0, true);
         QVERIFY(h2 == qHash(a2, seed));
 
         a2.setBit(6, false);
-        uint h4 = qHash(a2, seed);
+        size_t h4 = qHash(a2, seed);
         QVERIFY(h2 != h4);  // not guaranteed
 
         a2.setBit(6, true);
@@ -177,10 +240,6 @@ void tst_QHashFunctions::qhash_of_empty_and_null_qstring()
     QCOMPARE(null, empty);
     QCOMPARE(qHash(null, seed), qHash(empty, seed));
 
-    QStringRef nullRef, emptyRef(&empty);
-    QCOMPARE(nullRef, emptyRef);
-    QCOMPARE(qHash(nullRef, seed), qHash(emptyRef, seed));
-
     QStringView nullView, emptyView(empty);
     QCOMPARE(nullView, emptyView);
     QCOMPARE(qHash(nullView, seed), qHash(emptyView, seed));
@@ -193,17 +252,12 @@ void tst_QHashFunctions::qhash_of_empty_and_null_qbytearray()
     QCOMPARE(qHash(null, seed), qHash(empty, seed));
 }
 
-void tst_QHashFunctions::fp_qhash_of_zero_is_seed()
+void tst_QHashFunctions::qhash_of_zero_floating_points()
 {
-    QCOMPARE(qHash(-0.0f, seed), seed);
-    QCOMPARE(qHash( 0.0f, seed), seed);
-
-    QCOMPARE(qHash(-0.0 , seed), seed);
-    QCOMPARE(qHash( 0.0 , seed), seed);
-
+    QCOMPARE(qHash(-0.0f, seed), qHash(0.0f, seed));
+    QCOMPARE(qHash(-0.0 , seed), qHash(0.0 , seed));
 #ifndef Q_OS_DARWIN
-    QCOMPARE(qHash(-0.0L, seed), seed);
-    QCOMPARE(qHash( 0.0L, seed), seed);
+    QCOMPARE(qHash(-0.0L, seed), qHash(0.0L, seed));
 #endif
 }
 
@@ -228,7 +282,7 @@ void tst_QHashFunctions::qthash()
 
 namespace SomeNamespace {
     struct Hashable { int i; };
-    inline uint qHash(Hashable h, uint seed = 0)
+    inline size_t qHash(Hashable h, size_t seed = 0)
     { return QT_PREPEND_NAMESPACE(qHash)(h.i, seed); }
 
     struct AdlHashable {
@@ -252,7 +306,7 @@ void tst_QHashFunctions::range()
     {
         // verify that the input iterator category suffices:
         std::stringstream sstream;
-        Q_STATIC_ASSERT((std::is_same<std::input_iterator_tag, std::istream_iterator<int>::iterator_category>::value));
+        static_assert((std::is_same<std::input_iterator_tag, std::istream_iterator<int>::iterator_category>::value));
         std::copy(ints, ints + numInts, std::ostream_iterator<int>(sstream, " "));
         sstream.seekg(0);
         std::istream_iterator<int> it(sstream), end;
@@ -303,8 +357,34 @@ void tst_QHashFunctions::rangeCommutative()
     }
 }
 
+// QVarLengthArray these days has a qHash() as a hidden friend.
+// This checks that QT_SPECIALIZE_STD_HASH_TO_CALL_QHASH can deal with that:
+
+QT_BEGIN_NAMESPACE
+QT_SPECIALIZE_STD_HASH_TO_CALL_QHASH_BY_CREF(QVarLengthArray<QVector<int>>)
+QT_END_NAMESPACE
+
 void tst_QHashFunctions::stdHash()
 {
+    {
+        std::unordered_set<QVarLengthArray<QVector<int>>> s = {
+            {
+                {0, 1, 2},
+                {42, 43, 44},
+                {},
+            }, {
+                {11, 12, 13},
+                {},
+            },
+        };
+        QCOMPARE(s.size(), 2UL);
+        s.insert({
+                     {11, 12, 13},
+                     {},
+                 });
+        QCOMPARE(s.size(), 2UL);
+    }
+
     {
         std::unordered_set<QString> s = {QStringLiteral("Hello"), QStringLiteral("World")};
         QCOMPARE(s.size(), 2UL);
@@ -333,10 +413,50 @@ void tst_QHashFunctions::stdHash()
         QCOMPARE(s.size(), 2UL);
     }
 
+    {
+        std::unordered_set<QChar> s = {u'H', u'W'};
+        QCOMPARE(s.size(), 2UL);
+        s.insert(u'H');
+        QCOMPARE(s.size(), 2UL);
+    }
+
 }
 
+template <typename T1, typename T2>
+void tst_QHashFunctions::stdPair_template(const T1 &t1, const T2 &t2)
+{
+    std::pair<T1, T2> dpair{};
+    std::pair<T1, T2> vpair{t1, t2};
+
+    // confirm proper working of the pair and of the underlying types
+    QVERIFY(t1 == t1);
+    QVERIFY(t2 == t2);
+    QCOMPARE(qHash(t1, seed), qHash(t1, seed));
+    QCOMPARE(qHash(t2, seed), qHash(t2, seed));
+
+    QVERIFY(dpair == dpair);
+    QVERIFY(vpair == vpair);
+
+    // therefore their hashes should be equal
+    QCOMPARE(qHash(dpair, seed), qHash(dpair, seed));
+    QCOMPARE(qHash(vpair, seed), qHash(vpair, seed));
+}
+
+void tst_QHashFunctions::enum_int_consistent_hash_qtbug108032()
+{
+    enum E { E1, E2, E3 };
+
+    static_assert(QHashPrivate::HasQHashSingleArgOverload<E>);
+
+    QCOMPARE(qHash(E1, seed), qHash(int(E1), seed));
+    QCOMPARE(qHash(E2, seed), qHash(int(E2), seed));
+    QCOMPARE(qHash(E3, seed), qHash(int(E3), seed));
+}
+
+#if QT_DEPRECATED_SINCE(6, 6)
 void tst_QHashFunctions::setGlobalQHashSeed()
 {
+QT_WARNING_PUSH QT_WARNING_DISABLE_DEPRECATED
     // Setter works as advertised
     qSetGlobalQHashSeed(0);
     QCOMPARE(qGlobalQHashSeed(), 0);
@@ -349,7 +469,9 @@ void tst_QHashFunctions::setGlobalQHashSeed()
     // Reset works as advertised
     qSetGlobalQHashSeed(-1);
     QVERIFY(qGlobalQHashSeed() > 0);
+QT_WARNING_POP
 }
+#endif // QT_DEPRECATED_SINCE(6, 6)
 
 QTEST_APPLESS_MAIN(tst_QHashFunctions)
 #include "tst_qhashfunctions.moc"

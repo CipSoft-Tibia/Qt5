@@ -46,6 +46,8 @@ class EventLogAnalyzer {
 
   void CreatePlayoutGraph(Plot* plot);
 
+  void CreateNetEqSetMinimumDelay(Plot* plot);
+
   void CreateAudioLevelGraph(PacketDirection direction, Plot* plot);
 
   void CreateSequenceNumberGraph(Plot* plot);
@@ -59,7 +61,8 @@ class EventLogAnalyzer {
   void CreateTotalIncomingBitrateGraph(Plot* plot);
   void CreateTotalOutgoingBitrateGraph(Plot* plot,
                                        bool show_detector_state = false,
-                                       bool show_alr_state = false);
+                                       bool show_alr_state = false,
+                                       bool show_link_capacity = false);
 
   void CreateStreamBitrateGraph(PacketDirection direction, Plot* plot);
   void CreateBitrateAllocationGraph(PacketDirection direction, Plot* plot);

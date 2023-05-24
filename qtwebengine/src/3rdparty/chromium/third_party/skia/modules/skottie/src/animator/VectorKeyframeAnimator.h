@@ -12,17 +12,19 @@
 
 #include <vector>
 
-namespace skottie {
-namespace internal {
+namespace skottie::internal {
 
-class VectorKeyframeAnimatorBuilder final : public KeyframeAnimatorBuilder {
+class VectorAnimatorBuilder final : public AnimatorBuilder {
 public:
     using VectorLenParser  = bool(*)(const skjson::Value&, size_t*);
     using VectorDataParser = bool(*)(const skjson::Value&, size_t, float*);
 
-    VectorKeyframeAnimatorBuilder(std::vector<float>*, VectorLenParser, VectorDataParser);
+    VectorAnimatorBuilder(std::vector<float>*, VectorLenParser, VectorDataParser);
 
-    sk_sp<KeyframeAnimator> make(const AnimationBuilder&, const skjson::ArrayValue&) override;
+    sk_sp<KeyframeAnimator> makeFromKeyframes(const AnimationBuilder&,
+                                              const skjson::ArrayValue&) override;
+
+    sk_sp<Animator> makeFromExpression(ExpressionManager&, const char*) override;
 
 private:
     bool parseValue(const AnimationBuilder&, const skjson::Value&) const override;
@@ -40,8 +42,10 @@ private:
                            fCurrentVec = 0; // vector value index being parsed (corresponding
                                             // storage offset is fCurrentVec * fVecLen)
     std::vector<float>*    fTarget;
+
+    using INHERITED = AnimatorBuilder;
 };
 
-}} // namespace skottie::internal
+} // namespace skottie::internal
 
 #endif // SkottieVectorKeyframeAnimator_DEFINED

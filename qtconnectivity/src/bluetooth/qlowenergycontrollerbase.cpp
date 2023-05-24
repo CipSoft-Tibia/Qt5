@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qlowenergycontrollerbase_p.h"
 
@@ -109,6 +73,12 @@ void QLowEnergyControllerPrivate::setError(
     case QLowEnergyController::AuthorizationError:
         errorString = QLowEnergyController::tr("Failed to authorize on the remote device");
         break;
+    case QLowEnergyController::MissingPermissionsError:
+        errorString = QLowEnergyController::tr("Missing permissions error");
+        break;
+    case QLowEnergyController::RssiReadError:
+        errorString = QLowEnergyController::tr("Error reading RSSI value");
+        break;
     case QLowEnergyController::NoError:
         return;
     default:
@@ -117,7 +87,7 @@ void QLowEnergyControllerPrivate::setError(
         break;
     }
 
-    emit q->error(newError);
+    emit q->errorOccurred(newError);
 }
 
 void QLowEnergyControllerPrivate::setState(
@@ -172,7 +142,7 @@ QLowEnergyCharacteristic QLowEnergyControllerPrivate::characteristicForHandle(
     // check whether it is the handle of the characteristic value or its descriptors
     QList<QLowEnergyHandle> charHandles = service->characteristicList.keys();
     std::sort(charHandles.begin(), charHandles.end());
-    for (int i = charHandles.size() - 1; i >= 0; i--) {
+    for (qsizetype i = charHandles.size() - 1; i >= 0; --i) {
         if (charHandles.at(i) > handle)
             continue;
 
@@ -292,7 +262,7 @@ QLowEnergyService *QLowEnergyControllerPrivate::addServiceHelper(
     // Spec v4.2, Vol 3, Part G, Section 3.
     const QLowEnergyHandle oldLastHandle = this->lastLocalHandle;
     servicePrivate->startHandle = ++this->lastLocalHandle; // Service declaration.
-    this->lastLocalHandle += servicePrivate->includedServices.count(); // Include declarations.
+    this->lastLocalHandle += servicePrivate->includedServices.size(); // Include declarations.
     const QList<QLowEnergyCharacteristicData> characteristics = service.characteristics();
     for (const QLowEnergyCharacteristicData &cd : characteristics) {
         const QLowEnergyHandle declHandle = ++this->lastLocalHandle;
@@ -319,7 +289,7 @@ QLowEnergyService *QLowEnergyControllerPrivate::addServiceHelper(
     }
 
     if (localServices.contains(servicePrivate->uuid)) {
-        qWarning() << "Overriding existing local service with uuid"
+        qCWarning(QT_BT) << "Overriding existing local service with uuid"
                    << servicePrivate->uuid;
     }
     this->localServices.insert(servicePrivate->uuid, servicePrivate);
@@ -328,4 +298,12 @@ QLowEnergyService *QLowEnergyControllerPrivate::addServiceHelper(
     return new QLowEnergyService(servicePrivate);
 }
 
+void QLowEnergyControllerPrivate::readRssi()
+{
+    qCWarning(QT_BT, "This platform does not support reading RSSI");
+    setError(QLowEnergyController::RssiReadError);
+}
+
 QT_END_NAMESPACE
+
+#include "moc_qlowenergycontrollerbase_p.cpp"

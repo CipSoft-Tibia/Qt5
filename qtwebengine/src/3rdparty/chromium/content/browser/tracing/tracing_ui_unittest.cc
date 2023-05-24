@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,33 +21,31 @@ class TracingUITest : public testing::Test {
 };
 
 std::string GetConfig() {
-  std::unique_ptr<base::DictionaryValue> dict(new base::DictionaryValue());
-  std::unique_ptr<base::Value> filter1(
-      new base::Value(base::trace_event::MemoryDumpManager::kTraceCategory));
-  std::unique_ptr<base::Value> filter2(new base::Value("filter2"));
-  std::unique_ptr<base::ListValue> included(new base::ListValue);
-  included->Append(std::move(filter1));
-  std::unique_ptr<base::ListValue> excluded(new base::ListValue);
-  excluded->Append(std::move(filter2));
+  base::Value::Dict dict;
+  base::Value filter1(base::trace_event::MemoryDumpManager::kTraceCategory);
+  base::Value filter2("filter2");
+  base::Value::List included;
+  included.Append(std::move(filter1));
+  base::Value::List excluded;
+  excluded.Append(std::move(filter2));
 
-  dict->SetList("included_categories", std::move(included));
-  dict->SetList("excluded_categories", std::move(excluded));
-  dict->SetString("record_mode", "record-continuously");
-  dict->SetBoolean("enable_systrace", true);
-  dict->SetString("stream_format", "protobuf");
+  dict.Set("included_categories", std::move(included));
+  dict.Set("excluded_categories", std::move(excluded));
+  dict.Set("record_mode", "record-continuously");
+  dict.Set("enable_systrace", true);
+  dict.Set("stream_format", "protobuf");
 
-  std::unique_ptr<base::DictionaryValue> memory_config(
-      new base::DictionaryValue());
-  std::unique_ptr<base::DictionaryValue> trigger(new base::DictionaryValue());
-  trigger->SetString("mode", "detailed");
-  trigger->SetInteger("periodic_interval_ms", 10000);
-  std::unique_ptr<base::ListValue> triggers(new base::ListValue);
-  triggers->Append(std::move(trigger));
-  memory_config->SetList("triggers", std::move(triggers));
-  dict->SetDictionary("memory_dump_config", std::move(memory_config));
+  base::Value::Dict memory_config;
+  base::Value::Dict trigger;
+  trigger.Set("mode", "detailed");
+  trigger.Set("periodic_interval_ms", 10000);
+  base::Value::List triggers;
+  triggers.Append(std::move(trigger));
+  memory_config.Set("triggers", std::move(triggers));
+  dict.Set("memory_dump_config", std::move(memory_config));
 
   std::string results;
-  if (!base::JSONWriter::Write(*dict.get(), &results))
+  if (!base::JSONWriter::Write(dict, &results))
     return "";
 
   std::string data;

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -218,13 +218,12 @@ FetchedCategory FetchedCategoryBuilder::Build() const {
   FetchedCategory result = FetchedCategory(
       category_.value_or(Category::FromRemoteCategory(1)),
       CategoryInfo(
-          title_.value_or(base::UTF8ToUTF16("Category title")),
+          title_.value_or(u"Category title"),
           card_layout_.value_or(ContentSuggestionsCardLayout::FULL_CARD),
           additional_action_.value_or(
               ContentSuggestionsAdditionalAction::FETCH),
           show_if_empty_.value_or(false),
-          no_suggestions_message_.value_or(
-              base::UTF8ToUTF16("No suggestions message"))));
+          no_suggestions_message_.value_or(u"No suggestions message")));
 
   if (suggestion_builders_) {
     for (const auto& suggestion_builder : *suggestion_builders_)

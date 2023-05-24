@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -61,9 +61,9 @@ class TestExporterTest(LoggingTestCase):
         ]
         test_exporter.get_exportable_commits = lambda: ([
             MockChromiumCommit(
-                self.host, position='refs/heads/master@{#458475}'),
+                self.host, position='refs/heads/main@{#458475}'),
             MockChromiumCommit(
-                self.host, position='refs/heads/master@{#458476}'),
+                self.host, position='refs/heads/main@{#458476}'),
         ], [])
         success = test_exporter.main(
             ['--credentials-json', '/tmp/credentials.json', '--dry-run'])
@@ -83,12 +83,13 @@ class TestExporterTest(LoggingTestCase):
         test_exporter.gerrit = MockGerritAPI()
         test_exporter.get_exportable_commits = lambda: ([
             MockChromiumCommit(
-                self.host, position='refs/heads/master@{#1}', change_id='I001', subject='subject 1', body='body 1'),
+                self.host, position='refs/heads/main@{#1}', change_id='I001', subject='subject 1', body='body 1'),
             MockChromiumCommit(
-                self.host, position='refs/heads/master@{#2}', change_id='I002', subject='subject 2', body='body 2'),
+                self.host, position='refs/heads/main@{#2}', change_id='I002', subject='subject 2', body='body 2'),
             MockChromiumCommit(
-                self.host, position='refs/heads/master@{#3}', change_id='I003', subject='subject 3', body='body 3'),
+                self.host, position='refs/heads/main@{#3}', change_id='I003', subject='subject 3', body='body 3'),
         ], [])
+        test_exporter.pr_cleaner.run = lambda x, y: None
         success = test_exporter.main(
             ['--credentials-json', '/tmp/credentials.json'])
 
@@ -110,9 +111,9 @@ class TestExporterTest(LoggingTestCase):
                 'add_label "chromium-export"',
             ])
         self.assertEqual(test_exporter.wpt_github.pull_requests_created, [
-            ('chromium-export-96862edfc1', 'subject 1',
+            ('chromium-export-7db6c89e05', 'subject 1',
              'body 1\n\nChange-Id: I001\n'),
-            ('chromium-export-ce0e78bf18', 'subject 3',
+            ('chromium-export-f8c201ca95', 'subject 3',
              'body 3\n\nChange-Id: I003\n'),
         ])
 
@@ -130,21 +131,21 @@ class TestExporterTest(LoggingTestCase):
                     title='Open PR',
                     number=1234,
                     body=
-                    'rutabaga\nCr-Commit-Position: refs/heads/master@{#458475}\nChange-Id: I0005',
+                    'rutabaga\nCr-Commit-Position: refs/heads/main@{#458475}\nChange-Id: I0005',
                     state='open',
                     labels=['do not merge yet']),
                 PullRequest(
                     title='Merged PR',
                     number=2345,
                     body=
-                    'rutabaga\nCr-Commit-Position: refs/heads/master@{#458477}\nChange-Id: Idead',
+                    'rutabaga\nCr-Commit-Position: refs/heads/main@{#458477}\nChange-Id: Idead',
                     state='closed',
                     labels=[]),
                 PullRequest(
                     title='Open PR',
                     number=3456,
                     body=
-                    'rutabaga\nCr-Commit-Position: refs/heads/master@{#458478}\nChange-Id: I0118',
+                    'rutabaga\nCr-Commit-Position: refs/heads/main@{#458478}\nChange-Id: I0118',
                     state='open',
                     labels=[]  # It's important that this is empty.
                 ),
@@ -152,7 +153,7 @@ class TestExporterTest(LoggingTestCase):
                     title='Open PR',
                     number=4747,
                     body=
-                    'rutabaga\nCr-Commit-Position: refs/heads/master@{#458479}\nChange-Id: I0147',
+                    'rutabaga\nCr-Commit-Position: refs/heads/main@{#458479}\nChange-Id: I0147',
                     state='open',
                     labels=[]  # It's important that this is empty.
                 ),
@@ -161,16 +162,17 @@ class TestExporterTest(LoggingTestCase):
         test_exporter.gerrit = MockGerritAPI()
         test_exporter.get_exportable_commits = lambda: ([
             MockChromiumCommit(
-                self.host, position='refs/heads/master@{#458475}', change_id='I0005'),
+                self.host, position='refs/heads/main@{#458475}', change_id='I0005'),
             MockChromiumCommit(
-                self.host, position='refs/heads/master@{#458476}', change_id='I0476'),
+                self.host, position='refs/heads/main@{#458476}', change_id='I0476'),
             MockChromiumCommit(
-                self.host, position='refs/heads/master@{#458477}', change_id='Idead'),
+                self.host, position='refs/heads/main@{#458477}', change_id='Idead'),
             MockChromiumCommit(
-                self.host, position='refs/heads/master@{#458478}', change_id='I0118'),
+                self.host, position='refs/heads/main@{#458478}', change_id='I0118'),
             MockChromiumCommit(
-                self.host, position='refs/heads/master@{#458479}', change_id='I0147'),
+                self.host, position='refs/heads/main@{#458479}', change_id='I0147'),
         ], [])
+        test_exporter.pr_cleaner.run = lambda x, y: None
         success = test_exporter.main(
             ['--credentials-json', '/tmp/credentials.json'])
 
@@ -202,7 +204,7 @@ class TestExporterTest(LoggingTestCase):
                 'merge_pr',
             ])
         self.assertEqual(test_exporter.wpt_github.pull_requests_created, [
-            ('chromium-export-52c3178508', 'Fake subject',
+            ('chromium-export-981776f989', 'Fake subject',
              'Fake body\n\nChange-Id: I0476\n'),
         ])
         self.assertEqual(test_exporter.wpt_github.pull_requests_merged, [3456])
@@ -256,6 +258,7 @@ class TestExporterTest(LoggingTestCase):
                     self.host, subject='subject', body='body',
                     change_id=None)),
         ]
+        test_exporter.pr_cleaner.run = lambda x, y: None
         test_exporter.main(['--credentials-json', '/tmp/credentials.json'])
 
         self.assertEqual(test_exporter.wpt_github.calls, [
@@ -312,6 +315,7 @@ class TestExporterTest(LoggingTestCase):
                 api=test_exporter.gerrit,
                 chromium_commit=MockChromiumCommit(self.host))
         ]
+        test_exporter.pr_cleaner.run = lambda x, y: None
         success = test_exporter.main(
             ['--credentials-json', '/tmp/credentials.json'])
 
@@ -359,6 +363,7 @@ class TestExporterTest(LoggingTestCase):
                 api=test_exporter.gerrit,
                 chromium_commit=MockChromiumCommit(self.host))
         ]
+        test_exporter.pr_cleaner.run = lambda x, y: None
         test_exporter.main(['--credentials-json', '/tmp/credentials.json'])
 
         self.assertEqual(test_exporter.wpt_github.calls, [
@@ -382,6 +387,7 @@ class TestExporterTest(LoggingTestCase):
         test_exporter.get_exportable_commits = lambda: ([
             MockChromiumCommit(self.host, change_id='decafbad'), ], [])
         test_exporter.gerrit = MockGerritAPI()
+        test_exporter.pr_cleaner.run = lambda x, y: None
         success = test_exporter.main(
             ['--credentials-json', '/tmp/credentials.json'])
 
@@ -408,6 +414,7 @@ class TestExporterTest(LoggingTestCase):
         test_exporter.get_exportable_commits = lambda: ([
             MockChromiumCommit(self.host, change_id='decafbad'), ], [])
         test_exporter.gerrit = MockGerritAPI()
+        test_exporter.pr_cleaner.run = lambda x, y: None
         success = test_exporter.main(
             ['--credentials-json', '/tmp/credentials.json'])
 
@@ -450,6 +457,7 @@ class TestExporterTest(LoggingTestCase):
                 api=test_exporter.gerrit,
                 chromium_commit=MockChromiumCommit(self.host))
         ]
+        test_exporter.pr_cleaner.run = lambda x, y: None
         success = test_exporter.main(
             ['--credentials-json', '/tmp/credentials.json'])
 
@@ -467,6 +475,7 @@ class TestExporterTest(LoggingTestCase):
         test_exporter.get_exportable_commits = lambda: ([], [])
         test_exporter.gerrit = MockGerritAPI()
         test_exporter.gerrit.query_exportable_open_cls = raise_gerrit_error
+        test_exporter.pr_cleaner.run = lambda x, y: None
         success = test_exporter.main(
             ['--credentials-json', '/tmp/credentials.json'])
 
@@ -486,6 +495,7 @@ class TestExporterTest(LoggingTestCase):
         test_exporter.get_exportable_commits = lambda: (
             [], ['There was an error with the rutabaga.'])
         test_exporter.gerrit = MockGerritAPI()
+        test_exporter.pr_cleaner.run = lambda x, y: None
         success = test_exporter.main(
             ['--credentials-json', '/tmp/credentials.json'])
 

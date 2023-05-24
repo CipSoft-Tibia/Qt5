@@ -1,4 +1,4 @@
-# Copyright 2018 The PDFium Authors. All rights reserved.
+# Copyright 2018 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -673,10 +673,14 @@ source_set("parser") {
     "xfa_basic_data.h",
     "xfa_document_datamerger_imp.cpp",
     "xfa_document_datamerger_imp.h",
-    "xfa_resolvenode_rs.cpp",
-    "xfa_resolvenode_rs.h",
     "xfa_utils.cpp",
     "xfa_utils.h",
+  ]
+  allow_circular_includes_from = [ "../../../fxjs" ]
+  configs += [
+    "../../../:pdfium_strict_config",
+    "../../../:pdfium_noshorten_config",
+    "../../:xfa_warnings",
   ]
   deps = [
     "../../../core/fxcodec",
@@ -685,13 +689,9 @@ source_set("parser") {
     "../../../fxjs",
     "../../../fxjs:gc",
     "../../fde",
-    "../../fgas",
-    "../../fxgraphics",
-  ]
-  allow_circular_includes_from = [ "../../../fxjs" ]
-  configs += [
-    "../../../:pdfium_core_config",
-    "../../:xfa_warnings",
+    "../../fgas/crt",
+    "../../fgas/font",
+    "../../fgas/graphics",
   ]
   visibility = [ "../../../*" ]
 }
@@ -699,10 +699,12 @@ source_set("parser") {
 pdfium_unittest_source_set("unittests") {
   sources = [
     "cxfa_document_builder_unittest.cpp",
+    "cxfa_document_unittest.cpp",
     "cxfa_localevalue_unittest.cpp",
     "cxfa_measurement_unittest.cpp",
     "cxfa_node_unittest.cpp",
     "cxfa_nodeiteratortemplate_unittest.cpp",
+    "cxfa_timezoneprovider_unittest.cpp",
     "cxfa_xmllocale_unittest.cpp",
     "xfa_basic_data_unittest.cpp",
     "xfa_utils_unittest.cpp",

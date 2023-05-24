@@ -40,11 +40,8 @@ namespace libgav1 {
 namespace {
 
 // Import all the constants in the anonymous namespace.
-#include "src/quantizer_tables.inc"
 #include "src/scan_tables.inc"
 
-// Precision bits when scaling reference frames.
-constexpr int kReferenceScaleShift = 14;
 // Range above kNumQuantizerBaseLevels which the exponential golomb coding
 // process is activated.
 constexpr int kQuantizerCoefficientBaseRange = 12;
@@ -422,6 +419,7 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
            RefCountedBuffer* const current_frame, const DecoderState& state,
            FrameScratchBuffer* const frame_scratch_buffer,
            const WedgeMaskArray& wedge_masks,
+           const QuantizerMatrix& quantizer_matrix,
            SymbolDecoderContext* const saved_symbol_decoder_context,
            const SegmentationMap* prev_segment_ids,
            PostFilter* const post_filter, const dsp::Dsp* const dsp,
@@ -446,6 +444,7 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
       motion_field_(frame_scratch_buffer->motion_field),
       reference_order_hint_(state.reference_order_hint),
       wedge_masks_(wedge_masks),
+      quantizer_matrix_(quantizer_matrix),
       reader_(data_, size_, frame_header_.enable_cdf_update),
       symbol_decoder_context_(frame_scratch_buffer->symbol_decoder_context),
       saved_symbol_decoder_context_(saved_symbol_decoder_context),
@@ -464,6 +463,7 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
               : 1),
       current_frame_(*current_frame),
       cdef_index_(frame_scratch_buffer->cdef_index),
+      cdef_skip_(frame_scratch_buffer->cdef_skip),
       inter_transform_sizes_(frame_scratch_buffer->inter_transform_sizes),
       thread_pool_(thread_pool),
       residual_buffer_pool_(frame_scratch_buffer->residual_buffer_pool.get()),
@@ -542,16 +542,6 @@ Tile::Tile(int tile_number, const uint8_t* const data, size_t size,
     buffer_[plane].Reset(Align(buffer.height(plane), max_tx_length),
                          buffer.stride(plane),
                          post_filter_.GetUnfilteredBuffer(plane));
-    const int plane_height =
-        SubsampledValue(frame_header_.height, subsampling_y_[plane]);
-    deblock_row_limit_[plane] =
-        std::min(frame_header_.rows4x4, DivideBy4(plane_height + 3)
-                                            << subsampling_y_[plane]);
-    const int plane_width =
-        SubsampledValue(frame_header_.width, subsampling_x_[plane]);
-    deblock_column_limit_[plane] =
-        std::min(frame_header_.columns4x4, DivideBy4(plane_width + 3)
-                                               << subsampling_x_[plane]);
   }
 }
 
@@ -599,6 +589,10 @@ bool Tile::Init() {
                      column4x4_end_, &motion_field_);
   }
   ResetLoopRestorationParams();
+  if (!top_context_.Resize(superblock_columns_)) {
+    LIBGAV1_DLOG(ERROR, "Allocation of top_context_ failed.");
+    return false;
+  }
   return true;
 }
 
@@ -610,7 +604,7 @@ bool Tile::ProcessSuperBlockRow(int row4x4,
   const int block_width4x4 = kNum4x4BlocksWide[SuperBlockSize()];
   for (int column4x4 = column4x4_start_; column4x4 < column4x4_end_;
        column4x4 += block_width4x4) {
-    if (!ProcessSuperBlock(row4x4, column4x4, block_width4x4, scratch_buffer,
+    if (!ProcessSuperBlock(row4x4, column4x4, scratch_buffer,
                            processing_mode)) {
       LIBGAV1_DLOG(ERROR, "Error decoding super block row: %d column: %d",
                    row4x4, column4x4);
@@ -643,9 +637,6 @@ void Tile::SaveSymbolDecoderContext() {
 }
 
 bool Tile::ParseAndDecode() {
-  // If this is the main thread, we build the loop filter bit masks when parsing
-  // so that it happens in the current thread. This ensures that the main thread
-  // does as much work as possible.
   if (split_parse_and_decode_) {
     if (!ThreadedParseAndDecode()) return false;
     SaveSymbolDecoderContext();
@@ -777,8 +768,8 @@ bool Tile::ThreadedParseAndDecode() {
     for (int column4x4 = column4x4_start_, column_index = 0;
          column4x4 < column4x4_end_;
          column4x4 += block_width4x4, ++column_index) {
-      if (!ProcessSuperBlock(row4x4, column4x4, block_width4x4,
-                             scratch_buffer.get(), kProcessingModeParseOnly)) {
+      if (!ProcessSuperBlock(row4x4, column4x4, scratch_buffer.get(),
+                             kProcessingModeParseOnly)) {
         std::lock_guard<std::mutex> lock(threading_.mutex);
         threading_.abort = true;
         break;
@@ -863,8 +854,8 @@ void Tile::DecodeSuperBlock(int row_index, int column_index,
       tile_scratch_buffer_pool_->Get();
   bool ok = scratch_buffer != nullptr;
   if (ok) {
-    ok = ProcessSuperBlock(row4x4, column4x4, block_width4x4,
-                           scratch_buffer.get(), kProcessingModeDecodeOnly);
+    ok = ProcessSuperBlock(row4x4, column4x4, scratch_buffer.get(),
+                           kProcessingModeDecodeOnly);
     tile_scratch_buffer_pool_->Release(std::move(scratch_buffer));
   }
   std::unique_lock<std::mutex> lock(threading_.mutex);
@@ -1023,7 +1014,8 @@ TransformType Tile::ComputeTransformType(const Block& block, Plane plane,
                                          int block_y) {
   const BlockParameters& bp = *block.bp;
   const TransformSize tx_size_square_max = kTransformSizeSquareMax[tx_size];
-  if (frame_header_.segmentation.lossless[bp.segment_id] ||
+  if (frame_header_.segmentation
+          .lossless[bp.prediction_parameters->segment_id] ||
       tx_size_square_max == kTransformSize64x64) {
     return kTransformTypeDctDct;
   }
@@ -1038,7 +1030,7 @@ TransformType Tile::ComputeTransformType(const Block& block, Plane plane,
     const int y4 = std::max(block.row4x4, block_y << subsampling_y_[kPlaneU]);
     tx_type = transform_types_[y4 - block.row4x4][x4 - block.column4x4];
   } else {
-    tx_type = kModeToTransformType[bp.uv_mode];
+    tx_type = kModeToTransformType[bp.prediction_parameters->uv_mode];
   }
   return kTransformTypeInSetMask[tx_set].Contains(tx_type)
              ? tx_type
@@ -1052,7 +1044,8 @@ void Tile::ReadTransformType(const Block& block, int x4, int y4,
 
   TransformType tx_type = kTransformTypeDctDct;
   if (tx_set != kTransformSetDctOnly &&
-      frame_header_.segmentation.qindex[bp.segment_id] > 0) {
+      frame_header_.segmentation.qindex[bp.prediction_parameters->segment_id] >
+          0) {
     const int cdf_index = SymbolDecoderContext::TxTypeIndex(tx_set);
     const int cdf_tx_size_index =
         TransformSizeToSquareTransformIndex(kTransformSizeSquareMin[tx_size]);
@@ -1060,6 +1053,18 @@ void Tile::ReadTransformType(const Block& block, int x4, int y4,
     if (bp.is_inter) {
       cdf = symbol_decoder_context_
                 .inter_tx_type_cdf[cdf_index][cdf_tx_size_index];
+      switch (tx_set) {
+        case kTransformSetInter1:
+          tx_type = static_cast<TransformType>(reader_.ReadSymbol<16>(cdf));
+          break;
+        case kTransformSetInter2:
+          tx_type = static_cast<TransformType>(reader_.ReadSymbol<12>(cdf));
+          break;
+        default:
+          assert(tx_set == kTransformSetInter3);
+          tx_type = static_cast<TransformType>(reader_.ReadSymbol(cdf));
+          break;
+      }
     } else {
       const PredictionMode intra_direction =
           block.bp->prediction_parameters->use_filter_intra
@@ -1069,9 +1074,12 @@ void Tile::ReadTransformType(const Block& block, int x4, int y4,
       cdf =
           symbol_decoder_context_
               .intra_tx_type_cdf[cdf_index][cdf_tx_size_index][intra_direction];
+      assert(tx_set == kTransformSetIntra1 || tx_set == kTransformSetIntra2);
+      tx_type = static_cast<TransformType>((tx_set == kTransformSetIntra1)
+                                               ? reader_.ReadSymbol<7>(cdf)
+                                               : reader_.ReadSymbol<5>(cdf));
     }
-    tx_type = static_cast<TransformType>(
-        reader_.ReadSymbol(cdf, kNumTransformTypesInSet[tx_set]));
+
     // This array does not contain an entry for kTransformSetDctOnly, so the
     // first dimension needs to be offset by 1.
     tx_type = kInverseTransformTypeBySet[tx_set - 1][tx_type];
@@ -1089,49 +1097,57 @@ void Tile::ReadTransformType(const Block& block, int x4, int y4,
 // positions are still all 0s according to the diagonal scan order.
 template <typename ResidualType>
 void Tile::ReadCoeffBase2D(
-    const uint16_t* scan, PlaneType plane_type, TransformSize tx_size,
-    int clamped_tx_size_context, int adjusted_tx_width_log2, int eob,
+    const uint16_t* scan, TransformSize tx_size, int adjusted_tx_width_log2,
+    int eob,
     uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
-    ResidualType* const quantized_buffer) {
+    uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
+                                 [kCoeffBaseRangeSymbolCount + 1],
+    ResidualType* const quantized_buffer, uint8_t* const level_buffer) {
   const int tx_width = 1 << adjusted_tx_width_log2;
-  int i = eob - 2;
-  do {
-    constexpr auto threshold = static_cast<ResidualType>(3);
+  for (int i = eob - 2; i >= 1; --i) {
     const uint16_t pos = scan[i];
     const int row = pos >> adjusted_tx_width_log2;
     const int column = pos & (tx_width - 1);
     auto* const quantized = &quantized_buffer[pos];
-    int context;
-    if (pos == 0) {
-      context = 0;
-    } else {
-      context = std::min(
-          4, DivideBy2(
-                 1 + (std::min(quantized[1], threshold) +             // {0, 1}
-                      std::min(quantized[tx_width], threshold) +      // {1, 0}
-                      std::min(quantized[tx_width + 1], threshold) +  // {1, 1}
-                      std::min(quantized[2], threshold) +             // {0, 2}
-                      std::min(quantized[MultiplyBy2(tx_width)],
-                               threshold))));  // {2, 0}
-      context += kCoeffBaseContextOffset[tx_size][std::min(row, 4)]
-                                        [std::min(column, 4)];
-    }
+    auto* const levels = &level_buffer[pos];
+    const int neighbor_sum = 1 + levels[1] + levels[tx_width] +
+                             levels[tx_width + 1] + levels[2] +
+                             levels[MultiplyBy2(tx_width)];
+    const int context =
+        ((neighbor_sum > 7) ? 4 : DivideBy2(neighbor_sum)) +
+        kCoeffBaseContextOffset[tx_size][std::min(row, 4)][std::min(column, 4)];
     int level =
         reader_.ReadSymbol<kCoeffBaseSymbolCount>(coeff_base_cdf[context]);
+    levels[0] = level;
     if (level > kNumQuantizerBaseLevels) {
       // No need to clip quantized values to COEFF_BASE_RANGE + NUM_BASE_LEVELS
       // + 1, because we clip the overall output to 6 and the unclipped
       // quantized values will always result in an output of greater than 6.
-      context = std::min(6, DivideBy2(1 + quantized[1] +          // {0, 1}
-                                      quantized[tx_width] +       // {1, 0}
-                                      quantized[tx_width + 1]));  // {1, 1}
-      if (pos != 0) {
-        context += 14 >> static_cast<int>((row | column) < 2);
-      }
-      level += ReadCoeffBaseRange(clamped_tx_size_context, context, plane_type);
+      int context = std::min(6, DivideBy2(1 + quantized[1] +          // {0, 1}
+                                          quantized[tx_width] +       // {1, 0}
+                                          quantized[tx_width + 1]));  // {1, 1}
+      context += 14 >> static_cast<int>((row | column) < 2);
+      level += ReadCoeffBaseRange(coeff_base_range_cdf[context]);
     }
     quantized[0] = level;
-  } while (--i >= 0);
+  }
+  // Read position 0.
+  {
+    auto* const quantized = &quantized_buffer[0];
+    int level = reader_.ReadSymbol<kCoeffBaseSymbolCount>(coeff_base_cdf[0]);
+    level_buffer[0] = level;
+    if (level > kNumQuantizerBaseLevels) {
+      // No need to clip quantized values to COEFF_BASE_RANGE + NUM_BASE_LEVELS
+      // + 1, because we clip the overall output to 6 and the unclipped
+      // quantized values will always result in an output of greater than 6.
+      const int context =
+          std::min(6, DivideBy2(1 + quantized[1] +          // {0, 1}
+                                quantized[tx_width] +       // {1, 0}
+                                quantized[tx_width + 1]));  // {1, 1}
+      level += ReadCoeffBaseRange(coeff_base_range_cdf[context]);
+    }
+    quantized[0] = level;
+  }
 }
 
 // Section 8.3.2 in the spec, under coeff_base and coeff_br.
@@ -1148,41 +1164,41 @@ void Tile::ReadCoeffBase2D(
 // we always do the boundary check for its fourth right neighbor.
 template <typename ResidualType>
 void Tile::ReadCoeffBaseHorizontal(
-    const uint16_t* scan, PlaneType plane_type, TransformSize /*tx_size*/,
-    int clamped_tx_size_context, int adjusted_tx_width_log2, int eob,
+    const uint16_t* scan, TransformSize /*tx_size*/, int adjusted_tx_width_log2,
+    int eob,
     uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
-    ResidualType* const quantized_buffer) {
+    uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
+                                 [kCoeffBaseRangeSymbolCount + 1],
+    ResidualType* const quantized_buffer, uint8_t* const level_buffer) {
   const int tx_width = 1 << adjusted_tx_width_log2;
   int i = eob - 2;
   do {
-    constexpr auto threshold = static_cast<ResidualType>(3);
     const uint16_t pos = scan[i];
     const int column = pos & (tx_width - 1);
     auto* const quantized = &quantized_buffer[pos];
-    int context = std::min(
-        4,
-        DivideBy2(1 +
-                  (std::min(quantized[1], threshold) +         // {0, 1}
-                   std::min(quantized[tx_width], threshold) +  // {1, 0}
-                   std::min(quantized[2], threshold) +         // {0, 2}
-                   std::min(quantized[3], threshold) +         // {0, 3}
-                   std::min(quantized[4],
-                            static_cast<ResidualType>(
-                                (column + 4 < tx_width) ? 3 : 0)))));  // {0, 4}
-    context += kCoeffBasePositionContextOffset[column];
+    auto* const levels = &level_buffer[pos];
+    const int neighbor_sum =
+        1 + (levels[1] +                                  // {0, 1}
+             levels[tx_width] +                           // {1, 0}
+             levels[2] +                                  // {0, 2}
+             levels[3] +                                  // {0, 3}
+             ((column + 4 < tx_width) ? levels[4] : 0));  // {0, 4}
+    const int context = ((neighbor_sum > 7) ? 4 : DivideBy2(neighbor_sum)) +
+                        kCoeffBasePositionContextOffset[column];
     int level =
         reader_.ReadSymbol<kCoeffBaseSymbolCount>(coeff_base_cdf[context]);
+    levels[0] = level;
     if (level > kNumQuantizerBaseLevels) {
       // No need to clip quantized values to COEFF_BASE_RANGE + NUM_BASE_LEVELS
       // + 1, because we clip the overall output to 6 and the unclipped
       // quantized values will always result in an output of greater than 6.
-      context = std::min(6, DivideBy2(1 + quantized[1] +     // {0, 1}
-                                      quantized[tx_width] +  // {1, 0}
-                                      quantized[2]));        // {0, 2}
+      int context = std::min(6, DivideBy2(1 + quantized[1] +     // {0, 1}
+                                          quantized[tx_width] +  // {1, 0}
+                                          quantized[2]));        // {0, 2}
       if (pos != 0) {
         context += 14 >> static_cast<int>(column == 0);
       }
-      level += ReadCoeffBaseRange(clamped_tx_size_context, context, plane_type);
+      level += ReadCoeffBaseRange(coeff_base_range_cdf[context]);
     }
     quantized[0] = level;
   } while (--i >= 0);
@@ -1193,36 +1209,36 @@ void Tile::ReadCoeffBaseHorizontal(
 // Right boundary check is performed explicitly.
 template <typename ResidualType>
 void Tile::ReadCoeffBaseVertical(
-    const uint16_t* scan, PlaneType plane_type, TransformSize /*tx_size*/,
-    int clamped_tx_size_context, int adjusted_tx_width_log2, int eob,
+    const uint16_t* scan, TransformSize /*tx_size*/, int adjusted_tx_width_log2,
+    int eob,
     uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
-    ResidualType* const quantized_buffer) {
+    uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
+                                 [kCoeffBaseRangeSymbolCount + 1],
+    ResidualType* const quantized_buffer, uint8_t* const level_buffer) {
   const int tx_width = 1 << adjusted_tx_width_log2;
   int i = eob - 2;
   do {
-    constexpr auto threshold = static_cast<ResidualType>(3);
     const uint16_t pos = scan[i];
     const int row = pos >> adjusted_tx_width_log2;
     const int column = pos & (tx_width - 1);
     auto* const quantized = &quantized_buffer[pos];
-    const int quantized_column1 = (column + 1 < tx_width) ? quantized[1] : 0;
-    int context =
-        std::min(4, DivideBy2(1 + (std::min(quantized_column1, 3) +  // {0, 1}
-                                   std::min(quantized[tx_width],
-                                            threshold) +  // {1, 0}
-                                   std::min(quantized[MultiplyBy2(tx_width)],
-                                            threshold) +  // {2, 0}
-                                   std::min(quantized[tx_width * 3],
-                                            threshold) +  // {3, 0}
-                                   std::min(quantized[MultiplyBy4(tx_width)],
-                                            threshold))));  // {4, 0}
-    context += kCoeffBasePositionContextOffset[row];
+    auto* const levels = &level_buffer[pos];
+    const int neighbor_sum =
+        1 + (((column + 1 < tx_width) ? levels[1] : 0) +  // {0, 1}
+             levels[tx_width] +                           // {1, 0}
+             levels[MultiplyBy2(tx_width)] +              // {2, 0}
+             levels[tx_width * 3] +                       // {3, 0}
+             levels[MultiplyBy4(tx_width)]);              // {4, 0}
+    const int context = ((neighbor_sum > 7) ? 4 : DivideBy2(neighbor_sum)) +
+                        kCoeffBasePositionContextOffset[row];
     int level =
         reader_.ReadSymbol<kCoeffBaseSymbolCount>(coeff_base_cdf[context]);
+    levels[0] = level;
     if (level > kNumQuantizerBaseLevels) {
       // No need to clip quantized values to COEFF_BASE_RANGE + NUM_BASE_LEVELS
       // + 1, because we clip the overall output to 6 and the unclipped
       // quantized values will always result in an output of greater than 6.
+      const int quantized_column1 = (column + 1 < tx_width) ? quantized[1] : 0;
       int context =
           std::min(6, DivideBy2(1 + quantized_column1 +              // {0, 1}
                                 quantized[tx_width] +                // {1, 0}
@@ -1230,7 +1246,7 @@ void Tile::ReadCoeffBaseVertical(
       if (pos != 0) {
         context += 14 >> static_cast<int>(row == 0);
       }
-      level += ReadCoeffBaseRange(clamped_tx_size_context, context, plane_type);
+      level += ReadCoeffBaseRange(coeff_base_range_cdf[context]);
     }
     quantized[0] = level;
   } while (--i >= 0);
@@ -1272,68 +1288,6 @@ void Tile::SetEntropyContexts(int x4, int y4, int w4, int h4, Plane plane,
          num_left_elements);
 }
 
-void Tile::ScaleMotionVector(const MotionVector& mv, const Plane plane,
-                             const int reference_frame_index, const int x,
-                             const int y, int* const start_x,
-                             int* const start_y, int* const step_x,
-                             int* const step_y) {
-  const int reference_upscaled_width =
-      (reference_frame_index == -1)
-          ? frame_header_.upscaled_width
-          : reference_frames_[reference_frame_index]->upscaled_width();
-  const int reference_height =
-      (reference_frame_index == -1)
-          ? frame_header_.height
-          : reference_frames_[reference_frame_index]->frame_height();
-  assert(2 * frame_header_.width >= reference_upscaled_width &&
-         2 * frame_header_.height >= reference_height &&
-         frame_header_.width <= 16 * reference_upscaled_width &&
-         frame_header_.height <= 16 * reference_height);
-  const bool is_scaled_x = reference_upscaled_width != frame_header_.width;
-  const bool is_scaled_y = reference_height != frame_header_.height;
-  const int half_sample = 1 << (kSubPixelBits - 1);
-  int orig_x = (x << kSubPixelBits) + ((2 * mv.mv[1]) >> subsampling_x_[plane]);
-  int orig_y = (y << kSubPixelBits) + ((2 * mv.mv[0]) >> subsampling_y_[plane]);
-  const int rounding_offset =
-      DivideBy2(1 << (kScaleSubPixelBits - kSubPixelBits));
-  if (is_scaled_x) {
-    const int scale_x = ((reference_upscaled_width << kReferenceScaleShift) +
-                         DivideBy2(frame_header_.width)) /
-                        frame_header_.width;
-    *step_x = RightShiftWithRoundingSigned(
-        scale_x, kReferenceScaleShift - kScaleSubPixelBits);
-    orig_x += half_sample;
-    // When frame size is 4k and above, orig_x can be above 16 bits, scale_x can
-    // be up to 15 bits. So we use int64_t to hold base_x.
-    const int64_t base_x = static_cast<int64_t>(orig_x) * scale_x -
-                           (half_sample << kReferenceScaleShift);
-    *start_x =
-        RightShiftWithRoundingSigned(
-            base_x, kReferenceScaleShift + kSubPixelBits - kScaleSubPixelBits) +
-        rounding_offset;
-  } else {
-    *step_x = 1 << kScaleSubPixelBits;
-    *start_x = LeftShift(orig_x, 6) + rounding_offset;
-  }
-  if (is_scaled_y) {
-    const int scale_y = ((reference_height << kReferenceScaleShift) +
-                         DivideBy2(frame_header_.height)) /
-                        frame_header_.height;
-    *step_y = RightShiftWithRoundingSigned(
-        scale_y, kReferenceScaleShift - kScaleSubPixelBits);
-    orig_y += half_sample;
-    const int64_t base_y = static_cast<int64_t>(orig_y) * scale_y -
-                           (half_sample << kReferenceScaleShift);
-    *start_y =
-        RightShiftWithRoundingSigned(
-            base_y, kReferenceScaleShift + kSubPixelBits - kScaleSubPixelBits) +
-        rounding_offset;
-  } else {
-    *step_y = 1 << kScaleSubPixelBits;
-    *start_y = LeftShift(orig_y, 6) + rounding_offset;
-  }
-}
-
 template <typename ResidualType, bool is_dc_coefficient>
 bool Tile::ReadSignAndApplyDequantization(
     const uint16_t* const scan, int i, int q_value,
@@ -1352,7 +1306,7 @@ bool Tile::ReadSignAndApplyDequantization(
     int length = 0;
     bool golomb_length_bit = false;
     do {
-      golomb_length_bit = static_cast<bool>(reader_.ReadBit());
+      golomb_length_bit = reader_.ReadBit() != 0;
       ++length;
       if (length > 20) {
         LIBGAV1_DLOG(ERROR, "Invalid golomb_length %d", length);
@@ -1395,13 +1349,11 @@ bool Tile::ReadSignAndApplyDequantization(
   return true;
 }
 
-int Tile::ReadCoeffBaseRange(int clamped_tx_size_context, int cdf_context,
-                             int plane_type) {
+int Tile::ReadCoeffBaseRange(uint16_t* cdf) {
   int level = 0;
   for (int j = 0; j < kCoeffBaseRangeMaxIterations; ++j) {
-    const int coeff_base_range = reader_.ReadSymbol<kCoeffBaseRangeSymbolCount>(
-        symbol_decoder_context_.coeff_base_range_cdf[clamped_tx_size_context]
-                                                    [plane_type][cdf_context]);
+    const int coeff_base_range =
+        reader_.ReadSymbol<kCoeffBaseRangeSymbolCount>(cdf);
     level += coeff_base_range;
     if (coeff_base_range < (kCoeffBaseRangeSymbolCount - 1)) break;
   }
@@ -1442,6 +1394,11 @@ int Tile::ReadTransformCoefficients(const Block& block, Plane plane,
   // Clear padding to avoid bottom boundary checks when parsing quantized
   // coefficients.
   memset(residual, 0, (tx_width * tx_height + tx_padding) * residual_size_);
+  uint8_t level_buffer[(32 + kResidualPaddingVertical) * 32];
+  memset(
+      level_buffer, 0,
+      kTransformWidth[adjusted_tx_size] * kTransformHeight[adjusted_tx_size] +
+          tx_padding);
   const int clamped_tx_height = std::min(tx_height, 32);
   if (plane == kPlaneY) {
     ReadTransformType(block, x4, y4, tx_size);
@@ -1494,13 +1451,16 @@ int Tile::ReadTransformCoefficients(const Block& block, Plane plane,
     for (int i = 1; i < eob_pt - 2; ++i) {
       assert(eob_pt - i >= 3);
       assert(eob_pt <= kEobPt1024SymbolCount);
-      if (static_cast<bool>(reader_.ReadBit())) {
+      if (reader_.ReadBit() != 0) {
         eob += 1 << (eob_pt - i - 3);
       }
     }
   }
   const uint16_t* scan = kScan[tx_class][tx_size];
   const int clamped_tx_size_context = std::min(tx_size_context, 3);
+  auto coeff_base_range_cdf =
+      symbol_decoder_context_
+          .coeff_base_range_cdf[clamped_tx_size_context][plane_type];
   // Read the last coefficient.
   {
     context = GetCoeffBaseContextEob(tx_size, eob - 1);
@@ -1509,11 +1469,11 @@ int Tile::ReadTransformCoefficients(const Block& block, Plane plane,
         1 + reader_.ReadSymbol<kCoeffBaseEobSymbolCount>(
                 symbol_decoder_context_
                     .coeff_base_eob_cdf[tx_size_context][plane_type][context]);
+    level_buffer[pos] = level;
     if (level > kNumQuantizerBaseLevels) {
-      level += ReadCoeffBaseRange(
-          clamped_tx_size_context,
-          GetCoeffBaseRangeContextEob(adjusted_tx_width_log2, pos, tx_class),
-          plane_type);
+      level +=
+          ReadCoeffBaseRange(coeff_base_range_cdf[GetCoeffBaseRangeContextEob(
+              adjusted_tx_width_log2, pos, tx_class)]);
     }
     residual[pos] = level;
   }
@@ -1522,32 +1482,36 @@ int Tile::ReadTransformCoefficients(const Block& block, Plane plane,
     // Lookup used to call the right variant of ReadCoeffBase*() based on the
     // transform class.
     static constexpr void (Tile::*kGetCoeffBaseFunc[])(
-        const uint16_t* scan, PlaneType plane_type, TransformSize tx_size,
-        int clamped_tx_size_context, int adjusted_tx_width_log2, int eob,
+        const uint16_t* scan, TransformSize tx_size, int adjusted_tx_width_log2,
+        int eob,
         uint16_t coeff_base_cdf[kCoeffBaseContexts][kCoeffBaseSymbolCount + 1],
-        ResidualType* quantized_buffer) = {
-        &Tile::ReadCoeffBase2D<ResidualType>,
-        &Tile::ReadCoeffBaseHorizontal<ResidualType>,
-        &Tile::ReadCoeffBaseVertical<ResidualType>};
+        uint16_t coeff_base_range_cdf[kCoeffBaseRangeContexts]
+                                     [kCoeffBaseRangeSymbolCount + 1],
+        ResidualType* quantized_buffer,
+        uint8_t* level_buffer) = {&Tile::ReadCoeffBase2D<ResidualType>,
+                                  &Tile::ReadCoeffBaseHorizontal<ResidualType>,
+                                  &Tile::ReadCoeffBaseVertical<ResidualType>};
     (this->*kGetCoeffBaseFunc[tx_class])(
-        scan, plane_type, tx_size, clamped_tx_size_context,
-        adjusted_tx_width_log2, eob,
+        scan, tx_size, adjusted_tx_width_log2, eob,
         symbol_decoder_context_.coeff_base_cdf[tx_size_context][plane_type],
-        residual);
+        coeff_base_range_cdf, residual, level_buffer);
   }
   const int max_value = (1 << (7 + sequence_header_.color_config.bitdepth)) - 1;
-  const int current_quantizer_index = GetQIndex(
-      frame_header_.segmentation, bp.segment_id, current_quantizer_index_);
+  const int current_quantizer_index =
+      GetQIndex(frame_header_.segmentation,
+                bp.prediction_parameters->segment_id, current_quantizer_index_);
   const int dc_q_value = quantizer_.GetDcValue(plane, current_quantizer_index);
   const int ac_q_value = quantizer_.GetAcValue(plane, current_quantizer_index);
   const int shift = kQuantizationShift[tx_size];
   const uint8_t* const quantizer_matrix =
       (frame_header_.quantizer.use_matrix &&
        *tx_type < kTransformTypeIdentityIdentity &&
-       !frame_header_.segmentation.lossless[bp.segment_id] &&
+       !frame_header_.segmentation
+            .lossless[bp.prediction_parameters->segment_id] &&
        frame_header_.quantizer.matrix_level[plane] < 15)
-          ? &kQuantizerMatrix[frame_header_.quantizer.matrix_level[plane]]
-                             [plane_type][kQuantizerMatrixOffset[tx_size]]
+          ? quantizer_matrix_[frame_header_.quantizer.matrix_level[plane]]
+                             [plane_type][adjusted_tx_size]
+                                 .get()
           : nullptr;
   int coefficient_level = 0;
   int8_t dc_category = 0;
@@ -1622,15 +1586,17 @@ bool Tile::TransformBlock(const Block& block, Plane plane, int base_x,
   const bool do_decode = mode == kProcessingModeDecodeOnly ||
                          mode == kProcessingModeParseAndDecode;
   if (do_decode && !bp.is_inter) {
-    if (bp.palette_mode_info.size[GetPlaneType(plane)] > 0) {
+    if (bp.prediction_parameters->palette_mode_info.size[GetPlaneType(plane)] >
+        0) {
       CALL_BITDEPTH_FUNCTION(PalettePrediction, block, plane, start_x, start_y,
                              x, y, tx_size);
     } else {
       const PredictionMode mode =
-          (plane == kPlaneY)
-              ? bp.y_mode
-              : (bp.uv_mode == kPredictionModeChromaFromLuma ? kPredictionModeDc
-                                                             : bp.uv_mode);
+          (plane == kPlaneY) ? bp.y_mode
+                             : (bp.prediction_parameters->uv_mode ==
+                                        kPredictionModeChromaFromLuma
+                                    ? kPredictionModeDc
+                                    : bp.prediction_parameters->uv_mode);
       const int tr_row4x4 = (sub_block_row4x4 >> subsampling_y);
       const int tr_column4x4 =
           (sub_block_column4x4 >> subsampling_x) + step_x + 1;
@@ -1644,7 +1610,8 @@ bool Tile::TransformBlock(const Block& block, Plane plane, int base_x,
           block.scratch_buffer->block_decoded[plane][tr_row4x4][tr_column4x4],
           block.scratch_buffer->block_decoded[plane][bl_row4x4][bl_column4x4],
           mode, tx_size);
-      if (plane != kPlaneY && bp.uv_mode == kPredictionModeChromaFromLuma) {
+      if (plane != kPlaneY &&
+          bp.prediction_parameters->uv_mode == kPredictionModeChromaFromLuma) {
         CALL_BITDEPTH_FUNCTION(ChromaFromLumaPrediction, block, plane, start_x,
                                start_y, tx_size);
       }
@@ -1661,11 +1628,12 @@ bool Tile::TransformBlock(const Block& block, Plane plane, int base_x,
     const int sb_row_index = SuperBlockRowIndex(block.row4x4);
     const int sb_column_index = SuperBlockColumnIndex(block.column4x4);
     if (mode == kProcessingModeDecodeOnly) {
-      TransformParameterQueue& tx_params =
+      Queue<TransformParameters>& tx_params =
           *residual_buffer_threaded_[sb_row_index][sb_column_index]
                ->transform_parameters();
       ReconstructBlock(block, plane, start_x, start_y, tx_size,
-                       tx_params.Type(), tx_params.NonZeroCoeffCount());
+                       tx_params.Front().type,
+                       tx_params.Front().non_zero_coeff_count);
       tx_params.Pop();
     } else {
       TransformType tx_type;
@@ -1688,7 +1656,7 @@ bool Tile::TransformBlock(const Block& block, Plane plane, int base_x,
         assert(mode == kProcessingModeParseOnly);
         residual_buffer_threaded_[sb_row_index][sb_column_index]
             ->transform_parameters()
-            ->Push(non_zero_coeff_count, tx_type);
+            ->Push(TransformParameters(tx_type, non_zero_coeff_count));
       }
     }
   }
@@ -1772,14 +1740,16 @@ void Tile::ReconstructBlock(const Block& block, Plane plane, int start_x,
         buffer_[plane].rows(), buffer_[plane].columns() / sizeof(uint16_t),
         reinterpret_cast<uint16_t*>(&buffer_[plane][0][0]));
     Reconstruct(dsp_, tx_type, tx_size,
-                frame_header_.segmentation.lossless[block.bp->segment_id],
+                frame_header_.segmentation
+                    .lossless[block.bp->prediction_parameters->segment_id],
                 reinterpret_cast<int32_t*>(*block.residual), start_x, start_y,
                 &buffer, non_zero_coeff_count);
   } else  // NOLINT
 #endif
   {
     Reconstruct(dsp_, tx_type, tx_size,
-                frame_header_.segmentation.lossless[block.bp->segment_id],
+                frame_header_.segmentation
+                    .lossless[block.bp->prediction_parameters->segment_id],
                 reinterpret_cast<int16_t*>(*block.residual), start_x, start_y,
                 &buffer_[plane], non_zero_coeff_count);
   }
@@ -1806,12 +1776,15 @@ bool Tile::Residual(const Block& block, ProcessingMode mode) {
         // kTransformSize4x4. So we can simply use |bp.transform_size| here as
         // the Y plane's transform size (part of Section 5.11.37 in the spec).
         const TransformSize tx_size =
-            (plane == kPlaneY) ? bp.transform_size : bp.uv_transform_size;
+            (plane == kPlaneY)
+                ? inter_transform_sizes_[block.row4x4][block.column4x4]
+                : bp.uv_transform_size;
         const BlockSize plane_size =
             kPlaneResidualSize[size_chunk4x4][subsampling_x][subsampling_y];
         assert(plane_size != kBlockInvalid);
         if (bp.is_inter &&
-            !frame_header_.segmentation.lossless[bp.segment_id] &&
+            !frame_header_.segmentation
+                 .lossless[bp.prediction_parameters->segment_id] &&
             plane == kPlaneY) {
           const int row_chunk4x4 = block.row4x4 + MultiplyBy16(chunk_y);
           const int column_chunk4x4 = block.column4x4 + MultiplyBy16(chunk_x);
@@ -1918,6 +1891,7 @@ bool Tile::AssignInterMv(const Block& block, bool is_compound) {
   GetClampParameters(block, min, max);
   BlockParameters& bp = *block.bp;
   const PredictionParameters& prediction_parameters = *bp.prediction_parameters;
+  bp.mv.mv64 = 0;
   if (is_compound) {
     for (int i = 0; i < 2; ++i) {
       const PredictionMode mode = GetSinglePredictionMode(i, bp.y_mode);
@@ -1980,6 +1954,7 @@ bool Tile::AssignIntraMv(const Block& block) {
   BlockParameters& bp = *block.bp;
   const PredictionParameters& prediction_parameters = *bp.prediction_parameters;
   const MotionVector& ref_mv_0 = prediction_parameters.reference_mv(0);
+  bp.mv.mv64 = 0;
   ReadMotionVector(block, 0);
   if (ref_mv_0.mv32 == 0) {
     const MotionVector& ref_mv_1 = prediction_parameters.reference_mv(1);
@@ -2144,17 +2119,54 @@ void Tile::PopulateDeblockFilterLevel(const Block& block) {
   for (int i = 0; i < kFrameLfCount; ++i) {
     if (delta_lf_all_zero_) {
       bp.deblock_filter_level[i] = post_filter_.GetZeroDeltaDeblockFilterLevel(
-          bp.segment_id, i, bp.reference_frame[0], mode_id);
+          bp.prediction_parameters->segment_id, i, bp.reference_frame[0],
+          mode_id);
     } else {
       bp.deblock_filter_level[i] =
-          deblock_filter_levels_[bp.segment_id][i][bp.reference_frame[0]]
-                                [mode_id];
+          deblock_filter_levels_[bp.prediction_parameters->segment_id][i]
+                                [bp.reference_frame[0]][mode_id];
     }
   }
 }
 
+void Tile::PopulateCdefSkip(const Block& block) {
+  if (!post_filter_.DoCdef() || block.bp->skip ||
+      (frame_header_.cdef.bits > 0 &&
+       cdef_index_[DivideBy16(block.row4x4)][DivideBy16(block.column4x4)] ==
+           -1)) {
+    return;
+  }
+  // The rest of this function is an efficient version of the following code:
+  // for (int y = block.row4x4; y < block.row4x4 + block.height4x4; y++) {
+  //   for (int x = block.column4x4; y < block.column4x4 + block.width4x4;
+  //        x++) {
+  //     const uint8_t mask = uint8_t{1} << ((x >> 1) & 0x7);
+  //     cdef_skip_[y >> 1][x >> 4] |= mask;
+  //   }
+  // }
+
+  // For all block widths other than 32, the mask will fit in uint8_t. For
+  // block width == 32, the mask is always 0xFFFF.
+  const int bw4 =
+      std::max(DivideBy2(block.width4x4) + (block.column4x4 & 1), 1);
+  const uint8_t mask = (block.width4x4 == 32)
+                           ? 0xFF
+                           : (uint8_t{0xFF} >> (8 - bw4))
+                                 << (DivideBy2(block.column4x4) & 0x7);
+  uint8_t* cdef_skip = &cdef_skip_[block.row4x4 >> 1][block.column4x4 >> 4];
+  const int stride = cdef_skip_.columns();
+  int row = 0;
+  do {
+    *cdef_skip |= mask;
+    if (block.width4x4 == 32) {
+      *(cdef_skip + 1) = 0xFF;
+    }
+    cdef_skip += stride;
+    row += 2;
+  } while (row < block.height4x4);
+}
+
 bool Tile::ProcessBlock(int row4x4, int column4x4, BlockSize block_size,
-                        ParameterTree* const tree,
                         TileScratchBuffer* const scratch_buffer,
                         ResidualPtr* residual) {
   // Do not process the block if the starting point is beyond the visible frame.
@@ -2165,9 +2177,25 @@ bool Tile::ProcessBlock(int row4x4, int column4x4, BlockSize block_size,
       column4x4 >= frame_header_.columns4x4) {
     return true;
   }
-  BlockParameters& bp = *tree->parameters();
-  block_parameters_holder_.FillCache(row4x4, column4x4, block_size, &bp);
-  Block block(*this, block_size, row4x4, column4x4, scratch_buffer, residual);
+
+  if (split_parse_and_decode_) {
+    // Push block ordering info to the queue. DecodeBlock() will use this queue
+    // to decode the blocks in the correct order.
+    const int sb_row_index = SuperBlockRowIndex(row4x4);
+    const int sb_column_index = SuperBlockColumnIndex(column4x4);
+    residual_buffer_threaded_[sb_row_index][sb_column_index]
+        ->partition_tree_order()
+        ->Push(PartitionTreeNode(row4x4, column4x4, block_size));
+  }
+
+  BlockParameters* bp_ptr =
+      block_parameters_holder_.Get(row4x4, column4x4, block_size);
+  if (bp_ptr == nullptr) {
+    LIBGAV1_DLOG(ERROR, "Failed to get BlockParameters.");
+    return false;
+  }
+  BlockParameters& bp = *bp_ptr;
+  Block block(this, block_size, row4x4, column4x4, scratch_buffer, residual);
   bp.size = block_size;
   bp.prediction_parameters =
       split_parse_and_decode_ ? std::unique_ptr<PredictionParameters>(
@@ -2175,17 +2203,16 @@ bool Tile::ProcessBlock(int row4x4, int column4x4, BlockSize block_size,
                               : std::move(prediction_parameters_);
   if (bp.prediction_parameters == nullptr) return false;
   if (!DecodeModeInfo(block)) return false;
-  bp.is_global_mv_block = (bp.y_mode == kPredictionModeGlobalMv ||
-                           bp.y_mode == kPredictionModeGlobalGlobalMv) &&
-                          !IsBlockDimension4(bp.size);
   PopulateDeblockFilterLevel(block);
   if (!ReadPaletteTokens(block)) return false;
   DecodeTransformSize(block);
   // Part of Section 5.11.37 in the spec (implemented as a simple lookup).
-  bp.uv_transform_size = frame_header_.segmentation.lossless[bp.segment_id]
-                             ? kTransformSize4x4
-                             : kUVTransformSize[block.residual_size[kPlaneU]];
+  bp.uv_transform_size =
+      frame_header_.segmentation.lossless[bp.prediction_parameters->segment_id]
+          ? kTransformSize4x4
+          : kUVTransformSize[block.residual_size[kPlaneU]];
   if (bp.skip) ResetEntropyContext(block);
+  PopulateCdefSkip(block);
   if (split_parse_and_decode_) {
     if (!Residual(block, kProcessingModeParseOnly)) return false;
   } else {
@@ -2194,22 +2221,24 @@ bool Tile::ProcessBlock(int row4x4, int column4x4, BlockSize block_size,
       return false;
     }
   }
-  // If frame_header_.segmentation.enabled is false, bp.segment_id is 0 for all
-  // blocks. We don't need to call save bp.segment_id in the current frame
-  // because the current frame's segmentation map will be cleared to all 0s.
+  // If frame_header_.segmentation.enabled is false,
+  // bp.prediction_parameters->segment_id is 0 for all blocks. We don't need to
+  // call save bp.prediction_parameters->segment_id in the current frame because
+  // the current frame's segmentation map will be cleared to all 0s.
   //
   // If frame_header_.segmentation.enabled is true and
   // frame_header_.segmentation.update_map is false, we will copy the previous
   // frame's segmentation map to the current frame. So we don't need to call
-  // save bp.segment_id in the current frame.
+  // save bp.prediction_parameters->segment_id in the current frame.
   if (frame_header_.segmentation.enabled &&
       frame_header_.segmentation.update_map) {
     const int x_limit = std::min(frame_header_.columns4x4 - column4x4,
                                  static_cast<int>(block.width4x4));
     const int y_limit = std::min(frame_header_.rows4x4 - row4x4,
                                  static_cast<int>(block.height4x4));
-    current_frame_.segmentation_map()->FillBlock(row4x4, column4x4, x_limit,
-                                                 y_limit, bp.segment_id);
+    current_frame_.segmentation_map()->FillBlock(
+        row4x4, column4x4, x_limit, y_limit,
+        bp.prediction_parameters->segment_id);
   }
   StoreMotionFieldMvsIntoCurrentFrame(block);
   if (!split_parse_and_decode_) {
@@ -2218,17 +2247,14 @@ bool Tile::ProcessBlock(int row4x4, int column4x4, BlockSize block_size,
   return true;
 }
 
-bool Tile::DecodeBlock(ParameterTree* const tree,
+bool Tile::DecodeBlock(int row4x4, int column4x4, BlockSize block_size,
                        TileScratchBuffer* const scratch_buffer,
                        ResidualPtr* residual) {
-  const int row4x4 = tree->row4x4();
-  const int column4x4 = tree->column4x4();
   if (row4x4 >= frame_header_.rows4x4 ||
       column4x4 >= frame_header_.columns4x4) {
     return true;
   }
-  const BlockSize block_size = tree->block_size();
-  Block block(*this, block_size, row4x4, column4x4, scratch_buffer, residual);
+  Block block(this, block_size, row4x4, column4x4, scratch_buffer, residual);
   if (!ComputePrediction(block) ||
       !Residual(block, kProcessingModeDecodeOnly)) {
     return false;
@@ -2238,27 +2264,22 @@ bool Tile::DecodeBlock(ParameterTree* const tree,
 }
 
 bool Tile::ProcessPartition(int row4x4_start, int column4x4_start,
-                            ParameterTree* const root,
                             TileScratchBuffer* const scratch_buffer,
                             ResidualPtr* residual) {
-  Stack<ParameterTree*, kDfsStackSize> stack;
+  Stack<PartitionTreeNode, kDfsStackSize> stack;
 
   // Set up the first iteration.
-  ParameterTree* node = root;
-  int row4x4 = row4x4_start;
-  int column4x4 = column4x4_start;
-  BlockSize block_size = SuperBlockSize();
+  stack.Push(
+      PartitionTreeNode(row4x4_start, column4x4_start, SuperBlockSize()));
 
   // DFS loop. If it sees a terminal node (leaf node), ProcessBlock is invoked.
   // Otherwise, the children are pushed into the stack for future processing.
   do {
-    if (!stack.Empty()) {
-      // Set up subsequent iterations.
-      node = stack.Pop();
-      row4x4 = node->row4x4();
-      column4x4 = node->column4x4();
-      block_size = node->block_size();
-    }
+    PartitionTreeNode node = stack.Pop();
+    int row4x4 = node.row4x4;
+    int column4x4 = node.column4x4;
+    BlockSize block_size = node.block_size;
+
     if (row4x4 >= frame_header_.rows4x4 ||
         column4x4 >= frame_header_.columns4x4) {
       continue;
@@ -2294,13 +2315,13 @@ bool Tile::ProcessPartition(int row4x4_start, int column4x4_start,
           sequence_header_.color_config.subsampling_y);
       return false;
     }
-    if (!node->SetPartitionType(partition)) {
-      LIBGAV1_DLOG(ERROR, "node->SetPartitionType() failed.");
-      return false;
-    }
+
+    const int quarter_block4x4 = half_block4x4 >> 1;
+    const BlockSize split_size = kSubSize[kPartitionSplit][block_size];
+    assert(partition == kPartitionNone || sub_size != kBlockInvalid);
     switch (partition) {
       case kPartitionNone:
-        if (!ProcessBlock(row4x4, column4x4, sub_size, node, scratch_buffer,
+        if (!ProcessBlock(row4x4, column4x4, sub_size, scratch_buffer,
                           residual)) {
           return false;
         }
@@ -2308,28 +2329,82 @@ bool Tile::ProcessPartition(int row4x4_start, int column4x4_start,
       case kPartitionSplit:
         // The children must be added in reverse order since a stack is being
         // used.
-        for (int i = 3; i >= 0; --i) {
-          ParameterTree* const child = node->children(i);
-          assert(child != nullptr);
-          stack.Push(child);
-        }
+        stack.Push(PartitionTreeNode(row4x4 + half_block4x4,
+                                     column4x4 + half_block4x4, sub_size));
+        stack.Push(
+            PartitionTreeNode(row4x4 + half_block4x4, column4x4, sub_size));
+        stack.Push(
+            PartitionTreeNode(row4x4, column4x4 + half_block4x4, sub_size));
+        stack.Push(PartitionTreeNode(row4x4, column4x4, sub_size));
         break;
       case kPartitionHorizontal:
+        if (!ProcessBlock(row4x4, column4x4, sub_size, scratch_buffer,
+                          residual) ||
+            !ProcessBlock(row4x4 + half_block4x4, column4x4, sub_size,
+                          scratch_buffer, residual)) {
+          return false;
+        }
+        break;
       case kPartitionVertical:
+        if (!ProcessBlock(row4x4, column4x4, sub_size, scratch_buffer,
+                          residual) ||
+            !ProcessBlock(row4x4, column4x4 + half_block4x4, sub_size,
+                          scratch_buffer, residual)) {
+          return false;
+        }
+        break;
       case kPartitionHorizontalWithTopSplit:
+        if (!ProcessBlock(row4x4, column4x4, split_size, scratch_buffer,
+                          residual) ||
+            !ProcessBlock(row4x4, column4x4 + half_block4x4, split_size,
+                          scratch_buffer, residual) ||
+            !ProcessBlock(row4x4 + half_block4x4, column4x4, sub_size,
+                          scratch_buffer, residual)) {
+          return false;
+        }
+        break;
       case kPartitionHorizontalWithBottomSplit:
+        if (!ProcessBlock(row4x4, column4x4, sub_size, scratch_buffer,
+                          residual) ||
+            !ProcessBlock(row4x4 + half_block4x4, column4x4, split_size,
+                          scratch_buffer, residual) ||
+            !ProcessBlock(row4x4 + half_block4x4, column4x4 + half_block4x4,
+                          split_size, scratch_buffer, residual)) {
+          return false;
+        }
+        break;
       case kPartitionVerticalWithLeftSplit:
+        if (!ProcessBlock(row4x4, column4x4, split_size, scratch_buffer,
+                          residual) ||
+            !ProcessBlock(row4x4 + half_block4x4, column4x4, split_size,
+                          scratch_buffer, residual) ||
+            !ProcessBlock(row4x4, column4x4 + half_block4x4, sub_size,
+                          scratch_buffer, residual)) {
+          return false;
+        }
+        break;
       case kPartitionVerticalWithRightSplit:
+        if (!ProcessBlock(row4x4, column4x4, sub_size, scratch_buffer,
+                          residual) ||
+            !ProcessBlock(row4x4, column4x4 + half_block4x4, split_size,
+                          scratch_buffer, residual) ||
+            !ProcessBlock(row4x4 + half_block4x4, column4x4 + half_block4x4,
+                          split_size, scratch_buffer, residual)) {
+          return false;
+        }
+        break;
       case kPartitionHorizontal4:
+        for (int i = 0; i < 4; ++i) {
+          if (!ProcessBlock(row4x4 + i * quarter_block4x4, column4x4, sub_size,
+                            scratch_buffer, residual)) {
+            return false;
+          }
+        }
+        break;
       case kPartitionVertical4:
         for (int i = 0; i < 4; ++i) {
-          ParameterTree* const child = node->children(i);
-          // Once a null child is seen, all the subsequent children will also be
-          // null.
-          if (child == nullptr) break;
-          if (!ProcessBlock(child->row4x4(), child->column4x4(),
-                            child->block_size(), child, scratch_buffer,
-                            residual)) {
+          if (!ProcessBlock(row4x4, column4x4 + i * quarter_block4x4, sub_size,
+                            scratch_buffer, residual)) {
             return false;
           }
         }
@@ -2353,7 +2428,7 @@ void Tile::ResetLoopRestorationParams() {
 }
 
 void Tile::ResetCdef(const int row4x4, const int column4x4) {
-  if (!sequence_header_.enable_cdef) return;
+  if (frame_header_.cdef.bits == 0) return;
   const int row = DivideBy16(row4x4);
   const int column = DivideBy16(column4x4);
   cdef_index_[row][column] = -1;
@@ -2402,7 +2477,7 @@ void Tile::ClearBlockDecoded(TileScratchBuffer* const scratch_buffer,
   }
 }
 
-bool Tile::ProcessSuperBlock(int row4x4, int column4x4, int block_width4x4,
+bool Tile::ProcessSuperBlock(int row4x4, int column4x4,
                              TileScratchBuffer* const scratch_buffer,
                              ProcessingMode mode) {
   const bool parsing =
@@ -2420,13 +2495,10 @@ bool Tile::ProcessSuperBlock(int row4x4, int column4x4, int block_width4x4,
   if (parsing) {
     ReadLoopRestorationCoefficients(row4x4, column4x4, block_size);
   }
-  const int row = row4x4 / block_width4x4;
-  const int column = column4x4 / block_width4x4;
   if (parsing && decoding) {
     uint8_t* residual_buffer = residual_buffer_.get();
-    if (!ProcessPartition(row4x4, column4x4,
-                          block_parameters_holder_.Tree(row, column),
-                          scratch_buffer, &residual_buffer)) {
+    if (!ProcessPartition(row4x4, column4x4, scratch_buffer,
+                          &residual_buffer)) {
       LIBGAV1_DLOG(ERROR, "Error decoding partition row: %d column: %d", row4x4,
                    column4x4);
       return false;
@@ -2444,18 +2516,14 @@ bool Tile::ProcessSuperBlock(int row4x4, int column4x4, int block_width4x4,
     }
     uint8_t* residual_buffer =
         residual_buffer_threaded_[sb_row_index][sb_column_index]->buffer();
-    if (!ProcessPartition(row4x4, column4x4,
-                          block_parameters_holder_.Tree(row, column),
-                          scratch_buffer, &residual_buffer)) {
+    if (!ProcessPartition(row4x4, column4x4, scratch_buffer,
+                          &residual_buffer)) {
       LIBGAV1_DLOG(ERROR, "Error parsing partition row: %d column: %d", row4x4,
                    column4x4);
       return false;
     }
   } else {
-    uint8_t* residual_buffer =
-        residual_buffer_threaded_[sb_row_index][sb_column_index]->buffer();
-    if (!DecodeSuperBlock(block_parameters_holder_.Tree(row, column),
-                          scratch_buffer, &residual_buffer)) {
+    if (!DecodeSuperBlock(sb_row_index, sb_column_index, scratch_buffer)) {
       LIBGAV1_DLOG(ERROR, "Error decoding superblock row: %d column: %d",
                    row4x4, column4x4);
       return false;
@@ -2466,26 +2534,23 @@ bool Tile::ProcessSuperBlock(int row4x4, int column4x4, int block_width4x4,
   return true;
 }
 
-bool Tile::DecodeSuperBlock(ParameterTree* const tree,
-                            TileScratchBuffer* const scratch_buffer,
-                            ResidualPtr* residual) {
-  Stack<ParameterTree*, kDfsStackSize> stack;
-  stack.Push(tree);
-  do {
-    ParameterTree* const node = stack.Pop();
-    if (node->partition() != kPartitionNone) {
-      for (int i = 3; i >= 0; --i) {
-        if (node->children(i) == nullptr) continue;
-        stack.Push(node->children(i));
-      }
-      continue;
-    }
-    if (!DecodeBlock(node, scratch_buffer, residual)) {
+bool Tile::DecodeSuperBlock(int sb_row_index, int sb_column_index,
+                            TileScratchBuffer* const scratch_buffer) {
+  uint8_t* residual_buffer =
+      residual_buffer_threaded_[sb_row_index][sb_column_index]->buffer();
+  Queue<PartitionTreeNode>& partition_tree_order =
+      *residual_buffer_threaded_[sb_row_index][sb_column_index]
+           ->partition_tree_order();
+  while (!partition_tree_order.Empty()) {
+    PartitionTreeNode block = partition_tree_order.Front();
+    if (!DecodeBlock(block.row4x4, block.column4x4, block.block_size,
+                     scratch_buffer, &residual_buffer)) {
       LIBGAV1_DLOG(ERROR, "Error decoding block row: %d column: %d",
-                   node->row4x4(), node->column4x4());
+                   block.row4x4, block.column4x4);
       return false;
     }
-  } while (!stack.Empty());
+    partition_tree_order.Pop();
+  }
   return true;
 }
 
@@ -2543,8 +2608,8 @@ void Tile::StoreMotionFieldMvsIntoCurrentFrame(const Block& block) {
     // Must make a local copy so that StoreMotionFieldMvs() knows there is no
     // overlap between load and store.
     const MotionVector mv_to_store = bp.mv.mv[i];
-    const int mv_row = std::abs(mv_to_store.mv[MotionVector::kRow]);
-    const int mv_column = std::abs(mv_to_store.mv[MotionVector::kColumn]);
+    const int mv_row = std::abs(mv_to_store.mv[0]);
+    const int mv_column = std::abs(mv_to_store.mv[1]);
     if (reference_frame_to_store > kReferenceFrameIntra &&
         // kRefMvsLimit equals 0x07FF, so we can first bitwise OR the two
         // absolute values and then compare with kRefMvsLimit to save a branch.

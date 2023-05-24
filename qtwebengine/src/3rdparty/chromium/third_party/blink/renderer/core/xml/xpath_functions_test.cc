@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,12 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/testing/null_execution_context.h"
 #include "third_party/blink/renderer/core/xml/xpath_expression_node.h"  // EvaluationContext
 #include "third_party/blink/renderer/core/xml/xpath_predicate.h"  // Number, StringExpression
 #include "third_party/blink/renderer/core/xml/xpath_value.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"  // HeapVector, Member, etc.
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"  // HeapVector, Member, etc.
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 
 #include <cmath>
@@ -25,13 +26,15 @@ class XPathContext {
 
  public:
   XPathContext()
-      : document_(Document::CreateForTest()),
+      : document_(
+            Document::CreateForTest(execution_context_.GetExecutionContext())),
         context_(*document_, had_type_conversion_error_) {}
 
   xpath::EvaluationContext& Context() { return context_; }
   Document& GetDocument() { return *document_; }
 
  private:
+  ScopedNullExecutionContext execution_context_;
   Document* const document_;
   bool had_type_conversion_error_ = false;
   xpath::EvaluationContext context_;

@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/xlogypolardomain_p.h>
 #include <private/qabstractaxis_p.h>
@@ -33,7 +7,7 @@
 #include <QtCore/QtMath>
 #include <cmath>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 XLogYPolarDomain::XLogYPolarDomain(QObject *parent)
     : PolarDomain(parent),
@@ -66,8 +40,8 @@ void XLogYPolarDomain::setRange(qreal minX, qreal maxX, qreal minY, qreal maxY)
         m_minY = minY;
         m_maxY = maxY;
         axisYChanged = true;
-        qreal logMinY = std::log10(m_minY) / std::log10(m_logBaseY);
-        qreal logMaxY = std::log10(m_maxY) / std::log10(m_logBaseY);
+        qreal logMinY = qLn(m_minY) / qLn(m_logBaseY);
+        qreal logMaxY = qLn(m_maxY) / qLn(m_logBaseY);
         m_logInnerY = logMinY < logMaxY ? logMinY : logMaxY;
         m_logOuterY = logMinY > logMaxY ? logMinY : logMaxY;
         if (!m_signalsBlocked)
@@ -156,7 +130,7 @@ qreal XLogYPolarDomain::toRadialCoordinate(qreal value, bool &ok) const
     } else {
         ok =  true;
         const qreal tickSpan = m_radius / qAbs(m_logOuterY - m_logInnerY);
-        const qreal logValue = std::log10(value) / std::log10(m_logBaseY);
+        const qreal logValue = qLn(value) / qLn(m_logBaseY);
         const qreal valueDelta = logValue - m_logInnerY;
 
         retVal = valueDelta * tickSpan;
@@ -208,8 +182,8 @@ bool XLogYPolarDomain::detachAxis(QAbstractAxis *axis)
 void XLogYPolarDomain::handleVerticalAxisBaseChanged(qreal baseY)
 {
     m_logBaseY = baseY;
-    qreal logMinY = std::log10(m_minY) / std::log10(m_logBaseY);
-    qreal logMaxY = std::log10(m_maxY) / std::log10(m_logBaseY);
+    qreal logMinY = qLn(m_minY) / qLn(m_logBaseY);
+    qreal logMaxY = qLn(m_maxY) / qLn(m_logBaseY);
     m_logInnerY = logMinY < logMaxY ? logMinY : logMaxY;
     m_logOuterY = logMinY > logMaxY ? logMinY : logMaxY;
     emit updated();
@@ -235,13 +209,13 @@ bool Q_AUTOTEST_EXPORT operator!= (const XLogYPolarDomain &domain1, const XLogYP
 QDebug Q_AUTOTEST_EXPORT operator<<(QDebug dbg, const XLogYPolarDomain &domain)
 {
 #ifdef QT_NO_TEXTSTREAM
-    Q_UNUSED(domain)
+    Q_UNUSED(domain);
 #else
     dbg.nospace() << "AbstractDomain(" << domain.m_minX << ',' << domain.m_maxX << ',' << domain.m_minY << ',' << domain.m_maxY << ')' << domain.m_size;
 #endif
     return dbg.maybeSpace();
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_xlogypolardomain_p.cpp"

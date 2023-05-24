@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QHEIGHTMAPSURFACEDATAPROXY_H
 #define QHEIGHTMAPSURFACEDATAPROXY_H
@@ -34,11 +8,11 @@
 #include <QtGui/QImage>
 #include <QtCore/QString>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 class QHeightMapSurfaceDataProxyPrivate;
 
-class QT_DATAVISUALIZATION_EXPORT QHeightMapSurfaceDataProxy : public QSurfaceDataProxy
+class Q_DATAVISUALIZATION_EXPORT QHeightMapSurfaceDataProxy : public QSurfaceDataProxy
 {
     Q_OBJECT
 
@@ -48,6 +22,9 @@ class QT_DATAVISUALIZATION_EXPORT QHeightMapSurfaceDataProxy : public QSurfaceDa
     Q_PROPERTY(float maxXValue READ maxXValue WRITE setMaxXValue NOTIFY maxXValueChanged)
     Q_PROPERTY(float minZValue READ minZValue WRITE setMinZValue NOTIFY minZValueChanged)
     Q_PROPERTY(float maxZValue READ maxZValue WRITE setMaxZValue NOTIFY maxZValueChanged)
+    Q_PROPERTY(float minYValue READ minYValue WRITE setMinYValue NOTIFY minYValueChanged REVISION(6, 3))
+    Q_PROPERTY(float maxYValue READ maxYValue WRITE setMaxYValue NOTIFY maxYValueChanged REVISION(6, 3))
+    Q_PROPERTY(bool autoScaleY READ autoScaleY WRITE setAutoScaleY NOTIFY autoScaleYChanged REVISION(6, 3))
 
 public:
     explicit QHeightMapSurfaceDataProxy(QObject *parent = nullptr);
@@ -69,6 +46,12 @@ public:
     float minZValue() const;
     void setMaxZValue(float max);
     float maxZValue() const;
+    void setMinYValue(float min);
+    float minYValue() const;
+    void setMaxYValue(float max);
+    float maxYValue() const;
+    void setAutoScaleY(bool enabled);
+    bool autoScaleY() const;
 
 Q_SIGNALS:
     void heightMapChanged(const QImage &image);
@@ -77,6 +60,9 @@ Q_SIGNALS:
     void maxXValueChanged(float value);
     void minZValueChanged(float value);
     void maxZValueChanged(float value);
+    Q_REVISION(6, 3) void minYValueChanged(float value);
+    Q_REVISION(6, 3) void maxYValueChanged(float value);
+    Q_REVISION(6, 3) void autoScaleYChanged(bool enabled);
 
 protected:
     explicit QHeightMapSurfaceDataProxy(QHeightMapSurfaceDataProxyPrivate *d, QObject *parent = nullptr);
@@ -89,6 +75,6 @@ private:
     friend class Surface3DController;
 };
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE
 
 #endif

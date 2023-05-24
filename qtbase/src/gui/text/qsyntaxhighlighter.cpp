@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsyntaxhighlighter.h"
 
@@ -87,7 +51,7 @@ public:
     }
 
     void applyFormatChanges();
-    QVector<QTextCharFormat> formatChanges;
+    QList<QTextCharFormat> formatChanges;
     QTextBlock currentBlock;
     bool rehighlightPending;
     bool inReformatBlocks;
@@ -99,44 +63,40 @@ void QSyntaxHighlighterPrivate::applyFormatChanges()
 
     QTextLayout *layout = currentBlock.layout();
 
-    QVector<QTextLayout::FormatRange> ranges = layout->formats();
+    QList<QTextLayout::FormatRange> ranges = layout->formats();
 
     const int preeditAreaStart = layout->preeditAreaPosition();
-    const int preeditAreaLength = layout->preeditAreaText().length();
+    const int preeditAreaLength = layout->preeditAreaText().size();
 
     if (preeditAreaLength != 0) {
         auto isOutsidePreeditArea = [=](const QTextLayout::FormatRange &range) {
             return range.start < preeditAreaStart
                     || range.start + range.length > preeditAreaStart + preeditAreaLength;
         };
-        const auto it = std::remove_if(ranges.begin(), ranges.end(),
-                                       isOutsidePreeditArea);
-        if (it != ranges.end()) {
-            ranges.erase(it, ranges.end());
+        if (ranges.removeIf(isOutsidePreeditArea) > 0)
             formatsChanged = true;
-        }
     } else if (!ranges.isEmpty()) {
         ranges.clear();
         formatsChanged = true;
     }
 
     int i = 0;
-    while (i < formatChanges.count()) {
+    while (i < formatChanges.size()) {
         QTextLayout::FormatRange r;
 
-        while (i < formatChanges.count() && formatChanges.at(i) == r.format)
+        while (i < formatChanges.size() && formatChanges.at(i) == r.format)
             ++i;
 
-        if (i == formatChanges.count())
+        if (i == formatChanges.size())
             break;
 
         r.start = i;
         r.format = formatChanges.at(i);
 
-        while (i < formatChanges.count() && formatChanges.at(i) == r.format)
+        while (i < formatChanges.size() && formatChanges.at(i) == r.format)
             ++i;
 
-        Q_ASSERT(i <= formatChanges.count());
+        Q_ASSERT(i <= formatChanges.size());
         r.length = i - r.start;
 
         if (preeditAreaLength != 0) {
@@ -173,7 +133,7 @@ void QSyntaxHighlighterPrivate::reformatBlocks(int from, int charsRemoved, int c
     if (lastBlock.isValid())
         endPosition = lastBlock.position() + lastBlock.length();
     else
-        endPosition = doc->docHandle()->length();
+        endPosition = QTextDocumentPrivate::get(doc)->length();
 
     bool forceHighlightOfNextBlock = false;
 
@@ -259,7 +219,7 @@ void QSyntaxHighlighterPrivate::reformatBlock(const QTextBlock &block)
     an int value. If no state is set, the returned value is -1. You
     can designate any other value to identify any given state using
     the setCurrentBlockState() function. Once the state is set the
-    QTextBlock keeps that value until it is set set again or until the
+    QTextBlock keeps that value until it is set again or until the
     corresponding paragraph of text is deleted.
 
     For example, if you're writing a simple C++ syntax highlighter,
@@ -443,10 +403,10 @@ void QSyntaxHighlighter::rehighlightBlock(const QTextBlock &block)
 void QSyntaxHighlighter::setFormat(int start, int count, const QTextCharFormat &format)
 {
     Q_D(QSyntaxHighlighter);
-    if (start < 0 || start >= d->formatChanges.count())
+    if (start < 0 || start >= d->formatChanges.size())
         return;
 
-    const int end = qMin(start + count, d->formatChanges.count());
+    const int end = qMin(start + count, d->formatChanges.size());
     for (int i = start; i < end; ++i)
         d->formatChanges[i] = format;
 }
@@ -496,7 +456,7 @@ void QSyntaxHighlighter::setFormat(int start, int count, const QFont &font)
 QTextCharFormat QSyntaxHighlighter::format(int pos) const
 {
     Q_D(const QSyntaxHighlighter);
-    if (pos < 0 || pos >= d->formatChanges.count())
+    if (pos < 0 || pos >= d->formatChanges.size())
         return QTextCharFormat();
     return d->formatChanges.at(pos);
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,7 @@
 #include "base/mac/foundation_util.h"
 #include "base/strings/sys_string_conversions.h"
 
-namespace base {
-namespace mac {
+namespace base::mac {
 
 // NSBundle isn't threadsafe, all functions in this file must be called on the
 // main thread.
@@ -17,34 +16,39 @@ static NSBundle* g_override_framework_bundle = nil;
 static NSBundle* g_override_outer_bundle = nil;
 
 NSBundle* MainBundle() {
-  return [NSBundle mainBundle];
+  return NSBundle.mainBundle;
+}
+
+NSURL* MainBundleURL() {
+  return MainBundle().bundleURL;
 }
 
 FilePath MainBundlePath() {
-  NSBundle* bundle = MainBundle();
-  return NSStringToFilePath([bundle bundlePath]);
+  return NSStringToFilePath(MainBundle().bundlePath);
 }
 
 NSBundle* OuterBundle() {
   if (g_override_outer_bundle)
     return g_override_outer_bundle;
-  return [NSBundle mainBundle];
+  return NSBundle.mainBundle;
+}
+
+NSURL* OuterBundleURL() {
+  return OuterBundle().bundleURL;
 }
 
 FilePath OuterBundlePath() {
-  NSBundle* bundle = OuterBundle();
-  return NSStringToFilePath([bundle bundlePath]);
+  return NSStringToFilePath(OuterBundle().bundlePath);
 }
 
 NSBundle* FrameworkBundle() {
   if (g_override_framework_bundle)
     return g_override_framework_bundle;
-  return [NSBundle mainBundle];
+  return NSBundle.mainBundle;
 }
 
 FilePath FrameworkBundlePath() {
-  NSBundle* bundle = FrameworkBundle();
-  return NSStringToFilePath([bundle bundlePath]);
+  return NSStringToFilePath(FrameworkBundle().bundlePath);
 }
 
 static void AssignOverrideBundle(NSBundle* new_bundle,
@@ -79,5 +83,4 @@ void SetOverrideFrameworkBundlePath(const FilePath& file_path) {
   AssignOverridePath(file_path, &g_override_framework_bundle);
 }
 
-}  // namespace mac
-}  // namespace base
+}  // namespace base::mac

@@ -1,11 +1,12 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_SEARCH_ENGINES_TEMPLATE_URL_SERVICE_CLIENT_H_
 #define COMPONENTS_SEARCH_ENGINES_TEMPLATE_URL_SERVICE_CLIENT_H_
 
-#include "base/strings/string16.h"
+#include <string>
+
 #include "components/search_engines/template_url_id.h"
 
 class GURL;
@@ -31,7 +32,7 @@ class TemplateURLServiceClient {
   // Sets the search terms for the specified url and keyword.
   virtual void SetKeywordSearchTermsForURL(const GURL& url,
                                            TemplateURLID id,
-                                           const base::string16& term) = 0;
+                                           const std::u16string& term) = 0;
 
   // Adds the given URL to history as a keyword generated visit.
   virtual void AddKeywordGeneratedVisit(const GURL& url) = 0;

@@ -1,11 +1,13 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/fetch/body_stream_buffer.h"
 
 #include <memory>
+
 #include "base/auto_reset.h"
+#include "base/numerics/safe_conversions.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/fetch/body.h"
 #include "third_party/blink/renderer/core/fetch/bytes_consumer_tee.h"
@@ -20,11 +22,10 @@
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/bindings/v8_throw_exception.h"
 #include "third_party/blink/renderer/platform/blob/blob_data.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/loader/fetch/script_cached_metadata_handler.h"
 #include "third_party/blink/renderer/platform/network/encoded_form_data.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
-#include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
 
 namespace blink {
 
@@ -39,6 +40,8 @@ class BodyStreamBuffer::LoaderClient final
       : ExecutionContextLifecycleObserver(execution_context),
         buffer_(buffer),
         client_(client) {}
+  LoaderClient(const LoaderClient&) = delete;
+  LoaderClient& operator=(const LoaderClient&) = delete;
 
   void DidFetchDataLoadedBlobHandle(
       scoped_refptr<BlobDataHandle> blob_data_handle) override {
@@ -95,7 +98,6 @@ class BodyStreamBuffer::LoaderClient final
 
   Member<BodyStreamBuffer> buffer_;
   Member<FetchDataLoader::Client> client_;
-  DISALLOW_COPY_AND_ASSIGN(LoaderClient);
 };
 
 // Use a Create() method to split construction from initialisation.
@@ -107,22 +109,27 @@ BodyStreamBuffer* BodyStreamBuffer::Create(
     ScriptState* script_state,
     BytesConsumer* consumer,
     AbortSignal* signal,
+    ScriptCachedMetadataHandler* cached_metadata_handler,
     scoped_refptr<BlobDataHandle> side_data_blob) {
   auto* buffer = MakeGarbageCollected<BodyStreamBuffer>(
-      PassKey(), script_state, consumer, signal, std::move(side_data_blob));
+      PassKey(), script_state, consumer, signal, cached_metadata_handler,
+      std::move(side_data_blob));
   buffer->Init();
   return buffer;
 }
 
-BodyStreamBuffer::BodyStreamBuffer(PassKey,
-                                   ScriptState* script_state,
-                                   BytesConsumer* consumer,
-                                   AbortSignal* signal,
-                                   scoped_refptr<BlobDataHandle> side_data_blob)
+BodyStreamBuffer::BodyStreamBuffer(
+    PassKey,
+    ScriptState* script_state,
+    BytesConsumer* consumer,
+    AbortSignal* signal,
+    ScriptCachedMetadataHandler* cached_metadata_handler,
+    scoped_refptr<BlobDataHandle> side_data_blob)
     : UnderlyingSourceBase(script_state),
       script_state_(script_state),
       consumer_(consumer),
       signal_(signal),
+      cached_metadata_handler_(cached_metadata_handler),
       side_data_blob_(std::move(side_data_blob)),
       made_from_readable_stream_(false) {}
 
@@ -146,20 +153,23 @@ void BodyStreamBuffer::Init() {
     if (signal_->aborted()) {
       Abort();
     } else {
-      signal_->AddAlgorithm(
-          WTF::Bind(&BodyStreamBuffer::Abort, WrapWeakPersistent(this)));
+      stream_buffer_abort_handle_ = signal_->AddAlgorithm(
+          WTF::BindOnce(&BodyStreamBuffer::Abort, WrapWeakPersistent(this)));
     }
   }
   OnStateChange();
 }
 
-BodyStreamBuffer::BodyStreamBuffer(ScriptState* script_state,
-                                   ReadableStream* stream,
-                                   scoped_refptr<BlobDataHandle> side_data_blob)
+BodyStreamBuffer::BodyStreamBuffer(
+    ScriptState* script_state,
+    ReadableStream* stream,
+    ScriptCachedMetadataHandler* cached_metadata_handler,
+    scoped_refptr<BlobDataHandle> side_data_blob)
     : UnderlyingSourceBase(script_state),
       script_state_(script_state),
       stream_(stream),
       signal_(nullptr),
+      cached_metadata_handler_(cached_metadata_handler),
       side_data_blob_(std::move(side_data_blob)),
       made_from_readable_stream_(true) {
   DCHECK(stream_);
@@ -204,33 +214,36 @@ scoped_refptr<EncodedFormData> BodyStreamBuffer::DrainAsFormData() {
 void BodyStreamBuffer::DrainAsChunkedDataPipeGetter(
     ScriptState* script_state,
     mojo::PendingReceiver<network::mojom::blink::ChunkedDataPipeGetter>
-        pending_receiver) {
+        pending_receiver,
+    BytesUploader::Client* client) {
   DCHECK(!IsStreamLocked());
   auto* consumer =
       MakeGarbageCollected<ReadableStreamBytesConsumer>(script_state, stream_);
+  ExecutionContext* execution_context = ExecutionContext::From(script_state);
   stream_uploader_ = MakeGarbageCollected<BytesUploader>(
-      consumer, std::move(pending_receiver),
-      ExecutionContext::From(script_state)
-          ->GetTaskRunner(TaskType::kNetworking));
+      execution_context, consumer, std::move(pending_receiver),
+      execution_context->GetTaskRunner(TaskType::kNetworking), client);
 }
 
 void BodyStreamBuffer::StartLoading(FetchDataLoader* loader,
                                     FetchDataLoader::Client* client,
                                     ExceptionState& exception_state) {
   DCHECK(!loader_);
+  DCHECK(!keep_alive_);
   DCHECK(script_state_->ContextIsValid());
-  loader_ = loader;
   if (signal_) {
     if (signal_->aborted()) {
       client->Abort();
       return;
     }
-    signal_->AddAlgorithm(
-        WTF::Bind(&FetchDataLoader::Client::Abort, WrapWeakPersistent(client)));
+    loader_client_abort_handle_ = signal_->AddAlgorithm(WTF::BindOnce(
+        &FetchDataLoader::Client::Abort, WrapWeakPersistent(client)));
   }
+  loader_ = loader;
   auto* handle = ReleaseHandle(exception_state);
   if (exception_state.HadException())
     return;
+  keep_alive_ = this;
   loader->Start(handle,
                 MakeGarbageCollected<LoaderClient>(
                     ExecutionContext::From(script_state_), this, client));
@@ -243,6 +256,7 @@ void BodyStreamBuffer::Tee(BodyStreamBuffer** branch1,
   DCHECK(!IsStreamDisturbed());
   *branch1 = nullptr;
   *branch2 = nullptr;
+  auto* cached_metadata_handler = cached_metadata_handler_.Get();
   scoped_refptr<BlobDataHandle> side_data_blob = TakeSideDataBlob();
 
   if (made_from_readable_stream_) {
@@ -263,10 +277,10 @@ void BodyStreamBuffer::Tee(BodyStreamBuffer** branch1,
       return;
     }
 
-    *branch1 = MakeGarbageCollected<BodyStreamBuffer>(script_state_, stream1,
-                                                      side_data_blob);
-    *branch2 = MakeGarbageCollected<BodyStreamBuffer>(script_state_, stream2,
-                                                      side_data_blob);
+    *branch1 = MakeGarbageCollected<BodyStreamBuffer>(
+        script_state_, stream1, cached_metadata_handler, side_data_blob);
+    *branch2 = MakeGarbageCollected<BodyStreamBuffer>(
+        script_state_, stream2, cached_metadata_handler, side_data_blob);
     return;
   }
   BytesConsumer* dest1 = nullptr;
@@ -278,10 +292,10 @@ void BodyStreamBuffer::Tee(BodyStreamBuffer** branch1,
   }
   BytesConsumerTee(ExecutionContext::From(script_state_), handle, &dest1,
                    &dest2);
-  *branch1 =
-      BodyStreamBuffer::Create(script_state_, dest1, signal_, side_data_blob);
-  *branch2 =
-      BodyStreamBuffer::Create(script_state_, dest2, signal_, side_data_blob);
+  *branch1 = BodyStreamBuffer::Create(script_state_, dest1, signal_,
+                                      cached_metadata_handler, side_data_blob);
+  *branch2 = BodyStreamBuffer::Create(script_state_, dest2, signal_,
+                                      cached_metadata_handler, side_data_blob);
 }
 
 ScriptPromise BodyStreamBuffer::pull(ScriptState* script_state) {
@@ -304,8 +318,7 @@ ScriptPromise BodyStreamBuffer::pull(ScriptState* script_state) {
 ScriptPromise BodyStreamBuffer::Cancel(ScriptState* script_state,
                                        ScriptValue reason) {
   DCHECK_EQ(script_state, script_state_);
-  if (Controller())
-    Controller()->Close();
+  Controller()->Close();
   CancelConsumer();
   return ScriptPromise::CastUndefined(script_state);
 }
@@ -328,13 +341,10 @@ void BodyStreamBuffer::OnStateChange() {
   ProcessData();
 }
 
-bool BodyStreamBuffer::HasPendingActivity() const {
-  return loader_;
-}
-
 void BodyStreamBuffer::ContextDestroyed() {
   CancelConsumer();
   UnderlyingSourceBase::ContextDestroyed();
+  keep_alive_.Clear();
 }
 
 bool BodyStreamBuffer::IsStreamReadable() const {
@@ -359,6 +369,8 @@ bool BodyStreamBuffer::IsStreamDisturbed() const {
 
 void BodyStreamBuffer::CloseAndLockAndDisturb() {
   DCHECK(!stream_broken_);
+
+  cached_metadata_handler_ = nullptr;
 
   if (IsStreamReadable()) {
     // Note that the stream cannot be "draining", because it doesn't have
@@ -386,12 +398,14 @@ void BodyStreamBuffer::Trace(Visitor* visitor) const {
   visitor->Trace(consumer_);
   visitor->Trace(loader_);
   visitor->Trace(signal_);
+  visitor->Trace(stream_buffer_abort_handle_);
+  visitor->Trace(loader_client_abort_handle_);
+  visitor->Trace(cached_metadata_handler_);
   UnderlyingSourceBase::Trace(visitor);
 }
 
 void BodyStreamBuffer::Abort() {
-  if (!Controller()) {
-    DCHECK(!GetExecutionContext());
+  if (!GetExecutionContext()) {
     DCHECK(!consumer_);
     return;
   }
@@ -417,6 +431,15 @@ void BodyStreamBuffer::GetError() {
   CancelConsumer();
 }
 
+void BodyStreamBuffer::RaiseOOMError() {
+  {
+    ScriptState::Scope scope(script_state_);
+    Controller()->Error(V8ThrowException::CreateRangeError(
+        script_state_->GetIsolate(), "Array buffer allocation failed"));
+  }
+  CancelConsumer();
+}
+
 void BodyStreamBuffer::CancelConsumer() {
   side_data_blob_.reset();
   if (consumer_) {
@@ -438,10 +461,14 @@ void BodyStreamBuffer::ProcessData() {
       return;
     DOMUint8Array* array = nullptr;
     if (result == BytesConsumer::Result::kOk) {
-      array =
-          DOMUint8Array::Create(reinterpret_cast<const unsigned char*>(buffer),
-                                SafeCast<uint32_t>(available));
+      array = DOMUint8Array::CreateOrNull(
+          reinterpret_cast<const unsigned char*>(buffer),
+          base::checked_cast<uint32_t>(available));
       result = consumer_->EndRead(available);
+      if (!array) {
+        RaiseOOMError();
+        return;
+      }
     }
     switch (result) {
       case BytesConsumer::Result::kOk:
@@ -473,14 +500,17 @@ void BodyStreamBuffer::ProcessData() {
 
 void BodyStreamBuffer::EndLoading() {
   DCHECK(loader_);
+  keep_alive_.Clear();
   loader_ = nullptr;
 }
 
 void BodyStreamBuffer::StopLoading() {
-  if (!loader_)
+  if (!loader_) {
+    DCHECK(!keep_alive_);
     return;
+  }
   loader_->Cancel();
-  loader_ = nullptr;
+  EndLoading();
 }
 
 BytesConsumer* BodyStreamBuffer::ReleaseHandle(

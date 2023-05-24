@@ -1,37 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QQmlEngine>
 #include <QQmlComponent>
 #include <QDebug>
 #include <QStringListModel>
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 #include "testtypes.h"
 #include "qtestmodel.h"
 
@@ -45,10 +20,10 @@ class tst_qqmlitemmodels : public QQmlDataTest
     Q_OBJECT
 
 public:
-    tst_qqmlitemmodels() {}
+    tst_qqmlitemmodels() : QQmlDataTest(QT_QMLTEST_DATADIR) {}
 
 private slots:
-    void initTestCase();
+    void initTestCase() override;
 
     void modelIndex();
     void persistentModelIndex();
@@ -188,7 +163,7 @@ void tst_qqmlitemmodels::itemSelection()
         QCOMPARE(isVariant.userType(), qMetaTypeId<QItemSelection>());
 
         const QItemSelection &sel = isVariant.value<QItemSelection>();
-        QCOMPARE(sel.count(), object->itemSelection().count());
+        QCOMPARE(sel.size(), object->itemSelection().size());
         QCOMPARE(sel, object->itemSelection());
     }
 }
@@ -206,7 +181,7 @@ void tst_qqmlitemmodels::modelIndexList()
 
     QCOMPARE(object->property("count").toInt(), 10);
     const QModelIndexList &mil = object->modelIndexList();
-    QCOMPARE(mil.count(), 4);
+    QCOMPARE(mil.size(), 4);
     for (int i = 0; i < 3; i++)
         QCOMPARE(mil.at(i), model.index(2 + i, 2 + i));
     QCOMPARE(mil.at(3), QModelIndex()); // The string inserted at the end should result in an invalid index
@@ -223,7 +198,7 @@ void tst_qqmlitemmodels::modelIndexList()
         QCOMPARE(milVariant.userType(), qMetaTypeId<QModelIndexList>());
 
         const QModelIndexList &milProp = milVariant.value<QModelIndexList>();
-        QCOMPARE(milProp.count(), mil.count());
+        QCOMPARE(milProp.size(), mil.size());
         QCOMPARE(milProp, mil);
     }
 }

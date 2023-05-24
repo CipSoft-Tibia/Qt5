@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QJSONVALUE_H
 #define QJSONVALUE_H
@@ -75,18 +39,20 @@ public:
     QJsonValue(int n);
     QJsonValue(qint64 v);
     QJsonValue(const QString &s);
-    QJsonValue(QLatin1String s);
+    QJsonValue(QLatin1StringView s);
 #ifndef QT_NO_CAST_FROM_ASCII
-    inline QT_ASCII_CAST_WARN QJsonValue(const char *s)
+    QT_ASCII_CAST_WARN inline QJsonValue(const char *s)
         : QJsonValue(QString::fromUtf8(s)) {}
 #endif
     QJsonValue(const QJsonArray &a);
+    QJsonValue(QJsonArray &&a) noexcept;
     QJsonValue(const QJsonObject &o);
+    QJsonValue(QJsonObject &&o) noexcept;
 
     ~QJsonValue();
 
-    QJsonValue(const QJsonValue &other);
-    QJsonValue &operator =(const QJsonValue &other);
+    QJsonValue(const QJsonValue &other) noexcept;
+    QJsonValue &operator =(const QJsonValue &other) noexcept;
 
     QJsonValue(QJsonValue &&other) noexcept;
 
@@ -112,6 +78,7 @@ public:
 
     bool toBool(bool defaultValue = false) const;
     int toInt(int defaultValue = 0) const;
+    qint64 toInteger(qint64 defaultValue = 0) const;
     double toDouble(double defaultValue = 0) const;
     QString toString() const;
     QString toString(const QString &defaultValue) const;
@@ -120,12 +87,10 @@ public:
     QJsonObject toObject() const;
     QJsonObject toObject(const QJsonObject &defaultValue) const;
 
-#if QT_STRINGVIEW_LEVEL < 2
     const QJsonValue operator[](const QString &key) const;
-#endif
     const QJsonValue operator[](QStringView key) const;
-    const QJsonValue operator[](QLatin1String key) const;
-    const QJsonValue operator[](int i) const;
+    const QJsonValue operator[](QLatin1StringView key) const;
+    const QJsonValue operator[](qsizetype i) const;
 
     bool operator==(const QJsonValue &other) const;
     bool operator!=(const QJsonValue &other) const;
@@ -140,36 +105,138 @@ private:
     friend Q_CORE_EXPORT QDebug operator<<(QDebug, const QJsonValue &);
     friend Q_CORE_EXPORT QDataStream &operator<<(QDataStream &, const QJsonValue &);
 
-    // ### Qt6: Remove this.
-    void stringDataFromQStringHelper(const QString &string);
-
-    void detach();
-
-    // ### Qt6: change to an actual QCborValue
-    qint64 n = 0;
-    QExplicitlySharedDataPointer<QCborContainerPrivate> d; // needed for Objects, Arrays, Strings
-    QCborValue::Type t;
+    QCborValue value;
 
     // Assert binary compatibility with pre-5.15 QJsonValue
-    Q_STATIC_ASSERT(sizeof(QExplicitlySharedDataPointer<QCborContainerPrivate>) == sizeof(void *));
-    Q_STATIC_ASSERT(sizeof(QCborValue::Type) == sizeof(QJsonValue::Type));
+    static_assert(sizeof(QExplicitlySharedDataPointer<QCborContainerPrivate>) == sizeof(void *));
+    static_assert(sizeof(QCborValue::Type) == sizeof(QJsonValue::Type));
 };
 
-class Q_CORE_EXPORT QJsonValueRef
+Q_DECLARE_SHARED(QJsonValue)
+
+class QJsonValueConstRef
 {
 public:
-    QJsonValueRef(const QJsonValueRef &) = default; // ### Qt6: delete (maybe)
-    QJsonValueRef(QJsonArray *array, int idx)
-        : a(array), is_object(false), index(static_cast<uint>(idx)) {}
-    QJsonValueRef(QJsonObject *object, int idx)
-        : o(object), is_object(true), index(static_cast<uint>(idx)) {}
+    QJsonValueConstRef(const QJsonValueConstRef &) = default;
+    QJsonValueConstRef &operator=(const QJsonValueConstRef &) = delete;
+    inline operator QJsonValue() const { return concrete(*this); }
 
-    inline operator QJsonValue() const { return toValue(); }
-    QJsonValueRef &operator = (const QJsonValue &val);
-    QJsonValueRef &operator = (const QJsonValueRef &val);
+    Q_CORE_EXPORT QVariant toVariant() const;
+    QJsonValue::Type type() const { return concreteType(*this); }
+    bool isNull() const { return type() == QJsonValue::Null; }
+    bool isBool() const { return type() == QJsonValue::Bool; }
+    bool isDouble() const { return type() == QJsonValue::Double; }
+    bool isString() const { return type() == QJsonValue::String; }
+    bool isArray() const { return type() == QJsonValue::Array; }
+    bool isObject() const { return type() == QJsonValue::Object; }
+    bool isUndefined() const { return type() == QJsonValue::Undefined; }
+
+    bool toBool(bool defaultValue = false) const
+    { return concreteBool(*this, defaultValue); }
+    int toInt(int defaultValue = 0) const
+    { return int(concreteInt(*this, defaultValue, true)); }
+    qint64 toInteger(qint64 defaultValue = 0) const
+    { return concreteInt(*this, defaultValue, false); }
+    double toDouble(double defaultValue = 0) const
+    { return concreteDouble(*this, defaultValue); }
+    QString toString(const QString &defaultValue = {}) const
+    { return concreteString(*this, defaultValue); }
+    Q_CORE_EXPORT QJsonArray toArray() const;
+    Q_CORE_EXPORT QJsonObject toObject() const;
+
+    const QJsonValue operator[](QStringView key) const { return concrete(*this)[key]; }
+    const QJsonValue operator[](QLatin1StringView key) const { return concrete(*this)[key]; }
+    const QJsonValue operator[](qsizetype i) const { return concrete(*this)[i]; }
+
+    inline bool operator==(const QJsonValue &other) const { return concrete(*this) == other; }
+    inline bool operator!=(const QJsonValue &other) const { return concrete(*this) != other; }
+
+protected:
+    Q_CORE_EXPORT static QJsonValue::Type
+    concreteType(QJsonValueConstRef self) noexcept Q_DECL_PURE_FUNCTION;
+    Q_CORE_EXPORT static bool
+    concreteBool(QJsonValueConstRef self, bool defaultValue) noexcept Q_DECL_PURE_FUNCTION;
+    Q_CORE_EXPORT static qint64
+    concreteInt(QJsonValueConstRef self, qint64 defaultValue, bool clamp) noexcept Q_DECL_PURE_FUNCTION;
+    Q_CORE_EXPORT static double
+    concreteDouble(QJsonValueConstRef self, double defaultValue) noexcept Q_DECL_PURE_FUNCTION;
+    Q_CORE_EXPORT static QString concreteString(QJsonValueConstRef self, const QString &defaultValue);
+    Q_CORE_EXPORT static QJsonValue concrete(QJsonValueConstRef self) noexcept;
+
+    // for iterators
+    Q_CORE_EXPORT static QString objectKey(QJsonValueConstRef self);
+    QString objectKey() const { return objectKey(*this); }
+
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED)
+    QJsonValueConstRef(QJsonArray *array, qsizetype idx)
+        : a(array), is_object(false), index(static_cast<quint64>(idx)) {}
+    QJsonValueConstRef(QJsonObject *object, qsizetype idx)
+        : o(object), is_object(true), index(static_cast<quint64>(idx)) {}
+
+    void rebind(QJsonValueConstRef other)
+    {
+        Q_ASSERT(is_object == other.is_object);
+        if (is_object)
+            o = other.o;
+        else
+            a = other.a;
+        index = other.index;
+    }
+
+    union {
+        QJsonArray *a;
+        QJsonObject *o;
+        void *d;
+    };
+    quint64 is_object : 1;
+    quint64 index : 63;
+#else
+    constexpr QJsonValueConstRef(QCborContainerPrivate *d, size_t index, bool is_object)
+        : d(d), is_object(is_object), index(index)
+    {}
+
+    // implemented in qjsonarray.h & qjsonobject.h, to get their d
+    QJsonValueConstRef(QJsonArray *array, qsizetype idx);
+    QJsonValueConstRef(QJsonObject *object, qsizetype idx);
+
+    void rebind(QJsonValueConstRef other)
+    {
+        d = other.d;
+        index = other.index;
+    }
+
+    QCborContainerPrivate *d = nullptr;
+    size_t is_object : 1;
+    size_t index : std::numeric_limits<size_t>::digits - 1;
+#endif
+
+    friend class QJsonArray;
+    friend class QJsonObject;
+    friend class QJsonPrivate::Value;
+};
+
+QT_WARNING_PUSH
+QT6_ONLY(QT_WARNING_DISABLE_MSVC(4275)) // non dll-interface class 'QJsonValueConstRef' used as base for dll-interface class 'QJsonValueRef'
+class QT6_ONLY(Q_CORE_EXPORT) QJsonValueRef : public QJsonValueConstRef
+{
+public:
+    QJsonValueRef(const QJsonValueRef &) = default;
+    QT7_ONLY(Q_CORE_EXPORT) QJsonValueRef &operator = (const QJsonValue &val);
+    QT7_ONLY(Q_CORE_EXPORT) QJsonValueRef &operator = (const QJsonValueRef &val);
+
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED)
+    // retained for binary compatibility (due to the Q_CORE_EXPORT) because at
+    // least one compiler emits and exports all inlines in an exported class
+
+    QJsonValueRef(QJsonArray *array, qsizetype idx)
+        : QJsonValueConstRef(array, idx) {}
+    QJsonValueRef(QJsonObject *object, qsizetype idx)
+        : QJsonValueConstRef(object, idx) {}
+
+    operator QJsonValue() const { return toValue(); }
 
     QVariant toVariant() const;
-    inline QJsonValue::Type type() const { return toValue().type(); }
+    inline QJsonValue::Type type() const { return QJsonValueConstRef::type(); }
     inline bool isNull() const { return type() == QJsonValue::Null; }
     inline bool isBool() const { return type() == QJsonValue::Bool; }
     inline bool isDouble() const { return type() == QJsonValue::Double; }
@@ -178,61 +245,59 @@ public:
     inline bool isObject() const { return type() == QJsonValue::Object; }
     inline bool isUndefined() const { return type() == QJsonValue::Undefined; }
 
-    inline bool toBool() const { return toValue().toBool(); }
-    inline int toInt() const { return toValue().toInt(); }
-    inline double toDouble() const { return toValue().toDouble(); }
-    inline QString toString() const { return toValue().toString(); }
+    inline bool toBool(bool defaultValue = false) const { return QJsonValueConstRef::toBool(defaultValue); }
+    inline int toInt(int defaultValue = 0) const { return QJsonValueConstRef::toInt(defaultValue); }
+    inline qint64 toInteger(qint64 defaultValue = 0) const { return QJsonValueConstRef::toInteger(defaultValue); }
+    inline double toDouble(double defaultValue = 0) const { return QJsonValueConstRef::toDouble(defaultValue); }
+    inline QString toString(const QString &defaultValue = {}) const { return QJsonValueConstRef::toString(defaultValue); }
     QJsonArray toArray() const;
     QJsonObject toObject() const;
 
-    // ### Qt 6: Add default values
-    inline bool toBool(bool defaultValue) const { return toValue().toBool(defaultValue); }
-    inline int toInt(int defaultValue) const { return toValue().toInt(defaultValue); }
-    inline double toDouble(double defaultValue) const { return toValue().toDouble(defaultValue); }
-    inline QString toString(const QString &defaultValue) const { return toValue().toString(defaultValue); }
+    const QJsonValue operator[](QStringView key) const { return QJsonValueConstRef::operator[](key); }
+    const QJsonValue operator[](QLatin1StringView key) const { return QJsonValueConstRef::operator[](key); }
+    const QJsonValue operator[](qsizetype i) const { return QJsonValueConstRef::operator[](i); }
 
-    inline bool operator==(const QJsonValue &other) const { return toValue() == other; }
-    inline bool operator!=(const QJsonValue &other) const { return toValue() != other; }
+    inline bool operator==(const QJsonValue &other) const { return QJsonValueConstRef::operator==(other); }
+    inline bool operator!=(const QJsonValue &other) const { return QJsonValueConstRef::operator!=(other); }
 
 private:
     QJsonValue toValue() const;
+#else
+    using QJsonValueConstRef::operator[];
+    Q_CORE_EXPORT QJsonValueRef operator[](QAnyStringView key);
+    Q_CORE_EXPORT QJsonValueRef operator[](qsizetype i);
 
-    union {
-        QJsonArray *a;
-        QJsonObject *o;
-    };
-    uint is_object : 1;
-    uint index : 31;
+private:
+    using QJsonValueConstRef::QJsonValueConstRef;
+#endif // < Qt 7
+
+    QT7_ONLY(Q_CORE_EXPORT) void detach();
+    friend class QJsonArray;
+    friend class QJsonObject;
 };
+QT_WARNING_POP
 
-// ### Qt 6: Get rid of these fake pointer classes
-class QJsonValuePtr
+inline QJsonValue QCborValueConstRef::toJsonValue() const
 {
-    QJsonValue value;
-public:
-    explicit QJsonValuePtr(const QJsonValue& val)
-        : value(val) {}
+    return concrete().toJsonValue();
+}
 
-    QJsonValue& operator*() { return value; }
-    QJsonValue* operator->() { return &value; }
-};
+inline bool operator==(const QJsonValueConstRef &lhs, const QJsonValueRef &rhs)
+{ return QJsonValue(lhs) == QJsonValue(rhs); }
+inline bool operator!=(const QJsonValueConstRef &lhs, const QJsonValueRef &rhs)
+{ return !(lhs == rhs); }
 
-class QJsonValueRefPtr
-{
-    QJsonValueRef valueRef;
-public:
-    QJsonValueRefPtr(QJsonArray *array, int idx)
-        : valueRef(array, idx) {}
-    QJsonValueRefPtr(QJsonObject *object, int idx)
-        : valueRef(object, idx)  {}
+inline bool operator==(const QJsonValueRef &lhs, const QJsonValueConstRef &rhs)
+{ return QJsonValue(lhs) == QJsonValue(rhs); }
+inline bool operator!=(const QJsonValueRef &lhs, const QJsonValueConstRef &rhs)
+{ return !(lhs == rhs); }
 
-    QJsonValueRef& operator*() { return valueRef; }
-    QJsonValueRef* operator->() { return &valueRef; }
-};
+inline bool operator==(const QJsonValueRef &lhs, const QJsonValueRef &rhs)
+{ return QJsonValue(lhs) == QJsonValue(rhs); }
+inline bool operator!=(const QJsonValueRef &lhs, const QJsonValueRef &rhs)
+{ return !(lhs == rhs); }
 
-Q_DECLARE_SHARED_NOT_MOVABLE_UNTIL_QT6(QJsonValue)
-
-Q_CORE_EXPORT uint qHash(const QJsonValue &value, uint seed = 0);
+Q_CORE_EXPORT size_t qHash(const QJsonValue &value, size_t seed = 0);
 
 #if !defined(QT_NO_DEBUG_STREAM) && !defined(QT_JSON_READONLY)
 Q_CORE_EXPORT QDebug operator<<(QDebug, const QJsonValue &);

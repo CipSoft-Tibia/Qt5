@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -116,7 +116,7 @@ struct PrefetchItem {
   PrefetchItemErrorCode error_code = PrefetchItemErrorCode::SUCCESS;
 
   // The title of the page.
-  base::string16 title;
+  std::u16string title;
 
   // A snippet of the article's contents.
   std::string snippet;

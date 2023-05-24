@@ -1,53 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Gunnar Sletta <gunnar@sletta.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Gunnar Sletta <gunnar@sletta.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickanimatorcontroller_p.h"
 #include "qquickanimatorjob_p.h"
 #include "qquickanimator_p.h"
 #include "qquickanimator_p_p.h"
-#include <private/qquickwindow_p.h>
 #include <private/qquickitem_p.h>
-#if QT_CONFIG(quick_shadereffect) && QT_CONFIG(opengl)
-# include <private/qquickopenglshadereffectnode_p.h>
-# include <private/qquickopenglshadereffect_p.h>
-# include <private/qquickshadereffect_p.h>
+#if QT_CONFIG(quick_shadereffect)
+#include <private/qquickshadereffect_p.h>
 #endif
 #include <private/qanimationgroupjob_p.h>
 
@@ -86,14 +47,14 @@ struct QQuickTransformAnimatorHelperStore
 };
 Q_GLOBAL_STATIC(QQuickTransformAnimatorHelperStore, qquick_transform_animatorjob_helper_store);
 
-QQuickAnimatorProxyJob::QQuickAnimatorProxyJob(QAbstractAnimationJob *job, QObject *item)
+QQuickAnimatorProxyJob::QQuickAnimatorProxyJob(QAbstractAnimationJob *job,
+                                               QQuickAbstractAnimation *animation)
     : m_controller(nullptr)
     , m_internalState(State_Stopped)
 {
     m_job.reset(job);
 
     m_isRenderThreadProxy = true;
-    m_animation = qobject_cast<QQuickAbstractAnimation *>(item);
 
     setLoopCount(job->loopCount());
 
@@ -106,7 +67,7 @@ QQuickAnimatorProxyJob::QQuickAnimatorProxyJob(QAbstractAnimationJob *job, QObje
     // be negligiblie compared to animating and re-rendering the scene on the render thread.
     m_duration = -1;
 
-    QObject *ctx = findAnimationContext(m_animation);
+    QObject *ctx = findAnimationContext(animation);
     if (!ctx) {
         qWarning("QtQuick: unable to find animation context for RT animation...");
         return;
@@ -248,7 +209,7 @@ static void qquick_syncback_helper(QAbstractAnimationJob *job)
 
     } else if (job->isGroup()) {
         QAnimationGroupJob *g = static_cast<QAnimationGroupJob *>(job);
-        for (QAbstractAnimationJob *a = g->firstChild(); a; a = a->nextSibling())
+        for (QAbstractAnimationJob *a : *g->children())
             qquick_syncback_helper(a);
     }
 
@@ -283,6 +244,17 @@ void QQuickAnimatorJob::debugAnimation(QDebug d) const
 qreal QQuickAnimatorJob::progress(int time) const
 {
     return m_easing.valueForProgress((m_duration == 0) ? qreal(1) : qreal(time) / qreal(m_duration));
+}
+
+void QQuickAnimatorJob::boundValue()
+{
+    qreal rangeMin = m_from;
+    qreal rangeMax = m_to;
+    if (m_from > m_to) {
+        rangeMax = m_from;
+        rangeMin = m_to;
+    }
+    m_value = qBound(rangeMin, m_value, rangeMax);
 }
 
 qreal QQuickAnimatorJob::value() const
@@ -388,10 +360,11 @@ void QQuickTransformAnimatorJob::Helper::sync()
         wasSynced = true;
     }
 
+    // We update the node before checking on dirty, as the node might have changed without the animator running
+    node = d->itemNode();
+
     if (dirty == 0)
         return;
-
-    node = d->itemNode();
 
     if (dirty & QQuickItemPrivate::Position) {
         dx = item->x();
@@ -440,9 +413,6 @@ void QQuickXAnimatorJob::writeBack()
 
 void QQuickXAnimatorJob::updateCurrentTime(int time)
 {
-#if QT_CONFIG(opengl)
-    Q_ASSERT(!m_controller || !m_controller->m_window->openglContext() || m_controller->m_window->openglContext()->thread() == QThread::currentThread());
-#endif
     if (!m_helper)
         return;
 
@@ -459,9 +429,6 @@ void QQuickYAnimatorJob::writeBack()
 
 void QQuickYAnimatorJob::updateCurrentTime(int time)
 {
-#if QT_CONFIG(opengl)
-    Q_ASSERT(!m_controller || !m_controller->m_window->openglContext() || m_controller->m_window->openglContext()->thread() == QThread::currentThread());
-#endif
     if (!m_helper)
         return;
 
@@ -478,9 +445,6 @@ void QQuickScaleAnimatorJob::writeBack()
 
 void QQuickScaleAnimatorJob::updateCurrentTime(int time)
 {
-#if QT_CONFIG(opengl)
-    Q_ASSERT(!m_controller || !m_controller->m_window->openglContext() || m_controller->m_window->openglContext()->thread() == QThread::currentThread());
-#endif
     if (!m_helper)
         return;
 
@@ -501,9 +465,6 @@ extern QVariant _q_interpolateCounterclockwiseRotation(qreal &f, qreal &t, qreal
 
 void QQuickRotationAnimatorJob::updateCurrentTime(int time)
 {
-#if QT_CONFIG(opengl)
-    Q_ASSERT(!m_controller || !m_controller->m_window->openglContext() || m_controller->m_window->openglContext()->thread() == QThread::currentThread());
-#endif
     if (!m_helper)
         return;
 
@@ -609,10 +570,6 @@ void QQuickOpacityAnimatorJob::writeBack()
 
 void QQuickOpacityAnimatorJob::updateCurrentTime(int time)
 {
-#if QT_CONFIG(opengl)
-    Q_ASSERT(!m_controller || !m_controller->m_window->openglContext() || m_controller->m_window->openglContext()->thread() == QThread::currentThread());
-#endif
-
     if (!m_opacityNode)
         return;
 
@@ -620,28 +577,32 @@ void QQuickOpacityAnimatorJob::updateCurrentTime(int time)
     m_opacityNode->setOpacity(m_value);
 }
 
-
-#if QT_CONFIG(quick_shadereffect) && QT_CONFIG(opengl)
+#if QT_CONFIG(quick_shadereffect)
 QQuickUniformAnimatorJob::QQuickUniformAnimatorJob()
-    : m_node(nullptr)
-    , m_uniformIndex(-1)
-    , m_uniformType(-1)
 {
     m_isUniform = true;
 }
 
 void QQuickUniformAnimatorJob::setTarget(QQuickItem *target)
 {
-    QQuickShaderEffect* effect = qobject_cast<QQuickShaderEffect*>(target);
-    if (effect && effect->isOpenGLShaderEffect())
+    // Check target is of expected type
+    if (qobject_cast<QQuickShaderEffect *>(target) != nullptr)
         m_target = target;
 }
 
-void QQuickUniformAnimatorJob::invalidate()
+void QQuickUniformAnimatorJob::updateCurrentTime(int time)
 {
-    m_node = nullptr;
-    m_uniformIndex = -1;
-    m_uniformType = -1;
+    if (!m_effect || m_target != m_effect)
+        return;
+
+    m_value = m_from + (m_to - m_from) * progress(time);
+    m_effect->updateUniformValue(m_uniform, m_value);
+}
+
+void QQuickUniformAnimatorJob::writeBack()
+{
+    if (m_target)
+        m_target->setProperty(m_uniform, value());
 }
 
 void QQuickUniformAnimatorJob::postSync()
@@ -651,50 +612,12 @@ void QQuickUniformAnimatorJob::postSync()
         return;
     }
 
-    m_node = static_cast<QQuickOpenGLShaderEffectNode *>(QQuickItemPrivate::get(m_target)->paintNode);
-
-    if (m_node && m_uniformIndex == -1 && m_uniformType == -1) {
-        QQuickOpenGLShaderEffectMaterial *material =
-                static_cast<QQuickOpenGLShaderEffectMaterial *>(m_node->material());
-        bool found = false;
-        for (int t=0; !found && t<QQuickOpenGLShaderEffectMaterialKey::ShaderTypeCount; ++t) {
-            const QVector<QQuickOpenGLShaderEffectMaterial::UniformData> &uniforms = material->uniforms[t];
-            for (int i=0; i<uniforms.size(); ++i) {
-                if (uniforms.at(i).name == m_uniform) {
-                    m_uniformIndex = i;
-                    m_uniformType = t;
-                    found = true;
-                    break;
-                }
-            }
-        }
-    }
-
+    m_effect = qobject_cast<QQuickShaderEffect *>(m_target);
 }
 
-void QQuickUniformAnimatorJob::updateCurrentTime(int time)
+void QQuickUniformAnimatorJob::invalidate()
 {
-    if (!m_controller)
-        return;
 
-    if (!m_node || m_uniformIndex == -1 || m_uniformType == -1)
-        return;
-
-    m_value = m_from + (m_to - m_from) * progress(time);
-
-    QQuickOpenGLShaderEffectMaterial *material =
-            static_cast<QQuickOpenGLShaderEffectMaterial *>(m_node->material());
-    material->uniforms[m_uniformType][m_uniformIndex].value = m_value;
-    // As we're not touching the nodes, we need to explicitly mark it dirty.
-    // Otherwise, the renderer will abort repainting if this was the only
-    // change in the graph currently rendering.
-    m_node->markDirty(QSGNode::DirtyMaterial);
-}
-
-void QQuickUniformAnimatorJob::writeBack()
-{
-    if (m_target)
-        m_target->setProperty(m_uniform, value());
 }
 #endif
 

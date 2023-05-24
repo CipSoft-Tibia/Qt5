@@ -1,35 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "batchtranslationdialog.h"
 #include "phrase.h"
 #include "messagemodel.h"
 
+#include <QtCore/QMap>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QProgressDialog>
 
@@ -50,9 +26,12 @@ BatchTranslationDialog::BatchTranslationDialog(MultiDataModel *dataModel, QWidge
  : QDialog(w), m_model(this), m_dataModel(dataModel)
 {
     m_ui.setupUi(this);
-    connect(m_ui.runButton, SIGNAL(clicked()), this, SLOT(startTranslation()));
-    connect(m_ui.moveUpButton, SIGNAL(clicked()), this, SLOT(movePhraseBookUp()));
-    connect(m_ui.moveDownButton, SIGNAL(clicked()), this, SLOT(movePhraseBookDown()));
+    connect(m_ui.runButton, &QAbstractButton::clicked,
+            this, &BatchTranslationDialog::startTranslation);
+    connect(m_ui.moveUpButton, &QAbstractButton::clicked,
+            this, &BatchTranslationDialog::movePhraseBookUp);
+    connect(m_ui.moveDownButton, &QAbstractButton::clicked,
+            this, &BatchTranslationDialog::movePhraseBookDown);
 
     m_ui.phrasebookList->setModel(&m_model);
     m_ui.phrasebookList->setSelectionBehavior(QAbstractItemView::SelectItems);
@@ -68,7 +47,7 @@ void BatchTranslationDialog::setPhraseBooks(const QList<PhraseBook *> &phraseboo
     m_model.insertColumn(0);
     m_phrasebooks = phrasebooks;
     m_modelIndex = modelIndex;
-    int count = phrasebooks.count();
+    int count = phrasebooks.size();
     m_model.insertRows(0, count);
     for (int i = 0; i < count; ++i) {
         QModelIndex idx(m_model.index(i, 0));
@@ -79,8 +58,8 @@ void BatchTranslationDialog::setPhraseBooks(const QList<PhraseBook *> &phraseboo
             if (phrasebooks[i]->language() != m_dataModel->language(m_modelIndex))
                 sortOrder = 3;
             else
-                sortOrder = (phrasebooks[i]->country()
-                             == m_dataModel->model(m_modelIndex)->country()) ? 0 : 1;
+                sortOrder = (phrasebooks[i]->territory()
+                             == m_dataModel->model(m_modelIndex)->territory()) ? 0 : 1;
         } else {
             sortOrder = 2;
         }
@@ -118,7 +97,8 @@ void BatchTranslationDialog::startTranslation()
                     QVariant checkState = m_model.data(idx, Qt::CheckStateRole);
                     if (checkState == Qt::Checked) {
                         PhraseBook *pb = m_phrasebooks[m_model.data(idx, Qt::UserRole).toInt()];
-                        foreach (const Phrase *ph, pb->phrases()) {
+                        const auto phrases = pb->phrases();
+                        for (const Phrase *ph : phrases) {
                             if (ph->source() == m->text()) {
                                 m_dataModel->setTranslation(it, ph->target());
                                 m_dataModel->setFinished(it, m_ui.ckMarkFinished->isChecked());
@@ -149,7 +129,7 @@ void BatchTranslationDialog::startTranslation()
 void BatchTranslationDialog::movePhraseBookUp()
 {
     QModelIndexList indexes = m_ui.phrasebookList->selectionModel()->selectedIndexes();
-    if (indexes.count() <= 0) return;
+    if (indexes.size() <= 0) return;
 
     QModelIndex sel = indexes[0];
     int row = sel.row();
@@ -165,7 +145,7 @@ void BatchTranslationDialog::movePhraseBookUp()
 void BatchTranslationDialog::movePhraseBookDown()
 {
     QModelIndexList indexes = m_ui.phrasebookList->selectionModel()->selectedIndexes();
-    if (indexes.count() <= 0) return;
+    if (indexes.size() <= 0) return;
 
     QModelIndex sel = indexes[0];
     int row = sel.row();

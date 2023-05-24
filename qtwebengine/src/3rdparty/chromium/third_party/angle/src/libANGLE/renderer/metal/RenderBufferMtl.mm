@@ -10,6 +10,7 @@
 #include "libANGLE/renderer/metal/RenderBufferMtl.h"
 
 #include "libANGLE/renderer/metal/ContextMtl.h"
+#include "libANGLE/renderer/metal/ImageMtl.h"
 #include "libANGLE/renderer/metal/mtl_format_utils.h"
 #include "libANGLE/renderer/metal/mtl_utils.h"
 
@@ -27,7 +28,8 @@ void RenderbufferMtl::onDestroy(const gl::Context *context)
 
 void RenderbufferMtl::releaseTexture()
 {
-    mTexture = nullptr;
+    mTexture           = nullptr;
+    mImplicitMSTexture = nullptr;
 }
 
 angle::Result RenderbufferMtl::setStorageImpl(const gl::Context *context,
@@ -38,14 +40,12 @@ angle::Result RenderbufferMtl::setStorageImpl(const gl::Context *context,
 {
     ContextMtl *contextMtl = mtl::GetImpl(context);
 
-    // NOTE(hqle): Support MSAA
-    ANGLE_CHECK(contextMtl, samples == 1, "Multisample is not supported atm.", GL_INVALID_VALUE);
-
     if (mTexture != nullptr && mTexture->valid())
     {
         // Check against the state if we need to recreate the storage.
         if (internalformat != mState.getFormat().info->internalFormat ||
-            width != mState.getWidth() || height != mState.getHeight())
+            width != mState.getWidth() || height != mState.getHeight() ||
+            samples != mState.getSamples())
         {
             releaseTexture();
         }
@@ -56,12 +56,57 @@ angle::Result RenderbufferMtl::setStorageImpl(const gl::Context *context,
         angle::Format::InternalFormatToID(internalFormat.sizedInternalFormat);
     mFormat = contextMtl->getPixelFormat(angleFormatId);
 
+    uint32_t actualSamples;
+    if (samples == 0)
+    {
+        actualSamples = 1;
+    }
+    else
+    {
+        // We always start at at least 2 samples
+        actualSamples = static_cast<uint32_t>(std::max<size_t>(2, samples));
+
+        const gl::TextureCaps &textureCaps =
+            contextMtl->getTextureCaps().get(mFormat.intendedFormatId);
+        actualSamples = textureCaps.getNearestSamples(actualSamples);
+        ANGLE_MTL_CHECK(contextMtl, actualSamples != 0, GL_INVALID_VALUE);
+    }
+
     if ((mTexture == nullptr || !mTexture->valid()) && (width != 0 && height != 0))
     {
-        ANGLE_TRY(mtl::Texture::Make2DTexture(contextMtl, mFormat, width, height, 1, false,
-                                              mFormat.hasDepthAndStencilBits(), &mTexture));
+        if (actualSamples == 1 || (mFormat.getCaps().resolve))
+        {
+            ANGLE_TRY(mtl::Texture::Make2DTexture(
+                contextMtl, mFormat, static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1,
+                /* renderTargetOnly */ false,
+                /* allowFormatView */ mFormat.hasDepthAndStencilBits(), &mTexture));
 
-        mRenderTarget.set(mTexture, 0, 0, mFormat);
+            // Use implicit resolve for depth stencil texture whenever possible. This is because
+            // for depth stencil texture, if stencil needs to be blitted, a formatted clone has
+            // to be created. And it is expensive to clone a multisample texture.
+            if (actualSamples > 1)
+            {
+                // This format must supports implicit resolve
+                ASSERT(mFormat.getCaps().resolve);
+
+                ANGLE_TRY(mtl::Texture::Make2DMSTexture(
+                    contextMtl, mFormat, static_cast<uint32_t>(width),
+                    static_cast<uint32_t>(height), actualSamples,
+                    /* renderTargetOnly */ true,
+                    /* allowFormatView */ mFormat.hasDepthAndStencilBits(), &mImplicitMSTexture));
+            }
+        }
+        else
+        {
+            ANGLE_TRY(mtl::Texture::Make2DMSTexture(
+                contextMtl, mFormat, static_cast<uint32_t>(width), static_cast<uint32_t>(height),
+                actualSamples,
+                /* renderTargetOnly */ false,
+                /* allowFormatView */ mFormat.hasDepthAndStencilBits(), &mTexture));
+        }
+
+        mRenderTarget.setWithImplicitMSTexture(mTexture, mImplicitMSTexture,
+                                               mtl::kZeroNativeMipLevel, 0, mFormat);
 
         // For emulated channels that GL texture intends to not have,
         // we need to initialize their content.
@@ -70,9 +115,44 @@ angle::Result RenderbufferMtl::setStorageImpl(const gl::Context *context,
         {
             gl::ImageIndex index;
 
-            index = gl::ImageIndex::Make2D(0);
+            if (actualSamples > 1)
+            {
+                index = gl::ImageIndex::Make2DMultisample();
+            }
+            else
+            {
+                index = gl::ImageIndex::Make2D(0);
+            }
 
-            ANGLE_TRY(mtl::InitializeTextureContents(context, mTexture, mFormat, index));
+            ANGLE_TRY(mtl::InitializeTextureContents(context, mTexture, mFormat,
+                                                     mtl::ImageNativeIndex(index, 0)));
+            if (mImplicitMSTexture)
+            {
+                ANGLE_TRY(mtl::InitializeTextureContents(
+                    context, mImplicitMSTexture, mFormat,
+                    mtl::ImageNativeIndex(gl::ImageIndex::Make2DMultisample(), 0)));
+            }
+        }  // if (emulatedChannels)
+        bool isDepthStencil = mFormat.hasDepthOrStencilBits();
+        if (isDepthStencil)
+        {
+            gl::ImageIndex index;
+            if (actualSamples > 1)
+            {
+                index = gl::ImageIndex::Make2DMultisample();
+            }
+            else
+            {
+                index = gl::ImageIndex::Make2D(0);
+            }
+            ANGLE_TRY(mtl::InitializeDepthStencilTextureContentsGPU(
+                context, mTexture, mFormat, mtl::ImageNativeIndex(index, 0)));
+            if (mImplicitMSTexture)
+            {
+                ANGLE_TRY(mtl::InitializeDepthStencilTextureContentsGPU(
+                    context, mImplicitMSTexture, mFormat,
+                    mtl::ImageNativeIndex(gl::ImageIndex::Make2DMultisample(), 0)));
+            }
         }
     }
 
@@ -84,7 +164,7 @@ angle::Result RenderbufferMtl::setStorage(const gl::Context *context,
                                           GLsizei width,
                                           GLsizei height)
 {
-    return setStorageImpl(context, 1, internalformat, width, height);
+    return setStorageImpl(context, 0, internalformat, width, height);
 }
 
 angle::Result RenderbufferMtl::setStorageMultisample(const gl::Context *context,
@@ -94,17 +174,26 @@ angle::Result RenderbufferMtl::setStorageMultisample(const gl::Context *context,
                                                      GLsizei height,
                                                      gl::MultisamplingMode mode)
 {
-    // NOTE(hqle): Support MSAA
-    UNIMPLEMENTED();
-    return angle::Result::Stop;
+    return setStorageImpl(context, samples, internalformat, width, height);
 }
 
 angle::Result RenderbufferMtl::setStorageEGLImageTarget(const gl::Context *context,
                                                         egl::Image *image)
 {
-    // NOTE(hqle): Support EGLimage
-    UNIMPLEMENTED();
-    return angle::Result::Stop;
+    releaseTexture();
+
+    ContextMtl *contextMtl = mtl::GetImpl(context);
+
+    ImageMtl *imageMtl = mtl::GetImpl(image);
+    mTexture           = imageMtl->getTexture();
+
+    const angle::FormatID angleFormatId =
+        angle::Format::InternalFormatToID(image->getFormat().info->sizedInternalFormat);
+    mFormat = contextMtl->getPixelFormat(angleFormatId);
+
+    mRenderTarget.set(mTexture, mtl::kZeroNativeMipLevel, 0, mFormat);
+
+    return angle::Result::Continue;
 }
 
 angle::Result RenderbufferMtl::getAttachmentRenderTarget(const gl::Context *context,
@@ -113,15 +202,21 @@ angle::Result RenderbufferMtl::getAttachmentRenderTarget(const gl::Context *cont
                                                          GLsizei samples,
                                                          FramebufferAttachmentRenderTarget **rtOut)
 {
-    // NOTE(hqle): Support MSAA.
     ASSERT(mTexture && mTexture->valid());
     *rtOut = &mRenderTarget;
     return angle::Result::Continue;
 }
 
 angle::Result RenderbufferMtl::initializeContents(const gl::Context *context,
+                                                  GLenum binding,
                                                   const gl::ImageIndex &imageIndex)
 {
-    return mtl::InitializeTextureContents(context, mTexture, mFormat, imageIndex);
+    if (imageIndex.valid())
+        return mtl::InitializeTextureContents(
+            context, mTexture, mFormat, mtl::ImageNativeIndex::FromBaseZeroGLIndex(imageIndex));
+    else
+        return mtl::InitializeTextureContents(
+            context, mTexture, mFormat,
+            mtl::ImageNativeIndex::FromBaseZeroGLIndex(gl::ImageIndex::Make2D(0)));
 }
 }

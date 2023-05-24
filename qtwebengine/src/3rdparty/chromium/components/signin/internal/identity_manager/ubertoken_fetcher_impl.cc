@@ -1,13 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/signin/internal/identity_manager/ubertoken_fetcher_impl.h"
 
-#include <vector>
-
-#include "base/bind.h"
 #include "base/check.h"
+#include "base/functional/bind.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/rand_util.h"
 #include "base/time/time.h"
@@ -90,8 +88,8 @@ void UbertokenFetcherImpl::OnUberAuthTokenFailure(
       UMA_HISTOGRAM_ENUMERATION("Signin.UberTokenRetry", error.state(),
                                 GoogleServiceAuthError::NUM_STATES);
       retry_timer_.Stop();
-      retry_timer_.Start(FROM_HERE, base::TimeDelta::FromSecondsD(backoff),
-                         this, &UbertokenFetcherImpl::ExchangeTokens);
+      retry_timer_.Start(FROM_HERE, base::Seconds(backoff), this,
+                         &UbertokenFetcherImpl::ExchangeTokens);
       return;
     }
   } else {

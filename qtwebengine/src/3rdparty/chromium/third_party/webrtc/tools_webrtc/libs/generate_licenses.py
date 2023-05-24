@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
 
 #  Copyright 2016 The WebRTC project authors. All Rights Reserved.
 #
@@ -13,7 +13,8 @@ Licenses are taken from dependent libraries which are determined by
 GN desc command `gn desc` on all targets specified via `--target` argument.
 
 One can see all dependencies by invoking this command:
-$ gn.py desc --all --format=json <out_directory> <target> | python -m json.tool
+$ gn.py desc --all --format=json <out_directory> <target> | \
+        vpython3 -m json.tool
 (see "deps" subarray)
 
 Libraries are mapped to licenses via LIB_TO_LICENSES_DICT dictionary.
@@ -21,14 +22,13 @@ Libraries are mapped to licenses via LIB_TO_LICENSES_DICT dictionary.
 """
 
 import sys
-
 import argparse
-import cgi
 import json
 import logging
 import os
 import re
 import subprocess
+from html import escape
 
 # Third_party library to licences mapping. Keys are names of the libraries
 # (right after the `third_party/` prefix)
@@ -36,22 +36,28 @@ LIB_TO_LICENSES_DICT = {
     'abseil-cpp': ['third_party/abseil-cpp/LICENSE'],
     'android_ndk': ['third_party/android_ndk/NOTICE'],
     'android_sdk': ['third_party/android_sdk/LICENSE'],
-    'auto': ['third_party/android_deps/libs/'
-             'com_google_auto_service_auto_service/LICENSE'],
-    'bazel': ['third_party/bazel/LICENSE'],
+    'auto': [
+        'third_party/android_deps/libs/'
+        'com_google_auto_service_auto_service/LICENSE'
+    ],
     'boringssl': ['third_party/boringssl/src/LICENSE'],
-    'errorprone': ['third_party/android_deps/libs/'
-                   'com_google_errorprone_error_prone_core/LICENSE'],
+    'crc32c': ['third_party/crc32c/src/LICENSE'],
+    'dav1d': ['third_party/dav1d/LICENSE'],
+    'errorprone': [
+        'third_party/android_deps/libs/'
+        'com_google_errorprone_error_prone_core/LICENSE'
+    ],
     'fiat': ['third_party/boringssl/src/third_party/fiat/LICENSE'],
-    'guava': ['third_party/guava/LICENSE'],
+    'guava': ['third_party/android_deps/libs/com_google_guava_guava/LICENSE'],
     'ijar': ['third_party/ijar/LICENSE'],
     'jsoncpp': ['third_party/jsoncpp/LICENSE'],
     'libaom': ['third_party/libaom/source/libaom/LICENSE'],
     'libc++': ['buildtools/third_party/libc++/trunk/LICENSE.TXT'],
     'libc++abi': ['buildtools/third_party/libc++abi/trunk/LICENSE.TXT'],
-    'libevent': ['base/third_party/libevent/LICENSE'],
+    'libevent': ['third_party/libevent/LICENSE'],
     'libjpeg_turbo': ['third_party/libjpeg_turbo/LICENSE.md'],
     'libsrtp': ['third_party/libsrtp/LICENSE'],
+    'libunwind': ['buildtools/third_party/libunwind/trunk/LICENSE.TXT'],
     'libvpx': ['third_party/libvpx/source/libvpx/LICENSE'],
     'libyuv': ['third_party/libyuv/LICENSE'],
     'nasm': ['third_party/nasm/LICENSE'],
@@ -59,7 +65,6 @@ LIB_TO_LICENSES_DICT = {
     'pffft': ['third_party/pffft/LICENSE'],
     'protobuf': ['third_party/protobuf/LICENSE'],
     'rnnoise': ['third_party/rnnoise/COPYING'],
-    'usrsctp': ['third_party/usrsctp/LICENSE'],
     'webrtc': ['LICENSE'],
     'zlib': ['third_party/zlib/LICENSE'],
     'base64': ['rtc_base/third_party/base64/LICENSE'],
@@ -70,13 +75,15 @@ LIB_TO_LICENSES_DICT = {
     'g722': ['modules/third_party/g722/LICENSE'],
     'ooura': ['common_audio/third_party/ooura/LICENSE'],
     'spl_sqrt_floor': ['common_audio/third_party/spl_sqrt_floor/LICENSE'],
+    'kotlin_stdlib': ['third_party/kotlin_stdlib/LICENSE'],
 
     # TODO(bugs.webrtc.org/1110): Remove this hack. This is not a lib.
     # For some reason it is listed as so in _GetThirdPartyLibraries.
     'android_deps': [],
+    # This is not a library but a collection of libraries.
+    'androidx': [],
 
     # Compile time dependencies, no license needed:
-    'yasm': [],
     'ow2_asm': [],
     'jdk': [],
 }
@@ -94,17 +101,16 @@ LIB_REGEX_TO_LICENSES_DICT = {
 }
 
 
-def FindSrcDirPath():
-  """Returns the abs path to the src/ dir of the project."""
-  src_dir = os.path.dirname(os.path.abspath(__file__))
-  while os.path.basename(src_dir) != 'src':
-    src_dir = os.path.normpath(os.path.join(src_dir, os.pardir))
-  return src_dir
-
-
-SCRIPT_DIR = os.path.dirname(os.path.realpath(sys.argv[0]))
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 WEBRTC_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, os.pardir, os.pardir))
-SRC_DIR = FindSrcDirPath()
+SRC_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+
+# Chromium, and potentially other repositories, embed us in the location
+# "//third_party/webrtc". When this is the case, we expect that some of the
+# tools we need are *actually* in their build folder, thus we need to move up
+# to the *true* source root, when we're embedded like this.
+if SRC_DIR.endswith(os.path.join('third_party', 'webrtc')):
+  SRC_DIR = os.path.abspath(os.path.join(SRC_DIR, os.pardir, os.pardir))
 sys.path.append(os.path.join(SRC_DIR, 'build'))
 import find_depot_tools
 
@@ -112,8 +118,7 @@ THIRD_PARTY_LIB_SIMPLE_NAME_REGEX = r'^.*/third_party/([\w\-+]+).*$'
 THIRD_PARTY_LIB_REGEX_TEMPLATE = r'^.*/third_party/%s$'
 
 
-class LicenseBuilder(object):
-
+class LicenseBuilder:
   def __init__(self,
                buildfile_dirs,
                targets,
@@ -176,16 +181,16 @@ class LicenseBuilder(object):
         target,
     ]
     logging.debug('Running: %r', cmd)
-    output_json = subprocess.check_output(cmd, cwd=WEBRTC_ROOT)
+    output_json = subprocess.check_output(cmd, cwd=WEBRTC_ROOT).decode('UTF-8')
     logging.debug('Output: %s', output_json)
     return output_json
 
   def _GetThirdPartyLibraries(self, buildfile_dir, target):
     output = json.loads(LicenseBuilder._RunGN(buildfile_dir, target))
     libraries = set()
-    for described_target in output.values():
-      third_party_libs = (
-          self._ParseLibrary(dep) for dep in described_target['deps'])
+    for described_target in list(output.values()):
+      third_party_libs = (self._ParseLibrary(dep)
+                          for dep in described_target['deps'])
       libraries |= set(lib for lib in third_party_libs if lib)
     return libraries
 
@@ -201,7 +206,7 @@ class LicenseBuilder(object):
     missing_licenses = third_party_libs - set(self.common_licenses_dict.keys())
     if missing_licenses:
       error_msg = 'Missing licenses for following third_party targets: %s' % \
-                  ', '.join(missing_licenses)
+                  ', '.join(sorted(missing_licenses))
       logging.error(error_msg)
       raise Exception(error_msg)
 
@@ -224,7 +229,7 @@ class LicenseBuilder(object):
       for path in self.common_licenses_dict[license_lib]:
         license_path = os.path.join(WEBRTC_ROOT, path)
         with open(license_path, 'r') as license_file:
-          license_text = cgi.escape(license_file.read(), quote=True)
+          license_text = escape(license_file.read(), quote=True)
           output_license_file.write(license_text)
           output_license_file.write('\n')
       output_license_file.write('```\n\n')
@@ -234,19 +239,19 @@ class LicenseBuilder(object):
 
 def main():
   parser = argparse.ArgumentParser(description='Generate WebRTC LICENSE.md')
-  parser.add_argument(
-      '--verbose', action='store_true', default=False, help='Debug logging.')
-  parser.add_argument(
-      '--target',
-      required=True,
-      action='append',
-      default=[],
-      help='Name of the GN target to generate a license for')
+  parser.add_argument('--verbose',
+                      action='store_true',
+                      default=False,
+                      help='Debug logging.')
+  parser.add_argument('--target',
+                      required=True,
+                      action='append',
+                      default=[],
+                      help='Name of the GN target to generate a license for')
   parser.add_argument('output_dir', help='Directory to output LICENSE.md to.')
-  parser.add_argument(
-      'buildfile_dirs',
-      nargs='+',
-      help='Directories containing gn generated ninja files')
+  parser.add_argument('buildfile_dirs',
+                      nargs='+',
+                      help='Directories containing gn generated ninja files')
   args = parser.parse_args()
 
   logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)

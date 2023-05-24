@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSGOBJECT_P_H
 #define QSSGOBJECT_P_H
@@ -47,44 +21,100 @@
 
 #include "qquick3dobjectchangelistener_p.h"
 
+#include "qquick3dscenemanager_p.h"
+
 #include <private/qobject_p.h>
 #include <private/qquickstate_p.h>
 #include <private/qqmlnotifier_p.h>
 #include <private/qlazilyallocated_p.h>
 #include <private/qssgrendergraphobject_p.h>
+#include <QtQuick3DUtils/private/qquick3dprofiler_p.h>
 
 QT_BEGIN_NAMESPACE
 
-class QSSGRenderContextInterface;
-class QSSGRenderContext;
+class QQuick3DItem2D;
 
 class Q_QUICK3D_PRIVATE_EXPORT QQuick3DObjectPrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QQuick3DObject)
 public:
-    enum class Type {
-        Unknown = 0,
-        Node, // Node
-        Layer, // Node
-        Light, // Node
-        Camera, // Node
-        Model, // Node
-        Text, // Node
-        Item2D, // Renderable? Node
-        SceneEnvironment, // Resource
-        DefaultMaterial, // Resource
-        PrincipledMaterial, // Resource
-        Image, // Resource
-        Effect, // Resource
-        CustomMaterial, // Resource
-        Lightmaps, // Resource
-        Geometry, // Resource
-        RenderPlugin, // Not used
-        LastKnownGraphObjectType,
+    using Type = QSSGRenderGraphObject::Type;
+
+    struct ConnectionKey
+    {
+        using Handle = void (QQuick3DObject::*)(QObject *);
+        QObject *context = nullptr;
+        Handle unusable = nullptr;
+        friend bool operator==(const ConnectionKey &a, const ConnectionKey &b) noexcept { return (a.context == b.context) && (a.unusable == b.unusable); }
     };
+    using ConnectionMap = QHash<ConnectionKey, QMetaObject::Connection>;
+
+    template<typename SceneContext, typename CallContext, typename Setter>
+    static void attachWatcherPriv(SceneContext *sceneContext, CallContext *callContext, Setter setter, QQuick3DObject *newO, QObject *oldO)
+    {
+        static_assert(std::is_base_of_v<QQuick3DObject, SceneContext>, "The scene context must be a QQuick3DObject");
+        static_assert(std::is_member_function_pointer_v<Setter>, "The assumption is that the setter is a member function!");
+        static_assert(sizeof(ConnectionKey::Handle) >= sizeof(Setter), "The handle needs to be able to store the value of the setter");
+        // Sanity check: Make sure we have a valid context. If the sceneContext != callContext and we're here because the
+        // watched object just got destroyed by the parent (QObject dtor) and that parent also is used as the sceneContext
+        // then there's nothing more to do; all involved parties are being destroyed, so just bail out.
+        const bool validContext = static_cast<QObject *>(sceneContext) != static_cast<QObject *>(callContext) ? qobject_cast<QQuick3DObject *>(sceneContext) != nullptr : true;
+        if (validContext) {
+            auto sceneManager = QQuick3DObjectPrivate::get(sceneContext)->sceneManager;
+            auto &connectionMap = QQuick3DObjectPrivate::get(sceneContext)->connectionMap;
+            union
+            {
+                Setter s;
+                ConnectionKey::Handle h;
+            }; s = setter;
+            ConnectionKey key{static_cast<QObject *>(callContext), h};
+            // disconnect previous destruction listener
+            if (oldO) {
+                // NOTE: If the old object is inside the QObject's dtor (e.g., QObject::destroyed) we can't
+                // call deref (and there's no point anymore either).
+                if (auto old3dO = qobject_cast<QQuick3DObject *>(oldO))
+                    QQuick3DObjectPrivate::derefSceneManager(old3dO);
+
+                auto it = connectionMap.constFind(key);
+                if (it != connectionMap.cend()) {
+                    QObject::disconnect(*it);
+                    connectionMap.erase(it);
+                }
+            }
+
+            // Watch new object
+            if (newO) {
+                if (sceneManager)
+                    QQuick3DObjectPrivate::refSceneManager(newO, *sceneManager);
+                auto connection = QObject::connect(newO, &QObject::destroyed, callContext, [callContext, setter](){ (callContext->*setter)(nullptr); });
+                connectionMap.insert(key, connection);
+            }
+        }
+    }
+
+    /*!
+      Attach a object-destroyed-watcher to an object that's not owned.
+      There are few checks here just to keep it simple
+      (The compiler should still fail with a varying degree of helpful messages when used incorrectly).
+
+      \a sceneContext - ususally the same as the callContext and only different if the calledContext is a non-QQuick3DObject class
+      (as is the case for QQuick3DShaderUtilsTextureInput)!
+      \a callContext - The object watching another object
+      \a setter - The function/slot that is called for the object (context).
+      \a newO - The new object being watched
+      \b oldO - The previous object that should no longer be watched.
+
+      Note: The \a setter is a function that takes one argument with a discardable return value.
+    */
+    template<typename Context, typename Setter, typename Object3D>
+    static void attachWatcher(Context *context, Setter setter, Object3D *newO, Object3D *oldO)
+    {
+        attachWatcherPriv(context, context, setter, newO, oldO);
+    }
 
     static QQuick3DObjectPrivate *get(QQuick3DObject *item) { return item->d_func(); }
     static const QQuick3DObjectPrivate *get(const QQuick3DObject *item) { return item->d_func(); }
+    static QSSGRenderGraphObject *updateSpatialNode(QQuick3DObject *o, QSSGRenderGraphObject *n) { return o->updateSpatialNode(n); }
 
     explicit QQuick3DObjectPrivate(Type t);
     ~QQuick3DObjectPrivate() override;
@@ -102,23 +132,24 @@ public:
 
     // data property
     static void data_append(QQmlListProperty<QObject> *, QObject *);
-    static int data_count(QQmlListProperty<QObject> *);
-    static QObject *data_at(QQmlListProperty<QObject> *, int);
+    static qsizetype data_count(QQmlListProperty<QObject> *);
+    static QObject *data_at(QQmlListProperty<QObject> *, qsizetype);
     static void data_clear(QQmlListProperty<QObject> *);
 
     // resources property
-    static QObject *resources_at(QQmlListProperty<QObject> *, int);
+    static QObject *resources_at(QQmlListProperty<QObject> *, qsizetype);
     static void resources_append(QQmlListProperty<QObject> *, QObject *);
-    static int resources_count(QQmlListProperty<QObject> *);
+    static qsizetype resources_count(QQmlListProperty<QObject> *);
     static void resources_clear(QQmlListProperty<QObject> *);
 
     // children property
     static void children_append(QQmlListProperty<QQuick3DObject> *, QQuick3DObject *);
-    static int children_count(QQmlListProperty<QQuick3DObject> *);
-    static QQuick3DObject *children_at(QQmlListProperty<QQuick3DObject> *, int);
+    static qsizetype children_count(QQmlListProperty<QQuick3DObject> *);
+    static QQuick3DObject *children_at(QQmlListProperty<QQuick3DObject> *, qsizetype);
     static void children_clear(QQmlListProperty<QQuick3DObject> *);
 
     void _q_resourceObjectDeleted(QObject *);
+    void _q_cleanupContentItem2D();
     quint64 _q_createJSWrapper(QV4::ExecutionEngine *engine);
 
     enum ChangeType {
@@ -152,8 +183,6 @@ public:
 
         QQuick3DObjectChangeListener *listener;
         ChangeTypes types;
-
-        QVector<QQuick3DObjectPrivate::ChangeListener> changeListeners;
     };
 
     struct ExtraData
@@ -197,6 +226,8 @@ public:
         Visible = 0x00010000,
         HideReference = 0x00020000,
         Antialiasing = 0x00040000,
+
+        InstanceRootChanged = 0x00080000,
         // When you add an attribute here, don't forget to update
         // dirtyToString()
 
@@ -214,29 +245,22 @@ public:
     QQuick3DObject *nextDirtyItem;
     QQuick3DObject **prevDirtyItem;
 
-    bool isResourceNode() const;
-    bool isSpatialNode() const;
-
     void setCulled(bool);
 
-    QSharedPointer<QQuick3DSceneManager> sceneManager;
-    int windowRefCount;
+    QPointer<QQuick3DSceneManager> sceneManager;
+    int sceneRefCount;
 
     QQuick3DObject *parentItem;
 
     QList<QQuick3DObject *> childItems;
-    mutable QList<QQuick3DObject *> *sortedChildItems;
-    QList<QQuick3DObject *> paintOrderChildItems() const;
     void addChild(QQuick3DObject *);
     void removeChild(QQuick3DObject *);
     void siblingOrderChanged();
 
-    void markSortedChildrenDirty(QQuick3DObject *child);
-
-    void refSceneManager(const QSharedPointer<QQuick3DSceneManager> &);
+    void refSceneManager(QQuick3DSceneManager &);
     void derefSceneManager();
 
-    static void refSceneManager(QQuick3DObject *obj,const QSharedPointer<QQuick3DSceneManager> &mgr)
+    static void refSceneManager(QQuick3DObject *obj, QQuick3DSceneManager &mgr)
     {
         if (obj)
             QQuick3DObjectPrivate::get(obj)->refSceneManager(mgr);
@@ -258,11 +282,22 @@ public:
 
     Type type = Type::Unknown;
     bool componentComplete = true;
+    bool preSyncNeeded = false;
     bool culled;
+    bool sharedResource = false;
+    QQuick3DItem2D *contentItem2d = nullptr;
+    ConnectionMap connectionMap;
+    Q_QUICK3D_PROFILE_ID
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QQuick3DObjectPrivate::ChangeTypes)
 Q_DECLARE_TYPEINFO(QQuick3DObjectPrivate::ChangeListener, Q_PRIMITIVE_TYPE);
+Q_DECLARE_TYPEINFO(QQuick3DObjectPrivate::ConnectionKey, Q_PRIMITIVE_TYPE);
+
+inline size_t qHash(const QQuick3DObjectPrivate::ConnectionKey &con, size_t seed = 0) noexcept
+{
+    return qHashBits(&con, sizeof(QQuick3DObjectPrivate::ConnectionKey), seed);
+}
 
 QT_END_NAMESPACE
 

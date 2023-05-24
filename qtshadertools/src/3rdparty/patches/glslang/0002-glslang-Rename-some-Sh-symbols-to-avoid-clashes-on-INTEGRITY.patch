@@ -1,0 +1,89 @@
+From 5e0363cfefeef2a8827df76f9060a5519fd53965 Mon Sep 17 00:00:00 2001
+From: Laszlo Agocs <laszlo.agocs@qt.io>
+Date: Mon, 15 Aug 2022 19:07:01 +0200
+Subject: [PATCH] Rename some Sh* symbols to avoid clashes on INTEGRITY
+
+Change-Id: I40159b47eb63f412c3014fbb988e58d6c6b4d148
+---
+ .../glslang/glslang/MachineIndependent/ShaderLang.cpp  | 10 +++++-----
+ src/3rdparty/glslang/glslang/Public/ShaderLang.h       |  6 +++---
+ 2 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp b/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp
+index a5ba40e6..3f7a4675 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/ShaderLang.cpp
+@@ -1367,7 +1367,7 @@ int ShInitialize()
+ // objects.
+ //
+ 
+-ShHandle ShConstructCompiler(const EShLanguage language, int debugOptions)
++ShHandle ShConstructCompiler_Qt(const EShLanguage language, int debugOptions)
+ {
+     if (!InitThread())
+         return 0;
+@@ -1397,7 +1397,7 @@ ShHandle ShConstructUniformMap()
+     return reinterpret_cast<void*>(base);
+ }
+ 
+-void ShDestruct(ShHandle handle)
++void ShDestruct_Qt(ShHandle handle)
+ {
+     if (handle == 0)
+         return;
+@@ -1415,7 +1415,7 @@ void ShDestruct(ShHandle handle)
+ //
+ // Cleanup symbol tables
+ //
+-int ShFinalize()
++int ShFinalize_Qt()
+ {
+     glslang::GetGlobalLock();
+     --NumberOfClients;
+@@ -1474,7 +1474,7 @@ int ShFinalize()
+ // Return:  The return value is really boolean, indicating
+ // success (1) or failure (0).
+ //
+-int ShCompile(
++int ShCompile_Qt(
+     const ShHandle handle,
+     const char* const shaderStrings[],
+     const int numStrings,
+@@ -1755,7 +1755,7 @@ bool InitializeProcess()
+ 
+ void FinalizeProcess()
+ {
+-    ShFinalize();
++    ShFinalize_Qt();
+ }
+ 
+ class TDeferredCompiler : public TCompiler {
+diff --git a/src/3rdparty/glslang/glslang/Public/ShaderLang.h b/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+index e44339db..b55ed599 100755
+--- a/src/3rdparty/glslang/glslang/Public/ShaderLang.h
++++ b/src/3rdparty/glslang/glslang/Public/ShaderLang.h
+@@ -314,10 +314,10 @@ typedef void* ShHandle;
+ // Driver calls these to create and destroy compiler/linker
+ // objects.
+ //
+-GLSLANG_EXPORT ShHandle ShConstructCompiler(const EShLanguage, int debugOptions);  // one per shader
++GLSLANG_EXPORT ShHandle ShConstructCompiler_Qt(const EShLanguage, int debugOptions);  // one per shader
+ GLSLANG_EXPORT ShHandle ShConstructLinker(const EShExecutable, int debugOptions);  // one per shader pair
+ GLSLANG_EXPORT ShHandle ShConstructUniformMap();                 // one per uniform namespace (currently entire program object)
+-GLSLANG_EXPORT void ShDestruct(ShHandle);
++GLSLANG_EXPORT void ShDestruct_Qt(ShHandle);
+ 
+ //
+ // The return value of ShCompile is boolean, non-zero indicating
+@@ -326,7 +326,7 @@ GLSLANG_EXPORT void ShDestruct(ShHandle);
+ // The info-log should be written by ShCompile into
+ // ShHandle, so it can answer future queries.
+ //
+-GLSLANG_EXPORT int ShCompile(
++GLSLANG_EXPORT int ShCompile_Qt(
+     const ShHandle,
+     const char* const shaderStrings[],
+     const int numStrings,
+-- 
+2.36.1.windows.1
+

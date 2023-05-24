@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \class QImageWriter
@@ -45,7 +9,6 @@
     \inmodule QtGui
     \reentrant
     \ingroup painting
-    \ingroup io
 
     QImageWriter supports setting format specific options, such as
     compression level and quality, prior to storing the
@@ -133,6 +96,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 static QImageIOHandler *createWriteHandlerHelper(QIODevice *device,
     const QByteArray &format)
 {
@@ -153,7 +118,7 @@ static QImageIOHandler *createWriteHandlerHelper(QIODevice *device,
         // if there's no format, see if \a device is a file, and if so, find
         // the file suffix and find support for that format among our plugins.
         // this allows plugins to override our built-in handlers.
-        if (QFile *file = qobject_cast<QFile *>(device)) {
+        if (QFileDevice *file = qobject_cast<QFileDevice *>(device)) {
             if (!(suffix = QFileInfo(file->fileName()).suffix().toLower().toLatin1()).isEmpty()) {
 #ifndef QT_NO_IMAGEFORMATPLUGIN
                 const int index = keyMap.key(QString::fromLatin1(suffix), -1);
@@ -349,9 +314,9 @@ QImageWriter::QImageWriter(const QString &fileName, const QByteArray &format)
 */
 QImageWriter::~QImageWriter()
 {
+    delete d->handler;
     if (d->deleteDevice)
         delete d->device;
-    delete d->handler;
     delete d;
 }
 
@@ -396,13 +361,13 @@ QByteArray QImageWriter::format() const
 */
 void QImageWriter::setDevice(QIODevice *device)
 {
+    delete d->handler;
+    d->handler = nullptr;
     if (d->device && d->deleteDevice)
         delete d->device;
 
     d->device = device;
     d->deleteDevice = false;
-    delete d->handler;
-    d->handler = nullptr;
 }
 
 /*!
@@ -428,17 +393,17 @@ void QImageWriter::setFileName(const QString &fileName)
 }
 
 /*!
-    If the currently assigned device is a QFile, or if setFileName()
+    If the currently assigned device is a file, or if setFileName()
     has been called, this function returns the name of the file
     QImageWriter writes to. Otherwise (i.e., if no device has been
-    assigned or the device is not a QFile), an empty QString is
+    assigned or the device is not a file), an empty QString is
     returned.
 
     \sa setFileName(), setDevice()
 */
 QString QImageWriter::fileName() const
 {
-    QFile *file = qobject_cast<QFile *>(d->device);
+    QFileDevice *file = qobject_cast<QFileDevice *>(d->device);
     return file ? file->fileName() : QString();
 }
 
@@ -496,37 +461,6 @@ int QImageWriter::compression() const
 {
     return d->compression;
 }
-
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-    \obsolete Use QColorSpace conversion on the QImage instead.
-
-    This is an image format specific function that sets the gamma
-    level of the image to \a gamma. For image formats that do not
-    support setting the gamma level, this value is ignored.
-
-    The value range of \a gamma depends on the image format. For
-    example, the "png" format supports a gamma range from 0.0 to 1.0.
-
-    \sa quality()
-*/
-void QImageWriter::setGamma(float gamma)
-{
-    d->gamma = gamma;
-}
-
-/*!
-    \obsolete Use QImage::colorSpace() and QColorSpace::gamma() instead.
-
-    Returns the gamma level of the image.
-
-    \sa setGamma()
-*/
-float QImageWriter::gamma() const
-{
-    return d->gamma;
-}
-#endif
 
 /*!
     \since 5.4
@@ -653,40 +587,6 @@ QImageIOHandler::Transformations QImageWriter::transformation() const
     return d->transformation;
 }
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \obsolete
-
-    Use setText() instead.
-
-    This is an image format specific function that sets the
-    description of the image to \a description. For image formats that
-    do not support setting the description, this value is ignored.
-
-    The contents of \a description depends on the image format.
-
-    \sa description()
-*/
-void QImageWriter::setDescription(const QString &description)
-{
-    d->description = description;
-}
-
-/*!
-    \obsolete
-
-    Use QImageReader::text() instead.
-
-    Returns the description of the image.
-
-    \sa setDescription()
-*/
-QString QImageWriter::description() const
-{
-    return d->description;
-}
-#endif
-
 /*!
     \since 4.1
 
@@ -711,8 +611,8 @@ QString QImageWriter::description() const
 void QImageWriter::setText(const QString &key, const QString &text)
 {
     if (!d->description.isEmpty())
-        d->description += QLatin1String("\n\n");
-    d->description += key.simplified() + QLatin1String(": ") + text.simplified();
+        d->description += "\n\n"_L1;
+    d->description += key.simplified() + ": "_L1 + text.simplified();
 }
 
 /*!
@@ -784,7 +684,7 @@ bool QImageWriter::write(const QImage &image)
 
     if (!d->handler->write(img))
         return false;
-    if (QFile *file = qobject_cast<QFile *>(d->device))
+    if (QFileDevice *file = qobject_cast<QFileDevice *>(d->device))
         file->flush();
     return true;
 }

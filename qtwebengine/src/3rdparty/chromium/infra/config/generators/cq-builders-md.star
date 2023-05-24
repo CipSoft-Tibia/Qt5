@@ -1,8 +1,8 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-load("//lib/try.star", "DEFAULT_EXCLUDE_REGEXPS")
+load("//lib/try.star", "location_filters_without_defaults")
 load("//outages/config.star", outages_config = "config")
 
 _MD_HEADER = """\
@@ -24,13 +24,13 @@ using common assumptions about how builders are configured.
 
 _REQUIRED_HEADER = """\
 These builders must pass before a CL may land that affects files outside of
-//infra/config.
+//docs and //infra/config.
 """
 
 _OPTIONAL_HEADER = """\
 These builders optionally run, depending on the files in a CL. For example, a CL
 which touches `//gpu/BUILD.gn` would trigger the builder
-`android_optional_gpu_tests_rel`, due to the `location_regexp` values for that
+`android_optional_gpu_tests_rel`, due to the `location_filters` values for that
 builder.
 """
 
@@ -44,12 +44,10 @@ These builders are currently disabled due to the cq_disable_experiments outages
 setting. See //infra/config/outages/README.md for more information.
 """ if outages_config.disable_cq_experiments else "")
 
-_TRY_BUILDER_VIEW_URL = "https://ci.chromium.org/p/chromium/builders/try"
-
-_REGEX_PREFIX = ".+/[+]/"
+_TRY_BUILDER_VIEW_URL = "https://ci.chromium.org/p/{project}/builders/{bucket}/{builder}"
 
 def _get_main_config_group_builders(ctx):
-    cq_cfg = ctx.output["commit-queue.cfg"]
+    cq_cfg = ctx.output["luci/commit-queue.cfg"]
 
     for c in cq_cfg.config_groups:
         if len(c.gerrit) != 1:
@@ -72,20 +70,13 @@ def _get_main_config_group_builders(ctx):
     fail("Could not find the main CQ group")
 
 def _normalize_builder(builder):
-    location_regexp_exclude = [
-        r
-        for r in builder.location_regexp_exclude
-        if r not in DEFAULT_EXCLUDE_REGEXPS
-    ]
-    location_regexp = builder.location_regexp
-    if list(location_regexp) == [".*"] and not location_regexp_exclude:
-        location_regexp = None
+    location_filters = location_filters_without_defaults(builder)
+
     return struct(
         name = builder.name,
         experiment_percentage = builder.experiment_percentage,
         includable_only = builder.includable_only,
-        location_regexp = location_regexp,
-        location_regexp_exclude = location_regexp_exclude,
+        location_filters = location_filters,
     )
 
 def _group_builders_by_section(builders):
@@ -97,7 +88,7 @@ def _group_builders_by_section(builders):
         builder = _normalize_builder(builder)
         if builder.experiment_percentage:
             experimental.append(builder)
-        elif builder.location_regexp or builder.location_regexp_exclude:
+        elif builder.location_filters:
             optional.append(builder)
         elif builder.includable_only:
             continue
@@ -110,25 +101,29 @@ def _group_builders_by_section(builders):
         optional = optional,
     )
 
-def _codesearch_query(*atoms, package = None):
-    query = ["https://cs.chromium.org/search?q="]
-    if package != None:
-        query.append("package:%5E")  # %5E -> encoded ^
-        query.append(package)
-        query.append("$")
+def _codesearch_query(url, *atoms):
+    query = ["{}/search?q=".format(url)]
     for atom in atoms:
         query.append("+")
         query.append(atom)
     return "".join(query)
 
-def _get_regex_line_details(regex):
-    if regex.startswith(_REGEX_PREFIX):
-        regex = regex[len(_REGEX_PREFIX):]
+def _public_codesearch_query(*atoms):
+    return _codesearch_query("https://cs.chromium.org", *atoms)
+
+def _internal_codesearch_query(*atoms):
+    return _codesearch_query("https://source.corp.google.com", *atoms)
+
+def _get_location_filter_details(f):
+    if f.gerrit_host_regexp != ".*" or f.gerrit_project_regexp != ".*":
+        fail("cq-builders.md generator needs updating to support gerrit host/project regexp")
+
+    regex = f.path_regexp
     title = "//" + regex.lstrip("/")
     if regex.endswith(".+"):
         regex = regex[:-len(".+")]
 
-    url = _codesearch_query("file:" + regex, package = "chromium")
+    url = _public_codesearch_query("file:" + regex)
 
     # If the regex doesn't have any interesting characters that might be part of a
     # regex, assume the regex is targeting a single path and direct link to it
@@ -137,6 +132,7 @@ def _get_regex_line_details(regex):
         url = "https://cs.chromium.org/chromium/src/" + regex
 
     return struct(
+        prefix = "exclude: " if f.exclude else "",
         title = title,
         url = url,
     )
@@ -161,21 +157,33 @@ def _generate_cq_builders_md(ctx):
         lines.append(header)
 
         for b in builders:
-            name = b.name.rsplit("/", 1)[-1]
+            project, bucket, name = b.name.split("/")
+            if project not in ("chrome", "chromium"):
+                fail("unexpected project added to the CQ: {}".format(project))
+            builder_url = _TRY_BUILDER_VIEW_URL.format(
+                project = project,
+                bucket = bucket,
+                builder = name,
+            )
+
+            # Some builders share a common prefix (android-marshmallow-x86-rel
+            # and android-marshmallow-x86-rel-non-cq for example). The quotes
+            # below ensure codesearch links find the exact builder name, rather
+            # than everything with a common prefix. Two sets of quotes are
+            # needed because the first set is interpreted by codesearch.
+            quoted_name = "\"\"{name}\"\"".format(name = name)
+            if project == "chrome":
+                codesearch_query = _internal_codesearch_query("file:/try/.*\\.star$")
+            else:
+                codesearch_query = _public_codesearch_query("file:/try/.*\\.star$")
             lines.append((
-                "* [{name}]({try_builder_view}/{name}) " +
-                "([definition]({definition_query}+{name})) " +
-                "([matching builders]({trybot_query}+{name}))"
+                "* [{name}]({try_builder_view}) " +
+                "([definition]({definition_query}+{quoted_name}))"
             ).format(
                 name = name,
-                try_builder_view = _TRY_BUILDER_VIEW_URL,
-                definition_query = _codesearch_query(
-                    "file:/cq.star$",
-                    "-file:/beta/",
-                    "-file:/stable/",
-                    package = "chromium",
-                ),
-                trybot_query = _codesearch_query("file:trybots.py"),
+                quoted_name = quoted_name,
+                try_builder_view = builder_url,
+                definition_query = codesearch_query,
             ))
 
             if b.experiment_percentage:
@@ -183,20 +191,15 @@ def _generate_cq_builders_md(ctx):
                     percentage = b.experiment_percentage,
                 ))
 
-            for attr, regexp_header in (
-                ("location_regexp", "Path regular expressions:"),
-                ("location_regexp_exclude", "Path exclude regular expressions:"),
-            ):
-                regexes = getattr(b, attr)
-                if not regexes:
-                    continue
+            if b.location_filters:
                 lines.append("")
-                lines.append("  " + regexp_header)
-                for regex in regexes:
-                    regex_line_details = _get_regex_line_details(regex)
-                    lines.append("  * [`{title}`]({url})".format(
-                        title = regex_line_details.title,
-                        url = regex_line_details.url,
+                lines.append("  Location filters:")
+                for f in b.location_filters:
+                    details = _get_location_filter_details(f)
+                    lines.append("  * {prefix}[`{title}`]({url})".format(
+                        prefix = details.prefix,
+                        title = details.title,
+                        url = details.url,
                     ))
 
             lines.append("")

@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 Svenn-Arne Dragly.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 Svenn-Arne Dragly.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "graphicshelperes3_p.h"
 #include <private/attachmentpack_p.h>
@@ -180,7 +144,7 @@ GraphicsHelperES3::~GraphicsHelperES3()
 }
 
 void GraphicsHelperES3::initializeHelper(QOpenGLContext *context,
-                                          QAbstractOpenGLFunctions *functions)
+                                         QAbstractOpenGLFunctions *functions)
 {
     GraphicsHelperES2::initializeHelper(context, functions);
     m_extraFuncs = context->extraFunctions();
@@ -257,6 +221,17 @@ void GraphicsHelperES3::vertexAttributePointer(GLenum shaderDataType,
 
 void GraphicsHelperES3::drawArraysInstanced(GLenum primitiveType, GLint first, GLsizei count, GLsizei instances)
 {
+    m_extraFuncs->glDrawArraysInstanced(primitiveType,
+                                        first,
+                                        count,
+                                        instances);
+}
+
+void GraphicsHelperES3::drawArraysInstancedBaseInstance(GLenum primitiveType, GLint first, GLsizei count, GLsizei instances, GLsizei baseInstance)
+{
+    if (baseInstance != 0)
+        qWarning() << "glDrawElementsInstancedBaseVertexBaseInstance is not supported with OpenGL ES 3";
+
     m_extraFuncs->glDrawArraysInstanced(primitiveType,
                                         first,
                                         count,
@@ -710,9 +685,9 @@ GLboolean GraphicsHelperES3::unmapBuffer(GLenum target)
     return m_extraFuncs->glUnmapBuffer(target);
 }
 
-QVector<ShaderUniform> GraphicsHelperES3::programUniformsAndLocations(GLuint programId)
+std::vector<ShaderUniform> GraphicsHelperES3::programUniformsAndLocations(GLuint programId)
 {
-    QVector<ShaderUniform> uniforms;
+    std::vector<ShaderUniform> uniforms;
 
     GLint nbrActiveUniforms = 0;
     m_funcs->glGetProgramiv(programId, GL_ACTIVE_UNIFORMS, &nbrActiveUniforms);
@@ -733,7 +708,7 @@ QVector<ShaderUniform> GraphicsHelperES3::programUniformsAndLocations(GLuint pro
         m_extraFuncs->glGetActiveUniformsiv(programId, 1, (GLuint*)&i, GL_UNIFORM_ARRAY_STRIDE, &uniform.m_arrayStride);
         m_extraFuncs->glGetActiveUniformsiv(programId, 1, (GLuint*)&i, GL_UNIFORM_MATRIX_STRIDE, &uniform.m_matrixStride);
         uniform.m_rawByteSize = uniformByteSize(uniform);
-        uniforms.append(uniform);
+        uniforms.push_back(uniform);
         qCDebug(Rendering) << uniform.m_name << "size" << uniform.m_size
                                    << " offset" << uniform.m_offset
                                    << " rawSize" << uniform.m_rawByteSize;
@@ -742,9 +717,9 @@ QVector<ShaderUniform> GraphicsHelperES3::programUniformsAndLocations(GLuint pro
     return uniforms;
 }
 
-QVector<ShaderUniformBlock> GraphicsHelperES3::programUniformBlocks(GLuint programId)
+std::vector<ShaderUniformBlock> GraphicsHelperES3::programUniformBlocks(GLuint programId)
 {
-    QVector<ShaderUniformBlock> blocks;
+    std::vector<ShaderUniformBlock> blocks;
     GLint nbrActiveUniformsBlocks = 0;
     m_extraFuncs->glGetProgramiv(programId, GL_ACTIVE_UNIFORM_BLOCKS, &nbrActiveUniformsBlocks);
     blocks.reserve(nbrActiveUniformsBlocks);
@@ -758,7 +733,7 @@ QVector<ShaderUniformBlock> GraphicsHelperES3::programUniformBlocks(GLuint progr
         m_extraFuncs->glGetActiveUniformBlockiv(programId, i, GL_UNIFORM_BLOCK_ACTIVE_UNIFORMS, &uniformBlock.m_activeUniformsCount);
         m_extraFuncs->glGetActiveUniformBlockiv(programId, i, GL_UNIFORM_BLOCK_BINDING, &uniformBlock.m_binding);
         m_extraFuncs->glGetActiveUniformBlockiv(programId, i, GL_UNIFORM_BLOCK_DATA_SIZE, &uniformBlock.m_size);
-        blocks.append(uniformBlock);
+        blocks.push_back(uniformBlock);
     }
     return blocks;
 }

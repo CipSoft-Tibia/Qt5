@@ -1,40 +1,27 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtCore/qendian.h>
 #include <QtCore/private/qendian_p.h>
+#include <QtCore/qsysinfo.h>
 
+#if QT_SUPPORTS_INT128
+#define ONLY_INT128(...) __VA_ARGS__
+#else
+#define ONLY_INT128(...)
+#endif
 
 class tst_QtEndian: public QObject
 {
     Q_OBJECT
+public:
+    enum Signedness {
+        Unsigned,
+        Signed
+    };
+    Q_ENUM(Signedness);
 
 private slots:
     void fromBigEndian();
@@ -54,11 +41,15 @@ private slots:
     void endianIntegers_data();
     void endianIntegers();
 
-    void endianBitfields();
+    void endianBitfieldUnions_data();
+    void endianBitfieldUnions();
 };
 
 struct TestData
 {
+    ONLY_INT128(
+    quint128 data128;
+    )
     quint64 data64;
     quint32 data32;
     quint16 data16;
@@ -75,6 +66,9 @@ template <> quint8 getData(const TestData &d) { return d.data8; }
 template <> quint16 getData(const TestData &d) { return d.data16; }
 template <> quint32 getData(const TestData &d) { return d.data32; }
 template <> quint64 getData(const TestData &d) { return d.data64; }
+ONLY_INT128(
+template <> quint128 getData(const TestData &d) { return d.data128; }
+)
 template <> float getData(const TestData &d) { return d.dataFloat; }
 
 union RawTestData
@@ -92,6 +86,9 @@ Float int2Float(typename QIntegerForSizeof<Float>::Unsigned i)
 }
 
 static const TestData inNativeEndian = {
+    ONLY_INT128(
+    Q_UINT128_C(0x0123'4567'89ab'cdef'18ba'df00'd1da'cafe),
+    )
     Q_UINT64_C(0x0123456789abcdef),
     0x00c0ffee,
     0xcafe,
@@ -101,6 +98,9 @@ static const TestData inNativeEndian = {
     '\0'
 };
 static const RawTestData inBigEndian = {
+    ONLY_INT128(
+    "\x01\x23\x45\x67\x89\xab\xcd\xef\x18\xba\xdf\x00\xd1\xda\xca\xfe"
+    )
     "\x01\x23\x45\x67\x89\xab\xcd\xef"
     "\x00\xc0\xff\xee"
     "\xca\xfe"
@@ -109,6 +109,9 @@ static const RawTestData inBigEndian = {
     "\x01\x23\x45\x67\x89\xab\xcd\xef"
 };
 static const RawTestData inLittleEndian = {
+    ONLY_INT128(
+    "\xfe\xca\xda\xd1\x00\xdf\xba\x18\xef\xcd\xab\x89\x67\x45\x23\x01"
+    )
     "\xef\xcd\xab\x89\x67\x45\x23\x01"
     "\xee\xff\xc0\x00"
     "\xfe\xca"
@@ -120,27 +123,37 @@ static const RawTestData inLittleEndian = {
 #define EXPAND_ENDIAN_TEST(endian)          \
     do {                                    \
         /* Unsigned tests */                \
-        ENDIAN_TEST(endian, quint, 64);     \
-        ENDIAN_TEST(endian, quint, 32);     \
-        ENDIAN_TEST(endian, quint, 16);     \
-        ENDIAN_TEST(endian, quint, 8);      \
+        ONLY_INT128(                        \
+        ENDIAN_TEST_INT(endian, ui, 128);   \
+        )                                   \
+        ENDIAN_TEST_INT(endian, ui, 64);    \
+        ENDIAN_TEST_INT(endian, ui, 32);    \
+        ENDIAN_TEST_INT(endian, ui, 16);    \
+        ENDIAN_TEST_INT(endian, ui, 8);     \
                                             \
         /* Signed tests */                  \
-        ENDIAN_TEST(endian, qint, 64);      \
-        ENDIAN_TEST(endian, qint, 32);      \
-        ENDIAN_TEST(endian, qint, 16);      \
-        ENDIAN_TEST(endian, qint, 8);       \
+        ONLY_INT128(                        \
+        ENDIAN_TEST_INT(endian, i, 128);    \
+        )                                   \
+        ENDIAN_TEST_INT(endian, i, 64);     \
+        ENDIAN_TEST_INT(endian, i, 32);     \
+        ENDIAN_TEST_INT(endian, i, 16);     \
+        ENDIAN_TEST_INT(endian, i, 8);      \
     } while (false)                         \
     /**/
 
-#define ENDIAN_TEST(endian, type, size)                                                 \
+#define ENDIAN_TEST_INT(Endian, Uns, Size) \
+    ENDIAN_TEST(Endian, q ## Uns ## nt ## Size, data ## Size)
+
+#define ENDIAN_TEST(endian, Type, Data)                                                 \
     do {                                                                                \
+        static_assert(std::is_same_v<decltype(qbswap(std::declval<Type>())), Type>);    \
         QCOMPARE(qFrom ## endian ## Endian(                                             \
-                    (type ## size)(in ## endian ## Endian.data.data ## size)),          \
-                (type ## size)(inNativeEndian.data ## size));                           \
-        QCOMPARE(qFrom ## endian ## Endian<type ## size>(                               \
-                    in ## endian ## Endian.rawData + offsetof(TestData, data ## size)), \
-                (type ## size)(inNativeEndian.data ## size));                           \
+                    (Type)(in ## endian ## Endian.data.Data)),                          \
+                (Type)(inNativeEndian.Data));                                           \
+        QCOMPARE(qFrom ## endian ## Endian<Type>(                                       \
+                    in ## endian ## Endian.rawData + offsetof(TestData, Data)),         \
+                (Type)(inNativeEndian.Data));                                           \
     } while (false)                                                                     \
     /**/
 
@@ -155,6 +168,9 @@ void tst_QtEndian::fromLittleEndian()
 }
 
 #undef ENDIAN_TEST
+
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_GCC("-Wmemset-elt-size")
 
 template <typename T>
 void transformRegion_template(T (*transformOne)(T), void (*transformRegion)(const void *, qsizetype, void *))
@@ -225,6 +241,7 @@ void transformRegion_template(T (*transformOne)(T), void (*transformRegion)(cons
     for (int i = 0; i < 64; ++i)
         QCOMPARE(dest[i], expected);
 }
+QT_WARNING_POP
 
 void tst_QtEndian::fromBigEndianRegion_data()
 {
@@ -257,18 +274,18 @@ void tst_QtEndian::fromLittleEndianRegion()
     }
 }
 
-#define ENDIAN_TEST(endian, type, size)                                                 \
-    do {                                                                                \
-        QCOMPARE(qTo ## endian ## Endian(                                               \
-                    (type ## size)(inNativeEndian.data ## size)),                       \
-                (type ## size)(in ## endian ## Endian.data.data ## size));              \
-                                                                                        \
-        RawTestData test;                                                               \
-        qTo ## endian ## Endian(                                                        \
-                (type ## size)(inNativeEndian.data ## size),                            \
-                test.rawData + offsetof(TestData, data ## size));                       \
-        QCOMPARE(test.data.data ## size, in ## endian ## Endian.data.data ## size );    \
-    } while (false)                                                                     \
+#define ENDIAN_TEST(endian, Type, Data)                                 \
+    do {                                                                \
+        QCOMPARE(qTo ## endian ## Endian(                               \
+                    (Type)(inNativeEndian.Data)),                       \
+                (Type)(in ## endian ## Endian.data.Data));              \
+                                                                        \
+        RawTestData test;                                               \
+        qTo ## endian ## Endian(                                        \
+                (Type)(inNativeEndian.Data),                            \
+                test.rawData + offsetof(TestData, Data));               \
+        QCOMPARE(test.data.Data, in ## endian ## Endian.data.Data );    \
+    } while (false)                                                     \
     /**/
 
 void tst_QtEndian::toBigEndian()
@@ -356,32 +373,108 @@ void tst_QtEndian::endianIntegers()
 #endif
 }
 
-void tst_QtEndian::endianBitfields()
+template<template<typename... Accessors> typename Union, template<int, int, typename> typename Member>
+void testBitfieldUnion()
 {
-    union {
-        quint32_be_bitfield<21, 11> upper;
-        quint32_be_bitfield<10, 11> lower;
-        qint32_be_bitfield<0, 10> bottom;
-    } u;
+    using upper = Member<21, 11, uint>;
+    using lower = Member<10, 11, uint>;
+    using bottom = Member<0, 10, int>;
+    using all = Member<0, 32, uint>;
 
-    u.upper = 200;
-    QCOMPARE(u.upper, 200U);
-    u.lower = 1000;
-    u.bottom = -8;
-    QCOMPARE(u.lower, 1000U);
-    QCOMPARE(u.upper, 200U);
+    using UnionType = Union<upper, lower, bottom, all>;
+    UnionType u;
 
-    u.lower += u.upper;
-    QCOMPARE(u.upper, 200U);
-    QCOMPARE(u.lower, 1200U);
+    u.template set<upper>(200);
+    QCOMPARE(u.template get<upper>(), 200U);
+    u.template set<lower>(1000);
+    u.template set<bottom>(-8);
+    QCOMPARE(u.template get<lower>(), 1000U);
+    QCOMPARE(u.template get<upper>(), 200U);
 
-    u.upper = 65536 + 7;
-    u.lower = 65535;
-    QCOMPARE(u.lower, 65535U & ((1<<11) - 1));
-    QCOMPARE(u.upper, 7U);
+    u.template set<lower>(u.template get<lower>() + u.template get<upper>());
+    QCOMPARE(u.template get<upper>(), 200U);
+    QCOMPARE(u.template get<lower>(), 1200U);
 
-    QCOMPARE(u.bottom, -8);
+    u.template set<upper>(65536 + 7);
+    u.template set<lower>(65535);
+    QCOMPARE(u.template get<lower>(), 65535U & ((1<<11) - 1));
+    QCOMPARE(u.template get<upper>(), 7U);
+
+    QCOMPARE(u.template get<bottom>(), -8);
+
+    UnionType u2(QSpecialIntegerBitfieldZero);
+    QCOMPARE(u2.data(), 0U);
+
+    u2.template set<all>(std::numeric_limits<uint>::max());
+    QCOMPARE(u2.template get<all>(), std::numeric_limits<uint>::max());
+
+    u2.template set<all>(453);
+    QCOMPARE(u2.template get<all>(), 453U);
+
+    u2.template set<all>(0);
+    QCOMPARE(u2.template get<all>(), 0U);
+
+    UnionType u3(42U);
+    QCOMPARE(u3.data(), 42U);
+
+    using BEUintAccessor =  QSpecialIntegerAccessor<QBigEndianStorageType<uint>, 21, 11>;
+    using LEUintAccessor =  QSpecialIntegerAccessor<QLittleEndianStorageType<uint>, 21, 11>;
+    using BEIntAccessor =  QSpecialIntegerAccessor<QBigEndianStorageType<int>, 0, 10>;
+    using LEIntAccessor =  QSpecialIntegerAccessor<QLittleEndianStorageType<int>, 0, 10>;
+
+    if constexpr (std::is_same_v<BEUintAccessor, upper>) {
+        QCOMPARE(u.template get<BEUintAccessor>(), 7U);
+    } else if constexpr (std::is_same_v<LEUintAccessor, upper>) {
+        QCOMPARE(u.template get<LEUintAccessor>(), 7U);
+    } else if constexpr (std::is_same_v<BEIntAccessor, bottom>) {
+        QCOMPARE(u.template get<BEIntAccessor>(), -8);
+    } else if constexpr (std::is_same_v<LEIntAccessor, bottom>) {
+        QCOMPARE(u.template get<LEIntAccessor>(), -8);
+    } else {
+        QFAIL("none of the manually defined accessors match");
+    }
 }
+
+void tst_QtEndian::endianBitfieldUnions_data()
+{
+    QTest::addColumn<QSysInfo::Endian>("byteOrder");
+    QTest::addColumn<Signedness>("signedness");
+
+    QTest::addRow("little endian unsigned") << QSysInfo::LittleEndian << Unsigned;
+    QTest::addRow("little endian signed") << QSysInfo::LittleEndian << Signed;
+    QTest::addRow("big endian unsigned") << QSysInfo::BigEndian << Unsigned;
+    QTest::addRow("big endian signed") << QSysInfo::BigEndian << Signed;
+}
+
+void tst_QtEndian::endianBitfieldUnions()
+{
+    QFETCH(QSysInfo::Endian, byteOrder);
+    QFETCH(Signedness, signedness);
+
+    switch (byteOrder) {
+    case QSysInfo::LittleEndian:
+        switch (signedness) {
+        case Unsigned:
+            testBitfieldUnion<quint32_le_bitfield_union, quint32_le_bitfield_member>();
+            return;
+        case Signed:
+            testBitfieldUnion<qint32_le_bitfield_union, qint32_le_bitfield_member>();
+            return;
+        }
+        Q_UNREACHABLE_RETURN();
+    case QSysInfo::BigEndian:
+        switch (signedness) {
+        case Unsigned:
+            testBitfieldUnion<quint32_be_bitfield_union, quint32_be_bitfield_member>();
+            return;
+        case Signed:
+            testBitfieldUnion<qint32_be_bitfield_union, qint32_be_bitfield_member>();
+            return;
+        }
+        Q_UNREACHABLE_RETURN();
+    }
+}
+
 
 QTEST_MAIN(tst_QtEndian)
 #include "tst_qtendian.moc"

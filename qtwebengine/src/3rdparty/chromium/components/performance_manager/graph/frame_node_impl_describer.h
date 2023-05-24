@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,7 +23,7 @@ class FrameNodeImplDescriber : public GraphOwned,
   void OnTakenFromGraph(Graph* graph) override;
 
   // NodeDataDescriberDefaultImpl impl:
-  base::Value DescribeFrameNodeData(const FrameNode* node) const override;
+  base::Value::Dict DescribeFrameNodeData(const FrameNode* node) const override;
 };
 
 }  // namespace performance_manager

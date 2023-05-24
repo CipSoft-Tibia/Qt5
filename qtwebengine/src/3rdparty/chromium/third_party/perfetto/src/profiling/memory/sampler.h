@@ -59,12 +59,16 @@ class Sampler {
     return static_cast<size_t>(sampling_interval_ * NumberOfSamples(alloc_sz));
   }
 
+  uint64_t sampling_interval() const { return sampling_interval_; }
+
  private:
   int64_t NextSampleInterval() {
     std::exponential_distribution<double> dist(sampling_rate_);
     int64_t next = static_cast<int64_t>(dist(GetGlobalRandomEngineLocked()));
-    // The +1 corrects the distribution of the first value in the interval.
-    // TODO(fmayer): Figure out why.
+    // We approximate the geometric distribution using an exponential
+    // distribution.
+    // We need to add 1 because that gives us the number of failures before
+    // the next success, while our interval includes the next success.
     return next + 1;
   }
 

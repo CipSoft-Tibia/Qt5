@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,7 @@
 // Convert first token to string, throw away the rest.
 #define D1(enum_name) #enum_name
 #define D2(enum_name, enum_value) #enum_name
-#else
+#else  // defined(STRINGIZE_COLOR_IDS)
 // Declare enum with optional assigned value.
 #define D1(enum_name) enum_name
 #define D2(enum_name, enum_value) enum_name = enum_value
@@ -32,7 +32,7 @@
 #else
 #define E(...) GET_E(__VA_ARGS__, E3, E2, E1)(__VA_ARGS__),
 #endif
-#else
+#else  // !defined(COLOR_ID_MACROS_DEFINED)
 #undef D1
 #undef D2
 #undef E1
@@ -41,5 +41,8 @@
 #undef E_CPONLY
 #undef GET_E
 #undef E
-#undef COLOR_ID_MACROS_DEFINED
+#ifndef __GNUC__
+#undef EXPAND_E
 #endif
+#undef COLOR_ID_MACROS_DEFINED
+#endif  // !defined(COLOR_ID_MACROS_DEFINED)

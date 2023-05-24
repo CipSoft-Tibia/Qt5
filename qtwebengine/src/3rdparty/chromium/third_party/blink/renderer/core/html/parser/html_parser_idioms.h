@@ -27,6 +27,7 @@
 
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/qualified_name.h"
+#include "third_party/blink/renderer/core/html/parser/literal_buffer.h"
 #include "third_party/blink/renderer/platform/wtf/decimal.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
@@ -98,6 +99,12 @@ inline bool IsHTMLSpace(CharType character) {
 }
 
 template <typename CharType>
+ALWAYS_INLINE bool IsHTMLSpecialWhitespace(CharType character) {
+  return character <= '\r' && (character == '\r' || character == '\n' ||
+                               character == '\t' || character == '\f');
+}
+
+template <typename CharType>
 inline bool IsComma(CharType character) {
   return character == ',';
 }
@@ -132,12 +139,19 @@ String AttemptStaticStringCreation(const UChar*, wtf_size_t, CharacterWidth);
 
 template <wtf_size_t inlineCapacity>
 inline static String AttemptStaticStringCreation(
+    const UCharLiteralBuffer<inlineCapacity>& vector) {
+  return AttemptStaticStringCreation(
+      vector.data(), vector.size(), vector.Is8Bit() ? kForce8Bit : kForce16Bit);
+}
+
+template <wtf_size_t inlineCapacity>
+inline static String AttemptStaticStringCreation(
     const Vector<UChar, inlineCapacity>& vector,
     CharacterWidth width) {
   return AttemptStaticStringCreation(vector.data(), vector.size(), width);
 }
 
-inline static String AttemptStaticStringCreation(const String str) {
+inline static String AttemptStaticStringCreation(const String& str) {
   if (!str.Is8Bit())
     return AttemptStaticStringCreation(str.Characters16(), str.length(),
                                        kForce16Bit);

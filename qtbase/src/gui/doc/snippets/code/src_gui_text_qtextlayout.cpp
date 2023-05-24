@@ -1,59 +1,31 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+#include <QFont>
+#include <QFontMetrics>
+#include <QPainter>
+#include <QTextLayout>
+#include <QTextLine>
+
+namespace src_gui_text_qtextlayout {
+struct Wrapper : public QPaintDevice
+{
+    void wrapper1();
+    void elided();
+};
+QTextLayout textLayout;
+
+
+void wrapper0() {
+qreal lineWidth = 0;
+QFont aFont;
+QFontMetrics fontMetrics(aFont);
 
 //! [0]
 int leading = fontMetrics.leading();
 qreal height = 0;
 textLayout.setCacheEnabled(true);
 textLayout.beginLayout();
-while (1) {
+while (true) {
     QTextLine line = textLayout.createLine();
     if (!line.isValid())
         break;
@@ -66,8 +38,53 @@ while (1) {
 textLayout.endLayout();
 //! [0]
 
+} // wrapper0
+
+
+void Wrapper::wrapper1() {
 
 //! [1]
 QPainter painter(this);
 textLayout.draw(&painter, QPoint(0, 0));
 //! [1]
+
+} // Wrapper::wrapper1
+
+void Wrapper::elided() {
+
+QString content;
+
+//! [elided]
+QPainter painter(this);
+QFontMetrics fontMetrics = painter.fontMetrics();
+
+int lineSpacing = fontMetrics.lineSpacing();
+int y = 0;
+
+QTextLayout textLayout(content, painter.font());
+textLayout.beginLayout();
+while (true) {
+    QTextLine line = textLayout.createLine();
+
+    if (!line.isValid())
+        break;
+
+    line.setLineWidth(width());
+    const int nextLineY = y + lineSpacing;
+
+    if (height() >= nextLineY + lineSpacing) {
+        line.draw(&painter, QPoint(0, y));
+        y = nextLineY;
+    } else {
+        const QString lastLine = content.mid(line.textStart());
+        const QString elidedLastLine = fontMetrics.elidedText(lastLine, Qt::ElideRight, width());
+        painter.drawText(QPoint(0, y + fontMetrics.ascent()), elidedLastLine);
+        line = textLayout.createLine();
+        break;
+    }
+}
+textLayout.endLayout();
+//! [elided]
+}
+
+} // src_gui_text_qtextlayout

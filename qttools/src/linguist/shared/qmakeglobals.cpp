@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmakeglobals.h"
 
@@ -38,7 +13,6 @@
 #include <qfile.h>
 #include <qfileinfo.h>
 #include <qlist.h>
-#include <qregexp.h>
 #include <qset.h>
 #include <qstack.h>
 #include <qstring.h>
@@ -52,7 +26,7 @@
 #include <unistd.h>
 #include <sys/utsname.h>
 #else
-#include <windows.h>
+#include <qt_windows.h>
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -104,11 +78,18 @@ QString QMakeGlobals::cleanSpec(QMakeCmdLineParserState &state, const QString &s
     return ret;
 }
 
+/*
+ * Return value meanings:
+ * ArgumentUnknown    The argument at *pos was not handled by this function.
+ *                    Leave it to the caller to handle this argument.
+ * ArgumentMalformed  There was an error detected.
+ * ArgumentsOk        All arguments were known. There are no arguments left to handle.
+ */
 QMakeGlobals::ArgumentReturn QMakeGlobals::addCommandLineArguments(
         QMakeCmdLineParserState &state, QStringList &args, int *pos)
 {
     enum { ArgNone, ArgConfig, ArgSpec, ArgXSpec, ArgTmpl, ArgTmplPfx, ArgCache, ArgQtConf } argState = ArgNone;
-    for (; *pos < args.count(); (*pos)++) {
+    for (; *pos < args.size(); (*pos)++) {
         QString arg = args.at(*pos);
         switch (argState) {
         case ArgConfig:
@@ -187,7 +168,7 @@ void QMakeGlobals::commitCommandLineArguments(QMakeCmdLineParserState &state)
 {
     if (!state.extraargs.isEmpty()) {
         QString extra = fL1S("QMAKE_EXTRA_ARGS =");
-        for (const QString &ea : qAsConst(state.extraargs))
+        for (const QString &ea : std::as_const(state.extraargs))
             extra += QLatin1Char(' ') + QMakeEvaluator::quoteValue(ProString(ea));
         state.cmds[QMakeEvalBefore] << extra;
     }
@@ -232,8 +213,8 @@ void QMakeGlobals::setDirectories(const QString &input_dir, const QString &outpu
         QString dstpath = output_dir;
         if (!dstpath.endsWith(QLatin1Char('/')))
             dstpath += QLatin1Char('/');
-        int srcLen = srcpath.length();
-        int dstLen = dstpath.length();
+        int srcLen = srcpath.size();
+        int dstLen = dstpath.size();
         int lastSl = -1;
         while (++lastSl, --srcLen, --dstLen,
                srcLen && dstLen && srcpath.at(srcLen) == dstpath.at(dstLen))
@@ -249,9 +230,9 @@ QString QMakeGlobals::shadowedPath(const QString &fileName) const
     if (source_root.isEmpty())
         return fileName;
     if (fileName.startsWith(source_root)
-        && (fileName.length() == source_root.length()
-            || fileName.at(source_root.length()) == QLatin1Char('/'))) {
-        return build_root + fileName.mid(source_root.length());
+        && (fileName.size() == source_root.size()
+            || fileName.at(source_root.size()) == QLatin1Char('/'))) {
+        return build_root + fileName.mid(source_root.size());
     }
     return QString();
 }
@@ -262,7 +243,7 @@ QStringList QMakeGlobals::splitPathList(const QString &val) const
     if (!val.isEmpty()) {
         QString cwd(QDir::currentPath());
         const QStringList vals = val.split(dirlist_sep, Qt::SkipEmptyParts);
-        ret.reserve(vals.length());
+        ret.reserve(vals.size());
         for (const QString &it : vals)
             ret << IoUtils::resolvePath(cwd, it);
     }
@@ -291,7 +272,7 @@ QString QMakeGlobals::expandEnvVars(const QString &str) const
         startIndex = string.indexOf(QLatin1Char('$'), startIndex);
         if (startIndex < 0)
             break;
-        if (string.length() < startIndex + 3)
+        if (string.size() < startIndex + 3)
             break;
         if (string.at(startIndex + 1) != QLatin1Char('(')) {
             startIndex++;
@@ -302,7 +283,7 @@ QString QMakeGlobals::expandEnvVars(const QString &str) const
             break;
         QString value = getEnv(string.mid(startIndex + 2, endIndex - startIndex - 2));
         string.replace(startIndex, endIndex - startIndex + 1, value);
-        startIndex += value.length();
+        startIndex += value.size();
     }
     return string;
 }

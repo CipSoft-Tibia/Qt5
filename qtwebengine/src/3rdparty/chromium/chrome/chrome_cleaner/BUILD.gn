@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -84,7 +84,6 @@ test("chrome_cleaner_unittests") {
     "//chrome/chrome_cleaner/mojom/typemaps:unittest_sources",
     "//chrome/chrome_cleaner/os:unittest_sources",
     "//chrome/chrome_cleaner/parsers/broker:unittest_sources",
-    "//chrome/chrome_cleaner/parsers/json_parser:unittest_sources",
     "//chrome/chrome_cleaner/parsers/parser_utils:unittest_sources",
     "//chrome/chrome_cleaner/parsers/shortcut_parser/broker:unittest_sources",
     "//chrome/chrome_cleaner/parsers/shortcut_parser/target:unittest_sources",
@@ -109,7 +108,7 @@ test("chrome_cleaner_unittests") {
 
 group("shipped_binaries") {
   # This group is used for network annotation check test.
-  visibility += [ "//.:shipped_binaries" ]
+  visibility += [ "//.:traffic_annotation_auditor_dependencies" ]
 
   deps = [
     "//chrome/chrome_cleaner/executables:chrome_cleanup_tool",

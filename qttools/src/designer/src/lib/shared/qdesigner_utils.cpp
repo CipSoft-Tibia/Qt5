@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdesigner_utils_p.h"
 #include "qdesigner_propertycommand_p.h"
@@ -44,9 +19,11 @@
 #include <QtCore/qdebug.h>
 #include <QtCore/qqueue.h>
 #include <QtCore/qshareddata.h>
+#include <QtCore/qstandardpaths.h>
 
 #include <QtWidgets/qapplication.h>
 #include <QtGui/qicon.h>
+#include <QtGui/qpalette.h>
 #include <QtGui/qpixmap.h>
 #include <QtWidgets/qlistwidget.h>
 #include <QtWidgets/qtreewidget.h>
@@ -55,8 +32,27 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 namespace qdesigner_internal
 {
+    // ### FIXME Qt 8: Remove (QTBUG-96005)
+    QString legacyDataDirectory()
+    {
+        return QDir::homePath() + u"/.designer"_s;
+    }
+
+    QString dataDirectory()
+    {
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+        return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
+               + u'/' + QCoreApplication::organizationName() + u"/Designer"_s;
+#else
+        return legacyDataDirectory();
+#endif
+    }
+
+
     QDESIGNER_SHARED_EXPORT void designerWarning(const QString &message)
     {
         qWarning("Designer: %s", qPrintable(message));
@@ -201,16 +197,14 @@ namespace qdesigner_internal
         if (flagIds.isEmpty())
             return QString();
 
-        const QChar delimiter = QLatin1Char('|');
         QString rc;
-        const QStringList::const_iterator cend = flagIds.constEnd();
-        for (QStringList::const_iterator it = flagIds.constBegin(); it != cend; ++it) {
+        for (const auto &id : flagIds) {
             if (!rc.isEmpty())
-                rc += delimiter ;
+                rc += u'|';
             if (sm == FullyQualified)
-                appendQualifiedName(*it, rc);
+                appendQualifiedName(id, rc);
             else
-                rc += *it;
+                rc += id;
         }
         return rc;
     }
@@ -225,9 +219,9 @@ namespace qdesigner_internal
         }
         uint flags = 0;
         bool valueOk = true;
-        QStringList keys = s.split(QString(QLatin1Char('|')));
-        for (auto it = keys.constBegin(), cend = keys.constEnd(); it != cend; ++it) {
-            const uint flagValue = keyToValue(*it, &valueOk);
+        const QStringList keys = s.split(u'|');
+        for (const QString &key : keys) {
+            const uint flagValue = keyToValue(key, &valueOk);
             if (!valueOk) {
                 flags = 0;
                 break;
@@ -276,7 +270,7 @@ namespace qdesigner_internal
     {
         if (const QDesignerLanguageExtension *lang = qt_extension<QDesignerLanguageExtension *>(core->extensionManager(), core))
             return lang->isLanguageResource(path) ?  LanguageResourcePixmap : FilePixmap;
-        return path.startsWith(QLatin1Char(':')) ? ResourcePixmap : FilePixmap;
+        return path.startsWith(u':') ? ResourcePixmap : FilePixmap;
     }
 
     int PropertySheetPixmapValue::compare(const PropertySheetPixmapValue &other) const
@@ -392,7 +386,7 @@ namespace qdesigner_internal
 
     QPixmap DesignerPixmapCache::pixmap(const PropertySheetPixmapValue &value) const
     {
-        QMap<PropertySheetPixmapValue, QPixmap>::const_iterator it = m_cache.constFind(value);
+        const auto it = m_cache.constFind(value);
         if (it != m_cache.constEnd())
             return it.value();
 
@@ -701,8 +695,8 @@ namespace qdesigner_internal
             }
         }
         if (!action) {
-            if (const QDesignerTaskMenuExtension *taskMenu = qobject_cast<QDesignerTaskMenuExtension *>(
-                        core->extensionManager()->extension(managedWidget, QStringLiteral("QDesignerInternalTaskMenuExtension")))) {
+            if (const auto *taskMenu = qobject_cast<QDesignerTaskMenuExtension *>(
+                        core->extensionManager()->extension(managedWidget, u"QDesignerInternalTaskMenuExtension"_s))) {
                 action = taskMenu->preferredEditAction();
                 if (!action) {
                     const auto actions = taskMenu->taskActions();
@@ -719,12 +713,12 @@ namespace qdesigner_internal
     {
         QProcess uic;
         QStringList arguments;
-        QString binary = QLibraryInfo::location(QLibraryInfo::BinariesPath) + QStringLiteral("/uic");
+        QString binary = QLibraryInfo::path(QLibraryInfo::LibraryExecutablesPath) + "/uic"_L1;
         switch (language) {
         case UicLanguage::Cpp:
             break;
         case UicLanguage::Python:
-            arguments << QLatin1String("-g") << QLatin1String("python");
+            arguments << u"-g"_s << u"python"_s;
             break;
         }
         arguments << fileName;
@@ -754,14 +748,14 @@ namespace qdesigner_internal
         Q_ASSERT(qname.isEmpty() == false);
 
 
-        if (qname.count() > 1 && qname.at(1).isUpper()) {
+        if (qname.size() > 1 && qname.at(1).isUpper()) {
             const QChar first = qname.at(0);
-            if (first == QLatin1Char('Q') || first == QLatin1Char('K'))
+            if (first == u'Q' || first == u'K')
                 qname.remove(0, 1);
         }
 
-        const int len = qname.count();
-        for (int i = 0; i < len && qname.at(i).isUpper(); i++)
+        const qsizetype len = qname.size();
+        for (qsizetype i = 0; i < len && qname.at(i).isUpper(); ++i)
             qname[i] = qname.at(i).toLower();
 
         return qname;
@@ -781,6 +775,24 @@ namespace qdesigner_internal
         if (m_enabled)
             m_widget->setUpdatesEnabled(true);
     }
+
+// from qpalette.cpp
+quint64 paletteResolveMask(QPalette::ColorGroup colorGroup,
+                           QPalette::ColorRole colorRole)
+{
+    if (colorRole == QPalette::Accent)
+        colorRole = QPalette::NoRole; // See qtbase/17c589df94a2245ee92d45839c2cba73566d7310
+    const auto offset = quint64(QPalette::NColorRoles - 1) * quint64(colorGroup);
+    const auto bitPos = quint64(colorRole) + offset;
+    return 1ull << bitPos;
+}
+
+quint64 paletteResolveMask(QPalette::ColorRole colorRole)
+{
+    return paletteResolveMask(QPalette::Active, colorRole)
+        | paletteResolveMask(QPalette::Inactive, colorRole)
+        | paletteResolveMask(QPalette::Disabled, colorRole);
+}
 
 } // namespace qdesigner_internal
 

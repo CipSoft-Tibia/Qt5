@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,14 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/files/file_path.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/null_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "content/browser/blob_storage/chrome_blob_storage_context.h"
 #include "content/browser/cache_storage/scoped_writable_entry.h"
 #include "content/public/browser/browser_context.h"
@@ -29,7 +28,9 @@
 #include "storage/browser/blob/blob_storage_context.h"
 #include "storage/browser/test/mock_quota_manager.h"
 #include "storage/browser/test/mock_quota_manager_proxy.h"
+#include "storage/browser/test/mock_special_storage_policy.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
 
 namespace content {
 
@@ -44,7 +45,13 @@ class TestCacheStorageBlobToDiskCache : public CacheStorageBlobToDiskCache {
  public:
   explicit TestCacheStorageBlobToDiskCache(
       scoped_refptr<storage::QuotaManagerProxy> quota_manager_proxy)
-      : CacheStorageBlobToDiskCache(quota_manager_proxy, url::Origin()) {}
+      : CacheStorageBlobToDiskCache(std::move(quota_manager_proxy),
+                                    blink::StorageKey()) {}
+
+  TestCacheStorageBlobToDiskCache(const TestCacheStorageBlobToDiskCache&) =
+      delete;
+  TestCacheStorageBlobToDiskCache& operator=(
+      const TestCacheStorageBlobToDiskCache&) = delete;
 
   ~TestCacheStorageBlobToDiskCache() override = default;
 
@@ -56,7 +63,9 @@ class TestCacheStorageBlobToDiskCache : public CacheStorageBlobToDiskCache {
     CacheStorageBlobToDiskCache::DidWriteDataToEntry(expected_bytes, rv);
   }
 
-  const url::Origin& origin() { return CacheStorageBlobToDiskCache::origin(); }
+  const blink::StorageKey& storage_key() {
+    return CacheStorageBlobToDiskCache::storage_key();
+  }
 
  protected:
   void ReadFromBlob() override {
@@ -67,14 +76,14 @@ class TestCacheStorageBlobToDiskCache : public CacheStorageBlobToDiskCache {
 
  private:
   bool delay_blob_reads_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(TestCacheStorageBlobToDiskCache);
 };
 
 class CacheStorageBlobToDiskCacheTest : public testing::Test {
  protected:
   CacheStorageBlobToDiskCacheTest()
-      : task_environment_(BrowserTaskEnvironment::IO_MAINLOOP),
+      : special_storage_policy_(
+            base::MakeRefCounted<storage::MockSpecialStoragePolicy>()),
+        task_environment_(BrowserTaskEnvironment::IO_MAINLOOP),
         browser_context_(std::make_unique<TestBrowserContext>()),
         data_(kTestData) {}
 
@@ -90,7 +99,6 @@ class CacheStorageBlobToDiskCacheTest : public testing::Test {
   }
 
   void TearDown() override {
-    quota_manager_proxy()->SimulateQuotaManagerDestroyed();
     quota_manager_ = nullptr;
     quota_manager_proxy_ = nullptr;
   }
@@ -111,13 +119,15 @@ class CacheStorageBlobToDiskCacheTest : public testing::Test {
   }
 
   void InitCache() {
-    int rv = CreateCacheBackend(
-        net::MEMORY_CACHE, net::CACHE_BACKEND_DEFAULT, base::FilePath(),
+    disk_cache::BackendResult backend_result = CreateCacheBackend(
+        net::MEMORY_CACHE, net::CACHE_BACKEND_DEFAULT,
+        /*file_operations=*/nullptr, base::FilePath(),
         (CacheStorageBlobToDiskCache::kBufferSize * 100) /* max bytes */,
         disk_cache::ResetHandling::kNeverReset, nullptr /* net log */,
-        &cache_backend_, base::DoNothing());
+        base::DoNothing());
     // The memory cache runs synchronously.
-    EXPECT_EQ(net::OK, rv);
+    EXPECT_EQ(net::OK, backend_result.net_error);
+    cache_backend_ = std::move(backend_result.backend);
     EXPECT_TRUE(cache_backend_);
 
     disk_cache::EntryResult result =
@@ -131,10 +141,10 @@ class CacheStorageBlobToDiskCacheTest : public testing::Test {
     base::FilePath base_dir = base_.GetPath().AppendASCII("filesystem");
     quota_manager_ = base::MakeRefCounted<storage::MockQuotaManager>(
         false /* is_incognito */, base_dir,
-        base::ThreadTaskRunnerHandle::Get().get(),
-        nullptr /* special storage policy */);
+        base::SingleThreadTaskRunner::GetCurrentDefault(),
+        special_storage_policy_);
     quota_manager_proxy_ = base::MakeRefCounted<storage::MockQuotaManagerProxy>(
-        quota_manager(), base::ThreadTaskRunnerHandle::Get().get());
+        quota_manager(), base::SingleThreadTaskRunner::GetCurrentDefault());
   }
 
   std::string ReadCacheContent() {
@@ -181,9 +191,10 @@ class CacheStorageBlobToDiskCacheTest : public testing::Test {
         quota_manager_proxy_.get());
   }
 
+  scoped_refptr<storage::MockSpecialStoragePolicy> special_storage_policy_;
   BrowserTaskEnvironment task_environment_;
   std::unique_ptr<TestBrowserContext> browser_context_;
-  storage::BlobStorageContext* blob_storage_context_;
+  raw_ptr<storage::BlobStorageContext> blob_storage_context_;
   std::unique_ptr<storage::BlobDataHandle> blob_handle_;
   std::unique_ptr<disk_cache::Backend> cache_backend_;
   ScopedWritableEntry disk_cache_entry_;
@@ -247,8 +258,8 @@ TEST_F(CacheStorageBlobToDiskCacheTest, NotifyQuotaAboutWriteErrors) {
   cache_storage_blob_to_disk_cache_->DidWriteDataToEntry(5, 2);
   auto write_error_tracker = quota_manager()->write_error_tracker();
   EXPECT_EQ(1U, write_error_tracker.size());
-  auto write_error_log =
-      write_error_tracker.find(cache_storage_blob_to_disk_cache_->origin());
+  auto write_error_log = write_error_tracker.find(
+      cache_storage_blob_to_disk_cache_->storage_key());
   EXPECT_NE(write_error_tracker.end(), write_error_log);
   EXPECT_EQ(1, write_error_log->second);
 }

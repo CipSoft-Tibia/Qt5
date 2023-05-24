@@ -1,47 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qnetworkaccessfilebackend_p.h"
 #include "qfileinfo.h"
-#if QT_CONFIG(ftp)
-#include "qurlinfo_p.h"
-#endif
 #include "qdir.h"
 #include "private/qnoncontiguousbytedevice_p.h"
 
@@ -49,6 +10,8 @@
 #include <QtCore/QDateTime>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 QStringList QNetworkAccessFileBackendFactory::supportedSchemes() const
 {
@@ -77,13 +40,13 @@ QNetworkAccessFileBackendFactory::create(QNetworkAccessManager::Operation op,
     }
 
     QUrl url = request.url();
-    if (url.scheme().compare(QLatin1String("qrc"), Qt::CaseInsensitive) == 0
+    if (url.scheme().compare("qrc"_L1, Qt::CaseInsensitive) == 0
 #if defined(Q_OS_ANDROID)
-            || url.scheme().compare(QLatin1String("assets"), Qt::CaseInsensitive) == 0
+            || url.scheme().compare("assets"_L1, Qt::CaseInsensitive) == 0
 #endif
             || url.isLocalFile()) {
         return new QNetworkAccessFileBackend;
-    } else if (!url.scheme().isEmpty() && url.authority().isEmpty() && (url.scheme().length() > 1)) {
+    } else if (!url.scheme().isEmpty() && url.authority().isEmpty() && (url.scheme().size() > 1)) {
         // check if QFile could, in theory, open this URL via the file engines
         // it has to be in the format:
         //    prefix:path/to/file
@@ -98,8 +61,12 @@ QNetworkAccessFileBackendFactory::create(QNetworkAccessManager::Operation op,
     return nullptr;
 }
 
+// We pass TargetType::Local even though it's kind of Networked but we're using a QFile to access
+// the resource so it cannot use proxies anyway
 QNetworkAccessFileBackend::QNetworkAccessFileBackend()
-    : totalBytes(0), hasUploadFinished(false)
+    : QNetworkAccessBackend(QNetworkAccessBackend::TargetType::Local),
+      totalBytes(0),
+      hasUploadFinished(false)
 {
 }
 
@@ -111,7 +78,7 @@ void QNetworkAccessFileBackend::open()
 {
     QUrl url = this->url();
 
-    if (url.host() == QLatin1String("localhost"))
+    if (url.host() == "localhost"_L1)
         url.setHost(QString());
 #if !defined(Q_OS_WIN)
     // do not allow UNC paths on Unix
@@ -124,17 +91,17 @@ void QNetworkAccessFileBackend::open()
     }
 #endif // !defined(Q_OS_WIN)
     if (url.path().isEmpty())
-        url.setPath(QLatin1String("/"));
+        url.setPath("/"_L1);
     setUrl(url);
 
     QString fileName = url.toLocalFile();
     if (fileName.isEmpty()) {
-        if (url.scheme() == QLatin1String("qrc")) {
-            fileName = QLatin1Char(':') + url.path();
+        if (url.scheme() == "qrc"_L1) {
+            fileName = u':' + url.path();
         } else {
 #if defined(Q_OS_ANDROID)
-            if (url.scheme() == QLatin1String("assets"))
-                fileName = QLatin1String("assets:") + url.path();
+            if (url.scheme() == "assets"_L1)
+                fileName = "assets:"_L1 + url.path();
             else
 #endif
                 fileName = url.toString(QUrl::RemoveAuthority | QUrl::RemoveFragment | QUrl::RemoveQuery);
@@ -155,7 +122,7 @@ void QNetworkAccessFileBackend::open()
     case QNetworkAccessManager::PutOperation:
         mode = QIODevice::WriteOnly | QIODevice::Truncate;
         createUploadByteDevice();
-        QObject::connect(uploadByteDevice.data(), SIGNAL(readyRead()), this, SLOT(uploadReadyReadSlot()));
+        QObject::connect(uploadByteDevice(), SIGNAL(readyRead()), this, SLOT(uploadReadyReadSlot()));
         QMetaObject::invokeMethod(this, "uploadReadyReadSlot", Qt::QueuedConnection);
         break;
     default:
@@ -166,6 +133,8 @@ void QNetworkAccessFileBackend::open()
 
     mode |= QIODevice::Unbuffered;
     bool opened = file.open(mode);
+    if (file.isSequential())
+        connect(&file, &QIODevice::readChannelFinished, this, [this]() { finished(); });
 
     // could we open the file?
     if (!opened) {
@@ -189,8 +158,8 @@ void QNetworkAccessFileBackend::uploadReadyReadSlot()
         return;
 
     forever {
-        qint64 haveRead;
-        const char *readPointer = uploadByteDevice->readPointer(-1, haveRead);
+        QByteArray data(16 * 1024, Qt::Uninitialized);
+        qint64 haveRead = uploadByteDevice()->peek(data.data(), data.size());
         if (haveRead == -1) {
             // EOF
             hasUploadFinished = true;
@@ -198,12 +167,13 @@ void QNetworkAccessFileBackend::uploadReadyReadSlot()
             file.close();
             finished();
             break;
-        } else if (haveRead == 0 || readPointer == nullptr) {
+        } else if (haveRead == 0) {
             // nothing to read right now, we will be called again later
             break;
         } else {
             qint64 haveWritten;
-            haveWritten = file.write(readPointer, haveRead);
+            data.truncate(haveRead);
+            haveWritten = file.write(data);
 
             if (haveWritten < 0) {
                 // write error!
@@ -214,7 +184,7 @@ void QNetworkAccessFileBackend::uploadReadyReadSlot()
                 finished();
                 return;
             } else {
-                uploadByteDevice->advanceReadPointer(haveWritten);
+                uploadByteDevice()->skip(haveWritten);
             }
 
 
@@ -223,19 +193,11 @@ void QNetworkAccessFileBackend::uploadReadyReadSlot()
     }
 }
 
-void QNetworkAccessFileBackend::closeDownstreamChannel()
+void QNetworkAccessFileBackend::close()
 {
     if (operation() == QNetworkAccessManager::GetOperation) {
         file.close();
     }
-}
-
-void QNetworkAccessFileBackend::downstreamReadyWrite()
-{
-    Q_ASSERT_X(operation() == QNetworkAccessManager::GetOperation, "QNetworkAccessFileBackend",
-               "We're being told to download data but operation isn't GET!");
-
-    readMoreFromFile();
 }
 
 bool QNetworkAccessFileBackend::loadFileInfo()
@@ -257,40 +219,38 @@ bool QNetworkAccessFileBackend::loadFileInfo()
     return true;
 }
 
-bool QNetworkAccessFileBackend::readMoreFromFile()
+qint64 QNetworkAccessFileBackend::bytesAvailable() const
 {
-    qint64 wantToRead;
-    while ((wantToRead = nextDownstreamBlockSize()) > 0) {
-        // ### FIXME!!
-        // Obtain a pointer from the ringbuffer!
-        // Avoid extra copy
-        QByteArray data;
-        data.reserve(wantToRead);
-        qint64 actuallyRead = file.read(data.data(), wantToRead);
-        if (actuallyRead <= 0) {
-            // EOF or error
-            if (file.error() != QFile::NoError) {
-                QString msg = QCoreApplication::translate("QNetworkAccessFileBackend", "Read error reading from %1: %2")
-                              .arg(url().toString(), file.errorString());
-                error(QNetworkReply::ProtocolFailure, msg);
+    if (operation() != QNetworkAccessManager::GetOperation)
+        return 0;
+    return file.bytesAvailable();
+}
 
-                finished();
-                return false;
-            }
+qint64 QNetworkAccessFileBackend::read(char *data, qint64 maxlen)
+{
+    if (operation() != QNetworkAccessManager::GetOperation)
+        return 0;
+    qint64 actuallyRead = file.read(data, maxlen);
+    if (actuallyRead <= 0) {
+        // EOF or error
+        if (file.error() != QFile::NoError) {
+            QString msg = QCoreApplication::translate("QNetworkAccessFileBackend", "Read error reading from %1: %2")
+                            .arg(url().toString(), file.errorString());
+            error(QNetworkReply::ProtocolFailure, msg);
 
             finished();
-            return true;
+            return -1;
         }
 
-        data.resize(actuallyRead);
-        totalBytes += actuallyRead;
-
-        QByteDataBuffer list;
-        list.append(data);
-        data.clear(); // important because of implicit sharing!
-        writeDownstreamData(list);
+        finished();
+        return actuallyRead;
     }
-    return true;
+    if (!file.isSequential() && file.atEnd())
+        finished();
+    totalBytes += actuallyRead;
+    return actuallyRead;
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qnetworkaccessfilebackend_p.cpp"

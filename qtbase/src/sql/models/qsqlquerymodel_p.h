@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSql module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSQLQUERYMODEL_P_H
 #define QSQLQUERYMODEL_P_H
@@ -57,8 +21,8 @@
 #include "QtSql/qsqlquery.h"
 #include "QtSql/qsqlrecord.h"
 #include "QtCore/qhash.h"
+#include "QtCore/qlist.h"
 #include "QtCore/qvarlengtharray.h"
-#include "QtCore/qvector.h"
 
 QT_REQUIRE_CONFIG(sqlmodel);
 
@@ -80,7 +44,7 @@ public:
     QModelIndex bottom;
     QSqlRecord rec;
     uint atEnd : 1;
-    QVector<QHash<int, QVariant> > headers;
+    QList<QHash<int, QVariant>> headers;
     QVarLengthArray<int, 56> colOffsets; // used to calculate indexInQuery of columns
     int nestedResetLevel;
 };
@@ -90,22 +54,22 @@ class QSqlQueryModelSql
 {
 public:
     // SQL keywords
-    inline const static QLatin1String as() { return QLatin1String("AS"); }
-    inline const static QLatin1String asc() { return QLatin1String("ASC"); }
-    inline const static QLatin1String comma() { return QLatin1String(","); }
-    inline const static QLatin1String desc() { return QLatin1String("DESC"); }
-    inline const static QLatin1String eq() { return QLatin1String("="); }
+    inline const static QLatin1StringView as() { return QLatin1StringView("AS"); }
+    inline const static QLatin1StringView asc() { return QLatin1StringView("ASC"); }
+    inline const static QLatin1StringView comma() { return QLatin1StringView(","); }
+    inline const static QLatin1StringView desc() { return QLatin1StringView("DESC"); }
+    inline const static QLatin1StringView eq() { return QLatin1StringView("="); }
     // "and" is a C++ keyword
-    inline const static QLatin1String et() { return QLatin1String("AND"); }
-    inline const static QLatin1String from() { return QLatin1String("FROM"); }
-    inline const static QLatin1String leftJoin() { return QLatin1String("LEFT JOIN"); }
-    inline const static QLatin1String on() { return QLatin1String("ON"); }
-    inline const static QLatin1String orderBy() { return QLatin1String("ORDER BY"); }
-    inline const static QLatin1String parenClose() { return QLatin1String(")"); }
-    inline const static QLatin1String parenOpen() { return QLatin1String("("); }
-    inline const static QLatin1String select() { return QLatin1String("SELECT"); }
-    inline const static QLatin1String sp() { return QLatin1String(" "); }
-    inline const static QLatin1String where() { return QLatin1String("WHERE"); }
+    inline const static QLatin1StringView et() { return QLatin1StringView("AND"); }
+    inline const static QLatin1StringView from() { return QLatin1StringView("FROM"); }
+    inline const static QLatin1StringView leftJoin() { return QLatin1StringView("LEFT JOIN"); }
+    inline const static QLatin1StringView on() { return QLatin1StringView("ON"); }
+    inline const static QLatin1StringView orderBy() { return QLatin1StringView("ORDER BY"); }
+    inline const static QLatin1StringView parenClose() { return QLatin1StringView(")"); }
+    inline const static QLatin1StringView parenOpen() { return QLatin1StringView("("); }
+    inline const static QLatin1StringView select() { return QLatin1StringView("SELECT"); }
+    inline const static QLatin1StringView sp() { return QLatin1StringView(" "); }
+    inline const static QLatin1StringView where() { return QLatin1StringView("WHERE"); }
 
     // Build expressions based on key words
     inline const static QString as(const QString &a, const QString &b) { return b.isEmpty() ? a : concat(concat(a, as()), b); }

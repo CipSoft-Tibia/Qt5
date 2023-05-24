@@ -1,58 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "client_cert_select_controller.h"
 
-#include <base/bind.h>
+#include <base/functional/bind.h>
 #include <content/public/browser/client_certificate_delegate.h>
 #include <net/cert/x509_certificate.h>
 #include <net/ssl/client_cert_identity.h>
 #include <net/ssl/ssl_cert_request_info.h>
 #include <net/ssl/ssl_info.h>
+#include "net/ssl/ssl_private_key.h"
 
 #include "type_conversion.h"
 
 #include <QDebug>
 
-QT_BEGIN_NAMESPACE
-
-using namespace QtWebEngineCore;
+namespace QtWebEngineCore {
 
 ClientCertSelectController::ClientCertSelectController(net::SSLCertRequestInfo *certRequestInfo,
                                                        std::vector<std::unique_ptr<net::ClientCertIdentity>> clientCerts,
@@ -72,8 +35,6 @@ ClientCertSelectController::~ClientCertSelectController()
     if (!m_selected)
         m_delegate->ContinueWithCertificate(nullptr, nullptr);
 }
-
-#if !defined(QT_NO_SSL) || QT_VERSION >= QT_VERSION_CHECK(5, 12, 0)
 
 void ClientCertSelectController::selectNone()
 {
@@ -97,8 +58,8 @@ void ClientCertSelectController::select(int index)
             scoped_refptr<net::X509Certificate> cert = certInfo->certificate();
             net::ClientCertIdentity::SelfOwningAcquirePrivateKey(
                         std::move(certInfo),
-                        base::Bind(&content::ClientCertificateDelegate::ContinueWithCertificate,
-                                   base::Passed(std::move(m_delegate)), std::move(cert)));
+                        base::BindOnce(&content::ClientCertificateDelegate::ContinueWithCertificate,
+                                       std::move(m_delegate), std::move(cert)));
             return;
         }
         std::vector<std::string> pem_encoded;
@@ -116,15 +77,16 @@ void ClientCertSelectController::select(const QSslCertificate &certificate)
     }
     QByteArray derCertificate = certificate.toDer();
     scoped_refptr<net::X509Certificate> selectedCert =
-            net::X509Certificate::CreateFromBytes(derCertificate.constData(), derCertificate.length());
+            net::X509Certificate::CreateFromBytes(base::make_span((const unsigned char *)derCertificate.constData(),
+                                                                  (long unsigned)derCertificate.length()));
     for (auto &certInfo : m_clientCerts) {
         scoped_refptr<net::X509Certificate> cert = certInfo->certificate();
         if (cert->EqualsExcludingChain(selectedCert.get())) {
             m_selected = true;
             net::ClientCertIdentity::SelfOwningAcquirePrivateKey(
                         std::move(certInfo),
-                        base::Bind(&content::ClientCertificateDelegate::ContinueWithCertificate,
-                                   base::Passed(std::move(m_delegate)), std::move(cert)));
+                        base::BindOnce(&content::ClientCertificateDelegate::ContinueWithCertificate,
+                                       std::move(m_delegate), std::move(cert)));
             return;
         }
     }
@@ -132,7 +94,7 @@ void ClientCertSelectController::select(const QSslCertificate &certificate)
                  << "    Selected certificate needs to be one of the offered";
 }
 
-QVector<QSslCertificate> ClientCertSelectController::certificates() const
+QList<QSslCertificate> ClientCertSelectController::certificates() const
 {
     if (!m_certificates.isEmpty())
         return m_certificates;
@@ -144,6 +106,4 @@ QVector<QSslCertificate> ClientCertSelectController::certificates() const
     return m_certificates;
 }
 
-#endif // !defined(QT_NO_SSL) || QT_VERSION >= QT_VERSION_CHECK(5, 12, 0)
-
-QT_END_NAMESPACE
+}

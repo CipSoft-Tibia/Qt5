@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QSignalSpy>
 
 #include <QStandardItem>
 
@@ -308,18 +284,6 @@ void tst_QStandardItem::getSetFlags()
     item.setCheckState(Qt::Checked);
     item.setCheckable(true);
     QCOMPARE(item.checkState(), Qt::Checked);
-
-#if QT_DEPRECATED_SINCE(5, 6)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-    // deprecated API
-    item.setTristate(true);
-    QVERIFY(item.isTristate());
-    QVERIFY(item.flags() & Qt::ItemIsTristate);
-    item.setTristate(false);
-    QVERIFY(!(item.flags() & Qt::ItemIsTristate));
-QT_WARNING_POP
-#endif
 }
 
 void tst_QStandardItem::getSetRowAndColumnCount()
@@ -793,10 +757,10 @@ void tst_QStandardItem::takeColumn()
 
     QList<QStandardItem *> taken = item.takeColumn(column);
     if (expectSuccess) {
-        QCOMPARE(taken.count(), item.rowCount());
+        QCOMPARE(taken.size(), item.rowCount());
         QCOMPARE(item.columnCount(), columns - 1);
         int index = column;
-        for (int i = 0; i < taken.count(); ++i) {
+        for (int i = 0; i < taken.size(); ++i) {
             QCOMPARE(taken.at(i), originalChildren.takeAt(index));
             index += item.columnCount();
         }
@@ -854,10 +818,10 @@ void tst_QStandardItem::takeRow()
 
     QList<QStandardItem *> taken = item.takeRow(row);
     if (expectSuccess) {
-        QCOMPARE(taken.count(), item.columnCount());
+        QCOMPARE(taken.size(), item.columnCount());
         QCOMPARE(item.rowCount(), rows - 1);
         int index = row * columns;
-        for (int i = 0; i < taken.count(); ++i) {
+        for (int i = 0; i < taken.size(); ++i) {
             QCOMPARE(taken.at(i), originalChildren.takeAt(index));
         }
         index = 0;
@@ -1020,8 +984,8 @@ void tst_QStandardItem::sortChildren()
         QCOMPARE(two->child(1)->text(), QLatin1String("e"));
         QCOMPARE(two->child(2)->text(), QLatin1String("f"));
 
-        QCOMPARE(layoutAboutToBeChangedSpy.count(), (x == 0) ? 0 : 3);
-        QCOMPARE(layoutChangedSpy.count(), (x == 0) ? 0 : 3);
+        QCOMPARE(layoutAboutToBeChangedSpy.size(), (x == 0) ? 0 : 3);
+        QCOMPARE(layoutChangedSpy.size(), (x == 0) ? 0 : 3);
 
         if (x == 0)
             delete item;
@@ -1037,11 +1001,37 @@ public:
     int type() const override { return QStandardItem::UserType + 1; }
 
     bool operator<(const QStandardItem &other) const override {
-        return text().length() < other.text().length();
+        return text().size() < other.text().size();
     }
 
     using QStandardItem::clone;
     using QStandardItem::emitDataChanged;
+
+    void setData(const QVariant &value, int role) override
+    {
+        switch (role) {
+        case Qt::DisplayRole:
+            QStandardItem::setData(value, role);
+            break;
+        default:
+            // setFlags() uses "UserRole - 1" to store the flags, which is an
+            // implementation detail not exposed in the docs.
+            QStandardItem::setData(value, role);
+            break;
+        }
+    }
+
+    QVariant data(int role) const override
+    {
+        switch (role) {
+        case Qt::DisplayRole:
+            return QStandardItem::data(role);
+        default:
+            // flags() uses "UserRole - 1" to get the flags, which is an implementation
+            // detail not exposed in the docs.
+            return QStandardItem::data(role);
+        }
+    }
 };
 
 Q_DECLARE_METATYPE(QStandardItem*)
@@ -1063,8 +1053,8 @@ void tst_QStandardItem::subclassing()
 
     QSignalSpy itemChangedSpy(&model, &QStandardItemModel::itemChanged);
     item->emitDataChanged();
-    QCOMPARE(itemChangedSpy.count(), 1);
-    QCOMPARE(itemChangedSpy.at(0).count(), 1);
+    QCOMPARE(itemChangedSpy.size(), 1);
+    QCOMPARE(itemChangedSpy.at(0).size(), 1);
     QCOMPARE(qvariant_cast<QStandardItem*>(itemChangedSpy.at(0).at(0)), item);
 
     CustomItem *child0 = new CustomItem("cc");
@@ -1077,6 +1067,12 @@ void tst_QStandardItem::subclassing()
     QCOMPARE(item->child(0), child2);
     QCOMPARE(item->child(1), child0);
     QCOMPARE(item->child(2), child1);
+
+    item->setFlags(Qt::ItemFlags{0});
+    QCOMPARE(item->flags(), Qt::ItemFlags{0});
+
+    item->setFlags(Qt::ItemFlags{Qt::ItemIsEditable | Qt::ItemIsSelectable});
+    QCOMPARE(item->flags(), Qt::ItemFlags{Qt::ItemIsEditable | Qt::ItemIsSelectable});
 }
 
 void tst_QStandardItem::lessThan()

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,8 +18,11 @@ class DummyFontFaceSource : public CSSFontFaceSource {
   scoped_refptr<SimpleFontData> CreateFontData(
       const FontDescription&,
       const FontSelectionCapabilities&) override {
-    return SimpleFontData::Create(FontPlatformData(
-        SkTypeface::MakeDefault(), std::string(), 0, false, false));
+    return SimpleFontData::Create(
+        FontPlatformData(SkTypeface::MakeDefault(), /* name */ std::string(),
+                         /* text_size */ 0, /* synthetic_bold */ false,
+                         /* synthetic_italic */ false,
+                         TextRenderingMode::kAutoTextRendering, {}));
   }
 
   DummyFontFaceSource() = default;
@@ -43,18 +46,24 @@ unsigned SimulateHashCalculation(float size) {
   font_description.SetSizeAdjust(size);
   font_description.SetAdjustedSize(size);
   bool is_unique_match = false;
-  return font_description.CacheKey(FontFaceCreationParams(), is_unique_match)
+  bool is_generic_family = false;
+  return font_description
+      .CacheKey(FontFaceCreationParams(), is_unique_match, is_generic_family)
       .GetHash();
 }
-}
+}  // namespace
 
 TEST(CSSFontFaceSourceTest, HashCollision) {
   DummyFontFaceSource font_face_source;
+
   // Even if the hash value collide, fontface cache should return different
   // value for different fonts, values determined experimentally.
-  EXPECT_EQ(SimulateHashCalculation(10280), SimulateHashCalculation(9875));
-  EXPECT_NE(font_face_source.GetFontDataForSize(10280),
-            font_face_source.GetFontDataForSize(9875));
+  constexpr float kEqualHashesFirst = 2157;
+  constexpr float kEqualHashesSecond = 534;
+  EXPECT_EQ(SimulateHashCalculation(kEqualHashesFirst),
+            SimulateHashCalculation(kEqualHashesSecond));
+  EXPECT_NE(font_face_source.GetFontDataForSize(kEqualHashesFirst),
+            font_face_source.GetFontDataForSize(kEqualHashesSecond));
 }
 
 // Exercises the size font_data_table_ assertions in CSSFontFaceSource.

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -75,11 +75,11 @@ IndexedDBKey::IndexedDBKey(std::string binary)
       size_estimate_(kOverheadSize +
                      (binary_.length() * sizeof(std::string::value_type))) {}
 
-IndexedDBKey::IndexedDBKey(base::string16 string)
+IndexedDBKey::IndexedDBKey(std::u16string string)
     : type_(mojom::IDBKeyType::String),
       string_(std::move(string)),
       size_estimate_(kOverheadSize +
-                     (string_.length() * sizeof(base::string16::value_type))) {}
+                     (string_.length() * sizeof(std::u16string::value_type))) {}
 
 IndexedDBKey::IndexedDBKey(const IndexedDBKey& other) = default;
 IndexedDBKey::~IndexedDBKey() = default;

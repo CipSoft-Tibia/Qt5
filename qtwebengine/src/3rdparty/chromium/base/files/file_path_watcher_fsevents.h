@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,6 @@
 #include "base/files/file_path.h"
 #include "base/files/file_path_watcher.h"
 #include "base/mac/scoped_dispatch_object.h"
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
 
 namespace base {
@@ -27,11 +26,13 @@ namespace base {
 class FilePathWatcherFSEvents : public FilePathWatcher::PlatformDelegate {
  public:
   FilePathWatcherFSEvents();
+  FilePathWatcherFSEvents(const FilePathWatcherFSEvents&) = delete;
+  FilePathWatcherFSEvents& operator=(const FilePathWatcherFSEvents&) = delete;
   ~FilePathWatcherFSEvents() override;
 
   // FilePathWatcher::PlatformDelegate overrides.
   bool Watch(const FilePath& path,
-             bool recursive,
+             Type type,
              const FilePathWatcher::Callback& callback) override;
   void Cancel() override;
 
@@ -87,11 +88,9 @@ class FilePathWatcherFSEvents : public FilePathWatcher::PlatformDelegate {
 
   // Backend stream we receive event callbacks from (strong reference).
   // (Only accessed from the libdispatch queue.)
-  FSEventStreamRef fsevent_stream_;
+  FSEventStreamRef fsevent_stream_ = nullptr;
 
-  WeakPtrFactory<FilePathWatcherFSEvents> weak_factory_;
-
-  DISALLOW_COPY_AND_ASSIGN(FilePathWatcherFSEvents);
+  WeakPtrFactory<FilePathWatcherFSEvents> weak_factory_{this};
 };
 
 }  // namespace base

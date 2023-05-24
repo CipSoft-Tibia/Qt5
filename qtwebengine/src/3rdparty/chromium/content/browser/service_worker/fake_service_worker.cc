@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,17 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "content/browser/service_worker/embedded_worker_test_helper.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/network/public/mojom/fetch_api.mojom.h"
+#include "third_party/blink/public/mojom/background_fetch/background_fetch.mojom.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_response.mojom.h"
+#include "third_party/blink/public/mojom/payments/payment_app.mojom.h"
+#include "third_party/blink/public/mojom/push_messaging/push_messaging.mojom.h"
+#include "third_party/blink/public/mojom/service_worker/dispatch_fetch_event_params.mojom.h"
+#include "third_party/blink/public/mojom/service_worker/service_worker_fetch_response_callback.mojom.h"
 
 namespace content {
 
@@ -45,31 +50,25 @@ void FakeServiceWorker::InitializeGlobalScope(
     blink::mojom::ServiceWorkerRegistrationObjectInfoPtr registration_info,
     blink::mojom::ServiceWorkerObjectInfoPtr service_worker_info,
     blink::mojom::FetchHandlerExistence fetch_handler_existence,
-    std::unique_ptr<blink::PendingURLLoaderFactoryBundle>
-        subresource_loader_factories,
     mojo::PendingReceiver<blink::mojom::ReportingObserver>
-        reporting_observer_receiver) {
+        reporting_observer_receiver,
+    blink::mojom::AncestorFrameType ancestor_frame_type) {
   host_.Bind(std::move(service_worker_host));
 
   // Enable callers to use these endpoints without us actually binding them
   // to an implementation.
-  mojo::AssociateWithDisconnectedPipe(registration_info->receiver.PassHandle());
+  registration_info->receiver.EnableUnassociatedUsage();
   if (registration_info->installing) {
-    mojo::AssociateWithDisconnectedPipe(
-        registration_info->installing->receiver.PassHandle());
+    registration_info->installing->receiver.EnableUnassociatedUsage();
   }
   if (registration_info->waiting) {
-    mojo::AssociateWithDisconnectedPipe(
-        registration_info->waiting->receiver.PassHandle());
+    registration_info->waiting->receiver.EnableUnassociatedUsage();
   }
   if (registration_info->active) {
-    mojo::AssociateWithDisconnectedPipe(
-        registration_info->active->receiver.PassHandle());
+    registration_info->active->receiver.EnableUnassociatedUsage();
   }
-
   if (service_worker_info) {
-    mojo::AssociateWithDisconnectedPipe(
-        service_worker_info->receiver.PassHandle());
+    service_worker_info->receiver.EnableUnassociatedUsage();
   }
 
   registration_info_ = std::move(registration_info);
@@ -144,7 +143,7 @@ void FakeServiceWorker::DispatchNotificationClickEvent(
     const std::string& notification_id,
     const blink::PlatformNotificationData& notification_data,
     int action_index,
-    const base::Optional<base::string16>& reply,
+    const absl::optional<std::u16string>& reply,
     DispatchNotificationClickEventCallback callback) {
   std::move(callback).Run(blink::mojom::ServiceWorkerEventStatus::COMPLETED);
 }
@@ -157,7 +156,7 @@ void FakeServiceWorker::DispatchNotificationCloseEvent(
 }
 
 void FakeServiceWorker::DispatchPushEvent(
-    const base::Optional<std::string>& payload,
+    const absl::optional<std::string>& payload,
     DispatchPushEventCallback callback) {
   std::move(callback).Run(blink::mojom::ServiceWorkerEventStatus::COMPLETED);
 }
@@ -237,9 +236,24 @@ void FakeServiceWorker::SetIdleDelay(base::TimeDelta delay) {
   idle_delay_ = delay;
 }
 
+void FakeServiceWorker::AddKeepAlive() {
+  NOTIMPLEMENTED();
+}
+
+void FakeServiceWorker::ClearKeepAlive() {
+  NOTIMPLEMENTED();
+}
+
 void FakeServiceWorker::AddMessageToConsole(
     blink::mojom::ConsoleMessageLevel level,
     const std::string& message) {
+  NOTIMPLEMENTED();
+}
+
+void FakeServiceWorker::ExecuteScriptForTest(
+    const std::u16string& script,
+    bool wants_result,
+    ExecuteScriptForTestCallback callback) {
   NOTIMPLEMENTED();
 }
 

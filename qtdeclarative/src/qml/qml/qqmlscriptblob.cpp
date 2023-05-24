@@ -1,47 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <private/qqmlengine_p.h>
 #include <private/qqmlirbuilder_p.h>
 #include <private/qqmlscriptblob_p.h>
 #include <private/qqmlscriptdata_p.h>
 #include <private/qqmlsourcecoordinate_p.h>
+#include <private/qqmlcontextdata_p.h>
 #include <private/qv4runtimecodegen_p.h>
 #include <private/qv4script_p.h>
 
@@ -69,7 +34,7 @@ QQmlRefPointer<QQmlScriptData> QQmlScriptBlob::scriptData() const
 
 void QQmlScriptBlob::dataReceived(const SourceCodeData &data)
 {
-    if (diskCacheEnabled()) {
+    if (readCacheFile()) {
         QQmlRefPointer<QV4::ExecutableCompilationUnit> unit
                 = QV4::ExecutableCompilationUnit::create();
         QString error;
@@ -133,7 +98,7 @@ void QQmlScriptBlob::dataReceived(const SourceCodeData &data)
 
     auto executableUnit = QV4::ExecutableCompilationUnit::create(std::move(unit));
 
-    if (diskCacheEnabled()) {
+    if (writeCacheFile()) {
         QString errorString;
         if (executableUnit->saveToDisk(url(), &errorString)) {
             QString error;
@@ -149,10 +114,10 @@ void QQmlScriptBlob::dataReceived(const SourceCodeData &data)
     initializeFromCompilationUnit(executableUnit);
 }
 
-void QQmlScriptBlob::initializeFromCachedUnit(const QV4::CompiledData::Unit *unit)
+void QQmlScriptBlob::initializeFromCachedUnit(const QQmlPrivate::CachedQmlUnit *unit)
 {
     initializeFromCompilationUnit(QV4::ExecutableCompilationUnit::create(
-            QV4::CompiledData::CompilationUnit(unit, urlString(), finalUrlString())));
+            QV4::CompiledData::CompilationUnit(unit->qmlData, unit->aotCompiledFunctions, urlString(), finalUrlString())));
 }
 
 void QQmlScriptBlob::done()
@@ -161,15 +126,15 @@ void QQmlScriptBlob::done()
         return;
 
     // Check all script dependencies for errors
-    for (int ii = 0; ii < m_scripts.count(); ++ii) {
+    for (int ii = 0; ii < m_scripts.size(); ++ii) {
         const ScriptReference &script = m_scripts.at(ii);
         Q_ASSERT(script.script->isCompleteOrError());
         if (script.script->isError()) {
             QList<QQmlError> errors = script.script->errors();
             QQmlError error;
             error.setUrl(url());
-            error.setLine(qmlConvertSourceCoordinate<quint32, int>(script.location.line));
-            error.setColumn(qmlConvertSourceCoordinate<quint32, int>(script.location.column));
+            error.setLine(qmlConvertSourceCoordinate<quint32, int>(script.location.line()));
+            error.setColumn(qmlConvertSourceCoordinate<quint32, int>(script.location.column()));
             error.setDescription(QQmlTypeLoader::tr("Script %1 unavailable").arg(script.script->urlString()));
             errors.prepend(error);
             setError(errors);
@@ -182,7 +147,7 @@ void QQmlScriptBlob::done()
 
         QSet<QString> ns;
 
-        for (int scriptIndex = 0; scriptIndex < m_scripts.count(); ++scriptIndex) {
+        for (int scriptIndex = 0; scriptIndex < m_scripts.size(); ++scriptIndex) {
             const ScriptReference &script = m_scripts.at(scriptIndex);
 
             m_scriptData->scripts.append(script.script);
@@ -196,7 +161,7 @@ void QQmlScriptBlob::done()
             m_scriptData->typeNameCache->add(script.qualifier, scriptIndex, script.nameSpace);
         }
 
-        m_importCache.populateCache(m_scriptData->typeNameCache.data());
+        m_importCache->populateCache(m_scriptData->typeNameCache.data());
     }
     m_scripts.clear();
 }
@@ -225,7 +190,7 @@ void QQmlScriptBlob::initializeFromCompilationUnit(const QQmlRefPointer<QV4::Exe
     m_scriptData->urlString = finalUrlString();
     m_scriptData->m_precompiledScript = unit;
 
-    m_importCache.setBaseUrl(finalUrl(), finalUrlString());
+    m_importCache->setBaseUrl(finalUrl(), finalUrlString());
 
     QQmlRefPointer<QV4::ExecutableCompilationUnit> script = m_scriptData->m_precompiledScript;
 
@@ -233,12 +198,12 @@ void QQmlScriptBlob::initializeFromCompilationUnit(const QQmlRefPointer<QV4::Exe
         QList<QQmlError> errors;
         for (quint32 i = 0, count = script->importCount(); i < count; ++i) {
             const QV4::CompiledData::Import *import = script->importAt(i);
-            if (!addImport(import, &errors)) {
+            if (!addImport(import, {}, &errors)) {
                 Q_ASSERT(errors.size());
                 QQmlError error(errors.takeFirst());
-                error.setUrl(m_importCache.baseUrl());
-                error.setLine(import->location.line);
-                error.setColumn(import->location.column);
+                error.setUrl(m_importCache->baseUrl());
+                error.setLine(import->location.line());
+                error.setColumn(import->location.column());
                 errors.prepend(error); // put it back on the list after filling out information.
                 setError(errors);
                 return;
@@ -248,10 +213,11 @@ void QQmlScriptBlob::initializeFromCompilationUnit(const QQmlRefPointer<QV4::Exe
 
     auto *v4 = QQmlEnginePrivate::getV4Engine(typeLoader()->engine());
 
-    v4->injectModule(unit);
+    v4->injectCompiledModule(unit);
 
     for (const QString &request: unit->moduleRequests()) {
-        if (v4->moduleForUrl(QUrl(request), unit.data()))
+        const auto module = v4->moduleForUrl(QUrl(request), unit.data());
+        if (module.compiled || module.native)
             continue;
 
         const QUrl absoluteRequest = unit->finalUrl().resolved(QUrl(request));
@@ -259,6 +225,25 @@ void QQmlScriptBlob::initializeFromCompilationUnit(const QQmlRefPointer<QV4::Exe
         addDependency(blob.data());
         scriptImported(blob, /* ### */QV4::CompiledData::Location(), /*qualifier*/QString(), /*namespace*/QString());
     }
+}
+
+/*!
+    \internal
+
+    This initializes a dummy script blob from a "native" ECMAScript module.
+    Native modules are just JavaScript values, possibly objects with members.
+
+    \sa QJSEngine::registerModule()
+ */
+void QQmlScriptBlob::initializeFromNative(const QV4::Value &value)
+{
+    Q_ASSERT(!m_scriptData);
+    m_scriptData.adopt(new QQmlScriptData());
+    m_scriptData->url = finalUrl();
+    m_scriptData->urlString = finalUrlString();
+    m_scriptData->m_loaded = true;
+    m_scriptData->m_value.set(QQmlEnginePrivate::getV4Engine(typeLoader()->engine()), value);
+    m_importCache->setBaseUrl(finalUrl(), finalUrlString());
 }
 
 QT_END_NAMESPACE

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <QtTest/QSignalSpy>
@@ -68,13 +43,13 @@ public:
     {
     }
 
-    void paint(QPainter *painter)
+    void paint(QPainter *painter) override
     {
         ++paintRequests;
         clipRect = painter->clipBoundingRect();
     }
 #if QT_CONFIG(opengl)
-    QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *data)
+    QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *data) override
     {
         paintNode = static_cast<QSGDefaultPainterNode *>(QQuickPaintedItem::updatePaintNode(oldNode, data));
         return paintNode;
@@ -307,24 +282,24 @@ void tst_QQuickPaintedItem::contentsSize()
     item.setContentsSize(QSize());
     QCOMPARE(item.contentsSize(), QSize());
     QCOMPARE(hasDirtyContentFlag(&item), false);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     item.setContentsSize(QSize(320, 240));
     QCOMPARE(item.contentsSize(), QSize(320, 240));
     QCOMPARE(hasDirtyContentFlag(&item), true);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     clearDirtyContentFlag(&item);
 
     item.setContentsSize(QSize(320, 240));
     QCOMPARE(item.contentsSize(), QSize(320, 240));
     QCOMPARE(hasDirtyContentFlag(&item), false);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     item.resetContentsSize();
     QCOMPARE(item.contentsSize(), QSize());
     QCOMPARE(hasDirtyContentFlag(&item), true);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 }
 
 void tst_QQuickPaintedItem::contentScale()
@@ -340,7 +315,7 @@ void tst_QQuickPaintedItem::contentScale()
     item.setContentsScale(1.);
     QCOMPARE(item.contentsScale(), 1.);
     QCOMPARE(hasDirtyContentFlag(&item), false);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     item.update();
     QTRY_COMPARE(hasDirtyContentFlag(&item), false);
@@ -350,7 +325,7 @@ void tst_QQuickPaintedItem::contentScale()
     item.setContentsScale(0.4);
     QCOMPARE(item.contentsScale(), 0.4);
     QCOMPARE(hasDirtyContentFlag(&item), true);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     QTRY_COMPARE(hasDirtyContentFlag(&item), false);
     QVERIFY(item.paintNode);
@@ -359,12 +334,12 @@ void tst_QQuickPaintedItem::contentScale()
     item.setContentsScale(0.4);
     QCOMPARE(item.contentsScale(), 0.4);
     QCOMPARE(hasDirtyContentFlag(&item), false);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     item.setContentsScale(2.5);
     QCOMPARE(item.contentsScale(), 2.5);
     QCOMPARE(hasDirtyContentFlag(&item), true);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     QTRY_COMPARE(hasDirtyContentFlag(&item), false);
     QVERIFY(item.paintNode);
@@ -422,7 +397,7 @@ void tst_QQuickPaintedItem::fillColor()
     item.setFillColor(QColor(Qt::transparent));
     QCOMPARE(item.fillColor(), QColor(Qt::transparent));
     QCOMPARE(hasDirtyContentFlag(&item), false);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     item.update();
     QTRY_COMPARE(hasDirtyContentFlag(&item), false);
@@ -432,7 +407,7 @@ void tst_QQuickPaintedItem::fillColor()
     item.setFillColor(QColor(Qt::green));
     QCOMPARE(item.fillColor(), QColor(Qt::green));
     QCOMPARE(hasDirtyContentFlag(&item), true);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     QTRY_COMPARE(hasDirtyContentFlag(&item), false);
     QVERIFY(item.paintNode);
@@ -441,12 +416,12 @@ void tst_QQuickPaintedItem::fillColor()
     item.setFillColor(QColor(Qt::green));
     QCOMPARE(item.fillColor(), QColor(Qt::green));
     QCOMPARE(hasDirtyContentFlag(&item), false);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     item.setFillColor(QColor(Qt::blue));
     QCOMPARE(item.fillColor(), QColor(Qt::blue));
     QCOMPARE(hasDirtyContentFlag(&item), true);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     QTRY_COMPARE(hasDirtyContentFlag(&item), false);
     QVERIFY(item.paintNode);
@@ -465,24 +440,24 @@ void tst_QQuickPaintedItem::renderTarget()
     item.setRenderTarget(QQuickPaintedItem::Image);
     QCOMPARE(item.renderTarget(), QQuickPaintedItem::Image);
     QCOMPARE(hasDirtyContentFlag(&item), false);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     item.setRenderTarget(QQuickPaintedItem::FramebufferObject);
     QCOMPARE(item.renderTarget(), QQuickPaintedItem::FramebufferObject);
     QCOMPARE(hasDirtyContentFlag(&item), true);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     clearDirtyContentFlag(&item);
 
     item.setRenderTarget(QQuickPaintedItem::FramebufferObject);
     QCOMPARE(item.renderTarget(), QQuickPaintedItem::FramebufferObject);
     QCOMPARE(hasDirtyContentFlag(&item), false);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     item.setRenderTarget(QQuickPaintedItem::InvertedYFramebufferObject);
     QCOMPARE(item.renderTarget(), QQuickPaintedItem::InvertedYFramebufferObject);
     QCOMPARE(hasDirtyContentFlag(&item), true);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 }
 
 QTEST_MAIN(tst_QQuickPaintedItem)

@@ -5,3 +5,6 @@ TEMPLATE = subdirs
 android|ios|winrt {
   SUBDIRS += auto
 }
+
+SUBDIRS += \
+    manual/tst_quickwidget

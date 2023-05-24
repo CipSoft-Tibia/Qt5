@@ -16,17 +16,17 @@
 import * as m from 'mithril';
 
 import {Actions} from '../common/actions';
-import {Row} from '../common/protos';
 import {QueryResponse} from '../common/queries';
+import {Row} from '../common/query_result';
 import {fromNs} from '../common/time';
 
-import {copyToClipboard} from './clipboard';
+import {copyToClipboard, queryResponseToClipboard} from './clipboard';
 import {globals} from './globals';
 import {Panel} from './panel';
+import {Router} from './router';
 import {
-  findUiTrackId,
-  horizontalScrollAndZoomToRange,
-  verticalScrollToTrack
+  focusHorizontalRange,
+  verticalScrollToTrack,
 } from './scroll_helper';
 
 interface QueryTableRowAttrs {
@@ -43,9 +43,10 @@ class QueryTableRow implements m.ClassComponent<QueryTableRowAttrs> {
     return true;
   }
 
-  static rowOnClickHandler(event: Event, row: Row) {
+  static rowOnClickHandler(
+      event: Event, row: Row, nextTab: 'CurrentSelection'|'QueryResults') {
     // TODO(dproy): Make click handler work from analyze page.
-    if (globals.state.route !== '/viewer') return;
+    if (Router.parseUrl(window.location.href).page !== '/viewer') return;
     // If the click bubbles up to the pan and zoom handler that will deselect
     // the slice.
     event.stopPropagation();
@@ -55,14 +56,22 @@ class QueryTableRow implements m.ClassComponent<QueryTableRowAttrs> {
     const sliceDur = fromNs(Math.max(row.dur as number, 1));
     const sliceEnd = sliceStart + sliceDur;
     const trackId = row.track_id as number;
-    const uiTrackId = findUiTrackId(trackId);
-    if (uiTrackId === null) return;
+    const uiTrackId = globals.state.uiTrackIdByTraceTrackId[trackId];
+    if (uiTrackId === undefined) return;
     verticalScrollToTrack(uiTrackId, true);
-    horizontalScrollAndZoomToRange(sliceStart, sliceEnd);
-    const sliceId = row.slice_id as number | undefined;
+    focusHorizontalRange(sliceStart, sliceEnd);
+    let sliceId: number|undefined;
+    if (row.type?.toString().includes('slice')) {
+      sliceId = row.id as number | undefined;
+    } else {
+      sliceId = row.slice_id as number | undefined;
+    }
     if (sliceId !== undefined) {
-      globals.makeSelection(Actions.selectChromeSlice(
-          {id: sliceId, trackId: uiTrackId, table: 'slice'}));
+      globals.makeSelection(
+          Actions.selectChromeSlice(
+              {id: sliceId, trackId: uiTrackId, table: 'slice'}),
+          nextTab === 'QueryResults' ? globals.state.currentTab :
+                                       'current_selection');
     }
   }
 
@@ -70,16 +79,31 @@ class QueryTableRow implements m.ClassComponent<QueryTableRowAttrs> {
     const cells = [];
     const {row, columns} = vnode.attrs;
     for (const col of columns) {
-      cells.push(m('td', row[col]));
+      const value = row[col];
+      if (value instanceof Uint8Array) {
+        cells.push(m('td', `<BLOB sz=${value.length}>`));
+      } else {
+        cells.push(m('td', value));
+      }
     }
     const containsSliceLocation =
         QueryTableRow.columnsContainsSliceLocation(columns);
     const maybeOnClick = containsSliceLocation ?
-        (e: Event) => QueryTableRow.rowOnClickHandler(e, row) :
+        (e: Event) => QueryTableRow.rowOnClickHandler(e, row, 'QueryResults') :
+        null;
+    const maybeOnDblClick = containsSliceLocation ?
+        (e: Event) =>
+            QueryTableRow.rowOnClickHandler(e, row, 'CurrentSelection') :
         null;
     return m(
         'tr',
-        {onclick: maybeOnClick, 'clickable': containsSliceLocation},
+        {
+          'onclick': maybeOnClick,
+          // TODO(altimin): Consider improving the logic here (e.g. delay?) to
+          // account for cases when dblclick fires late.
+          'ondblclick': maybeOnDblClick,
+          'clickable': containsSliceLocation,
+        },
         cells);
   }
 }
@@ -116,43 +140,53 @@ export class QueryTable extends Panel<QueryTableAttrs> {
       rows.push(m(QueryTableRow, {row: resp.rows[i], columns: resp.columns}));
     }
 
+    const headers = [
+      m(
+          'header.overview',
+          m('span', `Query result - ${Math.round(resp.durationMs)} ms`),
+          m('span.code.text-select', resp.query),
+          m('span.spacer'),
+          m('button.query-ctrl',
+            {
+              onclick: () => {
+                copyToClipboard(resp.query);
+              },
+            },
+            'Copy query'),
+          resp.error ? null :
+                       m('button.query-ctrl',
+                         {
+                           onclick: () => {
+                             queryResponseToClipboard(resp);
+                           },
+                         },
+                         'Copy result (.tsv)'),
+          m('button.query-ctrl',
+            {
+              onclick: () => {
+                globals.queryResults.delete(queryId);
+                globals.rafScheduler.scheduleFullRedraw();
+              },
+            },
+            'Close'),
+          ),
+    ];
+
+
+    if (resp.statementWithOutputCount > 1) {
+      headers.push(
+          m('header.overview',
+            `${resp.statementWithOutputCount} out of ${resp.statementCount} ` +
+                `statements returned a result. Only the results for the last ` +
+                `statement are displayed in the table below.`));
+    }
+
     return m(
         'div',
-        m(
-            'header.overview',
-            `Query result - ${Math.round(resp.durationMs)} ms`,
-            m('span.code', resp.query),
-            resp.error ?
-                null :
-                m('button.query-ctrl',
-                  {
-                    onclick: () => {
-                      const lines: string[][] = [];
-                      lines.push(resp.columns);
-                      for (const row of resp.rows) {
-                        const line = [];
-                        for (const col of resp.columns) {
-                          line.push(row[col].toString());
-                        }
-                        lines.push(line);
-                      }
-                      copyToClipboard(
-                          lines.map(line => line.join('\t')).join('\n'));
-                    },
-                  },
-                  'Copy as .tsv'),
-            m('button.query-ctrl',
-              {
-                onclick: () => {
-                  globals.queryResults.delete(queryId);
-                  globals.rafScheduler.scheduleFullRedraw();
-                }
-              },
-              'Close'),
-            ),
+        ...headers,
         resp.error ?
             m('.query-error', `SQL error: ${resp.error}`) :
-            m('.query-table-container',
+            m('.query-table-container.x-scrollable',
               m('table.query-table', m('thead', header), m('tbody', rows))));
   }
 

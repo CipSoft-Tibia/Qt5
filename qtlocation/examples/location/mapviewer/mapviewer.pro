@@ -6,27 +6,19 @@ SOURCES += main.cpp
 
 # Workaround for QTBUG-38735
 QT_FOR_CONFIG += location-private
-qtConfig(geoservices_mapboxgl): QT += sql
-qtConfig(geoservices_osm): QT += concurrent
 
-RESOURCES += \
-    mapviewer.qrc
-
-OTHER_FILES +=mapviewer.qml \
+qml_resources.files = \
+    qmldir \
+    Main.qml \
     helper.js \
     map/MapComponent.qml \
     map/MapSliders.qml \
     map/Marker.qml \
-    map/CircleItem.qml \
-    map/RectangleItem.qml \
-    map/PolylineItem.qml \
-    map/PolygonItem.qml \
-    map/ImageItem.qml \
     map/MiniMap.qml \
     menus/ItemPopupMenu.qml \
     menus/MainMenu.qml \
     menus/MapPopupMenu.qml \
-    menus/MarkerPopupMenu \
+    menus/MarkerPopupMenu.qml \
     forms/Geocode.qml \
     forms/GeocodeForm.ui.qml\
     forms/Message.qml \
@@ -41,7 +33,15 @@ OTHER_FILES +=mapviewer.qml \
     forms/RouteCoordinateForm.ui.qml \
     forms/RouteList.qml \
     forms/RouteListDelegate.qml \
-    forms/RouteListHeader.qml
+    forms/RouteListHeader.qml \
+    resources/marker.png \
+    resources/marker_blue.png \
+    resources/scale.png \
+    resources/scale_end.png
+
+qml_resources.prefix = /qt/qml/MapViewer
+
+RESOURCES = qml_resources
 
 target.path = $$[QT_INSTALL_EXAMPLES]/location/mapviewer
 INSTALLS += target

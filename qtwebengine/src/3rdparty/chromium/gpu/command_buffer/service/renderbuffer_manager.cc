@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 #include "base/check_op.h"
 #include "base/format_macros.h"
 #include "base/strings/stringprintf.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/memory_dump_manager.h"
 #include "base/trace_event/trace_event.h"
 #include "gpu/command_buffer/common/gles2_cmd_utils.h"
@@ -68,7 +68,8 @@ RenderbufferManager::RenderbufferManager(MemoryTracker* memory_tracker,
   // so don't register a dump provider.
   if (memory_tracker_) {
     base::trace_event::MemoryDumpManager::GetInstance()->RegisterDumpProvider(
-        this, "gpu::RenderbufferManager", base::ThreadTaskRunnerHandle::Get());
+        this, "gpu::RenderbufferManager",
+        base::SingleThreadTaskRunner::GetCurrentDefault());
   }
 }
 

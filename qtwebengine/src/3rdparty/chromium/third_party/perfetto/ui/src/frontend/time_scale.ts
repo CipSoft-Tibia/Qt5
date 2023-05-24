@@ -15,7 +15,7 @@
 import {assertFalse, assertTrue} from '../base/logging';
 import {TimeSpan} from '../common/time';
 
-const MAX_ZOOM_SPAN_SEC = 1e-4;  // 0.1 ms.
+const MAX_ZOOM_SPAN_SEC = 1e-8;  // 10 ns.
 
 /**
  * Defines a mapping between number and seconds for the entire application.
@@ -78,6 +78,14 @@ export class TimeScale {
 
   get endPx(): number {
     return this._endPx;
+  }
+
+  get widthPx(): number {
+    return this._endPx - this._startPx;
+  }
+
+  get timeSpan(): TimeSpan {
+    return this.timeBounds;
   }
 }
 

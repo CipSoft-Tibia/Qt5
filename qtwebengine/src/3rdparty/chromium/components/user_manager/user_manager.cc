@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,6 +19,10 @@ void UserManager::Observer::LocalStateChanged(UserManager* user_manager) {}
 
 void UserManager::Observer::OnUserImageChanged(const User& user) {}
 
+void UserManager::Observer::OnUserImageIsEnterpriseManagedChanged(
+    const User& user,
+    bool is_enterprise_managed) {}
+
 void UserManager::Observer::OnUserProfileImageUpdateFailed(const User& user) {}
 
 void UserManager::Observer::OnUserProfileImageUpdated(
@@ -27,20 +31,22 @@ void UserManager::Observer::OnUserProfileImageUpdated(
 
 void UserManager::Observer::OnUsersSignInConstraintsChanged() {}
 
+void UserManager::Observer::OnUserRemoved(const AccountId& account_id,
+                                          UserRemovalReason reason) {}
+
+void UserManager::Observer::OnUserToBeRemoved(const AccountId& account_id) {}
+
 void UserManager::UserSessionStateObserver::ActiveUserChanged(
     User* active_user) {}
 
 void UserManager::UserSessionStateObserver::UserAddedToSession(
     const User* active_user) {}
 
-void UserManager::UserSessionStateObserver::ActiveUserHashChanged(
-    const std::string& hash) {}
-
 UserManager::UserSessionStateObserver::~UserSessionStateObserver() {}
 
 UserManager::UserAccountData::UserAccountData(
-    const base::string16& display_name,
-    const base::string16& given_name,
+    const std::u16string& display_name,
+    const std::u16string& given_name,
     const std::string& locale)
     : display_name_(display_name), given_name_(given_name), locale_(locale) {}
 
@@ -115,7 +121,7 @@ UserType UserManager::CalculateUserType(const AccountId& account_id,
       LOG(FATAL) << "Incorrect child user type " << user_type;
     }
 
-    // TODO (rsorokin): Check for reverse: account_id AD type should imply
+    // TODO(rsorokin): Check for reverse: account_id AD type should imply
     // AD user type.
     if (user_type == USER_TYPE_ACTIVE_DIRECTORY &&
         account_id.GetAccountType() != AccountType::ACTIVE_DIRECTORY) {
@@ -128,9 +134,6 @@ UserType UserManager::CalculateUserType(const AccountId& account_id,
   // User is new
   if (is_child)
     return USER_TYPE_CHILD;
-
-  if (IsSupervisedAccountId(account_id))
-    return USER_TYPE_SUPERVISED;
 
   if (account_id.GetAccountType() == AccountType::ACTIVE_DIRECTORY)
     return USER_TYPE_ACTIVE_DIRECTORY;

@@ -1,18 +1,17 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/base/x/x11_pointer_grab.h"
 
-#include "base/bind.h"
 #include "base/cancelable_callback.h"
 #include "base/check.h"
+#include "base/functional/bind.h"
 #include "base/no_destructor.h"
 #include "base/sys_byteorder.h"
 #include "ui/base/x/x11_util.h"
 #include "ui/events/devices/x11/device_data_manager_x11.h"
 #include "ui/gfx/x/connection.h"
-#include "ui/gfx/x/x11.h"
 #include "ui/gfx/x/xinput.h"
 #include "ui/gfx/x/xproto.h"
 
@@ -116,8 +115,8 @@ x11::GrabStatus GrabPointer(x11::Window window,
 }
 
 void ChangeActivePointerGrabCursor(scoped_refptr<ui::X11Cursor> cursor) {
-  DCHECK(g_grab_window != x11::Window::None);
-  GrabPointer(g_grab_window, g_owner_events, cursor);
+  if (g_grab_window != x11::Window::None)
+    GrabPointer(g_grab_window, g_owner_events, cursor);
 }
 
 void UngrabPointer() {
@@ -133,7 +132,7 @@ void UngrabPointer() {
     }
   }
   // Try core pointer ungrab in case the XInput2 pointer ungrab failed.
-  connection->UngrabPointer({}).IgnoreError();
+  connection->UngrabPointer().IgnoreError();
 }
 
 }  // namespace ui

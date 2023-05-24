@@ -1,4 +1,4 @@
-// Copyright 2020 PDFium Authors. All rights reserved.
+// Copyright 2020 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,8 +23,7 @@ class GifProgressiveDecoder final : public ProgressiveDecoderIface {
   // ProgressiveDecoderIface:
   FX_FILESIZE GetAvailInput(Context* context) const override;
   bool Input(Context* context,
-             RetainPtr<CFX_CodecMemory> codec_memory,
-             CFX_DIBAttribute* pAttribute) override;
+             RetainPtr<CFX_CodecMemory> codec_memory) override;
 
  private:
   friend pdfium::base::NoDestructor<GifProgressiveDecoder>;

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,8 @@
 #include <memory>
 #include <string>
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/weak_ptr.h"
-#include "base/values.h"
 #include "content/public/browser/devtools_manager_delegate.h"
 
 namespace headless {
@@ -33,8 +32,8 @@ class HeadlessDevToolsManagerDelegate
                      base::span<const uint8_t> message,
                      NotHandledCallback callback) override;
   scoped_refptr<content::DevToolsAgentHost> CreateNewTarget(
-      const GURL& url) override;
-  std::string GetDiscoveryPageHTML() override;
+      const GURL& url,
+      bool for_tab) override;
   bool HasBundledFrontendResources() override;
   void ClientAttached(
       content::DevToolsAgentHostClientChannel* channel) override;

@@ -1,37 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtCore/QCoreApplication>
-#include <QtTest/QtTest>
+#include <QTest>
 
 #ifdef Q_OS_WIN
-#include <windows.h>
+#include <qt_windows.h>
+#else
+#include <sys/resource.h>
 #endif
 
 class tst_Crashes: public QObject
@@ -44,9 +21,15 @@ private slots:
 
 void tst_Crashes::crash()
 {
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
    //we avoid the error dialogbox to appear on windows
    SetErrorMode( SEM_NOGPFAULTERRORBOX | SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+#elif defined(RLIMIT_CORE)
+    // Unix: set our core dump limit to zero to request no dialogs.
+    if (struct rlimit rlim; getrlimit(RLIMIT_CORE, &rlim) == 0) {
+        rlim.rlim_cur = 0;
+        setrlimit(RLIMIT_CORE, &rlim);
+    }
 #endif
     /*
         We deliberately dereference an invalid but non-zero address;
@@ -55,7 +38,11 @@ void tst_Crashes::crash()
         rather than SIGSEGV).
     */
     int *i = 0;
+
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_GCC("-Warray-bounds")
     i[1] = 1;
+QT_WARNING_POP
 }
 
 QTEST_MAIN(tst_Crashes)

@@ -44,6 +44,7 @@ class RenderbufferMtl : public RenderbufferImpl
                                             FramebufferAttachmentRenderTarget **rtOut) override;
 
     angle::Result initializeContents(const gl::Context *context,
+                                     GLenum binding,
                                      const gl::ImageIndex &imageIndex) override;
 
   private:
@@ -57,6 +58,7 @@ class RenderbufferMtl : public RenderbufferImpl
 
     mtl::Format mFormat;
     mtl::TextureRef mTexture;
+    mtl::TextureRef mImplicitMSTexture;
     RenderTargetMtl mRenderTarget;
 };
 

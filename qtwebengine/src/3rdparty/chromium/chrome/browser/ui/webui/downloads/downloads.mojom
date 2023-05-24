@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,9 @@ module downloads.mojom;
 struct Data {
   bool file_externally_removed;
   bool is_dangerous;
-  bool is_mixed_content;
+  [RenamedFrom=is_mixed_content]
+  bool is_insecure;
+  bool is_reviewable;
   // |otr| stands for off-the-record and is true when a download entry is
   // created during an incognito or guest profile session.
   bool otr;
@@ -28,9 +30,10 @@ struct Data {
   string id;
   string last_reason_text;
   string progress_status_text;
+  string show_in_folder_text;
   string since_string;
   // |state| indicates the current state of the download. A download data entry
-  // can be dangerous or mixed content which can be expressed as a state to
+  // can be dangerous or insecure which can be expressed as a state to
   // indicate the download needs confirmation before initiating. After
   // confirmation, the state will indicate the download is in progress, complete
   // or cancelled.
@@ -63,6 +66,18 @@ interface PageHandler {
   // Browsing. This completes the scan early. This requires a user gesture on
   // the WebUI.
   OpenDuringScanningRequiringGesture(string id);
+
+  // Opens a review dialog for the download with the given |id| after it has
+  // received a warning deep scanning verdict. This requires a user gesture on
+  // the WebUI.
+  ReviewDangerousRequiringGesture(string id);
+
+  // Performs deep scan for the download with the given |id|.
+  DeepScan(string id);
+
+  // Bypass deep scan for download with the given |id|. This requires a user
+  // gesture on the WebUI.
+  BypassDeepScanRequiringGesture(string id);
 };
 
 interface Page {

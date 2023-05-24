@@ -23,11 +23,11 @@ const CS_BASE_URL =
     'https://cs.android.com/android/platform/superproject/+/master:external/perfetto';
 
 const ROOT_DIR = path.dirname(path.dirname(path.dirname(__dirname)));
-const DOCS_DIR = path.join(ROOT_DIR, 'docs');
 
 let outDir = '';
 let curMdFile = '';
 let title = '';
+let depFileFd = undefined;
 
 function hrefInDocs(href) {
   if (href.match(/^(https?:)|^(mailto:)|^#/)) {
@@ -132,6 +132,9 @@ function renderImage(originalImgFn, href, title, text) {
     const outParDir = path.dirname(outFile);
     fs.ensureDirSync(outParDir);
     fs.copyFileSync(ROOT_DIR + docsHref, outFile);
+    if (depFileFd) {
+      fs.write(depFileFd, ` ${ROOT_DIR + docsHref}`);
+    }
   }
   if (href.endsWith('.svg')) {
     return `<object type="image/svg+xml" data="${href}"></object>`
@@ -159,6 +162,15 @@ function renderParagraph(text) {
   if (cssClass != '') {
     cssClass = ` class="callout ${cssClass}"`;
   }
+
+  // Rudimentary support of definition lists.
+  var colonStart = text.search("\n:")
+  if (colonStart != -1) {
+    var key = text.substring(0, colonStart);
+    var value = text.substring(colonStart + 2);
+    return `<dl><dt><p>${key}</p></dt><dd><p>${value}</p></dd></dl>`
+  }
+
   return `<p${cssClass}>${text}</p>\n`;
 }
 
@@ -172,21 +184,30 @@ function render(rawMarkdown) {
   renderer.heading = renderHeading;
   renderer.paragraph = renderParagraph;
 
-  return marked(rawMarkdown, {renderer: renderer});
+  return marked.marked.parse(rawMarkdown, {renderer: renderer});
 }
 
 function main() {
   const inFile = argv['i'];
   const outFile = argv['o'];
   outDir = argv['odir'];
+  depFile = argv['depfile'];
   const templateFile = argv['t'];
   if (!outFile || !outDir) {
     console.error(
-        'Usage: --odir site -o out.html [-i input.md] [-t templ.html]');
+        'Usage: --odir site -o out.html ' +
+        '[-i input.md] [-t templ.html] ' +
+        '[--depfile depfile.d]');
     process.exit(1);
   }
   curMdFile = inFile;
 
+  if (depFile) {
+    const depFileDir = path.dirname(depFile);
+    fs.ensureDirSync(depFileDir);
+    depFileFd = fs.openSync(depFile, 'w');
+    fs.write(depFileFd, `${outFile}:`);
+  }
   let markdownHtml = '';
   if (inFile) {
     markdownHtml = render(fs.readFileSync(inFile, 'utf8'));
@@ -200,7 +221,7 @@ function main() {
     const templateData = {
       markdown: markdownHtml,
       title: title ? `${title} - Perfetto Tracing Docs` : fallbackTitle,
-      fileName: '/' + outFile.split('/').slice(1).join('/'),
+      fileName: '/' + path.relative(outDir, outFile),
     };
     if (fs.existsSync(navFilePath)) {
       templateData['nav'] = fs.readFileSync(navFilePath, 'utf8');

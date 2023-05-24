@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,7 +16,7 @@
 
 namespace blink {
 
-class CSSFontVariationSettingsNonInterpolableValue
+class CSSFontVariationSettingsNonInterpolableValue final
     : public NonInterpolableValue {
  public:
   ~CSSFontVariationSettingsNonInterpolableValue() final = default;
@@ -65,7 +65,8 @@ static bool TagsMatch(const NonInterpolableValue& a,
   return GetTags(a) == GetTags(b);
 }
 
-class UnderlyingTagsChecker : public InterpolationType::ConversionChecker {
+class UnderlyingTagsChecker final
+    : public InterpolationType::ConversionChecker {
  public:
   explicit UnderlyingTagsChecker(const Vector<uint32_t>& tags) : tags_(tags) {}
   ~UnderlyingTagsChecker() final = default;
@@ -79,7 +80,7 @@ class UnderlyingTagsChecker : public InterpolationType::ConversionChecker {
   const Vector<uint32_t> tags_;
 };
 
-class InheritedFontVariationSettingsChecker
+class InheritedFontVariationSettingsChecker final
     : public CSSInterpolationType::CSSConversionChecker {
  public:
   explicit InheritedFontVariationSettingsChecker(
@@ -91,7 +92,7 @@ class InheritedFontVariationSettingsChecker
  private:
   bool IsValid(const StyleResolverState& state,
                const InterpolationValue&) const final {
-    return DataEquivalent(
+    return ValuesEquivalent(
         settings_.get(),
         state.ParentStyle()->GetFontDescription().VariationSettings());
   }
@@ -198,11 +199,11 @@ void CSSFontVariationSettingsInterpolationType::ApplyStandardPropertyValue(
   scoped_refptr<FontVariationSettings> settings =
       FontVariationSettings::Create();
   wtf_size_t length = numbers.length();
-  // Do clampTo here, which follows the same logic as ConsumeFontVariationTag.
+  // Do ClampTo here, which follows the same logic as ConsumeFontVariationTag.
   for (wtf_size_t i = 0; i < length; ++i) {
     settings->Append(FontVariationAxis(
         tags[i],
-        clampTo<float>(To<InterpolableNumber>(numbers.Get(i))->Value())));
+        ClampTo<float>(To<InterpolableNumber>(numbers.Get(i))->Value())));
   }
   state.GetFontBuilder().SetVariationSettings(settings);
 }

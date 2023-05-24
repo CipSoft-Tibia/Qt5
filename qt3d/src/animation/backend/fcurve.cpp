@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "fcurve_p.h"
 #include <private/bezierevaluator_p.h>
@@ -47,7 +14,7 @@ namespace Qt3DAnimation {
 namespace Animation {
 
 FCurve::FCurve()
-    : m_rangeFinder(m_localTimes)
+    : m_rangeFinder(&m_localTimes)
 {
 }
 
@@ -169,7 +136,7 @@ void FCurve::read(const QJsonObject &json)
     clearKeyframes();
 
     const QJsonArray keyframeArray = json[QLatin1String("keyFrames")].toArray();
-    const int keyframeCount = keyframeArray.size();
+    const qsizetype keyframeCount = keyframeArray.size();
 
     for (int i = 0; i < keyframeCount; ++i) {
         const QJsonObject keyframeData = keyframeArray.at(i).toObject();
@@ -241,10 +208,10 @@ void Channel::read(const QJsonObject &json)
     if (!jointIndexValue.isUndefined())
         jointIndex = jointIndexValue.toInt();
     const QJsonArray channelComponentsArray = json[QLatin1String("channelComponents")].toArray();
-    const int channelCount = channelComponentsArray.size();
+    const qsizetype channelCount = channelComponentsArray.size();
     channelComponents.resize(channelCount);
 
-    for (int i = 0; i < channelCount; ++i) {
+    for (qsizetype i = 0; i < channelCount; ++i) {
         const QJsonObject channel = channelComponentsArray.at(i).toObject();
         channelComponents[i].read(channel);
     }
@@ -255,7 +222,7 @@ void Channel::setFromQChannel(const QChannel &qch)
     name = qch.name();
     jointIndex = qch.jointIndex();
     channelComponents.resize(qch.channelComponentCount());
-    int i = 0;
+    qsizetype i = 0;
     for (const auto &frontendChannelComponent : qch)
         channelComponents[i++].setFromQChannelComponent(frontendChannelComponent);
 }

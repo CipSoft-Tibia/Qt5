@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,12 +6,6 @@ import("//third_party/protobuf/proto_library.gni")
 
 # Nothing outside //chrome/chrome_cleaner can depend on these targets.
 visibility = [ "//chrome/chrome_cleaner/*" ]
-
-proto_library("uwe_matcher_proto") {
-  sources = [ "uwe_matcher.proto" ]
-
-  link_deps = [ ":uws_spec_by_version_proto" ]
-}
 
 proto_library("file_digest_proto") {
   sources = [ "file_digest.proto" ]

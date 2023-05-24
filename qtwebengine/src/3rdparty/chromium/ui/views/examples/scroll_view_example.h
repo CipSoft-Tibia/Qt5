@@ -1,55 +1,41 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_VIEWS_EXAMPLES_SCROLL_VIEW_EXAMPLE_H_
 #define UI_VIEWS_EXAMPLES_SCROLL_VIEW_EXAMPLE_H_
 
-#include <string>
-
-#include "base/macros.h"
-#include "ui/views/controls/button/button.h"
+#include "base/memory/raw_ptr.h"
+#include "ui/color/color_id.h"
 #include "ui/views/controls/scroll_view.h"
 #include "ui/views/examples/example_base.h"
 
-namespace views {
+namespace views::examples {
 
-class LabelButton;
-
-namespace examples {
-
-class VIEWS_EXAMPLES_EXPORT ScrollViewExample : public ExampleBase,
-                                                public ButtonListener {
+class VIEWS_EXAMPLES_EXPORT ScrollViewExample : public ExampleBase {
  public:
   ScrollViewExample();
+
+  ScrollViewExample(const ScrollViewExample&) = delete;
+  ScrollViewExample& operator=(const ScrollViewExample&) = delete;
+
   ~ScrollViewExample() override;
 
   // ExampleBase:
   void CreateExampleView(View* container) override;
 
  private:
-  // ButtonListener:
-  void ButtonPressed(Button* sender, const ui::Event& event) override;
-
-  // Control buttons to change the size of scrollable and jump to
-  // predefined position.
-  LabelButton* wide_;
-  LabelButton* tall_;
-  LabelButton* big_square_;
-  LabelButton* small_square_;
-  LabelButton* scroll_to_;
-
   class ScrollableView;
+
+  void ButtonPressed(gfx::Rect bounds, ui::ColorId from, ui::ColorId to);
+
   // The content of the scroll view.
-  ScrollableView* scrollable_;
+  raw_ptr<ScrollableView> scrollable_;
 
   // The scroll view to test.
-  ScrollView* scroll_view_;
-
-  DISALLOW_COPY_AND_ASSIGN(ScrollViewExample);
+  raw_ptr<ScrollView> scroll_view_;
 };
 
-}  // namespace examples
-}  // namespace views
+}  // namespace views::examples
 
 #endif  // UI_VIEWS_EXAMPLES_SCROLL_VIEW_EXAMPLE_H_

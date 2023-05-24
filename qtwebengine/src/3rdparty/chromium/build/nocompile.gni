@@ -1,4 +1,4 @@
-# Copyright (c) 2011 The Chromium Authors. All rights reserved.
+# Copyright 2011 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -59,6 +59,7 @@
 # least processed when things go right.
 
 import("//build/config/clang/clang.gni")
+import("//build/config/python.gni")
 import("//build/toolchain/toolchain.gni")
 import("//testing/test.gni")
 
@@ -95,17 +96,23 @@ if (enable_nocompile_tests) {
         "-nostdinc++",
         "-isystem" + rebase_path("$libcxx_prefix/include", root_build_dir),
         "-isystem" + rebase_path("$libcxxabi_prefix/include", root_build_dir),
-        "-std=c++14",
+        "-std=c++17",
         "-Wall",
         "-Werror",
         "-Wfatal-errors",
         "-Wthread-safety",
         "-I" + rebase_path("//", root_build_dir),
+        "-I" + rebase_path("//third_party/abseil-cpp/", root_build_dir),
+        "-I" + rebase_path("//buildtools/third_party/libc++/", root_build_dir),
         "-I" + rebase_path(root_gen_dir, root_build_dir),
 
         # TODO(https://crbug.com/989932): Track build/config/compiler/BUILD.gn
         "-Wno-implicit-int-float-conversion",
       ]
+
+      if (is_apple && host_os != "mac") {
+        args += [ "--target=x86_64-apple-macos" ]
+      }
 
       # Iterate over any extra include dirs and append them to the command line.
       if (defined(invoker.include_dirs)) {
@@ -118,6 +125,13 @@ if (enable_nocompile_tests) {
         args += [
           "--sysroot",
           rebase_path(sysroot, root_build_dir),
+        ]
+      }
+
+      if (!is_nacl) {
+        args += [
+          # TODO(crbug.com/1343975) Evaluate and possibly enable.
+          "-Wno-deprecated-builtins",
         ]
       }
     }

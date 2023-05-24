@@ -1,25 +1,27 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Validation functions for the Meta-Build config file"""
 
 import ast
 import collections
+import difflib
 import json
+import os
 import re
 
 
-def GetAllConfigs(masters):
+def GetAllConfigs(builder_groups):
   """Build a list of all of the configs referenced by builders.
   """
   all_configs = {}
-  for master in masters:
-    for config in masters[master].values():
+  for builder_group in builder_groups:
+    for config in builder_groups[builder_group].values():
       if isinstance(config, dict):
         for c in config.values():
-          all_configs[c] = master
+          all_configs[c] = builder_group
       else:
-        all_configs[config] = master
+        all_configs[config] = builder_group
   return all_configs
 
 
@@ -54,44 +56,42 @@ def CheckAllConfigsAndMixinsReferenced(errs, all_configs, configs, mixins):
   return errs
 
 
-def EnsureNoProprietaryMixins(errs, default_config, config_file, masters,
-                              configs, mixins):
+def EnsureNoProprietaryMixins(errs, builder_groups, configs, mixins):
   """If we're checking the Chromium config, check that the 'chromium' bots
   which build public artifacts do not include the chrome_with_codecs mixin.
   """
-  if config_file == default_config:
-    if 'chromium' in masters:
-      for builder in masters['chromium']:
-        config = masters['chromium'][builder]
+  if 'chromium' in builder_groups:
+    for builder in builder_groups['chromium']:
+      config = builder_groups['chromium'][builder]
 
-        def RecurseMixins(current_mixin):
-          if current_mixin == 'chrome_with_codecs':
-            errs.append('Public artifact builder "%s" can not contain the '
-                        '"chrome_with_codecs" mixin.' % builder)
-            return
-          if not 'mixins' in mixins[current_mixin]:
-            return
-          for mixin in mixins[current_mixin]['mixins']:
-            RecurseMixins(mixin)
-
-        for mixin in configs[config]:
+      def RecurseMixins(current_mixin):
+        if current_mixin == 'chrome_with_codecs':
+          errs.append('Public artifact builder "%s" can not contain the '
+                      '"chrome_with_codecs" mixin.' % builder)
+          return
+        if not 'mixins' in mixins[current_mixin]:
+          return
+        for mixin in mixins[current_mixin]['mixins']:
           RecurseMixins(mixin)
-    else:
-      errs.append('Missing "chromium" master. Please update this '
-                  'proprietary codecs check with the name of the master '
-                  'responsible for public build artifacts.')
+
+      for mixin in configs[config]:
+        RecurseMixins(mixin)
+  else:
+    errs.append('Missing "chromium" builder_group. Please update this '
+                'proprietary codecs check with the name of the builder_group '
+                'responsible for public build artifacts.')
 
 
-def _GetConfigsByBuilder(masters):
+def _GetConfigsByBuilder(builder_groups):
   """Builds a mapping from buildername -> [config]
 
     Args
-      masters: the master's dict from mb_config.pyl
+      builder_groups: the builder_group's dict from mb_config.pyl
     """
 
   result = collections.defaultdict(list)
-  for master in masters.values():
-    for buildername, builder in master.items():
+  for builder_group in builder_groups.values():
+    for buildername, builder in builder_group.items():
       result[buildername].append(builder)
 
   return result
@@ -114,7 +114,8 @@ def CheckDuplicateConfigs(errs, config_pool, mixin_pool, grouping,
       if isinstance(config, dict):
         # Ignore for now
         continue
-      elif config.startswith('//'):
+
+      if config.startswith('//'):
         args = config
       else:
         flattened_config = flatten_config(config_pool, mixin_pool, config)
@@ -136,3 +137,79 @@ def CheckDuplicateConfigs(errs, config_pool, mixin_pool, grouping,
           'following configs are all equivalent: %s. Please '
           'consolidate these configs into only one unique name per '
           'configuration value.' % (', '.join(sorted('%r' % val for val in v))))
+
+
+def CheckDebugDCheckOrOfficial(errs, gn_args, builder_group, builder, phase):
+  # TODO(crbug.com/1227171): Figure out how to check this properly
+  # for simplechrome-based bots.
+  if gn_args.get('is_chromeos_device'):
+    return
+
+  if ((gn_args.get('is_debug') == True)
+      or (gn_args.get('is_official_build') == True)
+      or ('dcheck_always_on' in gn_args)):
+    return
+
+  if phase:
+    errs.append('Phase "%s" of builder "%s" on %s did not specify '
+                'one of is_debug=true, is_official_build=true, or '
+                'dcheck_always_on=(true|false).' %
+                (phase, builder, builder_group))
+  else:
+    errs.append('Builder "%s" on %s did not specify '
+                'one of is_debug=true, is_official_build=true, or '
+                'dcheck_always_on=(true|false).' % (builder, builder_group))
+
+
+def CheckExpectations(mbw, jsonish_blob, expectations_dir):
+  """Checks that the expectation files match the config file.
+
+  Returns: True if expectations are up-to-date. False otherwise.
+  """
+  # Assert number of builder_groups == number of expectation files.
+  if len(mbw.ListDir(expectations_dir)) != len(jsonish_blob):
+    return False
+  for builder_group, builders in jsonish_blob.items():
+    if not mbw.Exists(os.path.join(expectations_dir, builder_group + '.json')):
+      return False  # No expecation file for the builder_group.
+    expectation = mbw.ReadFile(os.path.join(expectations_dir,
+                                            builder_group + '.json'))
+    builders_json = json.dumps(builders,
+                               indent=2,
+                               sort_keys=True,
+                               separators=(',', ': '))
+    if builders_json != expectation:
+      return False  # Builders' expectation out of sync.
+  return True
+
+
+def CheckKeyOrdering(errs, groups, configs, mixins):
+  # Check ordering of groups within "builder_groups".
+  group_names = list(groups.keys())
+  sorted_group_names = sorted(group_names)
+  if group_names != sorted_group_names:
+    errs.append('\nThe keys in "builder_groups" are not sorted:')
+    errs.extend(difflib.context_diff(group_names, sorted_group_names))
+
+  # Check ordering of builders within each group.
+  for group, builders in groups.items():
+    builder_names = list(builders.keys())
+    sorted_builder_names = sorted(builder_names)
+    if builder_names != sorted_builder_names:
+      errs.append('\nThe builders in group "%s" are not sorted:' % group)
+      errs.extend(difflib.context_diff(builder_names, sorted_builder_names))
+
+  # Check ordering of configs names, but don't bother checking the ordering
+  # of mixins within a config.
+  config_names = list(configs.keys())
+  sorted_config_names = sorted(config_names)
+  if config_names != sorted_config_names:
+    errs.append('\nThe config names are not sorted:')
+    errs.extend(difflib.context_diff(config_names, sorted_config_names))
+
+  # Check ordering of mixin names.
+  mixin_names = list(mixins.keys())
+  sorted_mixin_names = sorted(mixin_names)
+  if mixin_names != sorted_mixin_names:
+    errs.append('\nThe mixin names are not sorted:')
+    errs.extend(difflib.context_diff(mixin_names, sorted_mixin_names))

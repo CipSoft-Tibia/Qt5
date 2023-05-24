@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdesigner_formwindow.h"
 #include "qdesigner_workbench.h"
@@ -39,26 +14,27 @@
 #include <QtDesigner/taskmenu.h>
 #include <QtDesigner/qextensionmanager.h>
 
-#include <QtCore/qfile.h>
-#include <QtCore/qregularexpression.h>
-
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qfiledialog.h>
 #include <QtWidgets/qmessagebox.h>
 #include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qboxlayout.h>
-#include <QtWidgets/qundostack.h>
 
+#include <QtGui/qaction.h>
 #include <QtGui/qevent.h>
+#include <QtGui/qundostack.h>
+
+#include <QtCore/qfile.h>
+#include <QtCore/qregularexpression.h>
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 QDesignerFormWindow::QDesignerFormWindow(QDesignerFormWindowInterface *editor, QDesignerWorkbench *workbench, QWidget *parent, Qt::WindowFlags flags)
     : QWidget(parent, flags),
       m_editor(editor),
       m_workbench(workbench),
-      m_action(new QAction(this)),
-      m_initialized(false),
-      m_windowTitleInitialized(false)
+      m_action(new QAction(this))
 {
     Q_ASSERT(workbench);
 
@@ -97,7 +73,7 @@ void QDesignerFormWindow::changeEvent(QEvent *e)
 {
     switch (e->type()) {
         case QEvent::WindowTitleChange:
-            m_action->setText(windowTitle().remove(QStringLiteral("[*]")));
+            m_action->setText(windowTitle().remove("[*]"_L1));
             break;
         case QEvent::WindowIconChange:
             m_action->setIcon(windowIcon());
@@ -162,7 +138,7 @@ int QDesignerFormWindow::getNumberOfUntitledWindows() const
     // Find the number of untitled windows excluding ourselves.
     // Do not fall for 'untitled.ui', match with modified place holder.
     // This will cause some problems with i18n, but for now I need the string to be "static"
-    static const QRegularExpression rx(QStringLiteral("untitled( (\\d+))?\\[\\*\\]$"));
+    static const QRegularExpression rx(u"untitled( (\\d+))?\\[\\*\\]$"_s);
     Q_ASSERT(rx.isValid());
     for (int i = 0; i < totalWindows; ++i) {
         QDesignerFormWindow *fw =  m_workbench->formWindow(i);
@@ -173,7 +149,7 @@ int QDesignerFormWindow::getNumberOfUntitledWindows() const
                 if (maxUntitled == 0)
                     ++maxUntitled;
                 if (match.lastCapturedIndex() >= 2) {
-                    const auto numberCapture = match.capturedRef(2);
+                    const auto numberCapture = match.capturedView(2);
                     if (!numberCapture.isEmpty())
                         maxUntitled = qMax(numberCapture.toInt(), maxUntitled);
                 }
@@ -194,10 +170,9 @@ void QDesignerFormWindow::updateWindowTitle(const QString &fileName)
 
     QString fileNameTitle;
     if (fileName.isEmpty()) {
-        fileNameTitle = QStringLiteral("untitled");
+        fileNameTitle += "untitled"_L1;
         if (const int maxUntitled = getNumberOfUntitledWindows()) {
-            fileNameTitle += QLatin1Char(' ');
-            fileNameTitle += QString::number(maxUntitled + 1);
+            fileNameTitle += u' ' + QString::number(maxUntitled + 1);
         }
     } else {
         fileNameTitle = QFileInfo(fileName).fileName();
@@ -269,7 +244,7 @@ void QDesignerFormWindow::slotGeometryChanged()
     QObject *object = core->propertyEditor()->object();
     if (object == nullptr || !object->isWidgetType())
         return;
-    static const QString geometryProperty = QStringLiteral("geometry");
+    static const QString geometryProperty = u"geometry"_s;
     const QDesignerPropertySheetExtension *sheet = qt_extension<QDesignerPropertySheetExtension*>(core->extensionManager(), object);
     const int geometryIndex = sheet->indexOf(geometryProperty);
     if (geometryIndex == -1)

@@ -1,27 +1,26 @@
-// Copyright 2015 PDFium Authors. All rights reserved.
+// Copyright 2015 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <algorithm>
-#include <memory>
 #include <utility>
 #include <vector>
 
 #include "build/build_config.h"
 #include "core/fxge/fx_font.h"
 #include "public/cpp/fpdf_scopers.h"
+#include "public/fpdf_doc.h"
 #include "public/fpdf_text.h"
 #include "public/fpdf_transformpage.h"
 #include "public/fpdfview.h"
 #include "testing/embedder_test.h"
 #include "testing/fx_string_testhelpers.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/base/stl_util.h"
 
 namespace {
 
 constexpr char kHelloGoodbyeText[] = "Hello, world!\r\nGoodbye, world!";
-constexpr int kHelloGoodbyeTextSize = pdfium::size(kHelloGoodbyeText);
+constexpr int kHelloGoodbyeTextSize = std::size(kHelloGoodbyeText);
 
 bool check_unsigned_shorts(const char* expected,
                            const unsigned short* actual,
@@ -120,10 +119,10 @@ TEST_F(FPDFTextEmbedderTest, Text) {
       FPDFText_GetCharBox(textpage, 4, nullptr, nullptr, nullptr, nullptr));
 
   EXPECT_TRUE(FPDFText_GetCharBox(textpage, 4, &left, &right, &bottom, &top));
-  EXPECT_NEAR(41.071, left, 0.001);
-  EXPECT_NEAR(46.243, right, 0.001);
-  EXPECT_NEAR(49.844, bottom, 0.001);
-  EXPECT_NEAR(55.520, top, 0.001);
+  EXPECT_NEAR(41.120, left, 0.001);
+  EXPECT_NEAR(46.208, right, 0.001);
+  EXPECT_NEAR(49.892, bottom, 0.001);
+  EXPECT_NEAR(55.652, top, 0.001);
 
   FS_RECTF rect = {4.0f, 1.0f, 3.0f, 2.0f};
   EXPECT_FALSE(FPDFText_GetLooseCharBox(nullptr, 4, &rect));
@@ -172,10 +171,10 @@ TEST_F(FPDFTextEmbedderTest, Text) {
   bottom = 0.0;
   top = 0.0;
   EXPECT_TRUE(FPDFText_GetRect(textpage, 1, &left, &top, &right, &bottom));
-  EXPECT_NEAR(20.847, left, 0.001);
-  EXPECT_NEAR(135.167, right, 0.001);
-  EXPECT_NEAR(96.655, bottom, 0.001);
-  EXPECT_NEAR(111.648, top, 0.001);
+  EXPECT_NEAR(20.800, left, 0.001);
+  EXPECT_NEAR(135.040, right, 0.001);
+  EXPECT_NEAR(96.688, bottom, 0.001);
+  EXPECT_NEAR(111.600, top, 0.001);
 
   // Test out of range indicies set outputs to (0.0, 0.0, 0.0, 0.0).
   left = -1.0;
@@ -211,7 +210,7 @@ TEST_F(FPDFTextEmbedderTest, Text) {
   memset(buffer, 0xbd, sizeof(buffer));
   EXPECT_EQ(
       9, FPDFText_GetBoundedText(textpage, 41.0, 56.0, 82.0, 48.0, buffer, 9));
-  EXPECT_TRUE(check_unsigned_shorts(kHelloGoodbyeText + 4, buffer, 9));
+  EXPECT_TRUE(check_unsigned_shorts(kHelloGoodbyeText + 4, buffer, 8));
   EXPECT_EQ(0xbdbd, buffer[9]);
 
   memset(buffer, 0xbd, sizeof(buffer));
@@ -494,7 +493,7 @@ TEST_F(FPDFTextEmbedderTest, TextSearchConsecutive) {
 }
 
 // Fails on Windows. https://crbug.com/pdfium/1370
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #define MAYBE_TextSearchLatinExtended DISABLED_TextSearchLatinExtended
 #else
 #define MAYBE_TextSearchLatinExtended TextSearchLatinExtended
@@ -624,10 +623,10 @@ TEST_F(FPDFTextEmbedderTest, WebLinks) {
   double top = 0.0;
   double bottom = 0.0;
   EXPECT_TRUE(FPDFLink_GetRect(pagelink, 0, 0, &left, &top, &right, &bottom));
-  EXPECT_NEAR(50.791, left, 0.001);
-  EXPECT_NEAR(187.963, right, 0.001);
-  EXPECT_NEAR(97.624, bottom, 0.001);
-  EXPECT_NEAR(108.736, top, 0.001);
+  EXPECT_NEAR(50.828, left, 0.001);
+  EXPECT_NEAR(187.904, right, 0.001);
+  EXPECT_NEAR(97.516, bottom, 0.001);
+  EXPECT_NEAR(108.700, top, 0.001);
 
   // Check that valid link with invalid rect index leaves parameters unchanged.
   left = -1.0;
@@ -676,7 +675,7 @@ TEST_F(FPDFTextEmbedderTest, WebLinksAcrossLines) {
       "http://example.com/",
       "http://www.abc.com",
   };
-  static const int kNumLinks = static_cast<int>(pdfium::size(kExpectedUrls));
+  static const int kNumLinks = static_cast<int>(std::size(kExpectedUrls));
 
   EXPECT_EQ(kNumLinks, FPDFLink_CountWebLinks(pagelink));
 
@@ -687,7 +686,7 @@ TEST_F(FPDFTextEmbedderTest, WebLinksAcrossLines) {
     EXPECT_EQ(static_cast<int>(expected_len),
               FPDFLink_GetURL(pagelink, i, nullptr, 0));
     EXPECT_EQ(static_cast<int>(expected_len),
-              FPDFLink_GetURL(pagelink, i, buffer, pdfium::size(buffer)));
+              FPDFLink_GetURL(pagelink, i, buffer, std::size(buffer)));
     EXPECT_TRUE(check_unsigned_shorts(kExpectedUrls[i], buffer, expected_len));
   }
 
@@ -714,8 +713,7 @@ TEST_F(FPDFTextEmbedderTest, WebLinksAcrossLinesBug) {
   static const int kUrlSize = static_cast<int>(sizeof(kExpectedUrl));
 
   EXPECT_EQ(kUrlSize, FPDFLink_GetURL(pagelink, 1, nullptr, 0));
-  EXPECT_EQ(kUrlSize,
-            FPDFLink_GetURL(pagelink, 1, buffer, pdfium::size(buffer)));
+  EXPECT_EQ(kUrlSize, FPDFLink_GetURL(pagelink, 1, buffer, std::size(buffer)));
   EXPECT_TRUE(check_unsigned_shorts(kExpectedUrl, buffer, kUrlSize));
 
   FPDFLink_CloseWebLinks(pagelink);
@@ -849,7 +847,7 @@ TEST_F(FPDFTextEmbedderTest, GetFontSize) {
                                         16, 16, 16, 16, 16, 16, 16, 16, 16, 16};
 
   int count = FPDFText_CountChars(textpage);
-  ASSERT_EQ(pdfium::size(kExpectedFontsSizes), static_cast<size_t>(count));
+  ASSERT_EQ(std::size(kExpectedFontsSizes), static_cast<size_t>(count));
   for (int i = 0; i < count; ++i)
     EXPECT_EQ(kExpectedFontsSizes[i], FPDFText_GetFontSize(textpage, i)) << i;
 
@@ -954,6 +952,67 @@ TEST_F(FPDFTextEmbedderTest, ToUnicode) {
   UnloadPage(page);
 }
 
+TEST_F(FPDFTextEmbedderTest, IsGenerated) {
+  ASSERT_TRUE(OpenDocument("hello_world.pdf"));
+  FPDF_PAGE page = LoadPage(0);
+  ASSERT_TRUE(page);
+
+  {
+    ScopedFPDFTextPage textpage(FPDFText_LoadPage(page));
+    ASSERT_TRUE(textpage);
+
+    EXPECT_EQ(static_cast<unsigned int>('H'),
+              FPDFText_GetUnicode(textpage.get(), 0));
+    EXPECT_EQ(0, FPDFText_IsGenerated(textpage.get(), 0));
+    EXPECT_EQ(static_cast<unsigned int>(' '),
+              FPDFText_GetUnicode(textpage.get(), 6));
+    EXPECT_EQ(0, FPDFText_IsGenerated(textpage.get(), 6));
+
+    EXPECT_EQ(static_cast<unsigned int>('\r'),
+              FPDFText_GetUnicode(textpage.get(), 13));
+    EXPECT_EQ(1, FPDFText_IsGenerated(textpage.get(), 13));
+    EXPECT_EQ(static_cast<unsigned int>('\n'),
+              FPDFText_GetUnicode(textpage.get(), 14));
+    EXPECT_EQ(1, FPDFText_IsGenerated(textpage.get(), 14));
+
+    EXPECT_EQ(-1, FPDFText_IsGenerated(textpage.get(), -1));
+    EXPECT_EQ(-1, FPDFText_IsGenerated(textpage.get(), kHelloGoodbyeTextSize));
+    EXPECT_EQ(-1, FPDFText_IsGenerated(nullptr, 6));
+  }
+
+  UnloadPage(page);
+}
+
+TEST_F(FPDFTextEmbedderTest, IsInvalidUnicode) {
+  ASSERT_TRUE(OpenDocument("bug_1388_2.pdf"));
+  FPDF_PAGE page = LoadPage(0);
+  ASSERT_TRUE(page);
+
+  {
+    constexpr int kExpectedCharCount = 5;
+    ScopedFPDFTextPage textpage(FPDFText_LoadPage(page));
+    ASSERT_TRUE(textpage);
+    EXPECT_EQ(kExpectedCharCount, FPDFText_CountChars(textpage.get()));
+
+    EXPECT_EQ(static_cast<unsigned int>('X'),
+              FPDFText_GetUnicode(textpage.get(), 0));
+    EXPECT_EQ(0, FPDFText_HasUnicodeMapError(textpage.get(), 0));
+    EXPECT_EQ(static_cast<unsigned int>(' '),
+              FPDFText_GetUnicode(textpage.get(), 1));
+    EXPECT_EQ(0, FPDFText_HasUnicodeMapError(textpage.get(), 1));
+
+    EXPECT_EQ(31u, FPDFText_GetUnicode(textpage.get(), 2));
+    EXPECT_EQ(1, FPDFText_HasUnicodeMapError(textpage.get(), 2));
+
+    EXPECT_EQ(-1, FPDFText_HasUnicodeMapError(textpage.get(), -1));
+    EXPECT_EQ(-1,
+              FPDFText_HasUnicodeMapError(textpage.get(), kExpectedCharCount));
+    EXPECT_EQ(-1, FPDFText_HasUnicodeMapError(nullptr, 0));
+  }
+
+  UnloadPage(page);
+}
+
 TEST_F(FPDFTextEmbedderTest, Bug_921) {
   ASSERT_TRUE(OpenDocument("bug_921.pdf"));
   FPDF_PAGE page = LoadPage(0);
@@ -968,18 +1027,17 @@ TEST_F(FPDFTextEmbedderTest, Bug_921) {
   static constexpr int kStartIndex = 238;
 
   ASSERT_EQ(268, FPDFText_CountChars(textpage));
-  for (size_t i = 0; i < pdfium::size(kData); ++i)
+  for (size_t i = 0; i < std::size(kData); ++i)
     EXPECT_EQ(kData[i], FPDFText_GetUnicode(textpage, kStartIndex + i));
 
-  unsigned short buffer[pdfium::size(kData) + 1];
+  unsigned short buffer[std::size(kData) + 1];
   memset(buffer, 0xbd, sizeof(buffer));
-  int count =
-      FPDFText_GetText(textpage, kStartIndex, pdfium::size(kData), buffer);
+  int count = FPDFText_GetText(textpage, kStartIndex, std::size(kData), buffer);
   ASSERT_GT(count, 0);
-  ASSERT_EQ(pdfium::size(kData) + 1, static_cast<size_t>(count));
-  for (size_t i = 0; i < pdfium::size(kData); ++i)
+  ASSERT_EQ(std::size(kData) + 1, static_cast<size_t>(count));
+  for (size_t i = 0; i < std::size(kData); ++i)
     EXPECT_EQ(kData[i], buffer[i]);
-  EXPECT_EQ(0, buffer[pdfium::size(kData)]);
+  EXPECT_EQ(0, buffer[std::size(kData)]);
 
   FPDFText_ClosePage(textpage);
   UnloadPage(page);
@@ -1001,8 +1059,8 @@ TEST_F(FPDFTextEmbedderTest, GetTextWithHyphen) {
       0x0056, 0x0065, 0x0072, 0x0069, 0x0074, 0x0061, 0xfffe,
       0x0073, 0x0065, 0x0072, 0x0075, 0x006D, 0x0000};
   {
-    constexpr int count = pdfium::size(soft_expected) - 1;
-    unsigned short buffer[pdfium::size(soft_expected)];
+    constexpr int count = std::size(soft_expected) - 1;
+    unsigned short buffer[std::size(soft_expected)];
     memset(buffer, 0, sizeof(buffer));
 
     EXPECT_EQ(count + 1, FPDFText_GetText(textpage, 0, count, buffer));
@@ -1014,14 +1072,14 @@ TEST_F(FPDFTextEmbedderTest, GetTextWithHyphen) {
   {
     // There isn't the \0 in the actual doc, but there is a \r\n, so need to
     // add 1 to get aligned.
-    constexpr size_t offset = pdfium::size(soft_expected) + 1;
-    // Expecting 'User-\r\ngenerated', the - is a unicode character, so cannnot
+    constexpr size_t offset = std::size(soft_expected) + 1;
+    // Expecting 'User-\r\ngenerated', the - is a unicode character, so cannot
     // store in a char[].
     constexpr unsigned short hard_expected[] = {
         0x0055, 0x0073, 0x0065, 0x0072, 0x2010, 0x000d, 0x000a, 0x0067, 0x0065,
         0x006e, 0x0065, 0x0072, 0x0061, 0x0074, 0x0065, 0x0064, 0x0000};
-    constexpr int count = pdfium::size(hard_expected) - 1;
-    unsigned short buffer[pdfium::size(hard_expected)];
+    constexpr int count = std::size(hard_expected) - 1;
+    unsigned short buffer[std::size(hard_expected)];
 
     EXPECT_EQ(count + 1, FPDFText_GetText(textpage, offset, count, buffer));
     for (int i = 0; i < count; i++)
@@ -1103,7 +1161,7 @@ TEST_F(FPDFTextEmbedderTest, bug_1029) {
       0x0061, 0x0073, 0x0020, 0x0063, 0x006f, 0x006d, 0x006d, 0x0069,
       0x0074, 0x0074, 0x0065, 0x0064, 0x002c, 0x0020, 0x0069, 0x0074,
       0x0020, 0x006e, 0x006f, 0x0074, 0x0069, 0x0002, 0x0066, 0x0069};
-  static_assert(page_range_length == pdfium::size(expected),
+  static_assert(page_range_length == std::size(expected),
                 "Expected should be the same size as the range being "
                 "extracted from page.");
   EXPECT_LT(page_range_offset + page_range_length,
@@ -1205,7 +1263,7 @@ TEST_F(FPDFTextEmbedderTest, GetText) {
   // Positive testing.
   constexpr char kHelloText[] = "Hello, world!";
   // Return value includes the terminating NUL that is provided.
-  constexpr unsigned long kHelloUTF16Size = pdfium::size(kHelloText) * 2;
+  constexpr unsigned long kHelloUTF16Size = std::size(kHelloText) * 2;
   constexpr wchar_t kHelloWideText[] = L"Hello, world!";
   unsigned long size = FPDFTextObj_GetText(text_object, text_page, nullptr, 0);
   ASSERT_EQ(kHelloUTF16Size, size);
@@ -1323,14 +1381,14 @@ TEST_F(FPDFTextEmbedderTest, Bug_642) {
     ASSERT_TRUE(text_page);
 
     constexpr char kText[] = "ABCD";
-    constexpr size_t kTextSize = pdfium::size(kText);
+    constexpr size_t kTextSize = std::size(kText);
     // -1 for CountChars not including the \0
     EXPECT_EQ(static_cast<int>(kTextSize) - 1,
               FPDFText_CountChars(text_page.get()));
 
     unsigned short buffer[kTextSize];
     int num_chars =
-        FPDFText_GetText(text_page.get(), 0, pdfium::size(buffer) - 1, buffer);
+        FPDFText_GetText(text_page.get(), 0, std::size(buffer) - 1, buffer);
     ASSERT_EQ(static_cast<int>(kTextSize), num_chars);
     EXPECT_TRUE(check_unsigned_shorts(kText, buffer, kTextSize));
   }
@@ -1346,9 +1404,8 @@ TEST_F(FPDFTextEmbedderTest, GetCharAngle) {
   FPDF_TEXTPAGE text_page = FPDFText_LoadPage(page);
   ASSERT_TRUE(text_page);
 
-  static constexpr int kSubstringsSize[] = {pdfium::size("Hello,"),
-                                            pdfium::size(" world!\r\n"),
-                                            pdfium::size("Goodbye,")};
+  static constexpr int kSubstringsSize[] = {
+      std::size("Hello,"), std::size(" world!\r\n"), std::size("Goodbye,")};
 
   // -1 for CountChars not including the \0, but +1 for the extra control
   // character.
@@ -1360,15 +1417,15 @@ TEST_F(FPDFTextEmbedderTest, GetCharAngle) {
                   FPDFText_GetCharAngle(text_page, kHelloGoodbyeTextSize + 1));
 
   // Test GetCharAngle for every quadrant
-  EXPECT_NEAR(FX_PI / 4.0, FPDFText_GetCharAngle(text_page, 0), 0.001);
-  EXPECT_NEAR(3 * FX_PI / 4.0,
+  EXPECT_NEAR(FXSYS_PI / 4.0, FPDFText_GetCharAngle(text_page, 0), 0.001);
+  EXPECT_NEAR(3 * FXSYS_PI / 4.0,
               FPDFText_GetCharAngle(text_page, kSubstringsSize[0]), 0.001);
   EXPECT_NEAR(
-      5 * FX_PI / 4.0,
+      5 * FXSYS_PI / 4.0,
       FPDFText_GetCharAngle(text_page, kSubstringsSize[0] + kSubstringsSize[1]),
       0.001);
   EXPECT_NEAR(
-      7 * FX_PI / 4.0,
+      7 * FXSYS_PI / 4.0,
       FPDFText_GetCharAngle(text_page, kSubstringsSize[0] + kSubstringsSize[1] +
                                            kSubstringsSize[2]),
       0.001);
@@ -1498,7 +1555,7 @@ TEST_F(FPDFTextEmbedderTest, GetStrokeColor) {
 
 TEST_F(FPDFTextEmbedderTest, GetMatrix) {
   constexpr char kExpectedText[] = "A1\r\nA2\r\nA3";
-  constexpr size_t kExpectedTextSize = pdfium::size(kExpectedText);
+  constexpr size_t kExpectedTextSize = std::size(kExpectedText);
   constexpr FS_MATRIX kExpectedMatrices[] = {
       {12.0f, 0.0f, 0.0f, 10.0f, 66.0f, 90.0f},
       {12.0f, 0.0f, 0.0f, 10.0f, 66.0f, 90.0f},
@@ -1511,7 +1568,7 @@ TEST_F(FPDFTextEmbedderTest, GetMatrix) {
       {1.0f, 0.0f, 0.0f, 0.833333, 60.0f, 130.0f},
       {1.0f, 0.0f, 0.0f, 0.833333, 60.0f, 130.0f},
   };
-  constexpr size_t kExpectedCount = pdfium::size(kExpectedMatrices);
+  constexpr size_t kExpectedCount = std::size(kExpectedMatrices);
   static_assert(kExpectedCount + 1 == kExpectedTextSize,
                 "Bad expected matrix size");
 
@@ -1558,8 +1615,8 @@ TEST_F(FPDFTextEmbedderTest, GetMatrix) {
 
 TEST_F(FPDFTextEmbedderTest, CharBox) {
   // For a size 12 letter 'A'.
-  constexpr double kExpectedCharWidth = 8.436;
-  constexpr double kExpectedCharHeight = 6.77;
+  constexpr double kExpectedCharWidth = 8.460;
+  constexpr double kExpectedCharHeight = 6.600;
   constexpr float kExpectedLooseCharWidth = 8.664f;
   constexpr float kExpectedLooseCharHeight = 12.0f;
 
@@ -1599,7 +1656,7 @@ TEST_F(FPDFTextEmbedderTest, CharBox) {
     EXPECT_FLOAT_EQ(kExpectedLooseCharHeight, rect.top - rect.bottom);
     ASSERT_TRUE(FPDFText_GetLooseCharBox(text_page.get(), 8, &rect));
     EXPECT_FLOAT_EQ(kExpectedLooseCharWidth, rect.right - rect.left);
-    EXPECT_FLOAT_EQ(kExpectedLooseCharHeight, rect.top - rect.bottom);
+    EXPECT_NEAR(kExpectedLooseCharHeight, rect.top - rect.bottom, 0.00001);
   }
 
   UnloadPage(page);
@@ -1656,6 +1713,52 @@ TEST_F(FPDFTextEmbedderTest, SmallType3Glyph) {
     EXPECT_DOUBLE_EQ(101.36000061035156, right);
     EXPECT_DOUBLE_EQ(50.0, bottom);
     EXPECT_DOUBLE_EQ(61.520000457763672, top);
+  }
+
+  UnloadPage(page);
+}
+
+TEST_F(FPDFTextEmbedderTest, BigtableTextExtraction) {
+  constexpr char kExpectedText[] =
+      "{fay,jeff,sanjay,wilsonh,kerr,m3b,tushar,\x02k es,gruber}@google.com";
+  constexpr int kExpectedTextCount = std::size(kExpectedText) - 1;
+
+  ASSERT_TRUE(OpenDocument("bigtable_mini.pdf"));
+  FPDF_PAGE page = LoadPage(0);
+  ASSERT_TRUE(page);
+
+  {
+    ScopedFPDFTextPage text_page(FPDFText_LoadPage(page));
+    ASSERT_TRUE(text_page);
+    int char_count = FPDFText_CountChars(text_page.get());
+    ASSERT_GE(char_count, 0);
+    ASSERT_EQ(kExpectedTextCount, char_count);
+
+    for (int i = 0; i < kExpectedTextCount; ++i) {
+      EXPECT_EQ(static_cast<uint32_t>(kExpectedText[i]),
+                FPDFText_GetUnicode(text_page.get(), i));
+    }
+  }
+
+  UnloadPage(page);
+}
+
+TEST_F(FPDFTextEmbedderTest, Bug1769) {
+  ASSERT_TRUE(OpenDocument("bug_1769.pdf"));
+  FPDF_PAGE page = LoadPage(0);
+  ASSERT_TRUE(page);
+
+  {
+    ScopedFPDFTextPage textpage(FPDFText_LoadPage(page));
+    ASSERT_TRUE(textpage);
+
+    unsigned short buffer[128] = {};
+    // TODO(crbug.com/pdfium/1769): Improve text extraction.
+    // The first instance of "world" is visible to the human eye and should be
+    // extracted as is. The second instance is not, so how it should be
+    // extracted is debatable.
+    ASSERT_EQ(10, FPDFText_GetText(textpage.get(), 0, 128, buffer));
+    EXPECT_TRUE(check_unsigned_shorts("wo d wo d", buffer, 10));
   }
 
   UnloadPage(page);

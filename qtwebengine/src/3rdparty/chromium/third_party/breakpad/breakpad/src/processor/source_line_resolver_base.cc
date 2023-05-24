@@ -1,5 +1,4 @@
-// Copyright (c) 2010 Google Inc.
-// All rights reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -42,10 +41,10 @@
 #include <utility>
 
 #include "google_breakpad/processor/source_line_resolver_base.h"
-#include "processor/source_line_resolver_base_types.h"
+#include "processor/logging.h"
 #include "processor/module_factory.h"
+#include "processor/source_line_resolver_base_types.h"
 
-using std::map;
 using std::make_pair;
 
 namespace google_breakpad {
@@ -168,7 +167,9 @@ bool SourceLineResolverBase::LoadModule(const CodeModule* module,
   if (!ReadSymbolFile(map_file, &memory_buffer, &memory_buffer_size))
     return false;
 
-  BPLOG(INFO) << "Read symbol file " << map_file << " succeeded";
+  BPLOG(INFO) << "Read symbol file " << map_file << " succeeded. "
+              << "module = " << module->code_file()
+              << ", memory_buffer_size = " << memory_buffer_size;
 
   bool load_result = LoadModuleUsingMemoryBuffer(module, memory_buffer,
                                                  memory_buffer_size);
@@ -185,6 +186,9 @@ bool SourceLineResolverBase::LoadModule(const CodeModule* module,
 
 bool SourceLineResolverBase::LoadModuleUsingMapBuffer(
     const CodeModule* module, const string& map_buffer) {
+  BPLOG(INFO) << "SourceLineResolverBase::LoadModuleUsingMapBuffer(module = "
+              << module->code_file()
+              << ", map_buffer.size() = " << map_buffer.size() << ")";
   if (module == NULL)
     return false;
 
@@ -234,7 +238,7 @@ bool SourceLineResolverBase::LoadModuleUsingMemoryBuffer(
   }
 
   BPLOG(INFO) << "Loading symbols for module " << module->code_file()
-             << " from memory buffer";
+              << " from memory buffer, size: " << memory_buffer_size;
 
   Module* basic_module = module_factory_->CreateModule(module->code_file());
 
@@ -295,11 +299,13 @@ bool SourceLineResolverBase::IsModuleCorrupt(const CodeModule* module) {
   return corrupt_modules_->find(module->code_file()) != corrupt_modules_->end();
 }
 
-void SourceLineResolverBase::FillSourceLineInfo(StackFrame* frame) {
+void SourceLineResolverBase::FillSourceLineInfo(
+    StackFrame* frame,
+    std::deque<std::unique_ptr<StackFrame>>* inlined_frames) {
   if (frame->module) {
     ModuleMap::const_iterator it = modules_->find(frame->module->code_file());
     if (it != modules_->end()) {
-      it->second->LookupAddress(frame);
+      it->second->LookupAddress(frame, inlined_frames);
     }
   }
 }

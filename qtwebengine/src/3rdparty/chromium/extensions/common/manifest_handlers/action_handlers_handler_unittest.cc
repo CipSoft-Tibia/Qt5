@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,7 +33,7 @@ class ActionHandlersManifestTest : public ManifestTest {
                                     "manifest_version": 2,
                                     "action_handlers": )json" +
                                                  action_handlers + "}");
-    return ManifestData(std::move(manifest), "test");
+    return ManifestData(std::move(manifest).TakeDict());
   }
 
   // Returns all action handlers associated with |extension|.

@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QJSON_P_H
 #define QJSON_P_H
@@ -55,6 +19,11 @@
 #include <qjsonvalue.h>
 #include <qcborvalue.h>
 #include <private/qcborvalue_p.h>
+
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED)
+#  include <qjsonarray.h>
+#  include <qjsonobject.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -113,7 +82,7 @@ struct ObjectIterator
         Element m_value;
     };
 
-    using difference_type = typename QVector<Element>::difference_type;
+    using difference_type = typename QList<Element>::difference_type;
     using iterator_category = std::random_access_iterator_tag;
 
     ObjectIterator() = default;
@@ -129,14 +98,13 @@ struct ObjectIterator
     ObjectIterator &operator-=(difference_type n) { it -= 2 * n; return *this; }
 
     reference operator*() const { return *it; }
-    reference operator[](int n) const { return it[n * 2]; }
+    reference operator[](qsizetype n) const { return it[n * 2]; }
 
     bool operator<(ObjectIterator other) const { return it < other.it; }
     bool operator>(ObjectIterator other) const { return it > other.it; }
     bool operator<=(ObjectIterator other) const { return it <= other.it; }
     bool operator>=(ObjectIterator other) const { return it >= other.it; }
 
-private:
     ElementsIterator it;
 };
 
@@ -149,7 +117,7 @@ inline ObjectIterator<Element, ElementsIterator> operator+(
 }
 template<typename Element, typename ElementsIterator>
 inline ObjectIterator<Element, ElementsIterator> operator+(
-        int n, ObjectIterator<Element, ElementsIterator> a)
+        qsizetype n, ObjectIterator<Element, ElementsIterator> a)
 {
     return {a.elementsIterator() + 2 * n};
 }
@@ -161,7 +129,7 @@ inline ObjectIterator<Element, ElementsIterator> operator-(
     return {a.elementsIterator() - 2 * n};
 }
 template<typename Element, typename ElementsIterator>
-inline int operator-(
+inline qsizetype operator-(
         ObjectIterator<Element, ElementsIterator> a,
         ObjectIterator<Element, ElementsIterator> b)
 {
@@ -182,8 +150,8 @@ inline bool operator==(
     return a.elementsIterator() == b.elementsIterator();
 }
 
-using KeyIterator = ObjectIterator<QtCbor::Element, QVector<QtCbor::Element>::iterator>;
-using ConstKeyIterator = ObjectIterator<const QtCbor::Element, QVector<QtCbor::Element>::const_iterator>;
+using KeyIterator = ObjectIterator<QtCbor::Element, QList<QtCbor::Element>::iterator>;
+using ConstKeyIterator = ObjectIterator<const QtCbor::Element, QList<QtCbor::Element>::const_iterator>;
 
 template<>
 inline KeyIterator::reference &KeyIterator::reference::operator=(const KeyIterator::value_type &value)
@@ -203,14 +171,36 @@ inline void swap(KeyIterator::reference a, KeyIterator::reference b)
 class Value
 {
 public:
+    static qint64 valueHelper(const QCborValue &v) { return v.n; }
     static QCborContainerPrivate *container(const QCborValue &v) { return v.container; }
+    static const QCborContainerPrivate *container(QJsonValueConstRef r) noexcept
+    {
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED)
+        return (r.is_object ? r.o->o : r.a->a).data();
+#else
+        return r.d;
+#endif
+    }
+    static QCborContainerPrivate *container(QJsonValueRef r) noexcept
+    {
+        return const_cast<QCborContainerPrivate *>(container(QJsonValueConstRef(r)));
+    }
+    static qsizetype indexHelper(QJsonValueConstRef r) noexcept
+    {
+        qsizetype index = r.index;
+        if (r.is_object)
+            index = index * 2 + 1;
+        return index;
+    }
+    static const QtCbor::Element &elementHelper(QJsonValueConstRef r) noexcept
+    {
+        return container(r)->elements.at(indexHelper(r));
+    }
 
     static QJsonValue fromTrustedCbor(const QCborValue &v)
     {
         QJsonValue result;
-        result.d = v.container;
-        result.n = v.n;
-        result.t = v.t;
+        result.value = v;
         return result;
     }
 };

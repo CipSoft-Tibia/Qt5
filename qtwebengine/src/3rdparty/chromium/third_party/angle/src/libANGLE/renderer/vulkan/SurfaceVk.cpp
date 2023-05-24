@@ -14,6 +14,7 @@
 #include "libANGLE/Display.h"
 #include "libANGLE/Overlay.h"
 #include "libANGLE/Surface.h"
+#include "libANGLE/renderer/driver_utils.h"
 #include "libANGLE/renderer/vulkan/ContextVk.h"
 #include "libANGLE/renderer/vulkan/DisplayVk.h"
 #include "libANGLE/renderer/vulkan/FramebufferVk.h"
@@ -29,9 +30,13 @@ namespace
 {
 angle::SubjectIndex kAnySurfaceImageSubjectIndex = 0;
 
-// Special value for currentExtent if surface size is determined by the
-// swapchain's extent. See VkSurfaceCapabilitiesKHR spec for more details.
+// Special value for currentExtent if surface size is determined by the swapchain's extent.  See
+// the VkSurfaceCapabilitiesKHR spec for more details.
 constexpr uint32_t kSurfaceSizedBySwapchain = 0xFFFFFFFFu;
+
+// Special value for ImagePresentOperation::imageIndex meaning that it corresponds to an older
+// swapchain present operation and so the index is no longer relevant.
+constexpr uint32_t kInvalidImageIndex = std::numeric_limits<uint32_t>::max();
 
 GLint GetSampleCount(const egl::Config *config)
 {
@@ -43,8 +48,8 @@ GLint GetSampleCount(const egl::Config *config)
     return samples;
 }
 
-VkPresentModeKHR GetDesiredPresentMode(const std::vector<VkPresentModeKHR> &presentModes,
-                                       EGLint interval)
+vk::PresentMode GetDesiredPresentMode(const std::vector<vk::PresentMode> &presentModes,
+                                      EGLint interval)
 {
     ASSERT(!presentModes.empty());
 
@@ -52,7 +57,7 @@ VkPresentModeKHR GetDesiredPresentMode(const std::vector<VkPresentModeKHR> &pres
     // always be supported.
     if (interval > 0)
     {
-        return VK_PRESENT_MODE_FIFO_KHR;
+        return vk::PresentMode::FifoKHR;
     }
 
     // Otherwise, choose either of the following, if available, in order specified here:
@@ -64,34 +69,43 @@ VkPresentModeKHR GetDesiredPresentMode(const std::vector<VkPresentModeKHR> &pres
 
     bool mailboxAvailable   = false;
     bool immediateAvailable = false;
+    bool sharedPresent      = false;
 
-    for (VkPresentModeKHR presentMode : presentModes)
+    for (vk::PresentMode presentMode : presentModes)
     {
         switch (presentMode)
         {
-            case VK_PRESENT_MODE_MAILBOX_KHR:
+            case vk::PresentMode::MailboxKHR:
                 mailboxAvailable = true;
                 break;
-            case VK_PRESENT_MODE_IMMEDIATE_KHR:
+            case vk::PresentMode::ImmediateKHR:
                 immediateAvailable = true;
+                break;
+            case vk::PresentMode::SharedDemandRefreshKHR:
+                sharedPresent = true;
                 break;
             default:
                 break;
         }
     }
 
-    if (immediateAvailable)
-    {
-        return VK_PRESENT_MODE_IMMEDIATE_KHR;
-    }
-
     if (mailboxAvailable)
     {
-        return VK_PRESENT_MODE_MAILBOX_KHR;
+        return vk::PresentMode::MailboxKHR;
+    }
+
+    if (immediateAvailable)
+    {
+        return vk::PresentMode::ImmediateKHR;
+    }
+
+    if (sharedPresent)
+    {
+        return vk::PresentMode::SharedDemandRefreshKHR;
     }
 
     // Note again that VK_PRESENT_MODE_FIFO_KHR is guaranteed to be available.
-    return VK_PRESENT_MODE_FIFO_KHR;
+    return vk::PresentMode::FifoKHR;
 }
 
 constexpr VkImageUsageFlags kSurfaceVkImageUsageFlags =
@@ -114,11 +128,341 @@ bool Is90DegreeRotation(VkSurfaceTransformFlagsKHR transform)
     return ((transform & k90DegreeRotationVariants) != 0);
 }
 
+bool NeedsInputAttachmentUsage(const angle::FeaturesVk &features)
+{
+    return features.supportsShaderFramebufferFetch.enabled ||
+           features.supportsShaderFramebufferFetchNonCoherent.enabled ||
+           features.emulateAdvancedBlendEquations.enabled;
+}
+
+angle::Result InitImageHelper(DisplayVk *displayVk,
+                              EGLint width,
+                              EGLint height,
+                              const vk::Format &vkFormat,
+                              GLint samples,
+                              bool isRobustResourceInitEnabled,
+                              bool hasProtectedContent,
+                              vk::ImageHelper *imageHelper)
+{
+    const angle::Format &textureFormat = vkFormat.getActualRenderableImageFormat();
+    bool isDepthOrStencilFormat = textureFormat.depthBits > 0 || textureFormat.stencilBits > 0;
+    VkImageUsageFlags usage     = isDepthOrStencilFormat ? kSurfaceVkDepthStencilImageUsageFlags
+                                                         : kSurfaceVkColorImageUsageFlags;
+
+    RendererVk *rendererVk = displayVk->getRenderer();
+    // If shaders may be fetching from this, we need this image to be an input
+    if (NeedsInputAttachmentUsage(rendererVk->getFeatures()))
+    {
+        usage |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+    }
+
+    VkExtent3D extents = {std::max(static_cast<uint32_t>(width), 1u),
+                          std::max(static_cast<uint32_t>(height), 1u), 1u};
+
+    angle::FormatID renderableFormatId = vkFormat.getActualRenderableImageFormatID();
+    // For devices that don't support creating swapchain images with RGB8, emulate with RGBA8.
+    if (rendererVk->getFeatures().overrideSurfaceFormatRGB8ToRGBA8.enabled &&
+        renderableFormatId == angle::FormatID::R8G8B8_UNORM)
+    {
+        renderableFormatId = angle::FormatID::R8G8B8A8_UNORM;
+    }
+
+    VkImageCreateFlags imageCreateFlags =
+        hasProtectedContent ? VK_IMAGE_CREATE_PROTECTED_BIT : vk::kVkImageCreateFlagsNone;
+    ANGLE_TRY(imageHelper->initExternal(
+        displayVk, gl::TextureType::_2D, extents, vkFormat.getIntendedFormatID(),
+        renderableFormatId, samples, usage, imageCreateFlags, vk::ImageLayout::Undefined, nullptr,
+        gl::LevelIndex(0), 1, 1, isRobustResourceInitEnabled, hasProtectedContent));
+
+    return angle::Result::Continue;
+}
+
+VkColorSpaceKHR MapEglColorSpaceToVkColorSpace(RendererVk *renderer, EGLenum EGLColorspace)
+{
+    switch (EGLColorspace)
+    {
+        case EGL_NONE:
+            if (renderer->getFeatures().mapUnspecifiedColorSpaceToPassThrough.enabled)
+            {
+                return VK_COLOR_SPACE_PASS_THROUGH_EXT;
+            }
+            return VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+        case EGL_GL_COLORSPACE_LINEAR:
+        case EGL_GL_COLORSPACE_SRGB_KHR:
+        case EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT:
+            return VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+        case EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT:
+            return VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT;
+        case EGL_GL_COLORSPACE_DISPLAY_P3_EXT:
+            return VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT;
+        case EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT:
+            return VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT;
+        case EGL_GL_COLORSPACE_SCRGB_EXT:
+            return VK_COLOR_SPACE_EXTENDED_SRGB_NONLINEAR_EXT;
+        case EGL_GL_COLORSPACE_BT2020_LINEAR_EXT:
+            return VK_COLOR_SPACE_BT2020_LINEAR_EXT;
+        case EGL_GL_COLORSPACE_BT2020_PQ_EXT:
+            return VK_COLOR_SPACE_HDR10_ST2084_EXT;
+        default:
+            UNREACHABLE();
+            return VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    }
+}
+
+angle::Result LockSurfaceImpl(DisplayVk *displayVk,
+                              vk::ImageHelper *image,
+                              vk::BufferHelper &lockBufferHelper,
+                              EGLint width,
+                              EGLint height,
+                              EGLint usageHint,
+                              bool preservePixels,
+                              uint8_t **bufferPtrOut,
+                              EGLint *bufferPitchOut)
+{
+    const gl::InternalFormat &internalFormat =
+        gl::GetSizedInternalFormatInfo(image->getActualFormat().glInternalFormat);
+    GLuint rowStride = image->getActualFormat().pixelBytes * width;
+    VkDeviceSize bufferSize =
+        (static_cast<VkDeviceSize>(rowStride) * static_cast<VkDeviceSize>(height));
+
+    if (!lockBufferHelper.valid() || (lockBufferHelper.getSize() != bufferSize))
+    {
+        lockBufferHelper.destroy(displayVk->getRenderer());
+
+        VkBufferCreateInfo bufferCreateInfo = {};
+        bufferCreateInfo.sType              = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferCreateInfo.pNext              = nullptr;
+        bufferCreateInfo.flags              = 0;
+        bufferCreateInfo.size               = bufferSize;
+        bufferCreateInfo.usage =
+            (VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+        bufferCreateInfo.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
+        bufferCreateInfo.queueFamilyIndexCount = 0;
+        bufferCreateInfo.pQueueFamilyIndices   = 0;
+
+        VkMemoryPropertyFlags memoryFlags =
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+        ANGLE_TRY(lockBufferHelper.init(displayVk, bufferCreateInfo, memoryFlags));
+
+        uint8_t *bufferPtr = nullptr;
+        ANGLE_TRY(lockBufferHelper.map(displayVk, &bufferPtr));
+    }
+
+    if (lockBufferHelper.valid())
+    {
+        if (preservePixels)
+        {
+            gl::LevelIndex sourceLevelGL(0);
+            const VkClearColorValue *clearColor;
+            if (image->removeStagedClearUpdatesAndReturnColor(sourceLevelGL, &clearColor))
+            {
+                ASSERT(!image->hasStagedUpdatesForSubresource(sourceLevelGL, 0, 1));
+                angle::Color<uint8_t> color((uint8_t)(clearColor->float32[0] * 255.0),
+                                            (uint8_t)(clearColor->float32[1] * 255.0),
+                                            (uint8_t)(clearColor->float32[2] * 255.0),
+                                            (uint8_t)(clearColor->float32[3] * 255.0));
+                lockBufferHelper.fillWithColor(color, internalFormat);
+            }
+            else
+            {
+                gl::Box sourceArea(0, 0, 0, width, height, 1);
+                ANGLE_TRY(image->copySurfaceImageToBuffer(displayVk, sourceLevelGL, 1, 0,
+                                                          sourceArea, &lockBufferHelper));
+            }
+        }
+
+        *bufferPitchOut = rowStride;
+        *bufferPtrOut   = lockBufferHelper.getMappedMemory();
+    }
+    return angle::Result::Continue;
+}
+
+angle::Result UnlockSurfaceImpl(DisplayVk *displayVk,
+                                vk::ImageHelper *image,
+                                vk::BufferHelper &lockBufferHelper,
+                                EGLint width,
+                                EGLint height,
+                                bool preservePixels)
+{
+    if (preservePixels)
+    {
+        ASSERT(image->valid());
+
+        gl::Box destArea(0, 0, 0, width, height, 1);
+        gl::LevelIndex destLevelGL(0);
+
+        ANGLE_TRY(image->copyBufferToSurfaceImage(displayVk, destLevelGL, 1, 0, destArea,
+                                                  &lockBufferHelper));
+    }
+
+    return angle::Result::Continue;
+}
+
+// Converts an EGL rectangle, which is relative to the bottom-left of the surface,
+// to a VkRectLayerKHR, relative to Vulkan framebuffer-space, with top-left origin.
+// No rotation is done to these damage rectangles per the Vulkan spec.
+// The bottomLeftOrigin parameter is true on Android which assumes VkRectLayerKHR to
+// have a bottom-left origin.
+VkRectLayerKHR ToVkRectLayer(const EGLint *eglRect,
+                             EGLint width,
+                             EGLint height,
+                             bool bottomLeftOrigin)
+{
+    VkRectLayerKHR rect;
+    // Make sure the damage rects are within swapchain bounds.
+    rect.offset.x = gl::clamp(eglRect[0], 0, width);
+
+    if (bottomLeftOrigin)
+    {
+        // EGL rectangles are already specified with a bottom-left origin, therefore the conversion
+        // is trivial as we just get its Y coordinate as it is
+        rect.offset.y = gl::clamp(eglRect[1], 0, height);
+    }
+    else
+    {
+        rect.offset.y =
+            gl::clamp(height - gl::clamp(eglRect[1], 0, height) - gl::clamp(eglRect[3], 0, height),
+                      0, height);
+    }
+    rect.extent.width  = gl::clamp(eglRect[2], 0, width - rect.offset.x);
+    rect.extent.height = gl::clamp(eglRect[3], 0, height - rect.offset.y);
+    rect.layer         = 0;
+    return rect;
+}
+
+angle::Result GetPresentModes(DisplayVk *displayVk,
+                              VkPhysicalDevice physicalDevice,
+                              VkSurfaceKHR surface,
+                              std::vector<vk::PresentMode> *outPresentModes)
+{
+
+    uint32_t presentModeCount = 0;
+    ANGLE_VK_TRY(displayVk, vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface,
+                                                                      &presentModeCount, nullptr));
+    ASSERT(presentModeCount > 0);
+
+    std::vector<VkPresentModeKHR> vkPresentModes(presentModeCount);
+    ANGLE_VK_TRY(displayVk, vkGetPhysicalDeviceSurfacePresentModesKHR(
+                                physicalDevice, surface, &presentModeCount, vkPresentModes.data()));
+
+    outPresentModes->resize(presentModeCount);
+    std::transform(begin(vkPresentModes), end(vkPresentModes), begin(*outPresentModes),
+                   vk::ConvertVkPresentModeToPresentMode);
+
+    return angle::Result::Continue;
+}
+
+angle::Result NewSemaphore(vk::Context *context,
+                           vk::Recycler<vk::Semaphore> *semaphoreRecycler,
+                           vk::Semaphore *semaphoreOut)
+{
+    if (semaphoreRecycler->empty())
+    {
+        ANGLE_VK_TRY(context, semaphoreOut->init(context->getDevice()));
+    }
+    else
+    {
+        semaphoreRecycler->fetch(semaphoreOut);
+    }
+    return angle::Result::Continue;
+}
+
+VkResult NewFence(vk::Context *context, vk::Recycler<vk::Fence> *fenceRecycler, vk::Fence *fenceOut)
+{
+    VkResult result = VK_SUCCESS;
+    if (fenceRecycler->empty())
+    {
+        VkFenceCreateInfo fenceCreateInfo = {};
+        fenceCreateInfo.sType             = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceCreateInfo.flags             = 0;
+        result                            = fenceOut->init(context->getDevice(), fenceCreateInfo);
+    }
+    else
+    {
+        fenceRecycler->fetch(fenceOut);
+        result = fenceOut->reset(context->getDevice());
+        if (result != VK_SUCCESS)
+        {
+            fenceRecycler->recycle(std::move(*fenceOut));
+        }
+    }
+    return result;
+}
+
+void AssociateFenceWithPresentHistory(uint32_t imageIndex,
+                                      vk::Fence &&presentFence,
+                                      std::deque<impl::ImagePresentOperation> *presentHistory)
+{
+    // The history looks like this:
+    //
+    // <entries for old swapchains, imageIndex == UINT32_MAX> <entries for this swapchain>
+    //
+    // Walk the list backwards and find the entry for the given image index.  That's the last
+    // present with that image.  Associate the fence with that present operation.
+    for (size_t historyIndex = 0; historyIndex < presentHistory->size(); ++historyIndex)
+    {
+        impl::ImagePresentOperation &presentOperation =
+            (*presentHistory)[presentHistory->size() - historyIndex - 1];
+        if (presentOperation.imageIndex == kInvalidImageIndex)
+        {
+            // No previous presentation with this index.
+            break;
+        }
+
+        if (presentOperation.imageIndex == imageIndex)
+        {
+            ASSERT(!presentOperation.fence.valid());
+            presentOperation.fence = std::move(presentFence);
+            return;
+        }
+    }
+
+    // If no previous presentation with this index, add an empty entry just so the fence can be
+    // cleaned up.
+    presentHistory->emplace_back();
+    presentHistory->back().fence      = std::move(presentFence);
+    presentHistory->back().imageIndex = imageIndex;
+}
+
+bool HasAnyOldSwapchains(const std::deque<impl::ImagePresentOperation> &presentHistory)
+{
+    // Used to validate that swapchain clean up data can only be carried by the first present
+    // operation of a swapchain.  That operation is already removed from history when this call is
+    // made, so this verifies that no clean up data exists in the history.
+    for (const impl::ImagePresentOperation &presentOperation : presentHistory)
+    {
+        if (!presentOperation.oldSwapchains.empty())
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool IsCompatiblePresentMode(vk::PresentMode mode,
+                             VkPresentModeKHR *compatibleModes,
+                             size_t compatibleModesCount)
+{
+    VkPresentModeKHR vkMode              = vk::ConvertPresentModeToVkPresentMode(mode);
+    VkPresentModeKHR *compatibleModesEnd = compatibleModes + compatibleModesCount;
+    return std::find(compatibleModes, compatibleModesEnd, vkMode) != compatibleModesEnd;
+}
 }  // namespace
 
 SurfaceVk::SurfaceVk(const egl::SurfaceState &surfaceState) : SurfaceImpl(surfaceState) {}
 
-SurfaceVk::~SurfaceVk() = default;
+SurfaceVk::~SurfaceVk() {}
+
+void SurfaceVk::destroy(const egl::Display *display)
+{
+    DisplayVk *displayVk = vk::GetImpl(display);
+    RendererVk *renderer = displayVk->getRenderer();
+
+    mColorRenderTarget.destroy(renderer);
+    mDepthStencilRenderTarget.destroy(renderer);
+}
 
 angle::Result SurfaceVk::getAttachmentRenderTarget(const gl::Context *context,
                                                    GLenum binding,
@@ -159,64 +503,21 @@ angle::Result OffscreenSurfaceVk::AttachmentImage::initialize(DisplayVk *display
                                                               EGLint width,
                                                               EGLint height,
                                                               const vk::Format &vkFormat,
-                                                              GLint samples)
+                                                              GLint samples,
+                                                              bool isRobustResourceInitEnabled,
+                                                              bool hasProtectedContent)
 {
-    RendererVk *renderer = displayVk->getRenderer();
+    ANGLE_TRY(InitImageHelper(displayVk, width, height, vkFormat, samples,
+                              isRobustResourceInitEnabled, hasProtectedContent, &image));
 
-    const angle::Format &textureFormat = vkFormat.actualImageFormat();
-    bool isDepthOrStencilFormat   = textureFormat.depthBits > 0 || textureFormat.stencilBits > 0;
-    const VkImageUsageFlags usage = isDepthOrStencilFormat ? kSurfaceVkDepthStencilImageUsageFlags
-                                                           : kSurfaceVkColorImageUsageFlags;
-
-    VkExtent3D extents = {std::max(static_cast<uint32_t>(width), 1u),
-                          std::max(static_cast<uint32_t>(height), 1u), 1u};
-    ANGLE_TRY(image.init(displayVk, gl::TextureType::_2D, extents, vkFormat, samples, usage,
-                         gl::LevelIndex(0), gl::LevelIndex(0), 1, 1));
-
+    RendererVk *renderer        = displayVk->getRenderer();
     VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    ANGLE_TRY(image.initMemory(displayVk, renderer->getMemoryProperties(), flags));
-
-    imageViews.init(renderer);
-
-    return angle::Result::Continue;
-}
-
-angle::Result OffscreenSurfaceVk::AttachmentImage::initializeWithExternalMemory(
-    DisplayVk *displayVk,
-    EGLint width,
-    EGLint height,
-    const vk::Format &vkFormat,
-    GLint samples,
-    void *buffer)
-{
-    RendererVk *renderer = displayVk->getRenderer();
-
-    ASSERT(renderer->getFeatures().supportsExternalMemoryHost.enabled);
-
-    const angle::Format &textureFormat = vkFormat.actualImageFormat();
-    bool isDepthOrStencilFormat   = textureFormat.depthBits > 0 || textureFormat.stencilBits > 0;
-    const VkImageUsageFlags usage = isDepthOrStencilFormat ? kSurfaceVkDepthStencilImageUsageFlags
-                                                           : kSurfaceVkColorImageUsageFlags;
-
-    VkExtent3D extents = {std::max(static_cast<uint32_t>(width), 1u),
-                          std::max(static_cast<uint32_t>(height), 1u), 1u};
-    ANGLE_TRY(image.init(displayVk, gl::TextureType::_2D, extents, vkFormat, samples, usage,
-                         gl::LevelIndex(0), gl::LevelIndex(0), 1, 1));
-
-    VkImportMemoryHostPointerInfoEXT importMemoryHostPointerInfo = {};
-    importMemoryHostPointerInfo.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT;
-    importMemoryHostPointerInfo.pNext = nullptr;
-    importMemoryHostPointerInfo.handleType =
-        VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_MAPPED_FOREIGN_MEMORY_BIT_EXT;
-    importMemoryHostPointerInfo.pHostPointer = buffer;
-
-    VkMemoryRequirements externalMemoryRequirements;
-    image.getImage().getMemoryRequirements(renderer->getDevice(), &externalMemoryRequirements);
-
-    VkMemoryPropertyFlags flags = 0;
-    ANGLE_TRY(image.initExternalMemory(
-        displayVk, renderer->getMemoryProperties(), externalMemoryRequirements, nullptr,
-        &importMemoryHostPointerInfo, VK_QUEUE_FAMILY_EXTERNAL, flags));
+    if (hasProtectedContent)
+    {
+        flags |= VK_MEMORY_PROPERTY_PROTECTED_BIT;
+    }
+    ANGLE_TRY(image.initMemory(displayVk, hasProtectedContent, renderer->getMemoryProperties(),
+                               flags, vk::MemoryAllocationType::OffscreenSurfaceAttachmentImage));
 
     imageViews.init(renderer);
 
@@ -227,9 +528,10 @@ void OffscreenSurfaceVk::AttachmentImage::destroy(const egl::Display *display)
 {
     DisplayVk *displayVk = vk::GetImpl(display);
     RendererVk *renderer = displayVk->getRenderer();
+    // Front end must ensure all usage has been submitted.
+    imageViews.release(renderer, image.getResourceUse());
     image.releaseImage(renderer);
-    image.releaseStagingBuffer(renderer);
-    imageViews.release(renderer);
+    image.releaseStagedUpdates(renderer);
 }
 
 OffscreenSurfaceVk::OffscreenSurfaceVk(const egl::SurfaceState &surfaceState, RendererVk *renderer)
@@ -240,10 +542,10 @@ OffscreenSurfaceVk::OffscreenSurfaceVk(const egl::SurfaceState &surfaceState, Re
       mDepthStencilAttachment(this)
 {
     mColorRenderTarget.init(&mColorAttachment.image, &mColorAttachment.imageViews, nullptr, nullptr,
-                            gl::LevelIndex(0), 0, RenderTargetTransience::Default);
+                            gl::LevelIndex(0), 0, 1, RenderTargetTransience::Default);
     mDepthStencilRenderTarget.init(&mDepthStencilAttachment.image,
                                    &mDepthStencilAttachment.imageViews, nullptr, nullptr,
-                                   gl::LevelIndex(0), 0, RenderTargetTransience::Default);
+                                   gl::LevelIndex(0), 0, 1, RenderTargetTransience::Default);
 }
 
 OffscreenSurfaceVk::~OffscreenSurfaceVk() {}
@@ -265,21 +567,25 @@ angle::Result OffscreenSurfaceVk::initializeImpl(DisplayVk *displayVk)
     GLint samples = GetSampleCount(mState.config);
     ANGLE_VK_CHECK(displayVk, samples > 0, VK_ERROR_INITIALIZATION_FAILED);
 
+    bool robustInit = mState.isRobustResourceInitEnabled();
+
     if (config->renderTargetFormat != GL_NONE)
     {
-        ANGLE_TRY(mColorAttachment.initialize(
-            displayVk, mWidth, mHeight, renderer->getFormat(config->renderTargetFormat), samples));
+        ANGLE_TRY(mColorAttachment.initialize(displayVk, mWidth, mHeight,
+                                              renderer->getFormat(config->renderTargetFormat),
+                                              samples, robustInit, mState.hasProtectedContent()));
         mColorRenderTarget.init(&mColorAttachment.image, &mColorAttachment.imageViews, nullptr,
-                                nullptr, gl::LevelIndex(0), 0, RenderTargetTransience::Default);
+                                nullptr, gl::LevelIndex(0), 0, 1, RenderTargetTransience::Default);
     }
 
     if (config->depthStencilFormat != GL_NONE)
     {
         ANGLE_TRY(mDepthStencilAttachment.initialize(
-            displayVk, mWidth, mHeight, renderer->getFormat(config->depthStencilFormat), samples));
+            displayVk, mWidth, mHeight, renderer->getFormat(config->depthStencilFormat), samples,
+            robustInit, mState.hasProtectedContent()));
         mDepthStencilRenderTarget.init(&mDepthStencilAttachment.image,
                                        &mDepthStencilAttachment.imageViews, nullptr, nullptr,
-                                       gl::LevelIndex(0), 0, RenderTargetTransience::Default);
+                                       gl::LevelIndex(0), 0, 1, RenderTargetTransience::Default);
     }
 
     return angle::Result::Continue;
@@ -289,15 +595,24 @@ void OffscreenSurfaceVk::destroy(const egl::Display *display)
 {
     mColorAttachment.destroy(display);
     mDepthStencilAttachment.destroy(display);
+
+    if (mLockBufferHelper.valid())
+    {
+        mLockBufferHelper.destroy(vk::GetImpl(display)->getRenderer());
+    }
+
+    // Call parent class to destroy any resources parent owns.
+    SurfaceVk::destroy(display);
 }
 
-FramebufferImpl *OffscreenSurfaceVk::createDefaultFramebuffer(const gl::Context *context,
-                                                              const gl::FramebufferState &state)
+egl::Error OffscreenSurfaceVk::unMakeCurrent(const gl::Context *context)
 {
-    RendererVk *renderer = vk::GetImpl(context)->getRenderer();
+    ContextVk *contextVk = vk::GetImpl(context);
+    DisplayVk *displayVk = vk::GetImpl(context->getDisplay());
 
-    // Use a user FBO for an offscreen RT.
-    return FramebufferVk::CreateUserFBO(renderer, state);
+    angle::Result result = contextVk->onSurfaceUnMakeCurrent(this);
+
+    return angle::ToEGL(result, displayVk, EGL_BAD_CURRENT_SURFACE);
 }
 
 egl::Error OffscreenSurfaceVk::swap(const gl::Context *context)
@@ -369,20 +684,29 @@ EGLint OffscreenSurfaceVk::getSwapBehavior() const
 }
 
 angle::Result OffscreenSurfaceVk::initializeContents(const gl::Context *context,
+                                                     GLenum binding,
                                                      const gl::ImageIndex &imageIndex)
 {
     ContextVk *contextVk = vk::GetImpl(context);
 
-    if (mColorAttachment.image.valid())
+    switch (binding)
     {
-        mColorAttachment.image.stageRobustResourceClear(imageIndex);
-        ANGLE_TRY(mColorAttachment.image.flushAllStagedUpdates(contextVk));
-    }
+        case GL_BACK:
+            ASSERT(mColorAttachment.image.valid());
+            mColorAttachment.image.stageRobustResourceClear(imageIndex);
+            ANGLE_TRY(mColorAttachment.image.flushAllStagedUpdates(contextVk));
+            break;
 
-    if (mDepthStencilAttachment.image.valid())
-    {
-        mDepthStencilAttachment.image.stageRobustResourceClear(imageIndex);
-        ANGLE_TRY(mDepthStencilAttachment.image.flushAllStagedUpdates(contextVk));
+        case GL_DEPTH:
+        case GL_STENCIL:
+            ASSERT(mDepthStencilAttachment.image.valid());
+            mDepthStencilAttachment.image.stageRobustResourceClear(imageIndex);
+            ANGLE_TRY(mDepthStencilAttachment.image.flushAllStagedUpdates(contextVk));
+            break;
+
+        default:
+            UNREACHABLE();
+            break;
     }
     return angle::Result::Continue;
 }
@@ -390,6 +714,51 @@ angle::Result OffscreenSurfaceVk::initializeContents(const gl::Context *context,
 vk::ImageHelper *OffscreenSurfaceVk::getColorAttachmentImage()
 {
     return &mColorAttachment.image;
+}
+
+egl::Error OffscreenSurfaceVk::lockSurface(const egl::Display *display,
+                                           EGLint usageHint,
+                                           bool preservePixels,
+                                           uint8_t **bufferPtrOut,
+                                           EGLint *bufferPitchOut)
+{
+    ANGLE_TRACE_EVENT0("gpu.angle", "OffscreenSurfaceVk::lockSurface");
+
+    vk::ImageHelper *image = &mColorAttachment.image;
+    ASSERT(image->valid());
+
+    angle::Result result =
+        LockSurfaceImpl(vk::GetImpl(display), image, mLockBufferHelper, getWidth(), getHeight(),
+                        usageHint, preservePixels, bufferPtrOut, bufferPitchOut);
+    return angle::ToEGL(result, vk::GetImpl(display), EGL_BAD_ACCESS);
+}
+
+egl::Error OffscreenSurfaceVk::unlockSurface(const egl::Display *display, bool preservePixels)
+{
+    vk::ImageHelper *image = &mColorAttachment.image;
+    ASSERT(image->valid());
+    ASSERT(mLockBufferHelper.valid());
+
+    return angle::ToEGL(UnlockSurfaceImpl(vk::GetImpl(display), image, mLockBufferHelper,
+                                          getWidth(), getHeight(), preservePixels),
+                        vk::GetImpl(display), EGL_BAD_ACCESS);
+}
+
+EGLint OffscreenSurfaceVk::origin() const
+{
+    return EGL_UPPER_LEFT_KHR;
+}
+
+egl::Error OffscreenSurfaceVk::attachToFramebuffer(const gl::Context *context,
+                                                   gl::Framebuffer *framebuffer)
+{
+    return egl::NoError();
+}
+
+egl::Error OffscreenSurfaceVk::detachFromFramebuffer(const gl::Context *context,
+                                                     gl::Framebuffer *framebuffer)
+{
+    return egl::NoError();
 }
 
 namespace impl
@@ -422,16 +791,50 @@ void SwapchainCleanupData::destroy(VkDevice device, vk::Recycler<vk::Semaphore> 
     semaphores.clear();
 }
 
-ImagePresentHistory::ImagePresentHistory() = default;
-ImagePresentHistory::~ImagePresentHistory()
+ImagePresentOperation::ImagePresentOperation() : imageIndex(kInvalidImageIndex) {}
+ImagePresentOperation::~ImagePresentOperation()
 {
+    ASSERT(!fence.valid());
     ASSERT(!semaphore.valid());
     ASSERT(oldSwapchains.empty());
 }
 
-ImagePresentHistory::ImagePresentHistory(ImagePresentHistory &&other)
-    : semaphore(std::move(other.semaphore)), oldSwapchains(std::move(other.oldSwapchains))
+ImagePresentOperation::ImagePresentOperation(ImagePresentOperation &&other)
+    : fence(std::move(other.fence)),
+      semaphore(std::move(other.semaphore)),
+      oldSwapchains(std::move(other.oldSwapchains)),
+      imageIndex(other.imageIndex)
 {}
+
+ImagePresentOperation &ImagePresentOperation::operator=(ImagePresentOperation &&other)
+{
+    std::swap(fence, other.fence);
+    std::swap(semaphore, other.semaphore);
+    std::swap(oldSwapchains, other.oldSwapchains);
+    std::swap(imageIndex, other.imageIndex);
+    return *this;
+}
+
+void ImagePresentOperation::destroy(VkDevice device,
+                                    vk::Recycler<vk::Fence> *fenceRecycler,
+                                    vk::Recycler<vk::Semaphore> *semaphoreRecycler)
+{
+    fenceRecycler->recycle(std::move(fence));
+
+    // On the first acquire of the image, a fence is used but there is no present semaphore to clean
+    // up.  That fence is placed in the present history just for clean up purposes.
+    if (semaphore.valid())
+    {
+        semaphoreRecycler->recycle(std::move(semaphore));
+    }
+
+    // Destroy old swapchains
+    for (SwapchainCleanupData &oldSwapchain : oldSwapchains)
+    {
+        oldSwapchain.destroy(device, semaphoreRecycler);
+    }
+    oldSwapchains.clear();
+}
 
 SwapchainImage::SwapchainImage()  = default;
 SwapchainImage::~SwapchainImage() = default;
@@ -440,26 +843,9 @@ SwapchainImage::SwapchainImage(SwapchainImage &&other)
     : image(std::move(other.image)),
       imageViews(std::move(other.imageViews)),
       framebuffer(std::move(other.framebuffer)),
-      presentHistory(std::move(other.presentHistory)),
-      currentPresentHistoryIndex(other.currentPresentHistoryIndex)
+      fetchFramebuffer(std::move(other.fetchFramebuffer)),
+      framebufferResolveMS(std::move(other.framebufferResolveMS))
 {}
-
-SwapHistory::SwapHistory() = default;
-
-SwapHistory::~SwapHistory() = default;
-
-void SwapHistory::destroy(RendererVk *renderer)
-{
-    renderer->resetSharedFence(&sharedFence);
-}
-
-angle::Result SwapHistory::waitFence(ContextVk *contextVk)
-{
-    ASSERT(sharedFence.isReferenced());
-    ANGLE_VK_TRY(contextVk, sharedFence.get().wait(contextVk->getDevice(),
-                                                   std::numeric_limits<uint64_t>::max()));
-    return angle::Result::Continue;
-}
 }  // namespace impl
 
 using namespace impl;
@@ -468,26 +854,31 @@ WindowSurfaceVk::WindowSurfaceVk(const egl::SurfaceState &surfaceState, EGLNativ
     : SurfaceVk(surfaceState),
       mNativeWindowType(window),
       mSurface(VK_NULL_HANDLE),
+      mSupportsProtectedSwapchain(false),
       mSwapchain(VK_NULL_HANDLE),
-      mSwapchainPresentMode(VK_PRESENT_MODE_FIFO_KHR),
-      mDesiredSwapchainPresentMode(VK_PRESENT_MODE_FIFO_KHR),
+      mSwapchainPresentMode(vk::PresentMode::FifoKHR),
+      mDesiredSwapchainPresentMode(vk::PresentMode::FifoKHR),
       mMinImageCount(0),
       mPreTransform(VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR),
+      mEmulatedPreTransform(VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR),
       mCompositeAlpha(VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR),
-      mCurrentSwapHistoryIndex(0),
       mCurrentSwapchainImageIndex(0),
+      mAcquireImageSemaphore(nullptr),
       mDepthStencilImageBinding(this, kAnySurfaceImageSubjectIndex),
       mColorImageMSBinding(this, kAnySurfaceImageSubjectIndex),
-      mNeedToAcquireNextSwapchainImage(false)
+      mNeedToAcquireNextSwapchainImage(false),
+      mFrameCount(1),
+      mBufferAgeQueryFrameNumber(0)
 {
     // Initialize the color render target with the multisampled targets.  If not multisampled, the
     // render target will be updated to refer to a swapchain image on every acquire.
     mColorRenderTarget.init(&mColorImageMS, &mColorImageMSViews, nullptr, nullptr,
-                            gl::LevelIndex(0), 0, RenderTargetTransience::Default);
+                            gl::LevelIndex(0), 0, 1, RenderTargetTransience::Default);
     mDepthStencilRenderTarget.init(&mDepthStencilImage, &mDepthStencilImageViews, nullptr, nullptr,
-                                   gl::LevelIndex(0), 0, RenderTargetTransience::Default);
+                                   gl::LevelIndex(0), 0, 1, RenderTargetTransience::Default);
     mDepthStencilImageBinding.bind(&mDepthStencilImage);
     mColorImageMSBinding.bind(&mColorImageMS);
+    mSwapchainStatus.isPending = false;
 }
 
 WindowSurfaceVk::~WindowSurfaceVk()
@@ -504,14 +895,26 @@ void WindowSurfaceVk::destroy(const egl::Display *display)
     VkInstance instance  = renderer->getInstance();
 
     // flush the pipe.
-    (void)renderer->deviceWaitIdle(displayVk);
+    (void)renderer->finish(displayVk);
+
+    (void)renderer->waitForPresentToBeSubmitted(&mSwapchainStatus);
+
+    if (mLockBufferHelper.valid())
+    {
+        mLockBufferHelper.destroy(renderer);
+    }
+
+    for (impl::ImagePresentOperation &presentOperation : mPresentHistory)
+    {
+        if (presentOperation.fence.valid())
+        {
+            (void)presentOperation.fence.wait(device, renderer->getMaxFenceWaitTimeNs());
+        }
+        presentOperation.destroy(device, &mPresentFenceRecycler, &mPresentSemaphoreRecycler);
+    }
+    mPresentHistory.clear();
 
     destroySwapChainImages(displayVk);
-
-    for (SwapHistory &swap : mSwapHistory)
-    {
-        swap.destroy(renderer);
-    }
 
     if (mSwapchain)
     {
@@ -519,6 +922,10 @@ void WindowSurfaceVk::destroy(const egl::Display *display)
         mSwapchain = VK_NULL_HANDLE;
     }
 
+    for (vk::Semaphore &semaphore : mAcquireImageSemaphores)
+    {
+        semaphore.destroy(device);
+    }
     for (SwapchainCleanupData &oldSwapchain : mOldSwapchains)
     {
         oldSwapchain.destroy(device, &mPresentSemaphoreRecycler);
@@ -531,8 +938,11 @@ void WindowSurfaceVk::destroy(const egl::Display *display)
         mSurface = VK_NULL_HANDLE;
     }
 
-    mAcquireImageSemaphore.destroy(device);
     mPresentSemaphoreRecycler.destroy(device);
+    mPresentFenceRecycler.destroy(device);
+
+    // Call parent class to destroy any resources parent owns.
+    SurfaceVk::destroy(display);
 }
 
 egl::Error WindowSurfaceVk::initialize(const egl::Display *display)
@@ -547,6 +957,16 @@ egl::Error WindowSurfaceVk::initialize(const egl::Display *display)
     {
         return angle::ToEGL(result, displayVk, EGL_BAD_SURFACE);
     }
+}
+
+egl::Error WindowSurfaceVk::unMakeCurrent(const gl::Context *context)
+{
+    ContextVk *contextVk = vk::GetImpl(context);
+    DisplayVk *displayVk = vk::GetImpl(context->getDisplay());
+
+    angle::Result result = contextVk->onSurfaceUnMakeCurrent(this);
+
+    return angle::ToEGL(result, displayVk, EGL_BAD_CURRENT_SURFACE);
 }
 
 angle::Result WindowSurfaceVk::initializeImpl(DisplayVk *displayVk)
@@ -567,8 +987,53 @@ angle::Result WindowSurfaceVk::initializeImpl(DisplayVk *displayVk)
 
     const VkPhysicalDevice &physicalDevice = renderer->getPhysicalDevice();
 
-    ANGLE_VK_TRY(displayVk, vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, mSurface,
-                                                                      &mSurfaceCaps));
+    if (renderer->getFeatures().supportsSurfaceCapabilities2Extension.enabled)
+    {
+        VkPhysicalDeviceSurfaceInfo2KHR surfaceInfo2 = {};
+        surfaceInfo2.sType   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR;
+        surfaceInfo2.surface = mSurface;
+
+        VkSurfaceCapabilities2KHR surfaceCaps2 = {};
+        surfaceCaps2.sType                     = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR;
+
+        VkSharedPresentSurfaceCapabilitiesKHR sharedPresentSurfaceCaps = {};
+        if (renderer->getFeatures().supportsSharedPresentableImageExtension.enabled)
+        {
+            sharedPresentSurfaceCaps.sType =
+                VK_STRUCTURE_TYPE_SHARED_PRESENT_SURFACE_CAPABILITIES_KHR;
+            sharedPresentSurfaceCaps.sharedPresentSupportedUsageFlags =
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+            vk::AddToPNextChain(&surfaceCaps2, &sharedPresentSurfaceCaps);
+        }
+
+        VkSurfaceProtectedCapabilitiesKHR surfaceProtectedCaps = {};
+        if (renderer->getFeatures().supportsSurfaceProtectedCapabilitiesExtension.enabled)
+        {
+            surfaceProtectedCaps.sType = VK_STRUCTURE_TYPE_SURFACE_PROTECTED_CAPABILITIES_KHR;
+
+            vk::AddToPNextChain(&surfaceCaps2, &surfaceProtectedCaps);
+        }
+
+        ANGLE_VK_TRY(displayVk, vkGetPhysicalDeviceSurfaceCapabilities2KHR(
+                                    physicalDevice, &surfaceInfo2, &surfaceCaps2));
+
+        mSurfaceCaps                = surfaceCaps2.surfaceCapabilities;
+        mSupportsProtectedSwapchain = surfaceProtectedCaps.supportsProtected;
+    }
+    else
+    {
+        ANGLE_VK_TRY(displayVk, vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, mSurface,
+                                                                          &mSurfaceCaps));
+    }
+
+    if (IsAndroid())
+    {
+        mSupportsProtectedSwapchain = true;
+    }
+
+    ANGLE_VK_CHECK(displayVk, (mState.hasProtectedContent() ? mSupportsProtectedSwapchain : true),
+                   VK_ERROR_FEATURE_NOT_PRESENT);
 
     // Adjust width and height to the swapchain if necessary.
     uint32_t width  = mSurfaceCaps.currentExtent.width;
@@ -593,6 +1058,45 @@ angle::Result WindowSurfaceVk::initializeImpl(DisplayVk *displayVk)
 
     gl::Extents extents(static_cast<int>(width), static_cast<int>(height), 1);
 
+    // Introduction to Android rotation and pre-rotation:
+    //
+    // Android devices have one native orientation, but a window may be displayed in a different
+    // orientation.  This results in the window being "rotated" relative to the native orientation.
+    // For example, the native orientation of a Pixel 4 is portrait (i.e. height > width).
+    // However, many games want to be landscape (i.e. width > height).  Some applications will
+    // adapt to whatever orientation the user places the device in (e.g. auto-rotation).
+    //
+    // A convention is used within ANGLE of referring to the "rotated" and "non-rotated" aspects of
+    // a topic (e.g. a window's extents, a scissor, a viewport):
+    //
+    // - Non-rotated.  This refers to the way that the application views the window.  Rotation is
+    //   an Android concept, not a GL concept.  An application may view its window as landscape or
+    //   portrait, but not necessarily view its window as being rotated.  For example, an
+    //   application will set a scissor and viewport in a manner consistent with its view of the
+    //   window size (i.e. a non-rotated manner).
+    //
+    // - Rotated.  This refers to the way that Vulkan views the window.  If the window's
+    //   orientation is the same as the native orientation, the rotated view will happen to be
+    //   equivalent to the non-rotated view, but regardless of the window's orientation, ANGLE uses
+    //   the "rotated" term as whatever the Vulkan view of the window is.
+    //
+    // Most of ANGLE is designed to work with the non-rotated view of the window.  This is
+    // certainly true of the ANGLE front-end.  It is also true of most of the Vulkan back-end,
+    // which is still translating GL to Vulkan.  Only part of the Vulkan back-end needs to
+    // communicate directly to Vulkan in terms of the window's rotation.  For example, the viewport
+    // and scissor calculations are done with non-rotated values; and then the final values are
+    // rotated.
+    //
+    // ANGLE learns about the window's rotation from mSurfaceCaps.currentTransform.  If
+    // currentTransform is non-IDENTITY, ANGLE must "pre-rotate" various aspects of its work
+    // (e.g. rotate vertices in the vertex shaders, change scissor, viewport, and render-pass
+    // renderArea).  The swapchain's transform is given the value of mSurfaceCaps.currentTransform.
+    // That prevents SurfaceFlinger from doing a rotation blit for every frame (which is costly in
+    // terms of performance and power).
+    //
+    // When a window is rotated 90 or 270 degrees, the aspect ratio changes.  The width and height
+    // are swapped.  The x/y and width/height of various values in ANGLE must also be swapped
+    // before communicating the values to Vulkan.
     if (renderer->getFeatures().enablePreRotateSurfaces.enabled)
     {
         // Use the surface's transform.  For many platforms, this will always be identity (ANGLE
@@ -608,59 +1112,57 @@ angle::Result WindowSurfaceVk::initializeImpl(DisplayVk *displayVk)
     {
         // Default to identity transform.
         mPreTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+
         if ((mSurfaceCaps.supportedTransforms & mPreTransform) == 0)
         {
             mPreTransform = mSurfaceCaps.currentTransform;
         }
     }
 
-    uint32_t presentModeCount = 0;
-    ANGLE_VK_TRY(displayVk, vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, mSurface,
-                                                                      &presentModeCount, nullptr));
-    ASSERT(presentModeCount > 0);
-
-    mPresentModes.resize(presentModeCount);
-    ANGLE_VK_TRY(displayVk, vkGetPhysicalDeviceSurfacePresentModesKHR(
-                                physicalDevice, mSurface, &presentModeCount, mPresentModes.data()));
-
-    // Select appropriate present mode based on vsync parameter.  Default to 1 (FIFO), though it
-    // will get clamped to the min/max values specified at display creation time.
-    setSwapInterval(renderer->getFeatures().disableFifoPresentMode.enabled ? 0 : 1);
-
-    uint32_t surfaceFormatCount = 0;
-    ANGLE_VK_TRY(displayVk, vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, mSurface,
-                                                                 &surfaceFormatCount, nullptr));
-
-    std::vector<VkSurfaceFormatKHR> surfaceFormats(surfaceFormatCount);
-    ANGLE_VK_TRY(displayVk,
-                 vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, mSurface, &surfaceFormatCount,
-                                                      surfaceFormats.data()));
-
-    const vk::Format &format = renderer->getFormat(mState.config->renderTargetFormat);
-    VkFormat nativeFormat    = format.vkImageFormat;
-
-    if (surfaceFormatCount == 1u && surfaceFormats[0].format == VK_FORMAT_UNDEFINED)
+    // Set emulated pre-transform if any emulated prerotation features are set.
+    if (renderer->getFeatures().emulatedPrerotation90.enabled)
     {
-        // This is fine.
+        mEmulatedPreTransform = VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR;
     }
-    else
+    else if (renderer->getFeatures().emulatedPrerotation180.enabled)
     {
-        bool foundFormat = false;
-        for (const VkSurfaceFormatKHR &surfaceFormat : surfaceFormats)
-        {
-            if (surfaceFormat.format == nativeFormat)
-            {
-                foundFormat = true;
-                break;
-            }
-        }
+        mEmulatedPreTransform = VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR;
+    }
+    else if (renderer->getFeatures().emulatedPrerotation270.enabled)
+    {
+        mEmulatedPreTransform = VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR;
+    }
 
-        // If a non-linear colorspace was requested but the non-linear format is
-        // not supported as a vulkan surface format, treat it as a non-fatal error
-        if (!foundFormat)
-        {
-            return angle::Result::Incomplete;
-        }
+    // If prerotation is emulated, the window is physically rotated.  With real prerotation, the
+    // surface reports the rotated sizes.  With emulated prerotation however, the surface reports
+    // the actual window sizes.  Adjust the window extents to match what real prerotation would have
+    // reported.
+    if (Is90DegreeRotation(mEmulatedPreTransform))
+    {
+        ASSERT(mPreTransform == VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR);
+        std::swap(extents.width, extents.height);
+    }
+
+    ANGLE_TRY(GetPresentModes(displayVk, physicalDevice, mSurface, &mPresentModes));
+
+    // Select appropriate present mode based on vsync parameter. Default to 1 (FIFO), though it
+    // will get clamped to the min/max values specified at display creation time.
+    setSwapInterval(mState.getPreferredSwapInterval());
+
+    // Ensure that the format and colorspace pair is supported.
+    const vk::Format &format = renderer->getFormat(mState.config->renderTargetFormat);
+    VkFormat nativeFormat    = format.getActualRenderableImageVkFormat();
+    // For devices that don't support creating swapchain images with RGB8, emulate with RGBA8.
+    if (renderer->getFeatures().overrideSurfaceFormatRGB8ToRGBA8.enabled &&
+        nativeFormat == VK_FORMAT_R8G8B8_UNORM)
+    {
+        nativeFormat = VK_FORMAT_R8G8B8A8_UNORM;
+    }
+    VkColorSpaceKHR colorSpace = MapEglColorSpaceToVkColorSpace(
+        renderer, static_cast<EGLenum>(mState.attributes.get(EGL_GL_COLORSPACE, EGL_NONE)));
+    if (!displayVk->isSurfaceFormatColorspacePairSupported(mSurface, nativeFormat, colorSpace))
+    {
+        return angle::Result::Incomplete;
     }
 
     mCompositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -671,14 +1173,25 @@ angle::Result WindowSurfaceVk::initializeImpl(DisplayVk *displayVk)
     ANGLE_VK_CHECK(displayVk, (mSurfaceCaps.supportedCompositeAlpha & mCompositeAlpha) != 0,
                    VK_ERROR_INITIALIZATION_FAILED);
 
+    // Single buffer, if supported
+    if ((mState.attributes.getAsInt(EGL_RENDER_BUFFER, EGL_BACK_BUFFER) == EGL_SINGLE_BUFFER) &&
+        supportsPresentMode(vk::PresentMode::SharedDemandRefreshKHR))
+    {
+        std::vector<vk::PresentMode> presentModes = {vk::PresentMode::SharedDemandRefreshKHR};
+        mDesiredSwapchainPresentMode              = GetDesiredPresentMode(presentModes, 0);
+    }
+
     ANGLE_TRY(createSwapChain(displayVk, extents, VK_NULL_HANDLE));
 
-    VkResult vkResult = acquireNextSwapchainImage(displayVk);
-    // VK_SUBOPTIMAL_KHR is ok since we still have an Image that can be presented successfully
-    if (ANGLE_UNLIKELY((vkResult != VK_SUCCESS) && (vkResult != VK_SUBOPTIMAL_KHR)))
+    // Create the semaphores that will be used for vkAcquireNextImageKHR.
+    for (vk::Semaphore &semaphore : mAcquireImageSemaphores)
     {
-        ANGLE_VK_TRY(displayVk, vkResult);
+        ANGLE_VK_TRY(displayVk, semaphore.init(displayVk->getDevice()));
     }
+
+    VkResult vkResult = acquireNextSwapchainImage(displayVk);
+    ASSERT(vkResult != VK_SUBOPTIMAL_KHR);
+    ANGLE_VK_TRY(displayVk, vkResult);
 
     return angle::Result::Continue;
 }
@@ -692,82 +1205,106 @@ angle::Result WindowSurfaceVk::getAttachmentRenderTarget(const gl::Context *cont
     if (mNeedToAcquireNextSwapchainImage)
     {
         // Acquire the next image (previously deferred) before it is drawn to or read from.
+        ContextVk *contextVk = vk::GetImpl(context);
+        ANGLE_VK_TRACE_EVENT_AND_MARKER(contextVk, "First Swap Image Use");
         ANGLE_TRY(doDeferredAcquireNextImage(context, false));
+    }
+    if (mAcquireImageSemaphore)
+    {
+        flushAcquireImageSemaphore(context);
     }
     return SurfaceVk::getAttachmentRenderTarget(context, binding, imageIndex, samples, rtOut);
 }
 
 angle::Result WindowSurfaceVk::recreateSwapchain(ContextVk *contextVk, const gl::Extents &extents)
 {
-    // If mOldSwapchains is not empty, it means that a new swapchain was created, but before
-    // any of its images were presented, it's asked to be recreated.  In this case, we can destroy
-    // the current swapchain immediately (although the old swapchains still need to be kept to be
-    // scheduled for destruction).  This can happen for example if vkQueuePresentKHR returns
-    // OUT_OF_DATE, the swapchain is recreated and the following vkAcquireNextImageKHR again
-    // returns OUT_OF_DATE.
-    //
-    // Otherwise, keep the current swapchain as the old swapchain to be scheduled for destruction
-    // and create a new one.
+    ASSERT(!mSwapchainStatus.isPending);
 
+    // If no present operation has been done on the new swapchain, it can be destroyed right away.
+    // This means that a new swapchain was created, but before any of its images were presented,
+    // it's asked to be recreated.  This can happen for example if vkQueuePresentKHR returns
+    // OUT_OF_DATE, the swapchain is recreated and the following vkAcquireNextImageKHR again
+    // returns OUT_OF_DATE.  Otherwise, keep the current swapchain as the old swapchain to be
+    // scheduled for destruction.
+    //
+    // The old(er) swapchains still need to be kept to be scheduled for destruction.
     VkSwapchainKHR swapchainToDestroy = VK_NULL_HANDLE;
 
-    if (!mOldSwapchains.empty())
+    if (mPresentHistory.empty() || mPresentHistory.back().imageIndex == kInvalidImageIndex)
     {
-        // Keep the old swapchain, destroy the current (never-used) swapchain.
+        // Destroy the current (never-used) swapchain.
         swapchainToDestroy = mSwapchain;
-
-        // Recycle present semaphores.
-        for (SwapchainImage &swapchainImage : mSwapchainImages)
-        {
-            for (ImagePresentHistory &presentHistory : swapchainImage.presentHistory)
-            {
-                ASSERT(presentHistory.semaphore.valid());
-                ASSERT(presentHistory.oldSwapchains.empty());
-
-                mPresentSemaphoreRecycler.recycle(std::move(presentHistory.semaphore));
-            }
-        }
     }
-    else
+
+    // Place any present operation that's not associated with a fence into mOldSwapchains.  That
+    // gets scheduled for destruction when the semaphore of the first image of the next swapchain
+    // can be recycled.
+    SwapchainCleanupData cleanupData;
+
+    // If the swapchain is not being immediately destroyed, schedule it for destruction.
+    if (swapchainToDestroy == VK_NULL_HANDLE)
     {
-        SwapchainCleanupData cleanupData;
-
-        // Remember the current swapchain to be scheduled for destruction later.
         cleanupData.swapchain = mSwapchain;
+    }
 
-        // Accumulate the semaphores to be destroyed at the same time as the swapchain.
-        for (SwapchainImage &swapchainImage : mSwapchainImages)
+    std::vector<impl::ImagePresentOperation> historyToKeep;
+    while (!mPresentHistory.empty())
+    {
+        impl::ImagePresentOperation &presentOperation = mPresentHistory.back();
+
+        // If this is about an older swapchain, let it be.
+        if (presentOperation.imageIndex == kInvalidImageIndex)
         {
-            for (ImagePresentHistory &presentHistory : swapchainImage.presentHistory)
-            {
-                ASSERT(presentHistory.semaphore.valid());
-                cleanupData.semaphores.emplace_back(std::move(presentHistory.semaphore));
-
-                // Accumulate any previous swapchains that are pending destruction too.
-                for (SwapchainCleanupData &oldSwapchain : presentHistory.oldSwapchains)
-                {
-                    mOldSwapchains.emplace_back(std::move(oldSwapchain));
-                }
-                presentHistory.oldSwapchains.clear();
-            }
+            ASSERT(presentOperation.fence.valid());
+            break;
         }
 
-        // If too many old swapchains have accumulated, wait idle and destroy them.  This is to
-        // prevent failures due to too many swapchains allocated.
-        //
-        // Note: Nvidia has been observed to fail creation of swapchains after 20 are allocated on
-        // desktop, or less than 10 on Quadro P400.
-        static constexpr size_t kMaxOldSwapchains = 5;
-        if (mOldSwapchains.size() > kMaxOldSwapchains)
+        // Reset the index, so it's not processed in the future.
+        presentOperation.imageIndex = kInvalidImageIndex;
+
+        if (presentOperation.fence.valid())
         {
-            ANGLE_TRY(contextVk->getRenderer()->queueWaitIdle(contextVk, contextVk->getPriority()));
-            for (SwapchainCleanupData &oldSwapchain : mOldSwapchains)
+            // If there is already a fence associated with it, let it be cleaned up once the fence
+            // is signaled.
+            historyToKeep.push_back(std::move(presentOperation));
+        }
+        else
+        {
+            ASSERT(presentOperation.semaphore.valid());
+
+            // Otherwise accumulate it in mOldSwapchains.
+            cleanupData.semaphores.emplace_back(std::move(presentOperation.semaphore));
+
+            // Accumulate any previous swapchains that are pending destruction too.
+            for (SwapchainCleanupData &oldSwapchain : presentOperation.oldSwapchains)
             {
-                oldSwapchain.destroy(contextVk->getDevice(), &mPresentSemaphoreRecycler);
+                mOldSwapchains.emplace_back(std::move(oldSwapchain));
             }
-            mOldSwapchains.clear();
+            presentOperation.oldSwapchains.clear();
         }
 
+        mPresentHistory.pop_back();
+    }
+    std::move(historyToKeep.begin(), historyToKeep.end(), std::back_inserter(mPresentHistory));
+
+    // If too many old swapchains have accumulated, wait idle and destroy them.  This is to prevent
+    // failures due to too many swapchains allocated.
+    //
+    // Note: Nvidia has been observed to fail creation of swapchains after 20 are allocated on
+    // desktop, or less than 10 on Quadro P400.
+    static constexpr size_t kMaxOldSwapchains = 5;
+    if (mOldSwapchains.size() > kMaxOldSwapchains)
+    {
+        ANGLE_TRY(contextVk->getRenderer()->finish(contextVk));
+        for (SwapchainCleanupData &oldSwapchain : mOldSwapchains)
+        {
+            oldSwapchain.destroy(contextVk->getDevice(), &mPresentSemaphoreRecycler);
+        }
+        mOldSwapchains.clear();
+    }
+
+    if (cleanupData.swapchain != VK_NULL_HANDLE || !cleanupData.semaphores.empty())
+    {
         mOldSwapchains.emplace_back(std::move(cleanupData));
     }
 
@@ -777,7 +1314,16 @@ angle::Result WindowSurfaceVk::recreateSwapchain(ContextVk *contextVk, const gl:
 
     releaseSwapchainImages(contextVk);
 
-    angle::Result result = createSwapChain(contextVk, extents, lastSwapchain);
+    // If prerotation is emulated, adjust the window extents to match what real prerotation would
+    // have reported.
+    gl::Extents swapchainExtents = extents;
+    if (Is90DegreeRotation(mEmulatedPreTransform))
+    {
+        ASSERT(mPreTransform == VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR);
+        std::swap(swapchainExtents.width, swapchainExtents.height);
+    }
+
+    angle::Result result = createSwapChain(contextVk, swapchainExtents, lastSwapchain);
 
     // Notify the parent classes of the surface's new state.
     onStateChange(angle::SubjectMessage::SurfaceChanged);
@@ -789,43 +1335,6 @@ angle::Result WindowSurfaceVk::recreateSwapchain(ContextVk *contextVk, const gl:
     }
 
     return result;
-}
-
-angle::Result WindowSurfaceVk::newPresentSemaphore(vk::Context *context,
-                                                   vk::Semaphore *semaphoreOut)
-{
-    if (mPresentSemaphoreRecycler.empty())
-    {
-        ANGLE_VK_TRY(context, semaphoreOut->init(context->getDevice()));
-    }
-    else
-    {
-        mPresentSemaphoreRecycler.fetch(semaphoreOut);
-    }
-    return angle::Result::Continue;
-}
-
-static VkColorSpaceKHR MapEglColorSpaceToVkColorSpace(EGLenum EGLColorspace)
-{
-    switch (EGLColorspace)
-    {
-        case EGL_NONE:
-        case EGL_GL_COLORSPACE_LINEAR:
-        case EGL_GL_COLORSPACE_SRGB_KHR:
-        case EGL_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH_EXT:
-            return VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-        case EGL_GL_COLORSPACE_DISPLAY_P3_LINEAR_EXT:
-            return VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT;
-        case EGL_GL_COLORSPACE_DISPLAY_P3_EXT:
-            return VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT;
-        case EGL_GL_COLORSPACE_SCRGB_LINEAR_EXT:
-            return VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT;
-        case EGL_GL_COLORSPACE_SCRGB_EXT:
-            return VK_COLOR_SPACE_EXTENDED_SRGB_NONLINEAR_EXT;
-        default:
-            UNREACHABLE();
-            return VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-    }
 }
 
 angle::Result WindowSurfaceVk::resizeSwapchainImages(vk::Context *context, uint32_t imageCount)
@@ -850,18 +1359,6 @@ angle::Result WindowSurfaceVk::resizeSwapchainImages(vk::Context *context, uint3
         }
     }
 
-    // At this point, if there was a previous swapchain, the previous present semaphores have all
-    // been moved to mOldSwapchains to be scheduled for destruction, so all semaphore handles in
-    // mSwapchainImages should be invalid.
-    for (SwapchainImage &swapchainImage : mSwapchainImages)
-    {
-        for (ImagePresentHistory &presentHistory : swapchainImage.presentHistory)
-        {
-            ASSERT(!presentHistory.semaphore.valid());
-            ANGLE_TRY(newPresentSemaphore(context, &presentHistory.semaphore));
-        }
-    }
-
     return angle::Result::Continue;
 }
 
@@ -876,11 +1373,19 @@ angle::Result WindowSurfaceVk::createSwapChain(vk::Context *context,
     RendererVk *renderer = context->getRenderer();
     VkDevice device      = renderer->getDevice();
 
-    const vk::Format &format = renderer->getFormat(mState.config->renderTargetFormat);
-    VkFormat nativeFormat    = format.vkImageFormat;
+    const vk::Format &format         = renderer->getFormat(mState.config->renderTargetFormat);
+    angle::FormatID actualFormatID   = format.getActualRenderableImageFormatID();
+    angle::FormatID intendedFormatID = format.getIntendedFormatID();
+
+    // For devices that don't support creating swapchain images with RGB8, emulate with RGBA8.
+    if (renderer->getFeatures().overrideSurfaceFormatRGB8ToRGBA8.enabled &&
+        intendedFormatID == angle::FormatID::R8G8B8_UNORM)
+    {
+        actualFormatID = angle::FormatID::R8G8B8A8_UNORM;
+    }
 
     gl::Extents rotatedExtents = extents;
-    if (Is90DegreeRotation(mPreTransform))
+    if (Is90DegreeRotation(getPreTransform()))
     {
         // The Surface is oriented such that its aspect ratio no longer matches that of the
         // device.  In this case, the width and height of the swapchain images must be swapped to
@@ -895,24 +1400,20 @@ angle::Result WindowSurfaceVk::createSwapChain(vk::Context *context,
     // We need transfer src for reading back from the backbuffer.
     VkImageUsageFlags imageUsageFlags = kSurfaceVkColorImageUsageFlags;
 
-#if ANGLE_ENABLE_OVERLAY
-    // We need storage image for compute writes (debug overlay output).
-    VkFormatFeatureFlags featureBits =
-        renderer->getImageFormatFeatureBits(nativeFormat, VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
-    if ((featureBits & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0)
+    // If shaders may be fetching from this, we need this image to be an input
+    if (NeedsInputAttachmentUsage(renderer->getFeatures()))
     {
-        imageUsageFlags |= VK_IMAGE_USAGE_STORAGE_BIT;
+        imageUsageFlags |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
     }
-#endif
 
     VkSwapchainCreateInfoKHR swapchainInfo = {};
     swapchainInfo.sType                    = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    swapchainInfo.flags                    = 0;
-    swapchainInfo.surface                  = mSurface;
-    swapchainInfo.minImageCount            = mMinImageCount;
-    swapchainInfo.imageFormat              = nativeFormat;
-    swapchainInfo.imageColorSpace          = MapEglColorSpaceToVkColorSpace(
-        static_cast<EGLenum>(mState.attributes.get(EGL_GL_COLORSPACE, EGL_NONE)));
+    swapchainInfo.flags = mState.hasProtectedContent() ? VK_SWAPCHAIN_CREATE_PROTECTED_BIT_KHR : 0;
+    swapchainInfo.surface         = mSurface;
+    swapchainInfo.minImageCount   = mMinImageCount;
+    swapchainInfo.imageFormat     = vk::GetVkFormatFromFormatID(actualFormatID);
+    swapchainInfo.imageColorSpace = MapEglColorSpaceToVkColorSpace(
+        renderer, static_cast<EGLenum>(mState.attributes.get(EGL_GL_COLORSPACE, EGL_NONE)));
     // Note: Vulkan doesn't allow 0-width/height swapchains.
     swapchainInfo.imageExtent.width     = std::max(rotatedExtents.width, 1);
     swapchainInfo.imageExtent.height    = std::max(rotatedExtents.height, 1);
@@ -923,25 +1424,103 @@ angle::Result WindowSurfaceVk::createSwapChain(vk::Context *context,
     swapchainInfo.pQueueFamilyIndices   = nullptr;
     swapchainInfo.preTransform          = mPreTransform;
     swapchainInfo.compositeAlpha        = mCompositeAlpha;
-    swapchainInfo.presentMode           = mDesiredSwapchainPresentMode;
-    swapchainInfo.clipped               = VK_TRUE;
-    swapchainInfo.oldSwapchain          = lastSwapchain;
+    swapchainInfo.presentMode = vk::ConvertPresentModeToVkPresentMode(mDesiredSwapchainPresentMode);
+    swapchainInfo.clipped     = VK_TRUE;
+    swapchainInfo.oldSwapchain = lastSwapchain;
+
+    if (context->getFeatures().supportsSwapchainMaintenance1.enabled)
+    {
+        swapchainInfo.flags |= VK_SWAPCHAIN_CREATE_DEFERRED_MEMORY_ALLOCATION_BIT_EXT;
+    }
+
+    if (isSharedPresentModeDesired())
+    {
+        swapchainInfo.minImageCount = 1;
+
+        // This feature is by default disabled, and only affects Android platform wsi behavior
+        // transparent to angle internal tracking for shared present.
+        if (renderer->getFeatures().forceContinuousRefreshOnSharedPresent.enabled)
+        {
+            swapchainInfo.presentMode = VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR;
+        }
+    }
+
+    // Get the list of compatible present modes to avoid unnecessary swapchain recreation.
+    VkSwapchainPresentModesCreateInfoEXT compatibleModesInfo = {};
+    if (renderer->getFeatures().supportsSwapchainMaintenance1.enabled)
+    {
+        VkPhysicalDeviceSurfaceInfo2KHR surfaceInfo2 = {};
+        surfaceInfo2.sType   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR;
+        surfaceInfo2.surface = mSurface;
+
+        VkSurfacePresentModeEXT surfacePresentMode = {};
+        surfacePresentMode.sType                   = VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT;
+        surfacePresentMode.presentMode             = swapchainInfo.presentMode;
+        vk::AddToPNextChain(&surfaceInfo2, &surfacePresentMode);
+
+        VkSurfaceCapabilities2KHR surfaceCaps2 = {};
+        surfaceCaps2.sType                     = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR;
+
+        mCompatiblePresentModes.resize(kMaxCompatiblePresentModes);
+
+        VkSurfacePresentModeCompatibilityEXT compatibleModes = {};
+        compatibleModes.sType            = VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_COMPATIBILITY_EXT;
+        compatibleModes.presentModeCount = kMaxCompatiblePresentModes;
+        compatibleModes.pPresentModes    = mCompatiblePresentModes.data();
+        vk::AddToPNextChain(&surfaceCaps2, &compatibleModes);
+
+        ANGLE_VK_TRY(context, vkGetPhysicalDeviceSurfaceCapabilities2KHR(
+                                  renderer->getPhysicalDevice(), &surfaceInfo2, &surfaceCaps2));
+
+        mCompatiblePresentModes.resize(compatibleModes.presentModeCount);
+
+        // The implementation must always return the given preesnt mode as compatible with itself.
+        ASSERT(IsCompatiblePresentMode(mDesiredSwapchainPresentMode, mCompatiblePresentModes.data(),
+                                       mCompatiblePresentModes.size()));
+
+        if (compatibleModes.presentModeCount > 1)
+        {
+            compatibleModesInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODES_CREATE_INFO_EXT;
+            compatibleModesInfo.presentModeCount = compatibleModes.presentModeCount;
+            compatibleModesInfo.pPresentModes    = mCompatiblePresentModes.data();
+
+            vk::AddToPNextChain(&swapchainInfo, &compatibleModesInfo);
+        }
+    }
+    else
+    {
+        // Without VK_EXT_swapchain_maintenance1, each present mode can be considered only
+        // compatible with itself.
+        mCompatiblePresentModes.resize(1);
+        mCompatiblePresentModes[0] = swapchainInfo.presentMode;
+    }
 
     // On Android, vkCreateSwapchainKHR destroys lastSwapchain, which is incorrect.  Wait idle in
     // that case as a workaround.
     if (lastSwapchain && renderer->getFeatures().waitIdleBeforeSwapchainRecreation.enabled)
     {
-        ANGLE_TRY(renderer->deviceWaitIdle(context));
+        ANGLE_TRY(renderer->finish(context));
     }
 
-    // TODO(syoussefi): Once EGL_SWAP_BEHAVIOR_PRESERVED_BIT is supported, the contents of the old
-    // swapchain need to carry over to the new one.  http://anglebug.com/2942
+    // TODO: Once EGL_SWAP_BEHAVIOR_PRESERVED_BIT is supported, the contents of the old swapchain
+    // need to carry over to the new one.  http://anglebug.com/2942
     VkSwapchainKHR newSwapChain = VK_NULL_HANDLE;
     ANGLE_VK_TRY(context, vkCreateSwapchainKHR(device, &swapchainInfo, nullptr, &newSwapChain));
     mSwapchain            = newSwapChain;
     mSwapchainPresentMode = mDesiredSwapchainPresentMode;
 
-    // Intialize the swapchain image views.
+    // If frame timestamp was enabled for the surface, [re]enable it when [re]creating the swapchain
+    if (renderer->getFeatures().supportsTimestampSurfaceAttribute.enabled &&
+        mState.timestampsEnabled)
+    {
+        // The implementation of "vkGetPastPresentationTimingGOOGLE" on Android calls into the
+        // appropriate ANativeWindow API that enables frame timestamps.
+        uint32_t count = 0;
+        ANGLE_VK_TRY(context,
+                     vkGetPastPresentationTimingGOOGLE(device, mSwapchain, &count, nullptr));
+    }
+
+    // Initialize the swapchain image views.
     uint32_t imageCount = 0;
     ANGLE_VK_TRY(context, vkGetSwapchainImagesKHR(device, mSwapchain, &imageCount, nullptr));
 
@@ -957,19 +1536,32 @@ angle::Result WindowSurfaceVk::createSwapChain(vk::Context *context,
     VkExtent3D vkExtents;
     gl_vk::GetExtent(rotatedExtents, &vkExtents);
 
+    bool robustInit = mState.isRobustResourceInitEnabled();
+
     if (samples > 1)
     {
-        const VkImageUsageFlags usage = kSurfaceVkColorImageUsageFlags;
+        VkImageUsageFlags usage = kSurfaceVkColorImageUsageFlags;
+        if (NeedsInputAttachmentUsage(renderer->getFeatures()))
+        {
+            usage |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+        }
 
-        ANGLE_TRY(mColorImageMS.init(context, gl::TextureType::_2D, vkExtents, format, samples,
-                                     usage, gl::LevelIndex(0), gl::LevelIndex(0), 1, 1));
-        ANGLE_TRY(mColorImageMS.initMemory(context, renderer->getMemoryProperties(),
-                                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+        // Create a multisampled image that will be rendered to, and then resolved to a swapchain
+        // image.  The actual VkImage is created with rotated coordinates to make it easier to do
+        // the resolve.  The ImageHelper::mExtents will have non-rotated extents in order to fit
+        // with the rest of ANGLE, (e.g. which calculates the Vulkan scissor with non-rotated
+        // values and then rotates the final rectangle).
+        ANGLE_TRY(mColorImageMS.initMSAASwapchain(
+            context, gl::TextureType::_2D, vkExtents, Is90DegreeRotation(getPreTransform()), format,
+            samples, usage, gl::LevelIndex(0), 1, 1, robustInit, mState.hasProtectedContent()));
+        ANGLE_TRY(mColorImageMS.initMemory(
+            context, mState.hasProtectedContent(), renderer->getMemoryProperties(),
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vk::MemoryAllocationType::SwapchainMSAAImage));
 
         // Initialize the color render target with the multisampled targets.  If not multisampled,
         // the render target will be updated to refer to a swapchain image on every acquire.
         mColorRenderTarget.init(&mColorImageMS, &mColorImageMSViews, nullptr, nullptr,
-                                gl::LevelIndex(0), 0, RenderTargetTransience::Default);
+                                gl::LevelIndex(0), 0, 1, RenderTargetTransience::Default);
     }
 
     ANGLE_TRY(resizeSwapchainImages(context, imageCount));
@@ -977,8 +1569,12 @@ angle::Result WindowSurfaceVk::createSwapChain(vk::Context *context,
     for (uint32_t imageIndex = 0; imageIndex < imageCount; ++imageIndex)
     {
         SwapchainImage &member = mSwapchainImages[imageIndex];
-        member.image.init2DWeakReference(context, swapchainImages[imageIndex], extents, format, 1);
+
+        member.image.init2DWeakReference(context, swapchainImages[imageIndex], extents,
+                                         Is90DegreeRotation(getPreTransform()), intendedFormatID,
+                                         actualFormatID, 0, 1, robustInit);
         member.imageViews.init(renderer);
+        member.mFrameNumber = 0;
     }
 
     // Initialize depth/stencil if requested.
@@ -989,13 +1585,15 @@ angle::Result WindowSurfaceVk::createSwapChain(vk::Context *context,
         const VkImageUsageFlags dsUsage = kSurfaceVkDepthStencilImageUsageFlags;
 
         ANGLE_TRY(mDepthStencilImage.init(context, gl::TextureType::_2D, vkExtents, dsFormat,
-                                          samples, dsUsage, gl::LevelIndex(0), gl::LevelIndex(0), 1,
-                                          1));
-        ANGLE_TRY(mDepthStencilImage.initMemory(context, renderer->getMemoryProperties(),
-                                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+                                          samples, dsUsage, gl::LevelIndex(0), 1, 1, robustInit,
+                                          mState.hasProtectedContent()));
+        ANGLE_TRY(mDepthStencilImage.initMemory(
+            context, mState.hasProtectedContent(), renderer->getMemoryProperties(),
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            vk::MemoryAllocationType::SwapchainDepthStencilImage));
 
         mDepthStencilRenderTarget.init(&mDepthStencilImage, &mDepthStencilImageViews, nullptr,
-                                       nullptr, gl::LevelIndex(0), 0,
+                                       nullptr, gl::LevelIndex(0), 0, 1,
                                        RenderTargetTransience::Default);
 
         // We will need to pass depth/stencil image views to the RenderTargetVk in the future.
@@ -1009,72 +1607,96 @@ bool WindowSurfaceVk::isMultiSampled() const
     return mColorImageMS.valid();
 }
 
-angle::Result WindowSurfaceVk::checkForOutOfDateSwapchain(ContextVk *contextVk,
-                                                          bool presentOutOfDate)
+angle::Result WindowSurfaceVk::queryAndAdjustSurfaceCaps(ContextVk *contextVk,
+                                                         VkSurfaceCapabilitiesKHR *surfaceCaps)
 {
-    bool swapIntervalChanged = mSwapchainPresentMode != mDesiredSwapchainPresentMode;
-
-    // If anything has changed, recreate the swapchain.
-    if (swapIntervalChanged || presentOutOfDate ||
-        contextVk->getRenderer()->getFeatures().perFrameWindowSizeQuery.enabled)
+    const VkPhysicalDevice &physicalDevice = contextVk->getRenderer()->getPhysicalDevice();
+    ANGLE_VK_TRY(contextVk,
+                 vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, mSurface, surfaceCaps));
+    if (surfaceCaps->currentExtent.width == kSurfaceSizedBySwapchain)
     {
-        gl::Extents swapchainExtents(getWidth(), getHeight(), 1);
+        ASSERT(surfaceCaps->currentExtent.height == kSurfaceSizedBySwapchain);
+        ASSERT(!IsAndroid());
 
+        // vkGetPhysicalDeviceSurfaceCapabilitiesKHR does not provide useful extents for some
+        // platforms (e.g. Fuschia).  Therefore, we must query the window size via a
+        // platform-specific mechanism.  Add those extents to the surfaceCaps
         gl::Extents currentExtents;
         ANGLE_TRY(getCurrentWindowSize(contextVk, &currentExtents));
-
-        // If window size has changed, check with surface capabilities.  It has been observed on
-        // Android that `getCurrentWindowSize()` returns 1920x1080 for example, while surface
-        // capabilities returns the size the surface was created with.
-        const VkPhysicalDevice &physicalDevice = contextVk->getRenderer()->getPhysicalDevice();
-        ANGLE_VK_TRY(contextVk, vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, mSurface,
-                                                                          &mSurfaceCaps));
-        if (contextVk->getFeatures().enablePreRotateSurfaces.enabled)
-        {
-            // Update the surface's transform, which can change even if the window size does not.
-            mPreTransform = mSurfaceCaps.currentTransform;
-        }
-
-        if (currentExtents != swapchainExtents)
-        {
-            uint32_t width  = mSurfaceCaps.currentExtent.width;
-            uint32_t height = mSurfaceCaps.currentExtent.height;
-
-            if (width != kSurfaceSizedBySwapchain)
-            {
-                ASSERT(height != kSurfaceSizedBySwapchain);
-                currentExtents.width  = width;
-                currentExtents.height = height;
-            }
-        }
-
-        // Check for window resize and recreate swapchain if necessary.
-        // Work-around for some device which does not return OUT_OF_DATE after window resizing
-        if (swapIntervalChanged || presentOutOfDate || currentExtents != swapchainExtents)
-        {
-            ANGLE_TRY(recreateSwapchain(contextVk, currentExtents));
-        }
+        surfaceCaps->currentExtent.width  = currentExtents.width;
+        surfaceCaps->currentExtent.height = currentExtents.height;
     }
 
     return angle::Result::Continue;
+}
+
+angle::Result WindowSurfaceVk::checkForOutOfDateSwapchain(ContextVk *contextVk,
+                                                          bool presentOutOfDate)
+{
+    bool swapIntervalChanged =
+        !IsCompatiblePresentMode(mDesiredSwapchainPresentMode, mCompatiblePresentModes.data(),
+                                 mCompatiblePresentModes.size());
+    presentOutOfDate = presentOutOfDate || swapIntervalChanged;
+
+    // If there's no change, early out.
+    if (!contextVk->getRenderer()->getFeatures().perFrameWindowSizeQuery.enabled &&
+        !presentOutOfDate)
+    {
+        return angle::Result::Continue;
+    }
+
+    // Get the latest surface capabilities.
+    ANGLE_TRY(queryAndAdjustSurfaceCaps(contextVk, &mSurfaceCaps));
+
+    if (contextVk->getRenderer()->getFeatures().perFrameWindowSizeQuery.enabled &&
+        !presentOutOfDate)
+    {
+        // This device generates neither VK_ERROR_OUT_OF_DATE_KHR nor VK_SUBOPTIMAL_KHR.  Check for
+        // whether the size and/or rotation have changed since the swapchain was created.
+        uint32_t swapchainWidth  = getWidth();
+        uint32_t swapchainHeight = getHeight();
+        presentOutOfDate         = mSurfaceCaps.currentTransform != mPreTransform ||
+                           mSurfaceCaps.currentExtent.width != swapchainWidth ||
+                           mSurfaceCaps.currentExtent.height != swapchainHeight;
+    }
+
+    // If anything has changed, recreate the swapchain.
+    if (!presentOutOfDate)
+    {
+        return angle::Result::Continue;
+    }
+
+    gl::Extents newSwapchainExtents(mSurfaceCaps.currentExtent.width,
+                                    mSurfaceCaps.currentExtent.height, 1);
+
+    if (contextVk->getFeatures().enablePreRotateSurfaces.enabled)
+    {
+        // Update the surface's transform, which can change even if the window size does not.
+        mPreTransform = mSurfaceCaps.currentTransform;
+    }
+
+    return recreateSwapchain(contextVk, newSwapchainExtents);
 }
 
 void WindowSurfaceVk::releaseSwapchainImages(ContextVk *contextVk)
 {
     RendererVk *renderer = contextVk->getRenderer();
 
+    mColorRenderTarget.release(contextVk);
+    mDepthStencilRenderTarget.release(contextVk);
+
     if (mDepthStencilImage.valid())
     {
-        mDepthStencilImage.releaseImage(renderer);
-        mDepthStencilImage.releaseStagingBuffer(renderer);
-        mDepthStencilImageViews.release(renderer);
+        mDepthStencilImageViews.release(renderer, mDepthStencilImage.getResourceUse());
+        mDepthStencilImage.releaseImageFromShareContexts(renderer, contextVk);
+        mDepthStencilImage.releaseStagedUpdates(renderer);
     }
 
     if (mColorImageMS.valid())
     {
-        mColorImageMS.releaseImage(renderer);
-        mColorImageMS.releaseStagingBuffer(renderer);
-        mColorImageMSViews.release(renderer);
+        mColorImageMSViews.release(renderer, mColorImageMS.getResourceUse());
+        mColorImageMS.releaseImageFromShareContexts(renderer, contextVk);
+        mColorImageMS.releaseStagedUpdates(renderer);
         contextVk->addGarbage(&mFramebufferMS);
     }
 
@@ -1082,18 +1704,19 @@ void WindowSurfaceVk::releaseSwapchainImages(ContextVk *contextVk)
 
     for (SwapchainImage &swapchainImage : mSwapchainImages)
     {
+        swapchainImage.imageViews.release(renderer, swapchainImage.image.getResourceUse());
         // We don't own the swapchain image handles, so we just remove our reference to it.
         swapchainImage.image.resetImageWeakReference();
         swapchainImage.image.destroy(renderer);
 
-        swapchainImage.imageViews.release(renderer);
         contextVk->addGarbage(&swapchainImage.framebuffer);
-
-        // present history must have already been taken care of.
-        for (ImagePresentHistory &presentHistory : swapchainImage.presentHistory)
+        if (swapchainImage.fetchFramebuffer.valid())
         {
-            ASSERT(!presentHistory.semaphore.valid());
-            ASSERT(presentHistory.oldSwapchains.empty());
+            contextVk->addGarbage(&swapchainImage.fetchFramebuffer);
+        }
+        if (swapchainImage.framebufferResolveMS.valid())
+        {
+            contextVk->addGarbage(&swapchainImage.framebufferResolveMS);
         }
     }
 
@@ -1118,86 +1741,146 @@ void WindowSurfaceVk::destroySwapChainImages(DisplayVk *displayVk)
         swapchainImage.image.destroy(renderer);
         swapchainImage.imageViews.destroy(device);
         swapchainImage.framebuffer.destroy(device);
-
-        for (ImagePresentHistory &presentHistory : swapchainImage.presentHistory)
+        if (swapchainImage.fetchFramebuffer.valid())
         {
-            ASSERT(presentHistory.semaphore.valid());
-
-            mPresentSemaphoreRecycler.recycle(std::move(presentHistory.semaphore));
-            for (SwapchainCleanupData &oldSwapchain : presentHistory.oldSwapchains)
-            {
-                oldSwapchain.destroy(device, &mPresentSemaphoreRecycler);
-            }
-            presentHistory.oldSwapchains.clear();
+            swapchainImage.fetchFramebuffer.destroy(device);
+        }
+        if (swapchainImage.framebufferResolveMS.valid())
+        {
+            swapchainImage.framebufferResolveMS.destroy(device);
         }
     }
 
     mSwapchainImages.clear();
 }
 
-FramebufferImpl *WindowSurfaceVk::createDefaultFramebuffer(const gl::Context *context,
-                                                           const gl::FramebufferState &state)
+egl::Error WindowSurfaceVk::prepareSwap(const gl::Context *context)
 {
-    RendererVk *renderer = vk::GetImpl(context)->getRenderer();
-    return FramebufferVk::CreateDefaultFBO(renderer, state, this);
+    DisplayVk *displayVk = vk::GetImpl(context->getDisplay());
+    angle::Result result = prepareSwapImpl(context);
+    return angle::ToEGL(result, displayVk, EGL_BAD_SURFACE);
+}
+
+angle::Result WindowSurfaceVk::prepareSwapImpl(const gl::Context *context)
+{
+    ANGLE_TRACE_EVENT0("gpu.angle", "WindowSurfaceVk::prepareSwap");
+    if (mNeedToAcquireNextSwapchainImage)
+    {
+        // Acquire the next image (previously deferred). The image may not have been already
+        // acquired if there was no rendering done at all to the default framebuffer in this frame,
+        // for example if all rendering was done to FBOs.
+        ANGLE_TRACE_EVENT0("gpu.angle", "Acquire Swap Image Before Swap");
+        ANGLE_TRY(doDeferredAcquireNextImage(context, false));
+    }
+    if (mAcquireImageSemaphore)
+    {
+        flushAcquireImageSemaphore(context);
+    }
+    return angle::Result::Continue;
 }
 
 egl::Error WindowSurfaceVk::swapWithDamage(const gl::Context *context,
-                                           EGLint *rects,
+                                           const EGLint *rects,
                                            EGLint n_rects)
 {
-    DisplayVk *displayVk = vk::GetImpl(context->getDisplay());
-    angle::Result result = swapImpl(context, rects, n_rects, nullptr);
+    DisplayVk *displayVk       = vk::GetImpl(context->getDisplay());
+    const angle::Result result = swapImpl(context, rects, n_rects, nullptr);
     return angle::ToEGL(result, displayVk, EGL_BAD_SURFACE);
 }
 
 egl::Error WindowSurfaceVk::swap(const gl::Context *context)
 {
     DisplayVk *displayVk = vk::GetImpl(context->getDisplay());
-    angle::Result result = swapImpl(context, nullptr, 0, nullptr);
+
+    // When in shared present mode, eglSwapBuffers is unnecessary except for mode change.  When mode
+    // change is not expected, the eglSwapBuffers call is forwarded to the context as a glFlush.
+    // This allows the context to skip it if there's nothing to flush.  Otherwise control is bounced
+    // back swapImpl().
+    //
+    // Some apps issue eglSwapBuffers after glFlush unnecessary, causing the CPU throttling logic to
+    // effectively wait for the just submitted commands.
+    if (isSharedPresentMode() && mSwapchainPresentMode == mDesiredSwapchainPresentMode)
+    {
+        const angle::Result result = vk::GetImpl(context)->flush(context);
+        return angle::ToEGL(result, displayVk, EGL_BAD_SURFACE);
+    }
+
+    const angle::Result result = swapImpl(context, nullptr, 0, nullptr);
     return angle::ToEGL(result, displayVk, EGL_BAD_SURFACE);
 }
 
-angle::Result WindowSurfaceVk::present(ContextVk *contextVk,
-                                       EGLint *rects,
-                                       EGLint n_rects,
-                                       const void *pNextChain,
-                                       bool *presentOutOfDate)
+angle::Result WindowSurfaceVk::computePresentOutOfDate(vk::Context *context,
+                                                       VkResult result,
+                                                       bool *presentOutOfDate)
 {
-    ANGLE_TRACE_EVENT0("gpu.angle", "WindowSurfaceVk::present");
-
-    // Throttle the submissions to avoid getting too far ahead of the GPU.
-    SwapHistory &swap = mSwapHistory[mCurrentSwapHistoryIndex];
+    // If OUT_OF_DATE is returned, it's ok, we just need to recreate the swapchain before
+    // continuing.  We do the same when VK_SUBOPTIMAL_KHR is returned to avoid visual degradation
+    // and handle device rotation / screen resize.
+    *presentOutOfDate = result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR;
+    if (!*presentOutOfDate)
     {
-        ANGLE_TRACE_EVENT0("gpu.angle", "WindowSurfaceVk::present: Throttle CPU");
-        if (swap.sharedFence.isReferenced())
-        {
-            ANGLE_TRY(swap.waitFence(contextVk));
-            swap.destroy(contextVk->getRenderer());
-        }
+        ANGLE_VK_TRY(context, result);
+    }
+    return angle::Result::Continue;
+}
+
+vk::Framebuffer &WindowSurfaceVk::chooseFramebuffer(const SwapchainResolveMode swapchainResolveMode)
+{
+    if (isMultiSampled())
+    {
+        return swapchainResolveMode == SwapchainResolveMode::Enabled
+                   ? mSwapchainImages[mCurrentSwapchainImageIndex].framebufferResolveMS
+                   : mFramebufferMS;
     }
 
+    // Choose which framebuffer to use based on fetch, so it will have a matching renderpass
+    ASSERT(swapchainResolveMode == SwapchainResolveMode::Disabled);
+    return mFramebufferFetchMode == FramebufferFetchMode::Enabled
+               ? mSwapchainImages[mCurrentSwapchainImageIndex].fetchFramebuffer
+               : mSwapchainImages[mCurrentSwapchainImageIndex].framebuffer;
+}
+
+angle::Result WindowSurfaceVk::prePresentSubmit(ContextVk *contextVk,
+                                                const vk::Semaphore &presentSemaphore)
+{
+    RendererVk *renderer = contextVk->getRenderer();
+
     SwapchainImage &image               = mSwapchainImages[mCurrentSwapchainImageIndex];
-    vk::Framebuffer &currentFramebuffer = mSwapchainImages[mCurrentSwapchainImageIndex].framebuffer;
-    updateOverlay(contextVk);
-    bool overlayHasWidget = overlayHasEnabledWidget(contextVk);
+    vk::Framebuffer &currentFramebuffer = chooseFramebuffer(SwapchainResolveMode::Disabled);
+
+    // Make sure deferred clears are applied, if any.
+    ANGLE_TRY(
+        image.image.flushStagedUpdates(contextVk, gl::LevelIndex(0), gl::LevelIndex(1), 0, 1, {}));
 
     // We can only do present related optimization if this is the last renderpass that touches the
     // swapchain image. MSAA resolve and overlay will insert another renderpass which disqualifies
     // the optimization.
-    if (!mColorImageMS.valid() && !overlayHasWidget && currentFramebuffer.valid())
+    bool imageResolved = false;
+    if (currentFramebuffer.valid())
     {
-        contextVk->optimizeRenderPassForPresent(currentFramebuffer.getHandle());
+        ANGLE_TRY(contextVk->optimizeRenderPassForPresent(
+            currentFramebuffer.getHandle(), &image.imageViews, &image.image, &mColorImageMS,
+            mSwapchainPresentMode, &imageResolved));
     }
 
-    vk::CommandBuffer *commandBuffer = &contextVk->getOutsideRenderPassCommandBuffer();
+    // Because the color attachment defers layout changes until endRenderPass time, we must call
+    // finalize the layout transition in the renderpass before we insert layout change to
+    // ImageLayout::Present bellow.
+    contextVk->finalizeImageLayout(&image.image);
+    contextVk->finalizeImageLayout(&mColorImageMS);
 
-    if (mColorImageMS.valid())
+    vk::OutsideRenderPassCommandBuffer *commandBuffer;
+    ANGLE_TRY(contextVk->getOutsideRenderPassCommandBuffer({}, &commandBuffer));
+
+    if (mColorImageMS.valid() && !imageResolved)
     {
         // Transition the multisampled image to TRANSFER_SRC for resolve.
-        ANGLE_TRY(contextVk->onImageTransferRead(VK_IMAGE_ASPECT_COLOR_BIT, &mColorImageMS));
-        ANGLE_TRY(contextVk->onImageTransferWrite(VK_IMAGE_ASPECT_COLOR_BIT, &image.image));
-        commandBuffer = &contextVk->getOutsideRenderPassCommandBuffer();
+        vk::CommandBufferAccess access;
+        access.onImageTransferRead(VK_IMAGE_ASPECT_COLOR_BIT, &mColorImageMS);
+        access.onImageTransferWrite(gl::LevelIndex(0), 1, 0, 1, VK_IMAGE_ASPECT_COLOR_BIT,
+                                    &image.image);
+
+        ANGLE_TRY(contextVk->getOutsideRenderPassCommandBuffer(access, &commandBuffer));
 
         VkImageResolve resolveRegion                = {};
         resolveRegion.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1207,50 +1890,59 @@ angle::Result WindowSurfaceVk::present(ContextVk *contextVk,
         resolveRegion.srcOffset                     = {};
         resolveRegion.dstSubresource                = resolveRegion.srcSubresource;
         resolveRegion.dstOffset                     = {};
-        resolveRegion.extent                        = image.image.getExtents();
+        resolveRegion.extent                        = image.image.getRotatedExtents();
 
         mColorImageMS.resolve(&image.image, resolveRegion, commandBuffer);
+        contextVk->getPerfCounters().swapchainResolveOutsideSubpass++;
     }
 
-    if (overlayHasWidget)
+    if (renderer->getFeatures().supportsPresentation.enabled)
     {
+        // This does nothing if it's already in the requested layout
+        image.image.recordReadBarrier(contextVk, VK_IMAGE_ASPECT_COLOR_BIT,
+                                      vk::ImageLayout::Present, commandBuffer);
+    }
+
+    // The overlay is drawn after this.  This ensures that drawing the overlay does not interfere
+    // with other functionality, especially counters used to validate said functionality.
+    const bool shouldDrawOverlay = overlayHasEnabledWidget(contextVk);
+
+    ANGLE_TRY(contextVk->flushImpl(shouldDrawOverlay ? nullptr : &presentSemaphore,
+                                   RenderPassClosureReason::EGLSwapBuffers));
+
+    if (shouldDrawOverlay)
+    {
+        updateOverlay(contextVk);
         ANGLE_TRY(drawOverlay(contextVk, &image));
-        commandBuffer = &contextVk->getOutsideRenderPassCommandBuffer();
+        ANGLE_TRY(contextVk->flushImpl(&presentSemaphore,
+                                       RenderPassClosureReason::AlreadySpecifiedElsewhere));
     }
 
-    // This does nothing if it's already in the requested layout
-    image.image.recordReadBarrier(VK_IMAGE_ASPECT_COLOR_BIT, vk::ImageLayout::Present,
-                                  commandBuffer);
+    return angle::Result::Continue;
+}
 
-    // Knowing that the kSwapHistorySize'th submission ago has finished, we can know that the
-    // (kSwapHistorySize+1)'th present ago of this image is definitely finished and so its wait
-    // semaphore can be reused.  See doc/PresentSemaphores.md for details.
-    //
-    // This also means the swapchain(s) scheduled to be deleted at the same time can be deleted.
-    ImagePresentHistory &presentHistory = image.presentHistory[image.currentPresentHistoryIndex];
-    vk::Semaphore *presentSemaphore     = &presentHistory.semaphore;
-    ASSERT(presentSemaphore->valid());
+angle::Result WindowSurfaceVk::present(ContextVk *contextVk,
+                                       const EGLint *rects,
+                                       EGLint n_rects,
+                                       const void *pNextChain,
+                                       bool *presentOutOfDate)
+{
+    ANGLE_TRACE_EVENT0("gpu.angle", "WindowSurfaceVk::present");
+    RendererVk *renderer = contextVk->getRenderer();
 
-    for (SwapchainCleanupData &oldSwapchain : presentHistory.oldSwapchains)
-    {
-        oldSwapchain.destroy(contextVk->getDevice(), &mPresentSemaphoreRecycler);
-    }
-    presentHistory.oldSwapchains.clear();
+    // Get a new semaphore to use for present.
+    vk::Semaphore presentSemaphore;
+    ANGLE_TRY(NewSemaphore(contextVk, &mPresentSemaphoreRecycler, &presentSemaphore));
 
-    // Schedule pending old swapchains to be destroyed at the same time the semaphore for this
-    // present can be destroyed.
-    presentHistory.oldSwapchains = std::move(mOldSwapchains);
-
-    image.currentPresentHistoryIndex =
-        (image.currentPresentHistoryIndex + 1) % image.presentHistory.size();
-
-    ANGLE_TRY(contextVk->flushImpl(presentSemaphore));
+    // Make a submission before present to flush whatever's pending.  In the very least, a
+    // submission is necessary to make sure the present semaphore is signaled.
+    ANGLE_TRY(prePresentSubmit(contextVk, presentSemaphore));
 
     VkPresentInfoKHR presentInfo   = {};
     presentInfo.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.pNext              = pNextChain;
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores    = presentSemaphore->ptr();
+    presentInfo.pWaitSemaphores    = presentSemaphore.ptr();
     presentInfo.swapchainCount     = 1;
     presentInfo.pSwapchains        = &mSwapchain;
     presentInfo.pImageIndices      = &mCurrentSwapchainImageIndex;
@@ -1264,73 +1956,174 @@ angle::Result WindowSurfaceVk::present(ContextVk *contextVk,
         EGLint width  = getWidth();
         EGLint height = getHeight();
 
-        EGLint *eglRects             = rects;
+        const EGLint *eglRects       = rects;
         presentRegion.rectangleCount = n_rects;
         vkRects.resize(n_rects);
         for (EGLint i = 0; i < n_rects; i++)
         {
-            VkRectLayerKHR &rect = vkRects[i];
-
-            // Make sure the damage rects are within swapchain bounds.
-            rect.offset.x      = gl::clamp(*eglRects++, 0, width);
-            rect.offset.y      = gl::clamp(*eglRects++, 0, height);
-            rect.extent.width  = gl::clamp(*eglRects++, 0, width - rect.offset.x);
-            rect.extent.height = gl::clamp(*eglRects++, 0, height - rect.offset.y);
-            rect.layer         = 0;
-            if (Is90DegreeRotation(mPreTransform))
-            {
-                std::swap(rect.offset.x, rect.offset.y);
-                std::swap(rect.extent.width, rect.extent.height);
-            }
+            vkRects[i] = ToVkRectLayer(
+                eglRects + i * 4, width, height,
+                contextVk->getFeatures().bottomLeftOriginPresentRegionRectangles.enabled);
         }
         presentRegion.pRectangles = vkRects.data();
 
         presentRegions.sType          = VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR;
-        presentRegions.pNext          = nullptr;
         presentRegions.swapchainCount = 1;
         presentRegions.pRegions       = &presentRegion;
 
-        presentInfo.pNext = &presentRegions;
+        vk::AddToPNextChain(&presentInfo, &presentRegions);
     }
 
-    // Update the swap history for this presentation
-    swap.sharedFence = contextVk->getLastSubmittedFence();
-    ASSERT(!mAcquireImageSemaphore.valid());
-
-    ++mCurrentSwapHistoryIndex;
-    mCurrentSwapHistoryIndex =
-        mCurrentSwapHistoryIndex == mSwapHistory.size() ? 0 : mCurrentSwapHistoryIndex;
-
-    VkResult result = contextVk->getRenderer()->queuePresent(contextVk->getPriority(), presentInfo);
-
-    // If OUT_OF_DATE is returned, it's ok, we just need to recreate the swapchain before
-    // continuing.
-    // If VK_SUBOPTIMAL_KHR is returned it's because the device orientation changed and we should
-    // recreate the swapchain with a new window orientation.
-    if (contextVk->getFeatures().enablePreRotateSurfaces.enabled)
+    VkSwapchainPresentFenceInfoEXT presentFenceInfo = {};
+    VkSwapchainPresentModeInfoEXT presentModeInfo   = {};
+    vk::Fence presentFence;
+    VkPresentModeKHR presentMode;
+    if (contextVk->getFeatures().supportsSwapchainMaintenance1.enabled)
     {
-        // Also check for VK_SUBOPTIMAL_KHR.
-        *presentOutOfDate = ((result == VK_ERROR_OUT_OF_DATE_KHR) || (result == VK_SUBOPTIMAL_KHR));
-        if (!*presentOutOfDate)
+        ANGLE_VK_TRY(contextVk, NewFence(contextVk, &mPresentFenceRecycler, &presentFence));
+
+        presentFenceInfo.sType          = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
+        presentFenceInfo.swapchainCount = 1;
+        presentFenceInfo.pFences        = presentFence.ptr();
+
+        vk::AddToPNextChain(&presentInfo, &presentFenceInfo);
+
+        // Update the present mode if necessary and possible
+        if (mSwapchainPresentMode != mDesiredSwapchainPresentMode &&
+            IsCompatiblePresentMode(mDesiredSwapchainPresentMode, mCompatiblePresentModes.data(),
+                                    mCompatiblePresentModes.size()))
         {
-            ANGLE_VK_TRY(contextVk, result);
+            presentMode = vk::ConvertPresentModeToVkPresentMode(mDesiredSwapchainPresentMode);
+
+            presentModeInfo.sType          = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_MODE_INFO_EXT;
+            presentModeInfo.swapchainCount = 1;
+            presentModeInfo.pPresentModes  = &presentMode;
+
+            vk::AddToPNextChain(&presentInfo, &presentModeInfo);
+
+            mSwapchainPresentMode = mDesiredSwapchainPresentMode;
         }
+    }
+
+    ASSERT(mAcquireImageSemaphore == nullptr);
+
+    renderer->queuePresent(contextVk, contextVk->getPriority(), presentInfo, &mSwapchainStatus);
+
+    // Set FrameNumber for the presented image.
+    mSwapchainImages[mCurrentSwapchainImageIndex].mFrameNumber = mFrameCount++;
+
+    // Place the semaphore in the present history.  Schedule pending old swapchains to be destroyed
+    // at the same time the semaphore for this present can be destroyed.
+    mPresentHistory.emplace_back();
+    mPresentHistory.back().semaphore     = std::move(presentSemaphore);
+    mPresentHistory.back().oldSwapchains = std::move(mOldSwapchains);
+    if (contextVk->getFeatures().supportsSwapchainMaintenance1.enabled)
+    {
+        mPresentHistory.back().imageIndex = kInvalidImageIndex;
+        mPresentHistory.back().fence      = std::move(presentFence);
     }
     else
     {
-        // We aren't quite ready for that so just ignore for now.
-        *presentOutOfDate = result == VK_ERROR_OUT_OF_DATE_KHR;
-        if (!*presentOutOfDate && result != VK_SUBOPTIMAL_KHR)
+        // The fence needed to know when the semaphore can be recycled will be one that is passed to
+        // vkAcquireNextImageKHR that returns the same image index.  That is why the image index
+        // needs to be tracked in this case.
+        mPresentHistory.back().imageIndex = mCurrentSwapchainImageIndex;
+    }
+
+    // Clean up whatever present is already finished.
+    ANGLE_TRY(cleanUpPresentHistory(contextVk));
+
+    ANGLE_TRY(
+        computePresentOutOfDate(contextVk, mSwapchainStatus.lastPresentResult, presentOutOfDate));
+
+    // Now update swapSerial With last submitted queue serial and apply CPU throttle if needed
+    QueueSerial swapSerial = contextVk->getLastSubmittedQueueSerial();
+    ANGLE_TRY(throttleCPU(contextVk, swapSerial));
+
+    contextVk->resetPerFramePerfCounters();
+
+    return angle::Result::Continue;
+}
+
+angle::Result WindowSurfaceVk::throttleCPU(ContextVk *contextVk,
+                                           const QueueSerial &currentSubmitSerial)
+{
+    RendererVk *renderer = contextVk->getRenderer();
+
+    // Wait on the oldest serial and replace it with the newest as the circular buffer moves
+    // forward.
+    QueueSerial swapSerial = mSwapHistory.front();
+    mSwapHistory.front()   = currentSubmitSerial;
+    mSwapHistory.next();
+
+    if (swapSerial.valid())
+    {
+        ANGLE_TRACE_EVENT0("gpu.angle", "WindowSurfaceVk::throttleCPU");
+        ANGLE_TRY(renderer->finishQueueSerial(contextVk, swapSerial));
+    }
+
+    return angle::Result::Continue;
+}
+
+angle::Result WindowSurfaceVk::cleanUpPresentHistory(vk::Context *context)
+{
+    const VkDevice device = context->getDevice();
+
+    while (!mPresentHistory.empty())
+    {
+        impl::ImagePresentOperation &presentOperation = mPresentHistory.front();
+
+        // If there is no fence associated with the history, it can't be cleaned up yet.
+        if (!presentOperation.fence.valid())
         {
-            ANGLE_VK_TRY(contextVk, result);
+            // Can't have an old present operations without a fence.
+            ASSERT(presentOperation.imageIndex != kInvalidImageIndex);
+            break;
         }
+
+        // Otherwise check to see if the fence is signaled.
+        VkResult result = presentOperation.fence.getStatus(device);
+        if (result == VK_NOT_READY)
+        {
+            // Not yet
+            break;
+        }
+
+        ANGLE_VK_TRY(context, result);
+
+        presentOperation.destroy(device, &mPresentFenceRecycler, &mPresentSemaphoreRecycler);
+        mPresentHistory.pop_front();
+    }
+
+    // The present history can grow indefinitely if a present operation is done on an index that's
+    // never acquired in the future.  In that case, there's no fence associated with that present
+    // operation.  Move the offending entry to last, so the resources associated with the rest of
+    // the present operations can be duly freed.
+    if (mPresentHistory.size() > mSwapchainImages.size() * 2 &&
+        !mPresentHistory.front().fence.valid())
+    {
+        impl::ImagePresentOperation presentOperation = std::move(mPresentHistory.front());
+        mPresentHistory.pop_front();
+
+        // We can't be stuck on a presentation to an old swapchain without a fence.
+        ASSERT(presentOperation.imageIndex != kInvalidImageIndex);
+
+        // Move clean up data to the next (now first) present operation, if any.  Note that there
+        // cannot be any clean up data on the rest of the present operations, because the first
+        // present already gathers every old swapchain to clean up.
+        ASSERT(!HasAnyOldSwapchains(mPresentHistory));
+        mPresentHistory.front().oldSwapchains = std::move(presentOperation.oldSwapchains);
+
+        // Put the present operation at the end of the queue so it's revisited after the rest of the
+        // present operations are cleaned up.
+        mPresentHistory.push_back(std::move(presentOperation));
     }
 
     return angle::Result::Continue;
 }
 
 angle::Result WindowSurfaceVk::swapImpl(const gl::Context *context,
-                                        EGLint *rects,
+                                        const EGLint *rects,
                                         EGLint n_rects,
                                         const void *pNextChain)
 {
@@ -1338,33 +2131,47 @@ angle::Result WindowSurfaceVk::swapImpl(const gl::Context *context,
 
     ContextVk *contextVk = vk::GetImpl(context);
 
-    if (mNeedToAcquireNextSwapchainImage)
-    {
-        // Acquire the next image (previously deferred).  The image may not have been already
-        // acquired if there was no rendering done at all to the default framebuffer in this frame,
-        // for example if all rendering was done to FBOs.
-        ANGLE_TRY(doDeferredAcquireNextImage(context, false));
-    }
-
     bool presentOutOfDate = false;
     ANGLE_TRY(present(contextVk, rects, n_rects, pNextChain, &presentOutOfDate));
 
     if (!presentOutOfDate)
     {
         // Defer acquiring the next swapchain image since the swapchain is not out-of-date.
-        deferAcquireNextImage(context);
+        deferAcquireNextImage();
     }
     else
     {
         // Immediately try to acquire the next image, which will recognize the out-of-date
         // swapchain (potentially because of a rotation change), and recreate it.
+        ANGLE_VK_TRACE_EVENT_AND_MARKER(contextVk, "Out-of-Date Swapbuffer");
         ANGLE_TRY(doDeferredAcquireNextImage(context, presentOutOfDate));
     }
+
+    RendererVk *renderer = contextVk->getRenderer();
+    DisplayVk *displayVk = vk::GetImpl(context->getDisplay());
+    ANGLE_TRY(renderer->syncPipelineCacheVk(displayVk, context));
 
     return angle::Result::Continue;
 }
 
-void WindowSurfaceVk::deferAcquireNextImage(const gl::Context *context)
+angle::Result WindowSurfaceVk::onSharedPresentContextFlush(const gl::Context *context)
+{
+    return swapImpl(context, nullptr, 0, nullptr);
+}
+
+bool WindowSurfaceVk::hasStagedUpdates() const
+{
+    return !mNeedToAcquireNextSwapchainImage &&
+           mSwapchainImages[mCurrentSwapchainImageIndex].image.hasStagedUpdatesInAllocatedLevels();
+}
+
+void WindowSurfaceVk::setTimestampsEnabled(bool enabled)
+{
+    // The frontend has already cached the state, nothing to do.
+    ASSERT(IsAndroid());
+}
+
+void WindowSurfaceVk::deferAcquireNextImage()
 {
     mNeedToAcquireNextSwapchainImage = true;
 
@@ -1375,14 +2182,25 @@ void WindowSurfaceVk::deferAcquireNextImage(const gl::Context *context)
     // WindowSurfaceVk::getAttachmentRenderTarget() to be called (which will acquire the next image)
     // before any RenderTargetVk accesses.  The processing of other dirty bits as well as other
     // setup for draws and reads will then access a properly-updated RenderTargetVk.
-    onStateChange(angle::SubjectMessage::SubjectChanged);
+    onStateChange(angle::SubjectMessage::SwapchainImageChanged);
 }
 
 angle::Result WindowSurfaceVk::doDeferredAcquireNextImage(const gl::Context *context,
                                                           bool presentOutOfDate)
 {
     ContextVk *contextVk = vk::GetImpl(context);
-    DisplayVk *displayVk = vk::GetImpl(context->getDisplay());
+    RendererVk *renderer = contextVk->getRenderer();
+
+    // TODO(jmadill): Expose in CommandQueueInterface, or manage in CommandQueue. b/172704839
+    if (renderer->isAsyncCommandQueueEnabled())
+    {
+        ANGLE_TRY(renderer->waitForPresentToBeSubmitted(&mSwapchainStatus));
+        VkResult result = mSwapchainStatus.lastPresentResult;
+
+        // Now that we have the result from the last present need to determine if it's out of date
+        // or not.
+        ANGLE_TRY(computePresentOutOfDate(contextVk, result, &presentOutOfDate));
+    }
 
     ANGLE_TRY(checkForOutOfDateSwapchain(contextVk, presentOutOfDate));
 
@@ -1393,9 +2211,11 @@ angle::Result WindowSurfaceVk::doDeferredAcquireNextImage(const gl::Context *con
         // Get the next available swapchain image.
 
         VkResult result = acquireNextSwapchainImage(contextVk);
-        // If SUBOPTIMAL/OUT_OF_DATE is returned, it's ok, we just need to recreate the swapchain
-        // before continuing.
-        if (ANGLE_UNLIKELY((result == VK_ERROR_OUT_OF_DATE_KHR) || (result == VK_SUBOPTIMAL_KHR)))
+
+        ASSERT(result != VK_SUBOPTIMAL_KHR);
+        // If OUT_OF_DATE is returned, it's ok, we just need to recreate the swapchain before
+        // continuing.
+        if (ANGLE_UNLIKELY(result == VK_ERROR_OUT_OF_DATE_KHR))
         {
             ANGLE_TRY(checkForOutOfDateSwapchain(contextVk, true));
             // Try one more time and bail if we fail
@@ -1404,35 +2224,143 @@ angle::Result WindowSurfaceVk::doDeferredAcquireNextImage(const gl::Context *con
         ANGLE_VK_TRY(contextVk, result);
     }
 
-    RendererVk *renderer = contextVk->getRenderer();
-    ANGLE_TRY(renderer->syncPipelineCacheVk(displayVk));
+    // Auto-invalidate the contents of the surface.  According to EGL, on swap:
+    //
+    // - When EGL_BUFFER_DESTROYED is specified, the contents of the color image can be
+    //   invalidated.
+    //    * This is disabled when buffer age has been queried to work around a dEQP test bug.
+    // - Depth/Stencil can always be invalidated
+    //
+    // In all cases, when in shared present mode, swap is implicit and the swap behavior
+    // doesn't apply so no invalidation is done.
+    if (!isSharedPresentMode())
+    {
+        if (mState.swapBehavior == EGL_BUFFER_DESTROYED && mBufferAgeQueryFrameNumber == 0)
+        {
+            mSwapchainImages[mCurrentSwapchainImageIndex].image.invalidateSubresourceContent(
+                contextVk, gl::LevelIndex(0), 0, 1, nullptr);
+            if (mColorImageMS.valid())
+            {
+                mColorImageMS.invalidateSubresourceContent(contextVk, gl::LevelIndex(0), 0, 1,
+                                                           nullptr);
+            }
+        }
+        if (mDepthStencilImage.valid())
+        {
+            mDepthStencilImage.invalidateSubresourceContent(contextVk, gl::LevelIndex(0), 0, 1,
+                                                            nullptr);
+            mDepthStencilImage.invalidateSubresourceStencilContent(contextVk, gl::LevelIndex(0), 0,
+                                                                   1, nullptr);
+        }
+    }
 
     return angle::Result::Continue;
 }
 
+void WindowSurfaceVk::flushAcquireImageSemaphore(const gl::Context *context)
+{
+    ASSERT(mAcquireImageSemaphore);
+    ContextVk *contextVk = vk::GetImpl(context);
+    contextVk->addWaitSemaphore(mAcquireImageSemaphore->getHandle(),
+                                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+    mAcquireImageSemaphore = nullptr;
+}
+
+// This method will either return VK_SUCCESS or VK_ERROR_*.  Thus, it is appropriate to ASSERT that
+// the return value won't be VK_SUBOPTIMAL_KHR.
 VkResult WindowSurfaceVk::acquireNextSwapchainImage(vk::Context *context)
 {
     VkDevice device = context->getDevice();
 
-    vk::DeviceScoped<vk::Semaphore> acquireImageSemaphore(device);
-    VkResult result = acquireImageSemaphore.get().init(device);
-    if (ANGLE_UNLIKELY(result != VK_SUCCESS))
+    if (isSharedPresentMode() && !mNeedToAcquireNextSwapchainImage)
     {
+        ASSERT(mSwapchainImages.size());
+        SwapchainImage &image = mSwapchainImages[0];
+        if (image.image.valid() &&
+            (image.image.getCurrentImageLayout() == vk::ImageLayout::SharedPresent))
+        {  // This will check for OUT_OF_DATE when in single image mode. and prevent
+           // re-AcquireNextImage.
+            return vkGetSwapchainStatusKHR(device, mSwapchain);
+        }
+    }
+
+    const vk::Semaphore *acquireImageSemaphore = &mAcquireImageSemaphores.front();
+
+    // Associate a fence with this acquire.  It will be used to know when to recycle the semaphore
+    // used to previously present the returned image.  Note that while this fence is provided to
+    // vkAcquireNextImageKHR, it's actually about the present operation.  There is currently no way
+    // to associate the fence with the present operation itself, so this is a hack.
+    vk::Fence presentFence;
+    const bool presentFenceInferredFromAcquire =
+        !context->getFeatures().supportsSwapchainMaintenance1.enabled;
+    if (presentFenceInferredFromAcquire)
+    {
+        const VkResult result = NewFence(context, &mPresentFenceRecycler, &presentFence);
+        if (result != VK_SUCCESS)
+        {
+            return result;
+        }
+    }
+
+    VkResult result =
+        vkAcquireNextImageKHR(device, mSwapchain, UINT64_MAX, acquireImageSemaphore->getHandle(),
+                              presentFence.getHandle(), &mCurrentSwapchainImageIndex);
+
+    // VK_SUBOPTIMAL_KHR is ok since we still have an Image that can be presented successfully
+    if (ANGLE_UNLIKELY(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR))
+    {
+        // On failure, the fence is going to be untouched, so it can be recycled right away.
+        if (presentFenceInferredFromAcquire)
+        {
+            mPresentFenceRecycler.recycle(std::move(presentFence));
+        }
         return result;
     }
 
-    result = vkAcquireNextImageKHR(device, mSwapchain, UINT64_MAX,
-                                   acquireImageSemaphore.get().getHandle(), VK_NULL_HANDLE,
-                                   &mCurrentSwapchainImageIndex);
-    if (ANGLE_UNLIKELY(result != VK_SUCCESS))
+    // Associate the present fence with the last present operation.
+    if (presentFenceInferredFromAcquire)
     {
-        return result;
+        AssociateFenceWithPresentHistory(mCurrentSwapchainImageIndex, std::move(presentFence),
+                                         &mPresentHistory);
+    }
+
+    SwapchainImage &image = mSwapchainImages[mCurrentSwapchainImageIndex];
+
+    // Single Image Mode
+    if (isSharedPresentMode() &&
+        (image.image.getCurrentImageLayout() != vk::ImageLayout::SharedPresent))
+    {
+        rx::RendererVk *rendererVk = context->getRenderer();
+        rx::vk::PrimaryCommandBuffer primaryCommandBuffer;
+        auto protectionType = vk::ConvertProtectionBoolToType(mState.hasProtectedContent());
+        if (rendererVk->getCommandBufferOneOff(context, protectionType, &primaryCommandBuffer) ==
+            angle::Result::Continue)
+        {
+            // Note return errors is early exit may leave new Image and Swapchain in unknown state.
+            image.image.recordWriteBarrierOneOff(context, vk::ImageLayout::SharedPresent,
+                                                 &primaryCommandBuffer);
+            if (primaryCommandBuffer.end() != VK_SUCCESS)
+            {
+                mDesiredSwapchainPresentMode = vk::PresentMode::FifoKHR;
+                return VK_ERROR_OUT_OF_DATE_KHR;
+            }
+            QueueSerial queueSerial;
+            if (rendererVk->queueSubmitOneOff(
+                    context, std::move(primaryCommandBuffer), protectionType,
+                    egl::ContextPriority::Medium, acquireImageSemaphore,
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, nullptr,
+                    vk::SubmitPolicy::EnsureSubmitted, &queueSerial) != angle::Result::Continue)
+            {
+                mDesiredSwapchainPresentMode = vk::PresentMode::FifoKHR;
+                return VK_ERROR_OUT_OF_DATE_KHR;
+            }
+            acquireImageSemaphore = nullptr;
+        }
     }
 
     // The semaphore will be waited on in the next flush.
-    mAcquireImageSemaphore = acquireImageSemaphore.release();
-
-    SwapchainImage &image = mSwapchainImages[mCurrentSwapchainImageIndex];
+    mAcquireImageSemaphores.next();
+    mAcquireImageSemaphore = acquireImageSemaphore;
 
     // Update RenderTarget pointers to this swapchain image if not multisampling.  Note: a possible
     // optimization is to defer the |vkAcquireNextImageKHR| call itself to |present()| if
@@ -1443,9 +2371,9 @@ VkResult WindowSurfaceVk::acquireNextSwapchainImage(vk::Context *context)
     }
 
     // Notify the owning framebuffer there may be staged updates.
-    if (image.image.hasStagedUpdates())
+    if (image.image.hasStagedUpdatesInAllocatedLevels())
     {
-        onStateChange(angle::SubjectMessage::SubjectChanged);
+        onStateChange(angle::SubjectMessage::SwapchainImageChanged);
     }
 
     // Note that an acquire is no longer needed.
@@ -1498,6 +2426,12 @@ egl::Error WindowSurfaceVk::getMscRate(EGLint * /*numerator*/, EGLint * /*denomi
 
 void WindowSurfaceVk::setSwapInterval(EGLint interval)
 {
+    // Don't let setSwapInterval change presentation mode if using SHARED present.
+    if (isSharedPresentMode())
+    {
+        return;
+    }
+
     const EGLint minSwapInterval = mState.config->minSwapInterval;
     const EGLint maxSwapInterval = mState.config->maxSwapInterval;
     ASSERT(minSwapInterval == 0 || minSwapInterval == 1);
@@ -1534,9 +2468,19 @@ EGLint WindowSurfaceVk::getWidth() const
     return static_cast<EGLint>(mColorRenderTarget.getExtents().width);
 }
 
+EGLint WindowSurfaceVk::getRotatedWidth() const
+{
+    return static_cast<EGLint>(mColorRenderTarget.getRotatedExtents().width);
+}
+
 EGLint WindowSurfaceVk::getHeight() const
 {
     return static_cast<EGLint>(mColorRenderTarget.getExtents().height);
+}
+
+EGLint WindowSurfaceVk::getRotatedHeight() const
+{
+    return static_cast<EGLint>(mColorRenderTarget.getRotatedExtents().height);
 }
 
 egl::Error WindowSurfaceVk::getUserWidth(const egl::Display *display, EGLint *value) const
@@ -1591,6 +2535,13 @@ angle::Result WindowSurfaceVk::getUserExtentsImpl(DisplayVk *displayVk,
     ANGLE_VK_TRY(displayVk,
                  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, mSurface, surfaceCaps));
 
+    // With real prerotation, the surface reports the rotated sizes.  With emulated prerotation,
+    // adjust the window extents to match what real pre-rotation would have reported.
+    if (Is90DegreeRotation(mEmulatedPreTransform))
+    {
+        std::swap(surfaceCaps->currentExtent.width, surfaceCaps->currentExtent.height);
+    }
+
     return angle::Result::Continue;
 }
 
@@ -1606,28 +2557,32 @@ EGLint WindowSurfaceVk::getSwapBehavior() const
     return EGL_BUFFER_DESTROYED;
 }
 
-angle::Result WindowSurfaceVk::getCurrentFramebuffer(ContextVk *contextVk,
-                                                     const vk::RenderPass &compatibleRenderPass,
-                                                     vk::Framebuffer **framebufferOut)
+angle::Result WindowSurfaceVk::getCurrentFramebuffer(
+    ContextVk *contextVk,
+    FramebufferFetchMode fetchMode,
+    const vk::RenderPass &compatibleRenderPass,
+    const SwapchainResolveMode swapchainResolveMode,
+    vk::MaybeImagelessFramebuffer *framebufferOut)
 {
     // FramebufferVk dirty-bit processing should ensure that a new image was acquired.
     ASSERT(!mNeedToAcquireNextSwapchainImage);
 
-    vk::Framebuffer &currentFramebuffer =
-        isMultiSampled() ? mFramebufferMS
-                         : mSwapchainImages[mCurrentSwapchainImageIndex].framebuffer;
+    // Track the new fetch mode
+    mFramebufferFetchMode = fetchMode;
 
+    vk::Framebuffer &currentFramebuffer = chooseFramebuffer(swapchainResolveMode);
     if (currentFramebuffer.valid())
     {
         // Validation layers should detect if the render pass is really compatible.
-        *framebufferOut = &currentFramebuffer;
+        framebufferOut->setHandle(currentFramebuffer.getHandle());
         return angle::Result::Continue;
     }
 
     VkFramebufferCreateInfo framebufferInfo = {};
+    uint32_t attachmentCount                = mDepthStencilImage.valid() ? 2u : 1u;
 
-    const gl::Extents extents             = mColorRenderTarget.getExtents();
-    std::array<VkImageView, 2> imageViews = {};
+    const gl::Extents rotatedExtents      = mColorRenderTarget.getRotatedExtents();
+    std::array<VkImageView, 3> imageViews = {};
 
     if (mDepthStencilImage.valid())
     {
@@ -1639,49 +2594,68 @@ angle::Result WindowSurfaceVk::getCurrentFramebuffer(ContextVk *contextVk,
     framebufferInfo.sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
     framebufferInfo.flags           = 0;
     framebufferInfo.renderPass      = compatibleRenderPass.getHandle();
-    framebufferInfo.attachmentCount = (mDepthStencilImage.valid() ? 2u : 1u);
+    framebufferInfo.attachmentCount = attachmentCount;
     framebufferInfo.pAttachments    = imageViews.data();
-    framebufferInfo.width           = static_cast<uint32_t>(extents.width);
-    framebufferInfo.height          = static_cast<uint32_t>(extents.height);
-    if (Is90DegreeRotation(mPreTransform))
-    {
-        std::swap(framebufferInfo.width, framebufferInfo.height);
-    }
-    framebufferInfo.layers = 1;
+    framebufferInfo.width           = static_cast<uint32_t>(rotatedExtents.width);
+    framebufferInfo.height          = static_cast<uint32_t>(rotatedExtents.height);
+    framebufferInfo.layers          = 1;
 
     if (isMultiSampled())
     {
-        // If multisampled, there is only a single color image and framebuffer.
         const vk::ImageView *imageView = nullptr;
         ANGLE_TRY(mColorRenderTarget.getImageView(contextVk, &imageView));
         imageViews[0] = imageView->getHandle();
-        ANGLE_VK_TRY(contextVk, mFramebufferMS.init(contextVk->getDevice(), framebufferInfo));
+
+        if (swapchainResolveMode == SwapchainResolveMode::Enabled)
+        {
+            SwapchainImage &swapchainImage = mSwapchainImages[mCurrentSwapchainImageIndex];
+
+            framebufferInfo.attachmentCount = attachmentCount + 1;
+
+            ANGLE_TRY(swapchainImage.imageViews.getLevelLayerDrawImageView(
+                contextVk, swapchainImage.image, vk::LevelIndex(0), 0,
+                gl::SrgbWriteControlMode::Default, &imageView));
+            imageViews[attachmentCount] = imageView->getHandle();
+
+            ANGLE_VK_TRY(contextVk, swapchainImage.framebufferResolveMS.init(contextVk->getDevice(),
+                                                                             framebufferInfo));
+        }
+        else
+        {
+            // If multisampled, there is only a single color image and framebuffer.
+            ANGLE_VK_TRY(contextVk, mFramebufferMS.init(contextVk->getDevice(), framebufferInfo));
+        }
     }
     else
     {
-        for (SwapchainImage &swapchainImage : mSwapchainImages)
-        {
-            const vk::ImageView *imageView = nullptr;
-            ANGLE_TRY(swapchainImage.imageViews.getLevelLayerDrawImageView(
-                contextVk, swapchainImage.image, vk::LevelIndex(0), 0, &imageView));
+        SwapchainImage &swapchainImage = mSwapchainImages[mCurrentSwapchainImageIndex];
 
-            imageViews[0] = imageView->getHandle();
+        const vk::ImageView *imageView = nullptr;
+        ANGLE_TRY(swapchainImage.imageViews.getLevelLayerDrawImageView(
+            contextVk, swapchainImage.image, vk::LevelIndex(0), 0,
+            gl::SrgbWriteControlMode::Default, &imageView));
+
+        imageViews[0] = imageView->getHandle();
+
+        if (fetchMode == FramebufferFetchMode::Enabled)
+        {
+            ANGLE_VK_TRY(contextVk, swapchainImage.fetchFramebuffer.init(contextVk->getDevice(),
+                                                                         framebufferInfo));
+        }
+        else
+        {
             ANGLE_VK_TRY(contextVk,
                          swapchainImage.framebuffer.init(contextVk->getDevice(), framebufferInfo));
         }
     }
 
     ASSERT(currentFramebuffer.valid());
-    *framebufferOut = &currentFramebuffer;
+    framebufferOut->setHandle(currentFramebuffer.getHandle());
     return angle::Result::Continue;
 }
 
-vk::Semaphore WindowSurfaceVk::getAcquireImageSemaphore()
-{
-    return std::move(mAcquireImageSemaphore);
-}
-
 angle::Result WindowSurfaceVk::initializeContents(const gl::Context *context,
+                                                  GLenum binding,
                                                   const gl::ImageIndex &imageIndex)
 {
     ContextVk *contextVk = vk::GetImpl(context);
@@ -1691,21 +2665,37 @@ angle::Result WindowSurfaceVk::initializeContents(const gl::Context *context,
         // Acquire the next image (previously deferred).  Some tests (e.g.
         // GenerateMipmapWithRedefineBenchmark.Run/vulkan_webgl) cause this path to be taken,
         // because of dirty-object processing.
+        ANGLE_VK_TRACE_EVENT_AND_MARKER(contextVk, "Initialize Swap Image");
         ANGLE_TRY(doDeferredAcquireNextImage(context, false));
+    }
+    if (mAcquireImageSemaphore)
+    {
+        flushAcquireImageSemaphore(context);
     }
 
     ASSERT(mSwapchainImages.size() > 0);
     ASSERT(mCurrentSwapchainImageIndex < mSwapchainImages.size());
 
-    vk::ImageHelper *image =
-        isMultiSampled() ? &mColorImageMS : &mSwapchainImages[mCurrentSwapchainImageIndex].image;
-    image->stageRobustResourceClear(imageIndex);
-    ANGLE_TRY(image->flushAllStagedUpdates(contextVk));
-
-    if (mDepthStencilImage.valid())
+    switch (binding)
     {
-        mDepthStencilImage.stageRobustResourceClear(gl::ImageIndex::Make2D(0));
-        ANGLE_TRY(mDepthStencilImage.flushAllStagedUpdates(contextVk));
+        case GL_BACK:
+        {
+            vk::ImageHelper *image = isMultiSampled()
+                                         ? &mColorImageMS
+                                         : &mSwapchainImages[mCurrentSwapchainImageIndex].image;
+            image->stageRobustResourceClear(imageIndex);
+            ANGLE_TRY(image->flushAllStagedUpdates(contextVk));
+            break;
+        }
+        case GL_DEPTH:
+        case GL_STENCIL:
+            ASSERT(mDepthStencilImage.valid());
+            mDepthStencilImage.stageRobustResourceClear(gl::ImageIndex::Make2D(0));
+            ANGLE_TRY(mDepthStencilImage.flushAllStagedUpdates(contextVk));
+            break;
+        default:
+            UNREACHABLE();
+            break;
     }
 
     return angle::Result::Continue;
@@ -1731,7 +2721,7 @@ void WindowSurfaceVk::updateOverlay(ContextVk *contextVk) const
         overlay->getTextWidget(gl::WidgetId::VulkanLastValidationMessage)
             ->set(std::move(lastValidationMessage));
         overlay->getCountWidget(gl::WidgetId::VulkanValidationMessageCount)
-            ->add(validationMessageCount);
+            ->set(validationMessageCount);
     }
 
     contextVk->updateOverlayOnPresent();
@@ -1751,11 +2741,173 @@ angle::Result WindowSurfaceVk::drawOverlay(ContextVk *contextVk, SwapchainImage 
 
     // Draw overlay
     const vk::ImageView *imageView = nullptr;
-    ANGLE_TRY(image->imageViews.getLevelLayerDrawImageView(contextVk, image->image,
-                                                           vk::LevelIndex(0), 0, &imageView));
-    ANGLE_TRY(overlayVk->onPresent(contextVk, &image->image, imageView));
+    ANGLE_TRY(image->imageViews.getLevelLayerDrawImageView(
+        contextVk, image->image, vk::LevelIndex(0), 0, gl::SrgbWriteControlMode::Default,
+        &imageView));
+    ANGLE_TRY(overlayVk->onPresent(contextVk, &image->image, imageView,
+                                   Is90DegreeRotation(getPreTransform())));
 
     return angle::Result::Continue;
+}
+
+egl::Error WindowSurfaceVk::setAutoRefreshEnabled(bool enabled)
+{
+    if (enabled && !supportsPresentMode(vk::PresentMode::SharedContinuousRefreshKHR))
+    {
+        return egl::EglBadMatch();
+    }
+
+    vk::PresentMode newDesiredSwapchainPresentMode =
+        enabled ? vk::PresentMode::SharedContinuousRefreshKHR
+                : vk::PresentMode::SharedDemandRefreshKHR;
+    // Auto refresh is only applicable in shared present mode
+    if (isSharedPresentModeDesired() &&
+        (mDesiredSwapchainPresentMode != newDesiredSwapchainPresentMode))
+    {
+        // In cases where the user switches to single buffer and have yet to call eglSwapBuffer,
+        // enabling/disabling auto refresh should only change mDesiredSwapchainPresentMode as we
+        // have not yet actually switched to single buffer mode.
+        mDesiredSwapchainPresentMode = newDesiredSwapchainPresentMode;
+
+        // If auto refresh is updated and we are already in single buffer mode we may need to
+        // recreate swapchain. We need the deferAcquireNextImage() call as unlike setRenderBuffer(),
+        // the user does not have to call eglSwapBuffers after setting the auto refresh attribute
+        if (isSharedPresentMode() &&
+            !IsCompatiblePresentMode(mDesiredSwapchainPresentMode, mCompatiblePresentModes.data(),
+                                     mCompatiblePresentModes.size()))
+        {
+            deferAcquireNextImage();
+        }
+    }
+
+    return egl::NoError();
+}
+
+egl::Error WindowSurfaceVk::getBufferAge(const gl::Context *context, EGLint *age)
+{
+    if (mNeedToAcquireNextSwapchainImage)
+    {
+        // Acquire the current image if needed.
+        DisplayVk *displayVk = vk::GetImpl(context->getDisplay());
+        egl::Error result =
+            angle::ToEGL(doDeferredAcquireNextImage(context, false), displayVk, EGL_BAD_SURFACE);
+        if (result.isError())
+        {
+            return result;
+        }
+    }
+
+    if (isMultiSampled())
+    {
+        *age = 0;
+        return egl::NoError();
+    }
+
+    if (mBufferAgeQueryFrameNumber == 0)
+    {
+        ANGLE_VK_PERF_WARNING(vk::GetImpl(context), GL_DEBUG_SEVERITY_LOW,
+                              "Querying age of a surface will make it retain its content");
+
+        mBufferAgeQueryFrameNumber = mFrameCount;
+    }
+    if (age != nullptr)
+    {
+        uint64_t frameNumber = mSwapchainImages[mCurrentSwapchainImageIndex].mFrameNumber;
+        if (frameNumber < mBufferAgeQueryFrameNumber)
+        {
+            *age = 0;  // Has not been used for rendering yet or since age was queried, no age.
+        }
+        else
+        {
+            *age = static_cast<EGLint>(mFrameCount - frameNumber);
+        }
+    }
+    return egl::NoError();
+}
+
+bool WindowSurfaceVk::supportsPresentMode(vk::PresentMode presentMode) const
+{
+    return (std::find(mPresentModes.begin(), mPresentModes.end(), presentMode) !=
+            mPresentModes.end());
+}
+
+egl::Error WindowSurfaceVk::setRenderBuffer(EGLint renderBuffer)
+{
+    if (renderBuffer == EGL_SINGLE_BUFFER)
+    {
+        vk::PresentMode presentMode = mState.autoRefreshEnabled
+                                          ? vk::PresentMode::SharedContinuousRefreshKHR
+                                          : vk::PresentMode::SharedDemandRefreshKHR;
+        if (!supportsPresentMode(presentMode))
+        {
+            return egl::EglBadMatch();
+        }
+        mDesiredSwapchainPresentMode = presentMode;
+    }
+    else  // EGL_BACK_BUFFER
+    {
+        mDesiredSwapchainPresentMode = vk::PresentMode::FifoKHR;
+    }
+    return egl::NoError();
+}
+
+egl::Error WindowSurfaceVk::lockSurface(const egl::Display *display,
+                                        EGLint usageHint,
+                                        bool preservePixels,
+                                        uint8_t **bufferPtrOut,
+                                        EGLint *bufferPitchOut)
+{
+    ANGLE_TRACE_EVENT0("gpu.angle", "WindowSurfaceVk::lockSurface");
+
+    vk::ImageHelper *image = &mSwapchainImages[mCurrentSwapchainImageIndex].image;
+    if (!image->valid())
+    {
+        if (acquireNextSwapchainImage(vk::GetImpl(display)) != VK_SUCCESS)
+        {
+            return egl::EglBadAccess();
+        }
+    }
+    image = &mSwapchainImages[mCurrentSwapchainImageIndex].image;
+    ASSERT(image->valid());
+
+    angle::Result result =
+        LockSurfaceImpl(vk::GetImpl(display), image, mLockBufferHelper, getWidth(), getHeight(),
+                        usageHint, preservePixels, bufferPtrOut, bufferPitchOut);
+    return angle::ToEGL(result, vk::GetImpl(display), EGL_BAD_ACCESS);
+}
+
+egl::Error WindowSurfaceVk::unlockSurface(const egl::Display *display, bool preservePixels)
+{
+    vk::ImageHelper *image = &mSwapchainImages[mCurrentSwapchainImageIndex].image;
+    ASSERT(image->valid());
+    ASSERT(mLockBufferHelper.valid());
+
+    return angle::ToEGL(UnlockSurfaceImpl(vk::GetImpl(display), image, mLockBufferHelper,
+                                          getWidth(), getHeight(), preservePixels),
+                        vk::GetImpl(display), EGL_BAD_ACCESS);
+}
+
+EGLint WindowSurfaceVk::origin() const
+{
+    return EGL_UPPER_LEFT_KHR;
+}
+
+egl::Error WindowSurfaceVk::attachToFramebuffer(const gl::Context *context,
+                                                gl::Framebuffer *framebuffer)
+{
+    FramebufferVk *framebufferVk = GetImplAs<FramebufferVk>(framebuffer);
+    ASSERT(!framebufferVk->getBackbuffer());
+    framebufferVk->setBackbuffer(this);
+    return egl::NoError();
+}
+
+egl::Error WindowSurfaceVk::detachFromFramebuffer(const gl::Context *context,
+                                                  gl::Framebuffer *framebuffer)
+{
+    FramebufferVk *framebufferVk = GetImplAs<FramebufferVk>(framebuffer);
+    ASSERT(framebufferVk->getBackbuffer() == this);
+    framebufferVk->setBackbuffer(nullptr);
+    return egl::NoError();
 }
 
 }  // namespace rx

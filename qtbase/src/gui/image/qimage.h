@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QIMAGE_H
 #define QIMAGE_H
@@ -47,12 +11,10 @@
 #include <QtGui/qpixelformat.h>
 #include <QtGui/qtransform.h>
 #include <QtCore/qbytearray.h>
+#include <QtCore/qbytearrayview.h>
 #include <QtCore/qrect.h>
 #include <QtCore/qstring.h>
-
-#if QT_DEPRECATED_SINCE(5, 0)
-#include <QtCore/qstringlist.h>
-#endif
+#include <QtCore/qcontainerfwd.h>
 
 #if defined(Q_OS_DARWIN) || defined(Q_QDOC)
 Q_FORWARD_DECLARE_MUTABLE_CG_TYPE(CGImage);
@@ -64,35 +26,10 @@ QT_BEGIN_NAMESPACE
 class QColorSpace;
 class QColorTransform;
 class QIODevice;
-class QMatrix;
-class QStringList;
 class QTransform;
 class QVariant;
-template <class T> class QList;
-template <class T> class QVector;
 
 struct QImageData;
-class QImageDataMisc; // internal
-#if QT_DEPRECATED_SINCE(5, 0)
-class QImageTextKeyLang {
-public:
-    QT_DEPRECATED QImageTextKeyLang(const char* k, const char* l) : key(k), lang(l) { }
-    QT_DEPRECATED QImageTextKeyLang() { }
-
-    QByteArray key;
-    QByteArray lang;
-
-    bool operator< (const QImageTextKeyLang& other) const
-        { return key < other.key || (key==other.key && lang < other.lang); }
-    bool operator== (const QImageTextKeyLang& other) const
-        { return key==other.key && lang==other.lang; }
-    inline bool operator!= (const QImageTextKeyLang &other) const
-        { return !operator==(other); }
-private:
-    friend class QImage;
-    QImageTextKeyLang(bool /*dummy*/) {}
-};
-#endif
 
 typedef void (*QImageCleanupFunction)(void*);
 
@@ -132,6 +69,12 @@ public:
         Format_RGBA64_Premultiplied,
         Format_Grayscale16,
         Format_BGR888,
+        Format_RGBX16FPx4,
+        Format_RGBA16FPx4,
+        Format_RGBA16FPx4_Premultiplied,
+        Format_RGBX32FPx4,
+        Format_RGBA32FPx4,
+        Format_RGBA32FPx4_Premultiplied,
 #ifndef Q_QDOC
         NImageFormats
 #endif
@@ -143,8 +86,8 @@ public:
     QImage(int width, int height, Format format);
     QImage(uchar *data, int width, int height, Format format, QImageCleanupFunction cleanupFunction = nullptr, void *cleanupInfo = nullptr);
     QImage(const uchar *data, int width, int height, Format format, QImageCleanupFunction cleanupFunction = nullptr, void *cleanupInfo = nullptr);
-    QImage(uchar *data, int width, int height, int bytesPerLine, Format format, QImageCleanupFunction cleanupFunction = nullptr, void *cleanupInfo = nullptr);
-    QImage(const uchar *data, int width, int height, int bytesPerLine, Format format, QImageCleanupFunction cleanupFunction = nullptr, void *cleanupInfo = nullptr);
+    QImage(uchar *data, int width, int height, qsizetype bytesPerLine, Format format, QImageCleanupFunction cleanupFunction = nullptr, void *cleanupInfo = nullptr);
+    QImage(const uchar *data, int width, int height, qsizetype bytesPerLine, Format format, QImageCleanupFunction cleanupFunction = nullptr, void *cleanupInfo = nullptr);
 
 #ifndef QT_NO_IMAGEFORMAT_XPM
     explicit QImage(const char * const xpm[]);
@@ -152,16 +95,15 @@ public:
     explicit QImage(const QString &fileName, const char *format = nullptr);
 
     QImage(const QImage &);
-    inline QImage(QImage &&other) noexcept
-        : QPaintDevice(), d(nullptr)
-    { qSwap(d, other.d); }
+    QImage(QImage &&other) noexcept
+        : QPaintDevice(), d(std::exchange(other.d, nullptr))
+    {}
     ~QImage();
 
     QImage &operator=(const QImage &);
-    inline QImage &operator=(QImage &&other) noexcept
-    { qSwap(d, other.d); return *this; }
-    inline void swap(QImage &other) noexcept
-    { qSwap(d, other.d); }
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QImage)
+    void swap(QImage &other) noexcept
+    { qt_ptr_swap(d, other.d); }
 
     bool isNull() const;
 
@@ -173,28 +115,29 @@ public:
     void detach();
     bool isDetached() const;
 
-    QImage copy(const QRect &rect = QRect()) const;
-    inline QImage copy(int x, int y, int w, int h) const
-        { return copy(QRect(x, y, w, h)); }
+    [[nodiscard]] QImage copy(const QRect &rect = QRect()) const;
+    [[nodiscard]] QImage copy(int x, int y, int w, int h) const
+    { return copy(QRect(x, y, w, h)); }
 
     Format format() const;
 
-#if defined(Q_COMPILER_REF_QUALIFIERS) && !defined(QT_COMPILING_QIMAGE_COMPAT_CPP)
-    Q_REQUIRED_RESULT Q_ALWAYS_INLINE QImage convertToFormat(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) const &
+    [[nodiscard]] QImage convertToFormat(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) const &
     { return convertToFormat_helper(f, flags); }
-    Q_REQUIRED_RESULT Q_ALWAYS_INLINE QImage convertToFormat(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) &&
+    [[nodiscard]] QImage convertToFormat(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) &&
     {
         if (convertToFormat_inplace(f, flags))
             return std::move(*this);
         else
             return convertToFormat_helper(f, flags);
     }
-#else
-    Q_REQUIRED_RESULT QImage convertToFormat(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) const;
-#endif
-    Q_REQUIRED_RESULT QImage convertToFormat(Format f, const QVector<QRgb> &colorTable, Qt::ImageConversionFlags flags = Qt::AutoColor) const;
-    bool reinterpretAsFormat(Format f);
+    [[nodiscard]] QImage convertToFormat(Format f, const QList<QRgb> &colorTable,
+                                         Qt::ImageConversionFlags flags = Qt::AutoColor) const;
 
+    bool reinterpretAsFormat(Format f);
+    [[nodiscard]] QImage convertedTo(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) const &
+    { return convertToFormat(f, flags); }
+    [[nodiscard]] QImage convertedTo(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) &&
+    { return convertToFormat(f, flags); }
     void convertTo(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor);
 
     int width() const;
@@ -217,19 +160,12 @@ public:
     const uchar *bits() const;
     const uchar *constBits() const;
 
-#if QT_DEPRECATED_SINCE(5, 10)
-    QT_DEPRECATED_X("Use sizeInBytes") int byteCount() const;
-#endif
     qsizetype sizeInBytes() const;
 
     uchar *scanLine(int);
     const uchar *scanLine(int) const;
     const uchar *constScanLine(int) const;
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
     qsizetype bytesPerLine() const;
-#else
-    int bytesPerLine() const;
-#endif
 
     bool valid(int x, int y) const;
     bool valid(const QPoint &pt) const;
@@ -249,15 +185,12 @@ public:
     void setPixelColor(int x, int y, const QColor &c);
     void setPixelColor(const QPoint &pt, const QColor &c);
 
-    QVector<QRgb> colorTable() const;
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
-    void setColorTable(const QVector<QRgb> &colors);
-#else
-    void setColorTable(const QVector<QRgb> colors);
-#endif
+    QList<QRgb> colorTable() const;
+    void setColorTable(const QList<QRgb> &colors);
 
     qreal devicePixelRatio() const;
     void setDevicePixelRatio(qreal scaleFactor);
+    QSizeF deviceIndependentSize() const;
 
     void fill(uint pixel);
     void fill(const QColor &color);
@@ -266,69 +199,60 @@ public:
 
     bool hasAlphaChannel() const;
     void setAlphaChannel(const QImage &alphaChannel);
-#if QT_DEPRECATED_SINCE(5, 15)
-    QT_DEPRECATED_X("Use convertToFormat(QImage::Format_Alpha8)")
-    QImage alphaChannel() const;
-#endif
-    QImage createAlphaMask(Qt::ImageConversionFlags flags = Qt::AutoColor) const;
+    [[nodiscard]] QImage createAlphaMask(Qt::ImageConversionFlags flags = Qt::AutoColor) const;
 #ifndef QT_NO_IMAGE_HEURISTIC_MASK
-    QImage createHeuristicMask(bool clipTight = true) const;
+    [[nodiscard]] QImage createHeuristicMask(bool clipTight = true) const;
 #endif
-    QImage createMaskFromColor(QRgb color, Qt::MaskMode mode = Qt::MaskInColor) const;
+    [[nodiscard]] QImage createMaskFromColor(QRgb color, Qt::MaskMode mode = Qt::MaskInColor) const;
 
-    inline QImage scaled(int w, int h, Qt::AspectRatioMode aspectMode = Qt::IgnoreAspectRatio,
-                        Qt::TransformationMode mode = Qt::FastTransformation) const
-        { return scaled(QSize(w, h), aspectMode, mode); }
-    QImage scaled(const QSize &s, Qt::AspectRatioMode aspectMode = Qt::IgnoreAspectRatio,
-                 Qt::TransformationMode mode = Qt::FastTransformation) const;
-    QImage scaledToWidth(int w, Qt::TransformationMode mode = Qt::FastTransformation) const;
-    QImage scaledToHeight(int h, Qt::TransformationMode mode = Qt::FastTransformation) const;
-#if QT_DEPRECATED_SINCE(5, 15)
-    QT_DEPRECATED_X("Use transformed(const QTransform &matrix, Qt::TransformationMode mode)")
-    QImage transformed(const QMatrix &matrix, Qt::TransformationMode mode = Qt::FastTransformation) const;
-    QT_DEPRECATED_X("trueMatrix(const QTransform &, int w, int h)")
-    static QMatrix trueMatrix(const QMatrix &, int w, int h);
-#endif // QT_DEPRECATED_SINCE(5, 15)
-    QImage transformed(const QTransform &matrix, Qt::TransformationMode mode = Qt::FastTransformation) const;
+    [[nodiscard]] QImage scaled(int w, int h, Qt::AspectRatioMode aspectMode = Qt::IgnoreAspectRatio,
+                                Qt::TransformationMode mode = Qt::FastTransformation) const
+    { return scaled(QSize(w, h), aspectMode, mode); }
+    [[nodiscard]] QImage scaled(const QSize &s, Qt::AspectRatioMode aspectMode = Qt::IgnoreAspectRatio,
+                                Qt::TransformationMode mode = Qt::FastTransformation) const;
+    [[nodiscard]] QImage scaledToWidth(int w, Qt::TransformationMode mode = Qt::FastTransformation) const;
+    [[nodiscard]] QImage scaledToHeight(int h, Qt::TransformationMode mode = Qt::FastTransformation) const;
+    [[nodiscard]] QImage transformed(const QTransform &matrix, Qt::TransformationMode mode = Qt::FastTransformation) const;
     static QTransform trueMatrix(const QTransform &, int w, int h);
-#if defined(Q_COMPILER_REF_QUALIFIERS) && !defined(QT_COMPILING_QIMAGE_COMPAT_CPP)
-    QImage mirrored(bool horizontally = false, bool vertically = true) const &
-        { return mirrored_helper(horizontally, vertically); }
-    QImage &&mirrored(bool horizontally = false, bool vertically = true) &&
-        { mirrored_inplace(horizontally, vertically); return std::move(*this); }
-    QImage rgbSwapped() const &
-        { return rgbSwapped_helper(); }
-    QImage &&rgbSwapped() &&
-        { rgbSwapped_inplace(); return std::move(*this); }
-#else
-    QImage mirrored(bool horizontally = false, bool vertically = true) const;
-    QImage rgbSwapped() const;
-#endif
+
+    [[nodiscard]] QImage mirrored(bool horizontally = false, bool vertically = true) const &
+    { return mirrored_helper(horizontally, vertically); }
+    [[nodiscard]] QImage mirrored(bool horizontally = false, bool vertically = true) &&
+    { mirrored_inplace(horizontally, vertically); return std::move(*this); }
+    [[nodiscard]] QImage rgbSwapped() const &
+    { return rgbSwapped_helper(); }
+    [[nodiscard]] QImage rgbSwapped() &&
+    { rgbSwapped_inplace(); return std::move(*this); }
+    void mirror(bool horizontally = false, bool vertically = true)
+    { mirrored_inplace(horizontally, vertically); }
+    void rgbSwap()
+    { rgbSwapped_inplace(); }
     void invertPixels(InvertMode = InvertRgb);
 
     QColorSpace colorSpace() const;
-    QImage convertedToColorSpace(const QColorSpace &) const;
+    [[nodiscard]] QImage convertedToColorSpace(const QColorSpace &) const;
     void convertToColorSpace(const QColorSpace &);
     void setColorSpace(const QColorSpace &);
 
+    QImage colorTransformed(const QColorTransform &transform) const &;
+    QImage colorTransformed(const QColorTransform &transform) &&;
     void applyColorTransform(const QColorTransform &transform);
 
-    bool load(QIODevice *device, const char* format);
+    bool load(QIODevice *device, const char *format);
     bool load(const QString &fileName, const char *format = nullptr);
-    bool loadFromData(const uchar *buf, int len, const char *format = nullptr);
-    inline bool loadFromData(const QByteArray &data, const char *aformat = nullptr)
-        { return loadFromData(reinterpret_cast<const uchar *>(data.constData()), data.size(), aformat); }
+    bool loadFromData(QByteArrayView data, const char *format = nullptr);
+    bool loadFromData(const uchar *buf, int len, const char *format = nullptr); // ### Qt 7: qsizetype
+    bool loadFromData(const QByteArray &data, const char *format = nullptr) // ### Qt 7: drop
+    { return loadFromData(QByteArrayView(data), format); }
 
     bool save(const QString &fileName, const char *format = nullptr, int quality = -1) const;
     bool save(QIODevice *device, const char *format = nullptr, int quality = -1) const;
 
-    static QImage fromData(const uchar *data, int size, const char *format = nullptr);
-    inline static QImage fromData(const QByteArray &data, const char *format = nullptr)
-        { return fromData(reinterpret_cast<const uchar *>(data.constData()), data.size(), format); }
+    static QImage fromData(QByteArrayView data, const char *format = nullptr);
+    static QImage fromData(const uchar *data, int size, const char *format = nullptr); // ### Qt 7: qsizetype
+    static QImage fromData(const QByteArray &data, const char *format = nullptr)  // ### Qt 7: drop
+    { return fromData(QByteArrayView(data), format); }
 
-#if QT_DEPRECATED_SINCE(5, 0)
-    QT_DEPRECATED inline int serialNumber() const { return cacheKey() >> 32; }
-#endif
     qint64 cacheKey() const;
 
     QPaintEngine *paintEngine() const override;
@@ -353,19 +277,11 @@ public:
 #if defined(Q_OS_DARWIN) || defined(Q_QDOC)
     CGImageRef toCGImage() const Q_DECL_CF_RETURNS_RETAINED;
 #endif
-
-#if QT_DEPRECATED_SINCE(5, 0)
-    QT_DEPRECATED inline QString text(const char *key, const char *lang = nullptr) const;
-    QT_DEPRECATED inline QList<QImageTextKeyLang> textList() const;
-    QT_DEPRECATED inline QStringList textLanguages() const;
-    QT_DEPRECATED inline QString text(const QImageTextKeyLang&) const;
-    QT_DEPRECATED inline void setText(const char* key, const char* lang, const QString&);
-#endif
-
-#if QT_DEPRECATED_SINCE(5, 0)
-    QT_DEPRECATED inline int numColors() const;
-    QT_DEPRECATED inline void setNumColors(int);
-    QT_DEPRECATED inline int numBytes() const;
+#if defined(Q_OS_WIN) || defined(Q_QDOC)
+    HBITMAP toHBITMAP() const;
+    HICON toHICON(const QImage &mask = {}) const;
+    static QImage fromHBITMAP(HBITMAP hbitmap);
+    static QImage fromHICON(HICON icon);
 #endif
 
 protected:
@@ -378,8 +294,9 @@ protected:
     bool convertToFormat_inplace(Format format, Qt::ImageConversionFlags flags);
     QImage smoothScaled(int w, int h) const;
 
+    void detachMetadata(bool invalidateCache = false);
+
 private:
-    friend class QWSOnScreenSurface;
     QImageData *d;
 
     friend class QRasterPlatformPixmap;
@@ -402,99 +319,6 @@ inline QRgb QImage::pixel(const QPoint &pt) const { return pixel(pt.x(), pt.y())
 inline void QImage::setPixel(const QPoint &pt, uint index_or_rgb) { setPixel(pt.x(), pt.y(), index_or_rgb); }
 inline QColor QImage::pixelColor(const QPoint &pt) const { return pixelColor(pt.x(), pt.y()); }
 inline void QImage::setPixelColor(const QPoint &pt, const QColor &c) { setPixelColor(pt.x(), pt.y(), c); }
-
-#if QT_DEPRECATED_SINCE(5, 0)
-
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-
-inline QString QImage::text(const char* key, const char* lang) const
-{
-    if (!d)
-        return QString();
-    QString k = QString::fromLatin1(key);
-    if (lang && *lang)
-        k += QLatin1Char('/') + QString::fromLatin1(lang);
-    return text(k);
-}
-
-inline QList<QImageTextKeyLang> QImage::textList() const
-{
-    QList<QImageTextKeyLang> imageTextKeys;
-    if (!d)
-        return imageTextKeys;
-    QStringList keys = textKeys();
-    for (int i = 0; i < keys.size(); ++i) {
-        int index = keys.at(i).indexOf(QLatin1Char('/'));
-        if (index > 0) {
-            QImageTextKeyLang tkl(true);
-            tkl.key = keys.at(i).left(index).toLatin1();
-            tkl.lang = keys.at(i).mid(index+1).toLatin1();
-            imageTextKeys += tkl;
-        }
-    }
-
-    return imageTextKeys;
-}
-
-inline QStringList QImage::textLanguages() const
-{
-    if (!d)
-        return QStringList();
-    QStringList keys = textKeys();
-    QStringList languages;
-    for (int i = 0; i < keys.size(); ++i) {
-        int index = keys.at(i).indexOf(QLatin1Char('/'));
-        if (index > 0)
-            languages += keys.at(i).mid(index+1);
-    }
-
-    return languages;
-}
-
-inline QString QImage::text(const QImageTextKeyLang&kl) const
-{
-    if (!d)
-        return QString();
-    QString k = QString::fromLatin1(kl.key.constData());
-    if (!kl.lang.isEmpty())
-        k += QLatin1Char('/') + QString::fromLatin1(kl.lang.constData());
-    return text(k);
-}
-
-inline void QImage::setText(const char* key, const char* lang, const QString &s)
-{
-    if (!d)
-        return;
-    detach();
-
-    // In case detach() ran out of memory
-    if (!d)
-        return;
-
-    QString k = QString::fromLatin1(key);
-    if (lang && *lang)
-        k += QLatin1Char('/') + QString::fromLatin1(lang);
-    setText(k, s);
-}
-
-QT_WARNING_POP
-
-inline int QImage::numColors() const
-{
-    return colorCount();
-}
-
-inline void QImage::setNumColors(int n)
-{
-    setColorCount(n);
-}
-
-inline int QImage::numBytes() const
-{
-    return int(sizeInBytes());
-}
-#endif
 
 // QImage stream functions
 

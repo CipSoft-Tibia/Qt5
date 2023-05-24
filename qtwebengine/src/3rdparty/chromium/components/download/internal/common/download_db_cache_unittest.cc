@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,9 @@
 
 #include <memory>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/guid.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_mock_time_task_runner.h"
@@ -64,6 +65,9 @@ class DownloadDBCacheTest : public testing::Test {
   DownloadDBCacheTest()
       : db_(nullptr), task_runner_(new base::TestMockTimeTaskRunner) {}
 
+  DownloadDBCacheTest(const DownloadDBCacheTest&) = delete;
+  DownloadDBCacheTest& operator=(const DownloadDBCacheTest&) = delete;
+
   ~DownloadDBCacheTest() override = default;
 
   void CreateDBCache() {
@@ -106,11 +110,10 @@ class DownloadDBCacheTest : public testing::Test {
 
  protected:
   std::map<std::string, download_pb::DownloadDBEntry> db_entries_;
-  leveldb_proto::test::FakeDB<download_pb::DownloadDBEntry>* db_;
+  raw_ptr<leveldb_proto::test::FakeDB<download_pb::DownloadDBEntry>> db_;
   std::unique_ptr<DownloadDBCache> db_cache_;
   scoped_refptr<base::TestMockTimeTaskRunner> task_runner_;
   base::test::TaskEnvironment task_environment_;
-  DISALLOW_COPY_AND_ASSIGN(DownloadDBCacheTest);
 };
 
 TEST_F(DownloadDBCacheTest, InitializeAndRetrieve) {

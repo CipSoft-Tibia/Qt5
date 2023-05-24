@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -8,6 +8,8 @@ static_library("net") {
   sources = [
     "variations_command_line.cc",
     "variations_command_line.h",
+    "variations_flags.cc",
+    "variations_flags.h",
     "variations_http_headers.cc",
     "variations_http_headers.h",
   ]
@@ -30,8 +32,7 @@ static_library("net") {
     "//components/variations/proto",
   ]
 
-  # third_party/blink/public/common does not build on iOS
-  if (!is_ios) {
+  if (use_blink) {
     sources += [
       "variations_url_loader_throttle.cc",
       "variations_url_loader_throttle.h",
@@ -41,7 +42,7 @@ static_library("net") {
       "//third_party/blink/public/common",
     ]
   }
-  if (use_qt) {
+  if (is_qtwebengine) {
     deps -= [
       "//components/variations/field_trial_config",
     ]
@@ -67,8 +68,7 @@ component("omnibox_http_headers") {
     "//url",
   ]
 
-  # third_party/blink/public/common does not build on iOS
-  if (!is_ios) {
+  if (use_blink) {
     sources += [
       "omnibox_url_loader_throttle.cc",
       "omnibox_url_loader_throttle.h",

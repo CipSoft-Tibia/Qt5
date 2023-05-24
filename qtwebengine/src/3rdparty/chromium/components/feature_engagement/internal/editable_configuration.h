@@ -1,16 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_FEATURE_ENGAGEMENT_INTERNAL_EDITABLE_CONFIGURATION_H_
 #define COMPONENTS_FEATURE_ENGAGEMENT_INTERNAL_EDITABLE_CONFIGURATION_H_
 
-#include "base/macros.h"
+#include "base/feature_list.h"
 #include "components/feature_engagement/public/configuration.h"
-
-namespace base {
-struct Feature;
-}  // namespace base
 
 namespace feature_engagement {
 
@@ -20,6 +16,10 @@ namespace feature_engagement {
 class EditableConfiguration : public Configuration {
  public:
   EditableConfiguration();
+
+  EditableConfiguration(const EditableConfiguration&) = delete;
+  EditableConfiguration& operator=(const EditableConfiguration&) = delete;
+
   ~EditableConfiguration() override;
 
   // Configuration implementation.
@@ -29,17 +29,29 @@ class EditableConfiguration : public Configuration {
       const std::string& feature_name) const override;
   const Configuration::ConfigMap& GetRegisteredFeatureConfigs() const override;
   const std::vector<std::string> GetRegisteredFeatures() const override;
+  const GroupConfig& GetGroupConfig(const base::Feature& group) const override;
+  const GroupConfig& GetGroupConfigByName(
+      const std::string& group_name) const override;
+  const Configuration::GroupConfigMap& GetRegisteredGroupConfigs()
+      const override;
+  const std::vector<std::string> GetRegisteredGroups() const override;
 
   // Adds a new FeatureConfig to the current configurations. If it already
   // exists, the contents are replaced.
   void SetConfiguration(const base::Feature* feature,
                         const FeatureConfig& feature_config);
 
+  // Adds a new GroupConfig to the current configuration. If it already
+  // exists, the contents are replaced.
+  void SetConfiguration(const base::Feature* group,
+                        const GroupConfig& group_config);
+
  private:
   // The current configurations.
   ConfigMap configs_;
 
-  DISALLOW_COPY_AND_ASSIGN(EditableConfiguration);
+  // The current group configurations.
+  GroupConfigMap group_configs_;
 };
 
 }  // namespace feature_engagement

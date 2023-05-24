@@ -49,15 +49,6 @@ unsigned HTMLTableCellElement::colSpan() const {
   if (!ParseHTMLClampedNonNegativeInteger(col_span_value, kMinColSpan,
                                           kMaxColSpan, value))
     return kDefaultColSpan;
-  // Counting for https://github.com/whatwg/html/issues/1198
-  UseCounter::Count(GetDocument(), WebFeature::kHTMLTableCellElementColspan);
-  if (value > 8190) {
-    UseCounter::Count(GetDocument(),
-                      WebFeature::kHTMLTableCellElementColspanGreaterThan8190);
-  } else if (value > 1000) {
-    UseCounter::Count(GetDocument(),
-                      WebFeature::kHTMLTableCellElementColspanGreaterThan1000);
-  }
   return value;
 }
 
@@ -99,19 +90,16 @@ void HTMLTableCellElement::CollectStyleForPresentationAttribute(
     MutableCSSPropertyValueSet* style) {
   if (name == html_names::kNowrapAttr) {
     AddPropertyToPresentationAttributeStyle(style, CSSPropertyID::kWhiteSpace,
-                                            CSSValueID::kWebkitNowrap);
+                                            CSSValueID::kNowrap);
   } else if (name == html_names::kWidthAttr) {
-    if (!value.IsEmpty()) {
-      int width_int = value.ToInt();
-      if (width_int > 0)  // width="0" is ignored for compatibility with WinIE.
-        AddHTMLLengthToStyle(style, CSSPropertyID::kWidth, value);
+    if (!value.empty()) {
+      AddHTMLLengthToStyle(style, CSSPropertyID::kWidth, value,
+                           kAllowPercentageValues, kDontAllowZeroValues);
     }
   } else if (name == html_names::kHeightAttr) {
-    if (!value.IsEmpty()) {
-      int height_int = value.ToInt();
-      if (height_int >
-          0)  // height="0" is ignored for compatibility with WinIE.
-        AddHTMLLengthToStyle(style, CSSPropertyID::kHeight, value);
+    if (!value.empty()) {
+      AddHTMLLengthToStyle(style, CSSPropertyID::kHeight, value,
+                           kAllowPercentageValues, kDontAllowZeroValues);
     }
   } else {
     HTMLTablePartElement::CollectStyleForPresentationAttribute(name, value,

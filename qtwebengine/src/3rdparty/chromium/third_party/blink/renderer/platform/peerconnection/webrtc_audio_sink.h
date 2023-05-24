@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,24 +7,25 @@
 
 #include <stdint.h>
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/single_thread_task_runner.h"
 #include "base/synchronization/lock.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
+#include "base/time/time.h"
 #include "media/base/audio_parameters.h"
 #include "media/base/audio_push_fifo.h"
 #include "third_party/blink/public/platform/modules/mediastream/web_media_stream_audio_sink.h"
 #include "third_party/blink/renderer/platform/mediastream/media_stream_audio_level_calculator.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_copier.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "third_party/webrtc/api/media_stream_interface.h"
-#include "third_party/webrtc/pc/media_stream_track.h"
+#include "third_party/webrtc/api/media_stream_track.h"
 #include "third_party/webrtc/rtc_base/time_utils.h"
 #include "third_party/webrtc/rtc_base/timestamp_aligner.h"
 
@@ -49,6 +50,8 @@ class PLATFORM_EXPORT WebRtcAudioSink : public WebMediaStreamAudioSink {
       scoped_refptr<webrtc::AudioSourceInterface> track_source,
       scoped_refptr<base::SingleThreadTaskRunner> signaling_task_runner,
       scoped_refptr<base::SingleThreadTaskRunner> main_task_runner);
+  WebRtcAudioSink(const WebRtcAudioSink&) = delete;
+  WebRtcAudioSink& operator=(const WebRtcAudioSink&) = delete;
 
   ~WebRtcAudioSink() override;
 
@@ -82,6 +85,8 @@ class PLATFORM_EXPORT WebRtcAudioSink : public WebMediaStreamAudioSink {
             scoped_refptr<webrtc::AudioSourceInterface> source,
             scoped_refptr<base::SingleThreadTaskRunner> signaling_task_runner,
             scoped_refptr<base::SingleThreadTaskRunner> main_task_runner);
+    Adapter(const Adapter&) = delete;
+    Adapter& operator=(const Adapter&) = delete;
 
     base::SingleThreadTaskRunner* signaling_task_runner() const {
       return signaling_task_runner_.get();
@@ -99,12 +104,15 @@ class PLATFORM_EXPORT WebRtcAudioSink : public WebMediaStreamAudioSink {
     }
 
     // Delivers a 10ms chunk of audio to all WebRTC sinks managed by this
-    // Adapter. This is called on the audio thread.
-    void DeliverPCMToWebRtcSinks(const int16_t* audio_data,
-                                 int sample_rate,
-                                 size_t number_of_channels,
-                                 size_t number_of_frames,
-                                 base::TimeTicks estimated_capture_time);
+    // Adapter and returns the maximum number of channels the sinks are
+    // interested in (number of channels encoded). A return value of -1 means
+    // that the preferred number of channels is unknown. This is called on the
+    // audio thread.
+    int DeliverPCMToWebRtcSinks(const int16_t* audio_data,
+                                int sample_rate,
+                                size_t number_of_channels,
+                                size_t number_of_frames,
+                                base::TimeTicks estimated_capture_time);
 
     std::string label() const { return label_; }
 
@@ -136,8 +144,6 @@ class PLATFORM_EXPORT WebRtcAudioSink : public WebMediaStreamAudioSink {
 
     // Task runner used for the final de-referencing of |audio_processor_| at
     // destruction time.
-    //
-    // TODO(miu): Remove this once MediaStreamAudioProcessor is fixed.
     const scoped_refptr<base::SingleThreadTaskRunner> main_task_runner_;
 
     // The audio processsor that applies audio post-processing on the source
@@ -155,14 +161,12 @@ class PLATFORM_EXPORT WebRtcAudioSink : public WebMediaStreamAudioSink {
 
     // A vector of pointers to unowned WebRTC-internal objects which each
     // receive the audio data.
-    std::vector<webrtc::AudioTrackSinkInterface*> sinks_;
+    Vector<webrtc::AudioTrackSinkInterface*> sinks_;
 
     // Used for getting capture timestamps referenced on the rtc::TimeMicros()
     // clock. See the comment at the implementation of UpdateTimestampAligner()
     // for more details.
     rtc::TimestampAligner timestamp_aligner_;
-
-    DISALLOW_COPY_AND_ASSIGN(Adapter);
   };
 
   template <typename>
@@ -172,6 +176,9 @@ class PLATFORM_EXPORT WebRtcAudioSink : public WebMediaStreamAudioSink {
   void OnData(const media::AudioBus& audio_bus,
               base::TimeTicks estimated_capture_time) override;
   void OnSetFormat(const media::AudioParameters& params) override;
+
+  // WebMediaStreamAudioSink implementation.
+  int NumPreferredChannels() override { return num_preferred_channels_; }
 
   // Called by AudioPushFifo zero or more times during the call to OnData().
   // Delivers audio data with the required 10ms buffer size to |adapter_|.
@@ -195,11 +202,13 @@ class PLATFORM_EXPORT WebRtcAudioSink : public WebMediaStreamAudioSink {
 
   base::TimeTicks last_estimated_capture_time_;
 
+  // The maximum number of preferred audio channels by any sink or -1 if
+  // unknown.
+  std::atomic<int> num_preferred_channels_;
+
   // In debug builds, check that WebRtcAudioSink's public methods are all being
   // called on the main render thread.
   THREAD_CHECKER(thread_checker_);
-
-  DISALLOW_COPY_AND_ASSIGN(WebRtcAudioSink);
 };
 
 }  // namespace blink

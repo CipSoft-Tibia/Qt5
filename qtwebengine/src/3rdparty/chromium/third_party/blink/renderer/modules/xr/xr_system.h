@@ -1,10 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_XR_XR_SYSTEM_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_XR_XR_SYSTEM_H_
 
+#include "base/time/time.h"
 #include "device/vr/public/mojom/vr_service.mojom-blink.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "third_party/blink/public/mojom/devtools/console_message.mojom-blink.h"
@@ -15,27 +16,33 @@
 #include "third_party/blink/renderer/core/dom/events/event_target.h"
 #include "third_party/blink/renderer/core/dom/events/native_event_listener.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
+#include "third_party/blink/renderer/core/frame/navigator.h"
 #include "third_party/blink/renderer/core/page/focus_changed_observer.h"
+#include "third_party/blink/renderer/modules/xr/xr_enter_fullscreen_observer.h"
+#include "third_party/blink/renderer/modules/xr/xr_exit_fullscreen_observer.h"
 #include "third_party/blink/renderer/modules/xr/xr_session.h"
 #include "third_party/blink/renderer/platform/graphics/color.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_associated_remote.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_receiver.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_remote.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_wrapper_mode.h"
 #include "third_party/blink/renderer/platform/scheduler/public/frame_or_worker_scheduler.h"
+#include "third_party/blink/renderer/platform/supplementable.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
 
+class Navigator;
 class ScriptPromiseResolver;
 class XRFrameProvider;
 class XRSessionInit;
 
 // Implementation of the XRSystem interface according to
 // https://immersive-web.github.io/webxr/#xrsystem-interface . This is created
-// lazily via the NavigatorXR class on first access to the navigator.xr attrib,
+// lazily on first access to the navigator.xr attrib,
 // and disposed when the execution context is destroyed or on mojo communication
 // errors with the browser/device process.
 //
@@ -61,14 +68,21 @@ class XRSessionInit;
 // The XRSystem keeps weak references to XRSession objects after they were
 // returned through a successful requestSession promise, but does not own them.
 class XRSystem final : public EventTargetWithInlineData,
+                       public Supplement<Navigator>,
                        public ExecutionContextLifecycleObserver,
                        public device::mojom::blink::VRServiceClient,
                        public FocusChangedObserver {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
+  static const char kSupplementName[];
+  static XRSystem* From(Document&);
+  static XRSystem* FromIfExists(Document&);
+
+  static XRSystem* xr(Navigator&);
+
   // TODO(crbug.com/976796): Fix lint errors.
-  XRSystem(LocalFrame& frame, int64_t ukm_source_id);
+  explicit XRSystem(Navigator&);
 
   DEFINE_ATTRIBUTE_EVENT_LISTENER(devicechange, kDevicechange)
 
@@ -88,6 +102,8 @@ class XRSystem final : public EventTargetWithInlineData,
   device::mojom::blink::XREnvironmentIntegrationProvider*
   xrEnvironmentProviderRemote();
 
+  device::mojom::blink::VRService* BrowserService();
+
   // VRServiceClient overrides.
   void OnDeviceChanged() override;
 
@@ -102,8 +118,6 @@ class XRSystem final : public EventTargetWithInlineData,
   // FocusChangedObserver overrides.
   void FocusedFrameChanged() override;
   bool IsFrameFocused();
-
-  int64_t GetSourceId() const { return ukm_source_id_; }
 
   using EnvironmentProviderErrorCallback = base::OnceCallback<void()>;
   // Registers a callback that'll be invoked when mojo invokes a disconnect
@@ -161,6 +175,11 @@ class XRSystem final : public EventTargetWithInlineData,
                                device::mojom::blink::XRSessionMode mode,
                                RequestedXRSessionFeatureSet required_features,
                                RequestedXRSessionFeatureSet optional_features);
+
+    PendingRequestSessionQuery(const PendingRequestSessionQuery&) = delete;
+    PendingRequestSessionQuery& operator=(const PendingRequestSessionQuery&) =
+        delete;
+
     virtual ~PendingRequestSessionQuery() = default;
 
     // Resolves underlying promise with passed in XR session.
@@ -175,20 +194,25 @@ class XRSystem final : public EventTargetWithInlineData,
     // Do not call this with |DOMExceptionCode::kSecurityError|, use
     // |RejectWithSecurityError| for that. If the exception is thrown
     // synchronously, an ExceptionState must be passed in. Otherwise it may be
-    // null.
+    // null. Care must be taken when setting |message| - it will be accessible
+    // to the application and should not contain any sensitive data.
     void RejectWithDOMException(DOMExceptionCode exception_code,
                                 const String& message,
                                 ExceptionState* exception_state);
 
     // Rejects underlying promise with a SecurityError.
     // If the exception is thrown synchronously, an ExceptionState must
-    // be passed in. Otherwise it may be null.
-    void RejectWithSecurityError(const String& sanitized_message,
+    // be passed in. Otherwise it may be null. Care must be taken when setting
+    // |message| - it will be accessible to the application and should not
+    // contain any sensitive data.
+    void RejectWithSecurityError(const String& message,
                                  ExceptionState* exception_state);
 
     // Rejects underlying promise with a TypeError.
     // If the exception is thrown synchronously, an ExceptionState must
-    // be passed in. Otherwise it may be null.
+    // be passed in. Otherwise it may be null. Care must be taken when setting
+    // |message| - it will be accessible to the application and should not
+    // contain any sensitive data.
     void RejectWithTypeError(const String& message,
                              ExceptionState* exception_state);
 
@@ -211,6 +235,31 @@ class XRSystem final : public EventTargetWithInlineData,
     }
     Element* DOMOverlayElement() { return dom_overlay_element_; }
 
+    void SetTrackedImages(
+        const Vector<device::mojom::blink::XRTrackedImage>& images) {
+      tracked_images_ = images;
+    }
+    Vector<device::mojom::blink::XRTrackedImage> TrackedImages() const {
+      return tracked_images_;
+    }
+
+    void SetDepthSensingConfiguration(
+        const Vector<device::mojom::XRDepthUsage>& preferred_usage,
+        const Vector<device::mojom::XRDepthDataFormat>& preferred_format) {
+      preferred_usage_ = preferred_usage;
+      preferred_format_ = preferred_format;
+    }
+
+    const Vector<device::mojom::XRDepthUsage>& PreferredUsage() const {
+      return preferred_usage_;
+    }
+
+    const Vector<device::mojom::XRDepthDataFormat>& PreferredFormat() const {
+      return preferred_format_;
+    }
+
+    uint64_t TraceId() const { return trace_id_; }
+
     virtual void Trace(Visitor*) const;
 
    private:
@@ -232,8 +281,15 @@ class XRSystem final : public EventTargetWithInlineData,
 
     const int64_t ukm_source_id_;
 
+    // Used for trace calls in order to correlate this request across processes.
+    const uint64_t trace_id_;
+
     Member<Element> dom_overlay_element_;
-    DISALLOW_COPY_AND_ASSIGN(PendingRequestSessionQuery);
+
+    Vector<device::mojom::blink::XRTrackedImage> tracked_images_;
+
+    Vector<device::mojom::XRDepthUsage> preferred_usage_;
+    Vector<device::mojom::XRDepthDataFormat> preferred_format_;
   };
 
   static device::mojom::blink::XRSessionOptionsPtr XRSessionOptionsFromQuery(
@@ -249,6 +305,11 @@ class XRSystem final : public EventTargetWithInlineData,
     PendingSupportsSessionQuery(ScriptPromiseResolver*,
                                 device::mojom::blink::XRSessionMode,
                                 bool throw_on_unsupported);
+
+    PendingSupportsSessionQuery(const PendingSupportsSessionQuery&) = delete;
+    PendingSupportsSessionQuery& operator=(const PendingSupportsSessionQuery&) =
+        delete;
+
     virtual ~PendingSupportsSessionQuery() = default;
 
     // Resolves underlying promise.
@@ -258,20 +319,25 @@ class XRSystem final : public EventTargetWithInlineData,
     // Do not call this with |DOMExceptionCode::kSecurityError|, use
     // |RejectWithSecurityError| for that. If the exception is thrown
     // synchronously, an ExceptionState must be passed in. Otherwise it may be
-    // null.
+    // null. Care must be taken when setting |message| - it will be accessible
+    // to the application and should not contain any sensitive data.
     void RejectWithDOMException(DOMExceptionCode exception_code,
                                 const String& message,
                                 ExceptionState* exception_state);
 
     // Rejects underlying promise with a SecurityError.
     // If the exception is thrown synchronously, an ExceptionState must
-    // be passed in. Otherwise it may be null.
-    void RejectWithSecurityError(const String& sanitized_message,
+    // be passed in. Otherwise it may be null. Care must be taken when setting
+    // |message| - it will be accessible to the application and should not
+    // contain any sensitive data.
+    void RejectWithSecurityError(const String& message,
                                  ExceptionState* exception_state);
 
     // Rejects underlying promise with a TypeError.
     // If the exception is thrown synchronously, an ExceptionState must
-    // be passed in. Otherwise it may be null.
+    // be passed in. Otherwise it may be null. Care must be taken when setting
+    // |message| - it will be accessible to the application and should not
+    // contain any sensitive data.
     void RejectWithTypeError(const String& message,
                              ExceptionState* exception_state);
 
@@ -279,63 +345,19 @@ class XRSystem final : public EventTargetWithInlineData,
 
     device::mojom::blink::XRSessionMode mode() const;
 
+    uint64_t TraceId() const { return trace_id_; }
+
     virtual void Trace(Visitor*) const;
 
    private:
     Member<ScriptPromiseResolver> resolver_;
     const device::mojom::blink::XRSessionMode mode_;
 
+    // Used for trace calls in order to correlate this request across processes.
+    const uint64_t trace_id_;
+
     // Only set when calling the deprecated supportsSession method.
     const bool throw_on_unsupported_ = false;
-
-    DISALLOW_COPY_AND_ASSIGN(PendingSupportsSessionQuery);
-  };
-
-  // Native event listener for fullscreen change / error events when starting an
-  // immersive-ar session that uses DOM Overlay mode. See
-  // OnRequestSessionReturned().
-  class OverlayFullscreenEventManager : public NativeEventListener {
-   public:
-    OverlayFullscreenEventManager(
-        XRSystem* xr,
-        XRSystem::PendingRequestSessionQuery*,
-        device::mojom::blink::RequestSessionResultPtr);
-    ~OverlayFullscreenEventManager() override;
-
-    // NativeEventListener
-    void Invoke(ExecutionContext*, Event*) override;
-
-    void RequestFullscreen();
-    void OnSessionStarting();
-
-    void Trace(Visitor*) const override;
-
-   private:
-    Member<XRSystem> xr_;
-    Member<PendingRequestSessionQuery> query_;
-    device::mojom::blink::RequestSessionResultPtr result_;
-    DISALLOW_COPY_AND_ASSIGN(OverlayFullscreenEventManager);
-  };
-
-  // Native event listener used when waiting for fullscreen mode to fully exit
-  // when starting or ending an XR session.
-  class OverlayFullscreenExitObserver : public NativeEventListener {
-   public:
-    explicit OverlayFullscreenExitObserver(XRSystem* xr);
-    ~OverlayFullscreenExitObserver() override;
-
-    // NativeEventListener
-    void Invoke(ExecutionContext*, Event*) override;
-
-    void ExitFullscreen(Document* doc, base::OnceClosure on_exited);
-
-    void Trace(Visitor*) const override;
-
-   private:
-    Member<XRSystem> xr_;
-    Member<Document> document_;
-    base::OnceClosure on_exited_;
-    DISALLOW_COPY_AND_ASSIGN(OverlayFullscreenExitObserver);
   };
 
   // Helper, logs message to the console as well as DVLOGs.
@@ -357,22 +379,27 @@ class XRSystem final : public EventTargetWithInlineData,
       XRSessionInit* session_init,
       mojom::ConsoleMessageLevel error_level);
 
-  void RequestImmersiveSession(LocalFrame* frame,
-                               Document* doc,
-                               PendingRequestSessionQuery* query,
+  void RequestSessionInternal(device::mojom::blink::XRSessionMode session_mode,
+                              PendingRequestSessionQuery* query,
+                              ExceptionState* exception_state);
+
+  void RequestImmersiveSession(PendingRequestSessionQuery* query,
                                ExceptionState* exception_state);
 
-  void RequestInlineSession(LocalFrame* frame,
-                            PendingRequestSessionQuery* query,
+  void RequestInlineSession(PendingRequestSessionQuery* query,
                             ExceptionState* exception_state);
 
   void DoRequestSession(
       PendingRequestSessionQuery* query,
       device::mojom::blink::XRSessionOptionsPtr session_options);
-  void OnRequestSessionSetupForDomOverlay(
+  void OnRequestSessionReturned(
       PendingRequestSessionQuery*,
       device::mojom::blink::RequestSessionResultPtr result);
-  void OnRequestSessionReturned(
+  void OnFullscreenConfigured(
+      PendingRequestSessionQuery* query,
+      device::mojom::blink::RequestSessionResultPtr result,
+      bool fullscreen_succeeded);
+  void FinishSessionCreation(
       PendingRequestSessionQuery*,
       device::mojom::blink::RequestSessionResultPtr result);
   void OnSupportsSessionReturned(PendingSupportsSessionQuery*,
@@ -383,20 +410,17 @@ class XRSystem final : public EventTargetWithInlineData,
   void RejectSessionRequest(PendingRequestSessionQuery*);
 
   void EnsureDevice();
-  void ReportImmersiveSupported(bool supported);
 
   void AddedEventListener(const AtomicString& event_type,
                           RegisteredEventListener&) override;
 
   XRSession* CreateSession(
       device::mojom::blink::XRSessionMode mode,
-      XRSession::EnvironmentBlendMode blend_mode,
-      XRSession::InteractionMode interaction_mode,
+      device::mojom::blink::XREnvironmentBlendMode blend_mode,
+      device::mojom::blink::XRInteractionMode interaction_mode,
       mojo::PendingReceiver<device::mojom::blink::XRSessionClient>
           client_receiver,
-      device::mojom::blink::VRDisplayInfoPtr display_info,
-      bool uses_input_eventing,
-      float default_framebuffer_scale,
+      device::mojom::blink::XRSessionDeviceConfigPtr device_config,
       XRSessionFeatureSet enabled_features,
       bool sensorless_session = false);
 
@@ -412,13 +436,16 @@ class XRSystem final : public EventTargetWithInlineData,
 
   void TryEnsureService();
 
+  // Helper, returns true if immersive AR session creation is supported.
+  // Currently, it checks whether AR is enabled in runtime features, and in web
+  // settings (controlled by enterprise policy).
+  bool IsImmersiveArAllowed();
+
   // Indicates whether use of requestDevice has already been logged.
   bool did_log_supports_immersive_ = false;
 
   // Indicates whether we've already logged a request for an immersive session.
   bool did_log_request_immersive_session_ = false;
-
-  const int64_t ukm_source_id_;
 
   // The XR object owns outstanding pending session queries, these live until
   // the underlying promise is either resolved or rejected.
@@ -433,8 +460,7 @@ class XRSystem final : public EventTargetWithInlineData,
   HeapHashSet<WeakMember<XRSession>> sessions_;
   HeapMojoRemote<device::mojom::blink::VRService> service_;
   HeapMojoAssociatedRemote<
-      device::mojom::blink::XREnvironmentIntegrationProvider,
-      HeapMojoWrapperMode::kWithoutContextObserver>
+      device::mojom::blink::XREnvironmentIntegrationProvider>
       environment_provider_;
   HeapMojoReceiver<device::mojom::blink::VRServiceClient, XRSystem> receiver_;
 
@@ -448,14 +474,11 @@ class XRSystem final : public EventTargetWithInlineData,
   // In DOM overlay mode, use a fullscreen event listener to detect when
   // transition to fullscreen mode completes or fails, and reject/resolve
   // the pending request session promise accordingly.
-  Member<OverlayFullscreenEventManager> fullscreen_event_manager_;
+  Member<XrEnterFullscreenObserver> fullscreen_enter_observer_;
   // DOM overlay mode uses a separate temporary fullscreen event listener
   // if it needs to wait for fullscreen mode to fully exit when ending
   // the session.
-  Member<OverlayFullscreenExitObserver> fullscreen_exit_observer_;
-
-  // In DOM overlay mode, save and restore the FrameView background color.
-  Color original_base_background_color_;
+  Member<XrExitFullscreenObserver> fullscreen_exit_observer_;
 
   bool is_context_destroyed_ = false;
   bool did_service_ever_disconnect_ = false;

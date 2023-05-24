@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLDIRDATA_P_H
 #define QQMLDIRDATA_P_H
@@ -64,21 +28,39 @@ private:
 
 public:
     const QString &content() const;
+    QV4::CompiledData::Location importLocation(Blob *blob) const;
 
-    PendingImportPtr import(QQmlTypeLoader::Blob *) const;
-    void setImport(QQmlTypeLoader::Blob *, PendingImportPtr);
+    template<typename Callback>
+    bool processImports(Blob *blob, const Callback &callback) const
+    {
+        bool result = true;
+        const auto range = m_imports.equal_range(blob);
+        for (auto it = range.first; it != range.second; ++it) {
+            // Do we need to resolve this import?
+            if ((it->import->priority == 0) || (it->import->priority > it->priority)) {
+                // This is the (current) best resolution for this import
+                if (!callback(it->import))
+                    result = false;
+                it->import->priority = it->priority;
+            }
+        }
+        return result;
+    }
 
-    int priority(QQmlTypeLoader::Blob *) const;
-    void setPriority(QQmlTypeLoader::Blob *, int);
+    void setPriority(Blob *, PendingImportPtr, int);
 
 protected:
     void dataReceived(const SourceCodeData &) override;
-    void initializeFromCachedUnit(const QV4::CompiledData::Unit *) override;
+    void initializeFromCachedUnit(const QQmlPrivate::CachedQmlUnit *) override;
 
 private:
+    struct PrioritizedImport {
+        PendingImportPtr import;
+        int priority = 0;
+    };
+
     QString m_content;
-    QHash<QQmlTypeLoader::Blob *, QQmlTypeLoader::Blob::PendingImportPtr> m_imports;
-    QHash<QQmlTypeLoader::Blob *, int> m_priorities;
+    QMultiHash<Blob *, PrioritizedImport> m_imports;
 };
 
 QT_END_NAMESPACE

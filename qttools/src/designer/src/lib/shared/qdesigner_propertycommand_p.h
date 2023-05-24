@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 //
 //  W A R N I N G
@@ -43,6 +18,7 @@
 #include "qdesigner_formwindowcommand_p.h"
 
 #include <QtCore/qvariant.h>
+#include <QtCore/qhash.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qpair.h>
 #include <QtCore/qsharedpointer.h>
@@ -86,7 +62,8 @@ public:
     SpecialProperty specialProperty() const { return m_specialProperty; }
     // set a new value. Can be overwritten to perform a transformation (see
     // handling of Arrow key move in FormWindow class).
-    virtual Value setValue(QDesignerFormWindowInterface *fw, const QVariant &value, bool changed, unsigned subPropertyMask);
+    virtual Value setValue(QDesignerFormWindowInterface *fw, const QVariant &value,
+                           bool changed, quint64 subPropertyMask);
 
     // restore old value
     Value restoreOldValue(QDesignerFormWindowInterface *fw);
@@ -147,8 +124,8 @@ public:
     void undo() override;
 
 protected:
-    using PropertyHelperPtr = QSharedPointer<PropertyHelper>;
-    using PropertyHelperList = QList<PropertyHelperPtr>;
+    using PropertyHelperPtr = std::unique_ptr<PropertyHelper>;
+    using PropertyHelperList = std::vector<PropertyHelperPtr>;
 
     // add an object
     bool add(QObject *object, const QString &propertyName);
@@ -157,7 +134,7 @@ protected:
     bool initList(const QObjectList &list, const QString &apropertyName, QObject *referenceObject = nullptr);
 
     // set a new value, return update mask
-    unsigned setValue(const QVariant &value, bool changed, unsigned subPropertyMask);
+    unsigned setValue(const QVariant &value, bool changed, quint64 subPropertyMask);
 
     // restore old value,  return update mask
     unsigned  restoreOldValue();
@@ -187,14 +164,15 @@ protected:
 
         QString m_propertyName;
         QString m_propertyGroup;
-        QVariant::Type m_propertyType = QVariant::Invalid;
+        int m_propertyType = QMetaType::UnknownType;
         SpecialProperty m_specialProperty = SP_None;
     };
     const PropertyDescription &propertyDescription() const { return  m_propertyDescription; }
 
 protected:
-    virtual PropertyHelper *createPropertyHelper(QObject *o, SpecialProperty sp,
-                                                 QDesignerPropertySheetExtension *sheet, int sheetIndex) const;
+    virtual std::unique_ptr<PropertyHelper>
+    createPropertyHelper(QObject *o, SpecialProperty sp,
+                         QDesignerPropertySheetExtension *sheet, int sheetIndex) const;
 
 private:
     PropertyDescription m_propertyDescription;
@@ -227,10 +205,10 @@ protected:
     virtual QVariant mergeValue(const QVariant &newValue);
 
 private:
-    unsigned subPropertyMask(const QVariant &newValue, QObject *referenceObject);
+    quint64 subPropertyMask(const QVariant &newValue, QObject *referenceObject);
     void setDescription();
     QVariant m_newValue;
-    unsigned m_subPropertyMask;
+    quint64 m_subPropertyMask;
 };
 
 class QDESIGNER_SHARED_EXPORT ResetPropertyCommand: public PropertyListCommand
@@ -242,10 +220,10 @@ public:
     bool init(QObject *object, const QString &propertyName);
     bool init(const QObjectList &list, const QString &propertyName, QObject *referenceObject = nullptr);
 
-    virtual void redo();
+    void redo() override;
 
 protected:
-    virtual bool mergeWith(const QUndoCommand *) { return false; }
+    bool mergeWith(const QUndoCommand *) override { return false; }
 
 private:
     void setDescription();
@@ -259,14 +237,14 @@ class QDESIGNER_SHARED_EXPORT AddDynamicPropertyCommand: public QDesignerFormWin
 public:
     explicit AddDynamicPropertyCommand(QDesignerFormWindowInterface *formWindow);
 
-    bool init(const QList<QObject *> &selection, QObject *current, const QString &propertyName, const QVariant &value);
+    bool init(const QObjectList &selection, QObject *current, const QString &propertyName, const QVariant &value);
 
-    virtual void redo();
-    virtual void undo();
+    void redo() override;
+    void undo() override;
 private:
     void setDescription();
     QString m_propertyName;
-    QList<QObject *> m_selection;
+    QObjectList m_selection;
     QVariant m_value;
 };
 
@@ -276,14 +254,14 @@ class QDESIGNER_SHARED_EXPORT RemoveDynamicPropertyCommand: public QDesignerForm
 public:
     explicit RemoveDynamicPropertyCommand(QDesignerFormWindowInterface *formWindow);
 
-    bool init(const QList<QObject *> &selection, QObject *current, const QString &propertyName);
+    bool init(const QObjectList &selection, QObject *current, const QString &propertyName);
 
-    virtual void redo();
-    virtual void undo();
+    void redo() override;
+    void undo() override;
 private:
     void setDescription();
     QString m_propertyName;
-    QMap<QObject *, QPair<QVariant, bool> > m_objectToValueAndChanged;
+    QHash<QObject *, QPair<QVariant, bool> > m_objectToValueAndChanged;
 };
 
 } // namespace qdesigner_internal

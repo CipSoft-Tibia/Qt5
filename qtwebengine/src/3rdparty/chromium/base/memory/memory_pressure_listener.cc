@@ -1,12 +1,20 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/memory/memory_pressure_listener.h"
 
+#include <atomic>
+
+#include "base/observer_list.h"
 #include "base/observer_list_threadsafe.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/trace_event/base_tracing.h"
+#include "base/tracing_buildflags.h"
+
+#if BUILDFLAG(ENABLE_BASE_TRACING)
+#include "base/trace_event/memory_pressure_level_proto.h"  // no-presubmit-check
+#endif
 
 namespace base {
 
@@ -22,7 +30,7 @@ class MemoryPressureObserver {
     // TODO(crbug.com/1063868): DCHECK instead of silently failing when a
     // MemoryPressureListener is created in a non-sequenced context. Tests will
     // need to be adjusted for that to work.
-    if (SequencedTaskRunnerHandle::IsSet()) {
+    if (SequencedTaskRunner::HasCurrentDefault()) {
       async_observers_->AddObserver(listener);
     }
 
@@ -62,7 +70,7 @@ MemoryPressureObserver* GetMemoryPressureObserver() {
   return observer;
 }
 
-subtle::Atomic32 g_notifications_suppressed = 0;
+std::atomic<bool> g_notifications_suppressed;
 
 }  // namespace
 
@@ -89,9 +97,17 @@ MemoryPressureListener::~MemoryPressureListener() {
 }
 
 void MemoryPressureListener::Notify(MemoryPressureLevel memory_pressure_level) {
-  TRACE_EVENT2("base", "MemoryPressureListener::Notify",
-               "listener_creation_info", creation_location_.ToString(), "level",
-               memory_pressure_level);
+  TRACE_EVENT(
+      "base", "MemoryPressureListener::Notify",
+      [&](perfetto::EventContext ctx) {
+        auto* event = ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>();
+        auto* data = event->set_chrome_memory_pressure_notification();
+        data->set_level(
+            trace_event::MemoryPressureLevelToTraceEnum(memory_pressure_level));
+        data->set_creation_location_iid(
+            base::trace_event::InternedSourceLocation::Get(&ctx,
+                                                           creation_location_));
+      });
   callback_.Run(memory_pressure_level);
 }
 
@@ -106,10 +122,15 @@ void MemoryPressureListener::SyncNotify(
 void MemoryPressureListener::NotifyMemoryPressure(
     MemoryPressureLevel memory_pressure_level) {
   DCHECK_NE(memory_pressure_level, MEMORY_PRESSURE_LEVEL_NONE);
-  TRACE_EVENT_INSTANT1(TRACE_DISABLED_BY_DEFAULT("memory-infra"),
-                       "MemoryPressureListener::NotifyMemoryPressure",
-                       TRACE_EVENT_SCOPE_THREAD, "level",
-                       memory_pressure_level);
+  TRACE_EVENT_INSTANT(
+      trace_event::MemoryDumpManager::kTraceCategory,
+      "MemoryPressureListener::NotifyMemoryPressure",
+      [&](perfetto::EventContext ctx) {
+        auto* event = ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>();
+        auto* data = event->set_chrome_memory_pressure_notification();
+        data->set_level(
+            trace_event::MemoryPressureLevelToTraceEnum(memory_pressure_level));
+      });
   if (AreNotificationsSuppressed())
     return;
   DoNotifyMemoryPressure(memory_pressure_level);
@@ -117,12 +138,12 @@ void MemoryPressureListener::NotifyMemoryPressure(
 
 // static
 bool MemoryPressureListener::AreNotificationsSuppressed() {
-  return subtle::Acquire_Load(&g_notifications_suppressed) == 1;
+  return g_notifications_suppressed.load(std::memory_order_acquire);
 }
 
 // static
 void MemoryPressureListener::SetNotificationsSuppressed(bool suppress) {
-  subtle::Release_Store(&g_notifications_suppressed, suppress ? 1 : 0);
+  g_notifications_suppressed.store(suppress, std::memory_order_release);
 }
 
 // static

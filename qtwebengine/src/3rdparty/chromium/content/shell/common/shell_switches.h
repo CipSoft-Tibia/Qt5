@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,6 +15,8 @@ extern const char kDisableSystemFontCheck[];
 extern const char kExposeInternalsForTesting[];
 extern const char kContentShellHostWindowSize[];
 extern const char kContentShellHideToolbar[];
+extern const char kContentShellDevToolsTabTarget[];
+extern const char kIsolatedContextOrigins[];
 extern const char kRunWebTests[];
 
 // Helper that returns true if kRunWebTests is present in the command line,

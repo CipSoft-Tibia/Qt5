@@ -17,6 +17,7 @@ V8CachedObject::V8CachedObject(Location location,
       uncompressed_type_name_(std::move(uncompressed_type_name)),
       context_(std::move(context)),
       is_compressed_(is_compressed) {}
+
 HRESULT V8CachedObject::Create(IModelObject* p_v8_object_instance,
                                IV8CachedObject** result) {
   Location location;
@@ -25,15 +26,16 @@ HRESULT V8CachedObject::Create(IModelObject* p_v8_object_instance,
   WRL::ComPtr<IDebugHostContext> context;
   RETURN_IF_FAIL(p_v8_object_instance->GetContext(&context));
 
+  WRL::ComPtr<IDebugHostType> sp_type;
+  _bstr_t type_name;
+  RETURN_IF_FAIL(p_v8_object_instance->GetTypeInfo(&sp_type));
+  RETURN_IF_FAIL(sp_type->GetName(type_name.GetAddress()));
+
   // If the object is of type v8::internal::TaggedValue, and this build uses
   // compressed pointers, then the value is compressed. Other types such as
   // v8::internal::Object represent uncompressed tagged values.
-  WRL::ComPtr<IDebugHostType> sp_type;
-  _bstr_t type_name;
   bool is_compressed =
       COMPRESS_POINTERS_BOOL &&
-      SUCCEEDED(p_v8_object_instance->GetTypeInfo(&sp_type)) &&
-      SUCCEEDED(sp_type->GetName(type_name.GetAddress())) &&
       static_cast<const char*>(type_name) == std::string(kTaggedValue);
 
   const char* uncompressed_type_name =
@@ -44,6 +46,7 @@ HRESULT V8CachedObject::Create(IModelObject* p_v8_object_instance,
                 .Detach();
   return S_OK;
 }
+
 V8CachedObject::V8CachedObject(V8HeapObject heap_object)
     : heap_object_(std::move(heap_object)), heap_object_initialized_(true) {}
 
@@ -274,13 +277,17 @@ HRESULT GetModelForStruct(const uint64_t address,
   for (const StructField& field : fields) {
     WRL::ComPtr<IModelObject> field_model;
     if (field.num_bits == 0) {
-      RETURN_IF_FAIL(GetModelForBasicField(
-          address + field.offset, field.type_name, field.uncompressed_type_name,
-          sp_ctx, &field_model));
+      if (FAILED(GetModelForBasicField(address + field.offset, field.type_name,
+                                       field.uncompressed_type_name, sp_ctx,
+                                       &field_model))) {
+        continue;
+      }
     } else {
-      RETURN_IF_FAIL(GetModelForBitField(address + field.offset, field.num_bits,
-                                         field.shift_bits, field.type_name,
-                                         sp_ctx, &field_model));
+      if (FAILED(GetModelForBitField(address + field.offset, field.num_bits,
+                                     field.shift_bits, field.type_name, sp_ctx,
+                                     &field_model))) {
+        continue;
+      }
     }
     RETURN_IF_FAIL(
         sp_value->SetKey(reinterpret_cast<const wchar_t*>(field.name.c_str()),

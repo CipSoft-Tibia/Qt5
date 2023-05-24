@@ -1,55 +1,45 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-cr.define('chrome.ntp_tiles_internals', function() {
-  'use strict';
+// <if expr="is_ios">
+import 'chrome://resources/js/ios/web_ui.js';
+// </if>
 
-  const initialize = function() {
-    $('submit-update').addEventListener('click', function(event) {
-      event.preventDefault();
-      chrome.send('update', [{
-        "popular": {
-          "overrideURL": $('override-url').value,
-          "overrideDirectory": $('override-directory').value,
-          "overrideCountry": $('override-country').value,
-          "overrideVersion": $('override-version').value,
-        },
-      }]);
-    });
+import 'chrome://resources/js/jstemplate_compiled.js';
 
-    $('suggestions-fetch').addEventListener('click', function(event) {
-      event.preventDefault();
-      chrome.send('fetchSuggestions');
-    });
+import {addWebUiListener} from 'chrome://resources/js/cr.js';
+import {$} from 'chrome://resources/js/util_ts.js';
 
-    $('popular-view-json').addEventListener('click', function(event) {
-      event.preventDefault();
-      if ($('popular-json-value').textContent === "") {
-        chrome.send('viewPopularSitesJson');
-      } else {
-        $('popular-json-value').textContent = "";
-      }
-    });
+const initialize = function() {
+  $('submit-update').addEventListener('click', function(event) {
+    event.preventDefault();
+    chrome.send('update', [{
+                  popular: {
+                    overrideURL: $('override-url').value,
+                    overrideDirectory: $('override-directory').value,
+                    overrideCountry: $('override-country').value,
+                    overrideVersion: $('override-version').value,
+                  },
+                }]);
+  });
 
-    chrome.send('registerForEvents');
-  };
+  $('popular-view-json').addEventListener('click', function(event) {
+    event.preventDefault();
+    if ($('popular-json-value').textContent === '') {
+      chrome.send('viewPopularSitesJson');
+    } else {
+      $('popular-json-value').textContent = '';
+    }
+  });
 
-  const receiveSourceInfo = function(state) {
+  addWebUiListener('receive-source-info', state => {
     jstProcess(new JsEvalContext(state), $('sources'));
-  };
-
-  const receiveSites = function(sites) {
+  });
+  addWebUiListener('receive-sites', sites => {
     jstProcess(new JsEvalContext(sites), $('sites'));
-  };
+  });
+  chrome.send('registerForEvents');
+};
 
-  // Return an object with all of the exports.
-  return {
-    initialize: initialize,
-    receiveSourceInfo: receiveSourceInfo,
-    receiveSites: receiveSites,
-  };
-});
-
-document.addEventListener('DOMContentLoaded',
-                          chrome.ntp_tiles_internals.initialize);
+document.addEventListener('DOMContentLoaded', initialize);

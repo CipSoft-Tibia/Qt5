@@ -30,6 +30,9 @@
 # plus the xml-apis.jar from the Apache xalan package
 # (http://xml.apache.org/xalan-j/downloads.html).
 #
+# You will also need to have performed the CLDR Maven setup (non-Eclipse version)
+# per http://cldr.unicode.org/development/maven 
+#
 # Note: Enough things can (and will) fail in this process that it is best to
 #   run the commands separately from an interactive shell. They should all
 #   copy and paste without problems.
@@ -55,12 +58,9 @@
 #
 # b) CLDR-related variables
 #
-# CLDR_DIR:      For most of the process, this is the path to the to root of
-#                standard CLDR sources, below which are the common and
-#                tools directories. For running LdmlConverter, this needs to be
-#                temporarily reset to the parallel root for the production data,
-#                corresponding to $CLDR_TMP_DIR/production (see description of
-#                CLDR_TMP_DIR below).
+# CLDR_DIR:      This is the path to the to root of standard CLDR sources, below
+#                which are the common and tools directories.
+#
 # CLDR_CLASSES:  Path to the CLDR Tools classes directory. If not set, defaults
 #                to $CLDR_DIR/tools/java/classes
 #
@@ -97,34 +97,6 @@
 #
 #    $TOOLS_ROOT/cldr/cldr-to-icu/build-icu-data.xml
 #
-# The files used in previous versions are the following. These are not used in
-# the ICU-67-and-later process, but for now they should be kept up to date to
-# enable parallel use of the older build process for verification.
-#
-#    $ICU4C_DIR/source/data/icu-config.xml - Update <locales> to add or remove
-#                CLDR locales for inclusion in ICU. Update <paths> to prefer
-#                alt forms for certain paths, or to exclude certain paths; note
-#                that <paths> items can only have draft or alt attributes.
-#
-#                Note that if a language-only locale (e.g. "de") is included in
-#                <locales>, then all region sublocales for that language that
-#                are present in CLDR data (e.g. "de_AT", "de_BE", "de_CH", etc.)
-#                should also be included in <locales>, per PMC policy decision
-#                2012-05-02 (see http://bugs.icu-project.org/trac/ticket/9298).
-#
-#    $ICU4C_DIR/source/data/build.xml - If you are adding or removing break
-#                iterators, you need to update  <fileset id="brkitr" ...> under
-#                <target name="clean" ...> to clean the correct set of files.
-#
-#                If there are new CLDR resource bundle types, you may need to
-#                updated the <remapper> sections to put these in the correct
-#                data subfolder for ICU.
-#
-#    $ICU4C_DIR/source/data/xml/      - If you are adding a new locale, break
-#                iterator, collation tailoring, or rule-based number formatter,
-#                you may need to add a corresponding xml file in (respectively)
-#                the main/, brkitr/, collation/, or rbnf/ subdirectory here.
-#
 #----
 #
 # For an official CLDR data integration into ICU, there are some additional
@@ -153,7 +125,7 @@
 # 1a. Java and ant variables, adjust for your system
 
 export JAVA_HOME=`/usr/libexec/java_home`
-export ANT_OPTS="-Xmx4096m
+export ANT_OPTS="-Xmx4096m"
 
 # 1b. CLDR variables, adjust for your setup; with cygwin it might be e.g.
 # CLDR_DIR=`cygpath -wp /build/cldr`
@@ -166,50 +138,52 @@ export ICU4C_DIR=$HOME/icu-myfork/icu4c
 export ICU4J_ROOT=$HOME/icu-myfork/icu4j
 export TOOLS_ROOT=$HOME/icu-myfork/tools
 
+# 1d. Directory for logs/notes (create if does not exist)
 
-# 2. Build the CLDR Java tools and jar
+export NOTES=...(some directory)...
+mkdir -p $NOTES
 
-cd $CLDR_DIR/tools/java
-ant clean
-ant all
-ant jar
-
-# 2a. Copy the CLDR jars into $TOOLS_ROOT/cldr/cldr-to-icu/lib/ maven repository;
-# see $TOOLS_ROOT/cldr/cldr-to-icu/lib/README.txt
-
-cd $TOOLS_ROOT/cldr/cldr-to-icu/lib/
-mvn install:install-file \
-  -DgroupId=org.unicode.cldr \
-  -DartifactId=cldr-api \
-  -Dversion=0.1-SNAPSHOT \
-  -Dpackaging=jar \
-  -DgeneratePom=true \
-  -DlocalRepositoryPath=. \
-  -Dfile=$CLDR_DIR/tools/java/cldr.jar
-
-cd $TOOLS_ROOT/cldr/cldr-to-icu/lib/
-mvn install:install-file \
-  -DgroupId=com.ibm.icu \
-  -DartifactId=icu-utilities \
-  -Dversion=0.1-SNAPSHOT \
-  -Dpackaging=jar \
-  -DgeneratePom=true \
-  -DlocalRepositoryPath=. \
-  -Dfile=$CLDR_DIR/tools/java/libs/utilities.jar
-
-cd $TOOLS_ROOT/cldr/cldr-to-icu/
-mvn dependency:purge-local-repository -DsnapshotsOnly=true
-
-# 3. Configure ICU4C, build and test without new data first, to verify that
+# 2a. Configure ICU4C, build and test without new data first, to verify that
 # there are no pre-existing errors. Here <platform> is the runConfigureICU
 # code for the platform you are building, e.g. Linux, MacOSX, Cygwin.
+# (optionally build with debug enabled)
 
 cd $ICU4C_DIR/source
-./runConfigureICU <platform>
+./runConfigureICU [--enable-debug] <platform>
 make clean
-make check 2>&1 | tee /tmp/icu4c-oldData-makeCheck.txt
+make check 2>&1 | tee $NOTES/icu4c-oldData-makeCheck.txt
 
-# 4a. Generate the CLDR production data. This process uses ant with ICU's
+# 2b. Now with ICU4J, build and test without new data first, to verify that
+# there are no pre-existing errors (or at least to have the pre-existing errors
+# as a base for comparison):
+
+cd $ICU4J_ROOT
+ant clean
+ant check 2>&1 | tee $NOTES/icu4j-oldData-antCheck.txt
+
+# 3. Make pre-adjustments as necessary
+# 3a. Copy latest relevant CLDR dtds to ICU
+cp -p $CLDR_DIR/common/dtd/ldml.dtd $ICU4C_DIR/source/data/dtd/cldr/common/dtd/
+cp -p $CLDR_DIR/common/dtd/ldmlICU.dtd $ICU4C_DIR/source/data/dtd/cldr/common/dtd/
+
+# 3b. Update the cldr-icu tooling to use the latest tagged version of ICU
+open $TOOLS_ROOT/cldr/cldr-to-icu/pom.xml
+# search for icu4j-for-cldr and update to the latest tagged version per instructions
+
+# 3c. Update the build for any new icu version, added locales, etc.
+open $TOOLS_ROOT/cldr/cldr-to-icu/build-icu-data.xml
+# update icuVersion, icuDataVersion if necessary
+# update lists of locales to include if necessary
+
+# 4. Build and install the CLDR jar
+
+cd $TOOLS_ROOT/cldr
+ant install-cldr-libs
+
+See the $TOOLS_ROOT/cldr/lib/README.txt file for more information on the CLDR
+jar and the install-cldr-jars.sh script.
+
+# 5a. Generate the CLDR production data. This process uses ant with ICU's
 # data/build.xml
 #
 # Running "ant cleanprod" is necessary to clean out the production data directory
@@ -221,9 +195,9 @@ make check 2>&1 | tee /tmp/icu4c-oldData-makeCheck.txt
 cd $ICU4C_DIR/source/data
 ant cleanprod
 ant setup
-ant proddata 2>&1 | tee /tmp/cldr-newData-proddataLog.txt
+ant proddata 2>&1 | tee $NOTES/cldr-newData-proddataLog.txt
 
-# 4b. Build the new ICU4C data files; these include .txt files and .py files.
+# 5b. Build the new ICU4C data files; these include .txt files and .py files.
 # These new files will replace whatever was already present in the ICU4C sources.
 # This process uses the LdmlConverter in $TOOLS_ROOT/cldr/cldr-to-icu/;
 # see $TOOLS_ROOT/cldr/cldr-to-icu/README.txt
@@ -232,48 +206,67 @@ ant proddata 2>&1 | tee /tmp/cldr-newData-proddataLog.txt
 # output (so do not assume nothing is happening). Keep a log so you can investigate
 # anything that looks suspicious.
 #
-# This also requires temporarily redefining CLDR_DIR.
-#
 # Note that "ant clean" should not be run before this. The build-icu-data.xml process
 # will automatically run its own "clean" step to delete files it cannot determine to
 # be ones that it would generate, except for pasts listed in <retain> elements such as
 # coll/de__PHONEBOOK.txt, coll/de_.txt, etc.
 #
-# Before this step, make any necessary changes to
-# build-icu-data.xml$TOOLS_ROOT/cldr/cldr-to-icu/ to add new locales, etc.
+# Before running Ant to regenerate the data, make any necessary changes to the
+# build-icu-data.xml file, such as adding new locales etc.
 
-cd $TOOLS_ROOT/cldr/cldr-to-icu/
-CLDR_DIR=$CLDR_TMP_DIR/production ant -f build-icu-data.xml | tee /tmp/cldr-newData-builddataLog.txt
+cd $TOOLS_ROOT/cldr/cldr-to-icu
+ant -f build-icu-data.xml -DcldrDataDir="$CLDR_TMP_DIR/production" | tee $NOTES/cldr-newData-builddataLog.txt
 
-# 5. Check which data files have modifications, which have been added or removed
+# 5c. Update the CLDR testData files needed by ICU4C and ICU4J tests, ensuring
+# they're representative of the newest CLDR data.
+
+cd $TOOLS_ROOT/cldr
+ant copy-cldr-testdata
+
+# 5d. Copy from CLDR common/testData/localeIdentifiers/localeCanonicalization.txt
+# into icu4c/source/test/testdata/localeCanonicalization.txt
+# and icu4j/main/tests/core/src/com/ibm/icu/dev/data/unicode/localeCanonicalization.txt
+# and add the following line to the beginning of these two files
+# # File copied from cldr common/testData/localeIdentifiers/localeCanonicalization.txt
+
+# 5e. For the time being, manually re-add the lstm entries in data/brkitr/root.txt
+open $ICU4C_DIR/source/data/brkitr/root.txt 
+
+# paste the following block after the dictionaries block and before the final closing '}':
+    lstm{
+        Thai{"Thai_graphclust_model4_heavy.res"}
+        Mymr{"Burmese_graphclust_model5_heavy.res"}
+    }
+
+# 6. Check which data files have modifications, which have been added or removed
 # (if there are no changes, you may not need to proceed further). Make sure the
 # list seems reasonable.
 
-cd $ICU4C_DIR/source/data
+cd $ICU4C_DIR/..
 git status
 
-# 5a. You may also want to check which files were modified in CLDR production data:
+# 6a. You may also want to check which files were modified in CLDR production data:
 
 cd $CLDR_TMP_DIR
 git status
 
-# 6. Fix any errors, investigate any warnings.
+# 7. Fix any errors, investigate any warnings.
 #
 # Fixing may entail modifying CLDR source data or TOOLS_ROOT config files or
 # tooling.
 
-# 7. Now rebuild ICU4C with the new data and run make check tests.
+# 8. Now rebuild ICU4C with the new data and run make check tests.
 # Again, keep a log so you can investigate the errors.
 cd $ICU4C_DIR/source
 
-# 7a. If any files were added or removed (likely), re-run configure:
-./runConfigureICU <platform>
+# 8a. If any files were added or removed (likely), re-run configure:
+./runConfigureICU [--enable-debug] <platform>
 make clean
 
-# 7b. Now do the rebuild.
-make check 2>&1 | tee /tmp/icu4c-newData-makeCheck.txt
+# 8b. Now do the rebuild.
+make check 2>&1 | tee $NOTES/icu4c-newData-makeCheck.txt
 
-# 8. Investigate each test case failure. The first run processing new CLDR data
+# 9. Investigate each test case failure. The first run processing new CLDR data
 # from the Survey Tool can result in thousands of failures (in many cases, one
 # CLDR data fix can resolve hundreds of test failures). If the error is caused
 # by bad CLDR data, then file a CLDR bug, fix the data, and regenerate from
@@ -283,27 +276,21 @@ make check 2>&1 | tee /tmp/icu4c-newData-makeCheck.txt
 # Note that if the new data has any differences in structure, you will have to
 # update test/testdata/structLocale.txt or /tsutil/cldrtest/TestLocaleStructure
 # may fail.
-# Repeat steps 4-7 until there are no errors.
+# Repeat steps 4-8 until there are no errors.
 
-# 9. You can also run the make check tests in exhaustive mode (these will also
-# be run automatically on the master branch after the merge resulting from this
-# integration):
+# 10. You can also run the make check tests in exhaustive mode. As an alternative
+# you can run them as part of the pre-merge tests by adding the following as a
+# comment in the pull request: "/azp run CI-Exhaustive". You should do one or the
+# other; the exhaustive tests are *not* run automatically on each pull request,
+# and are only run occasionally on the default branch.
 
 cd $ICU4C_DIR/source
 export INTLTEST_OPTS="-e"
 export CINTLTST_OPTS="-e"
-make check 2>&1 | tee /tmp/icu4c-newData-makeCheckEx.txt
+make check 2>&1 | tee $NOTES/icu4c-newData-makeCheckEx.txt
 
-# 10. Again, investigate each failure, fixing CLDR data or ICU test cases as
-# appropriate, and repeating steps 4-7 and 9 until there are no errors.
-
-# 11. Now with ICU4J, build and test without new data first, to verify that
-# there are no pre-existing errors (or at least to have the pre-existing errors
-# as a base for comparison):
-
-cd $ICU4J_ROOT
-ant all 2>&1 | tee /tmp/icu4j-oldData-antAll.txt
-ant check 2>&1 | tee /tmp/icu4j-oldData-antCheck.txt
+# 11. Again, investigate each failure, fixing CLDR data or ICU test cases as
+# appropriate, and repeating steps 4-8 and 10 until there are no errors.
 
 # 12. Transfer the data to ICU4J:
 cd $ICU4C_DIR/source
@@ -324,7 +311,7 @@ make icu4j-data-install
 # Keep a log so you can investigate the errors.
 
 cd $ICU4J_ROOT
-ant check 2>&1 | tee /tmp/icu4j-newData-antCheck.txt
+ant check 2>&1 | tee $NOTES/icu4j-newData-antCheck.txt
 
 # 14. Investigate test case failures; fix test cases and repeat from step 12,
 # or fix CLDR data and repeat from step 4, as appropriate, until there are no

@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 /*!
 \page qmlfirststeps.html
 \title First Steps with QML
@@ -42,9 +18,9 @@ import.
 To use the \l{Qt Quick} module, a QML document needs to
 import it. The import syntax looks like this:
 
-\code
-import QtQuick 2.3
-\endcode
+\qml
+import QtQuick
+\endqml
 
 The types and functionality that \l{Qt Quick} provides can now
 be used in the QML document!
@@ -84,7 +60,7 @@ by the \c{QtQuick} import. Putting the import and object declaration
 together, we get a complete QML document:
 
 \qml
-import QtQuick 2.3
+import QtQuick
 
 Rectangle {
     width: 200
@@ -133,8 +109,8 @@ demonstrates the use of available space:
 
 \qml
 //import related modules
-import QtQuick 2.12
-import QtQuick.Controls 2.12
+import QtQuick
+import QtQuick.Controls
 
 //window containing the application
 ApplicationWindow {
@@ -184,7 +160,7 @@ Qt Creator and demonstrate different controls and layouts.
 \li \l{Qt Quick Controls - Gallery}
 \endlist
 
-Feel free to copy and paste the snippets onto this simple Hellow World
+Feel free to copy and paste the snippets onto this simple Hello World
 application to see how QML works.
 
 \section1 Handling User Input
@@ -197,7 +173,7 @@ as \l{Signal and Handler Event System}{signals} and these signals are handled by
 
 For example, consider the following example:
 \qml
-import QtQuick 2.12
+import QtQuick
 
 Rectangle {
     width: 200
@@ -215,8 +191,8 @@ Rectangle {
 }
 \endqml
 
-This example can be saved as "ClickableHelloWorld.qml" and run with the
-\l{qtquick-qml-runtime.html}{qml} runtime tool.
+This example can be saved as "ClickableHelloWorld.qml" and run with \c qml, the
+\l{qml_runtime_tool}{QML Runtime Tool}.
 Whenever the user clicks anywhere in the window, the rectangle will change
 from red to blue.
 
@@ -268,12 +244,14 @@ Rectangle {
     Rectangle {
         width: parent.width / 2
         height: parent.height
+        color: "blue"
     }
 
     Rectangle {
         width: parent.width / 2
         height: parent.height
         x: parent.width / 2
+        color: "green"
     }
 }
 \endqml

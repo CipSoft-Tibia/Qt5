@@ -1,64 +1,19 @@
-/***************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #ifndef DEVICEHANDLER_H
 #define DEVICEHANDLER_H
 
 #include "bluetoothbaseclass.h"
 
-#include <QDateTime>
-#include <QTimer>
-#include <QVector>
+#include <QtBluetooth/qlowenergycontroller.h>
+#include <QtBluetooth/qlowenergyservice.h>
 
-#include <QLowEnergyController>
-#include <QLowEnergyService>
+#include <QtCore/qdatetime.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qtimer.h>
+
+#include <QtQml/qqmlregistration.h>
 
 class DeviceInfo;
 
@@ -75,6 +30,8 @@ class DeviceHandler : public BluetoothBaseClass
     Q_PROPERTY(int time READ time NOTIFY statsChanged)
     Q_PROPERTY(float calories READ calories NOTIFY statsChanged)
     Q_PROPERTY(AddressType addressType READ addressType WRITE setAddressType)
+
+    QML_ELEMENT
 
 public:
     enum class AddressType {
@@ -120,11 +77,10 @@ private:
     void updateHeartRateValue(const QLowEnergyCharacteristic &c,
                               const QByteArray &value);
     void confirmedDescriptorWrite(const QLowEnergyDescriptor &d,
-                              const QByteArray &value);
+                                  const QByteArray &value);
 
-#ifdef SIMULATOR
     void updateDemoHR();
-#endif
+
 private:
     void addMeasurement(int value);
 
@@ -133,21 +89,19 @@ private:
     QLowEnergyDescriptor m_notificationDesc;
     DeviceInfo *m_currentDevice = nullptr;
 
-    bool m_foundHeartRateService;
-    bool m_measuring;
-    int m_currentValue, m_min, m_max, m_sum;
-    float m_avg, m_calories;
+    bool m_foundHeartRateService = false;
+    bool m_measuring = false;
+    int m_currentValue = 0, m_min = 0, m_max = 0, m_sum = 0;
+    float m_avg = 0, m_calories = 0;
 
     // Statistics
     QDateTime m_start;
     QDateTime m_stop;
 
-    QVector<int> m_measurements;
+    QList<int> m_measurements;
     QLowEnergyController::RemoteAddressType m_addressType = QLowEnergyController::PublicAddress;
 
-#ifdef SIMULATOR
     QTimer m_demoTimer;
-#endif
 };
 
 #endif // DEVICEHANDLER_H

@@ -1,21 +1,24 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/web_package/signed_exchange_prefetch_handler.h"
 
-#include "base/callback.h"
 #include "base/feature_list.h"
+#include "base/functional/callback.h"
 #include "content/browser/web_package/prefetched_signed_exchange_cache_entry.h"
 #include "content/browser/web_package/signed_exchange_devtools_proxy.h"
 #include "content/browser/web_package/signed_exchange_loader.h"
-#include "content/browser/web_package/signed_exchange_prefetch_metric_recorder.h"
 #include "content/browser/web_package/signed_exchange_reporter.h"
 #include "content/public/common/content_features.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
+#include "net/base/network_anonymization_key.h"
 #include "services/network/public/cpp/features.h"
+#include "services/network/public/cpp/record_ontransfersizeupdate_utils.h"
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
+#include "services/network/public/mojom/early_hints.mojom.h"
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
 
 namespace content {
 
@@ -30,7 +33,7 @@ SignedExchangePrefetchHandler::SignedExchangePrefetchHandler(
     scoped_refptr<network::SharedURLLoaderFactory> network_loader_factory,
     URLLoaderThrottlesGetter loader_throttles_getter,
     network::mojom::URLLoaderClient* forwarding_client,
-    scoped_refptr<SignedExchangePrefetchMetricRecorder> metric_recorder,
+    const net::NetworkAnonymizationKey& network_anonymization_key,
     const std::string& accept_langs,
     bool keep_entry_for_prefetch_cache)
     : forwarding_client_(forwarding_client) {
@@ -42,18 +45,18 @@ SignedExchangePrefetchHandler::SignedExchangePrefetchHandler(
 
   auto reporter = SignedExchangeReporter::MaybeCreate(
       resource_request.url, resource_request.referrer.spec(), *response_head,
-      frame_tree_node_id);
+      network_anonymization_key, frame_tree_node_id);
   auto devtools_proxy = std::make_unique<SignedExchangeDevToolsProxy>(
       resource_request.url, response_head.Clone(), frame_tree_node_id,
-      base::nullopt /* devtools_navigation_token */,
-      resource_request.report_raw_headers);
+      absl::nullopt /* devtools_navigation_token */,
+      resource_request.devtools_request_id.has_value());
   signed_exchange_loader_ = std::make_unique<SignedExchangeLoader>(
       resource_request, std::move(response_head), std::move(response_body),
       loader_client_receiver_.BindNewPipeAndPassRemote(), std::move(endpoints),
       network::mojom::kURLLoadOptionNone,
       false /* should_redirect_to_fallback */, std::move(devtools_proxy),
       std::move(reporter), std::move(url_loader_factory),
-      loader_throttles_getter, frame_tree_node_id, std::move(metric_recorder),
+      loader_throttles_getter, network_anonymization_key, frame_tree_node_id,
       accept_langs, keep_entry_for_prefetch_cache);
 }
 
@@ -77,8 +80,15 @@ SignedExchangePrefetchHandler::TakePrefetchedSignedExchangeCacheEntry() {
   return signed_exchange_loader_->TakePrefetchedSignedExchangeCacheEntry();
 }
 
+void SignedExchangePrefetchHandler::OnReceiveEarlyHints(
+    network::mojom::EarlyHintsPtr early_hints) {
+  NOTREACHED();
+}
+
 void SignedExchangePrefetchHandler::OnReceiveResponse(
-    network::mojom::URLResponseHeadPtr head) {
+    network::mojom::URLResponseHeadPtr head,
+    mojo::ScopedDataPipeConsumerHandle body,
+    absl::optional<mojo_base::BigBuffer> cached_metadata) {
   NOTREACHED();
 }
 
@@ -95,18 +105,10 @@ void SignedExchangePrefetchHandler::OnUploadProgress(
   NOTREACHED();
 }
 
-void SignedExchangePrefetchHandler::OnReceiveCachedMetadata(
-    mojo_base::BigBuffer data) {
-  NOTREACHED();
-}
-
 void SignedExchangePrefetchHandler::OnTransferSizeUpdated(
     int32_t transfer_size_diff) {
-  NOTREACHED();
-}
-
-void SignedExchangePrefetchHandler::OnStartLoadingResponseBody(
-    mojo::ScopedDataPipeConsumerHandle body) {
+  network::RecordOnTransferSizeUpdatedUMA(
+      network::OnTransferSizeUpdatedFrom::kSignedExchangePrefetchHandler);
   NOTREACHED();
 }
 

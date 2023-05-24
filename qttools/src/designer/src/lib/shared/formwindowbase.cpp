@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "formwindowbase_p.h"
 #include "connectionedit_p.h"
@@ -45,10 +20,6 @@
 #include <QtDesigner/taskmenu.h>
 #include <QtDesigner/abstractintegration.h>
 
-#include <QtCore/qdebug.h>
-#include <QtCore/qlist.h>
-#include <QtCore/qset.h>
-#include <QtCore/qtimer.h>
 #include <QtWidgets/qmenu.h>
 #include <QtWidgets/qlistwidget.h>
 #include <QtWidgets/qtreewidget.h>
@@ -59,10 +30,19 @@
 #include <QtWidgets/qtoolbar.h>
 #include <QtWidgets/qstatusbar.h>
 #include <QtWidgets/qmenu.h>
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qlabel.h>
 
+#include <QtGui/qaction.h>
+
+#include <QtCore/qdebug.h>
+#include <QtCore/qhash.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qset.h>
+#include <QtCore/qtimer.h>
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace qdesigner_internal {
 
@@ -78,8 +58,8 @@ public:
     DesignerPixmapCache *m_pixmapCache;
     DesignerIconCache *m_iconCache;
     QtResourceSet *m_resourceSet;
-    QMap<QDesignerPropertySheet *, QMap<int, bool> > m_reloadableResources; // bool is dummy, QMap used as QSet
-    QMap<QDesignerPropertySheet *, QObject *> m_reloadablePropertySheets;
+    QHash<QDesignerPropertySheet *, QSet<int>> m_reloadableResources;
+    QHash<QDesignerPropertySheet *, QObject *> m_reloadablePropertySheets;
     const DeviceProfile m_deviceProfile;
     FormWindowBase::LineTerminatorMode m_lineTerminatorMode;
     FormWindowBase::ResourceFileSaveMode m_saveResourcesBehaviour;
@@ -155,13 +135,13 @@ void FormWindowBase::setResourceSet(QtResourceSet *resourceSet)
 void FormWindowBase::addReloadableProperty(QDesignerPropertySheet *sheet, int index)
 {
     connectSheet(sheet);
-    m_d->m_reloadableResources[sheet][index] = true;
+    m_d->m_reloadableResources[sheet].insert(index);
 }
 
 void FormWindowBase::removeReloadableProperty(QDesignerPropertySheet *sheet, int index)
 {
     m_d->m_reloadableResources[sheet].remove(index);
-    if (!m_d->m_reloadableResources[sheet].count()) {
+    if (m_d->m_reloadableResources[sheet].isEmpty()) {
         m_d->m_reloadableResources.remove(sheet);
         disconnectSheet(sheet);
     }
@@ -227,14 +207,13 @@ void FormWindowBase::reloadProperties()
     iconCache()->clear();
     for (auto it = m_d->m_reloadableResources.cbegin(), end = m_d->m_reloadableResources.cend(); it != end; ++it) {
         QDesignerPropertySheet *sheet = it.key();
-        for (auto jt = it.value().begin(), end = it.value().end(); jt != end; ++jt) {
-            const int index = jt.key();
+        for (int index : it.value()) {
             const QVariant newValue = sheet->property(index);
-            if (qobject_cast<QLabel *>(sheet->object()) && sheet->propertyName(index) == QStringLiteral("text")) {
+            if (qobject_cast<QLabel *>(sheet->object()) && sheet->propertyName(index) == "text"_L1) {
                 const PropertySheetStringValue newString = qvariant_cast<PropertySheetStringValue>(newValue);
                 // optimize a bit, reset only if the text value might contain a reference to qt resources
                 // (however reloading of icons other than taken from resources might not work here)
-                if (newString.value().contains(QStringLiteral(":/"))) {
+                if (newString.value().contains(":/"_L1)) {
                     const QVariant resetValue = QVariant::fromValue(PropertySheetStringValue());
                     sheet->setProperty(index, resetValue);
                 }
@@ -244,7 +223,7 @@ void FormWindowBase::reloadProperties()
         if (QTabWidget *tabWidget = qobject_cast<QTabWidget *>(sheet->object())) {
             const int count = tabWidget->count();
             const int current = tabWidget->currentIndex();
-            const QString currentTabIcon = QStringLiteral("currentTabIcon");
+            const QString currentTabIcon = u"currentTabIcon"_s;
             for (int i = 0; i < count; i++) {
                 tabWidget->setCurrentIndex(i);
                 const int index = sheet->indexOf(currentTabIcon);
@@ -254,7 +233,7 @@ void FormWindowBase::reloadProperties()
         } else if (QToolBox *toolBox = qobject_cast<QToolBox *>(sheet->object())) {
             const int count = toolBox->count();
             const int current = toolBox->currentIndex();
-            const QString currentItemIcon = QStringLiteral("currentItemIcon");
+            const QString currentItemIcon = u"currentItemIcon"_s;
             for (int i = 0; i < count; i++) {
                 toolBox->setCurrentIndex(i);
                 const int index = sheet->indexOf(currentItemIcon);
@@ -263,7 +242,7 @@ void FormWindowBase::reloadProperties()
             toolBox->setCurrentIndex(current);
         }
     }
-    for (QObject *object : qAsConst(m_d->m_reloadablePropertySheets)) {
+    for (QObject *object : std::as_const(m_d->m_reloadablePropertySheets)) {
         reloadIconResources(iconCache(), object);
     }
 }
@@ -315,10 +294,8 @@ static void recursiveUpdate(QWidget *w)
 {
     w->update();
 
-    const QObjectList &l = w->children();
-    const QObjectList::const_iterator cend = l.constEnd();
-    for (QObjectList::const_iterator it = l.constBegin(); it != cend; ++it) {
-        if (QWidget *w = qobject_cast<QWidget*>(*it))
+    for (auto *child : w->children()) {
+        if (QWidget *w = qobject_cast<QWidget*>(child))
             recursiveUpdate(w);
     }
 }
@@ -449,7 +426,7 @@ void FormWindowBase::deleteWidgetList(const QWidgetList &widget_list)
         tr("Delete '%1'").arg(widget_list.constFirst()->objectName()) : tr("Delete");
 
     commandHistory()->beginMacro(description);
-    for (QWidget *w : qAsConst(widget_list)) {
+    for (QWidget *w : std::as_const(widget_list)) {
         emit widgetRemoved(w);
         DeleteWidgetCommand *cmd = new DeleteWidgetCommand(this);
         cmd->init(w);
@@ -466,7 +443,7 @@ QMenu *FormWindowBase::createExtensionTaskMenu(QDesignerFormWindowInterface *fw,
     QExtensionManager *em = fw->core()->extensionManager();
     if (const QDesignerTaskMenuExtension *extTaskMenu = qt_extension<QDesignerTaskMenuExtension*>(em, o))
         actions += extTaskMenu->taskActions();
-    if (const QDesignerTaskMenuExtension *intTaskMenu = qobject_cast<QDesignerTaskMenuExtension *>(em->extension(o, QStringLiteral("QDesignerInternalTaskMenuExtension")))) {
+    if (const auto *intTaskMenu = qobject_cast<QDesignerTaskMenuExtension *>(em->extension(o, u"QDesignerInternalTaskMenuExtension"_s))) {
         if (!actions.isEmpty()) {
             QAction *a = new QAction(fw);
             a->setSeparator(true);
@@ -482,9 +459,8 @@ QMenu *FormWindowBase::createExtensionTaskMenu(QDesignerFormWindowInterface *fw,
         actions.push_back(a);
     }
     QMenu *rc = new QMenu;
-    const ActionList::const_iterator cend = actions.constEnd();
-    for (ActionList::const_iterator it = actions.constBegin(); it != cend; ++it)
-        rc->addAction(*it);
+    for (auto *a : std::as_const(actions))
+        rc->addAction(a);
     return rc;
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,8 @@
 
 #include <string>
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/strcat.h"
 #include "base/test/metrics/histogram_tester.h"
@@ -32,7 +31,7 @@ void TestRecordTimeDeltaMetric(
     base::RepeatingCallback<void(const base::TimeDelta&)> recording_cb,
     const std::string& histogram_name) {
   base::HistogramTester tester;
-  const base::TimeDelta delta = base::TimeDelta::FromMilliseconds(10);
+  const base::TimeDelta delta = base::Milliseconds(10);
 
   tester.ExpectTotalCount(histogram_name, 0);
   recording_cb.Run(delta);
@@ -55,24 +54,82 @@ void TestRecordBooleanMetric(base::RepeatingCallback<void(bool)> recording_cb,
               ElementsAre(Bucket(false, 1), Bucket(true, 2)));
 }
 
+// Tests that |record_cb| records metrics for each MediaRouteProvider in a
+// histogram specific to the provider.
+void TestRouteResultCodeHistogramsWithProviders(
+    base::RepeatingCallback<void(mojom::RouteRequestResultCode,
+                                 absl::optional<mojom::MediaRouteProviderId>)>
+        record_cb,
+    mojom::MediaRouteProviderId provider1,
+    const std::string& histogram_provider1,
+    mojom::MediaRouteProviderId provider2,
+    const std::string& histogram_provider2) {
+  base::HistogramTester tester;
+  tester.ExpectTotalCount(histogram_provider1, 0);
+  tester.ExpectTotalCount(histogram_provider2, 0);
+
+  record_cb.Run(mojom::RouteRequestResultCode::SINK_NOT_FOUND, provider1);
+  record_cb.Run(mojom::RouteRequestResultCode::OK, provider2);
+  record_cb.Run(mojom::RouteRequestResultCode::SINK_NOT_FOUND, provider1);
+  record_cb.Run(mojom::RouteRequestResultCode::ROUTE_NOT_FOUND, provider2);
+  record_cb.Run(mojom::RouteRequestResultCode::OK, provider1);
+
+  tester.ExpectTotalCount(histogram_provider1, 3);
+  EXPECT_THAT(
+      tester.GetAllSamples(histogram_provider1),
+      ElementsAre(
+          Bucket(static_cast<int>(mojom::RouteRequestResultCode::OK), 1),
+          Bucket(
+              static_cast<int>(mojom::RouteRequestResultCode::SINK_NOT_FOUND),
+              2)));
+
+  tester.ExpectTotalCount(histogram_provider2, 2);
+  EXPECT_THAT(
+      tester.GetAllSamples(histogram_provider2),
+      ElementsAre(
+          Bucket(static_cast<int>(mojom::RouteRequestResultCode::OK), 1),
+          Bucket(
+              static_cast<int>(mojom::RouteRequestResultCode::ROUTE_NOT_FOUND),
+              1)));
+}
+
+void TestRouteResultCodeHistograms(
+    base::RepeatingCallback<void(mojom::RouteRequestResultCode,
+                                 absl::optional<mojom::MediaRouteProviderId>)>
+        record_cb,
+    const std::string& base_histogram_name) {
+  TestRouteResultCodeHistogramsWithProviders(
+      record_cb, mojom::MediaRouteProviderId::WIRED_DISPLAY,
+      base_histogram_name + ".WiredDisplay", mojom::MediaRouteProviderId::DIAL,
+      base_histogram_name + ".DIAL");
+
+  TestRouteResultCodeHistogramsWithProviders(
+      record_cb, mojom::MediaRouteProviderId::CAST,
+      base_histogram_name + ".Cast", mojom::MediaRouteProviderId::ANDROID_CAF,
+      base_histogram_name + ".AndroidCaf");
+}
+
 }  // namespace
 
-TEST(MediaRouterMetricsTest, RecordMediaRouterDialogOrigin) {
+TEST(MediaRouterMetricsTest, RecordMediaRouterDialogActivationLocation) {
   base::HistogramTester tester;
-  const MediaRouterDialogOpenOrigin origin1 =
-      MediaRouterDialogOpenOrigin::TOOLBAR;
-  const MediaRouterDialogOpenOrigin origin2 =
-      MediaRouterDialogOpenOrigin::CONTEXTUAL_MENU;
+  const MediaRouterDialogActivationLocation activation_location1 =
+      MediaRouterDialogActivationLocation::TOOLBAR;
+  const MediaRouterDialogActivationLocation activation_location2 =
+      MediaRouterDialogActivationLocation::CONTEXTUAL_MENU;
 
   tester.ExpectTotalCount(MediaRouterMetrics::kHistogramIconClickLocation, 0);
-  MediaRouterMetrics::RecordMediaRouterDialogOrigin(origin1);
-  MediaRouterMetrics::RecordMediaRouterDialogOrigin(origin2);
-  MediaRouterMetrics::RecordMediaRouterDialogOrigin(origin1);
+  MediaRouterMetrics::RecordMediaRouterDialogActivationLocation(
+      activation_location1);
+  MediaRouterMetrics::RecordMediaRouterDialogActivationLocation(
+      activation_location2);
+  MediaRouterMetrics::RecordMediaRouterDialogActivationLocation(
+      activation_location1);
   tester.ExpectTotalCount(MediaRouterMetrics::kHistogramIconClickLocation, 3);
   EXPECT_THAT(
       tester.GetAllSamples(MediaRouterMetrics::kHistogramIconClickLocation),
-      ElementsAre(Bucket(static_cast<int>(origin1), 2),
-                  Bucket(static_cast<int>(origin2), 1)));
+      ElementsAre(Bucket(static_cast<int>(activation_location1), 2),
+                  Bucket(static_cast<int>(activation_location2), 1)));
 }
 
 TEST(MediaRouterMetricsTest, RecordMediaRouterDialogPaint) {
@@ -111,26 +168,6 @@ TEST(MediaRouterMetricsTest, RecordMediaRouterInitialUserAction) {
                           Bucket(static_cast<int>(action3), 2)));
 }
 
-TEST(MediaRouterMetricsTest, RecordRouteCreationOutcome) {
-  base::HistogramTester tester;
-  const MediaRouterRouteCreationOutcome outcome1 =
-      MediaRouterRouteCreationOutcome::SUCCESS;
-  const MediaRouterRouteCreationOutcome outcome2 =
-      MediaRouterRouteCreationOutcome::FAILURE_NO_ROUTE;
-
-  tester.ExpectTotalCount(MediaRouterMetrics::kHistogramRouteCreationOutcome,
-                          0);
-  MediaRouterMetrics::RecordRouteCreationOutcome(outcome2);
-  MediaRouterMetrics::RecordRouteCreationOutcome(outcome1);
-  MediaRouterMetrics::RecordRouteCreationOutcome(outcome2);
-  tester.ExpectTotalCount(MediaRouterMetrics::kHistogramRouteCreationOutcome,
-                          3);
-  EXPECT_THAT(
-      tester.GetAllSamples(MediaRouterMetrics::kHistogramRouteCreationOutcome),
-      ElementsAre(Bucket(static_cast<int>(outcome1), 1),
-                  Bucket(static_cast<int>(outcome2), 2)));
-}
-
 TEST(MediaRouterMetricsTest, RecordPresentationUrlType) {
   base::HistogramTester tester;
 
@@ -166,16 +203,14 @@ TEST(MediaRouterMetricsTest, RecordMediaSinkType) {
   MediaRouterMetrics::RecordMediaSinkType(SinkIconType::WIRED_DISPLAY);
   MediaRouterMetrics::RecordMediaSinkType(SinkIconType::CAST);
   MediaRouterMetrics::RecordMediaSinkType(SinkIconType::CAST_AUDIO);
-  MediaRouterMetrics::RecordMediaSinkType(SinkIconType::HANGOUT);
   MediaRouterMetrics::RecordMediaSinkType(SinkIconType::CAST);
   MediaRouterMetrics::RecordMediaSinkType(SinkIconType::GENERIC);
 
-  tester.ExpectTotalCount(MediaRouterMetrics::kHistogramMediaSinkType, 6);
+  tester.ExpectTotalCount(MediaRouterMetrics::kHistogramMediaSinkType, 5);
   EXPECT_THAT(
       tester.GetAllSamples(MediaRouterMetrics::kHistogramMediaSinkType),
       ElementsAre(Bucket(static_cast<int>(SinkIconType::CAST), 2),
                   Bucket(static_cast<int>(SinkIconType::CAST_AUDIO), 1),
-                  Bucket(static_cast<int>(SinkIconType::HANGOUT), 1),
                   Bucket(static_cast<int>(SinkIconType::WIRED_DISPLAY), 1),
                   Bucket(static_cast<int>(SinkIconType::GENERIC), 1)));
 }
@@ -244,16 +279,23 @@ TEST(MediaRouterMetricsTest, RecordIconStateAtInit) {
       MediaRouterMetrics::kHistogramUiIconStateAtInit);
 }
 
-TEST(MediaRouterMetricsTest, RecordCloudPrefAtDialogOpen) {
-  TestRecordBooleanMetric(
-      base::BindRepeating(&MediaRouterMetrics::RecordCloudPrefAtDialogOpen),
-      MediaRouterMetrics::kHistogramCloudPrefAtDialogOpen);
+TEST(MediaRouterMetricsTest, RecordCreateRouteResultCode) {
+  TestRouteResultCodeHistograms(
+      base::BindRepeating(&MediaRouterMetrics::RecordCreateRouteResultCode),
+      "MediaRouter.Provider.CreateRoute.Result");
 }
 
-TEST(MediaRouterMetricsTest, RecordCloudPrefAtInit) {
-  TestRecordBooleanMetric(
-      base::BindRepeating(&MediaRouterMetrics::RecordCloudPrefAtInit),
-      MediaRouterMetrics::kHistogramCloudPrefAtInit);
+TEST(MediaRouterMetricsTest, RecordJoinRouteResultCode) {
+  TestRouteResultCodeHistograms(
+      base::BindRepeating(&MediaRouterMetrics::RecordJoinRouteResultCode),
+      "MediaRouter.Provider.JoinRoute.Result");
+}
+
+TEST(MediaRouterMetricsTest, RecordTerminateRouteResultCode) {
+  TestRouteResultCodeHistograms(
+      base::BindRepeating(
+          &MediaRouterMetrics::RecordMediaRouteProviderTerminateRoute),
+      "MediaRouter.Provider.TerminateRoute.Result");
 }
 
 }  // namespace media_router

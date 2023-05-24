@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,9 @@
 #define COMPONENTS_SPELLCHECK_RENDERER_SPELLCHECK_PROVIDER_TEST_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
-#include "base/strings/string16.h"
 #include "base/test/task_environment.h"
 #include "build/build_config.h"
 #include "components/spellcheck/renderer/empty_local_interface_provider.h"
@@ -53,11 +53,11 @@ class FakeSpellCheck : public SpellCheck {
   // Test-only method to set the fake language counts
   void SetFakeLanguageCounts(size_t language_count, size_t enabled_count);
 
-#if defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#if BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
   // Test-only method to initialize SpellCheck object for the given locale.
   void InitializeSpellCheckForLocale(const std::string& language,
                                      bool use_hunspell);
-#endif  // defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#endif  // BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
 
   // Returns the current number of spell check languages.
   size_t LanguageCount() override;
@@ -83,36 +83,36 @@ class TestingSpellCheckProvider : public SpellCheckProvider,
   ~TestingSpellCheckProvider() override;
 
   void RequestTextChecking(
-      const base::string16& text,
+      const std::u16string& text,
       std::unique_ptr<blink::WebTextCheckingCompletion> completion);
 
   void SetLastResults(
-      const base::string16 last_request,
+      const std::u16string last_request,
       blink::WebVector<blink::WebTextCheckingResult>& last_results);
-  bool SatisfyRequestFromCache(const base::string16& text,
+  bool SatisfyRequestFromCache(const std::u16string& text,
                                blink::WebTextCheckingCompletion* completion);
 
-#if defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#if BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
   int AddCompletionForTest(
       std::unique_ptr<FakeTextCheckingCompletion> completion,
       SpellCheckProvider::HybridSpellCheckRequestInfo request_info);
 
   void OnRespondTextCheck(int identifier,
-                          const base::string16& line,
+                          const std::u16string& line,
                           const std::vector<SpellCheckResult>& results);
-#endif  // defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#endif  // BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
 
 #if BUILDFLAG(USE_RENDERER_SPELLCHECKER)
   void ResetResult();
 
   // Variables logging CallSpellingService() mojo calls.
-  base::string16 text_;
+  std::u16string text_;
   size_t spelling_service_call_count_ = 0;
 #endif  // BUILDFLAG(USE_RENDERER_SPELLCHECKER)
 
 #if BUILDFLAG(USE_BROWSER_SPELLCHECKER)
   using RequestTextCheckParams =
-      std::pair<base::string16, RequestTextCheckCallback>;
+      std::pair<std::u16string, RequestTextCheckCallback>;
 
   // Variables logging RequestTextCheck() mojo calls.
   std::vector<RequestTextCheckParams> text_check_requests_;
@@ -126,34 +126,30 @@ class TestingSpellCheckProvider : public SpellCheckProvider,
  private:
   // spellcheck::mojom::SpellCheckHost:
   void RequestDictionary() override;
-  void NotifyChecked(const base::string16& word, bool misspelled) override;
+  void NotifyChecked(const std::u16string& word, bool misspelled) override;
 
 #if BUILDFLAG(USE_RENDERER_SPELLCHECKER)
-  void CallSpellingService(const base::string16& text,
+  void CallSpellingService(const std::u16string& text,
                            CallSpellingServiceCallback callback) override;
-  void OnCallSpellingService(const base::string16& text);
+  void OnCallSpellingService(const std::u16string& text);
 #endif
 
 #if BUILDFLAG(USE_BROWSER_SPELLCHECKER)
-  void RequestTextCheck(const base::string16&,
+  void RequestTextCheck(const std::u16string&,
                         int,
                         RequestTextCheckCallback) override;
   using SpellCheckProvider::CheckSpelling;
-  void CheckSpelling(const base::string16&,
+  void CheckSpelling(const std::u16string&,
                      int,
                      CheckSpellingCallback) override;
-  void FillSuggestionList(const base::string16&,
+  void FillSuggestionList(const std::u16string&,
                           FillSuggestionListCallback) override;
-
-#if defined(OS_WIN)
-  void GetPerLanguageSuggestions(
-      const base::string16& word,
-      GetPerLanguageSuggestionsCallback callback) override;
+#if BUILDFLAG(IS_WIN)
   void InitializeDictionaries(InitializeDictionariesCallback callback) override;
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 #endif  // BUILDFLAG(USE_BROWSER_SPELLCHECKER)
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   void DisconnectSessionBridge() override;
 #endif
 

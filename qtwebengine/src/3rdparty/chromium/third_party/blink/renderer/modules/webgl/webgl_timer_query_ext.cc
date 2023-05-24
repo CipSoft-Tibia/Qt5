@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -44,15 +44,6 @@ void WebGLTimerQueryEXT::UpdateCachedResult(gpu::gles2::GLES2Interface* gl) {
   if (!HasTarget())
     return;
 
-  // If this is a timestamp query, set the result to 0 and make it available as
-  // we don't support timestamps in WebGL due to very poor driver support for
-  // them.
-  if (target_ == GL_TIMESTAMP_EXT) {
-    query_result_ = 0;
-    query_result_available_ = true;
-    return;
-  }
-
   // We can only update the cached result when control returns to the browser.
   can_update_availability_ = false;
   GLuint available = 0;
@@ -86,8 +77,8 @@ void WebGLTimerQueryEXT::ScheduleAllowAvailabilityUpdate() {
     return;
   task_handle_ = PostCancellableTask(
       *task_runner_, FROM_HERE,
-      WTF::Bind(&WebGLTimerQueryEXT::AllowAvailabilityUpdate,
-                WrapWeakPersistent(this)));
+      WTF::BindOnce(&WebGLTimerQueryEXT::AllowAvailabilityUpdate,
+                    WrapWeakPersistent(this)));
 }
 
 void WebGLTimerQueryEXT::AllowAvailabilityUpdate() {

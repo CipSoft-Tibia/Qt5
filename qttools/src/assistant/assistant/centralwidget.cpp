@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "centralwidget.h"
 
@@ -34,7 +9,7 @@
 #include "openpagesmanager.h"
 #include "tracer.h"
 
-#include <QtCore/QRegExp>
+#include <QtCore/QRegularExpression>
 #include <QtCore/QTimer>
 
 #include <QtGui/QKeyEvent>
@@ -396,9 +371,9 @@ void CentralWidget::print()
     QPrintDialog dlg(m_printer, this);
 
     if (!currentHelpViewer()->selectedText().isEmpty())
-        dlg.addEnabledOption(QAbstractPrintDialog::PrintSelection);
-    dlg.addEnabledOption(QAbstractPrintDialog::PrintPageRange);
-    dlg.addEnabledOption(QAbstractPrintDialog::PrintCollateCopies);
+        dlg.setOption(QAbstractPrintDialog::PrintSelection);
+    dlg.setOption(QAbstractPrintDialog::PrintPageRange);
+    dlg.setOption(QAbstractPrintDialog::PrintCollateCopies);
     dlg.setWindowTitle(tr("Print Document"));
     if (dlg.exec() == QDialog::Accepted)
         currentHelpViewer()->print(m_printer);
@@ -544,8 +519,8 @@ void CentralWidget::highlightSearchTerms()
     const QString searchInput = searchEngine->searchInput();
     const bool wholePhrase = searchInput.startsWith(QLatin1Char('"')) &&
                              searchInput.endsWith(QLatin1Char('"'));
-    const QStringList &words = wholePhrase ? QStringList(searchInput.mid(1, searchInput.length() - 2)) :
-                                searchInput.split(QRegExp("\\W+"), Qt::SkipEmptyParts);
+    const QStringList &words = wholePhrase ? QStringList(searchInput.mid(1, searchInput.size() - 2)) :
+                                searchInput.split(QRegularExpression("\\W+"), Qt::SkipEmptyParts);
     HelpViewer *viewer = currentHelpViewer();
     for (const QString &word : words)
         viewer->findText(word, {}, false, true);

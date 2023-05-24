@@ -26,6 +26,7 @@
 #include "third_party/blink/renderer/core/dom/class_collection.h"
 #include "third_party/blink/renderer/core/dom/element_traversal.h"
 #include "third_party/blink/renderer/core/dom/node_rare_data.h"
+#include "third_party/blink/renderer/core/html/collection_type.h"
 #include "third_party/blink/renderer/core/html/document_all_name_collection.h"
 #include "third_party/blink/renderer/core/html/document_name_collection.h"
 #include "third_party/blink/renderer/core/html/forms/html_data_list_options_collection.h"
@@ -37,6 +38,7 @@
 #include "third_party/blink/renderer/core/html/html_tag_collection.h"
 #include "third_party/blink/renderer/core/html/window_name_collection.h"
 #include "third_party/blink/renderer/core/html_names.h"
+#include "third_party/blink/renderer/platform/wtf/casting.h"
 #include "third_party/blink/renderer/platform/wtf/hash_set.h"
 
 namespace blink {
@@ -64,6 +66,7 @@ static bool ShouldTypeOnlyIncludeDirectChildren(CollectionType type) {
     case kDataListOptions:
     case kWindowNamedItems:
     case kFormControls:
+    case kPopoverInvokers:
       return false;
     case kNodeChildren:
     case kTRCells:
@@ -108,6 +111,7 @@ static NodeListSearchRoot SearchRootFromCollectionType(
     case kSelectedOptions:
     case kDataListOptions:
     case kMapAreas:
+    case kPopoverInvokers:
       return NodeListSearchRoot::kOwnerNode;
     case kFormControls:
       if (IsA<HTMLFieldSetElement>(owner))
@@ -162,6 +166,8 @@ static NodeListInvalidationType InvalidationTypeExcludingIdAndNameAttributes(
       return kInvalidateForFormControls;
     case kClassCollectionType:
       return kInvalidateOnClassAttrChange;
+    case kPopoverInvokers:
+      return kInvalidateOnPopoverInvokerAttrChange;
     case kNameNodeListType:
     case kRadioNodeListType:
     case kRadioImgNodeListType:
@@ -254,6 +260,12 @@ static inline bool IsMatchingHTMLElement(const HTMLCollection& html_collection,
       return IsA<HTMLObjectElement>(element) ||
              IsA<HTMLFormControlElement>(element) ||
              element.IsFormAssociatedCustomElement();
+    case kPopoverInvokers:
+      if (auto* invoker = DynamicTo<HTMLFormControlElement>(
+              const_cast<HTMLElement&>(element))) {
+        return invoker->popoverTargetElement().popover;
+      }
+      return false;
     case kClassCollectionType:
     case kTagCollectionType:
     case kTagCollectionNSType:
@@ -443,11 +455,11 @@ Element* HTMLCollection::namedItem(const AtomicString& name) const {
 
   const NamedItemCache& cache = GetNamedItemCache();
   const auto* id_results = cache.GetElementsById(name);
-  if (id_results && !id_results->IsEmpty())
+  if (id_results && !id_results->empty())
     return id_results->front();
 
   const auto* name_results = cache.GetElementsByName(name);
-  if (name_results && !name_results->IsEmpty())
+  if (name_results && !name_results->empty())
     return name_results->front();
 
   return nullptr;
@@ -476,7 +488,7 @@ void HTMLCollection::SupportedPropertyNames(Vector<String>& names) {
   for (unsigned i = 0; i < length; ++i) {
     Element* element = item(i);
     const AtomicString& id_attribute = element->GetIdAttribute();
-    if (!id_attribute.IsEmpty()) {
+    if (!id_attribute.empty()) {
       HashSet<AtomicString>::AddResult add_result =
           existing_names.insert(id_attribute);
       if (add_result.is_new_entry)
@@ -486,7 +498,7 @@ void HTMLCollection::SupportedPropertyNames(Vector<String>& names) {
     if (!html_element)
       continue;
     const AtomicString& name_attribute = element->GetNameAttribute();
-    if (!name_attribute.IsEmpty() &&
+    if (!name_attribute.empty() &&
         (GetType() != kDocAll ||
          NameShouldBeVisibleInDocumentAll(*html_element))) {
       HashSet<AtomicString>::AddResult add_result =
@@ -511,13 +523,13 @@ void HTMLCollection::UpdateIdNameCache() const {
   for (unsigned i = 0; i < length; ++i) {
     Element* element = item(i);
     const AtomicString& id_attr_val = element->GetIdAttribute();
-    if (!id_attr_val.IsEmpty())
+    if (!id_attr_val.empty())
       cache->AddElementWithId(id_attr_val, element);
     auto* html_element = DynamicTo<HTMLElement>(element);
     if (!html_element)
       continue;
     const AtomicString& name_attr_val = element->GetNameAttribute();
-    if (!name_attr_val.IsEmpty() && id_attr_val != name_attr_val &&
+    if (!name_attr_val.empty() && id_attr_val != name_attr_val &&
         (GetType() != kDocAll ||
          NameShouldBeVisibleInDocumentAll(*html_element)))
       cache->AddElementWithName(name_attr_val, element);
@@ -529,8 +541,8 @@ void HTMLCollection::UpdateIdNameCache() const {
 
 void HTMLCollection::NamedItems(const AtomicString& name,
                                 HeapVector<Member<Element>>& result) const {
-  DCHECK(result.IsEmpty());
-  if (name.IsEmpty())
+  DCHECK(result.empty());
+  if (name.empty())
     return;
 
   UpdateIdNameCache();

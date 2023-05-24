@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,10 @@
 #include "core/fpdfapi/parser/cpdf_array.h"
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_number.h"
+#include "core/fpdfapi/parser/cpdf_parser.h"
 #include "core/fpdfapi/parser/cpdf_syntax_parser.h"
 #include "core/fxcrt/fx_safe_types.h"
+#include "third_party/base/check.h"
 #include "third_party/base/ptr_util.h"
 
 namespace {
@@ -24,12 +26,12 @@ constexpr size_t kMaxInt = static_cast<size_t>(std::numeric_limits<int>::max());
 
 template <class T>
 bool IsValidNumericDictionaryValue(const CPDF_Dictionary* pDict,
-                                   const char* key,
+                                   const ByteString& key,
                                    T min_value,
                                    bool must_exist = true) {
   if (!pDict->KeyExist(key))
     return !must_exist;
-  const CPDF_Number* pNum = ToNumber(pDict->GetObjectFor(key));
+  RetainPtr<const CPDF_Number> pNum = pDict->GetNumberFor(key);
   if (!pNum || !pNum->IsInteger())
     return false;
   const int raw_value = pNum->GetInteger();
@@ -40,12 +42,13 @@ bool IsValidNumericDictionaryValue(const CPDF_Dictionary* pDict,
 
 bool IsLinearizedHeaderValid(const CPDF_LinearizedHeader* header,
                              FX_FILESIZE document_size) {
-  ASSERT(header);
+  DCHECK(header);
   return header->GetFileSize() == document_size &&
          header->GetFirstPageNo() < kMaxInt &&
          header->GetFirstPageNo() < header->GetPageCount() &&
          header->GetMainXRefTableFirstEntryOffset() < document_size &&
          header->GetFirstPageEndOffset() < document_size &&
+         header->GetFirstPageObjNum() < CPDF_Parser::kMaxObjectNumber &&
          header->GetLastXRefOffset() < document_size &&
          header->GetHintStart() < document_size;
 }
@@ -71,7 +74,7 @@ std::unique_ptr<CPDF_LinearizedHeader> CPDF_LinearizedHeader::Parse(
   }
   // Move parser to the start of the xref table for the documents first page.
   // (skpping endobj keyword)
-  if (parser->GetNextWord(nullptr) != "endobj")
+  if (parser->GetNextWord().word != "endobj")
     return nullptr;
 
   auto result = pdfium::WrapUnique(
@@ -92,7 +95,7 @@ CPDF_LinearizedHeader::CPDF_LinearizedHeader(const CPDF_Dictionary* pDict,
       m_szFirstPageEndOffset(pDict->GetIntegerFor("E")),
       m_FirstPageObjNum(pDict->GetIntegerFor("O")),
       m_szLastXRefOffset(szLastXRefOffset) {
-  const CPDF_Array* pHintStreamRange = pDict->GetArrayFor("H");
+  RetainPtr<const CPDF_Array> pHintStreamRange = pDict->GetArrayFor("H");
   const size_t nHintStreamSize =
       pHintStreamRange ? pHintStreamRange->size() : 0;
   if (nHintStreamSize == 2 || nHintStreamSize == 4) {

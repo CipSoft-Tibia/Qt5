@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include <deque>
 
 #include "base/component_export.h"
+#include "base/time/time.h"
 #include "ui/base/prediction/input_predictor.h"
 #include "ui/gfx/geometry/matrix3_f.h"
 
@@ -22,6 +23,10 @@ class COMPONENT_EXPORT(UI_BASE_PREDICTION) LeastSquaresPredictor
   static constexpr size_t kSize = 3;
 
   explicit LeastSquaresPredictor();
+
+  LeastSquaresPredictor(const LeastSquaresPredictor&) = delete;
+  LeastSquaresPredictor& operator=(const LeastSquaresPredictor&) = delete;
+
   ~LeastSquaresPredictor() override;
 
   const char* GetName() const override;
@@ -38,7 +43,8 @@ class COMPONENT_EXPORT(UI_BASE_PREDICTION) LeastSquaresPredictor
   // Generate the prediction based on stored points and given time_stamp.
   // Return false if no prediction available.
   std::unique_ptr<InputData> GeneratePrediction(
-      base::TimeTicks predict_time) const override;
+      base::TimeTicks predict_time,
+      base::TimeDelta frame_interval) override;
 
   // Return the averaged value of time intervals.
   base::TimeDelta TimeInterval() const override;
@@ -50,8 +56,6 @@ class COMPONENT_EXPORT(UI_BASE_PREDICTION) LeastSquaresPredictor
   std::deque<double> x_queue_;
   std::deque<double> y_queue_;
   std::deque<base::TimeTicks> time_;
-
-  DISALLOW_COPY_AND_ASSIGN(LeastSquaresPredictor);
 };
 
 }  // namespace ui

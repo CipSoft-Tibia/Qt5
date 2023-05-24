@@ -1,34 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example arrowpad
-    \title Arrow Pad Example
     \ingroup examples-linguist
+    \examplecategory {User Interface Components}
+
+    \title Arrow Pad Example
+
     \brief Understanding the Qt Linguist \e contexts concept and using two
     or more languages.
 
@@ -36,18 +15,33 @@
 
     We will use two translations, French and Dutch, although there is no
     effective limit on the number of possible translations that can be used
-    with an application. The relevant lines of \c arrowpad.pro are
+    with an application.
+
+    When using qmake, the relevant lines in \c arrowpad.pro are:
 
     \snippet arrowpad/arrowpad.pro 0
     \codeline
     \snippet arrowpad/arrowpad.pro 1
 
-    Run \c lupdate; it should produce two identical message files
+    When using CMake, the relevant lines in \c CMakeLists.txt are:
+    \snippet arrowpad/CMakeLists.txt 0
+    \codeline
+    \snippet arrowpad/CMakeLists.txt 1
+
+    Run \c lupdate. It should produce two identical message files
     \c arrowpad_fr.ts and \c arrowpad_nl.ts. These files will contain all the source
     texts marked for translation with \c tr() calls and their contexts.
 
+    When using qmake, \c lupdate must be run manually:
+
+    \snippet doc/snippets/doc_src_examples_arrowpad.qdoc 0
+
+    When using CMake, build the \c update_translations target to run \c lupdate:
+
+    \snippet doc/snippets/doc_src_examples_arrowpad.qdoc 4
+
     See the \l{Qt Linguist Manual} for more information about
-    translating Qt application.
+    translating Qt applications.
 
     \section1 Line by Line Walkthrough
 
@@ -189,21 +183,20 @@
 
     \snippet doc/snippets/doc_src_examples_arrowpad.qdoc 1
 
-    This should create both \c arrowpad_fr.qm and \c arrowpad_nl.qm. Set the \c
-    LANG environment variable to \c fr. In Unix, one of the two following
-    commands should work
+    This should create both \c arrowpad_fr.qm and \c arrowpad_nl.qm.
+
+    To use \c arrowpad_fr.qm, change your system language to French.
+    In Unix, one of the two following commands should work:
 
     \snippet doc/snippets/doc_src_examples_arrowpad.qdoc 2
 
-    In Windows, either modify \c autoexec.bat or run
-
-    \snippet doc/snippets/doc_src_examples_arrowpad.qdoc 3
+    In Windows, set your display language to French.
 
     When you run the program, you should now see the French version:
 
     \image linguist-arrowpad_fr.png
 
-    Try the same with Dutch, by setting \c LANG=nl. Now the Dutch
+    Try the same with Dutch (use \c LANG=nl in Unix). Now the Dutch
     version should appear:
 
     \image linguist-arrowpad_nl.png

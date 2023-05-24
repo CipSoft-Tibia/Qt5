@@ -1,121 +1,43 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "tst_qgeomaneuver.h"
 #include <QtLocation/private/qgeomaneuver_p.h>
-
-class QGeoManeuverPrivateDefaultAlt : public QGeoManeuverPrivateDefault
-{
-public:
-    QGeoManeuverPrivateDefaultAlt() {}
-    QGeoManeuverPrivateDefaultAlt(const QGeoManeuverPrivateDefaultAlt &other)
-        : QGeoManeuverPrivateDefault(other) {}
-    ~QGeoManeuverPrivateDefaultAlt() {}
-
-    QString text() const override
-    {
-        return QStringLiteral("QGeoManeuverPrivateDefaultAlt"); // To identify this is actually a QGeoManeuverPrivateDefaultAlt
-    }
-};
-
-class QGeoManeuverAlt : public QGeoManeuver
-{
-public:
-    QGeoManeuverAlt()
-    : QGeoManeuver(QSharedDataPointer<QGeoManeuverPrivate>(new QGeoManeuverPrivateDefaultAlt()))
-    {
-    }
-};
 
 tst_QGeoManeuver::tst_QGeoManeuver()
 {
 }
 
-void tst_QGeoManeuver::initTestCase()
-{
-
-}
-
-void tst_QGeoManeuver::cleanupTestCase()
-{
-
-}
-
-void tst_QGeoManeuver::init()
-{
-
-    qgeomaneuver = new QGeoManeuver();
-}
-
-void tst_QGeoManeuver::cleanup()
-{
-    delete qgeomaneuver;
-}
-
 void tst_QGeoManeuver::constructor()
 {
-    QString empty ="";
+    const QString empty ="";
+    QGeoManeuver qgeomaneuver;
 
-    QVERIFY(!qgeomaneuver->isValid());
-    QCOMPARE(qgeomaneuver->direction(),QGeoManeuver::NoDirection);
-    QCOMPARE(qgeomaneuver->distanceToNextInstruction(), qreal(0.0));
-    QCOMPARE(qgeomaneuver->instructionText(),empty);
-    QCOMPARE(qgeomaneuver->timeToNextInstruction(),0);
+    QVERIFY(!qgeomaneuver.isValid());
+    QCOMPARE(qgeomaneuver.direction(), QGeoManeuver::NoDirection);
+    QCOMPARE(qgeomaneuver.distanceToNextInstruction(), qreal(0.0));
+    QCOMPARE(qgeomaneuver.instructionText(), empty);
+    QCOMPARE(qgeomaneuver.timeToNextInstruction(),0);
 }
 
 void tst_QGeoManeuver::copy_constructor()
 {
-    QGeoManeuver *qgeomaneuvercopy = new QGeoManeuver (*qgeomaneuver);
+    QGeoManeuver qgeomaneuver;
+    QGeoManeuver qgeomaneuvercopy(qgeomaneuver);
 
-    QCOMPARE(*qgeomaneuver,*qgeomaneuvercopy);
-
-    delete qgeomaneuvercopy;
-}
-
-void tst_QGeoManeuver::destructor()
-{
-    QGeoManeuver *qgeomaneuvercopy;
-
-    qgeomaneuvercopy = new QGeoManeuver();
-    delete qgeomaneuvercopy;
-
-    qgeomaneuvercopy = new QGeoManeuver(*qgeomaneuver);
-    delete qgeomaneuvercopy;
+    QCOMPARE(qgeomaneuver, qgeomaneuvercopy);
 }
 
 void tst_QGeoManeuver::direction()
 {
     QFETCH(QGeoManeuver::InstructionDirection,direction);
 
-    qgeomaneuver->setDirection(direction);
+    QGeoManeuver qgeomaneuver;
+    qgeomaneuver.setDirection(direction);
 
-    QCOMPARE(qgeomaneuver->direction(),direction);
+    QCOMPARE(qgeomaneuver.direction(),direction);
 }
+
 void tst_QGeoManeuver::direction_data()
 {
     QTest::addColumn<QGeoManeuver::InstructionDirection>("direction");
@@ -136,29 +58,33 @@ void tst_QGeoManeuver::direction_data()
 
 void tst_QGeoManeuver::distanceToNextInstruction()
 {
-    qreal distance = 0.0;
-    qgeomaneuver->setDistanceToNextInstruction(distance);
+    QGeoManeuver qgeomaneuver;
 
-    QCOMPARE (qgeomaneuver->distanceToNextInstruction(), distance);
+    qreal distance = 0.0;
+    qgeomaneuver.setDistanceToNextInstruction(distance);
+
+    QCOMPARE (qgeomaneuver.distanceToNextInstruction(), distance);
 
     distance = -3423.4324;
 
-    QVERIFY (qgeomaneuver->distanceToNextInstruction() != distance);
+    QVERIFY (qgeomaneuver.distanceToNextInstruction() != distance);
 
-    qgeomaneuver->setDistanceToNextInstruction(distance);
-    QCOMPARE (qgeomaneuver->distanceToNextInstruction(),distance);
+    qgeomaneuver.setDistanceToNextInstruction(distance);
+    QCOMPARE (qgeomaneuver.distanceToNextInstruction(),distance);
 }
 
 void tst_QGeoManeuver::instructionText()
 {
+    QGeoManeuver qgeomaneuver;
+
     QString text = "After 50m turn left";
 
-    qgeomaneuver->setInstructionText(text);
+    qgeomaneuver.setInstructionText(text);
 
-    QCOMPARE (qgeomaneuver->instructionText(),text);
+    QCOMPARE (qgeomaneuver.instructionText(),text);
 
     text="After 40m, turn left";
-    QVERIFY (qgeomaneuver->instructionText() != text);
+    QVERIFY (qgeomaneuver.instructionText() != text);
 
 }
 
@@ -167,13 +93,12 @@ void tst_QGeoManeuver::position()
     QFETCH(double, latitude);
     QFETCH(double, longitude);
 
-    qgeocoordinate = new QGeoCoordinate (latitude,longitude);
+    QGeoCoordinate qgeocoordinate(latitude, longitude);
 
-    qgeomaneuver->setPosition(*qgeocoordinate);
+    QGeoManeuver qgeomaneuver;
+    qgeomaneuver.setPosition(qgeocoordinate);
 
-    QCOMPARE(qgeomaneuver->position(),*qgeocoordinate);
-
-    delete qgeocoordinate;
+    QCOMPARE(qgeomaneuver.position(), qgeocoordinate);
 }
 
 void tst_QGeoManeuver::position_data()
@@ -194,17 +119,19 @@ void tst_QGeoManeuver::position_data()
 
 void tst_QGeoManeuver::timeToNextInstruction()
 {
-    int time = 0;
-    qgeomaneuver->setTimeToNextInstruction(time);
+    QGeoManeuver qgeomaneuver;
 
-    QCOMPARE (qgeomaneuver->timeToNextInstruction(),time);
+    int time = 0;
+    qgeomaneuver.setTimeToNextInstruction(time);
+
+    QCOMPARE(qgeomaneuver.timeToNextInstruction(), time);
 
     time = 35;
 
-    QVERIFY (qgeomaneuver->timeToNextInstruction() != time);
+    QVERIFY(qgeomaneuver.timeToNextInstruction() != time);
 
-    qgeomaneuver->setTimeToNextInstruction(time);
-    QCOMPARE (qgeomaneuver->timeToNextInstruction(),time);
+    qgeomaneuver.setTimeToNextInstruction(time);
+    QCOMPARE(qgeomaneuver.timeToNextInstruction(), time);
 }
 
 void tst_QGeoManeuver::waypoint()
@@ -212,18 +139,17 @@ void tst_QGeoManeuver::waypoint()
     QFETCH(double, latitude);
     QFETCH(double, longitude);
 
-    qgeocoordinate = new QGeoCoordinate (latitude,longitude);
+    QGeoCoordinate qgeocoordinate(latitude, longitude);
+    QGeoManeuver qgeomaneuver;
 
-    qgeomaneuver->setWaypoint(*qgeocoordinate);
+    qgeomaneuver.setWaypoint(qgeocoordinate);
 
-    QCOMPARE(qgeomaneuver->waypoint(),*qgeocoordinate);
+    QCOMPARE(qgeomaneuver.waypoint(), qgeocoordinate);
 
-    qgeocoordinate->setLatitude(30.3);
-    QVERIFY(qgeomaneuver->waypoint() != *qgeocoordinate);
-
-
-    delete qgeocoordinate;
+    qgeocoordinate.setLatitude(30.3);
+    QVERIFY(qgeomaneuver.waypoint() != qgeocoordinate);
 }
+
 void tst_QGeoManeuver::waypoint_data()
 {
     QTest::addColumn<double>("latitude");
@@ -242,60 +168,36 @@ void tst_QGeoManeuver::waypoint_data()
 
 void tst_QGeoManeuver::isValid()
 {
-    QVERIFY(!qgeomaneuver->isValid());
-    qgeomaneuver->setDirection(QGeoManeuver::DirectionBearLeft);
-    QVERIFY(qgeomaneuver->isValid());
+    QGeoManeuver qgeomaneuver;
+    QVERIFY(!qgeomaneuver.isValid());
+    qgeomaneuver.setDirection(QGeoManeuver::DirectionBearLeft);
+    QVERIFY(qgeomaneuver.isValid());
 }
 
-void tst_QGeoManeuver::operators(){
-
-    QGeoManeuver *qgeomaneuvercopy = new QGeoManeuver(*qgeomaneuver);
-
-    QVERIFY(qgeomaneuver->operator ==(*qgeomaneuvercopy));
-    QVERIFY(!qgeomaneuver->operator !=(*qgeomaneuvercopy));
-
-    qgeomaneuver->setDirection(QGeoManeuver::DirectionBearLeft);
-    qgeomaneuver->setInstructionText("Turn left in 50m");
-    qgeomaneuver->setTimeToNextInstruction(60);
-    qgeomaneuver->setDistanceToNextInstruction(560.45);
-
-    qgeomaneuvercopy->setDirection(QGeoManeuver::DirectionForward);
-    qgeomaneuvercopy->setInstructionText("Turn left in 80m");
-    qgeomaneuvercopy->setTimeToNextInstruction(70);
-    qgeomaneuvercopy->setDistanceToNextInstruction(56065.45);
-
-   QVERIFY(!(qgeomaneuver->operator ==(*qgeomaneuvercopy)));
-   QVERIFY(qgeomaneuver->operator !=(*qgeomaneuvercopy));
-
-    *qgeomaneuvercopy = qgeomaneuvercopy->operator =(*qgeomaneuver);
-    QVERIFY(qgeomaneuver->operator ==(*qgeomaneuvercopy));
-    QVERIFY(!qgeomaneuver->operator !=(*qgeomaneuvercopy));
-
-    delete qgeomaneuvercopy;
-}
-
-void tst_QGeoManeuver::alternateImplementation()
+void tst_QGeoManeuver::operators()
 {
-    QGeoManeuver qgeomaneuvercopy = *qgeomaneuver;
+    QGeoManeuver qgeomaneuver;
+    QGeoManeuver qgeomaneuvercopy(qgeomaneuver);
 
-    QVERIFY(qgeomaneuvercopy == (*qgeomaneuver));
+    QVERIFY(qgeomaneuver == qgeomaneuvercopy);
+    QVERIFY(!(qgeomaneuver != qgeomaneuvercopy));
+
+    qgeomaneuver.setDirection(QGeoManeuver::DirectionBearLeft);
+    qgeomaneuver.setInstructionText("Turn left in 50m");
+    qgeomaneuver.setTimeToNextInstruction(60);
+    qgeomaneuver.setDistanceToNextInstruction(560.45);
 
     qgeomaneuvercopy.setDirection(QGeoManeuver::DirectionForward);
     qgeomaneuvercopy.setInstructionText("Turn left in 80m");
     qgeomaneuvercopy.setTimeToNextInstruction(70);
     qgeomaneuvercopy.setDistanceToNextInstruction(56065.45);
 
-    QVERIFY(qgeomaneuvercopy != (*qgeomaneuver));
+   QVERIFY(!(qgeomaneuver == qgeomaneuvercopy));
+   QVERIFY(qgeomaneuver != qgeomaneuvercopy);
 
-    QGeoManeuverAlt mAlt;
-    QGeoManeuver m = mAlt;
-
-    QCOMPARE(m.instructionText(), "QGeoManeuverPrivateDefaultAlt");
-    m = qgeomaneuvercopy;
-    QCOMPARE(m.instructionText(), "Turn left in 80m");
-    m = mAlt;
-    QCOMPARE(m.instructionText(), "QGeoManeuverPrivateDefaultAlt");
+    qgeomaneuvercopy = qgeomaneuver;
+    QVERIFY(qgeomaneuver == qgeomaneuvercopy);
+    QVERIFY(!(qgeomaneuver != qgeomaneuvercopy));
 }
-
 
 QTEST_APPLESS_MAIN(tst_QGeoManeuver);

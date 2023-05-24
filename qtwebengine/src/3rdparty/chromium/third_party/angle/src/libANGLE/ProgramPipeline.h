@@ -38,12 +38,7 @@ class ProgramPipelineState final : angle::NonCopyable
 
     const std::string &getLabel() const;
 
-    const ProgramExecutable &getProgramExecutable() const
-    {
-        ASSERT(mExecutable);
-        return *mExecutable;
-    }
-    ProgramExecutable &getProgramExecutable()
+    ProgramExecutable &getExecutable() const
     {
         ASSERT(mExecutable);
         return *mExecutable;
@@ -51,7 +46,7 @@ class ProgramPipelineState final : angle::NonCopyable
 
     void activeShaderProgram(Program *shaderProgram);
     void useProgramStages(const Context *context,
-                          GLbitfield stages,
+                          const gl::ShaderBitSet &shaderTypes,
                           Program *shaderProgram,
                           std::vector<angle::ObserverBinding> *programObserverBindings);
 
@@ -64,6 +59,8 @@ class ProgramPipelineState final : angle::NonCopyable
     bool usesShaderProgram(ShaderProgramID program) const;
 
     void updateExecutableTextures();
+
+    rx::SpecConstUsageBits getSpecConstUsageBits() const;
 
   private:
     void useProgramStage(const Context *context,
@@ -89,7 +86,8 @@ class ProgramPipelineState final : angle::NonCopyable
 
 class ProgramPipeline final : public RefCountObject<ProgramPipelineID>,
                               public LabeledObject,
-                              public angle::ObserverInterface
+                              public angle::ObserverInterface,
+                              public angle::Subject
 {
   public:
     ProgramPipeline(rx::GLImplFactory *factory, ProgramPipelineID handle);
@@ -97,14 +95,13 @@ class ProgramPipeline final : public RefCountObject<ProgramPipelineID>,
 
     void onDestroy(const Context *context) override;
 
-    void setLabel(const Context *context, const std::string &label) override;
+    angle::Result setLabel(const Context *context, const std::string &label) override;
     const std::string &getLabel() const override;
 
     const ProgramPipelineState &getState() const { return mState; }
     ProgramPipelineState &getState() { return mState; }
 
-    const ProgramExecutable &getExecutable() const { return mState.getProgramExecutable(); }
-    ProgramExecutable &getExecutable() { return mState.getProgramExecutable(); }
+    ProgramExecutable &getExecutable() const { return mState.getExecutable(); }
 
     rx::ProgramPipelineImpl *getImplementation() const;
 
@@ -120,36 +117,51 @@ class ProgramPipeline final : public RefCountObject<ProgramPipelineID>,
         return program;
     }
 
-    void useProgramStages(const Context *context, GLbitfield stages, Program *shaderProgram);
+    angle::Result useProgramStages(const Context *context,
+                                   GLbitfield stages,
+                                   Program *shaderProgram);
 
     Program *getShaderProgram(ShaderType shaderType) const { return mState.mPrograms[shaderType]; }
 
     void resetIsLinked() { mState.mIsLinked = false; }
-    ProgramMergedVaryings getMergedVaryings() const;
     angle::Result link(const gl::Context *context);
-    bool linkVaryings(InfoLog &infoLog) const;
-    void validate(const gl::Context *context);
-    bool validateSamplers(InfoLog *infoLog, const Caps &caps);
 
-    bool usesShaderProgram(ShaderProgramID program) const
+    // Ensure program pipeline is linked. Inlined to make sure its overhead is as low as possible.
+    void resolveLink(const Context *context)
     {
-        return mState.usesShaderProgram(program);
+        if (mState.mIsLinked)
+        {
+            // Already linked, nothing to do.
+            return;
+        }
+
+        angle::Result linkResult = link(context);
+        if (linkResult != angle::Result::Continue)
+        {
+            // If the link failed then log a warning, swallow the error and move on.
+            WARN() << "ProgramPipeline link failed" << std::endl;
+        }
+        return;
     }
 
+    void validate(const gl::Context *context);
     GLboolean isValid() const { return mState.isValid(); }
+    bool isLinked() const { return mState.mIsLinked; }
 
     // ObserverInterface implementation.
     void onSubjectStateChange(angle::SubjectIndex index, angle::SubjectMessage message) override;
 
-    void fillProgramStateMap(gl::ShaderMap<const gl::ProgramState *> *programStatesOut);
-
   private:
+    bool linkVaryings(InfoLog &infoLog) const;
     void updateLinkedShaderStages();
     void updateExecutableAttributes();
     void updateTransformFeedbackMembers();
     void updateShaderStorageBlocks();
     void updateImageBindings();
-    void updateHasBooleans();
+    void updateExecutableGeometryProperties();
+    void updateExecutableTessellationProperties();
+    void updateFragmentInoutRangeAndEnablesPerSampleShading();
+    void updateLinkedVaryings();
     void updateExecutable();
 
     std::unique_ptr<rx::ProgramPipelineImpl> mProgramPipelineImpl;

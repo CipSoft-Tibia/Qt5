@@ -5,8 +5,10 @@
  * found in the LICENSE file.
  */
 
-#include "src/core/SkAutoMalloc.h"
 #include "src/core/SkCanvasPriv.h"
+
+#include "src/base/SkAutoMalloc.h"
+#include "src/core/SkDevice.h"
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkWriter32.h"
 
@@ -14,9 +16,8 @@
 
 SkAutoCanvasMatrixPaint::SkAutoCanvasMatrixPaint(SkCanvas* canvas, const SkMatrix* matrix,
                                                  const SkPaint* paint, const SkRect& bounds)
-: fCanvas(canvas)
-, fSaveCount(canvas->getSaveCount())
-{
+        : fCanvas(canvas)
+        , fSaveCount(canvas->getSaveCount()) {
     if (paint) {
         SkRect newBounds = bounds;
         if (matrix) {
@@ -76,7 +77,7 @@ size_t SkCanvasPriv::WriteLattice(void* buffer, const SkCanvas::Lattice& lattice
         SkASSERT(writer.bytesWritten() == size);
     }
     return size;
-};
+}
 
 void SkCanvasPriv::WriteLattice(SkWriteBuffer& buffer, const SkCanvas::Lattice& lattice) {
     const size_t size = WriteLattice(nullptr, lattice);
@@ -100,19 +101,73 @@ void SkCanvasPriv::GetDstClipAndMatrixCounts(const SkCanvas::ImageSetEntry set[]
     *totalMatrixCount = maxMatrixIndex + 1;
 }
 
-bool SkCanvasPriv::ValidateMarker(const char* name) {
-    if (!name) {
-        return false;
+#if GR_TEST_UTILS
+
+#if SK_SUPPORT_GPU
+#include "src/gpu/ganesh/Device_v1.h"
+
+#if SK_GPU_V1
+skgpu::v1::SurfaceDrawContext* SkCanvasPriv::TopDeviceSurfaceDrawContext(SkCanvas* canvas) {
+    if (auto gpuDevice = canvas->topDevice()->asGaneshDevice()) {
+        return gpuDevice->surfaceDrawContext();
     }
 
-    std::locale loc(std::locale::classic());
-    if (!std::isalpha(*name, loc)) {
-        return false;
-    }
-    while (*(++name)) {
-        if (!std::isalnum(*name, loc) && *name != '_') {
-            return false;
-        }
-    }
-    return true;
+    return nullptr;
 }
+
+skgpu::v1::SurfaceFillContext* SkCanvasPriv::TopDeviceSurfaceFillContext(SkCanvas* canvas) {
+    if (auto gpuDevice = canvas->topDevice()->asGaneshDevice()) {
+        return gpuDevice->surfaceFillContext();
+    }
+
+    return nullptr;
+}
+
+#endif // SK_GPU_V1
+
+#else // SK_SUPPORT_GPU
+
+#if SK_GPU_V1
+skgpu::v1::SurfaceDrawContext* SkCanvasPriv::TopDeviceSurfaceDrawContext(SkCanvas* canvas) {
+    return nullptr;
+}
+
+skgpu::v1::SurfaceFillContext* SkCanvasPriv::TopDeviceSurfaceFillContext(SkCanvas* canvas) {
+    return nullptr;
+}
+#endif // SK_GPU_V1
+
+#endif // SK_SUPPORT_GPU
+
+#endif // GR_TEST_UTILS
+
+#if SK_SUPPORT_GPU
+#include "src/gpu/ganesh/Device_v1.h"
+
+GrRenderTargetProxy* SkCanvasPriv::TopDeviceTargetProxy(SkCanvas* canvas) {
+    if (auto gpuDevice = canvas->topDevice()->asGaneshDevice()) {
+        return gpuDevice->targetProxy();
+    }
+
+    return nullptr;
+}
+
+#else // SK_SUPPORT_GPU
+
+GrRenderTargetProxy* SkCanvasPriv::TopDeviceTargetProxy(SkCanvas* canvas) {
+    return nullptr;
+}
+
+#endif // SK_SUPPORT_GPU
+
+#if GRAPHITE_TEST_UTILS
+#include "src/gpu/graphite/Device.h"
+
+skgpu::graphite::TextureProxy* SkCanvasPriv::TopDeviceGraphiteTargetProxy(SkCanvas* canvas) {
+    if (auto gpuDevice = canvas->topDevice()->asGraphiteDevice()) {
+        return gpuDevice->target();
+    }
+    return nullptr;
+}
+
+#endif // GRAPHITE_TEST_UTILS

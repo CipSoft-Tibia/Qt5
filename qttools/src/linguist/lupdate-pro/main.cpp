@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <profileutils.h>
 #include <runqttool.h>
@@ -42,6 +17,8 @@
 
 #include <iostream>
 
+using namespace Qt::StringLiterals;
+
 static void printOut(const QString & out)
 {
     std::cout << qPrintable(out);
@@ -52,33 +29,30 @@ static void printErr(const QString & out)
     std::cerr << qPrintable(out);
 }
 
-class LU {
-    Q_DECLARE_TR_FUNCTIONS(LUpdate)
-};
-
 static void printUsage()
 {
-    printOut(LU::tr(
-        "Usage:\n"
-        "    lupdate-pro [options] [project-file]... [-ts ts-files...]\n"
-        "lupdate-pro is part of Qt's Linguist tool chain. It extracts project\n"
-        "information from qmake projects and passes it to lupdate.\n"
-        "All command line options that are not consumed by lupdate-pro are\n"
-        "passed to lupdate.\n\n"
-        "Options:\n"
-        "    -help  Display this information and exit.\n"
-        "    -silent\n"
-        "           Do not explain what is being done.\n"
-        "    -pro <filename>\n"
-        "           Name of a .pro file. Useful for files with .pro file syntax but\n"
-        "           different file suffix. Projects are recursed into and merged.\n"
-        "    -pro-out <directory>\n"
-        "           Virtual output directory for processing subsequent .pro files.\n"
-        "    -pro-debug\n"
-        "           Trace processing .pro files. Specify twice for more verbosity.\n"
-        "    -version\n"
-        "           Display the version of lupdate-pro and exit.\n"
-    ));
+    printOut(
+        uR"(Usage:
+lupdate-pro [options] [project-file]... [-ts ts-files...]
+lupdate-pro is part of Qt's Linguist tool chain. It extracts project
+information from qmake projects and passes it to lupdate.
+All command line options that are not consumed by lupdate-pro are
+passed to lupdate.
+
+Options:
+    -help  Display this information and exit.
+    -silent
+           Do not explain what is being done.
+    -pro <filename>
+           Name of a .pro file. Useful for files with .pro file syntax but
+           different file suffix. Projects are recursed into and merged.
+    -pro-out <directory>
+           Virtual output directory for processing subsequent .pro files.
+    -pro-debug
+           Trace processing .pro files. Specify twice for more verbosity.
+    -version
+           Display the version of lupdate-pro and exit.
+)"_s);
 }
 
 int main(int argc, char **argv)
@@ -89,7 +63,7 @@ int main(int argc, char **argv)
     QTranslator translator;
     QTranslator qtTranslator;
     QString sysLocale = QLocale::system().name();
-    QString resourceDir = QLibraryInfo::location(QLibraryInfo::TranslationsPath);
+    QString resourceDir = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
     if (translator.load(QLatin1String("linguist_") + sysLocale, resourceDir)
         && qtTranslator.load(QLatin1String("qt_") + sysLocale, resourceDir)) {
         app.installTranslator(&translator);
@@ -119,12 +93,12 @@ int main(int argc, char **argv)
         } else if (arg == QLatin1String("-pro-debug")) {
             lprodumpOptions << arg;
         } else if (arg == QLatin1String("-version")) {
-            printOut(LU::tr("lupdate-pro version %1\n").arg(QLatin1String(QT_VERSION_STR)));
+            printOut(QStringLiteral("lupdate-pro version %1\n").arg(QLatin1String(QT_VERSION_STR)));
             return 0;
         } else if (arg == QLatin1String("-pro")) {
             ++i;
             if (i == argc) {
-                printErr(LU::tr("The -pro option should be followed by a filename of .pro file.\n"));
+                printErr(u"The -pro option should be followed by a filename of .pro file.\n"_s);
                 return 1;
             }
             lprodumpOptions << arg << args[i];
@@ -132,7 +106,7 @@ int main(int argc, char **argv)
         } else if (arg == QLatin1String("-pro-out")) {
             ++i;
             if (i == argc) {
-                printErr(LU::tr("The -pro-out option should be followed by a directory name.\n"));
+                printErr(u"The -pro-out option should be followed by a directory name.\n"_s);
                 return 1;
             }
             lprodumpOptions << arg << args[i];
@@ -145,7 +119,7 @@ int main(int argc, char **argv)
     } // for args
 
     if (!hasProFiles) {
-        printErr(LU::tr("lupdate-pro: No .pro/.pri files given.\n"));
+        printErr(u"lupdate-pro: No .pro/.pri files given.\n"_s);
         return 1;
     }
 

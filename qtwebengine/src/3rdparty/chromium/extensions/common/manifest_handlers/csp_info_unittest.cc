@@ -1,12 +1,15 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/common/manifest_handlers/csp_info.h"
-#include "base/stl_util.h"
+
 #include "base/strings/stringprintf.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/values_test_util.h"
 #include "components/version_info/channel.h"
 #include "extensions/common/error_utils.h"
+#include "extensions/common/extension_features.h"
 #include "extensions/common/features/feature_channel.h"
 #include "extensions/common/manifest_constants.h"
 #include "extensions/common/manifest_test.h"
@@ -28,8 +31,7 @@ const char kDefaultSandboxedPageCSP[] =
 const char kDefaultExtensionPagesCSP[] =
     "script-src 'self' blob: filesystem:; "
     "object-src 'self' blob: filesystem:;";
-const char kDefaultIsolatedWorldCSP_BypassMainWorld[] = "";
-const char kDefaultSecureCSP[] = "script-src 'self'; object-src 'self';";
+const char kDefaultSecureCSP[] = "script-src 'self';";
 
 }  // namespace
 
@@ -102,7 +104,7 @@ TEST_F(CSPInfoUnitTest, SandboxedPages) {
                GetInvalidManifestKeyError(keys::kSandboxedPagesCSP)),
       Testcase("sandboxed_pages_invalid_5.json",
                GetInvalidManifestKeyError(keys::kSandboxedPagesCSP))};
-  RunTestcases(testcases, base::size(testcases), EXPECT_TYPE_ERROR);
+  RunTestcases(testcases, std::size(testcases), EXPECT_TYPE_ERROR);
 }
 
 TEST_F(CSPInfoUnitTest, CSPStringKey) {
@@ -111,6 +113,12 @@ TEST_F(CSPInfoUnitTest, CSPStringKey) {
   ASSERT_TRUE(extension);
   EXPECT_EQ("script-src 'self'; default-src 'none';",
             CSPInfo::GetExtensionPagesCSP(extension.get()));
+
+  // Manifest V2 extensions bypass the main world CSP in their isolated worlds.
+  const std::string* isolated_world_csp =
+      CSPInfo::GetIsolatedWorldCSP(*extension);
+  ASSERT_TRUE(isolated_world_csp);
+  EXPECT_TRUE(isolated_world_csp->empty());
 
   RunTestcase(Testcase("csp_invalid_1.json", GetInvalidManifestKeyError(
                                                  keys::kContentSecurityPolicy)),
@@ -126,54 +134,178 @@ TEST_F(CSPInfoUnitTest, CSPDictionary_ExtensionPages) {
                 "worker-src 'self'; script-src; default-src 'self'"},
                {"csp_empty_dictionary_valid.json", kDefaultSecureCSP}};
 
-  // Verify that keys::kContentSecurityPolicy key can be used as a dictionary on
-  // trunk.
-  {
-    ScopedCurrentChannel channel(version_info::Channel::UNKNOWN);
-    for (const auto& test_case : cases) {
-      SCOPED_TRACE(
-          base::StringPrintf("%s on channel %s", test_case.file_name, "trunk"));
-      scoped_refptr<Extension> extension =
-          LoadAndExpectSuccess(test_case.file_name);
-      ASSERT_TRUE(extension.get());
-      EXPECT_EQ(test_case.csp, CSPInfo::GetExtensionPagesCSP(extension.get()));
-    }
+  for (const auto& test_case : cases) {
+    SCOPED_TRACE(base::StringPrintf("Testing %s.", test_case.file_name));
+    scoped_refptr<Extension> extension =
+        LoadAndExpectSuccess(test_case.file_name);
+    ASSERT_TRUE(extension.get());
+    EXPECT_EQ(test_case.csp, CSPInfo::GetExtensionPagesCSP(extension.get()));
   }
 
-  // Verify that keys::kContentSecurityPolicy key can't be used as a dictionary
-  // on Stable.
-  {
-    ScopedCurrentChannel channel(version_info::Channel::STABLE);
-    for (const auto& test_case : cases) {
-      SCOPED_TRACE(base::StringPrintf("%s on channel %s", test_case.file_name,
-                                      "stable"));
-      LoadAndExpectError(
-          test_case.file_name,
-          GetInvalidManifestKeyError(keys::kContentSecurityPolicy));
-    }
+  Testcase testcases[] = {
+      Testcase("csp_invalid_2.json",
+               GetInvalidManifestKeyError(
+                   keys::kContentSecurityPolicy_ExtensionPagesPath)),
+      Testcase("csp_invalid_3.json",
+               GetInvalidManifestKeyError(
+                   keys::kContentSecurityPolicy_ExtensionPagesPath)),
+      Testcase(
+          "csp_missing_src.json",
+          ErrorUtils::FormatErrorMessage(
+              errors::kInvalidCSPMissingSecureSrc,
+              keys::kContentSecurityPolicy_ExtensionPagesPath, "script-src")),
+      Testcase("csp_insecure_src.json",
+               ErrorUtils::FormatErrorMessage(
+                   errors::kInvalidCSPInsecureValueError,
+                   keys::kContentSecurityPolicy_ExtensionPagesPath,
+                   "'unsafe-eval'", "worker-src")),
+  };
+  RunTestcases(testcases, std::size(testcases), EXPECT_TYPE_ERROR);
+}
+
+// Tests the requirements for object-src specifications.
+TEST_F(CSPInfoUnitTest, ObjectSrcRequirements) {
+  static constexpr char kManifestV3Template[] =
+      R"({
+           "name": "Test Extension",
+           "manifest_version": 3,
+           "version": "0.1",
+           "content_security_policy": {
+             "extension_pages": "%s"
+           }
+         })";
+
+  static constexpr char kManifestV2Template[] =
+      R"({
+           "name": "Test Extension",
+           "manifest_version": 2,
+           "version": "0.1",
+           "content_security_policy": "%s"
+         })";
+
+  auto get_manifest = [](const char* manifest_template, const char* input) {
+    return base::test::ParseJsonDict(
+        base::StringPrintf(manifest_template, input));
+  };
+
+  struct {
+    const char* manifest_template;
+    const char* csp;
+  } passing_testcases[] = {
+      // object-src doesn't need to be explicitly specified in manifest V3.
+      {kManifestV3Template, "script-src 'self'"},
+      {kManifestV3Template, "default-src 'self'"},
+      // Secure object-src specifications are allowed.
+      {kManifestV3Template, "script-src 'self'; object-src 'self'"},
+      {kManifestV3Template, "script-src 'self'; object-src 'none'"},
+      {kManifestV3Template,
+       ("script-src 'self'; object-src 'self'; frame-src 'self'; "
+        "default-src https://google.com")},
+      // Even though the object-src in the example below is effectively
+      // https://google.com (because it falls back to the default-src), we
+      // still allow it so that developers don't need to explicitly specify an
+      // object-src just because they specified a default-src. The minimum CSP
+      // (which includes `object-src 'self'`) still kicks in and prevents any
+      // insecure use.
+      {kManifestV3Template,
+       "script-src 'self'; default-src https://google.com"},
+
+      // In Manifest V2, object-src must be specified (if it's omitted, we add
+      // it; see `warning_testcases` below).
+      // Note: in MV2, our parsing will implicitly also add a trailing semicolon
+      // if one isn't provided, so we always add one here so that the final CSP
+      // matches.
+      {kManifestV2Template, "script-src 'self'; object-src 'self';"},
+      {kManifestV2Template, "script-src 'self'; object-src 'none';"},
+      {kManifestV2Template,
+       ("script-src 'self'; object-src 'self'; frame-src 'self'; "
+        "default-src https://google.com;")},
+      // Manifest V2 allows (secure) remote object-src specifications.
+      {kManifestV2Template,
+       "script-src 'self'; object-src https://google.com;"},
+      {kManifestV2Template,
+       "script-src 'self'; default-src https://google.com;"},
+  };
+
+  for (const auto& testcase : passing_testcases) {
+    SCOPED_TRACE(testcase.csp);
+    ManifestData manifest_data(
+        get_manifest(testcase.manifest_template, testcase.csp));
+    scoped_refptr<const Extension> extension =
+        LoadAndExpectSuccess(manifest_data);
+    ASSERT_TRUE(extension);
+    EXPECT_EQ(testcase.csp, CSPInfo::GetExtensionPagesCSP(extension.get()));
   }
 
-  {
-    ScopedCurrentChannel channel(version_info::Channel::UNKNOWN);
-    Testcase testcases[] = {
-        Testcase("csp_invalid_2.json",
-                 GetInvalidManifestKeyError(
-                     keys::kContentSecurityPolicy_ExtensionPagesPath)),
-        Testcase("csp_invalid_3.json",
-                 GetInvalidManifestKeyError(
-                     keys::kContentSecurityPolicy_ExtensionPagesPath)),
-        Testcase(
-            "csp_missing_src.json",
-            ErrorUtils::FormatErrorMessage(
-                errors::kInvalidCSPMissingSecureSrc,
-                keys::kContentSecurityPolicy_ExtensionPagesPath, "script-src")),
-        Testcase("csp_insecure_src.json",
-                 ErrorUtils::FormatErrorMessage(
-                     errors::kInvalidCSPInsecureValueError,
-                     keys::kContentSecurityPolicy_ExtensionPagesPath,
-                     "'unsafe-eval'", "worker-src")),
-    };
-    RunTestcases(testcases, base::size(testcases), EXPECT_TYPE_ERROR);
+  struct {
+    const char* manifest_template;
+    const char* csp;
+    const char* expected_error;
+  } failing_testcases[] = {
+      // If an object-src *is* specified, it must be secure and must not allow
+      // remotely-hosted code (in MV3).
+      {kManifestV3Template, "script-src 'self'; object-src https://google.com",
+       "*Insecure CSP value \"https://google.com\" in directive 'object-src'."},
+  };
+
+  for (const auto& testcase : failing_testcases) {
+    SCOPED_TRACE(testcase.csp);
+    ManifestData manifest_data(
+        get_manifest(testcase.manifest_template, testcase.csp));
+    LoadAndExpectError(manifest_data, testcase.expected_error);
+  }
+
+  struct {
+    const char* manifest_template;
+    const char* csp;
+    const char* expected_warning;
+    const char* effective_csp;
+  } warning_testcases[] = {
+      // In MV2, if an object-src is not provided, we will warn and synthesize
+      // one.
+      {kManifestV2Template, "script-src 'self'",
+       ("'content_security_policy': CSP directive 'object-src' must be "
+        "specified (either explicitly, or implicitly via 'default-src') "
+        "and must allowlist only secure resources."),
+       "script-src 'self'; object-src 'self';"},
+      // Similarly, if an insecure (e.g. http) object-src is provided, we simply
+      // ignore it.
+      {kManifestV2Template, "script-src 'self'; object-src http://google.com",
+       ("'content_security_policy': Ignored insecure CSP value "
+        "\"http://google.com\" in directive 'object-src'."),
+       "script-src 'self'; object-src;"}};
+
+  for (const auto& testcase : warning_testcases) {
+    // Special case: In MV2, if the developer doesn't provide an object-src, we
+    // insert one ('self') and emit a warning.
+    ManifestData manifest_data(
+        get_manifest(testcase.manifest_template, testcase.csp));
+    scoped_refptr<const Extension> extension =
+        LoadAndExpectWarning(manifest_data, testcase.expected_warning);
+    ASSERT_TRUE(extension);
+    EXPECT_EQ(testcase.effective_csp,
+              CSPInfo::GetExtensionPagesCSP(extension.get()));
+  }
+}
+
+TEST_F(CSPInfoUnitTest, AllowWasmInMV3) {
+  struct {
+    const char* file_name;
+    const char* csp;
+  } cases[] = {{"csp_dictionary_with_wasm.json",
+                "worker-src 'self' 'wasm-unsafe-eval'; default-src 'self'"},
+               {"csp_dictionary_with_unsafe_wasm.json",
+                "worker-src 'self' 'wasm-unsafe-eval'; default-src 'self'"},
+               {"csp_dictionary_empty_v3.json", "script-src 'self';"},
+               {"csp_dictionary_valid_1.json", "default-src 'none'"},
+               {"csp_omitted_mv2.json", kDefaultExtensionPagesCSP}};
+
+  for (const auto& test_case : cases) {
+    SCOPED_TRACE(base::StringPrintf("Testing %s.", test_case.file_name));
+    scoped_refptr<Extension> extension =
+        LoadAndExpectSuccess(test_case.file_name);
+    ASSERT_TRUE(extension.get());
+    EXPECT_EQ(test_case.csp, CSPInfo::GetExtensionPagesCSP(extension.get()));
   }
 }
 
@@ -181,7 +313,7 @@ TEST_F(CSPInfoUnitTest, CSPDictionary_Sandbox) {
   ScopedCurrentChannel channel(version_info::Channel::UNKNOWN);
 
   const char kCustomSandboxedCSP[] =
-      "sandbox; script-src 'self'; child-src 'self';";
+      "sandbox; script-src https://www.google.com";
   const char kCustomExtensionPagesCSP[] = "script-src; object-src;";
 
   struct {
@@ -216,50 +348,7 @@ TEST_F(CSPInfoUnitTest, CSPDictionary_Sandbox) {
       {"unsandboxed_csp.json",
        GetInvalidManifestKeyError(
            keys::kContentSecurityPolicy_SandboxedPagesPath)}};
-  RunTestcases(testcases, base::size(testcases), EXPECT_TYPE_ERROR);
-}
-
-TEST_F(CSPInfoUnitTest, CSPDictionary_IsolatedWorlds) {
-  ScopedCurrentChannel channel(version_info::Channel::UNKNOWN);
-
-  struct {
-    const char* file_name;
-    const char* expected_csp;
-  } success_cases[] = {
-      {"isolated_world_csp_dictionary_default_v2.json", kDefaultSecureCSP},
-      {"isolated_world_csp_no_dictionary_default_v2.json",
-       kDefaultIsolatedWorldCSP_BypassMainWorld},
-      {"csp_dictionary_empty_v3.json", kDefaultSecureCSP},
-      {"csp_dictionary_missing_v3.json", kDefaultSecureCSP},
-      {"isolated_world_csp_valid.json",
-       "script-src 'self'; object-src http://localhost:80;"}};
-
-  for (const auto& test_case : success_cases) {
-    SCOPED_TRACE(test_case.file_name);
-    scoped_refptr<Extension> extension =
-        LoadAndExpectSuccess(test_case.file_name);
-    ASSERT_TRUE(extension);
-
-    const std::string* csp = CSPInfo::GetIsolatedWorldCSP(*extension);
-    ASSERT_TRUE(csp);
-    EXPECT_EQ(test_case.expected_csp, *csp);
-  }
-
-  const char* key = keys::kContentSecurityPolicy_IsolatedWorldPath;
-  Testcase invalid_cases[] = {
-      {"isolated_world_csp_invalid_type.json", GetInvalidManifestKeyError(key)},
-      {"isolated_world_csp_missing_src.json",
-       ErrorUtils::FormatErrorMessage(
-           errors::kInvalidCSPMissingSecureSrc,
-           keys::kContentSecurityPolicy_IsolatedWorldPath, "script-src")},
-      {"isolated_world_csp_insecure_src.json",
-       ErrorUtils::FormatErrorMessage(
-           manifest_errors::kInvalidCSPInsecureValueError,
-           manifest_keys::kContentSecurityPolicy_IsolatedWorldPath,
-           "google.com", "object-src")},
-  };
-
-  RunTestcases(invalid_cases, base::size(invalid_cases), EXPECT_TYPE_ERROR);
+  RunTestcases(testcases, std::size(testcases), EXPECT_TYPE_ERROR);
 }
 
 // Ensures that using a dictionary for the keys::kContentSecurityPolicy manifest
@@ -272,20 +361,58 @@ TEST_F(CSPInfoUnitTest, CSPDictionaryMandatoryForV3) {
   const char* default_case_filenames[] = {"csp_dictionary_empty_v3.json",
                                           "csp_dictionary_missing_v3.json"};
 
+  // First, run through with loading the extensions as packed extensions.
   for (const char* filename : default_case_filenames) {
     SCOPED_TRACE(filename);
-    scoped_refptr<Extension> extension = LoadAndExpectSuccess(filename);
+    scoped_refptr<Extension> extension =
+        LoadAndExpectSuccess(filename, mojom::ManifestLocation::kInternal);
     ASSERT_TRUE(extension);
 
     const std::string* isolated_world_csp =
         CSPInfo::GetIsolatedWorldCSP(*extension);
     ASSERT_TRUE(isolated_world_csp);
-    EXPECT_EQ(kDefaultSecureCSP, *isolated_world_csp);
+    EXPECT_EQ(CSPHandler::GetMinimumMV3CSPForTesting(), *isolated_world_csp);
+
     EXPECT_EQ(kDefaultSandboxedPageCSP,
               CSPInfo::GetSandboxContentSecurityPolicy(extension.get()));
     EXPECT_EQ(kDefaultSecureCSP,
               CSPInfo::GetExtensionPagesCSP(extension.get()));
+
+    EXPECT_EQ(
+        CSPHandler::GetMinimumMV3CSPForTesting(),
+        *CSPInfo::GetMinimumCSPToAppend(*extension, "not_sandboxed.html"));
   }
+
+  // Repeat the test, loading the extensions as unpacked extensions.
+  // The minimum CSP we append (and thus the isolated world CSP) should be
+  // different, while the other CSPs should remain the same.
+  for (const char* filename : default_case_filenames) {
+    SCOPED_TRACE(filename);
+    scoped_refptr<Extension> extension =
+        LoadAndExpectSuccess(filename, mojom::ManifestLocation::kUnpacked);
+    ASSERT_TRUE(extension);
+
+    const std::string* isolated_world_csp =
+        CSPInfo::GetIsolatedWorldCSP(*extension);
+    ASSERT_TRUE(isolated_world_csp);
+    EXPECT_EQ(CSPHandler::GetMinimumUnpackedMV3CSPForTesting(),
+              *isolated_world_csp);
+
+    EXPECT_EQ(kDefaultSandboxedPageCSP,
+              CSPInfo::GetSandboxContentSecurityPolicy(extension.get()));
+    EXPECT_EQ(kDefaultSecureCSP,
+              CSPInfo::GetExtensionPagesCSP(extension.get()));
+
+    EXPECT_EQ(
+        CSPHandler::GetMinimumUnpackedMV3CSPForTesting(),
+        *CSPInfo::GetMinimumCSPToAppend(*extension, "not_sandboxed.html"));
+  }
+}
+
+// Ensure the CSP dictionary is disallowed for mv2 extensions.
+TEST_F(CSPInfoUnitTest, CSPDictionaryDisallowedForV2) {
+  LoadAndExpectError("csp_dictionary_mv2.json",
+                     GetInvalidManifestKeyError(keys::kContentSecurityPolicy));
 }
 
 }  // namespace extensions

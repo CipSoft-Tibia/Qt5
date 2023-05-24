@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 namespace {
 
 const CXFA_Node::PropertyData kSourcePropertyData[] = {
-    {XFA_Element::Connect, 1, 0},
+    {XFA_Element::Connect, 1, {}},
 };
 
 const CXFA_Node::AttributeData kSourceAttributeData[] = {
@@ -27,7 +27,7 @@ const CXFA_Node::AttributeData kSourceAttributeData[] = {
 CXFA_Source::CXFA_Source(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                XFA_XDPPACKET_SourceSet,
+                XFA_XDPPACKET::kSourceSet,
                 XFA_ObjectType::Node,
                 XFA_Element::Source,
                 kSourcePropertyData,

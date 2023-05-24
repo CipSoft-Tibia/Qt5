@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLJSMEMORYPOOL_P_H
 #define QQMLJSMEMORYPOOL_P_H
@@ -51,11 +15,11 @@
 // We mean it.
 //
 
-#include <QtCore/qglobal.h>
-#include <QtCore/qshareddata.h>
-#include <QtCore/qdebug.h>
+#include <QtCore/private/qglobal_p.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qvector.h>
 
-#include <cstring>
+#include <cstdlib>
 
 QT_BEGIN_NAMESPACE
 
@@ -63,14 +27,12 @@ namespace QQmlJS {
 
 class Managed;
 
-class MemoryPool : public QSharedData
+class MemoryPool
 {
-    MemoryPool(const MemoryPool &other);
-    void operator =(const MemoryPool &other);
+    Q_DISABLE_COPY_MOVE(MemoryPool);
 
 public:
-    MemoryPool() {}
-
+    MemoryPool() = default;
     ~MemoryPool()
     {
         if (_blocks) {
@@ -81,13 +43,12 @@ public:
 
             free(_blocks);
         }
-        qDeleteAll(strings);
     }
 
     inline void *allocate(size_t size)
     {
         size = (size + 7) & ~size_t(7);
-        if (Q_LIKELY(_ptr && (_ptr + size < _end))) {
+        if (Q_LIKELY(_ptr && size < size_t(_end - _ptr))) {
             void *addr = _ptr;
             _ptr += size;
             return addr;
@@ -105,9 +66,8 @@ public:
     template <typename Tp, typename... Ta> Tp *New(Ta... args)
     { return new (this->allocate(sizeof(Tp))) Tp(args...); }
 
-    QStringRef newString(const QString &string) {
-        strings.append(new QString(string));
-        return QStringRef(strings.last());
+    QStringView newString(QString string) {
+        return strings.emplace_back(std::move(string));
     }
 
 private:
@@ -151,7 +111,7 @@ private:
     int _blockCount = -1;
     char *_ptr = nullptr;
     char *_end = nullptr;
-    QVector<QString*> strings;
+    QStringList strings;
 
     enum
     {

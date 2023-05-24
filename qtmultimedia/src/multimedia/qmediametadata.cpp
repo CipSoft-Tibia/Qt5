@@ -1,261 +1,157 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmediametadata.h"
+#include <QtCore/qcoreapplication.h>
+#include <qvariant.h>
+#include <qobject.h>
+#include <qdatetime.h>
+#include <qmediaformat.h>
+#include <qsize.h>
+#include <qurl.h>
+#include <qimage.h>
 
 QT_BEGIN_NAMESPACE
 
-/*
-    When these conditions are satisfied, QStringLiteral is implemented by
-    gcc's statement-expression extension.  However, in this file it will
-    not work, because "statement-expressions are not allowed outside functions
-    nor in template-argument lists".
-    MSVC 2012 produces an internal compiler error on encountering
-    QStringLiteral in this context.
-
-    Fall back to the less-performant QLatin1String in this case.
-*/
-#if defined(Q_CC_GNU) && defined(Q_COMPILER_LAMBDA)
-#    define Q_DEFINE_METADATA(key) const QString QMediaMetaData::key(QStringLiteral(#key))
-#else
-#    define Q_DEFINE_METADATA(key) const QString QMediaMetaData::key(QLatin1String(#key))
-#endif
-
-// Common
-Q_DEFINE_METADATA(Title);
-Q_DEFINE_METADATA(SubTitle);
-Q_DEFINE_METADATA(Author);
-Q_DEFINE_METADATA(Comment);
-Q_DEFINE_METADATA(Description);
-Q_DEFINE_METADATA(Category);
-Q_DEFINE_METADATA(Genre);
-Q_DEFINE_METADATA(Year);
-Q_DEFINE_METADATA(Date);
-Q_DEFINE_METADATA(UserRating);
-Q_DEFINE_METADATA(Keywords);
-Q_DEFINE_METADATA(Language);
-Q_DEFINE_METADATA(Publisher);
-Q_DEFINE_METADATA(Copyright);
-Q_DEFINE_METADATA(ParentalRating);
-Q_DEFINE_METADATA(RatingOrganization);
-
-// Media
-Q_DEFINE_METADATA(Size);
-Q_DEFINE_METADATA(MediaType);
-Q_DEFINE_METADATA(Duration);
-
-// Audio
-Q_DEFINE_METADATA(AudioBitRate);
-Q_DEFINE_METADATA(AudioCodec);
-Q_DEFINE_METADATA(AverageLevel);
-Q_DEFINE_METADATA(ChannelCount);
-Q_DEFINE_METADATA(PeakValue);
-Q_DEFINE_METADATA(SampleRate);
-
-// Music
-Q_DEFINE_METADATA(AlbumTitle);
-Q_DEFINE_METADATA(AlbumArtist);
-Q_DEFINE_METADATA(ContributingArtist);
-Q_DEFINE_METADATA(Composer);
-Q_DEFINE_METADATA(Conductor);
-Q_DEFINE_METADATA(Lyrics);
-Q_DEFINE_METADATA(Mood);
-Q_DEFINE_METADATA(TrackNumber);
-Q_DEFINE_METADATA(TrackCount);
-
-Q_DEFINE_METADATA(CoverArtUrlSmall);
-Q_DEFINE_METADATA(CoverArtUrlLarge);
-
-// Image/Video
-Q_DEFINE_METADATA(Resolution);
-Q_DEFINE_METADATA(PixelAspectRatio);
-Q_DEFINE_METADATA(Orientation);
-
-// Video
-Q_DEFINE_METADATA(VideoFrameRate);
-Q_DEFINE_METADATA(VideoBitRate);
-Q_DEFINE_METADATA(VideoCodec);
-
-Q_DEFINE_METADATA(PosterUrl);
-
-// Movie
-Q_DEFINE_METADATA(ChapterNumber);
-Q_DEFINE_METADATA(Director);
-Q_DEFINE_METADATA(LeadPerformer);
-Q_DEFINE_METADATA(Writer);
-
-// Photos
-Q_DEFINE_METADATA(CameraManufacturer);
-Q_DEFINE_METADATA(CameraModel);
-Q_DEFINE_METADATA(Event);
-Q_DEFINE_METADATA(Subject);
-Q_DEFINE_METADATA(ExposureTime);
-Q_DEFINE_METADATA(FNumber);
-Q_DEFINE_METADATA(ExposureProgram);
-Q_DEFINE_METADATA(ISOSpeedRatings);
-Q_DEFINE_METADATA(ExposureBiasValue);
-Q_DEFINE_METADATA(DateTimeOriginal);
-Q_DEFINE_METADATA(DateTimeDigitized);
-Q_DEFINE_METADATA(SubjectDistance);
-Q_DEFINE_METADATA(MeteringMode);
-Q_DEFINE_METADATA(LightSource);
-Q_DEFINE_METADATA(Flash);
-Q_DEFINE_METADATA(FocalLength);
-Q_DEFINE_METADATA(ExposureMode);
-Q_DEFINE_METADATA(WhiteBalance);
-Q_DEFINE_METADATA(DigitalZoomRatio);
-Q_DEFINE_METADATA(FocalLengthIn35mmFilm);
-Q_DEFINE_METADATA(SceneCaptureType);
-Q_DEFINE_METADATA(GainControl);
-Q_DEFINE_METADATA(Contrast);
-Q_DEFINE_METADATA(Saturation);
-Q_DEFINE_METADATA(Sharpness);
-Q_DEFINE_METADATA(DeviceSettingDescription);
-
-// Location
-Q_DEFINE_METADATA(GPSLatitude);
-Q_DEFINE_METADATA(GPSLongitude);
-Q_DEFINE_METADATA(GPSAltitude);
-Q_DEFINE_METADATA(GPSTimeStamp);
-Q_DEFINE_METADATA(GPSSatellites);
-Q_DEFINE_METADATA(GPSStatus);
-Q_DEFINE_METADATA(GPSDOP);
-Q_DEFINE_METADATA(GPSSpeed);
-Q_DEFINE_METADATA(GPSTrack);
-Q_DEFINE_METADATA(GPSTrackRef);
-Q_DEFINE_METADATA(GPSImgDirection);
-Q_DEFINE_METADATA(GPSImgDirectionRef);
-Q_DEFINE_METADATA(GPSMapDatum);
-Q_DEFINE_METADATA(GPSProcessingMethod);
-Q_DEFINE_METADATA(GPSAreaInformation);
-
-Q_DEFINE_METADATA(PosterImage);
-Q_DEFINE_METADATA(CoverArtImage);
-Q_DEFINE_METADATA(ThumbnailImage);
-
-
 /*!
-    \namespace QMediaMetaData
-    \ingroup multimedia-namespaces
-    \ingroup multimedia
+    \class QMediaMetaData
     \inmodule QtMultimedia
 
-    \brief Provides identifiers for meta-data attributes.
+    \brief Provides meta-data for media files.
 
-    \note Not all identifiers are supported on all platforms. Please consult vendor documentation for specific support
-    on different platforms.
+    \note Not all identifiers are supported on all platforms.
 
     \table 60%
     \header \li {3,1}
     Common attributes
     \header \li Value \li Description \li Type
     \row \li Title \li The title of the media.  \li QString
-    \row \li SubTitle \li The sub-title of the media. \li QString
     \row \li Author \li The authors of the media. \li QStringList
     \row \li Comment \li A user comment about the media. \li QString
     \row \li Description \li A description of the media.  \li QString
-    \row \li Category \li The category of the media.  \li QStringList
     \row \li Genre \li The genre of the media.  \li QStringList
-    \row \li Year \li The year of release of the media.  \li int
-    \row \li Date \li The date of the media. \li QDate.
-    \row \li UserRating \li A user rating of the media. \li int [0..100]
-    \row \li Keywords \li A list of keywords describing the media.  \li QStringList
-    \row \li Language \li The language of media, as an ISO 639-2 code. \li QString
+    \row \li Date \li The date of the media. \li QDateTime.
+    \row \li Language \li The language of media. \li QLocale::Language
 
     \row \li Publisher \li The publisher of the media.  \li QString
     \row \li Copyright \li The media's copyright notice.  \li QString
-    \row \li ParentalRating \li The parental rating of the media.  \li QString
-    \row \li RatingOrganization \li The organization responsible for the parental rating of the media.
-    \li QString
+    \row \li Url \li A Url pointing to the origin of the media.  \li QUrl
 
     \header \li {3,1}
     Media attributes
-    \row \li Size \li The size in bytes of the media. \li qint64
     \row \li MediaType \li The type of the media (audio, video, etc).  \li QString
+    \row \li FileFormat \li The file format of the media.  \li QMediaFormat::FileFormat
     \row \li Duration \li The duration in millseconds of the media.  \li qint64
 
     \header \li {3,1}
     Audio attributes
     \row \li AudioBitRate \li The bit rate of the media's audio stream in bits per second.  \li int
-    \row \li AudioCodec \li The codec of the media's audio stream.  \li QString
-    \row \li AverageLevel \li The average volume level of the media.  \li int
-    \row \li ChannelCount \li The number of channels in the media's audio stream. \li int
-    \row \li PeakValue \li The peak volume of the media's audio stream. \li int
-    \row \li SampleRate \li The sample rate of the media's audio stream in hertz. \li int
+    \row \li AudioCodec \li The codec of the media's audio stream.  \li QMediaFormat::AudioCodec
+
+    \header \li {3,1}
+    Video attributes
+    \row \li VideoFrameRate \li The frame rate of the media's video stream. \li qreal
+    \row \li VideoBitRate \li The bit rate of the media's video stream in bits per second.  \li int
+    \row \li VideoCodec \li The codec of the media's video stream.  \li QMediaFormat::VideoCodec
 
     \header \li {3,1}
     Music attributes
     \row \li AlbumTitle \li The title of the album the media belongs to.  \li QString
     \row \li AlbumArtist \li The principal artist of the album the media belongs to.  \li QString
     \row \li ContributingArtist \li The artists contributing to the media.  \li QStringList
-    \row \li Composer \li The composer of the media.  \li QStringList
-    \row \li Conductor \li The conductor of the media. \li QString
-    \row \li Lyrics \li The lyrics to the media. \li QString
-    \row \li Mood \li The mood of the media.  \li QString
     \row \li TrackNumber \li The track number of the media.  \li int
-    \row \li TrackCount \li The number of tracks on the album containing the media.  \li int
+    \row \li Composer \li The composer of the media.  \li QStringList
+    \row \li LeadPerformer \li The lead performer in the media.  \li QStringList
 
-    \row \li CoverArtUrlSmall \li The URL of a small cover art image. \li  QUrl
-    \row \li CoverArtUrlLarge \li The URL of a large cover art image. \li  QUrl
+    \row \li ThumbnailImage \li An embedded thumbnail image if present in metadata. \li QImage
     \row \li CoverArtImage \li An embedded cover art image. \li  QImage
 
     \header \li {3,1}
     Image and video attributes
+    \row \li Orientation \li The rotation angle of an image or video. \li int
     \row \li Resolution \li The dimensions of an image or video. \li QSize
-    \row \li PixelAspectRatio \li The pixel aspect ratio of an image or video. \li QSize
-    \row \li Orientation \li Orientation of an image or video. \li int (degrees)
 
-    \header \li {3,1}
-    Video attributes
-    \row \li VideoFrameRate \li The frame rate of the media's video stream. \li qreal
-    \row \li VideoBitRate \li The bit rate of the media's video stream in bits per second.  \li int
-    \row \li VideoCodec \li The codec of the media's video stream.  \li QString
+    \endtable
+*/
 
-    \row \li PosterUrl \li The URL of a poster image. \li QUrl
-    \row \li PosterImage \li An embedded poster image. \li QImage
 
-    \header \li {3,1}
-    Movie attributes
-    \row \li ChapterNumber \li The chapter number of the media.  \li int
-    \row \li Director \li The director of the media.  \li QString
-    \row \li LeadPerformer \li The lead performer in the media.  \li QStringList
-    \row \li Writer \li The writer of the media.  \li QStringList
+/*!
+    Returns the meta type used to store data for Key \a key.
+*/
+QMetaType QMediaMetaData::keyType(Key key)
+{
+    switch (key) {
+    case Title:
+    case Comment:
+    case Description:
+    case Publisher:
+    case Copyright:
+    case MediaType:
+    case AlbumTitle:
+    case AlbumArtist:
+        return QMetaType::fromType<QString>();
+    case Genre:
+    case Author:
+    case ContributingArtist:
+    case Composer:
+    case LeadPerformer:
+        return QMetaType::fromType<QStringList>();
+
+    case Date:
+        return QMetaType::fromType<QDateTime>();
+
+    case Language:
+        return QMetaType::fromType<QLocale::Language>();
+    case Url:
+        return QMetaType::fromType<QUrl>();
+
+    case Duration:
+        return QMetaType::fromType<qint64>();
+    case FileFormat:
+        return QMetaType::fromType<QMediaFormat::FileFormat>();
+
+    case AudioBitRate:
+    case VideoBitRate:
+    case TrackNumber:
+    case Orientation:
+        return QMetaType::fromType<int>();
+    case AudioCodec:
+        return QMetaType::fromType<QMediaFormat::AudioCodec>();
+    case VideoCodec:
+        return QMetaType::fromType<QMediaFormat::VideoCodec>();
+    case VideoFrameRate:
+        return QMetaType::fromType<qreal>();
+
+
+    case ThumbnailImage:
+    case CoverArtImage:
+        return QMetaType::fromType<QImage>();
+
+    case Resolution:
+        return QMetaType::fromType<QSize>();
+    default:
+        return QMetaType::fromType<void>();
+    }
+}
+
+/*!
+    \qmlvaluetype mediaMetaData
+    \ingroup qmlvaluetypes
+    \inqmlmodule QtMultimedia
+    \since 6.2
+    //! \instantiates QMediaMetaData
+    \brief Provides meta-data for media files.
+    \ingroup multimedia_qml
+    \ingroup multimedia_audio_qml
+    \ingroup multimedia_video_qml
+
+    Meta-data is supplementary data describing media.
+    See QMediaMetaData for available meta data attributes.
+*/
+
+/*
+    Some potential attributes to add if we can properly support them.
+    Might require that we add EXIF support to Qt Multimedia
 
     \header \li {3,1}
     Photo attributes.
@@ -275,17 +171,16 @@ Q_DEFINE_METADATA(ThumbnailImage);
     \row \li DateTimeOriginal \li The date and time when the original image data was generated. \li QDateTime
     \row \li DateTimeDigitized \li The date and time when the image was stored as digital data.  \li QDateTime
     \row \li SubjectDistance \li The distance to the subject, given in meters. \li qreal
-    \row \li MeteringMode \li The metering mode.  \li QCameraExposure::MeteringMode
     \row \li LightSource
         \li The kind of light source. \li QString
     \row \li Flash
-        \li Status of flash when the image was shot. \li QCameraExposure::FlashMode
+        \li Status of flash when the image was shot. \li QCamera::FlashMode
     \row \li FocalLength
         \li The actual focal length of the lens, in mm. \li qreal
     \row \li ExposureMode
-        \li Indicates the exposure mode set when the image was shot. \li QCameraExposure::ExposureMode
+        \li Indicates the exposure mode set when the image was shot. \li QCamera::ExposureMode
     \row \li WhiteBalance
-        \li Indicates the white balance mode set when the image was shot. \li QCameraImageProcessing::WhiteBalanceMode
+        \li Indicates the white balance mode set when the image was shot. \li QCamera::WhiteBalanceMode
     \row \li DigitalZoomRatio
         \li Indicates the digital zoom ratio when the image was shot. \li qreal
     \row \li FocalLengthIn35mmFilm
@@ -345,8 +240,277 @@ Q_DEFINE_METADATA(ThumbnailImage);
     \row \li GPSAreaInformation
         \li The name of the GPS area. \li QString
 
-    \row \li ThumbnailImage \li An embedded thumbnail image.  \li QImage
     \endtable
 */
 
+/*!
+    \enum QMediaMetaData::Key
+
+    The following meta data keys can be used:
+
+    \value Title Media title
+    \value Author Media author
+    \value Comment Comment
+    \value Description Brief desripttion
+    \value Genre Genre the media belongs to
+    \value Date Creation date
+    \value Language Media language
+    \value Publisher Media publisher info.
+    \value Copyright Media copyright info.
+    \value Url Publisher's website URL
+    \value Duration Media playback duration
+    \value MediaType Type of the media
+    \value FileFormat File format
+    \value AudioBitRate
+    \value AudioCodec
+    \value VideoBitRate
+    \value VideoCodec
+    \value VideoFrameRate
+    \value AlbumTitle Album's title
+    \value AlbumArtist Artist's info.
+    \value ContributingArtist
+    \value TrackNumber
+    \value Composer Media composer's info.
+    \value LeadPerformer
+    \value ThumbnailImage Media thumbnail image (if embedded in metadata)
+    \value CoverArtImage Media cover art
+    \value Orientation
+    \value Resolution
+*/
+
+/*!
+    \variable QMediaMetaData::NumMetaData
+    \internal
+*/
+
+/*!
+    \qmlmethod variant QtMultimedia::mediaMetaData::value(Key key)
+
+    Returns the meta data value for Key \a key, or a null QVariant if no
+    meta-data for the key is available.
+*/
+
+/*!
+    \fn QVariant QMediaMetaData::value(QMediaMetaData::Key key) const
+
+    Returns the meta data value for Key \a key, or a null QVariant if no
+    meta data for the key is available.
+*/
+
+/*!
+    \qmlmethod bool QtMultimedia::mediaMetaData::isEmpty()
+    Returns \c true if the meta data contains no items: otherwise returns \c{false}.
+*/
+
+/*!
+    \fn bool QMediaMetaData::isEmpty() const
+    Returns \c true if the meta data contains no items: otherwise returns \c{false}.
+*/
+
+/*!
+    \qmlmethod void QtMultimedia::mediaMetaData::clear()
+    Removes all data from the MediaMetaData object.
+*/
+
+/*!
+    \fn void QMediaMetaData::clear()
+    Removes all data from the meta data object.
+*/
+
+/*!
+    \qmlmethod void QtMultimedia::mediaMetaData::insert(Key k, variant value)
+    Inserts a \a value into a Key: \a{k}.
+*/
+
+/*!
+    \fn void QMediaMetaData::insert(QMediaMetaData::Key k, const QVariant &value)
+    Inserts a \a value into a Key: \a{k}.
+*/
+/*!
+    \qmlmethod void QtMultimedia::mediaMetaData::remove(Key k)
+    Removes meta data from a Key: \a{k}.
+*/
+
+/*!
+    \fn void QMediaMetaData::remove(QMediaMetaData::Key k)
+    Removes meta data from a Key: \a{k}.
+*/
+
+/*!
+    \qmlmethod list<Key> QtMultimedia::mediaMetaData::keys()
+    Returns a list of MediaMetaData.Keys.
+*/
+
+/*!
+    \fn QMediaMetaData::keys() const
+    Returns a QList of QMediaMetaData::Keys.
+*/
+
+/*!
+    \qmlmethod string QtMultimedia::mediaMetaData::stringValue(Key key)
+    Returns the meta data for key \a key as a QString.
+
+    This is mainly meant to simplify presenting the meta data to a user.
+*/
+/*!
+    Returns the meta data for key \a key as a QString.
+
+    This is mainly meant to simplify presenting the meta data to a user.
+*/
+QString QMediaMetaData::stringValue(QMediaMetaData::Key key) const
+{
+    QVariant value = data.value(key);
+    if (value.isNull())
+        return QString();
+
+    switch (key) {
+    // string based or convertible to string
+    case Title:
+    case Author:
+    case Comment:
+    case Description:
+    case Genre:
+    case Publisher:
+    case Copyright:
+    case Date:
+    case Url:
+    case MediaType:
+    case AudioBitRate:
+    case VideoBitRate:
+    case VideoFrameRate:
+    case AlbumTitle:
+    case AlbumArtist:
+    case ContributingArtist:
+    case TrackNumber:
+    case Composer:
+    case Orientation:
+    case LeadPerformer:
+        return value.toString();
+    case Language: {
+        auto l = value.value<QLocale::Language>();
+        return QLocale::languageToString(l);
+    }
+    case Duration: {
+        QTime time = QTime::fromMSecsSinceStartOfDay(value.toInt());
+        return time.toString();
+    }
+    case FileFormat:
+        return QMediaFormat::fileFormatName(value.value<QMediaFormat::FileFormat>());
+    case AudioCodec:
+        return QMediaFormat::audioCodecName(value.value<QMediaFormat::AudioCodec>());
+    case VideoCodec:
+        return QMediaFormat::videoCodecName(value.value<QMediaFormat::VideoCodec>());
+    case Resolution: {
+        QSize size = value.toSize();
+        return QString::fromUtf8("%1 x %2").arg(size.width()).arg(size.height());
+    }
+    case ThumbnailImage:
+    case CoverArtImage:
+        break;
+    }
+    return QString();
+}
+/*!
+    \qmlmethod string QtMultimedia::mediaMetaData::metaDataKeyToString(Key key)
+    returns a string representation of \a key that can be used when presenting
+    meta data to users.
+*/
+
+/*!
+    returns a string representation of \a key that can be used when presenting
+    meta data to users.
+*/
+QString QMediaMetaData::metaDataKeyToString(QMediaMetaData::Key key)
+{
+    switch (key) {
+        case QMediaMetaData::Title:
+            return (QCoreApplication::translate("QMediaMetaData", "Title"));
+        case QMediaMetaData::Author:
+            return (QCoreApplication::translate("QMediaMetaData", "Author"));
+        case QMediaMetaData::Comment:
+            return (QCoreApplication::translate("QMediaMetaData", "Comment"));
+        case QMediaMetaData::Description:
+            return (QCoreApplication::translate("QMediaMetaData", "Description"));
+        case QMediaMetaData::Genre:
+            return (QCoreApplication::translate("QMediaMetaData", "Genre"));
+        case QMediaMetaData::Date:
+            return (QCoreApplication::translate("QMediaMetaData", "Date"));
+        case QMediaMetaData::Language:
+            return (QCoreApplication::translate("QMediaMetaData", "Language"));
+        case QMediaMetaData::Publisher:
+            return (QCoreApplication::translate("QMediaMetaData", "Publisher"));
+        case QMediaMetaData::Copyright:
+            return (QCoreApplication::translate("QMediaMetaData", "Copyright"));
+        case QMediaMetaData::Url:
+            return (QCoreApplication::translate("QMediaMetaData", "Url"));
+        case QMediaMetaData::Duration:
+            return (QCoreApplication::translate("QMediaMetaData", "Duration"));
+        case QMediaMetaData::MediaType:
+            return (QCoreApplication::translate("QMediaMetaData", "Media type"));
+        case QMediaMetaData::FileFormat:
+            return (QCoreApplication::translate("QMediaMetaData", "Container Format"));
+        case QMediaMetaData::AudioBitRate:
+            return (QCoreApplication::translate("QMediaMetaData", "Audio bit rate"));
+        case QMediaMetaData::AudioCodec:
+            return (QCoreApplication::translate("QMediaMetaData", "Audio codec"));
+        case QMediaMetaData::VideoBitRate:
+            return (QCoreApplication::translate("QMediaMetaData", "Video bit rate"));
+        case QMediaMetaData::VideoCodec:
+            return (QCoreApplication::translate("QMediaMetaData", "Video codec"));
+        case QMediaMetaData::VideoFrameRate:
+            return (QCoreApplication::translate("QMediaMetaData", "Video frame rate"));
+        case QMediaMetaData::AlbumTitle:
+            return (QCoreApplication::translate("QMediaMetaData", "Album title"));
+        case QMediaMetaData::AlbumArtist:
+            return (QCoreApplication::translate("QMediaMetaData", "Album artist"));
+        case QMediaMetaData::ContributingArtist:
+            return (QCoreApplication::translate("QMediaMetaData", "Contributing artist"));
+        case QMediaMetaData::TrackNumber:
+            return (QCoreApplication::translate("QMediaMetaData", "Track number"));
+        case QMediaMetaData::Composer:
+            return (QCoreApplication::translate("QMediaMetaData", "Composer"));
+        case QMediaMetaData::ThumbnailImage:
+            return (QCoreApplication::translate("QMediaMetaData", "Thumbnail image"));
+        case QMediaMetaData::CoverArtImage:
+            return (QCoreApplication::translate("QMediaMetaData", "Cover art image"));
+        case QMediaMetaData::Orientation:
+            return (QCoreApplication::translate("QMediaMetaData", "Orientation"));
+        case QMediaMetaData::Resolution:
+            return (QCoreApplication::translate("QMediaMetaData", "Resolution"));
+        case QMediaMetaData::LeadPerformer:
+            return (QCoreApplication::translate("QMediaMetaData", "Lead performer"));
+    }
+    return QString();
+}
+
+// operator documentation
+/*!
+\fn QVariant &QMediaMetaData ::operator[](QMediaMetaData::Key k)
+    Returns data stored at the Key \a{k}.
+    \code
+        QMediaMetaData rockBallad1;
+        rockBalad[QMediaMetaData::Genre]="Rock"
+    \endcode
+*/
+
+/*!
+\fn bool QMediaMetaData::operator==(const QMediaMetaData &a, const QMediaMetaData &b)
+    Compares two meta data objects \a a and \a b, and returns
+    \c true if they are identical or \c false if they differ.
+*/
+
+/*!
+\fn bool QMediaMetaData::operator!=(const QMediaMetaData &a, const QMediaMetaData &b)
+    Compares two meta data objects \a a and \a b, and returns
+    \c false if they are identical or \c true if they differ.
+*/
+
+/*!
+    \variable QMediaMetaData::data
+    \brief the meta data.
+    \note this is a \c protected member of its class.
+*/
+
 QT_END_NAMESPACE
+
+#include "moc_qmediametadata.cpp"

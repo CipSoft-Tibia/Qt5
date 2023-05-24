@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@ option optimize_for = LITE_RUNTIME;
 // This file defines messages used for interacting directly with containers
 // running inside of a VM.
 package vm_tools.cicerone;
-option go_package = "vm_cicerone_proto";
+option go_package = "chromiumos/system_api/vm_cicerone_proto";
 
 // Message sent to cicerone when a VM has started up. This is just for
 // tracking purposes by cicerone.
@@ -99,6 +99,13 @@ message ContainerStartedSignal {
 
   // The IPv4 address of the container.
   string ipv4_address = 6;
+
+  // The vsock port that sftp-server runs on.
+  uint32 sftp_vsock_port = 7;
+
+  // A token used to identify the container, usually stored in
+  // /.dev/container_token.
+  string container_token = 8;
 }
 
 // Message used in the signal for when a container has shut down.
@@ -113,8 +120,14 @@ message ContainerShutdownSignal {
   string owner_id = 3;
 }
 
+enum ContainerFeature {
+  UNKNOWN = 0;
+  ENABLE_GTK3_IME_SUPPORT = 1;
+  ENABLE_VIRTUAL_KEYBOARD_SUPPORT = 2;
+}
+
 // Request to launch on application in the specified VM/container. Used with the
-// LaunchContainerApplication D-Bus message into vm_concierge.
+// LaunchContainerApplication D-Bus message into vm_cicerone.
 message LaunchContainerApplicationRequest {
   // Display scaling of the app windows.
   enum DisplayScaling {
@@ -145,9 +158,12 @@ message LaunchContainerApplicationRequest {
 
   // Display scaling requested.
   DisplayScaling display_scaling = 6;
+
+  // Features to enable in the container.
+  repeated ContainerFeature container_features = 7;
 }
 
-// Response sent back by vm_concierge when it receives a
+// Response sent back by vm_cicerone when it receives a
 // LaunchContainerApplication D-Bus message.
 message LaunchContainerApplicationResponse {
   // If true, the requested application launched successfully.
@@ -158,7 +174,7 @@ message LaunchContainerApplicationResponse {
 }
 
 // Request to get application icons in the specified VM/container. Used with the
-// GetContainerAppIcon D-Bus message into vm_concierge.
+// GetContainerAppIcon D-Bus message into vm_cicerone.
 message ContainerAppIconRequest {
   // Name of the VM to target.
   string vm_name = 1;
@@ -182,13 +198,23 @@ message ContainerAppIconRequest {
   string owner_id = 6;
 }
 
-// One desktop file ID with its icon.
+// One desktop file ID and the icon found for it.
 message DesktopIcon {
+  enum Format {
+    PNG = 0;
+    SVG = 1;
+  }
+
   string desktop_file_id = 1;
+
+  // Icon data as uninterpreted bytes.
   bytes icon = 2;
+
+  // Interpretation hint for icon bytes
+  Format format = 3;
 }
 
-// Response sent back by vm_concierge when it receives a
+// Response sent back by vm_cicerone when it receives a
 // GetContainerAppIcon D-Bus message.
 // Some desktop_file_id may not have an icon.
 message ContainerAppIconResponse {
@@ -208,6 +234,9 @@ message LaunchVshdRequest {
 
   // The owner of the VM and container.
   string owner_id = 4;
+
+  // Features to enable in the container.
+  repeated ContainerFeature container_features = 5;
 }
 
 // Response sent back by vm_cicerone when it receives a LaunchVshd
@@ -550,10 +579,10 @@ message DeleteLxdContainerResponse {
     FAILED = 3;
   }
 
-  // Container creation status.
+  // Container deletion status.
   Status status = 1;
 
-  // The failure_reason if the container could not be created.
+  // The failure_reason if the container could not be deleted.
   string failure_reason = 2;
 }
 
@@ -658,6 +687,10 @@ message StartLxdContainerRequest {
   }
 
   PrivilegeLevel privilege_level = 6;
+
+  // Audio capture should not be allowed in the container even if the host VM
+  // supports it.
+  bool disable_audio_capture = 7;
 }
 
 // OsRelease encapsulates a subset of the os-release info as documented
@@ -742,6 +775,9 @@ message LxdContainerStartingSignal {
     // One or more steps failed and the container could not be started. No
     // more signals are expected.
     FAILED = 3;
+
+    // Still starting, this is sent as a heartbeat on an interval.
+    STARTING = 4;
   }
 
   // The current status of starting the container.
@@ -752,6 +788,76 @@ message LxdContainerStartingSignal {
 
   // OS strings found in the container's /etc/os-release, e.g. "stretch".
   OsRelease os_release = 6;
+}
+
+message StopLxdContainerRequest {
+  // Name of the VM the container is in.
+  string vm_name = 1;
+
+  // Name of the container within the VM.
+  string container_name = 2;
+
+  // The owner of the VM and container.
+  string owner_id = 3;
+}
+
+message StopLxdContainerResponse {
+  enum Status {
+    // The status of stopping the container is unknown
+    UNKNOWN = 0;
+
+    // The container is already stopped.
+    STOPPED = 1;
+
+    // The container is being stopped.
+    STOPPING = 2;
+
+    // The named container doesn't exist.
+    DOES_NOT_EXIST = 3;
+
+    // The container could not be stopped.
+    FAILED = 4;
+  }
+
+  // Container stopping status.
+  Status status = 1;
+
+  // The failure_reason if the container could not be stopped.
+  string failure_reason = 2;
+}
+
+message LxdContainerStoppingSignal {
+  enum Status {
+    // Stopping status is unknown.
+    UNKNOWN = 0;
+
+    // The container has been stopped.
+    STOPPED = 1;
+
+    // The container is stopping.
+    STOPPING = 2;
+
+    // The container stop was cancelled.
+    CANCELLED = 3;
+
+    // One or more steps failed and the container could not be stopped.
+    FAILED = 4;
+  }
+
+  // Name of the VM the container is in.
+  string vm_name = 1;
+
+  // Name of the container within the VM.
+  string container_name = 2;
+
+  // The owner of the VM and container.
+  string owner_id = 3;
+
+  // The current stopping status of the container.
+  Status status = 4;
+
+  // The failure_reason if the container could not be stopped.
+  string failure_reason = 5;
 }
 
 // Request for getting the primary user for an LXD container.
@@ -1204,6 +1310,9 @@ message ApplyAnsiblePlaybookProgressSignal {
 
   // Contains a textual reason for the failure in case of a FAILED status.
   string failure_details = 5;
+
+  // Displays details of the current progress of the Ansible process.
+  repeated string status_string = 6;
 }
 
 message ConfigureForArcSideloadRequest {
@@ -1296,9 +1405,15 @@ message UpgradeContainerRequest {
 
     // Debian 10 AKA Buster.
     DEBIAN_BUSTER = 2;
+
+    // Debian 11 AKA Bullseye.
+    DEBIAN_BULLSEYE = 3;
   }
+
   // Version from which the container will upgrade.
-  Version source_version = 4;
+  // Ignored, since tremplin is in a better place to determine this
+  // then the caller.
+  Version source_version = 4 [deprecated = true];
 
   // Version to which the container will be upgraded.
   Version target_version = 5;
@@ -1550,6 +1665,21 @@ message FileWatchTriggeredSignal {
   string path = 4;
 }
 
+// Sent by garcon to notify that a container is running low on disk space.
+message LowDiskSpaceTriggeredSignal {
+  // Name of the VM the container is in.
+  string vm_name = 1;
+
+  // Name of the container within the VM.
+  string container_name = 2;
+
+  // The owner of the VM and container.
+  string owner_id = 3;
+
+  // How much free space is left in bytes.
+  uint64 free_bytes = 4;
+}
+
 // Sent by vsh to register session information such as the container shell pid,
 // keyed from the host vsh pid. Crostini terminal will look up this info for
 // features such as starting new terminals in the same cwd.
@@ -1603,4 +1733,261 @@ message GetVshSessionResponse {
 
   // Process ID of shell spawned from vshd running in container.
   int32 container_shell_pid = 3;
+}
+
+// Sent by chrome in response to a SelectFile dialog request.
+message FileSelectedSignal {
+  // Name of the VM.
+  string vm_name = 1;
+
+  // Name of the container within the VM.
+  string container_name = 2;
+
+  // The owner of the VM.
+  string owner_id = 3;
+
+  // Token sent in request to match with response signal.
+  string select_file_token = 4;
+
+  // Files selected by user in SelectFile dialog.
+  repeated string files = 5;
+}
+
+// Sent by chrome to attach a USB device in a VM to a container.
+message AttachUsbToContainerRequest {
+  // Name of the VM.
+  string vm_name = 1;
+
+  // Name of the container within the VM to attach to.
+  string container_name = 2;
+
+  // The owner of the VM and container.
+  string owner_id = 3;
+
+  // Attach USB devices on to this port.
+  int32 port_num = 4;
+}
+
+message AttachUsbToContainerResponse {
+  enum Status {
+    // The status is unknown.
+    UNKNOWN = 0;
+
+    // The USB port will be attached.
+    OK = 1;
+
+    // The container doesn't exist.
+    NO_SUCH_CONTAINER = 2;
+
+    // Failed to attach.
+    FAILED = 3;
+  }
+
+  // The status.
+  Status status = 1;
+
+  // Human-readable failure reason.
+  string failure_reason = 2;
+}
+
+// Sent by chrome to detach a USB device in a VM from a container.
+message DetachUsbFromContainerRequest {
+  // Name of the VM.
+  string vm_name = 1;
+
+  // The owner of the VM.
+  string owner_id = 2;
+
+  // Detach USB devices on to this port.
+  int32 port_num = 3;
+}
+
+message DetachUsbFromContainerResponse {
+  enum Status {
+    // The status is unknown.
+    UNKNOWN = 0;
+
+    // The USB port will be detached.
+    OK = 1;
+
+    // Failed to detach.
+    FAILED = 2;
+  }
+
+  // The status.
+  Status status = 1;
+
+  // Human-readable failure reason.
+  string failure_reason = 2;
+}
+
+message ContainerInfo {
+  // The name of the VM.
+  string vm_name = 1;
+
+  // The name of the container within the VM.
+  string container_name = 2;
+
+  // OPTIONAL: If using LXD, information about the OS.
+  OsRelease os_release = 3;
+
+  // The token for the container. An empty string if not available.
+  string container_token = 4;
+}
+
+// Sent by chrome to query the list of containers and VMs that Cicerone knows
+// about.
+message ListRunningContainersRequest {
+  // The owner to list VMs and Containers for.
+  string owner_id = 1;
+}
+
+message ListRunningContainersResponse {
+  // List of known vms and containers.
+  repeated ContainerInfo containers = 1;
+}
+
+// Sent by chrome to get session info from Garcon.
+message GetGarconSessionInfoRequest {
+  // Name of the VM the container is in.
+  string vm_name = 1;
+
+  // Name of the container within the VM.
+  string container_name = 2;
+
+  // The owner of the VM and container.
+  string owner_id = 3;
+}
+
+message GetGarconSessionInfoResponse {
+  enum Status {
+    // The current status is unknown.
+    UNKNOWN = 0;
+
+    // Generic error.
+    FAILED = 1;
+
+    // Unknown container.
+    NOT_FOUND = 2;
+
+    // Got info successfully.
+    SUCCEEDED = 3;
+  }
+
+  // Status.
+  Status status = 1;
+
+  // The failure reason if not successful.
+  string failure_reason = 2;
+
+  // The username of the user garcon is running as.
+  string container_username = 3;
+
+  // The home directory of the user garcon is running as.
+  string container_homedir = 4;
+
+  // The vsock port that sftp-server runs on.
+  uint32 sftp_vsock_port = 5;
+}
+
+// Sent to notify that a VM requests to inhibit sleep.
+message InhibitScreensaverSignal {
+  // Name of the VM the container is in.
+  string vm_name = 1;
+
+  // Name of the container within the VM.
+  string container_name = 2;
+
+  // The owner of the VM and container.
+  string owner_id = 3;
+
+  // Identifier for the request, same cookie will be used to uninhibit
+  uint32 cookie = 4;
+
+  // The client which sent this request
+  string client = 5;
+
+  // The reason for inhibiting
+  string reason = 6;
+}
+
+// Sent to notify  that a VM requests to uninhibit sleep.
+message UninhibitScreensaverSignal {
+  // Name of the VM the container is in.
+  string vm_name = 1;
+
+  // Name of the container within the VM.
+  string container_name = 2;
+
+  // The owner of the VM and container.
+  string owner_id = 3;
+
+  // Identifier for the request, corresponding inhibit should have been sent
+  uint32 cookie = 4;
+}
+
+// Devices hosted by a VM that are optional in a container
+enum VmDevice {
+  MICROPHONE = 0;
+  CAMERA = 1;
+}
+
+enum VmDeviceAction {
+  // VmDevice should be enabled.
+  ENABLE = 0;
+  // VmDevice should be disabled.
+  DISABLE = 1;
+}
+
+message UpdateContainerDevicesRequest {
+  // Name of the VM the container is in.
+  string vm_name = 1;
+
+  // Name of the container within the VM.
+  string container_name = 2;
+
+  // The owner of the VM and container.
+  string owner_id = 3;
+
+  // Actions to take per VmDevice.
+  // The keys are really VmDevice, but proto doesn't allow enum keys.
+  map<string, VmDeviceAction> updates = 4;
+}
+
+message UpdateContainerDevicesResponse {
+  enum Status {
+    // The status is unknown.
+    UNKNOWN = 0;
+
+    // The actions were applied to the container where possible.
+    OK = 1;
+
+    // The requested container wasn't found.
+    NO_SUCH_CONTAINER = 2;
+
+    // Generic grpc error.
+    FAILED = 3;
+  }
+
+  enum UpdateResult {
+    // The VmDevice action was successful.
+    SUCCESS = 0;
+
+    // The VM had no such device so the action didn't apply.
+    NO_SUCH_VM_DEVICE = 1;
+
+    // The action could not be applied to the VmDevice.
+    ACTION_FAILED = 2;
+  }
+
+  // Status of the entire operation. Individual results should be checked even
+  // if status is OK.
+  Status status = 1;
+
+  // Human readable failure reason.
+  string failure_reason = 2;
+
+  // Results of actions per VmDevice.
+  // The keys are really VmDevice, but proto doesn't allow enum keys.
+  map<string, UpdateResult> results = 3;
 }

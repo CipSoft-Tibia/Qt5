@@ -1,44 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4mathobject_p.h"
-#include "qv4objectproto_p.h"
 #include "qv4symbol_p.h"
 
 #include <QtCore/qdatetime.h>
@@ -145,11 +108,12 @@ ReturnedValue MathObject::method_acosh(const FunctionObject *, const Value *, co
     if (v < 1)
         RETURN_RESULT(Encode(qt_qnan()));
 
-#ifdef Q_OS_ANDROID // incomplete std :-(
-    RETURN_RESULT(Encode(std::log(v +std::sqrt(v + 1) * std::sqrt(v - 1))));
-#else
-    RETURN_RESULT(Encode(std::acosh(v)));
+#ifdef Q_CC_MINGW
+    // Mingw has a broken std::acosh(). It returns NaN when passed Infinity.
+    if (std::isinf(v))
+        RETURN_RESULT(Encode(v));
 #endif
+    RETURN_RESULT(Encode(std::acosh(v)));
 }
 
 ReturnedValue MathObject::method_asin(const FunctionObject *, const Value *, const Value *argv, int argc)
@@ -166,12 +130,7 @@ ReturnedValue MathObject::method_asinh(const FunctionObject *, const Value *, co
     double v = argc ? argv[0].toNumber() : 2;
     if (v == 0.0)
         RETURN_RESULT(Encode(v));
-
-#ifdef Q_OS_ANDROID // incomplete std :-(
-    RETURN_RESULT(Encode(std::log(v +std::sqrt(1 + v * v))));
-#else
     RETURN_RESULT(Encode(std::asinh(v)));
-#endif
 }
 
 ReturnedValue MathObject::method_atan(const FunctionObject *, const Value *, const Value *argv, int argc)
@@ -189,17 +148,7 @@ ReturnedValue MathObject::method_atanh(const FunctionObject *, const Value *, co
     if (v == 0.0)
         RETURN_RESULT(Encode(v));
 
-#ifdef Q_OS_ANDROID // incomplete std :-(
-    if (-1 < v && v < 1)
-        RETURN_RESULT(Encode(0.5 * (std::log(v + 1) - std::log(v - 1))));
-
-    if (v > 1 || v < -1)
-        RETURN_RESULT(Encode(qt_qnan()));
-
-    RETURN_RESULT(Encode(copySign(qt_inf(), v)));
-#else
     RETURN_RESULT(Encode(std::atanh(v)));
-#endif
 }
 
 ReturnedValue MathObject::method_atan2(const FunctionObject *, const Value *, const Value *argv, int argc)
@@ -223,11 +172,7 @@ ReturnedValue MathObject::method_atan2(const FunctionObject *, const Value *, co
 ReturnedValue MathObject::method_cbrt(const FunctionObject *, const Value *, const Value *argv, int argc)
 {
     double v = argc ? argv[0].toNumber() : qt_qnan();
-#ifdef Q_OS_ANDROID // incomplete std :-(
-    RETURN_RESULT(Encode(copySign(std::exp(std::log(std::abs(v)) / 3), v)));
-#else
     RETURN_RESULT(Encode(std::cbrt(v))); // cube root
-#endif
 }
 
 ReturnedValue MathObject::method_ceil(const FunctionObject *, const Value *, const Value *argv, int argc)
@@ -281,11 +226,7 @@ ReturnedValue MathObject::method_expm1(const FunctionObject *, const Value *, co
         else
             RETURN_RESULT(Encode(qt_inf()));
     } else {
-#ifdef Q_OS_ANDROID // incomplete std :-(
-        RETURN_RESULT(Encode(std::exp(v) - 1));
-#else
         RETURN_RESULT(Encode(std::expm1(v)));
-#endif
     }
 }
 
@@ -310,29 +251,14 @@ ReturnedValue MathObject::method_hypot(const FunctionObject *, const Value *, co
 {
     // ES6 Math.hypot(v1, ..., vn) -> sqrt(sum(vi**2)) but "should take care to
     // avoid the loss of precision from overflows and underflows" (as std::hypot does).
-    double v = argc ? argv[0].toNumber() : 0;
+    double v = 0;
     // Spec mandates +0 on no args; and says nothing about what to do if toNumber() signals ...
-#ifdef Q_OS_ANDROID // incomplete std :-(
-    bool big = qt_is_inf(v), bad = std::isnan(v);
-    v *= v;
-    for (int i = 1; !big && i < argc; i++) {
-        double u = argv[i].toNumber();
-        if (qt_is_inf(u))
-            big = true;
-        if (std::isnan(u))
-            bad = true;
-        v += u * u;
+    if (argc > 0) {
+        QtPrivate::QHypotHelper<double> h(argv[0].toNumber());
+        for (int i = 1; i < argc; i++)
+            h = h.add(argv[i].toNumber());
+        v = h.result();
     }
-    if (big)
-        RETURN_RESULT(Encode(qt_inf()));
-    if (bad)
-        RETURN_RESULT(Encode(qt_qnan()));
-    // Should actually check for {und,ov}erflow, but too fiddly !
-    RETURN_RESULT(Value::fromDouble(sqrt(v)));
-#else
-    for (int i = 1; i < argc; i++)
-        v = std::hypot(v, argv[i].toNumber());
-#endif
     RETURN_RESULT(Value::fromDouble(v));
 }
 
@@ -380,13 +306,7 @@ ReturnedValue MathObject::method_log2(const FunctionObject *, const Value *, con
     if (v < 0) {
         RETURN_RESULT(Encode(qt_qnan()));
     } else {
-#ifdef Q_OS_ANDROID // incomplete std :-(
-        // Android ndk r10e doesn't have std::log2, so fall back.
-        const double ln2 = std::log(2.0);
-        RETURN_RESULT(Encode(std::log(v) / ln2));
-#else
         RETURN_RESULT(Encode(std::log2(v)));
-#endif
     }
 }
 
@@ -421,49 +341,7 @@ ReturnedValue MathObject::method_pow(const FunctionObject *, const Value *, cons
     double x = argc > 0 ? argv[0].toNumber() : qt_qnan();
     double y = argc > 1 ? argv[1].toNumber() : qt_qnan();
 
-    if (std::isnan(y))
-        RETURN_RESULT(Encode(qt_qnan()));
-
-    if (y == 0) {
-        RETURN_RESULT(Encode(1));
-    } else if (((x == 1) || (x == -1)) && std::isinf(y)) {
-        RETURN_RESULT(Encode(qt_qnan()));
-    } else if (((x == 0) && copySign(1.0, x) == 1.0) && (y < 0)) {
-        RETURN_RESULT(Encode(qInf()));
-    } else if ((x == 0) && copySign(1.0, x) == -1.0) {
-        if (y < 0) {
-            if (std::fmod(-y, 2.0) == 1.0)
-                RETURN_RESULT(Encode(-qt_inf()));
-            else
-                RETURN_RESULT(Encode(qt_inf()));
-        } else if (y > 0) {
-            if (std::fmod(y, 2.0) == 1.0)
-                RETURN_RESULT(Encode(copySign(0, -1.0)));
-            else
-                RETURN_RESULT(Encode(0));
-        }
-    }
-
-#ifdef Q_OS_AIX
-    else if (qt_is_inf(x) && copySign(1.0, x) == -1.0) {
-        if (y > 0) {
-            if (std::fmod(y, 2.0) == 1.0)
-                RETURN_RESULT(Encode(-qt_inf()));
-            else
-                RETURN_RESULT(Encode(qt_inf()));
-        } else if (y < 0) {
-            if (std::fmod(-y, 2.0) == 1.0)
-                RETURN_RESULT(Encode(copySign(0, -1.0)));
-            else
-                RETURN_RESULT(Encode(0));
-        }
-    }
-#endif
-    else {
-        RETURN_RESULT(Encode(std::pow(x, y)));
-    }
-    // ###
-    RETURN_RESULT(Encode(qt_qnan()));
+    RETURN_RESULT(Encode(QQmlPrivate::jsExponentiate(x, y)));
 }
 
 ReturnedValue MathObject::method_random(const FunctionObject *, const Value *, const Value *, int)
@@ -474,11 +352,14 @@ ReturnedValue MathObject::method_random(const FunctionObject *, const Value *, c
 ReturnedValue MathObject::method_round(const FunctionObject *, const Value *, const Value *argv, int argc)
 {
     double v = argc ? argv[0].toNumber() : qt_qnan();
-    if (std::isnan(v) || qt_is_inf(v) || qIsNull(v))
+    if (!std::isfinite(v))
         RETURN_RESULT(Encode(v));
 
-     v = copySign(std::floor(v + 0.5), v);
-     RETURN_RESULT(Encode(v));
+    if (v < 0.5 && v >= -0.5)
+        v = std::copysign(0.0, v);
+    else
+        v = std::floor(v + 0.5);
+    RETURN_RESULT(Encode(v));
 }
 
 ReturnedValue MathObject::method_sign(const FunctionObject *, const Value *, const Value *argv, int argc)
@@ -539,13 +420,5 @@ ReturnedValue MathObject::method_tanh(const FunctionObject *, const Value *, con
 ReturnedValue MathObject::method_trunc(const FunctionObject *, const Value *, const Value *argv, int argc)
 {
     double v = argc ? argv[0].toNumber() : qt_qnan();
-#ifdef Q_OS_ANDROID // incomplete std :-(
-    if (std::isnan(v) || qt_is_inf(v) || qIsNull(v))
-        RETURN_RESULT(Encode(v));
-    // Nearest integer not greater in magnitude:
-    quint64 whole = std::abs(v);
-    RETURN_RESULT(Encode(copySign(whole, v)));
-#else
     RETURN_RESULT(Encode(std::trunc(v)));
-#endif
 }

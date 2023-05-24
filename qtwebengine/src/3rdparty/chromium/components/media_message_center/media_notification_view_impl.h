@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,13 @@
 #define COMPONENTS_MEDIA_MESSAGE_CENTER_MEDIA_NOTIFICATION_VIEW_IMPL_H_
 
 #include "base/component_export.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/optional.h"
 #include "components/media_message_center/media_notification_view.h"
+#include "components/media_message_center/notification_theme.h"
 #include "services/media_session/public/mojom/media_session.mojom.h"
-#include "ui/views/controls/button/button.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/views/controls/button/image_button.h"
 #include "ui/views/controls/label.h"
 
@@ -20,6 +22,7 @@ class NotificationHeaderView;
 
 namespace views {
 class BoxLayout;
+class Button;
 class ToggleImageButton;
 }  // namespace views
 
@@ -30,9 +33,10 @@ class MediaNotificationContainer;
 class MediaNotificationItem;
 
 class COMPONENT_EXPORT(MEDIA_MESSAGE_CENTER) MediaNotificationViewImpl
-    : public MediaNotificationView,
-      public views::ButtonListener {
+    : public MediaNotificationView {
  public:
+  METADATA_HEADER(MediaNotificationViewImpl);
+
   // The name of the histogram used when recorded whether the artwork was
   // present.
   static const char kArtworkHistogramName[];
@@ -52,27 +56,21 @@ class COMPONENT_EXPORT(MEDIA_MESSAGE_CENTER) MediaNotificationViewImpl
     kMaxValue = kSource,
   };
 
-  // Allow MediaNotificationViewImpl show different styled background.
-  enum class BackgroundStyle {
-    kDefault,
-    kAshStyle,
-  };
-
   MediaNotificationViewImpl(
       MediaNotificationContainer* container,
       base::WeakPtr<MediaNotificationItem> item,
       std::unique_ptr<views::View> header_row_controls_view,
-      const base::string16& default_app_name,
+      const std::u16string& default_app_name,
       int notification_width,
       bool should_show_icon,
-      BackgroundStyle background_style = BackgroundStyle::kDefault);
+      absl::optional<NotificationTheme> theme = absl::nullopt);
+  MediaNotificationViewImpl(const MediaNotificationViewImpl&) = delete;
+  MediaNotificationViewImpl& operator=(const MediaNotificationViewImpl&) =
+      delete;
   ~MediaNotificationViewImpl() override;
 
   // views::View:
   void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
-
-  // views::ButtonListener:
-  void ButtonPressed(views::Button* sender, const ui::Event& event) override;
 
   // MediaNotificationView:
   void SetExpanded(bool expanded) override;
@@ -85,10 +83,14 @@ class COMPONENT_EXPORT(MEDIA_MESSAGE_CENTER) MediaNotificationViewImpl
   void UpdateWithMediaActions(
       const base::flat_set<media_session::mojom::MediaSessionAction>& actions)
       override;
+  void UpdateWithMediaPosition(
+      const media_session::MediaPosition& position) override {}
   void UpdateWithMediaArtwork(const gfx::ImageSkia& image) override;
   void UpdateWithFavicon(const gfx::ImageSkia& icon) override;
-  void UpdateWithVectorIcon(const gfx::VectorIcon& vector_icon) override;
+  void UpdateWithVectorIcon(const gfx::VectorIcon* vector_icon) override;
   void UpdateDeviceSelectorAvailability(bool availability) override;
+  void UpdateWithMuteStatus(bool mute) override {}
+  void UpdateWithVolume(float volume) override {}
 
   void OnThemeChanged() override;
 
@@ -107,7 +109,7 @@ class COMPONENT_EXPORT(MEDIA_MESSAGE_CENTER) MediaNotificationViewImpl
   std::vector<views::View*> get_buttons_for_testing() { return GetButtons(); }
 
   views::Button* GetHeaderRowForTesting() const;
-  base::string16 GetSourceTitleForTesting() const;
+  std::u16string GetSourceTitleForTesting() const;
 
  private:
   friend class MediaNotificationViewImplTest;
@@ -117,24 +119,33 @@ class COMPONENT_EXPORT(MEDIA_MESSAGE_CENTER) MediaNotificationViewImpl
   // |accessible_name| is the text used for screen readers and the
   // button's tooltip.
   void CreateMediaButton(media_session::mojom::MediaSessionAction action,
-                         const base::string16& accessible_name);
+                         const std::u16string& accessible_name);
+
+  void CreateHeaderRow(std::unique_ptr<views::View> header_row_controls_view,
+                       bool should_show_icon);
+  void CreateCrOSHeaderRow(
+      std::unique_ptr<views::View> header_row_controls_view);
 
   void UpdateActionButtonsVisibility();
   void UpdateViewForExpandedState();
 
   MediaNotificationBackground* GetMediaNotificationBackground();
 
-  bool IsExpandable() const;
-  bool IsActuallyExpanded() const;
+  bool GetExpandable() const;
+  bool GetActuallyExpanded() const;
 
   void UpdateForegroundColor();
+
+  void ButtonPressed(views::Button* button);
+
+  void MaybeShowOrHideArtistLabel();
 
   // Returns the buttons contained in the button row and playback button
   // container.
   std::vector<views::View*> GetButtons();
 
   // Container that receives OnExpanded events.
-  MediaNotificationContainer* const container_;
+  const raw_ptr<MediaNotificationContainer> container_;
 
   // Keeps track of media metadata and controls the session when buttons are
   // clicked.
@@ -142,10 +153,10 @@ class COMPONENT_EXPORT(MEDIA_MESSAGE_CENTER) MediaNotificationViewImpl
 
   // Optional View that is put into the header row. E.g. in Ash we show
   // notification control buttons.
-  views::View* header_row_controls_view_ = nullptr;
+  raw_ptr<views::View> header_row_controls_view_ = nullptr;
 
   // String to set as the app name of the header when there is no source title.
-  base::string16 default_app_name_;
+  std::u16string default_app_name_;
 
   // Width of the notification in pixels. Used for calculating artwork bounds.
   int notification_width_;
@@ -156,32 +167,31 @@ class COMPONENT_EXPORT(MEDIA_MESSAGE_CENTER) MediaNotificationViewImpl
   bool expanded_ = false;
 
   // Used to force the notification to remain in a specific expanded state.
-  base::Optional<bool> forced_expanded_state_;
+  absl::optional<bool> forced_expanded_state_;
 
   // Set of enabled actions.
   base::flat_set<media_session::mojom::MediaSessionAction> enabled_actions_;
 
-  // Stores the text to be read by screen readers describing the notification.
-  // Contains the title, artist and album separated by hyphens.
-  base::string16 accessible_name_;
-
   // Container views directly attached to this view.
-  message_center::NotificationHeaderView* header_row_ = nullptr;
-  views::View* button_row_ = nullptr;
-  views::View* playback_button_container_ = nullptr;
-  views::View* pip_button_separator_view_ = nullptr;
-  views::ToggleImageButton* play_pause_button_ = nullptr;
-  views::ToggleImageButton* picture_in_picture_button_ = nullptr;
-  views::View* title_artist_row_ = nullptr;
-  views::Label* title_label_ = nullptr;
-  views::Label* artist_label_ = nullptr;
-  views::View* layout_row_ = nullptr;
-  views::View* main_row_ = nullptr;
+  raw_ptr<message_center::NotificationHeaderView> header_row_ = nullptr;
+  raw_ptr<views::Label> cros_header_label_ = nullptr;
+  raw_ptr<views::View> button_row_ = nullptr;
+  raw_ptr<views::View> playback_button_container_ = nullptr;
+  raw_ptr<views::View> pip_button_separator_view_ = nullptr;
+  raw_ptr<views::ToggleImageButton> play_pause_button_ = nullptr;
+  raw_ptr<views::ToggleImageButton> picture_in_picture_button_ = nullptr;
+  raw_ptr<views::View> title_artist_row_ = nullptr;
+  raw_ptr<views::Label> title_label_ = nullptr;
+  raw_ptr<views::Label> artist_label_ = nullptr;
+  raw_ptr<views::View> layout_row_ = nullptr;
+  raw_ptr<views::View> main_row_ = nullptr;
 
-  views::BoxLayout* title_artist_row_layout_ = nullptr;
-  const gfx::VectorIcon* vector_header_icon_ = nullptr;
+  raw_ptr<views::BoxLayout> title_artist_row_layout_ = nullptr;
+  raw_ptr<const gfx::VectorIcon> vector_header_icon_ = nullptr;
 
-  DISALLOW_COPY_AND_ASSIGN(MediaNotificationViewImpl);
+  absl::optional<NotificationTheme> theme_;
+
+  const bool is_cros_;
 };
 
 }  // namespace media_message_center

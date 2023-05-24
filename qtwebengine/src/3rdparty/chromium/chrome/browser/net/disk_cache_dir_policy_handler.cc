@@ -1,11 +1,13 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/net/disk_cache_dir_policy_handler.h"
 
 #include "base/files/file_path.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
+#include "build/build_config.h"
 #include "chrome/browser/policy/policy_path_parser.h"
 #include "chrome/common/pref_names.h"
 #include "components/policy/core/common/policy_map.h"
@@ -22,13 +24,21 @@ DiskCacheDirPolicyHandler::~DiskCacheDirPolicyHandler() {}
 
 void DiskCacheDirPolicyHandler::ApplyPolicySettings(const PolicyMap& policies,
                                                     PrefValueMap* prefs) {
-  const base::Value* value = policies.GetValue(policy_name());
-  base::FilePath::StringType string_value;
-  if (value && value->GetAsString(&string_value)) {
-    base::FilePath::StringType expanded_value =
-        policy::path_parser::ExpandPathVariables(string_value);
-    prefs->SetValue(prefs::kDiskCacheDir, base::Value(expanded_value));
-  }
+  const base::Value* value =
+      policies.GetValue(policy_name(), base::Value::Type::STRING);
+  if (!value)
+    return;
+
+  base::FilePath::StringType expanded_value =
+#if BUILDFLAG(IS_WIN)
+      policy::path_parser::ExpandPathVariables(
+          base::UTF8ToWide(value->GetString()));
+#else
+      policy::path_parser::ExpandPathVariables(value->GetString());
+#endif
+  base::FilePath expanded_path(expanded_value);
+  prefs->SetValue(prefs::kDiskCacheDir,
+                  base::Value(expanded_path.AsUTF8Unsafe()));
 }
 
 }  // namespace policy

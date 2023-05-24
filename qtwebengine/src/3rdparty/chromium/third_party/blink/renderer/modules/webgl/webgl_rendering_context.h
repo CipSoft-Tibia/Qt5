@@ -28,7 +28,7 @@
 
 #include <memory>
 
-#include "base/macros.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_typedefs.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_rendering_context_factory.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h"
 
@@ -59,6 +59,7 @@ class WebGLDepthTexture;
 class WebGLLoseContext;
 class WebGLMultiDraw;
 class WebGLVideoTexture;
+class WebGLWebCodecsVideoFrame;
 
 class WebGLRenderingContext final : public WebGLRenderingContextBase {
   DEFINE_WRAPPERTYPEINFO();
@@ -67,34 +68,33 @@ class WebGLRenderingContext final : public WebGLRenderingContextBase {
   class Factory : public CanvasRenderingContextFactory {
    public:
     Factory() = default;
+
+    Factory(const Factory&) = delete;
+    Factory& operator=(const Factory&) = delete;
+
     ~Factory() override = default;
 
     CanvasRenderingContext* Create(
         CanvasRenderingContextHost*,
         const CanvasContextCreationAttributesCore&) override;
 
-    CanvasRenderingContext::ContextType GetContextType() const override {
-      return CanvasRenderingContext::kContextWebgl;
+    CanvasRenderingContext::CanvasRenderingAPI GetRenderingAPI()
+        const override {
+      return CanvasRenderingContext::CanvasRenderingAPI::kWebgl;
     }
     void OnError(HTMLCanvasElement*, const String& error) override;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(Factory);
   };
 
   WebGLRenderingContext(CanvasRenderingContextHost*,
                         std::unique_ptr<WebGraphicsContext3DProvider>,
-                        bool using_gpu_compositing,
+                        const Platform::GraphicsInfo&,
                         const CanvasContextCreationAttributesCore&);
 
-  CanvasRenderingContext::ContextType GetContextType() const override {
-    return CanvasRenderingContext::kContextWebgl;
-  }
   ImageBitmap* TransferToImageBitmap(ScriptState*) final;
   String ContextName() const override { return "WebGLRenderingContext"; }
   void RegisterContextExtensions() override;
-  void SetCanvasGetContextResult(RenderingContext&) final;
-  void SetOffscreenCanvasGetContextResult(OffscreenRenderingContext&) final;
+  V8RenderingContext* AsV8RenderingContext() final;
+  V8OffscreenRenderingContext* AsV8OffscreenRenderingContext() final;
 
   void Trace(Visitor*) const override;
 
@@ -134,6 +134,7 @@ class WebGLRenderingContext final : public WebGLRenderingContextBase {
   Member<WebGLLoseContext> webgl_lose_context_;
   Member<WebGLMultiDraw> webgl_multi_draw_;
   Member<WebGLVideoTexture> webgl_video_texture_;
+  Member<WebGLWebCodecsVideoFrame> webgl_webcodecs_video_frame_;
 };
 
 }  // namespace blink

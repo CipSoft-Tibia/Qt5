@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 #include "third_party/blink/renderer/core/timing/performance_mark.h"
@@ -13,16 +13,20 @@
 #include "third_party/blink/renderer/core/timing/performance.h"
 #include "third_party/blink/renderer/core/timing/worker_global_scope_performance.h"
 #include "third_party/blink/renderer/core/workers/worker_global_scope.h"
+#include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
 
 namespace blink {
 
 PerformanceMark::PerformanceMark(
     const AtomicString& name,
     double start_time,
+    base::TimeTicks unsafe_time_for_traces,
     scoped_refptr<SerializedScriptValue> serialized_detail,
-    ExceptionState& exception_state)
-    : PerformanceEntry(name, start_time, start_time),
-      serialized_detail_(std::move(serialized_detail)) {}
+    ExceptionState& exception_state,
+    DOMWindow* source)
+    : PerformanceEntry(name, start_time, start_time, source),
+      serialized_detail_(std::move(serialized_detail)),
+      unsafe_time_for_traces_(unsafe_time_for_traces) {}
 
 // static
 PerformanceMark* PerformanceMark::Create(ScriptState* script_state,
@@ -41,6 +45,7 @@ PerformanceMark* PerformanceMark::Create(ScriptState* script_state,
   DCHECK(performance);
 
   DOMHighResTimeStamp start = 0.0;
+  base::TimeTicks unsafe_start_for_traces;
   ScriptValue detail = ScriptValue::CreateNull(script_state->GetIsolate());
   if (mark_options) {
     if (mark_options->hasStartTime()) {
@@ -50,18 +55,26 @@ PerformanceMark* PerformanceMark::Create(ScriptState* script_state,
                                        "' cannot have a negative start time.");
         return nullptr;
       }
+      // |start| is in milliseconds from the start of navigation.
+      // GetTimeOrigin() returns seconds from the monotonic clock's origin..
+      // Trace events timestamps accept seconds (as a double) based on
+      // CurrentTime::monotonicallyIncreasingTime().
+      unsafe_start_for_traces =
+          performance->GetTimeOriginInternal() + base::Milliseconds(start);
     } else {
       start = performance->now();
+      unsafe_start_for_traces = base::TimeTicks::Now();
     }
 
     if (mark_options->hasDetail())
       detail = mark_options->detail();
   } else {
     start = performance->now();
+    unsafe_start_for_traces = base::TimeTicks::Now();
   }
 
   if (!is_worker_global_scope &&
-      PerformanceTiming::GetAttributeMapping().Contains(mark_name)) {
+      PerformanceTiming::IsAttributeName(mark_name)) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kSyntaxError,
         "'" + mark_name +
@@ -78,10 +91,11 @@ PerformanceMark* PerformanceMark::Create(ScriptState* script_state,
     return nullptr;
 
   return MakeGarbageCollected<PerformanceMark>(
-      mark_name, start, std::move(serialized_detail), exception_state);
+      mark_name, start, unsafe_start_for_traces, std::move(serialized_detail),
+      exception_state, LocalDOMWindow::From(script_state));
 }
 
-AtomicString PerformanceMark::entryType() const {
+const AtomicString& PerformanceMark::entryType() const {
   return performance_entry_names::kMark;
 }
 
@@ -106,9 +120,9 @@ ScriptValue PerformanceMark::detail(ScriptState* script_state) {
   TraceWrapperV8Reference<v8::Value>& relevant_data =
       result.stored_value->value;
   if (!result.is_new_entry)
-    return ScriptValue(isolate, relevant_data.NewLocal(isolate));
+    return ScriptValue(isolate, relevant_data.Get(isolate));
   v8::Local<v8::Value> value = serialized_detail_->Deserialize(isolate);
-  relevant_data.Set(isolate, value);
+  relevant_data.Reset(isolate, value);
   return ScriptValue(isolate, value);
 }
 

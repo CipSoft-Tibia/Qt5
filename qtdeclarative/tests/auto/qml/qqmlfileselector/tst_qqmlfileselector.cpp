@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QQmlEngine>
@@ -35,19 +10,19 @@
 #include <QQmlContext>
 #include <QLoggingCategory>
 #include <qqmlinfo.h>
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 class tst_qqmlfileselector : public QQmlDataTest
 {
     Q_OBJECT
 public:
-    tst_qqmlfileselector() {}
+    tst_qqmlfileselector() : QQmlDataTest(QT_QMLTEST_DATADIR) {}
 
 private slots:
     void basicTest();
     void basicTestCached();
     void applicationEngineTest();
-
+    void qmldirCompatibility();
 };
 
 void tst_qqmlfileselector::basicTest()
@@ -86,16 +61,51 @@ void tst_qqmlfileselector::basicTestCached()
 void tst_qqmlfileselector::applicationEngineTest()
 {
     QQmlApplicationEngine engine;
-    QQmlFileSelector* selector = QQmlFileSelector::get(&engine);
-    QVERIFY(selector != nullptr);
-    selector->setExtraSelectors(QStringList() << "basic");
+    engine.setExtraFileSelectors(QStringList() << "basic");
+    engine.load(testFileUrl("basicTest.qml"));
 
-    QQmlComponent component(&engine, testFileUrl("basicTest.qml"));
-    QObject *object = component.create();
+    QVERIFY(!engine.rootObjects().isEmpty());
+    QObject *object = engine.rootObjects().at(0);
     QVERIFY(object != nullptr);
     QCOMPARE(object->property("value").toString(), QString("selected"));
+}
 
-    delete object;
+void tst_qqmlfileselector::qmldirCompatibility()
+{
+    {
+        // No error for multiple files with different selectors, and the matching one is chosen
+        // for +macos and +linux selectors.
+        QQmlApplicationEngine engine;
+        engine.addImportPath(dataDirectory());
+        engine.load(testFileUrl("qmldirtest/main.qml"));
+        QVERIFY(!engine.rootObjects().isEmpty());
+        QObject *object = engine.rootObjects().at(0);
+        auto color = object->property("color").value<QColor>();
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+        QCOMPARE(object->objectName(), "linux");
+        QCOMPARE(color, QColorConstants::Svg::blue);
+#elif defined(Q_OS_DARWIN)
+        QCOMPARE(object->objectName(), "macos");
+        QCOMPARE(color, QColorConstants::Svg::yellow);
+#else
+        QCOMPARE(object->objectName(), "base");
+        QCOMPARE(color, QColorConstants::Svg::green);
+#endif
+    }
+
+    {
+        // If nothing matches, the _base_ file is chosen, not the first or the last one.
+        // This also holds when using the implicit import.
+        QQmlApplicationEngine engine;
+        engine.addImportPath(dataDirectory());
+        engine.load(testFileUrl("qmldirtest2/main.qml"));
+        QVERIFY(!engine.rootObjects().isEmpty());
+        QObject *object = engine.rootObjects().at(0);
+        QCOMPARE(object->property("color").value<QColor>(), QColorConstants::Svg::green);
+
+        QEXPECT_FAIL("", "scripts in implicit import are not resolved", Continue);
+        QCOMPARE(object->objectName(), "base");
+    }
 }
 
 QTEST_MAIN(tst_qqmlfileselector)

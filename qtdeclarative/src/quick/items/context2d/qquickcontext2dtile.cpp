@@ -1,48 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickcontext2dtile_p.h"
-#if QT_CONFIG(opengl)
-# include <QOpenGLFramebufferObject>
-# include <QOpenGLFramebufferObjectFormat>
-# include <QOpenGLPaintDevice>
-#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -97,57 +56,6 @@ QPainter* QQuickContext2DTile::createPainter(bool smooth, bool antialiasing)
 
     return nullptr;
 }
-#if QT_CONFIG(opengl)
-QQuickContext2DFBOTile::QQuickContext2DFBOTile()
-    : QQuickContext2DTile()
-    , m_fbo(nullptr)
-{
-}
-
-
-QQuickContext2DFBOTile::~QQuickContext2DFBOTile()
-{
-    if (m_fbo)
-        m_fbo->release();
-    delete m_fbo;
-}
-
-void QQuickContext2DFBOTile::aboutToDraw()
-{
-    m_fbo->bind();
-    if (!m_device) {
-        QOpenGLPaintDevice *gl_device = new QOpenGLPaintDevice(rect().size());
-        m_device = gl_device;
-        QPainter p(m_device);
-        p.fillRect(QRectF(0, 0, m_fbo->width(), m_fbo->height()), QColor(qRgba(0, 0, 0, 0)));
-        p.end();
-    }
-}
-
-void QQuickContext2DFBOTile::drawFinished()
-{
-}
-
-void QQuickContext2DFBOTile::setRect(const QRect& r)
-{
-    if (m_rect == r)
-        return;
-    m_rect = r;
-    m_dirty = true;
-    if (!m_fbo || m_fbo->size() != r.size()) {
-        QOpenGLFramebufferObjectFormat format;
-        format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
-        format.setInternalTextureFormat(GL_RGBA);
-        format.setMipmap(false);
-
-        if (m_painter.isActive())
-            m_painter.end();
-
-        delete m_fbo;
-        m_fbo = new QOpenGLFramebufferObject(r.size(), format);
-    }
-}
-#endif
 
 QQuickContext2DImageTile::QQuickContext2DImageTile()
     : QQuickContext2DTile()

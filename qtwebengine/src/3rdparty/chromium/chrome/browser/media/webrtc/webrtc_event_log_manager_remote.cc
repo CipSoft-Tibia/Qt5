@@ -1,22 +1,23 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/media/webrtc/webrtc_event_log_manager_remote.h"
 
-#include <algorithm>
 #include <iterator>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/command_line.h"
 #include "base/files/file.h"
 #include "base/files/file_enumerator.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
+#include "base/task/sequenced_task_runner.h"
 #include "chrome/common/chrome_switches.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -31,18 +32,16 @@ const int kDefaultOutputPeriodMs = 5000;
 const int kMaxOutputPeriodMs = 60000;
 
 namespace {
-const base::TimeDelta kDefaultProactivePruningDelta =
-    base::TimeDelta::FromMinutes(5);
+const base::TimeDelta kDefaultProactivePruningDelta = base::Minutes(5);
 
 const base::TimeDelta kDefaultWebRtcRemoteEventLogUploadDelay =
-    base::TimeDelta::FromSeconds(30);
+    base::Seconds(30);
 
 // Because history files are rarely used, their existence is not kept in memory.
 // That means that pruning them involves inspecting data on disk. This is not
 // terribly cheap (up to kMaxWebRtcEventLogHistoryFiles files per profile), and
 // should therefore be done somewhat infrequently.
-const base::TimeDelta kProactiveHistoryFilesPruneDelta =
-    base::TimeDelta::FromMinutes(30);
+const base::TimeDelta kProactiveHistoryFilesPruneDelta = base::Minutes(30);
 
 base::TimeDelta GetProactivePendingLogsPruneDelta() {
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
@@ -52,7 +51,7 @@ base::TimeDelta GetProactivePendingLogsPruneDelta() {
             ::switches::kWebRtcRemoteEventLogProactivePruningDelta);
     int64_t seconds;
     if (base::StringToInt64(delta_seconds_str, &seconds) && seconds >= 0) {
-      return base::TimeDelta::FromSeconds(seconds);
+      return base::Seconds(seconds);
     } else {
       LOG(WARNING) << "Proactive pruning delta could not be parsed.";
     }
@@ -69,7 +68,7 @@ base::TimeDelta GetUploadDelay() {
             ::switches::kWebRtcRemoteEventLogUploadDelayMs);
     int64_t ms;
     if (base::StringToInt64(delta_seconds_str, &ms) && ms >= 0) {
-      return base::TimeDelta::FromMilliseconds(ms);
+      return base::Milliseconds(ms);
     } else {
       LOG(WARNING) << "Upload delay could not be parsed; using default delay.";
     }
@@ -182,12 +181,11 @@ static_assert(kMaxActiveRemoteBoundWebRtcEventLogs <=
 const size_t kMaxWebRtcEventLogHistoryFiles = 50;
 
 // Maximum time to keep remote-bound logs on disk.
-const base::TimeDelta kRemoteBoundWebRtcEventLogsMaxRetention =
-    base::TimeDelta::FromDays(7);
+const base::TimeDelta kRemoteBoundWebRtcEventLogsMaxRetention = base::Days(7);
 
 // Maximum time to keep history files on disk. These serve to display an upload
 // on chrome://webrtc-logs/. It is persisted for longer than the log itself.
-const base::TimeDelta kHistoryFileRetention = base::TimeDelta::FromDays(30);
+const base::TimeDelta kHistoryFileRetention = base::Days(30);
 
 WebRtcRemoteEventLogManager::WebRtcRemoteEventLogManager(
     WebRtcRemoteEventLogsObserver* observer,
@@ -331,10 +329,10 @@ void WebRtcRemoteEventLogManager::DisableForBrowserContext(
   //    In that case, some peer connections associated with this BrowserContext
   //    might still be active, or become active at a later time, but all
   //    logs must have already been stopped.
-  auto pred = [browser_context_id](decltype(active_logs_)::value_type& log) {
-    return log.first.browser_context_id == browser_context_id;
-  };
-  DCHECK(std::count_if(active_logs_.begin(), active_logs_.end(), pred) == 0u);
+  DCHECK(!base::Contains(active_logs_, browser_context_id,
+                         [](const decltype(active_logs_)::value_type& log) {
+                           return log.first.browser_context_id;
+                         }));
 #endif
 
   // Pending logs for this BrowserContext are no longer eligible for upload.
@@ -355,7 +353,7 @@ void WebRtcRemoteEventLogManager::DisableForBrowserContext(
   ManageUploadSchedule();
 }
 
-bool WebRtcRemoteEventLogManager::PeerConnectionAdded(
+bool WebRtcRemoteEventLogManager::OnPeerConnectionAdded(
     const PeerConnectionKey& key) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
 
@@ -369,7 +367,7 @@ bool WebRtcRemoteEventLogManager::PeerConnectionAdded(
   return result.second;
 }
 
-bool WebRtcRemoteEventLogManager::PeerConnectionRemoved(
+bool WebRtcRemoteEventLogManager::OnPeerConnectionRemoved(
     const PeerConnectionKey& key) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
 
@@ -389,7 +387,7 @@ bool WebRtcRemoteEventLogManager::PeerConnectionRemoved(
   return true;
 }
 
-bool WebRtcRemoteEventLogManager::PeerConnectionSessionIdSet(
+bool WebRtcRemoteEventLogManager::OnPeerConnectionSessionIdSet(
     const PeerConnectionKey& key,
     const std::string& session_id) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
@@ -676,8 +674,7 @@ void WebRtcRemoteEventLogManager::ShutDownForTesting(base::OnceClosure reply) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   weak_ptr_factory_->InvalidateWeakPtrs();
   weak_ptr_factory_.reset();
-  content::GetUIThreadTaskRunner({})->PostTask(
-      FROM_HERE, base::BindOnce(std::move(reply)));
+  content::GetUIThreadTaskRunner({})->PostTask(FROM_HERE, std::move(reply));
 }
 
 bool WebRtcRemoteEventLogManager::AreLogParametersValid(
@@ -1063,7 +1060,7 @@ void WebRtcRemoteEventLogManager::MaybeStopRemoteLogging(
 }
 
 void WebRtcRemoteEventLogManager::PrunePendingLogs(
-    base::Optional<BrowserContextId> browser_context_id) {
+    absl::optional<BrowserContextId> browser_context_id) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   MaybeRemovePendingLogs(
       base::Time::Min(),
@@ -1130,7 +1127,7 @@ void WebRtcRemoteEventLogManager::MaybeCancelActiveLogs(
 void WebRtcRemoteEventLogManager::MaybeRemovePendingLogs(
     const base::Time& delete_begin,
     const base::Time& delete_end,
-    base::Optional<BrowserContextId> browser_context_id,
+    absl::optional<BrowserContextId> browser_context_id,
     bool is_cache_clear) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
 
@@ -1197,7 +1194,7 @@ void WebRtcRemoteEventLogManager::MaybeCancelUpload(
 bool WebRtcRemoteEventLogManager::MatchesFilter(
     BrowserContextId log_browser_context_id,
     const base::Time& log_last_modification,
-    base::Optional<BrowserContextId> filter_browser_context_id,
+    absl::optional<BrowserContextId> filter_browser_context_id,
     const base::Time& filter_range_begin,
     const base::Time& filter_range_end) const {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
@@ -1220,16 +1217,16 @@ bool WebRtcRemoteEventLogManager::AdditionalActiveLogAllowed(
 
   // Limit over the number of pending logs (per BrowserContext). We count active
   // logs too, since they become pending logs once completed.
-  const size_t active_count = std::count_if(
-      active_logs_.begin(), active_logs_.end(),
-      [browser_context_id](const decltype(active_logs_)::value_type& log) {
-        return log.first.browser_context_id == browser_context_id;
-      });
-  const size_t pending_count = std::count_if(
-      pending_logs_.begin(), pending_logs_.end(),
-      [browser_context_id](const decltype(pending_logs_)::value_type& log) {
-        return log.browser_context_id == browser_context_id;
-      });
+  const size_t active_count =
+      base::ranges::count(active_logs_, browser_context_id,
+                          [](const decltype(active_logs_)::value_type& log) {
+                            return log.first.browser_context_id;
+                          });
+  const size_t pending_count =
+      base::ranges::count(pending_logs_, browser_context_id,
+                          [](const decltype(pending_logs_)::value_type& log) {
+                            return log.browser_context_id;
+                          });
   return active_count + pending_count < kMaxPendingRemoteBoundWebRtcEventLogs;
 }
 

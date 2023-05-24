@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "xmloutput.h"
 
@@ -103,7 +78,7 @@ void XmlOutput::decreaseIndent()
 
 QString XmlOutput::doConversion(const QString &text)
 {
-    if (!text.count())
+    if (!text.size())
         return QString();
     else if (conversion == NoConversion)
         return text;
@@ -112,10 +87,10 @@ QString XmlOutput::doConversion(const QString &text)
     if (conversion == XMLConversion) {
 
         // this is a way to escape characters that shouldn't be converted
-        for (int i=0; i<text.count(); ++i) {
+        for (int i=0; i<text.size(); ++i) {
             const QChar c = text.at(i);
             if (c == QLatin1Char('&')) {
-                if ( (i + 7) < text.count() &&
+                if ( (i + 7) < text.size() &&
                     text.at(i + 1) == QLatin1Char('#') &&
                     text.at(i + 2) == QLatin1Char('x') &&
                     text.at(i + 7) == QLatin1Char(';') ) {
@@ -184,9 +159,9 @@ XmlOutput& XmlOutput::operator<<(const xml_output& o)
         addRaw(QString("\n%1<Import %2=\"%3\" />").arg(currentIndent).arg(o.xo_text).arg(o.xo_value));
         break;
     case tCloseTag:
-        if (o.xo_value.count())
+        if (o.xo_value.size())
             closeAll();
-        else if (o.xo_text.count())
+        else if (o.xo_text.size())
             closeTo(o.xo_text);
         else
             closeTag();
@@ -201,7 +176,7 @@ XmlOutput& XmlOutput::operator<<(const xml_output& o)
         {
             // Special case to be able to close tag in normal
             // way ("</tag>", not "/>") without using addRaw()..
-            if (!o.xo_text.count()) {
+            if (!o.xo_text.size()) {
                 closeOpen();
                 break;
             }
@@ -230,14 +205,14 @@ XmlOutput& XmlOutput::operator<<(const xml_output& o)
 // Output functions ----------------------------------------------------------
 void XmlOutput::newTag(const QString &tag)
 {
-    Q_ASSERT_X(tag.count(), "XmlOutput", "Cannot open an empty tag");
+    Q_ASSERT_X(tag.size(), "XmlOutput", "Cannot open an empty tag");
     newTagOpen(tag);
     closeOpen();
 }
 
 void XmlOutput::newTagOpen(const QString &tag)
 {
-    Q_ASSERT_X(tag.count(), "XmlOutput", "Cannot open an empty tag");
+    Q_ASSERT_X(tag.size(), "XmlOutput", "Cannot open an empty tag");
     closeOpen();
 
     if (format == NewLine)
@@ -265,9 +240,9 @@ void XmlOutput::closeTag()
 {
     switch(currentState) {
         case Bare:
-            if (tagStack.count())
+            if (tagStack.size())
                 //warn_msg(WarnLogic, "<Root>: Cannot close tag in Bare state, %d tags on stack", tagStack.count());
-                qDebug("<Root>: Cannot close tag in Bare state, %d tags on stack", tagStack.count());
+                qDebug("<Root>: Cannot close tag in Bare state, %d tags on stack", int(tagStack.size()));
             else
                 //warn_msg(WarnLogic, "<Root>: Cannot close tag, no tags on stack");
                 qDebug("<Root>: Cannot close tag, no tags on stack");
@@ -296,7 +271,7 @@ void XmlOutput::closeTo(const QString &tag)
         qDebug("<%s>: Cannot close to tag <%s>, not on stack", tagStack.last().toLatin1().constData(), tag.toLatin1().constData());
         return;
     }
-    int left = tagStack.count();
+    int left = tagStack.size();
     while (left-- && cont) {
         cont = tagStack.last().compare(tag) != 0;
         closeTag();
@@ -305,7 +280,7 @@ void XmlOutput::closeTo(const QString &tag)
 
 void XmlOutput::closeAll()
 {
-    if (!tagStack.count())
+    if (!tagStack.size())
         return;
     closeTo(QString());
 }
@@ -340,7 +315,7 @@ void XmlOutput::addAttribute(const QString &attribute, const QString &value)
         case Tag:
             //warn_msg(WarnLogic, "<%s>: Cannot add attribute since tags not open", tagStack.last().toLatin1().constData());
             qDebug("<%s>: Cannot add attribute (%s) since tag's not open",
-                   (tagStack.count() ? tagStack.last().toLatin1().constData() : "Root"),
+                   (tagStack.size() ? tagStack.last().toLatin1().constData() : "Root"),
                    attribute.toLatin1().constData());
             return;
         case Attribute:
@@ -358,7 +333,7 @@ void XmlOutput::addAttributeTag(const QString &attribute, const QString &value)
         case Tag:
             //warn_msg(WarnLogic, "<%s>: Cannot add attribute since tags not open", tagStack.last().toLatin1().constData());
             qDebug("<%s>: Cannot add attribute (%s) since tag's not open",
-                   (tagStack.count() ? tagStack.last().toLatin1().constData() : "Root"),
+                   (tagStack.size() ? tagStack.last().toLatin1().constData() : "Root"),
                    attribute.toLatin1().constData());
             return;
         case Attribute:

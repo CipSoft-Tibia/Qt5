@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 
 #include "base/memory/ref_counted.h"
 #include "media/capture/capture_export.h"
+#include "media/capture/mojom/video_capture_buffer.mojom.h"
 #include "media/capture/mojom/video_capture_types.mojom.h"
 #include "media/capture/video/video_capture_device.h"
 #include "media/capture/video_capture_types.h"
@@ -52,9 +53,6 @@ class CAPTURE_EXPORT VideoCaptureBufferPool
   virtual mojo::ScopedSharedBufferHandle DuplicateAsMojoBuffer(
       int buffer_id) = 0;
 
-  virtual mojom::SharedMemoryViaRawFileDescriptorPtr
-  CreateSharedMemoryViaRawFileDescriptorStruct(int buffer_id) = 0;
-
   // Try and obtain a read/write access to the buffer.
   virtual std::unique_ptr<VideoCaptureBufferHandle> GetHandleForInProcessAccess(
       int buffer_id) = 0;
@@ -88,17 +86,14 @@ class CAPTURE_EXPORT VideoCaptureBufferPool
   // of ReserveForProducer().
   virtual void RelinquishProducerReservation(int buffer_id) = 0;
 
-  // Reserve a buffer id to use for an external buffer (one that isn't in this
-  // pool). This is needed to ensure that ids for external buffers don't
-  // conflict with ids from the pool. This call cannot fail (no allocation is
-  // done). The behavior of |buffer_id_to_drop| is the same as
-  // ReserveForProducer.
+  // Reserve a buffer id to use for a buffer specified by |handle| (which was
+  // allocated by some external source). This call cannot fail (no allocation is
+  // done). It may return a new id, or may reuse an existing id, if the buffer
+  // represented by |handle| is already being tracked. The behavior of
+  // |buffer_id_to_drop| is the same as ReserveForProducer.
   virtual int ReserveIdForExternalBuffer(
-      std::vector<int>* buffer_ids_to_drop) = 0;
-
-  // Notify the pool that a buffer id is no longer in use, and can be returned
-  // via ReserveIdForExternalBuffer.
-  virtual void RelinquishExternalBufferReservation(int buffer_id) = 0;
+      const gfx::GpuMemoryBufferHandle& handle,
+      int* buffer_id_to_drop) = 0;
 
   // Returns a snapshot of the current number of buffers in-use divided by the
   // maximum |count_|.

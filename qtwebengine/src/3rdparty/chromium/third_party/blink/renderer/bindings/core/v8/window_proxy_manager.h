@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,8 @@
 #include "third_party/blink/renderer/bindings/core/v8/remote_window_proxy.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/frame/remote_frame.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "v8/include/v8.h"
 
 namespace blink {
@@ -20,35 +21,39 @@ class DOMWrapperWorld;
 class LocalFrame;
 class SecurityOrigin;
 
-class WindowProxyManager : public GarbageCollected<WindowProxyManager> {
+class CORE_EXPORT WindowProxyManager
+    : public GarbageCollected<WindowProxyManager> {
  public:
   void Trace(Visitor*) const;
 
   v8::Isolate* GetIsolate() const { return isolate_; }
 
   void ClearForClose();
-  void CORE_EXPORT ClearForNavigation();
+  void ClearForNavigation();
   void ClearForSwap();
   void ClearForV8MemoryPurge();
 
-  // Global proxies are passed in a vector to maintain their order: global proxy
-  // object for the main world is always first. This is needed to prevent bugs
-  // like https://crbug.com/700077 .
+  // Helpers used to transfer global proxies from the previous frame to the new
+  // frame when swapping frames. Global proxies are passed in a vector to ensure
+  // the main world is always processed first. This is needed to prevent bugs
+  // like https://crbug.com/700077.
   using GlobalProxyVector =
       Vector<std::pair<DOMWrapperWorld*, v8::Local<v8::Object>>>;
-  void CORE_EXPORT ReleaseGlobalProxies(GlobalProxyVector&);
-  void CORE_EXPORT SetGlobalProxies(const GlobalProxyVector&);
-
-  WindowProxy* MainWorldProxy() {
-    window_proxy_->InitializeIfNeeded();
-    return window_proxy_;
-  }
+  void ReleaseGlobalProxies(GlobalProxyVector&);
+  void SetGlobalProxies(const GlobalProxyVector&);
 
   WindowProxy* GetWindowProxy(DOMWrapperWorld& world) {
     WindowProxy* window_proxy = WindowProxyMaybeUninitialized(world);
     window_proxy->InitializeIfNeeded();
     return window_proxy;
   }
+
+  WindowProxy* GetWindowProxyMaybeUninitialized(DOMWrapperWorld& world) {
+    WindowProxy* window_proxy = WindowProxyMaybeUninitialized(world);
+    return window_proxy;
+  }
+
+  void ResetIsolatedWorldsForTesting();
 
  protected:
   using IsolatedWorldMap = HeapHashMap<int, Member<WindowProxy>>;
@@ -76,9 +81,6 @@ class WindowProxyManagerImplHelper : public WindowProxyManager {
   using Base = WindowProxyManager;
 
  public:
-  ProxyType* MainWorldProxy() {
-    return static_cast<ProxyType*>(Base::MainWorldProxy());
-  }
   ProxyType* WindowProxy(DOMWrapperWorld& world) {
     return static_cast<ProxyType*>(Base::GetWindowProxy(world));
   }
@@ -100,6 +102,8 @@ class LocalWindowProxyManager
   LocalWindowProxy* MainWorldProxyMaybeUninitialized() {
     return static_cast<LocalWindowProxy*>(window_proxy_.Get());
   }
+
+  void UpdateDocument();
 
   // Sets the given security origin to the main world's context.  Also updates
   // the security origin of the context for each isolated world.

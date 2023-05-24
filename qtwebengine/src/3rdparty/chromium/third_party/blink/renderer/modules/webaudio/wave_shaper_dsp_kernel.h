@@ -27,6 +27,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_WAVE_SHAPER_DSP_KERNEL_H_
 
 #include <memory>
+
 #include "third_party/blink/renderer/modules/webaudio/wave_shaper_processor.h"
 #include "third_party/blink/renderer/platform/audio/audio_array.h"
 #include "third_party/blink/renderer/platform/audio/audio_dsp_kernel.h"
@@ -103,7 +104,7 @@ class WaveShaperDSPKernel final : public AudioDSPKernel {
   // such that a zero input produces a non-zero output.  In this case, the node
   // has an infinite tail so that silent input continues to produce non-silent
   // output.
-  double tail_time_;
+  double tail_time_ = 0;
 
   // Work arrays needed by WaveShaperCurveValues().  Mutable so this
   // const function can modify these arrays.  There's no state or

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <qtest.h>
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcomponent.h>
@@ -40,16 +15,16 @@
 #include <private/qquickstategroup_p.h>
 #include <private/qquickpropertychanges_p.h>
 #include <private/qquickrectangle_p.h>
-#include "../../shared/util.h"
-#include "../shared/visualtestutil.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/visualtestutils_p.h>
 
-using namespace QQuickVisualTestUtil;
+using namespace QQuickVisualTestUtils;
 
 class tst_qquickdesignersupport : public QQmlDataTest
 {
     Q_OBJECT
 public:
-    tst_qquickdesignersupport() {}
+    tst_qquickdesignersupport() : QQmlDataTest(QT_QMLTEST_DATADIR) {}
 
 private slots:
     void customData();
@@ -62,8 +37,70 @@ private slots:
     void testNotifyPropertyChangeCallBack();
     void testFixResourcePathsForObjectCallBack();
     void testComponentOnCompleteSignal();
+    void testSimpleBindings();
+    void testDotProperties();
+    void testItemReparenting();
     void testPropertyNames();
 };
+
+
+static bool isList(const QQmlProperty &property)
+{
+    return property.propertyTypeCategory() == QQmlProperty::List;
+}
+
+static bool isObject(const QQmlProperty &property)
+{
+    return property.isValid() && (property.propertyTypeCategory() == QQmlProperty::Object
+                                  || !strcmp(property.propertyTypeName(), "QVariant"));
+}
+
+static QVariant objectToVariant(QObject *object)
+{
+    return QVariant::fromValue(object);
+}
+
+void addToNewProperty(QObject *object, QObject *newParent, const QByteArray &newParentProperty)
+{
+    QQmlProperty property(newParent, QString::fromUtf8(newParentProperty));
+
+    if (object)
+        object->setParent(newParent);
+
+    if (isList(property)) {
+        QQmlListReference list = qvariant_cast<QQmlListReference>(property.read());
+        list.append(object);
+    } else if (isObject(property)) {
+        property.write(objectToVariant(object));
+
+        if (QQuickItem *item = qobject_cast<QQuickItem *>(object))
+            if (QQuickItem *newParentItem = qobject_cast<QQuickItem *>(newParent))
+                item->setParentItem(newParentItem);
+    }
+
+    Q_ASSERT(objectToVariant(object).isValid());
+}
+
+static void removeObjectFromList(const QQmlProperty &property, QObject *objectToBeRemoved)
+{
+    QQmlListReference listReference(property.object(), property.name().toUtf8());
+
+    int count = listReference.count();
+
+    QObjectList objectList;
+
+    for (int i = 0; i < count; i ++) {
+        QObject *listItem = listReference.at(i);
+        if (listItem && listItem != objectToBeRemoved)
+            objectList.append(listItem);
+    }
+
+    listReference.clear();
+
+    for (QObject *object : objectList)
+        listReference.append(object);
+}
+
 
 void tst_qquickdesignersupport::customData()
 {
@@ -77,7 +114,10 @@ void tst_qquickdesignersupport::customData()
 
     QVERIFY(rootItem);
 
-    QScopedPointer<QObject> newItemScopedPointer(QQuickDesignerSupportItems::createPrimitive(QLatin1String("QtQuick/Item"), 2, 6, view->rootContext()));
+    QScopedPointer<QObject> newItemScopedPointer(QQuickDesignerSupportItems::createPrimitive(
+                                                     QLatin1String("QtQuick/Item"),
+                                                     QTypeRevision::fromVersion(2, 6),
+                                                     view->rootContext()));
     QObject *newItem = newItemScopedPointer.data();
 
     QVERIFY(newItem);
@@ -247,7 +287,7 @@ void tst_qquickdesignersupport::dynamicProperty()
     QVERIFY(simpleItem);
 
     QQuickDesignerSupportProperties::registerNodeInstanceMetaObject(simpleItem, view->engine());
-    QQuickDesignerSupportProperties::getPropertyCache(simpleItem, view->engine());
+    QQuickDesignerSupportProperties::getPropertyCache(simpleItem);
 
     QQuickDesignerSupportProperties::createNewDynamicProperty(simpleItem, view->engine(), QLatin1String("dynamicProperty"));
 
@@ -279,10 +319,13 @@ void tst_qquickdesignersupport::createComponent()
 
     QVERIFY(rootItem);
 
-    QObject *testComponentObject = QQuickDesignerSupportItems::createComponent(testFileUrl("TestComponent.qml"), view->rootContext());
+    QScopedPointer<QObject> testComponentObject(
+                QQuickDesignerSupportItems::createComponent(
+                    testFileUrl("TestComponent.qml"), view->rootContext()));
     QVERIFY(testComponentObject);
 
-    QVERIFY(QQuickDesignerSupportMetaInfo::isSubclassOf(testComponentObject, "QtQuick/Item"));
+    QVERIFY(QQuickDesignerSupportMetaInfo::isSubclassOf(
+                testComponentObject.data(), "QtQuick/Item"));
 }
 
 void tst_qquickdesignersupport::basicStates()
@@ -301,7 +344,7 @@ void tst_qquickdesignersupport::basicStates()
 
     QVERIFY(stateGroup);
 
-    QCOMPARE(stateGroup->states().count(), 2 );
+    QCOMPARE(stateGroup->states().size(), 2 );
 
     QQuickState *state01 = stateGroup->states().first();
     QQuickState *state02 = stateGroup->states().last();
@@ -347,7 +390,7 @@ void tst_qquickdesignersupport::statesPropertyChanges()
 
     QVERIFY(stateGroup);
 
-    QCOMPARE(stateGroup->states().count(), 2 );
+    QCOMPARE(stateGroup->states().size(), 2 );
 
     QQuickState *state01 = stateGroup->states().first();
     QQuickState *state02 = stateGroup->states().last();
@@ -366,7 +409,7 @@ void tst_qquickdesignersupport::statesPropertyChanges()
 
     QCOMPARE(state01->operationCount(), 1);
 
-    QCOMPARE(statePrivate01->operations.count(), 1);
+    QCOMPARE(statePrivate01->operations.size(), 1);
 
     QQuickStateOperation *propertyChange = statePrivate01->operations.at(0).data();
 
@@ -401,7 +444,7 @@ void tst_qquickdesignersupport::statesPropertyChanges()
     QCOMPARE(rootItem, QQuickDesignerSupportPropertyChanges::targetObject(newPropertyChange));
 
     QCOMPARE(state01->operationCount(), 2);
-    QCOMPARE(statePrivate01->operations.count(), 2);
+    QCOMPARE(statePrivate01->operations.size(), 2);
 
     QCOMPARE(QQuickDesignerSupportPropertyChanges::stateObject(newPropertyChange), state01);
 
@@ -459,9 +502,14 @@ void tst_qquickdesignersupport::testNotifyPropertyChangeCallBack()
     QCOMPARE(s_propertyName, QQuickDesignerSupport::PropertyName("gradient"));
 }
 
+// We have to use this ugly approach, because the signature of
+// registerFixResourcePathsForObjectCallBack doesn't accept
+// a proper lambda with a capture list
+static QVector<QObject*> s_allSubObjects;
+
 static void fixResourcePathsForObjectCallBackFunction(QObject *object)
 {
-    s_object = object;
+    s_allSubObjects << object;
 }
 
 static void (*fixResourcePathsForObjectCallBackPointer)(QObject *) = &fixResourcePathsForObjectCallBackFunction;
@@ -478,7 +526,7 @@ void tst_qquickdesignersupport::testFixResourcePathsForObjectCallBack()
 
     QVERIFY(rootItem);
 
-    s_object = nullptr;
+    s_allSubObjects.clear();
 
     QQuickDesignerSupportItems::registerFixResourcePathsForObjectCallBack(fixResourcePathsForObjectCallBackPointer);
 
@@ -488,8 +536,12 @@ void tst_qquickdesignersupport::testFixResourcePathsForObjectCallBack()
 
     QQuickDesignerSupportItems::tweakObjects(simpleItem);
 
-    //Check that the fixResourcePathsForObjectCallBack was called on simpleItem
-    QCOMPARE(simpleItem , s_object);
+    // Check that the fixResourcePathsForObjectCallBack was called on simpleItem
+    // NOTE: more objects are collected now. There is also at least a palette
+    //       that created on demand.
+    QVERIFY(s_allSubObjects.contains(simpleItem));
+
+    s_allSubObjects.clear();
 }
 
 void doComponentCompleteRecursive(QObject *object)
@@ -587,12 +639,110 @@ void tst_qquickdesignersupport::testComponentOnCompleteSignal()
     }
 }
 
+
+void tst_qquickdesignersupport::testSimpleBindings()
+{
+    QScopedPointer<QQuickView> view(new QQuickView);
+    view->engine()->setOutputWarningsToStandardError(false);
+    view->setSource(testFileUrl("bindingTest.qml"));
+
+    QVERIFY(view->errors().isEmpty());
+    QQuickItem *rootItem = view->rootObject();
+    QVERIFY(rootItem);
+
+    QQuickItem *text = findItem<QQuickItem>(rootItem, QLatin1String("text"));
+    QVERIFY(text);
+
+    QQuickItem *item = findItem<QQuickItem>(rootItem, QLatin1String("item"));
+    QVERIFY(item);
+
+    QQuickDesignerSupportProperties::registerNodeInstanceMetaObject(item, view->engine());
+    QQuickDesignerSupportProperties::registerNodeInstanceMetaObject(text, view->engine());
+
+    QQuickDesignerSupportProperties::registerCustomData(item);
+    QQuickDesignerSupportProperties::registerCustomData(text);
+
+    QVERIFY(QQuickDesignerSupportProperties::hasBindingForProperty(text,
+                                                                   QQmlEngine::contextForObject(text),
+                                                                   "text",
+                                                                   nullptr));
+
+    QQuickDesignerSupportProperties::doResetProperty(text, QQmlEngine::contextForObject(text),  "text");
+
+
+    QQuickDesignerSupportProperties::setPropertyBinding(text,
+                                                        QQmlEngine::contextForObject(text),
+                                                        "text",
+                                                        "qsTr(\"someText\")");
+
+    QVERIFY(QQuickDesignerSupportProperties::hasBindingForProperty(text,
+                                                                   QQmlEngine::contextForObject(text),
+                                                                   "text",
+                                                                   nullptr));
+}
+
+void tst_qquickdesignersupport::testDotProperties()
+{
+    QScopedPointer<QQuickView> view(new QQuickView);
+    view->engine()->setOutputWarningsToStandardError(false);
+    view->setSource(testFileUrl("bindingTest.qml"));
+
+    QVERIFY(view->errors().isEmpty());
+    QQuickItem *rootItem = view->rootObject();
+    QVERIFY(rootItem);
+
+    QQuickItem *text = findItem<QQuickItem>(rootItem, QLatin1String("text"));
+    QVERIFY(text);
+
+    QQuickItem *item = findItem<QQuickItem>(rootItem, QLatin1String("item"));
+    QVERIFY(item);
+
+    QQuickDesignerSupportProperties::registerNodeInstanceMetaObject(item, view->engine());
+    QQuickDesignerSupportProperties::registerNodeInstanceMetaObject(text, view->engine());
+
+    QQuickDesignerSupportProperties::registerCustomData(item);
+    QQuickDesignerSupportProperties::registerCustomData(text);
+
+    QCOMPARE(text->property("font.bold").value<QColor>(), QColor("true"));
+    QCOMPARE(text->property("font.italic").value<QColor>(), QColor("false"));
+    QCOMPARE(text->property("font.underline").value<QColor>(), QColor("false"));
+
+    QQmlProperty property(text, "font.capitalization");
+}
+
+void  tst_qquickdesignersupport::testItemReparenting()
+{
+
+    QScopedPointer<QQuickView> view(new QQuickView);
+    view->engine()->setOutputWarningsToStandardError(false);
+    view->setSource(testFileUrl("bindingTest.qml"));
+
+    QVERIFY(view->errors().isEmpty());
+    QQuickItem *rootItem = view->rootObject();
+    QVERIFY(rootItem);
+
+    QQuickItem *text = findItem<QQuickItem>(rootItem, QLatin1String("text"));
+    QVERIFY(text);
+
+    QQuickItem *item = findItem<QQuickItem>(rootItem, QLatin1String("item"));
+    QVERIFY(item);
+
+    QQuickDesignerSupportProperties::registerNodeInstanceMetaObject(item, view->engine());
+    QQuickDesignerSupportProperties::registerNodeInstanceMetaObject(text, view->engine());
+
+    QQuickDesignerSupportProperties::registerCustomData(item);
+    QQuickDesignerSupportProperties::registerCustomData(text);
+
+
+    QCOMPARE(text->parentItem(), rootItem);
+    QQmlProperty childrenProperty(rootItem, "children");
+    removeObjectFromList(childrenProperty, text);
+    addToNewProperty(text, item, "children");
+    QCOMPARE(text->parentItem(), item);
+}
+
 void tst_qquickdesignersupport::testPropertyNames()
 {
-#ifdef Q_CC_MINGW
-    QSKIP("QQuickDesignerSupportProperties::registerCustomData segfaults on mingw. QTBUG-90869");
-#endif
-
     QScopedPointer<QQuickView> view(new QQuickView);
     view->engine()->setOutputWarningsToStandardError(false);
     view->setSource(testFileUrl("propertyNameTest.qml"));
@@ -606,7 +756,6 @@ void tst_qquickdesignersupport::testPropertyNames()
     QVERIFY(names.contains("width"));
     QVERIFY(names.contains("height"));
     QVERIFY(names.contains("clip"));
-    QVERIFY(names.contains("opacity"));
     QVERIFY(names.contains("childrenRect"));
     QVERIFY(names.contains("activeFocus"));
     QVERIFY(names.contains("border.width"));
@@ -615,7 +764,7 @@ void tst_qquickdesignersupport::testPropertyNames()
     QVERIFY(names.contains("width"));
     QVERIFY(names.contains("height"));
     QVERIFY(names.contains("opacity"));
-    QVERIFY(names.contains("clip"));
+    QVERIFY(!names.contains("childrenRect"));
     QVERIFY(!names.contains("childrenRect"));
     QVERIFY(!names.contains("activeFocus"));
     QVERIFY(names.contains("border.width"));

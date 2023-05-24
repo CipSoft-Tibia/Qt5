@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/workers/worker_global_scope.h"
 #include "third_party/blink/renderer/modules/indexeddb/idb_factory.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/supplementable.h"
 
 namespace blink {
@@ -25,15 +25,16 @@ class GlobalIndexedDBImpl final
     GlobalIndexedDBImpl* supplement =
         Supplement<T>::template From<GlobalIndexedDBImpl>(supplementable);
     if (!supplement) {
-      supplement = MakeGarbageCollected<GlobalIndexedDBImpl>();
+      supplement = MakeGarbageCollected<GlobalIndexedDBImpl>(supplementable);
       Supplement<T>::ProvideTo(supplementable, supplement);
     }
     return *supplement;
   }
 
-  GlobalIndexedDBImpl() = default;
+  explicit GlobalIndexedDBImpl(T& supplementable)
+      : Supplement<T>(supplementable) {}
 
-  IDBFactory* IdbFactory(T& fetching_scope) {
+  IDBFactory* IdbFactory() {
     if (!idb_factory_)
       idb_factory_ = MakeGarbageCollected<IDBFactory>();
     return idb_factory_;
@@ -55,12 +56,11 @@ const char GlobalIndexedDBImpl<T>::kSupplementName[] = "GlobalIndexedDBImpl";
 }  // namespace
 
 IDBFactory* GlobalIndexedDB::indexedDB(LocalDOMWindow& window) {
-  return GlobalIndexedDBImpl<LocalDOMWindow>::From(window).IdbFactory(window);
+  return GlobalIndexedDBImpl<LocalDOMWindow>::From(window).IdbFactory();
 }
 
 IDBFactory* GlobalIndexedDB::indexedDB(WorkerGlobalScope& worker) {
-  return GlobalIndexedDBImpl<WorkerGlobalScope>::From(worker).IdbFactory(
-      worker);
+  return GlobalIndexedDBImpl<WorkerGlobalScope>::From(worker).IdbFactory();
 }
 
 }  // namespace blink

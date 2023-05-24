@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \class QSet
@@ -47,7 +23,7 @@
 
     \snippet code/doc_src_qset.cpp 1
 
-    Another way to insert items into the set is to use operator<<():
+    Another way to insert items into the set is to use \l operator<<():
 
     \snippet code/doc_src_qset.cpp 2
 
@@ -70,7 +46,7 @@
     QSet is unordered, so an iterator's sequence cannot be assumed to
     be predictable. If ordering by key is required, use a QMap.
 
-    To navigate through a QSet, you can also use \l{foreach}:
+    To navigate through a QSet, you can also use range-based for:
 
     \snippet code/doc_src_qset.cpp 6
 
@@ -185,7 +161,7 @@
     \sa reserve(), squeeze()
 */
 
-/*! \fn template <class T> void QSet<T>::reserve(int size)
+/*! \fn template <class T> void QSet<T>::reserve(qsizetype size)
 
     Ensures that the set's internal hash table consists of at
     least \a size buckets.
@@ -275,13 +251,12 @@
     internal data structure. This means that it can safely be called
     while iterating, and won't affect the order of items in the set.
 
-    \sa remove(), find()
-*/
+    \note The iterator \a pos \e must be valid and dereferenceable. Calling this
+    method on any other iterator, including its own \l end(), results in
+    undefined behavior. In particular, even the \l begin() iterator of an empty
+    set cannot be dereferenced.
 
-/*!
-    \fn template <class T> QSet<T>::iterator QSet<T>::erase(iterator pos)
-    \since 4.2
-    \overload
+    \sa remove(), find()
 */
 
 /*! \fn template <class T> QSet<T>::const_iterator QSet<T>::find(const T &value) const
@@ -398,58 +373,6 @@
     \sa constBegin(), end()
 */
 
-/*! \fn template <class T> QSet<T>::reverse_iterator QSet<T>::rbegin()
-    \obsolete Deprecated in order to align with std::unordered_set functionality.
-    \since 5.6
-
-    Returns a \l{STL-style iterators}{STL-style} reverse iterator pointing to the first
-    item in the set, in reverse order.
-
-    \sa begin(), crbegin(), rend()
-*/
-
-/*! \fn template <class T> QSet<T>::const_reverse_iterator QSet<T>::rbegin() const
-    \obsolete Deprecated in order to align with std::unordered_set functionality.
-    \since 5.6
-    \overload
-*/
-
-/*! \fn template <class T> QSet<T>::const_reverse_iterator QSet<T>::crbegin() const
-    \obsolete Deprecated in order to align with std::unordered_set functionality.
-    \since 5.6
-
-    Returns a const \l{STL-style iterators}{STL-style} reverse iterator pointing to the first
-    item in the set, in reverse order.
-
-    \sa begin(), rbegin(), rend()
-*/
-
-/*! \fn template <class T> QSet<T>::reverse_iterator QSet<T>::rend()
-    \obsolete Deprecated in order to align with std::unordered_set functionality.
-    \since 5.6
-
-    Returns a \l{STL-style iterators}{STL-style} reverse iterator pointing to one past
-    the last item in the set, in reverse order.
-
-    \sa end(), crend(), rbegin()
-*/
-
-/*! \fn template <class T> QSet<T>::const_reverse_iterator QSet<T>::rend() const
-    \obsolete Deprecated in order to align with std::unordered_set functionality.
-    \since 5.6
-    \overload
-*/
-
-/*! \fn template <class T> QSet<T>::const_reverse_iterator QSet<T>::crend() const
-    \obsolete Deprecated in order to align with std::unordered_set functionality.
-    \since 5.6
-
-    Returns a const \l{STL-style iterators}{STL-style} reverse iterator pointing to one
-    past the last item in the set, in reverse order.
-
-    \sa end(), rend(), rbegin()
-*/
-
 /*!
     \typedef QSet::Iterator
     \since 4.2
@@ -511,42 +434,8 @@
     Typedef for T. Provided for STL compatibility.
 */
 
-/*! \typedef QSet::reverse_iterator
-    \since 5.6
-    \obsolete Deprecated in order to align with std::unordered_set functionality.
-
-    The QSet::reverse_iterator typedef provides an STL-style non-const
-    reverse iterator for QSet.
-
-    It is simply a typedef for \c{std::reverse_iterator<QSet::iterator>}.
-
-    \warning Iterators on implicitly shared containers do not work
-    exactly like STL-iterators. You should avoid copying a container
-    while iterators are active on that container. For more information,
-    read \l{Implicit sharing iterator problem}.
-
-    \sa QSet::rbegin(), QSet::rend(), QSet::const_reverse_iterator, QSet::iterator
-*/
-
-/*! \typedef QSet::const_reverse_iterator
-    \since 5.6
-    \obsolete Deprecated in order to align with std::unordered_set functionality.
-
-    The QSet::const_reverse_iterator typedef provides an STL-style const
-    reverse iterator for QSet.
-
-    It is simply a typedef for \c{std::reverse_iterator<QSet::const_iterator>}.
-
-    \warning Iterators on implicitly shared containers do not work
-    exactly like STL-iterators. You should avoid copying a container
-    while iterators are active on that container. For more information,
-    read \l{Implicit sharing iterator problem}.
-
-    \sa QSet::rbegin(), QSet::rend(), QSet::reverse_iterator, QSet::const_iterator
-*/
-
 /*!
-    \fn template <class T> QSet<T>::insert(const T &value)
+    \fn template <class T> QSet<T>::iterator QSet<T>::insert(const T &value)
 
     Inserts item \a value into the set, if \a value isn't already
     in the set, and returns an iterator pointing at the inserted
@@ -600,6 +489,22 @@
 */
 
 /*!
+    \fn template <class T> QSet<T>::iterator QSet<T>::insert(const_iterator it, const T &value)
+    \overload
+    \since 6.1
+
+    Inserts item \a value into the set, if \a value isn't already
+    in the set, and returns an iterator pointing at the inserted
+    item.
+
+    The iterator \a it is ignored.
+
+    This function is provided for compatibility with the STL.
+
+    \sa operator<<(), remove(), contains()
+*/
+
+/*!
     \fn template <class T> bool QSet<T>::count() const
 
     Same as size().
@@ -630,7 +535,7 @@
     \fn template <class T> QSet<T> &QSet<T>::operator|=(const QSet<T> &other)
     \fn template <class T> QSet<T> &QSet<T>::operator+=(const QSet<T> &other)
 
-    Same as unite(\a other).
+    Same as \l {unite()} {unite(\a other)}.
 
     \sa operator|(), operator&=(), operator-=()
 */
@@ -638,7 +543,7 @@
 /*!
     \fn template <class T> QSet<T> &QSet<T>::operator&=(const QSet<T> &other)
 
-    Same as intersect(\a other).
+    Same as \l {intersect()} {intersect(\a other)}.
 
     \sa operator&(), operator|=(), operator-=()
 */
@@ -648,7 +553,7 @@
 
     \overload
 
-    Same as intersect(\e{other}), if we consider \e{other} to be a set
+    Same as \l {intersect()} {intersect(\e{other})}, if we consider \e other to be a set
     that contains the singleton \a value.
 */
 
@@ -656,7 +561,7 @@
 /*!
     \fn template <class T> QSet<T> &QSet<T>::operator-=(const QSet<T> &other)
 
-    Same as subtract(\a{other}).
+    Same as \l {subtract()} {subtract(\a{other})}.
 
     \sa operator-(), operator|=(), operator&=()
 */
@@ -927,178 +832,6 @@
     current item.
 */
 
-/*!
-    \fn template <class T> QSet<T>::iterator &QSet<T>::iterator::operator--()
-    \obsolete This operator is deprecated in order to align with std::unordered_set functionality.
-
-    The prefix -- operator (\c{--it}) makes the preceding item
-    current and returns an iterator to the new current item.
-
-    Calling this function on QSet::begin() leads to undefined
-    results.
-
-    \sa operator++()
-*/
-
-/*!
-    \fn template <class T> QSet<T>::const_iterator &QSet<T>::const_iterator::operator--()
-    \obsolete This operator is deprecated in order to align with std::unordered_set functionality.
-
-    The prefix -- operator (\c{--it}) makes the preceding item
-    current and returns an iterator to the new current item.
-
-    Calling this function on QSet::begin() leads to undefined
-    results.
-
-    \sa operator++()
-*/
-
-/*!
-    \fn template <class T> QSet<T>::iterator QSet<T>::iterator::operator--(int)
-    \obsolete This operator is deprecated in order to align with std::unordered_set functionality.
-
-    \overload
-
-    The postfix -- operator (\c{it--}) makes the preceding item
-    current and returns an iterator to the previously current item.
-*/
-
-/*!
-    \fn template <class T> QSet<T>::const_iterator QSet<T>::const_iterator::operator--(int)
-    \obsolete This operator is deprecated in order to align with std::unordered_set functionality.
-
-    \overload
-
-    The postfix -- operator (\c{it--}) makes the preceding item
-    current and returns an iterator to the previously current item.
-*/
-
-/*!
-    \fn template <class T> QSet<T>::iterator QSet<T>::iterator::operator+(int j) const
-    \obsolete This operator is deprecated in order to align with std::unordered_set functionality.
-
-    Returns an iterator to the item at \a j positions forward from
-    this iterator. (If \a j is negative, the iterator goes backward.)
-
-    This operation can be slow for large \a j values.
-
-    \sa operator-()
-*/
-
-/*!
-    \fn template <class T> QSet<T>::const_iterator QSet<T>::const_iterator::operator+(int j) const
-    \obsolete This operator is deprecated in order to align with std::unordered_set functionality.
-
-    Returns an iterator to the item at \a j positions forward from
-    this iterator. (If \a j is negative, the iterator goes backward.)
-
-    This operation can be slow for large \a j values.
-
-    \sa operator-()
-*/
-
-/*!
-    \fn template <class T> QSet<T>::iterator QSet<T>::iterator::operator-(int j) const
-    \obsolete This operator is deprecated in order to align with std::unordered_set functionality.
-
-    Returns an iterator to the item at \a j positions backward from
-    this iterator. (If \a j is negative, the iterator goes forward.)
-
-    This operation can be slow for large \a j values.
-
-    \sa operator+()
-*/
-
-/*!
-    \fn template <class T> QSet<T>::const_iterator QSet<T>::const_iterator::operator-(int j) const
-    \obsolete This operator is deprecated in order to align with std::unordered_set functionality.
-
-    Returns an iterator to the item at \a j positions backward from
-    this iterator. (If \a j is negative, the iterator goes forward.)
-
-    This operation can be slow for large \a j values.
-
-    \sa operator+()
-*/
-
-/*!
-    \fn template <class T> QSet<T>::iterator &QSet<T>::iterator::operator+=(int j)
-    \obsolete This operator is deprecated in order to align with std::unordered_set functionality.
-
-    Advances the iterator by \a j items. (If \a j is negative, the
-    iterator goes backward.)
-
-    This operation can be slow for large \a j values.
-
-    \sa operator-=(), operator+()
-
-*/
-
-/*!
-    \fn template <class T> QSet<T>::const_iterator &QSet<T>::const_iterator::operator+=(int j)
-    \obsolete This operator is deprecated in order to align with std::unordered_set functionality.
-
-    Advances the iterator by \a j items. (If \a j is negative, the
-    iterator goes backward.)
-
-    This operation can be slow for large \a j values.
-
-    \sa operator-=(), operator+()
-*/
-
-/*!
-    \fn template <class T> QSet<T>::iterator &QSet<T>::iterator::operator-=(int j)
-    \obsolete This operator is deprecated in order to align with std::unordered_set functionality.
-
-    Makes the iterator go back by \a j items. (If \a j is negative,
-    the iterator goes forward.)
-
-    This operation can be slow for large \a j values.
-
-    \sa operator+=(), operator-()
-*/
-
-/*!
-    \fn template <class T> QSet<T>::const_iterator &QSet<T>::const_iterator::operator-=(int j)
-    \obsolete This operator is deprecated in order to align with std::unordered_set functionality.
-
-    Makes the iterator go back by \a j items. (If \a j is negative,
-    the iterator goes forward.)
-
-    This operation can be slow for large \a j values.
-
-    \sa operator+=(), operator-()
-*/
-
-/*! \fn template <class T> QList<T> QSet<T>::toList() const
-    \obsolete
-
-    Returns a new QList containing the elements in the set. The
-    order of the elements in the QList is undefined.
-
-    \include containers-range-constructor.qdocinc
-
-    \oldcode
-    QSet<QString> set;
-    // ...
-    QList<QString> list = set.toList();
-    \newcode
-    QSet<QString> set;
-    // ...
-    QList<QString> list(set.begin(), set.end());
-    \endcode
-
-    or
-
-    \code
-    QSet<QString> set;
-    // ...
-    QList<QString> list = set.values();
-    \endcode
-
-    \sa QList::QList(InputIterator, InputIterator), values(), fromList(), QList::fromSet()
-*/
-
 /*! \fn template <class T> QList<T> QSet<T>::values() const
 
     Returns a new QList containing the elements in the set. The
@@ -1106,43 +839,11 @@
 
     \include containers-range-constructor.qdocinc
 
-    \oldcode
-    QSet<QString> set;
-    // ...
-    QList<QString> list = set.values();
-    \newcode
-    QSet<QString> set;
-    // ...
-    QList<QString> list(set.begin(), set.end());
-    \endcode
-
-
-    \sa QList::QList(InputIterator, InputIterator)
+    This function creates a new list, in \l {linear time}. The time and memory
+    use that entails can be avoided by iterating from \l constBegin() to
+    \l constEnd().
 */
 
-
-/*! \fn template <class T> QSet<T> QSet<T>::fromList(const QList<T> &list)
-    \obsolete
-
-    Returns a new QSet object containing the data contained in \a
-    list. Since QSet doesn't allow duplicates, the resulting QSet
-    might be smaller than the \a list, because QList can contain
-    duplicates.
-
-    \include containers-range-constructor.qdocinc
-
-    \oldcode
-    QStringList list;
-    // ...
-    QSet<QString> set = QSet<QString>::fromList(list);
-    \newcode
-    QStringList list;
-    // ...
-    QSet<QString> set(list.begin(), list.end());
-    \endcode
-
-    \sa QSet(InputIterator, InputIterator), values(), QList::toSet()
-*/
 
 /*!
     \fn template <class T> QDataStream &operator<<(QDataStream &out, const QSet<T> &set)
@@ -1167,7 +868,7 @@
 */
 
 /*!
-    \fn template <class T> uint qHash(const QSet<T> &key, uint seed = 0)
+    \fn template <class T> size_t qHash(const QSet<T> &key, size_t seed = 0)
     \relates QHash
     \since 5.5
 
@@ -1175,4 +876,20 @@
 
     The hash value is independent of the order of elements in \a key, that is, sets
     that contain the same elements hash to the same value.
+*/
+
+/*! \fn template <class T, class Predicate> qsizetype erase_if(QSet<T> &set, Predicate pred)
+    \relates QSet
+    \since 6.1
+
+    Removes all elements for which the predicate \a pred returns true
+    from the set \a set. Returns the number of elements removed, if
+    any.
+*/
+
+/*! \fn template <class T> template <class Pred> qsizetype QSet<T>::removeIf(Pred pred)
+    \since 6.1
+
+    Removes, from this set, all elements for which the predicate \a pred
+    returns \c true. Returns the number of elements removed, if any.
 */

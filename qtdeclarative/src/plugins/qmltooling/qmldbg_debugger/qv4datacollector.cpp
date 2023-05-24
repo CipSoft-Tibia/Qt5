@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4datacollector.h"
 #include "qv4debugger.h"
@@ -44,7 +8,7 @@
 #include <private/qv4script_p.h>
 #include <private/qv4string_p.h>
 #include <private/qv4objectiterator_p.h>
-#include <private/qv4identifier_p.h>
+#include <private/qv4identifierhash_p.h>
 #include <private/qv4runtime_p.h>
 #include <private/qv4identifiertable_p.h>
 
@@ -61,7 +25,7 @@ QV4::CppStackFrame *QV4DataCollector::findFrame(int frame)
     QV4::CppStackFrame *f = engine()->currentStackFrame;
     while (f && frame) {
         --frame;
-        f = f->parent;
+        f = f->parentFrame();
     }
     return f;
 }
@@ -224,9 +188,10 @@ bool QV4DataCollector::collectScope(QJsonObject *dict, int frameNr, int scopeNr)
         QV4::ScopedValue v(scope);
         QV4::Heap::InternalClass *ic = ctxt->internalClass();
         for (uint i = 0; i < ic->size; ++i) {
-            QString name = ic->keyAt(i);
-            names.append(name);
-            v = static_cast<QV4::Heap::CallContext *>(ctxt->d())->locals[i];
+            QV4::ScopedValue stringOrSymbol(scope, ic->keyAt(i));
+            QV4::ScopedString propName(scope, stringOrSymbol->toString(scope.engine));
+            names.append(propName->toQString());
+            v = ctxt->getProperty(propName);
             collectedRefs.append(addValueRef(v));
         }
 
@@ -256,7 +221,7 @@ QJsonObject QV4DataCollector::buildFrame(const QV4::StackFrame &stackFrame, int 
     frame[QLatin1String("debuggerFrame")] = false;
     frame[QLatin1String("func")] = stackFrame.function;
     frame[QLatin1String("script")] = stackFrame.source;
-    frame[QLatin1String("line")] = stackFrame.line - 1;
+    frame[QLatin1String("line")] = qAbs(stackFrame.line) - 1;
     if (stackFrame.column >= 0)
         frame[QLatin1String("column")] = stackFrame.column;
 
@@ -278,7 +243,7 @@ QJsonObject QV4DataCollector::buildFrame(const QV4::StackFrame &stackFrame, int 
 
     // Only type and index are used by Qt Creator, so we keep it easy:
     QVector<QV4::Heap::ExecutionContext::ContextType> scopeTypes = getScopeTypes(frameNr);
-    for (int i = 0, ei = scopeTypes.count(); i != ei; ++i) {
+    for (int i = 0, ei = scopeTypes.size(); i != ei; ++i) {
         int type = encodeScopeType(scopeTypes[i]);
         if (type == -1)
             continue;

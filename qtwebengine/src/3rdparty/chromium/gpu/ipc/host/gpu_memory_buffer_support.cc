@@ -1,13 +1,13 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "gpu/ipc/host/gpu_memory_buffer_support.h"
 
+#include "base/containers/contains.h"
 #include "build/build_config.h"
 #include "gpu/command_buffer/common/gpu_memory_buffer_support.h"
 #include "gpu/ipc/common/gpu_memory_buffer_support.h"
-#include "ui/base/ui_base_features.h"
 #include "ui/gl/gl_bindings.h"
 
 namespace gpu {
@@ -16,20 +16,25 @@ GpuMemoryBufferConfigurationSet GetNativeGpuMemoryBufferConfigurations(
     GpuMemoryBufferSupport* support) {
   GpuMemoryBufferConfigurationSet configurations;
 
-#if defined(USE_OZONE) || defined(OS_MAC) || defined(OS_WIN) || \
-    defined(OS_ANDROID)
-#if defined(USE_OZONE)
-  if (!features::IsUsingOzonePlatform())
-    return configurations;
-#endif
+#if BUILDFLAG(IS_OZONE) || BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_WIN) || \
+    BUILDFLAG(IS_ANDROID)
   const gfx::BufferFormat kBufferFormats[] = {
-      gfx::BufferFormat::R_8,          gfx::BufferFormat::R_16,
-      gfx::BufferFormat::RG_88,        gfx::BufferFormat::BGR_565,
-      gfx::BufferFormat::RGBA_4444,    gfx::BufferFormat::RGBX_8888,
-      gfx::BufferFormat::RGBA_8888,    gfx::BufferFormat::BGRX_8888,
-      gfx::BufferFormat::BGRA_1010102, gfx::BufferFormat::RGBA_1010102,
-      gfx::BufferFormat::BGRA_8888,    gfx::BufferFormat::RGBA_F16,
-      gfx::BufferFormat::YVU_420,      gfx::BufferFormat::YUV_420_BIPLANAR,
+      gfx::BufferFormat::R_8,
+      gfx::BufferFormat::R_16,
+      gfx::BufferFormat::RG_88,
+      gfx::BufferFormat::RG_1616,
+      gfx::BufferFormat::BGR_565,
+      gfx::BufferFormat::RGBA_4444,
+      gfx::BufferFormat::RGBX_8888,
+      gfx::BufferFormat::RGBA_8888,
+      gfx::BufferFormat::BGRX_8888,
+      gfx::BufferFormat::BGRA_1010102,
+      gfx::BufferFormat::RGBA_1010102,
+      gfx::BufferFormat::BGRA_8888,
+      gfx::BufferFormat::RGBA_F16,
+      gfx::BufferFormat::YVU_420,
+      gfx::BufferFormat::YUV_420_BIPLANAR,
+      gfx::BufferFormat::YUVA_420_TRIPLANAR,
       gfx::BufferFormat::P010};
 
   const gfx::BufferUsage kUsages[] = {
@@ -39,8 +44,11 @@ GpuMemoryBufferConfigurationSet GetNativeGpuMemoryBufferConfigurations(
       gfx::BufferUsage::CAMERA_AND_CPU_READ_WRITE,
       gfx::BufferUsage::SCANOUT_CPU_READ_WRITE,
       gfx::BufferUsage::SCANOUT_VDA_WRITE,
+      gfx::BufferUsage::PROTECTED_SCANOUT_VDA_WRITE,
       gfx::BufferUsage::GPU_READ_CPU_READ_WRITE,
-      gfx::BufferUsage::SCANOUT_VEA_READ_CAMERA_AND_CPU_READ_WRITE,
+      gfx::BufferUsage::SCANOUT_VEA_CPU_READ,
+      gfx::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE,
+      gfx::BufferUsage::SCANOUT_FRONT_RENDERING,
   };
 
   for (auto format : kBufferFormats) {
@@ -49,8 +57,8 @@ GpuMemoryBufferConfigurationSet GetNativeGpuMemoryBufferConfigurations(
         configurations.insert(gfx::BufferUsageAndFormat(usage, format));
     }
   }
-#endif  // defined(USE_OZONE) || defined(OS_MAC) || defined(OS_WIN) ||
-        // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_OZONE) || BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_WIN) ||
+        // BUILDFLAG(IS_ANDROID)
 
   return configurations;
 }
@@ -59,8 +67,8 @@ bool GetImageNeedsPlatformSpecificTextureTarget(gfx::BufferFormat format,
                                                 gfx::BufferUsage usage) {
   if (!NativeBufferNeedsPlatformSpecificTextureTarget(format))
     return false;
-#if defined(USE_OZONE) || defined(OS_MAC) || defined(OS_WIN) || \
-    defined(OS_ANDROID)
+#if BUILDFLAG(IS_OZONE) || BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_WIN) || \
+    BUILDFLAG(IS_ANDROID)
   GpuMemoryBufferSupport support;
   GpuMemoryBufferConfigurationSet native_configurations =
       GetNativeGpuMemoryBufferConfigurations(&support);

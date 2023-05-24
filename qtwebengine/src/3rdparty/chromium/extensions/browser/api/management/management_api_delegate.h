@@ -1,11 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef EXTENSIONS_BROWSER_API_MANAGEMENT_MANAGEMENT_API_DELEGATE_H_
 #define EXTENSIONS_BROWSER_API_MANAGEMENT_MANAGEMENT_API_DELEGATE_H_
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "extensions/browser/disable_reason.h"
 #include "extensions/browser/uninstall_reason.h"
 #include "extensions/common/api/management.h"
@@ -89,7 +89,7 @@ class ManagementAPIDelegate {
       content::WebContents* web_contents,
       content::BrowserContext* browser_context,
       const Extension* extension,
-      const base::Callback<void(bool)>& callback) const = 0;
+      base::OnceCallback<void(bool)> callback) const = 0;
 
   // Enables the extension identified by |extension_id|.
   virtual void EnableExtension(content::BrowserContext* context,
@@ -113,7 +113,7 @@ class ManagementAPIDelegate {
   virtual bool UninstallExtension(content::BrowserContext* context,
                                   const std::string& transient_extension_id,
                                   UninstallReason reason,
-                                  base::string16* error) const = 0;
+                                  std::u16string* error) const = 0;
 
   // Creates an app shortcut.
   virtual bool CreateAppShortcutFunctionDelegate(
@@ -163,6 +163,11 @@ class ManagementAPIDelegate {
                           int icon_size,
                           ExtensionIconSet::MatchType match,
                           bool grayscale) const = 0;
+
+  // Returns effective update URL from ExtensionManagement.
+  virtual GURL GetEffectiveUpdateURL(
+      const Extension& extension,
+      content::BrowserContext* context) const = 0;
 };
 
 }  // namespace extensions

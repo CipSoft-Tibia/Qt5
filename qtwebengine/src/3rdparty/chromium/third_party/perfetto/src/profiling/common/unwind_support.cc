@@ -16,7 +16,7 @@
 
 #include "src/profiling/common/unwind_support.h"
 
-#include <inttypes.h>
+#include <cinttypes>
 
 #include <procinfo/process_map.h>
 #include <unwindstack/Maps.h>
@@ -47,8 +47,9 @@ FDMemory::FDMemory(base::ScopedFile mem_fd) : mem_fd_(std::move(mem_fd)) {}
 
 size_t FDMemory::Read(uint64_t addr, void* dst, size_t size) {
   ssize_t rd = pread64(*mem_fd_, dst, size, static_cast<off64_t>(addr));
-  if (rd == -1) {
-    PERFETTO_DPLOG("read of %zu at offset %" PRIu64, size, addr);
+  if (PERFETTO_UNLIKELY(rd == -1)) {
+    PERFETTO_PLOG("Failed remote pread of %zu bytes at address %" PRIx64, size,
+                  addr);
     return 0;
   }
   return static_cast<size_t>(rd);
@@ -66,22 +67,23 @@ bool FDMaps::Parse() {
   if (!base::ReadFileDescriptor(*fd_, &content))
     return false;
 
-  unwindstack::MapInfo* prev_map = nullptr;
-  unwindstack::MapInfo* prev_real_map = nullptr;
+  unwindstack::SharedString name("");
+  std::shared_ptr<unwindstack::MapInfo> prev_map;
   return android::procinfo::ReadMapFileContent(
-      &content[0], [&](uint64_t start, uint64_t end, uint16_t flags,
-                       uint64_t pgoff, ino_t, const char* name) {
+      &content[0], [&](const android::procinfo::MapInfo& mapinfo) {
         // Mark a device map in /dev/ and not in /dev/ashmem/ specially.
-        if (strncmp(name, "/dev/", 5) == 0 &&
-            strncmp(name + 5, "ashmem/", 7) != 0) {
+        auto flags = mapinfo.flags;
+        if (strncmp(mapinfo.name.c_str(), "/dev/", 5) == 0 &&
+            strncmp(mapinfo.name.c_str() + 5, "ashmem/", 7) != 0) {
           flags |= unwindstack::MAPS_FLAGS_DEVICE_MAP;
         }
-        maps_.emplace_back(new unwindstack::MapInfo(
-            prev_map, prev_real_map, start, end, pgoff, flags, name));
-        prev_map = maps_.back().get();
-        if (!prev_map->IsBlank()) {
-          prev_real_map = prev_map;
+        // Share the string if it matches for consecutive maps.
+        if (name != mapinfo.name) {
+          name = unwindstack::SharedString(mapinfo.name);
         }
+        maps_.emplace_back(unwindstack::MapInfo::Create(
+            prev_map, mapinfo.start, mapinfo.end, mapinfo.pgoff, flags, name));
+        prev_map = maps_.back();
       });
 }
 
@@ -93,16 +95,6 @@ UnwindingMetadata::UnwindingMetadata(base::ScopedFile maps_fd,
                                      base::ScopedFile mem_fd)
     : fd_maps(std::move(maps_fd)),
       fd_mem(std::make_shared<FDMemory>(std::move(mem_fd))) {
-#if PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)
-  // For managed processes, the unwinder needs to find & read global symbols in
-  // libart. Without this constraint, it would search all mappings.
-  std::vector<std::string> search_libs{"libart.so", "libartd.so"};
-  jit_debug = std::unique_ptr<unwindstack::JitDebug>(
-      new unwindstack::JitDebug(fd_mem, search_libs));
-  dex_files = std::unique_ptr<unwindstack::DexFiles>(
-      new unwindstack::DexFiles(fd_mem, search_libs));
-#endif
-
   if (!fd_maps.Parse())
     PERFETTO_DLOG("Failed initial maps parse");
 }
@@ -112,25 +104,38 @@ void UnwindingMetadata::ReparseMaps() {
   fd_maps.Reset();
   fd_maps.Parse();
 #if PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)
-  // Reinitialize JIT state, as the referenced memory ranges might have been
-  // unmapped.
-  std::vector<std::string> search_libs{"libart.so", "libartd.so"};
-  jit_debug = std::unique_ptr<unwindstack::JitDebug>(
-      new unwindstack::JitDebug(fd_mem, search_libs));
-  dex_files = std::unique_ptr<unwindstack::DexFiles>(
-      new unwindstack::DexFiles(fd_mem, search_libs));
+  jit_debug.reset();
+  dex_files.reset();
 #endif
 }
 
-FrameData UnwindingMetadata::AnnotateFrame(unwindstack::FrameData frame) {
-  std::string build_id;
-  if (!frame.map_name.empty()) {
-    unwindstack::MapInfo* map_info = fd_maps.Find(frame.pc);
-    if (map_info)
-      build_id = map_info->GetBuildID();
+#if PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)
+unwindstack::JitDebug* UnwindingMetadata::GetJitDebug(
+    unwindstack::ArchEnum arch) {
+  if (jit_debug.get() == nullptr) {
+    std::vector<std::string> search_libs{"libart.so", "libartd.so"};
+    jit_debug = unwindstack::CreateJitDebug(arch, fd_mem, search_libs);
+  }
+  return jit_debug.get();
+}
+
+unwindstack::DexFiles* UnwindingMetadata::GetDexFiles(
+    unwindstack::ArchEnum arch) {
+  if (dex_files.get() == nullptr) {
+    std::vector<std::string> search_libs{"libart.so", "libartd.so"};
+    dex_files = unwindstack::CreateDexFiles(arch, fd_mem, search_libs);
+  }
+  return dex_files.get();
+}
+#endif
+
+const std::string& UnwindingMetadata::GetBuildId(
+    const unwindstack::FrameData& frame) {
+  if (frame.map_info != nullptr && !frame.map_info->name().empty()) {
+    return frame.map_info->GetBuildID();
   }
 
-  return FrameData{std::move(frame), std::move(build_id)};
+  return empty_string_;
 }
 
 std::string StringifyLibUnwindstackError(unwindstack::ErrorCode e) {
@@ -151,6 +156,20 @@ std::string StringifyLibUnwindstackError(unwindstack::ErrorCode e) {
       return "REPEATED_FRAME";
     case unwindstack::ERROR_INVALID_ELF:
       return "INVALID_ELF";
+    case unwindstack::ERROR_SYSTEM_CALL:
+      return "SYSTEM_CALL";
+    case unwindstack::ERROR_THREAD_DOES_NOT_EXIST:
+      return "THREAD_DOES_NOT_EXIST";
+    case unwindstack::ERROR_THREAD_TIMEOUT:
+      return "THREAD_TIMEOUT";
+    case unwindstack::ERROR_BAD_ARCH:
+      return "BAD_ARCH";
+    case unwindstack::ERROR_MAPS_PARSE:
+      return "MAPS_PARSE";
+    case unwindstack::ERROR_INVALID_PARAMETER:
+      return "INVALID_PARAMETER";
+    case unwindstack::ERROR_PTRACE_CALL:
+      return "PTRACE_CALL";
   }
 }
 

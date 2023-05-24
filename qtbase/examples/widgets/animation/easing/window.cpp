@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "window.h"
 
@@ -67,13 +20,13 @@ Window::Window(QWidget *parent)
 
     connect(m_ui.easingCurvePicker, &QListWidget::currentRowChanged,
             this, &Window::curveChanged);
-    connect(m_ui.buttonGroup, QOverload<QAbstractButton *>::of(&QButtonGroup::buttonClicked),
+    connect(m_ui.buttonGroup, &QButtonGroup::buttonClicked,
             this, &Window::pathChanged);
-    connect(m_ui.periodSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+    connect(m_ui.periodSpinBox, &QDoubleSpinBox::valueChanged,
             this, &Window::periodChanged);
-    connect(m_ui.amplitudeSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+    connect(m_ui.amplitudeSpinBox, &QDoubleSpinBox::valueChanged,
             this, &Window::amplitudeChanged);
-    connect(m_ui.overshootSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+    connect(m_ui.overshootSpinBox, &QDoubleSpinBox::valueChanged,
             this, &Window::overshootChanged);
     createCurveIcons();
 
@@ -82,14 +35,14 @@ Window::Window(QWidget *parent)
     m_scene.addItem(m_item);
     m_ui.graphicsView->setScene(&m_scene);
 
-    m_anim = new Animation(m_item, "pos");
+    m_anim = new Animation(m_item, "pos", this);
     m_anim->setEasingCurve(QEasingCurve::OutBounce);
     m_ui.easingCurvePicker->setCurrentRow(int(QEasingCurve::OutBounce));
 
     startAnimation();
 }
 
-QEasingCurve createEasingCurve(QEasingCurve::Type curveType)
+static QEasingCurve createEasingCurve(QEasingCurve::Type curveType)
 {
     QEasingCurve curve(curveType);
 
@@ -119,12 +72,12 @@ void Window::createCurveIcons()
     // Skip QEasingCurve::Custom
     for (int i = 0; i < QEasingCurve::NCurveTypes - 1; ++i) {
         painter.fillRect(QRect(QPoint(0, 0), m_iconSize), brush);
-        QEasingCurve curve = createEasingCurve((QEasingCurve::Type) i);
+        QEasingCurve curve = createEasingCurve(static_cast<QEasingCurve::Type>(i));
         painter.setPen(QColor(0, 0, 255, 64));
         qreal xAxis = m_iconSize.height()/1.5;
         qreal yAxis = m_iconSize.width()/3;
-        painter.drawLine(0, xAxis, m_iconSize.width(),  xAxis);
-        painter.drawLine(yAxis, 0, yAxis, m_iconSize.height());
+        painter.drawLine(QLineF(0, xAxis, m_iconSize.width(), xAxis));
+        painter.drawLine(QLineF(yAxis, 0, yAxis, m_iconSize.height()));
 
         qreal curveScale = m_iconSize.height()/2;
 
@@ -132,18 +85,18 @@ void Window::createCurveIcons()
 
         // start point
         painter.setBrush(Qt::red);
-        QPoint start(yAxis, xAxis - curveScale * curve.valueForProgress(0));
+        QPoint start(qRound(yAxis), qRound(xAxis - curveScale * curve.valueForProgress(0)));
         painter.drawRect(start.x() - 1, start.y() - 1, 3, 3);
 
         // end point
         painter.setBrush(Qt::blue);
-        QPoint end(yAxis + curveScale, xAxis - curveScale * curve.valueForProgress(1));
+        QPoint end(qRound(yAxis + curveScale), qRound(xAxis - curveScale * curve.valueForProgress(1)));
         painter.drawRect(end.x() - 1, end.y() - 1, 3, 3);
 
         QPainterPath curvePath;
         curvePath.moveTo(start);
         for (qreal t = 0; t <= 1.0; t+=1.0/curveScale) {
-            QPoint to;
+            QPointF to;
             to.setX(yAxis + curveScale * t);
             to.setY(xAxis - curveScale * curve.valueForProgress(t));
             curvePath.lineTo(to);
@@ -169,7 +122,7 @@ void Window::startAnimation()
 
 void Window::curveChanged(int row)
 {
-    QEasingCurve::Type curveType = (QEasingCurve::Type)row;
+    QEasingCurve::Type curveType = static_cast<QEasingCurve::Type>(row);
     m_anim->setEasingCurve(createEasingCurve(curveType));
     m_anim->setCurrentTime(0);
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgrhilayer_p.h"
 
@@ -44,7 +8,7 @@
 #include <private/qsgdefaultrendercontext_p.h>
 
 QSGRhiLayer::QSGRhiLayer(QSGRenderContext *context)
-    : QSGLayer(*(new QSGRhiLayerPrivate))
+    : QSGLayer(*(new QSGTexturePrivate(this)))
     , m_mipmap(false)
     , m_live(true)
     , m_recursive(false)
@@ -72,10 +36,9 @@ void QSGRhiLayer::invalidated()
     m_renderer = nullptr;
 }
 
-int QSGRhiLayerPrivate::comparisonKey() const
+qint64 QSGRhiLayer::comparisonKey() const
 {
-    Q_Q(const QSGRhiLayer);
-    return int(qintptr(q->m_texture));
+    return qint64(m_texture);
 }
 
 bool QSGRhiLayer::hasAlphaChannel() const
@@ -88,24 +51,12 @@ bool QSGRhiLayer::hasMipmaps() const
     return m_mipmap;
 }
 
-int QSGRhiLayer::textureId() const
+QRhiTexture *QSGRhiLayer::rhiTexture() const
 {
-    Q_ASSERT_X(false, "QSGRhiLayer::textureId()", "Not implemented for RHI");
-    return 0;
+    return m_texture;
 }
 
-void QSGRhiLayer::bind()
-{
-    Q_ASSERT_X(false, "QSGRhiLayer::bind()", "Not implemented for RHI");
-}
-
-QRhiTexture *QSGRhiLayerPrivate::rhiTexture() const
-{
-    Q_Q(const QSGRhiLayer);
-    return q->m_texture;
-}
-
-void QSGRhiLayerPrivate::updateRhiTexture(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates)
+void QSGRhiLayer::commitTextureOperations(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates)
 {
     Q_UNUSED(rhi);
     Q_UNUSED(resourceUpdates);
@@ -150,31 +101,51 @@ void QSGRhiLayer::setItem(QSGNode *item)
     markDirtyTexture();
 }
 
-void QSGRhiLayer::setRect(const QRectF &rect)
+void QSGRhiLayer::setRect(const QRectF &logicalRect)
 {
-    if (rect == m_rect)
+    if (logicalRect == m_logicalRect)
         return;
 
-    m_rect = rect;
+    m_logicalRect = logicalRect;
     markDirtyTexture();
 }
 
-void QSGRhiLayer::setSize(const QSize &size)
+void QSGRhiLayer::setSize(const QSize &pixelSize)
 {
-    if (size == m_size)
+    if (pixelSize == m_pixelSize)
         return;
 
-    m_size = size;
+    m_pixelSize = pixelSize;
 
-    if (m_live && m_size.isNull())
+    if (m_live && m_pixelSize.isNull())
         releaseResources();
 
     markDirtyTexture();
 }
 
-void QSGRhiLayer::setFormat(uint format)
+void QSGRhiLayer::setFormat(Format format)
 {
-    Q_UNUSED(format);
+    QRhiTexture::Format rhiFormat = QRhiTexture::RGBA8;
+    switch (format) {
+    case RGBA16F:
+        rhiFormat = QRhiTexture::RGBA16F;
+        break;
+    case RGBA32F:
+        rhiFormat = QRhiTexture::RGBA32F;
+        break;
+    default:
+        break;
+    }
+
+    if (rhiFormat == m_format)
+        return;
+
+    if (m_rhi->isTextureFormatSupported(rhiFormat)) {
+        m_format = rhiFormat;
+        markDirtyTexture();
+    } else {
+        qWarning("QSGRhiLayer: Attempted to set unsupported texture format %d", int(rhiFormat));
+    }
 }
 
 void QSGRhiLayer::setLive(bool live)
@@ -184,7 +155,7 @@ void QSGRhiLayer::setLive(bool live)
 
     m_live = live;
 
-    if (m_live && (!m_item || m_size.isNull()))
+    if (m_live && (!m_item || m_pixelSize.isNull()))
         releaseResources();
 
     markDirtyTexture();
@@ -245,7 +216,7 @@ void QSGRhiLayer::releaseResources()
 
 void QSGRhiLayer::grab()
 {
-    if (!m_item || m_size.isNull()) {
+    if (!m_item || m_pixelSize.isEmpty()) {
         releaseResources();
         m_dirtyTexture = false;
         return;
@@ -256,7 +227,7 @@ void QSGRhiLayer::grab()
     if (effectiveSamples <= 1)
         effectiveSamples = m_context->msaaSampleCount();
 
-    const bool needsNewRt = !m_rt || m_rt->pixelSize() != m_size || (m_recursive && !m_secondaryTexture);
+    const bool needsNewRt = !m_rt || m_rt->pixelSize() != m_pixelSize || (m_recursive && !m_secondaryTexture) || (m_texture && m_texture->format() != m_format);
     const bool mipmapSettingChanged = m_texture && m_texture->flags().testFlag(QRhiTexture::MipMapped) != m_mipmap;
     const bool msaaSettingChanged = (effectiveSamples > 1 && !m_msaaColorBuffer) || (effectiveSamples <= 1 && m_msaaColorBuffer);
 
@@ -273,32 +244,44 @@ void QSGRhiLayer::grab()
         if (m_mipmap)
             textureFlags |= QRhiTexture::MipMapped | QRhiTexture::UsedWithGenerateMips;
 
+        // Not the same as m_context->useDepthBufferFor2D(), only the env.var
+        // is to be checked here. Consider a layer with a non-offscreen View3D
+        // in it. That still needs a depth buffer, even when the 2D content
+        // renders without relying on it (i.e. RenderMode2DNoDepthBuffer does
+        // not imply not having a depth/stencil attachment for the render
+        // target! The env.var serves as a hard switch, on the other hand, and
+        // that will likely break 3D for instance but that's fine)
+        static bool depthBufferEnabled = qEnvironmentVariableIsEmpty("QSG_NO_DEPTH_BUFFER");
+
         if (m_multisampling) {
             releaseResources();
-            m_msaaColorBuffer = m_rhi->newRenderBuffer(QRhiRenderBuffer::Color, m_size, effectiveSamples);
-            if (!m_msaaColorBuffer->build()) {
+            m_msaaColorBuffer = m_rhi->newRenderBuffer(QRhiRenderBuffer::Color, m_pixelSize, effectiveSamples);
+            if (!m_msaaColorBuffer->create()) {
                 qWarning("Failed to build multisample color buffer for layer of size %dx%d, sample count %d",
-                         m_size.width(), m_size.height(), effectiveSamples);
+                         m_pixelSize.width(), m_pixelSize.height(), effectiveSamples);
                 releaseResources();
                 return;
             }
-            m_texture = m_rhi->newTexture(m_format, m_size, 1, textureFlags);
-            if (!m_texture->build()) {
-                qWarning("Failed to build texture for layer of size %dx%d", m_size.width(), m_size.height());
+            m_texture = m_rhi->newTexture(m_format, m_pixelSize, 1, textureFlags);
+            if (!m_texture->create()) {
+                qWarning("Failed to build texture for layer of size %dx%d", m_pixelSize.width(), m_pixelSize.height());
                 releaseResources();
                 return;
             }
-            m_ds = m_rhi->newRenderBuffer(QRhiRenderBuffer::DepthStencil, m_size, effectiveSamples);
-            if (!m_ds->build()) {
-                qWarning("Failed to build depth-stencil buffer for layer");
-                releaseResources();
-                return;
+            if (depthBufferEnabled) {
+                m_ds = m_rhi->newRenderBuffer(QRhiRenderBuffer::DepthStencil, m_pixelSize, effectiveSamples);
+                if (!m_ds->create()) {
+                    qWarning("Failed to build depth-stencil buffer for layer");
+                    releaseResources();
+                    return;
+                }
             }
             QRhiTextureRenderTargetDescription desc;
             QRhiColorAttachment color0(m_msaaColorBuffer);
             color0.setResolveTexture(m_texture);
             desc.setColorAttachments({ color0 });
-            desc.setDepthStencilBuffer(m_ds);
+            if (depthBufferEnabled)
+                desc.setDepthStencilBuffer(m_ds);
             m_rt = m_rhi->newTextureRenderTarget(desc);
             m_rtRp = m_rt->newCompatibleRenderPassDescriptor();
             if (!m_rtRp) {
@@ -307,38 +290,43 @@ void QSGRhiLayer::grab()
                 return;
             }
             m_rt->setRenderPassDescriptor(m_rtRp);
-            if (!m_rt->build()) {
+            if (!m_rt->create()) {
                 qWarning("Failed to build texture render target for layer");
                 releaseResources();
                 return;
             }
         } else {
             releaseResources();
-            m_texture = m_rhi->newTexture(m_format, m_size, 1, textureFlags);
-            if (!m_texture->build()) {
-                qWarning("Failed to build texture for layer of size %dx%d", m_size.width(), m_size.height());
+            m_texture = m_rhi->newTexture(m_format, m_pixelSize, 1, textureFlags);
+            if (!m_texture->create()) {
+                qWarning("Failed to build texture for layer of size %dx%d", m_pixelSize.width(), m_pixelSize.height());
                 releaseResources();
                 return;
             }
-            m_ds = m_rhi->newRenderBuffer(QRhiRenderBuffer::DepthStencil, m_size);
-            if (!m_ds->build()) {
-                qWarning("Failed to build depth-stencil buffer for layer");
-                releaseResources();
-                return;
+            if (depthBufferEnabled) {
+                m_ds = m_rhi->newRenderBuffer(QRhiRenderBuffer::DepthStencil, m_pixelSize);
+                if (!m_ds->create()) {
+                    qWarning("Failed to build depth-stencil buffer for layer");
+                    releaseResources();
+                    return;
+                }
             }
             QRhiColorAttachment color0(m_texture);
             if (m_recursive) {
                 // Here rt is associated with m_secondaryTexture instead of m_texture.
                 // We will issue a copy to m_texture afterwards.
-                m_secondaryTexture = m_rhi->newTexture(m_format, m_size, 1, textureFlags);
-                if (!m_secondaryTexture->build()) {
-                    qWarning("Failed to build texture for layer of size %dx%d", m_size.width(), m_size.height());
+                m_secondaryTexture = m_rhi->newTexture(m_format, m_pixelSize, 1, textureFlags);
+                if (!m_secondaryTexture->create()) {
+                    qWarning("Failed to build texture for layer of size %dx%d", m_pixelSize.width(), m_pixelSize.height());
                     releaseResources();
                     return;
                 }
                 color0.setTexture(m_secondaryTexture);
             }
-            m_rt = m_rhi->newTextureRenderTarget({ color0, m_ds });
+            if (depthBufferEnabled)
+                m_rt = m_rhi->newTextureRenderTarget({ color0, m_ds });
+            else
+                m_rt = m_rhi->newTextureRenderTarget({ color0 });
             m_rtRp = m_rt->newCompatibleRenderPassDescriptor();
             if (!m_rtRp) {
                 qWarning("Failed to build render pass descriptor for layer");
@@ -346,7 +334,7 @@ void QSGRhiLayer::grab()
                 return;
             }
             m_rt->setRenderPassDescriptor(m_rtRp);
-            if (!m_rt->build()) {
+            if (!m_rt->create()) {
                 qWarning("Failed to build texture render target for layer");
                 releaseResources();
                 return;
@@ -361,7 +349,10 @@ void QSGRhiLayer::grab()
         return;
 
     if (!m_renderer) {
-        m_renderer = m_context->createRenderer();
+        const bool useDepth = m_context->useDepthBufferFor2D();
+        const QSGRendererInterface::RenderMode renderMode = useDepth ? QSGRendererInterface::RenderMode2D
+                                                                     : QSGRendererInterface::RenderMode2DNoDepthBuffer;
+        m_renderer = m_context->createRenderer(renderMode);
         connect(m_renderer, SIGNAL(sceneGraphChanged()), this, SLOT(markDirtyTexture()));
     }
     m_renderer->setRootNode(static_cast<QSGRootNode *>(root));
@@ -374,42 +365,40 @@ void QSGRhiLayer::grab()
     m_dirtyTexture = false;
 
     m_renderer->setDevicePixelRatio(m_dpr);
-    m_renderer->setDeviceRect(m_size);
-    m_renderer->setViewportRect(m_size);
-    QRectF mirrored;
+    m_renderer->setDeviceRect(m_pixelSize);
+    m_renderer->setViewportRect(m_pixelSize);
+    QRectF mirrored; // in logical coordinates (no dpr) since this gets passed to setProjectionMatrixToRect()
     if (m_rhi->isYUpInFramebuffer()) {
-        mirrored = QRectF(m_mirrorHorizontal ? m_rect.right() : m_rect.left(),
-                          m_mirrorVertical ? m_rect.bottom() : m_rect.top(),
-                          m_mirrorHorizontal ? -m_rect.width() : m_rect.width(),
-                          m_mirrorVertical ? -m_rect.height() : m_rect.height());
+        mirrored = QRectF(m_mirrorHorizontal ? m_logicalRect.right() : m_logicalRect.left(),
+                          m_mirrorVertical ? m_logicalRect.bottom() : m_logicalRect.top(),
+                          m_mirrorHorizontal ? -m_logicalRect.width() : m_logicalRect.width(),
+                          m_mirrorVertical ? -m_logicalRect.height() : m_logicalRect.height());
     } else {
-        mirrored = QRectF(m_mirrorHorizontal ? m_rect.right() : m_rect.left(),
-                          m_mirrorVertical ? m_rect.top() : m_rect.bottom(),
-                          m_mirrorHorizontal ? -m_rect.width() : m_rect.width(),
-                          m_mirrorVertical ? m_rect.height() : -m_rect.height());
+        mirrored = QRectF(m_mirrorHorizontal ? m_logicalRect.right() : m_logicalRect.left(),
+                          m_mirrorVertical ? m_logicalRect.top() : m_logicalRect.bottom(),
+                          m_mirrorHorizontal ? -m_logicalRect.width() : m_logicalRect.width(),
+                          m_mirrorVertical ? m_logicalRect.height() : -m_logicalRect.height());
     }
     QSGAbstractRenderer::MatrixTransformFlags matrixFlags;
     if (!m_rhi->isYUpInNDC())
         matrixFlags |= QSGAbstractRenderer::MatrixTransformFlipY;
     m_renderer->setProjectionMatrixToRect(mirrored, matrixFlags);
     m_renderer->setClearColor(Qt::transparent);
-    m_renderer->setRenderTarget(m_rt);
-    m_renderer->setCommandBuffer(m_context->currentFrameCommandBuffer());
-    m_renderer->setRenderPassDescriptor(m_rtRp);
+    m_renderer->setRenderTarget({ m_rt, m_rtRp, m_context->currentFrameCommandBuffer() });
 
     QRhiResourceUpdateBatch *resourceUpdates = nullptr;
 
     // render with our own "sub-renderer" (this will just add a render pass to the command buffer)
     if (m_multisampling) {
-        m_context->renderNextRhiFrame(m_renderer);
+        m_context->renderNextFrame(m_renderer);
     } else {
         if (m_recursive) {
-            m_context->renderNextRhiFrame(m_renderer);
+            m_context->renderNextFrame(m_renderer);
             if (!resourceUpdates)
                 resourceUpdates = m_rhi->nextResourceUpdateBatch();
             resourceUpdates->copyTexture(m_texture, m_secondaryTexture);
         } else {
-            m_context->renderNextRhiFrame(m_renderer);
+            m_context->renderNextFrame(m_renderer);
         }
     }
 
@@ -454,10 +443,13 @@ QImage QSGRhiLayer::toImage() const
         return QImage();
     }
 
-    // There is no room for negotiation here, the texture is RGBA8, and the
-    // readback happens with GL_RGBA on GL, so RGBA8888 is the only option.
+    // There is little room for negotiation here, the texture is one of the formats from setFormat.
     // Also, Quick is always premultiplied alpha.
-    const QImage::Format imageFormat = QImage::Format_RGBA8888_Premultiplied;
+    QImage::Format imageFormat = QImage::Format_RGBA8888_Premultiplied;
+    if (m_format == QRhiTexture::RGBA16F)
+        imageFormat = QImage::Format_RGBA16FPx4_Premultiplied;
+    else if (m_format == QRhiTexture::RGBA32F)
+        imageFormat = QImage::Format_RGBA32FPx4_Premultiplied;
 
     const uchar *p = reinterpret_cast<const uchar *>(result.data.constData());
     return QImage(p, result.pixelSize.width(), result.pixelSize.height(), imageFormat).mirrored();

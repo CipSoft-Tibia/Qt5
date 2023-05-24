@@ -504,19 +504,19 @@ for examples of modes-formats supported by DRM backend.
 .RE
 .TP 7
 .BI "transform=" normal
-The transformation applied to screen output (string). The transform key can
-be one of the following 8 strings:
+How you have rotated your monitor from its normal orientation (string).
+The transform key can be one of the following 8 strings:
 .PP
 .RS 10
 .nf
-.BR  "normal        " "Normal output."
-.BR  "90            " "90 degrees clockwise."
-.BR  "180           " "Upside down."
-.BR  "270           " "90 degrees counter clockwise."
-.BR  "flipped       " "Horizontally flipped"
-.BR  "flipped-90    " "Flipped and 90 degrees clockwise"
-.BR  "flipped-180   " "Flipped upside down"
-.BR  "flipped-270   " "Flipped and 90 degrees counter clockwise"
+.BR  "normal               " "Normal output."
+.BR  "rotate-90            " "90 degrees clockwise."
+.BR  "rotate-180           " "Upside down."
+.BR  "rotate-270           " "90 degrees counter clockwise."
+.BR  "flipped              " "Horizontally flipped"
+.BR  "flipped-rotate-90    " "Flipped and 90 degrees clockwise"
+.BR  "flipped-rotate-180   " "Flipped and upside down"
+.BR  "flipped-rotate-270   " "Flipped and 90 degrees counter clockwise"
 .fi
 .RE
 .TP 7
@@ -552,8 +552,13 @@ content-protection, provided by the backends, on this output. By
 default, HDCP support is always allowed for an output. The
 content-protection can actually be realized, only if the hardware
 (source and sink) support HDCP, and the backend has the implementation
-of content-protection protocol. Currently, no backend actually
-implements HDCP yet.
+of content-protection protocol. Currently, HDCP is supported by drm-backend.
+.RE
+.TP 7
+.BI "app-ids=" app-id[,app_id]*
+A comma separated list of the IDs of applications to place on this output.
+These IDs should match the application IDs as set with the xdg_shell.set_app_id
+request. Currently, this option is supported by kiosk-shell.
 .RE
 .SH "INPUT-METHOD SECTION"
 .TP 7

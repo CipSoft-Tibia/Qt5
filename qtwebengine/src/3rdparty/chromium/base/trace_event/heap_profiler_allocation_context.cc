@@ -1,13 +1,13 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/trace_event/heap_profiler_allocation_context.h"
 
+#include <algorithm>
 #include <cstring>
 
 #include "base/hash/hash.h"
-#include "base/macros.h"
 
 namespace base {
 namespace trace_event {
@@ -25,6 +25,7 @@ bool operator != (const StackFrame& lhs, const StackFrame& rhs) {
 }
 
 Backtrace::Backtrace() = default;
+Backtrace::Backtrace(const Backtrace &) = default;
 
 bool operator==(const Backtrace& lhs, const Backtrace& rhs) {
   if (lhs.frame_count != rhs.frame_count) return false;
@@ -59,7 +60,7 @@ using base::trace_event::Backtrace;
 using base::trace_event::StackFrame;
 
 size_t hash<StackFrame>::operator()(const StackFrame& frame) const {
-  return hash<const void*>()(frame.value);
+  return hash<const void*>()(frame.value.get());
 }
 
 size_t hash<Backtrace>::operator()(const Backtrace& backtrace) const {

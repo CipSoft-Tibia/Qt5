@@ -97,7 +97,6 @@ pixman_renderer_read_pixels(struct weston_output *output,
 			       uint32_t width, uint32_t height)
 {
 	struct pixman_output_state *po = get_output_state(output);
-	pixman_transform_t transform;
 	pixman_image_t *out_buf;
 
 	if (!po->hw_buffer) {
@@ -111,25 +110,15 @@ pixman_renderer_read_pixels(struct weston_output *output,
 		pixels,
 		(PIXMAN_FORMAT_BPP(format) / 8) * width);
 
-	/* Caller expects vflipped source image */
-	pixman_transform_init_translate(&transform,
-					pixman_int_to_fixed (x),
-					pixman_int_to_fixed (y - pixman_image_get_height (po->hw_buffer)));
-	pixman_transform_scale(&transform, NULL,
-			       pixman_fixed_1,
-			       pixman_fixed_minus_1);
-	pixman_image_set_transform(po->hw_buffer, &transform);
-
 	pixman_image_composite32(PIXMAN_OP_SRC,
 				 po->hw_buffer, /* src */
 				 NULL /* mask */,
 				 out_buf, /* dest */
-				 0, 0, /* src_x, src_y */
+				 x, y, /* src_x, src_y */
 				 0, 0, /* mask_x, mask_y */
 				 0, 0, /* dest_x, dest_y */
 				 pixman_image_get_width (po->hw_buffer), /* width */
 				 pixman_image_get_height (po->hw_buffer) /* height */);
-	pixman_image_set_transform(po->hw_buffer, NULL);
 
 	pixman_image_unref(out_buf);
 
@@ -240,6 +229,12 @@ composite_whole(pixman_op_t op,
 	pixman_image_set_transform(src, transform);
 	pixman_image_set_filter(src, filter, NULL, 0);
 
+	/* bilinear filtering needs the equivalent of OpenGL CLAMP_TO_EDGE */
+	if (filter == PIXMAN_FILTER_NEAREST)
+		pixman_image_set_repeat(src, PIXMAN_REPEAT_NONE);
+	else
+		pixman_image_set_repeat(src, PIXMAN_REPEAT_PAD);
+
 	pixman_image_composite32(op, src, mask, dest,
 				 0, 0, /* src_x, src_y */
 				 0, 0, /* mask_x, mask_y */
@@ -265,9 +260,17 @@ composite_clipped(pixman_image_t *src,
 	void *src_data;
 	int i;
 
-	/* Hardcoded to use PIXMAN_OP_OVER, because sampling outside of
+	/*
+	 * Hardcoded to use PIXMAN_OP_OVER, because sampling outside of
 	 * a Pixman image produces (0,0,0,0) instead of discarding the
 	 * fragment.
+	 *
+	 * Also repeat mode must be PIXMAN_REPEAT_NONE (the default) to
+	 * actually sample (0,0,0,0). This may cause issues for clients that
+	 * expect OpenGL CLAMP_TO_EDGE sampling behavior on their buffer.
+	 * Using temporary 'boximg' it is not possible to apply CLAMP_TO_EDGE
+	 * correctly with bilinear filter. Maybe trapezoid rendering could be
+	 * the answer instead of source clip?
 	 */
 
 	dest_width = pixman_image_get_width(dest);
@@ -590,8 +593,7 @@ pixman_renderer_repaint_output(struct weston_output *output,
 	}
 	pixman_region32_fini(&hw_damage);
 
-	pixman_region32_copy(&output->previous_damage, output_damage);
-	wl_signal_emit(&output->frame_signal, output);
+	wl_signal_emit(&output->frame_signal, output_damage);
 
 	/* Actual flip should be done by caller */
 }
@@ -883,7 +885,6 @@ pixman_renderer_init(struct weston_compositor *ec)
 		pixman_renderer_surface_copy_content;
 	ec->renderer = &renderer->base;
 	ec->capabilities |= WESTON_CAP_ROTATION_ANY;
-	ec->capabilities |= WESTON_CAP_CAPTURE_YFLIP;
 	ec->capabilities |= WESTON_CAP_VIEW_CLIP_MASK;
 
 	renderer->debug_binding =
@@ -923,7 +924,8 @@ pixman_renderer_output_set_hw_extra_damage(struct weston_output *output,
 }
 
 WL_EXPORT int
-pixman_renderer_output_create(struct weston_output *output, uint32_t flags)
+pixman_renderer_output_create(struct weston_output *output,
+			      const struct pixman_renderer_output_options *options)
 {
 	struct pixman_output_state *po;
 	int w, h;
@@ -932,7 +934,7 @@ pixman_renderer_output_create(struct weston_output *output, uint32_t flags)
 	if (po == NULL)
 		return -1;
 
-	if (flags & PIXMAN_RENDERER_OUTPUT_USE_SHADOW) {
+	if (options->use_shadow) {
 		/* set shadow image transformation */
 		w = output->current_mode->width;
 		h = output->current_mode->height;

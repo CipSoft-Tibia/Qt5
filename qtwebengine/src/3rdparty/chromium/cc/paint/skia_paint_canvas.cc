@@ -1,15 +1,26 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cc/paint/skia_paint_canvas.h"
 
-#include "base/bind.h"
+#include <utility>
+
+#include "base/functional/bind.h"
+#include "base/notreached.h"
+#include "base/trace_event/trace_event.h"
 #include "cc/paint/display_item_list.h"
 #include "cc/paint/paint_recorder.h"
 #include "cc/paint/scoped_raster_flags.h"
+#include "cc/paint/skottie_wrapper.h"
+#include "skia/ext/legacy_display_globals.h"
 #include "third_party/skia/include/core/SkAnnotation.h"
+#include "third_party/skia/include/core/SkCanvas.h"
+#include "third_party/skia/include/core/SkImageInfo.h"
+#include "third_party/skia/include/core/SkPoint.h"
+#include "third_party/skia/include/core/SkTextBlob.h"
 #include "third_party/skia/include/docs/SkPDFDocument.h"
+#include "third_party/skia/include/gpu/GrRecordingContext.h"
 
 namespace cc {
 SkiaPaintCanvas::ContextFlushes::ContextFlushes()
@@ -24,7 +35,8 @@ SkiaPaintCanvas::SkiaPaintCanvas(SkCanvas* canvas,
 
 SkiaPaintCanvas::SkiaPaintCanvas(const SkBitmap& bitmap,
                                  ImageProvider* image_provider)
-    : canvas_(new SkCanvas(bitmap)),
+    : canvas_(new SkCanvas(bitmap,
+                           skia::LegacyDisplayGlobals::GetSkSurfaceProps())),
       bitmap_(bitmap),
       owned_(canvas_),
       image_provider_(image_provider) {}
@@ -51,20 +63,32 @@ void SkiaPaintCanvas::flush() {
   canvas_->flush();
 }
 
+bool SkiaPaintCanvas::NeedsFlush() const {
+  // Since flush() is always capable of flushing immediately with
+  // SkiaPaintCanvas, there is never any need for deferred flushing.
+  return false;
+}
+
 int SkiaPaintCanvas::save() {
   return canvas_->save();
 }
 
-int SkiaPaintCanvas::saveLayer(const SkRect* bounds, const PaintFlags* flags) {
-  if (!flags)
-    return canvas_->saveLayer(bounds, nullptr);
-
-  SkPaint paint = flags->ToSkPaint();
-  return canvas_->saveLayer(bounds, &paint);
+int SkiaPaintCanvas::saveLayer(const PaintFlags& flags) {
+  SkPaint paint = flags.ToSkPaint();
+  return canvas_->saveLayer(nullptr, &paint);
 }
 
-int SkiaPaintCanvas::saveLayerAlpha(const SkRect* bounds, uint8_t alpha) {
-  return canvas_->saveLayerAlpha(bounds, alpha);
+int SkiaPaintCanvas::saveLayer(const SkRect& bounds, const PaintFlags& flags) {
+  SkPaint paint = flags.ToSkPaint();
+  return canvas_->saveLayer(&bounds, &paint);
+}
+
+int SkiaPaintCanvas::saveLayerAlphaf(float alpha) {
+  return canvas_->saveLayerAlphaf(nullptr, alpha);
+}
+
+int SkiaPaintCanvas::saveLayerAlphaf(const SkRect& bounds, float alpha) {
+  return canvas_->saveLayerAlphaf(&bounds, alpha);
 }
 
 void SkiaPaintCanvas::restore() {
@@ -91,12 +115,12 @@ void SkiaPaintCanvas::rotate(SkScalar degrees) {
   canvas_->rotate(degrees);
 }
 
-void SkiaPaintCanvas::concat(const SkMatrix& matrix) {
-  canvas_->concat(matrix);
+void SkiaPaintCanvas::setMatrix(const SkM44& matrix) {
+  canvas_->setMatrix(matrix);
 }
 
-void SkiaPaintCanvas::setMatrix(const SkMatrix& matrix) {
-  canvas_->setMatrix(matrix);
+void SkiaPaintCanvas::concat(const SkM44& matrix) {
+  canvas_->concat(matrix);
 }
 
 void SkiaPaintCanvas::clipRect(const SkRect& rect,
@@ -113,31 +137,24 @@ void SkiaPaintCanvas::clipRRect(const SkRRect& rrect,
 
 void SkiaPaintCanvas::clipPath(const SkPath& path,
                                SkClipOp op,
-                               bool do_anti_alias) {
+                               bool do_anti_alias,
+                               UsePaintCache) {
   canvas_->clipPath(path, op, do_anti_alias);
-}
-
-SkRect SkiaPaintCanvas::getLocalClipBounds() const {
-  return canvas_->getLocalClipBounds();
 }
 
 bool SkiaPaintCanvas::getLocalClipBounds(SkRect* bounds) const {
   return canvas_->getLocalClipBounds(bounds);
 }
 
-SkIRect SkiaPaintCanvas::getDeviceClipBounds() const {
-  return canvas_->getDeviceClipBounds();
-}
-
 bool SkiaPaintCanvas::getDeviceClipBounds(SkIRect* bounds) const {
   return canvas_->getDeviceClipBounds(bounds);
 }
 
-void SkiaPaintCanvas::drawColor(SkColor color, SkBlendMode mode) {
+void SkiaPaintCanvas::drawColor(SkColor4f color, SkBlendMode mode) {
   canvas_->drawColor(color, mode);
 }
 
-void SkiaPaintCanvas::clear(SkColor color) {
+void SkiaPaintCanvas::clear(SkColor4f color) {
   canvas_->clear(color);
 }
 
@@ -147,8 +164,8 @@ void SkiaPaintCanvas::drawLine(SkScalar x0,
                                SkScalar y1,
                                const PaintFlags& flags) {
   ScopedRasterFlags raster_flags(&flags, image_provider_,
-                                 canvas_->getTotalMatrix(), max_texture_size(),
-                                 255u);
+                                 canvas_->getTotalMatrix(), GetMaxTextureSize(),
+                                 1.0f);
   if (!raster_flags.flags())
     return;
 
@@ -161,8 +178,8 @@ void SkiaPaintCanvas::drawLine(SkScalar x0,
 
 void SkiaPaintCanvas::drawRect(const SkRect& rect, const PaintFlags& flags) {
   ScopedRasterFlags raster_flags(&flags, image_provider_,
-                                 canvas_->getTotalMatrix(), max_texture_size(),
-                                 255u);
+                                 canvas_->getTotalMatrix(), GetMaxTextureSize(),
+                                 1.0f);
   if (!raster_flags.flags())
     return;
   raster_flags.flags()->DrawToSk(
@@ -173,8 +190,8 @@ void SkiaPaintCanvas::drawRect(const SkRect& rect, const PaintFlags& flags) {
 
 void SkiaPaintCanvas::drawIRect(const SkIRect& rect, const PaintFlags& flags) {
   ScopedRasterFlags raster_flags(&flags, image_provider_,
-                                 canvas_->getTotalMatrix(), max_texture_size(),
-                                 255u);
+                                 canvas_->getTotalMatrix(), GetMaxTextureSize(),
+                                 1.0f);
   if (!raster_flags.flags())
     return;
   raster_flags.flags()->DrawToSk(
@@ -185,8 +202,8 @@ void SkiaPaintCanvas::drawIRect(const SkIRect& rect, const PaintFlags& flags) {
 
 void SkiaPaintCanvas::drawOval(const SkRect& oval, const PaintFlags& flags) {
   ScopedRasterFlags raster_flags(&flags, image_provider_,
-                                 canvas_->getTotalMatrix(), max_texture_size(),
-                                 255u);
+                                 canvas_->getTotalMatrix(), GetMaxTextureSize(),
+                                 1.0f);
   if (!raster_flags.flags())
     return;
   raster_flags.flags()->DrawToSk(
@@ -197,8 +214,8 @@ void SkiaPaintCanvas::drawOval(const SkRect& oval, const PaintFlags& flags) {
 
 void SkiaPaintCanvas::drawRRect(const SkRRect& rrect, const PaintFlags& flags) {
   ScopedRasterFlags raster_flags(&flags, image_provider_,
-                                 canvas_->getTotalMatrix(), max_texture_size(),
-                                 255u);
+                                 canvas_->getTotalMatrix(), GetMaxTextureSize(),
+                                 1.0f);
   if (!raster_flags.flags())
     return;
   raster_flags.flags()->DrawToSk(
@@ -211,8 +228,8 @@ void SkiaPaintCanvas::drawDRRect(const SkRRect& outer,
                                  const SkRRect& inner,
                                  const PaintFlags& flags) {
   ScopedRasterFlags raster_flags(&flags, image_provider_,
-                                 canvas_->getTotalMatrix(), max_texture_size(),
-                                 255u);
+                                 canvas_->getTotalMatrix(), GetMaxTextureSize(),
+                                 1.0f);
   if (!raster_flags.flags())
     return;
   raster_flags.flags()->DrawToSk(
@@ -227,8 +244,8 @@ void SkiaPaintCanvas::drawRoundRect(const SkRect& rect,
                                     SkScalar ry,
                                     const PaintFlags& flags) {
   ScopedRasterFlags raster_flags(&flags, image_provider_,
-                                 canvas_->getTotalMatrix(), max_texture_size(),
-                                 255u);
+                                 canvas_->getTotalMatrix(), GetMaxTextureSize(),
+                                 1.0f);
   if (!raster_flags.flags())
     return;
   raster_flags.flags()->DrawToSk(
@@ -238,10 +255,12 @@ void SkiaPaintCanvas::drawRoundRect(const SkRect& rect,
   FlushAfterDrawIfNeeded();
 }
 
-void SkiaPaintCanvas::drawPath(const SkPath& path, const PaintFlags& flags) {
+void SkiaPaintCanvas::drawPath(const SkPath& path,
+                               const PaintFlags& flags,
+                               UsePaintCache) {
   ScopedRasterFlags raster_flags(&flags, image_provider_,
-                                 canvas_->getTotalMatrix(), max_texture_size(),
-                                 255u);
+                                 canvas_->getTotalMatrix(), GetMaxTextureSize(),
+                                 1.0f);
   if (!raster_flags.flags())
     return;
   raster_flags.flags()->DrawToSk(
@@ -253,19 +272,20 @@ void SkiaPaintCanvas::drawPath(const SkPath& path, const PaintFlags& flags) {
 void SkiaPaintCanvas::drawImage(const PaintImage& image,
                                 SkScalar left,
                                 SkScalar top,
+                                const SkSamplingOptions& sampling,
                                 const PaintFlags* flags) {
   DCHECK(!image.IsPaintWorklet());
-  base::Optional<ScopedRasterFlags> scoped_flags;
+  absl::optional<ScopedRasterFlags> scoped_flags;
   if (flags) {
     scoped_flags.emplace(flags, image_provider_, canvas_->getTotalMatrix(),
-                         max_texture_size(), 255u);
+                         GetMaxTextureSize(), 1.0f);
     if (!scoped_flags->flags())
       return;
   }
 
   const PaintFlags* raster_flags = scoped_flags ? scoped_flags->flags() : flags;
-  PlaybackParams params(image_provider_, canvas_->getTotalMatrix());
-  DrawImageOp draw_image_op(image, left, top, nullptr);
+  PlaybackParams params(image_provider_, canvas_->getLocalToDevice());
+  DrawImageOp draw_image_op(image, left, top, sampling, nullptr);
   DrawImageOp::RasterWithFlags(&draw_image_op, raster_flags, canvas_, params);
   FlushAfterDrawIfNeeded();
 }
@@ -273,19 +293,21 @@ void SkiaPaintCanvas::drawImage(const PaintImage& image,
 void SkiaPaintCanvas::drawImageRect(const PaintImage& image,
                                     const SkRect& src,
                                     const SkRect& dst,
+                                    const SkSamplingOptions& sampling,
                                     const PaintFlags* flags,
                                     SkCanvas::SrcRectConstraint constraint) {
-  base::Optional<ScopedRasterFlags> scoped_flags;
+  absl::optional<ScopedRasterFlags> scoped_flags;
   if (flags) {
     scoped_flags.emplace(flags, image_provider_, canvas_->getTotalMatrix(),
-                         max_texture_size(), 255u);
+                         GetMaxTextureSize(), 1.0f);
     if (!scoped_flags->flags())
       return;
   }
 
   const PaintFlags* raster_flags = scoped_flags ? scoped_flags->flags() : flags;
-  PlaybackParams params(image_provider_, canvas_->getTotalMatrix());
-  DrawImageRectOp draw_image_rect_op(image, src, dst, flags, constraint);
+  PlaybackParams params(image_provider_, canvas_->getLocalToDevice());
+  DrawImageRectOp draw_image_rect_op(image, src, dst, sampling, flags,
+                                     constraint);
   DrawImageRectOp::RasterWithFlags(&draw_image_rect_op, raster_flags, canvas_,
                                    params);
   FlushAfterDrawIfNeeded();
@@ -293,8 +315,20 @@ void SkiaPaintCanvas::drawImageRect(const PaintImage& image,
 
 void SkiaPaintCanvas::drawSkottie(scoped_refptr<SkottieWrapper> skottie,
                                   const SkRect& dst,
-                                  float t) {
-  skottie->Draw(canvas_, t, dst);
+                                  float t,
+                                  SkottieFrameDataMap images,
+                                  const SkottieColorMap& color_map,
+                                  SkottieTextPropertyValueMap text_map) {
+  if (!images.empty()) {
+    // This is not implemented solely because there's no use case yet. To
+    // implement, we could retrieve the underlying SkImage from each
+    // PaintImage in |images| here and call SkottieWrapper::SetImageForAsset().
+    NOTIMPLEMENTED()
+        << "Rendering skottie frames with image assets directly to a "
+           "SkiaPaintCanvas is currently not supported.";
+  }
+  skottie->Draw(canvas_, t, dst, SkottieWrapper::FrameDataCallback(), color_map,
+                std::move(text_map));
 }
 
 void SkiaPaintCanvas::drawTextBlob(sk_sp<SkTextBlob> blob,
@@ -302,8 +336,8 @@ void SkiaPaintCanvas::drawTextBlob(sk_sp<SkTextBlob> blob,
                                    SkScalar y,
                                    const PaintFlags& flags) {
   ScopedRasterFlags raster_flags(&flags, image_provider_,
-                                 canvas_->getTotalMatrix(), max_texture_size(),
-                                 255u);
+                                 canvas_->getTotalMatrix(), GetMaxTextureSize(),
+                                 1.0f);
   if (!raster_flags.flags())
     return;
   raster_flags.flags()->DrawToSk(canvas_,
@@ -325,16 +359,12 @@ void SkiaPaintCanvas::drawTextBlob(sk_sp<SkTextBlob> blob,
     SkPDF::SetNodeId(canvas_, 0);
 }
 
-void SkiaPaintCanvas::drawPicture(sk_sp<const PaintRecord> record) {
-  drawPicture(record, PlaybackParams::CustomDataRasterCallback());
+void SkiaPaintCanvas::drawPicture(PaintRecord record) {
+  drawPicture(std::move(record), PlaybackParams::CustomDataRasterCallback());
 }
 
-bool SkiaPaintCanvas::isClipEmpty() const {
-  return canvas_->isClipEmpty();
-}
-
-SkMatrix SkiaPaintCanvas::getTotalMatrix() const {
-  return canvas_->getTotalMatrix();
+SkM44 SkiaPaintCanvas::getLocalToDevice() const {
+  return canvas_->getLocalToDevice();
 }
 
 void SkiaPaintCanvas::Annotate(AnnotationType type,
@@ -360,16 +390,16 @@ void SkiaPaintCanvas::setNodeId(int node_id) {
 }
 
 void SkiaPaintCanvas::drawPicture(
-    sk_sp<const PaintRecord> record,
+    PaintRecord record,
     PlaybackParams::CustomDataRasterCallback custom_raster_callback) {
   auto did_draw_op_cb =
       context_flushes_.enable
           ? base::BindRepeating(&SkiaPaintCanvas::FlushAfterDrawIfNeeded,
                                 base::Unretained(this))
           : PlaybackParams::DidDrawOpCallback();
-  PlaybackParams params(image_provider_, canvas_->getTotalMatrix(),
+  PlaybackParams params(image_provider_, canvas_->getLocalToDevice(),
                         custom_raster_callback, did_draw_op_cb);
-  record->Playback(canvas_, params);
+  record.Playback(canvas_, params);
 }
 
 void SkiaPaintCanvas::FlushAfterDrawIfNeeded() {
@@ -382,6 +412,11 @@ void SkiaPaintCanvas::FlushAfterDrawIfNeeded() {
                  "SkiaPaintCanvas::FlushAfterDrawIfNeeded::FlushGrContext");
     canvas_->flush();
   }
+}
+
+int SkiaPaintCanvas::GetMaxTextureSize() const {
+  auto* context = canvas_->recordingContext();
+  return context ? context->maxTextureSize() : 0;
 }
 
 }  // namespace cc

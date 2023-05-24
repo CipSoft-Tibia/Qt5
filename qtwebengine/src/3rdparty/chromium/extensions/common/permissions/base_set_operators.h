@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,9 +33,14 @@ class BaseSetOperators {
 
   using Map = std::map<ElementIDType, std::unique_ptr<ElementType>>;
 
-  class const_iterator :
-    public std::iterator<std::input_iterator_tag, const ElementType*> {
+  class const_iterator {
    public:
+    using iterator_category = std::input_iterator_tag;
+    using value_type = const ElementType*;
+    using difference_type = std::ptrdiff_t;
+    using pointer = const ElementType**;
+    using reference = const ElementType*&;
+
     const_iterator(const typename Map::const_iterator& it) : it_(it) {}
     const_iterator(const const_iterator& ids_it) : it_(ids_it.it_) {}
 
@@ -81,13 +86,8 @@ class BaseSetOperators {
 
   ~BaseSetOperators() {}
 
-  bool operator==(const T& rhs) const {
-    return Equal(rhs);
-  }
-
-  bool operator!=(const T& rhs) const {
-    return !operator==(rhs);
-  }
+  bool operator==(const BaseSetOperators<T>& rhs) const { return Equal(rhs); }
+  bool operator!=(const BaseSetOperators<T>& rhs) const { return !Equal(rhs); }
 
   T Clone() const {
     T result;
@@ -96,7 +96,7 @@ class BaseSetOperators {
     return result;
   }
 
-  bool Equal(const T& rhs) const {
+  bool Equal(const BaseSetOperators<T>& rhs) const {
     const_iterator it = begin();
     const_iterator rhs_it = rhs.begin();
     const_iterator it_end = end();
@@ -115,7 +115,7 @@ class BaseSetOperators {
     return it == it_end && rhs_it == rhs_it_end;
   }
 
-  bool Contains(const T& rhs) const {
+  bool Contains(const BaseSetOperators<T>& rhs) const {
     const_iterator it1 = begin();
     const_iterator it2 = rhs.begin();
     const_iterator end1 = end();
@@ -137,7 +137,9 @@ class BaseSetOperators {
     return it2 == end2;
   }
 
-  static void Difference(const T& set1, const T& set2, T* set3) {
+  static void Difference(const BaseSetOperators<T>& set1,
+                         const BaseSetOperators<T>& set2,
+                         T* set3) {
     CHECK(set3);
     set3->clear();
 
@@ -167,7 +169,9 @@ class BaseSetOperators {
     }
   }
 
-  static void Intersection(const T& set1, const T& set2, T* set3) {
+  static void Intersection(const BaseSetOperators<T>& set1,
+                           const BaseSetOperators<T>& set2,
+                           T* set3) {
     DCHECK(set3);
     set3->clear();
 
@@ -191,7 +195,9 @@ class BaseSetOperators {
     }
   }
 
-  static void Union(const T& set1, const T& set2, T* set3) {
+  static void Union(const BaseSetOperators<T>& set1,
+                    const BaseSetOperators<T>& set2,
+                    T* set3) {
     DCHECK(set3);
     set3->clear();
 

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "components/offline_items_collection/core/offline_item.h"
 
@@ -19,7 +19,7 @@ const int kDelayBetweenUpdatesMs = 1000;
 ThrottledOfflineContentProvider::ThrottledOfflineContentProvider(
     OfflineContentProvider* provider)
     : ThrottledOfflineContentProvider(
-          base::TimeDelta::FromMilliseconds(kDelayBetweenUpdatesMs),
+          base::Milliseconds(kDelayBetweenUpdatesMs),
           provider) {}
 
 ThrottledOfflineContentProvider::ThrottledOfflineContentProvider(
@@ -30,12 +30,10 @@ ThrottledOfflineContentProvider::ThrottledOfflineContentProvider(
       update_queued_(false),
       wrapped_provider_(provider) {
   DCHECK(wrapped_provider_);
-  wrapped_provider_->AddObserver(this);
+  observation_.Observe(wrapped_provider_.get());
 }
 
-ThrottledOfflineContentProvider::~ThrottledOfflineContentProvider() {
-  wrapped_provider_->RemoveObserver(this);
-}
+ThrottledOfflineContentProvider::~ThrottledOfflineContentProvider() = default;
 
 void ThrottledOfflineContentProvider::OpenItem(const OpenParams& open_params,
                                                const ContentId& id) {
@@ -88,7 +86,7 @@ void ThrottledOfflineContentProvider::OnGetAllItemsDone(
 
 void ThrottledOfflineContentProvider::OnGetItemByIdDone(
     SingleItemCallback callback,
-    const base::Optional<OfflineItem>& item) {
+    const absl::optional<OfflineItem>& item) {
   if (item.has_value())
     UpdateItemIfPresent(item.value());
   std::move(callback).Run(item);
@@ -113,39 +111,20 @@ void ThrottledOfflineContentProvider::RenameItem(const ContentId& id,
   wrapped_provider_->RenameItem(id, name, std::move(callback));
 }
 
-void ThrottledOfflineContentProvider::ChangeSchedule(
-    const ContentId& id,
-    base::Optional<OfflineItemSchedule> schedule) {
-  wrapped_provider_->ChangeSchedule(id, std::move(schedule));
-}
-
-void ThrottledOfflineContentProvider::AddObserver(
-    OfflineContentProvider::Observer* observer) {
-  DCHECK(observer);
-  observers_.AddObserver(observer);
-}
-
-void ThrottledOfflineContentProvider::RemoveObserver(
-    OfflineContentProvider::Observer* observer) {
-  observers_.RemoveObserver(observer);
-}
-
 void ThrottledOfflineContentProvider::OnItemsAdded(
     const OfflineItemList& items) {
-  for (auto& observer : observers_)
-    observer.OnItemsAdded(items);
+  NotifyItemsAdded(items);
 }
 
 void ThrottledOfflineContentProvider::OnItemRemoved(const ContentId& id) {
   updates_.erase(id);
-  for (auto& observer : observers_)
-    observer.OnItemRemoved(id);
+  NotifyItemRemoved(id);
 }
 
 void ThrottledOfflineContentProvider::OnItemUpdated(
     const OfflineItem& item,
-    const base::Optional<UpdateDelta>& update_delta) {
-  base::Optional<UpdateDelta> merged = update_delta;
+    const absl::optional<UpdateDelta>& update_delta) {
+  absl::optional<UpdateDelta> merged = update_delta;
   if (updates_.find(item.id) != updates_.end()) {
     merged = UpdateDelta::MergeUpdates(updates_[item.id].second, update_delta);
   }
@@ -166,11 +145,15 @@ void ThrottledOfflineContentProvider::OnItemUpdated(
   // Queue the update so we wait for the proper amount of time before notifying
   // observers.
   update_queued_ = true;
-  base::ThreadTaskRunnerHandle::Get()->PostDelayedTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
       FROM_HERE,
       base::BindOnce(&ThrottledOfflineContentProvider::FlushUpdates,
                      weak_ptr_factory_.GetWeakPtr()),
       delay_between_updates_ - current_delay);
+}
+
+void ThrottledOfflineContentProvider::OnContentProviderGoingDown() {
+  observation_.Reset();
 }
 
 void ThrottledOfflineContentProvider::UpdateItemIfPresent(
@@ -188,8 +171,7 @@ void ThrottledOfflineContentProvider::FlushUpdates() {
   for (auto item_pair : updates) {
     auto& item = item_pair.second.first;
     auto& update = item_pair.second.second;
-    for (auto& observer : observers_)
-      observer.OnItemUpdated(item, update);
+    NotifyItemUpdated(item, update);
   }
 }
 

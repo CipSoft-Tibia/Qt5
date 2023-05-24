@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -52,6 +52,11 @@ class SANDBOX_EXPORT SyscallDispatcher {
 
   // Emulates unlink()/unlinkat().
   virtual int Unlink(const char* unlink) const = 0;
+
+  // Emulates inotify_add_watch().
+  virtual int InotifyAddWatch(int fd,
+                              const char* pathname,
+                              uint32_t mask) const = 0;
 
   // Different architectures use a different syscall from the stat family by
   // default in glibc. E.g. 32-bit systems use *stat*64() and fill out struct

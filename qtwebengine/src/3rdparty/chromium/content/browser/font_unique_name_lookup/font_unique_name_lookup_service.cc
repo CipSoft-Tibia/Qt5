@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,8 @@
 #include "base/check.h"
 #include "base/feature_list.h"
 #include "base/files/file_path.h"
-#include "base/macros.h"
 #include "base/no_destructor.h"
-#include "base/task/post_task.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "content/browser/font_unique_name_lookup/font_unique_name_lookup.h"
 #include "content/public/common/content_features.h"
@@ -45,10 +44,10 @@ FontUniqueNameLookupService::GetTaskRunner() {
 void FontUniqueNameLookupService::GetUniqueNameLookupTable(
     GetUniqueNameLookupTableCallback callback) {
   DCHECK(GetTaskRunner()->RunsTasksInCurrentSequence());
-  if (font_unique_name_lookup_.IsValid()) {
-    std::move(callback).Run(font_unique_name_lookup_.DuplicateMemoryRegion());
+  if (font_unique_name_lookup_->IsValid()) {
+    std::move(callback).Run(font_unique_name_lookup_->DuplicateMemoryRegion());
   } else {
-    font_unique_name_lookup_.QueueShareMemoryRegionWhenReady(
+    font_unique_name_lookup_->QueueShareMemoryRegionWhenReady(
         GetTaskRunner(), std::move(callback));
   }
 }
@@ -61,11 +60,11 @@ void FontUniqueNameLookupService::GetUniqueNameLookupTableIfAvailable(
   callback = mojo::WrapCallbackWithDefaultInvokeIfNotRun(
       std::move(callback), false, std::move(invalid_region));
 
-  if (!font_unique_name_lookup_.IsValid())
+  if (!font_unique_name_lookup_->IsValid())
     return;
 
   std::move(callback).Run(true,
-                          font_unique_name_lookup_.DuplicateMemoryRegion());
+                          font_unique_name_lookup_->DuplicateMemoryRegion());
 }
 
 }  // namespace content

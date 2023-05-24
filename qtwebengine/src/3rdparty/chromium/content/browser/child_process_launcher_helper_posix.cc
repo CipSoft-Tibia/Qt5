@@ -1,10 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/child_process_launcher_helper_posix.h"
 
 #include "base/command_line.h"
+#include "base/functional/overloaded.h"
 #include "base/metrics/field_trial.h"
 #include "base/posix/global_descriptors.h"
 #include "base/strings/string_number_conversions.h"
@@ -18,6 +19,7 @@
 #include "content/public/common/content_descriptors.h"
 #include "content/public/common/content_switches.h"
 #include "mojo/public/cpp/platform/platform_channel_endpoint.h"
+#include "third_party/abseil-cpp/absl/types/variant.h"
 
 namespace content {
 namespace internal {
@@ -50,14 +52,15 @@ base::PlatformFile OpenFileIfNecessary(const base::FilePath& path,
 std::unique_ptr<PosixFileDescriptorInfo> CreateDefaultPosixFilesToMap(
     int child_process_id,
     const mojo::PlatformChannelEndpoint& mojo_channel_remote_endpoint,
-    std::map<std::string, base::FilePath> files_to_preload,
+    const std::map<std::string, absl::variant<base::FilePath, base::ScopedFD>>&
+        files_to_preload,
     const std::string& process_type,
     base::CommandLine* command_line) {
   std::unique_ptr<PosixFileDescriptorInfo> files_to_register(
       PosixFileDescriptorInfoImpl::Create());
 
 // Mac shared memory doesn't use file descriptors.
-#if !defined(OS_MAC)
+#if !BUILDFLAG(IS_APPLE)
   int fd = base::FieldTrialList::GetFieldTrialDescriptor();
   if (fd != -1)
     files_to_register->Share(kFieldTrialDescriptor, fd);
@@ -84,10 +87,22 @@ std::unique_ptr<PosixFileDescriptorInfo> CreateDefaultPosixFilesToMap(
     }
 #endif  // !V8_USE_EXTERNAL_STARTUP_DATA
     base::MemoryMappedFile::Region region;
-    base::PlatformFile file =
-        OpenFileIfNecessary(key_path_iter.second, &region);
+    base::PlatformFile file = absl::visit(
+        base::Overloaded{[&region](const base::FilePath& file_path) {
+                           base::PlatformFile file =
+                               OpenFileIfNecessary(file_path, &region);
+                           if (file == base::kInvalidPlatformFile) {
+                             DLOG(WARNING) << "Ignoring invalid file "
+                                           << file_path.value();
+                           }
+                           return file;
+                         },
+                         [&region](const base::ScopedFD& fd) {
+                           region = base::MemoryMappedFile::Region::kWholeFile;
+                           return fd.get();
+                         }},
+        key_path_iter.second);
     if (file == base::kInvalidPlatformFile) {
-      DLOG(WARNING) << "Ignoring invalid file " << key_path_iter.second.value();
       continue;
     }
     file_switch_value_builder.AddEntry(key_path_iter.first, key);

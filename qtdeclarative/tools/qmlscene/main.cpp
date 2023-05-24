@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/qabstractanimation.h>
 #include <QtCore/qdir.h>
@@ -34,9 +9,9 @@
 #include <QtCore/qscopedpointer.h>
 #include <QtCore/qtextstream.h>
 #include <QtCore/qregularexpression.h>
+#include <QtCore/qloggingcategory.h>
 
 #include <QtGui/QGuiApplication>
-#include <QtGui/QOpenGLFunctions>
 
 #include <QtQml/qqml.h>
 #include <QtQml/qqmlengine.h>
@@ -48,7 +23,6 @@
 #include <QtQuick/qquickview.h>
 
 #include <private/qabstractanimation_p.h>
-#include <private/qopenglcontext_p.h>
 
 #ifdef QT_WIDGETS_LIB
 #include <QtWidgets/QApplication>
@@ -59,6 +33,8 @@
 
 #include <QtCore/QTranslator>
 #include <QtCore/QLibraryInfo>
+
+Q_LOGGING_CATEGORY(lcQmlsceneDeprecated, "qt.tools.qmlscene.deprecated")
 
 #ifdef QML_RUNTIME_TESTING
 class RenderStatistics
@@ -110,7 +86,7 @@ void RenderStatistics::updateStats()
 
 void RenderStatistics::printTotalStats()
 {
-    int count = timePerFrame.count();
+    int count = timePerFrame.size();
     if (count == 0)
         return;
 
@@ -335,7 +311,7 @@ static void loadDummyDataFiles(QQmlEngine &engine, const QString& directory)
 
         if (dummyData) {
             fprintf(stderr, "Loaded dummy data: %s\n", qPrintable(dir.filePath(qml)));
-            qml.truncate(qml.length()-4);
+            qml.truncate(qml.size()-4);
             engine.rootContext()->setContextProperty(qml, dummyData);
             dummyData->setParent(&engine);
         }
@@ -352,8 +328,7 @@ static void usage()
     puts("  --transparent .................... Make the window transparent");
     puts("  --multisample .................... Enable multisampling (OpenGL anti-aliasing)");
     puts("  --core-profile ................... Request a core profile OpenGL context");
-    puts("  --rhi [vulkan|metal|d3d11|gl] .... Use the Qt graphics abstraction (RHI) instead of OpenGL directly.\n"
-         "                                .... Backend has platform specific defaults. Specify to override.");
+    puts("  --rhi [vulkan|metal|d3d11|gl] .... Specify backend for the Qt graphics abstraction (RHI).\n");
     puts("  --no-version-detection ........... Do not try to detect the version of the .qml file");
     puts("  --slow-animations ................ Run all animations in slow motion");
     puts("  --resize-to-root ................. Resize the window to the size of the root item");
@@ -362,9 +337,7 @@ static void usage()
          "                            ........ (remove AA_ShareOpenGLContexts)");
     puts("  --desktop......................... Force use of desktop GL (AA_UseDesktopOpenGL)");
     puts("  --gles............................ Force use of GLES (AA_UseOpenGLES)");
-    puts("  --software........................ Force use of software rendering (AA_UseOpenGLES)");
-    puts("  --scaling......................... Enable High DPI scaling (AA_EnableHighDpiScaling)");
-    puts("  --no-scaling...................... Disable High DPI scaling (AA_DisableHighDpiScaling)");
+    puts("  --software........................ Force use of software rendering (AA_UseSoftwareOpenGL)");
     puts("  --verbose......................... Print version and graphical diagnostics for the run-time");
 #ifdef QT_WIDGETS_LIB
     puts("  --apptype [gui|widgets] .......... Select which application class to use. Default is widgets.");
@@ -378,37 +351,6 @@ static void usage()
     puts(" ");
     exit(1);
 }
-#if QT_CONFIG(opengl)
-// Listen on GL context creation of the QQuickWindow in order to print diagnostic output.
-class DiagnosticGlContextCreationListener : public QObject {
-    Q_OBJECT
-public:
-    explicit DiagnosticGlContextCreationListener(QQuickWindow *window) : QObject(window)
-    {
-        connect(window, &QQuickWindow::openglContextCreated,
-                this, &DiagnosticGlContextCreationListener::onOpenGlContextCreated);
-    }
-
-private slots:
-    void onOpenGlContextCreated(QOpenGLContext *context)
-    {
-        context->makeCurrent(qobject_cast<QQuickWindow *>(parent()));
-        QOpenGLFunctions functions(context);
-        QByteArray output = "Vendor  : ";
-        output += reinterpret_cast<const char *>(functions.glGetString(GL_VENDOR));
-        output += "\nRenderer: ";
-        output += reinterpret_cast<const char *>(functions.glGetString(GL_RENDERER));
-        output += "\nVersion : ";
-        output += reinterpret_cast<const char *>(functions.glGetString(GL_VERSION));
-        output += "\nLanguage: ";
-        output += reinterpret_cast<const char *>(functions.glGetString(GL_SHADING_LANGUAGE_VERSION));
-        puts(output.constData());
-        context->doneCurrent();
-        deleteLater();
-    }
-
-};
-#endif
 
 static void setWindowTitle(bool verbose, const QObject *topLevel, QWindow *window)
 {
@@ -422,10 +364,6 @@ static void setWindowTitle(bool verbose, const QObject *topLevel, QWindow *windo
     if (verbose) {
         newTitle += QLatin1String(" [Qt ") + QLatin1String(QT_VERSION_STR) + QLatin1Char(' ')
             + QGuiApplication::platformName() + QLatin1Char(' ');
-#if QT_CONFIG(opengl)
-        newTitle += QOpenGLContext::openGLModuleType() == QOpenGLContext::LibGL
-            ? QLatin1String("GL") : QLatin1String("GLES");
-#endif
         newTitle += QLatin1Char(']');
     }
     if (oldTitle != newTitle)
@@ -459,8 +397,7 @@ static QQuickWindow::TextRenderType parseTextRenderType(const QString &renderTyp
 
     usage();
 
-    Q_UNREACHABLE();
-    return QQuickWindow::QtTextRendering;
+    Q_UNREACHABLE_RETURN(QQuickWindow::QtTextRendering);
 }
 
 int main(int argc, char ** argv)
@@ -470,6 +407,8 @@ int main(int argc, char ** argv)
     QStringList imports;
     QStringList customSelectors;
     QStringList pluginPaths;
+
+    qCWarning(lcQmlsceneDeprecated()) << "Warning: qmlscene is deprecated and will be removed in a future version of Qt. Please use qml instead.";
 
     // Parse arguments for application attributes to be applied before Q[Gui]Application creation.
     for (int i = 1; i < argc; ++i) {
@@ -482,10 +421,6 @@ int main(int argc, char ** argv)
             options.applicationAttributes.append(Qt::AA_UseSoftwareOpenGL);
         } else if (!qstrcmp(arg, "--desktop")) {
             options.applicationAttributes.append(Qt::AA_UseDesktopOpenGL);
-        } else if (!qstrcmp(arg, "--scaling")) {
-            options.applicationAttributes.append(Qt::AA_EnableHighDpiScaling);
-        } else if (!qstrcmp(arg, "--no-scaling")) {
-            options.applicationAttributes.append(Qt::AA_DisableHighDpiScaling);
         } else if (!qstrcmp(arg, "--transparent")) {
             options.transparent = true;
         } else if (!qstrcmp(arg, "--multisample")) {
@@ -518,7 +453,7 @@ int main(int argc, char ** argv)
     }
     QSurfaceFormat::setDefaultFormat(surfaceFormat);
 
-    for (Qt::ApplicationAttribute a : qAsConst(options.applicationAttributes))
+    for (Qt::ApplicationAttribute a : std::as_const(options.applicationAttributes))
         QCoreApplication::setAttribute(a);
     QScopedPointer<QGuiApplication> app;
 #ifdef QT_WIDGETS_LIB
@@ -583,10 +518,10 @@ int main(int argc, char ** argv)
 #if QT_CONFIG(translation)
     QLocale locale;
     QTranslator qtTranslator;
-    if (qtTranslator.load(locale, QLatin1String("qt"), QLatin1String("_"), QLibraryInfo::location(QLibraryInfo::TranslationsPath)))
+    if (qtTranslator.load(locale, QLatin1String("qt"), QLatin1String("_"), QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
         QCoreApplication::installTranslator(&qtTranslator);
     QTranslator translator;
-    if (translator.load(locale, QLatin1String("qmlscene"), QLatin1String("_"), QLibraryInfo::location(QLibraryInfo::TranslationsPath)))
+    if (translator.load(locale, QLatin1String("qmlscene"), QLatin1String("_"), QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
         QCoreApplication::installTranslator(&translator);
 
     QTranslator qmlTranslator;
@@ -605,7 +540,6 @@ int main(int argc, char ** argv)
     QUnifiedTimer::instance()->setSlowModeEnabled(options.slowAnimations);
 
     if (options.rhi) {
-        qputenv("QSG_RHI", "1");
         if (options.rhiBackendSet)
             qputenv("QSG_RHI_BACKEND", options.rhiBackend.toLatin1());
         else
@@ -680,12 +614,7 @@ int main(int argc, char ** argv)
 
             if (window) {
                 setWindowTitle(options.verbose, topLevel, window.data());
-#if QT_CONFIG(opengl)
-                if (options.verbose)
-                    new DiagnosticGlContextCreationListener(window.data());
-#endif
                 if (options.transparent) {
-                    window->setClearBeforeRendering(true);
                     window->setColor(QColor(Qt::transparent));
                     window->setFlags(Qt::FramelessWindowHint);
                 }
@@ -723,5 +652,3 @@ int main(int argc, char ** argv)
 
     return exitCode;
 }
-
-#include "main.moc"

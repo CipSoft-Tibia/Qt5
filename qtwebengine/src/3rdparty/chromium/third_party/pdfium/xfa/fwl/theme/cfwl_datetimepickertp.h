@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,19 +7,19 @@
 #ifndef XFA_FWL_THEME_CFWL_DATETIMEPICKERTP_H_
 #define XFA_FWL_THEME_CFWL_DATETIMEPICKERTP_H_
 
+#include "fxjs/gc/heap.h"
 #include "xfa/fwl/theme/cfwl_widgettp.h"
 
 class CFWL_DateTimePickerTP final : public CFWL_WidgetTP {
  public:
-  CFWL_DateTimePickerTP();
+  CONSTRUCT_VIA_MAKE_GARBAGE_COLLECTED;
   ~CFWL_DateTimePickerTP() override;
 
-  // CFWL_WidgetTP
+  // CFWL_WidgetTP:
   void DrawBackground(const CFWL_ThemeBackground& pParams) override;
 
  private:
-  void DrawDropDownButton(const CFWL_ThemeBackground& pParams,
-                          const CFX_Matrix& matrix);
+  CFWL_DateTimePickerTP();
 };
 
 #endif  // XFA_FWL_THEME_CFWL_DATETIMEPICKERTP_H_

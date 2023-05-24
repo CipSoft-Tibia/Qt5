@@ -27,7 +27,7 @@
 #include "third_party/blink/renderer/core/svg/linear_gradient_attributes.h"
 #include "third_party/blink/renderer/core/svg/svg_animated_length.h"
 #include "third_party/blink/renderer/core/svg/svg_length.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -72,7 +72,8 @@ void SVGLinearGradientElement::Trace(Visitor* visitor) const {
 }
 
 void SVGLinearGradientElement::SvgAttributeChanged(
-    const QualifiedName& attr_name) {
+    const SvgAttributeChangedParams& params) {
+  const QualifiedName& attr_name = params.name;
   if (attr_name == svg_names::kX1Attr || attr_name == svg_names::kX2Attr ||
       attr_name == svg_names::kY1Attr || attr_name == svg_names::kY2Attr) {
     SVGElement::InvalidationGuard invalidation_guard(this);
@@ -81,12 +82,12 @@ void SVGLinearGradientElement::SvgAttributeChanged(
     return;
   }
 
-  SVGGradientElement::SvgAttributeChanged(attr_name);
+  SVGGradientElement::SvgAttributeChanged(params);
 }
 
 LayoutObject* SVGLinearGradientElement::CreateLayoutObject(const ComputedStyle&,
                                                            LegacyLayout) {
-  return new LayoutSVGResourceLinearGradient(this);
+  return MakeGarbageCollected<LayoutSVGResourceLinearGradient>(this);
 }
 
 static void SetGradientAttributes(const SVGGradientElement& element,
@@ -111,13 +112,14 @@ static void SetGradientAttributes(const SVGGradientElement& element,
     attributes.SetY2(linear.y2()->CurrentValue());
 }
 
-void SVGLinearGradientElement::CollectGradientAttributes(
-    LinearGradientAttributes& attributes) const {
+LinearGradientAttributes SVGLinearGradientElement::CollectGradientAttributes()
+    const {
   DCHECK(GetLayoutObject());
 
   VisitedSet visited;
   const SVGGradientElement* current = this;
 
+  LinearGradientAttributes attributes;
   while (true) {
     SetGradientAttributes(*current, attributes,
                           IsA<SVGLinearGradientElement>(*current));
@@ -132,6 +134,26 @@ void SVGLinearGradientElement::CollectGradientAttributes(
     if (visited.Contains(current))
       break;
   }
+
+  // Fill out any ("complex") empty fields with values from this element (where
+  // these values should equal the initial values).
+  if (!attributes.HasX1()) {
+    attributes.SetX1(x1()->CurrentValue());
+  }
+  if (!attributes.HasY1()) {
+    attributes.SetY1(y1()->CurrentValue());
+  }
+  if (!attributes.HasX2()) {
+    attributes.SetX2(x2()->CurrentValue());
+  }
+  if (!attributes.HasY2()) {
+    attributes.SetY2(y2()->CurrentValue());
+  }
+  DCHECK(attributes.X1());
+  DCHECK(attributes.Y1());
+  DCHECK(attributes.X2());
+  DCHECK(attributes.Y2());
+  return attributes;
 }
 
 bool SVGLinearGradientElement::SelfHasRelativeLengths() const {

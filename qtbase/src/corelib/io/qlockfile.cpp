@@ -1,43 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 David Faure <faure+bluesystems@kde.org>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2017 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 David Faure <faure+bluesystems@kde.org>
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2017 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qlockfile.h"
 #include "qlockfile_p.h"
@@ -49,6 +13,8 @@
 #include <QtCore/qfileinfo.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace {
 struct LockFileInfo
@@ -94,7 +60,7 @@ static QString machineName()
     When protecting for a short-term operation, it is acceptable to call lock() and wait
     until any running operation finishes.
     When protecting a resource over a long time, however, the application should always
-    call setStaleLockTime(0) and then tryLock() with a short timeout, in order to
+    call setStaleLockTime(0ms) and then tryLock() with a short timeout, in order to
     warn the user that the resource is locked.
 
     If the process holding the lock crashes, the lock file stays on disk and can prevent
@@ -151,6 +117,14 @@ QLockFile::~QLockFile()
 }
 
 /*!
+ * Returns the file name of the lock file
+ */
+QString QLockFile::fileName() const
+{
+    return d_ptr->fileName;
+}
+
+/*!
     Sets \a staleLockTime to be the time in milliseconds after which
     a lock file is considered stale.
     The default value is 30000, i.e. 30 seconds.
@@ -164,9 +138,37 @@ QLockFile::~QLockFile()
     meanwhile, so one way to detect a stale lock file is by the fact that
     it has been around for a long time.
 
+    This is an overloaded function, equivalent to calling:
+    \code
+    setStaleLockTime(std::chrono::milliseconds{staleLockTime});
+    \endcode
+
     \sa staleLockTime()
 */
 void QLockFile::setStaleLockTime(int staleLockTime)
+{
+    setStaleLockTime(std::chrono::milliseconds{staleLockTime});
+}
+
+/*!
+    \since 6.2
+
+    Sets the interval after which a lock file is considered stale to \a staleLockTime.
+    The default value is 30s.
+
+    If your application typically keeps the file locked for more than 30 seconds
+    (for instance while saving megabytes of data for 2 minutes), you should set
+    a bigger value using setStaleLockTime().
+
+    The value of staleLockTime() is used by lock() and tryLock() in order
+    to determine when an existing lock file is considered stale, i.e. left over
+    by a crashed process. This is useful for the case where the PID got reused
+    meanwhile, so one way to detect a stale lock file is by the fact that
+    it has been around for a long time.
+
+    \sa staleLockTime()
+*/
+void QLockFile::setStaleLockTime(std::chrono::milliseconds staleLockTime)
 {
     Q_D(QLockFile);
     d->staleLockTime = staleLockTime;
@@ -179,6 +181,20 @@ void QLockFile::setStaleLockTime(int staleLockTime)
     \sa setStaleLockTime()
 */
 int QLockFile::staleLockTime() const
+{
+    return int(staleLockTimeAsDuration().count());
+}
+
+/*! \fn std::chrono::milliseconds QLockFile::staleLockTimeAsDuration() const
+    \overload
+    \since 6.2
+
+    Returns a std::chrono::milliseconds object which denotes the time after
+    which a lock file is considered stale.
+
+    \sa setStaleLockTime()
+*/
+std::chrono::milliseconds QLockFile::staleLockTimeAsDuration() const
 {
     Q_D(const QLockFile);
     return d->staleLockTime;
@@ -213,7 +229,7 @@ bool QLockFile::isLocked() const
 */
 bool QLockFile::lock()
 {
-    return tryLock(-1);
+    return tryLock(std::chrono::milliseconds::max());
 }
 
 /*!
@@ -238,10 +254,38 @@ bool QLockFile::lock()
 */
 bool QLockFile::tryLock(int timeout)
 {
+    return tryLock(std::chrono::milliseconds{ timeout });
+}
+
+/*!
+    \overload
+    \since 6.2
+
+    Attempts to create the lock file. This function returns \c true if the
+    lock was obtained; otherwise it returns \c false. If another process (or
+    another thread) has created the lock file already, this function will
+    wait for at most \a timeout for the lock file to become available.
+
+    If the lock was obtained, it must be released with unlock()
+    before another process (or thread) can successfully lock it.
+
+    Calling this function multiple times on the same lock from the same
+    thread without unlocking first is not allowed, this function will
+    \e always return false when attempting to lock the file recursively.
+
+    \sa lock(), unlock()
+*/
+bool QLockFile::tryLock(std::chrono::milliseconds timeout)
+{
+    using namespace std::chrono_literals;
+    using Msec = std::chrono::milliseconds;
+
     Q_D(QLockFile);
-    QDeadlineTimer timer(qMax(timeout, -1));    // QDT only takes -1 as "forever"
-    int sleepTime = 100;
-    forever {
+
+    QDeadlineTimer timer(timeout < 0ms ? Msec::max() : timeout);
+
+    Msec sleepTime = 100ms;
+    while (true) {
         d->lockError = d->tryLock_sys();
         switch (d->lockError) {
         case NoError:
@@ -252,11 +296,11 @@ bool QLockFile::tryLock(int timeout)
             return false;
         case LockFailedError:
             if (!d->isLocked && d->isApparentlyStale()) {
-                if (Q_UNLIKELY(QFileInfo(d->fileName).lastModified() > QDateTime::currentDateTime()))
+                if (Q_UNLIKELY(QFileInfo(d->fileName).lastModified(QTimeZone::UTC) > QDateTime::currentDateTimeUtc()))
                     qInfo("QLockFile: Lock file '%ls' has a modification time in the future", qUtf16Printable(d->fileName));
                 // Stale lock from another thread/process
                 // Ensure two processes don't remove it at the same time
-                QLockFile rmlock(d->fileName + QLatin1String(".rmlock"));
+                QLockFile rmlock(d->fileName + ".rmlock"_L1);
                 if (rmlock.tryLock()) {
                     if (d->isApparentlyStale() && d->removeStaleLock())
                         continue;
@@ -265,14 +309,15 @@ bool QLockFile::tryLock(int timeout)
             break;
         }
 
-        int remainingTime = timer.remainingTime();
-        if (remainingTime == 0)
+        auto remainingTime = std::chrono::duration_cast<Msec>(timer.remainingTimeAsDuration());
+        if (remainingTime == 0ms)
             return false;
-        else if (uint(sleepTime) > uint(remainingTime))
+
+        if (sleepTime > remainingTime)
             sleepTime = remainingTime;
 
-        QThread::msleep(sleepTime);
-        if (sleepTime < 5 * 1000)
+        QThread::sleep(sleepTime);
+        if (sleepTime < 5s)
             sleepTime *= 2;
     }
     // not reached
@@ -391,8 +436,10 @@ bool QLockFilePrivate::isApparentlyStale() const
         }
     }
 
-    const qint64 age = QFileInfo(fileName).lastModified().msecsTo(QDateTime::currentDateTimeUtc());
-    return staleLockTime > 0 && qAbs(age) > staleLockTime;
+    const QDateTime lastMod = QFileInfo(fileName).lastModified(QTimeZone::UTC);
+    using namespace std::chrono;
+    const milliseconds age{lastMod.msecsTo(QDateTime::currentDateTimeUtc())};
+    return staleLockTime > 0ms && abs(age) > staleLockTime;
 }
 
 /*!

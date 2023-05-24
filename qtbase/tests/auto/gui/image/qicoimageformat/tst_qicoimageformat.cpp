@@ -1,31 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-#include <QtTest/QtTest>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+#include <QTest>
 #include <QtGui>
 #include <QtCore>
 
@@ -52,6 +27,8 @@ private slots:
     void pngCompression();
     void write_data();
     void write();
+    void icoMask_data();
+    void icoMask();
 
 private:
     QString m_IconPath;
@@ -115,7 +92,8 @@ public:
 
     virtual ~QSequentialFile() {}
 
-    virtual bool isSequential() const {
+    virtual bool isSequential() const override
+    {
         return true;
     }
 
@@ -341,6 +319,33 @@ void tst_QIcoImageFormat::write()
         QCOMPARE(outImg.size(), outSize);
         buf.close();
     }
+}
+
+void tst_QIcoImageFormat::icoMask_data()
+{
+    QTest::addColumn<QString>("inFile");
+    QTest::addColumn<QString>("outFile");
+
+    QTest::newRow("24bpp") << "masked/24bpp.ico" << "masked/24bpp.png";
+    QTest::newRow("32bpp") << "masked/32bpp.ico" << "masked/32bpp.png";
+}
+
+void tst_QIcoImageFormat::icoMask()
+{
+    QFETCH(QString, inFile);
+    QFETCH(QString, outFile);
+
+    QImage inImage;
+    QImageReader inReader(m_IconPath + QLatin1Char('/') + inFile);
+    inReader.read(&inImage);
+
+    QImage outImage;
+    QImageReader outReader(m_IconPath + QLatin1Char('/') + outFile);
+    outReader.read(&outImage);
+    outImage.setColorSpace(inImage.colorSpace());
+    outImage = outImage.convertToFormat(inImage.format());
+
+    QCOMPARE(inImage, outImage);
 }
 
 QTEST_MAIN(tst_QIcoImageFormat)

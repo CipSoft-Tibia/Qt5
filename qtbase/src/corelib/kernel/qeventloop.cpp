@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qeventloop.h"
 
@@ -47,13 +11,6 @@
 #include "qobject_p.h"
 #include "qeventloop_p.h"
 #include <private/qthread_p.h>
-
-#ifdef Q_OS_WASM
-#include <emscripten.h>
-#if QT_CONFIG(thread)
-#include <emscripten/threading.h>
-#endif
-#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -95,6 +52,7 @@ QT_BEGIN_NAMESPACE
     \omitvalue X11ExcludeTimers
     \omitvalue EventLoopExec
     \omitvalue DialogExec
+    \omitvalue ApplicationExec
 
     \sa processEvents()
 */
@@ -182,10 +140,10 @@ int QEventLoop::exec(ProcessEventsFlags flags)
 
     struct LoopReference {
         QEventLoopPrivate *d;
-        QMutexLocker &locker;
+        QMutexLocker<QMutex> &locker;
 
         bool exceptionCaught;
-        LoopReference(QEventLoopPrivate *d, QMutexLocker &locker) : d(d), locker(locker), exceptionCaught(true)
+        LoopReference(QEventLoopPrivate *d, QMutexLocker<QMutex> &locker) : d(d), locker(locker), exceptionCaught(true)
         {
             d->inExec = true;
             d->exit.storeRelease(false);
@@ -202,9 +160,7 @@ int QEventLoop::exec(ProcessEventsFlags flags)
             if (exceptionCaught) {
                 qWarning("Qt has caught an exception thrown from an event handler. Throwing\n"
                          "exceptions from an event handler is not supported in Qt.\n"
-                         "You must not let any exception whatsoever propagate through Qt code.\n"
-                         "If that is not possible, in Qt 5 you must at least reimplement\n"
-                         "QCoreApplication::notify() and catch all exceptions there.\n");
+                         "You must not let any exception whatsoever propagate through Qt code.");
             }
             locker.relock();
             auto threadData = d->threadData.loadRelaxed();
@@ -221,15 +177,6 @@ int QEventLoop::exec(ProcessEventsFlags flags)
     QCoreApplication *app = QCoreApplication::instance();
     if (app && app->thread() == thread())
         QCoreApplication::removePostedEvents(app, QEvent::Quit);
-
-#ifdef Q_OS_WASM
-    // Partial support for nested event loops: Make the runtime throw a JavaSrcript
-    // exception, which returns control to the browser while preserving the C++ stack.
-    // Event processing then continues as normal. The sleep call below never returns.
-    // QTBUG-70185
-    if (threadData->loopLevel > 1)
-        emscripten_sleep(1);
-#endif
 
     while (!d->exit.loadAcquire())
         processEvents(flags | WaitForMoreEvents | EventLoopExec);
@@ -293,20 +240,6 @@ void QEventLoop::exit(int returnCode)
     d->returnCode.storeRelaxed(returnCode);
     d->exit.storeRelease(true);
     threadData->eventDispatcher.loadRelaxed()->interrupt();
-
-#ifdef Q_OS_WASM
-    // QEventLoop::exec() never returns in emscripten. We implement approximate behavior here.
-    // QTBUG-70185
-    if (threadData->loopLevel == 1) {
-#if QT_CONFIG(thread)
-    if (emscripten_is_main_browser_thread())
-#endif
-        emscripten_force_exit(returnCode);
-    } else {
-        d->inExec = false;
-        --threadData->loopLevel;
-    }
-#endif
 }
 
 /*!
@@ -360,57 +293,10 @@ bool QEventLoop::event(QEvent *event)
 void QEventLoop::quit()
 { exit(0); }
 
-
-class QEventLoopLockerPrivate
-{
-public:
-    explicit QEventLoopLockerPrivate(QEventLoopPrivate *loop)
-      : loop(loop), type(EventLoop)
-    {
-        loop->ref();
-    }
-
-    explicit QEventLoopLockerPrivate(QThreadPrivate *thread)
-      : thread(thread), type(Thread)
-    {
-        thread->ref();
-    }
-
-    explicit QEventLoopLockerPrivate(QCoreApplicationPrivate *app)
-      : app(app), type(Application)
-    {
-        app->ref();
-    }
-
-    ~QEventLoopLockerPrivate()
-    {
-        switch (type)
-        {
-        case EventLoop:
-            loop->deref();
-            break;
-        case Thread:
-            thread->deref();
-            break;
-        default:
-            app->deref();
-            break;
-        }
-    }
-
-private:
-    union {
-        QEventLoopPrivate * loop;
-        QThreadPrivate * thread;
-        QCoreApplicationPrivate * app;
-    };
-    enum Type {
-        EventLoop,
-        Thread,
-        Application
-    };
-    const Type type;
-};
+// If any of these trigger, the Type bits will interfere with the pointer values:
+static_assert(alignof(QEventLoop) >= 4);
+static_assert(alignof(QThread) >= 4);
+static_assert(alignof(QCoreApplication) >= 4);
 
 /*!
     \class QEventLoopLocker
@@ -439,8 +325,8 @@ private:
 
     \sa QCoreApplication::quit(), QCoreApplication::isQuitLockEnabled()
  */
-QEventLoopLocker::QEventLoopLocker()
-  : d_ptr(new QEventLoopLockerPrivate(static_cast<QCoreApplicationPrivate*>(QObjectPrivate::get(QCoreApplication::instance()))))
+QEventLoopLocker::QEventLoopLocker() noexcept
+    : QEventLoopLocker{QCoreApplication::instance(), Type::Application}
 {
 
 }
@@ -452,8 +338,8 @@ QEventLoopLocker::QEventLoopLocker()
 
     \sa QEventLoop::quit()
  */
-QEventLoopLocker::QEventLoopLocker(QEventLoop *loop)
-  : d_ptr(new QEventLoopLockerPrivate(static_cast<QEventLoopPrivate*>(QObjectPrivate::get(loop))))
+QEventLoopLocker::QEventLoopLocker(QEventLoop *loop) noexcept
+    : QEventLoopLocker{loop, Type::EventLoop}
 {
 
 }
@@ -465,8 +351,8 @@ QEventLoopLocker::QEventLoopLocker(QEventLoop *loop)
 
     \sa QThread::quit()
  */
-QEventLoopLocker::QEventLoopLocker(QThread *thread)
-  : d_ptr(new QEventLoopLockerPrivate(static_cast<QThreadPrivate*>(QObjectPrivate::get(thread))))
+QEventLoopLocker::QEventLoopLocker(QThread *thread) noexcept
+    : QEventLoopLocker{thread, Type::Thread}
 {
 
 }
@@ -476,7 +362,33 @@ QEventLoopLocker::QEventLoopLocker(QThread *thread)
  */
 QEventLoopLocker::~QEventLoopLocker()
 {
-    delete d_ptr;
+    visit([](auto p) { p->d_func()->deref(); });
+}
+
+/*!
+    \internal
+*/
+QEventLoopLocker::QEventLoopLocker(void *ptr, Type t) noexcept
+    : p{quintptr(ptr) | quintptr(t)}
+{
+    visit([](auto p) { p->d_func()->ref(); });
+}
+
+/*!
+    \internal
+*/
+template <typename Func>
+void QEventLoopLocker::visit(Func f) const
+{
+    const auto ptr = pointer();
+    if (!ptr)
+        return;
+    switch (type()) {
+    case Type::EventLoop:   return f(static_cast<QEventLoop *>(ptr));
+    case Type::Thread:      return f(static_cast<QThread *>(ptr));
+    case Type::Application: return f(static_cast<QCoreApplication *>(ptr));
+    }
+    Q_UNREACHABLE();
 }
 
 QT_END_NAMESPACE

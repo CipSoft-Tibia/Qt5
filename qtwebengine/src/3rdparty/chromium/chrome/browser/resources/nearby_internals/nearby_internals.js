@@ -1,8 +1,8 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://resources/cr_elements/cr_tabs/cr_tabs.m.js';
+import 'chrome://resources/cr_elements/cr_tabs/cr_tabs.js';
 import 'chrome://resources/polymer/v3_0/iron-location/iron-location.js';
 import 'chrome://resources/polymer/v3_0/iron-pages/iron-pages.js';
 import './http_tab.js';
@@ -34,7 +34,8 @@ Polymer({
     /** @private */
     tabNames_: {
       type: Array,
-      value: () => ['Logs', 'HTTP Messages', 'Contacts', 'UI Triggers'],
+      value: () =>
+          ['Logs', 'HTTP Messages', 'Contacts', 'UI Triggers', 'Fast Pair'],
       readonly: true,
     },
 

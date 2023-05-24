@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -68,23 +68,25 @@ void SimCanvas::onDrawPath(const SkPath& path, const SkPaint& paint) {
   SkCanvas::onDrawPath(path, paint);
 }
 
-void SimCanvas::onDrawImage(const SkImage* image,
-                            SkScalar left,
-                            SkScalar top,
-                            const SkPaint* paint) {
+void SimCanvas::onDrawImage2(const SkImage* image,
+                             SkScalar left,
+                             SkScalar top,
+                             const SkSamplingOptions& sampling,
+                             const SkPaint* paint) {
   DrawScope scope;
   AddCommand(CommandType::kImage);
-  SkCanvas::onDrawImage(image, left, top, paint);
+  SkCanvas::onDrawImage2(image, left, top, sampling, paint);
 }
 
-void SimCanvas::onDrawImageRect(const SkImage* image,
-                                const SkRect* src,
-                                const SkRect& dst,
-                                const SkPaint* paint,
-                                SrcRectConstraint constraint) {
+void SimCanvas::onDrawImageRect2(const SkImage* image,
+                                 const SkRect& src,
+                                 const SkRect& dst,
+                                 const SkSamplingOptions& sampling,
+                                 const SkPaint* paint,
+                                 SrcRectConstraint constraint) {
   DrawScope scope;
   AddCommand(CommandType::kImage);
-  SkCanvas::onDrawImageRect(image, src, dst, paint, constraint);
+  SkCanvas::onDrawImageRect2(image, src, dst, sampling, paint, constraint);
 }
 
 void SimCanvas::onDrawTextBlob(const SkTextBlob* blob,

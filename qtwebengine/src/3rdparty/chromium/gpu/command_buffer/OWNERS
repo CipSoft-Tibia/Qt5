@@ -2,7 +2,6 @@ bajones@chromium.org
 geofflang@chromium.org
 vmiura@chromium.org
 zmo@chromium.org
-jdarpinian@chromium.org
 
 # GPU memory buffer tests.
 per-file *gpu_memory_buffer*=dcastagna@chromium.org
@@ -11,5 +10,3 @@ per-file *gpu_memory_buffer*=dcastagna@chromium.org
 cwallez@chromium.org
 enga@chromium.org
 kainino@chromium.org
-
-# COMPONENT: Internals>GPU>Internals

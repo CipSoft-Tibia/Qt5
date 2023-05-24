@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,25 +12,19 @@
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_implementation.h"
 
+#if BUILDFLAG(USE_OPENGL_APITRACE)
+#include <stdlib.h>
+#endif
+
 namespace ui {
 namespace {
 
-#if defined(OS_WIN)
-const base::FilePath::CharType kDefaultEglSoname[] =
-    FILE_PATH_LITERAL("libEGL.dll");
-const base::FilePath::CharType kDefaultGlesSoname[] =
-    FILE_PATH_LITERAL("libGLESv2.dll");
-const base::FilePath::CharType kAngleEglSoname[] =
-    FILE_PATH_LITERAL("libEGL.dll");
-const base::FilePath::CharType kAngleGlesSoname[] =
-    FILE_PATH_LITERAL("libGLESv2.dll");
-#else
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
 const base::FilePath::CharType kDefaultEglSoname[] =
     FILE_PATH_LITERAL("libEGL.so");
 const base::FilePath::CharType kDefaultGlesSoname[] =
     FILE_PATH_LITERAL("libGLESv2.so");
-#else  // !defined(OS_FUCHSIA)
+#else  // BUILDFLAG(IS_FUCHSIA)
 const base::FilePath::CharType kDefaultEglSoname[] =
     FILE_PATH_LITERAL("libEGL.so.1");
 const base::FilePath::CharType kDefaultGlesSoname[] =
@@ -40,26 +34,6 @@ const base::FilePath::CharType kAngleEglSoname[] =
     FILE_PATH_LITERAL("libEGL.so");
 const base::FilePath::CharType kAngleGlesSoname[] =
     FILE_PATH_LITERAL("libGLESv2.so");
-#endif  // !defined(OS_WIN)
-
-#if BUILDFLAG(ENABLE_SWIFTSHADER)
-#if defined(OS_WIN)
-const base::FilePath::CharType kGLESv2SwiftShaderLibraryName[] =
-    FILE_PATH_LITERAL("libGLESv2.dll");
-const base::FilePath::CharType kEGLSwiftShaderLibraryName[] =
-    FILE_PATH_LITERAL("libEGL.dll");
-#elif defined(OS_FUCHSIA)
-const base::FilePath::CharType kGLESv2SwiftShaderLibraryName[] =
-    FILE_PATH_LITERAL("libswiftshader_libGLESv2.so");
-const base::FilePath::CharType kEGLSwiftShaderLibraryName[] =
-    FILE_PATH_LITERAL("libswiftshader_libEGL.so");
-#else   // !defined(OS_WIN) && !defined(OS_FUCHSIA)
-const base::FilePath::CharType kGLESv2SwiftShaderLibraryName[] =
-    FILE_PATH_LITERAL("libGLESv2.so");
-const base::FilePath::CharType kEGLSwiftShaderLibraryName[] =
-    FILE_PATH_LITERAL("libEGL.so");
-#endif  // !defined(OS_WIN) && !defined(OS_FUCHSIA)
-#endif  // BUILDFLAG(ENABLE_SWIFTSHADER)
 
 bool LoadEGLGLES2Bindings(const base::FilePath& egl_library_path,
                           const base::FilePath& gles_library_path) {
@@ -93,6 +67,50 @@ bool LoadEGLGLES2Bindings(const base::FilePath& egl_library_path,
   }
 
   gl::SetGLGetProcAddressProc(get_proc_address);
+
+#if BUILDFLAG(USE_OPENGL_APITRACE)
+  constexpr char kTraceLibegl[] = "TRACE_LIBEGL";
+  constexpr char kTraceLibglesv2[] = "TRACE_LIBGLESV2";
+  constexpr char kTraceFile[] = "TRACE_FILE";
+
+  if (egl_library_path.BaseName().value() != kDefaultEglSoname) {
+    LOG(ERROR) << "Unsupported EGL library '"
+               << egl_library_path.BaseName().value()
+               << "'. egltrace may not work.";
+  }
+  if (gles_library_path.BaseName().value() != kDefaultGlesSoname) {
+    LOG(ERROR) << "Unsupported GLESv2 library '"
+               << gles_library_path.BaseName().value()
+               << "'. egltrace may not work.";
+  }
+
+  // Send correct library names to egttrace.
+  setenv(kTraceLibegl, egl_library_path.BaseName().value().c_str(),
+         /*overwrite=*/0);
+  setenv(kTraceLibglesv2, gles_library_path.BaseName().value().c_str(),
+         /*overwrite=*/0);
+#if BUILDFLAG(IS_CHROMEOS)
+  setenv(kTraceFile, "/tmp/gltrace.dat", /*overwrite=*/0);
+#else
+  if (!getenv(kTraceFile)) {
+    LOG(ERROR) << "egltrace requires valid TRACE_FILE environment variable but "
+                  "none were found. Chrome will probably crash.";
+  }
+#endif
+
+  LOG(WARNING) << "Loading egltrace.so with TRACE_LIBEGL="
+               << getenv(kTraceLibegl)
+               << " TRACE_LIBGLESV2=" << getenv(kTraceLibglesv2)
+               << " TRACE_FILE=" << getenv(kTraceFile);
+  const base::FilePath::CharType kDefaultTraceSoname[] =
+      FILE_PATH_LITERAL("egltrace.so");
+  base::NativeLibrary trace_library =
+      base::LoadNativeLibrary(base::FilePath(kDefaultTraceSoname), &error);
+  if (!trace_library)
+    LOG(ERROR) << error.ToString();
+  gl::AddGLNativeLibrary(trace_library);
+#endif
+
   gl::AddGLNativeLibrary(egl_library);
   gl::AddGLNativeLibrary(gles_library);
 
@@ -101,27 +119,20 @@ bool LoadEGLGLES2Bindings(const base::FilePath& egl_library_path,
 
 }  // namespace
 
-bool LoadDefaultEGLGLES2Bindings(gl::GLImplementation implementation) {
+bool LoadDefaultEGLGLES2Bindings(
+    const gl::GLImplementationParts& implementation) {
   base::FilePath glesv2_path;
   base::FilePath egl_path;
 
-  if (implementation == gl::kGLImplementationSwiftShaderGL) {
-#if BUILDFLAG(ENABLE_SWIFTSHADER)
+  if (implementation.gl == gl::kGLImplementationEGLANGLE) {
     base::FilePath module_path;
-#if !defined(OS_FUCHSIA)
+#if !BUILDFLAG(IS_FUCHSIA)
     if (!base::PathService::Get(base::DIR_MODULE, &module_path))
       return false;
-    module_path = module_path.Append(FILE_PATH_LITERAL("swiftshader/"));
 #endif
 
-    glesv2_path = module_path.Append(kGLESv2SwiftShaderLibraryName);
-    egl_path = module_path.Append(kEGLSwiftShaderLibraryName);
-#else
-    return false;
-#endif
-  } else if (implementation == gl::kGLImplementationEGLANGLE) {
-    glesv2_path = base::FilePath(kAngleGlesSoname);
-    egl_path = base::FilePath(kAngleEglSoname);
+    glesv2_path = module_path.Append(kAngleGlesSoname);
+    egl_path = module_path.Append(kAngleEglSoname);
   } else {
     glesv2_path = base::FilePath(kDefaultGlesSoname);
     egl_path = base::FilePath(kDefaultEglSoname);

@@ -673,7 +673,7 @@ weston_desktop_xdg_toplevel_committed(struct weston_desktop_xdg_toplevel *toplev
 	struct weston_geometry geometry =
 		weston_desktop_surface_get_geometry(toplevel->base.desktop_surface);
 
-	if ((toplevel->next.state.maximized || toplevel->next.state.fullscreen) &&
+	if (toplevel->next.state.maximized &&
 	    (toplevel->next.size.width != geometry.width ||
 	     toplevel->next.size.height != geometry.height)) {
 		struct weston_desktop_client *client =
@@ -683,7 +683,29 @@ weston_desktop_xdg_toplevel_committed(struct weston_desktop_xdg_toplevel *toplev
 
 		wl_resource_post_error(client_resource,
 				       XDG_WM_BASE_ERROR_INVALID_SURFACE_STATE,
-				       "xdg_surface buffer does not match the configured state");
+				       "xdg_surface buffer (%" PRIi32 " x %" PRIi32 ") "
+				       "does not match the configured maximized state (%" PRIi32 " x %" PRIi32 ")",
+				       geometry.width, geometry.height,
+				       toplevel->next.size.width,
+				       toplevel->next.size.height);
+		return;
+	}
+
+	if (toplevel->next.state.fullscreen &&
+	    (toplevel->next.size.width < geometry.width ||
+	     toplevel->next.size.height < geometry.height)) {
+		struct weston_desktop_client *client =
+			weston_desktop_surface_get_client(toplevel->base.desktop_surface);
+		struct wl_resource *client_resource =
+			weston_desktop_client_get_resource(client);
+
+		wl_resource_post_error(client_resource,
+				       XDG_WM_BASE_ERROR_INVALID_SURFACE_STATE,
+				       "xdg_surface buffer (%" PRIi32 " x %" PRIi32 ") "
+				       "is larger than the configured fullscreen state (%" PRIi32 " x %" PRIi32 ")",
+				       geometry.width, geometry.height,
+				       toplevel->next.size.width,
+				       toplevel->next.size.height);
 		return;
 	}
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,38 +6,14 @@
 
 #include <notify.h>
 
-#include "base/bind.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
 #include "base/mac/mac_util.h"
 #include "base/posix/eintr_wrapper.h"
 
 namespace net {
 
-namespace {
-
-// Registers a dummy file descriptor to workaround a bug in libnotify
-// in macOS 10.12
-// See https://bugs.chromium.org/p/chromium/issues/detail?id=783148.
-class NotifyFileDescriptorsGlobalsHolder {
- public:
-  NotifyFileDescriptorsGlobalsHolder() {
-    int notify_fd = -1;
-    int notify_token = -1;
-    notify_register_file_descriptor("notify_file_descriptor_holder", &notify_fd,
-                                    0, &notify_token);
-  }
-};
-
-void HoldNotifyFileDescriptorsGlobals() {
-  if (base::mac::IsAtMostOS10_12()) {
-    static NotifyFileDescriptorsGlobalsHolder holder;
-  }
-}
-}  // namespace
-
-NotifyWatcherMac::NotifyWatcherMac() : notify_fd_(-1), notify_token_(-1) {
-  HoldNotifyFileDescriptorsGlobals();
-}
+NotifyWatcherMac::NotifyWatcherMac() : notify_fd_(-1), notify_token_(-1) {}
 
 NotifyWatcherMac::~NotifyWatcherMac() {
   Cancel();
@@ -62,10 +38,10 @@ bool NotifyWatcherMac::Watch(const char* key, const CallbackType& callback) {
 
 void NotifyWatcherMac::Cancel() {
   if (notify_fd_ >= 0) {
+    watcher_.reset();
     notify_cancel(notify_token_);  // Also closes |notify_fd_|.
     notify_fd_ = -1;
     callback_.Reset();
-    watcher_.reset();
   }
 }
 
@@ -78,7 +54,7 @@ void NotifyWatcherMac::OnFileCanReadWithoutBlocking() {
     return;
   }
   // Ignoring |token| value to avoid possible endianness mismatch:
-  // http://openradar.appspot.com/8821081
+  // https://openradar.appspot.com/8821081
   callback_.Run(true);
 }
 

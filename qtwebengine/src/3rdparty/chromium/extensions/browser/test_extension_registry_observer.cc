@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "base/run_loop.h"
 
 namespace extensions {
@@ -14,6 +13,9 @@ namespace extensions {
 class TestExtensionRegistryObserver::Waiter {
  public:
   Waiter() : observed_(false), extension_(nullptr) {}
+
+  Waiter(const Waiter&) = delete;
+  Waiter& operator=(const Waiter&) = delete;
 
   scoped_refptr<const Extension> Wait() {
     if (!observed_)
@@ -31,8 +33,6 @@ class TestExtensionRegistryObserver::Waiter {
   bool observed_;
   base::RunLoop run_loop_;
   scoped_refptr<const Extension> extension_;
-
-  DISALLOW_COPY_AND_ASSIGN(Waiter);
 };
 
 TestExtensionRegistryObserver::TestExtensionRegistryObserver(
@@ -46,11 +46,12 @@ TestExtensionRegistryObserver::TestExtensionRegistryObserver(
     : will_be_installed_waiter_(std::make_unique<Waiter>()),
       installed_waiter_(std::make_unique<Waiter>()),
       uninstalled_waiter_(std::make_unique<Waiter>()),
+      uninstallation_denied_waiter_(std::make_unique<Waiter>()),
       loaded_waiter_(std::make_unique<Waiter>()),
       ready_waiter_(std::make_unique<Waiter>()),
       unloaded_waiter_(std::make_unique<Waiter>()),
       extension_id_(extension_id) {
-  extension_registry_observer_.Add(registry);
+  extension_registry_observation_.Observe(registry);
 }
 
 TestExtensionRegistryObserver::~TestExtensionRegistryObserver() {
@@ -59,6 +60,11 @@ TestExtensionRegistryObserver::~TestExtensionRegistryObserver() {
 scoped_refptr<const Extension>
 TestExtensionRegistryObserver::WaitForExtensionUninstalled() {
   return Wait(&uninstalled_waiter_);
+}
+
+scoped_refptr<const Extension>
+TestExtensionRegistryObserver::WaitForExtensionUninstallationDenied() {
+  return Wait(&uninstallation_denied_waiter_);
 }
 
 scoped_refptr<const Extension>
@@ -109,6 +115,13 @@ void TestExtensionRegistryObserver::OnExtensionUninstalled(
     extensions::UninstallReason reason) {
   if (extension_id_.empty() || extension->id() == extension_id_)
     uninstalled_waiter_->OnObserved(extension);
+}
+
+void TestExtensionRegistryObserver::OnExtensionUninstallationDenied(
+    content::BrowserContext* browser_context,
+    const Extension* extension) {
+  if (extension_id_.empty() || extension->id() == extension_id_)
+    uninstallation_denied_waiter_->OnObserved(extension);
 }
 
 void TestExtensionRegistryObserver::OnExtensionLoaded(

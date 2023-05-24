@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,13 +26,15 @@
 #include <memory>
 #include <vector>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/time/time.h"
 #include "media/base/audio_buffer.h"
 #include "media/base/audio_buffer_queue.h"
 #include "media/base/audio_parameters.h"
 #include "media/base/media_log.h"
 #include "media/base/multi_channel_resampler.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media {
 
@@ -43,6 +45,10 @@ class MEDIA_EXPORT AudioRendererAlgorithm {
   AudioRendererAlgorithm(MediaLog* media_log);
   AudioRendererAlgorithm(MediaLog* media_log,
                          AudioRendererAlgorithmParameters params);
+
+  AudioRendererAlgorithm(const AudioRendererAlgorithm&) = delete;
+  AudioRendererAlgorithm& operator=(const AudioRendererAlgorithm&) = delete;
+
   ~AudioRendererAlgorithm();
 
   // Initializes this object with information about the audio stream.
@@ -83,7 +89,7 @@ class MEDIA_EXPORT AudioRendererAlgorithm {
   // Sets a target queue latency. This target will be clamped and stored in
   // |playback_threshold_|. It may also cause an increase in |capacity_|. A
   // value of nullopt indicates the algorithm should restore the default value.
-  void SetLatencyHint(base::Optional<base::TimeDelta> latency_hint);
+  void SetLatencyHint(absl::optional<base::TimeDelta> latency_hint);
 
   // Sets a flag indicating whether apply pitch adjustments when playing back
   // at rates other than 1.0. Concretely, we use WSOLA when this is true, and
@@ -120,12 +126,29 @@ class MEDIA_EXPORT AudioRendererAlgorithm {
   // more data than |audio_buffer_| was intending to hold.
   int BufferedFrames() const;
 
+  // Returns the effective delay in output frames at the given |playback rate|.
+  // Effectively this tells the caller, if new audio is enqueued via
+  // EnqueueBuffer(), how many frames must be read via FillBuffer() at the
+  // |playback_rate| before the new audio is read out. Note that this is
+  // approximate, since due to WSOLA the audio output doesn't always directly
+  // correspond to the audio input (some samples may be duplicated or skipped).
+  double DelayInFrames(double playback_rate) const;
+
   // Returns the samples per second for this audio stream.
   int samples_per_second() const { return samples_per_second_; }
 
   std::vector<bool> channel_mask_for_testing() { return channel_mask_; }
 
  private:
+  enum class FillBufferMode {
+    kPassthrough,
+    kResampler,
+    kWSOLA,
+  };
+
+  // Remove buffered data that will be outdated if we switch fill mode.
+  void SetFillBufferMode(FillBufferMode mode);
+
   // Within |search_block_|, find the block of data that is most similar to
   // |target_block_|, and write it in |optimal_block_|. This method assumes that
   // there is enough data to perform a search, i.e. |search_block_| and
@@ -181,7 +204,7 @@ class MEDIA_EXPORT AudioRendererAlgorithm {
   // Called by |resampler_| to get more audio data.
   void OnResamplerRead(int frame_delay, AudioBus* audio_bus);
 
-  MediaLog* media_log_;
+  raw_ptr<MediaLog> media_log_;
 
   // Parameters.
   AudioRendererAlgorithmParameters audio_renderer_algorithm_params_;
@@ -200,7 +223,7 @@ class MEDIA_EXPORT AudioRendererAlgorithm {
 
   // Hint to adjust |playback_threshold_| as a means of controlling playback
   // start latency. See SetLatencyHint();
-  base::Optional<base::TimeDelta> latency_hint_;
+  absl::optional<base::TimeDelta> latency_hint_;
 
   // Whether to apply pitch adjusments or not when playing back at rates other
   // than 1.0. In other words, we use WSOLA to preserve pitch when this is on,
@@ -303,7 +326,7 @@ class MEDIA_EXPORT AudioRendererAlgorithm {
   int64_t initial_capacity_;
   int64_t max_capacity_;
 
-  DISALLOW_COPY_AND_ASSIGN(AudioRendererAlgorithm);
+  FillBufferMode last_mode_ = FillBufferMode::kPassthrough;
 };
 
 }  // namespace media

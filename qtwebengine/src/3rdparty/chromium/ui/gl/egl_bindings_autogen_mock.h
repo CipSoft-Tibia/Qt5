@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -22,6 +22,10 @@ Mock_eglChooseConfig(EGLDisplay dpy,
                      EGLConfig* configs,
                      EGLint config_size,
                      EGLint* num_config);
+static EGLint GL_BINDING_CALL Mock_eglClientWaitSync(EGLDisplay dpy,
+                                                     EGLSync sync,
+                                                     EGLint flags,
+                                                     EGLTime timeout);
 static EGLint GL_BINDING_CALL Mock_eglClientWaitSyncKHR(EGLDisplay dpy,
                                                         EGLSyncKHR sync,
                                                         EGLint flags,
@@ -30,11 +34,19 @@ static EGLBoolean GL_BINDING_CALL
 Mock_eglCopyBuffers(EGLDisplay dpy,
                     EGLSurface surface,
                     EGLNativePixmapType target);
+static void* GL_BINDING_CALL Mock_eglCopyMetalSharedEventANGLE(EGLDisplay dpy,
+                                                               EGLSync sync);
 static EGLContext GL_BINDING_CALL
 Mock_eglCreateContext(EGLDisplay dpy,
                       EGLConfig config,
                       EGLContext share_context,
                       const EGLint* attrib_list);
+static EGLImage GL_BINDING_CALL
+Mock_eglCreateImage(EGLDisplay dpy,
+                    EGLContext ctx,
+                    EGLenum target,
+                    EGLClientBuffer buffer,
+                    const EGLAttrib* attrib_list);
 static EGLImageKHR GL_BINDING_CALL
 Mock_eglCreateImageKHR(EGLDisplay dpy,
                        EGLContext ctx,
@@ -56,12 +68,25 @@ Mock_eglCreatePixmapSurface(EGLDisplay dpy,
                             EGLConfig config,
                             EGLNativePixmapType pixmap,
                             const EGLint* attrib_list);
+static EGLSurface GL_BINDING_CALL
+Mock_eglCreatePlatformPixmapSurface(EGLDisplay dpy,
+                                    EGLConfig config,
+                                    void* native_pixmap,
+                                    const EGLAttrib* attrib_list);
+static EGLSurface GL_BINDING_CALL
+Mock_eglCreatePlatformWindowSurface(EGLDisplay dpy,
+                                    EGLConfig config,
+                                    void* native_window,
+                                    const EGLAttrib* attrib_list);
 static EGLStreamKHR GL_BINDING_CALL
 Mock_eglCreateStreamKHR(EGLDisplay dpy, const EGLint* attrib_list);
 static EGLBoolean GL_BINDING_CALL
 Mock_eglCreateStreamProducerD3DTextureANGLE(EGLDisplay dpy,
                                             EGLStreamKHR stream,
                                             EGLAttrib* attrib_list);
+static EGLSync GL_BINDING_CALL Mock_eglCreateSync(EGLDisplay dpy,
+                                                  EGLenum type,
+                                                  const EGLAttrib* attrib_list);
 static EGLSyncKHR GL_BINDING_CALL
 Mock_eglCreateSyncKHR(EGLDisplay dpy, EGLenum type, const EGLint* attrib_list);
 static EGLSurface GL_BINDING_CALL
@@ -74,12 +99,16 @@ Mock_eglDebugMessageControlKHR(EGLDEBUGPROCKHR callback,
                                const EGLAttrib* attrib_list);
 static EGLBoolean GL_BINDING_CALL Mock_eglDestroyContext(EGLDisplay dpy,
                                                          EGLContext ctx);
+static EGLBoolean GL_BINDING_CALL Mock_eglDestroyImage(EGLDisplay dpy,
+                                                       EGLImage image);
 static EGLBoolean GL_BINDING_CALL Mock_eglDestroyImageKHR(EGLDisplay dpy,
                                                           EGLImageKHR image);
 static EGLBoolean GL_BINDING_CALL Mock_eglDestroyStreamKHR(EGLDisplay dpy,
                                                            EGLStreamKHR stream);
 static EGLBoolean GL_BINDING_CALL Mock_eglDestroySurface(EGLDisplay dpy,
                                                          EGLSurface surface);
+static EGLBoolean GL_BINDING_CALL Mock_eglDestroySync(EGLDisplay dpy,
+                                                      EGLSync sync);
 static EGLBoolean GL_BINDING_CALL Mock_eglDestroySyncKHR(EGLDisplay dpy,
                                                          EGLSyncKHR sync);
 static EGLint GL_BINDING_CALL Mock_eglDupNativeFenceFDANDROID(EGLDisplay dpy,
@@ -96,6 +125,11 @@ Mock_eglExportDMABUFImageQueryMESA(EGLDisplay dpy,
                                    int* fourcc,
                                    int* num_planes,
                                    EGLuint64KHR* modifiers);
+static EGLBoolean GL_BINDING_CALL
+Mock_eglExportVkImageANGLE(EGLDisplay dpy,
+                           EGLImageKHR image,
+                           void* vk_image,
+                           void* vk_image_create_info);
 static EGLBoolean GL_BINDING_CALL
 Mock_eglGetCompositorTimingANDROID(EGLDisplay dpy,
                                    EGLSurface surface,
@@ -147,6 +181,10 @@ Mock_eglGetPlatformDisplay(EGLenum platform,
                            const EGLAttrib* attrib_list);
 static __eglMustCastToProperFunctionPointerType GL_BINDING_CALL
 Mock_eglGetProcAddress(const char* procname);
+static EGLBoolean GL_BINDING_CALL Mock_eglGetSyncAttrib(EGLDisplay dpy,
+                                                        EGLSync sync,
+                                                        EGLint attribute,
+                                                        EGLAttrib* value);
 static EGLBoolean GL_BINDING_CALL Mock_eglGetSyncAttribKHR(EGLDisplay dpy,
                                                            EGLSyncKHR sync,
                                                            EGLint attribute,
@@ -186,6 +224,10 @@ static EGLBoolean GL_BINDING_CALL Mock_eglQueryContext(EGLDisplay dpy,
                                                        EGLint* value);
 static EGLBoolean GL_BINDING_CALL Mock_eglQueryDebugKHR(EGLint attribute,
                                                         EGLAttrib* value);
+static EGLBoolean GL_BINDING_CALL
+Mock_eglQueryDeviceAttribEXT(EGLDeviceEXT device,
+                             EGLint attribute,
+                             EGLAttrib* value);
 static const char* GL_BINDING_CALL
 Mock_eglQueryDeviceStringEXT(EGLDeviceEXT device, EGLint name);
 static EGLBoolean GL_BINDING_CALL Mock_eglQueryDevicesEXT(EGLint max_devices,
@@ -195,6 +237,22 @@ static EGLBoolean GL_BINDING_CALL
 Mock_eglQueryDisplayAttribANGLE(EGLDisplay dpy,
                                 EGLint attribute,
                                 EGLAttrib* value);
+static EGLBoolean GL_BINDING_CALL
+Mock_eglQueryDisplayAttribEXT(EGLDisplay dpy,
+                              EGLint attribute,
+                              EGLAttrib* value);
+static EGLBoolean GL_BINDING_CALL
+Mock_eglQueryDmaBufFormatsEXT(EGLDisplay dpy,
+                              EGLint max_formats,
+                              EGLint* formats,
+                              EGLint* num_formats);
+static EGLBoolean GL_BINDING_CALL
+Mock_eglQueryDmaBufModifiersEXT(EGLDisplay dpy,
+                                EGLint format,
+                                EGLint max_modifiers,
+                                EGLuint64KHR* modifiers,
+                                EGLBoolean* external_only,
+                                EGLint* num_modifiers);
 static EGLBoolean GL_BINDING_CALL Mock_eglQueryStreamKHR(EGLDisplay dpy,
                                                          EGLStreamKHR stream,
                                                          EGLenum attribute,
@@ -266,6 +324,10 @@ static EGLBoolean GL_BINDING_CALL Mock_eglTerminate(EGLDisplay dpy);
 static EGLBoolean GL_BINDING_CALL Mock_eglWaitClient(void);
 static EGLBoolean GL_BINDING_CALL Mock_eglWaitGL(void);
 static EGLBoolean GL_BINDING_CALL Mock_eglWaitNative(EGLint engine);
+static EGLint GL_BINDING_CALL Mock_eglWaitSync(EGLDisplay dpy,
+                                               EGLSync sync,
+                                               EGLint flags);
 static EGLint GL_BINDING_CALL Mock_eglWaitSyncKHR(EGLDisplay dpy,
                                                   EGLSyncKHR sync,
                                                   EGLint flags);
+static void GL_BINDING_CALL Mock_eglWaitUntilWorkScheduledANGLE(EGLDisplay dpy);

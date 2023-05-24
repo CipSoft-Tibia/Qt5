@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -36,6 +36,25 @@ class PLATFORM_EXPORT ShapeResultBloberizerTestInfo {
   STATIC_ONLY(ShapeResultBloberizerTestInfo);
 
  public:
+  static void Add(ShapeResultBloberizer& bloberizer,
+                  Glyph glyph,
+                  const SimpleFontData* font_data,
+                  CanvasRotationInVertical canvas_rotation,
+                  float h_offset,
+                  unsigned character_index) {
+    bloberizer.Add(glyph, font_data, canvas_rotation, h_offset,
+                   character_index);
+  }
+
+  static void Add(ShapeResultBloberizer& bloberizer,
+                  Glyph glyph,
+                  const SimpleFontData* font_data,
+                  CanvasRotationInVertical canvas_rotation,
+                  const gfx::Vector2dF& offset,
+                  unsigned character_index) {
+    bloberizer.Add(glyph, font_data, canvas_rotation, offset, character_index);
+  }
+
   static const SimpleFontData* PendingRunFontData(
       const ShapeResultBloberizer& bloberizer) {
     return bloberizer.pending_font_data_;
@@ -79,7 +98,7 @@ struct PLATFORM_EXPORT ShapeResultTestGlyphInfo {
 void PLATFORM_EXPORT AddGlyphInfo(void* context,
                                   unsigned character_index,
                                   Glyph,
-                                  FloatSize glyph_offset,
+                                  gfx::Vector2dF glyph_offset,
                                   float advance,
                                   bool is_horizontal,
                                   CanvasRotationInVertical,

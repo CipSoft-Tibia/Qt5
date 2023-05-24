@@ -1,10 +1,12 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // Original code copyright 2014 Foxit Software Inc. http://www.foxitsoftware.com
 
 #include "core/fxge/cfx_glyphcache.h"
+
+#include <stdarg.h>
 
 #include <algorithm>
 #include <limits>
@@ -13,28 +15,29 @@
 
 #include "build/build_config.h"
 #include "core/fxcrt/fx_codepage.h"
+#include "core/fxge/cfx_defaultrenderdevice.h"
 #include "core/fxge/cfx_font.h"
 #include "core/fxge/cfx_fontmgr.h"
 #include "core/fxge/cfx_gemodule.h"
 #include "core/fxge/cfx_glyphbitmap.h"
-#include "core/fxge/cfx_pathdata.h"
+#include "core/fxge/cfx_path.h"
 #include "core/fxge/cfx_substfont.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
-#include "core/fxge/fx_freetype.h"
+#include "core/fxge/freetype/fx_freetype.h"
 #include "core/fxge/scoped_font_transform.h"
 #include "third_party/base/numerics/safe_math.h"
 
-#if defined(_SKIA_SUPPORT_) || defined(_SKIA_SUPPORT_PATHS_)
+#ifdef _SKIA_SUPPORT_
 #include "third_party/skia/include/core/SkStream.h"  // nogncheck
 #include "third_party/skia/include/core/SkTypeface.h"  // nogncheck
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "third_party/skia/include/core/SkFontMgr.h"  // nogncheck
 #include "third_party/skia/include/ports/SkFontMgr_empty.h"  // nogncheck
 #endif
 #endif
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
 #include "core/fxge/cfx_textrenderoptions.h"
 #endif
 
@@ -133,7 +136,7 @@ std::unique_ptr<CFX_GlyphBitmap> CFX_GlyphCache::RenderGlyph(
       else
         ft_matrix.xy -= ft_matrix.xx * skew / 100;
     }
-    if (pSubstFont->m_bFlagMM) {
+    if (pSubstFont->IsBuiltInGenericFont()) {
       pFont->AdjustMMParams(glyph_index, dest_width,
                             pFont->GetSubstFont()->m_Weight);
     }
@@ -161,7 +164,7 @@ std::unique_ptr<CFX_GlyphBitmap> CFX_GlyphCache::RenderGlyph(
     weight = pSubstFont->m_WeightCJK;
   else
     weight = pSubstFont ? pSubstFont->m_Weight : 0;
-  if (pSubstFont && !pSubstFont->m_bFlagMM && weight > 400) {
+  if (pSubstFont && !pSubstFont->IsBuiltInGenericFont() && weight > 400) {
     uint32_t index = (weight - 400) / 10;
     pdfium::base::CheckedNumeric<signed long> level =
         CFX_Font::GetWeightLevel(pSubstFont->m_Charset, index);
@@ -189,12 +192,13 @@ std::unique_ptr<CFX_GlyphBitmap> CFX_GlyphCache::RenderGlyph(
   auto pGlyphBitmap =
       std::make_unique<CFX_GlyphBitmap>(FXFT_Get_Glyph_BitmapLeft(GetFaceRec()),
                                         FXFT_Get_Glyph_BitmapTop(GetFaceRec()));
-  pGlyphBitmap->GetBitmap()->Create(
-      dib_width, bmheight,
-      anti_alias == FT_RENDER_MODE_MONO ? FXDIB_1bppMask : FXDIB_8bppMask);
+  pGlyphBitmap->GetBitmap()->Create(dib_width, bmheight,
+                                    anti_alias == FT_RENDER_MODE_MONO
+                                        ? FXDIB_Format::k1bppMask
+                                        : FXDIB_Format::k8bppMask);
   int dest_pitch = pGlyphBitmap->GetBitmap()->GetPitch();
   int src_pitch = FXFT_Get_Bitmap_Pitch(FXFT_Get_Glyph_Bitmap(GetFaceRec()));
-  uint8_t* pDestBuf = pGlyphBitmap->GetBitmap()->GetBuffer();
+  uint8_t* pDestBuf = pGlyphBitmap->GetBitmap()->GetBuffer().data();
   uint8_t* pSrcBuf = static_cast<uint8_t*>(
       FXFT_Get_Bitmap_Buffer(FXFT_Get_Glyph_Bitmap(GetFaceRec())));
   if (anti_alias != FT_RENDER_MODE_MONO &&
@@ -218,9 +222,9 @@ std::unique_ptr<CFX_GlyphBitmap> CFX_GlyphCache::RenderGlyph(
   return pGlyphBitmap;
 }
 
-const CFX_PathData* CFX_GlyphCache::LoadGlyphPath(const CFX_Font* pFont,
-                                                  uint32_t glyph_index,
-                                                  int dest_width) {
+const CFX_Path* CFX_GlyphCache::LoadGlyphPath(const CFX_Font* pFont,
+                                              uint32_t glyph_index,
+                                              int dest_width) {
   if (!GetFaceRec() || glyph_index == kInvalidGlyphIndex)
     return nullptr;
 
@@ -234,9 +238,8 @@ const CFX_PathData* CFX_GlyphCache::LoadGlyphPath(const CFX_Font* pFont,
   if (it != m_PathMap.end())
     return it->second.get();
 
-  CFX_PathData* pGlyphPath = pFont->LoadGlyphPathImpl(glyph_index, dest_width);
-  m_PathMap[key] = std::unique_ptr<CFX_PathData>(pGlyphPath);
-  return pGlyphPath;
+  m_PathMap[key] = pFont->LoadGlyphPathImpl(glyph_index, dest_width);
+  return m_PathMap[key].get();
 }
 
 const CFX_GlyphBitmap* CFX_GlyphCache::LoadGlyphBitmap(
@@ -251,7 +254,7 @@ const CFX_GlyphBitmap* CFX_GlyphCache::LoadGlyphBitmap(
     return nullptr;
 
   UniqueKeyGen keygen;
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
   const bool bNative = text_options->native_text;
 #else
   const bool bNative = false;
@@ -259,9 +262,9 @@ const CFX_GlyphBitmap* CFX_GlyphCache::LoadGlyphBitmap(
   GenKey(&keygen, pFont, matrix, dest_width, anti_alias, bNative);
   ByteString FaceGlyphsKey(keygen.key_, keygen.key_len_);
 
-#if defined(OS_APPLE) && !defined(_SKIA_SUPPORT_) && \
-    !defined(_SKIA_SUPPORT_PATHS_)
-  const bool bDoLookUp = !text_options->native_text;
+#if BUILDFLAG(IS_APPLE)
+  const bool bDoLookUp = !text_options->native_text ||
+                         CFX_DefaultRenderDevice::SkiaIsDefaultRenderer();
 #else
   const bool bDoLookUp = true;
 #endif
@@ -270,8 +273,9 @@ const CFX_GlyphBitmap* CFX_GlyphCache::LoadGlyphBitmap(
                              bFontStyle, dest_width, anti_alias);
   }
 
-#if defined(OS_APPLE) && !defined(_SKIA_SUPPORT_) && \
-    !defined(_SKIA_SUPPORT_PATHS_)
+#if BUILDFLAG(IS_APPLE)
+  DCHECK(!CFX_DefaultRenderDevice::SkiaIsDefaultRenderer());
+
   std::unique_ptr<CFX_GlyphBitmap> pGlyphBitmap;
   auto it = m_SizeMap.find(FaceGlyphsKey);
   if (it != m_SizeMap.end()) {
@@ -305,29 +309,29 @@ const CFX_GlyphBitmap* CFX_GlyphCache::LoadGlyphBitmap(
   text_options->native_text = false;
   return LookUpGlyphBitmap(pFont, matrix, FaceGlyphsKey2, glyph_index,
                            bFontStyle, dest_width, anti_alias);
-#endif
+#endif  // BUILDFLAG(IS_APPLE)
 }
 
-#if defined(_SKIA_SUPPORT_) || defined(_SKIA_SUPPORT_PATHS_)
+#ifdef _SKIA_SUPPORT_
 CFX_TypeFace* CFX_GlyphCache::GetDeviceCache(const CFX_Font* pFont) {
   if (!m_pTypeface) {
     pdfium::span<const uint8_t> span = pFont->GetFontSpan();
     m_pTypeface = SkTypeface::MakeFromStream(
         std::make_unique<SkMemoryStream>(span.data(), span.size()));
   }
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   if (!m_pTypeface) {
     sk_sp<SkFontMgr> customMgr(SkFontMgr_New_Custom_Empty());
     pdfium::span<const uint8_t> span = pFont->GetFontSpan();
     m_pTypeface = customMgr->makeFromStream(
         std::make_unique<SkMemoryStream>(span.data(), span.size()));
   }
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
   return m_pTypeface.get();
 }
-#endif  // defined(_SKIA_SUPPORT_) || defined(_SKIA_SUPPORT_PATHS_)
+#endif  // _SKIA_SUPPORT_
 
-#if !defined(OS_APPLE)
+#if !BUILDFLAG(IS_APPLE)
 void CFX_GlyphCache::InitPlatform() {}
 #endif
 

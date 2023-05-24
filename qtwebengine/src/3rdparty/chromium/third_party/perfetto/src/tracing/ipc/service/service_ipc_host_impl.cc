@@ -20,9 +20,14 @@
 #include "perfetto/base/task_runner.h"
 #include "perfetto/ext/ipc/host.h"
 #include "perfetto/ext/tracing/core/tracing_service.h"
-#include "src/tracing/ipc/posix_shared_memory.h"
 #include "src/tracing/ipc/service/consumer_ipc_service.h"
 #include "src/tracing/ipc/service/producer_ipc_service.h"
+
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
+#include "src/tracing/ipc/shared_memory_windows.h"
+#else
+#include "src/tracing/ipc/posix_shared_memory.h"
+#endif
 
 namespace perfetto {
 
@@ -52,8 +57,8 @@ bool ServiceIPCHostImpl::Start(const char* producer_socket_name,
   return DoStart();
 }
 
-bool ServiceIPCHostImpl::Start(base::ScopedFile producer_socket_fd,
-                               base::ScopedFile consumer_socket_fd) {
+bool ServiceIPCHostImpl::Start(base::ScopedSocketHandle producer_socket_fd,
+                               base::ScopedSocketHandle consumer_socket_fd) {
   PERFETTO_CHECK(!svc_);  // Check if already started.
 
   // Initialize the IPC transport.
@@ -64,10 +69,28 @@ bool ServiceIPCHostImpl::Start(base::ScopedFile producer_socket_fd,
   return DoStart();
 }
 
+bool ServiceIPCHostImpl::Start(std::unique_ptr<ipc::Host> producer_host,
+                               std::unique_ptr<ipc::Host> consumer_host) {
+  PERFETTO_CHECK(!svc_);  // Check if already started.
+  PERFETTO_DCHECK(producer_host);
+  PERFETTO_DCHECK(consumer_host);
+
+  // Initialize the IPC transport.
+  producer_ipc_port_ = std::move(producer_host);
+  consumer_ipc_port_ = std::move(consumer_host);
+
+  return DoStart();
+}
+
 bool ServiceIPCHostImpl::DoStart() {
   // Create and initialize the platform-independent tracing business logic.
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
+  std::unique_ptr<SharedMemory::Factory> shm_factory(
+      new SharedMemoryWindows::Factory());
+#else
   std::unique_ptr<SharedMemory::Factory> shm_factory(
       new PosixSharedMemory::Factory());
+#endif
   svc_ = TracingService::CreateInstance(std::move(shm_factory), task_runner_);
 
   if (!producer_ipc_port_ || !consumer_ipc_port_) {

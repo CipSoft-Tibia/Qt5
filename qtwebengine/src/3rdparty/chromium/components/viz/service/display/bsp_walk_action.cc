@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -34,7 +34,7 @@ void BspWalkActionDrawPolygon::operator()(DrawPolygon* item) {
   }
 
   item->TransformToLayerSpace(inverse_transform);
-  renderer_->DoDrawPolygon(*item, render_pass_scissor_,
+  renderer_->DoDrawPolygon(*item, *render_pass_scissor_,
                            using_scissor_as_optimization_);
 }
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwindowsstyle_p.h"
 #include "qwindowsstyle_p_p.h"
@@ -85,7 +49,7 @@
 #include <qpa/qplatformscreen.h>
 #include <private/qguiapplication_p.h>
 #include <private/qhighdpiscaling_p.h>
-#include <qpa/qplatformnativeinterface.h>
+#include <qpa/qplatformintegration.h>
 #include <private/qwidget_p.h>
 
 #include <private/qstylehelper_p.h>
@@ -129,22 +93,6 @@ qreal QWindowsStylePrivate::appDevicePixelRatio()
     return qApp->devicePixelRatio();
 }
 
-bool QWindowsStylePrivate::isDarkMode()
-{
-    bool result = false;
-#ifdef Q_OS_WIN
-    // Windows only: Return whether dark mode style support is desired and
-    // dark mode is in effect.
-    if (auto ni = QGuiApplication::platformNativeInterface()) {
-        const QVariant darkModeStyleP = ni->property("darkModeStyle");
-        result = darkModeStyleP.type() == QVariant::Bool
-                 && darkModeStyleP.value<bool>()
-                 && ni->property("darkMode").value<bool>();
-    }
-#endif
-    return result;
-}
-
 // Returns \c true if the toplevel parent of \a widget has seen the Alt-key
 bool QWindowsStylePrivate::hasSeenAlt(const QWidget *widget) const
 {
@@ -174,7 +122,7 @@ bool QWindowsStyle::eventFilter(QObject *o, QEvent *e)
                 return w->isWindow() || !w->isVisible()
                         || w->style()->styleHint(SH_UnderlineShortcut, nullptr, w);
             };
-            l.erase(std::remove_if(l.begin(), l.end(), ignorable), l.end());
+            l.removeIf(ignorable);
             // Update states before repainting
             d->seenAlt.append(widget);
             d->alt_down = true;
@@ -267,8 +215,8 @@ void QWindowsStyle::polish(QApplication *app)
     d->inactiveCaptionColor = d->inactiveGradientCaptionColor;
     d->inactiveCaptionText = palette.window().color();
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT) //fetch native title bar colors
-    if(app->desktopSettingsAware()){
+#if defined(Q_OS_WIN) //fetch native title bar colors
+    if (app->desktopSettingsAware()){
         DWORD activeCaption = GetSysColor(COLOR_ACTIVECAPTION);
         DWORD gradientActiveCaption = GetSysColor(COLOR_GRADIENTACTIVECAPTION);
         DWORD inactiveCaption = GetSysColor(COLOR_INACTIVECAPTION);
@@ -312,17 +260,18 @@ void QWindowsStyle::polish(QPalette &pal)
 
 int QWindowsStylePrivate::pixelMetricFromSystemDp(QStyle::PixelMetric pm, const QStyleOption *, const QWidget *widget)
 {
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
     switch (pm) {
     case QStyle::PM_DockWidgetFrameWidth:
         return GetSystemMetrics(SM_CXFRAME);
 
-    case QStyle::PM_TitleBarHeight:
-        if (widget && (widget->windowType() == Qt::Tool)) {
-            // MS always use one less than they say
-            return GetSystemMetrics(SM_CYSMCAPTION) - 1;
-        }
-        return GetSystemMetrics(SM_CYCAPTION) - 1;
+    case QStyle::PM_TitleBarHeight: {
+        const int resizeBorderThickness =
+            GetSystemMetrics(SM_CXSIZEFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER);
+        if (widget && (widget->windowType() == Qt::Tool))
+            return GetSystemMetrics(SM_CYSMCAPTION) + resizeBorderThickness;
+        return GetSystemMetrics(SM_CYCAPTION) + resizeBorderThickness;
+    }
 
     case QStyle::PM_ScrollBarExtent:
         {
@@ -339,7 +288,7 @@ int QWindowsStylePrivate::pixelMetricFromSystemDp(QStyle::PixelMetric pm, const 
     default:
         break;
     }
-#else // Q_OS_WIN && !Q_OS_WINRT
+#else // Q_OS_WIN
     Q_UNUSED(pm);
     Q_UNUSED(widget);
 #endif
@@ -410,15 +359,15 @@ static QScreen *screenOf(const QWidget *w)
 // and account for secondary screens with differing logical DPI.
 qreal QWindowsStylePrivate::nativeMetricScaleFactor(const QWidget *widget)
 {
-    qreal result = qreal(1) / QWindowsStylePrivate::devicePixelRatio(widget);
+    qreal scale = QHighDpiScaling::factor(screenOf(widget));
+    qreal result = qreal(1) / scale;
     if (QGuiApplicationPrivate::screen_list.size() > 1) {
         const QScreen *primaryScreen = QGuiApplication::primaryScreen();
         const QScreen *screen = screenOf(widget);
         if (screen != primaryScreen) {
-            const qreal primaryLogicalDpi = primaryScreen->handle()->logicalDpi().first;
-            const qreal logicalDpi = screen->handle()->logicalDpi().first;
-            if (!qFuzzyCompare(primaryLogicalDpi, logicalDpi))
-                result *= logicalDpi / primaryLogicalDpi;
+            qreal primaryScale = QHighDpiScaling::factor(primaryScreen);
+            if (!qFuzzyCompare(scale, primaryScale))
+                result *= scale / primaryScale;
         }
     }
     return result;
@@ -441,7 +390,7 @@ int QWindowsStyle::pixelMetric(PixelMetric pm, const QStyleOption *opt, const QW
 
     switch (pm) {
     case PM_MaximumDragDistance:
-        ret = QCommonStyle::pixelMetric(PM_MaximumDragDistance);
+        ret = QCommonStyle::pixelMetric(PM_MaximumDragDistance, opt, widget);
         if (ret == -1)
             ret = 60;
         break;
@@ -481,7 +430,7 @@ int QWindowsStyle::pixelMetric(PixelMetric pm, const QStyleOption *opt, const QW
         break;
 
     case PM_SplitterWidth:
-        ret = qMax(int(QStyleHelper::dpiScaled(4, opt)), QApplication::globalStrut().width());
+        ret = QStyleHelper::dpiScaled(4, opt);
         break;
 
     default:
@@ -498,7 +447,7 @@ int QWindowsStyle::pixelMetric(PixelMetric pm, const QStyleOption *opt, const QW
 QPixmap QWindowsStyle::standardPixmap(StandardPixmap standardPixmap, const QStyleOption *opt,
                                       const QWidget *widget) const
 {
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
     QPixmap desktopIcon;
     switch(standardPixmap) {
     case SP_DriveCDIcon:
@@ -537,7 +486,7 @@ QPixmap QWindowsStyle::standardPixmap(StandardPixmap standardPixmap, const QStyl
     if (!desktopIcon.isNull()) {
         return desktopIcon;
     }
-#endif // Q_OS_WIN && !Q_OS_WINRT
+#endif // Q_OS_WIN
     return QCommonStyle::standardPixmap(standardPixmap, opt, widget);
 }
 
@@ -548,9 +497,14 @@ int QWindowsStyle::styleHint(StyleHint hint, const QStyleOption *opt, const QWid
     int ret = 0;
 
     switch (hint) {
-    case SH_EtchDisabledText:
-        ret = d_func()->isDarkMode() ? 0 : 1;
+    case SH_EtchDisabledText: {
+        const QPalette pal = opt ? opt->palette
+                                 : widget ? widget->palette()
+                                          : QPalette();
+        ret = pal.window().color().lightness() > pal.text().color().lightness()
+            ? 1 : 0;
         break;
+    }
     case SH_Slider_SnapToValue:
     case SH_PrintDialog_RightAlignButtons:
     case SH_FontDialog_SelectAssociatedText:
@@ -577,7 +531,7 @@ int QWindowsStyle::styleHint(StyleHint hint, const QStyleOption *opt, const QWid
         ret = 0;
         break;
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT) // Option not used on WinRT -> common style
+#if defined(Q_OS_WIN)
     case SH_UnderlineShortcut:
     {
         ret = 1;
@@ -605,23 +559,23 @@ int QWindowsStyle::styleHint(StyleHint hint, const QStyleOption *opt, const QWid
                 ret = 1;
             }
         }
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
         if (!ret && opt && opt->type == QStyleOption::SO_MenuItem
             && QStyleHelper::isInstanceOf(opt->styleObject, QAccessible::MenuItem)
             && opt->styleObject->property("_q_showUnderlined").toBool())
             ret = 1;
-#endif // QT_NO_ACCESSIBILITY
+#endif // QT_CONFIG(accessibility)
         break;
     }
-#endif // Q_OS_WIN && !Q_OS_WINRT
+#endif // Q_OS_WIN
     case SH_Menu_SubMenuSloppyCloseTimeout:
     case SH_Menu_SubMenuPopupDelay: {
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
         DWORD delay;
         if (SystemParametersInfo(SPI_GETMENUSHOWDELAY, 0, &delay, 0))
             ret = delay;
         else
-#endif // Q_OS_WIN && !Q_OS_WINRT
+#endif // Q_OS_WIN
             ret = 400;
         break;
     }
@@ -631,7 +585,7 @@ int QWindowsStyle::styleHint(StyleHint hint, const QStyleOption *opt, const QWid
             ret = 0;
             if (rbOpt->shape == QRubberBand::Rectangle) {
                 ret = true;
-                if(QStyleHintReturnMask *mask = qstyleoption_cast<QStyleHintReturnMask*>(returnData)) {
+                if (QStyleHintReturnMask *mask = qstyleoption_cast<QStyleHintReturnMask*>(returnData)) {
                     mask->region = opt->rect;
                     int size = 1;
                     if (widget && widget->isWindow())
@@ -674,7 +628,7 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
             QRect rect = opt->rect;
             const int margin = 2;
             QPen oldPen = p->pen();
-            if(opt->state & State_Horizontal){
+            if (opt->state & State_Horizontal){
                 const int offset = rect.width()/2;
                 p->setPen(QPen(opt->palette.dark().color()));
                 p->drawLine(rect.bottomLeft().x() + offset,
@@ -759,7 +713,7 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
 
         if (opt->state & (State_Raised | State_Sunken | State_On)) {
             if (opt->state & State_AutoRaise) {
-                if(opt->state & (State_Enabled | State_Sunken | State_On)){
+                if (opt->state & (State_Enabled | State_Sunken | State_On)){
                     if (panel)
                         qDrawShadePanel(p, opt->rect, opt->palette,
                                         opt->state & (State_Sunken | State_On), 1, &fill);
@@ -857,7 +811,7 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
             QPointF  points[6];
             qreal scaleh = opt->rect.width() / 12.0;
             qreal scalev = opt->rect.height() / 12.0;
-            points[0] = { opt->rect.x() + 3.5 * scaleh, opt->rect.y() + 5.5 * scalev };
+            points[0] = { opt->rect.x() + qreal(3.5) * scaleh, opt->rect.y() + qreal(5.5) * scalev };
             points[1] = { points[0].x(),                points[0].y() + 2 * scalev };
             points[2] = { points[1].x() + 2 * scaleh,   points[1].y() + 2 * scalev };
             points[3] = { points[2].x() + 4 * scaleh,   points[2].y() - 4 * scalev };
@@ -1026,7 +980,7 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
         {
             bool vertical = false, inverted = false;
             if (const QStyleOptionProgressBar *pb = qstyleoption_cast<const QStyleOptionProgressBar *>(opt)) {
-                vertical = pb->orientation == Qt::Vertical;
+                vertical = !(pb->state & QStyle::State_Horizontal);
                 inverted = pb->invertedAppearance;
             }
 
@@ -1111,7 +1065,7 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
         if (const QStyleOptionMenuItem *menuitem = qstyleoption_cast<const QStyleOptionMenuItem *>(opt)) {
             int x, y, w, h;
             menuitem->rect.getRect(&x, &y, &w, &h);
-            int tab = menuitem->tabWidth;
+            int tab = menuitem->reservedShortcutWidth;
             bool dis = !(menuitem->state & State_Enabled);
             bool checked = menuitem->checkType != QStyleOptionMenuItem::NotCheckable
                             ? menuitem->checked : false;
@@ -1158,9 +1112,7 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
                     pixmap = menuitem->icon.pixmap(proxy()->pixelMetric(PM_SmallIconSize, opt, widget), mode, QIcon::On);
                 else
                     pixmap = menuitem->icon.pixmap(proxy()->pixelMetric(PM_SmallIconSize, opt, widget), mode);
-                const int pixw = pixmap.width() / pixmap.devicePixelRatio();
-                const int pixh = pixmap.height() / pixmap.devicePixelRatio();
-                QRect pmr(0, 0, pixw, pixh);
+                QRect pmr(QPoint(0, 0), pixmap.deviceIndependentSize().toSize());
                 pmr.moveCenter(vCheckRect.center());
                 p->setPen(menuitem->palette.text().color());
                 p->drawPixmap(pmr.topLeft(), pixmap);
@@ -1170,7 +1122,7 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
                 if (!dis)
                     newMi.state |= State_Enabled;
                 if (act)
-                    newMi.state |= State_On;
+                    newMi.state |= State_On | State_Selected;
                 newMi.rect = visualRect(opt->direction, menuitem->rect, QRect(menuitem->rect.x() + QWindowsStylePrivate::windowsItemFrame,
                                                                               menuitem->rect.y() + QWindowsStylePrivate::windowsItemFrame,
                                                                               checkcol - 2 * QWindowsStylePrivate::windowsItemFrame,
@@ -1190,10 +1142,10 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
             QRect textRect(xpos, y + QWindowsStylePrivate::windowsItemVMargin,
                            w - xm - QWindowsStylePrivate::windowsRightBorder - tab + 1, h - 2 * QWindowsStylePrivate::windowsItemVMargin);
             QRect vTextRect = visualRect(opt->direction, menuitem->rect, textRect);
-            QStringRef s(&menuitem->text);
+            QStringView s(menuitem->text);
             if (!s.isEmpty()) {                     // draw text
                 p->save();
-                int t = s.indexOf(QLatin1Char('\t'));
+                qsizetype t = s.indexOf(u'\t');
                 int text_flags = Qt::AlignVCenter | Qt::TextShowMnemonic | Qt::TextDontClip | Qt::TextSingleLine;
                 if (!proxy()->styleHint(SH_UnderlineShortcut, menuitem, widget))
                     text_flags |= Qt::TextHideMnemonic;
@@ -1619,7 +1571,7 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
                 default:
                     break;
                 }
-                if(opt->direction == Qt::RightToLeft){ //reverse layout changes the order of Beginning/end
+                if (opt->direction == Qt::RightToLeft){ //reverse layout changes the order of Beginning/end
                     bool tmp = paintLeftBorder;
                     paintRightBorder=paintLeftBorder;
                     paintLeftBorder=tmp;
@@ -1692,7 +1644,7 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
             if (!rect.isValid())
                 return;
 
-            const bool vertical = pb->orientation == Qt::Vertical;
+            const bool vertical = !(pb->state & QStyle::State_Horizontal);
             const bool inverted = pb->invertedAppearance;
 
             QTransform m;
@@ -1734,7 +1686,7 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
                 int myHeight = pbBits.rect.height();
                 int chunksToDraw = chunksInRow;
 
-                if(step > chunkCount - 5)chunksToDraw = (chunkCount - step);
+                if (step > chunkCount - 5)chunksToDraw = (chunkCount - step);
                 p->save();
                 p->setClipRect(m.mapRect(QRectF(rect)).toRect());
 
@@ -1748,7 +1700,7 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
                     x += reverse ? -unit_width : unit_width;
                 }
                 //Draw wrap-around chunks
-                if( step > chunkCount-5){
+                if ( step > chunkCount-5){
                     x0 = reverse ? rect.left() + rect.width() - unit_width : rect.left() ;
                     x = 0;
                     int chunksToDraw = step - (chunkCount - chunksInRow);
@@ -1835,7 +1787,7 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
                                     titleRect.height(), titleRect.width());
                 }
                 proxy()->drawItemText(p, titleRect,
-                            Qt::AlignLeft | Qt::AlignVCenter, palette,
+                            Qt::AlignLeft | Qt::AlignVCenter | Qt::TextHideMnemonic, palette,
                             dwOpt->state & State_Enabled, dwOpt->title,
                             floating ? (active ? QPalette::BrightText : QPalette::Window) : QPalette::WindowText);
                 p->setFont(oldFont);
@@ -2035,10 +1987,8 @@ void QWindowsStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComp
                 }
 
                 QBrush oldBrush = p->brush();
-                bool oldQt4CompatiblePainting = p->testRenderHint(QPainter::Qt4CompatiblePainting);
                 p->setPen(Qt::NoPen);
                 p->setBrush(handleBrush);
-                p->setRenderHint(QPainter::Qt4CompatiblePainting);
                 Qt::BGMode oldMode = p->backgroundMode();
                 p->setBackgroundMode(Qt::OpaqueMode);
                 p->drawRect(x1, y1, x2-x1+1, y2-y1+1);
@@ -2121,7 +2071,6 @@ void QWindowsStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComp
                     p->drawLine(x2, y2-1, x2+d, y2-1-d);
                     break;
                 }
-                p->setRenderHint(QPainter::Qt4CompatiblePainting, oldQt4CompatiblePainting);
             }
         }
         break;
@@ -2324,12 +2273,11 @@ QSize QWindowsStyle::sizeFromContents(ContentsType ct, const QStyleOption *opt,
             int minwidth = int(QStyleHelper::dpiScaled(75, dpi));
             int minheight = int(QStyleHelper::dpiScaled(23, dpi));
 
-#ifndef QT_QWS_SMALL_PUSHBUTTON
             if (w < minwidth + defwidth && !btn->text.isEmpty())
                 w = minwidth + defwidth;
             if (h < minheight + defwidth)
                 h = minheight + defwidth;
-#endif
+
             sz = QSize(w, h);
         }
         break;
@@ -2355,7 +2303,7 @@ QSize QWindowsStyle::sizeFromContents(ContentsType ct, const QStyleOption *opt,
             }
             int maxpmw = mi->maxIconWidth;
             int tabSpacing = 20;
-            if (mi->text.contains(QLatin1Char('\t')))
+            if (mi->text.contains(u'\t'))
                 w += tabSpacing;
             else if (mi->menuItemType == QStyleOptionMenuItem::SubMenu)
                 w += 2 * QWindowsStylePrivate::windowsArrowHMargin;

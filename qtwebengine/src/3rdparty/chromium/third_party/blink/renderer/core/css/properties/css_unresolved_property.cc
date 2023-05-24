@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,18 +18,12 @@ const CSSUnresolvedProperty* CSSUnresolvedProperty::GetAliasProperty(
   return GetAliasPropertyInternal(id);
 }
 
-const CSSUnresolvedProperty& CSSUnresolvedProperty::GetNonAliasProperty(
-    CSSPropertyID id) {
-  if (id == CSSPropertyID::kVariable)
-    return GetCSSPropertyVariableInternal();
-  return GetNonAliasPropertyInternal(id);
-}
-
 const CSSUnresolvedProperty& CSSUnresolvedProperty::Get(CSSPropertyID id) {
   DCHECK_NE(id, CSSPropertyID::kInvalid);
-  DCHECK_LE(id, lastUnresolvedCSSProperty);
-  if (id <= lastCSSProperty)
+  DCHECK_LE(id, kLastUnresolvedCSSProperty);
+  if (id <= kLastCSSProperty) {
     return GetNonAliasProperty(id);
+  }
   return *GetAliasProperty(id);
 }
 

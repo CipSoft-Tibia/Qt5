@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,7 +18,7 @@ TEST(BigStringMojomTraitsTest, BigString_Null) {
 
   ASSERT_TRUE(
       mojo::test::SerializeAndDeserialize<mojo_base::mojom::blink::BigString>(
-          &str, &output));
+          str, output));
   ASSERT_EQ(str, output);
 }
 
@@ -28,7 +28,7 @@ TEST(BigStringMojomTraitsTest, BigString_Empty) {
 
   ASSERT_TRUE(
       mojo::test::SerializeAndDeserialize<mojo_base::mojom::blink::BigString>(
-          &str, &output));
+          str, output));
   ASSERT_EQ(str, output);
 }
 
@@ -39,7 +39,7 @@ TEST(BigStringMojomTraitsTest, BigString_Short) {
 
   ASSERT_TRUE(
       mojo::test::SerializeAndDeserialize<mojo_base::mojom::blink::BigString>(
-          &str, &output));
+          str, output));
   ASSERT_EQ(str, output);
 
   // Replace the "o"s in "hello world" with "o"s with acute, so that |str| is
@@ -49,7 +49,7 @@ TEST(BigStringMojomTraitsTest, BigString_Short) {
 
   ASSERT_TRUE(
       mojo::test::SerializeAndDeserialize<mojo_base::mojom::blink::BigString>(
-          &str, &output));
+          str, output));
   ASSERT_EQ(str, output);
 }
 
@@ -62,7 +62,7 @@ TEST(BigStringMojomTraitsTest, BigString_Long) {
 
   ASSERT_TRUE(
       mojo::test::SerializeAndDeserialize<mojo_base::mojom::blink::BigString>(
-          &str, &output));
+          str, output));
   ASSERT_EQ(str, output);
 }
 

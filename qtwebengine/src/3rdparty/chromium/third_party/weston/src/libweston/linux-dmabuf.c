@@ -259,15 +259,18 @@ params_create_common(struct wl_client *client,
 		}
 	}
 
-	/* XXX: Some additional sanity checks could be done with respect
-	 * to the fourcc format. A centralized collection (kernel or
-	 * libdrm) would be useful to avoid code duplication for these
-	 * checks (e.g. drm_format_num_planes).
-	 */
+	if (buffer->direct_display) {
+		if (!weston_compositor_dmabuf_can_scanout(buffer->compositor,
+							  buffer))
+			goto err_failed;
+
+		goto avoid_gpu_import;
+	}
 
 	if (!weston_compositor_import_dmabuf(buffer->compositor, buffer))
 		goto err_failed;
 
+avoid_gpu_import:
 	buffer->buffer_resource = wl_resource_create(client,
 						     &wl_buffer_interface,
 						     1, buffer_id);
@@ -374,6 +377,7 @@ linux_dmabuf_create_params(struct wl_client *client,
 		wl_resource_create(client,
 				   &zwp_linux_buffer_params_v1_interface,
 				   version, params_id);
+	buffer->direct_display = false;
 	if (!buffer->params_resource)
 		goto err_dealloc;
 

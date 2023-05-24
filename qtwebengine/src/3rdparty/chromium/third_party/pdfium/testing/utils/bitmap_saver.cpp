@@ -1,4 +1,4 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 
 #include "core/fxcrt/fx_safe_types.h"
 #include "testing/image_diff/image_diff_png.h"
-#include "third_party/base/logging.h"
+#include "third_party/base/check.h"
 
 // static
 void BitmapSaver::WriteBitmapToPng(FPDF_BITMAP bitmap,

@@ -1,38 +1,41 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "weblayer/browser/profile_impl.h"
 
-#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/callback_forward.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
 #include "base/observer_list.h"
+#include "base/ranges/algorithm.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/thread_restrictions.h"
 #include "build/build_config.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "components/prefs/pref_service.h"
+#include "components/profile_metrics/browser_profile_type.h"
 #include "components/web_cache/browser/web_cache_manager.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/browsing_data_remover.h"
 #include "content/public/browser/device_service.h"
 #include "content/public/browser/download_manager.h"
+#include "content/public/browser/page_navigator.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/image/image_skia.h"
-#include "weblayer/browser/android/metrics/weblayer_metrics_service_client.h"
+#include "ui/gfx/image/image_skia_rep.h"
 #include "weblayer/browser/browser_context_impl.h"
 #include "weblayer/browser/browser_impl.h"
 #include "weblayer/browser/browser_list.h"
@@ -44,7 +47,7 @@
 #include "weblayer/browser/persistence/browser_persister_file_utils.h"
 #include "weblayer/browser/tab_impl.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "base/android/callback_android.h"
 #include "base/android/jni_array.h"
 #include "base/android/jni_string.h"
@@ -52,17 +55,17 @@
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/unified_consent/pref_names.h"
 #include "ui/gfx/android/java_bitmap.h"
+#include "weblayer/browser/android/metrics/weblayer_metrics_service_client.h"
 #include "weblayer/browser/browser_process.h"
 #include "weblayer/browser/java/jni/ProfileImpl_jni.h"
 #include "weblayer/browser/safe_browsing/safe_browsing_service.h"
-#include "weblayer/browser/user_agent.h"
 #endif
 
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
 #include "base/base_paths_posix.h"
 #endif
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 using base::android::AttachCurrentThread;
 #endif
 
@@ -93,7 +96,7 @@ base::ObserverList<ProfileImpl::ProfileObserver>::Unchecked& GetObservers() {
   return *s_observers;
 }
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 void PassFilePathsToJavaCallback(
     const base::android::ScopedJavaGlobalRef<jobject>& callback,
     const std::vector<std::string>& file_paths) {
@@ -124,10 +127,10 @@ void OnDidGetCachedFaviconForPageUrl(
     gfx::Image image) {
   SkBitmap favicon = image.AsImageSkia().GetRepresentation(1.0f).GetBitmap();
   base::android::RunObjectCallbackAndroid(
-      callback, favicon.empty() ? nullptr : gfx::ConvertToJavaBitmap(&favicon));
+      callback, favicon.empty() ? nullptr : gfx::ConvertToJavaBitmap(favicon));
 }
 
-#endif  // OS_ANDROID
+#endif  // BUILDFLAG(IS_ANDROID)
 
 }  // namespace
 
@@ -135,8 +138,7 @@ class ProfileImpl::DataClearer : public content::BrowsingDataRemover::Observer {
  public:
   DataClearer(content::BrowserContext* browser_context,
               base::OnceCallback<void()> callback)
-      : remover_(
-            content::BrowserContext::GetBrowsingDataRemover(browser_context)),
+      : remover_(browser_context->GetBrowsingDataRemover()),
         callback_(std::move(callback)) {
     remover_->AddObserver(this);
   }
@@ -164,7 +166,7 @@ class ProfileImpl::DataClearer : public content::BrowsingDataRemover::Observer {
   // DataClearer deletes itself when removal is done.
   ~DataClearer() override = default;
 
-  content::BrowsingDataRemover* remover_;
+  raw_ptr<content::BrowsingDataRemover> remover_;
   base::OnceCallback<void()> callback_;
 };
 
@@ -183,6 +185,11 @@ ProfileImpl::ProfileImpl(const std::string& name, bool is_incognito)
   }
 
   GetProfiles().insert(this);
+  profile_metrics::SetBrowserProfileType(
+      GetBrowserContext(), is_incognito
+                               ? profile_metrics::BrowserProfileType::kIncognito
+                               : profile_metrics::BrowserProfileType::kRegular);
+
   for (auto& observer : GetObservers())
     observer.ProfileCreated(this);
 
@@ -196,7 +203,7 @@ ProfileImpl::ProfileImpl(const std::string& name, bool is_incognito)
   // OnRenderProcessHostCreated events.
   web_cache::WebCacheManager::GetInstance();
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   WebLayerMetricsServiceClient::GetInstance()->UpdateUkm(false);
 #endif
 }
@@ -207,6 +214,9 @@ ProfileImpl::~ProfileImpl() {
   web_contents_to_delete_.clear();
 
   if (browser_context_) {
+    // Needs to be called before ShutdownStoragePartitions().
+    browser_context_->NotifyWillBeDestroyed();
+
     BrowserContextDependencyManager::GetInstance()
         ->DestroyBrowserContextServices(browser_context_.get());
     browser_context_->ShutdownStoragePartitions();
@@ -237,7 +247,7 @@ void ProfileImpl::RemoveProfileObserver(ProfileObserver* observer) {
 void ProfileImpl::DeleteWebContentsSoon(
     std::unique_ptr<content::WebContents> web_contents) {
   if (web_contents_to_delete_.empty()) {
-    base::SequencedTaskRunnerHandle::Get()->PostTask(
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&ProfileImpl::DeleteScheduleWebContents,
                                   weak_ptr_factory_.GetWeakPtr()));
   }
@@ -257,7 +267,7 @@ BrowserContextImpl* ProfileImpl::GetBrowserContext() {
 }
 
 void ProfileImpl::DownloadsInitialized() {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   return Java_ProfileImpl_downloadsInitialized(
       base::android::AttachCurrentThread(), java_profile_);
 #endif
@@ -289,8 +299,8 @@ void ProfileImpl::ClearBrowsingData(
         remove_mask |= content::BrowsingDataRemover::DATA_TYPE_MEDIA_LICENSES;
         remove_mask |= BrowsingDataRemoverDelegate::DATA_TYPE_ISOLATED_ORIGINS;
         remove_mask |= BrowsingDataRemoverDelegate::DATA_TYPE_FAVICONS;
-        remove_mask |= content::BrowsingDataRemover::DATA_TYPE_TRUST_TOKENS;
-        remove_mask |= content::BrowsingDataRemover::DATA_TYPE_CONVERSIONS;
+        remove_mask |= BrowsingDataRemoverDelegate::DATA_TYPE_AD_INTERVENTIONS;
+        remove_mask |= content::BrowsingDataRemover::DATA_TYPE_PRIVACY_SANDBOX;
         break;
       case BrowsingDataType::CACHE:
         remove_mask |= content::BrowsingDataRemover::DATA_TYPE_CACHE;
@@ -312,6 +322,11 @@ void ProfileImpl::SetDownloadDirectory(const base::FilePath& directory) {
 
 void ProfileImpl::SetDownloadDelegate(DownloadDelegate* delegate) {
   download_delegate_ = delegate;
+}
+
+void ProfileImpl::SetGoogleAccountAccessTokenFetchDelegate(
+    GoogleAccountAccessTokenFetchDelegate* delegate) {
+  access_token_fetch_delegate_ = delegate;
 }
 
 CookieManager* ProfileImpl::GetCookieManager() {
@@ -381,15 +396,13 @@ void ProfileImpl::ClearRendererCache() {
 }
 
 void ProfileImpl::OnLocaleChanged() {
-  content::BrowserContext::ForEachStoragePartition(
-      GetBrowserContext(),
-      base::BindRepeating(
-          [](const std::string& accept_language,
-             content::StoragePartition* storage_partition) {
-            storage_partition->GetNetworkContext()->SetAcceptLanguage(
-                accept_language);
-          },
-          i18n::GetAcceptLangs()));
+  GetBrowserContext()->ForEachLoadedStoragePartition(base::BindRepeating(
+      [](const std::string& accept_language,
+         content::StoragePartition* storage_partition) {
+        storage_partition->GetNetworkContext()->SetAcceptLanguage(
+            accept_language);
+      },
+      i18n::GetAcceptLangs()));
 }
 
 // static
@@ -439,7 +452,7 @@ void ProfileImpl::OnProfileMarked(std::unique_ptr<ProfileImpl> profile,
                      base::Time::Max());
 }
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 ProfileImpl::ProfileImpl(
     JNIEnv* env,
     const base::android::JavaParamRef<jstring>& name,
@@ -533,7 +546,7 @@ jlong ProfileImpl::GetPrerenderController(JNIEnv* env) {
 }
 
 void ProfileImpl::EnsureBrowserContextInitialized(JNIEnv* env) {
-  content::BrowserContext::GetDownloadManager(GetBrowserContext());
+  GetBrowserContext()->GetDownloadManager();
 }
 
 void ProfileImpl::SetBooleanSetting(JNIEnv* env,
@@ -580,28 +593,64 @@ void ProfileImpl::GetCachedFaviconForPageUrl(
                      base::android::ScopedJavaGlobalRef<jobject>(j_callback)));
 }
 
-#endif  // OS_ANDROID
+#endif  // BUILDFLAG(IS_ANDROID)
 
 base::FilePath ProfileImpl::GetBrowserPersisterDataBaseDir() const {
   return ComputeBrowserPersisterDataBaseDir(info_);
+}
+
+content::WebContents* ProfileImpl::OpenUrl(
+    const content::OpenURLParams& params) {
+#if !BUILDFLAG(IS_ANDROID)
+  return nullptr;
+#else
+  // We expect only NEW_FOREGROUND_TAB. The NEW_POPUP disposition is only used
+  // for payment handler windows, but WebLayer (and Android Chrome) do not
+  // support that. See ContentBrowserClient::ShowPaymentHandlerWindow().
+  DCHECK_EQ(params.disposition, WindowOpenDisposition::NEW_FOREGROUND_TAB);
+
+  JNIEnv* env = base::android::AttachCurrentThread();
+  BrowserImpl* browser = reinterpret_cast<BrowserImpl*>(
+      Java_ProfileImpl_getBrowserForNewTab(env, java_profile_));
+  if (!browser)
+    return nullptr;
+
+  std::unique_ptr<content::WebContents> new_tab_contents =
+      content::WebContents::Create(
+          content::WebContents::CreateParams(GetBrowserContext()));
+  base::WeakPtr<content::WebContents> new_tab_contents_weak_ptr(
+      new_tab_contents->GetWeakPtr());
+  Tab* tab = browser->CreateTab(std::move(new_tab_contents));
+
+  if (!new_tab_contents_weak_ptr)
+    return nullptr;
+
+  Java_ProfileImpl_onTabAdded(env, java_profile_,
+                              static_cast<TabImpl*>(tab)->GetJavaTab());
+  new_tab_contents_weak_ptr->GetController().LoadURLWithParams(
+      content::NavigationController::LoadURLParams(params));
+  return new_tab_contents_weak_ptr.get();
+#endif  // !BUILDFLAG(IS_ANDROID)
 }
 
 void ProfileImpl::SetBooleanSetting(SettingType type, bool value) {
   auto* pref_service = GetBrowserContext()->pref_service();
   switch (type) {
     case SettingType::BASIC_SAFE_BROWSING_ENABLED:
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
       safe_browsing::SetSafeBrowsingState(
-          pref_service, value ? safe_browsing::STANDARD_PROTECTION
-                              : safe_browsing::NO_SAFE_BROWSING);
+          pref_service,
+          value ? safe_browsing::SafeBrowsingState::STANDARD_PROTECTION
+                : safe_browsing::SafeBrowsingState::NO_SAFE_BROWSING,
+          /*is_esb_enabled_in_sync=*/false);
 #endif
       break;
     case SettingType::UKM_ENABLED: {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
       bool old_value = pref_service->GetBoolean(prefs::kUkmEnabled);
 #endif
       pref_service->SetBoolean(prefs::kUkmEnabled, value);
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
       // Trigger a purge if the current state no longer allows UKM.
       bool must_purge = old_value && !value;
       WebLayerMetricsServiceClient::GetInstance()->UpdateUkm(must_purge);
@@ -609,13 +658,13 @@ void ProfileImpl::SetBooleanSetting(SettingType type, bool value) {
       break;
     }
     case SettingType::EXTENDED_REPORTING_SAFE_BROWSING_ENABLED:
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
       pref_service->SetBoolean(::prefs::kSafeBrowsingScoutReportingEnabled,
                                value);
 #endif
       break;
     case SettingType::REAL_TIME_SAFE_BROWSING_ENABLED:
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
       pref_service->SetBoolean(
           unified_consent::prefs::kUrlKeyedAnonymizedDataCollectionEnabled,
           value);
@@ -630,24 +679,27 @@ bool ProfileImpl::GetBooleanSetting(SettingType type) {
   auto* pref_service = GetBrowserContext()->pref_service();
   switch (type) {
     case SettingType::BASIC_SAFE_BROWSING_ENABLED:
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
       return safe_browsing::IsSafeBrowsingEnabled(*pref_service);
-#endif
+#else
       return false;
+#endif
     case SettingType::UKM_ENABLED:
       return pref_service->GetBoolean(prefs::kUkmEnabled);
     case SettingType::EXTENDED_REPORTING_SAFE_BROWSING_ENABLED:
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
       return pref_service->GetBoolean(
           ::prefs::kSafeBrowsingScoutReportingEnabled);
-#endif
+#else
       return false;
+#endif
     case SettingType::REAL_TIME_SAFE_BROWSING_ENABLED:
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
       return pref_service->GetBoolean(
           unified_consent::prefs::kUrlKeyedAnonymizedDataCollectionEnabled);
-#endif
+#else
       return false;
+#endif
     case SettingType::NETWORK_PREDICTION_ENABLED:
       return pref_service->GetBoolean(prefs::kNoStatePrefetchEnabled);
   }
@@ -674,8 +726,7 @@ void ProfileImpl::PrepareForPossibleCrossOriginNavigation() {
 
 int ProfileImpl::GetNumberOfBrowsers() {
   const auto& browsers = BrowserList::GetInstance()->browsers();
-  return std::count_if(browsers.begin(), browsers.end(),
-                       [this](BrowserImpl* b) { return b->profile() == this; });
+  return base::ranges::count(browsers, this, &BrowserImpl::profile);
 }
 
 void ProfileImpl::DeleteScheduleWebContents() {

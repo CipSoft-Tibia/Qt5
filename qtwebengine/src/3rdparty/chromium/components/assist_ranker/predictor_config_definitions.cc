@@ -1,15 +1,19 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/assist_ranker/predictor_config_definitions.h"
+
+#include "base/metrics/field_trial_params.h"
+#include "build/build_config.h"
 #include "components/assist_ranker/base_predictor.h"
 
 namespace assist_ranker {
 
-#if defined(OS_ANDROID)
-const base::Feature kContextualSearchRankerQuery{
-    "ContextualSearchRankerQuery", base::FEATURE_DISABLED_BY_DEFAULT};
+#if BUILDFLAG(IS_ANDROID)
+BASE_FEATURE(kContextualSearchRankerQuery,
+             "ContextualSearchRankerQuery",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 namespace {
 
@@ -40,45 +44,12 @@ float GetContextualSearchRankerThresholdFeatureParam() {
 
 // NOTE: This list needs to be kept in sync with tools/metrics/ukm/ukm.xml!
 // Only features within this list will be logged to UKM.
-// TODO(chrome-ranker-team) Deprecate the whitelist once it is available through
+// TODO(chrome-ranker-team) Deprecate the allowlist once it is available through
 // the UKM generated API.
-const base::flat_set<std::string>* GetContextualSearchFeatureWhitelist() {
-  static auto* kContextualSearchFeatureWhitelist =
-      new base::flat_set<std::string>({"DidOptIn",
-                                       "DurationAfterScrollMs",
-                                       "EntityImpressionsCount",
-                                       "EntityOpensCount",
-                                       "FontSize",
-                                       "IsEntity",
-                                       "IsEntityEligible",
-                                       "IsHttp",
-                                       "IsLanguageMismatch",
-                                       "IsLongWord",
-                                       "IsSecondTapOverride",
-                                       "IsShortWord",
-                                       "IsWordEdge",
-                                       "OpenCount",
-                                       "OutcomeRankerDidPredict",
-                                       "OutcomeRankerPrediction",
-                                       "OutcomeRankerPredictionScore",
-                                       "OutcomeWasCardsDataShown",
-                                       "OutcomeWasPanelOpened",
-                                       "OutcomeWasQuickActionClicked",
-                                       "OutcomeWasQuickAnswerSeen",
-                                       "PortionOfElement",
-                                       "Previous28DayCtrPercent",
-                                       "Previous28DayImpressionsCount",
-                                       "PreviousWeekCtrPercent",
-                                       "PreviousWeekImpressionsCount",
-                                       "QuickActionImpressionsCount",
-                                       "QuickActionsIgnored",
-                                       "QuickActionsTaken",
-                                       "QuickAnswerCount",
-                                       "ScreenTopDps",
-                                       "TapCount",
-                                       "TapDurationMs",
-                                       "WasScreenBottom"});
-  return kContextualSearchFeatureWhitelist;
+const base::flat_set<std::string>* GetContextualSearchFeatureAllowlist() {
+  static auto* kContextualSearchFeatureAllowlist =
+      new base::flat_set<std::string>();
+  return kContextualSearchFeatureAllowlist;
 }
 
 }  // namespace
@@ -87,11 +58,11 @@ const PredictorConfig GetContextualSearchPredictorConfig() {
   static auto kContextualSearchPredictorConfig = *(new PredictorConfig(
       kContextualSearchModelName, kContextualSearchLoggingName,
       kContextualSearchUmaPrefixName, LOG_UKM,
-      GetContextualSearchFeatureWhitelist(), &kContextualSearchRankerQuery,
+      GetContextualSearchFeatureAllowlist(), &kContextualSearchRankerQuery,
       GetContextualSearchRankerUrlFeatureParam(),
       GetContextualSearchRankerThresholdFeatureParam()));
   return kContextualSearchPredictorConfig;
 }
-#endif  // OS_ANDROID
+#endif  // BUILDFLAG(IS_ANDROID)
 
 }  // namespace assist_ranker

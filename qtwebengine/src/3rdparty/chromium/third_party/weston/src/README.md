@@ -62,14 +62,12 @@ several features if you want to avoid certain dependencies.
 
 The `meson` command populates the build directory. This step can
 fail due to missing dependencies. Any build options you want can be added on
-that line, e.g. `meson build/ --prefix=... -Dsimple-dmabuf-drm=intel`.
-All the build options can be found in the file
-[meson_options.txt](meson_options.txt).
+that line, e.g. `meson build/ --prefix=... -Ddemo-clients=false`. All the build
+options can be found in the file [meson_options.txt](meson_options.txt).
 
 Once the build directory has been successfully populated, you can inspect the
 configuration with `meson configure build/`. If you need to change an
-option, you can do e.g.
-`meson configure build/ -Dsimple-dmabuf-drm=intel`.
+option, you can do e.g. `meson configure build/ -Ddemo-clients=false`.
 
 Every push to the Weston master repository and its forks is built using GitLab
 CI. [Reading the configuration](.gitlab-ci.yml) may provide a useful example of
@@ -344,7 +342,7 @@ would be roughly like this:
 	+ desktop shell
 	+ ivi-shell
 	+ fullscreen shell
-	+ weston-info, weston-terminal, etc. we install by default
+	+ weston-info (deprecated), weston-terminal, etc. we install by default
 	+ screen-share
 
 - weston demos (not parallel-installable)

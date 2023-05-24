@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -15,7 +15,8 @@ def main():
     gomacc = 'gomacc.exe'
 
   for path in os.environ.get('PATH', '').split(os.pathsep):
-    if os.path.basename(path) == 'depot_tools':
+    # normpath() required to strip trailing slash when present.
+    if os.path.basename(os.path.normpath(path)) == 'depot_tools':
       candidates.append(os.path.join(path, '.cipd_bin'))
 
   for d in candidates:

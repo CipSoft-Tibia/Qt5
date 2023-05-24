@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,8 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/task/sequenced_task_runner.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/system/message_pipe.h"
 
@@ -47,6 +48,10 @@ class CallbackBinder : public InterfaceBinder<BinderArgs...> {
   CallbackBinder(const BindCallback& callback,
                  const scoped_refptr<base::SequencedTaskRunner>& task_runner)
       : callback_(callback), task_runner_(task_runner) {}
+
+  CallbackBinder(const CallbackBinder&) = delete;
+  CallbackBinder& operator=(const CallbackBinder&) = delete;
+
   ~CallbackBinder() override = default;
 
  private:
@@ -80,7 +85,6 @@ class CallbackBinder : public InterfaceBinder<BinderArgs...> {
 
   const BindCallback callback_;
   scoped_refptr<base::SequencedTaskRunner> task_runner_;
-  DISALLOW_COPY_AND_ASSIGN(CallbackBinder);
 };
 
 template <typename... BinderArgs>
@@ -100,6 +104,10 @@ class GenericCallbackBinder : public InterfaceBinder<BinderArgs...> {
       : callback_(
             base::BindRepeating(&BindCallbackAdapter<BinderArgs...>, callback)),
         task_runner_(task_runner) {}
+
+  GenericCallbackBinder(const GenericCallbackBinder&) = delete;
+  GenericCallbackBinder& operator=(const GenericCallbackBinder&) = delete;
+
   ~GenericCallbackBinder() override {}
 
  private:
@@ -126,7 +134,6 @@ class GenericCallbackBinder : public InterfaceBinder<BinderArgs...> {
 
   const BindCallback callback_;
   scoped_refptr<base::SequencedTaskRunner> task_runner_;
-  DISALLOW_COPY_AND_ASSIGN(GenericCallbackBinder);
 };
 
 }  // namespace service_manager

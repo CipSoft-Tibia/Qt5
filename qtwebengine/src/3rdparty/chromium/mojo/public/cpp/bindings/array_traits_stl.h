@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "base/containers/flat_set.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "mojo/public/cpp/bindings/array_traits.h"
 
 namespace mojo {
@@ -112,10 +114,29 @@ struct ArrayTraits<std::set<T>> {
   }
 };
 
+// This ArrayTraits specialization is used only for serialization.
+template <typename T>
+struct ArrayTraits<base::flat_set<T>> {
+  using Element = T;
+  using ConstIterator = typename base::flat_set<T>::const_iterator;
+
+  static bool IsNull(const base::flat_set<T>& input) {
+    // base::flat_set<> is always converted to non-null mojom array.
+    return false;
+  }
+  static size_t GetSize(const base::flat_set<T>& input) { return input.size(); }
+  static ConstIterator GetBegin(const base::flat_set<T>& input) {
+    return input.begin();
+  }
+  static void AdvanceIterator(ConstIterator& iterator) { ++iterator; }
+  static const T& GetValue(ConstIterator& iterator) { return *iterator; }
+};
+
 template <typename K, typename V>
 struct MapValuesArrayView {
   explicit MapValuesArrayView(const std::map<K, V>& map) : map(map) {}
-  const std::map<K, V>& map;
+  // `map` is not a raw_ref<...> as that leads to a binary size increase.
+  RAW_PTR_EXCLUSION const std::map<K, V>& map;
 };
 
 // Convenience function to create a MapValuesArrayView<> that infers the

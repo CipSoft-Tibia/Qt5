@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -156,7 +156,7 @@ TEST_F(UsbUtilsTest, MatchInterfaceProtocolNegative) {
 
 TEST_F(UsbUtilsTest, MatchSerialNumber) {
   auto filter = mojom::UsbDeviceFilter::New();
-  filter->serial_number = base::ASCIIToUTF16("ABC123");
+  filter->serial_number = u"ABC123";
   EXPECT_TRUE(UsbDeviceFilterMatches(*filter, GetPhoneInfo()));
   filter->has_vendor_id = true;
   filter->vendor_id = 0x18d1;
@@ -164,7 +164,7 @@ TEST_F(UsbUtilsTest, MatchSerialNumber) {
   filter->vendor_id = 0x18d2;
   EXPECT_FALSE(UsbDeviceFilterMatches(*filter, GetPhoneInfo()));
   filter->vendor_id = 0x18d1;
-  filter->serial_number = base::ASCIIToUTF16("DIFFERENT");
+  filter->serial_number = u"DIFFERENT";
   EXPECT_FALSE(UsbDeviceFilterMatches(*filter, GetPhoneInfo()));
 }
 

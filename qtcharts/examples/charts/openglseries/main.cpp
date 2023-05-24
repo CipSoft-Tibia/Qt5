@@ -1,41 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "datasource.h"
-#include <QtWidgets/QApplication>
-#include <QtWidgets/QMainWindow>
-#include <QtCharts/QChartView>
-#include <QtCharts/QLineSeries>
-#include <QtCharts/QScatterSeries>
-#include <QtCharts/QValueAxis>
-#include <QtCharts/QLogValueAxis>
-#include <QtWidgets/QLabel>
+
+#include <QApplication>
+#include <QChartView>
+#include <QLabel>
+#include <QLineSeries>
+#include <QLogValueAxis>
+#include <QMainWindow>
+#include <QScatterSeries>
+#include <QValueAxis>
 
 // Uncomment to use logarithmic axes instead of regular value axes
 //#define USE_LOG_AXIS
@@ -47,23 +22,21 @@
 // to verify the series have same visible geometry.
 //#define ADD_SIMPLE_SERIES
 
-QT_CHARTS_USE_NAMESPACE
-
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
     QStringList colors;
     colors << "red" << "blue" << "green" << "black";
 
-    QChart *chart = new QChart();
+    auto chart = new QChart;
     chart->legend()->hide();
 
 #ifdef USE_LOG_AXIS
-    QLogValueAxis *axisX = new QLogValueAxis;
-    QLogValueAxis *axisY = new QLogValueAxis;
+    auto axisX = new QLogValueAxis;
+    auto axisY = new QLogValueAxis;
 #else
-    QValueAxis *axisX = new QValueAxis;
-    QValueAxis *axisY = new QValueAxis;
+    auto axisX = new QValueAxis;
+    auto axisY = new QValueAxis;
 #endif
 
     chart->addAxis(axisX, Qt::AlignBottom);
@@ -84,7 +57,7 @@ int main(int argc, char *argv[])
         int colorIndex = i % colors.size();
         if (i % 2) {
             series = new QScatterSeries;
-            QScatterSeries *scatter = static_cast<QScatterSeries *>(series);
+            auto scatter = static_cast<QScatterSeries *>(series);
             scatter->setColor(QColor(colors.at(colorIndex)));
             scatter->setMarkerSize(qreal(colorIndex + 2) / 2.0);
             // Scatter pen doesn't have affect in OpenGL drawing, but if you disable OpenGL drawing
@@ -155,8 +128,8 @@ int main(int argc, char *argv[])
     DataSource dataSource;
     dataSource.generateData(seriesCount, 10, pointCount);
 
-    QLabel *fpsLabel = new QLabel(&window);
-    QLabel *countLabel = new QLabel(&window);
+    auto fpsLabel = new QLabel(&window);
+    auto countLabel = new QLabel(&window);
     QString countText = QStringLiteral("Total point count: %1");
     countLabel->setText(countText.arg(pointCount * seriesCount));
     countLabel->adjustSize();

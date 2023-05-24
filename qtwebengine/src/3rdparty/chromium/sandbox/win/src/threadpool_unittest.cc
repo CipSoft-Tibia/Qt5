@@ -1,8 +1,10 @@
-// Copyright (c) 2006-2008 The Chromium Authors. All rights reserved.
+// Copyright 2006-2008 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "sandbox/win/src/win2k_threadpool.h"
+#include "sandbox/win/src/threadpool.h"
+
+#include <windows.h>
 
 #include <stdint.h>
 
@@ -19,7 +21,7 @@ namespace sandbox {
 
 // Test that register and unregister work, part 1.
 TEST(IPCTest, ThreadPoolRegisterTest1) {
-  Win2kThreadPool thread_pool;
+  ThreadPool thread_pool;
 
   EXPECT_EQ(0u, thread_pool.OutstandingWaits());
 
@@ -44,7 +46,7 @@ TEST(IPCTest, ThreadPoolRegisterTest1) {
 
 // Test that register and unregister work, part 2.
 TEST(IPCTest, ThreadPoolRegisterTest2) {
-  Win2kThreadPool thread_pool;
+  ThreadPool thread_pool;
 
   HANDLE event1 = ::CreateEventW(nullptr, false, false, nullptr);
   HANDLE event2 = ::CreateEventW(nullptr, false, false, nullptr);
@@ -73,7 +75,7 @@ TEST(IPCTest, ThreadPoolRegisterTest2) {
 // Test that the thread pool has at least a thread that services an event.
 // Test that when the event is un-registered is no longer serviced.
 TEST(IPCTest, ThreadPoolSignalAndWaitTest) {
-  Win2kThreadPool thread_pool;
+  ThreadPool thread_pool;
 
   // The events are auto reset and start not signaled.
   HANDLE event1 = ::CreateEventW(nullptr, false, false, nullptr);

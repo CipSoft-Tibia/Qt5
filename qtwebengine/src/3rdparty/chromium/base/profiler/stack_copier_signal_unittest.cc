@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,15 +6,16 @@
 #include <algorithm>
 #include <utility>
 
+#include "base/debug/alias.h"
 #include "base/profiler/sampling_profiler_thread_token.h"
 #include "base/profiler/stack_buffer.h"
 #include "base/profiler/stack_copier_signal.h"
 #include "base/profiler/thread_delegate_posix.h"
-#include "base/stl_util.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/threading/platform_thread.h"
 #include "base/threading/simple_thread.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace base {
@@ -39,8 +40,8 @@ class TargetThread : public SimpleThread {
 
     // Copy the sentinel values onto the stack. Volatile to defeat compiler
     // optimizations.
-    volatile uint32_t sentinels[size(kStackSentinels)];
-    for (size_t i = 0; i < size(kStackSentinels); ++i)
+    volatile uint32_t sentinels[std::size(kStackSentinels)];
+    for (size_t i = 0; i < std::size(kStackSentinels); ++i)
       sentinels[i] = kStackSentinels[i];
 
     started_.Signal();
@@ -81,8 +82,12 @@ class TestStackCopierDelegate : public StackCopier::Delegate {
 #if defined(ADDRESS_SANITIZER) || defined(MEMORY_SANITIZER) || \
     defined(THREAD_SANITIZER)
 #define MAYBE_CopyStack DISABLED_CopyStack
-#elif defined(OS_CHROMEOS)
+#elif BUILDFLAG(IS_CHROMEOS_ASH)
 // https://crbug.com/1042974
+#define MAYBE_CopyStack DISABLED_CopyStack
+#elif BUILDFLAG(IS_LINUX)
+// We don't support getting the stack base address on Linux, and thus can't
+// copy the stack. // https://crbug.com/1394278
 #define MAYBE_CopyStack DISABLED_CopyStack
 #else
 #define MAYBE_CopyStack CopyStack
@@ -100,11 +105,11 @@ TEST(StackCopierSignalTest, MAYBE_CopyStack) {
   ASSERT_TRUE(thread_delegate);
   StackCopierSignal copier(std::move(thread_delegate));
 
-  // Copy the sentinel values onto the stack. Volatile to defeat compiler
-  // optimizations.
-  volatile uint32_t sentinels[size(kStackSentinels)];
-  for (size_t i = 0; i < size(kStackSentinels); ++i)
+  // Copy the sentinel values onto the stack.
+  uint32_t sentinels[std::size(kStackSentinels)];
+  for (size_t i = 0; i < std::size(kStackSentinels); ++i)
     sentinels[i] = kStackSentinels[i];
+  base::debug::Alias((void*)sentinels);  // Defeat compiler optimizations.
 
   bool result = copier.CopyStack(&stack_buffer, &stack_top, &timestamp,
                                  &context, &stack_copier_delegate);
@@ -122,6 +127,10 @@ TEST(StackCopierSignalTest, MAYBE_CopyStack) {
 
 // TSAN hangs on the AsyncSafeWaitableEvent FUTEX_WAIT call.
 #if defined(THREAD_SANITIZER)
+#define MAYBE_CopyStackTimestamp DISABLED_CopyStackTimestamp
+#elif BUILDFLAG(IS_LINUX)
+// We don't support getting the stack base address on Linux, and thus can't
+// copy the stack. // https://crbug.com/1394278
 #define MAYBE_CopyStackTimestamp DISABLED_CopyStackTimestamp
 #else
 #define MAYBE_CopyStackTimestamp CopyStackTimestamp
@@ -152,6 +161,10 @@ TEST(StackCopierSignalTest, MAYBE_CopyStackTimestamp) {
 // TSAN hangs on the AsyncSafeWaitableEvent FUTEX_WAIT call.
 #if defined(THREAD_SANITIZER)
 #define MAYBE_CopyStackDelegateInvoked DISABLED_CopyStackDelegateInvoked
+#elif BUILDFLAG(IS_LINUX)
+// We don't support getting the stack base address on Linux, and thus can't
+// copy the stack. // https://crbug.com/1394278
+#define MAYBE_CopyStackDelegateInvoked DISABLED_CopyStackDelegateInvoked
 #else
 #define MAYBE_CopyStackDelegateInvoked CopyStackDelegateInvoked
 #endif
@@ -178,7 +191,11 @@ TEST(StackCopierSignalTest, MAYBE_CopyStackDelegateInvoked) {
 // Limit to 32-bit Android, which is the platform we care about for this
 // functionality. The test is broken on too many other varied platforms to try
 // to selectively disable.
-#if !(defined(OS_ANDROID) && defined(ARCH_CPU_32_BITS))
+#if !(BUILDFLAG(IS_ANDROID) && defined(ARCH_CPU_32_BITS))
+#define MAYBE_CopyStackFromOtherThread DISABLED_CopyStackFromOtherThread
+#elif BUILDFLAG(IS_LINUX)
+// We don't support getting the stack base address on Linux, and thus can't
+// copy the stack. // https://crbug.com/1394278
 #define MAYBE_CopyStackFromOtherThread DISABLED_CopyStackFromOtherThread
 #else
 #define MAYBE_CopyStackFromOtherThread CopyStackFromOtherThread

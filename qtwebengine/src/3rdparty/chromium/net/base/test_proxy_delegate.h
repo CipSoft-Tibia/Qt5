@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 
 #include <string>
 
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "net/base/proxy_delegate.h"
 #include "net/base/proxy_server.h"
 
@@ -24,10 +24,6 @@ class TestProxyDelegate : public ProxyDelegate {
 
   bool on_before_tunnel_request_called() const {
     return on_before_tunnel_request_called_;
-  }
-
-  void set_trusted_spdy_proxy(const ProxyServer& proxy_server) {
-    trusted_spdy_proxy_ = proxy_server;
   }
 
   void VerifyOnTunnelHeadersReceived(
@@ -51,7 +47,6 @@ class TestProxyDelegate : public ProxyDelegate {
   bool on_before_tunnel_request_called_ = false;
   ProxyServer on_tunnel_headers_received_proxy_server_;
   scoped_refptr<HttpResponseHeaders> on_tunnel_headers_received_headers_;
-  ProxyServer trusted_spdy_proxy_;
 };
 
 }  // namespace net

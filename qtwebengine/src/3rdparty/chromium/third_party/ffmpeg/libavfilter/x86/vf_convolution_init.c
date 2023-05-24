@@ -27,7 +27,12 @@
 void ff_filter_3x3_sse4(uint8_t *dst, int width,
                         float rdiv, float bias, const int *const matrix,
                         const uint8_t *c[], int peak, int radius,
-                        int dstride, int stride);
+                        int dstride, int stride, int size);
+
+void ff_filter_sobel_avx512icl(uint8_t *dst, int width,
+                         float scale, float delta, const int *const matrix,
+                         const uint8_t *c[], int peak, int radius,
+                         int dstride, int stride, int size);
 
 av_cold void ff_convolution_init_x86(ConvolutionContext *s)
 {
@@ -36,10 +41,23 @@ av_cold void ff_convolution_init_x86(ConvolutionContext *s)
     int cpu_flags = av_get_cpu_flags();
     for (i = 0; i < 4; i++) {
         if (s->mode[i] == MATRIX_SQUARE) {
-            if (s->matrix_length[i] == 9) {
+            if (s->matrix_length[i] == 9 && s->depth == 8) {
                 if (EXTERNAL_SSE4(cpu_flags))
                     s->filter[i] = ff_filter_3x3_sse4;
             }
+        }
+    }
+#endif
+}
+
+av_cold void ff_sobel_init_x86(ConvolutionContext *s, int depth, int nb_planes)
+{
+#if ARCH_X86_64
+    int cpu_flags = av_get_cpu_flags();
+    for (int i = 0; i < nb_planes; i++) {
+        if (depth == 8) {
+            if (EXTERNAL_AVX512ICL(cpu_flags))
+                s->filter[i] = ff_filter_sobel_avx512icl;
         }
     }
 #endif

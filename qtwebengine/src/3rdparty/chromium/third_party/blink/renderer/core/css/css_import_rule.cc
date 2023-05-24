@@ -26,7 +26,7 @@
 #include "third_party/blink/renderer/core/css/media_list.h"
 #include "third_party/blink/renderer/core/css/style_rule_import.h"
 #include "third_party/blink/renderer/core/css/style_sheet_contents.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
 namespace blink {
@@ -41,10 +41,9 @@ String CSSImportRule::href() const {
   return import_rule_->Href();
 }
 
-MediaList* CSSImportRule::media() const {
+MediaList* CSSImportRule::media() {
   if (!media_cssom_wrapper_) {
-    media_cssom_wrapper_ = MakeGarbageCollected<MediaList>(
-        import_rule_->MediaQueries(), const_cast<CSSImportRule*>(this));
+    media_cssom_wrapper_ = MakeGarbageCollected<MediaList>(this);
   }
   return media_cssom_wrapper_.Get();
 }
@@ -55,33 +54,60 @@ String CSSImportRule::cssText() const {
   result.Append(import_rule_->Href());
   result.Append("\")");
 
+  if (import_rule_->IsLayered()) {
+    result.Append(" layer");
+    String layer_name = layerName();
+    if (layer_name.length()) {
+      result.Append("(");
+      result.Append(layer_name);
+      result.Append(")");
+    }
+  }
+
   if (import_rule_->MediaQueries()) {
     String media_text = import_rule_->MediaQueries()->MediaText();
-    if (!media_text.IsEmpty()) {
+    if (!media_text.empty()) {
       result.Append(' ');
       result.Append(media_text);
     }
   }
   result.Append(';');
 
-  return result.ToString();
+  return result.ReleaseString();
 }
 
 CSSStyleSheet* CSSImportRule::styleSheet() const {
   // TODO(yukishiino): CSSImportRule.styleSheet attribute is not nullable,
   // thus this function must not return nullptr.
-  if (!import_rule_->GetStyleSheet())
+  if (!import_rule_->GetStyleSheet()) {
     return nullptr;
+  }
 
-  if (!style_sheet_cssom_wrapper_)
+  if (!style_sheet_cssom_wrapper_) {
     style_sheet_cssom_wrapper_ = MakeGarbageCollected<CSSStyleSheet>(
         import_rule_->GetStyleSheet(), const_cast<CSSImportRule*>(this));
+  }
   return style_sheet_cssom_wrapper_.Get();
+}
+
+String CSSImportRule::layerName() const {
+  if (!import_rule_->IsLayered()) {
+    return g_null_atom;
+  }
+  return import_rule_->GetLayerNameAsString();
 }
 
 void CSSImportRule::Reattach(StyleRuleBase*) {
   // FIXME: Implement when enabling caching for stylesheets with import rules.
   NOTREACHED();
+}
+
+const MediaQuerySet* CSSImportRule::MediaQueries() const {
+  return import_rule_->MediaQueries();
+}
+
+void CSSImportRule::SetMediaQueries(const MediaQuerySet* media_queries) {
+  import_rule_->SetMediaQueries(media_queries);
 }
 
 void CSSImportRule::Trace(Visitor* visitor) const {

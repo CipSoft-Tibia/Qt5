@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -34,10 +34,10 @@ ExtensionFunction::ResponseAction IdentityGetAccountsFunction::Run() {
       IdentityManagerFactory::GetForProfile(
           Profile::FromBrowserContext(browser_context()))
           ->GetAccountsWithRefreshTokens();
-  std::unique_ptr<base::ListValue> infos(new base::ListValue());
+  base::Value::List infos;
 
   if (accounts.empty()) {
-    return RespondNow(OneArgument(std::move(infos)));
+    return RespondNow(WithArguments(std::move(infos)));
   }
 
   Profile* profile = Profile::FromBrowserContext(browser_context());
@@ -51,23 +51,27 @@ ExtensionFunction::ResponseAction IdentityGetAccountsFunction::Run() {
   // Ensure that the primary account is inserted first; even though this
   // semantics isn't documented, the implementation has always ensured it and it
   // shouldn't be changed without determining that it is safe to do so.
-  if (identity_manager->HasPrimaryAccountWithRefreshToken()) {
-    account_info.id = identity_manager->GetPrimaryAccountInfo().gaia;
-    infos->Append(account_info.ToValue());
+  if (identity_manager->HasPrimaryAccountWithRefreshToken(
+          signin::ConsentLevel::kSync)) {
+    account_info.id =
+        identity_manager->GetPrimaryAccountInfo(signin::ConsentLevel::kSync)
+            .gaia;
+    infos.Append(base::Value(account_info.ToValue()));
   }
 
   // If secondary accounts are supported, add all the secondary accounts as
   // well.
   if (!primary_account_only) {
     for (const auto& account : accounts) {
-      if (account.account_id == identity_manager->GetPrimaryAccountId())
+      if (account.account_id ==
+          identity_manager->GetPrimaryAccountId(signin::ConsentLevel::kSync))
         continue;
       account_info.id = account.gaia;
-      infos->Append(account_info.ToValue());
+      infos.Append(base::Value(account_info.ToValue()));
     }
   }
 
-  return RespondNow(OneArgument(std::move(infos)));
+  return RespondNow(WithArguments(std::move(infos)));
 }
 
 }  // namespace extensions

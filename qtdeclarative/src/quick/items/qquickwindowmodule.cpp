@@ -1,47 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickwindowmodule_p.h"
 #include "qquickwindowattached_p.h"
 #include "qquickrendercontrol.h"
 #include "qquickscreen_p.h"
 #include "qquickview_p.h"
+#include "qquickwindowmodule_p_p.h"
+#include "qquickitem_p.h"
 #include <QtQuick/QQuickWindow>
 #include <QtCore/QCoreApplication>
 #include <QtQml/QQmlEngine>
@@ -56,35 +22,19 @@ QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(lcTransient)
 
-class QQuickWindowQmlImplPrivate : public QQuickWindowPrivate
-{
-public:
-    QQuickWindowQmlImplPrivate()
-        : complete(false)
-        , visible(false)
-        , visibility(QQuickWindow::AutomaticVisibility)
-    {
-    }
-
-    bool complete;
-    bool visible;
-    QQuickWindow::Visibility visibility;
-    QV4::PersistentValue rootItemMarker;
-};
+QQuickWindowQmlImplPrivate::QQuickWindowQmlImplPrivate() = default;
 
 QQuickWindowQmlImpl::QQuickWindowQmlImpl(QWindow *parent)
-    : QQuickWindow(*(new QQuickWindowQmlImplPrivate), parent)
+    : QQuickWindowQmlImpl(*(new QQuickWindowQmlImplPrivate), parent)
 {
-    connect(this, &QWindow::visibleChanged, this, &QQuickWindowQmlImpl::visibleChanged);
-    connect(this, &QWindow::visibilityChanged, this, &QQuickWindowQmlImpl::visibilityChanged);
-    connect(this, &QWindow::screenChanged, this, &QQuickWindowQmlImpl::screenChanged);
 }
 
 void QQuickWindowQmlImpl::setVisible(bool visible)
 {
     Q_D(QQuickWindowQmlImpl);
     d->visible = visible;
-    if (d->complete && (!transientParent() || transientParentVisible()))
+    d->visibleExplicitlySet = true;
+    if (d->componentComplete && (!transientParent() || transientParentVisible()))
         QQuickWindow::setVisible(visible);
 }
 
@@ -92,7 +42,7 @@ void QQuickWindowQmlImpl::setVisibility(Visibility visibility)
 {
     Q_D(QQuickWindowQmlImpl);
     d->visibility = visibility;
-    if (d->complete)
+    if (d->componentComplete)
         QQuickWindow::setVisibility(visibility);
 }
 
@@ -104,6 +54,7 @@ QQuickWindowAttached *QQuickWindowQmlImpl::qmlAttachedProperties(QObject *object
 void QQuickWindowQmlImpl::classBegin()
 {
     Q_D(QQuickWindowQmlImpl);
+    d->componentComplete = false;
     QQmlEngine* e = qmlEngine(this);
 
     QQmlEngine::setContextForObject(contentItem(), e->rootContext());
@@ -124,7 +75,8 @@ void QQuickWindowQmlImpl::classBegin()
 void QQuickWindowQmlImpl::componentComplete()
 {
     Q_D(QQuickWindowQmlImpl);
-    d->complete = true;
+    d->componentComplete = true;
+
     QQuickItem *itemParent = qmlobject_cast<QQuickItem *>(QObject::parent());
     const bool transientParentAlreadySet = QQuickWindowPrivate::get(this)->transientParentPropertySet;
     if (!transientParentAlreadySet && itemParent && !itemParent->window()) {
@@ -138,6 +90,20 @@ void QQuickWindowQmlImpl::componentComplete()
     } else {
         setWindowVisibility();
     }
+}
+
+QQuickWindowQmlImpl::QQuickWindowQmlImpl(QQuickWindowQmlImplPrivate &dd, QWindow *parent)
+    : QQuickWindow(dd, parent)
+{
+    // These two signals are called during QWindow's dtor, thus they have to be queued connections
+    // or else our slots will be called instantly when our destructor has already run but our
+    // connections haven't been removed yet.
+    connect(this, &QWindow::visibleChanged, this, &QQuickWindowQmlImpl::visibleChanged,
+            Qt::QueuedConnection);
+    connect(this, &QWindow::visibilityChanged, this, &QQuickWindowQmlImpl::visibilityChanged,
+            Qt::QueuedConnection);
+
+    connect(this, &QWindow::screenChanged, this, &QQuickWindowQmlImpl::screenChanged);
 }
 
 void QQuickWindowQmlImpl::setWindowVisibility()
@@ -155,16 +121,17 @@ void QQuickWindowQmlImpl::setWindowVisibility()
     // We have deferred window creation until we have the full picture of what
     // the user wanted in terms of window state, geometry, visibility, etc.
 
-    if ((d->visibility == Hidden && d->visible) || (d->visibility > AutomaticVisibility && !d->visible)) {
+    if (d->visibleExplicitlySet && ((d->visibility == Hidden && d->visible) ||
+                                    (d->visibility > AutomaticVisibility && !d->visible))) {
         QQmlData *data = QQmlData::get(this);
         Q_ASSERT(data && data->context);
 
         QQmlError error;
         error.setObject(this);
 
-        const QQmlContextData* urlContext = data->context;
+        QQmlRefPointer<QQmlContextData> urlContext = data->context;
         while (urlContext && urlContext->url().isEmpty())
-            urlContext = urlContext->parent;
+            urlContext = urlContext->parent();
         error.setUrl(urlContext ? urlContext->url() : QUrl());
 
         QString objectId = data->context->findObjectId(this);
@@ -175,7 +142,7 @@ void QQuickWindowQmlImpl::setWindowVisibility()
             error.setDescription(QCoreApplication::translate("QQuickWindowQmlImpl",
                 "Conflicting properties 'visible' and 'visibility'"));
 
-        QQmlEnginePrivate::get(data->context->engine)->warning(error);
+        QQmlEnginePrivate::get(data->context->engine())->warning(error);
     }
 
     if (d->visibility == AutomaticVisibility) {

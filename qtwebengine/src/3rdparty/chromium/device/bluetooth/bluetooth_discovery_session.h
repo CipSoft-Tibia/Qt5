@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,9 @@
 
 #include <memory>
 
-#include "base/bind_helpers.h"
-#include "base/callback.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "device/bluetooth/bluetooth_adapter.h"
 #include "device/bluetooth/bluetooth_discovery_filter.h"
@@ -46,6 +45,10 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothDiscoverySession {
     // Finished scanning, should be deleted soon.
     INACTIVE
   };
+
+  BluetoothDiscoverySession(const BluetoothDiscoverySession&) = delete;
+  BluetoothDiscoverySession& operator=(const BluetoothDiscoverySession&) =
+      delete;
 
   // Terminates the discovery session. If this is the last active discovery
   // session, a call to the underlying system to stop device discovery is made.
@@ -127,8 +130,6 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothDiscoverySession {
   // Note: This should remain the last member so it'll be destroyed and
   // invalidate its weak pointers before any other members are destroyed.
   base::WeakPtrFactory<BluetoothDiscoverySession> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(BluetoothDiscoverySession);
 };
 
 }  // namespace device

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -34,8 +34,7 @@ NSString* const kTouchBarCancelId = @"com.google.chrome-CANCEL";
 // NSTouchBarDelegate protocol implementation.
 
 - (NSTouchBarItem*)touchBar:(NSTouchBar*)touchBar
-      makeItemForIdentifier:(NSTouchBarItemIdentifier)identifier
-    API_AVAILABLE(macos(10.12.2)) {
+      makeItemForIdentifier:(NSTouchBarItemIdentifier)identifier {
   if (!_bridge)
     return nil;
 
@@ -62,7 +61,7 @@ NSString* const kTouchBarCancelId = @"com.google.chrome-CANCEL";
     return nil;
 
   bool buttonExists = false;
-  base::string16 buttonLabel;
+  std::u16string buttonLabel;
   bool isButtonEnabled = false;
   bool isButtonDefault = false;
   _bridge->host()->GetDialogButtonInfo(type, &buttonExists, &buttonLabel,

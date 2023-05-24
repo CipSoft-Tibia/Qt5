@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017-2016 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017-2016 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qconnection_qnx_global_p.h"
 #include "qconnection_qnx_qiodevices.h"
@@ -200,7 +164,7 @@ void QQnxNativeIoPrivate::thread_func()
             ibLock.lockForWrite();
             iov_t reply_vector[2];
             SETIOV(reply_vector, &bytesLeft, sizeof(bytesLeft));
-            SETIOV(reply_vector+1, buffer.reserve(len), len);
+            SETIOV(reply_vector+1, buffer.reserve(len), size_t(len));
             const int res = MsgSendv(serverId, tx_iov, 1, reply_vector, 2);
 
             if (res == -1) {
@@ -217,7 +181,7 @@ void QQnxNativeIoPrivate::thread_func()
                 msgType = MsgType::SOURCE_TX_RESP_REPEAT;
                 ibLock.lockForWrite();
                 SETIOV(reply_vector, &nTxRequestToIgnore, sizeof(nTxRequestToIgnore));
-                SETIOV(reply_vector+1, buffer.reserve(bytesLeft), bytesLeft);
+                SETIOV(reply_vector+1, buffer.reserve(bytesLeft), size_t(bytesLeft));
                 const int res = MsgSendv(serverId, tx_iov, 1, reply_vector, 2);
                 if (res == -1) {
                     buffer.chop(bytesLeft);
@@ -241,7 +205,7 @@ void QQnxNativeIoPrivate::thread_func()
             Q_ASSERT(len == payload.length());
 
             msgType = MsgType::REPLICA_TX_RECV;
-            SETIOV(tx_iov + 1, payload.constData(), len);
+            SETIOV(tx_iov + 1, payload.constData(), size_t(len));
             if (MsgSendvs(serverId, tx_iov, 2, nullptr, 0) == -1) {
                 WARNING(MsgSendvs);
                 obLock.lockForWrite();
@@ -314,7 +278,7 @@ QQnxNativeIo::~QQnxNativeIo()
 bool QQnxNativeIo::connectToServer(QIODevice::OpenMode openMode)
 {
     Q_D(QQnxNativeIo);
-    Q_UNUSED(openMode);
+    Q_UNUSED(openMode)
 
     if (state() == QAbstractSocket::ConnectedState ||
         state() == QAbstractSocket::ConnectingState) {
@@ -455,7 +419,7 @@ bool QQnxNativeIo::waitForBytesWritten(int msecs)
     //TODO - This method isn't used by Qt Remote Objects, but would
     //need to be implemented before this class could be used as a
     //generic QIODevice.
-    Q_UNUSED(msecs);
+    Q_UNUSED(msecs)
     Q_ASSERT(false);
     return false;
 }
@@ -465,7 +429,7 @@ bool QQnxNativeIo::waitForReadyRead(int msecs)
     //TODO - This method isn't used by Qt Remote Objects, but would
     //need to be implemented before this class could be used as a
     //generic QIODevice.
-    Q_UNUSED(msecs);
+    Q_UNUSED(msecs)
     Q_ASSERT(false);
     return false;
 }
@@ -557,7 +521,7 @@ qint64 QIOQnxSource::bytesToWrite() const
 
 bool QIOQnxSource::open(QIODevice::OpenMode openMode)
 {
-    Q_UNUSED(openMode);
+    Q_UNUSED(openMode)
     return false;
 }
 
@@ -596,7 +560,7 @@ bool QIOQnxSource::waitForBytesWritten(int msecs)
     //TODO - This method isn't used by Qt Remote Objects, but would
     //need to be implemented before this class could be used as a
     //generic QIODevice.
-    Q_UNUSED(msecs);
+    Q_UNUSED(msecs)
     Q_ASSERT(false);
     return false;
 }
@@ -606,7 +570,7 @@ bool QIOQnxSource::waitForReadyRead(int msecs)
     //TODO - This method isn't used by Qt Remote Objects, but would
     //need to be implemented before this class could be used as a
     //generic QIODevice.
-    Q_UNUSED(msecs);
+    Q_UNUSED(msecs)
     Q_ASSERT(false);
     return false;
 }
@@ -644,7 +608,7 @@ qint64 QIOQnxSource::writeData(const char *data, qint64 size)
     d->obuffer.append(QByteArray(data, isize));
     d->obLock.unlock();
 
-    if (!d->m_serverClosing.load()) {
+    if (!d->m_serverClosing.loadRelaxed()) {
         d->m_event.sigev_value.sival_int = isize;
         WARN_ON_ERROR(MsgDeliverEvent, d->rcvid, &(d->m_event))
     }

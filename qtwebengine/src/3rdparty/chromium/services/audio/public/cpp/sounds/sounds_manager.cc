@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@
 
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
+#include "media/base/audio_codecs.h"
 #include "services/audio/public/cpp/sounds/audio_stream_handler.h"
 
 namespace audio {
@@ -23,14 +24,20 @@ bool g_initialized_for_testing = false;
 
 class SoundsManagerImpl : public SoundsManager {
  public:
-  SoundsManagerImpl(StreamFactoryBinder stream_factory_binder)
+  explicit SoundsManagerImpl(StreamFactoryBinder stream_factory_binder)
       : stream_factory_binder_(std::move(stream_factory_binder)) {}
+
+  SoundsManagerImpl(const SoundsManagerImpl&) = delete;
+  SoundsManagerImpl& operator=(const SoundsManagerImpl&) = delete;
+
   ~SoundsManagerImpl() override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   }
 
   // SoundsManager implementation:
-  bool Initialize(SoundKey key, const base::StringPiece& data) override;
+  bool Initialize(SoundKey key,
+                  const base::StringPiece& data,
+                  media::AudioCodec codec) override;
   bool Play(SoundKey key) override;
   bool Stop(SoundKey key) override;
   base::TimeDelta GetDuration(SoundKey key) override;
@@ -45,19 +52,18 @@ class SoundsManagerImpl : public SoundsManager {
   };
   std::vector<StreamEntry> handlers_;
   StreamFactoryBinder stream_factory_binder_;
-
-  DISALLOW_COPY_AND_ASSIGN(SoundsManagerImpl);
 };
 
 bool SoundsManagerImpl::Initialize(SoundKey key,
-                                   const base::StringPiece& data) {
+                                   const base::StringPiece& data,
+                                   media::AudioCodec codec) {
   if (AudioStreamHandler* handler = GetHandler(key)) {
     DCHECK(handler->IsInitialized());
     return true;
   }
 
   std::unique_ptr<AudioStreamHandler> handler(
-      new AudioStreamHandler(stream_factory_binder_, data));
+      new AudioStreamHandler(stream_factory_binder_, data, codec));
   if (!handler->IsInitialized()) {
     LOG(WARNING) << "Can't initialize AudioStreamHandler for key=" << key;
     return false;

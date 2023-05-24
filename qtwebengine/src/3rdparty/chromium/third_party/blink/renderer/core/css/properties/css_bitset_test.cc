@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,9 @@ template <size_t kBits>
 std::bitset<kBits> ToStdBitsetUsingHas(const CSSBitsetBase<kBits>& bitset) {
   std::bitset<kBits> ret;
   for (size_t i = 0; i < kBits; ++i) {
-    if (bitset.Has(static_cast<CSSPropertyID>(i)))
+    if (bitset.Has(static_cast<CSSPropertyID>(i))) {
       ret.set(i);
+    }
   }
   return ret;
 }
@@ -57,11 +58,6 @@ void AssertBitset(std::initializer_list<size_t> bits) {
 }
 
 }  // namespace
-
-TEST(CSSBitsetTest, BaseBitCount0) {
-  static_assert(CSSBitsetBase<0>::kChunks == 0, "Correct chunk count");
-  AssertBitset<0>({});
-}
 
 TEST(CSSBitsetTest, BaseBitCount1) {
   static_assert(CSSBitsetBase<1>::kChunks == 1u, "Correct chunk count");
@@ -161,8 +157,9 @@ TEST(CSSBitsetTest, BaseBitCount129) {
 
 TEST(CSSBitsetTest, AllBits) {
   std::vector<size_t> all_bits;
-  for (size_t i = 0; i < numCSSProperties; ++i)
+  for (size_t i = 0; i < kNumCSSProperties; ++i) {
     all_bits.push_back(i);
+  }
 
   AssertBitset<1>(all_bits.data(), all_bits.data() + 1);
   AssertBitset<2>(all_bits.data(), all_bits.data() + 2);
@@ -187,35 +184,44 @@ TEST(CSSBitsetTest, NoBits) {
 }
 
 TEST(CSSBitsetTest, SingleBit) {
-  for (size_t i = 0; i < 1; ++i)
+  for (size_t i = 0; i < 1; ++i) {
     AssertBitset<1>(&i, &i + 1);
+  }
 
-  for (size_t i = 0; i < 2; ++i)
+  for (size_t i = 0; i < 2; ++i) {
     AssertBitset<2>(&i, &i + 1);
+  }
 
-  for (size_t i = 0; i < 63; ++i)
+  for (size_t i = 0; i < 63; ++i) {
     AssertBitset<63>(&i, &i + 1);
+  }
 
-  for (size_t i = 0; i < 64; ++i)
+  for (size_t i = 0; i < 64; ++i) {
     AssertBitset<64>(&i, &i + 1);
+  }
 
-  for (size_t i = 0; i < 65; ++i)
+  for (size_t i = 0; i < 65; ++i) {
     AssertBitset<65>(&i, &i + 1);
+  }
 
-  for (size_t i = 0; i < 127; ++i)
+  for (size_t i = 0; i < 127; ++i) {
     AssertBitset<127>(&i, &i + 1);
+  }
 
-  for (size_t i = 0; i < 128; ++i)
+  for (size_t i = 0; i < 128; ++i) {
     AssertBitset<128>(&i, &i + 1);
+  }
 
-  for (size_t i = 0; i < 129; ++i)
+  for (size_t i = 0; i < 129; ++i) {
     AssertBitset<129>(&i, &i + 1);
+  }
 }
 
 TEST(CSSBitsetTest, Default) {
   CSSBitset bitset;
-  for (auto id : CSSPropertyIDList())
+  for (auto id : CSSPropertyIDList()) {
     EXPECT_FALSE(bitset.Has(id));
+  }
   EXPECT_FALSE(bitset.HasAny());
 }
 
@@ -265,7 +271,7 @@ TEST(CSSBitsetTest, Iterator) {
   actual.Set(CSSPropertyID::kWidth);
   actual.Set(CSSPropertyID::kVariable);
 
-  std::bitset<numCSSProperties> expected;
+  std::bitset<kNumCSSPropertyIDs> expected;
   expected.set(static_cast<size_t>(CSSPropertyID::kHeight));
   expected.set(static_cast<size_t>(CSSPropertyID::kWidth));
   expected.set(static_cast<size_t>(CSSPropertyID::kVariable));

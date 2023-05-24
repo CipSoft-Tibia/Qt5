@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright 2015 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -68,19 +68,20 @@ def main():
     exe_file = args.output
     if args.unstripped_file:
       exe_file = args.unstripped_file
-    dwp_proc = subprocess.Popen(
-        wrapper_utils.CommandToRun(
-            [args.dwp, '-e', exe_file, '-o', exe_file + '.dwp']))
+    # Suppress warnings about duplicate CU entries (https://crbug.com/1264130)
+    dwp_proc = subprocess.Popen(wrapper_utils.CommandToRun(
+        [args.dwp, '-e', exe_file, '-o', exe_file + '.dwp']),
+                                stderr=subprocess.DEVNULL)
 
   # Finally, strip the linked executable (if desired).
   if args.strip:
-    result = subprocess.call(CommandToRun([
-        args.strip, '-o', args.output, args.unstripped_file
-        ]))
+    result = subprocess.call(
+        CommandToRun([args.strip, '-o', args.output, args.unstripped_file]))
 
   if dwp_proc:
     dwp_result = dwp_proc.wait()
     if dwp_result != 0:
+      sys.stderr.write('dwp failed with error code {}\n'.format(dwp_result))
       return dwp_result
 
   return result

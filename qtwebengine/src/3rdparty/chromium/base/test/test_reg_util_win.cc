@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,7 +21,7 @@ namespace registry_util {
 
 namespace {
 
-constexpr base::char16 kTimestampDelimiter[] = STRING16_LITERAL("$");
+constexpr char16_t kTimestampDelimiter[] = u"$";
 constexpr wchar_t kTempTestKeyPath[] = L"Software\\Chromium\\TempTestKeys";
 
 void DeleteStaleTestKeys(const base::Time& now,
@@ -53,7 +53,7 @@ void DeleteStaleTestKeys(const base::Time& now,
     base::Time key_time = base::Time::FromInternalValue(key_name_as_number);
     base::TimeDelta age = now - key_time;
 
-    if (age > base::TimeDelta::FromHours(24))
+    if (age > base::Hours(24))
       test_root_key.DeleteKey(key_name.c_str());
   }
 }
@@ -61,7 +61,7 @@ void DeleteStaleTestKeys(const base::Time& now,
 std::wstring GenerateTempKeyPath(const std::wstring& test_key_root,
                                  const base::Time& timestamp) {
   return base::AsWString(base::StrCat(
-      {base::AsStringPiece16(test_key_root), STRING16_LITERAL("\\"),
+      {base::AsStringPiece16(test_key_root), u"\\",
        base::NumberToString16(timestamp.ToInternalValue()), kTimestampDelimiter,
        base::ASCIIToUTF16(base::GenerateGUID())}));
 }

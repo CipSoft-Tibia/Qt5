@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,18 +10,22 @@
 #include "base/files/file_path.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/observer_list_threadsafe.h"
+#include "base/memory/weak_ptr.h"
 #include "base/synchronization/lock.h"
 #include "base/threading/sequence_bound.h"
+#include "components/services/storage/public/cpp/quota_error_or.h"
 #include "components/services/storage/public/mojom/blob_storage_context.mojom.h"
+#include "components/services/storage/public/mojom/cache_storage_control.mojom.h"
+#include "components/services/storage/public/mojom/quota_client.mojom.h"
 #include "content/browser/cache_storage/cache_storage_manager.h"
 #include "content/common/content_export.h"
-#include "content/public/browser/cache_storage_context.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "mojo/public/cpp/bindings/receiver_set.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/network/public/mojom/cross_origin_embedder_policy.mojom.h"
-#include "storage/browser/quota/special_storage_policy.h"
+#include "storage/browser/quota/quota_manager_proxy.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/cache_storage/cache_storage.mojom-forward.h"
 
 namespace base {
@@ -30,139 +34,91 @@ class SequencedTaskRunner;
 }
 
 namespace storage {
-class QuotaManagerProxy;
-}
-
-namespace url {
-class Origin;
+struct BucketLocator;
+struct BucketInfo;
 }
 
 namespace content {
 
-class ChromeBlobStorageContext;
 class CacheStorageDispatcherHost;
 class CacheStorageManager;
 
-// An intermediate abstract interface that exposes the CacheManager() method.
-// This is mainly used in some places instead of the full
-// CacheStorageContextImpl to make it easier to write tests where we want to
-// provide a specific manager instance.
-class CONTENT_EXPORT CacheStorageContextWithManager
-    : public CacheStorageContext {
- public:
-  // Callable on any sequence.  May return nullptr during shutdown.
-  virtual scoped_refptr<CacheStorageManager> CacheManager() = 0;
-
- protected:
-  ~CacheStorageContextWithManager() override = default;
-};
-
-// One instance of this exists per StoragePartition, and services multiple
-// child processes/origins. Most logic is delegated to the owned
-// CacheStorageManager instance, which is only accessed on the target
-// sequence.
+// This class is an implementation of the CacheStorageControl mojom that is
+// called from the browser.  One instance of this exists per StoragePartition,
+// and services multiple child processes/origins.  (Compare this with
+// CacheStorageDispatcherHost which handles renderer <-> storage service mojo
+// messages.)  All functions must be called on the same sequence that the
+// object is constructed on.
 class CONTENT_EXPORT CacheStorageContextImpl
-    : public CacheStorageContextWithManager {
+    : public storage::mojom::CacheStorageControl {
  public:
-  CacheStorageContextImpl();
+  explicit CacheStorageContextImpl(
+      scoped_refptr<storage::QuotaManagerProxy> quota_manager_proxy);
+  ~CacheStorageContextImpl() override;
 
-  class Observer {
-   public:
-    virtual void OnCacheListChanged(const url::Origin& origin) = 0;
-    virtual void OnCacheContentChanged(const url::Origin& origin,
-                                       const std::string& cache_name) = 0;
+  static scoped_refptr<base::SequencedTaskRunner> CreateSchedulerTaskRunner();
 
-   protected:
-    virtual ~Observer() {}
-  };
+  void Init(mojo::PendingReceiver<storage::mojom::CacheStorageControl> control,
+            const base::FilePath& user_data_directory,
+            mojo::PendingReceiver<storage::mojom::QuotaClient>
+                cache_storage_client_remote,
+            mojo::PendingReceiver<storage::mojom::QuotaClient>
+                background_fetch_client_remote,
+            mojo::PendingRemote<storage::mojom::BlobStorageContext>
+                blob_storage_context);
 
-  using ObserverList = base::ObserverListThreadSafe<Observer>;
-
-  // Init and Shutdown are for use on the UI thread when the profile,
-  // storagepartition is being setup and torn down.
-  void Init(const base::FilePath& user_data_directory,
-            scoped_refptr<storage::SpecialStoragePolicy> special_storage_policy,
-            scoped_refptr<storage::QuotaManagerProxy> quota_manager_proxy);
-  void Shutdown();
-
-  // Only callable on the UI thread.
+  // storage::mojom::CacheStorageControl implementation.
   void AddReceiver(
       const network::CrossOriginEmbedderPolicy& cross_origin_embedder_policy,
       mojo::PendingRemote<network::mojom::CrossOriginEmbedderPolicyReporter>
           coep_reporter_remote,
-      const url::Origin& origin,
-      mojo::PendingReceiver<blink::mojom::CacheStorage> receiver);
+      const storage::BucketLocator& bucket,
+      storage::mojom::CacheStorageOwner owner,
+      mojo::PendingReceiver<blink::mojom::CacheStorage> receiver) override;
+  void DeleteForStorageKey(const blink::StorageKey& storage_key) override;
+  void GetAllStorageKeysInfo(
+      storage::mojom::CacheStorageControl::GetAllStorageKeysInfoCallback
+          callback) override;
+  void AddObserver(mojo::PendingRemote<storage::mojom::CacheStorageObserver>
+                       observer) override;
+  void ApplyPolicyUpdates(std::vector<storage::mojom::StoragePolicyUpdatePtr>
+                              policy_updates) override;
 
-  // If called on the cache_storage target sequence the real manager will be
-  // returned directly.  If called on any other sequence then a cross-sequence
-  // wrapper object will be created and returned instead.
-  //
-  // Note, this may begun returning nullptr at any time if shutdown is initiated
-  // on a separate thread.  Prefer to call CacheManager() once and hold a
-  // reference to the returned object.
-  scoped_refptr<CacheStorageManager> CacheManager() override;
+  scoped_refptr<CacheStorageManager> cache_manager() {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    return cache_manager_;
+  }
 
   bool is_incognito() const { return is_incognito_; }
 
-  // This function must be called after this object is created but before any
-  // CacheStorageCache operations. It must be called on the UI thread. If
-  // |blob_storage_context| is NULL the function immediately returns without
-  // forwarding to the CacheStorageManager.
-  void SetBlobParametersForCache(
-      ChromeBlobStorageContext* blob_storage_context);
-
-  // CacheStorageContext
-  void GetAllOriginsInfo(GetUsageInfoCallback callback) override;
-  void DeleteForOrigin(const url::Origin& origin) override;
-
-  // Callable on any sequence.
-  void AddObserver(CacheStorageContextImpl::Observer* observer);
-  void RemoveObserver(CacheStorageContextImpl::Observer* observer);
-
- protected:
-  ~CacheStorageContextImpl() override;
-
  private:
-  void CreateCacheStorageManagerOnTaskRunner(
-      const base::FilePath& user_data_directory,
-      scoped_refptr<base::SequencedTaskRunner> cache_task_runner,
-      scoped_refptr<storage::QuotaManagerProxy> quota_manager_proxy);
+  SEQUENCE_CHECKER(sequence_checker_);
 
-  void ShutdownOnTaskRunner();
+  void AddReceiverWithBucketInfo(
+      const network::CrossOriginEmbedderPolicy& cross_origin_embedder_policy,
+      mojo::PendingRemote<network::mojom::CrossOriginEmbedderPolicyReporter>
+          coep_reporter_remote,
+      const blink::StorageKey& storage_key,
+      storage::mojom::CacheStorageOwner owner,
+      mojo::PendingReceiver<blink::mojom::CacheStorage> receiver,
+      storage::QuotaErrorOr<storage::BucketInfo> result);
 
-  void BindBlobStorageMojoContextOnIOThread(
-      ChromeBlobStorageContext* blob_storage_context,
-      mojo::PendingReceiver<storage::mojom::BlobStorageContext> receiver);
-
-  void SetBlobParametersForCacheOnTaskRunner(
-      mojo::PendingRemote<storage::mojom::BlobStorageContext> remote);
-
-  void CreateQuotaClientsOnIOThread(
-      scoped_refptr<storage::QuotaManagerProxy> quota_manager_proxy);
-
-  // Initialized at construction.
-  const scoped_refptr<base::SequencedTaskRunner> task_runner_;
-  const scoped_refptr<ObserverList> observers_;
-
-  // Used to synchronize shutdown state aross multiple threads.
-  base::Lock shutdown_lock_;
+  // The set of storage keys whose storage should be cleared on shutdown.
+  std::set<blink::StorageKey> storage_keys_to_purge_on_shutdown_;
 
   // Initialized in Init(); true if the user data directory is empty.
   bool is_incognito_ = false;
 
-  // True once Shutdown() has been called on the UI thread.
-  bool shutdown_ = false;
-
-  // Initialized in Init().
-  scoped_refptr<storage::SpecialStoragePolicy> special_storage_policy_;
-
-  // Created and accessed on the target sequence.  Released on the target
-  // sequence in SHutdownOnTaskRunner() or the destructor via
-  // SequencedTaskRunner::ReleaseSoon().
+  // Released during Shutdown() or the destructor.
   scoped_refptr<CacheStorageManager> cache_manager_;
 
-  // Initialized from the UI thread and bound to |task_runner_|.
-  base::SequenceBound<CacheStorageDispatcherHost> dispatcher_host_;
+  mojo::ReceiverSet<storage::mojom::CacheStorageControl> receivers_;
+
+  std::unique_ptr<CacheStorageDispatcherHost> dispatcher_host_;
+
+  const scoped_refptr<storage::QuotaManagerProxy> quota_manager_proxy_;
+
+  base::WeakPtrFactory<CacheStorageContextImpl> weak_factory_{this};
 };
 
 }  // namespace content

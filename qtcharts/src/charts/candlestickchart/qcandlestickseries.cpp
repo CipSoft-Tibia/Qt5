@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QBarCategoryAxis>
 #include <QtCharts/QCandlestickLegendMarker>
@@ -41,7 +15,7 @@
 #include <private/qcandlestickset_p.h>
 #include <private/qchart_p.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 /*!
     \class QCandlestickSeries
@@ -59,7 +33,7 @@ QT_CHARTS_BEGIN_NAMESPACE
     drawn to the same category. When using QValueAxis or QDateTimeAxis, candlestick items sharing a
     timestamp will overlap each other.
 
-    See the \l {Candlestick Chart Example} {candlestick chart example} to learn how to create
+    See the \l {Charts with Widgets Gallery} to learn how to create
     a candlestick chart.
     \image examples_candlestickchart.png
 
@@ -650,7 +624,7 @@ QList<QCandlestickSet *> QCandlestickSeries::sets() const
 */
 int QCandlestickSeries::count() const
 {
-    return sets().count();
+    return sets().size();
 }
 
 /*!
@@ -941,20 +915,20 @@ void QCandlestickSeriesPrivate::initializeDomain()
     qreal minY(domain()->minY());
     qreal maxY(domain()->maxY());
 
-    if (m_sets.count()) {
+    if (m_sets.size()) {
         QCandlestickSet *set = m_sets.first();
         minX = set->timestamp();
         maxX = set->timestamp();
         minY = set->low();
         maxY = set->high();
-        for (int i = 1; i < m_sets.count(); ++i) {
+        for (int i = 1; i < m_sets.size(); ++i) {
             set = m_sets.at(i);
             minX = qMin(minX, qreal(set->timestamp()));
             maxX = qMax(maxX, qreal(set->timestamp()));
             minY = qMin(minY, set->low());
             maxY = qMax(maxY, set->high());
         }
-        qreal extra = (maxX - minX) / m_sets.count() / 2;
+        qreal extra = (maxX - minX) / m_sets.size() / 2;
         minX = minX - extra;
         maxX = maxX + extra;
     }
@@ -1011,7 +985,7 @@ void QCandlestickSeriesPrivate::initializeGraphics(QGraphicsItem *parent)
 void QCandlestickSeriesPrivate::initializeAnimations(QChart::AnimationOptions options, int duration,
                                                      QEasingCurve &curve)
 {
-    CandlestickChartItem *item = static_cast<CandlestickChartItem *>(m_item.data());
+    CandlestickChartItem *item = static_cast<CandlestickChartItem *>(m_item.get());
     Q_ASSERT(item);
 
     if (item->animation())
@@ -1080,7 +1054,7 @@ bool QCandlestickSeriesPrivate::append(const QList<QCandlestickSet *> &sets)
 
 bool QCandlestickSeriesPrivate::remove(const QList<QCandlestickSet *> &sets)
 {
-    if (sets.count() == 0)
+    if (sets.size() == 0)
         return false;
 
     foreach (QCandlestickSet *set, sets) {
@@ -1118,7 +1092,7 @@ void QCandlestickSeriesPrivate::handleSeriesChange(QAbstractSeries *series)
     Q_UNUSED(series);
 
     if (m_chart) {
-        CandlestickChartItem *item = static_cast<CandlestickChartItem *>(m_item.data());
+        CandlestickChartItem *item = static_cast<CandlestickChartItem *>(m_item.get());
         if (item)
             item->handleCandlestickSeriesChange();
     }
@@ -1136,7 +1110,7 @@ void QCandlestickSeriesPrivate::handleSeriesRemove(QAbstractSeries *series)
     }
 
     if (q != removedSeries) {
-        CandlestickChartItem *item = static_cast<CandlestickChartItem *>(m_item.data());
+        CandlestickChartItem *item = static_cast<CandlestickChartItem *>(m_item.get());
         if (item)
             item->handleCandlestickSeriesChange();
     }
@@ -1146,7 +1120,7 @@ void QCandlestickSeriesPrivate::populateBarCategories(QBarCategoryAxis *axis)
 {
     if (axis->categories().isEmpty()) {
         QStringList categories;
-        for (int i = 0; i < m_sets.count(); ++i) {
+        for (int i = 0; i < m_sets.size(); ++i) {
             const qint64 timestamp = qRound64(m_sets.at(i)->timestamp());
             const QString timestampFormat = m_chart->locale().dateTimeFormat(QLocale::ShortFormat);
             categories << QDateTime::fromMSecsSinceEpoch(timestamp).toString(timestampFormat);
@@ -1155,7 +1129,7 @@ void QCandlestickSeriesPrivate::populateBarCategories(QBarCategoryAxis *axis)
     }
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qcandlestickseries.cpp"
 #include "moc_qcandlestickseries_p.cpp"

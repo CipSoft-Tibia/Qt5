@@ -1,4 +1,4 @@
-// Copyright (c) 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -297,10 +297,22 @@ TEST_F(InsertTextCommandTest, AnchorElementWithBlockCrash) {
   // Crash happens here with when '\n' is inserted.
   GetDocument().execCommand("inserttext", false, "a\n", ASSERT_NO_EXCEPTION);
   EXPECT_EQ(
-      "<i style=\"display: block;\">"
-      "<a href=\"www\" style=\"display: block;\">a</a>"
-      "</i>|",
+      "<a href=\"www\" style=\"display:block\"><i>a</i></a><a href=\"www\" "
+      "style=\"display:block\"><i>|<br></i></a>",
       GetSelectionTextFromBody());
+}
+
+// http://crbug.com/1197977
+TEST_F(InsertTextCommandTest, MultilineSelectionCrash) {
+  // Force line break between A and B.
+  InsertStyleElement("body { width: 1px; }");
+  Selection().SetSelection(SetSelectionTextToBody("A^<span> B|</span>"),
+                           SetSelectionOptions());
+  GetDocument().setDesignMode("on");
+
+  // Shouldn't crash inside.
+  GetDocument().execCommand("InsertText", false, "x", ASSERT_NO_EXCEPTION);
+  EXPECT_EQ("A<span>x|</span>", GetSelectionTextFromBody());
 }
 
 }  // namespace blink

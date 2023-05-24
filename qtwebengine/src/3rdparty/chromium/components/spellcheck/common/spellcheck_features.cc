@@ -1,11 +1,10 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/spellcheck/common/spellcheck_features.h"
 
 #include "base/system/sys_info.h"
-#include "base/win/windows_version.h"
 #include "build/build_config.h"
 #include "components/spellcheck/spellcheck_buildflags.h"
 
@@ -13,51 +12,50 @@ namespace spellcheck {
 
 #if BUILDFLAG(ENABLE_SPELLCHECK)
 
+#if BUILDFLAG(IS_WIN)
+namespace {
+// The browser spell checker may be disabled in tests.
+bool g_browser_spell_checker_enabled = true;
+}  // namespace
+#endif  // BUILDFLAG(IS_WIN)
+
 bool UseBrowserSpellChecker() {
 #if !BUILDFLAG(USE_BROWSER_SPELLCHECKER)
   return false;
-#elif defined(OS_WIN)
-  return base::FeatureList::IsEnabled(spellcheck::kWinUseBrowserSpellChecker) &&
-         WindowsVersionSupportsSpellchecker();
+#elif BUILDFLAG(IS_WIN)
+  return g_browser_spell_checker_enabled;
 #else
   return true;
 #endif
 }
 
-#if defined(OS_WIN)
-const base::Feature kWinUseBrowserSpellChecker{
-    "WinUseBrowserSpellChecker", base::FEATURE_ENABLED_BY_DEFAULT};
-
-const base::Feature kWinDelaySpellcheckServiceInit{
-    "WinDelaySpellcheckServiceInit", base::FEATURE_DISABLED_BY_DEFAULT};
-
-bool WindowsVersionSupportsSpellchecker() {
-  return base::win::GetVersion() > base::win::Version::WIN7 &&
-         base::win::GetVersion() < base::win::Version::WIN_LAST;
+#if BUILDFLAG(IS_WIN)
+ScopedDisableBrowserSpellCheckerForTesting::
+    ScopedDisableBrowserSpellCheckerForTesting()
+    : previous_value_(g_browser_spell_checker_enabled) {
+  g_browser_spell_checker_enabled = false;
 }
-#endif  // defined(OS_WIN)
 
-#if defined(OS_ANDROID)
-// Enables/disables Android spellchecker.
-const base::Feature kAndroidSpellChecker{
-    "AndroidSpellChecker", base::FEATURE_DISABLED_BY_DEFAULT};
+ScopedDisableBrowserSpellCheckerForTesting::
+    ~ScopedDisableBrowserSpellCheckerForTesting() {
+  g_browser_spell_checker_enabled = previous_value_;
+}
 
-// Enables/disables Android spellchecker on non low-end Android devices.
-const base::Feature kAndroidSpellCheckerNonLowEnd{
-    "AndroidSpellCheckerNonLowEnd", base::FEATURE_ENABLED_BY_DEFAULT};
+BASE_FEATURE(kWinDelaySpellcheckServiceInit,
+             "WinDelaySpellcheckServiceInit",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
+BASE_FEATURE(kWinRetrieveSuggestionsOnlyOnDemand,
+             "WinRetrieveSuggestionsOnlyOnDemand",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+#endif  // BUILDFLAG(IS_WIN)
+
+#if BUILDFLAG(IS_ANDROID)
 bool IsAndroidSpellCheckFeatureEnabled() {
-  if (base::FeatureList::IsEnabled(spellcheck::kAndroidSpellCheckerNonLowEnd)) {
-    return !base::SysInfo::IsLowEndDevice();
-  }
-
-  if (base::FeatureList::IsEnabled(spellcheck::kAndroidSpellChecker)) {
-    return true;
-  }
-
-  return false;
+  return !base::SysInfo::IsLowEndDevice();
 }
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID)
 
 #endif  // BUILDFLAG(ENABLE_SPELLCHECK)
 

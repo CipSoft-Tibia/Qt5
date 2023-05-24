@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,7 +15,13 @@
 
   data: [
     {
+      name: "additive-symbols",
+    },
+    {
       name: "ascent-override",
+    },
+    {
+      name: "base-palette",
     },
     {
       name: "descent-override",
@@ -46,43 +52,40 @@
       name: "font-weight",
     },
     {
-      name: "height",
-    },
-    {
       name: "inherits"
     },
     {
       name: "initial-value"
     },
     {
-      name: "advance-override"
+      name: "fallback",
     },
     {
       name: "line-gap-override",
     },
     {
-      name: "max-height",
+      name: "negative",
     },
     {
-      name: "max-width",
+      name: "override-colors",
     },
     {
-      name: "max-zoom",
+      name: "pad",
     },
     {
-      name: "min-height",
+      name: "prefix",
     },
     {
-      name: "min-width",
+      name: "range",
     },
     {
-      name: "min-zoom",
-    },
-    {
-      name: "orientation",
+      name: "size-adjust",
     },
     {
       name: "source",
+    },
+    {
+      name: "speak-as",
     },
     {
       name: "src",
@@ -91,22 +94,19 @@
       name: "start",
     },
     {
+      name: "suffix",
+    },
+    {
+      name: "symbols",
+    },
+    {
       name: "syntax"
     },
     {
-      name: "time-range",
+      name: "system",
     },
     {
       name: "unicode-range",
-    },
-    {
-      name: "user-zoom",
-    },
-    {
-      name: "width",
-    },
-    {
-      name: "zoom",
     },
   ],
 }

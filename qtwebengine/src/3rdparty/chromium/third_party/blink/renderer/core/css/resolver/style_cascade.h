@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_RESOLVER_STYLE_CASCADE_H_
 
 #include "third_party/blink/renderer/core/animation/interpolation.h"
-#include "third_party/blink/renderer/core/css/css_property_id_templates.h"
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/css_property_name.h"
 #include "third_party/blink/renderer/core/css/css_property_value.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser_token.h"
@@ -20,7 +20,9 @@
 #include "third_party/blink/renderer/core/css/resolver/cascade_priority.h"
 #include "third_party/blink/renderer/core/css/resolver/match_result.h"
 #include "third_party/blink/renderer/core/frame/web_feature_forward.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
+#include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/text/text_encoding.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
@@ -36,7 +38,6 @@ class CSSVariableData;
 class CSSVariableReferenceValue;
 class CustomProperty;
 class MatchResult;
-class StyleColor;
 class StyleResolverState;
 
 namespace cssvalue {
@@ -71,8 +72,10 @@ class CORE_EXPORT StyleCascade {
   const MatchResult& GetMatchResult() { return match_result_; }
 
   // Access the MatchResult in order to add declarations to it.
-  // The modifications made will be taken into account during the next call to
-  // Apply.
+  // The modifications made will be taken into account during Apply().
+  //
+  // It is invalid to modify the MatchResult after Apply has been called
+  // (unless Reset is called first).
   //
   // TODO(andruud): ElementRuleCollector could emit MatchedProperties
   // directly to the cascade.
@@ -80,6 +83,9 @@ class CORE_EXPORT StyleCascade {
 
   // Add ActiveInterpolationsMap to the cascade. The interpolations present
   // in the map will be taken into account during the next call to Apply.
+  //
+  // It is valid to add interpolations to the StyleCascade even after Apply
+  // has been called.
   //
   // Note that it's assumed that the incoming ActiveInterpolationsMap outlives
   // the StyleCascade object.
@@ -100,6 +106,8 @@ class CORE_EXPORT StyleCascade {
   // the corresponding unvisited properties to be set in the return value.
   std::unique_ptr<CSSBitset> GetImportantSet();
 
+  bool InlineStyleLost() const { return map_.InlineStyleLost(); }
+
   // Resets the cascade to its initial state. Note that this does not undo
   // any changes already applied to the StyleResolverState/ComputedStyle.
   void Reset();
@@ -108,11 +116,18 @@ class CORE_EXPORT StyleCascade {
   // applying a keyframe from e.g. "color: var(--x)" to "color: var(--y)".
   // Hence that code needs an entry point to the resolving process.
   //
+  // This function handles IACVT [1] as follows:
+  //
+  //  - If a cycle was detected, returns nullptr.
+  //  - If IACVT for other reasons, returns a 'CSSUnsetValue'.
+  //
   // TODO(crbug.com/985023): This function has an associated const
   // violation, which isn't great. (This vilation was not introduced with
   // StyleCascade, however).
   //
   // See documentation the other Resolve* functions for what resolve means.
+  //
+  // [1] https://drafts.csswg.org/css-variables/#invalid-at-computed-value-time
   const CSSValue* Resolve(const CSSPropertyName&,
                           const CSSValue&,
                           CascadeOrigin,
@@ -175,13 +190,22 @@ class CORE_EXPORT StyleCascade {
   // we don't have an appearance.
   void ApplyAppearance(CascadeResolver&);
 
-  // Applies -webkit-border-image (if present), and skips any border-image
-  // longhands found with lower priority than -webkit-border-image.
+  // Some legacy properties are "overlapping", in that they share parts of
+  // a computed value with other properties.
   //
-  // The -webkit-border-image property is unique (in a bad way), since it's
-  // a surrogate of a shorthand. Therefore it needs special treatment to
-  // behave correctly.
-  void ApplyWebkitBorderImage(CascadeResolver&);
+  // * -webkit-border-image (longhand) overlaps with border-image (shorthand).
+  // * -webkit-perspective-origin-x/y overlaps with perspective-origin.
+  // * -webkit-transform-origin-x/y/z overlaps with transform-origin.
+  //
+  // This overlap breaks the general rule that properties can be applied in
+  // any order (they need to be applied in the order they are declared).
+  //
+  // This function applies the "widest" of those overlapping properties
+  // (that is, properties which represent an entire computed-value),
+  // and conditionally marks narrow ones with a lower priority as already done,
+  // so that later apply steps do not apply them (ie., effectively causes them
+  // to be skipped).
+  void ApplyWideOverlapping(CascadeResolver&);
 
   void ApplyMatchResult(CascadeResolver&);
   void ApplyInterpolations(CascadeResolver&);
@@ -198,20 +222,14 @@ class CORE_EXPORT StyleCascade {
   void LookupAndApply(const CSSPropertyName&, CascadeResolver&);
   void LookupAndApply(const CSSProperty&, CascadeResolver&);
   void LookupAndApplyValue(const CSSProperty&,
-                           CascadePriority,
+                           CascadePriority*,
                            CascadeResolver&);
   void LookupAndApplyDeclaration(const CSSProperty&,
-                                 CascadePriority,
+                                 CascadePriority*,
                                  CascadeResolver&);
   void LookupAndApplyInterpolation(const CSSProperty&,
-                                   CascadePriority,
+                                   CascadePriority*,
                                    CascadeResolver&);
-
-  // Update the ComputedStyle to use the colors specified in Forced Colors Mode.
-  // https://www.w3.org/TR/css-color-adjust-1/#forced
-  void ForceColors();
-  void MaybeForceColor(const CSSProperty& property, const StyleColor& color);
-  const CSSValue* GetForcedColorValue(CSSPropertyName name);
 
   // Whether or not we are calculating the style for the root element.
   // We need to know this to detect cycles with 'rem' units.
@@ -236,32 +254,27 @@ class CORE_EXPORT StyleCascade {
     explicit TokenSequence(const CSSVariableData*);
 
     bool IsAnimationTainted() const { return is_animation_tainted_; }
-    CSSParserTokenRange TokenRange() const { return tokens_; }
+    CSSParserTokenRange TokenRange() const {
+      return CSSParserTokenRange{tokens_};
+    }
 
-    void Append(const TokenSequence&);
-    void Append(const CSSVariableData*);
+    bool Append(const TokenSequence&, wtf_size_t);
+    bool Append(CSSVariableData* data,
+                wtf_size_t limit = std::numeric_limits<wtf_size_t>::max());
     void Append(const CSSParserToken&);
 
     scoped_refptr<CSSVariableData> BuildVariableData();
 
    private:
+    bool AppendTokens(base::span<const CSSParserToken>, wtf_size_t);
+
     Vector<CSSParserToken> tokens_;
-    Vector<String> backing_strings_;
     // https://drafts.csswg.org/css-variables/#animation-tainted
     bool is_animation_tainted_ = false;
     // https://drafts.css-houdini.org/css-properties-values-api-1/#dependency-cycles
     bool has_font_units_ = false;
     bool has_root_font_units_ = false;
-
-    // The base URL and charset are currently needed to calculate the computed
-    // value of <url>-registered custom properties correctly.
-    //
-    // TODO(crbug.com/985013): Store CSSParserContext on
-    // CSSCustomPropertyDeclaration and avoid this.
-    //
-    // https://drafts.css-houdini.org/css-properties-values-api-1/#relative-urls
-    String base_url_;
-    WTF::TextEncoding charset_;
+    bool has_line_height_units_ = false;
   };
 
   // Resolving Values
@@ -283,11 +296,14 @@ class CORE_EXPORT StyleCascade {
 
   const CSSValue* Resolve(const CSSProperty&,
                           const CSSValue&,
-                          CascadeOrigin,
+                          CascadePriority,
+                          CascadeOrigin&,
                           CascadeResolver&);
+  const CSSValue* ResolveSubstitutions(const CSSProperty&,
+                                       const CSSValue&,
+                                       CascadeResolver&);
   const CSSValue* ResolveCustomProperty(const CSSProperty&,
                                         const CSSCustomPropertyDeclaration&,
-                                        CascadeOrigin,
                                         CascadeResolver&);
   const CSSValue* ResolveVariableReference(const CSSProperty&,
                                            const CSSVariableReferenceValue&,
@@ -297,8 +313,13 @@ class CORE_EXPORT StyleCascade {
                                              CascadeResolver&);
   const CSSValue* ResolveRevert(const CSSProperty&,
                                 const CSSValue&,
-                                CascadeOrigin,
+                                CascadeOrigin&,
                                 CascadeResolver&);
+  const CSSValue* ResolveRevertLayer(const CSSProperty&,
+                                     const CSSValue&,
+                                     CascadePriority,
+                                     CascadeOrigin&,
+                                     CascadeResolver&);
 
   scoped_refptr<CSSVariableData> ResolveVariableData(CSSVariableData*,
                                                      CascadeResolver&);
@@ -316,7 +337,8 @@ class CORE_EXPORT StyleCascade {
   bool ResolveEnvInto(CSSParserTokenRange, CascadeResolver&, TokenSequence&);
 
   CSSVariableData* GetVariableData(const CustomProperty&) const;
-  CSSVariableData* GetEnvironmentVariable(const AtomicString&) const;
+  CSSVariableData* GetEnvironmentVariable(const AtomicString&,
+                                          WTF::Vector<unsigned>) const;
   const CSSParserContext* GetParserContext(const CSSVariableReferenceValue&);
 
   // Detects if the given property/data depends on the font-size property
@@ -324,6 +346,9 @@ class CORE_EXPORT StyleCascade {
   //
   // https://drafts.css-houdini.org/css-properties-values-api-1/#dependency-cycles
   bool HasFontSizeDependency(const CustomProperty&, CSSVariableData*) const;
+  // Detects if the given property/data depends on the line-height property of
+  // the Element we're calculating style for.
+  bool HasLineHeightDependency(const CustomProperty&, CSSVariableData*) const;
   // The fallback must match the syntax of the custom property, otherwise the
   // the declaration is "invalid at computed-value time".'
   //
@@ -336,13 +361,6 @@ class CORE_EXPORT StyleCascade {
   // Marks a CSSProperty as having a reference to a custom property. Needed to
   // disable the matched property cache in some cases.
   void MarkHasVariableReference(const CSSProperty&);
-  // The resulting ComputedStyle may depend on values from the parent style,
-  // for example, explicit inheritance or var() references means we hold a
-  // dependency on the relevant property. We maintain a set of these
-  // dependencies on StyleResolverState, which is later used by the
-  // MatchedPropertiesCache to figure out if a given cache lookup is a hit or a
-  // miss.
-  void MarkDependency(const CSSProperty&);
 
   const Document& GetDocument() const;
   const CSSProperty& ResolveSurrogate(const CSSProperty& surrogate);
@@ -350,7 +368,6 @@ class CORE_EXPORT StyleCascade {
   void CountUse(WebFeature);
   void MaybeUseCountRevert(const CSSValue&);
   void MaybeUseCountSummaryDisplayBlock();
-  void MaybeUseCountInvalidVariableUnset(const CustomProperty&);
 
   StyleResolverState& state_;
   MatchResult match_result_;

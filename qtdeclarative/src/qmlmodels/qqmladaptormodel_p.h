@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLADAPTORMODEL_P_H
 #define QQMLADAPTORMODEL_P_H
@@ -53,7 +17,7 @@
 
 #include <QtCore/qabstractitemmodel.h>
 
-#include <private/qqmlglobal_p.h>
+#include <private/qtqmlglobal_p.h>
 #include <private/qqmllistaccessor_p.h>
 #include <private/qtqmlmodelsglobal_p.h>
 #include <private/qqmlguard_p.h>
@@ -70,7 +34,7 @@ class QQmlDelegateModel;
 class QQmlDelegateModelItem;
 class QQmlDelegateModelItemMetaType;
 
-class Q_QMLMODELS_PRIVATE_EXPORT QQmlAdaptorModel : public QQmlStrongJSQObjectReference<QObject>
+class Q_QMLMODELS_PRIVATE_EXPORT QQmlAdaptorModel : public QQmlGuard<QObject>
 {
 public:
     class Accessors
@@ -88,7 +52,7 @@ public:
         virtual QQmlDelegateModelItem *createItem(
                 QQmlAdaptorModel &,
                 const QQmlRefPointer<QQmlDelegateModelItemMetaType> &,
-                int, int, int) const { return nullptr; }
+                int, int, int) { return nullptr; }
 
         virtual bool notify(
                 const QQmlAdaptorModel &,
@@ -108,20 +72,24 @@ public:
         virtual void fetchMore(QQmlAdaptorModel &) const {}
 
         QScopedPointer<QMetaObject, QScopedPointerPodDeleter> metaObject;
-        QQmlRefPointer<QQmlPropertyCache> propertyCache;
+        QQmlPropertyCache::ConstPtr propertyCache;
     };
 
-    const Accessors *accessors;
+    Accessors *accessors;
     QPersistentModelIndex rootIndex;
     QQmlListAccessor list;
+    // we need to ensure that a JS created model does not get gced, but cannot
+    // arbitrarily set the parent  (using QQmlStrongJSQObjectReference)  of QObject based models,
+    // as that causes issues with singletons
+    QV4::PersistentValue modelStrongReference;
 
-    int modelItemRevision = 0;
+    QTypeRevision modelItemRevision = QTypeRevision::zero();
 
     QQmlAdaptorModel();
     ~QQmlAdaptorModel();
 
     inline QVariant model() const { return list.list(); }
-    void setModel(const QVariant &variant, QObject *parent, QQmlEngine *engine);
+    void setModel(const QVariant &variant);
     void invalidateModel();
 
     bool isValid() const;
@@ -132,7 +100,7 @@ public:
     int columnAt(int index) const;
     int indexAt(int row, int column) const;
 
-    void useImportVersion(int minorVersion);
+    void useImportVersion(QTypeRevision revision);
 
     inline bool adaptsAim() const { return qobject_cast<QAbstractItemModel *>(object()); }
     inline QAbstractItemModel *aim() { return static_cast<QAbstractItemModel *>(object()); }
@@ -166,8 +134,10 @@ public:
     inline bool canFetchMore() const { return accessors->canFetchMore(*this); }
     inline void fetchMore() { return accessors->fetchMore(*this); }
 
-protected:
-    void objectDestroyed(QObject *) override;
+private:
+    static void objectDestroyedImpl(QQmlGuardImpl *);
+
+    Accessors m_nullAccessors;
 };
 
 class QQmlAdaptorModelProxyInterface

@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 as{
     Countries{
         001{"বিশ্ব"}
@@ -306,8 +307,8 @@ as{
         CG{"কঙ্গো (প্রজাতন্ত্র)"}
         CI{"আইভৰী কোষ্ট"}
         CZ{"চেক প্রজাতন্ত্র"}
+        NZ{"অ’টিআৰাৱা নিউজিলেণ্ড"}
         SZ{"স্বাজিলেণ্ড"}
         TL{"পূৱ টিমোৰ"}
     }
-    Version{"37"}
 }

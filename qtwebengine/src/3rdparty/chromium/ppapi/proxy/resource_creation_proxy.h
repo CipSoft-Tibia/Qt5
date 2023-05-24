@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,6 @@
 
 #include <stdint.h>
 
-#include <string>
-
-#include "base/macros.h"
 #include "build/build_config.h"
 #include "ipc/ipc_channel.h"
 #include "ppapi/c/pp_bool.h"
@@ -31,6 +28,10 @@ class ResourceCreationProxy : public InterfaceProxy,
                               public thunk::ResourceCreationAPI {
  public:
   explicit ResourceCreationProxy(Dispatcher* dispatcher);
+
+  ResourceCreationProxy(const ResourceCreationProxy&) = delete;
+  ResourceCreationProxy& operator=(const ResourceCreationProxy&) = delete;
+
   ~ResourceCreationProxy() override;
 
   // Factory function used for registration (normal code can just use the
@@ -82,9 +83,6 @@ class ResourceCreationProxy : public InterfaceProxy,
       PP_InputEvent_Type type,
       PP_TimeTicks time_stamp,
       uint32_t modifiers) override;
-  PP_Resource CreateTrueTypeFont(
-      PP_Instance instance,
-      const PP_TrueTypeFontDesc_Dev* desc) override;
   PP_Resource CreateURLLoader(PP_Instance instance) override;
   PP_Resource CreateURLRequestInfo(PP_Instance instance) override;
   PP_Resource CreateWheelInputEvent(
@@ -102,7 +100,6 @@ class ResourceCreationProxy : public InterfaceProxy,
                           PP_Resource config_id,
                           PPB_Audio_Callback audio_callback,
                           void* user_data) override;
-  PP_Resource CreateAudioEncoder(PP_Instance instance) override;
   PP_Resource CreateAudioTrusted(PP_Instance instance) override;
   PP_Resource CreateAudioConfig(PP_Instance instance,
                                 PP_AudioSampleRate sample_rate,
@@ -156,36 +153,26 @@ class ResourceCreationProxy : public InterfaceProxy,
   PP_Resource CreateVideoEncoder(PP_Instance instance) override;
   PP_Resource CreateVpnProvider(PP_Instance instance) override;
   PP_Resource CreateWebSocket(PP_Instance instance) override;
+#if !BUILDFLAG(IS_NACL)
   PP_Resource CreateX509CertificatePrivate(PP_Instance instance) override;
-#if !defined(OS_NACL)
   PP_Resource CreateAudioInput(PP_Instance instance) override;
   PP_Resource CreateAudioOutput(PP_Instance instance) override;
-  PP_Resource CreateBroker(PP_Instance instance) override;
   PP_Resource CreateBrowserFont(
       PP_Instance instance,
       const PP_BrowserFont_Trusted_Description* description) override;
   PP_Resource CreateBuffer(PP_Instance instance, uint32_t size) override;
-  PP_Resource CreateFlashDRM(PP_Instance instance) override;
-  PP_Resource CreateFlashFontFile(
-      PP_Instance instance,
-      const PP_BrowserFont_Trusted_Description* description,
-      PP_PrivateFontCharset charset) override;
-  PP_Resource CreateFlashMenu(PP_Instance instance,
-                              const PP_Flash_Menu* menu_data) override;
-  PP_Resource CreateFlashMessageLoop(PP_Instance instance) override;
   PP_Resource CreateVideoCapture(PP_Instance instance) override;
   PP_Resource CreateVideoDecoderDev(
       PP_Instance instance,
       PP_Resource context3d_id,
       PP_VideoDecoder_Profile profile) override;
-#endif  // !defined(OS_NACL)
+#endif  // !BUILDFLAG(IS_NACL)
 
   bool Send(IPC::Message* msg) override;
   bool OnMessageReceived(const IPC::Message& msg) override;
 
  private:
   Connection GetConnection();
-  DISALLOW_COPY_AND_ASSIGN(ResourceCreationProxy);
 };
 
 }  // namespace proxy

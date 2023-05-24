@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,13 +8,12 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/format_macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ptr_util.h"
 #include "base/numerics/safe_math.h"
 #include "base/process/memory.h"
-#include "base/strings/stringprintf.h"
 #include "base/trace_event/memory_allocator_dump_guid.h"
 #include "base/trace_event/process_memory_dump.h"
 #include "ui/gfx/buffer_format_util.h"
@@ -31,7 +30,7 @@ GpuMemoryBufferImplSharedMemory::GpuMemoryBufferImplSharedMemory(
     base::UnsafeSharedMemoryRegion shared_memory_region,
     base::WritableSharedMemoryMapping shared_memory_mapping,
     size_t offset,
-    int stride)
+    uint32_t stride)
     : GpuMemoryBufferImpl(id, size, format, std::move(callback)),
       shared_memory_region_(std::move(shared_memory_region)),
       shared_memory_mapping_(std::move(shared_memory_mapping)),
@@ -90,7 +89,7 @@ GpuMemoryBufferImplSharedMemory::CreateGpuMemoryBuffer(
   handle.type = gfx::SHARED_MEMORY_BUFFER;
   handle.id = id;
   handle.offset = 0;
-  handle.stride = static_cast<int32_t>(
+  handle.stride = static_cast<uint32_t>(
       gfx::RowSizeForBufferFormat(size.width(), format, 0));
   handle.region = std::move(shared_memory_region);
   return handle;
@@ -115,19 +114,18 @@ GpuMemoryBufferImplSharedMemory::CreateFromHandle(
   size_t min_buffer_size = 0;
 
   if (gfx::NumberOfPlanesForLinearBufferFormat(format) == 1) {
-    if (static_cast<size_t>(handle.stride) < minimum_stride)
+    if (handle.stride < minimum_stride)
       return nullptr;
 
-    base::CheckedNumeric<size_t> checked_min_buffer_size =
-        base::MakeCheckedNum(handle.stride) *
-            (base::MakeCheckedNum(size.height()) - 1) +
-        minimum_stride;
+    base::CheckedNumeric<size_t> checked_min_buffer_size = handle.stride;
+    checked_min_buffer_size *= size.height() - 1;
+    checked_min_buffer_size += minimum_stride;
     if (!checked_min_buffer_size.AssignIfValid(&min_buffer_size))
       return nullptr;
   } else {
     // Custom layout (i.e. non-standard stride) is not allowed for multi-plane
     // formats.
-    if (static_cast<size_t>(handle.stride) != minimum_stride)
+    if (handle.stride != minimum_stride)
       return nullptr;
 
     if (!gfx::BufferSizeForBufferFormatChecked(size, format,
@@ -158,12 +156,15 @@ bool GpuMemoryBufferImplSharedMemory::IsUsageSupported(gfx::BufferUsage usage) {
     case gfx::BufferUsage::GPU_READ:
     case gfx::BufferUsage::GPU_READ_CPU_READ_WRITE:
     case gfx::BufferUsage::SCANOUT_CPU_READ_WRITE:
+    case gfx::BufferUsage::SCANOUT_FRONT_RENDERING:
       return true;
     case gfx::BufferUsage::SCANOUT:
     case gfx::BufferUsage::SCANOUT_CAMERA_READ_WRITE:
     case gfx::BufferUsage::CAMERA_AND_CPU_READ_WRITE:
     case gfx::BufferUsage::SCANOUT_VDA_WRITE:
-    case gfx::BufferUsage::SCANOUT_VEA_READ_CAMERA_AND_CPU_READ_WRITE:
+    case gfx::BufferUsage::PROTECTED_SCANOUT_VDA_WRITE:
+    case gfx::BufferUsage::SCANOUT_VEA_CPU_READ:
+    case gfx::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE:
       return false;
   }
   NOTREACHED();
@@ -185,6 +186,7 @@ bool GpuMemoryBufferImplSharedMemory::IsSizeValidForFormat(
     case gfx::BufferFormat::R_8:
     case gfx::BufferFormat::R_16:
     case gfx::BufferFormat::RG_88:
+    case gfx::BufferFormat::RG_1616:
     case gfx::BufferFormat::BGR_565:
     case gfx::BufferFormat::RGBA_4444:
     case gfx::BufferFormat::RGBA_8888:
@@ -197,6 +199,7 @@ bool GpuMemoryBufferImplSharedMemory::IsSizeValidForFormat(
       return true;
     case gfx::BufferFormat::YVU_420:
     case gfx::BufferFormat::YUV_420_BIPLANAR:
+    case gfx::BufferFormat::YUVA_420_TRIPLANAR:
     case gfx::BufferFormat::P010: {
       size_t num_planes = gfx::NumberOfPlanesForLinearBufferFormat(format);
       for (size_t i = 0; i < num_planes; ++i) {
@@ -223,7 +226,11 @@ base::OnceClosure GpuMemoryBufferImplSharedMemory::AllocateForTesting(
 }
 
 bool GpuMemoryBufferImplSharedMemory::Map() {
-  DCHECK(!mapped_);
+  base::AutoLock auto_lock(map_lock_);
+  if (map_count_++) {
+    DCHECK(shared_memory_mapping_.IsValid());
+    return true;
+  }
 
   // Map the buffer first time Map() is called then keep it mapped for the
   // lifetime of the buffer. This avoids mapping the buffer unless necessary.
@@ -238,20 +245,20 @@ bool GpuMemoryBufferImplSharedMemory::Map() {
     if (!shared_memory_mapping_.IsValid())
       base::TerminateBecauseOutOfMemory(map_size);
   }
-  mapped_ = true;
   return true;
 }
 
 void* GpuMemoryBufferImplSharedMemory::memory(size_t plane) {
-  DCHECK(mapped_);
+  AssertMapped();
   DCHECK_LT(plane, gfx::NumberOfPlanesForLinearBufferFormat(format_));
   return static_cast<uint8_t*>(shared_memory_mapping_.memory()) + offset_ +
          gfx::BufferOffsetForBufferFormat(size_, format_, plane);
 }
 
 void GpuMemoryBufferImplSharedMemory::Unmap() {
-  DCHECK(mapped_);
-  mapped_ = false;
+  base::AutoLock auto_lock(map_lock_);
+  DCHECK_GT(map_count_, 0u);
+  --map_count_;
 }
 
 int GpuMemoryBufferImplSharedMemory::stride(size_t plane) const {

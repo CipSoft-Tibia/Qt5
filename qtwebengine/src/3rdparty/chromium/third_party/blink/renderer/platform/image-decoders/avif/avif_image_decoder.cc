@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 
+#include <algorithm>
 #include <cstring>
 #include <memory>
 
@@ -15,7 +16,7 @@
 #include "base/logging.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/optional.h"
+#include "base/ranges/algorithm.h"
 #include "base/timer/elapsed_timer.h"
 #include "build/build_config.h"
 #include "cc/base/math_util.h"
@@ -23,13 +24,13 @@
 #include "media/base/video_frame.h"
 #include "media/renderers/paint_canvas_video_renderer.h"
 #include "media/video/half_float_maker.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/platform/image-decoders/fast_shared_buffer_reader.h"
 #include "third_party/blink/renderer/platform/image-decoders/image_animation.h"
 #include "third_party/blink/renderer/platform/image-decoders/image_decoder.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/libavif/src/include/avif/avif.h"
 #include "third_party/libyuv/include/libyuv.h"
-#include "third_party/skia/include/core/SkData.h"
+#include "third_party/skia/include/core/SkColorSpace.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/color_transform.h"
 #include "ui/gfx/half_float.h"
@@ -40,6 +41,17 @@
 #endif
 
 namespace {
+
+// The maximum AVIF file size we are willing to decode. This helps libavif
+// detect invalid sizes and offsets in an AVIF file before the file size is
+// known.
+constexpr uint64_t kMaxAvifFileSize = 0x10000000;  // 256 MB
+
+const char* AvifDecoderErrorMessage(const avifDecoder* decoder) {
+  // decoder->diag.error is a char array that stores a null-terminated C string.
+  return *decoder->diag.error != '\0' ? decoder->diag.error
+                                      : "(no error message)";
+}
 
 // Builds a gfx::ColorSpace from the ITU-T H.273 (CICP) color description in the
 // image. This color space is used to create the gfx::ColorTransform for the
@@ -99,54 +111,55 @@ gfx::ColorSpace GetColorSpace(const avifImage* image) {
 // color space of |image| to RGB.
 // media::PaintCanvasVideoRenderer::ConvertVideoFrameToRGBPixels() uses libyuv
 // for the YUV-to-RGB conversion.
-//
-// NOTE: Ideally, this function should be a static method of
-// media::PaintCanvasVideoRenderer. We did not do that because
-// media::PaintCanvasVideoRenderer uses the JPEG matrix coefficients for all
-// full-range YUV color spaces, but we want to use the JPEG matrix coefficients
-// only for full-range BT.601 YUV.
 bool IsColorSpaceSupportedByPCVR(const avifImage* image) {
   SkYUVColorSpace yuv_color_space;
-  if (!GetColorSpace(image).ToSkYUVColorSpace(image->depth, &yuv_color_space))
-    return false;
-  if (!image->alphaPlane) {
-    return yuv_color_space == kJPEG_Full_SkYUVColorSpace ||
-           yuv_color_space == kRec601_Limited_SkYUVColorSpace ||
-           yuv_color_space == kRec709_Limited_SkYUVColorSpace ||
-           yuv_color_space == kBT2020_8bit_Limited_SkYUVColorSpace;
-  }
-  // libyuv supports the alpha channel only with the I420 pixel format, which is
-  // 8-bit YUV 4:2:0 with kRec601_Limited_SkYUVColorSpace.
-  return image->depth == 8 && image->yuvFormat == AVIF_PIXEL_FORMAT_YUV420 &&
-         yuv_color_space == kRec601_Limited_SkYUVColorSpace &&
-         image->alphaRange == AVIF_RANGE_FULL;
+  // libyuv supports the 8-bit and 10-bit YUVA pixel formats.
+  return GetColorSpace(image).ToSkYUVColorSpace(image->depth,
+                                                &yuv_color_space) &&
+         (!image->alphaPlane ||
+          ((image->depth == 8 || image->depth == 10) &&
+           (image->yuvFormat == AVIF_PIXEL_FORMAT_YUV420 ||
+            image->yuvFormat == AVIF_PIXEL_FORMAT_YUV422 ||
+            image->yuvFormat == AVIF_PIXEL_FORMAT_YUV444)));
 }
 
-media::VideoPixelFormat AvifToVideoPixelFormat(avifPixelFormat fmt, int depth) {
+media::VideoPixelFormat AvifToVideoPixelFormat(avifPixelFormat fmt,
+                                               bool has_alpha,
+                                               int depth) {
   if (depth != 8 && depth != 10 && depth != 12) {
     // Unsupported bit depth.
     NOTREACHED();
     return media::PIXEL_FORMAT_UNKNOWN;
   }
-  int index = (depth - 8) / 2;
-  static constexpr media::VideoPixelFormat kYUV420Formats[] = {
-      media::PIXEL_FORMAT_I420, media::PIXEL_FORMAT_YUV420P10,
-      media::PIXEL_FORMAT_YUV420P12};
-  static constexpr media::VideoPixelFormat kYUV422Formats[] = {
-      media::PIXEL_FORMAT_I422, media::PIXEL_FORMAT_YUV422P10,
-      media::PIXEL_FORMAT_YUV422P12};
-  static constexpr media::VideoPixelFormat kYUV444Formats[] = {
-      media::PIXEL_FORMAT_I444, media::PIXEL_FORMAT_YUV444P10,
-      media::PIXEL_FORMAT_YUV444P12};
+  int depth_index = (depth - 8) / 2;
+  // In these lookup tables, the first index is has_alpha and the second index
+  // is depth_index. Note that there are no media::VideoPixelFormat values for
+  // 12-bit YUVA.
+  static constexpr media::VideoPixelFormat kYUV420Formats[][3] = {
+      {media::PIXEL_FORMAT_I420, media::PIXEL_FORMAT_YUV420P10,
+       media::PIXEL_FORMAT_YUV420P12},
+      {media::PIXEL_FORMAT_I420A, media::PIXEL_FORMAT_YUV420AP10,
+       media::PIXEL_FORMAT_UNKNOWN}};
+  static constexpr media::VideoPixelFormat kYUV422Formats[][3] = {
+      {media::PIXEL_FORMAT_I422, media::PIXEL_FORMAT_YUV422P10,
+       media::PIXEL_FORMAT_YUV422P12},
+      {media::PIXEL_FORMAT_I422A, media::PIXEL_FORMAT_YUV422AP10,
+       media::PIXEL_FORMAT_UNKNOWN}};
+  static constexpr media::VideoPixelFormat kYUV444Formats[][3] = {
+      {media::PIXEL_FORMAT_I444, media::PIXEL_FORMAT_YUV444P10,
+       media::PIXEL_FORMAT_YUV444P12},
+      {media::PIXEL_FORMAT_I444A, media::PIXEL_FORMAT_YUV444AP10,
+       media::PIXEL_FORMAT_UNKNOWN}};
   switch (fmt) {
     case AVIF_PIXEL_FORMAT_YUV420:
     case AVIF_PIXEL_FORMAT_YUV400:
-      return kYUV420Formats[index];
+      return kYUV420Formats[has_alpha][depth_index];
     case AVIF_PIXEL_FORMAT_YUV422:
-      return kYUV422Formats[index];
+      return kYUV422Formats[has_alpha][depth_index];
     case AVIF_PIXEL_FORMAT_YUV444:
-      return kYUV444Formats[index];
+      return kYUV444Formats[has_alpha][depth_index];
     case AVIF_PIXEL_FORMAT_NONE:
+    case AVIF_PIXEL_FORMAT_COUNT:
       NOTREACHED();
       return media::PIXEL_FORMAT_UNKNOWN;
   }
@@ -192,7 +205,7 @@ inline void WritePixel(float max_channel,
   }
 
   gfx::FloatToHalfFloat(rgba_pixels, reinterpret_cast<uint16_t*>(rgba_dest),
-                        base::size(rgba_pixels));
+                        std::size(rgba_pixels));
 }
 
 enum class ColorType { kMono, kColor };
@@ -206,7 +219,7 @@ void YUVAToRGBA(const avifImage* image,
   avifGetPixelFormatInfo(image->yuvFormat, &format_info);
   gfx::Point3F pixel;
   const int max_channel_i = (1 << image->depth) - 1;
-  const float max_channel = (float)max_channel_i;
+  const float max_channel = static_cast<float>(max_channel_i);
   for (uint32_t j = 0; j < image->height; ++j) {
     const int uv_j = j >> format_info.chromaShiftY;
 
@@ -235,15 +248,9 @@ void YUVAToRGBA(const avifImage* image,
 
       transform->Transform(&pixel, 1);
 
-      int alpha = max_channel_i;
       // TODO(wtc): Use templates or other ways to avoid checking whether the
-      // image supports alpha and whether alpha is limited range in the inner
-      // loop.
-      if (a_ptr) {
-        alpha = a_ptr[i];
-        if (image->alphaRange == AVIF_RANGE_LIMITED)
-          alpha = avifLimitedToFullY(image->depth, alpha);
-      }
+      // image supports alpha in the inner loop.
+      const int alpha = a_ptr ? a_ptr[i] : max_channel_i;
 
       WritePixel(max_channel, pixel, alpha / max_channel, premultiply_alpha,
                  rgba_dest);
@@ -259,23 +266,34 @@ namespace blink {
 AVIFImageDecoder::AVIFImageDecoder(AlphaOption alpha_option,
                                    HighBitDepthDecodingOption hbd_option,
                                    const ColorBehavior& color_behavior,
-                                   size_t max_decoded_bytes,
+                                   wtf_size_t max_decoded_bytes,
                                    AnimationOption animation_option)
     : ImageDecoder(alpha_option, hbd_option, color_behavior, max_decoded_bytes),
       animation_option_(animation_option) {}
 
 AVIFImageDecoder::~AVIFImageDecoder() = default;
 
+const AtomicString& AVIFImageDecoder::MimeType() const {
+  DEFINE_STATIC_LOCAL(const AtomicString, avif_mime_type, ("image/avif"));
+  return avif_mime_type;
+}
+
 bool AVIFImageDecoder::ImageIsHighBitDepth() {
   return bit_depth_ > 8;
 }
 
 void AVIFImageDecoder::OnSetData(SegmentReader* data) {
-  // avifDecoder requires all the data be available before reading and cannot
-  // read incrementally as data comes in. See
-  // https://github.com/AOMediaCodec/libavif/issues/11.
-  if (IsAllDataReceived() && !MaybeCreateDemuxer())
-    SetFailed();
+  have_parsed_current_data_ = false;
+  const bool all_data_received = IsAllDataReceived();
+  avif_io_data_.reader = data_.get();
+  avif_io_data_.all_data_received = all_data_received;
+  avif_io_.sizeHint = all_data_received ? data_->size() : kMaxAvifFileSize;
+
+  // ImageFrameGenerator::GetYUVAInfo() and ImageFrameGenerator::DecodeToYUV()
+  // assume that allow_decode_to_yuv_ and other image metadata are available
+  // after calling ImageDecoder::Create() with data_complete=true.
+  if (all_data_received)
+    ParseMetadata();
 }
 
 cc::YUVSubsampling AVIFImageDecoder::GetYUVSubsampling() const {
@@ -289,28 +307,30 @@ cc::YUVSubsampling AVIFImageDecoder::GetYUVSubsampling() const {
     case AVIF_PIXEL_FORMAT_YUV400:
       return cc::YUVSubsampling::kUnknown;
     case AVIF_PIXEL_FORMAT_NONE:
+    case AVIF_PIXEL_FORMAT_COUNT:
       NOTREACHED();
       return cc::YUVSubsampling::kUnknown;
   }
 }
 
-IntSize AVIFImageDecoder::DecodedYUVSize(cc::YUVIndex index) const {
+gfx::Size AVIFImageDecoder::DecodedYUVSize(cc::YUVIndex index) const {
   DCHECK(IsDecodedSizeAvailable());
   if (index == cc::YUVIndex::kU || index == cc::YUVIndex::kV) {
-    return IntSize(UVSize(Size().Width(), chroma_shift_x_),
-                   UVSize(Size().Height(), chroma_shift_y_));
+    return gfx::Size(UVSize(Size().width(), chroma_shift_x_),
+                     UVSize(Size().height(), chroma_shift_y_));
   }
   return Size();
 }
 
-size_t AVIFImageDecoder::DecodedYUVWidthBytes(cc::YUVIndex index) const {
+wtf_size_t AVIFImageDecoder::DecodedYUVWidthBytes(cc::YUVIndex index) const {
   DCHECK(IsDecodedSizeAvailable());
   // Try to return the same width bytes as used by the dav1d library. This will
   // allow DecodeToYUV() to copy each plane with a single memcpy() call.
   //
   // The comments for Dav1dPicAllocator in dav1d/picture.h require the pixel
   // width be padded to a multiple of 128 pixels.
-  int aligned_width = base::bits::Align(Size().Width(), 128);
+  wtf_size_t aligned_width =
+      static_cast<wtf_size_t>(base::bits::AlignUp(Size().width(), 128));
   if (index == cc::YUVIndex::kU || index == cc::YUVIndex::kV) {
     aligned_width >>= chroma_shift_x_;
   }
@@ -341,10 +361,13 @@ uint8_t AVIFImageDecoder::GetYUVBitDepth() const {
   return bit_depth_;
 }
 
+absl::optional<gfx::HDRMetadata> AVIFImageDecoder::GetHDRMetadata() const {
+  return hdr_metadata_;
+}
+
 void AVIFImageDecoder::DecodeToYUV() {
   DCHECK(image_planes_);
   DCHECK(CanDecodeToYUV());
-  DCHECK(IsAllDataReceived());
 
   if (Failed())
     return;
@@ -352,34 +375,24 @@ void AVIFImageDecoder::DecodeToYUV() {
   DCHECK(decoder_);
   DCHECK_EQ(decoded_frame_count_, 1u);  // Not animation.
 
+  // If the image is decoded progressively, just render the highest progressive
+  // frame in image_planes_ because the callers of DecodeToYUV() assume that a
+  // complete scan will not be updated.
+  const int frame_index = progressive_ ? (decoder_->imageCount - 1) : 0;
+  // TODO(crbug.com/943519): Implement YUV incremental decoding as in Decode().
+  decoder_->allowIncremental = AVIF_FALSE;
+
   // libavif cannot decode to an external buffer. So we need to copy from
   // libavif's internal buffer to |image_planes_|.
   // TODO(crbug.com/1099825): Enhance libavif to decode to an external buffer.
-  if (!DecodeImage(0)) {
-    SetFailed();
+  auto ret = DecodeImage(frame_index);
+  if (ret != AVIF_RESULT_OK) {
+    if (ret != AVIF_RESULT_WAITING_ON_IO)
+      SetFailed();
     return;
   }
 
   const auto* image = decoder_->image;
-  // Frame size must be equal to container size.
-  if (Size() != IntSize(image->width, image->height)) {
-    DVLOG(1) << "Frame size " << IntSize(image->width, image->height)
-             << " differs from container size " << Size();
-    SetFailed();
-    return;
-  }
-  // Frame bit depth must be equal to container bit depth.
-  if (image->depth != bit_depth_) {
-    DVLOG(1) << "Frame bit depth must be equal to container bit depth";
-    SetFailed();
-    return;
-  }
-  // Frame YUV format must be equal to container YUV format.
-  if (image->yuvFormat != avif_yuv_format_) {
-    DVLOG(1) << "Frame YUV format must be equal to container YUV format";
-    SetFailed();
-    return;
-  }
   DCHECK(!image->alphaPlane);
   static_assert(cc::YUVIndex::kY == static_cast<cc::YUVIndex>(AVIF_CHAN_Y), "");
   static_assert(cc::YUVIndex::kU == static_cast<cc::YUVIndex>(AVIF_CHAN_U), "");
@@ -397,15 +410,12 @@ void AVIFImageDecoder::DecodeToYUV() {
   uint32_t width = image->width;
   uint32_t height = image->height;
 
-  // |height| comes from the AV1 sequence header or frame header, which encodes
-  // max_frame_height_minus_1 and frame_height_minus_1, respectively, as n-bit
-  // unsigned integers for some n.
-  DCHECK_GT(height, 0u);
-  for (size_t plane_index = 0; plane_index < cc::kNumYUVPlanes; ++plane_index) {
+  for (wtf_size_t plane_index = 0; plane_index < cc::kNumYUVPlanes;
+       ++plane_index) {
     const cc::YUVIndex plane = static_cast<cc::YUVIndex>(plane_index);
-    const size_t src_row_bytes =
-        base::strict_cast<size_t>(image->yuvRowBytes[plane_index]);
-    const size_t dst_row_bytes = image_planes_->RowBytes(plane);
+    const wtf_size_t src_row_bytes =
+        base::strict_cast<wtf_size_t>(image->yuvRowBytes[plane_index]);
+    const wtf_size_t dst_row_bytes = image_planes_->RowBytes(plane);
 
     if (bit_depth_ == 8) {
       DCHECK_EQ(image_planes_->color_type(), kGray_8_SkColorType);
@@ -419,8 +429,8 @@ void AVIFImageDecoder::DecodeToYUV() {
           reinterpret_cast<uint16_t*>(image->yuvPlanes[plane_index]);
       uint16_t* dst = static_cast<uint16_t*>(image_planes_->Plane(plane));
       if (image_planes_->color_type() == kA16_unorm_SkColorType) {
-        const size_t src_stride = src_row_bytes / 2;
-        const size_t dst_stride = dst_row_bytes / 2;
+        const wtf_size_t src_stride = src_row_bytes / 2;
+        const wtf_size_t dst_stride = dst_row_bytes / 2;
         for (uint32_t j = 0; j < height; ++j) {
           for (uint32_t i = 0; i < width; ++i) {
             dst[j * dst_stride + i] =
@@ -443,13 +453,52 @@ void AVIFImageDecoder::DecodeToYUV() {
       height = UVSize(height, chroma_shift_y_);
     }
   }
+  image_planes_->SetHasCompleteScan();
 }
 
 int AVIFImageDecoder::RepetitionCount() const {
-  return decoded_frame_count_ > 1 ? kAnimationLoopInfinite : kAnimationNone;
+  if (decoded_frame_count_ > 1) {
+    switch (decoder_->repetitionCount) {
+      case AVIF_REPETITION_COUNT_INFINITE:
+        return kAnimationLoopInfinite;
+      case AVIF_REPETITION_COUNT_UNKNOWN:
+        // The AVIF file does not have repetitions specified using an EditList
+        // box. Loop infinitely for backward compatibility with older versions
+        // of Chrome.
+        return kAnimationLoopInfinite;
+      default:
+        return decoder_->repetitionCount;
+    }
+  }
+  return kAnimationNone;
 }
 
-base::TimeDelta AVIFImageDecoder::FrameDurationAtIndex(size_t index) const {
+bool AVIFImageDecoder::FrameIsReceivedAtIndex(wtf_size_t index) const {
+  if (!IsDecodedSizeAvailable())
+    return false;
+  if (decoded_frame_count_ == 1)
+    return ImageDecoder::FrameIsReceivedAtIndex(index);
+  if (index >= frame_buffer_cache_.size())
+    return false;
+  if (IsAllDataReceived())
+    return true;
+  avifExtent data_extent;
+  if (avifDecoderNthImageMaxExtent(decoder_.get(), index, &data_extent) !=
+      AVIF_RESULT_OK) {
+    return false;
+  }
+  return data_extent.size == 0 ||
+         data_extent.offset + data_extent.size <= data_->size();
+}
+
+absl::optional<base::TimeDelta> AVIFImageDecoder::FrameTimestampAtIndex(
+    wtf_size_t index) const {
+  return index < frame_buffer_cache_.size()
+             ? frame_buffer_cache_[index].Timestamp()
+             : absl::nullopt;
+}
+
+base::TimeDelta AVIFImageDecoder::FrameDurationAtIndex(wtf_size_t index) const {
   return index < frame_buffer_cache_.size()
              ? frame_buffer_cache_[index].Duration()
              : base::TimeDelta();
@@ -461,12 +510,25 @@ bool AVIFImageDecoder::ImageHasBothStillAndAnimatedSubImages() const {
   if (decoded_frame_count_ > 1)
     return true;
 
+  constexpr wtf_size_t kMajorBrandOffset = 8;
+  constexpr wtf_size_t kMajorBrandSize = 4;
+  if (data_->size() < kMajorBrandOffset + kMajorBrandSize)
+    return false;
+
   // TODO(wtc): We should rely on libavif to tell us if the file has both an
   // image and an animation track instead of just checking the major brand.
-  constexpr base::StringPiece kAnimationType = "avis";
-  char buf[kAnimationType.size() + 1] = {0};
-  image_data_->copyRange(8, kAnimationType.size(), &buf);
-  return kAnimationType == buf;
+  //
+  // An AVIF image begins with a file‐type box 'ftyp':
+  //   unsigned int(32) size;
+  //   unsigned int(32) type = boxtype;  // boxtype is 'ftyp'
+  //   unsigned int(32) major_brand;
+  //   ...
+  FastSharedBufferReader fast_reader(data_);
+  char buf[kMajorBrandSize];
+  const char* major_brand =
+      fast_reader.GetConsecutiveData(kMajorBrandOffset, kMajorBrandSize, buf);
+  // The brand 'avis' is an AVIF image sequence (animation) brand.
+  return memcmp(major_brand, "avis", kMajorBrandSize) == 0;
 }
 
 // static
@@ -489,88 +551,146 @@ gfx::ColorTransform* AVIFImageDecoder::GetColorTransformForTesting() {
   return color_transform_.get();
 }
 
+void AVIFImageDecoder::ParseMetadata() {
+  if (!UpdateDemuxer())
+    SetFailed();
+}
+
 void AVIFImageDecoder::DecodeSize() {
-  // Because avifDecoder cannot read incrementally as data comes in, we cannot
-  // decode the size until all data is received. When all data is received,
-  // OnSetData() decodes the size right away. So DecodeSize() doesn't need to do
-  // anything.
+  ParseMetadata();
 }
 
-size_t AVIFImageDecoder::DecodeFrameCount() {
-  return Failed() ? frame_buffer_cache_.size() : decoded_frame_count_;
+wtf_size_t AVIFImageDecoder::DecodeFrameCount() {
+  if (!Failed())
+    ParseMetadata();
+  return IsDecodedSizeAvailable() ? decoded_frame_count_
+                                  : frame_buffer_cache_.size();
 }
 
-void AVIFImageDecoder::InitializeNewFrame(size_t index) {
+void AVIFImageDecoder::InitializeNewFrame(wtf_size_t index) {
   auto& buffer = frame_buffer_cache_[index];
   if (decode_to_half_float_)
     buffer.SetPixelFormat(ImageFrame::PixelFormat::kRGBA_F16);
 
   // For AVIFs, the frame always fills the entire image.
-  buffer.SetOriginalFrameRect(IntRect(IntPoint(), Size()));
+  buffer.SetOriginalFrameRect(gfx::Rect(Size()));
 
   avifImageTiming timing;
   auto ret = avifDecoderNthImageTiming(decoder_.get(), index, &timing);
   DCHECK_EQ(ret, AVIF_RESULT_OK);
-  buffer.SetDuration(base::TimeDelta::FromSecondsD(timing.duration));
+  buffer.SetTimestamp(base::Seconds(timing.pts));
+  buffer.SetDuration(base::Seconds(timing.duration));
 }
 
-void AVIFImageDecoder::Decode(size_t index) {
-  // TODO(dalecurtis): For fragmented AVIF image sequence files we probably want
-  // to allow partial decoding. Depends on if we see frequent use of multi-track
-  // images where there's lots to ignore.
-  if (Failed() || !IsAllDataReceived())
+void AVIFImageDecoder::Decode(wtf_size_t index) {
+  if (Failed())
     return;
 
   UpdateAggressivePurging(index);
 
-  if (!DecodeImage(index)) {
+  int frame_index = index;
+  // If the image is decoded progressively, find the highest progressive
+  // frame that we have received and decode from that frame index. Internally
+  // decoder_ still decodes the lower progressive frames, but they are only used
+  // as reference frames and not rendered.
+  if (progressive_) {
+    DCHECK_EQ(index, 0u);
+    // decoder_->imageIndex is the current image index. decoder_->imageIndex is
+    // initialized to -1. decoder_->imageIndex + 1 is the next image index.
+    DCHECK_LT(decoder_->imageIndex + 1, decoder_->imageCount);
+    for (frame_index = decoder_->imageIndex + 1;
+         frame_index + 1 < decoder_->imageCount; ++frame_index) {
+      avifExtent data_extent;
+      auto rv = avifDecoderNthImageMaxExtent(decoder_.get(), frame_index + 1,
+                                             &data_extent);
+      if (rv != AVIF_RESULT_OK) {
+        DVLOG(1) << "avifDecoderNthImageMaxExtent(" << frame_index + 1
+                 << ") failed: " << avifResultToString(rv) << ": "
+                 << AvifDecoderErrorMessage(decoder_.get());
+        SetFailed();
+        return;
+      }
+      if (data_extent.size != 0 &&
+          data_extent.offset + data_extent.size > data_->size()) {
+        break;
+      }
+    }
+  }
+
+  // Allow AVIF frames to be partially decoded before all data is received.
+  // Only enabled for non-progressive still images because animations look
+  // better without incremental decoding and because progressive decoding makes
+  // incremental decoding unnecessary.
+  decoder_->allowIncremental = (decoder_->imageCount == 1);
+
+  auto ret = DecodeImage(frame_index);
+  if (ret != AVIF_RESULT_OK && ret != AVIF_RESULT_WAITING_ON_IO) {
     SetFailed();
     return;
   }
 
   const auto* image = decoder_->image;
-  // Frame size must be equal to container size.
-  if (Size() != IntSize(image->width, image->height)) {
-    DVLOG(1) << "Frame size " << IntSize(image->width, image->height)
-             << " differs from container size " << Size();
-    SetFailed();
-    return;
-  }
-  // Frame bit depth must be equal to container bit depth.
-  if (image->depth != bit_depth_) {
-    DVLOG(1) << "Frame bit depth must be equal to container bit depth";
-    SetFailed();
-    return;
-  }
-  // Frame YUV format must be equal to container YUV format.
-  if (image->yuvFormat != avif_yuv_format_) {
-    DVLOG(1) << "Frame YUV format must be equal to container YUV format";
-    SetFailed();
-    return;
+  // ImageDecoder::SizeCalculationMayOverflow(), called by UpdateDemuxer()
+  // before being here, made sure the image height fits in an int.
+  int displayable_height =
+      static_cast<int>(avifDecoderDecodedRowCount(decoder_.get()));
+
+  if (displayable_height == 0) {
+    return;  // There is nothing to display.
   }
 
   ImageFrame& buffer = frame_buffer_cache_[index];
-  DCHECK_EQ(buffer.GetStatus(), ImageFrame::kFrameEmpty);
+  DCHECK_NE(buffer.GetStatus(), ImageFrame::kFrameComplete);
 
-  if (!InitFrameBuffer(index)) {
-    DVLOG(1) << "Failed to create frame buffer...";
+  if (buffer.GetStatus() == ImageFrame::kFrameEmpty) {
+    if (!InitFrameBuffer(index)) {
+      DVLOG(1) << "Failed to create frame buffer...";
+      SetFailed();
+      return;
+    }
+    DCHECK_EQ(buffer.GetStatus(), ImageFrame::kFramePartial);
+    // The buffer is transparent outside the decoded area while the image is
+    // loading. The correct alpha value for the frame will be set when it is
+    // fully decoded.
+    buffer.SetHasAlpha(true);
+    if (decoder_->allowIncremental) {
+      // In case of buffer disposal after decoding.
+      incrementally_displayed_height_ = 0;
+    }
+  }
+
+  const int last_displayed_height =
+      decoder_->allowIncremental ? incrementally_displayed_height_ : 0;
+  if (displayable_height == last_displayed_height) {
+    return;  // There is no new row to display.
+  }
+  DCHECK_GT(displayable_height, last_displayed_height);
+
+  // Only render the newly decoded rows.
+  if (!RenderImage(image, last_displayed_height, &displayable_height,
+                   &buffer)) {
     SetFailed();
     return;
   }
-
-  if (!RenderImage(image, &buffer)) {
-    SetFailed();
-    return;
+  if (displayable_height == last_displayed_height) {
+    return;  // There is no new row to display.
   }
-
-  ColorCorrectImage(&buffer);
-
+  DCHECK_GT(displayable_height, last_displayed_height);
+  ColorCorrectImage(last_displayed_height, displayable_height, &buffer);
   buffer.SetPixelsChanged(true);
-  buffer.SetHasAlpha(!!image->alphaPlane);
-  buffer.SetStatus(ImageFrame::kFrameComplete);
+  if (decoder_->allowIncremental) {
+    incrementally_displayed_height_ = displayable_height;
+  }
+
+  if (static_cast<uint32_t>(displayable_height) == image->height &&
+      (!progressive_ || frame_index + 1 == decoder_->imageCount)) {
+    buffer.SetHasAlpha(!!image->alphaPlane);
+    buffer.SetStatus(ImageFrame::kFrameComplete);
+    PostDecodeProcessing(index);
+  }
 }
 
-bool AVIFImageDecoder::CanReusePreviousFrameBuffer(size_t index) const {
+bool AVIFImageDecoder::CanReusePreviousFrameBuffer(wtf_size_t index) const {
   // (a) Technically we can reuse the bitmap of the previous frame because the
   // AVIF decoder handles frame dependence internally and we never need to
   // preserve previous frames to decode later ones, and (b) since this function
@@ -579,36 +699,119 @@ bool AVIFImageDecoder::CanReusePreviousFrameBuffer(size_t index) const {
   return true;
 }
 
-bool AVIFImageDecoder::MaybeCreateDemuxer() {
-  if (decoder_)
-    return true;
-
-  decoder_ = std::unique_ptr<avifDecoder, void (*)(avifDecoder*)>(
-      avifDecoderCreate(), avifDecoderDestroy);
-  if (!decoder_)
-    return false;
-
-  // TODO(dalecurtis): This may create a second copy of the media data in
-  // memory, which is not great. libavif should provide a read() based API:
-  // https://github.com/AOMediaCodec/libavif/issues/11
-  image_data_ = data_->GetAsSkData();
-  if (!image_data_)
-    return false;
-
-  // TODO(wtc): Currently libavif always prioritizes the animation, but that's
-  // not correct. It should instead select animation or still image based on the
-  // preferred and major brands listed in the file.
-  if (animation_option_ != AnimationOption::kUnspecified &&
-      avifDecoderSetSource(
-          decoder_.get(), animation_option_ == AnimationOption::kPreferAnimation
-                              ? AVIF_DECODER_SOURCE_TRACKS
-                              : AVIF_DECODER_SOURCE_PRIMARY_ITEM) !=
-          AVIF_RESULT_OK) {
-    return false;
+// static
+avifResult AVIFImageDecoder::ReadFromSegmentReader(avifIO* io,
+                                                   uint32_t read_flags,
+                                                   uint64_t offset,
+                                                   size_t size,
+                                                   avifROData* out) {
+  if (read_flags != 0) {
+    // Unsupported read_flags
+    return AVIF_RESULT_IO_ERROR;
   }
 
-  avifROData raw_data = {image_data_->bytes(), image_data_->size()};
-  auto ret = avifDecoderParse(decoder_.get(), &raw_data);
+  AvifIOData* io_data = static_cast<AvifIOData*>(io->data);
+
+  // Sanitize/clamp incoming request
+  if (offset > io_data->reader->size()) {
+    // The offset is past the end of the buffer or available data.
+    return io_data->all_data_received ? AVIF_RESULT_IO_ERROR
+                                      : AVIF_RESULT_WAITING_ON_IO;
+  }
+
+  // It is more convenient to work with a variable of the wtf_size_t type. Since
+  // offset <= io_data->reader->size() <= SIZE_MAX, this cast is safe.
+  size_t position = static_cast<size_t>(offset);
+  const size_t available_size = io_data->reader->size() - position;
+  if (size > available_size) {
+    if (!io_data->all_data_received)
+      return AVIF_RESULT_WAITING_ON_IO;
+    size = available_size;
+  }
+
+  out->size = size;
+  const char* data;
+  size_t data_size = io_data->reader->GetSomeData(data, position);
+  if (data_size >= size) {
+    out->data = reinterpret_cast<const uint8_t*>(data);
+    return AVIF_RESULT_OK;
+  }
+
+  io_data->buffer.clear();
+  io_data->buffer.reserve(size);
+  while (size != 0) {
+    data_size = io_data->reader->GetSomeData(data, position);
+    size_t copy_size = std::min(data_size, size);
+    io_data->buffer.insert(io_data->buffer.end(), data, data + copy_size);
+    position += copy_size;
+    size -= copy_size;
+  }
+
+  out->data = io_data->buffer.data();
+  return AVIF_RESULT_OK;
+}
+
+bool AVIFImageDecoder::UpdateDemuxer() {
+  DCHECK(!Failed());
+  if (IsDecodedSizeAvailable())
+    return true;
+
+  if (have_parsed_current_data_)
+    return true;
+  have_parsed_current_data_ = true;
+
+  if (!decoder_) {
+    decoder_ = std::unique_ptr<avifDecoder, void (*)(avifDecoder*)>(
+        avifDecoderCreate(), avifDecoderDestroy);
+    if (!decoder_)
+      return false;
+
+    // For simplicity, use a hardcoded maxThreads of 2, independent of the image
+    // size and processor count. Note: even if we want maxThreads to depend on
+    // the image size, it is impossible to do so because maxThreads is passed to
+    // dav1d_open() inside avifDecoderParse(), but the image size is not known
+    // until avifDecoderParse() returns successfully. See
+    // https://github.com/AOMediaCodec/libavif/issues/636.
+    decoder_->maxThreads = 2;
+
+    if (animation_option_ != AnimationOption::kUnspecified &&
+        avifDecoderSetSource(
+            decoder_.get(),
+            animation_option_ == AnimationOption::kPreferAnimation
+                ? AVIF_DECODER_SOURCE_TRACKS
+                : AVIF_DECODER_SOURCE_PRIMARY_ITEM) != AVIF_RESULT_OK) {
+      return false;
+    }
+
+    // Chrome doesn't use XMP and Exif metadata. Ignoring XMP and Exif will
+    // ensure avifDecoderParse() isn't waiting for some tiny Exif payload hiding
+    // at the end of a file.
+    decoder_->ignoreXMP = AVIF_TRUE;
+    decoder_->ignoreExif = AVIF_TRUE;
+
+    // Turn off libavif's 'clap' (clean aperture) property validation. (We
+    // ignore the 'clap' property.)
+    decoder_->strictFlags &= ~AVIF_STRICT_CLAP_VALID;
+    // Allow the PixelInformationProperty ('pixi') to be missing in AV1 image
+    // items. libheif v1.11.0 or older does not add the 'pixi' item property to
+    // AV1 image items. (This issue has been corrected in libheif v1.12.0.) See
+    // crbug.com/1198455.
+    decoder_->strictFlags &= ~AVIF_STRICT_PIXI_REQUIRED;
+
+    avif_io_.destroy = nullptr;
+    avif_io_.read = ReadFromSegmentReader;
+    avif_io_.write = nullptr;
+    avif_io_.persistent = AVIF_FALSE;
+    avif_io_.data = &avif_io_data_;
+    avifDecoderSetIO(decoder_.get(), &avif_io_);
+  }
+
+  // If all data is received, there is no point in decoding progressively.
+  decoder_->allowProgressive = !IsAllDataReceived();
+
+  auto ret = avifDecoderParse(decoder_.get());
+  if (ret == AVIF_RESULT_WAITING_ON_IO)
+    return true;
   if (ret != AVIF_RESULT_OK) {
     DVLOG(1) << "avifDecoderParse failed: " << avifResultToString(ret);
     return false;
@@ -637,7 +840,10 @@ bool AVIFImageDecoder::MaybeCreateDemuxer() {
   }
 
   DCHECK_GT(decoder_->imageCount, 0);
-  decoded_frame_count_ = decoder_->imageCount;
+  progressive_ = decoder_->progressiveState == AVIF_PROGRESSIVE_STATE_ACTIVE;
+  // If the image is progressive, decoder_->imageCount is the number of
+  // progressive frames, but there is only one still image.
+  decoded_frame_count_ = progressive_ ? 1 : decoder_->imageCount;
   bit_depth_ = container->depth;
   decode_to_half_float_ =
       ImageIsHighBitDepth() &&
@@ -648,6 +854,12 @@ bool AVIFImageDecoder::MaybeCreateDemuxer() {
   avifGetPixelFormatInfo(container->yuvFormat, &format_info);
   chroma_shift_x_ = format_info.chromaShiftX;
   chroma_shift_y_ = format_info.chromaShiftY;
+
+  if (container->clli.maxCLL || container->clli.maxPALL) {
+    hdr_metadata_ = gfx::HDRMetadata();
+    hdr_metadata_->max_content_light_level = container->clli.maxCLL;
+    hdr_metadata_->max_frame_average_light_level = container->clli.maxPALL;
+  }
 
   // SetEmbeddedColorProfile() must be called before IsSizeAvailable() becomes
   // true. So call SetEmbeddedColorProfile() before calling SetSize(). The color
@@ -684,34 +896,108 @@ bool AVIFImageDecoder::MaybeCreateDemuxer() {
                container->transferCharacteristics !=
                    AVIF_TRANSFER_CHARACTERISTICS_UNSPECIFIED) {
       gfx::ColorSpace frame_cs = GetColorSpace(container);
+
       sk_sp<SkColorSpace> sk_color_space =
           frame_cs.GetAsFullRangeRGB().ToSkColorSpace();
+      if (!sk_color_space) {
+        DVLOG(1) << "Image contains an unsupported color space";
+        return false;
+      }
+
       skcms_ICCProfile profile;
       sk_color_space->toProfile(&profile);
       SetEmbeddedColorProfile(std::make_unique<ColorProfile>(profile));
     }
   }
 
+  // |angle| * 90 specifies the angle of anti-clockwise rotation in degrees.
+  // Legal values: [0-3].
+  int angle = 0;
+  if (container->transformFlags & AVIF_TRANSFORM_IROT) {
+    angle = container->irot.angle;
+    CHECK_LT(angle, 4);
+  }
+  // |mode| specifies how the mirroring is performed.
+  //   -1: No mirroring.
+  //    0: The top and bottom parts of the image are exchanged.
+  //    1: The left and right parts of the image are exchanged.
+  int mode = -1;
+  if (container->transformFlags & AVIF_TRANSFORM_IMIR) {
+    mode = container->imir.mode;
+    CHECK_LT(mode, 2);
+  }
+  // MIAF Section 7.3.6.7 (Clean aperture, rotation and mirror) says:
+  //   These properties, if used, shall be indicated to be applied in the
+  //   following order: clean aperture first, then rotation, then mirror.
+  //
+  // In the kModeAngleToOrientation array, the first dimension is mode (with an
+  // offset of 1). The second dimension is angle.
+  constexpr ImageOrientationEnum kModeAngleToOrientation[3][4] = {
+      // No mirroring.
+      {ImageOrientationEnum::kOriginTopLeft,
+       ImageOrientationEnum::kOriginLeftBottom,
+       ImageOrientationEnum::kOriginBottomRight,
+       ImageOrientationEnum::kOriginRightTop},
+      // Top-to-bottom mirroring. Change Top<->Bottom in the first row.
+      {ImageOrientationEnum::kOriginBottomLeft,
+       ImageOrientationEnum::kOriginLeftTop,
+       ImageOrientationEnum::kOriginTopRight,
+       ImageOrientationEnum::kOriginRightBottom},
+      // Left-to-right mirroring. Change Left<->Right in the first row.
+      {ImageOrientationEnum::kOriginTopRight,
+       ImageOrientationEnum::kOriginRightBottom,
+       ImageOrientationEnum::kOriginBottomLeft,
+       ImageOrientationEnum::kOriginLeftTop},
+  };
+  orientation_ = kModeAngleToOrientation[mode + 1][angle];
+
   // Determine whether the image can be decoded to YUV.
   // * Alpha channel is not supported.
   // * Multi-frame images (animations) are not supported. (The DecodeToYUV()
   //   method does not have an 'index' parameter.)
-  // * If ColorTransform() returns a non-null pointer, the decoder has to do a
-  //   color space conversion, so we don't decode to YUV.
-  allow_decode_to_yuv_ = avif_yuv_format_ != AVIF_PIXEL_FORMAT_YUV400 &&
-                         !decoder_->alphaPresent && decoded_frame_count_ == 1 &&
-                         GetColorSpace(container).ToSkYUVColorSpace(
-                             container->depth, &yuv_color_space_) &&
-                         !ColorTransform();
+  allow_decode_to_yuv_ =
+      avif_yuv_format_ != AVIF_PIXEL_FORMAT_YUV400 && !decoder_->alphaPresent &&
+      decoded_frame_count_ == 1 &&
+      GetColorSpace(container).ToSkYUVColorSpace(container->depth,
+                                                 &yuv_color_space_) &&
+      // TODO(crbug.com/911246): Support color space transforms for YUV decodes.
+      !ColorTransform();
   return SetSize(container->width, container->height);
 }
 
-bool AVIFImageDecoder::DecodeImage(size_t index) {
+avifResult AVIFImageDecoder::DecodeImage(wtf_size_t index) {
   const auto ret = avifDecoderNthImage(decoder_.get(), index);
   // |index| should be less than what DecodeFrameCount() returns, so we should
   // not get the AVIF_RESULT_NO_IMAGES_REMAINING error.
   DCHECK_NE(ret, AVIF_RESULT_NO_IMAGES_REMAINING);
-  return ret == AVIF_RESULT_OK;
+  if (ret != AVIF_RESULT_OK) {
+    if (ret != AVIF_RESULT_WAITING_ON_IO) {
+      DVLOG(1) << "avifDecoderNthImage(" << index
+               << ") failed: " << avifResultToString(ret) << ": "
+               << AvifDecoderErrorMessage(decoder_.get());
+    }
+    return ret;
+  }
+
+  const auto* image = decoder_->image;
+  // Frame size must be equal to container size.
+  if (gfx::Size(image->width, image->height) != Size()) {
+    DVLOG(1) << "Frame size "
+             << gfx::Size(image->width, image->height).ToString()
+             << " differs from container size " << Size().ToString();
+    return AVIF_RESULT_UNKNOWN_ERROR;
+  }
+  // Frame bit depth must be equal to container bit depth.
+  if (image->depth != bit_depth_) {
+    DVLOG(1) << "Frame bit depth must be equal to container bit depth";
+    return AVIF_RESULT_UNKNOWN_ERROR;
+  }
+  // Frame YUV format must be equal to container YUV format.
+  if (image->yuvFormat != avif_yuv_format_) {
+    DVLOG(1) << "Frame YUV format must be equal to container YUV format";
+    return AVIF_RESULT_UNKNOWN_ERROR;
+  }
+  return AVIF_RESULT_OK;
 }
 
 void AVIFImageDecoder::UpdateColorTransform(const gfx::ColorSpace& frame_cs,
@@ -721,20 +1007,92 @@ void AVIFImageDecoder::UpdateColorTransform(const gfx::ColorSpace& frame_cs,
 
   // For YUV-to-RGB color conversion we can pass an invalid dst color space to
   // skip the code for full color conversion.
+  gfx::ColorTransform::Options options;
+  options.src_bit_depth = bit_depth;
+  options.dst_bit_depth = bit_depth;
   color_transform_ = gfx::ColorTransform::NewColorTransform(
-      frame_cs, bit_depth, gfx::ColorSpace(), bit_depth,
-      gfx::ColorTransform::Intent::INTENT_PERCEPTUAL);
+      frame_cs, gfx::ColorSpace(), options);
 }
 
-bool AVIFImageDecoder::RenderImage(const avifImage* image, ImageFrame* buffer) {
+bool AVIFImageDecoder::RenderImage(const avifImage* image,
+                                   int from_row,
+                                   int* to_row,
+                                   ImageFrame* buffer) {
   const gfx::ColorSpace frame_cs = GetColorSpace(image);
   const bool is_mono = image->yuvFormat == AVIF_PIXEL_FORMAT_YUV400;
   const bool premultiply_alpha = buffer->PremultiplyAlpha();
 
+  DCHECK_LT(from_row, *to_row);
+
+  // media::PaintCanvasVideoRenderer::ConvertVideoFrameToRGBPixels() uses
+  // libyuv for the YUV 4:2:0 to RGB upsampling and conversion as follows:
+  //  - convert the top RGB row 0,
+  //  - convert the RGB rows 1 and 2, then RGB rows 3 and 4 etc.,
+  //  - convert the bottom (odd) RGB row if there is an even number of RGB rows.
+  //
+  // Unfortunately this cannot be applied incrementally as is. The RGB values
+  // would differ because the first and last RGB rows have a formula using only
+  // one UV row, while the other RGB rows use two UV rows as input each.
+  // See https://crbug.com/libyuv/934.
+  //
+  // The workaround is a backup of the last converted even RGB row, called top
+  // row, located right before |from_row|. The conversion is then called
+  // starting at this top row, overwriting it with invalid values. The remaining
+  // pairs of rows are correctly aligned and their freshly converted values are
+  // valid. Then the backed up row is put back, fixing the issue.
+  // The bottom row is postponed if the other half of the pair it belongs to is
+  // not yet decoded.
+  //
+  //  UV rows |                 Y/RGB rows
+  //          |  all  |  first decoding  |  second decoding
+  //           ____ 0  ____ 0 (from_row)
+  //    0 ---- ____ 1  ____ 1
+  //           ____ 2  ____ 2             ____ 2 (backed up)
+  //    1 ---- ____ 3  ____ 3 (postponed) ____ 3 (from_row)
+  //           ____ 4       4 (*to_row)   ____ 4
+  //    2 ---- ____ 5                     ____ 5
+  //                                           6 (*to_row)
+
+  const bool use_libyuv_bilinear_upsampling =
+      !decode_to_half_float_ && IsColorSpaceSupportedByPCVR(image) &&
+      image->yuvFormat == AVIF_PIXEL_FORMAT_YUV420;
+  const bool save_top_row = use_libyuv_bilinear_upsampling && from_row > 0;
+  const bool postpone_bottom_row =
+      use_libyuv_bilinear_upsampling &&
+      static_cast<uint32_t>(*to_row) < image->height;
+  if (postpone_bottom_row) {
+    // libavif outputs an even number of rows because 4:2:0 samples are decoded
+    // in pairs.
+    DCHECK(!(*to_row & 1));
+    --*to_row;
+    if (from_row == *to_row) {
+      return true;  // Nothing to do.
+    }
+  }
+  if (save_top_row) {
+    // |from_row| is odd because it is equal to the output value of |*to_row|
+    // from the previous RenderImage() call, and |*to_row| was even and then
+    // decremented at that time.
+    DCHECK(from_row & 1);
+    --from_row;
+  }
+
+  // Focus |image| on rows [from_row, *to_row).
+  std::unique_ptr<avifImage, decltype(&avifImageDestroy)> view(
+      nullptr, avifImageDestroy);
+  if (from_row > 0 || static_cast<uint32_t>(*to_row) < image->height) {
+    const avifCropRect rect = {0, static_cast<uint32_t>(from_row), image->width,
+                               static_cast<uint32_t>(*to_row - from_row)};
+    view.reset(avifImageCreateEmpty());
+    const avifResult result = avifImageSetViewRect(view.get(), image, &rect);
+    DCHECK_EQ(result, AVIF_RESULT_OK);
+    image = view.get();
+  }
+
   if (decode_to_half_float_) {
     UpdateColorTransform(frame_cs, image->depth);
 
-    uint64_t* rgba_hhhh = buffer->GetAddrF16(0, 0);
+    uint64_t* rgba_hhhh = buffer->GetAddrF16(0, from_row);
 
     // Color and format convert from YUV HBD -> RGBA half float.
     if (is_mono) {
@@ -748,19 +1106,19 @@ bool AVIFImageDecoder::RenderImage(const avifImage* image, ImageFrame* buffer) {
     return true;
   }
 
-  uint32_t* rgba_8888 = buffer->GetAddr(0, 0);
+  uint32_t* rgba_8888 = buffer->GetAddr(0, from_row);
   // Call media::PaintCanvasVideoRenderer (PCVR) if the color space is
   // supported.
   if (IsColorSpaceSupportedByPCVR(image)) {
     // Create temporary frame wrapping the YUVA planes.
-    scoped_refptr<media::VideoFrame> frame;
-    auto pixel_format = AvifToVideoPixelFormat(image->yuvFormat, image->depth);
+    const bool has_alpha = image->alphaPlane != nullptr;
+    auto pixel_format =
+        AvifToVideoPixelFormat(image->yuvFormat, has_alpha, image->depth);
     if (pixel_format == media::PIXEL_FORMAT_UNKNOWN)
       return false;
     auto size = gfx::Size(image->width, image->height);
-    if (image->alphaPlane) {
-      DCHECK_EQ(pixel_format, media::PIXEL_FORMAT_I420);
-      pixel_format = media::PIXEL_FORMAT_I420A;
+    scoped_refptr<media::VideoFrame> frame;
+    if (has_alpha) {
       frame = media::VideoFrame::WrapExternalYuvaData(
           pixel_format, size, gfx::Rect(size), size, image->yuvRowBytes[0],
           image->yuvRowBytes[1], image->yuvRowBytes[2], image->alphaRowBytes,
@@ -772,7 +1130,15 @@ bool AVIFImageDecoder::RenderImage(const avifImage* image, ImageFrame* buffer) {
           image->yuvRowBytes[1], image->yuvRowBytes[2], image->yuvPlanes[0],
           image->yuvPlanes[1], image->yuvPlanes[2], base::TimeDelta());
     }
+    if (!frame)
+      return false;
     frame->set_color_space(frame_cs);
+
+    if (save_top_row) {
+      previous_last_decoded_row_.resize(image->width);
+      std::copy(rgba_8888, rgba_8888 + image->width,
+                previous_last_decoded_row_.begin());
+    }
 
     // Really only handles 709, 601, 2020, JPEG 8-bit conversions and uses
     // libyuv under the hood, so is much faster than our manual path.
@@ -784,7 +1150,12 @@ bool AVIFImageDecoder::RenderImage(const avifImage* image, ImageFrame* buffer) {
     // https://bugs.chromium.org/p/libyuv/issues/detail?id=845
     media::PaintCanvasVideoRenderer::ConvertVideoFrameToRGBPixels(
         frame.get(), rgba_8888, frame->visible_rect().width() * 4,
-        premultiply_alpha);
+        premultiply_alpha, media::PaintCanvasVideoRenderer::kFilterBilinear,
+        /*disable_threading=*/true);
+
+    if (save_top_row) {
+      base::ranges::copy(previous_last_decoded_row_, rgba_8888);
+    }
     return true;
   }
 
@@ -809,7 +1180,9 @@ bool AVIFImageDecoder::RenderImage(const avifImage* image, ImageFrame* buffer) {
   return true;
 }
 
-void AVIFImageDecoder::ColorCorrectImage(ImageFrame* buffer) {
+void AVIFImageDecoder::ColorCorrectImage(int from_row,
+                                         int to_row,
+                                         ImageFrame* buffer) {
   // Postprocess the image data according to the profile.
   const ColorProfileTransform* const transform = ColorTransform();
   if (!transform)
@@ -819,20 +1192,20 @@ void AVIFImageDecoder::ColorCorrectImage(ImageFrame* buffer) {
                                 : skcms_AlphaFormat_Unpremul;
   if (decode_to_half_float_) {
     const skcms_PixelFormat color_format = skcms_PixelFormat_RGBA_hhhh;
-    for (int y = 0; y < Size().Height(); ++y) {
+    for (int y = from_row; y < to_row; ++y) {
       ImageFrame::PixelDataF16* const row = buffer->GetAddrF16(0, y);
       const bool success = skcms_Transform(
           row, color_format, alpha_format, transform->SrcProfile(), row,
-          color_format, alpha_format, transform->DstProfile(), Size().Width());
+          color_format, alpha_format, transform->DstProfile(), Size().width());
       DCHECK(success);
     }
   } else {
     const skcms_PixelFormat color_format = XformColorFormat();
-    for (int y = 0; y < Size().Height(); ++y) {
+    for (int y = from_row; y < to_row; ++y) {
       ImageFrame::PixelData* const row = buffer->GetAddr(0, y);
       const bool success = skcms_Transform(
           row, color_format, alpha_format, transform->SrcProfile(), row,
-          color_format, alpha_format, transform->DstProfile(), Size().Width());
+          color_format, alpha_format, transform->DstProfile(), Size().width());
       DCHECK(success);
     }
   }

@@ -1,44 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #ifndef VOLUMETRICMODIFIER_H
 #define VOLUMETRICMODIFIER_H
 
 #include <QtDataVisualization/q3dscatter.h>
 #include <QtDataVisualization/qcustom3dvolume.h>
-#include <QtCore/QTimer>
-#include <QtGui/QRgb>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QSlider>
-#include <QtWidgets/QRadioButton>
-
-using namespace QtDataVisualization;
+#include <QtCore/qtimer.h>
+#include <QtGui/qrgb.h>
+#include <QtWidgets/qlabel.h>
+#include <QtWidgets/qslider.h>
+#include <QtWidgets/qradiobutton.h>
 
 class VolumetricModifier : public QObject
 {
@@ -78,49 +50,46 @@ public Q_SLOTS:
     void setDrawSliceFrames(int enabled);
 
 private:
-
-    void initHeightMap(QString fileName, QVector<uchar> &layerData);
+    void initHeightMap(QString fileName, QList<uchar> &layerData);
     void initMineShaftArray();
-    int createVolume(int textureSize, int startIndex, int count,
-                      QVector<uchar> *textureData);
-    int excavateMineShaft(int textureSize, int startIndex, int count,
-                          QVector<uchar> *textureData);
-    void excavateMineBlock(int textureSize, int dataIndex, int size, QVector<uchar> *textureData);
+    int createVolume(int textureSize, int startIndex, int count, QList<uchar> *textureData);
+    int excavateMineShaft(int textureSize, int startIndex, int count, QList<uchar> *textureData);
+    void excavateMineBlock(int textureSize, int dataIndex, int size, QList<uchar> *textureData);
     void handleSlicingChanges();
 
-    Q3DScatter *m_graph;
-    QCustom3DVolume *m_volumeItem;
-    int m_sliceIndexX;
-    int m_sliceIndexY;
-    int m_sliceIndexZ;
-    bool m_slicingX;
-    bool m_slicingY;
-    bool m_slicingZ;
-    QLabel *m_fpsLabel;
-    QRadioButton *m_mediumDetailRB;
-    QRadioButton *m_highDetailRB;
-    QVector<uchar> *m_lowDetailData;
-    QVector<uchar> *m_mediumDetailData;
-    QVector<uchar> *m_highDetailData;
+    Q3DScatter *m_graph = nullptr;
+    QCustom3DVolume *m_volumeItem = nullptr;
+    int m_sliceIndexX = 0;
+    int m_sliceIndexY = 0;
+    int m_sliceIndexZ = 0;
+    bool m_slicingX = false;
+    bool m_slicingY = false;
+    bool m_slicingZ = false;
+    QLabel *m_fpsLabel = nullptr;
+    QRadioButton *m_mediumDetailRB = nullptr;
+    QRadioButton *m_highDetailRB = nullptr;
+    QList<uchar> *m_lowDetailData = nullptr;
+    QList<uchar> *m_mediumDetailData = nullptr;
+    QList<uchar> *m_highDetailData = nullptr;
+    int m_mediumDetailIndex = 0;
+    int m_highDetailIndex = 0;
+    int m_mediumDetailShaftIndex = 0;
+    int m_highDetailShaftIndex = 0;
+    QSlider *m_sliceSliderX = nullptr;
+    QSlider *m_sliceSliderY = nullptr;
+    QSlider *m_sliceSliderZ = nullptr;
+    QList<QRgb> m_colorTable1 = {};
+    QList<QRgb> m_colorTable2 = {};
+    bool m_usingPrimaryTable = true;
+    QLabel *m_sliceLabelX = nullptr;
+    QLabel *m_sliceLabelY = nullptr;
+    QLabel *m_sliceLabelZ = nullptr;
+    QLabel *m_alphaMultiplierLabel = nullptr;
+    QList<uchar> m_magmaLayer = {};
+    QList<uchar> m_waterLayer = {};
+    QList<uchar> m_groundLayer = {};
+    QList<QPair<QVector3D, QVector3D>> m_mineShaftArray = {};
     QTimer m_timer;
-    int m_mediumDetailIndex;
-    int m_highDetailIndex;
-    int m_mediumDetailShaftIndex;
-    int m_highDetailShaftIndex;
-    QSlider *m_sliceSliderX;
-    QSlider *m_sliceSliderY;
-    QSlider *m_sliceSliderZ;
-    QVector<QRgb> m_colorTable1;
-    QVector<QRgb> m_colorTable2;
-    bool m_usingPrimaryTable;
-    QLabel *m_sliceLabelX;
-    QLabel *m_sliceLabelY;
-    QLabel *m_sliceLabelZ;
-    QLabel *m_alphaMultiplierLabel;
-    QVector<uchar> m_magmaLayer;
-    QVector<uchar> m_waterLayer;
-    QVector<uchar> m_groundLayer;
-    QVector<QPair<QVector3D, QVector3D> > m_mineShaftArray;
 };
 
 #endif

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 
@@ -34,9 +9,8 @@
 #include <QtQuick/qsggeometry.h>
 #include <QtQuick/qsgflatcolormaterial.h>
 #include <QtGui/qscreen.h>
-#include <QtGui/qopenglcontext.h>
 
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 class tst_drawingmodes : public QQmlDataTest
 {
@@ -78,7 +52,7 @@ class DrawingModeItem : public QQuickItem
 {
     Q_OBJECT
 public:
-    static GLenum drawingMode;
+    static QSGGeometry::DrawingMode drawingMode;
 
     DrawingModeItem() : first(QSGGeometry::defaultAttributes_Point2D(), 5),
         second(QSGGeometry::defaultAttributes_Point2D(), 5)
@@ -92,7 +66,7 @@ protected:
     QSGGeometry second;
     QSGFlatColorMaterial material;
 
-    virtual QSGNode *updatePaintNode(QSGNode *node, UpdatePaintNodeData *)
+     QSGNode *updatePaintNode(QSGNode *node, UpdatePaintNodeData *) override
     {
         if (!node) {
             QRect bounds(0, 0, 200, 200);
@@ -127,7 +101,7 @@ protected:
     }
 };
 
-GLenum DrawingModeItem::drawingMode;
+QSGGeometry::DrawingMode DrawingModeItem::drawingMode;
 
 bool tst_drawingmodes::hasPixelAround(const QImage &fb, int centerX, int centerY) {
     for (int x = centerX - 2; x <= centerX + 2; ++x) {
@@ -139,7 +113,10 @@ bool tst_drawingmodes::hasPixelAround(const QImage &fb, int centerX, int centerY
     return false;
 }
 
-tst_drawingmodes::tst_drawingmodes() : black(qRgb(0, 0, 0)), red(qRgb(0xff, 0, 0))
+tst_drawingmodes::tst_drawingmodes()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
+    , black(qRgb(0, 0, 0))
+    , red(qRgb(0xff, 0, 0))
 {
     qmlRegisterType<DrawingModeItem>("Test", 1, 0, "DrawingModeItem");
     outerWindow.showNormal();
@@ -148,7 +125,7 @@ tst_drawingmodes::tst_drawingmodes() : black(qRgb(0, 0, 0)), red(qRgb(0xff, 0, 0
 
 void tst_drawingmodes::points()
 {
-    DrawingModeItem::drawingMode = GL_POINTS;
+    DrawingModeItem::drawingMode = QSGGeometry::DrawPoints;
     if (QGuiApplication::primaryScreen()->depth() < 24)
         QSKIP("This test does not work at display depths < 24");
 
@@ -156,9 +133,8 @@ void tst_drawingmodes::points()
         || (QGuiApplication::platformName() == QLatin1String("minimal")))
         QSKIP("Skipping due to grabWindow not functional on offscreen/minimal platforms");
 
-#ifdef Q_OS_WIN
-    if (QOpenGLContext::openGLModuleType() == QOpenGLContext::LibGLES)
-        QSKIP("ANGLE cannot draw GL_POINTS.");
+#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+    QSKIP("Skipping points test due to unexpected failures in M1 CI VM");
 #endif
 
     QImage fb = runTest("DrawingModes.qml");
@@ -191,7 +167,7 @@ void tst_drawingmodes::points()
 
 void tst_drawingmodes::lines()
 {
-    DrawingModeItem::drawingMode = GL_LINES;
+    DrawingModeItem::drawingMode = QSGGeometry::DrawLines;
     if (QGuiApplication::primaryScreen()->depth() < 24)
         QSKIP("This test does not work at display depths < 24");
 
@@ -222,7 +198,7 @@ void tst_drawingmodes::lines()
 
 void tst_drawingmodes::lineStrip()
 {
-    DrawingModeItem::drawingMode = GL_LINE_STRIP;
+    DrawingModeItem::drawingMode = QSGGeometry::DrawLineStrip;
     if (QGuiApplication::primaryScreen()->depth() < 24)
         QSKIP("This test does not work at display depths < 24");
 
@@ -255,7 +231,7 @@ void tst_drawingmodes::lineStrip()
 
 void tst_drawingmodes::lineLoop()
 {
-    DrawingModeItem::drawingMode = GL_LINE_LOOP;
+    DrawingModeItem::drawingMode = QSGGeometry::DrawLineLoop;
     if (QGuiApplication::primaryScreen()->depth() < 24)
         QSKIP("This test does not work at display depths < 24");
 
@@ -291,7 +267,7 @@ void tst_drawingmodes::lineLoop()
 
 void tst_drawingmodes::triangles()
 {
-    DrawingModeItem::drawingMode = GL_TRIANGLES;
+    DrawingModeItem::drawingMode = QSGGeometry::DrawTriangles;
     if (QGuiApplication::primaryScreen()->depth() < 24)
         QSKIP("This test does not work at display depths < 24");
 
@@ -320,7 +296,7 @@ void tst_drawingmodes::triangles()
 
 void tst_drawingmodes::triangleStrip()
 {
-    DrawingModeItem::drawingMode = GL_TRIANGLE_STRIP;
+    DrawingModeItem::drawingMode = QSGGeometry::DrawTriangleStrip;
     if (QGuiApplication::primaryScreen()->depth() < 24)
         QSKIP("This test does not work at display depths < 24");
 
@@ -348,7 +324,7 @@ void tst_drawingmodes::triangleStrip()
 
 void tst_drawingmodes::triangleFan()
 {
-    DrawingModeItem::drawingMode = GL_TRIANGLE_FAN;
+    DrawingModeItem::drawingMode = QSGGeometry::DrawTriangleFan;
     if (QGuiApplication::primaryScreen()->depth() < 24)
         QSKIP("This test does not work at display depths < 24");
 

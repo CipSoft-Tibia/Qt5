@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,10 @@
 #include <limits>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/check.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/run_loop.h"
-#include "base/task/post_task.h"
 #include "base/task/thread_pool.h"
 #include "base/task/thread_pool/thread_pool_instance.h"
 #include "net/base/net_errors.h"
@@ -133,7 +132,7 @@ size_t File::GetLength() {
 }
 
 // Static.
-void File::WaitForPendingIO(int* num_pending_io) {
+void File::WaitForPendingIOForTesting(int* num_pending_io) {
   // We are running unit tests so we should wait for all callbacks.
 
   // This waits for callbacks running on worker threads.

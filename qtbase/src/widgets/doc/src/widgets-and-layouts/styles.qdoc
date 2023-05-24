@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 /*!
     \page style-reference.html
     \title Styles and Style Aware Widgets
@@ -780,7 +756,7 @@
             \li Set if the widget has focus (see
                QWidget::hasFocus())
         \row
-            \li \c State_KeyobordFocusChange
+            \li \c State_KeyboardFocusChange
             \li Set when the user changes focus with the keyboard
                (see Qt::WA_KeyboardFocusChange)
         \row
@@ -888,7 +864,7 @@
             \li Button is not flat and not pressed down
     \endtable
 
-    Other members of QStyleOptionButton is:
+    Other members of QStyleOptionButton are:
 
     \table 90%
         \header
@@ -941,7 +917,7 @@
     \endtable
 
     See \l{Push Buttons} for a table over other members in the
-    QStyleOptionButtonClass.
+    QStyleOptionButton class.
 
     \section3 Tabs
 
@@ -969,7 +945,7 @@
     \image javastyle/tab.png
 
     The dotted lines indicate that the QTabWidget contains a tab bar,
-    but does not draw it itself. QTabBar only draws its base line
+    but does not draw the tab bar itself. QTabBar only draws its base line
     when not part of a tab widget, and it keeps two tool
     buttons that scroll the bar when all tabs do not fit; see \l{Tool
     Buttons} for their element tree. Also note that since the buttons
@@ -1761,7 +1737,7 @@
             \li maxIconWidth
             \li The maximum width allowed for the icon.
         \row
-            \li menuHasChecableItem
+            \li menuHasCheckableItems
             \li Boolean which is \c true if at least one item in the
                menu is checkable.
         \row
@@ -1837,7 +1813,7 @@
     item views keep the dimensions on individual sections. Also
     note that the delegates may use the style to paint decorations
     and frames around items. QItemDelegate, for instance, draws
-    \c PE_FrameFocusRect and \c PE_IndicatorViewItemCheck.
+    \c PE_FrameFocusRect and \c PE_IndicatorItemViewItemCheck.
 
     \image javastyle/header.png
 

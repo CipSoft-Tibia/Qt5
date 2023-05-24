@@ -1,8 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/renderer_host/input/touch_emulator.h"
+
+#include <memory>
+#include <utility>
 
 #include "base/containers/queue.h"
 #include "base/time/time.h"
@@ -22,6 +25,8 @@
 #include "ui/events/base_event_utils.h"
 #include "ui/events/blink/blink_event_util.h"
 #include "ui/events/gesture_detection/gesture_provider_config_helper.h"
+#include "ui/gfx/geometry/point.h"
+#include "ui/gfx/geometry/skia_conversions.h"
 #include "ui/gfx/image/image.h"
 
 using blink::WebGestureEvent;
@@ -60,8 +65,7 @@ int ModifiersWithoutMouseButtons(const WebInputEvent& event) {
 
 // Time between two consecutive mouse moves, during which second mouse move
 // is not converted to touch.
-constexpr base::TimeDelta kMouseMoveDropInterval =
-    base::TimeDelta::FromMilliseconds(5);
+constexpr base::TimeDelta kMouseMoveDropInterval = base::Milliseconds(5);
 
 } // namespace
 
@@ -71,7 +75,6 @@ TouchEmulator::TouchEmulator(TouchEmulatorClient* client,
       gesture_provider_config_type_(
           ui::GestureProviderConfigType::CURRENT_PLATFORM),
       double_tap_enabled_(true),
-      use_2x_cursors_(false),
       pinch_gesture_mode_for_testing_(false),
       emulated_stream_active_sequence_count_(0),
       native_stream_active_sequence_count_(0),
@@ -79,7 +82,7 @@ TouchEmulator::TouchEmulator(TouchEmulatorClient* client,
       pending_taps_count_(0) {
   DCHECK(client_);
   ResetState();
-  InitCursors(device_scale_factor, true);
+  SetDeviceScaleFactor(device_scale_factor);
 }
 
 TouchEmulator::~TouchEmulator() {
@@ -101,14 +104,14 @@ void TouchEmulator::ResetState() {
 void TouchEmulator::Enable(Mode mode,
                            ui::GestureProviderConfigType config_type) {
   if (gesture_provider_ && mode_ != mode)
-    client_->SetCursor(pointer_cursor_);
+    client_->SetCursor(ui::mojom::CursorType::kPointer);
 
   if (!gesture_provider_ || gesture_provider_config_type_ != config_type ||
       mode_ != mode) {
     mode_ = mode;
     gesture_provider_config_type_ = config_type;
-    gesture_provider_.reset(new ui::FilteredGestureProvider(
-        GetEmulatorGestureProviderConfig(config_type, mode), this));
+    gesture_provider_ = std::make_unique<ui::FilteredGestureProvider>(
+        GetEmulatorGestureProviderConfig(config_type, mode), this);
     gesture_provider_->SetDoubleTapSupportForPageEnabled(double_tap_enabled_);
     // TODO(dgozman): Use synthetic secondary touch to support multi-touch.
     gesture_provider_->SetMultiTouchZoomSupportEnabled(
@@ -127,13 +130,20 @@ void TouchEmulator::Disable() {
   gesture_provider_.reset();
   base::queue<base::OnceClosure> empty;
   injected_touch_completion_callbacks_.swap(empty);
-  client_->SetCursor(pointer_cursor_);
+  client_->SetCursor(ui::mojom::CursorType::kPointer);
   ResetState();
 }
 
 void TouchEmulator::SetDeviceScaleFactor(float device_scale_factor) {
-  if (!InitCursors(device_scale_factor, false))
+  // Make sure the scale factor corresponds to the one of the available cursor
+  // images.
+  const float cursor_scale_factor = device_scale_factor < 1.5f ? 1.0f : 2.0f;
+  if (cursor_scale_factor == cursor_scale_factor_) {
     return;
+  }
+
+  cursor_scale_factor_ = cursor_scale_factor;
+  InitCursors();
   if (enabled())
     UpdateCursor();
 }
@@ -144,37 +154,27 @@ void TouchEmulator::SetDoubleTapSupportForPageEnabled(bool enabled) {
     gesture_provider_->SetDoubleTapSupportForPageEnabled(enabled);
 }
 
-bool TouchEmulator::InitCursors(float device_scale_factor, bool force) {
-  bool use_2x = device_scale_factor > 1.5f;
-  if (use_2x == use_2x_cursors_ && !force)
-    return false;
-  use_2x_cursors_ = use_2x;
-  float cursor_scale_factor = use_2x ? 2.f : 1.f;
-  cursor_size_ = InitCursorFromResource(&touch_cursor_,
-      cursor_scale_factor,
-      use_2x ? IDR_DEVTOOLS_TOUCH_CURSOR_ICON_2X :
-          IDR_DEVTOOLS_TOUCH_CURSOR_ICON);
-  InitCursorFromResource(&pinch_cursor_,
-      cursor_scale_factor,
-      use_2x ? IDR_DEVTOOLS_PINCH_CURSOR_ICON_2X :
-          IDR_DEVTOOLS_PINCH_CURSOR_ICON);
-
-  pointer_cursor_ = WebCursor(ui::mojom::CursorType::kPointer);
-  return true;
+void TouchEmulator::InitCursors() {
+  touch_cursor_ = InitCursorFromResource(
+      cursor_scale_factor_ == 1.0f ? IDR_DEVTOOLS_TOUCH_CURSOR_ICON
+                                   : IDR_DEVTOOLS_TOUCH_CURSOR_ICON_2X);
+  pinch_cursor_ = InitCursorFromResource(
+      cursor_scale_factor_ == 1.0f ? IDR_DEVTOOLS_PINCH_CURSOR_ICON
+                                   : IDR_DEVTOOLS_PINCH_CURSOR_ICON_2X);
+  // The touch cursor is bigger. Use its size in DIPs for both cursors.
+  cursor_size_ = gfx::ScaleSize(
+      gfx::SizeF(
+          gfx::SkISizeToSize(touch_cursor_.custom_bitmap().dimensions())),
+      1 / cursor_scale_factor_);
 }
 
-gfx::SizeF TouchEmulator::InitCursorFromResource(
-    WebCursor* cursor, float scale, int resource_id) {
-  gfx::Image& cursor_image =
+ui::Cursor TouchEmulator::InitCursorFromResource(int resource_id) {
+  const gfx::Image& cursor_image =
       content::GetContentClient()->GetNativeImageNamed(resource_id);
-  ui::Cursor cursor_info(ui::mojom::CursorType::kCustom);
-  cursor_info.set_image_scale_factor(scale);
-  cursor_info.set_custom_bitmap(cursor_image.AsBitmap());
-  cursor_info.set_custom_hotspot(
-      gfx::Point(cursor_image.Width() / 2, cursor_image.Height() / 2));
-
-  *cursor = WebCursor(cursor_info);
-  return gfx::ScaleSize(gfx::SizeF(cursor_image.Size()), 1.f / scale);
+  SkBitmap bitmap = cursor_image.AsBitmap();
+  gfx::Point hotspot(bitmap.width() / 2, bitmap.height() / 2);
+  return ui::Cursor::NewCustom(std::move(bitmap), std::move(hotspot),
+                               cursor_scale_factor_);
 }
 
 bool TouchEmulator::HandleMouseEvent(const WebMouseEvent& mouse_event,
@@ -288,12 +288,12 @@ bool TouchEmulator::HandleEmulatedTouchEvent(
     return true;
 
   const bool event_consumed = true;
-  const bool is_source_touch_event_set_non_blocking = false;
+  const bool is_source_touch_event_set_blocking = false;
   // Block emulated event when emulated native stream is active.
   if (native_stream_active_sequence_count_) {
     gesture_provider_->OnTouchEventAck(event.unique_touch_event_id,
                                        event_consumed,
-                                       is_source_touch_event_set_non_blocking);
+                                       is_source_touch_event_set_blocking);
     return true;
   }
 
@@ -302,7 +302,7 @@ bool TouchEmulator::HandleEmulatedTouchEvent(
   if (!emulated_stream_active_sequence_count_ && !is_sequence_start) {
     gesture_provider_->OnTouchEventAck(event.unique_touch_event_id,
                                        event_consumed,
-                                       is_source_touch_event_set_non_blocking);
+                                       is_source_touch_event_set_blocking);
     return true;
   }
 
@@ -358,8 +358,21 @@ void TouchEmulator::OnViewDestroyed(RenderWidgetHostViewBase* destroyed_view) {
   if (destroyed_view != last_emulated_start_target_)
     return;
 
-  last_emulated_start_target_ = nullptr;
   emulated_stream_active_sequence_count_ = 0;
+  last_emulated_start_target_ = nullptr;
+
+  // If we aren't enabled, we can just stop here.
+  if (!enabled()) {
+    return;
+  }
+
+  // TouchEmulator is still enabled. To reset the state go through a
+  // Disable/Enable sequence to destroy the GestureRecognizer otherwise it will
+  // be left in an unknown state because the associated view was destroyed.
+  ui::GestureProviderConfigType config_type = gesture_provider_config_type_;
+  Mode mode = mode_;
+  Disable();
+  Enable(mode, config_type);
 }
 
 void TouchEmulator::OnGestureEvent(const ui::GestureEventData& gesture) {

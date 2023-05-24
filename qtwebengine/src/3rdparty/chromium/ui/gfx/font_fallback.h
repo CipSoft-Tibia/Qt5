@@ -1,13 +1,14 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_GFX_FONT_FALLBACK_H_
 #define UI_GFX_FONT_FALLBACK_H_
 
+#include <string>
 #include <vector>
 
-#include "base/strings/string16.h"
+#include "base/strings/string_piece_forward.h"
 #include "build/build_config.h"
 #include "ui/gfx/font.h"
 #include "ui/gfx/gfx_export.h"

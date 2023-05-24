@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWIZARD_H
 #define QWIZARD_H
@@ -59,7 +23,7 @@ class Q_WIDGETS_EXPORT QWizard : public QDialog
     Q_PROPERTY(Qt::TextFormat titleFormat READ titleFormat WRITE setTitleFormat)
     Q_PROPERTY(Qt::TextFormat subTitleFormat READ subTitleFormat WRITE setSubTitleFormat)
     Q_PROPERTY(int startId READ startId WRITE setStartId)
-    Q_PROPERTY(int currentId READ currentId NOTIFY currentIdChanged)
+    Q_PROPERTY(int currentId READ currentId WRITE setCurrentId NOTIFY currentIdChanged)
 
 public:
     enum WizardButton {
@@ -128,9 +92,6 @@ public:
     void removePage(int id);
     QWizardPage *page(int id) const;
     bool hasVisitedPage(int id) const;
-#if QT_DEPRECATED_SINCE(5, 15)
-    QT_DEPRECATED_VERSION_X_5_15("Use visitedIds() instead") QList<int> visitedPages() const;
-#endif
     QList<int> visitedIds() const;
     QList<int> pageIds() const;
     void setStartId(int id);
@@ -184,18 +145,15 @@ Q_SIGNALS:
 public Q_SLOTS:
     void back();
     void next();
+    void setCurrentId(int id);
     void restart();
 
 protected:
     bool event(QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
-#if defined(Q_OS_WIN) || defined(Q_CLANG_QDOC)
-#  if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#if defined(Q_OS_WIN) || defined(Q_QDOC)
     bool nativeEvent(const QByteArray &eventType, void *message, qintptr *result) override;
-#  else
-    bool nativeEvent(const QByteArray &eventType, void *message, long *result) override;
-#  endif
 #endif
     void done(int result) override;
     virtual void initializePage(int id);

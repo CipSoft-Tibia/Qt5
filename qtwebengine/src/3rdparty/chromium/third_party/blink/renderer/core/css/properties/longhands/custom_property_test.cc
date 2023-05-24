@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,7 @@
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -85,38 +85,6 @@ TEST_F(CustomPropertyTest, PropertyID) {
 TEST_F(CustomPropertyTest, GetPropertyNameAtomicString) {
   CustomProperty property("--x", GetDocument());
   EXPECT_EQ(AtomicString("--x"), property.GetPropertyNameAtomicString());
-}
-
-TEST_F(CustomPropertyTest, ComputedValuesEqual) {
-  RegisterProperty(GetDocument(), "--y", "<length>", "100px", false);
-
-  CustomProperty x("--x", GetDocument());
-  CustomProperty y("--y", GetDocument());
-
-  SetElementWithStyle("--x:foo;--y:10px");
-  auto style1 = ComputedStyle::Clone(GetComputedStyle());
-
-  SetElementWithStyle("--x:foo;--y:10px");
-  auto style2 = ComputedStyle::Clone(GetComputedStyle());
-
-  SetElementWithStyle("--x:bar;--y:30px");
-  auto style3 = ComputedStyle::Clone(GetComputedStyle());
-
-  ASSERT_TRUE(x.IsComputedValueComparable());
-  EXPECT_TRUE(x.ComputedValuesEqual(*style1, *style1));
-  EXPECT_TRUE(x.ComputedValuesEqual(*style2, *style2));
-  EXPECT_TRUE(x.ComputedValuesEqual(*style1, *style2));
-  EXPECT_TRUE(x.ComputedValuesEqual(*style2, *style1));
-  EXPECT_FALSE(x.ComputedValuesEqual(*style1, *style3));
-  EXPECT_FALSE(x.ComputedValuesEqual(*style2, *style3));
-
-  ASSERT_TRUE(y.IsComputedValueComparable());
-  EXPECT_TRUE(y.ComputedValuesEqual(*style1, *style1));
-  EXPECT_TRUE(y.ComputedValuesEqual(*style2, *style2));
-  EXPECT_TRUE(y.ComputedValuesEqual(*style1, *style2));
-  EXPECT_TRUE(y.ComputedValuesEqual(*style2, *style1));
-  EXPECT_FALSE(y.ComputedValuesEqual(*style1, *style3));
-  EXPECT_FALSE(y.ComputedValuesEqual(*style2, *style3));
 }
 
 TEST_F(CustomPropertyTest, ComputedCSSValueUnregistered) {
@@ -191,9 +159,9 @@ TEST_F(CustomPropertyTest, ParseSingleValueAnimationTainted) {
       property, "100px", CSSParserLocalContext().WithAnimationTainted(false));
 
   EXPECT_TRUE(
-      To<CSSCustomPropertyDeclaration>(value1)->Value()->IsAnimationTainted());
+      To<CSSCustomPropertyDeclaration>(value1)->Value().IsAnimationTainted());
   EXPECT_FALSE(
-      To<CSSCustomPropertyDeclaration>(value2)->Value()->IsAnimationTainted());
+      To<CSSCustomPropertyDeclaration>(value2)->Value().IsAnimationTainted());
 }
 
 TEST_F(CustomPropertyTest, ParseSingleValueTyped) {
@@ -239,7 +207,7 @@ TEST_F(CustomPropertyTest, GetCSSPropertyName) {
 
 TEST_F(CustomPropertyTest, SupportsGuaranteedInvalid) {
   RegisterProperty(GetDocument(), "--universal", "*", "foo", true);
-  RegisterProperty(GetDocument(), "--no-initial", "*", base::nullopt, true);
+  RegisterProperty(GetDocument(), "--no-initial", "*", absl::nullopt, true);
   RegisterProperty(GetDocument(), "--length", "<length>", "0px", true);
 
   CustomProperty unregistered("--unregistered", GetDocument());
@@ -255,7 +223,7 @@ TEST_F(CustomPropertyTest, SupportsGuaranteedInvalid) {
 
 TEST_F(CustomPropertyTest, HasInitialValue) {
   RegisterProperty(GetDocument(), "--universal", "*", "foo", true);
-  RegisterProperty(GetDocument(), "--no-initial", "*", base::nullopt, true);
+  RegisterProperty(GetDocument(), "--no-initial", "*", absl::nullopt, true);
   RegisterProperty(GetDocument(), "--length", "<length>", "0px", true);
 
   CustomProperty unregistered("--unregistered", GetDocument());
@@ -267,6 +235,54 @@ TEST_F(CustomPropertyTest, HasInitialValue) {
   EXPECT_TRUE(universal.HasInitialValue());
   EXPECT_FALSE(no_initial_value.HasInitialValue());
   EXPECT_TRUE(length.HasInitialValue());
+}
+
+TEST_F(CustomPropertyTest, ParseAnchorQueriesAsLength) {
+  ScopedCSSAnchorPositioningForTest enabled_scope(true);
+
+  RegisterProperty(GetDocument(), "--x", "<length>", "0px", false);
+  CustomProperty property("--x", GetDocument());
+
+  // We can't parse anchor queries as a <length>, because it can't be resolved
+  // into a pixel value at style time.
+  EXPECT_FALSE(
+      ParseValue(property, "anchor(--foo top)", CSSParserLocalContext()));
+  EXPECT_FALSE(ParseValue(property, "anchor-size(--foo width)",
+                          CSSParserLocalContext()));
+}
+
+TEST_F(CustomPropertyTest, ParseAnchorQueriesAsLengthPercentage) {
+  ScopedCSSAnchorPositioningForTest enabled_scope(true);
+
+  RegisterProperty(GetDocument(), "--x", "<length-percentage>", "0px", false);
+  CustomProperty property("--x", GetDocument());
+
+  {
+    const CSSValue* value =
+        ParseValue(property, "anchor(--foo top)", CSSParserLocalContext());
+    ASSERT_TRUE(value);
+    EXPECT_EQ("anchor(--foo top)", value->CssText());
+  }
+
+  {
+    const CSSValue* value = ParseValue(property, "anchor-size(--foo width)",
+                                       CSSParserLocalContext());
+    ASSERT_TRUE(value);
+    EXPECT_EQ("anchor-size(--foo width)", value->CssText());
+  }
+
+  {
+    // There are no restrictions on what anchor queries are allowed in a custom
+    // property, so mixing anchor() and anchor-size() is also allowed, although
+    // using it in any builtin property via var() makes it invalid at
+    // computed-value time.
+    const CSSValue* value = ParseValue(
+        property, "calc(anchor(--foo top) + anchor-size(--foo width))",
+        CSSParserLocalContext());
+    ASSERT_TRUE(value);
+    EXPECT_EQ("calc(anchor(--foo top) + anchor-size(--foo width))",
+              value->CssText());
+  }
 }
 
 }  // namespace blink

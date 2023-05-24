@@ -1,16 +1,15 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/ios/weak_nsobject.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/mac/scoped_nsobject.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
 #include "base/threading/thread.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace base {
@@ -128,7 +127,8 @@ TEST(WeakNSObjectTest, WeakNSObjectCopyOnOtherThread) {
   scoped_nsobject<NSMutableData> data([[NSMutableData alloc] init]);
   WeakNSObject<NSMutableData> weak(data);
 
-  scoped_refptr<SingleThreadTaskRunner> runner = ThreadTaskRunnerHandle::Get();
+  scoped_refptr<SingleThreadTaskRunner> runner =
+      SingleThreadTaskRunner::GetCurrentDefault();
   other_thread.task_runner()->PostTask(
       FROM_HERE, BindOnce(&CopyWeakNSObjectAndPost, weak, runner));
   other_thread.Stop();

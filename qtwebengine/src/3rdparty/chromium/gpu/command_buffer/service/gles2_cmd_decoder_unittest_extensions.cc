@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 #include <stdint.h>
 
 #include "base/command_line.h"
-#include "base/stl_util.h"
 #include "gpu/command_buffer/common/gles2_cmd_format.h"
 #include "gpu/command_buffer/common/gles2_cmd_utils.h"
 #include "gpu/command_buffer/service/gles2_cmd_decoder_unittest.h"
@@ -41,27 +40,6 @@ class GLES2DecoderTestWithBlendEquationAdvanced : public GLES2DecoderTest {
 
 INSTANTIATE_TEST_SUITE_P(Service,
                          GLES2DecoderTestWithBlendEquationAdvanced,
-                         ::testing::Bool());
-
-class GLES2DecoderTestWithCHROMIUMFramebufferMixedSamples
-    : public GLES2DecoderTest {
- public:
-  GLES2DecoderTestWithCHROMIUMFramebufferMixedSamples() = default;
-  void SetUp() override {
-    InitState init;
-    init.gl_version = "OpenGL ES 3.1";
-    init.has_alpha = true;
-    init.has_depth = true;
-    init.request_alpha = true;
-    init.request_depth = true;
-    init.bind_generates_resource = true;
-    init.extensions = "GL_NV_framebuffer_mixed_samples ";
-    InitDecoder(init);
-  }
-};
-
-INSTANTIATE_TEST_SUITE_P(Service,
-                         GLES2DecoderTestWithCHROMIUMFramebufferMixedSamples,
                          ::testing::Bool());
 
 class GLES3DecoderTestWithEXTWindowRectangles : public GLES3DecoderTest {

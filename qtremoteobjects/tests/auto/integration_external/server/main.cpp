@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mytestserver.h"
 
@@ -45,7 +20,7 @@ class tst_Server_Process : public QObject
     {
         Device(QUrl url) : srcNode(url, registryUrl, QRemoteObjectHost::AllowExternalRegistration)
         {
-            tcpServer.listen(QHostAddress(url.host()), url.port());
+            tcpServer.listen(QHostAddress(url.host()), quint16(url.port()));
             QVERIFY(srcNode.waitForRegistry(3000));
             QObject::connect(&tcpServer, &QTcpServer::newConnection, [this]() {
                 auto conn = this->tcpServer.nextPendingConnection();
@@ -96,14 +71,20 @@ private Q_SLOTS:
         bool next = false;
         connect(&myTestServer, &MyTestServer::nextStep, [&next]{ next = true; });
         QTRY_VERIFY_WITH_TIMEOUT(next, 5000);
-        dev1.srcNode.disableRemoting(&myTestServer);
+
+        qDebug() << "Disable remoting";
+        QVERIFY(dev1.srcNode.disableRemoting(&myTestServer));
+
+        // Wait before changing the state
+        QTest::qWait(200);
 
         // Change a value while replica is suspect
         myTestServer.setEnum1(MyTestServer::First);
 
         // Share the object on a different "device", make sure registry updates and connects
+        qDebug() << "Enable remoting";
         Device dev2(extUrl2);
-        dev2.srcNode.enableRemoting(&myTestServer);
+        QVERIFY(dev2.srcNode.enableRemoting(&myTestServer));
 
         // wait for quit
         bool quit = false;

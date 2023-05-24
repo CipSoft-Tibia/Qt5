@@ -1,25 +1,26 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_SCRIPT_MODULATOR_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_SCRIPT_MODULATOR_H_
 
-#include "base/single_thread_task_runner.h"
-#include "base/util/type_safety/pass_key.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/types/pass_key.h"
 #include "services/network/public/mojom/referrer_policy.mojom-blink-forward.h"
+#include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink-forward.h"
 #include "third_party/blink/public/platform/web_url_request.h"
 #include "third_party/blink/renderer/bindings/core/v8/module_record.h"
 #include "third_party/blink/renderer/bindings/core/v8/module_request.h"
 #include "third_party/blink/renderer/bindings/core/v8/sanitize_script_errors.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_code_cache.h"
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/script/import_map_error.h"
 #include "third_party/blink/renderer/core/script/module_import_meta.h"
 #include "third_party/blink/renderer/platform/bindings/name_client.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
 #include "third_party/blink/renderer/platform/bindings/v8_per_context_data.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
-#include "third_party/blink/renderer/platform/loader/fetch/script_fetch_options.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/wtf/text/text_position.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
@@ -34,9 +35,10 @@ class ImportMap;
 class ReferrerScriptInfo;
 class ResourceFetcher;
 class ModuleRecordResolver;
+class ScriptFetchOptions;
 class ScriptPromiseResolver;
 class ScriptState;
-class ScriptValue;
+enum class ModuleType;
 
 // A SingleModuleClient is notified when single module script node (node as in a
 // module tree graph) load is complete and its corresponding entry is created in
@@ -45,7 +47,7 @@ class CORE_EXPORT SingleModuleClient
     : public GarbageCollected<SingleModuleClient>,
       public NameClient {
  public:
-  virtual ~SingleModuleClient() = default;
+  ~SingleModuleClient() override = default;
   virtual void Trace(Visitor* visitor) const {}
   const char* NameInHeapSnapshot() const override {
     return "SingleModuleClient";
@@ -59,7 +61,7 @@ class CORE_EXPORT SingleModuleClient
 class CORE_EXPORT ModuleTreeClient : public GarbageCollected<ModuleTreeClient>,
                                      public NameClient {
  public:
-  virtual ~ModuleTreeClient() = default;
+  ~ModuleTreeClient() override = default;
   virtual void Trace(Visitor* visitor) const {}
   const char* NameInHeapSnapshot() const override { return "ModuleTreeClient"; }
 
@@ -101,12 +103,12 @@ class CORE_EXPORT Modulator : public GarbageCollected<Modulator>,
                               public NameClient {
  public:
   static Modulator* From(ScriptState*);
-  virtual ~Modulator();
+  ~Modulator() override;
 
   static void SetModulator(ScriptState*, Modulator*);
   static void ClearModulator(ScriptState*);
 
-  void Trace(Visitor* visitor) const override {}
+  void Trace(Visitor* visitor) const override;
   const char* NameInHeapSnapshot() const override { return "Modulator"; }
 
   virtual ModuleRecordResolver* GetModuleRecordResolver() = 0;
@@ -120,16 +122,15 @@ class CORE_EXPORT Modulator : public GarbageCollected<Modulator>,
   // "scripting is disabled for settings's responsible browsing context"
   virtual bool IsScriptingDisabled() const = 0;
 
-  virtual bool ImportMapsEnabled() const = 0;
-
   // https://html.spec.whatwg.org/C/#fetch-a-module-script-tree
   // https://html.spec.whatwg.org/C/#fetch-a-module-worker-script-tree
   // Note that |this| is the "module map settings object" and
   // ResourceFetcher represents "fetch client settings object"
   // used in the "fetch a module worker script graph" algorithm.
   virtual void FetchTree(const KURL&,
+                         ModuleType,
                          ResourceFetcher* fetch_client_settings_object_fetcher,
-                         mojom::RequestContextType context_type,
+                         mojom::blink::RequestContextType context_type,
                          network::mojom::RequestDestination destination,
                          const ScriptFetchOptions&,
                          ModuleScriptCustomFetchType,
@@ -152,7 +153,7 @@ class CORE_EXPORT Modulator : public GarbageCollected<Modulator>,
   virtual void FetchDescendantsForInlineScript(
       ModuleScript*,
       ResourceFetcher* fetch_client_settings_object_fetcher,
-      mojom::RequestContextType context_type,
+      mojom::blink::RequestContextType context_type,
       network::mojom::RequestDestination destination,
       ModuleTreeClient*) = 0;
 
@@ -160,7 +161,11 @@ class CORE_EXPORT Modulator : public GarbageCollected<Modulator>,
   // entry.
   // Note: returns nullptr if the module map entry doesn't exist, or
   // is still "fetching".
-  virtual ModuleScript* GetFetchedModuleScript(const KURL&) = 0;
+  // ModuleType indicates the resource type of the module script, e.g.
+  // JavaScript, JSON, or CSS. This is used as part of the module map cache key
+  // alongside the URL, so both are needed to retrieve the correct module. See
+  // https://github.com/whatwg/html/pull/5883
+  virtual ModuleScript* GetFetchedModuleScript(const KURL&, ModuleType) = 0;
 
   // https://html.spec.whatwg.org/C/#resolve-a-module-specifier
   virtual KURL ResolveModuleSpecifier(const String& module_request,
@@ -168,20 +173,37 @@ class CORE_EXPORT Modulator : public GarbageCollected<Modulator>,
                                       String* failure_reason = nullptr) = 0;
 
   // https://tc39.github.io/proposal-dynamic-import/#sec-hostimportmoduledynamically
-  virtual void ResolveDynamically(const String& specifier,
-                                  const KURL&,
+  virtual void ResolveDynamically(const ModuleRequest& module_request,
                                   const ReferrerScriptInfo&,
                                   ScriptPromiseResolver*) = 0;
 
-  virtual ScriptValue CreateTypeError(const String& message) const = 0;
-  virtual ScriptValue CreateSyntaxError(const String& message) const = 0;
-
   // Import maps. https://github.com/WICG/import-maps
-  virtual void RegisterImportMap(const ImportMap*,
-                                 ScriptValue error_to_rethrow) = 0;
-  virtual bool IsAcquiringImportMaps() const = 0;
-  virtual void ClearIsAcquiringImportMaps() = 0;
-  virtual const ImportMap* GetImportMapForTest() const = 0;
+
+  void SetImportMap(const ImportMap* import_map) {
+    // Because the second and subsequent import maps are already rejected in
+    // ScriptLoader::PrepareScript(), this is called only once.
+    DCHECK(!import_map_);
+    import_map_ = import_map;
+  }
+  const ImportMap* GetImportMapForTest() const { return import_map_; }
+
+  // https://wicg.github.io/import-maps/#document-acquiring-import-maps
+  enum class AcquiringImportMapsState {
+    // The flag is true.
+    kAcquiring,
+
+    // The flag is false, due to multiple import maps.
+    kMultipleImportMaps,
+
+    // The flag is false, because module script loading is already started.
+    kAfterModuleScriptLoad
+  };
+  AcquiringImportMapsState GetAcquiringImportMapsState() const {
+    return acquiring_import_maps_;
+  }
+  void SetAcquiringImportMapsState(AcquiringImportMapsState value) {
+    acquiring_import_maps_ = value;
+  }
 
   // https://html.spec.whatwg.org/C/#hostgetimportmetaproperties
   virtual ModuleImportMeta HostGetImportMetaProperties(
@@ -189,33 +211,29 @@ class CORE_EXPORT Modulator : public GarbageCollected<Modulator>,
 
   virtual bool HasValidContext() = 0;
 
-  virtual ScriptValue InstantiateModule(v8::Local<v8::Module>, const KURL&) = 0;
-
-  virtual Vector<ModuleRequest> ModuleRequestsFromModuleRecord(
-      v8::Local<v8::Module>) = 0;
-
-  enum class CaptureEvalErrorFlag : bool { kReport, kCapture };
-
-  // ExecuteModule implements #run-a-module-script HTML spec algorithm.
-  // https://html.spec.whatwg.org/C/#run-a-module-script
-  // CaptureEvalErrorFlag is used to implement "rethrow errors" parameter in
-  // run-a-module-script.
-  // - When "rethrow errors" is to be set, use kCapture for EvaluateModule().
-  // Then EvaluateModule() wraps exceptions in a ScriptEvaluationResult instead
-  // of throwing it and the caller should rethrow the exception.
-  // - When "rethrow errors" is not to be set, use kReport. If there is an error
-  // to throw, EvaluateModule() "report the error" inside it, and returns
-  // ScriptEvaluationResult wrapping the error. Otherwise, it returns either a
-  // ScriptEvaluationResult that is empty or contains the successful evaluation
-  // result.
-  virtual ScriptEvaluationResult ExecuteModule(ModuleScript*,
-                                               CaptureEvalErrorFlag) = 0;
+  virtual ModuleType ModuleTypeFromRequest(
+      const ModuleRequest& module_request) const = 0;
 
   virtual ModuleScriptFetcher* CreateModuleScriptFetcher(
       ModuleScriptCustomFetchType,
-      util::PassKey<ModuleScriptLoader> pass_key) = 0;
+      base::PassKey<ModuleScriptLoader> pass_key) = 0;
+
+  // Produce V8 code cache for the given ModuleScript and its submodules.
+  virtual void ProduceCacheModuleTreeTopLevel(ModuleScript*) = 0;
+
+ protected:
+  const ImportMap* GetImportMap() const { return import_map_.Get(); }
+
+ private:
+  Member<const ImportMap> import_map_;
+
+  // https://wicg.github.io/import-maps/#document-acquiring-import-maps
+  // Each Document has an acquiring import maps boolean. It is initially true.
+  // [spec text]
+  AcquiringImportMapsState acquiring_import_maps_ =
+      AcquiringImportMapsState::kAcquiring;
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_SCRIPT_MODULATOR_H_

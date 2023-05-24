@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page focus.html
@@ -33,7 +9,7 @@
 
     \keyword keyboard focus
 
-    Qt's widgets handle keyboard focus in the ways that have become
+    Qt's widgets handle keyboard focus in ways that have become
     customary in GUIs.
 
     The basic issue is that the user's key strokes can be directed at any
@@ -46,7 +22,7 @@
 
     \section1 Focus Motion
 
-    The customs which have evolved for directing keyboard focus to a
+    The customs that have evolved for directing keyboard focus to a
     particular widget are these:
 
     \list 1
@@ -87,7 +63,7 @@
     handler that moves the focus.
 
     For example, in a data entry dialog, there might be a field that
-    is only necessary in one per cent of all cases. In such a dialog,
+    is only necessary in one percent of all cases. In such a dialog,
     \uicontrol Tab could skip this field, and the dialog could use one of
     these mechanisms:
 
@@ -150,14 +126,17 @@
     explicitly using focus accelerators such as those provided by
     QLabel::setBuddy(), QGroupBox, and QTabBar.
 
-    We advise supporting shortcut focus for all widgets that the user
+    Your application can support shortcut focus for all widgets that the user
     may want to jump to. For example, a tab dialog can have keyboard
     shortcuts for each of its pages, so the user can press e.g. \uicontrol
-    Alt+P to step to the \underline{P}rinting page. It is easy to
-    overdo this: there are only a few keys, and it's also important
-    to provide keyboard shortcuts for commands. \uicontrol Alt+P is also
-    used for Paste, Play, Print, and Print Here in the \l{Standard
-    Accelerator Keys} list, for example.
+    Alt+P to step to the \underline{P}rinting page. Keep in mind that it's easy
+    to overdo this, as there are only a few keys, and also important to provide
+    keyboard shortcuts for commands. Refer to the design guidelines for the
+    platform you target, for example Microsoft's \l
+    {https://learn.microsoft.com/en-us/previous-versions/windows/desktop/dnacc/guidelines-for-keyboard-user-interface-design}
+    {guidelines for keyboard user interface design} or Apple's \l
+    {https://developer.apple.com/design/human-interface-guidelines/inputs/focus-and-selection/}
+    {focus and selection} guidelines.
 
     \section2 The User Rotates the Mouse Wheel
 

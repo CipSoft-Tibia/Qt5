@@ -1,4 +1,4 @@
-// Copyright (c) 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,12 @@
 #include <algorithm>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 
+#include "base/debug/crash_logging.h"
+#include "base/debug/dump_without_crashing.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
@@ -21,11 +24,12 @@
 #include "content/browser/accessibility/browser_accessibility_win.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/common/content_client.h"
+#include "ui/accessibility/ax_common.h"
+#include "ui/accessibility/ax_enum_localization_util.h"
 #include "ui/accessibility/ax_enum_util.h"
 #include "ui/accessibility/ax_mode.h"
 #include "ui/accessibility/ax_role_properties.h"
 #include "ui/base/win/accessibility_ids_win.h"
-#include "ui/base/win/accessibility_misc_utils.h"
 #include "ui/base/win/atl_module.h"
 
 // There is no easy way to decouple |kScreenReader| and |kHTML| accessibility
@@ -35,11 +39,6 @@ const uint32_t kScreenReaderAndHTMLAccessibilityModes =
     ui::AXMode::kScreenReader | ui::AXMode::kHTML;
 
 namespace content {
-
-using BrowserAccessibilityPositionInstance =
-    BrowserAccessibilityPosition::AXPositionInstance;
-using AXPlatformRange =
-    ui::AXRange<BrowserAccessibilityPositionInstance::element_type>;
 
 void AddAccessibilityModeFlags(ui::AXMode mode_flags) {
   BrowserAccessibilityStateImpl::GetInstance()->AddAccessibilityModeFlags(
@@ -64,7 +63,7 @@ BrowserAccessibilityComWin::BrowserAccessibilityComWin()
       previous_scroll_x_(0),
       previous_scroll_y_(0) {}
 
-BrowserAccessibilityComWin::~BrowserAccessibilityComWin() {}
+BrowserAccessibilityComWin::~BrowserAccessibilityComWin() = default;
 
 //
 // IAccessible2 overrides:
@@ -99,7 +98,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_appName(BSTR* app_name) {
   // shell instead of Chrome.
   if (product_components.size() != 2)
     return E_FAIL;
-  *app_name = SysAllocString(base::UTF8ToUTF16(product_components[0]).c_str());
+  *app_name = SysAllocString(base::UTF8ToWide(product_components[0]).c_str());
   DCHECK(*app_name);
   return *app_name ? S_OK : E_FAIL;
 }
@@ -120,7 +119,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_appVersion(BSTR* app_version) {
   if (product_components.size() != 2)
     return E_FAIL;
   *app_version =
-      SysAllocString(base::UTF8ToUTF16(product_components[1]).c_str());
+      SysAllocString(base::UTF8ToWide(product_components[1]).c_str());
   DCHECK(*app_version);
   return *app_version ? S_OK : E_FAIL;
 }
@@ -142,7 +141,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_toolkitVersion(
     return E_INVALIDARG;
 
   std::string user_agent = GetContentClient()->browser()->GetUserAgent();
-  *toolkit_version = SysAllocString(base::UTF8ToUTF16(user_agent).c_str());
+  *toolkit_version = SysAllocString(base::UTF8ToWide(user_agent).c_str());
   DCHECK(*toolkit_version);
   return *toolkit_version ? S_OK : E_FAIL;
 }
@@ -232,7 +231,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_characterExtents(
   if (!out_x || !out_y || !out_width || !out_height)
     return E_INVALIDARG;
 
-  const base::string16& text_str = GetHypertext();
+  const std::u16string& text_str = GetHypertext();
   HandleSpecialTextOffset(&offset);
   if (offset < 0 || offset > static_cast<LONG>(text_str.size()))
     return E_INVALIDARG;
@@ -284,7 +283,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_text(LONG start_offset,
   if (!text)
     return E_INVALIDARG;
 
-  const base::string16& text_str = GetHypertext();
+  const std::u16string& text_str = GetHypertext();
   HandleSpecialTextOffset(&start_offset);
   HandleSpecialTextOffset(&end_offset);
 
@@ -298,12 +297,12 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_text(LONG start_offset,
   if (end_offset < 0 || end_offset > len)
     return E_INVALIDARG;
 
-  base::string16 substr =
+  std::u16string substr =
       text_str.substr(start_offset, end_offset - start_offset);
   if (substr.empty())
     return S_FALSE;
 
-  *text = SysAllocString(substr.c_str());
+  *text = SysAllocString(base::as_wcstr(substr));
   DCHECK(*text);
   return S_OK;
 }
@@ -326,8 +325,8 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_newText(
   if (new_len == 0)
     return E_FAIL;
 
-  base::string16 substr = GetHypertext().substr(start, new_len);
-  new_text->text = SysAllocString(substr.c_str());
+  std::u16string substr = GetHypertext().substr(start, new_len);
+  new_text->text = SysAllocString(base::as_wcstr(substr));
   new_text->start = static_cast<LONG>(start);
   new_text->end = static_cast<LONG>(start + new_len);
   return S_OK;
@@ -351,9 +350,9 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_oldText(
   if (old_len == 0)
     return E_FAIL;
 
-  base::string16 old_hypertext = old_hypertext_.hypertext;
-  base::string16 substr = old_hypertext.substr(start, old_len);
-  old_text->text = SysAllocString(substr.c_str());
+  std::u16string old_hypertext = old_hypertext_.hypertext;
+  std::u16string substr = old_hypertext.substr(start, old_len);
+  old_text->text = SysAllocString(base::as_wcstr(substr));
   old_text->start = static_cast<LONG>(start);
   old_text->end = static_cast<LONG>(start + old_len);
   return S_OK;
@@ -436,7 +435,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_attributes(
   if (!owner())
     return E_FAIL;
 
-  const base::string16 text = GetHypertext();
+  const std::u16string text = GetHypertext();
   HandleSpecialTextOffset(&offset);
   if (offset < 0 || offset > static_cast<LONG>(text.size()))
     return E_INVALIDARG;
@@ -460,7 +459,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_attributes(
       attributes_stream << attribute.first << ":" << attribute.second << ";";
     }
   }
-  base::string16 attributes_str = base::UTF8ToUTF16(attributes_stream.str());
+  std::wstring attributes_str = base::UTF8ToWide(attributes_stream.str());
 
   // Returning an empty string is valid and indicates no attributes.
   // This is better than returning S_FALSE which the screen reader
@@ -485,12 +484,18 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_nHyperlinks(
     return E_INVALIDARG;
 
   *hyperlink_count = hypertext_.hyperlink_offset_to_index.size();
+
+  DCHECK(!ui::IsIframe(owner()->GetRole()) || *hyperlink_count <= 1)
+      << "iframes should have 1 hyperlink, unless the child document is "
+         "destroyed/unloaded, in which case it should have 0";
+
   return S_OK;
 }
 
 IFACEMETHODIMP BrowserAccessibilityComWin::get_hyperlink(
     LONG index,
     IAccessibleHyperlink** hyperlink) {
+  *hyperlink = nullptr;
   WIN_ACCESSIBILITY_API_HISTOGRAM(UMA_API_GET_HYPERLINK);
   AddAccessibilityModeFlags(kScreenReaderAndHTMLAccessibilityModes);
   if (!owner())
@@ -501,9 +506,40 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_hyperlink(
     return E_INVALIDARG;
   }
 
+  DCHECK(!ui::IsIframe(owner()->GetRole()) || index == 0)
+      << "An iframe cannot have more than 1 hyperlink";
+
   int32_t id = hypertext_.hyperlinks[index];
-  auto* link = static_cast<BrowserAccessibilityComWin*>(
-      AXPlatformNodeWin::GetFromUniqueId(id));
+  AXPlatformNode* node = AXPlatformNodeWin::GetFromUniqueId(id);
+  if (!node) {
+    // TODO(https://crbug.com/id=1164043) Fix illegal hyperlink of iframes.
+    // Based on information received from DumpWithoutCrashing() reports, this
+    // is still sometimes occurring when get_hyperlink() is called on an
+    // iframe, which would have exactly 1 hyperlink and no text. The
+    // DumpWithoutCrashing() was removed to reduced crash report noise.
+    // Interestingly, the top url reported was always called "empty".
+    // Sample report for iframe issue: go/crash/93d7fce137a15ef0
+#if defined(AX_FAIL_FAST_BUILD)  // Fail in debug/sanitizers/clusterfuzz.
+    bool do_report = true;
+#else
+    std::srand(std::time(nullptr));             // Use current time as seed.
+    bool do_report = (std::rand() % 100 == 0);  // Roughly 1% of the time.
+#endif
+    if (do_report) {
+      LONG num_hyperlinks = -1;
+      get_nHyperlinks(&num_hyperlinks);
+      std::ostringstream error;
+      ui::AXTreeManager* manager = GetDelegate()->GetTreeManager();
+      LOG(FATAL) << "Hyperlink error:\n index=" << index
+                 << " nHyperLinks=" << hypertext_.hyperlinks.size()
+                 << " hyperlink_id=" << id
+                 << "\nparent=" << GetDelegate()->node()
+                 << "\nframe=" << manager->GetRoot()
+                 << "\nroot=" << manager->GetRootManager()->GetRoot();
+    }
+    return E_FAIL;
+  }
+  auto* link = static_cast<BrowserAccessibilityComWin*>(node);
   if (!link)
     return E_FAIL;
 
@@ -554,7 +590,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_anchor(LONG index,
   if (index != 0 || !anchor)
     return E_INVALIDARG;
 
-  BSTR ia2_hypertext = SysAllocString(GetHypertext().c_str());
+  BSTR ia2_hypertext = SysAllocString(base::as_wcstr(GetHypertext()));
   DCHECK(ia2_hypertext);
   anchor->vt = VT_BSTR;
   anchor->bstrVal = ia2_hypertext;
@@ -648,16 +684,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::nActions(LONG* n_actions) {
   if (!n_actions)
     return E_INVALIDARG;
 
-  // |IsHyperlink| is required for |IAccessibleHyperlink::anchor/anchorTarget|
-  // to work properly because the |IAccessibleHyperlink| interface inherits from
-  // |IAccessibleAction|.
-  if (IsHyperlink() ||
-      owner()->HasIntAttribute(ax::mojom::IntAttribute::kDefaultActionVerb)) {
-    *n_actions = 1;
-  } else {
-    *n_actions = 0;
-  }
-
+  *n_actions = static_cast<LONG>(owner()->GetSupportedActions().size());
   return S_OK;
 }
 
@@ -667,12 +694,14 @@ IFACEMETHODIMP BrowserAccessibilityComWin::doAction(LONG action_index) {
   if (!owner())
     return E_FAIL;
 
-  if (!owner()->HasIntAttribute(ax::mojom::IntAttribute::kDefaultActionVerb) ||
-      action_index != 0) {
+  const std::vector<ax::mojom::Action> actions = owner()->GetSupportedActions();
+  if (action_index < 0 || action_index >= static_cast<LONG>(actions.size()))
     return E_INVALIDARG;
-  }
 
-  Manager()->DoDefaultAction(*owner());
+  ui::AXActionData data;
+  data.action = actions[action_index];
+  owner()->AccessibilityPerformAction(data);
+
   return S_OK;
 }
 
@@ -690,7 +719,32 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_keyBinding(LONG action_index,
                                                           LONG* n_bindings) {
   WIN_ACCESSIBILITY_API_HISTOGRAM(UMA_API_GET_KEY_BINDING);
   AddAccessibilityModeFlags(kScreenReaderAndHTMLAccessibilityModes);
-  return E_NOTIMPL;
+  if (!owner())
+    return E_FAIL;
+
+  if (!key_bindings || !n_bindings)
+    return E_INVALIDARG;
+
+  *key_bindings = nullptr;
+  *n_bindings = 0;
+
+  const std::vector<ax::mojom::Action> actions = owner()->GetSupportedActions();
+  if (action_index < 0 || action_index >= static_cast<LONG>(actions.size()))
+    return E_INVALIDARG;
+
+  // Only the default action, in index 0, may have a key binding. If it does,
+  // it will be stored in the attribute kAccessKey.
+  std::u16string key_binding_string;
+  if (action_index != 0 || !owner()->HasDefaultActionVerb() ||
+      !owner()->GetString16Attribute(ax::mojom::StringAttribute::kAccessKey,
+                                     &key_binding_string)) {
+    return S_FALSE;
+  }
+
+  *n_bindings = 1;
+  *key_bindings = static_cast<BSTR*>(CoTaskMemAlloc(sizeof(BSTR)));
+  (*key_bindings)[0] = SysAllocString(base::as_wcstr(key_binding_string));
+  return S_OK;
 }
 
 IFACEMETHODIMP BrowserAccessibilityComWin::get_name(LONG action_index,
@@ -703,22 +757,29 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_name(LONG action_index,
   if (!name)
     return E_INVALIDARG;
 
-  int action;
-  if (!owner()->GetIntAttribute(ax::mojom::IntAttribute::kDefaultActionVerb,
-                                &action) ||
-      action_index != 0) {
+  const std::vector<ax::mojom::Action> actions = owner()->GetSupportedActions();
+  if (action_index < 0 || action_index >= static_cast<LONG>(actions.size())) {
     *name = nullptr;
     return E_INVALIDARG;
   }
 
-  base::string16 action_verb = base::UTF8ToUTF16(
-      ui::ToString(static_cast<ax::mojom::DefaultActionVerb>(action)));
-  if (action_verb.empty() || action_verb == L"none") {
+  int action;
+  std::string action_verb;
+  if (action_index == 0 &&
+      owner()->GetIntAttribute(ax::mojom::IntAttribute::kDefaultActionVerb,
+                               &action)) {
+    action_verb =
+        ui::ToString(static_cast<ax::mojom::DefaultActionVerb>(action));
+  } else {
+    action_verb = ui::ToString(actions[action_index]);
+  }
+
+  if (action_verb.empty() || action_verb.compare("none") == 0) {
     *name = nullptr;
     return S_FALSE;
   }
 
-  *name = SysAllocString(action_verb.c_str());
+  *name = SysAllocString(base::as_wcstr(base::UTF8ToUTF16(action_verb)));
   DCHECK(name);
   return S_OK;
 }
@@ -734,22 +795,30 @@ BrowserAccessibilityComWin::get_localizedName(LONG action_index,
   if (!localized_name)
     return E_INVALIDARG;
 
-  int action;
-  if (!owner()->GetIntAttribute(ax::mojom::IntAttribute::kDefaultActionVerb,
-                                &action) ||
-      action_index != 0) {
+  const std::vector<ax::mojom::Action> actions = owner()->GetSupportedActions();
+  if (action_index < 0 || action_index >= static_cast<LONG>(actions.size())) {
     *localized_name = nullptr;
     return E_INVALIDARG;
   }
 
-  base::string16 action_verb = base::UTF8ToUTF16(
-      ui::ToLocalizedString(static_cast<ax::mojom::DefaultActionVerb>(action)));
+  int action;
+  if (!owner()->GetIntAttribute(ax::mojom::IntAttribute::kDefaultActionVerb,
+                                &action) ||
+      action_index != 0) {
+    // There aren't localized names for actions except default ones, we fall
+    // back to returning the hard-coded, not localized name.
+    return get_name(action_index, localized_name);
+  }
+
+  std::string action_verb =
+      ui::ToLocalizedString(static_cast<ax::mojom::DefaultActionVerb>(action));
   if (action_verb.empty()) {
     *localized_name = nullptr;
     return S_FALSE;
   }
 
-  *localized_name = SysAllocString(action_verb.c_str());
+  *localized_name =
+      SysAllocString(base::as_wcstr(base::UTF8ToUTF16(action_verb)));
   DCHECK(localized_name);
   return S_OK;
 }
@@ -770,14 +839,14 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_URL(BSTR* url) {
   if (!url)
     return E_INVALIDARG;
 
-  if (owner() != manager->GetRoot())
+  if (owner() != manager->GetBrowserAccessibilityRoot())
     return E_FAIL;
 
   std::string str = manager->GetTreeData().url;
   if (str.empty())
     return S_FALSE;
 
-  *url = SysAllocString(base::UTF8ToUTF16(str).c_str());
+  *url = SysAllocString(base::UTF8ToWide(str).c_str());
   DCHECK(*url);
 
   return S_OK;
@@ -799,7 +868,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_title(BSTR* title) {
   if (str.empty())
     return S_FALSE;
 
-  *title = SysAllocString(base::UTF8ToUTF16(str).c_str());
+  *title = SysAllocString(base::UTF8ToWide(str).c_str());
   DCHECK(*title);
 
   return S_OK;
@@ -821,7 +890,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_mimeType(BSTR* mime_type) {
   if (str.empty())
     return S_FALSE;
 
-  *mime_type = SysAllocString(base::UTF8ToUTF16(str).c_str());
+  *mime_type = SysAllocString(base::UTF8ToWide(str).c_str());
   DCHECK(*mime_type);
 
   return S_OK;
@@ -843,7 +912,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_docType(BSTR* doc_type) {
   if (str.empty())
     return S_FALSE;
 
-  *doc_type = SysAllocString(base::UTF8ToUTF16(str).c_str());
+  *doc_type = SysAllocString(base::UTF8ToWide(str).c_str());
   DCHECK(*doc_type);
 
   return S_OK;
@@ -884,9 +953,9 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_nodeInfo(
     return E_INVALIDARG;
   }
 
-  base::string16 tag;
+  std::u16string tag;
   if (owner()->GetString16Attribute(ax::mojom::StringAttribute::kHtmlTag, &tag))
-    *node_name = SysAllocString(tag.c_str());
+    *node_name = SysAllocString(base::as_wcstr(tag));
   else
     *node_name = nullptr;
 
@@ -895,7 +964,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_nodeInfo(
   *num_children = owner()->PlatformChildCount();
   *unique_id = -AXPlatformNodeWin::GetUniqueId();
 
-  if (owner()->IsDocument()) {
+  if (ui::IsPlatformDocument(owner()->GetRole())) {
     *node_type = NODETYPE_DOCUMENT;
   } else if (owner()->IsText()) {
     *node_type = NODETYPE_TEXT;
@@ -934,10 +1003,10 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_attributes(USHORT max_attribs,
     if (attribute == "srcdoc" || attribute == "data-srcdoc")
       continue;
 
-    attrib_names[i] = SysAllocString(base::UTF8ToUTF16(attribute).c_str());
+    attrib_names[i] = SysAllocString(base::UTF8ToWide(attribute).c_str());
     name_space_id[i] = 0;
     attrib_values[i] = SysAllocString(
-        base::UTF8ToUTF16(owner()->GetHtmlAttributes()[i].second).c_str());
+        base::UTF8ToWide(owner()->GetHtmlAttributes()[i].second).c_str());
   }
   return S_OK;
 }
@@ -960,11 +1029,11 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_attributesForNames(
   for (USHORT i = 0; i < num_attribs; ++i) {
     name_space_id[i] = 0;
     bool found = false;
-    std::string name = base::UTF16ToUTF8((LPCWSTR)attrib_names[i]);
+    std::string name = base::WideToUTF8((LPCWSTR)attrib_names[i]);
     for (unsigned int j = 0; j < owner()->GetHtmlAttributes().size(); ++j) {
       if (owner()->GetHtmlAttributes()[j].first == name) {
         attrib_values[i] = SysAllocString(
-            base::UTF8ToUTF16(owner()->GetHtmlAttributes()[j].second).c_str());
+            base::UTF8ToWide(owner()->GetHtmlAttributes()[j].second).c_str());
         found = true;
         break;
       }
@@ -992,7 +1061,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_computedStyle(
 
   // We only cache a single style property for now: DISPLAY
 
-  base::string16 display;
+  std::u16string display;
   if (max_style_properties == 0 ||
       !owner()->GetString16Attribute(ax::mojom::StringAttribute::kDisplay,
                                      &display)) {
@@ -1002,7 +1071,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_computedStyle(
 
   *num_style_properties = 1;
   style_properties[0] = SysAllocString(L"display");
-  style_values[0] = SysAllocString(display.c_str());
+  style_values[0] = SysAllocString(base::as_wcstr(display));
 
   return S_OK;
 }
@@ -1023,12 +1092,12 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_computedStyleForProperties(
   // We only cache a single style property for now: DISPLAY
 
   for (USHORT i = 0; i < num_style_properties; ++i) {
-    base::string16 name = base::ToLowerASCII(
-        reinterpret_cast<const base::char16*>(style_properties[i]));
-    if (name == L"display") {
-      base::string16 display =
+    std::u16string name =
+        base::ToLowerASCII(base::as_u16cstr(style_properties[i]));
+    if (name == u"display") {
+      std::u16string display =
           owner()->GetString16Attribute(ax::mojom::StringAttribute::kDisplay);
-      style_values[i] = SysAllocString(display.c_str());
+      style_values[i] = SysAllocString(base::as_wcstr(display));
     } else {
       style_values[i] = NULL;
     }
@@ -1104,7 +1173,10 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_previousSibling(
   if (!node)
     return E_INVALIDARG;
 
-  if (!owner()->PlatformGetParent() || GetIndexInParent() <= 0) {
+  absl::optional<size_t> index_in_parent = absl::nullopt;
+  if (owner()->PlatformGetParent())
+    index_in_parent = GetIndexInParent();
+  if (!index_in_parent.has_value() || index_in_parent.value() == 0) {
     *node = NULL;
     return S_FALSE;
   }
@@ -1123,10 +1195,12 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_nextSibling(
   if (!node)
     return E_INVALIDARG;
 
-  if (!owner()->PlatformGetParent() || GetIndexInParent() < 0 ||
-      GetIndexInParent() >=
-          static_cast<int>(owner()->PlatformGetParent()->InternalChildCount()) -
-              1) {
+  absl::optional<size_t> index_in_parent = absl::nullopt;
+  if (owner()->PlatformGetParent())
+    index_in_parent = GetIndexInParent();
+  if (!index_in_parent.has_value() ||
+      (index_in_parent.value() + 1) >=
+          owner()->PlatformGetParent()->InternalChildCount()) {
     *node = NULL;
     return S_FALSE;
   }
@@ -1164,12 +1238,13 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_innerHTML(BSTR* innerHTML) {
   AddAccessibilityModeFlags(kScreenReaderAndHTMLAccessibilityModes);
   if (!owner())
     return E_FAIL;
-  if (owner()->GetRole() != ax::mojom::Role::kMath)
+  if (owner()->GetRole() != ax::mojom::Role::kMath &&
+      owner()->GetRole() != ax::mojom::Role::kMathMLMath)
     return E_NOTIMPL;
 
-  base::string16 inner_html =
+  std::u16string inner_html =
       owner()->GetString16Attribute(ax::mojom::StringAttribute::kInnerHtml);
-  *innerHTML = SysAllocString(inner_html.c_str());
+  *innerHTML = SysAllocString(base::as_wcstr(inner_html));
   DCHECK(*innerHTML);
   return S_OK;
 }
@@ -1191,7 +1266,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_language(BSTR* language) {
   if (!owner())
     return E_FAIL;
 
-  base::string16 lang = base::UTF8ToUTF16(owner()->node()->GetLanguage());
+  std::wstring lang = base::UTF8ToWide(owner()->node()->GetLanguage());
   if (lang.empty())
     lang = L"en-US";
 
@@ -1300,12 +1375,12 @@ IFACEMETHODIMP BrowserAccessibilityComWin::get_fontFamily(BSTR* font_family) {
   if (!owner())
     return E_FAIL;
 
-  base::string16 family = owner()->GetInheritedString16Attribute(
+  std::u16string family = owner()->GetInheritedString16Attribute(
       ax::mojom::StringAttribute::kFontFamily);
   if (family.empty())
     return S_FALSE;
 
-  *font_family = SysAllocString(family.c_str());
+  *font_family = SysAllocString(base::as_wcstr(family));
   DCHECK(*font_family);
   return S_OK;
 }
@@ -1327,7 +1402,8 @@ IFACEMETHODIMP BrowserAccessibilityComWin::QueryService(REFGUID guid_service,
     // on the root document vs on an iframe.
     BrowserAccessibility* node = owner();
     while (node->PlatformGetParent())
-      node = node->PlatformGetParent()->manager()->GetRoot();
+      node =
+          node->PlatformGetParent()->manager()->GetBrowserAccessibilityRoot();
     return ToBrowserAccessibilityComWin(node)->QueryInterface(IID_IAccessible2,
                                                               object);
   }
@@ -1342,6 +1418,7 @@ IFACEMETHODIMP BrowserAccessibilityComWin::QueryService(REFGUID guid_service,
       guid_service == IID_IAccessibleTable2 ||
       guid_service == IID_IAccessibleTableCell ||
       guid_service == IID_IAccessibleText ||
+      guid_service == IID_IAccessibleTextSelectionContainer ||
       guid_service == IID_IAccessibleValue ||
       guid_service == IID_ISimpleDOMDocument ||
       guid_service == IID_ISimpleDOMNode ||
@@ -1366,25 +1443,24 @@ STDMETHODIMP BrowserAccessibilityComWin::InternalQueryInterface(
   BrowserAccessibilityComWin* accessibility =
       reinterpret_cast<BrowserAccessibilityComWin*>(this_ptr);
 
-  if (!accessibility->owner()) {
+  if (!accessibility || !accessibility->owner()) {
     *object = nullptr;
     return E_NOINTERFACE;
   }
 
-  ax::mojom::Role role = accessibility->owner()->GetRole();
-
   if (iid == IID_IAccessibleImage) {
+    const ax::mojom::Role role = accessibility->owner()->GetRole();
     if (!ui::IsImage(role)) {
       *object = nullptr;
       return E_NOINTERFACE;
     }
   } else if (iid == IID_ISimpleDOMDocument) {
-    if (!ui::IsDocument(role)) {
+    if (!ui::IsPlatformDocument(accessibility->GetRole())) {
       *object = nullptr;
       return E_NOINTERFACE;
     }
   } else if (iid == IID_IAccessibleHyperlink) {
-    if (!accessibility || !accessibility->IsHyperlink()) {
+    if (!accessibility->IsHyperlink()) {
       *object = nullptr;
       return E_NOINTERFACE;
     }
@@ -1416,9 +1492,9 @@ void BrowserAccessibilityComWin::UpdateStep1ComputeWinAttributes() {
   old_win_attributes_.swap(win_attributes_);
 
   old_hypertext_ = hypertext_;
-  hypertext_ = ui::AXHypertext();
+  hypertext_ = ui::AXLegacyHypertext();
 
-  win_attributes_.reset(new WinAttributes());
+  win_attributes_ = std::make_unique<WinAttributes>();
 
   win_attributes_->ia_role = MSAARole();
   win_attributes_->ia_state = MSAAState();
@@ -1428,17 +1504,12 @@ void BrowserAccessibilityComWin::UpdateStep1ComputeWinAttributes() {
   // as the MSAA role.
   if (!win_attributes_->ia2_role)
     win_attributes_->ia2_role = win_attributes_->ia_role;
-
   win_attributes_->ia2_state = ComputeIA2State();
   win_attributes_->ia2_attributes = ComputeIA2Attributes();
-
-  win_attributes_->name = owner()->GetNameAsString16();
-
-  win_attributes_->description =
-      owner()->GetString16Attribute(ax::mojom::StringAttribute::kDescription);
-
-  win_attributes_->value = GetValue();
-
+  win_attributes_->name = base::UTF8ToWide(owner()->GetName());
+  win_attributes_->description = base::UTF8ToWide(
+      owner()->GetStringAttribute(ax::mojom::StringAttribute::kDescription));
+  win_attributes_->value = base::UTF16ToWide(GetValueForControl());
   win_attributes_->ignored = owner()->IsIgnored();
 }
 
@@ -1450,9 +1521,12 @@ void BrowserAccessibilityComWin::UpdateStep3FireEvents() {
   const bool ignored = owner()->IsIgnored();
 
   // Suppress all of these events when the node is ignored, or when the ignored
-  // state has changed.
-  if (ignored || (old_win_attributes_->ignored != ignored))
+  // state has changed on a node that isn't part of an active live region.
+  if (ignored || (old_win_attributes_->ignored != ignored &&
+                  !owner()->GetData().IsContainedInActiveLiveRegion() &&
+                  !owner()->GetData().IsActiveLiveRegionRoot())) {
     return;
+  }
 
   // The rest of the events only fire on changes, not on new objects.
 
@@ -1477,7 +1551,7 @@ void BrowserAccessibilityComWin::UpdateStep3FireEvents() {
     // AXEventGenerator, as they are providing redundant information and will
     // lead to duplicate announcements.
     if (name() == old_win_attributes_->name ||
-        GetData().GetNameFrom() == ax::mojom::NameFrom::kContents) {
+        GetNameFrom() == ax::mojom::NameFrom::kContents) {
       size_t start, old_len, new_len;
       ComputeHypertextRemovedAndInserted(&start, &old_len, &new_len);
       if (old_len > 0) {
@@ -1494,7 +1568,7 @@ void BrowserAccessibilityComWin::UpdateStep3FireEvents() {
   }
 
   old_win_attributes_.reset(nullptr);
-  old_hypertext_ = ui::AXHypertext();
+  old_hypertext_ = ui::AXLegacyHypertext();
 }
 
 BrowserAccessibilityManager* BrowserAccessibilityComWin::Manager() const {
@@ -1552,39 +1626,29 @@ BrowserAccessibilityComWin* BrowserAccessibilityComWin::GetTargetFromChildID(
 HRESULT BrowserAccessibilityComWin::GetStringAttributeAsBstr(
     ax::mojom::StringAttribute attribute,
     BSTR* value_bstr) {
-  base::string16 str;
   if (!owner())
     return E_FAIL;
 
+  std::u16string str;
   if (!owner()->GetString16Attribute(attribute, &str))
     return S_FALSE;
 
-  *value_bstr = SysAllocString(str.c_str());
+  *value_bstr = SysAllocString(base::as_wcstr(str));
   DCHECK(*value_bstr);
 
   return S_OK;
 }
 
 HRESULT BrowserAccessibilityComWin::GetNameAsBstr(BSTR* value_bstr) {
-  base::string16 str;
   if (!owner())
     return E_FAIL;
 
+  std::u16string str;
   str = owner()->GetNameAsString16();
-  *value_bstr = SysAllocString(str.c_str());
+  *value_bstr = SysAllocString(base::as_wcstr(str));
   DCHECK(*value_bstr);
 
   return S_OK;
-}
-
-// Pass in prefix with ":" included at the end, e.g. "invalid:".
-bool HasAttribute(const std::vector<base::string16>& existing_attributes,
-                  base::string16 prefix) {
-  for (const base::string16& attr : existing_attributes) {
-    if (base::StartsWith(attr, prefix, base::CompareCase::SENSITIVE))
-      return true;
-  }
-  return false;
 }
 
 void BrowserAccessibilityComWin::SetIA2HypertextSelection(LONG start_offset,
@@ -1639,7 +1703,7 @@ void BrowserAccessibilityComWin::FireNativeEvent(LONG win_event_type) const {
   // list popup is not part of the tree when its parent is collapsed but events
   // should be fired anyway.
   if (owner()->IsChildOfLeaf() &&
-      !owner()->GetCollapsedMenuListPopUpButtonAncestor()) {
+      !owner()->GetCollapsedMenuListSelectAncestor()) {
     return;
   }
 

@@ -1,12 +1,13 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/payments/content/installable_payment_app_crawler.h"
 
+#include <limits>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -20,13 +21,13 @@
 #include "content/public/browser/manifest_icon_downloader.h"
 #include "content/public/browser/payment_app_provider_util.h"
 #include "content/public/browser/permission_controller.h"
-#include "content/public/browser/permission_type.h"
+#include "content/public/browser/permission_result.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
-#include "third_party/blink/public/common/manifest/manifest.h"
 #include "third_party/blink/public/common/manifest/manifest_icon_selector.h"
+#include "third_party/blink/public/common/permissions/permission_utils.h"
 #include "third_party/blink/public/mojom/devtools/console_message.mojom.h"
 #include "ui/gfx/geometry/size.h"
 #include "url/gurl.h"
@@ -46,9 +47,7 @@ InstallablePaymentAppCrawler::InstallablePaymentAppCrawler(
     : log_(content::WebContents::FromRenderFrameHost(
           initiator_render_frame_host)),
       merchant_origin_(merchant_origin),
-      initiator_frame_routing_id_(content::GlobalFrameRoutingId(
-          initiator_render_frame_host->GetProcess()->GetID(),
-          initiator_render_frame_host->GetRoutingID())),
+      initiator_frame_routing_id_(initiator_render_frame_host->GetGlobalId()),
       downloader_(downloader),
       parser_(parser),
       number_of_payment_method_manifest_to_download_(0),
@@ -93,14 +92,12 @@ void InstallablePaymentAppCrawler::Start(
 
   if (manifests_to_download.empty()) {
     // Post the result back asynchronously.
-    content::GetUIThreadTaskRunner({})->PostTask(
-        FROM_HERE,
-        base::BindOnce(
-            &InstallablePaymentAppCrawler::FinishCrawlingPaymentAppsIfReady,
-            weak_ptr_factory_.GetWeakPtr()));
+    PostTaskToFinishCrawlingPaymentAppsIfReady();
     return;
   }
 
+  // May cause this InstallablePaymentAppCrawler object to be synchronously
+  // deleted in the last iteration, so no code should come after the loop.
   number_of_payment_method_manifest_to_download_ = manifests_to_download.size();
   for (const auto& url : manifests_to_download) {
     downloader_->DownloadPaymentMethodManifest(
@@ -165,20 +162,33 @@ void InstallablePaymentAppCrawler::OnPaymentMethodManifestParsed(
     return;
 
   content::PermissionController* permission_controller =
-      content::BrowserContext::GetPermissionController(
-          rfh->GetBrowserContext());
+      rfh->GetBrowserContext()->GetPermissionController();
   DCHECK(permission_controller);
 
+  // If there are no valid entries in default_applications, this task will
+  // finish the crawling.
+  PostTaskToFinishCrawlingPaymentAppsIfReady();
+
+  // The `DownloadWebAppManifest()` method may synchronously call
+  // `OnPaymentWebAppManifestDownloaded()`, e.g., if the owning page has gone
+  // away already. This may result in this InstallablePaymentAppCrawler object
+  // to be deleted, so no code should be run after this loop.
+  //
+  // Note that only the last iteration of the loop can result in a deletion, as
+  // `number_of_web_app_manifest_to_download_` must be zero for this to happen.
+  number_of_web_app_manifest_to_download_ += default_applications.size();
   for (const auto& web_app_manifest_url : default_applications) {
     if (downloaded_web_app_manifests_.find(web_app_manifest_url) !=
         downloaded_web_app_manifests_.end()) {
       // Do not download the same web app manifest again since a web app could
       // be the default application of multiple payment methods.
+      number_of_web_app_manifest_to_download_--;
       continue;
     }
 
     if (!IsSameOriginWith(method_manifest_url_after_redirects,
                           web_app_manifest_url)) {
+      number_of_web_app_manifest_to_download_--;
       std::string error_message = base::ReplaceStringPlaceholders(
           errors::kCrossOriginWebAppManifestNotAllowed,
           {web_app_manifest_url.spec(),
@@ -188,25 +198,32 @@ void InstallablePaymentAppCrawler::OnPaymentMethodManifestParsed(
       continue;
     }
 
-    if (permission_controller->GetPermissionStatus(
-            content::PermissionType::PAYMENT_HANDLER,
-            web_app_manifest_url.GetOrigin(),
-            web_app_manifest_url.GetOrigin()) !=
-        blink::mojom::PermissionStatus::GRANTED) {
+    if (permission_controller
+            ->GetPermissionResultForOriginWithoutContext(
+                blink::PermissionType::PAYMENT_HANDLER,
+                url::Origin::Create(web_app_manifest_url))
+            .status != blink::mojom::PermissionStatus::GRANTED) {
       // Do not download the web app manifest if it is blocked.
+      number_of_web_app_manifest_to_download_--;
       continue;
     }
 
-    number_of_web_app_manifest_to_download_++;
     downloaded_web_app_manifests_.insert(web_app_manifest_url);
 
     if (method_manifest_url_after_redirects == web_app_manifest_url) {
+      // For this to happen, the payment manifest must have been valid which
+      // means its content should have been non-empty. If somehow we get here
+      // but content is empty, it would cause a synchronous deletion of 'this',
+      // so guard against that.
+      CHECK(!content.empty());
       OnPaymentWebAppManifestDownloaded(
           method_manifest_url, web_app_manifest_url, web_app_manifest_url,
           content, /*error_message=*/"");
       continue;
     }
 
+    // May cause this InstallablePaymentAppCrawler object to be synchronously
+    // deleted in the last iteration of the loop.
     downloader_->DownloadWebAppManifest(
         url::Origin::Create(method_manifest_url_after_redirects),
         web_app_manifest_url,
@@ -215,8 +232,6 @@ void InstallablePaymentAppCrawler::OnPaymentMethodManifestParsed(
             weak_ptr_factory_.GetWeakPtr(), method_manifest_url,
             web_app_manifest_url));
   }
-
-  FinishCrawlingPaymentAppsIfReady();
 }
 
 void InstallablePaymentAppCrawler::OnPaymentWebAppManifestDownloaded(
@@ -408,7 +423,7 @@ bool InstallablePaymentAppCrawler::DownloadAndDecodeWebAppIcon(
     manifest_icon.src = icon_src;
     manifest_icon.type = base::UTF8ToUTF16(icon.type);
     manifest_icon.purpose.emplace_back(
-        blink::Manifest::ImageResource::Purpose::ANY);
+        blink::mojom::ManifestImageResource_Purpose::ANY);
     // TODO(crbug.com/782270): Parse icon sizes.
     manifest_icon.sizes.emplace_back(gfx::Size());
     manifest_icons.emplace_back(manifest_icon);
@@ -427,28 +442,26 @@ bool InstallablePaymentAppCrawler::DownloadAndDecodeWebAppIcon(
   // TODO(crbug.com/1058840): Move this sanity check to ManifestIconDownloader
   // after DownloadImage refactor is done.
   auto* rfh = content::RenderFrameHost::FromID(initiator_frame_routing_id_);
-  if (!rfh || !rfh->IsCurrent()) {
+  auto* web_contents = rfh && rfh->IsActive()
+                           ? content::WebContents::FromRenderFrameHost(rfh)
+                           : nullptr;
+  if (!web_contents) {
     log_.Warn(
         "Cannot download icons after the webpage has been closed (web app "
         "manifest \"" +
         web_app_manifest_url.spec() + "\" for payment handler manifest \"" +
         method_manifest_url.spec() + "\").");
     // Post the result back asynchronously.
-    content::GetUIThreadTaskRunner({})->PostTask(
-        FROM_HERE,
-        base::BindOnce(
-            &InstallablePaymentAppCrawler::FinishCrawlingPaymentAppsIfReady,
-            weak_ptr_factory_.GetWeakPtr()));
+    PostTaskToFinishCrawlingPaymentAppsIfReady();
     return false;
   }
 
-  auto* web_contents = content::WebContents::FromRenderFrameHost(rfh);
   gfx::NativeView native_view = web_contents->GetNativeView();
   GURL best_icon_url = blink::ManifestIconSelector::FindBestMatchingIcon(
       manifest_icons, IconSizeCalculator::IdealIconHeight(native_view),
       IconSizeCalculator::MinimumIconHeight(),
       content::ManifestIconDownloader::kMaxWidthToHeightRatio,
-      blink::Manifest::ImageResource::Purpose::ANY);
+      blink::mojom::ManifestImageResource_Purpose::ANY);
   if (!best_icon_url.is_valid()) {
     log_.Warn("No suitable icon found in web app manifest \"" +
               web_app_manifest_url.spec() +
@@ -463,6 +476,7 @@ bool InstallablePaymentAppCrawler::DownloadAndDecodeWebAppIcon(
       web_contents, downloader_->FindTestServerURL(best_icon_url),
       IconSizeCalculator::IdealIconHeight(native_view),
       IconSizeCalculator::MinimumIconHeight(),
+      /* maximum_icon_size_in_px= */ std::numeric_limits<int>::max(),
       base::BindOnce(
           &InstallablePaymentAppCrawler::OnPaymentWebAppIconDownloadAndDecoded,
           weak_ptr_factory_.GetWeakPtr(), method_manifest_url,
@@ -516,6 +530,15 @@ void InstallablePaymentAppCrawler::OnPaymentWebAppIconDownloadAndDecoded(
   }
 
   FinishCrawlingPaymentAppsIfReady();
+}
+
+void InstallablePaymentAppCrawler::
+    PostTaskToFinishCrawlingPaymentAppsIfReady() {
+  content::GetUIThreadTaskRunner({})->PostTask(
+      FROM_HERE,
+      base::BindOnce(
+          &InstallablePaymentAppCrawler::FinishCrawlingPaymentAppsIfReady,
+          weak_ptr_factory_.GetWeakPtr()));
 }
 
 void InstallablePaymentAppCrawler::FinishCrawlingPaymentAppsIfReady() {

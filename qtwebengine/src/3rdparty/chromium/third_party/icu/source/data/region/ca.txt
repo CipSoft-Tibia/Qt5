@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 ca{
     Countries{
         001{"Món"}
@@ -59,7 +60,7 @@ ca{
         BH{"Bahrain"}
         BI{"Burundi"}
         BJ{"Benín"}
-        BL{"Saint Barthélemy"}
+        BL{"Saint-Barthélemy"}
         BM{"Bermudes"}
         BN{"Brunei"}
         BO{"Bolívia"}
@@ -125,7 +126,7 @@ ca{
         GL{"Groenlàndia"}
         GM{"Gàmbia"}
         GN{"Guinea"}
-        GP{"Guadeloupe"}
+        GP{"Guadalupe"}
         GQ{"Guinea Equatorial"}
         GR{"Grècia"}
         GS{"Illes Geòrgia del Sud i Sandwich del Sud"}
@@ -155,11 +156,11 @@ ca{
         JO{"Jordània"}
         JP{"Japó"}
         KE{"Kenya"}
-        KG{"Kirguizistan"}
+        KG{"Kirguizstan"}
         KH{"Cambodja"}
         KI{"Kiribati"}
         KM{"Comores"}
-        KN{"Saint Christopher i Nevis"}
+        KN{"Saint Kitts i Nevis"}
         KP{"Corea del Nord"}
         KR{"Corea del Sud"}
         KW{"Kuwait"}
@@ -188,7 +189,7 @@ ca{
         MM{"Myanmar (Birmània)"}
         MN{"Mongòlia"}
         MO{"Macau"}
-        MP{"Illes Mariannes del Nord"}
+        MP{"Illes Mariannes Septentrionals"}
         MQ{"Martinica"}
         MR{"Mauritània"}
         MS{"Montserrat"}
@@ -239,7 +240,7 @@ ca{
         SD{"Sudan"}
         SE{"Suècia"}
         SG{"Singapur"}
-        SH{"Saint Helena"}
+        SH{"Santa Helena"}
         SI{"Eslovènia"}
         SJ{"Svalbard i Jan Mayen"}
         SK{"Eslovàquia"}
@@ -253,7 +254,7 @@ ca{
         SV{"El Salvador"}
         SX{"Sint Maarten"}
         SY{"Síria"}
-        SZ{"eSwatini"}
+        SZ{"Eswatini"}
         TA{"Tristan da Cunha"}
         TC{"Illes Turks i Caicos"}
         TD{"Txad"}
@@ -262,7 +263,7 @@ ca{
         TH{"Tailàndia"}
         TJ{"Tadjikistan"}
         TK{"Tokelau"}
-        TL{"Timor Oriental"}
+        TL{"Timor-Leste"}
         TM{"Turkmenistan"}
         TN{"Tunísia"}
         TO{"Tonga"}
@@ -281,8 +282,8 @@ ca{
         VA{"Ciutat del Vaticà"}
         VC{"Saint Vincent i les Grenadines"}
         VE{"Veneçuela"}
-        VG{"Illes Verges Britàniques"}
-        VI{"Illes Verges Nord-americanes"}
+        VG{"Illes Verges britàniques"}
+        VI{"Illes Verges nord-americanes"}
         VN{"Vietnam"}
         VU{"Vanuatu"}
         WF{"Wallis i Futuna"}
@@ -303,11 +304,12 @@ ca{
         US{"EUA"}
     }
     Countries%variant{
-        CD{"Congo (RDC)"}
-        CG{"Congo (República del Congo)"}
+        CD{"República Democràtica del Congo"}
+        CG{"República del Congo"}
         CI{"Costa d’Ivori"}
         CZ{"República Txeca"}
+        NZ{"Aotearoa (Nova Zelanda)"}
         SZ{"Swazilàndia"}
+        TL{"Timor Oriental"}
     }
-    Version{"37"}
 }

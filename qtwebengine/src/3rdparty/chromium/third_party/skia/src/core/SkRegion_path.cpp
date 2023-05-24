@@ -6,13 +6,13 @@
  */
 
 #include "include/core/SkPath.h"
-#include "include/private/SkTDArray.h"
-#include "include/private/SkTo.h"
+#include "include/private/base/SkTDArray.h"
+#include "include/private/base/SkTo.h"
+#include "src/base/SkSafeMath.h"
+#include "src/base/SkTSort.h"
 #include "src/core/SkBlitter.h"
 #include "src/core/SkRegionPriv.h"
-#include "src/core/SkSafeMath.h"
 #include "src/core/SkScan.h"
-#include "src/core/SkTSort.h"
 
 // The rgnbuilder caller *seems* to pass short counts, possible often seens early failure, so
 // we may not want to promote this to a "std" routine just yet.
@@ -253,7 +253,7 @@ static unsigned verb_to_initial_last_index(unsigned verb) {
         0,  //  kClose_Verb
         0   //  kDone_Verb
     };
-    SkASSERT((unsigned)verb < SK_ARRAY_COUNT(gPathVerbToInitialLastIndex));
+    SkASSERT((unsigned)verb < std::size(gPathVerbToInitialLastIndex));
     return gPathVerbToInitialLastIndex[verb];
 }
 
@@ -267,7 +267,7 @@ static unsigned verb_to_max_edges(unsigned verb) {
         0,  //  kClose_Verb
         0   //  kDone_Verb
     };
-    SkASSERT((unsigned)verb < SK_ARRAY_COUNT(gPathVerbToMaxEdges));
+    SkASSERT((unsigned)verb < std::size(gPathVerbToMaxEdges));
     return gPathVerbToMaxEdges[verb];
 }
 
@@ -322,11 +322,10 @@ static bool check_inverse_on_empty_return(SkRegion* dst, const SkPath& path, con
 bool SkRegion::setPath(const SkPath& path, const SkRegion& clip) {
     SkDEBUGCODE(SkRegionPriv::Validate(*this));
 
-    if (clip.isEmpty() || !path.isFinite()) {
-        return this->setEmpty();
-    }
-
-    if (path.isEmpty()) {
+    if (clip.isEmpty() || !path.isFinite() || path.isEmpty()) {
+        // This treats non-finite paths as empty as well, so this returns empty or 'clip' if
+        // it's inverse-filled. If clip is also empty, path's fill type doesn't really matter
+        // and this region ends up empty.
         return check_inverse_on_empty_return(this, path, clip);
     }
 
@@ -365,7 +364,7 @@ bool SkRegion::setPath(const SkPath& path, const SkRegion& clip) {
         return this->setEmpty();
     }
 
-    SkScan::FillPath(path.view(), clip, &builder);
+    SkScan::FillPath(path, clip, &builder);
     builder.done();
 
     int count = builder.computeRunCount();
@@ -522,7 +521,7 @@ bool SkRegion::getBoundaryPath(SkPath* path) const {
         edge[1].set(r.fRight, r.fTop, r.fBottom);
     }
 
-    int count = edges.count();
+    int count = edges.size();
     Edge* start = edges.begin();
     Edge* stop = start + count;
     SkTQSort<Edge>(start, stop, EdgeLT());

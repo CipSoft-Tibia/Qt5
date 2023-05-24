@@ -1,13 +1,10 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // Original code copyright 2014 Foxit Software Inc. http://www.foxitsoftware.com
 
 #include "xfa/fxfa/cxfa_eventparam.h"
-
-#include "xfa/fxfa/fxfa.h"
-#include "xfa/fxfa/parser/cxfa_node.h"
 
 CXFA_EventParam::CXFA_EventParam() = default;
 

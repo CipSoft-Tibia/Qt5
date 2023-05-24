@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "inspecttool.h"
 #include "highlight.h"
@@ -71,7 +35,7 @@ InspectTool::InspectTool(QQuickWindowInspector *inspector, QQuickWindow *view) :
     connect(&m_nameDisplayTimer, &QTimer::timeout, this, &InspectTool::showItemName);
 }
 
-void InspectTool::enterEvent(QEvent *)
+void InspectTool::enterEvent(QEnterEvent *)
 {
     m_hoverHighlight->setVisible(true);
 }
@@ -83,7 +47,7 @@ void InspectTool::leaveEvent(QEvent *)
 
 void InspectTool::mousePressEvent(QMouseEvent *event)
 {
-    m_mousePosition = event->localPos();
+    m_mousePosition = event->position();
     if (event->button() == Qt::LeftButton) {
         selectItem();
         m_hoverHighlight->setVisible(false);
@@ -92,7 +56,7 @@ void InspectTool::mousePressEvent(QMouseEvent *event)
 
 void InspectTool::mouseDoubleClickEvent(QMouseEvent *event)
 {
-    m_mousePosition = event->localPos();
+    m_mousePosition = event->position();
     if (event->button() == Qt::LeftButton) {
         selectNextItem();
         m_hoverHighlight->setVisible(false);
@@ -106,8 +70,8 @@ void InspectTool::mouseMoveEvent(QMouseEvent *event)
 
 void InspectTool::hoverMoveEvent(QMouseEvent *event)
 {
-    m_mousePosition = event->localPos();
-    QQuickItem *item = inspector()->topVisibleItemAt(event->pos());
+    m_mousePosition = event->position();
+    QQuickItem *item = inspector()->topVisibleItemAt(event->position().toPoint());
     if (!item || item == m_lastClickedItem) {
         m_hoverHighlight->setVisible(false);
     } else {
@@ -118,26 +82,26 @@ void InspectTool::hoverMoveEvent(QMouseEvent *event)
 
 void InspectTool::touchEvent(QTouchEvent *event)
 {
-    QList<QTouchEvent::TouchPoint> touchPoints = event->touchPoints();
+    const auto &touchPoints = event->points();
 
     switch (event->type()) {
     case QEvent::TouchBegin:
-        if (touchPoints.count() == 1 && (event->touchPointStates() & Qt::TouchPointPressed)) {
-            m_mousePosition = touchPoints.first().pos();
+        if (touchPoints.size() == 1 && (event->touchPointStates() & QEventPoint::State::Pressed)) {
+            m_mousePosition = touchPoints.first().position();
             m_tapEvent = true;
         } else {
             m_tapEvent = false;
         }
         break;
     case QEvent::TouchUpdate: {
-        if (touchPoints.count() > 1)
+        if (touchPoints.size() > 1)
             m_tapEvent = false;
-        else if ((touchPoints.count() == 1) && (event->touchPointStates() & Qt::TouchPointMoved))
-            m_mousePosition = touchPoints.first().pos();
+        else if ((touchPoints.size() == 1) && (event->touchPointStates() & QEventPoint::State::Updated))
+            m_mousePosition = touchPoints.first().position();
         break;
     }
     case QEvent::TouchEnd: {
-        if (touchPoints.count() == 1 && m_tapEvent) {
+        if (touchPoints.size() == 1 && m_tapEvent) {
             m_tapEvent = false;
             bool doubleTap = event->timestamp() - m_touchTimestamp
                     < static_cast<ulong>(QGuiApplication::styleHints()->mouseDoubleClickInterval());
@@ -161,9 +125,9 @@ void InspectTool::selectNextItem()
     if (m_lastClickedItem != inspector()->topVisibleItemAt(m_mousePosition))
         return;
     QList<QQuickItem*> items = inspector()->itemsAt(m_mousePosition);
-    for (int i = 0; i < items.count(); i++) {
+    for (int i = 0; i < items.size(); i++) {
         if (m_lastItem == items[i]) {
-            if (i + 1 < items.count())
+            if (i + 1 < items.size())
                 m_lastItem = items[i+1];
             else
                 m_lastItem = items[0];

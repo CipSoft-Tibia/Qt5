@@ -1,0 +1,29 @@
+Version: 2
+Configurations:
+-
+    Id: 'sles-15_sp5-minimal-static'
+    Template: 'qtci-linux-SLES-15_SP5-x86_64-50'
+    Compiler: 'GCC'
+    Features: ['Sccache', 'MinimalStaticTests', 'UseConfigure']
+    Configure arguments: '-nomake examples -static -no-sql-mysql'
+    Environment variables: [
+        'CMAKE_ARGS=-DOPENSSL_ROOT_DIR={{.Env.OPENSSL_HOME}}'
+    ]
+-
+    Id: 'windows-10_22h2-minimal-static'
+    Template: 'qtci-windows-10_22H2-x86_64-51'
+    Compiler: 'MSVC2019'
+    Features: ['Sccache', 'MinimalStaticTests', 'UseConfigure']
+    Configure arguments: '-release -force-debug-info -static -nomake examples -qt-zlib'
+    Environment variables: [
+        'CMAKE_ARGS=-DFEATURE_msvc_obj_debug_info=ON -DOPENSSL_ROOT_DIR={{.Env.OPENSSL_INCLUDE_x64}}\..',
+        'LLVM_INSTALL_DIR={{.Env.LLVM_INSTALL_DIR_msvc}}',
+        'Protobuf_ROOT={{.Env.Protobuf_ROOT_msvc}}',
+        'gRPC_ROOT={{.Env.gRPC_ROOT_msvc}}',
+    ]
+-
+    Id: 'macos-11-minimal-static'
+    Template: 'qtci-macos-11-x86_64-106'
+    Compiler: 'Clang'
+    Features: ['Sccache', 'MinimalStaticTests', 'UseConfigure']
+    Configure arguments: '-nomake examples -release -force-debug-info -static -no-framework'

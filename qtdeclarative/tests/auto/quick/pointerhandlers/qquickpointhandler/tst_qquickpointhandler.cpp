@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 
@@ -33,13 +8,15 @@
 #include <QtQuick/private/qquickpointhandler_p.h>
 #include <qpa/qwindowsysteminterface.h>
 
+#include <private/qhighdpiscaling_p.h>
 #include <private/qquickwindow_p.h>
 
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlproperty.h>
 
-#include "../../../shared/util.h"
-#include "../../shared/viewtestutil.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/viewtestutils_p.h>
+#include <QtQuickTestUtils/private/visualtestutils_p.h>
 
 Q_LOGGING_CATEGORY(lcPointerTests, "qt.quick.pointer.tests")
 
@@ -48,21 +25,23 @@ class tst_PointHandler : public QQmlDataTest
     Q_OBJECT
 public:
     tst_PointHandler()
-        : touchDevice(QTest::createTouchDevice())
+        : QQmlDataTest(QT_QMLTEST_DATADIR)
+        , touchDevice(QTest::createTouchDevice())
     {}
 
 private slots:
-    void initTestCase();
+    void initTestCase() override;
 
     void singleTouch();
     void tabletStylus();
     void simultaneousMultiTouch();
     void pressedMultipleButtons_data();
     void pressedMultipleButtons();
+    void ignoreSystemSynthMouse();
 
 private:
     void createView(QScopedPointer<QQuickView> &window, const char *fileName);
-    QTouchDevice *touchDevice;
+    QPointingDevice *touchDevice;
 };
 
 void tst_PointHandler::createView(QScopedPointer<QQuickView> &window, const char *fileName)
@@ -70,8 +49,8 @@ void tst_PointHandler::createView(QScopedPointer<QQuickView> &window, const char
     window.reset(new QQuickView);
     window->setSource(testFileUrl(fileName));
     QTRY_COMPARE(window->status(), QQuickView::Ready);
-    QQuickViewTestUtil::centerOnScreen(window.data());
-    QQuickViewTestUtil::moveMouseAway(window.data());
+    QQuickVisualTestUtils::centerOnScreen(window.data());
+    QQuickVisualTestUtils::moveMouseAway(window.data());
 
     window->show();
     QVERIFY(QTest::qWaitForWindowActive(window.data()));
@@ -104,20 +83,20 @@ void tst_PointHandler::singleTouch()
     QTest::touchEvent(window, touchDevice).press(1, point, window);
     QQuickTouchUtils::flush(window);
     QTRY_COMPARE(handler->active(), true);
-    QCOMPARE(activeSpy.count(), 1);
-    QCOMPARE(pointSpy.count(), 1);
+    QCOMPARE(activeSpy.size(), 1);
+    QCOMPARE(pointSpy.size(), 1);
     QCOMPARE(handler->point().position().toPoint(), point);
     QCOMPARE(handler->point().scenePosition().toPoint(), point);
     QCOMPARE(handler->point().pressedButtons(), Qt::NoButton);
     QCOMPARE(handler->translation(), QVector2D());
-    QCOMPARE(translationSpy.count(), 1);
+    QCOMPARE(translationSpy.size(), 1);
 
     point += QPoint(10, 10);
     QTest::touchEvent(window, touchDevice).move(1, point, window);
     QQuickTouchUtils::flush(window);
     QCOMPARE(handler->active(), true);
-    QCOMPARE(activeSpy.count(), 1);
-    QCOMPARE(pointSpy.count(), 2);
+    QCOMPARE(activeSpy.size(), 1);
+    QCOMPARE(pointSpy.size(), 2);
     QCOMPARE(handler->point().position().toPoint(), point);
     QCOMPARE(handler->point().scenePosition().toPoint(), point);
     QCOMPARE(handler->point().pressPosition().toPoint(), QPoint(100, 100));
@@ -126,15 +105,15 @@ void tst_PointHandler::singleTouch()
     QVERIFY(handler->point().velocity().x() > 0);
     QVERIFY(handler->point().velocity().y() > 0);
     QCOMPARE(handler->translation(), QVector2D(10, 10));
-    QCOMPARE(translationSpy.count(), 2);
+    QCOMPARE(translationSpy.size(), 2);
 
     QTest::touchEvent(window, touchDevice).release(1, point, window);
     QQuickTouchUtils::flush(window);
     QTRY_COMPARE(handler->active(), false);
-    QCOMPARE(activeSpy.count(), 2);
-    QCOMPARE(pointSpy.count(), 3);
+    QCOMPARE(activeSpy.size(), 2);
+    QCOMPARE(pointSpy.size(), 3);
     QCOMPARE(handler->translation(), QVector2D());
-    QCOMPARE(translationSpy.count(), 3);
+    QCOMPARE(translationSpy.size(), 3);
 }
 
 void tst_PointHandler::tabletStylus()
@@ -145,55 +124,60 @@ void tst_PointHandler::tabletStylus()
     QQuickView * window = windowPtr.data();
     QQuickPointHandler *handler = window->rootObject()->findChild<QQuickPointHandler *>("pointHandler");
     QVERIFY(handler);
-    handler->setAcceptedDevices(QQuickPointerDevice::Stylus);
+    handler->setAcceptedDevices(QInputDevice::DeviceType::Stylus);
+    // avoid generating a double click
+    QTest::qWait(qApp->styleHints()->mouseDoubleClickInterval() + 10);
 
     QSignalSpy activeSpy(handler, SIGNAL(activeChanged()));
     QSignalSpy pointSpy(handler, SIGNAL(pointChanged()));
     QSignalSpy translationSpy(handler, SIGNAL(translationChanged()));
 
     QPoint point(100,100);
+    QPoint pointLocalDPI = QHighDpi::fromNativeLocalPosition(point, window);
     const qint64 stylusId = 1234567890;
 
     QWindowSystemInterface::handleTabletEvent(window, point, window->mapToGlobal(point),
-        QTabletEvent::Stylus, QTabletEvent::Pen, Qt::LeftButton, 0.5, 25, 35, 0.6, 12.3, 3, stylusId, Qt::NoModifier);
+        int(QInputDevice::DeviceType::Stylus), int(QPointingDevice::PointerType::Pen), Qt::LeftButton, 0.5, 25, 35, 0.6, 12.3, 3, stylusId, Qt::NoModifier);
     QTRY_COMPARE(handler->active(), true);
-    QCOMPARE(activeSpy.count(), 1);
-    QCOMPARE(pointSpy.count(), 1);
-    QCOMPARE(handler->point().position().toPoint(), point);
-    QCOMPARE(handler->point().scenePosition().toPoint(), point);
+    QCOMPARE(activeSpy.size(), 1);
+    QCOMPARE(pointSpy.size(), 1);
+    QCOMPARE(handler->point().position().toPoint(), pointLocalDPI);
+    QCOMPARE(handler->point().scenePosition().toPoint(), pointLocalDPI);
     QCOMPARE(handler->point().pressedButtons(), Qt::LeftButton);
     QCOMPARE(handler->point().pressure(), 0.5);
     QCOMPARE(handler->point().rotation(), 12.3);
     QCOMPARE(handler->point().uniqueId().numericId(), stylusId);
     QCOMPARE(handler->translation(), QVector2D());
-    QCOMPARE(translationSpy.count(), 1);
+    QCOMPARE(translationSpy.size(), 1);
 
-    point += QPoint(10, 10);
+    QPoint delta(10, 10);
+    QPoint deltaLocalDPI = QHighDpi::fromNativeLocalPosition(delta, window);
+    point += delta;
     QWindowSystemInterface::handleTabletEvent(window, point, window->mapToGlobal(point),
-        QTabletEvent::Stylus, QTabletEvent::Pen, Qt::LeftButton, 0.45, 23, 33, 0.57, 15.6, 3.4, stylusId, Qt::NoModifier);
-    QTRY_COMPARE(pointSpy.count(), 2);
+        int(QInputDevice::DeviceType::Stylus), int(QPointingDevice::PointerType::Pen), Qt::LeftButton, 0.45, 23, 33, 0.57, 15.6, 3, stylusId, Qt::NoModifier);
+    QTRY_COMPARE(pointSpy.size(), 2);
     QCOMPARE(handler->active(), true);
-    QCOMPARE(activeSpy.count(), 1);
-    QCOMPARE(handler->point().position().toPoint(), point);
-    QCOMPARE(handler->point().scenePosition().toPoint(), point);
-    QCOMPARE(handler->point().pressPosition().toPoint(), QPoint(100, 100));
-    QCOMPARE(handler->point().scenePressPosition().toPoint(), QPoint(100, 100));
+    QCOMPARE(activeSpy.size(), 1);
+    QCOMPARE(handler->point().position().toPoint(), pointLocalDPI + deltaLocalDPI);
+    QCOMPARE(handler->point().scenePosition().toPoint(), pointLocalDPI + deltaLocalDPI);
+    QCOMPARE(handler->point().pressPosition().toPoint(), pointLocalDPI);
+    QCOMPARE(handler->point().scenePressPosition().toPoint(), pointLocalDPI);
     QCOMPARE(handler->point().pressedButtons(), Qt::LeftButton);
     QCOMPARE(handler->point().pressure(), 0.45);
     QCOMPARE(handler->point().rotation(), 15.6);
     QCOMPARE(handler->point().uniqueId().numericId(), stylusId);
-    QVERIFY(handler->point().velocity().x() > 0);
-    QVERIFY(handler->point().velocity().y() > 0);
-    QCOMPARE(handler->translation(), QVector2D(10, 10));
-    QCOMPARE(translationSpy.count(), 2);
+    QCOMPARE_GT(handler->point().velocity().x(), 0);
+    QCOMPARE_GT(handler->point().velocity().y(), 0);
+    QCOMPARE(handler->translation(), QVector2D(deltaLocalDPI));
+    QCOMPARE(translationSpy.size(), 2);
 
     QWindowSystemInterface::handleTabletEvent(window, point, window->mapToGlobal(point),
-        QTabletEvent::Stylus, QTabletEvent::Pen, Qt::NoButton, 0, 0, 0, 0, 0, 0, stylusId, Qt::NoModifier);
+        int(QInputDevice::DeviceType::Stylus), int(QPointingDevice::PointerType::Pen), Qt::NoButton, 0, 0, 0, 0, 0, 0, stylusId, Qt::NoModifier);
     QTRY_COMPARE(handler->active(), false);
-    QCOMPARE(activeSpy.count(), 2);
-    QCOMPARE(pointSpy.count(), 3);
+    QCOMPARE(activeSpy.size(), 2);
+    QCOMPARE(pointSpy.size(), 3);
     QCOMPARE(handler->translation(), QVector2D());
-    QCOMPARE(translationSpy.count(), 3);
+    QCOMPARE(translationSpy.size(), 3);
 }
 
 void tst_PointHandler::simultaneousMultiTouch()
@@ -202,7 +186,7 @@ void tst_PointHandler::simultaneousMultiTouch()
     createView(windowPtr, "multiPointTracker.qml");
     QQuickView * window = windowPtr.data();
     QList<QQuickPointHandler *> handlers = window->rootObject()->findChildren<QQuickPointHandler *>();
-    QCOMPARE(handlers.count(), 3);
+    QCOMPARE(handlers.size(), 3);
 
     QVector<QSignalSpy*> activeSpies;
     QVector<QSignalSpy*> pointSpies;
@@ -221,8 +205,8 @@ void tst_PointHandler::simultaneousMultiTouch()
     int i = 0;
     for (auto h : handlers) {
         QTRY_COMPARE(h->active(), true);
-        QCOMPARE(activeSpies[i]->count(), 1);
-        QCOMPARE(pointSpies[i]->count(), 1);
+        QCOMPARE(activeSpies[i]->size(), 1);
+        QCOMPARE(pointSpies[i]->size(), 1);
         int chosenPointIndex = points.indexOf(h->point().position().toPoint());
         QVERIFY(chosenPointIndex != -1);
         // Verify that each handler chose a unique point
@@ -232,7 +216,7 @@ void tst_PointHandler::simultaneousMultiTouch()
         QCOMPARE(h->point().scenePosition().toPoint(), point);
         QCOMPARE(h->point().pressedButtons(), Qt::NoButton);
         QCOMPARE(h->translation(), QVector2D());
-        QCOMPARE(translationSpies[i]->count(), 1);
+        QCOMPARE(translationSpies[i]->size(), 1);
         ++i;
     }
 
@@ -243,8 +227,8 @@ void tst_PointHandler::simultaneousMultiTouch()
     i = 0;
     for (auto h : handlers) {
         QCOMPARE(h->active(), true);
-        QCOMPARE(activeSpies[i]->count(), 1);
-        QCOMPARE(pointSpies[i]->count(), 2);
+        QCOMPARE(activeSpies[i]->size(), 1);
+        QCOMPARE(pointSpies[i]->size(), 2);
         QCOMPARE(h->point().position().toPoint(), points[pointIndexPerHandler[i]]);
         QCOMPARE(h->point().scenePosition().toPoint(), points[pointIndexPerHandler[i]]);
         QCOMPARE(h->point().pressPosition().toPoint(), pressPoints[pointIndexPerHandler[i]]);
@@ -253,7 +237,7 @@ void tst_PointHandler::simultaneousMultiTouch()
         QVERIFY(h->point().velocity().x() > 0);
         QVERIFY(h->point().velocity().y() > 0);
         QCOMPARE(h->translation(), QVector2D(10 + 10 * pointIndexPerHandler[i], 10 + 10 * pointIndexPerHandler[i] % 2));
-        QCOMPARE(translationSpies[i]->count(), 2);
+        QCOMPARE(translationSpies[i]->size(), 2);
         ++i;
     }
 
@@ -262,10 +246,10 @@ void tst_PointHandler::simultaneousMultiTouch()
     i = 0;
     for (auto h : handlers) {
         QTRY_COMPARE(h->active(), false);
-        QCOMPARE(activeSpies[i]->count(), 2);
-        QCOMPARE(pointSpies[i]->count(), 3);
+        QCOMPARE(activeSpies[i]->size(), 2);
+        QCOMPARE(pointSpies[i]->size(), 3);
         QCOMPARE(h->translation(), QVector2D());
-        QCOMPARE(translationSpies[i]->count(), 3);
+        QCOMPARE(translationSpies[i]->size(), 3);
         ++i;
     }
 
@@ -281,6 +265,7 @@ void tst_PointHandler::pressedMultipleButtons_data()
     QTest::addColumn<QList<bool> >("active");
     QTest::addColumn<QList<Qt::MouseButtons> >("pressedButtons");
     QTest::addColumn<int>("changeCount");
+    QTest::addColumn<int>("activeChangeCount");
 
     QList<Qt::MouseButtons> buttons;
     QList<bool> active;
@@ -298,7 +283,7 @@ void tst_PointHandler::pressedMultipleButtons_data()
                    << Qt::LeftButton
                    << Qt::NoButton;
     QTest::newRow("Accept Left - Press left, Press Right, Release Right")
-            << Qt::MouseButtons(Qt::LeftButton) << buttons << active << pressedButtons << 4;
+            << Qt::MouseButtons(Qt::LeftButton) << buttons << active << pressedButtons << 4 << 4;
 
     buttons.clear();
     active.clear();
@@ -316,7 +301,7 @@ void tst_PointHandler::pressedMultipleButtons_data()
                    << Qt::NoButton // Not the "truth" but filtered according to this handler's acceptedButtons
                    << Qt::NoButton;
     QTest::newRow("Accept Left - Press left, Press Right, Release Left")
-            << Qt::MouseButtons(Qt::LeftButton) << buttons << active << pressedButtons << 3;
+            << Qt::MouseButtons(Qt::LeftButton) << buttons << active << pressedButtons << 3 << 4;
 
     buttons.clear();
     active.clear();
@@ -334,7 +319,7 @@ void tst_PointHandler::pressedMultipleButtons_data()
                    << Qt::LeftButton
                    << Qt::NoButton;
     QTest::newRow("Accept Left|Right - Press left, Press Right, Release Right")
-            << (Qt::LeftButton | Qt::RightButton) << buttons << active << pressedButtons << 4;
+            << (Qt::LeftButton | Qt::RightButton) << buttons << active << pressedButtons << 4 << 4;
 
     buttons.clear();
     active.clear();
@@ -352,7 +337,7 @@ void tst_PointHandler::pressedMultipleButtons_data()
                    << Qt::NoButton // Not the "truth" but filtered according to this handler's acceptedButtons
                    << Qt::NoButton;
     QTest::newRow("Accept Right - Press Right, Press Left, Release Right")
-            << Qt::MouseButtons(Qt::RightButton) << buttons << active << pressedButtons << 3;
+            << Qt::MouseButtons(Qt::RightButton) << buttons << active << pressedButtons << 3 << 4;
 }
 
 void tst_PointHandler::pressedMultipleButtons()
@@ -362,6 +347,7 @@ void tst_PointHandler::pressedMultipleButtons()
     QFETCH(QList<bool>, active);
     QFETCH(QList<Qt::MouseButtons>, pressedButtons);
     QFETCH(int, changeCount);
+    QFETCH(int, activeChangeCount);
 
     QScopedPointer<QQuickView> windowPtr;
     createView(windowPtr, "pointTracker.qml");
@@ -377,7 +363,7 @@ void tst_PointHandler::pressedMultipleButtons()
 
     QPoint point(100,100);
 
-    for (int i = 0; i < buttons.count(); ++i) {
+    for (int i = 0; i < buttons.size(); ++i) {
         int btns = int(buttons.at(i));
         int release = 0;
         if (i > 0) {
@@ -397,8 +383,91 @@ void tst_PointHandler::pressedMultipleButtons()
 
     QTest::mousePress(windowPtr.data(), Qt::NoButton, Qt::NoModifier, point);
     QCOMPARE(handler->active(), false);
-    QCOMPARE(activeSpy.count(), 2);
-    QCOMPARE(pointSpy.count(), changeCount);
+    QCOMPARE(activeSpy.size(), activeChangeCount);
+    QCOMPARE(pointSpy.size(), changeCount);
+}
+
+void tst_PointHandler::ignoreSystemSynthMouse() // QTBUG-104890
+{
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("pointTracker.qml")));
+    QQuickPointHandler *handler = window.rootObject()->findChild<QQuickPointHandler *>();
+    QVERIFY(handler);
+    auto devPriv = QPointingDevicePrivate::get(touchDevice);
+    QSignalSpy activeSpy(handler, SIGNAL(activeChanged()));
+    QSignalSpy pointSpy(handler, SIGNAL(pointChanged()));
+
+    // touch press
+    QPoint point(100,100);
+    QTest::touchEvent(&window, touchDevice).press(0, point, &window);
+    QQuickTouchUtils::flush(&window);
+
+    // touch move
+    point += QPoint(10, 10);
+    QTest::touchEvent(&window, touchDevice).move(0, point, &window);
+    QQuickTouchUtils::flush(&window);
+    QCOMPARE(handler->active(), true);
+    QCOMPARE(activeSpy.size(), 1);
+    QCOMPARE(pointSpy.size(), 2);
+    QVERIFY(devPriv->queryPointById(0)->passiveGrabbers.contains(handler));
+
+    // Windows begins to synthesize mouse events in parallel with the touch event stream: move to touchpoint position, then press
+    {
+        QMouseEvent move(QEvent::MouseMove, point, point, window.mapToGlobal(point),
+                          Qt::NoButton, Qt::NoButton, Qt::NoModifier, Qt::MouseEventSynthesizedBySystem, touchDevice);
+        move.setTimestamp(235); // slightly after the last touch event
+        QGuiApplication::sendEvent(&window, &move);
+    }
+    QCOMPARE(handler->active(), true);
+    QCOMPARE(activeSpy.size(), 1);
+    QCOMPARE(pointSpy.size(), 2);
+    QVERIFY(devPriv->queryPointById(0)->passiveGrabbers.contains(handler));
+    {
+        QMouseEvent press(QEvent::MouseButtonPress, point, point, window.mapToGlobal(point),
+                          Qt::LeftButton, Qt::LeftButton, Qt::NoModifier, Qt::MouseEventSynthesizedBySystem, touchDevice);
+        press.setTimestamp(235);
+        QGuiApplication::sendEvent(&window, &press);
+    }
+    QCOMPARE(handler->active(), true);
+    QCOMPARE(activeSpy.size(), 1);
+    QCOMPARE(pointSpy.size(), 2);
+    QVERIFY(devPriv->queryPointById(0)->passiveGrabbers.contains(handler));
+
+    // another touch move
+    point += QPoint(10, 10);
+    QTest::touchEvent(&window, touchDevice).move(0, point, &window);
+    QQuickTouchUtils::flush(&window);
+    QCOMPARE(handler->active(), true);
+    QCOMPARE(activeSpy.size(), 1);
+    QCOMPARE(pointSpy.size(), 3);
+    QCOMPARE(handler->point().position().toPoint(), point);
+    QCOMPARE(handler->point().scenePosition().toPoint(), point);
+    QCOMPARE(handler->point().pressPosition().toPoint(), QPoint(100, 100));
+    QCOMPARE(handler->point().scenePressPosition().toPoint(), QPoint(100, 100));
+    QVERIFY(devPriv->queryPointById(0)->passiveGrabbers.contains(handler));
+
+    // another fake mouse move
+    {
+        QMouseEvent move(QEvent::MouseMove, point, point, window.mapToGlobal(point),
+                          Qt::LeftButton, Qt::LeftButton, Qt::NoModifier, Qt::MouseEventSynthesizedBySystem, touchDevice);
+        move.setTimestamp(240);
+        QGuiApplication::sendEvent(&window, &move);
+    }
+    QCOMPARE(handler->active(), true);
+    QCOMPARE(activeSpy.size(), 1);
+    QCOMPARE(pointSpy.size(), 3);
+    QCOMPARE(handler->point().position().toPoint(), point);
+    QCOMPARE(handler->point().scenePosition().toPoint(), point);
+    QCOMPARE(handler->point().pressPosition().toPoint(), QPoint(100, 100));
+    QCOMPARE(handler->point().scenePressPosition().toPoint(), QPoint(100, 100));
+    QVERIFY(devPriv->queryPointById(0)->passiveGrabbers.contains(handler));
+
+    // end with released state
+    QTest::touchEvent(&window, touchDevice).release(0, point, &window);
+    QMouseEvent release(QEvent::MouseButtonRelease, point, point, window.mapToGlobal(point),
+                        Qt::LeftButton, Qt::LeftButton, Qt::NoModifier, Qt::MouseEventSynthesizedBySystem);
+    release.setTimestamp(280);
+    QGuiApplication::sendEvent(&window, &release);
 }
 
 QTEST_MAIN(tst_PointHandler)

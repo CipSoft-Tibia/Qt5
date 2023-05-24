@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,15 +11,14 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/ref_counted.h"
 #include "base/no_destructor.h"
-#include "base/sequenced_task_runner.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/sys_string_conversions.h"
-#include "base/task/post_task.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/scoped_thread_priority.h"
 #include "device/bluetooth/bluetooth_classic_win.h"
@@ -226,11 +225,9 @@ BluetoothTaskManagerWin::BluetoothTaskManagerWin(
 
 BluetoothTaskManagerWin::BluetoothTaskManagerWin(
     std::unique_ptr<win::BluetoothClassicWrapper> classic_wrapper,
-    std::unique_ptr<win::BluetoothLowEnergyWrapper> le_wrapper,
     scoped_refptr<base::SequencedTaskRunner> ui_task_runner)
     : ui_task_runner_(std::move(ui_task_runner)),
-      classic_wrapper_(std::move(classic_wrapper)),
-      le_wrapper_(std::move(le_wrapper)) {}
+      classic_wrapper_(std::move(classic_wrapper)) {}
 
 BluetoothTaskManagerWin::~BluetoothTaskManagerWin() = default;
 
@@ -238,10 +235,8 @@ BluetoothTaskManagerWin::~BluetoothTaskManagerWin() = default;
 scoped_refptr<BluetoothTaskManagerWin>
 BluetoothTaskManagerWin::CreateForTesting(
     std::unique_ptr<win::BluetoothClassicWrapper> classic_wrapper,
-    std::unique_ptr<win::BluetoothLowEnergyWrapper> le_wrapper,
     scoped_refptr<base::SequencedTaskRunner> ui_task_runner) {
   return new BluetoothTaskManagerWin(std::move(classic_wrapper),
-                                     std::move(le_wrapper),
                                      std::move(ui_task_runner));
 }
 
@@ -343,7 +338,7 @@ void BluetoothTaskManagerWin::LogPollingError(const char* message,
   // Check if we need to discard this message
   if (!current_logging_batch_ticks_.is_null()) {
     if (base::TimeTicks::Now() - current_logging_batch_ticks_ <=
-        base::TimeDelta::FromMilliseconds(kLogPeriodInMilliseconds)) {
+        base::Milliseconds(kLogPeriodInMilliseconds)) {
       if (current_logging_batch_count_ >= kMaxMessagesPerLogPeriod)
         return;
     } else {
@@ -413,7 +408,7 @@ void BluetoothTaskManagerWin::PollAdapter() {
   // Re-poll.
   bluetooth_task_runner_->PostDelayedTask(
       FROM_HERE, base::BindOnce(&BluetoothTaskManagerWin::PollAdapter, this),
-      base::TimeDelta::FromMilliseconds(kPollIntervalMs));
+      base::Milliseconds(kPollIntervalMs));
 }
 
 void BluetoothTaskManagerWin::PostAdapterStateToUi() {
@@ -563,10 +558,6 @@ bool BluetoothTaskManagerWin::SearchClassicDevices(
 
 bool BluetoothTaskManagerWin::SearchLowEnergyDevices(
     std::vector<std::unique_ptr<DeviceState>>* device_list) {
-  if (!le_wrapper_->IsBluetoothLowEnergySupported()) {
-    return true;  // Bluetooth LE not supported is not an error.
-  }
-
   std::vector<std::unique_ptr<win::BluetoothLowEnergyDeviceInfo>> btle_devices;
   std::string error;
   bool success = le_wrapper_->EnumerateKnownBluetoothLowEnergyDevices(
@@ -723,10 +714,6 @@ int BluetoothTaskManagerWin::DiscoverClassicDeviceServicesWorker(
 bool BluetoothTaskManagerWin::DiscoverLowEnergyDeviceServices(
     const base::FilePath& device_path,
     std::vector<std::unique_ptr<ServiceRecordState>>* service_record_states) {
-  if (!le_wrapper_->IsBluetoothLowEnergySupported()) {
-    return true;  // Bluetooth LE not supported is not an error.
-  }
-
   std::string error;
   std::vector<std::unique_ptr<win::BluetoothLowEnergyServiceInfo>> services;
   bool success = le_wrapper_->EnumerateKnownBluetoothLowEnergyServices(

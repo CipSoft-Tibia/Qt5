@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,36 @@
 #include <dawn/webgpu.h>
 
 #include "base/memory/scoped_refptr.h"
+#include "third_party/blink/renderer/bindings/core/v8/script_value.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
 #include "third_party/blink/renderer/platform/graphics/gpu/dawn_control_client_holder.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
+#include "third_party/blink/renderer/platform/heap/visitor.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+
+#define DAWN_OBJECTS                          \
+  X(BindGroup, bindGroup)                     \
+  X(BindGroupLayout, bindGroupLayout)         \
+  X(Buffer, buffer)                           \
+  X(CommandBuffer, commandBuffer)             \
+  X(CommandEncoder, commandEncoder)           \
+  X(ComputePassEncoder, computePassEncoder)   \
+  X(ComputePipeline, computePipeline)         \
+  X(Device, device)                           \
+  X(ExternalTexture, externalTexture)         \
+  X(Instance, instance)                       \
+  X(PipelineLayout, pipelineLayout)           \
+  X(QuerySet, querySet)                       \
+  X(Queue, queue)                             \
+  X(RenderBundle, renderBundle)               \
+  X(RenderBundleEncoder, renderBundleEncoder) \
+  X(RenderPassEncoder, renderPassEncoder)     \
+  X(RenderPipeline, renderPipeline)           \
+  X(Sampler, sampler)                         \
+  X(ShaderModule, shaderModule)               \
+  X(Surface, surface)                         \
+  X(Texture, texture)                         \
+  X(TextureView, textureView)
 
 namespace gpu {
 namespace webgpu {
@@ -22,8 +50,23 @@ class WebGPUInterface;
 
 namespace blink {
 
+namespace scheduler {
+class EventLoop;
+}  // namespace scheduler
+
+template <typename T>
+struct WGPUReleaseFn;
+
+#define X(Name, name)                                         \
+  template <>                                                 \
+  struct WGPUReleaseFn<WGPU##Name> {                          \
+    static constexpr void (*DawnProcTable::*fn)(WGPU##Name) = \
+        &DawnProcTable::name##Release;                        \
+  };
+DAWN_OBJECTS
+#undef X
+
 class GPUDevice;
-class Visitor;
 
 // This class allows objects to hold onto a DawnControlClientHolder.
 // The DawnControlClientHolder is used to hold the WebGPUInterface and keep
@@ -35,75 +78,39 @@ class DawnObjectBase {
       scoped_refptr<DawnControlClientHolder> dawn_control_client);
 
   const scoped_refptr<DawnControlClientHolder>& GetDawnControlClient() const;
-  bool IsDawnControlClientDestroyed() const;
-  gpu::webgpu::WebGPUInterface* GetInterface() const;
-  const DawnProcTable& GetProcs() const;
-
- private:
-  scoped_refptr<DawnControlClientHolder> dawn_control_client_;
-};
-
-// This class allows objects to hold onto a DawnControlClientHolder and a
-// device client id. Now one GPUDevice is related to one WebGPUSerializer in
-// the client side of WebGPU context. When the GPUDevice and all the other
-// WebGPU objects that are created from the GPUDevice are destroyed, this
-// object will be destroyed and in the destructor of this object we will
-// trigger the clean-ups to the corresponding WebGPUSerailzer and other data
-// structures in the GPU process.
-class DawnDeviceClientSerializerHolder
-    : public RefCounted<DawnDeviceClientSerializerHolder> {
- public:
-  DawnDeviceClientSerializerHolder(
-      scoped_refptr<DawnControlClientHolder> dawn_control_client,
-      uint64_t device_client_id);
-
- private:
-  friend class RefCounted<DawnDeviceClientSerializerHolder>;
-  friend class DeviceTreeObject;
-  ~DawnDeviceClientSerializerHolder();
-
-  scoped_refptr<DawnControlClientHolder> dawn_control_client_;
-  uint64_t device_client_id_;
-};
-
-// This class is the parent of GPUDevice and all the WebGPU objects that are
-// created from a GPUDevice, which holds a
-// scoped_refptr<DawnDeviceClientSerializerHolder> and provides functions to
-// access all the members inside it. When a GPUDevice and all the WebGPU
-// objects created from it are destroyed, the refcount of
-// DawnDeviceClientSerializerHolder will become 0 and the clean-ups to the
-// corresponding WebGPUSerailzer and other data structures in the GPU process
-// will be triggered.
-class DeviceTreeObject {
- public:
-  explicit DeviceTreeObject(scoped_refptr<DawnDeviceClientSerializerHolder>
-                                device_client_seralizer_holder)
-      : device_client_serializer_holder_(
-            std::move(device_client_seralizer_holder)) {}
-
-  const scoped_refptr<DawnControlClientHolder>& GetDawnControlClient() const;
-  bool IsDawnControlClientDestroyed() const;
-  gpu::webgpu::WebGPUInterface* GetInterface() const;
-  const DawnProcTable& GetProcs() const;
-
-  uint64_t GetDeviceClientID() const;
+  base::WeakPtr<WebGraphicsContext3DProviderWrapper> GetContextProviderWeakPtr()
+      const {
+    return dawn_control_client_->GetContextProviderWeakPtr();
+  }
+  const DawnProcTable& GetProcs() const {
+    return dawn_control_client_->GetProcs();
+  }
 
   // Ensure commands up until now on this object's parent device are flushed by
   // the end of the task.
-  void EnsureFlush();
+  void EnsureFlush(scheduler::EventLoop& event_loop);
 
   // Flush commands up until now on this object's parent device immediately.
   void FlushNow();
 
- protected:
-  scoped_refptr<DawnDeviceClientSerializerHolder>
-      device_client_serializer_holder_;
+  // GPUObjectBase mixin implementation
+  const String& label() const { return label_; }
+  void setLabel(const String& value);
+
+  virtual void setLabelImpl(const String& value) {}
+
+ private:
+  scoped_refptr<DawnControlClientHolder> dawn_control_client_;
+  String label_;
 };
 
-class DawnObjectImpl : public ScriptWrappable, public DeviceTreeObject {
+class DawnObjectImpl : public ScriptWrappable, public DawnObjectBase {
  public:
   explicit DawnObjectImpl(GPUDevice* device);
   ~DawnObjectImpl() override;
+
+  WGPUDevice GetDeviceHandle();
+  GPUDevice* device() { return device_.Get(); }
 
   void Trace(Visitor* visitor) const override;
 
@@ -115,37 +122,50 @@ template <typename Handle>
 class DawnObject : public DawnObjectImpl {
  public:
   DawnObject(GPUDevice* device, Handle handle)
-      : DawnObjectImpl(device), handle_(handle) {}
-  ~DawnObject() override = default;
+      : DawnObjectImpl(device),
+        handle_(handle),
+        device_handle_(GetDeviceHandle()) {
+    // All WebGPU Blink objects created directly or by the Device hold a
+    // Member<GPUDevice> which keeps the device alive. However, this does not
+    // enforce that the GPUDevice is finalized after all objects referencing it.
+    // Add an extra ref in this constructor, and a release in the destructor to
+    // ensure that the Dawn device is destroyed last.
+    // TODO(enga): Investigate removing Member<GPUDevice>.
+    GetProcs().deviceReference(device_handle_);
+  }
+
+  ~DawnObject() override {
+    DCHECK(handle_);
+
+    // Note: The device is released last because all child objects must be
+    // destroyed first.
+    (GetProcs().*WGPUReleaseFn<Handle>::fn)(handle_);
+    GetProcs().deviceRelease(device_handle_);
+  }
 
   Handle GetHandle() const { return handle_; }
 
  private:
   Handle const handle_;
+  WGPUDevice device_handle_;
 };
 
 template <>
-class DawnObject<WGPUDevice> : public DeviceTreeObject {
+class DawnObject<WGPUDevice> : public DawnObjectBase {
  public:
   DawnObject(scoped_refptr<DawnControlClientHolder> dawn_control_client,
-             uint64_t device_client_id,
              WGPUDevice handle)
-      : DeviceTreeObject(base::MakeRefCounted<DawnDeviceClientSerializerHolder>(
-            std::move(dawn_control_client),
-            device_client_id)),
-        handle_(handle) {}
+      : DawnObjectBase(dawn_control_client), handle_(handle) {}
+  ~DawnObject() { GetProcs().deviceRelease(handle_); }
 
   WGPUDevice GetHandle() const { return handle_; }
-
-  const scoped_refptr<DawnDeviceClientSerializerHolder>&
-  GetDeviceClientSerializerHolder() const {
-    return device_client_serializer_holder_;
-  }
 
  private:
   WGPUDevice const handle_;
 };
 
 }  // namespace blink
+
+#undef DAWN_OBJECTS
 
 #endif  // THIRD_PARTY_BLINK_RENDERER_MODULES_WEBGPU_DAWN_OBJECT_H_

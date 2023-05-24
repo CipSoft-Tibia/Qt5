@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "base/compiler_specific.h"
+#include "base/time/time.h"
 #include "cc/trees/swap_promise.h"
 #include "ui/latency/latency_info.h"
 
@@ -27,10 +28,11 @@ class CC_EXPORT LatencyInfoSwapPromise : public SwapPromise {
   void DidActivate() override {}
   void WillSwap(viz::CompositorFrameMetadata* metadata) override;
   void DidSwap() override;
-  DidNotSwapAction DidNotSwap(DidNotSwapReason reason) override;
+  DidNotSwapAction DidNotSwap(DidNotSwapReason reason,
+                              base::TimeTicks ts) override;
   void OnCommit() override;
 
-  int64_t TraceId() const override;
+  int64_t GetTraceId() const override;
 
  private:
   ui::LatencyInfo latency_;

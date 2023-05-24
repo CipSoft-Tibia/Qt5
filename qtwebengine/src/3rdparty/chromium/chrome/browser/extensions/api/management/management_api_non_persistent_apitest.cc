@@ -1,7 +1,8 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/strings/stringprintf.h"
 #include "chrome/browser/extensions/browsertest_util.h"
 #include "chrome/browser/extensions/extension_action_runner.h"
 #include "chrome/browser/extensions/extension_apitest.h"
@@ -23,17 +24,21 @@ using ContextType = ExtensionBrowserTest::ContextType;
 class ManagementApiNonPersistentApiTest
     : public ExtensionApiTest,
       public testing::WithParamInterface<ContextType> {
- protected:
-  const Extension* LoadNonPersistentExtension(const char* relative_path) {
-    return LoadExtensionWithFlags(test_data_dir_.AppendASCII(relative_path),
-                                  GetParam() == ContextType::kEventPage
-                                      ? kFlagNone
-                                      : kFlagRunAsServiceWorkerBasedExtension);
-  }
+ public:
+  ManagementApiNonPersistentApiTest() : ExtensionApiTest(GetParam()) {}
+  ~ManagementApiNonPersistentApiTest() override = default;
+  ManagementApiNonPersistentApiTest(const ManagementApiNonPersistentApiTest&) =
+      delete;
+  ManagementApiNonPersistentApiTest& operator=(
+      const ManagementApiNonPersistentApiTest&) = delete;
 };
 
 // Tests chrome.management.uninstallSelf API.
 IN_PROC_BROWSER_TEST_P(ManagementApiNonPersistentApiTest, UninstallSelf) {
+  // TODO(crbug.com/1003597): Flaky for SW based extension.
+  if (GetParam() == ContextType::kServiceWorker)
+    return;
+
   constexpr char kEventPageBackgroundScript[] = R"({"scripts": ["script.js"]})";
   constexpr char kServiceWorkerBackgroundScript[] =
       R"({"service_worker": "script.js"})";
@@ -65,11 +70,12 @@ IN_PROC_BROWSER_TEST_P(ManagementApiNonPersistentApiTest, UninstallSelf) {
       extensions::ExtensionRegistry::Get(browser()->profile()));
 
   base::FilePath path = test_dir.Pack();
-  // Note: We pass kFlagDontWaitForExtensionRenderers because the extension
+  // Note: We set LoadOptions::wait_for_renderers to false because the extension
   // uninstalls itself, so the ExtensionHost never fully finishes loading. Since
   // we wait for the uninstall explicitly, this isn't racy.
   scoped_refptr<const Extension> extension =
-      LoadExtensionWithFlags(path, kFlagDontWaitForExtensionRenderers);
+      LoadExtension(path, {.wait_for_renderers = false,
+                           .context_type = ContextType::kFromManifest});
 
   EXPECT_EQ(extension, observer.WaitForExtensionUninstalled());
 }
@@ -78,8 +84,8 @@ IN_PROC_BROWSER_TEST_P(ManagementApiNonPersistentApiTest, UninstallSelf) {
 // (i.e. browserAction.onClicked event).
 IN_PROC_BROWSER_TEST_P(ManagementApiNonPersistentApiTest,
                        UninstallViaBrowserAction) {
-  const Extension* extension_b = LoadNonPersistentExtension(
-      "management/uninstall_via_browser_action/extension_b");
+  const Extension* extension_b = LoadExtension(test_data_dir_.AppendASCII(
+      "management/uninstall_via_browser_action/extension_b"));
   ASSERT_TRUE(extension_b);
   const ExtensionId extension_b_id = extension_b->id();
 
@@ -94,9 +100,9 @@ IN_PROC_BROWSER_TEST_P(ManagementApiNonPersistentApiTest,
 
   // Load extension_a and wait for browserAction.onClicked listener
   // registration.
-  ExtensionTestMessageListener listener_added("ready", false);
-  const Extension* extension_a = LoadNonPersistentExtension(
-      "management/uninstall_via_browser_action/extension_a");
+  ExtensionTestMessageListener listener_added("ready");
+  const Extension* extension_a = LoadExtension(test_data_dir_.AppendASCII(
+      "management/uninstall_via_browser_action/extension_a"));
   ASSERT_TRUE(extension_a);
   EXPECT_TRUE(listener_added.WaitUntilSatisfied());
 
@@ -127,9 +133,8 @@ INSTANTIATE_TEST_SUITE_P(EventPage,
                          ManagementApiNonPersistentApiTest,
                          ::testing::Values(ContextType::kEventPage));
 
-// Flaky: crbug.com/1003597
-// INSTANTIATE_TEST_SUITE_P(ServiceWorker,
-//                          ManagementApiNonPersistentApiTest,
-//                          ::testing::Values(ContextType::kServiceWorker));
+INSTANTIATE_TEST_SUITE_P(ServiceWorker,
+                         ManagementApiNonPersistentApiTest,
+                         ::testing::Values(ContextType::kServiceWorker));
 
 }  // namespace extensions

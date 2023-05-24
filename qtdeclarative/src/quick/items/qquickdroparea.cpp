@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickdroparea_p.h"
 #include "qquickdrag_p.h"
@@ -108,7 +72,7 @@ QQuickDropAreaPrivate::~QQuickDropAreaPrivate()
     The \l drag.source property is communicated to the source of a drag event as
     the recipient of a drop on the drag target.
 
-    \sa {Qt Quick Examples - Drag and Drop}, {Qt Quick Examples - externaldraganddrop}
+    \sa {Qt Quick Examples - Drag and Drop}
 */
 
 QQuickDropArea::QQuickDropArea(QQuickItem *parent)
@@ -161,7 +125,7 @@ void QQuickDropArea::setKeys(const QStringList &keys)
             d->keyRegExp = QRegularExpression();
         } else {
             QString pattern = QLatin1Char('(') + QRegularExpression::escape(keys.first());
-            for (int i = 1; i < keys.count(); ++i)
+            for (int i = 1; i < keys.size(); ++i)
                 pattern += QLatin1Char('|') + QRegularExpression::escape(keys.at(i));
             pattern += QLatin1Char(')');
             d->keyRegExp = QRegularExpression(
@@ -181,7 +145,7 @@ QQuickDropAreaDrag *QQuickDropArea::drag()
 }
 
 /*!
-    \qmlproperty Object QtQuick::DropArea::drag.source
+    \qmlproperty QtObject QtQuick::DropArea::drag.source
 
     This property holds the source of a drag.
 */
@@ -221,12 +185,12 @@ void QQuickDropArea::dragMoveEvent(QDragMoveEvent *event)
     if (!d->containsDrag)
         return;
 
-    d->dragPosition = event->pos();
+    d->dragPosition = event->position().toPoint();
     if (d->drag)
         emit d->drag->positionChanged();
 
     event->accept();
-    QQuickDropEvent dragTargetEvent(d, event);
+    QQuickDragEvent dragTargetEvent(d, event);
     emit positionChanged(&dragTargetEvent);
 }
 
@@ -262,21 +226,28 @@ void QQuickDropArea::dragEnterEvent(QDragEnterEvent *event)
     if (!d->effectiveEnable || d->containsDrag || !mimeData || !d->hasMatchingKey(d->getKeys(mimeData)))
         return;
 
-    d->dragPosition = event->pos();
+    const QQuickDragMimeData *dragMime = qobject_cast<const QQuickDragMimeData *>(mimeData);
+    auto dragSource = dragMime ? dragMime->source() : event->source();
+
+    // if the source of the drag is an ancestor of the drop area, then dragging
+    // also drags the drop area; see QTBUG-64128
+    if (QQuickItem *dragSourceItem = qobject_cast<QQuickItem *>(dragSource)) {
+        if (dragSourceItem->isAncestorOf(this))
+            return;
+    }
+
+    d->dragPosition = event->position().toPoint();
 
     event->accept();
 
-    QQuickDropEvent dragTargetEvent(d, event);
+    QQuickDragEvent dragTargetEvent(d, event);
     emit entered(&dragTargetEvent);
     if (!event->isAccepted())
         return;
 
     d->containsDrag = true;
-    if (QQuickDragMimeData *dragMime = qobject_cast<QQuickDragMimeData *>(const_cast<QMimeData *>(mimeData)))
-        d->source = dragMime->source();
-    else
-        d->source = event->source();
-    d->dragPosition = event->pos();
+    d->source = dragSource;
+    d->dragPosition = event->position().toPoint();
     if (d->drag) {
         emit d->drag->positionChanged();
         emit d->drag->sourceChanged();
@@ -318,7 +289,7 @@ void QQuickDropArea::dropEvent(QDropEvent *event)
     if (!d->containsDrag)
         return;
 
-    QQuickDropEvent dragTargetEvent(d, event);
+    QQuickDragEvent dragTargetEvent(d, event);
     emit dropped(&dragTargetEvent);
 
     d->containsDrag = false;
@@ -330,7 +301,7 @@ void QQuickDropArea::dropEvent(QDropEvent *event)
 
 /*!
     \qmltype DragEvent
-    \instantiates QQuickDropEvent
+    \instantiates QQuickDragEvent
     \inqmlmodule QtQuick
     \ingroup qtquick-input-events
     \brief Provides information about a drag event.
@@ -363,7 +334,7 @@ void QQuickDropArea::dropEvent(QDropEvent *event)
 */
 
 /*!
-    \qmlproperty Object QtQuick::DragEvent::drag.source
+    \qmlproperty QtObject QtQuick::DragEvent::drag.source
 
     This property holds the source of a drag event.
 */
@@ -382,12 +353,10 @@ void QQuickDropArea::dropEvent(QDropEvent *event)
 
     The drop action may be one of:
 
-    \list
-    \li Qt.CopyAction Copy the data to the target.
-    \li Qt.MoveAction Move the data from the source to the target.
-    \li Qt.LinkAction Create a link from the source to the target.
-    \li Qt.IgnoreAction Ignore the action (do nothing with the data).
-    \endlist
+    \value Qt.CopyAction    Copy the data to the target.
+    \value Qt.MoveAction    Move the data from the source to the target.
+    \value Qt.LinkAction    Create a link from the source to the target.
+    \value Qt.IgnoreAction  Ignore the action (do nothing with the data).
 */
 
 /*!
@@ -507,7 +476,7 @@ void QQuickDropArea::dropEvent(QDropEvent *event)
     easily be translated into a QByteArray. \a format should be one contained in the \l formats property.
 */
 
-QObject *QQuickDropEvent::source() const
+QObject *QQuickDragEvent::source() const
 {
     if (const QQuickDragMimeData *dragMime = qobject_cast<const QQuickDragMimeData *>(event->mimeData()))
         return dragMime->source();
@@ -515,95 +484,80 @@ QObject *QQuickDropEvent::source() const
         return event->source();
 }
 
-QStringList QQuickDropEvent::keys() const
+QStringList QQuickDragEvent::keys() const
 {
     return d->getKeys(event->mimeData());
 }
 
-bool QQuickDropEvent::hasColor() const
+bool QQuickDragEvent::hasColor() const
 {
     return event->mimeData()->hasColor();
 }
 
-bool QQuickDropEvent::hasHtml() const
+bool QQuickDragEvent::hasHtml() const
 {
     return event->mimeData()->hasHtml();
 }
 
-bool QQuickDropEvent::hasText() const
+bool QQuickDragEvent::hasText() const
 {
     return event->mimeData()->hasText();
 }
 
-bool QQuickDropEvent::hasUrls() const
+bool QQuickDragEvent::hasUrls() const
 {
     return event->mimeData()->hasUrls();
 }
 
-QVariant QQuickDropEvent::colorData() const
+QVariant QQuickDragEvent::colorData() const
 {
     return event->mimeData()->colorData();
 }
 
-QString QQuickDropEvent::html() const
+QString QQuickDragEvent::html() const
 {
     return event->mimeData()->html();
 }
 
-QString QQuickDropEvent::text() const
+QString QQuickDragEvent::text() const
 {
     return event->mimeData()->text();
 }
 
-QList<QUrl> QQuickDropEvent::urls() const
+QList<QUrl> QQuickDragEvent::urls() const
 {
     return event->mimeData()->urls();
 }
 
-QStringList QQuickDropEvent::formats() const
+QStringList QQuickDragEvent::formats() const
 {
     return event->mimeData()->formats();
 }
 
-void QQuickDropEvent::getDataAsString(QQmlV4Function *args)
+QString QQuickDragEvent::getDataAsString(const QString &format) const
 {
-    if (args->length() != 0) {
-        QV4::ExecutionEngine *v4 = args->v4engine();
-        QV4::Scope scope(v4);
-        QV4::ScopedValue v(scope, (*args)[0]);
-        QString format = v->toQString();
-        QString rv = QString::fromUtf8(event->mimeData()->data(format));
-        args->setReturnValue(v4->newString(rv)->asReturnedValue());
-    }
+    return QString::fromUtf8(event->mimeData()->data(format));
 }
 
-void QQuickDropEvent::getDataAsArrayBuffer(QQmlV4Function *args)
+QByteArray QQuickDragEvent::getDataAsArrayBuffer(const QString &format) const
 {
-    if (args->length() != 0) {
-        QV4::ExecutionEngine *v4 = args->v4engine();
-        QV4::Scope scope(v4);
-        QV4::ScopedValue v(scope, (*args)[0]);
-        const QString format = v->toQString();
-        args->setReturnValue(v4->newArrayBuffer(event->mimeData()->data(format))->asReturnedValue());
-    }
+    return event->mimeData()->data(format);
 }
 
-void QQuickDropEvent::acceptProposedAction(QQmlV4Function *)
+void QQuickDragEvent::acceptProposedAction()
 {
     event->acceptProposedAction();
 }
 
-void QQuickDropEvent::accept(QQmlV4Function *args)
+void QQuickDragEvent::accept()
 {
     Qt::DropAction action = event->dropAction();
+    event->setDropAction(action);
+    event->accept();
+}
 
-    if (args->length() >= 1) {
-        QV4::Scope scope(args->v4engine());
-        QV4::ScopedValue v(scope, (*args)[0]);
-        if (v->isInt32())
-            action = Qt::DropAction(v->integerValue());
-    }
-
+void QQuickDragEvent::accept(Qt::DropAction action)
+{
     // get action from arguments.
     event->setDropAction(action);
     event->accept();

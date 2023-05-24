@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 #ifndef XFA_FXFA_PARSER_CXFA_DOCUMENT_BUILDER_H_
 #define XFA_FXFA_PARSER_CXFA_DOCUMENT_BUILDER_H_
 
-#include "core/fxcrt/fx_string.h"
 #include "core/fxcrt/unowned_ptr.h"
 #include "v8/include/cppgc/macros.h"
 #include "xfa/fxfa/fxfa_basic.h"
@@ -44,13 +43,11 @@ class CXFA_DocumentBuilder {
       XFA_Element element);
   CXFA_Node* ParseAsXDPPacket_Xdc(CFX_XMLNode* pXMLDocumentNode);
   CXFA_Node* ParseAsXDPPacket_User(CFX_XMLNode* pXMLDocumentNode);
+  CXFA_Node* DataLoader(CXFA_Node* pXFANode, CFX_XMLNode* pXMLDoc);
   CXFA_Node* NormalLoader(CXFA_Node* pXFANode,
                           CFX_XMLNode* pXMLDoc,
                           XFA_PacketType ePacketID,
                           bool bUseAttribute);
-  CXFA_Node* DataLoader(CXFA_Node* pXFANode,
-                        CFX_XMLNode* pXMLDoc,
-                        bool bDoTransform);
   void ParseContentNode(CXFA_Node* pXFANode,
                         CFX_XMLNode* pXMLNode,
                         XFA_PacketType ePacketID);
@@ -64,8 +61,8 @@ class CXFA_DocumentBuilder {
                         CFX_XMLInstruction* pXMLInstruction,
                         XFA_PacketType ePacketID);
 
-  UnownedPtr<CXFA_Document> node_factory_;
-  UnownedPtr<CXFA_Node> root_node_;
+  UnownedPtr<CXFA_Document> node_factory_;  // OK, stack-only.
+  UnownedPtr<CXFA_Node> root_node_;         // OK, stack-only.
   UnownedPtr<CFX_XMLDocument> xml_doc_;
   size_t execute_recursion_depth_ = 0;
 };

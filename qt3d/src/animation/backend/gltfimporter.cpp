@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "gltfimporter_p.h"
 
@@ -97,7 +64,7 @@ void jsonArrayToSqt(const QJsonArray &jsonArray, Qt3DCore::Sqt &sqt)
     QMatrix4x4 m;
     float *data = m.data();
     int i = 0;
-    for (const auto &element : jsonArray)
+    for (const auto element : jsonArray)
         *(data + i++) = static_cast<float>(element.toDouble());
 
     decomposeQMatrix4x4(m, sqt);
@@ -193,7 +160,7 @@ GLTFImporter::BufferView::BufferView(const QJsonObject &json)
 }
 
 GLTFImporter::AccessorData::AccessorData()
-    : type(Qt3DRender::QAttribute::Float)
+    : type(Qt3DCore::QAttribute::Float)
     , dataSize(0)
     , count(0)
     , byteOffset(0)
@@ -369,39 +336,39 @@ GLTFImporter::Node::Node(const QJsonObject &json)
         skinIndex = skinValue.toInt();
 }
 
-Qt3DRender::QAttribute::VertexBaseType GLTFImporter::accessorTypeFromJSON(int componentType)
+Qt3DCore::QAttribute::VertexBaseType GLTFImporter::accessorTypeFromJSON(int componentType)
 {
     if (componentType == GL_BYTE)
-        return Qt3DRender::QAttribute::Byte;
+        return Qt3DCore::QAttribute::Byte;
     else if (componentType == GL_UNSIGNED_BYTE)
-        return Qt3DRender::QAttribute::UnsignedByte;
+        return Qt3DCore::QAttribute::UnsignedByte;
     else if (componentType == GL_SHORT)
-        return Qt3DRender::QAttribute::Short;
+        return Qt3DCore::QAttribute::Short;
     else if (componentType == GL_UNSIGNED_SHORT)
-        return Qt3DRender::QAttribute::UnsignedShort;
+        return Qt3DCore::QAttribute::UnsignedShort;
     else if (componentType == GL_UNSIGNED_INT)
-        return Qt3DRender::QAttribute::UnsignedInt;
+        return Qt3DCore::QAttribute::UnsignedInt;
     else if (componentType == GL_FLOAT)
-        return Qt3DRender::QAttribute::Float;
+        return Qt3DCore::QAttribute::Float;
 
     // There shouldn't be an invalid case here
     qWarning("unsupported accessor type %d", componentType);
-    return Qt3DRender::QAttribute::Float;
+    return Qt3DCore::QAttribute::Float;
 }
 
-uint GLTFImporter::accessorTypeSize(Qt3DRender::QAttribute::VertexBaseType componentType)
+uint GLTFImporter::accessorTypeSize(Qt3DCore::QAttribute::VertexBaseType componentType)
 {
     switch (componentType) {
-    case Qt3DRender::QAttribute::Byte:
-    case Qt3DRender::QAttribute::UnsignedByte:
+    case Qt3DCore::QAttribute::Byte:
+    case Qt3DCore::QAttribute::UnsignedByte:
          return 1;
 
-    case Qt3DRender::QAttribute::Short:
-    case Qt3DRender::QAttribute::UnsignedShort:
+    case Qt3DCore::QAttribute::Short:
+    case Qt3DCore::QAttribute::UnsignedShort:
         return 2;
 
-    case Qt3DRender::QAttribute::Int:
-    case Qt3DRender::QAttribute::Float:
+    case Qt3DCore::QAttribute::Int:
+    case Qt3DCore::QAttribute::Float:
         return 4;
 
     default:
@@ -451,17 +418,17 @@ bool GLTFImporter::load(QIODevice *ioDev)
     return parse();
 }
 
-QHash<int, int> GLTFImporter::createNodeIndexToJointIndexMap(const Skin &skin) const
+QHash<qsizetype, qsizetype> GLTFImporter::createNodeIndexToJointIndexMap(const Skin &skin) const
 {
-    const int jointCount = skin.jointNodeIndices.size();
-    QHash<int, int> nodeIndexToJointIndexMap;
+    const qsizetype jointCount = skin.jointNodeIndices.size();
+    QHash<qsizetype, qsizetype> nodeIndexToJointIndexMap;
     nodeIndexToJointIndexMap.reserve(jointCount);
-    for (int i = 0; i < jointCount; ++i)
+    for (qsizetype i = 0; i < jointCount; ++i)
         nodeIndexToJointIndexMap.insert(skin.jointNodeIndices[i], i);
     return nodeIndexToJointIndexMap;
 }
 
-GLTFImporter::AnimationNameAndChannels GLTFImporter::createAnimationData(int animationIndex, const QString &animationName) const
+GLTFImporter::AnimationNameAndChannels GLTFImporter::createAnimationData(qsizetype animationIndex, const QString &animationName) const
 {
     AnimationNameAndChannels nameAndChannels;
     if (m_animations.isEmpty()) {
@@ -472,7 +439,7 @@ GLTFImporter::AnimationNameAndChannels GLTFImporter::createAnimationData(int ani
     if (m_animations.size() == 1) {
         animationIndex = 0;
     } else if (animationIndex < 0 && !animationName.isEmpty()) {
-        for (int i = 0; i < m_animations.size(); ++i) {
+        for (qsizetype i = 0; i < m_animations.size(); ++i) {
             if (m_animations[i].name == animationName) {
                 animationIndex = i;
                 break;
@@ -488,7 +455,7 @@ GLTFImporter::AnimationNameAndChannels GLTFImporter::createAnimationData(int ani
     nameAndChannels.name = animation.name;
 
     // Create node index to joint index lookup tables for each skin
-    QVector<QHash<int, int>> nodeIndexToJointIndexMaps;
+    QList<QHash<qsizetype, qsizetype>> nodeIndexToJointIndexMaps;
     nodeIndexToJointIndexMaps.reserve(m_skins.size());
     for (const auto &skin : m_skins)
         nodeIndexToJointIndexMaps.push_back(createNodeIndexToJointIndexMap(skin));
@@ -501,7 +468,7 @@ GLTFImporter::AnimationNameAndChannels GLTFImporter::createAnimationData(int ani
         // Find the node index to joint index map that contains the target node and
         // look up the joint index from it. If no such map is found, the target joint
         // is not part of a skeleton and so we can just set the jointIndex to -1.
-        int jointIndex = -1;
+        qsizetype jointIndex = -1;
         for (const auto &map : nodeIndexToJointIndexMaps) {
             const auto result = map.find(channel.targetNodeIndex);
             if (result != map.cend()) {
@@ -522,12 +489,12 @@ GLTFImporter::AnimationNameAndChannels GLTFImporter::createAnimationData(int ani
         const auto &inputAccessor = m_accessors[sampler.inputAccessorIndex];
         const auto &outputAccessor = m_accessors[sampler.outputAccessorIndex];
 
-        if (inputAccessor.type != Qt3DRender::QAttribute::Float) {
+        if (inputAccessor.type != Qt3DCore::QAttribute::Float) {
             qWarning() << "Input accessor has wrong data type. Skipping channel.";
             continue;
         }
 
-        if (outputAccessor.type != Qt3DRender::QAttribute::Float) {
+        if (outputAccessor.type != Qt3DCore::QAttribute::Float) {
             qWarning() << "Output accessor has wrong data type. Skipping channel.";
             continue;
         }
@@ -639,7 +606,7 @@ GLTFImporter::RawData GLTFImporter::accessorData(int accessorIndex, int index) c
     const char *rawData = ba.constData() + bufferView.byteOffset + accessor.byteOffset;
 
     const uint typeSize = accessorTypeSize(accessor.type);
-    const int stride = (accessor.byteStride == 0)
+    const qsizetype stride = (accessor.byteStride == 0)
             ? accessor.dataSize * typeSize
             : accessor.byteStride;
 
@@ -689,27 +656,27 @@ bool GLTFImporter::parseGLTF2()
 {
     bool success = true;
     const QJsonArray buffers = m_json.object().value(KEY_BUFFERS).toArray();
-    for (const auto &bufferValue : buffers)
+    for (const auto bufferValue : buffers)
         success &= processJSONBuffer(bufferValue.toObject());
 
     const QJsonArray bufferViews = m_json.object().value(KEY_BUFFER_VIEWS).toArray();
-    for (const auto &bufferViewValue : bufferViews)
+    for (const auto bufferViewValue : bufferViews)
         success &= processJSONBufferView(bufferViewValue.toObject());
 
     const QJsonArray accessors = m_json.object().value(KEY_ACCESSORS).toArray();
-    for (const auto &accessorValue : accessors)
+    for (const auto accessorValue : accessors)
         success &= processJSONAccessor(accessorValue.toObject());
 
     const QJsonArray skins = m_json.object().value(KEY_SKINS).toArray();
-    for (const auto &skinValue : skins)
+    for (const auto skinValue : skins)
         success &= processJSONSkin(skinValue.toObject());
 
     const QJsonArray animations = m_json.object().value(KEY_ANIMATIONS).toArray();
-    for (const auto &animationValue : animations)
+    for (const auto animationValue : animations)
         success &= processJSONAnimation(animationValue.toObject());
 
     const QJsonArray nodes = m_json.object().value(KEY_NODES).toArray();
-    for (const auto &nodeValue : nodes)
+    for (const auto nodeValue : nodes)
         success &= processJSONNode(nodeValue.toObject());
     setupNodeParentLinks();
 
@@ -824,10 +791,10 @@ bool GLTFImporter::processJSONNode(const QJsonObject &json)
 
 void GLTFImporter::setupNodeParentLinks()
 {
-    const int nodeCount = m_nodes.size();
-    for (int i = 0; i < nodeCount; ++i) {
+    const qsizetype nodeCount = m_nodes.size();
+    for (qsizetype i = 0; i < nodeCount; ++i) {
         const Node &node = m_nodes[i];
-        const QVector<int> &childNodeIndices = node.childNodeIndices;
+        const QList<qsizetype> &childNodeIndices = node.childNodeIndices;
         for (const auto childNodeIndex : childNodeIndices) {
             Q_ASSERT(childNodeIndex < m_nodes.size());
             Node &childNode = m_nodes[childNodeIndex];

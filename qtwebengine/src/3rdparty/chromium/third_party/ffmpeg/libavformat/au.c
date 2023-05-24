@@ -27,6 +27,9 @@
  * http://www.goice.co.jp/member/mo/formats/au.html
  */
 
+#include "config_components.h"
+
+#include "libavutil/bprint.h"
 #include "avformat.h"
 #include "internal.h"
 #include "avio_internal.h"
@@ -52,6 +55,8 @@ static const AVCodecTag codec_au_tags[] = {
     { AV_CODEC_ID_ADPCM_G726LE, MKBETAG('7','2','6','2') },
     { AV_CODEC_ID_NONE,       0 },
 };
+
+static const AVCodecTag *const au_codec_tags[] = { codec_au_tags, NULL };
 
 #if CONFIG_AU_DEMUXER
 
@@ -84,6 +89,11 @@ static int au_read_annotation(AVFormatContext *s, int size)
     av_bprint_init(&bprint, 64, AV_BPRINT_SIZE_UNLIMITED);
 
     while (size-- > 0) {
+        if (avio_feof(pb)) {
+            av_bprint_finalize(&bprint, NULL);
+            av_freep(&key);
+            return AVERROR_EOF;
+        }
         c = avio_r8(pb);
         switch(state) {
         case PARSE_KEY:
@@ -205,13 +215,13 @@ static int au_read_header(AVFormatContext *s)
     st->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_tag   = id;
     st->codecpar->codec_id    = codec;
-    st->codecpar->channels    = channels;
+    st->codecpar->ch_layout.nb_channels = channels;
     st->codecpar->sample_rate = rate;
     st->codecpar->bits_per_coded_sample = bps;
     st->codecpar->bit_rate    = channels * rate * bps;
-    st->codecpar->block_align = ba ? ba : FFMAX(bps * st->codecpar->channels / 8, 1);
+    st->codecpar->block_align = ba ? ba : FFMAX(bps * channels / 8, 1);
     if (data_size != AU_UNKNOWN_SIZE)
-        st->duration = (((int64_t)data_size)<<3) / (st->codecpar->channels * (int64_t)bps);
+        st->duration = (((int64_t)data_size)<<3) / (channels * (int64_t)bps);
 
     st->start_time = 0;
     avpriv_set_pts_info(st, 64, 1, rate);
@@ -219,14 +229,14 @@ static int au_read_header(AVFormatContext *s)
     return 0;
 }
 
-AVInputFormat ff_au_demuxer = {
+const AVInputFormat ff_au_demuxer = {
     .name        = "au",
     .long_name   = NULL_IF_CONFIG_SMALL("Sun AU"),
     .read_probe  = au_probe,
     .read_header = au_read_header,
     .read_packet = ff_pcm_read_packet,
     .read_seek   = ff_pcm_read_seek,
-    .codec_tag   = (const AVCodecTag* const []) { codec_au_tags, 0 },
+    .codec_tag   = au_codec_tags,
 };
 
 #endif /* CONFIG_AU_DEMUXER */
@@ -296,7 +306,7 @@ static int au_write_header(AVFormatContext *s)
     avio_wb32(pb, AU_UNKNOWN_SIZE);             /* data size */
     avio_wb32(pb, par->codec_tag);              /* codec ID */
     avio_wb32(pb, par->sample_rate);
-    avio_wb32(pb, par->channels);
+    avio_wb32(pb, par->ch_layout.nb_channels);
     avio_write(pb, annotations.str, annotations.len & ~7);
 
 fail:
@@ -321,7 +331,7 @@ static int au_write_trailer(AVFormatContext *s)
     return 0;
 }
 
-AVOutputFormat ff_au_muxer = {
+const AVOutputFormat ff_au_muxer = {
     .name          = "au",
     .long_name     = NULL_IF_CONFIG_SMALL("Sun AU"),
     .mime_type     = "audio/basic",
@@ -332,7 +342,7 @@ AVOutputFormat ff_au_muxer = {
     .write_header  = au_write_header,
     .write_packet  = ff_raw_write_packet,
     .write_trailer = au_write_trailer,
-    .codec_tag     = (const AVCodecTag* const []) { codec_au_tags, 0 },
+    .codec_tag     = au_codec_tags,
     .flags         = AVFMT_NOTIMESTAMPS,
 };
 

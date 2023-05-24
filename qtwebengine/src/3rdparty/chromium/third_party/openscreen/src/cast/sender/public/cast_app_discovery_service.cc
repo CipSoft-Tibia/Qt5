@@ -12,19 +12,22 @@ CastAppDiscoveryService::Subscription::Subscription(
     uint32_t id)
     : discovery_service_(discovery_service), id_(id) {}
 
-CastAppDiscoveryService::Subscription::Subscription(Subscription&& other)
+CastAppDiscoveryService::Subscription::Subscription(
+    Subscription&& other) noexcept
     : discovery_service_(other.discovery_service_), id_(other.id_) {
   other.discovery_service_ = nullptr;
 }
 
-CastAppDiscoveryService::Subscription::~Subscription() {
-  Reset();
+CastAppDiscoveryService::Subscription&
+CastAppDiscoveryService::Subscription::operator=(Subscription&& other) {
+  id_ = other.id_;
+  discovery_service_ = other.discovery_service_;
+  other.discovery_service_ = nullptr;
+  return *this;
 }
 
-CastAppDiscoveryService::Subscription& CastAppDiscoveryService::Subscription::
-operator=(Subscription other) {
-  Swap(other);
-  return *this;
+CastAppDiscoveryService::Subscription::~Subscription() {
+  Reset();
 }
 
 void CastAppDiscoveryService::Subscription::Reset() {

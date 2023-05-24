@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QINPUTDIALOG_H
 #define QINPUTDIALOG_H
@@ -56,7 +20,6 @@ class Q_WIDGETS_EXPORT QInputDialog : public QDialog
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QInputDialog)
-//  Q_ENUMS(InputMode InputDialogOption)
     QDOC_PROPERTY(InputMode inputMode READ inputMode WRITE setInputMode)
     QDOC_PROPERTY(QString labelText READ labelText WRITE setLabelText)
     QDOC_PROPERTY(InputDialogOptions options READ options WRITE setOptions)
@@ -177,35 +140,15 @@ public:
                       int minValue = -2147483647, int maxValue = 2147483647,
                       int step = 1, bool *ok = nullptr, Qt::WindowFlags flags = Qt::WindowFlags());
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0) || defined(Q_QDOC)
     static double getDouble(QWidget *parent, const QString &title, const QString &label, double value = 0,
                             double minValue = -2147483647, double maxValue = 2147483647,
                             int decimals = 1, bool *ok = nullptr, Qt::WindowFlags flags = Qt::WindowFlags(),
                             double step = 1);
-#else
-    static double getDouble(QWidget *parent, const QString &title, const QString &label,
-                            double value = 0, double minValue = -2147483647,
-                            double maxValue = 2147483647, int decimals = 1, bool *ok = nullptr,
-                            Qt::WindowFlags flags = Qt::WindowFlags());
-    static double getDouble(QWidget *parent, const QString &title, const QString &label,
-                            double value, double minValue, double maxValue, int decimals, bool *ok,
-                            Qt::WindowFlags flags, double step);
-#endif
-
-#if QT_DEPRECATED_SINCE(5, 0)
-    QT_DEPRECATED static inline int getInteger(QWidget *parent, const QString &title, const QString &label, int value = 0,
-                          int minValue = -2147483647, int maxValue = 2147483647,
-                          int step = 1, bool *ok = nullptr, Qt::WindowFlags flags = Qt::WindowFlags())
-    {
-        return getInt(parent, title, label, value, minValue, maxValue, step, ok, flags);
-    }
-#endif
 
     void setDoubleStep(double step);
     double doubleStep() const;
 
 Q_SIGNALS:
-    // ### emit signals!
     void textValueChanged(const QString &text);
     void textValueSelected(const QString &text);
     void intValueChanged(int value);

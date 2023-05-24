@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">ਪੈਕੇਜ ਅਵੈਧ ਹੈ: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">ਪਿਛਲਾ</translation>
 <translation id="1196338895211115272">ਨਿੱਜੀ ਕੁੰਜੀ ਨਿਰਯਾਤ ਕਰਨ ਵਿੱਚ ਅਸਫਲ।</translation>
+<translation id="132960226125594336">ਸਮੱਗਰੀ ਸਕ੍ਰਿਪਟ ਲਈ '<ph name="RELATIVE_PATH" />' ਫ਼ਾਈਲ ਲੋਡ ਨਹੀਂ ਕੀਤੀ ਜਾ ਸਕੀ ਕਿਉਂਕਿ ਇਸ ਫ਼ਾਈਲ ਦਾ ਆਕਾਰ ਅਧਿਕਤਮ ਸਕ੍ਰਿਪਟ ਆਕਾਰ ਜਾਂ ਐਕਸਟੈਂਸ਼ਨ ਦੇ ਅਧਿਕਤਮ ਕੁੱਲ ਸਮੱਗਰੀ ਸਕ੍ਰਿਪਟ ਆਕਾਰ ਤੋਂ ਵੱਧ ਹੈ।</translation>
 <translation id="1420684932347524586">Yikes! ਬੇਤਰਤੀਬ RSA ਨਿੱਜੀ ਕੁੰਜੀ ਬਣਾਉਣ ਵਿੱਚ ਅਸਫਲ।</translation>
 <translation id="1445572445564823378">ਇਹ ਐਕਸਟੈਂਸ਼ਨ <ph name="PRODUCT_NAME" /> ਨੂੰ ਹੌਲਾ ਕਰ ਰਿਹਾ ਹੈ। <ph name="PRODUCT_NAME" /> ਦੀ ਕਾਰਗੁਜ਼ਾਰੀ ਨੂੰ ਮੁੜ-ਬਹਾਲ ਕਰਨ ਲਈ ਐਕਸਟੈਂਸ਼ਨ ਨੂੰ ਬੰਦ ਕਰੋ।</translation>
 <translation id="1468038450257740950">WebGL ਸਮਰਥਿਤ ਨਹੀਂ ਹੈ।</translation>
@@ -61,6 +62,7 @@
 <translation id="8636666366616799973">ਪੈਕੇਜ ਅਵੈਧ ਹੈ। ਵੇਰਵੇ: '<ph name="ERROR_MESSAGE" />'।</translation>
 <translation id="8761756413268424715">"<ph name="APP_NAME" />" ਵੱਲੋਂ ਤੁਹਾਡੀਆਂ ਡੀਵਾਈਸਾਂ ਵਿੱਚੋਂ ਇੱਕ ਤੱਕ ਪਹੁੰਚ ਪ੍ਰਾਪਤ ਕਰਨ ਦੀ ਬੇਨਤੀ ਕੀਤੀ ਜਾ ਰਹੀ ਹੈ:</translation>
 <translation id="8885905466771744233">ਨਿਸ਼ਚਿਤ ਐਕਸਟੈਂਸ਼ਨ ਲਈ ਇੱਕ ਨਿੱਜੀ ਕੁੰਜੀ ਪਹਿਲਾਂ ਹੀ ਮੌਜੂਦ ਹੈ। ਉਹ ਕੁੰਜੀ ਦੁਬਾਰਾ ਵਰਤੋ ਜਾਂ ਪਹਿਲਾਂ ਇਸਨੂੰ ਮਿਟਾਓ।</translation>
+<translation id="9039223174332979184">ਇਸ ਮਸ਼ੀਨ ਦੇ ਪ੍ਰਸ਼ਾਸਕ ਨੂੰ <ph name="EXTENSION_NAME" /> ਦੇ ਘੱਟੋ-ਘੱਟ 3 ਦੇ ਮੈਨੀਫ਼ੈਸਟ ਵਰਜਨ ਦੀ ਲੋੜ ਹੁੰਦੀ ਹੈ।</translation>
 <translation id="907841381057066561">ਪੈਕੇਜਿੰਗ ਦੇ ਦੌਰਾਨ ਅਸਥਾਈ ਜ਼ਿਪ ਫਾਈਲ ਬਣਾਉਣ ਵਿੱਚ ਅਸਫਲ।</translation>
 <translation id="941543339607623937">ਅਵੈਧ ਨਿੱਜੀ ਕੁੰਜੀ।</translation>
 </translationbundle>

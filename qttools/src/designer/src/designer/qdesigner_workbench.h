@@ -1,41 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef QDESIGNER_WORKBENCH_H
 #define QDESIGNER_WORKBENCH_H
 
 #include "designer_enums.h"
 
-#include <QtCore/qobject.h>
 #include <QtCore/qhash.h>
-#include <QtCore/qset.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qpointer.h>
 #include <QtCore/qrect.h>
-#include <QtCore/qvector.h>
+#include <QtCore/qset.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -50,13 +26,10 @@ class QActionGroup;
 class QDockWidget;
 class QMenu;
 class QMenuBar;
-class QMainWindow;
 class QToolBar;
-class QMdiArea;
 class QMdiSubWindow;
 class QCloseEvent;
-class QFont;
-class QtToolBarManager;
+class QScreen;
 class ToolBarManager;
 
 class QDesignerFormEditorInterface;
@@ -92,11 +65,6 @@ public:
 
     QActionGroup *modeActionGroup() const;
 
-    QRect availableGeometry() const;
-    QRect desktopGeometry() const;
-
-    int marginHint() const;
-
     bool readInForm(const QString &fileName) const;
     bool writeOutForm(QDesignerFormWindowInterface *formWindow, const QString &fileName) const;
     bool saveForm(QDesignerFormWindowInterface *fw);
@@ -104,6 +72,9 @@ public:
     bool readInBackup();
     void updateBackup(QDesignerFormWindowInterface* fwi);
     void applyUiSettings();
+
+    bool suppressNewFormShow() const { return m_suppressNewFormShow; }
+    void setSuppressNewFormShow(bool v) { m_suppressNewFormShow = v; }
 
 signals:
     void modeChanged(UIMode mode);
@@ -114,6 +85,7 @@ public slots:
     void removeFormWindow(QDesignerFormWindow *formWindow);
     void bringAllToFront();
     void toggleFormMinimizationState();
+    void showNewForm();
 
 private slots:
     void switchToNeutralMode();
@@ -132,6 +104,8 @@ private slots:
     void slotFileDropped(const QString &f);
 
 private:
+    QScreen *screen() const;
+    QRect availableFormGeometry() const;
     QWidget *magicalParent(const QWidget *w) const;
     Qt::WindowFlags magicalWindowFlags(const QWidget *widgetForFlags) const;
     QDesignerFormWindowManagerInterface *formWindowManager() const;
@@ -154,19 +128,19 @@ private:
 
     QMenu *m_windowMenu;
 
-    QMenuBar *m_globalMenuBar;
+    QPointer<QMenuBar> m_globalMenuBar;
 
     struct TopLevelData {
         ToolBarManager *toolbarManager;
-        QVector<QToolBar *> toolbars;
+        QList<QToolBar *> toolbars;
     };
     TopLevelData m_topLevelData;
 
     UIMode m_mode = NeutralMode;
-    DockedMainWindow *m_dockedMainWindow = nullptr;
+    QPointer<DockedMainWindow> m_dockedMainWindow;
 
-    QVector<QDesignerToolWindow *> m_toolWindows;
-    QVector<QDesignerFormWindow *> m_formWindows;
+    QList<QDesignerToolWindow *> m_toolWindows;
+    QList<QDesignerFormWindow *> m_formWindows;
 
     QMenu *m_toolbarMenu;
 
@@ -174,9 +148,9 @@ private:
     // interface modes.
     class Position {
     public:
-        Position(const QDockWidget *dockWidget);
-        Position(const QMdiSubWindow *mdiSubWindow, const QPoint &mdiAreaOffset);
-        Position(const QWidget *topLevelWindow, const QPoint &desktopTopLeft);
+        explicit Position(const QDockWidget *dockWidget);
+        explicit Position(const QMdiSubWindow *mdiSubWindow);
+        explicit Position(const QWidget *topLevelWindow);
 
         void applyTo(QMdiSubWindow *mdiSubWindow, const QPoint &mdiAreaOffset) const;
         void applyTo(QWidget *topLevelWindow, const QPoint &desktopTopLeft) const;
@@ -195,6 +169,7 @@ private:
     enum State { StateInitializing, StateUp, StateClosing };
     State m_state = StateInitializing;
     bool m_uiSettingsChanged = false; // UI mode changed in preference dialog, trigger delayed slot.
+    bool m_suppressNewFormShow = false;
 };
 
 QT_END_NAMESPACE

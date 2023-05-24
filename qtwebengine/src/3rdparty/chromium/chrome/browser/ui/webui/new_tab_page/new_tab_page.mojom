@@ -1,46 +1,12 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 module new_tab_page.mojom;
 
-import "chrome/common/search/omnibox.mojom";
-import "mojo/public/mojom/base/string16.mojom";
-import "mojo/public/mojom/base/text_direction.mojom";
-import "mojo/public/mojom/base/time.mojom";
 import "skia/public/mojom/skcolor.mojom";
+import "ui/webui/resources/cr_components/most_visited/most_visited.mojom";
 import "url/mojom/url.mojom";
-
-
-struct OneGoogleBarParts {
-  string bar_html;
-  string in_head_script;
-  string in_head_style;
-  string after_bar_script;
-  string end_of_body_html;
-  string end_of_body_script;
-};
-
-struct MostVisitedTile {
-  string title;
-  mojo_base.mojom.TextDirection title_direction;
-  url.mojom.Url url;
-
-  // ======= METRICS =======
-  // Identifier of most visited entry source (e.g. top sites).
-  int32 source;
-  // Identifier of most visited entry title source (e.g. page's title tag).
-  int32 title_source;
-  // Time the most visited entry was generated (e.g. received by a suggestion
-  // server).
-  mojo_base.mojom.Time data_generation_time;
-};
-
-struct MostVisitedInfo {
-  bool custom_links_enabled;
-  bool visible;
-  array<MostVisitedTile> tiles;
-};
 
 // A collection of background images.
 struct BackgroundCollection {
@@ -63,24 +29,21 @@ struct CollectionImage {
   url.mojom.Url image_url;
   // URL to a preview of the image. Can point to untrusted content.
   url.mojom.Url preview_image_url;
+  // Collection id of the image;
+  string collection_id;
 };
 
-// Theme settings for the NTP realbox.
-struct SearchBoxTheme {
-  skia.mojom.SkColor bg;
-  skia.mojom.SkColor icon;
-  skia.mojom.SkColor icon_selected;
-  skia.mojom.SkColor placeholder;
-  skia.mojom.SkColor results_bg;
-  skia.mojom.SkColor results_bg_hovered;
-  skia.mojom.SkColor results_bg_selected;
-  skia.mojom.SkColor results_dim;
-  skia.mojom.SkColor results_dim_selected;
-  skia.mojom.SkColor results_text;
-  skia.mojom.SkColor results_text_selected;
-  skia.mojom.SkColor results_url;
-  skia.mojom.SkColor results_url_selected;
-  skia.mojom.SkColor text;
+/**
+ * New Tab Page image sources. This enum must match the numbering for
+ * NTPBackgroundImageSource in enums.xml. These values are persisted to
+ * logs. Entries should not be renumbered, removed or reused.
+ */
+ enum NtpBackgroundImageSource {
+  kNoImage,
+  kFirstPartyThemeWithoutDailyRefresh,
+  kFirstPartyThemeWithDailyRefresh,
+  kThirdPartyTheme,
+  kUploadedImage,
 };
 
 // The background image URL and styling.
@@ -97,25 +60,28 @@ struct BackgroundImage {
   string? repeat_y;
   string? position_x;
   string? position_y;
+  // The CSS styling property set on the background image's scrim.
+  string? scrim_display;
+  // Source of background image.
+  NtpBackgroundImageSource image_source;
 };
 
 // A generic theme.
 struct Theme {
+  skia.mojom.SkColor text_color;
   skia.mojom.SkColor background_color;
-  skia.mojom.SkColor shortcut_background_color;
-  skia.mojom.SkColor shortcut_text_color;
-  // True if |shortcut_background_color| is dark.
-  bool shortcut_use_white_add_icon;
-  // True if the shortcuts titles should be wrapped in a pill.
-  bool shortcut_use_title_pill;
-  // True if the theme is default.
-  bool is_default;
+  // True if the background is custom.
+  bool is_custom_background;
+  // True if daily refresh is enabled.
+  bool daily_refresh_enabled;
   // True if the theme is dark (e.g. NTP background color is dark).
   bool is_dark;
+  // True if the realbox icons should be themed based on the background color.
+  bool theme_realbox_icons;
   // Color of Google logo. If not set show the logo multi-colored.
   skia.mojom.SkColor? logo_color;
-  // Selected collection for daily refresh.
-  string? daily_refresh_collection_id;
+  // Collection id of the background image.
+  string? background_image_collection_id;
   // The background image.
   BackgroundImage? background_image;
   // Human readable attributions of the background image.
@@ -123,9 +89,8 @@ struct Theme {
   string? background_image_attribution_2;
   // URL associated with the background image. Used for href.
   url.mojom.Url? background_image_attribution_url;
-
-  // Theme settings for the NTP realbox. Matching those of the Omnibox.
-  SearchBoxTheme search_box;
+  // Theme settings for the NTP MV tiles.
+  most_visited.mojom.MostVisitedTheme most_visited;
 };
 
 // Specifies look of the doodle share button.
@@ -174,7 +139,7 @@ struct AllModeImageDoodle {
   ImageDoodle light;
   ImageDoodle? dark;
   // URL opened in new tab when the doodle is clicked.
-  url.mojom.Url on_click_url;
+  url.mojom.Url? on_click_url;
   // URL displayed to users, which they can use to share the doodle.
   url.mojom.Url share_url;
 };
@@ -206,19 +171,24 @@ enum DoodleShareChannel {
   kLinkCopy,
 };
 
+enum CustomizeChromeSection {
+  kUnspecified,
+  kAppearance,
+  kShortcuts,
+  kModules,
+};
+
 struct PromoImagePart {
   url.mojom.Url image_url;
   url.mojom.Url target;
 };
 
 struct PromoLinkPart {
-  string? color;
   string text;
   url.mojom.Url url;
 };
 
 struct PromoTextPart {
-  string? color;
   string text;
 };
 
@@ -238,6 +208,14 @@ struct Promo {
   array<PromoPart> middle_slot_parts;
 };
 
+// Used to determine available modules for the NTP.
+struct ModuleIdName {
+  // A unique identifier associated with a module.
+  string id;
+  // The name associated with a module.
+  string name;
+};
+
 // Action the user performed while using the customize dialog. Used for metrics
 // logging only. Actions correspond to items in NTPLoggingEventType.
 enum CustomizeDialogAction {
@@ -255,31 +233,11 @@ enum CustomizeDialogAction {
   kShortcutsVisibilityToggleClicked,
 };
 
-// Action the user performed while using voice search. Used for metrics logging
-// only. Actions correspond to items in NTPLoggingEventType.
-enum VoiceSearchAction {
-  kActivateSearchBox,
-  kActivateKeyboard,
-  kCloseOverlay,
-  kQuerySubmitted,
-  kSupportLinkClicked,
-  kTryAgainLink,
-  kTryAgainMicButton,
-};
-
-// Errors occurred while using voice search. Errors correspond to items in
-// NTPLoggingEventType.
-enum VoiceSearchError {
-  kAborted,
-  kNoSpeech,
-  kAudioCapture,
-  kNetwork,
-  kNotAllowed,
-  kLanguageNotSupported,
-  kNoMatch,
-  kServiceNotAllowed,
-  kBadGrammar,
-  kOther,
+// Opt in status. Used for metrics logging only.
+enum OptInStatus {
+  kExplicitOptIn,
+  kImplicitOptIn,
+  kOptOut,
 };
 
 // Used by the WebUI page to bootstrap bidirectional communication.
@@ -292,73 +250,82 @@ interface PageHandlerFactory {
 
 // Browser-side handler for requests from WebUI page.
 interface PageHandler {
-  // Adds tile.
-  AddMostVisitedTile(url.mojom.Url url, string title) => (bool success);
-  // Deletes tile by |url|.
-  DeleteMostVisitedTile(url.mojom.Url url);
-  // Moves tile identified by url to a new position at index |new_pos|.
-  ReorderMostVisitedTile(url.mojom.Url url, uint8 new_pos);
-  // Replaces the custom and most-visited tiles with the default tile set.
-  RestoreMostVisitedDefaults();
   // Sets the background image and notifies all NTPs of the change.
   SetBackgroundImage(string attribution_1, string attribution_2,
-      url.mojom.Url attribution_url, url.mojom.Url image_url);
+      url.mojom.Url attribution_url, url.mojom.Url image_url,
+      url.mojom.Url thumbnail_url, string collection_id);
   // Sets collection id for daily refresh. When |collection_id| is empty, the
   // daily refresh is turned off.
   SetDailyRefreshCollectionId(string collection_id);
   // Clears the background and daily refresh settings.
   SetNoBackgroundImage();
-  // Set the visibility and whether custom links are enabled.
-  SetMostVisitedSettings(bool customLinksEnabled, bool visible);
-  // Undoes the last action done to the tiles (add, delete, reorder, restore or
-  // update). Note that only the last action can be undone.
-  UndoMostVisitedTileAction();
-  // Called to update the tiles.
-  UpdateMostVisitedInfo();
-  // Updates a tile by url.
-  UpdateMostVisitedTile(url.mojom.Url url, url.mojom.Url new_url,
-                        string new_title)
-      => (bool success);
+  // Reverts any changes to the background when a background preview
+  // is cancelled.
+  RevertBackgroundChanges();
+  // Confirms that background has been changed.
+  ConfirmBackgroundChanges();
+  // Sets the visibility of NTP tiles and whether custom links are enabled.
+  SetMostVisitedSettings(bool custom_links_enabled, bool shortcuts_visible);
+  // Returns the visibility of NTP tiles and whether custom links are enabled.
+  GetMostVisitedSettings() => (bool custom_links_enabled,
+                               bool shortcuts_visible);
   // Returns the collections of background images.
   GetBackgroundCollections() => (array<BackgroundCollection> collections);
   // Returns the images of a collection identified by |collection_id|.
   GetBackgroundImages(string collection_id) => (array<CollectionImage> images);
-  // Invisibly focuses the omnibox.
-  FocusOmnibox();
-  // Pastes |text| into the omnibox.
-  PasteIntoOmnibox(string text);
   // Gets current doodle if there is one.
   GetDoodle() => (Doodle? doodle);
   // Choose custom background from local file system.
   ChooseLocalCustomBackground() => (bool success);
-  // Get the OneGoogleBarParts to be inlined in the NTP. Forwards the query
-  // parameters to the endpoint that serves the OneGoogleBar parts with
-  // |query_params|.
-  GetOneGoogleBarParts(string query_params) => (OneGoogleBarParts? parts);
-  // Get the middle slot promo if it exists.
-  GetPromo() => (Promo? promo);
+  // Updates middle slot promo data. Triggers a call to |SetPromo|.
+  UpdatePromoData();
+  // Marks a promo as blocked.
+  BlocklistPromo(string promo_id);
+  // Unmarks a promo as blocked.
+  UndoBlocklistPromo(string promo_id);
   // Called when a module the given id is dismissed.
   OnDismissModule(string module_id);
   // Called when a module the given id is restored.
   OnRestoreModule(string module_id);
   // If |visible| the modules will be shown.
   SetModulesVisible(bool visible);
-  // Triggers a call to |SetModulesVisible| with the current visibility setting.
-  UpdateModulesVisible();
+  // Disables module with ID |module_id| if |disabled|. Enables otherwise.
+  SetModuleDisabled(string module_id, bool disabled);
+  // Triggers a call to |SetDisabledModules|.
+  UpdateDisabledModules();
+  // Called when at least one module has loaded with data.
+  // `module_ids` is an array of module descriptor ids that identifies the
+  // modules that loaded with data.
+  OnModulesLoadedWithData(array<string> module_ids);
+  // Returns a list of available module id and name pairs.
+  GetModulesIdNames() => (array<ModuleIdName> data);
+  // Sets the order of modules.
+  SetModulesOrder(array<string> module_ids);
+  // Returns the order of modules or an empty array if the user has not
+  // reordered them before.
+  GetModulesOrder() => (array<string> module_ids);
+  // Increment the number of times the user has seen modules.
+  IncrementModulesShownCount();
+  // If |visible| Modular NTP Desktop v1 First Run Experience will be shown.
+  SetModulesFreVisible(bool visible);
+  // Triggers a call to |SetModulesFreVisibility|.
+  UpdateModulesFreVisibility();
+  // Log user's FRE |optInStatus|.
+  LogModulesFreOptInStatus(OptInStatus opt_in_status);
+  // Shows or hides the customize chrome in unified side panel.
+  SetCustomizeChromeSidePanelVisible(bool visible,
+                                     CustomizeChromeSection section);
+  // Increment the number of times the user has opened the side panel
+  // with the customize chrome button.
+  IncrementCustomizeChromeButtonOpenCount();
 
   // ======= METRICS =======
-  // Logs that |tiles| were displayed / updated at |time|. The first instance of
-  // this event is used as a proxy for when the NTP has finished loading.
-  OnMostVisitedTilesRendered(array<MostVisitedTile> tiles, double time);
   // Logs that the One Google Bar was added to the DOM / loaded in an iframe at
   // |time|.
   OnOneGoogleBarRendered(double time);
   // Logs that the promo iframe was loaded at |time| and pings |log_url| for
   // promo metrics logging.
   OnPromoRendered(double time, url.mojom.Url? log_url);
-  // Logs that |tile| at position |index| was triggered to navigate to that
-  // most visited entry.
-  OnMostVisitedTileNavigation(MostVisitedTile tile, uint32 index);
   // Logs an action performed in the customize dialog.
   OnCustomizeDialogAction(CustomizeDialogAction action);
   // Logs that the |type| image of an image doodle has been clicked. If set, the
@@ -381,76 +348,21 @@ interface PageHandler {
                  string? share_id);
   // Logs that a link on a promo has been clicked.
   OnPromoLinkClicked();
-  // Logs an action performed while using voice search.
-  OnVoiceSearchAction(VoiceSearchAction action);
-  // Logs an error occurred while using voice search.
-  OnVoiceSearchError(VoiceSearchError error);
-  // Logs a module impression. Called when a module is loaded and can be seen by
-  // the user (scrolled into view).
-  OnModuleImpression(string module_id, double time);
-  // Logs when a module is loaded with data.
-  OnModuleLoaded(string module_id, double time);
-  // Logs when a user interacts with a module which will result in a navigation.
-  OnModuleUsage(string module_id);
-  // Logs that the modules have been shown at |time|.
-  OnModulesRendered(double time);
-
-  // ======= REALBOX =======
-  // Queries autocomplete matches from the browser.
-  QueryAutocomplete(mojo_base.mojom.String16 input,
-                    bool prevent_inline_autocomplete);
-  // Cancels the current autocomplete query. Clears the result set if
-  // |clear_result| is true.
-  StopAutocomplete(bool clear_result);
-  // Handles navigation to an autocomplete match (i.e. an item in the realbox's
-  // list of matches). Note: |url| is passed solely to verify that the browser
-  // and renderer are in sync; don't trust this content or use it for anything
-  // other than verification purposes (i.e. is the URL still the same?).
-  // TODO(crbug.com/1076604): replace |url| with an unguessable token.
-  // |mouse_button| indicates which mouse button was pressed on the match. See
-  // https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent/button
-  OpenAutocompleteMatch(uint8 line,
-                        url.mojom.Url url,
-                        bool are_matches_showing,
-                        mojo_base.mojom.TimeDelta time_elapsed_since_last_focus,
-                        uint8 mouse_button,
-                        bool alt_key,
-                        bool ctrl_key,
-                        bool meta_key,
-                        bool shift_key);
-  // Deletes the AutocompleteMatch in the current results by |line| number if
-  // it is deletable.
-  DeleteAutocompleteMatch(uint8 line);
-  // Tells the browser to allow suggestions with the given suggestion group ID
-  // to appear in the results if they currently are not allowed to or to prevent
-  // them from appearing in the results if they are currently permitted to.
-  ToggleSuggestionGroupIdVisibility(int32 suggestion_group_id);
-  // Logs the time it took in milliseconds since the first character (in a
-  // series of characters) was typed until Autocomplete results were painted.
-  LogCharTypedToRepaintLatency(mojo_base.mojom.TimeDelta latency);
+  // Logs that the <ntp-app> element's |ready| callback method was called.
+  OnAppRendered(double time);
 };
 
 // WebUI-side handler for requests from the browser.
 interface Page {
-  // Updates the page with most-visited info which includes whether the
-  // tiles should be shown, if links can be customized and the tiles.
-  SetMostVisitedInfo(MostVisitedInfo info);
+  // Sets Customize Chrome Side Panel visibility to |visible|.
+  SetCustomizeChromeSidePanelVisibility(bool visible);
   // Sets the current theme.
   SetTheme(Theme theme);
-  // If |focused| fakes focus on the fakebox.
-  SetFakeboxFocused(bool focused);
-  // If |visible| shows the fakebox.
-  SetFakeboxVisible(bool visible);
-  // Updates the module visibility.
-  SetModulesVisible(bool visible);
-
-  // ======= REALBOX =======
-  // Updates the NTP realbox with the autocomplete results.
-  AutocompleteResultChanged(search.mojom.AutocompleteResult result);
-  // Updates the NTP realbox popup with the image or favicon data URL for the
-  // given |match_index| and |url| where |url| is an AutocompleteMatch image_url
-  // or destination_url for an entity or a navigation suggestion respectively.
-  AutocompleteMatchImageAvailable(uint32 match_index,
-                                  url.mojom.Url url,
-                                  string data_url);
+  // Disables the modules in |ids|. If |all|, disables all modules and passes an
+  // empty list for |ids|.
+  SetDisabledModules(bool all, array<string> ids);
+  // Sets Modular NTP Desktop v1 First Run Experience's visibility to |visible|.
+  SetModulesFreVisibility(bool visible);
+  // Sets NTP homepage promo.
+  SetPromo(Promo? promo);
 };

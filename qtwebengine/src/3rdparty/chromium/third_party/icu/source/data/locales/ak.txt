@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 ak{
     AuxExemplarCharacters{"[c j q v z]"}
     ExemplarCharacters{"[a b d e ɛ f g h i k l m n o ɔ p r s t u w y]"}
@@ -25,14 +26,13 @@ ak{
             }
         }
     }
-    Version{"37"}
     calendar{
         generic{
             DateTimePatterns{
-                "h:mm:ss a zzzz",
-                "h:mm:ss a z",
-                "h:mm:ss a",
-                "h:mm a",
+                "h:mm:ss a zzzz",
+                "h:mm:ss a z",
+                "h:mm:ss a",
+                "h:mm a",
                 "EEEE, G y MMMM dd",
                 "G y MMMM d",
                 "G y MMM d",
@@ -42,6 +42,16 @@ ak{
                 "{1} {0}",
                 "{1} {0}",
                 "{1} {0}",
+            }
+            DateTimeSkeletons{
+                "ahmmsszzzz",
+                "ahmmssz",
+                "ahmmss",
+                "ahmm",
+                "GyMMMMEEEEdd",
+                "GyMMMMd",
+                "GyMMMd",
+                "GGGGGyyMMdd",
             }
             availableFormats{
                 Hm{"HH:mm"}
@@ -55,7 +65,7 @@ ak{
                 MMMd{"MMM d"}
                 Md{"M/d"}
                 d{"d"}
-                hm{"h:mm a"}
+                hm{"h:mm a"}
                 ms{"mm:ss"}
                 y{"y"}
                 yM{"M/y"}
@@ -78,10 +88,10 @@ ak{
                 "EW",
             }
             DateTimePatterns{
-                "h:mm:ss a zzzz",
-                "h:mm:ss a z",
-                "h:mm:ss a",
-                "h:mm a",
+                "h:mm:ss a zzzz",
+                "h:mm:ss a z",
+                "h:mm:ss a",
+                "h:mm a",
                 "EEEE, y MMMM dd",
                 "y MMMM d",
                 "y MMM d",
@@ -91,6 +101,16 @@ ak{
                 "{1} {0}",
                 "{1} {0}",
                 "{1} {0}",
+            }
+            DateTimeSkeletons{
+                "ahmmsszzzz",
+                "ahmmssz",
+                "ahmmss",
+                "ahmm",
+                "yMMMMEEEEdd",
+                "yMMMMd",
+                "yMMMd",
+                "yyMMdd",
             }
             availableFormats{
                 Hm{"HH:mm"}
@@ -104,7 +124,7 @@ ak{
                 MMMd{"MMM d"}
                 Md{"M/d"}
                 d{"d"}
-                hm{"h:mm a"}
+                hm{"h:mm a"}
                 ms{"mm:ss"}
                 y{"y"}
                 yM{"M/y"}

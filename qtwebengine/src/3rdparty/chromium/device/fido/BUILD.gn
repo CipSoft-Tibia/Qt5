@@ -1,15 +1,21 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
-import("//third_party/protobuf/proto_library.gni")
 
 component("fido") {
   sources = [
+    "attestation_object.cc",
+    "attestation_object.h",
+    "attestation_statement.cc",
+    "attestation_statement.h",
     "attested_credential_data.cc",
     "attested_credential_data.h",
+    "authenticator_data.cc",
+    "authenticator_data.h",
     "authenticator_selection_criteria.cc",
     "authenticator_selection_criteria.h",
     "cable/cable_discovery_data.cc",
@@ -22,6 +28,8 @@ component("fido") {
     "cable/websocket_adapter.cc",
     "cable/websocket_adapter.h",
     "cbor_extract.cc",
+    "discoverable_credential_metadata.cc",
+    "discoverable_credential_metadata.h",
     "ed25519_public_key.cc",
     "ed25519_public_key.h",
     "features.cc",
@@ -32,6 +40,8 @@ component("fido") {
     "fido_parsing_utils.h",
     "fido_transport_protocol.cc",
     "fido_transport_protocol.h",
+    "opaque_attestation_statement.cc",
+    "opaque_attestation_statement.h",
     "p256_public_key.cc",
     "p256_public_key.h",
     "public_key.cc",
@@ -51,12 +61,14 @@ component("fido") {
   defines = [ "IS_DEVICE_FIDO_IMPL" ]
 
   deps = [
+    "//build:chromeos_buildflags",
     "//components/apdu",
     "//components/cbor",
     "//components/device_event_log",
     "//crypto",
     "//device/base",
     "//device/fido/strings",
+    "//services/data_decoder/public/cpp",
     "//third_party/boringssl",
     "//third_party/microsoft_webauthn",
     "//ui/base",
@@ -76,14 +88,12 @@ component("fido") {
       "aoa/android_accessory_device.h",
       "aoa/android_accessory_discovery.cc",
       "aoa/android_accessory_discovery.h",
-      "attestation_object.cc",
-      "attestation_object.h",
-      "attestation_statement.cc",
-      "attestation_statement.h",
+      "appid_exclude_probe_task.cc",
+      "appid_exclude_probe_task.h",
       "attestation_statement_formats.cc",
       "attestation_statement_formats.h",
-      "authenticator_data.cc",
-      "authenticator_data.h",
+      "auth_token_requester.cc",
+      "auth_token_requester.h",
       "authenticator_get_assertion_response.cc",
       "authenticator_get_assertion_response.h",
       "authenticator_get_info_response.cc",
@@ -118,20 +128,20 @@ component("fido") {
       "cable/fido_tunnel_device.h",
       "cable/v2_discovery.cc",
       "cable/v2_discovery.h",
-      "client_data.cc",
-      "client_data.h",
       "credential_management.cc",
       "credential_management.h",
       "credential_management_handler.cc",
       "credential_management_handler.h",
       "ctap2_device_operation.h",
-      "ctap_empty_authenticator_request.cc",
-      "ctap_empty_authenticator_request.h",
+      "ctap_authenticator_selection_request.cc",
+      "ctap_authenticator_selection_request.h",
       "ctap_get_assertion_request.cc",
       "ctap_get_assertion_request.h",
       "ctap_make_credential_request.cc",
       "ctap_make_credential_request.h",
       "device_operation.h",
+      "device_public_key_extension.cc",
+      "device_public_key_extension.h",
       "device_response_converter.cc",
       "device_response_converter.h",
       "fido_authenticator.cc",
@@ -151,6 +161,8 @@ component("fido") {
       "fido_task.cc",
       "fido_task.h",
       "fido_types.h",
+      "filter.cc",
+      "filter.h",
       "get_assertion_request_handler.cc",
       "get_assertion_request_handler.h",
       "get_assertion_task.cc",
@@ -169,15 +181,13 @@ component("fido") {
       "make_credential_request_handler.h",
       "make_credential_task.cc",
       "make_credential_task.h",
-      "opaque_attestation_statement.cc",
-      "opaque_attestation_statement.h",
       "pin.cc",
       "pin.h",
+      "pin_internal.cc",
+      "pin_internal.h",
       "platform_credential_store.h",
       "reset_request_handler.cc",
       "reset_request_handler.h",
-      "response_data.cc",
-      "response_data.h",
       "set_pin_request_handler.cc",
       "set_pin_request_handler.h",
       "u2f_command_constructor.cc",
@@ -190,6 +200,8 @@ component("fido") {
       "virtual_ctap2_device.h",
       "virtual_fido_device.cc",
       "virtual_fido_device.h",
+      "virtual_fido_device_authenticator.cc",
+      "virtual_fido_device_authenticator.h",
       "virtual_u2f_device.cc",
       "virtual_u2f_device.h",
     ]
@@ -255,12 +267,17 @@ component("fido") {
     sources += [
       "cros/authenticator.cc",
       "cros/authenticator.h",
+      "cros/credential_store.cc",
+      "cros/credential_store.h",
       "cros/discovery.cc",
       "cros/discovery.h",
     ]
 
     deps += [
-      ":u2f_proto",
+      "//chromeos/dbus/tpm_manager",
+      "//chromeos/dbus/tpm_manager:tpm_manager_proto",
+      "//chromeos/dbus/u2f",
+      "//chromeos/dbus/u2f:u2f_proto",
       "//dbus",
     ]
   }
@@ -278,6 +295,7 @@ static_library("cablev2_registration") {
     "//components/device_event_log",
     "//components/gcm_driver",
     "//components/gcm_driver/instance_id",
+    "//third_party/boringssl",
   ]
 }
 
@@ -290,6 +308,7 @@ static_library("cablev2_authenticator") {
     ":fido",
     "//components/cbor",
     "//components/device_event_log",
+    "//content/public/common",  # for authenticator.mojom
     "//services/network/public/mojom",
   ]
 }
@@ -304,18 +323,12 @@ static_library("cablev2_test_util") {
     ":cablev2_authenticator",
     ":fido",
     "//components/cbor",
+    "//content/public/common",  # for authenticator.mojom
     "//crypto",
+    "//net/traffic_annotation:test_support",
     "//services/network:test_support",
     "//services/network/public/mojom",
   ]
-}
-
-if (is_chromeos) {
-  proto_library("u2f_proto") {
-    sources = [ "//third_party/cros_system_api/dbus/u2f/u2f_interface.proto" ]
-
-    proto_out_dir = "chromeos/dbus/u2f"
-  }
 }
 
 source_set("mocks") {
@@ -416,10 +429,15 @@ source_set("test_support") {
       "hid/fake_hid_impl_for_testing.cc",
       "hid/fake_hid_impl_for_testing.h",
     ]
+    deps += [ "//services/device/public/cpp/hid" ]
   }
 
   if (!is_android) {
     sources += [
+      "multiple_virtual_fido_device_factory.cc",
+      "multiple_virtual_fido_device_factory.h",
+      "virtual_fido_device_discovery.cc",
+      "virtual_fido_device_discovery.h",
       "virtual_fido_device_factory.cc",
       "virtual_fido_device_factory.h",
     ]

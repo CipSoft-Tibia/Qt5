@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt SVG module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsvgrenderer.h"
 
@@ -98,7 +62,7 @@ QT_BEGIN_NAMESPACE
     Finally, the QSvgRenderer class provides the repaintNeeded() signal which is emitted
     whenever the rendering of the document needs to be updated.
 
-    \sa QSvgWidget, {Qt SVG C++ Classes}, {SVG Viewer Example}, QPicture
+    \sa QSvgWidget, {Qt SVG C++ Classes}, QPicture
 */
 
 class QSvgRendererPrivate : public QObjectPrivate
@@ -113,6 +77,25 @@ public:
     ~QSvgRendererPrivate()
     {
         delete render;
+    }
+
+    void startStopTimer()
+    {
+        if (render && render->animated() && fps > 0) {
+            ensureTimerCreated();
+            timer->start(1000 / fps);
+        } else if (timer) {
+            timer->stop();
+        }
+    }
+
+    void ensureTimerCreated()
+    {
+        Q_Q(QSvgRenderer);
+        if (!timer) {
+            timer = new QTimer(q);
+            q->connect(timer, &QTimer::timeout, q, &QSvgRenderer::repaintNeeded);
+        }
     }
 
     static void callRepaintNeeded(QSvgRenderer *const q);
@@ -254,6 +237,7 @@ void QSvgRenderer::setFramesPerSecond(int num)
         return;
     }
     d->fps = num;
+    d->startStopTimer();
 }
 
 /*!
@@ -354,17 +338,7 @@ static bool loadDocument(QSvgRenderer *const q,
         delete d->render;
         d->render = nullptr;
     }
-    if (d->render && d->render->animated() && d->fps > 0) {
-        if (!d->timer)
-            d->timer = new QTimer(q);
-        else
-            d->timer->stop();
-        q->connect(d->timer, SIGNAL(timeout()),
-                   q, SIGNAL(repaintNeeded()));
-        d->timer->start(1000/d->fps);
-    } else if (d->timer) {
-        d->timer->stop();
-    }
+    d->startStopTimer();
 
     //force first update
     QSvgRendererPrivate::callRepaintNeeded(q);
@@ -510,33 +484,6 @@ bool QSvgRenderer::elementExists(const QString &id) const
         exists = d->render->elementExists(id);
     return exists;
 }
-
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-/*!
-    \since 4.2
-    \deprecated
-
-    Use transformForElement() instead.
-
-
-    Returns the transformation matrix for the element
-    with the given \a id. The matrix is a product of
-    the transformation of the element's parents. The transformation of
-    the element itself is not included.
-
-    To find the bounding rectangle of the element in logical coordinates,
-    you can apply the matrix on the rectangle returned from boundsOnElement().
-
-    \sa boundsOnElement()
-*/
-QMatrix QSvgRenderer::matrixForElement(const QString &id) const
-{
-    return transformForElement(id).toAffine();
-}
-QT_WARNING_POP
-#endif // QT_DEPRECATED_SINCE(5, 15)
 
 /*!
     \since 5.15

@@ -1,35 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DAnimation/private/bezierevaluator_p.h>
 #include <Qt3DAnimation/private/keyframe_p.h>
-#include <QtCore/qvector.h>
+#include <QtCore/qlist.h>
 
 #include <cmath>
 
@@ -37,6 +12,23 @@ Q_DECLARE_METATYPE(Qt3DAnimation::Animation::Keyframe)
 
 using namespace Qt3DAnimation;
 using namespace Qt3DAnimation::Animation;
+
+static const QList<float> globalTimes = { 0.0f,      1.00375f, 2.48f,
+                                          4.37625f,  6.64f,    9.21875f,
+                                         12.06f,    15.11125f, 18.32f,
+                                         21.63375f, 25.0f,     28.36625f,
+                                         31.68f,    34.88875f, 37.94f,
+                                         40.78125f, 43.36f,    45.62375f,
+                                         47.52f,    48.99625f, 50.0f };
+
+static const QList<float> globalValues = { 0.0f,     0.03625f, 0.14f,
+                                           0.30375f, 0.52f,    0.78125f,
+                                           1.08f,    1.40875f, 1.76f,
+                                           2.12625f, 2.5f,     2.87375f,
+                                           3.24f,    3.59125f, 3.92f,
+                                           4.21875f, 4.48f,    4.69625f,
+                                           4.86f,    4.96375f, 5.0f };
+
 
 class tst_BezierEvaluator : public QObject
 {
@@ -55,7 +47,7 @@ private Q_SLOTS:
         QTest::addColumn<float>("c");
         QTest::addColumn<float>("d");
         QTest::addColumn<int>("rootCount");
-        QTest::addColumn<QVector<float>>("roots");
+        QTest::addColumn<QList<float>>("roots");
 
         float a = 1.0f;
         float b = 0.0f;
@@ -209,7 +201,7 @@ private Q_SLOTS:
         QFETCH(float, c);
         QFETCH(float, d);
         QFETCH(int, rootCount);
-        QFETCH(QVector<float>, roots);
+        QFETCH(QList<float>, roots);
 
         float coeffs[4];
         coeffs[0] = d;
@@ -231,8 +223,8 @@ private Q_SLOTS:
         QTest::addColumn<Keyframe>("kf0");
         QTest::addColumn<float>("t1");
         QTest::addColumn<Keyframe>("kf1");
-        QTest::addColumn<QVector<float>>("times");
-        QTest::addColumn<QVector<float>>("bezierParamters");
+        QTest::addColumn<QList<float>>("times");
+        QTest::addColumn<QList<float>>("bezierParamters");
 
         {
             float t0 = 0.0f;
@@ -240,37 +232,15 @@ private Q_SLOTS:
             float t1 = 50.0f;
             Keyframe kf1{5.0f, {45.0f, 5.0f}, {55.0f, 5.0f}, QKeyFrame::BezierInterpolation};
             const int count = 21;
-            QVector<float> times = (QVector<float>()
-                                    << 0.0f
-                                    << 1.00375f
-                                    << 2.48f
-                                    << 4.37625f
-                                    << 6.64f
-                                    << 9.21875f
-                                    << 12.06f
-                                    << 15.11125f
-                                    << 18.32f
-                                    << 21.63375f
-                                    << 25.0f
-                                    << 28.36625f
-                                    << 31.68f
-                                    << 34.88875f
-                                    << 37.94f
-                                    << 40.78125f
-                                    << 43.36f
-                                    << 45.62375f
-                                    << 47.52f
-                                    << 48.99625f
-                                    << 50.0f);
 
-            QVector<float> bezierParameters;
+            QList<float> bezierParameters;
             float deltaU = 1.0f / float(count - 1);
             for (int i = 0; i < count; ++i)
                 bezierParameters.push_back(float(i) * deltaU);
 
             QTest::newRow("t=0 to t=50, default easing") << t0 << kf0
                                                          << t1 << kf1
-                                                         << times << bezierParameters;
+                                                         << globalTimes << bezierParameters;
         }
         {
             // This test creates a case where the coefficients for finding
@@ -282,8 +252,8 @@ private Q_SLOTS:
             Keyframe kf0{150.0f, {0.0f, 0.0f}, {5.80961999f, 150.0f}, QKeyFrame::BezierInterpolation};
             float t1 = 10.0f;
             Keyframe kf1{-150.0f, {7.904809959f, 150.0f}, {0.f, 0.f}, QKeyFrame::BezierInterpolation};
-            QVector<float> times = {10.f};
-            QVector<float> results = {1.0f};
+            QList<float> times = { 10.f };
+            QList<float> results = { 1.0f };
             QTest::newRow("t=0 to t=10, regression") << t0 << kf0
                                                      << t1 << kf1
                                                      << times << results;
@@ -297,8 +267,8 @@ private Q_SLOTS:
         QFETCH(Keyframe, kf0);
         QFETCH(float, t1);
         QFETCH(Keyframe, kf1);
-        QFETCH(QVector<float>, times);
-        QFETCH(QVector<float>, bezierParamters);
+        QFETCH(QList<float>, times);
+        QFETCH(QList<float>, bezierParamters);
 
         // WHEN
         BezierEvaluator bezier(t0, kf0, t1, kf1);
@@ -317,62 +287,17 @@ private Q_SLOTS:
         QTest::addColumn<Keyframe>("kf0");
         QTest::addColumn<float>("t1");
         QTest::addColumn<Keyframe>("kf1");
-        QTest::addColumn<QVector<float>>("times");
-        QTest::addColumn<QVector<float>>("values");
+        QTest::addColumn<QList<float>>("times");
+        QTest::addColumn<QList<float>>("values");
 
         float t0 = 0.0f;
         Keyframe kf0{0.0f, {-5.0f, 0.0f}, {5.0f, 0.0f}, QKeyFrame::BezierInterpolation};
         float t1 = 50.0f;
         Keyframe kf1{5.0f, {45.0f, 5.0f}, {55.0f, 5.0f}, QKeyFrame::BezierInterpolation};
-        QVector<float> times = (QVector<float>()
-            << 0.0f
-            << 1.00375f
-            << 2.48f
-            << 4.37625f
-            << 6.64f
-            << 9.21875f
-            << 12.06f
-            << 15.11125f
-            << 18.32f
-            << 21.63375f
-            << 25.0f
-            << 28.36625f
-            << 31.68f
-            << 34.88875f
-            << 37.94f
-            << 40.78125f
-            << 43.36f
-            << 45.62375f
-            << 47.52f
-            << 48.99625f
-            << 50.0f);
-
-        QVector<float> values = (QVector<float>()
-            << 0.0f
-            << 0.03625f
-            << 0.14f
-            << 0.30375f
-            << 0.52f
-            << 0.78125f
-            << 1.08f
-            << 1.40875f
-            << 1.76f
-            << 2.12625f
-            << 2.5f
-            << 2.87375f
-            << 3.24f
-            << 3.59125f
-            << 3.92f
-            << 4.21875f
-            << 4.48f
-            << 4.69625f
-            << 4.86f
-            << 4.96375f
-            << 5.0f);
 
         QTest::newRow("t=0, value=0 to t=50, value=5, default easing") << t0 << kf0
                                                      << t1 << kf1
-                                                     << times << values;
+                                                     << globalTimes << globalValues;
     }
 
     void checkValueForTime()
@@ -382,8 +307,8 @@ private Q_SLOTS:
         QFETCH(Keyframe, kf0);
         QFETCH(float, t1);
         QFETCH(Keyframe, kf1);
-        QFETCH(QVector<float>, times);
-        QFETCH(QVector<float>, values);
+        QFETCH(QList<float>, times);
+        QFETCH(QList<float>, values);
 
         // WHEN
         BezierEvaluator bezier(t0, kf0, t1, kf1);

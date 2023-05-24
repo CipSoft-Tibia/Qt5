@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,6 @@
 #include <stdint.h>
 
 #include "base/component_export.h"
-#include "base/files/file_path.h"
-#include "base/macros.h"
-#include "base/supports_user_data.h"
 #include "base/threading/thread_checker.h"
 #include "storage/browser/file_system/task_runner_bound_observer_list.h"
 
@@ -29,8 +26,7 @@ enum class QuotaLimitType;
 // the same context (e.g. use the same task runner, share the quota etc).
 // Note that the remaining quota bytes (allowed_bytes_growth) may be
 // updated during the execution of write operations.
-class COMPONENT_EXPORT(STORAGE_BROWSER) FileSystemOperationContext
-    : public base::SupportsUserData {
+class COMPONENT_EXPORT(STORAGE_BROWSER) FileSystemOperationContext {
  public:
   explicit FileSystemOperationContext(FileSystemContext* context);
 
@@ -39,7 +35,11 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) FileSystemOperationContext
   FileSystemOperationContext(FileSystemContext* context,
                              base::SequencedTaskRunner* task_runner);
 
-  ~FileSystemOperationContext() override;
+  FileSystemOperationContext(const FileSystemOperationContext&) = delete;
+  FileSystemOperationContext& operator=(const FileSystemOperationContext&) =
+      delete;
+
+  ~FileSystemOperationContext();
 
   FileSystemContext* file_system_context() const {
     return file_system_context_.get();
@@ -91,8 +91,6 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) FileSystemOperationContext
 
   // Used to check its setters are not called on arbitrary thread.
   THREAD_CHECKER(setter_thread_checker_);
-
-  DISALLOW_COPY_AND_ASSIGN(FileSystemOperationContext);
 };
 
 }  // namespace storage

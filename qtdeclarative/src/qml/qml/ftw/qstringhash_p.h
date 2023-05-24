@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSTRINGHASH_P_H
 #define QSTRINGHASH_P_H
@@ -54,25 +18,34 @@
 #include <private/qhashedstring_p.h>
 #include <private/qprimefornumbits_p.h>
 
-#include <QtCore/qglobal.h>
+#include <QtCore/qbytearray.h>
+#include <QtCore/qstring.h>
+#include <QtCore/qtaggedpointer.h>
 
 QT_BEGIN_NAMESPACE
+
+static inline QString::DataPointer &mutableStringData(const QHashedString &key)
+{
+    return const_cast<QHashedString &>(key).data_ptr();
+}
 
 class QStringHashData;
 class QStringHashNode
 {
 public:
     QStringHashNode()
-    : ckey(nullptr)
     {
     }
 
     QStringHashNode(const QHashedString &key)
-    : length(key.length()), hash(key.hash()), symbolId(0)
+    : length(int(key.size())), hash(key.hash()), symbolId(0)
+    , arrayData(mutableStringData(key).d_ptr())
+    , strData(mutableStringData(key).data())
     {
-        strData = const_cast<QHashedString &>(key).data_ptr();
+        Q_ASSERT(key.size() <= std::numeric_limits<int>::max());
+        if (arrayData)
+            arrayData->ref();
         setQString(true);
-        strData->ref.ref();
     }
 
     QStringHashNode(const QHashedCStringRef &key)
@@ -81,49 +54,63 @@ public:
     }
 
     QStringHashNode(const QStringHashNode &o)
-    : length(o.length), hash(o.hash), symbolId(o.symbolId), ckey(o.ckey)
+    : length(o.length), hash(o.hash), symbolId(o.symbolId), arrayData(o.arrayData)
     {
         setQString(o.isQString());
-        if (isQString()) { strData->ref.ref(); }
+        if (isQString()) {
+            strData = o.strData;
+            if (arrayData)
+                arrayData->ref();
+        } else {
+            ckey = o.ckey;
+        }
     }
 
     ~QStringHashNode()
     {
-        if (isQString()) { if (!strData->ref.deref()) free(strData); }
+        if (isQString() && arrayData && !arrayData->deref())
+            QTypedArrayData<char16_t>::deallocate(arrayData);
     }
 
-    QFlagPointer<QStringHashNode> next;
+    enum Tag {
+        NodeIsCString,
+        NodeIsQString
+    };
+
+    QTaggedPointer<QStringHashNode, Tag> next;
 
     qint32 length = 0;
     quint32 hash = 0;
     quint32 symbolId = 0;
 
+    QTypedArrayData<char16_t> *arrayData = nullptr;
     union {
-        const char *ckey;
-        QStringData *strData;
+        const char *ckey = nullptr;
+        char16_t *strData;
     };
 
     inline QHashedString key() const
     {
-        if (isQString())
-            return QHashedString(QString((QChar *)strData->data(), length), hash);
+        if (isQString()) {
+            if (arrayData)
+                arrayData->ref();
+            return QHashedString(QString(QStringPrivate(arrayData, strData, length)), hash);
+        }
 
         return QHashedString(QString::fromLatin1(ckey, length), hash);
     }
 
-    bool isQString() const { return next.flag(); }
-    void setQString(bool v) { if (v) next.setFlag(); else next.clearFlag(); }
+    bool isQString() const { return next.tag() == NodeIsQString; }
+    void setQString(bool v) { if (v) next.setTag(NodeIsQString); else next.setTag(NodeIsCString); }
 
-    inline char *cStrData() const { return (char *)ckey; }
-    inline quint16 *utf16Data() const { return (quint16 *)strData->data(); }
+    inline qsizetype size() const { return length; }
+    inline const char *cStrData() const { return ckey; }
+    inline const char16_t *utf16Data() const { return strData; }
 
     inline bool equals(const QV4::Value &string) const {
         QString s = string.toQStringNoThrow();
         if (isQString()) {
-            QStringDataPtr dd;
-            dd.ptr = strData;
-            strData->ref.ref();
-            return QString(dd) == s;
+            return QStringView(utf16Data(), length) == s;
         } else {
             return QLatin1String(cStrData(), length) == s;
         }
@@ -133,10 +120,7 @@ public:
         if (length != string->d()->length() || hash != string->hashValue())
                 return false;
         if (isQString()) {
-            QStringDataPtr dd;
-            dd.ptr = strData;
-            strData->ref.ref();
-            return QString(dd) == string->toQString();
+            return QStringView(utf16Data(), length) == string->toQString();
         } else {
             return QLatin1String(cStrData(), length) == string->toQString();
         }
@@ -145,7 +129,7 @@ public:
     inline bool equals(const QHashedStringRef &string) const {
         return length == string.length() &&
                hash == string.hash() &&
-               (isQString()?QHashedString::compare(string.constData(), (const QChar *)utf16Data(), length):
+               (isQString()? string == QStringView {utf16Data(), length}:
                             QHashedString::compare(string.constData(), cStrData(), length));
     }
 
@@ -237,7 +221,7 @@ template<typename T>
 struct HashedForm {};
 
 template<> struct HashedForm<QString> { typedef QHashedString Type; };
-template<> struct HashedForm<QStringRef> { typedef QHashedStringRef Type; };
+template<> struct HashedForm<QStringView> { typedef QHashedStringRef Type; };
 template<> struct HashedForm<QHashedString> { typedef const QHashedString &Type; };
 template<> struct HashedForm<QV4::String *> { typedef const QV4::String *Type; };
 template<> struct HashedForm<const QV4::String *> { typedef const QV4::String *Type; };
@@ -249,13 +233,21 @@ class QStringHashBase
 {
 public:
     static HashedForm<QString>::Type hashedString(const QString &s) { return QHashedString(s);}
-    static HashedForm<QStringRef>::Type hashedString(const QStringRef &s) { return QHashedStringRef(s.constData(), s.size());}
+    static HashedForm<QStringView>::Type hashedString(QStringView s)
+    {
+        Q_ASSERT(s.size() <= std::numeric_limits<int>::max());
+        return QHashedStringRef(s.constData(), int(s.size()));
+    }
     static HashedForm<QHashedString>::Type hashedString(const QHashedString &s) { return s; }
     static HashedForm<QV4::String *>::Type hashedString(QV4::String *s) { return s; }
     static HashedForm<const QV4::String *>::Type hashedString(const QV4::String *s) { return s; }
     static HashedForm<QHashedStringRef>::Type hashedString(const QHashedStringRef &s) { return s; }
 
-    static HashedForm<QLatin1String>::Type hashedString(const QLatin1String &s) { return QHashedCStringRef(s.data(), s.size()); }
+    static HashedForm<QLatin1StringView>::Type hashedString(QLatin1StringView s)
+    {
+        Q_ASSERT(s.size() <= std::numeric_limits<int>::max());
+        return QHashedCStringRef(s.data(), int(s.size()));
+    }
     static HashedForm<QHashedCStringRef>::Type hashedString(const QHashedCStringRef &s) { return s; }
 
     static const QString &toQString(const QString &s) { return s; }
@@ -508,10 +500,12 @@ int QStringHash<T>::numBuckets() const
 template<class T>
 void QStringHash<T>::initializeNode(Node *node, const QHashedString &key)
 {
-    node->length = key.length();
+    node->length = key.size();
     node->hash = key.hash();
-    node->strData = const_cast<QHashedString &>(key).data_ptr();
-    node->strData->ref.ref();
+    node->arrayData = mutableStringData(key).d_ptr();
+    node->strData = mutableStringData(key).data();
+    if (node->arrayData)
+        node->arrayData->ref();
     node->setQString(true);
 }
 
@@ -547,10 +541,12 @@ typename QStringHash<T>::Node *QStringHash<T>::takeNode(const Node &o)
         Node *rv = nodePool->nodes + nodePool->used++;
         rv->length = o.length;
         rv->hash = o.hash;
+        rv->arrayData = o.arrayData;
         if (o.isQString()) {
             rv->strData = o.strData;
-            rv->strData->ref.ref();
             rv->setQString(true);
+            if (rv->arrayData)
+                rv->arrayData->ref();
         } else {
             rv->ckey = o.ckey;
         }
@@ -700,7 +696,7 @@ typename QStringHash<T>::Node *QStringHash<T>::findNode(const K &key) const
 
     typename HashedForm<K>::Type hashedKey(hashedString(key));
     while (node && !node->equals(hashedKey))
-        node = (*node->next);
+        node = node->next.data();
 
     return (Node *)node;
 }

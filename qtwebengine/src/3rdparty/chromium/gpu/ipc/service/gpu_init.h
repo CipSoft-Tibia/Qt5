@@ -1,20 +1,21 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef GPU_IPC_SERVICE_GPU_INIT_H_
 #define GPU_IPC_SERVICE_GPU_INIT_H_
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "gpu/config/device_perf_info.h"
-#include "gpu/config/gpu_extra_info.h"
 #include "gpu/config/gpu_feature_info.h"
 #include "gpu/config/gpu_info.h"
 #include "gpu/config/gpu_preferences.h"
 #include "gpu/ipc/service/gpu_ipc_service_export.h"
 #include "gpu/ipc/service/gpu_watchdog_thread.h"
 #include "gpu/vulkan/buildflags.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "ui/gfx/gpu_extra_info.h"
 
 namespace base {
 class CommandLine;
@@ -32,7 +33,7 @@ class GPU_IPC_SERVICE_EXPORT GpuSandboxHelper {
  public:
   virtual ~GpuSandboxHelper() = default;
 
-  virtual void PreSandboxStartup() = 0;
+  virtual void PreSandboxStartup(const GpuPreferences& gpu_prefs) = 0;
 
   virtual bool EnsureSandboxInitialized(GpuWatchdogThread* watchdog_thread,
                                         const GPUInfo* gpu_info,
@@ -42,6 +43,10 @@ class GPU_IPC_SERVICE_EXPORT GpuSandboxHelper {
 class GPU_IPC_SERVICE_EXPORT GpuInit {
  public:
   GpuInit();
+
+  GpuInit(const GpuInit&) = delete;
+  GpuInit& operator=(const GpuInit&) = delete;
+
   ~GpuInit();
 
   void set_sandbox_helper(GpuSandboxHelper* helper) {
@@ -57,15 +62,15 @@ class GPU_IPC_SERVICE_EXPORT GpuInit {
 
   const GPUInfo& gpu_info() const { return gpu_info_; }
   const GpuFeatureInfo& gpu_feature_info() const { return gpu_feature_info_; }
-  const GpuExtraInfo& gpu_extra_info() const { return gpu_extra_info_; }
-  const base::Optional<GPUInfo>& gpu_info_for_hardware_gpu() const {
+  const gfx::GpuExtraInfo& gpu_extra_info() const { return gpu_extra_info_; }
+  const absl::optional<GPUInfo>& gpu_info_for_hardware_gpu() const {
     return gpu_info_for_hardware_gpu_;
   }
-  const base::Optional<GpuFeatureInfo>& gpu_feature_info_for_hardware_gpu()
+  const absl::optional<GpuFeatureInfo>& gpu_feature_info_for_hardware_gpu()
       const {
     return gpu_feature_info_for_hardware_gpu_;
   }
-  const base::Optional<DevicePerfInfo>& device_perf_info() const {
+  const absl::optional<DevicePerfInfo>& device_perf_info() const {
     return device_perf_info_;
   }
   const GpuPreferences& gpu_preferences() const { return gpu_preferences_; }
@@ -85,7 +90,7 @@ class GPU_IPC_SERVICE_EXPORT GpuInit {
  private:
   bool InitializeVulkan();
 
-  GpuSandboxHelper* sandbox_helper_ = nullptr;
+  raw_ptr<GpuSandboxHelper> sandbox_helper_ = nullptr;
   bool gl_use_swiftshader_ = false;
   std::unique_ptr<GpuWatchdogThread> watchdog_thread_;
   GPUInfo gpu_info_;
@@ -96,21 +101,20 @@ class GPU_IPC_SERVICE_EXPORT GpuInit {
 
   // The following data are collected from hardware GPU and saved before
   // switching to SwiftShader.
-  base::Optional<GPUInfo> gpu_info_for_hardware_gpu_;
-  base::Optional<GpuFeatureInfo> gpu_feature_info_for_hardware_gpu_;
+  absl::optional<GPUInfo> gpu_info_for_hardware_gpu_;
+  absl::optional<GpuFeatureInfo> gpu_feature_info_for_hardware_gpu_;
 
-  GpuExtraInfo gpu_extra_info_;
+  gfx::GpuExtraInfo gpu_extra_info_;
 
   // The following data are collected by the info collection GPU process.
-  base::Optional<DevicePerfInfo> device_perf_info_;
+  absl::optional<DevicePerfInfo> device_perf_info_;
 
 #if BUILDFLAG(ENABLE_VULKAN)
   std::unique_ptr<VulkanImplementation> vulkan_implementation_;
 #endif
 
+  void SaveHardwareGpuInfoAndGpuFeatureInfo();
   void AdjustInfoToSwiftShader();
-
-  DISALLOW_COPY_AND_ASSIGN(GpuInit);
 };
 
 }  // namespace gpu

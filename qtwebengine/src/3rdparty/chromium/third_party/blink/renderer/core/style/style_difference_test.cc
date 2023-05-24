@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,9 +15,8 @@ TEST(StyleDifferenceTest, StreamOutputDefault) {
   string_stream << diff;
   EXPECT_EQ(
       "StyleDifference{layoutType=NoLayout, "
-      "reshape=0, "
-      "paintInvalidation=0, recomputeVisualOverflow=0, "
-      "visualRectUpdate=0, propertySpecificDifferences=, "
+      "reshape=0, paintInvalidationType=None, recomputeVisualOverflow=0, "
+      "propertySpecificDifferences=, "
       "scrollAnchorDisablingPropertyChanged=0}",
       string_stream.str());
 }
@@ -25,19 +24,19 @@ TEST(StyleDifferenceTest, StreamOutputDefault) {
 TEST(StyleDifferenceTest, StreamOutputAllFieldsMutated) {
   std::stringstream string_stream;
   StyleDifference diff;
-  diff.SetNeedsPaintInvalidation();
+  diff.SetNeedsNormalPaintInvalidation();
   diff.SetNeedsPositionedMovementLayout();
   diff.SetNeedsReshape();
   diff.SetNeedsRecomputeVisualOverflow();
-  diff.SetNeedsVisualRectUpdate();
-  diff.SetTransformChanged();
+  diff.SetTransformPropertyChanged();
+  diff.SetOtherTransformPropertyChanged();
   diff.SetScrollAnchorDisablingPropertyChanged();
   string_stream << diff;
   EXPECT_EQ(
       "StyleDifference{layoutType=PositionedMovement, "
-      "reshape=1, paintInvalidation=1, "
-      "recomputeVisualOverflow=1, visualRectUpdate=1, "
-      "propertySpecificDifferences=TransformChanged, "
+      "reshape=1, paintInvalidationType=Normal, recomputeVisualOverflow=1, "
+      "propertySpecificDifferences="
+      "TransformPropertyChanged|OtherTransformPropertyChanged, "
       "scrollAnchorDisablingPropertyChanged=1}",
       string_stream.str());
 }
@@ -45,21 +44,21 @@ TEST(StyleDifferenceTest, StreamOutputAllFieldsMutated) {
 TEST(StyleDifferenceTest, StreamOutputSetAllProperties) {
   std::stringstream string_stream;
   StyleDifference diff;
-  diff.SetTransformChanged();
+  diff.SetTransformPropertyChanged();
+  diff.SetOtherTransformPropertyChanged();
   diff.SetOpacityChanged();
   diff.SetZIndexChanged();
   diff.SetFilterChanged();
-  diff.SetBackdropFilterChanged();
   diff.SetCSSClipChanged();
   diff.SetTextDecorationOrColorChanged();
   diff.SetBlendModeChanged();
   string_stream << diff;
   EXPECT_EQ(
       "StyleDifference{layoutType=NoLayout, "
-      "reshape=0, paintInvalidation=0, "
-      "recomputeVisualOverflow=0, visualRectUpdate=0, "
-      "propertySpecificDifferences=TransformChanged|OpacityChanged|"
-      "ZIndexChanged|FilterChanged|BackdropFilterChanged|CSSClipChanged|"
+      "reshape=0, paintInvalidationType=None, recomputeVisualOverflow=0, "
+      "propertySpecificDifferences=TransformPropertyChanged|"
+      "OtherTransformPropertyChanged|OpacityChanged|"
+      "ZIndexChanged|FilterChanged|CSSClipChanged|"
       "TextDecorationOrColorChanged|BlendModeChanged, "
       "scrollAnchorDisablingPropertyChanged=0}",
       string_stream.str());

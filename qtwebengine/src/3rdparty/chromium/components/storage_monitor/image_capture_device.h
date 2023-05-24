@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,6 @@
 #include "base/files/file_path.h"
 #include "base/mac/foundation_util.h"
 #include "base/mac/scoped_nsobject.h"
-#include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_util.h"
 #include "base/strings/sys_string_conversions.h"
@@ -27,7 +26,7 @@ namespace storage_monitor {
 // events through this interface.
 class ImageCaptureDeviceListener {
  public:
-  virtual ~ImageCaptureDeviceListener() {}
+  virtual ~ImageCaptureDeviceListener() = default;
 
   // Get a notification that a particular item has been found on the device.
   // These calls will come automatically after a new device is initialized.

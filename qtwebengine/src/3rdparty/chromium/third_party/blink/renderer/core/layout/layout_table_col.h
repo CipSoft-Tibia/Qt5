@@ -26,6 +26,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_LAYOUT_TABLE_COL_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_LAYOUT_TABLE_COL_H_
 
+#include "base/notreached.h"
 #include "third_party/blink/renderer/core/layout/layout_table_box_component.h"
 
 namespace blink {
@@ -95,7 +96,7 @@ class LayoutTableCol final : public LayoutTableBoxComponent {
  private:
   bool IsOfType(LayoutObjectType type) const override {
     NOT_DESTROYED();
-    return type == kLayoutObjectLayoutTableCol || LayoutBox::IsOfType(type);
+    return type == kLayoutObjectTableCol || LayoutBox::IsOfType(type);
   }
   void UpdateFromElement() override;
 
@@ -127,8 +128,13 @@ class LayoutTableCol final : public LayoutTableBoxComponent {
   unsigned span_;
 };
 
-DEFINE_LAYOUT_OBJECT_TYPE_CASTS(LayoutTableCol, IsLayoutTableCol());
+template <>
+struct DowncastTraits<LayoutTableCol> {
+  static bool AllowFrom(const LayoutObject& object) {
+    return object.IsLayoutTableCol() && !object.IsLayoutNGObject();
+  }
+};
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_LAYOUT_TABLE_COL_H_

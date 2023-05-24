@@ -1,36 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Sze Howe Koh <szehowe.koh@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Sze Howe Koh <szehowe.koh@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page signalsandslots-syntaxes.html
 \title Differences between String-Based and Functor-Based Connections
 \brief Compares the two syntaxes for making signal-slot connections in C++.
 
-From Qt 5.0 onwards, Qt offers two different ways to write \l{Signals and Slots}
+Qt offers two different ways to write \l{Signals and Slots}
 {signal-slot connections} in C++: The \e{string-based} connection syntax and the
 \e{functor-based} connection syntax. There are pros and cons to both syntaxes.
 The table below summarizes their differences.
@@ -144,7 +120,8 @@ Here is the code that makes the signal-slot connections:
 \snippet snippets/signalsandslots/signalslotsyntaxes.cpp crosslanguage
 
 \note All JavaScript functions in QML take parameters of \c var type, which maps
-to the QVariant type in C++.
+to the QVariant type in C++, unless they use type annotations. See
+\l{Invoking QML Methods} for further details.
 
 When the QPushButton is clicked, the console prints,
 \e{'QML received: "Hello from C++!"'}. Likewise, when the Rectangle is clicked,
@@ -186,7 +163,7 @@ With the string-based syntax, parameter types are explicitly specified. As a
 result, the desired instance of an overloaded signal or slot is unambiguous.
 
 In contrast, with the functor-based syntax, an overloaded signal or slot must
-be casted to tell the compiler which instance to use.
+be cast to tell the compiler which instance to use.
 
 For example, \l QLCDNumber has three versions of the \c display() slot:
 \list 1

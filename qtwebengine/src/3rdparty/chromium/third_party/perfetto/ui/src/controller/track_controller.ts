@@ -16,8 +16,9 @@ import {assertExists, assertTrue} from '../base/logging';
 import {Engine} from '../common/engine';
 import {Registry} from '../common/registry';
 import {TraceTime, TrackState} from '../common/state';
-import {toNs} from '../common/time';
+import {fromNs, toNs} from '../common/time';
 import {LIMIT, TrackData} from '../common/track_data';
+import {publishTrackData} from '../frontend/publish';
 
 import {Controller} from './controller';
 import {ControllerFactory} from './controller';
@@ -68,7 +69,7 @@ export abstract class TrackController<
   // Must be overridden by the track implementation. Is invoked when the track
   // frontend runs out of cached data. The derived track controller is expected
   // to publish new track data in response to this call.
-  abstract async onBoundsChange(start: number, end: number, resolution: number):
+  abstract onBoundsChange(start: number, end: number, resolution: number):
       Promise<Data>;
 
   get trackState(): TrackState {
@@ -93,13 +94,11 @@ export abstract class TrackController<
 
   publish(data: Data): void {
     this.data = data;
-    globals.publish('TrackData', {id: this.trackId, data});
+    publishTrackData({id: this.trackId, data});
   }
 
-  /**
-   * Returns a valid SQL table name with the given prefix that should be unique
-   * for each track.
-   */
+  // Returns a valid SQL table name with the given prefix that should be unique
+  // for each track.
   tableName(prefix: string) {
     // Derive table name from, since that is unique for each track.
     // Track ID can be UUID but '-' is not valid for sql table name.
@@ -151,7 +150,7 @@ export abstract class TrackController<
         globals.state.frontendLocalState.visibleState.resolution;
   }
 
-  // Decides, based on the the length of the trace and the number of rows
+  // Decides, based on the length of the trace and the number of rows
   // provided whether a TrackController subclass should cache its quantized
   // data. Returns the bucket size (in ns) if caching should happen and
   // undefined otherwise.
@@ -252,12 +251,20 @@ export abstract class TrackController<
         promise
             .then(() => {
               this.isSetup = true;
+              let resolution = visibleState.resolution;
+              // TODO(hjd): We shouldn't have to be so defensive here.
+              if (Math.log2(toNs(resolution)) % 1 !== 0) {
+                // resolution is in pixels per second so 1000 means
+                // 1px = 1ms.
+                resolution =
+                    fromNs(Math.pow(2, Math.floor(Math.log2(toNs(1000)))));
+              }
               return this.onBoundsChange(
                   visibleState.startSec - dur,
                   visibleState.endSec + dur,
-                  visibleState.resolution);
+                  resolution);
             })
-            .then(data => {
+            .then((data) => {
               this.publish(data);
             })
             .finally(() => {
@@ -282,4 +289,5 @@ export interface TrackControllerFactory extends
   kind: string;
 }
 
-export const trackControllerRegistry = new Registry<TrackControllerFactory>();
+export const trackControllerRegistry =
+    Registry.kindRegistry<TrackControllerFactory>();

@@ -5,13 +5,15 @@
 #ifndef V8_HEAP_MEMORY_CHUNK_LAYOUT_H_
 #define V8_HEAP_MEMORY_CHUNK_LAYOUT_H_
 
-#include "src/heap/heap.h"
+#include "src/common/globals.h"
+#include "src/heap/base/active-system-pages.h"
 #include "src/heap/list.h"
+#include "src/heap/progress-bar.h"
 #include "src/heap/slot-set.h"
 
-#ifdef V8_ENABLE_CONSERVATIVE_STACK_SCANNING
+#ifdef V8_ENABLE_INNER_POINTER_RESOLUTION_OSB
 #include "src/heap/object-start-bitmap.h"
-#endif
+#endif  // V8_ENABLE_INNER_POINTER_RESOLUTION_OSB
 
 namespace v8 {
 namespace internal {
@@ -26,13 +28,18 @@ class SlotSet;
 enum RememberedSetType {
   OLD_TO_NEW,
   OLD_TO_OLD,
+  OLD_TO_SHARED,
+  OLD_TO_CODE,
   NUMBER_OF_REMEMBERED_SET_TYPES
 };
 
+using ActiveSystemPages = ::heap::base::ActiveSystemPages;
+
 class V8_EXPORT_PRIVATE MemoryChunkLayout {
  public:
-  static const int kNumSets = NUMBER_OF_REMEMBERED_SET_TYPES;
-  static const int kNumTypes = ExternalBackingStoreType::kNumTypes;
+  static constexpr int kNumSets = NUMBER_OF_REMEMBERED_SET_TYPES;
+  static constexpr int kNumTypes = ExternalBackingStoreType::kNumTypes;
+  static constexpr int kMemoryChunkAlignment = sizeof(size_t);
 #define FIELD(Type, Name) \
   k##Name##Offset, k##Name##End = k##Name##Offset + sizeof(Type) - 1
   enum Header {
@@ -49,9 +56,8 @@ class V8_EXPORT_PRIVATE MemoryChunkLayout {
     FIELD(VirtualMemory, Reservation),
     // MemoryChunk fields:
     FIELD(SlotSet* [kNumSets], SlotSet),
-    FIELD(std::atomic<size_t>, ProgressBar),
+    FIELD(ProgressBar, ProgressBar),
     FIELD(std::atomic<intptr_t>, LiveByteCount),
-    FIELD(SlotSet*, SweepingSlotSet),
     FIELD(TypedSlotsSet* [kNumSets], TypedSlotSet),
     FIELD(void* [kNumSets], InvalidatedSlots),
     FIELD(base::Mutex*, Mutex),
@@ -61,19 +67,25 @@ class V8_EXPORT_PRIVATE MemoryChunkLayout {
     FIELD(std::atomic<size_t>[kNumTypes], ExternalBackingStoreBytes),
     FIELD(heap::ListNode<MemoryChunk>, ListNode),
     FIELD(FreeListCategory**, Categories),
-    FIELD(std::atomic<intptr_t>, YoungGenerationLiveByteCount),
-    FIELD(Bitmap*, YoungGenerationBitmap),
     FIELD(CodeObjectRegistry*, CodeObjectRegistry),
     FIELD(PossiblyEmptyBuckets, PossiblyEmptyBuckets),
-#ifdef V8_ENABLE_CONSERVATIVE_STACK_SCANNING
+    FIELD(ActiveSystemPages*, ActiveSystemPages),
+#ifdef V8_ENABLE_INNER_POINTER_RESOLUTION_OSB
     FIELD(ObjectStartBitmap, ObjectStartBitmap),
-#endif
+#endif  // V8_ENABLE_INNER_POINTER_RESOLUTION_OSB
+    FIELD(size_t, WasUsedForAllocation),
     kMarkingBitmapOffset,
-    kMemoryChunkHeaderSize = kMarkingBitmapOffset,
+    kMemoryChunkHeaderSize =
+        kMarkingBitmapOffset +
+        ((kMarkingBitmapOffset % kMemoryChunkAlignment) == 0
+             ? 0
+             : kMemoryChunkAlignment -
+                   (kMarkingBitmapOffset % kMemoryChunkAlignment)),
     kMemoryChunkHeaderStart = kSlotSetOffset,
     kBasicMemoryChunkHeaderSize = kMemoryChunkHeaderStart,
     kBasicMemoryChunkHeaderStart = 0,
   };
+#undef FIELD
   static size_t CodePageGuardStartOffset();
   static size_t CodePageGuardSize();
   static intptr_t ObjectStartOffsetInCodePage();
@@ -81,8 +93,14 @@ class V8_EXPORT_PRIVATE MemoryChunkLayout {
   static size_t AllocatableMemoryInCodePage();
   static intptr_t ObjectStartOffsetInDataPage();
   static size_t AllocatableMemoryInDataPage();
+  static intptr_t ObjectStartOffsetInReadOnlyPage();
+  static size_t AllocatableMemoryInReadOnlyPage();
   static size_t ObjectStartOffsetInMemoryChunk(AllocationSpace space);
   static size_t AllocatableMemoryInMemoryChunk(AllocationSpace space);
+
+  static int MaxRegularCodeObjectSize();
+
+  static_assert(kMemoryChunkHeaderSize % alignof(size_t) == 0);
 };
 
 }  // namespace internal

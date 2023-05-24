@@ -4,20 +4,80 @@
 
 #include "ui/base/prediction/prediction_metrics_handler.h"
 
-#include "base/metrics/histogram_functions.h"
+#include <utility>
+
+#include "base/cpu_reduction_experiment.h"
+#include "base/metrics/histogram.h"
+#include "base/strings/strcat.h"
 
 namespace ui {
+namespace {
+base::HistogramBase* GetHistogram(base::StringPiece name,
+                                  base::StringPiece suffix) {
+  return base::Histogram::FactoryGet(
+      base::StrCat({name, ".", suffix}), 1, 1000, 50,
+      base::HistogramBase::kUmaTargetedHistogramFlag);
+}
+}  // namespace
 
-PredictionMetricsHandler::PredictionMetricsHandler() {}
-PredictionMetricsHandler::~PredictionMetricsHandler() {}
+PredictionMetricsHandler::PredictionMetricsHandler(std::string histogram_name)
+    : histogram_name_(std::move(histogram_name)),
+      over_prediction_histogram_(
+          *GetHistogram(histogram_name_, "OverPrediction")),
+      under_prediction_histogram_(
+          *GetHistogram(histogram_name_, "UnderPrediction")),
+      prediction_score_histogram_(
+          *GetHistogram(histogram_name_, "PredictionScore")),
+      frame_over_prediction_histogram_(
+          *GetHistogram(histogram_name_, "FrameOverPrediction")),
+      frame_under_prediction_histogram_(
+          *GetHistogram(histogram_name_, "FrameUnderPrediction")),
+      frame_prediction_score_histogram_(
+          *GetHistogram(histogram_name_, "FramePredictionScore")),
+      prediction_jitter_histogram_(
+          *GetHistogram(histogram_name_, "PredictionJitter")),
+      visual_jitter_histogram_(*GetHistogram(histogram_name_, "VisualJitter")) {
+}
+
+PredictionMetricsHandler::~PredictionMetricsHandler() = default;
 
 void PredictionMetricsHandler::AddRealEvent(const gfx::PointF& pos,
                                             const base::TimeTicks& time_stamp,
                                             const base::TimeTicks& frame_time,
                                             bool scrolling) {
-  // Be sure real events are ordered over time
-  DCHECK(events_queue_.empty() ||
-         time_stamp >= events_queue_.back().time_stamp);
+  // Real events should arrive in order over time, and if they aren't then just
+  // bail. Early out instead of DCHECKing in order to handle delegated ink
+  // trails. Delegated ink trails may submit points out of order in a situation
+  // such as three points with timestamps = 1, 2, and 3 making up the trail on
+  // one frame, and then on the next frame only the points with timestamp 2 and
+  // 3 make up the trail. In this case, 2 would be added as a real point again,
+  // but it has a timestamp earlier than 3, so a DCHECK would fail. Early out
+  // here will not impact correctness since 2 already exists in |events_queue_|.
+  if (!events_queue_.empty() && time_stamp <= events_queue_.back().time_stamp) {
+    // There can be situations where the metadata does not arrive in time for
+    // the vsync. Rather than skipping drawing for that frame, the metadata is
+    // kept and the trail is drawn from the metadata point to the latest
+    // point in the trail. However, the metadata and points relatively near it
+    // can be cleared from events_queue_ during ComputeMetrics(). Therefore the
+    // following DCHECK is hit when the older points are re-added as real
+    // events. Since those points are not relevant to the front of the trail,
+    // where the prediction happens, they can safely be exempt from the
+    // following DCHECK. Only points that are at or later than the front of the
+    // events_queue_ need to be verified.
+    if (time_stamp < events_queue_.front().time_stamp)
+      return;
+
+    // Confirm that the above assertion is true, and that timestamp 2 (from
+    // the above example) exists in |events_queue_|.
+    bool event_exists = false;
+    for (uint64_t i = 0; i < events_queue_.size() && !event_exists; ++i) {
+      if (events_queue_[i].time_stamp == time_stamp)
+        event_exists = true;
+    }
+    DCHECK(event_exists);
+    return;
+  }
+
   EventData e;
   if (scrolling)
     e.pos = gfx::PointF(0, pos.y());
@@ -89,7 +149,7 @@ void PredictionMetricsHandler::EvaluatePrediction() {
 void PredictionMetricsHandler::Reset() {
   events_queue_.clear();
   predicted_events_queue_.clear();
-  last_predicted_ = base::nullopt;
+  last_predicted_ = absl::nullopt;
 }
 
 int PredictionMetricsHandler::GetInterpolatedEventForPredictedEvent(
@@ -120,6 +180,8 @@ void PredictionMetricsHandler::ComputeMetrics() {
       predicted_events_queue_.front().frame_time, &frame_interpolated_);
 
   next_real_ = events_queue_[low_idx_interpolated + 1].pos;
+  next_real_point_after_frame_ =
+      events_queue_[low_idx_frame_interpolated + 1].pos;
 
   int first_needed_event =
       std::min(low_idx_interpolated, low_idx_frame_interpolated);
@@ -130,29 +192,31 @@ void PredictionMetricsHandler::ComputeMetrics() {
   for (int i = 0; i < first_needed_event - 1; i++)
     events_queue_.pop_front();
 
-  std::string kPredictionMetrics = "Event.InputEventPrediction.Scroll.";
-
   double score = ComputeOverUnderPredictionMetric();
   if (score >= 0) {
-    base::UmaHistogramCounts1000(kPredictionMetrics + "OverPrediction", score);
+    over_prediction_histogram_->Add(score);
   } else {
-    base::UmaHistogramCounts1000(kPredictionMetrics + "UnderPrediction",
-                                 -score);
+    under_prediction_histogram_->Add(-score);
   }
+  prediction_score_histogram_->Add(std::abs(score));
 
-  // Need |last_predicted_| to compute WrongDirection and Jitter metrics.
+  double frame_score = ComputeFrameOverUnderPredictionMetric();
+  if (frame_score >= 0) {
+    frame_over_prediction_histogram_->Add(frame_score);
+  } else {
+    frame_under_prediction_histogram_->Add(-frame_score);
+  }
+  frame_prediction_score_histogram_->Add(std::abs(frame_score));
+
+  // Need |last_predicted_| to compute Jitter metrics.
   if (!last_predicted_.has_value())
     return;
 
-  base::UmaHistogramBoolean(kPredictionMetrics + "WrongDirection",
-                            ComputeWrongDirectionMetric());
-  base::UmaHistogramCounts1000(kPredictionMetrics + "PredictionJitter",
-                               ComputePredictionJitterMetric());
-  base::UmaHistogramCounts1000(kPredictionMetrics + "VisualJitter",
-                               ComputeVisualJitterMetric());
+  prediction_jitter_histogram_->Add(ComputePredictionJitterMetric());
+  visual_jitter_histogram_->Add(ComputeVisualJitterMetric());
 }
 
-double PredictionMetricsHandler::ComputeOverUnderPredictionMetric() {
+double PredictionMetricsHandler::ComputeOverUnderPredictionMetric() const {
   gfx::Vector2dF real_direction = next_real_ - interpolated_;
   gfx::Vector2dF relative_direction =
       predicted_events_queue_.front().pos - interpolated_;
@@ -162,11 +226,15 @@ double PredictionMetricsHandler::ComputeOverUnderPredictionMetric() {
     return -relative_direction.Length();
 }
 
-bool PredictionMetricsHandler::ComputeWrongDirectionMetric() {
-  gfx::Vector2dF real_direction = next_real_ - interpolated_;
-  gfx::Vector2dF predicted_direction =
-      predicted_events_queue_.front().pos - last_predicted_.value();
-  return gfx::DotProduct(real_direction, predicted_direction) < 0;
+double PredictionMetricsHandler::ComputeFrameOverUnderPredictionMetric() const {
+  gfx::Vector2dF real_direction =
+      next_real_point_after_frame_ - frame_interpolated_;
+  gfx::Vector2dF relative_direction =
+      predicted_events_queue_.front().pos - frame_interpolated_;
+  if (gfx::DotProduct(real_direction, relative_direction) >= 0)
+    return relative_direction.Length();
+  else
+    return -relative_direction.Length();
 }
 
 double PredictionMetricsHandler::ComputePredictionJitterMetric() {

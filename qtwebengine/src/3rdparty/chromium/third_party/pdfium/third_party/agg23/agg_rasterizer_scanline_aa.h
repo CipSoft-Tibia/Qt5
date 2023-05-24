@@ -38,6 +38,8 @@
 #include "core/fxcrt/fx_coordinates.h"
 #include "core/fxcrt/fx_memory.h"
 
+namespace pdfium
+{
 namespace agg
 {
 enum poly_base_scale_e {
@@ -47,7 +49,7 @@ enum poly_base_scale_e {
 };
 inline int poly_coord(float c)
 {
-    return int(c * poly_base_size);
+    return int(c * float{poly_base_size});
 }
 struct cell_aa  {
     int x;
@@ -495,4 +497,5 @@ private:
     int            m_cur_y;
 };
 }
+}  // namespace pdfium
 #endif

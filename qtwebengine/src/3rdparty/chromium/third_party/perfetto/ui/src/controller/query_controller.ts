@@ -15,8 +15,9 @@
 import {assertExists} from '../base/logging';
 import {Actions} from '../common/actions';
 import {Engine} from '../common/engine';
-import {rawQueryResultColumns, rawQueryResultIter, Row} from '../common/protos';
-import {QueryResponse} from '../common/queries';
+import {runQuery} from '../common/queries';
+import {globals as frontendGlobals} from '../frontend/globals';
+import {publishQueryResult} from '../frontend/publish';
 
 import {Controller} from './controller';
 import {globals} from './globals';
@@ -35,11 +36,13 @@ export class QueryController extends Controller<'init'|'querying'> {
     switch (this.state) {
       case 'init':
         const config = assertExists(globals.state.queries[this.args.queryId]);
-        this.runQuery(config.query).then(result => {
-          console.log(`Query ${config.query} took ${result.durationMs} ms`);
-          globals.publish('QueryResult', {id: this.args.queryId, data: result});
-          globals.dispatch(Actions.deleteQuery({queryId: this.args.queryId}));
-        });
+        runQuery(this.args.queryId, config.query, this.args.engine)
+            .then((result) => {
+              console.log(`Query ${config.query} took ${result.durationMs} ms`);
+              publishQueryResult({id: this.args.queryId, data: result});
+              frontendGlobals.dispatch(
+                  Actions.deleteQuery({queryId: this.args.queryId}));
+            });
         this.setState('querying');
         break;
 
@@ -51,34 +54,5 @@ export class QueryController extends Controller<'init'|'querying'> {
       default:
         throw new Error(`Unexpected state ${this.state}`);
     }
-  }
-
-  private async runQuery(sqlQuery: string) {
-    const startMs = performance.now();
-    const rawResult = await this.args.engine.uncheckedQuery(sqlQuery);
-    const durationMs = performance.now() - startMs;
-    const columns = rawQueryResultColumns(rawResult);
-    const rows =
-        QueryController.firstN<Row>(10000, rawQueryResultIter(rawResult));
-    const result: QueryResponse = {
-      id: this.args.queryId,
-      query: sqlQuery,
-      durationMs,
-      error: rawResult.error,
-      totalRowCount: +rawResult.numRecords,
-      columns,
-      rows,
-    };
-    return result;
-  }
-
-  private static firstN<T>(n: number, iter: IterableIterator<T>): T[] {
-    const list = [];
-    for (let i = 0; i < n; i++) {
-      const {done, value} = iter.next();
-      if (done) break;
-      list.push(value);
-    }
-    return list;
   }
 }

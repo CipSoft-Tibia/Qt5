@@ -1,26 +1,30 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/audio/public/cpp/sounds/audio_stream_handler.h"
 
 #include <stdint.h>
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/cancelable_callback.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/macros.h"
-#include "base/single_thread_task_runner.h"
+#include "base/notreached.h"
 #include "base/synchronization/lock.h"
-#include "base/task/post_task.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
+#include "media/audio/audio_handler.h"
+#include "media/audio/flac_audio_handler.h"
 #include "media/audio/wav_audio_handler.h"
+#include "media/base/audio_codecs.h"
 #include "media/base/channel_layout.h"
 #include "media/mojo/mojom/audio_output_stream.mojom.h"
+#include "media/mojo/mojom/audio_stream_factory.mojom.h"
 #include "services/audio/public/cpp/output_device.h"
-#include "services/audio/public/mojom/stream_factory.mojom.h"
 
 namespace audio {
 
@@ -29,30 +33,26 @@ namespace {
 // Volume percent.
 const double kOutputVolumePercent = 0.8;
 
-// The number of frames each Render() call will request.
-const int kDefaultFrameCount = 1024;
-
 // Keep alive timeout for audio stream.
 const int kKeepAliveMs = 1500;
 
-AudioStreamHandler::TestObserver* g_observer_for_testing = NULL;
+AudioStreamHandler::TestObserver* g_observer_for_testing = nullptr;
 
 }  // namespace
 
 class AudioStreamHandler::AudioStreamContainer
     : public media::AudioRendererSink::RenderCallback {
  public:
-  explicit AudioStreamContainer(
-      SoundsManager::StreamFactoryBinder stream_factory_binder,
-      std::unique_ptr<media::WavAudioHandler> wav_audio)
-      : started_(false),
-        stream_factory_binder_(std::move(stream_factory_binder)),
-        cursor_(0),
-        delayed_stop_posted_(false),
-        wav_audio_(std::move(wav_audio)) {
-    DCHECK(wav_audio_);
-    task_runner_ = base::SequencedTaskRunnerHandle::Get();
+  AudioStreamContainer(SoundsManager::StreamFactoryBinder stream_factory_binder,
+                       std::unique_ptr<media::AudioHandler> audio_handler)
+      : stream_factory_binder_(std::move(stream_factory_binder)),
+        audio_handler_(std::move(audio_handler)) {
+    DCHECK(audio_handler_);
+    task_runner_ = base::SequencedTaskRunner::GetCurrentDefault();
   }
+
+  AudioStreamContainer(const AudioStreamContainer&) = delete;
+  AudioStreamContainer& operator=(const AudioStreamContainer&) = delete;
 
   ~AudioStreamContainer() override {
     DCHECK(task_runner_->RunsTasksInCurrentSequence());
@@ -65,12 +65,13 @@ class AudioStreamHandler::AudioStreamContainer
     if (device_ == nullptr) {
       const media::AudioParameters params(
           media::AudioParameters::AUDIO_PCM_LOW_LATENCY,
-          media::GuessChannelLayout(wav_audio_->num_channels()),
-          wav_audio_->sample_rate(), kDefaultFrameCount);
+          media::ChannelLayoutConfig::Guess(audio_handler_->GetNumChannels()),
+          audio_handler_->GetSampleRate(),
+          media::AudioHandler::kDefaultFrameCount);
       if (g_observer_for_testing) {
         g_observer_for_testing->Initialize(this, params);
       } else {
-        mojo::PendingRemote<audio::mojom::StreamFactory> stream_factory;
+        mojo::PendingRemote<media::mojom::AudioStreamFactory> stream_factory;
         stream_factory_binder_.Run(
             stream_factory.InitWithNewPipeAndPassReceiver());
         device_ = std::make_unique<audio::OutputDevice>(
@@ -86,15 +87,16 @@ class AudioStreamHandler::AudioStreamContainer
                                               base::Unretained(this)));
 
       if (started_) {
-        if (wav_audio_->AtEnd(cursor_))
-          cursor_ = 0;
+        if (audio_handler_->AtEnd()) {
+          audio_handler_->Reset();
+        }
         return;
       } else {
         if (!g_observer_for_testing)
           device_->SetVolume(kOutputVolumePercent);
       }
 
-      cursor_ = 0;
+      audio_handler_->Reset();
     }
 
     started_ = true;
@@ -116,21 +118,19 @@ class AudioStreamHandler::AudioStreamContainer
   // Following methods could be called from *ANY* thread.
   int Render(base::TimeDelta /* delay */,
              base::TimeTicks /* delay_timestamp */,
-             int /* prior_frames_skipped */,
+             const media::AudioGlitchInfo& /* glitch_info */,
              media::AudioBus* dest) override {
     base::AutoLock al(state_lock_);
-    size_t bytes_written = 0;
-    if (wav_audio_->AtEnd(cursor_) ||
-        !wav_audio_->CopyTo(dest, cursor_, &bytes_written)) {
+    size_t frames_written = 0;
+    if (audio_handler_->AtEnd() ||
+        !audio_handler_->CopyTo(dest, &frames_written)) {
       if (delayed_stop_posted_)
         return 0;
       delayed_stop_posted_ = true;
-      task_runner_->PostDelayedTask(
-          FROM_HERE, stop_closure_.callback(),
-          base::TimeDelta::FromMilliseconds(kKeepAliveMs));
+      task_runner_->PostDelayedTask(FROM_HERE, stop_closure_.callback(),
+                                    base::Milliseconds(kKeepAliveMs));
       return 0;
     }
-    cursor_ += bytes_written;
     return dest->frames();
   }
 
@@ -146,7 +146,7 @@ class AudioStreamHandler::AudioStreamContainer
     if (started_) {
       // Do not hold the |state_lock_| while stopping the output stream.
       if (g_observer_for_testing)
-        g_observer_for_testing->OnStop(cursor_);
+        g_observer_for_testing->OnStop();
       else
         device_->Pause();
     }
@@ -154,45 +154,62 @@ class AudioStreamHandler::AudioStreamContainer
     started_ = false;
   }
 
-  bool started_;
+  bool started_ = false;
   const SoundsManager::StreamFactoryBinder stream_factory_binder_;
   std::unique_ptr<audio::OutputDevice> device_;
   scoped_refptr<base::SequencedTaskRunner> task_runner_;
 
   // All variables below must be accessed under |state_lock_| when |started_|.
   base::Lock state_lock_;
-  size_t cursor_;
-  bool delayed_stop_posted_;
-  std::unique_ptr<media::WavAudioHandler> wav_audio_;
-  base::CancelableClosure stop_closure_;
-
-  DISALLOW_COPY_AND_ASSIGN(AudioStreamContainer);
+  bool delayed_stop_posted_ = false;
+  std::unique_ptr<media::AudioHandler> audio_handler_;
+  base::CancelableRepeatingClosure stop_closure_;
 };
 
 AudioStreamHandler::AudioStreamHandler(
     SoundsManager::StreamFactoryBinder stream_factory_binder,
-    const base::StringPiece& wav_data) {
-  task_runner_ = base::SequencedTaskRunnerHandle::Get();
-  std::unique_ptr<media::WavAudioHandler> wav_audio =
-      media::WavAudioHandler::Create(wav_data);
-  if (!wav_audio) {
-    LOG(ERROR) << "wav_data is not valid";
-    return;
+    const base::StringPiece& audio_data,
+    media::AudioCodec codec) {
+  task_runner_ = base::SequencedTaskRunner::GetCurrentDefault();
+  std::unique_ptr<media::AudioHandler> audio_handler;
+
+  switch (codec) {
+    case media::AudioCodec::kPCM: {
+      audio_handler = media::WavAudioHandler::Create(audio_data);
+      if (!audio_handler || !audio_handler->Initialize()) {
+        LOG(ERROR) << "wav_data is not valid";
+        return;
+      }
+      break;
+    }
+    case media::AudioCodec::kFLAC: {
+      auto tmp_handler = std::make_unique<media::FlacAudioHandler>(audio_data);
+      if (!tmp_handler->Initialize()) {
+        LOG(ERROR) << "flac_data is not valid";
+        return;
+      }
+      audio_handler = std::move(tmp_handler);
+      break;
+    }
+    default:
+      NOTREACHED() << "Unsupported audio codec encountered: "
+                   << media::GetCodecName(codec);
+      break;
   }
 
+  // Check params.
   const media::AudioParameters params(
       media::AudioParameters::AUDIO_PCM_LOW_LATENCY,
-      media::GuessChannelLayout(wav_audio->num_channels()),
-      wav_audio->sample_rate(), kDefaultFrameCount);
+      media::ChannelLayoutConfig::Guess(audio_handler->GetNumChannels()),
+      audio_handler->GetSampleRate(), media::AudioHandler::kDefaultFrameCount);
   if (!params.IsValid()) {
     LOG(ERROR) << "Audio params are invalid.";
     return;
   }
 
-  // Store the duration of the WAV data then pass the handler to |stream_|.
-  duration_ = wav_audio->GetDuration();
-  stream_.reset(new AudioStreamContainer(std::move(stream_factory_binder),
-                                         std::move(wav_audio)));
+  duration_ = audio_handler->GetDuration();
+  stream_ = std::make_unique<AudioStreamContainer>(
+      std::move(stream_factory_binder), std::move(audio_handler));
 }
 
 AudioStreamHandler::~AudioStreamHandler() {
@@ -234,6 +251,7 @@ void AudioStreamHandler::Stop() {
 
 base::TimeDelta AudioStreamHandler::duration() const {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
+  DCHECK(IsInitialized());
   return duration_;
 }
 

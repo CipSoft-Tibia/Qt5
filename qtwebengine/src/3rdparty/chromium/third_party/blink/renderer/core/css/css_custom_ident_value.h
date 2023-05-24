@@ -1,10 +1,11 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_CUSTOM_IDENT_VALUE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_CUSTOM_IDENT_VALUE_H_
 
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/css_property_names.h"
 #include "third_party/blink/renderer/core/css/css_value.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
@@ -12,12 +13,15 @@
 
 namespace blink {
 
+class TreeScope;
+
 class CORE_EXPORT CSSCustomIdentValue : public CSSValue {
  public:
   explicit CSSCustomIdentValue(const AtomicString&);
   explicit CSSCustomIdentValue(CSSPropertyID);
 
-  AtomicString Value() const {
+  const TreeScope* GetTreeScope() const { return tree_scope_; }
+  const AtomicString& Value() const {
     DCHECK(!IsKnownPropertyID());
     return string_;
   }
@@ -31,14 +35,20 @@ class CORE_EXPORT CSSCustomIdentValue : public CSSValue {
 
   String CustomCSSText() const;
 
+  const CSSCustomIdentValue& PopulateWithTreeScope(const TreeScope*) const;
+
   bool Equals(const CSSCustomIdentValue& other) const {
-    return IsKnownPropertyID() ? property_id_ == other.property_id_
-                               : string_ == other.string_;
+    if (IsKnownPropertyID()) {
+      return property_id_ == other.property_id_;
+    }
+    return IsScopedValue() == other.IsScopedValue() &&
+           tree_scope_ == other.tree_scope_ && string_ == other.string_;
   }
 
   void TraceAfterDispatch(blink::Visitor*) const;
 
  private:
+  WeakMember<const TreeScope> tree_scope_;
   AtomicString string_;
   CSSPropertyID property_id_;
 };

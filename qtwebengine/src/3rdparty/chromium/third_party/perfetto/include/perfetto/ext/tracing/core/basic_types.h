@@ -17,15 +17,10 @@
 #ifndef INCLUDE_PERFETTO_EXT_TRACING_CORE_BASIC_TYPES_H_
 #define INCLUDE_PERFETTO_EXT_TRACING_CORE_BASIC_TYPES_H_
 
-#include "perfetto/base/build_config.h"
-
 #include <stddef.h>
 #include <stdint.h>
-#include <sys/types.h>
 
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
-using uid_t = unsigned int;
-#endif
+#include "perfetto/ext/base/sys_types.h"
 
 namespace perfetto {
 
@@ -64,6 +59,7 @@ using BufferID = uint16_t;
 // for the target buffer of a startup trace writer. Reservation IDs will be
 // translated to actual BufferIDs after they are bound by
 // SharedMemoryArbiter::BindStartupTargetBuffer().
+// TODO(mohitms): Delete this type and use `struct {uint16 ; uint16;}` instead.
 using MaybeUnboundBufferID = uint32_t;
 
 // Keep this in sync with SharedMemoryABI::PageHeader::target_buffer.
@@ -76,7 +72,7 @@ static constexpr PacketSequenceID kServicePacketSequenceID = 1;
 static constexpr PacketSequenceID kMaxPacketSequenceID =
     static_cast<PacketSequenceID>(-1);
 
-constexpr uid_t kInvalidUid = static_cast<uid_t>(-1);
+constexpr uid_t kInvalidUid = ::perfetto::base::kInvalidUid;
 
 constexpr uint32_t kDefaultFlushTimeoutMs = 5000;
 

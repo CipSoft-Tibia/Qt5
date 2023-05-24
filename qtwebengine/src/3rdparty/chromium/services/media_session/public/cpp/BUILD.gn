@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -30,7 +30,10 @@ component("base_cpp") {
       "media_metadata_android.cc",
       "media_position_android.cc",
     ]
-    deps += [ "android:media_session_jni_headers" ]
+    deps += [
+      "android:media_session_jni_headers",
+      "//url:gurl_android",
+    ]
   }
 
   defines = [ "IS_MEDIA_SESSION_BASE_CPP_IMPL" ]
@@ -44,6 +47,7 @@ component("cpp") {
     "features.h",
     "media_image_manager.cc",
     "media_image_manager.h",
+    "media_session_service.h",
     "util.cc",
     "util.h",
   ]
@@ -52,6 +56,7 @@ component("cpp") {
 
   deps = [
     "//base",
+    "//build:chromeos_buildflags",
     "//services/media_session/public/mojom",
     "//skia",
     "//ui/gfx/geometry",

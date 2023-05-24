@@ -1,48 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DCORE_QABSTRACTASPECT_H
 #define QT3DCORE_QABSTRACTASPECT_H
 
 #include <Qt3DCore/qt3dcore_global.h>
 #include <Qt3DCore/qnodeid.h>
-#include <Qt3DCore/qscenechange.h>
 #include <QtCore/QObject>
 #include <QtCore/QSharedPointer>
 
@@ -70,18 +33,16 @@ public:
     ~QAbstractAspect();
 
     void scheduleSingleShotJob(const Qt3DCore::QAspectJobPtr &job);
+    virtual QStringList dependencies() const;
 
 protected:
     explicit QAbstractAspect(QAbstractAspectPrivate &dd, QObject *parent = nullptr);
 
-    QNodeId rootEntityId() const Q_DECL_NOEXCEPT;
+    QNodeId rootEntityId() const noexcept;
 
     template<class Frontend>
     void registerBackendType(const QBackendNodeMapperPtr &functor);
-    template<class Frontend, bool supportsSyncing>
-    void registerBackendType(const QBackendNodeMapperPtr &functor);
     void registerBackendType(const QMetaObject &obj, const QBackendNodeMapperPtr &functor);
-    void registerBackendType(const QMetaObject &obj, const QBackendNodeMapperPtr &functor, bool supportsSyncing);
     template<class Frontend>
     void unregisterBackendType();
     void unregisterBackendType(const QMetaObject &);
@@ -89,7 +50,7 @@ protected:
 private:
     virtual QVariant executeCommand(const QStringList &args);
 
-    virtual QVector<QAspectJobPtr> jobsToExecute(qint64 time);
+    virtual std::vector<QAspectJobPtr> jobsToExecute(qint64 time);
 
     virtual void onRegistered();
     virtual void onUnregistered();
@@ -97,21 +58,19 @@ private:
     virtual void onEngineStartup();
     virtual void onEngineShutdown();
 
+    virtual void jobsDone();
+    virtual void frameDone();
+
     Q_DECLARE_PRIVATE(QAbstractAspect)
     friend class QAspectEngine;
     friend class QAspectManager;
+    friend class QScheduler;
 };
 
 template<class Frontend>
 void QAbstractAspect::registerBackendType(const QBackendNodeMapperPtr &functor)
 {
     registerBackendType(Frontend::staticMetaObject, functor);
-}
-
-template<class Frontend, bool supportsSyncing>
-void QAbstractAspect::registerBackendType(const QBackendNodeMapperPtr &functor)
-{
-    registerBackendType(Frontend::staticMetaObject, functor, supportsSyncing);
 }
 
 template<class Frontend>
@@ -128,7 +87,6 @@ QT_END_NAMESPACE
     QT_BEGIN_NAMESPACE \
     namespace Qt3DCore { \
         typedef QAbstractAspect *(*AspectCreateFunction)(QObject *); \
-        QT_DEPRECATED Q_3DCORESHARED_EXPORT void qt3d_QAspectFactory_addDefaultFactory(const QString &, const QMetaObject *, AspectCreateFunction); \
         Q_3DCORESHARED_EXPORT void qt3d_QAspectFactory_addDefaultFactory(const QLatin1String &, const QMetaObject *, AspectCreateFunction); \
     } \
     QT_END_NAMESPACE \

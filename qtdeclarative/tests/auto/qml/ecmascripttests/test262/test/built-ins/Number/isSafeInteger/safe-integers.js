@@ -16,9 +16,11 @@ info: |
   [...]
 ---*/
 
-assert.sameValue(Number.isInteger(1), true, "1");
-assert.sameValue(Number.isInteger(-0), true, "-0");
-assert.sameValue(Number.isInteger(0), true, "0");
-assert.sameValue(Number.isInteger(-1), true, "-1");
-assert.sameValue(Number.isInteger(9007199254740991), true, "9007199254740991");
-assert.sameValue(Number.isInteger(-9007199254740991), true, "-9007199254740991");
+// Qt change: s/isInteger/isSafeInteger/g; see
+// https://github.com/tc39/test262/issues/2605
+assert.sameValue(Number.isSafeInteger(1), true, "1");
+assert.sameValue(Number.isSafeInteger(-0), true, "-0");
+assert.sameValue(Number.isSafeInteger(0), true, "0");
+assert.sameValue(Number.isSafeInteger(-1), true, "-1");
+assert.sameValue(Number.isSafeInteger(9007199254740991), true, "9007199254740991");
+assert.sameValue(Number.isSafeInteger(-9007199254740991), true, "-9007199254740991");

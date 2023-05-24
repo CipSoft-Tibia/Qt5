@@ -13,10 +13,10 @@
 
 #include <stdint.h>
 
+#include <atomic>
 #include <memory>
 
 #include "api/units/timestamp.h"
-#include "rtc_base/synchronization/rw_lock_wrapper.h"
 #include "rtc_base/system/rtc_export.h"
 #include "system_wrappers/include/ntp_time.h"
 
@@ -32,22 +32,20 @@ const double kMagicNtpFractionalUnit = 4.294967296E+9;
 class RTC_EXPORT Clock {
  public:
   virtual ~Clock() {}
+
   // Return a timestamp relative to an unspecified epoch.
-  virtual Timestamp CurrentTime() {
-    return Timestamp::Micros(TimeInMicroseconds());
-  }
-  virtual int64_t TimeInMilliseconds() { return CurrentTime().ms(); }
-  virtual int64_t TimeInMicroseconds() { return CurrentTime().us(); }
+  virtual Timestamp CurrentTime() = 0;
+  int64_t TimeInMilliseconds() { return CurrentTime().ms(); }
+  int64_t TimeInMicroseconds() { return CurrentTime().us(); }
 
-  // Retrieve an NTP absolute timestamp.
-  virtual NtpTime CurrentNtpTime() = 0;
+  // Retrieve an NTP absolute timestamp (with an epoch of Jan 1, 1900).
+  NtpTime CurrentNtpTime() { return ConvertTimestampToNtpTime(CurrentTime()); }
+  int64_t CurrentNtpInMilliseconds() { return CurrentNtpTime().ToMs(); }
 
-  // Retrieve an NTP absolute timestamp in milliseconds.
-  virtual int64_t CurrentNtpInMilliseconds() = 0;
-
-  // Converts an NTP timestamp to a millisecond timestamp.
-  static int64_t NtpToMs(uint32_t seconds, uint32_t fractions) {
-    return NtpTime(seconds, fractions).ToMs();
+  // Converts between a relative timestamp returned by this clock, to NTP time.
+  virtual NtpTime ConvertTimestampToNtpTime(Timestamp timestamp) = 0;
+  int64_t ConvertTimestampToNtpTimeInMilliseconds(int64_t timestamp_ms) {
+    return ConvertTimestampToNtpTime(Timestamp::Millis(timestamp_ms)).ToMs();
   }
 
   // Returns an instance of the real-time system clock implementation.
@@ -56,20 +54,15 @@ class RTC_EXPORT Clock {
 
 class SimulatedClock : public Clock {
  public:
+  // The constructors assume an epoch of Jan 1, 1970.
   explicit SimulatedClock(int64_t initial_time_us);
   explicit SimulatedClock(Timestamp initial_time);
-
   ~SimulatedClock() override;
 
-  // Return a timestamp relative to some arbitrary source; the source is fixed
-  // for this clock.
+  // Return a timestamp with an epoch of Jan 1, 1970.
   Timestamp CurrentTime() override;
 
-  // Retrieve an NTP absolute timestamp.
-  NtpTime CurrentNtpTime() override;
-
-  // Converts an NTP timestamp to a millisecond timestamp.
-  int64_t CurrentNtpInMilliseconds() override;
+  NtpTime ConvertTimestampToNtpTime(Timestamp timestamp) override;
 
   // Advance the simulated clock with a given number of milliseconds or
   // microseconds.
@@ -78,8 +71,12 @@ class SimulatedClock : public Clock {
   void AdvanceTime(TimeDelta delta);
 
  private:
-  Timestamp time_;
-  std::unique_ptr<RWLockWrapper> lock_;
+  // The time is read and incremented with relaxed order. Each thread will see
+  // monotonically increasing time, and when threads post tasks or messages to
+  // one another, the synchronization done as part of the message passing should
+  // ensure that any causual chain of events on multiple threads also
+  // corresponds to monotonically increasing time.
+  std::atomic<int64_t> time_us_;
 };
 
 }  // namespace webrtc

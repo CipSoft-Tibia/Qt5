@@ -1,8 +1,8 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 en_GB{
     %%Parent{"en_001"}
-    Version{"37"}
     zoneStrings{
         "Africa:Abidjan"{
             ec{"Abidjan"}
@@ -613,9 +613,6 @@ en_GB{
         "Asia:Anadyr"{
             ec{"Anadyr"}
         }
-        "Asia:Aqtau"{
-            ec{"Aqtau"}
-        }
         "Asia:Aqtobe"{
             ec{"Aqtobe"}
         }
@@ -856,9 +853,6 @@ en_GB{
         "Australia:Broken_Hill"{
             ec{"Broken Hill"}
         }
-        "Australia:Currie"{
-            ec{"Currie"}
-        }
         "Australia:Darwin"{
             ec{"Darwin"}
         }
@@ -1088,9 +1082,6 @@ en_GB{
         "Pacific:Efate"{
             ec{"Efate"}
         }
-        "Pacific:Enderbury"{
-            ec{"Enderbury"}
-        }
         "Pacific:Fakaofo"{
             ec{"Fakaofo"}
         }
@@ -1195,6 +1186,9 @@ en_GB{
             sd{"WEST"}
             sg{"WET"}
             ss{"WET"}
+        }
+        "meta:Gulf"{
+            ss{"GTS"}
         }
         gmtZeroFormat{"GMT"}
     }

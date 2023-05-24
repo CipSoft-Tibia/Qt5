@@ -1,47 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 John Layt <jlayt@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 John Layt <jlayt@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPAGELAYOUT_H
 #define QPAGELAYOUT_H
 
 #include <QtGui/qtguiglobal.h>
-#include <QtCore/qsharedpointer.h>
+#include <QtCore/qshareddata.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qmargins.h>
 
@@ -66,7 +30,6 @@ public:
         Cicero
     };
 
-    // NOTE: Must keep in sync with QPrinter::Orientation
     enum Orientation {
         Portrait,
         Landscape
@@ -82,13 +45,12 @@ public:
                 const QMarginsF &margins, Unit units = Point,
                 const QMarginsF &minMargins = QMarginsF(0, 0, 0, 0));
     QPageLayout(const QPageLayout &other);
-    QPageLayout &operator=(QPageLayout &&other) noexcept { swap(other); return *this; }
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QPageLayout)
     QPageLayout &operator=(const QPageLayout &other);
     ~QPageLayout();
 
-    void swap(QPageLayout &other) noexcept { qSwap(d, other.d); }
+    void swap(QPageLayout &other) noexcept { d.swap(other.d); }
 
-    friend Q_GUI_EXPORT bool operator==(const QPageLayout &lhs, const QPageLayout &rhs);
     bool isEquivalentTo(const QPageLayout &other) const;
 
     bool isValid() const;
@@ -133,14 +95,17 @@ public:
 
 private:
     friend class QPageLayoutPrivate;
+    bool equals(const QPageLayout &other) const;
+
+    friend inline bool operator==(const QPageLayout &lhs, const QPageLayout &rhs)
+    { return lhs.equals(rhs); }
+    friend inline bool operator!=(const QPageLayout &lhs, const QPageLayout &rhs)
+    { return !lhs.equals(rhs); }
+
     QExplicitlySharedDataPointer<QPageLayoutPrivate> d;
 };
 
 Q_DECLARE_SHARED(QPageLayout)
-
-Q_GUI_EXPORT bool operator==(const QPageLayout &lhs, const QPageLayout &rhs);
-inline bool operator!=(const QPageLayout &lhs, const QPageLayout &rhs)
-{ return !operator==(lhs, rhs); }
 
 #ifndef QT_NO_DEBUG_STREAM
 Q_GUI_EXPORT QDebug operator<<(QDebug dbg, const QPageLayout &pageLayout);
@@ -148,8 +113,8 @@ Q_GUI_EXPORT QDebug operator<<(QDebug dbg, const QPageLayout &pageLayout);
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE(QPageLayout)
-Q_DECLARE_METATYPE(QPageLayout::Unit)
-Q_DECLARE_METATYPE(QPageLayout::Orientation)
+QT_DECL_METATYPE_EXTERN(QPageLayout, Q_GUI_EXPORT)
+QT_DECL_METATYPE_EXTERN_TAGGED(QPageLayout::Unit, QPageLayout__Unit, Q_GUI_EXPORT)
+QT_DECL_METATYPE_EXTERN_TAGGED(QPageLayout::Orientation, QPageLayout__Orientation, Q_GUI_EXPORT)
 
 #endif // QPAGELAYOUT_H

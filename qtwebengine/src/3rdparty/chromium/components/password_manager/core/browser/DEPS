@@ -1,22 +1,27 @@
 include_rules = [
   "+components/autofill/core/browser",
+  "+components/device_reauth",
   "+components/favicon/core",
   "+components/keyed_service/core",
+  "+components/profile_metrics",
   "+components/pref_registry",
   "+components/security_state",
   "+components/safe_browsing/buildflags.h",
   "+components/safe_browsing/core/common/safe_browsing_prefs.h",
-  "+components/safe_browsing/core/features.h",
+  "+components/safe_browsing/core/common/features.h",
   "+components/signin/public",
   "+components/sync/base",
   "+components/sync/driver",
-  "+components/sync/engine",
-  "+components/sync/model_impl",
+  "+components/sync/model",
   "+components/sync/test",
   "+components/sync_preferences",
   "+components/ukm",
+  "+components/undo",
   "+components/url_formatter",
+  "+components/variations",
   "+components/webdata/common",
+  "+components/variations/net",
+  "+components/version_info",
   "+crypto",
   "+google_apis",
   "+grit",
@@ -33,25 +38,10 @@ specific_include_rules = {
   "hsts_query_unittest\.cc": [
     "+services/network",
   ],
-  "new_password_form_manager_unittest\.cc": [
-    "+components/ukm",
-  ],
-  "password_autofill_manager_unittest\.cc": [
-    "+components/ukm",
-  ],
-  "password_form_manager_unittest\.cc": [
-    "+components/ukm",
-  ],
-  "password_form_metrics_recorder_unittest\.cc": [
-    "+components/ukm",
-  ],
-  "password_manager_metrics_recorder_unittest\.cc": [
-    "+components/ukm",
-  ],
-  "password_manager_unittest\.cc": [
-    "+components/ukm",
-  ],
   "http_credentials_cleaner_unittest\.cc": [
     "+services/network",
   ],
+  ".*unit_test\.cc": [
+    "+components/autofill/core/browser/test_utils",
+  ]
 }

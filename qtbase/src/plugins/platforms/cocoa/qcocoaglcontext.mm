@@ -1,52 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+#include <AppKit/AppKit.h>
 
 #include "qcocoaglcontext.h"
 #include "qcocoawindow.h"
 #include "qcocoahelpers.h"
 #include "qcocoascreen.h"
 
-#include <qdebug.h>
-#include <QtPlatformHeaders/qcocoanativecontext.h>
-#include <dlfcn.h>
+#include <QtCore/private/qcore_mac_p.h>
 
-#import <AppKit/AppKit.h>
+#include <qdebug.h>
+#include <dlfcn.h>
 
 static inline QByteArray getGlString(GLenum param)
 {
@@ -65,30 +30,23 @@ QCocoaGLContext::QCocoaGLContext(QOpenGLContext *context)
 {
 }
 
+QCocoaGLContext::QCocoaGLContext(NSOpenGLContext *nativeContext)
+    : QPlatformOpenGLContext()
+{
+    m_context = [nativeContext retain];
+}
+
 void QCocoaGLContext::initialize()
 {
-    QVariant nativeHandle = context()->nativeHandle();
-    if (!nativeHandle.isNull()) {
-        if (!nativeHandle.canConvert<QCocoaNativeContext>()) {
-            qCWarning(lcQpaOpenGLContext, "QOpenGLContext native handle must be a QCocoaNativeContext");
-            return;
-        }
-        m_context = nativeHandle.value<QCocoaNativeContext>().context();
-        if (!m_context) {
-            qCWarning(lcQpaOpenGLContext, "QCocoaNativeContext's NSOpenGLContext cannot be null");
-            return;
-        }
+    if (m_context) {
+       // Note: We have no way of knowing whether the NSOpenGLContext was created with the
+       // share context as reported by the QOpenGLContext, but we just have to trust that
+       // it was. It's okey, as the only thing we're using it for is to report isShared().
+       if (QPlatformOpenGLContext *shareContext = context()->shareHandle())
+           m_shareContext = static_cast<QCocoaGLContext *>(shareContext)->nativeContext();
 
-        [m_context retain];
-
-        // Note: We have no way of knowing whether the NSOpenGLContext was created with the
-        // share context as reported by the QOpenGLContext, but we just have to trust that
-        // it was. It's okey, as the only thing we're using it for is to report isShared().
-        if (QPlatformOpenGLContext *shareContext = context()->shareHandle())
-            m_shareContext = static_cast<QCocoaGLContext *>(shareContext)->nativeContext();
-
-        updateSurfaceFormat();
-        return;
+       updateSurfaceFormat();
+       return;
     }
 
     // ----------- Default case, we own the NSOpenGLContext -----------
@@ -139,23 +97,20 @@ void QCocoaGLContext::initialize()
         return;
     }
 
-    // The native handle should reflect the underlying context, even if we created it
-    context()->setNativeHandle(QVariant::fromValue<QCocoaNativeContext>(m_context));
-
     // --------------------- Set NSOpenGLContext properties ---------------------
 
     const GLint interval = m_format.swapInterval() >= 0 ? m_format.swapInterval() : 1;
-    [m_context setValues:&interval forParameter:NSOpenGLCPSwapInterval];
+    [m_context setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
 
     if (m_format.alphaBufferSize() > 0) {
         int zeroOpacity = 0;
-        [m_context setValues:&zeroOpacity forParameter:NSOpenGLCPSurfaceOpacity];
+        [m_context setValues:&zeroOpacity forParameter:NSOpenGLContextParameterSurfaceOpacity];
     }
 
     // OpenGL surfaces can be ordered either above(default) or below the NSWindow
     // FIXME: Promote to QSurfaceFormat option or property
     const GLint order = qt_mac_resolveOption(1, "QT_MAC_OPENGL_SURFACE_ORDER");
-    [m_context setValues:&order forParameter:NSOpenGLCPSurfaceOrder];
+    [m_context setValues:&order forParameter:NSOpenGLContextParameterSurfaceOrder];
 
     updateSurfaceFormat();
 
@@ -342,7 +297,7 @@ void QCocoaGLContext::updateSurfaceFormat()
         return value;
     };
 
-    m_format.setSwapInterval(glContextParameter(NSOpenGLCPSwapInterval));
+    m_format.setSwapInterval(glContextParameter(NSOpenGLContextParameterSwapInterval));
 
     if (oldContext)
         [oldContext makeCurrentContext];
@@ -392,7 +347,7 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
         // Clear the current drawable and reset the active window, so that GL
         // commands that don't target a specific FBO will not end up stomping
         // on the previously set drawable.
-        qCDebug(lcQpaOpenGLContext) << "Clearing current drawable" << m_context.view << "for" << m_context;
+        qCDebug(lcQpaOpenGLContext) << "Clearing current drawable" << QT_IGNORE_DEPRECATIONS(m_context.view) << "for" << m_context;
         [m_context clearDrawable];
         return true;
     }
@@ -401,10 +356,16 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
     auto *cocoaWindow = static_cast<QCocoaWindow *>(surface);
     QNSView *view = qnsview_cast(cocoaWindow->view());
 
-    if (view == m_context.view)
+    if (view == QT_IGNORE_DEPRECATIONS(m_context.view))
         return true;
 
-    prepareDrawable(cocoaWindow);
+    // We generally want high-DPI GL surfaces, unless the user has explicitly disabled them.
+    // According to the documentation, layer-backed views ignore wantsBestResolutionOpenGLSurface
+    // and configure their own backing surface at an appropriate resolution, but in some cases
+    // we've seen this fail (plugin views embedded in surface-backed hosts), so we do it anyways.
+    QT_IGNORE_DEPRECATIONS(view.wantsBestResolutionOpenGLSurface) = qt_mac_resolveOption(YES,
+        cocoaWindow->window(), "_q_mac_wantsBestResolutionOpenGLSurface",
+        "QT_MAC_WANTS_BEST_RESOLUTION_OPENGL_SURFACE");
 
     // Setting the drawable may happen on a separate thread as a result of
     // a call to makeCurrent, so we need to set up the observers before we
@@ -414,22 +375,27 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
 
     auto updateCallback = [this, view]() {
         Q_ASSERT(QThread::currentThread() == qApp->thread());
-        if (m_context.view != view)
+        if (QT_IGNORE_DEPRECATIONS(m_context.view) != view)
             return;
         m_needsUpdate = true;
     };
 
     m_updateObservers.clear();
 
-    if (view.layer) {
-        m_updateObservers.append(QMacNotificationObserver(view, NSViewFrameDidChangeNotification, updateCallback));
-        m_updateObservers.append(QMacNotificationObserver(view.window, NSWindowDidChangeScreenNotification, updateCallback));
-    } else {
-        m_updateObservers.append(QMacNotificationObserver(view, NSViewGlobalFrameDidChangeNotification, updateCallback));
-    }
+    m_updateObservers.append(QMacNotificationObserver(view, NSViewFrameDidChangeNotification, updateCallback));
+    m_updateObservers.append(QMacNotificationObserver(view.window, NSWindowDidChangeScreenNotification, updateCallback));
 
     m_updateObservers.append(QMacNotificationObserver([NSApplication sharedApplication],
         NSApplicationDidChangeScreenParametersNotification, updateCallback));
+
+    m_updateObservers.append(QMacNotificationObserver(view,
+        QCocoaWindowWillReleaseQNSViewNotification, [this, view] {
+            if (QT_IGNORE_DEPRECATIONS(m_context.view) != view)
+                return;
+            qCDebug(lcQpaOpenGLContext) << view << "about to be released."
+                << "Clearing current drawable for" << m_context;
+            [m_context clearDrawable];
+        }));
 
     // If any of the observers fire at this point it's fine. We check the
     // view association (atomically) in the update callback, and skip the
@@ -437,45 +403,21 @@ bool QCocoaGLContext::setDrawable(QPlatformSurface *surface)
     // have the same effect as an update.
 
     // Now we are ready to associate the view with the context
-    m_context.view = view;
-    if (m_context.view != view) {
+    QT_IGNORE_DEPRECATIONS(m_context.view) = view;
+    if (QT_IGNORE_DEPRECATIONS(m_context.view) != view) {
         qCInfo(lcQpaOpenGLContext) << "Failed to set" << view << "as drawable for" << m_context;
         m_updateObservers.clear();
         return false;
     }
 
-    qCInfo(lcQpaOpenGLContext) << "Set drawable for" << m_context << "to" << m_context.view;
+    qCInfo(lcQpaOpenGLContext) << "Set drawable for" << m_context << "to" << QT_IGNORE_DEPRECATIONS(m_context.view);
     return true;
-}
-
-void QCocoaGLContext::prepareDrawable(QCocoaWindow *platformWindow)
-{
-    // We generally want high-DPI GL surfaces, unless the user has explicitly disabled them
-    bool prefersBestResolutionOpenGLSurface = qt_mac_resolveOption(YES,
-        platformWindow->window(), "_q_mac_wantsBestResolutionOpenGLSurface",
-        "QT_MAC_WANTS_BEST_RESOLUTION_OPENGL_SURFACE");
-
-    auto *view = platformWindow->view();
-
-    // The only case we have to opt out ourselves is when using the Apple software renderer
-    // in combination with surface-backed views, as these together do not support high-DPI.
-    if (prefersBestResolutionOpenGLSurface) {
-        int rendererID = 0;
-        [m_context getValues:&rendererID forParameter:NSOpenGLContextParameterCurrentRendererID];
-        bool isSoftwareRenderer = (rendererID & kCGLRendererIDMatchingMask) == kCGLRendererGenericFloatID;
-        if (isSoftwareRenderer && !view.layer) {
-            qCInfo(lcQpaOpenGLContext) << "Disabling high resolution GL surface due to software renderer";
-            prefersBestResolutionOpenGLSurface = false;
-        }
-    }
-
-    view.wantsBestResolutionOpenGLSurface = prefersBestResolutionOpenGLSurface;
 }
 
 // NSOpenGLContext is not re-entrant. Even when using separate contexts per thread,
 // view, and window, calls into the API will still deadlock. For more information
 // see https://openradar.appspot.com/37064579
-static QMutex s_reentrancyMutex;
+Q_CONSTINIT static QMutex s_reentrancyMutex;
 
 void QCocoaGLContext::update()
 {
@@ -485,7 +427,7 @@ void QCocoaGLContext::update()
     QMacAutoReleasePool pool;
 
     QMutexLocker locker(&s_reentrancyMutex);
-    qCInfo(lcQpaOpenGLContext) << "Updating" << m_context << "for" << m_context.view;
+    qCInfo(lcQpaOpenGLContext) << "Updating" << m_context << "for" << QT_IGNORE_DEPRECATIONS(m_context.view);
     [m_context update];
 }
 
@@ -505,19 +447,17 @@ void QCocoaGLContext::swapBuffers(QPlatformSurface *surface)
         return;
     }
 
-    if (m_context.view.layer) {
-        // Flushing an NSOpenGLContext will hit the screen immediately, ignoring
-        // any Core Animation transactions in place. This may result in major
-        // visual artifacts if the flush happens out of sync with the size
-        // of the layer, view, and window reflected by other parts of the UI,
-        // e.g. if the application flushes in the resize event or a timer during
-        // window resizing, instead of in the expose event.
-        auto *cocoaWindow = static_cast<QCocoaWindow *>(surface);
-        if (cocoaWindow->geometry().size() != cocoaWindow->m_exposedRect.size()) {
-            qCInfo(lcQpaOpenGLContext) << "Window exposed size does not match geometry (yet)."
-                << "Skipping flush to avoid visual artifacts.";
-            return;
-        }
+    // Flushing an NSOpenGLContext will hit the screen immediately, ignoring
+    // any Core Animation transactions in place. This may result in major
+    // visual artifacts if the flush happens out of sync with the size
+    // of the layer, view, and window reflected by other parts of the UI,
+    // e.g. if the application flushes in the resize event or a timer during
+    // window resizing, instead of in the expose event.
+    auto *cocoaWindow = static_cast<QCocoaWindow *>(surface);
+    if (cocoaWindow->geometry().size() != cocoaWindow->m_exposedRect.size()) {
+        qCInfo(lcQpaOpenGLContext) << "Window exposed size does not match geometry (yet)."
+            << "Skipping flush to avoid visual artifacts.";
+        return;
     }
 
     QMutexLocker locker(&s_reentrancyMutex);

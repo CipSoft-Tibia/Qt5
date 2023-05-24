@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpathsimplifier_p.h"
 
@@ -44,7 +8,9 @@
 #include <QtCore/qpoint.h>
 #include <QtCore/qalgorithms.h>
 
-#include <private/qopengl_p.h>
+#if QT_CONFIG(opengl)
+#  include <private/qopengl_p.h>
+#endif
 #include <private/qrbtree_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -339,6 +305,7 @@ private:
         Type type;
         Element *element;
     };
+    friend class QTypeInfo<Event>;
 
     typedef QRBTree<Element *>::Node RBNode;
     typedef BoundingVolumeHierarchy::Node BVHNode;
@@ -376,6 +343,10 @@ private:
     QRBTree<Element *> m_elementList;
     uint m_hints;
 };
+
+} // unnamed namespace
+
+Q_DECLARE_TYPEINFO(PathSimplifier::Event, Q_PRIMITIVE_TYPE);
 
 inline PathSimplifier::BoundingVolumeHierarchy::BoundingVolumeHierarchy()
     : root(nullptr)
@@ -880,9 +851,9 @@ void PathSimplifier::connectElements()
 #ifndef QT_NO_DEBUG
     for (int i = 0; i < m_elements.size(); ++i) {
         const Element *element = m_elements.at(i);
-        Q_ASSERT(element->next == 0 || element->next->previous == element);
-        Q_ASSERT(element->previous == 0 || element->previous->next == element);
-        Q_ASSERT((element->next == 0) == (element->previous == 0));
+        Q_ASSERT(element->next == nullptr || element->next->previous == element);
+        Q_ASSERT(element->previous == nullptr || element->previous->next == element);
+        Q_ASSERT((element->next == nullptr) == (element->previous == nullptr));
     }
 #endif
 }
@@ -1442,7 +1413,7 @@ bool PathSimplifier::elementIsLeftOf(const Element *left, const Element *right)
 QPair<PathSimplifier::RBNode *, PathSimplifier::RBNode *> PathSimplifier::outerBounds(const QPoint &point)
 {
     RBNode *current = m_elementList.root;
-    QPair<RBNode *, RBNode *> result(0, 0);
+    QPair<RBNode *, RBNode *> result(nullptr, nullptr);
 
     while (current) {
         const Element *element = current->data;
@@ -1650,9 +1621,6 @@ void PathSimplifier::sortEvents(Event *events, int count)
     }
 }
 
-} // end anonymous namespace
-
-
 void qSimplifyPath(const QVectorPath &path, QDataBuffer<QPoint> &vertices,
                    QDataBuffer<quint32> &indices, const QTransform &matrix)
 {
@@ -1667,3 +1635,5 @@ void qSimplifyPath(const QPainterPath &path, QDataBuffer<QPoint> &vertices,
 
 
 QT_END_NAMESPACE
+
+#undef Q_FIXED_POINT_SCALE

@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 #ifndef XFA_FXFA_PARSER_CXFA_MEASUREMENT_H_
 #define XFA_FXFA_PARSER_CXFA_MEASUREMENT_H_
 
-#include "core/fxcrt/fx_string.h"
-#include "core/fxcrt/fx_system.h"
+#include "core/fxcrt/widestring.h"
 #include "xfa/fxfa/fxfa_basic.h"
 
 class CXFA_Measurement {
@@ -34,8 +33,8 @@ class CXFA_Measurement {
   void SetString(WideStringView wsMeasure);
   bool ToUnitInternal(XFA_Unit eUnit, float* fValue) const;
 
-  float m_fValue;
-  XFA_Unit m_eUnit;
+  float m_fValue = 0.0f;
+  XFA_Unit m_eUnit = XFA_Unit::Percent;
 };
 
 #endif  // XFA_FXFA_PARSER_CXFA_MEASUREMENT_H_

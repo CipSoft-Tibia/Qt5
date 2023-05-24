@@ -8,7 +8,7 @@ sections ([1][pixel debugging], [2][pixel updating]) of the general GPU testing
 documentation.
 
 [local pixel testing]: gpu_testing.md#Running-the-pixel-tests-locally
-[GPU Pixel Wrangling]: pixel_wrangling.md
+[GPU Pixel Wrangling]: http://go/gpu-pixel-wrangler
 [pixel debugging]: gpu_testing.md#Debugging-Pixel-Test-Failures-on-the-GPU-Bots
 [pixel updating]: gpu_testing.md#Updating-and-Adding-New-Pixel-Tests-to-the-GPU-Bots
 
@@ -125,9 +125,9 @@ the CL was merged as. In the above example, if the CL was merged as commit
 You can see all currently untriaged images that are currently being produced on
 ToT on the [GPU Gold instance's main page][gpu gold instance] and currently
 untriaged images for a CL by substituting the Gerrit CL number into
-`https://chrome-gpu-gold.skia.org/search?issue=[CL Number]&unt=true&master=true`.
+`https://chrome-gold.skia.org/search?issue=[CL Number]&unt=true&master=true`.
 
-[gpu gold instance]: https://chrome-gpu-gold.skia.org
+[gpu gold instance]: https://chrome-gold.skia.org
 
 It's possible, particularly if a test is regularly producing multiple images,
 for an image to be untriaged but not show up on the front page of the Gold
@@ -135,7 +135,7 @@ instance (for details, see [this crbug comment][untriaged non tot comment]). To
 see all such images, visit [this link][untriaged non tot].
 
 [untriaged non tot comment]: https://bugs.chromium.org/p/skia/issues/detail?id=9189#c4
-[untriaged non tot]: https://chrome-gpu-gold.skia.org/search?fdiffmax=-1&fref=false&frgbamax=255&frgbamin=0&head=false&include=false&limit=50&master=false&match=name&metric=combined&neg=false&offset=0&pos=false&query=source_type%3Dchrome-gpu&sort=desc&unt=true
+[untriaged non tot]: https://chrome-gold.skia.org/search?fdiffmax=-1&fref=false&frgbamax=255&frgbamin=0&head=false&include=false&limit=50&master=false&match=name&metric=combined&neg=false&offset=0&pos=false&query=source_type%3Dchrome-gpu&sort=desc&unt=true
 
 ### Finding A Failed Build
 
@@ -146,21 +146,19 @@ task to help debug the issue. Gold currently provides a list of CLs that were
 under test when a particular image was produced, but does not provide a link to
 the build that produced it, so the following workaround can be used.
 
-Assuming the failure is relatively recent (within the past week or so), you can
-use the flakiness dashboard to help find the failed run. To do so, substitute
-the test name into
-`https://test-results.appspot.com/dashboards/flakiness_dashboard.html#showAllRuns=true&testType=pixel_skia_gold_test&tests=[test_name]`
-and scroll through the history until you find the failed build (represented by
-a red square). Click on the build and follow the `Build log` link. This will
-take you to the failed build, from which you can get to the Swarming task like
-normal by scrolling to the failed step and clicking on the link for the failed
-shard number.
+Assuming the failure is relatively recent (within the past month or so), you
+can use the test history view to help find the failed run. To do so, search for
+the test name at `https://ci.chromium.org/ui/search?t=TESTS` and look through
+the history for the failed build (represented in red). Click on the group of
+builds and follow the link for the failing build, from which you can get to the
+Swarming task like normal by scrolling to the failed step and clicking on the
+link for the failed shard number.
 
 ### Triaging A Specific Image
 
 If for some reason an image is not showing up in Gold but you know the hash, you
 can manually navigate to the page for it by filling in the correct information
-to `https://chrome-gpu-gold.skia.org/detail?test=[test_name]&digest=[hash]`.
+to `https://chrome-gold.skia.org/detail?test=[test_name]&digest=[hash]`.
 From there, you should be able to triage it as normal.
 
 If this happens, please also file a bug in [Skia's bug tracker][skia crbug] so
@@ -224,29 +222,23 @@ by Chromium.
 sync` To update the binary used in Chromium, perform the following steps:
 
 1. (One-time only) get an [infra checkout][infra repo]
-2. Run `infra $ ./go/env.py` and run each of the commands it outputs to change
-your GOPATH and other environment variables for your terminal
-3. Update the Skia revision in [`deps.yaml`][deps yaml] to match the revision
-of your `goldctl` CL (or some revision after it)
-4. Run `infra $ ./go/deps.py update` and copy the list of repos it updated
-(include this in your CL description)
-5. Upload the changelist ([sample CL][sample roll cl])
-6. Once the CL is merged, wait until the git revision of your merged CL shows
-up in the tags of one of the instances for the [CIPD package][goldctl package]
-7. Update the [revision in DEPS][goldctl deps entry] to be the merged CL's
-revision
+1. Run `infra $ eval ``./go/env.py`` ` to ensure that the environment in the
+   terminal is correct
+1. Run `infra $ cd go/src/infra`
+1. Run `infra/go/src/infra $ go get go.skia.org/infra`
+1. Run `infra/go/src/infra $ go mod tidy`
+1. Upload the changelist ([sample CL][sample roll cl])
+1. Once the CL is merged, the goldctl autoroller should automatically detect it
+   and create Chromium CLs to roll the DEPS version.
 
 [infra repo]: https://chromium.googlesource.com/infra/infra/
-[deps yaml]: https://chromium.googlesource.com/infra/infra/+/91333d832a4d871b4219580dfb874b49a97e6da4/go/deps.yaml#432
-[sample roll cl]: https://chromium-review.googlesource.com/c/infra/infra/+/1493426
-[goldctl package]: https://chrome-infra-packages.appspot.com/p/skia/tools/goldctl/linux-amd64/+/
-[goldctl deps entry]: https://chromium.googlesource.com/chromium/src/+/6b7213a45382f01ac0a2efec1015545bd051da89/DEPS#1304
+[sample roll cl]: https://chromium-review.googlesource.com/c/infra/infra/+/4218809
 
 If you want to make sure that `goldctl` builds after the update before
 committing (e.g. to ensure that no extra third party dependencies were added),
-run the following after the `./go/deps.py update` step:
+run the following after the `go mod tidy` step:
 
-1. `infra $ ./go/deps.py install`
-2. `infra $ go install go.skia.org/infra/gold-client/cmd/goldctl`
-3. `infra $ which goldctl` which should point to a binary in `infra/go/bin/`
-4. `infra $ goldctl` to make sure it actually runs
+1. `infra/go/src/infra $ rm -f "$GOBIN/goldctl"` to avoid accidentally checking
+   a stale binary at the end
+1. `infra/go/src/infra $ go install -v go.skia.org/infra/gold-client/cmd/goldctl`
+1. `infra/go/src/infra $ "$GOBIN/goldctl` to ensure that the binary runs

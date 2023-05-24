@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickpointerdevicehandler_p_p.h"
 #include <private/qquickitem_p.h>
@@ -67,13 +31,13 @@ QQuickPointerDeviceHandler::QQuickPointerDeviceHandler(QQuickPointerDeviceHandle
 {
 }
 
-QQuickPointerDevice::DeviceTypes QQuickPointerDeviceHandler::acceptedDevices() const
+QInputDevice::DeviceTypes QQuickPointerDeviceHandler::acceptedDevices() const
 {
     Q_D(const QQuickPointerDeviceHandler);
     return d->acceptedDevices;
 }
 
-QQuickPointerDevice::PointerTypes QQuickPointerDeviceHandler::acceptedPointerTypes() const
+QPointingDevice::PointerTypes QQuickPointerDeviceHandler::acceptedPointerTypes() const
 {
     Q_D(const QQuickPointerDeviceHandler);
     return d->acceptedPointerTypes;
@@ -136,7 +100,7 @@ Qt::KeyboardModifiers QQuickPointerDeviceHandler::acceptedModifiers() const
     The types of pointing devices that can activate this Pointer Handler.
 
     By default, this property is set to
-    \l{QtQuick::PointerDevice::type} {PointerDevice.AllDevices}.
+    \l{QInputDevice::DeviceType}{PointerDevice.AllDevices}.
     If you set it to an OR combination of device types, it will ignore events
     from non-matching devices.
 
@@ -146,7 +110,7 @@ Qt::KeyboardModifiers QQuickPointerDeviceHandler::acceptedModifiers() const
     \qml
     Item {
        TapHandler {
-           acceptedDevices: PointerDevice.Mouse | PointerDevice.Stylus
+           acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.Stylus
            onTapped: console.log("clicked")
        }
        TapHandler {
@@ -155,8 +119,11 @@ Qt::KeyboardModifiers QQuickPointerDeviceHandler::acceptedModifiers() const
        }
     }
     \endqml
+
+    \note Not all platforms are yet able to distinguish mouse and touchpad; and
+    on those that do, you often want to make mouse and touchpad behavior the same.
 */
-void QQuickPointerDeviceHandler::setAcceptedDevices(QQuickPointerDevice::DeviceTypes acceptedDevices)
+void QQuickPointerDeviceHandler::setAcceptedDevices(QPointingDevice::DeviceTypes acceptedDevices)
 {
     Q_D(QQuickPointerDeviceHandler);
     if (d->acceptedDevices == acceptedDevices)
@@ -173,9 +140,9 @@ void QQuickPointerDeviceHandler::setAcceptedDevices(QQuickPointerDevice::DeviceT
     that can activate this Pointer Handler.
 
     By default, this property is set to
-    \l {QtQuick::PointerDevice::pointerType} {PointerDevice.AllPointerTypes}.
+    \l {QPointingDevice::PointerType} {PointerDevice.AllPointerTypes}.
     If you set it to an OR combination of device types, it will ignore events
-    from non-matching events.
+    from non-matching \l {PointerDevice}{devices}.
 
     For example, a control could be made to respond to mouse, touch, and stylus clicks
     in some way, but delete itself if tapped with an eraser tool on a graphics tablet,
@@ -185,7 +152,7 @@ void QQuickPointerDeviceHandler::setAcceptedDevices(QQuickPointerDevice::DeviceT
     Rectangle {
        id: rect
        TapHandler {
-           acceptedPointerTypes: PointerDevice.GenericPointer | PointerDevice.Finger | PointerDevice.Pen
+           acceptedPointerTypes: PointerDevice.Generic | PointerDevice.Finger | PointerDevice.Pen
            onTapped: console.log("clicked")
        }
        TapHandler {
@@ -195,7 +162,7 @@ void QQuickPointerDeviceHandler::setAcceptedDevices(QQuickPointerDevice::DeviceT
     }
     \endqml
 */
-void QQuickPointerDeviceHandler::setAcceptedPointerTypes(QQuickPointerDevice::PointerTypes acceptedPointerTypes)
+void QQuickPointerDeviceHandler::setAcceptedPointerTypes(QPointingDevice::PointerTypes acceptedPointerTypes)
 {
     Q_D(QQuickPointerDeviceHandler);
     if (d->acceptedPointerTypes == acceptedPointerTypes)
@@ -290,7 +257,7 @@ void QQuickPointerDeviceHandler::setAcceptedModifiers(Qt::KeyboardModifiers acce
     emit acceptedModifiersChanged();
 }
 
-bool QQuickPointerDeviceHandler::wantsPointerEvent(QQuickPointerEvent *event)
+bool QQuickPointerDeviceHandler::wantsPointerEvent(QPointerEvent *event)
 {
     Q_D(QQuickPointerDeviceHandler);
     if (!QQuickPointerHandler::wantsPointerEvent(event))
@@ -299,18 +266,21 @@ bool QQuickPointerDeviceHandler::wantsPointerEvent(QQuickPointerEvent *event)
         << "checking device type" << d->acceptedDevices
         << "pointer type" << d->acceptedPointerTypes
         << "modifiers" << d->acceptedModifiers;
-    if ((event->device()->type() & d->acceptedDevices) == 0)
+    if (!d->acceptedDevices.testFlag(event->device()->type()))
         return false;
-    if ((event->device()->pointerType() & d->acceptedPointerTypes) == 0)
+    if (!d->acceptedPointerTypes.testFlag(event->pointingDevice()->pointerType()))
         return false;
     if (d->acceptedModifiers != Qt::KeyboardModifierMask && event->modifiers() != d->acceptedModifiers)
         return false;
-    // HoverHandler sets acceptedButtons to Qt::NoButton to indicate that button state is irrelevant.
-    if (event->device()->pointerType() != QQuickPointerDevice::Finger && acceptedButtons() != Qt::NoButton &&
-            (event->buttons() & acceptedButtons()) == 0 && (event->button() & acceptedButtons()) == 0
-            && !event->asPointerScrollEvent())
+    // Some handlers (HoverHandler, PinchHandler) set acceptedButtons to Qt::NoButton to indicate that button state is irrelevant.
+    if (event->pointingDevice()->type() != QPointingDevice::DeviceType::TouchScreen &&
+            acceptedButtons() != Qt::NoButton && event->type() != QEvent::Wheel &&
+            (static_cast<QSinglePointEvent *>(event)->buttons() & acceptedButtons()) == 0 &&
+            (static_cast<QSinglePointEvent *>(event)->button() & acceptedButtons()) == 0)
         return false;
     return true;
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qquickpointerdevicehandler_p.cpp"

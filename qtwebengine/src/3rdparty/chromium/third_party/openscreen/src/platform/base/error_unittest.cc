@@ -73,6 +73,16 @@ TEST(ErrorOrTest, ErrorToString) {
             error_with_msg.ToString());
 }
 
+TEST(ErrorOrTest, ErrorCodeToString) {
+  constexpr auto error_none = Error::Code::kNone;
+  constexpr auto error_transient = Error::Code::kAgain;
+  constexpr auto error = Error::Code::kAddressInUse;
+
+  EXPECT_EQ("Success", ToString(error_none));
+  EXPECT_EQ("Failure: Transient", ToString(error_transient));
+  EXPECT_EQ("Failure: AddressInUse", ToString(error));
+}
+
 TEST(ErrorOrTest, ErrorOrWithError) {
   ErrorOr<Dummy> error_or1(Error(Error::Code::kCborParsing, "Parse Error"));
   const ErrorOr<Dummy> error_or2(Error::Code::kCborParsing);

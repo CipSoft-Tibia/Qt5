@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,19 +13,22 @@
 // Example: A backwards-compatible mojom change (and corresponding
 // implementation change) can be made in Chrome OS first, then replicated to the
 // clients (Chromium, other downstream repos) later.
-// Use //chromeos/services/machine_learning/public/mojom/roll_mojom.sh to help
+// Use //chromeos/services/machine_learning/public/mojom/roll_mojoms.sh to help
 // replicate Chrome OS-side changes over to Chromium.
 
 module chromeos.machine_learning.mojom;
 
+[Stable]
 struct StringList {
   array<string> value;
 };
 
+[Stable]
 struct FloatList {
   array<double> value;
 };
 
+[Stable]
 struct Int64List {
   array<int64> value;
 };
@@ -41,6 +44,7 @@ struct Int64List {
 //
 // TODO(chromium:836098): add new types (e.g. uint8, bool) as they become
 //                        useful.
+[Stable]
 union ValueList {
   StringList string_list;
   FloatList float_list;
@@ -51,6 +55,7 @@ union ValueList {
 // the one-dimensional array `data`.
 // It is used for both the inputs (in the form of a map<string, Tensor>) and
 // outputs (in the form of an array<Tensor>) of ML inference.
+[Stable]
 struct Tensor {
   ValueList data;
 

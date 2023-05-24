@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,15 +9,14 @@
 
 #include "base/test/task_environment.h"
 #include "components/sync/base/model_type.h"
-#include "components/sync/driver/test_sync_service.h"
-#include "components/sync/model/mock_model_type_change_processor.h"
-#include "components/sync/model/model_type_store_test_util.h"
-#include "components/sync/protocol/sync.pb.h"
+#include "components/sync/protocol/user_event_specifics.pb.h"
+#include "components/sync/test/mock_model_type_change_processor.h"
+#include "components/sync/test/model_type_store_test_util.h"
+#include "components/sync/test/test_sync_service.h"
 #include "components/sync_user_events/user_event_sync_bridge.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 using sync_pb::UserEventSpecifics;
-using testing::_;
 
 namespace syncer {
 
@@ -60,8 +59,9 @@ class TestGlobalIdMapper : public GlobalIdMapper {
 class UserEventServiceImplTest : public testing::Test {
  protected:
   UserEventServiceImplTest() {
-    sync_service_.SetPreferredDataTypes(
-        {HISTORY_DELETE_DIRECTIVES, USER_EVENTS});
+    sync_service_.GetUserSettings()->SetSelectedTypes(
+        /*sync_everything=*/false,
+        /*types=*/{syncer::UserSelectableType::kHistory});
     ON_CALL(mock_processor_, IsTrackingMetadata())
         .WillByDefault(testing::Return(true));
     ON_CALL(mock_processor_, TrackedAccountId())
@@ -86,7 +86,7 @@ class UserEventServiceImplTest : public testing::Test {
 
 TEST_F(UserEventServiceImplTest, ShouldRecord) {
   UserEventServiceImpl service(MakeBridge());
-  EXPECT_CALL(*mock_processor(), Put(_, _, _));
+  EXPECT_CALL(*mock_processor(), Put);
   service.RecordUserEvent(AsTest(Event()));
 }
 
@@ -96,7 +96,7 @@ TEST_F(UserEventServiceImplTest, ShouldNotRecordWhenSyncIsNotStarted) {
   UserEventServiceImpl service(MakeBridge());
 
   // Do not record events when the engine is off.
-  EXPECT_CALL(*mock_processor(), Put(_, _, _)).Times(0);
+  EXPECT_CALL(*mock_processor(), Put).Times(0);
   service.RecordUserEvent(WithNav(AsTest(Event())));
   service.RecordUserEvent(AsTest(Event()));
 }
@@ -105,7 +105,7 @@ TEST_F(UserEventServiceImplTest, ShouldNotRecordEmptyEvents) {
   UserEventServiceImpl service(MakeBridge());
 
   // All untyped events should always be ignored.
-  EXPECT_CALL(*mock_processor(), Put(_, _, _)).Times(0);
+  EXPECT_CALL(*mock_processor(), Put).Times(0);
   service.RecordUserEvent(Event());
   service.RecordUserEvent(WithNav(Event()));
 }
@@ -114,27 +114,27 @@ TEST_F(UserEventServiceImplTest, ShouldRecordHasNavigationId) {
   UserEventServiceImpl service(MakeBridge());
 
   // Verify logic for types that might or might not have a navigation id.
-  EXPECT_CALL(*mock_processor(), Put(_, _, _));
+  EXPECT_CALL(*mock_processor(), Put);
   service.RecordUserEvent(AsTest(Event()));
-  EXPECT_CALL(*mock_processor(), Put(_, _, _));
+  EXPECT_CALL(*mock_processor(), Put);
   service.RecordUserEvent(WithNav(AsTest(Event())));
 
   // Verify logic for types that must have a navigation id.
-  EXPECT_CALL(*mock_processor(), Put(_, _, _)).Times(0);
+  EXPECT_CALL(*mock_processor(), Put).Times(0);
   service.RecordUserEvent(AsGaiaPasswordReuseEvent(Event()));
-  EXPECT_CALL(*mock_processor(), Put(_, _, _));
+  EXPECT_CALL(*mock_processor(), Put);
   service.RecordUserEvent(WithNav(AsGaiaPasswordReuseEvent(Event())));
 
   // Verify logic for types that cannot have a navigation id.
-  EXPECT_CALL(*mock_processor(), Put(_, _, _));
+  EXPECT_CALL(*mock_processor(), Put);
   service.RecordUserEvent(AsGaiaPasswordCaptured(Event()));
-  EXPECT_CALL(*mock_processor(), Put(_, _, _)).Times(0);
+  EXPECT_CALL(*mock_processor(), Put).Times(0);
   service.RecordUserEvent(WithNav(AsGaiaPasswordCaptured(Event())));
 }
 
 TEST_F(UserEventServiceImplTest, SessionIdIsDifferent) {
   std::vector<int64_t> put_session_ids;
-  ON_CALL(*mock_processor(), Put(_, _, _))
+  ON_CALL(*mock_processor(), Put)
       .WillByDefault([&](const std::string& storage_key,
                          const std::unique_ptr<EntityData> entity_data,
                          MetadataChangeList* metadata_change_list) {

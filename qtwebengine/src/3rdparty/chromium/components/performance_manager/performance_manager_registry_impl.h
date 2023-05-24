@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 #define COMPONENTS_PERFORMANCE_MANAGER_PERFORMANCE_MANAGER_REGISTRY_IMPL_H_
 
 #include <memory>
-#include <string>
 
 #include "base/containers/flat_map.h"
 #include "base/containers/flat_set.h"
@@ -21,6 +20,7 @@
 #include "components/performance_manager/registered_objects.h"
 #include "components/performance_manager/render_process_user_data.h"
 #include "components/performance_manager/tab_helper_frame_node_source.h"
+#include "content/public/browser/render_process_host_creation_observer.h"
 
 namespace content {
 class RenderProcessHost;
@@ -35,7 +35,8 @@ class ServiceWorkerContextAdapter;
 class WorkerWatcher;
 
 class PerformanceManagerRegistryImpl
-    : public PerformanceManagerRegistry,
+    : public content::RenderProcessHostCreationObserver,
+      public PerformanceManagerRegistry,
       public PerformanceManagerTabHelper::DestructionObserver,
       public RenderProcessUserData::DestructionObserver {
  public:
@@ -76,6 +77,7 @@ class PerformanceManagerRegistryImpl
   // PerformanceManagerRegistry:
   void CreatePageNodeForWebContents(
       content::WebContents* web_contents) override;
+  void SetPageType(content::WebContents* web_contents, PageType type) override;
   Throttles CreateThrottlesForNavigation(
       content::NavigationHandle* handle) override;
   void NotifyBrowserContextAdded(
@@ -103,43 +105,60 @@ class PerformanceManagerRegistryImpl
   void EnsureProcessNodeForRenderProcessHost(
       content::RenderProcessHost* render_process_host);
 
-  size_t GetOwnedCountForTesting() const { return pm_owned_.size(); }
-  size_t GetRegisteredCountForTesting() const { return pm_registered_.size(); }
+  size_t GetOwnedCountForTesting() const {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    return pm_owned_.size();
+  }
+
+  size_t GetRegisteredCountForTesting() const {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    return pm_registered_.size();
+  }
 
  private:
   SEQUENCE_CHECKER(sequence_checker_);
 
+  // content::RenderProcessHostCreationObserver:
+  void OnRenderProcessHostCreated(content::RenderProcessHost* host) override;
+
   // Tracks WebContents and RenderProcessHost for which we have created user
   // data. Used to destroy all user data when the registry is destroyed.
-  base::flat_set<content::WebContents*> web_contents_;
-  base::flat_set<content::RenderProcessHost*> render_process_hosts_;
+  base::flat_set<content::WebContents*> web_contents_
+      GUARDED_BY_CONTEXT(sequence_checker_);
+  base::flat_set<content::RenderProcessHost*> render_process_hosts_
+      GUARDED_BY_CONTEXT(sequence_checker_);
 
   // Maps each browser context to its ServiceWorkerContextAdapter.
   base::flat_map<content::BrowserContext*,
                  std::unique_ptr<ServiceWorkerContextAdapter>>
-      service_worker_context_adapters_;
+      service_worker_context_adapters_ GUARDED_BY_CONTEXT(sequence_checker_);
 
   // Maps each browser context to its worker watcher.
   base::flat_map<content::BrowserContext*, std::unique_ptr<WorkerWatcher>>
-      worker_watchers_;
+      worker_watchers_ GUARDED_BY_CONTEXT(sequence_checker_);
 
   // Used by WorkerWatchers to access existing process nodes and frame
   // nodes.
-  performance_manager::ProcessNodeSource process_node_source_;
-  performance_manager::TabHelperFrameNodeSource frame_node_source_;
+  performance_manager::ProcessNodeSource process_node_source_
+      GUARDED_BY_CONTEXT(sequence_checker_);
+  performance_manager::TabHelperFrameNodeSource frame_node_source_
+      GUARDED_BY_CONTEXT(sequence_checker_);
 
-  base::ObserverList<PerformanceManagerMainThreadObserver> observers_;
-  base::ObserverList<PerformanceManagerMainThreadMechanism> mechanisms_;
+  base::ObserverList<PerformanceManagerMainThreadObserver> observers_
+      GUARDED_BY_CONTEXT(sequence_checker_);
+  base::ObserverList<PerformanceManagerMainThreadMechanism> mechanisms_
+      GUARDED_BY_CONTEXT(sequence_checker_);
 
   // Objects owned by the PM.
   OwnedObjects<PerformanceManagerOwned,
                /* CallbackArgType = */ void,
                &PerformanceManagerOwned::OnPassedToPM,
                &PerformanceManagerOwned::OnTakenFromPM>
-      pm_owned_;
+      pm_owned_ GUARDED_BY_CONTEXT(sequence_checker_);
 
   // Storage for PerformanceManagerRegistered objects.
-  RegisteredObjects<PerformanceManagerRegistered> pm_registered_;
+  RegisteredObjects<PerformanceManagerRegistered> pm_registered_
+      GUARDED_BY_CONTEXT(sequence_checker_);
 };
 
 }  // namespace performance_manager

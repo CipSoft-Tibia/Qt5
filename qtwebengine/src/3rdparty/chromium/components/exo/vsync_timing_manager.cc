@@ -1,16 +1,18 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/exo/vsync_timing_manager.h"
 
-#include "base/stl_util.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/containers/cxx20_erase.h"
+#include "base/task/single_thread_task_runner.h"
+#include "components/viz/common/frame_sinks/begin_frame_args.h"
 
 namespace exo {
 
 VSyncTimingManager::VSyncTimingManager(Delegate* delegate)
-    : delegate_(delegate) {}
+    : last_interval_(viz::BeginFrameArgs::DefaultInterval()),
+      delegate_(delegate) {}
 
 VSyncTimingManager::~VSyncTimingManager() = default;
 
@@ -36,8 +38,25 @@ void VSyncTimingManager::RemoveObserver(Observer* obs) {
 
 void VSyncTimingManager::OnUpdateVSyncParameters(base::TimeTicks timebase,
                                                  base::TimeDelta interval) {
-  for (auto* observer : observers_)
-    observer->OnUpdateVSyncParameters(timebase, interval);
+  for (auto* observer : observers_) {
+    observer->OnUpdateVSyncParameters(timebase, throttled_interval_.is_zero()
+                                                    ? interval
+                                                    : throttled_interval_);
+  }
+  last_timebase_ = timebase;
+  last_interval_ = interval;
+}
+
+void VSyncTimingManager::OnThrottlingStarted(
+    const std::vector<aura::Window*>& windows,
+    uint8_t fps) {
+  throttled_interval_ = base::Hertz(fps);
+  OnUpdateVSyncParameters(last_timebase_, last_interval_);
+}
+
+void VSyncTimingManager::OnThrottlingEnded() {
+  throttled_interval_ = base::TimeDelta();
+  OnUpdateVSyncParameters(last_timebase_, last_interval_);
 }
 
 void VSyncTimingManager::InitializeConnection() {
@@ -66,11 +85,11 @@ void VSyncTimingManager::OnConnectionError() {
   // Try to add a new observer after a short delay. If adding a new observer
   // fails we'll retry again until successful. The delay avoids spamming
   // retries.
-  base::ThreadTaskRunnerHandle::Get()->PostDelayedTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
       FROM_HERE,
       base::BindOnce(&VSyncTimingManager::MaybeInitializeConnection,
                      weak_ptr_factory_.GetWeakPtr()),
-      base::TimeDelta::FromMilliseconds(250));
+      base::Milliseconds(250));
 }
 
 }  // namespace exo

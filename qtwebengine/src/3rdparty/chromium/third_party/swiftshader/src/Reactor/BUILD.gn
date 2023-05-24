@@ -12,49 +12,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import("reactor.gni")
 import("../swiftshader.gni")
 
-declare_args() {
-  # Subzero produces smaller binaries, but doesn't support ARM64, MIPS64, and
-  # PPC64.
-  use_swiftshader_with_subzero =
-      current_cpu != "arm64" && current_cpu != "mips64el" && current_cpu != "ppc64"
-  supports_llvm = is_linux || is_chromeos || is_fuchsia || is_win || is_android || is_mac
-}
-
-config("swiftshader_reactor_private_config") {
+config("swiftshader_llvm_reactor_private_config") {
   if (is_win) {
     cflags = [
       "/wd4141",  # 'inline' used more than once. (LLVM 7.0)
       "/wd4146",  # unary minus operator applied to unsigned type. (LLVM 7.0)
       "/wd4201",  # nameless struct/union
+      "/wd4244",  # conversion' conversion from 'type1' to 'type2'
       "/wd4245",  # conversion from int to unsigned int (llvm)
       "/wd4624",  # destructor was implicitly defined as deleted (LLVM 7.0)
     ]
   } else {
     cflags = [ "-Wno-unused-local-typedef" ]
-    defines = [
-      "__STDC_CONSTANT_MACROS",
-      "__STDC_LIMIT_MACROS",
-    ]
-
-    if (current_cpu == "x86" || current_cpu == "x64") {
-      cflags += [ "-msse2" ]
-    }
   }
+}
+
+config("swiftshader_reactor_base_private_config") {
+  defines = [
+    "REACTOR_ANONYMOUS_MMAP_NAME=swiftshader_jit",
+  ]
 }
 
 swiftshader_source_set("swiftshader_reactor_base") {
   sources = [
+    "Assert.cpp",
     "Debug.cpp",
-    "EmulatedIntrinsics.cpp",
     "ExecutableMemory.cpp",
-    "OptimalIntrinsics.cpp",
+    "Pragma.cpp",
     "Reactor.cpp",
+    "SIMD.cpp",
+  ]
+
+  configs = [
+      ":swiftshader_reactor_base_private_config",
   ]
 }
 
-if (use_swiftshader_with_subzero) {
+if (supports_subzero) {
   # Need a separate config to ensure the warnings are added to the end.
   config("swiftshader_subzero_common_private_config") {
     defines = [
@@ -67,10 +64,6 @@ if (use_swiftshader_with_subzero) {
       "ALLOW_WASM=0",
       "ICE_THREAD_LOCAL_HACK=0",
     ]
-
-    if (is_win) {
-      defines += [ "SUBZERO_USE_MICROSOFT_ABI" ]
-    }
 
     if (current_cpu == "x64") {
       defines += [
@@ -151,14 +144,11 @@ if (use_swiftshader_with_subzero) {
     if (is_clang) {
       cflags += [
         "-Wno-header-hygiene",
+        "-Wno-deprecated-declarations", # (llvm)
         "-Wno-enum-compare-switch",
         "-Wno-unused-lambda-capture",
         "-Wno-unused-function",
       ]
-    }
-
-    if (is_fuchsia) {
-      cflags += [ "-Wno-error" ]
     }
   }
 
@@ -190,11 +180,10 @@ if (use_swiftshader_with_subzero) {
     }
 
     if (is_clang) {
-      cflags += [ "-Wno-header-hygiene" ]
-    }
-
-    if (is_fuchsia) {
-      cflags += [ "-Wno-error" ]
+      cflags += [
+        "-Wno-header-hygiene",
+        "-Wno-deprecated-declarations", # (llvm)
+      ]
     }
   }
 
@@ -220,13 +209,11 @@ if (use_swiftshader_with_subzero) {
       "$subzero_dir/src/IceMangling.cpp",
       "$subzero_dir/src/IceMemory.cpp",
       "$subzero_dir/src/IceOperand.cpp",
-      "$subzero_dir/src/IceRNG.cpp",
       "$subzero_dir/src/IceRangeSpec.cpp",
       "$subzero_dir/src/IceRegAlloc.cpp",
       "$subzero_dir/src/IceRevision.cpp",
       "$subzero_dir/src/IceSwitchLowering.cpp",
       "$subzero_dir/src/IceTargetLowering.cpp",
-      "$subzero_dir/src/IceTargetLoweringX86.cpp",
       "$subzero_dir/src/IceThreading.cpp",
       "$subzero_dir/src/IceTimerTree.cpp",
       "$subzero_dir/src/IceTypes.cpp",
@@ -235,12 +222,9 @@ if (use_swiftshader_with_subzero) {
       "$subzero_llvm_dir/lib/Support/APInt.cpp",
       "$subzero_llvm_dir/lib/Support/Atomic.cpp",
       "$subzero_llvm_dir/lib/Support/CommandLine.cpp",
-      "$subzero_llvm_dir/lib/Support/ConvertUTF.cpp",
-      "$subzero_llvm_dir/lib/Support/ConvertUTFWrapper.cpp",
       "$subzero_llvm_dir/lib/Support/Debug.cpp",
       "$subzero_llvm_dir/lib/Support/Errno.cpp",
       "$subzero_llvm_dir/lib/Support/ErrorHandling.cpp",
-      "$subzero_llvm_dir/lib/Support/FoldingSet.cpp",
       "$subzero_llvm_dir/lib/Support/Hashing.cpp",
       "$subzero_llvm_dir/lib/Support/ManagedStatic.cpp",
       "$subzero_llvm_dir/lib/Support/MemoryBuffer.cpp",
@@ -272,11 +256,13 @@ if (use_swiftshader_with_subzero) {
 
     if (current_cpu == "x64") {
       sources += [
+        "$subzero_dir/src/IceAssemblerX8664.cpp",
         "$subzero_dir/src/IceInstX8664.cpp",
         "$subzero_dir/src/IceTargetLoweringX8664.cpp",
       ]
     } else if (current_cpu == "x86") {
       sources += [
+        "$subzero_dir/src/IceAssemblerX8632.cpp",
         "$subzero_dir/src/IceInstX8632.cpp",
         "$subzero_dir/src/IceTargetLoweringX8632.cpp",
       ]
@@ -299,6 +285,7 @@ if (use_swiftshader_with_subzero) {
       ":swiftshader_subzero_private_config",
     ]
   }
+
   swiftshader_source_set("swiftshader_subzero_reactor") {
     deps = [
       "../../third_party/marl:Marl",
@@ -333,7 +320,7 @@ if (supports_llvm) {
       "LLVMReactor.cpp",
     ]
 
-    configs = [ ":swiftshader_reactor_private_config" ]
+    configs = [ ":swiftshader_llvm_reactor_private_config" ]
 
     include_dirs = [
       "$llvm_dir/llvm/include/",
@@ -351,7 +338,7 @@ if (supports_llvm) {
     } else if (is_mac) {
       include_dirs += [ "$llvm_dir/configs/darwin/include/" ]
     } else {
-      assert(false, "llvm-7.0 not configured for target platform")
+      assert(false, "llvm not configured for target platform")
     }
   }
 }

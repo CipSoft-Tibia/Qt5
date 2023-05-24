@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCOREEVENT_H
 #define QCOREEVENT_H
@@ -46,12 +10,43 @@
 
 QT_BEGIN_NAMESPACE
 
+#define Q_EVENT_DISABLE_COPY(Class) \
+protected: \
+    Class(const Class &) = default; \
+    Class(Class &&) = delete; \
+    Class &operator=(const Class &other) = default; \
+    Class &operator=(Class &&) = delete
+
+#define Q_DECL_EVENT_COMMON(Class) \
+    protected: \
+        Class(const Class &); \
+        Class(Class &&) = delete; \
+        Class &operator=(const Class &other) = default; \
+        Class &operator=(Class &&) = delete; \
+    public: \
+        Class* clone() const override; \
+        ~Class() override; \
+    private:
+
+#define Q_IMPL_EVENT_COMMON(Class) \
+    Class::Class(const Class &) = default; \
+    Class::~Class() = default; \
+    Class* Class::clone() const \
+    { \
+        auto c = new Class(*this); \
+        [[maybe_unused]] QEvent *e = c; \
+        /* check that covariant return is safe to add */ \
+        Q_ASSERT(reinterpret_cast<quintptr>(c) == reinterpret_cast<quintptr>(e)); \
+        return c; \
+    }
 
 class QEventPrivate;
 class Q_CORE_EXPORT QEvent           // event base class
 {
     Q_GADGET
     QDOC_PROPERTY(bool accepted READ isAccepted WRITE setAccepted)
+
+    Q_EVENT_DISABLE_COPY(QEvent);
 public:
     enum Type {
         /*
@@ -205,6 +200,7 @@ public:
         GraphicsSceneDragLeave = 166,
         GraphicsSceneDrop = 167,
         GraphicsSceneWheel = 168,
+        GraphicsSceneLeave = 220,
 
         KeyboardLayoutChange = 169,             // keyboard layout changed
 
@@ -238,7 +234,6 @@ public:
         UngrabMouse = 187,
         GrabKeyboard = 188,
         UngrabKeyboard = 189,
-        MacGLClearDrawable = 191,               // Internal Cocoa, the window has changed, so we must clear
 
         StateMachineSignal = 192,
         StateMachineWrapped = 193,
@@ -277,14 +272,19 @@ public:
         StyleAnimationUpdate = 213,             // style animation target should be updated
         ApplicationStateChange = 214,
 
-        WindowChangeInternal = 215,             // internal for QQuickWidget
+        WindowChangeInternal = 215,             // internal for QQuickWidget and texture-based widgets
         ScreenChangeInternal = 216,
 
         PlatformSurface = 217,                  // Platform surface created or about to be destroyed
 
-        Pointer = 218,                          // QQuickPointerEvent; ### Qt 6: QPointerEvent
+        Pointer = 218,                          // Qt 5: QQuickPointerEvent; Qt 6: unused so far
 
         TabletTrackingChange = 219,             // tablet tracking state has changed
+
+        // GraphicsSceneLeave = 220,
+        WindowAboutToChangeInternal = 221,      // internal for QQuickWidget and texture-based widgets
+
+        DevicePixelRatioChange = 222,
 
         // 512 reserved for Qt Jambi's MetaCall event
         // 513 reserved for Qt Jambi's DeleteOnMainThread event
@@ -295,51 +295,73 @@ public:
     Q_ENUM(Type)
 
     explicit QEvent(Type type);
-    QEvent(const QEvent &other);
     virtual ~QEvent();
-    QEvent &operator=(const QEvent &other);
     inline Type type() const { return static_cast<Type>(t); }
-    inline bool spontaneous() const { return spont; }
+    inline bool spontaneous() const { return m_spont; }
 
-    inline void setAccepted(bool accepted) { m_accept = accepted; }
+    inline virtual void setAccepted(bool accepted) { m_accept = accepted; }
     inline bool isAccepted() const { return m_accept; }
 
     inline void accept() { m_accept = true; }
     inline void ignore() { m_accept = false; }
 
+    inline bool isInputEvent() const noexcept { return m_inputEvent; }
+    inline bool isPointerEvent() const noexcept { return m_pointerEvent; }
+    inline bool isSinglePointEvent() const noexcept { return m_singlePointEvent; }
+
     static int registerEventType(int hint = -1) noexcept;
 
+    virtual QEvent *clone() const;
+
 protected:
-    QEventPrivate *d;
-    ushort t;
+    struct InputEventTag { explicit InputEventTag() = default; };
+    QEvent(Type type, InputEventTag) : QEvent(type) { m_inputEvent = true; }
+    struct PointerEventTag { explicit PointerEventTag() = default; };
+    QEvent(Type type, PointerEventTag) : QEvent(type, InputEventTag{}) { m_pointerEvent = true; }
+    struct SinglePointEventTag { explicit SinglePointEventTag() = default; };
+    QEvent(Type type, SinglePointEventTag) : QEvent(type, PointerEventTag{}) { m_singlePointEvent = true; }
+    quint16 t;
 
 private:
-    ushort posted : 1;
-    ushort spont : 1;
-    ushort m_accept : 1;
-    ushort reserved : 13;
+    /*
+        We can assume that C++ types are 8-byte aligned, and we can't assume that compilers
+        coalesce data members from subclasses. Use bitfields to fill up to next 8-byte
+        aligned size, which is 16 bytes. That way we don't waste memory, and have plenty of room
+        for future flags.
+        Don't use bitfields for the most important flags, as that would generate more code, and
+        access is always inline. Bytes used are:
+        8 vptr + 2 type + 3 bool flags => 3 bytes left, so 24 bits. However, compilers will word-
+        align the quint16s after the bools, so add another unused bool to fill that gap, which
+        leaves us with 16 bits.
+    */
+    bool m_posted = false;
+    bool m_spont = false;
+    bool m_accept = true;
+    bool m_unused = false;
+    quint16 m_reserved : 13;
+    quint16 m_inputEvent : 1;
+    quint16 m_pointerEvent : 1;
+    quint16 m_singlePointEvent : 1;
 
     friend class QCoreApplication;
     friend class QCoreApplicationPrivate;
     friend class QThreadData;
     friend class QApplication;
-    friend class QShortcutMap;
-    friend class QGraphicsView;
-    friend class QGraphicsScene;
     friend class QGraphicsScenePrivate;
     // from QtTest:
     friend class QSpontaneKeyEvent;
     // needs this:
     Q_ALWAYS_INLINE
-    void setSpontaneous() { spont = true; }
+    void setSpontaneous() { m_spont = true; }
 };
 
 class Q_CORE_EXPORT QTimerEvent : public QEvent
 {
+    Q_DECL_EVENT_COMMON(QTimerEvent)
 public:
-    explicit QTimerEvent( int timerId );
-    ~QTimerEvent();
+    explicit QTimerEvent(int timerId);
     int timerId() const { return id; }
+
 protected:
     int id;
 };
@@ -348,22 +370,24 @@ class QObject;
 
 class Q_CORE_EXPORT QChildEvent : public QEvent
 {
+    Q_DECL_EVENT_COMMON(QChildEvent)
 public:
-    QChildEvent( Type type, QObject *child );
-    ~QChildEvent();
+    QChildEvent(Type type, QObject *child);
+
     QObject *child() const { return c; }
     bool added() const { return type() == ChildAdded; }
     bool polished() const { return type() == ChildPolished; }
     bool removed() const { return type() == ChildRemoved; }
+
 protected:
     QObject *c;
 };
 
 class Q_CORE_EXPORT QDynamicPropertyChangeEvent : public QEvent
 {
+    Q_DECL_EVENT_COMMON(QDynamicPropertyChangeEvent)
 public:
     explicit QDynamicPropertyChangeEvent(const QByteArray &name);
-    ~QDynamicPropertyChangeEvent();
 
     inline QByteArray propertyName() const { return n; }
 
@@ -373,10 +397,11 @@ private:
 
 class Q_CORE_EXPORT QDeferredDeleteEvent : public QEvent
 {
+    Q_DECL_EVENT_COMMON(QDeferredDeleteEvent)
 public:
     explicit QDeferredDeleteEvent();
-    ~QDeferredDeleteEvent();
     int loopLevel() const { return level; }
+
 private:
     int level;
     friend class QCoreApplication;

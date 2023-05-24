@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,10 @@
 #include <memory>
 #include <string>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
-#include "base/strings/string16.h"
+#include "build/chromeos_buildflags.h"
 #include "chrome/browser/ui/webui/print_preview/printer_handler.h"
 #include "ui/shell_dialogs/select_file_dialog.h"
 
@@ -37,6 +38,9 @@ class PdfPrinterHandler : public PrinterHandler,
                     content::WebContents* preview_web_contents,
                     PrintPreviewStickySettings* sticky_settings);
 
+  PdfPrinterHandler(const PdfPrinterHandler&) = delete;
+  PdfPrinterHandler& operator=(const PdfPrinterHandler&) = delete;
+
   ~PdfPrinterHandler() override;
 
   // PrinterHandler implementation
@@ -46,8 +50,8 @@ class PdfPrinterHandler : public PrinterHandler,
                         GetPrintersDoneCallback done_callback) override;
   void StartGetCapability(const std::string& destination_id,
                           GetCapabilityCallback callback) override;
-  void StartPrint(const base::string16& job_title,
-                  base::Value settings,
+  void StartPrint(const std::u16string& job_title,
+                  base::Value::Dict settings,
                   scoped_refptr<base::RefCountedMemory> print_data,
                   PrintCallback callback) override;
 
@@ -60,12 +64,15 @@ class PdfPrinterHandler : public PrinterHandler,
   // Sets |pdf_file_saved_closure_| to |closure|.
   void SetPdfSavedClosureForTesting(base::OnceClosure closure);
 
+  // Sets |print_to_pdf_path_| to |path|.
+  void SetPrintToPdfPathForTesting(const base::FilePath& path);
+
   // Exposed for testing.
   static base::FilePath GetFileNameForPrintJobTitle(
-      const base::string16& job_title);
+      const std::u16string& job_title);
   static base::FilePath GetFileNameForURL(const GURL& url);
   static base::FilePath GetFileName(const GURL& url,
-                                    const base::string16& job_title,
+                                    const std::u16string& job_title,
                                     bool is_savable);
 
  protected:
@@ -74,7 +81,7 @@ class PdfPrinterHandler : public PrinterHandler,
                           bool prompt_user);
 
   // The print preview web contents. Protected so unit tests can access it.
-  content::WebContents* const preview_web_contents_;
+  const raw_ptr<content::WebContents, DanglingUntriaged> preview_web_contents_;
 
   // The underlying dialog object. Protected so unit tests can access it.
   scoped_refptr<ui::SelectFileDialog> select_file_dialog_;
@@ -88,11 +95,15 @@ class PdfPrinterHandler : public PrinterHandler,
   void OnDirectorySelected(const base::FilePath& filename,
                            const base::FilePath& directory);
 
+  void OnSaveLocationReady(const base::FilePath& default_filename,
+                           bool prompt_user,
+                           const base::FilePath& path);
+
   // Return save location as the Drive mount or fetch from Download Preferences.
   base::FilePath GetSaveLocation() const;
 
-  Profile* const profile_;
-  PrintPreviewStickySettings* const sticky_settings_;
+  const raw_ptr<Profile, DanglingUntriaged> profile_;
+  const raw_ptr<PrintPreviewStickySettings> sticky_settings_;
 
   // Holds the path to the print to pdf request. It is empty if no such request
   // exists.
@@ -108,15 +119,13 @@ class PdfPrinterHandler : public PrinterHandler,
   // The callback to call when complete.
   PrintCallback print_callback_;
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
   // Determines if the local Drive mount is sent to the file picker as the
   // default save location. Set to true for Save to Drive print jobs.
   bool use_drive_mount_ = false;
 #endif
 
   base::WeakPtrFactory<PdfPrinterHandler> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(PdfPrinterHandler);
 };
 
 }  // namespace printing

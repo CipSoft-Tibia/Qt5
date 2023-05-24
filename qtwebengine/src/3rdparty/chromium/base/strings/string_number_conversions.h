@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,6 @@
 
 #include "base/base_export.h"
 #include "base/containers/span.h"
-#include "base/strings/string16.h"
 #include "base/strings/string_piece.h"
 #include "build/build_config.h"
 
@@ -39,19 +38,19 @@ namespace base {
 
 // Ignores locale! see warning above.
 BASE_EXPORT std::string NumberToString(int value);
-BASE_EXPORT string16 NumberToString16(int value);
+BASE_EXPORT std::u16string NumberToString16(int value);
 BASE_EXPORT std::string NumberToString(unsigned int value);
-BASE_EXPORT string16 NumberToString16(unsigned int value);
+BASE_EXPORT std::u16string NumberToString16(unsigned int value);
 BASE_EXPORT std::string NumberToString(long value);
-BASE_EXPORT string16 NumberToString16(long value);
+BASE_EXPORT std::u16string NumberToString16(long value);
 BASE_EXPORT std::string NumberToString(unsigned long value);
-BASE_EXPORT string16 NumberToString16(unsigned long value);
+BASE_EXPORT std::u16string NumberToString16(unsigned long value);
 BASE_EXPORT std::string NumberToString(long long value);
-BASE_EXPORT string16 NumberToString16(long long value);
+BASE_EXPORT std::u16string NumberToString16(long long value);
 BASE_EXPORT std::string NumberToString(unsigned long long value);
-BASE_EXPORT string16 NumberToString16(unsigned long long value);
+BASE_EXPORT std::u16string NumberToString16(unsigned long long value);
 BASE_EXPORT std::string NumberToString(double value);
-BASE_EXPORT string16 NumberToString16(double value);
+BASE_EXPORT std::u16string NumberToString16(double value);
 
 // String -> number conversions ------------------------------------------------
 
@@ -150,7 +149,7 @@ BASE_EXPORT bool HexStringToSpan(StringPiece input, base::span<uint8_t> output);
 
 }  // namespace base
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "base/strings/string_number_conversions_win.h"
 #endif
 

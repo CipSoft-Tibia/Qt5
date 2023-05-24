@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -8,7 +8,9 @@
 #define COMPONENTS_SAFE_BROWSING_CORE_COMMON_UTILS_H_
 
 #include "base/time/time.h"
-#include "components/safe_browsing/core/proto/csd.pb.h"
+#include "components/safe_browsing/core/common/proto/csd.pb.h"
+#include "components/safe_browsing/core/common/safebrowsing_constants.h"
+#include "services/network/public/mojom/fetch_api.mojom-shared.h"
 #include "url/gurl.h"
 
 namespace policy {
@@ -18,6 +20,10 @@ class BrowserPolicyConnector;
 namespace base {
 class TimeDelta;
 }  // namespace base
+
+namespace network {
+struct ResourceRequest;
+}  // namespace network
 
 class PrefService;
 
@@ -40,6 +46,31 @@ void SetDelayInPref(PrefService* prefs,
                     const char* pref_name,
                     const base::TimeDelta& delay);
 base::TimeDelta GetDelayFromPref(PrefService* prefs, const char* pref_name);
+
+// Safe Browsing backend cannot get a reliable reputation of a URL if
+// (1) URL is not valid
+// (2) URL doesn't have http or https scheme
+// (3) It maps to a local host.
+// (4) Its hostname is an IP Address that is assigned from IP literal.
+// (5) Its hostname is a dotless domain.
+// (6) Its hostname is less than 4 characters.
+bool CanGetReputationOfUrl(const GURL& url);
+
+// Set |access_token| in |resource_request|. Remove cookies in the request
+// since we only need one identifier.
+void SetAccessTokenAndClearCookieInResourceRequest(
+    network::ResourceRequest* resource_request,
+    const std::string& access_token);
+
+// Record HTTP response code when there's no error in fetching an HTTP
+// request, and the error code, when there is.
+// |metric_name| is the name of the UMA metric to record the response code or
+// error code against, |net_error| represents the net error code of the HTTP
+// request, and |response code| represents the HTTP response code received
+// from the server.
+void RecordHttpResponseOrErrorCode(const char* metric_name,
+                                   int net_error,
+                                   int response_code);
 
 }  // namespace safe_browsing
 

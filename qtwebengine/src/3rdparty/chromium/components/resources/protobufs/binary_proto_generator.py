@@ -1,5 +1,5 @@
-#!/usr/bin/python
-# Copyright 2016 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -7,9 +7,9 @@
  Converts a given ASCII proto into a binary resource.
 
 """
-
+from __future__ import print_function
 import abc
-import imp
+from importlib import util as imp_util
 import optparse
 import os
 import re
@@ -68,7 +68,11 @@ class GoogleProtobufModuleImporter:
       raise ImportError(fullname)
 
     filepath = self._fullname_to_filepath(fullname)
-    return imp.load_source(fullname, filepath)
+    spec = imp_util.spec_from_file_location(fullname, filepath)
+    loaded = imp_util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+
+    return loaded
 
 class BinaryProtoGenerator:
 
@@ -196,12 +200,12 @@ class BinaryProtoGenerator:
     self._ImportProtoModules(opts.path)
 
     if not self.VerifyArgs(opts):
-      print "Wrong arguments"
+      print("Wrong arguments")
       return 1
 
     try:
       self._GenerateBinaryProtos(opts)
     except Exception as e:
-      print "ERROR: Failed to render binary version of %s:\n  %s\n%s" % (
-          opts.infile, str(e), traceback.format_exc())
+      print("ERROR: Failed to render binary version of %s:\n  %s\n%s" %
+            (opts.infile, str(e), traceback.format_exc()))
       return 1

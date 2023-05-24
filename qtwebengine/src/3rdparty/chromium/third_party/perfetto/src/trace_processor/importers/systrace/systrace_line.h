@@ -17,13 +17,13 @@
 #ifndef SRC_TRACE_PROCESSOR_IMPORTERS_SYSTRACE_SYSTRACE_LINE_H_
 #define SRC_TRACE_PROCESSOR_IMPORTERS_SYSTRACE_SYSTRACE_LINE_H_
 
-#include <inttypes.h>
+#include <cinttypes>
 #include <string>
 
 namespace perfetto {
 namespace trace_processor {
 
-struct SystraceLine {
+struct alignas(8) SystraceLine {
   int64_t ts;
   uint32_t pid;
   uint32_t cpu;

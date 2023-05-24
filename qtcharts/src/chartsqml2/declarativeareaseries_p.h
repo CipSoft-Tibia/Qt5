@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //  W A R N I N G
 //  -------------
@@ -40,26 +14,30 @@
 #define DECLARATIVEAREASERIES_H
 
 #include <QtCharts/QAreaSeries>
+#include <QtQml/qqmlregistration.h>
 #include <private/declarativechartglobal_p.h>
 #include <private/declarativeaxes_p.h>
+#include <private/declarativelineseries_p.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
-class DeclarativeLineSeries;
+QT_BEGIN_NAMESPACE
 
-class Q_QMLCHARTS_PRIVATE_EXPORT DeclarativeAreaSeries : public QAreaSeries
+class Q_CHARTSQML_PRIVATE_EXPORT DeclarativeAreaSeries : public QAreaSeries
 {
     Q_OBJECT
-    Q_PROPERTY(QtCharts::DeclarativeLineSeries *upperSeries READ upperSeries WRITE setUpperSeries)
-    Q_PROPERTY(QtCharts::DeclarativeLineSeries *lowerSeries READ lowerSeries WRITE setLowerSeries)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisX READ axisX WRITE setAxisX NOTIFY axisXChanged REVISION 1)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisY READ axisY WRITE setAxisY NOTIFY axisYChanged REVISION 1)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisXTop READ axisXTop WRITE setAxisXTop NOTIFY axisXTopChanged REVISION 2)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisYRight READ axisYRight WRITE setAxisYRight NOTIFY axisYRightChanged REVISION 2)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisAngular READ axisAngular WRITE setAxisAngular NOTIFY axisAngularChanged REVISION 3)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisRadial READ axisRadial WRITE setAxisRadial NOTIFY axisRadialChanged REVISION 3)
-    Q_PROPERTY(qreal borderWidth READ borderWidth WRITE setBorderWidth NOTIFY borderWidthChanged REVISION 1)
-    Q_PROPERTY(QString brushFilename READ brushFilename WRITE setBrushFilename NOTIFY brushFilenameChanged REVISION 4)
-    Q_PROPERTY(QBrush brush READ brush WRITE setBrush NOTIFY brushChanged REVISION 4)
+    Q_PROPERTY(DeclarativeLineSeries *upperSeries READ upperSeries WRITE setUpperSeries)
+    Q_PROPERTY(DeclarativeLineSeries *lowerSeries READ lowerSeries WRITE setLowerSeries)
+    Q_PROPERTY(QAbstractAxis *axisX READ axisX WRITE setAxisX NOTIFY axisXChanged REVISION(1, 1))
+    Q_PROPERTY(QAbstractAxis *axisY READ axisY WRITE setAxisY NOTIFY axisYChanged REVISION(1, 1))
+    Q_PROPERTY(QAbstractAxis *axisXTop READ axisXTop WRITE setAxisXTop NOTIFY axisXTopChanged REVISION(1, 2))
+    Q_PROPERTY(QAbstractAxis *axisYRight READ axisYRight WRITE setAxisYRight NOTIFY axisYRightChanged REVISION(1, 2))
+    Q_PROPERTY(QAbstractAxis *axisAngular READ axisAngular WRITE setAxisAngular NOTIFY axisAngularChanged REVISION(1, 3))
+    Q_PROPERTY(QAbstractAxis *axisRadial READ axisRadial WRITE setAxisRadial NOTIFY axisRadialChanged REVISION(1, 3))
+    Q_PROPERTY(qreal borderWidth READ borderWidth WRITE setBorderWidth NOTIFY borderWidthChanged REVISION(1, 1))
+    Q_PROPERTY(QString brushFilename READ brushFilename WRITE setBrushFilename NOTIFY brushFilenameChanged REVISION(1, 4))
+    Q_PROPERTY(QBrush brush READ brush WRITE setBrush NOTIFY brushChanged REVISION(1, 4))
+    QML_NAMED_ELEMENT(AreaSeries)
+    QML_ADDED_IN_VERSION(1, 0)
+    QML_EXTRA_VERSION(2, 0)
 
 public:
     explicit DeclarativeAreaSeries(QObject *parent = 0);
@@ -87,15 +65,15 @@ public:
     QBrush brush() const;
 
 Q_SIGNALS:
-    Q_REVISION(1) void axisXChanged(QAbstractAxis *axis);
-    Q_REVISION(1) void axisYChanged(QAbstractAxis *axis);
-    Q_REVISION(1) void borderWidthChanged(qreal width);
-    Q_REVISION(2) void axisXTopChanged(QAbstractAxis *axis);
-    Q_REVISION(2) void axisYRightChanged(QAbstractAxis *axis);
-    Q_REVISION(3) void axisAngularChanged(QAbstractAxis *axis);
-    Q_REVISION(3) void axisRadialChanged(QAbstractAxis *axis);
-    Q_REVISION(4) void brushChanged();
-    Q_REVISION(4) void brushFilenameChanged(const QString &brushFilename);
+    Q_REVISION(1, 1) void axisXChanged(QAbstractAxis *axis);
+    Q_REVISION(1, 1) void axisYChanged(QAbstractAxis *axis);
+    Q_REVISION(1, 1) void borderWidthChanged(qreal width);
+    Q_REVISION(1, 2) void axisXTopChanged(QAbstractAxis *axis);
+    Q_REVISION(1, 2) void axisYRightChanged(QAbstractAxis *axis);
+    Q_REVISION(1, 3) void axisAngularChanged(QAbstractAxis *axis);
+    Q_REVISION(1, 3) void axisRadialChanged(QAbstractAxis *axis);
+    Q_REVISION(1, 4) void brushChanged();
+    Q_REVISION(1, 4) void brushFilenameChanged(const QString &brushFilename);
 
 private Q_SLOTS:
     void handleBrushChanged();
@@ -108,6 +86,6 @@ private:
     QImage m_brushImage;
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif // DECLARATIVEAREASERIES_H

@@ -1,15 +1,13 @@
 dep_scanner = dependency('wayland-scanner', native: true)
 prog_scanner = find_program(dep_scanner.get_pkgconfig_variable('wayland_scanner'))
 
-# XXX: For minor version 2 of zwp_linux_explicit_synchronization_v1, we
-# actually need a development version after 1.17, but there is no way to
-# express such a requirement at the moment.
-dep_wp = dependency('wayland-protocols', version: '>= 1.17')
+dep_wp = dependency('wayland-protocols', version: '>= 1.18')
 dir_wp_base = dep_wp.get_pkgconfig_variable('pkgdatadir')
 
 install_data(
 	[
 		'weston-debug.xml',
+		'weston-direct-display.xml',
 	],
 	install_dir: join_paths(dir_data, dir_protocol_libweston)
 )
@@ -35,6 +33,7 @@ generated_protocols = [
 	[ 'weston-content-protection', 'internal' ],
 	[ 'weston-test', 'internal' ],
 	[ 'weston-touch-calibration', 'internal' ],
+	[ 'weston-direct-display', 'internal' ],
 	[ 'xdg-output', 'v1' ],
 	[ 'xdg-shell', 'v6' ],
 	[ 'xdg-shell', 'stable' ],

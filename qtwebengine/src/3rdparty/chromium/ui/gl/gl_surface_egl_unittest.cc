@@ -1,18 +1,20 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/gl/gl_surface_egl.h"
 
+#include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_context.h"
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/init/gl_factory.h"
 #include "ui/gl/test/gl_surface_test_support.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "ui/platform_window/platform_window_delegate.h"
 #include "ui/platform_window/win/win_window.h"
 #endif
@@ -30,16 +32,24 @@ namespace {
 class GLSurfaceEGLTest : public testing::Test {
  protected:
   void SetUp() override {
-#if defined(OS_WIN)
-    GLSurfaceTestSupport::InitializeOneOffImplementation(
-        GLImplementation::kGLImplementationEGLANGLE, true);
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_IOS)
+    display_ = GLSurfaceTestSupport::InitializeOneOffImplementation(
+        GLImplementationParts(kGLImplementationEGLANGLE), true);
 #else
-    GLSurfaceTestSupport::InitializeOneOffImplementation(
-        GLImplementation::kGLImplementationEGLGLES2, true);
+    display_ = GLSurfaceTestSupport::InitializeOneOffImplementation(
+        GLImplementationParts(kGLImplementationEGLGLES2), true);
 #endif
   }
 
-  void TearDown() override { gl::init::ShutdownGL(false); }
+  void TearDown() override { GLSurfaceTestSupport::ShutdownGL(display_); }
+
+  GLDisplay* GetTestDisplay() {
+    EXPECT_NE(display_, nullptr);
+    return display_;
+  }
+
+ private:
+  raw_ptr<GLDisplay> display_ = nullptr;
 };
 
 #if !defined(MEMORY_SANITIZER)
@@ -49,34 +59,38 @@ TEST_F(GLSurfaceEGLTest, MAYBE_SurfaceFormatTest) {
   surface_format.SetDepthBits(24);
   surface_format.SetStencilBits(8);
   surface_format.SetSamples(0);
-  scoped_refptr<GLSurface> surface =
-      init::CreateOffscreenGLSurfaceWithFormat(gfx::Size(1, 1), surface_format);
+  scoped_refptr<GLSurface> surface = init::CreateOffscreenGLSurfaceWithFormat(
+      GetTestDisplay(), gfx::Size(1, 1), surface_format);
   EGLConfig config = surface->GetConfig();
   EXPECT_TRUE(config);
 
   EGLint attrib;
-  eglGetConfigAttrib(surface->GetDisplay(), config, EGL_DEPTH_SIZE, &attrib);
+  eglGetConfigAttrib(surface->GetGLDisplay()->GetDisplay(), config,
+                     EGL_DEPTH_SIZE, &attrib);
   EXPECT_LE(24, attrib);
 
-  eglGetConfigAttrib(surface->GetDisplay(), config, EGL_STENCIL_SIZE, &attrib);
+  eglGetConfigAttrib(surface->GetGLDisplay()->GetDisplay(), config,
+                     EGL_STENCIL_SIZE, &attrib);
   EXPECT_LE(8, attrib);
 
-  eglGetConfigAttrib(surface->GetDisplay(), config, EGL_SAMPLES, &attrib);
+  eglGetConfigAttrib(surface->GetGLDisplay()->GetDisplay(), config, EGL_SAMPLES,
+                     &attrib);
   EXPECT_EQ(0, attrib);
 }
 #endif
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 
 class TestPlatformDelegate : public ui::PlatformWindowDelegate {
  public:
   // ui::PlatformWindowDelegate implementation.
-  void OnBoundsChanged(const gfx::Rect& new_bounds) override {}
+  void OnBoundsChanged(const BoundsChange& change) override {}
   void OnDamageRect(const gfx::Rect& damaged_region) override {}
   void DispatchEvent(ui::Event* event) override {}
   void OnCloseRequest() override {}
   void OnClosed() override {}
-  void OnWindowStateChanged(ui::PlatformWindowState new_state) override {}
+  void OnWindowStateChanged(ui::PlatformWindowState old_state,
+                            ui::PlatformWindowState new_state) override {}
   void OnLostCapture() override {}
   void OnAcceleratedWidgetAvailable(gfx::AcceleratedWidget widget) override {}
   void OnWillDestroyAcceleratedWidget() override {}
@@ -90,8 +104,9 @@ TEST_F(GLSurfaceEGLTest, FixedSizeExtension) {
   gfx::Size window_size(400, 500);
   ui::WinWindow window(&platform_delegate, gfx::Rect(window_size));
 
-  scoped_refptr<GLSurface> surface = InitializeGLSurface(
-      base::MakeRefCounted<NativeViewGLSurfaceEGL>(window.hwnd(), nullptr));
+  scoped_refptr<GLSurface> surface =
+      InitializeGLSurface(base::MakeRefCounted<NativeViewGLSurfaceEGL>(
+          GLSurfaceEGL::GetGLDisplayEGL(), window.hwnd(), nullptr));
   ASSERT_TRUE(surface);
   EXPECT_EQ(window_size, surface->GetSize());
 

@@ -1,38 +1,5 @@
-﻿/****************************************************************************
-**
-** Copyright (C) 2017 Andre Hartmann <aha_1980@gmx.de>
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Andre Hartmann <aha_1980@gmx.de>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "systeccanbackend.h"
 #include "systeccanbackend_p.h"
@@ -69,7 +36,9 @@ QCanBusDeviceInfo SystecCanBackend::createDeviceInfo(const QString &serialNumber
                                                      int channelNumber)
 {
     const QString name = QString::fromLatin1("can%1.%2").arg(deviceNumber).arg(channelNumber);
-    return QCanBusDevice::createDeviceInfo(name, serialNumber, description, channelNumber, false, false);
+    return QCanBusDevice::createDeviceInfo(QStringLiteral("systeccan"), name,
+                                           serialNumber, description,
+                                           QString(), channelNumber, false, false);
 }
 
 static QString descriptionString(uint productCode)
@@ -100,11 +69,11 @@ static void DRV_CALLBACK_TYPE ucanEnumCallback(DWORD index, BOOL isUsed,
 
     const QString serialNumber = QString::number(hardwareInfo->m_dwSerialNr);
     const QString description = descriptionString(hardwareInfo->m_dwProductCode);
-    result->append(std::move(SystecCanBackend::createDeviceInfo(serialNumber, description,
-                                                                hardwareInfo->m_bDeviceNr, 0)));
+    result->append(SystecCanBackend::createDeviceInfo(serialNumber, description,
+                                                      hardwareInfo->m_bDeviceNr, 0));
     if (USBCAN_CHECK_SUPPORT_TWO_CHANNEL(hardwareInfo)) {
-        result->append(std::move(SystecCanBackend::createDeviceInfo(serialNumber, description,
-                                                                    hardwareInfo->m_bDeviceNr, 1)));
+        result->append(SystecCanBackend::createDeviceInfo(serialNumber, description,
+                                                          hardwareInfo->m_bDeviceNr, 1));
     }
 
     initInfo->m_fTryNext = true; // continue enumerating with next device
@@ -251,7 +220,8 @@ void SystecCanBackendPrivate::eventHandler(QEvent *event)
         readAllReceivedMessages();
 }
 
-bool SystecCanBackendPrivate::setConfigurationParameter(int key, const QVariant &value)
+bool SystecCanBackendPrivate::setConfigurationParameter(QCanBusDevice::ConfigurationKey key,
+                                                        const QVariant &value)
 {
     Q_Q(SystecCanBackend);
 
@@ -371,18 +341,19 @@ void SystecCanBackendPrivate::startWrite()
 
     const QCanBusFrame frame = q->dequeueOutgoingFrame();
     const QByteArray payload = frame.payload();
+    const qsizetype payloadSize = payload.size();
 
     tCanMsgStruct message = {};
 
     message.m_dwID = frame.frameId();
-    message.m_bDLC = quint8(payload.size());
+    message.m_bDLC = quint8(payloadSize);
 
     message.m_bFF = frame.hasExtendedFrameFormat() ? USBCAN_MSG_FF_EXT : USBCAN_MSG_FF_STD;
 
     if (frame.frameType() == QCanBusFrame::RemoteRequestFrame)
         message.m_bFF |= USBCAN_MSG_FF_RTR; // remote request frame without payload
     else
-        ::memcpy(message.m_bData, payload.constData(), sizeof(message.m_bData));
+        ::memcpy(message.m_bData, payload.constData(), payloadSize);
 
     const UCANRET result = ::UcanWriteCanMsgEx(handle, channel, &message, nullptr);
     if (Q_UNLIKELY(result != USBCAN_SUCCESSFUL))
@@ -398,7 +369,7 @@ void SystecCanBackendPrivate::readAllReceivedMessages()
 {
     Q_Q(SystecCanBackend);
 
-    QVector<QCanBusFrame> newFrames;
+    QList<QCanBusFrame> newFrames;
 
     for (;;) {
         tCanMsgStruct message = {};
@@ -492,12 +463,6 @@ SystecCanBackend::SystecCanBackend(const QString &name, QObject *parent) :
 
     d->setupChannel(name);
     d->setupDefaultConfigurations();
-
-    std::function<void()> f = std::bind(&SystecCanBackend::resetController, this);
-    setResetControllerFunction(f);
-
-    std::function<CanBusStatus()> g = std::bind(&SystecCanBackend::busStatus, this);
-    setCanBusStatusGetter(g);
 }
 
 SystecCanBackend::~SystecCanBackend()
@@ -517,8 +482,8 @@ bool SystecCanBackend::open()
 
     // Apply all stored configurations except bitrate and receive own,
     // because these cannot be applied after opening the device
-    const QVector<int> keys = configurationKeys();
-    for (int key : keys) {
+    const auto keys = configurationKeys();
+    for (ConfigurationKey key : keys) {
         if (key == BitRateKey || key == ReceiveOwnKey)
             continue;
         const QVariant param = configurationParameter(key);
@@ -542,7 +507,7 @@ void SystecCanBackend::close()
     setState(QCanBusDevice::UnconnectedState);
 }
 
-void SystecCanBackend::setConfigurationParameter(int key, const QVariant &value)
+void SystecCanBackend::setConfigurationParameter(ConfigurationKey key, const QVariant &value)
 {
     Q_D(SystecCanBackend);
 
@@ -595,11 +560,26 @@ void SystecCanBackend::resetController()
     d->resetController();
 }
 
+bool SystecCanBackend::hasBusStatus() const
+{
+    return true;
+}
+
 QCanBusDevice::CanBusStatus SystecCanBackend::busStatus()
 {
     Q_D(SystecCanBackend);
 
     return d->busStatus();
+}
+
+QCanBusDeviceInfo SystecCanBackend::deviceInfo() const
+{
+    tUcanHardwareInfoEx hardwareInfo = {};
+    UcanGetHardwareInfoEx2(d_ptr->handle, &hardwareInfo, nullptr, nullptr);
+
+    const QString serialNumber = QString::number(hardwareInfo.m_dwSerialNr);
+    const QString description = descriptionString(hardwareInfo.m_dwProductCode);
+    return createDeviceInfo(serialNumber, description, hardwareInfo.m_bDeviceNr, d_ptr->channel);
 }
 
 QT_END_NAMESPACE

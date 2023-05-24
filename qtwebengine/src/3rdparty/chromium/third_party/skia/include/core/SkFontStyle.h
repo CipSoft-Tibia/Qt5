@@ -9,6 +9,9 @@
 #define SkFontStyle_DEFINED
 
 #include "include/core/SkTypes.h"
+#include "include/private/base/SkTPin.h"
+
+#include <cstdint>
 
 class SK_API SkFontStyle {
 public:

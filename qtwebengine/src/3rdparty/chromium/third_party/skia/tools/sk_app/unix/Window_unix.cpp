@@ -2,20 +2,13 @@
 * Copyright 2016 Google Inc.
 *
 * Use of this source code is governed by a BSD-style license that can be
-* f 49
-* Prev
-* Up
-*
-*
 * found in the LICENSE file.
 */
 
-//#include <tchar.h>
-
 #include "tools/sk_app/unix/WindowContextFactory_unix.h"
 
-#include "src/utils/SkUTF.h"
-#include "tools/sk_app/GLWindowContext.h"
+#include "src/base/SkUTF.h"
+#include "tools/sk_app/WindowContext.h"
 #include "tools/sk_app/unix/Window_unix.h"
 #include "tools/skui/ModifierKey.h"
 #include "tools/timer/Timer.h"
@@ -23,6 +16,7 @@
 extern "C" {
     #include "tools/sk_app/unix/keysym2ucs.h"
 }
+#include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #include <X11/XKBlib.h>
 
@@ -60,6 +54,7 @@ bool Window_unix::initWindow(Display* display) {
     constexpr int initialWidth = 1280;
     constexpr int initialHeight = 960;
 
+#ifdef SK_GL
     // Attempt to create a window that supports GL
 
     // We prefer the more recent glXChooseFBConfig but fall back to glXChooseVisual. They have
@@ -79,7 +74,7 @@ bool Window_unix::initWindow(Display* display) {
     };
     SkASSERT(nullptr == fVisualInfo);
     if (fRequestedDisplayParams.fMSAASampleCount > 1) {
-        static const GLint kChooseFBConifgAttCnt = SK_ARRAY_COUNT(kChooseFBConfigAtt);
+        static const GLint kChooseFBConifgAttCnt = std::size(kChooseFBConfigAtt);
         GLint msaaChooseFBConfigAtt[kChooseFBConifgAttCnt + 4];
         memcpy(msaaChooseFBConfigAtt, kChooseFBConfigAtt, sizeof(kChooseFBConfigAtt));
         SkASSERT(None == msaaChooseFBConfigAtt[kChooseFBConifgAttCnt - 1]);
@@ -93,7 +88,7 @@ bool Window_unix::initWindow(Display* display) {
         if (n > 0) {
             fVisualInfo = glXGetVisualFromFBConfig(fDisplay, *fFBConfig);
         } else {
-            static const GLint kChooseVisualAttCnt = SK_ARRAY_COUNT(chooseVisualAtt);
+            static const GLint kChooseVisualAttCnt = std::size(chooseVisualAtt);
             GLint msaaChooseVisualAtt[kChooseVisualAttCnt + 4];
             memcpy(msaaChooseVisualAtt, chooseVisualAtt, sizeof(chooseVisualAtt));
             SkASSERT(None == msaaChooseVisualAtt[kChooseVisualAttCnt - 1]);
@@ -136,7 +131,9 @@ bool Window_unix::initWindow(Display* display) {
                                 fVisualInfo->visual,
                                 CWEventMask | CWColormap,
                                 &swa);
-    } else {
+    }
+#endif
+    if (!fWindow) {
         // Create a simple window instead.  We will not be able to show GL
         fWindow = XCreateSimpleWindow(display,
                                       DefaultRootWindow(display),
@@ -215,14 +212,14 @@ static skui::Key get_key(KeySym keysym) {
         { XK_Control_R, skui::Key::kCtrl     },
         { XK_Alt_L,     skui::Key::kOption   },
         { XK_Alt_R,     skui::Key::kOption   },
-        { 'A',          skui::Key::kA        },
-        { 'C',          skui::Key::kC        },
-        { 'V',          skui::Key::kV        },
-        { 'X',          skui::Key::kX        },
-        { 'Y',          skui::Key::kY        },
-        { 'Z',          skui::Key::kZ        },
+        { 'a',          skui::Key::kA        },
+        { 'c',          skui::Key::kC        },
+        { 'v',          skui::Key::kV        },
+        { 'x',          skui::Key::kX        },
+        { 'y',          skui::Key::kY        },
+        { 'z',          skui::Key::kZ        },
     };
-    for (size_t i = 0; i < SK_ARRAY_COUNT(gPair); i++) {
+    for (size_t i = 0; i < std::size(gPair); i++) {
         if (gPair[i].fXK == keysym) {
             return gPair[i].fKey;
         }
@@ -241,7 +238,7 @@ static skui::ModifierKey get_modifiers(const XEvent& event) {
     };
 
     skui::ModifierKey modifiers = skui::ModifierKey::kNone;
-    for (size_t i = 0; i < SK_ARRAY_COUNT(gModifiers); ++i) {
+    for (size_t i = 0; i < std::size(gModifiers); ++i) {
         if (event.xkey.state & gModifiers[i].fXMask) {
             modifiers |= gModifiers[i].fSkMask;
         }
@@ -318,6 +315,43 @@ bool Window_unix::handleEvent(const XEvent& event) {
                                get_modifiers(event));
         } break;
 
+        case SelectionClear: {
+            // Lost selection ownership
+            fClipboardText.clear();
+        } break;
+
+        case SelectionRequest: {
+            Atom UTF8      = XInternAtom(fDisplay, "UTF8_STRING", 0),
+                 CLIPBOARD = XInternAtom(fDisplay, "CLIPBOARD", 0);
+
+            const XSelectionRequestEvent* xsr = &event.xselectionrequest;
+
+            XSelectionEvent xsel = {};
+            xsel.type      = SelectionNotify;
+            xsel.requestor = xsr->requestor;
+            xsel.selection = xsr->selection;
+            xsel.target    = xsr->target;
+            xsel.property  = xsr->property;
+            xsel.time      = xsr->time;
+
+            if (xsr->selection != CLIPBOARD) {
+                // A request for a different kind of selection. This shouldn't happen.
+                break;
+            }
+
+            if (fClipboardText.empty() || xsr->target != UTF8 || xsr->property == None) {
+                // We can't fulfill this request. Deny it.
+                xsel.property = None;
+                XSendEvent(fDisplay, xsr->requestor, True, NoEventMask, (XEvent*)&xsel);
+            } else {
+                // We can fulfill this request! Update the contents of the CLIPBOARD property,
+                // and let the requestor know.
+                XChangeProperty(fDisplay, xsr->requestor, xsr->property, UTF8, /*format=*/8,
+                                PropModeReplace, (unsigned char*)fClipboardText.data(),
+                                fClipboardText.length());
+                XSendEvent(fDisplay, xsr->requestor, True, NoEventMask, (XEvent*)&xsel);
+            }
+        } break;
 
         default:
             // these events should be handled in the main event loop
@@ -330,8 +364,11 @@ bool Window_unix::handleEvent(const XEvent& event) {
 
 void Window_unix::setTitle(const char* title) {
     XTextProperty textproperty;
-    XStringListToTextProperty(const_cast<char**>(&title), 1, &textproperty);
+    if (!XStringListToTextProperty(const_cast<char**>(&title), 1, &textproperty)) {
+        return;
+    }
     XSetWMName(fDisplay, fWindow, &textproperty);
+    XFree(textproperty.value);
 }
 
 void Window_unix::show() {
@@ -362,6 +399,13 @@ bool Window_unix::attach(BackendType attachType) {
         case kDawn_BackendType:
             fWindowContext =
                     window_context_factory::MakeDawnVulkanForXlib(winInfo, fRequestedDisplayParams);
+            break;
+#endif
+#if defined(SK_DAWN) && defined(SK_GRAPHITE_ENABLED)
+        case kGraphiteDawn_BackendType:
+            fWindowContext =
+                    window_context_factory::MakeGraphiteDawnVulkanForXlib(winInfo,
+                                                                          fRequestedDisplayParams);
             break;
 #endif
 #ifdef SK_VULKAN
@@ -416,6 +460,49 @@ void Window_unix::setRequestedDisplayParams(const DisplayParams& params, bool al
 #endif
 
     INHERITED::setRequestedDisplayParams(params, allowReattach);
+}
+
+const char* Window_unix::getClipboardText() {
+    Atom UTF8      = XInternAtom(fDisplay, "UTF8_STRING", 0),
+         CLIPBOARD = XInternAtom(fDisplay, "CLIPBOARD", 0),
+         XSEL_DATA = XInternAtom(fDisplay, "XSEL_DATA", 0);
+
+    // Ask for a UTF8 copy of the CLIPBOARD...
+    XEvent event;
+    XConvertSelection(fDisplay, CLIPBOARD, UTF8, XSEL_DATA, fWindow, CurrentTime);
+    XSync(fDisplay, 0);
+    XNextEvent(fDisplay, &event);
+    if (event.type == SelectionNotify &&
+            event.xselection.selection == CLIPBOARD &&
+            event.xselection.property != None) {
+
+        // We got a response
+        Atom type;
+        int format;
+        unsigned long nitems, bytes_after;
+        char* data;
+
+        // Fetch the CLIPBOARD property
+        XSelectionEvent xsel = event.xselection;
+        XGetWindowProperty(xsel.display, xsel.requestor, xsel.property, /*offset=*/0,
+                           /*length=*/~0L, /*delete=*/False, AnyPropertyType, &type, &format,
+                           &nitems, &bytes_after, (unsigned char**)&data);
+        SkASSERT(bytes_after == 0);
+        if (type == UTF8) {
+            fClipboardText.assign(data, nitems);
+        }
+        XFree(data);
+        XDeleteProperty(xsel.display, xsel.requestor, xsel.property);
+    }
+    return fClipboardText.c_str();
+}
+
+void Window_unix::setClipboardText(const char* text) {
+    fClipboardText.assign(text);
+
+    // Take ownership of the CLIPBOARD
+    Atom CLIPBOARD = XInternAtom(fDisplay, "CLIPBOARD", 0);
+    XSetSelectionOwner(fDisplay, CLIPBOARD, fWindow, CurrentTime);
 }
 
 }   // namespace sk_app

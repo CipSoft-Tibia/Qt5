@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,6 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace autofill {
-namespace structured_address {
 
 // Defines the type, value and verification status of a structured address
 // component for testing.
@@ -47,7 +46,6 @@ void SetTestValues(AddressComponent* component,
 void VerifyTestValues(AddressComponent* component,
                       const std::vector<AddressComponentTestValue> test_values);
 
-}  // namespace structured_address
 }  // namespace autofill
 
 #endif  // COMPONENTS_AUTOFILL_CORE_BROWSER_DATA_MODEL_AUTOFILL_STRUCTURED_ADDRESS_TEST_UTILS_H_

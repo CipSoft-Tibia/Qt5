@@ -1,110 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4dateobject_p.h"
-#include "qv4objectproto_p.h"
-#include "qv4scopedvalue_p.h"
 #include "qv4runtime_p.h"
-#include "qv4string_p.h"
-#include "qv4jscall_p.h"
 #include "qv4symbol_p.h"
 
 #include <QtCore/QDebug>
 #include <QtCore/QDateTime>
+#include <QtCore/private/qlocaltime_p.h>
 #include <QtCore/QStringList>
-
-#include <time.h>
+#include <QtCore/QTimeZone>
 
 #include <wtf/MathExtras.h>
-
-#if QT_CONFIG(timezone) && !defined(Q_OS_WIN)
-/*
-  See QTBUG-56899.  Although we don't (yet) have a proper way to reset the
-  system zone, the code below, that uses QTimeZone::systemTimeZone(), works
-  adequately on Linux.
-
-  QTimeZone::systemTimeZone() will automatically produce an updated value on
-  non-android Linux systems when the TZ environment variable or the relevant
-  files in /etc are changed. On other platforms it won't, and the information
-  produced here may be incorrect after changes to the system time zone.
-
-  We accept this defect for now because the localtime_r approach will
-  consistently produce incorrect results for some time zones, not only when
-  the system time zone changes. This is a worse problem, see also QTBUG-84474.
-
-  On windows we have a better implementation of getLocalTZA that hopefully
-  updates on time zone changes. However, we currently use the worse
-  implementation of DaylightSavingTA (returning either an hour or 0).
-
-  QTimeZone::systemTimeZone() on Linux is also slower than other approaches
-  because it has to poll the relevant files (if TZ is not set). See
-  QTBUG-75585 for an explanation and possible workarounds.
- */
-#define USE_QTZ_SYSTEM_ZONE
-#elif defined(Q_OS_WASM)
-/*
-    TODO: evaluate using this version of the code more generally, rather than
-    the #else branches of the various USE_QTZ_SYSTEM_ZONE choices. It might even
-    work better than the timezone variant; experiments needed.
-*/
-// Kludge around the lack of time-zone info using QDateTime.
-// It uses localtime() and friends to determine offsets from UTC.
-#define USE_QDT_LOCAL_TIME
-#endif
-
-#ifdef USE_QTZ_SYSTEM_ZONE
-#include <QtCore/QTimeZone>
-#elif defined(USE_QDT_LOCAL_TIME)
-// QDateTime already included above
-#else
-#  ifdef Q_OS_WIN
-#    include <windows.h>
-#  else
-#    ifndef Q_OS_VXWORKS
-#      include <sys/time.h>
-#    else
-#      include "qplatformdefs.h"
-#    endif
-#    include <unistd.h> // for _POSIX_THREAD_SAFE_FUNCTIONS
-#  endif
-#endif // USE_QTZ_SYSTEM_ZONE
 
 using namespace QV4;
 
@@ -351,7 +258,6 @@ static inline double MakeDate(double day, double time)
     return day * msPerDay + time;
 }
 
-#ifdef USE_QTZ_SYSTEM_ZONE
 /*
   ECMAScript specifies use of a fixed (current, standard) time-zone offset,
   LocalTZA; and LocalTZA + DaylightSavingTA(t) is taken to be (see LocalTime and
@@ -369,42 +275,10 @@ static inline double MakeDate(double day, double time)
   against the ECMAScript spec is https://github.com/tc39/ecma262/issues/725
   and they've now changed the spec so that the following conforms to it ;^>
 */
-
 static inline double DaylightSavingTA(double t, double localTZA) // t is a UTC time
 {
-    return QTimeZone::systemTimeZone().offsetFromUtc(
-        QDateTime::fromMSecsSinceEpoch(qint64(t), Qt::UTC)) * 1e3 - localTZA;
+    return QLocalTime::getUtcOffset(qint64(t)) * 1e3 - localTZA;
 }
-#elif defined(USE_QDT_LOCAL_TIME)
-static inline double DaylightSavingTA(double t, double localTZA) // t is a UTC time
-{
-    return QDateTime::fromMSecsSinceEpoch(qint64(t), Qt::UTC
-        ).toLocalTime().offsetFromUtc() * 1e3 - localTZA;
-}
-#else
-// This implementation fails to take account of past changes in standard offset.
-static inline double DaylightSavingTA(double t, double /*localTZA*/)
-{
-    struct tm tmtm;
-#if defined(Q_CC_MSVC)
-    __time64_t  tt = (__time64_t)(t / msPerSecond);
-    // _localtime_64_s returns non-zero on failure
-    if (_localtime64_s(&tmtm, &tt) != 0)
-#elif !defined(QT_NO_THREAD) && defined(_POSIX_THREAD_SAFE_FUNCTIONS)
-    long int tt = (long int)(t / msPerSecond);
-    if (!localtime_r((const time_t*) &tt, &tmtm))
-#else
-    // Returns shared static data which may be overwritten at any time
-    // (for MinGW/Windows localtime is luckily thread safe)
-    long int tt = (long int)(t / msPerSecond);
-    if (struct tm *tmtm_p = localtime((const time_t*) &tt))
-        tmtm = *tmtm_p;
-    else
-#endif
-        return 0;
-    return (tmtm.tm_isdst > 0) ? msPerHour : 0;
-}
-#endif // USE_QTZ_SYSTEM_ZONE
 
 static inline double LocalTime(double t, double localTZA)
 {
@@ -428,7 +302,7 @@ static inline double currentTime()
 
 static inline double TimeClip(double t)
 {
-    if (! qt_is_finite(t) || fabs(t) > 8.64e15)
+    if (!qt_is_finite(t) || fabs(t) > Date::MaxDateVal)
         return qt_qnan();
 
     // +0 looks weird, but is correct. See ES6 20.3.1.15. We must not return -0.
@@ -441,14 +315,14 @@ static inline double ParseString(const QString &s, double localTZA)
       First, try the format defined in ECMA 262's "Date Time String Format";
       only if that fails, fall back to QDateTime for parsing
 
-      The defined string format is YYYY-MM-DDTHH:mm:ss.sssZ; the time (T and all
-      after it) may be omitted; in each part, the second and later components
-      are optional; and there's an extended syntax for negative and large
-      positive years: +/-YYYYYY; the leading sign, even when +, isn't optional.
-      If month or day is omitted, it is 01; if minute or second is omitted, it's
-      00; if milliseconds are omitted, they're 000.
+      The defined string format is yyyy-MM-ddTHH:mm:ss.zzzt; the time (T and all
+      after it) may be omitted. In each part, the second and later components
+      are optional. There's an extended syntax for negative and large positive
+      years: ±yyyyyy; the leading sign, even when +, isn't optional.  If month
+      (MM) or day (dd) is omitted, it is 01; if minute (mm) or second (ss) is
+      omitted, it's 00; if milliseconds (zzz) are omitted, they're 000.
 
-      When the time zone offset is absent, date-only forms are interpreted as
+      When the time zone offset (t) is absent, date-only forms are interpreted as
       indicating a UTC time and date-time forms are interpreted in local time.
     */
 
@@ -466,7 +340,7 @@ static inline double ParseString(const QString &s, double localTZA)
     };
 
     const QChar *ch = s.constData();
-    const QChar *end = ch + s.length();
+    const QChar *end = ch + s.size();
 
     uint format = Year;
     int current = 0;
@@ -487,16 +361,16 @@ static inline double ParseString(const QString &s, double localTZA)
     bool seenZ = false; // Have seen zone, i.e. +HH:mm or literal Z.
 
     bool error = false;
-    if (*ch == '+' || *ch == '-') {
+    if (*ch == u'+' || *ch == u'-') {
         extendedYear = true;
-        if (*ch == '-')
+        if (*ch == u'-')
             yearSign = -1;
         ++ch;
     }
     for (; ch <= end && !error && format != Done; ++ch) {
-        if (*ch >= '0' && *ch <= '9') {
+        if (*ch >= u'0' && *ch <= u'9') {
             current *= 10;
-            current += ch->unicode() - '0';
+            current += ch->unicode() - u'0';
             ++currentSize;
         } else { // other char, delimits field
             switch (format) {
@@ -542,12 +416,12 @@ static inline double ParseString(const QString &s, double localTZA)
                 error = (currentSize != 2) || current >= 60;
                 break;
             }
-            if (*ch == 'T') {
+            if (*ch == u'T') {
                 if (format >= Hour)
                     error = true;
                 format = Hour;
                 seenT = true;
-            } else if (*ch == '-') {
+            } else if (*ch == u'-') {
                 if (format < Day)
                     ++format;
                 else if (format < Minute)
@@ -559,19 +433,19 @@ static inline double ParseString(const QString &s, double localTZA)
                     offsetSign = -1;
                     format = TimezoneHour;
                 }
-            } else if (*ch == ':') {
+            } else if (*ch == u':') {
                 if (format != Hour && format != Minute && format != TimezoneHour)
                     error = true;
                 ++format;
-            } else if (*ch == '.') {
+            } else if (*ch == u'.') {
                 if (format != Second)
                     error = true;
                 ++format;
-            } else if (*ch == '+') {
+            } else if (*ch == u'+') {
                 if (seenZ || format < Minute || format >= TimezoneHour)
                     error = true;
                 format = TimezoneHour;
-            } else if (*ch == 'Z') {
+            } else if (*ch == u'Z') {
                 if (seenZ || format < Minute || format >= TimezoneHour)
                     error = true;
                 else
@@ -649,13 +523,16 @@ static inline double ParseString(const QString &s, double localTZA)
             QStringLiteral("d MMMM, yyyy"),
             QStringLiteral("d MMMM, yyyy hh:mm"),
             QStringLiteral("d MMMM, yyyy hh:mm:ss"),
+
+            // ISO 8601 and RFC 2822 with a GMT as prefix on its offset, or GMT as zone.
+            QStringLiteral("yyyy-MM-dd hh:mm:ss t"),
+            QStringLiteral("ddd, d MMM yyyy hh:mm:ss t"),
         };
 
         for (const QString &format : formats) {
             dt = format.indexOf(QLatin1String("hh:mm")) < 0
-                ? QDateTime(QDate::fromString(s, format),
-                            QTime(0, 0, 0), Qt::UTC)
-                : QDateTime::fromString(s, format); // as local time
+                    ? QDate::fromString(s, format).startOfDay(QTimeZone::UTC)
+                    : QDateTime::fromString(s, format); // as local time
             if (dt.isValid())
                 break;
         }
@@ -668,21 +545,21 @@ static inline double ParseString(const QString &s, double localTZA)
 /*!
   \internal
 
-  Converts the ECMA Date value \tt (in UTC form) to QDateTime
+  Converts the ECMA Date value \a t (in UTC form) to QDateTime
   according to \a spec.
 */
-static inline QDateTime ToDateTime(double t, Qt::TimeSpec spec)
+static inline QDateTime ToDateTime(double t, QTimeZone zone)
 {
     if (std::isnan(t))
-        return QDateTime();
-    return QDateTime::fromMSecsSinceEpoch(t, Qt::UTC).toTimeSpec(spec);
+        return QDateTime().toTimeZone(zone);
+    return QDateTime::fromMSecsSinceEpoch(t, zone);
 }
 
 static inline QString ToString(double t, double localTZA)
 {
     if (std::isnan(t))
         return QStringLiteral("Invalid Date");
-    QString str = ToDateTime(t, Qt::LocalTime).toString() + QLatin1String(" GMT");
+    QString str = ToDateTime(t, QTimeZone::LocalTime).toString() + QLatin1String(" GMT");
     double tzoffset = localTZA + DaylightSavingTA(t, localTZA);
     if (tzoffset) {
         int hours = static_cast<int>(::fabs(tzoffset) / 1000 / 60 / 60);
@@ -702,94 +579,78 @@ static inline QString ToUTCString(double t)
 {
     if (std::isnan(t))
         return QStringLiteral("Invalid Date");
-    return ToDateTime(t, Qt::UTC).toString();
+    return ToDateTime(t, QTimeZone::UTC).toString();
 }
 
 static inline QString ToDateString(double t)
 {
-    return ToDateTime(t, Qt::LocalTime).date().toString();
+    return ToDateTime(t, QTimeZone::LocalTime).date().toString();
 }
 
 static inline QString ToTimeString(double t)
 {
-    return ToDateTime(t, Qt::LocalTime).time().toString();
+    return ToDateTime(t, QTimeZone::LocalTime).time().toString();
 }
 
 static inline QString ToLocaleString(double t)
 {
-    return QLocale().toString(ToDateTime(t, Qt::LocalTime), QLocale::ShortFormat);
+    return QLocale().toString(ToDateTime(t, QTimeZone::LocalTime), QLocale::ShortFormat);
 }
 
 static inline QString ToLocaleDateString(double t)
 {
-    return QLocale().toString(ToDateTime(t, Qt::LocalTime).date(), QLocale::ShortFormat);
+    return QLocale().toString(ToDateTime(t, QTimeZone::LocalTime).date(), QLocale::ShortFormat);
 }
 
 static inline QString ToLocaleTimeString(double t)
 {
-    return QLocale().toString(ToDateTime(t, Qt::LocalTime).time(), QLocale::ShortFormat);
+    return QLocale().toString(ToDateTime(t, QTimeZone::LocalTime).time(), QLocale::ShortFormat);
 }
 
 static double getLocalTZA()
 {
-#ifndef Q_OS_WIN
-    tzset();
-#endif
-#ifdef USE_QTZ_SYSTEM_ZONE
-    // TODO: QTimeZone::resetSystemTimeZone(), see QTBUG-56899 and comment above.
-    // Standard offset, with no daylight-savings adjustment, in ms:
-    return QTimeZone::systemTimeZone().standardTimeOffset(QDateTime::currentDateTime()) * 1e3;
-#elif defined(USE_QDT_LOCAL_TIME)
-    QDate today = QDate::currentDate();
-    QDateTime near = today.startOfDay(Qt::LocalTime);
-    // Early out if we're in standard time anyway:
-    if (!near.isDaylightTime())
-        return near.offsetFromUtc() * 1000;
-    int year, month;
-    today.getDate(&year, &month, nullptr);
-    // One of the solstices is probably in standard time:
-    QDate summer(year, 6, 21), winter(year - (month < 7 ? 1 : 0), 12, 21);
-    // But check the one closest to the present by preference, in case there's a
-    // standard time offset change between them:
-    QDateTime far = summer.startOfDay(Qt::LocalTime);
-    near = winter.startOfDay(Qt::LocalTime);
-    if (month > 3 && month < 10)
-        near.swap(far);
-    bool isDst = near.isDaylightTime();
-    if (isDst && far.isDaylightTime()) // Permanent DST, probably an hour west:
-        return (qMin(near.offsetFromUtc(), far.offsetFromUtc()) - 3600) * 1000;
-    return (isDst ? far : near).offsetFromUtc() * 1000;
-#else
-#  ifdef Q_OS_WIN
-    TIME_ZONE_INFORMATION tzInfo;
-    GetTimeZoneInformation(&tzInfo);
-    return -tzInfo.Bias * 60.0 * 1000.0;
-#  else
-    struct tm t;
-    time_t curr;
-    time(&curr);
-    localtime_r(&curr, &t); // Wrong: includes DST offset
-    time_t locl = mktime(&t);
-    gmtime_r(&curr, &t);
-    time_t globl = mktime(&t);
-    return (double(locl) - double(globl)) * 1000.0;
-#  endif
-#endif // USE_QTZ_SYSTEM_ZONE
+    return QLocalTime::getCurrentStandardUtcOffset() * 1e3;
 }
 
 DEFINE_OBJECT_VTABLE(DateObject);
 
-void Heap::DateObject::init(const QDateTime &date)
+quint64 Date::encode(double value)
 {
-    Object::init();
-    this->date = date.isValid() ? TimeClip(date.toMSecsSinceEpoch()) : qt_qnan();
+    if (std::isnan(value) || fabs(value) > MaxDateVal)
+        return InvalidDateVal;
+
+    // Do the addition in qint64. This way we won't overflow if value is negative
+    // and we will round value in the right direction.
+    // We know we can do this because we know we have more than one bit left in quint64.
+    const quint64 encoded = quint64(qint64(value) + qint64(MaxDateVal));
+
+    return encoded + Extra;
 }
 
-void Heap::DateObject::init(const QTime &time)
+quint64 Date::encode(const QDateTime &dateTime)
 {
-    Object::init();
+    return encode(dateTime.isValid() ? dateTime.toMSecsSinceEpoch() : qt_qnan());
+}
+
+void Date::init(double value)
+{
+    storage = encode(value);
+}
+
+void Date::init(const QDateTime &when)
+{
+    storage = encode(when) | HasQDate | HasQTime;
+}
+
+void Date::init(QDate date)
+{
+    storage = encode(date.startOfDay(QTimeZone::UTC)) | HasQDate;
+}
+
+void Date::init(QTime time, ExecutionEngine *engine)
+{
     if (!time.isValid()) {
-        date = qt_qnan();
+        storage = encode(qt_qnan()) | HasQTime;
         return;
     }
 
@@ -809,12 +670,76 @@ void Heap::DateObject::init(const QTime &time)
      */
     static const double d = MakeDay(1971, 3, 1);
     double t = MakeTime(time.hour(), time.minute(), time.second(), time.msec());
-    date = TimeClip(UTC(MakeDate(d, t), internalClass->engine->localTZA));
+    storage = encode(UTC(MakeDate(d, t), engine->localTZA)) | HasQTime;
+}
+
+QDate Date::toQDate() const
+{
+    return toQDateTime().date();
+}
+
+QTime Date::toQTime() const
+{
+    return toQDateTime().time();
+}
+
+QDateTime Date::toQDateTime() const
+{
+    return ToDateTime(operator double(), QTimeZone::LocalTime);
+}
+
+QVariant Date::toVariant() const
+{
+    switch (storage & (HasQDate | HasQTime)) {
+    case HasQDate:
+        return toQDate();
+    case HasQTime:
+        return toQTime();
+    case (HasQDate | HasQTime):
+        return toQDateTime();
+    default:
+        return QVariant();
+    }
 }
 
 QDateTime DateObject::toQDateTime() const
 {
-    return ToDateTime(date(), Qt::LocalTime);
+    return d()->toQDateTime();
+}
+
+QString DateObject::toString() const
+{
+    return ToString(d()->date(), engine()->localTZA);
+}
+
+QString DateObject::dateTimeToString(const QDateTime &dateTime, ExecutionEngine *engine)
+{
+    if (!dateTime.isValid())
+        return QStringLiteral("Invalid Date");
+    return ToString(TimeClip(dateTime.toMSecsSinceEpoch()), engine->localTZA);
+}
+
+QDateTime DateObject::stringToDateTime(const QString &string, ExecutionEngine *engine)
+{
+    return ToDateTime(ParseString(string, engine->localTZA), QTimeZone::LocalTime);
+}
+
+QDate DateObject::dateTimeToDate(const QDateTime &dateTime)
+{
+    // If the Date object was parse()d from a string with no time part
+    // or zone specifier it's really the UTC start of the relevant day,
+    // but it's here represented as a local time, which may fall in the
+    // preceding day. See QTBUG-92466 for the gory details.
+    const auto utc = dateTime.toUTC();
+    if (utc.date() != dateTime.date() && utc.addSecs(-1).date() == dateTime.date())
+        return utc.date();
+
+    // This may, of course, be The Wrong Thing if the date was
+    // constructed as a full local date-time that happens to coincide
+    // with the start of a UTC day; however, that would be an odd value
+    // to give to something that, apparently, someone thinks belongs in
+    // a QDate.
+    return dateTime.date();
 }
 
 DEFINE_OBJECT_VTABLE(DateCtor);
@@ -843,7 +768,7 @@ ReturnedValue DateCtor::virtualCallAsConstructor(const FunctionObject *that, con
             if (String *s = arg->stringValue())
                 t = ParseString(s->toQString(), v4->localTZA);
             else
-                t = TimeClip(arg->toNumber());
+                t = arg->toNumber();
         }
     }
 
@@ -858,10 +783,10 @@ ReturnedValue DateCtor::virtualCallAsConstructor(const FunctionObject *that, con
         if (year >= 0 && year <= 99)
             year += 1900;
         t = MakeDate(MakeDay(year, month, day), MakeTime(hours, mins, secs, ms));
-        t = TimeClip(UTC(t, v4->localTZA));
+        t = UTC(t, v4->localTZA);
     }
 
-    ReturnedValue o = Encode(v4->newDateObject(Value::fromDouble(t)));
+    ReturnedValue o = Encode(v4->newDateObject(t));
     if (!newTarget)
         return o;
     Scope scope(v4);
@@ -1234,7 +1159,7 @@ ReturnedValue DatePrototype::method_setTime(const FunctionObject *b, const Value
     double t = argc ? argv[0].toNumber() : qt_qnan();
     if (v4->hasException)
         return QV4::Encode::undefined();
-    self->setDate(TimeClip(t));
+    self->setDate(t);
     return Encode(self->date());
 }
 
@@ -1251,7 +1176,7 @@ ReturnedValue DatePrototype::method_setMilliseconds(const FunctionObject *b, con
     double ms = argc ? argv[0].toNumber() : qt_qnan();
     if (v4->hasException)
         return QV4::Encode::undefined();
-    self->setDate(TimeClip(UTC(MakeDate(Day(t), MakeTime(HourFromTime(t), MinFromTime(t), SecFromTime(t), ms)), v4->localTZA)));
+    self->setDate(UTC(MakeDate(Day(t), MakeTime(HourFromTime(t), MinFromTime(t), SecFromTime(t), ms)), v4->localTZA));
     return Encode(self->date());
 }
 
@@ -1268,7 +1193,7 @@ ReturnedValue DatePrototype::method_setUTCMilliseconds(const FunctionObject *b, 
     double ms = argc ? argv[0].toNumber() : qt_qnan();
     if (v4->hasException)
         return QV4::Encode::undefined();
-    self->setDate(TimeClip(MakeDate(Day(t), MakeTime(HourFromTime(t), MinFromTime(t), SecFromTime(t), ms))));
+    self->setDate(MakeDate(Day(t), MakeTime(HourFromTime(t), MinFromTime(t), SecFromTime(t), ms)));
     return Encode(self->date());
 }
 
@@ -1288,7 +1213,7 @@ ReturnedValue DatePrototype::method_setSeconds(const FunctionObject *b, const Va
     double ms = (argc < 2) ? msFromTime(t) : argv[1].toNumber();
     if (v4->hasException)
         return QV4::Encode::undefined();
-    t = TimeClip(UTC(MakeDate(Day(t), MakeTime(HourFromTime(t), MinFromTime(t), sec, ms)), v4->localTZA));
+    t = UTC(MakeDate(Day(t), MakeTime(HourFromTime(t), MinFromTime(t), sec, ms)), v4->localTZA);
     self->setDate(t);
     return Encode(self->date());
 }
@@ -1303,7 +1228,7 @@ ReturnedValue DatePrototype::method_setUTCSeconds(const FunctionObject *b, const
     double t = self->date();
     double sec = argc ? argv[0].toNumber() : qt_qnan();
     double ms = (argc < 2) ? msFromTime(t) : argv[1].toNumber();
-    t = TimeClip(MakeDate(Day(t), MakeTime(HourFromTime(t), MinFromTime(t), sec, ms)));
+    t = MakeDate(Day(t), MakeTime(HourFromTime(t), MinFromTime(t), sec, ms));
     self->setDate(t);
     return Encode(self->date());
 }
@@ -1327,7 +1252,7 @@ ReturnedValue DatePrototype::method_setMinutes(const FunctionObject *b, const Va
     double ms = (argc < 3) ? msFromTime(t) : argv[2].toNumber();
     if (v4->hasException)
         return QV4::Encode::undefined();
-    t = TimeClip(UTC(MakeDate(Day(t), MakeTime(HourFromTime(t), min, sec, ms)), v4->localTZA));
+    t = UTC(MakeDate(Day(t), MakeTime(HourFromTime(t), min, sec, ms)), v4->localTZA);
     self->setDate(t);
     return Encode(self->date());
 }
@@ -1343,7 +1268,7 @@ ReturnedValue DatePrototype::method_setUTCMinutes(const FunctionObject *b, const
     double min = argc ? argv[0].toNumber() : qt_qnan();
     double sec = (argc < 2) ? SecFromTime(t) : argv[1].toNumber();
     double ms = (argc < 3) ? msFromTime(t) : argv[2].toNumber();
-    t = TimeClip(MakeDate(Day(t), MakeTime(HourFromTime(t), min, sec, ms)));
+    t = MakeDate(Day(t), MakeTime(HourFromTime(t), min, sec, ms));
     self->setDate(t);
     return Encode(self->date());
 }
@@ -1370,7 +1295,7 @@ ReturnedValue DatePrototype::method_setHours(const FunctionObject *b, const Valu
     double ms = (argc < 4) ? msFromTime(t) : argv[3].toNumber();
     if (v4->hasException)
         return QV4::Encode::undefined();
-    t = TimeClip(UTC(MakeDate(Day(t), MakeTime(hour, min, sec, ms)), v4->localTZA));
+    t = UTC(MakeDate(Day(t), MakeTime(hour, min, sec, ms)), v4->localTZA);
     self->setDate(t);
     return Encode(self->date());
 }
@@ -1387,7 +1312,7 @@ ReturnedValue DatePrototype::method_setUTCHours(const FunctionObject *b, const V
     double min = (argc < 2) ? MinFromTime(t) : argv[1].toNumber();
     double sec = (argc < 3) ? SecFromTime(t) : argv[2].toNumber();
     double ms = (argc < 4) ? msFromTime(t) : argv[3].toNumber();
-    t = TimeClip(MakeDate(Day(t), MakeTime(hour, min, sec, ms)));
+    t = MakeDate(Day(t), MakeTime(hour, min, sec, ms));
     self->setDate(t);
     return Encode(self->date());
 }
@@ -1405,7 +1330,7 @@ ReturnedValue DatePrototype::method_setDate(const FunctionObject *b, const Value
     double date = argc ? argv[0].toNumber() : qt_qnan();
     if (v4->hasException)
         return QV4::Encode::undefined();
-    t = TimeClip(UTC(MakeDate(MakeDay(YearFromTime(t), MonthFromTime(t), date), TimeWithinDay(t)), v4->localTZA));
+    t = UTC(MakeDate(MakeDay(YearFromTime(t), MonthFromTime(t), date), TimeWithinDay(t)), v4->localTZA);
     self->setDate(t);
     return Encode(self->date());
 }
@@ -1423,7 +1348,7 @@ ReturnedValue DatePrototype::method_setUTCDate(const FunctionObject *b, const Va
     double date = argc ? argv[0].toNumber() : qt_qnan();
     if (v4->hasException)
         return QV4::Encode::undefined();
-    t = TimeClip(MakeDate(MakeDay(YearFromTime(t), MonthFromTime(t), date), TimeWithinDay(t)));
+    t = MakeDate(MakeDay(YearFromTime(t), MonthFromTime(t), date), TimeWithinDay(t));
     self->setDate(t);
     return Encode(self->date());
 }
@@ -1444,7 +1369,7 @@ ReturnedValue DatePrototype::method_setMonth(const FunctionObject *b, const Valu
     double date = (argc < 2) ? DateFromTime(t) : argv[1].toNumber();
     if (v4->hasException)
         return QV4::Encode::undefined();
-    t = TimeClip(UTC(MakeDate(MakeDay(YearFromTime(t), month, date), TimeWithinDay(t)), v4->localTZA));
+    t = UTC(MakeDate(MakeDay(YearFromTime(t), month, date), TimeWithinDay(t)), v4->localTZA);
     self->setDate(t);
     return Encode(self->date());
 }
@@ -1459,7 +1384,7 @@ ReturnedValue DatePrototype::method_setUTCMonth(const FunctionObject *b, const V
     double t = self->date();
     double month = argc ? argv[0].toNumber() : qt_qnan();
     double date = (argc < 2) ? DateFromTime(t) : argv[1].toNumber();
-    t = TimeClip(MakeDate(MakeDay(YearFromTime(t), month, date), TimeWithinDay(t)));
+    t = MakeDate(MakeDay(YearFromTime(t), month, date), TimeWithinDay(t));
     self->setDate(t);
     return Encode(self->date());
 }
@@ -1485,7 +1410,6 @@ ReturnedValue DatePrototype::method_setYear(const FunctionObject *b, const Value
             year += 1900;
         r = MakeDay(year, MonthFromTime(t), DateFromTime(t));
         r = UTC(MakeDate(r, TimeWithinDay(t)), v4->localTZA);
-        r = TimeClip(r);
     }
     self->setDate(r);
     return Encode(self->date());
@@ -1502,7 +1426,7 @@ ReturnedValue DatePrototype::method_setUTCFullYear(const FunctionObject *b, cons
     double year = argc ? argv[0].toNumber() : qt_qnan();
     double month = (argc < 2) ? MonthFromTime(t) : argv[1].toNumber();
     double date = (argc < 3) ? DateFromTime(t) : argv[2].toNumber();
-    t = TimeClip(MakeDate(MakeDay(year, month, date), TimeWithinDay(t)));
+    t = MakeDate(MakeDay(year, month, date), TimeWithinDay(t));
     self->setDate(t);
     return Encode(self->date());
 }
@@ -1528,7 +1452,7 @@ ReturnedValue DatePrototype::method_setFullYear(const FunctionObject *b, const V
     double date = (argc < 3) ? DateFromTime(t) : argv[2].toNumber();
     if (v4->hasException)
         return QV4::Encode::undefined();
-    t = TimeClip(UTC(MakeDate(MakeDay(year, month, date), TimeWithinDay(t)), v4->localTZA));
+    t = UTC(MakeDate(MakeDay(year, month, date), TimeWithinDay(t)), v4->localTZA);
     self->setDate(t);
     return Encode(self->date());
 }

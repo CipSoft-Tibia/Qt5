@@ -1,77 +1,117 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example custommaterial
     \ingroup quick3d-examples
     \title Qt Quick 3D - Custom Materials Example
-    \brief Demonstrates the use of some Material Library materials.
-    \image custommaterial-example.png
+    \examplecategory {Data Visualization & 3D}
+    \brief Demonstrates writing shaded custom materials.
+    \image custommaterial-example.jpg
 
-    This example demonstrates using four different
-    \l {Qt Quick 3D Materials QML Types}{Material Library} custom materials in an application.
+    This example shows how to write \e shaded \l{CustomMaterial}{custom materials}.
+    With shaded materials, we don't have to write complete shader
+    programs. Instead, we write functions that modify Qt's standard shaders.
+    This way the resulting material will by default participate in lighting,
+    shadow mapping, and be compatible with light probes. We only have to
+    write custom logic for the cases where we want special behavior.  This is
+    achieved by effectively augmenting the shader code that would be
+    generated for a PrincipledMaterial with our own custom functions that get
+    called at certain stages in the vertex and fragment shaders.
 
-    \section1 Setting the Scene Environment
+    To make a shaded custom material, set the
+    \l{CustomMaterial::shadingMode}{shadingMode} property to
+    \c CustomMaterial.Shaded.
 
-    We want to use a \l {SceneEnvironment::lightProbe}{light probe}, as we're going to use some
-    reflective materials. We need to enable light probe and adjust its settings to get the result
-    we want.
 
-    \snippet custommaterial/main.qml environment
+    \section1 A simple material
 
-    \section1 Material Library Custom Materials
+    The first model uses a simple material that does not add any custom logic. We
+    set the custom material on the model just like any other material:
 
-    \section2 Bumpy Aluminum
+    \snippet custommaterial/main.qml simple
 
-    We're applying \l AluminumMaterial for the \c WeirdShape model we have created in
-    \c {WeirdShape.qml}. We'll adjust its bumpiness to make it look battered or cast, instead of
-    smooth and polished.
+    In addition to setting the \c shadingMode and \c fragmentShader, we also add two
+    properties to the material: \c uDiffuse and \c Specular. These will get picked up by
+    the fragment shader.
 
-    \snippet custommaterial/main.qml bumpy aluminum
 
-    \section2 Copper
+    The code for the fragment shader is short:
 
-    Next we apply unmodified \l CopperMaterial for another \c {WeirdShape}.
+    \quotefile custommaterial/material_simple.frag
 
-    \snippet custommaterial/main.qml copper
+    All shaders have to implement the \c MAIN function. In this one, we use the properties
+    defined in the materials to set values that will be used by Qt's standard shader
+    code. Note that we do not have to declare these as uniforms: all we need to do is to
+    make sure the names match. We would get a shader compile error if the material did not
+    have matching properties.
 
-    \section2 Frosted Glass
+    The special variables \c SPECULAR_AMOUNT and \c BASE_COLOR correspond to
+    \l {PrincipledMaterial::specularAmount}{specularAmount} and
+    \l {PrincipledMaterial::baseColor}{baseColor} of PrincipledMaterial. These are
+    then used by the standard shader code to perform lighting calculations just as if we had used
+    a PrincipledMaterial.
 
-    We'll apply \l FrostedGlassSinglePassMaterial for one of the spheres, and adjust its
-    roughness, reflectivity, index of refraction, and color a little bit.
+    \section1 Custom handling of lights
 
-    \snippet custommaterial/main.qml frosted glass
+    The next object uses a more complex material that implements custom lighting. The
+    material has different uniform names, but otherwise we use it in the same way:
 
-    \section2 Plastic
+    \snippet custommaterial/main.qml custom lights
 
-    For the other sphere we'll apply \l {PlasticStructuredRedMaterial}, and adjust its
-    index of refraction and bumpiness a bit.
+    The fragment shader implements custom logic for all the different types of light:
 
-    \snippet custommaterial/main.qml plastic
+    \quotefile custommaterial/material_customlights.frag
+
+    Here we use many new special keywords referring to properties of the various light
+    types. See the CustomMaterial documentation for a description each keyword. Note that
+    each light type has its own function. Any function not implemented will use the
+    default implementation, behaving like PrincipledMaterial. For example: in this shader, we have not
+    implemented \c {SPECULAR_LIGHT()}, so we will get the built-in specular reflection.
+
+    \section1 Adding a vertex shader
+
+    A custom material can also use a vertex shader to modify the geometry of the model. Here we
+    specify both the fragment and vertex shaders, and add several more properties that
+    will be picked up as uniform values:
+
+    \snippet custommaterial/main.qml custom vertex
+
+    The vertex shader is very short:
+    \quotefile custommaterial/material_distortion.vert
+
+    This deforms the model by displacing each vertex according to a sine-wave that changes with time.
+
+    \section1 A transparent material
+
+    Finally, we add a sphere with a material that is transparent. For performance reasons,
+    Qt does not implement transparency in a completely realistic way. Instead, Qt renders
+    all the opaque object in the scene to a texture, and then transparent materials read
+    from this texture. This means that transparent materials will give the best result
+    when placed in front of other objects:
+
+    \snippet custommaterial/main.qml transparent
+
+    For this example, we implement a simplistic distortion function that does not try to
+    do real physical refraction:
+
+    \quotefile custommaterial/material_transparent.frag
+
+    \c SCREEN_TEXTURE refers to the texture showing all the opaque objects in the
+    scene. We first calculate the uv coordinates inside this texture that matches the
+    screen position of the current vertex. We then add an offset to this position,
+    simulating a refraction effect, before doing a texture lookup.
+
+    Finally, we blend in 20% white to get a slight cloudiness. Note that the output is
+    assigned to \c BASE_COLOR, so Qt will add lighting on top of this. This is why we can
+    see reflections on the surface of the sphere.
+
+    \section1 Unshaded materials
+
+    It is also possible to have custom materials that use complete shader
+    programs (while still using the convenience keywords). The
+    \l{Qt Quick 3D - Custom Shaders Example}{customshaders example}
+    demonstrates the other group of custom materials: \e unshaded custom
+    materials.
+
 */
-
-

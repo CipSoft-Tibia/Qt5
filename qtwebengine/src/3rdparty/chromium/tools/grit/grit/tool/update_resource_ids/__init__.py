@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Package grit.tool.update_resource_ids
@@ -64,10 +64,9 @@ to, and generates an updated version of the resource_ids file while preserving
 structure elements 1-3 stated above.
 """
 
-from __future__ import print_function
 
+import argparse
 import collections
-import getopt
 import os
 import shutil
 import sys
@@ -82,7 +81,7 @@ def _ReadData(input_file):
     data = sys.stdin.read()
     file_dir = os.getcwd()
   else:
-    with open(input_file, 'rt') as f:
+    with open(input_file) as f:
       data = f.read()
     file_dir = os.path.dirname(input_file)
   return data, file_dir
@@ -124,58 +123,20 @@ def _WriteFileIfChanged(output, new_data):
   shutil.move(f.name, output)
 
 
-class _Args:
-  """Encapsulated arguments for this module."""
-  def __init__(self):
-    self.add_header = False
-    self.analyze_inputs = False
-    self.count = False
-    self.depfile = None
-    self.fake = False
-    self.input = None
-    self.naive = False
-    self.output = None
-    self.parse = False
-    self.tokenize = False
-
-  @staticmethod
-  def Parse(raw_args):
-    own_opts, raw_args = getopt.getopt(raw_args, 'o:cpt', [
-        'add-header',
-        'analyze-inputs',
-        'count',
-        'depfile=',
-        'fake',
-        'naive',
-        'parse',
-        'tokenize',
-    ])
-    args = _Args();
-    if not len(raw_args) == 1:
-      print('grit update_resource_ids takes exactly one argument, the path to '
-            'the resource ids file.')
-      return 2
-    args.input = raw_args[0]
-    for (key, val) in own_opts:
-      if key == '-o':
-        args.output = val
-      elif key == '--add-header':
-        args.add_header = True
-      elif key == '--analyze-inputs':
-        args.analyze_inputs = True
-      elif key in ('--count', '-c'):
-        args.count = True
-      elif key == '--depfile':
-        args.depfile = val
-      elif key == '--fake':
-        args.fake = True
-      elif key == '--naive':
-        args.naive = True
-      elif key in ('--parse', '-p'):
-        args.parse = True
-      elif key in ('--tokenize', '-t'):
-        args.tokenize = True
-    return args
+def _ParseArguments(raw_args):
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--add-header', action='store_true')
+  parser.add_argument('--analyze-inputs', action='store_true')
+  parser.add_argument('-c', '--count', action='store_true')
+  parser.add_argument('--depfile')
+  parser.add_argument('--fake', action='store_true')
+  parser.add_argument('--naive', action='store_true')
+  parser.add_argument('-p', '--parse', action='store_true')
+  parser.add_argument('-t', '--tokenize', action='store_true')
+  parser.add_argument('-o', '--output')
+  parser.add_argument('-i', '--input', required=True)
+  args = parser.parse_args(raw_args)
+  return args
 
 
 class UpdateResourceIds(interface.Tool):
@@ -216,7 +177,7 @@ Other options:
 """
 
   def __init(self):
-    super(UpdateResourceIds, self).__init__()
+    super().__init__()
 
   def ShortDescription(self):
     return 'Updates a resource_ids file based on usage, preserving structure'
@@ -254,7 +215,7 @@ Other options:
   def Run(self, opts, raw_args):
     self.SetOptions(opts)
 
-    args = _Args.Parse(raw_args)
+    args = _ParseArguments(raw_args)
     data, file_dir = _ReadData(args.input)
 
     tok_gen = parser.Tokenize(data)

@@ -27,6 +27,8 @@ class UnicodeString;
 namespace v8 {
 namespace internal {
 
+#include "torque-generated/src/objects/js-segment-iterator-tq.inc"
+
 class JSSegmentIterator
     : public TorqueGeneratedJSSegmentIterator<JSSegmentIterator, JSObject> {
  public:
@@ -53,9 +55,9 @@ class JSSegmentIterator
   // Bit positions in |flags|.
   DEFINE_TORQUE_GENERATED_JS_SEGMENT_ITERATOR_FLAGS()
 
-  STATIC_ASSERT(JSSegmenter::Granularity::GRAPHEME <= GranularityBits::kMax);
-  STATIC_ASSERT(JSSegmenter::Granularity::WORD <= GranularityBits::kMax);
-  STATIC_ASSERT(JSSegmenter::Granularity::SENTENCE <= GranularityBits::kMax);
+  static_assert(JSSegmenter::Granularity::GRAPHEME <= GranularityBits::kMax);
+  static_assert(JSSegmenter::Granularity::WORD <= GranularityBits::kMax);
+  static_assert(JSSegmenter::Granularity::SENTENCE <= GranularityBits::kMax);
 
   TQ_OBJECT_CONSTRUCTORS(JSSegmentIterator)
 };

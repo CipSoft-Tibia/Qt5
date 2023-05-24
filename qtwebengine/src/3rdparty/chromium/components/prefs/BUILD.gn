@@ -1,6 +1,17 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
+import("//build/config/chromeos/ui_mode.gni")
+
+source_set("prefs_features") {
+  sources = [
+    "prefs_features.cc",
+    "prefs_features.h",
+  ]
+
+  public_deps = [ "//base" ]
+}
 
 component("prefs") {
   sources = [
@@ -21,6 +32,7 @@ component("prefs") {
     "pref_filter.h",
     "pref_member.cc",
     "pref_member.h",
+    "pref_name_set.h",
     "pref_notifier.h",
     "pref_notifier_impl.cc",
     "pref_notifier_impl.h",
@@ -42,6 +54,8 @@ component("prefs") {
     "prefs_export.h",
     "scoped_user_pref_update.cc",
     "scoped_user_pref_update.h",
+    "segregated_pref_store.cc",
+    "segregated_pref_store.h",
     "value_map_pref_store.cc",
     "value_map_pref_store.h",
     "writeable_pref_store.cc",
@@ -50,7 +64,10 @@ component("prefs") {
 
   defines = [ "COMPONENTS_PREFS_IMPLEMENTATION" ]
 
-  deps = [ "//base/util/values:values_util" ]
+  deps = [
+    ":prefs_features",
+    "//build:chromeos_buildflags",
+  ]
 
   public_deps = [ "//base" ]
 
@@ -103,9 +120,11 @@ source_set("unit_tests") {
     "pref_value_map_unittest.cc",
     "pref_value_store_unittest.cc",
     "scoped_user_pref_update_unittest.cc",
+    "segregated_pref_store_unittest.cc",
   ]
 
   deps = [
+    ":prefs_features",
     ":test_support",
     "//base",
     "//base/test:test_support",

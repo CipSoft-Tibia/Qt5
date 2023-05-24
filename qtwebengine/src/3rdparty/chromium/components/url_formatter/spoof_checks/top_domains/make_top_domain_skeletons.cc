@@ -1,4 +1,4 @@
-// Copyright (c) 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,7 +16,6 @@
 #include "base/logging.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/path_service.h"
-#include "base/strings/string16.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -85,10 +84,10 @@ int GenerateSkeletons(const char* input_file_name,
   // These characters are used to separate labels in a hostname. We generate
   // skeletons of top 500 domains without these separators as well. These
   // skeletons could be used in lookalike heuristics such as Target Embedding.
-  base::string16 kLabelSeparators = base::UTF8ToUTF16(".-");
+  std::u16string kLabelSeparators = u".-";
   std::stringstream input(input_content);
   std::string output =
-      R"(# Copyright 2018 The Chromium Authors. All rights reserved.
+      R"(# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -128,14 +127,14 @@ int GenerateSkeletons(const char* input_file_name,
     if (domain[0] == '#')
       continue;
 
-    const base::string16 domain16 = base::UTF8ToUTF16(domain);
+    const std::u16string domain16 = base::UTF8ToUTF16(domain);
     const Skeletons skeletons = skeleton_generator.GetSkeletons(domain16);
     DCHECK(!skeletons.empty()) << "Failed to generate skeletons of " << domain;
 
     // Generate skeletons for domains without their separators (e.g. googlecom).
     // These skeletons are used in target embedding lookalikes.
-    base::string16 domain16_with_no_separators;
-    base::ReplaceChars(domain16, kLabelSeparators, base::string16(),
+    std::u16string domain16_with_no_separators;
+    base::ReplaceChars(domain16, kLabelSeparators, std::u16string(),
                        &domain16_with_no_separators);
     const Skeletons no_separators_skeletons =
         skeleton_generator.GetSkeletons(domain16_with_no_separators);
@@ -186,5 +185,7 @@ int main(int argc, const char** argv) {
   }
   GenerateSkeletons("domains.list", "domains.skeletons", spoof_checker.get());
   GenerateSkeletons("test_domains.list", "test_domains.skeletons",
+                    spoof_checker.get());
+  GenerateSkeletons("browsertest_domains.list", "browsertest_domains.skeletons",
                     spoof_checker.get());
 }

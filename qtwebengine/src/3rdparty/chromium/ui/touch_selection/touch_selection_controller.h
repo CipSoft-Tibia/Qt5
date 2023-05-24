@@ -1,11 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_TOUCH_SELECTION_TOUCH_SELECTION_CONTROLLER_H_
 #define UI_TOUCH_SELECTION_TOUCH_SELECTION_CONTROLLER_H_
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/point_f.h"
@@ -34,7 +34,8 @@ class UI_TOUCH_SELECTION_EXPORT TouchSelectionControllerClient {
   virtual void SelectBetweenCoordinates(const gfx::PointF& base,
                                         const gfx::PointF& extent) = 0;
   virtual void OnSelectionEvent(SelectionEventType event) = 0;
-  virtual void OnDragUpdate(const gfx::PointF& position) = 0;
+  virtual void OnDragUpdate(const TouchSelectionDraggable::Type type,
+                            const gfx::PointF& position) = 0;
   virtual std::unique_ptr<TouchHandleDrawable> CreateDrawable() = 0;
   virtual void DidScroll() = 0;
   virtual void ShowTouchSelectionContextMenu(const gfx::Point& location) {}
@@ -52,29 +53,30 @@ class UI_TOUCH_SELECTION_EXPORT TouchSelectionController
   };
 
   struct UI_TOUCH_SELECTION_EXPORT Config {
-    Config();
-    ~Config();
-
     // Maximum allowed time for handle tap detection. Defaults to 300 ms.
-    base::TimeDelta max_tap_duration;
+    base::TimeDelta max_tap_duration = base::Milliseconds(300);
 
     // Defaults to 8 DIPs.
-    float tap_slop;
+    float tap_slop = 8;
 
     // Controls whether adaptive orientation for selection handles is enabled.
     // Defaults to false.
-    bool enable_adaptive_handle_orientation;
+    bool enable_adaptive_handle_orientation = false;
 
     // Controls whether drag selection after a longpress is enabled.
     // Defaults to false.
-    bool enable_longpress_drag_selection;
+    bool enable_longpress_drag_selection = false;
 
     // Should we hide the active handle.
-    bool hide_active_handle;
+    bool hide_active_handle = false;
   };
 
   TouchSelectionController(TouchSelectionControllerClient* client,
                            const Config& config);
+
+  TouchSelectionController(const TouchSelectionController&) = delete;
+  TouchSelectionController& operator=(const TouchSelectionController&) = delete;
+
   ~TouchSelectionController() override;
 
   // To be called when the selection bounds have changed.
@@ -139,6 +141,11 @@ class UI_TOUCH_SELECTION_EXPORT TouchSelectionController
   const gfx::PointF& GetStartPosition() const;
   const gfx::PointF& GetEndPosition() const;
 
+  // To be called when swipe-to-move-cursor motion begins.
+  void OnSwipeToMoveCursorBegin();
+  // To be called when swipe-to-move-cursor motion ends.
+  void OnSwipeToMoveCursorEnd();
+
   const gfx::SelectionBound& start() const { return start_; }
   const gfx::SelectionBound& end() const { return end_; }
 
@@ -199,7 +206,7 @@ class UI_TOUCH_SELECTION_EXPORT TouchSelectionController
 
   void LogSelectionEnd();
 
-  TouchSelectionControllerClient* const client_;
+  const raw_ptr<TouchSelectionControllerClient> client_;
   const Config config_;
 
   InputEventType response_pending_input_event_;
@@ -241,8 +248,6 @@ class UI_TOUCH_SELECTION_EXPORT TouchSelectionController
   bool consume_touch_sequence_;
 
   bool show_touch_handles_;
-
-  DISALLOW_COPY_AND_ASSIGN(TouchSelectionController);
 };
 
 }  // namespace ui

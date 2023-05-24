@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeorouteparserosrmv5_p.h"
 #include "qgeoroute.h"
@@ -42,13 +9,14 @@
 #include "qgeoroutesegment_p.h"
 #include "qgeomaneuver.h"
 
-#include <QtCore/private/qobject_p.h>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtCore/QJsonArray>
 #include <QtCore/QUrlQuery>
-#include <QtPositioning/private/qlocationutils_p.h>
 #include <QtPositioning/qgeopath.h>
+
+#include <QtCore/private/qobject_p.h>
+#include <QtPositioning/private/qlocationutils_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -58,7 +26,7 @@ static QList<QGeoCoordinate> decodePolyline(const QString &polylineString)
     if (polylineString.isEmpty())
         return path;
 
-    QByteArray data = polylineString.toLatin1();
+    const QByteArray data = polylineString.toLatin1();
 
     bool parsingLatitude = true;
 
@@ -67,7 +35,7 @@ static QList<QGeoCoordinate> decodePolyline(const QString &polylineString)
 
     QGeoCoordinate coord(0, 0);
 
-    for (int i = 0; i < data.length(); ++i) {
+    for (qsizetype i = 0; i < data.length(); ++i) {
         unsigned char c = data.at(i) - 63;
 
         value |= (c & 0x1f) << shift;
@@ -918,8 +886,8 @@ QGeoRouteReply::Error QGeoRouteParserOsrmV5Private::parseReply(QList<QGeoRoute> 
             return QGeoRouteReply::ParseError;
         }
 
-        QJsonArray osrmRoutes = object.value(QLatin1String("routes")).toArray();
-        foreach (const QJsonValue &r, osrmRoutes) {
+        const QJsonArray osrmRoutes = object.value(QLatin1String("routes")).toArray();
+        for (const QJsonValueConstRef r : osrmRoutes) {
             if (!r.isObject())
                 continue;
             QJsonObject routeObject = r.toObject();
@@ -935,25 +903,25 @@ QGeoRouteReply::Error QGeoRouteParserOsrmV5Private::parseReply(QList<QGeoRoute> 
             bool error = false;
             QList<QGeoRouteSegment> segments;
 
-            QJsonArray legs = routeObject.value(QLatin1String("legs")).toArray();
-            QList<QGeoRouteLeg> routeLegs;
+            const QJsonArray legs = routeObject.value(QLatin1String("legs")).toArray();
+            QList<QGeoRoute> routeLegs;
             QGeoRoute route;
             for (int legIndex = 0; legIndex < legs.size(); ++legIndex) {
                 const QJsonValue &l = legs.at(legIndex);
-                QGeoRouteLeg routeLeg;
+                QGeoRoute routeLeg;
                 QList<QGeoRouteSegment> legSegments;
                 if (!l.isObject()) { // invalid leg record
                     error = true;
                     break;
                 }
-                QJsonObject leg = l.toObject();
+                const QJsonObject leg = l.toObject();
                 if (!leg.value(QLatin1String("steps")).isArray()) { // Invalid steps field
                     error = true;
                     break;
                 }
                 const double legDistance = leg.value(QLatin1String("distance")).toDouble();
                 const double legTravelTime = leg.value(QLatin1String("duration")).toDouble();
-                QJsonArray steps = leg.value(QLatin1String("steps")).toArray();
+                const QJsonArray steps = leg.value(QLatin1String("steps")).toArray();
                 QGeoRouteSegment segment;
                 for (int stepIndex = 0; stepIndex < steps.size(); ++stepIndex) {
                     const QJsonValue &s = steps.at(stepIndex);
@@ -976,7 +944,7 @@ QGeoRouteReply::Error QGeoRouteParserOsrmV5Private::parseReply(QList<QGeoRoute> 
                 QGeoRouteSegmentPrivate *segmentPrivate = QGeoRouteSegmentPrivate::get(segment);
                 segmentPrivate->setLegLastSegment(true);
                 QList<QGeoCoordinate> path;
-                for (const QGeoRouteSegment &s: qAsConst(legSegments))
+                for (const QGeoRouteSegment &s: std::as_const(legSegments))
                     path.append(s.path());
                 routeLeg.setLegIndex(legIndex);
                 routeLeg.setOverallRoute(route); // QGeoRoute::d_ptr is explicitlySharedDataPointer. Modifiers below won't detach it.
@@ -993,10 +961,10 @@ QGeoRouteReply::Error QGeoRouteParserOsrmV5Private::parseReply(QList<QGeoRoute> 
 
             if (!error) {
                 QList<QGeoCoordinate> path;
-                foreach (const QGeoRouteSegment &s, segments)
+                for (const QGeoRouteSegment &s : segments)
                     path.append(s.path());
 
-                for (int i = segments.size() - 1; i > 0; --i)
+                for (qsizetype i = segments.size() - 1; i > 0; --i)
                     segments[i-1].setNextRouteSegment(segments[i]);
 
                 route.setDistance(distance);
@@ -1024,25 +992,12 @@ QUrl QGeoRouteParserOsrmV5Private::requestUrl(const QGeoRouteRequest &request, c
 {
     QString routingUrl = prefix;
     int notFirst = 0;
-    QString bearings;
-    const QList<QVariantMap> metadata = request.waypointsMetadata();
     const QList<QGeoCoordinate> waypoints = request.waypoints();
-    for (int i = 0; i < waypoints.size(); i++) {
+    for (qsizetype i = 0; i < waypoints.size(); i++) {
         const QGeoCoordinate &c = waypoints.at(i);
-        if (notFirst) {
+        if (notFirst)
             routingUrl.append(QLatin1Char(';'));
-            bearings.append(QLatin1Char(';'));
-        }
         routingUrl.append(QString::number(c.longitude(), 'f', 7)).append(QLatin1Char(',')).append(QString::number(c.latitude(), 'f', 7));
-        if (metadata.size() > i) {
-            const QVariantMap &meta = metadata.at(i);
-            if (meta.contains(QLatin1String("bearing"))) {
-                qreal bearing = meta.value(QLatin1String("bearing")).toDouble();
-                bearings.append(QString::number(int(bearing))).append(QLatin1Char(',')).append(QLatin1String("90")); // 90 is the angle of maneuver allowed.
-            } else {
-                bearings.append(QLatin1String("0,180")); // 180 here means anywhere
-            }
-        }
         ++notFirst;
     }
 
@@ -1052,7 +1007,6 @@ QUrl QGeoRouteParserOsrmV5Private::requestUrl(const QGeoRouteRequest &request, c
     query.addQueryItem(QLatin1String("steps"), QLatin1String("true"));
     query.addQueryItem(QLatin1String("geometries"), QLatin1String("polyline6"));
     query.addQueryItem(QLatin1String("alternatives"), QLatin1String("true"));
-    query.addQueryItem(QLatin1String("bearings"), bearings);
     if (m_extension)
         m_extension->updateQuery(query);
     url.setQuery(query);

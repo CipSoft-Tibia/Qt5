@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">Paket yanlışdır: " <ph name="ERROR_CODE" /> '.</translation>
 <translation id="1140871961407805696">Arxa kamera</translation>
 <translation id="1196338895211115272">Şəxsi açarı eksport etmək alınmadı.</translation>
+<translation id="132960226125594336">Məzmun skripti üçün '<ph name="RELATIVE_PATH" />' faylını yükləmək mümkün olmadı, çünki o, maksimum skript ölçüsünü və ya artırmanın maksimum ümumi məzmun skript ölçüsünü keçə bilərdi.</translation>
 <translation id="1420684932347524586">Təsadüfi RSA şəxsi kilidini yaratmaq alınmadı.</translation>
 <translation id="1445572445564823378">Bu artırma yavaşlaşır <ph name="PRODUCT_NAME" />. <ph name="PRODUCT_NAME" /> məhsulunun performansını bərpa etmək üçün onu deaktiv etməlisiniz.</translation>
 <translation id="1468038450257740950">WebGL dəstəklənmir.</translation>
@@ -62,6 +63,7 @@
 <translation id="8636666366616799973">Paket yanlışdır. Detallar: '<ph name="ERROR_MESSAGE" />'.</translation>
 <translation id="8761756413268424715">"<ph name="APP_NAME" />" cihazdan birinə giriş tələb edir:</translation>
 <translation id="8885905466771744233">Göstərilən artırma üçün şəxsi açar artıq mövcuddur. Ya o açarı yenidən işlədin, ya da ilk olaraq onu silin.</translation>
+<translation id="9039223174332979184">Bu cihazın administratoru <ph name="EXTENSION_NAME" /> artırmasından minimum manifest versiyasının 3 olmasını tələb edir.</translation>
 <translation id="907841381057066561">Paketləmə zamanı müvəqqəti arxivin yaradılması alınmadı.</translation>
 <translation id="941543339607623937">Yanlış xüsusi açar.</translation>
 </translationbundle>

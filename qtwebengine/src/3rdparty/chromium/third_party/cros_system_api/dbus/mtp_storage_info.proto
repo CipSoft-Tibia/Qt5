@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium OS Authors. All rights reserved.
+// Copyright 2012 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -54,4 +54,20 @@ message MtpStorageInfo {
 
   // The volume label of the storage. This is device dependent.
   optional string volume_identifier = 14;
+
+  // Device serial number. Per the MTP spec (MTPforUSB-IFv1.1.pdf) section
+  // 5.1.1.14 "Serial Number":
+  //
+  // "This string is required, and contains the MTP function's serial number.
+  // Serial numbers are required to be unique among all MTP functions sharing
+  // identical Model and Device Version fields (this field was optional in the
+  // PTP specification, but is required in MTP). The serial number should be
+  // the device's unique serial number such as the one typically printed on the
+  // device."
+  //
+  // "The serial number shall be a 32 character hexadecimal string for legacy
+  // compatibility reasons. This string must be exactly 32 characters,
+  // including any leading 0s, and does not require any prefix to identify it
+  // as hexadecimal (such as '0x')."
+  optional string serial_number = 15;
 }

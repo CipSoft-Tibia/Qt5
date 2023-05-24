@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,10 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "ui/display/types/display_mode.h"
 #include "ui/display/types/display_snapshot.h"
 #include "ui/ozone/platform/drm/common/drm_util.h"
@@ -35,6 +35,27 @@ void DrmDisplayHost::UpdateDisplaySnapshot(
   snapshot_ = std::move(params);
 }
 
+void DrmDisplayHost::SetHdcpKeyProp(const std::string& key,
+                                    display::SetHdcpKeyPropCallback callback) {
+  set_hdcp_key_prop_callback_ = std::move(callback);
+  if (!sender_->GpuSetHdcpKeyProp(snapshot_->display_id(), key)) {
+    OnHdcpKeyPropSetReceived(false);
+  }
+}
+
+void DrmDisplayHost::OnHdcpKeyPropSetReceived(bool success) {
+  if (!set_hdcp_key_prop_callback_.is_null()) {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(std::move(set_hdcp_key_prop_callback_), success));
+  } else {
+    LOG(ERROR) << "Got unexpected event for display "
+               << snapshot_->display_id();
+  }
+
+  set_hdcp_key_prop_callback_.Reset();
+}
+
 void DrmDisplayHost::GetHDCPState(display::GetHDCPStateCallback callback) {
   get_hdcp_callback_ = std::move(callback);
   if (!sender_->GpuGetHDCPState(snapshot_->display_id()))
@@ -47,7 +68,7 @@ void DrmDisplayHost::OnHDCPStateReceived(
     display::HDCPState state,
     display::ContentProtectionMethod protection_method) {
   if (!get_hdcp_callback_.is_null()) {
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(std::move(get_hdcp_callback_), status, state,
                                   protection_method));
   } else {
@@ -70,7 +91,7 @@ void DrmDisplayHost::SetHDCPState(
 
 void DrmDisplayHost::OnHDCPStateUpdated(bool status) {
   if (!set_hdcp_callback_.is_null()) {
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(std::move(set_hdcp_callback_), status));
   } else {
     LOG(ERROR) << "Got unexpected event for display "
@@ -91,8 +112,11 @@ void DrmDisplayHost::SetGammaCorrection(
                                  gamma_lut);
 }
 
-void DrmDisplayHost::SetPrivacyScreen(bool enabled) {
-  sender_->GpuSetPrivacyScreen(snapshot_->display_id(), enabled);
+void DrmDisplayHost::SetPrivacyScreen(
+    bool enabled,
+    display::SetPrivacyScreenCallback callback) {
+  sender_->GpuSetPrivacyScreen(snapshot_->display_id(), enabled,
+                               std::move(callback));
 }
 
 void DrmDisplayHost::OnGpuProcessLaunched() {}

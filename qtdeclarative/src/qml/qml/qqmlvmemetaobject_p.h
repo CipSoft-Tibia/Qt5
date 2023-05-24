@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 BasysKom GmbH.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 BasysKom GmbH.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLVMEMETAOBJECT_P_H
 #define QQMLVMEMETAOBJECT_P_H
@@ -52,57 +16,102 @@
 // We mean it.
 //
 
-#include "qqml.h"
-
-#include <QtCore/QMetaObject>
-#include <QtCore/QBitArray>
-#include <QtCore/QPair>
-#include <QtCore/QDate>
-#include <QtCore/qlist.h>
-#include <QtCore/qdebug.h>
-
-#include <private/qobject_p.h>
-
-#include "qqmlguard_p.h"
-#include "qqmlcontext_p.h"
-
-#include <private/qflagpointer_p.h>
-
+#include <private/qbipointer_p.h>
+#include <private/qqmlguard_p.h>
+#include <private/qqmlguardedcontextdata_p.h>
+#include <private/qqmlpropertyvalueinterceptor_p.h>
 #include <private/qv4object_p.h>
 #include <private/qv4value_p.h>
-#include <private/qqmlpropertyvalueinterceptor_p.h>
+
+#include <QtCore/private/qobject_p.h>
+
+#if QT_CONFIG(regularexpression)
+#include <QtCore/qregularexpression.h>
+#endif
+
+#include <QtCore/qbitarray.h>
+#include <QtCore/qdatetime.h>
+#include <QtCore/qdebug.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qmetaobject.h>
+#include <QtCore/qpair.h>
 
 QT_BEGIN_NAMESPACE
 
 class QQmlVMEMetaObject;
+class QQmlVMEResolvedList
+{
+    Q_DISABLE_COPY_MOVE(QQmlVMEResolvedList)
+
+public:
+    QQmlVMEResolvedList(QQmlListProperty<QObject> *prop);
+    ~QQmlVMEResolvedList();
+
+    QQmlVMEMetaObject *metaObject() const { return m_metaObject; }
+    QV4::Heap::Object *list() const { return m_list; }
+    quintptr id() const { return m_id; }
+
+    void append(QObject *o) const;
+    void replace(qsizetype i, QObject *o) const;
+    QObject *at(qsizetype i) const;
+
+    qsizetype size() const { return m_list->arrayData->length(); }
+
+    void clear() const
+    {
+        QV4::Scope scope(m_list->internalClass->engine);
+        QV4::ScopedObject object(scope, m_list);
+        m_list->arrayData->vtable()->truncate(object, 0);
+    }
+
+    void removeLast() const
+    {
+        const uint length = m_list->arrayData->length();
+        if (length == 0)
+            return;
+
+        QV4::Scope scope(m_list->internalClass->engine);
+        QV4::ScopedObject object(scope, m_list);
+        m_list->arrayData->vtable()->truncate(object, length - 1);
+    }
+
+    void activateSignal() const;
+
+private:
+    QQmlVMEMetaObject *m_metaObject = nullptr;
+    QV4::Heap::Object *m_list = nullptr;
+    quintptr m_id = 0;
+};
+
 class QQmlVMEVariantQObjectPtr : public QQmlGuard<QObject>
 {
 public:
     inline QQmlVMEVariantQObjectPtr();
-    inline ~QQmlVMEVariantQObjectPtr() override;
 
-    inline void objectDestroyed(QObject *) override;
     inline void setGuardedValue(QObject *obj, QQmlVMEMetaObject *target, int index);
 
     QQmlVMEMetaObject *m_target;
     int m_index;
+
+private:
+    static void objectDestroyedImpl(QQmlGuardImpl *guard);
 };
 
 
-class Q_QML_PRIVATE_EXPORT QQmlInterceptorMetaObject : public QAbstractDynamicMetaObject
+class Q_QML_PRIVATE_EXPORT QQmlInterceptorMetaObject : public QDynamicMetaObjectData
 {
 public:
-    QQmlInterceptorMetaObject(QObject *obj, const QQmlRefPointer<QQmlPropertyCache> &cache);
+    QQmlInterceptorMetaObject(QObject *obj, const QQmlPropertyCache::ConstPtr &cache);
     ~QQmlInterceptorMetaObject() override;
 
     void registerInterceptor(QQmlPropertyIndex index, QQmlPropertyValueInterceptor *interceptor);
 
     static QQmlInterceptorMetaObject *get(QObject *obj);
 
-    QAbstractDynamicMetaObject *toDynamicMetaObject(QObject *o) override;
+    QMetaObject *toDynamicMetaObject(QObject *o) override;
 
     // Used by auto-tests for inspection
-    QQmlPropertyCache *propertyCache() const { return cache.data(); }
+    QQmlPropertyCache::ConstPtr propertyCache() const { return cache; }
 
     bool intercepts(QQmlPropertyIndex propertyIndex) const
     {
@@ -115,17 +124,40 @@ public:
         return false;
     }
 
+    void invalidate() { metaObject.setTag(MetaObjectInvalid); }
+
+    QObject *object = nullptr;
+    QQmlPropertyCache::ConstPtr cache;
+
 protected:
     int metaCall(QObject *o, QMetaObject::Call c, int id, void **a) override;
-    bool intercept(QMetaObject::Call c, int id, void **a);
+    bool intercept(QMetaObject::Call c, int id, void **a)
+    {
+        if (!interceptors)
+            return false;
 
-public:
-    QObject *object;
-    QQmlRefPointer<QQmlPropertyCache> cache;
+        switch (c) {
+        case QMetaObject::WriteProperty:
+            if (*reinterpret_cast<int*>(a[3]) & QQmlPropertyData::BypassInterceptor)
+                return false;
+            break;
+        case QMetaObject::BindableProperty:
+            break;
+        default:
+            return false;
+        }
+
+        return doIntercept(c, id, a);
+    }
+
     QBiPointer<QDynamicMetaObjectData, const QMetaObject> parent;
 
-    QQmlPropertyValueInterceptor *interceptors;
-    bool hasAssignedMetaObjectData;
+    enum MetaObjectValidity { MetaObjectValid, MetaObjectInvalid };
+    QTaggedPointer<const QMetaObject, MetaObjectValidity> metaObject;
+
+private:
+    bool doIntercept(QMetaObject::Call c, int id, void **a);
+    QQmlPropertyValueInterceptor *interceptors = nullptr;
 };
 
 inline QQmlInterceptorMetaObject *QQmlInterceptorMetaObject::get(QObject *obj)
@@ -144,7 +176,10 @@ class QQmlVMEMetaObjectEndpoint;
 class Q_QML_PRIVATE_EXPORT QQmlVMEMetaObject : public QQmlInterceptorMetaObject
 {
 public:
-    QQmlVMEMetaObject(QV4::ExecutionEngine *engine, QObject *obj, const QQmlRefPointer<QQmlPropertyCache> &cache, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &qmlCompilationUnit, int qmlObjectId);
+    QQmlVMEMetaObject(QV4::ExecutionEngine *engine, QObject *obj,
+                      const QQmlPropertyCache::ConstPtr &cache,
+                      const QQmlRefPointer<QV4::ExecutableCompilationUnit> &qmlCompilationUnit,
+                      int qmlObjectId);
     ~QQmlVMEMetaObject() override;
 
     bool aliasTarget(int index, QObject **target, int *coreIndex, int *valueTypeIndex) const;
@@ -159,6 +194,11 @@ public:
     static QQmlVMEMetaObject *getForProperty(QObject *o, int coreIndex);
     static QQmlVMEMetaObject *getForMethod(QObject *o, int coreIndex);
     static QQmlVMEMetaObject *getForSignal(QObject *o, int coreIndex);
+
+    static void list_append(QQmlListProperty<QObject> *prop, QObject *o);
+    static void list_clear(QQmlListProperty<QObject> *prop);
+    static void list_append_nosignal(QQmlListProperty<QObject> *prop, QObject *o);
+    static void list_clear_nosignal(QQmlListProperty<QObject> *prop);
 
 protected:
     int metaCall(QObject *o, QMetaObject::Call _c, int _id, void **_a) override;
@@ -185,10 +225,16 @@ public:
     QPointF readPropertyAsPointF(int id) const;
     QUrl readPropertyAsUrl(int id) const;
     QDate readPropertyAsDate(int id) const;
-    QDateTime readPropertyAsDateTime(int id);
+    QTime readPropertyAsTime(int id) const;
+    QDateTime readPropertyAsDateTime(int id) const;
+
+#if QT_CONFIG(regularexpression)
+    QRegularExpression readPropertyAsRegularExpression(int id) const;
+#endif
+
     QRectF readPropertyAsRectF(int id) const;
     QObject *readPropertyAsQObject(int id) const;
-    QVector<QQmlGuard<QObject> > *readPropertyAsList(int id) const;
+    void initPropertyAsList(int id) const;
 
     void writeProperty(int id, int v);
     void writeProperty(int id, bool v);
@@ -201,8 +247,9 @@ public:
         QV4::MemberData *md = propertyAndMethodStorageAsMemberData();
         if (md) {
             QV4::Scope scope(engine);
-            QV4::Scoped<QV4::MemberData>(scope, md)->set(engine, id, engine->newVariantObject(
-                                                             QVariant::fromValue(v)));
+            QV4::Scoped<QV4::MemberData>(scope, md)->set(
+                        engine, id, engine->newVariantObject(
+                            QMetaType::fromType<VariantCompatible>(), &v));
         }
     }
 

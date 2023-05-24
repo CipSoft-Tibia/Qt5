@@ -33,7 +33,6 @@
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/dom/pseudo_element.h"
 #include "third_party/blink/renderer/core/dom/text.h"
-#include "third_party/blink/renderer/core/dom/v0_insertion_point.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/layout/generated_children.h"
 #include "third_party/blink/renderer/core/layout/layout_inline.h"
@@ -51,22 +50,24 @@ LayoutTreeBuilderForElement::LayoutTreeBuilderForElement(
     const ComputedStyle* style,
     LegacyLayout legacy)
     : LayoutTreeBuilder(element, context, style), legacy_(legacy) {
-  DCHECK(element.CanParticipateInFlatTree());
   DCHECK(style_);
   DCHECK(!style_->IsEnsuredInDisplayNone());
 }
 
 LayoutObject* LayoutTreeBuilderForElement::NextLayoutObject() const {
-  if (node_->IsFirstLetterPseudoElement())
+  if (node_->IsFirstLetterPseudoElement()) {
     return context_.next_sibling;
-  if (node_->IsInTopLayer())
+  }
+  if (style_->IsInTopLayer(*node_)) {
     return LayoutTreeBuilderTraversal::NextInTopLayer(*node_);
+  }
   return LayoutTreeBuilder::NextLayoutObject();
 }
 
 LayoutObject* LayoutTreeBuilderForElement::ParentLayoutObject() const {
-  if (node_->IsInTopLayer())
+  if (style_->IsInTopLayer(*node_)) {
     return node_->GetDocument().GetLayoutView();
+  }
   return context_.parent;
 }
 
@@ -77,6 +78,16 @@ void LayoutTreeBuilderForElement::CreateLayoutObject() {
     return;
   if (!parent_layout_object->CanHaveChildren())
     return;
+
+  // If we are in the top layer and the parent layout object without top layer
+  // adjustment can't have children, then don't render.
+  // https://github.com/w3c/csswg-drafts/issues/6939#issuecomment-1016671534
+  if (style_->IsInTopLayer(*node_) && context_.parent &&
+      !context_.parent->CanHaveChildren() &&
+      node_->GetPseudoId() != kPseudoIdBackdrop) {
+    return;
+  }
+
   if (node_->IsPseudoElement() &&
       !CanHaveGeneratedChildren(*parent_layout_object))
     return;
@@ -111,16 +122,23 @@ void LayoutTreeBuilderForElement::CreateLayoutObject() {
   parent_layout_object->AddChild(new_layout_object, next_layout_object);
 }
 
-LayoutObject*
-LayoutTreeBuilderForText::CreateInlineWrapperForDisplayContentsIfNeeded() {
+scoped_refptr<const ComputedStyle>
+LayoutTreeBuilderForText::CreateInlineWrapperStyleForDisplayContentsIfNeeded()
+    const {
   // If the parent element is not a display:contents element, the style and the
   // parent style will be the same ComputedStyle object. Early out here.
   if (style_ == context_.parent->Style())
     return nullptr;
 
-  scoped_refptr<ComputedStyle> wrapper_style =
-      ComputedStyle::CreateInheritedDisplayContentsStyleIfNeeded(
-          *style_, context_.parent->StyleRef());
+  return node_->GetDocument()
+      .GetStyleResolver()
+      .CreateInheritedDisplayContentsStyleIfNeeded(*style_,
+                                                   context_.parent->StyleRef());
+}
+
+LayoutObject*
+LayoutTreeBuilderForText::CreateInlineWrapperForDisplayContentsIfNeeded(
+    const ComputedStyle* wrapper_style) const {
   if (!wrapper_style)
     return nullptr;
 
@@ -140,20 +158,28 @@ LayoutTreeBuilderForText::CreateInlineWrapperForDisplayContentsIfNeeded() {
 }
 
 void LayoutTreeBuilderForText::CreateLayoutObject() {
-  const ComputedStyle& style = *style_;
+  const ComputedStyle* style = style_.get();
   LayoutObject* layout_object_parent = context_.parent;
   LayoutObject* next_layout_object = NextLayoutObject();
-  if (LayoutObject* wrapper = CreateInlineWrapperForDisplayContentsIfNeeded()) {
+  scoped_refptr<const ComputedStyle> nullable_wrapper_style =
+      CreateInlineWrapperStyleForDisplayContentsIfNeeded();
+  if (LayoutObject* wrapper = CreateInlineWrapperForDisplayContentsIfNeeded(
+          nullable_wrapper_style.get())) {
     layout_object_parent = wrapper;
     next_layout_object = nullptr;
   }
+  // SVG <text> doesn't accept anonymous LayoutInlines. But the Text should have
+  // the adjusted ComputedStyle.
+  if (nullable_wrapper_style)
+    style = nullable_wrapper_style.get();
 
-  LegacyLayout legacy_layout = layout_object_parent->ForceLegacyLayout()
-                                   ? LegacyLayout::kForce
-                                   : LegacyLayout::kAuto;
+  LegacyLayout legacy_layout =
+      layout_object_parent->ForceLegacyLayoutForChildren()
+          ? LegacyLayout::kForce
+          : LegacyLayout::kAuto;
   LayoutText* new_layout_object =
-      node_->CreateTextLayoutObject(style, legacy_layout);
-  if (!layout_object_parent->IsChildAllowed(new_layout_object, style)) {
+      node_->CreateTextLayoutObject(*style, legacy_layout);
+  if (!layout_object_parent->IsChildAllowed(new_layout_object, *style)) {
     new_layout_object->Destroy();
     return;
   }
@@ -167,7 +193,7 @@ void LayoutTreeBuilderForText::CreateLayoutObject() {
 
   node_->SetLayoutObject(new_layout_object);
   DCHECK(!new_layout_object->Style());
-  new_layout_object->SetStyle(&style);
+  new_layout_object->SetStyle(style);
 
   layout_object_parent->AddChild(new_layout_object, next_layout_object);
 }

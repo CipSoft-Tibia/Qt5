@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,9 @@
 #include <string>
 #include <vector>
 
+#include "base/component_export.h"
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "build/build_config.h"
@@ -43,7 +44,7 @@ enum class MultiloginMode {
 };
 
 // Specifies the "source" parameter for Gaia calls.
-class GaiaSource {
+class COMPONENT_EXPORT(GOOGLE_APIS) GaiaSource {
  public:
   enum Type {
     kChrome,
@@ -72,9 +73,9 @@ class SimpleURLLoader;
 class SharedURLLoaderFactory;
 }  // namespace network
 
-class GaiaAuthFetcher {
+class COMPONENT_EXPORT(GOOGLE_APIS) GaiaAuthFetcher {
  public:
-  struct MultiloginTokenIDPair {
+  struct COMPONENT_EXPORT(GOOGLE_APIS) MultiloginTokenIDPair {
     std::string token_;
     std::string gaia_id_;
 
@@ -90,6 +91,10 @@ class GaiaAuthFetcher {
       GaiaAuthConsumer* consumer,
       gaia::GaiaSource source,
       scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory);
+
+  GaiaAuthFetcher(const GaiaAuthFetcher&) = delete;
+  GaiaAuthFetcher& operator=(const GaiaAuthFetcher&) = delete;
+
   virtual ~GaiaAuthFetcher();
 
   // Start a request to revoke |auth_token|.
@@ -115,12 +120,6 @@ class GaiaAuthFetcher {
   void StartAuthCodeForOAuth2TokenExchangeWithDeviceId(
       const std::string& auth_code,
       const std::string& device_id);
-
-  // Start a request to get user info for the account identified by |lsid|.
-  //
-  // Either OnGetUserInfoSuccess or OnGetUserInfoFailure will be
-  // called on the consumer on the original thread.
-  void StartGetUserInfo(const std::string& lsid);
 
   // Start a MergeSession request to pre-login the user with the given
   // credentials.
@@ -148,17 +147,6 @@ class GaiaAuthFetcher {
   // Either OnUberAuthTokenSuccess or OnUberAuthTokenFailure will be
   // called on the consumer on the original thread.
   void StartTokenFetchForUberAuthExchange(const std::string& access_token);
-
-  // Start a request to exchange an OAuthLogin-scoped oauth2 access token for a
-  // ClientLogin-style service tokens.  The response to this request is the
-  // same as the response to a ClientLogin request, except that captcha
-  // challenges are never issued.
-  //
-  // Either OnClientLoginSuccess or OnClientLoginFailure will be
-  // called on the consumer on the original thread. If |service| is empty,
-  // the call will attempt to fetch uber auth token.
-  void StartOAuthLogin(const std::string& access_token,
-                       const std::string& service);
 
   // Starts a request to get the cookie for list of accounts.
   void StartOAuthMultilogin(gaia::MultiloginMode mode,
@@ -195,17 +183,8 @@ class GaiaAuthFetcher {
   // /MergeSession requests.
   void StartGetCheckConnectionInfo();
 
-  // StartClientLogin been called && results not back yet?
+  // `CreateAndStartGaiaFetcher()` been called && results not back yet?
   bool HasPendingFetch();
-
-  // Stop any URL fetches in progress.
-  virtual void CancelRequest();
-
-  // From the data loaded from a SimpleURLLoader, generates an appropriate
-  // error. From the API documentation, both IssueAuthToken and ClientLogin have
-  // the same error returns.
-  static GoogleServiceAuthError GenerateOAuthLoginError(const std::string& data,
-                                                        net::Error net_error);
 
  protected:
   // Creates and starts |url_loader_|, used to make all Gaia request.  |body| is
@@ -249,31 +228,23 @@ class GaiaAuthFetcher {
   bool IsReAuthApiUrl(const GURL& url);
 
  private:
-  // The format of the POST body for IssueAuthToken.
-  static const char kIssueAuthTokenFormat[];
   // The format of the POST body to get OAuth2 token pair from auth code.
   static const char kOAuth2CodeToTokenPairBodyFormat[];
   // Additional param for the POST body to get OAuth2 token pair from auth code.
   static const char kOAuth2CodeToTokenPairDeviceIdParam[];
   // The format of the POST body to revoke an OAuth2 token.
   static const char kOAuth2RevokeTokenBodyFormat[];
-  // The format of the POST body for GetUserInfo.
-  static const char kGetUserInfoFormat[];
   // The format of the POST body for MergeSession.
   static const char kMergeSessionFormat[];
   // The format of the URL for UberAuthToken.
   static const char kUberAuthTokenURLFormat[];
-  // The format of the body for OAuthLogin.
-  static const char kOAuthLoginFormat[];
 
-  // Constants for parsing ClientLogin errors.
+  // Constants for parsing error responses.
   static const char kErrorParam[];
   static const char kErrorUrlParam[];
 
   // Constants for request/response for OAuth2 requests.
-  static const char kAuthHeaderFormat[];
   static const char kOAuthHeaderFormat[];
-  static const char kOAuth2BearerHeaderFormat[];
   static const char kOAuthMultiBearerHeaderFormat[];
 
   void OnURLLoadComplete(std::unique_ptr<std::string> response_body);
@@ -294,10 +265,6 @@ class GaiaAuthFetcher {
                        net::Error net_error,
                        int response_code);
 
-  void OnGetUserInfoFetched(const std::string& data,
-                            net::Error net_error,
-                            int response_code);
-
   void OnMergeSessionFetched(const std::string& data,
                              net::Error net_error,
                              int response_code);
@@ -310,10 +277,6 @@ class GaiaAuthFetcher {
                                 net::Error net_error,
                                 int response_code);
 
-  void OnOAuthLoginFetched(const std::string& data,
-                           net::Error net_error,
-                           int response_code);
-
   void OnGetCheckConnectionInfoFetched(const std::string& data,
                                        net::Error net_error,
                                        int response_code);
@@ -322,30 +285,16 @@ class GaiaAuthFetcher {
                               net::Error net_error,
                               int response_code);
 
-  // Tokenize the results of a ClientLogin fetch.
-  static void ParseClientLoginResponse(const std::string& data,
-                                       std::string* sid,
-                                       std::string* lsid,
-                                       std::string* token);
+  static void ParseFailureResponse(const std::string& data,
+                                   std::string* error,
+                                   std::string* error_url);
 
-  static void ParseClientLoginFailure(const std::string& data,
-                                      std::string* error,
-                                      std::string* error_url);
-
-  // Supply the sid / lsid returned from ClientLogin in order to
-  // request a long lived auth token for a service.
-  static std::string MakeIssueAuthTokenBody(const std::string& sid,
-                                            const std::string& lsid,
-                                            const char* const service);
   // Given auth code and device ID (optional), create body to get OAuth2 token
   // pair.
   static std::string MakeGetTokenPairBody(const std::string& auth_code,
                                           const std::string& device_id);
   // Given an OAuth2 token, create body to revoke the token.
   std::string MakeRevokeTokenBody(const std::string& auth_token);
-  // Supply the lsid returned from ClientLogin in order to fetch
-  // user information.
-  static std::string MakeGetUserInfoBody(const std::string& lsid);
 
   // Supply the authentication token returned from StartIssueAuthToken.
   static std::string MakeMergeSessionQuery(
@@ -354,27 +303,18 @@ class GaiaAuthFetcher {
       const std::string& continue_url,
       const std::string& source);
 
-  static std::string MakeGetAuthCodeHeader(const std::string& auth_token);
-
-  static std::string MakeOAuthLoginBody(const std::string& service,
-                                        const std::string& source);
-
   // From a SimpleURLLoader result, generates an appropriate error.
-  // From the API documentation, both IssueAuthToken and ClientLogin have
-  // the same error returns.
   static GoogleServiceAuthError GenerateAuthError(const std::string& data,
                                                   net::Error net_error);
 
   // These fields are common to GaiaAuthFetcher, same every request.
   scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory_;
-  GaiaAuthConsumer* const consumer_;
+  const raw_ptr<GaiaAuthConsumer> consumer_;
   std::string source_;
   const GURL oauth2_token_gurl_;
   const GURL oauth2_revoke_gurl_;
-  const GURL get_user_info_gurl_;
   const GURL merge_session_gurl_;
   const GURL uberauth_token_gurl_;
-  const GURL oauth_login_gurl_;
   const GURL oauth_multilogin_gurl_;
   const GURL list_accounts_gurl_;
   const GURL logout_gurl_;
@@ -386,9 +326,7 @@ class GaiaAuthFetcher {
   GURL original_url_;
   std::string request_body_;
 
-  std::string requested_service_;  // Currently tracked for IssueAuthToken only.
   bool fetch_pending_ = false;
-  bool fetch_token_from_auth_code_ = false;
 
   friend class GaiaAuthFetcherTest;
   FRIEND_TEST_ALL_PREFIXES(GaiaAuthFetcherTest, CaptchaParse);
@@ -405,8 +343,6 @@ class GaiaAuthFetcher {
   FRIEND_TEST_ALL_PREFIXES(GaiaAuthFetcherTest, ClientOAuthWithQuote);
   FRIEND_TEST_ALL_PREFIXES(GaiaAuthFetcherTest, ClientOAuthChallengeSuccess);
   FRIEND_TEST_ALL_PREFIXES(GaiaAuthFetcherTest, ClientOAuthChallengeQuote);
-
-  DISALLOW_COPY_AND_ASSIGN(GaiaAuthFetcher);
 };
 
 #endif  // GOOGLE_APIS_GAIA_GAIA_AUTH_FETCHER_H_

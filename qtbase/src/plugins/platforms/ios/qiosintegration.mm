@@ -1,50 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qiosintegration.h"
 #include "qioseventdispatcher.h"
 #include "qiosglobal.h"
 #include "qioswindow.h"
-#include "qiosbackingstore.h"
 #include "qiosscreen.h"
 #include "qiosplatformaccessibility.h"
-#include "qioscontext.h"
 #ifndef Q_OS_TVOS
 #include "qiosclipboard.h"
 #endif
@@ -53,21 +15,30 @@
 #include "qiosservices.h"
 #include "qiosoptionalplugininterface.h"
 
+#include <QtGui/qpointingdevice.h>
 #include <QtGui/private/qguiapplication_p.h>
+#include <QtGui/private/qrhibackingstore_p.h>
 
 #include <qoffscreensurface.h>
 #include <qpa/qplatformoffscreensurface.h>
 
-#include <QtFontDatabaseSupport/private/qcoretextfontdatabase_p.h>
-#include <QtClipboardSupport/private/qmacmime_p.h>
+#include <QtGui/private/qcoretextfontdatabase_p.h>
+#include <QtGui/private/qmacmimeregistry_p.h>
+#include <QtGui/qutimimeconverter.h>
 #include <QDir>
 #include <QOperatingSystemVersion>
+
+#if QT_CONFIG(opengl)
+#include "qioscontext.h"
+#endif
 
 #import <AudioToolbox/AudioServices.h>
 
 #include <QtDebug>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 class QCoreTextFontEngine;
 
@@ -84,7 +55,7 @@ QIOSIntegration::QIOSIntegration()
     , m_inputContext(0)
     , m_platformServices(new QIOSServices)
     , m_accessibility(0)
-    , m_optionalPlugins(new QFactoryLoader(QIosOptionalPluginInterface_iid, QLatin1String("/platforms/darwin")))
+    , m_optionalPlugins(new QFactoryLoader(QIosOptionalPluginInterface_iid, "/platforms/darwin"_L1))
 {
     if (Q_UNLIKELY(!qt_apple_isApplicationExtension() && !qt_apple_sharedApplication())) {
         qFatal("Error: You are creating QApplication before calling UIApplicationMain.\n" \
@@ -112,19 +83,20 @@ void QIOSIntegration::initialize()
     // Depends on a primary screen being present
     m_inputContext = new QIOSInputContext;
 
-    m_touchDevice = new QTouchDevice;
-    m_touchDevice->setType(QTouchDevice::TouchScreen);
-    QTouchDevice::Capabilities touchCapabilities = QTouchDevice::Position | QTouchDevice::NormalizedPosition;
+    m_touchDevice = new QPointingDevice;
+    m_touchDevice->setType(QInputDevice::DeviceType::TouchScreen);
+    QPointingDevice::Capabilities touchCapabilities = QPointingDevice::Capability::Position | QPointingDevice::Capability::NormalizedPosition;
     if (mainScreen.traitCollection.forceTouchCapability == UIForceTouchCapabilityAvailable)
-        touchCapabilities |= QTouchDevice::Pressure;
+        touchCapabilities |= QPointingDevice::Capability::Pressure;
     m_touchDevice->setCapabilities(touchCapabilities);
-    QWindowSystemInterface::registerTouchDevice(m_touchDevice);
+    QWindowSystemInterface::registerInputDevice(m_touchDevice);
 #if QT_CONFIG(tabletevent)
     QWindowSystemInterfacePrivate::TabletEvent::setPlatformSynthesizesMouse(false);
 #endif
-    QMacInternalPasteboardMime::initializeMimeTypes();
+    QMacMimeRegistry::initializeMimeTypes();
 
-    for (int i = 0; i < m_optionalPlugins->metaData().size(); ++i)
+    qsizetype size = QList<QPluginParsedMetaData>(m_optionalPlugins->metaData()).size();
+    for (qsizetype i = 0; i < size; ++i)
         qobject_cast<QIosOptionalPluginInterface *>(m_optionalPlugins->instance(i))->initPlugin();
 }
 
@@ -137,7 +109,8 @@ QIOSIntegration::~QIOSIntegration()
     delete m_clipboard;
     m_clipboard = 0;
 #endif
-    QMacInternalPasteboardMime::destroyMimeTypes();
+
+    QMacMimeRegistry::destroyMimeTypes();
 
     delete m_inputContext;
     m_inputContext = 0;
@@ -158,11 +131,15 @@ QIOSIntegration::~QIOSIntegration()
 bool QIOSIntegration::hasCapability(Capability cap) const
 {
     switch (cap) {
+#if QT_CONFIG(opengl)
     case BufferQueueingOpenGL:
         return true;
     case OpenGL:
     case ThreadedOpenGL:
         return true;
+    case RasterGLSurface:
+        return true;
+#endif
     case ThreadedPixmaps:
         return true;
     case MultipleWindows:
@@ -171,7 +148,7 @@ bool QIOSIntegration::hasCapability(Capability cap) const
         return false;
     case ApplicationState:
         return true;
-    case RasterGLSurface:
+    case ForeignWindows:
         return true;
     default:
         return QPlatformIntegration::hasCapability(cap);
@@ -183,17 +160,23 @@ QPlatformWindow *QIOSIntegration::createPlatformWindow(QWindow *window) const
     return new QIOSWindow(window);
 }
 
-// Used when the QWindow's surface type is set by the client to QSurface::RasterSurface
-QPlatformBackingStore *QIOSIntegration::createPlatformBackingStore(QWindow *window) const
+QPlatformWindow *QIOSIntegration::createForeignWindow(QWindow *window, WId nativeHandle) const
 {
-    return new QIOSBackingStore(window);
+    return new QIOSWindow(window, nativeHandle);
 }
 
+QPlatformBackingStore *QIOSIntegration::createPlatformBackingStore(QWindow *window) const
+{
+    return new QRhiBackingStore(window);
+}
+
+#if QT_CONFIG(opengl)
 // Used when the QWindow's surface type is set by the client to QSurface::OpenGLSurface
 QPlatformOpenGLContext *QIOSIntegration::createPlatformOpenGLContext(QOpenGLContext *context) const
 {
     return new QIOSContext(context);
 }
+#endif
 
 class QIOSOffscreenSurface : public QPlatformOffscreenSurface
 {
@@ -264,23 +247,23 @@ QVariant QIOSIntegration::styleHint(StyleHint hint) const
 
 QStringList QIOSIntegration::themeNames() const
 {
-    return QStringList(QLatin1String(QIOSTheme::name));
+    return QStringList(QLatin1StringView(QIOSTheme::name));
 }
 
 QPlatformTheme *QIOSIntegration::createPlatformTheme(const QString &name) const
 {
-    if (name == QLatin1String(QIOSTheme::name))
+    if (name == QLatin1StringView(QIOSTheme::name))
         return new QIOSTheme;
 
     return QPlatformIntegration::createPlatformTheme(name);
 }
 
-QTouchDevice *QIOSIntegration::touchDevice()
+QPointingDevice *QIOSIntegration::touchDevice()
 {
     return m_touchDevice;
 }
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 QPlatformAccessibility *QIOSIntegration::accessibility() const
 {
     if (!m_accessibility)
@@ -299,6 +282,11 @@ void QIOSIntegration::beep() const
 #if !TARGET_IPHONE_SIMULATOR
     AudioServicesPlayAlertSound(kSystemSoundID_Vibrate);
 #endif
+}
+
+void QIOSIntegration::setApplicationBadge(qint64 number)
+{
+    UIApplication.sharedApplication.applicationIconBadgeNumber = number;
 }
 
 // ---------------------------------------------------------
@@ -320,6 +308,6 @@ void *QIOSIntegration::nativeResourceForWindow(const QByteArray &resource, QWind
 
 // ---------------------------------------------------------
 
-#include "moc_qiosintegration.cpp"
-
 QT_END_NAMESPACE
+
+#include "moc_qiosintegration.cpp"

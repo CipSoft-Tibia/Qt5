@@ -1,21 +1,24 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/password_manager/core/browser/password_form_filling.h"
 
 #include <map>
+#include <string>
 #include <vector>
 
 #include "base/memory/scoped_refptr.h"
-#include "base/strings/string16.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_mock_time_task_runner.h"
 #include "build/build_config.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/password_form_fill_data.h"
-#include "components/autofill/core/common/renderer_id.h"
+#include "components/autofill/core/common/unique_ids.h"
+#include "components/password_manager/core/browser/mock_webauthn_credentials_delegate.h"
 #include "components/password_manager/core/browser/password_form.h"
 #include "components/password_manager/core/browser/password_form_metrics_recorder.h"
 #include "components/password_manager/core/browser/stub_password_manager_client.h"
@@ -25,35 +28,29 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/gurl.h"
 
+class PrefService;
+
 using autofill::FieldRendererId;
 using autofill::FormData;
 using autofill::FormRendererId;
 using autofill::PasswordFormFillData;
-using base::ASCIIToUTF16;
-using base::UTF16ToASCII;
 using testing::_;
 using testing::Return;
 using testing::SaveArg;
+using url::Origin;
 using Store = password_manager::PasswordForm::Store;
 
 namespace password_manager {
 namespace {
 
-constexpr char kPreferredUsername[] = "test@gmail.com";
-constexpr char kPreferredPassword[] = "password";
-constexpr char kPreferredAlternatePassword[] = "new_password";
-
-constexpr char kDuplicateLocalUsername[] = "local@gmail.com";
-constexpr char kDuplicateLocalPassword[] = "local_password";
-
-constexpr char kSyncedUsername[] = "synced@gmail.com";
-constexpr char kSyncedPassword[] = "password";
+constexpr char16_t kPreferredUsername[] = u"test@gmail.com";
+constexpr char16_t kPreferredPassword[] = u"password";
 
 class MockPasswordManagerDriver : public StubPasswordManagerDriver {
  public:
   MOCK_METHOD(int, GetId, (), (const, override));
   MOCK_METHOD(void,
-              FillPasswordForm,
+              SetPasswordFillData,
               (const PasswordFormFillData&),
               (override));
   MOCK_METHOD(void, InformNoSavedCredentials, (bool), (override));
@@ -64,36 +61,37 @@ class MockPasswordManagerClient : public StubPasswordManagerClient {
   MOCK_METHOD(void,
               PasswordWasAutofilled,
               (const std::vector<const PasswordForm*>&,
-               const url::Origin&,
-               const std::vector<const PasswordForm*>*),
+               const Origin&,
+               const std::vector<const PasswordForm*>*,
+               bool was_autofilled_on_pageload),
               (override));
+  MOCK_METHOD(bool,
+              IsSavingAndFillingEnabled,
+              (const GURL&),
+              (const, override));
   MOCK_METHOD(bool, IsCommittedMainFrameSecure, (), (const, override));
+  MOCK_METHOD(MockWebAuthnCredentialsDelegate*,
+              GetWebAuthnCredentialsDelegateForDriver,
+              (PasswordManagerDriver*),
+              (override));
+  MOCK_METHOD(MockPasswordFeatureManager*,
+              GetPasswordFeatureManager,
+              (),
+              (const, override));
+  MOCK_METHOD(Origin, GetLastCommittedOrigin, (), (const, override));
 };
-
-PasswordForm CreateForm(std::string username,
-                        std::string password,
-                        Store store) {
-  PasswordForm form;
-  form.username_value = ASCIIToUTF16(username);
-  form.password_value = ASCIIToUTF16(password);
-  form.in_store = store;
-  return form;
-}
 
 // Matcher for PasswordAndMetadata.
 MATCHER_P3(IsLogin, username, password, uses_account_store, std::string()) {
-  return UTF16ToASCII(arg.username) == username &&
-         UTF16ToASCII(arg.password) == password &&
+  return arg.username == username && arg.password == password &&
          arg.uses_account_store == uses_account_store;
 }
 
 PasswordFormFillData::LoginCollection::const_iterator FindPasswordByUsername(
     const std::vector<autofill::PasswordAndMetadata>& logins,
-    const base::string16& username) {
-  return std::find_if(logins.begin(), logins.end(),
-                      [&username](const autofill::PasswordAndMetadata& login) {
-                        return login.username == username;
-                      });
+    const std::u16string& username) {
+  return base::ranges::find(logins, username,
+                            &autofill::PasswordAndMetadata::username);
 }
 
 }  // namespace
@@ -102,24 +100,27 @@ class PasswordFormFillingTest : public testing::Test {
  public:
   PasswordFormFillingTest() {
     ON_CALL(client_, IsCommittedMainFrameSecure()).WillByDefault(Return(true));
+    ON_CALL(client_, GetLastCommittedOrigin())
+        .WillByDefault(
+            Return(Origin::Create(GURL("https://accounts.google.com"))));
 
     observed_form_.url = GURL("https://accounts.google.com/a/LoginAuth");
     observed_form_.action = GURL("https://accounts.google.com/a/Login");
-    observed_form_.username_element = ASCIIToUTF16("Email");
+    observed_form_.username_element = u"Email";
     observed_form_.username_element_renderer_id =
         autofill::FieldRendererId(100);
-    observed_form_.password_element = ASCIIToUTF16("Passwd");
+    observed_form_.password_element = u"Passwd";
     observed_form_.password_element_renderer_id =
         autofill::FieldRendererId(101);
-    observed_form_.submit_element = ASCIIToUTF16("signIn");
+    observed_form_.submit_element = u"signIn";
     observed_form_.signon_realm = "https://accounts.google.com";
-    observed_form_.form_data.name = ASCIIToUTF16("the-form-name");
+    observed_form_.form_data.name = u"the-form-name";
 
     saved_match_ = observed_form_;
     saved_match_.url = GURL("https://accounts.google.com/a/ServiceLoginAuth");
     saved_match_.action = GURL("https://accounts.google.com/a/ServiceLogin");
-    saved_match_.username_value = ASCIIToUTF16("test@gmail.com");
-    saved_match_.password_value = ASCIIToUTF16("test1");
+    saved_match_.username_value = u"test@gmail.com";
+    saved_match_.password_value = u"test1";
 
     psl_saved_match_ = saved_match_;
     psl_saved_match_.is_public_suffix_match = true;
@@ -130,6 +131,11 @@ class PasswordFormFillingTest : public testing::Test {
 
     metrics_recorder_ = base::MakeRefCounted<PasswordFormMetricsRecorder>(
         true, client_.GetUkmSourceId(), /*pref_service=*/nullptr);
+
+    ON_CALL(client_, GetWebAuthnCredentialsDelegateForDriver)
+        .WillByDefault(Return(&webauthn_credentials_delegate_));
+    ON_CALL(client_, GetPasswordFeatureManager)
+        .WillByDefault(Return(&feature_manager_));
   }
 
  protected:
@@ -140,17 +146,20 @@ class PasswordFormFillingTest : public testing::Test {
   PasswordForm psl_saved_match_;
   scoped_refptr<PasswordFormMetricsRecorder> metrics_recorder_;
   std::vector<const PasswordForm*> federated_matches_;
+  MockWebAuthnCredentialsDelegate webauthn_credentials_delegate_;
+  testing::NiceMock<MockPasswordFeatureManager> feature_manager_;
 };
 
 TEST_F(PasswordFormFillingTest, NoSavedCredentials) {
   std::vector<const PasswordForm*> best_matches;
 
   EXPECT_CALL(driver_, InformNoSavedCredentials(_));
-  EXPECT_CALL(driver_, FillPasswordForm(_)).Times(0);
+  EXPECT_CALL(driver_, SetPasswordFillData(_)).Times(0);
 
   LikelyFormFilling likely_form_filling = SendFillInformationToRenderer(
       &client_, &driver_, observed_form_, best_matches, federated_matches_,
-      nullptr, metrics_recorder_.get());
+      nullptr, /*blocked_by_user=*/false, metrics_recorder_.get(),
+      /*webauthn_suggestions_available=*/false);
   EXPECT_EQ(LikelyFormFilling::kNoFilling, likely_form_filling);
 }
 
@@ -158,21 +167,28 @@ TEST_F(PasswordFormFillingTest, Autofill) {
   std::vector<const PasswordForm*> best_matches;
   best_matches.push_back(&saved_match_);
   PasswordForm another_saved_match = saved_match_;
-  another_saved_match.username_value += ASCIIToUTF16("1");
-  another_saved_match.password_value += ASCIIToUTF16("1");
+  another_saved_match.username_value += u"1";
+  another_saved_match.password_value += u"1";
   best_matches.push_back(&another_saved_match);
 
   EXPECT_CALL(driver_, InformNoSavedCredentials(_)).Times(0);
   PasswordFormFillData fill_data;
-  EXPECT_CALL(driver_, FillPasswordForm(_)).WillOnce(SaveArg<0>(&fill_data));
+  EXPECT_CALL(driver_, SetPasswordFillData(_)).WillOnce(SaveArg<0>(&fill_data));
   EXPECT_CALL(client_, PasswordWasAutofilled);
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+  EXPECT_CALL(feature_manager_, IsBiometricAuthenticationBeforeFillingEnabled)
+      .WillOnce(Return(true));
+#endif
 
   LikelyFormFilling likely_form_filling = SendFillInformationToRenderer(
       &client_, &driver_, observed_form_, best_matches, federated_matches_,
-      &saved_match_, metrics_recorder_.get());
+      &saved_match_, /*blocked_by_user=*/false, metrics_recorder_.get(),
+      /*webauthn_suggestions_available=*/false);
 
-  // On Android Touch To Fill will prevent autofilling credentials on page load.
-#if defined(OS_ANDROID)
+  // On Android, Mac and Win authentication will prevent autofilling credentials
+  // on page load. On iOS Reauth is always required.
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS) || BUILDFLAG(IS_MAC) || \
+    BUILDFLAG(IS_WIN)
   EXPECT_EQ(LikelyFormFilling::kFillOnAccountSelect, likely_form_filling);
   EXPECT_TRUE(fill_data.wait_for_username);
 #else
@@ -183,10 +199,8 @@ TEST_F(PasswordFormFillingTest, Autofill) {
   // Check that the message to the renderer (i.e. |fill_data|) is filled
   // correctly.
   EXPECT_EQ(observed_form_.url, fill_data.url);
-  EXPECT_EQ(observed_form_.username_element, fill_data.username_field.name);
-  EXPECT_EQ(saved_match_.username_value, fill_data.username_field.value);
-  EXPECT_EQ(observed_form_.password_element, fill_data.password_field.name);
-  EXPECT_EQ(saved_match_.password_value, fill_data.password_field.value);
+  EXPECT_EQ(saved_match_.username_value, fill_data.preferred_login.username);
+  EXPECT_EQ(saved_match_.password_value, fill_data.preferred_login.password);
 
   // Check that information about non-preferred best matches is filled.
   ASSERT_EQ(1u, fill_data.additional_logins.size());
@@ -226,7 +240,7 @@ TEST_F(PasswordFormFillingTest, TestFillOnLoadSuggestion) {
 
     PasswordForm observed_form = observed_form_;
     if (test_case.new_password_present) {
-      observed_form.new_password_element = ASCIIToUTF16("New Passwd");
+      observed_form.new_password_element = u"New Passwd";
       observed_form.new_password_element_renderer_id =
           autofill::FieldRendererId(125);
     }
@@ -236,20 +250,27 @@ TEST_F(PasswordFormFillingTest, TestFillOnLoadSuggestion) {
     }
 
     PasswordFormFillData fill_data;
-    EXPECT_CALL(driver_, FillPasswordForm(_)).WillOnce(SaveArg<0>(&fill_data));
+    EXPECT_CALL(driver_, SetPasswordFillData(_))
+        .WillOnce(SaveArg<0>(&fill_data));
     EXPECT_CALL(client_, PasswordWasAutofilled);
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+    EXPECT_CALL(feature_manager_, IsBiometricAuthenticationBeforeFillingEnabled)
+        .WillOnce(Return(true));
+#endif
 
     LikelyFormFilling likely_form_filling = SendFillInformationToRenderer(
         &client_, &driver_, observed_form, best_matches, federated_matches_,
-        &saved_match_, metrics_recorder_.get());
+        &saved_match_, /*blocked_by_user=*/false, metrics_recorder_.get(),
+        /*webauthn_suggestions_available=*/false);
 
     // In all cases where a current password exists, fill on load should be
     // permitted. Otherwise, the renderer will not fill anyway and return
     // kFillOnAccountSelect.
     if (test_case.current_password_present) {
-      // On Android Touch To Fill will prevent autofilling credentials on page
-      // load.
-#if defined(OS_ANDROID)
+      // On Android, Mac and Win authentication will prevent autofilling
+      // credentials on page load. On iOS Reauth is always required.
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS) || BUILDFLAG(IS_MAC) || \
+    BUILDFLAG(IS_WIN)
       EXPECT_EQ(LikelyFormFilling::kFillOnAccountSelect, likely_form_filling);
 #else
       EXPECT_EQ(LikelyFormFilling::kFillOnPageLoad, likely_form_filling);
@@ -260,13 +281,26 @@ TEST_F(PasswordFormFillingTest, TestFillOnLoadSuggestion) {
   }
 }
 
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+TEST_F(PasswordFormFillingTest, FillWithOnlyWebAuthnCredentials) {
+  observed_form_.accepts_webauthn_credentials = true;
+
+  EXPECT_CALL(client_, PasswordWasAutofilled);
+  LikelyFormFilling likely_form_filling = SendFillInformationToRenderer(
+      &client_, &driver_, observed_form_, {&saved_match_}, federated_matches_,
+      &saved_match_, /*blocked_by_user=*/false, metrics_recorder_.get(),
+      /*webauthn_suggestions_available=*/false);
+  EXPECT_EQ(LikelyFormFilling::kFillOnAccountSelect, likely_form_filling);
+}
+#endif
+
 // Test autofill when username and password are prefilled. Overwrite password
 // if server side classification thought the username was a placeholder or the
 // classification failed. Do not overwrite if username doesn't look like a
 // placeholder.
-// Skip for Android since it uses touch to fill (kAutofillTouchToFill), meaning
-// placeholders will never be overwritten.
-#if !defined(OS_ANDROID)
+// Skip for Android and iOS since it uses touch to fill, meaning placeholders
+// will never be overwritten.
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 TEST_F(PasswordFormFillingTest, TestFillOnLoadSuggestionWithPrefill) {
   const struct {
     const char* description;
@@ -302,19 +336,20 @@ TEST_F(PasswordFormFillingTest, TestFillOnLoadSuggestionWithPrefill) {
     // Set username to match preferred match
     observed_form.username_value = preferred_match.username_value;
     // Set a different password than saved
-    observed_form.password_value = ASCIIToUTF16("New Passwd");
+    observed_form.password_value = u"New Passwd";
     // Set classification results
     observed_form.server_side_classification_successful =
         test_case.server_side_classification_successful;
     observed_form.username_may_use_prefilled_placeholder =
         test_case.username_may_use_prefilled_placeholder;
 
-    EXPECT_CALL(driver_, FillPasswordForm);
+    EXPECT_CALL(driver_, SetPasswordFillData);
     EXPECT_CALL(client_, PasswordWasAutofilled);
 
     LikelyFormFilling likely_form_filling = SendFillInformationToRenderer(
         &client_, &driver_, observed_form, best_matches, federated_matches_,
-        &preferred_match, metrics_recorder_.get());
+        &preferred_match, /*blocked_by_user=*/false, metrics_recorder_.get(),
+        /*webauthn_suggestions_available=*/false);
 
     EXPECT_EQ(test_case.likely_form_filling, likely_form_filling);
   }
@@ -326,23 +361,26 @@ TEST_F(PasswordFormFillingTest, AutofillPSLMatch) {
 
   EXPECT_CALL(driver_, InformNoSavedCredentials(_)).Times(0);
   PasswordFormFillData fill_data;
-  EXPECT_CALL(driver_, FillPasswordForm(_)).WillOnce(SaveArg<0>(&fill_data));
+  EXPECT_CALL(driver_, SetPasswordFillData(_)).WillOnce(SaveArg<0>(&fill_data));
   EXPECT_CALL(client_, PasswordWasAutofilled);
 
   LikelyFormFilling likely_form_filling = SendFillInformationToRenderer(
       &client_, &driver_, observed_form_, best_matches, federated_matches_,
-      &psl_saved_match_, metrics_recorder_.get());
+      &psl_saved_match_, /*blocked_by_user=*/false, metrics_recorder_.get(),
+      /*webauthn_suggestions_available=*/false);
   EXPECT_EQ(LikelyFormFilling::kFillOnAccountSelect, likely_form_filling);
 
   // Check that the message to the renderer (i.e. |fill_data|) is filled
   // correctly.
   EXPECT_EQ(observed_form_.url, fill_data.url);
   EXPECT_TRUE(fill_data.wait_for_username);
-  EXPECT_EQ(psl_saved_match_.signon_realm, fill_data.preferred_realm);
-  EXPECT_EQ(observed_form_.username_element, fill_data.username_field.name);
-  EXPECT_EQ(saved_match_.username_value, fill_data.username_field.value);
-  EXPECT_EQ(observed_form_.password_element, fill_data.password_field.name);
-  EXPECT_EQ(saved_match_.password_value, fill_data.password_field.value);
+  EXPECT_EQ(observed_form_.username_element_renderer_id,
+            fill_data.username_element_renderer_id);
+  EXPECT_EQ(observed_form_.password_element_renderer_id,
+            fill_data.password_element_renderer_id);
+  EXPECT_EQ(psl_saved_match_.signon_realm, fill_data.preferred_login.realm);
+  EXPECT_EQ(saved_match_.username_value, fill_data.preferred_login.username);
+  EXPECT_EQ(saved_match_.password_value, fill_data.preferred_login.password);
 }
 
 TEST_F(PasswordFormFillingTest, NoAutofillOnHttp) {
@@ -356,36 +394,127 @@ TEST_F(PasswordFormFillingTest, NoAutofillOnHttp) {
   saved_http_match.action = GURL("http://accounts.google.com/a/ServiceLogin");
   saved_http_match.signon_realm = "http://accounts.google.com";
 
+  ON_CALL(client_, GetLastCommittedOrigin)
+      .WillByDefault(
+          Return(Origin::Create(GURL(observed_http_form.signon_realm))));
+
   ASSERT_FALSE(GURL(saved_http_match.signon_realm).SchemeIsCryptographic());
   std::vector<const PasswordForm*> best_matches = {&saved_http_match};
 
+#if !BUILDFLAG(IS_IOS) && !defined(ANDROID)
   EXPECT_CALL(client_, IsCommittedMainFrameSecure).WillOnce(Return(false));
+#endif
   LikelyFormFilling likely_form_filling = SendFillInformationToRenderer(
       &client_, &driver_, observed_http_form, best_matches, federated_matches_,
-      &saved_http_match, metrics_recorder_.get());
+      &saved_http_match, /*blocked_by_user=*/false, metrics_recorder_.get(),
+      /*webauthn_suggestions_available=*/false);
   EXPECT_EQ(LikelyFormFilling::kFillOnAccountSelect, likely_form_filling);
 }
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 TEST_F(PasswordFormFillingTest, TouchToFill) {
   std::vector<const PasswordForm*> best_matches = {&saved_match_};
 
-  for (bool enable_touch_to_fill : {false, true}) {
-    SCOPED_TRACE(testing::Message() << "Enable Touch To Fill: "
-                                    << std::boolalpha << enable_touch_to_fill);
-    base::test::ScopedFeatureList features;
-    features.InitWithFeatureState(autofill::features::kAutofillTouchToFill,
-                                  enable_touch_to_fill);
-
-    LikelyFormFilling likely_form_filling = SendFillInformationToRenderer(
-        &client_, &driver_, observed_form_, best_matches, federated_matches_,
-        &saved_match_, metrics_recorder_.get());
-    EXPECT_EQ(enable_touch_to_fill ? LikelyFormFilling::kFillOnAccountSelect
-                                   : LikelyFormFilling::kFillOnPageLoad,
-              likely_form_filling);
-  }
+  LikelyFormFilling likely_form_filling = SendFillInformationToRenderer(
+      &client_, &driver_, observed_form_, best_matches, federated_matches_,
+      &saved_match_, /*blocked_by_user=*/false, metrics_recorder_.get(),
+      /*webauthn_suggestions_available=*/false);
+  EXPECT_EQ(LikelyFormFilling::kFillOnAccountSelect, likely_form_filling);
 }
 #endif
+
+TEST_F(PasswordFormFillingTest, AutofillAffiliatedWebMatch) {
+  base::HistogramTester histogram_tester;
+  // Create a match from the database that matches using affiliation.
+  PasswordForm affiliated_match;
+  affiliated_match.url = GURL("https://fooo.com/");
+  affiliated_match.username_value = u"test@gmail.com";
+  affiliated_match.password_value = u"test1";
+  affiliated_match.signon_realm = "https://fooo.com/";
+  affiliated_match.is_affiliation_based_match = true;
+
+  std::vector<const PasswordForm*> best_matches = {&affiliated_match};
+
+  EXPECT_CALL(driver_, InformNoSavedCredentials).Times(0);
+  PasswordFormFillData fill_data;
+  EXPECT_CALL(driver_, SetPasswordFillData).WillOnce(SaveArg<0>(&fill_data));
+  EXPECT_CALL(client_, PasswordWasAutofilled);
+
+  LikelyFormFilling likely_form_filling = SendFillInformationToRenderer(
+      &client_, &driver_, observed_form_, best_matches, federated_matches_,
+      &affiliated_match, /*blocked_by_user=*/false, metrics_recorder_.get(),
+      /*webauthn_suggestions_available=*/false);
+  EXPECT_EQ(LikelyFormFilling::kFillOnAccountSelect, likely_form_filling);
+
+  // Check that the message to the renderer (i.e. |fill_data|) is filled
+  // correctly.
+  EXPECT_EQ(observed_form_.url, fill_data.url);
+  EXPECT_TRUE(fill_data.wait_for_username);
+  EXPECT_EQ(affiliated_match.signon_realm, fill_data.preferred_login.realm);
+  EXPECT_EQ(saved_match_.username_value, fill_data.preferred_login.username);
+  EXPECT_EQ(saved_match_.password_value, fill_data.preferred_login.password);
+
+  histogram_tester.ExpectUniqueSample(
+      "PasswordManager.MatchedFormType",
+      PasswordFormMetricsRecorder::MatchedFormType::kAffiliatedWebsites, 1);
+}
+
+TEST_F(PasswordFormFillingTest,
+       AccountStorePromoWhenNoCredentialSavedAndSavingAndFillingEnabled) {
+  ON_CALL(client_, IsSavingAndFillingEnabled).WillByDefault(Return(true));
+  ON_CALL(*client_.GetPasswordFeatureManager(), ShouldShowAccountStorageOptIn())
+      .WillByDefault(Return(true));
+
+  std::vector<const PasswordForm*> best_matches;
+  EXPECT_CALL(driver_, InformNoSavedCredentials(
+                           /*should_show_popup_without_passwords=*/true));
+  SendFillInformationToRenderer(
+      &client_, &driver_, observed_form_, best_matches, federated_matches_,
+      nullptr, /*blocked_by_user=*/false, metrics_recorder_.get(),
+      /*webauthn_suggestions_available=*/false);
+}
+
+TEST_F(PasswordFormFillingTest,
+       NoAccountStorePromoWhenNoCredentialSavedAndSavingAndFillingDisabled) {
+  ON_CALL(client_, IsSavingAndFillingEnabled).WillByDefault(Return(false));
+  ON_CALL(*client_.GetPasswordFeatureManager(), ShouldShowAccountStorageOptIn())
+      .WillByDefault(Return(true));
+
+  std::vector<const PasswordForm*> best_matches;
+  EXPECT_CALL(driver_, InformNoSavedCredentials(
+                           /*should_show_popup_without_passwords=*/false));
+  SendFillInformationToRenderer(
+      &client_, &driver_, observed_form_, best_matches, federated_matches_,
+      nullptr, /*blocked_by_user=*/false, metrics_recorder_.get(),
+      /*webauthn_suggestions_available=*/false);
+}
+
+// Exclude Android and iOS, because there credentials are not filled on
+// the page load in any case.
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+TEST_F(PasswordFormFillingTest, NoFillOnPageloadInCrossOriginIframe) {
+  base::HistogramTester histogram_tester;
+
+  observed_form_.url = GURL("https://some_website.com");
+  saved_match_.url = GURL("https://some_website.com");
+  ON_CALL(client_, GetLastCommittedOrigin)
+      .WillByDefault(
+          Return(Origin::Create(GURL("https://another_website.com"))));
+
+  std::vector<const PasswordForm*> best_matches = {&saved_match_};
+  std::vector<const PasswordForm*> federated_matches = {};
+
+  LikelyFormFilling likely_form_filling = SendFillInformationToRenderer(
+      &client_, &driver_, observed_form_, best_matches, federated_matches,
+      &saved_match_, /*blocked_by_user=*/false, metrics_recorder_.get(),
+      /*webauthn_suggestions_available=*/false);
+  EXPECT_EQ(LikelyFormFilling::kFillOnAccountSelect, likely_form_filling);
+  histogram_tester.ExpectUniqueSample(
+      "PasswordManager.FirstWaitForUsernameReason",
+      PasswordFormMetricsRecorder::WaitForUsernameReason::kCrossOriginIframe,
+      1);
+}
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
 // Tests that the when there is a single preferred match, and no extra
 // matches, the PasswordFormFillData is filled in correctly.
@@ -394,11 +523,11 @@ TEST(PasswordFormFillDataTest, TestSinglePreferredMatch) {
   PasswordForm form_on_page;
   form_on_page.url = GURL("https://foo.com/");
   form_on_page.action = GURL("https://foo.com/login");
-  form_on_page.username_element = ASCIIToUTF16("username");
-  form_on_page.username_value = ASCIIToUTF16(kPreferredUsername);
-  form_on_page.password_element = ASCIIToUTF16("password");
-  form_on_page.password_value = ASCIIToUTF16(kPreferredPassword);
-  form_on_page.submit_element = ASCIIToUTF16("");
+  form_on_page.username_element = u"username";
+  form_on_page.username_value = kPreferredUsername;
+  form_on_page.password_element = u"password";
+  form_on_page.password_value = kPreferredPassword;
+  form_on_page.submit_element = u"";
   form_on_page.signon_realm = "https://foo.com/";
   form_on_page.scheme = PasswordForm::Scheme::kHtml;
 
@@ -406,28 +535,30 @@ TEST(PasswordFormFillDataTest, TestSinglePreferredMatch) {
   PasswordForm preferred_match;
   preferred_match.url = GURL("https://foo.com/");
   preferred_match.action = GURL("https://foo.com/login");
-  preferred_match.username_element = ASCIIToUTF16("username");
-  preferred_match.username_value = ASCIIToUTF16(kPreferredUsername);
-  preferred_match.password_element = ASCIIToUTF16("password");
-  preferred_match.password_value = ASCIIToUTF16(kPreferredPassword);
-  preferred_match.submit_element = ASCIIToUTF16("");
+  preferred_match.username_element = u"username";
+  preferred_match.username_value = kPreferredUsername;
+  preferred_match.password_element = u"password";
+  preferred_match.password_value = kPreferredPassword;
+  preferred_match.submit_element = u"";
   preferred_match.signon_realm = "https://foo.com/";
   preferred_match.scheme = PasswordForm::Scheme::kHtml;
 
+  Origin page_origin = Origin::Create(GURL("https://foo.com/"));
+
   std::vector<const PasswordForm*> matches;
 
-  PasswordFormFillData result =
-      CreatePasswordFormFillData(form_on_page, matches, preferred_match, true);
+  PasswordFormFillData result = CreatePasswordFormFillData(
+      form_on_page, matches, preferred_match, page_origin, true);
 
   // |wait_for_username| should reflect the |wait_for_username| argument passed
   // to the constructor, which in this case is true.
   EXPECT_TRUE(result.wait_for_username);
   // The preferred realm should be empty since it's the same as the realm of
   // the form.
-  EXPECT_EQ(std::string(), result.preferred_realm);
+  EXPECT_EQ(std::string(), result.preferred_login.realm);
 
-  PasswordFormFillData result2 =
-      CreatePasswordFormFillData(form_on_page, matches, preferred_match, false);
+  PasswordFormFillData result2 = CreatePasswordFormFillData(
+      form_on_page, matches, preferred_match, page_origin, false);
 
   // |wait_for_username| should reflect the |wait_for_username| argument passed
   // to the constructor, which in this case is false.
@@ -443,11 +574,11 @@ TEST(PasswordFormFillDataTest, TestPublicSuffixDomainMatching) {
   PasswordForm form_on_page;
   form_on_page.url = GURL("https://foo.com/");
   form_on_page.action = GURL("https://foo.com/login");
-  form_on_page.username_element = ASCIIToUTF16("username");
-  form_on_page.username_value = ASCIIToUTF16(kPreferredUsername);
-  form_on_page.password_element = ASCIIToUTF16("password");
-  form_on_page.password_value = ASCIIToUTF16(kPreferredPassword);
-  form_on_page.submit_element = ASCIIToUTF16("");
+  form_on_page.username_element = u"username";
+  form_on_page.username_value = kPreferredUsername;
+  form_on_page.password_element = u"password";
+  form_on_page.password_value = kPreferredPassword;
+  form_on_page.submit_element = u"";
   form_on_page.signon_realm = "https://foo.com/";
   form_on_page.scheme = PasswordForm::Scheme::kHtml;
 
@@ -455,11 +586,11 @@ TEST(PasswordFormFillDataTest, TestPublicSuffixDomainMatching) {
   PasswordForm preferred_match;
   preferred_match.url = GURL("https://mobile.foo.com/");
   preferred_match.action = GURL("https://mobile.foo.com/login");
-  preferred_match.username_element = ASCIIToUTF16("username");
-  preferred_match.username_value = ASCIIToUTF16(kPreferredUsername);
-  preferred_match.password_element = ASCIIToUTF16("password");
-  preferred_match.password_value = ASCIIToUTF16(kPreferredPassword);
-  preferred_match.submit_element = ASCIIToUTF16("");
+  preferred_match.username_element = u"username";
+  preferred_match.username_value = kPreferredUsername;
+  preferred_match.password_element = u"password";
+  preferred_match.password_value = kPreferredPassword;
+  preferred_match.submit_element = u"";
   preferred_match.signon_realm = "https://foo.com/";
   preferred_match.is_public_suffix_match = true;
   preferred_match.scheme = PasswordForm::Scheme::kHtml;
@@ -469,11 +600,11 @@ TEST(PasswordFormFillDataTest, TestPublicSuffixDomainMatching) {
   PasswordForm exact_match;
   exact_match.url = GURL("https://foo.com/");
   exact_match.action = GURL("https://foo.com/login");
-  exact_match.username_element = ASCIIToUTF16("username");
-  exact_match.username_value = ASCIIToUTF16("test1@gmail.com");
-  exact_match.password_element = ASCIIToUTF16("password");
-  exact_match.password_value = ASCIIToUTF16(kPreferredPassword);
-  exact_match.submit_element = ASCIIToUTF16("");
+  exact_match.username_element = u"username";
+  exact_match.username_value = u"test1@gmail.com";
+  exact_match.password_element = u"password";
+  exact_match.password_value = kPreferredPassword;
+  exact_match.submit_element = u"";
   exact_match.signon_realm = "https://foo.com/";
   exact_match.scheme = PasswordForm::Scheme::kHtml;
 
@@ -482,25 +613,27 @@ TEST(PasswordFormFillDataTest, TestPublicSuffixDomainMatching) {
   PasswordForm public_suffix_match;
   public_suffix_match.url = GURL("https://foo.com/");
   public_suffix_match.action = GURL("https://foo.com/login");
-  public_suffix_match.username_element = ASCIIToUTF16("username");
-  public_suffix_match.username_value = ASCIIToUTF16("test2@gmail.com");
-  public_suffix_match.password_element = ASCIIToUTF16("password");
-  public_suffix_match.password_value = ASCIIToUTF16(kPreferredPassword);
-  public_suffix_match.submit_element = ASCIIToUTF16("");
+  public_suffix_match.username_element = u"username";
+  public_suffix_match.username_value = u"test2@gmail.com";
+  public_suffix_match.password_element = u"password";
+  public_suffix_match.password_value = kPreferredPassword;
+  public_suffix_match.submit_element = u"";
   public_suffix_match.is_public_suffix_match = true;
   public_suffix_match.signon_realm = "https://foo.com/";
   public_suffix_match.scheme = PasswordForm::Scheme::kHtml;
+
+  Origin page_origin = Origin::Create(GURL("https://foo.com/"));
 
   // Add one exact match and one public suffix match.
   std::vector<const PasswordForm*> matches = {&exact_match,
                                               &public_suffix_match};
 
-  PasswordFormFillData result =
-      CreatePasswordFormFillData(form_on_page, matches, preferred_match, true);
+  PasswordFormFillData result = CreatePasswordFormFillData(
+      form_on_page, matches, preferred_match, page_origin, true);
   EXPECT_TRUE(result.wait_for_username);
   // The preferred realm should match the signon realm from the
   // preferred match so the user can see where the result came from.
-  EXPECT_EQ(preferred_match.signon_realm, result.preferred_realm);
+  EXPECT_EQ(preferred_match.signon_realm, result.preferred_login.realm);
 
   // The realm of the exact match should be empty.
   PasswordFormFillData::LoginCollection::const_iterator iter =
@@ -524,19 +657,19 @@ TEST(PasswordFormFillDataTest, TestAffiliationMatch) {
   PasswordForm form_on_page;
   form_on_page.url = GURL("https://foo.com/");
   form_on_page.action = GURL("https://foo.com/login");
-  form_on_page.username_element = ASCIIToUTF16("username");
-  form_on_page.username_value = ASCIIToUTF16(kPreferredUsername);
-  form_on_page.password_element = ASCIIToUTF16("password");
-  form_on_page.password_value = ASCIIToUTF16(kPreferredPassword);
-  form_on_page.submit_element = ASCIIToUTF16("");
+  form_on_page.username_element = u"username";
+  form_on_page.username_value = kPreferredUsername;
+  form_on_page.password_element = u"password";
+  form_on_page.password_value = kPreferredPassword;
+  form_on_page.submit_element = u"";
   form_on_page.signon_realm = "https://foo.com/";
   form_on_page.scheme = PasswordForm::Scheme::kHtml;
 
   // Create a match from the database that matches using affiliation.
   PasswordForm preferred_match;
   preferred_match.url = GURL("android://hash@foo.com/");
-  preferred_match.username_value = ASCIIToUTF16(kPreferredUsername);
-  preferred_match.password_value = ASCIIToUTF16(kPreferredPassword);
+  preferred_match.username_value = kPreferredUsername;
+  preferred_match.password_value = kPreferredPassword;
   preferred_match.signon_realm = "android://hash@foo.com/";
   preferred_match.is_affiliation_based_match = true;
 
@@ -545,11 +678,11 @@ TEST(PasswordFormFillDataTest, TestAffiliationMatch) {
   PasswordForm exact_match;
   exact_match.url = GURL("https://foo.com/");
   exact_match.action = GURL("https://foo.com/login");
-  exact_match.username_element = ASCIIToUTF16("username");
-  exact_match.username_value = ASCIIToUTF16("test1@gmail.com");
-  exact_match.password_element = ASCIIToUTF16("password");
-  exact_match.password_value = ASCIIToUTF16(kPreferredPassword);
-  exact_match.submit_element = ASCIIToUTF16("");
+  exact_match.username_element = u"username";
+  exact_match.username_value = u"test1@gmail.com";
+  exact_match.password_element = u"password";
+  exact_match.password_value = kPreferredPassword;
+  exact_match.submit_element = u"";
   exact_match.signon_realm = "https://foo.com/";
   exact_match.scheme = PasswordForm::Scheme::kHtml;
 
@@ -557,21 +690,23 @@ TEST(PasswordFormFillDataTest, TestAffiliationMatch) {
   // |is_public_suffix_match| == true.
   PasswordForm affiliated_match;
   affiliated_match.url = GURL("android://hash@foo1.com/");
-  affiliated_match.username_value = ASCIIToUTF16("test2@gmail.com");
-  affiliated_match.password_value = ASCIIToUTF16(kPreferredPassword);
+  affiliated_match.username_value = u"test2@gmail.com";
+  affiliated_match.password_value = kPreferredPassword;
   affiliated_match.is_affiliation_based_match = true;
   affiliated_match.signon_realm = "https://foo1.com/";
   affiliated_match.scheme = PasswordForm::Scheme::kHtml;
 
+  Origin page_origin = Origin::Create(GURL("https://foo.com/"));
+
   // Add one exact match and one affiliation based match.
   std::vector<const PasswordForm*> matches = {&exact_match, &affiliated_match};
 
-  PasswordFormFillData result =
-      CreatePasswordFormFillData(form_on_page, matches, preferred_match, false);
+  PasswordFormFillData result = CreatePasswordFormFillData(
+      form_on_page, matches, preferred_match, page_origin, false);
   EXPECT_FALSE(result.wait_for_username);
   // The preferred realm should match the signon realm from the
   // preferred match so the user can see where the result came from.
-  EXPECT_EQ(preferred_match.signon_realm, result.preferred_realm);
+  EXPECT_EQ(preferred_match.signon_realm, result.preferred_login.realm);
 
   // The realm of the exact match should be empty.
   PasswordFormFillData::LoginCollection::const_iterator iter =
@@ -592,32 +727,36 @@ TEST(PasswordFormFillDataTest, RendererIDs) {
   PasswordForm form_on_page;
   form_on_page.url = GURL("https://foo.com/");
   form_on_page.action = GURL("https://foo.com/login");
-  form_on_page.username_element = ASCIIToUTF16("username");
-  form_on_page.password_element = ASCIIToUTF16("password");
+  form_on_page.username_element = u"username";
+  form_on_page.password_element = u"password";
   form_on_page.username_may_use_prefilled_placeholder = true;
   form_on_page.server_side_classification_successful = true;
 
   // Create an exact match in the database.
   PasswordForm preferred_match = form_on_page;
-  preferred_match.username_value = ASCIIToUTF16(kPreferredUsername);
-  preferred_match.password_value = ASCIIToUTF16(kPreferredPassword);
+  preferred_match.username_value = kPreferredUsername;
+  preferred_match.password_value = kPreferredPassword;
 
   // Set renderer id related fields.
   FormData form_data;
+  form_data.host_frame = autofill::LocalFrameToken(
+      base::UnguessableToken::CreateForTesting(98765, 43210));
   form_data.unique_renderer_id = FormRendererId(42);
   form_data.is_form_tag = true;
   form_on_page.form_data = form_data;
   form_on_page.username_element_renderer_id = FieldRendererId(123);
   form_on_page.password_element_renderer_id = FieldRendererId(456);
 
-  PasswordFormFillData result =
-      CreatePasswordFormFillData(form_on_page, {}, preferred_match, true);
+  Origin page_origin = Origin::Create(GURL("https://foo.com/"));
+
+  PasswordFormFillData result = CreatePasswordFormFillData(
+      form_on_page, {}, preferred_match, page_origin, true);
 
   EXPECT_EQ(form_data.unique_renderer_id, result.form_renderer_id);
   EXPECT_EQ(form_on_page.username_element_renderer_id,
-            result.username_field.unique_renderer_id);
+            result.username_element_renderer_id);
   EXPECT_EQ(form_on_page.password_element_renderer_id,
-            result.password_field.unique_renderer_id);
+            result.password_element_renderer_id);
   EXPECT_TRUE(result.username_may_use_prefilled_placeholder);
 }
 
@@ -634,70 +773,96 @@ TEST(PasswordFormFillDataTest, NoPasswordElement) {
 
   // Create an exact match in the database.
   PasswordForm preferred_match = form_on_page;
-  preferred_match.username_value = ASCIIToUTF16(kPreferredUsername);
-  preferred_match.password_value = ASCIIToUTF16(kPreferredPassword);
+  preferred_match.username_value = kPreferredUsername;
+  preferred_match.password_value = kPreferredPassword;
 
   FormData form_data;
   form_data.unique_renderer_id = FormRendererId(42);
   form_data.is_form_tag = true;
   form_on_page.form_data = form_data;
 
+  Origin page_origin = Origin::Create(GURL("https://foo.com/"));
+
   PasswordFormFillData result = CreatePasswordFormFillData(
-      form_on_page, {} /* matches */, preferred_match, true);
+      form_on_page, {} /* matches */, preferred_match, page_origin, true);
 
   // Check that nor username nor password fields are set.
-  EXPECT_TRUE(result.username_field.unique_renderer_id.is_null());
-  EXPECT_TRUE(result.password_field.unique_renderer_id.is_null());
+  EXPECT_TRUE(result.username_element_renderer_id.is_null());
+  EXPECT_TRUE(result.password_element_renderer_id.is_null());
 }
 
-// Tests that matches are retained without duplicates.
-TEST(PasswordFormFillDataTest, DeduplicatesFillData) {
+// Tests that the constructing a PasswordFormFillData behaves correctly when
+// there is a preferred match that was found using affiliation based matching,
+// with app_display_name.
+TEST(PasswordFormFillDataTest, TestAffiliationWithAppName) {
   // Create the current form on the page.
-  PasswordForm form;
-  form.username_element = ASCIIToUTF16("username");
-  form.password_element = ASCIIToUTF16("password");
+  PasswordForm form_on_page;
+  form_on_page.url = GURL("https://foo.com/");
+  form_on_page.action = GURL("https://foo.com/login");
+  form_on_page.username_element = u"username";
+  form_on_page.username_value = kPreferredUsername;
+  form_on_page.password_element = u"password";
+  form_on_page.password_value = kPreferredPassword;
+  form_on_page.signon_realm = "https://foo.com/";
+  form_on_page.scheme = PasswordForm::Scheme::kHtml;
 
-  // Create an exact match in the database.
-  PasswordForm preferred_match = form;
-  preferred_match.username_value = ASCIIToUTF16(kPreferredUsername);
-  preferred_match.password_value = ASCIIToUTF16(kPreferredPassword);
-  preferred_match.in_store = Store::kProfileStore;
+  // Create a match that was matched using affiliation matching, so
+  // |is_affiliation_based_match| == true.
+  PasswordForm affiliated_match;
+  affiliated_match.url = GURL("android://hash@foo1.com/");
+  affiliated_match.username_value = u"test2@gmail.com";
+  affiliated_match.password_value = kPreferredPassword;
+  affiliated_match.is_affiliation_based_match = true;
+  affiliated_match.app_display_name = "Foo";
+  affiliated_match.signon_realm = "https://foo1.com/";
+  affiliated_match.scheme = PasswordForm::Scheme::kHtml;
 
-  // Create two discarded and one retained duplicate.
-  const PasswordForm duplicate_of_preferred =
-      CreateForm(kPreferredUsername, kPreferredPassword, Store::kProfileStore);
-  const PasswordForm account_duplicate_of_preferred =
-      CreateForm(kPreferredUsername, kPreferredPassword, Store::kAccountStore);
-  const PasswordForm non_duplicate_of_preferred = CreateForm(
-      kPreferredUsername, kPreferredAlternatePassword, Store::kAccountStore);
+  Origin page_origin = Origin::Create(GURL("https://foo.com/"));
 
-  // Create a local password and its discarded duplicate.
-  const PasswordForm local = CreateForm(
-      kDuplicateLocalUsername, kDuplicateLocalPassword, Store::kProfileStore);
-  const PasswordForm duplicate_of_local = local;
-
-  // Create a synced password and its discarded local duplicate.
-  const PasswordForm remote =
-      CreateForm(kSyncedUsername, kSyncedPassword, Store::kProfileStore);
-  const PasswordForm duplicate_of_remote =
-      CreateForm(kSyncedUsername, kSyncedPassword, Store::kAccountStore);
+  // Add one exact match and one affiliation based match.
+  std::vector<const PasswordForm*> matches = {&affiliated_match};
 
   PasswordFormFillData result = CreatePasswordFormFillData(
-      form,
-      {&duplicate_of_preferred, &account_duplicate_of_preferred,
-       &non_duplicate_of_preferred, &local, &duplicate_of_local, &remote,
-       &duplicate_of_remote},
-      preferred_match, true);
+      form_on_page, matches, affiliated_match, page_origin, false);
+  EXPECT_FALSE(result.wait_for_username);
+  // The preferred realm should match the app name from the affiliated match so
+  // the user can see and understand where the result came from.
+  EXPECT_EQ(affiliated_match.app_display_name, result.preferred_login.realm);
+}
 
-  EXPECT_EQ(preferred_match.username_value, result.username_field.value);
-  EXPECT_EQ(preferred_match.password_value, result.password_field.value);
-  EXPECT_TRUE(result.uses_account_store);
-  EXPECT_THAT(
-      result.additional_logins,
-      testing::ElementsAre(
-          IsLogin(kPreferredUsername, kPreferredAlternatePassword, true),
-          IsLogin(kDuplicateLocalUsername, kDuplicateLocalPassword, false),
-          IsLogin(kSyncedUsername, kSyncedPassword, true)));
+// Tests that the constructing a PasswordFormFillData behaves correctly inside
+// cross-origin iframes.
+TEST(PasswordFormFillDataTest, TestCrossOriginIframe) {
+  // Create the current form on the page.
+  PasswordForm form_on_page;
+  form_on_page.url = GURL("https://foo.com/");
+  form_on_page.action = GURL("https://foo.com/login");
+  form_on_page.username_element = u"username";
+  form_on_page.username_value = kPreferredUsername;
+  form_on_page.password_element = u"password";
+  form_on_page.password_value = kPreferredPassword;
+  form_on_page.signon_realm = "https://foo.com/";
+  form_on_page.submit_element = u"";
+  form_on_page.scheme = PasswordForm::Scheme::kHtml;
+
+  // Create the current form on the page.
+  PasswordForm additional_match = form_on_page;
+  additional_match.username_value = u"test2@gmail.com";
+
+  Origin page_origin = Origin::Create(GURL("https://chromium.com/"));
+
+  // Add one exact match and one affiliation based match.
+  std::vector<const PasswordForm*> matches = {&additional_match};
+
+  PasswordFormFillData result = CreatePasswordFormFillData(
+      form_on_page, matches, form_on_page, page_origin, false);
+  EXPECT_FALSE(result.wait_for_username);
+
+  // The preferred realm should match the form signon_realm.
+  EXPECT_EQ(result.preferred_login.realm, form_on_page.signon_realm);
+  // The realm of the additional login match should match the form
+  // signon_realm.
+  EXPECT_EQ(result.additional_logins[0].realm, additional_match.signon_realm);
 }
 
 }  // namespace password_manager

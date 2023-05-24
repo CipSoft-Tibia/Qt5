@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "base/memory/ptr_util.h"
+#include "third_party/blink/renderer/core/css/css_value_clamping_utils.h"
 #include "third_party/blink/renderer/core/css/resolver/style_builder_converter.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/core/style/style_offset_rotation.h"
@@ -173,8 +174,9 @@ void CSSOffsetRotateInterpolationType::ApplyStandardPropertyValue(
     const InterpolableValue& interpolable_value,
     const NonInterpolableValue* non_interpolable_value,
     StyleResolverState& state) const {
-  state.Style()->SetOffsetRotate(StyleOffsetRotation(
-      clampTo<float>(To<InterpolableNumber>(interpolable_value).Value()),
+  state.StyleBuilder().SetOffsetRotate(StyleOffsetRotation(
+      CSSValueClampingUtils::ClampAngle(
+          To<InterpolableNumber>(interpolable_value).Value()),
       To<CSSOffsetRotationNonInterpolableValue>(*non_interpolable_value)
           .RotationType()));
 }

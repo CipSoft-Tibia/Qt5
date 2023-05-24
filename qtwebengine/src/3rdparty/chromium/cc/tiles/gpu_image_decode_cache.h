@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,16 +11,20 @@
 #include <utility>
 #include <vector>
 
-#include "base/containers/mru_cache.h"
+#include "base/containers/flat_map.h"
+#include "base/containers/lru_cache.h"
 #include "base/logging.h"
 #include "base/memory/discardable_memory.h"
 #include "base/memory/memory_pressure_listener.h"
-#include "base/optional.h"
+#include "base/memory/raw_ptr.h"
 #include "base/synchronization/lock.h"
+#include "base/time/time.h"
 #include "base/trace_event/memory_dump_provider.h"
 #include "cc/cc_export.h"
 #include "cc/paint/image_transfer_cache_entry.h"
 #include "cc/tiles/image_decode_cache.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/skia/include/core/SkImage.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
 #include "third_party/skia/include/core/SkYUVAInfo.h"
 #include "third_party/skia/include/gpu/gl/GrGLTypes.h"
@@ -30,6 +34,8 @@ class RasterContextProvider;
 }
 
 namespace cc {
+
+class RasterDarkModeFilter;
 
 // OVERVIEW:
 //
@@ -141,7 +147,7 @@ class CC_EXPORT GpuImageDecodeCache
                                SkColorType color_type,
                                size_t max_working_set_bytes,
                                int max_texture_size,
-                               PaintImage::GeneratorClientId client_id);
+                               RasterDarkModeFilter* const dark_mode_filter);
   ~GpuImageDecodeCache() override;
 
   // Returns the GL texture ID backing the given SkImage.
@@ -150,18 +156,22 @@ class CC_EXPORT GpuImageDecodeCache
   // ImageDecodeCache overrides.
 
   // Finds the existing uploaded image for the provided DrawImage. Creates an
-  // upload task to upload the image if an exsiting image does not exist.
-  TaskResult GetTaskForImageAndRef(const DrawImage& image,
+  // upload task to upload the image if an existing image does not exist.
+  // See |GetTaskForImageAndRefInternal| to learn about the |client_id|.
+  TaskResult GetTaskForImageAndRef(ClientId client_id,
+                                   const DrawImage& image,
                                    const TracingInfo& tracing_info) override;
+  // See |GetTaskForImageAndRefInternal| to learn about the |client_id|.
   TaskResult GetOutOfRasterDecodeTaskForImageAndRef(
+      ClientId client_id,
       const DrawImage& image) override;
   void UnrefImage(const DrawImage& image) override;
   DecodedDrawImage GetDecodedImageForDraw(const DrawImage& draw_image) override;
   void DrawWithImageFinished(const DrawImage& image,
                              const DecodedDrawImage& decoded_image) override;
   void ReduceCacheUsage() override;
-  void SetShouldAggressivelyFreeResources(
-      bool aggressively_free_resources) override;
+  void SetShouldAggressivelyFreeResources(bool aggressively_free_resources,
+                                          bool context_lock_acquired) override;
   void ClearCache() override;
   size_t GetMaximumMemoryLimitBytes() const override;
   bool UseCacheForDrawImage(const DrawImage& image) const override;
@@ -205,12 +215,15 @@ class CC_EXPORT GpuImageDecodeCache
   sk_sp<SkImage> GetSWImageDecodeForTesting(const DrawImage& image);
   sk_sp<SkImage> GetUploadedPlaneForTesting(const DrawImage& draw_image,
                                             YUVIndex index);
+  size_t GetDarkModeImageCacheSizeForTesting(const DrawImage& draw_image);
   size_t paint_image_entries_count_for_testing() const {
     return paint_image_entries_.size();
   }
+  bool NeedsDarkModeFilterForTesting(const DrawImage& draw_image);
 
  private:
   enum class DecodedDataMode { kGpu, kCpu, kTransferCache };
+  using ImageTaskMap = base::flat_map<ClientId, scoped_refptr<TileTask>>;
 
   // Stores stats tracked by both DecodedImageData and UploadedImageData.
   struct ImageDataBase {
@@ -229,7 +242,7 @@ class CC_EXPORT GpuImageDecodeCache
 
     uint32_t ref_count = 0;
     // If non-null, this is the pending task to populate this data.
-    scoped_refptr<TileTask> task;
+    ImageTaskMap task_map;
 
    protected:
     using YUVSkImages = std::array<sk_sp<SkImage>, kNumYUVPlanes>;
@@ -305,7 +318,18 @@ class CC_EXPORT GpuImageDecodeCache
     bool decode_failure = false;
     // Similar to |task|, but only is generated if there is no associated upload
     // generated for this task (ie, this is an out-of-raster request for decode.
-    scoped_refptr<TileTask> stand_alone_task;
+    ImageTaskMap stand_alone_task_map;
+
+    // Dark mode color filter cache.
+    struct SkIRectCompare {
+      bool operator()(const SkIRect& a, const SkIRect& b) const {
+        return a.fLeft < b.fLeft || a.fTop < b.fTop || a.fRight < b.fRight ||
+               a.fBottom < b.fBottom;
+      }
+    };
+
+    base::flat_map<SkIRect, sk_sp<SkColorFilter>, SkIRectCompare>
+        dark_mode_color_filter_cache;
 
    private:
     void ReportUsageStats() const;
@@ -321,10 +345,10 @@ class CC_EXPORT GpuImageDecodeCache
     const bool is_bitmap_backed_;
     std::unique_ptr<base::DiscardableMemory> data_;
     sk_sp<SkImage> image_;  // RGBX (or null in YUV decode path)
-    // Only fill out the base::Optional |yuv_color_space| if doing YUV decoding.
+    // Only fill out the absl::optional |yuv_color_space| if doing YUV decoding.
     // Otherwise it was filled out with a default "identity" value by the
     // decoder.
-    base::Optional<YUVSkImages> image_yuv_planes_;
+    absl::optional<YUVSkImages> image_yuv_planes_;
 
     // Keeps tracks of images that could go through hardware decode acceleration
     // though they're possibly prevented from doing so because of a disabled
@@ -395,7 +419,7 @@ class CC_EXPORT GpuImageDecodeCache
     }
 
     // If in transfer cache mode.
-    base::Optional<uint32_t> transfer_cache_id() const {
+    absl::optional<uint32_t> transfer_cache_id() const {
       DCHECK(mode_ == Mode::kTransferCache || mode_ == Mode::kNone);
       return transfer_cache_id_;
     }
@@ -476,37 +500,35 @@ class CC_EXPORT GpuImageDecodeCache
     // Used if |mode_| == kSkImage.
     // May be null if image not yet uploaded / prepared.
     sk_sp<SkImage> image_;
-    base::Optional<YUVSkImages> image_yuv_planes_;
+    absl::optional<YUVSkImages> image_yuv_planes_;
     // TODO(crbug/910276): Change after alpha support.
     bool is_alpha_ = false;
     GrGLuint gl_id_ = 0;
-    base::Optional<std::array<GrGLuint, kNumYUVPlanes>> gl_plane_ids_;
+    absl::optional<std::array<GrGLuint, kNumYUVPlanes>> gl_plane_ids_;
 
     // Used if |mode_| == kTransferCache.
-    base::Optional<uint32_t> transfer_cache_id_;
+    absl::optional<uint32_t> transfer_cache_id_;
 
     // The original un-mipped image, for RGBX, or the representative image
     // backed by three planes for YUV. It is retained until it can be safely
     // deleted.
     sk_sp<SkImage> unmipped_image_;
     // Used for YUV decoding and null otherwise.
-    base::Optional<YUVSkImages> unmipped_yuv_images_;
+    absl::optional<YUVSkImages> unmipped_yuv_images_;
   };
 
   struct ImageData : public base::RefCountedThreadSafe<ImageData> {
     ImageData(PaintImage::Id paint_image_id,
               DecodedDataMode mode,
               size_t size,
-              const gfx::ColorSpace& target_color_space,
-              SkFilterQuality quality,
+              const TargetColorParams& target_color_params,
+              PaintFlags::FilterQuality quality,
               int upload_scale_mip_level,
               bool needs_mips,
               bool is_bitmap_backed,
               bool can_do_hardware_accelerated_decode,
               bool do_hardware_accelerated_decode,
-              bool is_yuv_format,
-              SkYUVColorSpace yuv_cs,
-              SkYUVAPixmapInfo::DataType yuv_dt);
+              absl::optional<SkYUVAPixmapInfo> yuva_pixmap_info);
 
     bool IsGpuOrTransferCache() const;
     bool HasUploadedData() const;
@@ -515,15 +537,14 @@ class CC_EXPORT GpuImageDecodeCache
     const PaintImage::Id paint_image_id;
     const DecodedDataMode mode;
     const size_t size;
-    gfx::ColorSpace target_color_space;
-    SkFilterQuality quality;
+    TargetColorParams target_color_params;
+    PaintFlags::FilterQuality quality;
     int upload_scale_mip_level;
     bool needs_mips = false;
     bool is_bitmap_backed;
-    bool is_yuv;
     bool is_budgeted = false;
-    base::Optional<SkYUVColorSpace> yuv_color_space;
-    base::Optional<SkYUVAPixmapInfo::DataType> yuv_data_type;
+    absl::optional<SkYUVAPixmapInfo> yuva_pixmap_info;
+    base::TimeTicks last_use;
 
     // If true, this image is no longer in our |persistent_cache_| and will be
     // deleted as soon as its ref count reaches zero.
@@ -553,17 +574,17 @@ class CC_EXPORT GpuImageDecodeCache
   // the |in_use_cache_|.
   struct InUseCacheKeyHash;
   struct InUseCacheKey {
-    static InUseCacheKey FromDrawImage(const DrawImage& draw_image);
+    InUseCacheKey(const DrawImage& draw_image, int mip_level);
+
     bool operator==(const InUseCacheKey& other) const;
 
    private:
     friend struct GpuImageDecodeCache::InUseCacheKeyHash;
-    explicit InUseCacheKey(const DrawImage& draw_image);
 
     PaintImage::FrameKey frame_key;
     int upload_scale_mip_level;
-    SkFilterQuality filter_quality;
-    gfx::ColorSpace target_color_space;
+    PaintFlags::FilterQuality filter_quality;
+    TargetColorParams target_color_params;
   };
   struct InUseCacheKeyHash {
     size_t operator()(const InUseCacheKey&) const;
@@ -573,16 +594,28 @@ class CC_EXPORT GpuImageDecodeCache
   // functions also require the |context_| lock. These are indicated by
   // additional comments.
 
+  // Calculate the mip level to upload-scale the image to before uploading. We
+  // use mip levels rather than exact scales to increase re-use of scaled
+  // images.
+  int CalculateUploadScaleMipLevel(const DrawImage& draw_image) const;
+
+  InUseCacheKey InUseCacheKeyFromDrawImage(const DrawImage& draw_image) const;
+
   // Similar to GetTaskForImageAndRef, but gets the dependent decode task
   // rather than the upload task, if necessary.
   scoped_refptr<TileTask> GetImageDecodeTaskAndRef(
+      ClientId client_id,
       const DrawImage& image,
       const TracingInfo& tracing_info,
       DecodeTaskType task_type);
 
   // Note that this function behaves as if it was public (all of the same locks
-  // need to be acquired).
-  TaskResult GetTaskForImageAndRefInternal(const DrawImage& image,
+  // need to be acquired). Uses |client_id| to identify which client created a
+  // task as the client run their tasks in different namespaces. The client
+  // which ran their task first will execute the task. All the other clients
+  // will have their tasks executed as no-op.
+  TaskResult GetTaskForImageAndRefInternal(ClientId client_id,
+                                           const DrawImage& image,
                                            const TracingInfo& tracing_info,
                                            DecodeTaskType task_type);
 
@@ -602,21 +635,31 @@ class CC_EXPORT GpuImageDecodeCache
   // freeing unreferenced cache entries to make room.
   bool EnsureCapacity(size_t required_size);
   bool CanFitInWorkingSet(size_t size) const;
-  bool ExceedsPreferredCount() const;
+  bool ExceedsCacheLimits() const;
 
   void InsertTransferCacheEntry(
       const ClientImageTransferCacheEntry& image_entry,
       ImageData* image_data);
+  bool NeedsDarkModeFilter(const DrawImage& draw_image, ImageData* image_data);
+  void DecodeImageAndGenerateDarkModeFilterIfNecessary(
+      const DrawImage& draw_image,
+      ImageData* image_data,
+      TaskType task_type);
   void DecodeImageIfNecessary(const DrawImage& draw_image,
                               ImageData* image_data,
-                              TaskType task_type);
+                              TaskType task_type,
+                              bool needs_decode_for_dark_mode);
+  void GenerateDarkModeFilter(const DrawImage& draw_image,
+                              ImageData* image_data);
   sk_sp<SkImage> CreateImageFromYUVATexturesInternal(
       const SkImage* uploaded_y_image,
       const SkImage* uploaded_u_image,
       const SkImage* uploaded_v_image,
-      const size_t image_width,
-      const size_t image_height,
-      const SkYUVColorSpace& yuva_color_space,
+      const int image_width,
+      const int image_height,
+      const SkYUVAInfo::PlaneConfig yuva_plane_config,
+      const SkYUVAInfo::Subsampling yuva_subsampling,
+      const SkYUVColorSpace yuva_color_space,
       sk_sp<SkColorSpace> target_color_space,
       sk_sp<SkColorSpace> decoded_color_space) const;
 
@@ -658,6 +701,33 @@ class CC_EXPORT GpuImageDecodeCache
   void UploadImageIfNecessary(const DrawImage& draw_image,
                               ImageData* image_data);
 
+  // Implementation of UploadImageIfNecessary for each sub-case.
+  void UploadImageIfNecessary_TransferCache_HardwareDecode(
+      const DrawImage& draw_image,
+      ImageData* image_data,
+      sk_sp<SkColorSpace> color_space);
+  void UploadImageIfNecessary_TransferCache_SoftwareDecode_YUVA(
+      const DrawImage& draw_image,
+      ImageData* image_data,
+      sk_sp<SkColorSpace> decoded_target_colorspace,
+      absl::optional<TargetColorParams> target_color_params);
+  void UploadImageIfNecessary_TransferCache_SoftwareDecode_RGBA(
+      const DrawImage& draw_image,
+      ImageData* image_data,
+      absl::optional<TargetColorParams> target_color_params);
+  void UploadImageIfNecessary_GpuCpu_YUVA(
+      const DrawImage& draw_image,
+      ImageData* image_data,
+      sk_sp<SkImage> uploaded_image,
+      GrMipMapped image_needs_mips,
+      sk_sp<SkColorSpace> decoded_target_colorspace,
+      sk_sp<SkColorSpace> color_space);
+  void UploadImageIfNecessary_GpuCpu_RGBA(const DrawImage& draw_image,
+                                          ImageData* image_data,
+                                          sk_sp<SkImage> uploaded_image,
+                                          GrMipMapped image_needs_mips,
+                                          sk_sp<SkColorSpace> color_space);
+
   // Flush pending operations on context_->GrContext() for each element of
   // |yuv_images| and then clear the vector.
   void FlushYUVImages(std::vector<sk_sp<SkImage>>* yuv_images);
@@ -671,11 +741,6 @@ class CC_EXPORT GpuImageDecodeCache
 
   sk_sp<SkColorSpace> ColorSpaceForImageDecode(const DrawImage& image,
                                                DecodedDataMode mode) const;
-
-  // HDR images need the SkColorSpace adjusted during upload to avoid white
-  // level issues on systems with variable SDR white levels (Windows).
-  bool NeedsColorSpaceAdjustedForUpload(const DrawImage& image) const;
-  sk_sp<SkColorSpace> ColorSpaceForImageUpload(const DrawImage& image) const;
 
   // Helper function to add a memory dump to |pmd| for a single texture
   // identified by |gl_id| with size |bytes| and |locked_size| equal to either
@@ -699,7 +764,7 @@ class CC_EXPORT GpuImageDecodeCache
 
   // |persistent_cache_| represents the long-lived cache, keeping a certain
   // budget of ImageDatas alive even when their ref count reaches zero.
-  using PersistentCache = base::HashingMRUCache<PaintImage::FrameKey,
+  using PersistentCache = base::HashingLRUCache<PaintImage::FrameKey,
                                                 scoped_refptr<ImageData>,
                                                 PaintImage::FrameKeyHash>;
   void AddToPersistentCache(const DrawImage& draw_image,
@@ -707,17 +772,26 @@ class CC_EXPORT GpuImageDecodeCache
   template <typename Iterator>
   Iterator RemoveFromPersistentCache(Iterator it);
 
+  // Purges any old entries from the PersistentCache if the feature to enable
+  // this behavior is turned on.
+  void MaybePurgeOldCacheEntries();
+
   // Adds mips to an image if required.
   void UpdateMipsIfNeeded(const DrawImage& draw_image, ImageData* image_data);
 
+  static scoped_refptr<TileTask> GetTaskFromMapForClientId(
+      const ClientId client_id,
+      const ImageTaskMap& task_map);
+
   const SkColorType color_type_;
   const bool use_transfer_cache_ = false;
-  viz::RasterContextProvider* context_;
+  raw_ptr<viz::RasterContextProvider> context_;
   int max_texture_size_ = 0;
   const PaintImage::GeneratorClientId generator_client_id_;
   bool allow_accelerated_jpeg_decodes_ = false;
   bool allow_accelerated_webp_decodes_ = false;
   SkYUVAPixmapInfo::SupportedDataTypes yuva_supported_data_types_;
+  const bool enable_clipped_image_scaling_;
 
   // All members below this point must only be accessed while holding |lock_|.
   // The exception are const members like |normal_max_cache_bytes_| that can
@@ -725,6 +799,10 @@ class CC_EXPORT GpuImageDecodeCache
   base::Lock lock_;
 
   PersistentCache persistent_cache_;
+
+  // Tracks the total number of bytes of image data represented by the elements
+  // in `persistent_cache_`. Must be updated on AddTo/RemoveFromPersistentCache.
+  size_t persistent_cache_memory_size_ = 0;
 
   struct CacheEntries {
     PaintImage::ContentId content_ids[2] = {PaintImage::kInvalidContentId,
@@ -749,6 +827,8 @@ class CC_EXPORT GpuImageDecodeCache
   size_t working_set_bytes_ = 0;
   size_t working_set_items_ = 0;
   bool aggressively_freeing_resources_ = false;
+
+  RasterDarkModeFilter* const dark_mode_filter_;
 
   // We can't modify GPU backed SkImages without holding the context lock, so
   // we queue up operations to run the next time the lock is held.

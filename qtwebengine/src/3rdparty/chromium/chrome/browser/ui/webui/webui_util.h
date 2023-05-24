@@ -1,68 +1,64 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CHROME_BROWSER_UI_WEBUI_WEBUI_UTIL_H_
 #define CHROME_BROWSER_UI_WEBUI_WEBUI_UTIL_H_
 
-#include <string>
-
 #include "base/containers/span.h"
 #include "base/strings/string_piece.h"
-#include "chrome/common/buildflags.h"
-
-struct GritResourceMap;
+#include "build/build_config.h"
+#include "ui/base/webui/resource_path.h"
 
 namespace content {
+class WebContents;
 class WebUIDataSource;
+}
+
+namespace ui {
+class NativeTheme;
+class ThemeProvider;
 }
 
 namespace webui {
 
-struct LocalizedString;
+// Performs common setup steps for a |source| using JS modules: enable i18n
+// string replacements, adding test resources, and configuring script-src CSP
+// headers to allow tests to work.
+// UIs that don't have a dedicated grd file should generally use this utility.
+void SetJSModuleDefaults(content::WebUIDataSource* source);
 
-struct ResourcePath {
-  const char* path;
-  int id;
-};
-
-// Performs common setup steps for |source|, assuming it is using Polymer 3,
-// by adding all resources, setting the default resource, setting up i18n,
-// and ensuring that tests work correctly by updating the CSP and adding the
-// test loader files.
+// Calls SetJSModuleDefaults(), and additionally adds all resources in the
+// resource map to |source| and sets |default_resource| as the default resource.
+// UIs that have a dedicated grd file should generally use this utility.
 void SetupWebUIDataSource(content::WebUIDataSource* source,
-                          base::span<const GritResourceMap> resources,
-                          const std::string& generated_path,
+                          base::span<const ResourcePath> resources,
                           int default_resource);
 
-#if BUILDFLAG(OPTIMIZE_WEBUI)
-// Same as SetupWebUIDataSource, but for a bundled page; this adds only the
-// bundle and the default resource to |source|.
-void SetupBundledWebUIDataSource(content::WebUIDataSource* source,
-                                 base::StringPiece bundled_path,
-                                 int bundle,
-                                 int default_resource);
-#endif
+// Enables the 'trusted-types' CSP for the given WebUIDataSource. This is the
+// default behavior when calling SetupWebUIDataSource().
+void EnableTrustedTypesCSP(content::WebUIDataSource* source);
 
-// Calls content::WebUIDataSource::AddLocalizedString() in a for-loop for
-// |strings|. Reduces code size vs. reimplementing the same for-loop.
-void AddLocalizedStringsBulk(content::WebUIDataSource* html_source,
-                             base::span<const LocalizedString> strings);
+// Adds string for |id| to |source| and removes & from the string to allow for
+// reuse of generic strings.
+void AddLocalizedString(content::WebUIDataSource* source,
+                        const std::string& message,
+                        int id);
 
-// Calls content::WebUIDataSource::AddResourcePath() in a for-loop for |paths|.
-// Reduces code size vs. reimplementing the same for-loop.
-void AddResourcePathsBulk(content::WebUIDataSource* source,
-                          base::span<const ResourcePath> paths);
+#if defined(TOOLKIT_VIEWS)
 
-// AddResourcePathsBulk() variant that works with GritResourceMap.
-// Use base::make_span(kResourceMap, kResourceMapSize).
-void AddResourcePathsBulk(content::WebUIDataSource* source,
-                          base::span<const GritResourceMap> resources);
+// Returns whether WebContents should use dark mode colors depending on the
+// theme.
+ui::NativeTheme* GetNativeTheme(content::WebContents* web_contents);
 
-// Returns whether the device is enterprise managed. Note that on Linux, there's
-// no good way of detecting whether the device is managed, so always return
-// false.
-bool IsEnterpriseManaged();
+// Returns the ThemeProvider instance associated with the given web contents.
+const ui::ThemeProvider* GetThemeProvider(content::WebContents* web_contents);
+
+// Sets a global theme provider that will be returned when calling
+// webui::GetThemeProvider(). Used only for testing.
+void SetThemeProviderForTesting(const ui::ThemeProvider* theme_provider);
+
+#endif  // defined(TOOLKIT_VIEWS)
 
 }  // namespace webui
 

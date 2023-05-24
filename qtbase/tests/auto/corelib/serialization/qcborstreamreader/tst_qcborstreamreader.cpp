@@ -1,44 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qcborstream.h>
-#include <QtTest>
+#include <QTest>
+#include <QBuffer>
 
 #include <QtCore/private/qbytearray_p.h>
 
@@ -297,7 +262,10 @@ void tst_QCborStreamReader::integers()
 
 void escapedAppendTo(QString &result, const QByteArray &data)
 {
-    result += "h'" + QString::fromLatin1(data.toHex()) + '\'';
+    QByteArray hex =
+            data.size() < 512*1024 ? data.toHex() :
+                                     "data of size " + QByteArray::number(data.size());
+    result += "h'" + QString::fromLatin1(hex) + '\'';
 }
 
 void escapedAppendTo(QString &result, const QString &data)
@@ -363,7 +331,7 @@ template <typename T> static inline bool canConvertTo(double v)
     // integrals to floating-point with loss of precision has implementation-
     // defined behavior whether the next higher or next lower is returned;
     // converting FP to integral is UB if it can't be represented.;
-    Q_STATIC_ASSERT(std::numeric_limits<T>::is_integer);
+    static_assert(std::numeric_limits<T>::is_integer);
 
     double supremum = ldexp(1, std::numeric_limits<T>::digits);
     if (v >= supremum)
@@ -953,8 +921,16 @@ void tst_QCborStreamReader::hugeDeviceValidation()
     if (!useDevice)
         return;
 
+#if (defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer))
+    if (   qstrcmp(QTest::currentDataTag(), "bytearray-just-too-big") == 0
+        || qstrcmp(QTest::currentDataTag(),    "string-just-too-big") == 0)
+        QSKIP("This test tries to allocate a huge memory buffer,"
+              " which Address Sanitizer flags as a problem");
+#endif
+
     QFETCH(QSharedPointer<QIODevice>, device);
     QFETCH(CborError, expectedError);
+    QFETCH(CborError, expectedValidationError);
     QCborError error = { QCborError::Code(expectedError) };
 
     device->open(QIODevice::ReadOnly | QIODevice::Unbuffered);
@@ -963,10 +939,15 @@ void tst_QCborStreamReader::hugeDeviceValidation()
     QVERIFY(parseOne(reader).isEmpty());
     QCOMPARE(reader.lastError(), error);
 
-    // next() should fail
     reader.reset();
-    QVERIFY(!reader.next());
-    QCOMPARE(reader.lastError(), error);
+    error = { QCborError::Code(expectedValidationError) };
+    if (error == QCborError{}) {
+        // this test actually succeeds, so don't do it to avoid large memory consumption
+    } else {
+        // next() should fail
+        QVERIFY(!reader.next());
+        QCOMPARE(reader.lastError(), error);
+    }
 }
 
 static const int Recursions = 3;

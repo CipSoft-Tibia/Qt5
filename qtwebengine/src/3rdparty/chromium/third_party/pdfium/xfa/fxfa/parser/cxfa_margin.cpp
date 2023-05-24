@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 namespace {
 
 const CXFA_Node::PropertyData kMarginPropertyData[] = {
-    {XFA_Element::Extras, 1, 0},
+    {XFA_Element::Extras, 1, {}},
 };
 
 const CXFA_Node::AttributeData kMarginAttributeData[] = {
@@ -30,7 +30,7 @@ const CXFA_Node::AttributeData kMarginAttributeData[] = {
 CXFA_Margin::CXFA_Margin(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                (XFA_XDPPACKET_Template | XFA_XDPPACKET_Form),
+                {XFA_XDPPACKET::kTemplate, XFA_XDPPACKET::kForm},
                 XFA_ObjectType::Node,
                 XFA_Element::Margin,
                 kMarginPropertyData,
@@ -57,18 +57,18 @@ float CXFA_Margin::GetBottomInset() const {
   return TryBottomInset().value_or(0);
 }
 
-Optional<float> CXFA_Margin::TryLeftInset() const {
+absl::optional<float> CXFA_Margin::TryLeftInset() const {
   return JSObject()->TryMeasureAsFloat(XFA_Attribute::LeftInset);
 }
 
-Optional<float> CXFA_Margin::TryTopInset() const {
+absl::optional<float> CXFA_Margin::TryTopInset() const {
   return JSObject()->TryMeasureAsFloat(XFA_Attribute::TopInset);
 }
 
-Optional<float> CXFA_Margin::TryRightInset() const {
+absl::optional<float> CXFA_Margin::TryRightInset() const {
   return JSObject()->TryMeasureAsFloat(XFA_Attribute::RightInset);
 }
 
-Optional<float> CXFA_Margin::TryBottomInset() const {
+absl::optional<float> CXFA_Margin::TryBottomInset() const {
   return JSObject()->TryMeasureAsFloat(XFA_Attribute::BottomInset);
 }

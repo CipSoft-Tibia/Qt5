@@ -1,40 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "unixmake.h"
 #include "option.h"
 #include "meta.h"
-#include <qregexp.h>
+#include <qregularexpression.h>
 #include <qbytearray.h>
 #include <qfile.h>
 #include <qdir.h>
 #include <qdebug.h>
+#include <qtversion.h>
 #include <time.h>
 
 #include <tuple>
@@ -129,15 +105,15 @@ UnixMakefileGenerator::writeSubTargets(QTextStream &t, QList<MakefileGenerator::
         if (!out_directory.isEmpty() && !out_directory.endsWith(Option::dir_sep))
             out_directory += Option::dir_sep;
         if (!abs_source_path.isEmpty() && out_directory.startsWith(abs_source_path))
-            out_directory = Option::output_dir + out_directory.mid(abs_source_path.length());
+            out_directory = Option::output_dir + out_directory.mid(abs_source_path.size());
 
         QString dist_directory = out_directory;
         if (dist_directory.endsWith(Option::dir_sep))
-            dist_directory.chop(Option::dir_sep.length());
+            dist_directory.chop(Option::dir_sep.size());
         if (!dist_directory.startsWith(Option::dir_sep))
             dist_directory.prepend(Option::dir_sep);
 
-        QString out_directory_cdin = out_directory.isEmpty() ? "\n\t"
+        QString out_directory_cdin = out_directory.isEmpty() ? QString("\n\t")
                                                              : "\n\tcd " + escapeFilePath(out_directory) + " && ";
         QString makefilein = " -e -f " + escapeFilePath(subtarget->makefile)
                 + " distdir DISTDIR=$(DISTDIR)" + escapeFilePath(dist_directory);
@@ -145,7 +121,7 @@ UnixMakefileGenerator::writeSubTargets(QTextStream &t, QList<MakefileGenerator::
         QString out = subtarget->makefile;
         QString in = escapeFilePath(fileFixify(in_directory + subtarget->profile, FileFixifyAbsolute));
         if (out.startsWith(in_directory))
-            out.remove(0, in_directory.length());
+            out.remove(0, in_directory.size());
 
         t << subtarget->target << "-distdir: FORCE";
         writeSubTargetCall(t, in_directory, in, out_directory, escapeFilePath(out),
@@ -244,8 +220,8 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
     t << "####### Files\n\n";
     // This is used by the dist target.
     t << "SOURCES       = " << fileVarList("SOURCES") << ' ' << fileVarList("GENERATED_SOURCES") << Qt::endl;
-    auto objectParts = writeObjectsPart(t, do_incremental);
-    src_incremental = objectParts.first;
+
+    src_incremental = writeObjectsPart(t, do_incremental);
     if(do_incremental && !src_incremental)
         do_incremental = false;
     t << "DIST          = " << valList(fileFixify(project->values("DISTFILES").toQStringList())) << " "
@@ -288,7 +264,7 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
         if (project->isActiveConfig("gcc_MD_depends")) {
             ProStringList objects = project->values("OBJECTS");
             for (ProStringList::Iterator it = objects.begin(); it != objects.end(); ++it) {
-                QString d_file = (*it).toQString().replace(QRegExp(Option::obj_ext + "$"), ".d");
+                QString d_file = (*it).toQString().replace(QRegularExpression(Option::obj_ext + "$"), ".d");
                 t << "-include " << escapeDependencyPath(d_file) << Qt::endl;
                 project->values("QMAKE_DISTCLEAN") << d_file;
             }
@@ -327,7 +303,7 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
                         for(QStringList::Iterator cit = Option::c_ext.begin();
                             cit != Option::c_ext.end(); ++cit) {
                             if((*it).endsWith((*cit))) {
-                                d_file = (*it).left((*it).length() - (*cit).length()).toQString();
+                                d_file = (*it).left((*it).length() - (*cit).size()).toQString();
                                 break;
                             }
                         }
@@ -335,7 +311,7 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
                             for(QStringList::Iterator cppit = Option::cpp_ext.begin();
                                 cppit != Option::cpp_ext.end(); ++cppit) {
                                 if((*it).endsWith((*cppit))) {
-                                    d_file = (*it).left((*it).length() - (*cppit).length()).toQString();
+                                    d_file = (*it).left((*it).length() - (*cppit).size()).toQString();
                                     break;
                                 }
                             }
@@ -344,7 +320,7 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
                         if(!d_file.isEmpty()) {
                             d_file = odir + ".deps/" + fileFixify(d_file, FileFixifyBackwards) + ".d";
                             QString d_file_d = escapeDependencyPath(d_file);
-                            QStringList deps = findDependencies((*it).toQString()).filter(QRegExp(
+                            QStringList deps = findDependencies((*it).toQString()).filter(QRegularExpression(
                                         "((^|/)" + Option::h_moc_mod + "|" + Option::cpp_moc_ext + "$)"));
                             if(!deps.isEmpty())
                                 t << d_file_d << ": " << finalizeDependencyPaths(deps).join(' ') << Qt::endl;
@@ -395,6 +371,7 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
             }
         }
     }
+    LinkerResponseFileInfo linkerResponseFile = maybeCreateLinkerResponseFile();
     QString deps = escapeDependencyPath(fileFixify(Option::output.fileName()));
     QString allDeps;
     if (!project->values("QMAKE_APP_FLAG").isEmpty() || project->first("TEMPLATE") == "aux") {
@@ -411,7 +388,7 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
             //incremental target
             QString incr_target = var("TARGET") + "_incremental";
             if(incr_target.indexOf(Option::dir_sep) != -1)
-                incr_target = incr_target.right(incr_target.length() -
+                incr_target = incr_target.right(incr_target.size() -
                                                 (incr_target.lastIndexOf(Option::dir_sep) + 1));
             QString incr_deps, incr_objs;
             if(project->first("QMAKE_INCREMENTAL_STYLE") == "ld") {
@@ -481,8 +458,13 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
                     t << mkdir_p_asstring(destdir) << "\n\t";
                 if (!project->isEmpty("QMAKE_PRE_LINK"))
                     t << var("QMAKE_PRE_LINK") << "\n\t";
-                t << "$(LINK) $(LFLAGS) " << var("QMAKE_LINK_O_FLAG") << "$(TARGET) "
-                  << objectParts.second << " $(OBJCOMP) $(LIBS)";
+                t << "$(LINK) $(LFLAGS) " << var("QMAKE_LINK_O_FLAG") << "$(TARGET) ";
+                if (!linkerResponseFile.isValid())
+                    t << " $(OBJECTS) $(OBJCOMP) $(LIBS)";
+                else if (linkerResponseFile.onlyObjects)
+                    t << " @" << linkerResponseFile.filePath << " $(OBJCOMP) $(LIBS)";
+                else
+                    t << " $(OBJCOMP) @" << linkerResponseFile.filePath;
                 if (!project->isEmpty("QMAKE_POST_LINK"))
                     t << "\n\t" << var("QMAKE_POST_LINK");
             }
@@ -505,9 +487,9 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
         if(do_incremental) {
             ProString s_ext = project->first("QMAKE_EXTENSION_SHLIB");
             QString incr_target = var("QMAKE_ORIG_TARGET").replace(
-                QRegExp("\\." + s_ext), "").replace(QRegExp("^lib"), "") + "_incremental";
+                QRegularExpression("\\." + s_ext), "").replace(QRegularExpression("^lib"), "") + "_incremental";
             if(incr_target.indexOf(Option::dir_sep) != -1)
-                incr_target = incr_target.right(incr_target.length() -
+                incr_target = incr_target.right(incr_target.size() -
                                                 (incr_target.lastIndexOf(Option::dir_sep) + 1));
 
             if(project->first("QMAKE_INCREMENTAL_STYLE") == "ld") {
@@ -557,7 +539,10 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
               << incr_deps << " $(SUBLIBS) " << target_deps << ' ' << depVar("POST_TARGETDEPS");
         } else {
             ProStringList &cmd = project->values("QMAKE_LINK_SHLIB_CMD");
-            cmd[0] = cmd.at(0).toQString().replace(QLatin1String("$(OBJECTS)"), objectParts.second);
+            if (linkerResponseFile.isValid()) {
+                cmd[0] = cmd.at(0).toQString().replace(QLatin1String("$(OBJECTS)"),
+                                                       "@" + linkerResponseFile.filePath);
+            }
             t << destdir_d << depVar("TARGET") << ": " << depVar("PRE_TARGETDEPS")
               << " $(OBJECTS) $(SUBLIBS) $(OBJCOMP) " << target_deps
               << ' ' << depVar("POST_TARGETDEPS");
@@ -747,7 +732,7 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
                 (!isShallowBundle
                     ? (isFramework
                         ? ("Versions/" + project->first("QMAKE_FRAMEWORK_VERSION") + "/Resources/")
-                        : "Contents/")
+                        : QString("Contents/"))
                     : QString())
                 + "Info.plist";
             bundledFiles << info_plist_out;
@@ -801,6 +786,13 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
             commonSedArgs << "-e \"s,\\$${WATCHOS_DEPLOYMENT_TARGET},"
                           << project->first("QMAKE_WATCHOS_DEPLOYMENT_TARGET").toQString() << ",g\" ";
 
+            QString launchScreen = var("QMAKE_IOS_LAUNCH_SCREEN");
+            if (launchScreen.isEmpty())
+                launchScreen = QLatin1String("LaunchScreen");
+            else
+                launchScreen = QFileInfo(launchScreen).baseName();
+            commonSedArgs << "-e \"s,\\$${IOS_LAUNCH_SCREEN}," << launchScreen << ",g\" ";
+
             if (!isFramework) {
                 ProString app_bundle_name = var("QMAKE_APPLICATION_BUNDLE_NAME");
                 if (app_bundle_name.isEmpty())
@@ -812,18 +804,19 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
 
                 QString icon = fileFixify(var("ICON"));
                 t << "@$(DEL_FILE) " << info_plist_out << "\n\t"
-                  << "@sed ";
-                for (const ProString &arg : qAsConst(commonSedArgs))
+                  << "@plutil -convert xml1 -o - " << info_plist << " | "
+                  << "sed ";
+                for (const ProString &arg : std::as_const(commonSedArgs))
                     t << arg;
                 const QString iconName = icon.section(Option::dir_sep, -1);
                 t << "-e \"s,@ICON@," << iconName << ",g\" "
                   << "-e \"s,\\$${ASSETCATALOG_COMPILER_APPICON_NAME}," << iconName << ",g\" "
                   << "-e \"s,@EXECUTABLE@," << app_bundle_name << ",g\" "
                   << "-e \"s,@LIBRARY@," << plugin_bundle_name << ",g\" "
-                  << "-e \"s,\\$${EXECUTABLE_NAME}," << (app_bundle_name.isEmpty() ? app_bundle_name : plugin_bundle_name) << ",g\" "
+                  << "-e \"s,\\$${EXECUTABLE_NAME}," << (!app_bundle_name.isEmpty() ? app_bundle_name : plugin_bundle_name) << ",g\" "
                   << "-e \"s,@TYPEINFO@,"<< typeInfo << ",g\" "
                   << "-e \"s,\\$${QMAKE_PKGINFO_TYPEINFO},"<< typeInfo << ",g\" "
-                  << "" << info_plist << " >" << info_plist_out << Qt::endl;
+                  << ">" << info_plist_out << Qt::endl;
                 //copy the icon
                 if (!project->isEmpty("ICON")) {
                     QString dir = bundle_dir + "Contents/Resources/";
@@ -844,21 +837,22 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
                 if (!isShallowBundle)
                     symlinks[bundle_dir + "Resources"] = "Versions/Current/Resources";
                 t << "@$(DEL_FILE) " << info_plist_out << "\n\t"
-                  << "@sed ";
-                for (const ProString &arg : qAsConst(commonSedArgs))
+                  << "@plutil -convert xml1 -o - " << info_plist << " | "
+                  << "sed ";
+                for (const ProString &arg : std::as_const(commonSedArgs))
                     t << arg;
                 t << "-e \"s,@LIBRARY@," << lib_bundle_name << ",g\" "
                   << "-e \"s,\\$${EXECUTABLE_NAME}," << lib_bundle_name << ",g\" "
                   << "-e \"s,@TYPEINFO@," << typeInfo << ",g\" "
                   << "-e \"s,\\$${QMAKE_PKGINFO_TYPEINFO}," << typeInfo << ",g\" "
-                  << "" << info_plist << " >" << info_plist_out << Qt::endl;
+                  << ">" << info_plist_out << Qt::endl;
             }
             break;
         } // project->isActiveConfig("no_plist")
         //copy other data
         if(!project->isEmpty("QMAKE_BUNDLE_DATA")) {
             const ProStringList &bundle_data = project->values("QMAKE_BUNDLE_DATA");
-            for(int i = 0; i < bundle_data.count(); i++) {
+            for(int i = 0; i < bundle_data.size(); i++) {
                 const ProStringList &files = project->values(ProKey(bundle_data[i] + ".files"));
                 QString path = bundle_dir;
                 const ProKey pkey(bundle_data[i] + ".path");
@@ -878,7 +872,7 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
                 }
                 path += project->first(pkey).toQString();
                 path = Option::fixPathToTargetOS(path);
-                for(int file = 0; file < files.count(); file++) {
+                for(int file = 0; file < files.size(); file++) {
                     QString fn = files.at(file).toQString();
                     QString src = fileFixify(fn, FileFixifyAbsolute);
                     if (!QFile::exists(src))
@@ -985,7 +979,7 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
             ProStringList pchArchs = project->values("QMAKE_PCH_ARCHS");
             if (pchArchs.isEmpty())
                 pchArchs << ProString(); // normal single-arch PCH
-            for (const ProString &arch : qAsConst(pchArchs)) {
+            for (const ProString &arch : std::as_const(pchArchs)) {
                 ProString pchOutput;
                 if (!project->isEmpty("PRECOMPILED_DIR"))
                     pchOutput = project->first("PRECOMPILED_DIR");
@@ -1016,7 +1010,7 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
                 ProStringList pchArchs = project->values("QMAKE_PCH_ARCHS");
                 if (pchArchs.isEmpty())
                     pchArchs << ProString(); // normal single-arch PCH
-                for (const ProString &arch : qAsConst(pchArchs)) {
+                for (const ProString &arch : std::as_const(pchArchs)) {
                     QString file = precomph_out_dir + header_prefix + language + header_suffix;
                     if (!arch.isEmpty())
                         file.replace(QStringLiteral("${QMAKE_PCH_ARCH}"), arch.toQString());
@@ -1114,7 +1108,7 @@ UnixMakefileGenerator::writeMakeParts(QTextStream &t)
             }
             pchFlags.replace(QLatin1String("${QMAKE_PCH_INPUT}"), escapeFilePath(pchInput))
                     .replace(QLatin1String("${QMAKE_PCH_OUTPUT_BASE}"), escapeFilePath(pchBaseName.toQString()));
-            for (const ProString &arch : qAsConst(pchArchs)) {
+            for (const ProString &arch : std::as_const(pchArchs)) {
                 auto pchArchOutput = pchOutput.toQString();
                 if (!arch.isEmpty())
                     pchArchOutput.replace(QStringLiteral("${QMAKE_PCH_ARCH}"), arch.toQString());
@@ -1403,7 +1397,7 @@ UnixMakefileGenerator::libtoolFileName(bool fixify)
     QString ret = var("TARGET");
     int slsh = ret.lastIndexOf(Option::dir_sep);
     if(slsh != -1)
-        ret = ret.right(ret.length() - slsh - 1);
+        ret = ret.right(ret.size() - slsh - 1);
     int dot = ret.indexOf('.');
     if(dot != -1)
         ret = ret.left(dot);
@@ -1473,7 +1467,7 @@ UnixMakefileGenerator::writeLibtoolFile()
     mkdir(fileInfo(fname).path());
     int slsh = lname.lastIndexOf(Option::dir_sep);
     if(slsh != -1)
-        lname = lname.right(lname.length() - slsh - 1);
+        lname = lname.right(lname.size() - slsh - 1);
     QFile ft(fname);
     if(!ft.open(QIODevice::WriteOnly))
         return;
@@ -1503,7 +1497,7 @@ UnixMakefileGenerator::writeLibtoolFile()
     t << "'\n\n";
 
     t << "# The name of the static archive.\n"
-      << "old_library='" << escapeFilePath(lname.left(lname.length()-Option::libtool_ext.length()))
+      << "old_library='" << escapeFilePath(lname.left(lname.size()-Option::libtool_ext.size()))
                          << ".a'\n\n";
 
     t << "# Libraries that this one depends upon.\n";
@@ -1543,7 +1537,7 @@ UnixMakefileGenerator::writeLibtoolFile()
         "libdir='" << Option::fixPathToTargetOS(install_dir.toQString(), false) << "'\n";
 }
 
-std::pair<bool, QString> UnixMakefileGenerator::writeObjectsPart(QTextStream &t, bool do_incremental)
+bool UnixMakefileGenerator::writeObjectsPart(QTextStream &t, bool do_incremental)
 {
     bool src_incremental = false;
     QString objectsLinkLine;
@@ -1555,8 +1549,9 @@ std::pair<bool, QString> UnixMakefileGenerator::writeObjectsPart(QTextStream &t,
         for (ProStringList::ConstIterator objit = objs.begin(); objit != objs.end(); ++objit) {
             bool increment = false;
             for (ProStringList::ConstIterator incrit = incrs.begin(); incrit != incrs.end(); ++incrit) {
-                if ((*objit).toQString().indexOf(QRegExp((*incrit).toQString(), Qt::CaseSensitive,
-                                                         QRegExp::Wildcard)) != -1) {
+                auto regexp = QRegularExpression::fromWildcard((*incrit).toQString(), Qt::CaseSensitive,
+                                                               QRegularExpression::UnanchoredWildcardConversion);
+                if ((*objit).toQString().contains(regexp)) {
                     increment = true;
                     incrs_out.append((*objit));
                     break;
@@ -1565,9 +1560,9 @@ std::pair<bool, QString> UnixMakefileGenerator::writeObjectsPart(QTextStream &t,
             if (!increment)
                 t << "\\\n\t\t" << (*objit);
         }
-        if (incrs_out.count() == objs.count()) { //we just switched places, no real incrementals to be done!
+        if (incrs_out.size() == objs.size()) { //we just switched places, no real incrementals to be done!
             t << escapeFilePaths(incrs_out).join(QString(" \\\n\t\t")) << Qt::endl;
-        } else if (!incrs_out.count()) {
+        } else if (!incrs_out.size()) {
             t << Qt::endl;
         } else {
             src_incremental = true;
@@ -1576,23 +1571,9 @@ std::pair<bool, QString> UnixMakefileGenerator::writeObjectsPart(QTextStream &t,
               << escapeFilePaths(incrs_out).join(QString(" \\\n\t\t")) << Qt::endl;
         }
     } else {
-        const ProString &objMax = project->first("QMAKE_LINK_OBJECT_MAX");
-        // Used all over the place in both deps and commands.
-        if (objMax.isEmpty() || project->values("OBJECTS").count() < objMax.toInt()) {
-            objectsLinkLine = "$(OBJECTS)";
-        } else {
-            QString ld_response_file = fileVar("OBJECTS_DIR");
-            ld_response_file += var("QMAKE_LINK_OBJECT_SCRIPT") + "." + var("QMAKE_TARGET");
-            if (!var("BUILD_NAME").isEmpty())
-                ld_response_file += "." + var("BUILD_NAME");
-            if (!var("MAKEFILE").isEmpty())
-                ld_response_file += "." + var("MAKEFILE");
-            createResponseFile(ld_response_file, objs);
-            objectsLinkLine = "@" + escapeFilePath(ld_response_file);
-        }
         t << "OBJECTS       = " << valList(escapeDependencyPaths(objs)) << Qt::endl;
     }
-    return std::make_pair(src_incremental, objectsLinkLine);
+    return src_incremental;
 }
 
 QT_END_NAMESPACE

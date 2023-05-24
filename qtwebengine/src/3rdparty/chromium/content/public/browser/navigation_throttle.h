@@ -1,20 +1,25 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_PUBLIC_BROWSER_NAVIGATION_THROTTLE_H_
 #define CONTENT_PUBLIC_BROWSER_NAVIGATION_THROTTLE_H_
 
-#include "base/callback.h"
-#include "base/optional.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "content/common/content_export.h"
 #include "net/base/net_errors.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace content {
 class NavigationHandle;
 
 // A NavigationThrottle tracks and allows interaction with a navigation on the
-// UI thread.
+// UI thread. NavigationThrottles may not be run for some kinds of navigations
+// (e.g. same-document navigations, about:blank, activations into the primary
+// frame tree like prerendering and back-forward cache, etc.). Content-internal
+// code that just wishes to defer a commit, including activations to the
+// primary frame tree, should instead use a CommitDeferringCondition.
 class CONTENT_EXPORT NavigationThrottle {
  public:
   // Represents what a NavigationThrottle can decide to do to a navigation. Note
@@ -105,7 +110,7 @@ class CONTENT_EXPORT NavigationThrottle {
     // Construct with an action, error, and error page HTML.
     ThrottleCheckResult(ThrottleAction action,
                         net::Error net_error_code,
-                        base::Optional<std::string> error_page_content);
+                        absl::optional<std::string> error_page_content);
 
     ThrottleCheckResult(const ThrottleCheckResult& other);
 
@@ -113,14 +118,14 @@ class CONTENT_EXPORT NavigationThrottle {
 
     ThrottleAction action() const { return action_; }
     net::Error net_error_code() const { return net_error_code_; }
-    const base::Optional<std::string>& error_page_content() {
+    const absl::optional<std::string>& error_page_content() {
       return error_page_content_;
     }
 
    private:
     ThrottleAction action_;
     net::Error net_error_code_;
-    base::Optional<std::string> error_page_content_;
+    absl::optional<std::string> error_page_content_;
   };
 
   NavigationThrottle(NavigationHandle* navigation_handle);
@@ -164,6 +169,24 @@ class CONTENT_EXPORT NavigationThrottle {
   // asynchronously.
   virtual ThrottleCheckResult WillProcessResponse();
 
+  // Called when a navigation is about to immediately commit because there's no
+  // need for a url loader. This includes browser-initiated same-document
+  // navigations, same-document history navigations, about:blank, about:srcdoc,
+  // any other empty document scheme, and MHTML subframes.
+  // Renderer-initiated non-history same-document navigations do NOT go through
+  // this path, because they are handled synchronously in the renderer and the
+  // browser process is only notified after the fact.
+  // BFCache and prerender activation also do NOT go through this path, because
+  // they are considered already loaded when they are activated.
+  // In order to get this event, a NavigationThrottle must register itself with
+  // RegisterNavigationThrottlesForCommitWithoutUrlLoader().
+  // This event is mutually exclusive with WillStartRequest,
+  // WillRedirectRequest, and WillProcessResponse. Only WillFailRequest can
+  // be called after WillCommitWithoutUrlLoader.
+  // Only PROCEED, DEFER, and CANCEL_AND_IGNORE results are supported at this
+  // time.
+  virtual ThrottleCheckResult WillCommitWithoutUrlLoader();
+
   // Returns the name of the throttle for logging purposes. It must not return
   // nullptr.
   virtual const char* GetNameForLogging() = 0;
@@ -202,7 +225,7 @@ class CONTENT_EXPORT NavigationThrottle {
   virtual void CancelDeferredNavigation(ThrottleCheckResult result);
 
  private:
-  NavigationHandle* navigation_handle_;
+  const raw_ptr<NavigationHandle> navigation_handle_;
 
   // Used in tests.
   base::RepeatingClosure resume_callback_;

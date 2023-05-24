@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,22 +6,38 @@
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_WIDGET_FRAME_WIDGET_H_
 
 #include "mojo/public/mojom/base/text_direction.mojom-blink.h"
+#include "services/viz/public/mojom/compositing/frame_sink_id.mojom-blink.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/input/input_handler.mojom-blink.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom-blink.h"
 #include "third_party/blink/public/platform/web_text_input_info.h"
 #include "third_party/blink/public/platform/web_text_input_type.h"
 #include "third_party/blink/public/platform/web_vector.h"
-#include "third_party/blink/public/web/web_swap_result.h"
-#include "third_party/blink/public/web/web_widget_client.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "ui/base/ime/mojom/text_input_state.mojom-blink.h"
 #include "ui/base/ime/mojom/virtual_keyboard_types.mojom-blink.h"
+#include "ui/gfx/mojom/delegated_ink_metadata.mojom-blink.h"
 
 namespace cc {
 class AnimationHost;
+class AnimationTimeline;
+enum class EventListenerClass;
+enum class EventListenerProperties;
 class Layer;
+class LayerTreeSettings;
+class LayerTreeDebugState;
 class PaintImage;
+struct ElementId;
 }  // namespace cc
+
+namespace display {
+struct ScreenInfo;
+struct ScreenInfos;
+}  // namespace display
+
+namespace ui {
+class Cursor;
+}  // namespace ui
 
 namespace blink {
 
@@ -31,44 +47,39 @@ namespace blink {
 // on this class occur on the main thread. input/FrameWidgetInputHandlerImpl
 // which also implements the FrameWidgetInputHandler interface runs on the
 // compositor thread and proxies calls to this class.
-class PLATFORM_EXPORT FrameWidget
-    : public mojom::blink::FrameWidgetInputHandler {
+class PLATFORM_EXPORT FrameWidget {
  public:
-  ~FrameWidget() override;
-
-  // Returns the WebWidgetClient, which is implemented outside of blink.
-  virtual WebWidgetClient* Client() const = 0;
+  virtual ~FrameWidget();
 
   // Returns the compositors's AnimationHost for the widget.
   virtual cc::AnimationHost* AnimationHost() const = 0;
+
+  // Returns the compositors's AnimationTimeline for the widget.
+  virtual cc::AnimationTimeline* ScrollAnimationTimeline() const = 0;
 
   // Set the browser's behavior when overscroll happens, e.g. whether to glow
   // or navigate.
   virtual void SetOverscrollBehavior(
       const cc::OverscrollBehavior& overscroll_behavior) = 0;
 
-  // Posts a task with the given delay, then calls ScheduleAnimation() on the
-  // Client().
+  // Posts a task with the given delay, then requests an animation frame from
+  // the compositor (ie LayerTreeHost::SetNeedsAnimate()).
   virtual void RequestAnimationAfterDelay(const base::TimeDelta&) = 0;
 
   // Sets the root layer. The |layer| can be null when detaching the root layer.
   virtual void SetRootLayer(scoped_refptr<cc::Layer> layer) = 0;
 
-  // Used to update the active selection bounds. Pass a default-constructed
-  // LayerSelection to clear it.
-  virtual void RegisterSelection(cc::LayerSelection selection) = 0;
-
   // Image decode functionality.
   virtual void RequestDecode(const cc::PaintImage&,
                              base::OnceCallback<void(bool)>) = 0;
 
-  // Forwards to WebFrameWidget::NotifySwapAndPresentationTime().
-  // The |callback| will be fired when the corresponding renderer frame is
-  // submitted (still called "swapped") to the display compositor (either with
-  // DidSwap or DidNotSwap).
-  virtual void NotifySwapAndPresentationTimeInBlink(
-      WebReportTimeCallback swap_callback,
-      WebReportTimeCallback presentation_callback) = 0;
+  // Forwards to `WebFrameWidget::NotifyPresentationTime()`.
+  // `presentation_callback` will be fired when the corresponding renderer frame
+  // is presented to the user. If the presentation is successful, the argument
+  // passed to the callback is the presentation timestamp; otherwise, it would
+  // be timestamp of when the failure is detected.
+  virtual void NotifyPresentationTimeInBlink(
+      base::OnceCallback<void(base::TimeTicks)> presentation_callback) = 0;
 
   // Enable or disable BeginMainFrameNotExpected signals from the compositor,
   // which are consumed by the blink scheduler.
@@ -77,6 +88,16 @@ class PLATFORM_EXPORT FrameWidget
   // A stable numeric Id for the local root's compositor. For tracing/debugging
   // purposes.
   virtual int GetLayerTreeId() = 0;
+
+  // Return the LayerTreeSettings from the compositor. These are constant from
+  // the time the compositor is created. This may return null if the widget
+  // does not composite.
+  virtual const cc::LayerTreeSettings* GetLayerTreeSettings() = 0;
+
+  // Sets the state of the browser controls. (Used for URL bar animations.)
+  virtual void UpdateBrowserControlsState(cc::BrowserControlsState constraints,
+                                          cc::BrowserControlsState current,
+                                          bool animate) = 0;
 
   // Set or get what event handlers exist in the document contained in the
   // WebWidget in order to inform the compositor thread if it is able to handle
@@ -96,7 +117,7 @@ class PLATFORM_EXPORT FrameWidget
 
   // Sets the ink metadata on the layer tree host
   virtual void SetDelegatedInkMetadata(
-      std::unique_ptr<viz::DelegatedInkMetadata> metadata) = 0;
+      std::unique_ptr<gfx::DelegatedInkMetadata> metadata) = 0;
 
   // Called when the main thread overscrolled.
   virtual void DidOverscroll(const gfx::Vector2dF& overscroll_delta,
@@ -110,7 +131,7 @@ class PLATFORM_EXPORT FrameWidget
   // ScrollableArea identified by |scrollable_area_element_id| by the given
   // delta + granularity.
   virtual void InjectGestureScrollEvent(
-      WebGestureDevice device,
+      mojom::blink::GestureDevice device,
       const gfx::Vector2dF& delta,
       ui::ScrollGranularity granularity,
       cc::ElementId scrollable_area_element_id,
@@ -135,8 +156,8 @@ class PLATFORM_EXPORT FrameWidget
 
   // Return the edit context bounds in window coordinates.
   virtual void GetEditContextBoundsInWindow(
-      base::Optional<gfx::Rect>* control_bounds,
-      base::Optional<gfx::Rect>* selection_bounds) = 0;
+      absl::optional<gfx::Rect>* control_bounds,
+      absl::optional<gfx::Rect>* selection_bounds) = 0;
 
   virtual int32_t ComputeWebTextInputNextPreviousFlags() = 0;
   virtual void ResetVirtualKeyboardVisibilityRequest() = 0;
@@ -145,6 +166,7 @@ class PLATFORM_EXPORT FrameWidget
   // bounds returned were different than the passed in focus and anchor bounds.
   virtual bool GetSelectionBoundsInWindow(gfx::Rect* focus,
                                           gfx::Rect* anchor,
+                                          gfx::Rect* bounding_box,
                                           base::i18n::TextDirection* focus_dir,
                                           base::i18n::TextDirection* anchor_dir,
                                           bool* is_anchor_first) = 0;
@@ -170,16 +192,18 @@ class PLATFORM_EXPORT FrameWidget
   virtual void FinishComposingText(bool keep_selection) = 0;
 
   virtual bool IsProvisional() = 0;
-  virtual uint64_t GetScrollableContainerIdAt(
-      const gfx::PointF& point_in_dips) = 0;
+  virtual uint64_t GetScrollableContainerIdAt(const gfx::PointF& point) = 0;
 
   virtual bool ShouldHandleImeEvents() { return false; }
 
   virtual void SetEditCommandsForNextKeyEvent(
       Vector<mojom::blink::EditCommandPtr> edit_commands) = 0;
 
-  // Returns information about the screen where this widget is being displayed.
-  virtual const ScreenInfo& GetScreenInfo() = 0;
+  // Returns information about the screen currently showing the widget.
+  virtual const display::ScreenInfo& GetScreenInfo() = 0;
+
+  // Returns information about available screens and the current screen.
+  virtual const display::ScreenInfos& GetScreenInfos() = 0;
 
   // Called to get the position of the widget's window in screen
   // coordinates. Note, the window includes any decorations such as borders,
@@ -202,6 +226,70 @@ class PLATFORM_EXPORT FrameWidget
   virtual gfx::PointF DIPsToBlinkSpace(const gfx::PointF& point) = 0;
   virtual gfx::Point DIPsToRoundedBlinkSpace(const gfx::Point& point) = 0;
   virtual float DIPsToBlinkSpace(float scalar) = 0;
+
+  virtual void RequestMouseLock(
+      bool has_transient_user_activation,
+      bool request_unadjusted_movement,
+      mojom::blink::WidgetInputHandlerHost::RequestMouseLockCallback
+          callback) = 0;
+
+  // Mouse capture has been lost.
+  virtual void MouseCaptureLost() = 0;
+
+  // Determines whether composition can happen inline.
+  virtual bool CanComposeInline() = 0;
+
+  // Determines if IME events should be sent to Plugin instead of processed to
+  // the currently focused frame.
+  virtual bool ShouldDispatchImeEventsToPlugin() = 0;
+
+  // Set the composition in plugin.
+  virtual void ImeSetCompositionForPlugin(
+      const String& text,
+      const Vector<ui::ImeTextSpan>& ime_text_spans,
+      const gfx::Range& replacement_range,
+      int selection_start,
+      int selection_end) = 0;
+
+  // Commit the text to plugin.
+  virtual void ImeCommitTextForPlugin(
+      const String& text,
+      const Vector<ui::ImeTextSpan>& ime_text_spans,
+      const gfx::Range& replacement_range,
+      int relative_cursor_pos) = 0;
+
+  // Indicate composition is complete to plugin.
+  virtual void ImeFinishComposingTextForPlugin(bool keep_selection) = 0;
+
+  // Returns the FrameSinkId for this widget which is used for identifying
+  // frames submitted from the compositor.
+  virtual const viz::FrameSinkId& GetFrameSinkId() = 0;
+
+  // Returns the raster scale factor for the local root frame associated with
+  // this widget, taking into account its transform to main frame space.
+  virtual float GetCompositingScaleFactor() = 0;
+
+  // Get and set the configuration for the debugging overlay managed by the
+  // underlaying LayerTreeHost.
+  virtual const cc::LayerTreeDebugState& GetLayerTreeDebugState() = 0;
+  virtual void SetLayerTreeDebugState(const cc::LayerTreeDebugState& state) = 0;
+
+  // Set whether or not this widget should be throttled if it sends
+  // CompositorFrames while widget is hidden.  By default, it should throttle,
+  // since we should be smart enough not to send them.  However,
+  // PictureInPicture requires that we are allowed to continue to produce
+  // CompositorFrames even if they're discarded by viz, since those frames are a
+  // by-product of producing the content that does make it to the picture-in-
+  // picture window.  Ideally, we would know not to send the extra
+  // CompositorFrames.  See https://crbug.com/1232173 for more details.
+  virtual void SetMayThrottleIfUndrawnFrames(
+      bool may_throttle_if_undrawn_frames) = 0;
+
+  // Returns, in physical pixels, the amount that the widget has been resized
+  // by the virtual keyboard. The virtual keyboard always insets a widget from
+  // the bottom so only the height can be affected. Only the outermost main
+  // frame's widget returns a non-zero value.
+  virtual int GetVirtualKeyboardResizeHeight() const = 0;
 };
 
 }  // namespace blink

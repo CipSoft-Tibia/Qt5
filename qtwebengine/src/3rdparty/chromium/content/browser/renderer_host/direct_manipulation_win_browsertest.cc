@@ -1,11 +1,9 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/renderer_host/direct_manipulation_helper_win.h"
 
-#include "base/test/scoped_feature_list.h"
-#include "base/win/windows_version.h"
 #include "content/browser/renderer_host/direct_manipulation_test_helper_win.h"
 #include "content/browser/renderer_host/legacy_render_widget_host_win.h"
 #include "content/browser/renderer_host/render_widget_host_view_aura.h"
@@ -19,6 +17,7 @@
 #include "ui/aura/window_tree_host.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/base/win/window_event_target.h"
+#include "ui/compositor/compositor.h"
 #include "ui/events/event_rewriter.h"
 #include "ui/events/event_source.h"
 #include "url/gurl.h"
@@ -28,6 +27,11 @@ namespace content {
 class DirectManipulationBrowserTestBase : public ContentBrowserTest {
  public:
   DirectManipulationBrowserTestBase() {}
+
+  DirectManipulationBrowserTestBase(const DirectManipulationBrowserTestBase&) =
+      delete;
+  DirectManipulationBrowserTestBase& operator=(
+      const DirectManipulationBrowserTestBase&) = delete;
 
   LegacyRenderWidgetHostHWND* GetLegacyRenderWidgetHostHWND() {
     RenderWidgetHostViewAura* rwhva = static_cast<RenderWidgetHostViewAura*>(
@@ -67,26 +71,21 @@ class DirectManipulationBrowserTestBase : public ContentBrowserTest {
     lrwhh->direct_manipulation_helper_->event_handler_->OnContentUpdated(
         lrwhh->direct_manipulation_helper_->viewport_.Get(), content);
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(DirectManipulationBrowserTestBase);
 };
 
 class DirectManipulationBrowserTest : public DirectManipulationBrowserTestBase {
  public:
   DirectManipulationBrowserTest() {}
 
- private:
-  DISALLOW_COPY_AND_ASSIGN(DirectManipulationBrowserTest);
+  DirectManipulationBrowserTest(const DirectManipulationBrowserTest&) = delete;
+  DirectManipulationBrowserTest& operator=(
+      const DirectManipulationBrowserTest&) = delete;
 };
 
 // Ensure the AnimationObserver is only created after direct manipulation
 // interaction begin and destroyed after direct manipulation interaction end.
 IN_PROC_BROWSER_TEST_F(DirectManipulationBrowserTest,
                        ObserverDuringInteraction) {
-  if (base::win::GetVersion() < base::win::Version::WIN10)
-    return;
-
   EXPECT_TRUE(NavigateToURL(shell(), GURL(url::kAboutBlankURL)));
 
   LegacyRenderWidgetHostHWND* lrwhh = GetLegacyRenderWidgetHostHWND();
@@ -113,6 +112,10 @@ IN_PROC_BROWSER_TEST_F(DirectManipulationBrowserTest,
 class EventLogger : public ui::EventRewriter {
  public:
   EventLogger() {}
+
+  EventLogger(const EventLogger&) = delete;
+  EventLogger& operator=(const EventLogger&) = delete;
+
   ~EventLogger() override {}
 
   std::unique_ptr<ui::Event> ReleaseLastEvent() {
@@ -125,20 +128,15 @@ class EventLogger : public ui::EventRewriter {
       const ui::Event& event,
       const Continuation continuation) override {
     DCHECK(!last_event_);
-    last_event_ = ui::Event::Clone(event);
+    last_event_ = event.Clone();
     return SendEvent(continuation, &event);
   }
 
-  std::unique_ptr<ui::Event> last_event_ = nullptr;
-
-  DISALLOW_COPY_AND_ASSIGN(EventLogger);
+  std::unique_ptr<ui::Event> last_event_;
 };
 
 // Check DirectManipulation events convert to ui::event correctly.
 IN_PROC_BROWSER_TEST_F(DirectManipulationBrowserTest, EventConvert) {
-  if (base::win::GetVersion() < base::win::Version::WIN10)
-    return;
-
   EXPECT_TRUE(NavigateToURL(shell(), GURL(url::kAboutBlankURL)));
 
   LegacyRenderWidgetHostHWND* lrwhh = GetLegacyRenderWidgetHostHWND();
@@ -274,6 +272,10 @@ class PrecisionTouchpadBrowserTest : public DirectManipulationBrowserTestBase {
     content_ = Microsoft::WRL::Make<MockDirectManipulationContent>();
   }
 
+  PrecisionTouchpadBrowserTest(const PrecisionTouchpadBrowserTest&) = delete;
+  PrecisionTouchpadBrowserTest& operator=(const PrecisionTouchpadBrowserTest&) =
+      delete;
+
   void UpdateContents(float scale, float scroll_x, float scroll_y) {
     content_->SetContentTransform(scale, scroll_x, scroll_y);
     DirectManipulationBrowserTestBase::UpdateContents(content_.Get());
@@ -286,16 +288,11 @@ class PrecisionTouchpadBrowserTest : public DirectManipulationBrowserTestBase {
 
  private:
   Microsoft::WRL::ComPtr<MockDirectManipulationContent> content_;
-
-  DISALLOW_COPY_AND_ASSIGN(PrecisionTouchpadBrowserTest);
 };
 
 // Confirm that preventDefault correctly prevents pinch zoom on precision
 // touchpad.
 IN_PROC_BROWSER_TEST_F(PrecisionTouchpadBrowserTest, PreventDefaultPinchZoom) {
-  if (base::win::GetVersion() < base::win::Version::WIN10)
-    return;
-
   ASSERT_TRUE(NavigateToURL(shell(), GURL(R"HTML(data:text/html,<!DOCTYPE html>
         <html>
           Hello, world
@@ -372,9 +369,6 @@ IN_PROC_BROWSER_TEST_F(PrecisionTouchpadBrowserTest, PreventDefaultPinchZoom) {
 // Confirm that preventDefault correctly prevents scrolling on precision
 // touchpad.
 IN_PROC_BROWSER_TEST_F(PrecisionTouchpadBrowserTest, PreventDefaultScroll) {
-  if (base::win::GetVersion() < base::win::Version::WIN10)
-    return;
-
   ASSERT_TRUE(NavigateToURL(shell(), GURL(R"HTML(data:text/html,<!DOCTYPE html>
     <html>
       <body style='height:2000px; width:2000px;'>

@@ -1,37 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "scatteritemmodelhandler_p.h"
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
-
-static const int noRoleIndex = -1;
+QT_BEGIN_NAMESPACE
 
 ScatterItemModelHandler::ScatterItemModelHandler(QItemModelScatterDataProxy *proxy, QObject *parent)
     : AbstractItemModelHandler(parent),
@@ -54,7 +26,7 @@ ScatterItemModelHandler::~ScatterItemModelHandler()
 
 void ScatterItemModelHandler::handleDataChanged(const QModelIndex &topLeft,
                                                 const QModelIndex &bottomRight,
-                                                const QVector<int> &roles)
+                                                const QList<int> &roles)
 {
     // Do nothing if full reset already pending
     if (!m_fullReset) {
@@ -97,7 +69,7 @@ void ScatterItemModelHandler::handleRowsInserted(const QModelIndex &parent, int 
 
 void ScatterItemModelHandler::handleRowsRemoved(const QModelIndex &parent, int start, int end)
 {
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
 
     // Do nothing if full reset already pending
     if (!m_fullReset) {
@@ -211,10 +183,10 @@ void ScatterItemModelHandler::resolveModel()
     m_yPosReplace = m_proxy->yPosRoleReplace();
     m_zPosReplace = m_proxy->zPosRoleReplace();
     m_rotationReplace = m_proxy->rotationRoleReplace();
-    m_haveXPosPattern = !m_xPosPattern.isEmpty() && m_xPosPattern.isValid();
-    m_haveYPosPattern = !m_yPosPattern.isEmpty() && m_yPosPattern.isValid();
-    m_haveZPosPattern = !m_zPosPattern.isEmpty() && m_zPosPattern.isValid();
-    m_haveRotationPattern = !m_rotationPattern.isEmpty() && m_rotationPattern.isValid();
+    m_haveXPosPattern = !m_xPosPattern.namedCaptureGroups().isEmpty() && m_xPosPattern.isValid();
+    m_haveYPosPattern = !m_yPosPattern.namedCaptureGroups().isEmpty() && m_yPosPattern.isValid();
+    m_haveZPosPattern = !m_zPosPattern.namedCaptureGroups().isEmpty() && m_zPosPattern.isValid();
+    m_haveRotationPattern = !m_rotationPattern.namedCaptureGroups().isEmpty() && m_rotationPattern.isValid();
 
     QHash<int, QByteArray> roleHash = m_itemModel->roleNames();
     m_xPosRole = roleHash.key(m_proxy->xPosRole().toLatin1(), noRoleIndex);
@@ -241,4 +213,4 @@ void ScatterItemModelHandler::resolveModel()
     m_proxy->resetArray(m_proxyArray);
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

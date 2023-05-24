@@ -1,62 +1,28 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "content_client_qt.h"
 
 #include "base/command_line.h"
 #include "base/files/file_util.h"
+#include "base/json/json_string_value_serializer.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
-#include "base/strings/utf_string_conversions.h"
+#include "base/values.h"
 #include "base/version.h"
 #include "content/public/common/cdm_info.h"
 #include "content/public/common/content_constants.h"
+#include "content/public/common/content_switches.h"
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/common/constants.h"
 #include "media/base/media_switches.h"
 #include "media/base/video_codecs.h"
+#include "media/cdm/supported_audio_codecs.h"
 #include "media/media_buildflags.h"
 #include "ui/base/layout.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
-#include "services/service_manager/switches.h"
 #include "type_conversion.h"
 
 #include <QCoreApplication>
@@ -64,8 +30,10 @@
 #include <QLibraryInfo>
 #include <QString>
 
+
 #if BUILDFLAG(ENABLE_LIBRARY_CDMS)
 #include "media/cdm/cdm_paths.h"  // nogncheck
+#include "media/cdm/clear_key_cdm_common.h"
 #include "third_party/widevine/cdm/buildflags.h"
 #include "third_party/widevine/cdm/widevine_cdm_common.h"
 #if BUILDFLAG(ENABLE_WIDEVINE) && !BUILDFLAG(ENABLE_WIDEVINE_CDM_COMPONENT)
@@ -73,28 +41,29 @@
 
 // File name of the CDM on different platforms.
 const char kWidevineCdmFileName[] =
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
     "widevinecdm.plugin";
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
     "widevinecdm.dll";
 #else  // OS_LINUX, etc.
     "libwidevinecdm.so";
 #endif
 #endif
+#endif  // BUILDFLAG(ENABLE_LIBRARY_CDMS)
 
 #if QT_CONFIG(webengine_printing_and_pdf)
+#include "components/pdf/common/internal_plugin_helpers.h"
 #include "pdf/pdf.h"
-#include "pdf/pdf_ppapi.h"
-const char kPdfPluginMimeType[] = "application/x-google-chrome-pdf";
 const char kPdfPluginPath[] = "internal-pdf-viewer";
-const char kPdfPluginSrc[] = "src";
 #endif // QT_CONFIG(webengine_printing_and_pdf)
+
+using Robustness = content::CdmInfo::Robustness;
 
 static QString webenginePluginsPath()
 {
     // Look for plugins in /plugins/webengine or application dir.
     static bool initialized = false;
-    static QString potentialPluginsPath = QLibraryInfo::location(QLibraryInfo::PluginsPath) % QLatin1String("/webengine");
+    static QString potentialPluginsPath = QLibraryInfo::path(QLibraryInfo::PluginsPath) % QLatin1String("/webengine");
     if (!initialized) {
         initialized = true;
         if (!QFileInfo::exists(potentialPluginsPath))
@@ -102,7 +71,6 @@ static QString webenginePluginsPath()
     }
     return potentialPluginsPath;
 }
-#endif  // BUILDFLAG(ENABLE_LIBRARY_CDMS)
 
 #if defined(Q_OS_WIN)
 #include <shlobj.h>
@@ -132,26 +100,14 @@ static QString getProgramFilesDir(bool x86Dir = false)
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE.Chromium file.
 
-#include "content/public/common/pepper_plugin_info.h"
+#include "content/public/common/content_plugin_info.h"
 #include "ppapi/shared_impl/ppapi_permissions.h"
-
-static const int32_t kPepperFlashPermissions = ppapi::PERMISSION_DEV |
-                                               ppapi::PERMISSION_PRIVATE |
-                                               ppapi::PERMISSION_BYPASS_USER_GESTURE |
-                                               ppapi::PERMISSION_FLASH |
-                                               ppapi::PERMISSION_SOCKET;
-
-namespace switches {
-const char kPpapiFlashPath[]    = "ppapi-flash-path";
-const char kPpapiFlashVersion[] = "ppapi-flash-version";
-const char kPpapiWidevinePath[] = "ppapi-widevine-path";
-}
 
 static QString ppapiPluginsPath()
 {
     // Look for plugins in /plugins/ppapi or application dir.
     static bool initialized = false;
-    static QString potentialPluginsPath = QLibraryInfo::location(QLibraryInfo::PluginsPath) % QLatin1String("/ppapi");
+    static QString potentialPluginsPath = QLibraryInfo::path(QLibraryInfo::PluginsPath) % QLatin1String("/ppapi");
     if (!initialized) {
         initialized = true;
         if (!QFileInfo::exists(potentialPluginsPath))
@@ -160,121 +116,29 @@ static QString ppapiPluginsPath()
     return potentialPluginsPath;
 }
 
-
-content::PepperPluginInfo CreatePepperFlashInfo(const base::FilePath& path, const std::string& version)
-{
-    content::PepperPluginInfo plugin;
-
-    plugin.is_out_of_process = true;
-    plugin.name = content::kFlashPluginName;
-    plugin.path = path;
-    plugin.permissions = kPepperFlashPermissions;
-
-    std::vector<std::string> flash_version_numbers = base::SplitString(version, ".", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
-    if (flash_version_numbers.size() < 1)
-        flash_version_numbers.push_back("11");
-    else if (flash_version_numbers[0].empty())
-        flash_version_numbers[0] = "11";
-    if (flash_version_numbers.size() < 2)
-        flash_version_numbers.push_back("2");
-    if (flash_version_numbers.size() < 3)
-        flash_version_numbers.push_back("999");
-    if (flash_version_numbers.size() < 4)
-        flash_version_numbers.push_back("999");
-
-    // E.g., "Shockwave Flash 10.2 r154":
-    plugin.description = plugin.name + " " + flash_version_numbers[0] + "." + flash_version_numbers[1] + " r" + flash_version_numbers[2];
-    plugin.version = base::JoinString(flash_version_numbers, ".");
-    content::WebPluginMimeType swf_mime_type(content::kFlashPluginSwfMimeType,
-                                             content::kFlashPluginSwfExtension,
-                                             content::kFlashPluginSwfDescription);
-    plugin.mime_types.push_back(swf_mime_type);
-    content::WebPluginMimeType spl_mime_type(content::kFlashPluginSplMimeType,
-                                             content::kFlashPluginSplExtension,
-                                             content::kFlashPluginSplDescription);
-    plugin.mime_types.push_back(spl_mime_type);
-
-    return plugin;
-}
-
-void AddPepperFlashFromSystem(std::vector<content::PepperPluginInfo>* plugins)
-{
-    QStringList pluginPaths;
-#if defined(Q_OS_WIN)
-    QString winDir = QDir::fromNativeSeparators(qEnvironmentVariable("WINDIR"));
-    if (winDir.isEmpty())
-        winDir = QString::fromLatin1("C:/Windows");
-    QDir pluginDir(winDir + "/System32/Macromed/Flash");
-    pluginDir.setFilter(QDir::Files);
-    const QFileInfoList infos = pluginDir.entryInfoList(QStringList("pepflashplayer*.dll"));
-    for (const QFileInfo &info : infos)
-        pluginPaths << info.absoluteFilePath();
-    pluginPaths << ppapiPluginsPath() + QStringLiteral("/pepflashplayer.dll");
-#endif
-#if defined(Q_OS_OSX)
-    pluginPaths << "/Library/Internet Plug-Ins/PepperFlashPlayer/PepperFlashPlayer.plugin"; // System path
-    QDir potentialDir(QDir::homePath() + "/Library/Application Support/Google/Chrome/PepperFlash");
-    if (potentialDir.exists()) {
-        QFileInfoList versionDirs = potentialDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name | QDir::Reversed);
-        for (int i = 0; i < versionDirs.size(); ++i) {
-            pluginPaths << versionDirs.at(i).absoluteFilePath() + "/PepperFlashPlayer.plugin";
-        }
-    }
-    pluginPaths << ppapiPluginsPath() + QStringLiteral("/PepperFlashPlayer.plugin");
-#endif
-#if defined(Q_OS_LINUX)
-    pluginPaths << "/opt/google/chrome/PepperFlash/libpepflashplayer.so" // Google Chrome
-                << "/usr/lib/pepperflashplugin-nonfree/libpepflashplayer.so" // Ubuntu, package pepperflashplugin-nonfree
-                << "/usr/lib/adobe-flashplugin/libpepflashplayer.so" // Ubuntu, package adobe-flashplugin
-                << "/usr/lib/PepperFlash/libpepflashplayer.so" // Arch
-                << "/usr/lib64/chromium/PepperFlash/libpepflashplayer.so"; // OpenSuSE
-    pluginPaths << ppapiPluginsPath() + QStringLiteral("/libpepflashplayer.so");
-#endif
-    std::string flash_version = base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(switches::kPpapiFlashVersion);
-    for (auto it = pluginPaths.constBegin(); it != pluginPaths.constEnd(); ++it) {
-        if (!QFile::exists(*it))
-            continue;
-        plugins->push_back(CreatePepperFlashInfo(QtWebEngineCore::toFilePath(*it), flash_version));
-    }
-}
-
-void AddPepperFlashFromCommandLine(std::vector<content::PepperPluginInfo>* plugins)
-{
-    const base::CommandLine::StringType flash_path = base::CommandLine::ForCurrentProcess()->GetSwitchValueNative(switches::kPpapiFlashPath);
-    if (flash_path.empty() || !QFile::exists(QtWebEngineCore::toQt(flash_path)))
-        return;
-
-    // Read pepper flash plugin version from command-line. (e.g. 16.0.0.235)
-    std::string flash_version = base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(switches::kPpapiFlashVersion);
-    plugins->push_back(CreatePepperFlashInfo(base::FilePath(flash_path), flash_version));
-}
-
-void ComputeBuiltInPlugins(std::vector<content::PepperPluginInfo>* plugins)
+void ComputeBuiltInPlugins(std::vector<content::ContentPluginInfo> *plugins)
 {
 #if QT_CONFIG(webengine_printing_and_pdf)
-    content::PepperPluginInfo pdf_info;
+    static constexpr char kPDFPluginExtension[] = "pdf";
+    static constexpr char kPDFPluginDescription[] = "Portable Document Format";
+    content::ContentPluginInfo pdf_info;
     pdf_info.is_internal = true;
     pdf_info.is_out_of_process = true;
     pdf_info.name = "Chromium PDF Viewer";
-    pdf_info.description = "Portable Document Format";
+    pdf_info.description = kPDFPluginDescription;
     pdf_info.path = base::FilePath::FromUTF8Unsafe(kPdfPluginPath);
-    content::WebPluginMimeType pdf_mime_type(kPdfPluginMimeType, "pdf", "Portable Document Format");
+    content::WebPluginMimeType pdf_mime_type(
+        pdf::kInternalPluginMimeType, kPDFPluginExtension, kPDFPluginDescription);
     pdf_info.mime_types.push_back(pdf_mime_type);
-    pdf_info.internal_entry_points.get_interface = chrome_pdf::PPP_GetInterface;
-    pdf_info.internal_entry_points.initialize_module = chrome_pdf::PPP_InitializeModule;
-    pdf_info.internal_entry_points.shutdown_module = chrome_pdf::PPP_ShutdownModule;
-    pdf_info.permissions = ppapi::PERMISSION_PRIVATE | ppapi::PERMISSION_DEV | ppapi::PERMISSION_PDF;
     plugins->push_back(pdf_info);
 #endif // QT_CONFIG(webengine_printing_and_pdf)
 }
 
 namespace QtWebEngineCore {
 
-void ContentClientQt::AddPepperPlugins(std::vector<content::PepperPluginInfo>* plugins)
+void ContentClientQt::AddPlugins(std::vector<content::ContentPluginInfo> *plugins)
 {
     ComputeBuiltInPlugins(plugins);
-    AddPepperFlashFromSystem(plugins);
-    AddPepperFlashFromCommandLine(plugins);
 }
 
 } // namespace QtWebEngineCore
@@ -283,11 +147,42 @@ void ContentClientQt::AddPepperPlugins(std::vector<content::PepperPluginInfo>* p
 namespace QtWebEngineCore {
 
 #if defined(WIDEVINE_CDM_AVAILABLE_NOT_COMPONENT)
+#if defined(Q_OS_LINUX)
+static const QDir widevineCdmDirHint(const QDir &widevineDir)
+{
+    const QString hintFilePath = widevineDir.absolutePath() % QDir::separator()
+            % QLatin1String("latest-component-updated-widevine-cdm");
+    if (!QFileInfo::exists(hintFilePath)) {
+        // CDM hint file does not exist.
+        return widevineDir;
+    }
+
+    std::string jsonString;
+    if (!base::ReadFileToString(toFilePath(hintFilePath), &jsonString)) {
+        // Could not read the CDM hint file.
+        return widevineDir;
+    }
+
+    JSONStringValueDeserializer deserializer(jsonString);
+    std::unique_ptr<base::Value> dict = deserializer.Deserialize(nullptr, nullptr);
+    if (!dict || !dict->is_dict()) {
+        // Could not deserialize the CDM hint file.
+        return widevineDir;
+    }
+
+    std::string *widevineCdmDirPath = dict->FindStringKey("Path");
+    if (!widevineCdmDirPath)
+        return widevineDir;
+
+    return QDir(QString::fromStdString(*widevineCdmDirPath));
+}
+#endif // defined(Q_OS_LINUX)
+
 static bool IsWidevineAvailable(base::FilePath *cdm_path,
-                                content::CdmCapability *capability)
+                                media::CdmCapability *capability)
 {
     QStringList pluginPaths;
-    const base::CommandLine::StringType widevine_argument = base::CommandLine::ForCurrentProcess()->GetSwitchValueNative(service_manager::switches::kCdmWidevinePath);
+    const base::CommandLine::StringType widevine_argument = base::CommandLine::ForCurrentProcess()->GetSwitchValueNative(switches::kCdmWidevinePath);
     if (!widevine_argument.empty())
         pluginPaths << QtWebEngineCore::toQt(widevine_argument);
     else {
@@ -352,28 +247,76 @@ static bool IsWidevineAvailable(base::FilePath *cdm_path,
         }
     }
 #elif defined(Q_OS_LINUX)
-        pluginPaths << QStringLiteral("/opt/google/chrome/libwidevinecdm.so") // Old Google Chrome
+        QList<QDir> potentialWidevineVersionDirs;
+
+        // Google Chrome widevine modules
+        QDir chromeWidevineDir(QDir::homePath() + "/.config/google-chrome/WidevineCdm");
+        if (chromeWidevineDir.exists())
+            potentialWidevineVersionDirs << widevineCdmDirHint(chromeWidevineDir);
+
+        // Firefox widevine modules
+        QDir firefoxPotentialProfilesDir(QDir::homePath() + "/.mozilla/firefox");
+        if (firefoxPotentialProfilesDir.exists()) {
+            QFileInfoList firefoxProfileDirs = firefoxPotentialProfilesDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name | QDir::Reversed);
+            for (const QFileInfo &info : firefoxProfileDirs) {
+                QDir widevinePluginsDir(info.absoluteFilePath() + "/gmp-widevinecdm");
+                if (widevinePluginsDir.exists())
+                    potentialWidevineVersionDirs << widevinePluginsDir;
+            }
+        }
+
+        // Chromium widevine modules (might not work with proprietary codecs)
+        QDir chromiumWidevineDir(QDir::homePath() + "/.config/chromium/WidevineCdm");
+        if (chromiumWidevineDir.exists())
+            potentialWidevineVersionDirs << widevineCdmDirHint(chromiumWidevineDir);
+
+        // Search for widewine versions
+        for (const QDir &dir : potentialWidevineVersionDirs) {
+            QFileInfoList widevineVersionDirs = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name | QDir::Reversed);
+            widevineVersionDirs.prepend(QFileInfo(dir.absolutePath()));
+            // ### alternatively look up in the manifest.json and take the path from there.
 #if Q_PROCESSOR_WORDSIZE == 8
-                    << QStringLiteral("/opt/google/chrome/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so")
+            const QString library = QLatin1String("/_platform_specific/linux_x64/libwidevinecdm.so");
 #else
-                    << QStringLiteral("/opt/google/chrome/WidevineCdm/_platform_specific/linux_x86/libwidevinecdm.so")
+            const QString library = QLatin1String("/_platform_specific/linux_x86/libwidevinecdm.so");
 #endif
-                    << QStringLiteral("/usr/lib/chromium/libwidevinecdm.so") // Arch
+            for (const QFileInfo &info : widevineVersionDirs) {
+                pluginPaths << info.absoluteFilePath() + "/libwidevinecdm.so";
+                pluginPaths << info.absoluteFilePath() + library;
+            }
+        }
+
+        // Fixed paths:
+        pluginPaths << QStringLiteral("/usr/lib/chromium/libwidevinecdm.so") // Arch
                     << QStringLiteral("/usr/lib/chromium-browser/libwidevinecdm.so") // Ubuntu/neon
-                    << QStringLiteral("/usr/lib64/chromium/libwidevinecdm.so"); // OpenSUSE style
+                    << QStringLiteral("/usr/lib64/chromium/libwidevinecdm.so") // OpenSUSE style
+#if Q_PROCESSOR_WORDSIZE == 8
+                    << QStringLiteral("/usr/lib64/chromium-browser/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so") // Gentoo
+                    << QStringLiteral("/opt/google/chrome/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so") // Old Google Chrome
+#else
+                    << QStringLiteral("/usr/lib/chromium-browser/WidevineCdm/_platform_specific/linux_x86/libwidevinecdm.so") // Gentoo
+                    << QStringLiteral("/opt/google/chrome/WidevineCdm/_platform_specific/linux_x86/libwidevinecdm.so") // Old Google Chrome
+#endif
+                    << QStringLiteral("/opt/google/chrome/libwidevinecdm.so"); // Older Google Chrome
 #endif
     }
 
-    for (const QString &pluginPath : qAsConst(pluginPaths)) {
+    for (const QString &pluginPath : std::as_const(pluginPaths)) {
         *cdm_path = QtWebEngineCore::toFilePath(pluginPath);
         if (base::PathExists(*cdm_path)) {
             // Add the supported codecs as if they came from the component manifest.
             // This list must match the CDM that is being bundled with Chrome.
-            capability->video_codecs.push_back(media::VideoCodec::kCodecVP8);
-            capability->video_codecs.push_back(media::VideoCodec::kCodecVP9);
+            const std::vector<media::VideoCodecProfile> kAllProfiles = {};
+            capability->video_codecs.emplace(media::VideoCodec::kVP8, kAllProfiles);
+            capability->video_codecs.emplace(media::VideoCodec::kVP9, kAllProfiles);
+            capability->video_codecs.emplace(media::VideoCodec::kAV1, kAllProfiles);
 #if BUILDFLAG(USE_PROPRIETARY_CODECS)
-            capability->video_codecs.push_back(media::VideoCodec::kCodecH264);
+            capability->video_codecs.emplace(media::VideoCodec::kH264, kAllProfiles);
 #endif  // BUILDFLAG(USE_PROPRIETARY_CODECS)
+#if BUILDFLAG(ENABLE_PLATFORM_HEVC)
+            capability->video_codecs.emplace(media::VideoCodec::kHEVC, kAllProfiles);
+#endif
+            capability->audio_codecs = media::GetCdmSupportedAudioCodecs();
 
             // Add the supported encryption schemes as if they came from the
             // component manifest. This list must match the CDM that is being
@@ -398,12 +341,12 @@ void ContentClientQt::AddContentDecryptionModules(std::vector<content::CdmInfo> 
     if (cdms) {
 #if defined(WIDEVINE_CDM_AVAILABLE_NOT_COMPONENT)
         base::FilePath cdm_path;
-        content::CdmCapability capability;
+        media::CdmCapability capability;
         if (IsWidevineAvailable(&cdm_path, &capability)) {
             const base::Version version;
-            cdms->push_back(content::CdmInfo(kWidevineCdmDisplayName, kWidevineCdmGuid, version, cdm_path,
-                                             kWidevineCdmFileSystemId, std::move(capability),
-                                             kWidevineKeySystem, false));
+            cdms->push_back(content::CdmInfo(kWidevineKeySystem, Robustness::kSoftwareSecure, std::move(capability),
+                                             /*supports_sub_key_systems=*/false, kWidevineCdmDisplayName,
+                                             kWidevineCdmType, version, cdm_path));
         }
 #endif  // defined(WIDEVINE_CDM_AVAILABLE_NOT_COMPONENT)
 
@@ -421,8 +364,8 @@ void ContentClientQt::AddContentDecryptionModules(std::vector<content::CdmInfo> 
                     "org.chromium.externalclearkey.differentguid";
 
             // Supported codecs are hard-coded in ExternalClearKeyProperties.
-            content::CdmCapability capability(
-                {}, {media::EncryptionScheme::kCenc, media::EncryptionScheme::kCbcs},
+            media::CdmCapability capability(
+                {}, {}, {media::EncryptionScheme::kCenc, media::EncryptionScheme::kCbcs},
                 {media::CdmSessionType::kTemporary,
                  media::CdmSessionType::kPersistentLicense});
 
@@ -430,16 +373,17 @@ void ContentClientQt::AddContentDecryptionModules(std::vector<content::CdmInfo> 
             // Otherwise, it'll be treated as a sub-key-system of normal
             // kExternalClearKeyKeySystem. See MultipleCdmTypes test in
             // ECKEncryptedMediaTest.
-            cdms->push_back(content::CdmInfo(media::kClearKeyCdmDisplayName, media::kClearKeyCdmDifferentGuid,
-                                             base::Version("0.1.0.0"), clear_key_cdm_path,
-                                             media::kClearKeyCdmFileSystemId, capability,
-                                             kExternalClearKeyDifferentGuidTestKeySystem, false));
+            cdms->push_back(content::CdmInfo(kExternalClearKeyDifferentGuidTestKeySystem,
+                                             Robustness::kSoftwareSecure, capability,
+                                             /*supports_sub_key_systems=*/false, media::kClearKeyCdmDisplayName,
+                                             media::kClearKeyCdmDifferentCdmType, base::Version("0.1.0.0"),
+                                             clear_key_cdm_path));
 
-            // Supported codecs are hard-coded in ExternalClearKeyProperties.
-            cdms->push_back(content::CdmInfo(media::kClearKeyCdmDisplayName, media::kClearKeyCdmGuid,
-                                             base::Version("0.1.0.0"), clear_key_cdm_path,
-                                             media::kClearKeyCdmFileSystemId, capability,
-                                             kExternalClearKeyKeySystem, true));
+            cdms->push_back(content::CdmInfo(kExternalClearKeyKeySystem,
+                                             Robustness::kSoftwareSecure, capability,
+                                             /*supports_sub_key_systems=*/true, media::kClearKeyCdmDisplayName,
+                                             media::kClearKeyCdmType, base::Version("0.1.0.0"),
+                                             clear_key_cdm_path));
         }
 #endif  // BUILDFLAG(ENABLE_LIBRARY_CDMS)
     }
@@ -458,7 +402,7 @@ void ContentClientQt::AddAdditionalSchemes(Schemes* schemes)
 #endif
 }
 
-base::StringPiece ContentClientQt::GetDataResource(int resource_id, ui::ScaleFactor scale_factor)
+base::StringPiece ContentClientQt::GetDataResource(int resource_id, ui::ResourceScaleFactor scale_factor)
 {
     return ui::ResourceBundle::GetSharedInstance().GetRawDataResourceForScale(resource_id, scale_factor);
 }
@@ -473,9 +417,24 @@ gfx::Image &ContentClientQt::GetNativeImageNamed(int resource_id)
     return ui::ResourceBundle::GetSharedInstance().GetNativeImageNamed(resource_id);
 }
 
-base::string16 ContentClientQt::GetLocalizedString(int message_id)
+std::u16string ContentClientQt::GetLocalizedString(int message_id)
 {
     return l10n_util::GetStringUTF16(message_id);
+}
+
+// This method is a copy from chrome/common/chrome_content_client.cc:
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE.Chromium file.
+blink::OriginTrialPolicy *ContentClientQt::GetOriginTrialPolicy()
+{
+    // Prevent initialization race (see crbug.com/721144). There may be a
+    // race when the policy is needed for worker startup (which happens on a
+    // separate worker thread).
+    base::AutoLock auto_lock(origin_trial_policy_lock_);
+    if (!origin_trial_policy_)
+        origin_trial_policy_ = std::make_unique<embedder_support::OriginTrialPolicyImpl>();
+    return origin_trial_policy_.get();
 }
 
 } // namespace QtWebEngineCore

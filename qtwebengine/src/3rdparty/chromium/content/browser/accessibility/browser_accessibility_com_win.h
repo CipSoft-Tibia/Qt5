@@ -1,4 +1,4 @@
-// Copyright (c) 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,7 @@
 #include <string>
 #include <vector>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/win/atl.h"
 #include "content/browser/accessibility/browser_accessibility.h"
 #include "content/browser/accessibility/browser_accessibility_win.h"
@@ -28,18 +27,12 @@
 #include "ui/accessibility/platform/ax_platform_node_delegate.h"
 #include "ui/accessibility/platform/ax_platform_node_win.h"
 
-// These nonstandard GUIDs are taken directly from the Mozilla sources
-// (accessible/src/msaa/nsAccessNodeWrap.cpp); some documentation is here:
-// http://developer.mozilla.org/en/Accessibility/AT-APIs/ImplementationFeatures/MSAA
+// This nonstandard GUID is taken directly from the Mozilla sources
+// (https://searchfox.org/mozilla-central/source/accessible/windows/msaa/ServiceProvider.cpp#110).
 const GUID GUID_ISimpleDOM = {0x0c539790,
                               0x12e4,
                               0x11cf,
                               {0xb6, 0x61, 0x00, 0xaa, 0x00, 0x4c, 0xd6, 0xd8}};
-const GUID GUID_IAccessibleContentDocument = {
-    0xa5d8e1f3,
-    0x3571,
-    0x4d8f,
-    {0x95, 0x21, 0x07, 0xed, 0x28, 0xfb, 0x07, 0x2e}};
 
 namespace content {
 class BrowserAccessibilityWin;
@@ -78,10 +71,15 @@ class __declspec(uuid("562072fe-3390-43b1-9e2c-dd4118f5ac79"))
 
   // Mappings from roles and states to human readable strings. Initialize
   // with |InitializeStringMaps|.
-  static std::map<int32_t, base::string16> role_string_map;
-  static std::map<int32_t, base::string16> state_string_map;
+  static std::map<int32_t, std::u16string> role_string_map;
+  static std::map<int32_t, std::u16string> state_string_map;
 
   CONTENT_EXPORT BrowserAccessibilityComWin();
+
+  BrowserAccessibilityComWin(const BrowserAccessibilityComWin&) = delete;
+  BrowserAccessibilityComWin& operator=(const BrowserAccessibilityComWin&) =
+      delete;
+
   CONTENT_EXPORT ~BrowserAccessibilityComWin() override;
 
   // Called after an atomic tree update completes. See
@@ -181,6 +179,7 @@ class __declspec(uuid("562072fe-3390-43b1-9e2c-dd4118f5ac79"))
   CONTENT_EXPORT IFACEMETHODIMP get_nHyperlinks(LONG* hyperlink_count) override;
 
   CONTENT_EXPORT IFACEMETHODIMP
+  // A hyperlink represents an embedded object character (leading to a subtree).
   get_hyperlink(LONG index, IAccessibleHyperlink** hyperlink) override;
 
   CONTENT_EXPORT IFACEMETHODIMP
@@ -343,12 +342,12 @@ class __declspec(uuid("562072fe-3390-43b1-9e2c-dd4118f5ac79"))
 
  private:
   // Private accessors.
-  const std::vector<base::string16>& ia2_attributes() const {
+  const std::vector<std::wstring>& ia2_attributes() const {
     return win_attributes_->ia2_attributes;
   }
-  base::string16 name() const { return win_attributes_->name; }
-  base::string16 description() const { return win_attributes_->description; }
-  base::string16 value() const { return win_attributes_->value; }
+  std::wstring name() const { return win_attributes_->name; }
+  std::wstring description() const { return win_attributes_->description; }
+  std::wstring value() const { return win_attributes_->value; }
 
   // Setter and getter for the browser accessibility owner
   BrowserAccessibilityWin* owner() const { return owner_; }
@@ -414,22 +413,22 @@ class __declspec(uuid("562072fe-3390-43b1-9e2c-dd4118f5ac79"))
     int32_t ia_state;
 
     // IAccessible name, description, help, value.
-    base::string16 name;
-    base::string16 description;
-    base::string16 value;
+    std::wstring name;
+    std::wstring description;
+    std::wstring value;
 
     // IAccessible2 role and state.
     int32_t ia2_role;
     int32_t ia2_state;
 
     // IAccessible2 attributes.
-    std::vector<base::string16> ia2_attributes;
+    std::vector<std::wstring> ia2_attributes;
 
     // Maps each style span to its start offset in hypertext.
     ui::TextAttributeMap offset_to_text_attributes;
   };
 
-  BrowserAccessibilityWin* owner_;
+  raw_ptr<BrowserAccessibilityWin> owner_;
 
   std::unique_ptr<WinAttributes> win_attributes_;
 
@@ -444,8 +443,6 @@ class __declspec(uuid("562072fe-3390-43b1-9e2c-dd4118f5ac79"))
   // Give BrowserAccessibility::Create access to our constructor.
   friend class BrowserAccessibility;
   friend class BrowserAccessibilityWin;
-
-  DISALLOW_COPY_AND_ASSIGN(BrowserAccessibilityComWin);
 };
 
 CONTENT_EXPORT BrowserAccessibilityComWin* ToBrowserAccessibilityComWin(

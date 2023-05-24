@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,23 +11,29 @@
 #include <string>
 
 #include "base/memory/ref_counted_memory.h"
-#include "base/optional.h"
-#include "base/strings/string16.h"
 #include "base/supports_user_data.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "content/common/content_export.h"
 #include "content/public/common/page_type.h"
 #include "content/public/common/referrer.h"
-#include "services/network/public/cpp/resource_request_body.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/page_transition_types.h"
 
 class GURL;
 
+namespace blink {
+class PageState;
+}
+
+namespace network {
+class ResourceRequestBody;
+}
+
 namespace content {
 
-class PageState;
 struct FaviconStatus;
+class NavigationEntryRestoreContext;
 struct ReplacedNavigationEntryData;
 struct SSLStatus;
 
@@ -40,6 +46,13 @@ class NavigationEntry : public base::SupportsUserData {
   ~NavigationEntry() override {}
 
   CONTENT_EXPORT static std::unique_ptr<NavigationEntry> Create();
+
+  // True if this entry is the initial NavigationEntry, which is created when a
+  // FrameTree is first initialized. The initial NavigationEntry, unlike other
+  // NavigationEntries, is not associated with any committed navigation in the
+  // main frame. After any navigation committed in the main frame, the
+  // NavigationEntry will be replaced, or at least lose its "initial" status.
+  virtual bool IsInitialEntry() = 0;
 
   // Page-related stuff --------------------------------------------------------
 
@@ -62,7 +75,7 @@ class NavigationEntry : public base::SupportsUserData {
   virtual void SetBaseURLForDataURL(const GURL& url) = 0;
   virtual const GURL& GetBaseURLForDataURL() = 0;
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // The real data: URL when it is received via WebView.loadDataWithBaseUrl
   // method. Represented as a string to circumvent the size restriction
   // of GURLs for compatibility with legacy Android WebView apps.
@@ -94,25 +107,28 @@ class NavigationEntry : public base::SupportsUserData {
   // observers when the visible title changes. Only call
   // NavigationEntry::SetTitle() below directly when this entry is known not to
   // be visible.
-  virtual void SetTitle(const base::string16& title) = 0;
-  virtual const base::string16& GetTitle() = 0;
+  virtual void SetTitle(const std::u16string& title) = 0;
+  virtual const std::u16string& GetTitle() = 0;
 
   // Page state is an opaque blob created by Blink that represents the state of
   // the page. This includes form entries and scroll position for each frame.
   // We store it so that we can supply it back to Blink to restore form state
-  // properly when the user goes back and forward.
+  // properly when the user goes back and forward. |context| is an opaque object
+  // that tracks FrameNavigationEntries as they are created during page state
+  // initialization, and ensures equal entries are merged and shared.
   //
   // NOTE: This state is saved to disk and used to restore previous states.  If
   // the format is modified in the future, we should still be able to deal with
   // older versions.
-  virtual void SetPageState(const PageState& state) = 0;
-  virtual PageState GetPageState() = 0;
+  virtual void SetPageState(const blink::PageState& state,
+                            NavigationEntryRestoreContext* context) = 0;
+  virtual blink::PageState GetPageState() = 0;
 
   // Page-related helpers ------------------------------------------------------
 
   // Returns the title to be displayed on the tab. This could be the title of
   // the page if it is available or the URL.
-  virtual const base::string16& GetTitleForDisplay() = 0;
+  virtual const std::u16string& GetTitleForDisplay() = 0;
 
   // Returns true if the current tab is in view source mode. This will be false
   // if there is no navigation.
@@ -212,7 +228,7 @@ class NavigationEntry : public base::SupportsUserData {
   // contains some information about the entry prior to being replaced. Even if
   // an entry is replaced multiple times, it represents data prior to the
   // *first* replace.
-  virtual const base::Optional<ReplacedNavigationEntryData>&
+  virtual const absl::optional<ReplacedNavigationEntryData>&
   GetReplacedEntryData() = 0;
 
   // True if this entry is restored and hasn't been loaded.

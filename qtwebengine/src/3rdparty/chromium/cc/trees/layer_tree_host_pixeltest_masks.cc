@@ -1,10 +1,9 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <stddef.h>
 
-#include "base/stl_util.h"
 #include "build/build_config.h"
 #include "cc/layers/content_layer_client.h"
 #include "cc/layers/picture_layer.h"
@@ -22,25 +21,25 @@
 #include "components/viz/test/buildflags.h"
 #include "third_party/skia/include/core/SkImage.h"
 
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
 
 namespace cc {
 namespace {
 
 // TODO(penghuang): Fix vulkan with one copy or zero copy
 // https://crbug.com/979703
+// TODO(crbug.com/1417268): Fix SkiaGL with zero copy
 std::vector<RasterTestConfig> const kTestCases = {
     {viz::RendererType::kSoftware, TestRasterType::kBitmap},
 #if BUILDFLAG(ENABLE_GL_BACKEND_TESTS)
-    {viz::RendererType::kGL, TestRasterType::kGpu},
-    {viz::RendererType::kGL, TestRasterType::kOneCopy},
-    {viz::RendererType::kGL, TestRasterType::kZeroCopy},
     {viz::RendererType::kSkiaGL, TestRasterType::kGpu},
     {viz::RendererType::kSkiaGL, TestRasterType::kOneCopy},
+#if !BUILDFLAG(IS_IOS)
     {viz::RendererType::kSkiaGL, TestRasterType::kZeroCopy},
+#endif  // !BUILDFLAG(IS_IOS)
 #endif  // BUILDFLAG(ENABLE_GL_BACKEND_TESTS)
 #if BUILDFLAG(ENABLE_VULKAN_BACKEND_TESTS)
-    {viz::RendererType::kSkiaVk, TestRasterType::kOop},
+    {viz::RendererType::kSkiaVk, TestRasterType::kGpu},
     {viz::RendererType::kSkiaVk, TestRasterType::kZeroCopy},
 #endif  // BUILDFLAG(ENABLE_VULKAN_BACKEND_TESTS)
 };
@@ -58,31 +57,29 @@ class MaskContentLayerClient : public ContentLayerClient {
   ~MaskContentLayerClient() override = default;
 
   bool FillsBoundsCompletely() const override { return false; }
-  size_t GetApproximateUnsharedMemoryUsage() const override { return 0; }
 
-  gfx::Rect PaintableRegion() override { return gfx::Rect(bounds_); }
+  gfx::Rect PaintableRegion() const override { return gfx::Rect(bounds_); }
 
-  scoped_refptr<DisplayItemList> PaintContentsToDisplayList(
-      PaintingControlSetting picture_control) override {
+  scoped_refptr<DisplayItemList> PaintContentsToDisplayList() override {
     auto display_list = base::MakeRefCounted<DisplayItemList>();
     display_list->StartPaint();
 
     display_list->push<SaveOp>();
     display_list->push<ClipRectOp>(gfx::RectToSkRect(PaintableRegion()),
                                    SkClipOp::kIntersect, false);
-    SkColor color = SK_ColorTRANSPARENT;
+    SkColor4f color = SkColors::kTransparent;
     display_list->push<DrawColorOp>(color, SkBlendMode::kSrc);
 
     PaintFlags flags;
     flags.setStyle(PaintFlags::kStroke_Style);
     flags.setStrokeWidth(SkIntToScalar(2));
-    flags.setColor(SK_ColorWHITE);
+    flags.setColor(SkColors::kWhite);
 
     gfx::Rect inset_rect(bounds_);
     while (!inset_rect.IsEmpty()) {
-      inset_rect.Inset(3, 3, 2, 2);
+      inset_rect.Inset(gfx::Insets::TLBR(3, 3, 2, 2));
       display_list->push<DrawRectOp>(gfx::RectToSkRect(inset_rect), flags);
-      inset_rect.Inset(3, 3, 2, 2);
+      inset_rect.Inset(gfx::Insets::TLBR(3, 3, 2, 2));
     }
 
     display_list->push<RestoreOp>();
@@ -111,7 +108,8 @@ TEST_P(LayerTreeHostMasksPixelTest, MaskOfLayer) {
   mask->SetIsDrawable(true);
   green->SetMaskLayer(mask);
 
-  pixel_comparator_ = std::make_unique<FuzzyPixelOffByOneComparator>(true);
+  pixel_comparator_ =
+      std::make_unique<AlphaDiscardingFuzzyPixelOffByOneComparator>();
 
   RunPixelResourceTest(background,
                        base::FilePath(FILE_PATH_LITERAL("mask_of_layer.png")));
@@ -169,7 +167,7 @@ TEST_P(LayerTreeHostMaskPixelTestWithLayerList, MaskWithEffect) {
   mask_layer_ = PictureLayer::Create(&client);
 
   pixel_comparator_ =
-      std::make_unique<FuzzyPixelOffByOneComparator>(true /* discard_alpha */);
+      std::make_unique<AlphaDiscardingFuzzyPixelOffByOneComparator>();
   RunPixelResourceTestWithLayerList(
       base::FilePath(FILE_PATH_LITERAL("mask_with_effect.png")));
 }
@@ -193,12 +191,10 @@ class SolidColorEmptyMaskContentLayerClient : public ContentLayerClient {
   ~SolidColorEmptyMaskContentLayerClient() override = default;
 
   bool FillsBoundsCompletely() const override { return false; }
-  size_t GetApproximateUnsharedMemoryUsage() const override { return 0; }
 
-  gfx::Rect PaintableRegion() override { return gfx::Rect(bounds_); }
+  gfx::Rect PaintableRegion() const override { return gfx::Rect(bounds_); }
 
-  scoped_refptr<DisplayItemList> PaintContentsToDisplayList(
-      PaintingControlSetting picture_control) override {
+  scoped_refptr<DisplayItemList> PaintContentsToDisplayList() override {
     // Intentionally return a solid color, empty mask display list. This
     // is a situation where all content should be masked out.
     auto display_list = base::MakeRefCounted<DisplayItemList>();
@@ -226,8 +222,9 @@ class LayerTreeHostMaskPixelTest_SolidColorEmptyMaskWithEffectAndRenderSurface
   void SetupTree() override {
     LayerTreeHostMaskPixelTestWithLayerList::SetupTree();
 
-    auto* effect = layer_tree_host()->property_trees()->effect_tree.Node(
-        mask_layer_->effect_tree_index());
+    auto* effect =
+        layer_tree_host()->property_trees()->effect_tree_mutable().Node(
+            mask_layer_->effect_tree_index());
     effect->render_surface_reason = RenderSurfaceReason::kTest;
   }
 };
@@ -261,7 +258,7 @@ class LayerTreeHostMaskPixelTest_MaskWithEffectNoContentToMask
     LayerList layers = layer_tree_host()->root_layer()->children();
     DCHECK_EQ(3u, layers.size());
     // Set background to red.
-    layers[0]->SetBackgroundColor(SK_ColorRED);
+    layers[0]->SetBackgroundColor(SkColors::kRed);
     // Remove the green layer.
     layers.erase(layers.begin() + 1);
     layer_tree_host()->root_layer()->SetChildLayerList(layers);
@@ -305,7 +302,7 @@ TEST_P(LayerTreeHostMaskPixelTest_ScaledMaskWithEffect, Test) {
   mask_layer_ = PictureLayer::Create(&client);
 
   pixel_comparator_ =
-      std::make_unique<FuzzyPixelOffByOneComparator>(true /* discard_alpha */);
+      std::make_unique<AlphaDiscardingFuzzyPixelOffByOneComparator>();
 
   RunPixelResourceTestWithLayerList(
       base::FilePath(FILE_PATH_LITERAL("scaled_mask_with_effect_.png"))
@@ -318,7 +315,7 @@ TEST_P(LayerTreeHostMaskPixelTestWithLayerList, MaskWithEffectDifferentSize) {
   mask_layer_ = PictureLayer::Create(&client);
 
   pixel_comparator_ =
-      std::make_unique<FuzzyPixelOffByOneComparator>(true /* discard_alpha */);
+      std::make_unique<AlphaDiscardingFuzzyPixelOffByOneComparator>();
 
   // The mask is half the size of thing it's masking. In layer-list mode,
   // the mask is not automatically scaled to match the other layer.
@@ -332,18 +329,16 @@ TEST_P(LayerTreeHostMaskPixelTestWithLayerList, ImageMaskWithEffect) {
   sk_sp<SkSurface> surface = SkSurface::MakeRasterN32Premul(50, 50);
   SkCanvas* canvas = surface->getCanvas();
   scoped_refptr<DisplayItemList> mask_display_list =
-      mask_client.PaintContentsToDisplayList(
-          ContentLayerClient::PAINTING_BEHAVIOR_NORMAL);
+      mask_client.PaintContentsToDisplayList();
   mask_display_list->Raster(canvas);
 
   FakeContentLayerClient layer_client;
   layer_client.set_bounds(mask_bounds_);
-  layer_client.add_draw_image(surface->makeImageSnapshot(), gfx::Point(),
-                              PaintFlags());
+  layer_client.add_draw_image(surface->makeImageSnapshot(), gfx::Point());
   mask_layer_ = FakePictureLayer::Create(&layer_client);
 
   pixel_comparator_ =
-      std::make_unique<FuzzyPixelOffByOneComparator>(true /* discard_alpha */);
+      std::make_unique<AlphaDiscardingFuzzyPixelOffByOneComparator>();
 
   // The mask is half the size of thing it's masking. In layer-list mode,
   // the mask is not automatically scaled to match the other layer.
@@ -361,14 +356,12 @@ TEST_P(LayerTreeHostMasksPixelTest, ImageMaskOfLayer) {
   SkCanvas* canvas = surface->getCanvas();
   MaskContentLayerClient client(mask_bounds);
   scoped_refptr<DisplayItemList> mask_display_list =
-      client.PaintContentsToDisplayList(
-          ContentLayerClient::PAINTING_BEHAVIOR_NORMAL);
+      client.PaintContentsToDisplayList();
   mask_display_list->Raster(canvas);
 
   FakeContentLayerClient mask_client;
   mask_client.set_bounds(mask_bounds);
-  mask_client.add_draw_image(surface->makeImageSnapshot(), gfx::Point(),
-                             PaintFlags());
+  mask_client.add_draw_image(surface->makeImageSnapshot(), gfx::Point());
   scoped_refptr<FakePictureLayer> mask = FakePictureLayer::Create(&mask_client);
   mask->SetIsDrawable(true);
   mask->SetBounds(mask_bounds);
@@ -379,7 +372,7 @@ TEST_P(LayerTreeHostMasksPixelTest, ImageMaskOfLayer) {
   background->AddChild(green);
 
   pixel_comparator_ =
-      std::make_unique<FuzzyPixelOffByOneComparator>(true /* discard_alpha */);
+      std::make_unique<AlphaDiscardingFuzzyPixelOffByOneComparator>();
 
   RunPixelResourceTest(
       background, base::FilePath(FILE_PATH_LITERAL("image_mask_of_layer.png")));
@@ -408,7 +401,7 @@ TEST_P(LayerTreeHostMasksPixelTest, MaskOfClippedLayer) {
   green->SetMaskLayer(mask);
 
   pixel_comparator_ =
-      std::make_unique<FuzzyPixelOffByOneComparator>(true /* discard_alpha */);
+      std::make_unique<AlphaDiscardingFuzzyPixelOffByOneComparator>();
 
   RunPixelResourceTest(
       background,
@@ -432,7 +425,7 @@ TEST_P(LayerTreeHostMasksPixelTest, MaskOfLayerNonExactTextureSize) {
   green->SetMaskLayer(mask);
 
   pixel_comparator_ =
-      std::make_unique<FuzzyPixelOffByOneComparator>(true /* discard_alpha */);
+      std::make_unique<AlphaDiscardingFuzzyPixelOffByOneComparator>();
 
   RunPixelResourceTest(background,
                        base::FilePath(FILE_PATH_LITERAL(
@@ -447,17 +440,15 @@ class CheckerContentLayerClient : public ContentLayerClient {
       : bounds_(bounds), color_(color), vertical_(vertical) {}
   ~CheckerContentLayerClient() override = default;
   bool FillsBoundsCompletely() const override { return false; }
-  size_t GetApproximateUnsharedMemoryUsage() const override { return 0; }
-  gfx::Rect PaintableRegion() override { return gfx::Rect(bounds_); }
-  scoped_refptr<DisplayItemList> PaintContentsToDisplayList(
-      PaintingControlSetting picture_control) override {
+  gfx::Rect PaintableRegion() const override { return gfx::Rect(bounds_); }
+  scoped_refptr<DisplayItemList> PaintContentsToDisplayList() override {
     auto display_list = base::MakeRefCounted<DisplayItemList>();
     display_list->StartPaint();
 
     display_list->push<SaveOp>();
     display_list->push<ClipRectOp>(gfx::RectToSkRect(PaintableRegion()),
                                    SkClipOp::kIntersect, false);
-    SkColor color = SK_ColorTRANSPARENT;
+    SkColor4f color = SkColors::kTransparent;
     display_list->push<DrawColorOp>(color, SkBlendMode::kSrc);
 
     PaintFlags flags;
@@ -496,17 +487,15 @@ class CircleContentLayerClient : public ContentLayerClient {
       : bounds_(bounds) {}
   ~CircleContentLayerClient() override = default;
   bool FillsBoundsCompletely() const override { return false; }
-  size_t GetApproximateUnsharedMemoryUsage() const override { return 0; }
-  gfx::Rect PaintableRegion() override { return gfx::Rect(bounds_); }
-  scoped_refptr<DisplayItemList> PaintContentsToDisplayList(
-      PaintingControlSetting picture_control) override {
+  gfx::Rect PaintableRegion() const override { return gfx::Rect(bounds_); }
+  scoped_refptr<DisplayItemList> PaintContentsToDisplayList() override {
     auto display_list = base::MakeRefCounted<DisplayItemList>();
     display_list->StartPaint();
 
     display_list->push<SaveOp>();
     display_list->push<ClipRectOp>(gfx::RectToSkRect(PaintableRegion()),
                                    SkClipOp::kIntersect, false);
-    SkColor color = SK_ColorTRANSPARENT;
+    SkColor4f color = SkColors::kTransparent;
     display_list->push<DrawColorOp>(color, SkBlendMode::kSrc);
 
     PaintFlags flags;
@@ -585,22 +574,18 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_P(LayerTreeHostMasksForBackdropFiltersPixelTestWithLayerList, Test) {
   base::FilePath image_name =
-      (raster_type() == TestRasterType::kGpu)
+      (use_accelerated_raster())
           ? base::FilePath(FILE_PATH_LITERAL("mask_of_backdrop_filter_gpu.png"))
           : base::FilePath(FILE_PATH_LITERAL("mask_of_backdrop_filter.png"));
 
-  if (use_skia_vulkan() && raster_type() == TestRasterType::kOop) {
+  if (use_skia_vulkan() && use_accelerated_raster()) {
     // Vulkan with OOP raster has 3 pixels errors (the circle mask shape is
     // slightly different).
-    float percentage_pixels_large_error = 0.031f;  // 3px / (100*100)
-    float percentage_pixels_small_error = 0.0f;
-    float average_error_allowed_in_bad_pixels = 182.f;
-    int large_error_allowed = 182;
-    int small_error_allowed = 0;
     pixel_comparator_ = std::make_unique<FuzzyPixelComparator>(
-        true /* discard_alpha */, percentage_pixels_large_error,
-        percentage_pixels_small_error, average_error_allowed_in_bad_pixels,
-        large_error_allowed, small_error_allowed);
+        FuzzyPixelComparator()
+            .DiscardAlpha()
+            .SetErrorPixelsPercentageLimit(0.031f)  // 3px / (100*100)
+            .SetAbsErrorLimit(182));
   }
 
   RunPixelResourceTestWithLayerList(image_name);
@@ -645,22 +630,18 @@ TEST_P(LayerTreeHostMasksForBackdropFiltersPixelTestWithLayerTree, Test) {
   blur->SetMaskLayer(mask);
 
   base::FilePath image_name =
-      (raster_type() == TestRasterType::kGpu)
+      (use_accelerated_raster())
           ? base::FilePath(FILE_PATH_LITERAL("mask_of_backdrop_filter_gpu.png"))
           : base::FilePath(FILE_PATH_LITERAL("mask_of_backdrop_filter.png"));
 
-  if (use_skia_vulkan() && raster_type() == TestRasterType::kOop) {
+  if (use_skia_vulkan() && use_accelerated_raster()) {
     // Vulkan with OOP raster has 3 pixels errors (the circle mask shape is
     // slightly different).
-    float percentage_pixels_large_error = 0.031f;  // 3px / (100*100)
-    float percentage_pixels_small_error = 0.0f;
-    float average_error_allowed_in_bad_pixels = 182.f;
-    int large_error_allowed = 182;
-    int small_error_allowed = 0;
     pixel_comparator_ = std::make_unique<FuzzyPixelComparator>(
-        true /* discard_alpha */, percentage_pixels_large_error,
-        percentage_pixels_small_error, average_error_allowed_in_bad_pixels,
-        large_error_allowed, small_error_allowed);
+        FuzzyPixelComparator()
+            .DiscardAlpha()
+            .SetErrorPixelsPercentageLimit(0.031f)  // 3px / (100*100)
+            .SetAbsErrorLimit(182));
   }
 
   RunPixelResourceTest(background, image_name);
@@ -697,18 +678,11 @@ TEST_P(LayerTreeHostMasksPixelTest, MaskOfLayerWithBlend) {
   mask->SetIsDrawable(true);
   picture_horizontal->SetMaskLayer(mask);
 
-  float percentage_pixels_large_error = 0.04f;  // 0.04%, ~6px / (128*128)
-  float percentage_pixels_small_error = 0.0f;
-  float average_error_allowed_in_bad_pixels = 256.0f;
-  int large_error_allowed = 256;
-  int small_error_allowed = 0;
   pixel_comparator_ = std::make_unique<FuzzyPixelComparator>(
-      true,  // discard_alpha
-      percentage_pixels_large_error,
-      percentage_pixels_small_error,
-      average_error_allowed_in_bad_pixels,
-      large_error_allowed,
-      small_error_allowed);
+      FuzzyPixelComparator()
+          .DiscardAlpha()
+          .SetErrorPixelsPercentageLimit(0.04f)  // 0.04%, ~6px / (128*128)
+          .SetAbsErrorLimit(255));
 
   RunPixelResourceTest(background,
                        base::FilePath(
@@ -723,13 +697,11 @@ class StaticPictureLayer : private ContentLayerClient, public PictureLayer {
         new StaticPictureLayer(std::move(display_list)));
   }
 
-  gfx::Rect PaintableRegion() override { return gfx::Rect(bounds()); }
-  scoped_refptr<DisplayItemList> PaintContentsToDisplayList(
-      PaintingControlSetting) override {
+  gfx::Rect PaintableRegion() const override { return gfx::Rect(bounds()); }
+  scoped_refptr<DisplayItemList> PaintContentsToDisplayList() override {
     return display_list_;
   }
   bool FillsBoundsCompletely() const override { return false; }
-  size_t GetApproximateUnsharedMemoryUsage() const override { return 0; }
 
  protected:
   explicit StaticPictureLayer(scoped_refptr<DisplayItemList> display_list)
@@ -761,30 +733,30 @@ class LayerTreeHostMaskAsBlendingPixelTest
       : LayerTreeHostPixelResourceTest(GetParam().test_config),
         use_antialiasing_(GetParam().flags & kUseAntialiasing),
         force_shaders_(GetParam().flags & kForceShaders) {
-    float percentage_pixels_error = 0.f;
+    float percentage_pixels_large_error = 0.f;
     float percentage_pixels_small_error = 0.f;
     float average_error_allowed_in_bad_pixels = 0.f;
     int large_error_allowed = 0;
     int small_error_allowed = 0;
     if (!use_software_renderer()) {
-      percentage_pixels_error = 6.0f;
-      percentage_pixels_small_error = 2.f;
+      percentage_pixels_large_error = 4.0f;
+      percentage_pixels_small_error = 2.0f;
       average_error_allowed_in_bad_pixels = 2.1f;
       large_error_allowed = 11;
       small_error_allowed = 1;
     } else {
 #if defined(ARCH_CPU_ARM64)
-#if defined(OS_WIN) || defined(OS_FUCHSIA) || defined(OS_MAC)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_MAC)
       // ARM Windows, macOS, and Fuchsia has some pixels difference
       // Affected tests: RotatedClippedCircle, RotatedClippedCircleUnderflow
       // crbug.com/1030244, crbug.com/1048249, crbug.com/1128443
-      percentage_pixels_error = 6.1f;
+      percentage_pixels_large_error = 7.f;
       average_error_allowed_in_bad_pixels = 5.f;
       large_error_allowed = 20;
 #else
       // Differences in floating point calculation on ARM means a small
       // percentage of pixels will be off by 1.
-      percentage_pixels_error = 0.112f;
+      percentage_pixels_large_error = 0.112f;
       average_error_allowed_in_bad_pixels = 1.f;
       large_error_allowed = 1;
 #endif
@@ -792,16 +764,19 @@ class LayerTreeHostMaskAsBlendingPixelTest
     }
 
     pixel_comparator_ = std::make_unique<FuzzyPixelComparator>(
-        false,  // discard_alpha
-        percentage_pixels_error, percentage_pixels_small_error,
-        average_error_allowed_in_bad_pixels, large_error_allowed,
-        small_error_allowed);
+        FuzzyPixelComparator()
+            .SetErrorPixelsPercentageLimit(percentage_pixels_large_error,
+                                           percentage_pixels_small_error)
+            .SetAvgAbsErrorLimit(average_error_allowed_in_bad_pixels)
+            .SetAbsErrorLimit(large_error_allowed, small_error_allowed));
   }
 
   static scoped_refptr<Layer> CreateCheckerboardLayer(const gfx::Size& bounds) {
     constexpr int kGridSize = 8;
-    static const SkColor color_even = SkColorSetRGB(153, 153, 153);
-    static const SkColor color_odd = SkColorSetRGB(102, 102, 102);
+    static const SkColor4f color_even =
+        SkColor4f::FromColor(SkColorSetRGB(153, 153, 153));
+    static const SkColor4f color_odd =
+        SkColor4f::FromColor(SkColorSetRGB(102, 102, 102));
 
     auto display_list = base::MakeRefCounted<DisplayItemList>();
     display_list->StartPaint();
@@ -845,7 +820,7 @@ class LayerTreeHostMaskAsBlendingPixelTest
     for (int j = 0; j < (bounds.height() + grid_size - 1) / grid_size; j++) {
       for (int i = 0; i < (bounds.width() + grid_size - 1) / grid_size; i++) {
         PaintFlags flags;
-        flags.setColor(test_colors[(i + j * 3) % base::size(test_colors)]);
+        flags.setColor(test_colors[(i + j * 3) % std::size(test_colors)]);
         display_list->push<DrawRectOp>(
             SkRect::MakeXYWH(i * grid_size, j * grid_size, grid_size,
                              grid_size),
@@ -882,20 +857,18 @@ class LayerTreeHostMaskAsBlendingPixelTest
   bool force_shaders_;
 };
 
+// TODO(crbug.com/1417268): Fix SkiaGL with zero copy
 MaskTestConfig const kTestConfigs[] = {
     MaskTestConfig{{viz::RendererType::kSoftware, TestRasterType::kBitmap}, 0},
-#if BUILDFLAG(ENABLE_GL_BACKEND_TESTS)
-    MaskTestConfig{{viz::RendererType::kGL, TestRasterType::kZeroCopy}, 0},
-    MaskTestConfig{{viz::RendererType::kGL, TestRasterType::kZeroCopy},
-                   kUseAntialiasing},
-    MaskTestConfig{{viz::RendererType::kGL, TestRasterType::kZeroCopy},
-                   kForceShaders},
-    MaskTestConfig{{viz::RendererType::kGL, TestRasterType::kZeroCopy},
-                   kUseAntialiasing | kForceShaders},
+#if BUILDFLAG(ENABLE_GL_BACKEND_TESTS) && !BUILDFLAG(IS_IOS)
     MaskTestConfig{{viz::RendererType::kSkiaGL, TestRasterType::kZeroCopy}, 0},
     MaskTestConfig{{viz::RendererType::kSkiaGL, TestRasterType::kZeroCopy},
                    kUseAntialiasing},
-#endif  // BUILDFLAG(ENABLE_GL_BACKEND_TESTS)
+    MaskTestConfig{{viz::RendererType::kSkiaGL, TestRasterType::kZeroCopy},
+                   kForceShaders},
+    MaskTestConfig{{viz::RendererType::kSkiaGL, TestRasterType::kZeroCopy},
+                   kUseAntialiasing | kForceShaders},
+#endif  // BUILDFLAG(ENABLE_GL_BACKEND_TESTS) && !BUILDFLAG(IS_IOS)
 #if BUILDFLAG(ENABLE_VULKAN_BACKEND_TESTS)
     MaskTestConfig{{viz::RendererType::kSkiaVk, TestRasterType::kZeroCopy}, 0},
     MaskTestConfig{{viz::RendererType::kSkiaVk, TestRasterType::kZeroCopy},
@@ -1149,7 +1122,7 @@ class LayerTreeHostMasksForBackdropFiltersAndBlendPixelTest
   CircleContentLayerClient mask_client_;
 };
 
-INSTANTIATE_TEST_SUITE_P(PixelResourceTest,
+INSTANTIATE_TEST_SUITE_P(DISABLED_PixelResourceTest,
                          LayerTreeHostMasksForBackdropFiltersAndBlendPixelTest,
                          ::testing::ValuesIn(kTestCases),
                          ::testing::PrintToStringParamName());
@@ -1168,4 +1141,4 @@ TEST_P(LayerTreeHostMasksForBackdropFiltersAndBlendPixelTest, Test) {
 }  // namespace
 }  // namespace cc
 
-#endif  // !defined(OS_ANDROID)
+#endif  // !BUILDFLAG(IS_ANDROID)

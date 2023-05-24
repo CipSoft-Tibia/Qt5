@@ -1,44 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qstringbuilder.h"
-#include <private/qutfcodec_p.h>
+#include <private/qstringconverter_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -72,9 +36,9 @@ QT_BEGIN_NAMESPACE
     For building QStrings:
 
     \list
-    \li QString, QStringRef, (since 5.10:) QStringView
-    \li QChar, QCharRef, QLatin1Char, (since 5.10:) \c char16_t,
-    \li QLatin1String,
+    \li QString, (since 5.10:) QStringView
+    \li QChar, QLatin1Char, (since 5.10:) \c char16_t,
+    \li QLatin1StringView,
     \li (since 5.10:) \c{const char16_t[]} (\c{u"foo"}),
     \li QByteArray, \c char, \c{const char[]}.
     \endlist
@@ -93,45 +57,61 @@ QT_BEGIN_NAMESPACE
     if there are three or more of them, and performs equally well in other
     cases.
 
-    \sa QLatin1String, QString
+    \note Defining \c QT_USE_QSTRINGBUILDER at build time (this is the
+    default when building Qt libraries and tools), will make using \c {'+'}
+    when concatenating strings work the same way as \c operator%().
+
+    \sa QLatin1StringView, QString
 */
 
-/*! \fn template <typename A, typename B> QStringBuilder<A, B>::QStringBuilder(const A &a, const B &b)
-  Constructs a QStringBuilder from \a a and \a b.
+/*!
+    \internal
+    \fn template <typename A, typename B> QStringBuilder<A, B>::QStringBuilder(const A &a, const B &b)
+
+    Constructs a QStringBuilder from \a a and \a b.
  */
 
-/* \fn template <typename A, typename B> QStringBuilder<A, B>::operator%(const A &a, const B &b)
+/*!
+    \internal
+    \fn template <typename A, typename B> QStringBuilder<A, B>::operator%(const A &a, const B &b)
 
     Returns a \c QStringBuilder object that is converted to a QString object
     when assigned to a variable of QString type or passed to a function that
     takes a QString parameter.
 
-    This function is usable with arguments of type \c QString,
-    \c QLatin1String, \c QStringRef,
-    \c QChar, \c QCharRef, \c QLatin1Char, and \c char.
+    This function is usable with arguments of any of the following types:
+    \list
+    \li \c QAnyStringView,
+    \li \c QString, \c QStringView
+    \li \c QByteArray, \c QByteArrayView, \c QLatin1StringView
+    \li \c QChar, \c QLatin1Char, \c char, (since 5.10:) \c char16_t
+    \li (since 5.10:) \c{const char16_t[]} (\c{u"foo"}),
+    \endlist
 */
-
-/* \fn template <typename A, typename B> QByteArray QStringBuilder<A, B>::toLatin1() const
-  Returns a Latin-1 representation of the string as a QByteArray.  The
-  returned byte array is undefined if the string contains non-Latin1
-  characters.
- */
-/* \fn template <typename A, typename B> QByteArray QStringBuilder<A, B>::toUtf8() const
-  Returns a UTF-8 representation of the string as a QByteArray.
- */
-
 
 /*!
     \internal
+    \fn template <typename A, typename B> QByteArray QStringBuilder<A, B>::toLatin1() const
+
+    Returns a Latin-1 representation of the string as a QByteArray. It
+    is undefined behavior if the string contains non-Latin1 characters.
  */
-void QAbstractConcatenable::convertFromAscii(const char *a, int len, QChar *&out) noexcept
+
+/*!
+    \internal
+    \fn template <typename A, typename B> QByteArray QStringBuilder<A, B>::toUtf8() const
+
+    Returns a UTF-8 representation of the string as a QByteArray.
+ */
+
+/*!
+    \internal
+    Converts the UTF-8 string viewed by \a in to UTF-16 and writes the result
+    to the buffer starting at \a out.
+ */
+void QAbstractConcatenable::convertFromUtf8(QByteArrayView in, QChar *&out) noexcept
 {
-    if (Q_UNLIKELY(len == -1)) {
-        if (!a)
-            return;
-        len = int(strlen(a));
-    }
-    out = QUtf8::convertToUnicode(out, a, len);
+    out = QUtf8::convertToUnicode(out, in);
 }
 
 QT_END_NAMESPACE

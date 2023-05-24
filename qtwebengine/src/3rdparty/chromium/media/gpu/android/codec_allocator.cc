@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,20 +6,20 @@
 
 #include <stddef.h>
 
-#include <algorithm>
 #include <memory>
 
-#include "base/bind_helpers.h"
+#include "base/functional/callback_helpers.h"
 #include "base/logging.h"
-#include "base/task/post_task.h"
+#include "base/no_destructor.h"
+#include "base/ranges/algorithm.h"
+#include "base/task/bind_post_task.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
-#include "base/task_runner_util.h"
 #include "base/threading/scoped_blocking_call.h"
 #include "base/time/default_tick_clock.h"
 #include "base/trace_event/trace_event.h"
 #include "media/base/android/media_codec_bridge_impl.h"
-#include "media/base/bind_to_current_loop.h"
 #include "media/base/limits.h"
 #include "media/base/timestamp_constants.h"
 
@@ -54,6 +54,9 @@ scoped_refptr<base::SequencedTaskRunner> CreateCodecTaskRunner() {
 }  // namespace
 
 // static
+constexpr gfx::Size CodecAllocator::kMinHardwareResolution;
+
+// static
 CodecAllocator* CodecAllocator::GetInstance(
     scoped_refptr<base::SequencedTaskRunner> task_runner) {
   static base::NoDestructor<CodecAllocator> allocator(
@@ -74,10 +77,10 @@ void CodecAllocator::CreateMediaCodecAsync(
   if (!task_runner_->RunsTasksInCurrentSequence()) {
     task_runner_->PostTask(
         FROM_HERE,
-        base::BindOnce(&CodecAllocator::CreateMediaCodecAsync,
-                       base::Unretained(this),
-                       BindToCurrentLoop(std::move(codec_created_cb)),
-                       std::move(codec_config)));
+        base::BindOnce(
+            &CodecAllocator::CreateMediaCodecAsync, base::Unretained(this),
+            base::BindPostTaskToCurrentDefault(std::move(codec_created_cb)),
+            std::move(codec_config)));
     return;
   }
 
@@ -95,18 +98,30 @@ void CodecAllocator::CreateMediaCodecAsync(
   if (force_sw_codecs_)
     codec_config->codec_type = CodecType::kSoftware;
 
+  // If we're still allowed to pick any type we want, then limit to software for
+  // low resolution.  https://crbug.com/1166833
+  if (codec_config->codec_type == CodecType::kAny &&
+      (codec_config->initial_expected_coded_size.width() <
+           kMinHardwareResolution.width() ||
+       codec_config->initial_expected_coded_size.height() <
+           kMinHardwareResolution.height())) {
+    codec_config->codec_type = CodecType::kSoftware;
+  }
+
   const auto start_time = tick_clock_->NowTicks();
   pending_operations_.push_back(start_time);
 
   // Post creation to the task runner. This may hang on broken platforms; if it
   // hangs, we will detect it on the next creation request, and future creations
   // will fallback to software.
-  base::PostTaskAndReplyWithResult(
-      std::move(task_runner), FROM_HERE,
-      base::BindOnce(&CreateMediaCodecInternal, factory_cb_,
-                     std::move(codec_config)),
-      base::BindOnce(&CodecAllocator::OnCodecCreated, base::Unretained(this),
-                     start_time, std::move(codec_created_cb)));
+  std::move(task_runner)
+      ->PostTaskAndReplyWithResult(
+          FROM_HERE,
+          base::BindOnce(&CreateMediaCodecInternal, factory_cb_,
+                         std::move(codec_config)),
+          base::BindOnce(&CodecAllocator::OnCodecCreated,
+                         base::Unretained(this), start_time,
+                         std::move(codec_created_cb)));
 }
 
 void CodecAllocator::ReleaseMediaCodec(std::unique_ptr<MediaCodecBridge> codec,
@@ -116,10 +131,10 @@ void CodecAllocator::ReleaseMediaCodec(std::unique_ptr<MediaCodecBridge> codec,
 
   if (!task_runner_->RunsTasksInCurrentSequence()) {
     task_runner_->PostTask(
-        FROM_HERE,
-        base::BindOnce(&CodecAllocator::ReleaseMediaCodec,
-                       base::Unretained(this), std::move(codec),
-                       BindToCurrentLoop(std::move(codec_released_cb))));
+        FROM_HERE, base::BindOnce(&CodecAllocator::ReleaseMediaCodec,
+                                  base::Unretained(this), std::move(codec),
+                                  base::BindPostTaskToCurrentDefault(
+                                      std::move(codec_released_cb))));
     return;
   }
 
@@ -175,8 +190,7 @@ bool CodecAllocator::IsPrimaryTaskRunnerLikelyHung() const {
   // typically take 100-200ms on a N5, so 800ms is expected to very rarely
   // result in false positives. Also, false positives have low impact because we
   // resume using the thread when the task completes.
-  constexpr base::TimeDelta kHungTaskDetectionTimeout =
-      base::TimeDelta::FromMilliseconds(800);
+  constexpr base::TimeDelta kHungTaskDetectionTimeout = base::Milliseconds(800);
 
   return !pending_operations_.empty() &&
          tick_clock_->NowTicks() - *pending_operations_.begin() >
@@ -203,8 +217,8 @@ base::SequencedTaskRunner* CodecAllocator::SelectCodecTaskRunner() {
 void CodecAllocator::CompletePendingOperation(base::TimeTicks start_time) {
   // Note: This intentionally only erases the first instance, since there may be
   // multiple instances of the same value.
-  pending_operations_.erase(std::find(pending_operations_.begin(),
-                                      pending_operations_.end(), start_time));
+  pending_operations_.erase(
+      base::ranges::find(pending_operations_, start_time));
 }
 
 }  // namespace media

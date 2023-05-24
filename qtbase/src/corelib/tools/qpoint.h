@@ -1,46 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPOINT_H
 #define QPOINT_H
 
 #include <QtCore/qnamespace.h>
+
+#include <QtCore/q20type_traits.h>
+#include <QtCore/q23utility.h>
 
 #if defined(Q_OS_DARWIN) || defined(Q_QDOC)
 struct CGPoint;
@@ -48,64 +15,93 @@ struct CGPoint;
 
 QT_BEGIN_NAMESPACE
 
+QT_ENABLE_P0846_SEMANTICS_FOR(get)
 
-class Q_CORE_EXPORT QPoint
+class QPointF;
+
+class QPoint
 {
 public:
-    Q_DECL_CONSTEXPR QPoint();
-    Q_DECL_CONSTEXPR QPoint(int xpos, int ypos);
+    constexpr QPoint() noexcept;
+    constexpr QPoint(int xpos, int ypos) noexcept;
 
-    Q_DECL_CONSTEXPR inline bool isNull() const;
+    constexpr inline bool isNull() const noexcept;
 
-    Q_DECL_CONSTEXPR inline int x() const;
-    Q_DECL_CONSTEXPR inline int y() const;
-    Q_DECL_RELAXED_CONSTEXPR inline void setX(int x);
-    Q_DECL_RELAXED_CONSTEXPR inline void setY(int y);
+    constexpr inline int x() const noexcept;
+    constexpr inline int y() const noexcept;
+    constexpr inline void setX(int x) noexcept;
+    constexpr inline void setY(int y) noexcept;
 
-    Q_DECL_CONSTEXPR inline int manhattanLength() const;
+    constexpr inline int manhattanLength() const;
 
-    Q_DECL_CONSTEXPR QPoint transposed() const noexcept { return {yp, xp}; }
+    constexpr QPoint transposed() const noexcept { return {yp, xp}; }
 
-    Q_DECL_RELAXED_CONSTEXPR inline int &rx();
-    Q_DECL_RELAXED_CONSTEXPR inline int &ry();
+    constexpr inline int &rx() noexcept;
+    constexpr inline int &ry() noexcept;
 
-    Q_DECL_RELAXED_CONSTEXPR inline QPoint &operator+=(const QPoint &p);
-    Q_DECL_RELAXED_CONSTEXPR inline QPoint &operator-=(const QPoint &p);
+    constexpr inline QPoint &operator+=(const QPoint &p);
+    constexpr inline QPoint &operator-=(const QPoint &p);
 
-    Q_DECL_RELAXED_CONSTEXPR inline QPoint &operator*=(float factor);
-    Q_DECL_RELAXED_CONSTEXPR inline QPoint &operator*=(double factor);
-    Q_DECL_RELAXED_CONSTEXPR inline QPoint &operator*=(int factor);
+    constexpr inline QPoint &operator*=(float factor);
+    constexpr inline QPoint &operator*=(double factor);
+    constexpr inline QPoint &operator*=(int factor);
 
-    Q_DECL_RELAXED_CONSTEXPR inline QPoint &operator/=(qreal divisor);
+    constexpr inline QPoint &operator/=(qreal divisor);
 
-    Q_DECL_CONSTEXPR static inline int dotProduct(const QPoint &p1, const QPoint &p2)
+    constexpr static inline int dotProduct(const QPoint &p1, const QPoint &p2)
     { return p1.xp * p2.xp + p1.yp * p2.yp; }
 
-    friend Q_DECL_CONSTEXPR inline bool operator==(const QPoint &, const QPoint &);
-    friend Q_DECL_CONSTEXPR inline bool operator!=(const QPoint &, const QPoint &);
-    friend Q_DECL_CONSTEXPR inline const QPoint operator+(const QPoint &, const QPoint &);
-    friend Q_DECL_CONSTEXPR inline const QPoint operator-(const QPoint &, const QPoint &);
-    friend Q_DECL_CONSTEXPR inline const QPoint operator*(const QPoint &, float);
-    friend Q_DECL_CONSTEXPR inline const QPoint operator*(float, const QPoint &);
-    friend Q_DECL_CONSTEXPR inline const QPoint operator*(const QPoint &, double);
-    friend Q_DECL_CONSTEXPR inline const QPoint operator*(double, const QPoint &);
-    friend Q_DECL_CONSTEXPR inline const QPoint operator*(const QPoint &, int);
-    friend Q_DECL_CONSTEXPR inline const QPoint operator*(int, const QPoint &);
-    friend Q_DECL_CONSTEXPR inline const QPoint operator+(const QPoint &);
-    friend Q_DECL_CONSTEXPR inline const QPoint operator-(const QPoint &);
-    friend Q_DECL_CONSTEXPR inline const QPoint operator/(const QPoint &, qreal);
+    friend constexpr inline bool operator==(const QPoint &p1, const QPoint &p2) noexcept
+    { return p1.xp == p2.xp && p1.yp == p2.yp; }
+    friend constexpr inline bool operator!=(const QPoint &p1, const QPoint &p2) noexcept
+    { return p1.xp != p2.xp || p1.yp != p2.yp; }
+    friend constexpr inline QPoint operator+(const QPoint &p1, const QPoint &p2) noexcept
+    { return QPoint(p1.xp + p2.xp, p1.yp + p2.yp); }
+    friend constexpr inline QPoint operator-(const QPoint &p1, const QPoint &p2) noexcept
+    { return QPoint(p1.xp - p2.xp, p1.yp - p2.yp); }
+    friend constexpr inline QPoint operator*(const QPoint &p, float factor)
+    { return QPoint(qRound(p.xp * factor), qRound(p.yp * factor)); }
+    friend constexpr inline QPoint operator*(const QPoint &p, double factor)
+    { return QPoint(qRound(p.xp * factor), qRound(p.yp * factor)); }
+    friend constexpr inline QPoint operator*(const QPoint &p, int factor) noexcept
+    { return QPoint(p.xp * factor, p.yp * factor); }
+    friend constexpr inline QPoint operator*(float factor, const QPoint &p)
+    { return QPoint(qRound(p.xp * factor), qRound(p.yp * factor)); }
+    friend constexpr inline QPoint operator*(double factor, const QPoint &p)
+    { return QPoint(qRound(p.xp * factor), qRound(p.yp * factor)); }
+    friend constexpr inline QPoint operator*(int factor, const QPoint &p) noexcept
+    { return QPoint(p.xp * factor, p.yp * factor); }
+    friend constexpr inline QPoint operator+(const QPoint &p) noexcept
+    { return p; }
+    friend constexpr inline QPoint operator-(const QPoint &p) noexcept
+    { return QPoint(-p.xp, -p.yp); }
+    friend constexpr inline QPoint operator/(const QPoint &p, qreal c)
+    { return QPoint(qRound(p.xp / c), qRound(p.yp / c)); }
 
 #if defined(Q_OS_DARWIN) || defined(Q_QDOC)
-    Q_REQUIRED_RESULT CGPoint toCGPoint() const noexcept;
+    [[nodiscard]] Q_CORE_EXPORT CGPoint toCGPoint() const noexcept;
 #endif
+    [[nodiscard]] constexpr inline QPointF toPointF() const noexcept;
 
 private:
     friend class QTransform;
     int xp;
     int yp;
+
+    template <std::size_t I,
+              typename P,
+              std::enable_if_t<(I < 2), bool> = true,
+              std::enable_if_t<std::is_same_v<q20::remove_cvref_t<P>, QPoint>, bool> = true>
+    friend constexpr decltype(auto) get(P &&p) noexcept
+    {
+        if constexpr (I == 0)
+            return q23::forward_like<P>(p.xp);
+        else if constexpr (I == 1)
+            return q23::forward_like<P>(p.yp);
+    }
 };
 
-Q_DECLARE_TYPEINFO(QPoint, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QPoint, Q_PRIMITIVE_TYPE);
 
 /*****************************************************************************
   QPoint stream functions
@@ -119,160 +115,192 @@ Q_CORE_EXPORT QDataStream &operator>>(QDataStream &, QPoint &);
   QPoint inline functions
  *****************************************************************************/
 
-Q_DECL_CONSTEXPR inline QPoint::QPoint() : xp(0), yp(0) {}
+constexpr inline QPoint::QPoint() noexcept : xp(0), yp(0) {}
 
-Q_DECL_CONSTEXPR inline QPoint::QPoint(int xpos, int ypos) : xp(xpos), yp(ypos) {}
+constexpr inline QPoint::QPoint(int xpos, int ypos) noexcept : xp(xpos), yp(ypos) {}
 
-Q_DECL_CONSTEXPR inline bool QPoint::isNull() const
-{ return xp == 0 && yp == 0; }
-
-Q_DECL_CONSTEXPR inline int QPoint::x() const
-{ return xp; }
-
-Q_DECL_CONSTEXPR inline int QPoint::y() const
-{ return yp; }
-
-Q_DECL_RELAXED_CONSTEXPR inline void QPoint::setX(int xpos)
-{ xp = xpos; }
-
-Q_DECL_RELAXED_CONSTEXPR inline void QPoint::setY(int ypos)
-{ yp = ypos; }
-
-inline int Q_DECL_CONSTEXPR QPoint::manhattanLength() const
-{ return qAbs(x())+qAbs(y()); }
-
-Q_DECL_RELAXED_CONSTEXPR inline int &QPoint::rx()
-{ return xp; }
-
-Q_DECL_RELAXED_CONSTEXPR inline int &QPoint::ry()
-{ return yp; }
-
-Q_DECL_RELAXED_CONSTEXPR inline QPoint &QPoint::operator+=(const QPoint &p)
-{ xp+=p.xp; yp+=p.yp; return *this; }
-
-Q_DECL_RELAXED_CONSTEXPR inline QPoint &QPoint::operator-=(const QPoint &p)
-{ xp-=p.xp; yp-=p.yp; return *this; }
-
-Q_DECL_RELAXED_CONSTEXPR inline QPoint &QPoint::operator*=(float factor)
-{ xp = qRound(xp*factor); yp = qRound(yp*factor); return *this; }
-
-Q_DECL_RELAXED_CONSTEXPR inline QPoint &QPoint::operator*=(double factor)
-{ xp = qRound(xp*factor); yp = qRound(yp*factor); return *this; }
-
-Q_DECL_RELAXED_CONSTEXPR inline QPoint &QPoint::operator*=(int factor)
-{ xp = xp*factor; yp = yp*factor; return *this; }
-
-Q_DECL_CONSTEXPR inline bool operator==(const QPoint &p1, const QPoint &p2)
-{ return p1.xp == p2.xp && p1.yp == p2.yp; }
-
-Q_DECL_CONSTEXPR inline bool operator!=(const QPoint &p1, const QPoint &p2)
-{ return p1.xp != p2.xp || p1.yp != p2.yp; }
-
-Q_DECL_CONSTEXPR inline const QPoint operator+(const QPoint &p1, const QPoint &p2)
-{ return QPoint(p1.xp+p2.xp, p1.yp+p2.yp); }
-
-Q_DECL_CONSTEXPR inline const QPoint operator-(const QPoint &p1, const QPoint &p2)
-{ return QPoint(p1.xp-p2.xp, p1.yp-p2.yp); }
-
-Q_DECL_CONSTEXPR inline const QPoint operator*(const QPoint &p, float factor)
-{ return QPoint(qRound(p.xp*factor), qRound(p.yp*factor)); }
-
-Q_DECL_CONSTEXPR inline const QPoint operator*(const QPoint &p, double factor)
-{ return QPoint(qRound(p.xp*factor), qRound(p.yp*factor)); }
-
-Q_DECL_CONSTEXPR inline const QPoint operator*(const QPoint &p, int factor)
-{ return QPoint(p.xp*factor, p.yp*factor); }
-
-Q_DECL_CONSTEXPR inline const QPoint operator*(float factor, const QPoint &p)
-{ return QPoint(qRound(p.xp*factor), qRound(p.yp*factor)); }
-
-Q_DECL_CONSTEXPR inline const QPoint operator*(double factor, const QPoint &p)
-{ return QPoint(qRound(p.xp*factor), qRound(p.yp*factor)); }
-
-Q_DECL_CONSTEXPR inline const QPoint operator*(int factor, const QPoint &p)
-{ return QPoint(p.xp*factor, p.yp*factor); }
-
-Q_DECL_CONSTEXPR inline const QPoint operator+(const QPoint &p)
-{ return p; }
-
-Q_DECL_CONSTEXPR inline const QPoint operator-(const QPoint &p)
-{ return QPoint(-p.xp, -p.yp); }
-
-Q_DECL_RELAXED_CONSTEXPR inline QPoint &QPoint::operator/=(qreal c)
+constexpr inline bool QPoint::isNull() const noexcept
 {
-    xp = qRound(xp/c);
-    yp = qRound(yp/c);
+    return xp == 0 && yp == 0;
+}
+
+constexpr inline int QPoint::x() const noexcept
+{
+    return xp;
+}
+
+constexpr inline int QPoint::y() const noexcept
+{
+    return yp;
+}
+
+constexpr inline void QPoint::setX(int xpos) noexcept
+{
+    xp = xpos;
+}
+
+constexpr inline void QPoint::setY(int ypos) noexcept
+{
+    yp = ypos;
+}
+
+inline int constexpr QPoint::manhattanLength() const
+{
+    return qAbs(x()) + qAbs(y());
+}
+
+constexpr inline int &QPoint::rx() noexcept
+{
+    return xp;
+}
+
+constexpr inline int &QPoint::ry() noexcept
+{
+    return yp;
+}
+
+constexpr inline QPoint &QPoint::operator+=(const QPoint &p)
+{
+    xp += p.xp;
+    yp += p.yp;
     return *this;
 }
 
-Q_DECL_CONSTEXPR inline const QPoint operator/(const QPoint &p, qreal c)
+constexpr inline QPoint &QPoint::operator-=(const QPoint &p)
 {
-    return QPoint(qRound(p.xp/c), qRound(p.yp/c));
+    xp -= p.xp;
+    yp -= p.yp;
+    return *this;
+}
+
+constexpr inline QPoint &QPoint::operator*=(float factor)
+{
+    xp = qRound(xp * factor);
+    yp = qRound(yp * factor);
+    return *this;
+}
+
+constexpr inline QPoint &QPoint::operator*=(double factor)
+{
+    xp = qRound(xp * factor);
+    yp = qRound(yp * factor);
+    return *this;
+}
+
+constexpr inline QPoint &QPoint::operator*=(int factor)
+{
+    xp = xp * factor;
+    yp = yp * factor;
+    return *this;
+}
+
+constexpr inline QPoint &QPoint::operator/=(qreal c)
+{
+    xp = qRound(xp / c);
+    yp = qRound(yp / c);
+    return *this;
 }
 
 #ifndef QT_NO_DEBUG_STREAM
 Q_CORE_EXPORT QDebug operator<<(QDebug, const QPoint &);
 #endif
 
+Q_CORE_EXPORT size_t qHash(QPoint key, size_t seed = 0) noexcept;
 
 
 
 
-class Q_CORE_EXPORT QPointF
+class QPointF
 {
 public:
-    Q_DECL_CONSTEXPR QPointF();
-    Q_DECL_CONSTEXPR QPointF(const QPoint &p);
-    Q_DECL_CONSTEXPR QPointF(qreal xpos, qreal ypos);
+    constexpr QPointF() noexcept;
+    constexpr QPointF(const QPoint &p) noexcept;
+    constexpr QPointF(qreal xpos, qreal ypos) noexcept;
 
-    Q_DECL_CONSTEXPR inline qreal manhattanLength() const;
+    constexpr inline qreal manhattanLength() const;
 
-    inline bool isNull() const;
+    inline bool isNull() const noexcept;
 
-    Q_DECL_CONSTEXPR inline qreal x() const;
-    Q_DECL_CONSTEXPR inline qreal y() const;
-    Q_DECL_RELAXED_CONSTEXPR inline void setX(qreal x);
-    Q_DECL_RELAXED_CONSTEXPR inline void setY(qreal y);
+    constexpr inline qreal x() const noexcept;
+    constexpr inline qreal y() const noexcept;
+    constexpr inline void setX(qreal x) noexcept;
+    constexpr inline void setY(qreal y) noexcept;
 
-    Q_DECL_CONSTEXPR QPointF transposed() const noexcept { return {yp, xp}; }
+    constexpr QPointF transposed() const noexcept { return {yp, xp}; }
 
-    Q_DECL_RELAXED_CONSTEXPR inline qreal &rx();
-    Q_DECL_RELAXED_CONSTEXPR inline qreal &ry();
+    constexpr inline qreal &rx() noexcept;
+    constexpr inline qreal &ry() noexcept;
 
-    Q_DECL_RELAXED_CONSTEXPR inline QPointF &operator+=(const QPointF &p);
-    Q_DECL_RELAXED_CONSTEXPR inline QPointF &operator-=(const QPointF &p);
-    Q_DECL_RELAXED_CONSTEXPR inline QPointF &operator*=(qreal c);
-    Q_DECL_RELAXED_CONSTEXPR inline QPointF &operator/=(qreal c);
+    constexpr inline QPointF &operator+=(const QPointF &p);
+    constexpr inline QPointF &operator-=(const QPointF &p);
+    constexpr inline QPointF &operator*=(qreal c);
+    constexpr inline QPointF &operator/=(qreal c);
 
-    Q_DECL_CONSTEXPR static inline qreal dotProduct(const QPointF &p1, const QPointF &p2)
-    { return p1.xp * p2.xp + p1.yp * p2.yp; }
+    constexpr static inline qreal dotProduct(const QPointF &p1, const QPointF &p2)
+    {
+        return p1.xp * p2.xp + p1.yp * p2.yp;
+    }
 
-    friend Q_DECL_CONSTEXPR inline bool operator==(const QPointF &, const QPointF &);
-    friend Q_DECL_CONSTEXPR inline bool operator!=(const QPointF &, const QPointF &);
-    friend Q_DECL_CONSTEXPR inline const QPointF operator+(const QPointF &, const QPointF &);
-    friend Q_DECL_CONSTEXPR inline const QPointF operator-(const QPointF &, const QPointF &);
-    friend Q_DECL_CONSTEXPR inline const QPointF operator*(qreal, const QPointF &);
-    friend Q_DECL_CONSTEXPR inline const QPointF operator*(const QPointF &, qreal);
-    friend Q_DECL_CONSTEXPR inline const QPointF operator+(const QPointF &);
-    friend Q_DECL_CONSTEXPR inline const QPointF operator-(const QPointF &);
-    friend Q_DECL_CONSTEXPR inline const QPointF operator/(const QPointF &, qreal);
+    QT_WARNING_PUSH
+    QT_WARNING_DISABLE_FLOAT_COMPARE
+    friend constexpr inline bool operator==(const QPointF &p1, const QPointF &p2)
+    {
+        return ((!p1.xp || !p2.xp) ? qFuzzyIsNull(p1.xp - p2.xp) : qFuzzyCompare(p1.xp, p2.xp))
+            && ((!p1.yp || !p2.yp) ? qFuzzyIsNull(p1.yp - p2.yp) : qFuzzyCompare(p1.yp, p2.yp));
+    }
+    friend constexpr inline bool operator!=(const QPointF &p1, const QPointF &p2)
+    {
+        return !(p1 == p2);
+    }
+    QT_WARNING_POP
 
-    Q_DECL_CONSTEXPR QPoint toPoint() const;
+    friend constexpr inline QPointF operator+(const QPointF &p1, const QPointF &p2)
+    { return QPointF(p1.xp + p2.xp, p1.yp + p2.yp); }
+    friend constexpr inline QPointF operator-(const QPointF &p1, const QPointF &p2)
+    { return QPointF(p1.xp - p2.xp, p1.yp - p2.yp); }
+    friend constexpr inline QPointF operator*(const QPointF &p, qreal c)
+    { return QPointF(p.xp * c, p.yp * c); }
+    friend constexpr inline QPointF operator*(qreal c, const QPointF &p)
+    { return QPointF(p.xp * c, p.yp * c); }
+    friend constexpr inline QPointF operator+(const QPointF &p)
+    { return p; }
+    friend constexpr inline QPointF operator-(const QPointF &p)
+    { return QPointF(-p.xp, -p.yp); }
+    friend constexpr inline QPointF operator/(const QPointF &p, qreal divisor)
+    {
+        Q_ASSERT(divisor < 0 || divisor > 0);
+        return QPointF(p.xp / divisor, p.yp / divisor);
+    }
+
+    constexpr QPoint toPoint() const;
 
 #if defined(Q_OS_DARWIN) || defined(Q_QDOC)
-    Q_REQUIRED_RESULT static QPointF fromCGPoint(CGPoint point) noexcept;
-    Q_REQUIRED_RESULT CGPoint toCGPoint() const noexcept;
+    [[nodiscard]] Q_CORE_EXPORT static QPointF fromCGPoint(CGPoint point) noexcept;
+    [[nodiscard]] Q_CORE_EXPORT CGPoint toCGPoint() const noexcept;
 #endif
 
 private:
-    friend class QMatrix;
     friend class QTransform;
 
     qreal xp;
     qreal yp;
+
+    template <std::size_t I,
+              typename P,
+              std::enable_if_t<(I < 2), bool> = true,
+              std::enable_if_t<std::is_same_v<q20::remove_cvref_t<P>, QPointF>, bool> = true>
+    friend constexpr decltype(auto) get(P &&p) noexcept
+    {
+        if constexpr (I == 0)
+            return q23::forward_like<P>(p.xp);
+        else if constexpr (I == 1)
+            return q23::forward_like<P>(p.yp);
+    }
 };
 
-Q_DECLARE_TYPEINFO(QPointF, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QPointF, Q_PRIMITIVE_TYPE);
+
+size_t qHash(QPointF, size_t seed = 0) = delete;
 
 /*****************************************************************************
   QPointF stream functions
@@ -286,130 +314,84 @@ Q_CORE_EXPORT QDataStream &operator>>(QDataStream &, QPointF &);
   QPointF inline functions
  *****************************************************************************/
 
-Q_DECL_CONSTEXPR inline QPointF::QPointF() : xp(0), yp(0) { }
+constexpr inline QPointF::QPointF() noexcept : xp(0), yp(0) { }
 
-Q_DECL_CONSTEXPR inline QPointF::QPointF(qreal xpos, qreal ypos) : xp(xpos), yp(ypos) { }
+constexpr inline QPointF::QPointF(qreal xpos, qreal ypos) noexcept : xp(xpos), yp(ypos) { }
 
-Q_DECL_CONSTEXPR inline QPointF::QPointF(const QPoint &p) : xp(p.x()), yp(p.y()) { }
+constexpr inline QPointF::QPointF(const QPoint &p) noexcept : xp(p.x()), yp(p.y()) { }
 
-Q_DECL_CONSTEXPR inline qreal QPointF::manhattanLength() const
+constexpr inline qreal QPointF::manhattanLength() const
 {
-    return qAbs(x())+qAbs(y());
+    return qAbs(x()) + qAbs(y());
 }
 
-inline bool QPointF::isNull() const
+inline bool QPointF::isNull() const noexcept
 {
     return qIsNull(xp) && qIsNull(yp);
 }
 
-Q_DECL_CONSTEXPR inline qreal QPointF::x() const
+constexpr inline qreal QPointF::x() const noexcept
 {
     return xp;
 }
 
-Q_DECL_CONSTEXPR inline qreal QPointF::y() const
+constexpr inline qreal QPointF::y() const noexcept
 {
     return yp;
 }
 
-Q_DECL_RELAXED_CONSTEXPR inline void QPointF::setX(qreal xpos)
+constexpr inline void QPointF::setX(qreal xpos) noexcept
 {
     xp = xpos;
 }
 
-Q_DECL_RELAXED_CONSTEXPR inline void QPointF::setY(qreal ypos)
+constexpr inline void QPointF::setY(qreal ypos) noexcept
 {
     yp = ypos;
 }
 
-Q_DECL_RELAXED_CONSTEXPR inline qreal &QPointF::rx()
+constexpr inline qreal &QPointF::rx() noexcept
 {
     return xp;
 }
 
-Q_DECL_RELAXED_CONSTEXPR inline qreal &QPointF::ry()
+constexpr inline qreal &QPointF::ry() noexcept
 {
     return yp;
 }
 
-Q_DECL_RELAXED_CONSTEXPR inline QPointF &QPointF::operator+=(const QPointF &p)
+constexpr inline QPointF &QPointF::operator+=(const QPointF &p)
 {
-    xp+=p.xp;
-    yp+=p.yp;
+    xp += p.xp;
+    yp += p.yp;
     return *this;
 }
 
-Q_DECL_RELAXED_CONSTEXPR inline QPointF &QPointF::operator-=(const QPointF &p)
+constexpr inline QPointF &QPointF::operator-=(const QPointF &p)
 {
-    xp-=p.xp; yp-=p.yp; return *this;
-}
-
-Q_DECL_RELAXED_CONSTEXPR inline QPointF &QPointF::operator*=(qreal c)
-{
-    xp*=c; yp*=c; return *this;
-}
-
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_CLANG("-Wfloat-equal")
-QT_WARNING_DISABLE_GCC("-Wfloat-equal")
-QT_WARNING_DISABLE_INTEL(1572)
-
-Q_DECL_CONSTEXPR inline bool operator==(const QPointF &p1, const QPointF &p2)
-{
-    return ((!p1.xp || !p2.xp) ? qFuzzyIsNull(p1.xp - p2.xp) : qFuzzyCompare(p1.xp, p2.xp))
-        && ((!p1.yp || !p2.yp) ? qFuzzyIsNull(p1.yp - p2.yp) : qFuzzyCompare(p1.yp, p2.yp));
-}
-
-Q_DECL_CONSTEXPR inline bool operator!=(const QPointF &p1, const QPointF &p2)
-{
-    return !(p1 == p2);
-}
-
-QT_WARNING_POP
-
-Q_DECL_CONSTEXPR inline const QPointF operator+(const QPointF &p1, const QPointF &p2)
-{
-    return QPointF(p1.xp+p2.xp, p1.yp+p2.yp);
-}
-
-Q_DECL_CONSTEXPR inline const QPointF operator-(const QPointF &p1, const QPointF &p2)
-{
-    return QPointF(p1.xp-p2.xp, p1.yp-p2.yp);
-}
-
-Q_DECL_CONSTEXPR inline const QPointF operator*(const QPointF &p, qreal c)
-{
-    return QPointF(p.xp*c, p.yp*c);
-}
-
-Q_DECL_CONSTEXPR inline const QPointF operator*(qreal c, const QPointF &p)
-{
-    return QPointF(p.xp*c, p.yp*c);
-}
-
-Q_DECL_CONSTEXPR inline const QPointF operator+(const QPointF &p)
-{
-    return p;
-}
-
-Q_DECL_CONSTEXPR inline const QPointF operator-(const QPointF &p)
-{
-    return QPointF(-p.xp, -p.yp);
-}
-
-Q_DECL_RELAXED_CONSTEXPR inline QPointF &QPointF::operator/=(qreal divisor)
-{
-    xp/=divisor;
-    yp/=divisor;
+    xp -= p.xp;
+    yp -= p.yp;
     return *this;
 }
 
-Q_DECL_CONSTEXPR inline const QPointF operator/(const QPointF &p, qreal divisor)
+constexpr inline QPointF &QPointF::operator*=(qreal c)
 {
-    return QPointF(p.xp/divisor, p.yp/divisor);
+    xp *= c;
+    yp *= c;
+    return *this;
 }
 
-Q_DECL_CONSTEXPR inline QPoint QPointF::toPoint() const
+constexpr inline QPointF &QPointF::operator/=(qreal divisor)
+{
+    Q_ASSERT(divisor > 0 || divisor < 0);
+    xp /= divisor;
+    yp /= divisor;
+    return *this;
+}
+
+constexpr QPointF QPoint::toPointF() const noexcept { return *this; }
+
+constexpr inline QPoint QPointF::toPoint() const
 {
     return QPoint(qRound(xp), qRound(yp));
 }
@@ -419,5 +401,25 @@ Q_CORE_EXPORT QDebug operator<<(QDebug d, const QPointF &p);
 #endif
 
 QT_END_NAMESPACE
+
+/*****************************************************************************
+  QPoint/QPointF tuple protocol
+ *****************************************************************************/
+
+namespace std {
+    template <>
+    class tuple_size<QT_PREPEND_NAMESPACE(QPoint)> : public integral_constant<size_t, 2> {};
+    template <>
+    class tuple_element<0, QT_PREPEND_NAMESPACE(QPoint)> { public: using type = int; };
+    template <>
+    class tuple_element<1, QT_PREPEND_NAMESPACE(QPoint)> { public: using type = int; };
+
+    template <>
+    class tuple_size<QT_PREPEND_NAMESPACE(QPointF)> : public integral_constant<size_t, 2> {};
+    template <>
+    class tuple_element<0, QT_PREPEND_NAMESPACE(QPointF)> { public: using type = QT_PREPEND_NAMESPACE(qreal); };
+    template <>
+    class tuple_element<1, QT_PREPEND_NAMESPACE(QPointF)> { public: using type = QT_PREPEND_NAMESPACE(qreal); };
+}
 
 #endif // QPOINT_H

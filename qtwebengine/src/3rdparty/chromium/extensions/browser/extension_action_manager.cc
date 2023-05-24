@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -61,7 +61,8 @@ ExtensionActionManager::ExtensionActionManager(
     : browser_context_(browser_context) {
   CHECK(!browser_context_->IsOffTheRecord())
       << "Don't instantiate this with an off-the-record context.";
-  extension_registry_observer_.Add(ExtensionRegistry::Get(browser_context_));
+  extension_registry_observation_.Observe(
+      ExtensionRegistry::Get(browser_context_));
 }
 
 ExtensionActionManager::~ExtensionActionManager() {
@@ -114,6 +115,11 @@ ExtensionAction* ExtensionActionManager::GetExtensionAction(
   ExtensionAction* raw_action = action.get();
   actions_[extension.id()] = std::move(action);
   return raw_action;
+}
+
+// static
+void ExtensionActionManager::EnsureFactoryBuilt() {
+  ExtensionActionManagerFactory::GetInstance();
 }
 
 }  // namespace extensions

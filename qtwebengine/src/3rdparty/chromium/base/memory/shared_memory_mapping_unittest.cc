@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,13 +6,12 @@
 
 #include <stdint.h>
 
-#include <algorithm>
 #include <limits>
 
 #include "base/containers/span.h"
 #include "base/memory/read_only_shared_memory_region.h"
 #include "base/memory/writable_shared_memory_region.h"
-#include "base/test/metrics/histogram_tester.h"
+#include "base/ranges/algorithm.h"
 #include "build/build_config.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -67,7 +66,7 @@ TEST_F(SharedMemoryMappingTest, SpanWithAutoDeducedElementCount) {
   span<const uint32_t> read_span = read_mapping_.GetMemoryAsSpan<uint32_t>();
   ASSERT_EQ(2u, read_span.size());
 
-  std::fill(write_span.begin(), write_span.end(), 0);
+  ranges::fill(write_span, 0);
   EXPECT_EQ(0u, read_span[0]);
   EXPECT_EQ(0u, read_span[1]);
 
@@ -92,7 +91,7 @@ TEST_F(SharedMemoryMappingTest, SpanWithExplicitElementCount) {
   span<const uint32_t> read_span_2 = read_mapping_.GetMemoryAsSpan<uint32_t>(1);
   ASSERT_EQ(1u, read_span_2.size());
 
-  std::fill(write_span.begin(), write_span.end(), 0);
+  ranges::fill(write_span, 0);
   EXPECT_EQ(0u, read_span[0]);
   EXPECT_EQ(0u, read_span[1]);
   EXPECT_EQ(0u, read_span_2[0]);
@@ -103,7 +102,7 @@ TEST_F(SharedMemoryMappingTest, SpanWithExplicitElementCount) {
   EXPECT_EQ(0x08070605u, read_span[1]);
   EXPECT_EQ(0x04030201u, read_span_2[0]);
 
-  std::fill(write_span_2.begin(), write_span_2.end(), 0);
+  ranges::fill(write_span_2, 0);
   EXPECT_EQ(0u, read_span[0]);
   EXPECT_EQ(0x08070605u, read_span[1]);
   EXPECT_EQ(0u, read_span_2[0]);
@@ -150,15 +149,20 @@ TEST_F(SharedMemoryMappingTest, TooBigSpanWithExplicitElementCount) {
 // TODO(dcheng): This test is temporarily disabled on iOS. iOS devices allow
 // the creation of a 1GB shared memory region, but don't allow the region to be
 // mapped.
-#if !defined(OS_IOS)
-TEST_F(SharedMemoryMappingTest, TotalMappedSizeLimit) {
+#if !BUILDFLAG(IS_IOS)
+// TODO(crbug.com/1334079) Fix flakiness and re-enable on Linux and ChromeOS.
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+#define MAYBE_TotalMappedSizeLimit DISABLED_TotalMappedSizeLimit
+#else
+#define MAYBE_TotalMappedSizeLimit TotalMappedSizeLimit
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+TEST_F(SharedMemoryMappingTest, MAYBE_TotalMappedSizeLimit) {
   // Nothing interesting to test if the address space isn't 64 bits, since
   // there's no real limit enforced on 32 bits other than complete address
   // space exhaustion.
   // Also exclude NaCl since pointers are 32 bits on all architectures:
   // https://bugs.chromium.org/p/nativeclient/issues/detail?id=1162
-#if defined(ARCH_CPU_64_BITS) && !defined(OS_NACL)
-  base::HistogramTester histogram_tester;
+#if defined(ARCH_CPU_64_BITS) && !BUILDFLAG(IS_NACL)
   auto region = WritableSharedMemoryRegion::Create(1024 * 1024 * 1024);
   ASSERT_TRUE(region.IsValid());
   // The limit is 32GB of mappings on 64-bit platforms, so the final mapping
@@ -170,11 +174,8 @@ TEST_F(SharedMemoryMappingTest, TotalMappedSizeLimit) {
     mapping = region.Map();
     EXPECT_EQ(&mapping != &mappings.back(), mapping.IsValid());
   }
-  EXPECT_THAT(
-      histogram_tester.GetAllSamples("SharedMemory.MapBlockedForSecurity"),
-      ::testing::ElementsAre(Bucket(0, 31), Bucket(1, 1)));
 #endif  // defined(ARCH_CPU_64_BITS)
 }
-#endif  // !defined(OS_IOS)
+#endif  // !BUILDFLAG(IS_IOS)
 
 }  // namespace base

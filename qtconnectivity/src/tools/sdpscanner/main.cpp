@@ -1,44 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/QByteArray>
 #include <QtCore/QDebug>
+#include <QtCore/QUrl>
 #include <stdio.h>
 #include <string>
 #include <bluetooth/bluetooth.h>
@@ -153,13 +118,15 @@ static void parseAttributeValues(sdp_data_t *data, int indentation, QByteArray &
         QByteArray text = QByteArray::fromRawData(data->val.str, data->unitSize);
 
         bool hasNonPrintableChar = false;
-        for (int i = 0; i < text.count(); i++) {
+        for (qsizetype i = 0; i < text.size(); ++i) {
             if (text[i] == '\0') {
                 text.resize(i); // cut trailing content
                 break;
             } else if (!isprint(text[i])) {
                 hasNonPrintableChar = true;
-                text.resize(text.indexOf('\0')); // cut trailing content
+                const auto firstNullIdx = text.indexOf('\0');
+                if (firstNullIdx > 0)
+                    text.resize(firstNullIdx); // cut trailing content
                 break;
             }
         }
@@ -211,11 +178,17 @@ static void parseAttributeValues(sdp_data_t *data, int indentation, QByteArray &
     case SDP_URL_STR8:
     case SDP_URL_STR16:
     case SDP_URL_STR32:
-        strncpy(snBuffer, data->val.str, data->unitSize - 1);
+    {
         xmlOutput.append("<url value=\"");
-        xmlOutput.append(snBuffer);
+        const QByteArray urlData =
+                QByteArray::fromRawData(data->val.str, qstrnlen(data->val.str, data->unitSize));
+        const QUrl url = QUrl::fromEncoded(urlData);
+        // Encoded url %-encodes all of the XML special characters except '&',
+        // so we need to do that manually
+        xmlOutput.append(url.toEncoded().replace('&', "&amp;"));
         xmlOutput.append("\"/>\n");
         break;
+    }
     default:
         fprintf(stderr, "Unknown dtd type\n");
     }
@@ -371,8 +344,8 @@ int main(int argc, char **argv)
     sdp_list_t *totalResults = nullptr;
     sdp_list_t* serviceFilter;
 
-    for (uint i = 0; i < uuids.size(); ++i) {
-        serviceFilter = sdp_list_append(nullptr, &uuids[i]);
+    for (uuid_t &uuid : uuids) { // can't be const, d/t sdp_list_append signature
+        serviceFilter = sdp_list_append(nullptr, &uuid);
         result = sdp_service_search_attr_req(session, serviceFilter,
                                          SDP_ATTR_REQ_RANGE,
                                          attributes, &sdpResults);

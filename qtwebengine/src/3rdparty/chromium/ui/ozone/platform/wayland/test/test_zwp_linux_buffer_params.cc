@@ -1,11 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/ozone/platform/wayland/test/test_zwp_linux_buffer_params.h"
 
-#include "ui/ozone/platform/wayland/test/mock_buffer.h"
 #include "ui/ozone/platform/wayland/test/mock_zwp_linux_dmabuf.h"
+#include "ui/ozone/platform/wayland/test/test_buffer.h"
 
 namespace wl {
 
@@ -33,8 +33,8 @@ void CreateCommon(TestZwpLinuxBufferParamsV1* buffer_params,
                   uint32_t format,
                   uint32_t flags) {
   wl_resource* buffer_resource =
-      CreateResourceWithImpl<::testing::NiceMock<MockBuffer>>(
-          client, &wl_buffer_interface, 1, &kMockWlBufferImpl, 0,
+      CreateResourceWithImpl<::testing::NiceMock<TestBuffer>>(
+          client, &wl_buffer_interface, 1, &kTestWlBufferImpl, 0,
           std::move(buffer_params->fds_));
 
   buffer_params->SetBufferResource(buffer_resource);

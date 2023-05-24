@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,6 +19,10 @@ class CORE_EXPORT NavigatorUA {
  protected:
   virtual UserAgentMetadata GetUserAgentMetadata() const = 0;
   virtual ExecutionContext* GetUAExecutionContext() const = 0;
+
+  // Record identifiability study metrics for NavigatorUAData if the user is in
+  // the study.
+  void MaybeRecordMetrics(const NavigatorUAData& ua_data);
 };
 
 }  // namespace blink

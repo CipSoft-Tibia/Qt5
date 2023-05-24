@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,32 +11,26 @@
 #include <vector>
 
 #include "build/build_config.h"
+#include "core/fxcrt/retain_ptr.h"
 #include "core/fxge/cfx_fillrenderoptions.h"
 #include "core/fxge/renderdevicedriver_iface.h"
-#include "third_party/agg23/agg_clip_liang_barsky.h"
-#include "third_party/agg23/agg_path_storage.h"
-#include "third_party/agg23/agg_rasterizer_scanline_aa.h"
 
 class CFX_ClipRgn;
 class CFX_GraphStateData;
 class CFX_Matrix;
-class CFX_PathData;
+class CFX_Path;
 
-class CAgg_PathData {
- public:
-  CAgg_PathData() {}
-  ~CAgg_PathData() {}
-  void BuildPath(const CFX_PathData* pPathData,
-                 const CFX_Matrix* pObject2Device);
+namespace pdfium {
 
-  agg::path_storage m_PathData;
-};
+namespace agg {
+class rasterizer_scanline_aa;
+}  // namespace agg
 
 class CFX_AggDeviceDriver final : public RenderDeviceDriverIface {
  public:
-  CFX_AggDeviceDriver(const RetainPtr<CFX_DIBitmap>& pBitmap,
+  CFX_AggDeviceDriver(RetainPtr<CFX_DIBitmap> pBitmap,
                       bool bRgbByteOrder,
-                      const RetainPtr<CFX_DIBitmap>& pBackdropBitmap,
+                      RetainPtr<CFX_DIBitmap> pBackdropBitmap,
                       bool bGroupKnockout);
   ~CFX_AggDeviceDriver() override;
 
@@ -48,13 +42,13 @@ class CFX_AggDeviceDriver final : public RenderDeviceDriverIface {
   int GetDeviceCaps(int caps_id) const override;
   void SaveState() override;
   void RestoreState(bool bKeepSaved) override;
-  bool SetClip_PathFill(const CFX_PathData* pPathData,
+  bool SetClip_PathFill(const CFX_Path& path,
                         const CFX_Matrix* pObject2Device,
                         const CFX_FillRenderOptions& fill_options) override;
-  bool SetClip_PathStroke(const CFX_PathData* pPathData,
+  bool SetClip_PathStroke(const CFX_Path& path,
                           const CFX_Matrix* pObject2Device,
                           const CFX_GraphStateData* pGraphState) override;
-  bool DrawPath(const CFX_PathData* pPathData,
+  bool DrawPath(const CFX_Path& path,
                 const CFX_Matrix* pObject2Device,
                 const CFX_GraphStateData* pGraphState,
                 uint32_t fill_color,
@@ -93,8 +87,7 @@ class CFX_AggDeviceDriver final : public RenderDeviceDriverIface {
                    BlendMode blend_type) override;
   bool ContinueDIBits(CFX_ImageRenderer* handle,
                       PauseIndicatorIface* pPause) override;
-  bool DrawDeviceText(int nChars,
-                      const TextCharPos* pCharPos,
+  bool DrawDeviceText(pdfium::span<const TextCharPos> pCharPos,
                       CFX_Font* pFont,
                       const CFX_Matrix& mtObject2Device,
                       float font_size,
@@ -102,20 +95,18 @@ class CFX_AggDeviceDriver final : public RenderDeviceDriverIface {
                       const CFX_TextRenderOptions& options) override;
   int GetDriverType() const override;
 
-  bool RenderRasterizer(agg::rasterizer_scanline_aa& rasterizer,
+ private:
+  void RenderRasterizer(pdfium::agg::rasterizer_scanline_aa& rasterizer,
                         uint32_t color,
                         bool bFullCover,
                         bool bGroupKnockout);
 
-  void SetClipMask(agg::rasterizer_scanline_aa& rasterizer);
+  void SetClipMask(pdfium::agg::rasterizer_scanline_aa& rasterizer);
 
-  virtual uint8_t* GetBuffer() const;
-
- private:
   RetainPtr<CFX_DIBitmap> const m_pBitmap;
   std::unique_ptr<CFX_ClipRgn> m_pClipRgn;
   std::vector<std::unique_ptr<CFX_ClipRgn>> m_StateStack;
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
   void* m_pPlatformGraphics = nullptr;
 #endif
   CFX_FillRenderOptions m_FillOptions;
@@ -123,5 +114,7 @@ class CFX_AggDeviceDriver final : public RenderDeviceDriverIface {
   const bool m_bGroupKnockout;
   RetainPtr<CFX_DIBitmap> m_pBackdropBitmap;
 };
+
+}  // namespace pdfium
 
 #endif  // CORE_FXGE_AGG_FX_AGG_DRIVER_H_

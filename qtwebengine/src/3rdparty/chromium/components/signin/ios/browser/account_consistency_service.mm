@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,24 +6,22 @@
 
 #import <WebKit/WebKit.h>
 
-#include "base/bind.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #import "base/mac/foundation_util.h"
-#include "base/macros.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/sys_string_conversions.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
 #include "components/google/core/common/google_util.h"
-#include "components/prefs/pref_registry_simple.h"
-#include "components/prefs/pref_service.h"
-#include "components/prefs/scoped_user_pref_update.h"
 #include "components/signin/core/browser/account_reconcilor.h"
+#include "components/signin/core/browser/chrome_connected_header_helper.h"
 #include "components/signin/core/browser/signin_header_helper.h"
 #include "components/signin/ios/browser/features.h"
-#include "components/signin/public/base/account_consistency_method.h"
 #include "components/signin/public/identity_manager/accounts_cookie_mutator.h"
+#include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
+#include "google_apis/gaia/gaia_constants.h"
 #include "google_apis/gaia/gaia_urls.h"
 #include "ios/web/common/web_view_creation_util.h"
 #include "ios/web/public/browser_state.h"
@@ -41,17 +39,11 @@
 
 namespace {
 
-// The validity of CHROME_CONNECTED cookies is one day maximum as a
-// precaution to ensure that the cookie is regenerated in the case that it
-// is removed or invalidated.
-constexpr base::TimeDelta kDelayThresholdToUpdateChromeConnectedCookie =
-    base::TimeDelta::FromHours(24);
 // The validity of the Gaia cookie on the Google domain is one hour to
 // ensure that Mirror account consistency is respected in light of the more
 // restrictive Intelligent Tracking Prevention (ITP) guidelines in iOS 14
 // that may remove or invalidate Gaia cookies on the Google domain.
-constexpr base::TimeDelta kDelayThresholdToUpdateGaiaCookie =
-    base::TimeDelta::FromHours(1);
+constexpr base::TimeDelta kDelayThresholdToUpdateGaiaCookie = base::Hours(1);
 
 const char* kGoogleUrl = "https://google.com";
 const char* kYoutubeUrl = "https://youtube.com";
@@ -60,11 +52,28 @@ const char* kGaiaDomain = "accounts.google.com";
 // Returns the registered, organization-identifying host, but no subdomains,
 // from the given GURL. Returns an empty string if the GURL is invalid.
 static std::string GetDomainFromUrl(const GURL& url) {
-  if (gaia::IsGaiaSignonRealm(url.GetOrigin())) {
+  if (gaia::HasGaiaSchemeHostPort(url)) {
     return kGaiaDomain;
   }
   return net::registry_controlled_domains::GetDomainAndRegistry(
       url, net::registry_controlled_domains::EXCLUDE_PRIVATE_REGISTRIES);
+}
+
+// The Gaia cookie state on navigation for a signed-in Chrome user.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class GaiaCookieStateOnSignedInNavigation {
+  kGaiaCookiePresentOnNavigation = 0,
+  kGaiaCookieAbsentOnGoogleAssociatedDomainNavigation = 1,
+  kGaiaCookieAbsentOnAddSessionNavigation = 2,
+  kGaiaCookieRestoredOnShowInfobar = 3,
+  kMaxValue = kGaiaCookieRestoredOnShowInfobar
+};
+
+// Records the state of Gaia cookies for a navigation in UMA histogram.
+void LogIOSGaiaCookiesState(GaiaCookieStateOnSignedInNavigation state) {
+  base::UmaHistogramEnumeration("Signin.IOSGaiaCookieStateOnSignedInNavigation",
+                                state);
 }
 
 // Allows for manual testing by reducing the polling interval for verifying the
@@ -78,25 +87,33 @@ base::TimeDelta GetDelayThresholdToUpdateGaiaCookie() {
         signin::kDelayThresholdMinutesToUpdateGaiaCookie);
     int commandLineDelay = 0;
     if (base::StringToInt(delayString, &commandLineDelay)) {
-      return base::TimeDelta::FromMinutes(commandLineDelay);
+      return base::Minutes(commandLineDelay);
     }
   }
   return kDelayThresholdToUpdateGaiaCookie;
 }
 
+}  // namespace
+
 // WebStatePolicyDecider that monitors the HTTP headers on Gaia responses,
 // reacting on the X-Chrome-Manage-Accounts header and notifying its delegate.
 // It also notifies the AccountConsistencyService of domains it should add the
 // CHROME_CONNECTED cookie to.
-class AccountConsistencyHandler : public web::WebStatePolicyDecider,
-                                  public web::WebStateObserver {
+class AccountConsistencyService::AccountConsistencyHandler
+    : public web::WebStatePolicyDecider,
+      public web::WebStateObserver {
  public:
   AccountConsistencyHandler(web::WebState* web_state,
                             AccountConsistencyService* service,
                             AccountReconcilor* account_reconcilor,
-                            id<ManageAccountsDelegate> delegate);
+                            signin::IdentityManager* identity_manager,
+                            ManageAccountsDelegate* delegate);
 
   void WebStateDestroyed(web::WebState* web_state) override;
+
+  AccountConsistencyHandler(const AccountConsistencyHandler&) = delete;
+  AccountConsistencyHandler& operator=(const AccountConsistencyHandler&) =
+      delete;
 
  private:
   // web::WebStateObserver override.
@@ -105,37 +122,70 @@ class AccountConsistencyHandler : public web::WebStatePolicyDecider,
       web::PageLoadCompletionStatus load_completion_status) override;
 
   // web::WebStatePolicyDecider override.
+  void ShouldAllowRequest(
+      NSURLRequest* request,
+      web::WebStatePolicyDecider::RequestInfo request_info,
+      web::WebStatePolicyDecider::PolicyDecisionCallback callback) override;
   // Decides on navigation corresponding to |response| whether the navigation
   // should continue and updates authentication cookies on Google domains.
   void ShouldAllowResponse(
       NSURLResponse* response,
-      bool for_main_frame,
-      base::OnceCallback<void(PolicyDecision)> callback) override;
+      web::WebStatePolicyDecider::ResponseInfo response_info,
+      web::WebStatePolicyDecider::PolicyDecisionCallback callback) override;
   void WebStateDestroyed() override;
 
-  bool show_consistency_promo_ = false;
+  // Handles the AddAccount request depending on |has_cookie_changed|.
+  void HandleAddAccountRequest(GURL url, BOOL has_cookie_changed);
+
+  // The consistency web sign-in needs to be shown once the page is loaded.
+  // It is required to avoid having the keyboard showing up on top of the web
+  // sign-in dialog.
+  bool show_consistency_web_signin_ = false;
   AccountConsistencyService* account_consistency_service_;  // Weak.
   AccountReconcilor* account_reconcilor_;                   // Weak.
-  __weak id<ManageAccountsDelegate> delegate_;
+  signin::IdentityManager* identity_manager_;
+  web::WebState* web_state_;
+  ManageAccountsDelegate* delegate_;  // Weak.
+  base::WeakPtrFactory<AccountConsistencyHandler> weak_ptr_factory_;
 };
-}  // namespace
 
-AccountConsistencyHandler::AccountConsistencyHandler(
+AccountConsistencyService::AccountConsistencyHandler::AccountConsistencyHandler(
     web::WebState* web_state,
     AccountConsistencyService* service,
     AccountReconcilor* account_reconcilor,
-    id<ManageAccountsDelegate> delegate)
+    signin::IdentityManager* identity_manager,
+    ManageAccountsDelegate* delegate)
     : web::WebStatePolicyDecider(web_state),
       account_consistency_service_(service),
       account_reconcilor_(account_reconcilor),
-      delegate_(delegate) {
+      identity_manager_(identity_manager),
+      web_state_(web_state),
+      delegate_(delegate),
+      weak_ptr_factory_(this) {
   web_state->AddObserver(this);
 }
 
-void AccountConsistencyHandler::ShouldAllowResponse(
+void AccountConsistencyService::AccountConsistencyHandler::ShouldAllowRequest(
+    NSURLRequest* request,
+    web::WebStatePolicyDecider::RequestInfo request_info,
+    web::WebStatePolicyDecider::PolicyDecisionCallback callback) {
+  GURL url = net::GURLWithNSURL(request.URL);
+  if (signin::IsUrlEligibleForMirrorCookie(url) &&
+      identity_manager_->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
+    // CHROME_CONNECTED cookies are added asynchronously on google.com and
+    // youtube.com domains when Chrome detects that the user is signed-in. By
+    // continuing to fulfill the navigation once the cookie request is sent,
+    // Chrome adopts a best-effort strategy for signing the user into the web if
+    // necessary.
+    account_consistency_service_->AddChromeConnectedCookies();
+  }
+  std::move(callback).Run(PolicyDecision::Allow());
+}
+
+void AccountConsistencyService::AccountConsistencyHandler::ShouldAllowResponse(
     NSURLResponse* response,
-    bool for_main_frame,
-    base::OnceCallback<void(PolicyDecision)> callback) {
+    web::WebStatePolicyDecider::ResponseInfo response_info,
+    web::WebStatePolicyDecider::PolicyDecisionCallback callback) {
   NSHTTPURLResponse* http_response =
       base::mac::ObjCCast<NSHTTPURLResponse>(response);
   if (!http_response) {
@@ -145,23 +195,29 @@ void AccountConsistencyHandler::ShouldAllowResponse(
 
   GURL url = net::GURLWithNSURL(http_response.URL);
   // User is showing intent to navigate to a Google-owned domain. Set GAIA and
-  // CHROME_CONNECTED cookies if the user is signed in or if they are not signed
-  // in and navigating to a GAIA sign-on (this is filtered in
+  // CHROME_CONNECTED cookies if the user is signed in (this is filtered in
   // ChromeConnectedHelper).
   if (signin::IsUrlEligibleForMirrorCookie(url)) {
     account_consistency_service_->SetChromeConnectedCookieWithUrls(
         {url, GURL(kGoogleUrl)});
-    account_consistency_service_->SetGaiaCookiesIfDeleted();
   }
 
-  if (!gaia::IsGaiaSignonRealm(url.GetOrigin())) {
+  if (!gaia::HasGaiaSchemeHostPort(url)) {
     std::move(callback).Run(PolicyDecision::Allow());
     return;
   }
+
   NSString* manage_accounts_header = [[http_response allHeaderFields]
       objectForKey:
           [NSString stringWithUTF8String:signin::kChromeManageAccountsHeader]];
   if (!manage_accounts_header) {
+    // Header that detects whether a user has been prompted to enter their
+    // credentials on a Gaia sign-on page.
+    NSString* x_autologin_header = [[http_response allHeaderFields]
+        objectForKey:[NSString stringWithUTF8String:signin::kAutoLoginHeader]];
+    if (x_autologin_header) {
+      show_consistency_web_signin_ = true;
+    }
     std::move(callback).Run(PolicyDecision::Allow());
     return;
   }
@@ -170,35 +226,41 @@ void AccountConsistencyHandler::ShouldAllowResponse(
       base::SysNSStringToUTF8(manage_accounts_header));
 
   account_reconcilor_->OnReceivedManageAccountsResponse(params.service_type);
-  // Reset boolean that tracks displaying the sign-in consistency promo. This
-  // ensures that the promo is cancelled once navigation has started and the
-  // WKWebView is cancelling previous navigations.
-  show_consistency_promo_ = false;
 
   switch (params.service_type) {
     case signin::GAIA_SERVICE_TYPE_INCOGNITO: {
       GURL continue_url = GURL(params.continue_url);
       DLOG_IF(ERROR, !params.continue_url.empty() && !continue_url.is_valid())
           << "Invalid continuation URL: \"" << continue_url << "\"";
-      [delegate_ onGoIncognito:continue_url];
+      if (delegate_)
+        delegate_->OnGoIncognito(continue_url);
       break;
     }
     case signin::GAIA_SERVICE_TYPE_SIGNUP:
     case signin::GAIA_SERVICE_TYPE_ADDSESSION:
-      if (params.show_consistency_promo) {
-        show_consistency_promo_ = true;
-        // Allows the URL response to load before showing the consistency promo.
-        // The promo should always be displayed in the foreground of Gaia
-        // sign-on.
-        std::move(callback).Run(PolicyDecision::Allow());
-        return;
-      } else {
-        [delegate_ onAddAccount];
+      // This situation is only possible if the all cookies have been deleted by
+      // ITP restrictions and Chrome has not triggered a cookie refresh.
+      if (identity_manager_->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
+        LogIOSGaiaCookiesState(GaiaCookieStateOnSignedInNavigation::
+                                   kGaiaCookieAbsentOnAddSessionNavigation);
+        GURL continue_url = GURL(params.continue_url);
+        DLOG_IF(ERROR, !params.continue_url.empty() && !continue_url.is_valid())
+            << "Invalid continuation URL: \"" << continue_url << "\"";
+        if (account_consistency_service_->RestoreGaiaCookies(base::BindOnce(
+                &AccountConsistencyHandler::HandleAddAccountRequest,
+                weak_ptr_factory_.GetWeakPtr(), continue_url))) {
+          // Continue URL will be processed in a callback once Gaia cookies
+          // have been restored.
+          return;
+        }
       }
+      if (delegate_)
+        delegate_->OnAddAccount();
       break;
     case signin::GAIA_SERVICE_TYPE_SIGNOUT:
     case signin::GAIA_SERVICE_TYPE_DEFAULT:
-      [delegate_ onManageAccounts];
+      if (delegate_)
+        delegate_->OnManageAccounts();
       break;
     case signin::GAIA_SERVICE_TYPE_NONE:
       NOTREACHED();
@@ -215,153 +277,168 @@ void AccountConsistencyHandler::ShouldAllowResponse(
   std::move(callback).Run(PolicyDecision::Cancel());
 }
 
-void AccountConsistencyHandler::PageLoaded(
-    web::WebState* web_state,
-    web::PageLoadCompletionStatus load_completion_status) {
-  if (!show_consistency_promo_ ||
-      !gaia::IsGaiaSignonRealm(web_state->GetLastCommittedURL().GetOrigin()) ||
-      load_completion_status == web::PageLoadCompletionStatus::FAILURE) {
+void AccountConsistencyService::AccountConsistencyHandler::
+    HandleAddAccountRequest(GURL url, BOOL has_cookie_changed) {
+  if (!has_cookie_changed) {
+    // If the cookies on the device did not need to be updated then the user
+    // is not in an inconsistent state (where the identities on the device
+    // are different than those on the web). Fallback to asking the user to
+    // add an account.
+    if (delegate_)
+      delegate_->OnAddAccount();
     return;
   }
-  [delegate_ onShowConsistencyPromo];
-  show_consistency_promo_ = false;
-
-  // Chrome uses the CHROME_CONNECTED cookie to determine whether the
-  // eligibility promo should be shown. Once it is shown we should remove the
-  // cookie, since it should otherwise not be used unless the user is signed in.
-  account_consistency_service_->RemoveAllChromeConnectedCookies(
-      base::OnceClosure());
+  web_state_->OpenURL(web::WebState::OpenURLParams(
+      url, web::Referrer(), WindowOpenDisposition::CURRENT_TAB,
+      ui::PAGE_TRANSITION_AUTO_TOPLEVEL, false));
+  if (delegate_)
+    delegate_->OnRestoreGaiaCookies();
+  LogIOSGaiaCookiesState(
+      GaiaCookieStateOnSignedInNavigation::kGaiaCookieRestoredOnShowInfobar);
 }
 
-void AccountConsistencyHandler::WebStateDestroyed(web::WebState* web_state) {}
+void AccountConsistencyService::AccountConsistencyHandler::PageLoaded(
+    web::WebState* web_state,
+    web::PageLoadCompletionStatus load_completion_status) {
+  const GURL& url = web_state->GetLastCommittedURL();
+  if (load_completion_status == web::PageLoadCompletionStatus::FAILURE ||
+      !google_util::IsGoogleDomainUrl(
+          url, google_util::ALLOW_SUBDOMAIN,
+          google_util::DISALLOW_NON_STANDARD_PORTS)) {
+    return;
+  }
 
-void AccountConsistencyHandler::WebStateDestroyed() {
+  if (delegate_ && show_consistency_web_signin_ &&
+      gaia::HasGaiaSchemeHostPort(url)) {
+    delegate_->OnShowConsistencyPromo(url, web_state);
+  }
+  show_consistency_web_signin_ = false;
+}
+
+void AccountConsistencyService::AccountConsistencyHandler::WebStateDestroyed(
+    web::WebState* web_state) {}
+
+void AccountConsistencyService::AccountConsistencyHandler::WebStateDestroyed() {
   account_consistency_service_->RemoveWebStateHandler(web_state());
 }
 
-const char AccountConsistencyService::kChromeConnectedCookieName[] =
-    "CHROME_CONNECTED";
-
-const char AccountConsistencyService::kGaiaCookieName[] = "SAPISID";
-
-const char AccountConsistencyService::kDomainsWithCookiePref[] =
-    "signin.domains_with_cookie";
-
 AccountConsistencyService::AccountConsistencyService(
     web::BrowserState* browser_state,
-    PrefService* prefs,
     AccountReconcilor* account_reconcilor,
     scoped_refptr<content_settings::CookieSettings> cookie_settings,
     signin::IdentityManager* identity_manager)
     : browser_state_(browser_state),
-      prefs_(prefs),
       account_reconcilor_(account_reconcilor),
       cookie_settings_(cookie_settings),
       identity_manager_(identity_manager),
       active_cookie_manager_requests_for_testing_(0) {
   identity_manager_->AddObserver(this);
-  LoadFromPrefs();
-  if (identity_manager_->HasPrimaryAccount()) {
+  if (identity_manager_->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
     AddChromeConnectedCookies();
   } else {
     RemoveAllChromeConnectedCookies(base::OnceClosure());
   }
 }
 
-AccountConsistencyService::~AccountConsistencyService() {
-}
+AccountConsistencyService::~AccountConsistencyService() {}
 
-// static
-void AccountConsistencyService::RegisterPrefs(PrefRegistrySimple* registry) {
-  registry->RegisterDictionaryPref(
-      AccountConsistencyService::kDomainsWithCookiePref);
-}
-
-void AccountConsistencyService::SetWebStateHandler(
-    web::WebState* web_state,
-    id<ManageAccountsDelegate> delegate) {
-  DCHECK_EQ(0u, web_state_handlers_.count(web_state));
-  web_state_handlers_[web_state].reset(new AccountConsistencyHandler(
-      web_state, this, account_reconcilor_, delegate));
-}
-
-void AccountConsistencyService::RemoveWebStateHandler(
-    web::WebState* web_state) {
-  DCHECK_LT(0u, web_state_handlers_.count(web_state));
-  web_state->RemoveObserver(
-      (AccountConsistencyHandler*)web_state_handlers_[web_state].get());
-  web_state_handlers_.erase(web_state);
-}
-
-void AccountConsistencyService::SetGaiaCookiesIfDeleted() {
+BOOL AccountConsistencyService::RestoreGaiaCookies(
+    base::OnceCallback<void(BOOL)> cookies_restored_callback) {
   // We currently enforce a time threshold to update the Gaia cookie
   // for signed-in users to prevent calling the expensive method
   // |GetAllCookies| in the cookie manager.
-  if (base::Time::Now() - last_gaia_cookie_verification_time_ <
-          GetDelayThresholdToUpdateGaiaCookie() ||
-      !identity_manager_->HasPrimaryAccount()) {
-    return;
+  if (last_gaia_cookie_update_time_.is_null() ||
+      base::Time::Now() - last_gaia_cookie_update_time_ >
+          GetDelayThresholdToUpdateGaiaCookie()) {
+    network::mojom::CookieManager* cookie_manager =
+        browser_state_->GetCookieManager();
+    cookie_manager->GetCookieList(
+        GaiaUrls::GetInstance()->secure_google_url(),
+        net::CookieOptions::MakeAllInclusive(),
+        net::CookiePartitionKeyCollection::Todo(),
+        base::BindOnce(
+            &AccountConsistencyService::TriggerGaiaCookieChangeIfDeleted,
+            base::Unretained(this), std::move(cookies_restored_callback)));
+    last_gaia_cookie_update_time_ = base::Time::Now();
+    return YES;
   }
-  network::mojom::CookieManager* cookie_manager =
-      browser_state_->GetCookieManager();
-  cookie_manager->GetCookieList(
-      GaiaUrls::GetInstance()->secure_google_url(),
-      net::CookieOptions::MakeAllInclusive(),
-      base::BindOnce(
-          &AccountConsistencyService::TriggerGaiaCookieChangeIfDeleted,
-          base::Unretained(this)));
-  last_gaia_cookie_verification_time_ = base::Time::Now();
+  return NO;
 }
 
 void AccountConsistencyService::TriggerGaiaCookieChangeIfDeleted(
+    base::OnceCallback<void(BOOL)> cookies_restored_callback,
     const net::CookieAccessResultList& cookie_list,
     const net::CookieAccessResultList& unused_excluded_cookies) {
+  gaia_cookies_restored_callbacks_.push_back(
+      std::move(cookies_restored_callback));
+
   for (const auto& cookie : cookie_list) {
-    if (cookie.cookie.Name() == kGaiaCookieName) {
-      LogIOSGaiaCookiesPresentOnNavigation(true);
+    if (cookie.cookie.Name() == GaiaConstants::kGaiaSigninCookieName) {
+      LogIOSGaiaCookiesState(
+          GaiaCookieStateOnSignedInNavigation::kGaiaCookiePresentOnNavigation);
+      RunGaiaCookiesRestoredCallbacks(/*has_cookie_changed=*/NO);
       return;
     }
   }
 
   // The SAPISID cookie may have been deleted previous to this update due to
   // ITP restrictions marking Google domains as potential trackers.
-  LogIOSGaiaCookiesPresentOnNavigation(false);
+  LogIOSGaiaCookiesState(
+      GaiaCookieStateOnSignedInNavigation::
+          kGaiaCookieAbsentOnGoogleAssociatedDomainNavigation);
 
-  if (!base::FeatureList::IsEnabled(signin::kRestoreGaiaCookiesIfDeleted)) {
-    return;
-  }
   // Re-generate cookie to ensure that the user is properly signed in.
   identity_manager_->GetAccountsCookieMutator()->ForceTriggerOnCookieChange();
 }
 
-void AccountConsistencyService::LogIOSGaiaCookiesPresentOnNavigation(
-    bool is_present) {
-  base::UmaHistogramBoolean("Signin.IOSGaiaCookiePresentOnNavigation",
-                            is_present);
+void AccountConsistencyService::RunGaiaCookiesRestoredCallbacks(
+    BOOL has_cookie_changed) {
+  std::vector<base::OnceCallback<void(BOOL)>> callbacks;
+  std::swap(gaia_cookies_restored_callbacks_, callbacks);
+  for (base::OnceCallback<void(BOOL)>& callback : callbacks) {
+    std::move(callback).Run(has_cookie_changed);
+  }
+}
+
+void AccountConsistencyService::SetWebStateHandler(
+    web::WebState* web_state,
+    ManageAccountsDelegate* delegate) {
+  DCHECK(!is_shutdown_) << "SetWebStateHandler called after Shutdown";
+  DCHECK(handlers_map_.find(web_state) == handlers_map_.end());
+  handlers_map_.insert(std::make_pair(
+      web_state,
+      std::make_unique<AccountConsistencyHandler>(
+          web_state, this, account_reconcilor_, identity_manager_, delegate)));
+}
+
+void AccountConsistencyService::RemoveWebStateHandler(
+    web::WebState* web_state) {
+  DCHECK(!is_shutdown_) << "RemoveWebStateHandler called after Shutdown";
+  auto iter = handlers_map_.find(web_state);
+  DCHECK(iter != handlers_map_.end());
+
+  std::unique_ptr<AccountConsistencyHandler> handler = std::move(iter->second);
+  handlers_map_.erase(iter);
+
+  web_state->RemoveObserver(handler.get());
 }
 
 void AccountConsistencyService::RemoveAllChromeConnectedCookies(
     base::OnceClosure callback) {
   DCHECK(!browser_state_->IsOffTheRecord());
-  if (last_cookie_update_map_.empty()) {
-    if (!callback.is_null())
-      std::move(callback).Run();
-    return;
-  }
 
   network::mojom::CookieManager* cookie_manager =
       browser_state_->GetCookieManager();
 
   network::mojom::CookieDeletionFilterPtr filter =
       network::mojom::CookieDeletionFilter::New();
-  filter->cookie_name = kChromeConnectedCookieName;
+  filter->cookie_name = signin::kChromeConnectedCookieName;
 
   ++active_cookie_manager_requests_for_testing_;
   cookie_manager->DeleteCookies(
       std::move(filter),
       base::BindOnce(&AccountConsistencyService::OnDeleteCookiesFinished,
                      base::Unretained(this), std::move(callback)));
-  ResetInternalState();
 }
 
 void AccountConsistencyService::OnDeleteCookiesFinished(
@@ -375,73 +452,45 @@ void AccountConsistencyService::OnDeleteCookiesFinished(
 
 void AccountConsistencyService::SetChromeConnectedCookieWithUrls(
     const std::vector<const GURL>& urls) {
-  SetChromeConnectedCookieWithUrls(
-      urls, kDelayThresholdToUpdateChromeConnectedCookie);
-}
-
-void AccountConsistencyService::SetChromeConnectedCookieWithUrls(
-    const std::vector<const GURL>& urls,
-    const base::TimeDelta& cookie_refresh_interval) {
   for (const GURL& url : urls) {
-    const std::string domain = GetDomainFromUrl(url);
-    if (!ShouldSetChromeConnectedCookieToDomain(domain,
-                                                cookie_refresh_interval)) {
-      continue;
-    }
-    last_cookie_update_map_[domain] = base::Time::Now();
     SetChromeConnectedCookieWithUrl(url);
   }
 }
 
-bool AccountConsistencyService::ShouldSetChromeConnectedCookieToDomain(
-    const std::string& domain,
-    const base::TimeDelta& cookie_refresh_interval) {
-  auto domain_iterator = last_cookie_update_map_.find(domain);
-  bool domain_not_found = domain_iterator == last_cookie_update_map_.end();
-  return domain_not_found || ((base::Time::Now() - domain_iterator->second) >
-                              cookie_refresh_interval);
-}
-
-void AccountConsistencyService::LoadFromPrefs() {
-  const base::DictionaryValue* dict =
-      prefs_->GetDictionary(kDomainsWithCookiePref);
-  for (base::DictionaryValue::Iterator it(*dict); !it.IsAtEnd(); it.Advance()) {
-    last_cookie_update_map_[it.key()] = base::Time();
-  }
-}
-
 void AccountConsistencyService::Shutdown() {
+  DCHECK(handlers_map_.empty()) << "Handlers not unregistered at shutdown";
   identity_manager_->RemoveObserver(this);
-  web_state_handlers_.clear();
+  is_shutdown_ = true;
 }
 
 void AccountConsistencyService::SetChromeConnectedCookieWithUrl(
     const GURL& url) {
   const std::string domain = GetDomainFromUrl(url);
   std::string cookie_value = signin::BuildMirrorRequestCookieIfPossible(
-      url, identity_manager_->GetPrimaryAccountInfo().gaia,
+      url,
+      identity_manager_->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin)
+          .gaia,
       signin::AccountConsistencyMethod::kMirror, cookie_settings_.get(),
       signin::PROFILE_MODE_DEFAULT);
   if (cookie_value.empty()) {
-    last_cookie_update_map_.erase(domain);
     return;
   }
 
   std::unique_ptr<net::CanonicalCookie> cookie =
       net::CanonicalCookie::CreateSanitizedCookie(
           url,
-          /*name=*/kChromeConnectedCookieName, cookie_value,
+          /*name=*/signin::kChromeConnectedCookieName, cookie_value,
           /*domain=*/domain,
           /*path=*/std::string(),
           /*creation_time=*/base::Time::Now(),
           // Create expiration date of Now+2y to roughly follow the SAPISID
           // cookie.
-          /*expiration_time=*/base::Time::Now() +
-              base::TimeDelta::FromDays(730),
+          /*expiration_time=*/base::Time::Now() + base::Days(730),
           /*last_access_time=*/base::Time(),
           /*secure=*/true,
           /*httponly=*/false, net::CookieSameSite::LAX_MODE,
-          net::COOKIE_PRIORITY_DEFAULT);
+          net::COOKIE_PRIORITY_DEFAULT, /*same_party=*/false,
+          /*partition_key=*/absl::nullopt);
   net::CookieOptions options;
   options.set_include_httponly();
   options.set_same_site_cookie_context(
@@ -455,59 +504,51 @@ void AccountConsistencyService::SetChromeConnectedCookieWithUrl(
       *cookie, url, options,
       base::BindOnce(
           &AccountConsistencyService::OnChromeConnectedCookieFinished,
-          base::Unretained(this), domain));
+          base::Unretained(this)));
 }
 
 void AccountConsistencyService::OnChromeConnectedCookieFinished(
-    const std::string& domain,
     net::CookieAccessResult cookie_access_result) {
   DCHECK(cookie_access_result.status.IsInclude());
-  DictionaryPrefUpdate update(
-      prefs_, AccountConsistencyService::kDomainsWithCookiePref);
-  // Add request.domain to prefs, use |true| as a dummy value (that is
-  // never used), as the dictionary is used as a set.
-  update->SetKey(domain, base::Value(true));
   --active_cookie_manager_requests_for_testing_;
 }
 
 void AccountConsistencyService::AddChromeConnectedCookies() {
   DCHECK(!browser_state_->IsOffTheRecord());
-  // These cookie requests are preventive and not a strong signal (unlike
-  // navigation to a domain). Don't force update the old cookies in this case.
-  SetChromeConnectedCookieWithUrls({GURL(kGoogleUrl), GURL(kYoutubeUrl)},
-                                   base::TimeDelta::Max());
-}
-
-void AccountConsistencyService::ResetInternalState() {
-  last_cookie_update_map_.clear();
-  last_gaia_cookie_verification_time_ = base::Time();
-  base::DictionaryValue dict;
-  prefs_->Set(kDomainsWithCookiePref, dict);
+  // These cookie requests are preventive. Chrome cannot be sure that
+  // CHROME_CONNECTED cookies are set on google.com and youtube.com domains due
+  // to ITP restrictions.
+  SetChromeConnectedCookieWithUrls({GURL(kGoogleUrl), GURL(kYoutubeUrl)});
 }
 
 void AccountConsistencyService::OnBrowsingDataRemoved() {
-  // CHROME_CONNECTED cookies have been removed, update internal state
-  // accordingly.
-  ResetInternalState();
-
   // SAPISID cookie has been removed, notify the GCMS.
   // TODO(https://crbug.com/930582) : Remove the need to expose this method
   // or move it to the network::CookieManager.
   identity_manager_->GetAccountsCookieMutator()->ForceTriggerOnCookieChange();
 }
 
-void AccountConsistencyService::OnPrimaryAccountSet(
-    const CoreAccountInfo& account_info) {
-  AddChromeConnectedCookies();
-}
-
-void AccountConsistencyService::OnPrimaryAccountCleared(
-    const CoreAccountInfo& previous_account_info) {
-  RemoveAllChromeConnectedCookies(base::OnceClosure());
+void AccountConsistencyService::OnPrimaryAccountChanged(
+    const signin::PrimaryAccountChangeEvent& event) {
+  switch (event.GetEventTypeFor(signin::ConsentLevel::kSignin)) {
+    case signin::PrimaryAccountChangeEvent::Type::kSet:
+    case signin::PrimaryAccountChangeEvent::Type::kNone:
+      AddChromeConnectedCookies();
+      break;
+    case signin::PrimaryAccountChangeEvent::Type::kCleared:
+      RemoveAllChromeConnectedCookies(base::OnceClosure());
+      break;
+  }
 }
 
 void AccountConsistencyService::OnAccountsInCookieUpdated(
     const signin::AccountsInCookieJarInfo& accounts_in_cookie_jar_info,
     const GoogleServiceAuthError& error) {
   AddChromeConnectedCookies();
+
+  // If signed-in accounts have been recently restored through GAIA cookie
+  // restoration then run the relevant callback to finish the update process.
+  if (accounts_in_cookie_jar_info.signed_in_accounts.size() > 0) {
+    RunGaiaCookiesRestoredCallbacks(/*has_cookie_changed=*/YES);
+  }
 }

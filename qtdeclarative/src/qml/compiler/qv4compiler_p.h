@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QV4COMPILER_P_H
 #define QV4COMPILER_P_H
 
@@ -78,7 +42,7 @@ struct Module;
 struct Class;
 struct TemplateObject;
 
-struct Q_QMLCOMPILER_PRIVATE_EXPORT StringTableGenerator {
+struct Q_QML_COMPILER_PRIVATE_EXPORT StringTableGenerator {
     StringTableGenerator();
 
     int registerString(const QString &str);
@@ -105,7 +69,9 @@ private:
     bool frozen = false;
 };
 
-struct Q_QMLCOMPILER_PRIVATE_EXPORT JSUnitGenerator {
+struct Q_QML_COMPILER_PRIVATE_EXPORT JSUnitGenerator {
+    enum LookupMode { LookupForStorage, LookupForCall };
+
     static void generateUnitChecksum(CompiledData::Unit *unit);
 
     struct MemberInfo {
@@ -119,17 +85,19 @@ struct Q_QMLCOMPILER_PRIVATE_EXPORT JSUnitGenerator {
     int getStringId(const QString &string) const { return stringTable.getStringId(string); }
     QString stringForIndex(int index) const { return stringTable.stringForIndex(index); }
 
-    int registerGetterLookup(const QString &name);
-    int registerGetterLookup(int nameIndex);
+    int registerGetterLookup(const QString &name, LookupMode mode);
+    int registerGetterLookup(int nameIndex, LookupMode mode);
     int registerSetterLookup(const QString &name);
     int registerSetterLookup(int nameIndex);
-    int registerGlobalGetterLookup(int nameIndex);
-    int registerQmlContextPropertyGetterLookup(int nameIndex);
+    int registerGlobalGetterLookup(int nameIndex, LookupMode mode);
+    int registerQmlContextPropertyGetterLookup(int nameIndex, LookupMode mode);
+    int lookupNameIndex(int index) const { return lookups[index].nameIndex(); }
+    QString lookupName(int index) const { return stringForIndex(lookupNameIndex(index)); }
 
     int registerRegExp(QQmlJS::AST::RegExpLiteral *regexp);
 
     int registerConstant(ReturnedValue v);
-    ReturnedValue constant(int idx);
+    ReturnedValue constant(int idx) const;
 
     int registerJSClass(const QStringList &members);
 

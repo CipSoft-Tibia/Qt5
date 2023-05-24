@@ -11,7 +11,8 @@ export declare const enum SectionCode {
     Start = 8,
     Element = 9,
     Code = 10,
-    Data = 11
+    Data = 11,
+    Event = 13
 }
 export declare const enum OperatorCode {
     unreachable = 0,
@@ -20,6 +21,11 @@ export declare const enum OperatorCode {
     loop = 3,
     if = 4,
     else = 5,
+    try = 6,
+    catch = 7,
+    throw = 8,
+    rethrow = 9,
+    unwind = 10,
     end = 11,
     br = 12,
     br_if = 13,
@@ -29,8 +35,14 @@ export declare const enum OperatorCode {
     call_indirect = 17,
     return_call = 18,
     return_call_indirect = 19,
+    call_ref = 20,
+    return_call_ref = 21,
+    let = 23,
+    delegate = 24,
+    catch_all = 25,
     drop = 26,
     select = 27,
+    select_with_type = 28,
     local_get = 32,
     local_set = 33,
     local_tee = 34,
@@ -193,6 +205,7 @@ export declare const enum OperatorCode {
     i64_extend8_s = 194,
     i64_extend16_s = 195,
     i64_extend32_s = 196,
+    prefix_0xfb = 251,
     prefix_0xfc = 252,
     prefix_0xfd = 253,
     prefix_0xfe = 254,
@@ -219,6 +232,10 @@ export declare const enum OperatorCode {
     ref_null = 208,
     ref_is_null = 209,
     ref_func = 210,
+    ref_as_non_null = 211,
+    br_on_null = 212,
+    ref_eq = 213,
+    br_on_non_null = 214,
     atomic_notify = 65024,
     i32_atomic_wait = 65025,
     i64_atomic_wait = 65026,
@@ -299,8 +316,8 @@ export declare const enum OperatorCode {
     v64x2_load_splat = 64778,
     v128_store = 64779,
     v128_const = 64780,
-    v8x16_shuffle = 64781,
-    v8x16_swizzle = 64782,
+    i8x16_shuffle = 64781,
+    i8x16_swizzle = 64782,
     i8x16_splat = 64783,
     i16x8_splat = 64784,
     i32x4_splat = 64785,
@@ -369,59 +386,90 @@ export declare const enum OperatorCode {
     v128_or = 64848,
     v128_xor = 64849,
     v128_bitselect = 64850,
+    v128_any_true = 64851,
+    v128_load8_lane = 64852,
+    v128_load16_lane = 64853,
+    v128_load32_lane = 64854,
+    v128_load64_lane = 64855,
+    v128_store8_lane = 64856,
+    v128_store16_lane = 64857,
+    v128_store32_lane = 64858,
+    v128_store64_lane = 64859,
+    v128_load32_zero = 64860,
+    v128_load64_zero = 64861,
+    f32x4_demote_f64x2_zero = 64862,
+    f64x2_promote_low_f32x4 = 64863,
     i8x16_abs = 64864,
     i8x16_neg = 64865,
-    i8x16_any_true = 64866,
+    i8x16_popcnt = 64866,
     i8x16_all_true = 64867,
+    i8x16_bitmask = 64868,
     i8x16_narrow_i16x8_s = 64869,
     i8x16_narrow_i16x8_u = 64870,
+    f32x4_ceil = 64871,
+    f32x4_floor = 64872,
+    f32x4_trunc = 64873,
+    f32x4_nearest = 64874,
     i8x16_shl = 64875,
     i8x16_shr_s = 64876,
     i8x16_shr_u = 64877,
     i8x16_add = 64878,
-    i8x16_add_saturate_s = 64879,
-    i8x16_add_saturate_u = 64880,
+    i8x16_add_sat_s = 64879,
+    i8x16_add_sat_u = 64880,
     i8x16_sub = 64881,
-    i8x16_sub_saturate_s = 64882,
-    i8x16_sub_saturate_u = 64883,
+    i8x16_sub_sat_s = 64882,
+    i8x16_sub_sat_u = 64883,
+    f64x2_ceil = 64884,
+    f64x2_floor = 64885,
     i8x16_min_s = 64886,
     i8x16_min_u = 64887,
     i8x16_max_s = 64888,
     i8x16_max_u = 64889,
+    f64x2_trunc = 64890,
     i8x16_avgr_u = 64891,
+    i16x8_extadd_pairwise_i8x16_s = 64892,
+    i16x8_extadd_pairwise_i8x16_u = 64893,
+    i32x4_extadd_pairwise_i16x8_s = 64894,
+    i32x4_extadd_pairwise_i16x8_u = 64895,
     i16x8_abs = 64896,
     i16x8_neg = 64897,
-    i16x8_any_true = 64898,
+    i16x8_q15mulr_sat_s = 64898,
     i16x8_all_true = 64899,
+    i16x8_bitmask = 64900,
     i16x8_narrow_i32x4_s = 64901,
     i16x8_narrow_i32x4_u = 64902,
-    i16x8_widen_low_i8x16_s = 64903,
-    i16x8_widen_high_i8x16_s = 64904,
-    i16x8_widen_low_i8x16_u = 64905,
-    i16x8_widen_high_i8x16_u = 64906,
+    i16x8_extend_low_i8x16_s = 64903,
+    i16x8_extend_high_i8x16_s = 64904,
+    i16x8_extend_low_i8x16_u = 64905,
+    i16x8_extend_high_i8x16_u = 64906,
     i16x8_shl = 64907,
     i16x8_shr_s = 64908,
     i16x8_shr_u = 64909,
     i16x8_add = 64910,
-    i16x8_add_saturate_s = 64911,
-    i16x8_add_saturate_u = 64912,
+    i16x8_add_sat_s = 64911,
+    i16x8_add_sat_u = 64912,
     i16x8_sub = 64913,
-    i16x8_sub_saturate_s = 64914,
-    i16x8_sub_saturate_u = 64915,
+    i16x8_sub_sat_s = 64914,
+    i16x8_sub_sat_u = 64915,
+    f64x2_nearest = 64916,
     i16x8_mul = 64917,
     i16x8_min_s = 64918,
     i16x8_min_u = 64919,
     i16x8_max_s = 64920,
     i16x8_max_u = 64921,
     i16x8_avgr_u = 64923,
+    i16x8_extmul_low_i8x16_s = 64924,
+    i16x8_extmul_high_i8x16_s = 64925,
+    i16x8_extmul_low_i8x16_u = 64926,
+    i16x8_extmul_high_i8x16_u = 64927,
     i32x4_abs = 64928,
     i32x4_neg = 64929,
-    i32x4_any_true = 64930,
     i32x4_all_true = 64931,
-    i32x4_widen_low_i16x8_s = 64935,
-    i32x4_widen_high_i16x8_s = 64936,
-    i32x4_widen_low_i16x8_u = 64937,
-    i32x4_widen_high_i16x8_u = 64938,
+    i32x4_bitmask = 64932,
+    i32x4_extend_low_i16x8_s = 64935,
+    i32x4_extend_high_i16x8_s = 64936,
+    i32x4_extend_low_i16x8_u = 64937,
+    i32x4_extend_high_i16x8_u = 64938,
     i32x4_shl = 64939,
     i32x4_shr_s = 64940,
     i32x4_shr_u = 64941,
@@ -432,13 +480,35 @@ export declare const enum OperatorCode {
     i32x4_min_u = 64951,
     i32x4_max_s = 64952,
     i32x4_max_u = 64953,
+    i32x4_dot_i16x8_s = 64954,
+    i32x4_extmul_low_i16x8_s = 64956,
+    i32x4_extmul_high_i16x8_s = 64957,
+    i32x4_extmul_low_i16x8_u = 64958,
+    i32x4_extmul_high_i16x8_u = 64959,
+    i64x2_abs = 64960,
     i64x2_neg = 64961,
+    i64x2_all_true = 64963,
+    i64x2_bitmask = 64964,
+    i64x2_extend_low_i32x4_s = 64967,
+    i64x2_extend_high_i32x4_s = 64968,
+    i64x2_extend_low_i32x4_u = 64969,
+    i64x2_extend_high_i32x4_u = 64970,
     i64x2_shl = 64971,
     i64x2_shr_s = 64972,
     i64x2_shr_u = 64973,
     i64x2_add = 64974,
     i64x2_sub = 64977,
     i64x2_mul = 64981,
+    i64x2_eq = 64982,
+    i64x2_ne = 64983,
+    i64x2_lt_s = 64984,
+    i64x2_gt_s = 64985,
+    i64x2_le_s = 64986,
+    i64x2_ge_s = 64987,
+    i64x2_extmul_low_i32x4_s = 64988,
+    i64x2_extmul_high_i32x4_s = 64989,
+    i64x2_extmul_low_i32x4_u = 64990,
+    i64x2_extmul_high_i32x4_u = 64991,
     f32x4_abs = 64992,
     f32x4_neg = 64993,
     f32x4_sqrt = 64995,
@@ -448,6 +518,8 @@ export declare const enum OperatorCode {
     f32x4_div = 64999,
     f32x4_min = 65000,
     f32x4_max = 65001,
+    f32x4_pmin = 65002,
+    f32x4_pmax = 65003,
     f64x2_abs = 65004,
     f64x2_neg = 65005,
     f64x2_sqrt = 65007,
@@ -457,29 +529,105 @@ export declare const enum OperatorCode {
     f64x2_div = 65011,
     f64x2_min = 65012,
     f64x2_max = 65013,
+    f64x2_pmin = 65014,
+    f64x2_pmax = 65015,
     i32x4_trunc_sat_f32x4_s = 65016,
     i32x4_trunc_sat_f32x4_u = 65017,
     f32x4_convert_i32x4_s = 65018,
-    f32x4_convert_i32x4_u = 65019
+    f32x4_convert_i32x4_u = 65019,
+    i32x4_trunc_sat_f64x2_s_zero = 65020,
+    i32x4_trunc_sat_f64x2_u_zero = 65021,
+    f64x2_convert_low_i32x4_s = 65022,
+    f64x2_convert_low_i32x4_u = 65023,
+    struct_new_with_rtt = 64257,
+    struct_new_default_with_rtt = 64258,
+    struct_get = 64259,
+    struct_get_s = 64260,
+    struct_get_u = 64261,
+    struct_set = 64262,
+    struct_new = 64263,
+    struct_new_default = 64264,
+    array_new_with_rtt = 64273,
+    array_new_default_with_rtt = 64274,
+    array_get = 64275,
+    array_get_s = 64276,
+    array_get_u = 64277,
+    array_set = 64278,
+    array_len = 64279,
+    array_copy = 64280,
+    array_init = 64281,
+    array_init_static = 64282,
+    array_new = 64283,
+    array_new_default = 64284,
+    i31_new = 64288,
+    i31_get_s = 64289,
+    i31_get_u = 64290,
+    rtt_canon = 64304,
+    rtt_sub = 64305,
+    rtt_fresh_sub = 64306,
+    ref_test = 64320,
+    ref_test_static = 64324,
+    ref_cast = 64321,
+    ref_cast_static = 64325,
+    br_on_cast = 64322,
+    br_on_cast_static = 64326,
+    br_on_cast_fail = 64323,
+    br_on_cast_static_fail = 64327,
+    ref_is_func = 64336,
+    ref_is_data = 64337,
+    ref_is_i31 = 64338,
+    ref_as_func = 64344,
+    ref_as_data = 64345,
+    ref_as_i31 = 64346,
+    br_on_func = 64352,
+    br_on_data = 64353,
+    br_on_i31 = 64354,
+    br_on_non_func = 64355,
+    br_on_non_data = 64356,
+    br_on_non_i31 = 64357
 }
 export declare const OperatorCodeNames: string[];
 export declare const enum ExternalKind {
     Function = 0,
     Table = 1,
     Memory = 2,
-    Global = 3
+    Global = 3,
+    Event = 4
 }
-export declare const enum Type {
+export declare const enum TypeKind {
     unspecified = 0,
     i32 = -1,
     i64 = -2,
     f32 = -3,
     f64 = -4,
     v128 = -5,
-    anyfunc = -16,
-    anyref = -17,
+    i8 = -6,
+    i16 = -7,
+    funcref = -16,
+    externref = -17,
+    anyref = -18,
+    eqref = -19,
+    optref = -20,
+    ref = -21,
+    i31ref = -22,
+    rtt_d = -23,
+    rtt = -24,
+    dataref = -25,
     func = -32,
+    struct = -33,
+    array = -34,
+    func_subtype = -35,
+    struct_subtype = -36,
+    array_subtype = -37,
     empty_block_type = -64
+}
+export declare class Type {
+    kind: TypeKind;
+    index: number;
+    depth: number;
+    constructor(kind: TypeKind, index?: number, depth?: number);
+    static funcref: Type;
+    static externref: Type;
 }
 export declare const enum RelocType {
     FunctionIndex_LEB = 0,
@@ -497,7 +645,13 @@ export declare const enum LinkingType {
 export declare const enum NameType {
     Module = 0,
     Function = 1,
-    Local = 2
+    Local = 2,
+    Event = 3,
+    Type = 4,
+    Table = 5,
+    Memory = 6,
+    Global = 7,
+    Field = 10
 }
 export declare const enum BinaryReaderState {
     ERROR = -1,
@@ -521,6 +675,7 @@ export declare const enum BinaryReaderState {
     ELEMENT_SECTION_ENTRY = 20,
     LINKING_SECTION_ENTRY = 21,
     START_SECTION_ENTRY = 22,
+    EVENT_SECTION_ENTRY = 23,
     BEGIN_INIT_EXPRESSION_BODY = 25,
     INIT_EXPRESSION_OPERATOR = 26,
     END_INIT_EXPRESSION_BODY = 27,
@@ -539,14 +694,20 @@ export declare const enum BinaryReaderState {
     END_GLOBAL_SECTION_ENTRY = 40,
     RELOC_SECTION_HEADER = 41,
     RELOC_SECTION_ENTRY = 42,
-    SOURCE_MAPPING_URL = 43
+    SOURCE_MAPPING_URL = 43,
+    BEGIN_OFFSET_EXPRESSION_BODY = 44,
+    OFFSET_EXPRESSION_OPERATOR = 45,
+    END_OFFSET_EXPRESSION_BODY = 46
 }
-export declare const enum SegmentFlags {
-    IsPassive = 1,
-    HasTableIndex = 2,
-    FunctionsAsElements = 4
+export declare const enum DataMode {
+    Active = 0,
+    Passive = 1
 }
-export declare const NULL_FUNCTION_INDEX = 4294967295;
+export declare const enum ElementMode {
+    Active = 0,
+    Passive = 1,
+    Declarative = 2
+}
 export interface IModuleHeader {
     magicNumber: number;
     version: number;
@@ -556,7 +717,7 @@ export interface IResizableLimits {
     maximum?: number;
 }
 export interface ITableType {
-    elementType: number;
+    elementType: Type;
     limits: IResizableLimits;
 }
 export interface IMemoryType {
@@ -564,27 +725,31 @@ export interface IMemoryType {
     shared: boolean;
 }
 export interface IGlobalType {
-    contentType: number;
+    contentType: Type;
     mutability: number;
+}
+export interface IEventType {
+    attribute: number;
+    typeIndex: number;
 }
 export interface IGlobalVariable {
     type: IGlobalType;
 }
 export interface IElementSegment {
-    index: number;
+    mode: ElementMode;
+    tableIndex?: number;
 }
 export interface IElementSegmentBody {
-    elements: Uint32Array;
-    elementType: number;
-    asElements: boolean;
+    elementType: Type;
 }
 export interface IDataSegment {
-    index: number;
+    mode: DataMode;
+    memoryIndex?: number;
 }
 export interface IDataSegmentBody {
     data: Uint8Array;
 }
-export declare type ImportEntryType = ITableType | IMemoryType | IGlobalType;
+export declare type ImportEntryType = ITableType | IMemoryType | IGlobalType | IEventType;
 export interface IImportEntry {
     module: Uint8Array;
     field: Uint8Array;
@@ -617,6 +782,28 @@ export interface ILocalName {
 export interface ILocalNameEntry extends INameEntry {
     funcs: ILocalName[];
 }
+export interface IEventNameEntry extends INameEntry {
+    names: INaming[];
+}
+export interface ITypeNameEntry extends INameEntry {
+    names: INaming[];
+}
+export interface ITableNameEntry extends INameEntry {
+    names: INaming[];
+}
+export interface IMemoryNameEntry extends INameEntry {
+    names: INaming[];
+}
+export interface IGlobalNameEntry extends INameEntry {
+    names: INaming[];
+}
+export interface IFieldName {
+    index: number;
+    fields: INaming[];
+}
+export interface IFieldNameEntry extends INameEntry {
+    types: IFieldName[];
+}
 export interface ILinkingEntry {
     type: LinkingType;
     index?: number;
@@ -640,10 +827,15 @@ export interface IStartEntry {
 export interface IFunctionEntry {
     typeIndex: number;
 }
-export interface IFunctionType {
+export interface ITypeEntry {
     form: number;
-    params: Int8Array;
-    returns: Int8Array;
+    params?: Type[];
+    returns?: Type[];
+    fields?: Type[];
+    mutabilities?: boolean[];
+    elementType?: Type;
+    mutability?: boolean;
+    supertype?: number;
 }
 export interface ISectionInformation {
     id: SectionCode;
@@ -651,7 +843,7 @@ export interface ISectionInformation {
 }
 export interface ILocals {
     count: number;
-    type: number;
+    type: Type;
 }
 export interface IFunctionInformation {
     locals: Array<ILocals>;
@@ -662,15 +854,21 @@ export interface IMemoryAddress {
 }
 export interface IOperatorInformation {
     code: OperatorCode;
-    blockType?: number;
+    blockType?: Type;
+    selectType?: Type;
+    refType?: number;
+    srcType?: number;
     brDepth?: number;
     brTable?: Array<number>;
+    relativeDepth?: number;
     funcIndex?: number;
     typeIndex?: number;
     tableIndex?: number;
     localIndex?: number;
+    fieldIndex?: number;
     globalIndex?: number;
     segmentIndex?: number;
+    eventIndex?: number;
     destinationIndex?: number;
     memoryAddress?: IMemoryAddress;
     literal?: number | Int64 | Uint8Array;
@@ -685,7 +883,7 @@ export declare class Int64 {
     toString(): string;
     get data(): Uint8Array;
 }
-export declare type BinaryReaderResult = IImportEntry | IExportEntry | IFunctionEntry | IFunctionType | IModuleHeader | IOperatorInformation | IMemoryType | ITableType | IGlobalVariable | INameEntry | IElementSegment | IElementSegmentBody | IDataSegment | IDataSegmentBody | ISectionInformation | IFunctionInformation | ISectionInformation | IFunctionInformation | IRelocHeader | IRelocEntry | ILinkingEntry | ISourceMappingURL | IModuleNameEntry | IStartEntry | Uint8Array;
+export declare type BinaryReaderResult = IImportEntry | IExportEntry | IFunctionEntry | ITypeEntry | IModuleHeader | IOperatorInformation | IMemoryType | ITableType | IGlobalVariable | INameEntry | IElementSegment | IElementSegmentBody | IDataSegment | IDataSegmentBody | ISectionInformation | IFunctionInformation | ISectionInformation | IFunctionInformation | IRelocHeader | IRelocEntry | ILinkingEntry | ISourceMappingURL | IModuleNameEntry | IStartEntry | Uint8Array;
 export declare class BinaryReader {
     private _data;
     private _pos;
@@ -694,26 +892,22 @@ export declare class BinaryReader {
     state: BinaryReaderState;
     result: BinaryReaderResult;
     error: Error;
-    get currentSection(): ISectionInformation;
-    get currentFunction(): IFunctionInformation;
     private _sectionEntriesLeft;
     private _sectionId;
     private _sectionRange;
     private _functionRange;
-    private _segmentFlags;
+    private _segmentType;
+    private _segmentEntriesLeft;
     get data(): Uint8Array;
     get position(): number;
     get length(): number;
-    constructor();
     setData(buffer: ArrayBuffer, pos: number, length: number, eof?: boolean): void;
     private hasBytes;
     hasMoreBytes(): boolean;
     private readUint8;
-    private readUint16;
     private readInt32;
     private readUint32;
     private peekInt32;
-    private peekUint32;
     private hasVarIntBytes;
     private readVarUint1;
     private readVarInt7;
@@ -721,35 +915,48 @@ export declare class BinaryReader {
     private readVarInt32;
     private readVarUint32;
     private readVarInt64;
+    private readHeapType;
+    private readTypeInternal;
+    private readType;
+    private readBlockType;
     private readStringBytes;
     private readBytes;
+    private skipBytes;
     private hasStringBytes;
     private hasSectionPayload;
     private readFuncType;
+    private readFuncSubtype;
+    private readStructType;
+    private readStructSubtype;
+    private readArrayType;
+    private readArraySubtype;
     private readResizableLimits;
     private readTableType;
     private readMemoryType;
     private readGlobalType;
+    private readEventType;
     private readTypeEntry;
     private readImportEntry;
     private readExportEntry;
     private readFunctionEntry;
     private readTableEntry;
     private readMemoryEntry;
+    private readEventEntry;
     private readGlobalEntry;
     private readElementEntry;
     private readElementEntryBody;
     private readDataEntry;
     private readDataEntryBody;
     private readInitExpressionBody;
+    private readOffsetExpressionBody;
     private readMemoryImmediate;
-    private readLineIndex;
     private readNameMap;
     private readNameEntry;
     private readRelocHeader;
     private readLinkingEntry;
     private readSourceMappingURL;
     private readRelocEntry;
+    private readCodeOperator_0xfb;
     private readCodeOperator_0xfc;
     private readCodeOperator_0xfd;
     private readCodeOperator_0xfe;
@@ -764,7 +971,6 @@ export declare class BinaryReader {
     skipInitExpression(): void;
     fetchSectionRawData(): void;
 }
-export declare function isTypeIndex(type: Type): boolean;
 export declare var bytesToString: (bytes: Uint8Array) => string;
 export interface IBinaryReaderData {
     state: BinaryReaderState;

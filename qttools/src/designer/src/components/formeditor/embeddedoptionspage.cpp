@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "embeddedoptionspage.h"
 #include "deviceprofiledialog.h"
@@ -52,15 +27,17 @@
 #include <QtWidgets/qgroupbox.h>
 
 #include <QtCore/qset.h>
-#include <QtCore/qvector.h>
+#include <QtCore/qlist.h>
 
 #include <algorithm>
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 namespace qdesigner_internal {
 
-using DeviceProfileList = QVector<DeviceProfile>;
+using DeviceProfileList = QList<DeviceProfile>;
 
 enum { profileComboIndexOffset = 1 };
 
@@ -145,10 +122,10 @@ void EmbeddedOptionsControlPrivate::init(EmbeddedOptionsControl *q)
     m_profileCombo->setEditable(false);
     hLayout->addWidget(m_profileCombo);
     m_profileCombo->addItem(EmbeddedOptionsControl::tr("None"));
-    EmbeddedOptionsControl::connect(m_profileCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    EmbeddedOptionsControl::connect(m_profileCombo, &QComboBox::currentIndexChanged,
                                     m_q, &EmbeddedOptionsControl::slotProfileIndexChanged);
 
-    m_addButton->setIcon(createIconSet(QString::fromUtf8("plus.png")));
+    m_addButton->setIcon(createIconSet(u"plus.png"_s));
     m_addButton->setToolTip(EmbeddedOptionsControl::tr("Add a profile"));
     EmbeddedOptionsControl::connect(m_addButton, &QAbstractButton::clicked,
                                     m_q, &EmbeddedOptionsControl::slotAdd);
@@ -156,11 +133,11 @@ void EmbeddedOptionsControlPrivate::init(EmbeddedOptionsControl *q)
 
     EmbeddedOptionsControl::connect(m_editButton, &QAbstractButton::clicked,
                                     m_q, &EmbeddedOptionsControl::slotEdit);
-    m_editButton->setIcon(createIconSet(QString::fromUtf8("edit.png")));
+    m_editButton->setIcon(createIconSet(u"edit.png"_s));
     m_editButton->setToolTip(EmbeddedOptionsControl::tr("Edit the selected profile"));
     hLayout->addWidget(m_editButton);
 
-    m_deleteButton->setIcon(createIconSet(QString::fromUtf8("minus.png")));
+    m_deleteButton->setIcon(createIconSet(u"minus.png"_s));
     m_deleteButton->setToolTip(EmbeddedOptionsControl::tr("Delete the selected profile"));
     EmbeddedOptionsControl::connect(m_deleteButton, &QAbstractButton::clicked,
                                     m_q, &EmbeddedOptionsControl::slotDelete);
@@ -175,9 +152,8 @@ void EmbeddedOptionsControlPrivate::init(EmbeddedOptionsControl *q)
 QStringList EmbeddedOptionsControlPrivate::existingProfileNames() const
 {
     QStringList rc;
-    const DeviceProfileList::const_iterator dcend = m_sortedProfiles.constEnd();
-    for (DeviceProfileList::const_iterator it = m_sortedProfiles.constBegin(); it != dcend; ++it)
-        rc.push_back(it->name());
+    for (const auto &dp : m_sortedProfiles)
+        rc.append(dp.name());
     return rc;
 }
 

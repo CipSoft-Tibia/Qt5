@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtgradientutils.h"
 #include "qtgradientmanager.h"
@@ -47,24 +11,26 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 static QString gradientTypeToString(QGradient::Type type)
 {
     if (type == QGradient::LinearGradient)
-        return QLatin1String("LinearGradient");
+        return "LinearGradient"_L1;
     if (type == QGradient::RadialGradient)
-        return QLatin1String("RadialGradient");
+        return "RadialGradient"_L1;
     if (type == QGradient::ConicalGradient)
-        return QLatin1String("ConicalGradient");
-    return QLatin1String("NoGradient");
+        return "ConicalGradient"_L1;
+    return "NoGradient"_L1;
 }
 
 static QGradient::Type stringToGradientType(const QString &name)
 {
-    if (name == QLatin1String("LinearGradient"))
+    if (name == "LinearGradient"_L1)
         return QGradient::LinearGradient;
-    if (name == QLatin1String("RadialGradient"))
+    if (name == "RadialGradient"_L1)
         return QGradient::RadialGradient;
-    if (name == QLatin1String("ConicalGradient"))
+    if (name == "ConicalGradient"_L1)
         return QGradient::ConicalGradient;
     return QGradient::NoGradient;
 }
@@ -72,21 +38,21 @@ static QGradient::Type stringToGradientType(const QString &name)
 static QString gradientSpreadToString(QGradient::Spread spread)
 {
     if (spread == QGradient::PadSpread)
-        return QLatin1String("PadSpread");
+        return "PadSpread"_L1;
     if (spread == QGradient::RepeatSpread)
-        return QLatin1String("RepeatSpread");
+        return "RepeatSpread"_L1;
     if (spread == QGradient::ReflectSpread)
-        return QLatin1String("ReflectSpread");
-    return QLatin1String("PadSpread");
+        return "ReflectSpread"_L1;
+    return "PadSpread"_L1;
 }
 
 static QGradient::Spread stringToGradientSpread(const QString &name)
 {
-    if (name == QLatin1String("PadSpread"))
+    if (name == "PadSpread"_L1)
         return QGradient::PadSpread;
-    if (name == QLatin1String("RepeatSpread"))
+    if (name == "RepeatSpread"_L1)
         return QGradient::RepeatSpread;
-    if (name == QLatin1String("ReflectSpread"))
+    if (name == "ReflectSpread"_L1)
         return QGradient::ReflectSpread;
     return QGradient::PadSpread;
 }
@@ -94,42 +60,42 @@ static QGradient::Spread stringToGradientSpread(const QString &name)
 static QString gradientCoordinateModeToString(QGradient::CoordinateMode mode)
 {
     if (mode == QGradient::LogicalMode)
-        return QLatin1String("LogicalMode");
+        return "LogicalMode"_L1;
     if (mode == QGradient::StretchToDeviceMode)
-        return QLatin1String("StretchToDeviceMode");
+        return "StretchToDeviceMode"_L1;
     if (mode == QGradient::ObjectBoundingMode)
-        return QLatin1String("ObjectBoundingMode");
-    return QLatin1String("StretchToDeviceMode");
+        return "ObjectBoundingMode"_L1;
+    return "StretchToDeviceMode"_L1;
 }
 
 static QGradient::CoordinateMode stringToGradientCoordinateMode(const QString &name)
 {
-    if (name == QLatin1String("LogicalMode"))
+    if (name == "LogicalMode"_L1)
         return QGradient::LogicalMode;
-    if (name == QLatin1String("StretchToDeviceMode"))
+    if (name == "StretchToDeviceMode"_L1)
         return QGradient::StretchToDeviceMode;
-    if (name == QLatin1String("ObjectBoundingMode"))
+    if (name == "ObjectBoundingMode"_L1)
         return QGradient::ObjectBoundingMode;
     return QGradient::StretchToDeviceMode;
 }
 
 static QDomElement saveColor(QDomDocument &doc, const QColor &color)
 {
-    QDomElement colorElem = doc.createElement(QLatin1String("colorData"));
+    QDomElement colorElem = doc.createElement("colorData"_L1);
 
-    colorElem.setAttribute(QLatin1String("r"), QString::number(color.red()));
-    colorElem.setAttribute(QLatin1String("g"), QString::number(color.green()));
-    colorElem.setAttribute(QLatin1String("b"), QString::number(color.blue()));
-    colorElem.setAttribute(QLatin1String("a"), QString::number(color.alpha()));
+    colorElem.setAttribute("r"_L1, QString::number(color.red()));
+    colorElem.setAttribute("g"_L1, QString::number(color.green()));
+    colorElem.setAttribute("b"_L1, QString::number(color.blue()));
+    colorElem.setAttribute("a"_L1, QString::number(color.alpha()));
 
     return colorElem;
 }
 
 static QDomElement saveGradientStop(QDomDocument &doc, const QGradientStop &stop)
 {
-    QDomElement stopElem = doc.createElement(QLatin1String("stopData"));
+    QDomElement stopElem = doc.createElement("stopData"_L1);
 
-    stopElem.setAttribute(QLatin1String("position"), QString::number(stop.first));
+    stopElem.setAttribute("position"_L1, QString::number(stop.first));
 
     const QDomElement colorElem = saveColor(doc, stop.second);
     stopElem.appendChild(colorElem);
@@ -139,12 +105,12 @@ static QDomElement saveGradientStop(QDomDocument &doc, const QGradientStop &stop
 
 static QDomElement saveGradient(QDomDocument &doc, const QGradient &gradient)
 {
-    QDomElement gradElem = doc.createElement(QLatin1String("gradientData"));
+    QDomElement gradElem = doc.createElement("gradientData"_L1);
 
     const QGradient::Type type = gradient.type();
-    gradElem.setAttribute(QLatin1String("type"), gradientTypeToString(type));
-    gradElem.setAttribute(QLatin1String("spread"), gradientSpreadToString(gradient.spread()));
-    gradElem.setAttribute(QLatin1String("coordinateMode"), gradientCoordinateModeToString(gradient.coordinateMode()));
+    gradElem.setAttribute("type"_L1, gradientTypeToString(type));
+    gradElem.setAttribute("spread"_L1, gradientSpreadToString(gradient.spread()));
+    gradElem.setAttribute("coordinateMode"_L1, gradientCoordinateModeToString(gradient.coordinateMode()));
 
     const QGradientStops stops = gradient.stops();
     for (const QGradientStop &stop : stops)
@@ -152,22 +118,22 @@ static QDomElement saveGradient(QDomDocument &doc, const QGradient &gradient)
 
     if (type == QGradient::LinearGradient) {
         const QLinearGradient &g = *static_cast<const QLinearGradient *>(&gradient);
-        gradElem.setAttribute(QLatin1String("startX"), QString::number(g.start().x()));
-        gradElem.setAttribute(QLatin1String("startY"), QString::number(g.start().y()));
-        gradElem.setAttribute(QLatin1String("endX"), QString::number(g.finalStop().x()));
-        gradElem.setAttribute(QLatin1String("endY"), QString::number(g.finalStop().y()));
+        gradElem.setAttribute("startX"_L1, QString::number(g.start().x()));
+        gradElem.setAttribute("startY"_L1, QString::number(g.start().y()));
+        gradElem.setAttribute("endX"_L1, QString::number(g.finalStop().x()));
+        gradElem.setAttribute("endY"_L1, QString::number(g.finalStop().y()));
     } else if (type == QGradient::RadialGradient) {
         const QRadialGradient &g = *static_cast<const QRadialGradient *>(&gradient);
-        gradElem.setAttribute(QLatin1String("centerX"), QString::number(g.center().x()));
-        gradElem.setAttribute(QLatin1String("centerY"), QString::number(g.center().y()));
-        gradElem.setAttribute(QLatin1String("focalX"), QString::number(g.focalPoint().x()));
-        gradElem.setAttribute(QLatin1String("focalY"), QString::number(g.focalPoint().y()));
-        gradElem.setAttribute(QLatin1String("radius"), QString::number(g.radius()));
+        gradElem.setAttribute("centerX"_L1, QString::number(g.center().x()));
+        gradElem.setAttribute("centerY"_L1, QString::number(g.center().y()));
+        gradElem.setAttribute("focalX"_L1, QString::number(g.focalPoint().x()));
+        gradElem.setAttribute("focalY"_L1, QString::number(g.focalPoint().y()));
+        gradElem.setAttribute("radius"_L1, QString::number(g.radius()));
     } else if (type == QGradient::ConicalGradient) {
         const QConicalGradient &g = *static_cast<const QConicalGradient*>(&gradient);
-        gradElem.setAttribute(QLatin1String("centerX"), QString::number(g.center().x()));
-        gradElem.setAttribute(QLatin1String("centerY"), QString::number(g.center().y()));
-        gradElem.setAttribute(QLatin1String("angle"), QString::number(g.angle()));
+        gradElem.setAttribute("centerX"_L1, QString::number(g.center().x()));
+        gradElem.setAttribute("centerY"_L1, QString::number(g.center().y()));
+        gradElem.setAttribute("angle"_L1, QString::number(g.angle()));
     }
 
     return gradElem;
@@ -175,50 +141,50 @@ static QDomElement saveGradient(QDomDocument &doc, const QGradient &gradient)
 
 static QColor loadColor(const QDomElement &elem)
 {
-    if (elem.tagName() != QLatin1String("colorData"))
+    if (elem.tagName() != "colorData"_L1)
         return QColor();
 
-    return QColor(elem.attribute(QLatin1String("r")).toInt(),
-            elem.attribute(QLatin1String("g")).toInt(),
-            elem.attribute(QLatin1String("b")).toInt(),
-            elem.attribute(QLatin1String("a")).toInt());
+    return QColor(elem.attribute("r"_L1).toInt(),
+            elem.attribute("g"_L1).toInt(),
+            elem.attribute("b"_L1).toInt(),
+            elem.attribute("a"_L1).toInt());
 }
 
 static QGradientStop loadGradientStop(const QDomElement &elem)
 {
-    if (elem.tagName() != QLatin1String("stopData"))
+    if (elem.tagName() != "stopData"_L1)
         return QGradientStop();
 
-    const qreal pos = static_cast<qreal>(elem.attribute(QLatin1String("position")).toDouble());
+    const qreal pos = static_cast<qreal>(elem.attribute("position"_L1).toDouble());
     return qMakePair(pos, loadColor(elem.firstChild().toElement()));
 }
 
 static QGradient loadGradient(const QDomElement &elem)
 {
-    if (elem.tagName() != QLatin1String("gradientData"))
+    if (elem.tagName() != "gradientData"_L1)
         return QLinearGradient();
 
-    const QGradient::Type type = stringToGradientType(elem.attribute(QLatin1String("type")));
-    const QGradient::Spread spread = stringToGradientSpread(elem.attribute(QLatin1String("spread")));
-    const QGradient::CoordinateMode mode = stringToGradientCoordinateMode(elem.attribute(QLatin1String("coordinateMode")));
+    const QGradient::Type type = stringToGradientType(elem.attribute("type"_L1));
+    const QGradient::Spread spread = stringToGradientSpread(elem.attribute("spread"_L1));
+    const QGradient::CoordinateMode mode = stringToGradientCoordinateMode(elem.attribute("coordinateMode"_L1));
 
     QGradient gradient = QLinearGradient();
 
     if (type == QGradient::LinearGradient) {
         QLinearGradient g;
-        g.setStart(elem.attribute(QLatin1String("startX")).toDouble(), elem.attribute(QLatin1String("startY")).toDouble());
-        g.setFinalStop(elem.attribute(QLatin1String("endX")).toDouble(), elem.attribute(QLatin1String("endY")).toDouble());
+        g.setStart(elem.attribute("startX"_L1).toDouble(), elem.attribute("startY"_L1).toDouble());
+        g.setFinalStop(elem.attribute("endX"_L1).toDouble(), elem.attribute("endY"_L1).toDouble());
         gradient = g;
     } else if (type == QGradient::RadialGradient) {
         QRadialGradient g;
-        g.setCenter(elem.attribute(QLatin1String("centerX")).toDouble(), elem.attribute(QLatin1String("centerY")).toDouble());
-        g.setFocalPoint(elem.attribute(QLatin1String("focalX")).toDouble(), elem.attribute(QLatin1String("focalY")).toDouble());
-        g.setRadius(elem.attribute(QLatin1String("radius")).toDouble());
+        g.setCenter(elem.attribute("centerX"_L1).toDouble(), elem.attribute("centerY"_L1).toDouble());
+        g.setFocalPoint(elem.attribute("focalX"_L1).toDouble(), elem.attribute("focalY"_L1).toDouble());
+        g.setRadius(elem.attribute("radius"_L1).toDouble());
         gradient = g;
     } else if (type == QGradient::ConicalGradient) {
         QConicalGradient g;
-        g.setCenter(elem.attribute(QLatin1String("centerX")).toDouble(), elem.attribute(QLatin1String("centerY")).toDouble());
-        g.setAngle(elem.attribute(QLatin1String("angle")).toDouble());
+        g.setCenter(elem.attribute("centerX"_L1).toDouble(), elem.attribute("centerY"_L1).toDouble());
+        g.setAngle(elem.attribute("angle"_L1).toDouble());
         gradient = g;
     }
 
@@ -241,12 +207,12 @@ QString QtGradientUtils::saveState(const QtGradientManager *manager)
 {
     QDomDocument doc;
 
-    QDomElement rootElem = doc.createElement(QLatin1String("gradients"));
+    QDomElement rootElem = doc.createElement("gradients"_L1);
 
     QMap<QString, QGradient> grads = manager->gradients();
     for (auto itGrad = grads.cbegin(), end = grads.cend(); itGrad != end; ++itGrad) {
-        QDomElement idElem = doc.createElement(QLatin1String("gradient"));
-        idElem.setAttribute(QLatin1String("name"), itGrad.key());
+        QDomElement idElem = doc.createElement("gradient"_L1);
+        idElem.setAttribute("name"_L1, itGrad.key());
         QDomElement gradElem = saveGradient(doc, itGrad.value());
         idElem.appendChild(gradElem);
 
@@ -269,7 +235,7 @@ void QtGradientUtils::restoreState(QtGradientManager *manager, const QString &st
 
     QDomElement gradElem = rootElem.firstChildElement();
     while (!gradElem.isNull()) {
-        const QString name = gradElem.attribute(QLatin1String("name"));
+        const QString name = gradElem.attribute("name"_L1);
         const QGradient gradient = loadGradient(gradElem.firstChildElement());
 
         manager->addGradient(name, gradient);
@@ -315,13 +281,13 @@ static QString styleSheetFillName(const QGradient &gradient)
 
     switch (gradient.type()) {
         case QGradient::LinearGradient:
-            result += QLatin1String("qlineargradient");
+            result += "qlineargradient"_L1;
             break;
         case QGradient::RadialGradient:
-            result += QLatin1String("qradialgradient");
+            result += "qradialgradient"_L1;
             break;
         case QGradient::ConicalGradient:
-            result += QLatin1String("qconicalgradient");
+            result += "qconicalgradient"_L1;
             break;
         default:
             qWarning() << "QtGradientUtils::styleSheetFillName(): gradient type" << gradient.type() << "not supported!";
@@ -339,44 +305,44 @@ static QStringList styleSheetParameters(const QGradient &gradient)
         QString spread;
         switch (gradient.spread()) {
             case QGradient::PadSpread:
-                spread = QLatin1String("pad");
+                spread = "pad"_L1;
                 break;
             case QGradient::ReflectSpread:
-                spread = QLatin1String("reflect");
+                spread = "reflect"_L1;
                 break;
             case QGradient::RepeatSpread:
-                spread = QLatin1String("repeat");
+                spread = "repeat"_L1;
                 break;
             default:
                 qWarning() << "QtGradientUtils::styleSheetParameters(): gradient spread" << gradient.spread() << "not supported!";
                 break;
         }
-        result << QLatin1String("spread:") + spread;
+        result << "spread:"_L1 + spread;
     }
 
     switch (gradient.type()) {
         case QGradient::LinearGradient: {
             const QLinearGradient *linearGradient = static_cast<const QLinearGradient*>(&gradient);
-            result << QLatin1String("x1:") + QString::number(linearGradient->start().x())
-                << QLatin1String("y1:")    + QString::number(linearGradient->start().y())
-                << QLatin1String("x2:")    + QString::number(linearGradient->finalStop().x())
-                << QLatin1String("y2:")    + QString::number(linearGradient->finalStop().y());
+            result << "x1:"_L1 + QString::number(linearGradient->start().x())
+                << "y1:"_L1    + QString::number(linearGradient->start().y())
+                << "x2:"_L1    + QString::number(linearGradient->finalStop().x())
+                << "y2:"_L1    + QString::number(linearGradient->finalStop().y());
             break;
         }
         case QGradient::RadialGradient: {
             const QRadialGradient *radialGradient = static_cast<const QRadialGradient*>(&gradient);
-            result << QLatin1String("cx:")  + QString::number(radialGradient->center().x())
-                << QLatin1String("cy:")     + QString::number(radialGradient->center().y())
-                << QLatin1String("radius:") + QString::number(radialGradient->radius())
-                << QLatin1String("fx:")     + QString::number(radialGradient->focalPoint().x())
-                << QLatin1String("fy:")     + QString::number(radialGradient->focalPoint().y());
+            result << "cx:"_L1  + QString::number(radialGradient->center().x())
+                << "cy:"_L1     + QString::number(radialGradient->center().y())
+                << "radius:"_L1 + QString::number(radialGradient->radius())
+                << "fx:"_L1     + QString::number(radialGradient->focalPoint().x())
+                << "fy:"_L1     + QString::number(radialGradient->focalPoint().y());
             break;
         }
         case QGradient::ConicalGradient: {
             const QConicalGradient *conicalGradient = static_cast<const QConicalGradient*>(&gradient);
-            result << QLatin1String("cx:") + QString::number(conicalGradient->center().x())
-                << QLatin1String("cy:")    + QString::number(conicalGradient->center().y())
-                << QLatin1String("angle:") + QString::number(conicalGradient->angle());
+            result << "cx:"_L1 + QString::number(conicalGradient->center().x())
+                << "cy:"_L1    + QString::number(conicalGradient->center().y())
+                << "angle:"_L1 + QString::number(conicalGradient->angle());
             break;
         }
         default:
@@ -394,10 +360,10 @@ static QStringList styleSheetStops(const QGradient &gradient)
     for (const QGradientStop &stop : stops) {
         const QColor color = stop.second;
 
-        const QString stopDescription = QLatin1String("stop:") + QString::number(stop.first) + QLatin1String(" rgba(")
-                + QString::number(color.red()) + QLatin1String(", ")
-                + QString::number(color.green()) + QLatin1String(", ")
-                + QString::number(color.blue()) + QLatin1String(", ")
+        const QString stopDescription = "stop:"_L1 + QString::number(stop.first) + " rgba("_L1
+                + QString::number(color.red()) + ", "_L1
+                + QString::number(color.green()) + ", "_L1
+                + QString::number(color.blue()) + ", "_L1
                 + QString::number(color.alpha()) + QLatin1Char(')');
         result << stopDescription;
     }
@@ -410,7 +376,7 @@ QString QtGradientUtils::styleSheetCode(const QGradient &gradient)
     QStringList gradientParameters;
     gradientParameters << styleSheetParameters(gradient) << styleSheetStops(gradient);
 
-    return styleSheetFillName(gradient) + QLatin1Char('(') + gradientParameters.join(QLatin1String(", ")) + QLatin1Char(')');
+    return styleSheetFillName(gradient) + QLatin1Char('(') + gradientParameters.join(", "_L1) + QLatin1Char(')');
 }
 
 QT_END_NAMESPACE

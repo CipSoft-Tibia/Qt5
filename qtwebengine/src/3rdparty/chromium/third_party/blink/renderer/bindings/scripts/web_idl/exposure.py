@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -8,8 +8,11 @@ from .runtime_enabled_features import RuntimeEnabledFeatures
 class _Feature(str):
     """Represents a runtime-enabled feature."""
 
+    def __new__(cls, value):
+        return str.__new__(cls, value)
+
     def __init__(self, value):
-        str.__init__(self, value)
+        str.__init__(self)
         self._is_context_dependent = (
             RuntimeEnabledFeatures.is_context_dependent(self))
 
@@ -55,6 +58,8 @@ class Exposure(object):
                 other.context_dependent_runtime_enabled_features)
             self._context_enabled_features = tuple(
                 other.context_enabled_features)
+            self._only_in_coi_contexts = other.only_in_coi_contexts
+            self._only_in_isolated_contexts = (other.only_in_isolated_contexts)
             self._only_in_secure_contexts = other.only_in_secure_contexts
         else:
             self._global_names_and_features = tuple()
@@ -62,6 +67,8 @@ class Exposure(object):
             self._context_independent_runtime_enabled_features = tuple()
             self._context_dependent_runtime_enabled_features = tuple()
             self._context_enabled_features = tuple()
+            self._only_in_coi_contexts = False
+            self._only_in_isolated_contexts = False
             self._only_in_secure_contexts = None
 
     @property
@@ -99,6 +106,28 @@ class Exposure(object):
         return self._context_enabled_features
 
     @property
+    def only_in_coi_contexts(self):
+        """
+        Returns whether this construct is available only in cross-origin
+        isolated contexts. The returned value is a boolean: True if the
+        construct is restricted to COI contexts, or False if not.
+
+        https://webidl.spec.whatwg.org/#CrossOriginIsolated
+        """
+        return self._only_in_coi_contexts
+
+    @property
+    def only_in_isolated_contexts(self):
+        """
+        Returns whether this construct is available only in isolated app
+        contexts. The returned value is a boolean: True if the construct
+        is restricted to isolated application contexts, False if not.
+
+        TODO(crbug.com/1206150): This needs a specification (and definition).
+        """
+        return self._only_in_isolated_contexts
+
+    @property
     def only_in_secure_contexts(self):
         """
         Returns whether this construct is available only in secure contexts or
@@ -106,7 +135,7 @@ class Exposure(object):
         restricted in secure contexts, or False: never restricted) or a list of
         flag names (restricted only when all flags are enabled).
 
-        https://heycam.github.io/webidl/#dfn-available-only-in-secure-contexts
+        https://webidl.spec.whatwg.org/#dfn-available-only-in-secure-contexts
         """
         if self._only_in_secure_contexts is None:
             return False
@@ -125,7 +154,8 @@ class Exposure(object):
                     and all(isinstance(name, str) for name in global_names)))
 
         if (self.context_dependent_runtime_enabled_features
-                or self.context_enabled_features
+                or self.context_enabled_features or self.only_in_coi_contexts
+                or self.only_in_isolated_contexts
                 or self.only_in_secure_contexts):
             return True
 
@@ -150,6 +180,8 @@ class ExposureMutable(Exposure):
         self._context_independent_runtime_enabled_features = []
         self._context_dependent_runtime_enabled_features = []
         self._context_enabled_features = []
+        self._only_in_coi_contexts = False
+        self._only_in_isolated_contexts = False
         self._only_in_secure_contexts = None
 
     def __getstate__(self):
@@ -174,6 +206,14 @@ class ExposureMutable(Exposure):
     def add_context_enabled_feature(self, name):
         assert isinstance(name, str)
         self._context_enabled_features.append(name)
+
+    def set_only_in_coi_contexts(self, value):
+        assert isinstance(value, bool)
+        self._only_in_coi_contexts = value
+
+    def set_only_in_isolated_contexts(self, value):
+        assert isinstance(value, bool)
+        self._only_in_isolated_contexts = value
 
     def set_only_in_secure_contexts(self, value):
         assert (isinstance(value, (bool, str))

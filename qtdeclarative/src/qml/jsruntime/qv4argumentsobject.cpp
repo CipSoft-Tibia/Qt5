@@ -1,57 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-#include <qv4argumentsobject_p.h>
-#include <qv4arrayobject_p.h>
-#include <qv4scopedvalue_p.h>
-#include <qv4string_p.h>
-#include <qv4function_p.h>
-#include <qv4jscall_p.h>
-#include <qv4symbol_p.h>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+#include "qv4argumentsobject_p.h"
 
 #include <private/qv4alloca_p.h>
+#include <private/qv4arrayobject_p.h>
+#include <private/qv4function_p.h>
+#include <private/qv4jscall_p.h>
+#include <private/qv4scopedvalue_p.h>
+#include <private/qv4stackframe_p.h>
+#include <private/qv4string_p.h>
+#include <private/qv4symbol_p.h>
 
 using namespace QV4;
 
 DEFINE_OBJECT_VTABLE(ArgumentsObject);
 DEFINE_OBJECT_VTABLE(StrictArgumentsObject);
 
-void Heap::StrictArgumentsObject::init(QV4::CppStackFrame *frame)
+void Heap::StrictArgumentsObject::init(QV4::JSTypesStackFrame *frame)
 
 {
     Q_ASSERT(vtable() == QV4::StrictArgumentsObject::staticVTable());
@@ -68,11 +34,11 @@ void Heap::StrictArgumentsObject::init(QV4::CppStackFrame *frame)
 
     Scope scope(v4);
     Scoped<QV4::StrictArgumentsObject> args(scope, this);
-    args->arrayReserve(frame->originalArgumentsCount);
-    args->arrayPut(0, frame->originalArguments, frame->originalArgumentsCount);
+    args->arrayReserve(frame->argc());
+    args->arrayPut(0, frame->argv(), frame->argc());
 
     Q_ASSERT(args->internalClass()->verifyIndex(v4->id_length()->propertyKey(), LengthPropertyIndex));
-    setProperty(v4, LengthPropertyIndex, Value::fromInt32(frame->originalArgumentsCount));
+    setProperty(v4, LengthPropertyIndex, Value::fromInt32(frame->argc()));
 }
 
 void Heap::ArgumentsObject::init(QV4::CppStackFrame *frame)
@@ -93,7 +59,7 @@ void Heap::ArgumentsObject::init(QV4::CppStackFrame *frame)
     setProperty(v4, SymbolIteratorPropertyIndex, *v4->arrayProtoValues());
 
     fullyCreated = false;
-    argCount = frame->originalArgumentsCount;
+    argCount = frame->argc();
     uint nFormals = frame->v4Function->nFormals;
     mapped = nFormals > 63 ? std::numeric_limits<quint64>::max() : (1ull << nFormals) - 1;
 }

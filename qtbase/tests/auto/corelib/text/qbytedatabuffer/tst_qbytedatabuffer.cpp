@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 Hewlett-Packard Development Company, L.P.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 Hewlett-Packard Development Company, L.P.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QTest>
 #include <private/qbytedata_p.h>
@@ -38,10 +13,12 @@ private Q_SLOTS:
     void canReadLine();
     void positionHandling();
     void appendBuffer();
+    void moveAppendBuffer();
     void readCompleteBuffer_data();
     void readCompleteBuffer();
     void readPartialBuffer_data();
     void readPartialBuffer();
+    void readPointer();
 private:
     void readBuffer(int size, int readSize);
 };
@@ -91,12 +68,24 @@ void tst_QByteDataBuffer::positionHandling()
 void tst_QByteDataBuffer::appendBuffer()
 {
     QByteDataBuffer buf;
-    buf.append(QByteArray("\1\2\3"));
+    QByteArray local("\1\2\3");
+    buf.append(local);
     buf.getChar();
 
     QByteDataBuffer tmp;
     tmp.append(buf);
     QCOMPARE(tmp.readAll(), buf.readAll());
+}
+
+void tst_QByteDataBuffer::moveAppendBuffer()
+{
+    QByteDataBuffer buf;
+    buf.append(QByteArray("hello world"));
+    QCOMPARE(buf.getChar(), 'h');
+
+    QByteDataBuffer tmp;
+    tmp.append(std::move(buf));
+    QCOMPARE(tmp.readAll(), "ello world");
 }
 
 static QByteArray makeByteArray(int size)
@@ -155,6 +144,60 @@ void tst_QByteDataBuffer::readPartialBuffer()
     // QIODevice::readAll() reads in QIODEVICE_BUFFERSIZE size
     // increments.
     readBuffer(size, QIODEVICE_BUFFERSIZE);
+}
+
+void tst_QByteDataBuffer::readPointer()
+{
+    QByteDataBuffer buffer;
+
+    auto view = buffer.readPointer();
+    QCOMPARE(view.size(), 0);
+    QCOMPARE(view, "");
+
+    buffer.append("Hello");
+    buffer.append("World");
+
+    qint64 initialSize = buffer.byteAmount();
+    view = buffer.readPointer();
+
+    QCOMPARE(initialSize, buffer.byteAmount());
+    QCOMPARE(view.size(), 5);
+    QCOMPARE(view, "Hello");
+
+    buffer.advanceReadPointer(2);
+    view = buffer.readPointer();
+
+    QCOMPARE(initialSize - 2, buffer.byteAmount());
+    QCOMPARE(view.size(), 3);
+    QCOMPARE(view, "llo");
+
+    buffer.advanceReadPointer(3);
+    view = buffer.readPointer();
+
+    QCOMPARE(initialSize - 5, buffer.byteAmount());
+    QCOMPARE(view.size(), 5);
+    QCOMPARE(view, "World");
+
+    buffer.advanceReadPointer(5);
+    view = buffer.readPointer();
+
+    QVERIFY(buffer.isEmpty());
+    QCOMPARE(view.size(), 0);
+    QCOMPARE(view, "");
+
+    // Advance past the current view's size
+    buffer.append("Hello");
+    buffer.append("World");
+
+    buffer.advanceReadPointer(6);
+    view = buffer.readPointer();
+    QCOMPARE(view, "orld");
+    QCOMPARE(buffer.byteAmount(), 4);
+
+    // Advance past the end of all contained data
+    buffer.advanceReadPointer(6);
+    view = buffer.readPointer();
+    QCOMPARE(view, "");
 }
 
 QTEST_MAIN(tst_QByteDataBuffer)

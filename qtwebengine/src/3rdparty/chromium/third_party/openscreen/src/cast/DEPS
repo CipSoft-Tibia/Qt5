@@ -10,6 +10,6 @@ include_rules = [
   # Intra-libcast dependencies must be explicit.
   '-cast',
 
-  # All libcast code can use cast/third_party.
-  '+cast/third_party',
+  # Includes from third_party/jsoncpp/src/include
+  '+json/value.h'
 ]

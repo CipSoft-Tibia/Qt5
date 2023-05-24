@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,14 +16,13 @@
 #include "base/feature_list.h"
 #include "base/metrics/field_trial.h"
 #include "base/metrics/field_trial_params.h"
-#include "base/optional.h"
+#include "base/strings/escape.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/system/sys_info.h"
 #include "components/variations/client_filterable_state.h"
 #include "components/variations/field_trial_config/fieldtrial_testing_config.h"
 #include "components/variations/variations_seed_processor.h"
-#include "net/base/escape.h"
-#include "ui/base/device_form_factor.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace variations {
 namespace {
@@ -48,24 +47,12 @@ bool HasDeviceLevelMismatch(const FieldTrialTestingExperiment& experiment) {
          base::SysInfo::IsLowEndDevice();
 }
 
-// Gets current form factor and converts it from enum DeviceFormFactor to enum
-// Study_FormFactor.
-Study::FormFactor _GetCurrentFormFactor() {
-  switch (ui::GetDeviceFormFactor()) {
-    case ui::DEVICE_FORM_FACTOR_PHONE:
-      return Study::PHONE;
-    case ui::DEVICE_FORM_FACTOR_TABLET:
-      return Study::TABLET;
-    case ui::DEVICE_FORM_FACTOR_DESKTOP:
-      return Study::DESKTOP;
-  }
-}
-
 // Returns true if the experiment config has a missing form_factors or it
 // contains the current system's form_factor. Otherwise, it is False.
-bool HasFormFactor(const FieldTrialTestingExperiment& experiment) {
+bool HasFormFactor(const FieldTrialTestingExperiment& experiment,
+                   Study::FormFactor current_form_factor) {
   for (size_t i = 0; i < experiment.form_factors_size; ++i) {
-    if (experiment.form_factors[i] == _GetCurrentFormFactor())
+    if (experiment.form_factors[i] == current_form_factor)
       return true;
   }
   return experiment.form_factors_size == 0;
@@ -90,11 +77,35 @@ void ApplyUIStringOverrides(
   }
 }
 
+// Determines whether an experiment should be skipped or not. An experiment
+// should be skipped if it enables or disables a feature that is already
+// overridden through the command line.
+bool ShouldSkipExperiment(const FieldTrialTestingExperiment& experiment,
+                          base::FeatureList* feature_list) {
+  for (size_t i = 0; i < experiment.enable_features_size; ++i) {
+    if (feature_list->IsFeatureOverridden(experiment.enable_features[i])) {
+      return true;
+    }
+  }
+  for (size_t i = 0; i < experiment.disable_features_size; ++i) {
+    if (feature_list->IsFeatureOverridden(experiment.disable_features[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void AssociateParamsFromExperiment(
     const std::string& study_name,
     const FieldTrialTestingExperiment& experiment,
     const VariationsSeedProcessor::UIStringOverrideCallback& callback,
     base::FeatureList* feature_list) {
+  if (ShouldSkipExperiment(experiment, feature_list)) {
+    LOG(WARNING) << "Field trial config study skipped: " << study_name << "."
+                 << experiment.name
+                 << " (some of its features are already overridden)";
+    return;
+  }
   if (experiment.params_size != 0) {
     base::FieldTrialParams params;
     for (size_t i = 0; i < experiment.params_size; ++i) {
@@ -107,9 +118,9 @@ void AssociateParamsFromExperiment(
       base::FieldTrialList::CreateFieldTrial(study_name, experiment.name);
 
   if (!trial) {
-    DLOG(WARNING) << "Field trial config study skipped: " << study_name
-                  << "." << experiment.name
-                  << " (it is overridden from chrome://flags)";
+    LOG(WARNING) << "Field trial config study skipped: " << study_name << "."
+                 << experiment.name
+                 << " (it is overridden from chrome://flags)";
     return;
   }
 
@@ -136,11 +147,16 @@ void AssociateParamsFromExperiment(
 //   - Otherwise, If running on non low_end_device and the config specify
 //     a different experiment group for non low_end_device then pick that.
 //   - Otherwise, select the first experiment.
+// - The chosen experiment must not enable or disable a feature that is
+//   explicitly enabled or disabled through a switch, such as the
+//   |--enable-features| or |--disable-features| switches. If it does, then no
+//   experiment is associated.
 // - If no experiments match this platform, do not associate any of them.
 void ChooseExperiment(
     const FieldTrialTestingStudy& study,
     const VariationsSeedProcessor::UIStringOverrideCallback& callback,
     Study::Platform platform,
+    Study::FormFactor current_form_factor,
     base::FeatureList* feature_list) {
   const auto& command_line = *base::CommandLine::ForCurrentProcess();
   const FieldTrialTestingExperiment* chosen_experiment = nullptr;
@@ -148,7 +164,8 @@ void ChooseExperiment(
     const FieldTrialTestingExperiment* experiment = study.experiments + i;
     if (HasPlatform(*experiment, platform)) {
       if (!chosen_experiment && !HasDeviceLevelMismatch(*experiment) &&
-          HasFormFactor(*experiment) && HasMinOSVersion(*experiment)) {
+          HasFormFactor(*experiment, current_form_factor) &&
+          HasMinOSVersion(*experiment)) {
         chosen_experiment = experiment;
       }
 
@@ -171,7 +188,7 @@ std::string EscapeValue(const std::string& value) {
   // This needs to be the inverse of UnescapeValue in
   // base/metrics/field_trial_params.
   std::string net_escaped_str =
-      net::EscapeQueryParamValue(value, true /* use_plus */);
+      base::EscapeQueryParamValue(value, true /* use_plus */);
 
   // net doesn't escape '.' and '*' but base::UnescapeValue() covers those
   // cases.
@@ -197,11 +214,13 @@ void AssociateParamsFromFieldTrialConfig(
     const FieldTrialTestingConfig& config,
     const VariationsSeedProcessor::UIStringOverrideCallback& callback,
     Study::Platform platform,
+    Study::FormFactor current_form_factor,
     base::FeatureList* feature_list) {
   for (size_t i = 0; i < config.studies_size; ++i) {
     const FieldTrialTestingStudy& study = config.studies[i];
     if (study.experiments_size > 0) {
-      ChooseExperiment(study, callback, platform, feature_list);
+      ChooseExperiment(study, callback, platform, current_form_factor,
+                       feature_list);
     } else {
       DLOG(ERROR) << "Unexpected empty study: " << study.name;
     }
@@ -211,9 +230,10 @@ void AssociateParamsFromFieldTrialConfig(
 void AssociateDefaultFieldTrialConfig(
     const VariationsSeedProcessor::UIStringOverrideCallback& callback,
     Study::Platform platform,
+    Study::FormFactor current_form_factor,
     base::FeatureList* feature_list) {
   AssociateParamsFromFieldTrialConfig(kFieldTrialConfig, callback, platform,
-                                      feature_list);
+                                      current_form_factor, feature_list);
 }
 
 }  // namespace variations

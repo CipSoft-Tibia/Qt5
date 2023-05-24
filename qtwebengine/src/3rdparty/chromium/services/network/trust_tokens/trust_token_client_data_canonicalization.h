@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,16 +7,16 @@
 
 #include <vector>
 
-#include "base/optional.h"
 #include "base/strings/string_piece.h"
 #include "base/time/time.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/origin.h"
 
 namespace network {
 
 // Returns a CBOR serialization of the "client-data" field for a Trust Tokens
-// redemption request, given a public key to bind to the redemption; a
-// redemption timestamp; and a redeeming top-frame origin.
+// redemption request, given a redemption timestamp; and a redeeming top-frame
+// origin.
 //
 // Follows the format specified in the Trust Tokens design doc (currently the
 // normative source for such things), at
@@ -26,11 +26,10 @@ namespace network {
 // on serialization error.
 //
 // |top_frame_origin| must not be opaque.
-base::Optional<std::vector<uint8_t>>
+absl::optional<std::vector<uint8_t>>
 CanonicalizeTrustTokenClientDataForRedemption(
     base::Time redemption_timestamp,
-    const url::Origin& top_frame_origin,
-    base::StringPiece public_key);
+    const url::Origin& top_frame_origin);
 
 }  // namespace network
 

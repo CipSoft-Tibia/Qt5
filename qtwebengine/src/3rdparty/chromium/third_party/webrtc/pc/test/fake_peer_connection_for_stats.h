@@ -19,8 +19,9 @@
 #include <vector>
 
 #include "media/base/fake_media_engine.h"
+#include "pc/channel.h"
 #include "pc/stream_collection.h"
-#include "pc/test/fake_data_channel_provider.h"
+#include "pc/test/fake_data_channel_controller.h"
 #include "pc/test/fake_peer_connection_base.h"
 
 namespace webrtc {
@@ -28,52 +29,165 @@ namespace webrtc {
 // Fake VoiceMediaChannel where the result of GetStats can be configured.
 class FakeVoiceMediaChannelForStats : public cricket::FakeVoiceMediaChannel {
  public:
-  FakeVoiceMediaChannelForStats()
-      : cricket::FakeVoiceMediaChannel(nullptr, cricket::AudioOptions()) {}
+  explicit FakeVoiceMediaChannelForStats(MediaChannel::Role role,
+                                         TaskQueueBase* network_thread)
+      : cricket::FakeVoiceMediaChannel(role,
+                                       nullptr,
+                                       cricket::AudioOptions(),
+                                       network_thread) {}
 
   void SetStats(const cricket::VoiceMediaInfo& voice_info) {
-    stats_ = voice_info;
+    send_stats_ = cricket::VoiceMediaSendInfo();
+    send_stats_->senders = voice_info.senders;
+    send_stats_->send_codecs = voice_info.send_codecs;
+    receive_stats_ = cricket::VoiceMediaReceiveInfo();
+    receive_stats_->receivers = voice_info.receivers;
+    receive_stats_->receive_codecs = voice_info.receive_codecs;
+    receive_stats_->device_underrun_count = voice_info.device_underrun_count;
   }
 
   // VoiceMediaChannel overrides.
-  bool GetStats(cricket::VoiceMediaInfo* info,
-                bool get_and_clear_legacy_stats) override {
-    if (stats_) {
-      *info = *stats_;
+  bool GetSendStats(cricket::VoiceMediaSendInfo* info) override {
+    RTC_DCHECK(role() == MediaChannel::Role::kSend);
+    if (send_stats_) {
+      *info = *send_stats_;
+      return true;
+    }
+    return false;
+  }
+  bool GetReceiveStats(cricket::VoiceMediaReceiveInfo* info,
+                       bool get_and_clear_legacy_stats) override {
+    RTC_DCHECK(role() == MediaChannel::Role::kReceive);
+    if (receive_stats_) {
+      *info = *receive_stats_;
       return true;
     }
     return false;
   }
 
  private:
-  absl::optional<cricket::VoiceMediaInfo> stats_;
+  absl::optional<cricket::VoiceMediaSendInfo> send_stats_;
+  absl::optional<cricket::VoiceMediaReceiveInfo> receive_stats_;
 };
 
 // Fake VideoMediaChannel where the result of GetStats can be configured.
 class FakeVideoMediaChannelForStats : public cricket::FakeVideoMediaChannel {
  public:
-  FakeVideoMediaChannelForStats()
-      : cricket::FakeVideoMediaChannel(nullptr, cricket::VideoOptions()) {}
+  explicit FakeVideoMediaChannelForStats(cricket::MediaChannel::Role role,
+                                         TaskQueueBase* network_thread)
+      : cricket::FakeVideoMediaChannel(role,
+                                       nullptr,
+                                       cricket::VideoOptions(),
+                                       network_thread) {}
 
   void SetStats(const cricket::VideoMediaInfo& video_info) {
-    stats_ = video_info;
+    switch (role()) {
+      case MediaChannel::Role::kSend:
+        send_stats_ = cricket::VideoMediaSendInfo();
+        send_stats_->senders = video_info.senders;
+        send_stats_->aggregated_senders = video_info.aggregated_senders;
+        send_stats_->send_codecs = video_info.send_codecs;
+        break;
+      case MediaChannel::Role::kReceive:
+        receive_stats_ = cricket::VideoMediaReceiveInfo();
+        receive_stats_->receivers = video_info.receivers;
+        receive_stats_->receive_codecs = video_info.receive_codecs;
+        break;
+      default:
+        RTC_CHECK_NOTREACHED();
+    }
   }
 
   // VideoMediaChannel overrides.
-  bool GetStats(cricket::VideoMediaInfo* info) override {
-    if (stats_) {
-      *info = *stats_;
+  bool GetSendStats(cricket::VideoMediaSendInfo* info) override {
+    RTC_DCHECK(role() == MediaChannel::Role::kSend);
+
+    if (send_stats_) {
+      *info = *send_stats_;
+      return true;
+    }
+    return false;
+  }
+  bool GetReceiveStats(cricket::VideoMediaReceiveInfo* info) override {
+    RTC_DCHECK(role() == MediaChannel::Role::kReceive);
+    if (receive_stats_) {
+      *info = *receive_stats_;
       return true;
     }
     return false;
   }
 
  private:
-  absl::optional<cricket::VideoMediaInfo> stats_;
+  absl::optional<cricket::VideoMediaSendInfo> send_stats_;
+  absl::optional<cricket::VideoMediaReceiveInfo> receive_stats_;
 };
 
 constexpr bool kDefaultRtcpMuxRequired = true;
 constexpr bool kDefaultSrtpRequired = true;
+
+class VoiceChannelForTesting : public cricket::VoiceChannel {
+ public:
+  VoiceChannelForTesting(
+      rtc::Thread* worker_thread,
+      rtc::Thread* network_thread,
+      rtc::Thread* signaling_thread,
+      std::unique_ptr<cricket::VoiceMediaChannel> send_channel,
+      std::unique_ptr<cricket::VoiceMediaChannel> receive_channel,
+      const std::string& content_name,
+      bool srtp_required,
+      webrtc::CryptoOptions crypto_options,
+      rtc::UniqueRandomIdGenerator* ssrc_generator,
+      std::string transport_name)
+      : VoiceChannel(worker_thread,
+                     network_thread,
+                     signaling_thread,
+                     std::move(send_channel),
+                     std::move(receive_channel),
+                     content_name,
+                     srtp_required,
+                     std::move(crypto_options),
+                     ssrc_generator),
+        test_transport_name_(std::move(transport_name)) {}
+
+ private:
+  absl::string_view transport_name() const override {
+    return test_transport_name_;
+  }
+
+  const std::string test_transport_name_;
+};
+
+class VideoChannelForTesting : public cricket::VideoChannel {
+ public:
+  VideoChannelForTesting(
+      rtc::Thread* worker_thread,
+      rtc::Thread* network_thread,
+      rtc::Thread* signaling_thread,
+      std::unique_ptr<cricket::VideoMediaChannel> send_channel,
+      std::unique_ptr<cricket::VideoMediaChannel> receive_channel,
+      const std::string& content_name,
+      bool srtp_required,
+      webrtc::CryptoOptions crypto_options,
+      rtc::UniqueRandomIdGenerator* ssrc_generator,
+      std::string transport_name)
+      : VideoChannel(worker_thread,
+                     network_thread,
+                     signaling_thread,
+                     std::move(send_channel),
+                     std::move(receive_channel),
+                     content_name,
+                     srtp_required,
+                     std::move(crypto_options),
+                     ssrc_generator),
+        test_transport_name_(std::move(transport_name)) {}
+
+ private:
+  absl::string_view transport_name() const override {
+    return test_transport_name_;
+  }
+
+  const std::string test_transport_name_;
+};
 
 // This class is intended to be fed into the StatsCollector and
 // RTCStatsCollector so that the stats functionality can be unit tested.
@@ -87,8 +201,26 @@ class FakePeerConnectionForStats : public FakePeerConnectionBase {
       : network_thread_(rtc::Thread::Current()),
         worker_thread_(rtc::Thread::Current()),
         signaling_thread_(rtc::Thread::Current()),
+        // TODO(hta): remove separate thread variables and use context.
+        dependencies_(MakeDependencies()),
+        context_(ConnectionContext::Create(&dependencies_)),
         local_streams_(StreamCollection::Create()),
         remote_streams_(StreamCollection::Create()) {}
+
+  ~FakePeerConnectionForStats() {
+    for (auto transceiver : transceivers_) {
+      transceiver->internal()->ClearChannel();
+    }
+  }
+
+  static PeerConnectionFactoryDependencies MakeDependencies() {
+    PeerConnectionFactoryDependencies dependencies;
+    dependencies.network_thread = rtc::Thread::Current();
+    dependencies.worker_thread = rtc::Thread::Current();
+    dependencies.signaling_thread = rtc::Thread::Current();
+    dependencies.media_engine = std::make_unique<cricket::FakeMediaEngine>();
+    return dependencies;
+  }
 
   rtc::scoped_refptr<StreamCollection> mutable_local_streams() {
     return local_streams_;
@@ -112,7 +244,7 @@ class FakePeerConnectionForStats : public FakePeerConnectionBase {
   void RemoveSender(rtc::scoped_refptr<RtpSenderInterface> sender) {
     GetOrCreateFirstTransceiverOfType(sender->media_type())
         ->internal()
-        ->RemoveSender(sender);
+        ->RemoveSender(sender.get());
   }
 
   rtc::scoped_refptr<RtpReceiverInterface> AddReceiver(
@@ -120,7 +252,7 @@ class FakePeerConnectionForStats : public FakePeerConnectionBase {
     // TODO(steveanton): Switch tests to use RtpTransceivers directly.
     auto receiver_proxy =
         RtpReceiverProxyWithInternal<RtpReceiverInternal>::Create(
-            signaling_thread_, receiver);
+            signaling_thread_, worker_thread_, receiver);
     GetOrCreateFirstTransceiverOfType(receiver->media_type())
         ->internal()
         ->AddReceiver(receiver_proxy);
@@ -130,43 +262,77 @@ class FakePeerConnectionForStats : public FakePeerConnectionBase {
   void RemoveReceiver(rtc::scoped_refptr<RtpReceiverInterface> receiver) {
     GetOrCreateFirstTransceiverOfType(receiver->media_type())
         ->internal()
-        ->RemoveReceiver(receiver);
+        ->RemoveReceiver(receiver.get());
   }
 
-  FakeVoiceMediaChannelForStats* AddVoiceChannel(
+  std::pair<FakeVoiceMediaChannelForStats*, FakeVoiceMediaChannelForStats*>
+  AddVoiceChannel(
       const std::string& mid,
-      const std::string& transport_name) {
-    RTC_DCHECK(!voice_channel_);
-    auto voice_media_channel =
-        std::make_unique<FakeVoiceMediaChannelForStats>();
-    auto* voice_media_channel_ptr = voice_media_channel.get();
-    voice_channel_ = std::make_unique<cricket::VoiceChannel>(
+      const std::string& transport_name,
+      cricket::VoiceMediaInfo initial_stats = cricket::VoiceMediaInfo()) {
+    auto voice_media_send_channel =
+        std::make_unique<FakeVoiceMediaChannelForStats>(
+            cricket::MediaChannel::Role::kSend, network_thread_);
+    auto voice_media_receive_channel =
+        std::make_unique<FakeVoiceMediaChannelForStats>(
+            cricket::MediaChannel::Role::kReceive, network_thread_);
+    auto* voice_media_send_channel_ptr = voice_media_send_channel.get();
+    auto* voice_media_receive_channel_ptr = voice_media_receive_channel.get();
+    auto voice_channel = std::make_unique<VoiceChannelForTesting>(
         worker_thread_, network_thread_, signaling_thread_,
-        std::move(voice_media_channel), mid, kDefaultSrtpRequired,
-        webrtc::CryptoOptions(), &ssrc_generator_);
-    voice_channel_->set_transport_name_for_testing(transport_name);
-    GetOrCreateFirstTransceiverOfType(cricket::MEDIA_TYPE_AUDIO)
-        ->internal()
-        ->SetChannel(voice_channel_.get());
-    return voice_media_channel_ptr;
+        std::move(voice_media_send_channel),
+        std::move(voice_media_receive_channel), mid, kDefaultSrtpRequired,
+        webrtc::CryptoOptions(), context_->ssrc_generator(), transport_name);
+    auto transceiver =
+        GetOrCreateFirstTransceiverOfType(cricket::MEDIA_TYPE_AUDIO)
+            ->internal();
+    if (transceiver->channel()) {
+      // This transceiver already has a channel, create a new one.
+      transceiver =
+          CreateTransceiverOfType(cricket::MEDIA_TYPE_AUDIO)->internal();
+    }
+    RTC_DCHECK(!transceiver->channel());
+    transceiver->SetChannel(std::move(voice_channel),
+                            [](const std::string&) { return nullptr; });
+    voice_media_send_channel_ptr->SetStats(initial_stats);
+    voice_media_receive_channel_ptr->SetStats(initial_stats);
+    return std::make_pair(voice_media_send_channel_ptr,
+                          voice_media_receive_channel_ptr);
   }
 
-  FakeVideoMediaChannelForStats* AddVideoChannel(
+  std::pair<FakeVideoMediaChannelForStats*, FakeVideoMediaChannelForStats*>
+  AddVideoChannel(
       const std::string& mid,
-      const std::string& transport_name) {
-    RTC_DCHECK(!video_channel_);
-    auto video_media_channel =
-        std::make_unique<FakeVideoMediaChannelForStats>();
-    auto video_media_channel_ptr = video_media_channel.get();
-    video_channel_ = std::make_unique<cricket::VideoChannel>(
+      const std::string& transport_name,
+      cricket::VideoMediaInfo initial_stats = cricket::VideoMediaInfo()) {
+    auto video_media_send_channel =
+        std::make_unique<FakeVideoMediaChannelForStats>(
+            cricket::MediaChannel::Role::kSend, network_thread_);
+    auto video_media_receive_channel =
+        std::make_unique<FakeVideoMediaChannelForStats>(
+            cricket::MediaChannel::Role::kReceive, network_thread_);
+    auto video_media_send_channel_ptr = video_media_send_channel.get();
+    auto video_media_receive_channel_ptr = video_media_receive_channel.get();
+    auto video_channel = std::make_unique<VideoChannelForTesting>(
         worker_thread_, network_thread_, signaling_thread_,
-        std::move(video_media_channel), mid, kDefaultSrtpRequired,
-        webrtc::CryptoOptions(), &ssrc_generator_);
-    video_channel_->set_transport_name_for_testing(transport_name);
-    GetOrCreateFirstTransceiverOfType(cricket::MEDIA_TYPE_VIDEO)
-        ->internal()
-        ->SetChannel(video_channel_.get());
-    return video_media_channel_ptr;
+        std::move(video_media_send_channel),
+        std::move(video_media_receive_channel), mid, kDefaultSrtpRequired,
+        webrtc::CryptoOptions(), context_->ssrc_generator(), transport_name);
+    auto transceiver =
+        GetOrCreateFirstTransceiverOfType(cricket::MEDIA_TYPE_VIDEO)
+            ->internal();
+    if (transceiver->channel()) {
+      // This transceiver already has a channel, create a new one.
+      transceiver =
+          CreateTransceiverOfType(cricket::MEDIA_TYPE_VIDEO)->internal();
+    }
+    RTC_DCHECK(!transceiver->channel());
+    transceiver->SetChannel(std::move(video_channel),
+                            [](const std::string&) { return nullptr; });
+    video_media_send_channel_ptr->SetStats(initial_stats);
+    video_media_receive_channel_ptr->SetStats(initial_stats);
+    return std::make_pair(video_media_send_channel_ptr,
+                          video_media_receive_channel_ptr);
   }
 
   void AddSctpDataChannel(const std::string& label) {
@@ -176,7 +342,7 @@ class FakePeerConnectionForStats : public FakePeerConnectionBase {
   void AddSctpDataChannel(const std::string& label,
                           const InternalDataChannelInit& init) {
     // TODO(bugs.webrtc.org/11547): Supply a separate network thread.
-    AddSctpDataChannel(SctpDataChannel::Create(&data_channel_provider_, label,
+    AddSctpDataChannel(SctpDataChannel::Create(&data_channel_controller_, label,
                                                init, rtc::Thread::Current(),
                                                rtc::Thread::Current()));
   }
@@ -202,6 +368,11 @@ class FakePeerConnectionForStats : public FakePeerConnectionBase {
   }
 
   void SetCallStats(const Call::Stats& call_stats) { call_stats_ = call_stats; }
+
+  void SetAudioDeviceStats(
+      absl::optional<AudioDeviceModule::Stats> audio_device_stats) {
+    audio_device_stats_ = audio_device_stats;
+  }
 
   void SetLocalCertificate(
       const std::string& transport_name,
@@ -272,21 +443,9 @@ class FakePeerConnectionForStats : public FakePeerConnectionBase {
     return {};
   }
 
-  std::map<std::string, std::string> GetTransportNamesByMid() const override {
-    std::map<std::string, std::string> transport_names_by_mid;
-    if (voice_channel_) {
-      transport_names_by_mid[voice_channel_->content_name()] =
-          voice_channel_->transport_name();
-    }
-    if (video_channel_) {
-      transport_names_by_mid[video_channel_->content_name()] =
-          video_channel_->transport_name();
-    }
-    return transport_names_by_mid;
-  }
-
   std::map<std::string, cricket::TransportStats> GetTransportStatsByNames(
       const std::set<std::string>& transport_names) override {
+    RTC_DCHECK_RUN_ON(network_thread_);
     std::map<std::string, cricket::TransportStats> transport_stats_by_name;
     for (const std::string& transport_name : transport_names) {
       transport_stats_by_name[transport_name] =
@@ -296,6 +455,10 @@ class FakePeerConnectionForStats : public FakePeerConnectionBase {
   }
 
   Call::Stats GetCallStats() override { return call_stats_; }
+
+  absl::optional<AudioDeviceModule::Stats> GetAudioDeviceStats() override {
+    return audio_device_stats_;
+  }
 
   bool GetLocalCertificate(
       const std::string& transport_name,
@@ -343,8 +506,14 @@ class FakePeerConnectionForStats : public FakePeerConnectionBase {
         return transceiver;
       }
     }
+    return CreateTransceiverOfType(media_type);
+  }
+
+  rtc::scoped_refptr<RtpTransceiverProxyWithInternal<RtpTransceiver>>
+  CreateTransceiverOfType(cricket::MediaType media_type) {
     auto transceiver = RtpTransceiverProxyWithInternal<RtpTransceiver>::Create(
-        signaling_thread_, new RtpTransceiver(media_type));
+        signaling_thread_,
+        rtc::make_ref_counted<RtpTransceiver>(media_type, context_.get()));
     transceivers_.push_back(transceiver);
     return transceiver;
   }
@@ -353,6 +522,9 @@ class FakePeerConnectionForStats : public FakePeerConnectionBase {
   rtc::Thread* const worker_thread_;
   rtc::Thread* const signaling_thread_;
 
+  PeerConnectionFactoryDependencies dependencies_;
+  rtc::scoped_refptr<ConnectionContext> context_;
+
   rtc::scoped_refptr<StreamCollection> local_streams_;
   rtc::scoped_refptr<StreamCollection> remote_streams_;
 
@@ -360,10 +532,7 @@ class FakePeerConnectionForStats : public FakePeerConnectionBase {
       rtc::scoped_refptr<RtpTransceiverProxyWithInternal<RtpTransceiver>>>
       transceivers_;
 
-  FakeDataChannelProvider data_channel_provider_;
-
-  std::unique_ptr<cricket::VoiceChannel> voice_channel_;
-  std::unique_ptr<cricket::VideoChannel> video_channel_;
+  FakeDataChannelController data_channel_controller_;
 
   std::vector<rtc::scoped_refptr<SctpDataChannel>> sctp_data_channels_;
 
@@ -371,12 +540,12 @@ class FakePeerConnectionForStats : public FakePeerConnectionBase {
 
   Call::Stats call_stats_;
 
+  absl::optional<AudioDeviceModule::Stats> audio_device_stats_;
+
   std::map<std::string, rtc::scoped_refptr<rtc::RTCCertificate>>
       local_certificates_by_transport_;
   std::map<std::string, std::unique_ptr<rtc::SSLCertChain>>
       remote_cert_chains_by_transport_;
-
-  rtc::UniqueRandomIdGenerator ssrc_generator_;
 };
 
 }  // namespace webrtc

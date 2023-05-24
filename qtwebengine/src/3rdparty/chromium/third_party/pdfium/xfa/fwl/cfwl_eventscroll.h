@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,11 +24,15 @@ class CFWL_EventScroll final : public CFWL_Event {
     EndScroll,
   };
 
-  explicit CFWL_EventScroll(CFWL_Widget* pSrcTarget);
+  CFWL_EventScroll(CFWL_Widget* pSrcTarget, Code code, float pos);
   ~CFWL_EventScroll() override;
 
-  Code m_iScrollCode = Code::None;
-  float m_fPos = 0.0f;
+  Code GetScrollCode() const { return m_iScrollCode; }
+  float GetPos() const { return m_fPos; }
+
+ private:
+  const Code m_iScrollCode;
+  const float m_fPos;
 };
 
 #endif  // XFA_FWL_CFWL_EVENTSCROLL_H_

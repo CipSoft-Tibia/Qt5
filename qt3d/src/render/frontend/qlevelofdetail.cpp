@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qlevelofdetail.h"
 #include "qlevelofdetail_p.h"
@@ -99,7 +63,7 @@ void QLevelOfDetailPrivate::setCurrentIndex(int currentIndex)
     Qt3DRender::QGeometryRenderer *geometryRenderer = new Qt3DCore::QGeometryRenderer(renderableEntity);
     renderableEntity->addComponent(geometryRenderer);
     Qt3DRender::QLevelOfDetail* lod = new Qt3Render::QLevelOfDetail(renderableEntity);
-    QVector<qreal> thresholds = {20, 35, 50, 65};
+    QList<qreal> thresholds = {20, 35, 50, 65};
     lod->setThresholds(thresholds);
     lod->setCamera(mainCamera);
     renderableEntity->addComponent(lod);
@@ -152,11 +116,12 @@ void QLevelOfDetailPrivate::setCurrentIndex(int currentIndex)
             thresholdType: LevelOfDetail.DistanceToCameraThreshold
         }
 
-        CylinderMesh {
+        GeometryRenderer {
             id: mesh
-
-            property var sliceValues: [20, 10, 6, 4]
-            slices: sliceValues[lod.currentIndex]
+            view: CylinderMesh {
+                property var sliceValues: [20, 10, 6, 4]
+                slices: sliceValues[lod.currentIndex]
+            }
         }
 
         Entity {
@@ -231,7 +196,7 @@ void QLevelOfDetailPrivate::setCurrentIndex(int currentIndex)
  */
 
 /*!
- * \qmlproperty QVector<qreal> LevelOfDetail::thresholds
+ * \qmlproperty QList<qreal> LevelOfDetail::thresholds
  *
  * Array of range values as float point numbers. The value for the most detailed representation
  * should be specified first.
@@ -308,28 +273,6 @@ QLevelOfDetail::QLevelOfDetail(QLevelOfDetailPrivate &dd, QNode *parent)
 {
 }
 
-/*! \internal */
-Qt3DCore::QNodeCreatedChangeBasePtr QLevelOfDetail::createNodeCreationChange() const
-{
-    auto creationChange = Qt3DCore::QNodeCreatedChangePtr<QLevelOfDetailData>::create(this);
-    auto &data = creationChange->data;
-
-    Q_D(const QLevelOfDetail);
-    if (d->m_camera)
-        data.camera = d->m_camera->id();
-    data.currentIndex = d->m_currentIndex;
-    data.thresholdType = d->m_thresholdType;
-    data.thresholds = d->m_thresholds;
-    data.volumeOverride = d->m_volumeOverride;
-
-    return creationChange;
-}
-
-// TODO Unused remove in Qt6
-void QLevelOfDetail::sceneChangeEvent(const Qt3DCore::QSceneChangePtr &)
-{
-}
-
 QCamera *QLevelOfDetail::camera() const
 {
     Q_D(const QLevelOfDetail);
@@ -389,7 +332,7 @@ void QLevelOfDetail::setThresholdType(QLevelOfDetail::ThresholdType thresholdTyp
     }
 }
 
-QVector<qreal> QLevelOfDetail::thresholds() const
+QList<qreal> QLevelOfDetail::thresholds() const
 {
     Q_D(const QLevelOfDetail);
     return d->m_thresholds;
@@ -404,7 +347,7 @@ QLevelOfDetailBoundingSphere QLevelOfDetail::createBoundingSphere(const QVector3
  * Sets the range values in \a thresholds.
  * \sa Qt3DRender::QLevelOfDetail::thresholdType
  */
-void QLevelOfDetail::setThresholds(const QVector<qreal> &thresholds)
+void QLevelOfDetail::setThresholds(const QList<qreal> &thresholds)
 {
     Q_D(QLevelOfDetail);
     if (d->m_thresholds != thresholds) {

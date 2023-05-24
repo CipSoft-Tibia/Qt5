@@ -1,7 +1,8 @@
-# Copyright (c) 2013 The Chromium Authors. All rights reserved.
+# Copyright 2013 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/features.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/shim_headers.gni")
 
@@ -38,9 +39,22 @@ config("zlib_internal_config") {
     # Enable zlib's asserts in debug and fuzzer builds.
     defines += [ "ZLIB_DEBUG" ]
   }
+
+  if (is_win && !is_clang && !is_mingw) {
+    # V8 supports building with msvc, these silence some warnings that
+    # causes compilation to fail (https://crbug.com/1255096).
+    cflags = [
+      "/wd4244",
+      "/wd4100",
+      "/wd4702",
+      "/wd4127",
+    ]
+  }
 }
 
 source_set("zlib_common_headers") {
+  visibility = [ ":*" ]
+
   sources = [
     "chromeconf.h",
     "deflate.h",
@@ -65,7 +79,7 @@ if ((current_cpu == "arm" || current_cpu == "arm64") &&
 }
 
 use_x86_x64_optimizations =
-    (current_cpu == "x86" || current_cpu == "x64") && !is_ios
+    (current_cpu == "x86" || current_cpu == "x64") && !is_ios && !is_mingw
 
 config("zlib_adler32_simd_config") {
   if (use_x86_x64_optimizations) {
@@ -115,7 +129,7 @@ if (use_arm_neon_optimizations) {
     # Disabled for iPhone, as described in DDI0487C_a_armv8_arm:
     #  "All implementations of the ARMv8.1 architecture are required to
     #   implement the CRC32* instructions. These are optional in ARMv8.0."
-    if (!is_ios) {
+    if (!is_ios && !is_qtwebengine) {
       defines = [ "CRC32_ARMV8_CRC32" ]
       if (is_android) {
         defines += [ "ARMV8_OS_ANDROID" ]
@@ -136,13 +150,13 @@ if (use_arm_neon_optimizations) {
   source_set("zlib_arm_crc32") {
     visibility = [ ":*" ]
 
-    if (!is_ios) {
+    if (!is_ios && !is_qtwebengine) {
       include_dirs = [ "." ]
 
       if (!is_win && !is_clang) {
         assert(!use_thin_lto,
                "ThinLTO fails mixing different module-level targets")
-        cflags_c = [ "-march=armv8-a+crc" ]
+        cflags_c = [ "-march=armv8-a+aes+crc" ]
       }
 
       sources = [
@@ -197,6 +211,7 @@ source_set("zlib_inflate_chunk_simd") {
   # style function declarations, which triggers warning C4131.
   configs -= [ "//build/config/compiler:chromium_code" ]
   configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs += [ ":zlib_warnings" ]
 
   public_configs = [ ":zlib_inflate_chunk_simd_config" ]
 
@@ -216,6 +231,7 @@ source_set("zlib_crc32_simd") {
     sources = [
       "crc32_simd.c",
       "crc32_simd.h",
+      "crc_folding.c",
     ]
 
     if (!is_win || is_clang) {
@@ -229,45 +245,45 @@ source_set("zlib_crc32_simd") {
   configs += [ ":zlib_internal_config" ]
 
   public_configs = [ ":zlib_crc32_simd_config" ]
+
   public_deps = [ ":zlib_common_headers" ]
 }
 
-config("zlib_x86_simd_config") {
+config("zlib_slide_hash_simd_config") {
   if (use_x86_x64_optimizations) {
-    defines = [
-      "CRC32_SIMD_SSE42_PCLMUL",
-      "DEFLATE_FILL_WINDOW_SSE2",
-    ]
+    defines = [ "DEFLATE_SLIDE_HASH_SSE2" ]
+  }
+
+  if (use_arm_neon_optimizations) {
+    defines = [ "DEFLATE_SLIDE_HASH_NEON" ]
   }
 }
 
-source_set("zlib_x86_simd") {
+source_set("zlib_slide_hash_simd") {
   visibility = [ ":*" ]
 
   if (use_x86_x64_optimizations) {
-    sources = [
-      "crc_folding.c",
-      "fill_window_sse.c",
-    ]
+    sources = [ "slide_hash_simd.h" ]
+  }
 
-    if (!is_win || is_clang) {
-      cflags = [
-        "-msse4.2",
-        "-mpclmul",
-      ]
-    }
+  if (use_arm_neon_optimizations) {
+    sources = [ "slide_hash_simd.h" ]
   }
 
   configs += [ ":zlib_internal_config" ]
 
-  public_configs = [ ":zlib_x86_simd_config" ]
+  public_configs = [ ":zlib_slide_hash_simd_config" ]
 
   public_deps = [ ":zlib_common_headers" ]
 }
 
 config("zlib_warnings") {
-  if (is_clang && use_x86_x64_optimizations) {
-    cflags = [ "-Wno-incompatible-pointer-types" ]
+  if (is_clang) {
+    cflags = [
+      "-Wno-deprecated-non-prototype",
+      "-Wno-incompatible-pointer-types",
+      "-Wunused-variable",
+    ]
   }
 }
 
@@ -330,19 +346,17 @@ component("bundled_zlib") {
     deps += [
       ":zlib_adler32_simd",
       ":zlib_inflate_chunk_simd",
+      ":zlib_slide_hash_simd",
     ]
 
     if (use_x86_x64_optimizations) {
       deps += [ ":zlib_crc32_simd" ]
     } else if (use_arm_neon_optimizations) {
-      sources += [ "contrib/optimizations/slide_hash_neon.h" ]
       deps += [ ":zlib_arm_crc32" ]
     }
   } else {
     sources += [ "inflate.c" ]
   }
-
-  deps += [ ":zlib_x86_simd" ]
 
   if (is_android) {
     import("//build/config/android/config.gni")
@@ -414,8 +428,11 @@ config("minizip_warnings") {
   visibility = [ ":*" ]
 
   if (is_clang) {
-    # zlib uses `if ((a == b))` for some reason.
-    cflags = [ "-Wno-parentheses-equality" ]
+    cflags = [
+      # zlib uses `if ((a == b))` for some reason.
+      "-Wno-parentheses-equality",
+      "-Wno-deprecated-non-prototype",
+    ]
   }
 }
 
@@ -500,16 +517,6 @@ static_library("zip") {
   ]
 }
 
-static_library("compression_utils") {
-  sources = [
-    "google/compression_utils.cc",
-    "google/compression_utils.h",
-  ]
-  deps = [
-    ":zlib",
-  ]
-}
-
 executable("zlib_bench") {
   include_dirs = [ "." ]
 
@@ -525,6 +532,55 @@ executable("zlib_bench") {
   configs += [ "//build/config/compiler:no_chromium_code" ]
 }
 
+if (!is_win || target_os != "winuwp") {
+  executable("minizip_bin") {
+    include_dirs = [ "." ]
+
+    sources = [ "contrib/minizip/minizip.c" ]
+
+    if (is_clang) {
+      cflags = [
+        "-Wno-incompatible-pointer-types-discards-qualifiers",
+
+        "-Wno-deprecated-non-prototype",
+      ]
+    }
+
+    if (!is_debug) {
+      configs -= [ "//build/config/compiler:default_optimization" ]
+      configs += [ "//build/config/compiler:optimize_speed" ]
+    }
+
+    deps = [ ":minizip" ]
+
+    configs -= [ "//build/config/compiler:chromium_code" ]
+    configs += [ "//build/config/compiler:no_chromium_code" ]
+  }
+
+  executable("miniunz_bin") {
+    include_dirs = [ "." ]
+
+    sources = [ "contrib/minizip/miniunz.c" ]
+
+    if (is_clang) {
+      cflags = [
+        "-Wno-incompatible-pointer-types-discards-qualifiers",
+        "-Wno-deprecated-non-prototype",
+      ]
+    }
+
+    if (!is_debug) {
+      configs -= [ "//build/config/compiler:default_optimization" ]
+      configs += [ "//build/config/compiler:optimize_speed" ]
+    }
+
+    deps = [ ":minizip" ]
+
+    configs -= [ "//build/config/compiler:chromium_code" ]
+    configs += [ "//build/config/compiler:no_chromium_code" ]
+  }
+}
+
 if (build_with_chromium) {
   test("zlib_unittests") {
     testonly = true
@@ -534,15 +590,23 @@ if (build_with_chromium) {
       "contrib/tests/infcover.h",
       "contrib/tests/run_all_unittests.cc",
       "contrib/tests/utils_unittest.cc",
-      "google/compression_utils_portable.cc",
-      "google/compression_utils_portable.h",
+      "google/compression_utils_unittest.cc",
+      "google/zip_reader_unittest.cc",
+      "google/zip_unittest.cc",
     ]
+
+    data = [ "google/test/data/" ]
 
     deps = [
       ":zlib",
+      "google:compression_utils",
+      "google:zip",
       "//base/test:test_support",
       "//testing/gtest",
     ]
+
+    configs -= [ "//build/config/compiler:chromium_code" ]
+    configs += [ "//build/config/compiler:no_chromium_code" ]
 
     include_dirs = [
       "//third_party/googletest/src/googletest/include/gtest",

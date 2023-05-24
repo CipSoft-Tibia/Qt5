@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QDECLARATIVEPLACECONTENTMODEL_H
 #define QDECLARATIVEPLACECONTENTMODEL_H
@@ -53,14 +20,16 @@
 #include <QtQml/QQmlParserStatus>
 #include <QtLocation/QPlaceContent>
 #include <QtLocation/QPlaceContentReply>
+#include <QtLocation/QPlaceContentRequest>
+#include <QtLocation/QPlaceSupplier>
+
+Q_MOC_INCLUDE(<QtLocation/private/qdeclarativeplace_p.h>)
 
 QT_BEGIN_NAMESPACE
 
 class QDeclarativePlace;
 class QDeclarativeGeoServiceProvider;
 class QGeoServiceProvider;
-class QDeclarativeSupplier;
-class QDeclarativePlaceUser;
 
 class Q_LOCATION_PRIVATE_EXPORT QDeclarativePlaceContentModel : public QAbstractListModel, public QQmlParserStatus
 {
@@ -73,7 +42,7 @@ class Q_LOCATION_PRIVATE_EXPORT QDeclarativePlaceContentModel : public QAbstract
     Q_INTERFACES(QQmlParserStatus)
 
 public:
-    explicit QDeclarativePlaceContentModel(QPlaceContent::Type type, QObject *parent = 0);
+    explicit QDeclarativePlaceContentModel(QPlaceContent::Type type, QObject *parent = nullptr);
     ~QDeclarativePlaceContentModel();
 
     QDeclarativePlace *place() const;
@@ -89,23 +58,34 @@ public:
     void initializeCollection(int totalCount, const QPlaceContent::Collection &collection);
 
     // from QAbstractListModel
-    int rowCount(const QModelIndex &parent) const;
-    QVariant data(const QModelIndex &index, int role) const;
-    QHash<int, QByteArray> roleNames() const;
+    int rowCount(const QModelIndex &parent) const override;
+    QVariant data(const QModelIndex &index, int role) const override;
+    QHash<int, QByteArray> roleNames() const override;
 
     enum Roles {
-        SupplierRole = Qt::UserRole,
-        PlaceUserRole,
-        AttributionRole,
-        UserRole //indicator for next conten type specific role
+        ContentSupplierRole = Qt::UserRole,
+        ContentUserRole,
+        ContentAttributionRole,
+        EditorialTitleRole,
+        EditorialTextRole,
+        EditorialLanguageRole,
+        ImageIdRole,
+        ImageUrlRole,
+        ImageMimeTypeRole,
+        ReviewIdRole,
+        ReviewDateTimeRole,
+        ReviewTitleRole,
+        ReviewTextRole,
+        ReviewLanguageRole,
+        ReviewRatingRole
     };
 
-    bool canFetchMore(const QModelIndex &parent) const;
-    void fetchMore(const QModelIndex &parent);
+    bool canFetchMore(const QModelIndex &parent) const override;
+    void fetchMore(const QModelIndex &parent) override;
 
     // from QQmlParserStatus
-    void classBegin();
-    void componentComplete();
+    void classBegin() override;
+    void componentComplete() override;
 
 Q_SIGNALS:
     void placeChanged();
@@ -117,19 +97,53 @@ private Q_SLOTS:
 
 protected:
     QPlaceContent::Collection m_content;
-    QMap<QString, QDeclarativeSupplier *> m_suppliers;
-    QMap<QString, QDeclarativePlaceUser *>m_users;
+    QMap<QString, QPlaceSupplier> m_suppliers;
+    QMap<QString, QPlaceUser>m_users;
 
 private:
-    QDeclarativePlace *m_place;
+    QDeclarativePlace *m_place = nullptr;
     QPlaceContent::Type m_type;
-    int m_batchSize;
-    int m_contentCount;
+    int m_batchSize = 1;
+    int m_contentCount = -1;
 
-    QPlaceContentReply *m_reply;
+    QPlaceContentReply *m_reply = nullptr;
     QPlaceContentRequest m_nextRequest;
 
-    bool m_complete;
+    bool m_complete = false;
+};
+
+class QDeclarativePlaceReviewModel : public QDeclarativePlaceContentModel
+{
+    Q_GADGET
+    QML_NAMED_ELEMENT(ReviewModel)
+    QML_ADDED_IN_VERSION(5, 0)
+
+public:
+    explicit QDeclarativePlaceReviewModel(QObject *parent = nullptr)
+        : QDeclarativePlaceContentModel(QPlaceContent::ReviewType, parent)
+    {}
+};
+
+class QDeclarativePlaceEditorialModel : public QDeclarativePlaceContentModel
+{
+    Q_GADGET
+    QML_NAMED_ELEMENT(EditorialModel)
+    QML_ADDED_IN_VERSION(5, 0)
+public:
+    explicit QDeclarativePlaceEditorialModel(QObject *parent = nullptr)
+        : QDeclarativePlaceContentModel(QPlaceContent::EditorialType, parent)
+    {}
+};
+
+class QDeclarativePlaceImageModel : public QDeclarativePlaceContentModel
+{
+    Q_GADGET
+    QML_NAMED_ELEMENT(ImageModel)
+    QML_ADDED_IN_VERSION(5, 0)
+public:
+    explicit QDeclarativePlaceImageModel(QObject *parent = nullptr)
+        : QDeclarativePlaceContentModel(QPlaceContent::ImageType, parent)
+    {}
 };
 
 QT_END_NAMESPACE

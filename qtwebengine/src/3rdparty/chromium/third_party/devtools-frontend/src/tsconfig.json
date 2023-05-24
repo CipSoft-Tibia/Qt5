@@ -1,5 +1,5 @@
 {
-  "extends": "./tsconfig.base.json",
+  "extends": "./config/typescript/tsconfig.base.json",
   "compilerOptions": {
     "lib": [
       "esnext",
@@ -12,9 +12,10 @@
   },
   "include": [
     "front_end/",
-    "test/"
+    "test/",
+    "inspector_overlay"
   ],
   "exclude": [
-    "front_end/externs.js"
+    "front_end/**/*-legacy.ts"
   ]
 }

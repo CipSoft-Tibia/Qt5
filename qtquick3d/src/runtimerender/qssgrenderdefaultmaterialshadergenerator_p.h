@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2008-2012 NVIDIA Corporation.
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2008-2012 NVIDIA Corporation.
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSG_RENDER_DEFAULT_MATERIAL_SHADER_GENERATOR_H
 #define QSSG_RENDER_DEFAULT_MATERIAL_SHADER_GENERATOR_H
@@ -43,104 +17,110 @@
 //
 
 #include <QtQuick3DRuntimeRender/private/qssgrendermaterialshadergenerator_p.h>
-#include <QtQuick3DRuntimeRender/private/qssgrenderlightconstantproperties_p.h>
-#include <QtQuick3DRuntimeRender/private/qssgrendershadercodegeneratorv2_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrendershadercodegenerator_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrendershadowmap_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrenderlight_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrenderableimage_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrendershaderkeys_p.h>
 
 QT_BEGIN_NAMESPACE
 
-class QSSGRenderShadowMap;
-struct QSSGShaderGeneratorGeneratedShader;
 struct QSSGRenderableImage;
+struct QSSGShaderDefaultMaterialKeyProperties;
+struct QSSGShaderDefaultMaterialKey;
+struct QSSGLayerGlobalRenderProperties;
+struct QSSGMaterialVertexPipeline;
 
-class Q_QUICK3DRUNTIMERENDER_EXPORT QSSGDefaultMaterialVertexPipelineInterface : public QSSGShaderStageGeneratorInterface
+struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGMaterialShaderGenerator
 {
-protected:
-    virtual ~QSSGDefaultMaterialVertexPipelineInterface();
+    struct LightVariableNames
+    {
+        QByteArray lightColor;
+        QByteArray lightSpecularColor;
+        QByteArray lightAttenuation;
+        QByteArray lightConstantAttenuation;
+        QByteArray lightLinearAttenuation;
+        QByteArray lightQuadraticAttenuation;
+        QByteArray normalizedDirection;
+        QByteArray lightDirection;
+        QByteArray lightPos;
+        QByteArray lightConeAngle;
+        QByteArray lightInnerConeAngle;
+        QByteArray relativeDistance;
+        QByteArray relativeDirection;
+        QByteArray spotAngle;
+    };
 
-public:
-    // Responsible for beginning all vertex and fragment generation (void main() { etc).
-    virtual void beginVertexGeneration(const QSSGShaderDefaultMaterialKey &inKey, quint32 displacementImageIdx, QSSGRenderableImage *displacementImage) = 0;
-    // The fragment shader expects a floating point constant, objectOpacity to be defined
-    // post this method.
-    virtual void beginFragmentGeneration() = 0;
-    // Output variables may be mangled in some circumstances so the shader generation system
-    // needs an abstraction
-    // mechanism around this.
-    virtual void assignOutput(const QByteArray &inVarName, const QByteArray &inVarValueExpr) = 0;
+    struct ShadowVariableNames
+    {
+        QByteArray shadowMapStem;
+        QByteArray shadowCubeStem;
+        QByteArray shadowMatrixStem;
+        QByteArray shadowCoordStem;
+        QByteArray shadowControlStem;
+    };
 
-    /**
-     * @brief Generates UV coordinates in shader code
-     *
-     * @param[in] inUVSet		index of UV data set
-     *
-     * @return no return
-     */
-    virtual void generateUVCoords(const QSSGShaderDefaultMaterialKey &inKey, quint32 inUVSet = 0) = 0;
+    ~QSSGMaterialShaderGenerator() = default;
 
-    virtual void generateEnvMapReflection(const QSSGShaderDefaultMaterialKey &inKey) = 0;
-    virtual void generateViewVector() = 0;
+    static const char* getSamplerName(QSSGRenderableImage::Type type);
 
-    // fragment shader expects varying vertex normal
-    // lighting in vertex pipeline expects world_normal
-    virtual void generateWorldNormal(const QSSGShaderDefaultMaterialKey &inKey) = 0; // world_normal in both vert and frag shader
-    virtual void generateObjectNormal() = 0; // object_normal in both vert and frag shader
-    virtual void generateWorldPosition() = 0; // model_world_position in both vert and frag shader
-    virtual void generateVarTangentAndBinormal(const QSSGShaderDefaultMaterialKey &inKey) = 0;
-    virtual void generateVertexColor(const QSSGShaderDefaultMaterialKey &inKey) = 0;
+    static QSSGRhiShaderPipelinePtr generateMaterialRhiShader(const QByteArray &inShaderKeyPrefix,
+                                                              QSSGMaterialVertexPipeline &vertexGenerator,
+                                                              const QSSGShaderDefaultMaterialKey &key,
+                                                              QSSGShaderDefaultMaterialKeyProperties &inProperties,
+                                                              const QSSGShaderFeatures &inFeatureSet,
+                                                              const QSSGRenderGraphObject &inMaterial,
+                                                              const QSSGShaderLightListView &inLights,
+                                                              QSSGRenderableImage *inFirstImage, QSSGShaderLibraryManager &shaderLibraryManager,
+                                                              QSSGShaderCache &theCache);
 
-    virtual bool hasActiveWireframe() = 0; // varEdgeDistance is a valid entity
+    static void setRhiMaterialProperties(const QSSGRenderContextInterface &,
+                                         QSSGRhiShaderPipeline &shaders,
+                                         char *ubufData,
+                                         QSSGRhiGraphicsPipelineState *inPipelineState,
+                                         const QSSGRenderGraphObject &inMaterial,
+                                         const QSSGShaderDefaultMaterialKey &inKey,
+                                         QSSGShaderDefaultMaterialKeyProperties &inProperties,
+                                         const QSSGRenderCamera &inCamera,
+                                         const QMatrix4x4 &inModelViewProjection,
+                                         const QMatrix3x3 &inNormalMatrix,
+                                         const QMatrix4x4 &inGlobalTransform,
+                                         const QMatrix4x4 &clipSpaceCorrMatrix,
+                                         const QMatrix4x4 &localInstanceTransform,
+                                         const QMatrix4x4 &globalInstanceTransform,
+                                         const QSSGDataView<float> &inMorphWeights,
+                                         QSSGRenderableImage *inFirstImage,
+                                         float inOpacity,
+                                         const QSSGLayerGlobalRenderProperties &inRenderProperties,
+                                         const QSSGShaderLightListView &inLights,
+                                         const QSSGShaderReflectionProbe &reflectionProbe,
+                                         bool receivesShadows,
+                                         bool receivesReflections,
+                                         const QVector2D *shadowDepthAdjust,
+                                         QRhiTexture *lightmapTexture);
 
-    // responsible for closing all vertex and fragment generation
-    virtual void endVertexGeneration(bool customShader) = 0;
-    virtual void endFragmentGeneration(bool customShader) = 0;
+    static const char *directionalLightProcessorArgumentList();
+    static const char *pointLightProcessorArgumentList();
+    static const char *spotLightProcessorArgumentList();
+    static const char *ambientLightProcessorArgumentList();
+    static const char *specularLightProcessorArgumentList();
+    static const char *shadedFragmentMainArgumentList();
+    static const char *postProcessorArgumentList();
+    static const char *iblProbeProcessorArgumentList();
+    static const char *vertexMainArgumentList();
+    static const char *vertexInstancedMainArgumentList();
+
+private:
+    QSSGMaterialShaderGenerator() = delete;
+    Q_DISABLE_COPY(QSSGMaterialShaderGenerator)
 };
 
-class Q_QUICK3DRUNTIMERENDER_EXPORT QSSGDefaultMaterialShaderGeneratorInterface : public QSSGMaterialShaderGeneratorInterface
-{
-public:
-    QSSGDefaultMaterialShaderGeneratorInterface(QSSGRenderContextInterface *renderContext)
-        : QSSGMaterialShaderGeneratorInterface(renderContext)
-    {}
+namespace QtQuick3DEditorHelpers {
+namespace CustomMaterial {
+// NOTE: Returns a copy of the actual list, cache as needed!
+[[nodiscard]] Q_QUICK3DRUNTIMERENDER_EXPORT QList<QByteArrayView> reservedArgumentNames();
+}
+}
 
-    virtual ~QSSGDefaultMaterialShaderGeneratorInterface() override {}
-    virtual void addDisplacementImageUniforms(QSSGShaderStageGeneratorInterface &inGenerator,
-                                              quint32 displacementImageIdx,
-                                              QSSGRenderableImage *displacementImage) = 0;
-    ImageVariableNames getImageVariableNames(quint32 inIdx) override = 0;
-    void generateImageUVCoordinates(QSSGShaderStageGeneratorInterface &inVertexPipeline,
-                                    quint32 idx,
-                                    quint32 uvSet,
-                                    QSSGRenderableImage &image) override = 0;
-    // Transforms attr_pos, attr_norm, and attr_uv0.
-    virtual void addDisplacementMappingForDepthPass(QSSGShaderStageGeneratorInterface &inShader) = 0;
-
-    // inPipelineName needs to be unique else the shader cache will just return shaders from
-    // different pipelines.
-    QSSGRef<QSSGRenderShaderProgram> generateShader(const QSSGRenderGraphObject &inMaterial,
-                                                        QSSGShaderDefaultMaterialKey inShaderDescription,
-                                                        QSSGShaderStageGeneratorInterface &inVertexPipeline,
-                                                        const ShaderFeatureSetList &inFeatureSet,
-                                                        const QVector<QSSGRenderLight *> &inLights,
-                                                        QSSGRenderableImage *inFirstImage,
-                                                        bool inHasTransparency,
-                                                        const QByteArray &inVertexPipelineName,
-                                                        const QByteArray &inCustomMaterialName = QByteArray()) override = 0;
-
-    // Also sets the blend function on the render context.
-    virtual void setMaterialProperties(const QSSGRef<QSSGRenderShaderProgram> &inProgram,
-                                       const QSSGRenderGraphObject &inMaterial,
-                                       const QVector2D &inCameraVec,
-                                       const QMatrix4x4 &inModelViewProjection,
-                                       const QMatrix3x3 &inNormalMatrix,
-                                       const QMatrix4x4 &inGlobalTransform,
-                                       QSSGRenderableImage *inFirstImage,
-                                       float inOpacity,
-                                       const QSSGLayerGlobalRenderProperties &inRenderProperties,
-                                       bool receivesShadows = true) override = 0;
-
-    static QSSGRef<QSSGDefaultMaterialShaderGeneratorInterface> createDefaultMaterialShaderGenerator(QSSGRenderContextInterface *inRenderContext);
-
-    QSSGLightConstantProperties<QSSGShaderGeneratorGeneratedShader> *getLightConstantProperties(QSSGShaderGeneratorGeneratedShader &shader);
-};
 QT_END_NAMESPACE
 #endif

@@ -1,11 +1,10 @@
-#!/usr/bin/env python
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 '''Unit tests for grit.format.data_pack'''
 
-from __future__ import print_function
 
 import os
 import sys
@@ -58,7 +57,7 @@ class FormatDataPackUnittest(unittest.TestCase):
         10: b'this is id 4',
     }
     data = data_pack.WriteDataPackToString(input_resources, data_pack.UTF8)
-    self.assertEquals(data, expected_data)
+    self.assertEqual(data, expected_data)
 
     expected_data_pack = data_pack.DataPackContents({
         1: b'',

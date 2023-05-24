@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdeclarativegeocodemodel_p.h"
 #include "error_messages_p.h"
@@ -115,9 +82,7 @@ QT_BEGIN_NAMESPACE
 
 
 QDeclarativeGeocodeModel::QDeclarativeGeocodeModel(QObject *parent)
-:   QAbstractListModel(parent), autoUpdate_(false), complete_(false), reply_(0), plugin_(0),
-    status_(QDeclarativeGeocodeModel::Null), error_(QDeclarativeGeocodeModel::NoError),
-    address_(0), limit_(-1), offset_(0)
+    : QAbstractListModel(parent)
 {
 }
 
@@ -280,8 +245,8 @@ void QDeclarativeGeocodeModel::setPlugin(QDeclarativeGeoServiceProvider *plugin)
     if (plugin_->isAttached()) {
         pluginReady();
     } else {
-        connect(plugin_, SIGNAL(attached()),
-                this, SLOT(pluginReady()));
+        connect(plugin_, &QDeclarativeGeoServiceProvider::attached,
+                this, &QDeclarativeGeocodeModel::pluginReady);
     }
 }
 
@@ -317,10 +282,10 @@ void QDeclarativeGeocodeModel::pluginReady()
         return;
     }
 
-    connect(geocodingManager, SIGNAL(finished(QGeoCodeReply*)),
-            this, SLOT(geocodeFinished(QGeoCodeReply*)));
-    connect(geocodingManager, SIGNAL(error(QGeoCodeReply*,QGeoCodeReply::Error,QString)),
-            this, SLOT(geocodeError(QGeoCodeReply*,QGeoCodeReply::Error,QString)));
+    connect(geocodingManager, &QGeoCodingManager::finished,
+            this, &QDeclarativeGeocodeModel::geocodeFinished);
+    connect(geocodingManager, &QGeoCodingManager::errorOccurred,
+            this, &QDeclarativeGeocodeModel::geocodeError);
 
     if (complete_ && autoUpdate_)
         update();
@@ -390,7 +355,6 @@ void QDeclarativeGeocodeModel::geocodeFinished(QGeoCodeReply *reply)
     reply->deleteLater();
     reply_ = 0;
     int oldCount = declarativeLocations_.count();
-    // const QVariantMap &extraData = QGeoCodeReplyPrivate::get(*reply)->extraData();
     setLocations(reply->locations());
     setError(NoError, QString());
     setStatus(QDeclarativeGeocodeModel::Ready);
@@ -505,10 +469,8 @@ void QDeclarativeGeocodeModel::setLocations(const QList<QGeoLocation> &locations
     beginResetModel();
     qDeleteAll(declarativeLocations_);
     declarativeLocations_.clear();
-    for (int i = 0;  i < locations.count(); ++i) {
-        QDeclarativeGeoLocation *location = new QDeclarativeGeoLocation(locations.at(i), this);
-        declarativeLocations_.append(location);
-    }
+    for (const auto &location : locations)
+        declarativeLocations_.append(new QDeclarativeGeoLocation(location, this));
     endResetModel();
 }
 
@@ -539,7 +501,7 @@ QDeclarativeGeoLocation *QDeclarativeGeocodeModel::get(int index)
 {
     if (index < 0 || index >= declarativeLocations_.count()) {
         qmlWarning(this) << QStringLiteral("Index '%1' out of range").arg(index);
-        return 0;
+        return nullptr;
     }
     return declarativeLocations_.at(index);
 }
@@ -664,7 +626,7 @@ void QDeclarativeGeocodeModel::setQuery(const QVariant &query)
         searchString_.clear();
 
         coordinate_ = query.value<QGeoCoordinate>();
-    } else if (query.type() == QVariant::String) {
+    } else if (query.typeId() == QMetaType::QString) {
         searchString_ = query.toString();
         if (address_) {
             address_->disconnect(this);
@@ -679,14 +641,22 @@ void QDeclarativeGeocodeModel::setQuery(const QVariant &query)
             searchString_.clear();
 
             address_ = address;
-            connect(address_, SIGNAL(countryChanged()), this, SLOT(queryContentChanged()));
-            connect(address_, SIGNAL(countryCodeChanged()), this, SLOT(queryContentChanged()));
-            connect(address_, SIGNAL(stateChanged()), this, SLOT(queryContentChanged()));
-            connect(address_, SIGNAL(countyChanged()), this, SLOT(queryContentChanged()));
-            connect(address_, SIGNAL(cityChanged()), this, SLOT(queryContentChanged()));
-            connect(address_, SIGNAL(districtChanged()), this, SLOT(queryContentChanged()));
-            connect(address_, SIGNAL(streetChanged()), this, SLOT(queryContentChanged()));
-            connect(address_, SIGNAL(postalCodeChanged()), this, SLOT(queryContentChanged()));
+            connect(address_, &QDeclarativeGeoAddress::countryChanged,
+                    this, &QDeclarativeGeocodeModel::queryContentChanged);
+            connect(address_, &QDeclarativeGeoAddress::countryCodeChanged,
+                    this, &QDeclarativeGeocodeModel::queryContentChanged);
+            connect(address_, &QDeclarativeGeoAddress::stateChanged,
+                    this, &QDeclarativeGeocodeModel::queryContentChanged);
+            connect(address_, &QDeclarativeGeoAddress::countyChanged,
+                    this, &QDeclarativeGeocodeModel::queryContentChanged);
+            connect(address_, &QDeclarativeGeoAddress::cityChanged,
+                    this, &QDeclarativeGeocodeModel::queryContentChanged);
+            connect(address_, &QDeclarativeGeoAddress::districtChanged,
+                    this, &QDeclarativeGeocodeModel::queryContentChanged);
+            connect(address_, &QDeclarativeGeoAddress::streetChanged,
+                    this, &QDeclarativeGeocodeModel::queryContentChanged);
+            connect(address_, &QDeclarativeGeoAddress::postalCodeChanged,
+                    this, &QDeclarativeGeocodeModel::queryContentChanged);
         } else {
             qmlWarning(this) << QStringLiteral("Unsupported query type for geocode model ")
                           << QStringLiteral("(coordinate, string and Address supported).");

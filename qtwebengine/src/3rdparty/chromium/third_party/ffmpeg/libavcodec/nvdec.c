@@ -21,6 +21,7 @@
  */
 
 #include "config.h"
+#include "config_components.h"
 
 #include "libavutil/common.h"
 #include "libavutil/error.h"
@@ -50,6 +51,8 @@ typedef struct NVDECDecoder {
 
     CudaFunctions *cudl;
     CuvidFunctions *cvdl;
+
+    int unsafe_output;
 } NVDECDecoder;
 
 typedef struct NVDECFramePool {
@@ -62,6 +65,9 @@ typedef struct NVDECFramePool {
 static int map_avcodec_id(enum AVCodecID id)
 {
     switch (id) {
+#if CONFIG_AV1_NVDEC_HWACCEL
+    case AV_CODEC_ID_AV1:        return cudaVideoCodec_AV1;
+#endif
     case AV_CODEC_ID_H264:       return cudaVideoCodec_H264;
     case AV_CODEC_ID_HEVC:       return cudaVideoCodec_HEVC;
     case AV_CODEC_ID_MJPEG:      return cudaVideoCodec_JPEG;
@@ -79,6 +85,9 @@ static int map_avcodec_id(enum AVCodecID id)
 static int map_chroma_format(enum AVPixelFormat pix_fmt)
 {
     int shift_h = 0, shift_v = 0;
+
+    if (av_pix_fmt_count_planes(pix_fmt) == 1)
+        return cudaVideoChromaFormat_Monochrome;
 
     av_pix_fmt_get_chroma_sub_sample(pix_fmt, &shift_h, &shift_v);
 
@@ -236,7 +245,7 @@ fail:
     return ret;
 }
 
-static AVBufferRef *nvdec_decoder_frame_alloc(void *opaque, int size)
+static AVBufferRef *nvdec_decoder_frame_alloc(void *opaque, size_t size)
 {
     NVDECFramePool *pool = opaque;
     AVBufferRef *ret;
@@ -258,6 +267,7 @@ int ff_nvdec_decode_uninit(AVCodecContext *avctx)
     NVDECContext *ctx = avctx->internal->hwaccel_priv_data;
 
     av_freep(&ctx->bitstream);
+    av_freep(&ctx->bitstream_internal);
     ctx->bitstream_len       = 0;
     ctx->bitstream_allocated = 0;
 
@@ -276,7 +286,7 @@ static void nvdec_free_dummy(struct AVHWFramesContext *ctx)
     av_buffer_pool_uninit(&ctx->pool);
 }
 
-static AVBufferRef *nvdec_alloc_dummy(int size)
+static AVBufferRef *nvdec_alloc_dummy(size_t size)
 {
     return av_buffer_create(NULL, 0, NULL, NULL, 0);
 }
@@ -336,6 +346,8 @@ int ff_nvdec_decode_init(AVCodecContext *avctx)
     int cuvid_codec_type, cuvid_chroma_format, chroma_444;
     int ret = 0;
 
+    int unsafe_output = !!(avctx->hwaccel_flags & AV_HWACCEL_FLAG_UNSAFE_OUTPUT);
+
     sw_desc = av_pix_fmt_desc_get(avctx->sw_pix_fmt);
     if (!sw_desc)
         return AVERROR_BUG;
@@ -394,7 +406,7 @@ int ff_nvdec_decode_init(AVCodecContext *avctx)
     params.CodecType           = cuvid_codec_type;
     params.ChromaFormat        = cuvid_chroma_format;
     params.ulNumDecodeSurfaces = frames_ctx->initial_pool_size;
-    params.ulNumOutputSurfaces = frames_ctx->initial_pool_size;
+    params.ulNumOutputSurfaces = unsafe_output ? frames_ctx->initial_pool_size : 1;
 
     ret = nvdec_decoder_create(&ctx->decoder_ref, frames_ctx->device_ref, &params, avctx);
     if (ret < 0) {
@@ -409,6 +421,7 @@ int ff_nvdec_decode_init(AVCodecContext *avctx)
     }
 
     decoder = (NVDECDecoder*)ctx->decoder_ref->data;
+    decoder->unsafe_output = unsafe_output;
     decoder->real_hw_frames_ref = real_hw_frames_ref;
     real_hw_frames_ref = NULL;
 
@@ -441,6 +454,7 @@ static void nvdec_fdd_priv_free(void *priv)
 
     av_buffer_unref(&cf->idx_ref);
     av_buffer_unref(&cf->decoder_ref);
+    av_buffer_unref(&cf->ref_idx_ref);
 
     av_freep(&priv);
 }
@@ -465,6 +479,7 @@ static void nvdec_unmap_mapped_frame(void *opaque, uint8_t *data)
 finish:
     av_buffer_unref(&unmap_data->idx_ref);
     av_buffer_unref(&unmap_data->decoder_ref);
+    av_buffer_unref(&unmap_data->ref_idx_ref);
     av_free(unmap_data);
 }
 
@@ -514,16 +529,16 @@ static int nvdec_retrieve_data(void *logctx, AVFrame *frame)
         goto copy_fail;
     }
 
-    av_buffer_unref(&frame->hw_frames_ctx);
-    frame->hw_frames_ctx = av_buffer_ref(decoder->real_hw_frames_ref);
-    if (!frame->hw_frames_ctx) {
+    ret = av_buffer_replace(&frame->hw_frames_ctx, decoder->real_hw_frames_ref);
+    if (ret < 0)
+        goto copy_fail;
+
+    unmap_data->idx = cf->idx;
+    if (!(unmap_data->idx_ref     = av_buffer_ref(cf->idx_ref)) ||
+        !(unmap_data->decoder_ref = av_buffer_ref(cf->decoder_ref))) {
         ret = AVERROR(ENOMEM);
         goto copy_fail;
     }
-
-    unmap_data->idx = cf->idx;
-    unmap_data->idx_ref = av_buffer_ref(cf->idx_ref);
-    unmap_data->decoder_ref = av_buffer_ref(cf->decoder_ref);
 
     av_pix_fmt_get_chroma_sub_sample(hwctx->sw_format, &shift_h, &shift_v);
     for (i = 0; frame->linesize[i]; i++) {
@@ -544,7 +559,11 @@ copy_fail:
 
 finish:
     CHECK_CU(decoder->cudl->cuCtxPopCurrent(&dummy));
-    return ret;
+
+    if (ret < 0 || decoder->unsafe_output)
+        return ret;
+
+    return av_frame_make_writable(frame);
 }
 
 int ff_nvdec_start_frame(AVCodecContext *avctx, AVFrame *frame)
@@ -576,7 +595,7 @@ int ff_nvdec_start_frame(AVCodecContext *avctx, AVFrame *frame)
         ret = AVERROR(ENOMEM);
         goto fail;
     }
-    cf->idx = *(unsigned int*)cf->idx_ref->data;
+    cf->ref_idx = cf->idx = *(unsigned int*)cf->idx_ref->data;
 
     fdd->hwaccel_priv      = cf;
     fdd->hwaccel_priv_free = nvdec_fdd_priv_free;
@@ -587,6 +606,40 @@ fail:
     nvdec_fdd_priv_free(cf);
     return ret;
 
+}
+
+int ff_nvdec_start_frame_sep_ref(AVCodecContext *avctx, AVFrame *frame, int has_sep_ref)
+{
+    NVDECContext *ctx = avctx->internal->hwaccel_priv_data;
+    FrameDecodeData *fdd = (FrameDecodeData*)frame->private_ref->data;
+    NVDECFrame *cf;
+    int ret;
+
+    ret = ff_nvdec_start_frame(avctx, frame);
+    if (ret < 0)
+        return ret;
+
+    cf = fdd->hwaccel_priv;
+
+    if (has_sep_ref) {
+        if (!cf->ref_idx_ref) {
+            cf->ref_idx_ref = av_buffer_pool_get(ctx->decoder_pool);
+            if (!cf->ref_idx_ref) {
+                av_log(avctx, AV_LOG_ERROR, "No decoder surfaces left\n");
+                ret = AVERROR(ENOMEM);
+                goto fail;
+            }
+        }
+        cf->ref_idx = *(unsigned int*)cf->ref_idx_ref->data;
+    } else {
+        av_buffer_unref(&cf->ref_idx_ref);
+        cf->ref_idx = cf->idx;
+    }
+
+    return 0;
+fail:
+    nvdec_fdd_priv_free(cf);
+    return ret;
 }
 
 int ff_nvdec_end_frame(AVCodecContext *avctx)
@@ -714,5 +767,5 @@ int ff_nvdec_get_ref_idx(AVFrame *frame)
     if (!cf)
         return -1;
 
-    return cf->idx;
+    return cf->ref_idx;
 }

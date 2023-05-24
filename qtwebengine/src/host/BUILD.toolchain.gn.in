@@ -1,0 +1,17 @@
+import("//build/config/sysroot.gni")
+import("//build/toolchain/gcc_toolchain.gni")
+gcc_toolchain("@GN_TOOLCHAIN@") {
+  cc = "@CMAKE_C_COMPILER@"
+  cxx = "@CMAKE_CXX_COMPILER@"
+  ld = "@CMAKE_CXX_COMPILER@"
+  ar = "@CMAKE_AR@"
+  nm = "@CMAKE_NM@"
+  extra_cppflags = ""
+  toolchain_args = {
+    current_os = "@GN_OS@"
+    current_cpu = "@GN_CPU@"
+    v8_current_cpu = "@GN_V8_CPU@"
+    is_clang = @GN_IS_CLANG@
+    use_gold = false
+  }
+}

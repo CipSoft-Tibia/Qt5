@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,27 +8,24 @@
 #define XFA_FWL_CFWL_WIDGETMGR_H_
 
 #include <map>
-#include <memory>
 
-#include "core/fxcrt/fx_system.h"
+#include "core/fxcrt/fx_coordinates.h"
 #include "fxjs/gc/gced_tree_node.h"
 #include "fxjs/gc/heap.h"
 #include "v8/include/cppgc/garbage-collected.h"
 #include "v8/include/cppgc/member.h"
 #include "v8/include/cppgc/visitor.h"
-#include "xfa/fxgraphics/cxfa_graphics.h"
 
-class CFWL_Message;
-class CXFA_Graphics;
-class CFX_Matrix;
+class CFGAS_GEGraphics;
 class CFWL_App;
+class CFWL_Message;
 class CFWL_Widget;
 
 class CFWL_WidgetMgr final : public cppgc::GarbageCollected<CFWL_WidgetMgr> {
  public:
   class AdapterIface : public cppgc::GarbageCollectedMixin {
    public:
-    virtual ~AdapterIface() {}
+    virtual ~AdapterIface() = default;
     virtual void RepaintWidget(CFWL_Widget* pWidget) = 0;
     virtual bool GetPopupPos(CFWL_Widget* pWidget,
                              float fMinHeight,
@@ -44,7 +41,7 @@ class CFWL_WidgetMgr final : public cppgc::GarbageCollected<CFWL_WidgetMgr> {
 
   void OnProcessMessageToForm(CFWL_Message* pMessage);
   void OnDrawWidget(CFWL_Widget* pWidget,
-                    CXFA_Graphics* pGraphics,
+                    CFGAS_GEGraphics* pGraphics,
                     const CFX_Matrix& matrix);
 
   CFWL_Widget* GetParentWidget(const CFWL_Widget* pWidget) const;
@@ -92,8 +89,8 @@ class CFWL_WidgetMgr final : public cppgc::GarbageCollected<CFWL_WidgetMgr> {
 
   void DrawChildren(CFWL_Widget* pParent,
                     const CFX_RectF& rtClip,
-                    CXFA_Graphics* pGraphics,
-                    const CFX_Matrix* pMatrix);
+                    CFGAS_GEGraphics* pGraphics,
+                    const CFX_Matrix& mtMatrix);
 
   cppgc::Member<AdapterIface> const m_pAdapter;
   cppgc::Member<CFWL_App> const m_pApp;

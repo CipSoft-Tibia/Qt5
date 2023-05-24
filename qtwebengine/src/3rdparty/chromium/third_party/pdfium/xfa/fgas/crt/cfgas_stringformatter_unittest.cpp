@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,49 +6,31 @@
 
 #include "xfa/fgas/crt/cfgas_stringformatter.h"
 
-#include <time.h>
-
-#include <memory>
+#include <iterator>
 
 #include "build/build_config.h"
 #include "core/fpdfapi/page/cpdf_pagemodule.h"
+#include "core/fxcrt/cfx_datetime.h"
 #include "testing/fx_string_testhelpers.h"
 #include "testing/fxgc_unittest.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/base/stl_util.h"
+#include "testing/scoped_set_tz.h"
 #include "v8/include/cppgc/persistent.h"
 #include "xfa/fxfa/parser/cxfa_localemgr.h"
 
-namespace {
-
-void SetTZ(const char* tz) {
-#if defined(OS_WIN)
-    _putenv_s("TZ", tz);
-    _tzset();
-#else
-    setenv("TZ", tz, 1);
-    tzset();
-#endif
-}
-
-}  // namespace
-
 class CFGAS_StringFormatterTest : public FXGCUnitTest {
  public:
-  CFGAS_StringFormatterTest() {
-    SetTZ("UTC");
-    CPDF_PageModule::Create();
-  }
+  CFGAS_StringFormatterTest() : scoped_tz_("UTC") { CPDF_PageModule::Create(); }
 
-  ~CFGAS_StringFormatterTest() override {
-    CPDF_PageModule::Destroy();
-    SetTZ("UTC");
-  }
+  ~CFGAS_StringFormatterTest() override { CPDF_PageModule::Destroy(); }
 
   CXFA_LocaleMgr* Mgr(const WideString& locale) {
     return cppgc::MakeGarbageCollected<CXFA_LocaleMgr>(
         heap()->GetAllocationHandle(), heap(), nullptr, locale);
   }
+
+ private:
+  ScopedSetTZ scoped_tz_;
 };
 
 // TODO(dsinclair): Looks like the formatter/parser does not handle the various
@@ -108,7 +90,7 @@ TEST_F(CFGAS_StringFormatterTest, DateFormat) {
   // as they are not supported. In theory there are the full width versions
   // of DDD, DDDD, MMM, MMMM, E, e, gg, YYY, YYYYY.
 
-  for (size_t i = 0; i < pdfium::size(tests); ++i) {
+  for (size_t i = 0; i < std::size(tests); ++i) {
     WideString result;
     CFGAS_StringFormatter fmt(tests[i].pattern);
     EXPECT_TRUE(fmt.FormatDateTime(Mgr(tests[i].locale), tests[i].input,
@@ -156,18 +138,18 @@ TEST_F(CFGAS_StringFormatterTest, TimeFormat) {
   // list the symbol.
 
   // The z modifier only appends if the TZ is outside of +0
-  SetTZ("UTC+2");
+  {
+    ScopedSetTZ scoped_tz("UTC+2");
 
-  for (size_t i = 0; i < pdfium::size(tests); ++i) {
-    WideString result;
-    CFGAS_StringFormatter fmt(tests[i].pattern);
-    EXPECT_TRUE(fmt.FormatDateTime(Mgr(tests[i].locale), tests[i].input,
-                                   CFGAS_StringFormatter::DateTimeType::kTime,
-                                   &result));
-    EXPECT_STREQ(tests[i].output, result.c_str()) << " TEST: " << i;
+    for (size_t i = 0; i < std::size(tests); ++i) {
+      WideString result;
+      CFGAS_StringFormatter fmt(tests[i].pattern);
+      EXPECT_TRUE(fmt.FormatDateTime(Mgr(tests[i].locale), tests[i].input,
+                                     CFGAS_StringFormatter::DateTimeType::kTime,
+                                     &result));
+      EXPECT_STREQ(tests[i].output, result.c_str()) << " TEST: " << i;
+    }
   }
-
-  SetTZ("UTC");
 }
 
 TEST_F(CFGAS_StringFormatterTest, DateTimeFormat) {
@@ -191,7 +173,7 @@ TEST_F(CFGAS_StringFormatterTest, DateTimeFormat) {
       {L"en", L"9111T1111:", L"MMM D, YYYYTh:MM:SS A",
        L"Jan 1, 9111 11:11:00 AM"}};
 
-  for (size_t i = 0; i < pdfium::size(tests); ++i) {
+  for (size_t i = 0; i < std::size(tests); ++i) {
     WideString result;
     CFGAS_StringFormatter fmt(tests[i].pattern);
     EXPECT_TRUE(fmt.FormatDateTime(
@@ -220,7 +202,7 @@ TEST_F(CFGAS_StringFormatterTest, TimeDateFormat) {
        L"time{'At 'HH:MM Z}date{' on 'MMM DD, YYYY}",
        L"At 10:30 GMT on Jul 16, 1999"}};
 
-  for (size_t i = 0; i < pdfium::size(tests); ++i) {
+  for (size_t i = 0; i < std::size(tests); ++i) {
     WideString result;
     CFGAS_StringFormatter fmt(tests[i].pattern);
     EXPECT_TRUE(fmt.FormatDateTime(
@@ -282,7 +264,7 @@ TEST_F(CFGAS_StringFormatterTest, DateParse) {
   // not supported. In theory there are the full width versions of DDD,
   // DDDD, MMM, MMMM, E, e, gg, YYY, YYYYY.
 
-  for (size_t i = 0; i < pdfium::size(tests); ++i) {
+  for (size_t i = 0; i < std::size(tests); ++i) {
     CFX_DateTime result;
     CFGAS_StringFormatter fmt(tests[i].pattern);
     EXPECT_TRUE(fmt.ParseDateTime(Mgr(tests[i].locale), tests[i].input,
@@ -310,7 +292,7 @@ TEST_F(CFGAS_StringFormatterTest, DateParse) {
 //   // kkkk, HHH, HHHH, KKK, KKKK, MMM, MMMM, SSS, SSSS plus 2 more that the
 //   // spec apparently forgot to list the symbol.
 
-//   for (size_t i = 0; i < pdfium::size(tests); ++i) {
+//   for (size_t i = 0; i < std::size(tests); ++i) {
 //     CFX_DateTime result;
 //     EXPECT_TRUE(fmt(tests[i].locale)
 //                   ->ParseDateTime(tests[i].input, tests[i].pattern,
@@ -636,7 +618,7 @@ TEST_F(CFGAS_StringFormatterTest, TextParse) {
                {L"A1C-1234-D", L"000-9999-X", L"A1C1234D"},
                {L"A1C-1234-D text", L"000-9999-X 'text'", L"A1C1234D"}};
 
-  for (size_t i = 0; i < pdfium::size(tests); ++i) {
+  for (size_t i = 0; i < std::size(tests); ++i) {
     WideString result;
     CFGAS_StringFormatter fmt(tests[i].pattern);
     EXPECT_TRUE(fmt.ParseText(tests[i].input, &result));
@@ -667,7 +649,7 @@ TEST_F(CFGAS_StringFormatterTest, TextFormat) {
       {L"en", L"K1#5K2", L"00X OO9", L"K1# 5K2"},
   };
 
-  for (size_t i = 0; i < pdfium::size(tests); ++i) {
+  for (size_t i = 0; i < std::size(tests); ++i) {
     WideString result;
     CFGAS_StringFormatter fmt(tests[i].pattern);
     EXPECT_TRUE(fmt.FormatText(tests[i].input, &result));
@@ -684,7 +666,7 @@ TEST_F(CFGAS_StringFormatterTest, NullParse) {
       {L"No data", L"null{'No data'}"},
   };
 
-  for (size_t i = 0; i < pdfium::size(tests); ++i) {
+  for (size_t i = 0; i < std::size(tests); ++i) {
     CFGAS_StringFormatter fmt(tests[i].pattern);
     EXPECT_TRUE(fmt.ParseNull(tests[i].input)) << " TEST: " << i;
   }
@@ -696,7 +678,7 @@ TEST_F(CFGAS_StringFormatterTest, NullFormat) {
     const wchar_t* output;
   } tests[] = {{L"null{'n/a'}", L"n/a"}, {L"null{}", L""}};
 
-  for (size_t i = 0; i < pdfium::size(tests); ++i) {
+  for (size_t i = 0; i < std::size(tests); ++i) {
     WideString result;
     CFGAS_StringFormatter fmt(tests[i].pattern);
     EXPECT_TRUE(fmt.FormatNull(&result));
@@ -710,7 +692,7 @@ TEST_F(CFGAS_StringFormatterTest, ZeroParse) {
     const wchar_t* pattern;
   } tests[] = {{L"", L"zero{}"}, {L"9", L"zero{9}"}, {L"a", L"zero{'a'}"}};
 
-  for (size_t i = 0; i < pdfium::size(tests); ++i) {
+  for (size_t i = 0; i < std::size(tests); ++i) {
     CFGAS_StringFormatter fmt(tests[i].pattern);
     EXPECT_TRUE(fmt.ParseZero(tests[i].input)) << " TEST: " << i;
   }
@@ -728,7 +710,7 @@ TEST_F(CFGAS_StringFormatterTest, ZeroFormat) {
                // {L"0.0", L"zero{9}", L"0"},
                {L"0", L"zero{}", L""}};
 
-  for (size_t i = 0; i < pdfium::size(tests); ++i) {
+  for (size_t i = 0; i < std::size(tests); ++i) {
     WideString result;
     CFGAS_StringFormatter fmt(tests[i].pattern);
     EXPECT_TRUE(fmt.FormatZero(&result));

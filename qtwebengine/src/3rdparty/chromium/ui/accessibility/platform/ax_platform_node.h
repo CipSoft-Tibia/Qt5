@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,12 +8,13 @@
 #include <ostream>
 #include <string>
 
-#include "base/callback.h"
+#include "base/component_export.h"
+#include "base/functional/callback.h"
+#include "base/gtest_prod_util.h"
 #include "base/lazy_instance.h"
 #include "base/observer_list.h"
 #include "build/build_config.h"
 #include "ui/accessibility/ax_enums.mojom-forward.h"
-#include "ui/accessibility/ax_export.h"
 #include "ui/accessibility/ax_mode.h"
 #include "ui/accessibility/ax_mode_observer.h"
 #include "ui/gfx/native_widget_types.h"
@@ -27,7 +28,7 @@ class AXPlatformNodeDelegate;
 // An object that wants to be accessible can derive from AXPlatformNodeDelegate
 // and then call AXPlatformNode::Create. The delegate implementation should
 // own the AXPlatformNode instance (or otherwise manage its lifecycle).
-class AX_EXPORT AXPlatformNode {
+class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNode {
  public:
   using NativeWindowHandlerCallback =
       base::RepeatingCallback<AXPlatformNode*(gfx::NativeWindow)>;
@@ -44,6 +45,10 @@ class AX_EXPORT AXPlatformNode {
   // Return the AXPlatformNode at the root of the tree for a native window.
   static AXPlatformNode* FromNativeWindow(gfx::NativeWindow native_window);
 
+  virtual ~AXPlatformNode();
+  AXPlatformNode(const AXPlatformNode&) = delete;
+  AXPlatformNode& operator=(const AXPlatformNode&) = delete;
+
   // Provide a function that returns the AXPlatformNode at the root of the
   // tree for a native window.
   static void RegisterNativeWindowHandler(NativeWindowHandlerCallback handler);
@@ -59,6 +64,11 @@ class AX_EXPORT AXPlatformNode {
   // Helper static function to notify all global observers about
   // the addition of an AXMode flag.
   static void NotifyAddAXModeFlags(AXMode mode_flags);
+
+  // Helper static function to update the AXMode. This is called when flags
+  // are removed. It doesn't currently notify global observers.
+  // *** Do not use! Use BrowserAccessibilityStateImpl instead. ***
+  static void SetAXMode(AXMode new_mode);
 
   // Return the focused object in any UI popup overlaying content, or null.
   static gfx::NativeViewAccessible GetPopupFocusOverride();
@@ -81,9 +91,9 @@ class AX_EXPORT AXPlatformNode {
   // this object.
   virtual void NotifyAccessibilityEvent(ax::mojom::Event event_type) = 0;
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
   // Fire a platform-specific notification to announce |text|.
-  virtual void AnnounceText(const base::string16& text) = 0;
+  virtual void AnnounceText(const std::u16string& text) = 0;
 #endif
 
   // Return this object's delegate.
@@ -110,7 +120,15 @@ class AX_EXPORT AXPlatformNode {
 
  protected:
   AXPlatformNode();
-  virtual ~AXPlatformNode();
+
+  // Associates a node delegate object to the platform node.
+  // Keep it protected. Only AXPlatformNode::Create should be calling this.
+  // Note: it would make a nicer design if initialization was integrated into
+  // the platform node constructor, but platform node implementation on Windows
+  // (AXPlatformNodeWin) relies on CComObject::CreateInstance() in order to
+  // create a platform node instance, and it doesn't allow to pass arguments to
+  // the constructor.
+  virtual void Init(AXPlatformNodeDelegate* delegate) = 0;
 
  private:
   FRIEND_TEST_ALL_PREFIXES(AtkUtilAuraLinuxTest, KeySnooping);
@@ -130,8 +148,6 @@ class AX_EXPORT AXPlatformNode {
   static gfx::NativeViewAccessible popup_focus_override_;
 
   bool is_primary_web_contents_for_window_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(AXPlatformNode);
 };
 
 }  // namespace ui

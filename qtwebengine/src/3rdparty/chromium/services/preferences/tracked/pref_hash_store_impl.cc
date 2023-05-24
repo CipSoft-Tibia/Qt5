@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <utility>
 
 #include "base/check.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/no_destructor.h"
 #include "base/notreached.h"
@@ -48,6 +48,11 @@ class PrefHashStoreImpl::PrefHashStoreTransactionImpl
   // members of its |outer| PrefHashStoreImpl.
   PrefHashStoreTransactionImpl(PrefHashStoreImpl* outer,
                                HashStoreContents* storage);
+
+  PrefHashStoreTransactionImpl(const PrefHashStoreTransactionImpl&) = delete;
+  PrefHashStoreTransactionImpl& operator=(const PrefHashStoreTransactionImpl&) =
+      delete;
+
   ~PrefHashStoreTransactionImpl() override;
 
   // PrefHashStoreTransaction implementation.
@@ -57,10 +62,10 @@ class PrefHashStoreImpl::PrefHashStoreTransactionImpl
   void StoreHash(const std::string& path, const base::Value* value) override;
   ValueState CheckSplitValue(
       const std::string& path,
-      const base::DictionaryValue* initial_split_value,
+      const base::Value::Dict* initial_split_value,
       std::vector<std::string>* invalid_keys) const override;
   void StoreSplitHash(const std::string& path,
-                      const base::DictionaryValue* split_value) override;
+                      const base::Value::Dict* split_value) override;
   bool HasHash(const std::string& path) const override;
   void ImportHash(const std::string& path, const base::Value* hash) override;
   void ClearHash(const std::string& path) override;
@@ -68,13 +73,11 @@ class PrefHashStoreImpl::PrefHashStoreTransactionImpl
   bool StampSuperMac() override;
 
  private:
-  PrefHashStoreImpl* outer_;
-  HashStoreContents* contents_;
+  raw_ptr<PrefHashStoreImpl> outer_;
+  raw_ptr<HashStoreContents> contents_;
 
   bool super_mac_valid_;
   bool super_mac_dirty_;
-
-  DISALLOW_COPY_AND_ASSIGN(PrefHashStoreTransactionImpl);
 };
 
 PrefHashStoreImpl::PrefHashStoreImpl(const std::string& seed,
@@ -96,26 +99,29 @@ std::string PrefHashStoreImpl::ComputeMac(const std::string& path,
   return pref_hash_calculator_.Calculate(path, value);
 }
 
-std::unique_ptr<base::DictionaryValue> PrefHashStoreImpl::ComputeSplitMacs(
+std::string PrefHashStoreImpl::ComputeMac(const std::string& path,
+                                          const base::Value::Dict* dict) {
+  return pref_hash_calculator_.Calculate(path, dict);
+}
+
+base::Value::Dict PrefHashStoreImpl::ComputeSplitMacs(
     const std::string& path,
-    const base::DictionaryValue* split_values) {
+    const base::Value::Dict* split_values) {
   if (!split_values)
-    return std::make_unique<base::DictionaryValue>();
+    return base::Value::Dict();
 
   std::string keyed_path(path);
   keyed_path.push_back('.');
   const size_t common_part_length = keyed_path.length();
 
-  std::unique_ptr<base::DictionaryValue> split_macs(new base::DictionaryValue);
+  base::Value::Dict split_macs;
 
-  for (base::DictionaryValue::Iterator it(*split_values); !it.IsAtEnd();
-       it.Advance()) {
+  for (const auto item : *split_values) {
     // Keep the common part from the old |keyed_path| and replace the key to
     // get the new |keyed_path|.
-    keyed_path.replace(common_part_length, std::string::npos, it.key());
+    keyed_path.replace(common_part_length, std::string::npos, item.first);
 
-    split_macs->SetKey(it.key(),
-                       base::Value(ComputeMac(keyed_path, &it.value())));
+    split_macs.Set(item.first, ComputeMac(keyed_path, &item.second));
   }
 
   return split_macs;
@@ -145,7 +151,7 @@ PrefHashStoreImpl::PrefHashStoreTransactionImpl::
     ~PrefHashStoreTransactionImpl() {
   if (super_mac_dirty_ && outer_->use_super_mac_) {
     // Get the dictionary of hashes (or NULL if it doesn't exist).
-    const base::DictionaryValue* hashes_dict = contents_->GetContents();
+    const base::Value::Dict* hashes_dict = contents_->GetContents();
     contents_->SetSuperMac(outer_->ComputeMac("", hashes_dict));
   }
 }
@@ -197,7 +203,7 @@ void PrefHashStoreImpl::PrefHashStoreTransactionImpl::StoreHash(
 
 ValueState PrefHashStoreImpl::PrefHashStoreTransactionImpl::CheckSplitValue(
     const std::string& path,
-    const base::DictionaryValue* initial_split_value,
+    const base::Value::Dict* initial_split_value,
     std::vector<std::string>* invalid_keys) const {
   DCHECK(invalid_keys && invalid_keys->empty());
 
@@ -207,8 +213,9 @@ ValueState PrefHashStoreImpl::PrefHashStoreTransactionImpl::CheckSplitValue(
   // Treat NULL and empty the same; otherwise we would need to store a hash for
   // the entire dictionary (or some other special beacon) to differentiate these
   // two cases which are really the same for dictionaries.
-  if (!initial_split_value || initial_split_value->empty())
+  if (!initial_split_value || initial_split_value->empty()) {
     return has_hashes ? ValueState::CLEARED : ValueState::UNCHANGED;
+  }
 
   if (!has_hashes)
     return super_mac_valid_ ? ValueState::TRUSTED_UNKNOWN_VALUE
@@ -218,17 +225,16 @@ ValueState PrefHashStoreImpl::PrefHashStoreTransactionImpl::CheckSplitValue(
   std::string keyed_path(path);
   keyed_path.push_back('.');
   const size_t common_part_length = keyed_path.length();
-  for (base::DictionaryValue::Iterator it(*initial_split_value); !it.IsAtEnd();
-       it.Advance()) {
+  for (const auto item : *initial_split_value) {
     std::map<std::string, std::string>::iterator entry =
-        split_macs.find(it.key());
+        split_macs.find(item.first);
     if (entry == split_macs.end()) {
-      invalid_keys->push_back(it.key());
+      invalid_keys->push_back(item.first);
     } else {
       // Keep the common part from the old |keyed_path| and replace the key to
       // get the new |keyed_path|.
-      keyed_path.replace(common_part_length, std::string::npos, it.key());
-      switch (outer_->pref_hash_calculator_.Validate(keyed_path, &it.value(),
+      keyed_path.replace(common_part_length, std::string::npos, item.first);
+      switch (outer_->pref_hash_calculator_.Validate(keyed_path, &item.second,
                                                      entry->second)) {
         case PrefHashCalculator::VALID:
           break;
@@ -239,7 +245,7 @@ ValueState PrefHashStoreImpl::PrefHashStoreTransactionImpl::CheckSplitValue(
           has_secure_legacy_id_hashes = true;
           break;
         case PrefHashCalculator::INVALID:
-          invalid_keys->push_back(it.key());
+          invalid_keys->push_back(item.first);
           break;
       }
       // Remove processed MACs, remaining MACs at the end will also be
@@ -263,20 +269,16 @@ ValueState PrefHashStoreImpl::PrefHashStoreTransactionImpl::CheckSplitValue(
 
 void PrefHashStoreImpl::PrefHashStoreTransactionImpl::StoreSplitHash(
     const std::string& path,
-    const base::DictionaryValue* split_value) {
+    const base::Value::Dict* split_value) {
   contents_->RemoveEntry(path);
 
   if (split_value) {
-    std::unique_ptr<base::DictionaryValue> split_macs =
-        outer_->ComputeSplitMacs(path, split_value);
+    base::Value::Dict split_macs = outer_->ComputeSplitMacs(path, split_value);
 
-    for (base::DictionaryValue::Iterator it(*split_macs); !it.IsAtEnd();
-         it.Advance()) {
-      const base::Value* value_as_string;
-      bool is_string = it.value().GetAsString(&value_as_string);
-      DCHECK(is_string);
+    for (const auto item : split_macs) {
+      DCHECK(item.second.is_string());
 
-      contents_->SetSplitMac(path, it.key(), value_as_string->GetString());
+      contents_->SetSplitMac(path, item.first, item.second.GetString());
     }
   }
   super_mac_dirty_ = true;

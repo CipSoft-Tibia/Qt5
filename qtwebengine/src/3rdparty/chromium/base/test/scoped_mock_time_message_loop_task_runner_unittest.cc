@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,18 +6,16 @@
 
 #include <memory>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/callback_forward.h"
 #include "base/containers/circular_deque.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/ref_counted.h"
 #include "base/task/current_thread.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_mock_time_task_runner.h"
 #include "base/test/test_pending_task.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "base/time/time.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -25,7 +23,7 @@ namespace base {
 namespace {
 
 TaskRunner* GetCurrentTaskRunner() {
-  return ThreadTaskRunnerHandle::Get().get();
+  return SingleThreadTaskRunner::GetCurrentDefault().get();
 }
 
 void AssignTrue(bool* out) {
@@ -46,6 +44,11 @@ class ScopedMockTimeMessageLoopTaskRunnerTest : public testing::Test {
     CurrentThread::Get()->SetTaskRunner(original_task_runner_);
   }
 
+  ScopedMockTimeMessageLoopTaskRunnerTest(
+      const ScopedMockTimeMessageLoopTaskRunnerTest&) = delete;
+  ScopedMockTimeMessageLoopTaskRunnerTest& operator=(
+      const ScopedMockTimeMessageLoopTaskRunnerTest&) = delete;
+
  protected:
   TestMockTimeTaskRunner* original_task_runner() {
     return original_task_runner_.get();
@@ -55,8 +58,6 @@ class ScopedMockTimeMessageLoopTaskRunnerTest : public testing::Test {
   scoped_refptr<TestMockTimeTaskRunner> original_task_runner_;
 
   test::SingleThreadTaskEnvironment task_environment_;
-
-  DISALLOW_COPY_AND_ASSIGN(ScopedMockTimeMessageLoopTaskRunnerTest);
 };
 
 // Verifies a new TaskRunner is installed while a
@@ -83,12 +84,12 @@ TEST_F(ScopedMockTimeMessageLoopTaskRunnerTest,
   OnceClosure task_10 = BindOnce(&AssignTrue, &task_10_has_run);
   OnceClosure task_11 = BindOnce(&AssignTrue, &task_11_has_run);
 
-  constexpr TimeDelta task_1_delay = TimeDelta::FromSeconds(1);
-  constexpr TimeDelta task_2_delay = TimeDelta::FromSeconds(2);
-  constexpr TimeDelta task_10_delay = TimeDelta::FromSeconds(10);
-  constexpr TimeDelta task_11_delay = TimeDelta::FromSeconds(11);
+  constexpr TimeDelta task_1_delay = Seconds(1);
+  constexpr TimeDelta task_2_delay = Seconds(2);
+  constexpr TimeDelta task_10_delay = Seconds(10);
+  constexpr TimeDelta task_11_delay = Seconds(11);
 
-  constexpr TimeDelta step_time_by = TimeDelta::FromSeconds(5);
+  constexpr TimeDelta step_time_by = Seconds(5);
 
   GetCurrentTaskRunner()->PostDelayedTask(FROM_HERE, std::move(task_1),
                                           task_1_delay);

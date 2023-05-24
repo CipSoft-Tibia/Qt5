@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import QtQuick 2.7
 import QtQuick.Window 2.2
@@ -46,7 +21,7 @@ Window {
     Shortcut {
         sequence: "Ctrl+R"
         onActivated: {
-            rotation = rotation + 36
+            rotation += 30
         }
     }
 
@@ -101,7 +76,7 @@ Window {
             }
             MouseArea {
                 anchors.fill: parent
-                onClicked: {
+                onClicked: (mouse) => {
                     mouse.accepted = false
                     var crd = map.toCoordinate(Qt.point(mouse.x, mouse.y))
                     var s = crd.toString(0)
@@ -110,7 +85,7 @@ Window {
             }
 
             C2.ComboBox {
-                model: ['Software','OpenGL LineStrip','OpenGL Triangles']
+                model: ['Software', 'OpenGL']
                 id: switchPolylines1
                 anchors {
                     top: parent.top
@@ -153,7 +128,7 @@ Window {
             }
 
             C2.ComboBox {
-                model: ['Software','OpenGL LineStrip','OpenGL Triangles']
+                model: ['Software', 'OpenGL']
                 id: switchPolylines2
                 anchors {
                     top: parent.top
@@ -176,32 +151,12 @@ Window {
             property bool glRectangles : true
             objectName: parent.objectName + "_MIG_"
 
-            function polylineBackend()
-            {
-                return (polyGroup.glPolylines === "OpenGL LineStrip")
-                       ? MapPolyline.OpenGLLineStrip
-                       :  ((polyGroup.glPolylines === "Software")
-                           ? MapPolyline.Software : MapPolyline.OpenGLExtruded)
-            }
-
-            function polygonBackend()
-            {
-                return (polyGroup.glPolylines === "Software")
-                       ? MapPolygon.Software : MapPolygon.OpenGL
-            }
-
-            function miterValue()
-            {
-                return (miterSwitch.checked) ? Qt.RoundCap : Qt.FlatCap
-            }
-
             MapPolyline {
                 id: tstPolyLine // to verify the polygon stays where it's supposed to
                 line.color: 'black'
                 objectName: parent.objectName + "black"
                 line.width: 1
                 opacity: 1.0
-                backend: polylineBackend()
                 path: [
                     { latitude: 76.9965, longitude: -175.012 },
                     { latitude: 26.9965, longitude: -175.012 }
@@ -213,7 +168,6 @@ Window {
                 line.color: "red"
                 objectName: parent.objectName + "timeline"
                 line.width: 4
-                backend: polylineBackend()
                 path: [
                     { latitude: 90, longitude: 180 },
                     { latitude: -90, longitude: -180 }
@@ -225,7 +179,6 @@ Window {
                 line.color: "pink"
                 line.width: sliWidth.value
                 objectName: parent.objectName + "red"
-                backend: polylineBackend()
 
                 path: [
                     { latitude: 55, longitude: 170 },
@@ -236,10 +189,6 @@ Window {
                     { latitude: 45, longitude: 174 },
                     { latitude: 43, longitude: -168 }
                 ]
-                DynamicParameter {
-                    type: "lineStyle"
-                    property var lineCap: miterValue()
-                }
 
                 MouseArea {
                     anchors.fill: parent
@@ -259,7 +208,6 @@ Window {
                 border.color: "black"
                 border.width: 12
                 objectName: parent.objectName + "green"
-                backend: polygonBackend()
                 path: [
                     { latitude: -45, longitude: -170 },
                     { latitude: -55, longitude: -155 },
@@ -276,13 +224,6 @@ Window {
                     }
                 }
             }
-
-//            LongPolyline {
-//                id: longPolyline
-//                line.width: 10
-//                line.color: 'firebrick'
-//                backend: polylineBackend()
-//            }
         }
     }
 
@@ -298,23 +239,12 @@ Window {
         }
         checked: false
     }
-    C2.Switch {
-        text: qsTr("Miter")
-        id: miterSwitch
-        anchors {
-            top: leftSwitch.bottom
-            left: parent.left
-            leftMargin: 12
-            rightMargin: 12
-        }
-        checked: false
-    }
     C2.Slider {
         id: sliWidth
         orientation: Qt.Vertical
         anchors {
             left: parent.left
-            top: miterSwitch.bottom
+            top: leftSwitch.bottom
             bottom: parent.bottom
             topMargin: 10
             leftMargin: 10

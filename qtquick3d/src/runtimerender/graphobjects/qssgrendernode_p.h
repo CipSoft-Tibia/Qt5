@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2008-2012 NVIDIA Corporation.
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2008-2012 NVIDIA Corporation.
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSG_RENDER_NODE_H
 #define QSSG_RENDER_NODE_H
@@ -45,6 +19,7 @@
 #include <QtQuick3DRuntimeRender/private/qssgrendergraphobject_p.h>
 
 #include <QtQuick3DUtils/private/qssgbounds3_p.h>
+#include <QtQuick3DUtils/private/qssginvasivelinkedlist_p.h>
 
 #include <QtGui/QMatrix4x4>
 #include <QtGui/QVector3D>
@@ -58,87 +33,82 @@ struct QSSGRenderText;
 struct QSSGRenderNode;
 class QSSGBufferManager;
 
-class QSSGRenderNodeFilterInterface;
-
 struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderNode : public QSSGRenderGraphObject
 {
-    enum class Flag
+    enum class LocalState : quint8
     {
-        Dirty = 1,
-        TransformDirty = 1 << 1,
-        Active = 1 << 2, ///< Is this exact object active
-        Orthographic = 1 << 3,
-        PointLight = 1 << 4,
-        GloballyActive = 1 << 5, ///< set based in Active and if a parent is active.
-        TextDirty = 1 << 6,
-        LocallyPickable = 1 << 7,
-        GloballyPickable = 1 << 8,
-        LayerEnableDepthTest = 1 << 9,
-        LayerRenderToTarget = 1 << 10, ///< Does this layer render to the normal render target,
-        /// or is it offscreen-only
-        ForceLayerOffscreen = 1 << 11, ///< Forces a layer to always use the offscreen rendering
-        /// mechanism.  This can be usefulf or caching purposes.
-        IgnoreParentTransform = 1 << 12,
-        LayerEnableDepthPrePass = 1 << 13, ///< True when we render a depth pass before
-        CameraDirty = 1 << 14, ///< True when the camera inheriting from this is dirty
-        CameraFrustumProjection = 1 << 15,
-        CameraCustomProjection = 1 << 16
+        Active = 1 << 0,
+        Pickable = 1 << 1
     };
-    Q_DECLARE_FLAGS(Flags, Flag)
 
-    enum class TransformDirtyFlag : quint8
+    enum class GlobalState : quint8
     {
-        TransformNotDirty,
-        TransformIsDirty,
+        Active = 1 << 2,
+        Pickable = 1 << 3
     };
+
+    enum class DirtyFlag : quint32
+    {
+        TransformDirty = 1 << 4,
+        OpacityDirty = 1 << 5,
+        ActiveDirty = 1 << 6,
+        PickableDirty = 1 << 7,
+        SubNodeDirty = 1 << 8, // Sub-nodes should set/unest this if they "extend" the dirty flags provided by the node
+
+        GlobalValuesDirty = TransformDirty | OpacityDirty | ActiveDirty | PickableDirty,
+        DirtyMask = GlobalValuesDirty | SubNodeDirty
+    };
+    using FlagT = std::underlying_type_t<DirtyFlag>;
+
+    static constexpr QVector3D initScale { 1.0f, 1.0f, 1.0f };
 
     // changing any one of these means you have to
     // set this object dirty
-    QQuaternion rotation;
-    QVector3D position { 0.0f, 0.0f, 0.0f };
-    QVector3D scale { 1.0f, 1.0f, 1.0f };
-    QVector3D pivot { 0.0f, 0.0f, 0.0f };
+    QVector3D pivot;
     int staticFlags = 0;
 
     // This only sets dirty, not transform dirty
     // Opacity of 1 means opaque, opacity of zero means transparent.
     float localOpacity = 1.0f;
 
-    // results of clearing dirty.
-    Flags flags {
-        Flag::Dirty,
-        Flag::TransformDirty,
-        Flag::Active,
-    };
+    // Nodes are initially dirty and locally active!
+    FlagT flags { FlagT(DirtyFlag::GlobalValuesDirty) | FlagT(LocalState::Active) };
     // These end up right handed
     QMatrix4x4 localTransform;
     QMatrix4x4 globalTransform;
+    QMatrix4x4 localInstanceTransform;
+    QMatrix4x4 globalInstanceTransform;
     float globalOpacity = 1.0f;
-    qint32 skeletonId = -1;
 
     // node graph members.
     QSSGRenderNode *parent = nullptr;
     QSSGRenderNode *nextSibling = nullptr;
     QSSGRenderNode *previousSibling = nullptr;
-    QSSGRenderNode *firstChild = nullptr;
+    QSSGRenderNode *instanceRoot = nullptr;
     // Property maintained solely by the render system.
     // Depth-first-search index assigned and maintained by render system.
     quint32 dfsIndex = 0;
 
+    using ChildList = QSSGInvasiveLinkedList<QSSGRenderNode, &QSSGRenderNode::previousSibling, &QSSGRenderNode::nextSibling>;
+    ChildList children;
+
+    QString debugObjectName;
+
     QSSGRenderNode();
-    QSSGRenderNode(Type type);
-    QSSGRenderNode(const QSSGRenderNode &inCloningObject);
-    ~QSSGRenderNode() {}
+    explicit QSSGRenderNode(Type type);
+    ~QSSGRenderNode() override;
 
     // Sets this object dirty and walks down the graph setting all
     // children who are not dirty to be dirty.
-    void markDirty(TransformDirtyFlag inTransformDirty = TransformDirtyFlag::TransformNotDirty);
+    void markDirty(DirtyFlag dirtyFlag);
+    void clearDirty(DirtyFlag dirtyFlag);
+    [[nodiscard]] inline constexpr bool isDirty(DirtyFlag dirtyFlag = DirtyFlag::DirtyMask) const { return ((flags & FlagT(dirtyFlag)) != 0); }
+    void setState(LocalState state, bool on = true);
+    [[nodiscard]] inline constexpr bool getLocalState(LocalState stateFlag) const { return ((flags & FlagT(stateFlag)) != 0); }
+    [[nodiscard]] inline constexpr bool getGlobalState(GlobalState stateFlag) const { return ((flags & FlagT(stateFlag)) != 0); }
 
     void addChild(QSSGRenderNode &inChild);
-    // Specital function for importScene
-    void addChildrenToLayer(QSSGRenderNode &inChildren);
     void removeChild(QSSGRenderNode &inChild);
-    QSSGRenderNode *getLastChild();
 
     // Remove this node from the graph.
     // It is no longer the the parent's child lists
@@ -151,34 +121,17 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderNode : public QSSGRenderGraphObje
     // valid global transforms.
     bool calculateGlobalVariables();
 
-    // Given our rotation order and handedness, calculate the final rotation matrix
-    // Only the upper 3x3 of this matrix is filled in.
-    // If this object is left handed, then you need to call FlipCoordinateSystem
-    // to get a result identical to the result produced in CalculateLocalTransform
-    void calculateRotationMatrix(QMatrix4x4 &outMatrix) const;
-
-    // Force the calculation of the local transform
-    void calculateLocalTransform();
-
-    /**
-     * @brief setup local tranform from a matrix.
-     *		  This function decomposes a SRT matrix.
-     *		  This will fail if this matrix contains non-affine transformations
-     *
-     * @param inTransform[in]	input transformation
-     *
-     * @return true backend type
-     */
-    void setLocalTransformFromMatrix(QMatrix4x4 &inTransform);
+    // Calculates a tranform matrix based on the position, scale, pivot and rotation arguments.
+    // NOTE!!!: This function does not update or mark any nodes as dirty, if the returned matrix is set on a node then
+    // markDirty, calculateGlobalVariables etc. needs to be called as needed!
+    [[nodiscard]] static QMatrix4x4 calculateTransformMatrix(QVector3D position, QVector3D scale, QVector3D pivot, QQuaternion rotation);
 
     // Get the bounds of us and our children in our local space.
-    QSSGBounds3 getBounds(const QSSGRef<QSSGBufferManager> &inManager,
-                            bool inIncludeChildren = true,
-                            QSSGRenderNodeFilterInterface *inChildFilter = nullptr) const;
-    QSSGBounds3 getChildBounds(const QSSGRef<QSSGBufferManager> &inManager,
-                                 QSSGRenderNodeFilterInterface *inChildFilter = nullptr) const;
+    QSSGBounds3 getBounds(QSSGBufferManager &inManager,
+                            bool inIncludeChildren = true) const;
+    QSSGBounds3 getChildBounds(QSSGBufferManager &inManager) const;
     // Assumes CalculateGlobalVariables has already been called.
-    QVector3D getGlobalPos() const;
+    QVector3D getGlobalPos() const { return QVector3D(globalTransform(0, 3), globalTransform(1, 3), globalTransform(2, 3)); }
     QVector3D getGlobalPivot() const;
     // Pulls the 3rd column out of the global transform.
     QVector3D getDirection() const;
@@ -192,9 +145,16 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderNode : public QSSGRenderGraphObje
 
     // This should be in a utility file somewhere
     QMatrix3x3 calculateNormalMatrix() const;
-};
 
-Q_DECLARE_OPERATORS_FOR_FLAGS(QSSGRenderNode::Flags)
+    // The Squared value of \a val
+    // This is mainly used for setting the sorting bias on models and particles
+    // since we're using the squared distance when sorting.
+    [[nodiscard]] static inline float signedSquared(float val)
+    {
+        const float sign = (val >= 0.0f) ? 1.0f : -1.0f;
+        return sign * val * val;
+    }
+};
 
 QT_END_NAMESPACE
 

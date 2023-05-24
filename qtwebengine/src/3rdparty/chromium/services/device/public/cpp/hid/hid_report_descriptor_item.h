@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,9 @@
 #include <stdint.h>
 
 #include <memory>
+
+#include "base/containers/span.h"
+#include "base/memory/raw_ptr.h"
 
 namespace device {
 
@@ -123,17 +126,17 @@ class HidReportDescriptorItem {
                 "incorrect report info size");
 
  private:
-  HidReportDescriptorItem(const uint8_t* bytes,
-                          size_t size,
+  HidReportDescriptorItem(base::span<const uint8_t> bytes,
                           HidReportDescriptorItem* previous);
 
  public:
   ~HidReportDescriptorItem() {}
 
-  static std::unique_ptr<HidReportDescriptorItem>
-  Create(const uint8_t* bytes, size_t size, HidReportDescriptorItem* previous) {
+  static std::unique_ptr<HidReportDescriptorItem> Create(
+      base::span<const uint8_t> bytes,
+      HidReportDescriptorItem* previous) {
     return std::unique_ptr<HidReportDescriptorItem>(
-        new HidReportDescriptorItem(bytes, size, previous));
+        new HidReportDescriptorItem(bytes, previous));
   }
 
   // Previous element in report descriptor.
@@ -159,14 +162,15 @@ class HidReportDescriptorItem {
   uint32_t GetShortData() const;
   // Size of this item in bytes, including the header.
   size_t GetSize() const;
+  // Size of this item in bytes, excluding the header.
+  size_t payload_size() const { return payload_size_; }
 
  private:
   size_t GetHeaderSize() const;
-  size_t payload_size() const { return payload_size_; }
 
-  HidReportDescriptorItem* previous_;
-  HidReportDescriptorItem* next_;
-  HidReportDescriptorItem* parent_;
+  raw_ptr<HidReportDescriptorItem, DanglingUntriaged> previous_;
+  raw_ptr<HidReportDescriptorItem, DanglingUntriaged> next_;
+  raw_ptr<HidReportDescriptorItem, DanglingUntriaged> parent_;
   Tag tag_;
   uint32_t shortData_;
   size_t payload_size_;

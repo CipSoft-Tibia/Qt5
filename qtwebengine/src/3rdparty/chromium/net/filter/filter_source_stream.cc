@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <utility>
 
-#include "base/bind.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
@@ -30,11 +30,7 @@ const size_t kBufferSize = 32 * 1024;
 
 FilterSourceStream::FilterSourceStream(SourceType type,
                                        std::unique_ptr<SourceStream> upstream)
-    : SourceStream(type),
-      upstream_(std::move(upstream)),
-      next_state_(STATE_NONE),
-      output_buffer_size_(0),
-      upstream_end_reached_(false) {
+    : SourceStream(type), upstream_(std::move(upstream)) {
   DCHECK(upstream_);
 }
 
@@ -59,7 +55,7 @@ int FilterSourceStream::Read(IOBuffer* read_buffer,
   }
 
   output_buffer_ = read_buffer;
-  output_buffer_size_ = read_buffer_size;
+  output_buffer_size_ = base::checked_cast<size_t>(read_buffer_size);
   int rv = DoLoop(OK);
 
   if (rv == ERR_IO_PENDING)
@@ -82,12 +78,12 @@ FilterSourceStream::SourceType FilterSourceStream::ParseEncodingType(
     const std::string& encoding) {
   if (encoding.empty()) {
     return TYPE_NONE;
-  } else if (base::LowerCaseEqualsASCII(encoding, kBrotli)) {
+  } else if (base::EqualsCaseInsensitiveASCII(encoding, kBrotli)) {
     return TYPE_BROTLI;
-  } else if (base::LowerCaseEqualsASCII(encoding, kDeflate)) {
+  } else if (base::EqualsCaseInsensitiveASCII(encoding, kDeflate)) {
     return TYPE_DEFLATE;
-  } else if (base::LowerCaseEqualsASCII(encoding, kGZip) ||
-             base::LowerCaseEqualsASCII(encoding, kXGZip)) {
+  } else if (base::EqualsCaseInsensitiveASCII(encoding, kGZip) ||
+             base::EqualsCaseInsensitiveASCII(encoding, kXGZip)) {
     return TYPE_GZIP;
   } else {
     return TYPE_UNKNOWN;
@@ -153,30 +149,40 @@ int FilterSourceStream::DoFilterData() {
   DCHECK(output_buffer_);
   DCHECK(drainable_input_buffer_);
 
-  int consumed_bytes = 0;
-  int bytes_output = FilterData(output_buffer_.get(), output_buffer_size_,
-                                drainable_input_buffer_.get(),
-                                drainable_input_buffer_->BytesRemaining(),
-                                &consumed_bytes, upstream_end_reached_);
-  DCHECK_LE(consumed_bytes, drainable_input_buffer_->BytesRemaining());
-  DCHECK(bytes_output != 0 ||
-         consumed_bytes == drainable_input_buffer_->BytesRemaining());
+  size_t consumed_bytes = 0;
+  base::expected<size_t, Error> bytes_output = FilterData(
+      output_buffer_.get(), output_buffer_size_, drainable_input_buffer_.get(),
+      drainable_input_buffer_->BytesRemaining(), &consumed_bytes,
+      upstream_end_reached_);
 
+  const auto bytes_remaining =
+      base::checked_cast<size_t>(drainable_input_buffer_->BytesRemaining());
+  if (bytes_output.has_value() && bytes_output.value() == 0) {
+    DCHECK_EQ(consumed_bytes, bytes_remaining);
+  } else {
+    DCHECK_LE(consumed_bytes, bytes_remaining);
+  }
   // FilterData() is not allowed to return ERR_IO_PENDING.
-  DCHECK_NE(ERR_IO_PENDING, bytes_output);
+  if (!bytes_output.has_value())
+    DCHECK_NE(ERR_IO_PENDING, bytes_output.error());
 
   if (consumed_bytes > 0)
     drainable_input_buffer_->DidConsume(consumed_bytes);
 
   // Received data or encountered an error.
-  if (bytes_output != 0)
-    return bytes_output;
+  if (!bytes_output.has_value()) {
+    CHECK_LT(bytes_output.error(), 0);
+    return bytes_output.error();
+  }
+  if (bytes_output.value() != 0)
+    return base::checked_cast<int>(bytes_output.value());
+
   // If no data is returned, continue reading if |this| needs more input.
   if (NeedMoreData()) {
     DCHECK_EQ(0, drainable_input_buffer_->BytesRemaining());
     next_state_ = STATE_READ_DATA;
   }
-  return bytes_output;
+  return 0;
 }
 
 void FilterSourceStream::OnIOComplete(int result) {

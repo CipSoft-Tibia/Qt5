@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,8 @@
 
 #include <memory>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/test/task_environment.h"
 #include "build/build_config.h"
 #include "gpu/ipc/common/gpu_memory_buffer_support.h"
@@ -22,8 +23,9 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/gfx/buffer_format_util.h"
 #include "ui/gfx/mojom/buffer_types.mojom.h"
+#include "ui/gl/gl_display.h"
 
-#if defined(OS_WIN) || defined(USE_OZONE)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_OZONE)
 #include "ui/gl/init/gl_factory.h"
 #include "ui/gl/test/gl_surface_test_support.h"
 #endif
@@ -50,10 +52,12 @@ class GpuMemoryBufferImplTest : public testing::Test {
     return &gpu_memory_buffer_support_;
   }
 
-#if defined(OS_WIN) || defined(USE_OZONE)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_OZONE)
   // Overridden from testing::Test:
-  void SetUp() override { gl::GLSurfaceTestSupport::InitializeOneOff(); }
-  void TearDown() override { gl::init::ShutdownGL(false); }
+  void SetUp() override {
+    display_ = gl::GLSurfaceTestSupport::InitializeOneOff();
+  }
+  void TearDown() override { gl::GLSurfaceTestSupport::ShutdownGL(display_); }
 #endif
 
  protected:
@@ -62,10 +66,9 @@ class GpuMemoryBufferImplTest : public testing::Test {
 
  private:
   GpuMemoryBufferSupport gpu_memory_buffer_support_;
+  raw_ptr<gl::GLDisplay> display_ = nullptr;
 
-  void FreeGpuMemoryBuffer(base::OnceClosure free_callback,
-                           bool* destroyed,
-                           const gpu::SyncToken& sync_token) {
+  void FreeGpuMemoryBuffer(base::OnceClosure free_callback, bool* destroyed) {
     std::move(free_callback).Run();
     if (destroyed)
       *destroyed = true;
@@ -98,8 +101,10 @@ TYPED_TEST_P(GpuMemoryBufferImplTest, CreateFromHandle) {
         gfx::BufferUsage::CAMERA_AND_CPU_READ_WRITE,
         gfx::BufferUsage::SCANOUT_CPU_READ_WRITE,
         gfx::BufferUsage::SCANOUT_VDA_WRITE,
+        gfx::BufferUsage::PROTECTED_SCANOUT_VDA_WRITE,
         gfx::BufferUsage::GPU_READ_CPU_READ_WRITE,
-        gfx::BufferUsage::SCANOUT_VEA_READ_CAMERA_AND_CPU_READ_WRITE,
+        gfx::BufferUsage::SCANOUT_VEA_CPU_READ,
+        gfx::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE,
     };
     for (auto usage : usages) {
       if (!TestFixture::gpu_memory_buffer_support()
@@ -139,8 +144,10 @@ TYPED_TEST_P(GpuMemoryBufferImplTest, CreateFromHandleSmallBuffer) {
         gfx::BufferUsage::CAMERA_AND_CPU_READ_WRITE,
         gfx::BufferUsage::SCANOUT_CPU_READ_WRITE,
         gfx::BufferUsage::SCANOUT_VDA_WRITE,
+        gfx::BufferUsage::PROTECTED_SCANOUT_VDA_WRITE,
         gfx::BufferUsage::GPU_READ_CPU_READ_WRITE,
-        gfx::BufferUsage::SCANOUT_VEA_READ_CAMERA_AND_CPU_READ_WRITE,
+        gfx::BufferUsage::SCANOUT_VEA_CPU_READ,
+        gfx::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE,
     };
     for (auto usage : usages) {
       if (!TestFixture::gpu_memory_buffer_support()
@@ -203,6 +210,12 @@ TYPED_TEST_P(GpuMemoryBufferImplTest, Map) {
 
     // Map buffer into user space.
     ASSERT_TRUE(buffer->Map());
+
+    // Map the buffer a second time. This should be a noop and simply allow
+    // multiple clients concurrent read access. Likewise a subsequent Unmap()
+    // shouldn't invalidate the first's Map().
+    ASSERT_TRUE(buffer->Map());
+    buffer->Unmap();
 
     // Copy and compare mapped buffers.
     for (size_t plane = 0; plane < num_planes; ++plane) {
@@ -316,8 +329,10 @@ TYPED_TEST_P(GpuMemoryBufferImplTest, SerializeAndDeserialize) {
         gfx::BufferUsage::CAMERA_AND_CPU_READ_WRITE,
         gfx::BufferUsage::SCANOUT_CPU_READ_WRITE,
         gfx::BufferUsage::SCANOUT_VDA_WRITE,
+        gfx::BufferUsage::PROTECTED_SCANOUT_VDA_WRITE,
         gfx::BufferUsage::GPU_READ_CPU_READ_WRITE,
-        gfx::BufferUsage::SCANOUT_VEA_READ_CAMERA_AND_CPU_READ_WRITE,
+        gfx::BufferUsage::SCANOUT_VEA_CPU_READ,
+        gfx::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE,
     };
     for (auto usage : usages) {
       if (!TestFixture::gpu_memory_buffer_support()
@@ -333,7 +348,7 @@ TYPED_TEST_P(GpuMemoryBufferImplTest, SerializeAndDeserialize) {
 
       gfx::GpuMemoryBufferHandle output_handle;
       mojo::test::SerializeAndDeserialize<gfx::mojom::GpuMemoryBufferHandle>(
-          &handle, &output_handle);
+          handle, output_handle);
       EXPECT_EQ(output_handle.type, kBufferType);
 
       std::unique_ptr<GpuMemoryBufferImpl> buffer(
@@ -370,14 +385,14 @@ TYPED_TEST_P(GpuMemoryBufferImplCreateTest, Create) {
   for (auto format : gfx::GetBufferFormatsForTesting()) {
     if (!TestFixture::gpu_memory_buffer_support()
              ->IsConfigurationSupportedForTest(TypeParam::kBufferType, format,
-                                               usage))
+                                               usage)) {
       continue;
+    }
     bool destroyed = false;
     std::unique_ptr<TypeParam> buffer(TypeParam::Create(
         kBufferId, kBufferSize, format, usage,
-        base::BindOnce(
-            [](bool* destroyed, const gpu::SyncToken&) { *destroyed = true; },
-            base::Unretained(&destroyed))));
+        base::BindOnce([](bool* destroyed) { *destroyed = true; },
+                       base::Unretained(&destroyed))));
     ASSERT_TRUE(buffer);
     EXPECT_EQ(buffer->GetFormat(), format);
 

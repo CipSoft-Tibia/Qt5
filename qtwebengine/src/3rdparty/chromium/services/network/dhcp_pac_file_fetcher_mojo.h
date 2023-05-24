@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,6 @@
 #include <memory>
 
 #include "base/component_export.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -38,10 +36,13 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) DhcpPacFileFetcherMojo
                          mojo::PendingRemote<network::mojom::DhcpWpadUrlClient>
                              dhcp_wpad_url_client);
 
+  DhcpPacFileFetcherMojo(const DhcpPacFileFetcherMojo&) = delete;
+  DhcpPacFileFetcherMojo& operator=(const DhcpPacFileFetcherMojo&) = delete;
+
   ~DhcpPacFileFetcherMojo() override;
 
   // DhcpPacFileFetcher implementation
-  int Fetch(base::string16* utf16_text,
+  int Fetch(std::u16string* utf16_text,
             net::CompletionOnceCallback callback,
             const net::NetLogWithSource& net_log,
             const net::NetworkTrafficAnnotationTag traffic_annotation) override;
@@ -54,22 +55,20 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) DhcpPacFileFetcherMojo
       std::unique_ptr<net::PacFileFetcher> pac_file_fetcher);
 
  private:
-  void ContinueFetch(base::string16* utf16_text,
+  void ContinueFetch(std::u16string* utf16_text,
                      const net::NetworkTrafficAnnotationTag traffic_annotation,
                      std::string pac_url);
   void OnFetchCompleted(int result);
   void OnPacUrlReceived(const std::string& url);
 
   net::CompletionOnceCallback callback_;
-  base::string16* utf16_text_;
+  std::u16string* utf16_text_;
   GURL pac_url_;
   net::MutableNetworkTrafficAnnotationTag traffic_annotation_;
   std::unique_ptr<net::PacFileFetcher> pac_file_fetcher_;
   mojo::Remote<network::mojom::DhcpWpadUrlClient> dhcp_wpad_url_client_;
 
   base::WeakPtrFactory<DhcpPacFileFetcherMojo> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(DhcpPacFileFetcherMojo);
 };
 
 }  // namespace network

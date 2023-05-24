@@ -194,7 +194,9 @@ class TrackEventInternedDataIndex
     return iid;
   }
 
- private:
+ protected:
+  // Some use cases require a custom Get implemention, so they need access to
+  // GetOrCreateIndexForField + the returned index.
   static InternedDataType* GetOrCreateIndexForField(
       internal::TrackEventIncrementalState* incremental_state) {
     // Fast path: look for matching field number.
@@ -208,6 +210,21 @@ class TrackEventInternedDataIndex
               "%s. New type: %s.",
               entry.second->type_id_, PERFETTO_DEBUG_FUNCTION_IDENTIFIER());
         }
+        // If an interned data index is defined in an anonymous namespace, we
+        // can end up with multiple copies of it in the same program. Because
+        // they will all share a memory address through TLS, this can lead to
+        // subtle data corruption if all the copies aren't exactly identical.
+        // Try to detect this by checking if the Add() function address remains
+        // constant.
+        if (reinterpret_cast<void*>(&InternedDataType::Add) !=
+            entry.second->add_function_ptr_) {
+          PERFETTO_FATAL(
+              "Inconsistent interned data index. Maybe the index was defined "
+              "in an anonymous namespace in a header or copied to multiple "
+              "files? Duplicate index definitions can lead to memory "
+              "corruption! Type id: %s",
+              entry.second->type_id_);
+        }
 #endif  // PERFETTO_DCHECK_IS_ON()
         return reinterpret_cast<InternedDataType*>(entry.second.get());
       }
@@ -219,6 +236,8 @@ class TrackEventInternedDataIndex
         entry.second.reset(new InternedDataType());
 #if PERFETTO_DCHECK_IS_ON()
         entry.second->type_id_ = PERFETTO_DEBUG_FUNCTION_IDENTIFIER();
+        entry.second->add_function_ptr_ =
+            reinterpret_cast<void*>(&InternedDataType::Add);
 #endif  // PERFETTO_DCHECK_IS_ON()
         return reinterpret_cast<InternedDataType*>(entry.second.get());
       }

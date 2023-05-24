@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "lecmaccalculator_p.h"
 
 #include "bluez/bluez_data_p.h"
@@ -91,17 +55,17 @@ QByteArray LeCmacCalculator::createFullMessage(const QByteArray &message, quint3
 {
     // Spec v4.2, Vol 3, Part H, 2.4.5
     QByteArray fullMessage = message;
-    fullMessage.resize(fullMessage.count() + sizeof signCounter);
-    putBtData(signCounter, fullMessage.data() + message.count());
+    fullMessage.resize(fullMessage.size() + sizeof signCounter);
+    putBtData(signCounter, fullMessage.data() + message.size());
     return fullMessage;
 }
 
-quint64 LeCmacCalculator::calculateMac(const QByteArray &message, const quint128 &csrk) const
+quint64 LeCmacCalculator::calculateMac(const QByteArray &message, QUuid::Id128Bytes csrk) const
 {
 #ifdef CONFIG_LINUX_CRYPTO_API
     if (m_baseSocket == -1)
         return false;
-    quint128 csrkMsb;
+    QUuid::Id128Bytes csrkMsb;
     std::reverse_copy(std::begin(csrk.data), std::end(csrk.data), std::begin(csrkMsb.data));
     qCDebug(QT_BT_BLUEZ) << "CSRK (MSB):" << QByteArray(reinterpret_cast<char *>(csrkMsb.data),
                                                         sizeof csrkMsb).toHex();
@@ -129,19 +93,19 @@ quint64 LeCmacCalculator::calculateMac(const QByteArray &message, const quint128
         return 0;
     }
 
-    QByteArray messageSwapped(message.count(), Qt::Uninitialized);
+    QByteArray messageSwapped(message.size(), Qt::Uninitialized);
     std::reverse_copy(message.begin(), message.end(), messageSwapped.begin());
     qint64 totalBytesWritten = 0;
     do {
         const qint64 bytesWritten = qt_safe_write(cryptoSocket.value(),
                                                   messageSwapped.constData() + totalBytesWritten,
-                                                  messageSwapped.count() - totalBytesWritten);
+                                                  messageSwapped.size() - totalBytesWritten);
         if (bytesWritten == -1) {
             qCWarning(QT_BT_BLUEZ) << "writing to crypto socket failed:" << strerror(errno);
             return 0;
         }
         totalBytesWritten += bytesWritten;
-    } while (totalBytesWritten < messageSwapped.count());
+    } while (totalBytesWritten < messageSwapped.size());
     quint64 mac;
     quint8 * const macPtr = reinterpret_cast<quint8 *>(&mac);
     qint64 totalBytesRead = 0;
@@ -163,13 +127,13 @@ quint64 LeCmacCalculator::calculateMac(const QByteArray &message, const quint128
 #endif
 }
 
-bool LeCmacCalculator::verify(const QByteArray &message, const quint128 &csrk,
+bool LeCmacCalculator::verify(const QByteArray &message, QUuid::Id128Bytes csrk,
                            quint64 expectedMac) const
 {
 #ifdef CONFIG_LINUX_CRYPTO_API
     const quint64 actualMac = calculateMac(message, csrk);
     if (actualMac != expectedMac) {
-        qCWarning(QT_BT_BLUEZ) << hex << "signature verification failed: calculated mac:"
+        qCWarning(QT_BT_BLUEZ) << Qt::hex << "signature verification failed: calculated mac:"
                                << actualMac << "expected mac:" << expectedMac;
         return false;
     }

@@ -1,72 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplaceicon.h"
 #include "qplaceicon_p.h"
 #include "qplacemanager.h"
 #include "qplacemanagerengine.h"
 
+#include <QtCore/QVariant>
+#include <QtQml/QJSValue>
+
 QT_USE_NAMESPACE
 
-QPlaceIconPrivate::QPlaceIconPrivate()
-    : QSharedData(), manager(0)
-{
-}
-
-QPlaceIconPrivate::QPlaceIconPrivate(const QPlaceIconPrivate &other)
-    : QSharedData(other),
-      manager(other.manager),
-      parameters(other.parameters)
-{
-}
-
-QPlaceIconPrivate::~QPlaceIconPrivate()
-{
-}
-
-QPlaceIconPrivate &QPlaceIconPrivate::operator=(const QPlaceIconPrivate &other)
-{
-    if (this == &other)
-        return *this;
-
-    manager = other.manager;
-    parameters = other.parameters;
-
-    return *this;
-}
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QPlaceIconPrivate)
 
 bool QPlaceIconPrivate::operator == (const QPlaceIconPrivate &other) const
 {
@@ -103,6 +48,32 @@ bool QPlaceIconPrivate::operator == (const QPlaceIconPrivate &other) const
 */
 
 /*!
+    \qmlvaluetype icon
+    \inqmlmodule QtLocation
+    \ingroup qml-QtLocation5-places
+    \ingroup qml-QtLocation5-places-data
+    \since QtLocation 5.5
+
+    \brief The icon type represents the icon of a place.
+
+    The typical usage of an icon is to use the url() function to specify
+    a preferred icon size.
+
+    The icons are typically backend dependent, if a manager backend does not support a given size, the URL of the icon that most
+    closely matches those parameters is returned.
+
+    The icon class also has a key-value set of parameters.  The precise key one
+    needs to use depends on the \l {Qt Location#Plugin References and Parameters}{plugin}
+    being used.  These parameters influence which icon URL is returned by
+    the manager and may also be used to specify icon URL locations when
+    saving icons.
+
+    If there is only ever one image for an icon, then QPlaceIcon::SingleUrl can be used as a parameter
+    key with a QUrl as the associated value.  If this key is set, then the url() function will always return the specified URL
+    and not defer to any manager.
+*/
+
+/*!
     \variable QPlaceIcon::SingleUrl
     \brief Parameter key for an icon that only has a single image URL.
 
@@ -122,22 +93,17 @@ QPlaceIcon::QPlaceIcon()
 /*!
     Constructs a copy of \a other.
 */
-QPlaceIcon::QPlaceIcon(const QPlaceIcon &other)
-    : d(other.d)
-{
-}
+QPlaceIcon::QPlaceIcon(const QPlaceIcon &other) noexcept = default;
 
 /*!
     Destroys the icon.
 */
-QPlaceIcon::~QPlaceIcon()
-{
-}
+QPlaceIcon::~QPlaceIcon() = default;
 
 /*!
     Assigns \a other to this icon and returns a reference to this icon.
 */
-QPlaceIcon &QPlaceIcon::operator=(const QPlaceIcon &other)
+QPlaceIcon &QPlaceIcon::operator=(const QPlaceIcon &other) noexcept
 {
     if (this == &other)
         return *this;
@@ -147,17 +113,26 @@ QPlaceIcon &QPlaceIcon::operator=(const QPlaceIcon &other)
 }
 
 /*!
-    Returns true if this icon is equal to \a other, otherwise returns false.
+    \fn bool QPlaceIcon::operator==(const QPlaceIcon &lhs, const QPlaceIcon &rhs) noexcept
+
+    Returns true if \a lhs is equal to \a rhs, otherwise returns false.
 */
-bool QPlaceIcon::operator==(const QPlaceIcon &other) const
+
+/*!
+    \fn bool QPlaceIcon::operator!=(const QPlaceIcon &lhs, const QPlaceIcon &rhs) noexcept
+
+    Returns true if \a lhs is not equal to \a rhs, otherwise returns false.
+*/
+
+bool QPlaceIcon::isEqual(const QPlaceIcon &other) const noexcept
 {
     return *d == *(other.d);
 }
 
-/*!
-    \fn QPlaceIcon::operator!=(const QPlaceIcon &other) const
+/* ### Need to evaluate whether we need this at all (or perhaps only for tests)
+    \qmlproperty Plugin Icon::plugin
 
-    Returns true if \a other is not equal to this icon, otherwise returns false.
+    The property holds the plugin that is responsible for managing this icon.
 */
 
 /*!
@@ -170,9 +145,9 @@ QUrl QPlaceIcon::url(const QSize &size) const
 {
     if (d->parameters.contains(QPlaceIcon::SingleUrl)) {
         QVariant value = d->parameters.value(QPlaceIcon::SingleUrl);
-        if (value.type() == QVariant::Url)
+        if (value.typeId() == QMetaType::QUrl)
             return value.toUrl();
-        else if (value.type() == QVariant::String)
+        else if (value.typeId() == QMetaType::QString)
             return QUrl::fromUserInput(value.toString());
 
         return QUrl();
@@ -231,3 +206,5 @@ bool QPlaceIcon::isEmpty() const
     return (d->manager == 0
             && d->parameters.isEmpty());
 }
+
+#include "moc_qplaceicon.cpp"

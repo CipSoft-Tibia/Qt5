@@ -25,6 +25,7 @@
 
 #include "third_party/blink/renderer/core/editing/commands/insert_node_before_command.h"
 
+#include "third_party/blink/renderer/core/editing/commands/editing_state.h"
 #include "third_party/blink/renderer/core/editing/editing_utilities.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 
@@ -45,27 +46,28 @@ InsertNodeBeforeCommand::InsertNodeBeforeCommand(
   DCHECK(ref_child_);
   DCHECK(ref_child_->parentNode()) << ref_child_;
 
-  DCHECK(HasEditableStyle(*ref_child_->parentNode()) ||
+  DCHECK(IsEditable(*ref_child_->parentNode()) ||
          !ref_child_->parentNode()->InActiveDocument())
       << ref_child_->parentNode();
 }
 
-void InsertNodeBeforeCommand::DoApply(EditingState*) {
+void InsertNodeBeforeCommand::DoApply(EditingState* editing_state) {
   ContainerNode* parent = ref_child_->parentNode();
   GetDocument().UpdateStyleAndLayoutTree();
   if (!parent || (should_assume_content_is_always_editable_ ==
                       kDoNotAssumeContentIsAlwaysEditable &&
-                  !HasEditableStyle(*parent)))
+                  !IsEditable(*parent)))
     return;
-  DCHECK(HasEditableStyle(*parent)) << parent;
+  DCHECK(IsEditable(*parent)) << parent;
 
-  parent->InsertBefore(insert_child_.Get(), ref_child_.Get(),
-                       IGNORE_EXCEPTION_FOR_TESTING);
+  DummyExceptionStateForTesting exception_state;
+  parent->InsertBefore(insert_child_.Get(), ref_child_.Get(), exception_state);
+  ABORT_EDITING_COMMAND_IF(exception_state.HadException());
 }
 
 void InsertNodeBeforeCommand::DoUnapply() {
   GetDocument().UpdateStyleAndLayoutTree();
-  if (!HasEditableStyle(*insert_child_))
+  if (!IsEditable(*insert_child_))
     return;
 
   insert_child_->remove(IGNORE_EXCEPTION_FOR_TESTING);

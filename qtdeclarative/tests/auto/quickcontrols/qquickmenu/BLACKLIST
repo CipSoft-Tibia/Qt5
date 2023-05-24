@@ -1,0 +1,7 @@
+# QTBUG-98491
+[disableWhenTriggered]
+macos
+
+# QTBUG-98491
+[subMenuPosition]
+macos

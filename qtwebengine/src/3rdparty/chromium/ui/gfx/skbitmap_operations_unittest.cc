@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -525,7 +525,7 @@ TEST(SkBitmapOperationsTest, RotateImage) {
   // GGGYYY
   src.allocN32Pixels(src_w, src_h);
 
-  SkCanvas canvas(src);
+  SkCanvas canvas(src, SkSurfaceProps{});
   src.eraseARGB(0, 0, 0, 0);
 
   // This region is a semi-transparent red to test non-opaque pixels.

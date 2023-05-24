@@ -27,11 +27,13 @@
  */
 
 #include "libavcodec/internal.h"
-#include "libavcodec/mathops.h"
 #include "avcodec.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "dsd.h"
 
 #define DSD_SILENCE 0x69
+#define DSD_SILENCE_REVERSED 0x96
 /* 0x69 = 01101001
  * This pattern "on repeat" makes a low energy 352.8 kHz tone
  * and a high energy 1.0584 MHz tone which should be filtered
@@ -44,17 +46,17 @@ static av_cold int decode_init(AVCodecContext *avctx)
     int i;
     uint8_t silence;
 
-    if (!avctx->channels)
+    if (!avctx->ch_layout.nb_channels)
         return AVERROR_INVALIDDATA;
 
     ff_init_dsd_data();
 
-    s = av_malloc_array(sizeof(DSDContext), avctx->channels);
+    s = av_malloc_array(sizeof(DSDContext), avctx->ch_layout.nb_channels);
     if (!s)
         return AVERROR(ENOMEM);
 
-    silence = avctx->codec_id == AV_CODEC_ID_DSD_LSBF || avctx->codec_id == AV_CODEC_ID_DSD_LSBF_PLANAR ? ff_reverse[DSD_SILENCE] : DSD_SILENCE;
-    for (i = 0; i < avctx->channels; i++) {
+    silence = avctx->codec_id == AV_CODEC_ID_DSD_LSBF || avctx->codec_id == AV_CODEC_ID_DSD_LSBF_PLANAR ? DSD_SILENCE_REVERSED : DSD_SILENCE;
+    for (i = 0; i < avctx->ch_layout.nb_channels; i++) {
         s[i].pos = 0;
         memset(s[i].buf, silence, sizeof(s[i].buf));
     }
@@ -66,7 +68,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
 typedef struct ThreadData {
     AVFrame *frame;
-    AVPacket *avpkt;
+    const AVPacket *avpkt;
 } ThreadData;
 
 static int dsd_channel(AVCodecContext *avctx, void *tdata, int j, int threadnr)
@@ -75,7 +77,7 @@ static int dsd_channel(AVCodecContext *avctx, void *tdata, int j, int threadnr)
     DSDContext *s = avctx->priv_data;
     ThreadData *td = tdata;
     AVFrame *frame = td->frame;
-    AVPacket *avpkt = td->avpkt;
+    const AVPacket *avpkt = td->avpkt;
     int src_next, src_stride;
     float *dst = ((float **)frame->extended_data)[j];
 
@@ -84,7 +86,7 @@ static int dsd_channel(AVCodecContext *avctx, void *tdata, int j, int threadnr)
         src_stride = 1;
     } else {
         src_next   = 1;
-        src_stride = avctx->channels;
+        src_stride = avctx->ch_layout.nb_channels;
     }
 
     ff_dsd2pcm_translate(&s[j], frame->nb_samples, lsbf,
@@ -94,36 +96,35 @@ static int dsd_channel(AVCodecContext *avctx, void *tdata, int j, int threadnr)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data,
+static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
                         int *got_frame_ptr, AVPacket *avpkt)
 {
     ThreadData td;
-    AVFrame *frame = data;
     int ret;
 
-    frame->nb_samples = avpkt->size / avctx->channels;
+    frame->nb_samples = avpkt->size / avctx->ch_layout.nb_channels;
 
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
     td.frame = frame;
     td.avpkt = avpkt;
-    avctx->execute2(avctx, dsd_channel, &td, NULL, avctx->channels);
+    avctx->execute2(avctx, dsd_channel, &td, NULL, avctx->ch_layout.nb_channels);
 
     *got_frame_ptr = 1;
-    return frame->nb_samples * avctx->channels;
+    return frame->nb_samples * avctx->ch_layout.nb_channels;
 }
 
 #define DSD_DECODER(id_, name_, long_name_) \
-AVCodec ff_##name_##_decoder = { \
-    .name         = #name_, \
-    .long_name    = NULL_IF_CONFIG_SMALL(long_name_), \
-    .type         = AVMEDIA_TYPE_AUDIO, \
-    .id           = AV_CODEC_ID_##id_, \
+const FFCodec ff_ ## name_ ## _decoder = { \
+    .p.name       = #name_, \
+    CODEC_LONG_NAME(long_name_), \
+    .p.type       = AVMEDIA_TYPE_AUDIO, \
+    .p.id         = AV_CODEC_ID_##id_, \
     .init         = decode_init, \
-    .decode       = decode_frame, \
-    .capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS, \
-    .sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP, \
+    FF_CODEC_DECODE_CB(decode_frame), \
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS, \
+    .p.sample_fmts = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP, \
                                                    AV_SAMPLE_FMT_NONE }, \
 };
 

@@ -54,6 +54,7 @@ typedef struct {
 #endif
 
 #if HAVE_LIB_ATOMIC_OPS
+#define AO_REQUIRE_CAS
 #include <atomic_ops.h>
 
 #define HAS_ATOMIC_OPS 1
@@ -107,7 +108,7 @@ static inline int atomic_add_unless(atomic_t *v, int add, int unless)
 	c = atomic_read(v);
 	while (c != unless && (old = atomic_cmpxchg(v, c, c + add)) != c)
 		c = old;
-	return c == unless;
+	return c != unless;
 }
 
 #endif

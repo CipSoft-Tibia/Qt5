@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,17 +10,14 @@
 #include <type_traits>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/callback_helpers.h"
-#include "base/compiler_specific.h"
+#include "base/check.h"
 #include "base/location.h"
-#include "base/memory/aligned_memory.h"
-#include "base/memory/ptr_util.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/run_loop.h"
 #include "base/sequence_checker.h"
-#include "base/sequenced_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/threading/sequence_bound_internal.h"
-#include "base/threading/sequenced_task_runner_handle.h"
 
 namespace base {
 
@@ -39,7 +36,7 @@ namespace base {
 //     // ...
 //     io_helper_.AsyncCall(&IOHelper::SaveScrollPosition);
 //   }
-//   SequenceBound<IOHelper> io_helper_{GetBackgroundTaskRunner()};
+//   base::SequenceBound<IOHelper> io_helper_{GetBackgroundTaskRunner()};
 // };
 //
 // Note: `SequenceBound<T>` intentionally does not expose a raw pointer to the
@@ -55,10 +52,10 @@ namespace base {
 //     }
 //   };
 //
-//   // SequenceBound itself is owned on `SequencedTaskRunnerHandle::Get()`.
-//   // The managed Database instance managed by it is constructed and owned on
-//   // `GetDBTaskRunner()`.
-//   SequenceBound<Database> db(GetDBTaskRunner());
+//   // SequenceBound itself is owned on
+//   // `SequencedTaskRunner::GetCurrentDefault()`. The managed Database
+//   // instance managed by it is constructed and owned on `GetDBTaskRunner()`.
+//   base::SequenceBound<Database> db(GetDBTaskRunner());
 //
 //   // `Database::Query()` runs on `GetDBTaskRunner()`, but
 //   // `reply_callback` will run on the owner task runner.
@@ -71,54 +68,74 @@ namespace base {
 //   // When `db` goes out of scope, the Database instance will also be
 //   // destroyed via a task posted to `GetDBTaskRunner()`.
 //
-// TODO(dcheng): SequenceBound should only be constructed, used, and destroyed
-// on a single sequence. This enforcement will gradually be enabled over time.
-template <typename T>
+// Sequence safety:
+//
+// Const-qualified methods may be used concurrently from multiple sequences,
+// e.g. `AsyncCall()` or `is_null()`. Calls that are forwarded to the
+// managed `T` will be posted to the bound sequence and executed serially
+// there.
+//
+// Mutable methods (e.g. `Reset()`, destruction, or move assignment) require
+// external synchronization if used concurrently with any other methods,
+// including const-qualified methods.
+//
+// Advanced usage:
+//
+// Using `SequenceBound<std::unique_ptr<T>>` allows transferring ownership of an
+// already-constructed `T` to `SequenceBound`. This can be helpful for more
+// complex situations, where `T` needs to be constructed on a specific sequence
+// that is different from where `T` will ultimately live.
+//
+// Construction (via the constructor or emplace) takes a `std::unique_ptr<T>`
+// instead of forwarding the arguments to `T`'s constructor:
+//
+//   std::unique_ptr<Database> db_impl = MakeDatabaseOnMainThread();
+//   base::SequenceBound<std::unique_ptr<Database>> db(GetDbTaskRunner(),
+//                                                     std::move(db_impl));
+//
+// All other usage (e.g. `AsyncCall()`, `Reset()`) functions identically to a
+// regular `SequenceBound<T>`:
+//
+//   // No need to dereference the `std::unique_ptr` explicitly:
+//   db.AsyncCall(&Database::Query).WithArgs(5).Then(base::BindOnce(...));
+template <typename T,
+          typename CrossThreadTraits =
+              sequence_bound_internal::CrossThreadTraits>
 class SequenceBound {
+ private:
+  using Storage = sequence_bound_internal::Storage<T, CrossThreadTraits>;
+  // This is usually just `T` except if `T` is a `std::unique_ptr`; in that
+  // case, `UnwrappedT` is the type of the object owned by the
+  // `std::unique_ptr`, e.g. if `T` is `std::unique_ptr<std::string>`, then
+  // UnwrappedT is `std::string`.
+  using UnwrappedT = std::remove_pointer_t<typename Storage::Ptr>;
+
  public:
+  template <typename Signature>
+  using CrossThreadTask =
+      typename CrossThreadTraits::template CrossThreadTask<Signature>;
+
   // Note: on construction, SequenceBound binds to the current sequence. Any
   // subsequent SequenceBound calls (including destruction) must run on that
   // same sequence.
 
   // Constructs a null SequenceBound with no managed `T`.
-  // TODO(dcheng): Add an `Emplace()` method to go with `Reset()`.
   SequenceBound() = default;
 
-  // Schedules asynchronous construction of a new instance of `T` on
-  // `task_runner`.
+  // Constructs a SequenceBound that manages a new instance of `T` on
+  // `task_runner`. `T` will be constructed on `task_runner`.
   //
-  // Once the SequenceBound constructor completes, the caller can immediately
-  // use `AsyncCall()`, et cetera, to schedule work after the construction of
-  // `T` on `task_runner`.
-  //
-  // Marked NO_SANITIZE because cfi doesn't like casting uninitialized memory to
-  // `T*`. However, this is safe here because:
-  //
-  // 1. The cast is well-defined (see https://eel.is/c++draft/basic.life#6) and
-  // 2. The resulting pointer is only ever dereferenced on `impl_task_runner_`.
-  //    By the time SequenceBound's constructor returns, the task to construct
-  //    `T` will already be posted; thus, subsequent dereference of `t_` on
-  //    `impl_task_runner_` are safe.
+  // Once this constructor returns, it is safe to immediately use `AsyncCall()`,
+  // et cetera; these calls will be sequenced after the construction of the
+  // managed `T`.
   template <typename... Args>
-  NO_SANITIZE("cfi-unrelated-cast")
-  SequenceBound(scoped_refptr<base::SequencedTaskRunner> task_runner,
-                Args&&... args)
+  explicit SequenceBound(scoped_refptr<SequencedTaskRunner> task_runner,
+                         Args&&... args)
       : impl_task_runner_(std::move(task_runner)) {
-    // Allocate space for but do not construct an instance of `T`.
-    // AlignedAlloc() requires alignment be a multiple of sizeof(void*).
-    storage_ = AlignedAlloc(
-        sizeof(T), sizeof(void*) > alignof(T) ? sizeof(void*) : alignof(T));
-    t_ = reinterpret_cast<T*>(storage_);
-
-    // Ensure that `t_` will be initialized
-    impl_task_runner_->PostTask(
-        FROM_HERE,
-        base::BindOnce(&ConstructOwnerRecord<Args...>, base::Unretained(t_),
-                       std::forward<Args>(args)...));
+    storage_.Construct(*impl_task_runner_, std::forward<Args>(args)...);
   }
 
-  // If non-null, destruction of the managed `T` is posted to
-  // `impl_task_runner_`.`
+  // If non-null, the managed `T` will be destroyed on `impl_task_runner_`.`
   ~SequenceBound() { Reset(); }
 
   // Disallow copy or assignment. SequenceBound has single ownership of the
@@ -137,15 +154,36 @@ class SequenceBound {
 
   // Move conversion helpers: allows upcasting from SequenceBound<Derived> to
   // SequenceBound<Base>.
-  template <typename From>
-  SequenceBound(SequenceBound<From>&& other) {
+  template <typename U>
+  // NOLINTNEXTLINE(google-explicit-constructor): Intentionally implicit.
+  SequenceBound(SequenceBound<U, CrossThreadTraits>&& other) {
+    // TODO(https://crbug.com/1382549): static_assert that U* is convertible to
+    // T*.
     MoveRecordFrom(other);
   }
 
-  template <typename From>
-  SequenceBound<T>& operator=(SequenceBound<From>&& other) {
+  template <typename U>
+  SequenceBound& operator=(SequenceBound<U, CrossThreadTraits>&& other) {
+    // TODO(https://crbug.com/1382549): static_assert that U* is convertible to
+    // T*.
     Reset();
     MoveRecordFrom(other);
+    return *this;
+  }
+
+  // Constructs a new managed instance of `T` on `task_runner`. If `this` is
+  // already managing another instance of `T`, that pre-existing instance will
+  // first be destroyed by calling `Reset()`.
+  //
+  // Once `emplace()` returns, it is safe to immediately use `AsyncCall()`,
+  // et cetera; these calls will be sequenced after the construction of the
+  // managed `T`.
+  template <typename... Args>
+  SequenceBound& emplace(scoped_refptr<SequencedTaskRunner> task_runner,
+                         Args&&... args) {
+    Reset();
+    impl_task_runner_ = std::move(task_runner);
+    storage_.Construct(*impl_task_runner_, std::forward<Args>(args)...);
     return *this;
   }
 
@@ -156,79 +194,118 @@ class SequenceBound {
   //
   //   helper.AsyncCall(&IOHelper::DoWork);
   //
-  // If `method` accepts arguments, use of `WithArgs()` to bind them is
-  // mandatory:
+  // If `method` accepts arguments, use `WithArgs()` to bind them:
   //
-  //   helper.AsyncCall(&IOHelper::DoWorkWithArgs).WithArgs(args);
+  //   helper.AsyncCall(&IOHelper::DoWorkWithArgs)
+  //       .WithArgs(args);
   //
-  // Optionally, use `Then()` to chain to a callback on the owner sequence after
-  // `method` completes. If `method` returns a non-void type, the return value
-  // will be passed to the chained callback.
+  // Use `Then()` to run a callback on the owner sequence after `method`
+  // completes:
   //
-  //   helper.AsyncCall(&IOHelper::GetValue).Then(std::move(process_result));
+  //   helper.AsyncCall(&IOHelper::GetValue)
+  //       .Then(std::move(process_result_callback));
+  //
+  // If a method returns a non-void type, use of `Then()` is required, and the
+  // method's return value will be passed to the `Then()` callback. To ignore
+  // the method's return value instead, wrap `method` in `base::IgnoreResult()`:
+  //
+  //   // Calling `GetPrefs` to force-initialize prefs.
+  //   helper.AsyncCall(base::IgnoreResult(&IOHelper::GetPrefs));
   //
   // `WithArgs()` and `Then()` may also be combined:
   //
-  //   helper.AsyncCall(&IOHelper::GetValueWithArgs).WithArgs(args)
-  //         .Then(std::move(process_result));
+  //   // Ordering is important: `Then()` must come last.
+  //   helper.AsyncCall(&IOHelper::GetValueWithArgs)
+  //       .WithArgs(args)
+  //       .Then(std::move(process_result_callback));
   //
-  // but note that ordering is strict: `Then()` must always be last.
-  //
-  // Note: internally, this is implemented using a series of templated builders.
-  // Destruction of the builder may trigger task posting; as a result, using the
-  // builder as anything other than a temporary is not allowed.
-  //
-  // Similarly, triggering lifetime extension of the temporary (e.g. by binding
-  // to a const lvalue reference) is not allowed.
-  template <typename R, typename... Args>
-  auto AsyncCall(R (T::*method)(Args...),
-                 const Location& location = Location::Current()) {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-    return AsyncCallBuilder<R (T::*)(Args...)>(this, &location, method);
+  // Note: internally, `AsyncCall()` is implemented using a series of helper
+  // classes that build the callback chain and post it on destruction. Capturing
+  // the return value and passing it elsewhere or triggering lifetime extension
+  // (e.g. by binding the return value to a reference) are both unsupported.
+  template <typename R,
+            typename C,
+            typename... Args,
+            typename = std::enable_if_t<std::is_base_of_v<C, UnwrappedT>>>
+  auto AsyncCall(R (C::*method)(Args...),
+                 const Location& location = Location::Current()) const {
+    return AsyncCallBuilder<R (C::*)(Args...), R, std::tuple<Args...>>(
+        this, &location, method);
   }
 
-  template <typename R, typename... Args>
-  auto AsyncCall(R (T::*method)(Args...) const,
-                 const Location& location = Location::Current()) {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-    return AsyncCallBuilder<R (T::*)(Args...) const>(this, &location, method);
+  template <typename R,
+            typename C,
+            typename... Args,
+            typename = std::enable_if_t<std::is_base_of_v<C, UnwrappedT>>>
+  auto AsyncCall(R (C::*method)(Args...) const,
+                 const Location& location = Location::Current()) const {
+    return AsyncCallBuilder<R (C::*)(Args...) const, R, std::tuple<Args...>>(
+        this, &location, method);
   }
 
-  // Post a call to `method` to `impl_task_runner_`.
-  // TODO(dcheng): Deprecate this in favor of `AsyncCall()`.
-  template <typename... MethodArgs, typename... Args>
-  void Post(const base::Location& from_here,
-            void (T::*method)(MethodArgs...),
-            Args&&... args) const {
-    DCHECK(t_);
-    impl_task_runner_->PostTask(from_here,
-                                base::BindOnce(method, base::Unretained(t_),
-                                               std::forward<Args>(args)...));
+  template <typename R,
+            typename C,
+            typename... Args,
+            typename = std::enable_if_t<std::is_base_of_v<C, UnwrappedT>>>
+  auto AsyncCall(internal::IgnoreResultHelper<R (C::*)(Args...) const> method,
+                 const Location& location = Location::Current()) const {
+    return AsyncCallBuilder<
+        internal::IgnoreResultHelper<R (C::*)(Args...) const>, void,
+        std::tuple<Args...>>(this, &location, method);
+  }
+
+  template <typename R,
+            typename C,
+            typename... Args,
+            typename = std::enable_if_t<std::is_base_of_v<C, UnwrappedT>>>
+  auto AsyncCall(internal::IgnoreResultHelper<R (C::*)(Args...)> method,
+                 const Location& location = Location::Current()) const {
+    return AsyncCallBuilder<internal::IgnoreResultHelper<R (C::*)(Args...)>,
+                            void, std::tuple<Args...>>(this, &location, method);
   }
 
   // Posts `task` to `impl_task_runner_`, passing it a reference to the wrapped
   // object. This allows arbitrary logic to be safely executed on the object's
   // task runner. The object is guaranteed to remain alive for the duration of
   // the task.
-  using ConstPostTaskCallback = base::OnceCallback<void(const T&)>;
-  void PostTaskWithThisObject(const base::Location& from_here,
-                              ConstPostTaskCallback callback) const {
-    DCHECK(t_);
-    impl_task_runner_->PostTask(
-        from_here,
-        base::BindOnce([](ConstPostTaskCallback callback,
-                          const T* t) { std::move(callback).Run(*t); },
-                       std::move(callback), t_));
+  // TODO(crbug.com/1182140): Consider checking whether the task runner can run
+  // tasks in current sequence, and using "plain" binds and task posting (here
+  // and other places that `CrossThreadTraits::PostTask`).
+  using ConstPostTaskCallback = CrossThreadTask<void(const UnwrappedT&)>;
+  void PostTaskWithThisObject(
+      ConstPostTaskCallback callback,
+      const Location& location = Location::Current()) const {
+    DCHECK(!is_null());
+    // Even though the lifetime of the object pointed to by `get()` may not have
+    // begun yet, the storage has been allocated. Per [basic.life/6] and
+    // [basic.life/7], "Indirection through such a pointer is permitted but the
+    // resulting lvalue may only be used in limited ways, as described below."
+    CrossThreadTraits::PostTask(
+        *impl_task_runner_, location,
+        CrossThreadTraits::BindOnce(std::move(callback),
+                                    std::cref(*storage_.get())));
   }
 
   // Same as above, but for non-const operations. The callback takes a pointer
   // to the wrapped object rather than a const ref.
-  using PostTaskCallback = base::OnceCallback<void(T*)>;
-  void PostTaskWithThisObject(const base::Location& from_here,
-                              PostTaskCallback callback) const {
-    DCHECK(t_);
-    impl_task_runner_->PostTask(from_here,
-                                base::BindOnce(std::move(callback), t_));
+  using PostTaskCallback = CrossThreadTask<void(UnwrappedT*)>;
+  void PostTaskWithThisObject(
+      PostTaskCallback callback,
+      const Location& location = Location::Current()) const {
+    DCHECK(!is_null());
+    CrossThreadTraits::PostTask(
+        *impl_task_runner_, location,
+        CrossThreadTraits::BindOnce(
+            std::move(callback),
+            CrossThreadTraits::Unretained(storage_.get())));
+  }
+
+  void FlushPostedTasksForTesting() const {
+    DCHECK(!is_null());
+    RunLoop run_loop;
+    CrossThreadTraits::PostTask(*impl_task_runner_, FROM_HERE,
+                                run_loop.QuitClosure());
+    run_loop.Run();
   }
 
   // TODO(liberato): Add PostOrCall(), to support cases where synchronous calls
@@ -240,38 +317,25 @@ class SequenceBound {
     if (is_null())
       return;
 
-    impl_task_runner_->PostTask(
-        FROM_HERE, base::BindOnce(&DeleteOwnerRecord, base::Unretained(t_),
-                                  base::Unretained(storage_)));
-
+    storage_.Destruct(*impl_task_runner_);
     impl_task_runner_ = nullptr;
-    t_ = nullptr;
-    storage_ = nullptr;
   }
 
-  // Same as above, but allows the caller to provide a closure to be invoked
-  // immediately after destruction. The Closure is invoked on
-  // `impl_task_runner_`, iff the owned object was non-null.
-  //
-  // TODO(dcheng): Consider removing this; this appears to be used for test
-  // synchronization, but that could be achieved by posting
-  // `run_loop.QuitClosure()` to the destination sequence after calling
-  // `Reset()`.
-  void ResetWithCallbackAfterDestruction(base::OnceClosure callback) {
+  // Resets `this` to null. If `this` is not currently null, posts destruction
+  // of the managed `T` to `impl_task_runner_`. Blocks until the destructor has
+  // run.
+  void SynchronouslyResetForTest() {
     if (is_null())
       return;
 
-    impl_task_runner_->PostTask(
-        FROM_HERE, base::BindOnce(
-                       [](base::OnceClosure callback, T* t, void* storage) {
-                         DeleteOwnerRecord(t, storage);
-                         std::move(callback).Run();
-                       },
-                       std::move(callback), t_, storage_));
-
-    impl_task_runner_ = nullptr;
-    t_ = nullptr;
-    storage_ = nullptr;
+    scoped_refptr<SequencedTaskRunner> task_runner = impl_task_runner_;
+    Reset();
+    // `Reset()` posts a task to destroy the managed `T`; synchronously wait for
+    // that posted task to complete.
+    RunLoop run_loop;
+    CrossThreadTraits::PostTask(*task_runner, FROM_HERE,
+                                run_loop.QuitClosure());
+    run_loop.Run();
   }
 
   // Return true if `this` is logically null; otherwise, returns false.
@@ -286,15 +350,20 @@ class SequenceBound {
   // Similarly, after `SequenceBound::Reset()`, `is_null()` may return true,
   // even though the lifetime of `T` may not have ended yet on
   // `impl_task_runner_`.
-  bool is_null() const { return !t_; }
+  bool is_null() const { return !storage_.get(); }
 
   // True if `this` is not logically null. See `is_null()`.
   explicit operator bool() const { return !is_null(); }
 
  private:
   // For move conversion.
-  template <typename U>
+  template <typename U, typename V>
   friend class SequenceBound;
+
+  template <template <typename> class CallbackType>
+  using EnableIfIsCrossThreadTask =
+      typename CrossThreadTraits::template EnableIfIsCrossThreadTask<
+          CallbackType>;
 
   // Support helpers for `AsyncCall()` implementation.
   //
@@ -326,18 +395,18 @@ class SequenceBound {
   //
   // In theory, this might allow the elimination of magic destructors and
   // better static checking by the compiler.
-  template <typename MethodPtrType>
+  template <typename MethodRef>
   class AsyncCallBuilderBase {
    protected:
-    AsyncCallBuilderBase(SequenceBound* sequence_bound,
+    AsyncCallBuilderBase(const SequenceBound* sequence_bound,
                          const Location* location,
-                         MethodPtrType method)
+                         MethodRef method)
         : sequence_bound_(sequence_bound),
           location_(location),
           method_(method) {
       // Common entry point for `AsyncCall()`, so check preconditions here.
-      DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_bound_->sequence_checker_);
-      DCHECK(sequence_bound_->t_);
+      DCHECK(sequence_bound_);
+      DCHECK(sequence_bound_->storage_.get());
     }
 
     AsyncCallBuilderBase(AsyncCallBuilderBase&&) = default;
@@ -358,40 +427,45 @@ class SequenceBound {
     //   destructor will `CHECK()` if `sequence_bound_` is non-null, since that
     //   indicates `Then()` was not invoked. Similarly, note this branch should
     //   be eliminated by the optimizer if the code is free of bugs. :)
-    SequenceBound* sequence_bound_;
+    raw_ptr<const SequenceBound<T, CrossThreadTraits>, DanglingUntriaged>
+        sequence_bound_;
     // Subtle: this typically points at a Location *temporary*. This is used to
     // try to detect errors resulting from lifetime extension of the async call
     // factory temporaries, since the factory destructors can perform work. If
     // the lifetime of the factory is incorrectly extended, dereferencing
     // `location_` will trigger a stack-use-after-scope when running with ASan.
-    const Location* const location_;
-    MethodPtrType method_;
+    const raw_ptr<const Location> location_;
+    MethodRef method_;
   };
 
-  template <typename MethodPtrType, typename ReturnType, typename... Args>
+  template <typename MethodRef, typename ReturnType, typename ArgsTuple>
   class AsyncCallBuilderImpl;
 
   // Selected method has no arguments and returns void.
-  template <typename MethodPtrType>
-  class AsyncCallBuilderImpl<MethodPtrType, void, std::tuple<>>
-      : public AsyncCallBuilderBase<MethodPtrType> {
+  template <typename MethodRef>
+  class AsyncCallBuilderImpl<MethodRef, void, std::tuple<>>
+      : public AsyncCallBuilderBase<MethodRef> {
    public:
     // Note: despite being here, this is actually still protected, since it is
     // protected on the base class.
-    using AsyncCallBuilderBase<MethodPtrType>::AsyncCallBuilderBase;
+    using AsyncCallBuilderBase<MethodRef>::AsyncCallBuilderBase;
 
     ~AsyncCallBuilderImpl() {
       if (this->sequence_bound_) {
-        this->sequence_bound_->impl_task_runner_->PostTask(
-            *this->location_,
-            BindOnce(this->method_, Unretained(this->sequence_bound_->t_)));
+        CrossThreadTraits::PostTask(
+            *this->sequence_bound_->impl_task_runner_, *this->location_,
+            CrossThreadTraits::BindOnce(
+                this->method_, CrossThreadTraits::Unretained(
+                                   this->sequence_bound_->storage_.get())));
       }
     }
 
-    void Then(OnceClosure then_callback) && {
+    void Then(CrossThreadTask<void()> then_callback) && {
       this->sequence_bound_->PostTaskAndThenHelper(
           *this->location_,
-          BindOnce(this->method_, Unretained(this->sequence_bound_->t_)),
+          CrossThreadTraits::BindOnce(
+              this->method_, CrossThreadTraits::Unretained(
+                                 this->sequence_bound_->storage_.get())),
           std::move(then_callback));
       this->sequence_bound_ = nullptr;
     }
@@ -404,13 +478,13 @@ class SequenceBound {
   };
 
   // Selected method has no arguments and returns non-void.
-  template <typename MethodPtrType, typename ReturnType>
-  class AsyncCallBuilderImpl<MethodPtrType, ReturnType, std::tuple<>>
-      : public AsyncCallBuilderBase<MethodPtrType> {
+  template <typename MethodRef, typename ReturnType>
+  class AsyncCallBuilderImpl<MethodRef, ReturnType, std::tuple<>>
+      : public AsyncCallBuilderBase<MethodRef> {
    public:
     // Note: despite being here, this is actually still protected, since it is
     // protected on the base class.
-    using AsyncCallBuilderBase<MethodPtrType>::AsyncCallBuilderBase;
+    using AsyncCallBuilderBase<MethodRef>::AsyncCallBuilderBase;
 
     ~AsyncCallBuilderImpl() {
       // Must use Then() since the method's return type is not void.
@@ -422,11 +496,13 @@ class SequenceBound {
 
     template <template <typename> class CallbackType,
               typename ThenArg,
-              typename = EnableIfIsBaseCallback<CallbackType>>
+              typename = EnableIfIsCrossThreadTask<CallbackType>>
     void Then(CallbackType<void(ThenArg)> then_callback) && {
       this->sequence_bound_->PostTaskAndThenHelper(
           *this->location_,
-          BindOnce(this->method_, Unretained(this->sequence_bound_->t_)),
+          CrossThreadTraits::BindOnce(
+              this->method_, CrossThreadTraits::Unretained(
+                                 this->sequence_bound_->storage_.get())),
           std::move(then_callback));
       this->sequence_bound_ = nullptr;
     }
@@ -439,13 +515,13 @@ class SequenceBound {
   };
 
   // Selected method has arguments. Return type can be void or non-void.
-  template <typename MethodPtrType, typename ReturnType, typename... Args>
-  class AsyncCallBuilderImpl<MethodPtrType, ReturnType, std::tuple<Args...>>
-      : public AsyncCallBuilderBase<MethodPtrType> {
+  template <typename MethodRef, typename ReturnType, typename... Args>
+  class AsyncCallBuilderImpl<MethodRef, ReturnType, std::tuple<Args...>>
+      : public AsyncCallBuilderBase<MethodRef> {
    public:
     // Note: despite being here, this is actually still protected, since it is
     // protected on the base class.
-    using AsyncCallBuilderBase<MethodPtrType>::AsyncCallBuilderBase;
+    using AsyncCallBuilderBase<MethodRef>::AsyncCallBuilderBase;
 
     ~AsyncCallBuilderImpl() {
       // Must use WithArgs() since the method takes arguments.
@@ -455,12 +531,14 @@ class SequenceBound {
 
     template <typename... BoundArgs>
     auto WithArgs(BoundArgs&&... bound_args) {
-      SequenceBound* const sequence_bound =
+      const SequenceBound* const sequence_bound =
           std::exchange(this->sequence_bound_, nullptr);
       return AsyncCallWithBoundArgsBuilder<ReturnType>(
           sequence_bound, this->location_,
-          BindOnce(this->method_, Unretained(sequence_bound->t_),
-                   std::forward<BoundArgs>(bound_args)...));
+          CrossThreadTraits::BindOnce(
+              this->method_,
+              CrossThreadTraits::Unretained(sequence_bound->storage_.get()),
+              std::forward<BoundArgs>(bound_args)...));
     }
 
    private:
@@ -470,11 +548,14 @@ class SequenceBound {
     AsyncCallBuilderImpl& operator=(AsyncCallBuilderImpl&&) = default;
   };
 
-  template <typename MethodPtrType,
-            typename R = internal::ExtractMethodReturnType<MethodPtrType>,
-            typename ArgsTuple =
-                internal::ExtractMethodArgsTuple<MethodPtrType>>
-  using AsyncCallBuilder = AsyncCallBuilderImpl<MethodPtrType, R, ArgsTuple>;
+  // `MethodRef` is either a member function pointer type or a member function
+  //     pointer type wrapped with `internal::IgnoreResultHelper`.
+  // `R` is the return type of `MethodRef`. This is always `void` if
+  //     `MethodRef` is an `internal::IgnoreResultHelper` wrapper.
+  // `ArgsTuple` is a `std::tuple` with template type arguments corresponding to
+  //     the types of the method's parameters.
+  template <typename MethodRef, typename R, typename ArgsTuple>
+  using AsyncCallBuilder = AsyncCallBuilderImpl<MethodRef, R, ArgsTuple>;
 
   // Support factories when arguments are bound using `WithArgs()`. These
   // factories don't need to handle raw method pointers, since everything has
@@ -482,14 +563,14 @@ class SequenceBound {
   template <typename ReturnType>
   class AsyncCallWithBoundArgsBuilderBase {
    protected:
-    AsyncCallWithBoundArgsBuilderBase(SequenceBound* sequence_bound,
+    AsyncCallWithBoundArgsBuilderBase(const SequenceBound* sequence_bound,
                                       const Location* location,
-                                      base::OnceCallback<ReturnType()> callback)
+                                      CrossThreadTask<ReturnType()> callback)
         : sequence_bound_(sequence_bound),
           location_(location),
           callback_(std::move(callback)) {
-      DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_bound_->sequence_checker_);
-      DCHECK(sequence_bound_->t_);
+      DCHECK(sequence_bound_);
+      DCHECK(sequence_bound_->storage_.get());
     }
 
     // Subtle: the internal helpers rely on move elision. Preventing move
@@ -501,9 +582,9 @@ class SequenceBound {
     AsyncCallWithBoundArgsBuilderBase& operator=(
         AsyncCallWithBoundArgsBuilderBase&&) noexcept = default;
 
-    SequenceBound* sequence_bound_;
-    const Location* const location_;
-    base::OnceCallback<ReturnType()> callback_;
+    raw_ptr<const SequenceBound<T, CrossThreadTraits>> sequence_bound_;
+    const raw_ptr<const Location> location_;
+    CrossThreadTask<ReturnType()> callback_;
   };
 
   // Note: this doesn't handle a void return type, which has an explicit
@@ -520,7 +601,7 @@ class SequenceBound {
 
     template <template <typename> class CallbackType,
               typename ThenArg,
-              typename = EnableIfIsBaseCallback<CallbackType>>
+              typename = EnableIfIsCrossThreadTask<CallbackType>>
     void Then(CallbackType<void(ThenArg)> then_callback) && {
       this->sequence_bound_->PostTaskAndThenHelper(*this->location_,
                                                    std::move(this->callback_),
@@ -551,12 +632,13 @@ class SequenceBound {
 
     ~AsyncCallWithBoundArgsBuilderVoid() {
       if (this->sequence_bound_) {
-        this->sequence_bound_->impl_task_runner_->PostTask(
-            *this->location_, std::move(this->callback_));
+        CrossThreadTraits::PostTask(*this->sequence_bound_->impl_task_runner_,
+                                    *this->location_,
+                                    std::move(this->callback_));
       }
     }
 
-    void Then(OnceClosure then_callback) && {
+    void Then(CrossThreadTask<void()> then_callback) && {
       this->sequence_bound_->PostTaskAndThenHelper(*this->location_,
                                                    std::move(this->callback_),
                                                    std::move(then_callback));
@@ -579,10 +661,10 @@ class SequenceBound {
       AsyncCallWithBoundArgsBuilderDefault<ReturnType>>::type;
 
   void PostTaskAndThenHelper(const Location& location,
-                             OnceCallback<void()> callback,
-                             OnceClosure then_callback) {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-    impl_task_runner_->PostTaskAndReply(location, std::move(callback),
+                             CrossThreadTask<void()> callback,
+                             CrossThreadTask<void()> then_callback) const {
+    CrossThreadTraits::PostTaskAndReply(*impl_task_runner_, location,
+                                        std::move(callback),
                                         std::move(then_callback));
   }
 
@@ -590,61 +672,34 @@ class SequenceBound {
             template <typename>
             class CallbackType,
             typename ThenArg,
-            typename = EnableIfIsBaseCallback<CallbackType>>
+            typename = EnableIfIsCrossThreadTask<CallbackType>>
   void PostTaskAndThenHelper(const Location& location,
-                             OnceCallback<ReturnType()> callback,
-                             CallbackType<void(ThenArg)> then_callback) {
-    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-    OnceCallback<void(ThenArg)>&& once_then_callback = std::move(then_callback);
-    impl_task_runner_->PostTaskAndReplyWithResult(
-        location, std::move(callback), std::move(once_then_callback));
+                             CrossThreadTask<ReturnType()> callback,
+                             CallbackType<void(ThenArg)> then_callback) const {
+    CrossThreadTask<void(ThenArg)>&& once_then_callback =
+        std::move(then_callback);
+    CrossThreadTraits::PostTaskAndReplyWithResult(
+        *impl_task_runner_, location, std::move(callback),
+        std::move(once_then_callback));
   }
 
   // Helper to support move construction and move assignment.
   //
-  // Marked NO_SANITIZE since:
-  // 1. SequenceBound can be moved before `t_` is constructed on
-  //    `impl_task_runner_` but
-  // 2. Implicit conversions to non-virtual base classes are allowed before the
-  //    lifetime of `t_` has started (see https://eel.is/c++draft/basic.life#6).
+  // TODO(https://crbug.com/1382549): Constrain this so converting between
+  // std::unique_ptr<T> and T are explicitly forbidden (rather than simply
+  // failing to build in spectacular ways).
   template <typename From>
-  void NO_SANITIZE("cfi-unrelated-cast") MoveRecordFrom(From&& other) {
-    // TODO(dcheng): Consider adding a static_assert to provide a friendlier
-    // error message.
+  void MoveRecordFrom(From&& other) {
     impl_task_runner_ = std::move(other.impl_task_runner_);
 
-    // Subtle: this must not use static_cast<>, since the lifetime of the
-    // managed `T` may not have begun yet. However, the standard explicitly
-    // still allows implicit conversion to a non-virtual base class.
-    t_ = std::exchange(other.t_, nullptr);
-    storage_ = std::exchange(other.storage_, nullptr);
+    storage_.TakeFrom(std::move(other.storage_));
   }
 
-  // Pointer to the managed `T`. This field is only read and written on
-  // the sequence associated with `sequence_checker_`.
-  T* t_ = nullptr;
+  Storage storage_;
 
-  // Storage originally allocated by `AlignedAlloc()`. Maintained separately
-  // from  `t_` since the original, unadjusted pointer needs to be passed to
-  // `AlignedFree()`.
-  void* storage_ = nullptr;
-
-  SEQUENCE_CHECKER(sequence_checker_);
-
-  // Task runner which manages `t_`. `t_` is constructed, destroyed, and
-  // dereferenced only on this task runner.
-  scoped_refptr<base::SequencedTaskRunner> impl_task_runner_;
-
-  // Helpers for constructing and destroying `T` on `impl_task_runner_`.
-  template <typename... Args>
-  static void ConstructOwnerRecord(T* t, std::decay_t<Args>&&... args) {
-    new (t) T(std::move(args)...);
-  }
-
-  static void DeleteOwnerRecord(T* t, void* storage) {
-    t->~T();
-    AlignedFree(storage);
-  }
+  // Task runner which manages `storage_.get()`. `storage_.get()`'s pointee is
+  // constructed, destroyed, and otherwise used only on this task runner.
+  scoped_refptr<SequencedTaskRunner> impl_task_runner_;
 };
 
 }  // namespace base

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,11 @@
 #include <utility>
 
 #include "base/check.h"
+#include "build/chromeos_buildflags.h"
 #include "components/payments/core/method_strings.h"
 #include "components/payments/core/native_error_strings.h"
 #include "components/payments/core/payer_data.h"
+#include "content/public/browser/web_contents.h"
 
 namespace payments {
 
@@ -21,14 +23,18 @@ AndroidPaymentApp::AndroidPaymentApp(
     const GURL& payment_request_origin,
     const std::string& payment_request_id,
     std::unique_ptr<AndroidAppDescription> description,
-    base::WeakPtr<AndroidAppCommunication> communication)
+    base::WeakPtr<AndroidAppCommunication> communication,
+    content::GlobalRenderFrameHostId frame_routing_id)
     : PaymentApp(/*icon_resource_id=*/0, PaymentApp::Type::NATIVE_MOBILE_APP),
       stringified_method_data_(std::move(stringified_method_data)),
       top_level_origin_(top_level_origin),
       payment_request_origin_(payment_request_origin),
       payment_request_id_(payment_request_id),
       description_(std::move(description)),
-      communication_(communication) {
+      communication_(communication),
+      frame_routing_id_(frame_routing_id),
+      payment_app_token_(base::UnguessableToken::Create()),
+      payment_app_open_(false) {
   DCHECK(!payment_method_names.empty());
   DCHECK_EQ(payment_method_names.size(), stringified_method_data_->size());
   DCHECK_EQ(*payment_method_names.begin(),
@@ -41,17 +47,31 @@ AndroidPaymentApp::AndroidPaymentApp(
   app_method_names_ = payment_method_names;
 }
 
-AndroidPaymentApp::~AndroidPaymentApp() = default;
+AndroidPaymentApp::~AndroidPaymentApp() {
+  if (payment_app_open_) {
+    AbortPaymentApp(base::DoNothing());
+  }
+}
 
-void AndroidPaymentApp::InvokePaymentApp(Delegate* delegate) {
+void AndroidPaymentApp::InvokePaymentApp(base::WeakPtr<Delegate> delegate) {
   // Browser is closing, so no need to invoke a callback.
   if (!communication_)
     return;
 
+  content::RenderFrameHost* rfh =
+      content::RenderFrameHost::FromID(frame_routing_id_);
+  if (!rfh || !rfh->IsActive())
+    return;
+  content::WebContents* web_contents =
+      content::WebContents::FromRenderFrameHost(rfh);
+  if (!web_contents)
+    return;
+
+  payment_app_open_ = true;
   communication_->InvokePaymentApp(
       description_->package, description_->activities.front()->name,
       *stringified_method_data_, top_level_origin_, payment_request_origin_,
-      payment_request_id_,
+      payment_request_id_, payment_app_token_, web_contents,
       base::BindOnce(&AndroidPaymentApp::OnPaymentAppResponse,
                      weak_ptr_factory_.GetWeakPtr(), delegate));
 }
@@ -60,17 +80,13 @@ bool AndroidPaymentApp::IsCompleteForPayment() const {
   return true;
 }
 
-uint32_t AndroidPaymentApp::GetCompletenessScore() const {
-  return 0;
-}
-
 bool AndroidPaymentApp::CanPreselect() const {
   return true;
 }
 
-base::string16 AndroidPaymentApp::GetMissingInfoLabel() const {
+std::u16string AndroidPaymentApp::GetMissingInfoLabel() const {
   NOTREACHED();
-  return base::string16();
+  return std::u16string();
 }
 
 bool AndroidPaymentApp::HasEnrolledInstrument() const {
@@ -89,22 +105,19 @@ std::string AndroidPaymentApp::GetId() const {
   return description_->package;
 }
 
-base::string16 AndroidPaymentApp::GetLabel() const {
-  return base::string16();
+std::u16string AndroidPaymentApp::GetLabel() const {
+  return std::u16string();
 }
 
-base::string16 AndroidPaymentApp::GetSublabel() const {
-  return base::string16();
+std::u16string AndroidPaymentApp::GetSublabel() const {
+  return std::u16string();
 }
 
 const SkBitmap* AndroidPaymentApp::icon_bitmap() const {
   return nullptr;
 }
 
-bool AndroidPaymentApp::IsValidForModifier(
-    const std::string& method,
-    bool supported_networks_specified,
-    const std::set<std::string>& supported_networks) const {
+bool AndroidPaymentApp::IsValidForModifier(const std::string& method) const {
   bool is_valid = false;
   IsValidForPaymentMethodIdentifier(method, &is_valid);
   return is_valid;
@@ -142,25 +155,42 @@ void AndroidPaymentApp::UpdateWith(
 
 void AndroidPaymentApp::OnPaymentDetailsNotUpdated() {}
 
+void AndroidPaymentApp::AbortPaymentApp(
+    base::OnceCallback<void(bool)> abort_callback) {
+  // Browser is closing or no payment app active, so no need to invoke a
+  // callback.
+  if (!communication_ || !payment_app_open_)
+    return;
+
+  payment_app_open_ = false;
+
+  communication_->AbortPaymentApp(payment_app_token_,
+                                  std::move(abort_callback));
+}
+
 bool AndroidPaymentApp::IsPreferred() const {
   // This class used only on Chrome OS, where the only Android payment app
   // available is the trusted web application (TWA) that launched this instance
   // of Chrome with a TWA specific payment method, so this app should be
   // preferred.
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
   NOTREACHED();
-#endif  // OS_CHROMEOS
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
   DCHECK_EQ(1U, GetAppMethodNames().size());
   DCHECK_EQ(methods::kGooglePlayBilling, *GetAppMethodNames().begin());
   return true;
 }
 
 void AndroidPaymentApp::OnPaymentAppResponse(
-    Delegate* delegate,
-    const base::Optional<std::string>& error_message,
+    base::WeakPtr<Delegate> delegate,
+    const absl::optional<std::string>& error_message,
     bool is_activity_result_ok,
     const std::string& payment_method_identifier,
     const std::string& stringified_details) {
+  payment_app_open_ = false;
+  if (!delegate)
+    return;
+
   if (error_message.has_value()) {
     delegate->OnInstrumentDetailsError(error_message.value());
     return;

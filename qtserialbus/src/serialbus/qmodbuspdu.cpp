@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmodbuspdu.h"
 #include "qmodbus_symbols_p.h"
@@ -128,11 +95,12 @@ static QDataStream &pduFromStream(QDataStream &stream, Type type, QModbusPdu *pd
     } raii = { pdu };
 
     QModbusPdu::FunctionCode code = QModbusPdu::FunctionCode::Invalid;
-    if (stream.readRawData(reinterpret_cast<char *>(&code), sizeof(quint8)) != sizeof(quint8))
+    stream >> code;
+    if (stream.status() == QDataStream::ReadPastEnd)
         return stream;
     pdu->setFunctionCode(code);
 
-    if (code == QModbusPdu::Invalid || code == QModbusPdu::UndefinedFunctionCode) // shortcut
+    if (code == QModbusPdu::Invalid) // shortcut
         return stream;
 
     constexpr const int MaxPduDataSize = 252; // in bytes
@@ -305,6 +273,8 @@ static QDataStream &pduFromStream(QDataStream &stream, Type type, QModbusPdu *pd
 
     Destroys a QModbusPdu.
 */
+QModbusPdu::~QModbusPdu()
+    = default;
 
 /*!
     \fn QModbusPdu::QModbusPdu(const QModbusPdu &other)
@@ -454,7 +424,7 @@ static QDataStream &pduFromStream(QDataStream &stream, Type type, QModbusPdu *pd
 QDebug operator<<(QDebug debug, const QModbusPdu &pdu)
 {
     QDebugStateSaver _(debug);
-    debug.nospace().noquote() << "0x" << Qt::hex << qSetFieldWidth(2) << qSetPadChar('0')
+    debug.nospace().noquote() << "0x" << Qt::hex << qSetFieldWidth(2) << qSetPadChar(u'0')
         << (pdu.isException() ? pdu.functionCode() | QModbusPdu::ExceptionByte : pdu.functionCode())
         << qSetFieldWidth(0) << pdu.data().toHex();
     return debug;
@@ -543,6 +513,12 @@ QDataStream &operator<<(QDataStream &stream, const QModbusPdu &pdu)
 */
 
 /*!
+    \internal
+*/
+QModbusRequest::~QModbusRequest()
+    = default;
+
+/*!
     Returns the expected minimum data size for \a request based on the
     request's function code; \c {-1} if the function code is not known.
 */
@@ -623,6 +599,22 @@ void QModbusRequest::registerDataSizeCalculator(FunctionCode fc, CalcFuncPtr cal
 }
 
 /*!
+    \internal
+
+    Reads a FunctionCode from a \a stream.
+    In stream we serialize FunctionCode as one byte, so we use a temporary char
+    variable to make the code work on both little endian and big endian systems.
+    If reading from stream fails, code will retain original value.
+*/
+QDataStream &operator>>(QDataStream &stream, QModbusPdu::FunctionCode &code)
+{
+    char buffer;
+    if (stream.readRawData(&buffer, 1) == 1)
+        code = static_cast<QModbusPdu::FunctionCode>(buffer);
+    return stream;
+}
+
+/*!
     \relates QModbusRequest
 
     Reads a \a pdu from the \a stream and returns a reference to the stream.
@@ -697,6 +689,12 @@ QDataStream &operator>>(QDataStream &stream, QModbusRequest &pdu)
     Constructs a QModbusResponse with function code set to \a code and payload set to \a data.
     The data is expected to be stored in big-endian byte order already.
 */
+
+/*!
+    \internal
+*/
+QModbusResponse::~QModbusResponse()
+    = default;
 
 /*!
     Returns the expected minimum data size for \a response based on the
@@ -857,6 +855,12 @@ QDataStream &operator>>(QDataStream &stream, QModbusResponse &pdu)
     Constructs a QModbusExceptionResponse with function code set to \a code and exception error
     code set to \a ec.
 */
+
+/*!
+    \internal
+*/
+QModbusExceptionResponse::~QModbusExceptionResponse()
+    = default;
 
 /*!
     \fn void QModbusExceptionResponse::setFunctionCode(FunctionCode c)

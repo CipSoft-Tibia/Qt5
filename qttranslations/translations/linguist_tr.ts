@@ -402,7 +402,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>&amp;Edit</source>
-        <translation>Düz&amp;enle</translation>
+        <translation>Düz&amp;en</translation>
     </message>
     <message>
         <source>&amp;Open...</source>
@@ -830,7 +830,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Edit</source>
-        <translation>Düzenle</translation>
+        <translation>Düzen</translation>
     </message>
     <message>
         <source>Translation</source>
@@ -1524,7 +1524,7 @@ Satır: %2</translation>
     </message>
     <message>
         <source>Edit</source>
-        <translation>Düzenle</translation>
+        <translation>Düzen</translation>
     </message>
     <message>
         <source>Go to</source>

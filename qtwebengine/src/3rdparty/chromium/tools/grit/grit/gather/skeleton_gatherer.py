@@ -1,14 +1,10 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 '''A baseclass for simple gatherers that store their gathered resource in a
 list.
 '''
-
-from __future__ import print_function
-
-import six
 
 from grit.gather import interface
 from grit import clique
@@ -22,7 +18,7 @@ class SkeletonGatherer(interface.GathererBase):
   '''
 
   def __init__(self, *args, **kwargs):
-    super(SkeletonGatherer, self).__init__(*args, **kwargs)
+    super().__init__(*args, **kwargs)
     # List of parts of the document. Translateable parts are
     # clique.MessageClique objects, nontranslateable parts are plain strings.
     # Translated messages are inserted back into the skeleton using the quoting
@@ -78,17 +74,16 @@ class SkeletonGatherer(interface.GathererBase):
 
     out = []
     for ix in range(len(self.skeleton_)):
-      if isinstance(self.skeleton_[ix], six.string_types):
+      if isinstance(self.skeleton_[ix], str):
         if skeleton_gatherer:
           # Make sure the skeleton is like the original
-          assert(isinstance(skeleton_gatherer.skeleton_[ix], six.string_types))
+          assert (isinstance(skeleton_gatherer.skeleton_[ix], str))
           out.append(skeleton_gatherer.skeleton_[ix])
         else:
           out.append(self.skeleton_[ix])
       else:
         if skeleton_gatherer:  # Make sure the skeleton is like the original
-          assert(not isinstance(skeleton_gatherer.skeleton_[ix],
-                                six.string_types))
+          assert (not isinstance(skeleton_gatherer.skeleton_[ix], str))
         msg = self.skeleton_[ix].MessageForLanguage(lang,
                                                     pseudo_if_not_available,
                                                     fallback_to_english)

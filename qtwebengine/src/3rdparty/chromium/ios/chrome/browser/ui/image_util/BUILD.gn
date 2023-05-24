@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -9,6 +9,7 @@ source_set("image_util") {
   ]
   deps = [ "//ui/base" ]
   configs += [ "//build/config/compiler:enable_arc" ]
+  frameworks = [ "UniformTypeIdentifiers.framework" ]
 }
 
 source_set("web") {
@@ -27,9 +28,13 @@ source_set("web") {
     "//ios/chrome/app/strings",
     "//ios/chrome/browser/main:public",
     "//ios/chrome/browser/ui/alert_coordinator",
-    "//ios/chrome/browser/web",
+    "//ios/chrome/browser/web/image_fetch",
     "//ios/web",
     "//ui/base",
+  ]
+  frameworks = [
+    "Photos.framework",
+    "UniformTypeIdentifiers.framework",
   ]
   configs += [ "//build/config/compiler:enable_arc" ]
 }

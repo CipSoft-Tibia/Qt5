@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,10 @@
 
 #include <stdint.h>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/sequence_checker.h"
 #include "media/base/callback_registry.h"
 #include "media/base/cdm_context.h"
 #include "media/base/decryptor.h"
@@ -17,7 +18,7 @@
 #include "media/base/video_decoder_config.h"
 
 namespace base {
-class SingleThreadTaskRunner;
+class SequencedTaskRunner;
 }
 
 namespace media {
@@ -33,14 +34,18 @@ class MediaLog;
 class MEDIA_EXPORT DecryptingVideoDecoder : public VideoDecoder {
  public:
   DecryptingVideoDecoder(
-      const scoped_refptr<base::SingleThreadTaskRunner>& task_runner,
+      const scoped_refptr<base::SequencedTaskRunner>& task_runner,
       MediaLog* media_log);
+
+  DecryptingVideoDecoder(const DecryptingVideoDecoder&) = delete;
+  DecryptingVideoDecoder& operator=(const DecryptingVideoDecoder&) = delete;
+
   ~DecryptingVideoDecoder() override;
 
   bool SupportsDecryption() const override;
 
   // VideoDecoder implementation.
-  std::string GetDisplayName() const override;
+  VideoDecoderType GetDecoderType() const override;
   void Initialize(const VideoDecoderConfig& config,
                   bool low_delay,
                   CdmContext* cdm_context,
@@ -85,8 +90,10 @@ class MEDIA_EXPORT DecryptingVideoDecoder : public VideoDecoder {
   void CompleteWaitingForDecryptionKey();
 
   // Set in constructor.
-  scoped_refptr<base::SingleThreadTaskRunner> const task_runner_;
-  MediaLog* const media_log_;
+  scoped_refptr<base::SequencedTaskRunner> const task_runner_;
+  const raw_ptr<MediaLog> media_log_;
+
+  SEQUENCE_CHECKER(sequence_checker_);
 
   State state_ = kUninitialized;
 
@@ -98,7 +105,7 @@ class MEDIA_EXPORT DecryptingVideoDecoder : public VideoDecoder {
 
   VideoDecoderConfig config_;
 
-  Decryptor* decryptor_ = nullptr;
+  raw_ptr<Decryptor> decryptor_ = nullptr;
 
   // The buffer that needs decrypting/decoding.
   scoped_refptr<media::DecoderBuffer> pending_buffer_to_decode_;
@@ -118,8 +125,6 @@ class MEDIA_EXPORT DecryptingVideoDecoder : public VideoDecoder {
   std::unique_ptr<CallbackRegistration> event_cb_registration_;
 
   base::WeakPtrFactory<DecryptingVideoDecoder> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(DecryptingVideoDecoder);
 };
 
 }  // namespace media

@@ -5,19 +5,15 @@
 #include "src/wasm/wasm-objects.h"
 
 #include "src/base/iterator.h"
-#include "src/codegen/assembler-inl.h"
-#include "src/codegen/code-factory.h"
+#include "src/base/vector.h"
 #include "src/compiler/wasm-compiler.h"
-#include "src/debug/debug-interface.h"
+#include "src/debug/debug.h"
 #include "src/logging/counters.h"
-#include "src/objects/debug-objects-inl.h"
+#include "src/objects/managed-inl.h"
 #include "src/objects/objects-inl.h"
 #include "src/objects/shared-function-info.h"
-#include "src/objects/struct-inl.h"
-#include "src/trap-handler/trap-handler.h"
 #include "src/utils/utils.h"
-#include "src/utils/vector.h"
-#include "src/wasm/jump-table-assembler.h"
+#include "src/wasm/code-space-access.h"
 #include "src/wasm/module-compiler.h"
 #include "src/wasm/module-decoder.h"
 #include "src/wasm/module-instantiate.h"
@@ -29,6 +25,9 @@
 #include "src/wasm/wasm-objects-inl.h"
 #include "src/wasm/wasm-subtyping.h"
 #include "src/wasm/wasm-value.h"
+
+// Needs to be last so macros do not get undefined.
+#include "src/objects/object-macros.h"
 
 #define TRACE_IFT(...)              \
   do {                              \
@@ -44,110 +43,9 @@ using WasmModule = wasm::WasmModule;
 
 namespace {
 
-// Manages the natively-allocated memory for a WasmInstanceObject. Since
-// an instance finalizer is not guaranteed to run upon isolate shutdown,
-// we must use a Managed<WasmInstanceNativeAllocations> to guarantee
-// it is freed.
-// Native allocations are the signature ids and targets for indirect call
-// targets, as well as the call targets for imported functions.
-class WasmInstanceNativeAllocations {
- public:
-// Helper macro to set an internal field and the corresponding field
-// on an instance.
-#define SET(instance, field, value) \
-  instance->set_##field((this->field##_ = value).get());
-
-  // Allocates initial native storage for a given instance.
-  WasmInstanceNativeAllocations(Handle<WasmInstanceObject> instance,
-                                size_t num_imported_functions,
-                                size_t num_imported_mutable_globals,
-                                size_t num_data_segments,
-                                size_t num_elem_segments) {
-    SET(instance, imported_function_targets,
-        std::make_unique<Address[]>(num_imported_functions));
-    SET(instance, imported_mutable_globals,
-        std::make_unique<Address[]>(num_imported_mutable_globals));
-    SET(instance, data_segment_starts,
-        std::make_unique<Address[]>(num_data_segments));
-    SET(instance, data_segment_sizes,
-        std::make_unique<uint32_t[]>(num_data_segments));
-    SET(instance, dropped_elem_segments,
-        std::make_unique<uint8_t[]>(num_elem_segments));
-  }
-
-  uint32_t indirect_function_table_capacity() const {
-    return indirect_function_table_capacity_;
-  }
-
-  // Resizes the indirect function table.
-  void resize_indirect_function_table(Isolate* isolate,
-                                      Handle<WasmInstanceObject> instance,
-                                      uint32_t new_capacity) {
-    uint32_t old_capacity = indirect_function_table_capacity_;
-    DCHECK_LT(old_capacity, new_capacity);
-    // Grow exponentially to support repeated re-allocation.
-    new_capacity = std::max(new_capacity, 2 * old_capacity);
-    CHECK_GE(kMaxInt, old_capacity);
-    CHECK_GE(kMaxInt, new_capacity);
-
-    SET(instance, indirect_function_table_sig_ids,
-        grow(indirect_function_table_sig_ids_.get(), old_capacity,
-             new_capacity));
-    SET(instance, indirect_function_table_targets,
-        grow(indirect_function_table_targets_.get(), old_capacity,
-             new_capacity));
-
-    Handle<FixedArray> old_refs(instance->indirect_function_table_refs(),
-                                isolate);
-    Handle<FixedArray> new_refs = isolate->factory()->CopyFixedArrayAndGrow(
-        old_refs, static_cast<int>(new_capacity - old_capacity));
-    instance->set_indirect_function_table_refs(*new_refs);
-    indirect_function_table_capacity_ = new_capacity;
-  }
-
- private:
-  template <typename T>
-  std::unique_ptr<T[]> grow(T* old_arr, size_t old_size, size_t new_size) {
-    std::unique_ptr<T[]> new_arr = std::make_unique<T[]>(new_size);
-    std::copy_n(old_arr, old_size, new_arr.get());
-    return new_arr;
-  }
-
-  uint32_t indirect_function_table_capacity_ = 0;
-  std::unique_ptr<uint32_t[]> indirect_function_table_sig_ids_;
-  std::unique_ptr<Address[]> indirect_function_table_targets_;
-  std::unique_ptr<Address[]> imported_function_targets_;
-  std::unique_ptr<Address[]> imported_mutable_globals_;
-  std::unique_ptr<Address[]> data_segment_starts_;
-  std::unique_ptr<uint32_t[]> data_segment_sizes_;
-  std::unique_ptr<uint8_t[]> dropped_elem_segments_;
-#undef SET
-};
-
-size_t EstimateNativeAllocationsSize(const WasmModule* module) {
-  size_t estimate =
-      sizeof(WasmInstanceNativeAllocations) +
-      (1 * kSystemPointerSize * module->num_imported_mutable_globals) +
-      (2 * kSystemPointerSize * module->num_imported_functions) +
-      ((kSystemPointerSize + sizeof(uint32_t) + sizeof(uint8_t)) *
-       module->num_declared_data_segments);
-  for (auto& table : module->tables) {
-    estimate += 3 * kSystemPointerSize * table.initial_size;
-  }
-  return estimate;
-}
-
-WasmInstanceNativeAllocations* GetNativeAllocations(
-    WasmInstanceObject instance) {
-  return Managed<WasmInstanceNativeAllocations>::cast(
-             instance.managed_native_allocations())
-      .raw();
-}
-
 enum DispatchTableElements : int {
   kDispatchTableInstanceOffset,
   kDispatchTableIndexOffset,
-  kDispatchTableFunctionTableOffset,
   // Marker:
   kDispatchTableNumElements
 };
@@ -158,14 +56,6 @@ enum DispatchTableElements : int {
 Handle<WasmModuleObject> WasmModuleObject::New(
     Isolate* isolate, std::shared_ptr<wasm::NativeModule> native_module,
     Handle<Script> script) {
-  Handle<FixedArray> export_wrappers = isolate->factory()->NewFixedArray(0);
-  return New(isolate, std::move(native_module), script, export_wrappers);
-}
-
-// static
-Handle<WasmModuleObject> WasmModuleObject::New(
-    Isolate* isolate, std::shared_ptr<wasm::NativeModule> native_module,
-    Handle<Script> script, Handle<FixedArray> export_wrappers) {
   Handle<Managed<wasm::NativeModule>> managed_native_module;
   if (script->type() == Script::TYPE_WASM) {
     managed_native_module = handle(
@@ -181,7 +71,6 @@ Handle<WasmModuleObject> WasmModuleObject::New(
   }
   Handle<WasmModuleObject> module_object = Handle<WasmModuleObject>::cast(
       isolate->factory()->NewJSObject(isolate->wasm_module_constructor()));
-  module_object->set_export_wrappers(*export_wrappers);
   module_object->set_managed_native_module(*managed_native_module);
   module_object->set_script(*script);
   return module_object;
@@ -190,24 +79,25 @@ Handle<WasmModuleObject> WasmModuleObject::New(
 Handle<String> WasmModuleObject::ExtractUtf8StringFromModuleBytes(
     Isolate* isolate, Handle<WasmModuleObject> module_object,
     wasm::WireBytesRef ref, InternalizeString internalize) {
-  Vector<const uint8_t> wire_bytes =
+  base::Vector<const uint8_t> wire_bytes =
       module_object->native_module()->wire_bytes();
   return ExtractUtf8StringFromModuleBytes(isolate, wire_bytes, ref,
                                           internalize);
 }
 
 Handle<String> WasmModuleObject::ExtractUtf8StringFromModuleBytes(
-    Isolate* isolate, Vector<const uint8_t> wire_bytes, wasm::WireBytesRef ref,
-    InternalizeString internalize) {
-  Vector<const uint8_t> name_vec =
+    Isolate* isolate, base::Vector<const uint8_t> wire_bytes,
+    wasm::WireBytesRef ref, InternalizeString internalize) {
+  base::Vector<const uint8_t> name_vec =
       wire_bytes.SubVector(ref.offset(), ref.end_offset());
   // UTF8 validation happens at decode time.
   DCHECK(unibrow::Utf8::ValidateEncoding(name_vec.begin(), name_vec.length()));
   auto* factory = isolate->factory();
   return internalize
              ? factory->InternalizeUtf8String(
-                   Vector<const char>::cast(name_vec))
-             : factory->NewStringFromUtf8(Vector<const char>::cast(name_vec))
+                   base::Vector<const char>::cast(name_vec))
+             : factory
+                   ->NewStringFromUtf8(base::Vector<const char>::cast(name_vec))
                    .ToHandleChecked();
 }
 
@@ -226,52 +116,35 @@ MaybeHandle<String> WasmModuleObject::GetFunctionNameOrNull(
   wasm::WireBytesRef name =
       module_object->module()->lazily_generated_names.LookupFunctionName(
           wasm::ModuleWireBytes(module_object->native_module()->wire_bytes()),
-          func_index, VectorOf(module_object->module()->export_table));
+          func_index);
   if (!name.is_set()) return {};
   return ExtractUtf8StringFromModuleBytes(isolate, module_object, name,
                                           kNoInternalize);
 }
 
-Handle<String> WasmModuleObject::GetFunctionName(
-    Isolate* isolate, Handle<WasmModuleObject> module_object,
-    uint32_t func_index) {
-  MaybeHandle<String> name =
-      GetFunctionNameOrNull(isolate, module_object, func_index);
-  if (!name.is_null()) return name.ToHandleChecked();
-  EmbeddedVector<char, 32> buffer;
-  DCHECK_GE(func_index, module_object->module()->num_imported_functions);
-  int length = SNPrintF(buffer, "func%u", func_index);
-  return isolate->factory()
-      ->NewStringFromOneByte(Vector<uint8_t>::cast(buffer.SubVector(0, length)))
-      .ToHandleChecked();
-}
-
-Vector<const uint8_t> WasmModuleObject::GetRawFunctionName(
-    uint32_t func_index) {
+base::Vector<const uint8_t> WasmModuleObject::GetRawFunctionName(
+    int func_index) {
+  if (func_index == wasm::kAnonymousFuncIndex) {
+    return base::Vector<const uint8_t>({nullptr, 0});
+  }
   DCHECK_GT(module()->functions.size(), func_index);
   wasm::ModuleWireBytes wire_bytes(native_module()->wire_bytes());
   wasm::WireBytesRef name_ref =
-      module()->lazily_generated_names.LookupFunctionName(
-          wire_bytes, func_index, VectorOf(module()->export_table));
+      module()->lazily_generated_names.LookupFunctionName(wire_bytes,
+                                                          func_index);
   wasm::WasmName name = wire_bytes.GetNameOrNull(name_ref);
-  return Vector<const uint8_t>::cast(name);
+  return base::Vector<const uint8_t>::cast(name);
 }
 
 Handle<WasmTableObject> WasmTableObject::New(
     Isolate* isolate, Handle<WasmInstanceObject> instance, wasm::ValueType type,
     uint32_t initial, bool has_maximum, uint32_t maximum,
-    Handle<FixedArray>* entries) {
-  // TODO(7748): Make this work with other types when spec clears up.
-  {
-    const WasmModule* module =
-        instance.is_null() ? nullptr : instance->module();
-    CHECK(wasm::WasmTable::IsValidTableType(type, module));
-  }
+    Handle<FixedArray>* entries, Handle<Object> initial_value) {
+  CHECK(type.is_object_reference());
 
   Handle<FixedArray> backing_store = isolate->factory()->NewFixedArray(initial);
-  Object null = ReadOnlyRoots(isolate).null_value();
   for (int i = 0; i < static_cast<int>(initial); ++i) {
-    backing_store->set(i, null);
+    backing_store->set(i, *initial_value);
   }
 
   Handle<Object> max;
@@ -285,13 +158,13 @@ Handle<WasmTableObject> WasmTableObject::New(
       isolate->native_context()->wasm_table_constructor(), isolate);
   auto table_obj = Handle<WasmTableObject>::cast(
       isolate->factory()->NewJSObject(table_ctor));
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
 
   if (!instance.is_null()) table_obj->set_instance(*instance);
   table_obj->set_entries(*backing_store);
   table_obj->set_current_length(initial);
   table_obj->set_maximum_length(*max);
-  table_obj->set_raw_type(static_cast<int>(type.heap_representation()));
+  table_obj->set_raw_type(static_cast<int>(type.raw_bit_field()));
 
   table_obj->set_dispatch_tables(ReadOnlyRoots(isolate).empty_fixed_array());
   if (entries != nullptr) {
@@ -332,15 +205,15 @@ int WasmTableObject::Grow(Isolate* isolate, Handle<WasmTableObject> table,
   // Check if growing by {count} is valid.
   uint32_t max_size;
   if (!table->maximum_length().ToUint32(&max_size)) {
-    max_size = FLAG_wasm_max_table_size;
+    max_size = v8_flags.wasm_max_table_size;
   }
-  max_size = std::min(max_size, FLAG_wasm_max_table_size);
+  max_size = std::min(max_size, v8_flags.wasm_max_table_size.value());
   DCHECK_LE(old_size, max_size);
   if (max_size - old_size < count) return -1;
 
   uint32_t new_size = old_size + count;
   // Even with 2x over-allocation, there should not be an integer overflow.
-  STATIC_ASSERT(wasm::kV8MaxWasmTableSize <= kMaxInt / 2);
+  static_assert(wasm::kV8MaxWasmTableSize <= kMaxInt / 2);
   DCHECK_GE(kMaxInt, new_size);
   int old_capacity = table->entries().length();
   if (new_size > static_cast<uint32_t>(old_capacity)) {
@@ -371,8 +244,8 @@ int WasmTableObject::Grow(Isolate* isolate, Handle<WasmTableObject> table,
     Handle<WasmInstanceObject> instance(
         WasmInstanceObject::cast(dispatch_tables->get(i)), isolate);
 
-    DCHECK_EQ(old_size, WasmInstanceObject::IndirectFunctionTableSize(
-                            isolate, instance, table_index));
+    DCHECK_EQ(old_size,
+              instance->GetIndirectFunctionTable(isolate, table_index)->size());
     WasmInstanceObject::EnsureIndirectFunctionTableWithMinimumSize(
         instance, table_index, new_size);
   }
@@ -389,16 +262,17 @@ bool WasmTableObject::IsInBounds(Isolate* isolate,
   return entry_index < static_cast<uint32_t>(table->current_length());
 }
 
-bool WasmTableObject::IsValidElement(Isolate* isolate,
-                                     Handle<WasmTableObject> table,
-                                     Handle<Object> entry) {
-  const char* error_message;
+MaybeHandle<Object> WasmTableObject::JSToWasmElement(
+    Isolate* isolate, Handle<WasmTableObject> table, Handle<Object> entry,
+    const char** error_message) {
+  // Any `entry` has to be in its JS representation.
+  DCHECK(!entry->IsWasmInternalFunction());
   const WasmModule* module =
       !table->instance().IsUndefined()
           ? WasmInstanceObject::cast(table->instance()).module()
           : nullptr;
-  return wasm::TypecheckJSObject(isolate, module, entry, table->type(),
-                                 &error_message);
+  return wasm::JSToWasmObject(isolate, module, entry, table->type(),
+                              error_message);
 }
 
 void WasmTableObject::SetFunctionTableEntry(Isolate* isolate,
@@ -406,38 +280,38 @@ void WasmTableObject::SetFunctionTableEntry(Isolate* isolate,
                                             Handle<FixedArray> entries,
                                             int entry_index,
                                             Handle<Object> entry) {
-  if (entry->IsNull(isolate)) {
+  if (entry->IsWasmNull(isolate)) {
     ClearDispatchTables(isolate, table, entry_index);  // Degenerate case.
-    entries->set(entry_index, ReadOnlyRoots(isolate).null_value());
+    entries->set(entry_index, ReadOnlyRoots(isolate).wasm_null());
     return;
   }
+  Handle<Object> external =
+      handle(Handle<WasmInternalFunction>::cast(entry)->external(), isolate);
 
-  if (WasmExportedFunction::IsWasmExportedFunction(*entry)) {
-    auto exported_function = Handle<WasmExportedFunction>::cast(entry);
+  if (WasmExportedFunction::IsWasmExportedFunction(*external)) {
+    auto exported_function = Handle<WasmExportedFunction>::cast(external);
     Handle<WasmInstanceObject> target_instance(exported_function->instance(),
                                                isolate);
     int func_index = exported_function->function_index();
     auto* wasm_function = &target_instance->module()->functions[func_index];
-    DCHECK_NOT_NULL(wasm_function);
-    DCHECK_NOT_NULL(wasm_function->sig);
-    UpdateDispatchTables(isolate, table, entry_index, wasm_function->sig,
-                         target_instance, func_index);
-  } else if (WasmJSFunction::IsWasmJSFunction(*entry)) {
+    UpdateDispatchTables(isolate, *table, entry_index, wasm_function,
+                         *target_instance);
+  } else if (WasmJSFunction::IsWasmJSFunction(*external)) {
     UpdateDispatchTables(isolate, table, entry_index,
-                         Handle<WasmJSFunction>::cast(entry));
+                         Handle<WasmJSFunction>::cast(external));
   } else {
-    DCHECK(WasmCapiFunction::IsWasmCapiFunction(*entry));
+    DCHECK(WasmCapiFunction::IsWasmCapiFunction(*external));
     UpdateDispatchTables(isolate, table, entry_index,
-                         Handle<WasmCapiFunction>::cast(entry));
+                         Handle<WasmCapiFunction>::cast(external));
   }
   entries->set(entry_index, *entry);
 }
 
+// TODO(manoskouk): Does this need to be handlified?
 void WasmTableObject::Set(Isolate* isolate, Handle<WasmTableObject> table,
                           uint32_t index, Handle<Object> entry) {
   // Callers need to perform bounds checks, type check, and error handling.
   DCHECK(IsInBounds(isolate, table, index));
-  DCHECK(IsValidElement(isolate, table, entry));
 
   Handle<FixedArray> entries(table->entries(), isolate);
   // The FixedArray is addressed with int's.
@@ -445,29 +319,35 @@ void WasmTableObject::Set(Isolate* isolate, Handle<WasmTableObject> table,
 
   switch (table->type().heap_representation()) {
     case wasm::HeapType::kExtern:
-    case wasm::HeapType::kExn:
+    case wasm::HeapType::kString:
+    case wasm::HeapType::kStringViewWtf8:
+    case wasm::HeapType::kStringViewWtf16:
+    case wasm::HeapType::kStringViewIter:
+    case wasm::HeapType::kEq:
+    case wasm::HeapType::kStruct:
+    case wasm::HeapType::kArray:
+    case wasm::HeapType::kAny:
+    case wasm::HeapType::kI31:
+    case wasm::HeapType::kNone:
+    case wasm::HeapType::kNoFunc:
+    case wasm::HeapType::kNoExtern:
       entries->set(entry_index, *entry);
       return;
     case wasm::HeapType::kFunc:
       SetFunctionTableEntry(isolate, table, entries, entry_index, entry);
       return;
-    case wasm::HeapType::kEq:
-    case wasm::HeapType::kI31:
-      // TODO(7748): Implement once we have a story for struct/arrays/i31ref in
-      // JS.
-      UNIMPLEMENTED();
     case wasm::HeapType::kBottom:
       UNREACHABLE();
     default:
       DCHECK(!table->instance().IsUndefined());
       if (WasmInstanceObject::cast(table->instance())
               .module()
-              ->has_signature(entry_index)) {
+              ->has_signature(table->type().ref_index())) {
         SetFunctionTableEntry(isolate, table, entries, entry_index, entry);
         return;
       }
-      // TODO(7748): Implement once we have a story for struct/arrays in JS.
-      UNIMPLEMENTED();
+      entries->set(entry_index, *entry);
+      return;
   }
 }
 
@@ -483,42 +363,41 @@ Handle<Object> WasmTableObject::Get(Isolate* isolate,
 
   Handle<Object> entry(entries->get(entry_index), isolate);
 
-  if (entry->IsNull(isolate)) {
+  if (entry->IsWasmNull(isolate)) {
     return entry;
   }
 
   switch (table->type().heap_representation()) {
+    case wasm::HeapType::kStringViewWtf8:
+    case wasm::HeapType::kStringViewWtf16:
+    case wasm::HeapType::kStringViewIter:
     case wasm::HeapType::kExtern:
-    case wasm::HeapType::kExn:
-      return entry;
-    case wasm::HeapType::kFunc:
-      if (WasmExportedFunction::IsWasmExportedFunction(*entry) ||
-          WasmJSFunction::IsWasmJSFunction(*entry) ||
-          WasmCapiFunction::IsWasmCapiFunction(*entry)) {
-        return entry;
-      }
-      break;
+    case wasm::HeapType::kString:
     case wasm::HeapType::kEq:
     case wasm::HeapType::kI31:
-      // TODO(7748): Implement once we have a story for struct/arrays/i31ref in
-      // JS.
-      UNIMPLEMENTED();
+    case wasm::HeapType::kStruct:
+    case wasm::HeapType::kArray:
+    case wasm::HeapType::kAny:
+    case wasm::HeapType::kNone:
+    case wasm::HeapType::kNoFunc:
+    case wasm::HeapType::kNoExtern:
+      return entry;
+    case wasm::HeapType::kFunc:
+      if (entry->IsWasmInternalFunction()) return entry;
+      break;
     case wasm::HeapType::kBottom:
       UNREACHABLE();
     default:
       DCHECK(!table->instance().IsUndefined());
-      if (WasmInstanceObject::cast(table->instance())
-              .module()
-              ->has_signature(entry_index)) {
-        if (WasmExportedFunction::IsWasmExportedFunction(*entry) ||
-            WasmJSFunction::IsWasmJSFunction(*entry) ||
-            WasmCapiFunction::IsWasmCapiFunction(*entry)) {
-          return entry;
-        }
-        break;
+      const WasmModule* module =
+          WasmInstanceObject::cast(table->instance()).module();
+      if (module->has_array(table->type().ref_index()) ||
+          module->has_struct(table->type().ref_index())) {
+        return entry;
       }
-      // TODO(7748): Implement once we have a story for struct/arrays in JS.
-      UNIMPLEMENTED();
+      DCHECK(module->has_signature(table->type().ref_index()));
+      if (entry->IsWasmInternalFunction()) return entry;
+      break;
   }
 
   // {entry} is not a valid entry in the table. It has to be a placeholder
@@ -529,10 +408,11 @@ Handle<Object> WasmTableObject::Get(Isolate* isolate,
 
   // Check if we already compiled a wrapper for the function but did not store
   // it in the table slot yet.
-  entry = WasmInstanceObject::GetOrCreateWasmExternalFunction(isolate, instance,
-                                                              function_index);
-  entries->set(entry_index, *entry);
-  return entry;
+  Handle<WasmInternalFunction> internal =
+      WasmInstanceObject::GetOrCreateWasmInternalFunction(isolate, instance,
+                                                          function_index);
+  entries->set(entry_index, *internal);
+  return internal;
 }
 
 void WasmTableObject::Fill(Isolate* isolate, Handle<WasmTableObject> table,
@@ -548,31 +428,45 @@ void WasmTableObject::Fill(Isolate* isolate, Handle<WasmTableObject> table,
   }
 }
 
-void WasmTableObject::UpdateDispatchTables(
-    Isolate* isolate, Handle<WasmTableObject> table, int entry_index,
-    const wasm::FunctionSig* sig, Handle<WasmInstanceObject> target_instance,
-    int target_func_index) {
+// static
+void WasmTableObject::UpdateDispatchTables(Isolate* isolate,
+                                           WasmTableObject table,
+                                           int entry_index,
+                                           const wasm::WasmFunction* func,
+                                           WasmInstanceObject target_instance) {
+  DisallowGarbageCollection no_gc;
+
   // We simply need to update the IFTs for each instance that imports
   // this table.
-  Handle<FixedArray> dispatch_tables(table->dispatch_tables(), isolate);
-  DCHECK_EQ(0, dispatch_tables->length() % kDispatchTableNumElements);
+  FixedArray dispatch_tables = table.dispatch_tables();
+  DCHECK_EQ(0, dispatch_tables.length() % kDispatchTableNumElements);
 
-  for (int i = 0; i < dispatch_tables->length();
+  Object call_ref =
+      func->imported
+          // The function in the target instance was imported. Use its imports
+          // table, which contains a tuple needed by the import wrapper.
+          ? target_instance.imported_function_refs().get(func->func_index)
+          // For wasm functions, just pass the target instance.
+          : target_instance;
+  Address call_target = target_instance.GetCallTarget(func->func_index);
+
+  int original_sig_id = func->sig_index;
+
+  for (int i = 0, len = dispatch_tables.length(); i < len;
        i += kDispatchTableNumElements) {
     int table_index =
-        Smi::cast(dispatch_tables->get(i + kDispatchTableIndexOffset)).value();
-    Handle<WasmInstanceObject> instance(
-        WasmInstanceObject::cast(
-            dispatch_tables->get(i + kDispatchTableInstanceOffset)),
-        isolate);
-    // Note that {SignatureMap::Find} may return {-1} if the signature is
-    // not found; it will simply never match any check.
-    auto sig_id = instance->module()->signature_map.Find(*sig);
-    IndirectFunctionTableEntry(instance, table_index, entry_index)
-        .Set(sig_id, target_instance, target_func_index);
+        Smi::cast(dispatch_tables.get(i + kDispatchTableIndexOffset)).value();
+    WasmInstanceObject instance = WasmInstanceObject::cast(
+        dispatch_tables.get(i + kDispatchTableInstanceOffset));
+    int sig_id = target_instance.module()
+                     ->isorecursive_canonical_type_ids[original_sig_id];
+    WasmIndirectFunctionTable ift = WasmIndirectFunctionTable::cast(
+        instance.indirect_function_tables().get(table_index));
+    ift.Set(entry_index, sig_id, call_target, call_ref);
   }
 }
 
+// static
 void WasmTableObject::UpdateDispatchTables(Isolate* isolate,
                                            Handle<WasmTableObject> table,
                                            int entry_index,
@@ -595,6 +489,7 @@ void WasmTableObject::UpdateDispatchTables(Isolate* isolate,
   }
 }
 
+// static
 void WasmTableObject::UpdateDispatchTables(
     Isolate* isolate, Handle<WasmTableObject> table, int entry_index,
     Handle<WasmCapiFunction> capi_function) {
@@ -610,7 +505,7 @@ void WasmTableObject::UpdateDispatchTables(
   int total_count = serialized_sig.length() - 1;
   std::unique_ptr<wasm::ValueType[]> reps(new wasm::ValueType[total_count]);
   int result_count;
-  static const wasm::ValueType kMarker = wasm::kWasmStmt;
+  static const wasm::ValueType kMarker = wasm::kWasmVoid;
   for (int i = 0, j = 0; i <= total_count; i++) {
     if (serialized_sig.get(i) == kMarker) {
       result_count = i;
@@ -629,24 +524,33 @@ void WasmTableObject::UpdateDispatchTables(
         WasmInstanceObject::cast(
             dispatch_tables->get(i + kDispatchTableInstanceOffset)),
         isolate);
-    // TODO(jkummerow): Find a way to avoid recompiling wrappers.
     wasm::NativeModule* native_module =
         instance->module_object().native_module();
-    Address host_address = capi_function->GetHostCallTarget();
-    wasm::WasmCodeRefScope code_ref_scope;
-    wasm::WasmCode* wasm_code = compiler::CompileWasmCapiCallWrapper(
-        isolate->wasm_engine(), native_module, &sig, host_address);
-    isolate->counters()->wasm_generated_code_size()->Increment(
-        wasm_code->instructions().length());
-    isolate->counters()->wasm_reloc_size()->Increment(
-        wasm_code->reloc_info().length());
-    Handle<Tuple2> tuple = isolate->factory()->NewTuple2(
-        instance, capi_function, AllocationType::kOld);
-    // Note that {SignatureMap::Find} may return {-1} if the signature is
-    // not found; it will simply never match any check.
-    auto sig_id = instance->module()->signature_map.Find(sig);
-    IndirectFunctionTableEntry(instance, table_index, entry_index)
-        .Set(sig_id, wasm_code->instruction_start(), *tuple);
+    wasm::WasmImportWrapperCache* cache = native_module->import_wrapper_cache();
+    auto kind = compiler::WasmImportCallKind::kWasmToCapi;
+    uint32_t canonical_type_index =
+        wasm::GetTypeCanonicalizer()->AddRecursiveGroup(&sig);
+    wasm::WasmCode* wasm_code = cache->MaybeGet(kind, canonical_type_index,
+                                                param_count, wasm::kNoSuspend);
+    if (wasm_code == nullptr) {
+      wasm::WasmCodeRefScope code_ref_scope;
+      wasm::WasmImportWrapperCache::ModificationScope cache_scope(cache);
+      wasm_code = compiler::CompileWasmCapiCallWrapper(native_module, &sig);
+      wasm::WasmImportWrapperCache::CacheKey key(kind, canonical_type_index,
+                                                 param_count, wasm::kNoSuspend);
+      cache_scope[key] = wasm_code;
+      wasm_code->IncRef();
+      isolate->counters()->wasm_generated_code_size()->Increment(
+          wasm_code->instructions().length());
+      isolate->counters()->wasm_reloc_size()->Increment(
+          wasm_code->reloc_info().length());
+    }
+    instance->GetIndirectFunctionTable(isolate, table_index)
+        ->Set(entry_index, canonical_type_index, wasm_code->instruction_start(),
+              WasmCapiFunctionData::cast(
+                  capi_function->shared().function_data(kAcquireLoad))
+                  .internal()
+                  .ref());
   }
 }
 
@@ -663,20 +567,24 @@ void WasmTableObject::ClearDispatchTables(Isolate* isolate,
         WasmInstanceObject::cast(
             dispatch_tables->get(i + kDispatchTableInstanceOffset)),
         isolate);
-    DCHECK_LT(index, WasmInstanceObject::IndirectFunctionTableSize(
-                         isolate, target_instance, table_index));
-    IndirectFunctionTableEntry(target_instance, table_index, index).clear();
+    Handle<WasmIndirectFunctionTable> function_table =
+        target_instance->GetIndirectFunctionTable(isolate, table_index);
+    DCHECK_LT(index, function_table->size());
+    function_table->Clear(index);
   }
 }
 
 void WasmTableObject::SetFunctionTablePlaceholder(
     Isolate* isolate, Handle<WasmTableObject> table, int entry_index,
     Handle<WasmInstanceObject> instance, int func_index) {
-  // Put (instance, func_index) as a Tuple2 into the table_index.
+  // Put (instance, func_index) as a Tuple2 into the entry_index.
   // The {WasmExportedFunction} will be created lazily.
+  // Allocate directly in old space as the tuples are typically long-lived, and
+  // we create many of them, which would result in lots of GC when initializing
+  // large tables.
   Handle<Tuple2> tuple = isolate->factory()->NewTuple2(
       instance, Handle<Smi>(Smi::FromInt(func_index), isolate),
-      AllocationType::kYoung);
+      AllocationType::kOld);
   table->entries().set(entry_index, *tuple);
 }
 
@@ -691,9 +599,13 @@ void WasmTableObject::GetFunctionTableEntry(
   *is_valid = true;
   Handle<Object> element(table->entries().get(entry_index), isolate);
 
-  *is_null = element->IsNull(isolate);
+  *is_null = element->IsWasmNull(isolate);
   if (*is_null) return;
 
+  if (element->IsWasmInternalFunction()) {
+    element = handle(Handle<WasmInternalFunction>::cast(element)->external(),
+                     isolate);
+  }
   if (WasmExportedFunction::IsWasmExportedFunction(*element)) {
     auto target_func = Handle<WasmExportedFunction>::cast(element);
     *instance = handle(target_func->instance(), isolate);
@@ -757,9 +669,23 @@ Handle<WasmIndirectFunctionTable> WasmIndirectFunctionTable::New(
       isolate, IftNativeAllocations::SizeInMemory(size), table, size);
   table->set_managed_native_allocations(*native_allocations);
   for (uint32_t i = 0; i < size; ++i) {
-    IndirectFunctionTableEntry(table, static_cast<int>(i)).clear();
+    table->Clear(i);
   }
   return table;
+}
+void WasmIndirectFunctionTable::Set(uint32_t index, int sig_id,
+                                    Address call_target, Object ref) {
+  sig_ids()[index] = sig_id;
+  targets()[index] = call_target;
+  refs().set(index, ref);
+}
+
+void WasmIndirectFunctionTable::Clear(uint32_t index) {
+  sig_ids()[index] = -1;
+  targets()[index] = 0;
+  refs().set(
+      index,
+      ReadOnlyRoots(GetIsolateFromWritableObject(*this)).undefined_value());
 }
 
 void WasmIndirectFunctionTable::Resize(Isolate* isolate,
@@ -768,17 +694,27 @@ void WasmIndirectFunctionTable::Resize(Isolate* isolate,
   uint32_t old_size = table->size();
   if (old_size >= new_size) return;  // Nothing to do.
 
+  table->set_size(new_size);
+
+  // Grow table exponentially to guarantee amortized constant allocation and gc
+  // time.
+  Handle<FixedArray> old_refs(table->refs(), isolate);
+  // Since we might have overallocated, {old_capacity} might be different than
+  // {old_size}.
+  uint32_t old_capacity = old_refs->length();
+  // If we have enough capacity, there is no need to reallocate.
+  if (new_size <= old_capacity) return;
+  uint32_t new_capacity = std::max(2 * old_capacity, new_size);
+
   Managed<IftNativeAllocations>::cast(table->managed_native_allocations())
       .raw()
-      ->resize(table, new_size);
+      ->resize(table, new_capacity);
 
-  Handle<FixedArray> old_refs(table->refs(), isolate);
   Handle<FixedArray> new_refs = isolate->factory()->CopyFixedArrayAndGrow(
-      old_refs, static_cast<int>(new_size - old_size));
+      old_refs, static_cast<int>(new_capacity - old_capacity));
   table->set_refs(*new_refs);
-  table->set_size(new_size);
-  for (uint32_t i = old_size; i < new_size; ++i) {
-    IndirectFunctionTableEntry(table, static_cast<int>(i)).clear();
+  for (uint32_t i = old_capacity; i < new_capacity; ++i) {
+    table->Clear(i);
   }
 }
 
@@ -788,7 +724,8 @@ void SetInstanceMemory(Handle<WasmInstanceObject> instance,
                        Handle<JSArrayBuffer> buffer) {
   bool is_wasm_module = instance->module()->origin == wasm::kWasmOrigin;
   bool use_trap_handler =
-      instance->module_object().native_module()->use_trap_handler();
+      instance->module_object().native_module()->bounds_checks() ==
+      wasm::kTrapHandler;
   // Wasm modules compiled to use the trap handler don't have bounds checks,
   // so they must have a memory that has guard regions.
   CHECK_IMPLIES(is_wasm_module && use_trap_handler,
@@ -797,7 +734,7 @@ void SetInstanceMemory(Handle<WasmInstanceObject> instance,
   instance->SetRawMemory(reinterpret_cast<byte*>(buffer->backing_store()),
                          buffer->byte_length());
 #if DEBUG
-  if (!FLAG_mock_arraybuffer_allocator) {
+  if (!v8_flags.mock_arraybuffer_allocator) {
     // To flush out bugs earlier, in DEBUG mode, check that all pages of the
     // memory are accessible by reading and writing one byte on each page.
     // Don't do this if the mock ArrayBuffer allocator is enabled.
@@ -813,17 +750,9 @@ void SetInstanceMemory(Handle<WasmInstanceObject> instance,
 }
 }  // namespace
 
-Handle<WasmMemoryObject> WasmMemoryObject::New(
-    Isolate* isolate, MaybeHandle<JSArrayBuffer> maybe_buffer,
-    uint32_t maximum) {
-  Handle<JSArrayBuffer> buffer;
-  if (!maybe_buffer.ToHandle(&buffer)) {
-    // If no buffer was provided, create a zero-length one.
-    auto backing_store =
-        BackingStore::AllocateWasmMemory(isolate, 0, 0, SharedFlag::kNotShared);
-    buffer = isolate->factory()->NewJSArrayBuffer(std::move(backing_store));
-  }
-
+MaybeHandle<WasmMemoryObject> WasmMemoryObject::New(
+    Isolate* isolate, Handle<JSArrayBuffer> buffer, int maximum,
+    WasmMemoryFlag memory_type) {
   Handle<JSFunction> memory_ctor(
       isolate->native_context()->wasm_memory_constructor(), isolate);
 
@@ -831,33 +760,58 @@ Handle<WasmMemoryObject> WasmMemoryObject::New(
       isolate->factory()->NewJSObject(memory_ctor, AllocationType::kOld));
   memory_object->set_array_buffer(*buffer);
   memory_object->set_maximum_pages(maximum);
+  memory_object->set_is_memory64(memory_type == WasmMemoryFlag::kWasmMemory64);
 
   if (buffer->is_shared()) {
     auto backing_store = buffer->GetBackingStore();
     backing_store->AttachSharedWasmMemoryObject(isolate, memory_object);
   }
 
+  // For debugging purposes we memorize a link from the JSArrayBuffer
+  // to it's owning WasmMemoryObject instance.
+  Handle<Symbol> symbol = isolate->factory()->array_buffer_wasm_memory_symbol();
+  JSObject::SetProperty(isolate, buffer, symbol, memory_object).Check();
+
   return memory_object;
 }
 
-MaybeHandle<WasmMemoryObject> WasmMemoryObject::New(Isolate* isolate,
-                                                    uint32_t initial,
-                                                    uint32_t maximum,
-                                                    SharedFlag shared) {
-  auto heuristic_maximum = maximum;
+MaybeHandle<WasmMemoryObject> WasmMemoryObject::New(
+    Isolate* isolate, int initial, int maximum, SharedFlag shared,
+    WasmMemoryFlag memory_type) {
+  bool has_maximum = maximum != kNoMaximum;
+
+  int engine_maximum = memory_type == WasmMemoryFlag::kWasmMemory64
+                           ? static_cast<int>(wasm::max_mem64_pages())
+                           : static_cast<int>(wasm::max_mem32_pages());
+
+  if (initial > engine_maximum) return {};
+
 #ifdef V8_TARGET_ARCH_32_BIT
-  // TODO(wasm): use a better heuristic for reserving more than the initial
-  // number of pages on 32-bit systems. Being too greedy in reserving capacity
-  // limits the number of memories that can be allocated, causing OOMs in many
-  // tests. For now, on 32-bit we never reserve more than initial, unless the
-  // memory is shared.
-  if (shared == SharedFlag::kNotShared || !FLAG_wasm_grow_shared_memory) {
+  // On 32-bit platforms we need an heuristic here to balance overall memory
+  // and address space consumption.
+  constexpr int kGBPages = 1024 * 1024 * 1024 / wasm::kWasmPageSize;
+  int heuristic_maximum;
+  if (initial > kGBPages) {
+    // We always allocate at least the initial size.
+    heuristic_maximum = initial;
+  } else if (has_maximum) {
+    // We try to reserve the maximum, but at most 1GB to avoid OOMs.
+    heuristic_maximum = std::min(maximum, kGBPages);
+  } else if (shared == SharedFlag::kShared) {
+    // If shared memory has no maximum, we use an implicit maximum of 1GB.
+    heuristic_maximum = kGBPages;
+  } else {
+    // If non-shared memory has no maximum, we only allocate the initial size
+    // and then grow with realloc.
     heuristic_maximum = initial;
   }
+#else
+  int heuristic_maximum =
+      has_maximum ? std::min(engine_maximum, maximum) : engine_maximum;
 #endif
 
   auto backing_store = BackingStore::AllocateWasmMemory(
-      isolate, initial, heuristic_maximum, shared);
+      isolate, initial, heuristic_maximum, memory_type, shared);
 
   if (!backing_store) return {};
 
@@ -877,7 +831,7 @@ void WasmMemoryObject::AddInstance(Isolate* isolate,
           ? Handle<WeakArrayList>(memory->instances(), isolate)
           : handle(ReadOnlyRoots(isolate->heap()).empty_weak_array_list(),
                    isolate);
-  Handle<WeakArrayList> new_instances = WeakArrayList::AddToEnd(
+  Handle<WeakArrayList> new_instances = WeakArrayList::Append(
       isolate, old_instances, MaybeObjectHandle::Weak(instance));
   memory->set_instances(*new_instances);
   Handle<JSArrayBuffer> buffer(memory->array_buffer(), isolate);
@@ -913,78 +867,109 @@ int32_t WasmMemoryObject::Grow(Isolate* isolate,
   // therefore this memory cannot be grown.
   if (old_buffer->is_asmjs_memory()) return -1;
 
-  // Checks for maximum memory size.
-  uint32_t maximum_pages = wasm::max_mem_pages();
-  if (memory_object->has_maximum_pages()) {
-    maximum_pages = std::min(
-        maximum_pages, static_cast<uint32_t>(memory_object->maximum_pages()));
-  }
-  size_t old_size = old_buffer->byte_length();
-  DCHECK_EQ(0, old_size % wasm::kWasmPageSize);
-  size_t old_pages = old_size / wasm::kWasmPageSize;
-  CHECK_GE(wasm::max_mem_pages(), old_pages);
-  if (pages > maximum_pages - old_pages) return -1;
   std::shared_ptr<BackingStore> backing_store = old_buffer->GetBackingStore();
   if (!backing_store) return -1;
 
-  // Try to handle shared memory first.
+  // Check for maximum memory size.
+  // Note: The {wasm::max_mem_pages()} limit is already checked in
+  // {BackingStore::CopyWasmMemory}, and is irrelevant for
+  // {GrowWasmMemoryInPlace} because memory is never allocated with more
+  // capacity than that limit.
+  size_t old_size = old_buffer->byte_length();
+  DCHECK_EQ(0, old_size % wasm::kWasmPageSize);
+  size_t old_pages = old_size / wasm::kWasmPageSize;
+  size_t max_pages = memory_object->is_memory64() ? wasm::max_mem64_pages()
+                                                  : wasm::max_mem32_pages();
+  if (memory_object->has_maximum_pages()) {
+    max_pages = std::min(max_pages,
+                         static_cast<size_t>(memory_object->maximum_pages()));
+  }
+  DCHECK_GE(max_pages, old_pages);
+  if (pages > max_pages - old_pages) return -1;
+
+  base::Optional<size_t> result_inplace =
+      backing_store->GrowWasmMemoryInPlace(isolate, pages, max_pages);
+  // Handle shared memory first.
   if (old_buffer->is_shared()) {
-    if (FLAG_wasm_grow_shared_memory) {
-      base::Optional<size_t> result =
-          backing_store->GrowWasmMemoryInPlace(isolate, pages, maximum_pages);
-      // Shared memories can only be grown in place; no copying.
-      if (result.has_value()) {
-        BackingStore::BroadcastSharedWasmMemoryGrow(isolate, backing_store);
-        // Broadcasting the update should update this memory object too.
-        CHECK_NE(*old_buffer, memory_object->array_buffer());
-        size_t new_pages = result.value() + pages;
-        // If the allocation succeeded, then this can't possibly overflow:
-        size_t new_byte_length = new_pages * wasm::kWasmPageSize;
-        // This is a less than check, as it is not guaranteed that the SAB
-        // length here will be equal to the stashed length above as calls to
-        // grow the same memory object can come in from different workers.
-        // It is also possible that a call to Grow was in progress when
-        // handling this call.
-        CHECK_LE(new_byte_length, memory_object->array_buffer().byte_length());
-        // As {old_pages} was read racefully, we return here the synchronized
-        // value provided by {GrowWasmMemoryInPlace}, to provide the atomic
-        // read-modify-write behavior required by the spec.
-        return static_cast<int32_t>(result.value());  // success
+    // Shared memories can only be grown in place; no copying.
+    if (!result_inplace.has_value()) {
+      // There are different limits per platform, thus crash if the correctness
+      // fuzzer is running.
+      if (v8_flags.correctness_fuzzer_suppressions) {
+        FATAL("could not grow wasm memory");
       }
+      return -1;
     }
-    return -1;
+
+    BackingStore::BroadcastSharedWasmMemoryGrow(isolate, backing_store);
+    // Broadcasting the update should update this memory object too.
+    CHECK_NE(*old_buffer, memory_object->array_buffer());
+    size_t new_pages = result_inplace.value() + pages;
+    // If the allocation succeeded, then this can't possibly overflow:
+    size_t new_byte_length = new_pages * wasm::kWasmPageSize;
+    // This is a less than check, as it is not guaranteed that the SAB
+    // length here will be equal to the stashed length above as calls to
+    // grow the same memory object can come in from different workers.
+    // It is also possible that a call to Grow was in progress when
+    // handling this call.
+    CHECK_LE(new_byte_length, memory_object->array_buffer().byte_length());
+    // As {old_pages} was read racefully, we return here the synchronized
+    // value provided by {GrowWasmMemoryInPlace}, to provide the atomic
+    // read-modify-write behavior required by the spec.
+    return static_cast<int32_t>(result_inplace.value());  // success
   }
 
-  base::Optional<size_t> result =
-      backing_store->GrowWasmMemoryInPlace(isolate, pages, maximum_pages);
-  // Try to grow non-shared memory in-place.
-  if (result.has_value()) {
+  // Check if the non-shared memory could grow in-place.
+  if (result_inplace.has_value()) {
     // Detach old and create a new one with the grown backing store.
-    old_buffer->Detach(true);
+    JSArrayBuffer::Detach(old_buffer, true).Check();
     Handle<JSArrayBuffer> new_buffer =
         isolate->factory()->NewJSArrayBuffer(std::move(backing_store));
     memory_object->update_instances(isolate, new_buffer);
-    DCHECK_EQ(result.value(), old_pages);
-    return static_cast<int32_t>(result.value());  // success
+    // For debugging purposes we memorize a link from the JSArrayBuffer
+    // to it's owning WasmMemoryObject instance.
+    Handle<Symbol> symbol =
+        isolate->factory()->array_buffer_wasm_memory_symbol();
+    JSObject::SetProperty(isolate, new_buffer, symbol, memory_object).Check();
+    DCHECK_EQ(result_inplace.value(), old_pages);
+    return static_cast<int32_t>(result_inplace.value());  // success
   }
 
   size_t new_pages = old_pages + pages;
+  DCHECK_LT(old_pages, new_pages);
   // Try allocating a new backing store and copying.
+  // To avoid overall quadratic complexity of many small grow operations, we
+  // grow by at least 0.5 MB + 12.5% of the existing memory size.
+  // These numbers are kept small because we must be careful about address
+  // space consumption on 32-bit platforms.
+  size_t min_growth = old_pages + 8 + (old_pages >> 3);
+  // First apply {min_growth}, then {max_pages}. The order is important, because
+  // {min_growth} can be bigger than {max_pages}, and in that case we want to
+  // cap to {max_pages}.
+  size_t new_capacity = std::min(max_pages, std::max(new_pages, min_growth));
+  DCHECK_LT(old_pages, new_capacity);
   std::unique_ptr<BackingStore> new_backing_store =
-      backing_store->CopyWasmMemory(isolate, new_pages);
+      backing_store->CopyWasmMemory(isolate, new_pages, new_capacity,
+                                    memory_object->is_memory64()
+                                        ? WasmMemoryFlag::kWasmMemory64
+                                        : WasmMemoryFlag::kWasmMemory32);
   if (!new_backing_store) {
     // Crash on out-of-memory if the correctness fuzzer is running.
-    if (FLAG_correctness_fuzzer_suppressions) {
+    if (v8_flags.correctness_fuzzer_suppressions) {
       FATAL("could not grow wasm memory");
     }
     return -1;
   }
 
   // Detach old and create a new one with the new backing store.
-  old_buffer->Detach(true);
+  JSArrayBuffer::Detach(old_buffer, true).Check();
   Handle<JSArrayBuffer> new_buffer =
       isolate->factory()->NewJSArrayBuffer(std::move(new_backing_store));
   memory_object->update_instances(isolate, new_buffer);
+  // For debugging purposes we memorize a link from the JSArrayBuffer
+  // to it's owning WasmMemoryObject instance.
+  Handle<Symbol> symbol = isolate->factory()->array_buffer_wasm_memory_symbol();
+  JSObject::SetProperty(isolate, new_buffer, symbol, memory_object).Check();
   return static_cast<int32_t>(old_pages);  // success
 }
 
@@ -1000,14 +985,14 @@ MaybeHandle<WasmGlobalObject> WasmGlobalObject::New(
       isolate->factory()->NewJSObject(global_ctor));
   {
     // Disallow GC until all fields have acceptable types.
-    DisallowHeapAllocation no_gc;
+    DisallowGarbageCollection no_gc;
     if (!instance.is_null()) global_obj->set_instance(*instance);
     global_obj->set_type(type);
     global_obj->set_offset(offset);
     global_obj->set_is_mutable(is_mutable);
   }
 
-  if (type.is_reference_type()) {
+  if (type.is_reference()) {
     DCHECK(maybe_untagged_buffer.is_null());
     Handle<FixedArray> tagged_buffer;
     if (!maybe_tagged_buffer.ToHandle(&tagged_buffer)) {
@@ -1019,7 +1004,7 @@ MaybeHandle<WasmGlobalObject> WasmGlobalObject::New(
     global_obj->set_tagged_buffer(*tagged_buffer);
   } else {
     DCHECK(maybe_tagged_buffer.is_null());
-    uint32_t type_size = type.element_size_bytes();
+    uint32_t type_size = type.value_kind_size();
 
     Handle<JSArrayBuffer> untagged_buffer;
     if (!maybe_untagged_buffer.ToHandle(&untagged_buffer)) {
@@ -1039,94 +1024,37 @@ MaybeHandle<WasmGlobalObject> WasmGlobalObject::New(
   return global_obj;
 }
 
-void IndirectFunctionTableEntry::clear() {
-  if (!instance_.is_null()) {
-    instance_->indirect_function_table_sig_ids()[index_] = -1;
-    instance_->indirect_function_table_targets()[index_] = 0;
-    instance_->indirect_function_table_refs().set(
-        index_, ReadOnlyRoots(instance_->GetIsolate()).undefined_value());
-  } else {
-    DCHECK(!table_.is_null());
-    table_->sig_ids()[index_] = -1;
-    table_->targets()[index_] = 0;
-    table_->refs().set(
-        index_,
-        ReadOnlyRoots(GetIsolateFromWritableObject(*table_)).undefined_value());
-  }
-}
-
-void IndirectFunctionTableEntry::Set(int sig_id,
-                                     Handle<WasmInstanceObject> target_instance,
-                                     int target_func_index) {
-  TRACE_IFT("IFT entry 0x%" PRIxPTR
-            "[%d] = {sig_id=%d, target_instance=0x%" PRIxPTR
-            ", target_func_index=%d}\n",
-            instance_->ptr(), index_, sig_id, target_instance->ptr(),
-            target_func_index);
-
-  Object ref;
-  Address call_target = 0;
+FunctionTargetAndRef::FunctionTargetAndRef(
+    Handle<WasmInstanceObject> target_instance, int target_func_index) {
+  Isolate* isolate = target_instance->native_context().GetIsolate();
   if (target_func_index <
       static_cast<int>(target_instance->module()->num_imported_functions)) {
     // The function in the target instance was imported. Use its imports table,
     // which contains a tuple needed by the import wrapper.
     ImportedFunctionEntry entry(target_instance, target_func_index);
-    ref = entry.object_ref();
-    call_target = entry.target();
+    ref_ = handle(entry.object_ref(), isolate);
+    call_target_ = entry.target();
   } else {
     // The function in the target instance was not imported.
-    ref = *target_instance;
-    call_target = target_instance->GetCallTarget(target_func_index);
+    ref_ = target_instance;
+    call_target_ = target_instance->GetCallTarget(target_func_index);
   }
-  Set(sig_id, call_target, ref);
-}
-
-void IndirectFunctionTableEntry::Set(int sig_id, Address call_target,
-                                     Object ref) {
-  if (!instance_.is_null()) {
-    instance_->indirect_function_table_sig_ids()[index_] = sig_id;
-    instance_->indirect_function_table_targets()[index_] = call_target;
-    instance_->indirect_function_table_refs().set(index_, ref);
-  } else {
-    DCHECK(!table_.is_null());
-    table_->sig_ids()[index_] = sig_id;
-    table_->targets()[index_] = call_target;
-    table_->refs().set(index_, ref);
-  }
-}
-
-Object IndirectFunctionTableEntry::object_ref() const {
-  return !instance_.is_null()
-             ? instance_->indirect_function_table_refs().get(index_)
-             : table_->refs().get(index_);
-}
-
-int IndirectFunctionTableEntry::sig_id() const {
-  return !instance_.is_null()
-             ? instance_->indirect_function_table_sig_ids()[index_]
-             : table_->sig_ids()[index_];
-}
-
-Address IndirectFunctionTableEntry::target() const {
-  return !instance_.is_null()
-             ? instance_->indirect_function_table_targets()[index_]
-             : table_->targets()[index_];
 }
 
 void ImportedFunctionEntry::SetWasmToJs(
     Isolate* isolate, Handle<JSReceiver> callable,
-    const wasm::WasmCode* wasm_to_js_wrapper) {
+    const wasm::WasmCode* wasm_to_js_wrapper, wasm::Suspend suspend) {
   TRACE_IFT("Import callable 0x%" PRIxPTR "[%d] = {callable=0x%" PRIxPTR
             ", target=%p}\n",
             instance_->ptr(), index_, callable->ptr(),
             wasm_to_js_wrapper->instructions().begin());
   DCHECK(wasm_to_js_wrapper->kind() == wasm::WasmCode::kWasmToJsWrapper ||
          wasm_to_js_wrapper->kind() == wasm::WasmCode::kWasmToCapiWrapper);
-  Handle<Tuple2> tuple =
-      isolate->factory()->NewTuple2(instance_, callable, AllocationType::kOld);
-  instance_->imported_function_refs().set(index_, *tuple);
-  instance_->imported_function_targets()[index_] =
-      wasm_to_js_wrapper->instruction_start();
+  Handle<WasmApiFunctionRef> ref =
+      isolate->factory()->NewWasmApiFunctionRef(callable, suspend, instance_);
+  instance_->imported_function_refs().set(index_, *ref);
+  instance_->imported_function_targets().set(
+      index_, wasm_to_js_wrapper->instruction_start());
 }
 
 void ImportedFunctionEntry::SetWasmToWasm(WasmInstanceObject instance,
@@ -1135,31 +1063,19 @@ void ImportedFunctionEntry::SetWasmToWasm(WasmInstanceObject instance,
             ", target=0x%" PRIxPTR "}\n",
             instance_->ptr(), index_, instance.ptr(), call_target);
   instance_->imported_function_refs().set(index_, instance);
-  instance_->imported_function_targets()[index_] = call_target;
-}
-
-WasmInstanceObject ImportedFunctionEntry::instance() {
-  // The imported reference entry is either a target instance or a tuple
-  // of this instance and the target callable.
-  Object value = object_ref();
-  if (value.IsWasmInstanceObject()) {
-    return WasmInstanceObject::cast(value);
-  }
-  Tuple2 tuple = Tuple2::cast(value);
-  return WasmInstanceObject::cast(tuple.value1());
+  instance_->imported_function_targets().set(index_, call_target);
 }
 
 // Returns an empty Object() if no callable is available, a JSReceiver
 // otherwise.
 Object ImportedFunctionEntry::maybe_callable() {
   Object value = object_ref();
-  if (!value.IsTuple2()) return Object();
-  Tuple2 tuple = Tuple2::cast(value);
-  return JSReceiver::cast(tuple.value2());
+  if (!value.IsWasmApiFunctionRef()) return Object();
+  return JSReceiver::cast(WasmApiFunctionRef::cast(value).callable());
 }
 
 JSReceiver ImportedFunctionEntry::callable() {
-  return JSReceiver::cast(Tuple2::cast(object_ref()).value2());
+  return JSReceiver::cast(WasmApiFunctionRef::cast(object_ref()).callable());
 }
 
 Object ImportedFunctionEntry::object_ref() {
@@ -1167,7 +1083,7 @@ Object ImportedFunctionEntry::object_ref() {
 }
 
 Address ImportedFunctionEntry::target() {
-  return instance_->imported_function_targets()[index_];
+  return instance_->imported_function_targets().get(index_);
 }
 
 // static
@@ -1178,56 +1094,21 @@ bool WasmInstanceObject::EnsureIndirectFunctionTableWithMinimumSize(
     Handle<WasmInstanceObject> instance, int table_index,
     uint32_t minimum_size) {
   Isolate* isolate = instance->GetIsolate();
-  if (table_index > 0) {
-    DCHECK_LT(table_index, instance->indirect_function_tables().length());
-    auto table =
-        handle(WasmIndirectFunctionTable::cast(
-                   instance->indirect_function_tables().get(table_index)),
-               isolate);
-    WasmIndirectFunctionTable::Resize(isolate, table, minimum_size);
-    return true;
+  DCHECK_LT(table_index, instance->indirect_function_tables().length());
+  Handle<WasmIndirectFunctionTable> table =
+      instance->GetIndirectFunctionTable(isolate, table_index);
+  WasmIndirectFunctionTable::Resize(isolate, table, minimum_size);
+  if (table_index == 0) {
+    instance->SetIndirectFunctionTableShortcuts(isolate);
   }
-
-  uint32_t old_size = instance->indirect_function_table_size();
-  if (old_size >= minimum_size) return false;  // Nothing to do.
-
-  auto native_allocations = GetNativeAllocations(*instance);
-  if (native_allocations->indirect_function_table_capacity() < minimum_size) {
-    HandleScope scope(isolate);
-    native_allocations->resize_indirect_function_table(isolate, instance,
-                                                       minimum_size);
-    DCHECK_GE(native_allocations->indirect_function_table_capacity(),
-              minimum_size);
-  }
-  instance->set_indirect_function_table_size(minimum_size);
-  for (uint32_t j = old_size; j < minimum_size; j++) {
-    // {WasmInstanceNativeAllocations} only manages the memory of table 0.
-    // Therefore we pass the {table_index} as a constant here.
-    IndirectFunctionTableEntry(instance, 0, static_cast<int>(j)).clear();
-  }
-
   return true;
 }
 
 void WasmInstanceObject::SetRawMemory(byte* mem_start, size_t mem_size) {
-  CHECK_LE(mem_size, wasm::max_mem_bytes());
-#if V8_HOST_ARCH_64_BIT
-  uint64_t mem_mask64 = base::bits::RoundUpToPowerOfTwo64(mem_size) - 1;
+  CHECK_LE(mem_size, module()->is_memory64 ? wasm::max_mem64_bytes()
+                                           : wasm::max_mem32_bytes());
   set_memory_start(mem_start);
   set_memory_size(mem_size);
-  set_memory_mask(mem_mask64);
-#else
-  // Must handle memory > 2GiB specially.
-  CHECK_LE(mem_size, size_t{kMaxUInt32});
-  uint32_t mem_mask32 =
-      (mem_size > 2 * size_t{GB})
-          ? 0xFFFFFFFFu
-          : base::bits::RoundUpToPowerOfTwo32(static_cast<uint32_t>(mem_size)) -
-                1;
-  set_memory_start(mem_start);
-  set_memory_size(mem_size);
-  set_memory_mask(mem_mask32);
-#endif
 }
 
 const WasmModule* WasmInstanceObject::module() {
@@ -1245,29 +1126,52 @@ Handle<WasmInstanceObject> WasmInstanceObject::New(
       WasmInstanceObject::cast(*instance_object), isolate);
   instance->clear_padding();
 
-  // Initialize the imported function arrays.
   auto module = module_object->module();
+
   auto num_imported_functions = module->num_imported_functions;
-  auto num_imported_mutable_globals = module->num_imported_mutable_globals;
-  auto num_data_segments = module->num_declared_data_segments;
-  size_t native_allocations_size = EstimateNativeAllocationsSize(module);
-  auto native_allocations = Managed<WasmInstanceNativeAllocations>::Allocate(
-      isolate, native_allocations_size, instance, num_imported_functions,
-      num_imported_mutable_globals, num_data_segments,
-      module->elem_segments.size());
-  instance->set_managed_native_allocations(*native_allocations);
+  Handle<FixedAddressArray> imported_function_targets =
+      FixedAddressArray::New(isolate, num_imported_functions);
+  instance->set_imported_function_targets(*imported_function_targets);
+
+  int num_imported_mutable_globals = module->num_imported_mutable_globals;
+  // The imported_mutable_globals is essentially a FixedAddressArray (storing
+  // sandboxed pointers), but some entries (the indices for reference-type
+  // globals) are accessed as 32-bit integers which is more convenient with a
+  // raw ByteArray.
+  Handle<ByteArray> imported_mutable_globals =
+      FixedAddressArray::New(isolate, num_imported_mutable_globals);
+  instance->set_imported_mutable_globals(*imported_mutable_globals);
+
+  int num_data_segments = module->num_declared_data_segments;
+  Handle<FixedAddressArray> data_segment_starts =
+      FixedAddressArray::New(isolate, num_data_segments);
+  instance->set_data_segment_starts(*data_segment_starts);
+
+  Handle<FixedUInt32Array> data_segment_sizes =
+      FixedUInt32Array::New(isolate, num_data_segments);
+  instance->set_data_segment_sizes(*data_segment_sizes);
+
+  instance->set_element_segments(*isolate->factory()->empty_fixed_array());
 
   Handle<FixedArray> imported_function_refs =
       isolate->factory()->NewFixedArray(num_imported_functions);
   instance->set_imported_function_refs(*imported_function_refs);
 
-  instance->SetRawMemory(nullptr, 0);
   instance->set_isolate_root(isolate->isolate_root());
   instance->set_stack_limit_address(
       isolate->stack_guard()->address_of_jslimit());
   instance->set_real_stack_limit_address(
       isolate->stack_guard()->address_of_real_jslimit());
-  instance->set_globals_start(nullptr);
+  instance->set_new_allocation_limit_address(
+      isolate->heap()->NewSpaceAllocationLimitAddress());
+  instance->set_new_allocation_top_address(
+      isolate->heap()->NewSpaceAllocationTopAddress());
+  instance->set_old_allocation_limit_address(
+      isolate->heap()->OldSpaceAllocationLimitAddress());
+  instance->set_old_allocation_top_address(
+      isolate->heap()->OldSpaceAllocationTopAddress());
+  instance->set_globals_start(
+      reinterpret_cast<byte*>(EmptyBackingStoreBuffer()));
   instance->set_indirect_function_table_size(0);
   instance->set_indirect_function_table_refs(
       ReadOnlyRoots(isolate).empty_fixed_array());
@@ -1280,22 +1184,26 @@ Handle<WasmInstanceObject> WasmInstanceObject::New(
   instance->set_hook_on_function_call_address(
       isolate->debug()->hook_on_function_call_address());
   instance->set_managed_object_maps(*isolate->factory()->empty_fixed_array());
-  instance->set_num_liftoff_function_calls_array(
-      module_object->native_module()->num_liftoff_function_calls_array());
+  Handle<FixedArray> functions = isolate->factory()->NewFixedArrayWithZeroes(
+      static_cast<int>(module->functions.size()));
+  instance->set_wasm_internal_functions(*functions);
+  instance->set_feedback_vectors(*isolate->factory()->empty_fixed_array());
+  instance->set_tiering_budget_array(
+      module_object->native_module()->tiering_budget_array());
+  instance->set_break_on_entry(module_object->script().break_on_entry());
+  instance->SetRawMemory(reinterpret_cast<byte*>(EmptyBackingStoreBuffer()), 0);
 
   // Insert the new instance into the scripts weak list of instances. This list
   // is used for breakpoints affecting all instances belonging to the script.
-  // TODO(wasm): Allow to reuse holes in the {WeakArrayList} below.
   if (module_object->script().type() == Script::TYPE_WASM) {
     Handle<WeakArrayList> weak_instance_list(
         module_object->script().wasm_weak_instance_list(), isolate);
-    weak_instance_list = WeakArrayList::AddToEnd(
+    weak_instance_list = WeakArrayList::Append(
         isolate, weak_instance_list, MaybeObjectHandle::Weak(instance));
     module_object->script().set_wasm_weak_instance_list(*weak_instance_list);
   }
 
   InitDataSegmentArrays(instance, module_object);
-  InitElemSegmentArrays(instance, module_object);
 
   return instance;
 }
@@ -1314,54 +1222,49 @@ void WasmInstanceObject::InitDataSegmentArrays(
   // instructions).
   DCHECK(num_data_segments == 0 ||
          num_data_segments == module->data_segments.size());
-  for (size_t i = 0; i < num_data_segments; ++i) {
+  for (uint32_t i = 0; i < num_data_segments; ++i) {
     const wasm::WasmDataSegment& segment = module->data_segments[i];
     // Initialize the pointer and size of passive segments.
     auto source_bytes = wire_bytes.SubVector(segment.source.offset(),
                                              segment.source.end_offset());
-    instance->data_segment_starts()[i] =
-        reinterpret_cast<Address>(source_bytes.begin());
+    instance->data_segment_starts().set(
+        i, reinterpret_cast<Address>(source_bytes.begin()));
     // Set the active segments to being already dropped, since memory.init on
     // a dropped passive segment and an active segment have the same
     // behavior.
-    instance->data_segment_sizes()[i] =
-        segment.active ? 0 : source_bytes.length();
-  }
-}
-
-void WasmInstanceObject::InitElemSegmentArrays(
-    Handle<WasmInstanceObject> instance,
-    Handle<WasmModuleObject> module_object) {
-  auto module = module_object->module();
-  auto num_elem_segments = module->elem_segments.size();
-  for (size_t i = 0; i < num_elem_segments; ++i) {
-    instance->dropped_elem_segments()[i] =
-        module->elem_segments[i].status ==
-                wasm::WasmElemSegment::kStatusDeclarative
-            ? 1
-            : 0;
+    instance->data_segment_sizes().set(
+        static_cast<int>(i), segment.active ? 0 : source_bytes.length());
   }
 }
 
 Address WasmInstanceObject::GetCallTarget(uint32_t func_index) {
   wasm::NativeModule* native_module = module_object().native_module();
   if (func_index < native_module->num_imported_functions()) {
-    return imported_function_targets()[func_index];
+    return imported_function_targets().get(func_index);
   }
-  return native_module->GetCallTargetForFunction(func_index);
+  return jump_table_start() +
+         JumpTableOffset(native_module->module(), func_index);
 }
 
-int WasmInstanceObject::IndirectFunctionTableSize(
-    Isolate* isolate, Handle<WasmInstanceObject> instance,
-    uint32_t table_index) {
-  if (table_index == 0) {
-    return instance->indirect_function_table_size();
+Handle<WasmIndirectFunctionTable> WasmInstanceObject::GetIndirectFunctionTable(
+    Isolate* isolate, uint32_t table_index) {
+  DCHECK_LT(table_index, indirect_function_tables().length());
+  return handle(WasmIndirectFunctionTable::cast(
+                    indirect_function_tables().get(table_index)),
+                isolate);
+}
+
+void WasmInstanceObject::SetIndirectFunctionTableShortcuts(Isolate* isolate) {
+  if (indirect_function_tables().length() > 0 &&
+      indirect_function_tables().get(0).IsWasmIndirectFunctionTable()) {
+    HandleScope scope(isolate);
+    Handle<WasmIndirectFunctionTable> table0 =
+        GetIndirectFunctionTable(isolate, 0);
+    set_indirect_function_table_size(table0->size());
+    set_indirect_function_table_refs(table0->refs());
+    set_indirect_function_table_sig_ids(table0->sig_ids());
+    set_indirect_function_table_targets(table0->targets());
   }
-  auto table =
-      handle(WasmIndirectFunctionTable::cast(
-                 instance->indirect_function_tables().get(table_index)),
-             isolate);
-  return table->size();
 }
 
 // static
@@ -1400,86 +1303,100 @@ bool WasmInstanceObject::CopyTableEntries(Isolate* isolate,
 }
 
 // static
-bool WasmInstanceObject::InitTableEntries(Isolate* isolate,
-                                          Handle<WasmInstanceObject> instance,
-                                          uint32_t table_index,
-                                          uint32_t segment_index, uint32_t dst,
-                                          uint32_t src, uint32_t count) {
-  // Note that this implementation just calls through to module instantiation.
-  // This is intentional, so that the runtime only depends on the object
-  // methods, and not the module instantiation logic.
-  return wasm::LoadElemSegment(isolate, instance, table_index, segment_index,
-                               dst, src, count);
-}
+base::Optional<MessageTemplate> WasmInstanceObject::InitTableEntries(
+    Isolate* isolate, Handle<WasmInstanceObject> instance, uint32_t table_index,
+    uint32_t segment_index, uint32_t dst, uint32_t src, uint32_t count) {
+  AccountingAllocator allocator;
+  // This {Zone} will be used only by the temporary WasmFullDecoder allocated
+  // down the line from this call. Therefore it is safe to stack-allocate it
+  // here.
+  Zone zone(&allocator, "LoadElemSegment");
 
-MaybeHandle<WasmExternalFunction> WasmInstanceObject::GetWasmExternalFunction(
-    Isolate* isolate, Handle<WasmInstanceObject> instance, int index) {
-  MaybeHandle<WasmExternalFunction> result;
-  if (instance->has_wasm_external_functions()) {
-    Object val = instance->wasm_external_functions().get(index);
-    if (!val.IsUndefined(isolate)) {
-      result = Handle<WasmExternalFunction>(WasmExternalFunction::cast(val),
-                                            isolate);
-    }
+  Handle<WasmTableObject> table_object = handle(
+      WasmTableObject::cast(instance->tables().get(table_index)), isolate);
+
+  // If needed, try to lazily initialize the element segment.
+  base::Optional<MessageTemplate> opt_error =
+      wasm::InitializeElementSegment(&zone, isolate, instance, segment_index);
+  if (opt_error.has_value()) return opt_error;
+
+  Handle<FixedArray> elem_segment =
+      handle(FixedArray::cast(instance->element_segments().get(segment_index)),
+             isolate);
+  if (!base::IsInBounds<uint64_t>(dst, count, table_object->current_length())) {
+    return {MessageTemplate::kWasmTrapTableOutOfBounds};
   }
-  return result;
+  if (!base::IsInBounds<uint64_t>(src, count, elem_segment->length())) {
+    return {MessageTemplate::kWasmTrapElementSegmentOutOfBounds};
+  }
+
+  for (size_t i = 0; i < count; i++) {
+    WasmTableObject::Set(
+        isolate, table_object, static_cast<int>(dst + i),
+        handle(elem_segment->get(static_cast<int>(src + i)), isolate));
+  }
+
+  return {};
 }
 
-Handle<WasmExternalFunction>
-WasmInstanceObject::GetOrCreateWasmExternalFunction(
-    Isolate* isolate, Handle<WasmInstanceObject> instance, int function_index) {
-  MaybeHandle<WasmExternalFunction> maybe_result =
-      WasmInstanceObject::GetWasmExternalFunction(isolate, instance,
-                                                  function_index);
+MaybeHandle<WasmInternalFunction> WasmInstanceObject::GetWasmInternalFunction(
+    Isolate* isolate, Handle<WasmInstanceObject> instance, int index) {
+  Object val = instance->wasm_internal_functions().get(index);
+  if (val.IsSmi()) return {};
+  return handle(WasmInternalFunction::cast(val), isolate);
+}
 
-  Handle<WasmExternalFunction> result;
-  if (maybe_result.ToHandle(&result)) {
-    return result;
+Handle<WasmInternalFunction>
+WasmInstanceObject::GetOrCreateWasmInternalFunction(
+    Isolate* isolate, Handle<WasmInstanceObject> instance, int function_index) {
+  MaybeHandle<WasmInternalFunction> maybe_result =
+      WasmInstanceObject::GetWasmInternalFunction(isolate, instance,
+                                                  function_index);
+  if (!maybe_result.is_null()) {
+    return maybe_result.ToHandleChecked();
   }
 
   Handle<WasmModuleObject> module_object(instance->module_object(), isolate);
   const WasmModule* module = module_object->module();
   const WasmFunction& function = module->functions[function_index];
+  uint32_t canonical_sig_index =
+      module->isorecursive_canonical_type_ids[function.sig_index];
+  isolate->heap()->EnsureWasmCanonicalRttsSize(canonical_sig_index + 1);
   int wrapper_index =
-      GetExportWrapperIndex(module, function.sig, function.imported);
+      wasm::GetExportWrapperIndex(canonical_sig_index, function.imported);
 
-  Handle<Object> entry =
-      FixedArray::get(module_object->export_wrappers(), wrapper_index, isolate);
+  MaybeObject entry = isolate->heap()->js_to_wasm_wrappers().Get(wrapper_index);
 
   Handle<Code> wrapper;
-  if (entry->IsCode()) {
-    wrapper = Handle<Code>::cast(entry);
+  // {entry} can be cleared, {undefined}, or a ready {Code}.
+  if (entry.IsStrongOrWeak() && entry.GetHeapObject().IsCode()) {
+    wrapper = handle(Code::cast(entry.GetHeapObject()), isolate);
   } else {
     // The wrapper may not exist yet if no function in the exports section has
     // this signature. We compile it and store the wrapper in the module for
     // later use.
     wrapper = wasm::JSToWasmWrapperCompilationUnit::CompileJSToWasmWrapper(
-        isolate, function.sig, instance->module(), function.imported);
-    module_object->export_wrappers().set(wrapper_index, *wrapper);
+        isolate, function.sig, canonical_sig_index, instance->module(),
+        function.imported);
   }
-  result = Handle<WasmExternalFunction>::cast(WasmExportedFunction::New(
+  // Store the wrapper in the isolate, or make its reference weak now that we
+  // have a function referencing it.
+  isolate->heap()->js_to_wasm_wrappers().Set(
+      wrapper_index, HeapObjectReference::Weak(*wrapper));
+  auto external = Handle<WasmExternalFunction>::cast(WasmExportedFunction::New(
       isolate, instance, function_index,
       static_cast<int>(function.sig->parameter_count()), wrapper));
+  Handle<WasmInternalFunction> result =
+      WasmInternalFunction::FromExternal(external, isolate).ToHandleChecked();
 
-  WasmInstanceObject::SetWasmExternalFunction(isolate, instance, function_index,
-                                              result);
+  WasmInstanceObject::SetWasmInternalFunction(instance, function_index, result);
   return result;
 }
 
-void WasmInstanceObject::SetWasmExternalFunction(
-    Isolate* isolate, Handle<WasmInstanceObject> instance, int index,
-    Handle<WasmExternalFunction> val) {
-  Handle<FixedArray> functions;
-  if (!instance->has_wasm_external_functions()) {
-    // Lazily allocate the wasm external functions array.
-    functions = isolate->factory()->NewFixedArray(
-        static_cast<int>(instance->module()->functions.size()));
-    instance->set_wasm_external_functions(*functions);
-  } else {
-    functions =
-        Handle<FixedArray>(instance->wasm_external_functions(), isolate);
-  }
-  functions->set(index, *val);
+void WasmInstanceObject::SetWasmInternalFunction(
+    Handle<WasmInstanceObject> instance, int index,
+    Handle<WasmInternalFunction> val) {
+  instance->wasm_internal_functions().set(index, *val);
 }
 
 // static
@@ -1491,33 +1408,51 @@ void WasmInstanceObject::ImportWasmJSFunctionIntoTable(
   // not found; it will simply never match any check.
   Zone zone(isolate->allocator(), ZONE_NAME);
   const wasm::FunctionSig* sig = js_function->GetSignature(&zone);
-  auto sig_id = instance->module()->signature_map.Find(*sig);
+  // Get the function's canonical signature index. Note that the function's
+  // signature may not be present in the importing module.
+  uint32_t canonical_sig_index =
+      wasm::GetTypeCanonicalizer()->AddRecursiveGroup(sig);
 
   // Compile a wrapper for the target callable.
   Handle<JSReceiver> callable(js_function->GetCallable(), isolate);
+  wasm::Suspend suspend = js_function->GetSuspend();
   wasm::WasmCodeRefScope code_ref_scope;
   Address call_target = kNullAddress;
-  if (sig_id >= 0) {
+
+  auto module_canonical_ids =
+      instance->module()->isorecursive_canonical_type_ids;
+  // TODO(manoskouk): Consider adding a set of canonical indices to the module
+  // to avoid this linear search.
+  auto sig_in_module =
+      std::find(module_canonical_ids.begin(), module_canonical_ids.end(),
+                canonical_sig_index);
+
+  if (sig_in_module != module_canonical_ids.end()) {
     wasm::NativeModule* native_module =
         instance->module_object().native_module();
-    // TODO(wasm): Cache and reuse wrapper code.
-    const wasm::WasmFeatures enabled = native_module->enabled_features();
-    auto resolved = compiler::ResolveWasmImportCall(
-        callable, sig, instance->module(), enabled);
-    compiler::WasmImportCallKind kind = resolved.first;
-    callable = resolved.second;  // Update to ultimate target.
+    auto resolved =
+        compiler::ResolveWasmImportCall(callable, sig, canonical_sig_index);
+    compiler::WasmImportCallKind kind = resolved.kind;
+    callable = resolved.callable;  // Update to ultimate target.
     DCHECK_NE(compiler::WasmImportCallKind::kLinkError, kind);
     wasm::CompilationEnv env = native_module->CreateCompilationEnv();
-    SharedFunctionInfo shared = js_function->shared();
+    // {expected_arity} should only be used if kind != kJSFunctionArityMismatch.
+    int expected_arity = -1;
+    if (kind == compiler::WasmImportCallKind ::kJSFunctionArityMismatch) {
+      expected_arity = Handle<JSFunction>::cast(callable)
+                           ->shared()
+                           .internal_formal_parameter_count_without_receiver();
+    }
+    // TODO(manoskouk): Reuse js_function->wasm_to_js_wrapper_code().
     wasm::WasmCompilationResult result = compiler::CompileWasmImportCallWrapper(
-        isolate->wasm_engine(), &env, kind, sig, false,
-        shared.internal_formal_parameter_count());
+        &env, kind, sig, false, expected_arity, suspend);
+    wasm::CodeSpaceWriteScope write_scope(native_module);
     std::unique_ptr<wasm::WasmCode> wasm_code = native_module->AddCode(
         result.func_index, result.code_desc, result.frame_slot_count,
         result.tagged_parameter_slots,
         result.protected_instructions_data.as_vector(),
         result.source_positions.as_vector(), GetCodeKind(result),
-        wasm::ExecutionTier::kNone, wasm::kNoDebugging);
+        wasm::ExecutionTier::kNone, wasm::kNotForDebugging);
     wasm::WasmCode* published_code =
         native_module->PublishCode(std::move(wasm_code));
     isolate->counters()->wasm_generated_code_size()->Increment(
@@ -1528,19 +1463,22 @@ void WasmInstanceObject::ImportWasmJSFunctionIntoTable(
   }
 
   // Update the dispatch table.
-  Handle<Tuple2> tuple =
-      isolate->factory()->NewTuple2(instance, callable, AllocationType::kOld);
-  IndirectFunctionTableEntry(instance, table_index, entry_index)
-      .Set(sig_id, call_target, *tuple);
+  Handle<WasmApiFunctionRef> ref =
+      isolate->factory()->NewWasmApiFunctionRef(callable, suspend, instance);
+
+  WasmIndirectFunctionTable::cast(
+      instance->indirect_function_tables().get(table_index))
+      .Set(entry_index, canonical_sig_index, call_target, *ref);
 }
 
 // static
 uint8_t* WasmInstanceObject::GetGlobalStorage(
     Handle<WasmInstanceObject> instance, const wasm::WasmGlobal& global) {
-  DCHECK(!global.type.is_reference_type());
+  DCHECK(!global.type.is_reference());
   if (global.mutability && global.imported) {
     return reinterpret_cast<byte*>(
-        instance->imported_mutable_globals()[global.index]);
+        instance->imported_mutable_globals().get_sandboxed_pointer(
+            global.index * kSystemPointerSize));
   } else {
     return instance->globals_start() + global.offset;
   }
@@ -1550,14 +1488,15 @@ uint8_t* WasmInstanceObject::GetGlobalStorage(
 std::pair<Handle<FixedArray>, uint32_t>
 WasmInstanceObject::GetGlobalBufferAndIndex(Handle<WasmInstanceObject> instance,
                                             const wasm::WasmGlobal& global) {
-  DCHECK(global.type.is_reference_type());
+  DCHECK(global.type.is_reference());
   Isolate* isolate = instance->GetIsolate();
   if (global.mutability && global.imported) {
     Handle<FixedArray> buffer(
         FixedArray::cast(
             instance->imported_mutable_globals_buffers().get(global.index)),
         isolate);
-    Address idx = instance->imported_mutable_globals()[global.index];
+    Address idx = instance->imported_mutable_globals().get_int(
+        global.index * kSystemPointerSize);
     DCHECK_LE(idx, std::numeric_limits<uint32_t>::max());
     return {buffer, static_cast<uint32_t>(idx)};
   }
@@ -1565,80 +1504,23 @@ WasmInstanceObject::GetGlobalBufferAndIndex(Handle<WasmInstanceObject> instance,
 }
 
 // static
-MaybeHandle<String> WasmInstanceObject::GetGlobalNameOrNull(
-    Isolate* isolate, Handle<WasmInstanceObject> instance,
-    uint32_t global_index) {
-  return WasmInstanceObject::GetNameFromImportsAndExportsOrNull(
-      isolate, instance, wasm::ImportExportKindCode::kExternalGlobal,
-      global_index);
-}
-
-// static
-MaybeHandle<String> WasmInstanceObject::GetMemoryNameOrNull(
-    Isolate* isolate, Handle<WasmInstanceObject> instance,
-    uint32_t memory_index) {
-  return WasmInstanceObject::GetNameFromImportsAndExportsOrNull(
-      isolate, instance, wasm::ImportExportKindCode::kExternalMemory,
-      memory_index);
-}
-
-// static
-MaybeHandle<String> WasmInstanceObject::GetTableNameOrNull(
-    Isolate* isolate, Handle<WasmInstanceObject> instance,
-    uint32_t table_index) {
-  return WasmInstanceObject::GetNameFromImportsAndExportsOrNull(
-      isolate, instance, wasm::ImportExportKindCode::kExternalTable,
-      table_index);
-}
-
-// static
-MaybeHandle<String> WasmInstanceObject::GetNameFromImportsAndExportsOrNull(
-    Isolate* isolate, Handle<WasmInstanceObject> instance,
-    wasm::ImportExportKindCode kind, uint32_t index) {
-  DCHECK(kind == wasm::ImportExportKindCode::kExternalGlobal ||
-         kind == wasm::ImportExportKindCode::kExternalMemory ||
-         kind == wasm::ImportExportKindCode::kExternalTable);
-  wasm::ModuleWireBytes wire_bytes(
-      instance->module_object().native_module()->wire_bytes());
-
-  // This is pair of <module_name, field_name>.
-  // If field_name is not set then we don't generate a name. Else if module_name
-  // is set then it is an imported one. Otherwise it is an exported one.
-  std::pair<wasm::WireBytesRef, wasm::WireBytesRef> name_ref =
-      instance->module()
-          ->lazily_generated_names.LookupNameFromImportsAndExports(
-              kind, index, VectorOf(instance->module()->import_table),
-              VectorOf(instance->module()->export_table));
-  if (!name_ref.second.is_set()) return {};
-  Vector<const char> field_name = wire_bytes.GetNameOrNull(name_ref.second);
-  if (!name_ref.first.is_set()) {
-    return isolate->factory()->NewStringFromUtf8(VectorOf(field_name));
-  }
-  Vector<const char> module_name = wire_bytes.GetNameOrNull(name_ref.first);
-  std::string full_name;
-  full_name.append(module_name.begin(), module_name.end());
-  full_name.append(".");
-  full_name.append(field_name.begin(), field_name.end());
-  return isolate->factory()->NewStringFromUtf8(VectorOf(full_name));
-}
-
-// static
 wasm::WasmValue WasmInstanceObject::GetGlobalValue(
     Handle<WasmInstanceObject> instance, const wasm::WasmGlobal& global) {
   Isolate* isolate = instance->GetIsolate();
-  if (global.type.is_reference_type()) {
+  if (global.type.is_reference()) {
     Handle<FixedArray> global_buffer;  // The buffer of the global.
     uint32_t global_index = 0;         // The index into the buffer.
     std::tie(global_buffer, global_index) =
         GetGlobalBufferAndIndex(instance, global);
-    return wasm::WasmValue(handle(global_buffer->get(global_index), isolate));
+    return wasm::WasmValue(handle(global_buffer->get(global_index), isolate),
+                           global.type);
   }
   Address ptr = reinterpret_cast<Address>(GetGlobalStorage(instance, global));
   using wasm::Simd128;
   switch (global.type.kind()) {
 #define CASE_TYPE(valuetype, ctype) \
-  case wasm::ValueType::valuetype:  \
-    return wasm::WasmValue(base::ReadLittleEndianValue<ctype>(ptr));
+  case wasm::valuetype:             \
+    return wasm::WasmValue(base::ReadUnalignedValue<ctype>(ptr));
     FOREACH_WASMVALUE_CTYPES(CASE_TYPE)
 #undef CASE_TYPE
     default:
@@ -1646,12 +1528,73 @@ wasm::WasmValue WasmInstanceObject::GetGlobalValue(
   }
 }
 
+wasm::WasmValue WasmStruct::GetFieldValue(uint32_t index) {
+  wasm::ValueType field_type = type()->field(index);
+  int field_offset = WasmStruct::kHeaderSize + type()->field_offset(index);
+  Address field_address = GetFieldAddress(field_offset);
+  using wasm::Simd128;
+  switch (field_type.kind()) {
+#define CASE_TYPE(valuetype, ctype) \
+  case wasm::valuetype:             \
+    return wasm::WasmValue(base::ReadUnalignedValue<ctype>(field_address));
+    CASE_TYPE(kI8, int8_t)
+    CASE_TYPE(kI16, int16_t)
+    FOREACH_WASMVALUE_CTYPES(CASE_TYPE)
+#undef CASE_TYPE
+    case wasm::kRef:
+    case wasm::kRefNull: {
+      Handle<Object> ref(TaggedField<Object>::load(*this, field_offset),
+                         GetIsolateFromWritableObject(*this));
+      return wasm::WasmValue(ref, field_type);
+    }
+    case wasm::kRtt:
+    case wasm::kVoid:
+    case wasm::kBottom:
+      UNREACHABLE();
+  }
+}
+
+wasm::WasmValue WasmArray::GetElement(uint32_t index) {
+  wasm::ValueType element_type = type()->element_type();
+  int element_offset =
+      WasmArray::kHeaderSize + index * element_type.value_kind_size();
+  Address element_address = GetFieldAddress(element_offset);
+  using wasm::Simd128;
+  switch (element_type.kind()) {
+#define CASE_TYPE(value_type, ctype) \
+  case wasm::value_type:             \
+    return wasm::WasmValue(base::ReadUnalignedValue<ctype>(element_address));
+    CASE_TYPE(kI8, int8_t)
+    CASE_TYPE(kI16, int16_t)
+    FOREACH_WASMVALUE_CTYPES(CASE_TYPE)
+#undef CASE_TYPE
+    case wasm::kRef:
+    case wasm::kRefNull: {
+      Handle<Object> ref(TaggedField<Object>::load(*this, element_offset),
+                         GetIsolateFromWritableObject(*this));
+      return wasm::WasmValue(ref, element_type);
+    }
+    case wasm::kRtt:
+    case wasm::kVoid:
+    case wasm::kBottom:
+      UNREACHABLE();
+  }
+}
+
+void WasmArray::SetTaggedElement(uint32_t index, Handle<Object> value,
+                                 WriteBarrierMode mode) {
+  DCHECK(type()->element_type().is_reference());
+  TaggedField<Object>::store(*this, element_offset(index), *value);
+  CONDITIONAL_WRITE_BARRIER(*this, element_offset(index), *value, mode);
+}
+
 // static
-Handle<WasmExceptionObject> WasmExceptionObject::New(
-    Isolate* isolate, const wasm::FunctionSig* sig,
-    Handle<HeapObject> exception_tag) {
-  Handle<JSFunction> exception_cons(
-      isolate->native_context()->wasm_exception_constructor(), isolate);
+Handle<WasmTagObject> WasmTagObject::New(Isolate* isolate,
+                                         const wasm::FunctionSig* sig,
+                                         uint32_t canonical_type_index,
+                                         Handle<HeapObject> tag) {
+  Handle<JSFunction> tag_cons(isolate->native_context()->wasm_tag_constructor(),
+                              isolate);
 
   // Serialize the signature.
   DCHECK_EQ(0, sig->return_count());
@@ -1664,61 +1607,76 @@ Handle<WasmExceptionObject> WasmExceptionObject::New(
     serialized_sig->set(index++, param);
   }
 
-  Handle<JSObject> exception_object =
-      isolate->factory()->NewJSObject(exception_cons, AllocationType::kOld);
-  Handle<WasmExceptionObject> exception =
-      Handle<WasmExceptionObject>::cast(exception_object);
-  exception->set_serialized_signature(*serialized_sig);
-  exception->set_exception_tag(*exception_tag);
+  Handle<JSObject> tag_object =
+      isolate->factory()->NewJSObject(tag_cons, AllocationType::kOld);
+  Handle<WasmTagObject> tag_wrapper = Handle<WasmTagObject>::cast(tag_object);
+  tag_wrapper->set_serialized_signature(*serialized_sig);
+  tag_wrapper->set_canonical_type_index(canonical_type_index);
+  tag_wrapper->set_tag(*tag);
 
-  return exception;
+  return tag_wrapper;
 }
 
-bool WasmExceptionObject::MatchesSignature(const wasm::FunctionSig* sig) {
-  DCHECK_EQ(0, sig->return_count());
-  DCHECK_LE(sig->parameter_count(), std::numeric_limits<int>::max());
-  int sig_size = static_cast<int>(sig->parameter_count());
-  if (sig_size != serialized_signature().length()) return false;
-  for (int index = 0; index < sig_size; ++index) {
-    if (sig->GetParam(index) != serialized_signature().get(index)) {
-      return false;
-    }
-  }
-  return true;
+bool WasmTagObject::MatchesSignature(uint32_t expected_canonical_type_index) {
+  return wasm::GetWasmEngine()->type_canonicalizer()->IsCanonicalSubtype(
+      this->canonical_type_index(), expected_canonical_type_index);
 }
 
-bool WasmCapiFunction::MatchesSignature(const wasm::FunctionSig* sig) const {
-  // TODO(jkummerow): Unify with "SignatureHelper" in c-api.cc.
-  int param_count = static_cast<int>(sig->parameter_count());
-  int result_count = static_cast<int>(sig->return_count());
+const wasm::FunctionSig* WasmCapiFunction::GetSignature(Zone* zone) const {
+  WasmCapiFunctionData function_data = shared().wasm_capi_function_data();
   PodArray<wasm::ValueType> serialized_sig =
-      shared().wasm_capi_function_data().serialized_signature();
-  if (param_count + result_count + 1 != serialized_sig.length()) return false;
-  int serialized_index = 0;
-  for (int i = 0; i < result_count; i++, serialized_index++) {
-    if (sig->GetReturn(i) != serialized_sig.get(serialized_index)) {
-      return false;
-    }
+      function_data.serialized_signature();
+  int sig_size = serialized_sig.length() - 1;
+  wasm::ValueType* types = zone->NewArray<wasm::ValueType>(sig_size);
+  int returns_size = 0;
+  int index = 0;
+  while (serialized_sig.get(index) != wasm::kWasmVoid) {
+    types[index] = serialized_sig.get(index);
+    index++;
   }
-  if (serialized_sig.get(serialized_index) != wasm::kWasmStmt) return false;
-  serialized_index++;
-  for (int i = 0; i < param_count; i++, serialized_index++) {
-    if (sig->GetParam(i) != serialized_sig.get(serialized_index)) return false;
+  returns_size = index;
+  while (index < sig_size) {
+    types[index] = serialized_sig.get(index + 1);
+    index++;
   }
-  return true;
+
+  return zone->New<wasm::FunctionSig>(returns_size, sig_size - returns_size,
+                                      types);
+}
+
+bool WasmCapiFunction::MatchesSignature(
+    uint32_t other_canonical_sig_index) const {
+  AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
+  const wasm::FunctionSig* sig = GetSignature(&zone);
+#if DEBUG
+  // TODO(7748): Change this if indexed types are allowed.
+  for (wasm::ValueType type : sig->all()) CHECK(!type.has_index());
+#endif
+  // TODO(7748): Check for subtyping instead if C API functions can define
+  // signature supertype.
+  return wasm::GetWasmEngine()->type_canonicalizer()->AddRecursiveGroup(sig) ==
+         other_canonical_sig_index;
 }
 
 // static
 Handle<WasmExceptionPackage> WasmExceptionPackage::New(
     Isolate* isolate, Handle<WasmExceptionTag> exception_tag, int size) {
-  Handle<Object> exception = isolate->factory()->NewWasmRuntimeError(
-      MessageTemplate::kWasmExceptionError);
+  Handle<FixedArray> values = isolate->factory()->NewFixedArray(size);
+  return New(isolate, exception_tag, values);
+}
+
+Handle<WasmExceptionPackage> WasmExceptionPackage::New(
+    Isolate* isolate, Handle<WasmExceptionTag> exception_tag,
+    Handle<FixedArray> values) {
+  Handle<JSFunction> exception_cons(
+      isolate->native_context()->wasm_exception_constructor(), isolate);
+  Handle<JSObject> exception = isolate->factory()->NewJSObject(exception_cons);
   CHECK(!Object::SetProperty(isolate, exception,
                              isolate->factory()->wasm_exception_tag_symbol(),
                              exception_tag, StoreOrigin::kMaybeKeyed,
                              Just(ShouldThrow::kThrowOnError))
              .is_null());
-  Handle<FixedArray> values = isolate->factory()->NewFixedArray(size);
   CHECK(!Object::SetProperty(isolate, exception,
                              isolate->factory()->wasm_exception_values_symbol(),
                              values, StoreOrigin::kMaybeKeyed,
@@ -1747,10 +1705,105 @@ Handle<Object> WasmExceptionPackage::GetExceptionValues(
           isolate, exception_package,
           isolate->factory()->wasm_exception_values_symbol())
           .ToHandle(&values)) {
-    DCHECK(values->IsFixedArray());
+    DCHECK_IMPLIES(!values->IsUndefined(), values->IsFixedArray());
     return values;
   }
   return ReadOnlyRoots(isolate).undefined_value_handle();
+}
+
+void EncodeI32ExceptionValue(Handle<FixedArray> encoded_values,
+                             uint32_t* encoded_index, uint32_t value) {
+  encoded_values->set((*encoded_index)++, Smi::FromInt(value >> 16));
+  encoded_values->set((*encoded_index)++, Smi::FromInt(value & 0xffff));
+}
+
+void EncodeI64ExceptionValue(Handle<FixedArray> encoded_values,
+                             uint32_t* encoded_index, uint64_t value) {
+  EncodeI32ExceptionValue(encoded_values, encoded_index,
+                          static_cast<uint32_t>(value >> 32));
+  EncodeI32ExceptionValue(encoded_values, encoded_index,
+                          static_cast<uint32_t>(value));
+}
+
+void DecodeI32ExceptionValue(Handle<FixedArray> encoded_values,
+                             uint32_t* encoded_index, uint32_t* value) {
+  uint32_t msb = Smi::cast(encoded_values->get((*encoded_index)++)).value();
+  uint32_t lsb = Smi::cast(encoded_values->get((*encoded_index)++)).value();
+  *value = (msb << 16) | (lsb & 0xffff);
+}
+
+void DecodeI64ExceptionValue(Handle<FixedArray> encoded_values,
+                             uint32_t* encoded_index, uint64_t* value) {
+  uint32_t lsb = 0, msb = 0;
+  DecodeI32ExceptionValue(encoded_values, encoded_index, &msb);
+  DecodeI32ExceptionValue(encoded_values, encoded_index, &lsb);
+  *value = (static_cast<uint64_t>(msb) << 32) | static_cast<uint64_t>(lsb);
+}
+
+// static
+Handle<WasmContinuationObject> WasmContinuationObject::New(
+    Isolate* isolate, std::unique_ptr<wasm::StackMemory> stack,
+    wasm::JumpBuffer::StackState state, Handle<HeapObject> parent,
+    AllocationType allocation_type) {
+  stack->jmpbuf()->stack_limit = stack->jslimit();
+  stack->jmpbuf()->sp = stack->base();
+  stack->jmpbuf()->fp = kNullAddress;
+  stack->jmpbuf()->state = state;
+  wasm::JumpBuffer* jmpbuf = stack->jmpbuf();
+  size_t external_size = stack->owned_size();
+  Handle<Foreign> managed_stack = Managed<wasm::StackMemory>::FromUniquePtr(
+      isolate, external_size, std::move(stack), allocation_type);
+  Handle<WasmContinuationObject> result =
+      isolate->factory()->NewWasmContinuationObject(
+          reinterpret_cast<Address>(jmpbuf), managed_stack, parent,
+          allocation_type);
+  return result;
+}
+
+// static
+Handle<WasmContinuationObject> WasmContinuationObject::New(
+    Isolate* isolate, std::unique_ptr<wasm::StackMemory> stack,
+    wasm::JumpBuffer::StackState state, AllocationType allocation_type) {
+  auto parent = ReadOnlyRoots(isolate).undefined_value();
+  return New(isolate, std::move(stack), state, handle(parent, isolate),
+             allocation_type);
+}
+
+// static
+Handle<WasmContinuationObject> WasmContinuationObject::New(
+    Isolate* isolate, wasm::JumpBuffer::StackState state,
+    Handle<WasmContinuationObject> parent) {
+  auto stack =
+      std::unique_ptr<wasm::StackMemory>(wasm::StackMemory::New(isolate));
+  return New(isolate, std::move(stack), state, parent);
+}
+
+// static
+Handle<WasmSuspenderObject> WasmSuspenderObject::New(Isolate* isolate) {
+  Handle<JSFunction> suspender_cons(
+      isolate->native_context()->wasm_suspender_constructor(), isolate);
+  auto suspender = Handle<WasmSuspenderObject>::cast(
+      isolate->factory()->NewJSObject(suspender_cons));
+  suspender->set_state(kInactive);
+  // Instantiate the callable object which resumes this Suspender. This will be
+  // used implicitly as the onFulfilled callback of the returned JS promise.
+  Handle<WasmResumeData> resume_data = isolate->factory()->NewWasmResumeData(
+      suspender, wasm::OnResume::kContinue);
+  Handle<SharedFunctionInfo> resume_sfi =
+      isolate->factory()->NewSharedFunctionInfoForWasmResume(resume_data);
+  Handle<Context> context(isolate->native_context());
+  Handle<JSObject> resume =
+      Factory::JSFunctionBuilder{isolate, resume_sfi, context}.Build();
+
+  Handle<WasmResumeData> reject_data =
+      isolate->factory()->NewWasmResumeData(suspender, wasm::OnResume::kThrow);
+  Handle<SharedFunctionInfo> reject_sfi =
+      isolate->factory()->NewSharedFunctionInfoForWasmResume(reject_data);
+  Handle<JSObject> reject =
+      Factory::JSFunctionBuilder{isolate, reject_sfi, context}.Build();
+  suspender->set_resume(*resume);
+  suspender->set_reject(*reject);
+  return suspender;
 }
 
 #ifdef DEBUG
@@ -1760,7 +1813,7 @@ namespace {
 constexpr uint32_t kBytesPerExceptionValuesArrayElement = 2;
 
 size_t ComputeEncodedElementSize(wasm::ValueType type) {
-  size_t byte_size = type.element_size_bytes();
+  size_t byte_size = type.value_kind_size();
   DCHECK_EQ(byte_size % kBytesPerExceptionValuesArrayElement, 0);
   DCHECK_LE(1, byte_size / kBytesPerExceptionValuesArrayElement);
   return byte_size / kBytesPerExceptionValuesArrayElement;
@@ -1771,35 +1824,38 @@ size_t ComputeEncodedElementSize(wasm::ValueType type) {
 #endif  // DEBUG
 
 // static
-uint32_t WasmExceptionPackage::GetEncodedSize(
-    const wasm::WasmException* exception) {
-  const wasm::WasmExceptionSig* sig = exception->sig;
+uint32_t WasmExceptionPackage::GetEncodedSize(const wasm::WasmTag* tag) {
+  return GetEncodedSize(tag->sig);
+}
+
+// static
+uint32_t WasmExceptionPackage::GetEncodedSize(const wasm::WasmTagSig* sig) {
   uint32_t encoded_size = 0;
   for (size_t i = 0; i < sig->parameter_count(); ++i) {
     switch (sig->GetParam(i).kind()) {
-      case wasm::ValueType::kI32:
-      case wasm::ValueType::kF32:
+      case wasm::kI32:
+      case wasm::kF32:
         DCHECK_EQ(2, ComputeEncodedElementSize(sig->GetParam(i)));
         encoded_size += 2;
         break;
-      case wasm::ValueType::kI64:
-      case wasm::ValueType::kF64:
+      case wasm::kI64:
+      case wasm::kF64:
         DCHECK_EQ(4, ComputeEncodedElementSize(sig->GetParam(i)));
         encoded_size += 4;
         break;
-      case wasm::ValueType::kS128:
+      case wasm::kS128:
         DCHECK_EQ(8, ComputeEncodedElementSize(sig->GetParam(i)));
         encoded_size += 8;
         break;
-      case wasm::ValueType::kRef:
-      case wasm::ValueType::kOptRef:
+      case wasm::kRef:
+      case wasm::kRefNull:
         encoded_size += 1;
         break;
-      case wasm::ValueType::kRtt:
-      case wasm::ValueType::kStmt:
-      case wasm::ValueType::kBottom:
-      case wasm::ValueType::kI8:
-      case wasm::ValueType::kI16:
+      case wasm::kRtt:
+      case wasm::kVoid:
+      case wasm::kBottom:
+      case wasm::kI8:
+      case wasm::kI16:
         UNREACHABLE();
     }
   }
@@ -1809,8 +1865,10 @@ uint32_t WasmExceptionPackage::GetEncodedSize(
 bool WasmExportedFunction::IsWasmExportedFunction(Object object) {
   if (!object.IsJSFunction()) return false;
   JSFunction js_function = JSFunction::cast(object);
-  if (CodeKind::JS_TO_WASM_FUNCTION != js_function.code().kind() &&
-      js_function.code().builtin_index() != Builtins::kGenericJSToWasmWrapper) {
+  Code code = js_function.code();
+  if (CodeKind::JS_TO_WASM_FUNCTION != code.kind() &&
+      code.builtin_id() != Builtin::kGenericJSToWasmWrapper &&
+      code.builtin_id() != Builtin::kWasmReturnPromiseOnSuspend) {
     return false;
   }
   DCHECK(js_function.shared().HasWasmExportedFunctionData());
@@ -1833,21 +1891,26 @@ bool WasmCapiFunction::IsWasmCapiFunction(Object object) {
 Handle<WasmCapiFunction> WasmCapiFunction::New(
     Isolate* isolate, Address call_target, Handle<Foreign> embedder_data,
     Handle<PodArray<wasm::ValueType>> serialized_signature) {
-  Handle<WasmCapiFunctionData> fun_data =
-      Handle<WasmCapiFunctionData>::cast(isolate->factory()->NewStruct(
-          WASM_CAPI_FUNCTION_DATA_TYPE, AllocationType::kOld));
-  fun_data->set_call_target(call_target);
-  fun_data->set_embedder_data(*embedder_data);
-  fun_data->set_serialized_signature(*serialized_signature);
   // TODO(jkummerow): Install a JavaScript wrapper. For now, calling
   // these functions directly is unsupported; they can only be called
   // from Wasm code.
-  fun_data->set_wrapper_code(isolate->builtins()->builtin(Builtins::kIllegal));
+
+  // To support simulator builds, we potentially have to redirect the
+  // call target (which is an address pointing into the C++ binary).
+  call_target = ExternalReference::Create(call_target).address();
+
+  Handle<Map> rtt = isolate->factory()->wasm_internal_function_map();
+  Handle<WasmCapiFunctionData> fun_data =
+      isolate->factory()->NewWasmCapiFunctionData(
+          call_target, embedder_data, BUILTIN_CODE(isolate, Illegal), rtt,
+          serialized_signature);
   Handle<SharedFunctionInfo> shared =
       isolate->factory()->NewSharedFunctionInfoForWasmCapiFunction(fun_data);
-  return Handle<WasmCapiFunction>::cast(
-      isolate->factory()->NewFunctionFromSharedFunctionInfo(
-          shared, isolate->native_context()));
+  Handle<JSFunction> result =
+      Factory::JSFunctionBuilder{isolate, shared, isolate->native_context()}
+          .Build();
+  fun_data->internal().set_external(*result);
+  return Handle<WasmCapiFunction>::cast(result);
 }
 
 WasmInstanceObject WasmExportedFunction::instance() {
@@ -1864,30 +1927,39 @@ Handle<WasmExportedFunction> WasmExportedFunction::New(
   DCHECK(
       CodeKind::JS_TO_WASM_FUNCTION == export_wrapper->kind() ||
       (export_wrapper->is_builtin() &&
-       export_wrapper->builtin_index() == Builtins::kGenericJSToWasmWrapper));
+       (export_wrapper->builtin_id() == Builtin::kGenericJSToWasmWrapper ||
+        export_wrapper->builtin_id() == Builtin::kWasmReturnPromiseOnSuspend)));
   int num_imported_functions = instance->module()->num_imported_functions;
-  int jump_table_offset = -1;
-  if (func_index >= num_imported_functions) {
-    uint32_t jump_table_diff =
-        instance->module_object().native_module()->GetJumpTableOffset(
-            func_index);
-    DCHECK_GE(kMaxInt, jump_table_diff);
-    jump_table_offset = static_cast<int>(jump_table_diff);
-  }
+  Handle<Object> ref =
+      func_index >= num_imported_functions
+          ? instance
+          : handle(instance->imported_function_refs().get(func_index), isolate);
+
+  Factory* factory = isolate->factory();
   const wasm::FunctionSig* sig = instance->module()->functions[func_index].sig;
-  Handle<Foreign> sig_foreign =
-      isolate->factory()->NewForeign(reinterpret_cast<Address>(sig));
+  Address call_target = instance->GetCallTarget(func_index);
+  Handle<Map> rtt;
+  bool has_gc =
+      instance->module_object().native_module()->enabled_features().has_gc();
+  if (has_gc) {
+    int sig_index = instance->module()->functions[func_index].sig_index;
+    // TODO(7748): Create funcref RTTs lazily?
+    rtt = handle(Map::cast(instance->managed_object_maps().get(sig_index)),
+                 isolate);
+  } else {
+    rtt = factory->wasm_internal_function_map();
+  }
+  wasm::Promise promise =
+      export_wrapper->builtin_id() == Builtin::kWasmReturnPromiseOnSuspend
+          ? wasm::kPromise
+          : wasm::kNoPromise;
+  uint32_t sig_index = instance->module()->functions[func_index].sig_index;
+  uint32_t canonical_type_index =
+      instance->module()->isorecursive_canonical_type_ids[sig_index];
   Handle<WasmExportedFunctionData> function_data =
-      Handle<WasmExportedFunctionData>::cast(isolate->factory()->NewStruct(
-          WASM_EXPORTED_FUNCTION_DATA_TYPE, AllocationType::kOld));
-  function_data->set_wrapper_code(*export_wrapper);
-  function_data->set_instance(*instance);
-  function_data->set_jump_table_offset(jump_table_offset);
-  function_data->set_function_index(func_index);
-  function_data->set_c_wrapper_code(Smi::zero(), SKIP_WRITE_BARRIER);
-  function_data->set_wasm_call_target(Smi::zero(), SKIP_WRITE_BARRIER);
-  function_data->set_packed_args_size(0);
-  function_data->set_signature(*sig_foreign);
+      factory->NewWasmExportedFunctionData(
+          export_wrapper, instance, call_target, ref, func_index, sig,
+          canonical_type_index, wasm::kGenericWrapperBudget, rtt, promise);
 
   MaybeHandle<String> maybe_name;
   bool is_asm_js_module = instance->module_object().is_asm_js();
@@ -1899,27 +1971,17 @@ Handle<WasmExportedFunction> WasmExportedFunction::New(
   }
   Handle<String> name;
   if (!maybe_name.ToHandle(&name)) {
-    EmbeddedVector<char, 16> buffer;
+    base::EmbeddedVector<char, 16> buffer;
     int length = SNPrintF(buffer, "%d", func_index);
-    name = isolate->factory()
+    name = factory
                ->NewStringFromOneByte(
-                   Vector<uint8_t>::cast(buffer.SubVector(0, length)))
+                   base::Vector<uint8_t>::cast(buffer.SubVector(0, length)))
                .ToHandleChecked();
   }
   Handle<Map> function_map;
   switch (instance->module()->origin) {
     case wasm::kWasmOrigin:
-      if (instance->module_object()
-              .native_module()
-              ->enabled_features()
-              .has_gc()) {
-        uint32_t sig_index =
-            instance->module()->functions[func_index].sig_index;
-        function_map = handle(
-            Map::cast(instance->managed_object_maps().get(sig_index)), isolate);
-      } else {
-        function_map = isolate->wasm_exported_function_map();
-      }
+      function_map = isolate->wasm_exported_function_map();
       break;
     case wasm::kAsmJsSloppyOrigin:
       function_map = isolate->sloppy_function_map();
@@ -1928,15 +1990,23 @@ Handle<WasmExportedFunction> WasmExportedFunction::New(
       function_map = isolate->strict_function_map();
       break;
   }
-  NewFunctionArgs args =
-      NewFunctionArgs::ForWasm(name, function_data, function_map);
-  Handle<JSFunction> js_function = isolate->factory()->NewFunction(args);
+
+  Handle<NativeContext> context(isolate->native_context());
+  Handle<SharedFunctionInfo> shared =
+      factory->NewSharedFunctionInfoForWasmExportedFunction(name,
+                                                            function_data);
+  Handle<JSFunction> js_function =
+      Factory::JSFunctionBuilder{isolate, shared, context}
+          .set_map(function_map)
+          .Build();
+
   // According to the spec, exported functions should not have a [[Construct]]
   // method. This does not apply to functions exported from asm.js however.
   DCHECK_EQ(is_asm_js_module, js_function->IsConstructor());
-  js_function->shared().set_length(arity);
-  js_function->shared().set_internal_formal_parameter_count(arity);
-  js_function->shared().set_script(instance->module_object().script());
+  shared->set_length(arity);
+  shared->set_internal_formal_parameter_count(JSParameterCount(arity));
+  shared->set_script(instance->module_object().script());
+  function_data->internal().set_external(*js_function);
   return Handle<WasmExportedFunction>::cast(js_function);
 }
 
@@ -1948,6 +2018,25 @@ const wasm::FunctionSig* WasmExportedFunction::sig() {
   return instance().module()->functions[function_index()].sig;
 }
 
+bool WasmExportedFunction::MatchesSignature(
+    uint32_t other_canonical_type_index) {
+  return wasm::GetWasmEngine()->type_canonicalizer()->IsCanonicalSubtype(
+      this->shared().wasm_exported_function_data().canonical_type_index(),
+      other_canonical_type_index);
+}
+
+// static
+std::unique_ptr<char[]> WasmExportedFunction::GetDebugName(
+    const wasm::FunctionSig* sig) {
+  constexpr const char kPrefix[] = "js-to-wasm:";
+  // prefix + parameters + delimiter + returns + zero byte
+  size_t len = strlen(kPrefix) + sig->all().size() + 2;
+  auto buffer = base::OwnedVector<char>::New(len);
+  memcpy(buffer.begin(), kPrefix, strlen(kPrefix));
+  PrintSignature(buffer.as_vector() + strlen(kPrefix), sig);
+  return buffer.ReleaseData();
+}
+
 // static
 bool WasmJSFunction::IsWasmJSFunction(Object object) {
   if (!object.IsJSFunction()) return false;
@@ -1955,11 +2044,10 @@ bool WasmJSFunction::IsWasmJSFunction(Object object) {
   return js_function.shared().HasWasmJSFunctionData();
 }
 
-// TODO(7748): WasmJSFunctions should compile/find and store an import wrapper
-// in case they are called from within wasm.
 Handle<WasmJSFunction> WasmJSFunction::New(Isolate* isolate,
                                            const wasm::FunctionSig* sig,
-                                           Handle<JSReceiver> callable) {
+                                           Handle<JSReceiver> callable,
+                                           wasm::Suspend suspend) {
   DCHECK_LE(sig->all().size(), kMaxInt);
   int sig_size = static_cast<int>(sig->all().size());
   int return_count = static_cast<int>(sig->return_count());
@@ -1973,34 +2061,74 @@ Handle<WasmJSFunction> WasmJSFunction::New(Isolate* isolate,
   // signature instead of compiling a new one for every instantiation.
   Handle<Code> wrapper_code =
       compiler::CompileJSToJSWrapper(isolate, sig, nullptr).ToHandleChecked();
-  Handle<WasmJSFunctionData> function_data =
-      Handle<WasmJSFunctionData>::cast(isolate->factory()->NewStruct(
-          WASM_JS_FUNCTION_DATA_TYPE, AllocationType::kOld));
-  function_data->set_serialized_return_count(return_count);
-  function_data->set_serialized_parameter_count(parameter_count);
-  function_data->set_serialized_signature(*serialized_sig);
-  function_data->set_callable(*callable);
-  function_data->set_wrapper_code(*wrapper_code);
-  Handle<String> name = isolate->factory()->Function_string();
+
+  // WasmJSFunctions use on-heap Code objects as call targets, so we can't
+  // cache the target address, unless the WasmJSFunction wraps a
+  // WasmExportedFunction.
+  Address call_target = kNullAddress;
+  if (WasmExportedFunction::IsWasmExportedFunction(*callable)) {
+    call_target = WasmExportedFunction::cast(*callable).GetWasmCallTarget();
+  }
+
+  Factory* factory = isolate->factory();
+  Handle<Map> rtt = factory->wasm_internal_function_map();
+  Handle<WasmJSFunctionData> function_data = factory->NewWasmJSFunctionData(
+      call_target, callable, return_count, parameter_count, serialized_sig,
+      wrapper_code, rtt, suspend, wasm::kNoPromise);
+
+  if (wasm::WasmFeatures::FromIsolate(isolate).has_typed_funcref()) {
+    using CK = compiler::WasmImportCallKind;
+    int expected_arity = parameter_count;
+    CK kind = compiler::kDefaultImportCallKind;
+    if (callable->IsJSFunction()) {
+      SharedFunctionInfo shared = Handle<JSFunction>::cast(callable)->shared();
+      expected_arity =
+          shared.internal_formal_parameter_count_without_receiver();
+      if (expected_arity != parameter_count) {
+        kind = CK::kJSFunctionArityMismatch;
+      }
+    }
+    // TODO(wasm): Think about caching and sharing the wasm-to-JS wrappers per
+    // signature instead of compiling a new one for every instantiation.
+    Handle<Code> wasm_to_js_wrapper_code =
+        compiler::CompileWasmToJSWrapper(isolate, sig, kind, expected_arity,
+                                         suspend)
+            .ToHandleChecked();
+    function_data->internal().set_code(*wasm_to_js_wrapper_code);
+  }
+
+  Handle<String> name = factory->Function_string();
   if (callable->IsJSFunction()) {
-    name = JSFunction::GetName(Handle<JSFunction>::cast(callable));
+    name = JSFunction::GetDebugName(Handle<JSFunction>::cast(callable));
     name = String::Flatten(isolate, name);
   }
-  Handle<Map> function_map =
-      Map::Copy(isolate, isolate->wasm_exported_function_map(),
-                "fresh function map for WasmJSFunction::New");
-  NewFunctionArgs args =
-      NewFunctionArgs::ForWasm(name, function_data, function_map);
-  Handle<JSFunction> js_function = isolate->factory()->NewFunction(args);
-  js_function->shared().set_internal_formal_parameter_count(parameter_count);
+  Handle<NativeContext> context(isolate->native_context());
+  Handle<SharedFunctionInfo> shared =
+      factory->NewSharedFunctionInfoForWasmJSFunction(name, function_data);
+  Handle<JSFunction> js_function =
+      Factory::JSFunctionBuilder{isolate, shared, context}
+          .set_map(isolate->wasm_exported_function_map())
+          .Build();
+  js_function->shared().set_internal_formal_parameter_count(
+      JSParameterCount(parameter_count));
+  function_data->internal().set_external(*js_function);
   return Handle<WasmJSFunction>::cast(js_function);
 }
 
 JSReceiver WasmJSFunction::GetCallable() const {
-  return shared().wasm_js_function_data().callable();
+  return JSReceiver::cast(WasmApiFunctionRef::cast(
+                              shared().wasm_js_function_data().internal().ref())
+                              .callable());
 }
 
-const wasm::FunctionSig* WasmJSFunction::GetSignature(Zone* zone) {
+wasm::Suspend WasmJSFunction::GetSuspend() const {
+  return static_cast<wasm::Suspend>(
+      WasmApiFunctionRef::cast(
+          shared().wasm_js_function_data().internal().ref())
+          .suspend());
+}
+
+const wasm::FunctionSig* WasmJSFunction::GetSignature(Zone* zone) const {
   WasmJSFunctionData function_data = shared().wasm_js_function_data();
   int sig_size = function_data.serialized_signature().length();
   wasm::ValueType* types = zone->NewArray<wasm::ValueType>(sig_size);
@@ -2012,23 +2140,19 @@ const wasm::FunctionSig* WasmJSFunction::GetSignature(Zone* zone) {
   return zone->New<wasm::FunctionSig>(return_count, parameter_count, types);
 }
 
-bool WasmJSFunction::MatchesSignature(const wasm::FunctionSig* sig) {
-  DCHECK_LE(sig->all().size(), kMaxInt);
-  int sig_size = static_cast<int>(sig->all().size());
-  int return_count = static_cast<int>(sig->return_count());
-  int parameter_count = static_cast<int>(sig->parameter_count());
-  WasmJSFunctionData function_data = shared().wasm_js_function_data();
-  if (return_count != function_data.serialized_return_count() ||
-      parameter_count != function_data.serialized_parameter_count()) {
-    return false;
-  }
-  if (sig_size == 0) return true;  // Prevent undefined behavior.
-  const wasm::ValueType* expected = sig->all().begin();
-  return function_data.serialized_signature().matches(expected, sig_size);
-}
-
-Address WasmCapiFunction::GetHostCallTarget() const {
-  return shared().wasm_capi_function_data().call_target();
+bool WasmJSFunction::MatchesSignature(
+    uint32_t other_canonical_sig_index) const {
+  AccountingAllocator allocator;
+  Zone zone(&allocator, ZONE_NAME);
+  const wasm::FunctionSig* sig = GetSignature(&zone);
+#if DEBUG
+  // TODO(7748): Change this if indexed types are allowed.
+  for (wasm::ValueType type : sig->all()) CHECK(!type.has_index());
+#endif
+  // TODO(7748): Check for subtyping instead if WebAssembly.Function can define
+  // signature supertype.
+  return wasm::GetWasmEngine()->type_canonicalizer()->AddRecursiveGroup(sig) ==
+         other_canonical_sig_index;
 }
 
 PodArray<wasm::ValueType> WasmCapiFunction::GetSerializedSignature() const {
@@ -2038,6 +2162,20 @@ PodArray<wasm::ValueType> WasmCapiFunction::GetSerializedSignature() const {
 bool WasmExternalFunction::IsWasmExternalFunction(Object object) {
   return WasmExportedFunction::IsWasmExportedFunction(object) ||
          WasmJSFunction::IsWasmJSFunction(object);
+}
+
+// static
+MaybeHandle<WasmInternalFunction> WasmInternalFunction::FromExternal(
+    Handle<Object> external, Isolate* isolate) {
+  if (WasmExportedFunction::IsWasmExportedFunction(*external) ||
+      WasmJSFunction::IsWasmJSFunction(*external) ||
+      WasmCapiFunction::IsWasmCapiFunction(*external)) {
+    WasmFunctionData data = WasmFunctionData::cast(
+        Handle<JSFunction>::cast(external)->shared().function_data(
+            kAcquireLoad));
+    return handle(data.internal(), isolate);
+  }
+  return MaybeHandle<WasmInternalFunction>();
 }
 
 Handle<WasmExceptionTag> WasmExceptionTag::New(Isolate* isolate, int index) {
@@ -2050,12 +2188,12 @@ Handle<WasmExceptionTag> WasmExceptionTag::New(Isolate* isolate, int index) {
 
 Handle<AsmWasmData> AsmWasmData::New(
     Isolate* isolate, std::shared_ptr<wasm::NativeModule> native_module,
-    Handle<FixedArray> export_wrappers, Handle<HeapNumber> uses_bitset) {
+    Handle<HeapNumber> uses_bitset) {
   const WasmModule* module = native_module->module();
   const bool kUsesLiftoff = false;
   size_t memory_estimate =
-      wasm::WasmCodeManager::EstimateNativeModuleCodeSize(module,
-                                                          kUsesLiftoff) +
+      wasm::WasmCodeManager::EstimateNativeModuleCodeSize(
+          module, kUsesLiftoff, wasm::kNoDynamicTiering) +
       wasm::WasmCodeManager::EstimateNativeModuleMetaDataSize(module);
   Handle<Managed<wasm::NativeModule>> managed_native_module =
       Managed<wasm::NativeModule>::FromSharedPtr(isolate, memory_estimate,
@@ -2063,119 +2201,269 @@ Handle<AsmWasmData> AsmWasmData::New(
   Handle<AsmWasmData> result = Handle<AsmWasmData>::cast(
       isolate->factory()->NewStruct(ASM_WASM_DATA_TYPE, AllocationType::kOld));
   result->set_managed_native_module(*managed_native_module);
-  result->set_export_wrappers(*export_wrappers);
   result->set_uses_bitset(*uses_bitset);
   return result;
 }
 
+namespace {
+constexpr int32_t kInt31MaxValue = 0x3fffffff;
+constexpr int32_t kInt31MinValue = -kInt31MaxValue - 1;
+
+// Tries to canonicalize a HeapNumber to an i31ref Smi. Returns the original
+// HeapNumber if it fails.
+Handle<Object> CanonicalizeHeapNumber(Handle<Object> number, Isolate* isolate) {
+  double double_value = Handle<HeapNumber>::cast(number)->value();
+  if (double_value >= kInt31MinValue && double_value <= kInt31MaxValue &&
+      !IsMinusZero(double_value) &&
+      double_value == FastI2D(FastD2I(double_value))) {
+    return handle(Smi::FromInt(FastD2I(double_value)), isolate);
+  }
+  return number;
+}
+
+// Tries to canonicalize a Smi into an i31 Smi. Returns a HeapNumber if it
+// fails.
+Handle<Object> CanonicalizeSmi(Handle<Object> smi, Isolate* isolate) {
+  if constexpr (SmiValuesAre31Bits()) return smi;
+
+  int32_t value = Handle<Smi>::cast(smi)->value();
+
+  if (value <= kInt31MaxValue && value >= kInt31MinValue) {
+    return smi;
+  } else {
+    return isolate->factory()->NewHeapNumber(value);
+  }
+}
+}  // namespace
+
 namespace wasm {
+MaybeHandle<Object> JSToWasmObject(Isolate* isolate, Handle<Object> value,
+                                   ValueType expected_canonical,
+                                   const char** error_message) {
+  DCHECK(expected_canonical.is_object_reference());
+  if (expected_canonical.kind() == kRefNull && value->IsNull(isolate)) {
+    switch (expected_canonical.heap_representation()) {
+      case HeapType::kStringViewWtf8:
+        *error_message = "stringview_wtf8 has no JS representation";
+        return {};
+      case HeapType::kStringViewWtf16:
+        *error_message = "stringview_wtf16 has no JS representation";
+        return {};
+      case HeapType::kStringViewIter:
+        *error_message = "stringview_iter has no JS representation";
+        return {};
+      default:
+        bool is_extern_subtype =
+            expected_canonical.heap_representation() == HeapType::kExtern ||
+            expected_canonical.heap_representation() == HeapType::kNoExtern;
+        return is_extern_subtype ? value : isolate->factory()->wasm_null();
+    }
+  }
 
-bool TypecheckJSObject(Isolate* isolate, const WasmModule* module,
-                       Handle<Object> value, ValueType expected,
-                       const char** error_message) {
-  DCHECK(expected.is_reference_type());
-  switch (expected.kind()) {
-    case ValueType::kOptRef:
-      if (value->IsNull(isolate)) return true;
-      V8_FALLTHROUGH;
-    case ValueType::kRef:
-      switch (expected.heap_representation()) {
-        case HeapType::kFunc: {
-          if (!(WasmExternalFunction::IsWasmExternalFunction(*value) ||
-                WasmCapiFunction::IsWasmCapiFunction(*value))) {
-            *error_message =
-                "function-typed object must be null (if nullable) or a Wasm "
-                "function object";
-            return false;
-          }
-          return true;
-        }
-        case HeapType::kExtern:
-        case HeapType::kExn:
-          return true;
-        case HeapType::kEq: {
-          // TODO(7748): Change this when we have a decision on the JS API for
-          // structs/arrays.
-          Handle<Name> key = isolate->factory()->wasm_wrapped_object_symbol();
-          LookupIterator it(isolate, value, key,
-                            LookupIterator::OWN_SKIP_INTERCEPTOR);
-          if (it.state() == LookupIterator::DATA) return true;
-          *error_message =
-              "eqref object must be null (if nullable) or wrapped with wasm "
-              "object wrapper";
-          return false;
-        }
-        case HeapType::kI31:
-          // TODO(7748): Implement when the JS API for i31ref is decided on.
-          *error_message = "Assigning JS objects to i31ref not supported yet.";
-          return false;
-        default:
-          // Tables defined outside a module can't refer to user-defined types.
-          if (module == nullptr) return false;
-          DCHECK(module->has_type(expected.ref_index()));
-          if (module->has_signature(expected.ref_index())) {
-            if (WasmExportedFunction::IsWasmExportedFunction(*value)) {
-              WasmExportedFunction function =
-                  WasmExportedFunction::cast(*value);
-              const WasmModule* exporting_module = function.instance().module();
-              ValueType real_type = ValueType::Ref(
-                  exporting_module->functions[function.function_index()]
-                      .sig_index,
-                  kNonNullable);
-              if (!IsSubtypeOf(real_type, expected, exporting_module, module)) {
-                *error_message =
-                    "assigned exported function has to be a subtype of the "
-                    "expected type";
-                return false;
-              }
-              return true;
-            }
-
-            if (WasmJSFunction::IsWasmJSFunction(*value)) {
-              // Since a WasmJSFunction cannot refer to indexed types (definable
-              // only in a module), we do not need to use EquivalentTypes().
-              if (!WasmJSFunction::cast(*value).MatchesSignature(
-                      module->signature(expected.ref_index()))) {
-                *error_message =
-                    "assigned WasmJSFunction has to be a subtype of the "
-                    "expected type";
-                return false;
-              }
-              return true;
-            }
-
-            if (WasmCapiFunction::IsWasmCapiFunction(*value)) {
-              if (!WasmCapiFunction::cast(*value).MatchesSignature(
-                      module->signature(expected.ref_index()))) {
-                // Since a WasmCapiFunction cannot refer to indexed types
-                // (definable in a module), we don't need to invoke
-                // IsEquivalentType();
-                *error_message =
-                    "assigned WasmCapiFunction has to be a subtype of the "
-                    "expected type";
-                return false;
-              }
-              return true;
-            }
-
-            *error_message =
-                "function-typed object must be null (if nullable) or a Wasm "
-                "function object";
-
-            return false;
-          }
-          // TODO(7748): Implement when the JS API for structs/arrays is decided
-          // on.
-          *error_message =
-              "Assigning to struct/array globals not supported yet.";
-          return false;
+  // TODO(7748): Streamline interaction of undefined and (ref any).
+  switch (expected_canonical.heap_representation()) {
+    case HeapType::kFunc: {
+      if (!(WasmExternalFunction::IsWasmExternalFunction(*value) ||
+            WasmCapiFunction::IsWasmCapiFunction(*value))) {
+        *error_message =
+            "function-typed object must be null (if nullable) or a Wasm "
+            "function object";
+        return {};
       }
-    case ValueType::kRtt:
-      // TODO(7748): Implement when the JS API for rtts is decided on.
-      *error_message = "Assigning to rtt globals not supported yet.";
-      return false;
-    default:
+      return MaybeHandle<Object>(Handle<JSFunction>::cast(value)
+                                     ->shared()
+                                     .wasm_function_data()
+                                     .internal(),
+                                 isolate);
+    }
+    case HeapType::kExtern: {
+      if (!value->IsNull(isolate)) return value;
+      *error_message = "null is not allowed for (ref extern)";
+      return {};
+    }
+    case HeapType::kAny: {
+      if (value->IsSmi()) return CanonicalizeSmi(value, isolate);
+      if (value->IsHeapNumber()) {
+        return CanonicalizeHeapNumber(value, isolate);
+      }
+      if (!value->IsNull(isolate)) return value;
+      *error_message = "null is not allowed for (ref any)";
+      return {};
+    }
+    case HeapType::kStruct: {
+      if (value->IsWasmStruct()) {
+        return value;
+      }
+      *error_message =
+          "structref object must be null (if nullable) or a wasm struct";
+      return {};
+    }
+    case HeapType::kArray: {
+      if (value->IsWasmArray()) {
+        return value;
+      }
+      *error_message =
+          "arrayref object must be null (if nullable) or a wasm array";
+      return {};
+    }
+    case HeapType::kEq: {
+      if (value->IsSmi()) {
+        Handle<Object> truncated = CanonicalizeSmi(value, isolate);
+        if (truncated->IsSmi()) return truncated;
+      } else if (value->IsHeapNumber()) {
+        Handle<Object> truncated = CanonicalizeHeapNumber(value, isolate);
+        if (truncated->IsSmi()) return truncated;
+      } else if (value->IsWasmStruct() || value->IsWasmArray()) {
+        return value;
+      }
+      *error_message =
+          "eqref object must be null (if nullable), or a wasm "
+          "struct/array, or a Number that fits in i31ref range";
+      return {};
+    }
+    case HeapType::kI31: {
+      if (value->IsSmi()) {
+        Handle<Object> truncated = CanonicalizeSmi(value, isolate);
+        if (truncated->IsSmi()) return truncated;
+      } else if (value->IsHeapNumber()) {
+        Handle<Object> truncated = CanonicalizeHeapNumber(value, isolate);
+        if (truncated->IsSmi()) return truncated;
+      }
+      *error_message =
+          "i31ref object must be null (if nullable) or a Number that fits "
+          "in i31ref range";
+      return {};
+    }
+    case HeapType::kString:
+      if (value->IsString()) return value;
+      *error_message = "wrong type (expected a string)";
+      return {};
+    case HeapType::kStringViewWtf8:
+      *error_message = "stringview_wtf8 has no JS representation";
+      return {};
+    case HeapType::kStringViewWtf16:
+      *error_message = "stringview_wtf16 has no JS representation";
+      return {};
+    case HeapType::kStringViewIter:
+      *error_message = "stringview_iter has no JS representation";
+      return {};
+    case HeapType::kNoFunc:
+    case HeapType::kNoExtern:
+    case HeapType::kNone: {
+      *error_message = "only null allowed for null types";
+      return {};
+    }
+    default: {
+      auto type_canonicalizer = GetWasmEngine()->type_canonicalizer();
+
+      if (WasmExportedFunction::IsWasmExportedFunction(*value)) {
+        WasmExportedFunction function = WasmExportedFunction::cast(*value);
+        uint32_t real_type_index = function.shared()
+                                       .wasm_exported_function_data()
+                                       .canonical_type_index();
+        if (!type_canonicalizer->IsCanonicalSubtype(
+                real_type_index, expected_canonical.ref_index())) {
+          *error_message =
+              "assigned exported function has to be a subtype of the "
+              "expected type";
+          return {};
+        }
+        return WasmInternalFunction::FromExternal(value, isolate);
+      } else if (WasmJSFunction::IsWasmJSFunction(*value)) {
+        if (!WasmJSFunction::cast(*value).MatchesSignature(
+                expected_canonical.ref_index())) {
+          *error_message =
+              "assigned WebAssembly.Function has to be a subtype of the "
+              "expected type";
+          return {};
+        }
+        return WasmInternalFunction::FromExternal(value, isolate);
+      } else if (WasmCapiFunction::IsWasmCapiFunction(*value)) {
+        if (!WasmCapiFunction::cast(*value).MatchesSignature(
+                expected_canonical.ref_index())) {
+          *error_message =
+              "assigned C API function has to be a subtype of the expected "
+              "type";
+          return {};
+        }
+        return WasmInternalFunction::FromExternal(value, isolate);
+      } else if (value->IsWasmStruct() || value->IsWasmArray()) {
+        auto wasm_obj = Handle<WasmObject>::cast(value);
+        WasmTypeInfo type_info = wasm_obj->map().wasm_type_info();
+        uint32_t real_idx = type_info.type_index();
+        const WasmModule* real_module = type_info.instance().module();
+        uint32_t real_canonical_index =
+            real_module->isorecursive_canonical_type_ids[real_idx];
+        if (!type_canonicalizer->IsCanonicalSubtype(
+                real_canonical_index, expected_canonical.ref_index())) {
+          *error_message = "object is not a subtype of expected type";
+          return {};
+        }
+        return value;
+      } else {
+        *error_message = "JS object does not match expected wasm type";
+        return {};
+      }
+    }
+  }
+}
+
+// Utility which canonicalizes {expected} in addition.
+MaybeHandle<Object> JSToWasmObject(Isolate* isolate, const WasmModule* module,
+                                   Handle<Object> value, ValueType expected,
+                                   const char** error_message) {
+  ValueType expected_canonical = expected;
+  if (expected_canonical.has_index()) {
+    uint32_t canonical_index =
+        module->isorecursive_canonical_type_ids[expected_canonical.ref_index()];
+    expected_canonical = ValueType::RefMaybeNull(
+        canonical_index, expected_canonical.nullability());
+  }
+  return JSToWasmObject(isolate, value, expected_canonical, error_message);
+}
+
+MaybeHandle<Object> WasmToJSObject(Isolate* isolate, Handle<Object> value,
+                                   HeapType type, const char** error_message) {
+  switch (type.representation()) {
+    case i::wasm::HeapType::kExtern:
+    case i::wasm::HeapType::kString:
+    case i::wasm::HeapType::kI31:
+    case i::wasm::HeapType::kStruct:
+    case i::wasm::HeapType::kArray:
+    case i::wasm::HeapType::kEq:
+    case i::wasm::HeapType::kAny:
+      return value->IsWasmNull() ? isolate->factory()->null_value() : value;
+    case i::wasm::HeapType::kFunc: {
+      if (value->IsWasmNull()) {
+        return isolate->factory()->null_value();
+      } else {
+        DCHECK(value->IsWasmInternalFunction());
+        return handle(
+            i::Handle<i::WasmInternalFunction>::cast(value)->external(),
+            isolate);
+      }
+    }
+    case i::wasm::HeapType::kStringViewWtf8:
+      *error_message = "stringview_wtf8 has no JS representation";
+      return {};
+    case i::wasm::HeapType::kStringViewWtf16:
+      *error_message = "stringview_wtf16 has no JS representation";
+      return {};
+    case i::wasm::HeapType::kStringViewIter:
+      *error_message = "stringview_iter has no JS representation";
+      return {};
+    case i::wasm::HeapType::kBottom:
       UNREACHABLE();
+    default:
+      if (value->IsWasmNull()) {
+        return isolate->factory()->null_value();
+      } else if (value->IsWasmInternalFunction()) {
+        return handle(
+            i::Handle<i::WasmInternalFunction>::cast(value)->external(),
+            isolate);
+      } else {
+        return value;
+      }
   }
 }
 
@@ -2184,4 +2472,5 @@ bool TypecheckJSObject(Isolate* isolate, const WasmModule* module,
 }  // namespace internal
 }  // namespace v8
 
+#include "src/objects/object-macros-undef.h"
 #undef TRACE_IFT

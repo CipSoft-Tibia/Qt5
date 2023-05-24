@@ -1,89 +1,44 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QAUDIODECODER_H
 #define QAUDIODECODER_H
 
-#include <QtMultimedia/qmediaobject.h>
+#include <QtCore/qobject.h>
 #include <QtMultimedia/qmediaenumdebug.h>
 
 #include <QtMultimedia/qaudiobuffer.h>
 
 QT_BEGIN_NAMESPACE
 
-class QAudioDecoderPrivate;
-class Q_MULTIMEDIA_EXPORT QAudioDecoder : public QMediaObject
+class QPlatformAudioDecoder;
+class Q_MULTIMEDIA_EXPORT QAudioDecoder : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(QString sourceFilename READ sourceFilename WRITE setSourceFilename NOTIFY sourceChanged)
-    Q_PROPERTY(State state READ state NOTIFY stateChanged)
+    Q_PROPERTY(QUrl source READ source WRITE setSource NOTIFY sourceChanged)
+    Q_PROPERTY(bool isDecoding READ isDecoding NOTIFY isDecodingChanged)
     Q_PROPERTY(QString error READ errorString)
     Q_PROPERTY(bool bufferAvailable READ bufferAvailable NOTIFY bufferAvailableChanged)
 
-    Q_ENUMS(State)
-    Q_ENUMS(Error)
-
 public:
-    enum State
-    {
-        StoppedState,
-        DecodingState
-    };
-
     enum Error
     {
         NoError,
         ResourceError,
         FormatError,
         AccessDeniedError,
-        ServiceMissingError
+        NotSupportedError
     };
+    Q_ENUM(Error)
 
     explicit QAudioDecoder(QObject *parent = nullptr);
     ~QAudioDecoder();
 
-    static QMultimedia::SupportEstimate hasSupport(const QString &mimeType, const QStringList& codecs = QStringList());
+    bool isSupported() const;
+    bool isDecoding() const;
 
-    State state() const;
-
-    QString sourceFilename() const;
-    void setSourceFilename(const QString &fileName);
+    QUrl source() const;
+    void setSource(const QUrl &fileName);
 
     QIODevice* sourceDevice() const;
     void setSourceDevice(QIODevice *device);
@@ -108,8 +63,8 @@ Q_SIGNALS:
     void bufferAvailableChanged(bool);
     void bufferReady();
     void finished();
+    void isDecodingChanged(bool);
 
-    void stateChanged(QAudioDecoder::State newState);
     void formatChanged(const QAudioFormat &format);
 
     void error(QAudioDecoder::Error error);
@@ -119,23 +74,13 @@ Q_SIGNALS:
     void positionChanged(qint64 position);
     void durationChanged(qint64 duration);
 
-public:
-    bool bind(QObject *) override;
-    void unbind(QObject *) override;
-
 private:
     Q_DISABLE_COPY(QAudioDecoder)
-    Q_DECLARE_PRIVATE(QAudioDecoder)
-    Q_PRIVATE_SLOT(d_func(), void _q_stateChanged(QAudioDecoder::State))
-    Q_PRIVATE_SLOT(d_func(), void _q_error(int, const QString &))
+    QPlatformAudioDecoder *decoder = nullptr;
 };
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE(QAudioDecoder::State)
-Q_DECLARE_METATYPE(QAudioDecoder::Error)
-
-Q_MEDIA_ENUM_DEBUG(QAudioDecoder, State)
 Q_MEDIA_ENUM_DEBUG(QAudioDecoder, Error)
 
 #endif  // QAUDIODECODER_H

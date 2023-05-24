@@ -44,6 +44,8 @@ const char *GetCommandString(CommandID id)
             return "BindTransformFeedbackBuffers";
         case CommandID::BindVertexBuffers:
             return "BindVertexBuffers";
+        case CommandID::BindVertexBuffers2:
+            return "BindVertexBuffers2";
         case CommandID::BlitImage:
             return "BlitImage";
         case CommandID::BufferBarrier:
@@ -92,8 +94,6 @@ const char *GetCommandString(CommandID id)
             return "EndQuery";
         case CommandID::EndTransformFeedback:
             return "EndTransformFeedback";
-        case CommandID::ExecutionBarrier:
-            return "ExecutionBarrier";
         case CommandID::FillBuffer:
             return "FillBuffer";
         case CommandID::ImageBarrier:
@@ -114,8 +114,48 @@ const char *GetCommandString(CommandID id)
             return "ResetQueryPool";
         case CommandID::ResolveImage:
             return "ResolveImage";
+        case CommandID::SetBlendConstants:
+            return "SetBlendConstants";
+        case CommandID::SetCullMode:
+            return "SetCullMode";
+        case CommandID::SetDepthBias:
+            return "SetDepthBias";
+        case CommandID::SetDepthBiasEnable:
+            return "SetDepthBiasEnable";
+        case CommandID::SetDepthCompareOp:
+            return "SetDepthCompareOp";
+        case CommandID::SetDepthTestEnable:
+            return "SetDepthTestEnable";
+        case CommandID::SetDepthWriteEnable:
+            return "SetDepthWriteEnable";
         case CommandID::SetEvent:
             return "SetEvent";
+        case CommandID::SetFragmentShadingRate:
+            return "SetFragmentShadingRate";
+        case CommandID::SetFrontFace:
+            return "SetFrontFace";
+        case CommandID::SetLineWidth:
+            return "SetLineWidth";
+        case CommandID::SetLogicOp:
+            return "SetLogicOp";
+        case CommandID::SetPrimitiveRestartEnable:
+            return "SetPrimitiveRestartEnable";
+        case CommandID::SetRasterizerDiscardEnable:
+            return "SetRasterizerDiscardEnable";
+        case CommandID::SetScissor:
+            return "SetScissor";
+        case CommandID::SetStencilCompareMask:
+            return "SetStencilCompareMask";
+        case CommandID::SetStencilOp:
+            return "SetStencilOp";
+        case CommandID::SetStencilReference:
+            return "SetStencilReference";
+        case CommandID::SetStencilTestEnable:
+            return "SetStencilTestEnable";
+        case CommandID::SetStencilWriteMask:
+            return "SetStencilWriteMask";
+        case CommandID::SetViewport:
+            return "SetViewport";
         case CommandID::WaitEvents:
             return "WaitEvents";
         case CommandID::WriteTimestamp:
@@ -134,20 +174,16 @@ ANGLE_INLINE const CommandHeader *NextCommand(const CommandHeader *command)
                                                    command->size);
 }
 
-// Add any queued resetQueryPool commands to the given cmdBuffer
-void SecondaryCommandBuffer::executeQueuedResetQueryPoolCommands(VkCommandBuffer cmdBuffer)
-{
-    for (const ResetQueryPoolParams &queryParams : mResetQueryQueue)
-    {
-        vkCmdResetQueryPool(cmdBuffer, queryParams.queryPool, queryParams.firstQuery,
-                            queryParams.queryCount);
-    }
-}
-
 // Parse the cmds in this cmd buffer into given primary cmd buffer
-void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
+void SecondaryCommandBuffer::executeCommands(PrimaryCommandBuffer *primary)
 {
+    VkCommandBuffer cmdBuffer = primary->getHandle();
+
     ANGLE_TRACE_EVENT0("gpu.angle", "SecondaryCommandBuffer::executeCommands");
+
+    // Used for ring buffer allocators only.
+    mCommandAllocator.terminateLastCommandBlock();
+
     for (const CommandHeader *command : mCommands)
     {
         for (const CommandHeader *currentCommand                      = command;
@@ -181,12 +217,11 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                         getParamPtr<BeginTransformFeedbackParams>(currentCommand);
                     const VkBuffer *counterBuffers =
                         Offset<VkBuffer>(params, sizeof(BeginTransformFeedbackParams));
-                    // Workaround for AMD driver bug where it expects the offsets array to be
-                    // non-null
-                    gl::TransformFeedbackBuffersArray<VkDeviceSize> offsets;
-                    offsets.fill(0);
+                    const VkDeviceSize *counterBufferOffsets =
+                        reinterpret_cast<const VkDeviceSize *>(counterBuffers +
+                                                               params->bufferCount);
                     vkCmdBeginTransformFeedbackEXT(cmdBuffer, 0, params->bufferCount,
-                                                   counterBuffers, offsets.data());
+                                                   counterBuffers, counterBufferOffsets);
                     break;
                 }
                 case CommandID::BindComputePipeline:
@@ -248,6 +283,20 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                     const VkDeviceSize *offsets =
                         Offset<VkDeviceSize>(buffers, sizeof(VkBuffer) * params->bindingCount);
                     vkCmdBindVertexBuffers(cmdBuffer, 0, params->bindingCount, buffers, offsets);
+                    break;
+                }
+                case CommandID::BindVertexBuffers2:
+                {
+                    const BindVertexBuffers2Params *params =
+                        getParamPtr<BindVertexBuffers2Params>(currentCommand);
+                    const VkBuffer *buffers =
+                        Offset<VkBuffer>(params, sizeof(BindVertexBuffers2Params));
+                    const VkDeviceSize *offsets =
+                        Offset<VkDeviceSize>(buffers, sizeof(VkBuffer) * params->bindingCount);
+                    const VkDeviceSize *strides =
+                        Offset<VkDeviceSize>(offsets, sizeof(VkDeviceSize) * params->bindingCount);
+                    vkCmdBindVertexBuffers2EXT(cmdBuffer, 0, params->bindingCount, buffers, offsets,
+                                               nullptr, strides);
                     break;
                 }
                 case CommandID::BlitImage:
@@ -363,7 +412,8 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 {
                     const DrawIndexedIndirectParams *params =
                         getParamPtr<DrawIndexedIndirectParams>(currentCommand);
-                    vkCmdDrawIndexedIndirect(cmdBuffer, params->buffer, params->offset, 1, 0);
+                    vkCmdDrawIndexedIndirect(cmdBuffer, params->buffer, params->offset,
+                                             params->drawCount, params->stride);
                     break;
                 }
                 case CommandID::DrawIndexedInstanced:
@@ -395,7 +445,8 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                 {
                     const DrawIndirectParams *params =
                         getParamPtr<DrawIndirectParams>(currentCommand);
-                    vkCmdDrawIndirect(cmdBuffer, params->buffer, params->offset, 1, 0);
+                    vkCmdDrawIndirect(cmdBuffer, params->buffer, params->offset, params->drawCount,
+                                      params->stride);
                     break;
                 }
                 case CommandID::DrawInstanced:
@@ -432,20 +483,11 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                         getParamPtr<EndTransformFeedbackParams>(currentCommand);
                     const VkBuffer *counterBuffers =
                         Offset<VkBuffer>(params, sizeof(EndTransformFeedbackParams));
-                    // Workaround for AMD driver bug where it expects the offsets array to be
-                    // non-null
-                    gl::TransformFeedbackBuffersArray<VkDeviceSize> offsets;
-                    offsets.fill(0);
+                    const VkDeviceSize *counterBufferOffsets =
+                        reinterpret_cast<const VkDeviceSize *>(counterBuffers +
+                                                               params->bufferCount);
                     vkCmdEndTransformFeedbackEXT(cmdBuffer, 0, params->bufferCount, counterBuffers,
-                                                 offsets.data());
-                    break;
-                }
-                case CommandID::ExecutionBarrier:
-                {
-                    const ExecutionBarrierParams *params =
-                        getParamPtr<ExecutionBarrierParams>(currentCommand);
-                    vkCmdPipelineBarrier(cmdBuffer, params->stageMask, params->stageMask, 0, 0,
-                                         nullptr, 0, nullptr, 0, nullptr);
+                                                 counterBufferOffsets);
                     break;
                 }
                 case CommandID::FillBuffer:
@@ -543,10 +585,167 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &params->region);
                     break;
                 }
+                case CommandID::SetBlendConstants:
+                {
+                    const SetBlendConstantsParams *params =
+                        getParamPtr<SetBlendConstantsParams>(currentCommand);
+                    vkCmdSetBlendConstants(cmdBuffer, params->blendConstants);
+                    break;
+                }
+                case CommandID::SetCullMode:
+                {
+                    const SetCullModeParams *params =
+                        getParamPtr<SetCullModeParams>(currentCommand);
+                    vkCmdSetCullModeEXT(cmdBuffer, params->cullMode);
+                    break;
+                }
+                case CommandID::SetDepthBias:
+                {
+                    const SetDepthBiasParams *params =
+                        getParamPtr<SetDepthBiasParams>(currentCommand);
+                    vkCmdSetDepthBias(cmdBuffer, params->depthBiasConstantFactor,
+                                      params->depthBiasClamp, params->depthBiasSlopeFactor);
+                    break;
+                }
+                case CommandID::SetDepthBiasEnable:
+                {
+                    const SetDepthBiasEnableParams *params =
+                        getParamPtr<SetDepthBiasEnableParams>(currentCommand);
+                    vkCmdSetDepthBiasEnableEXT(cmdBuffer, params->depthBiasEnable);
+                    break;
+                }
+                case CommandID::SetDepthCompareOp:
+                {
+                    const SetDepthCompareOpParams *params =
+                        getParamPtr<SetDepthCompareOpParams>(currentCommand);
+                    vkCmdSetDepthCompareOpEXT(cmdBuffer, params->depthCompareOp);
+                    break;
+                }
+                case CommandID::SetDepthTestEnable:
+                {
+                    const SetDepthTestEnableParams *params =
+                        getParamPtr<SetDepthTestEnableParams>(currentCommand);
+                    vkCmdSetDepthTestEnableEXT(cmdBuffer, params->depthTestEnable);
+                    break;
+                }
+                case CommandID::SetDepthWriteEnable:
+                {
+                    const SetDepthWriteEnableParams *params =
+                        getParamPtr<SetDepthWriteEnableParams>(currentCommand);
+                    vkCmdSetDepthWriteEnableEXT(cmdBuffer, params->depthWriteEnable);
+                    break;
+                }
                 case CommandID::SetEvent:
                 {
                     const SetEventParams *params = getParamPtr<SetEventParams>(currentCommand);
                     vkCmdSetEvent(cmdBuffer, params->event, params->stageMask);
+                    break;
+                }
+                case CommandID::SetFragmentShadingRate:
+                {
+                    const SetFragmentShadingRateParams *params =
+                        getParamPtr<SetFragmentShadingRateParams>(currentCommand);
+                    const VkExtent2D fragmentSize = {params->fragmentWidth, params->fragmentHeight};
+                    const VkFragmentShadingRateCombinerOpKHR ops[2] = {
+                        VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR,
+                        VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR};
+                    vkCmdSetFragmentShadingRateKHR(cmdBuffer, &fragmentSize, ops);
+                    break;
+                }
+                case CommandID::SetFrontFace:
+                {
+                    const SetFrontFaceParams *params =
+                        getParamPtr<SetFrontFaceParams>(currentCommand);
+                    vkCmdSetFrontFaceEXT(cmdBuffer, params->frontFace);
+                    break;
+                }
+                case CommandID::SetLineWidth:
+                {
+                    const SetLineWidthParams *params =
+                        getParamPtr<SetLineWidthParams>(currentCommand);
+                    vkCmdSetLineWidth(cmdBuffer, params->lineWidth);
+                    break;
+                }
+                case CommandID::SetLogicOp:
+                {
+                    const SetLogicOpParams *params = getParamPtr<SetLogicOpParams>(currentCommand);
+                    vkCmdSetLogicOpEXT(cmdBuffer, params->logicOp);
+                    break;
+                }
+                case CommandID::SetPrimitiveRestartEnable:
+                {
+                    const SetPrimitiveRestartEnableParams *params =
+                        getParamPtr<SetPrimitiveRestartEnableParams>(currentCommand);
+                    vkCmdSetPrimitiveRestartEnableEXT(cmdBuffer, params->primitiveRestartEnable);
+                    break;
+                }
+                case CommandID::SetRasterizerDiscardEnable:
+                {
+                    const SetRasterizerDiscardEnableParams *params =
+                        getParamPtr<SetRasterizerDiscardEnableParams>(currentCommand);
+                    vkCmdSetRasterizerDiscardEnableEXT(cmdBuffer, params->rasterizerDiscardEnable);
+                    break;
+                }
+                case CommandID::SetScissor:
+                {
+                    const SetScissorParams *params = getParamPtr<SetScissorParams>(currentCommand);
+                    vkCmdSetScissor(cmdBuffer, 0, 1, &params->scissor);
+                    break;
+                }
+                case CommandID::SetStencilCompareMask:
+                {
+                    const SetStencilCompareMaskParams *params =
+                        getParamPtr<SetStencilCompareMaskParams>(currentCommand);
+                    vkCmdSetStencilCompareMask(cmdBuffer, VK_STENCIL_FACE_FRONT_BIT,
+                                               params->compareFrontMask);
+                    vkCmdSetStencilCompareMask(cmdBuffer, VK_STENCIL_FACE_BACK_BIT,
+                                               params->compareBackMask);
+                    break;
+                }
+                case CommandID::SetStencilOp:
+                {
+                    const SetStencilOpParams *params =
+                        getParamPtr<SetStencilOpParams>(currentCommand);
+                    vkCmdSetStencilOpEXT(cmdBuffer,
+                                         static_cast<VkStencilFaceFlags>(params->faceMask),
+                                         static_cast<VkStencilOp>(params->failOp),
+                                         static_cast<VkStencilOp>(params->passOp),
+                                         static_cast<VkStencilOp>(params->depthFailOp),
+                                         static_cast<VkCompareOp>(params->compareOp));
+                    break;
+                }
+                case CommandID::SetStencilReference:
+                {
+                    const SetStencilReferenceParams *params =
+                        getParamPtr<SetStencilReferenceParams>(currentCommand);
+                    vkCmdSetStencilReference(cmdBuffer, VK_STENCIL_FACE_FRONT_BIT,
+                                             params->frontReference);
+                    vkCmdSetStencilReference(cmdBuffer, VK_STENCIL_FACE_BACK_BIT,
+                                             params->backReference);
+                    break;
+                }
+                case CommandID::SetStencilTestEnable:
+                {
+                    const SetStencilTestEnableParams *params =
+                        getParamPtr<SetStencilTestEnableParams>(currentCommand);
+                    vkCmdSetStencilTestEnableEXT(cmdBuffer, params->stencilTestEnable);
+                    break;
+                }
+                case CommandID::SetStencilWriteMask:
+                {
+                    const SetStencilWriteMaskParams *params =
+                        getParamPtr<SetStencilWriteMaskParams>(currentCommand);
+                    vkCmdSetStencilWriteMask(cmdBuffer, VK_STENCIL_FACE_FRONT_BIT,
+                                             params->writeFrontMask);
+                    vkCmdSetStencilWriteMask(cmdBuffer, VK_STENCIL_FACE_BACK_BIT,
+                                             params->writeBackMask);
+                    break;
+                }
+                case CommandID::SetViewport:
+                {
+                    const SetViewportParams *params =
+                        getParamPtr<SetViewportParams>(currentCommand);
+                    vkCmdSetViewport(cmdBuffer, 0, 1, &params->viewport);
                     break;
                 }
                 case CommandID::WaitEvents:
@@ -589,7 +788,14 @@ void SecondaryCommandBuffer::executeCommands(VkCommandBuffer cmdBuffer)
 void SecondaryCommandBuffer::getMemoryUsageStats(size_t *usedMemoryOut,
                                                  size_t *allocatedMemoryOut) const
 {
-    *allocatedMemoryOut = kBlockSize * mCommands.size();
+    mCommandAllocator.getMemoryUsageStats(usedMemoryOut, allocatedMemoryOut);
+}
+
+void SecondaryCommandBuffer::getMemoryUsageStatsForPoolAlloc(size_t blockSize,
+                                                             size_t *usedMemoryOut,
+                                                             size_t *allocatedMemoryOut) const
+{
+    *allocatedMemoryOut = blockSize * mCommands.size();
 
     *usedMemoryOut = 0;
     for (const CommandHeader *command : mCommands)

@@ -1,12 +1,11 @@
-#!/usr/bin/env python
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 '''Unit tests for <structure> nodes.
 '''
 
-from __future__ import print_function
 
 import os
 import os.path
@@ -55,18 +54,18 @@ class StructureUnittest(unittest.TestCase):
     grd.SetOutputLanguage('fr')
     grd.RunGatherers()
     transl = ''.join(rc.Format(grd, 'fr', '.'))
-    self.failUnless(transl.count('040704') and transl.count('110978'))
-    self.failUnless(transl.count('2005",IDC_STATIC'))
+    self.assertTrue(transl.count('040704') and transl.count('110978'))
+    self.assertTrue(transl.count('2005",IDC_STATIC'))
 
   def testRunCommandOnCurrentPlatform(self):
     node = structure.StructureNode()
     node.attrs = node.DefaultAttributes()
-    self.failUnless(node.RunCommandOnCurrentPlatform())
+    self.assertTrue(node.RunCommandOnCurrentPlatform())
     node.attrs['run_command_on_platforms'] = 'Nosuch'
-    self.failIf(node.RunCommandOnCurrentPlatform())
+    self.assertFalse(node.RunCommandOnCurrentPlatform())
     node.attrs['run_command_on_platforms'] = (
         'Nosuch,%s,Othernot' % platform.system())
-    self.failUnless(node.RunCommandOnCurrentPlatform())
+    self.assertTrue(node.RunCommandOnCurrentPlatform())
 
   def testVariables(self):
     grd = util.ParseGrdForUnittest('''
@@ -80,7 +79,7 @@ class StructureUnittest(unittest.TestCase):
     filepath = os.path.join(tempfile.gettempdir(), filename)
     with open(filepath) as f:
       result = f.read()
-      self.failUnlessEqual(('<h1>Hello!</h1>\n'
+      self.assertEqual(('<h1>Hello!</h1>\n'
                             'Some cool things are foo, bar, baz.\n'
                             'Did you know that 2+2==4?\n'
                             '<p>\n'
@@ -172,6 +171,64 @@ class StructureUnittest(unittest.TestCase):
 
     self.assertEqual(util.ReadFile(
         os.path.join(test_data_root, 'test_text.txt'), util.BINARY), data)
+
+  def testLottie(self):
+    test_data_root = util.PathFromRoot('grit/testdata')
+    root = util.ParseGrdForUnittest('''
+        <structures>
+          <structure name="TEST_LOTTIE" file="test_json.json" type="lottie" />
+        </structures>''',
+                                    base_dir=test_data_root)
+    node, = root.GetChildrenOfType(structure.StructureNode)
+    node.RunPreSubstitutionGatherer()
+    data = node.GetDataPackValue(lang='en', encoding=util.BINARY)
+
+    self.assertEqual(
+        b'LOTTIE' + util.ReadFile(
+            os.path.join(test_data_root, 'test_json.json'), util.BINARY), data)
+
+  def testGzippedLottie(self):
+    test_data_root = util.PathFromRoot('grit/testdata')
+    root = util.ParseGrdForUnittest('''
+        <structures>
+          <structure name="TEST_LOTTIE" file="test_json.json" type="lottie" compress="gzip" />
+        </structures>''',
+                                    base_dir=test_data_root)
+    node, = root.GetChildrenOfType(structure.StructureNode)
+    node.RunPreSubstitutionGatherer()
+    data = node.GetDataPackValue(lang='en', encoding=util.BINARY)
+
+    self.assertEqual(b'LOTTIE', data[0:6])
+    self.assertEqual(
+        util.ReadFile(os.path.join(test_data_root, 'test_json.json'),
+                      util.BINARY),
+        zlib.decompress(data[6:], 16 + zlib.MAX_WBITS))
+
+  def testBrotliLottie(self):
+    test_data_root = util.PathFromRoot('grit/testdata')
+    root = util.ParseGrdForUnittest('''
+        <structures>
+          <structure name="TEST_LOTTIE" file="test_json.json" type="lottie" compress="brotli" />
+        </structures>''',
+                                    base_dir=test_data_root)
+    node, = root.GetChildrenOfType(structure.StructureNode)
+    node.RunPreSubstitutionGatherer()
+    # Using the mock brotli decompression executable.
+    brotli_util.SetBrotliCommand([
+        sys.executable,
+        os.path.join(os.path.dirname(__file__), 'mock_brotli.py')
+    ])
+    data = node.GetDataPackValue(lang='en', encoding=util.BINARY)
+
+    self.assertEqual(b'LOTTIE', data[0:6])
+    self.assertEqual(constants.BROTLI_CONST, data[6:8])
+    self.assertEqual(
+        len(
+            util.ReadFile(os.path.join(test_data_root, 'test_json.json'),
+                          util.BINARY)),
+        struct.unpack('<i', data[8:12])[0] +
+        (struct.unpack('<h', data[12:14])[0] << 4 * 8))
+    self.assertEqual(b'This has been mock compressed!', data[14:])
 
 
 if __name__ == '__main__':

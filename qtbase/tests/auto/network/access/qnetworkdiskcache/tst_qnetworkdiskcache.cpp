@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-
-#include <QtTest/QtTest>
 #include <QtNetwork/QtNetwork>
+#include <QTest>
+#include <QTestEventLoop>
 #include <qnetworkdiskcache.h>
 #include <qrandom.h>
 
@@ -37,7 +12,7 @@
 #define EXAMPLE_URL "http://user:pass@localhost:4/#foo"
 #define EXAMPLE_URL2 "http://user:pass@localhost:4/bar"
 //cached objects are organized into these many subdirs
-#define NUM_SUBDIRECTORIES 16
+#define NUM_SUBDIRECTORIES 15
 
 class tst_QNetworkDiskCache : public QObject
 {
@@ -130,7 +105,7 @@ public slots:
             if (doClose) {
                 client->disconnectFromHost();
                 disconnect(client, 0, this, 0);
-                client = 0;
+                client = nullptr;
             }
         }
     }
@@ -156,7 +131,7 @@ public:
     {
         setCacheDirectory(path);
 
-        QIODevice *d = 0;
+        QIODevice *d = nullptr;
         if (metaData.isValid()) {
             d = prepare(metaData);
         } else {
@@ -303,17 +278,17 @@ void tst_QNetworkDiskCache::clear()
     QVERIFY(cache.cacheSize() > qint64(0));
 
     QString cacheDirectory = cache.cacheDirectory();
-    QCOMPARE(countFiles(cacheDirectory).count(), NUM_SUBDIRECTORIES + 3);
+    QCOMPARE(countFiles(cacheDirectory).size(), NUM_SUBDIRECTORIES + 3);
     cache.clear();
-    QCOMPARE(countFiles(cacheDirectory).count(), NUM_SUBDIRECTORIES + 2);
+    QCOMPARE(countFiles(cacheDirectory).size(), NUM_SUBDIRECTORIES + 2);
 
     // don't delete files that it didn't create
     QTemporaryFile file(cacheDirectory + "/XXXXXX");
     if (file.open()) {
         file.fileName();    // make sure it exists with a name
-        QCOMPARE(countFiles(cacheDirectory).count(), NUM_SUBDIRECTORIES + 3);
+        QCOMPARE(countFiles(cacheDirectory).size(), NUM_SUBDIRECTORIES + 3);
         cache.clear();
-        QCOMPARE(countFiles(cacheDirectory).count(), NUM_SUBDIRECTORIES + 3);
+        QCOMPARE(countFiles(cacheDirectory).size(), NUM_SUBDIRECTORIES + 3);
     }
 }
 
@@ -380,9 +355,9 @@ void tst_QNetworkDiskCache::remove()
     QUrl url(EXAMPLE_URL);
     cache.setupWithOne(tempDir.path(), url);
     QString cacheDirectory = cache.cacheDirectory();
-    QCOMPARE(countFiles(cacheDirectory).count(), NUM_SUBDIRECTORIES + 3);
+    QCOMPARE(countFiles(cacheDirectory).size(), NUM_SUBDIRECTORIES + 3);
     cache.remove(url);
-    QCOMPARE(countFiles(cacheDirectory).count(), NUM_SUBDIRECTORIES + 2);
+    QCOMPARE(countFiles(cacheDirectory).size(), NUM_SUBDIRECTORIES + 2);
 }
 
 void tst_QNetworkDiskCache::accessAfterRemove() // QTBUG-17400
@@ -430,18 +405,23 @@ void tst_QNetworkDiskCache::setCookieHeader() // QTBUG-41514
     headers.append(QNetworkCacheMetaData::RawHeader("Set-Cookie", "aaa=bbb"));
     metaData.setRawHeaders(headers);
     metaData.setSaveToDisk(true);
+    QDateTime expirationDate = QDateTime::currentDateTime().addSecs(500);
+    metaData.setExpirationDate(expirationDate);
     cache->setupWithOne(tempDir.path(), url, metaData);
 
     manager = new QNetworkAccessManager();
     manager->setCache(cache);
 
     QNetworkRequest request(url);
+    request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::PreferCache);
     QNetworkReply  *reply = manager->get(request);
     connect(reply, SIGNAL(metaDataChanged()), this, SLOT(setCookieHeaderMetaDataChangedSlot()));
     connect(reply, SIGNAL(finished()), &QTestEventLoop::instance(), SLOT(exitLoop()));
 
     QTestEventLoop::instance().enterLoop(5);
     QVERIFY(!QTestEventLoop::instance().timeout());
+
+    QCOMPARE(reply->error(), QNetworkReply::NoError);
 
     reply->deleteLater();
     manager->deleteLater();
@@ -497,7 +477,7 @@ void tst_QNetworkDiskCache::fileMetaData()
 
     QString cacheDirectory = cache.cacheDirectory();
     QStringList list = countFiles(cacheDirectory);
-    QCOMPARE(list.count(), NUM_SUBDIRECTORIES + 3);
+    QCOMPARE(list.size(), NUM_SUBDIRECTORIES + 3);
     foreach(QString fileName, list) {
         QFileInfo info(fileName);
         if (info.isFile()) {
@@ -551,7 +531,7 @@ void tst_QNetworkDiskCache::expire()
         }
     }
     std::sort(cacheList.begin(), cacheList.end());
-    for (int i = 0; i < cacheList.count(); ++i) {
+    for (int i = 0; i < cacheList.size(); ++i) {
         QString fileName = cacheList[i];
         QCOMPARE(fileName, QLatin1String("http://localhost:4/") + QString::number(i + 6));
     }
@@ -590,7 +570,7 @@ void tst_QNetworkDiskCache::oldCacheVersionFile()
         QVERIFY(!QFile::exists(name));
     } else {
         QStringList files = countFiles(cache.cacheDirectory());
-        QCOMPARE(files.count(), NUM_SUBDIRECTORIES + 3);
+        QCOMPARE(files.size(), NUM_SUBDIRECTORIES + 3);
         // find the file
         QString cacheFile;
         foreach (QString file, files) {
@@ -677,6 +657,7 @@ void tst_QNetworkDiskCache::streamVersion()
         QIODevice *dataDevice = cache.data(url);
         QVERIFY(dataDevice != 0);
         QByteArray cachedData = dataDevice->readAll();
+        delete dataDevice;
         QCOMPARE(cachedData, data);
     }
 }
@@ -691,7 +672,7 @@ public:
         , cachePath(cachePath)
     {}
 
-    void run()
+    void run() override
     {
         QByteArray longString = "Hello World, this is some long string, well not really that long";
         for (int j = 0; j < 10; ++j)
@@ -712,8 +693,6 @@ public:
 
         QNetworkDiskCache cache;
         cache.setCacheDirectory(cachePath);
-
-        int read = 0;
 
         int i = 0;
         for (; i < 5000; ++i) {
@@ -756,7 +735,7 @@ public:
                 if (d) {
                     QByteArray x = d->readAll();
                     if (x != longString && x != longString2) {
-                        qDebug() << x.length() << QString(x);
+                        qDebug() << x.size() << QString(x);
                         gotMetaData = cache.metaData(url);
                         qDebug() << (gotMetaData.url().toString())
                          << gotMetaData.lastModified()
@@ -765,7 +744,6 @@ public:
                     }
                     if (gotMetaData.isValid())
                         QVERIFY(x == longString || x == longString2);
-                    read++;
                     delete d;
                 }
             }
@@ -773,9 +751,8 @@ public:
                 cache.remove(url);
             if (QRandomGenerator::global()->bounded(5) == 1)
                 cache.clear();
-            sleep(0);
+            sleep(std::chrono::seconds{0});
         }
-        //qDebug() << "read!" << read << i;
     }
 
     QDateTime dt;

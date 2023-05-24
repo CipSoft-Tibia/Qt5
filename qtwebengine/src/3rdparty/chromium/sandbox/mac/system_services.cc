@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -39,11 +39,9 @@ void DisableLaunchServices() {
 }
 
 void DisableCoreServicesCheckFix() {
-#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 101500
   if (__builtin_available(macOS 10.15, *)) {
     _CSCheckFixDisable();
   }
-#endif
 }
 
 }  // namespace sandbox

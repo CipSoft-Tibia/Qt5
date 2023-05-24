@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,9 @@
 #include "base/containers/flat_set.h"
 #include "base/containers/queue.h"
 #include "base/memory/weak_ptr.h"
-#include "base/sequenced_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/threading/thread_checker.h"
+#include "build/chromeos_buildflags.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "mojo/public/cpp/bindings/pending_associated_remote.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
@@ -23,7 +24,7 @@
 #include "services/device/media_transfer_protocol/media_transfer_protocol_daemon_client.h"
 #include "services/device/public/mojom/mtp_manager.mojom.h"
 
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
 #error "Only used on ChromeOS"
 #endif
 
@@ -38,6 +39,10 @@ namespace device {
 class MtpDeviceManager : public mojom::MtpManager {
  public:
   MtpDeviceManager();
+
+  MtpDeviceManager(const MtpDeviceManager&) = delete;
+  MtpDeviceManager& operator=(const MtpDeviceManager&) = delete;
+
   ~MtpDeviceManager() override;
 
   void AddReceiver(mojo::PendingReceiver<mojom::MtpManager> receiver);
@@ -203,8 +208,6 @@ class MtpDeviceManager : public mojom::MtpManager {
   base::ThreadChecker thread_checker_;
 
   base::WeakPtrFactory<MtpDeviceManager> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(MtpDeviceManager);
 };
 
 }  // namespace device

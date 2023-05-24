@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "abstractintegration.h"
 #include "abstractformwindow.h"
@@ -43,6 +18,7 @@
 #include <qdesigner_propertycommand_p.h>
 #include <qdesigner_propertyeditor_p.h>
 #include <qdesigner_objectinspector_p.h>
+#include <qdesigner_utils_p.h>
 #include <widgetdatabase_p.h>
 #include <pluginmanager_p.h>
 #include <widgetfactory_p.h>
@@ -58,6 +34,8 @@
 #include <QtCore/qdebug.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \class QDesignerIntegrationInterface
@@ -303,8 +281,6 @@ public:
     void updateSelection();
     void updateCustomWidgetPlugins();
 
-    void updatePropertyPrivate(const QString &name, const QVariant &value);
-
     void initialize();
     void getSelection(qdesigner_internal::Selection &s);
     QObject *propertyEditorObject();
@@ -320,7 +296,7 @@ public:
 
 QDesignerIntegrationPrivate::QDesignerIntegrationPrivate(QDesignerIntegration *qq) :
     q(qq),
-    headerSuffix(QStringLiteral(".h")),
+    headerSuffix(u".h"_s),
     headerLowercase(true),
     m_features(QDesignerIntegrationInterface::DefaultFeature),
     m_resourceFileWatcherBehaviour(QDesignerIntegrationInterface::PromptToReloadResourceFile),
@@ -342,12 +318,9 @@ void QDesignerIntegrationPrivate::initialize()
         QObject::connect(designerPropertyEditor, &QDesignerPropertyEditor::resetProperty,
                          q, &QDesignerIntegration::resetProperty);
         QObject::connect(designerPropertyEditor, &QDesignerPropertyEditor::addDynamicProperty,
-                q, &QDesignerIntegration::addDynamicProperty);
+                         q, &QDesignerIntegration::addDynamicProperty);
         QObject::connect(designerPropertyEditor, &QDesignerPropertyEditor::removeDynamicProperty,
-                q, &QDesignerIntegration::removeDynamicProperty);
-    } else {
-        QObject::connect(core->propertyEditor(), SIGNAL(propertyChanged(QString,QVariant)),
-                q, SLOT(updatePropertyPrivate(QString,QVariant))); // ### fixme: VS Integration leftover?
+                         q, &QDesignerIntegration::removeDynamicProperty);
     }
 
     QObject::connect(core->formWindowManager(), &QDesignerFormWindowManagerInterface::formWindowAdded,
@@ -359,19 +332,24 @@ void QDesignerIntegrationPrivate::initialize()
     m_gradientManager = new QtGradientManager(q);
     core->setGradientManager(m_gradientManager);
 
-    QString designerFolder = QDir::homePath();
-    designerFolder += QDir::separator();
-    designerFolder += QStringLiteral(".designer");
-    m_gradientsPath = designerFolder;
-    m_gradientsPath += QDir::separator();
-    m_gradientsPath += QStringLiteral("gradients.xml");
+    const QString gradientsFile = u"/gradients.xml"_s;
+    m_gradientsPath = dataDirectory() + gradientsFile;
 
-    QFile f(m_gradientsPath);
+    // Migrate from legacy to standard data directory in Qt 7
+    // ### FIXME Qt 8: Remove (QTBUG-96005)
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    const QString source = QFileInfo::exists(m_gradientsPath)
+        ? m_gradientsPath : legacyDataDirectory() + gradientsFile;
+#else
+    const QString source = m_gradientsPath;
+#endif
+
+    QFile f(source);
     if (f.open(QIODevice::ReadOnly)) {
         QtGradientUtils::restoreState(m_gradientManager, QString::fromLatin1(f.readAll()));
         f.close();
     } else {
-        QFile defaultGradients(QStringLiteral(":/qt-project.org/designer/defaultgradients.xml"));
+        QFile defaultGradients(u":/qt-project.org/designer/defaultgradients.xml"_s);
         if (defaultGradients.open(QIODevice::ReadOnly)) {
             QtGradientUtils::restoreState(m_gradientManager, QString::fromLatin1(defaultGradients.readAll()));
             defaultGradients.close();
@@ -587,12 +565,12 @@ void QDesignerIntegrationPrivate::updateCustomWidgetPlugins()
 static QString fixHelpClassName(const QString &className)
 {
     // ### generalize using the Widget Data Base
-    if (className == QStringLiteral("Line"))
-        return QStringLiteral("QFrame");
-    if (className == QStringLiteral("Spacer"))
-        return QStringLiteral("QSpacerItem");
-    if (className == QStringLiteral("QLayoutWidget"))
-        return QStringLiteral("QLayout");
+    if (className == "Line"_L1)
+        return u"QFrame"_s;
+    if (className == "Spacer"_L1)
+        return u"QSpacerItem"_s;
+    if (className == "QLayoutWidget"_L1)
+        return u"QLayout"_s;
     return className;
 }
 
@@ -626,7 +604,7 @@ QString QDesignerIntegrationPrivate::contextHelpId() const
     }
     QString helpId = fixHelpClassName(className);
     if (!currentPropertyName.isEmpty()) {
-        helpId += QStringLiteral("::");
+        helpId += "::"_L1;
         helpId += currentPropertyName;
     }
     return helpId;

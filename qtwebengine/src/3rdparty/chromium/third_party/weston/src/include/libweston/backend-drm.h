@@ -223,6 +223,9 @@ struct weston_drm_backend_config {
 
 	/** Use shadow buffer if using Pixman-renderer. */
 	bool use_pixman_shadow;
+
+	/** Allow compositor to start without input devices. */
+	bool continue_without_input;
 };
 
 #ifdef  __cplusplus

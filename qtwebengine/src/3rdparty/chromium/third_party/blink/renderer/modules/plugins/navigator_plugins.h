@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@ namespace blink {
 
 class DOMMimeTypeArray;
 class DOMPluginArray;
-class LocalFrame;
+class LocalDOMWindow;
 class Navigator;
 
 class NavigatorPlugins final : public GarbageCollected<NavigatorPlugins>,
@@ -25,6 +25,8 @@ class NavigatorPlugins final : public GarbageCollected<NavigatorPlugins>,
 
   static DOMPluginArray* plugins(Navigator&);
   static DOMMimeTypeArray* mimeTypes(Navigator&);
+  static bool pdfViewerEnabled(Navigator&);
+
   static bool javaEnabled(Navigator&);
 
   explicit NavigatorPlugins(Navigator&);
@@ -32,10 +34,11 @@ class NavigatorPlugins final : public GarbageCollected<NavigatorPlugins>,
   void Trace(Visitor*) const override;
 
  private:
-  DOMPluginArray* plugins(LocalFrame*) const;
-  DOMMimeTypeArray* mimeTypes(LocalFrame*) const;
+  DOMPluginArray* plugins(LocalDOMWindow*) const;
+  DOMMimeTypeArray* mimeTypes(LocalDOMWindow*) const;
+  bool pdfViewerEnabled(LocalDOMWindow* window) const;
 
-  void RecordMimeTypes(LocalFrame*) const;
+  const bool should_return_fixed_plugin_data_;
 
   mutable Member<DOMPluginArray> plugins_;
   mutable Member<DOMMimeTypeArray> mime_types_;

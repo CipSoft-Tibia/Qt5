@@ -9,6 +9,7 @@
  * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
 
+#include <assert.h>
 #include <stdlib.h>
 
 #include "config/aom_dsp_rtcd.h"
@@ -46,6 +47,16 @@ unsigned int aom_avg_8x8_c(const uint8_t *s, int p) {
     }
 
   return (sum + 32) >> 6;
+}
+
+void aom_avg_8x8_quad_c(const uint8_t *s, int p, int x16_idx, int y16_idx,
+                        int *avg) {
+  for (int k = 0; k < 4; k++) {
+    const int x8_idx = x16_idx + ((k & 1) << 3);
+    const int y8_idx = y16_idx + ((k >> 1) << 3);
+    const uint8_t *s_tmp = s + y8_idx * p + x8_idx;
+    avg[k] = aom_avg_8x8_c(s_tmp, p);
+  }
 }
 
 #if CONFIG_AV1_HIGHBITDEPTH
@@ -88,6 +99,57 @@ void aom_highbd_minmax_8x8_c(const uint8_t *s8, int p, const uint8_t *d8,
 }
 #endif  // CONFIG_AV1_HIGHBITDEPTH
 
+void aom_pixel_scale_c(const int16_t *src_diff, ptrdiff_t src_stride,
+                       int16_t *coeff, int log_scale, int h8, int w8) {
+  for (int idy = 0; idy < h8 * 8; ++idy)
+    for (int idx = 0; idx < w8 * 8; ++idx)
+      coeff[idy * (h8 * 8) + idx] = src_diff[idy * src_stride + idx]
+                                    << log_scale;
+}
+
+static void hadamard_col4(const int16_t *src_diff, ptrdiff_t src_stride,
+                          int16_t *coeff) {
+  int16_t b0 = (src_diff[0 * src_stride] + src_diff[1 * src_stride]) >> 1;
+  int16_t b1 = (src_diff[0 * src_stride] - src_diff[1 * src_stride]) >> 1;
+  int16_t b2 = (src_diff[2 * src_stride] + src_diff[3 * src_stride]) >> 1;
+  int16_t b3 = (src_diff[2 * src_stride] - src_diff[3 * src_stride]) >> 1;
+
+  coeff[0] = b0 + b2;
+  coeff[1] = b1 + b3;
+  coeff[2] = b0 - b2;
+  coeff[3] = b1 - b3;
+}
+
+void aom_hadamard_4x4_c(const int16_t *src_diff, ptrdiff_t src_stride,
+                        tran_low_t *coeff) {
+  int idx;
+  int16_t buffer[16];
+  int16_t buffer2[16];
+  int16_t *tmp_buf = &buffer[0];
+  for (idx = 0; idx < 4; ++idx) {
+    hadamard_col4(src_diff, src_stride, tmp_buf);  // src_diff: 9 bit
+                                                   // dynamic range [-255, 255]
+    tmp_buf += 4;
+    ++src_diff;
+  }
+
+  tmp_buf = &buffer[0];
+  for (idx = 0; idx < 4; ++idx) {
+    hadamard_col4(tmp_buf, 4, buffer2 + 4 * idx);  // tmp_buf: 12 bit
+    // dynamic range [-2040, 2040]
+    // buffer2: 15 bit
+    // dynamic range [-16320, 16320]
+    ++tmp_buf;
+  }
+
+  // Extra transpose to match SSE2 behavior(i.e., aom_hadamard_4x4_sse2).
+  for (int i = 0; i < 4; i++) {
+    for (int j = 0; j < 4; j++) {
+      coeff[i * 4 + j] = (tran_low_t)buffer2[j * 4 + i];
+    }
+  }
+}
+
 // src_diff: first pass, 9 bit, dynamic range [-255, 255]
 //           second pass, 12 bit, dynamic range [-2040, 2040]
 static void hadamard_col8(const int16_t *src_diff, ptrdiff_t src_stride,
@@ -120,8 +182,6 @@ static void hadamard_col8(const int16_t *src_diff, ptrdiff_t src_stride,
   coeff[5] = c3 - c7;
 }
 
-// The order of the output coeff of the hadamard is not important. For
-// optimization purposes the final transpose may be skipped.
 void aom_hadamard_8x8_c(const int16_t *src_diff, ptrdiff_t src_stride,
                         tran_low_t *coeff) {
   int idx;
@@ -144,7 +204,12 @@ void aom_hadamard_8x8_c(const int16_t *src_diff, ptrdiff_t src_stride,
     ++tmp_buf;
   }
 
-  for (idx = 0; idx < 64; ++idx) coeff[idx] = (tran_low_t)buffer2[idx];
+  // Extra transpose to match SSE2 behavior(i.e., aom_hadamard_8x8_sse2).
+  for (int i = 0; i < 8; i++) {
+    for (int j = 0; j < 8; j++) {
+      coeff[i * 8 + j] = (tran_low_t)buffer2[j * 8 + i];
+    }
+  }
 }
 
 void aom_hadamard_lp_8x8_c(const int16_t *src_diff, ptrdiff_t src_stride,
@@ -169,6 +234,21 @@ void aom_hadamard_lp_8x8_c(const int16_t *src_diff, ptrdiff_t src_stride,
   }
 
   for (int idx = 0; idx < 64; ++idx) coeff[idx] = buffer2[idx];
+
+  // Extra transpose to match SSE2 behavior(i.e., aom_hadamard_lp_8x8_sse2).
+  for (int i = 0; i < 8; i++) {
+    for (int j = 0; j < 8; j++) {
+      coeff[i * 8 + j] = buffer2[j * 8 + i];
+    }
+  }
+}
+
+void aom_hadamard_lp_8x8_dual_c(const int16_t *src_diff, ptrdiff_t src_stride,
+                                int16_t *coeff) {
+  for (int i = 0; i < 2; i++) {
+    aom_hadamard_lp_8x8_c(src_diff + (i * 8), src_stride,
+                          (int16_t *)coeff + (i * 64));
+  }
 }
 
 // In place 16x16 2D Hadamard transform
@@ -200,6 +280,17 @@ void aom_hadamard_16x16_c(const int16_t *src_diff, ptrdiff_t src_stride,
     coeff[192] = b1 - b3;
 
     ++coeff;
+  }
+
+  coeff -= 64;
+  // Extra shift to match AVX2 output (i.e., aom_hadamard_16x16_avx2).
+  // Note that to match SSE2 output, it does not need this step.
+  for (int i = 0; i < 16; i++) {
+    for (int j = 0; j < 4; j++) {
+      tran_low_t temp = coeff[i * 16 + 4 + j];
+      coeff[i * 16 + 4 + j] = coeff[i * 16 + 8 + j];
+      coeff[i * 16 + 8 + j] = temp;
+    }
   }
 }
 
@@ -442,34 +533,35 @@ int aom_satd_lp_c(const int16_t *coeff, int length) {
 
 // Integer projection onto row vectors.
 // height: value range {16, 32, 64, 128}.
-void aom_int_pro_row_c(int16_t hbuf[16], const uint8_t *ref,
-                       const int ref_stride, const int height) {
-  int idx;
-  const int norm_factor = height >> 1;
-  for (idx = 0; idx < 16; ++idx) {
-    int i;
+void aom_int_pro_row_c(int16_t *hbuf, const uint8_t *ref, const int ref_stride,
+                       const int width, const int height, int norm_factor) {
+  assert(height >= 2);
+  for (int idx = 0; idx < width; ++idx) {
     hbuf[idx] = 0;
     // hbuf[idx]: 14 bit, dynamic range [0, 32640].
-    for (i = 0; i < height; ++i) hbuf[idx] += ref[i * ref_stride];
+    for (int i = 0; i < height; ++i) hbuf[idx] += ref[i * ref_stride];
     // hbuf[idx]: 9 bit, dynamic range [0, 1020].
-    hbuf[idx] /= norm_factor;
+    hbuf[idx] >>= norm_factor;
     ++ref;
   }
 }
 
 // width: value range {16, 32, 64, 128}.
-int16_t aom_int_pro_col_c(const uint8_t *ref, const int width) {
-  int idx;
-  int16_t sum = 0;
-  // sum: 14 bit, dynamic range [0, 32640]
-  for (idx = 0; idx < width; ++idx) sum += ref[idx];
-  return sum;
+void aom_int_pro_col_c(int16_t *vbuf, const uint8_t *ref, const int ref_stride,
+                       const int width, const int height, int norm_factor) {
+  for (int ht = 0; ht < height; ++ht) {
+    int16_t sum = 0;
+    // sum: 14 bit, dynamic range [0, 32640]
+    for (int idx = 0; idx < width; ++idx) sum += ref[idx];
+    vbuf[ht] = sum >> norm_factor;
+    ref += ref_stride;
+  }
 }
 
 // ref: [0 - 510]
 // src: [0 - 510]
 // bwl: {2, 3, 4, 5}
-int aom_vector_var_c(const int16_t *ref, const int16_t *src, const int bwl) {
+int aom_vector_var_c(const int16_t *ref, const int16_t *src, int bwl) {
   int i;
   int width = 4 << bwl;
   int sse = 0, mean = 0, var;
@@ -481,6 +573,9 @@ int aom_vector_var_c(const int16_t *ref, const int16_t *src, const int bwl) {
   }
 
   // (mean * mean): dynamic range 31 bits.
-  var = sse - ((mean * mean) >> (bwl + 2));
+  // If width == 128, the mean can be 510 * 128 = 65280, and log2(65280 ** 2) ~=
+  // 31.99, so it needs to be casted to unsigned int to compute its square.
+  const unsigned int mean_abs = abs(mean);
+  var = sse - ((mean_abs * mean_abs) >> (bwl + 2));
   return var;
 }

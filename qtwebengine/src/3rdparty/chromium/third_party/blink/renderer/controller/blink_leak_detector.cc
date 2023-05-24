@@ -1,9 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/controller/blink_leak_detector.h"
 
+#include "base/task/single_thread_task_runner.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
@@ -18,24 +19,30 @@
 #include "third_party/blink/renderer/core/workers/dedicated_worker_messaging_proxy.h"
 #include "third_party/blink/renderer/core/workers/worker_thread.h"
 #include "third_party/blink/renderer/platform/bindings/v8_per_isolate_data.h"
+#include "third_party/blink/renderer/platform/heap/thread_state.h"
 #include "third_party/blink/renderer/platform/instrumentation/instance_counters.h"
 #include "third_party/blink/renderer/platform/loader/fetch/memory_cache.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_fetcher.h"
 
 namespace blink {
 
-BlinkLeakDetector::BlinkLeakDetector()
-    : delayed_gc_timer_(Thread::Current()->GetTaskRunner(),
+BlinkLeakDetector::BlinkLeakDetector(
+    base::PassKey<BlinkLeakDetector> pass_key,
+    scoped_refptr<base::SingleThreadTaskRunner> task_runner)
+    : delayed_gc_timer_(std::move(task_runner),
                         this,
                         &BlinkLeakDetector::TimerFiredGC) {}
 
 BlinkLeakDetector::~BlinkLeakDetector() = default;
 
 // static
-void BlinkLeakDetector::Create(
+void BlinkLeakDetector::Bind(
+    scoped_refptr<base::SingleThreadTaskRunner> task_runner,
     mojo::PendingReceiver<mojom::blink::LeakDetector> receiver) {
-  mojo::MakeSelfOwnedReceiver(std::make_unique<BlinkLeakDetector>(),
-                              std::move(receiver));
+  mojo::MakeSelfOwnedReceiver(
+      std::make_unique<BlinkLeakDetector>(base::PassKey<BlinkLeakDetector>(),
+                                          task_runner),
+      std::move(receiver), task_runner);
 }
 
 void BlinkLeakDetector::PerformLeakDetection(
@@ -45,6 +52,10 @@ void BlinkLeakDetector::PerformLeakDetection(
   v8::Isolate* isolate = v8::Isolate::GetCurrent();
   v8::HandleScope handle_scope(isolate);
 
+  // Instruct V8 to drop its non-essential internal caches. In contrast to
+  // a memory pressure notification, this method does its work synchronously.
+  isolate->ClearCachesForTesting();
+
   // For example, calling isValidEmailAddress in EmailInputType.cpp with a
   // non-empty string creates a static ScriptRegexp value which holds a
   // V8PerContextData indirectly. This affects the number of V8PerContextData.
@@ -52,8 +63,7 @@ void BlinkLeakDetector::PerformLeakDetection(
   // here.
   V8PerIsolateData::From(isolate)->EnsureScriptRegexpContext();
 
-  WorkerThread::TerminateAllWorkersForTesting();
-  GetMemoryCache()->EvictResources();
+  MemoryCache::Get()->EvictResources();
 
   // FIXME: HTML5 Notification should be closed because notification affects
   // the result of number of DOM objects.
@@ -67,6 +77,13 @@ void BlinkLeakDetector::PerformLeakDetection(
     resource_fetcher->PrepareForLeakDetection();
 
   Page::PrepareForLeakDetection();
+
+  // Bail out if any worker threads are still running at this point as
+  // synchronous destruction is not supported. See https://crbug.com/1221158.
+  if (WorkerThread::WorkerThreadCount() > 0) {
+    ReportInvalidResult();
+    return;
+  }
 
   // Task queue may contain delayed object destruction tasks.
   // This method is called from navigation hook inside FrameLoader,
@@ -105,6 +122,10 @@ void BlinkLeakDetector::TimerFiredGC(TimerBase*) {
   }
 }
 
+void BlinkLeakDetector::ReportInvalidResult() {
+  std::move(callback_).Run(nullptr);
+}
+
 void BlinkLeakDetector::ReportResult() {
   mojom::blink::LeakDetectionResultPtr result =
       mojom::blink::LeakDetectionResult::New();
@@ -133,7 +154,7 @@ void BlinkLeakDetector::ReportResult() {
       InstanceCounters::CounterValue(InstanceCounters::kResourceFetcherCounter);
 
 #ifndef NDEBUG
-  showLiveDocumentInstances();
+  ShowLiveDocumentInstances();
 #endif
 
   std::move(callback_).Run(std::move(result));

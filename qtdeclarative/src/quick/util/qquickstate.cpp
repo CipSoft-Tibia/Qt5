@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickstate_p_p.h"
 #include "qquickstate_p.h"
@@ -49,7 +13,7 @@
 
 QT_BEGIN_NAMESPACE
 
-DEFINE_BOOL_CONFIG_OPTION(stateChangeDebug, STATECHANGE_DEBUG);
+Q_LOGGING_CATEGORY(lcStates, "qt.qml.states")
 
 QQuickStateAction::QQuickStateAction()
 : restore(true), actionDone(false), reverseEvent(false), deletableToBinding(false), fromBinding(nullptr), event(nullptr),
@@ -258,7 +222,7 @@ void QQuickState::setExtends(const QString &extends)
 /*!
     \qmlproperty list<Change> QtQuick::State::changes
     This property holds the changes to apply for this state
-    \default
+    \qmldefault
 
     By default these changes are applied against the default state. If the state
     extends another state, then the changes are applied against the state being
@@ -279,7 +243,7 @@ QQmlListProperty<QQuickStateOperation> QQuickState::changes()
 int QQuickState::operationCount() const
 {
     Q_D(const QQuickState);
-    return d->operations.count();
+    return d->operations.size();
 }
 
 QQuickStateOperation *QQuickState::operationAt(int index) const
@@ -299,8 +263,8 @@ void QQuickStatePrivate::complete()
 {
     Q_Q(QQuickState);
 
-    for (int ii = 0; ii < reverting.count(); ++ii) {
-        for (int jj = 0; jj < revertList.count(); ++jj) {
+    for (int ii = 0; ii < reverting.size(); ++ii) {
+        for (int jj = 0; jj < revertList.size(); ++jj) {
             const QQuickRevertAction &revert = reverting.at(ii);
             const QQuickSimpleAction &simple = revertList.at(jj);
             if ((revert.event && simple.event() == revert.event) ||
@@ -331,7 +295,7 @@ QQuickStatePrivate::generateActionList() const
 
     if (!extends.isEmpty()) {
         QList<QQuickState *> states = group ? group->states() : QList<QQuickState *>();
-        for (int ii = 0; ii < states.count(); ++ii)
+        for (int ii = 0; ii < states.size(); ++ii)
             if (states.at(ii)->name() == extends) {
                 qmlExecuteDeferred(states.at(ii));
                 applyList = static_cast<QQuickStatePrivate*>(states.at(ii)->d_func())->generateActionList();
@@ -366,8 +330,10 @@ void QQuickState::cancel()
 void QQuickStateAction::deleteFromBinding()
 {
     if (fromBinding) {
-        QQmlPropertyPrivate::removeBinding(property);
-        fromBinding = nullptr;
+        if (fromBinding.isAbstractPropertyBinding()) {
+            QQmlPropertyPrivate::removeBinding(property);
+            fromBinding = nullptr;
+        }
     }
 }
 
@@ -401,7 +367,7 @@ bool QQuickState::changeValueInRevertList(QObject *target, const QString &name, 
     return false;
 }
 
-bool QQuickState::changeBindingInRevertList(QObject *target, const QString &name, QQmlAbstractBinding *binding)
+bool QQuickState::changeBindingInRevertList(QObject *target, const QString &name, QQmlAnyBinding binding)
 {
     Q_D(QQuickState);
 
@@ -428,8 +394,10 @@ bool QQuickState::removeEntryFromRevertList(QObject *target, const QString &name
                 QQmlPropertyPrivate::removeBinding(simpleAction.property());
 
                 simpleAction.property().write(simpleAction.value());
-                if (simpleAction.binding())
-                    QQmlPropertyPrivate::setBinding(simpleAction.binding());
+                if (auto binding = simpleAction.binding(); binding) {
+                    QQmlProperty prop = simpleAction.property();
+                    binding.installOn(prop);
+                }
 
                 d->revertList.erase(it);
                 return true;
@@ -457,10 +425,11 @@ void QQuickState::removeAllEntriesFromRevertList(QObject *target)
          const auto actionMatchesTarget = [target](QQuickSimpleAction &simpleAction) {
              if (simpleAction.property().object() == target) {
                  QQmlPropertyPrivate::removeBinding(simpleAction.property());
-
                  simpleAction.property().write(simpleAction.value());
-                 if (simpleAction.binding())
-                     QQmlPropertyPrivate::setBinding(simpleAction.binding());
+                 if (auto binding = simpleAction.binding()) {
+                     QQmlProperty prop = simpleAction.property();
+                     binding.installOn(prop);
+                 }
 
                  return true;
              }
@@ -478,13 +447,13 @@ void QQuickState::addEntriesToRevertList(const QList<QQuickStateAction> &actionL
     Q_D(QQuickState);
     if (isStateActive()) {
         QList<QQuickSimpleAction> simpleActionList;
-        simpleActionList.reserve(actionList.count());
+        simpleActionList.reserve(actionList.size());
 
         for (const QQuickStateAction &action : actionList) {
             QQuickSimpleAction simpleAction(action);
             action.property.write(action.toValue);
-            if (action.toBinding)
-                QQmlPropertyPrivate::setBinding(action.toBinding.data());
+            if (auto binding = action.toBinding; binding)
+                binding.installOn(action.property);
 
             simpleActionList.append(simpleAction);
         }
@@ -507,7 +476,7 @@ QVariant QQuickState::valueInRevertList(QObject *target, const QString &name) co
     return QVariant();
 }
 
-QQmlAbstractBinding *QQuickState::bindingInRevertList(QObject *target, const QString &name) const
+QQmlAnyBinding QQuickState::bindingInRevertList(QObject *target, const QString &name) const
 {
     Q_D(const QQuickState);
 
@@ -551,14 +520,14 @@ void QQuickState::apply(QQuickTransition *trans, QQuickState *revert)
     // List of actions that need to be reverted to roll back (just) this state
     QQuickStatePrivate::SimpleActionList additionalReverts;
     // First add the reverse of all the applyList actions
-    for (int ii = 0; ii < applyList.count(); ++ii) {
+    for (int ii = 0; ii < applyList.size(); ++ii) {
         QQuickStateAction &action = applyList[ii];
 
         if (action.event) {
             if (!action.event->isReversable())
                 continue;
             bool found = false;
-            for (int jj = 0; jj < d->revertList.count(); ++jj) {
+            for (int jj = 0; jj < d->revertList.size(); ++jj) {
                 QQuickStateActionEvent *event = d->revertList.at(jj).event();
                 if (event && event->type() == action.event->type()) {
                     if (action.event->mayOverride(event)) {
@@ -587,12 +556,12 @@ void QQuickState::apply(QQuickTransition *trans, QQuickState *revert)
             }
         } else {
             bool found = false;
-            action.fromBinding = QQmlPropertyPrivate::binding(action.property);
+            action.fromBinding = QQmlAnyBinding::ofProperty(action.property);
 
-            for (int jj = 0; jj < d->revertList.count(); ++jj) {
+            for (int jj = 0; jj < d->revertList.size(); ++jj) {
                 if (d->revertList.at(jj).property() == action.property) {
                     found = true;
-                    if (d->revertList.at(jj).binding() != action.fromBinding.data()) {
+                    if (d->revertList.at(jj).binding() != action.fromBinding) {
                         action.deleteFromBinding();
                     }
                     break;
@@ -614,13 +583,13 @@ void QQuickState::apply(QQuickTransition *trans, QQuickState *revert)
 
     // Any reverts from a previous state that aren't carried forth
     // into this state need to be translated into apply actions
-    for (int ii = 0; ii < d->revertList.count(); ++ii) {
+    for (int ii = 0; ii < d->revertList.size(); ++ii) {
         bool found = false;
         if (d->revertList.at(ii).event()) {
             QQuickStateActionEvent *event = d->revertList.at(ii).event();
             if (!event->isReversable())
                 continue;
-            for (int jj = 0; !found && jj < applyList.count(); ++jj) {
+            for (int jj = 0; !found && jj < applyList.size(); ++jj) {
                 const QQuickStateAction &action = applyList.at(jj);
                 if (action.event && action.event->type() == event->type()) {
                     if (action.event->mayOverride(event))
@@ -628,7 +597,7 @@ void QQuickState::apply(QQuickTransition *trans, QQuickState *revert)
                 }
             }
         } else {
-            for (int jj = 0; !found && jj < applyList.count(); ++jj) {
+            for (int jj = 0; !found && jj < applyList.size(); ++jj) {
                 const QQuickStateAction &action = applyList.at(jj);
                 if (action.property == d->revertList.at(ii).property())
                     found = true;
@@ -641,7 +610,8 @@ void QQuickState::apply(QQuickTransition *trans, QQuickState *revert)
                 continue;
             }
             QVariant cur = d->revertList.at(ii).property().read();
-            QQmlPropertyPrivate::removeBinding(d->revertList.at(ii).property());
+            QQmlProperty prop = d->revertList.at(ii).property();
+            QQmlAnyBinding::removeBindingFrom(prop);
 
             QQuickStateAction a;
             a.property = d->revertList.at(ii).property();
@@ -665,19 +635,16 @@ void QQuickState::apply(QQuickTransition *trans, QQuickState *revert)
     // All the local reverts now become part of the ongoing revertList
     d->revertList << additionalReverts;
 
-#ifndef QT_NO_DEBUG_STREAM
-    // Output for debugging
-    if (stateChangeDebug()) {
-        for (const QQuickStateAction &action : qAsConst(applyList)) {
+    if (lcStates().isDebugEnabled()) {
+        for (const QQuickStateAction &action : std::as_const(applyList)) {
             if (action.event)
-                qWarning() << "    QQuickStateAction event:" << action.event->type();
+                qCDebug(lcStates) << "QQuickStateAction event:" << action.event->type();
             else
-                qWarning() << "    QQuickStateAction:" << action.property.object()
-                           << action.property.name() << "From:" << action.fromValue
-                           << "To:" << action.toValue;
+                qCDebug(lcStates) << "QQuickStateAction on" << action.property.object()
+                                  << action.property.name() << "from:" << action.fromValue
+                                  << "to:" << action.toValue;
         }
     }
-#endif
 
     d->transitionManager.transition(applyList, trans);
 }

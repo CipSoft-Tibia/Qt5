@@ -1,43 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSensors module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include <qsensor.h>
+#include <QtSensors/qsensor.h>
+#include <QtCore/QMetaObject>
+#include <QtCore/QMetaproperty>
 
 void start()
 {
@@ -52,6 +18,42 @@ qreal x = reading->property("x").value<qreal>();
 qreal y = reading->value(1).value<qreal>();
 //! [Starting a sensor]
 
-    Q_UNUSED(x)
-    Q_UNUSED(y)
+    Q_UNUSED(x);
+    Q_UNUSED(y);
 }
+
+class MyObject : public QObject
+{
+    void findSensors()
+    {
+        //! [Find sensors]
+        QList<QSensor*> mySensorList;
+        for (const QByteArray &type : QSensor::sensorTypes()) {
+            qDebug() << "Found a sensor type:" << type;
+            for (const QByteArray &identifier : QSensor::sensorsForType(type)) {
+                qDebug() << "    " << "Found a sensor of that type:" << identifier;
+                QSensor* sensor = new QSensor(type, this);
+                sensor->setIdentifier(identifier);
+                mySensorList.append(sensor);
+            }
+        }
+        //! [Find sensors]
+        //! [Print reading properties]
+        for (QSensor* sensor : mySensorList) {
+            const int firstProperty = QSensorReading::staticMetaObject.propertyOffset();
+            // Connect to backend first in case start() hasn't been called yet
+            if (!sensor->connectToBackend())
+                continue;
+            qDebug() << "Sensor" << sensor->identifier() << "reading properties:";
+            QSensorReading *reading = sensor->reading();
+            if (reading) {
+                const QMetaObject *mo = reading->metaObject();
+                for (int i = firstProperty; i < mo->propertyCount(); ++i) {
+                    QByteArray name = mo->property(i).name();
+                    qDebug() << "    " << name << reading->property(name).toByteArray();
+                }
+            }
+        }
+        //! [Print reading properties]
+    }
+};

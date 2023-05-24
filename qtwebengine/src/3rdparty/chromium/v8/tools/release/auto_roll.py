@@ -1,10 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright 2014 the V8 project authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-
-# for py2/py3 compatibility
-from __future__ import print_function
 
 import argparse
 import os
@@ -15,8 +12,7 @@ from common_includes import *
 ROLL_SUMMARY = ("Summary of changes available at:\n"
                 "https://chromium.googlesource.com/v8/v8/+log/%s..%s")
 
-ISSUE_MSG = (
-"""Please follow these instructions for assigning/CC'ing issues:
+ISSUE_MSG = ("""Please follow these instructions for assigning/CC'ing issues:
 https://v8.dev/docs/triage-issues
 
 Please close rolling in case of a roll revert:
@@ -24,6 +20,7 @@ https://v8-roll.appspot.com/
 This only works with a Google account.
 
 CQ_INCLUDE_TRYBOTS=luci.chromium.try:linux-blink-rel
+CQ_INCLUDE_TRYBOTS=luci.chromium.try:linux_chromium_chromeos_msan_rel_ng
 CQ_INCLUDE_TRYBOTS=luci.chromium.try:linux_optional_gpu_tests_rel
 CQ_INCLUDE_TRYBOTS=luci.chromium.try:mac_optional_gpu_tests_rel
 CQ_INCLUDE_TRYBOTS=luci.chromium.try:win_optional_gpu_tests_rel
@@ -33,7 +30,6 @@ class Preparation(Step):
   MESSAGE = "Preparation."
 
   def RunStep(self):
-    self['json_output']['monitoring_state'] = 'preparation'
     # Update v8 remote tracking branches.
     self.GitFetchOrigin()
     self.Git("fetch origin +refs/tags/*:refs/tags/*")
@@ -43,7 +39,6 @@ class DetectLastRoll(Step):
   MESSAGE = "Detect commit ID of the last Chromium roll."
 
   def RunStep(self):
-    self['json_output']['monitoring_state'] = 'detect_last_roll'
     self["last_roll"] = self._options.last_roll
     if not self["last_roll"]:
       # Get last-rolled v8 revision from Chromium's DEPS file.
@@ -58,7 +53,6 @@ class DetectRevisionToRoll(Step):
   MESSAGE = "Detect commit ID of the V8 revision to roll."
 
   def RunStep(self):
-    self['json_output']['monitoring_state'] = 'detect_revision'
     self["roll"] = self._options.revision
     if self["roll"]:
       # If the revision was passed on the cmd line, continue script execution
@@ -80,13 +74,12 @@ class DetectRevisionToRoll(Step):
       version = self.GetVersionTag(revision)
       assert version, "Internal error. All recent releases should have a tag"
 
-      if SortingKey(self["last_version"]) < SortingKey(version):
+      if LooseVersion(self["last_version"]) < LooseVersion(version):
         self["roll"] = revision
         break
     else:
       print("There is no newer v8 revision than the one in Chromium (%s)."
             % self["last_roll"])
-      self['json_output']['monitoring_state'] = 'up_to_date'
       return True
 
 
@@ -94,7 +87,6 @@ class PrepareRollCandidate(Step):
   MESSAGE = "Robustness checks of the roll candidate."
 
   def RunStep(self):
-    self['json_output']['monitoring_state'] = 'prepare_candidate'
     self["roll_title"] = self.GitLog(n=1, format="%s",
                                      git_hash=self["roll"])
 
@@ -109,7 +101,6 @@ class SwitchChromium(Step):
   MESSAGE = "Switch to Chromium checkout."
 
   def RunStep(self):
-    self['json_output']['monitoring_state'] = 'switch_chromium'
     cwd = self._options.chromium
     self.InitialEnvironmentChecks(cwd)
     # Check for a clean workdir.
@@ -124,9 +115,8 @@ class UpdateChromiumCheckout(Step):
   MESSAGE = "Update the checkout and create a new branch."
 
   def RunStep(self):
-    self['json_output']['monitoring_state'] = 'update_chromium'
     cwd = self._options.chromium
-    self.GitCheckout("master", cwd=cwd)
+    self.GitCheckout("main", cwd=cwd)
     self.DeleteBranch("work-branch", cwd=cwd)
     self.GitPull(cwd=cwd)
 
@@ -140,7 +130,6 @@ class UploadCL(Step):
   MESSAGE = "Create and upload CL."
 
   def RunStep(self):
-    self['json_output']['monitoring_state'] = 'upload'
     cwd = self._options.chromium
     # Patch DEPS file.
     if self.Command("gclient", "setdep -r src/v8@%s" %
@@ -155,26 +144,26 @@ class UploadCL(Step):
 
     message.append(ISSUE_MSG)
 
-    message.append("TBR=%s" % self._options.reviewer)
+    message.append("R=%s" % self._options.reviewer)
     self.GitCommit("\n\n".join(message),  author=self._options.author, cwd=cwd)
     if not self._options.dry_run:
       self.GitUpload(force=True,
                      bypass_hooks=True,
                      cq=self._options.use_commit_queue,
                      cq_dry_run=self._options.use_dry_run,
+                     set_bot_commit=True,
                      cwd=cwd)
       print("CL uploaded.")
     else:
       print("Dry run - don't upload.")
 
-    self.GitCheckout("master", cwd=cwd)
+    self.GitCheckout("main", cwd=cwd)
     self.GitDeleteBranch("work-branch", cwd=cwd)
 
 class CleanUp(Step):
   MESSAGE = "Done!"
 
   def RunStep(self):
-    self['json_output']['monitoring_state'] = 'success'
     print("Congratulations, you have successfully rolled %s into "
           "Chromium."
           % self["roll"])

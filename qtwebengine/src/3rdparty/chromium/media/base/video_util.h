@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,45 +7,32 @@
 
 #include <stdint.h>
 
-#include "base/memory/ref_counted.h"
+#include <vector>
+
+#include "base/memory/scoped_refptr.h"
+#include "media/base/encoder_status.h"
 #include "media/base/media_export.h"
+#include "media/base/video_types.h"
+#include "third_party/skia/include/core/SkImage.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 
+class GrDirectContext;
+
+namespace base {
+class TimeDelta;
+}
+
+namespace gpu {
+namespace raster {
+class RasterInterface;
+}  // namespace raster
+}  // namespace gpu
+
 namespace media {
 
+class VideoFramePool;
 class VideoFrame;
-
-// Computes the pixel aspect ratio of a given |visible_rect| from its
-// |natural_size|.
-//
-// See https://en.wikipedia.org/wiki/Pixel_aspect_ratio for a detailed
-// definition.
-//
-// Returns NaN or Infinity if |visible_rect| or |natural_size| are empty.
-//
-// Note: Something has probably gone wrong if you need to call this function;
-// pixel aspect ratios should be the source of truth.
-//
-// TODO(crbug.com/837337): Decide how to encode 'not provided' for pixel aspect
-// ratios, and return that if one of the inputs is empty.
-MEDIA_EXPORT double GetPixelAspectRatio(const gfx::Rect& visible_rect,
-                                        const gfx::Size& natural_size);
-
-// Increases (at most) one of the dimensions of |visible_rect| to produce
-// a |natural_size| with the given pixel aspect ratio.
-//
-// Returns gfx::Size() if |pixel_aspect_ratio| is not finite and positive.
-MEDIA_EXPORT gfx::Size GetNaturalSize(const gfx::Rect& visible_rect,
-                                      double pixel_aspect_ratio);
-
-// Overload that takes the pixel aspect ratio as an integer fraction (and
-// |visible_size| instead of |visible_rect|).
-//
-// Returns gfx::Size() if numerator or denominator are not positive.
-MEDIA_EXPORT gfx::Size GetNaturalSize(const gfx::Size& visible_size,
-                                      int aspect_ratio_numerator,
-                                      int aspect_ratio_denominator);
 
 // Fills |frame| containing YUV data to the given color values.
 MEDIA_EXPORT void FillYUV(VideoFrame* frame, uint8_t y, uint8_t u, uint8_t v);
@@ -97,8 +84,16 @@ MEDIA_EXPORT gfx::Rect ComputeLetterboxRegion(const gfx::Rect& bounds,
 // have color distortions around the edges in a letterboxed video frame. Note
 // that, in cases where ComputeLetterboxRegion() would return a 1x1-sized Rect,
 // this function could return either a 0x0-sized Rect or a 2x2-sized Rect.
+// Note that calling this function with `bounds` that already have the aspect
+// ratio of `content` is not guaranteed to be a no-op (for context, see
+// https://crbug.com/1323367).
 MEDIA_EXPORT gfx::Rect ComputeLetterboxRegionForI420(const gfx::Rect& bounds,
                                                      const gfx::Size& content);
+
+// Shrinks the given |rect| by the minimum amount necessary to align its corners
+// to even-numbered coordinates. |rect| is assumed to have bounded limit values,
+// and may have negative bounds.
+MEDIA_EXPORT gfx::Rect MinimallyShrinkRectForI420(const gfx::Rect& rect);
 
 // Return a scaled |size| whose area is less than or equal to |target|, where
 // one of its dimensions is equal to |target|'s.  The aspect ratio of |size| is
@@ -113,6 +108,16 @@ MEDIA_EXPORT gfx::Size ScaleSizeToFitWithinTarget(const gfx::Size& size,
 // empty.
 MEDIA_EXPORT gfx::Size ScaleSizeToEncompassTarget(const gfx::Size& size,
                                                   const gfx::Size& target);
+
+// Calculates the largest sub-rectangle of a rectangle of size |size| with
+// roughly the same aspect ratio as |target| and centered both horizontally
+// and vertically within the rectangle. It's "roughly" the same aspect ratio
+// because its dimensions may be rounded down to be a multiple of |alignment|.
+// The origin of the rectangle is also aligned down to a multiple of
+// |alignment|. Note that |alignment| must be a power of 2.
+MEDIA_EXPORT gfx::Rect CropSizeForScalingToTarget(const gfx::Size& size,
+                                                  const gfx::Size& target,
+                                                  size_t alignment = 1u);
 
 // Returns the size of a rectangle whose upper left corner is at the origin (0,
 // 0) and whose bottom right corner is the same as that of |rect|. This is
@@ -134,14 +139,40 @@ MEDIA_EXPORT gfx::Size GetRectSizeFromOrigin(const gfx::Rect& rect);
 MEDIA_EXPORT gfx::Size PadToMatchAspectRatio(const gfx::Size& size,
                                              const gfx::Size& target);
 
-// Copy an RGB bitmap into the specified |region_in_frame| of a YUV video frame.
-// Fills the regions outside |region_in_frame| with black.
-MEDIA_EXPORT void CopyRGBToVideoFrame(const uint8_t* source,
-                                      int stride,
-                                      const gfx::Rect& region_in_frame,
-                                      VideoFrame* frame);
+// A helper function to map GpuMemoryBuffer-based VideoFrame. This function
+// maps the given GpuMemoryBuffer of |frame| as-is without converting pixel
+// format, unless the video frame is backed by DXGI GMB.
+// The returned VideoFrame owns the |frame|.
+// If the underlying buffer is DXGI, then it will be copied to shared memory
+// in GPU process.
+MEDIA_EXPORT scoped_refptr<VideoFrame> ConvertToMemoryMappedFrame(
+    scoped_refptr<VideoFrame> frame);
 
-// Converts a frame with YV12A format into I420 by dropping alpha channel.
+// This function synchronously reads pixel data from textures associated with
+// |txt_frame| and creates a new CPU memory backed frame. It's needed because
+// existing video encoders can't handle texture backed frames.
+//
+// TODO(crbug.com/1162530): Combine this function with
+// media::ConvertAndScaleFrame and put it into a new class
+// media:FrameSizeAndFormatConverter.
+MEDIA_EXPORT scoped_refptr<VideoFrame> ReadbackTextureBackedFrameToMemorySync(
+    VideoFrame& txt_frame,
+    gpu::raster::RasterInterface* ri,
+    GrDirectContext* gr_context,
+    VideoFramePool* pool = nullptr);
+
+// Synchronously reads a single plane. |src_rect| is relative to the plane,
+// which may be smaller than |frame| due to subsampling.
+MEDIA_EXPORT bool ReadbackTexturePlaneToMemorySync(
+    VideoFrame& src_frame,
+    size_t src_plane,
+    gfx::Rect& src_rect,
+    uint8_t* dest_pixels,
+    size_t dest_stride,
+    gpu::raster::RasterInterface* ri,
+    GrDirectContext* gr_context);
+
+// Converts a frame with I420A format into I420 by dropping alpha channel.
 MEDIA_EXPORT scoped_refptr<VideoFrame> WrapAsI420VideoFrame(
     scoped_refptr<VideoFrame> frame);
 
@@ -161,8 +192,35 @@ MEDIA_EXPORT scoped_refptr<VideoFrame> WrapAsI420VideoFrame(
 // 3. |dst_frame|'s coded size (both width and height) should be larger than or
 // equal to the visible size, since the visible region in both frames should be
 // identical.
-MEDIA_EXPORT bool I420CopyWithPadding(const VideoFrame& src_frame,
-                                      VideoFrame* dst_frame) WARN_UNUSED_RESULT;
+[[nodiscard]] MEDIA_EXPORT bool I420CopyWithPadding(const VideoFrame& src_frame,
+                                                    VideoFrame* dst_frame);
+
+// Copy pixel data from |src_frame| to |dst_frame| applying scaling and pixel
+// format conversion as needed. Both frames need to be mappabale and have either
+// I420 or NV12 pixel format.
+[[nodiscard]] MEDIA_EXPORT EncoderStatus
+ConvertAndScaleFrame(const VideoFrame& src_frame,
+                     VideoFrame& dst_frame,
+                     std::vector<uint8_t>& tmp_buf);
+
+// Converts kRGBA_8888_SkColorType and kBGRA_8888_SkColorType to the appropriate
+// ARGB, XRGB, ABGR, or XBGR format.
+MEDIA_EXPORT VideoPixelFormat
+VideoPixelFormatFromSkColorType(SkColorType sk_color_type, bool is_opaque);
+
+// Get SkColor suitable type for various formats and planes.
+MEDIA_EXPORT SkColorType SkColorTypeForPlane(VideoPixelFormat format,
+                                             size_t plane);
+
+// Backs a VideoFrame with a SkImage. The created frame takes a ref on the
+// provided SkImage to make this operation zero copy. Only works with CPU
+// backed images.
+MEDIA_EXPORT scoped_refptr<VideoFrame> CreateFromSkImage(
+    sk_sp<SkImage> sk_image,
+    const gfx::Rect& visible_rect,
+    const gfx::Size& natural_size,
+    base::TimeDelta timestamp,
+    bool force_opaque = false);
 
 }  // namespace media
 

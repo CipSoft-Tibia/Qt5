@@ -4,11 +4,12 @@
 
 #include "cast/sender/cast_platform_client.h"
 
+#include <utility>
+
 #include "cast/common/channel/testing/fake_cast_socket.h"
 #include "cast/common/channel/testing/mock_socket_error_handler.h"
-#include "cast/common/channel/virtual_connection_manager.h"
 #include "cast/common/channel/virtual_connection_router.h"
-#include "cast/common/public/service_info.h"
+#include "cast/common/public/receiver_info.h"
 #include "cast/sender/testing/test_helpers.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -33,7 +34,7 @@ class CastPlatformClientTest : public ::testing::Test {
 
     receiver_.v4_address = IPAddress{192, 168, 0, 17};
     receiver_.port = 4434;
-    receiver_.unique_id = "deviceId1";
+    receiver_.unique_id = "receiverId1";
     platform_client_.AddOrUpdateReceiver(receiver_, socket_->socket_id());
   }
 
@@ -46,13 +47,11 @@ class CastPlatformClientTest : public ::testing::Test {
   FakeCastSocketPair fake_cast_socket_pair_;
   CastSocket* socket_ = nullptr;
   MockSocketErrorHandler mock_error_handler_;
-  VirtualConnectionManager manager_;
-  VirtualConnectionRouter router_{&manager_};
+  VirtualConnectionRouter router_;
   FakeClock clock_{Clock::now()};
   FakeTaskRunner task_runner_{&clock_};
-  CastPlatformClient platform_client_{&router_, &manager_, &FakeClock::now,
-                                      &task_runner_};
-  ServiceInfo receiver_;
+  CastPlatformClient platform_client_{&router_, &FakeClock::now, &task_runner_};
+  ReceiverInfo receiver_;
 };
 
 TEST_F(CastPlatformClientTest, AppAvailability) {
@@ -65,7 +64,7 @@ TEST_F(CastPlatformClientTest, AppAvailability) {
       });
   bool ran = false;
   platform_client_.RequestAppAvailability(
-      "deviceId1", "AAA",
+      "receiverId1", "AAA",
       [&ran](const std::string& app_id, AppAvailabilityResult availability) {
         EXPECT_EQ("AAA", app_id);
         EXPECT_EQ(availability, AppAvailabilityResult::kAvailable);
@@ -93,7 +92,7 @@ TEST_F(CastPlatformClientTest, CancelRequest) {
       });
   absl::optional<int> maybe_request_id =
       platform_client_.RequestAppAvailability(
-          "deviceId1", "AAA",
+          "receiverId1", "AAA",
           [](const std::string& app_id, AppAvailabilityResult availability) {
             EXPECT_TRUE(false);
           });

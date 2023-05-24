@@ -28,17 +28,35 @@ namespace perfetto {
 
 class FtraceProcfs {
  public:
-  static std::unique_ptr<FtraceProcfs> Create(const std::string& root);
+  static const char* const kTracingPaths[];
+
+  // Tries creating an |FtraceProcfs| at the standard tracefs mount points.
+  // Takes an optional |instance_path| such as "instances/wifi/", in which case
+  // the returned object will be for that ftrace instance path.
+  static std::unique_ptr<FtraceProcfs> CreateGuessingMountPoint(
+      const std::string& instance_path = "",
+      bool preserve_ftrace_buffer = false);
+
+  static std::unique_ptr<FtraceProcfs> Create(
+      const std::string& root,
+      bool preserve_ftrace_buffer = false);
   static int g_kmesg_fd;
 
   explicit FtraceProcfs(const std::string& root);
   virtual ~FtraceProcfs();
+
+  // Set the filter for syscall events. If empty, clear the filter.
+  bool SetSyscallFilter(const std::set<size_t>& filter);
 
   // Enable the event under with the given |group| and |name|.
   bool EnableEvent(const std::string& group, const std::string& name);
 
   // Disable the event under with the given |group| and |name|.
   bool DisableEvent(const std::string& group, const std::string& name);
+
+  // Returns true if the event under the given |group| and |name| exists and its
+  // enable file is writeable.
+  bool IsEventAccessible(const std::string& group, const std::string& name);
 
   // Disable all events by writing to the global enable file.
   bool DisableAllEvents();
@@ -49,6 +67,52 @@ class FtraceProcfs {
                                       const std::string& name) const;
 
   virtual std::string ReadPageHeaderFormat() const;
+
+  std::string GetCurrentTracer();
+  // Sets the "current_tracer". Might fail with EBUSY if tracing pipes have
+  // already been opened for reading.
+  bool SetCurrentTracer(const std::string& tracer);
+  // Resets the "current_tracer" to "nop".
+  bool ResetCurrentTracer();
+  bool AppendFunctionFilters(const std::vector<std::string>& filters);
+  bool ClearFunctionFilters();
+  bool AppendFunctionGraphFilters(const std::vector<std::string>& filters);
+  bool ClearFunctionGraphFilters();
+
+  // Get all triggers for event with the given |group| and |name|.
+  std::vector<std::string> ReadEventTriggers(const std::string& group,
+                                             const std::string& name) const;
+
+  // Create an event trigger for the given |group| and |name|.
+  bool CreateEventTrigger(const std::string& group,
+                          const std::string& name,
+                          const std::string& trigger);
+
+  // Remove an event trigger for the given |group| and |name|.
+  bool RemoveEventTrigger(const std::string& group,
+                          const std::string& name,
+                          const std::string& trigger);
+
+  // Remove all event trigger for the given |group| and |name|.
+  bool RemoveAllEventTriggers(const std::string& group,
+                              const std::string& name);
+
+  // Sets up any associated event trigger before enabling the event
+  bool MaybeSetUpEventTriggers(const std::string& group,
+                               const std::string& name);
+
+  // Tears down any associated event trigger after disabling the event
+  bool MaybeTearDownEventTriggers(const std::string& group,
+                                  const std::string& name);
+
+  // Returns true if rss_stat_throttled synthetic event is supported
+  bool SupportsRssStatThrottled();
+
+  // Read the printk formats file.
+  std::string ReadPrintkFormats() const;
+
+  // Opens the "/per_cpu/cpuXX/stats" file for the given |cpu|.
+  base::ScopedFile OpenCpuStats(size_t cpu) const;
 
   // Read the "/per_cpu/cpuXX/stats" file for the given |cpu|.
   std::string ReadCpuStats(size_t cpu) const;
@@ -65,22 +129,23 @@ class FtraceProcfs {
   // Clears the trace buffers for all CPUs. Blocks until this is done.
   void ClearTrace();
 
+  // Clears the trace buffer for cpu. Blocks until this is done.
+  void ClearPerCpuTrace(size_t cpu);
+
   // Writes the string |str| as an event into the trace buffer.
   bool WriteTraceMarker(const std::string& str);
 
-  // Enable tracing.
-  bool EnableTracing();
+  // Read tracing_on and return true if tracing_on is 1, otherwise return false.
+  bool GetTracingOn();
 
-  // Disables tracing, does not clear the buffer.
-  bool DisableTracing();
+  // Write 1 to tracing_on if |on| is true, otherwise write 0.
+  bool SetTracingOn(bool on);
 
-  // Enables/disables tracing, does not clear the buffer.
-  bool SetTracingOn(bool enable);
-
-  // Returns true iff tracing is enabled.
-  // Necessarily racy: another program could enable/disable tracing at any
-  // point.
-  bool IsTracingEnabled();
+  // Returns true if ftrace tracing is available.
+  // Ftrace tracing is available iff "/current_tracer" is "nop", indicates
+  // function tracing is not in use. Necessarily
+  // racy: another program could enable/disable tracing at any point.
+  bool IsTracingAvailable();
 
   // Set the clock. |clock_name| should be one of the names returned by
   // AvailableClocks. Setting the clock clears the buffer.
@@ -101,11 +166,19 @@ class FtraceProcfs {
   virtual const std::set<std::string> GetEventNamesForGroup(
       const std::string& path) const;
 
+  // Returns the |id| for event with the given |group| and |name|. Returns 0 if
+  // the event doesn't exist, or its /id file could not be read. Not typically
+  // needed if already parsing the format file.
+  uint32_t ReadEventId(const std::string& group, const std::string& name) const;
+
+  std::string GetRootPath() const { return root_; }
+
  protected:
   // virtual and protected for testing.
   virtual bool WriteToFile(const std::string& path, const std::string& str);
   virtual bool AppendToFile(const std::string& path, const std::string& str);
   virtual bool ClearFile(const std::string& path);
+  virtual bool IsFileWriteable(const std::string& path);
   virtual char ReadOneCharFromFile(const std::string& path);
   virtual std::string ReadFileIntoString(const std::string& path) const;
 

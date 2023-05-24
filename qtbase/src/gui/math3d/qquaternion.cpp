@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquaternion.h"
 #include <QtCore/qdatastream.h>
@@ -234,11 +198,14 @@ QT_BEGIN_NAMESPACE
 */
 float QQuaternion::length() const
 {
-    return std::sqrt(xp * xp + yp * yp + zp * zp + wp * wp);
+    return qHypot(xp, yp, zp, wp);
 }
 
 /*!
     Returns the squared length of the quaternion.
+
+    \note Though cheap to compute, this is susceptible to overflow and underflow
+    that length() avoids in many cases.
 
     \sa length(), dotProduct()
 */
@@ -259,17 +226,10 @@ float QQuaternion::lengthSquared() const
 */
 QQuaternion QQuaternion::normalized() const
 {
-    // Need some extra precision if the length is very small.
-    double len = double(xp) * double(xp) +
-                 double(yp) * double(yp) +
-                 double(zp) * double(zp) +
-                 double(wp) * double(wp);
-    if (qFuzzyIsNull(len - 1.0f))
-        return *this;
-    else if (!qFuzzyIsNull(len))
-        return *this / std::sqrt(len);
-    else
+    const float scale = length();
+    if (qFuzzyIsNull(scale))
         return QQuaternion(0.0f, 0.0f, 0.0f, 0.0f);
+    return *this / scale;
 }
 
 /*!
@@ -280,15 +240,9 @@ QQuaternion QQuaternion::normalized() const
 */
 void QQuaternion::normalize()
 {
-    // Need some extra precision if the length is very small.
-    double len = double(xp) * double(xp) +
-                 double(yp) * double(yp) +
-                 double(zp) * double(zp) +
-                 double(wp) * double(wp);
-    if (qFuzzyIsNull(len - 1.0f) || qFuzzyIsNull(len))
+    const float len = length();
+    if (qFuzzyIsNull(len))
         return;
-
-    len = std::sqrt(len);
 
     xp /= len;
     yp /= len;
@@ -312,13 +266,6 @@ void QQuaternion::normalize()
 
     Returns the conjugate of this quaternion, which is
     (-x, -y, -z, scalar).
-*/
-
-/*!
-    \fn QQuaternion QQuaternion::conjugate() const
-    \obsolete
-
-    Use conjugated() instead.
 */
 
 /*!
@@ -428,24 +375,22 @@ void QQuaternion::getAxisAndAngle(float *x, float *y, float *z, float *angle) co
     // The quaternion representing the rotation is
     //   q = cos(A/2)+sin(A/2)*(x*i+y*j+z*k)
 
-    float length = xp * xp + yp * yp + zp * zp;
+    const float length = qHypot(xp, yp, zp);
     if (!qFuzzyIsNull(length)) {
-        *x = xp;
-        *y = yp;
-        *z = zp;
-        if (!qFuzzyIsNull(length - 1.0f)) {
-            length = std::sqrt(length);
-            *x /= length;
-            *y /= length;
-            *z /= length;
+        if (qFuzzyCompare(length, 1.0f)) {
+            *x = xp;
+            *y = yp;
+            *z = zp;
+        } else {
+            *x = xp / length;
+            *y = yp / length;
+            *z = zp / length;
         }
-        *angle = 2.0f * std::acos(wp);
+        *angle = qRadiansToDegrees(2.0f * std::acos(wp));
     } else {
         // angle is 0 (mod 2*pi), so any axis will fit
         *x = *y = *z = *angle = 0.0f;
     }
-
-    *angle = qRadiansToDegrees(*angle);
 }
 
 /*!
@@ -457,8 +402,8 @@ void QQuaternion::getAxisAndAngle(float *x, float *y, float *z, float *angle) co
 QQuaternion QQuaternion::fromAxisAndAngle
         (float x, float y, float z, float angle)
 {
-    float length = std::sqrt(x * x + y * y + z * z);
-    if (!qFuzzyIsNull(length - 1.0f) && !qFuzzyIsNull(length)) {
+    float length = qHypot(x, y, z);
+    if (!qFuzzyCompare(length, 1.0f) && !qFuzzyIsNull(length)) {
         x /= length;
         y /= length;
         z /= length;
@@ -508,50 +453,47 @@ void QQuaternion::getEulerAngles(float *pitch, float *yaw, float *roll) const
 {
     Q_ASSERT(pitch && yaw && roll);
 
-    // Algorithm from:
-    // http://www.j3d.org/matrix_faq/matrfaq_latest.html#Q37
+    // Algorithm adapted from:
+    // https://ingmec.ual.es/~jlblanco/papers/jlblanco2010geometry3D_techrep.pdf
+    // "A tutorial on SE(3) transformation parameterizations and on-manifold optimization".
 
-    float xx = xp * xp;
-    float xy = xp * yp;
-    float xz = xp * zp;
-    float xw = xp * wp;
-    float yy = yp * yp;
-    float yz = yp * zp;
-    float yw = yp * wp;
-    float zz = zp * zp;
-    float zw = zp * wp;
+    // We can only detect Gimbal lock when we normalize, which we can't do when
+    // length is nearly zero. Do so before multiplying coordinates, to avoid
+    // underflow.
+    const float len = length();
+    const bool rescale = !qFuzzyIsNull(len);
+    const float xps = rescale ? xp / len : xp;
+    const float yps = rescale ? yp / len : yp;
+    const float zps = rescale ? zp / len : zp;
+    const float wps = rescale ? wp / len : wp;
 
-    const float lengthSquared = xx + yy + zz + wp * wp;
-    if (!qFuzzyIsNull(lengthSquared - 1.0f) && !qFuzzyIsNull(lengthSquared)) {
-        xx /= lengthSquared;
-        xy /= lengthSquared; // same as (xp / length) * (yp / length)
-        xz /= lengthSquared;
-        xw /= lengthSquared;
-        yy /= lengthSquared;
-        yz /= lengthSquared;
-        yw /= lengthSquared;
-        zz /= lengthSquared;
-        zw /= lengthSquared;
-    }
+    const float xx = xps * xps;
+    const float xy = xps * yps;
+    const float xz = xps * zps;
+    const float xw = xps * wps;
+    const float yy = yps * yps;
+    const float yz = yps * zps;
+    const float yw = yps * wps;
+    const float zz = zps * zps;
+    const float zw = zps * wps;
+
+    // For the common case, we have a hidden division by cos(pitch) to calculate
+    // yaw and roll: atan2(a / cos(pitch), b / cos(pitch)) = atan2(a, b). This equation
+    // wouldn't work if cos(pitch) is close to zero (i.e. abs(sin(pitch)) =~ 1.0).
+    // This threshold is copied from qFuzzyIsNull() to avoid the hidden division by zero.
+    constexpr float epsilon = 0.00001f;
 
     const float sinp = -2.0f * (yz - xw);
-    if (std::abs(sinp) >= 1.0f)
-        *pitch = std::copysign(M_PI_2, sinp);
-    else
+    if (std::abs(sinp) < 1.0f - epsilon) {
         *pitch = std::asin(sinp);
-    if (*pitch < M_PI_2) {
-        if (*pitch > -M_PI_2) {
-            *yaw = std::atan2(2.0f * (xz + yw), 1.0f - 2.0f * (xx + yy));
-            *roll = std::atan2(2.0f * (xy + zw), 1.0f - 2.0f * (xx + zz));
-        } else {
-            // not a unique solution
-            *roll = 0.0f;
-            *yaw = -std::atan2(-2.0f * (xy - zw), 1.0f - 2.0f * (yy + zz));
-        }
+        *yaw = std::atan2(2.0f * (xz + yw), 1.0f - 2.0f * (xx + yy));
+        *roll = std::atan2(2.0f * (xy + zw), 1.0f - 2.0f * (xx + zz));
     } else {
-        // not a unique solution
+        // Gimbal lock case, which doesn't have a unique solution. We just use
+        // XY rotation.
+        *pitch = std::copysign(static_cast<float>(M_PI_2), sinp);
+        *yaw = 2.0f * std::atan2(yps, wps);
         *roll = 0.0f;
-        *yaw = std::atan2(-2.0f * (xy - zw), 1.0f - 2.0f * (yy + zz));
     }
 
     *pitch = qRadiansToDegrees(*pitch);
@@ -796,16 +738,14 @@ QQuaternion QQuaternion::rotationTo(const QVector3D &from, const QVector3D &to)
 #endif // QT_NO_VECTOR3D
 
 /*!
-    \fn bool operator==(const QQuaternion &q1, const QQuaternion &q2)
-    \relates QQuaternion
+    \fn bool QQuaternion::operator==(const QQuaternion &q1, const QQuaternion &q2)
 
     Returns \c true if \a q1 is equal to \a q2; otherwise returns \c false.
     This operator uses an exact floating-point comparison.
 */
 
 /*!
-    \fn bool operator!=(const QQuaternion &q1, const QQuaternion &q2)
-    \relates QQuaternion
+    \fn bool QQuaternion::operator!=(const QQuaternion &q1, const QQuaternion &q2)
 
     Returns \c true if \a q1 is not equal to \a q2; otherwise returns \c false.
     This operator uses an exact floating-point comparison.
@@ -987,7 +927,7 @@ QQuaternion QQuaternion::nlerp
 */
 QQuaternion::operator QVariant() const
 {
-    return QVariant(QMetaType::QQuaternion, this);
+    return QVariant::fromValue(*this);
 }
 
 #ifndef QT_NO_DEBUG_STREAM

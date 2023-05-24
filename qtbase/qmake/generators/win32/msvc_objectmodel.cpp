@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "msvc_objectmodel.h"
 #include "msvc_vcproj.h"
@@ -34,7 +9,7 @@
 
 #include <qscopedpointer.h>
 #include <qfileinfo.h>
-#include <qregexp.h>
+#include <qregularexpression.h>
 
 using namespace QMakeInternal;
 
@@ -327,7 +302,7 @@ triState operator!(const triState &rhs)
 QStringList VCToolBase::fixCommandLine(const QString &input)
 {
     // The splitting regexp is a bit bizarre for backwards compat reasons (why else ...).
-    return input.split(QRegExp(QLatin1String("(\n\t|\r\\\\h|\r\n)\\s*")));
+    return input.split(QRegularExpression(QLatin1String("(\n\t|\r\\\\h|\r\n)\\s*")));
 }
 
 static QString vcCommandSeparator()
@@ -336,14 +311,12 @@ static QString vcCommandSeparator()
     // of the custom commands into it, and putting an "if errorlevel goto" statement behind it.
     // As we want every sub-command to be error-checked (as is done by makefile-based
     // backends), we insert the checks ourselves, using the undocumented jump target.
-    static QString cmdSep =
-    QLatin1String("&#x000D;&#x000A;if errorlevel 1 goto VCReportError&#x000D;&#x000A;");
-    return cmdSep;
+    return QStringLiteral("&#x000D;&#x000A;if errorlevel 1 goto VCReportError&#x000D;&#x000A;");
 }
 
 static void unknownOptionWarning(const char *tool, const char *option)
 {
-    static bool firstCall = true;
+    Q_CONSTINIT static bool firstCall = true;
     warn_msg(WarnLogic, "Could not parse %s option '%s'; added to AdditionalOptions.", tool, option);
     if (firstCall) {
         firstCall = false;
@@ -410,7 +383,7 @@ VCCLCompilerTool::VCCLCompilerTool()
         CompileForArchitecture(archUnknown),
         InterworkCalls(unset),
         EnablePREfast(unset),
-        DisplayFullPaths(unset),
+        DisplayFullPaths(_False),
         MultiProcessorCompilation(unset),
         GenerateXMLDocumentationFiles(unset),
         CreateHotpatchableImage(unset)
@@ -1154,13 +1127,14 @@ bool VCCLCompilerTool::parseOption(const char* option)
             break;
         }
         if (strlen(option) > 7 && second == 't' && third == 'd' && fourth == ':') {
-            static const QRegExp rex("(c(?:\\+\\+)?)(.+)");
-            if (rex.exactMatch(option + 5)) {
+            static const QRegularExpression rex("(c(?:\\+\\+)?)(.+)");
+            auto m = rex.match(option + 5);
+            if (m.hasMatch()) {
                 QString *var = nullptr;
                 const QStringList *knownVersions = nullptr;
                 QString valuePrefix;
-                auto lang = rex.cap(1);
-                auto version = rex.cap(2);
+                auto lang = m.capturedView(1);
+                auto version = m.capturedView(2);
                 if (lang == QStringLiteral("c++")) {
                     // Turn /std:c++17 into <LanguageStandard>stdcpp17</LanguageStandard>
                     static const QStringList knownCxxVersions = {
@@ -1503,10 +1477,23 @@ bool VCLinkerTool::parseOption(const char* option)
         }else
             EnableUAC = _True;
         break;
-    case 0x3389797: // /DEBUG[:FASTLINK]
-        GenerateDebugInformation = _True;
-        if (config->CompilerVersion >= NET2015 && strcmp(option + 7, "FASTLINK") == 0)
-            DebugInfoOption = linkerDebugOptionFastLink;
+    case 0x3389797: // /DEBUG[:{FASTLINK|FULL|NONE}]
+        DebugInfoOption = linkerDebugOptionEnabled;
+        if (config->CompilerVersion >= NET2015 && *(option + 6) == ':') {
+            const char *str = option + 7;
+            if (qstricmp(str, "fastlink") == 0)
+                DebugInfoOption = linkerDebugOptionFastLink;
+            else if (qstricmp(str, "full") == 0)
+                DebugInfoOption = linkerDebugOptionFull;
+            else if (qstricmp(str, "none") == 0)
+                DebugInfoOption = linkerDebugOptionNone;
+            else
+                AdditionalOptions += option;
+        }
+        if (DebugInfoOption == linkerDebugOptionNone)
+            GenerateDebugInformation = _False;
+        else
+            GenerateDebugInformation = _True;
         break;
     case 0x0033896: // /DEF:filename
         ModuleDefinitionFile = option+5;
@@ -1553,7 +1540,7 @@ bool VCLinkerTool::parseOption(const char* option)
         {
             QStringList both = QString(option+6).split(",");
             HeapReserveSize = both[0].toLongLong();
-            if(both.count() == 2)
+            if(both.size() == 2)
                 HeapCommitSize = both[1].toLongLong();
         }
         break;
@@ -1593,24 +1580,28 @@ bool VCLinkerTool::parseOption(const char* option)
     case 0x0d745c8: // /LIBPATH:dir
         AdditionalLibraryDirectories += option+9;
         break;
-    case 0x0341877: // /LTCG[:NOSTATUS|:STATUS]
-        config->WholeProgramOptimization = _True;
-        if (config->CompilerVersion >= NET2005) {
-            LinkTimeCodeGeneration = optLTCGEnabled;
-            if(*(option+5) == ':') {
-                const char* str = option+6;
-                if (*str == 'S')
-                    ShowProgress = linkProgressAll;
-                else if (qstricmp(str, "pginstrument") == 0)
-                    LinkTimeCodeGeneration = optLTCGInstrument;
-                else if (qstricmp(str, "pgoptimize") == 0)
-                    LinkTimeCodeGeneration = optLTCGOptimize;
-                else if (qstricmp(str, "pgupdate") == 0)
-                    LinkTimeCodeGeneration = optLTCGUpdate;
-            }
-        } else {
-            AdditionalOptions.append(option);
+    case 0x0341877: // /LTCG[:{INCREMENTAL|NOSTATUS|STATUS|OFF}]
+        //             /LTCG:{PGINSTRUMENT|PGOPTIMIZE|PGUPDATE}
+        LinkTimeCodeGeneration = optLTCGEnabled;
+        if (*(option + 5) == ':') {
+            const char* str = option + 6;
+            if (qstricmp(str, "status") == 0)
+                ShowProgress = linkProgressAll;
+            else if (qstricmp(str, "off") == 0)
+                LinkTimeCodeGeneration = optLTCGDefault;
+            else if (qstricmp(str, "incremental") == 0)
+                LinkTimeCodeGeneration = optLTCGIncremental;
+            else if (qstricmp(str, "pginstrument") == 0)
+                LinkTimeCodeGeneration = optLTCGInstrument;
+            else if (qstricmp(str, "pgoptimize") == 0)
+                LinkTimeCodeGeneration = optLTCGOptimize;
+            else if (qstricmp(str, "pgupdate") == 0)
+                LinkTimeCodeGeneration = optLTCGUpdate;
+            else
+                AdditionalOptions.append(option);
         }
+        if (LinkTimeCodeGeneration != optLTCGDefault)
+            config->WholeProgramOptimization = _True;
         break;
     case 0x379ED25:
     case 0x157cf65: // /MACHINE:{AM33|ARM|CEE|IA64|X86|M32R|MIPS|MIPS16|MIPSFPU|MIPSFPU16|MIPSR41XX|PPC|SH3|SH4|SH5|THUMB|TRICORE}
@@ -1738,7 +1729,7 @@ bool VCLinkerTool::parseOption(const char* option)
         {
             QStringList both = QString(option+7).split(",");
             StackReserveSize = both[0].toLongLong();
-            if(both.count() == 2)
+            if(both.size() == 2)
                 StackCommitSize = both[1].toLongLong();
         }
         break;
@@ -1936,7 +1927,8 @@ bool VCMIDLTool::parseOption(const char* option)
         WarnAsError = _True;
         break;
     case 0x3582fde: // /align {N}
-        offset = 3;  // Fallthrough
+        offset = 3;
+        Q_FALLTHROUGH();
     case 0x0003510: // /Zp {N}
         switch (*(option+offset+4)) {
         case '1':
@@ -2205,8 +2197,7 @@ VCPreLinkEventTool::VCPreLinkEventTool()
 // VCConfiguration --------------------------------------------------
 
 VCConfiguration::VCConfiguration()
-    :   WinRT(false),
-        ATLMinimizesCRunTimeLibraryUsage(unset),
+    :   ATLMinimizesCRunTimeLibraryUsage(unset),
         BuildBrowserInformation(unset),
         CharacterSet(charSetNotSet),
         ConfigurationType(typeApplication),
@@ -2241,13 +2232,13 @@ void VCFilter::addFile(const VCFilterFile& fileInfo)
 
 void VCFilter::addFiles(const QStringList& fileList)
 {
-    for (int i = 0; i < fileList.count(); ++i)
+    for (int i = 0; i < fileList.size(); ++i)
         addFile(fileList.at(i));
 }
 
 void VCFilter::addFiles(const ProStringList& fileList)
 {
-    for (int i = 0; i < fileList.count(); ++i)
+    for (int i = 0; i < fileList.size(); ++i)
         addFile(fileList.at(i).toQString());
 }
 
@@ -2281,7 +2272,7 @@ void VCFilter::modifyPCHstage(QString str)
         lines << "* WARNING: All changes made in this file will be lost.";
         lines << "--------------------------------------------------------------------*/";
         lines << "#include \"" + Project->precompHFilename + "\"";
-        for (const QString &line : qAsConst(lines))
+        for (const QString &line : std::as_const(lines))
             CustomBuildTool.CommandLine += "echo " + line + ">>" + toFile;
         return;
     }
@@ -2314,7 +2305,7 @@ void VCFilter::modifyPCHstage(QString str)
 
 VCFilterFile VCFilter::findFile(const QString &filePath, bool *found) const
 {
-    for (int i = 0; i < Files.count(); ++i) {
+    for (int i = 0; i < Files.size(); ++i) {
         const VCFilterFile &f = Files.at(i);
         if (f.file == filePath) {
             *found = true;
@@ -2340,7 +2331,7 @@ bool VCFilter::addExtraCompiler(const VCFilterFile &info)
         hasBuiltIn = Project->hasBuiltinCompiler(objectMappedFile);
 
         // Remove the fake file suffix we've added initially to generate correct command lines.
-        inFile.chop(Project->customBuildToolFilterFileSuffix.length());
+        inFile.chop(Project->customBuildToolFilterFileSuffix.size());
 
 //        qDebug("*** Extra compiler file has object mapped file '%s' => '%s'", qPrintable(inFile), qPrintable(objectMappedFile.join(' ')));
     }
@@ -2352,7 +2343,7 @@ bool VCFilter::addExtraCompiler(const VCFilterFile &info)
     CustomBuildTool.ToolPath.clear();
     CustomBuildTool.ToolName = QLatin1String(_VCCustomBuildTool);
 
-    for (int x = 0; x < extraCompilers.count(); ++x) {
+    for (int x = 0; x < extraCompilers.size(); ++x) {
         const QString &extraCompilerName = extraCompilers.at(x);
 
         if (!Project->verifyExtraCompiler(extraCompilerName, inFile) && !hasBuiltIn)
@@ -2397,7 +2388,7 @@ bool VCFilter::addExtraCompiler(const VCFilterFile &info)
                                                     configs.contains("dep_existing_only"),
                                                     true  /* checkCommandAvailability */);
         }
-        for (int i = 0; i < deps.count(); ++i)
+        for (int i = 0; i < deps.size(); ++i)
             deps[i] = Option::fixPathToTargetOS(
                         Project->replaceExtraCompilerVariables(
                                 deps.at(i), inFile, out, MakefileGenerator::NoShell),
@@ -2406,9 +2397,9 @@ bool VCFilter::addExtraCompiler(const VCFilterFile &info)
         if (combined) {
             // Add dependencies for each file
             const ProStringList &tmp_in = Project->project->values(ProKey(extraCompilerName + ".input"));
-            for (int a = 0; a < tmp_in.count(); ++a) {
+            for (int a = 0; a < tmp_in.size(); ++a) {
                 const ProStringList &files = Project->project->values(tmp_in.at(a).toKey());
-                for (int b = 0; b < files.count(); ++b) {
+                for (int b = 0; b < files.size(); ++b) {
                     QString file = files.at(b).toQString();
                     deps += Project->findDependencies(file);
                     inputs += Option::fixPathToTargetOS(file, false);
@@ -2442,7 +2433,7 @@ bool VCFilter::addExtraCompiler(const VCFilterFile &info)
         }
 
         // Fixify paths
-        for (int i = 0; i < deps.count(); ++i)
+        for (int i = 0; i < deps.size(); ++i)
             deps[i] = Option::fixPathToTargetOS(deps[i], false);
 
 
@@ -2460,7 +2451,7 @@ bool VCFilter::addExtraCompiler(const VCFilterFile &info)
         deps += CustomBuildTool.AdditionalDependencies;
         // Make sure that all deps are only once
         QStringList uniqDeps;
-        for (int c = 0; c < deps.count(); ++c) {
+        for (int c = 0; c < deps.size(); ++c) {
             QString aDep = deps.at(c);
             if (!aDep.isEmpty())
                 uniqDeps << aDep;
@@ -2471,7 +2462,7 @@ bool VCFilter::addExtraCompiler(const VCFilterFile &info)
 
     // Ensure that none of the output files are also dependencies. Or else, the custom buildstep
     // will be rebuild every time, even if nothing has changed.
-    for (const QString &output : qAsConst(CustomBuildTool.Outputs))
+    for (const QString &output : std::as_const(CustomBuildTool.Outputs))
         CustomBuildTool.AdditionalDependencies.removeAll(output);
 
     useCustomBuildTool = !CustomBuildTool.CommandLine.isEmpty();
@@ -2506,7 +2497,7 @@ const VCFilter &VCProjectSingleConfig::filterByName(const QString &name) const
 
 const VCFilter &VCProjectSingleConfig::filterForExtraCompiler(const QString &compilerName) const
 {
-    for (int i = 0; i < ExtraCompilersFiles.count(); ++i)
+    for (int i = 0; i < ExtraCompilersFiles.size(); ++i)
         if (ExtraCompilersFiles.at(i).Name == compilerName)
             return ExtraCompilersFiles.at(i);
 
@@ -2586,7 +2577,7 @@ void VCProjectWriter::write(XmlOutput &xml, VCProjectSingleConfig &tool)
     outputFilter(tempProj, xml, "Distribution Files");
 
     QSet<QString> extraCompilersInProject;
-    for (int i = 0; i < tool.ExtraCompilersFiles.count(); ++i) {
+    for (int i = 0; i < tool.ExtraCompilersFiles.size(); ++i) {
         const QString &compilerName = tool.ExtraCompilersFiles.at(i).Name;
         if (!extraCompilersInProject.contains(compilerName)) {
             extraCompilersInProject += compilerName;
@@ -2594,7 +2585,7 @@ void VCProjectWriter::write(XmlOutput &xml, VCProjectSingleConfig &tool)
         }
     }
 
-    for (int x = 0; x < tempProj.ExtraCompilers.count(); ++x) {
+    for (int x = 0; x < tempProj.ExtraCompilers.size(); ++x) {
         outputFilter(tempProj, xml, tempProj.ExtraCompilers.at(x));
     }
     outputFilter(tempProj, xml, "Root Files");
@@ -2605,7 +2596,7 @@ void VCProjectWriter::write(XmlOutput &xml, VCProjectSingleConfig &tool)
 
 void VCProjectWriter::write(XmlOutput &xml, VCProject &tool)
 {
-    if (tool.SingleProjects.count() == 0) {
+    if (tool.SingleProjects.size() == 0) {
         warn_msg(WarnLogic, "Generator: .NET: no single project in merge project, no output");
         return;
     }
@@ -2625,7 +2616,7 @@ void VCProjectWriter::write(XmlOutput &xml, VCProject &tool)
             << closetag(_Platforms)
             << tag(_Configurations);
     // Output each configuration
-    for (int i = 0; i < tool.SingleProjects.count(); ++i)
+    for (int i = 0; i < tool.SingleProjects.size(); ++i)
         write(xml, tool.SingleProjects.at(i).Configuration);
     xml     << closetag(_Configurations)
             << tag(q_Files);
@@ -2638,7 +2629,7 @@ void VCProjectWriter::write(XmlOutput &xml, VCProject &tool)
     outputFilter(tool, xml, "Resource Files");
     outputFilter(tool, xml, "Deployment Files");
     outputFilter(tool, xml, "Distribution Files");
-    for (int x = 0; x < tool.ExtraCompilers.count(); ++x) {
+    for (int x = 0; x < tool.ExtraCompilers.size(); ++x) {
         outputFilter(tool, xml, tool.ExtraCompilers.at(x));
     }
     outputFilter(tool, xml, "Root Files");
@@ -2940,7 +2931,7 @@ void VCProjectWriter::write(XmlOutput &xml, const VCConfiguration &tool)
 
 void VCProjectWriter::write(XmlOutput &xml, VCFilter &tool)
 {
-    if(!tool.Files.count())
+    if(!tool.Files.size())
         return;
 
     if (!tool.Name.isEmpty()) {
@@ -2950,7 +2941,7 @@ void VCProjectWriter::write(XmlOutput &xml, VCFilter &tool)
                 << attrS(_UniqueIdentifier, tool.Guid)
                 << attrT(_ParseFiles, tool.ParseFiles);
     }
-    for (int i = 0; i < tool.Files.count(); ++i) {
+    for (int i = 0; i < tool.Files.size(); ++i) {
         const VCFilterFile &info = tool.Files.at(i);
         xml << tag(q_File)
                 << attrS(_RelativePath, Option::fixPathToTargetOS(info.file))
@@ -2974,11 +2965,11 @@ void VCProjectWriter::outputFilter(VCProject &project, XmlOutput &xml, const QSt
     QString name, extfilter, guid;
     triState parse = unset;
 
-    for (int i = 0; i < project.SingleProjects.count(); ++i) {
+    for (int i = 0; i < project.SingleProjects.size(); ++i) {
         const VCFilter filter = project.SingleProjects.at(i).filterByName(filtername);
 
         // Merge all files in this filter to root tree
-        for (int x = 0; x < filter.Files.count(); ++x)
+        for (int x = 0; x < filter.Files.size(); ++x)
             root->addElement(filter.Files.at(x));
 
         // Save filter setting from first filter. Next filters
@@ -3013,7 +3004,7 @@ void VCProjectWriter::outputFileConfigs(VCProject &project, XmlOutput &xml, cons
 {
     xml << tag(q_File)
             << attrS(_RelativePath, Option::fixPathToTargetOS(info.file));
-    for (int i = 0; i < project.SingleProjects.count(); ++i) {
+    for (int i = 0; i < project.SingleProjects.size(); ++i) {
         VCFilter filter = project.SingleProjects.at(i).filterByName(filtername);
         if (filter.Config) // only if the filter is not empty
             outputFileConfig(filter, xml, info.file);

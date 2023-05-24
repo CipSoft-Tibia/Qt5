@@ -55,32 +55,86 @@
     </Expand>
   </Type>
 
+  <!-- unique_ptr -->
+  <Type Name="std::unique_ptr&lt;*&gt;">
+    <DisplayString>{_Mypair._Myval2}</DisplayString>
+    <Expand>
+      <ExpandedItem>_Mypair._Myval2</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <!-- shared_ptr -->
+  <Type Name="std::shared_ptr&lt;*&gt;">
+    <DisplayString>{_Ptr}</DisplayString>
+    <Expand>
+      <ExpandedItem>_Ptr</ExpandedItem>
+    </Expand>
+  </Type>
+
   <!-- SkString -->
   <Type Name="SkString">
     <DisplayString>{&amp;fRec.fPtr->fBeginningOfData}</DisplayString>
   </Type>
 
-  <!-- SkAutoTArray -->
-  <Type Name="SkAutoTArray&lt;*&gt;">
+  <!-- SkSL::StringFragment -->
+  <Type Name="SkSL::StringFragment">
+    <DisplayString>{fChars,[fLength]}</DisplayString>
+  </Type>
+
+  <!-- SkSL::SymbolTable::SymbolKey -->
+  <Type Name="SkSL::SymbolTable::SymbolKey">
+    <DisplayString>{fName}</DisplayString>
+  </Type>
+
+  <!-- AutoTArray -->
+  <Type Name="AutoTArray&lt;*&gt;">
     <DisplayString>{{size = {fCount}}}</DisplayString>
     <Expand>
       <Item Name="[size]">fCount</Item>
       <ArrayItems>
         <Size>fCount</Size>
-        <ValuePointer>fArray</ValuePointer>
+        <ValuePointer>fArray._Mypair._Myval2</ValuePointer>
       </ArrayItems>
     </Expand>
   </Type>
 
   <!-- SkTArray -->
   <Type Name="SkTArray&lt;*&gt;">
-    <DisplayString>{{size = {fCount}}}</DisplayString>
+    <DisplayString>{{size = {fSize}}}</DisplayString>
     <Expand>
-      <Item Name="[size]">fCount</Item>
+      <Item Name="[size]">fSize</Item>
       <ArrayItems>
-        <Size>fCount</Size>
-        <ValuePointer>fItemArray</ValuePointer>
+        <Size>fSize</Size>
+        <ValuePointer>fData</ValuePointer>
       </ArrayItems>
+    </Expand>
+  </Type>
+
+  <!-- SkTHashTable::Slot -->
+  <Type Name="SkTHashTable&lt;*,*,*&gt;::Slot">
+    <DisplayString Condition="hash">{val}</DisplayString>
+    <DisplayString Condition="!hash">Empty</DisplayString>
+    <Expand>
+      <ExpandedItem>val</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <!-- SkTHashMap -->
+  <Type Name="SkTHashMap&lt;*,*,*&gt;">
+    <DisplayString>{{size = {fTable.fCount}}}</DisplayString>
+    <Expand>
+      <CustomListItems>
+        <Variable Name="iSlot" InitialValue="0"/>
+        <Size>fTable.fCount</Size>
+        <Loop>
+          <If Condition="fTable.fSlots.fArray._Mypair._Myval2[iSlot].hash != 0">
+            <Item Name="{fTable.fSlots.fArray._Mypair._Myval2[iSlot].val.key}">
+              fTable.fSlots.fArray._Mypair._Myval2[iSlot].val
+            </Item>
+          </If>
+          <Exec>iSlot++</Exec>
+        </Loop>
+      </CustomListItems>
     </Expand>
   </Type>
 

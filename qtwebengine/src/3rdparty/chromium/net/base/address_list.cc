@@ -1,18 +1,18 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "net/base/address_list.h"
 
+#include <iterator>
+#include <string>
 #include <utility>
+#include <vector>
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/containers/flat_map.h"
 #include "base/logging.h"
 #include "base/values.h"
 #include "net/base/sys_addrinfo.h"
-#include "net/log/net_log_capture_mode.h"
 
 namespace net {
 
@@ -22,11 +22,24 @@ AddressList::AddressList(const AddressList&) = default;
 
 AddressList& AddressList::operator=(const AddressList&) = default;
 
+AddressList::AddressList(AddressList&&) = default;
+
+AddressList& AddressList::operator=(AddressList&&) = default;
+
 AddressList::~AddressList() = default;
 
 AddressList::AddressList(const IPEndPoint& endpoint) {
   push_back(endpoint);
 }
+
+AddressList::AddressList(const IPEndPoint& endpoint,
+                         std::vector<std::string> aliases)
+    : dns_aliases_(std::move(aliases)) {
+  push_back(endpoint);
+}
+
+AddressList::AddressList(std::vector<IPEndPoint> endpoints)
+    : endpoints_(std::move(endpoints)) {}
 
 // static
 AddressList AddressList::CreateFromIPAddress(const IPAddress& address,
@@ -37,12 +50,12 @@ AddressList AddressList::CreateFromIPAddress(const IPAddress& address,
 // static
 AddressList AddressList::CreateFromIPAddressList(
     const IPAddressList& addresses,
-    const std::string& canonical_name) {
+    std::vector<std::string> aliases) {
   AddressList list;
-  list.set_canonical_name(canonical_name);
-  for (auto iter = addresses.begin(); iter != addresses.end(); ++iter) {
-    list.push_back(IPEndPoint(*iter, 0));
+  for (const auto& address : addresses) {
+    list.push_back(IPEndPoint(address, 0));
   }
+  list.SetDnsAliases(std::move(aliases));
   return list;
 }
 
@@ -50,8 +63,10 @@ AddressList AddressList::CreateFromIPAddressList(
 AddressList AddressList::CreateFromAddrinfo(const struct addrinfo* head) {
   DCHECK(head);
   AddressList list;
-  if (head->ai_canonname)
-    list.set_canonical_name(std::string(head->ai_canonname));
+  if (head->ai_canonname) {
+    std::vector<std::string> aliases({std::string(head->ai_canonname)});
+    list.SetDnsAliases(std::move(aliases));
+  }
   for (const struct addrinfo* ai = head; ai; ai = ai->ai_next) {
     IPEndPoint ipe;
     // NOTE: Ignoring non-INET* families.
@@ -66,27 +81,54 @@ AddressList AddressList::CreateFromAddrinfo(const struct addrinfo* head) {
 // static
 AddressList AddressList::CopyWithPort(const AddressList& list, uint16_t port) {
   AddressList out;
-  out.set_canonical_name(list.canonical_name());
-  for (size_t i = 0; i < list.size(); ++i)
-    out.push_back(IPEndPoint(list[i].address(), port));
+  out.SetDnsAliases(list.dns_aliases());
+  for (const auto& i : list)
+    out.push_back(IPEndPoint(i.address(), port));
   return out;
 }
 
 void AddressList::SetDefaultCanonicalName() {
   DCHECK(!empty());
-  set_canonical_name(front().ToStringWithoutPort());
+  DCHECK(dns_aliases_.empty());
+  SetDnsAliases({front().ToStringWithoutPort()});
+}
+
+void AddressList::SetDnsAliases(std::vector<std::string> aliases) {
+  // TODO(cammie): Track down the callers who use {""} for `aliases` and
+  // update so that we can enforce by DCHECK below.
+  // The empty canonical name is represented by a empty `dns_aliases_`
+  // vector, so in this case we reset the field.
+  if (aliases == std::vector<std::string>({""})) {
+    dns_aliases_ = std::vector<std::string>();
+    return;
+  }
+
+  dns_aliases_ = std::move(aliases);
+}
+
+void AddressList::AppendDnsAliases(std::vector<std::string> aliases) {
+  DCHECK(aliases != std::vector<std::string>({""}));
+  using iter_t = std::vector<std::string>::iterator;
+
+  dns_aliases_.insert(dns_aliases_.end(),
+                      std::move_iterator<iter_t>(aliases.begin()),
+                      std::move_iterator<iter_t>(aliases.end()));
 }
 
 base::Value AddressList::NetLogParams() const {
-  base::Value dict(base::Value::Type::DICTIONARY);
-  base::Value list(base::Value::Type::LIST);
+  base::Value::Dict dict;
 
+  base::Value::List address_list;
   for (const auto& ip_endpoint : *this)
-    list.Append(ip_endpoint.ToString());
+    address_list.Append(ip_endpoint.ToString());
+  dict.Set("address_list", std::move(address_list));
 
-  dict.SetKey("address_list", std::move(list));
-  dict.SetStringKey("canonical_name", canonical_name());
-  return dict;
+  base::Value::List alias_list;
+  for (const std::string& alias : dns_aliases_)
+    alias_list.Append(alias);
+  dict.Set("aliases", std::move(alias_list));
+
+  return base::Value(std::move(dict));
 }
 
 void AddressList::Deduplicate() {

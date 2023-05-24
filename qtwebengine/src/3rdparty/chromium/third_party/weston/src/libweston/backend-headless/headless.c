@@ -32,21 +32,33 @@
 #include <string.h>
 #include <sys/time.h>
 #include <stdbool.h>
+#include <drm_fourcc.h>
 
 #include <libweston/libweston.h>
 #include <libweston/backend-headless.h>
 #include "shared/helpers.h"
 #include "linux-explicit-synchronization.h"
 #include "pixman-renderer.h"
+#include "renderer-gl/gl-renderer.h"
+#include "shared/weston-egl-ext.h"
+#include "linux-dmabuf.h"
 #include "presentation-time-server-protocol.h"
 #include <libweston/windowed-output-api.h>
+
+enum headless_renderer_type {
+	HEADLESS_NOOP,
+	HEADLESS_PIXMAN,
+	HEADLESS_GL,
+};
 
 struct headless_backend {
 	struct weston_backend base;
 	struct weston_compositor *compositor;
 
 	struct weston_seat fake_seat;
-	bool use_pixman;
+	enum headless_renderer_type renderer_type;
+
+	struct gl_renderer_interface *glri;
 };
 
 struct headless_head {
@@ -60,6 +72,11 @@ struct headless_output {
 	struct wl_event_source *finish_frame_timer;
 	uint32_t *image_buf;
 	pixman_image_t *image;
+};
+
+static const uint32_t headless_formats[] = {
+	DRM_FORMAT_XRGB8888,
+	DRM_FORMAT_ARGB8888,
 };
 
 static inline struct headless_head *
@@ -121,6 +138,23 @@ headless_output_repaint(struct weston_output *output_base,
 	return 0;
 }
 
+static void
+headless_output_disable_gl(struct headless_output *output)
+{
+	struct weston_compositor *compositor = output->base.compositor;
+	struct headless_backend *b = to_headless_backend(compositor);
+
+	b->glri->output_destroy(&output->base);
+}
+
+static void
+headless_output_disable_pixman(struct headless_output *output)
+{
+	pixman_renderer_output_destroy(&output->base);
+	pixman_image_unref(output->image);
+	free(output->image_buf);
+}
+
 static int
 headless_output_disable(struct weston_output *base)
 {
@@ -132,10 +166,15 @@ headless_output_disable(struct weston_output *base)
 
 	wl_event_source_remove(output->finish_frame_timer);
 
-	if (b->use_pixman) {
-		pixman_renderer_output_destroy(&output->base);
-		pixman_image_unref(output->image);
-		free(output->image_buf);
+	switch (b->renderer_type) {
+	case HEADLESS_GL:
+		headless_output_disable_gl(output);
+		break;
+	case HEADLESS_PIXMAN:
+		headless_output_disable_pixman(output);
+		break;
+	case HEADLESS_NOOP:
+		break;
 	}
 
 	return 0;
@@ -153,45 +192,86 @@ headless_output_destroy(struct weston_output *base)
 }
 
 static int
-headless_output_enable(struct weston_output *base)
+headless_output_enable_gl(struct headless_output *output)
 {
-	struct headless_output *output = to_headless_output(base);
-	struct headless_backend *b = to_headless_backend(base->compositor);
-	struct wl_event_loop *loop;
+	struct weston_compositor *compositor = output->base.compositor;
+	struct headless_backend *b = to_headless_backend(compositor);
+	const struct gl_renderer_pbuffer_options options = {
+		.width = output->base.current_mode->width,
+		.height = output->base.current_mode->height,
+		.drm_formats = headless_formats,
+		.drm_formats_count = ARRAY_LENGTH(headless_formats),
+	};
 
-	loop = wl_display_get_event_loop(b->compositor->wl_display);
-	output->finish_frame_timer =
-		wl_event_loop_add_timer(loop, finish_frame_handler, output);
-
-	if (b->use_pixman) {
-		output->image_buf = malloc(output->base.current_mode->width *
-					   output->base.current_mode->height * 4);
-		if (!output->image_buf)
-			goto err_malloc;
-
-		output->image = pixman_image_create_bits(PIXMAN_x8r8g8b8,
-							 output->base.current_mode->width,
-							 output->base.current_mode->height,
-							 output->image_buf,
-							 output->base.current_mode->width * 4);
-
-		if (pixman_renderer_output_create(&output->base,
-					PIXMAN_RENDERER_OUTPUT_USE_SHADOW) < 0)
-			goto err_renderer;
-
-		pixman_renderer_output_set_buffer(&output->base,
-						  output->image);
+	if (b->glri->output_pbuffer_create(&output->base, &options) < 0) {
+		weston_log("failed to create gl renderer output state\n");
+		return -1;
 	}
+
+	return 0;
+}
+
+static int
+headless_output_enable_pixman(struct headless_output *output)
+{
+	const struct pixman_renderer_output_options options = {
+		.use_shadow = true,
+	};
+
+	output->image_buf = malloc(output->base.current_mode->width *
+				   output->base.current_mode->height * 4);
+	if (!output->image_buf)
+		return -1;
+
+	output->image = pixman_image_create_bits(PIXMAN_x8r8g8b8,
+						 output->base.current_mode->width,
+						 output->base.current_mode->height,
+						 output->image_buf,
+						 output->base.current_mode->width * 4);
+
+	if (pixman_renderer_output_create(&output->base, &options) < 0)
+		goto err_renderer;
+
+	pixman_renderer_output_set_buffer(&output->base, output->image);
 
 	return 0;
 
 err_renderer:
 	pixman_image_unref(output->image);
 	free(output->image_buf);
-err_malloc:
-	wl_event_source_remove(output->finish_frame_timer);
 
 	return -1;
+}
+
+static int
+headless_output_enable(struct weston_output *base)
+{
+	struct headless_output *output = to_headless_output(base);
+	struct headless_backend *b = to_headless_backend(base->compositor);
+	struct wl_event_loop *loop;
+	int ret = 0;
+
+	loop = wl_display_get_event_loop(b->compositor->wl_display);
+	output->finish_frame_timer =
+		wl_event_loop_add_timer(loop, finish_frame_handler, output);
+
+	switch (b->renderer_type) {
+	case HEADLESS_GL:
+		ret = headless_output_enable_gl(output);
+		break;
+	case HEADLESS_PIXMAN:
+		ret = headless_output_enable_pixman(output);
+		break;
+	case HEADLESS_NOOP:
+		break;
+	}
+
+	if (ret < 0) {
+		wl_event_source_remove(output->finish_frame_timer);
+		return -1;
+	}
+
+	return 0;
 }
 
 static int
@@ -309,6 +389,24 @@ headless_destroy(struct weston_compositor *ec)
 	free(b);
 }
 
+static int
+headless_gl_renderer_init(struct headless_backend *b)
+{
+	const struct gl_renderer_display_options options = {
+		.egl_platform = EGL_PLATFORM_SURFACELESS_MESA,
+		.egl_native_display = EGL_DEFAULT_DISPLAY,
+		.egl_surface_type = EGL_PBUFFER_BIT,
+		.drm_formats = headless_formats,
+		.drm_formats_count = ARRAY_LENGTH(headless_formats),
+	};
+
+	b->glri = weston_load_module("gl-renderer.so", "gl_renderer_interface");
+	if (!b->glri)
+		return -1;
+
+	return b->glri->display_create(b->compositor, &options);
+}
+
 static const struct weston_windowed_output_api api = {
 	headless_output_set_size,
 	headless_head_create,
@@ -334,13 +432,42 @@ headless_backend_create(struct weston_compositor *compositor,
 	b->base.destroy = headless_destroy;
 	b->base.create_output = headless_output_create;
 
-	b->use_pixman = config->use_pixman;
-	if (b->use_pixman) {
-		pixman_renderer_init(compositor);
+	if (config->use_pixman && config->use_gl) {
+		weston_log("Error: cannot use both Pixman *and* GL renderers.\n");
+		goto err_free;
 	}
 
-	if (!b->use_pixman && noop_renderer_init(compositor) < 0)
+	if (config->use_gl)
+		b->renderer_type = HEADLESS_GL;
+	else if (config->use_pixman)
+		b->renderer_type = HEADLESS_PIXMAN;
+	else
+		b->renderer_type = HEADLESS_NOOP;
+
+	switch (b->renderer_type) {
+	case HEADLESS_GL:
+		ret = headless_gl_renderer_init(b);
+		break;
+	case HEADLESS_PIXMAN:
+		ret = pixman_renderer_init(compositor);
+		break;
+	case HEADLESS_NOOP:
+		ret = noop_renderer_init(compositor);
+		break;
+	default:
+		assert(0 && "invalid renderer type");
+		ret = -1;
+	}
+
+	if (ret < 0)
 		goto err_input;
+
+	if (compositor->renderer->import_dmabuf) {
+		if (linux_dmabuf_setup(compositor) < 0) {
+			weston_log("Error: dmabuf protocol setup failed.\n");
+			goto err_input;
+		}
+	}
 
 	/* Support zwp_linux_explicit_synchronization_unstable_v1 to enable
 	 * testing. */

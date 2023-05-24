@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,11 +11,10 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/macros.h"
-#include "base/sequenced_task_runner.h"
-#include "base/task_runner_util.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "components/services/filesystem/public/mojom/types.mojom.h"
 #include "storage/browser/blob/shareable_file_reference.h"
 #include "storage/browser/file_system/file_system_context.h"
@@ -24,7 +23,6 @@
 #include "storage/browser/file_system/file_system_url.h"
 #include "storage/common/file_system/file_system_util.h"
 
-using base::Owned;
 using base::Unretained;
 
 namespace storage {
@@ -34,6 +32,9 @@ namespace {
 class EnsureFileExistsHelper {
  public:
   EnsureFileExistsHelper() : error_(base::File::FILE_OK), created_(false) {}
+
+  EnsureFileExistsHelper(const EnsureFileExistsHelper&) = delete;
+  EnsureFileExistsHelper& operator=(const EnsureFileExistsHelper&) = delete;
 
   void RunWork(FileSystemFileUtil* file_util,
                FileSystemOperationContext* context,
@@ -48,12 +49,14 @@ class EnsureFileExistsHelper {
  private:
   base::File::Error error_;
   bool created_;
-  DISALLOW_COPY_AND_ASSIGN(EnsureFileExistsHelper);
 };
 
 class GetFileInfoHelper {
  public:
   GetFileInfoHelper() : error_(base::File::FILE_OK) {}
+
+  GetFileInfoHelper(const GetFileInfoHelper&) = delete;
+  GetFileInfoHelper& operator=(const GetFileInfoHelper&) = delete;
 
   void GetFileInfo(FileSystemFileUtil* file_util,
                    FileSystemOperationContext* context,
@@ -96,7 +99,6 @@ class GetFileInfoHelper {
   base::File::Info file_info_;
   base::FilePath platform_path_;
   ScopedFile scoped_file_;
-  DISALLOW_COPY_AND_ASSIGN(GetFileInfoHelper);
 };
 
 void ReadDirectoryHelper(FileSystemFileUtil* file_util,
@@ -153,7 +155,7 @@ void RunCreateOrOpenCallback(FileSystemOperationContext* context,
     // If |callback| been cancelled, free |file| on the correct task runner.
     context->task_runner()->PostTask(
         FROM_HERE,
-        BindOnce([](base::File file) { file.Close(); }, std::move(file)));
+        base::BindOnce([](base::File file) { file.Close(); }, std::move(file)));
     return;
   }
 
@@ -162,8 +164,9 @@ void RunCreateOrOpenCallback(FileSystemOperationContext* context,
 
 }  // namespace
 
-AsyncFileUtilAdapter::AsyncFileUtilAdapter(FileSystemFileUtil* sync_file_util)
-    : sync_file_util_(sync_file_util) {
+AsyncFileUtilAdapter::AsyncFileUtilAdapter(
+    std::unique_ptr<FileSystemFileUtil> sync_file_util)
+    : sync_file_util_(std::move(sync_file_util)) {
   DCHECK(sync_file_util_.get());
 }
 
@@ -172,15 +175,16 @@ AsyncFileUtilAdapter::~AsyncFileUtilAdapter() = default;
 void AsyncFileUtilAdapter::CreateOrOpen(
     std::unique_ptr<FileSystemOperationContext> context,
     const FileSystemURL& url,
-    int file_flags,
+    uint32_t file_flags,
     CreateOrOpenCallback callback) {
   FileSystemOperationContext* context_ptr = context.release();
-  base::PostTaskAndReplyWithResult(
-      context_ptr->task_runner(), FROM_HERE,
-      BindOnce(&FileSystemFileUtil::CreateOrOpen,
-               Unretained(sync_file_util_.get()), context_ptr, url, file_flags),
-      BindOnce(&RunCreateOrOpenCallback, base::Owned(context_ptr),
-               std::move(callback)));
+  context_ptr->task_runner()->PostTaskAndReplyWithResult(
+      FROM_HERE,
+      base::BindOnce(&FileSystemFileUtil::CreateOrOpen,
+                     Unretained(sync_file_util_.get()), context_ptr, url,
+                     file_flags),
+      base::BindOnce(&RunCreateOrOpenCallback, base::Owned(context_ptr),
+                     std::move(callback)));
 }
 
 void AsyncFileUtilAdapter::EnsureFileExists(
@@ -191,10 +195,10 @@ void AsyncFileUtilAdapter::EnsureFileExists(
   FileSystemOperationContext* context_ptr = context.release();
   const bool success = context_ptr->task_runner()->PostTaskAndReply(
       FROM_HERE,
-      BindOnce(&EnsureFileExistsHelper::RunWork, Unretained(helper),
-               sync_file_util_.get(), base::Owned(context_ptr), url),
-      BindOnce(&EnsureFileExistsHelper::Reply, Owned(helper),
-               std::move(callback)));
+      base::BindOnce(&EnsureFileExistsHelper::RunWork, Unretained(helper),
+                     sync_file_util_.get(), base::Owned(context_ptr), url),
+      base::BindOnce(&EnsureFileExistsHelper::Reply, base::Owned(helper),
+                     std::move(callback)));
   DCHECK(success);
 }
 
@@ -205,8 +209,8 @@ void AsyncFileUtilAdapter::CreateDirectory(
     bool recursive,
     StatusCallback callback) {
   FileSystemOperationContext* context_ptr = context.release();
-  const bool success = base::PostTaskAndReplyWithResult(
-      context_ptr->task_runner(), FROM_HERE,
+  const bool success = context_ptr->task_runner()->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(&FileSystemFileUtil::CreateDirectory,
                      Unretained(sync_file_util_.get()),
                      base::Owned(context_ptr), url, exclusive, recursive),
@@ -225,11 +229,11 @@ void AsyncFileUtilAdapter::GetFileInfo(
       (fields & FileSystemOperation::GET_METADATA_FIELD_TOTAL_SIZE);
   const bool success = context_ptr->task_runner()->PostTaskAndReply(
       FROM_HERE,
-      BindOnce(&GetFileInfoHelper::GetFileInfo, Unretained(helper),
-               sync_file_util_.get(), base::Owned(context_ptr), url,
-               calculate_total_size),
-      BindOnce(&GetFileInfoHelper::ReplyFileInfo, Owned(helper),
-               std::move(callback)));
+      base::BindOnce(&GetFileInfoHelper::GetFileInfo, Unretained(helper),
+                     sync_file_util_.get(), base::Owned(context_ptr), url,
+                     calculate_total_size),
+      base::BindOnce(&GetFileInfoHelper::ReplyFileInfo, base::Owned(helper),
+                     std::move(callback)));
   DCHECK(success);
 }
 
@@ -240,10 +244,11 @@ void AsyncFileUtilAdapter::ReadDirectory(
   FileSystemOperationContext* context_ptr = context.release();
   const bool success = context_ptr->task_runner()->PostTask(
       FROM_HERE,
-      BindOnce(&ReadDirectoryHelper, sync_file_util_.get(),
-               base::Owned(context_ptr), url,
-               base::RetainedRef(base::ThreadTaskRunnerHandle::Get()),
-               callback));
+      base::BindOnce(
+          &ReadDirectoryHelper, sync_file_util_.get(), base::Owned(context_ptr),
+          url,
+          base::RetainedRef(base::SingleThreadTaskRunner::GetCurrentDefault()),
+          callback));
   DCHECK(success);
 }
 
@@ -254,8 +259,8 @@ void AsyncFileUtilAdapter::Touch(
     const base::Time& last_modified_time,
     StatusCallback callback) {
   FileSystemOperationContext* context_ptr = context.release();
-  const bool success = base::PostTaskAndReplyWithResult(
-      context_ptr->task_runner(), FROM_HERE,
+  const bool success = context_ptr->task_runner()->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(
           &FileSystemFileUtil::Touch, Unretained(sync_file_util_.get()),
           base::Owned(context_ptr), url, last_access_time, last_modified_time),
@@ -269,8 +274,8 @@ void AsyncFileUtilAdapter::Truncate(
     int64_t length,
     StatusCallback callback) {
   FileSystemOperationContext* context_ptr = context.release();
-  const bool success = base::PostTaskAndReplyWithResult(
-      context_ptr->task_runner(), FROM_HERE,
+  const bool success = context_ptr->task_runner()->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(&FileSystemFileUtil::Truncate,
                      Unretained(sync_file_util_.get()),
                      base::Owned(context_ptr), url, length),
@@ -282,16 +287,16 @@ void AsyncFileUtilAdapter::CopyFileLocal(
     std::unique_ptr<FileSystemOperationContext> context,
     const FileSystemURL& src_url,
     const FileSystemURL& dest_url,
-    CopyOrMoveOption option,
+    CopyOrMoveOptionSet options,
     CopyFileProgressCallback progress_callback,
     StatusCallback callback) {
   // TODO(hidehiko): Support progress_callback.
   FileSystemOperationContext* context_ptr = context.release();
-  const bool success = base::PostTaskAndReplyWithResult(
-      context_ptr->task_runner(), FROM_HERE,
+  const bool success = context_ptr->task_runner()->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(&FileSystemFileUtil::CopyOrMoveFile,
                      Unretained(sync_file_util_.get()),
-                     base::Owned(context_ptr), src_url, dest_url, option,
+                     base::Owned(context_ptr), src_url, dest_url, options,
                      true /* copy */),
       std::move(callback));
   DCHECK(success);
@@ -301,14 +306,14 @@ void AsyncFileUtilAdapter::MoveFileLocal(
     std::unique_ptr<FileSystemOperationContext> context,
     const FileSystemURL& src_url,
     const FileSystemURL& dest_url,
-    CopyOrMoveOption option,
+    CopyOrMoveOptionSet options,
     StatusCallback callback) {
   FileSystemOperationContext* context_ptr = context.release();
-  const bool success = base::PostTaskAndReplyWithResult(
-      context_ptr->task_runner(), FROM_HERE,
+  const bool success = context_ptr->task_runner()->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(&FileSystemFileUtil::CopyOrMoveFile,
                      Unretained(sync_file_util_.get()),
-                     base::Owned(context_ptr), src_url, dest_url, option,
+                     base::Owned(context_ptr), src_url, dest_url, options,
                      false /* copy */),
       std::move(callback));
   DCHECK(success);
@@ -320,8 +325,8 @@ void AsyncFileUtilAdapter::CopyInForeignFile(
     const FileSystemURL& dest_url,
     StatusCallback callback) {
   FileSystemOperationContext* context_ptr = context.release();
-  const bool success = base::PostTaskAndReplyWithResult(
-      context_ptr->task_runner(), FROM_HERE,
+  const bool success = context_ptr->task_runner()->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(&FileSystemFileUtil::CopyInForeignFile,
                      Unretained(sync_file_util_.get()),
                      base::Owned(context_ptr), src_file_path, dest_url),
@@ -334,8 +339,8 @@ void AsyncFileUtilAdapter::DeleteFile(
     const FileSystemURL& url,
     StatusCallback callback) {
   FileSystemOperationContext* context_ptr = context.release();
-  const bool success = base::PostTaskAndReplyWithResult(
-      context_ptr->task_runner(), FROM_HERE,
+  const bool success = context_ptr->task_runner()->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(&FileSystemFileUtil::DeleteFile,
                      Unretained(sync_file_util_.get()),
                      base::Owned(context_ptr), url),
@@ -348,8 +353,8 @@ void AsyncFileUtilAdapter::DeleteDirectory(
     const FileSystemURL& url,
     StatusCallback callback) {
   FileSystemOperationContext* context_ptr = context.release();
-  const bool success = base::PostTaskAndReplyWithResult(
-      context_ptr->task_runner(), FROM_HERE,
+  const bool success = context_ptr->task_runner()->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(&FileSystemFileUtil::DeleteDirectory,
                      Unretained(sync_file_util_.get()),
                      base::Owned(context_ptr), url),
@@ -372,10 +377,10 @@ void AsyncFileUtilAdapter::CreateSnapshotFile(
   GetFileInfoHelper* helper = new GetFileInfoHelper;
   const bool success = context_ptr->task_runner()->PostTaskAndReply(
       FROM_HERE,
-      BindOnce(&GetFileInfoHelper::CreateSnapshotFile, Unretained(helper),
-               sync_file_util_.get(), base::Owned(context_ptr), url),
-      BindOnce(&GetFileInfoHelper::ReplySnapshotFile, Owned(helper),
-               std::move(callback)));
+      base::BindOnce(&GetFileInfoHelper::CreateSnapshotFile, Unretained(helper),
+                     sync_file_util_.get(), base::Owned(context_ptr), url),
+      base::BindOnce(&GetFileInfoHelper::ReplySnapshotFile, base::Owned(helper),
+                     std::move(callback)));
   DCHECK(success);
 }
 

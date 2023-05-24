@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -32,9 +32,8 @@ void CustomElementReactionQueue::InvokeReactions(Element& element) {
     reactions_[index_++] = nullptr;
     reaction->Invoke(element);
   }
-  // Unlike V0CustomElementsCallbackQueue, reactions are always
-  // inserted by steps which bump the global element queue. This
-  // means we do not need queue "owner" guards.
+  // Reactions are always inserted by steps which bump the global element queue.
+  // This means we do not need queue "owner" guards.
   // https://html.spec.whatwg.org/C/#custom-element-reactions
   Clear();
 }

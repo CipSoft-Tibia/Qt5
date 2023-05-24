@@ -13,15 +13,29 @@ but a new libdrm will always work with an older kernel.
 libdrm is a low-level library, typically used by graphics drivers such as
 the Mesa drivers, the X drivers, libva and similar projects.
 
+Syncing with the Linux kernel headers
+-------------------------------------
+
+The library should be regularly updated to match the recent changes in the
+`include/uapi/drm/`.
+
+libdrm maintains a human-readable version for the token format modifier, with
+the simpler ones being extracted automatically from `drm_fourcc.h` header file
+with the help of a python script.  This might not always possible, as some of
+the vendors require decoding/extracting them programmatically.  For that
+reason one can enhance the current vendor functions to include/provide the
+newly added token formats, or, in case there's no such decoding
+function, to add one that performs the tasks of extracting them.
+
+For simpler format modifier tokens there's a script (gen_table_fourcc.py) that
+creates a static table, by going over `drm_fourcc.h` header file. The script
+could be further modified if it can't handle new (simpler) token format
+modifiers instead of the generated static table.
 
 Compiling
 ---------
 
-libdrm has two build systems, a legacy autotools build system, and a newer
-meson build system. The meson build system is much faster, and offers a
-slightly different interface, but otherwise provides an equivalent feature set.
-
-To use it:
+To set up meson:
 
     meson builddir/
 
@@ -35,27 +49,3 @@ Then use ninja to build and install:
 
 If you are installing into a system location you will need to run install
 separately, and as root.
-
-
-Alternatively you can invoke autotools configure:
-
-	./configure
-
-By default, libdrm  will install into the /usr/local/  prefix.  If you
-want  to  install   this  DRM  to  replace  your   system  copy,  pass
---prefix=/usr and  --exec-prefix=/ to configure.  If  you are building
-libdrm  from a  git checkout,  you first  need to  run  the autogen.sh
-script.  You can  pass any options to autogen.sh  that you would other
-wise  pass to configure,  or you  can just  re-run configure  with the
-options you need once autogen.sh finishes.
-
-Next step is to build libdrm:
-
-	make
-
-and once make finishes successfully, install the package using
-
-	make install
-
-If you are installing into a system location, you will need to be root
-to perform the install step.

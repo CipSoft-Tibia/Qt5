@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,19 +12,17 @@
 #include <utility>
 
 #include "base/barrier_closure.h"
-#include "base/bind.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "build/chromeos_buildflags.h"
 #include "mojo/public/cpp/bindings/associated_receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/device/public/mojom/usb_enumeration_options.mojom.h"
 #include "services/device/public/mojom/usb_manager_client.mojom.h"
 #include "services/device/usb/mock_usb_device.h"
-#include "services/device/usb/mock_usb_device_handle.h"
 #include "services/device/usb/mock_usb_service.h"
-#include "services/device/usb/mojo/device_impl.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 using ::testing::_;
@@ -59,7 +57,7 @@ class USBDeviceManagerImplTest : public testing::Test {
   ~USBDeviceManagerImplTest() override = default;
 
  protected:
-  MockUsbService* mock_usb_service_;
+  raw_ptr<MockUsbService> mock_usb_service_;
   std::unique_ptr<DeviceManagerImpl> device_manager_instance_;
   base::test::SingleThreadTaskEnvironment task_environment_;
 };
@@ -93,8 +91,9 @@ void ExpectDevicesAndThen(const std::set<std::string>& expected_guids,
                           std::vector<UsbDeviceInfoPtr> results) {
   EXPECT_EQ(expected_guids.size(), results.size());
   std::set<std::string> actual_guids;
-  for (size_t i = 0; i < results.size(); ++i)
-    actual_guids.insert(results[i]->guid);
+  for (const auto& result : results) {
+    actual_guids.insert(result->guid);
+  }
   EXPECT_EQ(expected_guids, actual_guids);
   std::move(continuation).Run();
 }
@@ -152,6 +151,7 @@ TEST_F(USBDeviceManagerImplTest, GetDevice) {
     base::RunLoop loop;
     mojo::Remote<mojom::UsbDevice> device;
     device_manager->GetDevice(mock_device->guid(),
+                              /*blocked_interface_classes=*/{},
                               device.BindNewPipeAndPassReceiver(),
                               /*device_client=*/mojo::NullRemote());
     // Close is a no-op if the device hasn't been opened but ensures that the
@@ -161,7 +161,7 @@ TEST_F(USBDeviceManagerImplTest, GetDevice) {
   }
 
   mojo::Remote<mojom::UsbDevice> bad_device;
-  device_manager->GetDevice("not a real guid",
+  device_manager->GetDevice("not a real guid", /*blocked_interface_classes=*/{},
                             bad_device.BindNewPipeAndPassReceiver(),
                             /*device_client=*/mojo::NullRemote());
 

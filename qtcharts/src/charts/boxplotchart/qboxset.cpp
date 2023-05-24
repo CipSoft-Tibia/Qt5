@@ -1,37 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QBoxSet>
 #include <private/qboxset_p.h>
 #include <private/charthelpers_p.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 /*!
     \class QBoxSet
@@ -47,7 +21,7 @@ QT_CHARTS_BEGIN_NAMESPACE
     The second way is to create an empty QBoxSet instance and specify the values using the
     setValue() method.
 
-    See the \l{Box and Whiskers Example}{box-and-whiskers chart example} to learn how to
+    See the \l{Charts with Widgets Gallery} to learn how to
     create a box-and-whiskers chart.
 
     \sa QBoxPlotSeries
@@ -323,14 +297,14 @@ bool QBoxSetPrivate::append(qreal value)
     return false;
 }
 
-bool QBoxSetPrivate::append(QList<qreal> values)
+bool QBoxSetPrivate::append(const QList<qreal> &values)
 {
     bool success = false;
 
-    for (int i = 0; i < values.count(); i++) {
-        if (isValidValue(values.at(i)) && m_appendCount < m_valuesCount) {
+    for (const qreal value : values) {
+        if (isValidValue(value) && m_appendCount < m_valuesCount) {
             success = true;
-            m_values[m_appendCount++] = values.at(i);
+            m_values[m_appendCount++] = value;
         }
     }
 
@@ -364,7 +338,7 @@ qreal QBoxSetPrivate::value(const int index)
     return m_values[index];
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qboxset.cpp"
 #include "moc_qboxset_p.cpp"

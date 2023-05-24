@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSGRHISHADEREFFECTNODE_P_H
 #define QSGRHISHADEREFFECTNODE_P_H
@@ -53,13 +17,13 @@
 
 #include <private/qsgadaptationlayer_p.h>
 #include <qsgmaterial.h>
+#include <QUrl>
 
 QT_BEGIN_NAMESPACE
 
 class QSGDefaultRenderContext;
 class QSGPlainTexture;
 class QSGRhiShaderEffectNode;
-class QSGRhiGuiThreadShaderEffectManager;
 class QFileSelector;
 
 class QSGRhiShaderLinker
@@ -90,6 +54,7 @@ public:
     QHash<uint, Constant> m_constants; // offset -> Constant
     QHash<int, QVariant> m_samplers; // binding -> value (source ref)
     QHash<QByteArray, int> m_samplerNameMap; // name -> binding
+    QSet<int> m_subRectBindings;
 };
 
 QDebug operator<<(QDebug debug, const QSGRhiShaderLinker::Constant &c);
@@ -102,14 +67,17 @@ public:
 
     int compare(const QSGMaterial *other) const override;
     QSGMaterialType *type() const override;
-    QSGMaterialShader *createShader() const override;
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode renderMode) const override;
 
     void updateTextureProviders(bool layoutChange);
+
+    bool usesSubRectUniform(int binding) const { return m_linker.m_subRectBindings.contains(binding); }
 
     static const int MAX_BINDINGS = 32;
 
     QSGRhiShaderEffectNode *m_node;
     QSGMaterialType *m_materialType = nullptr;
+    void *m_materialTypeCacheKey = nullptr;
     QSGRhiShaderLinker m_linker;
     QVector<QSGTextureProvider *> m_textureProviders; // [binding] = QSGTextureProvider
     bool m_geometryUsesTextureSubRect = false;
@@ -121,26 +89,25 @@ public:
     QSGPlainTexture *m_dummyTexture = nullptr;
 };
 
-class QSGRhiShaderEffectNode : public QObject, public QSGShaderEffectNode
+class QSGRhiShaderEffectNode : public QSGShaderEffectNode
 {
     Q_OBJECT
 
 public:
-    QSGRhiShaderEffectNode(QSGDefaultRenderContext *rc, QSGRhiGuiThreadShaderEffectManager *mgr);
+    QSGRhiShaderEffectNode(QSGDefaultRenderContext *rc);
 
     QRectF updateNormalizedTextureSubRect(bool supportsAtlasTextures) override;
     void syncMaterial(SyncData *syncData) override;
     void preprocess() override;
 
-    static void cleanupMaterialTypeCache();
+    static void resetMaterialTypeCache(void *materialTypeCacheKey);
+    static void garbageCollectMaterialTypeCache(void *materialTypeCacheKey);
 
 private Q_SLOTS:
     void handleTextureChange();
     void handleTextureProviderDestroyed(QObject *object);
 
 private:
-    QSGDefaultRenderContext *m_rc;
-    QSGRhiGuiThreadShaderEffectManager *m_mgr;
     QSGRhiShaderEffectMaterial m_material;
 };
 
@@ -150,7 +117,7 @@ public:
     bool hasSeparateSamplerAndTextureObjects() const override;
     QString log() const override;
     Status status() const override;
-    void prepareShaderCode(ShaderInfo::Type typeHint, const QByteArray &src, ShaderInfo *result) override;
+    void prepareShaderCode(ShaderInfo::Type typeHint, const QUrl &src, ShaderInfo *result) override;
 
 private:
     bool reflect(ShaderInfo *result);

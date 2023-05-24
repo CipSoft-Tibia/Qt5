@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest>
+#include <QTest>
 #include <QLoggingCategory>
+#include <QStandardPaths>
 
 #include <QtCore/private/qloggingregistry_p.h>
 
@@ -181,24 +157,24 @@ private slots:
         // default category, and optional ...
         //
         QLoggingSettingsParser parser;
-        parser.setContent("[Rules]\n"
-                          "default=false\n"
-                          "default=true");
+        parser.setContent(u"[Rules]\n"
+                           "default=false\n"
+                           "default=true");
         QCOMPARE(parser.rules().size(), 2);
 
-        parser.setContent("[Rules]\n"
-                          "default=false");
+        parser.setContent(u"[Rules]\n"
+                           "default=false");
         QCOMPARE(parser.rules().size(), 1);
 
         // QSettings escapes * to %2A when writing.
-        parser.setContent("[Rules]\n"
-                          "module.%2A=false");
+        parser.setContent(u"[Rules]\n"
+                           "module.%2A=false");
         QCOMPARE(parser.rules().size(), 1);
         QCOMPARE(parser.rules().first().category, QString("module."));
         QCOMPARE(parser.rules().first().flags, QLoggingRule::LeftFilter);
 
-        parser.setContent("[OtherSection]\n"
-                          "default=false");
+        parser.setContent(u"[OtherSection]\n"
+                           "default=false");
         QCOMPARE(parser.rules().size(), 0);
     }
 
@@ -289,7 +265,7 @@ private slots:
 
         // set Config rule
         QLoggingSettingsParser parser;
-        parser.setContent("[Rules]\nDigia.*=false");
+        parser.setContent(u"[Rules]\nDigia.*=false");
         registry->ruleSets[QLoggingRegistry::ConfigRules] = parser.rules();
         registry->updateRules();
 
@@ -301,7 +277,7 @@ private slots:
         QVERIFY(cat.isWarningEnabled());
 
         // set Env rule, should overwrite Config one
-        parser.setContent("Digia.*=false");
+        parser.setContent(u"Digia.*=false");
         registry->ruleSets[QLoggingRegistry::EnvironmentRules] = parser.rules();
         registry->updateRules();
 
@@ -315,10 +291,10 @@ private slots:
         QTest::ignoreMessage(QtWarningMsg, "Ignoring malformed logging rule: '***=false'");
         QTest::ignoreMessage(QtWarningMsg, "Ignoring malformed logging rule: '*=0'");
         QTest::ignoreMessage(QtWarningMsg, "Ignoring malformed logging rule: '*=TRUE'");
-        parser.setContent("[Rules]\n"
-                          "***=false\n"
-                          "*=0\n"
-                          "*=TRUE\n");
+        parser.setContent(u"[Rules]\n"
+                           "***=false\n"
+                           "*=0\n"
+                           "*=TRUE\n");
         QVERIFY(parser.rules().isEmpty());
     }
 };

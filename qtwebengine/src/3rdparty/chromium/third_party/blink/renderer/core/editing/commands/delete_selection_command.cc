@@ -25,6 +25,7 @@
 
 #include "third_party/blink/renderer/core/editing/commands/delete_selection_command.h"
 
+#include "base/ranges/algorithm.h"
 #include "build/build_config.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
@@ -47,7 +48,7 @@
 #include "third_party/blink/renderer/core/html/html_table_row_element.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/layout/layout_table_cell.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -125,7 +126,7 @@ void DeleteSelectionCommand::InitializeStartEnd(Position& start,
   if (!options_.IsExpandForSpecialElements())
     return;
 
-  while (1) {
+  while (true) {
     start_special_container = nullptr;
     end_special_container = nullptr;
 
@@ -271,9 +272,9 @@ void DeleteSelectionCommand::InitializePositionData(
       To<HTMLTableRowElement>(EnclosingNodeOfType(end, &IsHTMLTableRowElement));
 #else
   start_table_row_ = To<HTMLTableRowElement>(
-      EnclosingNodeOfType(start, &IsA<HTMLTableRowElement, Node>));
+      EnclosingNodeOfType(start, &IsA<HTMLTableRowElement>));
   end_table_row_ = To<HTMLTableRowElement>(
-      EnclosingNodeOfType(end, &IsA<HTMLTableRowElement, Node>));
+      EnclosingNodeOfType(end, &IsA<HTMLTableRowElement>));
 #endif
 
   // Don't move content out of a table cell.
@@ -320,8 +321,11 @@ void DeleteSelectionCommand::InitializePositionData(
   // to the selection
   leading_whitespace_ = LeadingCollapsibleWhitespacePosition(
       upstream_start_, selection_to_delete_.Affinity());
-  trailing_whitespace_ = TrailingWhitespacePosition(
-      downstream_end_, kNotConsiderNonCollapsibleWhitespace);
+  trailing_whitespace_ =
+      IsEditablePosition(downstream_end_)
+          ? TrailingWhitespacePosition(downstream_end_,
+                                       kNotConsiderNonCollapsibleWhitespace)
+          : Position();
 
   if (options_.IsSmartDelete()) {
     // skip smart delete if the selection to delete already starts or ends with
@@ -477,7 +481,7 @@ bool DeleteSelectionCommand::HandleSpecialCaseBRDelete(
 static Position FirstEditablePositionInNode(Node* node) {
   DCHECK(node);
   Node* next = node;
-  while (next && !HasEditableStyle(*next))
+  while (next && !IsEditable(*next))
     next = NodeTraversal::Next(*next, node);
   return next ? FirstPositionInOrBeforeNode(*next) : Position();
 }
@@ -494,7 +498,7 @@ void DeleteSelectionCommand::RemoveNode(
                                     node->IsDescendantOf(end_root_.Get()))) {
     // If a node is not in both the start and end editable roots, remove it only
     // if its inside an editable region.
-    if (!HasEditableStyle(*node->parentNode())) {
+    if (!IsEditable(*node->parentNode())) {
       // Don't remove non-editable atomic nodes.
       if (!node->hasChildren())
         return;
@@ -518,7 +522,7 @@ void DeleteSelectionCommand::RemoveNode(
     // Make sure empty cell has some height, if a placeholder can be inserted.
     GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kEditing);
     LayoutObject* r = node->GetLayoutObject();
-    if (r && r->IsTableCell() && ToLayoutBox(r)->ContentHeight() <= 0) {
+    if (r && r->IsTableCell() && To<LayoutBox>(r)->ContentHeight() <= 0) {
       Position first_editable_position = FirstEditablePositionInNode(node);
       if (first_editable_position.IsNotNull())
         InsertBlockPlaceholder(first_editable_position, editing_state);
@@ -549,6 +553,128 @@ void DeleteSelectionCommand::RemoveNode(
 
   CompositeEditCommand::RemoveNode(node, editing_state,
                                    should_assume_content_is_always_editable);
+}
+
+void DeleteSelectionCommand::RemoveCompletelySelectedNodes(
+    Node* start_node,
+    EditingState* editing_state) {
+  HeapVector<Member<Node>> nodes_to_be_removed;
+  Node* node = start_node;
+
+  GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kEditing);
+
+  // Collecting nodes that can be removed from |start_node|.
+  while (node && node != downstream_end_.AnchorNode()) {
+    if (ComparePositions(FirstPositionInOrBeforeNode(*node), downstream_end_) >=
+        0)
+      break;
+
+    if (!downstream_end_.AnchorNode()->IsDescendantOf(node)) {
+      nodes_to_be_removed.push_back(node);
+      node = NodeTraversal::NextSkippingChildren(*node);
+      continue;
+    }
+
+    Node& last_within_or_self_node = NodeTraversal::LastWithinOrSelf(*node);
+    if (downstream_end_.AnchorNode() == last_within_or_self_node &&
+        downstream_end_.ComputeEditingOffset() >=
+            CaretMaxOffset(&last_within_or_self_node)) {
+      nodes_to_be_removed.push_back(node);
+      break;
+    }
+
+    node = NodeTraversal::Next(*node);
+  }
+
+  // Update leading, trailing whitespace position.
+  if (!nodes_to_be_removed.empty()) {
+    leading_whitespace_ = ComputePositionForNodeRemoval(
+        leading_whitespace_, *(nodes_to_be_removed[0].Get()));
+    trailing_whitespace_ = ComputePositionForNodeRemoval(
+        trailing_whitespace_,
+        *(nodes_to_be_removed[nodes_to_be_removed.size() - 1].Get()));
+  }
+
+  // Check if place holder is needed before actually removing nodes because
+  // this requires document.NeedsLayoutTreeUpdate() returning false.
+  if (!need_placeholder_) {
+    need_placeholder_ =
+        base::ranges::any_of(nodes_to_be_removed, [&](Node* node) {
+          if (node == start_block_) {
+            VisiblePosition previous = PreviousPositionOf(
+                VisiblePosition::FirstPositionInNode(*start_block_.Get()));
+            if (previous.IsNotNull() && !IsEndOfBlock(previous))
+              return true;
+          }
+          if (node == end_block_) {
+            VisiblePosition next = NextPositionOf(
+                VisiblePosition::LastPositionInNode(*end_block_.Get()));
+            if (next.IsNotNull() && !IsStartOfBlock(next))
+              return true;
+          }
+          return false;
+        });
+  }
+
+  // Actually remove the nodes in |nodes_to_be_removed|.
+  for (Node* node_to_be_removed : nodes_to_be_removed) {
+    if (!downstream_end_.AnchorNode()->IsDescendantOf(node_to_be_removed)) {
+      downstream_end_ =
+          ComputePositionForNodeRemoval(downstream_end_, *(node_to_be_removed));
+    }
+
+    if (start_root_ != end_root_ &&
+        !(node_to_be_removed->IsDescendantOf(start_root_.Get()) &&
+          node_to_be_removed->IsDescendantOf(end_root_.Get()))) {
+      // If a node is not in both the start and end editable roots, remove it
+      // only if its inside an editable region.
+      if (!IsEditable(*node_to_be_removed->parentNode())) {
+        // Don't remove non-editable atomic nodes.
+        if (!node_to_be_removed->hasChildren())
+          continue;
+        // Search this non-editable region for editable regions to empty.
+        // Don't remove editable regions that are inside non-editable ones, just
+        // clear them.
+        RemoveAllChildrenIfPossible(To<ContainerNode>(node_to_be_removed),
+                                    editing_state,
+                                    kDoNotAssumeContentIsAlwaysEditable);
+        if (editing_state->IsAborted())
+          return;
+
+        continue;
+      }
+    }
+
+    if (IsTableStructureNode(node_to_be_removed) ||
+        IsRootEditableElement(*node_to_be_removed)) {
+      // Do not remove an element of table structure; remove its contents.
+      // Likewise for the root editable element.
+      RemoveAllChildrenIfPossible(To<ContainerNode>(node_to_be_removed),
+                                  editing_state,
+                                  kDoNotAssumeContentIsAlwaysEditable);
+      if (editing_state->IsAborted())
+        return;
+
+      // Make sure empty cell has some height, if a placeholder can be inserted.
+      GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kEditing);
+      LayoutObject* layout_obj = node_to_be_removed->GetLayoutObject();
+      if (layout_obj && layout_obj->IsTableCell() &&
+          To<LayoutBox>(layout_obj)->ContentHeight() <= 0) {
+        Position first_editable_position =
+            FirstEditablePositionInNode(node_to_be_removed);
+        if (first_editable_position.IsNotNull())
+          InsertBlockPlaceholder(first_editable_position, editing_state);
+      }
+      continue;
+    }
+
+    ending_position_ =
+        ComputePositionForNodeRemoval(ending_position_, *node_to_be_removed);
+    CompositeEditCommand::RemoveNode(node_to_be_removed, editing_state,
+                                     kDoNotAssumeContentIsAlwaysEditable);
+    if (editing_state->IsAborted())
+      return;
+  }
 }
 
 static void UpdatePositionForTextRemoval(Text* node,
@@ -645,18 +771,20 @@ void DeleteSelectionCommand::HandleGeneralDelete(EditingState* editing_state) {
 
   if (start_node == downstream_end_.AnchorNode()) {
     if (downstream_end_.ComputeEditingOffset() - start_offset > 0) {
-      if (auto* text = DynamicTo<Text>(start_node)) {
+      if (auto* text_node_to_trim = DynamicTo<Text>(start_node)) {
         // in a text node that needs to be trimmed
         DeleteTextFromNode(
-            text, start_offset,
+            text_node_to_trim, start_offset,
             downstream_end_.ComputeOffsetInContainerNode() - start_offset);
       } else {
+        RelocatablePosition relocatable_downstream_end(downstream_end_);
         RemoveChildrenInRange(start_node, start_offset,
                               downstream_end_.ComputeEditingOffset(),
                               editing_state);
         if (editing_state->IsAborted())
           return;
         ending_position_ = upstream_start_;
+        downstream_end_ = relocatable_downstream_end.GetPosition();
       }
       // We should update layout to associate |start_node| to layout object.
       GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kEditing);
@@ -690,36 +818,10 @@ void DeleteSelectionCommand::HandleGeneralDelete(EditingState* editing_state) {
                          upstream_end_.ComputeOffsetInContainerNode());
     }
 
-    // handle deleting all nodes that are completely selected
-    while (node && node != downstream_end_.AnchorNode()) {
-      if (ComparePositions(FirstPositionInOrBeforeNode(*node),
-                           downstream_end_) >= 0) {
-        // NodeTraversal::nextSkippingChildren just blew past the end position,
-        // so stop deleting
-        node = nullptr;
-      } else if (!downstream_end_.AnchorNode()->IsDescendantOf(node)) {
-        Node* next_node = NodeTraversal::NextSkippingChildren(*node);
-        // if we just removed a node from the end container, update end position
-        // so the check above will work
-        downstream_end_ = ComputePositionForNodeRemoval(downstream_end_, *node);
-        RemoveNode(node, editing_state);
-        if (editing_state->IsAborted())
-          return;
-        node = next_node;
-      } else {
-        GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kEditing);
-        Node& n = NodeTraversal::LastWithinOrSelf(*node);
-        if (downstream_end_.AnchorNode() == n &&
-            downstream_end_.ComputeEditingOffset() >= CaretMaxOffset(&n)) {
-          RemoveNode(node, editing_state);
-          if (editing_state->IsAborted())
-            return;
-          node = nullptr;
-        } else {
-          node = NodeTraversal::Next(*node);
-        }
-      }
-    }
+    // Delete all nodes that are completely selected
+    RemoveCompletelySelectedNodes(node, editing_state);
+    if (editing_state->IsAborted())
+      return;
 
     // TODO(editing-dev): Hoist UpdateStyleAndLayout
     // to caller. See http://crbug.com/590369 for more details.
@@ -736,10 +838,12 @@ void DeleteSelectionCommand::HandleGeneralDelete(EditingState* editing_state) {
         // The node itself is fully selected, not just its contents.  Delete it.
         RemoveNode(downstream_end_.AnchorNode(), editing_state);
       } else {
-        if (auto* text = DynamicTo<Text>(downstream_end_.AnchorNode())) {
+        if (auto* text_node_to_trim =
+                DynamicTo<Text>(downstream_end_.AnchorNode())) {
           // in a text node that needs to be trimmed
           if (downstream_end_.ComputeEditingOffset() > 0) {
-            DeleteTextFromNode(text, 0, downstream_end_.ComputeEditingOffset());
+            DeleteTextFromNode(text_node_to_trim, 0,
+                               downstream_end_.ComputeEditingOffset());
           }
           // Remove children of downstream_end_.AnchorNode() that come after
           // upstream_start_. Don't try to remove children if upstream_start_
@@ -772,31 +876,18 @@ void DeleteSelectionCommand::HandleGeneralDelete(EditingState* editing_state) {
   }
 }
 
-void DeleteSelectionCommand::FixupWhitespace() {
+void DeleteSelectionCommand::FixupWhitespace(const Position& position) {
+  auto* const text_node = DynamicTo<Text>(position.AnchorNode());
+  if (!text_node)
+    return;
   GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kEditing);
-  if (leading_whitespace_.IsNotNull() &&
-      !IsRenderedCharacter(leading_whitespace_)) {
-    if (auto* text_node = DynamicTo<Text>(leading_whitespace_.AnchorNode())) {
-      DCHECK(!text_node->GetLayoutObject() ||
-             text_node->GetLayoutObject()->Style()->CollapseWhiteSpace())
-          << text_node;
-      ReplaceTextInNode(text_node,
-                        leading_whitespace_.ComputeOffsetInContainerNode(), 1,
-                        NonBreakingSpaceString());
-    }
-  }
-
-  if (trailing_whitespace_.IsNotNull() &&
-      !IsRenderedCharacter(trailing_whitespace_)) {
-    if (auto* text_node = DynamicTo<Text>(trailing_whitespace_.AnchorNode())) {
-      DCHECK(!text_node->GetLayoutObject() ||
-             text_node->GetLayoutObject()->Style()->CollapseWhiteSpace())
-          << text_node;
-      ReplaceTextInNode(text_node,
-                        trailing_whitespace_.ComputeOffsetInContainerNode(), 1,
-                        NonBreakingSpaceString());
-    }
-  }
+  if (IsRenderedCharacter(position))
+    return;
+  DCHECK(!text_node->GetLayoutObject() ||
+         text_node->GetLayoutObject()->Style()->CollapseWhiteSpace())
+      << text_node;
+  ReplaceTextInNode(text_node, position.ComputeOffsetInContainerNode(), 1,
+                    NonBreakingSpaceString());
 }
 
 // If a selection starts in one block and ends in another, we have to merge to
@@ -835,23 +926,20 @@ void DeleteSelectionCommand::MergeParagraphs(EditingState* editing_state) {
 
   GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kEditing);
 
-  VisiblePosition start_of_paragraph_to_move =
-      CreateVisiblePosition(downstream_end_);
+  VisiblePosition merge_origin = CreateVisiblePosition(downstream_end_);
   VisiblePosition merge_destination = CreateVisiblePosition(upstream_start_);
 
   // downstream_end_'s block has been emptied out by deletion.  There is no
   // content inside of it to move, so just remove it.
   Element* end_block = EnclosingBlock(downstream_end_.AnchorNode());
   if (!end_block ||
-      !end_block->contains(
-          start_of_paragraph_to_move.DeepEquivalent().AnchorNode()) ||
-      !start_of_paragraph_to_move.DeepEquivalent().AnchorNode()) {
+      !end_block->contains(merge_origin.DeepEquivalent().AnchorNode()) ||
+      !merge_origin.DeepEquivalent().AnchorNode()) {
     RemoveNode(EnclosingBlock(downstream_end_.AnchorNode()), editing_state);
     return;
   }
 
-  RelocatablePosition relocatable_start(
-      start_of_paragraph_to_move.DeepEquivalent());
+  RelocatablePosition relocatable_start(merge_origin.DeepEquivalent());
 
   // We need to merge into upstream_start_'s block, but it's been emptied out
   // and collapsed by deletion.
@@ -861,24 +949,22 @@ void DeleteSelectionCommand::MergeParagraphs(EditingState* editing_state) {
        (!merge_destination.DeepEquivalent().AnchorNode()->hasChildren() ||
         !upstream_start_.ComputeContainerNode()->hasChildren())) ||
       (starts_at_empty_line_ &&
-       merge_destination.DeepEquivalent() !=
-           start_of_paragraph_to_move.DeepEquivalent())) {
+       merge_destination.DeepEquivalent() != merge_origin.DeepEquivalent())) {
     InsertNodeAt(MakeGarbageCollected<HTMLBRElement>(GetDocument()),
                  upstream_start_, editing_state);
     if (editing_state->IsAborted())
       return;
     GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kEditing);
     merge_destination = CreateVisiblePosition(upstream_start_);
-    start_of_paragraph_to_move =
-        CreateVisiblePosition(relocatable_start.GetPosition());
+    merge_origin = CreateVisiblePosition(relocatable_start.GetPosition());
   }
 
-  if (merge_destination.DeepEquivalent() ==
-      start_of_paragraph_to_move.DeepEquivalent())
+  if (merge_destination.DeepEquivalent() == merge_origin.DeepEquivalent())
     return;
 
+  VisiblePosition start_of_paragraph_to_move = StartOfParagraph(merge_origin);
   VisiblePosition end_of_paragraph_to_move =
-      EndOfParagraph(start_of_paragraph_to_move, kCanSkipOverEditingBoundary);
+      EndOfParagraph(merge_origin, kCanSkipOverEditingBoundary);
 
   if (merge_destination.DeepEquivalent() ==
       end_of_paragraph_to_move.DeepEquivalent())
@@ -906,10 +992,9 @@ void DeleteSelectionCommand::MergeParagraphs(EditingState* editing_state) {
   // the right.
   // FIXME: Consider RTL.
   if (!starts_at_empty_line_ && IsStartOfParagraph(merge_destination) &&
-      AbsoluteCaretBoundsOf(start_of_paragraph_to_move.ToPositionWithAffinity())
-              .X() >
+      AbsoluteCaretBoundsOf(merge_origin.ToPositionWithAffinity()).x() >
           AbsoluteCaretBoundsOf(merge_destination.ToPositionWithAffinity())
-              .X()) {
+              .x()) {
     if (IsA<HTMLBRElement>(
             *MostForwardCaretPosition(merge_destination.DeepEquivalent())
                  .AnchorNode())) {
@@ -930,7 +1015,7 @@ void DeleteSelectionCommand::MergeParagraphs(EditingState* editing_state) {
   // the caret to just before the selection we deleted. See
   // https://bugs.webkit.org/show_bug.cgi?id=25439
   if (IsRenderedAsNonInlineTableImageOrHR(
-          start_of_paragraph_to_move.DeepEquivalent().AnchorNode()) &&
+          merge_origin.DeepEquivalent().AnchorNode()) &&
       !IsStartOfParagraph(merge_destination)) {
     ending_position_ = upstream_start_;
     return;
@@ -1030,7 +1115,9 @@ void DeleteSelectionCommand::CalculateTypingStyleAfterDelete() {
     typing_style_ = delete_into_blockquote_style_;
   delete_into_blockquote_style_ = nullptr;
 
-  typing_style_->PrepareToApplyAt(ending_position_);
+  // |editing_position_| can be null. See http://crbug.com/1299189
+  if (ending_position_.IsNotNull())
+    typing_style_->PrepareToApplyAt(ending_position_);
   if (typing_style_->IsEmpty())
     typing_style_ = nullptr;
   // This is where we've deleted all traces of a style but not a whole paragraph
@@ -1174,7 +1261,8 @@ void DeleteSelectionCommand::DoApply(EditingState* editing_state) {
   if (editing_state->IsAborted())
     return;
 
-  FixupWhitespace();
+  FixupWhitespace(leading_whitespace_);
+  FixupWhitespace(trailing_whitespace_);
 
   MergeParagraphs(editing_state);
   if (editing_state->IsAborted())

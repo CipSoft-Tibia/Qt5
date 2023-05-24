@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,20 +16,19 @@ class VisibleUnitsWordTest : public EditingTestBase {
   std::string DoStartOfWord(
       const std::string& selection_text,
       WordSide word_side = WordSide::kNextWordIfOnBoundary) {
-    const Position position = SetSelectionTextToBody(selection_text).Base();
+    const Position position = SetCaretTextToBody(selection_text);
     return GetCaretTextFromBody(StartOfWordPosition(position, word_side));
   }
 
   std::string DoEndOfWord(
       const std::string& selection_text,
       WordSide word_side = WordSide::kNextWordIfOnBoundary) {
-    const Position position = SetSelectionTextToBody(selection_text).Base();
-    return GetCaretTextFromBody(
-        EndOfWord(CreateVisiblePosition(position), word_side).DeepEquivalent());
+    const Position position = SetCaretTextToBody(selection_text);
+    return GetCaretTextFromBody(EndOfWordPosition(position, word_side));
   }
 
   std::string DoNextWord(const std::string& selection_text) {
-    const Position position = SetSelectionTextToBody(selection_text).Base();
+    const Position position = SetCaretTextToBody(selection_text);
     const PlatformWordBehavior platform_word_behavior =
         PlatformWordBehavior::kWordDontSkipSpaces;
     return GetCaretTextFromBody(
@@ -39,7 +38,7 @@ class VisibleUnitsWordTest : public EditingTestBase {
   }
 
   std::string DoNextWordSkippingSpaces(const std::string& selection_text) {
-    const Position position = SetSelectionTextToBody(selection_text).Base();
+    const Position position = SetCaretTextToBody(selection_text);
     const PlatformWordBehavior platform_word_behavior =
         PlatformWordBehavior::kWordSkipSpaces;
     return GetCaretTextFromBody(
@@ -49,12 +48,18 @@ class VisibleUnitsWordTest : public EditingTestBase {
   }
 
   std::string DoPreviousWord(const std::string& selection_text) {
-    const Position position = SetSelectionTextToBody(selection_text).Base();
+    const Position position = SetCaretTextToBody(selection_text);
     const Position result =
         CreateVisiblePosition(PreviousWordPosition(position)).DeepEquivalent();
     if (result.IsNull())
       return GetSelectionTextFromBody(SelectionInDOMTree());
     return GetCaretTextFromBody(result);
+  }
+
+  std::string DoMiddleOfWord(const std::string& selection_text) {
+    SelectionInDOMTree selection = SetSelectionTextToBody(selection_text);
+    return GetCaretTextFromBody(
+        MiddleOfWordPosition(selection.Base(), selection.Extent()));
   }
 
   // To avoid name conflict in jumbo build, following functions should be here.
@@ -73,23 +78,7 @@ class VisibleUnitsWordTest : public EditingTestBase {
   }
 };
 
-class ParameterizedVisibleUnitsWordTest
-    : public ::testing::WithParamInterface<bool>,
-      private ScopedLayoutNGForTest,
-      public VisibleUnitsWordTest {
- protected:
-  ParameterizedVisibleUnitsWordTest() : ScopedLayoutNGForTest(GetParam()) {}
-
-  bool LayoutNGEnabled() const {
-    return RuntimeEnabledFeatures::LayoutNGEnabled();
-  }
-};
-
-INSTANTIATE_TEST_SUITE_P(All,
-                         ParameterizedVisibleUnitsWordTest,
-                         ::testing::Bool());
-
-TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordBasic) {
+TEST_F(VisibleUnitsWordTest, StartOfWordBasic) {
   EXPECT_EQ("<p> |(1) abc def</p>", DoStartOfWord("<p>| (1) abc def</p>"));
   EXPECT_EQ("<p> |(1) abc def</p>", DoStartOfWord("<p> |(1) abc def</p>"));
   EXPECT_EQ("<p> (|1) abc def</p>", DoStartOfWord("<p> (|1) abc def</p>"));
@@ -106,8 +95,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordBasic) {
   EXPECT_EQ("<p> (1) abc def|</p>", DoStartOfWord("<p> (1) abc def</p>|"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest,
-       StartOfWordPreviousWordIfOnBoundaryBasic) {
+TEST_F(VisibleUnitsWordTest, StartOfWordPreviousWordIfOnBoundaryBasic) {
   EXPECT_EQ("<p> |(1) abc def</p>",
             DoStartOfWord("<p>| (1) abc def</p>",
                           WordSide::kPreviousWordIfOnBoundary));
@@ -152,12 +140,12 @@ TEST_P(ParameterizedVisibleUnitsWordTest,
                           WordSide::kPreviousWordIfOnBoundary));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordCrossing) {
+TEST_F(VisibleUnitsWordTest, StartOfWordCrossing) {
   EXPECT_EQ("<b>|abc</b><i>def</i>", DoStartOfWord("<b>abc</b><i>|def</i>"));
   EXPECT_EQ("<b>abc</b><i>def|</i>", DoStartOfWord("<b>abc</b><i>def</i>|"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordFirstLetter) {
+TEST_F(VisibleUnitsWordTest, StartOfWordFirstLetter) {
   InsertStyleElement("p::first-letter {font-size:200%;}");
   // Note: Expectations should match with |StartOfWordBasic|.
   EXPECT_EQ("<p> |(1) abc def</p>", DoStartOfWord("<p>| (1) abc def</p>"));
@@ -176,12 +164,13 @@ TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordFirstLetter) {
   EXPECT_EQ("<p> (1) abc def|</p>", DoStartOfWord("<p> (1) abc def</p>|"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordShadowDOM) {
+TEST_F(VisibleUnitsWordTest, StartOfWordShadowDOM) {
   const char* body_content =
-      "<a id=host><b id=one>1</b> <b id=two>22</b></a><i id=three>333</i>";
+      "<span id=host><b slot='#one' id=one>1</b> <b slot='#two' "
+      "id=two>22</b></span><i id=three>333</i>";
   const char* shadow_content =
-      "<p><u id=four>44444</u><content select=#two></content><span id=space> "
-      "</span><content select=#one></content><u id=five>55555</u></p>";
+      "<p><u id=four>44444</u><slot name=#two></slot><span id=space> "
+      "</span><slot name=#one></slot><u id=five>55555</u></p>";
   SetBodyContent(body_content);
   ShadowRoot* shadow_root = SetShadowContent(shadow_content, "host");
 
@@ -213,7 +202,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordShadowDOM) {
                 StartOfWordPosition(
                     CreateVisiblePositionInFlatTree(*one, 1).DeepEquivalent()))
                 .DeepEquivalent());
-  EXPECT_EQ(Position(one, 0),
+  EXPECT_EQ(Position(four, 0),
             CreateVisiblePosition(
                 StartOfWordPosition(
                     CreateVisiblePositionInDOMTree(*two, 0).DeepEquivalent()))
@@ -233,8 +222,13 @@ TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordShadowDOM) {
                 StartOfWordPosition(
                     CreateVisiblePositionInFlatTree(*two, 1).DeepEquivalent()))
                 .DeepEquivalent());
-  // DOM tree canonicalization moves the result to a wrong position.
-  EXPECT_EQ(Position(two, 2),
+  EXPECT_EQ(Position(three, 0),
+            CreateVisiblePosition(
+                StartOfWordPosition(CreateVisiblePositionInDOMTree(
+                                        *three, 1, TextAffinity::kUpstream)
+                                        .DeepEquivalent()))
+                .DeepEquivalent());
+  EXPECT_EQ(Position(three, 0),
             CreateVisiblePosition(
                 StartOfWordPosition(
                     CreateVisiblePositionInDOMTree(*three, 1).DeepEquivalent()))
@@ -268,7 +262,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordShadowDOM) {
                 .DeepEquivalent());
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordTextSecurity) {
+TEST_F(VisibleUnitsWordTest, StartOfWordTextSecurity) {
   // Note: |StartOfWordPosition()| considers security characters
   // as a sequence "x".
   InsertStyleElement("s {-webkit-text-security:disc;}");
@@ -283,7 +277,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordTextSecurity) {
   EXPECT_EQ("|abc<s>foo bar</s>baz", DoStartOfWord("abc<s>foo bar</s>b|az"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordTextControl) {
+TEST_F(VisibleUnitsWordTest, StartOfWordTextControl) {
   EXPECT_EQ("|foo<input value=\"bla\">bar",
             DoStartOfWord("|foo<input value=\"bla\">bar"));
   EXPECT_EQ("|foo<input value=\"bla\">bar",
@@ -302,8 +296,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, StartOfWordTextControl) {
             DoStartOfWord("foo<input value=\"bla\">bar|"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest,
-       StartOfWordPreviousWordIfOnBoundaryTextControl) {
+TEST_F(VisibleUnitsWordTest, StartOfWordPreviousWordIfOnBoundaryTextControl) {
   EXPECT_EQ("|foo<input value=\"bla\">bar",
             DoStartOfWord("|foo<input value=\"bla\">bar",
                           WordSide::kPreviousWordIfOnBoundary));
@@ -330,7 +323,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest,
                           WordSide::kPreviousWordIfOnBoundary));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, EndOfWordBasic) {
+TEST_F(VisibleUnitsWordTest, EndOfWordBasic) {
   EXPECT_EQ("<p> (|1) abc def</p>", DoEndOfWord("<p>| (1) abc def</p>"));
   EXPECT_EQ("<p> (|1) abc def</p>", DoEndOfWord("<p> |(1) abc def</p>"));
   EXPECT_EQ("<p> (1|) abc def</p>", DoEndOfWord("<p> (|1) abc def</p>"));
@@ -344,11 +337,10 @@ TEST_P(ParameterizedVisibleUnitsWordTest, EndOfWordBasic) {
   EXPECT_EQ("<p> (1) abc def|</p>", DoEndOfWord("<p> (1) abc d|ef</p>"));
   EXPECT_EQ("<p> (1) abc def|</p>", DoEndOfWord("<p> (1) abc de|f</p>"));
   EXPECT_EQ("<p> (1) abc def|</p>", DoEndOfWord("<p> (1) abc def|</p>"));
-  EXPECT_EQ("<p> (1) abc def|</p>", DoEndOfWord("<p> (1) abc def</p>|"));
+  EXPECT_EQ("<p> (1) abc def</p>|", DoEndOfWord("<p> (1) abc def</p>|"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest,
-       EndOfWordPreviousWordIfOnBoundaryBasic) {
+TEST_F(VisibleUnitsWordTest, EndOfWordPreviousWordIfOnBoundaryBasic) {
   EXPECT_EQ(
       "<p> |(1) abc def</p>",
       DoEndOfWord("<p>| (1) abc def</p>", WordSide::kPreviousWordIfOnBoundary));
@@ -389,16 +381,17 @@ TEST_P(ParameterizedVisibleUnitsWordTest,
       "<p> (1) abc def|</p>",
       DoEndOfWord("<p> (1) abc def|</p>", WordSide::kPreviousWordIfOnBoundary));
   EXPECT_EQ(
-      "<p> (1) abc def|</p>",
+      "<p> (1) abc def</p>|",
       DoEndOfWord("<p> (1) abc def</p>|", WordSide::kPreviousWordIfOnBoundary));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, EndOfWordShadowDOM) {
+TEST_F(VisibleUnitsWordTest, EndOfWordShadowDOM) {
   const char* body_content =
-      "<a id=host><b id=one>1</b> <b id=two>22</b></a><i id=three>333</i>";
+      "<span id=host><b slot='#one' id=one>1</b> <b slot='#two' "
+      "id=two>22</b></span><i id=three>333</i>";
   const char* shadow_content =
-      "<p><u id=four>44444</u><content select=#two></content><span id=space> "
-      "</span><content select=#one></content><u id=five>55555</u></p>";
+      "<p><u id=four>44444</u><slot name=#two></slot><span id=space> "
+      "</span><slot name=#one></slot><u id=five>55555</u></p>";
   SetBodyContent(body_content);
   ShadowRoot* shadow_root = SetShadowContent(shadow_content, "host");
 
@@ -408,57 +401,36 @@ TEST_P(ParameterizedVisibleUnitsWordTest, EndOfWordShadowDOM) {
   Node* four = shadow_root->getElementById("four")->firstChild();
   Node* five = shadow_root->getElementById("five")->firstChild();
 
-  EXPECT_EQ(
-      Position(five, 5),
-      EndOfWord(CreateVisiblePositionInDOMTree(*one, 0)).DeepEquivalent());
-  EXPECT_EQ(
-      PositionInFlatTree(five, 5),
-      EndOfWord(CreateVisiblePositionInFlatTree(*one, 0)).DeepEquivalent());
+  EXPECT_EQ(Position(five, 5), EndOfWordPosition(Position(*one, 0)));
+  EXPECT_EQ(PositionInFlatTree(five, 5),
+            EndOfWordPosition(PositionInFlatTree(*one, 0)));
 
-  EXPECT_EQ(
-      Position(five, 5),
-      EndOfWord(CreateVisiblePositionInDOMTree(*one, 1)).DeepEquivalent());
-  EXPECT_EQ(
-      PositionInFlatTree(five, 5),
-      EndOfWord(CreateVisiblePositionInFlatTree(*one, 1)).DeepEquivalent());
+  EXPECT_EQ(Position(five, 5), EndOfWordPosition(Position(*one, 1)));
+  EXPECT_EQ(PositionInFlatTree(five, 5),
+            EndOfWordPosition(PositionInFlatTree(*one, 1)));
 
-  EXPECT_EQ(
-      Position(five, 5),
-      EndOfWord(CreateVisiblePositionInDOMTree(*two, 0)).DeepEquivalent());
-  EXPECT_EQ(
-      PositionInFlatTree(two, 2),
-      EndOfWord(CreateVisiblePositionInFlatTree(*two, 0)).DeepEquivalent());
+  EXPECT_EQ(Position(two, 2), EndOfWordPosition(Position(*two, 0)));
+  EXPECT_EQ(PositionInFlatTree(two, 2),
+            EndOfWordPosition(PositionInFlatTree(*two, 0)));
 
-  EXPECT_EQ(
-      Position(two, 2),
-      EndOfWord(CreateVisiblePositionInDOMTree(*two, 1)).DeepEquivalent());
-  EXPECT_EQ(
-      PositionInFlatTree(two, 2),
-      EndOfWord(CreateVisiblePositionInFlatTree(*two, 1)).DeepEquivalent());
+  EXPECT_EQ(Position(two, 2), EndOfWordPosition(Position(*two, 1)));
+  EXPECT_EQ(PositionInFlatTree(two, 2),
+            EndOfWordPosition(PositionInFlatTree(*two, 1)));
 
-  EXPECT_EQ(
-      Position(three, 3),
-      EndOfWord(CreateVisiblePositionInDOMTree(*three, 1)).DeepEquivalent());
-  EXPECT_EQ(
-      PositionInFlatTree(three, 3),
-      EndOfWord(CreateVisiblePositionInFlatTree(*three, 1)).DeepEquivalent());
+  EXPECT_EQ(Position(three, 3), EndOfWordPosition(Position(*three, 1)));
+  EXPECT_EQ(PositionInFlatTree(three, 3),
+            EndOfWordPosition(PositionInFlatTree(*three, 1)));
 
-  EXPECT_EQ(
-      Position(two, 2),
-      EndOfWord(CreateVisiblePositionInDOMTree(*four, 1)).DeepEquivalent());
-  EXPECT_EQ(
-      PositionInFlatTree(two, 2),
-      EndOfWord(CreateVisiblePositionInFlatTree(*four, 1)).DeepEquivalent());
+  EXPECT_EQ(Position(two, 2), EndOfWordPosition(Position(*four, 1)));
+  EXPECT_EQ(PositionInFlatTree(two, 2),
+            EndOfWordPosition(PositionInFlatTree(*four, 1)));
 
-  EXPECT_EQ(
-      Position(five, 5),
-      EndOfWord(CreateVisiblePositionInDOMTree(*five, 1)).DeepEquivalent());
-  EXPECT_EQ(
-      PositionInFlatTree(five, 5),
-      EndOfWord(CreateVisiblePositionInFlatTree(*five, 1)).DeepEquivalent());
+  EXPECT_EQ(Position(five, 5), EndOfWordPosition(Position(*five, 1)));
+  EXPECT_EQ(PositionInFlatTree(five, 5),
+            EndOfWordPosition(PositionInFlatTree(*five, 1)));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, EndOfWordTextSecurity) {
+TEST_F(VisibleUnitsWordTest, EndOfWordTextSecurity) {
   // Note: |EndOfWord()| considers security characters as a sequence "x".
   InsertStyleElement("s {-webkit-text-security:disc;}");
   EXPECT_EQ("abc<s>foo bar</s>baz|", DoEndOfWord("|abc<s>foo bar</s>baz"));
@@ -472,7 +444,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, EndOfWordTextSecurity) {
   EXPECT_EQ("abc<s>foo bar</s>baz|", DoEndOfWord("abc<s>foo bar</s>b|az"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, EndOfWordTextControl) {
+TEST_F(VisibleUnitsWordTest, EndOfWordTextControl) {
   EXPECT_EQ("foo|<input value=\"bla\">bar",
             DoEndOfWord("|foo<input value=\"bla\">bar"));
   EXPECT_EQ("foo|<input value=\"bla\">bar",
@@ -491,8 +463,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, EndOfWordTextControl) {
             DoEndOfWord("foo<input value=\"bla\">bar|"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest,
-       EndOfWordPreviousWordIfOnBoundaryTextControl) {
+TEST_F(VisibleUnitsWordTest, EndOfWordPreviousWordIfOnBoundaryTextControl) {
   EXPECT_EQ("|foo<input value=\"bla\">bar",
             DoEndOfWord("|foo<input value=\"bla\">bar",
                         WordSide::kPreviousWordIfOnBoundary));
@@ -519,7 +490,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest,
                         WordSide::kPreviousWordIfOnBoundary));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, NextWordSkipSpacesBasic) {
+TEST_F(VisibleUnitsWordTest, NextWordSkipSpacesBasic) {
   EXPECT_EQ("<p> (|1) abc def</p>",
             DoNextWordSkippingSpaces("<p>| (1) abc def</p>"));
   EXPECT_EQ("<p> (|1) abc def</p>",
@@ -528,7 +499,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, NextWordSkipSpacesBasic) {
             DoNextWordSkippingSpaces("<p> (|1) abc def</p>"));
   EXPECT_EQ("<p> (1) |abc def</p>",
             DoNextWordSkippingSpaces("<p> (1|) abc def</p>"));
-  EXPECT_EQ("<p> (1) abc |def</p>",
+  EXPECT_EQ("<p> (1) |abc def</p>",
             DoNextWordSkippingSpaces("<p> (1)| abc def</p>"));
   EXPECT_EQ("<p> (1) abc |def</p>",
             DoNextWordSkippingSpaces("<p> (1) |abc def</p>"));
@@ -536,7 +507,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, NextWordSkipSpacesBasic) {
             DoNextWordSkippingSpaces("<p> (1) a|bc def</p>"));
   EXPECT_EQ("<p> (1) abc |def</p>",
             DoNextWordSkippingSpaces("<p> (1) ab|c def</p>"));
-  EXPECT_EQ("<p> (1) abc def|</p>",
+  EXPECT_EQ("<p> (1) abc |def</p>",
             DoNextWordSkippingSpaces("<p> (1) abc| def</p>"));
   EXPECT_EQ("<p> (1) abc def|</p>",
             DoNextWordSkippingSpaces("<p> (1) abc |def</p>"));
@@ -550,7 +521,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, NextWordSkipSpacesBasic) {
             DoNextWordSkippingSpaces("<p> (1) abc def</p>|"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, NextWordBasic) {
+TEST_F(VisibleUnitsWordTest, NextWordBasic) {
   EXPECT_EQ("<p> (|1) abc def</p>", DoNextWord("<p>| (1) abc def</p>"));
   EXPECT_EQ("<p> (|1) abc def</p>", DoNextWord("<p> |(1) abc def</p>"));
   EXPECT_EQ("<p> (1|) abc def</p>", DoNextWord("<p> (|1) abc def</p>"));
@@ -567,16 +538,16 @@ TEST_P(ParameterizedVisibleUnitsWordTest, NextWordBasic) {
   EXPECT_EQ("<p> (1) abc def|</p>", DoNextWord("<p> (1) abc def</p>|"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, NextWordCrossingBlock) {
+TEST_F(VisibleUnitsWordTest, NextWordCrossingBlock) {
   EXPECT_EQ("<p>abc|</p><p>def</p>", DoNextWord("<p>|abc</p><p>def</p>"));
   EXPECT_EQ("<p>abc</p><p>|def</p>", DoNextWord("<p>abc|</p><p>def</p>"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, NextWordCrossingPlaceholderBR) {
+TEST_F(VisibleUnitsWordTest, NextWordCrossingPlaceholderBR) {
   EXPECT_EQ("<p><br></p><p>|abc</p>", DoNextWord("<p>|<br></p><p>abc</p>"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, NextWordMixedEditability) {
+TEST_F(VisibleUnitsWordTest, NextWordMixedEditability) {
   EXPECT_EQ(
       "<p contenteditable>"
       "abc<b contenteditable=\"false\">def ghi</b>|jkl mno</p>",
@@ -599,7 +570,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, NextWordMixedEditability) {
                  "abc<b contenteditable=false>def ghi|</b>jkl mno</p>"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, NextWordPunctuation) {
+TEST_F(VisibleUnitsWordTest, NextWordPunctuation) {
   EXPECT_EQ("abc|.def", DoNextWord("|abc.def"));
   EXPECT_EQ("abc|.def", DoNextWord("a|bc.def"));
   EXPECT_EQ("abc|.def", DoNextWord("ab|c.def"));
@@ -620,12 +591,12 @@ TEST_P(ParameterizedVisibleUnitsWordTest, NextWordPunctuation) {
   EXPECT_EQ("abc 32.3| def", DoNextWord("abc |32.3 def"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, NextWordSkipTab) {
+TEST_F(VisibleUnitsWordTest, NextWordSkipTab) {
   InsertStyleElement("s { white-space: pre }");
   EXPECT_EQ("<p><s>\t</s>foo|</p>", DoNextWord("<p><s>\t|</s>foo</p>"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, NextWordSkipTextControl) {
+TEST_F(VisibleUnitsWordTest, NextWordSkipTextControl) {
   EXPECT_EQ("foo|<input value=\"bla\">bar",
             DoNextWord("|foo<input value=\"bla\">bar"));
   EXPECT_EQ("foo|<input value=\"bla\">bar",
@@ -644,9 +615,33 @@ TEST_P(ParameterizedVisibleUnitsWordTest, NextWordSkipTextControl) {
             DoNextWord("foo<input value=\"bla\">bar|"));
 }
 
+TEST_F(VisibleUnitsWordTest, NextWordSkipSpacesEmoji) {
+  EXPECT_EQ("<p> abc |😂 def</p>",
+            DoNextWordSkippingSpaces("<p> |abc &#x1F602; def</p>"));
+  EXPECT_EQ("<p> abc 😂 |def</p>",
+            DoNextWordSkippingSpaces("<p> abc |&#x1F602; def</p>"));
+  EXPECT_EQ("<p> abc 😂 def|</p>",
+            DoNextWordSkippingSpaces("<p> abc &#x1F602; |def</p>"));
+}
+
+TEST_F(VisibleUnitsWordTest, NextWordEmoji) {
+  EXPECT_EQ("<p> abc| 😂 def</p>", DoNextWord("<p> |abc &#x1F602; def</p>"));
+  EXPECT_EQ("<p> abc 😂| def</p>", DoNextWord("<p> abc |&#x1F602; def</p>"));
+  EXPECT_EQ("<p> abc 😂 def|</p>", DoNextWord("<p> abc &#x1F602; |def</p>"));
+}
+
+TEST_F(VisibleUnitsWordTest, NextWordEmojiSequence) {
+  EXPECT_EQ("<p> abc| 😂😂 def</p>",
+            DoNextWord("<p> |abc &#x1F602;&#x1F602; def</p>"));
+  EXPECT_EQ("<p> abc 😂😂| def</p>",
+            DoNextWord("<p> abc |&#x1F602;&#x1F602; def</p>"));
+  EXPECT_EQ("<p> abc 😂😂 def|</p>",
+            DoNextWord("<p> abc &#x1F602;&#x1F602; |def</p>"));
+}
+
 //----
 
-TEST_P(ParameterizedVisibleUnitsWordTest, PreviousWordBasic) {
+TEST_F(VisibleUnitsWordTest, PreviousWordBasic) {
   EXPECT_EQ("<p> |(1) abc def</p>", DoPreviousWord("<p>| (1) abc def</p>"));
   EXPECT_EQ("<p> |(1) abc def</p>", DoPreviousWord("<p> |(1) abc def</p>"));
   EXPECT_EQ("<p> |(1) abc def</p>", DoPreviousWord("<p> (|1) abc def</p>"));
@@ -669,15 +664,15 @@ TEST_P(ParameterizedVisibleUnitsWordTest, PreviousWordBasic) {
   EXPECT_EQ("<p> abc |32.3 def</p>", DoPreviousWord("<p> abc 32.3 |def</p>"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, PreviousWordCrossingBlock) {
+TEST_F(VisibleUnitsWordTest, PreviousWordCrossingBlock) {
   EXPECT_EQ("<p>abc|</p><p>def</p>", DoPreviousWord("<p>abc</p><p>|def</p>"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, PreviousWordCrossingPlaceholderBR) {
+TEST_F(VisibleUnitsWordTest, PreviousWordCrossingPlaceholderBR) {
   EXPECT_EQ("<p>|<br></p><p>abc</p>", DoPreviousWord("<p><br></p><p>|abc</p>"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, PreviousWordInFloat) {
+TEST_F(VisibleUnitsWordTest, PreviousWordInFloat) {
   InsertStyleElement(
       "c { display: block; float: right; }"
       "e { display: block; }");
@@ -711,7 +706,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, PreviousWordInFloat) {
             DoPreviousWord("<c><e>abc def ghi|</e></c>"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, PreviousWordInInlineBlock) {
+TEST_F(VisibleUnitsWordTest, PreviousWordInInlineBlock) {
   InsertStyleElement(
       "c { display: inline-block; }"
       "e { display: block; }");
@@ -745,7 +740,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, PreviousWordInInlineBlock) {
             DoPreviousWord("<c><e>abc def ghi|</e></c>"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, PreviousWordInPositionAbsolute) {
+TEST_F(VisibleUnitsWordTest, PreviousWordInPositionAbsolute) {
   InsertStyleElement(
       "c { display: block; position: absolute; }"
       "e { display: block; }");
@@ -779,7 +774,7 @@ TEST_P(ParameterizedVisibleUnitsWordTest, PreviousWordInPositionAbsolute) {
             DoPreviousWord("<c><e>abc def ghi|</e></c>"));
 }
 
-TEST_P(ParameterizedVisibleUnitsWordTest, PreviousWordSkipTextControl) {
+TEST_F(VisibleUnitsWordTest, PreviousWordSkipTextControl) {
   EXPECT_EQ("|foo<input value=\"bla\">bar",
             DoPreviousWord("|foo<input value=\"bla\">bar"));
   EXPECT_EQ("|foo<input value=\"bla\">bar",
@@ -796,6 +791,31 @@ TEST_P(ParameterizedVisibleUnitsWordTest, PreviousWordSkipTextControl) {
             DoPreviousWord("foo<input value=\"bla\">ba|r"));
   EXPECT_EQ("foo<input value=\"bla\">|bar",
             DoPreviousWord("foo<input value=\"bla\">bar|"));
+}
+
+TEST_F(VisibleUnitsWordTest, MiddleOfWord) {
+  // Default case with one element.
+  EXPECT_EQ("<p>This is a test sent|ence</p>",
+            DoMiddleOfWord("<p>This is a test s^entenc|e</p>"));
+  // Positions in different elements.
+  EXPECT_EQ("<p>This is a <span>te|st</span> sentence.</p>",
+            DoMiddleOfWord("<p>This is a <span>^test</span>| sentence.</p>"));
+  // Middle is first character after element.
+  EXPECT_EQ("<p>This is a <span>test</span>| sentence.</p>",
+            DoMiddleOfWord("<p>This is a <span>^test</span> sen|tence.</p>"));
+  // Middle is first character in element.
+  EXPECT_EQ("<p>This is a t</p><span>|esting sentence</span>",
+            DoMiddleOfWord("<p>This i^s a t</p><span>esti|ng sentence</span>"));
+  // Middle is last character in element.
+  EXPECT_EQ("<p>This is a <span>tes|t</span> sentence.</p>",
+            DoMiddleOfWord("<p>This is ^a <span>test</span> sen|tence.</p>"));
+  // Positions and middle are all in outer element.
+  EXPECT_EQ("<p>This is a <span>test</span> |sentence.</p>",
+            DoMiddleOfWord("<p>This is ^a <span>test</span> sentenc|e.</p>"));
+  // Positions and middle all in inner element.
+  EXPECT_EQ(
+      "<p>This is a <span>tes|ting</span> sentence.</p>",
+      DoMiddleOfWord("<p>This is a <span>^testin|g</span> sentence.</p>"));
 }
 
 }  // namespace blink

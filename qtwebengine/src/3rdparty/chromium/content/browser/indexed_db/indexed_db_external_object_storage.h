@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,10 +10,8 @@
 #include <string>
 #include <vector>
 
-#include "base/callback_forward.h"
-#include "base/memory/ref_counted.h"
-#include "base/optional.h"
-#include "base/time/time.h"
+#include "base/functional/callback_forward.h"
+#include "components/services/storage/public/mojom/blob_storage_context.mojom.h"
 #include "content/browser/indexed_db/indexed_db_external_object.h"
 #include "content/browser/indexed_db/indexed_db_leveldb_coding.h"
 #include "storage/common/file_system/file_system_mount_option.h"
@@ -40,8 +38,11 @@ enum class BlobWriteResult {
 // BlobWriteResult signifies if the operation succeeded or not, and the returned
 // status is used to handle errors in the next part of the transcation commit
 // lifecycle. Note: The returned status can only be used when the result is
-// |kRunPhaseTwoAndReturnResult|.
-using BlobWriteCallback = base::OnceCallback<leveldb::Status(BlobWriteResult)>;
+// |kRunPhaseTwoAndReturnResult|.  The WriteBlobToFileResult is a more granular
+// error in the case something goes wrong.
+using BlobWriteCallback =
+    base::OnceCallback<leveldb::Status(BlobWriteResult,
+                                       storage::mojom::WriteBlobToFileResult)>;
 
 // This object represents a change in the database involving adding or removing
 // external objects. if external_objects() is empty, then objects are to be
@@ -50,6 +51,12 @@ using BlobWriteCallback = base::OnceCallback<leveldb::Status(BlobWriteResult)>;
 class IndexedDBExternalObjectChangeRecord {
  public:
   IndexedDBExternalObjectChangeRecord(const std::string& object_store_data_key);
+
+  IndexedDBExternalObjectChangeRecord(
+      const IndexedDBExternalObjectChangeRecord&) = delete;
+  IndexedDBExternalObjectChangeRecord& operator=(
+      const IndexedDBExternalObjectChangeRecord&) = delete;
+
   ~IndexedDBExternalObjectChangeRecord();
 
   const std::string& object_store_data_key() const {
@@ -68,7 +75,6 @@ class IndexedDBExternalObjectChangeRecord {
  private:
   std::string object_store_data_key_;
   std::vector<IndexedDBExternalObject> external_objects_;
-  DISALLOW_COPY_AND_ASSIGN(IndexedDBExternalObjectChangeRecord);
 };
 
 // Reports that the recovery and/or active journals have been processed, and

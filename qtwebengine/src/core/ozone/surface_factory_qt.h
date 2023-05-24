@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef SURFACE_FACTORY_QT
 #define SURFACE_FACTORY_QT
@@ -50,10 +14,34 @@ class SurfaceFactoryQt : public ui::SurfaceFactoryOzone
 {
 public:
     SurfaceFactoryQt();
-    std::vector<gl::GLImplementation> GetAllowedGLImplementations() override;
-    ui::GLOzone* GetGLOzone(gl::GLImplementation implementation) override;
+    std::vector<gl::GLImplementationParts> GetAllowedGLImplementations() override;
+    ui::GLOzone *GetGLOzone(const gl::GLImplementationParts &implementation) override;
+#if BUILDFLAG(ENABLE_VULKAN)
+    std::unique_ptr<gpu::VulkanImplementation>
+    CreateVulkanImplementation(bool allow_protected_memory, bool enforce_protected_memory) override;
+#endif
+    bool CanCreateNativePixmapForFormat(gfx::BufferFormat format) override;
+    scoped_refptr<gfx::NativePixmap> CreateNativePixmap(
+        gfx::AcceleratedWidget widget,
+        gpu::VulkanDeviceQueue* device_queue,
+        gfx::Size size,
+        gfx::BufferFormat format,
+        gfx::BufferUsage usage,
+        absl::optional<gfx::Size> framebuffer_size = absl::nullopt) override;
+    void CreateNativePixmapAsync(gfx::AcceleratedWidget widget,
+                                 gpu::VulkanDeviceQueue* device_queue,
+                                 gfx::Size size,
+                                 gfx::BufferFormat format,
+                                 gfx::BufferUsage usage,
+                                 NativePixmapCallback callback) override;
+    scoped_refptr<gfx::NativePixmap> CreateNativePixmapFromHandle(
+        gfx::AcceleratedWidget widget,
+        gfx::Size size,
+        gfx::BufferFormat format,
+        gfx::NativePixmapHandle handle) override;
+
 private:
-    gl::GLImplementation m_impl;
+    std::vector<gl::GLImplementationParts> m_impl;
     std::unique_ptr<ui::GLOzone> m_ozone;
 };
 

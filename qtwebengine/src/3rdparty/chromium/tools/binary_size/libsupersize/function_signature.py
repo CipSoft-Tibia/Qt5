@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -96,6 +96,20 @@ def _FindReturnValueSpace(name, paren_idx):
   return space_idx
 
 
+def _StripAbiTag(name):
+  # Clang attribute. E.g.: std::allocator<Foo[6]>construct[abi:100]<Bar[7]>()
+  start_idx = 0
+  while True:
+    start_idx = name.find('[abi:', start_idx, len(name) - 1)
+    if start_idx == -1:
+      break
+    end_idx = name.find(']', start_idx + 5)
+    if end_idx == -1:
+      break
+    name = name[:start_idx] + name[end_idx + 1:]
+  return name
+
+
 def _StripTemplateArgs(name):
   last_right_idx = None
   while True:
@@ -138,12 +152,17 @@ def ParseJava(full_name):
       * full_name = "class_with_package#member(args): type"
       * template_name = "class_with_package#member"
       * name = "class_without_package#member
+
+    When a symbols has been merged into a different class:
+      * full_name = "new_class#old_class.member(args): type"
+      * template_name: Same as above, but uses old_class
+      * name: Same as above, but uses old_class
   """
   hash_idx = full_name.find('#')
   if hash_idx != -1:
     # Parse an already parsed full_name.
     # Format: Class#symbol: type
-    full_class_name = full_name[:hash_idx]
+    full_new_class_name = full_name[:hash_idx]
     colon_idx = full_name.find(':')
     if colon_idx == -1:
       member = full_name[hash_idx + 1:]
@@ -153,22 +172,33 @@ def ParseJava(full_name):
       member_type = full_name[colon_idx:]
   else:
     parts = full_name.split(' ')
-    full_class_name = parts[0]
+    full_new_class_name = parts[0]
     member = parts[-1] if len(parts) > 1 else None
     member_type = '' if len(parts) < 3 else ': ' + parts[1]
 
-  short_class_name = full_class_name.split('.')[-1]
-
   if member is None:
+    short_class_name = full_new_class_name.split('.')[-1]
     return full_name, full_name, short_class_name
 
-  full_name = '{}#{}{}'.format(full_class_name, member, member_type)
+  full_name = '{}#{}{}'.format(full_new_class_name, member, member_type)
   paren_idx = member.find('(')
   if paren_idx != -1:
     member = member[:paren_idx]
 
+  # Class merging.
+  full_old_class_name = full_new_class_name
+  dot_idx = member.rfind('.')
+  if dot_idx != -1:
+    full_old_class_name = member[:dot_idx]
+    member = member[dot_idx + 1:]
+
+  short_class_name = full_old_class_name
+  dot_idx = full_old_class_name.rfind('.')
+  if dot_idx != -1:
+    short_class_name = short_class_name[dot_idx + 1:]
+
   name = '{}#{}'.format(short_class_name, member)
-  template_name = '{}#{}'.format(full_class_name, member)
+  template_name = '{}#{}'.format(full_old_class_name, member)
   return full_name, template_name, name
 
 
@@ -191,13 +221,14 @@ def Parse(name):
     assert right_paren_idx > left_paren_idx
     space_idx = _FindReturnValueSpace(name, left_paren_idx)
     name_no_params = name[space_idx + 1:left_paren_idx]
+
     # Special case for top-level lambdas.
     if name_no_params.endswith('}::_FUN'):
       # Don't use |name_no_params| in here since prior _idx will be off if
       # there was a return value.
       name = _NormalizeTopLevelGccLambda(name, left_paren_idx)
       return Parse(name)
-    elif name_no_params.endswith('::__invoke') and '$' in name_no_params:
+    if name_no_params.endswith('::__invoke') and '$' in name_no_params:
       assert '$_' in name_no_params, 'Surprising lambda: ' + name
       name = _NormalizeTopLevelClangLambda(name, left_paren_idx)
       return Parse(name)
@@ -205,6 +236,7 @@ def Parse(name):
     full_name = name[space_idx + 1:]
     name = name_no_params + name[right_paren_idx + 1:]
 
+  name = _StripAbiTag(name)
   template_name = name
   name = _StripTemplateArgs(name)
   return full_name, template_name, name

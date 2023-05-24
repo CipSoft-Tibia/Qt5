@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplacesearchreplyhere.h"
 #include "jsonparserhelpers.h"
@@ -43,8 +10,14 @@
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtCore/QJsonArray>
+#include <QtPositioning/QGeoAddress>
+#include <QtPositioning/QGeoLocation>
+#include <QtPositioning/QGeoRectangle>
+#include <QtLocation/QPlace>
+#include <QtLocation/QPlaceAttribute>
 #include <QtLocation/QPlaceIcon>
 #include <QtLocation/QPlaceResult>
+#include <QtLocation/QPlaceRatings>
 #include <QtLocation/QPlaceProposedSearchResult>
 #include <QtLocation/private/qplacesearchrequest_p.h>
 
@@ -63,9 +36,10 @@ QPlaceSearchReplyHere::QPlaceSearchReplyHere(const QPlaceSearchRequest &request,
     }
     setRequest(request);
 
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(errorOccurred(QNetworkReply::NetworkError)),
-            this, SLOT(replyError(QNetworkReply::NetworkError)));
+    connect(reply, &QNetworkReply::finished,
+            this, &QPlaceSearchReplyHere::replyFinished);
+    connect(reply, &QNetworkReply::errorOccurred,
+            this, &QPlaceSearchReplyHere::replyError);
     connect(this, &QPlaceReply::aborted, reply, &QNetworkReply::abort);
     connect(this, &QObject::destroyed, reply, &QObject::deleteLater);
 }
@@ -77,7 +51,7 @@ QPlaceSearchReplyHere::~QPlaceSearchReplyHere()
 void QPlaceSearchReplyHere::setError(QPlaceReply::Error error_, const QString &errorString)
 {
     QPlaceReply::setError(error_, errorString);
-    emit error(error_, errorString);
+    emit errorOccurred(error_, errorString);
     setFinished(true);
     emit finished();
 }
@@ -163,7 +137,7 @@ QPlaceResult QPlaceSearchReplyHere::parsePlaceResult(const QJsonObject &item) co
         QJsonArray bbox = item.value(QStringLiteral("bbox")).toArray();
         QGeoRectangle box(QGeoCoordinate(bbox.at(3).toDouble(), bbox.at(0).toDouble()),
                             QGeoCoordinate(bbox.at(1).toDouble(), bbox.at(2).toDouble()));
-        location.setBoundingBox(box);
+        location.setBoundingShape(box);
     }
 
     place.setLocation(location);

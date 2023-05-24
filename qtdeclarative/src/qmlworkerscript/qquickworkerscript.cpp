@@ -1,46 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtqmlworkerscriptglobal_p.h"
 #include "qquickworkerscript_p.h"
 #include <private/qqmlengine_p.h>
 #include <private/qqmlexpression_p.h>
+#include <private/qjsvalue_p.h>
 
 #include <QtCore/qcoreevent.h>
 #include <QtCore/qcoreapplication.h>
@@ -154,11 +119,16 @@ public:
     QMutex m_lock;
     QWaitCondition m_wait;
 
-    QHash<int, QV4::ExecutionEngine *> workers;
+    // ExecutionEngines are owned by the worker script and created and deleted
+    // in the worker thread. QQuickWorkerScript instances, however, belong to
+    // the main thread. They are only inserted as place holders when creating
+    // the worker script.
+    QHash<int, QBiPointer<QV4::ExecutionEngine, QQuickWorkerScript>> workers;
 
     int m_nextId;
 
     static QV4::ReturnedValue method_sendMessage(const QV4::FunctionObject *, const QV4::Value *thisObject, const QV4::Value *argv, int argc);
+    QV4::ExecutionEngine *workerEngine(int id);
 
 signals:
     void stopThread();
@@ -212,7 +182,8 @@ bool QQuickWorkerScriptEnginePrivate::event(QEvent *event)
         WorkerRemoveEvent *workerEvent = static_cast<WorkerRemoveEvent *>(event);
         auto itr = workers.find(workerEvent->workerId());
         if (itr != workers.end()) {
-            delete itr.value();
+            if (itr->isT1())
+                delete itr->asT1();
             workers.erase(itr);
         }
         return true;
@@ -221,9 +192,26 @@ bool QQuickWorkerScriptEnginePrivate::event(QEvent *event)
     }
 }
 
+QV4::ExecutionEngine *QQuickWorkerScriptEnginePrivate::workerEngine(int id)
+{
+    const auto it = workers.find(id);
+    if (it == workers.end())
+        return nullptr;
+    if (it->isT1())
+        return it->asT1();
+
+    QQuickWorkerScript *owner = it->asT2();
+    auto *engine = new QV4::ExecutionEngine;
+    WorkerScript *script = workerScriptExtension(engine);
+    script->owner = owner;
+    script->p = this;
+    *it = engine;
+    return engine;
+}
+
 void QQuickWorkerScriptEnginePrivate::processMessage(int id, const QByteArray &data)
 {
-    QV4::ExecutionEngine *engine = workers.value(id);
+    QV4::ExecutionEngine *engine = workerEngine(id);
     if (!engine)
         return;
 
@@ -239,9 +227,9 @@ void QQuickWorkerScriptEnginePrivate::processMessage(int id, const QByteArray &d
 
     QV4::ScopedValue value(scope, QV4::Serialize::deserialize(data, engine));
 
-    QV4::JSCallData jsCallData(scope, 1);
-    *jsCallData->thisObject = engine->global();
-    jsCallData->args[0] = value;
+    QV4::JSCallArguments jsCallData(scope, 1);
+    *jsCallData.thisObject = engine->global();
+    jsCallData.args[0] = value;
     onmessage->call(jsCallData);
     if (scope.hasException()) {
         QQmlError error = scope.engine->catchExceptionAsQmlError();
@@ -257,7 +245,7 @@ void QQuickWorkerScriptEnginePrivate::processLoad(int id, const QUrl &url)
 
     QString fileName = QQmlFile::urlToLocalFileOrQrc(url);
 
-    QV4::ExecutionEngine *engine = workers.value(id);
+    QV4::ExecutionEngine *engine = workerEngine(id);
     if (!engine)
         return;
 
@@ -265,10 +253,12 @@ void QQuickWorkerScriptEnginePrivate::processLoad(int id, const QUrl &url)
     script->source = url;
 
     if (fileName.endsWith(QLatin1String(".mjs"))) {
-        auto moduleUnit = engine->loadModule(url);
-        if (moduleUnit) {
-            if (moduleUnit->instantiate(engine))
-                moduleUnit->evaluate();
+        auto module = engine->loadModule(url);
+        if (module.compiled) {
+            if (module.compiled->instantiate(engine))
+                module.compiled->evaluate();
+        } else if (module.native) {
+            // Nothing to do. There is no global code in a native module.
         } else {
             engine->throwError(QStringLiteral("Could not load module file"));
         }
@@ -417,25 +407,25 @@ WorkerScript::WorkerScript(QV4::ExecutionEngine *engine)
 int QQuickWorkerScriptEngine::registerWorkerScript(QQuickWorkerScript *owner)
 {
     const int id = d->m_nextId++;
-    auto *engine = new QV4::ExecutionEngine;
 
     d->m_lock.lock();
-    d->workers.insert(id, engine);
+    d->workers.insert(id, owner);
     d->m_lock.unlock();
-
-    WorkerScript *script = workerScriptExtension(engine);
-    script->owner = owner;
-    script->p = d;
 
     return id;
 }
 
 void QQuickWorkerScriptEngine::removeWorkerScript(int id)
 {
-    if (QV4::ExecutionEngine *engine = d->workers.value(id)) {
+    const auto it = d->workers.find(id);
+    if (it == d->workers.end())
+        return;
+
+    if (it->isT1()) {
+        QV4::ExecutionEngine *engine = it->asT1();
         workerScriptExtension(engine)->owner = nullptr;
-        QCoreApplication::postEvent(d, new WorkerRemoveEvent(id));
     }
+    QCoreApplication::postEvent(d, new WorkerRemoveEvent(id));
 }
 
 void QQuickWorkerScriptEngine::executeUrl(int id, const QUrl &url)
@@ -451,14 +441,16 @@ void QQuickWorkerScriptEngine::sendMessage(int id, const QByteArray &data)
 void QQuickWorkerScriptEngine::run()
 {
     d->m_lock.lock();
-
     d->m_wait.wakeAll();
-
     d->m_lock.unlock();
 
     exec();
 
-    qDeleteAll(d->workers);
+    for (auto it = d->workers.begin(), end = d->workers.end(); it != end; ++it) {
+        if (it->isT1())
+            delete it->asT1();
+    }
+
     d->workers.clear();
 }
 
@@ -516,9 +508,6 @@ void QQuickWorkerScriptEngine::run()
 
     Worker scripts that are plain JavaScript sources can not use \l {qtqml-javascript-imports.html}{.import} syntax.
     Scripts that are ECMAScript modules can freely use import and export statements.
-
-    \sa {Qt Quick Examples - Threading},
-        {Threaded ListModel Example}
 */
 QQuickWorkerScript::QQuickWorkerScript(QObject *parent)
 : QObject(parent), m_engine(nullptr), m_scriptId(-1), m_componentComplete(true)
@@ -552,8 +541,10 @@ void QQuickWorkerScript::setSource(const QUrl &source)
 
     m_source = source;
 
-    if (engine())
-        m_engine->executeUrl(m_scriptId, m_source);
+    if (engine()) {
+        const QQmlContext *context = qmlContext(this);
+        m_engine->executeUrl(m_scriptId, context ? context->resolvedUrl(m_source) : m_source);
+    }
 
     emit sourceChanged();
 }
@@ -613,7 +604,8 @@ QQuickWorkerScriptEngine *QQuickWorkerScript::engine()
 {
     if (m_engine) return m_engine;
     if (m_componentComplete) {
-        QQmlEngine *engine = qmlEngine(this);
+        const QQmlContext *context = qmlContext(this);
+        QQmlEngine *engine = context ? context->engine() : nullptr;
         if (!engine) {
             qWarning("QQuickWorkerScript: engine() called without qmlEngine() set");
             return nullptr;
@@ -627,7 +619,7 @@ QQuickWorkerScriptEngine *QQuickWorkerScript::engine()
         m_scriptId = m_engine->registerWorkerScript(this);
 
         if (m_source.isValid())
-            m_engine->executeUrl(m_scriptId, m_source);
+            m_engine->executeUrl(m_scriptId, context->resolvedUrl(m_source));
 
         emit readyChanged();
 
@@ -655,7 +647,8 @@ bool QQuickWorkerScript::event(QEvent *event)
         if (QQmlEngine *engine = qmlEngine(this)) {
             QV4::ExecutionEngine *v4 = engine->handle();
             WorkerDataEvent *workerEvent = static_cast<WorkerDataEvent *>(event);
-            emit message(QJSValue(v4, QV4::Serialize::deserialize(workerEvent->data(), v4)));
+            emit message(QJSValuePrivate::fromReturnedValue(
+                             QV4::Serialize::deserialize(workerEvent->data(), v4)));
         }
         return true;
     } else if (event->type() == (QEvent::Type)WorkerErrorEvent::WorkerError) {

@@ -1,15 +1,15 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/devtools/devtools_stream_file.h"
 
 #include "base/base64.h"
-#include "base/bind.h"
 #include "base/files/file_util.h"
-#include "base/sequenced_task_runner.h"
+#include "base/functional/bind.h"
 #include "base/strings/string_util.h"
 #include "base/task/lazy_thread_pool_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/third_party/icu/icu_utf.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -105,20 +105,26 @@ void DevToolsStreamFile::ReadOnFileSequence(off_t position,
       // Provided client has requested sufficient large block, make their
       // life easier by not truncating in the middle of a UTF-8 character.
       if (size_got > 6 && !CBU8_IS_SINGLE(buffer[size_got - 1])) {
-        base::TruncateUTF8ToByteSize(buffer, size_got, &buffer);
-        size_got = buffer.size();
-      } else {
-        buffer.resize(size_got);
+        std::string truncated;
+        base::TruncateUTF8ToByteSize(buffer, size_got, &truncated);
+        // If the above failed, we're dealing with binary files, so
+        // don't mess with them.
+        if (truncated.size()) {
+          buffer = std::move(truncated);
+          size_got = buffer.size();
+        }
       }
-      data.reset(new std::string(std::move(buffer)));
+      buffer.resize(size_got);
       status = size_got ? StatusSuccess : StatusEOF;
       last_read_pos_ = position + size_got;
+      if (binary_) {
+        data = std::make_unique<std::string>();
+        base::Base64Encode(buffer, data.get());
+        base64_encoded = true;
+      } else {
+        data = std::make_unique<std::string>(std::move(buffer));
+      }
     }
-  }
-  if (binary_) {
-    std::string raw_data(std::move(*data));
-    base::Base64Encode(raw_data, data.get());
-    base64_encoded = true;
   }
   GetUIThreadTaskRunner({})->PostTask(
       FROM_HERE, base::BindOnce(std::move(callback), std::move(data),

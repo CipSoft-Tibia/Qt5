@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include <vector>
 
+#include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
 
 namespace ui {
@@ -14,14 +15,23 @@ std::ostream& operator<<(std::ostream& stream, const AXMode& mode) {
   return stream << mode.ToString();
 }
 
+bool AXMode::HasExperimentalFlags(uint32_t experimental_flag) const {
+  return (experimental_flags_ & experimental_flag) == experimental_flag;
+}
+
+void AXMode::SetExperimentalFlags(uint32_t experimental_flag, bool value) {
+  experimental_flags_ = value ? (experimental_flags_ | experimental_flag)
+                              : (experimental_flags_ & ~experimental_flag);
+}
+
 std::string AXMode::ToString() const {
-  std::vector<std::string> tokens;
+  std::vector<base::StringPiece> tokens;
 
   // Written as a loop with a switch so that this crashes if a new
   // mode flag is added without adding support for logging it.
   for (uint32_t mode_flag = AXMode::kFirstModeFlag;
        mode_flag <= AXMode::kLastModeFlag; mode_flag = mode_flag << 1) {
-    const char* flag_name = nullptr;
+    base::StringPiece flag_name;
     switch (mode_flag) {
       case AXMode::kNativeAPIs:
         flag_name = "kNativeAPIs";
@@ -44,13 +54,37 @@ std::string AXMode::ToString() const {
       case AXMode::kPDF:
         flag_name = "kPDF";
         break;
+      case AXMode::kPDFOcr:
+        flag_name = "kPDFOcr";
+        break;
+      case AXMode::kHTMLMetadata:
+        flag_name = "kHTMLMetadata";
+        break;
     }
 
-    DCHECK(flag_name);
+    DCHECK(!flag_name.empty());
 
     if (has_mode(mode_flag))
       tokens.push_back(flag_name);
   }
+
+  for (uint32_t experimental_mode_flag = AXMode::kExperimentalFirstFlag;
+       experimental_mode_flag <= AXMode::kExperimentalLastFlag;
+       experimental_mode_flag = experimental_mode_flag << 1) {
+    base::StringPiece flag_name;
+    switch (experimental_mode_flag) {
+      case AXMode::kExperimentalFormControls:
+        flag_name = "kExperimentalFormControls";
+        break;
+    }
+
+    DCHECK(!flag_name.empty());
+
+    if (HasExperimentalFlags(experimental_mode_flag)) {
+      tokens.push_back(flag_name);
+    }
+  }
+
   return base::JoinString(tokens, " | ");
 }
 

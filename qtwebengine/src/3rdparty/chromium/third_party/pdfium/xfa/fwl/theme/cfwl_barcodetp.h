@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,16 +7,20 @@
 #ifndef XFA_FWL_THEME_CFWL_BARCODETP_H_
 #define XFA_FWL_THEME_CFWL_BARCODETP_H_
 
+#include "fxjs/gc/heap.h"
 #include "xfa/fwl/theme/cfwl_utils.h"
 #include "xfa/fwl/theme/cfwl_widgettp.h"
 
 class CFWL_BarcodeTP final : public CFWL_WidgetTP {
  public:
-  CFWL_BarcodeTP();
+  CONSTRUCT_VIA_MAKE_GARBAGE_COLLECTED;
   ~CFWL_BarcodeTP() override;
 
   // CFWL_WidgetTP
   void DrawBackground(const CFWL_ThemeBackground& pParams) override;
+
+ private:
+  CFWL_BarcodeTP();
 };
 
 #endif  // XFA_FWL_THEME_CFWL_BARCODETP_H_

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qxcbcursor.h"
 #include "qxcbconnection.h"
@@ -43,35 +7,23 @@
 #include "qxcbimage.h"
 #include "qxcbxsettings.h"
 
-#if QT_CONFIG(library)
-#include <QtCore/QLibrary>
-#endif
 #include <QtGui/QWindow>
 #include <QtGui/QBitmap>
 #include <QtGui/private/qguiapplication_p.h>
+#include <qpa/qplatformtheme.h>
+
+#if QT_CONFIG(xcb_xlib)
 #include <X11/cursorfont.h>
+#else
+#include "qxcbcursorfont.h"
+#endif
+
 #include <xcb/xfixes.h>
 #include <xcb/xcb_image.h>
 
 QT_BEGIN_NAMESPACE
 
-typedef int (*PtrXcursorLibraryLoadCursor)(void *, const char *);
-typedef char *(*PtrXcursorLibraryGetTheme)(void *);
-typedef int (*PtrXcursorLibrarySetTheme)(void *, const char *);
-typedef int (*PtrXcursorLibraryGetDefaultSize)(void *);
-
-#if QT_CONFIG(xcb_xlib) && QT_CONFIG(library)
-#include <X11/Xlib.h>
-enum {
-    XCursorShape = CursorShape
-};
-#undef CursorShape
-
-static PtrXcursorLibraryLoadCursor ptrXcursorLibraryLoadCursor = nullptr;
-static PtrXcursorLibraryGetTheme ptrXcursorLibraryGetTheme = nullptr;
-static PtrXcursorLibrarySetTheme ptrXcursorLibrarySetTheme = nullptr;
-static PtrXcursorLibraryGetDefaultSize ptrXcursorLibraryGetDefaultSize = nullptr;
-#endif
+using namespace Qt::StringLiterals;
 
 static xcb_font_t cursorFont = 0;
 static int cursorCount = 0;
@@ -289,10 +241,10 @@ QXcbCursorCacheKey::QXcbCursorCacheKey(const QCursor &c)
         if (pixmapCacheKey) {
             bitmapCacheKey = pixmapCacheKey;
         } else {
-            Q_ASSERT(!c.bitmap(Qt::ReturnByValue).isNull());
-            Q_ASSERT(!c.mask(Qt::ReturnByValue).isNull());
-            bitmapCacheKey = c.bitmap(Qt::ReturnByValue).cacheKey();
-            maskCacheKey = c.mask(Qt::ReturnByValue).cacheKey();
+            Q_ASSERT(!c.bitmap().isNull());
+            Q_ASSERT(!c.mask().isNull());
+            bitmapCacheKey = c.bitmap().cacheKey();
+            maskCacheKey = c.mask().cacheKey();
         }
     }
 }
@@ -300,12 +252,14 @@ QXcbCursorCacheKey::QXcbCursorCacheKey(const QCursor &c)
 #endif // !QT_NO_CURSOR
 
 QXcbCursor::QXcbCursor(QXcbConnection *conn, QXcbScreen *screen)
-    : QXcbObject(conn), m_screen(screen), m_gtkCursorThemeInitialized(false)
+    : QXcbObject(conn), m_screen(screen), m_cursorContext(nullptr), m_callbackForPropertyRegistered(false)
 {
 #if QT_CONFIG(cursor)
     // see NUM_BITMAPS in libXcursor/src/xcursorint.h
     m_bitmapCache.setMaxCost(8);
 #endif
+
+    updateContext();
 
     if (cursorCount++)
         return;
@@ -313,37 +267,13 @@ QXcbCursor::QXcbCursor(QXcbConnection *conn, QXcbScreen *screen)
     cursorFont = xcb_generate_id(xcb_connection());
     const char *cursorStr = "cursor";
     xcb_open_font(xcb_connection(), cursorFont, strlen(cursorStr), cursorStr);
-
-#if QT_CONFIG(xcb_xlib) && QT_CONFIG(library)
-    static bool function_ptrs_not_initialized = true;
-    if (function_ptrs_not_initialized) {
-        QLibrary xcursorLib(QLatin1String("Xcursor"), 1);
-        bool xcursorFound = xcursorLib.load();
-        if (!xcursorFound) { // try without the version number
-            xcursorLib.setFileName(QLatin1String("Xcursor"));
-            xcursorFound = xcursorLib.load();
-        }
-        if (xcursorFound) {
-            ptrXcursorLibraryLoadCursor =
-                (PtrXcursorLibraryLoadCursor) xcursorLib.resolve("XcursorLibraryLoadCursor");
-            ptrXcursorLibraryGetTheme =
-                    (PtrXcursorLibraryGetTheme) xcursorLib.resolve("XcursorGetTheme");
-            ptrXcursorLibrarySetTheme =
-                    (PtrXcursorLibrarySetTheme) xcursorLib.resolve("XcursorSetTheme");
-            ptrXcursorLibraryGetDefaultSize =
-                    (PtrXcursorLibraryGetDefaultSize) xcursorLib.resolve("XcursorGetDefaultSize");
-        }
-        function_ptrs_not_initialized = false;
-    }
-
-#endif
 }
 
 QXcbCursor::~QXcbCursor()
 {
     xcb_connection_t *conn = xcb_connection();
 
-    if (m_gtkCursorThemeInitialized) {
+    if (m_callbackForPropertyRegistered) {
         m_screen->xSettings()->removeCallbackForHandle(this);
     }
 
@@ -351,9 +281,33 @@ QXcbCursor::~QXcbCursor()
         xcb_close_font(conn, cursorFont);
 
 #ifndef QT_NO_CURSOR
-    for (xcb_cursor_t cursor : qAsConst(m_cursorHash))
+    for (xcb_cursor_t cursor : std::as_const(m_cursorHash))
         xcb_free_cursor(conn, cursor);
 #endif
+
+    if (m_cursorContext)
+        xcb_cursor_context_free(m_cursorContext);
+}
+
+QSize QXcbCursor::size() const
+{
+    if (const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme())
+        return theme->themeHint(QPlatformTheme::MouseCursorSize).toSize();
+    return QSize(24, 24);
+}
+
+void QXcbCursor::updateContext()
+{
+    if (m_cursorContext)
+        xcb_cursor_context_free(m_cursorContext);
+
+    m_cursorContext = nullptr;
+
+    xcb_connection_t *conn = xcb_connection();
+    if (xcb_cursor_context_new(conn, m_screen->screen(), &m_cursorContext) < 0) {
+        qWarning() << "xcb: Could not initialize xcb-cursor";
+        m_cursorContext = nullptr;
+    }
 }
 
 #ifndef QT_NO_CURSOR
@@ -516,81 +470,44 @@ xcb_cursor_t QXcbCursor::createNonStandardCursor(int cshape)
     return cursor;
 }
 
-#if QT_CONFIG(xcb_xlib) && QT_CONFIG(library)
-bool updateCursorTheme(void *dpy, const QByteArray &theme) {
-    if (!ptrXcursorLibraryGetTheme
-            || !ptrXcursorLibrarySetTheme)
-        return false;
-    QByteArray oldTheme = ptrXcursorLibraryGetTheme(dpy);
-    if (oldTheme == theme)
-        return false;
-
-    int setTheme = ptrXcursorLibrarySetTheme(dpy,theme.constData());
-    return setTheme;
-}
-
- void QXcbCursor::cursorThemePropertyChanged(QXcbVirtualDesktop *screen, const QByteArray &name, const QVariant &property, void *handle)
+void QXcbCursor::cursorThemePropertyChanged(QXcbVirtualDesktop *screen, const QByteArray &name, const QVariant &property, void *handle)
 {
     Q_UNUSED(screen);
     Q_UNUSED(name);
+    Q_UNUSED(property);
     QXcbCursor *self = static_cast<QXcbCursor *>(handle);
     self->m_cursorHash.clear();
-
-    updateCursorTheme(self->connection()->xlib_display(),property.toByteArray());
+    self->updateContext();
 }
-
-static xcb_cursor_t loadCursor(void *dpy, int cshape)
-{
-    xcb_cursor_t cursor = XCB_NONE;
-    if (!ptrXcursorLibraryLoadCursor || !dpy)
-        return cursor;
-
-    for (const char *cursorName: cursorNames[cshape]) {
-        cursor = ptrXcursorLibraryLoadCursor(dpy, cursorName);
-        if (cursor != XCB_NONE)
-            break;
-    }
-
-    return cursor;
-}
-#endif // QT_CONFIG(xcb_xlib) / QT_CONFIG(library)
 
 xcb_cursor_t QXcbCursor::createFontCursor(int cshape)
 {
+    if (!m_cursorContext)
+        return XCB_NONE;
+
     xcb_connection_t *conn = xcb_connection();
     int cursorId = cursorIdForShape(cshape);
     xcb_cursor_t cursor = XCB_NONE;
 
-#if QT_CONFIG(xcb_xlib) && QT_CONFIG(library)
-    if (m_screen->xSettings()->initialized())
-        m_screen->xSettings()->registerCallbackForProperty("Gtk/CursorThemeName",cursorThemePropertyChanged,this);
+    if (!m_callbackForPropertyRegistered && m_screen->xSettings()->initialized()) {
+        m_screen->xSettings()->registerCallbackForProperty("Gtk/CursorThemeName", cursorThemePropertyChanged, this);
 
-    // Try Xcursor first
+        m_callbackForPropertyRegistered = true;
+    }
+
+    // Try xcb-cursor first
     if (cshape >= 0 && cshape <= Qt::LastCursor) {
-        void *dpy = connection()->xlib_display();
-        cursor = loadCursor(dpy, cshape);
-        if (!cursor && !m_gtkCursorThemeInitialized && m_screen->xSettings()->initialized()) {
-            QByteArray gtkCursorTheme = m_screen->xSettings()->setting("Gtk/CursorThemeName").toByteArray();
-            if (updateCursorTheme(dpy,gtkCursorTheme)) {
-                cursor = loadCursor(dpy, cshape);
-            }
-            m_gtkCursorThemeInitialized = true;
+        for (const char *cursorName : cursorNames[cshape]) {
+            cursor = xcb_cursor_load_cursor(m_cursorContext, cursorName);
+            if (cursor != XCB_NONE)
+                return cursor;
         }
     }
-    if (cursor)
-        return cursor;
-    if (!cursor && cursorId) {
-        cursor = XCreateFontCursor(static_cast<Display *>(connection()->xlib_display()), cursorId);
-        if (cursor)
-            return cursor;
-    }
-
-#endif
 
     // Non-standard X11 cursors are created from bitmaps
     cursor = createNonStandardCursor(cshape);
 
-    // Create a glpyh cursor if everything else failed
+    // Create a glyph cursor if everything else failed
     if (!cursor && cursorId) {
         cursor = xcb_generate_id(conn);
         xcb_create_glyph_cursor(conn, cursor, cursorFont, cursorFont,
@@ -617,8 +534,8 @@ xcb_cursor_t QXcbCursor::createBitmapCursor(QCursor *cursor)
             qCWarning(lcQpaXcb, "xrender >= 0.5 required to create pixmap cursors");
     } else {
         xcb_connection_t *conn = xcb_connection();
-        xcb_pixmap_t cp = qt_xcb_XPixmapFromBitmap(m_screen, cursor->bitmap(Qt::ReturnByValue).toImage());
-        xcb_pixmap_t mp = qt_xcb_XPixmapFromBitmap(m_screen, cursor->mask(Qt::ReturnByValue).toImage());
+        xcb_pixmap_t cp = qt_xcb_XPixmapFromBitmap(m_screen, cursor->bitmap().toImage());
+        xcb_pixmap_t mp = qt_xcb_XPixmapFromBitmap(m_screen, cursor->mask().toImage());
         c = xcb_generate_id(conn);
         xcb_create_cursor(conn, c, cp, mp, 0, 0, 0, 0xFFFF, 0xFFFF, 0xFFFF,
                           spot.x(), spot.y());

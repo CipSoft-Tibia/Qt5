@@ -1,16 +1,16 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/win/hstring_reference.h"
+
+#include <string>
+
 #include "base/strings/string_piece.h"
 #include "base/win/scoped_hstring.h"
-
-#include "base/win/windows_version.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-namespace base {
-namespace win {
+namespace base::win {
 
 namespace {
 
@@ -26,16 +26,6 @@ void VerifyHSTRINGEquals(HSTRING hstring, const wchar_t* test_string) {
 }  // namespace
 
 TEST(HStringReferenceTest, Init) {
-  // ScopedHString requires WinRT core functions, which are not available in
-  // older versions.
-  if (GetVersion() < Version::WIN8) {
-    EXPECT_FALSE(HStringReference::ResolveCoreWinRTStringDelayload());
-    return;
-  }
-
-  EXPECT_TRUE(HStringReference::ResolveCoreWinRTStringDelayload());
-  EXPECT_TRUE(ScopedHString::ResolveCoreWinRTStringDelayload());
-
   const HStringReference string(kTestString);
   EXPECT_NE(string.Get(), nullptr);
   VerifyHSTRINGEquals(string.Get(), kTestString);
@@ -51,5 +41,4 @@ TEST(HStringReferenceTest, Init) {
   VerifyHSTRINGEquals(null_string.Get(), kEmptyString);
 }
 
-}  // namespace win
-}  // namespace base
+}  // namespace base::win

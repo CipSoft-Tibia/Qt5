@@ -9,7 +9,7 @@
 /* at a redacted point in time
  */
 /* Compiler settings for gen/remoting/host/win/chromoting_lib.idl:
-    Oicf, W1, Zp8, env=Win64 (32b run), target_arch=ARM64 8.01.0622 
+    Oicf, W1, Zp8, env=Win64 (32b run), target_arch=ARM64 8.01.0628 
     protocol : dce , ms_ext, c_ext, robust
     error checks: allocation ref bounds_check enum stub_data 
     VC __declspec() decoration level: 
@@ -76,7 +76,7 @@ MIDL_DEFINE_GUID(IID, IID_IRdpDesktopSession,0x6a7699f0,0xee43,0x43e7,0xaa,0x30,
 MIDL_DEFINE_GUID(IID, LIBID_ChromotingLib,0xb6396c45,0xb0cc,0x456b,0x9f,0x49,0xf1,0x29,0x64,0xee,0x6d,0xf4);
 
 
-MIDL_DEFINE_GUID(CLSID, CLSID_RdpDesktopSession,0x7bf898db,0xce6c,0x57a3,0xa4,0x73,0x3a,0xa2,0x1b,0xf8,0xc4,0xc4);
+MIDL_DEFINE_GUID(CLSID, CLSID_RdpDesktopSession,0x6741fd0a,0x6a8a,0x5838,0xa3,0x5e,0x80,0x88,0x69,0x7e,0x20,0x88);
 
 #undef MIDL_DEFINE_GUID
 

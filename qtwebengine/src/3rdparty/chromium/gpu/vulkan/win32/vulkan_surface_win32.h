@@ -1,14 +1,14 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef GPU_VULKAN_WIN32_VULKAN_SURFACE_WIN32_H_
 #define GPU_VULKAN_WIN32_VULKAN_SURFACE_WIN32_H_
 
-#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
 
 #include "base/component_export.h"
-#include "base/util/type_safety/pass_key.h"
+#include "base/types/pass_key.h"
 #include "gpu/vulkan/vulkan_surface.h"
 
 namespace gfx {
@@ -22,7 +22,7 @@ class COMPONENT_EXPORT(VULKAN_WIN32) VulkanSurfaceWin32 : public VulkanSurface {
   static std::unique_ptr<VulkanSurfaceWin32> Create(VkInstance vk_instance,
                                                     HWND parent_window);
   class WindowThread;
-  VulkanSurfaceWin32(util::PassKey<VulkanSurfaceWin32> pass_key,
+  VulkanSurfaceWin32(base::PassKey<VulkanSurfaceWin32> pass_key,
                      VkInstance vk_instance,
                      VkSurfaceKHR vk_surface,
                      scoped_refptr<WindowThread> thread,

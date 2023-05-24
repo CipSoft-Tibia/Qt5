@@ -521,6 +521,27 @@ weston_desktop_surface_add_metadata_listener(struct weston_desktop_surface *surf
 	wl_signal_add(&surface->metadata_signal, listener);
 }
 
+WL_EXPORT void
+weston_desktop_surface_get_root_geometry(struct weston_desktop_surface *surface,
+					 struct weston_geometry *geometry) {
+	struct shell_surface *shsurf =
+		weston_desktop_surface_get_user_data(surface);
+	if (!shsurf) {
+		geometry->x = surface->position.x;
+		geometry->y = surface->position.y;
+		if (surface->parent) {
+			struct weston_geometry parent_geometry;
+			weston_desktop_api_get_desktop_surface_root_geometry(
+					surface->parent->desktop, surface->parent,
+					&parent_geometry);
+			geometry->x = parent_geometry.x + geometry->x;
+			geometry->y = parent_geometry.y + geometry->y;
+		}
+		return;
+	}
+	weston_desktop_api_get_desktop_surface_root_geometry(surface->desktop, surface, geometry);
+}
+
 struct weston_desktop_surface *
 weston_desktop_surface_from_client_link(struct wl_list *link)
 {

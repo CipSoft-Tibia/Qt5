@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "cc/cc_export.h"
 
@@ -131,8 +132,8 @@ struct CC_EXPORT TaskGraph {
     Edge(const Task* task, Task* dependent)
         : task(task), dependent(dependent) {}
 
-    const Task* task;
-    Task* dependent;
+    raw_ptr<const Task, DanglingUntriaged> task;
+    raw_ptr<Task, DanglingUntriaged> dependent;
   };
 
   TaskGraph();

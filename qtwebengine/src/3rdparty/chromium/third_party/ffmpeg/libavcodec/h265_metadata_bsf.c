@@ -22,15 +22,11 @@
 #include "bsf.h"
 #include "bsf_internal.h"
 #include "cbs.h"
+#include "cbs_bsf.h"
 #include "cbs_h265.h"
+#include "h2645data.h"
 #include "hevc.h"
 #include "h265_profile_level.h"
-
-enum {
-    PASS,
-    INSERT,
-    REMOVE,
-};
 
 enum {
     LEVEL_UNSET = -2,
@@ -38,11 +34,7 @@ enum {
 };
 
 typedef struct H265MetadataContext {
-    const AVClass *class;
-
-    CodedBitstreamContext *input;
-    CodedBitstreamContext *output;
-    CodedBitstreamFragment access_unit;
+    CBSBSFContext common;
 
     H265RawAUD aud_nal;
 
@@ -203,25 +195,17 @@ static int h265_metadata_update_sps(AVBSFContext *bsf,
     int crop_unit_x, crop_unit_y;
 
     if (ctx->sample_aspect_ratio.num && ctx->sample_aspect_ratio.den) {
-        // Table E-1.
-        static const AVRational sar_idc[] = {
-            {   0,  0 }, // Unspecified (never written here).
-            {   1,  1 }, {  12, 11 }, {  10, 11 }, {  16, 11 },
-            {  40, 33 }, {  24, 11 }, {  20, 11 }, {  32, 11 },
-            {  80, 33 }, {  18, 11 }, {  15, 11 }, {  64, 33 },
-            { 160, 99 }, {   4,  3 }, {   3,  2 }, {   2,  1 },
-        };
         int num, den, i;
 
         av_reduce(&num, &den, ctx->sample_aspect_ratio.num,
                   ctx->sample_aspect_ratio.den, 65535);
 
-        for (i = 1; i < FF_ARRAY_ELEMS(sar_idc); i++) {
-            if (num == sar_idc[i].num &&
-                den == sar_idc[i].den)
+        for (i = 1; i < FF_ARRAY_ELEMS(ff_h2645_pixel_aspect); i++) {
+            if (num == ff_h2645_pixel_aspect[i].num &&
+                den == ff_h2645_pixel_aspect[i].den)
                 break;
         }
-        if (i == FF_ARRAY_ELEMS(sar_idc)) {
+        if (i == FF_ARRAY_ELEMS(ff_h2645_pixel_aspect)) {
             sps->vui.aspect_ratio_idc = 255;
             sps->vui.sar_width  = num;
             sps->vui.sar_height = den;
@@ -338,89 +322,18 @@ static int h265_metadata_update_sps(AVBSFContext *bsf,
     return 0;
 }
 
-static int h265_metadata_update_side_data(AVBSFContext *bsf, AVPacket *pkt)
+static int h265_metadata_update_fragment(AVBSFContext *bsf, AVPacket *pkt,
+                                         CodedBitstreamFragment *au)
 {
     H265MetadataContext *ctx = bsf->priv_data;
-    CodedBitstreamFragment *au = &ctx->access_unit;
-    uint8_t *side_data;
-    int side_data_size;
     int err, i;
-
-    side_data = av_packet_get_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA,
-                                        &side_data_size);
-    if (!side_data_size)
-        return 0;
-
-    err = ff_cbs_read(ctx->input, au, side_data, side_data_size);
-    if (err < 0) {
-        av_log(bsf, AV_LOG_ERROR, "Failed to read extradata from packet side data.\n");
-        return err;
-    }
-
-    if (ctx->level == LEVEL_AUTO && !ctx->level_guess)
-        h265_metadata_guess_level(bsf, au);
-
-    for (i = 0; i < au->nb_units; i++) {
-        if (au->units[i].type == HEVC_NAL_VPS) {
-            err = h265_metadata_update_vps(bsf, au->units[i].content);
-            if (err < 0)
-                return err;
-        }
-        if (au->units[i].type == HEVC_NAL_SPS) {
-            err = h265_metadata_update_sps(bsf, au->units[i].content);
-            if (err < 0)
-                return err;
-        }
-    }
-
-    err = ff_cbs_write_fragment_data(ctx->output, au);
-    if (err < 0) {
-        av_log(bsf, AV_LOG_ERROR, "Failed to write extradata into packet side data.\n");
-        return err;
-    }
-
-    side_data = av_packet_new_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA, au->data_size);
-    if (!side_data)
-        return AVERROR(ENOMEM);
-    memcpy(side_data, au->data, au->data_size);
-
-    ff_cbs_fragment_reset(au);
-
-    return 0;
-}
-
-static int h265_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
-{
-    H265MetadataContext *ctx = bsf->priv_data;
-    CodedBitstreamFragment *au = &ctx->access_unit;
-    int err, i;
-
-    err = ff_bsf_get_packet_ref(bsf, pkt);
-    if (err < 0)
-        return err;
-
-    err = h265_metadata_update_side_data(bsf, pkt);
-    if (err < 0)
-        goto fail;
-
-    err = ff_cbs_read_packet(ctx->input, au, pkt);
-    if (err < 0) {
-        av_log(bsf, AV_LOG_ERROR, "Failed to read packet.\n");
-        goto fail;
-    }
-
-    if (au->nb_units == 0) {
-        av_log(bsf, AV_LOG_ERROR, "No NAL units in packet.\n");
-        err = AVERROR_INVALIDDATA;
-        goto fail;
-    }
 
     // If an AUD is present, it must be the first NAL unit.
-    if (au->units[0].type == HEVC_NAL_AUD) {
-        if (ctx->aud == REMOVE)
+    if (au->nb_units && au->units[0].type == HEVC_NAL_AUD) {
+        if (ctx->aud == BSF_ELEMENT_REMOVE)
             ff_cbs_delete_unit(au, 0);
     } else {
-        if (ctx->aud == INSERT) {
+        if (pkt && ctx->aud == BSF_ELEMENT_INSERT) {
             H265RawAUD *aud = &ctx->aud_nal;
             int pic_type = 0, temporal_id = 8, layer_id = 0;
 
@@ -453,7 +366,7 @@ static int h265_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
             err = ff_cbs_insert_unit_content(au, 0, HEVC_NAL_AUD, aud, NULL);
             if (err < 0) {
                 av_log(bsf, AV_LOG_ERROR, "Failed to insert AUD.\n");
-                goto fail;
+                return err;
             }
         }
     }
@@ -465,101 +378,35 @@ static int h265_metadata_filter(AVBSFContext *bsf, AVPacket *pkt)
         if (au->units[i].type == HEVC_NAL_VPS) {
             err = h265_metadata_update_vps(bsf, au->units[i].content);
             if (err < 0)
-                goto fail;
+                return err;
         }
         if (au->units[i].type == HEVC_NAL_SPS) {
             err = h265_metadata_update_sps(bsf, au->units[i].content);
             if (err < 0)
-                goto fail;
+                return err;
         }
     }
 
-    err = ff_cbs_write_packet(ctx->output, pkt, au);
-    if (err < 0) {
-        av_log(bsf, AV_LOG_ERROR, "Failed to write packet.\n");
-        goto fail;
-    }
-
-    err = 0;
-fail:
-    ff_cbs_fragment_reset(au);
-
-    if (err < 0)
-        av_packet_unref(pkt);
-
-    return err;
+    return 0;
 }
+
+static const CBSBSFType h265_metadata_type = {
+    .codec_id        = AV_CODEC_ID_HEVC,
+    .fragment_name   = "access unit",
+    .unit_name       = "NAL unit",
+    .update_fragment = &h265_metadata_update_fragment,
+};
 
 static int h265_metadata_init(AVBSFContext *bsf)
 {
-    H265MetadataContext *ctx = bsf->priv_data;
-    CodedBitstreamFragment *au = &ctx->access_unit;
-    int err, i;
-
-    err = ff_cbs_init(&ctx->input,  AV_CODEC_ID_HEVC, bsf);
-    if (err < 0)
-        return err;
-    err = ff_cbs_init(&ctx->output, AV_CODEC_ID_HEVC, bsf);
-    if (err < 0)
-        return err;
-
-    if (bsf->par_in->extradata) {
-        err = ff_cbs_read_extradata(ctx->input, au, bsf->par_in);
-        if (err < 0) {
-            av_log(bsf, AV_LOG_ERROR, "Failed to read extradata.\n");
-            goto fail;
-        }
-
-        if (ctx->level == LEVEL_AUTO)
-            h265_metadata_guess_level(bsf, au);
-
-        for (i = 0; i < au->nb_units; i++) {
-            if (au->units[i].type == HEVC_NAL_VPS) {
-                err = h265_metadata_update_vps(bsf, au->units[i].content);
-                if (err < 0)
-                    goto fail;
-            }
-            if (au->units[i].type == HEVC_NAL_SPS) {
-                err = h265_metadata_update_sps(bsf, au->units[i].content);
-                if (err < 0)
-                    goto fail;
-            }
-        }
-
-        err = ff_cbs_write_extradata(ctx->output, bsf->par_out, au);
-        if (err < 0) {
-            av_log(bsf, AV_LOG_ERROR, "Failed to write extradata.\n");
-            goto fail;
-        }
-    }
-
-    err = 0;
-fail:
-    ff_cbs_fragment_reset(au);
-    return err;
-}
-
-static void h265_metadata_close(AVBSFContext *bsf)
-{
-    H265MetadataContext *ctx = bsf->priv_data;
-
-    ff_cbs_fragment_free(&ctx->access_unit);
-    ff_cbs_close(&ctx->input);
-    ff_cbs_close(&ctx->output);
+    return ff_cbs_bsf_generic_init(bsf, &h265_metadata_type);
 }
 
 #define OFFSET(x) offsetof(H265MetadataContext, x)
 #define FLAGS (AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_BSF_PARAM)
 static const AVOption h265_metadata_options[] = {
-    { "aud", "Access Unit Delimiter NAL units",
-        OFFSET(aud), AV_OPT_TYPE_INT,
-        { .i64 = PASS }, PASS, REMOVE, FLAGS, "aud" },
-    { "pass",   NULL, 0, AV_OPT_TYPE_CONST,
-        { .i64 = PASS   }, .flags = FLAGS, .unit = "aud" },
-    { "insert", NULL, 0, AV_OPT_TYPE_CONST,
-        { .i64 = INSERT }, .flags = FLAGS, .unit = "aud" },
-    { "remove", NULL, 0, AV_OPT_TYPE_CONST,
-        { .i64 = REMOVE }, .flags = FLAGS, .unit = "aud" },
+    BSF_ELEMENT_OPTIONS_PIR("aud", "Access Unit Delimiter NAL units",
+                            aud, FLAGS),
 
     { "sample_aspect_ratio", "Set sample aspect ratio (table E-1)",
         OFFSET(sample_aspect_ratio), AV_OPT_TYPE_RATIONAL,
@@ -583,10 +430,10 @@ static const AVOption h265_metadata_options[] = {
 
     { "chroma_sample_loc_type", "Set chroma sample location type (figure E-1)",
         OFFSET(chroma_sample_loc_type), AV_OPT_TYPE_INT,
-        { .i64 = -1 }, -1, 6, FLAGS },
+        { .i64 = -1 }, -1, 5, FLAGS },
 
     { "tick_rate",
-        "Set VPS and VUI tick rate (num_units_in_tick / time_scale)",
+        "Set VPS and VUI tick rate (time_scale / num_units_in_tick)",
         OFFSET(tick_rate), AV_OPT_TYPE_RATIONAL,
         { .dbl = 0.0 }, 0, UINT_MAX, FLAGS },
     { "num_ticks_poc_diff_one",
@@ -645,12 +492,12 @@ static const enum AVCodecID h265_metadata_codec_ids[] = {
     AV_CODEC_ID_HEVC, AV_CODEC_ID_NONE,
 };
 
-const AVBitStreamFilter ff_hevc_metadata_bsf = {
-    .name           = "hevc_metadata",
+const FFBitStreamFilter ff_hevc_metadata_bsf = {
+    .p.name         = "hevc_metadata",
+    .p.codec_ids    = h265_metadata_codec_ids,
+    .p.priv_class   = &h265_metadata_class,
     .priv_data_size = sizeof(H265MetadataContext),
-    .priv_class     = &h265_metadata_class,
     .init           = &h265_metadata_init,
-    .close          = &h265_metadata_close,
-    .filter         = &h265_metadata_filter,
-    .codec_ids      = h265_metadata_codec_ids,
+    .close          = &ff_cbs_bsf_generic_close,
+    .filter         = &ff_cbs_bsf_generic_filter,
 };

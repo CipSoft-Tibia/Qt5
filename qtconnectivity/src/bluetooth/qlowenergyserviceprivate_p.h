@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QLOWENERGYSERVICEPRIVATE_P_H
 #define QLOWENERGYSERVICEPRIVATE_P_H
@@ -56,12 +20,10 @@
 #include <QtBluetooth/qbluetooth.h>
 #include <QtBluetooth/QLowEnergyService>
 #include <QtBluetooth/QLowEnergyCharacteristic>
+#include <QtCore/private/qglobal_p.h>
 
 #if defined(QT_ANDROID_BLUETOOTH)
-#include <QtAndroidExtras/QAndroidJniObject>
-#endif
-#if defined(QT_WIN_BLUETOOTH)
-#include <qt_windows.h>
+#include <QtCore/QJniObject>
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -86,9 +48,6 @@ public:
         QLowEnergyCharacteristic::PropertyTypes properties;
         QByteArray value;
         QHash<QLowEnergyHandle, DescData> descriptorList;
-#ifdef QT_WIN_BLUETOOTH
-        Qt::HANDLE hValueChangeEvent;
-#endif
     };
 
     enum GattAttributeTypes {
@@ -104,7 +63,7 @@ public:
 
 signals:
     void stateChanged(QLowEnergyService::ServiceState newState);
-    void error(QLowEnergyService::ServiceError error);
+    void errorOccurred(QLowEnergyService::ServiceError error);
     void characteristicChanged(const QLowEnergyCharacteristic &characteristic,
                                const QByteArray &newValue);
     void characteristicRead(const QLowEnergyCharacteristic &info,
@@ -117,14 +76,15 @@ signals:
                            const QByteArray &newValue);
 
 public:
-    QLowEnergyHandle startHandle;
-    QLowEnergyHandle endHandle;
+    QLowEnergyHandle startHandle = 0;
+    QLowEnergyHandle endHandle = 0;
 
     QBluetoothUuid uuid;
     QList<QBluetoothUuid> includedServices;
-    QLowEnergyService::ServiceTypes type;
-    QLowEnergyService::ServiceState state;
-    QLowEnergyService::ServiceError lastError;
+    QLowEnergyService::ServiceTypes type = QLowEnergyService::PrimaryService;
+    QLowEnergyService::ServiceState state = QLowEnergyService::InvalidService;
+    QLowEnergyService::ServiceError lastError = QLowEnergyService::NoError;
+    QLowEnergyService::DiscoveryMode mode = QLowEnergyService::FullDiscovery;
 
     QHash<QLowEnergyHandle, CharData> characteristicList;
 
@@ -132,10 +92,7 @@ public:
 
 #if defined(QT_ANDROID_BLUETOOTH)
     // reference to the BluetoothGattService object
-    QAndroidJniObject androidService;
-#endif
-#if defined(QT_WIN_BLUETOOTH)
-    Qt::HANDLE hService = nullptr;
+    QJniObject androidService;
 #endif
 
 };
@@ -145,6 +102,8 @@ typedef QHash<QLowEnergyHandle, QLowEnergyServicePrivate::DescData> DescriptorDa
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE(QSharedPointer<QLowEnergyServicePrivate>)
+QT_DECL_METATYPE_EXTERN_TAGGED(QSharedPointer<QLowEnergyServicePrivate>,
+                               QSharedPointer_QLowEnergyServicePrivate,
+                               /* not exported */)
 
 #endif // QLOWENERGYSERVICEPRIVATE_P_H

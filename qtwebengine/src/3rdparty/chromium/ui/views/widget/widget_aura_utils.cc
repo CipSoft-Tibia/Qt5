@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,8 +25,7 @@ aura::client::WindowType GetAuraWindowTypeForWidgetType(
     case Widget::InitParams::TYPE_TOOLTIP:
       return aura::client::WINDOW_TYPE_TOOLTIP;
     default:
-      NOTREACHED() << "Unhandled widget type " << type;
-      return aura::client::WINDOW_TYPE_UNKNOWN;
+      NOTREACHED_NORETURN() << "Unhandled widget type " << type;
   }
 }
 

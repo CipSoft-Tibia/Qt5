@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,9 @@
 
 #include "core/fpdfapi/parser/cpdf_simple_parser.h"
 #include "core/fpdfapi/parser/fpdf_parser_utility.h"
+#include "core/fxcrt/fx_string.h"
 #include "core/fxge/cfx_color.h"
+#include "third_party/base/notreached.h"
 
 namespace {
 
@@ -27,7 +29,7 @@ bool FindTagParamFromStart(CPDF_SimpleParser* parser,
   int buf_count = 0;
 
   parser->SetCurPos(0);
-  while (1) {
+  while (true) {
     pBuf[buf_index++] = parser->GetCurPos();
     if (buf_index == nParams)
       buf_index = 0;
@@ -48,15 +50,25 @@ bool FindTagParamFromStart(CPDF_SimpleParser* parser,
       return true;
     }
   }
-  return false;
 }
 
 }  // namespace
 
-Optional<ByteString> CPDF_DefaultAppearance::GetFont(float* fFontSize) {
+CPDF_DefaultAppearance::CPDF_DefaultAppearance() = default;
+
+CPDF_DefaultAppearance::CPDF_DefaultAppearance(const ByteString& csDA)
+    : m_csDA(csDA) {}
+
+CPDF_DefaultAppearance::CPDF_DefaultAppearance(
+    const CPDF_DefaultAppearance& cDA) = default;
+
+CPDF_DefaultAppearance::~CPDF_DefaultAppearance() = default;
+
+absl::optional<ByteString> CPDF_DefaultAppearance::GetFont(
+    float* fFontSize) const {
   *fFontSize = 0.0f;
   if (m_csDA.IsEmpty())
-    return {};
+    return absl::nullopt;
 
   ByteString csFontNameTag;
   CPDF_SimpleParser syntax(m_csDA.AsStringView().raw_span());
@@ -65,67 +77,69 @@ Optional<ByteString> CPDF_DefaultAppearance::GetFont(float* fFontSize) {
     csFontNameTag.Delete(0, 1);
     *fFontSize = StringToFloat(syntax.GetWord());
   }
-  return {PDF_NameDecode(csFontNameTag.AsStringView())};
+  return PDF_NameDecode(csFontNameTag.AsStringView());
 }
 
-Optional<CFX_Color::Type> CPDF_DefaultAppearance::GetColor(float fc[4]) {
-  for (int c = 0; c < 4; c++)
-    fc[c] = 0;
-
+absl::optional<CFX_Color> CPDF_DefaultAppearance::GetColor() const {
   if (m_csDA.IsEmpty())
-    return {};
+    return absl::nullopt;
 
+  float fc[4];
   CPDF_SimpleParser syntax(m_csDA.AsStringView().raw_span());
   if (FindTagParamFromStart(&syntax, "g", 1)) {
     fc[0] = StringToFloat(syntax.GetWord());
-    return {CFX_Color::kGray};
+    return CFX_Color(CFX_Color::Type::kGray, fc[0]);
   }
   if (FindTagParamFromStart(&syntax, "rg", 3)) {
     fc[0] = StringToFloat(syntax.GetWord());
     fc[1] = StringToFloat(syntax.GetWord());
     fc[2] = StringToFloat(syntax.GetWord());
-    return {CFX_Color::kRGB};
+    return CFX_Color(CFX_Color::Type::kRGB, fc[0], fc[1], fc[2]);
   }
   if (FindTagParamFromStart(&syntax, "k", 4)) {
     fc[0] = StringToFloat(syntax.GetWord());
     fc[1] = StringToFloat(syntax.GetWord());
     fc[2] = StringToFloat(syntax.GetWord());
     fc[3] = StringToFloat(syntax.GetWord());
-    return {CFX_Color::kCMYK};
+    return CFX_Color(CFX_Color::Type::kCMYK, fc[0], fc[1], fc[2], fc[3]);
   }
-
-  return {};
+  return absl::nullopt;
 }
 
-std::pair<Optional<CFX_Color::Type>, FX_ARGB>
-CPDF_DefaultAppearance::GetColor() {
-  float values[4];
-  Optional<CFX_Color::Type> type = GetColor(values);
-  if (!type)
-    return {type, 0};
+absl::optional<CFX_Color::TypeAndARGB> CPDF_DefaultAppearance::GetColorARGB()
+    const {
+  absl::optional<CFX_Color> maybe_color = GetColor();
+  if (!maybe_color.has_value())
+    return absl::nullopt;
 
-  if (*type == CFX_Color::kGray) {
-    int g = static_cast<int>(values[0] * 255 + 0.5f);
-    return {type, ArgbEncode(255, g, g, g)};
+  const CFX_Color& color = maybe_color.value();
+  if (color.nColorType == CFX_Color::Type::kGray) {
+    int g = static_cast<int>(color.fColor1 * 255 + 0.5f);
+    return CFX_Color::TypeAndARGB(CFX_Color::Type::kGray,
+                                  ArgbEncode(255, g, g, g));
   }
-  if (*type == CFX_Color::kRGB) {
-    int r = static_cast<int>(values[0] * 255 + 0.5f);
-    int g = static_cast<int>(values[1] * 255 + 0.5f);
-    int b = static_cast<int>(values[2] * 255 + 0.5f);
-    return {type, ArgbEncode(255, r, g, b)};
+  if (color.nColorType == CFX_Color::Type::kRGB) {
+    int r = static_cast<int>(color.fColor1 * 255 + 0.5f);
+    int g = static_cast<int>(color.fColor2 * 255 + 0.5f);
+    int b = static_cast<int>(color.fColor3 * 255 + 0.5f);
+    return CFX_Color::TypeAndARGB(CFX_Color::Type::kRGB,
+                                  ArgbEncode(255, r, g, b));
   }
-  if (*type == CFX_Color::kCMYK) {
-    float r = 1.0f - std::min(1.0f, values[0] + values[3]);
-    float g = 1.0f - std::min(1.0f, values[1] + values[3]);
-    float b = 1.0f - std::min(1.0f, values[2] + values[3]);
-    return {type, ArgbEncode(255, static_cast<int>(r * 255 + 0.5f),
-                             static_cast<int>(g * 255 + 0.5f),
-                             static_cast<int>(b * 255 + 0.5f))};
+  if (color.nColorType == CFX_Color::Type::kCMYK) {
+    float r = 1.0f - std::min(1.0f, color.fColor1 + color.fColor4);
+    float g = 1.0f - std::min(1.0f, color.fColor2 + color.fColor4);
+    float b = 1.0f - std::min(1.0f, color.fColor3 + color.fColor4);
+    return CFX_Color::TypeAndARGB(
+        CFX_Color::Type::kCMYK,
+        ArgbEncode(255, static_cast<int>(r * 255 + 0.5f),
+                   static_cast<int>(g * 255 + 0.5f),
+                   static_cast<int>(b * 255 + 0.5f)));
   }
   NOTREACHED();
-  return {{}, 0};
+  return absl::nullopt;
 }
 
+// static
 bool CPDF_DefaultAppearance::FindTagParamFromStartForTesting(
     CPDF_SimpleParser* parser,
     ByteStringView token,

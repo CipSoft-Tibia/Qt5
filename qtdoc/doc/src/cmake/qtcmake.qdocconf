@@ -10,10 +10,8 @@ qhp.projects            = qtcmake
 qhp.qtcmake.file                = qtcmake.qhp
 qhp.qtcmake.namespace           = org.qt-project.qtcmake.$QT_VERSION_TAG
 qhp.qtcmake.virtualFolder       = qtcmake
-qhp.qtcmake.indexTitle          = Using Qt with CMake
-qhp.qtcmake.filterAttributes    = qt $QT_VERSION tools cmake
-qhp.qtcmake.customFilters.qtcmake.name = Build with CMake
-qhp.qtcmake.customFilters.qtcmake.filterAttributes = qt tools cmake
+qhp.qtcmake.indexTitle          = Build with CMake
+
 qhp.qtcmake.subprojects         = manual
 qhp.qtcmake.subprojects.manual.title = Manual
 qhp.qtcmake.subprojects.manual.indexTitle = Build with CMake
@@ -27,14 +25,28 @@ exampledirs             = .
 moduleheader =
 
 depends += \
-    qtdoc \
+    qmake \
     qtcore \
-    qtnetwork \
-    qtsql \
-    qtgui \
-    qtwidgets \
     qtdbus \
+    qtdesigner \
+    qtdoc \
+    qtgui \
+    qtinterfaceframework \
     qtlinguist \
-    qtremoteobjects
+    qtnetwork \
+    qtprotobuf \
+    qtgrpc \
+    qtqml \
+    qtquick \
+    qtremoteobjects \
+    qtscxml \
+    qtshadertools \
+    qtsql \
+    qtwebengine \
+    qtwidgets \
 
 navigation.landingpage = "Build with CMake"
+
+# Fail the documentation build if there are more warnings than the limit
+warninglimit = 0
+

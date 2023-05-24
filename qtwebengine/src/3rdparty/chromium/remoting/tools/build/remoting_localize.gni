@@ -1,4 +1,4 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #   sources (required)
 #     List of jinja2 files to load. This is the template.
 #
-#   locales (required)
+#   locale_list (required)
 #     List of locales.
 #
 #   locale_dir (optional)
@@ -21,7 +21,7 @@
 #   variables (optional)
 #     List of variables to pass to script.
 #
-#   output (optiona)
+#   output (optional)
 #     Substitution pattern for the output. Defaults to a file in the target
 #     gen dir with the extension stripped (normally the extension is ".jinja2"
 #     which then leaves the non-tempaltized file name).
@@ -95,7 +95,7 @@ template("remoting_localize") {
       ]
     }
 
-    args += invoker.locales
+    args += invoker.locale_list
 
     if (defined(invoker.deps)) {
       deps = invoker.deps

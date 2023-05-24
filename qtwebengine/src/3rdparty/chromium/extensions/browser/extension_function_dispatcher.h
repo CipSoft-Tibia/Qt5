@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,11 +10,11 @@
 #include <string>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "extensions/browser/extension_function.h"
+#include "extensions/common/mojom/frame.mojom.h"
 #include "ipc/ipc_sender.h"
-
-struct ExtensionHostMsg_Request_Params;
 
 namespace content {
 class BrowserContext;
@@ -42,8 +42,7 @@ class WindowController;
 // we can gracefully handle cases like WebContents, where the RVH, extension,
 // and URL can all change over the lifetime of the tab. Instead, these items
 // are all passed into each request.
-class ExtensionFunctionDispatcher
-    : public base::SupportsWeakPtr<ExtensionFunctionDispatcher> {
+class ExtensionFunctionDispatcher {
  public:
   class Delegate {
    public:
@@ -73,12 +72,17 @@ class ExtensionFunctionDispatcher
       content::BrowserContext* browser_context);
   ~ExtensionFunctionDispatcher();
 
+  // Dispatches a request and the response is sent in |callback| that is a reply
+  // of mojom::LocalFrameHost::Request.
+  void Dispatch(mojom::RequestParamsPtr params,
+                content::RenderFrameHost& frame,
+                mojom::LocalFrameHost::RequestCallback callback);
+
   // Message handlers.
-  // The response is sent to the corresponding render view in an
-  // ExtensionMsg_Response message.
-  void Dispatch(const ExtensionHostMsg_Request_Params& params,
-                content::RenderFrameHost* render_frame_host,
-                int render_process_id);
+  // Dispatches a request for service woker and the response is sent to the
+  // corresponding render process in an ExtensionMsg_ResponseWorker message.
+  void DispatchForServiceWorker(const mojom::RequestParams& params,
+                                int render_process_id);
 
   // Called when an ExtensionFunction is done executing, after it has sent
   // a response (if any) to the extension.
@@ -106,6 +110,10 @@ class ExtensionFunctionDispatcher
   void ProcessServiceWorkerResponse(int request_id,
                                     int64_t service_worker_version_id);
 
+  base::WeakPtr<ExtensionFunctionDispatcher> AsWeakPtr() {
+    return weak_ptr_factory_.GetWeakPtr();
+  }
+
  private:
   // For a given RenderFrameHost instance, ResponseCallbackWrapper
   // creates ExtensionFunction::ResponseCallback instances which send responses
@@ -126,26 +134,26 @@ class ExtensionFunctionDispatcher
   // |params|. Can be called on any thread.
   // Does not set subclass properties, or include_incognito.
   static scoped_refptr<ExtensionFunction> CreateExtensionFunction(
-      const ExtensionHostMsg_Request_Params& params,
+      const mojom::RequestParams& params,
       const Extension* extension,
       int requesting_process_id,
+      bool is_worker_request,
       const GURL* rfh_url,
       const ProcessMap& process_map,
       ExtensionAPI* api,
-      void* profile_id,
-      const ExtensionFunction::ResponseCallback& callback);
+      ExtensionFunction::ResponseCallback callback);
 
   void DispatchWithCallbackInternal(
-      const ExtensionHostMsg_Request_Params& params,
+      const mojom::RequestParams& params,
       content::RenderFrameHost* render_frame_host,
       int render_process_id,
-      const ExtensionFunction::ResponseCallback& callback);
+      ExtensionFunction::ResponseCallback callback);
 
   void RemoveWorkerCallbacksForProcess(int render_process_id);
 
-  content::BrowserContext* browser_context_;
+  raw_ptr<content::BrowserContext, DanglingUntriaged> browser_context_;
 
-  Delegate* delegate_;
+  raw_ptr<Delegate, DanglingUntriaged> delegate_;
 
   // This map doesn't own either the keys or the values. When a RenderFrameHost
   // instance goes away, the corresponding entry in this map (if exists) will be
@@ -166,6 +174,8 @@ class ExtensionFunctionDispatcher
   // the renderer. These are removed once the response is processed.
   // The lifetimes of the instances are managed by the instances themselves.
   std::set<ExtensionFunction*> worker_response_targets_;
+
+  base::WeakPtrFactory<ExtensionFunctionDispatcher> weak_ptr_factory_{this};
 };
 
 }  // namespace extensions

@@ -132,36 +132,28 @@ static av_cold void uninit(AVFilterContext *ctx)
     rot->angle_expr = NULL;
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_GBRP,   AV_PIX_FMT_GBRAP,
-        AV_PIX_FMT_ARGB,   AV_PIX_FMT_RGBA,
-        AV_PIX_FMT_ABGR,   AV_PIX_FMT_BGRA,
-        AV_PIX_FMT_0RGB,   AV_PIX_FMT_RGB0,
-        AV_PIX_FMT_0BGR,   AV_PIX_FMT_BGR0,
-        AV_PIX_FMT_RGB24,  AV_PIX_FMT_BGR24,
-        AV_PIX_FMT_GRAY8,
-        AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUVJ444P,
-        AV_PIX_FMT_YUV420P,  AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUVA420P,
-        AV_PIX_FMT_YUV420P10LE, AV_PIX_FMT_YUVA420P10LE,
-        AV_PIX_FMT_YUV444P10LE, AV_PIX_FMT_YUVA444P10LE,
-        AV_PIX_FMT_YUV420P12LE,
-        AV_PIX_FMT_YUV444P12LE,
-        AV_PIX_FMT_YUV444P16LE, AV_PIX_FMT_YUVA444P16LE,
-        AV_PIX_FMT_YUV420P16LE, AV_PIX_FMT_YUVA420P16LE,
-        AV_PIX_FMT_YUV444P9LE, AV_PIX_FMT_YUVA444P9LE,
-        AV_PIX_FMT_YUV420P9LE, AV_PIX_FMT_YUVA420P9LE,
-        AV_PIX_FMT_NONE
-    };
-
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
-    if (!fmts_list)
-        return AVERROR(ENOMEM);
-    return ff_set_common_formats(ctx, fmts_list);
-}
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_GBRP,   AV_PIX_FMT_GBRAP,
+    AV_PIX_FMT_ARGB,   AV_PIX_FMT_RGBA,
+    AV_PIX_FMT_ABGR,   AV_PIX_FMT_BGRA,
+    AV_PIX_FMT_0RGB,   AV_PIX_FMT_RGB0,
+    AV_PIX_FMT_0BGR,   AV_PIX_FMT_BGR0,
+    AV_PIX_FMT_RGB24,  AV_PIX_FMT_BGR24,
+    AV_PIX_FMT_GRAY8,
+    AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUVJ444P,
+    AV_PIX_FMT_YUV420P,  AV_PIX_FMT_YUVJ420P,
+    AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUVA420P,
+    AV_PIX_FMT_YUV420P10LE, AV_PIX_FMT_YUVA420P10LE,
+    AV_PIX_FMT_YUV444P10LE, AV_PIX_FMT_YUVA444P10LE,
+    AV_PIX_FMT_YUV420P12LE,
+    AV_PIX_FMT_YUV444P12LE,
+    AV_PIX_FMT_YUV444P16LE, AV_PIX_FMT_YUVA444P16LE,
+    AV_PIX_FMT_YUV420P16LE, AV_PIX_FMT_YUVA420P16LE,
+    AV_PIX_FMT_YUV444P9LE, AV_PIX_FMT_YUVA444P9LE,
+    AV_PIX_FMT_YUV420P9LE, AV_PIX_FMT_YUVA420P9LE,
+    AV_PIX_FMT_NONE
+};
 
 static double get_rotated_w(void *opaque, double angle)
 {
@@ -266,8 +258,8 @@ static uint8_t *interpolate_bilinear16(uint8_t *dst_color,
 {
     int int_x = av_clip(x>>16, 0, max_x);
     int int_y = av_clip(y>>16, 0, max_y);
-    int frac_x = x&0xFFFF;
-    int frac_y = y&0xFFFF;
+    int64_t frac_x = x&0xFFFF;
+    int64_t frac_y = y&0xFFFF;
     int i;
     int int_x1 = FFMIN(int_x+1, max_x);
     int int_y1 = FFMIN(int_y+1, max_y);
@@ -277,10 +269,10 @@ static uint8_t *interpolate_bilinear16(uint8_t *dst_color,
         int s01 = AV_RL16(&src[src_linestep * int_x1 + i + src_linesize * int_y ]);
         int s10 = AV_RL16(&src[src_linestep * int_x  + i + src_linesize * int_y1]);
         int s11 = AV_RL16(&src[src_linestep * int_x1 + i + src_linesize * int_y1]);
-        int s0 = (((1<<16) - frac_x)*s00 + frac_x*s01);
-        int s1 = (((1<<16) - frac_x)*s10 + frac_x*s11);
+        int64_t s0 = (((1<<16) - frac_x)*s00 + frac_x*s01);
+        int64_t s1 = (((1<<16) - frac_x)*s10 + frac_x*s11);
 
-        AV_WL16(&dst_color[i], ((int64_t)((1<<16) - frac_y)*s0 + (int64_t)frac_y*s1) >> 32);
+        AV_WL16(&dst_color[i], (((1<<16) - frac_y)*s0 + frac_y*s1) >> 32);
     }
 
     return dst_color;
@@ -551,8 +543,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                           .yprime = -(outh-1) * c / 2,
                           .plane = plane, .c = c, .s = s };
 
-
-        ctx->internal->execute(ctx, filter_slice, &td, NULL, FFMIN(outh, ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, filter_slice, &td, NULL,
+                          FFMIN(outh, ff_filter_get_nb_threads(ctx)));
     }
 
     av_frame_free(&in);
@@ -588,7 +580,6 @@ static const AVFilterPad rotate_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
     },
-    { NULL }
 };
 
 static const AVFilterPad rotate_outputs[] = {
@@ -597,19 +588,18 @@ static const AVFilterPad rotate_outputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .config_props = config_props,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_rotate = {
+const AVFilter ff_vf_rotate = {
     .name          = "rotate",
     .description   = NULL_IF_CONFIG_SMALL("Rotate the input image."),
     .priv_size     = sizeof(RotContext),
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
     .process_command = process_command,
-    .inputs        = rotate_inputs,
-    .outputs       = rotate_outputs,
+    FILTER_INPUTS(rotate_inputs),
+    FILTER_OUTPUTS(rotate_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &rotate_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
 };

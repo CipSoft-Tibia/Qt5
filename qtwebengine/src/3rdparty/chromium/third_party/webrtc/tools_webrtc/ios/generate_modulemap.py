@@ -1,3 +1,5 @@
+#!/usr/bin/env vpython3
+
 # Copyright (c) 2018 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
@@ -8,6 +10,7 @@
 
 import argparse
 import sys
+
 
 def GenerateModulemap():
   parser = argparse.ArgumentParser(description='Generate modulemap')
@@ -29,4 +32,3 @@ def GenerateModulemap():
 
 if __name__ == '__main__':
   sys.exit(GenerateModulemap())
-

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,15 +19,28 @@ FontDescription FontStyleResolver::ComputeFont(
 
   FontDescription fontDescription;
   Font font(fontDescription, font_selector);
-  CSSToLengthConversionData::FontSizes fontSizes(10, 10, &font, 1);
-  CSSToLengthConversionData::ViewportSize viewportSize(0, 0);
-  CSSToLengthConversionData conversionData(nullptr, fontSizes, viewportSize, 1);
+  CSSToLengthConversionData::FontSizes font_sizes(10, 10, &font, 1);
+  CSSToLengthConversionData::LineHeightSize line_height_size;
+  CSSToLengthConversionData::ViewportSize viewport_size(0, 0);
+  CSSToLengthConversionData::ContainerSizes container_sizes;
+  CSSToLengthConversionData::Flags ignored_flags = 0;
+  CSSToLengthConversionData conversion_data(
+      WritingMode::kHorizontalTb, font_sizes, line_height_size, viewport_size,
+      container_sizes, 1, ignored_flags);
 
   // CSSPropertyID::kFontSize
   if (property_set.HasProperty(CSSPropertyID::kFontSize)) {
-    builder.SetSize(StyleBuilderConverterBase::ConvertFontSize(
-        *property_set.GetPropertyCSSValue(CSSPropertyID::kFontSize),
-        conversionData, FontDescription::Size(0, 0.0f, false)));
+    const CSSValue* value =
+        property_set.GetPropertyCSSValue(CSSPropertyID::kFontSize);
+    auto* identifier_value = DynamicTo<CSSIdentifierValue>(value);
+    if (identifier_value &&
+        identifier_value->GetValueID() == CSSValueID::kMath) {
+      builder.SetSize(FontDescription::Size(0, 0.0f, false));
+    } else {
+      builder.SetSize(StyleBuilderConverterBase::ConvertFontSize(
+          *property_set.GetPropertyCSSValue(CSSPropertyID::kFontSize),
+          conversion_data, FontDescription::Size(0, 0.0f, false), nullptr));
+    }
   }
 
   // CSSPropertyID::kFontFamily

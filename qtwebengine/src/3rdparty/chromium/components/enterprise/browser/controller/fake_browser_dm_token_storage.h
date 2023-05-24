@@ -1,13 +1,12 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_ENTERPRISE_BROWSER_CONTROLLER_FAKE_BROWSER_DM_TOKEN_STORAGE_H_
 #define COMPONENTS_ENTERPRISE_BROWSER_CONTROLLER_FAKE_BROWSER_DM_TOKEN_STORAGE_H_
 
+#include "base/gtest_prod_util.h"
 #include "components/enterprise/browser/controller/browser_dm_token_storage.h"
-
-#include "base/memory/weak_ptr.h"
 
 namespace policy {
 
@@ -21,6 +20,11 @@ class FakeBrowserDMTokenStorage : public BrowserDMTokenStorage {
                             const std::string& enrollment_token,
                             const std::string& dm_token,
                             bool enrollment_error_option);
+
+  FakeBrowserDMTokenStorage(const FakeBrowserDMTokenStorage&) = delete;
+  FakeBrowserDMTokenStorage& operator=(const FakeBrowserDMTokenStorage&) =
+      delete;
+
   ~FakeBrowserDMTokenStorage() override;
 
   void SetClientId(const std::string& client_id);
@@ -41,6 +45,10 @@ class FakeBrowserDMTokenStorage : public BrowserDMTokenStorage {
                  const std::string& enrollment_token,
                  const std::string& dm_token,
                  bool enrollment_error_option);
+
+    MockDelegate(const MockDelegate&) = delete;
+    MockDelegate& operator=(const MockDelegate&) = delete;
+
     ~MockDelegate() override;
 
     void SetClientId(const std::string& client_id);
@@ -54,8 +62,11 @@ class FakeBrowserDMTokenStorage : public BrowserDMTokenStorage {
     std::string InitEnrollmentToken() override;
     std::string InitDMToken() override;
     bool InitEnrollmentErrorOption() override;
+    bool CanInitEnrollmentToken() const override;
     BrowserDMTokenStorage::StoreTask SaveDMTokenTask(
         const std::string& token,
+        const std::string& client_id) override;
+    BrowserDMTokenStorage::StoreTask DeleteDMTokenTask(
         const std::string& client_id) override;
     scoped_refptr<base::TaskRunner> SaveDMTokenTaskRunner() override;
 
@@ -66,11 +77,7 @@ class FakeBrowserDMTokenStorage : public BrowserDMTokenStorage {
     bool enrollment_error_option_ = true;
 
     bool storage_enabled_ = true;
-
-    DISALLOW_COPY_AND_ASSIGN(MockDelegate);
   };
-
-  DISALLOW_COPY_AND_ASSIGN(FakeBrowserDMTokenStorage);
 };
 
 }  // namespace policy

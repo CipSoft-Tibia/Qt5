@@ -7,7 +7,6 @@
 
 #include "include/core/SkBBHFactory.h"
 #include "src/core/SkBigPicture.h"
-#include "src/core/SkPictureCommon.h"
 #include "src/core/SkRecord.h"
 #include "src/core/SkRecordDraw.h"
 #include "src/core/SkTraceEvent.h"
@@ -42,7 +41,7 @@ void SkBigPicture::playback(SkCanvas* canvas, AbortCallback* callback) const {
 void SkBigPicture::partialPlayback(SkCanvas* canvas,
                                    int start,
                                    int stop,
-                                   const SkMatrix& initialCTM) const {
+                                   const SkM44& initialCTM) const {
     SkASSERT(canvas);
     SkRecordPartialDraw(*fRecord,
                         canvas,

@@ -1,37 +1,148 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwasmfontdatabase.h"
+#include "qwasmintegration.h"
 
 #include <QtCore/qfile.h>
+#include <QtCore/private/qstdweb_p.h>
+#include <QtGui/private/qguiapplication_p.h>
+
+#include <emscripten.h>
+#include <emscripten/val.h>
+#include <emscripten/bind.h>
+
+#include <map>
+#include <array>
 
 QT_BEGIN_NAMESPACE
+
+using namespace emscripten;
+using namespace Qt::StringLiterals;
+
+
+namespace {
+
+bool isLocalFontsAPISupported()
+{
+    return val::global("window")["queryLocalFonts"].isUndefined() == false;
+}
+
+val makeObject(const char *key, const char *value)
+{
+    val obj = val::object();
+    obj.set(key, std::string(value));
+    return obj;
+}
+
+std::multimap<QString, emscripten::val> makeFontFamilyMap(const QList<val> &fonts)
+{
+    std::multimap<QString, emscripten::val> fontFamilies;
+    for (auto font : fonts) {
+        QString family = QString::fromStdString(font["family"].as<std::string>());
+        fontFamilies.insert(std::make_pair(family, font));
+    }
+    return fontFamilies;
+}
+
+void printError(val err) {
+    qCWarning(lcQpaFonts)
+        << QString::fromStdString(err["name"].as<std::string>())
+        << QString::fromStdString(err["message"].as<std::string>());
+}
+
+std::array<const char *, 8> webSafeFontFamilies()
+{
+    return {"Arial", "Verdana", "Tahoma", "Trebuchet", "Times New Roman",
+            "Georgia", "Garamond", "Courier New"};
+}
+
+void checkFontAccessPermitted(std::function<void()> callback)
+{
+    const val permissions = val::global("navigator")["permissions"];
+    if (permissions.isUndefined())
+        return;
+
+    qstdweb::Promise::make(permissions, "query", {
+        .thenFunc = [callback](val status) {
+            if (status["state"].as<std::string>() == "granted")
+                callback();
+        }
+    }, makeObject("name", "local-fonts"));
+}
+
+void queryLocalFonts(std::function<void(const QList<val> &)> callback)
+{
+    emscripten::val window = emscripten::val::global("window");
+    qstdweb::Promise::make(window, "queryLocalFonts", {
+        .thenFunc = [callback](emscripten::val fontArray) {
+            QList<val> fonts;
+            const int count = fontArray["length"].as<int>();
+            fonts.reserve(count);
+            for (int i = 0; i < count; ++i)
+                fonts.append(fontArray.call<emscripten::val>("at", i));
+            callback(fonts);
+        },
+        .catchFunc = printError
+    });
+}
+
+void readBlob(val blob, std::function<void(const QByteArray &)> callback)
+{
+    qstdweb::Promise::make(blob, "arrayBuffer", {
+        .thenFunc = [callback](emscripten::val fontArrayBuffer) {
+            QByteArray fontData = qstdweb::Uint8Array(qstdweb::ArrayBuffer(fontArrayBuffer)).copyToQByteArray();
+            callback(fontData);
+        },
+        .catchFunc = printError
+    });
+}
+
+void readFont(val font, std::function<void(const QByteArray &)> callback)
+{
+    qstdweb::Promise::make(font, "blob", {
+        .thenFunc = [callback](val blob) {
+            readBlob(blob, [callback](const QByteArray &data) {
+                callback(data);
+            });
+        },
+        .catchFunc = printError
+    });
+}
+
+} // namespace
+
+void QWasmFontDatabase::populateLocalfonts()
+{
+    if (!isLocalFontsAPISupported())
+        return;
+
+    // Run the font population code if local font access has been
+    // permitted. This does not request permission, since we are currently
+    // starting up and should not display a permission request dialog at
+    // this point.
+    checkFontAccessPermitted([](){
+        queryLocalFonts([](const QList<val> &fonts){
+            auto fontFamilies = makeFontFamilyMap(fonts);
+            // Populate some font families. We can't populate _all_ fonts as in-memory fonts,
+            // since that would require several gigabytes of memory. Instead, populate
+            // a subset of the available fonts.
+            for (const QString &family: webSafeFontFamilies()) {
+                auto fontsRange = fontFamilies.equal_range(family);
+                if (fontsRange.first != fontsRange.second)
+                    QFreeTypeFontDatabase::registerFontFamily(family);
+
+                for (auto it = fontsRange.first; it != fontsRange.second; ++it) {
+                    const val font = it->second;
+                    readFont(font, [](const QByteArray &fontData){
+                        QFreeTypeFontDatabase::addTTFile(fontData, QByteArray());
+                        QWasmFontDatabase::notifyFontsChanged();
+                    });
+                }
+            }
+        });
+    });
+}
 
 void QWasmFontDatabase::populateFontDatabase()
 {
@@ -51,6 +162,8 @@ void QWasmFontDatabase::populateFontDatabase()
 
         QFreeTypeFontDatabase::addTTFile(theFont.readAll(), fontFileName.toLatin1());
     }
+
+    populateLocalfonts();
 }
 
 QFontEngine *QWasmFontDatabase::fontEngine(const QFontDef &fontDef, void *handle)
@@ -65,19 +178,15 @@ QStringList QWasmFontDatabase::fallbacksForFamily(const QString &family, QFont::
     QStringList fallbacks
         = QFreeTypeFontDatabase::fallbacksForFamily(family, style, styleHint, script);
 
-    // Add the vera.ttf font (loaded in populateFontDatabase above) as a falback font
+    // Add the vera.ttf and DejaVuSans.ttf fonts (loaded in populateFontDatabase above) as falback fonts
     // to all other fonts (except itself).
-    const QString veraFontFamily = QStringLiteral("Bitstream Vera Sans");
-    if (family != veraFontFamily)
-        fallbacks.append(veraFontFamily);
+    static const QString wasmFallbackFonts[] = { "Bitstream Vera Sans", "DejaVu Sans" };
+    for (auto wasmFallbackFont : wasmFallbackFonts) {
+        if (family != wasmFallbackFont && !fallbacks.contains(wasmFallbackFont))
+            fallbacks.append(wasmFallbackFont);
+    }
 
     return fallbacks;
-}
-
-QStringList QWasmFontDatabase::addApplicationFont(const QByteArray &fontData,
-                                                    const QString &fileName)
-{
-    return QFreeTypeFontDatabase::addApplicationFont(fontData, fileName);
 }
 
 void QWasmFontDatabase::releaseHandle(void *handle)
@@ -87,7 +196,13 @@ void QWasmFontDatabase::releaseHandle(void *handle)
 
 QFont QWasmFontDatabase::defaultFont() const
 {
-    return QFont(QLatin1String("Bitstream Vera Sans"));
+    return QFont("Bitstream Vera Sans"_L1);
+}
+
+void QWasmFontDatabase::notifyFontsChanged()
+{
+    QFontCache::instance()->clear();
+    emit qGuiApp->fontDatabaseChanged();
 }
 
 QT_END_NAMESPACE

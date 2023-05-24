@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtLocation/QLocation>
 
@@ -72,6 +39,20 @@ namespace QLocation {
     default visibility is unspecified meaning that the manager chooses an appropriate visibility scope for the item.
 
     When \e searching for places, unspecified means that places of any scope is returned.
+*/
+
+/*!
+    \enum QLocation::ReferenceSurface
+    \since 6.6
+
+    Defines the reference surface on which various map items (e.g. polygons, polylines) are defined.
+
+    \value Map                      Items are defined on a map. This means, e.g. for a polyline that
+                                    nodes are connected with straight lines on the map.
+    \value Globe                    Items are defined on the globe. This means, e.g. for a polyine
+                                    that nodes are connected with circle sections that represent the
+                                    shortest connection between points on a sphere. This connection is
+                                    also known as great circle path.
 */
 }
 

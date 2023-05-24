@@ -1,12 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_VIEWS_EXAMPLES_COLORED_DIALOG_EXAMPLE_H_
 #define UI_VIEWS_EXAMPLES_COLORED_DIALOG_EXAMPLE_H_
 
+#include "base/memory/raw_ptr.h"
 #include "base/timer/timer.h"
-#include "ui/views/controls/button/button.h"
 #include "ui/views/controls/textfield/textfield_controller.h"
 #include "ui/views/examples/example_base.h"
 #include "ui/views/view.h"
@@ -14,7 +14,6 @@
 
 namespace views {
 
-class Button;
 class Label;
 
 namespace examples {
@@ -22,7 +21,7 @@ namespace examples {
 class ColoredDialog : public views::DialogDelegateView,
                       public views::TextfieldController {
  public:
-  using AcceptCallback = base::OnceCallback<void(base::string16)>;
+  using AcceptCallback = base::OnceCallback<void(std::u16string)>;
 
   explicit ColoredDialog(AcceptCallback accept_callback);
   ColoredDialog(const ColoredDialog&) = delete;
@@ -35,26 +34,25 @@ class ColoredDialog : public views::DialogDelegateView,
 
   // views::TextfieldController
   void ContentsChanged(Textfield* sender,
-                       const base::string16& new_contents) override;
+                       const std::u16string& new_contents) override;
 
  private:
-  views::Textfield* textfield_;
+  raw_ptr<views::Textfield> textfield_;
 };
 
-class ColoredDialogChooser : public views::View, public views::ButtonListener {
+class ColoredDialogChooser : public views::View {
  public:
   ColoredDialogChooser();
   ColoredDialogChooser(const ColoredDialogChooser&) = delete;
   ColoredDialogChooser& operator=(const ColoredDialogChooser&) = delete;
   ~ColoredDialogChooser() override;
 
-  // ButtonListener
-  void ButtonPressed(views::Button* sender, const ui::Event& event) override;
+  void ButtonPressed();
 
  private:
-  void OnFeedbackSubmit(base::string16 text);
+  void OnFeedbackSubmit(std::u16string text);
 
-  views::Label* confirmation_label_;
+  raw_ptr<views::Label> confirmation_label_;
   base::OneShotTimer confirmation_timer_;
 };
 

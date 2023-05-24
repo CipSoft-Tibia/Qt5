@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //  W A R N I N G
 //  -------------
@@ -45,7 +19,7 @@
 #include <QtCharts/QAbstractSeries>
 #include <QtCharts/private/qchartglobal_p.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class QBarModelMapper;
 class QBarCategoryAxis;
@@ -64,20 +38,20 @@ public:
     void setVisible(bool visible);
     void setLabelsVisible(bool visible);
 
-    void initializeDomain();
-    void initializeAxes();
-    void initializeAnimations(QChart::AnimationOptions options, int duration, QEasingCurve &curve);
-    void initializeTheme(int index, ChartTheme* theme, bool forced = false);
+    void initializeDomain() override;
+    void initializeAxes() override;
+    void initializeAnimations(QChart::AnimationOptions options, int duration, QEasingCurve &curve) override;
+    void initializeTheme(int index, ChartTheme* theme, bool forced = false) override;
 
-    QList<QLegendMarker*> createLegendMarkers(QLegend *legend);
+    QList<QLegendMarker*> createLegendMarkers(QLegend *legend) override;
 
-    virtual QAbstractAxis::AxisType defaultAxisType(Qt::Orientation orientation) const;
-    QAbstractAxis* createDefaultAxis(Qt::Orientation orientation) const;
+    virtual QAbstractAxis::AxisType defaultAxisType(Qt::Orientation orientation) const override;
+    QAbstractAxis* createDefaultAxis(Qt::Orientation orientation) const override;
 
     bool append(QBarSet *set);
     bool remove(QBarSet *set);
-    bool append(QList<QBarSet *> sets);
-    bool remove(QList<QBarSet *> sets);
+    bool append(const QList<QBarSet *> &sets);
+    bool remove(const QList<QBarSet *> &sets);
     bool insert(int index, QBarSet *set);
 
     QBarSet *barsetAt(int index);
@@ -144,6 +118,6 @@ private:
     friend class BarChartItem;
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif // QABSTRACTBARSERIES_P_H

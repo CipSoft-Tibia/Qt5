@@ -1,13 +1,12 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/webrtc/webrtc_internals_message_handler.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "content/browser/renderer_host/media/peer_connection_tracker_host.h"
-#include "content/browser/renderer_host/render_process_host_impl.h"
 #include "content/browser/webrtc/webrtc_internals.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_frame_host.h"
@@ -72,8 +71,8 @@ void WebRTCInternalsMessageHandler::RegisterMessages() {
                           base::Unretained(this)));
 }
 
-RenderFrameHost* WebRTCInternalsMessageHandler::GetWebRTCInternalsHost() const {
-  RenderFrameHost* host = web_ui()->GetWebContents()->GetMainFrame();
+RenderFrameHost* WebRTCInternalsMessageHandler::GetWebRTCInternalsHost() {
+  RenderFrameHost* host = web_ui()->GetWebContents()->GetPrimaryMainFrame();
   if (host) {
     // Make sure we only ever execute the script in the webrtc-internals page.
     const GURL url(host->GetLastCommittedURL());
@@ -90,29 +89,22 @@ RenderFrameHost* WebRTCInternalsMessageHandler::GetWebRTCInternalsHost() const {
 }
 
 void WebRTCInternalsMessageHandler::OnGetStandardStats(
-    const base::ListValue* /* unused_list */) {
-  for (RenderProcessHost::iterator i(
-           content::RenderProcessHost::AllHostsIterator());
-       !i.IsAtEnd(); i.Advance()) {
-    auto* render_process_host =
-        static_cast<RenderProcessHostImpl*>(i.GetCurrentValue());
-    render_process_host->GetPeerConnectionTrackerHost()->GetStandardStats();
+    const base::Value::List& /* unused_list */) {
+  for (auto* host : PeerConnectionTrackerHost::GetAllHosts()) {
+    host->GetStandardStats();
   }
 }
 
 void WebRTCInternalsMessageHandler::OnGetLegacyStats(
-    const base::ListValue* /* unused_list */) {
-  for (RenderProcessHost::iterator i(
-       content::RenderProcessHost::AllHostsIterator());
-       !i.IsAtEnd(); i.Advance()) {
-    auto* render_process_host =
-        static_cast<RenderProcessHostImpl*>(i.GetCurrentValue());
-    render_process_host->GetPeerConnectionTrackerHost()->GetLegacyStats();
+    const base::Value::List& /* unused_list */) {
+  for (auto* host : PeerConnectionTrackerHost::GetAllHosts()) {
+    host->GetLegacyStats();
   }
 }
 
 void WebRTCInternalsMessageHandler::OnSetAudioDebugRecordingsEnabled(
-    bool enable, const base::ListValue* /* unused_list */) {
+    bool enable,
+    const base::Value::List& /* unused_list */) {
   if (enable) {
     webrtc_internals_->EnableAudioDebugRecordings(web_ui()->GetWebContents());
   } else {
@@ -122,7 +114,7 @@ void WebRTCInternalsMessageHandler::OnSetAudioDebugRecordingsEnabled(
 
 void WebRTCInternalsMessageHandler::OnSetEventLogRecordingsEnabled(
     bool enable,
-    const base::ListValue* /* unused_list */) {
+    const base::Value::List& /* unused_list */) {
   if (!webrtc_internals_->CanToggleEventLogRecordings()) {
     LOG(WARNING) << "Cannot toggle WebRTC event logging.";
     return;
@@ -137,42 +129,43 @@ void WebRTCInternalsMessageHandler::OnSetEventLogRecordingsEnabled(
 }
 
 void WebRTCInternalsMessageHandler::OnDOMLoadDone(
-    const base::ListValue* /* unused_list */) {
+    const base::Value::List& args_list) {
+  CHECK_GE(args_list.size(), 1u);
+
+  const std::string callback_id = args_list[0].GetString();
+  AllowJavascript();
+
   webrtc_internals_->UpdateObserver(this);
 
-  if (webrtc_internals_->IsAudioDebugRecordingsEnabled())
-    ExecuteJavascriptCommand("setAudioDebugRecordingsEnabled", nullptr);
+  base::Value::Dict params;
+  params.Set("audioDebugRecordingsEnabled",
+             webrtc_internals_->IsAudioDebugRecordingsEnabled());
+  params.Set("eventLogRecordingsEnabled",
+             webrtc_internals_->IsEventLogRecordingsEnabled());
+  params.Set("eventLogRecordingsToggleable",
+             webrtc_internals_->CanToggleEventLogRecordings());
 
-  if (webrtc_internals_->IsEventLogRecordingsEnabled())
-    ExecuteJavascriptCommand("setEventLogRecordingsEnabled", nullptr);
-
-  const base::Value can_toggle(
-      webrtc_internals_->CanToggleEventLogRecordings());
-  ExecuteJavascriptCommand("setEventLogRecordingsToggleability", &can_toggle);
+  ResolveJavascriptCallback(base::Value(callback_id), params);
 }
 
-void WebRTCInternalsMessageHandler::OnUpdate(const char* command,
-                                             const base::Value* args) {
-  ExecuteJavascriptCommand(command, args);
-}
-
-// TODO(eladalon): Make this function accept a vector of base::Values.
-// https://crbug.com/817384
-void WebRTCInternalsMessageHandler::ExecuteJavascriptCommand(
-    const char* command,
-    const base::Value* args) {
+void WebRTCInternalsMessageHandler::OnUpdate(const std::string& event_name,
+                                             const base::Value* event_data) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  if (!IsJavascriptAllowed()) {
+    // Javascript is disallowed, either due to the page still loading, or in the
+    // process of being unloaded. Skip this update.
+    return;
+  }
 
   RenderFrameHost* host = GetWebRTCInternalsHost();
   if (!host)
     return;
 
-  std::vector<const base::Value*> args_vector;
-  if (args)
-    args_vector.push_back(args);
-
-  base::string16 script = WebUI::GetJavascriptCall(command, args_vector);
-  host->ExecuteJavaScript(script, base::NullCallback());
+  if (event_data) {
+    FireWebUIListener(event_name, *event_data);
+  } else {
+    FireWebUIListener(event_name, base::Value());
+  }
 }
 
 }  // namespace content

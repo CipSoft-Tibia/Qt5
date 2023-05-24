@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the demonstration applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "pathstroke.h"
 #include "arthurstyle.h"
@@ -388,7 +341,7 @@ PathStrokeWidget::PathStrokeWidget(bool smallScreen)
 
     connect(m_renderer, &PathStrokeRenderer::clicked, this, &PathStrokeWidget::showControls);
     connect(m_controls, &PathStrokeControls::okPressed, this, &PathStrokeWidget::hideControls);
-    connect(m_controls, SIGNAL(quitPressed()), QApplication::instance(), SLOT(quit()));
+    connect(m_controls, &PathStrokeControls::quitPressed, QApplication::instance(), &QApplication::quit);
 }
 
 void PathStrokeWidget::showControls()
@@ -470,7 +423,7 @@ void PathStrokeRenderer::paint(QPainter *painter)
             stroker.setJoinStyle(m_joinStyle);
             stroker.setCapStyle(m_capStyle);
 
-            QVector<qreal> dashes;
+            QList<qreal> dashes;
             qreal space = 4;
             dashes << 1 << space
                    << 3 << space
@@ -559,7 +512,7 @@ void PathStrokeRenderer::mousePressEvent(QMouseEvent *e)
     m_activePoint = -1;
     qreal distance = -1;
     for (int i = 0; i < m_points.size(); ++i) {
-        qreal d = QLineF(e->pos(), m_points.at(i)).length();
+        qreal d = QLineF(e->position().toPoint(), m_points.at(i)).length();
         if ((distance < 0 && d < 8 * m_pointSize) || d < distance) {
             distance = d;
             m_activePoint = i;
@@ -574,7 +527,7 @@ void PathStrokeRenderer::mousePressEvent(QMouseEvent *e)
 
     // If we're not running in small screen mode, always assume we're dragging
     m_mouseDrag = !m_smallScreen;
-    m_mousePress = e->pos();
+    m_mousePress = e->position().toPoint();
 }
 
 void PathStrokeRenderer::mouseMoveEvent(QMouseEvent *e)
@@ -582,11 +535,11 @@ void PathStrokeRenderer::mouseMoveEvent(QMouseEvent *e)
     if (!m_fingerPointMapping.isEmpty())
         return;
     // If we've moved more then 25 pixels, assume user is dragging
-    if (!m_mouseDrag && QPoint(m_mousePress - e->pos()).manhattanLength() > 25)
+    if (!m_mouseDrag && QPoint(m_mousePress - e->position().toPoint()).manhattanLength() > 25)
         m_mouseDrag = true;
 
     if (m_mouseDrag && m_activePoint >= 0 && m_activePoint < m_points.size()) {
-        m_points[m_activePoint] = e->pos();
+        m_points[m_activePoint] = e->position().toPoint();
         update();
     }
 }
@@ -622,11 +575,11 @@ bool PathStrokeRenderer::event(QEvent *e)
     case QEvent::TouchUpdate:
     {
         const QTouchEvent *const event = static_cast<const QTouchEvent*>(e);
-        const QList<QTouchEvent::TouchPoint> points = event->touchPoints();
-        for (const QTouchEvent::TouchPoint &touchPoint : points) {
-            const int id = touchPoint.id();
-            switch (touchPoint.state()) {
-            case Qt::TouchPointPressed:
+        const auto points = event->points();
+        for (const auto &point : points) {
+            const int id = point.id();
+            switch (point.state()) {
+            case QEventPoint::Pressed:
             {
                 // find the point, move it
                 const auto mappedPoints = m_fingerPointMapping.values();
@@ -638,32 +591,32 @@ bool PathStrokeRenderer::event(QEvent *e)
                     if (activePoints.contains(i))
                         continue;
 
-                    qreal d = QLineF(touchPoint.pos(), m_points.at(i)).length();
+                    qreal d = QLineF(point.position(), m_points.at(i)).length();
                     if ((distance < 0 && d < 12 * m_pointSize) || d < distance) {
                         distance = d;
                         activePoint = i;
                     }
                 }
                 if (activePoint != -1) {
-                    m_fingerPointMapping.insert(touchPoint.id(), activePoint);
-                    m_points[activePoint] = touchPoint.pos();
+                    m_fingerPointMapping.insert(point.id(), activePoint);
+                    m_points[activePoint] = point.position();
                 }
                 break;
             }
-            case Qt::TouchPointReleased:
+            case QEventPoint::Released:
             {
                 // move the point and release
                 QHash<int,int>::iterator it = m_fingerPointMapping.find(id);
-                m_points[it.value()] = touchPoint.pos();
+                m_points[it.value()] = point.position();
                 m_fingerPointMapping.erase(it);
                 break;
             }
-            case Qt::TouchPointMoved:
+            case QEventPoint::Updated:
             {
                 // move the point
                 const int pointIdx = m_fingerPointMapping.value(id, -1);
                 if (pointIdx >= 0)
-                    m_points[pointIdx] = touchPoint.pos();
+                    m_points[pointIdx] = point.position();
                 break;
             }
             default:

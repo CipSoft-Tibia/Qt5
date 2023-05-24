@@ -28,10 +28,25 @@ static const uint8_t ip_shuffle_f4f5[32] = { 4, 5, 6,  7,  6,  7,  8,  9,
                                              4, 5, 6,  7,  6,  7,  8,  9,
                                              8, 9, 10, 11, 10, 11, 12, 13 };
 
+void av1_highbd_convolve_x_sr_ssse3(const uint16_t *src, int src_stride,
+                                    uint16_t *dst, int dst_stride, int w, int h,
+                                    const InterpFilterParams *filter_params_x,
+                                    const int subpel_x_qn,
+                                    ConvolveParams *conv_params, int bd);
+void av1_highbd_convolve_y_sr_ssse3(const uint16_t *src, int src_stride,
+                                    uint16_t *dst, int dst_stride, int w, int h,
+                                    const InterpFilterParams *filter_params_y,
+                                    const int subpel_y_qn, int bd);
+
 void av1_highbd_convolve_y_sr_avx2(const uint16_t *src, int src_stride,
                                    uint16_t *dst, int dst_stride, int w, int h,
                                    const InterpFilterParams *filter_params_y,
                                    const int subpel_y_qn, int bd) {
+  if (filter_params_y->taps == 12) {
+    av1_highbd_convolve_y_sr_ssse3(src, src_stride, dst, dst_stride, w, h,
+                                   filter_params_y, subpel_y_qn, bd);
+    return;
+  }
   int i, j;
   const int fo_vert = filter_params_y->taps / 2 - 1;
   const uint16_t *const src_ptr = src - fo_vert * src_stride;
@@ -150,9 +165,9 @@ void av1_highbd_convolve_y_sr_avx2(const uint16_t *src, int src_stride,
           res_a_round = _mm256_min_epi16(res_a_round, clip_pixel);
           res_a_round = _mm256_max_epi16(res_a_round, zero);
 
-          xx_storel_32((__m128i *)&dst[i * dst_stride + j],
+          xx_storel_32(&dst[i * dst_stride + j],
                        _mm256_castsi256_si128(res_a_round));
-          xx_storel_32((__m128i *)&dst[i * dst_stride + j + dst_stride],
+          xx_storel_32(&dst[i * dst_stride + j + dst_stride],
                        _mm256_extracti128_si256(res_a_round, 1));
         }
 
@@ -173,6 +188,12 @@ void av1_highbd_convolve_x_sr_avx2(const uint16_t *src, int src_stride,
                                    const InterpFilterParams *filter_params_x,
                                    const int subpel_x_qn,
                                    ConvolveParams *conv_params, int bd) {
+  if (filter_params_x->taps == 12) {
+    av1_highbd_convolve_x_sr_ssse3(src, src_stride, dst, dst_stride, w, h,
+                                   filter_params_x, subpel_x_qn, conv_params,
+                                   bd);
+    return;
+  }
   int i, j;
   const int fo_horiz = filter_params_x->taps / 2 - 1;
   const uint16_t *const src_ptr = src - fo_horiz;
@@ -254,9 +275,8 @@ void av1_highbd_convolve_x_sr_avx2(const uint16_t *src, int src_stride,
         _mm_storel_epi64((__m128i *)&dst[i * dst_stride + j + dst_stride],
                          _mm256_extracti128_si256(res, 1));
       } else {
-        xx_storel_32((__m128i *)&dst[i * dst_stride + j],
-                     _mm256_castsi256_si128(res));
-        xx_storel_32((__m128i *)&dst[i * dst_stride + j + dst_stride],
+        xx_storel_32(&dst[i * dst_stride + j], _mm256_castsi256_si128(res));
+        xx_storel_32(&dst[i * dst_stride + j + dst_stride],
                      _mm256_extracti128_si256(res, 1));
       }
     }
@@ -1222,7 +1242,7 @@ void aom_highbd_filter_block1d4_v2_sse2(const uint16_t *, ptrdiff_t, uint16_t *,
 #define aom_highbd_filter_block1d4_v8_avx2 aom_highbd_filter_block1d4_v8_sse2
 #define aom_highbd_filter_block1d4_v2_avx2 aom_highbd_filter_block1d4_v2_sse2
 
-HIGH_FUN_CONV_1D(horiz, x_step_q4, filter_x, h, src, , avx2);
-HIGH_FUN_CONV_1D(vert, y_step_q4, filter_y, v, src - src_stride * 3, , avx2);
+HIGH_FUN_CONV_1D(horiz, x_step_q4, filter_x, h, src, , avx2)
+HIGH_FUN_CONV_1D(vert, y_step_q4, filter_y, v, src - src_stride * 3, , avx2)
 
 #undef HIGHBD_FUNC

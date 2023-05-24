@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,9 @@
 #include <jni.h>
 
 #include "base/android/scoped_java_ref.h"
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/macros.h"
-#include "base/single_thread_task_runner.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/task/single_thread_task_runner.h"
 
 namespace media {
 
@@ -29,6 +28,10 @@ class MediaServerCrashListener {
   MediaServerCrashListener(
       OnMediaServerCrashCB on_server_crash_cb,
       scoped_refptr<base::SingleThreadTaskRunner> callback_task_runner);
+
+  MediaServerCrashListener(const MediaServerCrashListener&) = delete;
+  MediaServerCrashListener& operator=(const MediaServerCrashListener&) = delete;
+
   ~MediaServerCrashListener();
 
   // Ensure the underlying watchdog MediaPlayer is created.
@@ -50,7 +53,6 @@ class MediaServerCrashListener {
   scoped_refptr<base::SingleThreadTaskRunner> callback_task_runner_;
 
   base::android::ScopedJavaGlobalRef<jobject> j_crash_listener_;
-  DISALLOW_COPY_AND_ASSIGN(MediaServerCrashListener);
 };
 
 }  // namespace media

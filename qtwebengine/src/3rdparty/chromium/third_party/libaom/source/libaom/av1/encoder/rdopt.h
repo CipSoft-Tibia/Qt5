@@ -54,7 +54,7 @@ struct RD_STATS;
                                 during the mode picking process.
  * \param[in]    best_rd Best   RD seen for this block so far.
  *
- * \return Nothing is returned. Instead, the MB_MODE_INFO struct inside x
+ * \remark Nothing is returned. Instead, the MB_MODE_INFO struct inside x
  * is modified to store information about the best mode computed
  * in this function. The rd_cost struct is also updated with the RD stats
  * corresponding to the best mode found.
@@ -85,16 +85,15 @@ void av1_rd_pick_intra_mode_sb(const struct AV1_COMP *cpi, struct macroblock *x,
                                 during the mode picking process
  * \param[in]    best_rd_so_far Best RD seen for this block so far
  *
- * \return Nothing is returned. Instead, the MB_MODE_INFO struct inside x
+ * \remark Nothing is returned. Instead, the MB_MODE_INFO struct inside x
  * is modified to store information about the best mode computed
  * in this function. The rd_cost struct is also updated with the RD stats
  * corresponding to the best mode found.
  */
-void av1_rd_pick_inter_mode_sb(struct AV1_COMP *cpi,
-                               struct TileDataEnc *tile_data,
-                               struct macroblock *x, struct RD_STATS *rd_cost,
-                               BLOCK_SIZE bsize, PICK_MODE_CONTEXT *ctx,
-                               int64_t best_rd_so_far);
+void av1_rd_pick_inter_mode(struct AV1_COMP *cpi, struct TileDataEnc *tile_data,
+                            struct macroblock *x, struct RD_STATS *rd_cost,
+                            BLOCK_SIZE bsize, PICK_MODE_CONTEXT *ctx,
+                            int64_t best_rd_so_far);
 
 /*!\brief AV1 intra mode selection based on Non-RD optimized model.
  *
@@ -116,7 +115,7 @@ void av1_rd_pick_inter_mode_sb(struct AV1_COMP *cpi,
  * \param[in]    ctx            Structure to hold snapshot of coding context
                                 during the mode picking process
  *
- * \return Nothing is returned. Instead, the MB_MODE_INFO struct inside x
+ * \remark Nothing is returned. Instead, the MB_MODE_INFO struct inside x
  * is modified to store information about the best mode computed
  * in this function. The rd_cost struct is also updated with the RD stats
  * corresponding to the best mode found.
@@ -148,7 +147,7 @@ void av1_nonrd_pick_intra_mode(AV1_COMP *cpi, MACROBLOCK *x, RD_STATS *rd_cost,
  * \param[in]    ctx            Structure to hold snapshot of coding context
                                 during the mode picking process
  *
- * \return Nothing is returned. Instead, the MB_MODE_INFO struct inside x
+ * \remark Nothing is returned. Instead, the MB_MODE_INFO struct inside x
  * is modified to store information about the best mode computed
  * in this function. The rd_cost struct is also updated with the RD stats
  * corresponding to the best mode found.
@@ -164,57 +163,14 @@ void av1_rd_pick_inter_mode_sb_seg_skip(
     struct macroblock *x, int mi_row, int mi_col, struct RD_STATS *rd_cost,
     BLOCK_SIZE bsize, PICK_MODE_CONTEXT *ctx, int64_t best_rd_so_far);
 
-// TODO(any): The defs below could potentially be moved to rdopt_utils.h instead
-// because they are not the main rdopt functions.
-/*!\cond */
-// The best edge strength seen in the block, as well as the best x and y
-// components of edge strength seen.
-typedef struct {
-  uint16_t magnitude;
-  uint16_t x;
-  uint16_t y;
-} EdgeInfo;
-/*!\endcond */
-
-/** Returns an integer indicating the strength of the edge.
- * 0 means no edge found, 556 is the strength of a solid black/white edge,
- * and the number may range higher if the signal is even stronger (e.g., on a
- * corner). high_bd is a bool indicating the source should be treated
- * as a 16-bit array. bd is the bit depth.
- */
-EdgeInfo av1_edge_exists(const uint8_t *src, int src_stride, int w, int h,
-                         bool high_bd, int bd);
-
-/** Applies a Gaussian blur with sigma = 1.3. Used by av1_edge_exists and
- * tests.
- */
-void av1_gaussian_blur(const uint8_t *src, int src_stride, int w, int h,
-                       uint8_t *dst, bool high_bd, int bd);
-
-/*!\cond */
-/* Applies standard 3x3 Sobel matrix. */
-typedef struct {
-  int16_t x;
-  int16_t y;
-} sobel_xy;
-/*!\endcond */
-
-sobel_xy av1_sobel(const uint8_t *input, int stride, int i, int j,
-                   bool high_bd);
-
 void av1_inter_mode_data_init(struct TileDataEnc *tile_data);
 void av1_inter_mode_data_fit(TileDataEnc *tile_data, int rdmult);
 
-#if !CONFIG_REALTIME_ONLY
 static INLINE int coded_to_superres_mi(int mi_col, int denom) {
   return (mi_col * denom + SCALE_NUMERATOR / 2) / SCALE_NUMERATOR;
 }
-#endif
 
-static INLINE int av1_encoder_get_relative_dist(const OrderHintInfo *oh, int a,
-                                                int b) {
-  if (!oh->enable_order_hint) return 0;
-
+static INLINE int av1_encoder_get_relative_dist(int a, int b) {
   assert(a >= 0 && b >= 0);
   return (a - b);
 }
@@ -223,31 +179,18 @@ static INLINE int av1_encoder_get_relative_dist(const OrderHintInfo *oh, int a,
 static INLINE int av1_get_sb_mi_size(const AV1_COMMON *const cm) {
   const int mi_alloc_size_1d = mi_size_wide[cm->mi_params.mi_alloc_bsize];
   int sb_mi_rows =
-      (mi_size_wide[cm->seq_params.sb_size] + mi_alloc_size_1d - 1) /
+      (mi_size_wide[cm->seq_params->sb_size] + mi_alloc_size_1d - 1) /
       mi_alloc_size_1d;
-  assert(mi_size_wide[cm->seq_params.sb_size] ==
-         mi_size_high[cm->seq_params.sb_size]);
+  assert(mi_size_wide[cm->seq_params->sb_size] ==
+         mi_size_high[cm->seq_params->sb_size]);
   int sb_mi_size = sb_mi_rows * sb_mi_rows;
 
   return sb_mi_size;
 }
 
-// This function will copy usable ref_mv_stack[ref_frame][4] and
-// weight[ref_frame][4] information from ref_mv_stack[ref_frame][8] and
-// weight[ref_frame][8].
-static INLINE void av1_copy_usable_ref_mv_stack_and_weight(
-    const MACROBLOCKD *xd, MB_MODE_INFO_EXT *const mbmi_ext,
-    MV_REFERENCE_FRAME ref_frame) {
-  memcpy(mbmi_ext->weight[ref_frame], xd->weight[ref_frame],
-         USABLE_REF_MV_STACK_SIZE * sizeof(xd->weight[0][0]));
-  memcpy(mbmi_ext->ref_mv_stack[ref_frame], xd->ref_mv_stack[ref_frame],
-         USABLE_REF_MV_STACK_SIZE * sizeof(xd->ref_mv_stack[0][0]));
-}
-
 // This function prunes the mode if either of the reference frame falls in the
 // pruning list
 static INLINE int prune_ref(const MV_REFERENCE_FRAME *const ref_frame,
-                            const OrderHintInfo *const order_hint_info,
                             const unsigned int *const ref_display_order_hint,
                             const unsigned int frame_display_order_hint,
                             const int *ref_frame_list) {
@@ -257,13 +200,37 @@ static INLINE int prune_ref(const MV_REFERENCE_FRAME *const ref_frame,
     if (ref_frame[0] == ref_frame_list[i] ||
         ref_frame[1] == ref_frame_list[i]) {
       if (av1_encoder_get_relative_dist(
-              order_hint_info,
               ref_display_order_hint[ref_frame_list[i] - LAST_FRAME],
               frame_display_order_hint) < 0)
         return 1;
     }
   }
   return 0;
+}
+
+static INLINE int has_closest_ref_frames(const MV_REFERENCE_FRAME *ref_frame,
+                                         int8_t closest_past_ref,
+                                         int8_t closest_future_ref) {
+  int has_closest_past_ref =
+      (ref_frame[0] == closest_past_ref) || (ref_frame[1] == closest_past_ref);
+  int has_closest_future_ref = (ref_frame[0] == closest_future_ref) ||
+                               (ref_frame[1] == closest_future_ref);
+  return (has_closest_past_ref && has_closest_future_ref);
+}
+
+static INLINE int has_best_pred_mv_sad(const MV_REFERENCE_FRAME *ref_frame,
+                                       const MACROBLOCK *const x) {
+  int has_best_past_pred_mv_sad = 0;
+  int has_best_future_pred_mv_sad = 0;
+  if (x->best_pred_mv_sad[0] < INT_MAX && x->best_pred_mv_sad[1] < INT_MAX) {
+    has_best_past_pred_mv_sad =
+        (x->pred_mv_sad[ref_frame[0]] == x->best_pred_mv_sad[0]) ||
+        (x->pred_mv_sad[ref_frame[1]] == x->best_pred_mv_sad[0]);
+    has_best_future_pred_mv_sad =
+        (x->pred_mv_sad[ref_frame[0]] == x->best_pred_mv_sad[1]) ||
+        (x->pred_mv_sad[ref_frame[1]] == x->best_pred_mv_sad[1]);
+  }
+  return (has_best_past_pred_mv_sad && has_best_future_pred_mv_sad);
 }
 
 static INLINE int prune_ref_by_selective_ref_frame(
@@ -273,8 +240,6 @@ static INLINE int prune_ref_by_selective_ref_frame(
   const SPEED_FEATURES *const sf = &cpi->sf;
   if (!sf->inter_sf.selective_ref_frame) return 0;
 
-  const AV1_COMMON *const cm = &cpi->common;
-  const OrderHintInfo *const order_hint_info = &cm->seq_params.order_hint_info;
   const int comp_pred = ref_frame[1] > INTRA_FRAME;
 
   if (sf->inter_sf.selective_ref_frame >= 2 ||
@@ -282,11 +247,19 @@ static INLINE int prune_ref_by_selective_ref_frame(
     int ref_frame_list[2] = { LAST3_FRAME, LAST2_FRAME };
 
     if (x != NULL) {
-      if (x->tpl_keep_ref_frame[LAST3_FRAME]) ref_frame_list[0] = NONE_FRAME;
-      if (x->tpl_keep_ref_frame[LAST2_FRAME]) ref_frame_list[1] = NONE_FRAME;
+      // Disable pruning if either tpl suggests that we keep the frame or
+      // the pred_mv gives us the best sad
+      if (x->tpl_keep_ref_frame[LAST3_FRAME] ||
+          x->pred_mv_sad[LAST3_FRAME] == x->best_pred_mv_sad[0]) {
+        ref_frame_list[0] = NONE_FRAME;
+      }
+      if (x->tpl_keep_ref_frame[LAST2_FRAME] ||
+          x->pred_mv_sad[LAST2_FRAME] == x->best_pred_mv_sad[0]) {
+        ref_frame_list[1] = NONE_FRAME;
+      }
     }
 
-    if (prune_ref(ref_frame, order_hint_info, ref_display_order_hint,
+    if (prune_ref(ref_frame, ref_display_order_hint,
                   ref_display_order_hint[GOLDEN_FRAME - LAST_FRAME],
                   ref_frame_list))
       return 1;
@@ -296,14 +269,37 @@ static INLINE int prune_ref_by_selective_ref_frame(
     int ref_frame_list[2] = { ALTREF2_FRAME, BWDREF_FRAME };
 
     if (x != NULL) {
-      if (x->tpl_keep_ref_frame[ALTREF2_FRAME]) ref_frame_list[0] = NONE_FRAME;
-      if (x->tpl_keep_ref_frame[BWDREF_FRAME]) ref_frame_list[1] = NONE_FRAME;
+      // Disable pruning if either tpl suggests that we keep the frame or
+      // the pred_mv gives us the best sad
+      if (x->tpl_keep_ref_frame[ALTREF2_FRAME] ||
+          x->pred_mv_sad[ALTREF2_FRAME] == x->best_pred_mv_sad[0]) {
+        ref_frame_list[0] = NONE_FRAME;
+      }
+      if (x->tpl_keep_ref_frame[BWDREF_FRAME] ||
+          x->pred_mv_sad[BWDREF_FRAME] == x->best_pred_mv_sad[0]) {
+        ref_frame_list[1] = NONE_FRAME;
+      }
     }
 
-    if (prune_ref(ref_frame, order_hint_info, ref_display_order_hint,
+    if (prune_ref(ref_frame, ref_display_order_hint,
                   ref_display_order_hint[LAST_FRAME - LAST_FRAME],
                   ref_frame_list))
       return 1;
+  }
+
+  if (x != NULL && sf->inter_sf.prune_comp_ref_frames && comp_pred) {
+    int closest_ref_frames = has_closest_ref_frames(
+        ref_frame, cpi->ref_frame_dist_info.nearest_past_ref,
+        cpi->ref_frame_dist_info.nearest_future_ref);
+    if (closest_ref_frames == 0) {
+      // Prune reference frames which are not the closest to the current frame.
+      if (sf->inter_sf.prune_comp_ref_frames >= 2) {
+        return 1;
+      } else if (sf->inter_sf.prune_comp_ref_frames == 1) {
+        // Prune reference frames with non minimum pred_mv_sad.
+        if (has_best_pred_mv_sad(ref_frame, x) == 0) return 1;
+      }
+    }
   }
 
   return 0;

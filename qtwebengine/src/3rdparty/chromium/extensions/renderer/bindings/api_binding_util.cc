@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include "base/observer_list.h"
 #include "base/supports_user_data.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "extensions/renderer/bindings/get_per_context_data.h"
 #include "extensions/renderer/bindings/js_runner.h"
 #include "gin/converter.h"
@@ -31,6 +32,10 @@ bool g_response_validation_enabled =
 class ContextInvalidationData : public base::SupportsUserData::Data {
  public:
   ContextInvalidationData();
+
+  ContextInvalidationData(const ContextInvalidationData&) = delete;
+  ContextInvalidationData& operator=(const ContextInvalidationData&) = delete;
+
   ~ContextInvalidationData() override;
 
   static constexpr char kPerContextDataKey[] = "extension_context_invalidation";
@@ -46,8 +51,6 @@ class ContextInvalidationData : public base::SupportsUserData::Data {
   bool is_context_valid_ = true;
   base::ObserverList<ContextInvalidationListener>::Unchecked
       invalidation_listeners_;
-
-  DISALLOW_COPY_AND_ASSIGN(ContextInvalidationData);
 };
 
 constexpr char ContextInvalidationData::kPerContextDataKey[];
@@ -122,14 +125,21 @@ void InvalidateContext(v8::Local<v8::Context> context) {
 }
 
 std::string GetPlatformString() {
-#if defined(OS_CHROMEOS)
+// TODO(https://crbug.com/1052397): For readability, this should become
+// BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(IS_CHROMEOS_LACROS). The second
+// conditional should be BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(IS_CHROMEOS_ASH).
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  return "lacros";
+#elif BUILDFLAG(IS_CHROMEOS_ASH) && !BUILDFLAG(IS_CHROMEOS_LACROS)
   return "chromeos";
-#elif defined(OS_LINUX)
+#elif BUILDFLAG(IS_LINUX)
   return "linux";
-#elif defined(OS_MAC)
+#elif BUILDFLAG(IS_MAC)
   return "mac";
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
   return "win";
+#elif BUILDFLAG(IS_FUCHSIA)
+  return "fuchsia";
 #else
   NOTREACHED();
   return std::string();

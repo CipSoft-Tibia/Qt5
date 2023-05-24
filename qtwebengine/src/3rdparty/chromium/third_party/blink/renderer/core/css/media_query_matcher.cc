@@ -45,8 +45,9 @@ void MediaQueryMatcher::DocumentDetached() {
 }
 
 MediaQueryEvaluator* MediaQueryMatcher::CreateEvaluator() const {
-  if (!document_ || !document_->GetFrame())
+  if (!document_ || !document_->GetFrame()) {
     return nullptr;
+  }
 
   return MakeGarbageCollected<MediaQueryEvaluator>(document_->GetFrame());
 }
@@ -54,57 +55,73 @@ MediaQueryEvaluator* MediaQueryMatcher::CreateEvaluator() const {
 bool MediaQueryMatcher::Evaluate(const MediaQuerySet* media) {
   DCHECK(!document_ || document_->GetFrame() || !evaluator_);
 
-  if (!media)
+  if (!media) {
     return false;
+  }
 
   // Cache the evaluator to avoid allocating one per evaluation.
-  if (!evaluator_)
+  if (!evaluator_) {
     evaluator_ = CreateEvaluator();
+  }
 
-  if (evaluator_)
-    return evaluator_->Eval(*media);
+  if (evaluator_) {
+    return evaluator_->Eval(*media, &media_query_result_flags_);
+  }
 
   return false;
 }
 
 MediaQueryList* MediaQueryMatcher::MatchMedia(const String& query) {
-  if (!document_)
+  if (!document_) {
     return nullptr;
+  }
 
-  scoped_refptr<MediaQuerySet> media =
+  MediaQuerySet* media =
       MediaQuerySet::Create(query, document_->GetExecutionContext());
   return MakeGarbageCollected<MediaQueryList>(document_->GetExecutionContext(),
                                               this, media);
 }
 
 void MediaQueryMatcher::AddMediaQueryList(MediaQueryList* query) {
-  if (!document_)
+  if (!document_) {
     return;
+  }
   media_lists_.insert(query);
 }
 
 void MediaQueryMatcher::RemoveMediaQueryList(MediaQueryList* query) {
-  if (!document_)
+  if (!document_) {
     return;
+  }
   media_lists_.erase(query);
 }
 
 void MediaQueryMatcher::AddViewportListener(MediaQueryListListener* listener) {
-  if (!document_)
+  if (!document_) {
     return;
+  }
   viewport_listeners_.insert(listener);
 }
 
 void MediaQueryMatcher::RemoveViewportListener(
     MediaQueryListListener* listener) {
-  if (!document_)
+  if (!document_) {
     return;
+  }
   viewport_listeners_.erase(listener);
 }
 
 void MediaQueryMatcher::MediaFeaturesChanged() {
-  if (!document_)
+  if (!document_) {
     return;
+  }
+
+  // Update favicon and theme color when a media query value has changed.
+  if (document_->GetFrame()) {
+    document_->GetFrame()->UpdateFaviconURL();
+    document_->GetFrame()->DidChangeThemeColor(
+        /*update_theme_color_cache=*/false);
+  }
 
   HeapVector<Member<MediaQueryListListener>> listeners_to_notify;
   for (const auto& list : media_lists_) {
@@ -118,14 +135,23 @@ void MediaQueryMatcher::MediaFeaturesChanged() {
 }
 
 void MediaQueryMatcher::ViewportChanged() {
-  if (!document_)
+  if (!document_) {
     return;
+  }
 
   HeapVector<Member<MediaQueryListListener>> listeners_to_notify;
-  for (const auto& listener : viewport_listeners_)
+  for (const auto& listener : viewport_listeners_) {
     listeners_to_notify.push_back(listener);
+  }
 
   document_->EnqueueMediaQueryChangeListeners(listeners_to_notify);
+}
+
+void MediaQueryMatcher::DynamicViewportChanged() {
+  if (media_query_result_flags_.unit_flags &
+      MediaQueryExpValue::UnitFlags::kDynamicViewport) {
+    ViewportChanged();
+  }
 }
 
 void MediaQueryMatcher::Trace(Visitor* visitor) const {

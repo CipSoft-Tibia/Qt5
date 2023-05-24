@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,12 @@
 
 #include <memory>
 #include <set>
+#include <tuple>
 #include <vector>
 
 #include "base/check.h"
-#include "base/json/json_reader.h"
-#include "base/macros.h"
 #include "base/memory/ref_counted.h"
+#include "base/test/values_test_util.h"
 #include "base/values.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -47,14 +47,8 @@ const char kTestStatsReportJson[] =
 class TestStatsDictionaryTest : public testing::Test {
  public:
   TestStatsDictionaryTest() {
-    std::unique_ptr<base::Value> value =
-        base::JSONReader::ReadDeprecated(kTestStatsReportJson);
-    CHECK(value);
-    base::DictionaryValue* dictionary;
-    CHECK(value->GetAsDictionary(&dictionary));
-    ignore_result(value.release());
-    report_ = new TestStatsReportDictionary(
-        std::unique_ptr<base::DictionaryValue>(dictionary));
+    base::Value::Dict dict = base::test::ParseJsonDict(kTestStatsReportJson);
+    report_ = base::MakeRefCounted<TestStatsReportDictionary>(std::move(dict));
   }
 
  protected:

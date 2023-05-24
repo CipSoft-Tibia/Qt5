@@ -2,7 +2,7 @@
 *******************************************************************************
 *
 *   © 2016 and later: Unicode, Inc. and others.
-*   License & terms of use: http://www.unicode.org/copyright.html#License
+*   License & terms of use: http://www.unicode.org/copyright.html
 *
 *******************************************************************************
 *******************************************************************************
@@ -16,6 +16,8 @@
 #include "unicode/calendar.h"
 #include "unicode/gregocal.h"
 #include <stdio.h>
+
+using namespace icu;
 
 extern "C" void c_main();
 

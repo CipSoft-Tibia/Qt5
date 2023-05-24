@@ -26,7 +26,6 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_ACCESSIBILITY_AX_MENU_LIST_POPUP_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_ACCESSIBILITY_AX_MENU_LIST_POPUP_H_
 
-#include "base/macros.h"
 #include "third_party/blink/renderer/modules/accessibility/ax_mock_object.h"
 
 namespace blink {
@@ -35,9 +34,13 @@ class AXObjectCacheImpl;
 class AXMenuListOption;
 class HTMLElement;
 
+// AXMenuListPopup is the only kind of AXMockObject used in Blink accessibility.
 class AXMenuListPopup final : public AXMockObject {
  public:
   explicit AXMenuListPopup(AXObjectCacheImpl&);
+
+  AXMenuListPopup(const AXMenuListPopup&) = delete;
+  AXMenuListPopup& operator=(const AXMenuListPopup&) = delete;
 
   AXRestriction Restriction() const override;
   bool IsOffScreen() const override;
@@ -46,27 +49,22 @@ class AXMenuListPopup final : public AXMockObject {
   void DidShow();
   void DidHide();
   AXObject* ActiveDescendant() final;
-  void UpdateChildrenIfNecessary() override;
 
  private:
   bool IsMenuListPopup() const override { return true; }
 
-  ax::mojom::Role RoleValue() const override {
-    return ax::mojom::Role::kMenuListPopup;
-  }
+  ax::mojom::blink::Role NativeRoleIgnoringAria() const override;
 
   bool IsVisible() const override;
   bool OnNativeClickAction() override;
   void AddChildren() override;
   bool ComputeAccessibilityIsIgnored(IgnoredReasons* = nullptr) const override;
 
-  AXMenuListOption* MenuListOptionAXObject(HTMLElement*) const;
+  AXMenuListOption* MenuListOptionAXObject(HTMLElement*);
   int GetSelectedIndex() const;
 
   // Note that this may be -1 if nothing is selected.
   int active_index_;
-
-  DISALLOW_COPY_AND_ASSIGN(AXMenuListPopup);
 };
 
 template <>

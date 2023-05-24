@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,17 +10,21 @@
 #include <utility>
 #include <vector>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/unsafe_shared_memory_region.h"
 #include "mojo/public/cpp/bindings/remote.h"
-#include "services/tracing/perfetto/producer_host.h"
 #include "services/tracing/public/mojom/perfetto_service.mojom.h"
 #include "third_party/perfetto/include/perfetto/ext/tracing/core/producer.h"
 #include "third_party/perfetto/include/perfetto/ext/tracing/core/tracing_service.h"
 #include "third_party/perfetto/include/perfetto/tracing/core/forward_decls.h"
 
+namespace base {
 namespace tracing {
-
 class PerfettoTaskRunner;
+}  // namespace tracing
+}  // namespace base
+
+namespace tracing {
 
 // This class is the service-side part of the Perfetto Producer pair
 // and is responsible for registering any available DataSources
@@ -34,18 +38,33 @@ class PerfettoTaskRunner;
 class ProducerHost : public tracing::mojom::ProducerHost,
                      public perfetto::Producer {
  public:
-  explicit ProducerHost(PerfettoTaskRunner*);
+  explicit ProducerHost(base::tracing::PerfettoTaskRunner*);
+
+  ProducerHost(const ProducerHost&) = delete;
+  ProducerHost& operator=(const ProducerHost&) = delete;
+
   ~ProducerHost() override;
+
+  // Keep in sync with tools/metrics/histograms/enums.xml. These values are
+  // persisted to logs. Entries should not be renumbered and numeric values
+  // should never be reused.
+  enum class InitializationResult {
+    kSuccess = 0,
+    kSmbMappingFailed = 1,
+    kSmbNotAdopted = 2,
+    kProducerEndpointConstructionFailed = 3,
+    kMaxValue = kProducerEndpointConstructionFailed
+  };
 
   // Called by the ProducerService to register the Producer with Perfetto,
   // connect to the corresponding remote ProducerClient, and setup the provided
-  // shared memory buffer for tracing data exchange. Returns false if the
-  // service failed to connect the producer or adopt the provided SMB.
-  bool Initialize(mojo::PendingRemote<mojom::ProducerClient> producer_client,
-                  perfetto::TracingService* service,
-                  const std::string& name,
-                  mojo::ScopedSharedBufferHandle shared_memory,
-                  uint64_t shared_memory_buffer_page_size_bytes);
+  // shared memory buffer for tracing data exchange.
+  InitializationResult Initialize(
+      mojo::PendingRemote<mojom::ProducerClient> producer_client,
+      perfetto::TracingService* service,
+      const std::string& name,
+      base::UnsafeSharedMemoryRegion shared_memory,
+      uint64_t shared_memory_buffer_page_size_bytes);
 
   // perfetto::Producer implementation.
   // Gets called by perfetto::TracingService to toggle specific data sources
@@ -92,15 +111,13 @@ class ProducerHost : public tracing::mojom::ProducerHost,
 
  private:
   mojo::Remote<mojom::ProducerClient> producer_client_;
-  PerfettoTaskRunner* task_runner_;
+  raw_ptr<base::tracing::PerfettoTaskRunner> task_runner_;
 
  protected:
   // Perfetto guarantees that no OnXX callbacks are invoked on |this|
   // immediately after |producer_endpoint_| is destroyed.
   std::unique_ptr<perfetto::TracingService::ProducerEndpoint>
       producer_endpoint_;
-
-  DISALLOW_COPY_AND_ASSIGN(ProducerHost);
 };
 
 }  // namespace tracing

@@ -1,32 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "rep_MyInterface_replica.h"
+#include "rep_ExtPodInterface_merged.h"
 
 #include <QCoreApplication>
 #include <QtRemoteObjects/qremoteobjectnode.h>
@@ -62,7 +38,7 @@ private Q_SLOTS:
         QSignalSpy spy(m_rep.data(), &MyInterfaceReplica::enum1Changed);
         QVERIFY(advanceSpy.wait());
 
-        QCOMPARE(spy.count(), 2);
+        QCOMPARE(spy.size(), 2);
         // END: Testing
 
         reply = m_rep->stop();
@@ -113,9 +89,9 @@ private Q_SLOTS:
             QCOMPARE(paramNames.at(0), QByteArrayLiteral("enumSignalParam"));
             QCOMPARE(paramNames.at(1), QByteArrayLiteral("signalParam2"));
             QCOMPARE(paramNames.at(2), QByteArrayLiteral("__repc_variable_1"));
-            QCOMPARE(simm.parameterType(0), QMetaType::type("MyInterfaceReplica::Enum1"));
-            QCOMPARE(simm.parameterType(1), int(QMetaType::Bool));
-            QCOMPARE(simm.parameterType(2), int(QMetaType::QString));
+            QCOMPARE(simm.parameterMetaType(0), QMetaType::fromType<MyInterfaceReplica::Enum1>());
+            QCOMPARE(simm.parameterMetaType(1), QMetaType::fromType<bool>());
+            QCOMPARE(simm.parameterMetaType(2), QMetaType::fromType<QString>());
         }
 
         int slotIdx = mo->indexOfSlot("testEnumParamsInSlots(MyInterfaceReplica::Enum1,bool,int)");
@@ -130,9 +106,9 @@ private Q_SLOTS:
             QCOMPARE(paramNames.at(2), QByteArrayLiteral("__repc_variable_1"));
         }
 
-        int enumVal = 0;
+        MyInterfaceReplica::Enum1 enumVal = {};
         mo->invokeMethod(rep.data(), "testEnumParamsInSlots",
-                                    QGenericArgument("MyInterfaceReplica::Enum1", &enumVal),
+                                    Q_ARG(MyInterfaceReplica::Enum1, enumVal),
                                     Q_ARG(bool, true), Q_ARG(int, 1234));
 
         int enumIdx = mo->indexOfProperty("enum1");
@@ -159,12 +135,27 @@ private Q_SLOTS:
         QTRY_COMPARE(rep->started(), false);
     }
 
+    void testExtPodListSignals()
+    {
+        QScopedPointer<MyInterfaceReplica> rep(new MyInterfaceReplica());
+        rep->setNode(m_repNode.get());
+        QVERIFY(rep->waitForSource());
+
+        auto list = QList { ExtPOD(1, 1.1f, QStringLiteral("v1")),
+                            ExtPOD(2, 2.2f, QStringLiteral("v2")) };
+        rep->testExtPODListSlot(list);
+        QSignalSpy spy(rep.data(), &MyInterfaceReplica::testExtPODListSignal);
+        connect(rep.data(), &MyInterfaceReplica::testExtPODListSignal,
+                [list](const QList<ExtPOD> &l) { QCOMPARE(l, list); });
+        QTRY_COMPARE(spy.size(), 1);
+    }
+
     void testPod()
     {
         QScopedPointer<QRemoteObjectDynamicReplica> podRep(m_repNode->acquireDynamic("PodInterface"));
         QVERIFY(podRep->waitForSource());
         QVariant value = podRep->property("myPod");
-        const QMetaObject *mo = QMetaType::metaObjectForType(value.userType());
+        const QMetaObject *mo = value.metaType().metaObject();
         const void *gadget = value.constData();
 
         QMetaProperty iProp = mo->property(mo->indexOfProperty("i"));
@@ -185,9 +176,9 @@ private Q_SLOTS:
         auto reply = m_rep->quit();
         QVERIFY(reply.waitForFinished());
         m_rep.reset();
-        QVERIFY(QMetaType::type("MyPOD") != QMetaType::UnknownType);
+        QVERIFY(QMetaType::fromName("MyPOD").isValid());
         m_repNode.reset();
-        QVERIFY(QMetaType::type("MyPOD") == QMetaType::UnknownType);
+        QVERIFY(!QMetaType::fromName("MyPOD").isValid());
     }
 
 private:

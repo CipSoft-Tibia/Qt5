@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef PALETTEEDITOR_H
 #define PALETTEEDITOR_H
@@ -59,12 +34,12 @@ public:
 
 private slots:
 
-    void on_buildButton_colorChanged(const QColor &);
-    void on_activeRadio_clicked();
-    void on_inactiveRadio_clicked();
-    void on_disabledRadio_clicked();
-    void on_computeRadio_clicked();
-    void on_detailsRadio_clicked();
+    void buildButtonColorChanged();
+    void activeRadioClicked();
+    void inactiveRadioClicked();
+    void disabledRadioClicked();
+    void computeRadioClicked();
+    void detailsRadioClicked();
 
     void paletteChanged(const QPalette &palette);
     void viewContextMenuRequested(const QPoint &pos);
@@ -121,6 +96,9 @@ public:
 
     QPalette::ColorRole colorRole() const { return QPalette::NoRole; }
     void setCompute(bool on) { m_compute = on; }
+
+    quint64 rowMask(const QModelIndex &index) const;
+
 signals:
     void paletteChanged(const QPalette &palette);
 private:
@@ -137,7 +115,7 @@ private:
 
     QPalette m_palette;
     QPalette m_parentPalette;
-    QVector<RoleEntry> m_roleEntries;
+    QList<RoleEntry> m_roleEntries;
     bool m_compute = true;
 };
 

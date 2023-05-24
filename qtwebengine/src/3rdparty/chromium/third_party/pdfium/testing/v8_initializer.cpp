@@ -1,4 +1,4 @@
-// Copyright 2019 PDFium Authors. All rights reserved.
+// Copyright 2019 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,14 @@
 #include "public/fpdfview.h"
 #include "testing/utils/file_util.h"
 #include "testing/utils/path_service.h"
+#include "third_party/base/numerics/safe_conversions.h"
 #include "v8/include/libplatform/libplatform.h"
-#include "v8/include/v8.h"
+#include "v8/include/v8-initialization.h"
+#include "v8/include/v8-snapshot.h"
+
+#ifdef PDF_ENABLE_XFA
+#include "v8/include/cppgc/platform.h"
+#endif
 
 namespace {
 
@@ -49,7 +55,7 @@ bool GetExternalData(const std::string& exe_path,
     return false;
 
   result_data->data = data_buffer.release();
-  result_data->raw_size = data_length;
+  result_data->raw_size = pdfium::base::checked_cast<int>(data_length);
   return true;
 }
 #endif  // V8_USE_EXTERNAL_STARTUP_DATA
@@ -60,6 +66,9 @@ std::unique_ptr<v8::Platform> InitializeV8Common(const std::string& exe_path,
 
   std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
   v8::V8::InitializePlatform(platform.get());
+#ifdef PDF_ENABLE_XFA
+  cppgc::InitializeProcess(platform->GetPageAllocator());
+#endif
 
   const char* recommended_v8_flags = FPDF_GetRecommendedV8Flags();
   v8::V8::SetFlagsFromString(recommended_v8_flags);
@@ -100,3 +109,11 @@ std::unique_ptr<v8::Platform> InitializeV8ForPDFium(
   return InitializeV8Common(exe_path, js_flags);
 }
 #endif  // V8_USE_EXTERNAL_STARTUP_DATA
+
+void ShutdownV8ForPDFium() {
+#ifdef PDF_ENABLE_XFA
+  cppgc::ShutdownProcess();
+#endif
+  v8::V8::Dispose();
+  v8::V8::DisposePlatform();
+}

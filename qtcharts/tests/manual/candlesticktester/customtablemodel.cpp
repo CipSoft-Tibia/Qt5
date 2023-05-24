@@ -1,35 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QCandlestickSet>
 #include <QtCore/QRect>
-#include <QtCore/QVector>
+#include <QtCore/QList>
 #include <QtGui/QColor>
 #include "customtablemodel.h"
 
@@ -50,14 +24,14 @@ CustomTableModel::~CustomTableModel()
 
 int CustomTableModel::rowCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
 
     return m_data.count();
 }
 
 int CustomTableModel::columnCount(const QModelIndex &parent) const
 {
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
 
     return m_categories.count();
 }
@@ -112,7 +86,7 @@ Qt::ItemFlags CustomTableModel::flags(const QModelIndex &index) const
 bool CustomTableModel::insertRows(int row, int count, const QModelIndex &parent)
 {
     beginInsertRows(parent, row, row + count - 1);
-    m_data.append(new QVector<qreal>(columnCount()));
+    m_data.append(new QList<qreal>(columnCount()));
     endInsertRows();
 
     return true;
@@ -133,7 +107,7 @@ void CustomTableModel::addRow(QCandlestickSet *set)
     bool changed = insertRows(m_data.count(), 1);
 
     if (changed) {
-        QVector<qreal> *row = m_data.last();
+        QList<qreal> *row = m_data.last();
         row->insert(0, set->timestamp());
         row->insert(1, set->open());
         row->insert(2, set->high());
@@ -151,7 +125,7 @@ void CustomTableModel::clearRows()
 
 void CustomTableModel::addMapping(QString color, QRect area)
 {
-    m_mapping.insertMulti(color, area);
+    m_mapping.insert(color, area);
 }
 
 void CustomTableModel::clearMapping()

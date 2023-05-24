@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,11 +10,12 @@
 #include <string.h>
 
 #include <cmath>
+#include <ostream>
 
 #include "base/check_op.h"
 #include "base/json/string_escape.h"
+#include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
-#include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
@@ -35,8 +36,10 @@ void CopyTraceEventParameter(char** buffer,
                              const char** member,
                              const char* end) {
   if (*member) {
-    size_t written = strlcpy(*buffer, *member, end - *buffer) + 1;
-    DCHECK_LE(static_cast<int>(written), end - *buffer);
+    DCHECK_GE(end, *buffer);
+    size_t written =
+        strlcpy(*buffer, *member, static_cast<size_t>(end - *buffer)) + 1;
+    DCHECK_LE(static_cast<ptrdiff_t>(written), end - *buffer);
     *member = *buffer;
     *buffer += written;
   }
@@ -77,7 +80,7 @@ void AppendDouble(double val, bool as_json, std::string* out) {
   StringAppendF(out, "%s", real.c_str());
 }
 
-const char* TypeToString(char arg_type) {
+const char* TypeToString(unsigned char arg_type) {
   switch (arg_type) {
     case TRACE_VALUE_TYPE_INT:
       return "int";
@@ -111,6 +114,31 @@ void AppendValueDebugString(const TraceArguments& args,
   args.values()[idx].AppendAsJSON(args.types()[idx], out);
   *out += ")";
 }
+
+#if BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
+class PerfettoProtoAppender : public ConvertableToTraceFormat::ProtoAppender {
+ public:
+  explicit PerfettoProtoAppender(
+      perfetto::protos::pbzero::DebugAnnotation* proto)
+      : annotation_proto_(proto) {}
+  ~PerfettoProtoAppender() override = default;
+
+  void AddBuffer(uint8_t* begin, uint8_t* end) override {
+    ranges_.emplace_back();
+    ranges_.back().begin = begin;
+    ranges_.back().end = end;
+  }
+
+  size_t Finalize(uint32_t field_id) override {
+    return annotation_proto_->AppendScatteredBytes(field_id, ranges_.data(),
+                                                   ranges_.size());
+  }
+
+ private:
+  std::vector<protozero::ContiguousMemoryRange> ranges_;
+  raw_ptr<perfetto::protos::pbzero::DebugAnnotation> annotation_proto_;
+};
+#endif  // BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
 
 }  // namespace
 
@@ -182,6 +210,11 @@ void TraceValue::Append(unsigned char type,
       break;
     case TRACE_VALUE_TYPE_CONVERTABLE:
       this->as_convertable->AppendAsTraceFormat(out);
+      break;
+    case TRACE_VALUE_TYPE_PROTO:
+      DCHECK(as_json);
+      // Typed protobuf arguments aren't representable in JSON.
+      *out += "\"Unsupported (crbug.com/1225176)\"";
       break;
     default:
       NOTREACHED() << "Don't know how to print this value";
@@ -283,6 +316,20 @@ void TraceArguments::AppendDebugString(std::string* out) {
   }
   *out += ")";
 }
+
+#if BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
+void ConvertableToTraceFormat::Add(
+    perfetto::protos::pbzero::DebugAnnotation* annotation) const {
+  PerfettoProtoAppender proto_appender(annotation);
+  if (AppendToProto(&proto_appender)) {
+    return;
+  }
+
+  std::string json;
+  AppendAsTraceFormat(&json);
+  annotation->set_legacy_json_value(json);
+}
+#endif  // BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
 
 }  // namespace trace_event
 }  // namespace base

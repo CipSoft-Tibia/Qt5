@@ -1,39 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Copyright (C) 2017 Mapbox, Inc.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// Copyright (C) 2017 Mapbox, Inc.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeomapmapboxgl.h"
 #include "qgeomapmapboxgl_p.h"
@@ -43,17 +10,15 @@
 #include <QtCore/QByteArray>
 #include <QtCore/QCoreApplication>
 #include <QtGui/QOpenGLContext>
-#include <QtGui/QOpenGLFramebufferObject>
+#include <QtOpenGL/QOpenGLFramebufferObject>
 #include <QtLocation/private/qdeclarativecirclemapitem_p.h>
 #include <QtLocation/private/qdeclarativegeomapitembase_p.h>
 #include <QtLocation/private/qdeclarativepolygonmapitem_p.h>
 #include <QtLocation/private/qdeclarativepolylinemapitem_p.h>
 #include <QtLocation/private/qdeclarativerectanglemapitem_p.h>
-#include <QtLocation/private/qgeomapparameter_p.h>
 #include <QtLocation/private/qgeoprojection_p.h>
 #include <QtQuick/QQuickWindow>
 #include <QtQuick/QSGImageNode>
-#include <QtQuick/private/qsgtexture_p.h>
 #include <QtQuick/private/qsgcontext_p.h> // for debugging the context name
 
 #include <QMapboxGL>
@@ -94,10 +59,10 @@ QSGNode *QGeoMapMapboxGLPrivate::updateSceneGraph(QSGNode *node, QQuickWindow *w
 
     if (m_viewportSize.isEmpty()) {
         delete node;
-        return 0;
+        return nullptr;
     }
 
-    QMapboxGL *map = 0;
+    QMapboxGL *map = nullptr;
     if (!node) {
         QOpenGLContext *currentCtx = QOpenGLContext::currentContext();
         if (!currentCtx) {
@@ -173,31 +138,6 @@ QSGNode *QGeoMapMapboxGLPrivate::updateSceneGraph(QSGNode *node, QQuickWindow *w
     m_syncState = NoSync;
 
     return node;
-}
-
-void QGeoMapMapboxGLPrivate::addParameter(QGeoMapParameter *param)
-{
-    Q_Q(QGeoMapMapboxGL);
-
-    QObject::connect(param, &QGeoMapParameter::propertyUpdated, q,
-        &QGeoMapMapboxGL::onParameterPropertyUpdated);
-
-    if (m_styleLoaded) {
-        m_styleChanges << QMapboxGLStyleChange::addMapParameter(param);
-        emit q->sgNodeChanged();
-    }
-}
-
-void QGeoMapMapboxGLPrivate::removeParameter(QGeoMapParameter *param)
-{
-    Q_Q(QGeoMapMapboxGL);
-
-    q->disconnect(param);
-
-    if (m_styleLoaded) {
-        m_styleChanges << QMapboxGLStyleChange::removeMapParameter(param);
-        emit q->sgNodeChanged();
-    }
 }
 
 QGeoMap::ItemTypes QGeoMapMapboxGLPrivate::supportedMapItemTypes() const
@@ -445,9 +385,6 @@ void QGeoMapMapboxGL::onMapChanged(QMapboxGL::MapChange change)
 
         for (QDeclarativeGeoMapItemBase *item : d->m_mapItems)
             d->m_styleChanges << QMapboxGLStyleChange::addMapItem(item, d->m_mapItemsBefore);
-
-        for (QGeoMapParameter *param : d->m_mapParameters)
-            d->m_styleChanges << QMapboxGLStyleChange::addMapParameter(param);
     }
 }
 
@@ -484,15 +421,6 @@ void QGeoMapMapboxGL::onMapItemGeometryChanged()
 
     QDeclarativeGeoMapItemBase *item = static_cast<QDeclarativeGeoMapItemBase *>(sender());
     d->m_styleChanges << QMapboxGLStyleAddSource::fromMapItem(item);
-
-    emit sgNodeChanged();
-}
-
-void QGeoMapMapboxGL::onParameterPropertyUpdated(QGeoMapParameter *param, const char *)
-{
-    Q_D(QGeoMapMapboxGL);
-
-    d->m_styleChanges.append(QMapboxGLStyleChange::addMapParameter(param));
 
     emit sgNodeChanged();
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,14 @@
 
 #include <stdint.h>
 
-#include <list>
+#include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
+#include "base/values.h"
 #include "components/bookmarks/browser/base_bookmark_model_observer.h"
 #include "components/bookmarks/browser/bookmark_node.h"
 #include "extensions/browser/browser_context_keyed_api_factory.h"
@@ -25,7 +26,6 @@ class Profile;
 
 namespace base {
 class FilePath;
-class ListValue;
 }
 
 namespace bookmarks {
@@ -50,6 +50,8 @@ struct CreateDetails;
 class BookmarkEventRouter : public bookmarks::BookmarkModelObserver {
  public:
   explicit BookmarkEventRouter(Profile* profile);
+  BookmarkEventRouter(const BookmarkEventRouter&) = delete;
+  BookmarkEventRouter& operator=(const BookmarkEventRouter&) = delete;
   ~BookmarkEventRouter() override;
 
   // bookmarks::BookmarkModelObserver:
@@ -63,7 +65,8 @@ class BookmarkEventRouter : public bookmarks::BookmarkModelObserver {
                          size_t new_index) override;
   void BookmarkNodeAdded(bookmarks::BookmarkModel* model,
                          const bookmarks::BookmarkNode* parent,
-                         size_t index) override;
+                         size_t index,
+                         bool added_by_user) override;
   void BookmarkNodeRemoved(bookmarks::BookmarkModel* model,
                            const bookmarks::BookmarkNode* parent,
                            size_t old_index,
@@ -86,13 +89,11 @@ class BookmarkEventRouter : public bookmarks::BookmarkModelObserver {
   // Helper to actually dispatch an event to extension listeners.
   void DispatchEvent(events::HistogramValue histogram_value,
                      const std::string& event_name,
-                     std::unique_ptr<base::ListValue> event_args);
+                     base::Value::List event_args);
 
-  content::BrowserContext* browser_context_;
-  bookmarks::BookmarkModel* model_;
-  bookmarks::ManagedBookmarkService* managed_;
-
-  DISALLOW_COPY_AND_ASSIGN(BookmarkEventRouter);
+  raw_ptr<content::BrowserContext> browser_context_;
+  raw_ptr<bookmarks::BookmarkModel> model_;
+  raw_ptr<bookmarks::ManagedBookmarkService> managed_;
 };
 
 class BookmarksAPI : public BrowserContextKeyedAPI,
@@ -113,7 +114,7 @@ class BookmarksAPI : public BrowserContextKeyedAPI,
  private:
   friend class BrowserContextKeyedAPIFactory<BookmarksAPI>;
 
-  content::BrowserContext* browser_context_;
+  raw_ptr<content::BrowserContext> browser_context_;
 
   // BrowserContextKeyedAPI implementation.
   static const char* service_name() {
@@ -158,7 +159,6 @@ class BookmarksFunction : public ExtensionFunction,
   const bookmarks::BookmarkNode* CreateBookmarkNode(
       bookmarks::BookmarkModel* model,
       const api::bookmarks::CreateDetails& details,
-      const bookmarks::BookmarkNode::MetaInfoMap* meta_info,
       std::string* error);
 
   // Helper that checks if bookmark editing is enabled.
@@ -308,62 +308,6 @@ class BookmarksUpdateFunction : public BookmarksFunction {
 
  protected:
   ~BookmarksUpdateFunction() override {}
-
-  // BookmarksFunction:
-  ResponseValue RunOnReady() override;
-};
-
-class BookmarksIOFunction : public BookmarksFunction,
-                            public ui::SelectFileDialog::Listener {
- public:
-  BookmarksIOFunction();
-
-  void FileSelected(const base::FilePath& path,
-                    int index,
-                    void* params) override = 0;
-
-  // ui::SelectFileDialog::Listener:
-  void MultiFilesSelected(const std::vector<base::FilePath>& files,
-                          void* params) override;
-  void FileSelectionCanceled(void* params) override;
-
-  void ShowSelectFileDialog(
-      ui::SelectFileDialog::Type type,
-      const base::FilePath& default_path);
-
- protected:
-  ~BookmarksIOFunction() override;
-
-  scoped_refptr<ui::SelectFileDialog> select_file_dialog_;
-};
-
-class BookmarksImportFunction : public BookmarksIOFunction {
- public:
-  DECLARE_EXTENSION_FUNCTION("bookmarks.import", BOOKMARKS_IMPORT)
-
-  // BookmarkManagerIOFunction:
-  void FileSelected(const base::FilePath& path,
-                    int index,
-                    void* params) override;
-
- private:
-  ~BookmarksImportFunction() override {}
-
-  // BookmarksFunction:
-  ResponseValue RunOnReady() override;
-};
-
-class BookmarksExportFunction : public BookmarksIOFunction {
- public:
-  DECLARE_EXTENSION_FUNCTION("bookmarks.export", BOOKMARKS_EXPORT)
-
-  // BookmarkManagerIOFunction:
-  void FileSelected(const base::FilePath& path,
-                    int index,
-                    void* params) override;
-
- private:
-  ~BookmarksExportFunction() override {}
 
   // BookmarksFunction:
   ResponseValue RunOnReady() override;

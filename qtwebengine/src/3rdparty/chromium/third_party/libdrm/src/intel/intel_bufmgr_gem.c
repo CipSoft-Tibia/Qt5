@@ -1,7 +1,7 @@
 /**************************************************************************
  *
- * Copyright © 2007 Red Hat Inc.
- * Copyright © 2007-2012 Intel Corporation
+ * Copyright Â© 2007 Red Hat Inc.
+ * Copyright Â© 2007-2012 Intel Corporation
  * Copyright 2006 Tungsten Graphics, Inc., Bismarck, ND., USA
  * All Rights Reserved.
  *
@@ -28,7 +28,7 @@
  *
  **************************************************************************/
 /*
- * Authors: Thomas Hellström <thomas-at-tungstengraphics-dot-com>
+ * Authors: Thomas HellstrÃ¶m <thomas-at-tungstengraphics-dot-com>
  *          Keith Whitwell <keithw-at-tungstengraphics-dot-com>
  *	    Eric Anholt <eric@anholt.net>
  *	    Dave Airlie <airlied@linux.ie>
@@ -114,7 +114,6 @@ typedef struct _drm_intel_bufmgr_gem {
 
 	pthread_mutex_t lock;
 
-	struct drm_i915_gem_exec_object *exec_objects;
 	struct drm_i915_gem_exec_object2 *exec2_objects;
 	drm_intel_bo **exec_bos;
 	int exec_size;
@@ -479,44 +478,6 @@ drm_intel_gem_bo_reference(drm_intel_bo *bo)
  * with the intersection of the memory type flags and the union of the
  * access flags.
  */
-static void
-drm_intel_add_validate_buffer(drm_intel_bo *bo)
-{
-	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
-	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
-	int index;
-
-	if (bo_gem->validate_index != -1)
-		return;
-
-	/* Extend the array of validation entries as necessary. */
-	if (bufmgr_gem->exec_count == bufmgr_gem->exec_size) {
-		int new_size = bufmgr_gem->exec_size * 2;
-
-		if (new_size == 0)
-			new_size = 5;
-
-		bufmgr_gem->exec_objects =
-		    realloc(bufmgr_gem->exec_objects,
-			    sizeof(*bufmgr_gem->exec_objects) * new_size);
-		bufmgr_gem->exec_bos =
-		    realloc(bufmgr_gem->exec_bos,
-			    sizeof(*bufmgr_gem->exec_bos) * new_size);
-		bufmgr_gem->exec_size = new_size;
-	}
-
-	index = bufmgr_gem->exec_count;
-	bo_gem->validate_index = index;
-	/* Fill in array entry */
-	bufmgr_gem->exec_objects[index].handle = bo_gem->gem_handle;
-	bufmgr_gem->exec_objects[index].relocation_count = bo_gem->reloc_count;
-	bufmgr_gem->exec_objects[index].relocs_ptr = (uintptr_t) bo_gem->relocs;
-	bufmgr_gem->exec_objects[index].alignment = bo->align;
-	bufmgr_gem->exec_objects[index].offset = 0;
-	bufmgr_gem->exec_bos[index] = bo;
-	bufmgr_gem->exec_count++;
-}
-
 static void
 drm_intel_add_validate_buffer2(drm_intel_bo *bo, int need_fence)
 {
@@ -1069,6 +1030,28 @@ check_bo_alloc_userptr(drm_intel_bufmgr *bufmgr,
 					  tiling_mode, stride, size, flags);
 }
 
+static int get_tiling_mode(drm_intel_bufmgr_gem *bufmgr_gem,
+			   uint32_t gem_handle,
+			   uint32_t *tiling_mode,
+			   uint32_t *swizzle_mode)
+{
+	struct drm_i915_gem_get_tiling get_tiling = {
+		.handle = gem_handle,
+	};
+	int ret;
+
+	ret = drmIoctl(bufmgr_gem->fd,
+		       DRM_IOCTL_I915_GEM_GET_TILING,
+		       &get_tiling);
+	if (ret != 0 && errno != EOPNOTSUPP)
+		return ret;
+
+	*tiling_mode = get_tiling.tiling_mode;
+	*swizzle_mode = get_tiling.swizzle_mode;
+
+	return 0;
+}
+
 /**
  * Returns a drm_intel_bo wrapping the given buffer object handle.
  *
@@ -1084,7 +1067,6 @@ drm_intel_bo_gem_create_from_name(drm_intel_bufmgr *bufmgr,
 	drm_intel_bo_gem *bo_gem;
 	int ret;
 	struct drm_gem_open open_arg;
-	struct drm_i915_gem_get_tiling get_tiling;
 
 	/* At the moment most applications only have a few named bo.
 	 * For instance, in a DRI client only the render buffers passed
@@ -1146,16 +1128,11 @@ drm_intel_bo_gem_create_from_name(drm_intel_bufmgr *bufmgr,
 	HASH_ADD(name_hh, bufmgr_gem->name_table,
 		 global_name, sizeof(bo_gem->global_name), bo_gem);
 
-	memclear(get_tiling);
-	get_tiling.handle = bo_gem->gem_handle;
-	ret = drmIoctl(bufmgr_gem->fd,
-		       DRM_IOCTL_I915_GEM_GET_TILING,
-		       &get_tiling);
+	ret = get_tiling_mode(bufmgr_gem, bo_gem->gem_handle,
+			      &bo_gem->tiling_mode, &bo_gem->swizzle_mode);
 	if (ret != 0)
 		goto err_unref;
 
-	bo_gem->tiling_mode = get_tiling.tiling_mode;
-	bo_gem->swizzle_mode = get_tiling.swizzle_mode;
 	/* XXX stride is unknown */
 	drm_intel_bo_gem_set_in_aperture_size(bufmgr_gem, bo_gem, 0);
 	DBG("bo_create_from_handle: %d (%s)\n", handle, bo_gem->name);
@@ -1175,7 +1152,6 @@ drm_intel_gem_bo_free(drm_intel_bo *bo)
 {
 	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
 	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
-	struct drm_gem_close close;
 	int ret;
 
 	DRMLISTDEL(&bo_gem->vma_list);
@@ -1199,11 +1175,9 @@ drm_intel_gem_bo_free(drm_intel_bo *bo)
 	HASH_DELETE(handle_hh, bufmgr_gem->handle_table, bo_gem);
 
 	/* Close this object */
-	memclear(close);
-	close.handle = bo_gem->gem_handle;
-	ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_GEM_CLOSE, &close);
+	ret = drmCloseBufferHandle(bufmgr_gem->fd, bo_gem->gem_handle);
 	if (ret != 0) {
-		DBG("DRM_IOCTL_GEM_CLOSE %d failed (%s): %s\n",
+		DBG("drmCloseBufferHandle %d failed (%s): %s\n",
 		    bo_gem->gem_handle, bo_gem->name, strerror(errno));
 	}
 	free(bo);
@@ -1405,25 +1379,26 @@ static void drm_intel_gem_bo_unreference_locked_timed(drm_intel_bo *bo,
 static void drm_intel_gem_bo_unreference(drm_intel_bo *bo)
 {
 	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
+	drm_intel_bufmgr_gem *bufmgr_gem;
+	struct timespec time;
 
 	assert(atomic_read(&bo_gem->refcount) > 0);
 
-	if (atomic_add_unless(&bo_gem->refcount, -1, 1)) {
-		drm_intel_bufmgr_gem *bufmgr_gem =
-		    (drm_intel_bufmgr_gem *) bo->bufmgr;
-		struct timespec time;
+	if (atomic_add_unless(&bo_gem->refcount, -1, 1))
+		return;
 
-		clock_gettime(CLOCK_MONOTONIC, &time);
+	bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
 
-		pthread_mutex_lock(&bufmgr_gem->lock);
+	clock_gettime(CLOCK_MONOTONIC, &time);
 
-		if (atomic_dec_and_test(&bo_gem->refcount)) {
-			drm_intel_gem_bo_unreference_final(bo, time.tv_sec);
-			drm_intel_gem_cleanup_bo_cache(bufmgr_gem, time.tv_sec);
-		}
+	pthread_mutex_lock(&bufmgr_gem->lock);
 
-		pthread_mutex_unlock(&bufmgr_gem->lock);
+	if (atomic_dec_and_test(&bo_gem->refcount)) {
+		drm_intel_gem_bo_unreference_final(bo, time.tv_sec);
+		drm_intel_gem_cleanup_bo_cache(bufmgr_gem, time.tv_sec);
 	}
+
+	pthread_mutex_unlock(&bufmgr_gem->lock);
 }
 
 static int drm_intel_gem_bo_map(drm_intel_bo *bo, int write_enable)
@@ -1716,6 +1691,82 @@ drm_intel_gem_bo_unmap_gtt(drm_intel_bo *bo)
 	return drm_intel_gem_bo_unmap(bo);
 }
 
+static bool is_cache_coherent(drm_intel_bo *bo)
+{
+	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
+	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
+	struct drm_i915_gem_caching arg = {};
+
+	arg.handle = bo_gem->gem_handle;
+	if (drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GEM_GET_CACHING, &arg))
+		assert(false);
+	return arg.caching != I915_CACHING_NONE;
+}
+
+static void set_domain(drm_intel_bo *bo, uint32_t read, uint32_t write)
+{
+	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
+	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
+	struct drm_i915_gem_set_domain arg = {};
+
+	arg.handle = bo_gem->gem_handle;
+	arg.read_domains = read;
+	arg.write_domain = write;
+	if (drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &arg))
+		assert(false);
+}
+
+static int mmap_write(drm_intel_bo *bo, unsigned long offset,
+		      unsigned long length, const void *buf)
+{
+	void *map = NULL;
+
+	if (!length)
+		return 0;
+
+	if (is_cache_coherent(bo)) {
+		map = drm_intel_gem_bo_map__cpu(bo);
+		if (map)
+			set_domain(bo, I915_GEM_DOMAIN_CPU, I915_GEM_DOMAIN_CPU);
+	}
+	if (!map) {
+		map = drm_intel_gem_bo_map__wc(bo);
+		if (map)
+			set_domain(bo, I915_GEM_DOMAIN_WC, I915_GEM_DOMAIN_WC);
+	}
+
+	assert(map);
+	memcpy((char *)map + offset, buf, length);
+	drm_intel_gem_bo_unmap(bo);
+	return 0;
+}
+
+static int mmap_read(drm_intel_bo *bo, unsigned long offset,
+		      unsigned long length, void *buf)
+{
+	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
+	void *map = NULL;
+
+	if (!length)
+		return 0;
+
+	if (bufmgr_gem->has_llc || is_cache_coherent(bo)) {
+		map = drm_intel_gem_bo_map__cpu(bo);
+		if (map)
+			set_domain(bo, I915_GEM_DOMAIN_CPU, 0);
+	}
+	if (!map) {
+		map = drm_intel_gem_bo_map__wc(bo);
+		if (map)
+			set_domain(bo, I915_GEM_DOMAIN_WC, 0);
+	}
+
+	assert(map);
+	memcpy(buf, (char *)map + offset, length);
+	drm_intel_gem_bo_unmap(bo);
+	return 0;
+}
+
 static int
 drm_intel_gem_bo_subdata(drm_intel_bo *bo, unsigned long offset,
 			 unsigned long size, const void *data)
@@ -1736,14 +1787,20 @@ drm_intel_gem_bo_subdata(drm_intel_bo *bo, unsigned long offset,
 	ret = drmIoctl(bufmgr_gem->fd,
 		       DRM_IOCTL_I915_GEM_PWRITE,
 		       &pwrite);
-	if (ret != 0) {
+	if (ret)
 		ret = -errno;
+
+	if (ret != 0 && ret != -EOPNOTSUPP) {
 		DBG("%s:%d: Error writing data to buffer %d: (%d %d) %s .\n",
 		    __FILE__, __LINE__, bo_gem->gem_handle, (int)offset,
 		    (int)size, strerror(errno));
+		return ret;
 	}
 
-	return ret;
+	if (ret == -EOPNOTSUPP)
+		mmap_write(bo, offset, size, data);
+
+	return 0;
 }
 
 static int
@@ -1791,14 +1848,20 @@ drm_intel_gem_bo_get_subdata(drm_intel_bo *bo, unsigned long offset,
 	ret = drmIoctl(bufmgr_gem->fd,
 		       DRM_IOCTL_I915_GEM_PREAD,
 		       &pread);
-	if (ret != 0) {
+	if (ret)
 		ret = -errno;
+
+	if (ret != 0 && ret != -EOPNOTSUPP) {
 		DBG("%s:%d: Error reading data from buffer %d: (%d %d) %s .\n",
 		    __FILE__, __LINE__, bo_gem->gem_handle, (int)offset,
 		    (int)size, strerror(errno));
+		return ret;
 	}
 
-	return ret;
+	if (ret == -EOPNOTSUPP)
+		mmap_read(bo, offset, size, data);
+
+	return 0;
 }
 
 /** Waits for all GPU rendering with the object to have completed. */
@@ -1898,11 +1961,9 @@ static void
 drm_intel_bufmgr_gem_destroy(drm_intel_bufmgr *bufmgr)
 {
 	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bufmgr;
-	struct drm_gem_close close_bo;
 	int i, ret;
 
 	free(bufmgr_gem->exec2_objects);
-	free(bufmgr_gem->exec_objects);
 	free(bufmgr_gem->exec_bos);
 
 	pthread_mutex_destroy(&bufmgr_gem->lock);
@@ -1924,9 +1985,8 @@ drm_intel_bufmgr_gem_destroy(drm_intel_bufmgr *bufmgr)
 
 	/* Release userptr bo kept hanging around for optimisation. */
 	if (bufmgr_gem->userptr_active.ptr) {
-		memclear(close_bo);
-		close_bo.handle = bufmgr_gem->userptr_active.handle;
-		ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_GEM_CLOSE, &close_bo);
+		ret = drmCloseBufferHandle(bufmgr_gem->fd,
+					   bufmgr_gem->userptr_active.handle);
 		free(bufmgr_gem->userptr_active.ptr);
 		if (ret)
 			fprintf(stderr,
@@ -2162,31 +2222,6 @@ drm_intel_gem_bo_clear_relocs(drm_intel_bo *bo, int start)
  * index values into the validation list.
  */
 static void
-drm_intel_gem_bo_process_reloc(drm_intel_bo *bo)
-{
-	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
-	int i;
-
-	if (bo_gem->relocs == NULL)
-		return;
-
-	for (i = 0; i < bo_gem->reloc_count; i++) {
-		drm_intel_bo *target_bo = bo_gem->reloc_target_info[i].bo;
-
-		if (target_bo == bo)
-			continue;
-
-		drm_intel_gem_bo_mark_mmaps_incoherent(bo);
-
-		/* Continue walking the tree depth-first. */
-		drm_intel_gem_bo_process_reloc(target_bo);
-
-		/* Add the target to the validate list */
-		drm_intel_add_validate_buffer(target_bo);
-	}
-}
-
-static void
 drm_intel_gem_bo_process_reloc2(drm_intel_bo *bo)
 {
 	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *)bo;
@@ -2226,30 +2261,6 @@ drm_intel_gem_bo_process_reloc2(drm_intel_bo *bo)
 	}
 }
 
-
-static void
-drm_intel_update_buffer_offsets(drm_intel_bufmgr_gem *bufmgr_gem)
-{
-	int i;
-
-	for (i = 0; i < bufmgr_gem->exec_count; i++) {
-		drm_intel_bo *bo = bufmgr_gem->exec_bos[i];
-		drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
-
-		/* Update the buffer offset */
-		if (bufmgr_gem->exec_objects[i].offset != bo->offset64) {
-			DBG("BO %d (%s) migrated: 0x%08x %08x -> 0x%08x %08x\n",
-			    bo_gem->gem_handle, bo_gem->name,
-			    upper_32_bits(bo->offset64),
-			    lower_32_bits(bo->offset64),
-			    upper_32_bits(bufmgr_gem->exec_objects[i].offset),
-			    lower_32_bits(bufmgr_gem->exec_objects[i].offset));
-			bo->offset64 = bufmgr_gem->exec_objects[i].offset;
-			bo->offset = bufmgr_gem->exec_objects[i].offset;
-		}
-	}
-}
-
 static void
 drm_intel_update_buffer_offsets2 (drm_intel_bufmgr_gem *bufmgr_gem)
 {
@@ -2283,73 +2294,6 @@ drm_intel_gem_bo_aub_dump_bmp(drm_intel_bo *bo,
 			      enum aub_dump_bmp_format format,
 			      int pitch, int offset)
 {
-}
-
-static int
-drm_intel_gem_bo_exec(drm_intel_bo *bo, int used,
-		      drm_clip_rect_t * cliprects, int num_cliprects, int DR4)
-{
-	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *) bo->bufmgr;
-	struct drm_i915_gem_execbuffer execbuf;
-	int ret, i;
-
-	if (to_bo_gem(bo)->has_error)
-		return -ENOMEM;
-
-	pthread_mutex_lock(&bufmgr_gem->lock);
-	/* Update indices and set up the validate list. */
-	drm_intel_gem_bo_process_reloc(bo);
-
-	/* Add the batch buffer to the validation list.  There are no
-	 * relocations pointing to it.
-	 */
-	drm_intel_add_validate_buffer(bo);
-
-	memclear(execbuf);
-	execbuf.buffers_ptr = (uintptr_t) bufmgr_gem->exec_objects;
-	execbuf.buffer_count = bufmgr_gem->exec_count;
-	execbuf.batch_start_offset = 0;
-	execbuf.batch_len = used;
-	execbuf.cliprects_ptr = (uintptr_t) cliprects;
-	execbuf.num_cliprects = num_cliprects;
-	execbuf.DR1 = 0;
-	execbuf.DR4 = DR4;
-
-	ret = drmIoctl(bufmgr_gem->fd,
-		       DRM_IOCTL_I915_GEM_EXECBUFFER,
-		       &execbuf);
-	if (ret != 0) {
-		ret = -errno;
-		if (errno == ENOSPC) {
-			DBG("Execbuffer fails to pin. "
-			    "Estimate: %u. Actual: %u. Available: %u\n",
-			    drm_intel_gem_estimate_batch_space(bufmgr_gem->exec_bos,
-							       bufmgr_gem->
-							       exec_count),
-			    drm_intel_gem_compute_batch_space(bufmgr_gem->exec_bos,
-							      bufmgr_gem->
-							      exec_count),
-			    (unsigned int)bufmgr_gem->gtt_size);
-		}
-	}
-	drm_intel_update_buffer_offsets(bufmgr_gem);
-
-	if (bufmgr_gem->bufmgr.debug)
-		drm_intel_gem_dump_validation_list(bufmgr_gem);
-
-	for (i = 0; i < bufmgr_gem->exec_count; i++) {
-		drm_intel_bo_gem *bo_gem = to_bo_gem(bufmgr_gem->exec_bos[i]);
-
-		bo_gem->idle = false;
-
-		/* Disconnect the buffer from the validate list */
-		bo_gem->validate_index = -1;
-		bufmgr_gem->exec_bos[i] = NULL;
-	}
-	bufmgr_gem->exec_count = 0;
-	pthread_mutex_unlock(&bufmgr_gem->lock);
-
-	return ret;
 }
 
 static int
@@ -2634,7 +2578,6 @@ drm_intel_bo_gem_create_from_prime(drm_intel_bufmgr *bufmgr, int prime_fd, int s
 	int ret;
 	uint32_t handle;
 	drm_intel_bo_gem *bo_gem;
-	struct drm_i915_gem_get_tiling get_tiling;
 
 	pthread_mutex_lock(&bufmgr_gem->lock);
 	ret = drmPrimeFDToHandle(bufmgr_gem->fd, prime_fd, &handle);
@@ -2688,15 +2631,11 @@ drm_intel_bo_gem_create_from_prime(drm_intel_bufmgr *bufmgr, int prime_fd, int s
 	bo_gem->has_error = false;
 	bo_gem->reusable = false;
 
-	memclear(get_tiling);
-	get_tiling.handle = bo_gem->gem_handle;
-	if (drmIoctl(bufmgr_gem->fd,
-		     DRM_IOCTL_I915_GEM_GET_TILING,
-		     &get_tiling))
+	ret = get_tiling_mode(bufmgr_gem, handle,
+			      &bo_gem->tiling_mode, &bo_gem->swizzle_mode);
+	if (ret)
 		goto err;
 
-	bo_gem->tiling_mode = get_tiling.tiling_mode;
-	bo_gem->swizzle_mode = get_tiling.swizzle_mode;
 	/* XXX stride is unknown */
 	drm_intel_bo_gem_set_in_aperture_size(bufmgr_gem, bo_gem, 0);
 
@@ -2717,7 +2656,7 @@ drm_intel_bo_gem_export_to_prime(drm_intel_bo *bo, int *prime_fd)
 	drm_intel_bo_gem *bo_gem = (drm_intel_bo_gem *) bo;
 
 	if (drmPrimeHandleToFD(bufmgr_gem->fd, bo_gem->gem_handle,
-			       DRM_CLOEXEC, prime_fd) != 0)
+			       DRM_CLOEXEC | DRM_RDWR, prime_fd) != 0)
 		return -errno;
 
 	bo_gem->reusable = false;
@@ -2834,9 +2773,7 @@ drm_public void
 drm_intel_bufmgr_gem_enable_fenced_relocs(drm_intel_bufmgr *bufmgr)
 {
 	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *)bufmgr;
-
-	if (bufmgr_gem->bufmgr.bo_exec == drm_intel_gem_bo_exec2)
-		bufmgr_gem->fenced_relocs = true;
+	bufmgr_gem->fenced_relocs = true;
 }
 
 /**
@@ -3441,16 +3378,17 @@ drm_intel_bufmgr_gem_unref(drm_intel_bufmgr *bufmgr)
 {
 	drm_intel_bufmgr_gem *bufmgr_gem = (drm_intel_bufmgr_gem *)bufmgr;
 
-	if (atomic_add_unless(&bufmgr_gem->refcount, -1, 1)) {
-		pthread_mutex_lock(&bufmgr_list_mutex);
+	if (atomic_add_unless(&bufmgr_gem->refcount, -1, 1))
+		return;
 
-		if (atomic_dec_and_test(&bufmgr_gem->refcount)) {
-			DRMLISTDEL(&bufmgr_gem->managers);
-			drm_intel_bufmgr_gem_destroy(bufmgr);
-		}
+	pthread_mutex_lock(&bufmgr_list_mutex);
 
-		pthread_mutex_unlock(&bufmgr_list_mutex);
+	if (atomic_dec_and_test(&bufmgr_gem->refcount)) {
+		DRMLISTDEL(&bufmgr_gem->managers);
+		drm_intel_bufmgr_gem_destroy(bufmgr);
 	}
+
+	pthread_mutex_unlock(&bufmgr_list_mutex);
 }
 
 drm_public void *drm_intel_gem_bo_map__gtt(drm_intel_bo *bo)
@@ -3601,7 +3539,6 @@ drm_intel_bufmgr_gem_init(int fd, int batch_size)
 	struct drm_i915_gem_get_aperture aperture;
 	drm_i915_getparam_t gp;
 	int ret, tmp;
-	bool exec2 = false;
 
 	pthread_mutex_lock(&bufmgr_list_mutex);
 
@@ -3675,8 +3612,12 @@ drm_intel_bufmgr_gem_init(int fd, int batch_size)
 
 	gp.param = I915_PARAM_HAS_EXECBUF2;
 	ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
-	if (!ret)
-		exec2 = true;
+	if (ret) {
+		fprintf(stderr, "i915 does not support EXECBUFER2\n");
+		free(bufmgr_gem);
+		bufmgr_gem = NULL;
+        goto exit;
+    }
 
 	gp.param = I915_PARAM_HAS_BSD;
 	ret = drmIoctl(bufmgr_gem->fd, DRM_IOCTL_I915_GETPARAM, &gp);
@@ -3779,12 +3720,8 @@ drm_intel_bufmgr_gem_init(int fd, int batch_size)
 	bufmgr_gem->bufmgr.bo_get_tiling = drm_intel_gem_bo_get_tiling;
 	bufmgr_gem->bufmgr.bo_set_tiling = drm_intel_gem_bo_set_tiling;
 	bufmgr_gem->bufmgr.bo_flink = drm_intel_gem_bo_flink;
-	/* Use the new one if available */
-	if (exec2) {
-		bufmgr_gem->bufmgr.bo_exec = drm_intel_gem_bo_exec2;
-		bufmgr_gem->bufmgr.bo_mrb_exec = drm_intel_gem_bo_mrb_exec2;
-	} else
-		bufmgr_gem->bufmgr.bo_exec = drm_intel_gem_bo_exec;
+	bufmgr_gem->bufmgr.bo_exec = drm_intel_gem_bo_exec2;
+	bufmgr_gem->bufmgr.bo_mrb_exec = drm_intel_gem_bo_mrb_exec2;
 	bufmgr_gem->bufmgr.bo_busy = drm_intel_gem_bo_busy;
 	bufmgr_gem->bufmgr.bo_madvise = drm_intel_gem_bo_madvise;
 	bufmgr_gem->bufmgr.destroy = drm_intel_bufmgr_gem_unref;

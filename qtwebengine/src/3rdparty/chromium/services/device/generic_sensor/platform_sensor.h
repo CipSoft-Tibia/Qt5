@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,15 +9,20 @@
 #include <map>
 #include <memory>
 
-#include "base/macros.h"
+#include "base/containers/flat_set.h"
+#include "base/functional/callback_forward.h"
+#include "base/location.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
-#include "base/single_thread_task_runner.h"
 #include "base/synchronization/lock.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/thread_annotations.h"
 #include "mojo/public/cpp/system/buffer.h"
 #include "services/device/public/cpp/generic_sensor/sensor_reading.h"
 #include "services/device/public/mojom/sensor.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace device {
 
@@ -39,21 +44,35 @@ class PlatformSensor : public base::RefCountedThreadSafe<PlatformSensor> {
     virtual ~Client() {}
   };
 
+  PlatformSensor(const PlatformSensor&) = delete;
+  PlatformSensor& operator=(const PlatformSensor&) = delete;
+
   virtual mojom::ReportingMode GetReportingMode() = 0;
   virtual PlatformSensorConfiguration GetDefaultConfiguration() = 0;
   virtual bool CheckSensorConfiguration(
       const PlatformSensorConfiguration& configuration) = 0;
 
-  // Can be overriden to return the sensor maximum sampling frequency
-  // value obtained from the platform if it is available. If platfrom
+  // Can be overridden to return the sensor maximum sampling frequency
+  // value obtained from the platform if it is available. If platform
   // does not provide maximum sampling frequency this method must
   // return default frequency.
   // The default implementation returns default frequency.
   virtual double GetMaximumSupportedFrequency();
 
-  // Can be overriden to return the sensor minimum sampling frequency.
+  // Can be overridden to return the sensor minimum sampling frequency.
   // The default implementation returns '1.0 / (60 * 60)', i.e. once per hour.
   virtual double GetMinimumSupportedFrequency();
+
+  // Can be overridden to reset this sensor by the PlatformSensorProvider.
+  virtual void SensorReplaced();
+
+  // Checks if new value is significantly different than old value.
+  // When the reading we get does not differ significantly from our current
+  // value, we discard this reading and do not emit any events. This is a
+  // privacy measure to avoid giving readings that are too specific.
+  virtual bool IsSignificantlyDifferent(const SensorReading& lhs,
+                                        const SensorReading& rhs,
+                                        mojom::SensorType sensor_type);
 
   mojom::SensorType GetType() const;
 
@@ -77,6 +96,11 @@ class PlatformSensor : public base::RefCountedThreadSafe<PlatformSensor> {
   using ConfigMap = std::map<Client*, std::list<PlatformSensorConfiguration>>;
   const ConfigMap& GetConfigMapForTesting() const;
 
+  // Called by API users to post a task on |main_task_runner_| when run from a
+  // different sequence.
+  void PostTaskToMainSequence(const base::Location& location,
+                              base::OnceClosure task);
+
  protected:
   virtual ~PlatformSensor();
   PlatformSensor(mojom::SensorType type,
@@ -89,35 +113,55 @@ class PlatformSensor : public base::RefCountedThreadSafe<PlatformSensor> {
   virtual bool StartSensor(
       const PlatformSensorConfiguration& configuration) = 0;
   virtual void StopSensor() = 0;
-  // Updates shared buffer with new sensor reading data and schedules
-  // NotifySensorReadingChanged invocation on IPC thread.
+
+  // Updates the shared buffer with new sensor reading data and posts a task to
+  // invoke NotifySensorReadingChanged() on |main_task_runner_|.
   // Note: this method is thread-safe.
   void UpdateSharedBufferAndNotifyClients(const SensorReading& reading);
-
-  // Updates shared buffer with provided SensorReading
-  void UpdateSharedBuffer(const SensorReading& reading);
 
   void NotifySensorReadingChanged();
   void NotifySensorError();
 
-  // Task runner that is used by mojo objects for the IPC.
-  // If platfrom sensor events are processed on a different
-  // thread, notifications are forwarded to |task_runner_|.
-  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
+  void ResetReadingBuffer();
+
+  // Returns the task runner where this object has been created. Subclasses can
+  // use it to post tasks to the right sequence when running on a different task
+  // runner.
+  scoped_refptr<base::SequencedTaskRunner> main_task_runner() const {
+    return main_task_runner_;
+  }
+
   base::ObserverList<Client, true>::Unchecked clients_;
 
  private:
   friend class base::RefCountedThreadSafe<PlatformSensor>;
-  SensorReadingSharedBuffer* reading_buffer_;  // NOTE: Owned by |provider_|.
+
+  // Updates shared buffer with provided SensorReading. If
+  // |do_significance_check| is true then |last_raw_reading_| and
+  // |reading_buffer_| are only updated if |reading| is significantly different
+  // from |last_raw_reading_|. Returns true if |reading_buffer_| has been
+  // updated, and false otherwise.
+  // Note: this method is thread-safe.
+  bool UpdateSharedBuffer(const SensorReading& reading,
+                          bool do_significance_check);
+
+  // Check if multiple instances of PlatformSensor can exist at once. It weas
+  // first suggested in crbug.com/1383180.
+  static base::flat_set<mojom::SensorType>& GetInitializedSensors();
+
+  scoped_refptr<base::SequencedTaskRunner> main_task_runner_;
+
+  raw_ptr<SensorReadingSharedBuffer>
+      reading_buffer_;  // NOTE: Owned by |provider_|.
   mojom::SensorType type_;
   ConfigMap config_map_;
-  PlatformSensorProvider* provider_;
+  raw_ptr<PlatformSensorProvider> provider_;
   bool is_active_ = false;
-  SensorReading last_raw_reading_;
-  mutable base::Lock lock_;  // Protect have_raw_reading_ and last_raw_reading_.
-  bool have_raw_reading_;
+  absl::optional<SensorReading> last_raw_reading_ GUARDED_BY(lock_);
+  absl::optional<SensorReading> last_rounded_reading_ GUARDED_BY(lock_);
+  // Protect last_raw_reading_ & last_rounded_reading_.
+  mutable base::Lock lock_;
   base::WeakPtrFactory<PlatformSensor> weak_factory_{this};
-  DISALLOW_COPY_AND_ASSIGN(PlatformSensor);
 };
 
 }  // namespace device

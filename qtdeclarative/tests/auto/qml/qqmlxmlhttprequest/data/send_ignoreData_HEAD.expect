@@ -1,7 +1,8 @@
 HEAD /testdocument.html HTTP/1.1
-Accept-Language: en-US
-Connection: Keep-Alive
-Accept-Encoding: gzip, deflate
+Accept-Language: {{Ignore}}
+Connection: Keep-Alive{{Ignore}}
+HTTP2-Settings: {{Ignore}}
+Accept-Encoding: {{Ignore}}
 User-Agent: Mozilla/5.0
 Host: {{ServerHostUrl}}
 

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,17 +11,17 @@
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
-#include "base/optional.h"
 #include "base/rand_util.h"
 #include "base/test/task_environment.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "chrome/browser/media/webrtc/webrtc_event_log_manager_unittest_helpers.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/zlib/google/compression_utils.h"
 
-#if defined(OS_CHROMEOS)
-#include "chrome/browser/chromeos/login/users/fake_chrome_user_manager.h"
-#include "chrome/browser/chromeos/profiles/profile_helper.h"
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "chrome/browser/ash/login/users/fake_chrome_user_manager.h"
 #include "chrome/test/base/testing_profile.h"
 #include "components/account_id/account_id.h"
 #include "components/user_manager/scoped_user_manager.h"
@@ -164,7 +164,7 @@ TEST_F(GzipLogCompressorTest, MultipleCallsToCompress) {
 TEST_F(GzipLogCompressorTest, UnlimitedBudgetSanity) {
   Init(std::make_unique<PerfectGzipEstimator::Factory>());
 
-  auto compressor = compressor_factory_->Create(base::Optional<size_t>());
+  auto compressor = compressor_factory_->Create(absl::optional<size_t>());
   ASSERT_TRUE(compressor);
 
   std::string header;
@@ -306,7 +306,7 @@ class LogFileWriterTest
                 .AddExtension(log_file_writer_factory_->Extension());
   }
 
-  std::unique_ptr<LogFileWriter> CreateWriter(base::Optional<size_t> max_size) {
+  std::unique_ptr<LogFileWriter> CreateWriter(absl::optional<size_t> max_size) {
     return log_file_writer_factory_->Create(path_, max_size);
   }
 
@@ -334,7 +334,7 @@ class LogFileWriterTest
   }
 
   base::test::TaskEnvironment task_environment_;
-  base::Optional<WebRtcEventLogCompression> compression_;  // Set in Init().
+  absl::optional<WebRtcEventLogCompression> compression_;  // Set in Init().
   base::ScopedTempDir temp_dir_;
   base::FilePath path_;
   std::unique_ptr<LogFileWriter::Factory> log_file_writer_factory_;
@@ -345,14 +345,14 @@ TEST_P(LogFileWriterTest, FactoryCreatesLogFileWriter) {
   EXPECT_TRUE(CreateWriter(log_file_writer_factory_->MinFileSizeBytes()));
 }
 
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
 TEST_P(LogFileWriterTest, FactoryReturnsEmptyUniquePtrIfCantCreateFile) {
   Init(GetParam());
   RemoveWritePermissions(temp_dir_.GetPath());
   auto writer = CreateWriter(kMaxRemoteLogFileSizeBytes);
   EXPECT_FALSE(writer);
 }
-#endif  // defined(OS_POSIX)
+#endif  // BUILDFLAG(IS_POSIX)
 
 TEST_P(LogFileWriterTest, CloseSucceedsWhenNoErrorsOccurred) {
   Init(GetParam());
@@ -394,7 +394,7 @@ TEST_P(LogFileWriterTest, CallToWriteWithEmptyStringSucceeds) {
 TEST_P(LogFileWriterTest, UnlimitedBudgetSanity) {
   Init(GetParam());
 
-  auto writer = CreateWriter(base::Optional<size_t>());
+  auto writer = CreateWriter(absl::optional<size_t>());
   ASSERT_TRUE(writer);
 
   const std::string log = "log";
@@ -426,7 +426,7 @@ TEST_P(LogFileWriterTest, DeleteRemovesClosedFile) {
   EXPECT_FALSE(base::PathExists(path_));
 }
 
-#if !defined(OS_WIN)  // Deleting the open file does not work on Windows.
+#if !BUILDFLAG(IS_WIN)  // Deleting the open file does not work on Windows.
 TEST_P(LogFileWriterTest, WriteDoesNotCrashIfFileRemovedExternally) {
   Init(GetParam());
 
@@ -465,7 +465,7 @@ TEST_P(LogFileWriterTest, DeleteDoesNotCrashIfFileRemovedExternally) {
   // It's up to the OS whether this will succeed or fail, but it must not crash.
   writer->Delete();
 }
-#endif  // !defined(OS_WIN)
+#endif  // !BUILDFLAG(IS_WIN)
 
 TEST_P(LogFileWriterTest, PathReturnsTheCorrectPath) {
   Init(GetParam());
@@ -662,7 +662,7 @@ TEST_F(GzippedLogFileWriterTest,
   EXPECT_FALSE(base::PathExists(path_));  // Errored files deleted by Close().
 }
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 
 struct DoesProfileDefaultToLoggingEnabledForUserTypeTestCase {
   user_manager::UserType user_type;
@@ -683,9 +683,9 @@ TEST_P(DoesProfileDefaultToLoggingEnabledForUserTypeParametrizedTest,
   TestingProfile::Builder profile_builder;
   profile_builder.OverridePolicyConnectorIsManagedForTesting(true);
   std::unique_ptr<TestingProfile> testing_profile = profile_builder.Build();
-  std::unique_ptr<testing::NiceMock<chromeos::FakeChromeUserManager>>
-      fake_user_manager_ = std::make_unique<
-          testing::NiceMock<chromeos::FakeChromeUserManager>>();
+  std::unique_ptr<testing::NiceMock<ash::FakeChromeUserManager>>
+      fake_user_manager_ =
+          std::make_unique<testing::NiceMock<ash::FakeChromeUserManager>>();
   // We use a standard Gaia account by default:
   AccountId account_id = AccountId::FromUserEmailGaiaId("name", "id");
 
@@ -701,9 +701,6 @@ TEST_P(DoesProfileDefaultToLoggingEnabledForUserTypeParametrizedTest,
     case user_manager::USER_TYPE_PUBLIC_ACCOUNT:
       fake_user_manager_->AddPublicAccountUser(account_id);
       break;
-    case user_manager::USER_TYPE_SUPERVISED:
-      fake_user_manager_->AddSupervisedUser(account_id);
-      break;
     case user_manager::USER_TYPE_KIOSK_APP:
       fake_user_manager_->AddKioskAppUser(account_id);
       break;
@@ -714,13 +711,13 @@ TEST_P(DoesProfileDefaultToLoggingEnabledForUserTypeParametrizedTest,
       fake_user_manager_->AddArcKioskAppUser(account_id);
       break;
     case user_manager::USER_TYPE_ACTIVE_DIRECTORY:
-      account_id = AccountId::AdFromObjGuid("guid");
+      account_id =
+          AccountId::AdFromUserEmailObjGuid(account_id.GetUserEmail(), "guid");
       fake_user_manager_->AddUserWithAffiliationAndTypeAndProfile(
           account_id, false, test_case.user_type, testing_profile.get());
       break;
     default:
       FAIL() << "Invalid test setup. Unexpected user type.";
-      break;
   }
 
   fake_user_manager_->LoginUser(account_id);
@@ -732,7 +729,7 @@ TEST_P(DoesProfileDefaultToLoggingEnabledForUserTypeParametrizedTest,
             test_case.defaults_to_logging_enabled);
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     WebRtcPolicyDefaultTests,
     DoesProfileDefaultToLoggingEnabledForUserTypeParametrizedTest,
     testing::ValuesIn(
@@ -740,12 +737,11 @@ INSTANTIATE_TEST_CASE_P(
             {user_manager::USER_TYPE_REGULAR, true},
             {user_manager::USER_TYPE_GUEST, false},
             {user_manager::USER_TYPE_PUBLIC_ACCOUNT, false},
-            {user_manager::USER_TYPE_SUPERVISED, false},
             {user_manager::USER_TYPE_KIOSK_APP, false},
             {user_manager::USER_TYPE_CHILD, false},
             {user_manager::USER_TYPE_ARC_KIOSK_APP, false},
             {user_manager::USER_TYPE_ACTIVE_DIRECTORY, false}}));
 
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 }  // namespace webrtc_event_logging

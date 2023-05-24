@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,25 +8,24 @@
 
 #include "chromeos/dbus/ip_peripheral/ip_peripheral_service_client.h"
 
+using chromeos::IpPeripheralServiceClient;
+
 namespace extensions {
 
 IpWebcam::IpWebcam(const std::string& device_id) : device_id_(device_id) {}
 
-IpWebcam::~IpWebcam() {}
+IpWebcam::~IpWebcam() = default;
 
 void IpWebcam::GetPan(const GetPTZCompleteCallback& callback) {
-  chromeos::IpPeripheralServiceClient::Get()->GetPan(device_id_,
-                                                     std::move(callback));
+  IpPeripheralServiceClient::Get()->GetPan(device_id_, std::move(callback));
 }
 
 void IpWebcam::GetTilt(const GetPTZCompleteCallback& callback) {
-  chromeos::IpPeripheralServiceClient::Get()->GetTilt(device_id_,
-                                                      std::move(callback));
+  IpPeripheralServiceClient::Get()->GetTilt(device_id_, std::move(callback));
 }
 
 void IpWebcam::GetZoom(const GetPTZCompleteCallback& callback) {
-  chromeos::IpPeripheralServiceClient::Get()->GetZoom(device_id_,
-                                                      std::move(callback));
+  IpPeripheralServiceClient::Get()->GetZoom(device_id_, std::move(callback));
 }
 
 void IpWebcam::GetFocus(const GetPTZCompleteCallback& callback) {
@@ -41,20 +40,20 @@ void IpWebcam::GetFocus(const GetPTZCompleteCallback& callback) {
 void IpWebcam::SetPan(int value,
                       int pan_speed,
                       const SetPTZCompleteCallback& callback) {
-  chromeos::IpPeripheralServiceClient::Get()->SetPan(device_id_, value,
-                                                     std::move(callback));
+  IpPeripheralServiceClient::Get()->SetPan(device_id_, value,
+                                           std::move(callback));
 }
 
 void IpWebcam::SetTilt(int value,
                        int tilt_speed,
                        const SetPTZCompleteCallback& callback) {
-  chromeos::IpPeripheralServiceClient::Get()->SetTilt(device_id_, value,
-                                                      std::move(callback));
+  IpPeripheralServiceClient::Get()->SetTilt(device_id_, value,
+                                            std::move(callback));
 }
 
 void IpWebcam::SetZoom(int value, const SetPTZCompleteCallback& callback) {
-  chromeos::IpPeripheralServiceClient::Get()->SetZoom(device_id_, value,
-                                                      std::move(callback));
+  IpPeripheralServiceClient::Get()->SetZoom(device_id_, value,
+                                            std::move(callback));
 }
 
 void IpWebcam::SetFocus(int value, const SetPTZCompleteCallback& callback) {

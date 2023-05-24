@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,8 @@
 #include <string>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/containers/span.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "device/fido/fido_constants.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
@@ -26,12 +25,14 @@ namespace device {
 
 class MockFidoHidConnection : public device::mojom::HidConnection {
  public:
-  explicit MockFidoHidConnection(
+  MockFidoHidConnection(
       device::mojom::HidDeviceInfoPtr device,
       mojo::PendingReceiver<device::mojom::HidConnection> receiver,
       std::array<uint8_t, 4> connection_channel_id);
-
+  MockFidoHidConnection(MockFidoHidConnection&) = delete;
+  MockFidoHidConnection& operator=(MockFidoHidConnection&) = delete;
   ~MockFidoHidConnection() override;
+
   MOCK_METHOD1(ReadPtr, void(ReadCallback* callback));
   MOCK_METHOD3(WritePtr,
                void(uint8_t report_id,
@@ -52,7 +53,12 @@ class MockFidoHidConnection : public device::mojom::HidConnection {
   void SetNonce(base::span<uint8_t const> nonce);
 
   void ExpectWriteHidInit();
+  void ExpectWriteHidInit(const testing::Sequence& sequence);
   void ExpectHidWriteWithCommand(FidoHidDeviceCommand cmd);
+  void ExpectHidWriteWithCommand(const testing::Sequence& sequence,
+                                 FidoHidDeviceCommand cmd);
+  void ExpectReadAndReplyWith(const testing::Sequence& sequence,
+                              std::vector<uint8_t> response);
 
   const std::array<uint8_t, 4>& connection_channel_id() const {
     return connection_channel_id_;
@@ -64,14 +70,13 @@ class MockFidoHidConnection : public device::mojom::HidConnection {
   device::mojom::HidDeviceInfoPtr device_;
   std::vector<uint8_t> nonce_;
   std::array<uint8_t, 4> connection_channel_id_;
-
-  DISALLOW_COPY_AND_ASSIGN(MockFidoHidConnection);
 };
 
 class FakeFidoHidConnection : public device::mojom::HidConnection {
  public:
   explicit FakeFidoHidConnection(device::mojom::HidDeviceInfoPtr device);
-
+  FakeFidoHidConnection(FakeFidoHidConnection&) = delete;
+  FakeFidoHidConnection& operator=(FakeFidoHidConnection&) = delete;
   ~FakeFidoHidConnection() override;
 
   // device::mojom::HidConnection implemenation:
@@ -89,13 +94,13 @@ class FakeFidoHidConnection : public device::mojom::HidConnection {
 
  private:
   device::mojom::HidDeviceInfoPtr device_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakeFidoHidConnection);
 };
 
 class FakeFidoHidManager : public device::mojom::HidManager {
  public:
   FakeFidoHidManager();
+  FakeFidoHidManager(FakeFidoHidManager&) = delete;
+  FakeFidoHidManager& operator=(FakeFidoHidManager&) = delete;
   ~FakeFidoHidManager() override;
 
   // Invoke AddDevice with a device info struct that mirrors a FIDO USB device.
@@ -110,6 +115,8 @@ class FakeFidoHidManager : public device::mojom::HidManager {
       const std::string& device_guid,
       mojo::PendingRemote<mojom::HidConnectionClient> connection_client,
       mojo::PendingRemote<mojom::HidConnectionWatcher> watcher,
+      bool allow_protected_reports,
+      bool allow_fido_reports,
       ConnectCallback callback) override;
   void AddReceiver(
       mojo::PendingReceiver<device::mojom::HidManager> receiver) override;
@@ -118,6 +125,7 @@ class FakeFidoHidManager : public device::mojom::HidManager {
       device::mojom::HidDeviceInfoPtr device,
       mojo::PendingRemote<device::mojom::HidConnection> connection);
   void RemoveDevice(const std::string device_guid);
+  void ChangeDevice(device::mojom::HidDeviceInfoPtr device);
 
  private:
   std::map<std::string, device::mojom::HidDeviceInfoPtr> devices_;
@@ -125,8 +133,6 @@ class FakeFidoHidManager : public device::mojom::HidManager {
       connections_;
   mojo::AssociatedRemoteSet<device::mojom::HidManagerClient> clients_;
   mojo::ReceiverSet<device::mojom::HidManager> receivers_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakeFidoHidManager);
 };
 
 // ScopedFakeFidoHidManager automatically binds itself to the device service for
@@ -134,10 +140,9 @@ class FakeFidoHidManager : public device::mojom::HidManager {
 class ScopedFakeFidoHidManager : public FakeFidoHidManager {
  public:
   ScopedFakeFidoHidManager();
+  ScopedFakeFidoHidManager(ScopedFakeFidoHidManager&) = delete;
+  ScopedFakeFidoHidManager& operator=(ScopedFakeFidoHidManager&) = delete;
   ~ScopedFakeFidoHidManager() override;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ScopedFakeFidoHidManager);
 };
 
 }  // namespace device

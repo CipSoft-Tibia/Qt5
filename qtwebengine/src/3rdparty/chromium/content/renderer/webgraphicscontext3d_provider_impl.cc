@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,13 +27,13 @@ WebGraphicsContext3DProviderImpl::~WebGraphicsContext3DProviderImpl() {
   provider_->RemoveObserver(this);
 }
 
-bool WebGraphicsContext3DProviderImpl::BindToCurrentThread() {
+bool WebGraphicsContext3DProviderImpl::BindToCurrentSequence() {
   // TODO(danakj): Could plumb this result out to the caller so they know to
   // retry or not, if any client cared to know if it should retry or not.
   // Call AddObserver here instead of in constructor so that it's called on the
   // correct thread.
   provider_->AddObserver(this);
-  return provider_->BindToCurrentThread() == gpu::ContextResult::kSuccess;
+  return provider_->BindToCurrentSequence() == gpu::ContextResult::kSuccess;
 }
 
 gpu::InterfaceBase* WebGraphicsContext3DProviderImpl::InterfaceBase() {
@@ -58,6 +58,10 @@ WebGraphicsContext3DProviderImpl::RasterInterface() {
 gpu::webgpu::WebGPUInterface*
 WebGraphicsContext3DProviderImpl::WebGPUInterface() {
   return provider_->WebGPUInterface();
+}
+
+gpu::ContextSupport* WebGraphicsContext3DProviderImpl::ContextSupport() {
+  return provider_->ContextSupport();
 }
 
 bool WebGraphicsContext3DProviderImpl::IsContextLost() {
@@ -91,8 +95,6 @@ WebGraphicsContext3DProviderImpl::GetWebglPreferences() const {
 
     if (gpu_feature_info.IsWorkaroundEnabled(MAX_MSAA_SAMPLE_COUNT_2))
       prefs.msaa_sample_count = 2;
-    else if (gpu_feature_info.IsWorkaroundEnabled(MAX_MSAA_SAMPLE_COUNT_4))
-      prefs.msaa_sample_count = 4;
 
     if (command_line->HasSwitch(switches::kWebglMSAASampleCount)) {
       std::string sample_count =
@@ -118,7 +120,7 @@ WebGraphicsContext3DProviderImpl::GetWebglPreferences() const {
     }
 
     // Set default context limits for WebGL.
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
     prefs.max_active_webgl_contexts = 8u;
 #else
     prefs.max_active_webgl_contexts = 16u;
@@ -184,8 +186,7 @@ cc::ImageDecodeCache* WebGraphicsContext3DProviderImpl::ImageDecodeCache(
       color_type,
       std::make_unique<cc::GpuImageDecodeCache>(
           provider_.get(), use_transfer_cache, color_type, kMaxWorkingSetBytes,
-          provider_->ContextCapabilities().max_texture_size,
-          cc::PaintImage::kDefaultGeneratorClientId));
+          provider_->ContextCapabilities().max_texture_size, nullptr));
   DCHECK(insertion_result.second);
   cache_iterator = insertion_result.first;
   return cache_iterator->second.get();
@@ -200,7 +201,12 @@ void WebGraphicsContext3DProviderImpl::CopyVideoFrame(
     media::PaintCanvasVideoRenderer* video_renderer,
     media::VideoFrame* video_frame,
     cc::PaintCanvas* canvas) {
-  video_renderer->Copy(video_frame, canvas, context_provider());
+  video_renderer->Copy(video_frame, canvas, provider_.get());
+}
+
+viz::RasterContextProvider*
+WebGraphicsContext3DProviderImpl::RasterContextProvider() const {
+  return provider_.get();
 }
 
 }  // namespace content

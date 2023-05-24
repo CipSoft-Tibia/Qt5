@@ -32,12 +32,14 @@
 int
 pixman_renderer_init(struct weston_compositor *ec);
 
-enum pixman_renderer_output_flags {
-	PIXMAN_RENDERER_OUTPUT_USE_SHADOW = (1 << 0),
+struct pixman_renderer_output_options {
+	/** Composite into a shadow buffer, copying to the hardware buffer */
+	bool use_shadow;
 };
 
 int
-pixman_renderer_output_create(struct weston_output *output, uint32_t flags);
+pixman_renderer_output_create(struct weston_output *output,
+			      const struct pixman_renderer_output_options *options);
 
 void
 pixman_renderer_output_set_buffer(struct weston_output *output,

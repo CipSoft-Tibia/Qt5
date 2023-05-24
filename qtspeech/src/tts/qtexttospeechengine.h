@@ -1,49 +1,29 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the Qt Speech module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only
 
 #ifndef QTEXTTOSPEECHENGINE_H
 #define QTEXTTOSPEECHENGINE_H
+
+//
+//  W A R N I N G
+//  -------------
+//
+// This file is part of the Qt TextToSpeech plugin API, with limited compatibility
+// guarantees.
+// Usage of this API may make your code source and binary incompatible with
+// future versions of Qt.
+//
 
 #include <QtTextToSpeech/qtexttospeech.h>
 
 #include <QtCore/QObject>
 #include <QtCore/QLocale>
 #include <QtCore/QDir>
+#include <QtMultimedia/QAudioFormat>
 
 QT_BEGIN_NAMESPACE
+
+class QAudioFormat;
 
 class Q_TEXTTOSPEECH_EXPORT QTextToSpeechEngine : public QObject
 {
@@ -53,12 +33,17 @@ public:
     explicit QTextToSpeechEngine(QObject *parent = nullptr);
     ~QTextToSpeechEngine();
 
-    virtual QVector<QLocale> availableLocales() const = 0;
-    virtual QVector<QVoice> availableVoices() const = 0;
+    virtual QTextToSpeech::Capabilities capabilities() const
+    {
+        return QTextToSpeech::Capability::None;
+    }
+    virtual QList<QLocale> availableLocales() const = 0;
+    virtual QList<QVoice> availableVoices() const = 0;
 
     virtual void say(const QString &text) = 0;
-    virtual void stop() = 0;
-    virtual void pause() = 0;
+    virtual void synthesize(const QString &text) = 0;
+    virtual void stop(QTextToSpeech::BoundaryHint boundaryHint) = 0;
+    virtual void pause(QTextToSpeech::BoundaryHint boundaryHint) = 0;
     virtual void resume() = 0;
 
     virtual double rate() const = 0;
@@ -72,13 +57,20 @@ public:
     virtual QVoice voice() const = 0;
     virtual bool setVoice(const QVoice &voice) = 0;
     virtual QTextToSpeech::State state() const = 0;
+    virtual QTextToSpeech::ErrorReason errorReason() const = 0;
+    virtual QString errorString() const = 0;
 
 protected:
-    static QVoice createVoice(const QString &name, QVoice::Gender gender, QVoice::Age age, const QVariant &data);
+    static QVoice createVoice(const QString &name, const QLocale &locale, QVoice::Gender gender,
+                              QVoice::Age age, const QVariant &data);
     static QVariant voiceData(const QVoice &voice);
 
 Q_SIGNALS:
     void stateChanged(QTextToSpeech::State state);
+    void errorOccurred(QTextToSpeech::ErrorReason error, const QString &errorString);
+
+    void sayingWord(const QString &word, qsizetype start, qsizetype length);
+    void synthesized(const QAudioFormat &format, const QByteArray &data);
 };
 
 QT_END_NAMESPACE

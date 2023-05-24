@@ -1,43 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QWAYLANDQUICKEXTENSION_H
 #define QWAYLANDQUICKEXTENSION_H
+
+#if 0
+#pragma qt_class(QWaylandQuickExtension)
+#endif
 
 #include <QtWaylandCompositor/QWaylandCompositorExtension>
 #include <QtQml/QQmlParserStatus>
 #include <QtQml/QQmlListProperty>
 
+QT_REQUIRE_CONFIG(wayland_compositor_quick);
+
 QT_BEGIN_NAMESPACE
 
 #define Q_COMPOSITOR_DECLARE_QUICK_EXTENSION_CLASS(className) \
-    class Q_WAYLAND_COMPOSITOR_EXPORT className##QuickExtension : public className, public QQmlParserStatus \
+    class Q_WAYLANDCOMPOSITOR_EXPORT className##QuickExtension : public className, public QQmlParserStatus \
     { \
 /* qmake ignore Q_OBJECT */ \
         Q_OBJECT \
@@ -56,7 +36,7 @@ QT_BEGIN_NAMESPACE
     };
 
 #define Q_COMPOSITOR_DECLARE_QUICK_EXTENSION_CONTAINER_CLASS(className) \
-    class Q_WAYLAND_COMPOSITOR_EXPORT className##QuickExtensionContainer : public className \
+    class Q_WAYLANDCOMPOSITOR_EXPORT className##QuickExtensionContainer : public className \
     { \
 /* qmake ignore Q_OBJECT */ \
         Q_OBJECT \
@@ -93,6 +73,27 @@ QT_BEGIN_NAMESPACE
         { \
             static_cast<className##QuickExtensionContainer *>(list->data)->extension_vector.clear(); \
         } \
+    private: \
+        QList<QObject *> m_objects; \
+    };
+
+#define Q_COMPOSITOR_DECLARE_QUICK_EXTENSION_NAMED_CLASS(className, QmlType) \
+    class Q_WAYLANDCOMPOSITOR_EXPORT className##QuickExtension : public className, public QQmlParserStatus \
+    { \
+/* qmake ignore Q_OBJECT */ \
+        Q_OBJECT \
+        Q_PROPERTY(QQmlListProperty<QObject> data READ data DESIGNABLE false) \
+        Q_CLASSINFO("DefaultProperty", "data") \
+        Q_INTERFACES(QQmlParserStatus) \
+        QML_NAMED_ELEMENT(QmlType) \
+        QML_ADDED_IN_VERSION(1, 0) \
+    public: \
+        QQmlListProperty<QObject> data() \
+        { \
+            return QQmlListProperty<QObject>(this, &m_objects); \
+        } \
+        void classBegin() override {} \
+        void componentComplete() override { if (!isInitialized()) initialize(); } \
     private: \
         QList<QObject *> m_objects; \
     };

@@ -1,51 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qabstractraycaster.h"
 #include "qabstractraycaster_p.h"
+#include <Qt3DCore/qaspectengine.h>
 #include <Qt3DCore/qentity.h>
-#include <Qt3DCore/qpropertyupdatedchange.h>
-#include <Qt3DCore/qpropertynodeaddedchange.h>
-#include <Qt3DCore/qpropertynoderemovedchange.h>
 #include <Qt3DCore/private/qcomponent_p.h>
 #include <Qt3DCore/private/qscene_p.h>
+#include <Qt3DCore/private/qaspectengine_p.h>
 #include <Qt3DRender/qlayer.h>
+#include <Qt3DRender/qrenderaspect.h>
+#include <Qt3DRender/private/qrenderaspect_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -72,6 +37,24 @@ void QAbstractRayCasterPrivate::updateHitEntites(QAbstractRayCaster::Hits &hits,
 {
     for (int i = 0; i < hits.size(); i++)
         hits[i].setEntity(qobject_cast<Qt3DCore::QEntity *>(scene->lookupNode(hits[i].entityId())));
+}
+
+QAbstractRayCaster::Hits QAbstractRayCasterPrivate::pick()
+{
+    Qt3DRender::QRenderAspect *renderAspect = nullptr;
+    const auto aspects = m_scene->engine()->aspects();
+    for (auto a: aspects) {
+        renderAspect = qobject_cast<Qt3DRender::QRenderAspect *>(a);
+        if (renderAspect)
+            break;
+    }
+    if (!renderAspect)
+        return {};
+
+    Q_Q(QAbstractRayCaster);
+    auto dRenderAspect = Qt3DRender::QRenderAspectPrivate::get(renderAspect);
+    dispatchHits(dRenderAspect->m_rayCastingJob->pick(q));
+    return m_hits;
 }
 
 void QAbstractRayCasterPrivate::dispatchHits(const QAbstractRayCaster::Hits &hits)
@@ -337,7 +320,7 @@ void QAbstractRayCaster::addLayer(QLayer *layer)
         if (!layer->parent())
             layer->setParent(this);
 
-        d->updateNode(layer, "layer", Qt3DCore::PropertyValueAdded);
+        d->update();
     }
 }
 
@@ -350,7 +333,7 @@ void QAbstractRayCaster::removeLayer(QLayer *layer)
     Q_D(QAbstractRayCaster);
     if (!d->m_layers.removeOne(layer))
         return;
-    d->updateNode(layer, "layer", Qt3DCore::PropertyValueRemoved);
+    d->update();
     // Remove bookkeeping connection
     d->unregisterDestructionHelper(layer);
 }
@@ -358,45 +341,14 @@ void QAbstractRayCaster::removeLayer(QLayer *layer)
 /*!
     \return the current list of layers
  */
-QVector<QLayer *> QAbstractRayCaster::layers() const
+QList<QLayer *> QAbstractRayCaster::layers() const
 {
     Q_D(const QAbstractRayCaster);
     return d->m_layers;
 }
 
-/*! \internal */
-void QAbstractRayCaster::sceneChangeEvent(const Qt3DCore::QSceneChangePtr &change)
-{
-    Q_D(QAbstractRayCaster);
-    Qt3DCore::QPropertyUpdatedChangePtr e = qSharedPointerCast<Qt3DCore::QPropertyUpdatedChange>(change);
-    if (e->type() == Qt3DCore::PropertyUpdated) {
-        const QByteArray propertyName = e->propertyName();
-        if (propertyName == QByteArrayLiteral("hits")) {
-            Hits hits = e->value().value<Hits>();
-            d->dispatchHits(hits);
-        }
-    }
-
-    QComponent::sceneChangeEvent(change);
-}
-
-/*! \internal */
-Qt3DCore::QNodeCreatedChangeBasePtr QAbstractRayCaster::createNodeCreationChange() const
-{
-    auto creationChange = Qt3DCore::QNodeCreatedChangePtr<QAbstractRayCasterData>::create(this);
-    auto &data = creationChange->data;
-    Q_D(const QAbstractRayCaster);
-    data.casterType = d->m_rayCasterType;
-    data.runMode = d->m_runMode;
-    data.origin = d->m_origin;
-    data.direction = d->m_direction;
-    data.length = d->m_length;
-    data.position = d->m_position;
-    data.filterMode = d->m_filterMode;
-    data.layerIds = qIdsForNodes(d->m_layers);
-    return creationChange;
-}
-
 } // Qt3DRender
 
 QT_END_NAMESPACE
+
+#include "moc_qabstractraycaster.cpp"

@@ -17,6 +17,8 @@
 #include <vector>
 
 #include "modules/desktop_capture/cropped_desktop_frame.h"
+#include "modules/desktop_capture/desktop_capture_metrics_helper.h"
+#include "modules/desktop_capture/desktop_capture_types.h"
 #include "modules/desktop_capture/desktop_capturer.h"
 #include "modules/desktop_capture/desktop_frame_win.h"
 #include "modules/desktop_capture/win/screen_capture_utils.h"
@@ -25,8 +27,10 @@
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/string_utils.h"
+#include "rtc_base/time_utils.h"
 #include "rtc_base/trace_event.h"
-#include "rtc_base/win32.h"
+#include "rtc_base/win/windows_version.h"
+#include "system_wrappers/include/metrics.h"
 
 namespace webrtc {
 
@@ -91,11 +95,14 @@ BOOL CALLBACK OwnedWindowCollector(HWND hwnd, LPARAM param) {
   return TRUE;
 }
 
-WindowCapturerWinGdi::WindowCapturerWinGdi() {}
+WindowCapturerWinGdi::WindowCapturerWinGdi(
+    bool enumerate_current_process_windows)
+    : enumerate_current_process_windows_(enumerate_current_process_windows) {}
 WindowCapturerWinGdi::~WindowCapturerWinGdi() {}
 
 bool WindowCapturerWinGdi::GetSourceList(SourceList* sources) {
-  if (!window_capture_helper_.EnumerateCapturableWindows(sources))
+  if (!window_capture_helper_.EnumerateCapturableWindows(
+          sources, enumerate_current_process_windows_))
     return false;
 
   std::map<HWND, DesktopSize> new_map;
@@ -143,14 +150,30 @@ bool WindowCapturerWinGdi::IsOccluded(const DesktopVector& pos) {
 void WindowCapturerWinGdi::Start(Callback* callback) {
   RTC_DCHECK(!callback_);
   RTC_DCHECK(callback);
+  RecordCapturerImpl(DesktopCapturerId::kWindowCapturerWinGdi);
 
   callback_ = callback;
 }
 
 void WindowCapturerWinGdi::CaptureFrame() {
   RTC_DCHECK(callback_);
+  int64_t capture_start_time_nanos = rtc::TimeNanos();
 
   CaptureResults results = CaptureFrame(/*capture_owned_windows*/ true);
+  if (!results.frame) {
+    // Don't return success if we have no frame.
+    results.result = results.result == Result::SUCCESS ? Result::ERROR_TEMPORARY
+                                                       : results.result;
+    callback_->OnCaptureResult(results.result, nullptr);
+    return;
+  }
+
+  int capture_time_ms = (rtc::TimeNanos() - capture_start_time_nanos) /
+                        rtc::kNumNanosecsPerMillisec;
+  RTC_HISTOGRAM_COUNTS_1000(
+      "WebRTC.DesktopCapture.Win.WindowGdiCapturerFrameTime", capture_time_ms);
+  results.frame->set_capture_time_ms(capture_time_ms);
+  results.frame->set_capturer_id(DesktopCapturerId::kWindowCapturerWinGdi);
   callback_->OnCaptureResult(results.result, std::move(results.frame));
 }
 
@@ -210,19 +233,19 @@ WindowCapturerWinGdi::CaptureResults WindowCapturerWinGdi::CaptureFrame(
 
   DesktopSize window_dc_size;
   if (GetDcSize(window_dc, &window_dc_size)) {
-    // The |window_dc_size| is used to detect the scaling of the original
+    // The `window_dc_size` is used to detect the scaling of the original
     // window. If the application does not support high-DPI settings, it will
     // be scaled by Windows according to the scaling setting.
     // https://www.google.com/search?q=windows+scaling+settings&ie=UTF-8
-    // So the size of the |window_dc|, i.e. the bitmap we can retrieve from
+    // So the size of the `window_dc`, i.e. the bitmap we can retrieve from
     // PrintWindow() or BitBlt() function, will be smaller than
-    // |original_rect| and |cropped_rect|. Part of the captured desktop frame
+    // `original_rect` and `cropped_rect`. Part of the captured desktop frame
     // will be black. See
     // bug https://bugs.chromium.org/p/webrtc/issues/detail?id=8112 for
     // details.
 
-    // If |window_dc_size| is smaller than |window_rect|, let's resize both
-    // |original_rect| and |cropped_rect| according to the scaling factor.
+    // If `window_dc_size` is smaller than `window_rect`, let's resize both
+    // `original_rect` and `cropped_rect` according to the scaling factor.
     // This will adjust the width and height of the two rects.
     horizontal_scale =
         static_cast<double>(window_dc_size.width()) / original_rect.width();
@@ -231,8 +254,8 @@ WindowCapturerWinGdi::CaptureResults WindowCapturerWinGdi::CaptureFrame(
     original_rect.Scale(horizontal_scale, vertical_scale);
     cropped_rect.Scale(horizontal_scale, vertical_scale);
 
-    // Translate |cropped_rect| to the left so that its position within
-    // |original_rect| remains accurate after scaling.
+    // Translate `cropped_rect` to the left so that its position within
+    // `original_rect` remains accurate after scaling.
     // See crbug.com/1083527 for more info.
     int translate_left = static_cast<int>(std::round(
         (cropped_rect.left() - original_rect.left()) * (horizontal_scale - 1)));
@@ -275,7 +298,7 @@ WindowCapturerWinGdi::CaptureResults WindowCapturerWinGdi::CaptureFrame(
   // on Windows 8.1 and later, PrintWindow is only used when the window is
   // occluded. When the window is not occluded, it is much faster to capture
   // the screen and to crop it to the window position and size.
-  if (rtc::IsWindows8OrLater()) {
+  if (rtc::rtc_win::GetVersion() >= rtc::rtc_win::Version::VERSION_WIN8) {
     // Special flag that makes PrintWindow to work on Windows 8.1 and later.
     // Indeed certain apps (e.g. those using DirectComposition rendering) can't
     // be captured using BitBlt or PrintWindow without this flag. Note that on
@@ -333,7 +356,8 @@ WindowCapturerWinGdi::CaptureResults WindowCapturerWinGdi::CaptureFrame(
 
       if (!owned_windows_.empty()) {
         if (!owned_window_capturer_) {
-          owned_window_capturer_ = std::make_unique<WindowCapturerWinGdi>();
+          owned_window_capturer_ = std::make_unique<WindowCapturerWinGdi>(
+              enumerate_current_process_windows_);
         }
 
         // Owned windows are stored in top-down z-order, so this iterates in
@@ -372,7 +396,8 @@ WindowCapturerWinGdi::CaptureResults WindowCapturerWinGdi::CaptureFrame(
 // static
 std::unique_ptr<DesktopCapturer> WindowCapturerWinGdi::CreateRawWindowCapturer(
     const DesktopCaptureOptions& options) {
-  return std::unique_ptr<DesktopCapturer>(new WindowCapturerWinGdi());
+  return std::unique_ptr<DesktopCapturer>(
+      new WindowCapturerWinGdi(options.enumerate_current_process_windows()));
 }
 
 }  // namespace webrtc

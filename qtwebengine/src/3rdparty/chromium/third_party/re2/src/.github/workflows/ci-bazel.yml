@@ -1,7 +1,7 @@
 name: CI (Bazel)
 on:
   push:
-    branches: [master]
+    branches: [main]
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -9,7 +9,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
+    env:
+      BAZELISK_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-    - uses: actions/checkout@v2
-    - run: .github/bazel.sh
-      shell: bash
+      - uses: actions/checkout@v3
+      - run: .github/bazel.sh
+        shell: bash

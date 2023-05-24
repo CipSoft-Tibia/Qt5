@@ -1,31 +1,5 @@
-# coding=utf8
-#############################################################################
-##
-## Copyright (C) 2020 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of the test suite of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:GPL-EXCEPT$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 3 as published by the Free Software
-## Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2021 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 """Shared serialization-scanning code for QLocaleXML format.
 
 Provides classes:
@@ -35,15 +9,23 @@ Provides classes:
 
 Support:
   Spacer -- provides control over indentation of the output.
+
+RelaxNG schema for the used file format can be found in qlocalexml.rnc.
+QLocaleXML files can be validated using:
+
+    jing -c qlocalexml.rnc <file.xml>
+
+You can download jing from https://relaxng.org/jclark/jing.html if your
+package manager lacks the jing package.
 """
-from __future__ import print_function
+
 from xml.sax.saxutils import escape
 
 from localetools import Error
 
 # Tools used by Locale:
 def camel(seq):
-    yield seq.next()
+    yield next(seq)
     for word in seq:
         yield word.capitalize()
 
@@ -51,25 +33,14 @@ def camelCase(words):
     return ''.join(camel(iter(words)))
 
 def addEscapes(s):
-    return ''.join(c if n < 128 else '\\x{:02x}'.format(n)
+    return ''.join(c if n < 128 else f'\\x{n:02x}'
                    for n, c in ((ord(c), c) for c in s))
-
-def ordStr(c):
-    if len(c) == 1:
-        return str(ord(c))
-    raise Error('Unable to handle value "{}"'.format(addEscapes(c)))
-
-# Fix for a problem with QLocale returning a character instead of
-# strings for QLocale::exponential() and others. So we fallback to
-# default values in these cases.
-def fixOrdStr(c, d):
-    return str(ord(c if len(c) == 1 else d))
 
 def startCount(c, text): # strspn
     """First index in text where it doesn't have a character in c"""
     assert text and text[0] in c
     try:
-        return (j for j, d in enumerate(text) if d not in c).next()
+        return next((j for j, d in enumerate(text) if d not in c))
     except StopIteration:
         return len(text)
 
@@ -132,18 +103,18 @@ class QLocaleXmlReader (object):
         # Lists of (id, name, code) triples:
         languages = tuple(self.__loadMap('language'))
         scripts = tuple(self.__loadMap('script'))
-        countries = tuple(self.__loadMap('country'))
+        territories = tuple(self.__loadMap('territory'))
         self.__likely = tuple(self.__likelySubtagsMap())
         # Mappings {ID: (name, code)}
         self.languages = dict((v[0], v[1:]) for v in languages)
         self.scripts = dict((v[0], v[1:]) for v in scripts)
-        self.countries = dict((v[0], v[1:]) for v in countries)
+        self.territories = dict((v[0], v[1:]) for v in territories)
         # Private mappings {name: (ID, code)}
         self.__langByName = dict((v[1], (v[0], v[2])) for v in languages)
         self.__textByName = dict((v[1], (v[0], v[2])) for v in scripts)
-        self.__landByName = dict((v[1], (v[0], v[2])) for v in countries)
+        self.__landByName = dict((v[1], (v[0], v[2])) for v in territories)
         # Other properties:
-        self.dupes = set(v[1] for v in languages) & set(v[1] for v in countries)
+        self.dupes = set(v[1] for v in languages) & set(v[1] for v in territories)
         self.cldrVersion = self.__firstChildText(self.root, "version")
 
     def loadLocaleMap(self, calendars, grumble = lambda text: None):
@@ -153,31 +124,31 @@ class QLocaleXmlReader (object):
             locale = Locale.fromXmlData(lambda k: kid(elt, k), calendars)
             language = self.__langByName[locale.language][0]
             script = self.__textByName[locale.script][0]
-            country = self.__landByName[locale.country][0]
+            territory = self.__landByName[locale.territory][0]
 
             if language != 1: # C
-                if country == 0:
-                    grumble('loadLocaleMap: No country id for "{}"\n'.format(locale.language))
+                if territory == 0:
+                    grumble(f'loadLocaleMap: No territory id for "{locale.language}"\n')
 
                 if script == 0:
-                    # Find default script for the given language and country - see:
+                    # Find default script for the given language and territory - see:
                     # http://www.unicode.org/reports/tr35/#Likely_Subtags
                     try:
                         try:
-                            to = likely[(locale.language, 'AnyScript', locale.country)]
+                            to = likely[(locale.language, 'AnyScript', locale.territory)]
                         except KeyError:
-                            to = likely[(locale.language, 'AnyScript', 'AnyCountry')]
+                            to = likely[(locale.language, 'AnyScript', 'AnyTerritory')]
                     except KeyError:
                         pass
                     else:
                         locale.script = to[1]
                         script = self.__textByName[locale.script][0]
 
-            yield (language, script, country), locale
+            yield (language, script, territory), locale
 
     def languageIndices(self, locales):
         index = 0
-        for key, value in self.languages.iteritems():
+        for key, value in self.languages.items():
             i, count = 0, locales.count(key)
             if count > 0:
                 i = index
@@ -194,21 +165,20 @@ class QLocaleXmlReader (object):
         def ids(t):
             return tuple(x[0] for x in t)
 
-        for i, pair in enumerate(self.__likely, 1):
+        for pair in self.__likely:
             have = self.__fromNames(pair[0])
             give = self.__fromNames(pair[1])
             yield ('_'.join(tag(have)), ids(have),
-                   '_'.join(tag(give)), ids(give),
-                   i == len(self.__likely))
+                   '_'.join(tag(give)), ids(give))
 
     def defaultMap(self):
-        """Map language and script to their default country by ID.
+        """Map language and script to their default territory by ID.
 
-        Yields ((language, script), country) wherever the likely
+        Yields ((language, script), territory) wherever the likely
         sub-tags mapping says language's default locale uses the given
-        script and country."""
+        script and territory."""
         for have, give in self.__likely:
-            if have[1:] == ('AnyScript', 'AnyCountry') and give[2] != 'AnyCountry':
+            if have[1:] == ('AnyScript', 'AnyTerritory') and give[2] != 'AnyTerritory':
                 assert have[0] == give[0], (have, give)
                 yield ((self.__langByName[give[0]][0],
                         self.__textByName[give[1]][0]),
@@ -217,11 +187,11 @@ class QLocaleXmlReader (object):
     # Implementation details:
     def __loadMap(self, category):
         kid = self.__firstChildText
-        for element in self.__eachEltInGroup(self.root, category + 'List', category):
+        for element in self.__eachEltInGroup(self.root, f'{category}List', category):
             yield int(kid(element, 'id')), kid(element, 'name'), kid(element, 'code')
 
     def __likelySubtagsMap(self):
-        def triplet(element, keys=('language', 'script', 'country'), kid = self.__firstChildText):
+        def triplet(element, keys=('language', 'script', 'territory'), kid = self.__firstChildText):
             return tuple(kid(element, key) for key in keys)
 
         kid = self.__firstChildElt
@@ -258,7 +228,7 @@ class QLocaleXmlReader (object):
                 return child
             child = child.nextSibling
 
-        raise Error('No {} child found'.format(name))
+        raise Error(f'No {name} child found')
 
     @classmethod
     def __firstChildText(cls, elt, key):
@@ -314,7 +284,7 @@ class Spacer (object):
         elif line.startswith('<') and not line.startswith('<!'):
             cut = line.find('>')
             tag = (line[1:] if cut < 0 else line[1 : cut]).strip().split()[0]
-            if '</{}>'.format(tag) not in line:
+            if f'</{tag}>' not in line:
                 self.current += self.__each
         return indent + line + '\n'
 
@@ -345,10 +315,18 @@ class QLocaleXmlWriter (object):
         self.__write('<localeDatabase>')
 
     # Output of various sections, in their usual order:
-    def enumData(self, languages, scripts, countries):
-        self.__enumTable('languageList', languages)
-        self.__enumTable('scriptList', scripts)
-        self.__enumTable('countryList', countries)
+    def enumData(self):
+        from enumdata import language_map, script_map, territory_map
+        self.__enumTable('language', language_map)
+        self.__enumTable('script', script_map)
+        self.__enumTable('territory', territory_map)
+        # Prepare to detect any unused codes (see __writeLocale(), close()):
+        self.__languages = set(p[1] for p in language_map.values()
+                               if not p[1].isspace())
+        self.__scripts = set(p[1] for p in script_map.values()
+                             if p[1] != 'Zzzz')
+        self.__territories = set(p[1] for p in territory_map.values()
+                                 if p[1] != 'ZZ')
 
     def likelySubTags(self, entries):
         self.__openTag('likelySubtags')
@@ -362,13 +340,11 @@ class QLocaleXmlWriter (object):
     def locales(self, locales, calendars):
         self.__openTag('localeList')
         self.__openTag('locale')
-        Locale.C(calendars).toXml(self.inTag, calendars)
+        self.__writeLocale(Locale.C(calendars), calendars)
         self.__closeTag('locale')
-        keys = locales.keys()
-        keys.sort()
-        for key in keys:
+        for key in sorted(locales.keys()):
             self.__openTag('locale')
-            locales[key].toXml(self.inTag, calendars)
+            self.__writeLocale(locales[key], calendars)
             self.__closeTag('locale')
         self.__closeTag('localeList')
 
@@ -376,12 +352,26 @@ class QLocaleXmlWriter (object):
         self.inTag('version', cldrVersion)
 
     def inTag(self, tag, text):
-        self.__write('<{0}>{1}</{0}>'.format(tag, text))
+        self.__write(f'<{tag}>{text}</{tag}>')
 
-    def close(self):
+    def close(self, grumble):
+        """Finish writing and grumble any issues discovered."""
         if self.__rawOutput != self.__complain:
             self.__write('</localeDatabase>')
         self.__rawOutput = self.__complain
+
+        if self.__languages or self.__scripts or self.__territories:
+            grumble('Some enum members are unused, corresponding to these tags:\n')
+            import textwrap
+            def kvetch(kind, seq, g = grumble, w = textwrap.wrap):
+                g('\n\t'.join(w(f' {kind}: {", ".join(sorted(seq))}', width=80)) + '\n')
+            if self.__languages:
+                kvetch('Languages', self.__languages)
+            if self.__scripts:
+                kvetch('Scripts', self.__scripts)
+            if self.__territories:
+                kvetch('Territories', self.__territories)
+            grumble('It may make sense to deprecate them.\n')
 
     # Implementation details
     @staticmethod
@@ -392,27 +382,33 @@ class QLocaleXmlWriter (object):
         raise Error('Attempted to write data after closing :-(')
 
     def __enumTable(self, tag, table):
-        self.__openTag(tag)
-        for key, value in table.iteritems():
-            self.__openTag(tag[:-4])
+        self.__openTag(f'{tag}List')
+        for key, value in table.items():
+            self.__openTag(tag)
             self.inTag('name', value[0])
             self.inTag('id', key)
             self.inTag('code', value[1])
-            self.__closeTag(tag[:-4])
-        self.__closeTag(tag)
+            self.__closeTag(tag)
+        self.__closeTag(f'{tag}List')
 
     def __likelySubTag(self, tag, likely):
         self.__openTag(tag)
         self.inTag('language', likely[0])
         self.inTag('script', likely[1])
-        self.inTag('country', likely[2])
+        self.inTag('territory', likely[2])
         # self.inTag('variant', likely[3])
         self.__closeTag(tag)
 
+    def __writeLocale(self, locale, calendars):
+        locale.toXml(self.inTag, calendars)
+        self.__languages.discard(locale.language_code)
+        self.__scripts.discard(locale.script_code)
+        self.__territories.discard(locale.territory_code)
+
     def __openTag(self, tag):
-        self.__write('<{}>'.format(tag))
+        self.__write(f'<{tag}>')
     def __closeTag(self, tag):
-        self.__write('</{}>'.format(tag))
+        self.__write(f'</{tag}>')
 
     def __write(self, line):
         self.__rawOutput(self.__wrap(line))
@@ -441,18 +437,17 @@ class Locale (object):
             yield camelCase(('standalone', L, scale))
 
     # Expected to be numbers, read with int():
-    __asint = ("decimal", "group", "zero",
-               "list", "percent", "minus", "plus", "exp",
-               "currencyDigits", "currencyRounding")
-    # Single character; use the code-point number for each:
-    __asord = ("quotationStart", "quotationEnd",
-               "alternateQuotationStart", "alternateQuotationEnd")
+    __asint = ("currencyDigits", "currencyRounding")
     # Convert day-name to Qt day-of-week number:
     __asdow = ("firstDayOfWeek", "weekendStart", "weekendEnd")
     # Convert from CLDR format-strings to QDateTimeParser ones:
     __asfmt = ("longDateFormat", "shortDateFormat", "longTimeFormat", "shortTimeFormat")
     # Just use the raw text:
-    __astxt = ("language", "languageEndonym", "script", "country", "countryEndonym",
+    __astxt = ("language", "languageEndonym", "script", "territory", "territoryEndonym",
+               "decimal", "group", "zero",
+               "list", "percent", "minus", "plus", "exp",
+               "quotationStart", "quotationEnd",
+               "alternateQuotationStart", "alternateQuotationEnd",
                "listPatternPartStart", "listPatternPartMiddle",
                "listPatternPartEnd", "listPatternPartTwo", "am", "pm",
                'byte_unit', 'byte_si_quantified', 'byte_iec_quantified',
@@ -474,13 +469,7 @@ class Locale (object):
         texts.\n"""
         data = {}
         for k in cls.__asint:
-            data['listDelim' if k == 'list' else k] = int(lookup(k))
-
-        for k in cls.__asord:
-            value = lookup(k)
-            assert len(value) == 1, \
-                (k, value, 'value should be exactly one character')
-            data[k] = ord(value)
+            data[k] = int(lookup(k))
 
         for k in cls.__asdow:
             data[k] = cls.__qDoW[lookup(k)]
@@ -489,10 +478,15 @@ class Locale (object):
             data[k] = convertFormat(lookup(k))
 
         for k in cls.__astxt + tuple(cls.propsMonthDay('days')):
-            data[k] = lookup(k)
+            data['listDelim' if k == 'list' else k] = lookup(k)
 
         for k in cls.propsMonthDay('months'):
             data[k] = dict((cal, lookup('_'.join((k, cal)))) for cal in calendars)
+
+        grouping = lookup('groupSizes').split(';')
+        data.update(groupLeast = int(grouping[0]),
+                    groupHigher = int(grouping[1]),
+                    groupTop = int(grouping[2]))
 
         return cls(data)
 
@@ -507,17 +501,15 @@ class Locale (object):
         form used by CLDR; its default is ('gregorian',).
         """
         get = lambda k: getattr(self, k)
-        for key in ('language', 'script', 'country'):
+        for key in ('language', 'script', 'territory'):
             write(key, get(key))
-            write('{}code'.format(key), get('{}_code'.format(key)))
+            write(f'{key}code', get(f'{key}_code'))
 
-        for key in ('decimal', 'group', 'zero'):
-            write(key, ordStr(get(key)))
-        for key, std in (('list', ';'), ('percent', '%'),
-                         ('minus', '-'), ('plus', '+'), ('exp', 'e')):
-            write(key, fixOrdStr(get(key), std))
+        for key in ('decimal', 'group', 'zero', 'list',
+                    'percent', 'minus', 'plus', 'exp'):
+            write(key, get(key))
 
-        for key in ('languageEndonym', 'countryEndonym',
+        for key in ('languageEndonym', 'territoryEndonym',
                     'quotationStart', 'quotationEnd',
                     'alternateQuotationStart', 'alternateQuotationEnd',
                     'listPatternPartStart', 'listPatternPartMiddle',
@@ -533,8 +525,9 @@ class Locale (object):
                 '_'.join((k, cal))
                 for k in self.propsMonthDay('months')
                 for cal in calendars):
-            write(key, escape(get(key)).encode('utf-8'))
+            write(key, escape(get(key)))
 
+        write('groupSizes', ';'.join(str(x) for x in get('groupSizes')))
         for key in ('currencyDigits', 'currencyRounding'):
             write(key, get(key))
 
@@ -569,9 +562,9 @@ class Locale (object):
                         (fullName, fullName),
                         (firstThree, firstThree),
                         (number, initial)),
-            'islamic': ((u'Muharram', u'Safar', u'Rabiʻ I', u'Rabiʻ II', u'Jumada I',
-                         u'Jumada II', u'Rajab', u'Shaʻban', u'Ramadan', u'Shawwal',
-                         u'Dhuʻl-Qiʻdah', u'Dhuʻl-Hijjah'),
+            'islamic': (('Muharram', 'Safar', 'Rabiʻ I', 'Rabiʻ II', 'Jumada I',
+                         'Jumada II', 'Rajab', 'Shaʻban', 'Ramadan', 'Shawwal',
+                         'Dhuʻl-Qiʻdah', 'Dhuʻl-Hijjah'),
                         (fullName, fullName),
                         (islamicShort, islamicShort),
                         (number, number)),
@@ -588,7 +581,7 @@ class Locale (object):
             except KeyError as e: # Need to add an entry to known, above.
                 e.args += ('Unsupported calendar:', cal)
                 raise
-            names, get = data[0] + ('',), data[1:]
+            names, get = data[0], data[1:]
             for n, size in enumerate(sizes):
                 yield ('_'.join((camelCase((size, 'months')), cal)),
                        ';'.join(get[n][0](i, x) for i, x in enumerate(names)))
@@ -598,15 +591,15 @@ class Locale (object):
 
     @classmethod
     def C(cls, calendars=('gregorian',),
-          # Empty entry at end to ensure final separator when join()ed:
           days = ('Sunday', 'Monday', 'Tuesday', 'Wednesday',
-                  'Thursday', 'Friday', 'Saturday', ''),
+                  'Thursday', 'Friday', 'Saturday'),
           quantifiers=('k', 'M', 'G', 'T', 'P', 'E')):
         """Returns an object representing the C locale."""
         return cls(cls.__monthNames(calendars),
                    language='C', language_code='0', languageEndonym='',
                    script='AnyScript', script_code='0',
-                   country='AnyCountry', country_code='0', countryEndonym='',
+                   territory='AnyTerritory', territory_code='0', territoryEndonym='',
+                   groupSizes=(3, 3, 1),
                    decimal='.', group=',', list=';', percent='%',
                    zero='0', minus='-', plus='+', exp='e',
                    quotationStart='"', quotationEnd='"',
@@ -624,11 +617,11 @@ class Locale (object):
                    longTimeFormat='HH:mm:ss z', shortTimeFormat='HH:mm:ss',
                    longDays=';'.join(days),
                    shortDays=';'.join(d[:3] for d in days),
-                   narrowDays='7;1;2;3;4;5;6;',
+                   narrowDays='7;1;2;3;4;5;6',
                    standaloneLongDays=';'.join(days),
                    standaloneShortDays=';'.join(d[:3] for d in days),
                    standaloneNarrowDays=';'.join(d[:1] for d in days),
                    currencyIsoCode='', currencySymbol='',
-                   currencyDisplayName=';' * 7,
+                   currencyDisplayName='',
                    currencyDigits=2, currencyRounding=1,
                    currencyFormat='%1%2', currencyNegativeFormat='')

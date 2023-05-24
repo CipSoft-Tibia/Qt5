@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeocodingmanagerengine_nokia.h"
 #include "qgeocodereply_nokia.h"
@@ -66,11 +33,8 @@ QGeoCodingManagerEngineNokia::QGeoCodingManagerEngineNokia(
     Q_ASSERT(networkManager);
     m_networkManager->setParent(this);
 
-    if (parameters.contains(QStringLiteral("here.token")))
-        m_token = parameters.value(QStringLiteral("here.token")).toString();
-
-    if (parameters.contains(QStringLiteral("here.app_id")))
-        m_applicationId = parameters.value(QStringLiteral("here.app_id")).toString();
+    if (parameters.contains(QStringLiteral("here.apiKey")))
+        m_apiKey = parameters.value(QStringLiteral("here.apiKey")).toString();
 
     if (error)
         *error = QGeoServiceProvider::NoError;
@@ -85,12 +49,9 @@ QString QGeoCodingManagerEngineNokia::getAuthenticationString() const
 {
     QString authenticationString;
 
-    if (!m_token.isEmpty() && !m_applicationId.isEmpty()) {
-        authenticationString += "?app_code=";
-        authenticationString += m_token;
-
-        authenticationString += "&app_id=";
-        authenticationString += m_applicationId;
+    if (!m_apiKey.isEmpty()) {
+        authenticationString += "?apiKey=";
+        authenticationString += m_apiKey;
     }
 
     return authenticationString;
@@ -258,7 +219,7 @@ QGeoCodeReply *QGeoCodingManagerEngineNokia::geocode(QString requestString,
     connect(reply, &QGeoCodeReplyNokia::finished,
             this, &QGeoCodingManagerEngineNokia::placesFinished);
 
-    connect(reply, static_cast<void (QGeoCodeReply::*)(QGeoCodeReply::Error, const QString &)>(&QGeoCodeReplyNokia::error),
+    connect(reply, &QGeoCodeReplyNokia::errorOccurred,
             this, &QGeoCodingManagerEngineNokia::placesError);
 
     return reply;
@@ -334,12 +295,12 @@ void QGeoCodingManagerEngineNokia::placesError(QGeoCodeReply::Error error, const
     if (!reply)
         return;
 
-    if (receivers(SIGNAL(error(QGeoCodeReply*,QGeoCodeReply::Error,QString))) == 0) {
+    if (receivers(SIGNAL(errorOccurred(QGeoCodeReply*,QGeoCodeReply::Error,QString))) == 0) {
         reply->deleteLater();
         return;
     }
 
-    emit this->error(reply, error, errorString);
+    emit errorOccurred(reply, error, errorString);
 }
 
 QString QGeoCodingManagerEngineNokia::languageToMarc(QLocale::Language language)

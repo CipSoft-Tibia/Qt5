@@ -25,13 +25,16 @@
 extern "C" {
 #endif
 
-#define MAX_FILTER_TAP 8
+#define MAX_FILTER_TAP 12
 
 typedef enum ATTRIBUTE_PACKED {
   EIGHTTAP_REGULAR,
   EIGHTTAP_SMOOTH,
   MULTITAP_SHARP,
   BILINEAR,
+  // Encoder side only filters
+  MULTITAP_SHARP2,
+
   INTERP_FILTERS_ALL,
   SWITCHABLE_FILTERS = BILINEAR,
   SWITCHABLE = SWITCHABLE_FILTERS + 1, /* the last switchable one */
@@ -153,14 +156,38 @@ DECLARE_ALIGNED(256, static const InterpKernel,
   { 0, 0, 4, 36, 62, 26, 0, 0 },    { 0, 0, 2, 34, 62, 28, 2, 0 }
 };
 
+DECLARE_ALIGNED(256, static const int16_t,
+                av1_sub_pel_filters_12sharp[SUBPEL_SHIFTS][12]) = {
+  { 0, 0, 0, 0, 0, 128, 0, 0, 0, 0, 0, 0 },
+  { 0, 1, -2, 3, -7, 127, 8, -4, 2, -1, 1, 0 },
+  { -1, 2, -3, 6, -13, 124, 18, -8, 4, -2, 2, -1 },
+  { -1, 3, -4, 8, -18, 120, 28, -12, 7, -4, 2, -1 },
+  { -1, 3, -6, 10, -21, 115, 38, -15, 8, -5, 3, -1 },
+  { -2, 4, -6, 12, -24, 108, 49, -18, 10, -6, 3, -2 },
+  { -2, 4, -7, 13, -25, 100, 60, -21, 11, -7, 4, -2 },
+  { -2, 4, -7, 13, -26, 91, 71, -24, 13, -7, 4, -2 },
+  { -2, 4, -7, 13, -25, 81, 81, -25, 13, -7, 4, -2 },
+  { -2, 4, -7, 13, -24, 71, 91, -26, 13, -7, 4, -2 },
+  { -2, 4, -7, 11, -21, 60, 100, -25, 13, -7, 4, -2 },
+  { -2, 3, -6, 10, -18, 49, 108, -24, 12, -6, 4, -2 },
+  { -1, 3, -5, 8, -15, 38, 115, -21, 10, -6, 3, -1 },
+  { -1, 2, -4, 7, -12, 28, 120, -18, 8, -4, 3, -1 },
+  { -1, 2, -2, 4, -8, 18, 124, -13, 6, -3, 2, -1 },
+  { 0, 1, -1, 2, -4, 8, 127, -7, 3, -2, 1, 0 }
+};
+
 static const InterpFilterParams
-    av1_interp_filter_params_list[SWITCHABLE_FILTERS + 1] = {
+    av1_interp_filter_params_list[INTERP_FILTERS_ALL] = {
       { (const int16_t *)av1_sub_pel_filters_8, SUBPEL_TAPS, EIGHTTAP_REGULAR },
       { (const int16_t *)av1_sub_pel_filters_8smooth, SUBPEL_TAPS,
         EIGHTTAP_SMOOTH },
       { (const int16_t *)av1_sub_pel_filters_8sharp, SUBPEL_TAPS,
         MULTITAP_SHARP },
-      { (const int16_t *)av1_bilinear_filters, SUBPEL_TAPS, BILINEAR }
+      { (const int16_t *)av1_bilinear_filters, SUBPEL_TAPS, BILINEAR },
+
+      // The following filters are for encoder only, and now they are used in
+      // temporal filtering. The predictor block size >= 16 in temporal filter.
+      { (const int16_t *)av1_sub_pel_filters_12sharp, 12, MULTITAP_SHARP2 },
     };
 
 // A special 2-tap bilinear filter for IntraBC chroma. IntraBC uses full pixel
@@ -220,7 +247,8 @@ static const InterpFilterParams av1_interp_4tap[SWITCHABLE_FILTERS + 1] = {
 static INLINE const InterpFilterParams *
 av1_get_interp_filter_params_with_block_size(const InterpFilter interp_filter,
                                              const int w) {
-  if (w <= 4) return &av1_interp_4tap[interp_filter];
+  if (w <= 4 && interp_filter != MULTITAP_SHARP2)
+    return &av1_interp_4tap[interp_filter];
   return &av1_interp_filter_params_list[interp_filter];
 }
 
@@ -264,6 +292,25 @@ static INLINE void set_interp_filter_allowed_mask(uint16_t *allow_interp_mask,
 static INLINE uint8_t get_interp_filter_allowed_mask(
     uint16_t allow_interp_mask, DUAL_FILTER_TYPE filt_type) {
   return (allow_interp_mask >> filt_type) & 1;
+}
+
+static AOM_INLINE int get_filter_tap(
+    const InterpFilterParams *const filter_params, int subpel_qn) {
+  const int16_t *const filter = av1_get_interp_filter_subpel_kernel(
+      filter_params, subpel_qn & SUBPEL_MASK);
+  if (filter_params->taps == 12) {
+    return 12;
+  }
+  if (filter[0] | filter[7]) {
+    return 8;
+  }
+  if (filter[1] | filter[6]) {
+    return 6;
+  }
+  if (filter[2] | filter[5]) {
+    return 4;
+  }
+  return 2;
 }
 
 #ifdef __cplusplus

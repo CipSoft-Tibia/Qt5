@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLTYPE_P_P_H
 #define QQMLTYPE_P_P_H
@@ -58,9 +22,11 @@
 #include <private/qqmlpropertycache_p.h>
 #include <private/qqmlmetatype_p.h>
 
+#include <QAtomicInteger>
+
 QT_BEGIN_NAMESPACE
 
-class QQmlTypePrivate : public QQmlRefCount
+class QQmlTypePrivate : public QQmlRefCounted<QQmlTypePrivate>
 {
     Q_DISABLE_COPY_MOVE(QQmlTypePrivate)
 public:
@@ -69,7 +35,7 @@ public:
     void init() const;
     void initEnums(QQmlEnginePrivate *engine) const;
     void insertEnums(const QMetaObject *metaObject) const;
-    void insertEnumsFromPropertyCache(const QQmlPropertyCache *cache) const;
+    void insertEnumsFromPropertyCache(const QQmlPropertyCache::ConstPtr &cache) const;
     void setContainingType(QQmlType *containingType);
 
     QUrl sourceUrl() const
@@ -103,16 +69,23 @@ public:
         return regType == QQmlType::CompositeType || regType == QQmlType::CompositeSingletonType;
     }
 
+    bool isValueType() const
+    {
+        return regType == QQmlType::CppType && !(typeId.flags() & QMetaType::PointerToQObject);
+    }
+
     QQmlType resolveCompositeBaseType(QQmlEnginePrivate *engine) const;
-    QQmlPropertyCache *compositePropertyCache(QQmlEnginePrivate *engine) const;
+    QQmlPropertyCache::ConstPtr compositePropertyCache(QQmlEnginePrivate *engine) const;
 
     QQmlType::RegistrationType regType;
 
     struct QQmlCppTypeData
     {
         int allocationSize;
-        void (*newFunc)(void *);
+        void (*newFunc)(void *, void *);
+        void *userdata = nullptr;
         QString noCreationReason;
+        QVariant (*createValueTypeFunc)(const QJSValue &);
         int parserStatusCast;
         QObject *(*extFunc)(QObject *);
         const QMetaObject *extMetaObject;
@@ -121,12 +94,18 @@ public:
         const QMetaObject *attachedPropertiesType;
         int propertyValueSourceCast;
         int propertyValueInterceptorCast;
+        int finalizerCast;
         bool registerEnumClassesUnscoped;
+        bool registerEnumsFromRelatedTypes;
+        bool constructValueType;
+        bool populateValueType;
     };
 
     struct QQmlSingletonTypeData
     {
         QQmlType::SingletonInstanceInfo *singletonInstanceInfo;
+        QObject *(*extFunc)(QObject *);
+        const QMetaObject *extMetaObject;
     };
 
     struct QQmlCompositeTypeData
@@ -136,49 +115,81 @@ public:
 
     struct QQmlInlineTypeData
     {
-        QUrl url = QUrl();
+        QUrl url;
         // The containing type stores a pointer to the inline component type
         // Using QQmlType here would create a reference cycle
         // As the inline component type cannot outlive the containing type
         // this should still be fine
         QQmlTypePrivate const * containingType = nullptr;
-        QString inlineComponentName = QString();
-        int objectId = -1;
     };
+
+    using QQmlSequenceTypeData = QMetaSequence;
 
     union extraData {
         QQmlCppTypeData* cd;
         QQmlSingletonTypeData* sd;
         QQmlCompositeTypeData* fd;
         QQmlInlineTypeData* id;
+        QQmlSequenceTypeData* ld;
     } extraData;
 
     const char *iid;
     QHashedString module;
     QString name;
     QString elementName;
-    int version_maj;
-    int version_min;
-    int typeId;
-    int listId;
-    int revision;
+    QMetaType typeId;
+    QMetaType listId;
+    QTypeRevision version;
+    QTypeRevision revision;
     mutable bool containsRevisionedAttributes;
     mutable QQmlType superType;
     const QMetaObject *baseMetaObject;
 
     int index;
-    mutable volatile bool isSetup:1;
-    mutable volatile bool isEnumFromCacheSetup:1;
-    mutable volatile bool isEnumFromBaseSetup:1;
-    mutable bool haveSuperType:1;
+    mutable QAtomicInteger<bool> isSetup;
+    mutable QAtomicInteger<bool> isEnumFromCacheSetup;
+    mutable QAtomicInteger<bool> isEnumFromBaseSetup;
+    mutable bool haveSuperType;
     mutable QList<QQmlProxyMetaObject::ProxyData> metaObjects;
     mutable QStringHash<int> enums;
     mutable QStringHash<int> scopedEnumIndex; // maps from enum name to index in scopedEnums
     mutable QList<QStringHash<int>*> scopedEnums;
 
     void setName(const QString &uri, const QString &element);
-    mutable QHash<QString, int> namesToInlineComponentObjectIndex;
-    mutable QHash<int, QQmlType> objectIdToICType;
+
+    const QMetaObject *metaObject() const
+    {
+        if (isValueType())
+            return metaObjectForValueType();
+
+        init();
+        return metaObjects.isEmpty()
+                ? baseMetaObject
+                : metaObjects.constFirst().metaObject;
+    }
+
+    const QMetaObject *metaObjectForValueType() const
+    {
+        Q_ASSERT(isValueType());
+
+        // Prefer the extension meta object, if any.
+        // Extensions allow registration of non-gadget value types.
+        if (const QMetaObject *extensionMetaObject = extraData.cd->extMetaObject) {
+            // This may be a namespace even if the original metaType isn't.
+            // You can do such things with QML_FOREIGN declarations.
+            if (extensionMetaObject->metaType().flags() & QMetaType::IsGadget)
+                return extensionMetaObject;
+        }
+
+        if (baseMetaObject) {
+            // This may be a namespace even if the original metaType isn't.
+            // You can do such things with QML_FOREIGN declarations.
+            if (baseMetaObject->metaType().flags() & QMetaType::IsGadget)
+                return baseMetaObject;
+        }
+
+        return nullptr;
+    }
 
 private:
     ~QQmlTypePrivate() override;

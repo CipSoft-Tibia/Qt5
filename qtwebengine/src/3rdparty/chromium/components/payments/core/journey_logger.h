@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,9 @@
 #define COMPONENTS_PAYMENTS_CORE_JOURNEY_LOGGER_H_
 
 #include <string>
-#include <unordered_map>
+#include <vector>
 
-#include "base/macros.h"
+#include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 
@@ -43,6 +43,7 @@ class JourneyLogger {
     COMPLETION_STATUS_USER_ABORTED = 1,
     COMPLETION_STATUS_OTHER_ABORTED = 2,
     COMPLETION_STATUS_COULD_NOT_SHOW = 3,
+    COMPLETION_STATUS_USER_OPTED_OUT = 4,
     COMPLETION_STATUS_MAX,
   };
 
@@ -55,6 +56,8 @@ class JourneyLogger {
     EVENT_INITIATED = 0,
     // PaymentRequest was triggered via .show() and a native UI was shown.
     EVENT_SHOWN = 1 << 0,
+    // A payment app was invoked, regardless of whether the UI was skipped or
+    // the pay button was actually clicked.
     EVENT_PAY_CLICKED = 1 << 1,
     EVENT_RECEIVED_INSTRUMENT_DETAILS = 1 << 2,
     // PaymentRequest was triggered via .show() and no UI was shown because we
@@ -116,6 +119,69 @@ class JourneyLogger {
     EVENT_ENUM_MAX = EVENT_SELECTED_SECURE_PAYMENT_CONFIRMATION,
   };
 
+  // A new version of Event. Some basic-card/autofill related bits are
+  // removed to free up more bits for new future payment methods.
+  enum class Event2 {
+    // Initiated means the PaymentRequest object was constructed.
+    kInitiated = 0,
+    // PaymentRequest was triggered via .show() and a native UI was shown.
+    kShown = 1 << 0,
+    // A payment app was invoked.
+    kPayClicked = 1 << 1,
+    // Whether any payer data (i.e., name, email, phone)
+    // was requested.
+    kRequestPayerData = 1 << 2,
+    // PaymentRequest was triggered via .show() and no UI was shown because we
+    // skipped directly to the payment app.
+    kSkippedShow = 1 << 3,
+    // .complete() was called by the merchant, completing the flow.
+    kCompleted = 1 << 4,
+    // The user aborted the flow by either dismissing it explicitly, or
+    // navigating away (if possible).
+    kUserAborted = 1 << 5,
+    // Other reasons for aborting include the merchant calling .abort(), the
+    // merchant triggering a navigation, the tab closing, the browser closing,
+    // etc. See implementation for details.
+    kOtherAborted = 1 << 6,
+    // Whether or not any requested method is available.
+    kHadInitialFormOfPayment = 1 << 7,
+    // An opt-out experience was offered to the user as part of the flow.
+    kOptOutOffered = 1 << 8,
+    // The user elected to opt-out of the flow (and future flows).
+    kUserOptedOut = 1 << 9,
+
+    // Correspond to the merchant specifying requestShipping,
+    // requestPayerName,
+    // requestPayerEmail, requestPayerPhone.
+    kRequestShipping = 1 << 11,
+
+    // The merchant requested a Play Billing payment method.
+    kRequestMethodPlayBilling = 1 << 14,
+    // The merchant requested at least one basic-card method.
+    kRequestMethodBasicCard = 1 << 15,
+    // The merchant requested a Google payment method.
+    kRequestMethodGoogle = 1 << 16,
+    // The merchant requested a non-Google, non-basic-card payment method.
+    kRequestMethodOther = 1 << 17,
+    // The user initiated the transaction using a saved credit card, a Google
+    // payment app (e.g., Android Pay), or another payment instrument,
+    // respectively.
+    kSelectedCreditCard = 1 << 18,
+    kSelectedGoogle = 1 << 19,
+    kSelectedOther = 1 << 20,
+    kSelectedPlayBilling = 1 << 21,
+
+    // True when a NotShownReason is set.
+    kCouldNotShow = 1 << 23,
+
+    // Bits for secure-payment-confirmation method.
+    kNoMatchingCredentials = 1 << 29,
+    kRequestMethodSecurePaymentConfirmation = 1 << 30,
+    kSelectedSecurePaymentConfirmation = 1 << 31,
+
+    kEnumMax = kSelectedSecurePaymentConfirmation,
+  };
+
   // The reason why the Payment Request was aborted.
   // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.components.payments
   // GENERATED_JAVA_CLASS_NAME_OVERRIDE: AbortReason
@@ -131,6 +197,7 @@ class JourneyLogger {
     ABORT_REASON_OTHER = 8,
     ABORT_REASON_USER_NAVIGATION = 9,
     ABORT_REASON_MERCHANT_NAVIGATION = 10,
+    ABORT_REASON_USER_OPTED_OUT = 11,
     ABORT_REASON_MAX,
   };
 
@@ -145,16 +212,16 @@ class JourneyLogger {
     NOT_SHOWN_REASON_MAX = 4,
   };
 
-  // Transactions fall in one of the following categories after converting to
-  // USD.
-  enum class TransactionSize {
-    // 0$ transactions.
-    kZeroTransaction = 0,
-    // Transaction value <= 1$.
-    kMicroTransaction = 1,
-    // Transaction value > 1$.
-    kRegularTransaction = 2,
-    kMaxValue = kRegularTransaction,
+  // The categories of the payment methods.
+  // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.components.payments
+  // GENERATED_JAVA_CLASS_NAME_OVERRIDE: PaymentMethodCategory
+  enum class PaymentMethodCategory {
+    kBasicCard = 0,
+    kGoogle = 1,
+    kPlayBilling = 2,
+    kSecurePaymentConfirmation = 3,
+    kOther = 4,
+    kMaxValue = kOther,
   };
 
   // Records different checkout steps for payment requests. The difference
@@ -182,12 +249,16 @@ class JourneyLogger {
   };
 
   JourneyLogger(bool is_incognito, ukm::SourceId payment_request_source_id);
+
+  JourneyLogger(const JourneyLogger&) = delete;
+  JourneyLogger& operator=(const JourneyLogger&) = delete;
+
   ~JourneyLogger();
 
   // Sets the number of suggestions shown for the specified section.
   void SetNumberOfSuggestionsShown(Section section,
                                    int number,
-                                   bool has_valid_suggestion);
+                                   bool has_complete_suggestion);
 
   // Records the fact that the merchant called CanMakePayment and records its
   // return value.
@@ -197,8 +268,28 @@ class JourneyLogger {
   // its return value.
   void SetHasEnrolledInstrumentValue(bool value);
 
-  // Records that an event occurred.
-  void SetEventOccurred(Event event);
+  // Records that an Opt Out experience is being offered to the user in the
+  // current UI flow.
+  void SetOptOutOffered();
+
+  // Records that a payment app has been shown without payment UIs being shown
+  // before that.
+  void SetSkippedShow();
+
+  // Records that a payment UI has been shown.
+  void SetShown();
+
+  // Records that the instrument details have been received.
+  void SetReceivedInstrumentDetails();
+
+  // Records that a payment app was invoked.
+  void SetPayClicked();
+
+  // Records the category of the selected app.
+  void SetSelectedMethod(PaymentMethodCategory category);
+
+  // Records the method that is supported by the available payment apps.
+  void SetAvailableMethod(PaymentMethodCategory category);
 
   // Records the user information requested by the merchant.
   void SetRequestedInformation(bool requested_shipping,
@@ -211,11 +302,8 @@ class JourneyLogger {
   // method, secure payment confirmation method or other url-based payment
   // method, respectively) is requested.
   // TODO(crbug.com/754811): Add support for non-basic-card, non-URL methods.
-  void SetRequestedPaymentMethodTypes(
-      bool requested_basic_card,
-      bool requested_method_google,
-      bool requested_method_secure_payment_confirmation,
-      bool requested_method_other);
+  void SetRequestedPaymentMethods(
+      const std::vector<PaymentMethodCategory>& methods);
 
   // Records that the Payment Request was completed successfully, and starts the
   // logging of all the journey metrics.
@@ -229,22 +317,27 @@ class JourneyLogger {
   // reason.
   void SetNotShown(NotShownReason reason);
 
-  // Records the transaction amount after converting to USD separated by
-  // completion status (complete vs triggered).
-  void RecordTransactionAmount(std::string currency,
-                               const std::string& value,
-                               bool completed);
+  // Records that the SPC No Matching Credentials UX was shown to the user.
+  void SetNoMatchingCredentialsShown();
 
   // Increments the bucket count for the given checkout step.
   void RecordCheckoutStep(CheckoutFunnelStep step);
 
-  // Records when Payment Request .show is called.
-  void SetTriggerTime();
-
   // Sets the UKM source id of the selected app when it gets invoked.
   void SetPaymentAppUkmSourceId(ukm::SourceId payment_app_source_id);
 
+  base::WeakPtr<JourneyLogger> GetWeakPtr();
+
  private:
+  // Records that an event occurred.
+  void SetEventOccurred(Event event);
+
+  // Records that an event occurred.
+  void SetEvent2Occurred(Event2 event);
+
+  // Whether the given event was occurred.
+  bool WasOccurred(Event2 event) const;
+
   static const int NUMBER_OF_SECTIONS = 3;
 
   // Note: These constants should always be in sync with their counterpart in
@@ -281,11 +374,11 @@ class JourneyLogger {
   // Payment Request.
   void RecordEventsMetric(CompletionStatus completion_status);
 
-  // Records the time between request.show() and request completion/abort.
-  void RecordTimeToCheckout(CompletionStatus completion_status) const;
-
   // Validates the recorded event sequence during the Payment Request.
   void ValidateEventBits() const;
+
+  // Asserts that the given bits in events_ and events2_ are equal.
+  void AssertOccurredTogether(Event event, Event2 event2) const;
 
   // Returns whether this Payment Request was triggered (shown or skipped show).
   bool WasPaymentRequestTriggered();
@@ -300,18 +393,13 @@ class JourneyLogger {
   // Accumulates the many events that have happened during the Payment Request.
   int events_;
 
-  // Keeps track of whether transaction amounts are recorded or not to catch
-  // multiple recording. Triggered is the first index and Completed the second.
-  bool has_recorded_transaction_amount_[2] = {false};
-
-  // Stores the time that request.show() is called. This is used to record
-  // checkout duration.
-  base::TimeTicks trigger_time_;
+  // The 2.0 version of event_.
+  int events2_;
 
   ukm::SourceId payment_request_source_id_;
   ukm::SourceId payment_app_source_id_ = ukm::kInvalidSourceId;
 
-  DISALLOW_COPY_AND_ASSIGN(JourneyLogger);
+  base::WeakPtrFactory<JourneyLogger> weak_ptr_factory_{this};
 };
 
 }  // namespace payments

@@ -582,7 +582,7 @@
     </message>
     <message>
         <source>Edit...</source>
-        <translation>Düzenle...</translation>
+        <translation>Düzen...</translation>
     </message>
     <message>
         <source>Show signals and slots inherited from QWidget</source>
@@ -1075,7 +1075,7 @@
     </message>
     <message>
         <source>Edit</source>
-        <translation>Düzenle</translation>
+        <translation>Düzen</translation>
     </message>
     <message>
         <source>Tools</source>
@@ -1837,7 +1837,7 @@ Kapsayıcı sayfaları, yalnızca özel widget&apos;ın domXml() yöntemi taraf�
     </message>
     <message>
         <source>&amp;Edit</source>
-        <translation>&amp;Düzenle</translation>
+        <translation>&amp;Düzen</translation>
     </message>
     <message>
         <source>F&amp;orm</source>

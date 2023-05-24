@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <utility>
 
+#include "base/trace_event/trace_event.h"
+#include "build/build_config.h"
 #include "components/viz/common/frame_sinks/begin_frame_args.h"
 #include "components/viz/service/surfaces/surface.h"
 #include "components/viz/service/surfaces/surface_manager.h"
@@ -14,11 +16,17 @@
 namespace viz {
 namespace {
 
+// The minimum number of frames for which a frame interval preference should
+// persist before we toggle to it. This is only applied when lowering the frame
+// rate. If the new preference is higher than the current setting, it is applied
+// immediately.
+constexpr size_t kMinNumOfFramesToToggleInterval = 6;
+
 bool AreAlmostEqual(base::TimeDelta a, base::TimeDelta b) {
   if (a.is_min() || b.is_min() || a.is_max() || b.is_max())
     return a == b;
 
-  constexpr auto kMaxDelta = base::TimeDelta::FromMillisecondsD(0.5);
+  constexpr auto kMaxDelta = base::Milliseconds(0.5);
   return (a - b).magnitude() < kMaxDelta;
 }
 
@@ -36,10 +44,9 @@ FrameRateDecider::ScopedAggregate::~ScopedAggregate() {
 FrameRateDecider::FrameRateDecider(SurfaceManager* surface_manager,
                                    Client* client,
                                    bool hw_support_for_multiple_refresh_rates,
-                                   bool supports_set_frame_rate,
-                                   size_t num_of_frames_to_toggle_interval)
+                                   bool supports_set_frame_rate)
     : supported_intervals_{BeginFrameArgs::DefaultInterval()},
-      min_num_of_frames_to_toggle_interval_(num_of_frames_to_toggle_interval),
+      min_num_of_frames_to_toggle_interval_(kMinNumOfFramesToToggleInterval),
       surface_manager_(surface_manager),
       client_(client),
       hw_support_for_multiple_refresh_rates_(
@@ -49,7 +56,7 @@ FrameRateDecider::FrameRateDecider(SurfaceManager* surface_manager,
   // 24Hz.
   double interval_in_seconds = 1.0 / 24.0;
   frame_interval_for_sinks_with_no_preference_ =
-      base::TimeDelta::FromSecondsD(interval_in_seconds);
+      base::Seconds(interval_in_seconds);
 
   surface_manager_->AddObserver(this);
 }
@@ -164,7 +171,7 @@ void FrameRateDecider::UpdatePreferredFrameIntervalIfNeeded() {
   // animating. This ensures that, for instance, if we're currently displaying
   // a video while the rest of the page is static, we choose the frame interval
   // optimal for the video.
-  base::Optional<base::TimeDelta> min_frame_sink_interval;
+  absl::optional<base::TimeDelta> min_frame_sink_interval;
   bool all_frame_sinks_have_same_interval = true;
   for (const auto& frame_sink_id : frame_sinks_updated_in_previous_frame_) {
     auto interval =
@@ -206,11 +213,15 @@ void FrameRateDecider::UpdatePreferredFrameIntervalIfNeeded() {
   // ideal refresh rate.
   base::TimeDelta new_preferred_interval = UnspecifiedFrameInterval();
   if (*min_frame_sink_interval != BeginFrameArgs::MinInterval()) {
+    base::TimeDelta min_delta = base::TimeDelta::Max();
     for (auto supported_interval : supported_intervals_) {
-      // Pick the display interval which is closest to the preferred interval.
-      if ((*min_frame_sink_interval - supported_interval).magnitude() <
-          (*min_frame_sink_interval - new_preferred_interval).magnitude()) {
+      // Pick the display interval which is closest to the preferred interval
+      // and less than or equal to the min_frame_sink_interval.
+      base::TimeDelta delta = (*min_frame_sink_interval - supported_interval);
+      if (AreAlmostEqual(*min_frame_sink_interval, supported_interval) ||
+          (delta.is_positive() && delta < min_delta)) {
         new_preferred_interval = supported_interval;
+        min_delta = delta.magnitude();
       }
     }
   }

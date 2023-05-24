@@ -1,55 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+#include <AppKit/AppKit.h>
 
 #include "qmultitouch_mac_p.h"
 #include "qcocoahelpers.h"
 #include "qcocoascreen.h"
-#include <private/qtouchdevice_p.h>
+#include <private/qpointingdevice_p.h>
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcInputDevices, "qt.qpa.input.devices")
+using namespace Qt::StringLiterals;
 
-QHash<qint64, QCocoaTouch*> QCocoaTouch::_currentTouches;
-QHash<quint64, QTouchDevice*> QCocoaTouch::_touchDevices;
-QPointF QCocoaTouch::_screenReferencePos;
-QPointF QCocoaTouch::_trackpadReferencePos;
+Q_CONSTINIT QHash<qint64, QCocoaTouch*> QCocoaTouch::_currentTouches;
+Q_CONSTINIT QHash<quint64, QPointingDevice*> QCocoaTouch::_touchDevices;
+Q_CONSTINIT QPointF QCocoaTouch::_screenReferencePos;
+Q_CONSTINIT QPointF QCocoaTouch::_trackpadReferencePos;
 int QCocoaTouch::_idAssignmentCount = 0;
 int QCocoaTouch::_touchCount = 0;
 bool QCocoaTouch::_updateInternalStateOnly = true;
@@ -110,22 +76,22 @@ QCocoaTouch *QCocoaTouch::findQCocoaTouch(NSTouch *nstouch)
     return nullptr;
 }
 
-Qt::TouchPointState QCocoaTouch::toTouchPointState(NSTouchPhase nsState)
+QEventPoint::State QCocoaTouch::toTouchPointState(NSTouchPhase nsState)
 {
-    Qt::TouchPointState qtState = Qt::TouchPointReleased;
+    QEventPoint::State qtState = QEventPoint::State::Released;
     switch (nsState) {
         case NSTouchPhaseBegan:
-            qtState = Qt::TouchPointPressed;
+            qtState = QEventPoint::State::Pressed;
             break;
         case NSTouchPhaseMoved:
-            qtState = Qt::TouchPointMoved;
+            qtState = QEventPoint::State::Updated;
             break;
         case NSTouchPhaseStationary:
-            qtState = Qt::TouchPointStationary;
+            qtState = QEventPoint::State::Stationary;
             break;
         case NSTouchPhaseEnded:
         case NSTouchPhaseCancelled:
-            qtState = Qt::TouchPointReleased;
+            qtState = QEventPoint::State::Released;
             break;
         default:
             break;
@@ -179,7 +145,7 @@ QCocoaTouch::getCurrentTouchPointList(NSEvent *event, bool acceptSingleTouch)
 
     // Next: sadly, we need to check that our touch hash is in
     // sync with cocoa. This is typically not the case after a system
-    // gesture happend (like a four-finger-swipe to show expose).
+    // gesture happened (like a four-finger-swipe to show expose).
 
     if (_touchCount != _currentTouches.size()) {
         // Remove all instances, and basically start from scratch:
@@ -189,7 +155,7 @@ QCocoaTouch::getCurrentTouchPointList(NSEvent *event, bool acceptSingleTouch)
         const auto currentTouchesSnapshot = _currentTouches;
         for (QCocoaTouch *qcocoaTouch : currentTouchesSnapshot) {
             if (!_updateInternalStateOnly) {
-                qcocoaTouch->_touchPoint.state = Qt::TouchPointReleased;
+                qcocoaTouch->_touchPoint.state = QEventPoint::State::Released;
                 touchPoints.insert(qcocoaTouch->_touchPoint.id, qcocoaTouch->_touchPoint);
             }
             delete qcocoaTouch;
@@ -205,7 +171,7 @@ QCocoaTouch::getCurrentTouchPointList(NSEvent *event, bool acceptSingleTouch)
 
     if (_updateInternalStateOnly && !wasUpdateInternalStateOnly && !_currentTouches.isEmpty()) {
         QCocoaTouch *qcocoaTouch = _currentTouches.cbegin().value();
-        qcocoaTouch->_touchPoint.state = Qt::TouchPointReleased;
+        qcocoaTouch->_touchPoint.state = QEventPoint::State::Released;
         touchPoints.insert(qcocoaTouch->_touchPoint.id, qcocoaTouch->_touchPoint);
         // Since this last touch also will end up being the first
         // touch (if the user adds a second finger without lifting
@@ -217,17 +183,18 @@ QCocoaTouch::getCurrentTouchPointList(NSEvent *event, bool acceptSingleTouch)
     return touchPoints.values();
 }
 
-QTouchDevice *QCocoaTouch::getTouchDevice(QTouchDevice::DeviceType type, quint64 id)
+QPointingDevice *QCocoaTouch::getTouchDevice(QInputDevice::DeviceType type, quint64 id)
 {
-    QTouchDevice *ret = _touchDevices.value(id);
+    QPointingDevice *ret = _touchDevices.value(id);
     if (!ret) {
-        ret = new QTouchDevice;
-        ret->setType(type);
-        ret->setCapabilities(QTouchDevice::Position | QTouchDevice::NormalizedPosition | QTouchDevice::MouseEmulation);
-        QWindowSystemInterface::registerTouchDevice(ret);
+        ret = new QPointingDevice(type == QInputDevice::DeviceType::TouchScreen ? "touchscreen"_L1 : "trackpad"_L1,
+                                  id, type, QPointingDevice::PointerType::Finger,
+                                  QInputDevice::Capability::Position |
+                                  QInputDevice::Capability::NormalizedPosition |
+                                  QInputDevice::Capability::MouseEmulation,
+                                  10, 0);
+        QWindowSystemInterface::registerInputDevice(ret);
         _touchDevices.insert(id, ret);
-        qCDebug(lcInputDevices) << "touch device" << id << "of type" << type
-                                << "registered as Qt device" << QTouchDevicePrivate::get(ret)->id;
     }
     return ret;
 }

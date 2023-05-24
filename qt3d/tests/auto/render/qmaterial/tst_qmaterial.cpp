@@ -1,36 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DCore/private/qnode_p.h>
 #include <Qt3DCore/private/qscene_p.h>
 #include <Qt3DRender/private/qrenderstate_p.h>
-#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
 
 #include <Qt3DRender/QEffect>
 #include <Qt3DRender/QMaterial>
@@ -47,7 +21,7 @@
 
 #include <Qt3DRender/private/qmaterial_p.h>
 
-#include "testpostmanarbiter.h"
+#include "testarbiter.h"
 
 class TestMaterial : public Qt3DRender::QMaterial
 {
@@ -139,7 +113,7 @@ private:
         }
     }
 
-    void compareFilterKeys(const QVector<Qt3DRender::QFilterKey *> &original, const QVector<Qt3DRender::QFilterKey *> &clone)
+    void compareFilterKeys(const QList<Qt3DRender::QFilterKey *> &original, const QList<Qt3DRender::QFilterKey *> &clone)
     {
         const int annotationsCount = original.size();
         QCOMPARE(annotationsCount, clone.size());
@@ -153,7 +127,7 @@ private:
         }
     }
 
-    void compareRenderStates(const QVector<Qt3DRender::QRenderState *> &original, const QVector<Qt3DRender::QRenderState *> &clone)
+    void compareRenderStates(const QList<Qt3DRender::QRenderState *> &original, const QList<Qt3DRender::QRenderState *> &clone)
     {
         const int renderStatesCount = original.size();
         QCOMPARE(renderStatesCount, clone.size());
@@ -185,61 +159,6 @@ private:
 
 private Q_SLOTS:
 
-    void checkCloning_data()
-    {
-        QTest::addColumn<Qt3DRender::QMaterial *>("material");
-
-        Qt3DRender::QMaterial *material = new Qt3DRender::QMaterial();
-        QTest::newRow("empty material") << material;
-        material = new TestMaterial();
-        QTest::newRow("test material") << material;
-        material = new Qt3DExtras::QPhongMaterial();
-        QTest::newRow("QPhongMaterial") << material;
-        material = new Qt3DExtras::QDiffuseMapMaterial();
-        QTest::newRow("QDiffuseMapMaterial") << material;
-        material = new Qt3DExtras::QDiffuseSpecularMapMaterial();
-        QTest::newRow("QDiffuseMapSpecularMaterial") << material;
-        material = new Qt3DExtras::QPerVertexColorMaterial();
-        QTest::newRow("QPerVertexColorMaterial") << material;
-        material = new Qt3DExtras::QNormalDiffuseMapMaterial();
-        QTest::newRow("QNormalDiffuseMapMaterial") << material;
-        material = new Qt3DExtras::QNormalDiffuseMapAlphaMaterial();
-        QTest::newRow("QNormalDiffuseMapAlphaMaterial") << material;
-        material = new Qt3DExtras::QNormalDiffuseSpecularMapMaterial();
-        QTest::newRow("QNormalDiffuseSpecularMapMaterial") << material;
-    }
-
-    void checkCloning()
-    {
-        // GIVEN
-        QFETCH(Qt3DRender::QMaterial *, material);
-
-        // WHEN
-        Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(material);
-        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges = creationChangeGenerator.creationChanges();
-
-        // THEN
-        QVERIFY(creationChanges.size() >= 1);
-
-        const Qt3DCore::QNodeCreatedChangePtr<Qt3DRender::QMaterialData> creationChangeData =
-                qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QMaterialData>>(creationChanges.first());
-        const Qt3DRender::QMaterialData &cloneData = creationChangeData->data;
-
-        // THEN
-        QCOMPARE(material->id(), creationChangeData->subjectId());
-        QCOMPARE(material->isEnabled(), creationChangeData->isNodeEnabled());
-        QCOMPARE(material->metaObject(), creationChangeData->metaObject());
-        QCOMPARE(material->effect() ? material->effect()->id() : Qt3DCore::QNodeId(), cloneData.effectId);
-        QCOMPARE(material->parameters().size(), cloneData.parameterIds.size());
-
-        for (int i = 0, m = material->parameters().size(); i < m; ++i)
-            QCOMPARE(material->parameters().at(i)->id(), cloneData.parameterIds.at(i));
-
-        // TO DO: Add unit tests for parameter and effect that do check this
-        //        compareParameters(material->parameters(), clone->parameters());
-        //        compareEffects(material->effect(), clone->effect());
-    }
-
     void checkEffectUpdate()
     {
         // GIVEN
@@ -252,10 +171,10 @@ private Q_SLOTS:
         material->setEffect(&effect);
 
         // THEN
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), material.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), material.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // GIVEN
         TestArbiter arbiter2;
@@ -266,10 +185,10 @@ private Q_SLOTS:
         material2->setEffect(&effect);
 
         // THEN
-        QCOMPARE(arbiter2.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter2.dirtyNodes.front(), material2.data());
+        QCOMPARE(arbiter2.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter2.dirtyNodes().front(), material2.data());
 
-        arbiter2.dirtyNodes.clear();
+        arbiter2.clear();
     }
 
     void checkDynamicParametersAddedUpdates()
@@ -281,7 +200,7 @@ private Q_SLOTS:
 
         QCoreApplication::processEvents();
         // Clear events trigger by child generation of TestMnterial
-        arbiter.events.clear();
+        arbiter.clear();
 
         // WHEN (add parameter to material)
         Qt3DRender::QParameter *param = new Qt3DRender::QParameter("testParamMaterial", QVariant::fromValue(383.0f));
@@ -292,8 +211,7 @@ private Q_SLOTS:
         QCOMPARE(param->parent(), material);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
         QVERIFY(material->parameters().contains(param));
 
         // WHEN (add parameter to effect)
@@ -302,8 +220,7 @@ private Q_SLOTS:
         QCoreApplication::processEvents();
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 2);
+        QCOMPARE(arbiter.dirtyNodes().size(), 2);
         QVERIFY(material->effect()->parameters().contains(param));
 
         // WHEN (add parameter to technique)
@@ -312,8 +229,7 @@ private Q_SLOTS:
         QCoreApplication::processEvents();
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 3);
+        QCOMPARE(arbiter.dirtyNodes().size(), 3);
         QVERIFY(material->m_technique->parameters().contains(param));
 
 
@@ -323,8 +239,7 @@ private Q_SLOTS:
         QCoreApplication::processEvents();
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 4);
+        QCOMPARE(arbiter.dirtyNodes().size(), 4);
         QVERIFY(material->m_renderPass->parameters().contains(param));
     }
 
@@ -340,59 +255,59 @@ private Q_SLOTS:
         material->m_shaderProgram->setVertexShaderCode(vertexCode);
 
         // THEN
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), material->m_shaderProgram);
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), material->m_shaderProgram);
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // WHEN
         const QByteArray fragmentCode = QByteArrayLiteral("new fragment shader code");
         material->m_shaderProgram->setFragmentShaderCode(fragmentCode);
 
         // THEN
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), material->m_shaderProgram);
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), material->m_shaderProgram);
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
         // WHEN
         const QByteArray geometryCode = QByteArrayLiteral("new geometry shader code");
         material->m_shaderProgram->setGeometryShaderCode(geometryCode);
 
         // THEN
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), material->m_shaderProgram);
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), material->m_shaderProgram);
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // WHEN
         const QByteArray computeCode = QByteArrayLiteral("new compute shader code");
         material->m_shaderProgram->setComputeShaderCode(computeCode);
 
         // THEN
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), material->m_shaderProgram);
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), material->m_shaderProgram);
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // WHEN
         const QByteArray tesselControlCode = QByteArrayLiteral("new tessellation control shader code");
         material->m_shaderProgram->setTessellationControlShaderCode(tesselControlCode);
 
         // THEN
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), material->m_shaderProgram);
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), material->m_shaderProgram);
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // WHEN
         const QByteArray tesselEvalCode = QByteArrayLiteral("new tessellation eval shader code");
         material->m_shaderProgram->setTessellationEvaluationShaderCode(tesselEvalCode);
 
         // THEN
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), material->m_shaderProgram);
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), material->m_shaderProgram);
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
     }
 
     void checkEffectBookkeeping()

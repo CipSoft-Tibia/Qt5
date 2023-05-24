@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,18 +12,29 @@
 namespace autofill {
 
 class AutofillClient;
+class FormStructure;
 
 // Checks whether a given form is considered insecure (by origin or action).
-bool IsFormOrClientNonSecure(AutofillClient* client, const FormData& form);
+bool IsFormOrClientNonSecure(const AutofillClient* client,
+                             const FormData& form);
+
+// Checks whether a given form is considered insecure (by origin or action).
+bool IsFormOrClientNonSecure(const AutofillClient* client,
+                             const FormStructure& form);
 
 // Checks whether a given form is considered mixed content. A form is mixed
 // content if is displayed on a secure context, but submits to an insecure one.
-bool IsFormMixedContent(AutofillClient* client, const FormData& form);
+bool IsFormMixedContent(const AutofillClient* client, const FormData& form);
 
 // Returns true if context provided by the client and the given form are
 // considered "secure enough" to manually fill credit card data.
-bool ShouldAllowCreditCardFallbacks(AutofillClient* client,
+bool ShouldAllowCreditCardFallbacks(const AutofillClient* client,
                                     const FormData& form);
+
+// Returns whether the form is a complete credit card form with card number
+// field, card expiration date field and card CVC field detected.
+bool IsCompleteCreditCardFormIncludingCvcField(
+    const FormStructure& form_structure);
 
 }  // namespace autofill
 

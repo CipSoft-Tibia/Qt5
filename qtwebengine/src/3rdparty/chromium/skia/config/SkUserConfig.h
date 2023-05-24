@@ -119,8 +119,11 @@
  * Skia consumers can provide their own definitions of these macros to
  * integrate with their histogram collection backend.
  */
-//#define SK_HISTOGRAM_BOOLEAN(name, value)
-//#define SK_HISTOGRAM_ENUMERATION(name, value, boundary_value)
+//#define SK_HISTOGRAM_BOOLEAN(name, sample)
+//#define SK_HISTOGRAM_EXACT_LINEAR(name, sample, value_max)
+//#define SK_HISTOGRAM_MEMORY_KB(name, sample)
+#include "base/component_export.h"
+#include "skia/ext/skia_histogram.h"
 
 // ===== Begin Chrome-specific definitions =====
 
@@ -133,6 +136,9 @@
     PDF documents.
  */
 #define SK_PDF_USE_HARFBUZZ_SUBSET
+
+// Handle exporting using base/component_export.h
+#define SK_API COMPONENT_EXPORT(SKIA)
 
 // Chromium does not use these fonts.  This define causes type1 fonts to be
 // converted to type3 when producing PDFs, and reduces build size.
@@ -190,46 +196,35 @@ SK_API void SkDebugf_FileLine(const char* file,
 
 #endif
 
+#ifdef __clang__
+#define SK_TRIVIAL_ABI [[clang::trivial_abi]]
+#else
+#define SK_TRIVIAL_ABI
+#endif
+
 // These flags are no longer defined in Skia, but we have them (temporarily)
 // until we update our call-sites (typically these are for API changes).
 //
 // Remove these as we update our sites.
 
+#define SK_LEGACY_LAYER_BOUNDS_EXPANSION  // skbug.com/12083, skbug.com/12303
+
 // Workaround for poor anisotropic mipmap quality,
 // pending Skia ripmap support.
 // (https://bugs.chromium.org/p/skia/issues/detail?id=4863)
-#ifndef    SK_SUPPORT_LEGACY_ANISOTROPIC_MIPMAP_SCALE
-#   define SK_SUPPORT_LEGACY_ANISOTROPIC_MIPMAP_SCALE
-#endif
+#define SK_SUPPORT_LEGACY_ANISOTROPIC_MIPMAP_SCALE
 
-#ifndef SK_DISABLE_LEGACY_CONTEXT_FACTORIES
-#define SK_DISABLE_LEGACY_CONTEXT_FACTORIES
-#endif
-
-// For now, Chrome should only attempt to reduce opList splitting when recording
-// DDLs
-#ifndef SK_DISABLE_REDUCE_OPLIST_SPLITTING
-#define SK_DISABLE_REDUCE_OPLIST_SPLITTING
-#endif
-
-// Many layout tests and unit tests need to updated/rebased to move to less
-// buggy GPU blur.
-#ifndef SK_USE_LEGACY_GPU_BLUR
-#define SK_USE_LEGACY_GPU_BLUR
-#endif
+// Temporarily insulate Chrome pixel tests from Skia LOD bias change on GPU.
+#define SK_USE_LEGACY_MIPMAP_LOD_BIAS
 
 // Max. verb count for paths rendered by the edge-AA tessellating path renderer.
 #define GR_AA_TESSELLATOR_MAX_VERB_COUNT 100
 
-#ifndef SK_SUPPORT_LEGACY_AAA_CHOICE
 #define SK_SUPPORT_LEGACY_AAA_CHOICE
-#endif
 
-// Staging for lowp::bilerp_clamp_8888, and for planned misc. others.
-#define SK_DISABLE_LOWP_BILERP_CLAMP_CLAMP_STAGE
+#define SK_SUPPORT_LEGACY_DRAWLOOPER
 
-// Staging for Skia requiring GrDirectContext in SkImage::readPixels.
-#define SK_IMAGE_READ_PIXELS_LEGACY_API
+#define SK_USE_LEGACY_MIPMAP_BUILDER
 
 ///////////////////////// Imported from BUILD.gn and skia_common.gypi
 
@@ -247,4 +242,4 @@ SK_API void SkDebugf_FileLine(const char* file,
 #define SK_ATTR_DEPRECATED          SK_NOTHING_ARG1
 #define GR_GL_CUSTOM_SETUP_HEADER   "GrGLConfig_chrome.h"
 
-#endif
+#endif  // SKIA_CONFIG_SKUSERCONFIG_H_

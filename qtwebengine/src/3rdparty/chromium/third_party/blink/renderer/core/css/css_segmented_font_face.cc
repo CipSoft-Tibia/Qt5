@@ -25,10 +25,14 @@
 
 #include "third_party/blink/renderer/core/css/css_segmented_font_face.h"
 
-#include "base/bind.h"
-#include "base/callback.h"
+#include "base/debug/dump_without_crashing.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "third_party/blink/renderer/core/css/cascade_layer_map.h"
 #include "third_party/blink/renderer/core/css/css_font_face.h"
 #include "third_party/blink/renderer/core/css/css_font_selector.h"
+#include "third_party/blink/renderer/core/css/resolver/scoped_style_resolver.h"
+#include "third_party/blink/renderer/core/css/style_engine.h"
 #include "third_party/blink/renderer/platform/fonts/font_cache.h"
 #include "third_party/blink/renderer/platform/fonts/font_description.h"
 #include "third_party/blink/renderer/platform/fonts/font_face_creation_params.h"
@@ -47,6 +51,12 @@ static constexpr size_t kFontDataTableMaxSize = 250;
 
 namespace blink {
 
+// static
+CSSSegmentedFontFace* CSSSegmentedFontFace::Create(
+    FontSelectionCapabilities capabilities) {
+  return MakeGarbageCollected<CSSSegmentedFontFace>(capabilities);
+}
+
 CSSSegmentedFontFace::CSSSegmentedFontFace(
     FontSelectionCapabilities font_selection_capabilities)
     : font_selection_capabilities_(font_selection_capabilities),
@@ -58,8 +68,9 @@ CSSSegmentedFontFace::~CSSSegmentedFontFace() = default;
 
 void CSSSegmentedFontFace::PruneTable() {
   // Make sure the glyph page tree prunes out all uses of this custom font.
-  if (!font_data_table_.size())
+  if (!font_data_table_.size()) {
     return;
+  }
 
   font_data_table_.Clear();
 }
@@ -68,8 +79,9 @@ bool CSSSegmentedFontFace::IsValid() const {
   // Valid if at least one font face is valid.
   return font_faces_->ForEachUntilTrue(
       WTF::BindRepeating([](Member<FontFace> font_face) -> bool {
-        if (font_face->CssFontFace()->IsValid())
+        if (font_face->CssFontFace()->IsValid()) {
           return true;
+        }
         return false;
       }));
 }
@@ -86,8 +98,9 @@ void CSSSegmentedFontFace::AddFontFace(FontFace* font_face,
 }
 
 void CSSSegmentedFontFace::RemoveFontFace(FontFace* font_face) {
-  if (!font_faces_->Erase(font_face))
+  if (!font_faces_->Erase(font_face)) {
     return;
+  }
 
   PruneTable();
   font_face->CssFontFace()->RemoveSegmentedFontFace(this);
@@ -95,14 +108,14 @@ void CSSSegmentedFontFace::RemoveFontFace(FontFace* font_face) {
 
 scoped_refptr<FontData> CSSSegmentedFontFace::GetFontData(
     const FontDescription& font_description) {
-  if (!IsValid())
+  if (!IsValid()) {
     return nullptr;
+  }
 
-  const FontSelectionRequest& font_selection_request =
-      font_description.GetFontSelectionRequest();
   bool is_unique_match = false;
+  bool is_generic_family = false;
   FontCacheKey key = font_description.CacheKey(
-      FontFaceCreationParams(), is_unique_match, font_selection_request);
+      FontFaceCreationParams(), is_unique_match, is_generic_family);
 
   // font_data_table_ caches FontData and SegmentedFontData instances, which
   // provide SimpleFontData objects containing FontPlatformData objects. In the
@@ -116,31 +129,36 @@ scoped_refptr<FontData> CSSSegmentedFontFace::GetFontData(
   // usually only a small number of FontData/SegmentedFontData instances created
   // per CSSSegmentedFontFace. Whereas in variable font animations, this number
   // grows rapidly.
-  scoped_refptr<SegmentedFontData>* cached_font_data =
-      font_data_table_.Get(key);
-  if (cached_font_data && (*cached_font_data) &&
-      (*cached_font_data)->NumFaces())
-    return *cached_font_data;
+  auto it = font_data_table_.Get(key);
+  if (it != font_data_table_.end()) {
+    scoped_refptr<SegmentedFontData> cached_font_data = it->second;
+    if (cached_font_data && cached_font_data->NumFaces()) {
+      return cached_font_data;
+    }
+  }
 
-  scoped_refptr<SegmentedFontData> created_font_data;
-  created_font_data = SegmentedFontData::Create();
+  scoped_refptr<SegmentedFontData> created_font_data =
+      SegmentedFontData::Create();
 
   FontDescription requested_font_description(font_description);
-  if (!font_selection_capabilities_.HasRange()) {
-    requested_font_description.SetSyntheticBold(
-        font_selection_capabilities_.weight.maximum < BoldThreshold() &&
-        font_selection_request.weight >= BoldThreshold());
-    requested_font_description.SetSyntheticItalic(
-        font_selection_capabilities_.slope.maximum == NormalSlopeValue() &&
-        font_selection_request.slope == ItalicSlopeValue());
-  }
+  const FontSelectionRequest& font_selection_request =
+      font_description.GetFontSelectionRequest();
+  requested_font_description.SetSyntheticBold(
+      font_selection_capabilities_.weight.maximum < BoldThreshold() &&
+      font_selection_request.weight >= BoldThreshold() &&
+      font_description.SyntheticBoldAllowed());
+  requested_font_description.SetSyntheticItalic(
+      font_selection_capabilities_.slope.maximum < ItalicSlopeValue() &&
+      font_selection_request.slope >= ItalicSlopeValue() &&
+      font_description.SyntheticItalicAllowed());
 
   font_faces_->ForEachReverse(WTF::BindRepeating(
       [](const FontDescription& requested_font_description,
          scoped_refptr<SegmentedFontData> created_font_data,
          Member<FontFace> font_face) {
-        if (!font_face->CssFontFace()->IsValid())
+        if (!font_face->CssFontFace()->IsValid()) {
           return;
+        }
         if (scoped_refptr<SimpleFontData> face_font_data =
                 font_face->CssFontFace()->GetFontData(
                     requested_font_description)) {
@@ -177,10 +195,12 @@ void CSSSegmentedFontFace::WillUseFontData(
   font_faces_->ForEachReverseUntilTrue(WTF::BindRepeating(
       [](const FontDescription& font_description, const String& text,
          Member<FontFace> font_face) -> bool {
-        if (font_face->LoadStatus() != FontFace::kUnloaded)
+        if (font_face->LoadStatus() != FontFace::kUnloaded) {
           return true;
-        if (font_face->CssFontFace()->MaybeLoadFont(font_description, text))
+        }
+        if (font_face->CssFontFace()->MaybeLoadFont(font_description, text)) {
           return true;
+        }
         return false;
       },
       font_description, text));
@@ -197,8 +217,9 @@ void CSSSegmentedFontFace::WillUseRange(
          const blink::FontDataForRangeSet& range_set,
          Member<FontFace> font_face) -> bool {
         CSSFontFace* css_font_face = font_face->CssFontFace();
-        if (css_font_face->MaybeLoadFont(font_description, range_set))
+        if (css_font_face->MaybeLoadFont(font_description, range_set)) {
           return true;
+        }
         return false;
       },
       font_description, range_set));
@@ -208,8 +229,9 @@ bool CSSSegmentedFontFace::CheckFont(const String& text) const {
   return font_faces_->ForEachUntilFalse(WTF::BindRepeating(
       [](const String& text, Member<FontFace> font_face) -> bool {
         if (font_face->LoadStatus() != FontFace::kLoaded &&
-            font_face->CssFontFace()->Ranges()->IntersectsWith(text))
+            font_face->CssFontFace()->Ranges()->IntersectsWith(text)) {
           return false;
+        }
         return true;
       },
       text));
@@ -222,8 +244,9 @@ void CSSSegmentedFontFace::Match(const String& text,
   font_faces_->ForEach(WTF::BindRepeating(
       [](const String& text, HeapVector<Member<FontFace>>* faces,
          Member<FontFace> font_face) {
-        if (font_face->CssFontFace()->Ranges()->IntersectsWith(text))
+        if (font_face->CssFontFace()->Ranges()->IntersectsWith(text)) {
           faces->push_back(font_face);
+        }
       },
       text, WrapPersistent(faces)));
 }
@@ -233,15 +256,65 @@ void CSSSegmentedFontFace::Trace(Visitor* visitor) const {
 }
 
 bool FontFaceList::IsEmpty() const {
-  return css_connected_face_.IsEmpty() && non_css_connected_face_.IsEmpty();
+  return css_connected_face_.empty() && non_css_connected_face_.empty();
 }
 
-void FontFaceList::Insert(FontFace* font_face, bool css_connected) {
-  if (css_connected) {
-    css_connected_face_.insert(font_face);
-  } else {
-    non_css_connected_face_.insert(font_face);
+namespace {
+
+bool CascadePriorityHigherThan(const FontFace& new_font_face,
+                               const FontFace& existing_font_face) {
+  // We should reach here only for CSS-connected font faces, which must have an
+  // owner document. However, there are cases where we don't have a document
+  // here, possibly caused by ExecutionContext or Document lifecycle issues.
+  // TODO(crbug.com/1250831): Find out the root cause and fix it.
+  if (!new_font_face.GetDocument() || !existing_font_face.GetDocument()) {
+    base::debug::DumpWithoutCrashing();
+    // In the buggy case, to ensure a stable ordering, font faces without a
+    // document are considered higher priority.
+    return !new_font_face.GetDocument();
   }
+  DCHECK_EQ(new_font_face.GetDocument(), existing_font_face.GetDocument());
+  DCHECK(new_font_face.GetStyleRule());
+  DCHECK(existing_font_face.GetStyleRule());
+  if (new_font_face.IsUserStyle() != existing_font_face.IsUserStyle()) {
+    return existing_font_face.IsUserStyle();
+  }
+  const CascadeLayerMap* map = nullptr;
+  if (new_font_face.IsUserStyle()) {
+    map =
+        new_font_face.GetDocument()->GetStyleEngine().GetUserCascadeLayerMap();
+  } else if (new_font_face.GetDocument()->GetScopedStyleResolver()) {
+    map = new_font_face.GetDocument()
+              ->GetScopedStyleResolver()
+              ->GetCascadeLayerMap();
+  }
+  if (!map) {
+    return true;
+  }
+  return map->CompareLayerOrder(
+             existing_font_face.GetStyleRule()->GetCascadeLayer(),
+             new_font_face.GetStyleRule()->GetCascadeLayer()) <= 0;
+}
+
+}  // namespace
+
+void FontFaceList::Insert(FontFace* font_face, bool css_connected) {
+  if (!css_connected) {
+    non_css_connected_face_.insert(font_face);
+    return;
+  }
+
+  auto it = css_connected_face_.end();
+  while (it != css_connected_face_.begin()) {
+    auto prev = it;
+    --prev;
+    if (CascadePriorityHigherThan(*font_face, **prev)) {
+      break;
+    }
+    it = prev;
+  }
+
+  css_connected_face_.InsertBefore(it, font_face);
 }
 
 bool FontFaceList::Erase(FontFace* font_face) {
@@ -280,12 +353,14 @@ static bool FalseReturningCallback(
 bool FontFaceList::ForEachUntilTrue(
     const base::RepeatingCallback<bool(Member<FontFace>)>& callback) const {
   for (Member<FontFace> font_face : css_connected_face_) {
-    if (callback.Run(font_face))
+    if (callback.Run(font_face)) {
       return true;
+    }
   }
   for (Member<FontFace> font_face : non_css_connected_face_) {
-    if (callback.Run(font_face))
+    if (callback.Run(font_face)) {
       return true;
+    }
   }
   return false;
 }
@@ -310,13 +385,15 @@ bool FontFaceList::ForEachReverseUntilTrue(
     const base::RepeatingCallback<bool(Member<FontFace>)>& func) const {
   for (auto it = non_css_connected_face_.rbegin();
        it != non_css_connected_face_.rend(); ++it) {
-    if (func.Run(*it))
+    if (func.Run(*it)) {
       return true;
+    }
   }
   for (auto it = css_connected_face_.rbegin(); it != css_connected_face_.rend();
        ++it) {
-    if (func.Run(*it))
+    if (func.Run(*it)) {
       return true;
+    }
   }
   return false;
 }

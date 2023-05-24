@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -29,7 +29,6 @@
 #include <string>
 
 #include "base/base_export.h"
-#include "base/macros.h"
 
 namespace base {
 namespace win {
@@ -40,6 +39,9 @@ namespace win {
 class BASE_EXPORT EtwTraceProperties {
  public:
   EtwTraceProperties();
+
+  EtwTraceProperties(const EtwTraceProperties&) = delete;
+  EtwTraceProperties& operator=(const EtwTraceProperties&) = delete;
 
   EVENT_TRACE_PROPERTIES* get() { return &properties_; }
 
@@ -72,14 +74,11 @@ class BASE_EXPORT EtwTraceProperties {
   // larger buffer to allow storing the logger name and logger file
   // name contiguously with the structure.
   union {
-   public:
     // Our properties header.
     EVENT_TRACE_PROPERTIES properties_;
     // The actual size of the buffer is forced by this member.
     char buffer_[kBufSize];
   };
-
-  DISALLOW_COPY_AND_ASSIGN(EtwTraceProperties);
 };
 
 // This class implements an ETW controller, which knows how to start and
@@ -88,6 +87,10 @@ class BASE_EXPORT EtwTraceProperties {
 class BASE_EXPORT EtwTraceController {
  public:
   EtwTraceController();
+
+  EtwTraceController(const EtwTraceController&) = delete;
+  EtwTraceController& operator=(const EtwTraceController&) = delete;
+
   ~EtwTraceController();
 
   // Start a session with given name and properties.
@@ -98,7 +101,8 @@ class BASE_EXPORT EtwTraceController {
                            const wchar_t* logfile_path,
                            bool realtime = false);
 
-  // Starts a realtime session with some default properties.
+  // Starts a realtime session with some default properties.  |buffer_size| is
+  // in KB.  A default value for |buffer_size| is used if 0 is passed in.
   HRESULT StartRealtimeSession(const wchar_t* session_name, size_t buffer_size);
 
   // Enables "provider" at "level" for this session.
@@ -142,8 +146,6 @@ class BASE_EXPORT EtwTraceController {
  private:
   std::wstring session_name_;
   TRACEHANDLE session_ = NULL;
-
-  DISALLOW_COPY_AND_ASSIGN(EtwTraceController);
 };
 
 }  // namespace win

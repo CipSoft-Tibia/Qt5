@@ -8,11 +8,17 @@
 #ifndef SkMatrixPriv_DEFINE
 #define SkMatrixPriv_DEFINE
 
-#include "include/core/SkFilterQuality.h"
 #include "include/core/SkM44.h"
 #include "include/core/SkMatrix.h"
-#include "include/private/SkNx.h"
-#include "src/core/SkPointPriv.h"
+#include "include/core/SkPoint.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkScalar.h"
+#include "include/core/SkTypes.h"
+#include "src/base/SkVx.h"
+
+#include <cstdint>
+#include <cstring>
+struct SkPoint3;
 
 class SkMatrixPriv {
 public:
@@ -50,8 +56,8 @@ public:
         if (mx.getType() <= SkMatrix::kTranslate_Mask) {
             SkScalar tx = mx.getTranslateX();
             SkScalar ty = mx.getTranslateY();
-            Sk4f trans(tx, ty, tx, ty);
-            (Sk4f::Load(&src.fLeft) - trans).store(&dst->fLeft);
+            skvx::float4 trans(tx, ty, tx, ty);
+            (skvx::float4::Load(&src.fLeft) - trans).store(&dst->fLeft);
             return true;
         }
         // Insert other special-cases here (e.g. scale+translate)
@@ -95,9 +101,9 @@ public:
         if (SkMatrix::kTranslate_Mask == tm) {
             const SkScalar tx = mx.getTranslateX();
             const SkScalar ty = mx.getTranslateY();
-            Sk2s trans(tx, ty);
+            skvx::float2 trans(tx, ty);
             for (int i = 0; i < count; ++i) {
-                (Sk2s::Load(&pts->fX) + trans).store(&pts->fX);
+                (skvx::float2::Load(&pts->fX) + trans).store(&pts->fX);
                 pts = (SkPoint*)((intptr_t)pts + stride);
             }
             return;
@@ -148,10 +154,6 @@ public:
     static void MapHomogeneousPointsWithStride(const SkMatrix& mx, SkPoint3 dst[], size_t dstStride,
                                                const SkPoint3 src[], size_t srcStride, int count);
 
-    // Returns the recommended filterquality, assuming the caller originally wanted kHigh (bicubic)
-    static SkFilterQuality AdjustHighQualityFilterLevel(const SkMatrix&,
-                                                        bool matrixIsInverse = false);
-
     static bool PostIDiv(SkMatrix* matrix, int divx, int divy) {
         return matrix->postIDiv(divx, divy);
     }
@@ -171,6 +173,29 @@ public:
                m.rc(3,3) == 1;
 
     }
+
+    // Map the four corners of 'r' and return the bounding box of those points. The four corners of
+    // 'r' are assumed to have z = 0 and w = 1. If the matrix has perspective, the returned
+    // rectangle will be the bounding box of the projected points after being clipped to w > 0.
+    static SkRect MapRect(const SkM44& m, const SkRect& r);
+
+    // Returns the differential area scale factor for a local point 'p' that will be transformed
+    // by 'm' (which may have perspective). If 'm' does not have perspective, this scale factor is
+    // constant regardless of 'p'; when it does have perspective, it is specific to that point.
+    //
+    // This can be crudely thought of as "device pixel area" / "local pixel area" at 'p'.
+    //
+    // Returns positive infinity if the transformed homogeneous point has w <= 0.
+    static SkScalar DifferentialAreaScale(const SkMatrix& m, const SkPoint& p);
+
+    // Determines if the transformation m applied to the bounds can be approximated by
+    // an affine transformation, i.e., the perspective part of the transformation has little
+    // visible effect.
+    static bool NearlyAffine(const SkMatrix& m,
+                             const SkRect& bounds,
+                             SkScalar tolerance = SK_ScalarNearlyZero);
+
+    static SkScalar ComputeResScaleForStroking(const SkMatrix& matrix);
 };
 
 #endif

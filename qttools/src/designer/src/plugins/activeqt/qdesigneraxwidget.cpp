@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdesigneraxwidget.h"
 
@@ -34,11 +9,10 @@
 #include <QtGui/qpainter.h>
 #include <QtGui/qevent.h>
 
-#include <ActiveQt/QAxWidget>
+#include <QtAxContainer/QAxWidget>
 
 #include <qt_windows.h>
 #include <olectl.h>
-#include <qaxtypes.h>
 
 enum { debugAxWidget = 0 };
 
@@ -207,6 +181,12 @@ static QString msgComException(const QObject *o, const QMetaObject::Call call, i
 
 #endif // QT_NO_EXCEPTIONS
 
+static bool isInheritedCall(const QMetaObject *mo, QMetaObject::Call call, int id)
+{
+    return call == QMetaObject::InvokeMetaMethod
+        ? (id < mo->methodOffset()) : (id < mo->propertyOffset());
+}
+
 int QDesignerAxPluginWidget::qt_metacall(QMetaObject::Call call, int signal, void **argv)
 {
     QAxWidget *aw = axobject();
@@ -216,10 +196,11 @@ int QDesignerAxPluginWidget::qt_metacall(QMetaObject::Call call, int signal, voi
 
     const QMetaObject *mo = metaObject();
     // Have base class handle inherited stuff (geometry, enabled...)
-    const bool inherited = call == QMetaObject::InvokeMetaMethod ?
-                           (signal < mo->methodOffset()) : (signal < mo->propertyOffset());
-    if (inherited)
-        return QDesignerAxWidget::qt_metacall(call, signal, argv);
+    if (isInheritedCall(mo, call, signal))  {
+        // Skip over QAxBaseWidget
+        return isInheritedCall(mo->superClass(), call, signal)
+            ? QDesignerAxWidget::qt_metacall(call, signal, argv) : -1;
+    }
 
     int rc = -1;
 #ifndef QT_NO_EXCEPTIONS
@@ -229,11 +210,6 @@ int QDesignerAxPluginWidget::qt_metacall(QMetaObject::Call call, int signal, voi
                if (call != QMetaObject::InvokeMetaMethod)
                    qDebug() << objectName() << call << signal << mo->property(signal).name();
         switch (call) {
-        case QMetaObject::QueryPropertyStored: // Pretend all changed properties are stored for them to be saved
-            if (m_propValues.contains(signal))
-                if (argv[0])
-                    *reinterpret_cast< bool*>(argv[0]) = true;
-            break;
         case QMetaObject::ResetProperty:
             rc = aw->qt_metacall(call, signal, argv);
             update();

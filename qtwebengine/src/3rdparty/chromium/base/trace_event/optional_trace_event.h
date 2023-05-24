@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,6 +14,10 @@
 // defined in tracing.gni is false.
 
 #if BUILDFLAG(OPTIONAL_TRACE_EVENTS_ENABLED)
+
+#ifndef CR_EXPAND_ARG
+#define CR_EXPAND_ARG(x) x
+#endif
 
 #define OPTIONAL_TRACE_EVENT0(...) CR_EXPAND_ARG(TRACE_EVENT0(__VA_ARGS__))
 #define OPTIONAL_TRACE_EVENT1(...) CR_EXPAND_ARG(TRACE_EVENT1(__VA_ARGS__))

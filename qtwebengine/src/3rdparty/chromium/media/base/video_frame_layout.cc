@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include <sstream>
 
 #include "base/notreached.h"
+#include "base/numerics/checked_math.h"
 
 namespace media {
 
@@ -55,6 +56,7 @@ size_t VideoFrameLayout::NumPlanes(VideoPixelFormat format) {
     case PIXEL_FORMAT_XBGR:
     case PIXEL_FORMAT_XR30:
     case PIXEL_FORMAT_XB30:
+    case PIXEL_FORMAT_RGBAF16:
       return 1;
     case PIXEL_FORMAT_NV12:
     case PIXEL_FORMAT_NV21:
@@ -64,6 +66,7 @@ size_t VideoFrameLayout::NumPlanes(VideoPixelFormat format) {
     case PIXEL_FORMAT_YV12:
     case PIXEL_FORMAT_I422:
     case PIXEL_FORMAT_I444:
+    case PIXEL_FORMAT_NV12A:
     case PIXEL_FORMAT_YUV420P9:
     case PIXEL_FORMAT_YUV422P9:
     case PIXEL_FORMAT_YUV444P9:
@@ -75,6 +78,11 @@ size_t VideoFrameLayout::NumPlanes(VideoPixelFormat format) {
     case PIXEL_FORMAT_YUV444P12:
       return 3;
     case PIXEL_FORMAT_I420A:
+    case PIXEL_FORMAT_I422A:
+    case PIXEL_FORMAT_I444A:
+    case PIXEL_FORMAT_YUV420AP10:
+    case PIXEL_FORMAT_YUV422AP10:
+    case PIXEL_FORMAT_YUV444AP10:
       return 4;
     case PIXEL_FORMAT_UNKNOWN:
       // Note: PIXEL_FORMAT_UNKNOWN is used for end-of-stream frame.
@@ -86,7 +94,7 @@ size_t VideoFrameLayout::NumPlanes(VideoPixelFormat format) {
 }
 
 // static
-base::Optional<VideoFrameLayout> VideoFrameLayout::Create(
+absl::optional<VideoFrameLayout> VideoFrameLayout::Create(
     VideoPixelFormat format,
     const gfx::Size& coded_size) {
   return CreateWithStrides(format, coded_size,
@@ -94,7 +102,7 @@ base::Optional<VideoFrameLayout> VideoFrameLayout::Create(
 }
 
 // static
-base::Optional<VideoFrameLayout> VideoFrameLayout::CreateWithStrides(
+absl::optional<VideoFrameLayout> VideoFrameLayout::CreateWithStrides(
     VideoPixelFormat format,
     const gfx::Size& coded_size,
     std::vector<int32_t> strides,
@@ -105,32 +113,32 @@ base::Optional<VideoFrameLayout> VideoFrameLayout::CreateWithStrides(
 }
 
 // static
-base::Optional<VideoFrameLayout> VideoFrameLayout::CreateWithPlanes(
+absl::optional<VideoFrameLayout> VideoFrameLayout::CreateWithPlanes(
     VideoPixelFormat format,
     const gfx::Size& coded_size,
     std::vector<ColorPlaneLayout> planes,
     size_t buffer_addr_align,
     uint64_t modifier) {
   // NOTE: Even if format is UNKNOWN, it is valid if coded_sizes is not Empty().
-  // TODO(crbug.com/896135): Return base::nullopt,
+  // TODO(crbug.com/896135): Return absl::nullopt,
   // if (format != PIXEL_FORMAT_UNKNOWN || !coded_sizes.IsEmpty())
-  // TODO(crbug.com/896135): Return base::nullopt,
+  // TODO(crbug.com/896135): Return absl::nullopt,
   // if (planes.size() != NumPlanes(format))
   return VideoFrameLayout(format, coded_size, std::move(planes),
                           false /*is_multi_planar */, buffer_addr_align,
                           modifier);
 }
 
-base::Optional<VideoFrameLayout> VideoFrameLayout::CreateMultiPlanar(
+absl::optional<VideoFrameLayout> VideoFrameLayout::CreateMultiPlanar(
     VideoPixelFormat format,
     const gfx::Size& coded_size,
     std::vector<ColorPlaneLayout> planes,
     size_t buffer_addr_align,
     uint64_t modifier) {
   // NOTE: Even if format is UNKNOWN, it is valid if coded_sizes is not Empty().
-  // TODO(crbug.com/896135): Return base::nullopt,
+  // TODO(crbug.com/896135): Return absl::nullopt,
   // if (format != PIXEL_FORMAT_UNKNOWN || !coded_sizes.IsEmpty())
-  // TODO(crbug.com/896135): Return base::nullopt,
+  // TODO(crbug.com/896135): Return absl::nullopt,
   // if (planes.size() != NumPlanes(format))
   return VideoFrameLayout(format, coded_size, std::move(planes),
                           true /*is_multi_planar */, buffer_addr_align,
@@ -165,6 +173,34 @@ bool VideoFrameLayout::operator==(const VideoFrameLayout& rhs) const {
 
 bool VideoFrameLayout::operator!=(const VideoFrameLayout& rhs) const {
   return !(*this == rhs);
+}
+
+bool VideoFrameLayout::FitsInContiguousBufferOfSize(size_t data_size) const {
+  if (is_multi_planar_) {
+    return false;
+  }
+
+  base::CheckedNumeric<size_t> required_size = 0;
+  for (const auto& plane : planes_) {
+    if (plane.offset > data_size || plane.size > data_size) {
+      return false;
+    }
+
+    // No individual plane should have a size + offset > data_size.
+    base::CheckedNumeric<size_t> plane_end = plane.size;
+    plane_end += plane.offset;
+    if (!plane_end.IsValid() || plane_end.ValueOrDie() > data_size) {
+      return false;
+    }
+
+    required_size += plane.size;
+  }
+
+  if (!required_size.IsValid() || required_size.ValueOrDie() > data_size) {
+    return false;
+  }
+
+  return true;
 }
 
 std::ostream& operator<<(std::ostream& ostream,

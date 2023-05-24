@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtGui/qrawfont.h>
 #include <QtGui/qglyphrun.h>
@@ -44,6 +8,7 @@
 #include "qdistancefieldglyphcache_p.h"
 #include "qtextureatlas_p.h"
 
+#include <QtGui/qpainterpath.h>
 #include <QtGui/qfont.h>
 #include <QtGui/qpainterpath.h>
 #include <QtGui/private/qdistancefield_p.h>
@@ -62,12 +27,11 @@ namespace Qt3DExtras {
 class StoredGlyph {
 public:
     StoredGlyph() = default;
-    StoredGlyph(const StoredGlyph &) = default;
     StoredGlyph(const QRawFont &font, quint32 glyph, bool doubleResolution);
 
-    int refCount() const { return m_ref; }
+    int refCount() const { return int(m_ref); }
     void ref() { ++m_ref; }
-    int deref() { return m_ref = std::max(m_ref - 1, (quint32) 0); }
+    int deref() { m_ref = std::max(m_ref - 1, quint32(0)); return int(m_ref); }
 
     bool addToTextureAtlas(QTextureAtlas *atlas);
     void removeFromTextureAtlas();
@@ -107,7 +71,7 @@ private:
 
     QHash<quint32, StoredGlyph> m_glyphs;
 
-    QVector<QTextureAtlas*> m_atlasses;
+    QList<QTextureAtlas*> m_atlasses;
 };
 
 StoredGlyph::StoredGlyph(const QRawFont &font, quint32 glyph, bool doubleResolution)
@@ -161,6 +125,7 @@ DistanceFieldFont::DistanceFieldFont(const QRawFont &font, bool doubleRes, Qt3DC
     , m_doubleGlyphResolution(doubleRes)
     , m_parentNode(parent)
 {
+    Q_ASSERT(m_parentNode);
 }
 
 DistanceFieldFont::~DistanceFieldFont()
@@ -197,13 +162,14 @@ StoredGlyph DistanceFieldFont::refGlyph(quint32 glyph)
         // scenarios
         const int size = m_doubleGlyphResolution ? 512 : 256;
 
-        QTextureAtlas *atlas = new QTextureAtlas(m_parentNode);
+        QTextureAtlas *atlas = new QTextureAtlas();
         atlas->setWidth(size);
         atlas->setHeight(size);
         atlas->setFormat(Qt3DRender::QAbstractTexture::R8_UNorm);
         atlas->setPixelFormat(QOpenGLTexture::Red);
         atlas->setMinificationFilter(Qt3DRender::QAbstractTexture::Linear);
         atlas->setMagnificationFilter(Qt3DRender::QAbstractTexture::Linear);
+        atlas->setParent(m_parentNode);
         m_atlasses << atlas;
 
         if (!storedGlyph.addToTextureAtlas(atlas))
@@ -236,7 +202,12 @@ void DistanceFieldFont::derefGlyph(quint32 glyph)
             Q_ASSERT(m_atlasses.contains(atlas));
 
             m_atlasses.removeAll(atlas);
-            delete atlas;
+
+            // This function might have been called as a result of destroying
+            // the scene root which traverses the entire scene tree. Calling
+            // delete on the atlas here could lead to dangling pointers in the
+            // least of children being traversed for destruction.
+            atlas->deleteLater();
         }
 
         m_glyphs.erase(it);
@@ -287,7 +258,8 @@ DistanceFieldFont* QDistanceFieldGlyphCache::getOrCreateDistanceFieldFont(const 
     // create new font cache
     // we set the parent node to nullptr, since the parent node of QTextureAtlasses
     // will be set when we pass them to QText2DMaterial later
-    DistanceFieldFont *dff = new DistanceFieldFont(actualFont, useDoubleRes, nullptr);
+    Q_ASSERT(m_rootNode);
+    DistanceFieldFont *dff = new DistanceFieldFont(actualFont, useDoubleRes, m_rootNode);
     m_fonts.insert(key, dff);
     return dff;
 }
@@ -324,23 +296,22 @@ QDistanceFieldGlyphCache::Glyph refAndGetGlyph(DistanceFieldFont *dff, quint32 g
     if (dff) {
         const auto entry = dff->refGlyph(glyph);
 
-        if (entry.atlas()) {
-            ret.glyphPathBoundingRect = entry.glyphPathBoundingRect();
-            ret.texCoords = entry.texCoords();
-            ret.texture = entry.atlas();
-        }
+        Q_ASSERT(entry.atlas());
+        ret.glyphPathBoundingRect = entry.glyphPathBoundingRect();
+        ret.texCoords = entry.texCoords();
+        ret.texture = entry.atlas();
     }
 
     return ret;
 }
 } // anonymous
 
-QVector<QDistanceFieldGlyphCache::Glyph> QDistanceFieldGlyphCache::refGlyphs(const QGlyphRun &run)
+QList<QDistanceFieldGlyphCache::Glyph> QDistanceFieldGlyphCache::refGlyphs(const QGlyphRun &run)
 {
     DistanceFieldFont *dff = getOrCreateDistanceFieldFont(run.rawFont());
-    QVector<QDistanceFieldGlyphCache::Glyph> ret;
+    QList<QDistanceFieldGlyphCache::Glyph> ret;
 
-    const QVector<quint32> glyphs = run.glyphIndexes();
+    const auto glyphs = run.glyphIndexes();
     for (quint32 glyph : glyphs)
         ret << refAndGetGlyph(dff, glyph);
 
@@ -356,7 +327,7 @@ void QDistanceFieldGlyphCache::derefGlyphs(const QGlyphRun &run)
 {
     DistanceFieldFont *dff = getOrCreateDistanceFieldFont(run.rawFont());
 
-    const QVector<quint32> glyphs = run.glyphIndexes();
+    const auto glyphs = run.glyphIndexes();
     for (quint32 glyph : glyphs)
         dff->derefGlyph(glyph);
 }

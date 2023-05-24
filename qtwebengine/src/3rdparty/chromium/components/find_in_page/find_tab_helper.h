@@ -1,11 +1,14 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_FIND_IN_PAGE_FIND_TAB_HELPER_H_
 #define COMPONENTS_FIND_IN_PAGE_FIND_TAB_HELPER_H_
 
-#include "base/strings/string16.h"
+#include <string>
+
+#include "base/memory/raw_ptr.h"
+#include "base/observer_list.h"
 #include "build/build_config.h"
 #include "components/find_in_page/find_notification_details.h"
 #include "content/public/browser/web_contents_user_data.h"
@@ -23,11 +26,11 @@ class FindTabHelper : public content::WebContentsUserData<FindTabHelper> {
   class Delegate {
    public:
     // Informs the delegate when the user searches.
-    virtual void SetLastSearchText(const base::string16& text) = 0;
+    virtual void SetLastSearchText(const std::u16string& text) = 0;
 
     // Gets the text to prepopulate into the search field for new searches. May
     // return an empty string.
-    virtual base::string16 GetSearchPrepopulateText() = 0;
+    virtual std::u16string GetSearchPrepopulateText() = 0;
 
    protected:
     virtual ~Delegate() = default;
@@ -49,7 +52,7 @@ class FindTabHelper : public content::WebContentsUserData<FindTabHelper> {
   //
   // |find_match| controls whether to find the first match or to only do match
   // counts and highlighting.
-  void StartFinding(base::string16 search_string,
+  void StartFinding(std::u16string search_string,
                     bool forward_direction,
                     bool case_sensitive,
                     bool find_match,
@@ -63,7 +66,7 @@ class FindTabHelper : public content::WebContentsUserData<FindTabHelper> {
   void ActivateFindInPageResultForAccessibility();
 
   // Retrieves the starting text for searching in the tab.
-  base::string16 GetInitialSearchText();
+  std::u16string GetInitialSearchText();
 
   // Accessors/Setters for find_ui_active_.
   bool find_ui_active() const { return find_ui_active_; }
@@ -76,19 +79,19 @@ class FindTabHelper : public content::WebContentsUserData<FindTabHelper> {
 
   // Accessor for find_text_. Used to determine if this WebContents has any
   // active searches.
-  base::string16 find_text() const { return find_text_; }
+  std::u16string find_text() const { return find_text_; }
 
   // Accessor for the previous search we issued.
-  base::string16 previous_find_text() const { return previous_find_text_; }
+  std::u16string previous_find_text() const { return previous_find_text_; }
 
   // Accessor for the last completed search (i.e., where |find_match| was true
   // and we got a final_update result).
-  base::string16 last_completed_find_text() const {
+  std::u16string last_completed_find_text() const {
     return last_completed_find_text_;
   }
 
   void set_last_completed_find_text(
-      const base::string16& last_completed_find_text) {
+      const std::u16string& last_completed_find_text) {
     last_completed_find_text_ = last_completed_find_text;
   }
 
@@ -104,7 +107,7 @@ class FindTabHelper : public content::WebContentsUserData<FindTabHelper> {
 
   bool should_find_match() const { return should_find_match_; }
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // Selects and zooms to the find result nearest to the point (x,y)
   // defined in find-in-page coordinates.
   void ActivateNearestFindResult(float x, float y);
@@ -131,9 +134,6 @@ class FindTabHelper : public content::WebContentsUserData<FindTabHelper> {
   // the user has issued a new search).
   static int find_request_id_counter_;
 
-  // The WebContents which owns this helper.
-  content::WebContents* web_contents_ = nullptr;
-
   // True if the Find UI is active for this Tab.
   bool find_ui_active_ = false;
 
@@ -154,10 +154,10 @@ class FindTabHelper : public content::WebContentsUserData<FindTabHelper> {
   // The current string we are/just finished searching for. This is used to
   // figure out if this is a Find or a FindNext operation (FindNext should not
   // increase the request id).
-  base::string16 find_text_;
+  std::u16string find_text_;
 
   // The string we searched for before |find_text_|.
-  base::string16 previous_find_text_;
+  std::u16string previous_find_text_;
 
   // Used to keep track the last completed search (i.e., where |find_match|
   // was true and we got a final_update result). A single find session can
@@ -166,7 +166,7 @@ class FindTabHelper : public content::WebContentsUserData<FindTabHelper> {
   // search came up empty, and we never want to notify the user that a
   // previously successful search's results were removed because,
   // for instance, the page is being torn down during navigation.
-  base::string16 last_completed_find_text_;
+  std::u16string last_completed_find_text_;
 
   // The selection within the text.
   gfx::Range selected_range_;
@@ -184,7 +184,7 @@ class FindTabHelper : public content::WebContentsUserData<FindTabHelper> {
   bool should_find_match_ = false;
 
   // The optional delegate that remembers recent search text state.
-  Delegate* delegate_ = nullptr;
+  raw_ptr<Delegate> delegate_ = nullptr;
 
   base::ObserverList<FindResultObserver> observers_;
 

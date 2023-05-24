@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qmetaobject.h>
 
@@ -72,7 +36,7 @@ QTestData::~QTestData()
 {
     for (int i = 0; i < d->dataCount; ++i) {
         if (d->data[i])
-            QMetaType::destroy(d->parent->elementTypeId(i), d->data[i]);
+            QMetaType(d->parent->elementTypeId(i)).destroy(d->data[i]);
     }
     delete [] d->data;
     delete [] d->tag;
@@ -82,14 +46,29 @@ QTestData::~QTestData()
 void QTestData::append(int type, const void *data)
 {
     QTEST_ASSERT(d->dataCount < d->parent->elementCount());
-    if (d->parent->elementTypeId(d->dataCount) != type) {
+    int expectedType = d->parent->elementTypeId(d->dataCount);
+    int dd = 0;
+    if constexpr (sizeof(qsizetype) == 8) {
+        // Compatibility with Qt 5. Passing a qsizetype to a test function expecting
+        // an int will work. This is required, as methods returning a qsizetype in Qt 6
+        // used to return an int in Qt 5.
+        if (type == QMetaType::LongLong && expectedType == QMetaType::Int) {
+            qlonglong d = *static_cast<const qlonglong *>(data);
+            if (d >= std::numeric_limits<int>::min() && d <= std::numeric_limits<int>::max()) {
+                dd = d;
+                data = &dd;
+                type = QMetaType::Int;
+            }
+        }
+    }
+    if (expectedType != type) {
         qDebug("expected data of type '%s', got '%s' for element %d of data with tag '%s'",
-                QMetaType::typeName(d->parent->elementTypeId(d->dataCount)),
-                QMetaType::typeName(type),
+                QMetaType(expectedType).name(),
+                QMetaType(type).name(),
                 d->dataCount, d->tag);
         QTEST_ASSERT(false);
     }
-    d->data[d->dataCount] = QMetaType::create(type, data);
+    d->data[d->dataCount] = QMetaType(type).create(data);
     ++d->dataCount;
 }
 

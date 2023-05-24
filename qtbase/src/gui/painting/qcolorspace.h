@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCOLORSPACE_H
 #define QCOLORSPACE_H
@@ -50,6 +14,8 @@ QT_BEGIN_NAMESPACE
 
 class QColorSpacePrivate;
 class QPointF;
+
+QT_DECLARE_QESDP_SPECIALIZATION_DTOR_WITH_EXPORT(QColorSpacePrivate, Q_GUI_EXPORT)
 
 class Q_GUI_EXPORT QColorSpace
 {
@@ -80,46 +46,67 @@ public:
     };
     Q_ENUM(TransferFunction)
 
-    QColorSpace();
+    QColorSpace() noexcept = default;
     QColorSpace(NamedColorSpace namedColorSpace);
     QColorSpace(Primaries primaries, TransferFunction transferFunction, float gamma = 0.0f);
     QColorSpace(Primaries primaries, float gamma);
+    QColorSpace(Primaries primaries, const QList<uint16_t> &transferFunctionTable);
     QColorSpace(const QPointF &whitePoint, const QPointF &redPoint,
                 const QPointF &greenPoint, const QPointF &bluePoint,
                 TransferFunction transferFunction, float gamma = 0.0f);
+    QColorSpace(const QPointF &whitePoint, const QPointF &redPoint,
+                const QPointF &greenPoint, const QPointF &bluePoint,
+                const QList<uint16_t> &transferFunctionTable);
+    QColorSpace(const QPointF &whitePoint, const QPointF &redPoint,
+                const QPointF &greenPoint, const QPointF &bluePoint,
+                const QList<uint16_t> &redTransferFunctionTable,
+                const QList<uint16_t> &greenTransferFunctionTable,
+                const QList<uint16_t> &blueTransferFunctionTable);
     ~QColorSpace();
 
-    QColorSpace(const QColorSpace &colorSpace);
-    QColorSpace &operator=(const QColorSpace &colorSpace);
-
-    QColorSpace(QColorSpace &&colorSpace) noexcept
-            : d_ptr(qExchange(colorSpace.d_ptr, nullptr))
-    { }
-    QColorSpace &operator=(QColorSpace &&colorSpace) noexcept
+    QColorSpace(const QColorSpace &colorSpace) noexcept;
+    QColorSpace &operator=(const QColorSpace &colorSpace) noexcept
     {
-        // Make the deallocation of this->d_ptr happen in ~QColorSpace()
-        QColorSpace(std::move(colorSpace)).swap(*this);
+        QColorSpace copy(colorSpace);
+        swap(copy);
         return *this;
     }
 
+    QColorSpace(QColorSpace &&colorSpace) noexcept = default;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QColorSpace)
+
     void swap(QColorSpace &colorSpace) noexcept
-    { qSwap(d_ptr, colorSpace.d_ptr); }
+    { d_ptr.swap(colorSpace.d_ptr); }
 
     Primaries primaries() const noexcept;
     TransferFunction transferFunction() const noexcept;
     float gamma() const noexcept;
 
+    QString description() const noexcept;
+    void setDescription(const QString &description);
+
     void setTransferFunction(TransferFunction transferFunction, float gamma = 0.0f);
+    void setTransferFunction(const QList<uint16_t> &transferFunctionTable);
+    void setTransferFunctions(const QList<uint16_t> &redTransferFunctionTable,
+                              const QList<uint16_t> &greenTransferFunctionTable,
+                              const QList<uint16_t> &blueTransferFunctionTable);
     QColorSpace withTransferFunction(TransferFunction transferFunction, float gamma = 0.0f) const;
+    QColorSpace withTransferFunction(const QList<uint16_t> &transferFunctionTable) const;
+    QColorSpace withTransferFunctions(const QList<uint16_t> &redTransferFunctionTable,
+                                      const QList<uint16_t> &greenTransferFunctionTable,
+                                      const QList<uint16_t> &blueTransferFunctionTable) const;
 
     void setPrimaries(Primaries primariesId);
     void setPrimaries(const QPointF &whitePoint, const QPointF &redPoint,
                       const QPointF &greenPoint, const QPointF &bluePoint);
 
+    void detach();
     bool isValid() const noexcept;
 
-    friend Q_GUI_EXPORT bool operator==(const QColorSpace &colorSpace1, const QColorSpace &colorSpace2);
-    friend inline bool operator!=(const QColorSpace &colorSpace1, const QColorSpace &colorSpace2);
+    friend inline bool operator==(const QColorSpace &colorSpace1, const QColorSpace &colorSpace2)
+    { return colorSpace1.equals(colorSpace2); }
+    friend inline bool operator!=(const QColorSpace &colorSpace1, const QColorSpace &colorSpace2)
+    { return !(colorSpace1 == colorSpace2); }
 
     static QColorSpace fromIccProfile(const QByteArray &iccProfile);
     QByteArray iccProfile() const;
@@ -129,19 +116,15 @@ public:
     operator QVariant() const;
 
 private:
-    Q_DECLARE_PRIVATE(QColorSpace)
-    QColorSpacePrivate *d_ptr = nullptr;
+    friend class QColorSpacePrivate;
+    bool equals(const QColorSpace &other) const;
+
+    QExplicitlySharedDataPointer<QColorSpacePrivate> d_ptr;
 
 #ifndef QT_NO_DEBUG_STREAM
     friend Q_GUI_EXPORT QDebug operator<<(QDebug dbg, const QColorSpace &colorSpace);
 #endif
 };
-
-bool Q_GUI_EXPORT operator==(const QColorSpace &colorSpace1, const QColorSpace &colorSpace2);
-inline bool operator!=(const QColorSpace &colorSpace1, const QColorSpace &colorSpace2)
-{
-    return !(colorSpace1 == colorSpace2);
-}
 
 Q_DECLARE_SHARED(QColorSpace)
 

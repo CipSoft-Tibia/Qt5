@@ -1,8 +1,11 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//build/config/jumbo.gni")
+import("//build/config/ui.gni")
+
+assert(use_aura)
 
 jumbo_component("public") {
   output_name = "wm_public"
@@ -14,6 +17,7 @@ jumbo_component("public") {
     "animation_host.h",
     "scoped_tooltip_disabler.h",
     "tooltip_client.h",
+    "tooltip_observer.h",
     "window_move_client.h",
   ]
 

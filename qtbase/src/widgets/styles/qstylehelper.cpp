@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qstyleoption.h>
 #include <qpainter.h>
@@ -61,8 +25,18 @@ Q_GUI_EXPORT int qt_defaultDpiX();
 
 namespace QStyleHelper {
 
+static inline bool usePixmapCache(const QStyleOption *opt)
+{
+    if (QWidget *widget = qobject_cast<QWidget *>(opt->styleObject))
+        return !widget->testAttribute(Qt::WA_StyleSheetTarget);
+    return true;
+}
+
 QString uniqueName(const QString &key, const QStyleOption *option, const QSize &size)
 {
+    if (!usePixmapCache(option))
+        return {};
+
     const QStyleOptionComplex *complexOption = qstyleoption_cast<const QStyleOptionComplex *>(option);
     QString tmp = key % HexString<uint>(option->state)
                       % HexString<uint>(option->direction)
@@ -75,7 +49,7 @@ QString uniqueName(const QString &key, const QStyleOption *option, const QSize &
     if (const QStyleOptionSpinBox *spinBox = qstyleoption_cast<const QStyleOptionSpinBox *>(option)) {
         tmp = tmp % HexString<uint>(spinBox->buttonSymbols)
                   % HexString<uint>(spinBox->stepEnabled)
-                  % QLatin1Char(spinBox->frame ? '1' : '0'); ;
+                  % QChar(spinBox->frame ? u'1' : u'0');
     }
 #endif // QT_CONFIG(spinbox)
 
@@ -125,7 +99,7 @@ Q_WIDGETS_EXPORT qreal dpiScaled(qreal value, const QStyleOption *option)
     return dpiScaled(value, dpi(option));
 }
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 bool isInstanceOf(QObject *obj, QAccessible::Role role)
 {
     bool match = false;
@@ -146,7 +120,7 @@ bool hasAncestor(QObject *obj, QAccessible::Role role)
     }
     return found;
 }
-#endif // QT_NO_ACCESSIBILITY
+#endif // QT_CONFIG(accessibility)
 
 
 #if QT_CONFIG(dial)
@@ -181,7 +155,7 @@ static QPointF calcRadialPos(const QStyleOptionSlider *dial, qreal offset)
     qreal len = r - QStyleHelper::calcBigLineSize(r) - 3;
     qreal back = offset * len;
     QPointF pos(QPointF(xc + back * qCos(a), yc - back * qSin(a)));
-    return pos;
+    return pos + dial->rect.topLeft();
 }
 
 qreal angle(const QPointF &p1, const QPointF &p2)
@@ -254,7 +228,7 @@ QPolygonF calcLines(const QStyleOptionSlider *dial)
             poly[2 * i + 1] = QPointF(xc + (r - 1) * c, yc -(r - 1) * s);
         }
     }
-    return poly;
+    return poly.translated(dial->rect.topLeft());
 }
 
 // This will draw a nice and shiny QDial for us. We don't want
@@ -262,7 +236,7 @@ QPolygonF calcLines(const QStyleOptionSlider *dial)
 
 void drawDial(const QStyleOptionSlider *option, QPainter *painter)
 {
-    QPalette pal = option->palette;
+    const QPalette pal = option->palette;
     QColor buttonColor = pal.button().color();
     const int width = option->rect.width();
     const int height = option->rect.height();
@@ -276,7 +250,11 @@ void drawDial(const QStyleOptionSlider *option, QPainter *painter)
 
     // Draw notches
     if (option->subControls & QStyle::SC_DialTickmarks) {
-        painter->setPen(option->palette.dark().color().darker(120));
+        const bool inverted = pal.window().color().lightness() < pal.text().color().lightness()
+                           && pal.light().color().lightness() > pal.dark().color().lightness();
+        const QColor notchColor = inverted ? pal.light().color().lighter(120)
+                                           : pal.dark().color().darker(120);
+        painter->setPen(notchColor);
         painter->drawLines(QStyleHelper::calcLines(option));
     }
 
@@ -291,8 +269,8 @@ void drawDial(const QStyleOptionSlider *option, QPainter *painter)
     p->setRenderHint(QPainter::Antialiasing);
 
     const qreal d_ = r / 6;
-    const qreal dx = option->rect.x() + d_ + (width - 2 * r) / 2 + 1;
-    const qreal dy = option->rect.y() + d_ + (height - 2 * r) / 2 + 1;
+    const qreal dx = d_ + (width - 2 * r) / 2 + 1;
+    const qreal dy = d_ + (height - 2 * r) / 2 + 1;
 
     QRectF br = QRectF(dx + 0.5, dy + 0.5,
                        int(r * 2 - 2 * d_ - 2),
@@ -348,7 +326,7 @@ void drawDial(const QStyleOptionSlider *option, QPainter *painter)
 
     QPointF dp = calcRadialPos(option, qreal(0.70));
     buttonColor = buttonColor.lighter(104);
-    buttonColor.setAlphaF(qreal(0.8));
+    buttonColor.setAlphaF(0.8f);
     const qreal ds = r/qreal(7.0);
     QRectF dialRect(dp.x() - ds, dp.y() - ds, 2*ds, 2*ds);
     QRadialGradient dialGradient(dialRect.center().x() + dialRect.width()/2,
@@ -385,7 +363,7 @@ void drawBorderPixmap(const QPixmap &pixmap, QPainter *painter, const QRect &rec
                             QRect(left, 0, size.width() -right - left, top));
 
         //top-left
-        if(left > 0)
+        if (left > 0)
             painter->drawPixmap(QRect(rect.left(), rect.top(), left, top), pixmap,
                                 QRect(0, 0, left, top));
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,11 @@
 #include <windows.h>
 #include <winhttp.h>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/logging.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_tokenizer.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -37,7 +39,7 @@ void FreeIEConfig(WINHTTP_CURRENT_USER_IE_PROXY_CONFIG* ie_config) {
 
 ProxyConfigServiceWin::ProxyConfigServiceWin(
     const NetworkTrafficAnnotationTag& traffic_annotation)
-    : PollingProxyConfigService(base::TimeDelta::FromSeconds(kPollIntervalSec),
+    : PollingProxyConfigService(base::Seconds(kPollIntervalSec),
                                 &ProxyConfigServiceWin::GetCurrentProxyConfig,
                                 traffic_annotation) {
   NetworkChangeNotifier::AddNetworkChangeObserver(this);
@@ -47,7 +49,7 @@ ProxyConfigServiceWin::~ProxyConfigServiceWin() {
   NetworkChangeNotifier::RemoveNetworkChangeObserver(this);
   // The registry functions below will end up going to disk.  TODO: Do this on
   // another thread to avoid slowing the current thread.  http://crbug.com/61453
-  base::ThreadRestrictions::ScopedAllowIO allow_io;
+  base::ScopedAllowBlocking scoped_allow_blocking;
   keys_to_watch_.clear();
 }
 
@@ -79,7 +81,7 @@ void ProxyConfigServiceWin::StartWatchingRegistryForChanges() {
 
   // The registry functions below will end up going to disk.  Do this on another
   // thread to avoid slowing the current thread.  http://crbug.com/61453
-  base::ThreadRestrictions::ScopedAllowIO allow_io;
+  base::ScopedAllowBlocking scoped_allow_blocking;
 
   // There are a number of different places where proxy settings can live
   // in the registry. In some cases it appears in a binary value, in other
@@ -125,10 +127,8 @@ bool ProxyConfigServiceWin::AddKeyToWatchList(HKEY rootkey,
 
 void ProxyConfigServiceWin::OnObjectSignaled(base::win::RegKey* key) {
   // Figure out which registry key signalled this change.
-  auto it = std::find_if(keys_to_watch_.begin(), keys_to_watch_.end(),
-                         [key](const std::unique_ptr<base::win::RegKey>& ptr) {
-                           return ptr.get() == key;
-                         });
+  auto it = base::ranges::find(keys_to_watch_, key,
+                               &std::unique_ptr<base::win::RegKey>::get);
   DCHECK(it != keys_to_watch_.end());
 
   // Keep watching the registry key.
@@ -156,6 +156,7 @@ void ProxyConfigServiceWin::GetCurrentProxyConfig(
   ProxyConfig proxy_config;
   SetFromIEConfig(&proxy_config, ie_config);
   FreeIEConfig(&ie_config);
+  proxy_config.set_from_system(true);
   *config = ProxyConfigWithAnnotation(proxy_config, traffic_annotation);
 }
 

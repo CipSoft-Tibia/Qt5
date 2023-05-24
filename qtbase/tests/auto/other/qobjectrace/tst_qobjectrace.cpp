@@ -1,36 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtCore>
-#include <QtTest/QtTest>
+#include <QTest>
 
-#include "emulationdetector.h"
+#include <QtTest/private/qemulationdetector_p.h>
+
+#include <optional>
 
 enum { OneMinute = 60 * 1000,
        TwoMinutes = OneMinute * 2 };
@@ -44,10 +21,20 @@ struct Functor
 class tst_QObjectRace: public QObject
 {
     Q_OBJECT
+public:
+    tst_QObjectRace()
+        : ThreadCount(QThread::idealThreadCount())
+    {}
+
 private slots:
     void moveToThreadRace();
     void destroyRace();
+    void blockingQueuedDestroyRace();
     void disconnectRace();
+    void disconnectRace2();
+
+private:
+    const int ThreadCount;
 };
 
 class RaceObject : public QObject
@@ -103,7 +90,8 @@ public:
         QThread::start();
     }
 
-    void run() {
+    void run() override
+    {
         QTimer zeroTimer;
         connect(&zeroTimer, SIGNAL(timeout()), object, SLOT(theSlot()));
         connect(&zeroTimer, SIGNAL(timeout()), this, SLOT(checkStopWatch()), Qt::DirectConnection);
@@ -130,8 +118,7 @@ void tst_QObjectRace::moveToThreadRace()
 {
     RaceObject *object = new RaceObject;
 
-    enum { ThreadCount = 6 };
-    RaceThread *threads[ThreadCount];
+    QVarLengthArray<RaceThread *, 16> threads(ThreadCount);
     for (int i = 0; i < ThreadCount; ++i) {
         threads[i] = new RaceThread;
         threads[i]->setObject(object);
@@ -218,7 +205,8 @@ public:
             objects[i]->moveToThread(this);
     }
 
-    void run() {
+    void run() override
+    {
         for (int i = number-1; i >= 0; --i) {
             /* Do some more connection and disconnection between object in this thread that have not been destroyed yet */
 
@@ -257,13 +245,13 @@ public:
 
 void tst_QObjectRace::destroyRace()
 {
-    if (EmulationDetector::isRunningArmOnX86())
+    if (QTestPrivate::isRunningArmOnX86())
         QSKIP("Test is too slow to run on emulator");
 
-    enum { ThreadCount = 10, ObjectCountPerThread = 2777,
-           ObjectCount = ThreadCount * ObjectCountPerThread };
+    constexpr int ObjectCountPerThread = 2777;
+    const int ObjectCount = ThreadCount * ObjectCountPerThread;
 
-    MyObject *objects[ObjectCount];
+    QVarLengthArray<MyObject *, ObjectCountPerThread * 10> objects(ObjectCount);
     for (int i = 0; i < ObjectCount; ++i)
         objects[i] = new MyObject;
 
@@ -280,10 +268,10 @@ void tst_QObjectRace::destroyRace()
                 objects[((i+5)*79) % ObjectCount],  Functor() );
     }
 
-    DestroyThread *threads[ThreadCount];
+    QVarLengthArray<DestroyThread *, 16> threads(ThreadCount);
     for (int i = 0; i < ThreadCount; ++i) {
         threads[i] = new DestroyThread;
-        threads[i]->setObjects(objects + i*ObjectCountPerThread, ObjectCountPerThread);
+        threads[i]->setObjects(objects.data() + i*ObjectCountPerThread, ObjectCountPerThread);
     }
 
     for (int i = 0; i < ThreadCount; ++i)
@@ -296,6 +284,89 @@ void tst_QObjectRace::destroyRace()
 
     for (int i = 0; i < ThreadCount; ++i)
         delete threads[i];
+}
+
+class BlockingQueuedDestroyRaceObject : public QObject
+{
+    Q_OBJECT
+
+public:
+    enum class Behavior { Normal, Crash };
+    explicit BlockingQueuedDestroyRaceObject(Behavior b = Behavior::Normal)
+        : m_behavior(b) {}
+
+signals:
+    bool aSignal();
+
+public slots:
+    bool aSlot()
+    {
+        switch (m_behavior) {
+        case Behavior::Normal:
+            return true;
+        case Behavior::Crash:
+            qFatal("Race detected in a blocking queued connection");
+            break;
+        }
+
+        Q_UNREACHABLE_RETURN(false);
+    }
+
+private:
+    Behavior m_behavior;
+};
+
+void tst_QObjectRace::blockingQueuedDestroyRace()
+{
+#if !QT_CONFIG(cxx11_future)
+    QSKIP("This test requires QThread::create");
+#else
+    enum { MinIterations = 100, MinTime = 3000, WaitTime = 25 };
+
+    BlockingQueuedDestroyRaceObject sender;
+
+    QDeadlineTimer timer(MinTime);
+    int iteration = 0;
+
+    while (iteration++ < MinIterations || !timer.hasExpired()) {
+        // Manually allocate some storage, and create a receiver in there
+        std::optional<BlockingQueuedDestroyRaceObject> receiver;
+
+        receiver.emplace(BlockingQueuedDestroyRaceObject::Behavior::Normal);
+
+        // Connect it to the sender via BlockingQueuedConnection
+        QVERIFY(connect(&sender, &BlockingQueuedDestroyRaceObject::aSignal,
+                        &*receiver, &BlockingQueuedDestroyRaceObject::aSlot,
+                        Qt::BlockingQueuedConnection));
+
+        const auto emitUntilDestroyed = [&sender] {
+            // Hack: as long as the receiver is alive and the connection
+            // established, the signal will return true (from the slot).
+            // When the receiver gets destroyed, the signal is disconnected
+            // and therefore the emission returns false.
+            while (emit sender.aSignal())
+                ;
+        };
+
+        std::unique_ptr<QThread> thread(QThread::create(emitUntilDestroyed));
+        thread->start();
+
+        QTest::qWait(WaitTime);
+
+        // Destroy the receiver, and immediately allocate a new one at
+        // the same address. In case of a race, this might cause:
+        // - the metacall event to be posted to a destroyed object;
+        // - the metacall event to be posted to the wrong object.
+        // In both cases we hope to catch the race by crashing.
+        receiver.reset();
+        receiver.emplace(BlockingQueuedDestroyRaceObject::Behavior::Crash);
+
+        // Flush events
+        QTest::qWait(0);
+
+        thread->wait();
+    }
+#endif
 }
 
 static QAtomicInteger<unsigned> countedStructObjectsCount;
@@ -330,7 +401,7 @@ public:
     {
     }
 
-    void run()
+    void run() override
     {
         while (!isInterruptionRequested()) {
             QMetaObject::Connection conn = connect(sender, &DisconnectRaceSenderObject::theSignal,
@@ -354,7 +425,7 @@ public:
     {
     }
 
-    void run()
+    void run() override
     {
         while (!isInterruptionRequested()) {
             emit sender->theSignal();
@@ -403,7 +474,7 @@ public:
     {
     }
 
-    void run()
+    void run() override
     {
         QScopedPointer<DeleteReceiverRaceReceiver> receiver(new DeleteReceiverRaceReceiver(sender));
         exec();
@@ -412,7 +483,7 @@ public:
 
 void tst_QObjectRace::disconnectRace()
 {
-    enum { ThreadCount = 20, TimeLimit = 3000 };
+    enum { TimeLimit = 3000 };
 
     QCOMPARE(countedStructObjectsCount.loadRelaxed(), 0u);
 
@@ -422,7 +493,7 @@ void tst_QObjectRace::disconnectRace()
         senderThread->start();
         sender->moveToThread(senderThread.data());
 
-        DisconnectRaceThread *threads[ThreadCount];
+        QVarLengthArray<DisconnectRaceThread *, 16> threads(ThreadCount);
         for (int i = 0; i < ThreadCount; ++i) {
             threads[i] = new DisconnectRaceThread(sender.data(), !(i % 10));
             threads[i]->start();
@@ -448,7 +519,7 @@ void tst_QObjectRace::disconnectRace()
         senderThread->start();
         sender->moveToThread(senderThread.data());
 
-        DeleteReceiverRaceReceiverThread *threads[ThreadCount];
+        QVarLengthArray<DeleteReceiverRaceReceiverThread *, 16> threads(ThreadCount);
         for (int i = 0; i < ThreadCount; ++i) {
             threads[i] = new DeleteReceiverRaceReceiverThread(sender.data());
             threads[i]->start();
@@ -467,6 +538,54 @@ void tst_QObjectRace::disconnectRace()
     }
 
     QCOMPARE(countedStructObjectsCount.loadRelaxed(), 0u);
+}
+
+void tst_QObjectRace::disconnectRace2()
+{
+    enum { IterationCount = 100, ConnectionCount = 100, YieldCount = 100 };
+
+    QAtomicPointer<MyObject> ptr;
+    QSemaphore createSemaphore(0);
+    QSemaphore proceedSemaphore(0);
+
+    std::unique_ptr<QThread> t1(QThread::create([&]() {
+        for (int i = 0; i < IterationCount; ++i) {
+            MyObject sender;
+            ptr.storeRelease(&sender);
+            createSemaphore.release();
+            proceedSemaphore.acquire();
+            ptr.storeRelaxed(nullptr);
+            for (int i = 0; i < YieldCount; ++i)
+                QThread::yieldCurrentThread();
+        }
+    }));
+    t1->start();
+
+
+    std::unique_ptr<QThread> t2(QThread::create([&]() {
+        auto connections = std::make_unique<QMetaObject::Connection[]>(ConnectionCount);
+        for (int i = 0; i < IterationCount; ++i) {
+            MyObject receiver;
+            MyObject *sender = nullptr;
+
+            createSemaphore.acquire();
+
+            while (!(sender = ptr.loadAcquire()))
+                ;
+
+            for (int i = 0; i < ConnectionCount; ++i)
+                connections[i] = QObject::connect(sender, &MyObject::signal1, &receiver, &MyObject::slot1);
+
+            proceedSemaphore.release();
+
+            for (int i = 0; i < ConnectionCount; ++i)
+                QObject::disconnect(connections[i]);
+        }
+    }));
+    t2->start();
+
+    t1->wait();
+    t2->wait();
 }
 
 QTEST_MAIN(tst_QObjectRace)

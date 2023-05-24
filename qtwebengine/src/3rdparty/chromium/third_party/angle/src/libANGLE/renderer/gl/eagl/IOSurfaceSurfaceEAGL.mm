@@ -9,7 +9,7 @@
 
 #import "common/platform.h"
 
-#if defined(ANGLE_PLATFORM_IOS) && !defined(ANGLE_PLATFORM_MACCATALYST)
+#if defined(ANGLE_ENABLE_EAGL)
 
 #    import "libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.h"
 
@@ -38,8 +38,6 @@ struct IOSurfaceFormatInfo
     GLenum internalFormat;
     GLenum type;
 
-    size_t componentBytes;
-
     GLenum nativeInternalFormat;
     GLenum nativeFormat;
     GLenum nativeType;
@@ -48,12 +46,12 @@ struct IOSurfaceFormatInfo
 // clang-format off
 
 static const IOSurfaceFormatInfo kIOSurfaceFormats[] = {
-    {GL_RED,      GL_UNSIGNED_BYTE,  1, GL_RED,  GL_RED,  GL_UNSIGNED_BYTE },
-    {GL_R16UI,    GL_UNSIGNED_SHORT, 2, GL_RED,  GL_RED,  GL_UNSIGNED_SHORT},
-    {GL_RG,       GL_UNSIGNED_BYTE,  2, GL_RG,   GL_RG,   GL_UNSIGNED_BYTE },
-    {GL_RGB,      GL_UNSIGNED_BYTE,  4, GL_RGBA, GL_BGRA, GL_UNSIGNED_BYTE },
-    {GL_BGRA_EXT, GL_UNSIGNED_BYTE,  4, GL_RGBA, GL_BGRA, GL_UNSIGNED_BYTE },
-    {GL_RGBA,     GL_HALF_FLOAT,     8, GL_RGBA, GL_RGBA, GL_HALF_FLOAT    },
+    {GL_RED,      GL_UNSIGNED_BYTE,  GL_R8,   GL_RED,  GL_UNSIGNED_BYTE },
+    {GL_R16UI,    GL_UNSIGNED_SHORT, GL_R16UI, GL_RED_INTEGER,  GL_UNSIGNED_SHORT},
+    {GL_RG,       GL_UNSIGNED_BYTE,  GL_RG8,  GL_RG,   GL_UNSIGNED_BYTE },
+    {GL_RGB,      GL_UNSIGNED_BYTE,  GL_RGBA, GL_BGRA, GL_UNSIGNED_BYTE },
+    {GL_BGRA_EXT, GL_UNSIGNED_BYTE,  GL_RGBA, GL_BGRA, GL_UNSIGNED_BYTE },
+    {GL_RGBA,     GL_HALF_FLOAT,     GL_RGBA, GL_RGBA, GL_HALF_FLOAT    },
 };
 
 // clang-format on
@@ -74,17 +72,22 @@ int FindIOSurfaceFormatIndex(GLenum internalFormat, GLenum type)
 }  // anonymous namespace
 
 IOSurfaceSurfaceEAGL::IOSurfaceSurfaceEAGL(const egl::SurfaceState &state,
+                                           RendererGL *renderer,
                                            EAGLContextObj cglContext,
                                            EGLClientBuffer buffer,
                                            const egl::AttributeMap &attribs)
     : SurfaceGL(state),
+      mFunctions(renderer->getFunctions()),
+      mStateManager(renderer->getStateManager()),
       mEAGLContext(cglContext),
       mIOSurface(nullptr),
+      mFramebufferID(0),
+      mTextureID(0),
       mWidth(0),
       mHeight(0),
       mPlane(0),
-      mRowStrideInPixels(0),
       mFormatIndex(-1),
+      mRowStrideInPixels(0),
       mAlphaInitialized(false)
 {
     // Keep reference to the IOSurface so it doesn't get deleted while the pbuffer exists.
@@ -113,6 +116,7 @@ IOSurfaceSurfaceEAGL::IOSurfaceSurfaceEAGL(const egl::SurfaceState &state,
     mAlphaInitialized = !hasEmulatedAlphaChannel();
 
 #    if defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+    ANGLE_UNUSED_VARIABLE(mEAGLContext);
     mBoundTextureID = 0;
     EGLAttrib usageHint =
         attribs.get(EGL_IOSURFACE_USAGE_HINT_ANGLE,
@@ -124,6 +128,13 @@ IOSurfaceSurfaceEAGL::IOSurfaceSurfaceEAGL(const egl::SurfaceState &state,
 
 IOSurfaceSurfaceEAGL::~IOSurfaceSurfaceEAGL()
 {
+    if (!mFramebufferID)
+    {
+        mStateManager->deleteFramebuffer(mFramebufferID);
+        mFramebufferID = 0;
+        mStateManager->deleteTexture(mTextureID);
+        mTextureID = 0;
+    }
     if (mIOSurface != nullptr)
     {
         CFRelease(mIOSurface);
@@ -206,7 +217,10 @@ egl::Error IOSurfaceSurfaceEAGL::bindTexImage(const gl::Context *context,
         // TODO(kbr): possibly more state to be set here, including setting any
         // pixel unpack buffer to 0 when using ES 3.0 contexts.
         gl::PixelUnpackState defaultUnpackState;
-        stateManager->setPixelUnpackState(defaultUnpackState);
+        if (IsError(stateManager->setPixelUnpackState(context, defaultUnpackState)))
+        {
+            return egl::EglBadState() << "Failed to set pixel unpack state.";
+        }
         textureData = IOSurfaceGetBaseAddress(mIOSurface);
     }
 
@@ -238,7 +252,10 @@ egl::Error IOSurfaceSurfaceEAGL::releaseTexImage(const gl::Context *context, EGL
         gl::PixelPackState state;
         state.rowLength = mRowStrideInPixels;
         state.alignment = 1;
-        stateManager->setPixelPackState(state);
+        if (IsError(stateManager->setPixelPackState(context, state)))
+        {
+            return egl::EglBadState() << "Failed to set pixel pack state.";
+        }
         // TODO(kbr): possibly more state to be set here, including setting any
         // pixel pack buffer to 0 when using ES 3.0 contexts.
         const auto &format = kIOSurfaceFormats[mFormatIndex];
@@ -315,81 +332,12 @@ bool IOSurfaceSurfaceEAGL::validateAttributes(EGLClientBuffer buffer,
         return false;
     }
 
-    // Check that the format matches this IOSurface plane
-    if (IOSurfaceGetBytesPerElementOfPlane(ioSurface, plane) !=
-        kIOSurfaceFormats[formatIndex].componentBytes)
-    {
-        return false;
-    }
+    // FIXME: Check that the format matches this IOSurface plane for pixel formats that we know of.
+    // We could map IOSurfaceGetPixelFormat to expected type plane and format type.
+    // However, the caller might supply us non-public pixel format, which makes exhaustive checks
+    // problematic.
 
     return true;
-}
-
-// Wraps a FramebufferGL to hook the destroy function to delete the texture associated with the
-// framebuffer.
-class IOSurfaceFramebuffer : public FramebufferGL
-{
-  public:
-    IOSurfaceFramebuffer(const gl::FramebufferState &data,
-                         GLuint id,
-                         GLuint textureId,
-                         bool isDefault,
-                         bool emulatedAlpha)
-        : FramebufferGL(data, id, isDefault, emulatedAlpha), mTextureId(textureId)
-    {}
-    void destroy(const gl::Context *context) override
-    {
-        GetFunctionsGL(context)->deleteTextures(1, &mTextureId);
-        FramebufferGL::destroy(context);
-    }
-
-  private:
-    GLuint mTextureId;
-};
-
-FramebufferImpl *IOSurfaceSurfaceEAGL::createDefaultFramebuffer(const gl::Context *context,
-                                                                const gl::FramebufferState &state)
-{
-    const FunctionsGL *functions = GetFunctionsGL(context);
-    StateManagerGL *stateManager = GetStateManagerGL(context);
-
-    GLuint texture = 0;
-    functions->genTextures(1, &texture);
-    stateManager->bindTexture(gl::TextureType::_2D, texture);
-
-#    if !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
-    const auto &format = kIOSurfaceFormats[mFormatIndex];
-
-    if (![mEAGLContext texImageIOSurface:mIOSurface
-                                  target:GL_TEXTURE_2D
-                          internalFormat:format.nativeInternalFormat
-                                   width:mWidth
-                                  height:mHeight
-                                  format:format.nativeFormat
-                                    type:format.nativeType
-                                   plane:mPlane])
-    {
-        ERR() << "[EAGLContext texImageIOSurface] failed";
-        return nullptr;
-    }
-#    else   // !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
-    ERR() << "IOSurfaces with OpenGL ES not supported on iOS Simulator";
-#    endif  // !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
-
-    if (IsError(initializeAlphaChannel(context, texture)))
-    {
-        ERR() << "Failed to initialize IOSurface alpha channel.";
-        return nullptr;
-    }
-
-    GLuint framebuffer = 0;
-    functions->genFramebuffers(1, &framebuffer);
-    stateManager->bindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-    stateManager->bindTexture(gl::TextureType::_2D, texture);
-    functions->framebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture,
-                                    0);
-
-    return new IOSurfaceFramebuffer(state, framebuffer, texture, true, hasEmulatedAlphaChannel());
 }
 
 angle::Result IOSurfaceSurfaceEAGL::initializeAlphaChannel(const gl::Context *context,
@@ -413,6 +361,64 @@ bool IOSurfaceSurfaceEAGL::hasEmulatedAlphaChannel() const
     return format.internalFormat == GL_RGB;
 }
 
+egl::Error IOSurfaceSurfaceEAGL::attachToFramebuffer(const gl::Context *context,
+                                                     gl::Framebuffer *framebuffer)
+{
+    FramebufferGL *framebufferGL = GetImplAs<FramebufferGL>(framebuffer);
+    ASSERT(framebufferGL->getFramebufferID() == 0);
+    if (mFramebufferID == 0)
+    {
+        GLuint textureID = 0;
+        mFunctions->genTextures(1, &textureID);
+        mStateManager->bindTexture(gl::TextureType::_2D, textureID);
+
+#    if !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+        const auto &format = kIOSurfaceFormats[mFormatIndex];
+
+        if (![mEAGLContext texImageIOSurface:mIOSurface
+                                      target:GL_TEXTURE_2D
+                              internalFormat:format.nativeInternalFormat
+                                       width:mWidth
+                                      height:mHeight
+                                      format:format.nativeFormat
+                                        type:format.nativeType
+                                       plane:mPlane])
+        {
+            return egl::EglContextLost() << "[EAGLContext texImageIOSurface] failed";
+        }
+#    else   // !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+        ERR() << "IOSurfaces with OpenGL ES not supported on iOS Simulator";
+#    endif  // !defined(ANGLE_PLATFORM_IOS_SIMULATOR)
+
+        if (IsError(initializeAlphaChannel(context, textureID)))
+        {
+            return egl::EglContextLost() << "Failed to initialize IOSurface alpha channel.";
+        }
+
+        GLuint framebufferID = 0;
+        mFunctions->genFramebuffers(1, &framebufferID);
+        mStateManager->bindFramebuffer(GL_FRAMEBUFFER, framebufferID);
+        mStateManager->bindTexture(gl::TextureType::_2D, textureID);
+        mFunctions->framebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                                         textureID, 0);
+        mFramebufferID = framebufferID;
+        mTextureID     = textureID;
+    }
+    framebufferGL->setFramebufferID(mFramebufferID);
+    framebufferGL->setHasEmulatedAlphaAttachment(hasEmulatedAlphaChannel());
+
+    return egl::NoError();
+}
+
+egl::Error IOSurfaceSurfaceEAGL::detachFromFramebuffer(const gl::Context *context,
+                                                       gl::Framebuffer *framebuffer)
+{
+    FramebufferGL *framebufferGL = GetImplAs<FramebufferGL>(framebuffer);
+    ASSERT(framebufferGL->getFramebufferID() == mFramebufferID);
+    framebufferGL->setFramebufferID(0);
+    return egl::NoError();
+}
+
 #    if defined(ANGLE_PLATFORM_IOS_SIMULATOR)
 IOSurfaceLockOptions IOSurfaceSurfaceEAGL::getIOSurfaceLockOptions() const
 {
@@ -427,4 +433,4 @@ IOSurfaceLockOptions IOSurfaceSurfaceEAGL::getIOSurfaceLockOptions() const
 
 }  // namespace rx
 
-#endif  // defined(ANGLE_PLATFORM_IOS)
+#endif  // defined(ANGLE_ENABLE_EAGL)

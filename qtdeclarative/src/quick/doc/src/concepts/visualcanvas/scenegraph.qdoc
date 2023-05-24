@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \title Qt Quick Scene Graph
@@ -145,9 +121,6 @@ type.
 Below is a complete list of material classes:
 \annotatedlist{qtquick-scenegraph-materials}
 
-For more details, see the \l {Scene Graph - Simple Material}
-
-
 \section2 Convenience Nodes
 
 The scene graph API is low-level and focuses on performance rather than
@@ -179,26 +152,16 @@ render loop.
 For detailed description of how the scene graph renderer works, see \l {Qt
 Quick Scene Graph Default Renderer}.
 
-There are three render loop variants available: \c basic, \c windows,
-and \c threaded. Out of these, \c basic and \c windows are
-single-threaded, while \c threaded performs scene graph rendering on a
-dedicated thread. Qt attempts to choose a suitable loop based on the
-platform and possibly the graphics drivers in use. When this is not
-satisfactory, or for testing purposes, the environment variable
-\c QSG_RENDER_LOOP can be used to force the usage of a given loop. To
-verify which render loop is in use, enable the \c qt.scenegraph.general
-\l {QLoggingCategory}{logging category}.
+There are two render loop variants available: \c basic, and \c threaded.
+\c basic is single-threaded, while \c threaded performs scene graph rendering on a
+dedicated thread. Qt attempts to choose a suitable loop based on the platform
+and possibly the graphics drivers in use. When this is not satisfactory, or for
+testing purposes, the environment variable \c QSG_RENDER_LOOP can be used to
+force the usage of a given loop. To verify which render loop is in use, enable
+the \c qt.scenegraph.general \l {QLoggingCategory}{logging category}.
 
-\note The \c threaded and \c windows render loops rely on the graphics API
-implementation for throttling, for example, by requesting a swap interval of 1
-in case of OpenGL. Some graphics drivers allow users to override this setting
-and turn it off, ignoring Qt's request. Without blocking in the swap buffers
-operation (or elsewhere), the render loop will run animations too fast and spin
-the CPU at 100%. If a system is known to be unable to provide vsync-based
-throttling, use the \c basic render loop instead by setting \c
-{QSG_RENDER_LOOP=basic} in the environment.
-
-\section2 Threaded Render Loop ("threaded")
+\section2 Threaded Render Loop ('threaded')
+\target threaded_render_loop
 
 On many configurations, the scene graph rendering will happen on a
 dedicated render thread. This is done to increase parallelism of
@@ -274,31 +237,26 @@ animations, process events, etc.
 \endlist
 
 The threaded renderer is currently used by default on Windows with
-opengl32.dll, Linux excluding Mesa llvmpipe, \macos with Metal, mobile
-platforms, and Embedded Linux with EGLFS, and with Vulkan regardless of the
-platform, but this is subject to change. It is always possible to force use of
-the threaded renderer by setting \c {QSG_RENDER_LOOP=threaded} in the
+Direct3D 11 and with OpenGL when using opengl32.dll, Linux excluding
+Mesa llvmpipe, \macos with Metal, mobile platforms, and Embedded Linux
+with EGLFS, and with Vulkan regardless of the platform. All this may
+change in future releases.  It is always possible to force use of the
+threaded renderer by setting \c {QSG_RENDER_LOOP=threaded} in the
 environment.
 
-\section2 Non-threaded Render Loops ("basic" and "windows")
+\section2 Non-threaded Render Loop ('basic')
 
-The non-threaded render loop is currently used by default on Windows with ANGLE
-or a non-default opengl32 implementation, \macos with OpenGL, and Linux with
-some drivers. For the latter this is mostly a precautionary measure, as not all
-combinations of OpenGL drivers and windowing systems have been tested. At the
-same time implementations like ANGLE or Mesa llvmpipe are not able to function
-properly with threaded rendering at all so not using threaded rendering is
-essential for these.
+The non-threaded render loop is currently used by default on Windows with
+OpenGL when not using the system's standard opengl32.dll, \macos with OpenGL,
+and Linux with some drivers. For the latter this is mostly a precautionary
+measure, as not all combinations of OpenGL drivers and windowing systems have
+been tested.
 
 On macOS and OpenGL, the threaded render loop is not supported when building
 with XCode 10 (10.14 SDK) or later, since this opts in to layer-backed views on
 macOS 10.14. You can build with Xcode 9 (10.13 SDK) to opt out of
 layer-backing, in which case the threaded render loop is available and used by
 default. There is no such restriction with Metal.
-
-By default \c windows is used for non-threaded rendering on Windows with ANGLE,
-while \c basic is used for all other platforms when non-threaded rendering is
-needed.
 
 Even when using the non-threaded render loop, you should write your code as if
 you are using the threaded renderer, as failing to do so will make the code
@@ -310,6 +268,187 @@ the non-threaded renderer.
 \image sg-renderloop-singlethreaded.png
 
 
+\section2 Driving Animations
+
+\section3 What does \c{Advance Animations} refer to in the above diagrams?
+
+By default, a Qt Quick animation (such, as a \l NumberAnimation) is driven by
+the default animation driver. This relies on basic system timers, such as
+QObject::startTimer(). The timer typically runs with an interval of 16
+milliseconds. While this will never be fully accurate and also depends on the
+accuracy of timers in the underlying platform, it has the benefit of being
+independent of the rendering. It provides uniform results regardless of the
+display refresh rate and if synchronization to the display's vertical sync is
+active or not. This is how animations work with the \c basic render loop.
+
+In order to provide more accurate results with less stutter on-screen,
+independent of the render loop design (be it single threaded or multiple
+threads) a render loop may decide to install its own custom animation driver,
+and take the operation of \c advancing it into its own hands, without relying
+on timers.
+
+This is what the \c threaded render loop implements. In fact, it installs not
+one, but two animation drivers: one on the gui thread (to drive regular
+animations, such as \l NumberAnimation), and one on the render thread (to drive
+render thread animations, i.e. the \l Animator types, such as \l
+OpacityAnimator or \l XAnimator). Both of these are advanced during the
+preparation of a frame, i.e. animations are now synchronized with rendering.
+This makes sense due to presentation being throttled to the display's vertical
+sync by the underlying graphics stack.
+
+Therefore, in the diagram for the \c threaded render loop above, there is an
+explicit \c{Advance animations} step on both threads. For the render thread,
+this is trivial: as the thread is being throttled to vsync, advancing
+animations (for \l Animator types) in each frame as if 16.67 milliseconds had
+elapsed gives more accurate results than relying on a system timer. (when
+throttled to the vsync timing, which is \c{1000/60} milliseconds with a 60 Hz
+refresh rate, it is fair to assume that it has been approximately that long
+since the same operation was done for the previous frame)
+
+The same approach works for animations on the gui (main) thread too: due to the
+essential synchronization of data between the gui and render threads, the gui
+thread is effectively throttled to the same rate as the render thread, while
+still having the benefit of having less work to do, leaving more headroom for
+the application logic since much of the rendering preparations are now
+offloaded to the render thread.
+
+While the above examples used 60 frames per second, Qt Quick is prepared for
+other refresh rates as well: the rate is queried from the QScreen and the
+platform. For example, with a 144 Hz screen the interval is 6.94 ms. At the
+same time this is exactly what can cause trouble if vsync-based throttling is
+not functioning as expected, because if what the render loop thinks is
+happening is not matching reality, incorrect animation pacing will occur.
+
+\note Starting from Qt 6.5, the threaded render loop offers the possibility of
+opting in to another animation driver, based solely on the elapsed time
+(QElapsedTimer). To enable this, set the \c{QSG_USE_SIMPLE_ANIMATION_DRIVER}
+environment variable to a non-zero value. This has the benefits of not needing
+any of the infrastructure for falling back to a QTimer when there are multiple
+windows, not needing heuristics trying determine if vsync-based throttling is
+missing or broken, being compatible with any kind of temporal drifts in vsync
+throttling, and not being tied to the primary screen's refresh rate, thus
+potentially working better in multi-screen setups. It also drives render
+thread animations (the \l Animator types) correctly even if vsync-based
+throttling is broken or disabled. On the other hand, animations may be
+perceived as less smooth with this approach. With compatibility in mind, it is
+offered as an opt-in feature at the moment.
+
+In summary, the \c threaded render loop is expected to provide smoother
+animations with less stutter as long as the following conditions are met:
+
+\list
+
+\li There is exactly one window (as in QQuickWindow) on-screen.
+
+\li VSync-based throttling works as expected with the underyling graphics and
+display stack.
+
+\endlist
+
+\section3 What if there is no or more than one window visible?
+
+When there is no renderable window, for example because our QQuickWindow is
+minimized (Windows) or fully obscured (macOS), we cannot present frames, thus
+cannot rely on the thread "working" in lockstep with the screen refresh rate.
+In this case, the \c threaded render loop automatically switches over to a
+system timer based approach to drive animations, i.e. temporarily switching
+over to the mechanism the \c basic loop would use.
+
+The same is true when there are more than one QQuickWindow instances on-screen.
+The model presented above for advancing animations on the gui thread, enabled
+by its synchronization with the render thread, is not satisfactory anymore, as
+there are now multiple sync points with multiple render threads. (one per
+window.) Here falling back to the system timer based approach becomes necessary
+as well, because how long and often the gui thread will block is now dependent
+on a number of factors, including the content in the windows (are they
+animating? how often are they updating?) and the graphics stack behavior (how
+exactly does it handle two or more threads presenting with wait-for-vsync?). As
+we cannot guarantee being throttled to the presentation rate of the window
+(which window would that be, to begin with?) in a stable, cross-platform
+manner, advancing animations cannot be based on the rendering.
+
+This switch of animation handling mechanisms is transparent to the
+applications.
+
+\section3 What if vsync-based throttling is disfunctional, globally disabled, or the application disabled it itself?
+
+The \c threaded render loop relies on the graphics API implementation and/or
+the windowing system for throttling, for example, by requesting a swap interval
+of 1 in case of OpenGL (GLX, EGL, WGL), calling Present() with an interval of 1
+for Direct 3D, or using the presentation mode \c FIFO with Vulkan.
+
+Some graphics drivers allow users to override this setting and turn it off,
+ignoring Qt's request. An example of this would be a system wide control panel
+of the graphics driver that allows overriding the application's settings with
+regards to vsync. It can also happen that a graphics stack is unable to provide
+proper vsync-based throttling, which can be the case in some virtual machines
+(mainly due to using a software rasterization based implementation of OpenGL or
+Vulkan).
+
+Without blocking in the swap/present operation (or some other graphics
+operation), such a render loop would advance animations too fast. This would be
+no issue with the \c basic render loop, because that always relies on system
+timers. With \c threaded, the behavior can vary based on the Qt version:
+
+\list
+
+\li If a system is known to be unable to provide vsync-based throttling, the
+only option before Qt 6.4 was to use the \c basic render loop, by manually
+setting \c {QSG_RENDER_LOOP=basic} in the environment before running the
+application.
+
+\li Starting with Qt 6.4, setting either the \c{QSG_NO_VSYNC} environment
+variable to a non-zero value, or the window's QSurfaceFormat::swapInterval() to
+\c 0 can both alleviate the problem as well: by explicitly requesting disabling
+vsync-based blocking, regardless of the request having any effect in practice,
+the \c threaded render loop can by extension recognize that relying on vsync to
+drive animations is futile, and it will fall back to using system timers, just
+as it would for more than one window.
+
+\li Even better, starting from Qt 6.4 the scenegraph also attempts to recognize
+using some simple heuristics that the frames are being presented "too fast",
+and automatically switch over to system timers if seen necessary. This means
+that in most cases there will be no need to do anything and applications will
+run animations as expected even when the default render loop is the \c threaded
+one. While this is transparent to applications, for troubleshooting and
+development purposes it is useful to know that this is logged with a \c{"Window
+0x7ffc8489c3d0 is determined to have broken vsync throttling ..."} message
+printed when \c{QSG_INFO} or \c{qt.scenegraph.general} is enabled. This method
+has the downside of activating only after a small set of frames, given that it
+first needs to collect data to evaluate, meaning that when opening a
+QQuickWindow the application may still show overly fast animations for a short
+period of time. Additionally, it may not capture all possible vsync-broken
+situations.
+
+\endlist
+
+Remember however, that by design none of this helps render thread animations
+(the \l Animator types). In the absence of vsync-based blocking,
+\l{Animator}{animators} will advance incorrectly by default, faster than
+expected, even when the workarounds are activated for regular
+\l{Animation}{animations}. If this becomes an issue, consider using the
+alternative animation driver by setting \c{QSG_USE_SIMPLE_ANIMATION_DRIVER}.
+
+\note Be aware that the rendering loop logic and event processing on the GUI
+(main) thread is not necessarily unthrottled even if waiting for vsync is
+disabled: both render loops schedule updates for windows via
+QWindow::requestUpdate(). This is backed by a 5 ms GUI thread timer on most
+platforms, in order to give time for event processing. On some platforms, e.g.
+macOS, it is using platform-specific APIs (such as, CVDisplayLink) to get
+notified about the appropriate time to prepare a new frame, likely tied to the
+display's vsync in some form. This can be relevant in benchmarking and similar
+situations. For applications and tools attempting to perform low-level
+benchmarking it may be beneficial to set the \c{QT_QPA_UPDATE_IDLE_TIME}
+environment variable to \c 0 in order to potentially reduce idle time on the
+GUI thread. For normal application usage the defaults should, in most cases, be
+sufficient.
+
+\note When in doubt, enable the \c {qt.scenegraph.general} and \c
+{qt.scenegraph.time.renderloop} logging categories for troubleshooting, as
+these may reveal some clues as to why rendering and animations are not running
+at the expected pace.
+
+
 \section2 Custom control over rendering with QQuickRenderControl
 
 When using QQuickRenderControl, the responsibility for driving the
@@ -319,24 +458,61 @@ invoke the polish, synchronize and rendering steps at the appropriate
 time. It is possible to implement either a threaded or non-threaded
 behavior similar to the ones shown above.
 
+Additionally, applications may wish to implement and install their own
+QAnimationDriver in combination with QQuickRenderControl. This gives full
+control over driving Qt Quick animations, which can be particularly important
+for content that is not shown on screen, bearing no relation to the
+presentation rate simply because there is no presenting of the frame happening.
+This is optional, by default animations will advance based on the system timer.
 
-\section2 Mixing Scene Graph and the native graphics API
 
-The scene graph offers two methods for integrating application-provided
-graphics commands: by issuing OpenGL, Vulkan, Metal, etc. commands directly,
-and by creating a textured node in the scene graph.
+\section2 Extending the Scene Graph with QRhi-based and native 3D rendering
+
+The scene graph offers three methods for integrating application-provided
+graphics commands:
+
+\list
+
+\li Issuing either \l{QRhi}-based or OpenGL, Vulkan, Metal, Direct3D commands
+directly before or after the scene graph's own rendering. This in effect
+prepends or appends a set of draw calls into the main render pass. No additional
+render target is used.
+
+\li Rendering to a texture and creating a textured node in the scene graph. This
+involves an additional render pass and render target.
+
+\li Issuing draw calls inline with the scene graph's own rendering by
+instantiating a QSGRenderNode subclass in the scene graph. This is similar to
+the first approach but the custom draw calls are effectively injected into the
+scene graph's command stream.
+
+\endlist
+
+\section3 Underlay/overlay mode
 
 By connecting to the \l QQuickWindow::beforeRendering() and \l
-QQuickWindow::afterRendering() signals, applications can make OpenGL calls
-directly into the same context as the scene graph is rendering to. With APIs
-like Vulkan or Metal, applications can query native objects, such as, the scene
-graph's command buffer, via QSGRendererInterface, and record commands to it as
-they see fit. As the signal names indicate, the user can then render content
-either under a Qt Quick scene or over it. The benefit of integrating in this
-manner is that no extra framebuffer nor memory is needed to perform the
-rendering, and a possibly expensive texturing step is eliminated. The downside
-is that Qt Quick decides when to call the signals and this is the only time the
-OpenGL application is allowed to draw.
+QQuickWindow::afterRendering() signals, applications can make \l QRhi or native
+3D API calls directly into the same context as the scene graph is rendering to.
+With APIs like Vulkan or Metal, applications can query native objects, such as,
+the scene graph's command buffer, via QSGRendererInterface, and record commands
+to it as they see fit. As the signal names indicate, the user can then render
+content either under a Qt Quick scene or over it. The benefit of integrating in
+this manner is that no extra render targets are needed to perform the rendering,
+and a possibly expensive texturing step is eliminated. The downside is that the
+custom rendering can only be issued either at the beginning or at the end of Qt
+Quick's own rendering. Using QSGRenderNode instead of the QQuickWindow signals
+can lift that restriction somewhat, but in either case care must be taken when
+it comes to 3D content and depth buffer usage since relying on depth testing and
+rendering with depth write enabled can easily create situations where the custom
+content and the Qt Quick content's depth buffer usage conflict with each other.
+
+From Qt 6.6 the \l QRhi APIs are considered semi-public, i.e. offered to the
+applications and documented, albeit with a limited compatibility guarantee. This
+allows creating portable, cross-platform 2D/3D rendering code by using the same
+graphics and shader abstractions the scene graph itself uses.
+
+The \l {Scene Graph - RHI Under QML} example gives an example on how to
+implement the underlay/overlay approach using \l QRhi.
 
 The \l {Scene Graph - OpenGL Under QML} example gives an example on
 how to use these signals using OpenGL.
@@ -350,30 +526,58 @@ how to use these signals using Metal.
 The \l {Scene Graph - Vulkan Under QML} example gives an example on
 how to use these signals using Vulkan.
 
-The other alternative, only available for OpenGL currently, is to create a
-QQuickFramebufferObject, render into it, and let it be displayed in the scene
-graph as a texture. The \l {Scene Graph - Rendering FBOs} example shows how
-this can be done. It is also possible to combine multiple rendering contexts
-and multiple threads to create content to be displayed in the scene graph. The
-\l {Scene Graph - Rendering FBOs in a thread} examples show how this can be
-done.
+Starting with Qt 6.0, direct usage of the underlying graphics API must be
+enclosed by a call to \l QQuickWindow::beginExternalCommands() and \l
+QQuickWindow::endExternalCommands(). This concept may be familiar from \l
+QPainter::beginNativePainting(), and serves a similar purpose: it allows the Qt
+Quick Scene Graph to recognize that any cached state and assumptions about the
+state within the currently recorded render pass, if there is one, are now
+invalid, because the application code may have altered it by working directly
+with the underlying graphics API. This is not applicable and necessary when
+using \l QRhi.
 
-Graphics APIs other than OpenGL can also follow this approach, even though
-QQuickFramebufferObject does not currently support them. Creating and rendering
-to a texture directly with the underlying API, followed by wrapping and using
-this resource in a Qt Quick scene in a custom QQuickItem, is demonstrated in
-the \l {Scene Graph - Metal Texture Import} example. That example uses Metal,
-the concepts however apply to all other graphics APIs as well.
+When mixing custom OpenGL rendering with the scene graph, it is important the
+application does not leave the OpenGL context in a state with buffers bound,
+attributes enabled, special values in the z-buffer or stencil-buffer or similar.
+Doing so can result in unpredictable behavior.
 
-\warning When mixing OpenGL content with scene graph rendering, it is
-important the application does not leave the OpenGL context in a state
-with buffers bound, attributes enabled, special values in the z-buffer
-or stencil-buffer or similar. Doing so can result in unpredictable
-behavior.
+The custom rendering code must be thread aware in the sense that it should not
+assume being executed on the GUI (main) thread of the application. When
+connecting to the \l QQuickWindow signals, the application should use
+Qt::DirectConnection and understand that the connected slots are invoked on the
+scene graph's dedicated render thread, if there is one.
 
-\warning The custom rendering code must be thread aware in the sense that it
-should not assume being executed on the GUI (main) thread of the application.
+\section3 The texture-based approach
 
+The texture-based alternative is the most flexible approach when the application
+needs to have a "flattened", 2D image of some custom 3D rendering within the Qt
+Quick scene. This also allows using a dedicated depth/stencil buffer that is
+independent of the buffers used by the main render pass.
+
+When using OpenGL, the legacy convenience class QQuickFramebufferObject can be
+used to achieve this. QRhi-based custom renderers and graphics APIs other than
+OpenGL can also follow this approach, even though QQuickFramebufferObject does
+not currently support them. Creating and rendering to a texture directly with
+the underlying API, followed by wrapping and using this resource in a Qt Quick
+scene in a custom QQuickItem, is demonstrated in the following examples:
+
+\l {Scene Graph - RHI Texture Item} example.
+
+\l {Scene Graph - Vulkan Texture Import} example.
+
+\l {Scene Graph - Metal Texture Import} example.
+
+\section3 The inline approach
+
+Using \l QSGRenderNode the custom draw calls are injected not at the beginning
+or the end of the recording of the scene graph's render pass, but rather during
+the scene graph's rendering process. This is achieved by creating a custom \l
+QQuickItem based by an instance of \l QSGRenderNode, a scene graph node that
+exists specifically to allow issuing graphics commands either via \l QRhi or a
+native 3D API such as OpenGL, Vulkan, Metal, or Direct 3D.
+
+The \l {Scene Graph - Custom QSGRenderNode} example gives a demonstration of
+this approach.
 
 \section2 Custom Items using QPainter
 
@@ -400,7 +604,13 @@ addition to being helpful to Qt contributors.
 
 \li \c {qt.scenegraph.time.renderer} - logs the time spent in the various steps of the renderer
 
-\li \c {qt.scenegraph.time.renderloop} - logs the time spent in the various steps of the render loop
+\li \c {qt.scenegraph.time.renderloop} - logs the time spent in the various
+steps of the render loop. With the \c threaded render loop this gives an
+insight into the time elapsed between the various frame preparation steps both
+on the GUI and the render thread. It can therefore also be a useful
+troubleshooting tool, for example, to confirm how vsync-based throttling and
+other low-level Qt enablers, such as QWindow::requestUpdate(), affect the
+rendering and presentation pipeline.
 
 \li \c {qt.scenegraph.time.glyph} - logs the time spent preparing distance field glyphs
 
@@ -696,6 +906,27 @@ with multiple windows.
   like a TextArea, this is fine. One should, however, use clip on
   smaller items with caution as it prevents batching. This includes
   button label, text field or list delegate and table cells.
+  Clipping a Flickable (or item view) can often be avoided by arranging
+  the UI so that opaque items cover areas around the Flickable, and
+  otherwise relying on the window edges to clip everything else.
+
+  Setting Item::clip to \c true also sets the \l QQuickItem::ItemIsViewport
+  flag; child items with the \l QQuickItem::ItemObservesViewport flag may
+  use the viewport for a rough pre-clipping step: e.g. \l Text omits
+  lines of text that are completely outside the viewport. Omitting scene
+  graph nodes or limiting the \l {QSGGeometry::vertexCount()}{vertices}
+  is an optimization, which can be achieved by setting the
+  \l {QQuickItem::flags()}{flags} in C++ rather than setting
+  \l Item::clip in QML.
+
+  When implementing QQuickItem::updatePaintNode() in a custom item,
+  if it can render a lot of details over a large geometric area,
+  you should think about whether it's efficient to limit the graphics
+  to the viewport; if so, you can set the \l {QQuickItem::}
+  {ItemObservesViewport} flag and read the currently exposed area from
+  QQuickItem::clipRect(). One consequence is that updatePaintNode() will be
+  called more often (typically once per frame whenever content is moving in
+  the viewport).
 
   \section2 Vertex Buffers
 
@@ -973,17 +1204,16 @@ with multiple windows.
 
   \section1 Rendering via the Qt Rendering Hardware Interface
 
-  From Qt 5.14 onwards, the default adaptation gains the option of rendering
-  via a graphics abstraction layer, the Qt Rendering Hardware Interface (RHI),
-  provided by the \l QtGui module. When enabled, no direct OpenGL calls are
-  made. Rather, the scene graph renders by using the APIs provided by the
-  abstraction layer, which is then translated into OpenGL, Vulkan, Metal, or
-  Direct 3D calls. Shader handling is also unified by writing shader code once,
-  compiling to \l{https://www.khronos.org/spir/}{SPIR-V}, and then translating
-  to the language appropriate for the various graphics APIs.
+  From Qt 6.0 onwards, the default adaptation always renders via a graphics
+  abstraction layer, the Qt Rendering Hardware Interface (RHI), provided by the
+  \l [QtGui]{Qt GUI} module. This means that, unlike Qt 5, no direct OpenGL calls are made
+  by the scene graph. Rather, it records resource and draw commands by using the
+  RHI APIs, which then translate the command stream into OpenGL, Vulkan, Metal,
+  or Direct 3D calls. Shader handling is also unified by writing shader code
+  once, compiling to \l{https://www.khronos.org/spir/}{SPIR-V}, and then
+  translating to the language appropriate for the various graphics APIs.
 
-  To enable this instead of directly using OpenGL, the following environment
-  variables can be used:
+  To control the behavior, the following environment variables can be used:
 
   \table 100%
   \header
@@ -992,16 +1222,12 @@ with multiple windows.
     \li Description
 
   \row
-    \li \c QSG_RHI
-    \li \c 1
-    \li Enables rendering via the RHI. The targeted graphics API is chosen based on
-    the platform, unless overridden by \c QSG_RHI_BACKEND. The defaults are currently
-    Direct3D 11 for Windows, Metal for macOS, OpenGL elsehwere.
-
-  \row
    \li \c QSG_RHI_BACKEND
-   \li \c vulkan, \c metal, \c opengl, \c d3d11
-   \li Requests the specific RHI backend.
+   \li \c vulkan, \c metal, \c opengl, \c d3d11, \c d3d12
+   \li Requests the specific RHI backend. By default the targeted graphics API
+   is chosen based on the platform, unless overridden by this variable or the
+   equivalent C++ APIs. The defaults are currently Direct3D 11 for Windows,
+   Metal for macOS, OpenGL elsewhere.
 
   \row
    \li \c QSG_INFO
@@ -1013,8 +1239,10 @@ with multiple windows.
   \row
    \li \c QSG_RHI_DEBUG_LAYER
    \li \c 1
-   \li Where applicable (Vulkan, Direct3D), enables the graphics API implementation's debug
-   and/or validation layers, if available.
+   \li Where applicable (Vulkan, Direct3D), enables the graphics API implementation's
+   debug or validation layers, if available, either on the graphics device or the instance
+   object. For Metal on \macos, set the environment variable
+   \c{METAL_DEVICE_WRAPPER_TYPE=1} instead.
 
   \row
    \li \c QSG_RHI_PREFER_SOFTWARE_RENDERER
@@ -1029,19 +1257,26 @@ with multiple windows.
   Applications wishing to always run with a single given graphics API, can
   request this via C++ as well. For example, the following call made early in
   main(), before constructing any QQuickWindow, forces the use of Vulkan (and
-  will fail otherwise);
+  will fail otherwise):
 
   \badcode
-      QQuickWindow::setSceneGraphBackend(QSGRendererInterface::VulkanRhi);
+      QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);
   \endcode
 
-  See QSGRendererInterface::GraphicsApi. The enum values ending in \c Rhi are
-  equivalent in effect to running with both \c QSG_RHI and \c QSG_RHI_BACKEND
-  set.
+  See QSGRendererInterface::GraphicsApi. The enum values \c OpenGL, \c Vulkan,
+  \c Metal, \c Direct3D11, \c Direct3D12 are equivalent in effect to running
+  with \c QSG_RHI_BACKEND set to the equivalent string key.
 
   All QRhi backends will choose the system default GPU adapter or physical
   device, unless overridden by \c{QSG_RHI_PREFER_SOFTWARE_RENDERER} or a
   backend-specific variable, such as, \c{QT_D3D_ADAPTER_INDEX} or
   \c{QT_VK_PHYSICAL_DEVICE_INDEX}. No further adapter configurability is
   provided at this time.
+
+  Starting with Qt 6.5, some of the settings that were previously only exposed
+  as environment variables are available as C++ APIs in
+  QQuickGraphicsConfiguration. For example, setting \c QSG_RHI_DEBUG_LAYER and
+  calling
+  \l{QQuickGraphicsConfiguration::setDebugLayer()}{setDebugLayer(true)}
+  are equivalent.
  */

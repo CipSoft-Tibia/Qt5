@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,6 +22,8 @@
 
 #include "fxbarcode/pdf417/BC_PDF417.h"
 
+#include <math.h>
+
 #include "fxbarcode/pdf417/BC_PDF417BarcodeMatrix.h"
 #include "fxbarcode/pdf417/BC_PDF417BarcodeRow.h"
 #include "fxbarcode/pdf417/BC_PDF417ErrorCorrection.h"
@@ -29,7 +31,7 @@
 
 namespace {
 
-const uint16_t g_CodewordTable[3][929] = {
+const uint16_t kCodewordTable[3][929] = {
     {0xd5c0, 0xeaf0, 0xf57c, 0xd4e0, 0xea78, 0xf53e, 0xa8c0, 0xd470, 0xa860,
      0x5040, 0xa830, 0x5020, 0xadc0, 0xd6f0, 0xeb7c, 0xace0, 0xd678, 0xeb3e,
      0x58c0, 0xac70, 0x5860, 0x5dc0, 0xaef0, 0xd77c, 0x5ce0, 0xae78, 0xd73e,
@@ -344,7 +346,7 @@ const uint16_t g_CodewordTable[3][929] = {
      0x0fb2, 0xc7ea}};
 
 int32_t Get17BitCodeword(int i, int j) {
-  return (0x10000 | g_CodewordTable[i][j]);
+  return (0x10000 | kCodewordTable[i][j]);
 }
 
 }  // namespace
@@ -364,7 +366,7 @@ bool CBC_PDF417::GenerateBarcodeLogic(WideStringView msg,
   if (errorCorrectionCodeWords < 0)
     return false;
 
-  Optional<WideString> high_level =
+  absl::optional<WideString> high_level =
       CBC_PDF417HighLevelEncoder::EncodeHighLevel(msg);
   if (!high_level.has_value())
     return false;
@@ -389,8 +391,9 @@ bool CBC_PDF417::GenerateBarcodeLogic(WideStringView msg,
     sb += (wchar_t)900;
 
   WideString dataCodewords(sb);
-  Optional<WideString> ec = CBC_PDF417ErrorCorrection::GenerateErrorCorrection(
-      dataCodewords, errorCorrectionLevel);
+  absl::optional<WideString> ec =
+      CBC_PDF417ErrorCorrection::GenerateErrorCorrection(dataCodewords,
+                                                         errorCorrectionLevel);
   if (!ec.has_value())
     return false;
 
@@ -432,19 +435,19 @@ void CBC_PDF417::encodeChar(int32_t pattern,
                             CBC_BarcodeRow* logic) {
   int32_t map = 1 << (len - 1);
   bool last = ((pattern & map) != 0);
-  int32_t width = 0;
+  size_t width = 0;
   for (int32_t i = 0; i < len; i++) {
     bool black = ((pattern & map) != 0);
     if (last == black) {
       width++;
     } else {
-      logic->addBar(last, width);
+      logic->AddBar(last, width);
       last = black;
       width = 1;
     }
     map >>= 1;
   }
-  logic->addBar(last, width);
+  logic->AddBar(last, width);
 }
 
 void CBC_PDF417::encodeLowLevel(WideString fullCodewords,

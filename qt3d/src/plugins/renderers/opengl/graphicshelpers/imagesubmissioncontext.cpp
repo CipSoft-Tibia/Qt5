@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "imagesubmissioncontext_p.h"
 #include <Qt3DRender/private/shaderimage_p.h>
@@ -190,8 +154,7 @@ GLenum glImageFormatForShaderImageFormat(QShaderImage::ImageFormat format,
 
     default:
         qWarning() << "Cannot map Texture format" << textureFormat << "to a valid Image Format";
-        Q_UNREACHABLE();
-        return GL_NONE;
+        Q_UNREACHABLE_RETURN(GL_NONE);
     }
 }
 
@@ -255,7 +218,7 @@ int ImageSubmissionContext::activateImage(ShaderImage *image, GLTexture *tex)
 // Unset pinned Active Image and reduce their score
 void ImageSubmissionContext::deactivateImages()
 {
-    for (int u = 0, m = m_activeImages.size();  u < m; ++u) {
+    for (size_t u = 0, m = m_activeImages.size();  u < m; ++u) {
         if (m_activeImages[u].pinned) {
             m_activeImages[u].pinned = false;
             m_activeImages[u].score = qMax(m_activeImages[u].score - 1, 0);
@@ -267,7 +230,7 @@ void ImageSubmissionContext::deactivateImages()
 // Reduce score of all active images (pinned or not)
 void ImageSubmissionContext::decayImageScores()
 {
-    for (int u = 0, m = m_activeImages.size();  u < m; ++u)
+    for (size_t u = 0, m = m_activeImages.size();  u < m; ++u)
         m_activeImages[u].score = qMax(m_activeImages[u].score - 1, 0);
 }
 
@@ -276,13 +239,13 @@ int ImageSubmissionContext::assignUnitForImage(Qt3DCore::QNodeId shaderImageId)
     int lowestScoredUnit = -1;
     int lowestScore = 0xfffffff;
 
-    const int m = m_activeImages.size();
-    for (int u = 0; u < m; ++u) {
+    const size_t m = m_activeImages.size();
+    for (size_t u = 0; u < m; ++u) {
         if (m_activeImages[u].shaderImageId == shaderImageId)
-            return u;
+            return int(u);
     }
 
-    for (int u = 0; u < m; ++u) {
+    for (size_t u = 0; u < m; ++u) {
         // No image is currently active on the image unit
         // we save the image unit with the texture that has been on there
         // the longest time while not being used
@@ -290,7 +253,7 @@ int ImageSubmissionContext::assignUnitForImage(Qt3DCore::QNodeId shaderImageId)
             const int score = m_activeImages[u].score;
             if (score < lowestScore) {
                 lowestScore = score;
-                lowestScoredUnit = u;
+                lowestScoredUnit = int(u);
             }
         }
     }

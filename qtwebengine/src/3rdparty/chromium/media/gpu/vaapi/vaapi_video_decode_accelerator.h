@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -19,14 +19,15 @@
 
 #include "base/containers/queue.h"
 #include "base/containers/small_map.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/single_thread_task_runner.h"
 #include "base/synchronization/condition_variable.h"
 #include "base/synchronization/lock.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/thread_annotations.h"
 #include "base/threading/thread.h"
 #include "base/trace_event/memory_dump_provider.h"
+#include "build/build_config.h"
 #include "media/base/bitstream_buffer.h"
 #include "media/gpu/decode_surface_handler.h"
 #include "media/gpu/gpu_video_decode_accelerator_helpers.h"
@@ -38,10 +39,6 @@
 
 namespace gl {
 class GLImage;
-}
-
-namespace gpu {
-class GpuDriverBugWorkarounds;
 }
 
 namespace media {
@@ -69,6 +66,10 @@ class MEDIA_GPU_EXPORT VaapiVideoDecodeAccelerator
       const MakeGLContextCurrentCallback& make_context_current_cb,
       const BindGLImageCallback& bind_image_cb);
 
+  VaapiVideoDecodeAccelerator(const VaapiVideoDecodeAccelerator&) = delete;
+  VaapiVideoDecodeAccelerator& operator=(const VaapiVideoDecodeAccelerator&) =
+      delete;
+
   ~VaapiVideoDecodeAccelerator() override;
 
   // VideoDecodeAccelerator implementation.
@@ -77,7 +78,7 @@ class MEDIA_GPU_EXPORT VaapiVideoDecodeAccelerator
   void Decode(scoped_refptr<DecoderBuffer> buffer,
               int32_t bitstream_id) override;
   void AssignPictureBuffers(const std::vector<PictureBuffer>& buffers) override;
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
   void ImportBufferForPicture(
       int32_t picture_buffer_id,
       VideoPixelFormat pixel_format,
@@ -87,13 +88,12 @@ class MEDIA_GPU_EXPORT VaapiVideoDecodeAccelerator
   void Flush() override;
   void Reset() override;
   void Destroy() override;
-  bool TryToSetupDecodeOnSeparateThread(
+  bool TryToSetupDecodeOnSeparateSequence(
       const base::WeakPtr<Client>& decode_client,
-      const scoped_refptr<base::SingleThreadTaskRunner>& decode_task_runner)
+      const scoped_refptr<base::SequencedTaskRunner>& decode_task_runner)
       override;
 
-  static VideoDecodeAccelerator::SupportedProfiles GetSupportedProfiles(
-      const gpu::GpuDriverBugWorkarounds& workarounds);
+  static VideoDecodeAccelerator::SupportedProfiles GetSupportedProfiles();
 
   // DecodeSurfaceHandler implementation.
   scoped_refptr<VASurface> CreateSurface() override;
@@ -116,7 +116,7 @@ class MEDIA_GPU_EXPORT VaapiVideoDecodeAccelerator
 
   // Notify the client that an error has occurred and decoding cannot continue.
   void NotifyError(Error error);
-  void NotifyStatus(Status status);
+  void NotifyStatus(VaapiStatus status);
 
   // Queue a input buffer for decode.
   void QueueInputBuffer(scoped_refptr<DecoderBuffer> buffer,
@@ -261,7 +261,7 @@ class MEDIA_GPU_EXPORT VaapiVideoDecodeAccelerator
   std::unique_ptr<AcceleratedVideoDecoder> decoder_;
   // TODO(crbug.com/1022246): Instead of having the raw pointer here, getting
   // the pointer from AcceleratedVideoDecoder.
-  VaapiVideoDecoderDelegate* decoder_delegate_ = nullptr;
+  raw_ptr<VaapiVideoDecoderDelegate> decoder_delegate_ = nullptr;
 
   // Filled in during Initialize().
   BufferAllocationMode buffer_allocation_mode_;
@@ -359,8 +359,6 @@ class MEDIA_GPU_EXPORT VaapiVideoDecodeAccelerator
 
   // The WeakPtrFactory for |weak_this_|.
   base::WeakPtrFactory<VaapiVideoDecodeAccelerator> weak_this_factory_;
-
-  DISALLOW_COPY_AND_ASSIGN(VaapiVideoDecodeAccelerator);
 };
 
 }  // namespace media

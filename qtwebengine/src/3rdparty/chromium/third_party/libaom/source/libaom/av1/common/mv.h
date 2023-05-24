@@ -12,22 +12,26 @@
 #ifndef AOM_AV1_COMMON_MV_H_
 #define AOM_AV1_COMMON_MV_H_
 
+#include <stdlib.h>
+
 #include "av1/common/common.h"
 #include "av1/common/common_data.h"
 #include "aom_dsp/aom_filter.h"
+#include "aom_dsp/flow_estimation/flow_estimation.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define INVALID_MV 0x80008000
+#define INVALID_MV_ROW_COL -32768
 #define GET_MV_RAWPEL(x) (((x) + 3 + ((x) >= 0)) >> 3)
 #define GET_MV_SUBPEL(x) ((x)*8)
 
 #define MARK_MV_INVALID(mv)                \
   do {                                     \
     ((int_mv *)(mv))->as_int = INVALID_MV; \
-  } while (0);
+  } while (0)
 #define CHECK_MV_EQUAL(x, y) (((x).row == (y).row) && ((x).col == (y).col))
 
 // The motion vector in units of full pixel
@@ -104,16 +108,6 @@ static AOM_INLINE void convert_fullmv_to_mv(int_mv *mv) {
 
 #define WARPEDDIFF_PREC_BITS (WARPEDMODEL_PREC_BITS - WARPEDPIXEL_PREC_BITS)
 
-/* clang-format off */
-enum {
-  IDENTITY = 0,      // identity transformation, 0-parameter
-  TRANSLATION = 1,   // translational motion 2-parameter
-  ROTZOOM = 2,       // simplified affine with rotation + zoom only, 4-parameter
-  AFFINE = 3,        // affine, 6-parameter
-  TRANS_TYPES,
-} UENUM1BYTE(TransformationType);
-/* clang-format on */
-
 // Number of types used for global motion (must be >= 3 and <= TRANS_TYPES)
 // The following can be useful:
 // GLOBAL_TRANS_TYPES 3 - up to rotation-zoom
@@ -127,16 +121,13 @@ typedef struct {
   int local_warp_allowed;
 } WarpTypesAllowed;
 
-// number of parameters used by each transformation in TransformationTypes
-static const int trans_model_params[TRANS_TYPES] = { 0, 2, 4, 6 };
-
 // The order of values in the wmmat matrix below is best described
 // by the homography:
 //      [x'     (m2 m3 m0   [x
 //  z .  y'  =   m4 m5 m1 *  y
 //       1]      m6 m7 1)    1]
 typedef struct {
-  int32_t wmmat[8];
+  int32_t wmmat[6];
   int16_t alpha, beta, gamma, delta;
   TransformationType wmtype;
   int8_t invalid;
@@ -144,8 +135,7 @@ typedef struct {
 
 /* clang-format off */
 static const WarpedMotionParams default_warp_params = {
-  { 0, 0, (1 << WARPEDMODEL_PREC_BITS), 0, 0, (1 << WARPEDMODEL_PREC_BITS), 0,
-    0 },
+  { 0, 0, (1 << WARPEDMODEL_PREC_BITS), 0, 0, (1 << WARPEDMODEL_PREC_BITS) },
   0, 0, 0, 0,
   IDENTITY,
   0,
@@ -280,6 +270,17 @@ static INLINE int_mv gm_get_motion_vector(const WarpedMotionParams *gm,
     // After the right shifts, there are 3 fractional bits of precision. If
     // allow_hp is false, the bottom bit is always zero (so we don't need a
     // call to convert_to_trans_prec here)
+    //
+    // Note: There is an AV1 specification bug here:
+    //
+    // gm->wmmat[0] is supposed to be the horizontal translation, and so should
+    // go into res.as_mv.col, and gm->wmmat[1] is supposed to be the vertical
+    // translation and so should go into res.as_mv.row
+    //
+    // However, in the spec, these assignments are accidentally reversed, and so
+    // we must keep this incorrect logic to match the spec.
+    //
+    // See also: https://crbug.com/aomedia/3328
     res.as_mv.row = gm->wmmat[0] >> GM_TRANS_ONLY_PREC_DIFF;
     res.as_mv.col = gm->wmmat[1] >> GM_TRANS_ONLY_PREC_DIFF;
     assert(IMPLIES(1 & (res.as_mv.row | res.as_mv.col), allow_hp));

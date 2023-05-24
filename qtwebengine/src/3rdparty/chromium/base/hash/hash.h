@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,6 @@
 
 #include "base/base_export.h"
 #include "base/containers/span.h"
-#include "base/strings/string16.h"
 #include "base/strings/string_piece.h"
 
 namespace base {
@@ -28,7 +27,7 @@ namespace base {
 // TODO(https://crbug.com/1025358): Migrate client code to new hash function.
 BASE_EXPORT uint32_t Hash(const void* data, size_t length);
 BASE_EXPORT uint32_t Hash(const std::string& str);
-BASE_EXPORT uint32_t Hash(const string16& str);
+BASE_EXPORT uint32_t Hash(const std::u16string& str);
 
 // Really *fast* and high quality hash.
 // Recommended hash function for general use, we pick the best performant

@@ -23,24 +23,30 @@
  * DAMAGE.
  */
 
-#include <memory>
-#include "third_party/blink/renderer/modules/webaudio/delay_dsp_kernel.h"
 #include "third_party/blink/renderer/modules/webaudio/delay_processor.h"
+
+#include <memory>
+
+#include "third_party/blink/renderer/modules/webaudio/delay_dsp_kernel.h"
 #include "third_party/blink/renderer/platform/audio/audio_utilities.h"
 
 namespace blink {
 
 DelayProcessor::DelayProcessor(float sample_rate,
                                unsigned number_of_channels,
+                               unsigned render_quantum_frames,
                                AudioParamHandler& delay_time,
                                double max_delay_time)
-    : AudioDSPKernelProcessor(sample_rate, number_of_channels),
+    : AudioDSPKernelProcessor(sample_rate,
+                              number_of_channels,
+                              render_quantum_frames),
       delay_time_(&delay_time),
       max_delay_time_(max_delay_time) {}
 
 DelayProcessor::~DelayProcessor() {
-  if (IsInitialized())
+  if (IsInitialized()) {
     Uninitialize();
+  }
 }
 
 std::unique_ptr<AudioDSPKernel> DelayProcessor::CreateKernel() {
@@ -48,11 +54,11 @@ std::unique_ptr<AudioDSPKernel> DelayProcessor::CreateKernel() {
 }
 
 void DelayProcessor::ProcessOnlyAudioParams(uint32_t frames_to_process) {
-  DCHECK_LE(frames_to_process, audio_utilities::kRenderQuantumFrames);
+  DCHECK_LE(frames_to_process, RenderQuantumFrames());
 
-  float values[audio_utilities::kRenderQuantumFrames];
+  Vector<float> values(RenderQuantumFrames());
 
-  delay_time_->CalculateSampleAccurateValues(values, frames_to_process);
+  delay_time_->CalculateSampleAccurateValues(values.data(), frames_to_process);
 }
 
 }  // namespace blink

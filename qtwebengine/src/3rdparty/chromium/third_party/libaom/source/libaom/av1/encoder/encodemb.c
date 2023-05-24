@@ -30,24 +30,24 @@
 
 #include "av1/encoder/av1_quantize.h"
 #include "av1/encoder/encodemb.h"
-#include "av1/encoder/encodetxb.h"
 #include "av1/encoder/hybrid_fwd_txfm.h"
+#include "av1/encoder/txb_rdopt.h"
 #include "av1/encoder/rd.h"
 #include "av1/encoder/rdopt.h"
 
-void av1_subtract_block(const MACROBLOCKD *xd, int rows, int cols,
-                        int16_t *diff, ptrdiff_t diff_stride,
-                        const uint8_t *src8, ptrdiff_t src_stride,
-                        const uint8_t *pred8, ptrdiff_t pred_stride) {
+void av1_subtract_block(BitDepthInfo bd_info, int rows, int cols, int16_t *diff,
+                        ptrdiff_t diff_stride, const uint8_t *src8,
+                        ptrdiff_t src_stride, const uint8_t *pred8,
+                        ptrdiff_t pred_stride) {
   assert(rows >= 4 && cols >= 4);
 #if CONFIG_AV1_HIGHBITDEPTH
-  if (is_cur_buf_hbd(xd)) {
+  if (bd_info.use_highbitdepth_buf) {
     aom_highbd_subtract_block(rows, cols, diff, diff_stride, src8, src_stride,
-                              pred8, pred_stride, xd->bd);
+                              pred8, pred_stride);
     return;
   }
 #endif
-  (void)xd;
+  (void)bd_info;
   aom_subtract_block(rows, cols, diff, diff_stride, src8, src_stride, pred8,
                      pred_stride);
 }
@@ -55,6 +55,7 @@ void av1_subtract_block(const MACROBLOCKD *xd, int rows, int cols,
 void av1_subtract_txb(MACROBLOCK *x, int plane, BLOCK_SIZE plane_bsize,
                       int blk_col, int blk_row, TX_SIZE tx_size) {
   MACROBLOCKD *const xd = &x->e_mbd;
+  const BitDepthInfo bd_info = get_bit_depth_info(xd);
   struct macroblock_plane *const p = &x->plane[plane];
   const struct macroblockd_plane *const pd = &x->e_mbd.plane[plane];
   const int diff_stride = block_size_wide[plane_bsize];
@@ -66,8 +67,8 @@ void av1_subtract_txb(MACROBLOCK *x, int plane, BLOCK_SIZE plane_bsize,
   uint8_t *src = &p->src.buf[(blk_row * src_stride + blk_col) << MI_SIZE_LOG2];
   int16_t *src_diff =
       &p->src_diff[(blk_row * diff_stride + blk_col) << MI_SIZE_LOG2];
-  av1_subtract_block(xd, tx1d_height, tx1d_width, src_diff, diff_stride, src,
-                     src_stride, dst, dst_stride);
+  av1_subtract_block(bd_info, tx1d_height, tx1d_width, src_diff, diff_stride,
+                     src, src_stride, dst, dst_stride);
 }
 
 void av1_subtract_plane(MACROBLOCK *x, BLOCK_SIZE plane_bsize, int plane) {
@@ -77,9 +78,10 @@ void av1_subtract_plane(MACROBLOCK *x, BLOCK_SIZE plane_bsize, int plane) {
   const int bw = block_size_wide[plane_bsize];
   const int bh = block_size_high[plane_bsize];
   const MACROBLOCKD *xd = &x->e_mbd;
+  const BitDepthInfo bd_info = get_bit_depth_info(xd);
 
-  av1_subtract_block(xd, bh, bw, p->src_diff, bw, p->src.buf, p->src.stride,
-                     pd->dst.buf, pd->dst.stride);
+  av1_subtract_block(bd_info, bh, bw, p->src_diff, bw, p->src.buf,
+                     p->src.stride, pd->dst.buf, pd->dst.stride);
 }
 
 int av1_optimize_b(const struct AV1_COMP *cpi, MACROBLOCK *x, int plane,
@@ -96,8 +98,8 @@ int av1_optimize_b(const struct AV1_COMP *cpi, MACROBLOCK *x, int plane,
     return eob;
   }
 
-  return av1_optimize_txb_new(cpi, x, plane, block, tx_size, tx_type, txb_ctx,
-                              rate_cost, cpi->oxcf.algo_cfg.sharpness);
+  return av1_optimize_txb(cpi, x, plane, block, tx_size, tx_type, txb_ctx,
+                          rate_cost, cpi->oxcf.algo_cfg.sharpness);
 }
 
 // Hyper-parameters for dropout optimization, based on following logics.
@@ -132,13 +134,8 @@ const int DROPOUT_MULTIPLIER_Q_BASE = 32;  // Base Q to compute multiplier.
 
 void av1_dropout_qcoeff(MACROBLOCK *mb, int plane, int block, TX_SIZE tx_size,
                         TX_TYPE tx_type, int qindex) {
-  const struct macroblock_plane *const p = &mb->plane[plane];
-  tran_low_t *const qcoeff = p->qcoeff + BLOCK_OFFSET(block);
-  tran_low_t *const dqcoeff = p->dqcoeff + BLOCK_OFFSET(block);
   const int tx_width = tx_size_wide[tx_size];
   const int tx_height = tx_size_high[tx_size];
-  const int max_eob = av1_get_max_eob(tx_size);
-  const SCAN_ORDER *const scan_order = get_scan(tx_size, tx_type);
 
   // Early return if `qindex` is out of range.
   if (qindex > DROPOUT_Q_MAX || qindex < DROPOUT_Q_MIN) {
@@ -156,8 +153,22 @@ void av1_dropout_qcoeff(MACROBLOCK *mb, int plane, int block, TX_SIZE tx_size,
       multiplier *
       CLIP(base_size, DROPOUT_AFTER_BASE_MIN, DROPOUT_AFTER_BASE_MAX);
 
+  av1_dropout_qcoeff_num(mb, plane, block, tx_size, tx_type, dropout_num_before,
+                         dropout_num_after);
+}
+
+void av1_dropout_qcoeff_num(MACROBLOCK *mb, int plane, int block,
+                            TX_SIZE tx_size, TX_TYPE tx_type,
+                            int dropout_num_before, int dropout_num_after) {
+  const struct macroblock_plane *const p = &mb->plane[plane];
+  tran_low_t *const qcoeff = p->qcoeff + BLOCK_OFFSET(block);
+  tran_low_t *const dqcoeff = p->dqcoeff + BLOCK_OFFSET(block);
+  const int max_eob = av1_get_max_eob(tx_size);
+  const SCAN_ORDER *const scan_order = get_scan(tx_size, tx_type);
+
   // Early return if there are not enough non-zero coefficients.
-  if (p->eobs[block] == 0 || p->eobs[block] <= dropout_num_before) {
+  if (p->eobs[block] == 0 || p->eobs[block] <= dropout_num_before ||
+      max_eob <= dropout_num_before + dropout_num_after) {
     return;
   }
 
@@ -172,7 +183,8 @@ void av1_dropout_qcoeff(MACROBLOCK *mb, int plane, int block, TX_SIZE tx_size,
 
   for (int i = 0; i < p->eobs[block]; ++i) {
     const int scan_idx = scan_order->scan[i];
-    if (qcoeff[scan_idx] > DROPOUT_COEFF_MAX) {  // Keep large coefficients.
+    if (abs(qcoeff[scan_idx]) > DROPOUT_COEFF_MAX) {
+      // Keep large coefficients.
       count_zeros_before = 0;
       count_zeros_after = 0;
       idx = -1;
@@ -197,6 +209,7 @@ void av1_dropout_qcoeff(MACROBLOCK *mb, int plane, int block, TX_SIZE tx_size,
     if (count_nonzeros > DROPOUT_CONTINUITY_MAX) {
       count_zeros_before = 0;
       count_zeros_after = 0;
+      count_nonzeros = 0;
       idx = -1;
       eob = i + 1;
     }
@@ -259,9 +272,22 @@ static AV1_QUANT_FACADE quant_func_list[AV1_XFORM_QUANT_TYPES] = {
 };
 #endif
 
+// Computes the transform for DC only blocks
+void av1_xform_dc_only(MACROBLOCK *x, int plane, int block,
+                       TxfmParam *txfm_param, int64_t per_px_mean) {
+  assert(per_px_mean != INT64_MAX);
+  const struct macroblock_plane *const p = &x->plane[plane];
+  const int block_offset = BLOCK_OFFSET(block);
+  tran_low_t *const coeff = p->coeff + block_offset;
+  const int n_coeffs = av1_get_max_eob(txfm_param->tx_size);
+  memset(coeff, 0, sizeof(*coeff) * n_coeffs);
+  coeff[0] =
+      (tran_low_t)((per_px_mean * dc_coeff_scale[txfm_param->tx_size]) >> 12);
+}
+
 void av1_xform_quant(MACROBLOCK *x, int plane, int block, int blk_row,
                      int blk_col, BLOCK_SIZE plane_bsize, TxfmParam *txfm_param,
-                     QUANT_PARAM *qparam) {
+                     const QUANT_PARAM *qparam) {
   av1_xform(x, plane, block, blk_row, blk_col, plane_bsize, txfm_param);
   av1_quant(x, plane, block, txfm_param, qparam);
 }
@@ -280,7 +306,7 @@ void av1_xform(MACROBLOCK *x, int plane, int block, int blk_row, int blk_col,
 }
 
 void av1_quant(MACROBLOCK *x, int plane, int block, TxfmParam *txfm_param,
-               QUANT_PARAM *qparam) {
+               const QUANT_PARAM *qparam) {
   const struct macroblock_plane *const p = &x->plane[plane];
   const SCAN_ORDER *const scan_order =
       get_scan(txfm_param->tx_size, txfm_param->tx_type);
@@ -377,8 +403,11 @@ static void encode_block(int plane, int block, int blk_row, int blk_col,
   l = &args->tl[blk_row];
 
   TX_TYPE tx_type = DCT_DCT;
-  if (!is_blk_skip(x->txfm_search_info.blk_skip, plane,
-                   blk_row * bw + blk_col) &&
+  const int blk_skip_idx =
+      (cpi->sf.rt_sf.use_nonrd_pick_mode && is_inter_block(mbmi))
+          ? blk_row * bw / 4 + blk_col / 2
+          : blk_row * bw + blk_col;
+  if (!is_blk_skip(x->txfm_search_info.blk_skip, plane, blk_skip_idx) &&
       !mbmi->skip_mode) {
     tx_type = av1_get_tx_type(xd, pd->plane_type, blk_row, blk_col, tx_size,
                               cm->features.reduced_tx_set_used);
@@ -479,7 +508,7 @@ static void encode_block_inter(int plane, int block, int blk_row, int blk_col,
   if (blk_row >= max_blocks_high || blk_col >= max_blocks_wide) return;
 
   const TX_SIZE plane_tx_size =
-      plane ? av1_get_max_uv_txsize(mbmi->sb_type, pd->subsampling_x,
+      plane ? av1_get_max_uv_txsize(mbmi->bsize, pd->subsampling_x,
                                     pd->subsampling_y)
             : mbmi->inter_tx_size[av1_get_txb_size_index(plane_bsize, blk_row,
                                                          blk_col)];
@@ -500,14 +529,16 @@ static void encode_block_inter(int plane, int block, int blk_row, int blk_col,
     const int bsw = tx_size_wide_unit[sub_txs];
     const int bsh = tx_size_high_unit[sub_txs];
     const int step = bsh * bsw;
+    const int row_end =
+        AOMMIN(tx_size_high_unit[tx_size], max_blocks_high - blk_row);
+    const int col_end =
+        AOMMIN(tx_size_wide_unit[tx_size], max_blocks_wide - blk_col);
     assert(bsw > 0 && bsh > 0);
 
-    for (int row = 0; row < tx_size_high_unit[tx_size]; row += bsh) {
-      for (int col = 0; col < tx_size_wide_unit[tx_size]; col += bsw) {
-        const int offsetr = blk_row + row;
+    for (int row = 0; row < row_end; row += bsh) {
+      const int offsetr = blk_row + row;
+      for (int col = 0; col < col_end; col += bsw) {
         const int offsetc = blk_col + col;
-
-        if (offsetr >= max_blocks_high || offsetc >= max_blocks_wide) continue;
 
         encode_block_inter(plane, block, offsetr, offsetc, plane_bsize, sub_txs,
                            arg, dry_run);
@@ -525,6 +556,13 @@ void av1_foreach_transformed_block_in_plane(
   // 4x4=0, 8x8=2, 16x16=4, 32x32=6, 64x64=8
   // transform size varies per plane, look it up in a common way.
   const TX_SIZE tx_size = av1_get_tx_size(plane, xd);
+  const BLOCK_SIZE tx_bsize = txsize_to_bsize[tx_size];
+  // Call visit() directly with zero offsets if the current block size is the
+  // same as the transform block size.
+  if (plane_bsize == tx_bsize) {
+    visit(plane, 0, 0, 0, plane_bsize, tx_size, arg);
+    return;
+  }
   const uint8_t txw_unit = tx_size_wide_unit[tx_size];
   const uint8_t txh_unit = tx_size_high_unit[tx_size];
   const int step = txw_unit * txh_unit;
@@ -557,6 +595,8 @@ void av1_foreach_transformed_block_in_plane(
       }
     }
   }
+  // Check if visit() is invoked at least once.
+  assert(i >= 1);
 }
 
 typedef struct encode_block_pass1_args {

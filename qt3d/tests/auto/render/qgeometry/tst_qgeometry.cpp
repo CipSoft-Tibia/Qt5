@@ -1,59 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
-// TODO Remove in Qt6
-#include <QtCore/qcompilerdetection.h>
-QT_WARNING_DISABLE_DEPRECATED
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
-#include <Qt3DCore/qpropertyupdatedchange.h>
 #include <Qt3DCore/private/qnode_p.h>
 #include <Qt3DCore/private/qscene_p.h>
-#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
 
-#include <Qt3DRender/qgeometry.h>
-#include <Qt3DRender/private/qgeometry_p.h>
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qbuffer.h>
+#include <Qt3DCore/qgeometry.h>
+#include <Qt3DCore/private/qgeometry_p.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
 
 #include <QSignalSpy>
 
-#include "testpostmanarbiter.h"
+#include "testarbiter.h"
 
-class FakeGeometry : public Qt3DRender::QGeometry
+class FakeGeometry : public Qt3DCore::QGeometry
 {
     Q_OBJECT
-
-public:
-    void sceneChangeEvent(const Qt3DCore::QSceneChangePtr &change) override
-    {
-        Qt3DRender::QGeometry::sceneChangeEvent(change);
-    }
 };
 
 class tst_QGeometry: public QObject
@@ -62,109 +25,47 @@ class tst_QGeometry: public QObject
 
 private Q_SLOTS:
 
-    void checkCloning_data()
-    {
-        QTest::addColumn<Qt3DRender::QGeometry *>("geometry");
-        QTest::addColumn<int>("attributeCount");
-
-        Qt3DRender::QGeometry *defaultConstructed = new Qt3DRender::QGeometry();
-        QTest::newRow("defaultConstructed") << defaultConstructed << 0;
-
-        Qt3DRender::QGeometry *geometry1 = new Qt3DRender::QGeometry();
-        Qt3DRender::QAttribute *attribute = new Qt3DRender::QAttribute(nullptr, QStringLiteral("Attr1"), Qt3DRender::QAttribute::Float, 4, 454);
-        geometry1->addAttribute(attribute);
-        geometry1->addAttribute(new Qt3DRender::QAttribute(nullptr, QStringLiteral("Attr2"), Qt3DRender::QAttribute::Float, 4, 555));
-        geometry1->setBoundingVolumePositionAttribute(attribute);
-        QTest::newRow("2 attributes") << geometry1 << 2;
-
-
-        Qt3DRender::QGeometry *geometry2 = new Qt3DRender::QGeometry();
-        attribute = new Qt3DRender::QAttribute(nullptr, QStringLiteral("Attr2"), Qt3DRender::QAttribute::Float, 4, 383);
-        geometry2->addAttribute(new Qt3DRender::QAttribute(nullptr, QStringLiteral("Attr1"), Qt3DRender::QAttribute::Float, 3, 427));
-        geometry2->addAttribute(attribute);
-        geometry2->addAttribute(new Qt3DRender::QAttribute(nullptr, QStringLiteral("Attr3"), Qt3DRender::QAttribute::Float, 2, 327));
-        geometry2->removeAttribute(attribute);
-        QTest::newRow("3 - 1 attributes") << geometry2 << 2;
-    }
-
-    void checkCloning()
-    {
-        // GIVEN
-        QFETCH(Qt3DRender::QGeometry *, geometry);
-        QFETCH(int, attributeCount);
-
-        // WHEN
-        Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(geometry);
-        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges = creationChangeGenerator.creationChanges();
-
-        // THEN
-        QCOMPARE(creationChanges.size(), 1 + geometry->childNodes().size());
-
-        const Qt3DCore::QNodeCreatedChangePtr<Qt3DRender::QGeometryData> creationChangeData =
-                qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QGeometryData>>(creationChanges.first());
-        const Qt3DRender::QGeometryData &cloneData = creationChangeData->data;
-
-        QCOMPARE(geometry->id(), creationChangeData->subjectId());
-        QCOMPARE(geometry->isEnabled(), creationChangeData->isNodeEnabled());
-        QCOMPARE(geometry->metaObject(), creationChangeData->metaObject());
-
-        QCOMPARE(attributeCount, geometry->attributes().count());
-        QCOMPARE(attributeCount, cloneData.attributeIds.count());
-        if (geometry->boundingVolumePositionAttribute())
-                QCOMPARE(geometry->boundingVolumePositionAttribute()->id(), cloneData.boundingVolumePositionAttributeId);
-
-        for (int i = 0; i < attributeCount; ++i) {
-            Qt3DRender::QAttribute *originalAttribute = static_cast<Qt3DRender::QAttribute *>(geometry->attributes()[i]);
-            QCOMPARE(originalAttribute->id(), cloneData.attributeIds.at(i));
-        }
-    }
-
     void checkPropertyUpdates()
     {
         // GIVEN
         TestArbiter arbiter;
-        QScopedPointer<Qt3DRender::QGeometry> geometry(new Qt3DRender::QGeometry());
+        QScopedPointer<Qt3DCore::QGeometry> geometry(new Qt3DCore::QGeometry());
         arbiter.setArbiterOnNode(geometry.data());
 
         // WHEN
-        Qt3DRender::QAttribute attr;
+        Qt3DCore::QAttribute attr;
         geometry->addAttribute(&attr);
         QCoreApplication::processEvents();
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), geometry.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), geometry.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // WHEN
         geometry->addAttribute(&attr);
         QCoreApplication::processEvents();
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 0);
+        QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
         // WHEN
         geometry->removeAttribute(&attr);
         QCoreApplication::processEvents();
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), geometry.data());
-
-        arbiter.events.clear();
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), geometry.data());
     }
 
     void checkAttributeBookkeeping()
     {
         // GIVEN
-        QScopedPointer<Qt3DRender::QGeometry> geometry(new Qt3DRender::QGeometry);
+        QScopedPointer<Qt3DCore::QGeometry> geometry(new Qt3DCore::QGeometry);
         {
             // WHEN
-            Qt3DRender::QAttribute attribute;
+            Qt3DCore::QAttribute attribute;
             geometry->addAttribute(&attribute);
 
             // THEN
@@ -176,8 +77,8 @@ private Q_SLOTS:
 
         {
             // WHEN
-            Qt3DRender::QGeometry someOtherGeometry;
-            QScopedPointer<Qt3DRender::QAttribute> attribute(new Qt3DRender::QAttribute(&someOtherGeometry));
+            Qt3DCore::QGeometry someOtherGeometry;
+            QScopedPointer<Qt3DCore::QAttribute> attribute(new Qt3DCore::QAttribute(&someOtherGeometry));
             geometry->addAttribute(attribute.data());
 
             // THEN
@@ -208,31 +109,26 @@ private Q_SLOTS:
         QCOMPARE(geometry->maxExtent(), QVector3D());
 
         // WHEN
-        Qt3DCore::QPropertyUpdatedChangePtr valueChange(new Qt3DCore::QPropertyUpdatedChange(Qt3DCore::QNodeId()));
-        valueChange->setPropertyName("extent");
-        valueChange->setValue(QVariant::fromValue(QPair<QVector3D, QVector3D>(QVector3D(10.0f, 10.f, 10.0f),
-                                                                              QVector3D())));
-        geometry->sceneChangeEvent(valueChange);
+        auto dNode = static_cast<Qt3DCore::QGeometryPrivate *>(Qt3DCore::QNodePrivate::get(geometry.data()));
+        const QVector3D minExt(-1.0f, -1.0f, -1.0f);
+        const QVector3D maxExt(1.0f, 1.0f, 1.0f);
+        dNode->setExtent(minExt, maxExt);
 
         // THEN
-        QCOMPARE(spyMinExtent.count(), 1);
-        QCOMPARE(spyMaxExtent.count(), 0);
-        QCOMPARE(geometry->minExtent(), QVector3D(10.0f, 10.0f, 10.0f));
+        QCOMPARE(spyMinExtent.size(), 1);
+        QCOMPARE(spyMaxExtent.size(), 1);
+        QCOMPARE(geometry->minExtent(), minExt);
+        QCOMPARE(geometry->maxExtent(), maxExt);
 
+        spyMaxExtent.clear();
         spyMinExtent.clear();
 
         // WHEN
-        valueChange->setPropertyName("extent");
-        valueChange->setValue(QVariant::fromValue(QPair<QVector3D, QVector3D>(QVector3D(10.0f, 10.f, 10.0f),
-                                                                              QVector3D(11.0f, 11.f, 11.0f))));
-        geometry->sceneChangeEvent(valueChange);
+        dNode->setExtent(minExt, maxExt);
 
         // THEN
-        QCOMPARE(spyMinExtent.count(), 0);
-        QCOMPARE(spyMaxExtent.count(), 1);
-        QCOMPARE(geometry->maxExtent(), QVector3D(11.0f, 11.0f, 11.0f));
-
-        spyMaxExtent.clear();
+        QCOMPARE(spyMinExtent.size(), 0);
+        QCOMPARE(spyMaxExtent.size(), 0);
     }
 };
 

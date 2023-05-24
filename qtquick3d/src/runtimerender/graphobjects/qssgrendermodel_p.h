@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2008-2012 NVIDIA Corporation.
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2008-2012 NVIDIA Corporation.
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSG_RENDER_MODEL_H
 #define QSSG_RENDER_MODEL_H
@@ -43,9 +17,11 @@
 //
 
 #include <QtQuick3DRuntimeRender/private/qssgrendernode_p.h>
-#include <QtQuick3DRuntimeRender/private/qssgrendertessmodevalues_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendermesh_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendergeometry_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrenderskeleton_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrenderskin_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrenderinstancetable_p.h>
 
 #include <QtQuick3DUtils/private/qssgbounds3_p.h>
 #include <QtCore/QVector>
@@ -53,25 +29,48 @@
 QT_BEGIN_NAMESPACE
 
 struct QSSGRenderDefaultMaterial;
+struct QSSGParticleBuffer;
 class QSSGBufferManager;
+class QRhiTexture;
 
 struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderModel : public QSSGRenderNode
 {
-    // Complete path to the file;
-    //*not* relative to the presentation directory
     QVector<QSSGRenderGraphObject *> materials;
+    QVector<QSSGRenderGraphObject *> morphTargets;
     QSSGRenderGeometry *geometry = nullptr;
-    QSSGRenderMeshPath meshPath;
-    float edgeTessellation = 1.0f;
-    float innerTessellation = 1.0f;
-    TessellationModeValues tessellationMode = TessellationModeValues::NoTessellation;
-    bool wireframeMode = false;
+    QSSGRenderPath meshPath;
+    QSSGRenderSkeleton *skeleton = nullptr;
+    QSSGRenderSkin *skin = nullptr;
+    QVector<QMatrix4x4> inverseBindPoses;
+    float m_depthBiasSq = 0.0f; // Depth bias is expected to be squared!
     bool castsShadows = true;
     bool receivesShadows = true;
+    float instancingLodMin = -1;
+    float instancingLodMax = -1;
+
+    QSSGRenderInstanceTable *instanceTable = nullptr;
+    int instanceCount() const { return instanceTable ? instanceTable->count() : 0; }
+    bool instancing() const { return instanceTable;}
+
+    QSSGParticleBuffer *particleBuffer = nullptr;
+    QMatrix4x4 particleMatrix;
+    bool hasTransparency = false;
+
+    QVector<float> morphWeights;
+    QVector<quint32> morphAttributes;
+
+    bool receivesReflections = false;
+    bool castsReflections = true;
+    bool usedInBakedLighting = false;
+    QString lightmapKey;
+    QString lightmapLoadPath;
+    uint lightmapBaseResolution = 0;
+    bool hasLightmap() const { return !lightmapKey.isEmpty(); }
+    bool usesBoneTexture() const { return ((skin != nullptr) || (skeleton != nullptr)); }
+
+    float levelOfDetailBias = 1.0f; // values < 1.0 will decrease usage of LODs, values > 1.0 will increase usage of LODs
 
     QSSGRenderModel();
-
-    QSSGBounds3 getModelBounds(const QSSGRef<QSSGBufferManager> &inManager) const;
 };
 QT_END_NAMESPACE
 

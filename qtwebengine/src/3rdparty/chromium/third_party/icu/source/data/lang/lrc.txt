@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 lrc{
     Languages{
         ab{"آذأربایئجانی"}
@@ -237,7 +238,6 @@ lrc{
     Languages%short{
         az{"آذأری"}
         en_GB{"ئینگیلیسی بئریتانیا گأپ"}
-        en_US{"ئینگیلیسی ئمریکایی"}
     }
     Scripts{
         Arab{"عأرأڤی"}
@@ -296,7 +296,6 @@ lrc{
             latn{"عأدأدیا لاتین"}
         }
     }
-    Version{"37"}
     codePatterns{
         language{"{0}"}
         script{"{0}"}

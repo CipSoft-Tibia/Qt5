@@ -27,7 +27,7 @@
 [
     DoNotCheckConstants
 ] interface Internals {
-    GCObservation observeGC(any observed);
+    [RaisesException] GCObservation observeGC(any observed);
 
     [RaisesException] DOMString elementLayoutTreeAsText(Element element);
     boolean isPreloaded(DOMString url);
@@ -36,15 +36,15 @@
     boolean isLoadingFromMemoryCache(DOMString url);
 
     // Call this function with the URL of a resource that has not yet been
-    // fetched. It returns a promise that resolves with the priority of the
-    // request, once it has been made.
-    [CallWith=ScriptState] Promise<unsigned long> getResourcePriority(DOMString url, Document document);
+    // fetched. It returns a promise that resolves with the initial priority
+    // of the request, once it has been made.
+    [CallWith=ScriptState] Promise<unsigned long> getInitialResourcePriority(DOMString url, Document document);
 
     DOMString getResourceHeader(DOMString url, DOMString header, Document document);
 
     boolean doesWindowHaveUrlFragment(Window window);
 
-    CSSStyleDeclaration computedStyleIncludingVisitedInfo(Node node);
+    CSSStyleDeclaration computedStyleIncludingVisitedInfo(Element element);
 
     ShadowRoot createUserAgentShadowRoot(Element host);
 
@@ -56,16 +56,15 @@
     Node effectiveRootScroller(Document document);
 
     [RaisesException] DOMString shadowRootType(Node root);
-    [RaisesException] boolean hasShadowInsertionPoint(Node root);
-    [RaisesException] boolean hasContentElement(Node root);
     [RaisesException] unsigned long countElementShadow(Node Root);
     DOMString shadowPseudoId(Element element);
-    [RaisesException] boolean isValidContentSelect(Element contentElement);
     Node treeScopeRootNode(Node node);
     Node parentTreeScope(Node node);
     [RaisesException] unsigned short compareTreeScopePosition(Node treeScope1, Node treeScope2);
     [RaisesException] unsigned long updateStyleAndReturnAffectedElementCount();
+    [RaisesException] unsigned long styleForElementCount();
     [RaisesException] unsigned long needsLayoutCount();
+    [RaisesException] unsigned long layoutCountForTesting();
     [RaisesException] unsigned long hitTestCount(Document document);
     [RaisesException] unsigned long hitTestCacheHits(Document document);
     [RaisesException] Element? elementFromPoint(Document document, double x, double y, boolean ignoreClipping, boolean allowChildFrameContent);
@@ -106,12 +105,12 @@
     DOMRectReadOnly boundingBox(Element element);
 
     [RaisesException] void setMarker(Document document, Range range, DOMString markerType);
-    [RaisesException] unsigned long markerCountForNode(Node node, DOMString markerType);
-    unsigned long activeMarkerCountForNode(Node node);
-    [RaisesException] Range markerRangeForNode(Node node, DOMString markerType, unsigned long index);
-    [RaisesException] DOMString markerDescriptionForNode(Node node, DOMString markerType, unsigned long index);
-    [RaisesException] unsigned long markerBackgroundColorForNode(Node node, DOMString markerType, unsigned long index);
-    [RaisesException] unsigned long markerUnderlineColorForNode(Node node, DOMString markerType, unsigned long index);
+    [RaisesException] unsigned long markerCountForNode(Text text, DOMString markerType);
+    unsigned long activeMarkerCountForNode(Text text);
+    [RaisesException] Range markerRangeForNode(Text text, DOMString markerType, unsigned long index);
+    [RaisesException] DOMString markerDescriptionForNode(Text text, DOMString markerType, unsigned long index);
+    [RaisesException] unsigned long markerBackgroundColorForNode(Text text, DOMString markerType, unsigned long index);
+    [RaisesException] unsigned long markerUnderlineColorForNode(Text text, DOMString markerType, unsigned long index);
     [RaisesException] void addTextMatchMarker(Range range, DOMString matchStatus);
     [RaisesException] void addCompositionMarker(Range range, DOMString underlineColorValue, DOMString thicknessValue, DOMString underlineStyleValue, DOMString textColorValue, DOMString backgroundColorValue);
     [RaisesException] void addActiveSuggestionMarker(Range range, DOMString underlineColorValue, DOMString thicknessValue, DOMString backgroundColorValue);
@@ -128,7 +127,6 @@
     [RaisesException] DOMString suggestedValue(Element inputElement);
     [RaisesException] void setSuggestedValue(Element inputElement, DOMString value);
     [RaisesException] void setAutofilledValue(Element inputElement, DOMString value);
-    [RaisesException] void setEditingValue(Element inputElement, DOMString value);
     [RaisesException] void setAutofilled(Element inputElement, boolean enabled);
     [RaisesException] void setSelectionRangeForNumberType(Element inputElement, unsigned long start, unsigned long end);
 
@@ -141,9 +139,11 @@
     [RaisesException] Node touchNodeAdjustedToBestClickableNode(long x, long y, long width, long height, Document document);
     [RaisesException] DOMPoint touchPositionAdjustedToBestContextMenuNode(long x, long y, long width, long height, Document document);
     [RaisesException] Node touchNodeAdjustedToBestContextMenuNode(long x, long y, long width, long height, Document document);
+    [RaisesException] Node touchNodeAdjustedToBestStylusWritableNode(long x, long y, long width, long height, Document document);
 
     [RaisesException] long lastSpellCheckRequestSequence(Document document);
     [RaisesException] long lastSpellCheckProcessedSequence(Document document);
+    [RaisesException] long spellCheckedTextLength(Document document);
     [RaisesException] void cancelCurrentSpellCheckRequest(Document document);
     [RaisesException] DOMString idleTimeSpellCheckerState(Document document);
     [RaisesException] void runIdleTimeSpellChecker(Document document);
@@ -181,9 +181,6 @@
     boolean canHyphenate(DOMString locale);
     void setMockHyphenation(DOMString locale);
 
-    boolean isOverwriteModeEnabled(Document document);
-    void toggleOverwriteModeEnabled(Document document);
-
     unsigned long numberOfScrollableAreas(Document document);
 
     boolean isPageBoxVisible(Document document, long pageNumber);
@@ -191,7 +188,6 @@
     readonly attribute InternalSettings settings;
     readonly attribute InternalRuntimeFlags runtimeFlags;
     readonly attribute unsigned long workerThreadCount;
-    readonly attribute boolean isFormControlsRefreshEnabled;
 
     // Flag for layerTreeAsText. The value must be kept in sync with the value
     // of LayerTreeFlags in layers_as_json.h.
@@ -201,12 +197,9 @@
 
     [RaisesException] DOMString layerTreeAsText(Document document, optional unsigned short flags);
 
-    [RaisesException] boolean scrollsWithRespectTo(Element element1, Element element2);
-
     DOMString scrollingStateTreeAsText(Document document);
     [RaisesException] DOMString mainThreadScrollingReasons(Document document);
     [RaisesException] DOMRectList nonFastScrollableRects(Document document);
-    [RaisesException] void markGestureScrollRegionDirty(Document document);
 
     void evictAllResources();
 
@@ -246,6 +239,9 @@
     TypeConversions typeConversions();
 
     sequence<DOMString> getReferencedFilePaths();
+    // This should be called if <input type=file> refers to files selected
+    // without the browser process.
+    void disableReferencedFilePathsVerification();
 
     // These functions both reset the tracked repaint rects. They are intended to be used in the following order:
     //  startTrackingRepaints(), repaintRectsAsText(), stopTrackingRepaints().
@@ -295,9 +291,10 @@
     [RaisesException] DOMRect selectionBounds();
     readonly attribute DOMString textAffinity;
 
-    boolean loseSharedGraphicsContext3D();
-
     [RaisesException] void forceCompositingUpdate(Document document);
+
+    void setDarkPreferredColorScheme(Document document);
+    void setForcedColorsAndDarkPreferredColorScheme(Document document);
 
     [RaisesException] void setShouldRevealPassword(Element element, boolean reveal);
 
@@ -327,6 +324,8 @@
 
     boolean isInCanvasFontCache(Document document, DOMString fontString);
     unsigned long canvasFontCacheMaxFonts();
+    void forceLoseCanvasContext(HTMLCanvasElement canvas, DOMString contextType);
+    void forceLoseCanvasContext(OffscreenCanvas offscreencanvas, DOMString context_type);
 
     DictionaryTest dictionaryTest();
     RecordTest recordTest();
@@ -398,10 +397,6 @@
     // be reported as raster under-invalidations.
     void simulateRasterUnderInvalidations(boolean enable);
 
-    // The number of calls to update the blink lifecycle (see:
-    // LocalFrameView::UpdateLifecyclePhasesInternal).
-    unsigned long LifecycleUpdateCount();
-
     // Disable the 'delay' option for IntersectionObserver, so that observations
     // are recomputed on every frame.  This eliminates the need to add
     // setTimeout(..., delay_ms) calls to web tests to wait for notifications
@@ -416,24 +411,11 @@
     // instances that track visibility.
     boolean isTrackingOcclusionForIFrame(HTMLIFrameElement iframe);
 
-    // Disable the frequency capping for overlay popup detection. This
-    // eliminates the need to for waitings in web tests to trigger a detection
-    // event.
-    void DisableFrequencyCappingForOverlayPopupDetection();
-
     // Declare that the given |name| is in use by the embedder via the custom
     // element mechanism.
     [RaisesException] void addEmbedderCustomElementName(DOMString name);
 
-    // https://html.spec.whatwg.org/C/#resolve-a-module-specifier
-    // Throws TypeError on error.
-    // Used for testing Import Maps https://github.com/domenic/import-maps
-    [RaisesException] DOMString resolveModuleSpecifier(DOMString specifier, DOMString base_url, Document document);
-
     // Returns the current serialized import map of the Document.
-    // TODO(crbug.com/927181): Currently this returns the "imports" value,
-    // because Blink doesn't support scopes yet. Update this once scopes are
-    // implemented.
     [RaisesException] DOMString getParsedImportMap(Document document);
 
     // Sets the scale for devtools device emulation.
@@ -451,5 +433,15 @@
     // Request generation of a Reporting report.
     void generateTestReport(DOMString message);
 
-    [RaisesException] void setIsAdSubframe(HTMLIFrameElement iframe);
+    [RaisesException] void setIsAdFrame(Document target_doc);
+
+    [RaisesException, CallWith=ScriptState] ReadableStream createReadableStream(long queueSize, DOMString optimizer);
+    // The return value consists of a WritableStream (.stream) and a promise of
+    // a sink object (.sink).
+    [RaisesException, CallWith=ScriptState] any createWritableStreamAndSink(long queueSize, DOMString optimizer);
+
+    void setAllowPerChunkTransferring(ReadableStream stream);
+
+    void setBackForwardCacheRestorationBufferSize(long maxSize);
+
 };

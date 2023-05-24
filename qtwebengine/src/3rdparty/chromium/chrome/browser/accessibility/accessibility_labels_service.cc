@@ -1,9 +1,10 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/accessibility/accessibility_labels_service.h"
 
+#include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_split.h"
@@ -13,26 +14,30 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/pref_names.h"
+#include "components/language/core/browser/language_usage_metrics.h"
 #include "components/language/core/browser/pref_names.h"
 #include "components/language/core/browser/url_language_histogram.h"
-#include "components/language_usage_metrics/language_usage_metrics.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
 #include "components/sync_preferences/pref_service_syncable.h"
 #include "components/version_info/channel.h"
 #include "content/public/browser/browser_accessibility_state.h"
-#include "content/public/common/content_features.h"
 #include "google_apis/google_api_keys.h"
 #include "services/data_decoder/public/cpp/data_decoder.h"
 #include "services/image_annotation/image_annotation_service.h"
 #include "ui/accessibility/ax_action_data.h"
 #include "ui/accessibility/ax_enums.mojom.h"
 
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/tab_contents/tab_contents_iterator.h"
+#else
+#include "base/android/jni_android.h"
+#include "chrome/browser/image_descriptions/jni_headers/ImageDescriptionsController_jni.h"
+#include "content/public/browser/web_contents.h"
+#include "ui/accessibility/platform/ax_platform_node.h"
 #endif
 
 using LanguageInfo = language::UrlLanguageHistogram::LanguageInfo;
@@ -56,6 +61,10 @@ GetImageAnnotatorBinderOverride() {
 class ImageAnnotatorClient : public image_annotation::Annotator::Client {
  public:
   explicit ImageAnnotatorClient(Profile* profile) : profile_(profile) {}
+
+  ImageAnnotatorClient(const ImageAnnotatorClient&) = delete;
+  ImageAnnotatorClient& operator=(const ImageAnnotatorClient&) = delete;
+
   ~ImageAnnotatorClient() override = default;
 
   // image_annotation::Annotator::Client implementation:
@@ -103,24 +112,44 @@ class ImageAnnotatorClient : public image_annotation::Annotator::Client {
                              const std::string& requested_language) override {
     base::UmaHistogramSparse(
         "Accessibility.ImageLabels.PageLanguage",
-        language_usage_metrics::LanguageUsageMetrics::ToLanguageCode(
-            page_language));
+        language::LanguageUsageMetrics::ToLanguageCodeHash(page_language));
     base::UmaHistogramSparse(
         "Accessibility.ImageLabels.RequestLanguage",
-        language_usage_metrics::LanguageUsageMetrics::ToLanguageCode(
-            requested_language));
+        language::LanguageUsageMetrics::ToLanguageCodeHash(requested_language));
   }
 
  private:
-  Profile* const profile_;
+  const raw_ptr<Profile> profile_;
   data_decoder::DataDecoder data_decoder_;
-
-  DISALLOW_COPY_AND_ASSIGN(ImageAnnotatorClient);
 };
 
 }  // namespace
 
-AccessibilityLabelsService::~AccessibilityLabelsService() {}
+#if !BUILDFLAG(IS_ANDROID)
+AccessibilityLabelsService::AccessibilityLabelsService(Profile* profile)
+    : profile_(profile) {}
+AccessibilityLabelsService::~AccessibilityLabelsService() = default;
+#else
+// On Android we must add/remove a NetworkChangeObserver during construction/
+// destruction to provide the "Only on Wi-Fi" functionality.
+// We also add/remove an AXModeObserver to track users enabling a screenreader.
+AccessibilityLabelsService::AccessibilityLabelsService(Profile* profile)
+    : profile_(profile) {
+  // Ensure the |BrowserAccessibilityState| is constructed before adding any
+  // observers. The |BrowserAccessibilityState| may change the accessibility
+  // mode in its constructor, so if we register the observer before the
+  // constructor, we will get a crash.
+  auto* state = content::BrowserAccessibilityState::GetInstance();
+  DCHECK(state);
+
+  net::NetworkChangeNotifier::AddNetworkChangeObserver(this);
+  ui::AXPlatformNode::AddAXModeObserver(this);
+}
+AccessibilityLabelsService::~AccessibilityLabelsService() {
+  net::NetworkChangeNotifier::RemoveNetworkChangeObserver(this);
+  ui::AXPlatformNode::RemoveAXModeObserver(this);
+}
+#endif
 
 // static
 void AccessibilityLabelsService::RegisterProfilePrefs(
@@ -131,7 +160,7 @@ void AccessibilityLabelsService::RegisterProfilePrefs(
   registry->RegisterBooleanPref(
       prefs::kAccessibilityImageLabelsOptInAccepted, false,
       user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   registry->RegisterBooleanPref(
       prefs::kAccessibilityImageLabelsEnabledAndroid, false,
       user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
@@ -149,22 +178,16 @@ void AccessibilityLabelsService::InitOffTheRecordPrefs(
       prefs::kAccessibilityImageLabelsEnabled, false);
   off_the_record_profile->GetPrefs()->SetBoolean(
       prefs::kAccessibilityImageLabelsOptInAccepted, false);
-#if defined(OS_ANDROID)
-  off_the_record_profile->GetPrefs()->SetBoolean(
-      prefs::kAccessibilityImageLabelsEnabledAndroid, false);
-  off_the_record_profile->GetPrefs()->SetBoolean(
-      prefs::kAccessibilityImageLabelsOnlyOnWifi, true);
-#endif
 }
 
 void AccessibilityLabelsService::Init() {
-  // Hidden behind a feature flag.
-  if (!base::FeatureList::IsEnabled(features::kExperimentalAccessibilityLabels))
-    return;
-
   pref_change_registrar_.Init(profile_->GetPrefs());
   pref_change_registrar_.Add(
+#if !BUILDFLAG(IS_ANDROID)
       prefs::kAccessibilityImageLabelsEnabled,
+#else
+      prefs::kAccessibilityImageLabelsEnabledAndroid,
+#endif
       base::BindRepeating(
           &AccessibilityLabelsService::OnImageLabelsEnabledChanged,
           weak_factory_.GetWeakPtr()));
@@ -177,20 +200,17 @@ void AccessibilityLabelsService::Init() {
           weak_factory_.GetWeakPtr()));
 }
 
-AccessibilityLabelsService::AccessibilityLabelsService(Profile* profile)
-    : profile_(profile) {}
-
 ui::AXMode AccessibilityLabelsService::GetAXMode() {
   ui::AXMode ax_mode =
       content::BrowserAccessibilityState::GetInstance()->GetAccessibilityMode();
 
-  // Hidden behind a feature flag.
-  if (base::FeatureList::IsEnabled(
-          features::kExperimentalAccessibilityLabels)) {
-    bool enabled = profile_->GetPrefs()->GetBoolean(
-        prefs::kAccessibilityImageLabelsEnabled);
-    ax_mode.set_mode(ui::AXMode::kLabelImages, enabled);
-  }
+#if !BUILDFLAG(IS_ANDROID)
+  ax_mode.set_mode(ui::AXMode::kLabelImages,
+                   profile_->GetPrefs()->GetBoolean(
+                       prefs::kAccessibilityImageLabelsEnabled));
+#else
+  ax_mode.set_mode(ui::AXMode::kLabelImages, GetAndroidEnabledStatus());
+#endif
 
   return ax_mode;
 }
@@ -200,9 +220,9 @@ void AccessibilityLabelsService::EnableLabelsServiceOnce() {
     return;
   }
 
-  // TODO(crbug.com/905419): Implement for Android, which does not support
-  // BrowserList::GetInstance.
-#if !defined(OS_ANDROID)
+  // For Android, we call through the JNI (see below) and send the web contents
+  // directly, since Android does not support BrowserList::GetInstance.
+#if !BUILDFLAG(IS_ANDROID)
   Browser* browser = chrome::FindLastActiveWithProfile(profile_);
   if (!browser)
     return;
@@ -210,12 +230,15 @@ void AccessibilityLabelsService::EnableLabelsServiceOnce() {
   if (!web_contents)
     return;
   // Fire an AXAction on the active tab to enable this feature once only.
+  // We only need to fire this event for the active page.
   ui::AXActionData action_data;
   action_data.action = ax::mojom::Action::kAnnotatePageImages;
-  for (content::RenderFrameHost* frame : web_contents->GetAllFrames()) {
-    if (frame->IsRenderFrameLive())
-      frame->AccessibilityPerformAction(action_data);
-  }
+  web_contents->GetPrimaryMainFrame()->ForEachRenderFrameHost(
+      [&action_data](content::RenderFrameHost* render_frame_host) {
+        if (render_frame_host->IsRenderFrameLive()) {
+          render_frame_host->AccessibilityPerformAction(action_data);
+        }
+      });
 #endif
 }
 
@@ -243,9 +266,7 @@ void AccessibilityLabelsService::OverrideImageAnnotatorBinderForTesting(
 }
 
 void AccessibilityLabelsService::OnImageLabelsEnabledChanged() {
-  // TODO(dmazzoni) Implement for Android, which doesn't support
-  // AllTabContentses(). crbug.com/905419
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
   bool enabled = profile_->GetPrefs()->GetBoolean(
                      prefs::kAccessibilityImageLabelsEnabled) &&
                  accessibility_state_utils::IsScreenReaderEnabled();
@@ -258,6 +279,11 @@ void AccessibilityLabelsService::OnImageLabelsEnabledChanged() {
     ax_mode.set_mode(ui::AXMode::kLabelImages, enabled);
     web_contents->SetAccessibilityMode(ax_mode);
   }
+#else
+  // Android does not support AllTabContentses(), so we will get all web
+  // contents from the state and set the new AXMode there.
+  content::BrowserAccessibilityState::GetInstance()
+      ->SetImageLabelsModeForProfile(GetAndroidEnabledStatus(), profile_);
 #endif
 }
 
@@ -265,7 +291,74 @@ void AccessibilityLabelsService::UpdateAccessibilityLabelsHistograms() {
   if (!profile_ || !profile_->GetPrefs())
     return;
 
-  base::UmaHistogramBoolean("Accessibility.ImageLabels",
+  base::UmaHistogramBoolean("Accessibility.ImageLabels2",
                             profile_->GetPrefs()->GetBoolean(
                                 prefs::kAccessibilityImageLabelsEnabled));
+
+#if BUILDFLAG(IS_ANDROID)
+  // For Android we will track additional histograms.
+  base::UmaHistogramBoolean(
+      "Accessibility.ImageLabels.Android",
+      profile_->GetPrefs()->GetBoolean(
+          prefs::kAccessibilityImageLabelsEnabledAndroid));
+
+  base::UmaHistogramBoolean("Accessibility.ImageLabels.Android.OnlyOnWifi",
+                            profile_->GetPrefs()->GetBoolean(
+                                prefs::kAccessibilityImageLabelsOnlyOnWifi));
+#endif
 }
+
+#if BUILDFLAG(IS_ANDROID)
+void AccessibilityLabelsService::OnNetworkChanged(
+    net::NetworkChangeNotifier::ConnectionType type) {
+  // When the network status changes, we want to (potentially) update the
+  // AXMode of all web contents for the current profile.
+  content::BrowserAccessibilityState::GetInstance()
+      ->SetImageLabelsModeForProfile(GetAndroidEnabledStatus(), profile_);
+}
+
+void AccessibilityLabelsService::OnAXModeAdded(ui::AXMode mode) {
+  // When the AXMode changes (e.g. user turned on a screenreader), we want to
+  // (potentially) update the AXMode of all web contents for current profile.
+  content::BrowserAccessibilityState::GetInstance()
+      ->SetImageLabelsModeForProfile(GetAndroidEnabledStatus(), profile_);
+}
+
+bool AccessibilityLabelsService::GetAndroidEnabledStatus() {
+  // On Android, user has an option to toggle "only on wifi", so also check
+  // the current connection type if necessary.
+  bool enabled = profile_->GetPrefs()->GetBoolean(
+                     prefs::kAccessibilityImageLabelsEnabledAndroid) &&
+                 accessibility_state_utils::IsScreenReaderEnabled();
+
+  bool only_on_wifi = profile_->GetPrefs()->GetBoolean(
+      prefs::kAccessibilityImageLabelsOnlyOnWifi);
+
+  if (enabled && only_on_wifi) {
+    enabled = net::NetworkChangeNotifier::GetConnectionType() ==
+              net::NetworkChangeNotifier::ConnectionType::CONNECTION_WIFI;
+  }
+
+  return enabled;
+}
+
+void JNI_ImageDescriptionsController_GetImageDescriptionsOnce(
+    JNIEnv* env,
+    const base::android::JavaParamRef<jobject>& j_web_contents) {
+  content::WebContents* web_contents =
+      content::WebContents::FromJavaWebContents(j_web_contents);
+
+  if (!web_contents)
+    return;
+
+  // We only need to fire this event for the active page.
+  ui::AXActionData action_data;
+  action_data.action = ax::mojom::Action::kAnnotatePageImages;
+  web_contents->GetPrimaryMainFrame()->ForEachRenderFrameHost(
+      [&action_data](content::RenderFrameHost* render_frame_host) {
+        if (render_frame_host->IsRenderFrameLive()) {
+          render_frame_host->AccessibilityPerformAction(action_data);
+        }
+      });
+}
+#endif

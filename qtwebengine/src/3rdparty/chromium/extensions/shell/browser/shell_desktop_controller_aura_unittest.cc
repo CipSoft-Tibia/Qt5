@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,9 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "base/memory/ptr_util.h"
 #include "base/time/time.h"
+#include "build/chromeos_buildflags.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/app_window/app_window.h"
@@ -31,11 +31,12 @@
 #include "ui/display/screen_base.h"
 #include "ui/events/event.h"
 #include "ui/events/event_dispatcher.h"
+#include "ui/events/event_utils.h"
 #include "ui/events/keycodes/dom/dom_code.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/gfx/geometry/rect.h"
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 #include "chromeos/dbus/power/fake_power_manager_client.h"
 #endif
 
@@ -44,22 +45,27 @@ namespace extensions {
 class ShellDesktopControllerAuraTest : public ShellTestBaseAura {
  public:
   ShellDesktopControllerAuraTest() = default;
+
+  ShellDesktopControllerAuraTest(const ShellDesktopControllerAuraTest&) =
+      delete;
+  ShellDesktopControllerAuraTest& operator=(
+      const ShellDesktopControllerAuraTest&) = delete;
+
   ~ShellDesktopControllerAuraTest() override = default;
 
   void SetUp() override {
-    ShellTestBaseAura::SetUp();
-
-    // Set up a screen with 2 displays.
+    // Set up a screen with 2 displays before `ShellTestBaseAura::SetUp()`
     screen_ = std::make_unique<display::ScreenBase>();
-    display::Screen::SetScreenInstance(screen_.get());
     screen_->display_list().AddDisplay(
         display::Display(100, gfx::Rect(0, 0, 1920, 1080)),
         display::DisplayList::Type::PRIMARY);
     screen_->display_list().AddDisplay(
         display::Display(200, gfx::Rect(1920, 1080, 800, 600)),
         display::DisplayList::Type::NOT_PRIMARY);
+    display::Screen::SetScreenInstance(screen_.get());
+    ShellTestBaseAura::SetUp();
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
     chromeos::PowerManagerClient::InitializeFake();
 #endif
 
@@ -69,12 +75,12 @@ class ShellDesktopControllerAuraTest : public ShellTestBaseAura {
 
   void TearDown() override {
     controller_.reset();
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
     chromeos::PowerManagerClient::Shutdown();
 #endif
-    screen_.reset();
-    display::Screen::SetScreenInstance(nullptr);
     ShellTestBaseAura::TearDown();
+    display::Screen::SetScreenInstance(nullptr);
+    screen_.reset();
   }
 
  protected:
@@ -88,12 +94,9 @@ class ShellDesktopControllerAuraTest : public ShellTestBaseAura {
 
   std::unique_ptr<display::ScreenBase> screen_;
   std::unique_ptr<ShellDesktopControllerAura> controller_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ShellDesktopControllerAuraTest);
 };
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 // Tests that a shutdown request is sent to the power manager when the power
 // button is pressed.
 TEST_F(ShellDesktopControllerAuraTest, PowerButton) {
@@ -126,8 +129,11 @@ TEST_F(ShellDesktopControllerAuraTest, InputEvents) {
   EXPECT_EQ(0, client.insert_char_count());
 
   // Dispatch a keypress on the window tree host to verify it is processed.
-  ui::KeyEvent key_press(base::char16(97), ui::VKEY_A, ui::DomCode::NONE,
-                         ui::EF_NONE);
+  ui::KeyEvent key_press(u'a', ui::VKEY_A, ui::DomCode::NONE, ui::EF_NONE);
+  ui::Event::Properties properties;
+  properties.emplace(ui::kPropertyKeyboardImeFlag,
+                     std::vector<uint8_t>{ui::kPropertyKeyboardImeIgnoredFlag});
+  key_press.SetProperties(properties);
   ui::EventDispatchDetails details =
       controller_->GetPrimaryHost()->dispatcher()->DispatchEvent(
           controller_->GetPrimaryHost()->window(), &key_press);

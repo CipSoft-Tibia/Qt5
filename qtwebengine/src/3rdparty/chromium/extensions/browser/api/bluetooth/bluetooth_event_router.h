@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,16 +7,15 @@
 
 #include <map>
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/scoped_observer.h"
-#include "content/public/browser/notification_observer.h"
-#include "content/public/browser/notification_registrar.h"
+#include "base/scoped_observation.h"
 #include "device/bluetooth/bluetooth_adapter.h"
 #include "device/bluetooth/bluetooth_adapter_factory.h"
 #include "extensions/browser/extension_event_histogram_value.h"
+#include "extensions/browser/extension_host_registry.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_registry_observer.h"
 #include "extensions/common/api/bluetooth.h"
@@ -38,10 +37,14 @@ class BluetoothApiPairingDelegate;
 struct EventListenerInfo;
 
 class BluetoothEventRouter : public device::BluetoothAdapter::Observer,
-                             public content::NotificationObserver,
-                             public ExtensionRegistryObserver {
+                             public ExtensionRegistryObserver,
+                             public ExtensionHostRegistry::Observer {
  public:
   explicit BluetoothEventRouter(content::BrowserContext* context);
+
+  BluetoothEventRouter(const BluetoothEventRouter&) = delete;
+  BluetoothEventRouter& operator=(const BluetoothEventRouter&) = delete;
+
   ~BluetoothEventRouter() override;
 
   // Returns true if adapter_ has been initialized for testing or bluetooth
@@ -56,8 +59,8 @@ class BluetoothEventRouter : public device::BluetoothAdapter::Observer,
   // the session or if an active session already exists for the extension.
   void StartDiscoverySession(device::BluetoothAdapter* adapter,
                              const std::string& extension_id,
-                             const base::Closure& callback,
-                             const base::Closure& error_callback);
+                             base::OnceClosure callback,
+                             base::OnceClosure error_callback);
 
   // Requests that the active discovery session that belongs to the extension
   // with id |extension_id| be terminated. |callback| is called, if the session
@@ -66,19 +69,19 @@ class BluetoothEventRouter : public device::BluetoothAdapter::Observer,
   // extension.
   void StopDiscoverySession(device::BluetoothAdapter* adapter,
                             const std::string& extension_id,
-                            const base::Closure& callback,
-                            const base::Closure& error_callback);
+                            base::OnceClosure callback,
+                            base::OnceClosure error_callback);
 
   // Requests that the filter associated with discovery session that belongs
   // to the extension with id |extension_id| be set to |discovery_filter|.
-  // Callback is called, if the filter was successfully updated.
+  // |callback| is called, if the filter was successfully updated.
   // |error_callback| is called, if filter update failed.
   void SetDiscoveryFilter(
       std::unique_ptr<device::BluetoothDiscoveryFilter> discovery_filter,
       device::BluetoothAdapter* adapter,
       const std::string& extension_id,
-      const base::Closure& callback,
-      const base::Closure& error_callback);
+      base::OnceClosure callback,
+      base::OnceClosure error_callback);
 
   // Called when a bluetooth event listener is added.
   void OnListenerAdded(const EventListenerInfo& details);
@@ -119,11 +122,6 @@ class BluetoothEventRouter : public device::BluetoothAdapter::Observer,
                             device::BluetoothDevice* device,
                             const std::string& old_address) override;
 
-  // Overridden from content::NotificationObserver.
-  void Observe(int type,
-               const content::NotificationSource& source,
-               const content::NotificationDetails& details) override;
-
   // Overridden from ExtensionRegistryObserver.
   void OnExtensionUnloaded(content::BrowserContext* browser_context,
                            const Extension* extension,
@@ -137,8 +135,8 @@ class BluetoothEventRouter : public device::BluetoothAdapter::Observer,
  private:
   void StartDiscoverySessionImpl(device::BluetoothAdapter* adapter,
                                  const std::string& extension_id,
-                                 const base::Closure& callback,
-                                 const base::Closure& error_callback);
+                                 base::OnceClosure callback,
+                                 base::OnceClosure error_callback);
   void AddPairingDelegateImpl(const std::string& extension_id);
 
   void OnAdapterInitialized(
@@ -153,13 +151,14 @@ class BluetoothEventRouter : public device::BluetoothAdapter::Observer,
   void CleanUpAllExtensions();
   void OnStartDiscoverySession(
       const std::string& extension_id,
-      const base::Closure& callback,
+      base::OnceClosure callback,
       std::unique_ptr<device::BluetoothDiscoverySession> discovery_session);
 
-  void OnSetDiscoveryFilter(const std::string& extension_id,
-                            const base::Closure& callback);
+  // ExtensionHostRegistry::Observer:
+  void OnExtensionHostDestroyed(content::BrowserContext* browser_context,
+                                ExtensionHost* host) override;
 
-  content::BrowserContext* browser_context_;
+  raw_ptr<content::BrowserContext> browser_context_;
   scoped_refptr<device::BluetoothAdapter> adapter_;
 
   // Map of listener id -> listener count.
@@ -181,14 +180,13 @@ class BluetoothEventRouter : public device::BluetoothAdapter::Observer,
       PairingDelegateMap;
   PairingDelegateMap pairing_delegate_map_;
 
-  content::NotificationRegistrar registrar_;
-
-  ScopedObserver<ExtensionRegistry, ExtensionRegistryObserver>
-      extension_registry_observer_{this};
+  base::ScopedObservation<ExtensionRegistry, ExtensionRegistryObserver>
+      extension_registry_observation_{this};
+  base::ScopedObservation<ExtensionHostRegistry,
+                          ExtensionHostRegistry::Observer>
+      extension_host_registry_observation_{this};
 
   base::WeakPtrFactory<BluetoothEventRouter> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(BluetoothEventRouter);
 };
 
 }  // namespace extensions

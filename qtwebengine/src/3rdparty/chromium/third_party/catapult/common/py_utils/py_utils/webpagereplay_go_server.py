@@ -4,6 +4,7 @@
 
 """Start and stop Web Page Replay."""
 
+from __future__ import print_function
 import logging
 import os
 import re
@@ -11,7 +12,7 @@ import signal
 import subprocess
 import sys
 import tempfile
-import urllib
+import six.moves.urllib.request # pylint: disable=import-error
 
 import py_utils
 from py_utils import atexit_with_log
@@ -35,8 +36,6 @@ DISABLE_FUZZY_URL_MATCHING = '--disable-fuzzy-url-matching'
 
 class ReplayError(Exception):
   """Catch-all exception for the module."""
-  pass
-
 
 class ReplayNotFoundError(ReplayError):
   def __init__(self, label, path):
@@ -49,7 +48,7 @@ class ReplayNotFoundError(ReplayError):
       path: A string of the path in this error.
 
     """
-    super(ReplayNotFoundError, self).__init__()
+    super().__init__()
     self.args = (label, path)
 
   def __str__(self):
@@ -61,7 +60,7 @@ class ReplayNotStartedError(ReplayError):
   pass
 
 
-class ReplayServer(object):
+class ReplayServer():
   """Start and Stop Web Page Replay.
 
   Web Page Replay is a proxy that can record and "replay" web pages with
@@ -136,9 +135,10 @@ class ReplayServer(object):
       cur_cwd = os.getcwd()
       os.chdir(go_folder)
       try:
-        print subprocess.check_output(['go', 'build', os.path.join(go_folder, 'wpr.go')])
+        print(subprocess.check_output(
+            ['go', 'build', os.path.join(go_folder, 'wpr.go')]))
       except subprocess.CalledProcessError:
-        exit(1)
+        sys.exit(1)
       os.chdir(cur_cwd)
 
       return os.path.join(go_folder, 'wpr')
@@ -307,6 +307,7 @@ class ReplayServer(object):
     logging.info('Starting Web-Page-Replay: %s', self._cmd_line)
     self._CreateTempLogFilePath()
     with self._OpenLogFile() as log_fh:
+      # pylint: disable=subprocess-popen-preexec-fn
       self.replay_process = subprocess.Popen(
           self._cmd_line, stdout=log_fh, stderr=subprocess.STDOUT,
           preexec_fn=(_ResetInterruptHandler if is_posix else None))
@@ -317,9 +318,12 @@ class ReplayServer(object):
       logging.info('WPR ports: %s', self._started_ports)
       atexit_with_log.Register(self.StopServer)
       return dict(self._started_ports)
-    except Exception:
+    except Exception: # pylint: disable=broad-except
       self.StopServer(logging.ERROR)
-      raise ReplayNotStartedError('Web Page Replay failed to start.')
+      six.raise_from(ReplayNotStartedError('Web Page Replay failed to start.'),
+                     None)
+
+    return None
 
   def _IsReplayProcessStarted(self):
     if not self.replay_process:
@@ -383,19 +387,22 @@ class ReplayServer(object):
   def _CleanUpTempLogFilePath(self, log_level):
     if not self._temp_log_file_path:
       return ''
-    if logging.getLogger('').isEnabledFor(log_level) or USE_LOCAL_WPR in self._replay_options:
+    if logging.getLogger('').isEnabledFor(log_level) or USE_LOCAL_WPR \
+       in self._replay_options:
       with open(self._temp_log_file_path, 'r') as f:
         wpr_log_output = f.read()
-      output = ('************************** WPR LOG *****************************\n' +
+      asterisk_str = '**************************'
+      output = (asterisk_str + ' WPR LOG ' + asterisk_str + '\n' +
                 '\n'.join(wpr_log_output.split('\n')) +
-                '************************** END OF WPR LOG **********************')
+                asterisk_str + ' END OF WPR LOG ' + asterisk_str)
       if logging.getLogger('').isEnabledFor(log_level):
         logging.log(log_level, output)
       else:
-        print output
+        print(output)
 
     os.remove(self._temp_log_file_path)
     self._temp_log_file_path = None
+    return None
 
   def __enter__(self):
     """Add support for with-statement."""
@@ -420,7 +427,9 @@ class ReplayServer(object):
     """
     url = '%s://%s:%s/%s' % (
         protocol, self._replay_host, self._started_ports[protocol], url_path)
-    return urllib.urlopen(url, proxies={})
+
+    # pylint: disable=no-member
+    return six.moves.urllib.request.FancyURLopener({}).open(url)
 
 def _ResetInterruptHandler():
   """Reset the interrupt handler back to the default.

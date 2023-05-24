@@ -16,21 +16,21 @@
 
 #include "src/trace_processor/importers/json/json_trace_parser.h"
 
-#include <inttypes.h>
-
+#include <cinttypes>
 #include <limits>
 #include <string>
 
 #include "perfetto/base/logging.h"
+#include "perfetto/ext/base/optional.h"
 #include "perfetto/ext/base/string_utils.h"
 #include "perfetto/ext/base/string_view.h"
-#include "perfetto/ext/base/utils.h"
+#include "src/trace_processor/importers/common/event_tracker.h"
 #include "src/trace_processor/importers/common/flow_tracker.h"
 #include "src/trace_processor/importers/common/process_tracker.h"
 #include "src/trace_processor/importers/common/slice_tracker.h"
 #include "src/trace_processor/importers/common/track_tracker.h"
-#include "src/trace_processor/importers/json/json_tracker.h"
 #include "src/trace_processor/importers/json/json_utils.h"
+#include "src/trace_processor/storage/trace_storage.h"
 #include "src/trace_processor/types/trace_processor_context.h"
 
 namespace perfetto {
@@ -61,31 +61,27 @@ JsonTraceParser::JsonTraceParser(TraceProcessorContext* context)
 
 JsonTraceParser::~JsonTraceParser() = default;
 
-void JsonTraceParser::ParseFtracePacket(uint32_t,
-                                        int64_t,
-                                        TimestampedTracePiece) {
-  PERFETTO_FATAL("Json Trace Parser cannot handle ftrace packets.");
+void JsonTraceParser::ParseSystraceLine(int64_t, SystraceLine line) {
+  systrace_line_parser_.ParseLine(line);
 }
 
-void JsonTraceParser::ParseTracePacket(int64_t timestamp,
-                                       TimestampedTracePiece ttp) {
+void JsonTraceParser::ParseJsonPacket(int64_t timestamp,
+                                      std::string string_value) {
   PERFETTO_DCHECK(json::IsJsonSupported());
 
 #if PERFETTO_BUILDFLAG(PERFETTO_TP_JSON)
-  PERFETTO_DCHECK(ttp.type == TimestampedTracePiece::Type::kJsonValue ||
-                  ttp.type == TimestampedTracePiece::Type::kSystraceLine);
-  if (ttp.type == TimestampedTracePiece::Type::kSystraceLine) {
-    systrace_line_parser_.ParseLine(*ttp.systrace_line);
+  auto opt_value = json::ParseJsonString(base::StringView(string_value));
+  if (!opt_value) {
+    context_->storage->IncrementStats(stats::json_parser_failure);
     return;
   }
-
-  const Json::Value& value = *(ttp.json_value);
 
   ProcessTracker* procs = context_->process_tracker.get();
   TraceStorage* storage = context_->storage.get();
   SliceTracker* slice_tracker = context_->slice_tracker.get();
   FlowTracker* flow_tracker = context_->flow_tracker.get();
 
+  const Json::Value& value = *opt_value;
   auto& ph = value["ph"];
   if (!ph.isString())
     return;
@@ -101,17 +97,19 @@ void JsonTraceParser::ParseTracePacket(int64_t timestamp,
 
   uint32_t pid = opt_pid.value_or(0);
   uint32_t tid = opt_tid.value_or(pid);
+  UniqueTid utid = procs->UpdateThread(tid, pid);
+
+  std::string id = value.isMember("id") ? value["id"].asString() : "";
 
   base::StringView cat = value.isMember("cat")
                              ? base::StringView(value["cat"].asCString())
                              : base::StringView();
+  StringId cat_id = storage->InternString(cat);
+
   base::StringView name = value.isMember("name")
                               ? base::StringView(value["name"].asCString())
                               : base::StringView();
-
-  StringId cat_id = storage->InternString(cat);
-  StringId name_id = storage->InternString(name);
-  UniqueTid utid = procs->UpdateThread(tid, pid);
+  StringId name_id = name.empty() ? kNullStringId : storage->InternString(name);
 
   auto args_inserter = [this, &value](ArgsTracker::BoundInserter* inserter) {
     if (value.isMember("args")) {
@@ -120,27 +118,166 @@ void JsonTraceParser::ParseTracePacket(int64_t timestamp,
                                inserter);
     }
   };
+
+  // Only used for 'B', 'E', and 'X' events so wrap in lambda so it gets
+  // ignored in other cases. This lambda is only safe to call within the
+  // scope of this function due to the capture by reference.
+  auto make_slice_row = [&](TrackId track_id) {
+    tables::SliceTable::Row row;
+    row.ts = timestamp;
+    row.track_id = track_id;
+    row.category = cat_id;
+    row.name = name_id;
+    row.thread_ts = json::CoerceToTs(value["tts"]);
+    // tdur will only exist on 'X' events.
+    row.thread_dur = json::CoerceToTs(value["tdur"]);
+    // JSON traces don't report these counters as part of slices.
+    row.thread_instruction_count = base::nullopt;
+    row.thread_instruction_delta = base::nullopt;
+    return row;
+  };
+
   switch (phase) {
     case 'B': {  // TRACE_EVENT_BEGIN.
       TrackId track_id = context_->track_tracker->InternThreadTrack(utid);
-      slice_tracker->Begin(timestamp, track_id, cat_id, name_id, args_inserter);
+      slice_tracker->BeginTyped(storage->mutable_slice_table(),
+                                make_slice_row(track_id), args_inserter);
       MaybeAddFlow(track_id, value);
       break;
     }
     case 'E': {  // TRACE_EVENT_END.
       TrackId track_id = context_->track_tracker->InternThreadTrack(utid);
-      slice_tracker->End(timestamp, track_id, cat_id, name_id, args_inserter);
+      auto opt_slice_id = slice_tracker->End(timestamp, track_id, cat_id,
+                                             name_id, args_inserter);
+      // Now try to update thread_dur if we have a tts field.
+      auto opt_tts = json::CoerceToTs(value["tts"]);
+      if (opt_slice_id.has_value() && opt_tts) {
+        auto* slice = storage->mutable_slice_table();
+        auto maybe_row = slice->id().IndexOf(*opt_slice_id);
+        PERFETTO_DCHECK(maybe_row.has_value());
+        auto start_tts = slice->thread_ts()[*maybe_row];
+        if (start_tts) {
+          slice->mutable_thread_dur()->Set(*maybe_row, *opt_tts - *start_tts);
+        }
+      }
+      break;
+    }
+    case 'b':
+    case 'e':
+    case 'n': {
+      if (!opt_pid || id.empty()) {
+        context_->storage->IncrementStats(stats::json_parser_failure);
+        break;
+      }
+      UniquePid upid = context_->process_tracker->GetOrCreateProcess(pid);
+      int64_t cookie = static_cast<int64_t>(base::Hasher::Combine(id.c_str()));
+      StringId scope = kNullStringId;
+      TrackId track_id = context_->track_tracker->InternLegacyChromeAsyncTrack(
+          name_id, upid, cookie, true /* source_id_is_process_scoped */, scope);
+
+      if (phase == 'b') {
+        slice_tracker->BeginTyped(storage->mutable_slice_table(),
+                                  make_slice_row(track_id), args_inserter);
+        MaybeAddFlow(track_id, value);
+      } else if (phase == 'e') {
+        slice_tracker->End(timestamp, track_id, cat_id, name_id, args_inserter);
+        // We don't handle tts here as we do in the 'E'
+        // case above as it's not well defined for aysnc slices.
+      } else {
+        context_->slice_tracker->Scoped(timestamp, track_id, cat_id, name_id,
+                                        0);
+        MaybeAddFlow(track_id, value);
+      }
       break;
     }
     case 'X': {  // TRACE_EVENT (scoped event).
-      base::Optional<int64_t> opt_dur =
-          JsonTracker::GetOrCreate(context_)->CoerceToTs(value["dur"]);
+      base::Optional<int64_t> opt_dur = json::CoerceToTs(value["dur"]);
       if (!opt_dur.has_value())
         return;
       TrackId track_id = context_->track_tracker->InternThreadTrack(utid);
-      slice_tracker->Scoped(timestamp, track_id, cat_id, name_id,
-                            opt_dur.value(), args_inserter);
+      auto row = make_slice_row(track_id);
+      row.dur = opt_dur.value();
+      slice_tracker->ScopedTyped(storage->mutable_slice_table(), std::move(row),
+                                 args_inserter);
       MaybeAddFlow(track_id, value);
+      break;
+    }
+    case 'C': {  // TRACE_EVENT_COUNTER
+      auto args = value["args"];
+      if (!args.isObject()) {
+        context_->storage->IncrementStats(stats::json_parser_failure);
+        break;
+      }
+
+      std::string counter_name_prefix = name.ToStdString();
+      if (!id.empty()) {
+        counter_name_prefix += " id: " + id;
+      }
+
+      for (auto it = args.begin(); it != args.end(); ++it) {
+        double counter;
+        if (it->isString()) {
+          auto opt = base::CStringToDouble(it->asCString());
+          if (!opt.has_value()) {
+            context_->storage->IncrementStats(stats::json_parser_failure);
+            continue;
+          }
+          counter = opt.value();
+        } else if (it->isNumeric()) {
+          counter = it->asDouble();
+        } else {
+          context_->storage->IncrementStats(stats::json_parser_failure);
+          continue;
+        }
+        std::string counter_name = counter_name_prefix + " " + it.name();
+        StringId counter_name_id =
+            context_->storage->InternString(base::StringView(counter_name));
+        context_->event_tracker->PushProcessCounterForThread(
+            timestamp, counter, counter_name_id, utid);
+      }
+      break;
+    }
+    case 'R':
+    case 'I':
+    case 'i': {  // TRACE_EVENT_INSTANT
+      base::StringView scope;
+      if (value.isMember("s")) {
+        scope = value["s"].asCString();
+      }
+
+      TrackId track_id;
+      if (scope == "g") {
+        track_id = context_->track_tracker
+                       ->GetOrCreateLegacyChromeGlobalInstantTrack();
+      } else if (scope == "p") {
+        if (!opt_pid) {
+          context_->storage->IncrementStats(stats::json_parser_failure);
+          break;
+        }
+        UniquePid upid = context_->process_tracker->GetOrCreateProcess(pid);
+        track_id =
+            context_->track_tracker->InternLegacyChromeProcessInstantTrack(
+                upid);
+      } else if (scope == "t" || scope.data() == nullptr) {
+        if (!opt_tid) {
+          context_->storage->IncrementStats(stats::json_parser_failure);
+          break;
+        }
+        track_id = context_->track_tracker->InternThreadTrack(utid);
+        auto row = make_slice_row(track_id);
+        row.dur = 0;
+        if (row.thread_ts) {
+          // Only set thread_dur to zero if we have a thread_ts.
+          row.thread_dur = 0;
+        }
+        slice_tracker->ScopedTyped(storage->mutable_slice_table(),
+                                   std::move(row), args_inserter);
+        break;
+      } else {
+        context_->storage->IncrementStats(stats::json_parser_failure);
+        break;
+      }
+      context_->slice_tracker->Scoped(timestamp, track_id, cat_id, name_id, 0);
       break;
     }
     case 's': {  // TRACE_EVENT_FLOW_START
@@ -178,23 +315,22 @@ void JsonTraceParser::ParseTracePacket(int64_t timestamp,
             opt_source_id.value(), cat_id, name_id);
         bool bind_enclosing_slice =
             value.isMember("bp") && strcmp(value["bp"].asCString(), "e") == 0;
-        flow_tracker->End(track_id, flow_id, bind_enclosing_slice);
+        flow_tracker->End(track_id, flow_id, bind_enclosing_slice,
+                          /* close_flow = */ false);
       } else {
         context_->storage->IncrementStats(stats::flow_invalid_id);
       }
       break;
     }
     case 'M': {  // Metadata events (process and thread names).
-      if (strcmp(value["name"].asCString(), "thread_name") == 0 &&
-          !value["args"]["name"].empty()) {
+      if (name == "thread_name" && !value["args"]["name"].empty()) {
         const char* thread_name = value["args"]["name"].asCString();
         auto thread_name_id = context_->storage->InternString(thread_name);
         procs->UpdateThreadName(tid, thread_name_id,
                                 ThreadNamePriority::kOther);
         break;
       }
-      if (strcmp(value["name"].asCString(), "process_name") == 0 &&
-          !value["args"]["name"].empty()) {
+      if (name == "process_name" && !value["args"]["name"].empty()) {
         const char* proc_name = value["args"]["name"].asCString();
         procs->SetProcessMetadata(pid, base::nullopt, proc_name,
                                   base::StringView());
@@ -204,8 +340,8 @@ void JsonTraceParser::ParseTracePacket(int64_t timestamp,
   }
 #else
   perfetto::base::ignore_result(timestamp);
-  perfetto::base::ignore_result(ttp);
   perfetto::base::ignore_result(context_);
+  perfetto::base::ignore_result(string_value);
   PERFETTO_ELOG("Cannot parse JSON trace due to missing JSON support");
 #endif  // PERFETTO_BUILDFLAG(PERFETTO_TP_JSON)
 }
@@ -224,14 +360,17 @@ void JsonTraceParser::MaybeAddFlow(TrackId track_id, const Json::Value& event) {
       flow_tracker->Begin(track_id, opt_bind_id.value());
     } else if (flow_in) {
       // bind_enclosing_slice is always true for v2 flow events
-      flow_tracker->End(track_id, opt_bind_id.value(), true);
+      flow_tracker->End(track_id, opt_bind_id.value(), true,
+                        /* close_flow = */ false);
     } else {
       context_->storage->IncrementStats(stats::flow_without_direction);
     }
   }
+#else
+  perfetto::base::ignore_result(track_id);
+  perfetto::base::ignore_result(event);
 #endif  // PERFETTO_BUILDFLAG(PERFETTO_TP_JSON)
 }
 
 }  // namespace trace_processor
 }  // namespace perfetto
-

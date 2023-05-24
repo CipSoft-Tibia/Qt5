@@ -1,6 +1,6 @@
 /*
  * Copyright © 2014 Pekka Paalanen <pq@iki.fi>
- * Copyright © 2014 Collabora, Ltd.
+ * Copyright © 2014, 2019 Collabora, Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -32,170 +32,260 @@
 #include <time.h>
 #include <assert.h>
 
-#include "timeline.h"
 #include <libweston/libweston.h>
-#include "file-util.h"
+#include <libweston/weston-log.h>
+#include "timeline.h"
+#include "weston-log-internal.h"
 
-struct timeline_log {
-	clock_t clk_id;
-	FILE *file;
-	unsigned series;
-	struct wl_listener compositor_destroy_listener;
-};
-
-WL_EXPORT int weston_timeline_enabled_;
-static struct timeline_log timeline_ = { CLOCK_MONOTONIC, NULL, 0 };
-
-static int
-weston_timeline_do_open(void)
-{
-	const char *prefix = "weston-timeline-";
-	const char *suffix = ".log";
-	char fname[1000];
-
-	timeline_.file = file_create_dated(NULL, prefix, suffix,
-					   fname, sizeof(fname));
-	if (!timeline_.file) {
-		const char *msg;
-
-		switch (errno) {
-		case ETIME:
-			msg = "failure in datetime formatting";
-			break;
-		default:
-			msg = strerror(errno);
-		}
-
-		weston_log("Cannot open '%s*%s' for writing: %s\n",
-			   prefix, suffix, msg);
-		return -1;
-	}
-
-	weston_log("Opened timeline file '%s'\n", fname);
-
-	return 0;
-}
-
-static void
-timeline_notify_destroy(struct wl_listener *listener, void *data)
-{
-	weston_timeline_close();
-}
-
-void
-weston_timeline_open(struct weston_compositor *compositor)
-{
-	if (weston_timeline_enabled_)
-		return;
-
-	if (weston_timeline_do_open() < 0)
-		return;
-
-	timeline_.compositor_destroy_listener.notify = timeline_notify_destroy;
-	wl_signal_add(&compositor->destroy_signal,
-		      &timeline_.compositor_destroy_listener);
-
-	if (++timeline_.series == 0)
-		++timeline_.series;
-
-	weston_timeline_enabled_ = 1;
-}
-
-void
-weston_timeline_close(void)
-{
-	if (!weston_timeline_enabled_)
-		return;
-
-	weston_timeline_enabled_ = 0;
-
-	wl_list_remove(&timeline_.compositor_destroy_listener.link);
-
-	fclose(timeline_.file);
-	timeline_.file = NULL;
-	weston_log("Timeline log file closed.\n");
-}
-
+/**
+ * Timeline itself is not a subscriber but a scope (a producer of data), and it
+ * re-routes the data it produces to all the subscriptions (and implicitly
+ * to the subscribers) using a subscription iteration to go through all of them.
+ *
+ * Public API:
+ * * weston_timeline_refresh_subscription_objects() - allows outside parts of
+ * libweston notify/signal timeline code about the fact that underlying object
+ * has suffered some modifications and needs to re-emit the object ID.
+ * * weston_log_timeline_point() -  which will disseminate data to all
+ * subscriptions
+ *
+ * Do note that only weston_timeline_refresh_subscription_objects()
+ * is exported in libweston.
+ *
+ * Destruction of the objects assigned to each underlying objects happens in
+ * two places: one in the logging framework callback of the log scope
+ * ('destroy_subscription'), and secondly, when the object itself gets
+ * destroyed.
+ *
+ * timeline_emit_context - For each subscription this object will be created to
+ * store a buffer when the object itself will be written and a subscription,
+ * which will be used to force the object ID if there is a need to do so (the
+ * underlying object has been refreshed, or better said has suffered some
+ * modification). Data written to a subscription will be flushed before the
+ * data written to the FILE *.
+ *
+ * @param cur a FILE *
+ * @param subscription a pointer to an already created subscription
+ *
+ * @ingroup internal-log
+ * @sa weston_timeline_point
+ */
 struct timeline_emit_context {
 	FILE *cur;
-	FILE *out;
-	unsigned series;
+	struct weston_log_subscription *subscription;
 };
 
-static unsigned
-timeline_new_id(void)
+/** Create a timeline subscription and hang it off the subscription
+ *
+ * Called when the subscription is created.
+ *
+ * @ingroup internal-log
+ */
+void
+weston_timeline_create_subscription(struct weston_log_subscription *sub,
+		void *user_data)
 {
-	static unsigned idc;
+	struct weston_timeline_subscription *tl_sub = zalloc(sizeof(*tl_sub));
+	if (!tl_sub)
+		return;
 
-	if (++idc == 0)
-		++idc;
+	wl_list_init(&tl_sub->objects);
 
-	return idc;
-}
-
-static int
-check_series(struct timeline_emit_context *ctx,
-	     struct weston_timeline_object *to)
-{
-	if (to->series == 0 || to->series != ctx->series) {
-		to->series = ctx->series;
-		to->id = timeline_new_id();
-		return 1;
-	}
-
-	if (to->force_refresh) {
-		to->force_refresh = 0;
-		return 1;
-	}
-
-	return 0;
+	/* attach this timeline_subscription to it */
+	weston_log_subscription_set_data(sub, tl_sub);
 }
 
 static void
-fprint_quoted_string(FILE *fp, const char *str)
+weston_timeline_destroy_subscription_object(struct weston_timeline_subscription_object *sub_obj)
+{
+	/* remove the notify listener */
+	wl_list_remove(&sub_obj->destroy_listener.link);
+	sub_obj->destroy_listener.notify = NULL;
+
+	wl_list_remove(&sub_obj->subscription_link);
+	free(sub_obj);
+}
+
+/** Destroy the timeline subscription and all timeline subscription objects
+ * associated with it.
+ *
+ * Called when (before) the subscription is destroyed.
+ *
+ * @ingroup internal-log
+ */
+void
+weston_timeline_destroy_subscription(struct weston_log_subscription *sub,
+				     void *user_data)
+{
+	struct weston_timeline_subscription *tl_sub =
+		weston_log_subscription_get_data(sub);
+	struct weston_timeline_subscription_object *sub_obj, *tmp_sub_obj;
+
+	if (!tl_sub)
+		return;
+
+	wl_list_for_each_safe(sub_obj, tmp_sub_obj,
+			      &tl_sub->objects, subscription_link)
+		weston_timeline_destroy_subscription_object(sub_obj);
+
+	free(tl_sub);
+}
+
+static bool
+weston_timeline_check_object_refresh(struct weston_timeline_subscription_object *obj)
+{
+	if (obj->force_refresh == true) {
+		obj->force_refresh = false;
+		return true;
+	}
+	return false;
+}
+
+static struct weston_timeline_subscription_object *
+weston_timeline_subscription_search(struct weston_timeline_subscription *tl_sub,
+				    void *object)
+{
+	struct weston_timeline_subscription_object *sub_obj;
+
+	wl_list_for_each(sub_obj, &tl_sub->objects, subscription_link)
+		if (sub_obj->object == object)
+			return sub_obj;
+
+	return NULL;
+}
+
+static struct weston_timeline_subscription_object *
+weston_timeline_subscription_object_create(void *object,
+					   struct weston_timeline_subscription *tm_sub)
+{
+	struct weston_timeline_subscription_object *sub_obj;
+
+	sub_obj = zalloc(sizeof(*sub_obj));
+	sub_obj->id = ++tm_sub->next_id;
+	sub_obj->object = object;
+
+	/* when the object is created so that it has the chance to display the
+	 * object ID, we set the refresh status; it will only be re-freshed by
+	 * the backend (or part parts) when the underlying objects has suffered
+	 * modifications */
+	sub_obj->force_refresh = true;
+
+	wl_list_insert(&tm_sub->objects, &sub_obj->subscription_link);
+
+	return sub_obj;
+}
+
+static void
+weston_timeline_destroy_subscription_object_notify(struct wl_listener *listener, void *data)
+{
+	struct weston_timeline_subscription_object *sub_obj;
+
+	sub_obj = wl_container_of(listener, sub_obj, destroy_listener);
+	weston_timeline_destroy_subscription_object(sub_obj);
+}
+
+static struct weston_timeline_subscription_object *
+weston_timeline_subscription_output_ensure(struct weston_timeline_subscription *tl_sub,
+		struct weston_output *output)
+{
+	struct weston_timeline_subscription_object *sub_obj;
+
+	sub_obj = weston_timeline_subscription_search(tl_sub, output);
+	if (!sub_obj) {
+		sub_obj = weston_timeline_subscription_object_create(output, tl_sub);
+
+		sub_obj->destroy_listener.notify =
+			weston_timeline_destroy_subscription_object_notify;
+		wl_signal_add(&output->destroy_signal,
+			      &sub_obj->destroy_listener);
+	}
+	return sub_obj;
+}
+
+static struct weston_timeline_subscription_object *
+weston_timeline_subscription_surface_ensure(struct weston_timeline_subscription *tl_sub,
+		struct weston_surface *surface)
+{
+	struct weston_timeline_subscription_object *sub_obj;
+
+	sub_obj = weston_timeline_subscription_search(tl_sub, surface);
+	if (!sub_obj) {
+		sub_obj = weston_timeline_subscription_object_create(surface, tl_sub);
+
+		sub_obj->destroy_listener.notify =
+			weston_timeline_destroy_subscription_object_notify;
+		wl_signal_add(&surface->destroy_signal,
+			      &sub_obj->destroy_listener);
+	}
+
+	return sub_obj;
+}
+
+static void
+fprint_quoted_string(struct weston_log_subscription *sub, const char *str)
 {
 	if (!str) {
-		fprintf(fp, "null");
+		weston_log_subscription_printf(sub, "null");
 		return;
 	}
 
-	fprintf(fp, "\"%s\"", str);
+	weston_log_subscription_printf(sub, "\"%s\"", str);
+}
+
+static void
+emit_weston_output_print_id(struct weston_log_subscription *sub,
+			    struct weston_timeline_subscription_object *sub_obj,
+			    const char *name)
+{
+	if (!weston_timeline_check_object_refresh(sub_obj))
+		return;
+
+	weston_log_subscription_printf(sub, "{ \"id\":%u, "
+			"\"type\":\"weston_output\", \"name\":", sub_obj->id);
+	fprint_quoted_string(sub, name);
+	weston_log_subscription_printf(sub, " }\n");
 }
 
 static int
 emit_weston_output(struct timeline_emit_context *ctx, void *obj)
 {
-	struct weston_output *o = obj;
+	struct weston_log_subscription *sub = ctx->subscription;
+	struct weston_output *output = obj;
+	struct weston_timeline_subscription_object *sub_obj;
+	struct weston_timeline_subscription *tl_sub;
 
-	if (check_series(ctx, &o->timeline)) {
-		fprintf(ctx->out, "{ \"id\":%u, "
-			"\"type\":\"weston_output\", \"name\":",
-			o->timeline.id);
-		fprint_quoted_string(ctx->out, o->name);
-		fprintf(ctx->out, " }\n");
-	}
+	tl_sub = weston_log_subscription_get_data(sub);
+	sub_obj = weston_timeline_subscription_output_ensure(tl_sub, output);
+	emit_weston_output_print_id(sub, sub_obj, output->name);
 
-	fprintf(ctx->cur, "\"wo\":%u", o->timeline.id);
+	assert(sub_obj->id != 0);
+	fprintf(ctx->cur, "\"wo\":%u", sub_obj->id);
 
 	return 1;
 }
 
+
 static void
-check_weston_surface_description(struct timeline_emit_context *ctx,
-				 struct weston_surface *s)
+check_weston_surface_description(struct weston_log_subscription *sub,
+				 struct weston_surface *s,
+				 struct weston_timeline_subscription *tm_sub,
+				 struct weston_timeline_subscription_object *sub_obj)
 {
 	struct weston_surface *mains;
 	char d[512];
 	char mainstr[32];
 
-	if (!check_series(ctx, &s->timeline))
+	if (!weston_timeline_check_object_refresh(sub_obj))
 		return;
 
 	mains = weston_surface_get_main_surface(s);
 	if (mains != s) {
-		check_weston_surface_description(ctx, mains);
-		if (snprintf(mainstr, sizeof(mainstr),
-			     ", \"main_surface\":%u", mains->timeline.id) < 0)
+		struct weston_timeline_subscription_object *new_sub_obj;
+
+		new_sub_obj = weston_timeline_subscription_surface_ensure(tm_sub, mains);
+		check_weston_surface_description(sub, mains, tm_sub, new_sub_obj);
+		if (snprintf(mainstr, sizeof(mainstr), ", \"main_surface\":%u",
+			     new_sub_obj->id) < 0)
 			mainstr[0] = '\0';
 	} else {
 		mainstr[0] = '\0';
@@ -204,19 +294,27 @@ check_weston_surface_description(struct timeline_emit_context *ctx,
 	if (!s->get_label || s->get_label(s, d, sizeof(d)) < 0)
 		d[0] = '\0';
 
-	fprintf(ctx->out, "{ \"id\":%u, "
-		"\"type\":\"weston_surface\", \"desc\":", s->timeline.id);
-	fprint_quoted_string(ctx->out, d[0] ? d : NULL);
-	fprintf(ctx->out, "%s }\n", mainstr);
+	weston_log_subscription_printf(sub, "{ \"id\":%u, "
+				       "\"type\":\"weston_surface\", \"desc\":",
+				       sub_obj->id);
+	fprint_quoted_string(sub, d[0] ? d : NULL);
+	weston_log_subscription_printf(sub, "%s }\n", mainstr);
 }
 
 static int
 emit_weston_surface(struct timeline_emit_context *ctx, void *obj)
 {
-	struct weston_surface *s = obj;
+	struct weston_log_subscription *sub = ctx->subscription;
+	struct weston_surface *surface = obj;
+	struct weston_timeline_subscription_object *sub_obj;
+	struct weston_timeline_subscription *tl_sub;
 
-	check_weston_surface_description(ctx, s);
-	fprintf(ctx->cur, "\"ws\":%u", s->timeline.id);
+	tl_sub = weston_log_subscription_get_data(sub);
+	sub_obj = weston_timeline_subscription_surface_ensure(tl_sub, surface);
+	check_weston_surface_description(sub, surface, tl_sub, sub_obj);
+
+	assert(sub_obj->id != 0);
+	fprintf(ctx->cur, "\"ws\":%u", sub_obj->id);
 
 	return 1;
 }
@@ -226,7 +324,7 @@ emit_vblank_timestamp(struct timeline_emit_context *ctx, void *obj)
 {
 	struct timespec *ts = obj;
 
-	fprintf(ctx->cur, "\"vblank\":[%" PRId64 ", %ld]",
+	fprintf(ctx->cur, "\"vblank_monotonic\":[%" PRId64 ", %ld]",
 		(int64_t)ts->tv_sec, ts->tv_nsec);
 
 	return 1;
@@ -243,6 +341,46 @@ emit_gpu_timestamp(struct timeline_emit_context *ctx, void *obj)
 	return 1;
 }
 
+static struct weston_timeline_subscription_object *
+weston_timeline_get_subscription_object(struct weston_log_subscription *sub,
+		void *object)
+{
+	struct weston_timeline_subscription *tl_sub;
+
+	tl_sub = weston_log_subscription_get_data(sub);
+	if (!tl_sub)
+		return NULL;
+
+	return weston_timeline_subscription_search(tl_sub, object);
+}
+
+/** Sets (on) the timeline subscription object refresh status.
+ *
+ * This function 'notifies' timeline to print the object ID. The timeline code
+ * will reset it back, so there's no need for users to do anything about it.
+ *
+ * Can be used from outside libweston.
+ *
+ * @param wc a weston_compositor instance
+ * @param object the underyling object
+ *
+ * @ingroup log
+ */
+WL_EXPORT void
+weston_timeline_refresh_subscription_objects(struct weston_compositor *wc,
+					     void *object)
+{
+	struct weston_log_subscription *sub = NULL;
+
+	while ((sub = weston_log_subscription_iterate(wc->timeline, sub))) {
+		struct weston_timeline_subscription_object *sub_obj;
+
+		sub_obj = weston_timeline_get_subscription_object(sub, object);
+		if (sub_obj)
+			sub_obj->force_refresh = true;
+	}
+}
+
 typedef int (*type_func)(struct timeline_emit_context *ctx, void *obj);
 
 static const type_func type_dispatch[] = {
@@ -252,53 +390,72 @@ static const type_func type_dispatch[] = {
 	[TLT_GPU] = emit_gpu_timestamp,
 };
 
+/** Disseminates the message to all subscriptions of the scope \c
+ * timeline_scope
+ *
+ * The TL_POINT() is a wrapper over this function, but it  uses the weston_compositor
+ * instance to pass the timeline scope.
+ *
+ * @param timeline_scope the timeline scope
+ * @param name the name of the timeline point. Interpretable by the tool reading
+ * the output (wesgr).
+ *
+ * @ingroup log
+ */
 WL_EXPORT void
-weston_timeline_point(const char *name, ...)
+weston_timeline_point(struct weston_log_scope *timeline_scope,
+		      const char *name, ...)
 {
-	va_list argp;
 	struct timespec ts;
 	enum timeline_type otype;
 	void *obj;
 	char buf[512];
-	struct timeline_emit_context ctx;
+	struct weston_log_subscription *sub = NULL;
 
-	clock_gettime(timeline_.clk_id, &ts);
-
-	ctx.out = timeline_.file;
-	ctx.cur = fmemopen(buf, sizeof(buf), "w");
-	ctx.series = timeline_.series;
-
-	if (!ctx.cur) {
-		weston_log("Timeline error in fmemopen, closing.\n");
-		weston_timeline_close();
+	if (!weston_log_scope_is_enabled(timeline_scope))
 		return;
-	}
 
-	fprintf(ctx.cur, "{ \"T\":[%" PRId64 ", %ld], \"N\":\"%s\"",
-		(int64_t)ts.tv_sec, ts.tv_nsec, name);
+	clock_gettime(CLOCK_MONOTONIC, &ts);
 
-	va_start(argp, name);
-	while (1) {
-		otype = va_arg(argp, enum timeline_type);
-		if (otype == TLT_END)
-			break;
+	while ((sub = weston_log_subscription_iterate(timeline_scope, sub))) {
+		va_list argp;
+		struct timeline_emit_context ctx = {};
 
-		obj = va_arg(argp, void *);
-		if (type_dispatch[otype]) {
-			fprintf(ctx.cur, ", ");
-			type_dispatch[otype](&ctx, obj);
+		memset(buf, 0, sizeof(buf));
+		ctx.cur = fmemopen(buf, sizeof(buf), "w");
+		ctx.subscription = sub;
+
+		if (!ctx.cur) {
+			weston_log("Timeline error in fmemopen, closing.\n");
+			return;
 		}
-	}
-	va_end(argp);
 
-	fprintf(ctx.cur, " }\n");
-	fflush(ctx.cur);
-	if (ferror(ctx.cur)) {
-		weston_log("Timeline error in constructing entry, closing.\n");
-		weston_timeline_close();
-	} else {
-		fprintf(ctx.out, "%s", buf);
-	}
+		fprintf(ctx.cur, "{ \"T\":[%" PRId64 ", %ld], \"N\":\"%s\"",
+				(int64_t)ts.tv_sec, ts.tv_nsec, name);
 
-	fclose(ctx.cur);
+		va_start(argp, name);
+		while (1) {
+			otype = va_arg(argp, enum timeline_type);
+			if (otype == TLT_END)
+				break;
+
+			obj = va_arg(argp, void *);
+			if (type_dispatch[otype]) {
+				fprintf(ctx.cur, ", ");
+				type_dispatch[otype](&ctx, obj);
+			}
+		}
+		va_end(argp);
+
+		fprintf(ctx.cur, " }\n");
+		fflush(ctx.cur);
+		if (ferror(ctx.cur)) {
+			weston_log("Timeline error in constructing entry, closing.\n");
+		} else {
+			weston_log_subscription_printf(ctx.subscription, "%s", buf);
+		}
+
+		fclose(ctx.cur);
+
+	}
 }

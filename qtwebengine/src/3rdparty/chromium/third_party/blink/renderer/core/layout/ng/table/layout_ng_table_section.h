@@ -1,13 +1,13 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_TABLE_LAYOUT_NG_TABLE_SECTION_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_TABLE_LAYOUT_NG_TABLE_SECTION_H_
 
+#include "base/notreached.h"
 #include "third_party/blink/renderer/core/core_export.h"
-#include "third_party/blink/renderer/core/layout/layout_block.h"
-#include "third_party/blink/renderer/core/layout/ng/layout_ng_mixin.h"
+#include "third_party/blink/renderer/core/layout/ng/layout_ng_block.h"
 #include "third_party/blink/renderer/core/layout/ng/table/layout_ng_table_section_interface.h"
 
 namespace blink {
@@ -16,7 +16,7 @@ class LayoutNGTable;
 
 // NOTE:
 // Every child of LayoutNGTableSection must be LayoutNGTableRow.
-class CORE_EXPORT LayoutNGTableSection : public LayoutNGMixin<LayoutBlock>,
+class CORE_EXPORT LayoutNGTableSection : public LayoutNGBlock,
                                          public LayoutNGTableSectionInterface {
  public:
   explicit LayoutNGTableSection(Element*);
@@ -27,14 +27,22 @@ class CORE_EXPORT LayoutNGTableSection : public LayoutNGMixin<LayoutBlock>,
 
   // LayoutBlock methods start.
 
-  void UpdateBlockLayout(bool relayout_children) override { NOTREACHED(); }
+  void UpdateBlockLayout(bool relayout_children) override {
+    NOT_DESTROYED();
+    NOTREACHED();
+  }
 
-  const char* GetName() const override { return "LayoutNGTableSection"; }
+  const char* GetName() const override {
+    NOT_DESTROYED();
+    return "LayoutNGTableSection";
+  }
 
   void AddChild(LayoutObject* child,
                 LayoutObject* before_child = nullptr) override;
 
   void RemoveChild(LayoutObject*) override;
+
+  void WillBeRemovedFromTree() override;
 
   void StyleDidChange(StyleDifference diff,
                       const ComputedStyle* old_style) override;
@@ -42,9 +50,28 @@ class CORE_EXPORT LayoutNGTableSection : public LayoutNGMixin<LayoutBlock>,
   LayoutBox* CreateAnonymousBoxWithSameTypeAs(
       const LayoutObject* parent) const override;
 
-  bool AllowsNonVisibleOverflow() const override { return false; }
+  bool RespectsCSSOverflow() const override {
+    NOT_DESTROYED();
+    return false;
+  }
+
+  // Whether a section has opaque background depends on many factors, e.g.
+  // border spacing, border collapsing, missing cells, etc. For simplicity,
+  // just conservatively assume all table sections are not opaque.
+  // Copied from LayoutTableSection,
+  bool ForegroundIsKnownToBeOpaqueInRect(const PhysicalRect&,
+                                         unsigned) const override {
+    NOT_DESTROYED();
+    return false;
+  }
 
   bool BackgroundIsKnownToBeOpaqueInRect(const PhysicalRect&) const override {
+    NOT_DESTROYED();
+    return false;
+  }
+
+  bool VisualRectRespectsVisibility() const final {
+    NOT_DESTROYED();
     return false;
   }
 
@@ -52,34 +79,34 @@ class CORE_EXPORT LayoutNGTableSection : public LayoutNGMixin<LayoutBlock>,
 
   // LayoutNGTableSectionInterface methods start.
 
-  const LayoutTableSection* ToLayoutTableSection() const final {
-    DCHECK(false);
-    return nullptr;
-  }
-
   const LayoutNGTableSectionInterface* ToLayoutNGTableSectionInterface()
       const final {
+    NOT_DESTROYED();
     return this;
   }
 
   LayoutNGTableSectionInterface* ToLayoutNGTableSectionInterface() {
+    NOT_DESTROYED();
     return this;
   }
 
-  const LayoutObject* ToLayoutObject() const final { return this; }
-
-  LayoutObject* ToMutableLayoutObject() final { return this; }
+  const LayoutObject* ToLayoutObject() const final {
+    NOT_DESTROYED();
+    return this;
+  }
 
   LayoutNGTableInterface* TableInterface() const final;
 
   void SetNeedsCellRecalc() final;
 
   bool IsRepeatingHeaderGroup() const final {
+    NOT_DESTROYED();
     // Used in printing, not used in LayoutNG
     return false;
   }
 
   bool IsRepeatingFooterGroup() const final {
+    NOT_DESTROYED();
     // Used in printing, not used in LayoutNG
     return false;
   }
@@ -94,15 +121,11 @@ class CORE_EXPORT LayoutNGTableSection : public LayoutNGMixin<LayoutBlock>,
 
   LayoutNGTableRowInterface* LastRowInterface() const final;
 
-  // Called by ax_layout_object.cc.
-  const LayoutNGTableCellInterface* PrimaryCellInterfaceAt(
-      unsigned row,
-      unsigned column) const final;
-
   // LayoutNGTableSectionInterface methods end.
 
  protected:
   bool IsOfType(LayoutObjectType type) const override {
+    NOT_DESTROYED();
     return type == kLayoutObjectTableSection ||
            LayoutNGMixin<LayoutBlock>::IsOfType(type);
   }

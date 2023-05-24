@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,13 +11,14 @@
 #include <string>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/threading/thread_checker.h"
 #include "base/values.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/update_client/update_client.h"
+#include "extensions/browser/updater/extension_update_data.h"
 
 namespace base {
 class Version;
@@ -41,9 +42,11 @@ class UpdateServiceFactory;
 
 // An UpdateService provides functionality to update extensions.
 // Some methods are virtual for testing purposes.
-class UpdateService : public KeyedService,
-                      update_client::UpdateClient::Observer {
+class UpdateService : public KeyedService {
  public:
+  UpdateService(const UpdateService&) = delete;
+  UpdateService& operator=(const UpdateService&) = delete;
+
   static UpdateService* Get(content::BrowserContext* context);
 
   static void SupplyUpdateServiceForTest(UpdateService* service);
@@ -59,14 +62,8 @@ class UpdateService : public KeyedService,
   // integrity, unpacked, and then passed off to the
   // ExtensionSystem::InstallUpdate method for install completion.
   virtual void StartUpdateCheck(const ExtensionUpdateCheckParams& update_params,
+                                UpdateFoundCallback update_found_callback,
                                 base::OnceClosure callback);
-
-  // This function verifies if the current implementation can update
-  // |extension_id|.
-  virtual bool CanUpdate(const std::string& extension_id) const;
-
-  // Overriden from |update_client::UpdateClient::Observer|.
-  void OnEvent(Events event, const std::string& id) override;
 
  protected:
   UpdateService(content::BrowserContext* context,
@@ -95,21 +92,25 @@ class UpdateService : public KeyedService,
 
   // This function is executed by the update client after an update check
   // request has completed.
-  void UpdateCheckComplete(InProgressUpdate update, update_client::Error error);
+  void UpdateCheckComplete(InProgressUpdate update);
 
   // Adds/Removes observer to/from |update_client::UpdateClient|.
-  // Mainly used for browser tests.
+  // Used by browser tests.
   void AddUpdateClientObserver(update_client::UpdateClient::Observer* observer);
   void RemoveUpdateClientObserver(
       update_client::UpdateClient::Observer* observer);
+
+  void OnCrxStateChange(UpdateFoundCallback update_found_callback,
+                        update_client::CrxUpdateItem item);
+
   void HandleComponentUpdateErrorEvent(const std::string& extension_id) const;
-  void HandleComponentUpdateFoundEvent(const std::string& extension_id) const;
 
   // Get the extension Omaha attributes sent from update config.
-  base::Value GetExtensionOmahaAttributes(const std::string& extension_id);
+  base::Value::Dict GetExtensionOmahaAttributes(
+      update_client::CrxUpdateItem& update_item);
 
  private:
-  content::BrowserContext* browser_context_;
+  raw_ptr<content::BrowserContext> browser_context_;
 
   scoped_refptr<update_client::UpdateClient> update_client_;
   scoped_refptr<UpdateDataProvider> update_data_provider_;
@@ -118,8 +119,6 @@ class UpdateService : public KeyedService,
 
   // used to create WeakPtrs to |this|.
   base::WeakPtrFactory<UpdateService> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(UpdateService);
 };
 
 }  // namespace extensions

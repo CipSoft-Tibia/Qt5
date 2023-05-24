@@ -51,12 +51,30 @@ enum class SubjectMessage
     // gl::VertexArray, into gl::Context. Used to track validation.
     SubjectMapped,
     SubjectUnmapped,
+    // Indicates a bound buffer's storage was reallocated due to glBufferData call or optimizations
+    // to prevent having to flush pending commands and waiting for the GPU to become idle.
+    InternalMemoryAllocationChanged,
 
     // Indicates an external change to the default framebuffer.
     SurfaceChanged,
+    // Indicates the system framebuffer's swapchain changed, i.e. color buffer changed but no
+    // depth/stencil buffer change.
+    SwapchainImageChanged,
+
+    // Indicates a separable program's textures or images changed in the ProgramExecutable.
+    ProgramTextureOrImageBindingChanged,
+    // Indicates a separable program was successfully re-linked.
+    ProgramRelinked,
+    // Indicates a separable program's sampler uniforms were updated.
+    SamplerUniformsUpdated,
+    // Other types of uniform change.
+    ProgramUniformUpdated,
 
     // Indicates a Storage of back-end in gl::Texture has been released.
     StorageReleased,
+
+    // Indicates that all pending updates are complete in the subject.
+    InitializationComplete,
 };
 
 // The observing class inherits from this interface class.
@@ -75,6 +93,9 @@ class ObserverBindingBase
     {}
     virtual ~ObserverBindingBase() {}
 
+    ObserverBindingBase(const ObserverBindingBase &other)            = default;
+    ObserverBindingBase &operator=(const ObserverBindingBase &other) = default;
+
     ObserverInterface *getObserver() const { return mObserver; }
     SubjectIndex getSubjectIndex() const { return mIndex; }
 
@@ -84,6 +105,8 @@ class ObserverBindingBase
     ObserverInterface *mObserver;
     SubjectIndex mIndex;
 };
+
+constexpr size_t kMaxFixedObservers = 8;
 
 // Maintains a list of observer bindings. Sends update messages to the observer.
 class Subject : NonCopyable
@@ -95,13 +118,13 @@ class Subject : NonCopyable
     void onStateChange(SubjectMessage message) const;
     bool hasObservers() const;
     void resetObservers();
+    ANGLE_INLINE size_t getObserversCount() const { return mObservers.size(); }
 
     ANGLE_INLINE void addObserver(ObserverBindingBase *observer)
     {
         ASSERT(!IsInContainer(mObservers, observer));
         mObservers.push_back(observer);
     }
-
     ANGLE_INLINE void removeObserver(ObserverBindingBase *observer)
     {
         ASSERT(IsInContainer(mObservers, observer));
@@ -111,7 +134,6 @@ class Subject : NonCopyable
   private:
     // Keep a short list of observers so we can allocate/free them quickly. But since we support
     // unlimited bindings, have a spill-over list of that uses dynamic allocation.
-    static constexpr size_t kMaxFixedObservers = 8;
     angle::FastVector<ObserverBindingBase *, kMaxFixedObservers> mObservers;
 };
 
@@ -119,6 +141,7 @@ class Subject : NonCopyable
 class ObserverBinding final : public ObserverBindingBase
 {
   public:
+    ObserverBinding();
     ObserverBinding(ObserverInterface *observer, SubjectIndex index);
     ~ObserverBinding() override;
     ObserverBinding(const ObserverBinding &other);

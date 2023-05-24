@@ -1,14 +1,17 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/renderer/v8_context_native_handler.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "extensions/common/features/feature.h"
 #include "extensions/renderer/script_context.h"
 #include "extensions/renderer/script_context_set.h"
 #include "third_party/blink/public/web/web_local_frame.h"
+#include "v8/include/v8-function-callback.h"
+#include "v8/include/v8-object.h"
+#include "v8/include/v8-primitive.h"
 
 namespace extensions {
 

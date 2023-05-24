@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // Portions copyright 2015 The Chromium Embedded Framework Authors.
 // Portions copyright 2014 The Chromium Authors. All rights reserved.
@@ -43,15 +7,26 @@
 // found in the LICENSE file.
 
 #include "extensions_api_client_qt.h"
+#include "file_system_delegate_qt.h"
 #include "messaging_delegate_qt.h"
 
 #include <memory>
-#include "components/pdf/browser/pdf_web_contents_helper.h"
+
 #include "extension_web_contents_observer_qt.h"
 #include "extensions/browser/guest_view/extensions_guest_view_manager_delegate.h"
 #include "extensions/browser/guest_view/mime_handler_view/mime_handler_view_guest_delegate.h"
 #include "mime_handler_view_guest_delegate_qt.h"
+#include "pdf/buildflags.h"
+#include "printing/buildflags/buildflags.h"
+
+#if BUILDFLAG(ENABLE_PDF)
+#include "components/pdf/browser/pdf_web_contents_helper.h"
+#include "printing/pdf_web_contents_helper_client_qt.h"
+#endif
+
+#if BUILDFLAG(ENABLE_PRINTING) && BUILDFLAG(ENABLE_PRINT_PREVIEW)
 #include "printing/print_view_manager_qt.h"
+#endif
 
 namespace extensions {
 
@@ -64,6 +39,13 @@ AppViewGuestDelegate *ExtensionsAPIClientQt::CreateAppViewGuestDelegate() const
     // TODO(extensions): Implement to support Apps.
     NOTREACHED();
     return nullptr;
+}
+
+FileSystemDelegate *ExtensionsAPIClientQt::GetFileSystemDelegate()
+{
+    if (!m_fileSystemDelegate)
+        m_fileSystemDelegate = std::make_unique<FileSystemDelegateQt>();
+    return m_fileSystemDelegate.get();
 }
 
 std::unique_ptr<guest_view::GuestViewManagerDelegate> ExtensionsAPIClientQt::CreateGuestViewManagerDelegate(content::BrowserContext *context) const
@@ -79,8 +61,14 @@ std::unique_ptr<MimeHandlerViewGuestDelegate> ExtensionsAPIClientQt::CreateMimeH
 void ExtensionsAPIClientQt::AttachWebContentsHelpers(content::WebContents *web_contents) const
 {
     // PrefsTabHelper::CreateForWebContents(web_contents);
+#if BUILDFLAG(ENABLE_PRINTING) && BUILDFLAG(ENABLE_PRINT_PREVIEW)
     QtWebEngineCore::PrintViewManagerQt::CreateForWebContents(web_contents);
+#endif
     ExtensionWebContentsObserverQt::CreateForWebContents(web_contents);
+
+#if BUILDFLAG(ENABLE_PDF)
+    pdf::PDFWebContentsHelper::CreateForWebContentsWithClient(web_contents, std::make_unique<PDFWebContentsHelperClientQt>());
+#endif
 }
 
 MessagingDelegate *ExtensionsAPIClientQt::GetMessagingDelegate()

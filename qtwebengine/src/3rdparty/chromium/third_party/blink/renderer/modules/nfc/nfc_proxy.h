@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,18 +10,19 @@
 #include "services/device/public/mojom/nfc.mojom-blink.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_receiver.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_wrapper_mode.h"
 #include "third_party/blink/renderer/platform/supplementable.h"
-#include "third_party/blink/renderer/platform/wtf/hash_map.h"
+#include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
 
 namespace blink {
 
 class LocalDOMWindow;
 class NDEFReader;
-class NDEFWriter;
 
-// This is a proxy class used by NDEFWriter(s) and NDEFReader(s) to connect
+// This is a proxy class used by NDEFReader(s) to connect
 // to implementation of device::mojom::blink::NFC interface.
 class MODULES_EXPORT NFCProxy final : public GarbageCollected<NFCProxy>,
                                       public Supplement<LocalDOMWindow>,
@@ -38,7 +39,7 @@ class MODULES_EXPORT NFCProxy final : public GarbageCollected<NFCProxy>,
   // There is no matching RemoveWriter() method because writers are
   // automatically removed from the weak hash set when they are garbage
   // collected.
-  void AddWriter(NDEFWriter*);
+  void AddWriter(NDEFReader*);
 
   void StartReading(NDEFReader*,
                     device::mojom::blink::NFC::WatchCallback);
@@ -47,7 +48,9 @@ class MODULES_EXPORT NFCProxy final : public GarbageCollected<NFCProxy>,
   void Push(device::mojom::blink::NDEFMessagePtr,
             device::mojom::blink::NDEFWriteOptionsPtr,
             device::mojom::blink::NFC::PushCallback);
-  void CancelPush(device::mojom::blink::NFC::CancelPushCallback);
+  void CancelPush();
+  void MakeReadOnly(device::mojom::blink::NFC::MakeReadOnlyCallback);
+  void CancelMakeReadOnly();
 
  private:
   // Implementation of device::mojom::blink::NFCClient.
@@ -75,14 +78,12 @@ class MODULES_EXPORT NFCProxy final : public GarbageCollected<NFCProxy>,
   using ReaderMap = HeapHashMap<WeakMember<NDEFReader>, uint32_t>;
   ReaderMap readers_;
 
-  using WriterSet = HeapHashSet<WeakMember<NDEFWriter>>;
+  using WriterSet = HeapHashSet<WeakMember<NDEFReader>>;
   WriterSet writers_;
 
+  GC_PLUGIN_IGNORE("https://crbug.com/1381979")
   mojo::Remote<device::mojom::blink::NFC> nfc_remote_;
-  HeapMojoReceiver<device::mojom::blink::NFCClient,
-                   NFCProxy,
-                   HeapMojoWrapperMode::kWithoutContextObserver>
-      client_receiver_;
+  HeapMojoReceiver<device::mojom::blink::NFCClient, NFCProxy> client_receiver_;
 };
 
 }  // namespace blink

@@ -1,36 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "translator.h"
 
 #include <QtCore/QByteArray>
 #include <QtCore/QDebug>
-#include <QtCore/QTextCodec>
 #include <QtCore/QTextStream>
 
 #include <QtCore/QXmlStreamReader>
@@ -112,10 +86,10 @@ static bool loadQPH(Translator &translator, QIODevice &dev, ConversionData &)
     return reader.read(translator);
 }
 
-static QString protect(const QString &str)
+static QString qphProtect(const QString &str)
 {
     QString result;
-    result.reserve(str.length() * 12 / 10);
+    result.reserve(str.size() * 12 / 10);
     for (int i = 0; i != str.size(); ++i) {
         uint c = str.at(i).unicode();
         switch (c) {
@@ -147,7 +121,6 @@ static QString protect(const QString &str)
 static bool saveQPH(const Translator &translator, QIODevice &dev, ConversionData &)
 {
     QTextStream t(&dev);
-    t.setCodec(QTextCodec::codecForName("UTF-8"));
     t << "<!DOCTYPE QPH>\n<QPH";
     QString languageCode = translator.languageCode();
     if (!languageCode.isEmpty() && languageCode != QLatin1String("C"))
@@ -156,16 +129,16 @@ static bool saveQPH(const Translator &translator, QIODevice &dev, ConversionData
     if (!languageCode.isEmpty() && languageCode != QLatin1String("C"))
         t << " sourcelanguage=\"" << languageCode << "\"";
     t << ">\n";
-    foreach (const TranslatorMessage &msg, translator.messages()) {
+    for (const TranslatorMessage &msg : translator.messages()) {
         t << "<phrase>\n";
-        t << "    <source>" << protect(msg.sourceText()) << "</source>\n";
+        t << "    <source>" << qphProtect(msg.sourceText()) << "</source>\n";
         QString str = msg.translations().join(QLatin1Char('@'));
         str.replace(QChar(Translator::BinaryVariantSeparator),
                     QChar(Translator::TextVariantSeparator));
-        t << "    <target>" << protect(str)
+        t << "    <target>" << qphProtect(str)
             << "</target>\n";
         if (!msg.comment().isEmpty())
-            t << "    <definition>" << protect(msg.comment()) << "</definition>\n";
+            t << "    <definition>" << qphProtect(msg.comment()) << "</definition>\n";
         t << "</phrase>\n";
     }
     t << "</QPH>\n";

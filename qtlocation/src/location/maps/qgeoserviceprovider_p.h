@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGEOSERVICEPROVIDER_P_H
 #define QGEOSERVICEPROVIDER_P_H
@@ -51,9 +18,9 @@
 #include "qgeoserviceprovider.h"
 
 #include <QHash>
-#include <QJsonObject>
-#include <QJsonArray>
+#include <QCborMap>
 #include <QLocale>
+#include <private/qglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -62,8 +29,6 @@ class QGeoRoutingManager;
 class QGeoMappingManager;
 
 class QGeoServiceProviderFactory;
-class QGeoServiceProviderFactoryV2;
-class QGeoServiceProviderFactoryV3;
 class QQmlEngine;
 
 class QGeoServiceProviderPrivate
@@ -80,31 +45,28 @@ public:
     /* helper templates for generating the feature and manager accessors */
     template <class Manager, class Engine>
     Manager *manager(QGeoServiceProvider::Error *error,
-                     QString *errorString, Manager **manager);
+                     QString *errorString);
     template <class Flags>
-    Flags features(const char *enumName);
+    Flags features(const char *enumName) const;
 
-    QGeoServiceProviderFactory *factory;
-    QGeoServiceProviderFactoryV2 *factoryV2 = nullptr;
-    QGeoServiceProviderFactoryV3 *factoryV3 = nullptr;
-    QJsonObject metaData;
+    QGeoServiceProviderFactory *factory = nullptr;
+    QCborMap metaData;
 
     QVariantMap parameterMap;
     QVariantMap cleanedParameterMap;
 
-    bool experimental;
+    bool experimental = false;
 
-    QGeoCodingManager *geocodingManager;
-    QGeoRoutingManager *routingManager;
-    QGeoMappingManager *mappingManager;
-    QPlaceManager *placeManager;
-    QNavigationManager *navigationManager = nullptr;
+    std::unique_ptr<QGeoCodingManager> geocodingManager;
+    std::unique_ptr<QGeoRoutingManager> routingManager;
+    std::unique_ptr<QGeoMappingManager> mappingManager;
+    std::unique_ptr<QPlaceManager> placeManager;
     QQmlEngine *qmlEngine = nullptr;
 
-    QGeoServiceProvider::Error geocodeError;
-    QGeoServiceProvider::Error routingError;
-    QGeoServiceProvider::Error mappingError;
-    QGeoServiceProvider::Error placeError;
+    QGeoServiceProvider::Error geocodeError = QGeoServiceProvider::NoError;
+    QGeoServiceProvider::Error routingError = QGeoServiceProvider::NoError;
+    QGeoServiceProvider::Error mappingError = QGeoServiceProvider::NoError;
+    QGeoServiceProvider::Error placeError = QGeoServiceProvider::NoError;
     QGeoServiceProvider::Error navigationError = QGeoServiceProvider::NoError;
 
     QString geocodeErrorString;
@@ -113,16 +75,16 @@ public:
     QString placeErrorString;
     QString navigationErrorString;
 
-    QGeoServiceProvider::Error error;
+    QGeoServiceProvider::Error error = QGeoServiceProvider::NoError;
     QString errorString;
 
     QString providerName;
 
     QLocale locale;
-    bool localeSet;
+    bool localeSet = false;
 
-    static QMultiHash<QString, QJsonObject> plugins(bool reload = false);
-    static void loadPluginMetadata(QMultiHash<QString, QJsonObject> &list);
+    static QMultiHash<QString, QCborMap> plugins(bool reload = false);
+    static void loadPluginMetadata(QMultiHash<QString, QCborMap> &list);
 };
 
 QT_END_NAMESPACE

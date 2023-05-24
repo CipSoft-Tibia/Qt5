@@ -1,36 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DCore/qentity.h>
 #include <Qt3DCore/private/qnode_p.h>
 #include <Qt3DCore/private/qscene_p.h>
-#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
 #include <Qt3DCore/qtransform.h>
 
 #include <Qt3DRender/qsceneloader.h>
@@ -41,7 +15,7 @@
 #include <Qt3DRender/private/qsceneloader_p.h>
 #include <QSignalSpy>
 
-#include "testpostmanarbiter.h"
+#include "testarbiter.h"
 
 class tst_QSceneLoader: public QObject
 {
@@ -60,62 +34,6 @@ private Q_SLOTS:
         QVERIFY(static_cast<Qt3DRender::QSceneLoaderPrivate *>(Qt3DCore::QNodePrivate::get(&sceneLoader))->m_subTreeRoot == nullptr);
     }
 
-    void checkCreationData()
-    {
-        // GIVEN
-        Qt3DRender::QSceneLoader sceneLoader;
-        const QUrl sceneUrl = QUrl(QStringLiteral("LA ConventionCenter"));
-        sceneLoader.setSource(sceneUrl);
-
-        // WHEN
-        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges;
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&sceneLoader);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            QCOMPARE(creationChanges.size(), 1);
-
-            const auto creationChangeData =
-                    qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QSceneLoaderData>>(creationChanges.first());
-            const Qt3DRender::QSceneLoaderData cloneData = creationChangeData->data;
-
-            QCOMPARE(sceneLoader.id(), creationChangeData->subjectId());
-            QCOMPARE(sceneLoader.isEnabled(), true);
-            QCOMPARE(sceneLoader.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(sceneLoader.metaObject(), creationChangeData->metaObject());
-            QCOMPARE(sceneLoader.source(), sceneUrl);
-            QCOMPARE(sceneLoader.source(), cloneData.source);
-        }
-
-        // WHEN
-        sceneLoader.setEnabled(false);
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&sceneLoader);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            QCOMPARE(creationChanges.size(), 1);
-
-            const auto creationChangeData =
-                    qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QSceneLoaderData>>(creationChanges.first());
-            const Qt3DRender::QSceneLoaderData cloneData = creationChangeData->data;
-
-            QCOMPARE(sceneLoader.id(), creationChangeData->subjectId());
-            QCOMPARE(sceneLoader.isEnabled(), false);
-            QCOMPARE(sceneLoader.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(sceneLoader.metaObject(), creationChangeData->metaObject());
-            QCOMPARE(sceneLoader.source(), sceneUrl);
-            QCOMPARE(sceneLoader.source(), cloneData.source);
-        }
-    }
-
     void checkSourcePropertyUpdate()
     {
         // GIVEN
@@ -129,11 +47,10 @@ private Q_SLOTS:
         QCoreApplication::processEvents();
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), sceneLoader.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), sceneLoader.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
     }
 
     void checkEntities()

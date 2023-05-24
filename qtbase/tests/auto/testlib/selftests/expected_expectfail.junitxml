@@ -1,67 +1,188 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuite errors="13" failures="6" tests="14" name="tst_ExpectFail">
+<testsuite name="tst_ExpectFail" timestamp="@TEST_START_TIME@" hostname="@HOSTNAME@" tests="44" failures="17" errors="0" skipped="4" time="@TEST_DURATION@">
   <properties>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QTestVersion"/>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QtVersion"/>
-    <property value="" name="QtBuild"/>
+    <property name="QTestVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtBuild" value=""/>
   </properties>
-  <testcase result="pass" name="initTestCase"/>
-  <testcase result="xfail" name="xfailAndContinue">
-    <!-- message="begin" type="qdebug" -->
-    <!-- message="This should xfail" type="info" -->
-    <!-- message="after" type="qdebug" -->
+  <testcase name="initTestCase" classname="tst_ExpectFail" time="@TEST_DURATION@"/>
+  <testcase name="xfailAndContinue" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[begin]]>
+      <![CDATA[This should xfail]]>
+      <![CDATA[after]]>
+    </system-out>
   </testcase>
-  <testcase result="xfail" name="xfailAndAbort">
-    <!-- message="begin" type="qdebug" -->
-    <!-- message="This should xfail" type="info" -->
+  <testcase name="xfailAndAbort" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[begin]]>
+      <![CDATA[This should xfail]]>
+    </system-out>
   </testcase>
-  <testcase result="fail" name="xfailTwice">
-    <failure message="Already expecting a fail" result="fail"/>
+  <testcase name="xfailContinueSkip" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <skipped message="This skip should be reported and counted"/>
+    <system-out>
+      <![CDATA[This should xfail then skip]]>
+    </system-out>
   </testcase>
-  <testcase result="xfail" name="xfailWithQString">
-    <!-- message="A string" type="info" -->
-    <!-- message="Bug 5 (The message)" type="info" -->
+  <testcase name="xfailAbortSkip" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[This should xfail]]>
+    </system-out>
   </testcase>
-  <testcase result="xfail" name="xfailDataDrivenWithQVerify">
-    <!-- tag="Abort" message="This test should xfail" type="info" -->
-    <!-- tag="Continue" message="This test should xfail" type="info" -->
+  <testcase name="xfailTwice" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="fail" message="Already expecting a fail"/>
   </testcase>
-  <testcase result="xfail" name="xfailDataDrivenWithQCompare">
-    <!-- tag="Abort" message="This test should xfail" type="info" -->
-    <!-- tag="Continue" message="This test should xfail" type="info" -->
+  <testcase name="xfailDataDrivenTwice(Pass Abort)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="fail" message="Already expecting a fail"/>
   </testcase>
-  <testcase result="pass" name="xfailOnWrongRow"/>
-  <testcase result="xfail" name="xfailOnAnyRow">
-    <!-- tag="first row" message="This test should xfail" type="info" -->
-    <!-- tag="second row" message="This test should xfail" type="info" -->
+  <testcase name="xfailDataDrivenTwice(Pass Continue)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="fail" message="Already expecting a fail"/>
   </testcase>
-  <testcase result="fail" name="xfailWithoutVerify">
-    <failure tag="first row" message="QEXPECT_FAIL was called without any subsequent verification statements" result="fail"/>
-    <failure tag="second row" message="QEXPECT_FAIL was called without any subsequent verification statements" result="fail"/>
+  <testcase name="xfailDataDrivenTwice(Fail Abort)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="fail" message="Already expecting a fail"/>
   </testcase>
-  <testcase result="xpass" name="xpass">
-    <failure message="&apos;true&apos; returned TRUE unexpectedly. ()" result="xpass"/>
+  <testcase name="xfailDataDrivenTwice(Fail Continue)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="fail" message="Already expecting a fail"/>
   </testcase>
-  <testcase result="xpass" name="xpassDataDrivenWithQVerify">
-    <failure tag="XPass" message="&apos;true&apos; returned TRUE unexpectedly. ()" result="xpass"/>
+  <testcase name="xfailWithQString" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[A string]]>
+      <![CDATA[Bug 5 (The message)]]>
+    </system-out>
   </testcase>
-  <testcase result="xpass" name="xpassDataDrivenWithQCompare">
-    <failure tag="XPass" message="QCOMPARE(1, 1) returned TRUE unexpectedly." result="xpass"/>
+  <testcase name="xfailDataDrivenWithQString(Pass Abort)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <skipped message="Each Continue or Pass reports this and increments skip&#x002D;count"/>
   </testcase>
-  <testcase result="pass" name="cleanupTestCase"/>
-  <system-err>
-<![CDATA[begin]]>
-<![CDATA[This should xfail]]>
-<![CDATA[after]]>
-<![CDATA[begin]]>
-<![CDATA[This should xfail]]>
-<![CDATA[A string]]>
-<![CDATA[Bug 5 (The message)]]>
-<![CDATA[This test should xfail]]>
-<![CDATA[This test should xfail]]>
-<![CDATA[This test should xfail]]>
-<![CDATA[This test should xfail]]>
-<![CDATA[This test should xfail]]>
-<![CDATA[This test should xfail]]>
-  </system-err>
+  <testcase name="xfailDataDrivenWithQString(Pass Continue)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <skipped message="Each Continue or Pass reports this and increments skip&#x002D;count"/>
+  </testcase>
+  <testcase name="xfailDataDrivenWithQString(Fail Abort)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[A string]]>
+    </system-out>
+  </testcase>
+  <testcase name="xfailDataDrivenWithQString(Fail Continue)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <skipped message="Each Continue or Pass reports this and increments skip&#x002D;count"/>
+    <system-out>
+      <![CDATA[A string]]>
+      <![CDATA[Bug 5 (The message)]]>
+    </system-out>
+  </testcase>
+  <testcase name="xfailDataDrivenWithQVerify(Pass Abort)" classname="tst_ExpectFail" time="@TEST_DURATION@"/>
+  <testcase name="xfailDataDrivenWithQVerify(Pass Continue)" classname="tst_ExpectFail" time="@TEST_DURATION@"/>
+  <testcase name="xfailDataDrivenWithQVerify(Fail Abort)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[This test should xfail]]>
+    </system-out>
+  </testcase>
+  <testcase name="xfailDataDrivenWithQVerify(Fail Continue)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[This test should xfail]]>
+    </system-out>
+  </testcase>
+  <testcase name="xfailDataDrivenWithQCompare(Pass Abort)" classname="tst_ExpectFail" time="@TEST_DURATION@"/>
+  <testcase name="xfailDataDrivenWithQCompare(Pass Continue)" classname="tst_ExpectFail" time="@TEST_DURATION@"/>
+  <testcase name="xfailDataDrivenWithQCompare(Fail Abort)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[This test should xfail]]>
+    </system-out>
+  </testcase>
+  <testcase name="xfailDataDrivenWithQCompare(Fail Continue)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[This test should xfail]]>
+    </system-out>
+  </testcase>
+  <testcase name="xfailOnWrongRow(Fail Abort)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[Should pass (*not* xpass), despite test-case name]]>
+    </system-out>
+  </testcase>
+  <testcase name="xfailOnWrongRow(Fail Continue)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[Should pass (*not* xpass), despite test-case name]]>
+    </system-out>
+  </testcase>
+  <testcase name="xfailOnAnyRow(Fail Abort)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[This test should xfail]]>
+    </system-out>
+  </testcase>
+  <testcase name="xfailOnAnyRow(Fail Continue)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[This test should xfail]]>
+    </system-out>
+  </testcase>
+  <testcase name="xfailWithoutCheck(Fail Abort)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="fail" message="QEXPECT_FAIL was called without any subsequent verification statements"/>
+    <system-out>
+      <![CDATA[Should fail (*not* xfail), despite test-case name]]>
+    </system-out>
+  </testcase>
+  <testcase name="xfailWithoutCheck(Fail Continue)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="fail" message="QEXPECT_FAIL was called without any subsequent verification statements"/>
+    <system-out>
+      <![CDATA[Should fail (*not* xfail), despite test-case name]]>
+    </system-out>
+  </testcase>
+  <testcase name="xpassAbort" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="xpass" message="&apos;true&apos; returned TRUE unexpectedly. ()"/>
+  </testcase>
+  <testcase name="xpassAbortSkip" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="xpass" message="&apos;true&apos; returned TRUE unexpectedly. ()"/>
+  </testcase>
+  <testcase name="xpassAbortXfailContinue" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="xpass" message="&apos;true&apos; returned TRUE unexpectedly. ()"/>
+  </testcase>
+  <testcase name="xpassContinue" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="xpass" message="&apos;true&apos; returned TRUE unexpectedly. ()"/>
+    <system-out>
+      <![CDATA[This should be reached]]>
+    </system-out>
+  </testcase>
+  <testcase name="xpassContinueSkip" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="xpass" message="&apos;true&apos; returned TRUE unexpectedly. ()"/>
+    <skipped message="This should be reached but not increment skip&#x002D;count"/>
+  </testcase>
+  <testcase name="xpassContinueXfailAbort" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="xpass" message="&apos;true&apos; returned TRUE unexpectedly. ()"/>
+    <system-out>
+      <![CDATA[This test should xfail but not add to totals]]>
+    </system-out>
+  </testcase>
+  <testcase name="xpassAbortDataDrivenWithQVerify(XPass)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="xpass" message="&apos;true&apos; returned TRUE unexpectedly. ()"/>
+  </testcase>
+  <testcase name="xpassAbortDataDrivenWithQVerify(Pass)" classname="tst_ExpectFail" time="@TEST_DURATION@"/>
+  <testcase name="xpassContinueDataDrivenWithQVerify(XPass)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="xpass" message="&apos;true&apos; returned TRUE unexpectedly. ()"/>
+    <system-out>
+      <![CDATA[Test should Continue past XPASS]]>
+    </system-out>
+  </testcase>
+  <testcase name="xpassContinueDataDrivenWithQVerify(Pass)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[Test should simply PASS]]>
+    </system-out>
+  </testcase>
+  <testcase name="xpassAbortDataDrivenWithQCompare(XPass)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="xpass" message="QCOMPARE(1, 1) returned TRUE unexpectedly."/>
+  </testcase>
+  <testcase name="xpassAbortDataDrivenWithQCompare(Pass)" classname="tst_ExpectFail" time="@TEST_DURATION@"/>
+  <testcase name="xpassContinueDataDrivenWithQCompare(XPass)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <failure type="xpass" message="QCOMPARE(1, 1) returned TRUE unexpectedly."/>
+    <system-out>
+      <![CDATA[Test should Continue past XPASS]]>
+    </system-out>
+  </testcase>
+  <testcase name="xpassContinueDataDrivenWithQCompare(Pass)" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[Test should simply PASS]]>
+    </system-out>
+  </testcase>
+  <testcase name="cleanupTestCase" classname="tst_ExpectFail" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[Totals should add up to 44: 23 passed, 17 failed, 4 skipped]]>
+    </system-out>
+  </testcase>
 </testsuite>

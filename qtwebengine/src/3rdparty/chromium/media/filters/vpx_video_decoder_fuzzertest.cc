@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,9 @@
 #include <random>
 
 #include "base/at_exit.h"
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
@@ -30,15 +30,16 @@ struct Env {
   base::test::SingleThreadTaskEnvironment task_environment;
 };
 
-void OnDecodeComplete(const base::Closure& quit_closure, media::Status status) {
-  quit_closure.Run();
+void OnDecodeComplete(base::OnceClosure quit_closure,
+                      media::DecoderStatus status) {
+  std::move(quit_closure).Run();
 }
 
-void OnInitDone(const base::Closure& quit_closure,
+void OnInitDone(base::OnceClosure quit_closure,
                 bool* success_dest,
-                media::Status status) {
+                media::DecoderStatus status) {
   *success_dest = status.is_ok();
-  quit_closure.Run();
+  std::move(quit_closure).Run();
 }
 
 void OnOutputComplete(scoped_refptr<media::VideoFrame> frame) {}
@@ -48,8 +49,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   // Create Env on the first run of LLVMFuzzerTestOneInput otherwise
   // message_loop will be created before this process forks when used with AFL,
   // causing hangs.
-  static Env* env = new Env();
-  ALLOW_UNUSED_LOCAL(env);
+  [[maybe_unused]] static Env* env = new Env();
   std::mt19937_64 rng;
 
   {  // Seed rng from data.
@@ -64,11 +64,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   bool has_alpha = false;
   if (rng() & 1) {
-    codec = media::kCodecVP8;
+    codec = media::VideoCodec::kVP8;
     // non-Alpha VP8 decoding isn't supported by VpxVideoDecoder on Linux.
     has_alpha = true;
   } else {
-    codec = media::kCodecVP9;
+    codec = media::VideoCodec::kVP9;
     has_alpha = rng() & 1;
   }
 
@@ -104,7 +104,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     decoder.Initialize(
         config, true /* low_delay */, nullptr /* cdm_context */,
         base::BindOnce(&OnInitDone, run_loop.QuitClosure(), &success),
-        base::Bind(&OnOutputComplete), base::NullCallback());
+        base::BindRepeating(&OnOutputComplete), base::NullCallback());
     run_loop.Run();
     if (!success)
       return 0;

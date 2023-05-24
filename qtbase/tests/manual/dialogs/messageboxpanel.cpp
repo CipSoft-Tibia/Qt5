@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 Thorbjørn Lund Martsum - tmartsum[at]gmail.com
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 Thorbjørn Lund Martsum - tmartsum[at]gmail.com
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "messageboxpanel.h"
 
@@ -39,6 +14,8 @@
 #include <QLineEdit>
 #include <QLabel>
 #include <QCheckBox>
+#include <QRegularExpressionValidator>
+#include <QRegularExpression>
 
 MessageBoxPanel::MessageBoxPanel(QWidget *parent) : QWidget(parent)
 ,m_iconComboBox(new QComboBox)
@@ -80,7 +57,7 @@ MessageBoxPanel::MessageBoxPanel(QWidget *parent) : QWidget(parent)
 
     // buttons mask
     optionsLayout->addWidget(new QLabel(QString::fromLatin1("Message box button mask (in hex)")));
-    m_validator = new QRegExpValidator(QRegExp("0[xX]?[0-9a-fA-F]+"), this);
+    m_validator = new QRegularExpressionValidator(QRegularExpression("0[xX]?[0-9a-fA-F]+"), this);
     m_buttonsMask->setMaxLength(10);
     m_buttonsMask->setValidator(m_validator);
     m_buttonsMask->setText(QString::fromLatin1("0x00300400"));
@@ -136,11 +113,9 @@ void MessageBoxPanel::setupMessageBox(QMessageBox &box)
     if (box.standardButtons() == QMessageBox::StandardButtons())
         box.setStandardButtons(QMessageBox::Ok); // just to have something.
 
-#if QT_VERSION >= 0x050000
     box.setCheckBox(0);
     if (m_checkboxText->text().length() > 0)
         box.setCheckBox(new QCheckBox(m_checkboxText->text()));
-#endif // Qt 5
 
     box.setIcon((QMessageBox::Icon) m_iconComboBox->currentIndex());
 }
@@ -165,14 +140,12 @@ void MessageBoxPanel::doExec()
     QString sres;
     sres.setNum(res, 16);
     m_resultLabel->setText(QString::fromLatin1("Return value (hex): %1").arg(sres));
-#if QT_VERSION >= 0x050000
     if (m_msgbox->checkBox()) {
         if (m_msgbox->checkBox()->isChecked())
             m_checkBoxResult->setText(QString::fromLatin1("Checkbox was checked"));
         else
             m_checkBoxResult->setText(QString::fromLatin1("Checkbox was not checked"));
     }
-#endif // Qt 5
 }
 
 void MessageBoxPanel::doShowApply()

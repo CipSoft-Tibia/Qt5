@@ -5,15 +5,16 @@
  * found in the LICENSE file.
  */
 
-#include "src/core/SkScalerCache.h"
+#include "src/core/SkStrike.h"
 
 #include "bench/Benchmark.h"
 #include "include/core/SkCanvas.h"
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkGraphics.h"
 #include "include/core/SkTypeface.h"
-#include "src/core/SkRemoteGlyphCache.h"
+#include "include/private/chromium/SkChromeRemoteGlyphCache.h"
+#include "src/base/SkTLazy.h"
 #include "src/core/SkStrikeSpec.h"
-#include "src/core/SkTLazy.h"
 #include "src/core/SkTaskGroup.h"
 #include "src/core/SkTextBlobTrace.h"
 #include "tools/Resources.h"
@@ -147,7 +148,7 @@ public:
         return id <= fLastDeletedHandleId;
     }
 
-    void notifyCacheMiss(SkStrikeClient::CacheMissType type) override {
+    void notifyCacheMiss(SkStrikeClient::CacheMissType type, int fontSize) override {
         SkAutoMutexExclusive l(fMutex);
 
         fCacheMissCount[type]++;
@@ -220,13 +221,15 @@ class DiffCanvasBench : public Benchmark {
 
     bool isSuitableFor(Backend b) override { return b == kNonRendering_Backend; }
 
-    void onDraw(int loops, SkCanvas*) override {
-        const SkSurfaceProps props(SkSurfaceProps::kLegacyFontHost_InitType);
-        SkTextBlobCacheDiffCanvas canvas{1024, 1024, props, fServer.get()};
+    void onDraw(int loops, SkCanvas* modelCanvas) override {
+        SkSurfaceProps props;
+        if (modelCanvas) { modelCanvas->getProps(&props); }
+        std::unique_ptr<SkCanvas> canvas = fServer->makeAnalysisCanvas(1024, 1024, props,
+                                                                       nullptr, true, true);
         loops *= 100;
         while (loops --> 0) {
             for (const auto& record : fTrace) {
-                canvas.drawTextBlob(
+                canvas->drawTextBlob(
                         record.blob.get(), record.offset.x(), record.offset.y(),record.paint);
             }
         }

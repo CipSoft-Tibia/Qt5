@@ -1,10 +1,12 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // Original code copyright 2014 Foxit Software Inc. http://www.foxitsoftware.com
 
 #include "core/fpdfapi/page/cpdf_pageobject.h"
+
+#include "core/fxcrt/fx_coordinates.h"
 
 CPDF_PageObject::CPDF_PageObject(int32_t content_stream)
     : m_ContentStream(content_stream) {}

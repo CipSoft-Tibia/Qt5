@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Aaron McCarthy <mccarthy.aaron@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Aaron McCarthy <mccarthy.aaron@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeotiledmappingmanagerengineosm.h"
 #include "qgeotilefetcherosm.h"
@@ -105,13 +69,13 @@ QGeoTiledMappingManagerEngineOsm::QGeoTiledMappingManagerEngineOsm(const QVarian
     }
 
     /* TileProviders setup */
-    QVector<TileProvider *> providers_street;
-    QVector<TileProvider *> providers_satellite;
-    QVector<TileProvider *> providers_cycle;
-    QVector<TileProvider *> providers_transit;
-    QVector<TileProvider *> providers_nighttransit;
-    QVector<TileProvider *> providers_terrain;
-    QVector<TileProvider *> providers_hiking;
+    QList<TileProvider *> providers_street;
+    QList<TileProvider *> providers_satellite;
+    QList<TileProvider *> providers_cycle;
+    QList<TileProvider *> providers_transit;
+    QList<TileProvider *> providers_nighttransit;
+    QList<TileProvider *> providers_terrain;
+    QList<TileProvider *> providers_hiking;
     if (highdpi) {
         providers_street.push_back(new TileProvider(domain + "street-hires", true));
         providers_satellite.push_back(new TileProvider(domain + "satellite-hires", true));
@@ -217,10 +181,12 @@ QGeoTiledMappingManagerEngineOsm::QGeoTiledMappingManagerEngineOsm(const QVarian
         if (parameters.contains(QStringLiteral("osm.mapping.copyright")))
             m_customCopyright = parameters.value(QStringLiteral("osm.mapping.copyright")).toString();
 
+        if (!tmsServer.endsWith(".png"))
+             tmsServer += QStringLiteral("%z/%x/%y.png");
         m_providers.push_back(
             new QGeoTileProviderOsm( nmCached,
                 QGeoMapType(QGeoMapType::CustomMap, tr("Custom URL Map"), tr("Custom url map view set via urlprefix parameter"), false, false, 8, pluginName, cameraCaps),
-                { new TileProvider(tmsServer + QStringLiteral("%z/%x/%y.png"),
+                { new TileProvider(tmsServer,
                     QStringLiteral("png"),
                     mapCopyright,
                     dataCopyright) }, cameraCaps
@@ -233,7 +199,7 @@ QGeoTiledMappingManagerEngineOsm::QGeoTiledMappingManagerEngineOsm(const QVarian
     if (parameters.contains(QStringLiteral("osm.mapping.providersrepository.disabled")))
         disableRedirection = parameters.value(QStringLiteral("osm.mapping.providersrepository.disabled")).toBool();
 
-    for (QGeoTileProviderOsm * provider: qAsConst(m_providers)) {
+    for (QGeoTileProviderOsm * provider: std::as_const(m_providers)) {
         // Providers are parented inside QGeoFileTileCacheOsm, as they are used in its destructor.
         if (disableRedirection) {
             provider->disableRedirection();
@@ -349,7 +315,7 @@ QGeoMap *QGeoTiledMappingManagerEngineOsm::createMap()
     return map;
 }
 
-const QVector<QGeoTileProviderOsm *> &QGeoTiledMappingManagerEngineOsm::providers()
+const QList<QGeoTileProviderOsm *> &QGeoTiledMappingManagerEngineOsm::providers()
 {
     return m_providers;
 }
@@ -376,7 +342,7 @@ void QGeoTiledMappingManagerEngineOsm::onProviderResolutionError(const QGeoTileP
 void QGeoTiledMappingManagerEngineOsm::updateMapTypes()
 {
     QList<QGeoMapType> mapTypes;
-    foreach (QGeoTileProviderOsm * provider, m_providers) {
+    for (QGeoTileProviderOsm * provider : m_providers) {
         // assume provider are ok until they have been resolved invalid
         if (!provider->isResolved() || provider->isValid())
             mapTypes << provider->mapType();

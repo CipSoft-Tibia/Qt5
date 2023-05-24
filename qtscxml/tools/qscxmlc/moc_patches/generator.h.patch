@@ -1,0 +1,49 @@
+--- .upstream/generator.h	2023-06-06 10:15:35.263646156 +0200
++++ generator.h	2023-08-21 11:17:37.759825035 +0200
+@@ -6,20 +6,33 @@
+ 
+ #include "moc.h"
+ 
++// -- QtScxml
++#include <QtCore/qhash.h>
++#include <QtCore/qlist.h>
++#include <QtCore/qiodevice.h>
++// -- QtScxml
++
+ QT_BEGIN_NAMESPACE
+ 
+ class Generator
+ {
+-    FILE *out;
++    QIODevice &out; // -- QtScxml
+     ClassDef *cdef;
+     QList<uint> meta_data;
+ 
+ public:
+     Generator(ClassDef *classDef, const QList<QByteArray> &metaTypes,
+               const QHash<QByteArray, QByteArray> &knownQObjectClasses,
+-              const QHash<QByteArray, QByteArray> &knownGadgets, FILE *outfile = nullptr,
++              const QHash<QByteArray, QByteArray> &knownGadgets,
++              QIODevice &outfile, // -- QtScxml
+               bool requireCompleteTypes = false);
+     void generateCode();
++
++// -- QtScxml
++    void generateAccessorDefs();
++    void generateSignalDefs();
++// -- QtScxml
++
+ private:
+     bool registerableMetaType(const QByteArray &propertyType);
+     void registerClassInfoStrings();
+@@ -38,7 +51,10 @@
+     void generateMetacall();
+     void generateStaticMetacall();
+     void generateSignal(FunctionDef *def, int index);
++    void generateQPropertyApi();
++#if 0 // -- QtScxml
+     void generatePluginMetaData();
++#endif // -- QtScxml
+     QMultiMap<QByteArray, int> automaticPropertyMetaTypesHelper();
+     QMap<int, QMultiMap<QByteArray, int>>
+     methodsWithAutomaticTypesHelper(const QList<FunctionDef> &methodList);

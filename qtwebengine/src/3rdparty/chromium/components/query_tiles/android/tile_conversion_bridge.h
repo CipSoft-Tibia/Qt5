@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,6 +20,10 @@ class TileConversionBridge {
   static ScopedJavaLocalRef<jobject> CreateJavaTiles(
       JNIEnv* env,
       const std::vector<Tile>& tiles);
+
+  static ScopedJavaLocalRef<jobject> CreateJavaTiles(
+      JNIEnv* env,
+      const std::vector<std::unique_ptr<Tile>>& tiles);
 };
 
 }  // namespace query_tiles

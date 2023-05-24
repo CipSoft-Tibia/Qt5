@@ -30,11 +30,17 @@ class TransformableFrameInterface {
   // method call.
   virtual rtc::ArrayView<const uint8_t> GetData() const = 0;
 
-  // Copies |data| into the owned frame payload data.
+  // Copies `data` into the owned frame payload data.
   virtual void SetData(rtc::ArrayView<const uint8_t> data) = 0;
 
-  virtual uint32_t GetTimestamp() const = 0;
+  virtual uint8_t GetPayloadType() const = 0;
   virtual uint32_t GetSsrc() const = 0;
+  virtual uint32_t GetTimestamp() const = 0;
+  // TODO(https://bugs.webrtc.org/14878): Change this to pure virtual after it
+  // is implemented everywhere.
+  virtual absl::optional<Timestamp> GetCaptureTimeIdentifier() const {
+    return absl::nullopt;
+  }
 
   enum class Direction {
     kUnknown,
@@ -56,11 +62,14 @@ class TransformableVideoFrameInterface : public TransformableFrameInterface {
   // when the transformation applied to the frame is encryption/decryption, the
   // additional data holds the serialized generic frame descriptor extension
   // calculated in webrtc::RtpDescriptorAuthentication.
-  // TODO(bugs.webrtc.org/11380) remove from interface once
-  // webrtc::RtpDescriptorAuthentication is exposed in api/.
-  virtual std::vector<uint8_t> GetAdditionalData() const = 0;
+  // This has been superseeded by GetMetadata() and will be removed shortly.
+  [[deprecated("https://crbug.com/1414370")]] virtual std::vector<uint8_t>
+  GetAdditionalData() const = 0;
 
   virtual const VideoFrameMetadata& GetMetadata() const = 0;
+  // TODO(https://crbug.com/webrtc/14709): Make pure virtual when Chromium MOCK
+  // has implemented this.
+  virtual void SetMetadata(const VideoFrameMetadata&) {}
 };
 
 // Extends the TransformableFrameInterface to expose audio-specific information.
@@ -72,6 +81,8 @@ class TransformableAudioFrameInterface : public TransformableFrameInterface {
   // information in the header as needed, for example to compile the list of
   // csrcs.
   virtual const RTPHeader& GetHeader() const = 0;
+
+  virtual rtc::ArrayView<const uint32_t> GetContributingSources() const = 0;
 };
 
 // Objects implement this interface to be notified with the transformed frame.
@@ -88,7 +99,7 @@ class TransformedFrameCallback : public rtc::RefCountInterface {
 // the TransformedFrameCallback interface (see above).
 class FrameTransformerInterface : public rtc::RefCountInterface {
  public:
-  // Transforms |frame| using the implementing class' processing logic.
+  // Transforms `frame` using the implementing class' processing logic.
   virtual void Transform(
       std::unique_ptr<TransformableFrameInterface> transformable_frame) = 0;
 

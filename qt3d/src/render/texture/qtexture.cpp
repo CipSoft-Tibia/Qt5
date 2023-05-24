@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtextureimage.h"
 #include "qabstracttextureimage.h"
@@ -52,11 +16,11 @@
 #include <Qt3DCore/private/qscene_p.h>
 #include <Qt3DCore/qaspectengine.h>
 #include <Qt3DCore/private/qdownloadhelperservice_p.h>
+#include <Qt3DCore/private/qurlhelper_p.h>
 #include <Qt3DRender/private/qrenderaspect_p.h>
 #include <Qt3DRender/private/nodemanagers_p.h>
 #include <Qt3DRender/private/managers_p.h>
 #include <Qt3DRender/private/texture_p.h>
-#include <Qt3DRender/private/qurlhelper_p.h>
 #include <qmath.h>
 
 QT_BEGIN_NAMESPACE
@@ -544,7 +508,7 @@ QTextureImageDataPtr setKtxFile(QIODevice *source)
     }
 
     const int bytesToSkip = decode(header.bytesOfKeyValueData);
-    if (source->read(bytesToSkip).count() != bytesToSkip) {
+    if (source->read(bytesToSkip).size() != bytesToSkip) {
         qWarning("Unexpected end of ktx data");
         return imageData;
     }
@@ -1001,7 +965,7 @@ QTextureImageDataPtr TextureLoadingHelper::loadTextureData(const QUrl &url, bool
             || url.scheme() == QLatin1String("assets")
 #endif
             ) {
-        const QString source = Qt3DRender::QUrlHelper::urlToLocalFileOrQrc(url);
+        const QString source = Qt3DCore::QUrlHelper::urlToLocalFileOrQrc(url);
         QFile f(source);
         if (!f.open(QIODevice::ReadOnly))
             qWarning() << "Failed to open" << source;
@@ -1076,7 +1040,7 @@ QTextureDataPtr QTextureFromSourceGenerator::operator ()()
         QT_PREPEND_NAMESPACE(QBuffer) buffer(&m_sourceData);
         if (buffer.open(QIODevice::ReadOnly)) {
             QString suffix = m_url.toString();
-            suffix = suffix.right(suffix.length() - suffix.lastIndexOf('.'));
+            suffix = suffix.right(suffix.size() - suffix.lastIndexOf(QLatin1Char('.')));
 
             QStringList ext(suffix);
 
@@ -1086,9 +1050,9 @@ QTextureDataPtr QTextureFromSourceGenerator::operator ()()
                 ext << mtype.suffixes();
             }
 
-            for (const QString &s: qAsConst(ext)) {
+            for (const QString &s: std::as_const(ext)) {
                 textureData = TextureLoadingHelper::loadTextureData(&buffer, s, true, m_mirrored);
-                if (textureData && textureData->data().length() > 0)
+                if (textureData && textureData->data().size() > 0)
                     break;
             }
         }
@@ -1100,7 +1064,7 @@ QTextureDataPtr QTextureFromSourceGenerator::operator ()()
     if (textureData && m_format != QAbstractTexture::NoFormat && m_format != QAbstractTexture::Automatic)
         textureData->setFormat(static_cast<QOpenGLTexture::TextureFormat>(m_format));
 
-    if (textureData && textureData->data().length() > 0) {
+    if (textureData && textureData->data().size() > 0) {
         generatedData->setTarget(static_cast<QAbstractTexture::Target>(textureData->target()));
         generatedData->setFormat(static_cast<QAbstractTexture::TextureFormat>(textureData->format()));
         generatedData->setWidth(textureData->width());
@@ -1514,8 +1478,8 @@ QTextureLoader::QTextureLoader(QNode *parent)
 
     // Regenerate the texture functor when properties we support overriding
     // from QAbstractTexture get changed.
-    Q_D(QTextureLoader);
-    auto regenerate = [=] () {
+    auto regenerate = [this] () {
+        Q_D(QTextureLoader);
         if (!notificationsBlocked())    // check the change doesn't come from the backend
             d->updateGenerator();
     };
@@ -1775,3 +1739,5 @@ void QSharedGLTexture::setTextureId(int id)
 } // namespace Qt3DRender
 
 QT_END_NAMESPACE
+
+#include "moc_qtexture.cpp"

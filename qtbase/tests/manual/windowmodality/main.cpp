@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "ui_dialog.h"
 #include "ui_widget.h"
@@ -51,7 +26,7 @@ class CustomDialog : public QDialog, public Ui::Dialog
 {
     Q_OBJECT
 public:
-    CustomDialog(QWidget *parent = 0)
+    CustomDialog(QWidget *parent = nullptr)
         : QDialog(parent)
     {
         setupUi(this);
@@ -101,7 +76,7 @@ private slots:
 private:
     void newDialog(DialogType dialogType, Qt::WindowModality windowModality)
     {
-        QWidget *parent = 0;
+        QWidget *parent = nullptr;
         if (useThisAsParentCheckBox->isChecked())
             parent = this;
         else if (createSiblingDialogCheckBox->isChecked())
@@ -166,7 +141,7 @@ class Widget : public QWidget, public Ui::Widget
 {
     Q_OBJECT
 public:
-    Widget(QWidget *parent = 0)
+    Widget(QWidget *parent = nullptr)
         : QWidget(parent)
     {
         setupUi(this);
@@ -175,12 +150,6 @@ public:
 private slots:
     void on_windowButton_clicked()
     { (new Widget)->show(); }
-    void on_groupLeaderButton_clicked()
-    {
-        Widget *w = new Widget;
-        w->setAttribute(Qt::WA_GroupLeader);
-        w->show();
-    }
 
     void on_modelessCustomDialogButton_clicked()
     { newDialog(CustomDialogType, Qt::NonModal); }
@@ -218,7 +187,7 @@ private slots:
 private:
     void newDialog(DialogType dialogType, Qt::WindowModality windowModality)
     {
-        QWidget *parent = 0;
+        QWidget *parent = nullptr;
         if (useThisAsParentCheckBox->isChecked())
             parent = this;
 

@@ -2,17 +2,24 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+visibility = [ "./*" ]
+
 source_set("channel") {
+  # Used in //components/media_router/common/providers/cast/channel in Chromium.
+  visibility += [ "*" ]
+  public = [
+    "channel/cast_auth_util.h",
+    "channel/message_util.h",
+    "public/sender_socket_factory.h",
+  ]
   sources = [
     "channel/cast_auth_util.cc",
-    "channel/cast_auth_util.h",
     "channel/message_util.cc",
-    "channel/message_util.h",
     "channel/sender_socket_factory.cc",
-    "public/sender_socket_factory.h",
   ]
 
   deps = [
+    "../../third_party/abseil",
     "../common:channel",
     "../common/certificate/proto:certificate_proto",
     "../common/channel/proto:channel_proto",
@@ -25,9 +32,14 @@ source_set("channel") {
     "../common:certificate",
     "../common:channel",
   ]
+  friend = [
+    ":unittests",
+    "../test:unittests",
+  ]
 }
 
 source_set("sender") {
+  public = []
   sources = [
     "cast_app_availability_tracker.cc",
     "cast_app_availability_tracker.h",
@@ -49,10 +61,13 @@ source_set("sender") {
     "../common:channel",
     "../common:public",
   ]
+
+  friend = [ ":unittests" ]
 }
 
 source_set("test_helpers") {
   testonly = true
+  public = []
   sources = [
     "testing/test_helpers.cc",
     "testing/test_helpers.h",
@@ -65,13 +80,15 @@ source_set("test_helpers") {
     "../receiver:channel",
   ]
 
-  public_deps = [
-    ":channel",
-  ]
+  public_deps = [ ":channel" ]
+
+  friend = [ ":unittests" ]
 }
 
 source_set("unittests") {
   testonly = true
+  visibility += [ "../..:openscreen_unittests_all" ]
+  public = []
   sources = [
     "cast_app_availability_tracker_unittest.cc",
     "cast_app_discovery_service_impl_unittest.cc",

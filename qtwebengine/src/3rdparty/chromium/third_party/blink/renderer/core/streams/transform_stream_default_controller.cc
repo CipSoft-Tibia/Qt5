@@ -1,9 +1,10 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/streams/transform_stream_default_controller.h"
 
+#include "third_party/blink/renderer/bindings/core/v8/to_v8_traits.h"
 #include "third_party/blink/renderer/core/streams/miscellaneous_operations.h"
 #include "third_party/blink/renderer/core/streams/promise_handler.h"
 #include "third_party/blink/renderer/core/streams/readable_stream.h"
@@ -13,24 +14,31 @@
 #include "third_party/blink/renderer/core/streams/writable_stream.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
-#include "third_party/blink/renderer/platform/bindings/to_v8.h"
 #include "third_party/blink/renderer/platform/bindings/v8_binding.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
-#include "third_party/blink/renderer/platform/heap/visitor.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/wtf/casting.h"
 
 namespace blink {
 
 TransformStreamDefaultController::TransformStreamDefaultController() = default;
 TransformStreamDefaultController::~TransformStreamDefaultController() = default;
 
-base::Optional<double> TransformStreamDefaultController::desiredSize() const {
+ReadableStreamDefaultController*
+TransformStreamDefaultController::GetDefaultController(
+    TransformStream* stream) {
+  // The TransformStreamDefaultController will always use a
+  // ReadableStreamDefaultController. Hence, it is safe to down-cast here.
+  return To<ReadableStreamDefaultController>(
+      stream->readable_->GetController());
+}
+
+absl::optional<double> TransformStreamDefaultController::desiredSize() const {
   // https://streams.spec.whatwg.org/#ts-default-controller-desired-size
   // 2. Let readableController be
   //    this.[[controlledTransformStream]].[[readable]].
   //    [[readableStreamController]].
   const auto* readable_controller =
-      controlled_transform_stream_->readable_->GetController();
+      GetDefaultController(controlled_transform_stream_);
 
   // 3. Return !
   //    ReadableStreamDefaultControllerGetDesiredSize(readableController).
@@ -171,7 +179,9 @@ v8::Local<v8::Value> TransformStreamDefaultController::SetUpFromTransformer(
   // This method is only called when a TransformStream is being constructed by
   // JavaScript. So the execution context should be valid and this call should
   // not crash.
-  auto controller_value = ToV8(controller, script_state);
+  auto controller_value = ToV8Traits<TransformStreamDefaultController>::ToV8(
+                              script_state, controller)
+                              .ToLocalChecked();
 
   // The following steps are reordered from the standard for efficiency, but the
   // effect is the same.
@@ -249,7 +259,7 @@ void TransformStreamDefaultController::Enqueue(
 
   // 2. Let readableController be
   //    stream.[[readable]].[[readableStreamController]].
-  auto* readable_controller = stream->readable_->GetController();
+  auto* readable_controller = GetDefaultController(stream);
 
   // 3. If !
   //    ReadableStreamDefaultControllerCanCloseOrEnqueue(readableController) is
@@ -319,19 +329,19 @@ v8::Local<v8::Promise> TransformStreamDefaultController::PerformTransform(
 
   class RejectFunction final : public PromiseHandlerWithValue {
    public:
-    RejectFunction(ScriptState* script_state, TransformStream* stream)
-        : PromiseHandlerWithValue(script_state), stream_(stream) {}
+    explicit RejectFunction(TransformStream* stream) : stream_(stream) {}
 
-    v8::Local<v8::Value> CallWithLocal(v8::Local<v8::Value> r) override {
+    v8::Local<v8::Value> CallWithLocal(ScriptState* script_state,
+                                       v8::Local<v8::Value> r) override {
       // 2. Return the result of transforming transformPromise with a rejection
       //    handler that, when called with argument r, performs the following
       //    steps:
       //    a. Perform ! TransformStreamError(controller.
       //       [[controlledTransformStream]], r).
-      TransformStream::Error(GetScriptState(), stream_, r);
+      TransformStream::Error(script_state, stream_, r);
 
       //    b. Throw r.
-      return PromiseReject(GetScriptState(), r);
+      return PromiseReject(script_state, r);
     }
 
     void Trace(Visitor* visitor) const override {
@@ -346,8 +356,9 @@ v8::Local<v8::Promise> TransformStreamDefaultController::PerformTransform(
   // 2. Return the result of transforming transformPromise ...
   return StreamThenPromise(
       script_state->GetContext(), transform_promise, nullptr,
-      MakeGarbageCollected<RejectFunction>(
-          script_state, controller->controlled_transform_stream_));
+      MakeGarbageCollected<ScriptFunction>(
+          script_state, MakeGarbageCollected<RejectFunction>(
+                            controller->controlled_transform_stream_)));
 }
 
 void TransformStreamDefaultController::Terminate(
@@ -360,7 +371,7 @@ void TransformStreamDefaultController::Terminate(
   // 2. Let readableController be
   //    stream.[[readable]].[[readableStreamController]].
   ReadableStreamDefaultController* readable_controller =
-      stream->readable_->GetController();
+      GetDefaultController(stream);
 
   // 3. If !
   //    ReadableStreamDefaultControllerCanCloseOrEnqueue(readableController) is

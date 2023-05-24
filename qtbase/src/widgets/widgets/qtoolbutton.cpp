@@ -1,47 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtoolbutton.h"
 
 #include <qapplication.h>
-#include <qdesktopwidget.h>
-#include <private/qdesktopwidget_p.h>
 #include <qdrawutil.h>
 #include <qevent.h>
 #include <qicon.h>
@@ -49,7 +11,9 @@
 #include <qpointer.h>
 #include <qstyle.h>
 #include <qstyleoption.h>
+#if QT_CONFIG(tooltip)
 #include <qtooltip.h>
+#endif
 #if QT_CONFIG(mainwindow)
 #include <qmainwindow.h>
 #endif
@@ -66,6 +30,8 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 class QToolButtonPrivate : public QAbstractButtonPrivate
 {
@@ -169,8 +135,7 @@ bool QToolButtonPrivate::hasMenu() const
          with actions used in other parts of the main window.
     \endtable
 
-    \sa QPushButton, QToolBar, QMainWindow, QAction,
-        {fowler}{GUI Design Handbook: Push Button}
+    \sa QPushButton, QToolBar, QMainWindow, QAction
 */
 
 /*!
@@ -244,7 +209,6 @@ void QToolButton::initStyleOption(QStyleOptionToolButton *option) const
 
     Q_D(const QToolButton);
     option->initFrom(this);
-    bool forceNoText = false;
     option->iconSize = iconSize(); //default value
 
 #if QT_CONFIG(toolbar)
@@ -255,8 +219,7 @@ void QToolButton::initStyleOption(QStyleOptionToolButton *option) const
     }
 #endif // QT_CONFIG(toolbar)
 
-    if (!forceNoText)
-        option->text = d->text;
+    option->text = d->text;
     option->icon = d->icon;
     option->arrowType = d->arrowType;
     if (d->down)
@@ -308,7 +271,7 @@ void QToolButton::initStyleOption(QStyleOptionToolButton *option) const
             option->toolButtonStyle = Qt::ToolButtonIconOnly;
     }
 
-    if (d->icon.isNull() && d->arrowType == Qt::NoArrow && !forceNoText) {
+    if (d->icon.isNull() && d->arrowType == Qt::NoArrow) {
         if (!d->text.isEmpty())
             option->toolButtonStyle = Qt::ToolButtonTextOnly;
         else if (option->toolButtonStyle != Qt::ToolButtonTextOnly)
@@ -350,7 +313,7 @@ QSize QToolButton::sizeHint() const
 
     if (opt.toolButtonStyle != Qt::ToolButtonIconOnly) {
         QSize textSize = fm.size(Qt::TextShowMnemonic, text());
-        textSize.setWidth(textSize.width() + fm.horizontalAdvance(QLatin1Char(' '))*2);
+        textSize.setWidth(textSize.width() + fm.horizontalAdvance(u' ') * 2);
         if (opt.toolButtonStyle == Qt::ToolButtonTextUnderIcon) {
             h += 4 + textSize.height();
             if (textSize.width() > w)
@@ -369,8 +332,7 @@ QSize QToolButton::sizeHint() const
     if (d->popupMode == MenuButtonPopup)
         w += style()->pixelMetric(QStyle::PM_MenuButtonIndicator, &opt, this);
 
-    d->sizeHint = style()->sizeFromContents(QStyle::CT_ToolButton, &opt, QSize(w, h), this).
-                  expandedTo(QApplication::globalStrut());
+    d->sizeHint = style()->sizeFromContents(QStyle::CT_ToolButton, &opt, QSize(w, h), this);
     return d->sizeHint;
 }
 
@@ -466,7 +428,7 @@ void QToolButton::paintEvent(QPaintEvent *)
 void QToolButton::actionEvent(QActionEvent *event)
 {
     Q_D(QToolButton);
-    QAction *action = event->action();
+    auto action = static_cast<QAction *>(event->action());
     switch (event->type()) {
     case QEvent::ActionChanged:
         if (action == d->defaultAction)
@@ -528,7 +490,7 @@ void QToolButtonPrivate::_q_actionTriggered()
 /*!
     \reimp
  */
-void QToolButton::enterEvent(QEvent * e)
+void QToolButton::enterEvent(QEnterEvent * e)
 {
     Q_D(QToolButton);
     if (d->autoRaise)
@@ -602,7 +564,7 @@ void QToolButton::mousePressEvent(QMouseEvent *e)
     if (e->button() == Qt::LeftButton && (d->popupMode == MenuButtonPopup)) {
         QRect popupr = style()->subControlRect(QStyle::CC_ToolButton, &opt,
                                                QStyle::SC_ToolButtonMenu, this);
-        if (popupr.isValid() && popupr.contains(e->pos())) {
+        if (popupr.isValid() && popupr.contains(e->position().toPoint())) {
             d->buttonPressed = QToolButtonPrivate::MenuButtonPressed;
             showMenu();
             return;
@@ -629,7 +591,7 @@ void QToolButton::mouseReleaseEvent(QMouseEvent *e)
 bool QToolButton::hitButton(const QPoint &pos) const
 {
     Q_D(const QToolButton);
-    if(QAbstractButton::hitButton(pos))
+    if (QAbstractButton::hitButton(pos))
         return (d->buttonPressed != QToolButtonPrivate::MenuButtonPressed);
     return false;
 }
@@ -728,7 +690,7 @@ static QPoint positionMenu(const QToolButton *q, bool horizontal,
 {
     QPoint p;
     const QRect rect = q->rect(); // Find screen via point in case of QGraphicsProxyWidget.
-    QRect screen = QDesktopWidgetPrivate::availableGeometry(q->mapToGlobal(rect.center()));
+    const QRect screen = QWidgetPrivate::availableScreenGeometry(q, q->mapToGlobal(rect.center()));
     if (horizontal) {
         if (q->isRightToLeft()) {
             if (q->mapToGlobal(QPoint(0, rect.bottom())).y() + sh.height() <= screen.bottom()) {
@@ -760,8 +722,13 @@ static QPoint positionMenu(const QToolButton *q, bool horizontal,
             }
         }
     }
+
+    // QTBUG-118695 Force point inside the current screen. If the returned point
+    // is not found inside any screen, QMenu's positioning logic kicks in without
+    // taking the QToolButton's screen into account. This can cause the menu to
+    // end up on primary monitor, even if the QToolButton is on a non-primary monitor.
     p.rx() = qMax(screen.left(), qMin(p.x(), screen.right() - sh.width()));
-    p.ry() += 1;
+    p.ry() = qMax(screen.top(), qMin(p.y() + 1, screen.bottom()));
     return p;
 }
 
@@ -943,10 +910,10 @@ void QToolButton::setDefaultAction(QAction *action)
     // If iconText() is generated from text(), we need to escape any '&'s so they
     // don't turn into shortcuts
     if (QActionPrivate::get(action)->iconText.isEmpty())
-        buttonText.replace(QLatin1String("&"), QLatin1String("&&"));
+        buttonText.replace("&"_L1, "&&"_L1);
     setText(buttonText);
     setIcon(action->icon());
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
     setToolTip(action->toolTip());
 #endif
 #if QT_CONFIG(statustip)
@@ -982,7 +949,15 @@ QAction *QToolButton::defaultAction() const
     return d->defaultAction;
 }
 
-
+/*!
+  \reimp
+ */
+void QToolButton::checkStateSet()
+{
+    Q_D(QToolButton);
+    if (d->defaultAction && d->defaultAction->isCheckable())
+        d->defaultAction->setChecked(isChecked());
+}
 
 /*!
   \reimp
@@ -1004,7 +979,7 @@ bool QToolButton::event(QEvent *event)
     case QEvent::HoverLeave:
     case QEvent::HoverMove:
         if (const QHoverEvent *he = static_cast<const QHoverEvent *>(event))
-            d_func()->updateHoverControl(he->pos());
+            d_func()->updateHoverControl(he->position().toPoint());
         break;
     default:
         break;

@@ -1,34 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Jeremy Lainé <jeremy.laine@m4x.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Jeremy Lainé <jeremy.laine@m4x.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-
-#include <QtTest/QtTest>
 #include "private/qasn1element_p.h"
+
+#include <QTest>
+
+#include <QtCore/QDateTime>
+#include <QtCore/QTimeZone>
 
 class tst_QAsn1Element : public QObject
 {
@@ -127,7 +105,7 @@ void tst_QAsn1Element::dateTime_data()
         << QDateTime();
     QTest::newRow("UTCTime - 070417074026Z")
         << QByteArray::fromHex("170d3037303431373037343032365a")
-        << QDateTime(QDate(2007, 4, 17), QTime(7, 40, 26), Qt::UTC);
+        << QDateTime(QDate(2007, 4, 17), QTime(7, 40, 26), QTimeZone::UTC);
     QTest::newRow("UTCTime - bad length")
         << QByteArray::fromHex("170c30373034313730373430325a")
         << QDateTime();
@@ -136,16 +114,19 @@ void tst_QAsn1Element::dateTime_data()
         << QDateTime();
     QTest::newRow("UTCTime - year 1950")
         << QByteArray::fromHex("170d3530313232343035353530305a")
-        << QDateTime(QDate(1950, 12, 24), QTime(5, 55), Qt::UTC);
+        << QDateTime(QDate(1950, 12, 24), QTime(5, 55), QTimeZone::UTC);
     QTest::newRow("UTCTime - year 1999")
         << QByteArray::fromHex("170d3939313232343035353530305a")
-        << QDateTime(QDate(1999, 12, 24), QTime(5, 55), Qt::UTC);
+        << QDateTime(QDate(1999, 12, 24), QTime(5, 55), QTimeZone::UTC);
     QTest::newRow("UTCTime - year 2000")
         << QByteArray::fromHex("170d3030313232343035353530305a")
-        << QDateTime(QDate(2000, 12, 24), QTime(5, 55), Qt::UTC);
+        << QDateTime(QDate(2000, 12, 24), QTime(5, 55), QTimeZone::UTC);
+    QTest::newRow("UTCTime - leap day year 2000")
+        << QByteArray::fromHex("170d3030303232393035353530305a")
+        << QDateTime(QDate(2000, 2, 29), QTime(5, 55), QTimeZone::UTC);
     QTest::newRow("UTCTime - year 2049")
         << QByteArray::fromHex("170d3439313232343035353530305a")
-        << QDateTime(QDate(2049, 12, 24), QTime(5, 55), Qt::UTC);
+        << QDateTime(QDate(2049, 12, 24), QTime(5, 55), QTimeZone::UTC);
     QTest::newRow("UTCTime - invalid year ('-9')")
         << QByteArray::fromHex("170d2d39313232343035353530305a")
         << QDateTime();
@@ -163,12 +144,18 @@ void tst_QAsn1Element::dateTime_data()
         << QDateTime();
     QTest::newRow("GeneralizedTime - 20510829095341Z")
         << QByteArray::fromHex("180f32303531303832393039353334315a")
-        << QDateTime(QDate(2051, 8, 29), QTime(9, 53, 41), Qt::UTC);
+        << QDateTime(QDate(2051, 8, 29), QTime(9, 53, 41), QTimeZone::UTC);
     QTest::newRow("GeneralizedTime - bad length")
         << QByteArray::fromHex("180e323035313038323930393533345a")
         << QDateTime();
     QTest::newRow("GeneralizedTime - no trailing Z")
         << QByteArray::fromHex("180f323035313038323930393533343159")
+        << QDateTime();
+    QTest::newRow("GeneralizedTime - invalid month (+8)")
+        << QByteArray::fromHex("180f323035312b3832393039353334315a")
+        << QDateTime();
+    QTest::newRow("GeneralizedTime - invalid date (+9)")
+        << QByteArray::fromHex("180f3230353130382b393039353334315a")
         << QDateTime();
 }
 
@@ -179,6 +166,9 @@ void tst_QAsn1Element::dateTime()
 
     QAsn1Element elem;
     QVERIFY(elem.read(encoded));
+    QEXPECT_FAIL("UTCTime - leap day year 2000",
+                 "We decode as 1900, and then adjust to 2000. But there was no leap day in 1900!",
+                 Continue);
     QCOMPARE(elem.toDateTime(), value);
 }
 

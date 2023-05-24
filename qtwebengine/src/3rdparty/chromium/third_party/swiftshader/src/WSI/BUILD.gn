@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import("../swiftshader.gni")
+import("//build_overrides/wayland.gni")
+import("//build/config/ozone.gni")
 
 config("WSI_metal_weak_framework") {
   if (is_mac) {
@@ -25,21 +27,32 @@ config("WSI_metal_weak_framework") {
 
 swiftshader_source_set("WSI") {
   sources = [
+    "HeadlessSurfaceKHR.cpp",
+    "HeadlessSurfaceKHR.hpp",
     "VkSurfaceKHR.cpp",
     "VkSurfaceKHR.hpp",
     "VkSwapchainKHR.cpp",
     "VkSwapchainKHR.hpp",
   ]
 
-  if (is_linux || is_chromeos) {
-    sources += [
-      "XcbSurfaceKHR.cpp",
-      "XcbSurfaceKHR.hpp",
-      "XlibSurfaceKHR.cpp",
-      "XlibSurfaceKHR.hpp",
-      "libX11.cpp",
-      "libX11.hpp",
-    ]
+  if (is_linux) {
+    if (ozone_platform_x11) {
+      sources += [
+        "XcbSurfaceKHR.cpp",
+        "XcbSurfaceKHR.hpp",
+        "libXCB.cpp",
+        "libXCB.hpp",
+      ]
+    }
+
+    if (ozone_platform_wayland) {
+      sources += [
+        "WaylandSurfaceKHR.cpp",
+        "WaylandSurfaceKHR.hpp",
+        "libWaylandClient.cpp",
+        "libWaylandClient.hpp",
+      ]
+    }
   }
 
   if (is_win) {
@@ -68,10 +81,17 @@ swiftshader_source_set("WSI") {
   ]
 
   deps = [
+    "../../third_party/SPIRV-Tools:spvtools_headers",
     "../../third_party/marl:Marl_headers",
     "../System",
     "../Vulkan:swiftshader_libvulkan_headers",
   ]
+
+  # Do not try to depend on Wayland if the |wayland_gn_dir| is not set.
+  if (is_linux && ozone_platform_wayland && wayland_gn_dir != "") {
+    # Use third-party targets
+    deps += [ "$wayland_gn_dir:wayland_client" ]
+  }
 
   configs = [ "../Vulkan:swiftshader_libvulkan_private_config" ]
 }

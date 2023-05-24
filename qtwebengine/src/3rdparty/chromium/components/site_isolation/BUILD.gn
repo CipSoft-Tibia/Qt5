@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,8 +6,10 @@ import("//build/buildflag_header.gni")
 import("//build/config/chrome_build.gni")
 
 declare_args() {
-  # Normally, only official Chrome Android builds will use a Google-internal
-  # list of isolated origins defined below.
+  # Normally, only Google Chrome Android and some Fuchsia WebEngine builds will
+  # use a Google-internal list of isolated origins defined below.
+  # If other Fuchsia embedders are added, the associated logic may need to be
+  # updated. See crbug.com/1179087.
   #
   # You can set the variable 'use_internal_isolated_origins' to true to use this
   # Google-internal list of isolated origins even in a developer build.  Setting

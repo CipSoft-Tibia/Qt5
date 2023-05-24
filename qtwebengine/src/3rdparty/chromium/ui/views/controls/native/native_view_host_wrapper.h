@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "ui/base/cursor/cursor.h"
 #include "ui/gfx/native_widget_types.h"
 #include "ui/views/views_export.h"
 
@@ -102,9 +103,8 @@ class NativeViewHostWrapper {
   // view.
   virtual gfx::NativeViewAccessible GetNativeViewAccessible() = 0;
 
-  // Returns the native cursor corresponding to the point (x, y)
-  // in the native view.
-  virtual gfx::NativeCursor GetCursor(int x, int y) = 0;
+  // Returns the cursor corresponding to the point (x, y) in the native view.
+  virtual ui::Cursor GetCursor(int x, int y) = 0;
 
   // Sets the visibility of the gfx::NativeView. This differs from
   // {Show,Hide}Widget because it doesn't affect the placement, size,
@@ -114,6 +114,9 @@ class NativeViewHostWrapper {
   // Pass the parent accessible object to the native view so that it can return
   // this value when querying its parent accessible.
   virtual void SetParentAccessible(gfx::NativeViewAccessible) = 0;
+
+  // Returns the parent accessible object to the native view.
+  virtual gfx::NativeViewAccessible GetParentAccessible() = 0;
 
   // Creates a platform-specific instance of an object implementing this
   // interface.

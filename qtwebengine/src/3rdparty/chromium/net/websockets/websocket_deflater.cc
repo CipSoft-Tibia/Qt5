@@ -1,10 +1,11 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "net/websockets/websocket_deflater.h"
 
 #include <string.h>
+
 #include <algorithm>
 #include <vector>
 
@@ -15,8 +16,7 @@
 
 namespace net {
 
-WebSocketDeflater::WebSocketDeflater(ContextTakeOverMode mode)
-    : mode_(mode), are_bytes_added_(false) {}
+WebSocketDeflater::WebSocketDeflater(ContextTakeOverMode mode) : mode_(mode) {}
 
 WebSocketDeflater::~WebSocketDeflater() {
   if (stream_) {

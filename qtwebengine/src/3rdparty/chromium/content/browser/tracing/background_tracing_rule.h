@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,20 +7,14 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "base/values.h"
 #include "content/browser/tracing/background_tracing_config_impl.h"
-#include "content/common/content_export.h"
 #include "content/public/browser/background_tracing_manager.h"
 #include "third_party/perfetto/protos/perfetto/trace/chrome/chrome_metadata.pbzero.h"
 
-namespace base {
-class DictionaryValue;
-}  // namespace base
-
 namespace content {
 
-class CONTENT_EXPORT BackgroundTracingRule {
+class BackgroundTracingRule {
  public:
   using MetadataProto =
       perfetto::protos::pbzero::BackgroundTracingMetadata::TriggerRule;
@@ -28,22 +22,15 @@ class CONTENT_EXPORT BackgroundTracingRule {
   BackgroundTracingRule();
   explicit BackgroundTracingRule(int trigger_delay);
 
+  BackgroundTracingRule(const BackgroundTracingRule&) = delete;
+  BackgroundTracingRule& operator=(const BackgroundTracingRule&) = delete;
+
   virtual ~BackgroundTracingRule();
 
-  void Setup(const base::DictionaryValue* dict);
-  BackgroundTracingConfigImpl::CategoryPreset category_preset() const {
-    return category_preset_;
-  }
-  void set_category_preset(
-      BackgroundTracingConfigImpl::CategoryPreset category_preset) {
-    category_preset_ = category_preset;
-  }
-
   virtual void Install() {}
-  virtual void IntoDict(base::DictionaryValue* dict) const;
+  virtual base::Value::Dict ToDict() const;
   virtual void GenerateMetadataProto(MetadataProto* out) const;
   virtual bool ShouldTriggerNamedEvent(const std::string& named_event) const;
-  virtual void OnHistogramTrigger(const std::string& histogram_name) const {}
 
   // Seconds from the rule is triggered to finalization should start.
   virtual int GetTraceDelay() const;
@@ -51,32 +38,23 @@ class CONTENT_EXPORT BackgroundTracingRule {
   // Probability that we should allow a tigger to  happen.
   double trigger_chance() const { return trigger_chance_; }
 
-  bool stop_tracing_on_repeated_reactive() const {
-    return stop_tracing_on_repeated_reactive_;
-  }
-
   static std::unique_ptr<BackgroundTracingRule> CreateRuleFromDict(
-      const base::DictionaryValue* dict);
-
-  void SetArgs(const base::DictionaryValue& args) {
-    args_ = args.CreateDeepCopy();
-  }
-  const base::DictionaryValue* args() const { return args_.get(); }
+      const base::Value::Dict& dict);
 
   const std::string& rule_id() const { return rule_id_; }
+
+  bool is_crash() const { return is_crash_; }
 
  protected:
   virtual std::string GetDefaultRuleId() const;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(BackgroundTracingRule);
+  void Setup(const base::Value::Dict& dict);
 
-  double trigger_chance_;
-  int trigger_delay_;
-  bool stop_tracing_on_repeated_reactive_;
+  double trigger_chance_ = 1.0;
+  int trigger_delay_ = -1;
   std::string rule_id_;
-  BackgroundTracingConfigImpl::CategoryPreset category_preset_;
-  std::unique_ptr<base::DictionaryValue> args_;
+  bool is_crash_ = false;
 };
 
 }  // namespace content

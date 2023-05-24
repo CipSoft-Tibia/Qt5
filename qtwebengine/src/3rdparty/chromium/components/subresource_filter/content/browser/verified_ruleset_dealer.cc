@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,14 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/check.h"
 #include "base/files/file.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
-#include "base/task_runner_util.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "components/subresource_filter/core/common/indexed_ruleset.h"
 #include "components/subresource_filter/core/common/memory_mapped_ruleset.h"
@@ -25,19 +25,22 @@ namespace subresource_filter {
 VerifiedRulesetDealer::VerifiedRulesetDealer() = default;
 VerifiedRulesetDealer::~VerifiedRulesetDealer() = default;
 
-base::File VerifiedRulesetDealer::OpenAndSetRulesetFile(
+RulesetFilePtr VerifiedRulesetDealer::OpenAndSetRulesetFile(
     int expected_checksum,
     const base::FilePath& file_path) {
-  DCHECK(CalledOnValidSequence());
-  // On Windows, open the file with FLAG_SHARE_DELETE to allow deletion while
-  // there are handles to it still open.
-  base::File file(file_path, base::File::FLAG_OPEN | base::File::FLAG_READ |
-                                 base::File::FLAG_SHARE_DELETE);
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  // On Windows, open the file with FLAG_WIN_SHARE_DELETE to allow deletion
+  // while there are handles to it still open.
+  RulesetFilePtr file(
+      new base::File(file_path, base::File::FLAG_OPEN | base::File::FLAG_READ |
+                                    base::File::FLAG_WIN_SHARE_DELETE),
+      base::OnTaskRunnerDeleter(
+          base::SequencedTaskRunner::GetCurrentDefault()));
   TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("loading"),
                "VerifiedRulesetDealer::OpenAndSetRulesetFile", "file_valid",
-               file.IsValid());
-  if (file.IsValid()) {
-    SetRulesetFile(file.Duplicate());
+               file->IsValid());
+  if (file->IsValid()) {
+    SetRulesetFile(file->Duplicate());
     expected_checksum_ = expected_checksum;
   }
   return file;
@@ -50,7 +53,7 @@ void VerifiedRulesetDealer::SetRulesetFile(base::File ruleset_file) {
 }
 
 scoped_refptr<const MemoryMappedRuleset> VerifiedRulesetDealer::GetRuleset() {
-  DCHECK(CalledOnValidSequence());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("loading"),
                "VerifiedRulesetDealer::GetRuleset");
 
@@ -97,7 +100,7 @@ VerifiedRulesetDealer::Handle::~Handle() = default;
 
 void VerifiedRulesetDealer::Handle::GetDealerAsync(
     base::OnceCallback<void(VerifiedRulesetDealer*)> callback) {
-  DCHECK(sequence_checker_.CalledOnValidSequence());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   // NOTE: Properties of the sequenced |task_runner| guarantee that the
   // |callback| will always be provided with a valid pointer, because the
@@ -110,13 +113,13 @@ void VerifiedRulesetDealer::Handle::GetDealerAsync(
 void VerifiedRulesetDealer::Handle::TryOpenAndSetRulesetFile(
     const base::FilePath& path,
     int expected_checksum,
-    base::OnceCallback<void(base::File)> callback) {
-  DCHECK(sequence_checker_.CalledOnValidSequence());
+    base::OnceCallback<void(RulesetFilePtr)> callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   // |base::Unretained| is safe here because the |OpenAndSetRulesetFile| task
   // will be posted before a task to delete the pointer upon destruction of
   // |this| Handler.
-  base::PostTaskAndReplyWithResult(
-      task_runner_, FROM_HERE,
+  task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(&VerifiedRulesetDealer::OpenAndSetRulesetFile,
                      base::Unretained(dealer_.get()), expected_checksum, path),
       std::move(callback));
@@ -125,33 +128,34 @@ void VerifiedRulesetDealer::Handle::TryOpenAndSetRulesetFile(
 // VerifiedRuleset and its Handle. ---------------------------------------------
 
 VerifiedRuleset::VerifiedRuleset() {
-  sequence_checker_.DetachFromSequence();
+  DETACH_FROM_SEQUENCE(sequence_checker_);
 }
 
 VerifiedRuleset::~VerifiedRuleset() {
-  DCHECK(sequence_checker_.CalledOnValidSequence());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 }
 
 void VerifiedRuleset::Initialize(VerifiedRulesetDealer* dealer) {
-  DCHECK(sequence_checker_.CalledOnValidSequence());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(dealer);
   ruleset_ = dealer->GetRuleset();
 }
 
 VerifiedRuleset::Handle::Handle(VerifiedRulesetDealer::Handle* dealer_handle)
     : task_runner_(dealer_handle->task_runner()),
-      ruleset_(new VerifiedRuleset, base::OnTaskRunnerDeleter(task_runner_)) {
+      ruleset_(new VerifiedRuleset,
+               base::OnTaskRunnerDeleter(task_runner_.get())) {
   dealer_handle->GetDealerAsync(base::BindOnce(
       &VerifiedRuleset::Initialize, base::Unretained(ruleset_.get())));
 }
 
 VerifiedRuleset::Handle::~Handle() {
-  DCHECK(sequence_checker_.CalledOnValidSequence());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 }
 
 void VerifiedRuleset::Handle::GetRulesetAsync(
     base::OnceCallback<void(VerifiedRuleset*)> callback) {
-  DCHECK(sequence_checker_.CalledOnValidSequence());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   task_runner_->PostTask(FROM_HERE,
                          base::BindOnce(std::move(callback), ruleset_.get()));
 }

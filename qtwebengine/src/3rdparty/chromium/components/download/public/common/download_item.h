@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -23,17 +23,16 @@
 #include <string>
 #include <vector>
 
-#include "base/callback_forward.h"
-#include "base/files/file_path.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/ref_counted.h"
-#include "base/optional.h"
-#include "base/strings/string16.h"
 #include "base/supports_user_data.h"
 #include "components/download/public/common/download_danger_type.h"
 #include "components/download/public/common/download_export.h"
 #include "components/download/public/common/download_interrupt_reasons.h"
-#include "components/download/public/common/download_schedule.h"
 #include "components/download/public/common/download_source.h"
+#include "net/base/isolation_info.h"
+#include "services/network/public/mojom/fetch_api.mojom-shared.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/page_transition_types.h"
 #include "url/origin.h"
 
@@ -101,19 +100,19 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
     RESULT_MAX = FAILURE_UNKNOWN
   };
 
-  // The mixed content status for a download item.
-  enum MixedContentStatus {
+  // The insecure status for a download item.
+  enum InsecureDownloadStatus {
     // Target not yet determined, so status not yet available.
     UNKNOWN = 0,
-    // Download is not mixed content.
+    // Download is not insecure.
     SAFE = 1,
     // Download has been explicitly OK'd by the user. Only used on Desktop.
     VALIDATED = 2,
-    // Download is mixed content, and the user should be warned.
+    // Download is insecure, and the user should be warned.
     WARN = 3,
-    // Download is mixed content, and the user should see an error.
+    // Download is insecure, and the user should see an error.
     BLOCK = 4,
-    // Download is mixed content, and it should be silently dropped.
+    // Download is insecure, and it should be silently dropped.
     SILENT_BLOCK = 5,
   };
 
@@ -175,8 +174,8 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   // Called when the user has validated the download of a dangerous file.
   virtual void ValidateDangerousDownload() = 0;
 
-  // Called when the user has validated the download of a mixed content file.
-  virtual void ValidateMixedContentDownload() = 0;
+  // Called when the user has validated the download of an insecure file.
+  virtual void ValidateInsecureDownload() = 0;
 
   // Called to acquire a dangerous download. If |delete_file_afterward| is true,
   // invokes |callback| on the UI thread with the path to the downloaded file,
@@ -275,6 +274,9 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   // user triggered resumption.
   virtual int32_t GetAutoResumeCount() const = 0;
 
+  // Whether the download is off the record.
+  virtual bool IsOffTheRecord() const = 0;
+
   //    Origin State accessors -------------------------------------------------
 
   // Final URL. The primary resource being downloaded is from this URL. This is
@@ -294,10 +296,10 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   // URL of document that is considered the referrer for the original URL.
   virtual const GURL& GetReferrerUrl() const = 0;
 
-  // Site instance URL. Used to locate the correct storage partition during
-  // subsequent browser sessions. This may be different from all of
-  // GetOriginalUrl(), GetURL() and GetReferrerUrl().
-  virtual const GURL& GetSiteUrl() const = 0;
+  // The serialized EmbedderDownloadData string. This is used by the embedder
+  // for placing extra download data, such as the appropriate storage partition
+  // for this download.
+  virtual const std::string& GetSerializedEmbedderDownloadData() const = 0;
 
   // URL of the top level frame at the time the download was initiated.
   virtual const GURL& GetTabUrl() const = 0;
@@ -306,7 +308,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   virtual const GURL& GetTabReferrerUrl() const = 0;
 
   // Origin of the original originator of this download, before redirects, etc.
-  virtual const base::Optional<url::Origin>& GetRequestInitiator() const = 0;
+  virtual const absl::optional<url::Origin>& GetRequestInitiator() const = 0;
 
   // For downloads initiated via <a download>, this is the suggested download
   // filename from the download attribute.
@@ -350,6 +352,13 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
 
   // DownloadSource prompting this download.
   virtual DownloadSource GetDownloadSource() const = 0;
+
+  // The credentials mode of the request.
+  virtual ::network::mojom::CredentialsMode GetCredentialsMode() const = 0;
+
+  // The isolation mode of the request.
+  virtual const absl::optional<net::IsolationInfo>& GetIsolationInfo()
+      const = 0;
 
   //    Destination State accessors --------------------------------------------
 
@@ -416,18 +425,18 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   // False if the download is safe or that function has been called.
   virtual bool IsDangerous() const = 0;
 
-  // True if the file that will be written by the download is mixed content
-  // and we will require a call to ValidateMixedContentDownload() to complete.
-  // False if not mixed content or that function has been called.
-  virtual bool IsMixedContent() const = 0;
+  // True if the file that will be written by the download is insecurely
+  // delivered and we will require a call to ValidateInsecureDownload() to
+  // complete.  False if not insecure or that function has been called.
+  virtual bool IsInsecure() const = 0;
 
   // Why |safety_state_| is not SAFE.
   virtual DownloadDangerType GetDangerType() const = 0;
 
-  // Returns the mixed content status of the download, indicating whether the
-  // download should be blocked or the user warned. This may be UNKNOWN if the
-  // download target hasn't been determined.
-  virtual MixedContentStatus GetMixedContentStatus() const = 0;
+  // Returns the insecure download status of the download, indicating whether
+  // the download should be blocked or the user warned. This may be UNKNOWN if
+  // the download target hasn't been determined.
+  virtual InsecureDownloadStatus GetInsecureDownloadStatus() const = 0;
 
   // Gets the pointer to the DownloadFile owned by this object.
   virtual DownloadFile* GetDownloadFile() = 0;
@@ -505,6 +514,10 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   // for target file path determination.
   virtual bool IsTransient() const = 0;
 
+  // Returns whether the download requires safety checks. Only downloads
+  // triggered by Chrome itself are excluded from safety checks.
+  virtual bool RequireSafetyChecks() const = 0;
+
   // Returns whether the download item corresponds to a parallel download. This
   // usually means parallel download has been enabled and the download job is
   // parallelizable.
@@ -512,10 +525,6 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
 
   // Gets the DownloadCreationType of this item.
   virtual DownloadCreationType GetDownloadCreationType() const = 0;
-
-  // Gets the download schedule to start the time at particular time.
-  virtual const base::Optional<DownloadSchedule>& GetDownloadSchedule()
-      const = 0;
 
   // External state transitions/setters ----------------------------------------
 
@@ -534,10 +543,6 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
 
   // Called when async scanning completes with the given |danger_type|.
   virtual void OnAsyncScanningCompleted(DownloadDangerType danger_type) = 0;
-
-  // Called when the user changes the download schedule options.
-  virtual void OnDownloadScheduleChanged(
-      base::Optional<DownloadSchedule> schedule) = 0;
 
   // Mark the download to be auto-opened when completed.
   virtual void SetOpenWhenComplete(bool open) = 0;

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,8 @@
 #define COMPONENTS_SIGNIN_PUBLIC_BASE_SIGNIN_SWITCHES_H_
 
 #include "base/feature_list.h"
+#include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "components/signin/public/base/signin_buildflags.h"
 
 namespace switches {
@@ -16,12 +18,27 @@ namespace switches {
 
 // All switches in alphabetical order. The switches should be documented
 // alongside the definition of their values in the .cc file.
+
+#if BUILDFLAG(IS_ANDROID)
+BASE_DECLARE_FEATURE(kGaiaIdCacheInAccountManagerFacade);
+#endif
+
+BASE_DECLARE_FEATURE(kNewSigninRequestHeaderCheckOrder);
+
 extern const char kClearTokenService[];
+
 extern const char kDisableSigninScopedDeviceId[];
 
-#if defined(OS_CHROMEOS)
-extern const base::Feature kAccountIdMigration;
+BASE_DECLARE_FEATURE(kEnableFetchingAccountCapabilities);
+
+BASE_DECLARE_FEATURE(kForceDisableExtendedSyncPromos);
+
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+BASE_DECLARE_FEATURE(kForceStartupSigninPromo);
+BASE_DECLARE_FEATURE(kIdentityStatusConsistency);
 #endif
+
+BASE_DECLARE_FEATURE(kTangibleSync);
 
 }  // namespace switches
 

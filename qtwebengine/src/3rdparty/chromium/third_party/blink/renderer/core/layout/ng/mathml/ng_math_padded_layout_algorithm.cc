@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,10 +16,7 @@ namespace blink {
 
 NGMathPaddedLayoutAlgorithm::NGMathPaddedLayoutAlgorithm(
     const NGLayoutAlgorithmParams& params)
-    : NGLayoutAlgorithm(params) {
-  container_builder_.SetIsNewFormattingContext(
-      params.space.IsNewFormattingContext());
-}
+    : NGLayoutAlgorithm(params) {}
 
 LayoutUnit NGMathPaddedLayoutAlgorithm::RequestedLSpace() const {
   return std::max(LayoutUnit(),
@@ -30,18 +27,18 @@ LayoutUnit NGMathPaddedLayoutAlgorithm::RequestedVOffset() const {
   return ValueForLength(Style().GetMathPaddedVOffset(), LayoutUnit());
 }
 
-base::Optional<LayoutUnit> NGMathPaddedLayoutAlgorithm::RequestedAscent(
+absl::optional<LayoutUnit> NGMathPaddedLayoutAlgorithm::RequestedAscent(
     LayoutUnit content_ascent) const {
   if (Style().GetMathBaseline().IsAuto())
-    return base::nullopt;
+    return absl::nullopt;
   return std::max(LayoutUnit(),
                   ValueForLength(Style().GetMathBaseline(), content_ascent));
 }
 
-base::Optional<LayoutUnit> NGMathPaddedLayoutAlgorithm::RequestedDescent(
+absl::optional<LayoutUnit> NGMathPaddedLayoutAlgorithm::RequestedDescent(
     LayoutUnit content_descent) const {
   if (Style().GetMathPaddedDepth().IsAuto())
-    return base::nullopt;
+    return absl::nullopt;
   return std::max(LayoutUnit(), ValueForLength(Style().GetMathPaddedDepth(),
                                                content_descent));
 }
@@ -68,49 +65,52 @@ void NGMathPaddedLayoutAlgorithm::GatherChildren(
   }
 }
 
-scoped_refptr<const NGLayoutResult> NGMathPaddedLayoutAlgorithm::Layout() {
+const NGLayoutResult* NGMathPaddedLayoutAlgorithm::Layout() {
   DCHECK(!BreakToken());
 
   NGBlockNode content = nullptr;
   GatherChildren(&content, &container_builder_);
   LayoutUnit content_ascent, content_descent;
   NGBoxStrut content_margins;
-  scoped_refptr<const NGPhysicalBoxFragment> content_fragment;
+  const NGLayoutResult* content_layout_result = nullptr;
   if (content) {
     NGConstraintSpace constraint_space = CreateConstraintSpaceForMathChild(
         Node(), ChildAvailableSize(), ConstraintSpace(), content);
-    scoped_refptr<const NGLayoutResult> content_layout_result =
-        content.Layout(constraint_space);
-    content_fragment =
-        &To<NGPhysicalBoxFragment>(content_layout_result->PhysicalFragment());
+    content_layout_result = content.Layout(constraint_space);
+    const auto& content_fragment =
+        To<NGPhysicalBoxFragment>(content_layout_result->PhysicalFragment());
     content_margins =
         ComputeMarginsFor(constraint_space, content.Style(), ConstraintSpace());
-    NGBoxFragment fragment(ConstraintSpace().GetWritingMode(),
-                           ConstraintSpace().Direction(), *content_fragment);
+    NGBoxFragment fragment(ConstraintSpace().GetWritingDirection(),
+                           content_fragment);
     content_ascent = content_margins.block_start +
-                     fragment.Baseline().value_or(fragment.BlockSize());
+                     fragment.FirstBaseline().value_or(fragment.BlockSize());
     content_descent =
         fragment.BlockSize() + content_margins.BlockSum() - content_ascent;
   }
   // width/height/depth attributes can override width/ascent/descent.
   LayoutUnit ascent = BorderScrollbarPadding().block_start +
                       RequestedAscent(content_ascent).value_or(content_ascent);
+  container_builder_.SetBaselines(ascent);
   LayoutUnit descent =
-      RequestedDescent(content_descent).value_or(content_descent);
-  if (content_fragment) {
+      RequestedDescent(content_descent).value_or(content_descent) +
+      BorderScrollbarPadding().block_end;
+  if (content_layout_result) {
     // Need to take into account border/padding, lspace and voffset.
     LogicalOffset content_offset = {
         BorderScrollbarPadding().inline_start + RequestedLSpace(),
         (ascent - content_ascent) - RequestedVOffset()};
-    container_builder_.AddChild(*content_fragment, content_offset);
+    container_builder_.AddResult(*content_layout_result, content_offset);
     content.StoreMargins(ConstraintSpace(), content_margins);
   }
 
-  auto total_block_size = ascent + descent + BorderScrollbarPadding().block_end;
-  container_builder_.SetIntrinsicBlockSize(total_block_size);
-  container_builder_.SetFragmentsTotalBlockSize(total_block_size);
+  LayoutUnit intrinsic_block_size = ascent + descent;
+  LayoutUnit block_size = ComputeBlockSizeForFragment(
+      ConstraintSpace(), Style(), BorderPadding(), intrinsic_block_size,
+      container_builder_.InitialBorderBoxSize().inline_size);
 
-  container_builder_.SetBaseline(ascent);
+  container_builder_.SetIntrinsicBlockSize(intrinsic_block_size);
+  container_builder_.SetFragmentsTotalBlockSize(block_size);
 
   NGOutOfFlowLayoutPart(Node(), ConstraintSpace(), &container_builder_).Run();
 
@@ -118,27 +118,25 @@ scoped_refptr<const NGLayoutResult> NGMathPaddedLayoutAlgorithm::Layout() {
 }
 
 MinMaxSizesResult NGMathPaddedLayoutAlgorithm::ComputeMinMaxSizes(
-    const MinMaxSizesInput& input) const {
+    const MinMaxSizesFloatInput&) {
   if (auto result = CalculateMinMaxSizesIgnoringChildren(
           Node(), BorderScrollbarPadding()))
     return *result;
 
-  MinMaxSizes sizes;
-  bool depends_on_percentage_block_size = false;
-  sizes += BorderScrollbarPadding().InlineSum();
 
   NGBlockNode content = nullptr;
   GatherChildren(&content);
 
-  MinMaxSizesResult content_result =
-      ComputeMinAndMaxContentContribution(Style(), content, input);
-  NGBoxStrut content_margins = ComputeMinMaxMargins(Style(), content);
-  content_result.sizes += content_margins.InlineSum();
-  depends_on_percentage_block_size |=
-      content_result.depends_on_percentage_block_size;
+  const auto content_result = ComputeMinAndMaxContentContributionForMathChild(
+      Style(), ConstraintSpace(), content, ChildAvailableSize().block_size);
+
+  bool depends_on_block_constraints =
+      content_result.depends_on_block_constraints;
+  MinMaxSizes sizes;
   sizes += content_result.sizes;
 
-  return {sizes, depends_on_percentage_block_size};
+  sizes += BorderScrollbarPadding().InlineSum();
+  return MinMaxSizesResult(sizes, depends_on_block_constraints);
 }
 
 }  // namespace blink

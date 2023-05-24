@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,6 @@
 #include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/html/html_slot_element.h"
 #include "third_party/blink/renderer/core/inspector/inspector_trace_events.h"
-#include "third_party/blink/renderer/core/layout/layout_object.h"
 
 namespace blink {
 
@@ -72,16 +71,21 @@ void StyleInvalidator::PushInvalidationSet(
   DCHECK(!invalidation_flags_.WholeSubtreeInvalid());
   DCHECK(!invalidation_set.WholeSubtreeInvalid());
   DCHECK(!invalidation_set.IsEmpty());
-  if (invalidation_set.CustomPseudoInvalid())
+  if (invalidation_set.CustomPseudoInvalid()) {
     invalidation_flags_.SetInvalidateCustomPseudo(true);
-  if (invalidation_set.TreeBoundaryCrossing())
+  }
+  if (invalidation_set.TreeBoundaryCrossing()) {
     invalidation_flags_.SetTreeBoundaryCrossing(true);
-  if (invalidation_set.InsertionPointCrossing())
+  }
+  if (invalidation_set.InsertionPointCrossing()) {
     invalidation_flags_.SetInsertionPointCrossing(true);
-  if (invalidation_set.InvalidatesSlotted())
+  }
+  if (invalidation_set.InvalidatesSlotted()) {
     invalidation_flags_.SetInvalidatesSlotted(true);
-  if (invalidation_set.InvalidatesParts())
+  }
+  if (invalidation_set.InvalidatesParts()) {
     invalidation_flags_.SetInvalidatesParts(true);
+  }
   invalidation_sets_.push_back(&invalidation_set);
 }
 
@@ -94,13 +98,10 @@ ALWAYS_INLINE bool StyleInvalidator::MatchesCurrentInvalidationSets(
     return true;
   }
 
-  if (invalidation_flags_.InsertionPointCrossing() &&
-      element.IsV0InsertionPoint())
-    return true;
-
   for (auto* const invalidation_set : invalidation_sets_) {
-    if (invalidation_set->InvalidatesElement(element))
+    if (invalidation_set->InvalidatesElement(element)) {
       return true;
+    }
   }
 
   return false;
@@ -111,10 +112,12 @@ bool StyleInvalidator::MatchesCurrentInvalidationSetsAsSlotted(
   DCHECK(invalidation_flags_.InvalidatesSlotted());
 
   for (auto* const invalidation_set : invalidation_sets_) {
-    if (!invalidation_set->InvalidatesSlotted())
+    if (!invalidation_set->InvalidatesSlotted()) {
       continue;
-    if (invalidation_set->InvalidatesElement(element))
+    }
+    if (invalidation_set->InvalidatesElement(element)) {
       return true;
+    }
   }
   return false;
 }
@@ -124,10 +127,12 @@ bool StyleInvalidator::MatchesCurrentInvalidationSetsAsParts(
   DCHECK(invalidation_flags_.InvalidatesParts());
 
   for (auto* const invalidation_set : invalidation_sets_) {
-    if (!invalidation_set->InvalidatesParts())
+    if (!invalidation_set->InvalidatesParts()) {
       continue;
-    if (invalidation_set->InvalidatesElement(element))
+    }
+    if (invalidation_set->InvalidatesElement(element)) {
       return true;
+    }
   }
   return false;
 }
@@ -135,11 +140,12 @@ bool StyleInvalidator::MatchesCurrentInvalidationSetsAsParts(
 void StyleInvalidator::SiblingData::PushInvalidationSet(
     const SiblingInvalidationSet& invalidation_set) {
   unsigned invalidation_limit;
-  if (invalidation_set.MaxDirectAdjacentSelectors() == UINT_MAX)
+  if (invalidation_set.MaxDirectAdjacentSelectors() == UINT_MAX) {
     invalidation_limit = UINT_MAX;
-  else
+  } else {
     invalidation_limit =
         element_index_ + invalidation_set.MaxDirectAdjacentSelectors();
+  }
   invalidation_entries_.push_back(Entry(&invalidation_set, invalidation_limit));
 }
 
@@ -162,11 +168,13 @@ bool StyleInvalidator::SiblingData::MatchCurrentInvalidationSets(
     const SiblingInvalidationSet& invalidation_set =
         *invalidation_entries_[index].invalidation_set_;
     ++index;
-    if (!invalidation_set.InvalidatesElement(element))
+    if (!invalidation_set.InvalidatesElement(element)) {
       continue;
+    }
 
-    if (invalidation_set.InvalidatesSelf())
+    if (invalidation_set.InvalidatesSelf()) {
       this_element_needs_style_recalc = true;
+    }
 
     if (const DescendantInvalidationSet* descendants =
             invalidation_set.SiblingDescendants()) {
@@ -177,8 +185,9 @@ bool StyleInvalidator::SiblingData::MatchCurrentInvalidationSets(
         return true;
       }
 
-      if (!descendants->IsEmpty())
+      if (!descendants->IsEmpty()) {
         style_invalidator.PushInvalidationSet(*descendants);
+      }
     }
   }
   return this_element_needs_style_recalc;
@@ -188,11 +197,15 @@ void StyleInvalidator::PushInvalidationSetsForContainerNode(
     ContainerNode& node,
     SiblingData& sibling_data) {
   auto pending_invalidations_iterator = pending_invalidation_map_.find(&node);
-  DCHECK(pending_invalidations_iterator != pending_invalidation_map_.end());
+  if (pending_invalidations_iterator == pending_invalidation_map_.end()) {
+    NOTREACHED() << "We should strictly not have marked an element for "
+                    "invalidation without any pending invalidations.";
+    return;
+  }
   NodeInvalidationSets& pending_invalidations =
       pending_invalidations_iterator->value;
 
-  DCHECK(pending_nth_sets_.IsEmpty());
+  DCHECK(pending_nth_sets_.empty());
 
   for (const auto& invalidation_set : pending_invalidations.Siblings()) {
     CHECK(invalidation_set->IsAlive());
@@ -205,21 +218,21 @@ void StyleInvalidator::PushInvalidationSetsForContainerNode(
     }
   }
 
-  if (node.GetStyleChangeType() == kSubtreeStyleChange)
+  if (node.GetStyleChangeType() == kSubtreeStyleChange) {
     return;
+  }
 
-  if (!pending_invalidations.Descendants().IsEmpty()) {
+  if (!pending_invalidations.Descendants().empty()) {
     for (const auto& invalidation_set : pending_invalidations.Descendants()) {
       CHECK(invalidation_set->IsAlive());
       PushInvalidationSet(*invalidation_set);
     }
     if (UNLIKELY(*g_style_invalidator_tracing_enabled)) {
-      TRACE_EVENT_INSTANT1(
+      DEVTOOLS_TIMELINE_TRACE_EVENT_INSTANT_WITH_CATEGORIES(
           TRACE_DISABLED_BY_DEFAULT("devtools.timeline.invalidationTracking"),
-          "StyleInvalidatorInvalidationTracking", TRACE_EVENT_SCOPE_THREAD,
-          "data",
-          inspector_style_invalidator_invalidate_event::InvalidationList(
-              node, pending_invalidations.Descendants()));
+          "StyleInvalidatorInvalidationTracking",
+          inspector_style_invalidator_invalidate_event::InvalidationList, node,
+          pending_invalidations.Descendants());
     }
   }
 }
@@ -239,8 +252,9 @@ ALWAYS_INLINE bool StyleInvalidator::CheckInvalidationSetsAgainstElement(
 void StyleInvalidator::InvalidateShadowRootChildren(Element& element) {
   if (ShadowRoot* root = element.GetShadowRoot()) {
     if (!TreeBoundaryCrossing() && !root->ChildNeedsStyleInvalidation() &&
-        !root->NeedsStyleInvalidation())
+        !root->NeedsStyleInvalidation()) {
       return;
+    }
     RecursionCheckpoint checkpoint(this);
     SiblingData sibling_data;
     if (!WholeSubtreeInvalid()) {
@@ -262,8 +276,9 @@ void StyleInvalidator::InvalidateShadowRootChildren(Element& element) {
 }
 
 void StyleInvalidator::InvalidateChildren(Element& element) {
-  if (UNLIKELY(!!element.GetShadowRoot()))
+  if (UNLIKELY(!!element.GetShadowRoot())) {
     InvalidateShadowRootChildren(element);
+  }
 
   // Initialization of the variable costs up to 15% on blink_perf.css
   // AttributeDescendantSelector.html benchmark.
@@ -294,25 +309,13 @@ void StyleInvalidator::Invalidate(Element& element, SiblingData& sibling_data) {
                                   StyleChangeReasonForTracing::Create(
                                       style_change_reason::kStyleInvalidator));
     }
-    if (UNLIKELY(element.NeedsStyleInvalidation()))
+    if (UNLIKELY(element.NeedsStyleInvalidation())) {
       PushInvalidationSetsForContainerNode(element, sibling_data);
+    }
 
-    // When a slot element is invalidated, the slotted elements are also
-    // invalidated by HTMLSlotElement::DidRecalcStyle. So if WholeSubtreeInvalid
-    // is true, they will be included even though they are not part of the
-    // subtree. It's not necessary to fully recalc style for the slotted
-    // elements in that case as they just need to pick up changed inherited
-    // styles but we do it. If we ever stop doing that then this code and the
-    // PushInvalidationSetsForContainerNode above need to move out of the
-    // if-block.
     auto* html_slot_element = DynamicTo<HTMLSlotElement>(element);
-    if (html_slot_element && InvalidatesSlotted())
+    if (html_slot_element && InvalidatesSlotted()) {
       InvalidateSlotDistributedElements(*html_slot_element);
-
-    if (InsertionPointCrossing() && element.IsV0InsertionPoint()) {
-      element.SetNeedsStyleRecalc(kSubtreeStyleChange,
-                                  StyleChangeReasonForTracing::Create(
-                                      style_change_reason::kStyleInvalidator));
     }
   }
 
@@ -336,11 +339,13 @@ void StyleInvalidator::Invalidate(Element& element, SiblingData& sibling_data) {
 void StyleInvalidator::InvalidateSlotDistributedElements(
     HTMLSlotElement& slot) const {
   for (auto& distributed_node : slot.FlattenedAssignedNodes()) {
-    if (distributed_node->NeedsStyleRecalc())
+    if (distributed_node->NeedsStyleRecalc()) {
       continue;
+    }
     auto* element = DynamicTo<Element>(distributed_node.Get());
-    if (!element)
+    if (!element) {
       continue;
+    }
     if (MatchesCurrentInvalidationSetsAsSlotted(*element)) {
       distributed_node->SetNeedsStyleRecalc(
           kLocalStyleChange, StyleChangeReasonForTracing::Create(

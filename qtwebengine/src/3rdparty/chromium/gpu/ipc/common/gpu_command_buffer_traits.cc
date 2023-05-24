@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "base/strings/stringprintf.h"
 #include "gpu/command_buffer/common/command_buffer_id.h"
 #include "gpu/command_buffer/common/mailbox_holder.h"
 #include "gpu/command_buffer/common/sync_token.h"
-#include "gpu/command_buffer/common/texture_in_use_response.h"
 #include "gpu/ipc/common/vulkan_ycbcr_info.h"
+#include "ui/gfx/buffer_format_util.h"
 
 // Generate param traits write methods.
 #include "ipc/param_traits_write_macros.h"
@@ -72,32 +73,6 @@ void ParamTraits<gpu::SyncToken>::Log(const param_type& p, std::string* l) {
   *l += base::StringPrintf(
       "[%" PRId8 ":%" PRIX64 "] %" PRIu64, p.namespace_id(),
       p.command_buffer_id().GetUnsafeValue(), p.release_count());
-}
-
-void ParamTraits<gpu::TextureInUseResponse>::Write(base::Pickle* m,
-                                                   const param_type& p) {
-  WriteParam(m, p.texture);
-  WriteParam(m, p.in_use);
-}
-
-bool ParamTraits<gpu::TextureInUseResponse>::Read(const base::Pickle* m,
-                                                  base::PickleIterator* iter,
-                                                  param_type* p) {
-  uint32_t texture = 0;
-  bool in_use = false;
-
-  if (!ReadParam(m, iter, &texture) || !ReadParam(m, iter, &in_use)) {
-    return false;
-  }
-
-  p->texture = texture;
-  p->in_use = in_use;
-  return true;
-}
-
-void ParamTraits<gpu::TextureInUseResponse>::Log(const param_type& p,
-                                                 std::string* l) {
-  *l += base::StringPrintf("[%u: %d]", p.texture, static_cast<int>(p.in_use));
 }
 
 void ParamTraits<gpu::Mailbox>::Write(base::Pickle* m, const param_type& p) {
@@ -177,6 +152,40 @@ void ParamTraits<gpu::VulkanYCbCrInfo>::Log(const param_type& p,
       static_cast<long long>(p.external_format), p.suggested_ycbcr_model,
       p.suggested_ycbcr_range, p.suggested_xchroma_offset,
       p.suggested_ychroma_offset, p.format_features);
+}
+
+void ParamTraits<gpu::GpuMemoryBufferFormatSet>::Write(base::Pickle* m,
+                                                       const param_type& p) {
+  WriteParam(m, p.ToEnumBitmask());
+}
+
+bool ParamTraits<gpu::GpuMemoryBufferFormatSet>::Read(
+    const base::Pickle* m,
+    base::PickleIterator* iter,
+    param_type* p) {
+  uint64_t bitmask = 0;
+  if (!ReadParam(m, iter, &bitmask)) {
+    return false;
+  }
+  // Check deserialized bitmask contains only bits GpuMemoryBufferFormatSet
+  // expects to be set based on largest enum it expects.
+  if (bitmask & ~gpu::GpuMemoryBufferFormatSet::All().ToEnumBitmask()) {
+    return false;
+  }
+  *p = gpu::GpuMemoryBufferFormatSet::FromEnumBitmask(bitmask);
+  return true;
+}
+
+void ParamTraits<gpu::GpuMemoryBufferFormatSet>::Log(const param_type& p,
+                                                     std::string* l) {
+  std::string str;
+  for (gfx::BufferFormat format : p) {
+    if (!str.empty()) {
+      str += "|";
+    }
+    str += gfx::BufferFormatToString(format);
+  }
+  *l += str;
 }
 
 }  // namespace IPC

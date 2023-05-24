@@ -1,16 +1,20 @@
-cmake_minimum_required(VERSION 2.8)
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
+cmake_minimum_required(VERSION 3.16)
 
 project(test_qtscxml_module)
 
-find_package(Qt5Scxml REQUIRED)
+find_package(Qt6Scxml REQUIRED)
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-set(MAIN_SRCS main.cpp)
-qt5_add_statecharts(MAIN_SRCS
+add_executable(mainapp main.cpp)
+
+qt6_add_statecharts(mainapp
     ../../compiled/connection.scxml
 
     # unused, just for testing whether it's possible to pass multiple files
     ../../compiled/topmachine.scxml
 )
-add_executable(mainapp ${MAIN_SRCS})
-target_include_directories(mainapp PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(mainapp Qt5::Scxml)
+
+target_link_libraries(mainapp Qt::Scxml)

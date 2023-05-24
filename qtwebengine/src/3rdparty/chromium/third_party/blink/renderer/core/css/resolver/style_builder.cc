@@ -64,15 +64,30 @@ void StyleBuilder::ApplyProperty(const CSSPropertyName& name,
 void StyleBuilder::ApplyProperty(const CSSProperty& property,
                                  StyleResolverState& state,
                                  const CSSValue& value) {
+  const CSSProperty* physical = &property;
+  if (property.IsSurrogate()) {
+    physical = property.SurrogateFor(state.StyleBuilder().Direction(),
+                                     state.StyleBuilder().GetWritingMode());
+    DCHECK(physical);
+  }
+  ApplyPhysicalProperty(*physical, state, value);
+}
+
+void StyleBuilder::ApplyPhysicalProperty(const CSSProperty& property,
+                                         StyleResolverState& state,
+                                         const CSSValue& value) {
   DCHECK(!Variable::IsStaticInstance(property))
       << "Please use a CustomProperty instance to apply custom properties";
+  DCHECK(!property.IsSurrogate())
+      << "Please use ApplyProperty for surrogate properties";
 
   CSSPropertyID id = property.PropertyID();
-  bool is_inherited = property.IsInherited();
 
   // These values must be resolved by StyleCascade before application:
   DCHECK(!value.IsVariableReferenceValue());
   DCHECK(!value.IsPendingSubstitutionValue());
+  DCHECK(!value.IsRevertValue());
+  DCHECK(!value.IsRevertLayerValue());
 
   DCHECK(!property.IsShorthand())
       << "Shorthand property id = " << static_cast<int>(id)
@@ -87,24 +102,26 @@ void StyleBuilder::ApplyProperty(const CSSProperty& property,
   // isInherit => (state.parentNode() && state.parentStyle())
   DCHECK(!is_inherit || (state.ParentNode() && state.ParentStyle()));
 
-  if (is_inherit && !is_inherited) {
-    state.MarkDependency(property);
-    state.Style()->SetHasExplicitInheritance();
+  bool is_inherited_for_unset = state.IsInheritedForUnset(property);
+  if (is_inherit && !is_inherited_for_unset) {
+    state.StyleBuilder().SetHasExplicitInheritance();
     state.ParentStyle()->SetChildHasExplicitInheritance();
   } else if (value.IsUnsetValue()) {
     DCHECK(!is_inherit && !is_initial);
-    if (is_inherited)
+    if (is_inherited_for_unset) {
       is_inherit = true;
-    else
+    } else {
       is_initial = true;
+    }
   }
 
-  if (is_initial)
+  if (is_initial) {
     To<Longhand>(property).ApplyInitial(state);
-  else if (is_inherit)
+  } else if (is_inherit) {
     To<Longhand>(property).ApplyInherit(state);
-  else
+  } else {
     To<Longhand>(property).ApplyValue(state, value);
+  }
 }
 
 }  // namespace blink

@@ -1,54 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the ActiveQt framework of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "qaxobject.h"
+#include "qaxobject_p.h"
+#include "qaxbase_p.h"
 
 #include <quuid.h>
 #include <qmetaobject.h>
@@ -57,6 +12,98 @@
 #include <windows.h>
 
 QT_BEGIN_NAMESPACE
+
+QAxObjectInterface::~QAxObjectInterface() = default;
+
+QAxBaseObject::QAxBaseObject(QObjectPrivate &d, QObject *parent)
+    : QObject(d, parent)
+{
+}
+
+/*!
+   \class QAxBaseObject
+   \brief QAxBaseObject provides static properties and signals for QAxObject.
+   \inmodule QAxContainer
+   \since 6.0
+*/
+
+/*!
+    \property QAxBaseObject::classContext
+    \brief the context the ActiveX control will run in (default CLSCTX_SERVER).
+
+    The property affects the "dwClsContext" argument when calling
+    CoCreateInstance. This can be used to control in-proc vs. out-of-proc
+    startup for controls supporting both alternatives. Also, it can be used to
+    modify/reduce control permissions when used with CLSCTX_ENABLE_CLOAKING
+    and an impersonation token.
+
+    Note that it must be set before setControl() to have any effect.
+    \sa QAxBaseWidget::control
+*/
+
+/*!
+    \property QAxBaseObject::control
+    \brief the name of the COM object wrapped by this QAxBaseObject object.
+
+    Setting this property initializes the COM object. Any COM object
+    previously set is shut down.
+
+    The most efficient way to set this property is by using the
+    registered component's UUID, e.g.
+    \sa QAxBaseWidget::control, QAxBaseWidget::classContext
+*/
+
+/*!
+    \fn void QAxBaseObject::signal(const QString &name, int argc, void *argv)
+
+    This generic signal gets emitted when the COM object issues the
+    event \a name. \a argc is the number of parameters provided by the
+    event (DISPPARAMS.cArgs), and \a argv is the pointer to the
+    parameter values (DISPPARAMS.rgvarg). Note that the order of parameter
+    values is turned around, ie. the last element of the array is the first
+    parameter in the function.
+
+    \sa QAxBaseWidget::signal()
+*/
+
+/*!
+    \fn void QAxBaseObject::propertyChanged(const QString &name)
+
+    If the COM object supports property notification, this signal gets
+    emitted when the property called \a name is changed.
+
+    \sa QAxBaseWidget::propertyChanged()
+*/
+
+/*!
+    \fn void QAxBaseObject::exception(int code, const QString &source, const QString &desc, const QString &help)
+
+    This signal is emitted when the COM object throws an exception while called using the OLE automation
+    interface IDispatch. \a code, \a source, \a desc and \a help provide information about the exception as
+    provided by the COM server and can be used to provide useful feedback to the end user. \a help includes
+    the help file, and the help context ID in brackets, e.g. "filename [id]".
+
+    \sa QAxBaseWidget::exception()
+*/
+
+void QAxObjectPrivate::emitException(int code, const QString &source, const QString &desc,
+                                     const QString &help)
+{
+    Q_Q(QAxObject);
+    emit q->exception(code, source, desc, help);
+}
+
+void  QAxObjectPrivate::emitPropertyChanged(const QString &name)
+{
+    Q_Q(QAxObject);
+    emit q->propertyChanged(name);
+}
+
+void  QAxObjectPrivate::emitSignal(const QString &name, int argc, void *argv)
+{
+    Q_Q(QAxObject);
+    emit q->signal(name, argc, argv);
+}
 
 /*!
     \class QAxObject
@@ -90,30 +137,30 @@ QT_BEGIN_NAMESPACE
     \sa QAxBase, QAxWidget, QAxScript, {ActiveQt Framework}
 */
 
-const QMetaObject QAxObject::staticMetaObject = {
-    { &QObject::staticMetaObject, qt_meta_stringdata_QAxBase.data,
-      qt_meta_data_QAxBase, qt_static_metacall, nullptr, nullptr }
-};
-
 /*!
     Creates an empty COM object and propagates \a parent to the
-    QObject constructor. To initialize the object, call \link
-    QAxBase::setControl() setControl \endlink.
+    QObject constructor. To initialize the object, call setControl().
+
+    \sa {control}{setControl()}
 */
 QAxObject::QAxObject(QObject *parent)
-: QObject(parent)
+: QAxBaseObject(*new QAxObjectPrivate, parent)
 {
+    Q_D(QAxObject);
+    axBaseInit(d);
 }
 
 /*!
     Creates a QAxObject that wraps the COM object \a c. \a parent is
     propagated to the QObject constructor.
 
-    \sa setControl()
+    \sa {control}{setControl()}
 */
 QAxObject::QAxObject(const QString &c, QObject *parent)
-: QObject(parent)
+: QAxBaseObject(*new QAxObjectPrivate, parent)
 {
+    Q_D(QAxObject);
+    axBaseInit(d);
     setControl(c);
 }
 
@@ -122,8 +169,10 @@ QAxObject::QAxObject(const QString &c, QObject *parent)
     iface. \a parent is propagated to the QObject constructor.
 */
 QAxObject::QAxObject(IUnknown *iface, QObject *parent)
-: QObject(parent), QAxBase(iface)
+: QAxBaseObject(*new QAxObjectPrivate, parent)
 {
+    Q_D(QAxObject);
+    axBaseInit(d, iface);
 }
 
 /*!
@@ -132,7 +181,45 @@ QAxObject::QAxObject(IUnknown *iface, QObject *parent)
 */
 QAxObject::~QAxObject()
 {
-    clear();
+    Q_D(QAxObject);
+    d->clear();
+}
+
+unsigned long QAxObject::classContext() const
+{
+    return QAxBase::classContext();
+}
+
+void QAxObject::setClassContext(ulong classContext)
+{
+    QAxBase::setClassContext(classContext);
+}
+
+QString QAxObject::control() const
+{
+    return QAxBase::control();
+}
+
+bool QAxObject::setControl(const QString &c)
+{
+    return QAxBase::setControl(c);
+}
+
+void QAxObject::clear()
+{
+    resetControl();
+}
+
+void QAxObject::resetControl()
+{
+    Q_D(QAxObject);
+    d->clear();
+}
+
+void QAxObjectPrivate::clear()
+{
+    Q_Q(QAxObject);
+    q->QAxBase::clear();
 }
 
 /*!
@@ -140,15 +227,12 @@ QAxObject::~QAxObject()
 */
 void QAxObject::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
 {
-    QAxBase::qt_static_metacall(qobject_cast<QAxObject*>(_o), _c, _id, _a);
+    QAxBasePrivate::qtStaticMetaCall(static_cast<QAxObject *>(_o), _c, _id, _a);
 }
 
-/*!
-    \internal
-*/
-const QMetaObject *QAxObject::fallbackMetaObject() const
+const QMetaObject *QAxObjectPrivate::fallbackMetaObject() const
 {
-    return &staticMetaObject;
+    return &QAxObject::staticMetaObject;
 }
 
 /*!
@@ -156,15 +240,12 @@ const QMetaObject *QAxObject::fallbackMetaObject() const
 */
 const QMetaObject *QAxObject::metaObject() const
 {
-    return QAxBase::metaObject();
+    return QAxBase::axBaseMetaObject();
 }
 
-/*!
-    \internal
-*/
-const QMetaObject *QAxObject::parentMetaObject() const
+const QMetaObject *QAxObjectPrivate::parentMetaObject() const
 {
-    return &QObject::staticMetaObject;
+    return &QAxBaseObject::staticMetaObject;
 }
 
 /*!
@@ -174,13 +255,15 @@ void *QAxObject::qt_metacast(const char *cname)
 {
     if (!qstrcmp(cname, "QAxObject")) return static_cast<void *>(this);
     if (!qstrcmp(cname, "QAxBase")) return static_cast<QAxBase *>(this);
-    return QObject::qt_metacast(cname);
+    return QAxBaseObject::qt_metacast(cname);
 }
 
-/*!
-    \internal
-*/
-const char *QAxObject::className() const
+QObject* QAxObjectPrivate::qObject() const
+{
+    Q_Q(const QAxObject);
+    return static_cast<QObject *>(const_cast<QAxObject *>(q));
+}
+const char *QAxObjectPrivate::className() const
 {
     return "QAxObject";
 }
@@ -190,10 +273,11 @@ const char *QAxObject::className() const
 */
 int QAxObject::qt_metacall(QMetaObject::Call call, int id, void **v)
 {
-    id = QObject::qt_metacall(call, id, v);
+    Q_D(QAxObject);
+    id = QAxBaseObject::qt_metacall(call, id, v);
     if (id < 0)
         return id;
-    return QAxBase::qt_metacall(call, id, v);
+    return d->qtMetaCall(call, id, v);
 }
 
 /*!

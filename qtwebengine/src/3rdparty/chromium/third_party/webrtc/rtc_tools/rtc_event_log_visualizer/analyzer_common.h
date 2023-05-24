@@ -22,6 +22,7 @@
 namespace webrtc {
 
 constexpr int kNumMicrosecsPerSec = 1000000;
+constexpr int kNumMillisecsPerSec = 1000;
 constexpr float kLeftMargin = 0.01f;
 constexpr float kRightMargin = 0.02f;
 constexpr float kBottomMargin = 0.02f;
@@ -29,25 +30,38 @@ constexpr float kTopMargin = 0.05f;
 
 class AnalyzerConfig {
  public:
-  float GetCallTimeSec(int64_t timestamp_us) const {
-    int64_t offset = normalize_time_ ? begin_time_ : 0;
-    return static_cast<float>(timestamp_us - offset) / 1000000;
+  float GetCallTimeSec(Timestamp timestamp) const {
+    Timestamp offset = normalize_time_ ? begin_time_ : Timestamp::Zero();
+    return static_cast<float>((timestamp - offset).us()) / 1000000;
+  }
+
+  float GetCallTimeSecFromMs(int64_t timestamp_ms) const {
+    return GetCallTimeSec(Timestamp::Millis(timestamp_ms));
   }
 
   float CallBeginTimeSec() const { return GetCallTimeSec(begin_time_); }
 
   float CallEndTimeSec() const { return GetCallTimeSec(end_time_); }
 
+  int64_t CallTimeToUtcOffsetMs() {
+    if (normalize_time_) {
+      Timestamp utc_begin_time_ = begin_time_ + rtc_to_utc_offset_;
+      return utc_begin_time_.ms();
+    }
+    return rtc_to_utc_offset_.ms();
+  }
+
   // Window and step size used for calculating moving averages, e.g. bitrate.
-  // The generated data points will be |step_| microseconds apart.
-  // Only events occurring at most |window_duration_| microseconds before the
-  // current data point will be part of the average.
-  int64_t window_duration_;
-  int64_t step_;
+  // The generated data points will be `step_.ms()` milliseconds apart.
+  // Only events occurring at most `window_duration_.ms()` milliseconds before
+  // the current data point will be part of the average.
+  TimeDelta window_duration_ = TimeDelta::Millis(250);
+  TimeDelta step_ = TimeDelta::Millis(10);
 
   // First and last events of the log.
-  int64_t begin_time_;
-  int64_t end_time_;
+  Timestamp begin_time_ = Timestamp::MinusInfinity();
+  Timestamp end_time_ = Timestamp::MinusInfinity();
+  TimeDelta rtc_to_utc_offset_ = TimeDelta::Zero();
   bool normalize_time_;
 };
 
@@ -83,7 +97,7 @@ std::string GetStreamName(const ParsedRtcEventLog& parsed_log,
                           uint32_t ssrc);
 std::string GetLayerName(LayerDescription layer);
 
-// For each element in data_view, use |f()| to extract a y-coordinate and
+// For each element in data_view, use `f()` to extract a y-coordinate and
 // store the result in a TimeSeries.
 template <typename DataType, typename IterableType>
 void ProcessPoints(rtc::FunctionView<float(const DataType&)> fx,
@@ -99,7 +113,7 @@ void ProcessPoints(rtc::FunctionView<float(const DataType&)> fx,
   }
 }
 
-// For each pair of adjacent elements in |data|, use |f()| to extract a
+// For each pair of adjacent elements in `data`, use `f()` to extract a
 // y-coordinate and store the result in a TimeSeries. Note that the x-coordinate
 // will be the time of the second element in the pair.
 template <typename DataType, typename ResultType, typename IterableType>
@@ -117,7 +131,7 @@ void ProcessPairs(
   }
 }
 
-// For each pair of adjacent elements in |data|, use |f()| to extract a
+// For each pair of adjacent elements in `data`, use `f()` to extract a
 // y-coordinate and store the result in a TimeSeries. Note that the x-coordinate
 // will be the time of the second element in the pair.
 template <typename DataType, typename ResultType, typename IterableType>
@@ -138,10 +152,10 @@ void AccumulatePairs(
   }
 }
 
-// Calculates a moving average of |data| and stores the result in a TimeSeries.
-// A data point is generated every |step| microseconds from |begin_time|
-// to |end_time|. The value of each data point is the average of the data
-// during the preceding |window_duration_us| microseconds.
+// Calculates a moving average of `data` and stores the result in a TimeSeries.
+// A data point is generated every `step` microseconds from `begin_time`
+// to `end_time`. The value of each data point is the average of the data
+// during the preceding `window_duration_us` microseconds.
 template <typename DataType, typename ResultType, typename IterableType>
 void MovingAverage(
     rtc::FunctionView<absl::optional<ResultType>(const DataType&)> fy,
@@ -152,17 +166,17 @@ void MovingAverage(
   size_t window_index_end = 0;
   ResultType sum_in_window = 0;
 
-  for (int64_t t = config.begin_time_; t < config.end_time_ + config.step_;
+  for (Timestamp t = config.begin_time_; t < config.end_time_ + config.step_;
        t += config.step_) {
     while (window_index_end < data_view.size() &&
-           data_view[window_index_end].log_time_us() < t) {
+           data_view[window_index_end].log_time() < t) {
       absl::optional<ResultType> value = fy(data_view[window_index_end]);
       if (value)
         sum_in_window += *value;
       ++window_index_end;
     }
     while (window_index_begin < data_view.size() &&
-           data_view[window_index_begin].log_time_us() <
+           data_view[window_index_begin].log_time() <
                t - config.window_duration_) {
       absl::optional<ResultType> value = fy(data_view[window_index_begin]);
       if (value)
@@ -170,7 +184,7 @@ void MovingAverage(
       ++window_index_begin;
     }
     float window_duration_s =
-        static_cast<float>(config.window_duration_) / kNumMicrosecsPerSec;
+        static_cast<float>(config.window_duration_.us()) / kNumMicrosecsPerSec;
     float x = config.GetCallTimeSec(t);
     float y = sum_in_window / window_duration_s;
     result->points.emplace_back(x, y);

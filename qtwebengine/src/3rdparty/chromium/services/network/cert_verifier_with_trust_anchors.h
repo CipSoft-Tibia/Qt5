@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,10 @@
 #include <memory>
 #include <vector>
 
-#include "base/callback.h"
 #include "base/compiler_specific.h"
 #include "base/component_export.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/callback.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/threading/thread_checker.h"
 #include "net/base/completion_once_callback.h"
 #include "net/cert/cert_verifier.h"
@@ -36,6 +35,11 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CertVerifierWithTrustAnchors
   // used.
   explicit CertVerifierWithTrustAnchors(
       const base::RepeatingClosure& anchor_used_callback);
+
+  CertVerifierWithTrustAnchors(const CertVerifierWithTrustAnchors&) = delete;
+  CertVerifierWithTrustAnchors& operator=(const CertVerifierWithTrustAnchors&) =
+      delete;
+
   ~CertVerifierWithTrustAnchors() override;
 
   // TODO(jam): once the network service is the only path, rename or get rid of
@@ -62,8 +66,6 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CertVerifierWithTrustAnchors
   base::RepeatingClosure anchor_used_callback_;
   std::unique_ptr<CertVerifier> delegate_;
   THREAD_CHECKER(thread_checker_);
-
-  DISALLOW_COPY_AND_ASSIGN(CertVerifierWithTrustAnchors);
 };
 
 }  // namespace network

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlfile.h"
 
@@ -65,6 +29,9 @@ static char file_string[] = "file";
 #if defined(Q_OS_ANDROID)
 static char assets_string[] = "assets";
 static char content_string[] = "content";
+static char authority_externalstorage[] = "com.android.externalstorage.documents";
+static char authority_downloads_documents[] = "com.android.providers.downloads.documents";
+static char authority_media_documents[] = "com.android.providers.media.documents";
 #endif
 
 class QQmlFilePrivate;
@@ -446,8 +413,8 @@ bool QQmlFile::isSynchronous(const QUrl &url)
 {
     QString scheme = url.scheme();
 
-    if ((scheme.length() == 4 && 0 == scheme.compare(QLatin1String(file_string), Qt::CaseInsensitive)) ||
-        (scheme.length() == 3 && 0 == scheme.compare(QLatin1String(qrc_string), Qt::CaseInsensitive))) {
+    if ((scheme.size() == 4 && 0 == scheme.compare(QLatin1String(file_string), Qt::CaseInsensitive)) ||
+        (scheme.size() == 3 && 0 == scheme.compare(QLatin1String(qrc_string), Qt::CaseInsensitive))) {
         return true;
 
 #if defined(Q_OS_ANDROID)
@@ -471,20 +438,20 @@ Synchronous urls have a qrc:/ or file:// scheme.
 */
 bool QQmlFile::isSynchronous(const QString &url)
 {
-    if (url.length() < 5 /* qrc:/ */)
+    if (url.size() < 5 /* qrc:/ */)
         return false;
 
     QChar f = url[0];
 
     if (f == QLatin1Char('f') || f == QLatin1Char('F')) {
 
-        return url.length() >= 7 /* file:// */ &&
+        return url.size() >= 7 /* file:// */ &&
                url.startsWith(QLatin1String(file_string), Qt::CaseInsensitive) &&
                url[4] == QLatin1Char(':') && url[5] == QLatin1Char('/') && url[6] == QLatin1Char('/');
 
     } else if (f == QLatin1Char('q') || f == QLatin1Char('Q')) {
 
-        return url.length() >= 5 /* qrc:/ */ &&
+        return url.size() >= 5 /* qrc:/ */ &&
                url.startsWith(QLatin1String(qrc_string), Qt::CaseInsensitive) &&
                url[3] == QLatin1Char(':') && url[4] == QLatin1Char('/');
 
@@ -505,6 +472,17 @@ bool QQmlFile::isSynchronous(const QString &url)
     return false;
 }
 
+#if defined(Q_OS_ANDROID)
+static bool hasLocalContentAuthority(const QUrl &url)
+{
+    const QString authority = url.authority();
+    return authority.isEmpty()
+            || authority == QLatin1String(authority_externalstorage)
+            || authority == QLatin1String(authority_downloads_documents)
+            || authority == QLatin1String(authority_media_documents);
+}
+#endif
+
 /*!
 Returns true if \a url is a local file that can be opened with QFile.
 
@@ -516,58 +494,116 @@ bool QQmlFile::isLocalFile(const QUrl &url)
 {
     QString scheme = url.scheme();
 
-    if ((scheme.length() == 4 && 0 == scheme.compare(QLatin1String(file_string), Qt::CaseInsensitive)) ||
-        (scheme.length() == 3 && 0 == scheme.compare(QLatin1String(qrc_string), Qt::CaseInsensitive))) {
+    // file: URLs with two slashes following the scheme can be interpreted as local files
+    // where the slashes are part of the path. Therefore, disregard the authority.
+    // See QUrl::toLocalFile().
+    if (scheme.size() == 4 && scheme.startsWith(QLatin1String(file_string), Qt::CaseInsensitive))
         return true;
+
+    if (scheme.size() == 3 && scheme.startsWith(QLatin1String(qrc_string), Qt::CaseInsensitive))
+        return url.authority().isEmpty();
 
 #if defined(Q_OS_ANDROID)
-    } else if (scheme.length() == 6 && 0 == scheme.compare(QLatin1String(assets_string), Qt::CaseInsensitive)) {
-        return true;
+    if (scheme.length() == 6
+         && scheme.startsWith(QLatin1String(assets_string), Qt::CaseInsensitive))
+        return url.authority().isEmpty();
+    if (scheme.length() == 7
+         && scheme.startsWith(QLatin1String(content_string), Qt::CaseInsensitive))
+        return hasLocalContentAuthority(url);
 #endif
 
-    } else {
-        return false;
-    }
+    return false;
 }
+
+static bool hasScheme(const QString &url, const char *scheme, qsizetype schemeLength)
+{
+    const qsizetype urlLength = url.size();
+
+    if (urlLength < schemeLength + 1)
+        return false;
+
+    if (!url.startsWith(QLatin1String(scheme, scheme + schemeLength), Qt::CaseInsensitive))
+        return false;
+
+    if (url[schemeLength] != QLatin1Char(':'))
+        return false;
+
+    return true;
+}
+
+static qsizetype authorityOffset(const QString &url, qsizetype schemeLength)
+{
+    const qsizetype urlLength = url.size();
+
+    if (urlLength < schemeLength + 3)
+        return -1;
+
+    const QLatin1Char slash('/');
+    if (url[schemeLength + 1] == slash && url[schemeLength + 2] == slash) {
+        // Exactly two slashes denote an authority.
+        if (urlLength < schemeLength + 4 || url[schemeLength + 3] != slash)
+            return schemeLength + 3;
+    }
+
+    return -1;
+}
+
+#if defined(Q_OS_ANDROID)
+static bool hasLocalContentAuthority(const QString &url, qsizetype schemeLength)
+{
+    const qsizetype offset = authorityOffset(url, schemeLength);
+    if (offset == -1)
+        return true; // no authority is a local authority.
+
+    const QString authorityAndPath = url.sliced(offset);
+    return authorityAndPath.startsWith(QLatin1String(authority_externalstorage))
+         || authorityAndPath.startsWith(QLatin1String(authority_downloads_documents))
+         || authorityAndPath.startsWith(QLatin1String(authority_media_documents));
+}
+
+#endif
 
 /*!
 Returns true if \a url is a local file that can be opened with QFile.
 
-Local file urls have either a qrc:/ or file:// scheme.
+Local file urls have either a qrc: or file: scheme.
 
-\note On Android, urls with assets:/ scheme are also considered local files.
+\note On Android, urls with assets: or content: scheme are also considered local files.
 */
 bool QQmlFile::isLocalFile(const QString &url)
 {
-    if (url.length() < 5 /* qrc:/ */)
+    if (url.size() < 4 /* qrc: */)
         return false;
 
-    QChar f = url[0];
-
-    if (f == QLatin1Char('f') || f == QLatin1Char('F')) {
-
-        return url.length() >= 7 /* file:// */ &&
-               url.startsWith(QLatin1String(file_string), Qt::CaseInsensitive) &&
-               url[4] == QLatin1Char(':') && url[5] == QLatin1Char('/') && url[6] == QLatin1Char('/');
-
-    } else if (f == QLatin1Char('q') || f == QLatin1Char('Q')) {
-
-        return url.length() >= 5 /* qrc:/ */ &&
-               url.startsWith(QLatin1String(qrc_string), Qt::CaseInsensitive) &&
-               url[3] == QLatin1Char(':') && url[4] == QLatin1Char('/');
-
+    switch (url[0].toLatin1()) {
+    case 'f':
+    case 'F': {
+        // file: URLs with two slashes following the scheme can be interpreted as local files
+        // where the slashes are part of the path. Therefore, disregard the authority.
+        // See QUrl::toLocalFile().
+        const qsizetype fileLength = strlen(file_string);
+        return url.startsWith(QLatin1String(file_string, file_string + fileLength),
+                              Qt::CaseInsensitive)
+                && url.size() > fileLength
+                && url[fileLength] == QLatin1Char(':');
     }
+    case 'q':
+    case 'Q':
+        return hasScheme(url, qrc_string, strlen(qrc_string))
+            && authorityOffset(url, strlen(qrc_string)) == -1;
 #if defined(Q_OS_ANDROID)
-    else if (f == QLatin1Char('a') || f == QLatin1Char('A')) {
-        return url.length() >= 8 /* assets:/ */ &&
-               url.startsWith(QLatin1String(assets_string), Qt::CaseInsensitive) &&
-               url[6] == QLatin1Char(':') && url[7] == QLatin1Char('/');
-    } else if (f == QLatin1Char('c') || f == QLatin1Char('C')) {
-        return url.length() >= 9 /* content:/ */ &&
-               url.startsWith(QLatin1String(content_string), Qt::CaseInsensitive) &&
-               url[7] == QLatin1Char(':') && url[8] == QLatin1Char('/');
-    }
+    case 'a':
+    case 'A':
+        return hasScheme(url, assets_string, strlen(assets_string))
+            && authorityOffset(url, strlen(assets_string)) == -1;
+    case 'c':
+    case 'C':
+        return hasScheme(url, content_string, strlen(content_string))
+            && hasLocalContentAuthority(url, strlen(content_string));
 #endif
+    default:
+        break;
+    }
 
     return false;
 }
@@ -585,15 +621,14 @@ QString QQmlFile::urlToLocalFileOrQrc(const QUrl& url)
     }
 
 #if defined(Q_OS_ANDROID)
-    else if (url.scheme().compare(QLatin1String("assets"), Qt::CaseInsensitive) == 0) {
-        if (url.authority().isEmpty())
+    if (url.scheme().compare(QLatin1String("assets"), Qt::CaseInsensitive) == 0)
+        return url.authority().isEmpty() ? url.toString() : QString();
+    if (url.scheme().compare(QLatin1String("content"), Qt::CaseInsensitive) == 0) {
+        if (hasLocalContentAuthority(url))
             return url.toString();
         return QString();
-    } else if (url.scheme().compare(QLatin1String("content"), Qt::CaseInsensitive) == 0) {
-        return url.toString();
     }
 #endif
-
     return url.toLocalFile();
 }
 
@@ -603,9 +638,26 @@ static QString toLocalFile(const QString &url)
     if (!file.isLocalFile())
         return QString();
 
-    //XXX TODO: handle windows hostnames: "//servername/path/to/file.txt"
+    // QUrl::toLocalFile() interprets two slashes as part of the path.
+    // Therefore windows hostnames like "//servername/path/to/file.txt" are preserved.
 
     return file.toLocalFile();
+}
+
+static bool isDoubleSlashed(const QString &url, qsizetype offset)
+{
+    const qsizetype urlLength = url.size();
+    if (urlLength < offset + 2)
+        return false;
+
+    const QLatin1Char slash('/');
+    if (url[offset] != slash || url[offset + 1] != slash)
+        return false;
+
+    if (urlLength < offset + 3)
+        return true;
+
+    return url[offset + 2] != slash;
 }
 
 /*!
@@ -615,23 +667,28 @@ empty string.
 QString QQmlFile::urlToLocalFileOrQrc(const QString& url)
 {
     if (url.startsWith(QLatin1String("qrc://"), Qt::CaseInsensitive)) {
-        if (url.length() > 6)
-            return QLatin1Char(':') + url.midRef(6);
-        return QString();
+        // Exactly two slashes are bad because that's a URL authority.
+        // One slash is fine and >= 3 slashes are file.
+        if (url.size() == 6 || url[6] != QLatin1Char('/')) {
+            Q_ASSERT(isDoubleSlashed(url, strlen("qrc:")));
+            return QString();
+        }
+        Q_ASSERT(!isDoubleSlashed(url, strlen("qrc:")));
+        return QLatin1Char(':') + QStringView{url}.mid(6);
     }
 
     if (url.startsWith(QLatin1String("qrc:"), Qt::CaseInsensitive)) {
-        if (url.length() > 4)
-            return QLatin1Char(':') + url.midRef(4);
-        return QString();
+        Q_ASSERT(!isDoubleSlashed(url, strlen("qrc:")));
+        if (url.size() > 4)
+            return QLatin1Char(':') + QStringView{url}.mid(4);
+        return QStringLiteral(":");
     }
 
 #if defined(Q_OS_ANDROID)
-    else if (url.startsWith(QLatin1String("assets:"), Qt::CaseInsensitive)) {
-        return url;
-    } else if (url.startsWith(QLatin1String("content:"), Qt::CaseInsensitive)) {
-        return url;
-    }
+    if (url.startsWith(QLatin1String("assets:"), Qt::CaseInsensitive))
+        return isDoubleSlashed(url, strlen("assets:")) ? QString() : url;
+    if (hasScheme(url, content_string, strlen(content_string)))
+        return hasLocalContentAuthority(url, strlen(content_string)) ? url : QString();
 #endif
 
     return toLocalFile(url);

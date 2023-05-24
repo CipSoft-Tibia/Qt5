@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeoserviceprovider.h"
 #include "qgeoserviceprovider_p.h"
@@ -42,17 +9,16 @@
 #include "qgeomappingmanager_p.h"
 #include "qgeoroutingmanager.h"
 #include "qplacemanager.h"
-#include "qnavigationmanager_p.h"
 #include "qgeocodingmanagerengine.h"
 #include "qgeomappingmanagerengine_p.h"
 #include "qgeoroutingmanagerengine.h"
 #include "qplacemanagerengine.h"
 #include "qplacemanagerengine_p.h"
-#include "qnavigationmanagerengine_p.h"
 
 #include <QList>
 #include <QString>
 #include <QVariant>
+#include <QCborArray>
 
 #include <QDebug>
 #include <QStringList>
@@ -65,7 +31,7 @@
 QT_BEGIN_NAMESPACE
 
 Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
-        ("org.qt-project.qt.geoservice.serviceproviderfactory/5.0",
+        ("org.qt-project.qt.geoservice.serviceproviderfactory/6.0",
          QLatin1String("/geoservices")))
 
 /*!
@@ -94,20 +60,9 @@ Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
     Subclasses of QGeoServiceProvider guarantee that the different services
     that they provide are interoperable.
 
-    At this point there are two GeoServices plugins packaged with Qt. They are
-    accessible using their provider names:
-
-    \list
-        \li "mapbox" -> \l {Qt Location Mapbox Plugin}{Mapbox service}
-        \li "here" -> \l {Qt Location HERE Plugin}{HERE Services}
-        \li "osm" -> \l {Qt Location Open Street Map Plugin}{OpenStreetMap Services}
-        \li "esri" -> \l {Qt Location Esri Plugin}{ESRI Services}
-    \endlist
-
     Each service provider must follow a naming convention for their service specific
     parameter names/keys. They use the provider name as prefix for all their
-    parameter names. For example, the \l {Qt Location HERE Plugin}{HERE} service provider
-    requires the \c here.app_id parameter. When a provider is loaded only those parameters are
+    parameter names. When a provider is loaded only those parameters are
     passed on whose parameter names start with the provider name. This avoids the sharing
     sensitive parameters such as confidential \c token or \c app_id parameters with other
     plugins.
@@ -271,7 +226,7 @@ QGeoServiceProvider::~QGeoServiceProvider()
  * Ideally, the enumName would be a template parameter, but strings
  * are not a valid const expr. :( */
 template <class Flags>
-Flags QGeoServiceProviderPrivate::features(const char *enumName)
+Flags QGeoServiceProviderPrivate::features(const char *enumName) const
 {
     const QMetaObject *mo = &QGeoServiceProvider::staticMetaObject;
     const QMetaEnum en = mo->enumerator(
@@ -282,8 +237,8 @@ Flags QGeoServiceProviderPrivate::features(const char *enumName)
     Flags ret = typename Flags::enum_type(0);
     if (this->metaData.contains(QStringLiteral("Features"))
             && this->metaData.value(QStringLiteral("Features")).isArray()) {
-        QJsonArray features = this->metaData.value(QStringLiteral("Features")).toArray();
-        foreach (const QJsonValue &v, features) {
+        const QCborArray features = this->metaData.value(QStringLiteral("Features")).toArray();
+        for (const QCborValueConstRef v : features) {
             int val = en.keyToValue(v.toString().toLatin1().constData());
             if (v.isString() && val != -1) {
                 ret |= typename Flags::enum_type(val);
@@ -342,7 +297,7 @@ QGeoServiceProvider::NavigationFeatures QGeoServiceProvider::navigationFeatures(
 template <class Engine>
 Engine *createEngine(QGeoServiceProviderPrivate *)
 {
-    return 0;
+    return nullptr;
 }
 template <> QGeoCodingManagerEngine *createEngine<QGeoCodingManagerEngine>(QGeoServiceProviderPrivate *d_ptr)
 {
@@ -360,33 +315,27 @@ template <> QPlaceManagerEngine *createEngine<QPlaceManagerEngine>(QGeoServicePr
 {
     return d_ptr->factory->createPlaceManagerEngine(d_ptr->cleanedParameterMap, &(d_ptr->placeError), &(d_ptr->placeErrorString));
 }
-template <> QNavigationManagerEngine *createEngine<QNavigationManagerEngine>(QGeoServiceProviderPrivate *d_ptr)
-{
-    if (!d_ptr->factoryV2)
-        return nullptr;
-    return d_ptr->factoryV2->createNavigationManagerEngine(d_ptr->cleanedParameterMap, &(d_ptr->navigationError), &(d_ptr->navigationErrorString));
-}
 
 /* Template for generating the code for each of the geocodingManager(),
  * mappingManager() etc methods */
 template <class Manager, class Engine>
 Manager *QGeoServiceProviderPrivate::manager(QGeoServiceProvider::Error *_error,
-                                             QString *_errorString, Manager **_manager)
+                                             QString *_errorString)
 {
     // make local references just so this method is easier to read
     QGeoServiceProvider::Error &error = *_error;
     QString &errorString = *_errorString;
-    Manager *&manager = *_manager;
+    Manager *manager = nullptr;
 
-    if (!this->factory) {
-        this->filterParameterMap();
-        this->loadPlugin(this->parameterMap);
+    if (!factory) {
+        filterParameterMap();
+        loadPlugin(this->parameterMap);
     }
 
-    if (!this->factory) {
+    if (!factory) {
         error = this->error;
         errorString = this->errorString;
-        return 0;
+        return nullptr;
     }
 
     if (!manager) {
@@ -395,26 +344,25 @@ Manager *QGeoServiceProviderPrivate::manager(QGeoServiceProvider::Error *_error,
 
         if (engine) {
             engine->setManagerName(
-                        this->metaData.value(QStringLiteral("Provider")).toString());
+                        metaData.value(QStringLiteral("Provider")).toString());
             engine->setManagerVersion(
-                        int(this->metaData.value(QStringLiteral("Version")).toDouble()));
+                        int(metaData.value(QStringLiteral("Version")).toDouble()));
             manager = new Manager(engine);
         } else if (error == QGeoServiceProvider::NoError) {
             error = QGeoServiceProvider::NotSupportedError;
-            errorString = QLatin1String("The service provider does not support the ");
-            errorString.append(QLatin1String(Manager::staticMetaObject.className()));
-            errorString.append(QLatin1String(" type."));
+            errorString = QLatin1String("The service provider does not support the %1 type.")
+                                      .arg(QLatin1String(Manager::staticMetaObject.className()));
         }
 
         if (error != QGeoServiceProvider::NoError) {
             delete manager;
-            manager = 0;
+            manager = nullptr;
             this->error = error;
             this->errorString = errorString;
         }
 
-        if (manager && this->localeSet)
-            manager->setLocale(this->locale);
+        if (manager && localeSet)
+            manager->setLocale(locale);
     }
 
     if (manager) {
@@ -429,7 +377,7 @@ Manager *QGeoServiceProviderPrivate::manager(QGeoServiceProvider::Error *_error,
     Returns the QGeoCodingManager made available by the service
     provider.
 
-    This function will return 0 if the service provider does not provide
+    This function will return \nullptr if the service provider does not provide
     any geocoding services.
 
     This function will attempt to construct a QGeoCodingManager instance
@@ -448,18 +396,19 @@ Manager *QGeoServiceProviderPrivate::manager(QGeoServiceProvider::Error *_error,
 */
 QGeoCodingManager *QGeoServiceProvider::geocodingManager() const
 {
-    QGeoCodingManager *mgr = d_ptr->manager<QGeoCodingManager, QGeoCodingManagerEngine>(
-               &(d_ptr->geocodeError), &(d_ptr->geocodeErrorString),
-               &(d_ptr->geocodingManager));
-    if (!mgr)
-        qDebug() << d_ptr->error << ", " << d_ptr->errorString;
-    return mgr;
+    if (!d_ptr->geocodingManager) {
+        d_ptr->geocodingManager.reset(d_ptr->manager<QGeoCodingManager, QGeoCodingManagerEngine>(
+               &(d_ptr->geocodeError), &(d_ptr->geocodeErrorString)));
+        if (!d_ptr->geocodingManager)
+            qDebug() << d_ptr->error << ", " << d_ptr->errorString;
+    }
+    return d_ptr->geocodingManager.get();
 }
 
 /*!
     Returns the QGeoMappingManager made available by the service provider.
 
-    This function will return 0 if the service provider does not provide
+    This function will return \nullptr if the service provider does not provide
     any mapping services.
 
     This function will attempt to construct a QGeoMappingManager instance
@@ -480,18 +429,19 @@ QGeoCodingManager *QGeoServiceProvider::geocodingManager() const
 */
 QGeoMappingManager *QGeoServiceProvider::mappingManager() const
 {
-    QGeoMappingManager *mgr = d_ptr->manager<QGeoMappingManager, QGeoMappingManagerEngine>(
-               &(d_ptr->mappingError), &(d_ptr->mappingErrorString),
-               &(d_ptr->mappingManager));
-    if (!mgr)
-        qDebug() << d_ptr->error << ", " << d_ptr->errorString;
-    return mgr;
+    if (!d_ptr->mappingManager) {
+        d_ptr->mappingManager.reset(d_ptr->manager<QGeoMappingManager, QGeoMappingManagerEngine>(
+                &(d_ptr->mappingError), &(d_ptr->mappingErrorString)));
+        if (!d_ptr->mappingManager)
+            qDebug() << d_ptr->error << ", " << d_ptr->errorString;
+    }
+    return d_ptr->mappingManager.get();
 }
 
 /*!
     Returns the QGeoRoutingManager made available by the service provider.
 
-    This function will return 0 if the service provider does not provide
+    This function will return \nullptr if the service provider does not provide
     any geographic routing services.
 
     This function will attempt to construct a QGeoRoutingManager instance
@@ -510,12 +460,13 @@ QGeoMappingManager *QGeoServiceProvider::mappingManager() const
 */
 QGeoRoutingManager *QGeoServiceProvider::routingManager() const
 {
-    QGeoRoutingManager *mgr = d_ptr->manager<QGeoRoutingManager, QGeoRoutingManagerEngine>(
-               &(d_ptr->routingError), &(d_ptr->routingErrorString),
-               &(d_ptr->routingManager));
-    if (!mgr)
-        qDebug() << d_ptr->error << ", " << d_ptr->errorString;
-    return mgr;
+    if (!d_ptr->routingManager) {
+        d_ptr->routingManager.reset(d_ptr->manager<QGeoRoutingManager, QGeoRoutingManagerEngine>(
+                &(d_ptr->routingError), &(d_ptr->routingErrorString)));
+        if (!d_ptr->routingManager)
+            qDebug() << d_ptr->error << ", " << d_ptr->errorString;
+    }
+    return d_ptr->routingManager.get();
 }
 
 /*!
@@ -536,28 +487,13 @@ QGeoRoutingManager *QGeoServiceProvider::routingManager() const
 */
 QPlaceManager *QGeoServiceProvider::placeManager() const
 {
-    QPlaceManager *mgr = d_ptr->manager<QPlaceManager, QPlaceManagerEngine>(
-               &(d_ptr->placeError), &(d_ptr->placeErrorString),
-                &(d_ptr->placeManager));
-    if (!mgr)
-        qDebug() << d_ptr->error << ", " << d_ptr->errorString;
-    return mgr;
-}
-
-/*!
-    Returns a new QNavigationManager made available by the service provider.
-
-    After this function has been called, error() and errorString() will
-    report any errors which occurred during the construction of the QNavigationManagerEngine.
-*/
-QNavigationManager *QGeoServiceProvider::navigationManager() const
-{
-    QNavigationManager * mgr = d_ptr->manager<QNavigationManager, QNavigationManagerEngine>(
-               &(d_ptr->navigationError), &(d_ptr->navigationErrorString),
-                &(d_ptr->navigationManager));
-    if (!mgr)
-        qDebug() << d_ptr->error << ", " << d_ptr->errorString;
-    return mgr;
+    if (!d_ptr->placeManager) {
+        d_ptr->placeManager.reset(d_ptr->manager<QPlaceManager, QPlaceManagerEngine>(
+                &(d_ptr->placeError), &(d_ptr->placeErrorString)));
+        if (!d_ptr->placeManager)
+            qDebug() << d_ptr->error << ", " << d_ptr->errorString;
+    }
+    return d_ptr->placeManager.get();
 }
 
 /*!
@@ -746,60 +682,31 @@ void QGeoServiceProvider::setLocale(const QLocale &locale)
         d_ptr->mappingManager->setLocale(locale);
     if (d_ptr->placeManager)
         d_ptr->placeManager->setLocale(locale);
-    if (d_ptr->navigationManager)
-        d_ptr->navigationManager->setLocale(locale);
 }
 
 /*******************************************************************************
 *******************************************************************************/
 
 QGeoServiceProviderPrivate::QGeoServiceProviderPrivate()
-    : factory(0),
-      experimental(false),
-      geocodingManager(0),
-      routingManager(0),
-      mappingManager(0),
-      placeManager(0),
-      geocodeError(QGeoServiceProvider::NoError),
-      routingError(QGeoServiceProvider::NoError),
-      mappingError(QGeoServiceProvider::NoError),
-      placeError(QGeoServiceProvider::NoError),
-      error(QGeoServiceProvider::NoError),
-      localeSet(false)
 {
     metaData.insert(QStringLiteral("index"), -1);
 }
 
 QGeoServiceProviderPrivate::~QGeoServiceProviderPrivate()
 {
-    delete geocodingManager;
-    delete routingManager;
-    delete mappingManager;
-    delete placeManager;
-    delete navigationManager;
 }
 
 void QGeoServiceProviderPrivate::unload()
 {
-    delete geocodingManager;
-    geocodingManager = 0;
+    geocodingManager.reset();
+    routingManager.reset();
+    mappingManager.reset();
+    placeManager.reset();
 
-    delete routingManager;
-    routingManager = 0;
-
-    delete mappingManager;
-    mappingManager = 0;
-
-    delete placeManager;
-    placeManager = 0;
-
-    delete navigationManager;
-    navigationManager = nullptr;
-
-    factory = factoryV2 = factoryV3 = nullptr;
+    factory = nullptr;
     error = QGeoServiceProvider::NoError;
     errorString = QLatin1String("");
-    metaData = QJsonObject();
+    metaData = QCborMap();
     metaData.insert(QStringLiteral("index"), -1);
 }
 
@@ -826,23 +733,23 @@ void QGeoServiceProviderPrivate::filterParameterMap()
 
 void QGeoServiceProviderPrivate::loadMeta()
 {
-    factory = factoryV2 = factoryV3 = nullptr;
-    metaData = QJsonObject();
+    factory = nullptr;
+    metaData = QCborMap();
     metaData.insert(QStringLiteral("index"), -1);
     error = QGeoServiceProvider::NotSupportedError;
     errorString = QString(QLatin1String("The geoservices provider %1 is not supported.")).arg(providerName);
 
-    QList<QJsonObject> candidates = QGeoServiceProviderPrivate::plugins().values(providerName);
+    const QList<QCborMap> candidates = QGeoServiceProviderPrivate::plugins().values(providerName);
 
     int versionFound = -1;
     int idx = -1;
 
     // figure out which version of the plugin we want
     // (always latest unless experimental)
-    for (int i = 0; i < candidates.size(); ++i) {
-        QJsonObject meta = candidates[i];
+    for (qsizetype i = 0; i < candidates.size(); ++i) {
+        QCborMap meta = candidates[i];
         if (meta.contains(QStringLiteral("Version"))
-                && meta.value(QStringLiteral("Version")).isDouble()
+                && meta.value(QStringLiteral("Version")).isInteger()
                 && meta.contains(QStringLiteral("Experimental"))
                 && meta.value(QStringLiteral("Experimental")).isBool()) {
             int ver = int(meta.value(QStringLiteral("Version")).toDouble());
@@ -867,7 +774,7 @@ void QGeoServiceProviderPrivate::loadPlugin(const QVariantMap &parameters)
     if (int(metaData.value(QStringLiteral("index")).toDouble()) < 0) {
         error = QGeoServiceProvider::NotSupportedError;
         errorString = QString(QLatin1String("The geoservices provider is not supported."));
-        factory = factoryV2 = factoryV3 = nullptr;
+        factory = nullptr;
         return;
     }
 
@@ -877,28 +784,18 @@ void QGeoServiceProviderPrivate::loadPlugin(const QVariantMap &parameters)
     int idx = int(metaData.value(QStringLiteral("index")).toDouble());
 
     // load the actual plugin
-    QObject *instance = loader()->instance(idx);
-    if (!instance) {
+    factory = qobject_cast<QGeoServiceProviderFactory *>(loader()->instance(idx));
+    if (!factory) {
         error = QGeoServiceProvider::LoaderError;
         errorString = QLatin1String("loader()->instance(idx) failed to return an instance. Set the environment variable QT_DEBUG_PLUGINS to see more details.");
         return;
     }
-    factoryV3 = qobject_cast<QGeoServiceProviderFactoryV3 *>(instance);
-    if (!factoryV3) {
-        factoryV2 = qobject_cast<QGeoServiceProviderFactoryV2 *>(instance);
-        if (!factoryV2)
-            factory = qobject_cast<QGeoServiceProviderFactory *>(instance);
-        else
-            factory = factoryV2;
-    } else {
-        factory = factoryV2 = factoryV3;
-        factoryV3->setQmlEngine(qmlEngine);
-    }
+    factory->setQmlEngine(qmlEngine);
 }
 
-QMultiHash<QString, QJsonObject> QGeoServiceProviderPrivate::plugins(bool reload)
+QMultiHash<QString, QCborMap> QGeoServiceProviderPrivate::plugins(bool reload)
 {
-    static QMultiHash<QString, QJsonObject> plugins;
+    static QMultiHash<QString, QCborMap> plugins;
     static bool alreadyDiscovered = false;
 
     if (reload == true)
@@ -911,12 +808,12 @@ QMultiHash<QString, QJsonObject> QGeoServiceProviderPrivate::plugins(bool reload
     return plugins;
 }
 
-void QGeoServiceProviderPrivate::loadPluginMetadata(QMultiHash<QString, QJsonObject> &list)
+void QGeoServiceProviderPrivate::loadPluginMetadata(QMultiHash<QString, QCborMap> &list)
 {
     QFactoryLoader *l = loader();
-    QList<QJsonObject> meta = l->metaData();
-    for (int i = 0; i < meta.size(); ++i) {
-        QJsonObject obj = meta.at(i).value(QStringLiteral("MetaData")).toObject();
+    const QList<QPluginParsedMetaData> meta = l->metaData();
+    for (qsizetype i = 0; i < meta.size(); ++i) {
+        QCborMap obj = meta.at(i).value(QtPluginMetaDataKeys::MetaData).toMap();
         obj.insert(QStringLiteral("index"), i);
         list.insert(obj.value(QStringLiteral("Provider")).toString(), obj);
     }

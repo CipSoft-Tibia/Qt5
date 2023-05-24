@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2013 Aleix Pol Gonzalez <aleixpol@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// Copyright (C) 2013 Aleix Pol Gonzalez <aleixpol@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCOLLATOR_H
 #define QCOLLATOR_H
@@ -57,12 +21,13 @@ public:
     QCollatorSortKey(const QCollatorSortKey &other);
     ~QCollatorSortKey();
     QCollatorSortKey &operator=(const QCollatorSortKey &other);
-    inline QCollatorSortKey &operator=(QCollatorSortKey &&other) noexcept
-    { swap(other); return *this; }
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QCollatorSortKey)
     void swap(QCollatorSortKey &other) noexcept
     { d.swap(other.d); }
 
     int compare(const QCollatorSortKey &key) const;
+    friend bool operator<(const QCollatorSortKey &lhs, const QCollatorSortKey &rhs)
+    { return lhs.compare(rhs) < 0; }
 
 protected:
     QCollatorSortKey(QCollatorSortKeyPrivate*);
@@ -72,11 +37,6 @@ protected:
 private:
     QCollatorSortKey();
 };
-
-inline bool operator<(const QCollatorSortKey &lhs, const QCollatorSortKey &rhs)
-{
-    return lhs.compare(rhs) < 0;
-}
 
 class Q_CORE_EXPORT QCollator
 {
@@ -88,11 +48,10 @@ public:
     QCollator &operator=(const QCollator &);
     QCollator(QCollator &&other) noexcept
         : d(other.d) { other.d = nullptr; }
-    QCollator &operator=(QCollator &&other) noexcept
-    { swap(other); return *this; }
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QCollator)
 
     void swap(QCollator &other) noexcept
-    { qSwap(d, other.d); }
+    { qt_ptr_swap(d, other.d); }
 
     void setLocale(const QLocale &locale);
     QLocale locale() const;
@@ -106,20 +65,26 @@ public:
     void setIgnorePunctuation(bool on);
     bool ignorePunctuation() const;
 
-#if QT_STRINGVIEW_LEVEL < 2
-    int compare(const QString &s1, const QString &s2) const;
-    int compare(const QStringRef &s1, const QStringRef &s2) const;
-    int compare(const QChar *s1, int len1, const QChar *s2, int len2) const;
+    int compare(const QString &s1, const QString &s2) const
+    { return compare(QStringView(s1), QStringView(s2)); }
+#if QT_CORE_REMOVED_SINCE(6, 4) && QT_POINTER_SIZE != 4
+    int compare(const QChar *s1, int len1, const QChar *s2, int len2) const
+    { return compare(QStringView(s1, len1), QStringView(s2, len2)); }
+#endif
+    int compare(const QChar *s1, qsizetype len1, const QChar *s2, qsizetype len2) const
+    { return compare(QStringView(s1, len1), QStringView(s2, len2)); }
 
     bool operator()(const QString &s1, const QString &s2) const
     { return compare(s1, s2) < 0; }
-#endif
     int compare(QStringView s1, QStringView s2) const;
 
     bool operator()(QStringView s1, QStringView s2) const
     { return compare(s1, s2) < 0; }
 
     QCollatorSortKey sortKey(const QString &string) const;
+
+    static int defaultCompare(QStringView s1, QStringView s2);
+    static QCollatorSortKey defaultSortKey(QStringView key);
 
 private:
     QCollatorPrivate *d;

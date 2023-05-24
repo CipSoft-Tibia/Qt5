@@ -1,10 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/background_fetch/storage/database_helpers.h"
 
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_split.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/background_fetch/background_fetch.mojom.h"
 
 namespace content {
@@ -62,9 +64,11 @@ DatabaseStatus ToDatabaseStatus(blink::ServiceWorkerStatusCode status) {
       return DatabaseStatus::kOk;
     case blink::ServiceWorkerStatusCode::kErrorFailed:
     case blink::ServiceWorkerStatusCode::kErrorAbort:
-      // FAILED is for invalid arguments (e.g. empty key) or database errors.
-      // ABORT is for unexpected failures, e.g. because shutdown is in progress.
-      // BackgroundFetchDataManager handles both of these the same way.
+    case blink::ServiceWorkerStatusCode::kErrorStorageDisconnected:
+      // kErrorFailed is for invalid arguments (e.g. empty key) or database
+      // errors. kErrorAbort is for unexpected failures, e.g. because shutdown
+      // is in progress. kErrorStorageDisconnected is for the Storage Service
+      // disconnection. BackgroundFetchDataManager handles these the same way.
       return DatabaseStatus::kFailed;
     case blink::ServiceWorkerStatusCode::kErrorNotFound:
       // This can also happen for writes, if the ServiceWorkerRegistration has
@@ -120,6 +124,26 @@ bool ToBackgroundFetchRegistration(
   bool did_convert = MojoFailureReasonFromRegistrationProto(
       registration_proto.failure_reason(), &registration_data->failure_reason);
   return did_convert;
+}
+
+blink::StorageKey GetMetadataStorageKey(
+    const proto::BackgroundFetchMetadata& metadata_proto) {
+  if (metadata_proto.has_storage_key()) {
+    auto storage_key =
+        blink::StorageKey::Deserialize(metadata_proto.storage_key());
+    if (storage_key.has_value()) {
+      return *storage_key;
+    }
+  }
+
+  // Fall back to the deprecated `origin` field.
+  if (metadata_proto.has_origin()) {
+    return blink::StorageKey::CreateFirstParty(
+        url::Origin::Create(GURL(metadata_proto.origin())));
+  }
+
+  // If neither field is set, the best we can do is an opaque StorageKey.
+  return blink::StorageKey();
 }
 
 bool MojoFailureReasonFromRegistrationProto(

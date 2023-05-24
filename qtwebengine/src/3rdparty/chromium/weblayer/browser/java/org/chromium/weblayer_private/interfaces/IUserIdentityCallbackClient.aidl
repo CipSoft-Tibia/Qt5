@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@ package org.chromium.weblayer_private.interfaces;
 
 import org.chromium.weblayer_private.interfaces.IObjectWrapper;
 
-// Since 87
 interface IUserIdentityCallbackClient {
   String getEmail() = 0;
   String getFullName() = 1;

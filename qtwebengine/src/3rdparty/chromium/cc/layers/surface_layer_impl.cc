@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,11 @@
 
 #include <stdint.h>
 
-#include "base/stl_util.h"
+#include <algorithm>
+#include <utility>
+
+#include "base/memory/ptr_util.h"
+#include "base/synchronization/waitable_event.h"
 #include "base/trace_event/traced_value.h"
 #include "cc/debug/debug_colors.h"
 #include "cc/layers/append_quads_data.h"
@@ -17,6 +21,26 @@
 
 namespace cc {
 
+// static
+std::unique_ptr<SurfaceLayerImpl> SurfaceLayerImpl::Create(
+    LayerTreeImpl* tree_impl,
+    int id,
+    UpdateSubmissionStateCB update_submission_state_callback) {
+  return base::WrapUnique(new SurfaceLayerImpl(
+      tree_impl, id, std::move(update_submission_state_callback)));
+}
+
+// static
+std::unique_ptr<SurfaceLayerImpl> SurfaceLayerImpl::Create(
+    LayerTreeImpl* tree_impl,
+    int id) {
+  return base::WrapUnique(new SurfaceLayerImpl(
+      tree_impl, id, base::BindRepeating([](bool, base::WaitableEvent* event) {
+        if (event)
+          event->Signal();
+      })));
+}
+
 SurfaceLayerImpl::SurfaceLayerImpl(
     LayerTreeImpl* tree_impl,
     int id,
@@ -26,18 +50,23 @@ SurfaceLayerImpl::SurfaceLayerImpl(
           std::move(update_submission_state_callback)) {}
 
 SurfaceLayerImpl::~SurfaceLayerImpl() {
-  if (update_submission_state_callback_)
-    update_submission_state_callback_.Run(false);
+  // Do not call `update_submission_state_callback_` here.  There is only very
+  // loose synchronization between when a layer gets a new impl layer and when
+  // the old layer is destroyed.  For example, when a layer is moved to a new
+  // tree, the old tree's impl layer might be destroyed after drawing has
+  // started in the new tree with a new impl layer.  In that case, we'd be
+  // clobbering the visibility state.  Instead, trust that SurfaceLayer has done
+  // the right thing already.
 }
 
 std::unique_ptr<LayerImpl> SurfaceLayerImpl::CreateLayerImpl(
-    LayerTreeImpl* tree_impl) {
+    LayerTreeImpl* tree_impl) const {
   return SurfaceLayerImpl::Create(tree_impl, id(),
                                   std::move(update_submission_state_callback_));
 }
 
 void SurfaceLayerImpl::SetRange(const viz::SurfaceRange& surface_range,
-                                base::Optional<uint32_t> deadline_in_frames) {
+                                absl::optional<uint32_t> deadline_in_frames) {
   if (surface_range_ == surface_range &&
       deadline_in_frames_ == deadline_in_frames) {
     return;
@@ -113,8 +142,19 @@ bool SurfaceLayerImpl::WillDraw(
   // compositor frames.
   if (will_draw_ != will_draw) {
     will_draw_ = will_draw;
-    if (update_submission_state_callback_)
-      update_submission_state_callback_.Run(will_draw);
+    if (update_submission_state_callback_) {
+      // If we're in synchronous composite mode, ensure that we finish running
+      // the update submission state callback. This is important to avoid race
+      // conditions in web_tests which results from a thread hop that happens in
+      // the callback.
+      if (layer_tree_impl()->IsInSynchronousComposite()) {
+        base::WaitableEvent event;
+        update_submission_state_callback_.Run(will_draw, &event);
+        event.Wait();
+      } else {
+        update_submission_state_callback_.Run(will_draw, nullptr);
+      }
+    }
   }
 
   return will_draw;
@@ -177,16 +217,18 @@ bool SurfaceLayerImpl::is_surface_layer() const {
   return true;
 }
 
-gfx::Rect SurfaceLayerImpl::GetEnclosingRectInTargetSpace() const {
-  return GetScaledEnclosingRectInTargetSpace(
+gfx::Rect SurfaceLayerImpl::GetEnclosingVisibleRectInTargetSpace() const {
+  return GetScaledEnclosingVisibleRectInTargetSpace(
       layer_tree_impl()->device_scale_factor());
 }
 
-void SurfaceLayerImpl::GetDebugBorderProperties(SkColor* color,
+void SurfaceLayerImpl::GetDebugBorderProperties(SkColor4f* color,
                                                 float* width) const {
-  *color = DebugColors::SurfaceLayerBorderColor();
-  *width = DebugColors::SurfaceLayerBorderWidth(
-      layer_tree_impl() ? layer_tree_impl()->device_scale_factor() : 1);
+  if (color)
+    *color = DebugColors::SurfaceLayerBorderColor();
+  if (width)
+    *width = DebugColors::SurfaceLayerBorderWidth(
+        layer_tree_impl() ? layer_tree_impl()->device_scale_factor() : 1);
 }
 
 void SurfaceLayerImpl::AppendRainbowDebugBorder(
@@ -198,19 +240,18 @@ void SurfaceLayerImpl::AppendRainbowDebugBorder(
       render_pass->CreateAndAppendSharedQuadState();
   PopulateSharedQuadState(shared_quad_state, contents_opaque());
 
-  SkColor color;
-  float border_width;
-  GetDebugBorderProperties(&color, &border_width);
+  float border_width = DebugColors::SurfaceLayerBorderWidth(
+      layer_tree_impl() ? layer_tree_impl()->device_scale_factor() : 1);
 
-  SkColor colors[] = {
-      0x80ff0000,  // Red.
-      0x80ffa500,  // Orange.
-      0x80ffff00,  // Yellow.
-      0x80008000,  // Green.
-      0x800000ff,  // Blue.
-      0x80ee82ee,  // Violet.
+  SkColor4f colors[] = {
+      {1.0f, 0.0f, 0.0f, 0.5f},     // Red.
+      {1.0f, 0.65f, 0.0f, 0.5f},    // Orange.
+      {1.0f, 1.0f, 0.0f, 0.5f},     // Yellow.
+      {0.0f, 0.5f, 0.0f, 0.5f},     // Green.
+      {0.0f, 0.0f, 1.0f, 0.50f},    // Blue.
+      {0.93f, 0.51f, 0.93f, 0.5f},  // Violet.
   };
-  const int kNumColors = base::size(colors);
+  const int kNumColors = std::size(colors);
 
   const int kStripeWidth = 300;
   const int kStripeHeight = 300;
@@ -252,10 +293,8 @@ void SurfaceLayerImpl::AppendRainbowDebugBorder(
             render_pass->CreateAndAppendDrawQuad<viz::SolidColorDrawQuad>();
         // The inner fill is more transparent then the border.
         static const float kFillOpacity = 0.1f;
-        SkColor fill_color = SkColorSetA(
-            colors[i % kNumColors],
-            static_cast<uint8_t>(SkColorGetA(colors[i % kNumColors]) *
-                                 kFillOpacity));
+        SkColor4f fill_color = colors[i % kNumColors];
+        fill_color.fA *= kFillOpacity;
         gfx::Rect fill_rect(x, 0, width, bounds().height());
         solid_quad->SetNew(shared_quad_state, fill_rect, fill_rect, fill_color,
                            force_anti_aliasing_off);

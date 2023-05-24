@@ -49,43 +49,43 @@
       Remove address from Chromium?
     </message>
   </if>
-  <message name="IDS_AUTOFILL_CC_AMEX" desc="Full American Express credit card name." formatter_data="android_java">
+  <message name="IDS_AUTOFILL_DELETE_AUTOCOMPLETE_SUGGESTION_TOOLTIP" desc="Tooltip shown when hovering over a small button with a trash-can logo next to an Autocomplete entry in the Autofill popup." translateable="false">
+    Remove entry
+  </message>
+  <message name="IDS_AUTOFILL_CC_AMEX" desc="Full American Express credit card name.">
     American Express
   </message>
   <message name="IDS_AUTOFILL_CC_AMEX_SHORT" desc="Shorter name for American Express credit card.">
     Amex
   </message>
-  <message name="IDS_AUTOFILL_CC_DINERS" desc="Diners Club credit card name." formatter_data="android_java">
+  <message name="IDS_AUTOFILL_CC_DINERS" desc="Diners Club credit card name.">
     Diners Club
   </message>
-  <message name="IDS_AUTOFILL_CC_DISCOVER" desc="Discover credit card name." formatter_data="android_java">
+  <message name="IDS_AUTOFILL_CC_DISCOVER" desc="Discover credit card name.">
     Discover
   </message>
   <message name="IDS_AUTOFILL_CC_ELO" desc="Elo credit card name.">
     Elo
   </message>
-  <message name="IDS_AUTOFILL_CC_GOOGLE_ISSUED" desc="Google issued card name" formatter_data="android_java">
-    Google
-  </message>
   <message name="IDS_AUTOFILL_CC_GOOGLE_PAY" desc="Google pay brand name">
     Google Pay
   </message>
-  <message name="IDS_AUTOFILL_CC_JCB" desc="JCB credit card name." formatter_data="android_java">
+  <message name="IDS_AUTOFILL_CC_JCB" desc="JCB credit card name.">
     JCB
   </message>
-  <message name="IDS_AUTOFILL_CC_MASTERCARD" desc="Mastercard credit card name." formatter_data="android_java">
+  <message name="IDS_AUTOFILL_CC_MASTERCARD" desc="Mastercard credit card name.">
     Mastercard
   </message>
-  <message name="IDS_AUTOFILL_CC_MIR" desc="Mir credit card name." formatter_data="android_java">
+  <message name="IDS_AUTOFILL_CC_MIR" desc="Mir credit card name.">
     Mir
   </message>
   <message name="IDS_AUTOFILL_CC_TROY" desc="Troy credit card name.">
     Troy
   </message>
-  <message name="IDS_AUTOFILL_CC_UNION_PAY" desc="China UnionPay credit card name." formatter_data="android_java">
+  <message name="IDS_AUTOFILL_CC_UNION_PAY" desc="China UnionPay credit card name.">
     China UnionPay
   </message>
-  <message name="IDS_AUTOFILL_CC_VISA" desc="Visa credit card name." formatter_data="android_java">
+  <message name="IDS_AUTOFILL_CC_VISA" desc="Visa credit card name.">
     Visa
   </message>
   <message name="IDS_AUTOFILL_CC_GENERIC" desc="Generic credit card name.">
@@ -95,44 +95,12 @@
     , '''
   </message>
 
-  <!-- These are all variants of the same logical field: The major subdivision below the "country" level. -->
-  <message name="IDS_AUTOFILL_FIELD_LABEL_STATE" desc="The label of the State entry.">
-    State
+  <message name="IDS_AUTOFILL_A11Y_ANNOUNCE_FILLED_FORM" desc="Screen reader announcement indicating that current form was autofilled.">
+    The form was filled in
   </message>
-  <message name="IDS_AUTOFILL_FIELD_LABEL_AREA" desc="The label of the Area entry.">
-    Area
-  </message>
-  <message name="IDS_AUTOFILL_FIELD_LABEL_COUNTY" desc="The label of the County entry.">
-    County
-  </message>
-  <message name="IDS_AUTOFILL_FIELD_LABEL_DEPARTMENT" desc="The label of the Department entry.">
-    Department
-  </message>
-  <message name="IDS_AUTOFILL_FIELD_LABEL_DISTRICT" desc="The label of the District entry.">
-    District
-  </message>
-  <message name="IDS_AUTOFILL_FIELD_LABEL_EMIRATE" desc="The label of the Emirate entry.">
-    Emirate
-  </message>
-  <message name="IDS_AUTOFILL_FIELD_LABEL_ISLAND" desc="The label of the Island entry.">
-    Island
-  </message>
-  <message name="IDS_AUTOFILL_FIELD_LABEL_PARISH" desc="The label of the Parish entry.">
-    Parish
-  </message>
-  <message name="IDS_AUTOFILL_FIELD_LABEL_PREFECTURE" desc="The label of the Prefecture entry.">
-    Prefecture
-  </message>
-  <message name="IDS_AUTOFILL_FIELD_LABEL_PROVINCE" desc="The label of the Province entry.">
-    Province
-  </message>
-  <!-- End state variants. -->
 
-  <message name="IDS_AUTOFILL_FIELD_LABEL_ZIP_CODE" desc="The label of the ZIP code entry.">
-    ZIP code
-  </message>
-  <message name="IDS_AUTOFILL_FIELD_LABEL_POSTAL_CODE" desc="The label of the Postal code entry.">
-    Postal code
+  <message name="IDS_AUTOFILL_A11Y_ANNOUNCE_CLEARED_FORM" desc="Screen reader announcement indicating that current form autofilled values were cleared.">
+    The autofilled info was cleared from the form
   </message>
 
   <message name="IDS_AUTOFILL_HIDE_SUGGESTIONS" desc="The text displayed at the Autofill popup to allow the user to hide the suggestions menu." meaning="Hides the suggestion list.">
@@ -143,17 +111,32 @@
     Manage...
   </message>
 
-  <message name="IDS_AUTOFILL_MANAGE_ADDRESSES" desc="The text displayed at the bottom of the Autofill popup to allow the user to manage their Autofill preferences for addresses. Imperative. When the user clicks on it, opens the Autofill settings page." meaning="Manage addresses in the user profile that can be used by Chrome Autofill.">
-    Manage addresses...
-  </message>
+  <if expr="not use_titlecase">
+    <message name="IDS_AUTOFILL_MANAGE_ADDRESSES" desc="The text displayed at the bottom of the Autofill popup to allow the user to manage their Autofill preferences for addresses. Imperative. When the user clicks on it, opens the Autofill settings page." meaning="Manage addresses in the user profile that can be used by Chrome Autofill.">
+      Manage addresses...
+    </message>
 
-  <message name="IDS_AUTOFILL_MANAGE_PAYMENT_METHODS" desc="The text displayed at the bottom of the Autofill popup to allow the user to manage their Autofill preferences for payment methods like credit cards/debit cards. Imperative. When the user clicks on it, opens the Autofill settings page." meaning="Manage the payment methods in the user profile that can be used by Chrome Autofill.">
-    Manage payment methods...
-  </message>
+    <message name="IDS_AUTOFILL_MANAGE_PAYMENT_METHODS" desc="The text displayed at the bottom of the Autofill popup to allow the user to manage their Autofill preferences for payment methods like credit cards/debit cards. Imperative. When the user clicks on it, opens the Autofill settings page." meaning="Manage the payment methods in the user profile that can be used by Chrome Autofill.">
+      Manage payment methods...
+    </message>
 
-  <message name="IDS_AUTOFILL_MANAGE_PASSWORDS" desc="The text displayed at the bottom of the Autofill popup to allow the user to manage passwords that can be used by Chrome Autofill. Imperative. When the user clicks on it, opens the Passwords section of the Settings page." meaning="Manage passwords in the user profile that can be used by Chrome Autofill.">
-    Manage passwords...
-  </message>
+    <message name="IDS_AUTOFILL_MANAGE_PASSWORDS" desc="The text displayed at the bottom of the Autofill popup to allow the user to manage passwords that can be used by Chrome Autofill. Imperative. When the user clicks on it, opens the Passwords section of the Settings page." meaning="Manage passwords in the user profile that can be used by Chrome Autofill.">
+      Manage passwords...
+    </message>
+  </if>
+  <if expr="use_titlecase">
+    <message name="IDS_AUTOFILL_MANAGE_ADDRESSES" desc="In Title Case: The text displayed at the bottom of the Autofill popup to allow the user to manage their Autofill preferences for addresses. Imperative. When the user clicks on it, opens the Autofill settings page." meaning="Manage addresses in the user profile that can be used by Chrome Autofill.">
+      Manage Addresses...
+    </message>
+
+    <message name="IDS_AUTOFILL_MANAGE_PAYMENT_METHODS" desc="In Title Case: The text displayed at the bottom of the Autofill popup to allow the user to manage their Autofill preferences for payment methods like credit cards/debit cards. Imperative. When the user clicks on it, opens the Autofill settings page." meaning="Manage the payment methods in the user profile that can be used by Chrome Autofill.">
+      Manage Payment Methods...
+    </message>
+
+    <message name="IDS_AUTOFILL_MANAGE_PASSWORDS" desc="In Title Case: The text displayed at the bottom of the Autofill popup to allow the user to manage passwords that can be used by Chrome Autofill. Imperative. When the user clicks on it, opens the Passwords section of the Settings page." meaning="Manage passwords in the user profile that can be used by Chrome Autofill.">
+      Manage Passwords...
+    </message>
+  </if>
 
   <message name="IDS_AUTOFILL_SCAN_CREDIT_CARD" desc="An item in the autofill popup that triggers a new credit card to be scanned using the camera on the device." formatter_data="android_java">
     Scan new card
@@ -185,17 +168,17 @@
   ''' • '''</message>
 
   <!-- Autofill credit card suggestion popup -->
-  <message name="IDS_AUTOFILL_CREDIT_CARD_EXPIRATION_DATE_ABBR" desc="Abbreviated label for credit card expiration date. [CHAR-LIMIT=32]">
+  <message name="IDS_AUTOFILL_CREDIT_CARD_EXPIRATION_DATE_ABBR" desc="Abbreviated label for credit card expiration date. [CHAR_LIMIT=32]">
     Exp: <ph name="EXPIRATION_MONTH">$1<ex>06</ex></ph>/<ph name="EXPIRATION_YEAR">$2<ex>17</ex></ph>
   </message>
-  <message name="IDS_AUTOFILL_CREDIT_CARD_EXPIRATION_DATE_ABBR_V2" desc="Abbreviated label for credit card expiration date. Please translate the date as either YY/MM or MM/YY depending on how credit card expiration dates are more commonly presented in your locale. [CHAR-LIMIT=32]" meaning="Label for credit card expiration date for the save card dialog.">
+  <message name="IDS_AUTOFILL_CREDIT_CARD_EXPIRATION_DATE_ABBR_V2" desc="Abbreviated label for credit card expiration date. Please translate the date as either YY/MM or MM/YY depending on how credit card expiration dates are more commonly presented in your locale. [CHAR_LIMIT=32]" meaning="Label for credit card expiration date for the save card dialog.">
     <ph name="EXPIRATION_MONTH">$1<ex>06</ex></ph>/<ph name="EXPIRATION_YEAR">$2<ex>17</ex></ph>
   </message>
 
-  <message name="IDS_AUTOFILL_CREDIT_CARD_TWO_LINE_LABEL_FROM_NAME" desc="Second line label for the autofill credit card popup when the name is selected. This text will appear below the cardholder name. [CHAR-LIMIT=32]">
+  <message name="IDS_AUTOFILL_CREDIT_CARD_TWO_LINE_LABEL_FROM_NAME" desc="Second line label for the autofill credit card popup when the name is selected. This text will appear below the cardholder name. [CHAR_LIMIT=32]">
     <ph name="CREDIT_CARD">$1<ex>Visa  ••••5679</ex></ph>, expires on <ph name="EXPIRATION_DATE_ABBR">$2<ex>06/17</ex></ph>
   </message>
-  <message name="IDS_AUTOFILL_CREDIT_CARD_TWO_LINE_LABEL_FROM_CARD_NUMBER" desc="Second line label for the autofill credit card popup when the card number is selected. This text will appear below the credit card number. [CHAR-LIMIT=32]">
+  <message name="IDS_AUTOFILL_CREDIT_CARD_TWO_LINE_LABEL_FROM_CARD_NUMBER" desc="Second line label for the autofill credit card popup when the card number is selected. This text will appear below the credit card number. [CHAR_LIMIT=32]" formatter_data="android_java">
     Expires on <ph name="EXPIRATION_DATE_ABBR">$1<ex>06/17</ex></ph>
   </message>
 
@@ -219,6 +202,24 @@
   <message name="IDS_AUTOFILL_ENABLE_CREDIT_CARDS_TOGGLE_SUBLABEL" desc="Sublabel for a toggle that allows users to control whether credit cards should be saved and forms should be autofilled with it." formatter_data="android_java">
     Fills in payment forms with your saved payment methods
   </message>
+  <message name="IDS_AUTOFILL_EDIT_ACCOUNT_ADDRESS_SOURCE_NOTICE" desc="The footer message in the 'Add/Edit address' dialog warning the user that this address is stored in their account." formatter_data="android_java">
+    This address is saved in your Google Account (<ph name="ACCOUNT">$1<ex>alexpark@gmail.com</ex></ph>). You can use address across Google products on any device.
+  </message>
+  <message name="IDS_AUTOFILL_DELETE_ACCOUNT_ADDRESS_SOURCE_NOTICE" desc="The notice/warning for the user before the address deletion." formatter_data="android_java">
+    This address will be deleted from your Google Account, <ph name="ACCOUNT">$1<ex>alexpark@gmail.com</ex></ph>
+  </message>
+  <message name="IDS_AUTOFILL_DELETE_SYNC_ADDRESS_SOURCE_NOTICE" desc="The notice/warning for the user before the address deletion (with syncing enabled)." formatter_data="android_java">
+    This address will be deleted from this and your other signed-in devices
+  </message>
+  <message name="IDS_AUTOFILL_DELETE_LOCAL_ADDRESS_SOURCE_NOTICE" desc="The notice/warning for the user before a local (syncing is disabled) address deletion." formatter_data="android_java">
+    This address will be deleted from this device
+  </message>
+  <message name="IDS_AUTOFILL_EDIT_ADDRESS_REQUIRED_FIELD_FORM_ERROR" desc="The form error message shown to the user in case of a single required field missing.">
+    A required field is empty. Fill it before saving.
+  </message>
+  <message name="IDS_AUTOFILL_EDIT_ADDRESS_REQUIRED_FIELDS_FORM_ERROR" desc="The form error message shown to the user in case of multiple required fields missing.">
+    Some required fields are empty. Fill them before saving.
+  </message>
   <if expr="not is_ios">
     <then>
       <message name="IDS_AUTOFILL_ADDRESSES_SETTINGS_TITLE" desc="Title for the Autofill settings page that allows user to manage their list of saved addresses and Autofill preferences for addresses. Sentence-Cased." formatter_data="android_java">
@@ -233,13 +234,16 @@
       <message name="IDS_AUTOFILL_ENABLE_CREDIT_CARDS_TOGGLE_LABEL" desc="Label for a toggle that allows users to control whether credit cards should be saved and forms should be autofilled with it. Sentence-Cased." formatter_data="android_java">
         Save and fill payment methods
       </message>
+      <message name="IDS_AUTOFILL_DELETE_ADDRESS_CONFIRMATION_DIALOG_TITLE" desc="Title of the remove address confimation dialog" formatter_data="android_java">
+        Delete address
+      </message>
       <!-- WebAuthn titles -->
       <if expr="is_macosx">
-        <message name="IDS_ENABLE_CREDIT_CARD_FIDO_AUTH_LABEL" desc="The product name of the fingerprint reader on macOS. Label for a toggle that allows users to control whether or not to use FIDO authentication for credit card unmasking. Title-Cased.">
-          Touch ID
+        <message name="IDS_ENABLE_CREDIT_CARD_FIDO_AUTH_LABEL" desc="A platform authenticator using device unlock on macOS. Label for a toggle that allows users to control whether or not to use FIDO authentication for credit card unmasking.">
+          Device unlock
         </message>
         <message name="IDS_ENABLE_CREDIT_CARD_FIDO_AUTH_SUBLABEL" desc="Sublabel for a toggle that allows users to control whether or not to use FIDO authentication for credit card unmasking on macOS. Sentence-Cased.">
-          Use Touch ID to confirm cards faster
+          Use device unlock to confirm cards faster
         </message>
       </if>
       <if expr="is_win">
@@ -256,6 +260,9 @@
         </message>
         <message name="IDS_ENABLE_CREDIT_CARD_FIDO_AUTH_SUBLABEL" desc="Sublabel for a toggle that allows users to control whether or not to use FIDO authentication for credit card unmasking for Android. Sentence-Cased." formatter_data="android_java">
           Use screen lock to confirm cards faster
+        </message>
+        <message name="IDS_AUTOFILL_EDIT_ADDRESS_REQUIRED_FIELD_ERROR" desc="Validation error message for missing required address field." formatter_data="android_java">
+          Enter <ph name="FIELD">$1<ex>ZIP code</ex></ph>
         </message>
       </if>
       <if expr="not is_macosx and not is_win and not is_android">
@@ -287,12 +294,12 @@
   <if expr="not is_ios">
     <then>
       <message name="IDS_AUTOFILL_ENABLE_PAYMENTS_INTEGRATION_CHECKBOX_LABEL" desc="Label for the checkbox that controls the Autofill/Payments integration feature used for Autofill Home. 'Google Pay' should not be translated as it is the product name. Sentence-Cased.">
-        Payment methods and addresses using Google Pay
+        Payment methods, offers, and addresses using Google Pay
       </message>
     </then>
     <else>
       <message name="IDS_AUTOFILL_ENABLE_PAYMENTS_INTEGRATION_CHECKBOX_LABEL" desc="Label for the checkbox that controls the Autofill/Payments integration feature used for Autofill Home. 'Google Pay' should not be translated as it is the product name. Title-Cased.">
-        Payment Methods and Addresses Using Google Pay
+        Payment Methods, Offers, and Addresses Using Google Pay
       </message>
     </else>
   </if>
@@ -316,4 +323,87 @@
     </message>
   </if>
 
+  <!-- Explicit save/update address prompt strings -->
+  <!-- Common on all platforms (platform-specific defined later): -->
+  <message name="IDS_AUTOFILL_SAVE_ADDRESS_PROMPT_OK_BUTTON_LABEL" desc="Label of the OK button in the prompt that offers the user to save a new address.">
+    Save
+  </message>
+  <message name="IDS_AUTOFILL_UPDATE_ADDRESS_PROMPT_OK_BUTTON_LABEL" desc="Label of the OK button in the prompt that offers the user to update an existing address.">
+    Update
+  </message>
+  <message name="IDS_AUTOFILL_UPDATE_ADDRESS_PROMPT_NEW_VALUES_SECTION_LABEL" meaning="In the address update prompt" desc="Label shown next to the section that displays the new address values in the prompt that offers the user to update an existing address." formatter_data="android_java">
+    New
+  </message>
+  <message name="IDS_AUTOFILL_UPDATE_ADDRESS_PROMPT_OLD_VALUES_SECTION_LABEL" meaning="In the address update prompt" desc="Label shown next to the section that displays the old address values in the prompt that offers the user to update an existing address." formatter_data="android_java">
+    Old
+  </message>
+  <!-- Used on Android: -->
+  <if expr="is_android">
+    <message name="IDS_AUTOFILL_SAVE_ADDRESS_PROMPT_TITLE" desc="Title shown at the top of prompt that offers the user to save a new address.">
+      Save address?
+    </message>
+    <message name="IDS_AUTOFILL_UPDATE_ADDRESS_PROMPT_TITLE" desc="Title shown at the top of prompt that offers the user to update an existing address.">
+      Update address?
+    </message>
+    <message name="IDS_ANDROID_AUTOFILL_SAVE_ADDRESS_PROMPT_CANCEL_BUTTON_LABEL" desc="Label of the negative button in the modal dialog that offers the user to save a new address.">
+      Cancel
+    </message>
+    <message name="IDS_AUTOFILL_SAVE_ADDRESS_PROMPT_EDIT_BUTTON_TOOLTIP" desc="Tooltip of the Edit button in the prompt that offers the user to save a new address." formatter_data="android_java">
+      Edit address
+    </message>
+    <message name="IDS_AUTOFILL_EDIT_ADDRESS_DIALOG_TITLE" desc="Title shown at the top of dialog that edits an address before saving it" formatter_data="android_java">
+      Edit address
+    </message>
+  </if>
+  <!-- Used on iOS: -->
+  <if expr="is_ios">
+    <message name="IDS_IOS_AUTOFILL_SAVE_ADDRESS_MESSAGE_TITLE" desc="In Title Case: Title shown in the message that offers the user to proceed with saving a new address." meaning="In Title Case for iOS">
+      Save Address?
+    </message>
+    <message name="IDS_IOS_AUTOFILL_SAVE_ADDRESS_MESSAGE_PRIMARY_ACTION" desc="Label of the primary action button in the message that offers the user to proceed with saving a new address.">
+      Save…
+    </message>
+    <message name="IDS_IOS_AUTOFILL_UPDATE_ADDRESS_MESSAGE_TITLE" desc="In Title Case: Title shown in the message that offers the user to proceed with updating an existing address." meaning="In Title Case for iOS">
+      Update Address?
+    </message>
+    <message name="IDS_IOS_AUTOFILL_UPDATE_ADDRESS_MESSAGE_PRIMARY_ACTION" desc="Label of the primary action button in the message that offers the user to proceed with updating an existing address.">
+      Update…
+    </message>
+    <message name="IDS_IOS_AUTOFILL_SAVE_ADDRESS_PROMPT_TITLE" desc="In Title Case: Title shown at the top of modal dialog that offers the user to save a new address." meaning="In Title Case for iOS">
+      Save Address
+    </message>
+    <message name="IDS_IOS_AUTOFILL_UPDATE_ADDRESS_PROMPT_TITLE" desc="In Title Case: Title shown at the top of modal dialog that offers the user to update an existing address." meaning="In Title Case for iOS">
+      Update Address
+    </message>
+  </if>
+  <!-- Used on Desktop: -->
+  <if expr="not is_android and not is_ios">
+    <message name="IDS_AUTOFILL_SAVE_ADDRESS_PROMPT_TITLE" desc="Title shown at the top of prompt that offers the user to save a new address.">
+      Save address?
+    </message>
+    <message name="IDS_AUTOFILL_SAVE_ADDRESS_PROMPT_CANCEL_BUTTON_LABEL" desc="Label of the Cancel button in the prompt that offers the user to save a new address.">
+      No thanks
+    </message>
+    <message name="IDS_AUTOFILL_SAVE_ADDRESS_PROMPT_EDIT_BUTTON_TOOLTIP" desc="Tooltip of the Edit button in the prompt that offers the user to save a new address.">
+      Edit address
+    </message>
+    <message name="IDS_AUTOFILL_UPDATE_ADDRESS_PROMPT_TITLE" desc="Title shown at the top of prompt that offers the user to update an existing address.">
+      Update address?
+    </message>
+    <message name="IDS_AUTOFILL_UPDATE_ADDRESS_PROMPT_CANCEL_BUTTON_LABEL" desc="Label of the Cancel button in the prompt that offers the user to update an existing address.">
+      No thanks
+    </message>
+    <message name="IDS_AUTOFILL_EDIT_ADDRESS_DIALOG_TITLE" desc="Title shown at the top of dialog that edits an address before saving it">
+      Edit address
+    </message>
+    <message name="IDS_AUTOFILL_EDIT_ADDRESS_DIALOG_OK_BUTTON_LABEL_SAVE" desc="Label of the OK button in the dialog that edits the address before saving it as a new address.">
+      Save
+    </message>
+    <message name="IDS_AUTOFILL_EDIT_ADDRESS_DIALOG_OK_BUTTON_LABEL_UPDATE" desc="Label of the OK button in the dialog that edits the address before using it to update an existing address.">
+      Update
+    </message>
+    <message name="IDS_AUTOFILL_EDIT_ADDRESS_DIALOG_CANCEL_BUTTON_LABEL" desc="Label of the Cancel button in the dialog that edits an address before saving it.">
+      Cancel
+    </message>
+  </if>
 </grit-part>

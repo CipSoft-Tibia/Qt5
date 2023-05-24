@@ -1,19 +1,22 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/ozone/platform/wayland/host/wayland_output_manager.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "ui/ozone/platform/wayland/host/wayland_connection.h"
 #include "ui/ozone/platform/wayland/host/wayland_output.h"
+#include "ui/ozone/platform/wayland/host/wayland_window.h"
+#include "ui/ozone/platform/wayland/host/wayland_zaura_shell.h"
 
 namespace ui {
 
-WaylandOutputManager::WaylandOutputManager() = default;
+WaylandOutputManager::WaylandOutputManager(WaylandConnection* connection)
+    : connection_(connection) {}
 
 WaylandOutputManager::~WaylandOutputManager() = default;
 
@@ -21,46 +24,89 @@ WaylandOutputManager::~WaylandOutputManager() = default;
 // (i.e: wl_output::done received), so that WaylandOutputManager is able to
 // instantiate a valid WaylandScreen when requested by the upper layer.
 bool WaylandOutputManager::IsOutputReady() const {
-  return std::find_if(output_list_.begin(), output_list_.end(),
-                      [](const auto& output) { return output->is_ready(); }) !=
-         output_list_.end();
+  for (const auto& it : output_list_) {
+    if (it.second->IsReady())
+      return true;
+  }
+  return false;
 }
 
-void WaylandOutputManager::AddWaylandOutput(uint32_t output_id,
+void WaylandOutputManager::AddWaylandOutput(WaylandOutput::Id output_id,
                                             wl_output* output) {
   // Make sure an output with |output_id| has not been added yet. It's very
   // unlikely to happen, unless a compositor has a bug in the numeric names
   // representation of global objects.
-  auto output_it = GetOutputItById(output_id);
-  DCHECK(output_it == output_list_.end());
-  auto wayland_output = std::make_unique<WaylandOutput>(output_id, output);
+  DCHECK(!GetOutput(output_id));
+  auto wayland_output =
+      std::make_unique<WaylandOutput>(output_id, output, connection_);
 
   // Even if WaylandScreen has not been created, the output still must be
   // initialized, which results in setting up a wl_listener and getting the
   // geometry and the scaling factor from the Wayland Compositor.
   wayland_output->Initialize(this);
-  DCHECK(!wayland_output->is_ready());
+  if (connection_->xdg_output_manager_v1())
+    wayland_output->InitializeXdgOutput(connection_->xdg_output_manager_v1());
+  if (connection_->zaura_shell()) {
+    wayland_output->InitializeZAuraOutput(
+        connection_->zaura_shell()->wl_object());
+  }
+  if (connection_->zcr_color_manager()) {
+    wayland_output->InitializeColorManagementOutput(
+        connection_->zcr_color_manager());
+  }
+  DCHECK(!wayland_output->IsReady());
 
-  output_list_.push_back(std::move(wayland_output));
+  output_list_[output_id] = std::move(wayland_output);
 }
 
-void WaylandOutputManager::RemoveWaylandOutput(uint32_t output_id) {
-  auto output_it = GetOutputItById(output_id);
-
-  // Check the comment in the WaylandConnetion::GlobalRemove.
-  if (output_it == output_list_.end())
+void WaylandOutputManager::RemoveWaylandOutput(WaylandOutput::Id output_id) {
+  // Check the comment in the WaylandConnection::GlobalRemove.
+  if (!GetOutput(output_id))
     return;
+
+  // Remove WaylandOutput in following order :
+  // 1. from `WaylandSurface::entered_outputs_`
+  // 2. from `WaylandScreen::display_list_`
+  // 3. from `WaylandOutputManager::output_list_`
+  auto* wayland_window_manager = connection_->window_manager();
+  for (auto* window : wayland_window_manager->GetAllWindows())
+    window->RemoveEnteredOutput(output_id);
 
   if (wayland_screen_)
     wayland_screen_->OnOutputRemoved(output_id);
-  output_list_.erase(output_it);
+  DCHECK(output_list_.find(output_id) != output_list_.end());
+  output_list_.erase(output_id);
 }
 
-std::unique_ptr<WaylandScreen> WaylandOutputManager::CreateWaylandScreen(
-    WaylandConnection* connection) {
-  auto wayland_screen = std::make_unique<WaylandScreen>(connection);
+void WaylandOutputManager::InitializeAllXdgOutputs() {
+  DCHECK(connection_->xdg_output_manager_v1());
+  for (const auto& output : output_list_)
+    output.second->InitializeXdgOutput(connection_->xdg_output_manager_v1());
+}
+
+void WaylandOutputManager::InitializeAllZAuraOutputs() {
+  DCHECK(connection_->zaura_shell());
+  for (const auto& output : output_list_) {
+    output.second->InitializeZAuraOutput(
+        connection_->zaura_shell()->wl_object());
+  }
+}
+
+void WaylandOutputManager::InitializeAllColorManagementOutputs() {
+  DCHECK(connection_->zcr_color_manager());
+  for (const auto& output : output_list_)
+    output.second->InitializeColorManagementOutput(
+        connection_->zcr_color_manager());
+}
+
+std::unique_ptr<WaylandScreen> WaylandOutputManager::CreateWaylandScreen() {
+  auto wayland_screen = std::make_unique<WaylandScreen>(connection_);
   wayland_screen_ = wayland_screen->GetWeakPtr();
 
+  return wayland_screen;
+}
+
+void WaylandOutputManager::InitWaylandScreen(WaylandScreen* screen) {
   // As long as |wl_output| sends geometry and other events asynchronously (that
   // is, the initial configuration is sent once the interface is bound), we'll
   // have to tell each output to manually inform the delegate about available
@@ -70,45 +116,52 @@ std::unique_ptr<WaylandScreen> WaylandOutputManager::CreateWaylandScreen(
   // automatically, and the |wayland_screen_| is notified immediately about the
   // changes.
   for (const auto& output : output_list_) {
-    if (output->is_ready()) {
-      wayland_screen->OnOutputAddedOrUpdated(
-          output->output_id(), output->bounds(), output->scale_factor());
+    if (output.second->IsReady()) {
+      screen->OnOutputAddedOrUpdated(output.second->GetMetrics());
     }
   }
-
-  return wayland_screen;
 }
 
-uint32_t WaylandOutputManager::GetIdForOutput(wl_output* output) const {
-  auto output_it = std::find_if(
-      output_list_.begin(), output_list_.end(),
-      [output](const auto& item) { return item->has_output(output); });
-  // This is unlikely to happen, but better to be explicit here.
-  DCHECK(output_it != output_list_.end());
-  return output_it->get()->output_id();
+WaylandOutput* WaylandOutputManager::GetOutput(WaylandOutput::Id id) const {
+  auto it = output_list_.find(id);
+  if (it == output_list_.end())
+    return nullptr;
+
+  return it->second.get();
 }
 
-WaylandOutput* WaylandOutputManager::GetOutput(uint32_t id) const {
-  auto output_it = GetOutputItById(id);
-  // This is unlikely to happen, but better to be explicit here.
-  DCHECK(output_it != output_list_.end());
-  return output_it->get();
-}
-
-void WaylandOutputManager::OnOutputHandleMetrics(uint32_t output_id,
-                                                 const gfx::Rect& new_bounds,
-                                                 int32_t scale_factor) {
+WaylandOutput* WaylandOutputManager::GetPrimaryOutput() const {
   if (wayland_screen_) {
-    wayland_screen_->OnOutputAddedOrUpdated(output_id, new_bounds,
-                                            scale_factor);
+    auto output_id = wayland_screen_->GetOutputIdForDisplayId(
+        wayland_screen_->GetPrimaryDisplay().id());
+    return GetOutput(output_id);
   }
+  return nullptr;
 }
 
-WaylandOutputManager::OutputList::const_iterator
-WaylandOutputManager::GetOutputItById(uint32_t id) const {
-  return std::find_if(
-      output_list_.begin(), output_list_.end(),
-      [id](const auto& item) { return item->output_id() == id; });
+const WaylandOutputManager::OutputList& WaylandOutputManager::GetAllOutputs()
+    const {
+  return output_list_;
+}
+
+void WaylandOutputManager::OnOutputHandleMetrics(
+    const WaylandOutput::Metrics& metrics) {
+  if (wayland_screen_) {
+    wayland_screen_->OnOutputAddedOrUpdated(metrics);
+  }
+
+  // Update scale of the windows currently associated with |output_id|. i.e:
+  // the ones whose GetPreferredEnteredOutputId() returns |output_id|; or those
+  // which have not yet entered any output (i.e: no wl_surface.enter event
+  // received for their root surface) and |output_id| is the primary output.
+  const bool is_primary =
+      wayland_screen_ &&
+      metrics.display_id == wayland_screen_->GetPrimaryDisplay().id();
+  for (auto* window : connection_->window_manager()->GetAllWindows()) {
+    auto entered_output = window->GetPreferredEnteredOutputId();
+    if (entered_output == metrics.output_id || (!entered_output && is_primary))
+      window->UpdateWindowScale(true);
+  }
 }
 
 }  // namespace ui

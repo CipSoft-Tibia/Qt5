@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 
 #include "base/json/json_writer.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/stl_util.h"
 #include "base/strings/string_util.h"
 #include "components/dom_distiller/content/common/mojom/distillability_service.mojom.h"
 #include "components/dom_distiller/core/distillable_page_detector.h"
@@ -25,12 +24,13 @@ namespace dom_distiller {
 
 namespace {
 
-const char* const kBlacklist[] = {"www.reddit.com", "tools.usps.com"};
+const char* const kFilterlist[] = {"www.reddit.com", "tools.usps.com",
+                                   "old.reddit.com"};
 
 enum RejectionBuckets {
   NOT_ARTICLE = 0,
   MOBILE_FRIENDLY,
-  BLACKLISTED,
+  FILTERED,
   TOO_SHORT,
   NOT_REJECTED,
   REJECTION_BUCKET_BOUNDARY
@@ -66,9 +66,9 @@ bool IsLast(bool is_loaded) {
   return true;
 }
 
-bool IsBlacklisted(const GURL& url) {
-  for (size_t i = 0; i < base::size(kBlacklist); ++i) {
-    if (base::LowerCaseEqualsASCII(url.host(), kBlacklist[i])) {
+bool IsFiltered(const GURL& url) {
+  for (auto* filter : kFilterlist) {
+    if (base::EqualsCaseInsensitiveASCII(url.host(), filter)) {
       return true;
     }
   }
@@ -82,39 +82,38 @@ void DumpDistillability(content::RenderFrame* render_frame,
                         bool distillable,
                         double long_score,
                         bool long_page,
-                        bool blacklisted) {
-  base::DictionaryValue dict;
+                        bool filtered) {
+  base::Value::Dict dict;
   std::string msg;
 
-  std::unique_ptr<base::DictionaryValue> raw_features(
-      new base::DictionaryValue);
-  raw_features->SetInteger("is_mobile_friendly", features.is_mobile_friendly);
-  raw_features->SetInteger("open_graph", features.open_graph);
-  raw_features->SetInteger("element_count", features.element_count);
-  raw_features->SetInteger("anchor_count", features.anchor_count);
-  raw_features->SetInteger("form_count", features.form_count);
-  raw_features->SetInteger("text_input_count", features.text_input_count);
-  raw_features->SetInteger("password_input_count",
-                           features.password_input_count);
-  raw_features->SetInteger("p_count", features.p_count);
-  raw_features->SetInteger("pre_count", features.pre_count);
-  raw_features->SetDouble("moz_score", features.moz_score);
-  raw_features->SetDouble("moz_score_all_sqrt", features.moz_score_all_sqrt);
-  raw_features->SetDouble("moz_score_all_linear",
-                          features.moz_score_all_linear);
+  base::Value::Dict raw_features;
+  raw_features.Set("is_mobile_friendly", features.is_mobile_friendly);
+  raw_features.Set("open_graph", features.open_graph);
+  raw_features.Set("element_count", static_cast<int>(features.element_count));
+  raw_features.Set("anchor_count", static_cast<int>(features.anchor_count));
+  raw_features.Set("form_count", static_cast<int>(features.form_count));
+  raw_features.Set("text_input_count",
+                   static_cast<int>(features.text_input_count));
+  raw_features.Set("password_input_count",
+                   static_cast<int>(features.password_input_count));
+  raw_features.Set("p_count", static_cast<int>(features.p_count));
+  raw_features.Set("pre_count", static_cast<int>(features.pre_count));
+  raw_features.Set("moz_score", features.moz_score);
+  raw_features.Set("moz_score_all_sqrt", features.moz_score_all_sqrt);
+  raw_features.Set("moz_score_all_linear", features.moz_score_all_linear);
   dict.Set("features", std::move(raw_features));
 
-  std::unique_ptr<base::ListValue> derived_features(new base::ListValue());
+  base::Value::List derived_features;
   for (double value : derived) {
-    derived_features->AppendDouble(value);
+    derived_features.Append(value);
   }
   dict.Set("derived_features", std::move(derived_features));
 
-  dict.SetDouble("score", score);
-  dict.SetInteger("distillable", distillable);
-  dict.SetDouble("long_score", long_score);
-  dict.SetInteger("long_page", long_page);
-  dict.SetInteger("blacklisted", blacklisted);
+  dict.Set("score", score);
+  dict.Set("distillable", distillable);
+  dict.Set("long_score", long_score);
+  dict.Set("long_page", long_page);
+  dict.Set("filtered", filtered);
   base::JSONWriter::WriteWithOptions(
       dict, base::JSONWriter::OPTIONS_PRETTY_PRINT, &msg);
   msg = "adaboost_classification = " + msg;
@@ -144,11 +143,11 @@ bool IsDistillablePageAdaboost(blink::WebDocument& doc,
   double long_score = long_page->Score(derived) - long_page->GetThreshold();
   bool distillable = score > 0;
   bool long_article = long_score > 0;
-  bool blacklisted = IsBlacklisted(parsed_url);
+  bool filtered = IsFiltered(parsed_url);
 
   if (dump_info) {
     DumpDistillability(render_frame, features, derived, score, distillable,
-                       long_score, long_article, blacklisted);
+                       long_score, long_article, filtered);
   }
 
   if (!features.is_mobile_friendly) {
@@ -189,9 +188,9 @@ bool IsDistillablePageAdaboost(blink::WebDocument& doc,
     } else if (features.is_mobile_friendly) {
       UMA_HISTOGRAM_ENUMERATION("DomDistiller.DistillabilityRejection",
                                 MOBILE_FRIENDLY, REJECTION_BUCKET_BOUNDARY);
-    } else if (blacklisted) {
+    } else if (filtered) {
       UMA_HISTOGRAM_ENUMERATION("DomDistiller.DistillabilityRejection",
-                                BLACKLISTED, REJECTION_BUCKET_BOUNDARY);
+                                FILTERED, REJECTION_BUCKET_BOUNDARY);
     } else if (!long_article) {
       UMA_HISTOGRAM_ENUMERATION("DomDistiller.DistillabilityRejection",
                                 TOO_SHORT, REJECTION_BUCKET_BOUNDARY);
@@ -201,7 +200,7 @@ bool IsDistillablePageAdaboost(blink::WebDocument& doc,
     }
   }
 
-  if (blacklisted) {
+  if (filtered) {
     return false;
   }
   return distillable && long_article;
@@ -243,9 +242,9 @@ void DistillabilityAgent::DidMeaningfulLayout(
   }
 
   DCHECK(render_frame());
-  if (!render_frame()->IsMainFrame())
-    return;
   DCHECK(render_frame()->GetWebFrame());
+  if (!render_frame()->GetWebFrame()->IsOutermostMainFrame())
+    return;
   blink::WebDocument doc = render_frame()->GetWebFrame()->GetDocument();
   if (doc.IsNull() || doc.Body().IsNull())
     return;

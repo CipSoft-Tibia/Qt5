@@ -6,26 +6,19 @@ description = Qt Virtual Keyboard
 version = $QT_VERSION
 buildversion = Qt Virtual Keyboard | Commercial or GPLv3
 
-headerdirs  += ..
-sourcedirs  += .. ../../styles/
-excludedirs += ../content/layouts
+headerdirs  += .. ../../components/ ../../styles/ ../../settings/
+sourcedirs  += .. ../../components/ ../../styles/ ../../settings/
 
 # Specify the install path under QT_INSTALL_EXAMPLES
 exampledirs += ../../../examples/virtualkeyboard \
     snippets
 examplesinstallpath = virtualkeyboard
 
-Cpp.ignoretokens     += \
-    QVIRTUALKEYBOARD_EXPORT
-Cpp.ignoredirectives += \
-    Q_DECLARE_LOGGING_CATEGORY \
-    VIRTUALKEYBOARD_DEBUG
-
-manifestmeta.highlighted.names = "QtVirtualKeyboard/Qt Quick Virtual Keyboard - Basic Example"
+manifestmeta.highlighted.names = "QtVirtualKeyboard/Virtual Keyboard in Qt Quick"
 
 imagedirs += images
 
-depends += qtdoc qtcore qtgui qtwidgets qtwaylandcompositor qtqml qtquick qtquickcontrols
+depends += qtdoc qtcore qtgui qtwidgets qtwaylandcompositor qtqml qtquick qtquickcontrols qtcmake qmake
 
 qhp.projects = QtVirtualKeyboard
 
@@ -35,10 +28,6 @@ qhp.QtVirtualKeyboard.virtualFolder = qtvirtualkeyboard
 qhp.QtVirtualKeyboard.indexTitle    = Qt Virtual Keyboard
 qhp.QtVirtualKeyboard.indexRoot     =
 
-qhp.QtVirtualKeyboard.filterAttributes                  = qtvirtualkeyboard $QT_VERSION qtrefdoc
-qhp.QtVirtualKeyboard.customFilters.Qt.name             = QtVirtualKeyboard $QT_VERSION
-qhp.QtVirtualKeyboard.customFilters.Qt.filterAttributes = qtvirtualkeyboard $QT_VERSION
-
 qhp.QtVirtualKeyboard.subprojects = classes qmltypes examples
 
 qhp.QtVirtualKeyboard.subprojects.classes.title = C++ Classes
@@ -46,10 +35,10 @@ qhp.QtVirtualKeyboard.subprojects.classes.indexTitle = Qt Virtual Keyboard C++ C
 qhp.QtVirtualKeyboard.subprojects.classes.selectors = class doc:headerfile
 qhp.QtVirtualKeyboard.subprojects.classes.sortPages = true
 
-qhp.QtVirtualKeyboard.subprojects.qmltypes.title      = QML Types
+qhp.QtVirtualKeyboard.subprojects.qmltypes.title = QML Types
 qhp.QtVirtualKeyboard.subprojects.qmltypes.indexTitle = Qt Virtual Keyboard QML Types
-qhp.QtVirtualKeyboard.subprojects.qmltypes.selectors  = qmlclass
-qhp.QtVirtualKeyboard.subprojects.qmltypes.sortPages  = true
+qhp.QtVirtualKeyboard.subprojects.qmltypes.selectors = qmlclass
+qhp.QtVirtualKeyboard.subprojects.qmltypes.sortPages = true
 
 qhp.QtVirtualKeyboard.subprojects.examples.title = Examples
 qhp.QtVirtualKeyboard.subprojects.examples.indexTitle = Qt Virtual Keyboard Examples
@@ -59,3 +48,6 @@ qhp.QtVirtualKeyboard.subprojects.examples.sortPages = true
 navigation.landingpage = "Qt Virtual Keyboard"
 navigation.qmltypespage = "Qt Virtual Keyboard QML Types"
 navigation.cppclassespage = "Qt Virtual Keyboard C++ Classes"
+
+# Fail the documentation build if there are more warnings than the limit
+warninglimit = 0

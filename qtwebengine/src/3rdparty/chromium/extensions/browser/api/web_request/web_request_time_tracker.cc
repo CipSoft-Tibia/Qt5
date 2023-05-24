@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,6 +26,43 @@ void ExtensionWebRequestTimeTracker::LogRequestStartTime(
   log.request_start_time = start_time;
   log.has_listener = has_listener;
   log.has_extra_headers_listener = has_extra_headers_listener;
+}
+
+void ExtensionWebRequestTimeTracker::LogBeforeRequestDispatchTime(
+    int64_t request_id,
+    base::TimeTicks dispatch_time) {
+  auto iter = request_time_logs_.find(request_id);
+  DCHECK(iter != request_time_logs_.end());
+  iter->second.before_request_listener_dispatch_time = dispatch_time;
+}
+
+void ExtensionWebRequestTimeTracker::LogBeforeRequestCompletionTime(
+    int64_t request_id,
+    base::TimeTicks completion_time) {
+  auto iter = request_time_logs_.find(request_id);
+  if (iter == request_time_logs_.end()) {
+    // This probably *shouldn't* happen, but there's enough subtlety in handling
+    // network requests that we handle it gracefully.
+    return;
+  }
+
+  iter->second.before_request_listener_completion_time = completion_time;
+}
+
+void ExtensionWebRequestTimeTracker::LogBeforeRequestDNRStartTime(
+    int64_t request_id,
+    base::TimeTicks start_time) {
+  auto iter = request_time_logs_.find(request_id);
+  DCHECK(iter != request_time_logs_.end());
+  iter->second.before_request_dnr_start_time = start_time;
+}
+
+void ExtensionWebRequestTimeTracker::LogBeforeRequestDNRCompletionTime(
+    int64_t request_id,
+    base::TimeTicks completion_time) {
+  auto iter = request_time_logs_.find(request_id);
+  DCHECK(iter != request_time_logs_.end());
+  iter->second.before_request_dnr_completion_time = completion_time;
 }
 
 void ExtensionWebRequestTimeTracker::LogRequestEndTime(
@@ -64,11 +101,73 @@ void ExtensionWebRequestTimeTracker::AnalyzeLogRequest(
 
   // Ignore really short requests. Time spent on these is negligible, and any
   // extra delay the extension adds is likely to be noise.
-  constexpr auto kMinRequestTimeToCare = base::TimeDelta::FromMilliseconds(10);
+  constexpr auto kMinRequestTimeToCare = base::Milliseconds(10);
   if (request_duration >= kMinRequestTimeToCare) {
     const int percentage =
         base::ClampRound(log.block_duration / request_duration * 100);
     UMA_HISTOGRAM_PERCENTAGE("Extensions.NetworkDelayPercentage", percentage);
+  }
+
+  constexpr int kBucketCount = 50;
+
+  // Record the time spent in listeners in onBeforeRequest. Only do this if
+  // we have a time for both the dispatch and completion time (we may not,
+  // if the request were canceled).
+  if (!log.before_request_listener_dispatch_time.is_null() &&
+      !log.before_request_listener_completion_time.is_null()) {
+    base::TimeDelta listener_time =
+        log.before_request_listener_completion_time -
+        log.before_request_listener_dispatch_time;
+    // Because the DNR actions are calculated right after the event is
+    // dispatched, we separate these into different metrics (so that we can
+    // differentiate between times that include declarativeNetRequest rule
+    // matching and those that don't).
+    if (log.before_request_dnr_start_time.is_null()) {
+      UMA_HISTOGRAM_TIMES(
+          "Extensions.WebRequest.BeforeRequestListenerEvaluationTime."
+          "WebRequestOnly",
+          listener_time);
+      UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
+          "Extensions.WebRequest."
+          "BeforeRequestListenerEvaluationTimeInMicroseconds."
+          "WebRequestOnly",
+          listener_time, base::Microseconds(1), base::Seconds(30),
+          kBucketCount);
+    } else {  // Both webRequest and DNR handlers.
+      UMA_HISTOGRAM_TIMES(
+          "Extensions.WebRequest.BeforeRequestListenerEvaluationTime."
+          "WebRequestAndDeclarativeNetRequest",
+          listener_time);
+      UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
+          "Extensions.WebRequest."
+          "BeforeRequestListenerEvaluationTimeInMicroseconds."
+          "WebRequestAndDeclarativeNetRequest",
+          listener_time, base::Microseconds(1), base::Seconds(30),
+          kBucketCount);
+    }
+  }
+
+  if (!log.before_request_dnr_completion_time.is_null()) {
+    // Since declarativeNetRequest handlers are evaluated synchronously in the
+    // same method, if there's a completion time, there should always be a
+    // start time. (The inverse is not true, since we only log completion time
+    // if there was at least one relevant action.)
+    DCHECK(!log.before_request_dnr_start_time.is_null());
+
+    base::TimeDelta elapsed_time = log.before_request_dnr_completion_time -
+                                   log.before_request_dnr_start_time;
+
+    // DeclarativeNetRequest handlers also aren't really affected by webRequest
+    // listeners, so no need to split up the time depending on whether there
+    // were webRequest listeners.
+    UMA_HISTOGRAM_TIMES(
+        "Extensions.WebRequest."
+        "BeforeRequestDeclarativeNetRequestEvaluationTime",
+        elapsed_time);
+    UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
+        "Extensions.WebRequest."
+        "BeforeRequestDeclarativeNetRequestEvaluationTimeInMicroseconds",
+        elapsed_time, base::Microseconds(1), base::Seconds(30), kBucketCount);
   }
 }
 

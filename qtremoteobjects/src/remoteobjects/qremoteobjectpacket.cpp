@@ -1,49 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
-#include "qremoteobjectpacket_p.h"
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qbytearrayview.h>
 
+#include "qremoteobjectcontainers_p.h"
 #include "qremoteobjectpendingcall.h"
 #include "qremoteobjectsource.h"
 #include "qremoteobjectsource_p.h"
+#include "qremoteobjectpacket_p.h"
+#include "qconnectionfactories.h"
+#include "qconnectionfactories_p.h"
 #include <cstring>
 
 //#define QTRO_VERBOSE_PROTOCOL
@@ -61,15 +28,60 @@ inline bool operator==(const QMetaEnum e1, const QMetaEnum e2)
            && e1.scope() == e2.scope();
 }
 
-inline uint qHash(const QMetaEnum &key, uint seed=0) Q_DECL_NOTHROW
+inline size_t qHash(const QMetaEnum &key, size_t seed=0) Q_DECL_NOTHROW
 {
     return qHash(key.enclosingMetaObject(), seed) ^ qHash(static_cast<const void *>(key.name()), seed)
            ^ qHash(static_cast<const void *>(key.enumName()), seed) ^ qHash(static_cast<const void *>(key.scope()), seed);
 }
 
+static bool isSequentialGadgetType(QMetaType metaType)
+{
+    if (QMetaType::canConvert(metaType, QMetaType::fromType<QSequentialIterable>())) {
+        static QHash<int, bool> lookup;
+        if (!lookup.contains(metaType.id())) {
+            auto stubVariant = QVariant(metaType, nullptr);
+            auto asIterable = stubVariant.value<QSequentialIterable>();
+            auto valueMetaType = asIterable.metaContainer().valueMetaType();
+            lookup[metaType.id()] = valueMetaType.flags().testFlag(QMetaType::IsGadget);
+        }
+        return lookup[metaType.id()];
+    }
+    return false;
+}
+
+static bool isAssociativeGadgetType(QMetaType metaType)
+{
+    if (QMetaType::canConvert(metaType, QMetaType::fromType<QAssociativeIterable>())) {
+        static QHash<int, bool> lookup;
+        if (!lookup.contains(metaType.id())) {
+            auto stubVariant = QVariant(metaType, nullptr);
+            auto asIterable = stubVariant.value<QAssociativeIterable>();
+            auto valueMetaType = asIterable.metaContainer().mappedMetaType();
+            lookup[metaType.id()] = valueMetaType.flags().testFlag(QMetaType::IsGadget);
+        }
+        return lookup[metaType.id()];
+    }
+    return false;
+}
+
 using namespace QtRemoteObjects;
 
 namespace QRemoteObjectPackets {
+
+QMetaType transferTypeForEnum(QMetaType enumType)
+{
+    const auto size = enumType.sizeOf();
+    switch (size) {
+    case 1: return QMetaType::fromType<qint8>();
+    case 2: return QMetaType::fromType<qint16>();
+    case 4: return QMetaType::fromType<qint32>();
+    // Qt currently only supports enum values of 4 or less bytes (QMetaEnum value(index) returns int)
+//                    case 8: args.push_back(QVariant(QMetaType::Int, argv[i + 1])); break;
+    default:
+        qCWarning(QT_REMOTEOBJECT_IO) << "Invalid enum detected (Dynamic Replica)" << enumType.name() << "with size" << size;
+        return QMetaType::fromType<qint32>();
+    }
+}
 
 // QDataStream sends QVariants of custom types by sending their typename, allowing decode
 // on the receiving side.  For QtRO and enums, this won't work, as the enums have different
@@ -78,51 +90,201 @@ namespace QRemoteObjectPackets {
 // to integers (encodeVariant) when sending them.  On the receive side, the we know the
 // types of properties and the signatures for methods, so we can use that information to
 // decode the integer variant into an enum variant (via decodeVariant).
-const QVariant encodeVariant(const QVariant &value)
+QVariant encodeVariant(const QVariant &value)
 {
-    if (QMetaType::typeFlags(value.userType()).testFlag(QMetaType::IsEnumeration)) {
+    const auto metaType = value.metaType();
+    if (metaType.flags().testFlag(QMetaType::IsEnumeration)) {
         auto converted = QVariant(value);
-        const auto size = QMetaType(value.userType()).sizeOf();
-        switch (size) {
-        case 1: converted.convert(QMetaType::Char); break;
-        case 2: converted.convert(QMetaType::Short); break;
-        case 4: converted.convert(QMetaType::Int); break;
-        // Qt currently only supports enum values of 4 or less bytes (QMetaEnum value(index) returns int)
-//        case 8: converted.convert(QMetaType::Long); break; // typeId for long from qmetatype.h
-        default:
-            qWarning() << "Invalid enum detected" << QMetaType::typeName(value.userType()) << "with size" << size;
-            converted.convert(QMetaType::Int);
-        }
+        auto transferType = transferTypeForEnum(metaType);
+        converted.convert(transferType);
 #ifdef QTRO_VERBOSE_PROTOCOL
-        qDebug() << "Converting from enum to integer type" << size << converted << value;
+        qDebug() << "Converting from enum to integer type" << transferType.sizeOf() << converted << value;
 #endif
         return converted;
     }
-    return value;
-}
-
-QVariant &decodeVariant(QVariant &value, int type)
-{
-    if (QMetaType::typeFlags(type).testFlag(QMetaType::IsEnumeration)) {
+    if (isSequentialGadgetType(metaType)) { // Doesn't include QtROSequentialContainer
+        // TODO Way to create the QVariant without copying the QSQ_?
+        QSQ_ sequence(value);
 #ifdef QTRO_VERBOSE_PROTOCOL
-        QVariant encoded(value);
+        qDebug() << "Encoding sequential container" << metaType.name() << "to QSQ_ to transmit";
 #endif
-        value.convert(type);
+        return QVariant::fromValue<QSQ_>(sequence);
+    }
+    if (metaType == QMetaType::fromType<QtROSequentialContainer>()) {
+        QSQ_ sequence(value);
 #ifdef QTRO_VERBOSE_PROTOCOL
-        qDebug() << "Converting to enum from integer type" << value << encoded;
+        qDebug() << "Encoding QtROSequentialContainer container to QSQ_ to transmit";
 #endif
+        return QVariant::fromValue<QSQ_>(sequence);
+    }
+    if (isAssociativeGadgetType(metaType)) { // Doesn't include QtROAssociativeContainer
+        QAS_ map(value);
+#ifdef QTRO_VERBOSE_PROTOCOL
+        qDebug() << "Encoding associative container" << metaType.name() << "to QAS_ to transmit";
+#endif
+        return QVariant::fromValue<QAS_>(map);
+    }
+    if (metaType == QMetaType::fromType<QtROAssociativeContainer>()) {
+        QAS_ map(value);
+#ifdef QTRO_VERBOSE_PROTOCOL
+        qDebug() << "Encoding QtROAssociativeContainer container to QAS_ to transmit";
+#endif
+        return QVariant::fromValue<QAS_>(map);
     }
     return value;
 }
 
-void serializeProperty(QDataStream &ds, const QRemoteObjectSourceBase *source, int internalIndex)
+QVariant decodeVariant(QVariant &&value, QMetaType metaType)
+{
+    if (metaType.flags().testFlag(QMetaType::IsEnumeration)) {
+#ifdef QTRO_VERBOSE_PROTOCOL
+        QVariant encoded(value);
+#endif
+        value.convert(metaType);
+#ifdef QTRO_VERBOSE_PROTOCOL
+        qDebug() << "Converting to enum from integer type" << value << encoded;
+#endif
+    } else if (value.metaType() == QMetaType::fromType<QRemoteObjectPackets::QSQ_>()) {
+        const auto *qsq_ = static_cast<const QRemoteObjectPackets::QSQ_ *>(value.constData());
+        QDataStream in(qsq_->values);
+        auto containerType = QMetaType::fromName(qsq_->typeName.constData());
+        bool isRegistered = containerType.isRegistered();
+        if (isRegistered) {
+            QVariant seq{containerType, nullptr};
+            if (!seq.canView<QSequentialIterable>()) {
+                qWarning() << "Unsupported container" << qsq_->typeName.constData()
+                           << "(not viewable)";
+                return QVariant();
+            }
+            QSequentialIterable seqIter = seq.view<QSequentialIterable>();
+            if (!seqIter.metaContainer().canAddValue()) {
+                qWarning() << "Unsupported container" << qsq_->typeName.constData()
+                           << "(Unable to add values)";
+                return QVariant();
+            }
+            QByteArray valueTypeName;
+            quint32 count;
+            in >> valueTypeName;
+            in >> count;
+            QMetaType valueType = QMetaType::fromName(valueTypeName.constData());
+            QVariant tmp{valueType, nullptr};
+            for (quint32 i = 0; i < count; i++) {
+                if (!valueType.load(in, tmp.data())) {
+                    if (seqIter.metaContainer().canRemoveValue() || i == 0) {
+                        for (quint32 ii = 0; ii < i; ii++)
+                            seqIter.removeValue();
+                        qWarning("QSQ_: unable to load type '%s', returning an empty list.", valueTypeName.constData());
+                    } else {
+                        qWarning("QSQ_: unable to load type '%s', returning a partial list.", valueTypeName.constData());
+                    }
+                    break;
+                }
+                seqIter.addValue(tmp);
+            }
+            value = seq;
+#ifdef QTRO_VERBOSE_PROTOCOL
+            qDebug() << "Decoding QSQ_ to sequential container" << containerType.name()
+                     << valueTypeName;
+#endif
+        } else {
+            QtROSequentialContainer container{};
+            in >> container;
+            container.m_typeName = qsq_->typeName;
+            value = QVariant(QMetaType::fromType<QtROSequentialContainer>(), &container);
+#ifdef QTRO_VERBOSE_PROTOCOL
+            qDebug() << "Decoding QSQ_ to QtROSequentialContainer of"
+                     << container.m_valueTypeName;
+#endif
+        }
+    } else if (value.metaType() == QMetaType::fromType<QRemoteObjectPackets::QAS_>()) {
+        const auto *qas_ = static_cast<const QRemoteObjectPackets::QAS_ *>(value.constData());
+        QDataStream in(qas_->values);
+        auto containerType = QMetaType::fromName(qas_->typeName.constData());
+        bool isRegistered = containerType.isRegistered();
+        if (isRegistered) {
+            QVariant map{containerType, nullptr};
+            if (!map.canView<QAssociativeIterable>()) {
+                qWarning() << "Unsupported container" << qas_->typeName.constData()
+                           << "(not viewable)";
+                return QVariant();
+            }
+            QAssociativeIterable mapIter = map.view<QAssociativeIterable>();
+            if (!mapIter.metaContainer().canSetMappedAtKey()) {
+                qWarning() << "Unsupported container" << qas_->typeName.constData()
+                           << "(Unable to insert values)";
+                return QVariant();
+            }
+            QByteArray keyTypeName, valueTypeName;
+            quint32 count;
+            in >> keyTypeName;
+            QMetaType keyType = QMetaType::fromName(keyTypeName.constData());
+            if (!keyType.isValid()) {
+                // This happens for class enums, where the passed keyType is <ClassName>::<enum>
+                // For a compiled replica, the keyType is <ClassName>Replica::<enum>
+                // Since the full typename is registered, we can pull the keyType from there
+                keyType = mapIter.metaContainer().keyMetaType();
+            }
+            QMetaType transferType = keyType;
+            if (keyType.flags().testFlag(QMetaType::IsEnumeration))
+                transferType = transferTypeForEnum(keyType);
+            QVariant key{transferType, nullptr};
+            in >> valueTypeName;
+            QMetaType valueType = QMetaType::fromName(valueTypeName.constData());
+            QVariant val{valueType, nullptr};
+            in >> count;
+            for (quint32 i = 0; i < count; i++) {
+                if (!transferType.load(in, key.data())) {
+                    map = QVariant{containerType, nullptr};
+                    qWarning("QAS_: unable to load key of type '%s', returning an empty map.",
+                             keyTypeName.constData());
+                    break;
+                }
+                if (!valueType.load(in, val.data())) {
+                    map = QVariant{containerType, nullptr};
+                    qWarning("QAS_: unable to load value of type '%s', returning an empty map.",
+                             valueTypeName.constData());
+                    break;
+                }
+                if (transferType != keyType) {
+                    QVariant enumKey(key);
+                    enumKey.convert(keyType);
+                    mapIter.setValue(enumKey, val);
+                } else {
+                    mapIter.setValue(key, val);
+                }
+            }
+            value = map;
+#ifdef QTRO_VERBOSE_PROTOCOL
+            qDebug() << "Decoding QAS_ to associative container" << containerType.name()
+                     << valueTypeName << keyTypeName << count << mapIter.size() << map;
+#endif
+        } else {
+            QtROAssociativeContainer container{};
+            in >> container;
+            container.m_typeName = qas_->typeName;
+            value = QVariant(QMetaType::fromType<QtROAssociativeContainer>(), &container);
+#ifdef QTRO_VERBOSE_PROTOCOL
+            qDebug() << "Decoding QAS_ to QtROAssociativeContainer of"
+                     << container.m_valueTypeName;
+#endif
+        }
+    }
+    return std::move(value);
+}
+
+void QDataStreamCodec::serializeProperty(const QRemoteObjectSourceBase *source, int internalIndex)
+{
+    serializeProperty(m_packet, source, internalIndex);
+}
+
+void QDataStreamCodec::serializeProperty(QDataStream &ds, const QRemoteObjectSourceBase *source, int internalIndex)
 {
     const int propertyIndex = source->m_api->sourcePropertyIndex(internalIndex);
     Q_ASSERT (propertyIndex >= 0);
     const auto target = source->m_api->isAdapterProperty(internalIndex) ? source->m_adapter : source->m_object;
     const auto property = target->metaObject()->property(propertyIndex);
     const QVariant value = property.read(target);
-    if (QMetaType::typeFlags(property.userType()).testFlag(QMetaType::PointerToQObject)) {
+    if (property.metaType().flags().testFlag(QMetaType::PointerToQObject)) {
         auto const childSource = source->m_children.value(internalIndex);
         auto valueAsPointerToQObject = qvariant_cast<QObject *>(value);
         if (childSource->m_object != valueAsPointerToQObject)
@@ -146,9 +308,9 @@ void serializeProperty(QDataStream &ds, const QRemoteObjectSourceBase *source, i
         ds << qro.parameters;
         return;
     }
-    if (source->d->isDynamic && property.userType() == QMetaType::QVariant &&
-        QMetaType::typeFlags(value.userType()).testFlag(QMetaType::IsGadget)) {
-        const auto typeName = QString::fromLatin1(QMetaType::typeName(value.userType()));
+    if (source->d->isDynamic && property.userType() == QMetaType::QVariant
+        && value.metaType().flags().testFlag(QMetaType::IsGadget)) {
+        const auto typeName = QString::fromLatin1(value.metaType().name());
         if (!source->d->sentTypes.contains(typeName)) {
             QRO_ qro(value);
             ds << QVariant::fromValue<QRO_>(qro);
@@ -160,85 +322,82 @@ void serializeProperty(QDataStream &ds, const QRemoteObjectSourceBase *source, i
     ds << encodeVariant(value);
 }
 
-void serializeHandshakePacket(DataStreamPacket &ds)
+void QDataStreamCodec::serializeHandshakePacket()
 {
-    ds.setId(Handshake);
-    ds << QString(protocolVersion);
-    ds.finishPacket();
+    m_packet.setId(Handshake);
+    m_packet << QString(protocolVersion);
+    m_packet.finishPacket();
 }
 
-void serializeInitPacket(DataStreamPacket &ds, const QRemoteObjectRootSource *source)
+void QDataStreamCodec::serializeInitPacket(const QRemoteObjectRootSource *source)
 {
-    ds.setId(InitPacket);
-    ds << source->name();
-    serializeProperties(ds, source);
-    ds.finishPacket();
+    m_packet.setId(InitPacket);
+    m_packet << source->name();
+    serializeProperties(source);
+    m_packet.finishPacket();
 }
 
-void serializeProperties(DataStreamPacket &ds, const QRemoteObjectSourceBase *source)
+void QDataStreamCodec::serializeProperties(const QRemoteObjectSourceBase *source)
 {
     const SourceApiMap *api = source->m_api;
 
     //Now copy the property data
     const int numProperties = api->propertyCount();
-    ds << quint32(numProperties);  //Number of properties
+    m_packet << quint32(numProperties);  //Number of properties
 
     for (int internalIndex = 0; internalIndex < numProperties; ++internalIndex)
-        serializeProperty(ds, source, internalIndex);
+        serializeProperty(source, internalIndex);
 }
 
-bool deserializeQVariantList(QDataStream &s, QList<QVariant> &l)
+bool deserializeQVariantList(QDataStream &s, QVariantList &l)
 {
     // note: optimized version of: QDataStream operator>>(QDataStream& s, QList<T>& l)
     quint32 c;
     s >> c;
-    const int initialListSize = l.size();
-    if (static_cast<quint32>(l.size()) < c)
-        l.reserve(c);
-    else if (static_cast<quint32>(l.size()) > c)
-        for (int i = c; i < initialListSize; ++i)
-            l.removeLast();
+
+    const qsizetype count = static_cast<qsizetype>(c);
+    const qsizetype listSize = l.size();
+    if (listSize < count)
+        l.reserve(count);
+    else if (listSize > count)
+        l.resize(count);
 
     for (int i = 0; i < l.size(); ++i)
     {
         if (s.atEnd())
             return false;
-        QVariant t;
-        s >> t;
-        l[i] = t;
+        s >> l[i];
     }
-    for (quint32 i = l.size(); i < c; ++i)
+    for (auto i = l.size(); i < count; ++i)
     {
         if (s.atEnd())
             return false;
-        QVariant t;
-        s >> t;
-        l.append(t);
+        s >> l.emplace_back();
     }
     return true;
 }
 
-void deserializeInitPacket(QDataStream &in, QVariantList &values)
+void QDataStreamCodec::deserializeInitPacket(QDataStream &in, QVariantList &values)
 {
     const bool success = deserializeQVariantList(in, values);
     Q_ASSERT(success);
-    Q_UNUSED(success);
+    Q_UNUSED(success)
 }
 
-void serializeInitDynamicPacket(DataStreamPacket &ds, const QRemoteObjectRootSource *source)
+void QDataStreamCodec::serializeInitDynamicPacket(const QRemoteObjectRootSource *source)
 {
-    ds.setId(InitDynamicPacket);
-    ds << source->name();
-    serializeDefinition(ds, source);
-    serializeProperties(ds, source);
-    ds.finishPacket();
+    m_packet.setId(InitDynamicPacket);
+    m_packet << source->name();
+    serializeDefinition(m_packet, source);
+    serializeProperties(source);
+    m_packet.finishPacket();
 }
 
 static ObjectType getObjectType(const QString &typeName)
 {
     if (typeName == QLatin1String("QAbstractItemModelAdapter"))
         return ObjectType::MODEL;
-    auto tid = QMetaType::type(typeName.toUtf8());
+    auto tid = QMetaType::fromName(typeName.toUtf8()).id();
     if (tid == QMetaType::UnknownType)
         return ObjectType::CLASS;
     QMetaType type(tid);
@@ -248,26 +407,43 @@ static ObjectType getObjectType(const QString &typeName)
     return ObjectType::CLASS;
 }
 
-// Same method as in QVariant.cpp, as it isn't publicly exposed...
-static QMetaEnum metaEnumFromType(int type)
+static QByteArrayView resolveEnumName(QMetaType t, bool &isFlag)
 {
-    QMetaType t(type);
-    if (t.flags() & QMetaType::IsEnumeration) {
-        if (const QMetaObject *metaObject = t.metaObject()) {
-            const char *enumName = QMetaType::typeName(type);
-            const char *lastColon = std::strrchr(enumName, ':');
-            if (lastColon)
-                enumName = lastColon + 1;
-            return metaObject->enumerator(metaObject->indexOfEnumerator(enumName));
+    // Takes types like `MyPOD::Position` or `QFlags<MyPOD::Position>` and returns 'Position`
+    QByteArrayView enumName(t.name());
+    isFlag = enumName.startsWith("QFlags<");
+    auto lastColon = enumName.lastIndexOf(':');
+    if (lastColon >= 0)
+        enumName = QByteArrayView(t.name() + lastColon + 1);
+    if (isFlag)
+        enumName.chop(1);
+    return enumName;
+}
+
+static QMetaEnum metaEnumFromType(QMetaType t)
+{
+    if (t.flags().testFlag(QMetaType::IsEnumeration)) {
+        if (const QMetaObject *m = t.metaObject()) {
+            bool isFlag;
+            auto enumName = resolveEnumName(t, isFlag);
+            if (isFlag) {
+                for (int i = m->enumeratorOffset(); i < m->enumeratorCount(); i++) {
+                    auto testType = m->enumerator(i);
+                    if (testType.isFlag() &&
+                        enumName.compare(QByteArrayView(testType.enumName())) == 0)
+                        return testType;
+                }
+            }
+            return m->enumerator(m->indexOfEnumerator(enumName.data()));
         }
     }
     return QMetaEnum();
 }
 
-static bool checkEnum(int type, QSet<QMetaEnum> &enums)
+static bool checkEnum(QMetaType metaType, QSet<QMetaEnum> &enums)
 {
-    if (QMetaType::typeFlags(type).testFlag(QMetaType::IsEnumeration)) {
-        QMetaEnum meta = metaEnumFromType(type);
+    if (metaType.flags().testFlag(QMetaType::IsEnumeration)) {
+        QMetaEnum meta = metaEnumFromType(metaType);
         enums.insert(meta);
         return true;
     }
@@ -282,10 +458,10 @@ static void recurseMetaobject(const QMetaObject *mo, QSet<const QMetaObject *> &
     const int numProperties = mo->propertyCount();
     for (int i = 0; i < numProperties; ++i) {
         const auto property = mo->property(i);
-        if (checkEnum(property.userType(), enums))
+        if (checkEnum(property.metaType(), enums))
             continue;
-        if (QMetaType::typeFlags(property.userType()).testFlag(QMetaType::IsGadget))
-            recurseMetaobject(QMetaType::metaObjectForType(property.userType()), gadgets, enums);
+        if (property.metaType().flags().testFlag(QMetaType::IsGadget))
+            recurseMetaobject(property.metaType().metaObject(), gadgets, enums);
     }
 }
 
@@ -304,11 +480,12 @@ void recurseForGadgets(QSet<const QMetaObject *> &gadgets, QSet<QMetaEnum> &enum
         const int params = api->signalParameterCount(si);
         for (int pi = 0; pi < params; ++pi) {
             const int type = api->signalParameterType(si, pi);
-            if (checkEnum(type, enums))
+            const auto metaType = QMetaType(type);
+            if (checkEnum(metaType, enums))
                 continue;
-            if (!QMetaType::typeFlags(type).testFlag(QMetaType::IsGadget))
+            if (!metaType.flags().testFlag(QMetaType::IsGadget))
                 continue;
-            const auto mo = QMetaType::metaObjectForType(type);
+            const auto mo = metaType.metaObject();
             if (source->d->sentTypes.contains(QLatin1String(mo->className())))
                 continue;
             recurseMetaobject(mo, gadgets, enums);
@@ -320,11 +497,12 @@ void recurseForGadgets(QSet<const QMetaObject *> &gadgets, QSet<QMetaEnum> &enum
         const int params = api->methodParameterCount(mi);
         for (int pi = 0; pi < params; ++pi) {
             const int type = api->methodParameterType(mi, pi);
-            if (checkEnum(type, enums))
+            const auto metaType = QMetaType(type);
+            if (checkEnum(metaType, enums))
                 continue;
-            if (!QMetaType::typeFlags(type).testFlag(QMetaType::IsGadget))
+            if (!metaType.flags().testFlag(QMetaType::IsGadget))
                 continue;
-            const auto mo = QMetaType::metaObjectForType(type);
+            const auto mo = metaType.metaObject();
             if (source->d->sentTypes.contains(QLatin1String(mo->className())))
                 continue;
             recurseMetaobject(mo, gadgets, enums);
@@ -336,10 +514,10 @@ void recurseForGadgets(QSet<const QMetaObject *> &gadgets, QSet<QMetaEnum> &enum
         Q_ASSERT(index >= 0);
         const auto target = api->isAdapterProperty(pi) ? source->m_adapter : source->m_object;
         const auto metaProperty = target->metaObject()->property(index);
-        const int type = metaProperty.userType();
-        if (checkEnum(type, enums))
+        const auto metaType = metaProperty.metaType();
+        if (checkEnum(metaType, enums))
             continue;
-        if (QMetaType::typeFlags(type).testFlag(QMetaType::PointerToQObject)) {
+        if (metaType.flags().testFlag(QMetaType::PointerToQObject)) {
             auto const objectType = getObjectType(QString::fromLatin1(metaProperty.typeName()));
             if (objectType == ObjectType::CLASS) {
                 auto const childSource = source->m_children.value(pi);
@@ -347,9 +525,9 @@ void recurseForGadgets(QSet<const QMetaObject *> &gadgets, QSet<QMetaEnum> &enum
                     recurseForGadgets(gadgets, enums, childSource);
             }
         }
-        if (!QMetaType::typeFlags(type).testFlag(QMetaType::IsGadget))
+        if (!metaType.flags().testFlag(QMetaType::IsGadget))
             continue;
-        const auto mo = QMetaType::metaObjectForType(type);
+        const auto mo = metaType.metaObject();
         if (source->d->sentTypes.contains(QLatin1String(mo->className())))
             continue;
         recurseMetaobject(mo, gadgets, enums);
@@ -361,7 +539,7 @@ static bool checkForEnumsInSource(const QMetaObject *meta, const QRemoteObjectSo
 {
     if (source->m_object->inherits(meta->className()))
         return true;
-    for (const auto child : source->m_children) {
+    for (const auto &child : source->m_children) {
         if (child->m_object && checkForEnumsInSource(meta, child))
             return true;
     }
@@ -370,11 +548,11 @@ static bool checkForEnumsInSource(const QMetaObject *meta, const QRemoteObjectSo
 
 static void serializeEnum(QDataStream &ds, const QMetaEnum &enumerator)
 {
-    ds << QByteArray::fromRawData(enumerator.name(), qstrlen(enumerator.name()));
+    ds << QByteArray::fromRawData(enumerator.name(), qsizetype(qstrlen(enumerator.name())));
     ds << enumerator.isFlag();
     ds << enumerator.isScoped();
     const auto typeName = QByteArray(enumerator.scope()).append("::").append(enumerator.name());
-    quint32 size = QMetaType(QMetaType::type(typeName.constData())).sizeOf();
+    const quint32 size = quint32(QMetaType::fromName(typeName.constData()).sizeOf());
     ds << size;
 #ifdef QTRO_VERBOSE_PROTOCOL
     qDebug("  Enum (name = %s, size = %d, isFlag = %s, isScoped = %s):", enumerator.name(), size, enumerator.isFlag() ? "true" : "false", enumerator.isScoped() ? "true" : "false");
@@ -382,7 +560,7 @@ static void serializeEnum(QDataStream &ds, const QMetaEnum &enumerator)
     const int keyCount = enumerator.keyCount();
     ds << keyCount;
     for (int k = 0; k < keyCount; ++k) {
-        ds << QByteArray::fromRawData(enumerator.key(k), qstrlen(enumerator.key(k)));
+        ds << QByteArray::fromRawData(enumerator.key(k), qsizetype(qstrlen(enumerator.key(k))));
         ds << enumerator.value(k);
 #ifdef QTRO_VERBOSE_PROTOCOL
         qDebug("    Key %d (name = %s, value = %d):", k, enumerator.key(k), enumerator.value(k));
@@ -395,7 +573,7 @@ static void serializeGadgets(QDataStream &ds, const QSet<const QMetaObject *> &g
     // Determine how to handle the enums found
     QSet<QMetaEnum> qtEnums;
     QSet<const QMetaObject *> dynamicEnumMetaObjects;
-    for (const auto metaEnum : enums) {
+    for (const auto &metaEnum : enums) {
         auto const metaObject = metaEnum.enclosingMetaObject();
         if (gadgets.contains(metaObject)) // Part of a gadget will we serialize
             continue;
@@ -405,13 +583,13 @@ static void serializeGadgets(QDataStream &ds, const QSet<const QMetaObject *> &g
             continue;
         // qtEnums are enumerations already known by Qt, so we only need register them.
         // We don't need to send all of the key/value data.
-        if (metaObject == qt_getQtMetaObject()) // Are the other Qt metaclasses for enums?
+        if (metaObject == &Qt::staticMetaObject) // Are the other Qt metaclasses for enums?
             qtEnums.insert(metaEnum);
         else
             dynamicEnumMetaObjects.insert(metaEnum.enclosingMetaObject());
     }
     ds << quint32(qtEnums.size());
-    for (const auto metaEnum : qtEnums) {
+    for (const auto &metaEnum : qtEnums) {
         QByteArray enumName(metaEnum.scope());
         enumName.append("::", 2).append(metaEnum.name());
         ds << enumName;
@@ -426,30 +604,30 @@ static void serializeGadgets(QDataStream &ds, const QSet<const QMetaObject *> &g
     // send all of the metaobject's enums, but no properties, when an external
     // enum is requested.
     for (auto const meta : allMetaObjects) {
-        ds << QByteArray::fromRawData(meta->className(), qstrlen(meta->className()));
+        ds << QByteArray::fromRawData(meta->className(), qsizetype(qstrlen(meta->className())));
         int propertyCount = gadgets.contains(meta) ? meta->propertyCount() : 0;
         ds << quint32(propertyCount);
 #ifdef QTRO_VERBOSE_PROTOCOL
-        qDebug("  Gadget %d (name = %s, # properties = %d, # enums = %d):", i++, meta->className(), propertyCount, meta->enumeratorCount());
+        qDebug("  Gadget %d (name = %s, # properties = %d, # enums = %d):", i++, meta->className(), propertyCount, meta->enumeratorCount() - meta->enumeratorOffset());
 #endif
         for (int j = 0; j < propertyCount; j++) {
             auto prop = meta->property(j);
 #ifdef QTRO_VERBOSE_PROTOCOL
             qDebug("    Data member %d (name = %s, type = %s):", j, prop.name(), prop.typeName());
 #endif
-            ds << QByteArray::fromRawData(prop.name(), qstrlen(prop.name()));
-            ds << QByteArray::fromRawData(prop.typeName(), qstrlen(prop.typeName()));
+            ds << QByteArray::fromRawData(prop.name(), qsizetype(qstrlen(prop.name())));
+            ds << QByteArray::fromRawData(prop.typeName(), qsizetype(qstrlen(prop.typeName())));
         }
-        int enumCount = meta->enumeratorCount();
-        ds << enumCount;
-        for (int j = 0; j < enumCount; j++) {
+        int enumCount = meta->enumeratorCount() - meta->enumeratorOffset();
+        ds << quint32(enumCount);
+        for (int j = meta->enumeratorOffset(); j < meta->enumeratorCount(); j++) {
             auto const enumMeta = meta->enumerator(j);
             serializeEnum(ds, enumMeta);
         }
     }
 }
 
-void serializeDefinition(QDataStream &ds, const QRemoteObjectSourceBase *source)
+void QDataStreamCodec::serializeDefinition(QDataStream &ds, const QRemoteObjectSourceBase *source)
 {
     const SourceApiMap *api = source->m_api;
     const QByteArray desiredClassName(api->typeName().toLatin1());
@@ -492,6 +670,14 @@ void serializeDefinition(QDataStream &ds, const QRemoteObjectSourceBase *source)
         Q_ASSERT(index >= 0);
         auto signature = api->signalSignature(i);
         replace(signature);
+        const int count = api->signalParameterCount(i);
+        for (int pi = 0; pi < count; ++pi) {
+            const auto metaType = QMetaType(api->signalParameterType(i, pi));
+            if (isSequentialGadgetType(metaType))
+                signature.replace(metaType.name(), "QtROSequentialContainer");
+            else if (isAssociativeGadgetType(metaType))
+                signature.replace(metaType.name(), "QtROAssociativeContainer");
+        }
 #ifdef QTRO_VERBOSE_PROTOCOL
         qDebug() << "  Signal" << i << "(signature =" << signature << "parameter names =" << api->signalParameterNames(i) << ")";
 #endif
@@ -506,6 +692,14 @@ void serializeDefinition(QDataStream &ds, const QRemoteObjectSourceBase *source)
         Q_ASSERT(index >= 0);
         auto signature = api->methodSignature(i);
         replace(signature);
+        const int count = api->methodParameterCount(i);
+        for (int pi = 0; pi < count; ++pi) {
+            const auto metaType = QMetaType(api->methodParameterType(i, pi));
+            if (isSequentialGadgetType(metaType))
+                signature.replace(metaType.name(), "QtROSequentialContainer");
+            else if (isAssociativeGadgetType(metaType))
+                signature.replace(metaType.name(), "QtROAssociativeContainer");
+        }
         auto typeName = api->typeName(i);
         replace(typeName);
 #ifdef QTRO_VERBOSE_PROTOCOL
@@ -528,17 +722,29 @@ void serializeDefinition(QDataStream &ds, const QRemoteObjectSourceBase *source)
 #ifdef QTRO_VERBOSE_PROTOCOL
         qDebug() << "  Property" << i << "name =" << metaProperty.name();
 #endif
-        if (QMetaType::typeFlags(metaProperty.userType()).testFlag(QMetaType::PointerToQObject)) {
+        if (metaProperty.metaType().flags().testFlag(QMetaType::PointerToQObject)) {
             auto objectType = getObjectType(QLatin1String(metaProperty.typeName()));
             ds << (objectType == ObjectType::CLASS ? "QObject*" : "QAbstractItemModel*");
 #ifdef QTRO_VERBOSE_PROTOCOL
             qDebug() << "    Type:" << (objectType == ObjectType::CLASS ? "QObject*" : "QAbstractItemModel*");
 #endif
         } else {
-            ds << metaProperty.typeName();
+            if (isSequentialGadgetType(metaProperty.metaType())) {
+                ds << "QtROSequentialContainer";
 #ifdef QTRO_VERBOSE_PROTOCOL
-            qDebug() << "    Type:" << metaProperty.typeName();
+                qDebug() << "    Type:" << "QtROSequentialContainer";
 #endif
+            } else if (isAssociativeGadgetType(metaProperty.metaType())) {
+                ds << "QtROAssociativeContainer";
+#ifdef QTRO_VERBOSE_PROTOCOL
+                qDebug() << "    Type:" << "QtROAssociativeContainer";
+#endif
+            } else {
+                ds << metaProperty.typeName();
+#ifdef QTRO_VERBOSE_PROTOCOL
+                qDebug() << "    Type:" << metaProperty.typeName();
+#endif
+            }
         }
         if (metaProperty.notifySignalIndex() == -1) {
             ds << QByteArray();
@@ -556,109 +762,108 @@ void serializeDefinition(QDataStream &ds, const QRemoteObjectSourceBase *source)
     }
 }
 
-void serializeAddObjectPacket(DataStreamPacket &ds, const QString &name, bool isDynamic)
+void QDataStreamCodec::serializeAddObjectPacket(const QString &name, bool isDynamic)
 {
-    ds.setId(AddObject);
-    ds << name;
-    ds << isDynamic;
-    ds.finishPacket();
+    m_packet.setId(AddObject);
+    m_packet << name;
+    m_packet << isDynamic;
+    m_packet.finishPacket();
 }
 
-void deserializeAddObjectPacket(QDataStream &ds, bool &isDynamic)
+void QDataStreamCodec::deserializeAddObjectPacket(QDataStream &ds, bool &isDynamic)
 {
     ds >> isDynamic;
 }
 
-void serializeRemoveObjectPacket(DataStreamPacket &ds, const QString &name)
+void QDataStreamCodec::serializeRemoveObjectPacket(const QString &name)
 {
-    ds.setId(RemoveObject);
-    ds << name;
-    ds.finishPacket();
+    m_packet.setId(RemoveObject);
+    m_packet << name;
+    m_packet.finishPacket();
 }
 //There is no deserializeRemoveObjectPacket - no parameters other than id and name
 
-void serializeInvokePacket(DataStreamPacket &ds, const QString &name, int call, int index, const QVariantList &args, int serialId, int propertyIndex)
+void QDataStreamCodec::serializeInvokePacket(const QString &name, int call, int index, const QVariantList &args, int serialId, int propertyIndex)
 {
-    ds.setId(InvokePacket);
-    ds << name;
-    ds << call;
-    ds << index;
+    m_packet.setId(InvokePacket);
+    m_packet << name;
+    m_packet << call;
+    m_packet << index;
 
-    ds << (quint32)args.size();
+    m_packet << quint32(args.size());
     for (const auto &arg : args)
-        ds << encodeVariant(arg);
+        m_packet << encodeVariant(arg);
 
-    ds << serialId;
-    ds << propertyIndex;
-    ds.finishPacket();
+    m_packet << serialId;
+    m_packet << propertyIndex;
+    m_packet.finishPacket();
 }
 
-void deserializeInvokePacket(QDataStream& in, int &call, int &index, QVariantList &args, int &serialId, int &propertyIndex)
+void QDataStreamCodec::deserializeInvokePacket(QDataStream& in, int &call, int &index, QVariantList &args, int &serialId, int &propertyIndex)
 {
     in >> call;
     in >> index;
     const bool success = deserializeQVariantList(in, args);
     Q_ASSERT(success);
-    Q_UNUSED(success);
+    Q_UNUSED(success)
     in >> serialId;
     in >> propertyIndex;
 }
 
-void serializeInvokeReplyPacket(DataStreamPacket &ds, const QString &name, int ackedSerialId, const QVariant &value)
+void QDataStreamCodec::serializeInvokeReplyPacket(const QString &name, int ackedSerialId, const QVariant &value)
 {
-    ds.setId(InvokeReplyPacket);
-    ds << name;
-    ds << ackedSerialId;
-    ds << value;
-    ds.finishPacket();
+    m_packet.setId(InvokeReplyPacket);
+    m_packet << name;
+    m_packet << ackedSerialId;
+    m_packet << value;
+    m_packet.finishPacket();
 }
 
-void deserializeInvokeReplyPacket(QDataStream& in, int &ackedSerialId, QVariant &value){
+void QDataStreamCodec::deserializeInvokeReplyPacket(QDataStream& in, int &ackedSerialId, QVariant &value){
     in >> ackedSerialId;
     in >> value;
 }
 
-void serializePropertyChangePacket(QRemoteObjectSourceBase *source, int signalIndex)
+void QDataStreamCodec::serializePropertyChangePacket(QRemoteObjectSourceBase *source, int signalIndex)
 {
     int internalIndex = source->m_api->propertyRawIndexFromSignal(signalIndex);
-    auto &ds = source->d->m_packet;
-    ds.setId(PropertyChangePacket);
-    ds << source->name();
-    ds << internalIndex;
-    serializeProperty(ds, source, internalIndex);
-    ds.finishPacket();
+    m_packet.setId(PropertyChangePacket);
+    m_packet << source->name();
+    m_packet << internalIndex;
+    serializeProperty(source, internalIndex);
+    m_packet.finishPacket();
 }
 
-void deserializePropertyChangePacket(QDataStream& in, int &index, QVariant &value)
+void QDataStreamCodec::deserializePropertyChangePacket(QDataStream& in, int &index, QVariant &value)
 {
     in >> index;
     in >> value;
 }
 
-void serializeObjectListPacket(DataStreamPacket &ds, const ObjectInfoList &objects)
+void QDataStreamCodec::serializeObjectListPacket(const ObjectInfoList &objects)
 {
-    ds.setId(ObjectList);
-    ds << objects;
-    ds.finishPacket();
+    m_packet.setId(ObjectList);
+    m_packet << objects;
+    m_packet.finishPacket();
 }
 
-void deserializeObjectListPacket(QDataStream &in, ObjectInfoList &objects)
+void QDataStreamCodec::deserializeObjectListPacket(QDataStream &in, ObjectInfoList &objects)
 {
     in >> objects;
 }
 
-void serializePingPacket(DataStreamPacket &ds, const QString &name)
+void QDataStreamCodec::serializePingPacket(const QString &name)
 {
-    ds.setId(Ping);
-    ds << name;
-    ds.finishPacket();
+    m_packet.setId(Ping);
+    m_packet << name;
+    m_packet.finishPacket();
 }
 
-void serializePongPacket(DataStreamPacket &ds, const QString &name)
+void QDataStreamCodec::serializePongPacket(const QString &name)
 {
-    ds.setId(Pong);
-    ds << name;
-    ds.finishPacket();
+    m_packet.setId(Pong);
+    m_packet << name;
+    m_packet.finishPacket();
 }
 
 QRO_::QRO_(QRemoteObjectSourceBase *source)
@@ -674,10 +879,12 @@ QRO_::QRO_(const QVariant &value)
     : type(ObjectType::GADGET)
     , isNull(false)
 {
-    auto meta = QMetaType::metaObjectForType(value.userType());
+    const auto metaType = value.metaType();
+    auto meta = metaType.metaObject();
     QDataStream out(&classDefinition, QIODevice::WriteOnly);
     const int numProperties = meta->propertyCount();
-    const auto typeName = QByteArray::fromRawData(QMetaType::typeName(value.userType()), qstrlen(QMetaType::typeName(value.userType())));
+    const auto name = metaType.name();
+    const auto typeName = QByteArray::fromRawData(name, qsizetype(qstrlen(name)));
     out << quint32(0) << quint32(1);
     out << typeName;
     out << numProperties;
@@ -689,8 +896,14 @@ QRO_::QRO_(const QVariant &value)
 #ifdef QTRO_VERBOSE_PROTOCOL
         qDebug("  Data member %d (name = %s, type = %s):", i, property.name(), property.typeName());
 #endif
-        out << QByteArray::fromRawData(property.name(), qstrlen(property.name()));
-        out << QByteArray::fromRawData(property.typeName(), qstrlen(property.typeName()));
+        out << QByteArray::fromRawData(property.name(), qsizetype(qstrlen(property.name())));
+        out << QByteArray::fromRawData(property.typeName(), qsizetype(qstrlen(property.typeName())));
+    }
+    int enumCount = meta->enumeratorCount() - meta->enumeratorOffset();
+    out << quint32(enumCount);
+    for (int j = meta->enumeratorOffset(); j < meta->enumeratorCount(); j++) {
+        auto const enumMeta = meta->enumerator(j);
+        serializeEnum(out, enumMeta);
     }
     QDataStream ds(&parameters, QIODevice::WriteOnly);
     ds << value;
@@ -701,7 +914,7 @@ QRO_::QRO_(const QVariant &value)
 
 QDataStream &operator<<(QDataStream &stream, const QRO_ &info)
 {
-    stream << info.name << info.typeName << (quint8)(info.type) << info.classDefinition << info.isNull;
+    stream << info.name << info.typeName << quint8(info.type) << info.classDefinition << info.isNull;
     qCDebug(QT_REMOTEOBJECT) << "Serializing " << info;
     // info.parameters will be filled in by serializeProperty
     return stream;
@@ -718,6 +931,201 @@ QDataStream &operator>>(QDataStream &stream, QRO_ &info)
     return stream;
 }
 
+QSQ_::QSQ_(const QVariant &variant)
+{
+    QSequentialIterable sequence;
+    QMetaType valueType;
+    if (variant.metaType() == QMetaType::fromType<QtROSequentialContainer>()) {
+        auto container = static_cast<const QtROSequentialContainer *>(variant.constData());
+        typeName = container->m_typeName;
+        valueType = container->m_valueType;
+        valueTypeName = container->m_valueTypeName;
+        sequence = QSequentialIterable(reinterpret_cast<const QVariantList *>(variant.constData()));
+    } else {
+        sequence = variant.value<QSequentialIterable>();
+        typeName = QByteArray(variant.metaType().name());
+        valueType = sequence.metaContainer().valueMetaType();
+        valueTypeName = QByteArray(valueType.name());
+    }
+#ifdef QTRO_VERBOSE_PROTOCOL
+    qDebug("Serializing POD sequence to QSQ_ (type = %s, valueType = %s) with size = %lld",
+           typeName.constData(), valueTypeName.constData(), sequence.size());
+#endif
+    QDataStream ds(&values, QIODevice::WriteOnly);
+    ds << valueTypeName;
+    auto pos = ds.device()->pos();
+    ds << quint32(sequence.size());
+    for (const auto &v : sequence) {
+        if (!valueType.save(ds, v.data())) {
+            ds.device()->seek(pos);
+            ds.resetStatus();
+            ds << quint32(0);
+            values.resize(ds.device()->pos());
+            qWarning("QSQ_: unable to save type '%s', sending empty list.", valueType.name());
+            break;
+        }
+    }
+}
+
+QDataStream &operator<<(QDataStream &stream, const QSQ_ &sequence)
+{
+    stream << sequence.typeName << sequence.valueTypeName << sequence.values;
+    qCDebug(QT_REMOTEOBJECT) << "Serializing " << sequence;
+    return stream;
+}
+
+QDataStream &operator>>(QDataStream &stream, QSQ_ &sequence)
+{
+    stream >> sequence.typeName >> sequence.valueTypeName >> sequence.values;
+    qCDebug(QT_REMOTEOBJECT) << "Deserializing " << sequence;
+    return stream;
+}
+
+QAS_::QAS_(const QVariant &variant)
+{
+    QAssociativeIterable map;
+    QMetaType keyType, transferType, valueType;
+    const QtROAssociativeContainer *container = nullptr;
+    if (variant.metaType() == QMetaType::fromType<QtROAssociativeContainer>()) {
+        container = static_cast<const QtROAssociativeContainer *>(variant.constData());
+        typeName = container->m_typeName;
+        keyType = container->m_keyType;
+        keyTypeName = container->m_keyTypeName;
+        valueType = container->m_valueType;
+        valueTypeName = container->m_valueTypeName;
+        map = QAssociativeIterable(reinterpret_cast<const QVariantMap *>(variant.constData()));
+    } else {
+        map = variant.value<QAssociativeIterable>();
+        typeName = QByteArray(variant.metaType().name());
+        keyType = map.metaContainer().keyMetaType();
+        keyTypeName = QByteArray(keyType.name());
+        valueType = map.metaContainer().mappedMetaType();
+        valueTypeName = QByteArray(valueType.name());
+    }
+    // Special handling for enums...
+    transferType = keyType;
+    if (keyType.flags().testFlag(QMetaType::IsEnumeration)) {
+        transferType = transferTypeForEnum(keyType);
+        auto meta = keyType.metaObject();
+        // If we are the source, make sure the typeName is converted for any downstream replicas
+        // the `meta` variable will be non-null when the enum is a class enum
+        if (meta && !container) {
+            const int ind = meta->indexOfClassInfo(QCLASSINFO_REMOTEOBJECT_TYPE);
+            if (ind >= 0) {
+                bool isFlag = keyTypeName.startsWith("QFlags<");
+                if (isFlag || keyTypeName.startsWith(meta->className())) {
+#ifdef QTRO_VERBOSE_PROTOCOL
+                    QByteArray orig(keyTypeName);
+#endif
+                    if (isFlag) {
+                        // Q_DECLARE_FLAGS(Flags, Enum) -> `typedef QFlags<Enum> Flags;`
+                        // We know we have an enum for `Flags` because we sent the enums
+                        // from the source, so we just need to look up the alias.
+                        keyTypeName = keyTypeName.mid(7);
+                        keyTypeName.chop(1); // Remove trailing '>'
+                        int index = keyTypeName.lastIndexOf(':');
+                        for (int i = meta->enumeratorOffset(); i < meta->enumeratorCount(); i++) {
+                            auto en = meta->enumerator(i);
+                            auto name = keyTypeName.data() + index + 1;
+                            if (en.isFlag() && qstrcmp(en.enumName(), name) == 0)
+                                keyTypeName.replace(index + 1, qstrlen(en.enumName()), en.name());
+                        }
+                    }
+                    keyTypeName.replace(meta->className(), meta->classInfo(ind).value());
+                    QByteArray repName(meta->classInfo(ind).value());
+                    repName.append("Replica");
+                    typeName.replace(meta->className(), repName);
+#ifdef QTRO_VERBOSE_PROTOCOL
+                    qDebug() << "Converted map key typename from" << orig << "to" << keyTypeName;
+#endif
+                }
+            }
+        }
+    }
+
+#ifdef QTRO_VERBOSE_PROTOCOL
+    qDebug("Serializing POD map to QAS_ (type = %s, keyType = %s, valueType = %s), size = %lld",
+           typeName.constData(), keyTypeName.constData(), valueTypeName.constData(),
+           map.size());
+#endif
+    QDataStream ds(&values, QIODevice::WriteOnly);
+    ds << keyTypeName;
+    ds << valueTypeName;
+    auto pos = ds.device()->pos();
+    ds << quint32(map.size());
+    QAssociativeIterable::const_iterator iter = map.begin();
+    for (int i = 0; i < map.size(); i++) {
+        QVariant key(container ? container->m_keys.at(i) : iter.key());
+        if (transferType != keyType)
+            key.convert(transferType);
+        if (!transferType.save(ds, key.data())) {
+            ds.device()->seek(pos);
+            ds.resetStatus();
+            ds << quint32(0);
+            values.resize(ds.device()->pos());
+            qWarning("QAS_: unable to save key '%s', sending empty map.", keyType.name());
+            break;
+        }
+        if (!valueType.save(ds, iter.value().data())) {
+            ds.device()->seek(pos);
+            ds.resetStatus();
+            ds << quint32(0);
+            values.resize(ds.device()->pos());
+            qWarning("QAS_: unable to save value '%s', sending empty map.", valueType.name());
+            break;
+        }
+        iter++;
+    }
+}
+
+QDataStream &operator<<(QDataStream &stream, const QAS_ &map)
+{
+    stream << map.typeName << map.keyTypeName << map.valueTypeName << map.values;
+    qCDebug(QT_REMOTEOBJECT) << "Serializing " << map;
+    return stream;
+}
+
+QDataStream &operator>>(QDataStream &stream, QAS_ &map)
+{
+    stream >> map.typeName >> map.keyTypeName >> map.valueTypeName >> map.values;
+    qCDebug(QT_REMOTEOBJECT) << "Deserializing " << map;
+    return stream;
+}
+
+DataStreamPacket::DataStreamPacket(quint16 id)
+    : QDataStream(&array, QIODevice::WriteOnly), baseAddress(0), size(0)
+{
+    this->setVersion(QtRemoteObjects::dataStreamVersion);
+    this->setByteOrder(QDataStream::LittleEndian);
+    *this << quint32(0);
+    *this << id;
+}
+
+void CodecBase::send(const QSet<QtROIoDeviceBase *> &connections)
+{
+    const auto bytearray = getPayload();
+    for (auto conn : connections)
+        conn->write(bytearray);
+    reset();
+}
+
+void CodecBase::send(const QList<QtROIoDeviceBase *> &connections)
+{
+    const auto bytearray = getPayload();
+    for (auto conn : connections)
+        conn->write(bytearray);
+    reset();
+}
+
+void CodecBase::send(QtROIoDeviceBase *connection)
+{
+    const auto bytearray = getPayload();
+    connection->write(bytearray);
+    reset();
+}
+
 } // namespace QRemoteObjectPackets
+
+QT_IMPL_METATYPE_EXTERN_TAGGED(QRemoteObjectPackets::QRO_, QRemoteObjectPackets__QRO_)
 
 QT_END_NAMESPACE

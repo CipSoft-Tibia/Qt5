@@ -1,14 +1,14 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/public/platform/web_icon_sizes_parser.h"
 
 #include <algorithm>
-#include "third_party/blink/public/platform/web_size.h"
 #include "third_party/blink/public/platform/web_string.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_to_number.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+#include "ui/gfx/geometry/size.h"
 
 namespace blink {
 
@@ -42,10 +42,10 @@ static inline int PartialStringToInt(const String& string,
                                      wtf_size_t end) {
   if (string.Is8Bit()) {
     return CharactersToInt(string.Characters8() + start, end - start,
-                           WTF::NumberParsingOptions::kNone, nullptr);
+                           WTF::NumberParsingOptions(), nullptr);
   }
   return CharactersToInt(string.Characters16() + start, end - start,
-                         WTF::NumberParsingOptions::kNone, nullptr);
+                         WTF::NumberParsingOptions(), nullptr);
 }
 
 }  // namespace
@@ -54,7 +54,7 @@ WebVector<gfx::Size> WebIconSizesParser::ParseIconSizes(
     const WebString& web_sizes_string) {
   String sizes_string = web_sizes_string;
   Vector<gfx::Size> icon_sizes;
-  if (sizes_string.IsEmpty())
+  if (sizes_string.empty())
     return icon_sizes;
 
   wtf_size_t length = sizes_string.length();

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,18 +8,26 @@
 #include <ksmedia.h>
 #include <mfapi.h>
 #include <mferror.h>
+#include <mfobjects.h>
 #include <stddef.h>
 #include <vidcap.h>
 #include <wrl.h>
 #include <wrl/client.h>
 
-#include "base/bind.h"
+#include <map>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "base/functional/bind.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/ranges/algorithm.h"
 #include "base/run_loop.h"
 #include "base/strings/sys_string_conversions.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
-#include "base/win/windows_version.h"
+#include "media/base/media_switches.h"
 #include "media/capture/video/win/video_capture_device_factory_win.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -62,14 +70,19 @@ const wchar_t* kDirectShowDeviceName5 = L"Dazzle";
 const wchar_t* kDirectShowDeviceId6 = L"\\\\?\\usb#vid_eb1a&pid_2860&mi_00";
 const wchar_t* kDirectShowDeviceName6 = L"Empia Device";
 
+constexpr int kWidth = 1280;
+constexpr int kHeight = 720;
+
+constexpr int kFps = 30;
+
 using iterator = std::vector<VideoCaptureDeviceInfo>::const_iterator;
 iterator FindDeviceInRange(iterator begin,
                            iterator end,
                            const std::string& device_id) {
-  return std::find_if(begin, end,
-                      [device_id](const VideoCaptureDeviceInfo& device_info) {
-                        return device_id == device_info.descriptor.device_id;
-                      });
+  return base::ranges::find(begin, end, device_id,
+                            [](const VideoCaptureDeviceInfo& device_info) {
+                              return device_info.descriptor.device_id;
+                            });
 }
 
 template <class Interface>
@@ -352,10 +365,20 @@ class StubMFActivate final : public StubInterface<IMFActivate> {
   const bool kscategory_sensor_camera_;
 };
 
-// Stub IMFMediaSource with IAMCameraControl and IAMVideoProcAmp interfaces for
-// all devices except from Device 0.
-class StubMFMediaSource final : public StubDeviceInterface<IMFMediaSource> {
+// Stub IMFMediaSourceEx with IAMCameraControl and IAMVideoProcAmp interfaces
+// for all devices except from Device 0.
+class StubMFMediaSource final : public StubDeviceInterface<IMFMediaSourceEx> {
  public:
+  StubMFMediaSource(std::string device_id,
+                    std::vector<VideoPixelFormat> native_formats)
+      : StubDeviceInterface(device_id),
+        native_formats_(std::move(native_formats)) {
+    // If no native formats were specified, default to I420
+    if (native_formats_.size() == 0) {
+      native_formats_.push_back(PIXEL_FORMAT_I420);
+    }
+  }
+
   using StubDeviceInterface::StubDeviceInterface;
   // IUnknown
   IFACEMETHODIMP QueryInterface(REFIID riid, void** object) override {
@@ -369,45 +392,116 @@ class StubMFMediaSource final : public StubDeviceInterface<IMFMediaSource> {
         return S_OK;
       }
     }
+    if (riid == __uuidof(IMFMediaSource)) {
+      *object = AddReference(static_cast<IMFMediaSource*>(this));
+      return S_OK;
+    }
+    if (riid == _uuidof(IMFMediaEventGenerator)) {
+      *object = AddReference(static_cast<IMFMediaEventGenerator*>(this));
+      return S_OK;
+    }
+
     return StubDeviceInterface::QueryInterface(riid, object);
   }
   // IMFMediaEventGenerator
   IFACEMETHODIMP BeginGetEvent(IMFAsyncCallback* callback,
                                IUnknown* state) override {
-    return E_NOTIMPL;
+    return S_OK;
   }
   IFACEMETHODIMP EndGetEvent(IMFAsyncResult* result,
                              IMFMediaEvent** event) override {
-    return E_NOTIMPL;
+    return S_OK;
   }
   IFACEMETHODIMP GetEvent(DWORD flags, IMFMediaEvent** event) override {
-    return E_NOTIMPL;
+    return S_OK;
   }
   IFACEMETHODIMP QueueEvent(MediaEventType met,
                             REFGUID extended_type,
                             HRESULT status,
                             const PROPVARIANT* value) override {
-    return E_NOTIMPL;
+    return S_OK;
   }
   // IMFMediaSource
   IFACEMETHODIMP CreatePresentationDescriptor(
       IMFPresentationDescriptor** presentation_descriptor) override {
-    return E_NOTIMPL;
+    HRESULT hr = S_OK;
+    std::vector<Microsoft::WRL::ComPtr<IMFMediaType>> media_types;
+    std::vector<IMFMediaType*> media_type_list;
+    for (const VideoPixelFormat& pixel_format : native_formats_) {
+      Microsoft::WRL::ComPtr<IMFMediaType> media_type;
+      hr = MFCreateMediaType(&media_type);
+      if (FAILED(hr)) {
+        return hr;
+      }
+      hr = media_type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+      if (FAILED(hr)) {
+        return hr;
+      }
+      GUID subType = GUID_NULL;
+      switch (pixel_format) {
+        case PIXEL_FORMAT_I420:
+          subType = MFVideoFormat_I420;
+          break;
+        case PIXEL_FORMAT_NV12:
+          subType = MFVideoFormat_NV12;
+          break;
+        default:
+          break;
+      }
+      hr = media_type->SetGUID(MF_MT_SUBTYPE, subType);
+      if (FAILED(hr)) {
+        return hr;
+      }
+      hr = MFSetAttributeSize(media_type.Get(), MF_MT_FRAME_SIZE, kWidth,
+                              kHeight);
+      if (FAILED(hr)) {
+        return hr;
+      }
+      hr = MFSetAttributeRatio(media_type.Get(), MF_MT_FRAME_RATE, kFps, 1);
+      if (FAILED(hr)) {
+        return hr;
+      }
+      media_types.push_back(media_type);
+      media_type_list.push_back(media_type.Get());
+    }
+    if (media_type_list.empty()) {
+      ADD_FAILURE() << "media_type_list empty";
+      return MF_E_UNEXPECTED;
+    }
+    Microsoft::WRL::ComPtr<IMFStreamDescriptor> stream_descriptor;
+    hr = MFCreateStreamDescriptor(0, media_type_list.size(),
+                                  &media_type_list[0], &stream_descriptor);
+    if (FAILED(hr)) {
+      return hr;
+    }
+    IMFStreamDescriptor* stream_descriptors = stream_descriptor.Get();
+    return MFCreatePresentationDescriptor(1, &stream_descriptors,
+                                          presentation_descriptor);
   }
   IFACEMETHODIMP GetCharacteristics(DWORD* characteristics) override {
-    return E_NOTIMPL;
+    return S_OK;
   }
-  IFACEMETHODIMP Pause() override { return E_NOTIMPL; }
-  IFACEMETHODIMP Shutdown() override { return E_NOTIMPL; }
+  IFACEMETHODIMP Pause() override { return S_OK; }
+  IFACEMETHODIMP Shutdown() override { return S_OK; }
   IFACEMETHODIMP Start(IMFPresentationDescriptor* presentation_descriptor,
                        const GUID* time_format,
                        const PROPVARIANT* start_position) override {
+    return S_OK;
+  }
+  IFACEMETHODIMP Stop() override { return S_OK; }
+  // IMFMediaSourceEx
+  IFACEMETHODIMP GetSourceAttributes(IMFAttributes** attributes) {
     return E_NOTIMPL;
   }
-  IFACEMETHODIMP Stop() override { return E_NOTIMPL; }
+  IFACEMETHODIMP GetStreamAttributes(DWORD stream_id,
+                                     IMFAttributes** attributes) {
+    return E_NOTIMPL;
+  }
+  IFACEMETHODIMP SetD3DManager(IUnknown* manager) { return S_OK; }
 
  private:
   ~StubMFMediaSource() override = default;
+  std::vector<VideoPixelFormat> native_formats_;
 };
 
 // Stub ICameraControl with pan, tilt and zoom range for all devices except
@@ -1105,6 +1199,18 @@ class StubEnumMoniker : public StubInterface<IEnumMoniker> {
 };
 
 class FakeVideoCaptureDeviceFactoryWin : public VideoCaptureDeviceFactoryWin {
+ public:
+  void set_disable_get_supported_formats_mf_mocking(
+      bool disable_get_supported_formats_mf_mocking) {
+    disable_get_supported_formats_mf_mocking_ =
+        disable_get_supported_formats_mf_mocking;
+  }
+
+  void AddNativeFormatForMfDevice(std::wstring device_id,
+                                  VideoPixelFormat format) {
+    device_source_native_formats_[device_id].push_back(format);
+  }
+
  protected:
   bool CreateDeviceEnumMonikerDirectShow(IEnumMoniker** enum_moniker) override {
     *enum_moniker = AddReference(new StubEnumMoniker(
@@ -1122,30 +1228,31 @@ class FakeVideoCaptureDeviceFactoryWin : public VideoCaptureDeviceFactoryWin {
                                            kDirectShowDeviceName6)}));
     return true;
   }
-  bool CreateDeviceSourceMediaFoundation(
+  MFSourceOutcome CreateDeviceSourceMediaFoundation(
       Microsoft::WRL::ComPtr<IMFAttributes> attributes,
       IMFMediaSource** source) override {
     UINT32 length;
     if (FAILED(attributes->GetStringLength(
             MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
             &length))) {
-      return false;
+      return MFSourceOutcome::kFailed;
     }
     std::wstring symbolic_link(length, wchar_t());
     if (FAILED(attributes->GetString(
             MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
             &symbolic_link[0], length + 1, &length))) {
-      return false;
+      return MFSourceOutcome::kFailed;
     }
     const bool has_dxgi_device_manager =
-        static_cast<bool>(dxgi_device_manager_for_testing());
+        static_cast<bool>(GetDxgiDeviceManager());
     if (use_d3d11_with_media_foundation_for_testing() !=
         has_dxgi_device_manager) {
-      return false;
+      return MFSourceOutcome::kFailed;
     }
-    *source =
-        AddReference(new StubMFMediaSource(base::SysWideToUTF8(symbolic_link)));
-    return true;
+    *source = AddReference(
+        new StubMFMediaSource(base::SysWideToUTF8(symbolic_link),
+                              device_source_native_formats_[symbolic_link]));
+    return MFSourceOutcome::kSuccess;
   }
   bool EnumerateDeviceSourcesMediaFoundation(
       Microsoft::WRL::ComPtr<IMFAttributes> attributes,
@@ -1198,6 +1305,10 @@ class FakeVideoCaptureDeviceFactoryWin : public VideoCaptureDeviceFactoryWin {
   VideoCaptureFormats GetSupportedFormatsMediaFoundation(
       Microsoft::WRL::ComPtr<IMFMediaSource> source,
       const std::string& display_name) override {
+    if (disable_get_supported_formats_mf_mocking_) {
+      return VideoCaptureDeviceFactoryWin::GetSupportedFormatsMediaFoundation(
+          source, display_name);
+    }
     VideoCaptureFormats supported_formats;
     if (display_name == base::SysWideToUTF8(kMFDeviceName6)) {
       VideoCaptureFormat arbitrary_format;
@@ -1205,6 +1316,10 @@ class FakeVideoCaptureDeviceFactoryWin : public VideoCaptureDeviceFactoryWin {
     }
     return supported_formats;
   }
+
+  bool disable_get_supported_formats_mf_mocking_ = false;
+  std::map<std::wstring, std::vector<VideoPixelFormat>>
+      device_source_native_formats_;
 };
 
 }  // namespace
@@ -1219,16 +1334,6 @@ class VideoCaptureDeviceFactoryWinTest : public ::testing::Test {
     if (media_foundation_supported_)
       return false;
     DVLOG(1) << "Media foundation is not supported by the current platform. "
-                "Skipping test.";
-    return true;
-  }
-
-  bool ShouldSkipD3D11Test() {
-    // D3D11 is only supported with Media Foundation on Windows 8 or later
-    if (base::win::GetVersion() >= base::win::Version::WIN8)
-      return false;
-    DVLOG(1) << "D3D11 with Media foundation is not supported by the current "
-                "platform. "
                 "Skipping test.";
     return true;
   }
@@ -1252,8 +1357,102 @@ TEST_P(VideoCaptureDeviceFactoryMFWinTest, GetDevicesInfo) {
     return;
 
   const bool use_d3d11 = GetParam();
-  if (use_d3d11 && ShouldSkipD3D11Test())
+  factory_.set_use_d3d11_with_media_foundation_for_testing(use_d3d11);
+
+  std::vector<VideoCaptureDeviceInfo> devices_info;
+  base::RunLoop run_loop;
+  factory_.GetDevicesInfo(base::BindLambdaForTesting(
+      [&devices_info, &run_loop](std::vector<VideoCaptureDeviceInfo> result) {
+        devices_info = std::move(result);
+        run_loop.Quit();
+      }));
+  run_loop.Run();
+
+  EXPECT_EQ(devices_info.size(), 6U);
+  for (auto it = devices_info.begin(); it != devices_info.end(); it++) {
+    // Verify that there are no duplicates.
+    EXPECT_EQ(
+        FindDeviceInRange(devices_info.begin(), it, it->descriptor.device_id),
+        it);
+  }
+  iterator it = FindDeviceInRange(devices_info.begin(), devices_info.end(),
+                                  base::SysWideToUTF8(kMFDeviceId0));
+  ASSERT_NE(it, devices_info.end());
+  EXPECT_EQ(it->descriptor.capture_api, VideoCaptureApi::WIN_MEDIA_FOUNDATION);
+  EXPECT_EQ(it->descriptor.display_name(), base::SysWideToUTF8(kMFDeviceName0));
+  // No IAMCameraControl and no IAMVideoProcAmp interfaces.
+  EXPECT_FALSE(it->descriptor.control_support().pan);
+  EXPECT_FALSE(it->descriptor.control_support().tilt);
+  EXPECT_FALSE(it->descriptor.control_support().zoom);
+
+  it = FindDeviceInRange(devices_info.begin(), devices_info.end(),
+                         base::SysWideToUTF8(kMFDeviceId1));
+  ASSERT_NE(it, devices_info.end());
+  EXPECT_EQ(it->descriptor.capture_api, VideoCaptureApi::WIN_MEDIA_FOUNDATION);
+  EXPECT_EQ(it->descriptor.display_name(), base::SysWideToUTF8(kMFDeviceName1));
+  // No pan/tilt/zoom in IAMCameraControl interface.
+  EXPECT_FALSE(it->descriptor.control_support().pan);
+  EXPECT_FALSE(it->descriptor.control_support().tilt);
+  EXPECT_FALSE(it->descriptor.control_support().zoom);
+
+  it = FindDeviceInRange(devices_info.begin(), devices_info.end(),
+                         base::SysWideToUTF8(kDirectShowDeviceId3));
+  ASSERT_NE(it, devices_info.end());
+  EXPECT_EQ(it->descriptor.capture_api, VideoCaptureApi::WIN_DIRECT_SHOW);
+  EXPECT_EQ(it->descriptor.display_name(),
+            base::SysWideToUTF8(kDirectShowDeviceName3));
+  // No ICameraControl interface.
+  EXPECT_FALSE(it->descriptor.control_support().pan);
+  EXPECT_FALSE(it->descriptor.control_support().tilt);
+  EXPECT_FALSE(it->descriptor.control_support().zoom);
+
+  it = FindDeviceInRange(devices_info.begin(), devices_info.end(),
+                         base::SysWideToUTF8(kDirectShowDeviceId4));
+  ASSERT_NE(it, devices_info.end());
+  EXPECT_EQ(it->descriptor.capture_api, VideoCaptureApi::WIN_DIRECT_SHOW);
+  EXPECT_EQ(it->descriptor.display_name(),
+            base::SysWideToUTF8(kDirectShowDeviceName4));
+  // No IVideoProcAmp interface.
+  EXPECT_FALSE(it->descriptor.control_support().pan);
+  EXPECT_FALSE(it->descriptor.control_support().tilt);
+  EXPECT_FALSE(it->descriptor.control_support().zoom);
+
+  // Devices that are listed in MediaFoundation but only report supported
+  // formats in DirectShow are expected to get enumerated with
+  // VideoCaptureApi::WIN_DIRECT_SHOW
+  it = FindDeviceInRange(devices_info.begin(), devices_info.end(),
+                         base::SysWideToUTF8(kDirectShowDeviceId5));
+  ASSERT_NE(it, devices_info.end());
+  EXPECT_EQ(it->descriptor.capture_api, VideoCaptureApi::WIN_DIRECT_SHOW);
+  EXPECT_EQ(it->descriptor.display_name(),
+            base::SysWideToUTF8(kDirectShowDeviceName5));
+  // No pan, tilt, or zoom ranges in ICameraControl interface.
+  EXPECT_FALSE(it->descriptor.control_support().pan);
+  EXPECT_FALSE(it->descriptor.control_support().tilt);
+  EXPECT_FALSE(it->descriptor.control_support().zoom);
+
+  // Devices that are listed in both MediaFoundation and DirectShow but are
+  // blocked for use with MediaFoundation are expected to get enumerated with
+  // VideoCaptureApi::WIN_DIRECT_SHOW.
+  it = FindDeviceInRange(devices_info.begin(), devices_info.end(),
+                         base::SysWideToUTF8(kDirectShowDeviceId6));
+  ASSERT_NE(it, devices_info.end());
+  EXPECT_EQ(it->descriptor.capture_api, VideoCaptureApi::WIN_DIRECT_SHOW);
+  EXPECT_EQ(it->descriptor.display_name(),
+            base::SysWideToUTF8(kDirectShowDeviceName6));
+  EXPECT_TRUE(it->descriptor.control_support().pan);
+  EXPECT_TRUE(it->descriptor.control_support().tilt);
+  EXPECT_TRUE(it->descriptor.control_support().zoom);
+}
+
+TEST_P(VideoCaptureDeviceFactoryMFWinTest, GetDevicesInfo_IncludeIRCameras) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(kIncludeIRCamerasInDeviceEnumeration);
+
+  if (ShouldSkipMFTest())
     return;
+
+  const bool use_d3d11 = GetParam();
   factory_.set_use_d3d11_with_media_foundation_for_testing(use_d3d11);
 
   std::vector<VideoCaptureDeviceInfo> devices_info;
@@ -1350,6 +1549,61 @@ TEST_P(VideoCaptureDeviceFactoryMFWinTest, GetDevicesInfo) {
   EXPECT_TRUE(it->descriptor.control_support().pan);
   EXPECT_TRUE(it->descriptor.control_support().tilt);
   EXPECT_TRUE(it->descriptor.control_support().zoom);
+}
+
+TEST_P(VideoCaptureDeviceFactoryMFWinTest,
+       DeviceSupportedFormatNV12Passthrough) {
+  if (ShouldSkipMFTest())
+    return;
+
+  // Test whether the VideoCaptureDeviceFactory passes through NV12 as the
+  // output pixel format when D3D11 support is enabled
+
+  const bool use_d3d11 = GetParam();
+  factory_.set_use_d3d11_with_media_foundation_for_testing(use_d3d11);
+  factory_.set_disable_get_supported_formats_mf_mocking(true);
+
+  // Specify native NV12 format for first device and I420 for others
+  factory_.AddNativeFormatForMfDevice(kMFDeviceId0, PIXEL_FORMAT_NV12);
+  factory_.AddNativeFormatForMfDevice(kMFDeviceId1, PIXEL_FORMAT_I420);
+
+  const VideoPixelFormat expected_pixel_format_for_nv12 =
+      use_d3d11 ? PIXEL_FORMAT_NV12 : PIXEL_FORMAT_I420;
+
+  std::vector<VideoCaptureDeviceInfo> devices_info;
+  base::RunLoop run_loop;
+  factory_.GetDevicesInfo(base::BindLambdaForTesting(
+      [&devices_info, &run_loop](std::vector<VideoCaptureDeviceInfo> result) {
+        devices_info = std::move(result);
+        run_loop.Quit();
+      }));
+  run_loop.Run();
+
+  // Verify that the pixel formats advertised in supported_formats for each
+  // device match the expected format (NV12 when D3D11 support is enabled and
+  // the native source type for the device is NV12 or I420 in all other cases)
+
+  iterator it = FindDeviceInRange(devices_info.begin(), devices_info.end(),
+                                  base::SysWideToUTF8(kMFDeviceId0));
+  ASSERT_NE(it, devices_info.end());
+  EXPECT_EQ(it->descriptor.display_name(), base::SysWideToUTF8(kMFDeviceName0));
+  EXPECT_FALSE(it->supported_formats.empty());
+  for (size_t i = 0; i < it->supported_formats.size(); i++) {
+    SCOPED_TRACE(i);
+    EXPECT_EQ(it->supported_formats[i].pixel_format,
+              expected_pixel_format_for_nv12);
+  }
+
+  it = FindDeviceInRange(devices_info.begin(), devices_info.end(),
+                         base::SysWideToUTF8(kMFDeviceId1));
+  ASSERT_NE(it, devices_info.end());
+  EXPECT_EQ(it->descriptor.display_name(), base::SysWideToUTF8(kMFDeviceName1));
+  EXPECT_FALSE(it->supported_formats.empty());
+  for (size_t i = 0; i < it->supported_formats.size(); i++) {
+    SCOPED_TRACE(i);
+    EXPECT_EQ(it->supported_formats[i].pixel_format,
+              expected_pixel_format_for_nv12);
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(VideoCaptureDeviceFactoryMFWinTests,

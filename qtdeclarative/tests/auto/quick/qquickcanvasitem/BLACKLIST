@@ -5,9 +5,8 @@ macos
 [canvas::test_save]
 windows
 macos
-[canvas::test_implicitlySizedParent]
-*
 # QTBUG-41043
+android
 [canvas::test_toDataURL]
 *
 [fillRect::test_fillRect]
@@ -18,3 +17,10 @@ macos ci
 opensuse-leap
 [ContextFontValidation::test_valid]
 opensuse-leap
+# QTQAINFRA-4127
+[canvas::test_extraArgumentsIgnored:text]
+ci b2qt 32bit
+
+# QTBUG-100991
+[line::test_cap]
+android

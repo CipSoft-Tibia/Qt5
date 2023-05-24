@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickfontmetrics_p.h"
 
@@ -74,10 +38,6 @@ QT_BEGIN_NAMESPACE
 QQuickFontMetrics::QQuickFontMetrics(QObject *parent) :
     QObject(parent),
     m_metrics(m_font)
-{
-}
-
-QQuickFontMetrics::~QQuickFontMetrics()
 {
 }
 
@@ -280,10 +240,10 @@ qreal QQuickFontMetrics::lineWidth() const
     string should be drawn.
 
     This method is offered as an imperative alternative to the
-    \l {QQuickTextMetrics::advanceWidth}{advanceWidth} property of
-    \l {QQuickTextMetrics::advanceWidth}{TextMetrics}.
+    \l {QtQuick::TextMetrics::advanceWidth}{advanceWidth} property of
+    TextMetrics.
 
-    \sa {QFontMetricsF::width()}, {QFontMetricsF::height()}
+    \sa {QFontMetricsF::horizontalAdvance()}, {QFontMetricsF::height()}
 */
 qreal QQuickFontMetrics::advanceWidth(const QString &text) const
 {
@@ -297,8 +257,8 @@ qreal QQuickFontMetrics::advanceWidth(const QString &text) const
     specified by \a text.
 
     This method is offered as an imperative alternative to the
-    \l {QQuickTextMetrics::boundingRect}{boundingRect} property of
-    \l {QQuickTextMetrics::boundingRect}{TextMetrics}.
+    \l {QtQuick::TextMetrics::boundingRect}{boundingRect} property of
+    TextMetrics.
 
     \sa {QFontMetricsF::boundingRect()}, tightBoundingRect()
 */
@@ -314,8 +274,8 @@ QRectF QQuickFontMetrics::boundingRect(const QString &text) const
     string specified by \a text.
 
     This method is offered as an imperative alternative to the
-    \l {QQuickTextMetrics::tightBoundingRect}{tightBoundingRect} property of
-    \l {QQuickTextMetrics::tightBoundingRect}{TextMetrics}.
+    \l {QtQuick::TextMetrics::tightBoundingRect}{tightBoundingRect} property of
+    TextMetrics.
 
     \sa {QFontMetricsF::tightBoundingRect()}, boundingRect()
 */
@@ -338,8 +298,8 @@ QRectF QQuickFontMetrics::tightBoundingRect(const QString &text) const
     \l {Qt::TextShowMnemonic}.
 
     This method is offered as an imperative alternative to the
-    \l {QQuickTextMetrics::elidedText}{elidedText} property of
-    \l {QQuickTextMetrics::elidedText}{TextMetrics}.
+    \l {QtQuick::TextMetrics::elidedText}{elidedText} property of
+    TextMetrics.
 
     \sa Qt::TextElideMode, QFontMetricsF::elidedText()
 */

@@ -115,7 +115,7 @@ findLikelySubtags(const char* localeID,
  * @param tag The tag to add.
  * @param tagLength The length of the tag.
  * @param buffer The output buffer.
- * @param bufferLength The length of the output buffer.  This is an input/ouput parameter.
+ * @param bufferLength The length of the output buffer.  This is an input/output parameter.
  **/
 static void U_CALLCONV
 appendTag(
@@ -201,7 +201,7 @@ createTagStringWithAlternates(
          **/
         char tagBuffer[ULOC_FULLNAME_CAPACITY];
         int32_t tagLength = 0;
-        UBool regionAppended = FALSE;
+        UBool regionAppended = false;
 
         if (langLength > 0) {
             appendTag(
@@ -209,7 +209,7 @@ createTagStringWithAlternates(
                 langLength,
                 tagBuffer,
                 &tagLength,
-                /*withSeparator=*/FALSE);
+                /*withSeparator=*/false);
         }
         else if (alternateTags == NULL) {
             /*
@@ -246,7 +246,7 @@ createTagStringWithAlternates(
                     alternateLangLength,
                     tagBuffer,
                     &tagLength,
-                    /*withSeparator=*/FALSE);
+                    /*withSeparator=*/false);
             }
         }
 
@@ -256,7 +256,7 @@ createTagStringWithAlternates(
                 scriptLength,
                 tagBuffer,
                 &tagLength,
-                /*withSeparator=*/TRUE);
+                /*withSeparator=*/true);
         }
         else if (alternateTags != NULL) {
             /*
@@ -281,7 +281,7 @@ createTagStringWithAlternates(
                     alternateScriptLength,
                     tagBuffer,
                     &tagLength,
-                    /*withSeparator=*/TRUE);
+                    /*withSeparator=*/true);
             }
         }
 
@@ -291,9 +291,9 @@ createTagStringWithAlternates(
                 regionLength,
                 tagBuffer,
                 &tagLength,
-                /*withSeparator=*/TRUE);
+                /*withSeparator=*/true);
 
-            regionAppended = TRUE;
+            regionAppended = true;
         }
         else if (alternateTags != NULL) {
             /*
@@ -317,9 +317,9 @@ createTagStringWithAlternates(
                     alternateRegionLength,
                     tagBuffer,
                     &tagLength,
-                    /*withSeparator=*/TRUE);
+                    /*withSeparator=*/true);
 
-                regionAppended = TRUE;
+                regionAppended = true;
             }
         }
 
@@ -464,8 +464,7 @@ parseTagString(
         goto error;
     }
 
-    subtagLength = ulocimp_getLanguage(position, lang, *langLength, &position);
-    u_terminateChars(lang, *langLength, subtagLength, err);
+    subtagLength = ulocimp_getLanguage(position, &position, *err).extract(lang, *langLength, *err);
 
     /*
      * Note that we explicit consider U_STRING_NOT_TERMINATED_WARNING
@@ -486,8 +485,7 @@ parseTagString(
         ++position;
     }
 
-    subtagLength = ulocimp_getScript(position, script, *scriptLength, &position);
-    u_terminateChars(script, *scriptLength, subtagLength, err);
+    subtagLength = ulocimp_getScript(position, &position, *err).extract(script, *scriptLength, *err);
 
     if(U_FAILURE(*err)) {
         goto error;
@@ -511,8 +509,7 @@ parseTagString(
         }    
     }
 
-    subtagLength = ulocimp_getCountry(position, region, *regionLength, &position);
-    u_terminateChars(region, *regionLength, subtagLength, err);
+    subtagLength = ulocimp_getCountry(position, &position, *err).extract(region, *regionLength, *err);
 
     if(U_FAILURE(*err)) {
         goto error;
@@ -625,7 +622,7 @@ createLikelySubtagsString(
                         likelySubtags,
                         sink,
                         err);
-            return TRUE;
+            return true;
         }
     }
 
@@ -681,7 +678,7 @@ createLikelySubtagsString(
                         likelySubtags,
                         sink,
                         err);
-            return TRUE;
+            return true;
         }
     }
 
@@ -737,7 +734,7 @@ createLikelySubtagsString(
                         likelySubtags,
                         sink,
                         err);
-            return TRUE;
+            return true;
         }
     }
 
@@ -792,11 +789,11 @@ createLikelySubtagsString(
                         likelySubtags,
                         sink,
                         err);
-            return TRUE;
+            return true;
         }
     }
 
-    return FALSE;
+    return false;
 
 error:
 
@@ -804,7 +801,7 @@ error:
         *err = U_ILLEGAL_ARGUMENT_ERROR;
     }
 
-    return FALSE;
+    return false;
 }
 
 #define CHECK_TRAILING_VARIANT_SIZE(trailing, trailingLength) UPRV_BLOCK_MACRO_BEGIN { \
@@ -839,7 +836,7 @@ _uloc_addLikelySubtags(const char* localeID,
     const char* trailing = "";
     int32_t trailingLength = 0;
     int32_t trailingIndex = 0;
-    UBool success = FALSE;
+    UBool success = false;
 
     if(U_FAILURE(*err)) {
         goto error;
@@ -904,7 +901,7 @@ error:
     if (!U_FAILURE(*err)) {
         *err = U_ILLEGAL_ARGUMENT_ERROR;
     }
-    return FALSE;
+    return false;
 }
 
 // Add likely subtags to the sink
@@ -928,7 +925,7 @@ _uloc_minimizeSubtags(const char* localeID,
     const char* trailing = "";
     int32_t trailingLength = 0;
     int32_t trailingIndex = 0;
-    UBool successGetMax = FALSE;
+    UBool successGetMax = false;
 
     if(U_FAILURE(*err)) {
         goto error;
@@ -1184,13 +1181,13 @@ error:
     }
 }
 
-static UBool
+static int32_t
 do_canonicalize(const char*    localeID,
          char* buffer,
          int32_t bufferCapacity,
          UErrorCode* err)
 {
-    uloc_canonicalize(
+    int32_t canonicalizedSize = uloc_canonicalize(
         localeID,
         buffer,
         bufferCapacity,
@@ -1198,16 +1195,14 @@ do_canonicalize(const char*    localeID,
 
     if (*err == U_STRING_NOT_TERMINATED_WARNING ||
         *err == U_BUFFER_OVERFLOW_ERROR) {
-        *err = U_ILLEGAL_ARGUMENT_ERROR;
-
-        return FALSE;
+        return canonicalizedSize;
     }
     else if (U_FAILURE(*err)) {
 
-        return FALSE;
+        return -1;
     }
     else {
-        return TRUE;
+        return canonicalizedSize;
     }
 }
 
@@ -1244,12 +1239,17 @@ static UBool
 _ulocimp_addLikelySubtags(const char* localeID,
                           icu::ByteSink& sink,
                           UErrorCode* status) {
-    char localeBuffer[ULOC_FULLNAME_CAPACITY];
-
-    if (do_canonicalize(localeID, localeBuffer, sizeof localeBuffer, status)) {
-        return _uloc_addLikelySubtags(localeBuffer, sink, status);
+    PreflightingLocaleIDBuffer localeBuffer;
+    do {
+        localeBuffer.requestedCapacity = do_canonicalize(localeID, localeBuffer.getBuffer(),
+            localeBuffer.getCapacity(), status);
+    } while (localeBuffer.needToTryAgain(status));
+    
+    if (U_SUCCESS(*status)) {
+        return _uloc_addLikelySubtags(localeBuffer.getBuffer(), sink, status);
+    } else {
+        return false;
     }
-    return FALSE;
 }
 
 U_CAPI void U_EXPORT2
@@ -1292,11 +1292,13 @@ U_CAPI void U_EXPORT2
 ulocimp_minimizeSubtags(const char* localeID,
                         icu::ByteSink& sink,
                         UErrorCode* status) {
-    char localeBuffer[ULOC_FULLNAME_CAPACITY];
-
-    if (do_canonicalize(localeID, localeBuffer, sizeof localeBuffer, status)) {
-        _uloc_minimizeSubtags(localeBuffer, sink, status);
-    }
+    PreflightingLocaleIDBuffer localeBuffer;
+    do {
+        localeBuffer.requestedCapacity = do_canonicalize(localeID, localeBuffer.getBuffer(),
+            localeBuffer.getCapacity(), status);
+    } while (localeBuffer.needToTryAgain(status));
+    
+    _uloc_minimizeSubtags(localeBuffer.getBuffer(), sink, status);
 }
 
 // Pairs of (language subtag, + or -) for finding out fast if common languages
@@ -1318,14 +1320,14 @@ uloc_isRightToLeft(const char *locale) {
         char lang[8];
         int32_t langLength = uloc_getLanguage(locale, lang, UPRV_LENGTHOF(lang), &errorCode);
         if (U_FAILURE(errorCode) || errorCode == U_STRING_NOT_TERMINATED_WARNING) {
-            return FALSE;
+            return false;
         }
         if (langLength > 0) {
             const char* langPtr = uprv_strstr(LANG_DIR_STRING, lang);
             if (langPtr != NULL) {
                 switch (langPtr[langLength]) {
-                case '-': return FALSE;
-                case '+': return TRUE;
+                case '-': return false;
+                case '+': return true;
                 default: break;  // partial match of a longer code
                 }
             }
@@ -1338,12 +1340,12 @@ uloc_isRightToLeft(const char *locale) {
             ulocimp_addLikelySubtags(locale, sink, &errorCode);
         }
         if (U_FAILURE(errorCode) || errorCode == U_STRING_NOT_TERMINATED_WARNING) {
-            return FALSE;
+            return false;
         }
         scriptLength = uloc_getScript(likely.data(), script, UPRV_LENGTHOF(script), &errorCode);
         if (U_FAILURE(errorCode) || errorCode == U_STRING_NOT_TERMINATED_WARNING ||
                 scriptLength == 0) {
-            return FALSE;
+            return false;
         }
     }
     UScriptCode scriptCode = (UScriptCode)u_getPropertyValueEnum(UCHAR_SCRIPT, script);
@@ -1390,7 +1392,7 @@ ulocimp_getRegionForSupplementalData(const char *localeID, UBool inferRegion,
         if (U_FAILURE(*status)) {
             rgLen = 0;
         } else if (rgLen == 0 && inferRegion) {
-            // no unicode_region_subtag but inferRegion TRUE, try likely subtags
+            // no unicode_region_subtag but inferRegion true, try likely subtags
             rgStatus = U_ZERO_ERROR;
             icu::CharString locBuf;
             {

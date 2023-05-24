@@ -19,12 +19,10 @@ Also streams stdout/err onto the firebase realtime DB.
 
 import fcntl
 import logging
-import json
 import os
 import queue
 import signal
 import socket
-import shutil
 import subprocess
 import sys
 import threading
@@ -45,10 +43,18 @@ def read_nonblock(fd):
   res = ''
   while True:
     try:
-      buf = os.read(fd.fileno(), 1024)
+      buf = os.read(fd.fileno(), 8192)
       if not buf:
         break
-      res += buf.decode()
+      # There are two reasons for the errors='ignore' here:
+      # 1: By reading the pipe in chunks of N bytes, we can end up truncating
+      #    a valid multi-byte character and cause an "unexpected end of data".
+      #    This means that we will skip valid unicode chars if they happen to
+      #    span across two read() chunks.
+      # 2: The job output might just emit some invalid unicode in stdout. We
+      #    don't want to crash when that happens.
+      # See b/194053229 for more context.
+      res += buf.decode('utf-8', errors='ignore')
     except OSError:
       break
   return res
@@ -104,14 +110,22 @@ def main(argv):
   # SYS_PTRACE is required for gtest death tests and LSan.
   cmd = [
       'sudo', 'docker', 'run', '--name', container, '--hostname', container,
-      '--cap-add', 'SYS_PTRACE', '--rm', '--tmpfs', '/ci/ramdisk:exec',
-      '--tmpfs', '/tmp:exec', '--env',
-      'PERFETTO_TEST_JOB=%s' % job_id
+      '--cap-add', 'SYS_PTRACE', '--rm', '--env',
+      'PERFETTO_TEST_JOB=%s' % job_id, '--tmpfs', '/tmp:exec'
   ]
 
   # Propagate environment variables coming from the job config.
   for kv in [kv for kv in os.environ.items() if kv[0].startswith('PERFETTO_')]:
     cmd += ['--env', '%s=%s' % kv]
+
+  # We use the tmpfs mount created by gce-startup-script.sh, if present. The
+  # problem is that Docker doesn't allow to both override the tmpfs-size and
+  # prevent the "-o noexec". In turn the default tmpfs-size depends on the host
+  # phisical memory size.
+  if os.getenv('SANDBOX_TMP'):
+    cmd += ['-v', '%s:/ci/ramdisk' % os.getenv('SANDBOX_TMP')]
+  else:
+    cmd += ['--tmpfs', '/ci/ramdisk:exec']
 
   # Rationale for the conditional branches below: when running in the real GCE
   # environment, the gce-startup-script.sh mounts these directories in the right

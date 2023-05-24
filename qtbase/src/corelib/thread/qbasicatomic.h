@@ -1,65 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2011 Thiago Macieira <thiago@kde.org>
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
-#include <QtCore/qglobal.h>
+// Copyright (C) 2011 Thiago Macieira <thiago@kde.org>
+// Copyright (C) 2018 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QBASICATOMIC_H
 #define QBASICATOMIC_H
 
-#if defined(QT_BOOTSTRAPPED)
-#  include <QtCore/qatomic_bootstrap.h>
-
-// If C++11 atomics are supported, use them!
-// Note that constexpr support is sometimes disabled in QNX or INTEGRITY builds,
-// but their libraries have <atomic>.
-#elif defined(Q_COMPILER_ATOMICS) && (defined(Q_COMPILER_CONSTEXPR) || defined(Q_OS_QNX) || defined(Q_OS_INTEGRITY))
-#  include <QtCore/qatomic_cxx11.h>
-
-// We only support one fallback: MSVC, because even on version 2015, it lacks full constexpr support
-#elif defined(Q_CC_MSVC)
-#  include <QtCore/qatomic_msvc.h>
-
-// No fallback
-#else
-#  error "Qt requires C++11 support"
-#endif
+#include <QtCore/qatomic_cxx11.h>
 
 QT_WARNING_PUSH
 QT_WARNING_DISABLE_MSVC(4522)
@@ -75,17 +21,6 @@ QT_END_NAMESPACE
 
 // New atomics
 
-#if defined(Q_COMPILER_CONSTEXPR)
-# if defined(Q_CC_CLANG) && Q_CC_CLANG < 303
-   /*
-      Do not define QT_BASIC_ATOMIC_HAS_CONSTRUCTORS for Clang before version 3.3.
-      For details about the bug: see http://llvm.org/bugs/show_bug.cgi?id=12670
-    */
-# else
-#  define QT_BASIC_ATOMIC_HAS_CONSTRUCTORS
-# endif
-#endif
-
 template <typename T>
 class QBasicAtomicInteger
 {
@@ -93,17 +28,13 @@ public:
     typedef T Type;
     typedef QAtomicOps<T> Ops;
     // static check that this is a valid integer
-    Q_STATIC_ASSERT_X(QTypeInfo<T>::isIntegral, "template parameter is not an integral type");
-    Q_STATIC_ASSERT_X(QAtomicOpsSupport<sizeof(T)>::IsSupported, "template parameter is an integral of a size not supported on this platform");
+    static_assert(std::is_integral_v<T>, "template parameter is not an integral type");
+    static_assert(QAtomicOpsSupport<sizeof(T)>::IsSupported, "template parameter is an integral of a size not supported on this platform");
 
     typename Ops::Type _q_value;
 
-    // Everything below is either implemented in ../arch/qatomic_XXX.h or (as fallback) in qgenericatomic.h
-#if QT_DEPRECATED_SINCE(5, 14)
-    QT_DEPRECATED_VERSION_X_5_14("Use loadRelaxed") T load() const noexcept { return loadRelaxed(); }
-    QT_DEPRECATED_VERSION_X_5_14("Use storeRelaxed") void store(T newValue) noexcept { storeRelaxed(newValue); }
-#endif
-
+    // Everything below is either implemented in ../arch/qatomic_XXX.h or (as
+    // fallback) in qgenericatomic.h
     T loadRelaxed() const noexcept { return Ops::loadRelaxed(_q_value); }
     void storeRelaxed(T newValue) noexcept { Ops::storeRelaxed(_q_value, newValue); }
 
@@ -112,14 +43,14 @@ public:
     operator T() const noexcept { return loadAcquire(); }
     T operator=(T newValue) noexcept { storeRelease(newValue); return newValue; }
 
-    static Q_DECL_CONSTEXPR bool isReferenceCountingNative() noexcept { return Ops::isReferenceCountingNative(); }
-    static Q_DECL_CONSTEXPR bool isReferenceCountingWaitFree() noexcept { return Ops::isReferenceCountingWaitFree(); }
+    static constexpr bool isReferenceCountingNative() noexcept { return Ops::isReferenceCountingNative(); }
+    static constexpr bool isReferenceCountingWaitFree() noexcept { return Ops::isReferenceCountingWaitFree(); }
 
     bool ref() noexcept { return Ops::ref(_q_value); }
     bool deref() noexcept { return Ops::deref(_q_value); }
 
-    static Q_DECL_CONSTEXPR bool isTestAndSetNative() noexcept { return Ops::isTestAndSetNative(); }
-    static Q_DECL_CONSTEXPR bool isTestAndSetWaitFree() noexcept { return Ops::isTestAndSetWaitFree(); }
+    static constexpr bool isTestAndSetNative() noexcept { return Ops::isTestAndSetNative(); }
+    static constexpr bool isTestAndSetWaitFree() noexcept { return Ops::isTestAndSetWaitFree(); }
 
     bool testAndSetRelaxed(T expectedValue, T newValue) noexcept
     { return Ops::testAndSetRelaxed(_q_value, expectedValue, newValue); }
@@ -139,8 +70,8 @@ public:
     bool testAndSetOrdered(T expectedValue, T newValue, T &currentValue) noexcept
     { return Ops::testAndSetOrdered(_q_value, expectedValue, newValue, &currentValue); }
 
-    static Q_DECL_CONSTEXPR bool isFetchAndStoreNative() noexcept { return Ops::isFetchAndStoreNative(); }
-    static Q_DECL_CONSTEXPR bool isFetchAndStoreWaitFree() noexcept { return Ops::isFetchAndStoreWaitFree(); }
+    static constexpr bool isFetchAndStoreNative() noexcept { return Ops::isFetchAndStoreNative(); }
+    static constexpr bool isFetchAndStoreWaitFree() noexcept { return Ops::isFetchAndStoreWaitFree(); }
 
     T fetchAndStoreRelaxed(T newValue) noexcept
     { return Ops::fetchAndStoreRelaxed(_q_value, newValue); }
@@ -151,8 +82,8 @@ public:
     T fetchAndStoreOrdered(T newValue) noexcept
     { return Ops::fetchAndStoreOrdered(_q_value, newValue); }
 
-    static Q_DECL_CONSTEXPR bool isFetchAndAddNative() noexcept { return Ops::isFetchAndAddNative(); }
-    static Q_DECL_CONSTEXPR bool isFetchAndAddWaitFree() noexcept { return Ops::isFetchAndAddWaitFree(); }
+    static constexpr bool isFetchAndAddNative() noexcept { return Ops::isFetchAndAddNative(); }
+    static constexpr bool isFetchAndAddWaitFree() noexcept { return Ops::isFetchAndAddWaitFree(); }
 
     T fetchAndAddRelaxed(T valueToAdd) noexcept
     { return Ops::fetchAndAddRelaxed(_q_value, valueToAdd); }
@@ -220,13 +151,11 @@ public:
     { return fetchAndXorOrdered(v) ^ v; }
 
 
-#ifdef QT_BASIC_ATOMIC_HAS_CONSTRUCTORS
     QBasicAtomicInteger() = default;
     constexpr QBasicAtomicInteger(T value) noexcept : _q_value(value) {}
     QBasicAtomicInteger(const QBasicAtomicInteger &) = delete;
     QBasicAtomicInteger &operator=(const QBasicAtomicInteger &) = delete;
     QBasicAtomicInteger &operator=(const QBasicAtomicInteger &) volatile = delete;
-#endif
 };
 typedef QBasicAtomicInteger<int> QBasicAtomicInt;
 
@@ -240,11 +169,6 @@ public:
 
     AtomicType _q_value;
 
-#if QT_DEPRECATED_SINCE(5, 14)
-    QT_DEPRECATED_VERSION_X_5_14("Use loadRelaxed") Type load() const noexcept { return loadRelaxed(); }
-    QT_DEPRECATED_VERSION_X_5_14("Use storeRelaxed") void store(Type newValue) noexcept { storeRelaxed(newValue); }
-#endif
-
     Type loadRelaxed() const noexcept { return Ops::loadRelaxed(_q_value); }
     void storeRelaxed(Type newValue) noexcept { Ops::storeRelaxed(_q_value, newValue); }
 
@@ -255,8 +179,8 @@ public:
     Type loadAcquire() const noexcept { return Ops::loadAcquire(_q_value); }
     void storeRelease(Type newValue) noexcept { Ops::storeRelease(_q_value, newValue); }
 
-    static Q_DECL_CONSTEXPR bool isTestAndSetNative() noexcept { return Ops::isTestAndSetNative(); }
-    static Q_DECL_CONSTEXPR bool isTestAndSetWaitFree() noexcept { return Ops::isTestAndSetWaitFree(); }
+    static constexpr bool isTestAndSetNative() noexcept { return Ops::isTestAndSetNative(); }
+    static constexpr bool isTestAndSetWaitFree() noexcept { return Ops::isTestAndSetWaitFree(); }
 
     bool testAndSetRelaxed(Type expectedValue, Type newValue) noexcept
     { return Ops::testAndSetRelaxed(_q_value, expectedValue, newValue); }
@@ -276,8 +200,8 @@ public:
     bool testAndSetOrdered(Type expectedValue, Type newValue, Type &currentValue) noexcept
     { return Ops::testAndSetOrdered(_q_value, expectedValue, newValue, &currentValue); }
 
-    static Q_DECL_CONSTEXPR bool isFetchAndStoreNative() noexcept { return Ops::isFetchAndStoreNative(); }
-    static Q_DECL_CONSTEXPR bool isFetchAndStoreWaitFree() noexcept { return Ops::isFetchAndStoreWaitFree(); }
+    static constexpr bool isFetchAndStoreNative() noexcept { return Ops::isFetchAndStoreNative(); }
+    static constexpr bool isFetchAndStoreWaitFree() noexcept { return Ops::isFetchAndStoreWaitFree(); }
 
     Type fetchAndStoreRelaxed(Type newValue) noexcept
     { return Ops::fetchAndStoreRelaxed(_q_value, newValue); }
@@ -288,8 +212,8 @@ public:
     Type fetchAndStoreOrdered(Type newValue) noexcept
     { return Ops::fetchAndStoreOrdered(_q_value, newValue); }
 
-    static Q_DECL_CONSTEXPR bool isFetchAndAddNative() noexcept { return Ops::isFetchAndAddNative(); }
-    static Q_DECL_CONSTEXPR bool isFetchAndAddWaitFree() noexcept { return Ops::isFetchAndAddWaitFree(); }
+    static constexpr bool isFetchAndAddNative() noexcept { return Ops::isFetchAndAddNative(); }
+    static constexpr bool isFetchAndAddWaitFree() noexcept { return Ops::isFetchAndAddWaitFree(); }
 
     Type fetchAndAddRelaxed(qptrdiff valueToAdd) noexcept
     { return Ops::fetchAndAddRelaxed(_q_value, valueToAdd); }
@@ -322,13 +246,11 @@ public:
     Type operator-=(qptrdiff valueToSub) noexcept
     { return fetchAndSubOrdered(valueToSub) - valueToSub; }
 
-#ifdef QT_BASIC_ATOMIC_HAS_CONSTRUCTORS
     QBasicAtomicPointer() = default;
     constexpr QBasicAtomicPointer(Type value) noexcept : _q_value(value) {}
     QBasicAtomicPointer(const QBasicAtomicPointer &) = delete;
     QBasicAtomicPointer &operator=(const QBasicAtomicPointer &) = delete;
     QBasicAtomicPointer &operator=(const QBasicAtomicPointer &) volatile = delete;
-#endif
 };
 
 #ifndef Q_BASIC_ATOMIC_INITIALIZER

@@ -1,108 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdeclarativegeoroutemodel_p.h"
-#include "qdeclarativegeoroute_p.h"
 #include "error_messages_p.h"
-#include "locationvaluetypehelper_p.h"
 
 #include <QtCore/QCoreApplication>
 #include <QtQml/QQmlEngine>
 #include <QtQml/qqmlinfo.h>
-#include <QtQml/private/qqmlengine_p.h>
-#include <QtQml/private/qv4scopedvalue_p.h>
-#include <QtQml/private/qv4arrayobject_p.h>
 #include <QtLocation/QGeoRoutingManager>
 #include <QtPositioning/QGeoRectangle>
-#include "qdeclarativegeomapparameter_p.h"
 
 QT_BEGIN_NAMESPACE
-
-static bool compareFloats(qreal a, qreal b)
-{
-    return (qIsNaN(a) && qIsNaN(b))
-           || a == b;
-}
-
-static bool compareParameterList(const QList<QDeclarativeGeoMapParameter *> &a, const QList<QDeclarativeGeoMapParameter *> &b)
-{
-    if (a.size() != b.size())
-        return false;
-    if (a != b) {
-        for (int i = 0; i < a.size(); ++i) {
-            if (! (*a.at(i) == *b.at(i)))
-                return false;
-        }
-    }
-    return true;
-}
-
-static int findWaypoint(const QList<QDeclarativeGeoWaypoint *> &waypoints, const QDeclarativeGeoWaypoint *w)
-{
-    for (int i = waypoints.size() - 1; i >= 0; --i) {
-        if (waypoints.at(i) == w || *waypoints.at(i) == *w)
-            return i;
-    }
-    return -1;
-}
-
-static int findWaypoint(const QList<QDeclarativeGeoWaypoint *> &waypoints, const QGeoCoordinate &c)
-{
-    for (int i = waypoints.size() - 1; i >= 0; --i) {
-        if (waypoints.at(i)->coordinate() == c)
-            return i;
-    }
-    return -1;
-}
-
-static QList<QGeoCoordinate> waypointCoordinates(const QList<QDeclarativeGeoWaypoint *> &waypoints)
-{
-    QList<QGeoCoordinate> res;
-    for (const QDeclarativeGeoWaypoint *w: waypoints)
-        res << w->coordinate();
-    return res;
-}
-
-static QList<QVariantMap> waypointMetadata(const QList<QDeclarativeGeoWaypoint *> &waypoints)
-{
-    QList<QVariantMap> res;
-    for (QDeclarativeGeoWaypoint *w: waypoints)
-        res << w->metadata();
-    return res;
-}
 
 /*!
     \qmltype RouteModel
@@ -117,9 +25,8 @@ static QList<QVariantMap> waypointMetadata(const QList<QDeclarativeGeoWaypoint *
     geographic routes from a backend provider. Routes include data about driving
     directions between two points, walking directions with multiple waypoints,
     and various other similar concepts. It functions much like other Model
-    types in QML (see for example \l {Models and Views in Qt Quick#Models}{ListModel}
-    and \l {QtQuick.XmlListModel::XmlListModel}{XmlListModel}), and interacts with
-    views such as \l MapItemView, and \l{ListView}.
+    types in QML (see for example \l {Models and Views in Qt Quick#Models}{ListModel}),
+    and interacts with views such as \l MapItemView, and \l{ListView}.
 
     Like \l Map and \l GeocodeModel, all the data for a RouteModel to work comes
     from a services plugin. This is contained in the \l{plugin} property, and
@@ -131,8 +38,8 @@ static QList<QVariantMap> waypointMetadata(const QList<QDeclarativeGeoWaypoint *
     Otherwise, the \l{update} method may be used. By default, autoUpdate is
     disabled.
 
-    The data stored and returned in the RouteModel consists of \l Route objects,
-    as a list with the role name "routeData". See the documentation for \l Route
+    The data stored and returned in the RouteModel consists of \l route objects,
+    as a list with the role name "routeData". See the documentation for \l route
     for further details on its structure and contents.
 
     \section2 Example Usage
@@ -173,22 +80,8 @@ static QList<QVariantMap> waypointMetadata(const QList<QDeclarativeGeoWaypoint *
 */
 
 QDeclarativeGeoRouteModel::QDeclarativeGeoRouteModel(QObject *parent)
-    : QAbstractListModel(parent),
-      complete_(false),
-      plugin_(0),
-      routeQuery_(0),
-      autoUpdate_(false),
-      status_(QDeclarativeGeoRouteModel::Null),
-      error_(QDeclarativeGeoRouteModel::NoError)
+    : QAbstractListModel(parent)
 {
-}
-
-QDeclarativeGeoRouteModel::~QDeclarativeGeoRouteModel()
-{
-    if (!routes_.empty()) {
-        qDeleteAll(routes_);
-        routes_.clear();
-    }
 }
 
 /*!
@@ -216,7 +109,6 @@ void QDeclarativeGeoRouteModel::reset()
 {
     if (!routes_.isEmpty()) {
         beginResetModel();
-        qDeleteAll(routes_);
         routes_.clear();
         emit countChanged();
         emit routesChanged();
@@ -242,21 +134,21 @@ void QDeclarativeGeoRouteModel::cancel()
 }
 
 /*!
-    \qmlmethod Route QtLocation::RouteModel::get(int index)
+    \qmlmethod route QtLocation::RouteModel::get(int index)
 
-    Returns the Route at the specified \a index. Use the \l count
+    Returns the route at the specified \a index. Use the \l count
     property to check the amount of routes available. The routes
     are indexed from zero, so the accessible range is 0...(count - 1).
 
-    If you access out of bounds, a zero (null object) is returned and
+    If you access out of bounds, an empty route is returned and
     a warning is issued.
 */
 
-QDeclarativeGeoRoute *QDeclarativeGeoRouteModel::get(int index)
+QGeoRoute QDeclarativeGeoRouteModel::get(int index)
 {
     if (index < 0 || index >= routes_.count()) {
         qmlWarning(this) << QStringLiteral("Index '%1' out of range").arg(index);
-        return 0;
+        return QGeoRoute();
     }
     return routes_.at(index);
 }
@@ -296,10 +188,8 @@ QVariant QDeclarativeGeoRouteModel::data(const QModelIndex &index, int role) con
         return QVariant();
     }
 
-    if (role == RouteRole) {
-        QObject *route = routes_.at(index.row());
-        return QVariant::fromValue(route);
-    }
+    if (role == RouteRole)
+        return QVariant::fromValue(routes_.at(index.row()));
     return QVariant();
 }
 
@@ -320,10 +210,14 @@ void QDeclarativeGeoRouteModel::setPlugin(QDeclarativeGeoServiceProvider *plugin
 
     reset(); // reset the model
 
-    if (plugin_)
-        disconnect(plugin_, SIGNAL(localesChanged()), this, SIGNAL(measurementSystemChanged()));
-    if (plugin)
-        connect(plugin, SIGNAL(localesChanged()), this, SIGNAL(measurementSystemChanged()));
+    if (plugin_) {
+        disconnect(plugin_, &QDeclarativeGeoServiceProvider::localesChanged,
+                   this, &QDeclarativeGeoRouteModel::measurementSystemChanged);
+    }
+    if (plugin) {
+        connect(plugin, &QDeclarativeGeoServiceProvider::localesChanged,
+                this, &QDeclarativeGeoRouteModel::measurementSystemChanged);
+    }
 
     plugin_ = plugin;
 
@@ -336,8 +230,8 @@ void QDeclarativeGeoRouteModel::setPlugin(QDeclarativeGeoServiceProvider *plugin
     if (plugin_->isAttached()) {
         pluginReady();
     } else {
-        connect(plugin_, SIGNAL(attached()),
-                this, SLOT(pluginReady()));
+        connect(plugin_, &QDeclarativeGeoServiceProvider::attached,
+                this, &QDeclarativeGeoRouteModel::pluginReady);
     }
 }
 
@@ -373,10 +267,10 @@ void QDeclarativeGeoRouteModel::pluginReady()
         return;
     }
 
-    connect(routingManager, SIGNAL(finished(QGeoRouteReply*)),
-            this, SLOT(routingFinished(QGeoRouteReply*)));
-    connect(routingManager, SIGNAL(error(QGeoRouteReply*,QGeoRouteReply::Error,QString)),
-            this, SLOT(routingError(QGeoRouteReply*,QGeoRouteReply::Error,QString)));
+    connect(routingManager, &QGeoRoutingManager::finished,
+            this, &QDeclarativeGeoRouteModel::routingFinished);
+    connect(routingManager, &QGeoRoutingManager::errorOccurred,
+            this, &QDeclarativeGeoRouteModel::routingError);
 }
 
 /*!
@@ -416,7 +310,8 @@ void QDeclarativeGeoRouteModel::setQuery(QDeclarativeGeoRouteQuery *query)
     if (routeQuery_)
         routeQuery_->disconnect(this);
     routeQuery_ = query;
-    connect(query, SIGNAL(queryDetailsChanged()), this, SLOT(queryDetailsChanged()));
+    connect(query, &QDeclarativeGeoRouteQuery::queryDetailsChanged,
+            this, &QDeclarativeGeoRouteModel::queryDetailsChanged);
     if (complete_) {
         emit queryChanged();
         if (autoUpdate_)
@@ -666,15 +561,8 @@ void QDeclarativeGeoRouteModel::routingFinished(QGeoRouteReply *reply)
         return;
 
     beginResetModel();
-    int oldCount = routes_.count();
-    qDeleteAll(routes_);
-    // Convert routes to declarative
-    routes_.clear();
-    for (int i = 0; i < reply->routes().size(); ++i) {
-        QDeclarativeGeoRoute *route = new QDeclarativeGeoRoute(reply->routes().at(i), this);
-        QQmlEngine::setContextForObject(route, QQmlEngine::contextForObject(this));
-        routes_.append(route);
-    }
+    const int oldCount = routes_.count();
+    routes_ = reply->routes();
     endResetModel();
 
     setError(NoError, QString());
@@ -752,23 +640,16 @@ void QDeclarativeGeoRouteModel::routingError(QGeoRouteReply *reply,
 */
 
 QDeclarativeGeoRouteQuery::QDeclarativeGeoRouteQuery(QObject *parent)
-:   QObject(parent), complete_(false), m_excludedAreaCoordinateChanged(false)
+    : QObject(parent)
 {
 }
 
 QDeclarativeGeoRouteQuery::QDeclarativeGeoRouteQuery(const QGeoRouteRequest &request, QObject *parent)
-:   QObject(parent), request_(request), complete_(false), m_excludedAreaCoordinateChanged(false)
+    : QObject(parent), request_(request)
 {
     // Extra params assumed to be already set in the request.
     // Init waypoints
-    const QList<QGeoCoordinate> wpts = request_.waypoints();
-    const QList<QVariantMap> meta = request_.waypointsMetadata();
-    for (int i = 0; i < wpts.size(); ++i) {
-        QDeclarativeGeoWaypoint *w = new QDeclarativeGeoWaypoint(this);
-        w->setCoordinate(wpts.at(i));
-        w->setMetadata(meta.at(i));
-        m_waypoints << w;
-    }
+    m_waypoints = request_.waypoints();
 }
 
 QDeclarativeGeoRouteQuery::~QDeclarativeGeoRouteQuery()
@@ -805,13 +686,13 @@ void QDeclarativeGeoRouteQuery::componentComplete()
     \sa setFeatureWeight, featureWeight
 */
 
-QList<int> QDeclarativeGeoRouteQuery::featureTypes()
+QList<int> QDeclarativeGeoRouteQuery::featureTypes() const
 {
     QList<int> list;
 
-    for (int i = 0; i < request_.featureTypes().count(); ++i) {
-        list.append(static_cast<int>(request_.featureTypes().at(i)));
-    }
+    const auto featureTypes = request_.featureTypes();
+    for (const auto &featureType : featureTypes)
+        list.append(static_cast<int>(featureType));
     return list;
 }
 
@@ -844,7 +725,6 @@ void QDeclarativeGeoRouteQuery::setNumberAlternativeRoutes(int numberAlternative
 /*!
     \qmlproperty list<coordinate> RouteQuery::waypoints
 
-
     The coordinates of the waypoints for the desired route.
     The waypoints should be given in order from origin to destination.
     Two or more coordinates are needed.
@@ -852,85 +732,20 @@ void QDeclarativeGeoRouteQuery::setNumberAlternativeRoutes(int numberAlternative
     Waypoints can be set as part of the RouteQuery type declaration or
     dynamically with the functions provided.
 
-    When setting this property to a list of waypoints, each waypoint
-    can be either a \l coordinate or a \l Waypoint, interchangeably.
-    If a \l coordinate is passed, it will be internally converted to a
-    \l Waypoint.
-
-    This property, however, always contains a list of coordinates.
-
-    \sa waypointObjects, addWaypoint, removeWaypoint, clearWaypoints
+    \sa addWaypoint, removeWaypoint, clearWaypoints
 */
 
-QVariantList QDeclarativeGeoRouteQuery::waypoints()
+QList<QGeoCoordinate> QDeclarativeGeoRouteQuery::waypoints() const
 {
-    QVariantList res;
-
-    for (const auto &w : m_waypoints)
-        res << QVariant::fromValue(w->coordinate());
-
-    return res;
+    return m_waypoints;
 }
 
-/*!
-    \qmlmethod list<Waypoint> QtLocation::RouteQuery::waypointObjects()
-
-    This method can be used to retrieve the list of Waypoint objects
-    relative to RouteQuery::waypoints.
-
-    \sa waypointObjects, addWaypoint, removeWaypoint, clearWaypoints
-*/
-QVariantList QDeclarativeGeoRouteQuery::waypointObjects()
+void QDeclarativeGeoRouteQuery::setWaypoints(const QList<QGeoCoordinate> &value)
 {
-    QVariantList res;
-
-    for (const auto &w : m_waypoints)
-        res << QVariant::fromValue(w);
-
-    return res;
-}
-
-void QDeclarativeGeoRouteQuery::setWaypoints(const QVariantList &value)
-{
-    QList<QDeclarativeGeoWaypoint *> waypointList;
-    bool allWaypoints = true;
-
-    for (const auto &w: value) {
-        // First, test if this is already a QDeclarativeGeoWaypoint
-        // From QVariant to QObject *
-        QDeclarativeGeoWaypoint *waypoint = nullptr;
-        QObject *obj = qvariant_cast<QObject *>(w);
-        waypoint = qobject_cast<QDeclarativeGeoWaypoint *>(obj);
-
-        if (waypoint) {
-            waypointList << waypoint;
-            continue;
-        }
-
-        // if here, w is not a Waypoint, so either a QGeoCoordinate or a variant map, so a waypoint has to be instantiated.
-        allWaypoints = false;
-
-        QGeoCoordinate c = parseCoordinate(w);
-        if (!c.isValid()) {
-            qmlWarning(this) << QStringLiteral("Invalid waypoint");
-            flushWaypoints(waypointList);
-            return;
-        }
-
-        waypoint = new QDeclarativeGeoWaypoint(this);
-        waypoint->setCoordinate(c);
-        waypointList << waypoint;
-
-    }
-
-    if (allWaypoints && m_waypoints == waypointList)
+    if (m_waypoints == value)
         return;
 
-    flushWaypoints(m_waypoints);
-    m_waypoints = waypointList;
-    for (const QDeclarativeGeoWaypoint *w: qAsConst(m_waypoints))
-        connect(w, &QDeclarativeGeoWaypoint::waypointDetailsChanged, this, &QDeclarativeGeoRouteQuery::waypointChanged);
-
+    m_waypoints = value;
     waypointChanged();
 }
 
@@ -944,47 +759,17 @@ void QDeclarativeGeoRouteQuery::setWaypoints(const QVariantList &value)
 
     \sa addExcludedArea, removeExcludedArea, clearExcludedAreas
 */
-QJSValue QDeclarativeGeoRouteQuery::excludedAreas() const
+QList<QGeoRectangle> QDeclarativeGeoRouteQuery::excludedAreas() const
 {
-    QQmlContext *context = QQmlEngine::contextForObject(parent());
-    QQmlEngine *engine = context->engine();
-    QV4::ExecutionEngine *v4 = QQmlEnginePrivate::getV4Engine(engine);
-
-    QV4::Scope scope(v4);
-    QV4::Scoped<QV4::ArrayObject> excludedAreasArray(scope, v4->newArrayObject(request_.excludeAreas().length()));
-    for (int i = 0; i < request_.excludeAreas().length(); ++i) {
-        const QGeoRectangle &r = request_.excludeAreas().at(i);
-
-        QV4::ScopedValue cv(scope, v4->fromVariant(QVariant::fromValue(r)));
-        excludedAreasArray->put(i, cv);
-    }
-
-    return QJSValue(v4, excludedAreasArray.asReturnedValue());
+    return request_.excludeAreas();
 }
 
-void QDeclarativeGeoRouteQuery::setExcludedAreas(const QJSValue &value)
+void QDeclarativeGeoRouteQuery::setExcludedAreas(const QList<QGeoRectangle> &value)
 {
-    if (!value.isArray())
+    if (request_.excludeAreas() == value)
         return;
 
-    QList<QGeoRectangle> excludedAreasList;
-    quint32 length = value.property(QStringLiteral("length")).toUInt();
-    for (quint32 i = 0; i < length; ++i) {
-        bool ok;
-        QGeoRectangle r = parseRectangle(value.property(i), &ok);
-
-        if (!ok || !r.isValid()) {
-            qmlWarning(this) << QStringLiteral("Unsupported area type");
-            return;
-        }
-
-        excludedAreasList.append(r);
-    }
-
-    if (request_.excludeAreas() == excludedAreasList)
-        return;
-
-    request_.setExcludeAreas(excludedAreasList);
+    request_.setExcludeAreas(value);
 
     if (complete_) {
         emit excludedAreasChanged();
@@ -1076,44 +861,19 @@ void QDeclarativeGeoRouteQuery::clearExcludedAreas()
 /*!
     \qmlmethod void QtLocation::RouteQuery::addWaypoint(coordinate)
 
-    Appends a coordinate to the list of waypoints. Same coordinate
-    can be set multiple times.
-    The \a coordinate argument can be a \l coordinate or a \l Waypoint.
-    If a \l coordinate is used, it will be internally converted to a
-    \l Waypoint.
+    Appends the given \a coordinate to the list of waypoints. The same
+    coordinate can be set multiple times.
 
     \sa removeWaypoint, clearWaypoints
 */
-void QDeclarativeGeoRouteQuery::addWaypoint(const QVariant &waypoint)
+void QDeclarativeGeoRouteQuery::addWaypoint(const QGeoCoordinate &waypoint)
 {
-    QDeclarativeGeoWaypoint *w = nullptr;
-    QObject *obj = qvariant_cast<QObject *>(waypoint);
-    w = qobject_cast<QDeclarativeGeoWaypoint *>(obj);
-
-    if (w) {
-        if (! w->isValid()) {
-            qmlWarning(this) << QStringLiteral("Invalid waypoint");
-            return;
-        }
-
-        m_waypoints << w;
-        connect(w, &QDeclarativeGeoWaypoint::waypointDetailsChanged, this, &QDeclarativeGeoRouteQuery::waypointChanged);
-        waypointChanged();
-        return;
-    }
-
-    // if here, waypoint is not a Waypoint, so either a QGeoCoordinate or a variant map, so a waypoint has to be instantiated.
-
-    QGeoCoordinate c = parseCoordinate(waypoint);
-    if (!c.isValid()) {
+    if (!waypoint.isValid()) {
         qmlWarning(this) << QStringLiteral("Invalid coordinate as waypoint");
         return;
     }
 
-    w = new QDeclarativeGeoWaypoint(this);
-    w->setCoordinate(c);
-    m_waypoints << w;
-    connect(w, &QDeclarativeGeoWaypoint::waypointDetailsChanged, this, &QDeclarativeGeoRouteQuery::waypointChanged);
+    m_waypoints << waypoint;
     waypointChanged();
 }
 
@@ -1126,45 +886,15 @@ void QDeclarativeGeoRouteQuery::addWaypoint(const QVariant &waypoint)
 
     \sa addWaypoint, clearWaypoints
 */
-void QDeclarativeGeoRouteQuery::removeWaypoint(const QVariant &waypoint)
+void QDeclarativeGeoRouteQuery::removeWaypoint(const QGeoCoordinate &waypoint)
 {
-    QDeclarativeGeoWaypoint *w = nullptr;
-    QObject *obj = qvariant_cast<QObject *>(waypoint);
-    w = qobject_cast<QDeclarativeGeoWaypoint *>(obj);
-
-    if (w) {
-        if (!w->isValid()) {
-            qmlWarning(this) << QStringLiteral("Invalid waypoint");
-            return;
-        }
-
-        int idx = findWaypoint(m_waypoints, w);
-        if (idx >= 0) {
-            QDeclarativeGeoWaypoint *toRemove = m_waypoints.takeAt(idx);
-            toRemove->disconnect(this);
-            if (toRemove->parent() == this)
-                delete toRemove;
-
-            waypointChanged();
-        } else {
-            qmlWarning(this) << QStringLiteral("Cannot remove nonexistent waypoint.");
-        }
-        return;
-    }
-
-    QGeoCoordinate c = parseCoordinate(waypoint);
-    if (!c.isValid()) {
+    if (!waypoint.isValid()) {
         qmlWarning(this) << QStringLiteral("Invalid coordinate as waypoint");
         return;
     }
 
-    int idx = findWaypoint(m_waypoints, c);
-    if (idx >= 0) {
-        QDeclarativeGeoWaypoint *toRemove = m_waypoints.takeAt(idx);
-        toRemove->disconnect(this);
-        if (toRemove->parent() == this)
-            delete toRemove;
-
+    if (qsizetype idx = m_waypoints.lastIndexOf(waypoint); idx >= 0) {
+        m_waypoints.remove(idx);
         waypointChanged();
     } else {
         qmlWarning(this) << QStringLiteral("Cannot remove nonexistent waypoint.");
@@ -1183,18 +913,8 @@ void QDeclarativeGeoRouteQuery::clearWaypoints()
     if (m_waypoints.isEmpty())
         return;
 
-    flushWaypoints(m_waypoints);
+    m_waypoints.clear();
     waypointChanged();
-}
-
-void QDeclarativeGeoRouteQuery::flushWaypoints(QList<QDeclarativeGeoWaypoint *> &waypoints)
-{
-    for (const QDeclarativeGeoWaypoint *w : qAsConst(waypoints)) {
-        w->disconnect(this);
-        if (w->parent() == this) // w has been created internally as a result of adding a QGeoCoordinate
-            delete w;
-    }
-    waypoints.clear();
 }
 
 /*!
@@ -1260,10 +980,9 @@ void QDeclarativeGeoRouteQuery::setFeatureWeight(FeatureType featureType, Featur
 void QDeclarativeGeoRouteQuery::resetFeatureWeights()
 {
     // reset all feature types.
-    QList<QGeoRouteRequest::FeatureType> featureTypes = request_.featureTypes();
-    for (int i = 0; i < featureTypes.count(); ++i) {
-        request_.setFeatureWeight(featureTypes.at(i), QGeoRouteRequest::NeutralFeatureWeight);
-    }
+    const auto featureTypes = request_.featureTypes();
+    for (const auto &featureType : featureTypes)
+        request_.setFeatureWeight(featureType, QGeoRouteRequest::NeutralFeatureWeight);
     if (complete_) {
         emit featureTypesChanged();
         emit queryDetailsChanged();
@@ -1507,40 +1226,14 @@ void QDeclarativeGeoRouteQuery::setRouteOptimizations(QDeclarativeGeoRouteQuery:
 /*!
     \internal
 */
-QGeoRouteRequest QDeclarativeGeoRouteQuery::routeRequest()
+QGeoRouteRequest QDeclarativeGeoRouteQuery::routeRequest() const
 {
-    if (m_extraParametersChanged) {
-        m_extraParametersChanged = false;
-        // Update extra params into request
-        const QList<QDeclarativeGeoMapParameter *> params = quickChildren<QDeclarativeGeoMapParameter>();
-        QVariantMap extraParameters;
-        for (const QDeclarativeGeoMapParameter *p: params)
-            extraParameters[p->type()] = p->toVariantMap();
-        request_.setExtraParameters(extraParameters);
-    }
     if (m_waypointsChanged) {
         m_waypointsChanged = false;
         // Update waypoints and metadata into request
-        request_.setWaypoints(waypointCoordinates(m_waypoints));
-        request_.setWaypointsMetadata(waypointMetadata(m_waypoints));
+        request_.setWaypoints(m_waypoints);
     }
     return request_;
-}
-
-
-/*!
-    \qmlproperty VariantMap RouteQuery::extraParameters
-    \readonly
-
-    The route query extra parameters. This property is read only. If the query is
-    defined by the user, these can be set by using MapParameters.
-    If the route query comes from the engine via signals, the query is intended to be read-only.
-
-    \since 5.11
-*/
-QVariantMap QDeclarativeGeoRouteQuery::extraParameters()
-{
-    return routeRequest().extraParameters();
 }
 
 void QDeclarativeGeoRouteQuery::excludedAreaCoordinateChanged()
@@ -1548,15 +1241,6 @@ void QDeclarativeGeoRouteQuery::excludedAreaCoordinateChanged()
     if (!m_excludedAreaCoordinateChanged) {
         m_excludedAreaCoordinateChanged = true;
         QMetaObject::invokeMethod(this, "doCoordinateChanged", Qt::QueuedConnection);
-    }
-}
-
-void QDeclarativeGeoRouteQuery::extraParameterChanged()
-{
-    m_extraParametersChanged = true;
-    if (complete_) {
-        emit extraParametersChanged();
-        emit queryDetailsChanged();
     }
 }
 
@@ -1569,379 +1253,11 @@ void QDeclarativeGeoRouteQuery::waypointChanged()
     }
 }
 
-void QDeclarativeGeoRouteQuery::append(QQmlListProperty<QObject> *p, QObject *v)
-{
-    QDeclarativeGeoRouteQuery *query = static_cast<QDeclarativeGeoRouteQuery*>(p->object);
-    query->m_children.append(v);
-
-    QDeclarativeGeoMapParameter *param = qobject_cast<QDeclarativeGeoMapParameter *>(v);
-    if (param) {
-        query->m_extraParametersChanged = true;
-        query->connect(param, &QGeoMapParameter::propertyUpdated,
-                       query, &QDeclarativeGeoRouteQuery::extraParameterChanged);
-        if (query->complete_) {
-            emit query->extraParametersChanged();
-            emit query->queryDetailsChanged();
-        }
-    }
-}
-
-int QDeclarativeGeoRouteQuery::count(QQmlListProperty<QObject> *p)
-{
-    return static_cast<QDeclarativeGeoRouteQuery*>(p->object)->m_children.count();
-}
-
-QObject *QDeclarativeGeoRouteQuery::at(QQmlListProperty<QObject> *p, int idx)
-{
-    return static_cast<QDeclarativeGeoRouteQuery*>(p->object)->m_children.at(idx);
-}
-
-void QDeclarativeGeoRouteQuery::clear(QQmlListProperty<QObject> *p)
-{
-    QDeclarativeGeoRouteQuery *query = static_cast<QDeclarativeGeoRouteQuery*>(p->object);
-    for (auto kid : qAsConst(query->m_children)) {
-        auto val = qobject_cast<QDeclarativeGeoMapParameter *>(kid);
-        if (val) {
-            val->disconnect(val, nullptr, query, nullptr);
-            query->m_extraParametersChanged = true;
-        }
-    }
-    query->m_children.clear();
-    if (query->m_extraParametersChanged && query->complete_) {
-        emit query->extraParametersChanged();
-        emit query->queryDetailsChanged();
-    }
-}
-
-QQmlListProperty<QObject> QDeclarativeGeoRouteQuery::declarativeChildren()
-{
-    return QQmlListProperty<QObject>(this, nullptr,
-                                           &QDeclarativeGeoRouteQuery::append,
-                                           &QDeclarativeGeoRouteQuery::count,
-                                           &QDeclarativeGeoRouteQuery::at,
-                                           &QDeclarativeGeoRouteQuery::clear);
-}
-
 void QDeclarativeGeoRouteQuery::doCoordinateChanged()
 {
     m_excludedAreaCoordinateChanged = false;
     if (complete_)
         emit queryDetailsChanged();
-}
-
-/*!
-    \qmltype Waypoint
-    \instantiates QDeclarativeGeoWaypoint
-    \inqmlmodule QtLocation
-    \ingroup qml-QtLocation5-routing
-    \since QtLocation 5.11
-
-    \brief The Waypoint type provides a mean to specify a waypoint in a \l RouteQuery
-    in a more detailed way than by using a simple \l coordinate.
-
-    A Waypoint is a type that allows to specify properties of a waypoint in a \l RouteQuery,
-    such as the waypoint coordinate, or the angle of approach to the waypoint.
-
-    Additional information that are backend-specific can be specified by nesting \l MapParameter
-    elements.
-
-    Changing properties of the waypoint or of its nested MapParameteters will cause the containing
-    \l RouteQuery to emit the queryDetailsChanged signal.
-
-    \section2 Example Usage
-
-    \code
-    Plugin {
-        id: aPlugin
-        name: "osm"
-    }
-
-    Waypoint {
-        id: waypointStart
-        coordinate: ...
-        bearing: ...
-    }
-    Waypoint {
-        id: waypointFinish
-        coordinate: ...
-        bearing: ...
-    }
-
-    RouteQuery {
-        id: aQuery
-        Component.onCompleted: {
-            travelModes = RouteQuery.CarTravel
-            addWaypoint(waypointStart)
-            var aWaypoint = Qt.createQmlObject ('import QtLocation 5.11; Waypoint { ... }', ...)
-            addWaypoint(aWaypoint)
-            addWaypoint(waypointFinish)
-        }
-    }
-
-    RouteModel {
-        id: routeModel
-        plugin: aPlugin
-        query: aQuery
-        autoUpdate: true
-    }
-    \endcode
-
-    \sa RouteQuery
-*/
-
-
-/*
- *
-    At the time of adding this class (2017.11), 3 routing services are natively supported in Qt: Esri, Here and OSRM.
-    Waypoint documentation for each of these:
-    Esri: http://resources.arcgis.com/en/help/arcgis-rest-api/index.html#//02r300000036000000 ,  called "stop"
-    HERE: https://developer.here.com/documentation/routing/topics/resource-param-type-waypoint.html
-    OSRM: https://github.com/Project-OSRM/osrm-backend/blob/master/docs/http.md , under Request Options
- *
- */
-
-
-static QGeoCoordinate convertWaypointToCoordinate(const QDeclarativeGeoWaypoint *value)
-{
-    return value->coordinate();
-}
-
-struct WaypointVariantConversions
-{
-    WaypointVariantConversions()
-    {
-        QMetaType::registerConverter<QDeclarativeGeoWaypoint *, QGeoCoordinate>(convertWaypointToCoordinate);
-    }
-};
-
-Q_GLOBAL_STATIC(WaypointVariantConversions, initWaypointConversions)
-
-
-QDeclarativeGeoWaypoint::QDeclarativeGeoWaypoint(QObject *parent) : QGeoCoordinateObject(parent)
-{
-    initWaypointConversions();
-    connect(this, &QGeoCoordinateObject::coordinateChanged,
-            this, &QDeclarativeGeoWaypoint::waypointDetailsChanged);
-}
-
-QDeclarativeGeoWaypoint::~QDeclarativeGeoWaypoint()
-{
-
-}
-
-bool QDeclarativeGeoWaypoint::operator==(const QDeclarativeGeoWaypoint &other) const
-{
-    const QList<QDeclarativeGeoMapParameter *> params = quickChildren<QDeclarativeGeoMapParameter>();
-    const QList<QDeclarativeGeoMapParameter *> otherParams = other.quickChildren<QDeclarativeGeoMapParameter>();
-
-    return coordinate() == other.coordinate() &&
-           compareFloats(m_bearing, other.bearing()) &&
-           compareParameterList(params, otherParams);
-}
-
-/*!
-    \qmlproperty coordinate Waypoint::coordinate
-
-    The waypoint's coordinate. The default value is undefined.
-*/
-
-
-/*!
-    \qmlproperty real Waypoint::latitude
-
-    The latitude of the waypoint's coordinate. The default value is NaN.
-    Changing this property will affect the \l Waypoint::coordinate property as well.
-*/
-qreal QDeclarativeGeoWaypoint::latitude() const
-{
-    return m_coordinate.latitude();
-}
-
-void QDeclarativeGeoWaypoint::setLatitude(qreal latitude)
-{
-    if (compareFloats(latitude, m_coordinate.latitude()))
-        return;
-
-    m_coordinate.setLatitude(latitude);
-    if (m_complete) {
-        emit coordinateChanged();
-        emit waypointDetailsChanged();
-    }
-}
-
-/*!
-    \qmlproperty real Waypoint::longitude
-
-    The longitude of the waypoint's coordinate. The default value is NaN.
-    Changing this property will affect the \l Waypoint::coordinate property as well.
-*/
-qreal QDeclarativeGeoWaypoint::longitude() const
-{
-    return m_coordinate.longitude();
-}
-
-void QDeclarativeGeoWaypoint::setLongitude(qreal longitude)
-{
-    if (compareFloats(longitude, m_coordinate.longitude()))
-        return;
-
-    m_coordinate.setLongitude(longitude);
-    if (m_complete) {
-        emit coordinateChanged();
-        emit waypointDetailsChanged();
-    }
-}
-
-/*!
-    \qmlproperty real Waypoint::altitude
-
-    The altitude of the waypoint's coordinate. The default value is NaN.
-    Changing this property will affect the \l Waypoint::coordinate property as well.
-*/
-qreal QDeclarativeGeoWaypoint::altitude() const
-{
-    return m_coordinate.altitude();
-}
-
-void QDeclarativeGeoWaypoint::setAltitude(qreal altitude)
-{
-    if (compareFloats(altitude, m_coordinate.altitude()))
-        return;
-
-    m_coordinate.setAltitude(altitude);
-    if (m_complete) {
-        emit coordinateChanged();
-        emit waypointDetailsChanged();
-    }
-}
-
-bool QDeclarativeGeoWaypoint::isValid() const
-{
-    return m_coordinate.isValid();
-}
-
-/*!
-    \qmlproperty real Waypoint::bearing
-
-    The bearing specifying the angle of approach of the waypoint, that is the bearing with which the waypoint is to be approached.
-    This information may be used by the provider to filter the road segment the waypoint will be placed on, and,
-    depending on the provider and the \l {QGeoRouteRequest::TravelMode} {travel mode} used, to restrict the maneuvers
-    allowed at the waypoint, potentially making the provider calculating and returning a different route.
-
-    If set to NaN, this value will not be considered.
-
-    The default value is NaN.
-*/
-qreal QDeclarativeGeoWaypoint::bearing() const
-{
-    return m_bearing;
-}
-
-void QDeclarativeGeoWaypoint::setBearing(qreal bearing)
-{
-    if (compareFloats(bearing, m_bearing))
-        return;
-
-    m_bearing = bearing;
-
-    // Bearing is actually packed into QGeoRouteRequest::waypointMetadata() together with the extra parameters
-    m_metadataChanged = true;
-    if (m_complete) {
-        emit bearingChanged();
-        emit waypointDetailsChanged();
-    }
-}
-
-/*!
-    \qmlproperty VariantMap Waypoint::metadata
-    \readonly
-
-    The waypoint metadata. This property is read only. If the waypoint is
-    defined by the user, these can be set by using MapParameters.
-    If the waypoint comes from the engine via signals, or as part of a read-only route query,
-    the waypoint is intended to be read-only.
-*/
-QVariantMap QDeclarativeGeoWaypoint::metadata()
-{
-    if (m_metadataChanged) {
-        m_metadataChanged = false;
-        m_metadata.clear();
-        // Update metadata
-        const QList<QDeclarativeGeoMapParameter *> params = quickChildren<QDeclarativeGeoMapParameter>();
-        QVariantMap extraParameters;
-        for (const QDeclarativeGeoMapParameter *p: params)
-            extraParameters[p->type()] = p->toVariantMap();
-        m_metadata[QStringLiteral("extra")] = extraParameters;
-        m_metadata[QStringLiteral("bearing")] = m_bearing;
-    }
-    return m_metadata;
-}
-
-// Used only by QDeclarativeGeoRouteRequest
-void QDeclarativeGeoWaypoint::setMetadata(const QVariantMap &meta)
-{
-    m_metadata = meta;
-    if (m_metadata.contains(QStringLiteral("bearing")) && m_metadata.value(QStringLiteral("bearing")).canConvert<double>())
-        m_bearing = m_metadata.value(QStringLiteral("bearing")).toDouble();
-    m_metadataChanged = false;
-}
-
-void QDeclarativeGeoWaypoint::extraParameterChanged()
-{
-    m_metadataChanged = true;
-    if (m_complete) {
-        emit extraParametersChanged();
-        emit waypointDetailsChanged();
-    }
-}
-
-void QDeclarativeGeoWaypoint::append(QQmlListProperty<QObject> *p, QObject *v)
-{
-    QDeclarativeGeoWaypoint *waypoint = static_cast<QDeclarativeGeoWaypoint*>(p->object);
-    waypoint->m_children.append(v);
-
-    QDeclarativeGeoMapParameter *param = qobject_cast<QDeclarativeGeoMapParameter *>(v);
-    if (param) {
-        waypoint->connect(param, &QGeoMapParameter::propertyUpdated,
-                       waypoint, &QDeclarativeGeoWaypoint::extraParameterChanged);
-        waypoint->extraParameterChanged();
-    }
-}
-
-int QDeclarativeGeoWaypoint::count(QQmlListProperty<QObject> *p)
-{
-    return static_cast<QDeclarativeGeoWaypoint*>(p->object)->m_children.count();
-}
-
-QObject *QDeclarativeGeoWaypoint::at(QQmlListProperty<QObject> *p, int idx)
-{
-    return static_cast<QDeclarativeGeoWaypoint*>(p->object)->m_children.at(idx);
-}
-
-void QDeclarativeGeoWaypoint::clear(QQmlListProperty<QObject> *p)
-{
-    QDeclarativeGeoWaypoint *waypoint = static_cast<QDeclarativeGeoWaypoint*>(p->object);
-    for (auto kid : qAsConst(waypoint->m_children)) {
-        auto val = qobject_cast<QDeclarativeGeoMapParameter *>(kid);
-        if (val) {
-            val->disconnect(waypoint);
-            waypoint->m_metadataChanged = true;
-        }
-    }
-    waypoint->m_children.clear();
-    if (waypoint->m_metadataChanged && waypoint->m_complete) {
-        emit waypoint->extraParametersChanged();
-        emit waypoint->waypointDetailsChanged();
-    }
-}
-
-QQmlListProperty<QObject> QDeclarativeGeoWaypoint::declarativeChildren()
-{
-    return QQmlListProperty<QObject>(this, nullptr,
-                                     &QDeclarativeGeoWaypoint::append,
-                                     &QDeclarativeGeoWaypoint::count,
-                                     &QDeclarativeGeoWaypoint::at,
-                                     &QDeclarativeGeoWaypoint::clear);
 }
 
 QT_END_NAMESPACE

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,9 @@
 #include <string.h>
 
 #include "base/big_endian.h"
-#include "base/bind.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/stl_util.h"
-#include "base/task/post_task.h"
 #include "base/task/thread_pool.h"
 #include "content/public/browser/browser_thread.h"
 #include "third_party/zlib/zlib.h"
@@ -110,6 +108,9 @@ class WebRtcRtpDumpWriter::FileWorker {
     DCHECK_EQ(Z_OK, result);
   }
 
+  FileWorker(const FileWorker&) = delete;
+  FileWorker& operator=(const FileWorker&) = delete;
+
   ~FileWorker() {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
@@ -165,30 +166,20 @@ class WebRtcRtpDumpWriter::FileWorker {
       return 0;
     }
 
-    int bytes_written = -1;
+    bool success = false;
 
     if (base::PathExists(dump_path_)) {
-      bytes_written =
-          base::AppendToFile(dump_path_, reinterpret_cast<const char*>(
-                                             compressed_buffer.data()),
-                             compressed_buffer.size())
-              ? compressed_buffer.size()
-              : -1;
+      success = base::AppendToFile(dump_path_, compressed_buffer);
     } else {
-      bytes_written = base::WriteFile(
-          dump_path_,
-          reinterpret_cast<const char*>(&compressed_buffer[0]),
-          compressed_buffer.size());
+      success = base::WriteFile(dump_path_, compressed_buffer);
     }
 
-    if (bytes_written == -1) {
+    if (!success) {
       DVLOG(2) << "Writing file failed: " << dump_path_.value();
       *result = FLUSH_RESULT_FAILURE;
       return 0;
     }
-
-    DCHECK_EQ(static_cast<size_t>(bytes_written), compressed_buffer.size());
-    return bytes_written;
+    return compressed_buffer.size();
   }
 
   // Compresses |input| into |output|.
@@ -209,8 +200,8 @@ class WebRtcRtpDumpWriter::FileWorker {
 
     output->resize(output->size() - stream_.avail_out);
 
-    stream_.next_in = NULL;
-    stream_.next_out = NULL;
+    stream_.next_in = nullptr;
+    stream_.next_out = nullptr;
     stream_.avail_out = 0;
     return true;
   }
@@ -222,7 +213,7 @@ class WebRtcRtpDumpWriter::FileWorker {
     std::vector<uint8_t> output_buffer;
     output_buffer.resize(kMinimumGzipOutputBufferSize);
 
-    stream_.next_in = NULL;
+    stream_.next_in = nullptr;
     stream_.avail_in = 0;
     stream_.next_out = &output_buffer[0];
     stream_.avail_out = output_buffer.size();
@@ -238,9 +229,7 @@ class WebRtcRtpDumpWriter::FileWorker {
     memset(&stream_, 0, sizeof(z_stream));
 
     DCHECK(!output_buffer.empty());
-    return base::AppendToFile(
-        dump_path_, reinterpret_cast<const char*>(output_buffer.data()),
-        output_buffer.size());
+    return base::AppendToFile(dump_path_, output_buffer);
   }
 
   const base::FilePath dump_path_;
@@ -248,8 +237,6 @@ class WebRtcRtpDumpWriter::FileWorker {
   z_stream stream_;
 
   SEQUENCE_CHECKER(sequence_checker_);
-
-  DISALLOW_COPY_AND_ASSIGN(FileWorker);
 };
 
 WebRtcRtpDumpWriter::WebRtcRtpDumpWriter(
@@ -298,7 +285,7 @@ void WebRtcRtpDumpWriter::WriteRtpPacket(const uint8_t* packet_header,
 
     // Writes the dump file header.
     AppendToBuffer(kRtpDumpFileHeaderFirstLine,
-                   base::size(kRtpDumpFileHeaderFirstLine) - 1, dest_buffer);
+                   std::size(kRtpDumpFileHeaderFirstLine) - 1, dest_buffer);
     WriteRtpDumpFileHeaderBigEndian(start_time_, dest_buffer);
   }
 

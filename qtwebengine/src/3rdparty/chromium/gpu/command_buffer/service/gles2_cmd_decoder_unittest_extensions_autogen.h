@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,16 +11,6 @@
 // It is included by gles2_cmd_decoder_unittest_extensions.cc
 #ifndef GPU_COMMAND_BUFFER_SERVICE_GLES2_CMD_DECODER_UNITTEST_EXTENSIONS_AUTOGEN_H_
 #define GPU_COMMAND_BUFFER_SERVICE_GLES2_CMD_DECODER_UNITTEST_EXTENSIONS_AUTOGEN_H_
-
-TEST_P(GLES2DecoderTestWithCHROMIUMFramebufferMixedSamples,
-       CoverageModulationCHROMIUMValidArgs) {
-  EXPECT_CALL(*gl_, CoverageModulationNV(GL_RGB));
-  SpecializedSetup<cmds::CoverageModulationCHROMIUM, 0>(true);
-  cmds::CoverageModulationCHROMIUM cmd;
-  cmd.Init(GL_RGB);
-  EXPECT_EQ(error::kNoError, ExecuteCmd(cmd));
-  EXPECT_EQ(GL_NO_ERROR, GetGLError());
-}
 
 TEST_P(GLES2DecoderTestWithBlendEquationAdvanced, BlendBarrierKHRValidArgs) {
   EXPECT_CALL(*gl_, BlendBarrierKHR());

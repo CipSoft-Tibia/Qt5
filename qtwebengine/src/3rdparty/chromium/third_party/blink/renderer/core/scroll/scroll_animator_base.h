@@ -35,14 +35,12 @@
 #include "third_party/blink/renderer/core/scroll/scroll_animator_compositor_coordinator.h"
 #include "third_party/blink/renderer/core/scroll/scroll_types.h"
 #include "third_party/blink/renderer/core/scroll/scrollable_area.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 
 namespace blink {
 
-class CompositorAnimationTimeline;
 class ScrollableArea;
-class Scrollbar;
 
 // ScrollAnimatorBase is the common base class for all user scroll animators.
 // Every scrollable area has a lazily-created animator for user-input scrolls
@@ -59,15 +57,13 @@ class CORE_EXPORT ScrollAnimatorBase
   explicit ScrollAnimatorBase(ScrollableArea*);
   ~ScrollAnimatorBase() override;
 
-  virtual void Dispose() {}
-
   // A possibly animated scroll. The base class implementation always scrolls
   // immediately, never animates. If the scroll is animated and currently the
   // animator has an in-progress animation, the ScrollResult will always return
   // no unusedDelta and didScroll=true, i.e. fully consuming the scroll request.
   // This makes animations latch to a single scroller. Note, the semantics are
   // currently somewhat different on Mac - see ScrollAnimatorMac.mm.
-  virtual ScrollResult UserScroll(ScrollGranularity,
+  virtual ScrollResult UserScroll(ui::ScrollGranularity,
                                   const ScrollOffset& delta,
                                   ScrollableArea::ScrollCallback on_finish);
 
@@ -81,46 +77,23 @@ class CORE_EXPORT ScrollAnimatorBase
   // area.
   virtual ScrollOffset ComputeDeltaToConsume(const ScrollOffset& delta) const;
 
+  virtual void AdjustAnimation(const gfx::Vector2d& adjustment) {}
+
   // ScrollAnimatorCompositorCoordinator implementation.
   ScrollableArea* GetScrollableArea() const override {
     return scrollable_area_;
   }
-  void TickAnimation(double monotonic_time) override {}
+  void TickAnimation(base::TimeTicks monotonic_time) override {}
   void CancelAnimation() override {}
   void TakeOverCompositorAnimation() override {}
   void UpdateCompositorAnimations() override {}
   void NotifyCompositorAnimationFinished(int group_id) override {}
   void NotifyCompositorAnimationAborted(int group_id) override {}
-  void LayerForCompositedScrollingDidChange(
-      CompositorAnimationTimeline*) override {}
-
-  virtual void ContentAreaWillPaint() const {}
-  virtual void MouseEnteredContentArea() const {}
-  virtual void MouseExitedContentArea() const {}
-  virtual void MouseMovedInContentArea() const {}
-  virtual void MouseEnteredScrollbar(Scrollbar&) const {}
-  virtual void MouseExitedScrollbar(Scrollbar&) const {}
-  virtual void ContentsResized() const {}
-  virtual void ContentAreaDidShow() const {}
-  virtual void ContentAreaDidHide() const {}
-
-  virtual void FinishCurrentScrollAnimations() {}
-
-  virtual void DidAddVerticalScrollbar(Scrollbar&) {}
-  virtual void WillRemoveVerticalScrollbar(Scrollbar&) {}
-  virtual void DidAddHorizontalScrollbar(Scrollbar&) {}
-  virtual void WillRemoveHorizontalScrollbar(Scrollbar&) {}
-
-  virtual void NotifyContentAreaScrolled(const ScrollOffset&,
-                                         mojom::blink::ScrollType) {}
-
-  virtual bool SetScrollbarsVisibleForTesting(bool) { return false; }
+  void MainThreadScrollingDidChange() override {}
 
   void Trace(Visitor*) const override;
 
  protected:
-  virtual void NotifyOffsetChanged();
-
   Member<ScrollableArea> scrollable_area_;
 
   ScrollOffset current_offset_;

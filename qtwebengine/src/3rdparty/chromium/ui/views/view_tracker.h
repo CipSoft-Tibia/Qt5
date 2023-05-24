@@ -1,11 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_VIEWS_VIEW_TRACKER_H_
 #define UI_VIEWS_VIEW_TRACKER_H_
 
-#include "base/scoped_observer.h"
+#include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
 #include "ui/views/view.h"
 #include "ui/views/view_observer.h"
 #include "ui/views/views_export.h"
@@ -21,14 +22,15 @@ class VIEWS_EXPORT ViewTracker : public ViewObserver {
 
   void SetView(View* view);
   View* view() { return view_; }
+  const View* view() const { return view_; }
 
   // ViewObserver:
   void OnViewIsDeleting(View* observed_view) override;
 
  private:
-  View* view_ = nullptr;
+  raw_ptr<View> view_ = nullptr;
 
-  ScopedObserver<View, ViewObserver> observer_{this};
+  base::ScopedObservation<View, ViewObserver> observation_{this};
 };
 
 }  // namespace views

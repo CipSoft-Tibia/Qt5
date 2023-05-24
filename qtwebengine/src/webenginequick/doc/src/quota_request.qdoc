@@ -1,0 +1,36 @@
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+/*!
+    \qmltype QuotaRequest
+    \instantiates QWebEngineQuotaRequest
+    \inqmlmodule QtWebEngine
+    \since QtWebEngine 1.7
+    \deprecated [6.5] Requesting host quota is no longer supported by Chromium.
+
+    The behavior of navigator.webkitPersistentStorage
+    is identical to navigator.webkitTemporaryStorage.
+
+    For further details, see https://crbug.com/1233525
+
+    \sa WebEngineView::quotaRequested()
+*/
+
+/*!
+    \qmlproperty url QuotaRequest::origin
+    \readonly
+*/
+
+/*!
+    \qmlproperty qint64 QuotaRequest::requestedSize
+    \readonly
+*/
+
+/*!
+    \qmlmethod void QuotaRequest::accept()
+*/
+
+/*!
+    \qmlmethod void QuotaRequest::reject()
+*/
+

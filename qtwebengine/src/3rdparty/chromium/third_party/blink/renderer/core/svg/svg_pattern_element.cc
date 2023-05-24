@@ -24,17 +24,14 @@
 
 #include "third_party/blink/renderer/core/css/style_change_reason.h"
 #include "third_party/blink/renderer/core/dom/element_traversal.h"
+#include "third_party/blink/renderer/core/dom/id_target_observer.h"
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_resource_pattern.h"
-#include "third_party/blink/renderer/core/layout/svg/svg_resources.h"
-#include "third_party/blink/renderer/core/layout/svg/svg_resources_cache.h"
 #include "third_party/blink/renderer/core/svg/pattern_attributes.h"
 #include "third_party/blink/renderer/core/svg/svg_animated_length.h"
 #include "third_party/blink/renderer/core/svg/svg_animated_preserve_aspect_ratio.h"
 #include "third_party/blink/renderer/core/svg/svg_animated_rect.h"
 #include "third_party/blink/renderer/core/svg/svg_animated_transform_list.h"
-#include "third_party/blink/renderer/core/svg/svg_resource.h"
-#include "third_party/blink/renderer/core/svg/svg_tree_scope_resources.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/transforms/affine_transform.h"
 
 namespace blink {
@@ -95,7 +92,7 @@ void SVGPatternElement::Trace(Visitor* visitor) const {
   visitor->Trace(pattern_transform_);
   visitor->Trace(pattern_units_);
   visitor->Trace(pattern_content_units_);
-  visitor->Trace(resource_);
+  visitor->Trace(target_id_observer_);
   SVGElement::Trace(visitor);
   SVGURIReference::Trace(visitor);
   SVGTests::Trace(visitor);
@@ -106,24 +103,16 @@ void SVGPatternElement::BuildPendingResource() {
   ClearResourceReferences();
   if (!isConnected())
     return;
-  TreeScope& tree_scope = GetTreeScope();
-  SVGTreeScopeResources& tree_scope_resources =
-      tree_scope.EnsureSVGTreeScopedResources();
-  resource_ = tree_scope_resources.ResourceForId(
-      FragmentIdentifierFromIRIString(HrefString(), tree_scope));
-  if (resource_)
-    resource_->AddClient(EnsureSVGResourceClient());
+  Element* target = ObserveTarget(target_id_observer_, *this);
+  if (auto* pattern = DynamicTo<SVGPatternElement>(target))
+    AddReferenceTo(pattern);
 
   InvalidatePattern(layout_invalidation_reason::kSvgResourceInvalidated);
-  if (auto* layout_object = GetLayoutObject())
-    SVGResourcesCache::ResourceReferenceChanged(*layout_object);
 }
 
 void SVGPatternElement::ClearResourceReferences() {
-  if (!resource_)
-    return;
-  resource_->RemoveClient(*GetSVGResourceClient());
-  resource_ = nullptr;
+  UnobserveTarget(target_id_observer_);
+  RemoveAllOutgoingReferences();
 }
 
 void SVGPatternElement::CollectStyleForPresentationAttribute(
@@ -139,7 +128,9 @@ void SVGPatternElement::CollectStyleForPresentationAttribute(
   SVGElement::CollectStyleForPresentationAttribute(name, value, style);
 }
 
-void SVGPatternElement::SvgAttributeChanged(const QualifiedName& attr_name) {
+void SVGPatternElement::SvgAttributeChanged(
+    const SvgAttributeChangedParams& params) {
+  const QualifiedName& attr_name = params.name;
   bool is_length_attr =
       attr_name == svg_names::kXAttr || attr_name == svg_names::kYAttr ||
       attr_name == svg_names::kWidthAttr || attr_name == svg_names::kHeightAttr;
@@ -170,7 +161,7 @@ void SVGPatternElement::SvgAttributeChanged(const QualifiedName& attr_name) {
     return;
   }
 
-  SVGElement::SvgAttributeChanged(attr_name);
+  SVGElement::SvgAttributeChanged(params);
 }
 
 Node::InsertionNotificationRequest SVGPatternElement::InsertedInto(
@@ -196,13 +187,22 @@ void SVGPatternElement::ChildrenChanged(const ChildrenChange& change) {
 
 void SVGPatternElement::InvalidatePattern(
     LayoutInvalidationReasonForTracing reason) {
-  if (auto* layout_object = ToLayoutSVGResourceContainer(GetLayoutObject()))
+  if (auto* layout_object = To<LayoutSVGResourceContainer>(GetLayoutObject()))
     layout_object->InvalidateCacheAndMarkForLayout(reason);
+}
+
+void SVGPatternElement::InvalidateDependentPatterns() {
+  NotifyIncomingReferences([](SVGElement& element) {
+    if (auto* pattern = DynamicTo<SVGPatternElement>(element)) {
+      pattern->InvalidatePattern(
+          layout_invalidation_reason::kSvgResourceInvalidated);
+    }
+  });
 }
 
 LayoutObject* SVGPatternElement::CreateLayoutObject(const ComputedStyle&,
                                                     LegacyLayout) {
-  return new LayoutSVGResourcePattern(this);
+  return MakeGarbageCollected<LayoutSVGResourcePattern>(this);
 }
 
 static void SetPatternAttributes(const SVGPatternElement& element,
@@ -220,7 +220,7 @@ static void SetPatternAttributes(const SVGPatternElement& element,
     attributes.SetHeight(element.height()->CurrentValue());
 
   if (!attributes.HasViewBox() && element.HasValidViewBox())
-    attributes.SetViewBox(element.viewBox()->CurrentValue()->Value());
+    attributes.SetViewBox(element.viewBox()->CurrentValue()->Rect());
 
   if (!attributes.HasPreserveAspectRatio() &&
       element.preserveAspectRatio()->IsSpecified()) {
@@ -246,19 +246,19 @@ static void SetPatternAttributes(const SVGPatternElement& element,
 
   if (!attributes.HasPatternContentElement() &&
       ElementTraversal::FirstWithin(element))
-    attributes.SetPatternContentElement(&element);
+    attributes.SetPatternContentElement(element);
 }
 
 const SVGPatternElement* SVGPatternElement::ReferencedElement() const {
-  return DynamicTo<SVGPatternElement>(resource_ ? resource_->Target()
-                                                : nullptr);
+  return DynamicTo<SVGPatternElement>(
+      TargetElementFromIRIString(HrefString(), GetTreeScope()));
 }
 
-void SVGPatternElement::CollectPatternAttributes(
-    PatternAttributes& attributes) const {
+PatternAttributes SVGPatternElement::CollectPatternAttributes() const {
   HeapHashSet<Member<const SVGPatternElement>> processed_patterns;
   const SVGPatternElement* current = this;
 
+  PatternAttributes attributes;
   while (true) {
     SetPatternAttributes(*current, attributes);
     processed_patterns.insert(current);
@@ -274,6 +274,30 @@ void SVGPatternElement::CollectPatternAttributes(
     if (processed_patterns.Contains(current))
       break;
   }
+
+  // Fill out any ("complex") empty fields with values from this element (where
+  // these values should equal the initial values).
+  if (!attributes.HasX()) {
+    attributes.SetX(x()->CurrentValue());
+  }
+  if (!attributes.HasY()) {
+    attributes.SetY(y()->CurrentValue());
+  }
+  if (!attributes.HasWidth()) {
+    attributes.SetWidth(width()->CurrentValue());
+  }
+  if (!attributes.HasHeight()) {
+    attributes.SetHeight(height()->CurrentValue());
+  }
+  if (!attributes.HasPreserveAspectRatio()) {
+    attributes.SetPreserveAspectRatio(preserveAspectRatio()->CurrentValue());
+  }
+  DCHECK(attributes.X());
+  DCHECK(attributes.Y());
+  DCHECK(attributes.Width());
+  DCHECK(attributes.Height());
+  DCHECK(attributes.PreserveAspectRatio());
+  return attributes;
 }
 
 AffineTransform SVGPatternElement::LocalCoordinateSpaceTransform(

@@ -30,36 +30,35 @@ namespace proto_to_json {
 
 namespace {
 
-std::string EscapeJsonString(const std::string& raw) {
+std::string QuoteAndEscapeJsonString(const std::string& raw) {
   std::string ret;
   for (auto it = raw.cbegin(); it != raw.cend(); it++) {
-    switch (*it) {
-      case '\\':
-        ret += "\\\\";
-        break;
+    char c = *it;
+    switch (c) {
       case '"':
+        // Double quote needs to be escaped.
         ret += "\\\"";
         break;
-      case '/':
-        ret += "\\/";
-        break;
-      case '\b':
-        ret += "\\b";
-        break;
-      case '\f':
-        ret += "\\f";
-        break;
       case '\n':
+        // Escape new line specially because it appears often and so is worth
+        // treating specially.
         ret += "\\n";
         break;
-      case '\r':
-        ret += "\\r";
-        break;
-      case '\t':
-        ret += "\\t";
-        break;
       default:
-        ret += *it;
+        if (c < 0x20) {
+          // All 32 ASCII control codes need to be escaped. Instead of using the
+          // short forms, we just always use \u escape sequences instead to make
+          // things simpler.
+          ret += "\\u00";
+
+          // Print |c| as a hex character. We reserve 3 bytes of space: 2 for
+          // the hex code and one for the null terminator.
+          base::StackString<3> buf("%02X", c);
+          ret += buf.c_str();
+        } else {
+          // Everything else can be passed through directly.
+          ret += c;
+        }
         break;
     }
   }
@@ -80,7 +79,7 @@ std::string FieldToJson(const google::protobuf::Message& message,
                                 ? ref->GetRepeatedBool(message, field_desc, idx)
                                 : ref->GetBool(message, field_desc));
     case FieldDescriptor::CppType::CPPTYPE_ENUM:
-      return EscapeJsonString(
+      return QuoteAndEscapeJsonString(
           is_repeated ? ref->GetRepeatedEnum(message, field_desc, idx)->name()
                       : ref->GetEnum(message, field_desc)->name());
     case FieldDescriptor::CppType::CPPTYPE_FLOAT:
@@ -102,7 +101,7 @@ std::string FieldToJson(const google::protobuf::Message& message,
           is_repeated ? ref->GetRepeatedDouble(message, field_desc, idx)
                       : ref->GetDouble(message, field_desc));
     case FieldDescriptor::CppType::CPPTYPE_STRING:
-      return EscapeJsonString(
+      return QuoteAndEscapeJsonString(
           is_repeated ? ref->GetRepeatedString(message, field_desc, idx)
                       : ref->GetString(message, field_desc));
     case FieldDescriptor::CppType::CPPTYPE_UINT32:
@@ -229,12 +228,12 @@ class OptionsConverter {
       }
       std::string nested_fields =
           NestedMessageFieldOptionsToJson(message, field_desc, indent + 2);
-      if (nested_fields != "") {
+      if (!nested_fields.empty()) {
         field_entries.push_back(std::move(nested_fields));
       }
       // We don't output annotations for a field if that field and all its
       // descendants have no field options.
-      if (field_entries.size() > 0) {
+      if (!field_entries.empty()) {
         if (field_desc->is_repeated()) {
           field_entries.push_back(std::string(indent, ' ') +
                                   R"("__repeated": true)");
@@ -309,13 +308,13 @@ std::string MessageToJsonWithAnnotations(
   ret = "{" + MessageFieldsToJson(message, indent + 2);
   std::string annotation_fields =
       options_converter.MessageFieldOptionsToJson(message, indent + 4);
-  if (annotation_fields != "") {
+  if (annotation_fields.empty()) {
+    ret += "\n";
+  } else {
     ret += ",\n";
     ret += std::string(indent + 2, ' ') + "\"__annotations\": {\n";
     ret += annotation_fields + "\n";
     ret += std::string(indent + 2, ' ') + "}\n";
-  } else {
-    ret += "\n";
   }
   ret += std::string(indent, ' ') + "}\n";
   return ret;

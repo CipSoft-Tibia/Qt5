@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,8 +24,6 @@ enum PrivateRegistryFilter {
 };
 
 PLATFORM_EXPORT bool IsReservedIPAddress(const String& host);
-
-PLATFORM_EXPORT bool IsLocalHostname(const String& host, bool* is_local6);
 
 PLATFORM_EXPORT String GetDomainAndRegistry(const String& host,
                                             PrivateRegistryFilter);

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,11 +9,11 @@
 #include <memory>
 #include <set>
 
-#include "base/macros.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/tracing/perfetto_task_runner.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "mojo/public/cpp/bindings/unique_receiver_set.h"
 #include "services/tracing/perfetto/consumer_host.h"
-#include "services/tracing/public/cpp/perfetto/task_runner.h"
 #include "services/tracing/public/mojom/perfetto_service.mojom.h"
 
 namespace perfetto {
@@ -30,6 +30,10 @@ class PerfettoService : public mojom::PerfettoService {
  public:
   explicit PerfettoService(scoped_refptr<base::SequencedTaskRunner>
                                task_runner_for_testing = nullptr);
+
+  PerfettoService(const PerfettoService&) = delete;
+  PerfettoService& operator=(const PerfettoService&) = delete;
+
   ~PerfettoService() override;
 
   static PerfettoService* GetInstance();
@@ -43,7 +47,7 @@ class PerfettoService : public mojom::PerfettoService {
   void ConnectToProducerHost(
       mojo::PendingRemote<mojom::ProducerClient> producer_client,
       mojo::PendingReceiver<mojom::ProducerHost> producer_host_receiver,
-      mojo::ScopedSharedBufferHandle shared_memory,
+      base::UnsafeSharedMemoryRegion shared_memory,
       uint64_t shared_memory_buffer_page_size_bytes) override;
 
   perfetto::TracingService* GetService() const;
@@ -68,6 +72,7 @@ class PerfettoService : public mojom::PerfettoService {
   void SetActiveServicePidsInitialized();
 
   std::set<base::ProcessId> active_service_pids() const {
+    base::AutoLock lock(active_service_pids_lock_);
     return active_service_pids_;
   }
 
@@ -75,7 +80,9 @@ class PerfettoService : public mojom::PerfettoService {
     return active_service_pids_initialized_;
   }
 
-  PerfettoTaskRunner* perfetto_task_runner() { return &perfetto_task_runner_; }
+  base::tracing::PerfettoTaskRunner* perfetto_task_runner() {
+    return &perfetto_task_runner_;
+  }
 
  private:
   void BindOnSequence(mojo::PendingReceiver<mojom::PerfettoService> receiver);
@@ -84,16 +91,19 @@ class PerfettoService : public mojom::PerfettoService {
   void OnServiceDisconnect();
   void OnDisconnectFromProcess(base::ProcessId pid);
 
-  PerfettoTaskRunner perfetto_task_runner_;
+  base::tracing::PerfettoTaskRunner perfetto_task_runner_;
   std::unique_ptr<perfetto::TracingService> service_;
   mojo::ReceiverSet<mojom::PerfettoService, uint32_t> receivers_;
   mojo::UniqueReceiverSet<mojom::ProducerHost, uint32_t> producer_receivers_;
   std::set<ConsumerHost::TracingSession*> tracing_sessions_;  // Not owned.
-  std::set<base::ProcessId> active_service_pids_;
+  // Protects access to |active_service_pids_|. We need this lock because
+  // CustomEventRecorder calls active_service_pids() from a possibly different
+  // thread on incremental state reset.
+  mutable base::Lock active_service_pids_lock_;
+  std::set<base::ProcessId> active_service_pids_
+      GUARDED_BY(active_service_pids_lock_);
   std::map<base::ProcessId, int> num_active_connections_;
   bool active_service_pids_initialized_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(PerfettoService);
 };
 
 }  // namespace tracing

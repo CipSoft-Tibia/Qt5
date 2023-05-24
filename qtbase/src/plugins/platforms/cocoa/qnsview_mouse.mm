@@ -1,43 +1,39 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // This file is included from qnsview.mm, and only used to organize the code
+
+using namespace Qt::StringLiterals;
+
+static const QPointingDevice *pointingDeviceFor(qint64 deviceID)
+{
+    // macOS will in many cases not report a deviceID (0 value).
+    // We can't pass this on directly, as the QInputDevicePrivate
+    // constructor will treat this as a request to assign a new Id.
+    // Instead we use the default Id of the primary pointing device.
+    static const int kDefaultPrimaryPointingDeviceId = 1;
+    if (!deviceID)
+        deviceID = kDefaultPrimaryPointingDeviceId;
+
+    if (const auto *device = QPointingDevicePrivate::pointingDeviceById(deviceID))
+        return device; // All good, already have the device registered
+
+    const auto *primaryDevice = QPointingDevice::primaryPointingDevice();
+    if (primaryDevice->systemId() == kDefaultPrimaryPointingDeviceId) {
+        // Adopt existing primary device instead of creating a new one
+        QPointingDevicePrivate::get(const_cast<QPointingDevice *>(primaryDevice))->systemId = deviceID;
+        qCDebug(lcInputDevices) << "primaryPointingDevice is now" << primaryDevice;
+        return primaryDevice;
+    } else {
+        // Register a new device. Name and capabilities may need updating later.
+        const auto *device = new QPointingDevice("mouse"_L1, deviceID,
+            QInputDevice::DeviceType::Mouse, QPointingDevice::PointerType::Generic,
+            QInputDevice::Capability::Scroll | QInputDevice::Capability::Position,
+            1, 3, QString(), QPointingDeviceUniqueId(), QCocoaIntegration::instance());
+        QWindowSystemInterface::registerInputDevice(device);
+        return device;
+    }
+}
 
 /*
     The reason for using this helper is to ensure that QNSView doesn't implement
@@ -93,9 +89,53 @@
 
 - (void)resetMouseButtons
 {
-    qCDebug(lcQpaMouse) << "Reseting mouse buttons";
+    qCDebug(lcQpaMouse) << "Resetting mouse buttons";
     m_buttons = Qt::NoButton;
     m_frameStrutButtons = Qt::NoButton;
+}
+
+- (void)handleMouseEvent:(NSEvent *)theEvent
+{
+    if (!m_platformWindow)
+        return;
+
+#ifndef QT_NO_TABLETEVENT
+    // Tablet events may come in via the mouse event handlers,
+    // check if this is a valid tablet event first.
+    if ([self handleTabletEvent: theEvent])
+        return;
+#endif
+
+    QPointF qtWindowPoint;
+    QPointF qtScreenPoint;
+    QNSView *targetView = self;
+    if (!targetView.platformWindow)
+        return;
+
+
+    [targetView convertFromScreen:[self screenMousePoint:theEvent] toWindowPoint:&qtWindowPoint andScreenPoint:&qtScreenPoint];
+    ulong timestamp = [theEvent timestamp] * 1000;
+
+    QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
+    nativeDrag->setLastMouseEvent(theEvent, self);
+
+    const auto modifiers = QAppleKeyMapper::fromCocoaModifiers(theEvent.modifierFlags);
+    auto button = cocoaButton2QtButton(theEvent);
+    if (button == Qt::LeftButton && m_sendUpAsRightButton)
+        button = Qt::RightButton;
+    const auto eventType = cocoaEvent2QtMouseEvent(theEvent);
+
+    const QPointingDevice *device = pointingDeviceFor(theEvent.deviceID);
+    Q_ASSERT(device);
+
+    if (eventType == QEvent::MouseMove)
+        qCDebug(lcQpaMouse) << eventType << "at" << qtWindowPoint << "with" << m_buttons;
+    else
+        qCInfo(lcQpaMouse) << eventType << "of" << button << "at" << qtWindowPoint << "with" << m_buttons;
+
+    QWindowSystemInterface::handleMouseEvent(targetView->m_platformWindow->window(),
+                                             timestamp, qtWindowPoint, qtScreenPoint,
+                                             m_buttons, button, eventType, modifiers);
 }
 
 - (void)handleFrameStrutMouseEvent:(NSEvent *)theEvent
@@ -169,54 +209,20 @@
         case NSEventTypeOtherMouseUp:
             return QEvent::NonClientAreaMouseButtonRelease;
 
+        case NSEventTypeMouseMoved:
         case NSEventTypeLeftMouseDragged:
         case NSEventTypeRightMouseDragged:
         case NSEventTypeOtherMouseDragged:
             return QEvent::NonClientAreaMouseMove;
 
         default:
-            break;
+            Q_UNREACHABLE();
         }
-
-        return QEvent::None;
     }();
 
     qCInfo(lcQpaMouse) << eventType << "at" << qtWindowPoint << "with" << m_frameStrutButtons << "in" << self.window;
-    QWindowSystemInterface::handleFrameStrutMouseEvent(m_platformWindow->window(),
+    QWindowSystemInterface::handleMouseEvent(m_platformWindow->window(),
         timestamp, qtWindowPoint, qtScreenPoint, m_frameStrutButtons, button, eventType);
-}
-
-- (bool)closePopups:(NSEvent *)theEvent
-{
-    QList<QCocoaWindow *> *popups = QCocoaIntegration::instance()->popupWindowStack();
-    if (!popups->isEmpty()) {
-        // Check if the click is outside all popups.
-        bool inside = false;
-        QPointF qtScreenPoint = QCocoaScreen::mapFromNative([self screenMousePoint:theEvent]);
-        for (QList<QCocoaWindow *>::const_iterator it = popups->begin(); it != popups->end(); ++it) {
-            if ((*it)->geometry().contains(qtScreenPoint.toPoint())) {
-                inside = true;
-                break;
-            }
-        }
-        // Close the popups if the click was outside.
-        if (!inside) {
-            bool selfClosed = false;
-            Qt::WindowType type = QCocoaIntegration::instance()->activePopupWindow()->window()->type();
-            while (QCocoaWindow *popup = QCocoaIntegration::instance()->popPopupWindow()) {
-                selfClosed = self == popup->view();
-                QWindowSystemInterface::handleCloseEvent(popup->window());
-                QWindowSystemInterface::flushWindowSystemEvents();
-                if (!m_platformWindow)
-                    return true; // Bail out if window was destroyed
-            }
-            // Consume the mouse event when closing the popup, except for tool tips
-            // were it's expected that the event is processed normally.
-            if (type != Qt::ToolTip || selfClosed)
-                 return true;
-        }
-    }
-    return false;
 }
 @end
 
@@ -237,8 +243,13 @@
 
     m_mouseMoveHelper = [[QNSViewMouseMoveHelper alloc] initWithView:self];
 
-    NSUInteger trackingOptions = NSTrackingActiveInActiveApp
-        | NSTrackingMouseEnteredAndExited | NSTrackingCursorUpdate;
+    NSUInteger trackingOptions = NSTrackingCursorUpdate | NSTrackingMouseEnteredAndExited;
+
+    // Ideally we should have used NSTrackingActiveInActiveApp, but that
+    // fails when the application is deactivated from using e.g cmd+tab, and later
+    // reactivated again from a mouse click. So as a work-around we use NSTrackingActiveAlways
+    // instead, and simply ignore any related callbacks while the application is inactive.
+    trackingOptions |= NSTrackingActiveAlways;
 
     // Ideally, NSTrackingMouseMoved should be turned on only if QWidget::mouseTracking
     // is enabled, hover is on, or a tool tip is set. Unfortunately, Qt will send "tooltip"
@@ -259,7 +270,7 @@
 
 - (BOOL)acceptsFirstMouse:(NSEvent *)theEvent
 {
-    Q_UNUSED(theEvent)
+    Q_UNUSED(theEvent);
     if (!m_platformWindow)
         return NO;
     if ([self isTransparentForUserInput])
@@ -267,8 +278,6 @@
     QPointF windowPoint;
     QPointF screenPoint;
     [self convertFromScreen:[NSEvent mouseLocation] toWindowPoint: &windowPoint andScreenPoint: &screenPoint];
-    if (!qt_window_private(m_platformWindow->window())->allowClickThrough(screenPoint.toPoint()))
-        return NO;
     return YES;
 }
 
@@ -289,56 +298,6 @@
     return screenPoint;
 }
 
-- (void)handleMouseEvent:(NSEvent *)theEvent
-{
-    if (!m_platformWindow)
-        return;
-
-#ifndef QT_NO_TABLETEVENT
-    // Tablet events may come in via the mouse event handlers,
-    // check if this is a valid tablet event first.
-    if ([self handleTabletEvent: theEvent])
-        return;
-#endif
-
-    QPointF qtWindowPoint;
-    QPointF qtScreenPoint;
-    QNSView *targetView = self;
-    if (!targetView.platformWindow)
-        return;
-
-    // Popups implicitly grap mouse events; forward to the active popup if there is one
-    if (QCocoaWindow *popup = QCocoaIntegration::instance()->activePopupWindow()) {
-        // Tooltips must be transparent for mouse events
-        // The bug reference is QTBUG-46379
-        if (!popup->window()->flags().testFlag(Qt::ToolTip)) {
-            if (QNSView *popupView = qnsview_cast(popup->view()))
-                targetView = popupView;
-        }
-    }
-
-    [targetView convertFromScreen:[self screenMousePoint:theEvent] toWindowPoint:&qtWindowPoint andScreenPoint:&qtScreenPoint];
-    ulong timestamp = [theEvent timestamp] * 1000;
-
-    QCocoaDrag* nativeDrag = QCocoaIntegration::instance()->drag();
-    nativeDrag->setLastMouseEvent(theEvent, self);
-
-    const auto modifiers = [QNSView convertKeyModifiers:theEvent.modifierFlags];
-    auto button = cocoaButton2QtButton(theEvent);
-    if (button == Qt::LeftButton && m_sendUpAsRightButton)
-        button = Qt::RightButton;
-    const auto eventType = cocoaEvent2QtMouseEvent(theEvent);
-
-    if (eventType == QEvent::MouseMove)
-        qCDebug(lcQpaMouse) << eventType << "at" << qtWindowPoint << "with" << m_buttons;
-    else
-        qCInfo(lcQpaMouse) << eventType << "of" << button << "at" << qtWindowPoint << "with" << m_buttons;
-
-    QWindowSystemInterface::handleMouseEvent(targetView->m_platformWindow->window(),
-                                             timestamp, qtWindowPoint, qtScreenPoint,
-                                             m_buttons, button, eventType, modifiers);
-}
-
 - (bool)handleMouseDownEvent:(NSEvent *)theEvent
 {
     if ([self isTransparentForUserInput])
@@ -352,7 +311,7 @@
     Q_UNUSED(qtScreenPoint);
 
     // Maintain masked state for the button for use by MouseDragged and MouseUp.
-    QRegion mask = m_platformWindow->window()->mask();
+    QRegion mask = QHighDpi::toNativeLocalPosition(m_platformWindow->window()->mask(), m_platformWindow->window());
     const bool masked = !mask.isEmpty() && !mask.contains(qtWindowPoint.toPoint());
     if (masked)
         m_acceptedMouseDowns &= ~button;
@@ -416,22 +375,12 @@
         return [super mouseDown:theEvent];
     m_sendUpAsRightButton = false;
 
-    // Handle any active poup windows; clicking outisde them should close them
-    // all. Don't do anything or clicks inside one of the menus, let Cocoa
-    // handle that case. Note that in practice many windows of the Qt::Popup type
-    // will actually close themselves in this case using logic implemented in
-    // that particular poup type (for example context menus). However, Qt expects
-    // that plain popup QWindows will also be closed, so we implement the logic
-    // here as well.
-    if ([self closePopups:theEvent])
-        return;
-
     QPointF qtWindowPoint;
     QPointF qtScreenPoint;
     [self convertFromScreen:[self screenMousePoint:theEvent] toWindowPoint:&qtWindowPoint andScreenPoint:&qtScreenPoint];
     Q_UNUSED(qtScreenPoint);
 
-    QRegion mask = m_platformWindow->window()->mask();
+    QRegion mask = QHighDpi::toNativeLocalPosition(m_platformWindow->window()->mask(), m_platformWindow->window());
     const bool masked = !mask.isEmpty() && !mask.contains(qtWindowPoint.toPoint());
     // Maintain masked state for the button for use by MouseDragged and Up.
     if (masked)
@@ -445,18 +394,35 @@
         return;
     }
 
-    if ([self hasMarkedText]) {
-        [[NSTextInputContext currentInputContext] handleEvent:theEvent];
-    } else {
-        auto ctrlOrMetaModifier = qApp->testAttribute(Qt::AA_MacDontSwapCtrlAndMeta) ? Qt::ControlModifier : Qt::MetaModifier;
-        if (!m_dontOverrideCtrlLMB && [QNSView convertKeyModifiers:[theEvent modifierFlags]] & ctrlOrMetaModifier) {
-            m_buttons |= Qt::RightButton;
-            m_sendUpAsRightButton = true;
-        } else {
-            m_buttons |= Qt::LeftButton;
+    // FIXME: AppKit transfers first responder to the view before calling mouseDown,
+    // whereas we only transfer focus once the mouse press is delivered, which means
+    // on first click the focus item won't be the correct one when transferring focus.
+    auto *focusObject = m_platformWindow->window()->focusObject();
+    if (queryInputMethod(focusObject)) {
+        // Input method is enabled. Pass on to the input context if we
+        // are hitting the input item.
+        if (QPlatformInputContext::inputItemClipRectangle().contains(qtWindowPoint)) {
+            qCDebug(lcQpaInputMethods) << "Asking input context to handle mouse press"
+                << "for focus object" << focusObject;
+            if ([NSTextInputContext.currentInputContext handleEvent:theEvent]) {
+                // NSTextView bails out if the input context handled the event,
+                // which is e.g. the case for 2-Set Korean input. We follow suit,
+                // even if that means having to click twice to move the cursor
+                // for these input methods when they are composing.
+                qCDebug(lcQpaInputMethods) << "Input context handled event; bailing out.";
+                return;
+            }
         }
-        [self handleMouseEvent:theEvent];
     }
+
+    if (!m_dontOverrideCtrlLMB && (theEvent.modifierFlags & NSEventModifierFlagControl)) {
+        m_buttons |= Qt::RightButton;
+        m_sendUpAsRightButton = true;
+    } else {
+        m_buttons |= Qt::LeftButton;
+    }
+
+    [self handleMouseEvent:theEvent];
 }
 
 - (void)mouseDragged:(NSEvent *)theEvent
@@ -517,9 +483,8 @@
 
 - (void)cursorUpdate:(NSEvent *)theEvent
 {
-    // Note: We do not get this callback when moving from a subview that
-    // uses the legacy cursorRect API, so the cursor is reset to the arrow
-    // cursor. See rdar://34183708
+    if (!NSApp.active)
+        return;
 
     auto previousCursor = NSCursor.currentCursor;
 
@@ -537,56 +502,112 @@
     if (!m_platformWindow)
         return;
 
-    if ([self isTransparentForUserInput])
-        return;
-
-    QPointF windowPoint;
-    QPointF screenPoint;
-    [self convertFromScreen:[self screenMousePoint:theEvent] toWindowPoint:&windowPoint andScreenPoint:&screenPoint];
-    QWindow *childWindow = m_platformWindow->childWindowAt(windowPoint.toPoint());
-
     // Top-level windows generate enter-leave events for sub-windows.
     // Qt wants to know which window (if any) will be entered at the
     // the time of the leave. This is dificult to accomplish by
     // handling mouseEnter and mouseLeave envents, since they are sent
     // individually to different views.
-    if (m_platformWindow->isContentView() && childWindow) {
-        if (childWindow != m_platformWindow->m_enterLeaveTargetWindow) {
-            QWindowSystemInterface::handleEnterLeaveEvent(childWindow, m_platformWindow->m_enterLeaveTargetWindow, windowPoint, screenPoint);
-            m_platformWindow->m_enterLeaveTargetWindow = childWindow;
+    QPointF windowPoint;
+    QPointF screenPoint;
+    QCocoaWindow *windowToLeave = nullptr;
+
+    if (m_platformWindow->isContentView()) {
+        [self convertFromScreen:[self screenMousePoint:theEvent] toWindowPoint:&windowPoint andScreenPoint:&screenPoint];
+        QWindow *childUnderMouse = m_platformWindow->childWindowAt(windowPoint.toPoint());
+        QCocoaWindow *childWindow = static_cast<QCocoaWindow *>(childUnderMouse->handle());
+        if (childWindow != QCocoaWindow::s_windowUnderMouse) {
+            if (QCocoaWindow::s_windowUnderMouse)
+                windowToLeave = QCocoaWindow::s_windowUnderMouse;
+            QCocoaWindow::s_windowUnderMouse = childWindow;
         }
+    }
+
+    if (!NSApp.active)
+        return;
+
+    if ([self isTransparentForUserInput])
+        return;
+
+    if (windowToLeave) {
+        qCInfo(lcQpaMouse) << "Detected new window under mouse at" << windowPoint << "; sending"
+                           << QEvent::Enter << QCocoaWindow::s_windowUnderMouse->window()
+                           << QEvent::Leave << windowToLeave->window();
+        QWindowSystemInterface::handleEnterLeaveEvent(QCocoaWindow::s_windowUnderMouse->window(), windowToLeave->window(), windowPoint, screenPoint);
     }
 
     // Cocoa keeps firing mouse move events for obscured parent views. Qt should not
     // send those events so filter them out here.
-    if (childWindow != m_platformWindow->window())
+    if (m_platformWindow != QCocoaWindow::s_windowUnderMouse)
         return;
 
     [self handleMouseEvent: theEvent];
 }
 
+- (BOOL)shouldPropagateMouseEnterExit
+{
+    Q_ASSERT(m_platformWindow);
+
+    // We send out enter and leave events mainly from mouse move events (mouseMovedImpl),
+    // but in some case (see mouseEnteredImpl:) we also want to propagate enter/leave
+    // events from the platform. We only do this for windows that themselves are not
+    // handled by another parent QWindow.
+
+    if (m_platformWindow->isContentView())
+        return true;
+
+    // Windows manually embedded into a native view does not have a QWindow parent
+    if (m_platformWindow->isEmbedded())
+        return true;
+
+    // Windows embedded via fromWinId do, but the parent isn't a QNSView
+    QPlatformWindow *parentWindow = m_platformWindow->QPlatformWindow::parent();
+    if (parentWindow && parentWindow->isForeignWindow())
+        return true;
+
+    return false;
+}
+
 - (void)mouseEnteredImpl:(NSEvent *)theEvent
 {
-    Q_UNUSED(theEvent)
+    Q_UNUSED(theEvent);
     if (!m_platformWindow)
         return;
 
-    m_platformWindow->m_windowUnderMouse = true;
+    // We send out enter and leave events mainly from mouse move events (mouseMovedImpl).
+    // Therefore, in most cases, we should not send out enter/leave events from here, as
+    // this results in duplicated enter/leave events being delivered.
+    // This is especially important when working with NSTrackingArea, since AppKit documents that
+    // the order of enter/exit events when several NSTrackingAreas are in use is not guaranteed.
+    // So if we just forwarded enter/leave events from NSTrackingArea directly, it would not only
+    // result in duplicated events, but also sometimes events that would be out of sync.
+    // But not all enter events can be resolved from mouse move events. E.g if a window is raised
+    // in front of the mouse, or if the application is activated while the mouse is on top of a
+    // window, we need to send out enter events for those cases as well. And we do so from this
+    // function to support the former case. But only when we receive an enter event for the
+    // top-level window, when no child QWindows are being hovered from before.
+    // Since QWSI expects us to send both the window entered, and the window left, in the same
+    // callback, we manually keep track of which child QWindow is under the mouse at any point
+    // in time (s_windowUnderMouse). The latter is also used to also send out enter/leave
+    // events when the application is activated/deactivated.
 
-    if ([self isTransparentForUserInput])
-        return;
-
-    // Top-level windows generate enter events for sub-windows.
-    if (!m_platformWindow->isContentView())
+    if (![self shouldPropagateMouseEnterExit])
         return;
 
     QPointF windowPoint;
     QPointF screenPoint;
     [self convertFromScreen:[self screenMousePoint:theEvent] toWindowPoint:&windowPoint andScreenPoint:&screenPoint];
-    m_platformWindow->m_enterLeaveTargetWindow = m_platformWindow->childWindowAt(windowPoint.toPoint());
+    QWindow *childUnderMouse = m_platformWindow->childWindowAt(windowPoint.toPoint());
+    QCocoaWindow::s_windowUnderMouse = static_cast<QCocoaWindow *>(childUnderMouse->handle());
 
-    qCInfo(lcQpaMouse) << QEvent::Enter << self << "at" << windowPoint << "with" << currentlyPressedMouseButtons();
-    QWindowSystemInterface::handleEnterEvent(m_platformWindow->m_enterLeaveTargetWindow, windowPoint, screenPoint);
+    if ([self isTransparentForUserInput])
+        return;
+
+    if (!NSApp.active)
+        return;
+
+    qCInfo(lcQpaMouse) << "Mouse entered" << self << "at" << windowPoint << "with" << currentlyPressedMouseButtons()
+                       << "; sending" << QEvent::Enter << "to" << QCocoaWindow::s_windowUnderMouse->window();
+    QWindowSystemInterface::handleEnterEvent(QCocoaWindow::s_windowUnderMouse->window(), windowPoint, screenPoint);
 }
 
 - (void)mouseExitedImpl:(NSEvent *)theEvent
@@ -595,18 +616,23 @@
     if (!m_platformWindow)
         return;
 
-    m_platformWindow->m_windowUnderMouse = false;
+    if (![self shouldPropagateMouseEnterExit])
+        return;
+
+    QCocoaWindow *windowToLeave = QCocoaWindow::s_windowUnderMouse;
+    QCocoaWindow::s_windowUnderMouse = nullptr;
 
     if ([self isTransparentForUserInput])
         return;
 
-    // Top-level windows generate leave events for sub-windows.
-    if (!m_platformWindow->isContentView())
+    if (!NSApp.active)
         return;
 
-    qCInfo(lcQpaMouse) << QEvent::Leave << self;
-    QWindowSystemInterface::handleLeaveEvent(m_platformWindow->m_enterLeaveTargetWindow);
-    m_platformWindow->m_enterLeaveTargetWindow = 0;
+    if (!windowToLeave)
+        return;
+
+    qCInfo(lcQpaMouse) << "Mouse left" << self << "; sending" << QEvent::Leave << "to" << windowToLeave->window();
+    QWindowSystemInterface::handleLeaveEvent(windowToLeave->window());
 }
 
 #if QT_CONFIG(wheelevent)
@@ -678,7 +704,11 @@
         }
     } else if (theEvent.momentumPhase == NSEventPhaseBegan) {
         Q_ASSERT(!pixelDelta.isNull() && !angleDelta.isNull());
-        phase = Qt::ScrollUpdate; // Send as update, it has a delta
+        // If we missed finding a momentum NSEventPhaseBegan when the non-momentum
+        // phase ended we need to treat this as a scroll begin, to not confuse client
+        // code. Otherwise we treat it as a continuation of the existing scroll.
+        phase = m_scrolling ? Qt::ScrollUpdate : Qt::ScrollBegin;
+        m_scrolling = true;
     } else if (theEvent.momentumPhase == NSEventPhaseChanged) {
         phase = Qt::ScrollMomentum;
     } else if (theEvent.phase == NSEventPhaseCancelled
@@ -690,6 +720,16 @@
         Q_ASSERT(theEvent.momentumPhase != NSEventPhaseStationary);
     }
 
+    // Sanitize deltas for events that should not result in scrolling.
+    // On macOS 12.1 this phase has been observed to report deltas.
+    if (theEvent.phase == NSEventPhaseCancelled) {
+        if (!pixelDelta.isNull() || !angleDelta.isNull()) {
+            qCInfo(lcQpaMouse) << "Ignoring unexpected delta for" << theEvent;
+            pixelDelta = QPoint();
+            angleDelta = QPoint();
+        }
+    }
+
     // Prevent keyboard modifier state from changing during scroll event streams.
     // A two-finger trackpad flick generates a stream of scroll events. We want
     // the keyboard modifier state to be the state at the beginning of the
@@ -698,7 +738,7 @@
     // after scrolling in Qt Creator: not taking the phase into account causes
     // the end of the event stream to be interpreted as font size changes.
     if (theEvent.momentumPhase == NSEventPhaseNone)
-        m_currentWheelModifiers = [QNSView convertKeyModifiers:[theEvent modifierFlags]];
+        m_currentWheelModifiers = QAppleKeyMapper::fromCocoaModifiers(theEvent.modifierFlags);
 
     // "isInverted": natural OS X scrolling, inverted from the Qt/other platform/Jens perspective.
     bool isInverted  = [theEvent isDirectionInvertedFromDevice];
@@ -707,8 +747,22 @@
         << " pixelDelta=" << pixelDelta << " angleDelta=" << angleDelta
         << (isInverted ? " inverted=true" : "");
 
-    QWindowSystemInterface::handleWheelEvent(m_platformWindow->window(), qt_timestamp, qt_windowPoint,
-            qt_screenPoint, pixelDelta, angleDelta, m_currentWheelModifiers, phase, source, isInverted);
+    const QPointingDevice *device = pointingDeviceFor(theEvent.deviceID);
+    Q_ASSERT(device);
+
+    if (theEvent.hasPreciseScrollingDeltas) {
+        auto *devicePriv = QPointingDevicePrivate::get(const_cast<QPointingDevice *>(device));
+        if (!devicePriv->capabilities.testFlag(QInputDevice::Capability::PixelScroll)) {
+            devicePriv->name = "trackpad or magic mouse"_L1;
+            devicePriv->deviceType = QInputDevice::DeviceType::TouchPad;
+            devicePriv->capabilities |= QInputDevice::Capability::PixelScroll;
+            qCDebug(lcInputDevices) << "mouse scrolling: updated capabilities" << device;
+        }
+    }
+
+    QWindowSystemInterface::handleWheelEvent(m_platformWindow->window(), qt_timestamp,
+        device, qt_windowPoint, qt_screenPoint, pixelDelta, angleDelta,
+        m_currentWheelModifiers, phase, source, isInverted);
 }
 #endif // QT_CONFIG(wheelevent)
 

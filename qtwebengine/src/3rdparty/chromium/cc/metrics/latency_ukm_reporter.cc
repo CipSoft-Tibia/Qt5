@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -86,25 +86,33 @@ LatencyUkmReporter::LatencyUkmReporter()
 LatencyUkmReporter::~LatencyUkmReporter() = default;
 
 void LatencyUkmReporter::ReportCompositorLatencyUkm(
-    CompositorFrameReporter::FrameReportType report_type,
+    const CompositorFrameReporter::FrameReportTypes& report_types,
     const std::vector<CompositorFrameReporter::StageData>& stage_history,
-    const CompositorFrameReporter::ActiveTrackers& active_trackers,
-    const viz::FrameTimingDetails& viz_breakdown) {
+    const ActiveTrackers& active_trackers,
+    const CompositorFrameReporter::ProcessedBlinkBreakdown&
+        processed_blink_breakdown,
+    const CompositorFrameReporter::ProcessedVizBreakdown&
+        processed_viz_breakdown) {
   if (ukm_manager_ &&
       compositor_latency_sampling_controller_->ShouldRecordNextEvent()) {
-    ukm_manager_->RecordCompositorLatencyUKM(report_type, stage_history,
-                                             active_trackers, viz_breakdown);
+    ukm_manager_->RecordCompositorLatencyUKM(
+        report_types, stage_history, active_trackers, processed_blink_breakdown,
+        processed_viz_breakdown);
   }
 }
 
 void LatencyUkmReporter::ReportEventLatencyUkm(
-    const std::vector<EventMetrics>& events_metrics,
+    const EventMetrics::List& events_metrics,
     const std::vector<CompositorFrameReporter::StageData>& stage_history,
-    const viz::FrameTimingDetails& viz_breakdown) {
+    const CompositorFrameReporter::ProcessedBlinkBreakdown&
+        processed_blink_breakdown,
+    const CompositorFrameReporter::ProcessedVizBreakdown&
+        processed_viz_breakdown) {
   if (ukm_manager_ &&
       event_latency_sampling_controller_->ShouldRecordNextEvent()) {
     ukm_manager_->RecordEventLatencyUKM(events_metrics, stage_history,
-                                        viz_breakdown);
+                                        processed_blink_breakdown,
+                                        processed_viz_breakdown);
   }
 }
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DCORE_QABSTRACTASPECT_P_H
 #define QT3DCORE_QABSTRACTASPECT_P_H
@@ -51,17 +15,17 @@
 // We mean it.
 //
 
+#include <QtCore/QHash>
 #include <Qt3DCore/qabstractaspect.h>
-#include <Qt3DCore/qnodedestroyedchange.h>
 
 #include <Qt3DCore/private/qaspectjobproviderinterface_p.h>
 #include <Qt3DCore/private/qbackendnode_p.h>
 #include <Qt3DCore/private/qt3dcore_global_p.h>
-#include <Qt3DCore/private/qscenechange_p.h>
+#include <Qt3DCore/private/qchangearbiter_p.h>
 #include <QtCore/private/qobject_p.h>
 
 #include <QMutex>
-#include <QVector>
+#include <QList>
 
 QT_BEGIN_NAMESPACE
 
@@ -72,7 +36,6 @@ class QBackendNode;
 class QEntity;
 class QAspectManager;
 class QAbstractAspectJobManager;
-class QChangeArbiter;
 class QServiceLocator;
 
 namespace Debug {
@@ -121,21 +84,20 @@ public:
     QAbstractAspectPrivate();
     ~QAbstractAspectPrivate();
 
-    void setRootAndCreateNodes(QEntity *rootObject, const QVector<NodeTreeChange> &nodesTreeChanges);
+    void setRootAndCreateNodes(QEntity *rootObject, const QList<NodeTreeChange> &nodesTreeChanges);
 
     QServiceLocator *services() const;
     QAbstractAspectJobManager *jobManager() const;
 
-    QVector<QAspectJobPtr> jobsToExecute(qint64 time) override;
+    std::vector<QAspectJobPtr> jobsToExecute(qint64 time) override;
     void jobsDone() override;      // called when all the jobs are completed
     void frameDone() override;     // called when frame is completed (after the jobs), safe to wait until next frame here
 
     QBackendNode *createBackendNode(const NodeTreeChange &change) const;
     void clearBackendNode(const NodeTreeChange &change) const;
-    void syncDirtyFrontEndNodes(const QVector<QNode *> &nodes);
-    void syncDirtyFrontEndSubNodes(const QVector<NodeRelationshipChange> &nodes);
+    void syncDirtyFrontEndNodes(const QList<QNode *> &nodes);
+    void syncDirtyEntityComponentNodes(const QList<ComponentRelationshipChange> &nodes);
     virtual void syncDirtyFrontEndNode(QNode *node, QBackendNode *backend, bool firstTime) const;
-    void sendPropertyMessages(QNode *node, QBackendNode *backend) const;
 
     virtual void onEngineAboutToShutdown();
 
@@ -146,21 +108,16 @@ public:
 
     Q_DECLARE_PUBLIC(QAbstractAspect)
 
-    enum NodeMapperInfo {
-        DefaultMapper = 0,
-        SupportsSyncing = 1 << 0
-    };
-    using BackendNodeMapperAndInfo = QPair<QBackendNodeMapperPtr, NodeMapperInfo>;
-    BackendNodeMapperAndInfo mapperForNode(const QMetaObject *metaObj) const;
+    QBackendNodeMapperPtr mapperForNode(const QMetaObject *metaObj) const;
 
     QEntity *m_root;
     QNodeId m_rootId;
     QAspectManager *m_aspectManager;
     QAbstractAspectJobManager *m_jobManager;
     QChangeArbiter *m_arbiter;
-    QHash<const QMetaObject*, BackendNodeMapperAndInfo> m_backendCreatorFunctors;
+    QHash<const QMetaObject*, QBackendNodeMapperPtr> m_backendCreatorFunctors;
     QMutex m_singleShotMutex;
-    QVector<QAspectJobPtr> m_singleShotJobs;
+    std::vector<QAspectJobPtr> m_singleShotJobs;
 
     static QAbstractAspectPrivate *get(QAbstractAspect *aspect);
 };

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 //
 //  W A R N I N G
@@ -81,8 +56,6 @@ private:
     QScopedPointer<class LanguageResourceDialogPrivate> d_ptr;
     Q_DECLARE_PRIVATE(LanguageResourceDialog)
     Q_DISABLE_COPY_MOVE(LanguageResourceDialog)
-    Q_PRIVATE_SLOT(d_func(), void slotAccepted())
-    Q_PRIVATE_SLOT(d_func(), void slotPathChanged(QString))
 
 };
 
@@ -114,14 +87,6 @@ private:
     QScopedPointer<class IconSelectorPrivate> d_ptr;
     Q_DECLARE_PRIVATE(IconSelector)
     Q_DISABLE_COPY_MOVE(IconSelector)
-
-    Q_PRIVATE_SLOT(d_func(), void slotStateActivated())
-    Q_PRIVATE_SLOT(d_func(), void slotSetActivated())
-    Q_PRIVATE_SLOT(d_func(), void slotSetResourceActivated())
-    Q_PRIVATE_SLOT(d_func(), void slotSetFileActivated())
-    Q_PRIVATE_SLOT(d_func(), void slotResetActivated())
-    Q_PRIVATE_SLOT(d_func(), void slotResetAllActivated())
-    Q_PRIVATE_SLOT(d_func(), void slotUpdate())
 };
 
 // IconThemeEditor: Let's the user input theme icon names and shows a preview label.
@@ -142,12 +107,7 @@ signals:
 public slots:
     void reset();
 
-private slots:
-    void slotChanged(const QString &);
-
 private:
-    void updatePreview(const QString &);
-
     QScopedPointer<IconThemeEditorPrivate> d;
 };
 

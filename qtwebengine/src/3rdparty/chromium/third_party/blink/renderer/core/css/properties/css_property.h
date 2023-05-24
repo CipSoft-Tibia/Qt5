@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,11 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_PROPERTIES_CSS_PROPERTY_H_
 
 #include <memory>
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/css_property_name.h"
 #include "third_party/blink/renderer/core/css/css_value.h"
+#include "third_party/blink/renderer/core/css/properties/css_direction_aware_resolver.h"
 #include "third_party/blink/renderer/core/css/properties/css_unresolved_property.h"
-#include "third_party/blink/renderer/platform/heap/heap_allocator.h"
 #include "third_party/blink/renderer/platform/text/text_direction.h"
 #include "third_party/blink/renderer/platform/text/writing_mode.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
@@ -21,21 +22,30 @@ class ComputedStyle;
 class CrossThreadStyleValue;
 class ExecutionContext;
 class LayoutObject;
-class SVGComputedStyle;
 
 class CORE_EXPORT CSSProperty : public CSSUnresolvedProperty {
  public:
-  using Flags = uint32_t;
+  using Flags = uint64_t;
 
-  static const CSSProperty& Get(CSSPropertyID);
+  static const CSSProperty& Get(CSSPropertyID id) {
+    DCHECK(id != CSSPropertyID::kInvalid);
+    DCHECK(id <= kLastCSSProperty);  // last property id
+    return To<CSSProperty>(CSSUnresolvedProperty::GetNonAliasProperty(id));
+  }
+
+  static bool IsShorthand(const CSSPropertyName&);
+  static bool IsRepeated(const CSSPropertyName&);
 
   // For backwards compatibility when passing around CSSUnresolvedProperty
   // references. In case we need to call a function that hasn't been converted
   // to using property classes yet.
-  CSSPropertyID PropertyID() const { return property_id_; }
+  CSSPropertyID PropertyID() const {
+    return static_cast<CSSPropertyID>(property_id_);
+  }
   virtual CSSPropertyName GetCSSPropertyName() const {
     return CSSPropertyName(PropertyID());
   }
+  virtual bool HasEqualCSSPropertyName(const CSSProperty& other) const;
 
   bool IDEquals(CSSPropertyID id) const { return PropertyID() == id; }
   bool IsResolvedProperty() const override { return true; }
@@ -50,18 +60,33 @@ class CORE_EXPORT CSSProperty : public CSSUnresolvedProperty {
   bool IsInherited() const { return flags_ & kInherited; }
   bool IsVisited() const { return flags_ & kVisited; }
   bool IsInternal() const { return flags_ & kInternal; }
-  bool IsAffectedByForcedColors() const {
-    return flags_ & kIsAffectedByForcedColors;
+  bool IsAnimationProperty() const { return flags_ & kAnimation; }
+  bool SupportsIncrementalStyle() const {
+    return flags_ & kSupportsIncrementalStyle;
   }
+  bool IsIdempotent() const { return flags_ & kIdempotent; }
+  bool AcceptsNumericLiteral() const { return flags_ & kAcceptsNumericLiteral; }
   bool IsValidForFirstLetter() const { return flags_ & kValidForFirstLetter; }
+  bool IsValidForFirstLine() const { return flags_ & kValidForFirstLine; }
   bool IsValidForCue() const { return flags_ & kValidForCue; }
   bool IsValidForMarker() const { return flags_ & kValidForMarker; }
+  bool IsValidForFormattedText() const {
+    return flags_ & kValidForFormattedText;
+  }
+  bool IsValidForFormattedTextRun() const {
+    return flags_ & kValidForFormattedTextRun;
+  }
+  bool IsValidForKeyframe() const { return flags_ & kValidForKeyframe; }
+  bool IsValidForPositionFallback() const {
+    return flags_ & kValidForPositionFallback;
+  }
   bool IsSurrogate() const { return flags_ & kSurrogate; }
   bool AffectsFont() const { return flags_ & kAffectsFont; }
   bool IsBackground() const { return flags_ & kBackground; }
   bool IsBorder() const { return flags_ & kBorder; }
-  bool IsComputedValueComparable() const {
-    return flags_ & kComputedValueComparable;
+  bool IsBorderRadius() const { return flags_ & kBorderRadius; }
+  bool IsInLogicalPropertyGroup() const {
+    return flags_ & kInLogicalPropertyGroup;
   }
 
   bool IsRepeated() const { return repetition_separator_ != '\0'; }
@@ -76,16 +101,8 @@ class CORE_EXPORT CSSProperty : public CSSUnresolvedProperty {
     return false;
   }
 
-  virtual bool ComputedValuesEqual(const ComputedStyle&,
-                                   const ComputedStyle&) const {
-    // May only be called if IsComputedValueComparable() is true.
-    NOTREACHED();
-    return false;
-  }
-
   virtual const CSSValue* CSSValueFromComputedStyleInternal(
       const ComputedStyle&,
-      const SVGComputedStyle&,
       const LayoutObject*,
       bool allow_visited_style) const {
     return nullptr;
@@ -100,6 +117,10 @@ class CORE_EXPORT CSSProperty : public CSSUnresolvedProperty {
   virtual const CSSProperty& ResolveDirectionAwareProperty(TextDirection,
                                                            WritingMode) const {
     return *this;
+  }
+  virtual bool IsInSameLogicalPropertyGroupWithDifferentMappingLogic(
+      CSSPropertyID) const {
+    return false;
   }
   virtual const CSSProperty* GetVisitedProperty() const { return nullptr; }
   virtual const CSSProperty* GetUnvisitedProperty() const { return nullptr; }
@@ -128,41 +149,79 @@ class CORE_EXPORT CSSProperty : public CSSUnresolvedProperty {
     // seen by CSSOM, which is represented by the unvisited property).
     kVisited = 1 << 7,
     kInternal = 1 << 8,
-    kIsAffectedByForcedColors = 1 << 9,
     // Animation properties have this flag set. (I.e. longhands of the
     // 'animation' and 'transition' shorthands).
-    kAnimation = 1 << 10,
+    kAnimation = 1 << 9,
     // https://drafts.csswg.org/css-pseudo-4/#first-letter-styling
-    kValidForFirstLetter = 1 << 11,
+    kValidForFirstLetter = 1 << 10,
     // https://w3c.github.io/webvtt/#the-cue-pseudo-element
-    kValidForCue = 1 << 12,
+    kValidForCue = 1 << 11,
     // https://drafts.csswg.org/css-pseudo-4/#marker-pseudo
-    kValidForMarker = 1 << 13,
+    kValidForMarker = 1 << 12,
     // A surrogate is a (non-alias) property which acts like another property,
     // for example -webkit-writing-mode is a surrogate for writing-mode, and
     // inline-size is a surrogate for either width or height.
-    kSurrogate = 1 << 14,
-    kAffectsFont = 1 << 15,
-    // If the author specifies any background or border property on an UI
-    // element, the native appearance must be disabled.
-    kBackground = 1 << 16,
-    kBorder = 1 << 17,
-    // Set if ComputedValuesEqual is implemented for the given CSSProperty.
-    kComputedValueComparable = 1 << 18,
+    kSurrogate = 1 << 13,
+    kAffectsFont = 1 << 14,
+    // If the author specifies any background, border or border-radius property
+    // on an UI element, the native appearance must be disabled.
+    kBackground = 1 << 15,
+    kBorder = 1 << 16,
+    kBorderRadius = 1 << 17,
+    // Similar to the list at
+    // https://drafts.csswg.org/css-pseudo-4/#highlight-styling, with some
+    // differences for compatibility reasons.
+    kValidForHighlightLegacy = 1 << 18,
+    // https://drafts.csswg.org/css-logical/#logical-property-group
+    kInLogicalPropertyGroup = 1 << 19,
+    // https://drafts.csswg.org/css-pseudo-4/#first-line-styling
+    kValidForFirstLine = 1 << 20,
+    // The property participates in paired cascade, such that when encountered
+    // in highlight styles, we make all other highlight color properties default
+    // to initial, rather than the UA default.
+    // https://drafts.csswg.org/css-pseudo-4/#highlight-cascade
+    kHighlightColors = 1 << 21,
+    kVisitedHighlightColors = 1 << 22,
+    // See supports_incremental_style in css_properties.json5.
+    kSupportsIncrementalStyle = 1 << 23,
+    // See idempotent in css_properties.json5.
+    kIdempotent = 1 << 24,
+    // Set if the css property can apply to the experiemental canvas
+    // formatted text API to render multiline text in canvas.
+    // https://github.com/WICG/canvas-formatted-text
+    kValidForFormattedText = 1 << 25,
+    kValidForFormattedTextRun = 1 << 26,
+    // See overlapping in css_properties.json5.
+    kOverlapping = 1 << 27,
+    // See legacy_overlapping in css_properties.json5.
+    kLegacyOverlapping = 1 << 28,
+    // See valid_for_keyframes in css_properties.json5
+    kValidForKeyframe = 1 << 29,
+    // See valid_for_position_fallback in css_properties.json5
+    kValidForPositionFallback = 1 << 30,
+    // https://drafts.csswg.org/css-pseudo-4/#highlight-styling
+    kValidForHighlight = 1ull << 31,
+    // See accepts_numeric_literal in css_properties.json5.
+    kAcceptsNumericLiteral = 1ull << 32,
   };
 
   constexpr CSSProperty(CSSPropertyID property_id,
                         Flags flags,
                         char repetition_separator)
-      : CSSUnresolvedProperty(),
-        property_id_(property_id),
-        flags_(flags),
-        repetition_separator_(repetition_separator) {}
+      : property_id_(static_cast<uint16_t>(property_id)),
+        repetition_separator_(repetition_separator),
+        flags_(flags) {}
 
  private:
-  CSSPropertyID property_id_;
-  Flags flags_;
+  uint16_t property_id_;
   char repetition_separator_;
+  Flags flags_;
+
+  // Make sure we have room for all valid CSSPropertyIDs.
+  // (Using a smaller type here reduces CSSProperty size from 24 to 16
+  // bytes, and we have many of them that are frequently accessed
+  // during style application.)
+  static_assert(sizeof(property_id_) * 8 >= kCSSPropertyIDBitLength);
 };
 
 template <>

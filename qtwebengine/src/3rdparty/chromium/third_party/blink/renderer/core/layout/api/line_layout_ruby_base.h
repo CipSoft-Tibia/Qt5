@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,10 +25,10 @@ class LineLayoutRubyBase : public LineLayoutBlockFlow {
   LineLayoutRubyBase() = default;
 
  private:
-  LayoutRubyBase* ToRubyBase() { return ToLayoutRubyBase(GetLayoutObject()); }
+  LayoutRubyBase* ToRubyBase() { return To<LayoutRubyBase>(GetLayoutObject()); }
 
   const LayoutRubyBase* ToRubyBase() const {
-    return ToLayoutRubyBase(GetLayoutObject());
+    return To<LayoutRubyBase>(GetLayoutObject());
   }
 };
 

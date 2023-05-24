@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,28 +18,20 @@ namespace {
 
 void CheckSpellingServiceCallCount(size_t actual, size_t expected) {
   // On Windows, if the native spell checker integration is enabled,
-  // CallSpellingService() is not used, so the call count will always be 0.
-  // Don't assert the call count in that case.
-#if defined(OS_WIN)
-  if (base::FeatureList::IsEnabled(spellcheck::kWinUseBrowserSpellChecker)) {
-    return;
-  }
-#endif  // defined(OS_WIN)
-
+  // CallSpellingService() is not used, so the fake provider's |text_| is never
+  // assigned. Don't assert the text in that case.
+#if !BUILDFLAG(IS_WIN)
   EXPECT_EQ(actual, expected);
+#endif  // !BUILDFLAG(IS_WIN)
 }
 
-void CheckProviderText(base::string16 expected, base::string16 actual) {
+void CheckProviderText(std::u16string expected, std::u16string actual) {
   // On Windows, if the native spell checker integration is enabled,
   // CallSpellingService() is not used, so the fake provider's |text_| is never
   // assigned. Don't assert the text in that case.
-#if defined(OS_WIN)
-  if (base::FeatureList::IsEnabled(spellcheck::kWinUseBrowserSpellChecker)) {
-    return;
-  }
-#endif  // defined(OS_WIN)
-
+#if !BUILDFLAG(IS_WIN)
   EXPECT_EQ(actual, expected);
+#endif  // !BUILDFLAG(IS_WIN)
 }
 
 // Tests that the SpellCheckProvider object sends a spellcheck request when a
@@ -51,7 +43,7 @@ TEST_F(SpellCheckProviderTest, MultiLineText) {
   // Verify that the SpellCheckProvider class does not spellcheck empty text.
   provider_.ResetResult();
   provider_.RequestTextChecking(
-      base::string16(),
+      std::u16string(),
       std::make_unique<FakeTextCheckingCompletion>(&completion));
   EXPECT_EQ(completion.completion_count_, 1U);
   EXPECT_TRUE(provider_.text_.empty());
@@ -61,37 +53,36 @@ TEST_F(SpellCheckProviderTest, MultiLineText) {
   // stop typing after finishing the first word.
   provider_.ResetResult();
   provider_.RequestTextChecking(
-      ASCIIToUTF16("First"),
-      std::make_unique<FakeTextCheckingCompletion>(&completion));
+      u"First", std::make_unique<FakeTextCheckingCompletion>(&completion));
   EXPECT_EQ(completion.completion_count_, 2U);
-  CheckProviderText(ASCIIToUTF16("First"), provider_.text_);
+  CheckProviderText(u"First", provider_.text_);
   CheckSpellingServiceCallCount(provider_.spelling_service_call_count_, 1U);
 
   // Verify that the SpellCheckProvider class spellcheck the first line when we
   // type a return key, i.e. when we finish typing a line.
   provider_.ResetResult();
   provider_.RequestTextChecking(
-      ASCIIToUTF16("First Second\n"),
+      u"First Second\n",
       std::make_unique<FakeTextCheckingCompletion>(&completion));
   EXPECT_EQ(completion.completion_count_, 3U);
-  CheckProviderText(ASCIIToUTF16("First Second\n"), provider_.text_);
+  CheckProviderText(u"First Second\n", provider_.text_);
   CheckSpellingServiceCallCount(provider_.spelling_service_call_count_, 2U);
 
   // Verify that the SpellCheckProvider class spellcheck the lines when we
   // finish typing a word "Third" to the second line.
   provider_.ResetResult();
   provider_.RequestTextChecking(
-      ASCIIToUTF16("First Second\nThird "),
+      u"First Second\nThird ",
       std::make_unique<FakeTextCheckingCompletion>(&completion));
   EXPECT_EQ(completion.completion_count_, 4U);
-  CheckProviderText(ASCIIToUTF16("First Second\nThird "), provider_.text_);
+  CheckProviderText(u"First Second\nThird ", provider_.text_);
   CheckSpellingServiceCallCount(provider_.spelling_service_call_count_, 3U);
 
   // Verify that the SpellCheckProvider class does not send a spellcheck request
   // when a user inserts whitespace characters.
   provider_.ResetResult();
   provider_.RequestTextChecking(
-      ASCIIToUTF16("First Second\nThird   "),
+      u"First Second\nThird   ",
       std::make_unique<FakeTextCheckingCompletion>(&completion));
   EXPECT_EQ(completion.completion_count_, 5U);
   EXPECT_TRUE(provider_.text_.empty());
@@ -101,11 +92,10 @@ TEST_F(SpellCheckProviderTest, MultiLineText) {
   // a period.
   provider_.ResetResult();
   provider_.RequestTextChecking(
-      ASCIIToUTF16("First Second\nThird   Fourth."),
+      u"First Second\nThird   Fourth.",
       std::make_unique<FakeTextCheckingCompletion>(&completion));
   EXPECT_EQ(completion.completion_count_, 6U);
-  CheckProviderText(ASCIIToUTF16("First Second\nThird   Fourth."),
-                    provider_.text_);
+  CheckProviderText(u"First Second\nThird   Fourth.", provider_.text_);
   CheckSpellingServiceCallCount(provider_.spelling_service_call_count_, 4U);
 }
 
@@ -114,8 +104,7 @@ TEST_F(SpellCheckProviderTest, MultiLineText) {
 TEST_F(SpellCheckProviderTest, CancelUnnecessaryRequests) {
   FakeTextCheckingResult completion;
   provider_.RequestTextChecking(
-      ASCIIToUTF16("hello."),
-      std::make_unique<FakeTextCheckingCompletion>(&completion));
+      u"hello.", std::make_unique<FakeTextCheckingCompletion>(&completion));
   EXPECT_EQ(completion.completion_count_, 1U);
   EXPECT_EQ(completion.cancellation_count_, 0U);
   CheckSpellingServiceCallCount(provider_.spelling_service_call_count_, 1U);
@@ -123,8 +112,7 @@ TEST_F(SpellCheckProviderTest, CancelUnnecessaryRequests) {
   // Test that the SpellCheckProvider does not send a request with the same text
   // as above.
   provider_.RequestTextChecking(
-      ASCIIToUTF16("hello."),
-      std::make_unique<FakeTextCheckingCompletion>(&completion));
+      u"hello.", std::make_unique<FakeTextCheckingCompletion>(&completion));
   EXPECT_EQ(completion.completion_count_, 2U);
   EXPECT_EQ(completion.cancellation_count_, 0U);
   CheckSpellingServiceCallCount(provider_.spelling_service_call_count_, 1U);
@@ -132,18 +120,16 @@ TEST_F(SpellCheckProviderTest, CancelUnnecessaryRequests) {
   // Test that the SpellCheckProvider class cancels an incoming request that
   // does not include any words.
   provider_.RequestTextChecking(
-      ASCIIToUTF16(":-)"),
-      std::make_unique<FakeTextCheckingCompletion>(&completion));
+      u":-)", std::make_unique<FakeTextCheckingCompletion>(&completion));
   EXPECT_EQ(completion.completion_count_, 3U);
   EXPECT_EQ(completion.cancellation_count_, 1U);
   CheckSpellingServiceCallCount(provider_.spelling_service_call_count_, 1U);
 
   // Test that the SpellCheckProvider class sends a request when it receives a
   // Russian word.
-  const wchar_t kRussianWord[] = L"\x0431\x0451\x0434\x0440\x0430";
+  const char16_t kRussianWord[] = u"\x0431\x0451\x0434\x0440\x0430";
   provider_.RequestTextChecking(
-      WideToUTF16(kRussianWord),
-      std::make_unique<FakeTextCheckingCompletion>(&completion));
+      kRussianWord, std::make_unique<FakeTextCheckingCompletion>(&completion));
   EXPECT_EQ(completion.completion_count_, 4U);
   EXPECT_EQ(completion.cancellation_count_, 1U);
   CheckSpellingServiceCallCount(provider_.spelling_service_call_count_, 2U);
@@ -154,14 +140,14 @@ TEST_F(SpellCheckProviderTest, CancelUnnecessaryRequests) {
 TEST_F(SpellCheckProviderTest, CompleteNecessaryRequests) {
   FakeTextCheckingResult completion;
 
-  base::string16 text = ASCIIToUTF16("Icland is an icland ");
+  std::u16string text = u"Icland is an icland ";
   provider_.RequestTextChecking(
       text, std::make_unique<FakeTextCheckingCompletion>(&completion));
   EXPECT_EQ(0U, completion.cancellation_count_) << "Should finish checking \""
                                                 << text << "\"";
 
   const int kSubstringLength = 18;
-  base::string16 substring = text.substr(0, kSubstringLength);
+  std::u16string substring = text.substr(0, kSubstringLength);
   provider_.RequestTextChecking(
       substring, std::make_unique<FakeTextCheckingCompletion>(&completion));
   EXPECT_EQ(0U, completion.cancellation_count_) << "Should finish checking \""

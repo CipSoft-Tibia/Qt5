@@ -34,6 +34,10 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_GRAPHICS_SKIA_SKIA_UTILS_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_GRAPHICS_SKIA_SKIA_UTILS_H_
 
+#include <utility>
+
+#include "base/check_op.h"
+#include "base/notreached.h"
 #include "cc/paint/paint_canvas.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_types.h"
 #include "third_party/blink/renderer/platform/graphics/image.h"
@@ -64,14 +68,15 @@ enum {
   kMaxSkiaDim = 65535  // Maximum width/height in CSS pixels.
 };
 
-bool PLATFORM_EXPORT IsValidImageSize(const IntSize&);
+bool PLATFORM_EXPORT IsValidImageSize(const gfx::Size&);
 
 SkBlendMode PLATFORM_EXPORT
     WebCoreCompositeToSkiaComposite(CompositeOperator,
                                     BlendMode = BlendMode::kNormal);
 SkBlendMode PLATFORM_EXPORT WebCoreBlendModeToSkBlendMode(BlendMode);
-CompositeOperator PLATFORM_EXPORT CompositeOperatorFromSkBlendMode(SkBlendMode);
-BlendMode PLATFORM_EXPORT BlendModeFromSkBlendMode(SkBlendMode);
+
+std::pair<CompositeOperator, BlendMode> PLATFORM_EXPORT
+CompositeAndBlendOpsFromSkBlendMode(SkBlendMode sk_blend_mode);
 
 // Multiply a color's alpha channel by an additional alpha factor where
 // alpha is in the range [0, 1].
@@ -113,12 +118,13 @@ inline WindRule SkFillTypeToWindRule(SkPathFillType fill_type) {
   return RULE_NONZERO;
 }
 
-inline SkPoint FloatPointToSkPoint(const FloatPoint& point) {
-  return SkPoint::Make(WebCoreFloatToSkScalar(point.X()),
-                       WebCoreFloatToSkScalar(point.Y()));
+inline SkPoint FloatPointToSkPoint(const gfx::PointF& point) {
+  return SkPoint::Make(WebCoreFloatToSkScalar(point.x()),
+                       WebCoreFloatToSkScalar(point.y()));
 }
 
 SkMatrix PLATFORM_EXPORT AffineTransformToSkMatrix(const AffineTransform&);
+SkM44 PLATFORM_EXPORT AffineTransformToSkM44(const AffineTransform&);
 
 bool NearlyIntegral(float value);
 
@@ -142,12 +148,15 @@ inline float BlurRadiusToStdDev(float radius) {
   return radius * 0.5f;
 }
 
-template <typename PrimitiveType>
-void DrawPlatformFocusRing(const PrimitiveType&,
-                           cc::PaintCanvas*,
-                           SkColor,
-                           float width,
-                           float border_radius);
+void PLATFORM_EXPORT DrawPlatformFocusRing(const SkRRect&,
+                                           cc::PaintCanvas*,
+                                           SkColor,
+                                           float width);
+void PLATFORM_EXPORT DrawPlatformFocusRing(const SkPath&,
+                                           cc::PaintCanvas*,
+                                           SkColor,
+                                           float width,
+                                           float corner_radius);
 
 inline SkCanvas::SrcRectConstraint WebCoreClampingModeToSkiaRectConstraint(
     Image::ImageClampingMode clamp_mode) {

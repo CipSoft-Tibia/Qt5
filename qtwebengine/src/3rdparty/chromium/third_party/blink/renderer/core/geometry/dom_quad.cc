@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -83,7 +83,7 @@ DOMQuad* DOMQuad::fromQuad(const DOMQuadInit* other) {
       other->hasP1() ? other->p1() : DOMPointInit::Create(),
       other->hasP2() ? other->p2() : DOMPointInit::Create(),
       other->hasP3() ? other->p3() : DOMPointInit::Create(),
-      other->hasP3() ? other->p4() : DOMPointInit::Create());
+      other->hasP4() ? other->p4() : DOMPointInit::Create());
 }
 
 DOMRect* DOMQuad::getBounds() {

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,7 +21,8 @@ enum TextInputFlags {
   TEXT_INPUT_FLAG_AUTOCAPITALIZE_CHARACTERS = 1 << 7,
   TEXT_INPUT_FLAG_AUTOCAPITALIZE_WORDS = 1 << 8,
   TEXT_INPUT_FLAG_AUTOCAPITALIZE_SENTENCES = 1 << 9,
-  TEXT_INPUT_FLAG_HAS_BEEN_PASSWORD = 1 << 12
+  TEXT_INPUT_FLAG_HAS_BEEN_PASSWORD = 1 << 12,
+  TEXT_INPUT_FLAG_VERTICAL = 1 << 13
 };
 
 }  // namespace ui

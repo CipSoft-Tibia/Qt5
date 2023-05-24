@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdevicediscovery_udev_p.h"
 
@@ -54,13 +18,15 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 Q_LOGGING_CATEGORY(lcDD, "qt.qpa.input")
 
 QDeviceDiscovery *QDeviceDiscovery::create(QDeviceTypes types, QObject *parent)
 {
     qCDebug(lcDD) << "udev device discovery for type" << types;
 
-    QDeviceDiscovery *helper = 0;
+    QDeviceDiscovery *helper = nullptr;
     struct udev *udev;
 
     udev = udev_new();
@@ -75,7 +41,7 @@ QDeviceDiscovery *QDeviceDiscovery::create(QDeviceTypes types, QObject *parent)
 
 QDeviceDiscoveryUDev::QDeviceDiscoveryUDev(QDeviceTypes types, struct udev *udev, QObject *parent) :
     QDeviceDiscovery(types, parent),
-    m_udev(udev), m_udevMonitor(0), m_udevMonitorFileDescriptor(-1), m_udevSocketNotifier(0)
+    m_udev(udev)
 {
     if (!m_udev)
         return;
@@ -140,9 +106,9 @@ QStringList QDeviceDiscoveryUDev::scanConnectedDevices()
         const char *syspath = udev_list_entry_get_name(entry);
         udev_device *udevice = udev_device_new_from_syspath(m_udev, syspath);
         QString candidate = QString::fromUtf8(udev_device_get_devnode(udevice));
-        if ((m_types & Device_InputMask) && candidate.startsWith(QLatin1String(QT_EVDEV_DEVICE)))
+        if ((m_types & Device_InputMask) && candidate.startsWith(QT_EVDEV_DEVICE ""_L1))
             devices << candidate;
-        if ((m_types & Device_VideoMask) && candidate.startsWith(QLatin1String(QT_DRM_DEVICE))) {
+        if ((m_types & Device_VideoMask) && candidate.startsWith(QT_DRM_DEVICE ""_L1)) {
             if (m_types & Device_DRM_PrimaryGPU) {
                 udev_device *pci = udev_device_get_parent_with_subsystem_devtype(udevice, "pci", 0);
                 if (pci) {
@@ -186,9 +152,9 @@ void QDeviceDiscoveryUDev::handleUDevNotification()
 
     const char *subsystem;
     devNode = QString::fromUtf8(str);
-    if (devNode.startsWith(QLatin1String(QT_EVDEV_DEVICE)))
+    if (devNode.startsWith(QT_EVDEV_DEVICE ""_L1))
         subsystem = "input";
-    else if (devNode.startsWith(QLatin1String(QT_DRM_DEVICE)))
+    else if (devNode.startsWith(QT_DRM_DEVICE ""_L1))
         subsystem = "drm";
     else goto cleanup;
 
@@ -220,7 +186,7 @@ bool QDeviceDiscoveryUDev::checkDeviceType(udev_device *dev)
 
     if ((m_types & Device_Keyboard) && (qstrcmp(udev_device_get_property_value(dev, "ID_INPUT_KEYBOARD"), "1") == 0 )) {
         const QString capabilities_key = QString::fromUtf8(udev_device_get_sysattr_value(dev, "capabilities/key"));
-        const auto val = capabilities_key.splitRef(QLatin1Char(' '), Qt::SkipEmptyParts);
+        const auto val = QStringView{capabilities_key}.split(u' ', Qt::SkipEmptyParts);
         if (!val.isEmpty()) {
             bool ok;
             unsigned long long keys = val.last().toULongLong(&ok, 16);
@@ -258,3 +224,5 @@ bool QDeviceDiscoveryUDev::checkDeviceType(udev_device *dev)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qdevicediscovery_udev_p.cpp"

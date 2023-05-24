@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtexamplesandtutorials.html
@@ -50,142 +26,45 @@
     \l{Qt Creator: Building and Running an Example}{Building and Running an Example}
     page.
 
-    To view a list of all Qt examples, visit the \l{List of Qt Examples} page.
 
-    \div {class="multi-column"}
-    \div {class="doc-column"}
-        \b{Setting Up Projects}
-        \list
-        \li \l{Qt Creator: Creating Qt Quick Projects}{Qt Quick Projects}
-        \li \l{Qt Creator: Creating a Qt Widget Based Application}{Qt Widget Projects}
-        \li \l{Qt Creator: Configuring Projects}{Configuring Projects}
-        \endlist
-    \enddiv
-    \div {class="doc-column"}
-        \b{Essentials}
-        \list
-        \li \l{Qt Creator: Building for Multiple Platforms}{Building for Multiple Platforms}
-        \li \l{Qt Creator: Running on Multiple Platforms}{Running on Multiple Platforms}
-        \li \l{Qt Creator: Deploying to Devices}{Deploying to Devices}
-        \li \l{Qt Creator: Connecting Devices}{Connecting Devices}
-        \endlist
-        \list
-        \li \l{Qt Creator: Building and Running}{See more}
-        \endlist
-    \enddiv
-    \div {class="doc-column"}
-        \b{Platform Examples}
-        \list
-        \li \l{Qt for Android Examples}{Android}
-        \li \l{Qt for iOS Examples}{iOS}
-        \li \l{Qt Mac Extras Examples}{Mac Extras}
-        \li \l{Qt Windows Extras Examples}{Windows Extras}
-        \li \l{Active Qt#Examples}{Active Qt Examples}
-        \endlist
-    \enddiv
-    \div {class="doc-column"}
-        \b{QML and Qt Quick}
-        \list
-        \li \l{First Steps with QML}
-        \li \l{Qt Creator: Developing Qt Quick Applications}{Developing Qt Quick Applications}
-        \li \l{Qt Quick Controls - Gallery}
-        \li \l{QML Advanced Tutorial}{SameGame}
-        \li \l{Qt Quick Text Editor Guide}
-        \endlist
-        \list
-        \li \l{Qt Quick Examples and Tutorials}{See more}
-        \endlist
-    \enddiv
-    \div {class="doc-column"}
-        \b{Widgets}
-        \list
-        \li \l{Getting Started Programming with Qt Widgets}{Text Editor}
-        \li \l{modelview.html}{Model-View}
-        \li \l{Item Views Examples}
-        \li \l{Main Window Examples}
-        \li \l{Layout Examples}
-        \li \l{Qt Style Sheets Examples}{Style Sheets Examples}
-        \endlist
-        \list
-        \li \l{Qt Widgets Examples}{See more}
-        \endlist
-    \enddiv
-    \div {class="doc-column"}
-        \b{Graphics}
-        \list
-        \li \l{Scene Graph - OpenGL Under QML}{OpenGL Under QML}
-        \li \l{Scene Graph - Painted Item}{Painted Item}
-        \li \l{Painting Examples}
-        \li \l{Graphics View Examples}
-        \li \l{Rich Text Examples}
-        \li \l{Animation Framework Examples}
-        \endlist
-    \enddiv
-    \div {class="doc-column"}
-        \b{Data and Networking}
-        \list
-        \li \l{Network Examples}
-        \li \l{SQL Examples}
-        \li \l{XML Examples}
-        \li \l{JSON Save Game Example}
-        \li \l{Qt WebChannel Examples}
-        \li \l{Qt WebEngine Examples}
-        \li \l{Qt WebEngine Widgets Examples}
-        \li \l{Qt WebSockets Examples}{WebSocket Examples}
-        \endlist
-    \enddiv
-    \div {class="doc-column"}
-        \b{Applications}
-        \list
-        \li \l{Application Example}
-        \li \l{Qt Quick Examples - Window and Screen}{Window and Screen Example}
-        \li \l{How to Create Qt Plugins}
-        \li \l{Plug & Paint Example} (Plugin Example)
-        \endlist
-    \enddiv
-    \div {class="doc-column"}
-        \b{Processes and Threads}
-        \list
-        \li \l{Threading Basics}
-        \li \l{Threading and Concurrent Programming Examples}
-        \li \l{Qt D-Bus Examples}{D-Bus Examples}
-        \li \l{IPC Examples}{Inter-Process Communication (IPC) Examples}
-        \endlist
-    \enddiv
-    \div {class="doc-column"}
-        \b{Multimedia}
-        \list
-        \li \l{Media Player Example}{Media Player}
-        \li \l{Video Widget Example}{Video Widget}
-        \li \l{Camera Example}
-        \endlist
-        \list
-        \li \l{Qt Multimedia Examples}{See more}
-        \endlist
-    \enddiv
-    \div {class="doc-column"}
-        \b{Peripheral Devices and Location}
-        \list
-        \li \l{Qt Bluetooth Examples}{Bluetooth Examples}
-        \li \l{Qt Location Examples}{Location Examples}
-        \li \l{Qt NFC Examples}{NFC Examples}
-        \li \l{Qt Positioning Examples}{Positioning Examples}
-        \li \l{Qt Sensors Examples}{Sensor Examples}
-        \li \l{Qt Serial Port Examples}{Serial Port Examples}
-        \li \l{Qt SerialBus Examples}{Serial Bus Examples}
-        \endlist
-    \enddiv
-    \div {class="doc-column"}
-        \b{Tools}
-        \list
-        \li \l{Qt Assistant Examples}
-        \li \l{Qt Designer Examples}
-        \li \l{Qt Help Examples}
-        \li \l{Qt Linguist Examples}
-        \li \l{Qt Creator Manual}
-        \endlist
-    \enddiv
-    \enddiv
+    \section1 Application Examples
+    \annotatedlist {category Application Examples}
+
+    \section1 Desktop
+    \annotatedlist {category Desktop}
+
+    \section1 Mobile
+    \annotatedlist {category Mobile}
+
+    \section1 Embedded
+    \annotatedlist {category Embedded}
+
+    \section1 Graphics
+    \annotatedlist {category Graphics}
+
+    \section1 Multimedia
+    \annotatedlist {category Multimedia}
+
+    \section1 Data Visualization & 3D
+    \annotatedlist {category Data Visualization & 3D}
+
+    \section1 Data Processing & I/O
+    \annotatedlist {category Data Processing & I/O}
+
+    \section1 Connectivity
+    \annotatedlist {category Connectivity}
+
+    \section1 Networking
+    \annotatedlist {category Networking}
+
+    \section1 Positioning & Location
+    \annotatedlist {category Positioning & Location}
+
+    \section1 User Interface Components
+    \annotatedlist {category User Interface Components}
+
+    \section1 Web Technologies
+    \annotatedlist {category Web Technologies}
 
     \section1 Community Examples
 

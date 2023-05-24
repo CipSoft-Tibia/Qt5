@@ -1,0 +1,77 @@
+include($QT_INSTALL_DOCS/global/qt-module-defaults.qdocconf)
+
+project                 = QtProtobuf
+description             = Qt Protobuf Reference Documentation
+version                 = $QT_VERSION
+
+examplesinstallpath     = protobuf
+examples.fileextensions += "*.proto"
+url.examples = "https://code.qt.io/cgit/qt/qtgrpc.git/tree/examples/\1?h=$QT_VER"
+
+qhp.projects            = QtProtobuf
+moduleheader            = ${project}Doc
+includepaths           += .
+
+qhp.QtProtobuf.file                = qtprotobuf.qhp
+qhp.QtProtobuf.namespace           = org.qt-project.qtprotobuf.$QT_VERSION_TAG
+qhp.QtProtobuf.virtualFolder       = qtprotobuf
+qhp.QtProtobuf.indexTitle          = Qt Protobuf
+qhp.QtProtobuf.indexRoot           =
+
+qhp.QtProtobuf.subprojects = qmltypes examples classes \
+                             protobufcoreclasses protobufguiclasses \
+                             wellknowntypes
+
+qhp.QtProtobuf.subprojects.qmltypes.title = QML Types
+qhp.QtProtobuf.subprojects.qmltypes.indexTitle = Qt Protobuf QML Types
+qhp.QtProtobuf.subprojects.qmltypes.selectors = qmlclass
+qhp.QtProtobuf.subprojects.qmltypes.sortPages = true
+
+qhp.QtProtobuf.subprojects.examples.title = Examples
+qhp.QtProtobuf.subprojects.examples.indexTitle = Qt Protobuf Examples and Tutorials
+qhp.QtProtobuf.subprojects.examples.selectors = doc:example
+
+qhp.QtProtobuf.subprojects.classes.title      = C++ Classes
+qhp.QtProtobuf.subprojects.classes.indexTitle = Qt Protobuf C++ Classes
+qhp.QtProtobuf.subprojects.classes.selectors  = class doc:headerfile module:QtProtobuf
+qhp.QtProtobuf.subprojects.classes.sortPages  = true
+
+qhp.QtProtobuf.subprojects.protobufcoreclasses.title      = Protobuf Qt Core Types C++ Classes
+qhp.QtProtobuf.subprojects.protobufcoreclasses.indexTitle = Protobuf Qt Core Types Module
+qhp.QtProtobuf.subprojects.protobufcoreclasses.selectors  = module:QtProtobufQtCoreTypes
+qhp.QtProtobuf.subprojects.protobufcoreclasses.sortPages  = true
+
+qhp.QtProtobuf.subprojects.protobufguiclasses.title      = Protobuf Qt GUI Types C++ Classes
+qhp.QtProtobuf.subprojects.protobufguiclasses.indexTitle = Protobuf Qt GUI Types Module
+qhp.QtProtobuf.subprojects.protobufguiclasses.selectors  = module:QtProtobufQtGuiTypes
+qhp.QtProtobuf.subprojects.protobufguiclasses.sortPages  = true
+
+qhp.QtProtobuf.subprojects.wellknowntypes.title      = Qt Protobuf Well-known Types C++ Classes
+qhp.QtProtobuf.subprojects.wellknowntypes.indexTitle = Qt Protobuf Well-known Types C++ Classes
+qhp.QtProtobuf.subprojects.wellknowntypes.selectors  = module:QtProtobufWellKnownTypes
+qhp.QtProtobuf.subprojects.wellknowntypes.sortPages  = true
+
+depends += qtdoc qtcore qtgui qtcmake qtgrpc qtwidgets qtqml
+
+{headerdirs,sourcedirs} += .. \
+                           ../../protobufqttypes \
+                           ../../wellknown
+sourcedirs += ../../tools/doc/src \
+              ../../tools/qtprotobufgen/doc/src
+
+exampledirs +=  ../../../examples/protobuf \
+                ../../tools/qtprotobufgen/doc/src/snippets
+
+imagedirs   += images \
+    ../../../examples/protobuf/sensors/doc/images
+
+navigation.landingpage = "Qt Protobuf"
+navigation.cppclassespage = "Qt Protobuf C++ Classes"
+navigation.qmltypespage = "Qt Protobuf QML Types"
+
+manifestmeta.highlighted.names = "QtProtobuf/Sensors"
+
+tagfile                 = qtprotobuf.tags
+
+# Enforce zero documentation warnings
+warninglimit = 0

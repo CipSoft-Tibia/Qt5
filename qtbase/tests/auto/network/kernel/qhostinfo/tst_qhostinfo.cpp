@@ -1,61 +1,30 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 // When using WinSock2 on Windows, it's the first thing that can be included
 // (except qglobal.h), or else you'll get tons of compile errors
 #include <qglobal.h>
 
-// To prevent windows system header files from re-defining min/max
-#define NOMINMAX 1
-
 #if defined(Q_OS_WIN)
 # include <winsock2.h>
 # include <ws2tcpip.h>
 #endif
 
-#include <QtTest/QtTest>
-#include <qcoreapplication.h>
+#include <QTest>
+#include <QTestEventLoop>
+#include <QProcess>
+#include <QCoreApplication>
 #include <QDebug>
 #include <QTcpSocket>
-#include <private/qthread_p.h>
 #include <QTcpServer>
 
-#ifndef QT_NO_BEARERMANAGEMENT
-#include <QtNetwork/qnetworkconfigmanager.h>
-#include <QtNetwork/qnetworkconfiguration.h>
-#include <QtNetwork/qnetworksession.h>
-#endif
+#include <private/qthread_p.h>
 
 #include <time.h>
 #if defined(Q_OS_WIN)
-#include <windows.h>
+#include <qt_windows.h>
 #else
 #include <unistd.h>
 #include <signal.h>
@@ -73,7 +42,6 @@
 #include "../../../network-settings.h"
 
 #define TEST_DOMAIN ".test.qt-project.org"
-
 
 class tst_QHostInfo : public QObject
 {
@@ -121,11 +89,6 @@ private:
     bool lookupDone;
     int lookupsDoneCounter;
     QHostInfo lookupResults;
-#ifndef QT_NO_BEARERMANAGEMENT
-    QNetworkConfigurationManager *netConfMan;
-    QNetworkConfiguration networkConfiguration;
-    QScopedPointer<QNetworkSession> networkSession;
-#endif
 };
 
 void tst_QHostInfo::swapFunction()
@@ -180,17 +143,6 @@ void tst_QHostInfo::staticInformation()
 
 void tst_QHostInfo::initTestCase()
 {
-#ifndef QT_NO_BEARERMANAGEMENT
-    //start the default network
-    netConfMan = new QNetworkConfigurationManager(this);
-    networkConfiguration = netConfMan->defaultConfiguration();
-    networkSession.reset(new QNetworkSession(networkConfiguration));
-    if (!networkSession->isOpen()) {
-        networkSession->open();
-        networkSession->waitForOpened(30000);
-    }
-#endif
-
     ipv6Available = false;
     ipv6LookupsAvailable = false;
 
@@ -271,7 +223,7 @@ void tst_QHostInfo::lookupIPv4()
     QCOMPARE((int)lookupResults.error(), (int)err);
 
     QStringList tmp;
-    for (int i = 0; i < lookupResults.addresses().count(); ++i)
+    for (int i = 0; i < lookupResults.addresses().size(); ++i)
         tmp.append(lookupResults.addresses().at(i).toString());
     tmp.sort();
 
@@ -316,7 +268,7 @@ void tst_QHostInfo::lookupIPv6()
     QCOMPARE((int)lookupResults.error(), (int)err);
 
     QStringList tmp;
-    for (int i = 0; i < lookupResults.addresses().count(); ++i)
+    for (int i = 0; i < lookupResults.addresses().size(); ++i)
         tmp.append(lookupResults.addresses().at(i).toString());
     tmp.sort();
 
@@ -382,7 +334,7 @@ void tst_QHostInfo::lookupConnectToLambda()
     QFETCH(QString, addresses);
 
     lookupDone = false;
-    QHostInfo::lookupHost(hostname, [=](const QHostInfo &hostInfo) {
+    QHostInfo::lookupHost(hostname, [this](const QHostInfo &hostInfo) {
         resultsReady(hostInfo);
     });
 
@@ -395,7 +347,7 @@ void tst_QHostInfo::lookupConnectToLambda()
     QCOMPARE(int(lookupResults.error()), int(err));
 
     QStringList tmp;
-    for (int i = 0; i < lookupResults.addresses().count(); ++i)
+    for (int i = 0; i < lookupResults.addresses().size(); ++i)
         tmp.append(lookupResults.addresses().at(i).toString());
     tmp.sort();
 
@@ -417,7 +369,7 @@ static QStringList reverseLookupHelper(const QString &ip)
     QList<QByteArray> lines;
     QProcess python;
     python.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-    python.start("python", QStringList() << QString("-c") << pythonCode << ip);
+    python.start("python3", QStringList() << QString("-c") << pythonCode << ip);
     if (python.waitForFinished()) {
         if (python.exitStatus() == QProcess::NormalExit && python.exitCode() == 0)
             lines = python.readAllStandardOutput().split('\n');
@@ -449,12 +401,12 @@ static QStringList reverseLookupHelper(const QString &ip)
     for (QByteArray line : lines) {
         int index = -1;
         if ((index = line.indexOf(nameMarkerNix)) != -1) { // Linux and macOS
-            name = line.mid(index + nameMarkerNix.length()).chopped(1).trimmed();
+            name = line.mid(index + nameMarkerNix.size()).chopped(1).trimmed();
             results << name;
         } else if (line.startsWith(nameMarkerWin)) { // Windows formatting
             name = line.mid(line.lastIndexOf(" ")).trimmed();
         } else if (line.startsWith(addressMarkerWin)) {
-            QByteArray address = line.mid(addressMarkerWin.length()).trimmed();
+            QByteArray address = line.mid(addressMarkerWin.size()).trimmed();
             if (address == ip.toUtf8()) {
                 results << name;
             }
@@ -488,9 +440,8 @@ void tst_QHostInfo::reverseLookup()
     QFETCH(int, err);
     QFETCH(bool, ipv6);
 
-    if (ipv6 && !ipv6LookupsAvailable) {
+    if (ipv6 && !ipv6LookupsAvailable)
         QSKIP("IPv6 reverse lookups are not supported on this platform");
-    }
 
     QHostInfo info = QHostInfo::fromName(address);
 
@@ -498,7 +449,7 @@ void tst_QHostInfo::reverseLookup()
         if (!hostNames.contains(info.hostName()))
             qDebug() << "Failure: expecting" << hostNames << ",got " << info.hostName();
         QVERIFY(hostNames.contains(info.hostName()));
-        QCOMPARE(info.addresses().first(), QHostAddress(address));
+        QCOMPARE(info.addresses().constFirst(), QHostAddress(address));
     } else {
         QCOMPARE(info.hostName(), address);
         QCOMPARE(info.error(), QHostInfo::HostNotFound);
@@ -521,7 +472,7 @@ void tst_QHostInfo::blockingLookup()
 
     QHostInfo hostInfo = QHostInfo::fromName(hostname);
     QStringList tmp;
-    for (int i = 0; i < hostInfo.addresses().count(); ++i)
+    for (int i = 0; i < hostInfo.addresses().size(); ++i)
         tmp.append(hostInfo.addresses().at(i).toString());
     tmp.sort();
 
@@ -547,11 +498,12 @@ void tst_QHostInfo::raceCondition()
 class LookupThread : public QThread
 {
 protected:
-    inline void run()
+    inline void run() override
     {
          QHostInfo info = QHostInfo::fromName("a-single" TEST_DOMAIN);
+         QCOMPARE(info.errorString(), "Unknown error"); // no error
          QCOMPARE(info.error(), QHostInfo::NoError);
-         QVERIFY(info.addresses().count() > 0);
+         QVERIFY(info.addresses().size() > 0);
          QCOMPARE(info.addresses().at(0).toString(), QString("192.0.2.1"));
     }
 };
@@ -598,24 +550,22 @@ void tst_QHostInfo::threadSafetyAsynchronousAPI()
 {
     const int nattempts = 10;
     const int lookupsperthread = 10;
-    QList<QThread*> threads;
-    QList<LookupReceiver*> receivers;
+    QThread threads[nattempts];
+    LookupReceiver receivers[nattempts];
     for (int i = 0; i < nattempts; ++i) {
-        QThread* thread = new QThread;
-        LookupReceiver* receiver = new LookupReceiver;
+        QThread *thread = &threads[i];
+        LookupReceiver *receiver = &receivers[i];
         receiver->numrequests = lookupsperthread;
-        receivers.append(receiver);
         receiver->moveToThread(thread);
         connect(thread, SIGNAL(started()), receiver, SLOT(start()));
         thread->start();
-        threads.append(thread);
     }
-    for (int k = threads.count() - 1; k >= 0; --k)
-        QVERIFY(threads.at(k)->wait(60000));
-    foreach (LookupReceiver* receiver, receivers) {
-        QCOMPARE(receiver->result.error(), QHostInfo::NoError);
-        QCOMPARE(receiver->result.addresses().at(0).toString(), QString("192.0.2.1"));
-        QCOMPARE(receiver->numrequests, 0);
+    for (int k = nattempts - 1; k >= 0; --k)
+        QVERIFY(threads[k].wait(60000));
+    for (LookupReceiver &receiver : receivers) {
+        QCOMPARE(receiver.result.error(), QHostInfo::NoError);
+        QCOMPARE(receiver.result.addresses().at(0).toString(), QString("192.0.2.1"));
+        QCOMPARE(receiver.numrequests, 0);
     }
 }
 

@@ -1,11 +1,10 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 '''The <structure> element.
 '''
 
-from __future__ import print_function
 
 import os
 import platform
@@ -33,6 +32,7 @@ _GATHERERS = {
   'chrome_html'         : grit.gather.chrome_html.ChromeHtml,
   'chrome_scaled_image' : grit.gather.chrome_scaled_image.ChromeScaledImage,
   'dialog'              : grit.gather.rc.Dialog,
+  'lottie'              : grit.gather.chrome_html.ChromeHtml,
   'menu'                : grit.gather.rc.Menu,
   'rcdata'              : grit.gather.rc.RCData,
   'tr_html'             : grit.gather.tr_html.TrHtml,
@@ -57,7 +57,7 @@ class StructureNode(base.Node):
   variable_pattern = re.compile(r'([^,=\s]+)=((?:,,|[^,])*)')
 
   def __init__(self):
-    super(StructureNode, self).__init__()
+    super().__init__()
 
     # Keep track of the last filename we flattened to, so we can
     # avoid doing it more than once.
@@ -73,10 +73,10 @@ class StructureNode(base.Node):
   def _ParseVariables(self, variables):
     '''Parse a variable string into a dictionary.'''
     matches = StructureNode.variable_pattern.findall(variables)
-    return dict((name, value.replace(',,', ',')) for name, value in matches)
+    return {name: value.replace(',,', ',') for name, value in matches}
 
   def EndParsing(self):
-    super(StructureNode, self).EndParsing()
+    super().EndParsing()
 
     # Now that we have attributes and children, instantiate the gatherers.
     gathertype = _GATHERERS[self.attrs['type']]
@@ -198,7 +198,11 @@ class StructureNode(base.Node):
       data = self.gatherer.GetData(lang, encoding)
     if encoding != util.BINARY:
       data = data.encode(encoding)
-    return self.CompressDataIfNeeded(data)
+    data = self.CompressDataIfNeeded(data)
+    # If the asset is in the Lottie format, indicate it by prepending "LOTTIE".
+    if self.attrs['type'] == 'lottie':
+      data = 'LOTTIE'.encode(self.attrs['output_encoding']) + data
+    return data
 
   def GetHtmlResourceFilenames(self):
     """Returns a set of all filenames inlined by this node."""

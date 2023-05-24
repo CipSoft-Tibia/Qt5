@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,11 +31,11 @@ ProfileImpl* GetProfileByName(const std::string& name) {
 
 }  // namespace
 
-void InstallTestGmsBridge(bool has_user_consent,
+void InstallTestGmsBridge(ConsentType consent_type,
                           const OnLogsMetricsCallback on_log_metrics) {
   GetOnLogMetricsCallback() = on_log_metrics;
   Java_MetricsTestHelper_installTestGmsBridge(
-      base::android::AttachCurrentThread(), has_user_consent);
+      base::android::AttachCurrentThread(), static_cast<int>(consent_type));
 }
 
 void RemoveTestGmsBridge() {
@@ -44,22 +44,28 @@ void RemoveTestGmsBridge() {
   GetOnLogMetricsCallback().Reset();
 }
 
-ProfileImpl* CreateProfile(const std::string& name) {
+void RunConsentCallback(bool has_consent) {
+  Java_MetricsTestHelper_runConsentCallback(
+      base::android::AttachCurrentThread(), has_consent);
+}
+
+ProfileImpl* CreateProfile(const std::string& name, bool incognito) {
   DCHECK(!GetProfileByName(name));
   JNIEnv* env = base::android::AttachCurrentThread();
   Java_MetricsTestHelper_createProfile(
-      env, base::android::ConvertUTF8ToJavaString(env, name));
+      env, base::android::ConvertUTF8ToJavaString(env, name), incognito);
   ProfileImpl* profile = GetProfileByName(name);
   // Creating a profile may involve storage partition initialization. Wait for
   // the initialization to be completed.
   content::RunAllTasksUntilIdle();
   return profile;
 }
-void DestroyProfile(const std::string& name) {
+
+void DestroyProfile(const std::string& name, bool incognito) {
   DCHECK(GetProfileByName(name));
   JNIEnv* env = base::android::AttachCurrentThread();
   Java_MetricsTestHelper_destroyProfile(
-      env, base::android::ConvertUTF8ToJavaString(env, name));
+      env, base::android::ConvertUTF8ToJavaString(env, name), incognito);
 }
 
 void JNI_MetricsTestHelper_OnLogMetrics(

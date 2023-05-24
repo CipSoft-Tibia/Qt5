@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,9 @@
 
 #include <utility>
 
+#include "base/containers/contains.h"
+#include "base/numerics/safe_conversions.h"
+#include "base/ranges/algorithm.h"
 #include "components/cbor/values.h"
 #include "components/cbor/writer.h"
 #include "device/fido/fido_parsing_utils.h"
@@ -70,37 +73,55 @@ std::vector<uint8_t> AuthenticatorGetInfoResponse::EncodeToCBOR(
     }
   }
   cbor::Value::MapValue device_info_map;
-  device_info_map.emplace(1, std::move(version_array));
+  device_info_map.emplace(0x01, std::move(version_array));
 
   if (response.extensions)
-    device_info_map.emplace(2, ToArrayValue(*response.extensions));
+    device_info_map.emplace(0x02, ToArrayValue(*response.extensions));
 
-  device_info_map.emplace(3, cbor::Value(response.aaguid));
-  device_info_map.emplace(4, AsCBOR(response.options));
+  device_info_map.emplace(0x03, response.aaguid);
+  device_info_map.emplace(0x04, AsCBOR(response.options));
 
   if (response.max_msg_size) {
-    device_info_map.emplace(5,
+    device_info_map.emplace(0x05,
                             base::strict_cast<int64_t>(*response.max_msg_size));
   }
 
   if (response.pin_protocols) {
-    device_info_map.emplace(6, ToArrayValue(*response.pin_protocols));
+    cbor::Value::ArrayValue pin_protocols;
+    for (const PINUVAuthProtocol p : *response.pin_protocols) {
+      pin_protocols.push_back(cbor::Value(static_cast<int>(p)));
+    }
+    device_info_map.emplace(0x06, std::move(pin_protocols));
   }
 
   if (response.max_credential_count_in_list) {
-    device_info_map.emplace(
-        7, base::strict_cast<int64_t>(*response.max_credential_count_in_list));
+    device_info_map.emplace(0x07, base::strict_cast<int64_t>(
+                                      *response.max_credential_count_in_list));
   }
 
   if (response.max_credential_id_length) {
     device_info_map.emplace(
-        8, base::strict_cast<int64_t>(*response.max_credential_id_length));
+        0x08, base::strict_cast<int64_t>(*response.max_credential_id_length));
   }
 
-  if (!response.algorithms.empty()) {
+  if (response.transports) {
+    std::vector<cbor::Value> transport_values;
+    for (FidoTransportProtocol transport : *response.transports) {
+      transport_values.emplace_back(ToString(transport));
+    }
+    device_info_map.emplace(0x09, std::move(transport_values));
+  }
+
+  if (response.remaining_discoverable_credentials) {
+    device_info_map.emplace(0x14,
+                            base::strict_cast<int64_t>(
+                                *response.remaining_discoverable_credentials));
+  }
+
+  if (response.algorithms.has_value()) {
     std::vector<cbor::Value> algorithms_cbor;
-    algorithms_cbor.reserve(response.algorithms.size());
-    for (const auto& algorithm : response.algorithms) {
+    algorithms_cbor.reserve(response.algorithms->size());
+    for (const auto& algorithm : *response.algorithms) {
       // Entries are PublicKeyCredentialParameters
       // https://w3c.github.io/webauthn/#dictdef-publickeycredentialparameters
       cbor::Value::MapValue entry;
@@ -108,13 +129,42 @@ std::vector<uint8_t> AuthenticatorGetInfoResponse::EncodeToCBOR(
       entry.emplace("alg", algorithm);
       algorithms_cbor.emplace_back(cbor::Value(entry));
     }
-    device_info_map.emplace(10, std::move(algorithms_cbor));
+    device_info_map.emplace(0x0a, std::move(algorithms_cbor));
+  }
+
+  if (response.max_serialized_large_blob_array) {
+    device_info_map.emplace(
+        0x0b,
+        base::strict_cast<int64_t>(*response.max_serialized_large_blob_array));
+  }
+
+  if (response.force_pin_change) {
+    device_info_map.emplace(0x0c, cbor::Value(*response.force_pin_change));
+  }
+
+  if (response.min_pin_length) {
+    device_info_map.emplace(
+        0x0d,
+        cbor::Value(base::strict_cast<int64_t>(*response.min_pin_length)));
+  }
+
+  if (response.options.max_cred_blob_length) {
+    device_info_map.emplace(0x0f, base::strict_cast<int64_t>(
+                                      *response.options.max_cred_blob_length));
   }
 
   auto encoded_bytes =
       cbor::Writer::Write(cbor::Value(std::move(device_info_map)));
   DCHECK(encoded_bytes);
   return *encoded_bytes;
+}
+
+bool AuthenticatorGetInfoResponse::SupportsAtLeast(
+    Ctap2Version ctap2_version) const {
+  return base::ranges::any_of(ctap2_versions,
+                              [ctap2_version](const Ctap2Version& version) {
+                                return version >= ctap2_version;
+                              });
 }
 
 }  // namespace device

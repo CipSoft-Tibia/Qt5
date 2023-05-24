@@ -13,18 +13,21 @@
 
 namespace rx
 {
-
+// Note: To avoid any race conditions between threads, this class has no private data; all
+// events are stored in ContextVk.
 class DebugAnnotatorVk : public angle::LoggingAnnotator
 {
   public:
     DebugAnnotatorVk();
     ~DebugAnnotatorVk() override;
-    void beginEvent(gl::Context *context, const char *eventName, const char *eventMessage) override;
-    void endEvent(const char *eventName) override;
-    bool getStatus() override;
-
-    // Note: To avoid any race conditions between threads, this class has no private data; all
-    // events are stored in ContextVk.
+    void beginEvent(gl::Context *context,
+                    angle::EntryPoint entryPoint,
+                    const char *eventName,
+                    const char *eventMessage) override;
+    void endEvent(gl::Context *context,
+                  const char *eventName,
+                  angle::EntryPoint entryPoint) override;
+    bool getStatus(const gl::Context *context) override;
 };
 
 }  // namespace rx

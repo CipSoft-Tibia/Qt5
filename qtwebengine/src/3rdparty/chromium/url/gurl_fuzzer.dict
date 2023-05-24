@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -407,3 +407,26 @@
 # This comes from https://crbug.com/1128999.
 "file:///.//"
 "file:////"
+
+# string declared from url/url_constants.cc
+"://"
+"about"
+"about:blank"
+"about:srcdoc"
+"blank"
+"blob"
+"cid"
+"content"
+"data"
+"file"
+"filesystem"
+"ftp"
+"http"
+"https"
+"javascript"
+"mailto"
+"quic-transport"
+"srcdoc"
+"tel"
+"ws"
+"wss"

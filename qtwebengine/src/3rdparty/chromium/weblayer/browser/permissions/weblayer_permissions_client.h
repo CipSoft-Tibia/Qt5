@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,24 +26,23 @@ class WebLayerPermissionsClient : public permissions::PermissionsClient {
       content::BrowserContext* browser_context) override;
   bool IsSubresourceFilterActivated(content::BrowserContext* browser_context,
                                     const GURL& url) override;
+  permissions::OriginKeyedPermissionActionService*
+  GetOriginKeyedPermissionActionService(
+      content::BrowserContext* browser_context) override;
+  permissions::PermissionActionsHistory* GetPermissionActionsHistory(
+      content::BrowserContext* browser_context) override;
   permissions::PermissionDecisionAutoBlocker* GetPermissionDecisionAutoBlocker(
       content::BrowserContext* browser_context) override;
-  permissions::PermissionManager* GetPermissionManager(
-      content::BrowserContext* browser_context) override;
-  permissions::ChooserContextBase* GetChooserContext(
+  permissions::ObjectPermissionContextBase* GetChooserContext(
       content::BrowserContext* browser_context,
       ContentSettingsType type) override;
-#if defined(OS_ANDROID)
-  bool IsPermissionControlledByDse(content::BrowserContext* browser_context,
-                                   ContentSettingsType type,
-                                   const url::Origin& origin) override;
-  bool ResetPermissionIfControlledByDse(
-      content::BrowserContext* browser_context,
-      ContentSettingsType type,
-      const url::Origin& origin) override;
+#if BUILDFLAG(IS_ANDROID)
   void RepromptForAndroidPermissions(
       content::WebContents* web_contents,
       const std::vector<ContentSettingsType>& content_settings_types,
+      const std::vector<ContentSettingsType>& filtered_content_settings_types,
+      const std::vector<std::string>& required_permissions,
+      const std::vector<std::string>& optional_permissions,
       PermissionsUpdatedCallback callback) override;
   int MapToJavaDrawableId(int resource_id) override;
 #endif

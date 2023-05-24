@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTREMOTEOBJECTGLOBAL_H
 #define QTREMOTEOBJECTGLOBAL_H
@@ -44,6 +8,7 @@
 #include <QtCore/qhash.h>
 #include <QtCore/qurl.h>
 #include <QtCore/qloggingcategory.h>
+#include <QtRemoteObjects/qtremoteobjectsexports.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -87,20 +52,10 @@ typedef QHash<QString, QRemoteObjectSourceLocationInfo> QRemoteObjectSourceLocat
 typedef QHash<int, QByteArray> QIntHash;
 
 QT_END_NAMESPACE
-Q_DECLARE_METATYPE(QRemoteObjectSourceLocation)
-Q_DECLARE_METATYPE(QRemoteObjectSourceLocations)
-Q_DECLARE_METATYPE(QIntHash)
+QT_DECL_METATYPE_EXTERN(QRemoteObjectSourceLocation, Q_REMOTEOBJECTS_EXPORT)
+QT_DECL_METATYPE_EXTERN(QRemoteObjectSourceLocations, Q_REMOTEOBJECTS_EXPORT)
+QT_DECL_METATYPE_EXTERN(QIntHash, /* not exported */)
 QT_BEGIN_NAMESPACE
-
-#ifndef QT_STATIC
-#  if defined(QT_BUILD_REMOTEOBJECTS_LIB)
-#    define Q_REMOTEOBJECTS_EXPORT Q_DECL_EXPORT
-#  else
-#    define Q_REMOTEOBJECTS_EXPORT Q_DECL_IMPORT
-#  endif
-#else
-#  define Q_REMOTEOBJECTS_EXPORT
-#endif
 
 #define QCLASSINFO_REMOTEOBJECT_TYPE "RemoteObject Type"
 #define QCLASSINFO_REMOTEOBJECT_SIGNATURE "RemoteObject Signature"
@@ -113,6 +68,7 @@ namespace QRemoteObjectStringLiterals {
 // it creates duplicate static data. Wrapping it in inline functions prevents it.
 
 inline QString local() { return QStringLiteral("local"); }
+inline QString localabstract() { return QStringLiteral("localabstract"); }
 inline QString tcp() { return QStringLiteral("tcp"); }
 inline QString CLASS() { return QStringLiteral("Class::%1"); }
 inline QString MODEL() { return QStringLiteral("Model::%1"); }
@@ -150,6 +106,11 @@ template <typename T>
 void copyStoredProperties(QDataStream &src, T *dst)
 {
     copyStoredProperties(&T::staticMetaObject, src, dst);
+}
+
+template <typename E>
+constexpr typename std::underlying_type<E>::type to_underlying(E e) noexcept {
+    return static_cast<typename std::underlying_type<E>::type>(e);
 }
 
 enum QRemoteObjectPacketTypeEnum

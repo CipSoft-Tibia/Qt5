@@ -1,37 +1,14 @@
 /*
-*********************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the autotests of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-*********************************************************************
+
+* Copyright (C) 2016 The Qt Company Ltd.
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
 */
 
 /********************************************************************************
 ** Form generated from reading UI file 'tabbedbrowser.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -77,28 +54,28 @@ public:
     void setupUi(QWidget *TabbedBrowser)
     {
         if (TabbedBrowser->objectName().isEmpty())
-            TabbedBrowser->setObjectName(QString::fromUtf8("TabbedBrowser"));
+            TabbedBrowser->setObjectName("TabbedBrowser");
         TabbedBrowser->resize(710, 664);
         vboxLayout = new QVBoxLayout(TabbedBrowser);
         vboxLayout->setSpacing(0);
         vboxLayout->setContentsMargins(0, 0, 0, 0);
-        vboxLayout->setObjectName(QString::fromUtf8("vboxLayout"));
+        vboxLayout->setObjectName("vboxLayout");
         tab = new QTabWidget(TabbedBrowser);
-        tab->setObjectName(QString::fromUtf8("tab"));
+        tab->setObjectName("tab");
         frontpage = new QWidget();
-        frontpage->setObjectName(QString::fromUtf8("frontpage"));
+        frontpage->setObjectName("frontpage");
         gridLayout = new QGridLayout(frontpage);
 #ifndef Q_OS_MAC
         gridLayout->setSpacing(6);
 #endif
         gridLayout->setContentsMargins(8, 8, 8, 8);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
+        gridLayout->setObjectName("gridLayout");
         tab->addTab(frontpage, QString());
 
         vboxLayout->addWidget(tab);
 
         frameFind = new QFrame(TabbedBrowser);
-        frameFind->setObjectName(QString::fromUtf8("frameFind"));
+        frameFind->setObjectName("frameFind");
         frameFind->setFrameShape(QFrame::StyledPanel);
         frameFind->setFrameShadow(QFrame::Raised);
         hboxLayout = new QHBoxLayout(frameFind);
@@ -106,9 +83,9 @@ public:
         hboxLayout->setSpacing(6);
 #endif
         hboxLayout->setContentsMargins(0, 0, 0, 0);
-        hboxLayout->setObjectName(QString::fromUtf8("hboxLayout"));
+        hboxLayout->setObjectName("hboxLayout");
         toolClose = new QToolButton(frameFind);
-        toolClose->setObjectName(QString::fromUtf8("toolClose"));
+        toolClose->setObjectName("toolClose");
         const QIcon icon = QIcon(QString::fromUtf8(":/qt-project.org/assistant/images/close.png"));
         toolClose->setIcon(icon);
         toolClose->setAutoRaise(true);
@@ -116,8 +93,8 @@ public:
         hboxLayout->addWidget(toolClose);
 
         editFind = new QLineEdit(frameFind);
-        editFind->setObjectName(QString::fromUtf8("editFind"));
-        QSizePolicy sizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        editFind->setObjectName("editFind");
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Fixed, QSizePolicy::Policy::Fixed);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(editFind->sizePolicy().hasHeightForWidth());
@@ -127,7 +104,7 @@ public:
         hboxLayout->addWidget(editFind);
 
         toolPrevious = new QToolButton(frameFind);
-        toolPrevious->setObjectName(QString::fromUtf8("toolPrevious"));
+        toolPrevious->setObjectName("toolPrevious");
         const QIcon icon1 = QIcon(QString::fromUtf8(":/qt-project.org/assistant/images/win/previous.png"));
         toolPrevious->setIcon(icon1);
         toolPrevious->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -136,7 +113,7 @@ public:
         hboxLayout->addWidget(toolPrevious);
 
         toolNext = new QToolButton(frameFind);
-        toolNext->setObjectName(QString::fromUtf8("toolNext"));
+        toolNext->setObjectName("toolNext");
         toolNext->setMinimumSize(QSize(0, 0));
         const QIcon icon2 = QIcon(QString::fromUtf8(":/qt-project.org/assistant/images/win/next.png"));
         toolNext->setIcon(icon2);
@@ -147,17 +124,17 @@ public:
         hboxLayout->addWidget(toolNext);
 
         checkCase = new QCheckBox(frameFind);
-        checkCase->setObjectName(QString::fromUtf8("checkCase"));
+        checkCase->setObjectName("checkCase");
 
         hboxLayout->addWidget(checkCase);
 
         checkWholeWords = new QCheckBox(frameFind);
-        checkWholeWords->setObjectName(QString::fromUtf8("checkWholeWords"));
+        checkWholeWords->setObjectName("checkWholeWords");
 
         hboxLayout->addWidget(checkWholeWords);
 
         labelWrapped = new QLabel(frameFind);
-        labelWrapped->setObjectName(QString::fromUtf8("labelWrapped"));
+        labelWrapped->setObjectName("labelWrapped");
         labelWrapped->setMinimumSize(QSize(0, 20));
         labelWrapped->setMaximumSize(QSize(105, 20));
         labelWrapped->setTextFormat(Qt::RichText);
@@ -166,7 +143,7 @@ public:
 
         hboxLayout->addWidget(labelWrapped);
 
-        spacerItem = new QSpacerItem(81, 21, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(81, 21, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem);
 

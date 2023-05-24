@@ -1,35 +1,21 @@
-Usage:  configure [options] [assignments]
+Usage:  configure [options] [-- cmake-options]
 
-Configure understands variable assignments like VAR=value on the command line.
-Each uppercased library name (obtainable with -list-libraries) supports the
-suffixes _INCDIR, _LIBDIR, _PREFIX (INCDIR=PREFIX/include, LIBDIR=PREFIX/lib),
-_LIBS, and - on Windows and Darwin - _LIBS_DEBUG and _LIBS_RELEASE. E.g.,
-ICU_PREFIX=/opt/icu42 ICU_LIBS="-licui18n -licuuc -licudata".
-
-It is also possible to manipulate any QMAKE_* variable, to amend the values
-from the mkspec for the build of Qt itself, e.g., QMAKE_CXXFLAGS+=-g3.
-
-Note that the *_LIBS* and QMAKE_* assignments manipulate lists, so items
-containing meta characters (spaces in particular) need to be quoted according
-to qmake rules. On top of that, the assignments as a whole need to be quoted
-according to shell rules. It is recommended to use single quotes for the inner
-quoting and double quotes for the outer quoting.
+This is a convenience script for configuring Qt with CMake.
+Options after the double dash are directly passed to CMake.
 
 Top-level installation directories:
   -prefix <dir> ...... The deployment directory, as seen on the target device.
                        [/usr/local/Qt-$QT_VERSION; qtbase build directory if
                        -developer-build]
+  -no-prefix ......... The deployment directory is set to the qtbase build
+                       directory. Can be used instead of -developer-build
+                       to not have to install, as well as avoid
+                       -developer-build's default of -warnings-are-errors.
   -extprefix <dir> ... The installation directory, as seen on the host machine.
                        [SYSROOT/PREFIX]
-  -hostprefix [dir] .. The installation directory for build tools running on
-                       the host machine. If [dir] is not given, the current
-                       build directory will be used. [EXTPREFIX]
-  -external-hostbindir <path> ... Path to Qt tools built for this machine.
-                       Use this when -platform does not match the current
-                       system, i.e., to make a Canadian Cross Build.
 
 Fine tuning of installation directory layout. Note that all directories
-except -sysconfdir should be located under -prefix/-hostprefix:
+except -sysconfdir should be located under -prefix:
 
   -bindir <dir> ......... Executables [PREFIX/bin]
   -headerdir <dir> ...... Header files [PREFIX/include]
@@ -38,18 +24,14 @@ except -sysconfdir should be located under -prefix/-hostprefix:
   -plugindir <dir> ...... Plugins [ARCHDATADIR/plugins]
   -libexecdir <dir> ..... Helper programs [ARCHDATADIR/bin on Windows,
                           ARCHDATADIR/libexec otherwise]
-  -importdir <dir> ...... QML1 imports [ARCHDATADIR/imports]
-  -qmldir <dir> ......... QML2 imports [ARCHDATADIR/qml]
+  -qmldir <dir> ......... QML imports [ARCHDATADIR/qml]
   -datadir <dir> ........ Arch-independent data [PREFIX]
   -docdir <dir> ......... Documentation [DATADIR/doc]
   -translationdir <dir> . Translations [DATADIR/translations]
   -sysconfdir <dir> ..... Settings used by Qt programs [PREFIX/etc/xdg]
   -examplesdir <dir> .... Examples [PREFIX/examples]
   -testsdir <dir> ....... Tests [PREFIX/tests]
-
-  -hostbindir <dir> ..... Host executables [HOSTPREFIX/bin]
-  -hostlibdir <dir> ..... Host libraries [HOSTPREFIX/lib]
-  -hostdatadir <dir> .... Data used by qmake [HOSTPREFIX]
+  -hostdatadir <dir> .... Data used by qmake [PREFIX]
 
 Conventions for the remaining options: When an option's description is
 followed by a list of values in brackets, the interpretation is as follows:
@@ -62,67 +44,64 @@ options without auto-detection.
 Configure meta:
 
   -help, -h ............ Display this help screen
-  -verbose, -v ......... Print verbose messages during configuration
-  -continue ............ Continue configure despite errors
-  -redo ................ Re-configure with previously used options.
+  -redo ................ Re-configure with previously used options. In addition,
+                         redo removes CMakeCache.txt file and CMakeFiles/ directory
+                         and recreates them from scratch.
                          Additional options may be passed, but will not be
                          saved for later use by -redo.
-  -recheck [test,...] .. Discard cached negative configure test results.
-                         Use this after installing missing dependencies.
-                         Alternatively, if tests are specified, only their
-                         results are discarded.
-  -recheck-all ......... Discard all cached configure test results.
 
   -feature-<feature> ... Enable <feature>
   -no-feature-<feature>  Disable <feature> [none]
   -list-features ....... List available features. Note that some features
                          have dedicated command line options as well.
 
-  -list-libraries ...... List possible external dependencies.
-
 Build options:
 
-  -opensource .......... Build the Open-Source Edition of Qt
-  -commercial .......... Build the Commercial Edition of Qt
-  -confirm-license ..... Automatically acknowledge the license
-
-  -release ............. Build Qt with debugging turned off [yes]
-  -debug ............... Build Qt with debugging turned on [no]
-  -debug-and-release ... Build two versions of Qt, with and without
-                         debugging turned on [yes] (Apple and Windows only)
+  -cmake-generator <name> ... Explicitly specify the build system generator for
+                         CMake instead of auto-detecting one.
+  -cmake-use-default-generator ... Turn off auto-detection of the CMake build
+                         system generator.
+  -cmake-file-api ...... Let CMake store build metadata for loading the build
+                         into an IDE. [no; yes if -developer-build]
+  -no-guess-compiler ... Do not guess the compiler from the target mkspec.
+  -release ............. Build Qt with optimizations and without debug
+                         symbols [yes]
+                         Note that -developer-build implies -debug unless
+                         -release is also explicitly specified
+  -debug ............... Build Qt without optimizations and with debug symbols
+                         [no]
+  -debug-and-release ... Build two versions of Qt in one build tree [no]
   -optimize-debug ...... Enable debug-friendly optimizations in debug builds
                          [auto] (Not supported with MSVC or Clang toolchains)
   -optimize-size ....... Optimize release builds for size instead of speed [no]
-  -optimized-tools ..... Build optimized host tools even in debug build [no]
   -force-debug-info .... Create symbol files for release builds [no]
   -separate-debug-info . Split off debug information to separate files [no]
   -gdb-index ........... Index the debug info to speed up GDB
                          [no; auto if -developer-build with debug info]
-  -strip ............... Strip release binaries of unneeded symbols [yes]
   -gc-binaries ......... Place each function or data item into its own section
                          and enable linker garbage collection of unused
                          sections. [auto for static builds, otherwise no]
   -force-asserts ....... Enable Q_ASSERT even in release builds [no]
   -developer-build ..... Compile and link Qt for developing Qt itself
-                         (exports for auto-tests, extra checks, etc.) [no]
+                         (exports for auto-tests, extra checks, implies
+                         -no-prefix, etc.) [no]
 
   -shared .............. Build shared Qt libraries [yes] (no for UIKit)
   -static .............. Build static Qt libraries [no] (yes for UIKit)
   -framework ........... Build Qt framework bundles [yes] (Apple only)
 
-  -platform <target> ... Select host mkspec [detected]
-  -xplatform <target> .. Select target mkspec when cross-compiling [PLATFORM]
-  -device <name> ....... Cross-compile for device <name>
+  -platform <target> ... Select mkspec for the qmake companion files
+  -device <name> ....... Select devices/mkspec for the qmake companion files
   -device-option <key=value> ... Add option for the device mkspec
 
   -appstore-compliant .. Disable code that is not allowed in platform app stores.
                          This is on by default for platforms which require distribution
                          through an app store by default, in particular Android,
-                         iOS, tvOS, watchOS, and Universal Windows Platform. [auto]
+                         iOS, tvOS, and watchOS. [auto]
 
+  -qt-host-path <path> . Specify path to a Qt host build for cross-compiling.
   -qtnamespace <name> .. Wrap all Qt library code in 'namespace <name> {...}'.
-  -qtlibinfix <infix> .. Rename all libQt5*.so to libQt5*<infix>.so.
-  -qtlibinfix-plugins .. Rename Qt plugins according to -qtlibinfix [no]
+  -qtlibinfix <infix> .. Rename all libQt6*.so to libQt6*<infix>.so.
 
   -testcocoon .......... Instrument with the TestCocoon code coverage tool [no]
   -gcov ................ Instrument with the GCov code coverage tool [no]
@@ -137,18 +116,6 @@ Build options:
                          for example, -sanitize address cannot be combined with
                          -sanitize thread.
 
-  -coverage {trace-pc-guard|source-based}
-                         Specify the 'trace-pc-guard' coverage instrumentation for
-                         sanitizers or generate instrumented code to collect execution
-                         counts and enable code coverage analysis, respectively. (Clang only)
-
-  -c++std <edition> .... Select C++ standard <edition> [c++2a/c++17/c++14/c++11]
-                         (Not supported with MSVC 2015)
-
-  -sse2 ................ Use SSE2 instructions [auto]
-  -sse3/-ssse3/-sse4.1/-sse4.2/-avx/-avx2/-avx512
-                         Enable use of particular x86 instructions [auto]
-                         Enabled ones are still subject to runtime detection.
   -mips_dsp/-mips_dspr2  Use MIPS DSP/rev2 instructions [auto]
 
   -qreal <type> ........ typedef qreal to the specified type. [double]
@@ -170,23 +137,33 @@ Build options:
 
   -pch ................. Use precompiled headers [auto]
   -ltcg ................ Use Link Time Code Generation [no]
-  -linker [bfd,gold,lld] Force use of the GNU ld, GNU gold or LLVM/LLD linker
-                         instead of default one (GCC only)
-  -incredibuild-xge .... Use the IncrediBuild XGE [no] (Windows only)
+  -intelcet ............ Use Intel Control-flow Enforcement Technology [no]
+  -linker [bfd,gold,lld,mold]
+                         Force use of the GNU ld, GNU gold, LLVM/LLD or mold
+                         linker instead of default one (GCC and clang only)
   -ccache .............. Use the ccache compiler cache [no] (Unix only)
-  -make-tool <tool> .... Use <tool> to build qmake [nmake] (Windows only)
-  -mp .................. Use multiple processors for compilation (MSVC only)
+  -unity-build ......... Enable Unity (Jumbo) build
+  -unity-build-batch-size <int>
+                         Maximum number of source files used by the unity build
+                         to create unity source files [8]
 
   -warnings-are-errors . Treat warnings as errors [no; yes if -developer-build]
-  -silent .............. Reduce the build output so that warnings and errors
-                         can be seen more easily
+
+  -disable-deprecated-up-to <version>
+                         Set the QT_DISABLE_DEPRECATED_UP_TO value to <version>.
+                         QT_DISABLE_DEPRECATED_UP_TO is used to remove
+                         deprecated methods from both API and ABI.
+                         <version> is a hex value, for example 0x060500 can be
+                         used to remove all code deprecated in Qt 6.5.0 or
+                         earlier releases.
+                         By default <version> is set to 0x040000 and 0x050000 on
+                         Windows, and non-Windows respectively.
 
 Build environment:
 
-  -sysroot <dir> ....... Set <dir> as the target sysroot
-  -gcc-sysroot ......... With -sysroot, pass --sysroot to the compiler [yes]
-
   -pkg-config .......... Use pkg-config [auto] (Unix only)
+
+  -vcpkg ............... Use vcpkg [yes]
 
   -D <string> .......... Pass additional preprocessor define
   -I <string> .......... Pass additional include path
@@ -196,19 +173,13 @@ Build environment:
   -sdk <sdk> ........... Build Qt using Apple provided SDK <sdk>. The argument
                          should be one of the available SDKs as listed by
                          'xcodebuild -showsdks'.
-                         Note that the argument applies only to Qt libraries
-                         and applications built using the target mkspec - not
-                         host tools such as qmake, moc, rcc, etc.
 
   -android-sdk path .... Set Android SDK root path [$ANDROID_SDK_ROOT]
   -android-ndk path .... Set Android NDK root path [$ANDROID_NDK_ROOT]
   -android-ndk-platform  Set Android platform
-  -android-ndk-host .... Set Android NDK host (linux-x86, linux-x86_64, etc.)
-                         [$ANDROID_NDK_HOST]
-  -android-abis .......  Comma separated Android abis, default is:
-                         armeabi-v7a,arm64-v8a,x86,x86_64
-  -android-javac-target  Set the javac build target version [7]
-  -android-javac-source  Set the javac build source version [7]
+  -android-abis .......  Only one ABI can be specified, default is: armeabi-v7a
+  -android-javac-target  Set the javac build target version [8]
+  -android-javac-source  Set the javac build source version [8]
   -android-style-assets  Automatically extract style assets from the device at
                          run time. This option makes the Android style behave
                          correctly, but also makes the Android platform plugin
@@ -216,14 +187,24 @@ Build environment:
 
 Component selection:
 
-  -skip <repo> ......... Exclude an entire repository from the build.
+  -submodules <repo>[,<repo>] ... Build the listed repositories and those they
+                         depend on rather than all checked-out repositories.
+                         The list should be separated with commas, e.g.
+                         -submodules qtsvg,qtnetworkauth
+                         [default is to build all checked out repositories]
+  -skip <repo>[,<repo>]  Exclude one or more entire repositories from the
+                         build. The list should be separated with commas.
+                         e.g. -skip qtimageformats,qtsvg
   -make <part> ......... Add <part> to the list of parts to be built.
                          Specifying this option clears the default list first.
-                         [libs and examples, also tools if not cross-building,
-                         also tests if -developer-build]
+                         (allowed values: libs, tools, examples, tests,
+                         benchmarks, manual-tests, minimal-static-tests)
+                         [default: libs and examples, also tools if not
+                         cross-building, also tests if -developer-build]
   -nomake <part> ....... Exclude <part> from the list of parts to be built.
-  -compile-examples .... When unset, install only the sources of examples
-                         [no on WebAssembly, otherwise yes]
+  -install-examples-sources Installs examples source code into the Qt prefix
+                         Only possible when -make examples is also passed
+                         [no]
   -gui ................. Build the Qt GUI module and dependencies [yes]
   -widgets ............. Build the Qt Widgets module and dependencies [yes]
   -no-dbus ............. Do not build the Qt D-Bus module
@@ -243,10 +224,8 @@ Core options:
   -glib ................ Enable Glib support [no; auto on Unix]
   -eventfd ............. Enable eventfd support
   -inotify ............. Enable inotify support
-  -iconv ............... Enable iconv(3) support [posix/sun/gnu/no] (Unix only)
   -icu ................. Enable ICU support [auto]
   -pcre ................ Select used libpcre2 [system/qt/no]
-  -pps ................. Enable PPS support [auto] (QNX only)
   -zlib ................ Select used zlib [system/qt]
 
   Logging backends:
@@ -257,10 +236,10 @@ Core options:
 Network options:
 
   -ssl ................. Enable either SSL support method [auto]
-  -no-openssl .......... Do not use OpenSSL [default on Apple and WinRT]
+  -no-openssl .......... Do not use OpenSSL [default on Apple]
   -openssl-linked ...... Use OpenSSL and link to libssl [no]
   -openssl-runtime ..... Use OpenSSL and dynamically load libssl [auto]
-  -schannel ............ Use Secure Channel [no] (Windows only)
+  -schannel ............ Use Secure Channel [auto] (Windows only)
   -securetransport ..... Use SecureTransport [auto] (Apple only)
 
   -sctp ................ Enable SCTP support [no]
@@ -279,17 +258,12 @@ Gui, printing, widget options:
 
   -gtk ................. Enable GTK platform theme support [auto]
 
-  -lgmon ............... Enable lgmon support [auto] (QNX only)
-
   -no-opengl ........... Disable OpenGL support
   -opengl <api> ........ Enable OpenGL support. Supported APIs:
-                         es2 (default on Windows), desktop (default on Unix),
-                         dynamic (Windows only)
+                         es2, desktop (default on Unix),
+                         dynamic (Windows only, default on Windows)
   -opengles3 ........... Enable OpenGL ES 3.x support instead of ES 2.x [auto]
   -egl ................. Enable EGL support [auto]
-  -angle ............... Use bundled ANGLE to support OpenGL ES 2.0 [auto]
-                         (Windows only)
-  -combined-angle-lib .. Merge LibEGL and LibGLESv2 into LibANGLE (Windows only)
 
   -qpa <name> .......... Select default QPA backend(s) (e.g., xcb, cocoa, windows)
                          A prioritized list separated by semi-colons.
@@ -307,7 +281,6 @@ Gui, printing, widget options:
   Input backends:
     -libudev............ Enable udev support [auto]
     -evdev ............. Enable evdev support [auto]
-    -imf ............... Enable IMF support [auto] (QNX only)
     -libinput .......... Enable libinput support [auto]
     -mtdev ............. Enable mtdev support [auto]
     -tslib ............. Enable tslib support [auto]
@@ -323,6 +296,6 @@ Gui, printing, widget options:
 Database options:
 
   -sql-<driver> ........ Enable SQL <driver> plugin. Supported drivers:
-                         db2 ibase mysql oci odbc psql sqlite2 sqlite tds
+                         db2 ibase mysql oci odbc psql sqlite mimer
                          [all auto]
-  -sqlite .............. Select used sqlite3 [system/qt]
+  -sqlite .............. Select used sqlite [system/qt]

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,6 +18,7 @@ enum {
 #include "components/resources/android/page_info_resource_id.h"
 #include "components/resources/android/permissions_resource_id.h"
 #include "components/resources/android/sms_resource_id.h"
+#include "components/resources/android/webxr_resource_id.h"
   ANDROID_COMPONENTS_RESOURCE_ID_MAX,
 };
 

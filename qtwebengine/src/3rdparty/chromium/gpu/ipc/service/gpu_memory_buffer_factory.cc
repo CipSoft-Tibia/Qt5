@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,21 +6,22 @@
 
 #include <memory>
 
+#include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_APPLE)
 #include "gpu/ipc/service/gpu_memory_buffer_factory_io_surface.h"
 #endif
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
 #include "gpu/ipc/service/gpu_memory_buffer_factory_native_pixmap.h"
 #endif
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "gpu/ipc/service/gpu_memory_buffer_factory_dxgi.h"
 #endif
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "gpu/ipc/service/gpu_memory_buffer_factory_android_hardware_buffer.h"
 #endif
 
@@ -29,16 +30,17 @@ namespace gpu {
 // static
 std::unique_ptr<GpuMemoryBufferFactory>
 GpuMemoryBufferFactory::CreateNativeType(
-    viz::VulkanContextProvider* vulkan_context_provider) {
-#if defined(OS_MAC)
+    viz::VulkanContextProvider* vulkan_context_provider,
+    scoped_refptr<base::SingleThreadTaskRunner> io_runner) {
+#if BUILDFLAG(IS_APPLE)
   return std::make_unique<GpuMemoryBufferFactoryIOSurface>();
-#elif defined(OS_ANDROID)
+#elif BUILDFLAG(IS_ANDROID)
   return std::make_unique<GpuMemoryBufferFactoryAndroidHardwareBuffer>();
-#elif defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_FUCHSIA)
+#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
   return std::make_unique<GpuMemoryBufferFactoryNativePixmap>(
       vulkan_context_provider);
-#elif defined(OS_WIN)
-  return std::make_unique<GpuMemoryBufferFactoryDXGI>();
+#elif BUILDFLAG(IS_WIN)
+  return std::make_unique<GpuMemoryBufferFactoryDXGI>(std::move(io_runner));
 #else
   return nullptr;
 #endif

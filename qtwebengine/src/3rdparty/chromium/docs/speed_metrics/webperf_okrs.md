@@ -2,6 +2,172 @@
 
 [TOC]
 
+## 2021 Q2 Objectives
+
+* Publish public proposal on **smoothness**.
+* **Responsiveness**:
+  * Socialize publicly our definition of interactions and normalization options.
+  * Implement [interactionID](https://docs.google.com/presentation/d/1nxNFwsGqYy7WmIZ3uv_0HsSIQMSXQA9_PqlOD3V74Us/edit#slide=id.p).
+* Enable exposing information about **Single Page Apps** via
+  [navigation IDs](https://docs.google.com/presentation/d/1snPIu2GJ_JO7esJ_3YmOAiXC_g4PeQW3jclYx1u3Qzs/edit#slide=id.p).
+* Expose performance information about **back-forward cache** navigations to performance timeline.
+* Specify and launch redefined (window-based) **Cumulative Layout Shift**.
+* Ship **JS Sampling Profiler**.
+* Facilitate **Resource Timing** integration into Fetch and change implementation as needed.
+* Obtain more accurate **abandonment** rates on Chrome to determine what to do about the problem.
+* Implement and ship [droppedEntriesCount](https://w3c.github.io/performance-timeline/#dom-performanceobservercallbackoptions-droppedentriescount).
+
+## 2021 Q1 Progress
+
+* **performance.measureMemory** was shipped! See the blog [post](https://web.dev/monitor-total-page-memory-usage/).
+* **Single Page Apps**:
+  * Provided feedback to the AppHistory [explainer](https://github.com/WICG/app-history/blob/main/README.md).
+  * Discussed how to extend performance timeline to include SPAs in the WebPerf WG.
+* Improved **abandonment** data on Chrome to account for FCP more accurately.
+* Continued work on **smoothness** and **responsiveness** proposals.
+* Proposed way to include **back-forward cache** performance information to the WebPerf WG.
+* Organized **A/B testing workshop** to better understand the problem space: see
+  [notes](https://docs.google.com/document/d/1rmVjH7-5hGk_VB0EwErM1tcEVz100XZDYlaSd75WbRE/edit?ts=601c4a9c).
+* Completed GC integration work for the **JS Sampling Profiler**.
+* Various improvements for **Layout Instability** which especially impact carousels. See
+  [changelog](https://chromium.googlesource.com/chromium/src/+/main/docs/speed/metrics_changelog/cls.md).
+* Decided redefinition of **Cumulative Layout Shift** and announced in [post](https://web.dev/evolving-cls/).
+
+## 2021 Q1 Objectives
+
+* **performance.measureMemory**: ship the API.
+* **Single Page Apps**:
+  * Publish an explainer about SPA issues.
+  * Determine whether User Timing hints conventions are still useful.
+* **Abandonment**:
+  * Gather concrete feedback form analytics providers and other potential users of this API.
+  * Improve confidence on the abandonment rates computed by implementing a renderer-side flushing.
+  * Update analysis on rates when the above fix has reached Chrome Stable.
+* **Smoothness**:
+  * Continue refining the definition of dropped frames.
+  * Move proposal to WICG.
+* **Back-forward cache**:
+  * Expand scope to include FCP and FID in the values reported after back-forward navigations.
+  * Investigate backwards compatibility of adding new entries and propose an API shaped based on the outcome.
+* **Responsiveness**:
+  * Investigate correctness of existing internal metrics and implement fixes as needed.
+  * Further investigate scrolling performance and how it should be integrated with metric.
+  * Define user interactions that we care about for this API.
+  * Create a manual test corpus to test ideas about the 'end time' of a user interaction.
+* **First Contentful Paint**: improve implementation to pass more
+    [tests](https://wpt.fyi/results/paint-timing?label=master&label=experimental).
+* **Longtasks**: add system time, including garbage collection
+  ([bug](https://bugs.chromium.org/p/chromium/issues/detail?id=1091754)).
+    * Present proposal to security team, and begin socializing the proposal externally.
+* **A/B testing**: organize workshop on client-side A/B testing.
+* **JS Sampling Profiler**:
+  * Complete the GC integration work.
+  * Ship the API.
+
+## 2020 Q4 Progress
+
+### New web performance APIs
+
+* **performance.measureMemory**: added support for cross-origin iframes in the same process and sent
+  [Intent to Ship](https://groups.google.com/a/chromium.org/g/blink-dev/c/RExJ9a3SmQw).
+* **Page abandonment**: made some data available publicly and socialized it in a
+  [blogpost](https://calendar.perfplanet.com/2020/abandonment/).
+* **JS Sampling Profiler**:
+  * Implemented the API so it requires COOP/COEP and gated it behind Document Policy.
+  * Finished a prototype of GC integration for the V8 sampling profiler (which will help reduce profiler startup time).
+  * Landed some initial support for code object refcounting.
+* **Smoothness**: published a proposal around dropped frames and presented it at TPAC.
+* **Back-forward cache**: determined that it is backwards compatible to expose a PerformanceNavigationTiming
+  entry for back-forward navigations.
+* **Responsiveness**:
+  * Investigated some internal metrics, but found some metric quality issues that need to be investigated.
+  * Started brainstorm on capturing asynchronous work as well as which user interactions to capture.
+  * Did investigation on scrolling and determined that in most cases pages do not seem to suffer from poor
+    scrolling performance.
+
+### Existing web performance API improvements
+
+* **Largest Contentful Paint**: include removed nodes ([bug](https://bugs.chromium.org/p/chromium/issues/detail?id=1045640))
+  and ignored images occupying the full viewport ([bug](https://bugs.chromium.org/p/chromium/issues/detail?id=1133883)).
+* **Cumulative Layout Shift**: implemented various fixes, see
+  [changelog](https://chromium.googlesource.com/chromium/src/+/main/docs/speed/metrics_changelog/README.md).
+
+## 2020 Q4 Objectives
+
+### New web performance APIs
+
+  * {#measure-memory-20204}**performance.measureMemory**:
+    * Add support for cross-origin iframes.
+    * Send Intent to Ship and ship --- API would become available early next year.
+  * {#spas-20204}**Single Page Apps**:
+    * Publish document for feedback on measurement issues, attributions issues, and other issues specific
+      to SPAs.
+    * Land support for User Timing hints in Chrome, and get 2+ frameworks to start using such hints.
+  * {#page-abandonment-20204}**Page abandonment**: publish data on abandonment rates, making a case for or against
+    an abandonment API.
+  * {#js-profiler-20204}**JS Sampling Profiler**:
+    * Implement the API so it requires COOP/COEP.
+    * Add support for warm codemap initialization.
+    * Add web platform tests.
+    * _(Stretch)_ Send Intent to Ship.
+  * {#smoothness-20204}**Smoothness** (FrameTiming):
+    * Discuss and socialize API shape.
+    * Propose API on WICG.
+    * Start a TAG review.
+  * {#bf-cache-20204}**Back-forward cache**: document and socialize a concrete proposal on a web API that supports
+    monitoring performance of sites on browsers that may perform back-forward navigations.
+  * {#responsiveness-20204}**Responsiveness**:
+    * Investigate internal metrics and potentially add new metrics to capture end-to-end responsiveness.
+    * Document how popular frameworks handle user interactions.
+    * Brainstorm on how to expand Event Timing to capture user handling for asynchronous work and to handle multiple
+      events referring to a single user interaction.
+    * Complete on-going investigation on whether scroll performance is also a problem in the web that needs a web API.
+
+### Existing web performance API improvements
+
+  * {#lcp-20204}**Largest Contentful Paint**:
+    * Complete [investigation](https://bugs.chromium.org/p/chromium/issues/detail?id=1045640) on removed nodes
+      and if needed update the API.
+    * [Ignore](https://bugs.chromium.org/p/chromium/issues/detail?id=1133883) images that occupy the full viewport.
+  * {#cls-20204}**Cumulative Layout Shift**: evaluate the impact of triggering on empty or invisible content and update
+    [spec](https://github.com/WICG/layout-instability/issues/61) and implementation accordingly.
+  * {#fcp-20204}**First Contentful Paint**: improve implementation to pass more
+    [tests](https://wpt.fyi/results/paint-timing?label=master&label=experimental).
+  * {#rt-worker-20204}**Navigation Timing**: [Fix](https://crbug.com/925239) encoded/decoded body sizes when going
+    through service workers.
+
+## 2020 Q3 Progress
+
+### New web performance APIs
+
+  * [performance.measureMemory](#measure-memory-20203):
+    * Spec was reviewed and polished.
+    * API support was added for workers (available from Chrome 87).
+  * [Page abandonment](#page-abandonment-20203): improved data was gathered, but more accuracy improvements are needed.
+  * [VisibilityStateEntry](#page-visibility-20203):
+    [explainer](https://docs.google.com/document/d/1l5kHiJRkdQwEN-CYI5_mUNODhQVB5rCyjN4jHDdXDHA/edit#),
+    [discussion](https://github.com/w3c/performance-timeline/issues/105), and TAG
+    [review](https://github.com/w3ctag/design-reviews/issues/534) kicked off, but no consensus yet on API shape.
+  * [FrameTiming](#frame-timing-20203): a lot of research on defining a good metric to capture smoothness.
+  * [isInputPending](#fb-driven-20203): shipped and available from Chrome 87!
+
+### Existing web performance API improvements
+
+  * [LargestContentfulPaint](#lcp-20203):
+    * Did analysis on how LCP would change when removed content is included.
+    * Ignored paints occurring with opacity 0.
+  * CumulativeLayoutShift [fixes](https://chromium.googlesource.com/chromium/src/+/main/docs/speed/metrics_changelog/cls.md):
+    * Ignored shifts from video thumb sliders.
+    * Fixed computations for ink overflow and transforms.
+    * Updated computations when child moves alongside their parent element.
+
+### Interop
+
+  * [Web vitals specs](#vitals-specs-20203): triaged new
+    [issues](https://github.com/search?q=is%3Aissue+created%3A2020-06-01..2020-09-30+repo%3Awicg%2Flayout-instability+repo%3Awicg%2Flargest-contentful-paint+repo%3Awicg%2Fevent-timing&type=issues)
+    as well as existing ones.
+  * [Paint Timing](#paint-timing-20203): fixed two FCP tests by improving our implementation.
+
 ## 2020 Q3 Objectives
 
 ### New web performance APIs

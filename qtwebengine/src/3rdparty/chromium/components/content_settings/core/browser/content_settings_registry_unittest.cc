@@ -1,12 +1,12 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <string>
-#include <vector>
 
 #include "base/values.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "components/content_settings/core/browser/content_settings_info.h"
 #include "components/content_settings/core/browser/content_settings_registry.h"
 #include "components/content_settings/core/browser/website_settings_info.h"
@@ -40,18 +40,18 @@ class ContentSettingsRegistryTest : public testing::Test {
 };
 
 TEST_F(ContentSettingsRegistryTest, GetPlatformDependent) {
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
   // Javascript shouldn't be registered on iOS.
   EXPECT_FALSE(registry()->Get(ContentSettingsType::JAVASCRIPT));
 #endif
 
-#if defined(OS_IOS) || defined(OS_ANDROID)
+#if BUILDFLAG(IS_IOS) || BUILDFLAG(IS_ANDROID)
   // Images shouldn't be registered on mobile.
   EXPECT_FALSE(registry()->Get(ContentSettingsType::IMAGES));
 #endif
 
-// Protected media identifier only get registered on android and chromeos.
-#if defined(ANDROID) || defined(OS_CHROMEOS)
+// Protected media identifier only registered on Android, Chrome OS and Windows.
+#if defined(ANDROID) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_WIN)
   EXPECT_TRUE(registry()->Get(ContentSettingsType::PROTECTED_MEDIA_IDENTIFIER));
 #else
   EXPECT_FALSE(
@@ -68,7 +68,7 @@ TEST_F(ContentSettingsRegistryTest, Properties) {
       registry()->Get(ContentSettingsType::COOKIES);
   ASSERT_TRUE(info);
 
-  EXPECT_THAT(info->whitelisted_schemes(), ElementsAre("chrome", "devtools"));
+  EXPECT_THAT(info->allowlisted_schemes(), ElementsAre("chrome", "devtools"));
 
   // Check the other properties are populated correctly.
   EXPECT_TRUE(info->IsSettingValid(CONTENT_SETTING_SESSION_ONLY));
@@ -84,11 +84,10 @@ TEST_F(ContentSettingsRegistryTest, Properties) {
             website_settings_info->pref_name());
   EXPECT_EQ("profile.default_content_setting_values.cookies",
             website_settings_info->default_value_pref_name());
-  int setting;
-  ASSERT_TRUE(
-      website_settings_info->initial_default_value()->GetAsInteger(&setting));
-  EXPECT_EQ(CONTENT_SETTING_ALLOW, setting);
-#if defined(OS_ANDROID) || defined(OS_IOS)
+  ASSERT_TRUE(website_settings_info->initial_default_value().is_int());
+  EXPECT_EQ(CONTENT_SETTING_ALLOW,
+            website_settings_info->initial_default_value().GetInt());
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   EXPECT_EQ(PrefRegistry::NO_REGISTRATION_FLAGS,
             website_settings_info->GetPrefRegistrationFlags());
 #else
@@ -99,29 +98,33 @@ TEST_F(ContentSettingsRegistryTest, Properties) {
   // Check the WebsiteSettingsInfo is registered correctly.
   EXPECT_EQ(website_settings_registry()->Get(ContentSettingsType::COOKIES),
             website_settings_info);
+
+  // Check that PRIVATE_NETWORK_GUARD is registered correctly.
+#if !BUILDFLAG(IS_IOS)
+  info = registry()->Get(ContentSettingsType::PRIVATE_NETWORK_GUARD);
+  ASSERT_TRUE(info);
+
+  // Check the other properties are populated correctly.
+  EXPECT_TRUE(info->IsSettingValid(CONTENT_SETTING_BLOCK));
+  EXPECT_TRUE(info->IsSettingValid(CONTENT_SETTING_ASK));
+  EXPECT_FALSE(info->IsSettingValid(CONTENT_SETTING_SESSION_ONLY));
+  EXPECT_FALSE(info->IsSettingValid(CONTENT_SETTING_ALLOW));
+  EXPECT_EQ(ContentSettingsInfo::INHERIT_IF_LESS_PERMISSIVE,
+            info->incognito_behavior());
+#endif
 }
 
 TEST_F(ContentSettingsRegistryTest, Iteration) {
-  // Check that plugins and cookies settings appear once during iteration.
-  bool plugins_found = false;
+  // Check that cookies settings appear once during iteration.
   bool cookies_found = false;
   for (const ContentSettingsInfo* info : *registry()) {
     ContentSettingsType type = info->website_settings_info()->type();
     EXPECT_EQ(registry()->Get(type), info);
-    if (type == ContentSettingsType::PLUGINS) {
-      EXPECT_FALSE(plugins_found);
-      plugins_found = true;
-    } else if (type == ContentSettingsType::COOKIES) {
+    if (type == ContentSettingsType::COOKIES) {
       EXPECT_FALSE(cookies_found);
       cookies_found = true;
     }
   }
-
-#if defined(OS_ANDROID) || defined(OS_IOS)
-  EXPECT_FALSE(plugins_found);
-#else
-  EXPECT_TRUE(plugins_found);
-#endif
 
   EXPECT_TRUE(cookies_found);
 }
@@ -133,14 +136,13 @@ TEST_F(ContentSettingsRegistryTest, Inheritance) {
   // disable features like popup blocking, download blocking or ad blocking.
   // They do not allow access to user data.
   const ContentSettingsType safe_types[] = {
-      ContentSettingsType::PLUGINS,
       ContentSettingsType::POPUPS,
       ContentSettingsType::AUTOMATIC_DOWNLOADS,
       ContentSettingsType::ADS,
       ContentSettingsType::DURABLE_STORAGE,
       ContentSettingsType::LEGACY_COOKIE_ACCESS,
-      ContentSettingsType::STORAGE_ACCESS,
       ContentSettingsType::INSECURE_PRIVATE_NETWORK,
+      ContentSettingsType::REQUEST_DESKTOP_SITE,
   };
 
   for (const ContentSettingsInfo* info : *registry()) {
@@ -169,20 +171,23 @@ TEST_F(ContentSettingsRegistryTest, IsDefaultSettingValid) {
       registry()->Get(ContentSettingsType::COOKIES);
   EXPECT_TRUE(info->IsDefaultSettingValid(CONTENT_SETTING_ALLOW));
 
-#if !defined(OS_IOS)
+#if !BUILDFLAG(IS_IOS)
   info = registry()->Get(ContentSettingsType::MEDIASTREAM_MIC);
   EXPECT_FALSE(info->IsDefaultSettingValid(CONTENT_SETTING_ALLOW));
 
   info = registry()->Get(ContentSettingsType::MEDIASTREAM_CAMERA);
   EXPECT_FALSE(info->IsDefaultSettingValid(CONTENT_SETTING_ALLOW));
-#endif
 
-#if defined(OS_CHROMEOS)
-  info = registry()->Get(ContentSettingsType::PROTECTED_MEDIA_IDENTIFIER);
+  info = registry()->Get(ContentSettingsType::PRIVATE_NETWORK_GUARD);
   EXPECT_FALSE(info->IsDefaultSettingValid(CONTENT_SETTING_ALLOW));
 #endif
 
-#if !defined(OS_IOS) && !defined(OS_ANDROID)
+#if BUILDFLAG(IS_CHROMEOS)
+  info = registry()->Get(ContentSettingsType::PROTECTED_MEDIA_IDENTIFIER);
+  EXPECT_TRUE(info->IsDefaultSettingValid(CONTENT_SETTING_ALLOW));
+#endif
+
+#if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
   info = registry()->Get(ContentSettingsType::FILE_SYSTEM_WRITE_GUARD);
   EXPECT_FALSE(info->IsDefaultSettingValid(CONTENT_SETTING_ALLOW));
 #endif
@@ -193,7 +198,7 @@ TEST_F(ContentSettingsRegistryTest, IsDefaultSettingValid) {
 // would require this test to be updated.
 TEST_F(ContentSettingsRegistryTest, GetInitialDefaultSetting) {
 // There is no default-ask content setting on iOS, so skip testing it there.
-#if !defined(OS_IOS)
+#if !BUILDFLAG(IS_IOS)
   const ContentSettingsInfo* notifications =
       registry()->Get(ContentSettingsType::NOTIFICATIONS);
   EXPECT_EQ(CONTENT_SETTING_ASK, notifications->GetInitialDefaultSetting());
@@ -211,6 +216,16 @@ TEST_F(ContentSettingsRegistryTest, GetInitialDefaultSetting) {
       registry()->Get(ContentSettingsType::INSECURE_PRIVATE_NETWORK);
   EXPECT_EQ(CONTENT_SETTING_BLOCK,
             insecure_private_network->GetInitialDefaultSetting());
+
+  const ContentSettingsInfo* federated_identity =
+      registry()->Get(ContentSettingsType::FEDERATED_IDENTITY_API);
+  EXPECT_EQ(CONTENT_SETTING_ALLOW,
+            federated_identity->GetInitialDefaultSetting());
+
+  const ContentSettingsInfo* federated_identity_auto_reauthn = registry()->Get(
+      ContentSettingsType::FEDERATED_IDENTITY_AUTO_REAUTHN_PERMISSION);
+  EXPECT_EQ(CONTENT_SETTING_ALLOW,
+            federated_identity_auto_reauthn->GetInitialDefaultSetting());
 }
 
 }  // namespace content_settings

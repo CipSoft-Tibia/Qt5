@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "animationclip_p.h"
 #include <Qt3DAnimation/qanimationclip.h>
@@ -42,7 +9,7 @@
 #include <Qt3DAnimation/private/animationlogging_p.h>
 #include <Qt3DAnimation/private/managers_p.h>
 #include <Qt3DAnimation/private/gltfimporter_p.h>
-#include <Qt3DRender/private/qurlhelper_p.h>
+#include <Qt3DCore/private/qurlhelper_p.h>
 
 #include <QtCore/qbytearray.h>
 #include <QtCore/qfile.h>
@@ -167,12 +134,12 @@ void AnimationClip::loadAnimation()
     // that the clip has changed and that they are now dirty
     {
         QMutexLocker lock(&m_mutex);
-        for (const Qt3DCore::QNodeId id : qAsConst(m_dependingAnimators)) {
+        for (const Qt3DCore::QNodeId &id : std::as_const(m_dependingAnimators)) {
             ClipAnimator *animator = m_handler->clipAnimatorManager()->lookupResource(id);
             if (animator)
                 animator->animationClipMarkedDirty();
         }
-        for (const Qt3DCore::QNodeId id : qAsConst(m_dependingBlendedAnimators)) {
+        for (const Qt3DCore::QNodeId &id : std::as_const(m_dependingBlendedAnimators)) {
             BlendedClipAnimator *animator = m_handler->blendedClipAnimatorManager()->lookupResource(id);
             if (animator)
                 animator->animationClipMarkedDirty();
@@ -187,7 +154,7 @@ void AnimationClip::loadAnimation()
 void AnimationClip::loadAnimationFromUrl()
 {
     // TODO: Handle remote files
-    QString filePath = Qt3DRender::QUrlHelper::urlToLocalFileOrQrc(m_source);
+    QString filePath = Qt3DCore::QUrlHelper::urlToLocalFileOrQrc(m_source);
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
         qWarning() << "Could not find animation clip:" << filePath;
@@ -234,7 +201,7 @@ void AnimationClip::loadAnimationFromUrl()
         // TODO: Allow loading of a named animation from a file containing many
         const QJsonArray animationsArray = rootObject[QLatin1String("animations")].toArray();
         qCDebug(Jobs) << "Found" << animationsArray.size() << "animations:";
-        for (int i = 0; i < animationsArray.size(); ++i) {
+        for (qsizetype i = 0; i < animationsArray.size(); ++i) {
             QJsonObject animation = animationsArray.at(i).toObject();
             qCDebug(Jobs) << "Animation Name:" << animation[QLatin1String("animationName")].toString();
         }
@@ -251,7 +218,7 @@ void AnimationClip::loadAnimationFromUrl()
         } else if (animationIndex < 0 && !animationName.isEmpty()) {
             // Can we find an animation of the correct name?
             bool foundAnimation = false;
-            for (int i = 0; i < animationsArray.size(); ++i) {
+            for (qsizetype i = 0; i < animationsArray.size(); ++i) {
                 if (animationsArray.at(i)[ANIMATION_NAME_KEY].toString() == animationName) {
                     animationIndex = i;
                     foundAnimation = true;
@@ -274,9 +241,9 @@ void AnimationClip::loadAnimationFromUrl()
         m_name = animation[QLatin1String("animationName")].toString();
 
         QJsonArray channelsArray = animation[QLatin1String("channels")].toArray();
-        const int channelCount = channelsArray.size();
+        const qsizetype channelCount = channelsArray.size();
         m_channels.resize(channelCount);
-        for (int i = 0; i < channelCount; ++i) {
+        for (qsizetype i = 0; i < channelCount; ++i) {
             const QJsonObject group = channelsArray.at(i).toObject();
             m_channels[i].read(group);
         }
@@ -290,8 +257,8 @@ void AnimationClip::loadAnimationFromData()
 {
     // Reformat data from QAnimationClipData to backend format
     m_channels.resize(m_clipData.channelCount());
-    int i = 0;
-    for (const auto &frontendChannel : qAsConst(m_clipData))
+    qsizetype i = 0;
+    for (const auto &frontendChannel : std::as_const(m_clipData))
         m_channels[i++].setFromQChannel(frontendChannel);
 }
 
@@ -315,10 +282,10 @@ void AnimationClip::setDuration(float duration)
     m_duration = duration;
 }
 
-int AnimationClip::channelIndex(const QString &channelName, int jointIndex) const
+qsizetype AnimationClip::channelIndex(const QString &channelName, qsizetype jointIndex) const
 {
-    const int channelCount = m_channels.size();
-    for (int i = 0; i < channelCount; ++i) {
+    const qsizetype channelCount = m_channels.size();
+    for (qsizetype i = 0; i < channelCount; ++i) {
         if (m_channels[i].name == channelName
             && (jointIndex == -1 || m_channels[i].jointIndex == jointIndex)) {
             return i;
@@ -337,10 +304,10 @@ int AnimationClip::channelIndex(const QString &channelName, int jointIndex) cons
     for the first group, so the first channel of the second group occurs
     at index 3.
  */
-int AnimationClip::channelComponentBaseIndex(int channelIndex) const
+qsizetype AnimationClip::channelComponentBaseIndex(qsizetype channelIndex) const
 {
-    int index = 0;
-    for (int i = 0; i < channelIndex; ++i)
+    qsizetype index = 0;
+    for (qsizetype i = 0; i < channelIndex; ++i)
         index += m_channels[i].channelComponents.size();
     return index;
 }
@@ -355,8 +322,8 @@ float AnimationClip::findDuration()
 {
     // Iterate over the contained fcurves and find the longest one
     float tMax = 0.f;
-    for (const Channel &channel : qAsConst(m_channels)) {
-        for (const ChannelComponent &channelComponent : qAsConst(channel.channelComponents)) {
+    for (const Channel &channel : std::as_const(m_channels)) {
+        for (const ChannelComponent &channelComponent : std::as_const(channel.channelComponents)) {
             const float t = channelComponent.fcurve.endTime();
             if (t > tMax)
                 tMax = t;
@@ -365,10 +332,10 @@ float AnimationClip::findDuration()
     return tMax;
 }
 
-int AnimationClip::findChannelComponentCount()
+qsizetype AnimationClip::findChannelComponentCount()
 {
-    int channelCount = 0;
-    for (const Channel &channel : qAsConst(m_channels))
+    qsizetype channelCount = 0;
+    for (const Channel &channel : std::as_const(m_channels))
         channelCount += channel.channelComponents.size();
     return channelCount;
 }

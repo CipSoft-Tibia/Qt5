@@ -1,108 +1,109 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuite errors="43" failures="0" tests="6" name="tst_globaldata">
+<testsuite name="tst_globaldata" timestamp="@TEST_START_TIME@" hostname="@HOSTNAME@" tests="15" failures="0" errors="0" skipped="7" time="@TEST_DURATION@">
   <properties>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QTestVersion"/>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QtVersion"/>
-    <property value="" name="QtBuild"/>
+    <property name="QTestVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtBuild" value=""/>
   </properties>
-  <testcase result="pass" name="initTestCase">
-    <!-- message="initTestCase initTestCase (null)" type="qdebug" -->
+  <testcase name="initTestCase" classname="tst_globaldata" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[initTestCase initTestCase (null)]]>
+    </system-out>
   </testcase>
-  <testcase result="pass" name="testGlobal">
-    <!-- tag="global=false:local=false" message="init testGlobal local=false" type="qdebug" -->
-    <!-- tag="global=false:local=false" message="global: false" type="qdebug" -->
-    <!-- tag="global=false:local=false" message="local: false" type="qdebug" -->
-    <!-- tag="global=false:local=false" message="cleanup testGlobal local=false" type="qdebug" -->
-    <!-- tag="global=false:local=true" message="init testGlobal local=true" type="qdebug" -->
-    <!-- tag="global=false:local=true" message="global: false" type="qdebug" -->
-    <!-- tag="global=false:local=true" message="local: true" type="qdebug" -->
-    <!-- tag="global=false:local=true" message="cleanup testGlobal local=true" type="qdebug" -->
-    <!-- tag="global=true:local=false" message="init testGlobal local=false" type="qdebug" -->
-    <!-- tag="global=true:local=false" message="global: true" type="qdebug" -->
-    <!-- tag="global=true:local=false" message="local: false" type="qdebug" -->
-    <!-- tag="global=true:local=false" message="cleanup testGlobal local=false" type="qdebug" -->
-    <!-- tag="global=true:local=true" message="init testGlobal local=true" type="qdebug" -->
-    <!-- tag="global=true:local=true" message="global: true" type="qdebug" -->
-    <!-- tag="global=true:local=true" message="local: true" type="qdebug" -->
-    <!-- tag="global=true:local=true" message="cleanup testGlobal local=true" type="qdebug" -->
+  <testcase name="testGlobal(global=false:local=false)" classname="tst_globaldata" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[init testGlobal local=false]]>
+      <![CDATA[global: false]]>
+      <![CDATA[local: false]]>
+      <![CDATA[cleanup testGlobal local=false]]>
+    </system-out>
   </testcase>
-  <testcase name="skip">
-    <!-- tag="global=false" message="skipping" type="skip" -->
+  <testcase name="testGlobal(global=false:local=true)" classname="tst_globaldata" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[init testGlobal local=true]]>
+      <![CDATA[global: false]]>
+      <![CDATA[local: true]]>
+      <![CDATA[cleanup testGlobal local=true]]>
+    </system-out>
   </testcase>
-  <testcase name="skipLocal">
-    <!-- tag="global=false:local=false" message="init skipLocal local=false" type="qdebug" -->
-    <!-- tag="global=false:local=false" message="skipping" type="skip" -->
-    <!-- tag="global=false:local=false" message="cleanup skipLocal local=false" type="qdebug" -->
-    <!-- tag="global=false:local=true" message="init skipLocal local=true" type="qdebug" -->
-    <!-- tag="global=false:local=true" message="skipping" type="skip" -->
-    <!-- tag="global=false:local=true" message="cleanup skipLocal local=true" type="qdebug" -->
-    <!-- tag="global=true:local=false" message="init skipLocal local=false" type="qdebug" -->
-    <!-- tag="global=true:local=false" message="skipping" type="skip" -->
-    <!-- tag="global=true:local=false" message="cleanup skipLocal local=false" type="qdebug" -->
-    <!-- tag="global=true:local=true" message="init skipLocal local=true" type="qdebug" -->
-    <!-- tag="global=true:local=true" message="skipping" type="skip" -->
-    <!-- tag="global=true:local=true" message="cleanup skipLocal local=true" type="qdebug" -->
+  <testcase name="testGlobal(global=true:local=false)" classname="tst_globaldata" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[init testGlobal local=false]]>
+      <![CDATA[global: true]]>
+      <![CDATA[local: false]]>
+      <![CDATA[cleanup testGlobal local=false]]>
+    </system-out>
   </testcase>
-  <testcase result="pass" name="skipSingle">
-    <!-- tag="global=false:local=false" message="init skipSingle local=false" type="qdebug" -->
-    <!-- tag="global=false:local=false" message="global: false local: false" type="qdebug" -->
-    <!-- tag="global=false:local=false" message="cleanup skipSingle local=false" type="qdebug" -->
-    <!-- tag="global=false:local=true" message="init skipSingle local=true" type="qdebug" -->
-    <!-- tag="global=false:local=true" message="Skipping" type="skip" -->
-    <!-- tag="global=false:local=true" message="cleanup skipSingle local=true" type="qdebug" -->
-    <!-- tag="global=true:local=false" message="init skipSingle local=false" type="qdebug" -->
-    <!-- tag="global=true:local=false" message="Skipping" type="skip" -->
-    <!-- tag="global=true:local=false" message="cleanup skipSingle local=false" type="qdebug" -->
-    <!-- tag="global=true:local=true" message="init skipSingle local=true" type="qdebug" -->
-    <!-- tag="global=true:local=true" message="global: true local: true" type="qdebug" -->
-    <!-- tag="global=true:local=true" message="cleanup skipSingle local=true" type="qdebug" -->
+  <testcase name="testGlobal(global=true:local=true)" classname="tst_globaldata" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[init testGlobal local=true]]>
+      <![CDATA[global: true]]>
+      <![CDATA[local: true]]>
+      <![CDATA[cleanup testGlobal local=true]]>
+    </system-out>
   </testcase>
-  <testcase result="pass" name="cleanupTestCase">
-    <!-- message="cleanupTestCase cleanupTestCase (null)" type="qdebug" -->
+  <testcase name="skip" classname="tst_globaldata" time="@TEST_DURATION@">
+    <skipped message="skipping"/>
   </testcase>
-  <system-err>
-<![CDATA[initTestCase initTestCase (null)]]>
-<![CDATA[init testGlobal local=false]]>
-<![CDATA[global: false]]>
-<![CDATA[local: false]]>
-<![CDATA[cleanup testGlobal local=false]]>
-<![CDATA[init testGlobal local=true]]>
-<![CDATA[global: false]]>
-<![CDATA[local: true]]>
-<![CDATA[cleanup testGlobal local=true]]>
-<![CDATA[init testGlobal local=false]]>
-<![CDATA[global: true]]>
-<![CDATA[local: false]]>
-<![CDATA[cleanup testGlobal local=false]]>
-<![CDATA[init testGlobal local=true]]>
-<![CDATA[global: true]]>
-<![CDATA[local: true]]>
-<![CDATA[cleanup testGlobal local=true]]>
-<![CDATA[skipping]]>
-<![CDATA[init skipLocal local=false]]>
-<![CDATA[skipping]]>
-<![CDATA[cleanup skipLocal local=false]]>
-<![CDATA[init skipLocal local=true]]>
-<![CDATA[skipping]]>
-<![CDATA[cleanup skipLocal local=true]]>
-<![CDATA[init skipLocal local=false]]>
-<![CDATA[skipping]]>
-<![CDATA[cleanup skipLocal local=false]]>
-<![CDATA[init skipLocal local=true]]>
-<![CDATA[skipping]]>
-<![CDATA[cleanup skipLocal local=true]]>
-<![CDATA[init skipSingle local=false]]>
-<![CDATA[global: false local: false]]>
-<![CDATA[cleanup skipSingle local=false]]>
-<![CDATA[init skipSingle local=true]]>
-<![CDATA[Skipping]]>
-<![CDATA[cleanup skipSingle local=true]]>
-<![CDATA[init skipSingle local=false]]>
-<![CDATA[Skipping]]>
-<![CDATA[cleanup skipSingle local=false]]>
-<![CDATA[init skipSingle local=true]]>
-<![CDATA[global: true local: true]]>
-<![CDATA[cleanup skipSingle local=true]]>
-<![CDATA[cleanupTestCase cleanupTestCase (null)]]>
-  </system-err>
+  <testcase name="skipLocal(global=false:local=false)" classname="tst_globaldata" time="@TEST_DURATION@">
+    <skipped message="skipping"/>
+    <system-out>
+      <![CDATA[init skipLocal local=false]]>
+      <![CDATA[cleanup skipLocal local=false]]>
+    </system-out>
+  </testcase>
+  <testcase name="skipLocal(global=false:local=true)" classname="tst_globaldata" time="@TEST_DURATION@">
+    <skipped message="skipping"/>
+    <system-out>
+      <![CDATA[init skipLocal local=true]]>
+      <![CDATA[cleanup skipLocal local=true]]>
+    </system-out>
+  </testcase>
+  <testcase name="skipLocal(global=true:local=false)" classname="tst_globaldata" time="@TEST_DURATION@">
+    <skipped message="skipping"/>
+    <system-out>
+      <![CDATA[init skipLocal local=false]]>
+      <![CDATA[cleanup skipLocal local=false]]>
+    </system-out>
+  </testcase>
+  <testcase name="skipLocal(global=true:local=true)" classname="tst_globaldata" time="@TEST_DURATION@">
+    <skipped message="skipping"/>
+    <system-out>
+      <![CDATA[init skipLocal local=true]]>
+      <![CDATA[cleanup skipLocal local=true]]>
+    </system-out>
+  </testcase>
+  <testcase name="skipSingle(global=false:local=false)" classname="tst_globaldata" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[init skipSingle local=false]]>
+      <![CDATA[global: false local: false]]>
+      <![CDATA[cleanup skipSingle local=false]]>
+    </system-out>
+  </testcase>
+  <testcase name="skipSingle(global=false:local=true)" classname="tst_globaldata" time="@TEST_DURATION@">
+    <skipped message="Skipping"/>
+    <system-out>
+      <![CDATA[init skipSingle local=true]]>
+      <![CDATA[cleanup skipSingle local=true]]>
+    </system-out>
+  </testcase>
+  <testcase name="skipSingle(global=true:local=false)" classname="tst_globaldata" time="@TEST_DURATION@">
+    <skipped message="Skipping"/>
+    <system-out>
+      <![CDATA[init skipSingle local=false]]>
+      <![CDATA[cleanup skipSingle local=false]]>
+    </system-out>
+  </testcase>
+  <testcase name="skipSingle(global=true:local=true)" classname="tst_globaldata" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[init skipSingle local=true]]>
+      <![CDATA[global: true local: true]]>
+      <![CDATA[cleanup skipSingle local=true]]>
+    </system-out>
+  </testcase>
+  <testcase name="cleanupTestCase" classname="tst_globaldata" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[cleanupTestCase cleanupTestCase (null)]]>
+    </system-out>
+  </testcase>
 </testsuite>

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,10 +16,10 @@
 #include "components/prefs/scoped_user_pref_update.h"
 #include "third_party/metrics_proto/system_profile.pb.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "base/android/build_info.h"
 #endif
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "components/metrics/system_session_analyzer/system_session_analyzer_win.h"
 #endif
 
@@ -27,7 +27,7 @@ namespace metrics {
 
 namespace {
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 bool HasGmsCoreVersionChanged(PrefService* local_state) {
   std::string previous_version =
       local_state->GetString(prefs::kStabilityGmsCoreVersion);
@@ -57,35 +57,24 @@ StabilityMetricsProvider::~StabilityMetricsProvider() = default;
 
 // static
 void StabilityMetricsProvider::RegisterPrefs(PrefRegistrySimple* registry) {
-  registry->RegisterIntegerPref(prefs::kStabilityCrashCount, 0);
-  registry->RegisterIntegerPref(prefs::kStabilityIncompleteSessionEndCount, 0);
-  registry->RegisterBooleanPref(prefs::kStabilitySessionEndCompleted, true);
-  registry->RegisterIntegerPref(prefs::kStabilityLaunchCount, 0);
-  registry->RegisterIntegerPref(prefs::kStabilityBreakpadRegistrationFail, 0);
-  registry->RegisterIntegerPref(prefs::kStabilityBreakpadRegistrationSuccess,
-                                0);
-  registry->RegisterIntegerPref(prefs::kStabilityDebuggerPresent, 0);
-  registry->RegisterIntegerPref(prefs::kStabilityDebuggerNotPresent, 0);
-  registry->RegisterIntegerPref(prefs::kStabilityDeferredCount, 0);
-  registry->RegisterIntegerPref(prefs::kStabilityDiscardCount, 0);
-  registry->RegisterIntegerPref(prefs::kStabilityVersionMismatchCount, 0);
   registry->RegisterIntegerPref(prefs::kStabilityFileMetricsUnsentFilesCount,
                                 0);
   registry->RegisterIntegerPref(prefs::kStabilityFileMetricsUnsentSamplesCount,
                                 0);
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
+  registry->RegisterIntegerPref(prefs::kStabilityLaunchCount, 0);
   registry->RegisterStringPref(prefs::kStabilityGmsCoreVersion, "");
   registry->RegisterIntegerPref(prefs::kStabilityCrashCountDueToGmsCoreUpdate,
                                 0);
 #endif
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   registry->RegisterIntegerPref(prefs::kStabilitySystemCrashCount, 0);
 #endif
 }
 
 void StabilityMetricsProvider::Init() {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // This method has to be called after HasGmsCoreVersionChanged() to avoid
   // overwriting thie result.
   UpdateGmsCoreVersionPref(local_state_);
@@ -93,85 +82,33 @@ void StabilityMetricsProvider::Init() {
 }
 
 void StabilityMetricsProvider::ClearSavedStabilityMetrics() {
-  local_state_->SetInteger(prefs::kStabilityCrashCount, 0);
-  local_state_->SetInteger(prefs::kStabilityIncompleteSessionEndCount, 0);
-  local_state_->SetInteger(prefs::kStabilityBreakpadRegistrationSuccess, 0);
-  local_state_->SetInteger(prefs::kStabilityBreakpadRegistrationFail, 0);
-  local_state_->SetInteger(prefs::kStabilityDebuggerPresent, 0);
-  local_state_->SetInteger(prefs::kStabilityDebuggerNotPresent, 0);
-  local_state_->SetInteger(prefs::kStabilityLaunchCount, 0);
-  local_state_->SetBoolean(prefs::kStabilitySessionEndCompleted, true);
-  local_state_->SetInteger(prefs::kStabilityDeferredCount, 0);
-  // Note: kStabilityDiscardCount is not cleared as its intent is to measure
-  // the number of times data is discarded, even across versions.
-  local_state_->SetInteger(prefs::kStabilityVersionMismatchCount, 0);
-
   // The 0 is a valid value for the below prefs, clears pref instead
   // of setting to default value.
   local_state_->ClearPref(prefs::kStabilityFileMetricsUnsentFilesCount);
   local_state_->ClearPref(prefs::kStabilityFileMetricsUnsentSamplesCount);
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_ANDROID)
+  local_state_->SetInteger(prefs::kStabilityLaunchCount, 0);
+#endif
+#if BUILDFLAG(IS_WIN)
   local_state_->SetInteger(prefs::kStabilitySystemCrashCount, 0);
 #endif
 }
 
 void StabilityMetricsProvider::ProvideStabilityMetrics(
     SystemProfileProto* system_profile) {
+#if BUILDFLAG(IS_ANDROID)
   SystemProfileProto::Stability* stability =
       system_profile->mutable_stability();
 
   int pref_value = 0;
-
   if (GetAndClearPrefValue(prefs::kStabilityLaunchCount, &pref_value))
     stability->set_launch_count(pref_value);
-
-  if (GetAndClearPrefValue(prefs::kStabilityCrashCount, &pref_value))
-    stability->set_crash_count(pref_value);
-
-#if defined(OS_ANDROID)
   if (GetAndClearPrefValue(prefs::kStabilityCrashCountDueToGmsCoreUpdate,
                            &pref_value)) {
     stability->set_crash_count_due_to_gms_core_update(pref_value);
   }
 #endif
-
-  if (GetAndClearPrefValue(prefs::kStabilityIncompleteSessionEndCount,
-                           &pref_value))
-    stability->set_incomplete_shutdown_count(pref_value);
-
-  if (GetAndClearPrefValue(prefs::kStabilityBreakpadRegistrationSuccess,
-                           &pref_value))
-    stability->set_breakpad_registration_success_count(pref_value);
-
-  if (GetAndClearPrefValue(prefs::kStabilityBreakpadRegistrationFail,
-                           &pref_value))
-    stability->set_breakpad_registration_failure_count(pref_value);
-
-  if (GetAndClearPrefValue(prefs::kStabilityDebuggerPresent, &pref_value))
-    stability->set_debugger_present_count(pref_value);
-
-  if (GetAndClearPrefValue(prefs::kStabilityDebuggerNotPresent, &pref_value))
-    stability->set_debugger_not_present_count(pref_value);
-
-  // Note: only logging the following histograms for non-zero values.
-  if (GetAndClearPrefValue(prefs::kStabilityDeferredCount, &pref_value)) {
-    UMA_STABILITY_HISTOGRAM_COUNTS_100(
-        "Stability.Internals.InitialStabilityLogDeferredCount", pref_value);
-  }
-
-  // Note: only logging the following histograms for non-zero values.
-  if (GetAndClearPrefValue(prefs::kStabilityDiscardCount, &pref_value)) {
-    UMA_STABILITY_HISTOGRAM_COUNTS_100("Stability.Internals.DataDiscardCount",
-                                       pref_value);
-  }
-
-  // Note: only logging the following histograms for non-zero values.
-  if (GetAndClearPrefValue(prefs::kStabilityVersionMismatchCount,
-                           &pref_value)) {
-    UMA_STABILITY_HISTOGRAM_COUNTS_100(
-        "Stability.Internals.VersionMismatchCount", pref_value);
-  }
 
   if (local_state_->HasPrefPath(prefs::kStabilityFileMetricsUnsentFilesCount)) {
     UMA_STABILITY_HISTOGRAM_COUNTS_100(
@@ -192,7 +129,8 @@ void StabilityMetricsProvider::ProvideStabilityMetrics(
     local_state_->ClearPref(prefs::kStabilityFileMetricsUnsentSamplesCount);
   }
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
+  int pref_value = 0;
   if (GetAndClearPrefValue(prefs::kStabilitySystemCrashCount, &pref_value)) {
     UMA_STABILITY_HISTOGRAM_COUNTS_100("Stability.Internals.SystemCrashCount",
                                        pref_value);
@@ -200,34 +138,8 @@ void StabilityMetricsProvider::ProvideStabilityMetrics(
 #endif
 }
 
-void StabilityMetricsProvider::RecordBreakpadRegistration(bool success) {
-  if (!success)
-    IncrementPrefValue(prefs::kStabilityBreakpadRegistrationFail);
-  else
-    IncrementPrefValue(prefs::kStabilityBreakpadRegistrationSuccess);
-}
-
-void StabilityMetricsProvider::RecordBreakpadHasDebugger(bool has_debugger) {
-  if (!has_debugger)
-    IncrementPrefValue(prefs::kStabilityDebuggerNotPresent);
-  else
-    IncrementPrefValue(prefs::kStabilityDebuggerPresent);
-}
-
-void StabilityMetricsProvider::CheckLastSessionEndCompleted() {
-  if (!local_state_->GetBoolean(prefs::kStabilitySessionEndCompleted)) {
-    IncrementPrefValue(prefs::kStabilityIncompleteSessionEndCount);
-    // This is marked false when we get a WM_ENDSESSION.
-    MarkSessionEndCompleted(true);
-  }
-}
-
-void StabilityMetricsProvider::MarkSessionEndCompleted(bool end_completed) {
-  local_state_->SetBoolean(prefs::kStabilitySessionEndCompleted, end_completed);
-}
-
 void StabilityMetricsProvider::LogCrash(base::Time last_live_timestamp) {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // On Android, if there is an update for GMS Core when Chrome is running,
   // Chrome will be killed, counting as a crash. This is expected and should not
   // be counted in stability crash counts. Thus these crashes are added to a
@@ -237,32 +149,22 @@ void StabilityMetricsProvider::LogCrash(base::Time last_live_timestamp) {
     return;
   }
 #endif
-  IncrementPrefValue(prefs::kStabilityCrashCount);
   StabilityMetricsHelper::RecordStabilityEvent(
       StabilityEventType::kBrowserCrash);
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   MaybeLogSystemCrash(last_live_timestamp);
 #endif
 }
 
-void StabilityMetricsProvider::LogStabilityLogDeferred() {
-  IncrementPrefValue(prefs::kStabilityDeferredCount);
-}
-
-void StabilityMetricsProvider::LogStabilityDataDiscarded() {
-  IncrementPrefValue(prefs::kStabilityDiscardCount);
-}
-
 void StabilityMetricsProvider::LogLaunch() {
+#if BUILDFLAG(IS_ANDROID)
   IncrementPrefValue(prefs::kStabilityLaunchCount);
+#endif
+  StabilityMetricsHelper::RecordStabilityEvent(StabilityEventType::kLaunch);
 }
 
-void StabilityMetricsProvider::LogStabilityVersionMismatch() {
-  IncrementPrefValue(prefs::kStabilityVersionMismatchCount);
-}
-
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 bool StabilityMetricsProvider::IsUncleanSystemSession(
     base::Time last_live_timestamp) {
   DCHECK_NE(base::Time(), last_live_timestamp);

@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,11 @@
 
 namespace gfx {
 
-int GetStringWidth(const base::string16& text, const FontList& font_list) {
+int GetStringWidth(const std::u16string& text, const FontList& font_list) {
   return Canvas::GetStringWidth(text, font_list);
 }
 
-float GetStringWidthF(const base::string16& text, const FontList& font_list) {
+float GetStringWidthF(const std::u16string& text, const FontList& font_list) {
   return Canvas::GetStringWidthF(text, font_list);
 }
 

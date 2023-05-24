@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DANIMATION_ANIMATION_HANDLER_H
 #define QT3DANIMATION_ANIMATION_HANDLER_H
@@ -110,16 +77,16 @@ public:
     void setBlendedClipAnimatorRunning(const HBlendedClipAnimator &handle, bool running);
     QVector<HBlendedClipAnimator> runningBlenndedClipAnimators() const { return m_runningBlendedClipAnimators; }
 
-    AnimationClipLoaderManager *animationClipLoaderManager() const Q_DECL_NOTHROW { return m_animationClipLoaderManager.data(); }
-    ClockManager *clockManager() const Q_DECL_NOTHROW { return m_clockManager.data(); }
-    ClipAnimatorManager *clipAnimatorManager() const Q_DECL_NOTHROW { return m_clipAnimatorManager.data(); }
-    BlendedClipAnimatorManager *blendedClipAnimatorManager() const Q_DECL_NOTHROW { return m_blendedClipAnimatorManager.data(); }
-    ChannelMappingManager *channelMappingManager() const Q_DECL_NOTHROW { return m_channelMappingManager.data(); }
-    ChannelMapperManager *channelMapperManager() const Q_DECL_NOTHROW { return m_channelMapperManager.data(); }
-    ClipBlendNodeManager *clipBlendNodeManager() const Q_DECL_NOTHROW { return m_clipBlendNodeManager.data(); }
-    SkeletonManager *skeletonManager() const Q_DECL_NOTHROW { return m_skeletonManager.data(); }
+    AnimationClipLoaderManager *animationClipLoaderManager() const noexcept { return m_animationClipLoaderManager.data(); }
+    ClockManager *clockManager() const noexcept { return m_clockManager.data(); }
+    ClipAnimatorManager *clipAnimatorManager() const noexcept { return m_clipAnimatorManager.data(); }
+    BlendedClipAnimatorManager *blendedClipAnimatorManager() const noexcept { return m_blendedClipAnimatorManager.data(); }
+    ChannelMappingManager *channelMappingManager() const noexcept { return m_channelMappingManager.data(); }
+    ChannelMapperManager *channelMapperManager() const noexcept { return m_channelMapperManager.data(); }
+    ClipBlendNodeManager *clipBlendNodeManager() const noexcept { return m_clipBlendNodeManager.data(); }
+    SkeletonManager *skeletonManager() const noexcept { return m_skeletonManager.data(); }
 
-    QVector<Qt3DCore::QAspectJobPtr> jobsToExecute(qint64 time);
+    std::vector<Qt3DCore::QAspectJobPtr> jobsToExecute(qint64 time);
 
     void cleanupHandleList(QVector<HAnimationClip> *clips);
     void cleanupHandleList(QVector<HClipAnimator> *animators);

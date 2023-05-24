@@ -1,15 +1,15 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "device/gamepad/nintendo_controller.h"
 
-#include <algorithm>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/numerics/ranges.h"
-#include "base/strings/stringprintf.h"
+#include "base/cxx17_backports.h"
+#include "base/functional/bind.h"
+#include "base/ranges/algorithm.h"
+#include "base/task/single_thread_task_runner.h"
 #include "device/gamepad/gamepad_data_fetcher.h"
 #include "device/gamepad/gamepad_id_list.h"
 
@@ -82,8 +82,7 @@ const uint8_t kUsbDeviceTypeProController = 0x03;
 // The timeout duration was chosen through experimentation. A shorter duration
 // (~1 second) works for Pro controllers, but Joy-Cons sometimes fail to
 // initialize correctly.
-const base::TimeDelta kTimeoutDuration =
-    base::TimeDelta::FromMilliseconds(3000);
+const base::TimeDelta kTimeoutDuration = base::Milliseconds(3000);
 const size_t kMaxRetryCount = 3;
 
 const size_t kMaxVibrationEffectDurationMillis = 100;
@@ -132,7 +131,7 @@ struct VibrationFrequency {
     // This list must be kept sorted.
     {0x0068, 0x3a, 141},
     {0x0098, 0x46, 182}};
-const size_t kVibrationFrequencySize = base::size(kVibrationFrequency);
+const size_t kVibrationFrequencySize = std::size(kVibrationFrequency);
 
 // https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/rumble_data_table.md
 struct VibrationAmplitude {
@@ -176,7 +175,7 @@ struct VibrationAmplitude {
     {0xc0, 0x0070, 920}, {0xc2, 0x8070, 940},  {0xc4, 0x0071, 960},
     {0xc6, 0x8071, 981}, {0xc8, 0x0072, 1000},
 };
-const size_t kVibrationAmplitudeSize = base::size(kVibrationAmplitude);
+const size_t kVibrationAmplitudeSize = std::size(kVibrationAmplitude);
 
 // Define indices for the additional buttons on Switch controllers.
 enum SWITCH_BUTTON_INDICES {
@@ -364,13 +363,22 @@ void UnpackSwitchAnalogStickCalibration(
   UnpackShorts(data[12], data[13], data[14], &cal.rx_min, &cal.ry_min);
   UnpackShorts(data[15], data[16], data[17], &cal.rx_max, &cal.ry_max);
   if (cal.lx_min == kCalBogusValue && cal.ly_max == kCalBogusValue) {
-    // If the controller reports bogus values, default to something reasonable.
+    // No valid data for the left stick, use reasonable defaults.
     cal.lx_min = kCalDefaultMin;
     cal.lx_center = kCalDefaultCenter;
     cal.lx_max = kCalDefaultMax;
     cal.ly_min = kCalDefaultMin;
     cal.ly_center = kCalDefaultCenter;
     cal.ly_max = kCalDefaultMax;
+  } else {
+    cal.lx_min = cal.lx_center - cal.lx_min;
+    cal.lx_max = cal.lx_center + cal.lx_max;
+    cal.ly_min = cal.ly_center - cal.ly_min;
+    cal.ly_max = cal.ly_center + cal.ly_max;
+  }
+
+  if (cal.rx_min == kCalBogusValue && cal.ry_max == kCalBogusValue) {
+    // No valid data for the right stick, use reasonable defaults.
     cal.rx_min = kCalDefaultMin;
     cal.rx_center = kCalDefaultCenter;
     cal.rx_max = kCalDefaultMax;
@@ -378,10 +386,6 @@ void UnpackSwitchAnalogStickCalibration(
     cal.ry_center = kCalDefaultCenter;
     cal.ry_max = kCalDefaultMax;
   } else {
-    cal.lx_min = cal.lx_center - cal.lx_min;
-    cal.lx_max = cal.lx_center + cal.lx_max;
-    cal.ly_min = cal.ly_center - cal.ly_min;
-    cal.ly_max = cal.ly_center + cal.ly_max;
     cal.rx_min = cal.rx_center - cal.rx_min;
     cal.rx_max = cal.rx_center + cal.rx_max;
     cal.ry_min = cal.ry_center - cal.ry_min;
@@ -751,9 +755,8 @@ void FrequencyToHex(float frequency,
   int freq = static_cast<int>(frequency);
   int amp = static_cast<int>(amplitude * kVibrationAmplitudeMax);
   // Clamp the target frequency and amplitude to a safe range.
-  freq = base::ClampToRange(freq, kVibrationFrequencyHzMin,
-                            kVibrationFrequencyHzMax);
-  amp = base::ClampToRange(amp, 0, kVibrationAmplitudeMax);
+  freq = base::clamp(freq, kVibrationFrequencyHzMin, kVibrationFrequencyHzMax);
+  amp = base::clamp(amp, 0, kVibrationAmplitudeMax);
   const auto* best_vf = &kVibrationFrequency[0];
   for (size_t i = 1; i < kVibrationFrequencySize; ++i) {
     const auto* vf = &kVibrationFrequency[i];
@@ -1123,14 +1126,14 @@ void NintendoController::UpdateLeftGamepadState(Gamepad& pad,
       BUTTON_INDEX_DPAD_RIGHT,      SWITCH_BUTTON_INDEX_CAPTURE,
       SWITCH_BUTTON_INDEX_LEFT_SL,  SWITCH_BUTTON_INDEX_LEFT_SR,
   };
-  const size_t kLeftButtonIndicesSize = base::size(kLeftButtonIndices);
+  const size_t kLeftButtonIndicesSize = std::size(kLeftButtonIndices);
 
   // Axes associated with the left Joy-Con thumbstick.
   const size_t kLeftAxisIndices[] = {
       AXIS_INDEX_LEFT_STICK_X,  // Axes assume the Joy-Con is held vertically
       AXIS_INDEX_LEFT_STICK_Y,  // or is attached to a grip.
   };
-  const size_t kLeftAxisIndicesSize = base::size(kLeftAxisIndices);
+  const size_t kLeftAxisIndicesSize = std::size(kLeftAxisIndices);
 
   if (pad_.buttons_length == SWITCH_BUTTON_INDEX_COUNT) {
     for (size_t i = 0; i < kLeftButtonIndicesSize; ++i)
@@ -1161,14 +1164,14 @@ void NintendoController::UpdateRightGamepadState(Gamepad& pad,
       SWITCH_BUTTON_INDEX_RIGHT_SL,
       SWITCH_BUTTON_INDEX_RIGHT_SR,
   };
-  const size_t kRightButtonIndicesSize = base::size(kRightButtonIndices);
+  const size_t kRightButtonIndicesSize = std::size(kRightButtonIndices);
 
   // Axes associated with the right Joy-Con thumbstick.
   const size_t kRightAxisIndices[] = {
       AXIS_INDEX_RIGHT_STICK_X,  // Axes assume the Joy-Con is held vertically
       AXIS_INDEX_RIGHT_STICK_Y,  // or is attached to a grip.
   };
-  const size_t kRightAxisIndicesSize = base::size(kRightAxisIndices);
+  const size_t kRightAxisIndicesSize = std::size(kRightAxisIndices);
 
   if (pad_.buttons_length == SWITCH_BUTTON_INDEX_COUNT) {
     for (size_t i = 0; i < kRightButtonIndicesSize; ++i)
@@ -1188,7 +1191,9 @@ void NintendoController::Connect(mojom::HidManager::ConnectCallback callback) {
   DCHECK(hid_manager_);
   hid_manager_->Connect(device_info_->guid,
                         /*connection_client=*/mojo::NullRemote(),
-                        /*watcher=*/mojo::NullRemote(), std::move(callback));
+                        /*watcher=*/mojo::NullRemote(),
+                        /*allow_protected_reports=*/false,
+                        /*allow_fido_reports=*/false, std::move(callback));
 }
 
 void NintendoController::OnConnect(
@@ -1549,7 +1554,7 @@ void NintendoController::SubCommand(uint8_t sub_command,
   // Serial subcommands also carry vibration data. Configure the vibration
   // portion of the report for a neutral vibration effect (zero amplitude).
   // https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/bluetooth_hid_notes.md#output-0x12
-  report_bytes[0] = uint8_t(output_report_counter_++ & 0xff);
+  report_bytes[0] = static_cast<uint8_t>(output_report_counter_++ & 0xff);
   report_bytes[1] = 0x00;
   report_bytes[2] = 0x01;
   report_bytes[3] = 0x40;
@@ -1560,8 +1565,7 @@ void NintendoController::SubCommand(uint8_t sub_command,
   report_bytes[8] = 0x40;
   report_bytes[9] = sub_command;
   DCHECK_LT(bytes.size() + kSubCommandDataOffset, output_report_size_bytes_);
-  std::copy(bytes.begin(), bytes.end(),
-            &report_bytes[kSubCommandDataOffset - 1]);
+  base::ranges::copy(bytes, &report_bytes[kSubCommandDataOffset - 1]);
   WriteOutputReport(kReportIdOutput01, report_bytes, true);
 }
 
@@ -1603,7 +1607,7 @@ void NintendoController::RequestVibration(double left_frequency,
   FrequencyToHex(left_frequency, left_magnitude, &lhf, &llf, &lhfa, &llfa);
   FrequencyToHex(right_frequency, right_magnitude, &rhf, &rlf, &rhfa, &rlfa);
   std::vector<uint8_t> report_bytes(output_report_size_bytes_ - 1);
-  uint8_t counter = uint8_t(output_report_counter_++ & 0x0f);
+  uint8_t counter = static_cast<uint8_t>(output_report_counter_++ & 0x0f);
   report_bytes[0] = counter;
   report_bytes[1] = lhf & 0xff;
   report_bytes[2] = lhfa + ((lhf >> 8) & 0xff);
@@ -1630,11 +1634,13 @@ void NintendoController::RequestEnableUsbTimeout(bool enable) {
 }
 
 void NintendoController::RequestEnableImu(bool enable) {
-  SubCommand(kSubCommandEnableImu, {uint8_t(enable ? 0x01 : 0x00)});
+  SubCommand(kSubCommandEnableImu,
+             {static_cast<uint8_t>(enable ? 0x01 : 0x00)});
 }
 
 void NintendoController::RequestEnableVibration(bool enable) {
-  SubCommand(kSubCommandEnableVibration, {uint8_t(enable ? 0x01 : 0x00)});
+  SubCommand(kSubCommandEnableVibration,
+             {static_cast<uint8_t>(enable ? 0x01 : 0x00)});
 }
 
 void NintendoController::RequestSetPlayerLights(uint8_t light_pattern) {
@@ -1653,14 +1659,15 @@ void NintendoController::RequestSetHomeLight(
   DCHECK_LE(cycle_count, 0xf);
   if ((cycle_count > 0 && minicycle_count == 1) || minicycle_duration == 0)
     minicycle_count = 0;
-  std::vector<uint8_t> bytes = {uint8_t((minicycle_count << 4) | minicycle_duration),
-                                uint8_t((start_intensity << 4) | cycle_count)};
+  std::vector<uint8_t> bytes = {
+      static_cast<uint8_t>((minicycle_count << 4) | minicycle_duration),
+      static_cast<uint8_t>((start_intensity << 4) | cycle_count)};
   bytes.insert(bytes.end(), minicycle_data.begin(), minicycle_data.end());
   SubCommand(kSubCommandSetHomeLight, bytes);
 }
 
 void NintendoController::RequestSetHomeLightIntensity(double intensity) {
-  intensity = base::ClampToRange(intensity, 0.0, 1.0);
+  intensity = base::clamp(intensity, 0.0, 1.0);
   uint8_t led_intensity = std::round(intensity * 0x0f);
   // Each pair of bytes in the minicycle data describes two minicyles.
   // The first byte holds two 4-bit values encoding minicycle intensities.
@@ -1671,7 +1678,8 @@ void NintendoController::RequestSetHomeLightIntensity(double intensity) {
   // 1x minicycle duration. Because |minicycle_count| and |cycle_count| are
   // both zero, the device will transition to the 1st minicycle and then stay at
   // |led_intensity|.
-  RequestSetHomeLight(0, 1, led_intensity, 0, {uint8_t(led_intensity << 4), 0x00});
+  RequestSetHomeLight(0, 1, led_intensity, 0,
+                      {static_cast<uint8_t>(led_intensity << 4), 0x00});
 }
 
 void NintendoController::RequestSetImuSensitivity(
@@ -1693,8 +1701,8 @@ void NintendoController::ReadSpi(uint16_t address, size_t length) {
   length = std::min(length, output_report_size_bytes_ - kSpiDataOffset);
   uint8_t address_high = (address >> 8) & 0xff;
   uint8_t address_low = address & 0xff;
-  SubCommand(kSubCommandReadSpi,
-             {address_low, address_high, 0x00, 0x00, uint8_t(length)});
+  SubCommand(kSubCommandReadSpi, {address_low, address_high, 0x00, 0x00,
+                                  static_cast<uint8_t>(length)});
 }
 
 void NintendoController::RequestImuCalibration() {
@@ -1722,7 +1730,7 @@ void NintendoController::ReadInputReport() {
 void NintendoController::OnReadInputReport(
     bool success,
     uint8_t report_id,
-    const base::Optional<std::vector<uint8_t>>& report_bytes) {
+    const absl::optional<std::vector<uint8_t>>& report_bytes) {
   if (success) {
     DCHECK(report_bytes);
     HandleInputReport(report_id, *report_bytes);
@@ -1763,19 +1771,24 @@ void NintendoController::DoShutdown() {
   device_info_.reset();
 }
 
-void NintendoController::SetVibration(double strong_magnitude,
-                                      double weak_magnitude) {
+void NintendoController::SetVibration(
+    mojom::GamepadEffectParametersPtr params) {
   if (is_composite_) {
     // Split the vibration effect between the left and right subdevices.
     if (composite_left_ && composite_right_) {
-      composite_left_->SetVibration(strong_magnitude, 0);
-      composite_right_->SetVibration(0, weak_magnitude);
+      composite_left_->SetVibration(mojom::GamepadEffectParameters::New(
+          params->duration, params->start_delay, params->strong_magnitude,
+          /*weak_magnitude=*/0, /*left_trigger=*/0, /*right_trigger=*/0));
+      composite_right_->SetVibration(mojom::GamepadEffectParameters::New(
+          params->duration, params->start_delay, /*strong_magnitude=*/0,
+          params->weak_magnitude, /*left_trigger=*/0, /*right_trigger=*/0));
     }
   } else {
-    RequestVibration(kVibrationFrequencyStrongRumble,
-                     kVibrationAmplitudeStrongRumbleMax * strong_magnitude,
-                     kVibrationFrequencyWeakRumble,
-                     kVibrationAmplitudeWeakRumbleMax * weak_magnitude);
+    RequestVibration(
+        kVibrationFrequencyStrongRumble,
+        kVibrationAmplitudeStrongRumbleMax * params->strong_magnitude,
+        kVibrationFrequencyWeakRumble,
+        kVibrationAmplitudeWeakRumbleMax * params->weak_magnitude);
   }
 }
 
@@ -1787,7 +1800,7 @@ void NintendoController::ArmTimeout() {
   DCHECK(timeout_callback_.IsCancelled());
   timeout_callback_.Reset(base::BindOnce(&NintendoController::OnTimeout,
                                          weak_factory_.GetWeakPtr()));
-  base::ThreadTaskRunnerHandle::Get()->PostDelayedTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
       FROM_HERE, timeout_callback_.callback(), kTimeoutDuration);
 }
 

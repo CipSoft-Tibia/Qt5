@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 
 #include <type_traits>
 
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
@@ -52,8 +51,6 @@ class MoveOnly {
 
  private:
   int i_;
-
-  DISALLOW_COPY_AND_ASSIGN(MoveOnly);
 };
 
 class MoveOnlyHashValue {
@@ -94,36 +91,26 @@ struct MoveOnlyHashTraits : public GenericHashTraits<MoveOnlyHashValue> {
   // optimization.
   static const bool kEmptyValueIsZero = false;
 
-  static const bool kHasIsEmptyValueFunction = true;
   static bool IsEmptyValue(const MoveOnlyHashValue& value) {
     return value.Value() == MoveOnlyHashValue::kEmpty;
   }
-  static void ConstructDeletedValue(MoveOnlyHashValue& slot, bool) {
+  static void ConstructDeletedValue(MoveOnlyHashValue& slot) {
     slot = MoveOnlyHashValue(MoveOnlyHashValue::kDeleted);
   }
   static bool IsDeletedValue(const MoveOnlyHashValue& value) {
     return value.Value() == MoveOnlyHashValue::kDeleted;
   }
-};
-
-struct MoveOnlyHash {
   static unsigned GetHash(const MoveOnlyHashValue& value) {
-    return DefaultHash<int>::Hash::GetHash(value.Value());
+    return WTF::GetHash(value.Value());
   }
   static bool Equal(const MoveOnlyHashValue& left,
                     const MoveOnlyHashValue& right) {
-    return DefaultHash<int>::Hash::Equal(left.Value(), right.Value());
+    return left.Value() == right.Value();
   }
-  static const bool safe_to_compare_to_empty_or_deleted = true;
 };
 
 template <>
-struct HashTraits<MoveOnlyHashValue> : public MoveOnlyHashTraits {};
-
-template <>
-struct DefaultHash<MoveOnlyHashValue> {
-  using Hash = MoveOnlyHash;
-};
+struct HashTraits<MoveOnlyHashValue> : MoveOnlyHashTraits {};
 
 class CountCopy final {
  public:
@@ -151,33 +138,23 @@ class CountCopy final {
 
 struct CountCopyHashTraits : public GenericHashTraits<CountCopy> {
   static const bool kEmptyValueIsZero = false;
-  static const bool kHasIsEmptyValueFunction = true;
   static bool IsEmptyValue(const CountCopy& value) { return !value.Counter(); }
-  static void ConstructDeletedValue(CountCopy& slot, bool) {
+  static void ConstructDeletedValue(CountCopy& slot) {
     slot = CountCopy(CountCopy::kDeletedValue);
   }
   static bool IsDeletedValue(const CountCopy& value) {
     return value.Counter() == CountCopy::kDeletedValue;
   }
-};
-
-struct CountCopyHash : public PtrHash<const int*> {
   static unsigned GetHash(const CountCopy& value) {
-    return PtrHash<const int>::GetHash(value.Counter());
+    return WTF::GetHash(value.Counter());
   }
   static bool Equal(const CountCopy& left, const CountCopy& right) {
-    return PtrHash<const int>::Equal(left.Counter(), right.Counter());
+    return left.Counter() == right.Counter();
   }
-  static const bool safe_to_compare_to_empty_or_deleted = true;
 };
 
 template <>
-struct HashTraits<CountCopy> : public CountCopyHashTraits {};
-
-template <>
-struct DefaultHash<CountCopy> {
-  using Hash = CountCopyHash;
-};
+struct HashTraits<CountCopy> : CountCopyHashTraits {};
 
 template <typename T>
 class ValueInstanceCount final {
@@ -221,38 +198,27 @@ template <typename T>
 struct ValueInstanceCountHashTraits
     : public GenericHashTraits<ValueInstanceCount<T>> {
   static const bool kEmptyValueIsZero = false;
-  static const bool kHasIsEmptyValueFunction = true;
   static bool IsEmptyValue(const ValueInstanceCount<T>& value) {
     return !value.Counter();
   }
-  static void ConstructDeletedValue(ValueInstanceCount<T>& slot, bool) {
+  static void ConstructDeletedValue(ValueInstanceCount<T>& slot) {
     slot = ValueInstanceCount<T>(ValueInstanceCount<T>::kDeletedValue);
   }
   static bool IsDeletedValue(const ValueInstanceCount<T>& value) {
     return value.Counter() == ValueInstanceCount<T>::kDeletedValue;
   }
-};
-
-template <typename T>
-struct ValueInstanceCountHash : public PtrHash<const int*> {
   static unsigned GetHash(const ValueInstanceCount<T>& value) {
-    return PtrHash<const int>::GetHash(value.Counter());
+    return WTF::GetHash(value.Counter());
   }
   static bool Equal(const ValueInstanceCount<T>& left,
                     const ValueInstanceCount<T>& right) {
-    return PtrHash<const int>::Equal(left.Counter(), right.Counter());
+    return left.Counter() == right.Counter();
   }
-  static const bool safe_to_compare_to_empty_or_deleted = true;
 };
 
 template <typename T>
 struct HashTraits<ValueInstanceCount<T>>
     : public ValueInstanceCountHashTraits<T> {};
-
-template <typename T>
-struct DefaultHash<ValueInstanceCount<T>> {
-  using Hash = ValueInstanceCountHash<T>;
-};
 
 class DummyRefCounted : public RefCounted<DummyRefCounted> {
  public:

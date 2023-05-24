@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.inOrder;
@@ -25,6 +25,7 @@ import com.google.android.gms.cast.CastDevice;
 import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.media.RemoteMediaClient;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -39,8 +40,10 @@ import org.robolectric.annotation.Config;
 
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.components.media_router.CastSessionUtil;
+import org.chromium.components.media_router.MediaRouterClient;
 import org.chromium.components.media_router.MediaSink;
 import org.chromium.components.media_router.MediaSource;
+import org.chromium.components.media_router.TestMediaRouterClient;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -80,6 +83,9 @@ public class CastSessionControllerTest {
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
+
+        MediaRouterClient.setInstance(new TestMediaRouterClient());
+
         mContext = RuntimeEnvironment.application;
         mMediaRouterHelper = new MediaRouterTestHelper();
         mController = spy(new CastSessionController(mProvider));
@@ -91,6 +97,11 @@ public class CastSessionControllerTest {
         doReturn(mCastDevice).when(mCastSession).getCastDevice();
         doReturn(mMessageHandler).when(mProvider).getMessageHandler();
         doReturn("session_message").when(mMessageHandler).buildSessionMessage();
+    }
+
+    @After
+    public void tearDown() {
+        MediaRouterClient.setInstance(null);
     }
 
     @Test

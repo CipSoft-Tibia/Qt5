@@ -23,7 +23,8 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
-#include "internal.h"
+#include "codec_internal.h"
+#include "encode.h"
 #include "sgi.h"
 #include "rle.h"
 
@@ -39,9 +40,9 @@ typedef struct SgiContext {
 static av_cold int encode_init(AVCodecContext *avctx)
 {
     if (avctx->width > 65535 || avctx->height > 65535) {
-        av_log(avctx, AV_LOG_ERROR,
-               "Unsupported resolution %dx%d.\n", avctx->width, avctx->height);
-        av_log(avctx, AV_LOG_ERROR, "SGI does not support resolutions above 65535x65535\n");
+        av_log(avctx, AV_LOG_ERROR, "Unsupported resolution %dx%d. "
+               "SGI does not support resolutions above 65535x65535\n",
+               avctx->width, avctx->height);
         return AVERROR_INVALIDDATA;
     }
 
@@ -95,24 +96,10 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     SgiContext *s = avctx->priv_data;
     const AVFrame * const p = frame;
     PutByteContext pbc;
-    uint8_t *in_buf, *encode_buf;
+    uint8_t *encode_buf;
     int x, y, z, length, tablesize, ret, i;
     unsigned int width, height, depth, dimension;
     unsigned int bytes_per_channel, pixmax, put_be;
-
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
-    avctx->coded_frame->key_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
-#if FF_API_CODER_TYPE
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (avctx->coder_type == FF_CODER_TYPE_RAW)
-        s->rle = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
     width  = avctx->width;
     height = avctx->height;
@@ -168,7 +155,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
     else // assume sgi_rle_encode() produces at most 2x size of input
         length += tablesize * 2 + depth * height * (2 * width + 1);
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, bytes_per_channel * length, 0)) < 0)
+    if ((ret = ff_alloc_packet(avctx, pkt, bytes_per_channel * length)) < 0)
         return ret;
 
     bytestream2_init_writer(&pbc, pkt->data, pkt->size);
@@ -213,7 +200,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
             return AVERROR(ENOMEM);
 
         for (z = 0; z < depth; z++) {
-            in_buf = p->data[0] + p->linesize[0] * (height - 1) + z * bytes_per_channel;
+            const uint8_t *in_buf = p->data[0] + p->linesize[0] * (height - 1) + z * bytes_per_channel;
 
             for (y = 0; y < height; y++) {
                 bytestream2_put_be32(&taboff_pcb, bytestream2_tell_p(&pbc));
@@ -244,7 +231,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
         av_free(encode_buf);
     } else {
         for (z = 0; z < depth; z++) {
-            in_buf = p->data[0] + p->linesize[0] * (height - 1) + z * bytes_per_channel;
+            const uint8_t *in_buf = p->data[0] + p->linesize[0] * (height - 1) + z * bytes_per_channel;
 
             for (y = 0; y < height; y++) {
                 for (x = 0; x < width * depth; x += depth)
@@ -263,7 +250,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
     /* total length */
     pkt->size   = bytestream2_tell_p(&pbc);
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
 
     return 0;
@@ -284,16 +270,17 @@ static const AVClass sgi_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_sgi_encoder = {
-    .name      = "sgi",
-    .long_name = NULL_IF_CONFIG_SMALL("SGI image"),
-    .type      = AVMEDIA_TYPE_VIDEO,
-    .id        = AV_CODEC_ID_SGI,
+const FFCodec ff_sgi_encoder = {
+    .p.name    = "sgi",
+    CODEC_LONG_NAME("SGI image"),
+    .p.type    = AVMEDIA_TYPE_VIDEO,
+    .p.id      = AV_CODEC_ID_SGI,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(SgiContext),
-    .priv_class = &sgi_class,
+    .p.priv_class = &sgi_class,
     .init      = encode_init,
-    .encode2   = encode_frame,
-    .pix_fmts  = (const enum AVPixelFormat[]) {
+    FF_CODEC_ENCODE_CB(encode_frame),
+    .p.pix_fmts = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA,
         AV_PIX_FMT_RGB48LE, AV_PIX_FMT_RGB48BE,
         AV_PIX_FMT_RGBA64LE, AV_PIX_FMT_RGBA64BE,

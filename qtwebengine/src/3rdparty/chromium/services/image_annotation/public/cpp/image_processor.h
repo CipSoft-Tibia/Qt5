@@ -1,15 +1,14 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SERVICES_IMAGE_ANNOTATION_PUBLIC_CPP_IMAGE_PROCESSOR_H_
 #define SERVICES_IMAGE_ANNOTATION_PUBLIC_CPP_IMAGE_PROCESSOR_H_
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/sequenced_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "services/image_annotation/public/mojom/image_annotation.mojom.h"
@@ -27,11 +26,12 @@ class ImageProcessor : public mojom::ImageProcessor {
   // TODO(crbug.com/916420): accept a more sophisticated interface to fetch
   //                         pixels; this will be required for iOS, where pixel
   //                         access entails a full image redownload.
-  ImageProcessor() = default;
   explicit ImageProcessor(base::RepeatingCallback<SkBitmap()> get_pixels);
+
+  ImageProcessor(const ImageProcessor&) = delete;
+  ImageProcessor& operator=(const ImageProcessor&) = delete;
+
   ~ImageProcessor() override;
-  ImageProcessor(ImageProcessor&&) = default;
-  ImageProcessor& operator=(ImageProcessor&&) = default;
 
   // Reencodes the image data for transmission to the service. Will be called by
   // the service if pixel data is needed.
@@ -51,15 +51,13 @@ class ImageProcessor : public mojom::ImageProcessor {
   // The quality parameter to use when encoding images before transmission.
   static constexpr int kJpgQuality = 65;
 
-  base::RepeatingCallback<SkBitmap()> get_pixels_;
+  const base::RepeatingCallback<SkBitmap()> get_pixels_;
 
   scoped_refptr<base::SequencedTaskRunner> background_task_runner_;
 
   mojo::ReceiverSet<mojom::ImageProcessor> receivers_;
 
   FRIEND_TEST_ALL_PREFIXES(ImageProcessorTest, ImageContent);
-
-  DISALLOW_COPY_AND_ASSIGN(ImageProcessor);
 };
 
 }  // namespace image_annotation

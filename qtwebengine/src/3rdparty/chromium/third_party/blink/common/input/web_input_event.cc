@@ -1,13 +1,15 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/public/common/input/web_input_event.h"
 
 namespace blink {
-
-base::Optional<ui::ScrollInputType> WebInputEvent::GetScrollInputType() const {
-  return base::nullopt;
+namespace {
+constexpr int kButtonModifiers =
+    WebInputEvent::kLeftButtonDown | WebInputEvent::kMiddleButtonDown |
+    WebInputEvent::kRightButtonDown | WebInputEvent::kBackButtonDown |
+    WebInputEvent::kForwardButtonDown;
 }
 
 WebInputEvent::DispatchType WebInputEvent::MergeDispatchTypes(
@@ -31,7 +33,8 @@ ui::EventType WebInputEvent::GetTypeAsUiEventType() const {
     case WebInputEvent::Type::kMouseUp:
       return ui::EventType::ET_MOUSE_RELEASED;
     case WebInputEvent::Type::kMouseMove:
-      return ui::EventType::ET_MOUSE_MOVED;
+      return modifiers_ & kButtonModifiers ? ui::EventType::ET_MOUSE_DRAGGED
+                                           : ui::EventType::ET_MOUSE_MOVED;
     case WebInputEvent::Type::kMouseEnter:
       return ui::EventType::ET_MOUSE_ENTERED;
     case WebInputEvent::Type::kMouseLeave:
@@ -72,6 +75,8 @@ ui::EventType WebInputEvent::GetTypeAsUiEventType() const {
       return ui::EventType::ET_GESTURE_TAP;
     case WebInputEvent::Type::kGestureTapCancel:
       return ui::EventType::ET_GESTURE_TAP_CANCEL;
+    case WebInputEvent::Type::kGestureShortPress:
+      return ui::EventType::ET_GESTURE_SHORT_PRESS;
     case WebInputEvent::Type::kGestureLongPress:
       return ui::EventType::ET_GESTURE_LONG_PRESS;
     case WebInputEvent::Type::kGestureLongTap:

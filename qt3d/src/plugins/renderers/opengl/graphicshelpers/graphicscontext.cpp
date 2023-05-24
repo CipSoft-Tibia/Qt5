@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "graphicscontext_p.h"
 
@@ -52,9 +16,7 @@
 #include <Qt3DRender/private/buffermanager_p.h>
 #include <Qt3DRender/private/managers_p.h>
 #include <Qt3DRender/private/attachmentpack_p.h>
-#include <Qt3DRender/private/qbuffer_p.h>
 #include <Qt3DRender/private/attachmentpack_p.h>
-#include <Qt3DRender/private/qbuffer_p.h>
 #include <Qt3DRender/private/renderstateset_p.h>
 #include <QOpenGLShaderProgram>
 #include <glresourcemanagers_p.h>
@@ -65,7 +27,8 @@
 #include <renderbuffer_p.h>
 #include <glshader_p.h>
 
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
+#include <QtOpenGL/QOpenGLVersionFunctionsFactory>
 #include <QOpenGLFunctions_2_0>
 #include <QOpenGLFunctions_3_2_Core>
 #include <QOpenGLFunctions_3_3_Core>
@@ -83,7 +46,9 @@
 #include <QSurface>
 #include <QWindow>
 #include <QOpenGLTexture>
-#include <QOpenGLDebugLogger>
+#ifdef QT_OPENGL_LIB
+#include <QtOpenGL/QOpenGLDebugLogger>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -122,10 +87,12 @@ namespace OpenGL {
 
 namespace {
 
+#ifdef QT_OPENGL_LIB
 void logOpenGLDebugMessage(const QOpenGLDebugMessage &debugMessage)
 {
     qDebug() << "OpenGL debug message:" << debugMessage;
 }
+#endif
 
 } // anonymous
 
@@ -137,7 +104,9 @@ GraphicsContext::GraphicsContext()
     , m_defaultFBO(0)
     , m_gl(nullptr)
     , m_glHelper(nullptr)
+#ifdef QT_OPENGL_LIB
     , m_debugLogger(nullptr)
+#endif
     , m_currentVAO(nullptr)
 {
 }
@@ -301,7 +270,7 @@ void GraphicsContext::loadShader(Shader *shaderNode,
     // We create or adopt an already created glShader
     glShader = glShaderManager->createOrAdoptExisting(shaderNode);
 
-    const QVector<Qt3DCore::QNodeId> sharedShaderIds = glShaderManager->shaderIdsForProgram(glShader);
+    const std::vector<Qt3DCore::QNodeId> sharedShaderIds = glShaderManager->shaderIdsForProgram(glShader);
     if (sharedShaderIds.size() == 1) {
         // The Shader could already be loaded if we retrieved one
         // that had been marked for destruction
@@ -316,7 +285,7 @@ void GraphicsContext::loadShader(Shader *shaderNode,
         }
     } else {
         // Find an already loaded shader that shares the same QOpenGLShaderProgram
-        for (const Qt3DCore::QNodeId sharedShaderId : sharedShaderIds) {
+        for (const Qt3DCore::QNodeId &sharedShaderId : sharedShaderIds) {
             if (sharedShaderId != shaderNode->peerId()) {
                 Shader *refShader = shaderManager->lookupResource(sharedShaderId);
                 // We only introspect once per actual OpenGL shader program
@@ -333,13 +302,13 @@ void GraphicsContext::loadShader(Shader *shaderNode,
 
 void GraphicsContext::activateDrawBuffers(const AttachmentPack &attachments)
 {
-    const QVector<int> activeDrawBuffers = attachments.getGlDrawBuffers();
+    const std::vector<int> &activeDrawBuffers = attachments.getGlDrawBuffers();
 
     if (m_glHelper->checkFrameBufferComplete()) {
         if (activeDrawBuffers.size() > 1) {// We need MRT
             if (m_glHelper->supportsFeature(GraphicsHelperInterface::MRT)) {
                 // Set up MRT, glDrawBuffers...
-                m_glHelper->drawBuffers(activeDrawBuffers.size(), activeDrawBuffers.data());
+                m_glHelper->drawBuffers(GLsizei(activeDrawBuffers.size()), activeDrawBuffers.data());
             }
         }
     } else {
@@ -380,19 +349,19 @@ GraphicsHelperInterface *GraphicsContext::resolveHighestOpenGLFunctions()
         }
         glHelper->initializeHelper(m_gl, nullptr);
     }
-#ifndef QT_OPENGL_ES_2
+#if !QT_CONFIG(opengles2)
     else {
         QAbstractOpenGLFunctions *glFunctions = nullptr;
-        if ((glFunctions = m_gl->versionFunctions<QOpenGLFunctions_4_3_Core>()) != nullptr) {
+        if ((glFunctions = QOpenGLVersionFunctionsFactory::get<QOpenGLFunctions_4_3_Core>()) != nullptr) {
             qCDebug(Backend) << Q_FUNC_INFO << " Building OpenGL 4.3";
             glHelper = new GraphicsHelperGL4();
-        } else if ((glFunctions = m_gl->versionFunctions<QOpenGLFunctions_3_3_Core>()) != nullptr) {
+        } else if ((glFunctions = QOpenGLVersionFunctionsFactory::get<QOpenGLFunctions_3_3_Core>()) != nullptr) {
             qCDebug(Backend) << Q_FUNC_INFO << " Building OpenGL 3.3";
             glHelper = new GraphicsHelperGL3_3();
-        } else if ((glFunctions = m_gl->versionFunctions<QOpenGLFunctions_3_2_Core>()) != nullptr) {
+        } else if ((glFunctions = QOpenGLVersionFunctionsFactory::get<QOpenGLFunctions_3_2_Core>()) != nullptr) {
             qCDebug(Backend) << Q_FUNC_INFO << " Building OpenGL 3.2";
             glHelper = new GraphicsHelperGL3_2();
-        } else if ((glFunctions = m_gl->versionFunctions<QOpenGLFunctions_2_0>()) != nullptr) {
+        } else if ((glFunctions = QOpenGLVersionFunctionsFactory::get<QOpenGLFunctions_2_0>()) != nullptr) {
             qCDebug(Backend) << Q_FUNC_INFO << " Building OpenGL 2 Helper";
             glHelper = new GraphicsHelperGL2();
         }
@@ -405,6 +374,7 @@ GraphicsHelperInterface *GraphicsContext::resolveHighestOpenGLFunctions()
     const QByteArray debugLoggingMode = qgetenv("QT3DRENDER_DEBUG_LOGGING");
     const bool enableDebugLogging = !debugLoggingMode.isEmpty();
 
+#ifdef QT_OPENGL_LIB
     if (enableDebugLogging && !m_debugLogger) {
         if (m_gl->hasExtension("GL_KHR_debug")) {
             qCDebug(Backend) << "Qt3D: Enabling OpenGL debug logging";
@@ -424,7 +394,7 @@ GraphicsHelperInterface *GraphicsContext::resolveHighestOpenGLFunctions()
             qCDebug(Backend) << "Qt3D: OpenGL debug logging requested but GL_KHR_debug not supported";
         }
     }
-
+#endif
 
     // Set Vendor and Extensions of reference GraphicsApiFilter
     // TO DO: would that vary like the glHelper ?
@@ -887,7 +857,7 @@ GLint GraphicsContext::elementType(GLint type)
     case GL_FLOAT_VEC4:
         return GL_FLOAT;
 
-#ifndef QT_OPENGL_ES_2 // Otherwise compile error as Qt defines GL_DOUBLE as GL_FLOAT when using ES2
+#if !QT_CONFIG(opengles2) // Otherwise compile error as Qt defines GL_DOUBLE as GL_FLOAT when using ES2
     case GL_DOUBLE:
 #ifdef GL_DOUBLE_VEC3 // For compiling on pre GL 4.1 systems
     case GL_DOUBLE_VEC2:
@@ -907,7 +877,7 @@ GLint GraphicsContext::tupleSizeFromType(GLint type)
 {
     switch (type) {
     case GL_FLOAT:
-#ifndef QT_OPENGL_ES_2 // Otherwise compile error as Qt defines GL_DOUBLE as GL_FLOAT when using ES2
+#if !QT_CONFIG(opengles2) // Otherwise compile error as Qt defines GL_DOUBLE as GL_FLOAT when using ES2
     case GL_DOUBLE:
 #endif
     case GL_UNSIGNED_BYTE:
@@ -943,7 +913,7 @@ GLuint GraphicsContext::byteSizeFromType(GLint type)
 {
     switch (type) {
     case GL_FLOAT:          return sizeof(float);
-#ifndef QT_OPENGL_ES_2 // Otherwise compile error as Qt defines GL_DOUBLE as GL_FLOAT when using ES2
+#if !QT_CONFIG(opengles2) // Otherwise compile error as Qt defines GL_DOUBLE as GL_FLOAT when using ES2
     case GL_DOUBLE:         return sizeof(double);
 #endif
     case GL_UNSIGNED_BYTE:  return sizeof(unsigned char);
@@ -964,8 +934,10 @@ GLuint GraphicsContext::byteSizeFromType(GLint type)
     return 0;
 }
 
-GLint GraphicsContext::glDataTypeFromAttributeDataType(QAttribute::VertexBaseType dataType)
+GLint GraphicsContext::glDataTypeFromAttributeDataType(Qt3DCore::QAttribute::VertexBaseType dataType)
 {
+    using namespace Qt3DCore;
+
     switch (dataType) {
     case QAttribute::Byte:
         return GL_BYTE;
@@ -983,7 +955,7 @@ GLint GraphicsContext::glDataTypeFromAttributeDataType(QAttribute::VertexBaseTyp
 #ifdef GL_HALF_FLOAT
         return GL_HALF_FLOAT;
 #endif
-#ifndef QT_OPENGL_ES_2 // Otherwise compile error as Qt defines GL_DOUBLE as GL_FLOAT when using ES2
+#if !QT_CONFIG(opengles2) // Otherwise compile error as Qt defines GL_DOUBLE as GL_FLOAT when using ES2
     case QAttribute::Double:
         return GL_DOUBLE;
 #endif

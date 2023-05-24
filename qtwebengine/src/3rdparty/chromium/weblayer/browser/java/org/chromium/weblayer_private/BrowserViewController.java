@@ -1,9 +1,10 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 package org.chromium.weblayer_private;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.res.Resources;
 import android.os.RemoteException;
@@ -11,132 +12,188 @@ import android.util.AndroidRuntimeException;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewGroup.LayoutParams;
-import android.webkit.ValueCallback;
 import android.widget.FrameLayout;
 import android.widget.RelativeLayout;
 
-import androidx.annotation.Nullable;
-
+import org.chromium.base.ContextUtils;
 import org.chromium.base.annotations.JNINamespace;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetControllerFactory;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetObserver;
+import org.chromium.components.browser_ui.bottomsheet.EmptyBottomSheetObserver;
+import org.chromium.components.browser_ui.bottomsheet.ManagedBottomSheetController;
 import org.chromium.components.browser_ui.modaldialog.AppModalPresenter;
 import org.chromium.components.browser_ui.widget.InsetObserverView;
+import org.chromium.components.browser_ui.widget.scrim.ScrimCoordinator;
+import org.chromium.components.browser_ui.widget.scrim.ScrimCoordinator.SystemUiScrimDelegate;
+import org.chromium.components.content_capture.ContentCaptureConsumer;
+import org.chromium.components.content_capture.OnscreenContentProvider;
 import org.chromium.components.embedder_support.view.ContentView;
+import org.chromium.components.webapps.bottomsheet.PwaBottomSheetController;
+import org.chromium.components.webapps.bottomsheet.PwaBottomSheetControllerFactory;
 import org.chromium.content_public.browser.WebContents;
-import org.chromium.content_public.common.BrowserControlsState;
+import org.chromium.ui.KeyboardVisibilityDelegate;
 import org.chromium.ui.modaldialog.DialogDismissalCause;
 import org.chromium.ui.modaldialog.ModalDialogManager;
 import org.chromium.ui.modaldialog.ModalDialogManager.ModalDialogType;
 import org.chromium.ui.modaldialog.ModalDialogProperties;
 import org.chromium.ui.modaldialog.SimpleModalDialogController;
 import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.ui.util.TokenHolder;
 
 /**
  * BrowserViewController controls the set of Views needed to show the WebContents.
  */
 @JNINamespace("weblayer")
 public final class BrowserViewController
-        implements BrowserControlsContainerView.Delegate,
-                   WebContentsGestureStateTracker.OnGestureStateChangedListener,
+        implements WebContentsGestureStateTracker.OnGestureStateChangedListener,
                    ModalDialogManager.ModalDialogManagerObserver {
-    /** Information needed to restore the UI state after recreating the BrowserViewController. */
-    /* package */ static class State {
-        private BrowserControlsContainerView.State mTopControlsState;
-        private BrowserControlsContainerView.State mBottomControlsState;
-
-        private State(BrowserControlsContainerView.State topControlsState,
-                BrowserControlsContainerView.State bottomControlsState) {
-            mTopControlsState = topControlsState;
-            mBottomControlsState = bottomControlsState;
-        }
-    }
-
     private final ContentViewRenderView mContentViewRenderView;
     // Child of mContentViewRenderView. Be very careful adding Views to this, as any Views are not
     // accessible (ContentView provides it's own accessible implementation that interacts with
     // WebContents).
     private final ContentView mContentView;
-    // Child of mContentViewRenderView, holds top-view from client.
-    private final BrowserControlsContainerView mTopControlsContainerView;
-    // Child of mContentViewRenderView, holds bottom-view from client.
-    private final BrowserControlsContainerView mBottomControlsContainerView;
+    // Child of mContentViewRenderView, holds the SurfaceView for WebXR.
+    private final FrameLayout mArViewHolder;
     // Other child of mContentViewRenderView, which holds views that sit on top of the web contents,
     // such as tab modal dialogs.
     private final FrameLayout mWebContentsOverlayView;
 
     private final FragmentWindowAndroid mWindowAndroid;
-    private final View.OnAttachStateChangeListener mOnAttachedStateChangeListener;
     private final ModalDialogManager mModalDialogManager;
+
+    private final ScrimCoordinator mScrim;
+
+    private final ViewGroup mBottomSheetContainer;
+    private final ManagedBottomSheetController mBottomSheetController;
+    private final BottomSheetObserver mBottomSheetObserver;
+
+    private PwaBottomSheetController mPwaBottomSheetController;
 
     private TabImpl mTab;
 
     private WebContentsGestureStateTracker mGestureStateTracker;
 
-    @BrowserControlsState
-    private int mBrowserControlsConstraint = BrowserControlsState.BOTH;
+    private OnscreenContentProvider mOnscreenContentProvider;
 
-    /**
-     * The value of mCachedDoBrowserControlsShrinkRendererSize is set when
-     * WebContentsGestureStateTracker begins a gesture. This is necessary as the values should only
-     * change once a gesture is no longer under way.
-     */
-    private boolean mCachedDoBrowserControlsShrinkRendererSize;
-
-    public BrowserViewController(FragmentWindowAndroid windowAndroid,
-            View.OnAttachStateChangeListener listener, @Nullable State savedState,
+    public BrowserViewController(Context embedderContext, FragmentWindowAndroid windowAndroid,
             boolean recreateForConfigurationChange) {
         mWindowAndroid = windowAndroid;
-        mOnAttachedStateChangeListener = listener;
-        Context context = mWindowAndroid.getContext().get();
-        mContentViewRenderView = new ContentViewRenderView(context, recreateForConfigurationChange);
-        mContentViewRenderView.addOnAttachStateChangeListener(listener);
+        mContentViewRenderView =
+                new ContentViewRenderView(embedderContext, recreateForConfigurationChange);
 
-        mContentViewRenderView.onNativeLibraryLoaded(
-                mWindowAndroid, ContentViewRenderView.MODE_SURFACE_VIEW);
-        mTopControlsContainerView =
-                new BrowserControlsContainerView(context, mContentViewRenderView, this, true,
-                        (savedState == null) ? null : savedState.mTopControlsState);
-        mTopControlsContainerView.setId(View.generateViewId());
-        mBottomControlsContainerView =
-                new BrowserControlsContainerView(context, mContentViewRenderView, this, false,
-                        (savedState == null) ? null : savedState.mBottomControlsState);
-        mBottomControlsContainerView.setId(View.generateViewId());
-        mContentView = ContentViewWithAutofill.createContentView(
-                context, mTopControlsContainerView.getEventOffsetHandler());
+        mContentViewRenderView.onNativeLibraryLoaded(mWindowAndroid);
+        mContentView = ContentViewWithAutofill.createContentView(embedderContext, null);
         mContentViewRenderView.addView(mContentView,
                 new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT,
                         RelativeLayout.LayoutParams.MATCH_PARENT));
-        mContentViewRenderView.addView(mTopControlsContainerView,
-                new RelativeLayout.LayoutParams(
-                        LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        RelativeLayout.LayoutParams bottomControlsContainerViewParams =
-                new RelativeLayout.LayoutParams(
-                        LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        bottomControlsContainerViewParams.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
-        mContentViewRenderView.addView(
-                mBottomControlsContainerView, bottomControlsContainerViewParams);
 
-        mWebContentsOverlayView = new FrameLayout(context);
+        mArViewHolder = new FrameLayout(embedderContext);
+        mArViewHolder.setVisibility(View.GONE);
+        mContentViewRenderView.addView(mArViewHolder,
+                new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+        mWebContentsOverlayView = new FrameLayout(embedderContext);
         RelativeLayout.LayoutParams overlayParams =
                 new RelativeLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0);
-        overlayParams.addRule(RelativeLayout.BELOW, mTopControlsContainerView.getId());
-        overlayParams.addRule(RelativeLayout.ABOVE, mBottomControlsContainerView.getId());
         mContentViewRenderView.addView(mWebContentsOverlayView, overlayParams);
         mWindowAndroid.setAnimationPlaceholderView(mWebContentsOverlayView);
 
         mModalDialogManager = new ModalDialogManager(
-                new AppModalPresenter(context), ModalDialogManager.ModalDialogType.APP);
+                new AppModalPresenter(embedderContext), ModalDialogManager.ModalDialogType.APP);
         mModalDialogManager.addObserver(this);
         mModalDialogManager.registerPresenter(
-                new WebLayerTabModalPresenter(this, context), ModalDialogType.TAB);
+                new WebLayerTabModalPresenter(this, embedderContext), ModalDialogType.TAB);
         mWindowAndroid.setModalDialogManager(mModalDialogManager);
+
+        SystemUiScrimDelegate systemUiDelegate = new SystemUiScrimDelegate() {
+            @Override
+            public void setStatusBarScrimFraction(float scrimFraction) {
+                // TODO(mdjones): Support status bar tinting if it is needed by WebLayer.
+            }
+
+            @Override
+            public void setNavigationBarScrimFraction(float scrimFraction) {}
+        };
+        mScrim = new ScrimCoordinator(embedderContext, systemUiDelegate, mContentViewRenderView,
+                mWindowAndroid.getContext().get().getResources().getColor(
+                        R.color.default_scrim_color));
+        mBottomSheetContainer = new FrameLayout(embedderContext);
+        mBottomSheetContainer.setLayoutParams(
+                new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        mBottomSheetContainer.setClipChildren(false);
+        mBottomSheetContainer.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(View view, int left, int top, int right, int bottom,
+                    int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                // Allow the sheet container to layout once before hiding it until it is used.
+                mBottomSheetContainer.setVisibility(View.GONE);
+                mBottomSheetContainer.removeOnLayoutChangeListener(this);
+            }
+        });
+        mContentViewRenderView.addView(mBottomSheetContainer);
+
+        Activity activity = ContextUtils.activityFromContext(embedderContext);
+        if (activity == null) {
+            // TODO(rayankans): Remove assumptions about Activity from BottomSheetController.
+            mBottomSheetController = null;
+            mPwaBottomSheetController = null;
+            mBottomSheetObserver = null;
+            return;
+        }
+        mBottomSheetController = BottomSheetControllerFactory.createBottomSheetController(
+                () -> mScrim, (v) -> {}, activity.getWindow(),
+                KeyboardVisibilityDelegate.getInstance(), () -> mBottomSheetContainer);
+        BottomSheetControllerFactory.attach(mWindowAndroid, mBottomSheetController);
+
+        mPwaBottomSheetController = PwaBottomSheetControllerFactory.createPwaBottomSheetController(
+                mWindowAndroid.getContext().get());
+        PwaBottomSheetControllerFactory.attach(mWindowAndroid, mPwaBottomSheetController);
+        mBottomSheetObserver = new EmptyBottomSheetObserver() {
+            /** A token for suppressing app modal dialogs. */
+            private int mAppModalToken = TokenHolder.INVALID_TOKEN;
+
+            /** A token for suppressing tab modal dialogs. */
+            private int mTabModalToken = TokenHolder.INVALID_TOKEN;
+
+            @Override
+            public void onSheetOpened(int reason) {
+                assert mAppModalToken == TokenHolder.INVALID_TOKEN;
+                assert mTabModalToken == TokenHolder.INVALID_TOKEN;
+                mAppModalToken =
+                        mModalDialogManager.suspendType(ModalDialogManager.ModalDialogType.APP);
+                mTabModalToken =
+                        mModalDialogManager.suspendType(ModalDialogManager.ModalDialogType.TAB);
+            }
+
+            @Override
+            public void onSheetClosed(int reason) {
+                if (mAppModalToken != TokenHolder.INVALID_TOKEN
+                        || mTabModalToken != TokenHolder.INVALID_TOKEN) {
+                    // If one modal dialog token is set, the other should be as well.
+                    assert mAppModalToken != TokenHolder.INVALID_TOKEN
+                            && mTabModalToken != TokenHolder.INVALID_TOKEN;
+                    mModalDialogManager.resumeType(
+                            ModalDialogManager.ModalDialogType.APP, mAppModalToken);
+                    mModalDialogManager.resumeType(
+                            ModalDialogManager.ModalDialogType.TAB, mTabModalToken);
+                }
+                mAppModalToken = TokenHolder.INVALID_TOKEN;
+                mTabModalToken = TokenHolder.INVALID_TOKEN;
+            }
+        };
+        mBottomSheetController.addObserver(mBottomSheetObserver);
+        mBottomSheetController.setAccessibilityUtil(WebLayerAccessibilityUtil.get());
     }
 
     public void destroy() {
+        if (mBottomSheetController != null) {
+            BottomSheetControllerFactory.detach(mBottomSheetController);
+            mBottomSheetController.removeObserver(mBottomSheetObserver);
+            PwaBottomSheetControllerFactory.detach(mPwaBottomSheetController);
+        }
         mWindowAndroid.setModalDialogManager(null);
         setActiveTab(null);
-        mContentViewRenderView.removeOnAttachStateChangeListener(mOnAttachedStateChangeListener);
-        mTopControlsContainerView.destroy();
-        mBottomControlsContainerView.destroy();
+        if (mOnscreenContentProvider != null) mOnscreenContentProvider.destroy();
         mContentViewRenderView.destroy();
     }
 
@@ -162,6 +219,14 @@ public final class BrowserViewController
         return mWebContentsOverlayView;
     }
 
+    public ViewGroup getArViewHolder() {
+        return mArViewHolder;
+    }
+
+    public void setSurfaceProperties(boolean requiresAlphaChannel, boolean zOrderMediaOverlay) {
+        mContentViewRenderView.setSurfaceProperties(requiresAlphaChannel, zOrderMediaOverlay);
+    }
+
     // Returns the index at which the infobar container view should be inserted.
     public int getDesiredInfoBarContainerViewIndex() {
         // Ensure that infobars are positioned behind WebContents overlays in z-order.
@@ -175,8 +240,6 @@ public final class BrowserViewController
 
         if (mTab != null) {
             mTab.onDetachedFromViewController();
-            mTab.setBrowserControlsVisibilityConstraint(
-                    ImplControlsVisibilityReason.ANIMATION, BrowserControlsState.BOTH);
             // WebContentsGestureStateTracker is relatively cheap, easier to destroy rather than
             // update WebContents.
             mGestureStateTracker.destroy();
@@ -197,16 +260,16 @@ public final class BrowserViewController
         mContentView.setWebContents(webContents);
 
         mContentViewRenderView.setWebContents(webContents);
-        mTopControlsContainerView.setWebContents(webContents);
-        mBottomControlsContainerView.setWebContents(webContents);
         if (mTab != null) {
-            mTab.setBrowserControlsVisibilityConstraint(
-                    ImplControlsVisibilityReason.ANIMATION, mBrowserControlsConstraint);
-            mTab.setOnlyExpandTopControlsAtPageTop(
-                    mTopControlsContainerView.getOnlyExpandControlsAtPageTop());
-            mTab.onAttachedToViewController(mTopControlsContainerView.getNativeHandle(),
-                    mBottomControlsContainerView.getNativeHandle());
+            mTab.onAttachedToViewController();
             mContentView.requestFocus();
+        }
+
+        if (mOnscreenContentProvider == null) {
+            mOnscreenContentProvider = new OnscreenContentProvider(
+                    mWindowAndroid.getContext().get(), mContentViewRenderView, webContents);
+        } else {
+            mOnscreenContentProvider.onWebContentsChanged(webContents);
         }
     }
 
@@ -214,34 +277,8 @@ public final class BrowserViewController
         return mTab;
     }
 
-    public void setTopView(View view) {
-        mTopControlsContainerView.setView(view);
-    }
-
-    public void setTopControlsMinHeight(int minHeight) {
-        mTopControlsContainerView.setMinHeight(minHeight);
-    }
-
-    public void setOnlyExpandTopControlsAtPageTop(boolean onlyExpandControlsAtPageTop) {
-        if (onlyExpandControlsAtPageTop
-                == mTopControlsContainerView.getOnlyExpandControlsAtPageTop()) {
-            return;
-        }
-        mTopControlsContainerView.setOnlyExpandControlsAtPageTop(onlyExpandControlsAtPageTop);
-        if (mTab == null) return;
-        mTab.setOnlyExpandTopControlsAtPageTop(onlyExpandControlsAtPageTop);
-    }
-
-    public void setTopControlsAnimationsEnabled(boolean animationsEnabled) {
-        mTopControlsContainerView.setAnimationsEnabled(animationsEnabled);
-    }
-
-    public void setBottomView(View view) {
-        mBottomControlsContainerView.setView(view);
-    }
-
-    public int getBottomContentHeightDelta() {
-        return mBottomControlsContainerView.getContentHeightDelta();
+    public void addContentCaptureConsumerForTesting(ContentCaptureConsumer consumer) {
+        mOnscreenContentProvider.addConsumer(consumer);
     }
 
     public boolean compositorHasSurface() {
@@ -257,29 +294,7 @@ public final class BrowserViewController
     }
 
     @Override
-    public void refreshPageHeight() {
-        adjustWebContentsHeightIfNecessary();
-    }
-
-    @Override
-    public void setAnimationConstraint(@BrowserControlsState int constraint) {
-        mBrowserControlsConstraint = constraint;
-        if (mTab == null) return;
-        mTab.setBrowserControlsVisibilityConstraint(
-                ImplControlsVisibilityReason.ANIMATION, constraint);
-    }
-
-    @Override
-    public void onGestureStateChanged() {
-        // This is called from |mGestureStateTracker|.
-        assert mGestureStateTracker != null;
-        if (mGestureStateTracker.isInGestureOrScroll()) {
-            mCachedDoBrowserControlsShrinkRendererSize =
-                    mTopControlsContainerView.isControlVisible()
-                    || mBottomControlsContainerView.isControlVisible();
-        }
-        adjustWebContentsHeightIfNecessary();
-    }
+    public void onGestureStateChanged() {}
 
     @Override
     public void onDialogAdded(PropertyModel model) {
@@ -291,14 +306,7 @@ public final class BrowserViewController
         onDialogVisibilityChanged(false);
     }
 
-    /* package */ State getState() {
-        return new State(
-                mTopControlsContainerView.getState(), mBottomControlsContainerView.getState());
-    }
-
     private void onDialogVisibilityChanged(boolean showing) {
-        if (WebLayerFactoryImpl.getClientMajorVersion() < 82) return;
-
         if (mModalDialogManager.getCurrentType() == ModalDialogType.TAB) {
             // This shouldn't be called when |mTab| is null and the modal dialog type is TAB. OTOH,
             // when an app-modal is displayed for a javascript dialog, this method can be called
@@ -312,49 +320,8 @@ public final class BrowserViewController
         }
     }
 
-    private void adjustWebContentsHeightIfNecessary() {
-        if (mGestureStateTracker == null || mGestureStateTracker.isInGestureOrScroll()
-                || !mTopControlsContainerView.isCompletelyExpandedOrCollapsed()
-                || !mBottomControlsContainerView.isCompletelyExpandedOrCollapsed()) {
-            return;
-        }
-        mContentViewRenderView.setWebContentsHeightDelta(
-                mTopControlsContainerView.getContentHeightDelta()
-                + mBottomControlsContainerView.getContentHeightDelta());
-    }
-
-    public void setSupportsEmbedding(boolean enable, ValueCallback<Boolean> callback) {
-        mContentViewRenderView.requestMode(enable ? ContentViewRenderView.MODE_TEXTURE_VIEW
-                                                  : ContentViewRenderView.MODE_SURFACE_VIEW,
-                callback);
-    }
-
-    public void onTopControlsChanged(int topControlsOffsetY, int topContentOffsetY) {
-        mTopControlsContainerView.onOffsetsChanged(topControlsOffsetY, topContentOffsetY);
-    }
-
-    public void onBottomControlsChanged(int bottomControlsOffsetY) {
-        mBottomControlsContainerView.onOffsetsChanged(bottomControlsOffsetY, 0);
-    }
-
-    public boolean doBrowserControlsShrinkRendererSize() {
-        return mGestureStateTracker.isInGestureOrScroll()
-                ? mCachedDoBrowserControlsShrinkRendererSize
-                : (mTopControlsContainerView.isControlVisible()
-                        || mBottomControlsContainerView.isControlVisible());
-    }
-
-    public boolean shouldAnimateBrowserControlsHeightChanges() {
-        return mTopControlsContainerView.shouldAnimateBrowserControlsHeightChanges();
-    }
-
-    /**
-     * Causes the browser controls to be fully shown. Take care in calling this. Normally the
-     * renderer drives the offsets, but this method circumvents that.
-     */
-    public void showControls() {
-        mTopControlsContainerView.onOffsetsChanged(0, mTopControlsContainerView.getHeight());
-        mBottomControlsContainerView.onOffsetsChanged(0, 0);
+    public void setMinimumSurfaceSize(int width, int height) {
+        mContentViewRenderView.setMinimumSurfaceSize(width, height);
     }
 
     /**
@@ -389,7 +356,8 @@ public final class BrowserViewController
                         .with(ModalDialogProperties.CONTROLLER, dialogController)
                         .with(ModalDialogProperties.TITLE, resources,
                                 R.string.http_post_warning_title)
-                        .with(ModalDialogProperties.MESSAGE, resources, R.string.http_post_warning)
+                        .with(ModalDialogProperties.MESSAGE_PARAGRAPH_1,
+                                resources.getString(R.string.http_post_warning))
                         .with(ModalDialogProperties.POSITIVE_BUTTON_TEXT, resources,
                                 R.string.http_post_warning_resend)
                         .with(ModalDialogProperties.NEGATIVE_BUTTON_TEXT, resources,

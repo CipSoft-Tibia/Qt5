@@ -65,7 +65,7 @@ ErrorOr<RSAPrivateKey> RSAPrivateKey::CreateFromPrivateKeyInfo(
 ErrorOr<RSAPrivateKey> RSAPrivateKey::CreateFromKey(EVP_PKEY* key) {
   OpenSSLErrStackTracer err_tracer(CURRENT_LOCATION);
   OSP_DCHECK(key);
-  if (EVP_PKEY_type(key->type) != EVP_PKEY_RSA) {
+  if (EVP_PKEY_id(key) != EVP_PKEY_RSA) {
     return Error::Code::kEVPInitializationError;
   }
 

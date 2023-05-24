@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 
 #include <vector>
 
-#include "device/vr/vr_export.h"
+#include "base/component_export.h"
 
 namespace gfx {
 class Point3F;
@@ -20,8 +20,8 @@ namespace vr_utils {
 // convert to an array of bounds (which the mojom/WebXr API expects). Returns
 // a vector of points representing the four corners of a rectangle centered at
 // 0,0 with length and width determined by size_x and size_z respectively.
-std::vector<gfx::Point3F> DEVICE_VR_EXPORT GetStageBoundsFromSize(float size_x,
-                                                                  float size_z);
+std::vector<gfx::Point3F> COMPONENT_EXPORT(DEVICE_VR_UTIL)
+    GetStageBoundsFromSize(float size_x, float size_z);
 
 }  // namespace vr_utils
 }  // namespace device

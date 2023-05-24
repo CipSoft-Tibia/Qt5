@@ -1,8 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/task/sequence_manager/associated_thread_id.h"
+
+#include "base/check.h"
+#include "base/dcheck_is_on.h"
 
 namespace base {
 namespace sequence_manager {
@@ -12,14 +15,12 @@ AssociatedThreadId::AssociatedThreadId() = default;
 AssociatedThreadId::~AssociatedThreadId() = default;
 
 void AssociatedThreadId::BindToCurrentThread() {
-  // TODO(altimin): Remove this after MessageLoopImpl is gone and
-  // initialisation is simplified.
-  auto current_thread_id = PlatformThread::CurrentId();
-  auto prev_thread_id =
-      thread_id_.exchange(current_thread_id, std::memory_order_release);
-  ANALYZER_ALLOW_UNUSED(prev_thread_id);
-  DCHECK(prev_thread_id == current_thread_id ||
-         prev_thread_id == kInvalidThreadId);
+#if DCHECK_IS_ON()
+  const auto prev_thread_ref = thread_ref_.load(std::memory_order_relaxed);
+  DCHECK(prev_thread_ref.is_null() ||
+         prev_thread_ref == PlatformThread::CurrentRef());
+#endif
+  thread_ref_.store(PlatformThread::CurrentRef(), std::memory_order_release);
 
   // Rebind the thread and sequence checkers to the current thread/sequence.
   DETACH_FROM_THREAD(thread_checker);

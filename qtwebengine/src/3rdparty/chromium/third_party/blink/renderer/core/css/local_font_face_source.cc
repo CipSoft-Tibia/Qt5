@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,9 +31,10 @@ LocalFontFaceSource::~LocalFontFaceSource() {}
 
 bool LocalFontFaceSource::IsLocalNonBlocking() const {
   FontUniqueNameLookup* unique_name_lookup =
-      FontGlobalContext::Get()->GetFontUniqueNameLookup();
-  if (!unique_name_lookup)
+      FontGlobalContext::Get().GetFontUniqueNameLookup();
+  if (!unique_name_lookup) {
     return true;
+  }
   return unique_name_lookup->IsFontUniqueNameLookupReadyForSyncLookup();
 }
 
@@ -41,13 +42,13 @@ bool LocalFontFaceSource::IsLocalFontAvailable(
     const FontDescription& font_description) const {
   // TODO(crbug.com/1027158): Remove metrics code after metrics collected.
   // TODO(crbug.com/1025945): Properly handle Windows prior to 10 and Android.
-  bool font_available =
-      FontCache::GetFontCache()->IsPlatformFontUniqueNameMatchAvailable(
-          font_description, font_name_);
-  if (font_available)
+  bool font_available = FontCache::Get().IsPlatformFontUniqueNameMatchAvailable(
+      font_description, font_name_);
+  if (font_available) {
     font_selector_->ReportSuccessfulLocalFontMatch(font_name_);
-  else
+  } else {
     font_selector_->ReportFailedLocalFontMatch(font_name_);
+  }
   return font_available;
 }
 
@@ -56,8 +57,8 @@ LocalFontFaceSource::CreateLoadingFallbackFontData(
     const FontDescription& font_description) {
   FontCachePurgePreventer font_cache_purge_preventer;
   scoped_refptr<SimpleFontData> temporary_font =
-      FontCache::GetFontCache()->GetLastResortFallbackFont(font_description,
-                                                           kDoNotRetain);
+      FontCache::Get().GetLastResortFallbackFont(font_description,
+                                                 kDoNotRetain);
   if (!temporary_font) {
     NOTREACHED();
     return nullptr;
@@ -79,8 +80,9 @@ scoped_refptr<SimpleFontData> LocalFontFaceSource::CreateFontData(
   probe::LocalFontsEnabled(font_selector_->GetExecutionContext(),
                            &local_fonts_enabled);
 
-  if (!local_fonts_enabled)
+  if (!local_fonts_enabled) {
     return nullptr;
+  }
 
   if (IsValid() && IsLoading()) {
     scoped_refptr<SimpleFontData> fallback_font_data =
@@ -102,30 +104,31 @@ scoped_refptr<SimpleFontData> LocalFontFaceSource::CreateFontData(
   // Fonts sends, compare crbug.com/765980. So for now, we continue to
   // pass font_description to avoid breaking Google Fonts.
   FontDescription unstyled_description(font_description);
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
   unstyled_description.SetStretch(NormalWidthValue());
   unstyled_description.SetStyle(NormalSlopeValue());
   unstyled_description.SetWeight(NormalWeightValue());
 #endif
-  scoped_refptr<SimpleFontData> font_data =
-      FontCache::GetFontCache()->GetFontData(
-          unstyled_description, font_name_,
-          AlternateFontName::kLocalUniqueFace);
+  // TODO(https://crbug.com/1302264): Enable passing down of font-palette
+  // information here (font_description.GetFontPalette()).
+  scoped_refptr<SimpleFontData> font_data = FontCache::Get().GetFontData(
+      unstyled_description, font_name_, AlternateFontName::kLocalUniqueFace);
   histograms_.Record(font_data.get());
   ReportFontLookup(unstyled_description, font_data.get());
   return font_data;
 }
 
 void LocalFontFaceSource::BeginLoadIfNeeded() {
-  if (IsLoaded())
+  if (IsLoaded()) {
     return;
+  }
 
   FontUniqueNameLookup* unique_name_lookup =
-      FontGlobalContext::Get()->GetFontUniqueNameLookup();
+      FontGlobalContext::Get().GetFontUniqueNameLookup();
   DCHECK(unique_name_lookup);
   unique_name_lookup->PrepareFontUniqueNameLookup(
-      WTF::Bind(&LocalFontFaceSource::NotifyFontUniqueNameLookupReady,
-                WrapWeakPersistent(this)));
+      WTF::BindOnce(&LocalFontFaceSource::NotifyFontUniqueNameLookupReady,
+                    WrapWeakPersistent(this)));
   face_->DidBeginLoad();
 }
 
@@ -151,8 +154,9 @@ bool LocalFontFaceSource::IsValid() const {
 }
 
 void LocalFontFaceSource::LocalFontHistograms::Record(bool load_success) {
-  if (reported_)
+  if (reported_) {
     return;
+  }
   reported_ = true;
   base::UmaHistogramBoolean("WebFont.LocalFontUsed", load_success);
 }

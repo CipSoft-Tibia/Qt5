@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,10 +10,13 @@
 #include <vector>
 
 #include "base/base_export.h"
-#include "base/callback.h"
 #include "base/containers/stack.h"
+#include "base/dcheck_is_on.h"
+#include "base/functional/callback.h"
 #include "base/gtest_prod_util.h"
-#include "base/memory/ref_counted.h"
+#include "base/location.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "base/sequence_checker.h"
@@ -32,11 +35,11 @@ class ScopedRunLoopTimeout;
 class ScopedDisableRunLoopTimeout;
 }  // namespace test
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 class MessagePumpForUI;
 #endif
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
 class MessagePumpUIApplication;
 #endif
 
@@ -85,7 +88,7 @@ class BASE_EXPORT RunLoop {
 
   // Run the current RunLoop::Delegate. This blocks until Quit is called
   // (directly or by running the RunLoop::QuitClosure).
-  void Run();
+  void Run(const Location& location = Location::Current());
 
   // Run the current RunLoop::Delegate until it doesn't find any tasks or
   // messages in its queue (it goes idle).
@@ -148,6 +151,9 @@ class BASE_EXPORT RunLoop {
   // capturing lambda or test observer).
   RepeatingClosure QuitClosure();
   RepeatingClosure QuitWhenIdleClosure();
+
+  // Returns true if Quit() or QuitWhenIdle() was called.
+  bool AnyQuitCalled();
 
   // Returns true if there is an active RunLoop on this thread.
   // Safe to call before RegisterDelegateForCurrentThread().
@@ -213,13 +219,16 @@ class BASE_EXPORT RunLoop {
 
    protected:
     // Returns the result of this Delegate's |should_quit_when_idle_callback_|.
-    // "protected" so it can be invoked only by the Delegate itself.
+    // "protected" so it can be invoked only by the Delegate itself. The
+    // Delegate is expected to quit Run() if this returns true.
     bool ShouldQuitWhenIdle();
 
    private:
     // While the state is owned by the Delegate subclass, only RunLoop can use
     // it.
     friend class RunLoop;
+
+    friend class ScopedDisallowRunningRunLoop;
 
     // A vector-based stack is more memory efficient than the default
     // deque-based stack as the active RunLoop stack isn't expected to ever
@@ -256,37 +265,13 @@ class BASE_EXPORT RunLoop {
   static void QuitCurrentWhenIdleDeprecated();
   static RepeatingClosure QuitCurrentWhenIdleClosureDeprecated();
 
-  // Run() will DCHECK if called while there's a ScopedDisallowRunningForTesting
-  // in scope on its thread. This is useful to add safety to some test
-  // constructs which allow multiple task runners to share the main thread in
-  // unit tests. While the main thread can be shared by multiple runners to
-  // deterministically fake multi threading, there can still only be a single
-  // RunLoop::Delegate per thread and RunLoop::Run() should only be invoked from
-  // it (or it would result in incorrectly driving TaskRunner A while in
-  // TaskRunner B's context).
-  class BASE_EXPORT ScopedDisallowRunningForTesting {
-   public:
-    ScopedDisallowRunningForTesting();
-    ScopedDisallowRunningForTesting(const ScopedDisallowRunningForTesting&) =
-        delete;
-    ScopedDisallowRunningForTesting& operator=(
-        const ScopedDisallowRunningForTesting&) = delete;
-    ~ScopedDisallowRunningForTesting();
-
-   private:
-#if DCHECK_IS_ON()
-    Delegate* current_delegate_;
-    const bool previous_run_allowance_;
-#endif  // DCHECK_IS_ON()
-  };
-
   // Support for //base/test/scoped_run_loop_timeout.h.
   // This must be public for access by the implementation code in run_loop.cc.
   struct BASE_EXPORT RunLoopTimeout {
     RunLoopTimeout();
     ~RunLoopTimeout();
     TimeDelta timeout;
-    RepeatingClosure on_timeout;
+    RepeatingCallback<void(const Location&)> on_timeout;
   };
 
  private:
@@ -294,13 +279,13 @@ class BASE_EXPORT RunLoop {
                            RunLoopQuitOrderAfter);
   friend class QtWebEngineCore::WebEngineContext;
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // Android doesn't support the blocking RunLoop::Run, so it calls
   // BeforeRun and AfterRun directly.
   friend class MessagePumpForUI;
 #endif
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
   // iOS doesn't support the blocking RunLoop::Run, so it calls
   // BeforeRun directly.
   friend class MessagePumpUIApplication;
@@ -320,21 +305,25 @@ class BASE_EXPORT RunLoop {
   // A cached reference of RunLoop::Delegate for the thread driven by this
   // RunLoop for quick access without using TLS (also allows access to state
   // from another sequence during Run(), ref. |sequence_checker_| below).
-  Delegate* const delegate_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union, #global-scope
+  RAW_PTR_EXCLUSION Delegate* const delegate_;
 
   const Type type_;
 
 #if DCHECK_IS_ON()
-  bool run_called_ = false;
+  bool run_allowed_ = true;
 #endif
 
   bool quit_called_ = false;
   bool running_ = false;
-  // Used to record that QuitWhenIdle() was called on this RunLoop, meaning that
-  // the Delegate should quit Run() once it becomes idle (it's responsible for
-  // probing this state via ShouldQuitWhenIdle()). This state is stored here
-  // rather than pushed to Delegate to support nested RunLoops.
-  bool quit_when_idle_received_ = false;
+
+  // Used to record that QuitWhenIdle() was called on this RunLoop.
+  bool quit_when_idle_called_ = false;
+  // Whether the Delegate should quit Run() once it becomes idle (it's
+  // responsible for probing this state via ShouldQuitWhenIdle()). This state is
+  // stored here rather than pushed to Delegate to support nested RunLoops.
+  bool quit_when_idle_ = false;
 
   // True if use of QuitCurrent*Deprecated() is allowed. Taking a Quit*Closure()
   // from a RunLoop implicitly sets this to false, so QuitCurrent*Deprecated()
@@ -345,14 +334,37 @@ class BASE_EXPORT RunLoop {
   // not be accessed from any other sequence than the thread it was constructed
   // on. Exception: RunLoop can be safely accessed from one other sequence (or
   // single parallel task) during Run() -- e.g. to Quit() without having to
-  // plumb ThreatTaskRunnerHandle::Get() throughout a test to repost QuitClosure
-  // to origin thread.
+  // plumb SingleThreadTaskRunner::GetCurrentDefault() throughout a test to
+  // repost QuitClosure to origin thread.
   SEQUENCE_CHECKER(sequence_checker_);
 
   const scoped_refptr<SingleThreadTaskRunner> origin_task_runner_;
 
   // WeakPtrFactory for QuitClosure safety.
   WeakPtrFactory<RunLoop> weak_factory_{this};
+};
+
+// RunLoop::Run() will DCHECK if called while there's a
+// ScopedDisallowRunningRunLoop in scope on its thread. This is useful to add
+// safety to some test constructs which allow multiple task runners to share the
+// main thread in unit tests. While the main thread can be shared by multiple
+// runners to deterministically fake multi threading, there can still only be a
+// single RunLoop::Delegate per thread and RunLoop::Run() should only be invoked
+// from it (or it would result in incorrectly driving TaskRunner A while in
+// TaskRunner B's context).
+class BASE_EXPORT ScopedDisallowRunningRunLoop {
+ public:
+  ScopedDisallowRunningRunLoop();
+  ScopedDisallowRunningRunLoop(const ScopedDisallowRunningRunLoop&) = delete;
+  ScopedDisallowRunningRunLoop& operator=(const ScopedDisallowRunningRunLoop&) =
+      delete;
+  ~ScopedDisallowRunningRunLoop();
+
+ private:
+#if DCHECK_IS_ON()
+  raw_ptr<RunLoop::Delegate> current_delegate_;
+  const bool previous_run_allowance_;
+#endif  // DCHECK_IS_ON()
 };
 
 }  // namespace base

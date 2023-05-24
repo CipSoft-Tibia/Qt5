@@ -318,6 +318,9 @@ def comment_and_vote_cl(handler):
     if '-ui-' in job_id:
       ui_links.append('https://storage.googleapis.com/%s/%s/ui/index.html' %
                       (GCS_ARTIFACTS, job_id))
+      ui_links.append(
+          'https://storage.googleapis.com/%s/%s/ui-test-artifacts/index.html' %
+          (GCS_ARTIFACTS, job_id))
     if job_obj['status'] == 'COMPLETED':
       passed_jobs.append(job_id)
     elif not job_config.get('SKIP_VOTING', False):
@@ -332,16 +335,16 @@ def comment_and_vote_cl(handler):
   if failed_jobs:
     msg += 'FAIL:\n'
     msg += ''.join([
-        ' %s/%s (%s)\n' % (log_url, job_id, status)
+        '- %s/%s (%s)\n' % (log_url, job_id, status)
         for (job_id, status) in failed_jobs.iteritems()
     ])
   if passed_jobs:
     msg += 'PASS:\n'
-    msg += ''.join([' %s/%s\n' % (log_url, job_id) for job_id in passed_jobs])
+    msg += ''.join(['- %s/%s\n' % (log_url, job_id) for job_id in passed_jobs])
   if ui_links:
-    msg += 'Artifacts:\n' + ''.join(' %s\n' % link for link in ui_links)
+    msg += 'Artifacts:\n' + ''.join('- %s\n' % link for link in ui_links)
   msg += 'CI page for this CL:\n'
-  msg += ' https://ci.perfetto.dev/#!/cls/%s\n' % cl_and_ps.split('-')[0]
+  msg += '- https://ci.perfetto.dev/#!/cls/%s\n' % cl_and_ps.split('-')[0]
   body = {'labels': {}, 'message': msg}
   if not cancelled:
     body['labels']['Code-Review'] = cl_vote

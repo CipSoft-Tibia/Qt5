@@ -1,0 +1,11 @@
+#QTBUG-113194
+[pullSuspendResume]
+macos ci
+
+#QTBUG-113194
+[pushSuspendResume]
+macos ci
+
+#QTBUG-122309
+[pullResumeFromUnderrun]
+rhel-9.2

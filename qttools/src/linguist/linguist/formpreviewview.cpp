@@ -1,40 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "formpreviewview.h"
 #include "messagemodel.h"
 
 #include <quiloader.h>
 
-#include <QtCore/QDebug>
-#include <QtCore/QTime>
-
-#include <QtWidgets/QAction>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QFontComboBox>
 #include <QtWidgets/QFrame>
@@ -51,12 +22,17 @@
 #include <QtWidgets/QTreeWidget>
 #include <QtWidgets/QScrollArea>
 
+#include <QtGui/QAction>
+
+#include <QtCore/QDebug>
+#include <QtCore/QTime>
+
 QT_BEGIN_NAMESPACE
 
 #if defined(Q_CC_SUN) || defined(Q_CC_HPACC) || defined(Q_CC_XLC)
-int qHash(const QUiTranslatableStringValue &tsv)
+size_t qHash(const QUiTranslatableStringValue &tsv)
 #else
-static int qHash(const QUiTranslatableStringValue &tsv)
+static size_t qHash(const QUiTranslatableStringValue &tsv)
 #endif
 {
     return qHash(tsv.value()) ^ qHash(tsv.qualifier());
@@ -130,7 +106,8 @@ static void buildTargets(QObject *o, TargetsHash *targets)
 {
     TranslatableEntry target;
 
-    foreach (const QByteArray &prop, o->dynamicPropertyNames()) {
+    const auto propNames = o->dynamicPropertyNames();
+    for (const QByteArray &prop : propNames) {
         if (prop.startsWith(PROP_GENERIC_PREFIX)) {
             const QByteArray propName = prop.mid(sizeof(PROP_GENERIC_PREFIX) - 1);
             INSERT_TARGET(o->property(prop),
@@ -199,14 +176,14 @@ static void buildTargets(QObject *o, TargetsHash *targets)
             registerTreeItem(treew->topLevelItem(i), targets);
 #endif
     }
-    foreach (QObject *co, o->children())
+    for (QObject *co : o->children())
         buildTargets(co, targets);
 }
 
 static void destroyTargets(TargetsHash *targets)
 {
-    for (TargetsHash::Iterator it = targets->begin(), end = targets->end(); it != end; ++it)
-        foreach (const TranslatableEntry &target, *it)
+    for (const auto &targetList : std::as_const(*targets))
+        for (const TranslatableEntry &target : targetList)
             if (target.type == TranslatableProperty)
                 delete target.prop.name;
     targets->clear();
@@ -278,7 +255,7 @@ static void retranslateTargets(
     if (text.isEmpty() && !tsv.value().isEmpty())
         text = QLatin1Char('#') + sourceText;
 
-    foreach (const TranslatableEntry &target, targets)
+    for (const TranslatableEntry &target : targets)
         retranslateTarget(target, text);
 }
 
@@ -375,8 +352,10 @@ static void highlightAction(QAction *a, bool on)
             a->setProperty(FONT_BACKUP_PROP, QVariant());
         }
     }
-    foreach (QWidget *w, a->associatedWidgets())
-        highlightWidget(w, on);
+    for (QObject *o : a->associatedObjects()) {
+        if (QWidget *w = qobject_cast<QWidget *>(o))
+            highlightWidget(w, on);
+    }
 }
 
 static void highlightWidget(QWidget *w, bool on)
@@ -385,7 +364,7 @@ static void highlightWidget(QWidget *w, bool on)
     if (on) {
         if (!bak.isValid()) {
             QPalette pal = qApp->palette();
-            foreach (QObject *co, w->children())
+            for (QObject *co : w->children())
                 if (QWidget *cw = qobject_cast<QWidget *>(co))
                     cw->setPalette(cw->palette().resolve(pal));
             w->setProperty(PALETTE_BACKUP_PROP, QVariant::fromValue(w->palette().resolve(pal)));
@@ -477,7 +456,7 @@ static void highlightTarget(const TranslatableEntry &target, bool on)
 
 static void highlightTargets(const QList<TranslatableEntry> &targets, bool on)
 {
-    foreach (const TranslatableEntry &target, targets)
+    for (const TranslatableEntry &target : targets)
         highlightTarget(target, on);
 }
 
@@ -552,7 +531,7 @@ void FormPreviewView::setSourceContext(int model, MessageItem *messageItem)
     tsv.setQualifier(messageItem->comment().toUtf8());
     m_highlights = m_targets.value(tsv);
     if (m_lastModel != model) {
-        for (TargetsHash::Iterator it = m_targets.begin(), end = m_targets.end(); it != end; ++it)
+        for (auto it = m_targets.cbegin(), end = m_targets.cend(); it != end; ++it)
             retranslateTargets(*it, it.key(), m_dataModel->model(model), m_lastClassName);
         m_lastModel = model;
     } else {

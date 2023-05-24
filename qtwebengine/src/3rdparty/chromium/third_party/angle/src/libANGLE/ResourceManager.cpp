@@ -33,7 +33,7 @@ template <typename ResourceType, typename IDType>
 IDType AllocateEmptyObject(HandleAllocator *handleAllocator,
                            ResourceMap<ResourceType, IDType> *objectMap)
 {
-    IDType handle = FromGL<IDType>(handleAllocator->allocate());
+    IDType handle = PackParam<IDType>(handleAllocator->allocate());
     objectMap->assign(handle, nullptr);
     return handle;
 }
@@ -97,16 +97,13 @@ void TypedResourceManager<ResourceType, ImplT, IDType>::deleteObject(const Conte
     }
 }
 
-// Unclear why Clang warns about weak vtables in this case.
-ANGLE_DISABLE_WEAK_TEMPLATE_VTABLES_WARNING
 template class TypedResourceManager<Buffer, BufferManager, BufferID>;
 template class TypedResourceManager<Texture, TextureManager, TextureID>;
 template class TypedResourceManager<Renderbuffer, RenderbufferManager, RenderbufferID>;
 template class TypedResourceManager<Sampler, SamplerManager, SamplerID>;
-template class TypedResourceManager<Sync, SyncManager, GLuint>;
+template class TypedResourceManager<Sync, SyncManager, SyncID>;
 template class TypedResourceManager<Framebuffer, FramebufferManager, FramebufferID>;
 template class TypedResourceManager<ProgramPipeline, ProgramPipelineManager, ProgramPipelineID>;
-ANGLE_REENABLE_WEAK_TEMPLATE_VTABLES_WARNING
 
 // BufferManager Implementation.
 BufferManager::~BufferManager() = default;
@@ -329,16 +326,16 @@ void SyncManager::DeleteObject(const Context *context, Sync *sync)
     sync->release(context);
 }
 
-GLuint SyncManager::createSync(rx::GLImplFactory *factory)
+SyncID SyncManager::createSync(rx::GLImplFactory *factory)
 {
-    GLuint handle = mHandleAllocator.allocate();
+    SyncID handle = {mHandleAllocator.allocate()};
     Sync *sync    = new Sync(factory, handle);
     sync->addRef();
     mObjectMap.assign(handle, sync);
     return handle;
 }
 
-Sync *SyncManager::getSync(GLuint handle) const
+Sync *SyncManager::getSync(SyncID handle) const
 {
     return mObjectMap.query(handle);
 }
@@ -350,12 +347,11 @@ FramebufferManager::~FramebufferManager() = default;
 // static
 Framebuffer *FramebufferManager::AllocateNewObject(rx::GLImplFactory *factory,
                                                    FramebufferID handle,
-                                                   const Caps &caps,
-                                                   egl::ShareGroup *shareGroup)
+                                                   const Context *context)
 {
     // Make sure the caller isn't using a reserved handle.
     ASSERT(handle != Framebuffer::kDefaultDrawFramebufferHandle);
-    return new Framebuffer(caps, factory, handle, shareGroup);
+    return new Framebuffer(context, factory, handle);
 }
 
 // static
@@ -379,6 +375,11 @@ void FramebufferManager::setDefaultFramebuffer(Framebuffer *framebuffer)
 {
     ASSERT(framebuffer == nullptr || framebuffer->isDefault());
     mObjectMap.assign(Framebuffer::kDefaultDrawFramebufferHandle, framebuffer);
+}
+
+Framebuffer *FramebufferManager::getDefaultFramebuffer() const
+{
+    return getFramebuffer(Framebuffer::kDefaultDrawFramebufferHandle);
 }
 
 void FramebufferManager::invalidateFramebufferCompletenessCache() const

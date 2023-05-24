@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <memory>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/unsafe_shared_memory_region.h"
 #include "ppapi/c/pp_errors.h"
 #include "ppapi/proxy/dispatch_reply_message.h"
@@ -66,9 +66,10 @@ int32_t VpnProviderResource::Bind(
   bind_callback_ = callback;
 
   Call<PpapiPluginMsg_VpnProvider_BindReply>(
-      BROWSER, PpapiHostMsg_VpnProvider_Bind(configuration_id_var->value(),
-                                             configuration_name_var->value()),
-      base::Bind(&VpnProviderResource::OnPluginMsgBindReply, this));
+      BROWSER,
+      PpapiHostMsg_VpnProvider_Bind(configuration_id_var->value(),
+                                    configuration_name_var->value()),
+      base::BindOnce(&VpnProviderResource::OnPluginMsgBindReply, this));
 
   return PP_OK_COMPLETIONPENDING;
 }
@@ -115,7 +116,7 @@ int32_t VpnProviderResource::DoSendPacket(const PP_Var& packet, uint32_t id) {
 
   Call<PpapiPluginMsg_VpnProvider_SendPacketReply>(
       BROWSER, PpapiHostMsg_VpnProvider_SendPacket(packet_size, id),
-      base::Bind(&VpnProviderResource::OnPluginMsgSendPacketReply, this));
+      base::BindOnce(&VpnProviderResource::OnPluginMsgSendPacketReply, this));
 
   return PP_OK;
 }

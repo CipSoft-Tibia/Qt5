@@ -1,10 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/gfx/font_fallback_linux.h"
 
 #include "base/files/file_path.h"
+#include "base/strings/string_piece.h"
 #include "base/strings/utf_string_conversions.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/gfx/font.h"
@@ -41,13 +42,13 @@ TEST_F(FontFallbackLinuxTest, GetFallbackFont) {
   Font base_font;
 
   Font fallback_font_cjk;
-  EXPECT_TRUE(GetFallbackFont(base_font, kDefaultApplicationLocale,
-                              base::WideToUTF16(L"⻩"), &fallback_font_cjk));
+  EXPECT_TRUE(GetFallbackFont(base_font, kDefaultApplicationLocale, u"⻩",
+                              &fallback_font_cjk));
   EXPECT_EQ(fallback_font_cjk.GetFontName(), "Noto Sans CJK JP");
 
   Font fallback_font_khmer;
-  EXPECT_TRUE(GetFallbackFont(base_font, kDefaultApplicationLocale,
-                              base::WideToUTF16(L"ឨឮឡ"), &fallback_font_khmer));
+  EXPECT_TRUE(GetFallbackFont(base_font, kDefaultApplicationLocale, u"ឨឮឡ",
+                              &fallback_font_khmer));
   EXPECT_EQ(fallback_font_khmer.GetFontName(), "Noto Sans Khmer");
 }
 
@@ -56,24 +57,24 @@ TEST_F(FontFallbackLinuxTest, GetFallbackFontCache) {
 
   Font base_font;
   Font fallback_font;
-  EXPECT_TRUE(GetFallbackFont(base_font, kDefaultApplicationLocale,
-                              base::WideToUTF16(L"⻩"), &fallback_font));
+  EXPECT_TRUE(GetFallbackFont(base_font, kDefaultApplicationLocale, u"⻩",
+                              &fallback_font));
   EXPECT_EQ(1U, GetFallbackFontEntriesCacheSizeForTesting());
 
   // Second call should not increase the cache size.
-  EXPECT_TRUE(GetFallbackFont(base_font, kDefaultApplicationLocale,
-                              base::WideToUTF16(L"⻩"), &fallback_font));
+  EXPECT_TRUE(GetFallbackFont(base_font, kDefaultApplicationLocale, u"⻩",
+                              &fallback_font));
   EXPECT_EQ(1U, GetFallbackFontEntriesCacheSizeForTesting());
 
   // Third call with a different code point in the same font, should not
   // increase the cache size.
-  EXPECT_TRUE(GetFallbackFont(base_font, kDefaultApplicationLocale,
-                              base::WideToUTF16(L"⻪"), &fallback_font));
+  EXPECT_TRUE(GetFallbackFont(base_font, kDefaultApplicationLocale, u"⻪",
+                              &fallback_font));
   EXPECT_EQ(1U, GetFallbackFontEntriesCacheSizeForTesting());
 
   // A different locale should trigger an new cache entry.
-  EXPECT_TRUE(GetFallbackFont(base_font, kFrenchApplicationLocale,
-                              base::WideToUTF16(L"⻩"), &fallback_font));
+  EXPECT_TRUE(GetFallbackFont(base_font, kFrenchApplicationLocale, u"⻩",
+                              &fallback_font));
   EXPECT_EQ(2U, GetFallbackFontEntriesCacheSizeForTesting());
 
   // The fallbackfonts cache should not be affected.

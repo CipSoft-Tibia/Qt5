@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,11 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_EVENTS_POINTER_EVENT_UTIL_H_
 
 #include "third_party/blink/renderer/bindings/core/v8/v8_pointer_event_init.h"
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/platform/wtf/math_extras.h"
 
 namespace blink {
+
 class CORE_EXPORT PointerEventUtil {
  public:
   PointerEventUtil() = delete;
@@ -31,6 +33,7 @@ class CORE_EXPORT PointerEventUtil {
   // altitude = altitude_radians - k*PI/2
   static double TransformToAltitudeInValidRange(double altitude_radians);
 };
+
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_EVENTS_POINTER_EVENT_UTIL_H_

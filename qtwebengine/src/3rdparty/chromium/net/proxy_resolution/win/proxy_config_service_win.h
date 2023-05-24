@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,17 +13,14 @@
 
 #include "base/compiler_specific.h"
 #include "base/gtest_prod_util.h"
-#include "base/strings/string16.h"
 #include "net/base/net_export.h"
 #include "net/base/network_change_notifier.h"
 #include "net/proxy_resolution/polling_proxy_config_service.h"
 #include "net/proxy_resolution/proxy_config_with_annotation.h"
 
-namespace base {
-namespace win {
+namespace base::win {
 class RegKey;
-}
-}  // namespace base.
+}  // namespace base::win
 
 namespace net {
 

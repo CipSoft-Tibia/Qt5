@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 
 #include <string>
 
-#include "base/macros.h"
 #include "base/time/time.h"
 
 namespace signin {
@@ -17,7 +16,9 @@ struct AccessTokenInfo {
   // The access token itself.
   std::string token;
 
-  // The time at which this access token will expire.
+  // The time at which this access token will expire. This will be set to the
+  // NULL time value of `base::Time()` when no expiration time is available
+  // (this happens sometimes on Android).
   base::Time expiration_time;
 
   // Contains extra information regarding the user's currently registered

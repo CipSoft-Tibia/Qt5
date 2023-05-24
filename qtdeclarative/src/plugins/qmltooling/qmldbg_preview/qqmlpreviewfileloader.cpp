@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QML preview debug service.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlpreviewfileloader.h"
 #include "qqmlpreviewservice.h"
@@ -54,19 +18,17 @@ QQmlPreviewFileLoader::QQmlPreviewFileLoader(QQmlPreviewServiceImpl *service) : 
     m_blacklist.blacklist(":/qt-project.org");
     m_blacklist.blacklist(":/QtQuick/Controls/Styles");
     m_blacklist.blacklist(":/ExtrasImports/QtQuick/Controls/Styles");
-    m_blacklist.blacklist(":/qgradient");
 
     // Target specific configuration should not replaced with files from the host.
     m_blacklist.blacklist("/etc");
 
     for (int loc = QLibraryInfo::PrefixPath; loc < QLibraryInfo::TestsPath; ++loc) {
-        m_blacklist.blacklist(QLibraryInfo::location(
-                                  static_cast<QLibraryInfo::LibraryLocation>(loc)));
+        m_blacklist.blacklist(QLibraryInfo::path(
+                                  static_cast<QLibraryInfo::LibraryPath>(loc)));
     }
-    m_blacklist.blacklist(QLibraryInfo::location(QLibraryInfo::SettingsPath));
+    m_blacklist.blacklist(QLibraryInfo::path(QLibraryInfo::SettingsPath));
 
     static const QStandardPaths::StandardLocation blackListLocations[] = {
-        QStandardPaths::DataLocation,
         QStandardPaths::CacheLocation,
         QStandardPaths::GenericDataLocation,
         QStandardPaths::ConfigLocation,
@@ -82,7 +44,7 @@ QQmlPreviewFileLoader::QQmlPreviewFileLoader(QQmlPreviewServiceImpl *service) : 
             m_blacklist.blacklist(location);
     }
 
-    m_blacklist.whitelist(QLibraryInfo::location(QLibraryInfo::TestsPath));
+    m_blacklist.whitelist(QLibraryInfo::path(QLibraryInfo::TestsPath));
 
     connect(this, &QQmlPreviewFileLoader::request, service, &QQmlPreviewServiceImpl::forwardRequest,
             Qt::DirectConnection);
@@ -197,3 +159,5 @@ void QQmlPreviewFileLoader::clearCache()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qqmlpreviewfileloader.cpp"

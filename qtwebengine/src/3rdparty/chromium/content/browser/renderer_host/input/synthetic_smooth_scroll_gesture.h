@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 #define CONTENT_BROWSER_RENDERER_HOST_INPUT_SYNTHETIC_SMOOTH_SCROLL_GESTURE_H_
 
 #include "content/browser/renderer_host/input/synthetic_smooth_move_gesture.h"
+#include "content/common/content_export.h"
 
 #include "content/common/input/synthetic_smooth_scroll_gesture_params.h"
 
@@ -25,11 +26,10 @@ class CONTENT_EXPORT SyntheticSmoothScrollGesture : public SyntheticGesture {
 
  private:
   static SyntheticSmoothMoveGestureParams::InputType GetInputSourceType(
-      SyntheticGestureParams::GestureSourceType gesture_source_type);
+      content::mojom::GestureSourceType gesture_source_type);
 
-  bool InitializeMoveGesture(
-      SyntheticGestureParams::GestureSourceType gesture_type,
-      SyntheticGestureTarget* target);
+  bool InitializeMoveGesture(content::mojom::GestureSourceType gesture_type,
+                             SyntheticGestureTarget* target);
 
   std::unique_ptr<SyntheticSmoothMoveGesture> move_gesture_;
   SyntheticSmoothScrollGestureParams params_;

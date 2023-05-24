@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 """Install the package!"""
 
-from __future__ import absolute_import
 
 import setuptools
 
@@ -17,13 +16,10 @@ setuptools.setup(
         'console_scripts': ['grit = grit.grit_runner:Main'],
     },
     packages=setuptools.find_packages(),
-    install_requires=[
-        'six >= 1.10',
-    ],
     author='The Chromium Authors',
     author_email='chromium-dev@chromium.org',
-    description='Google Resource and Internationalization Tool for managing '
-                'translations & resource files',
+    description=('Google Resource and Internationalization Tool for managing '
+                 'translations & resource files'),
     license='BSD-3',
     url='https://chromium.googlesource.com/chromium/src/tools/grit/',
     classifiers=[
@@ -35,7 +31,6 @@ setuptools.setup(
         'Operating System :: Microsoft :: Windows',
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',

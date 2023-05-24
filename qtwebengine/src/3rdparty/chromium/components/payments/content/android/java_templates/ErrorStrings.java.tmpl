@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,10 +18,6 @@ public abstract class ErrorStrings {{
 
     public static final String INVALID_PAYMENT_METHODS_OR_DATA = "Invalid payment methods or data.";
 
-    public static final String INVALID_PAYMENT_DETAILS = "Invalid payment details.";
-
-    public static final String INVALID_PAYMENT_OPTIONS = "Invalid payment options.";
-
     public static final String INVALID_VALIDATION_ERRORS = "Invalid payment validation errors.";
 
     public static final String TAB_OVERVIEW_MODE =
@@ -31,6 +27,12 @@ public abstract class ErrorStrings {{
             "Tab switch dismissed Payment Request UI.";
 
     public static final String ACTIVITY_NOT_FOUND = "Unable to find Chrome activity.";
+
+    public static final String CONTEXT_NOT_FOUND = "Unable to find Chrome context.";
+
+    public static final String TAB_NOT_FOUND = "Unable to find Chrome tab.";
+
+    public static final String WINDOW_NOT_FOUND = "Unable to find Chrome window.";
 
     public static final String PAYMENT_APP_INVALID_RESPONSE = "Payment app response is not valid.";
 
@@ -54,10 +56,15 @@ public abstract class ErrorStrings {{
     public static final String UNRECOGNIZED_ACTIVITY_RESULT  =
             "Payment app returned unrecognized activity result %d.";
 
-    public static final String MINIMAL_UI_SUPPRESSED = "Payment minimal UI suppressed.";
+    public static final String SPC_AUTHN_UI_SUPPRESSED = "Secure Payment Confirmation Authn UI suppressed.";
 
     public static final String UNATHORIZED_SERVICE_REQUEST =
-            "Caller's signuature or package name does not match invoked app's.";
+            "Caller's signature or package name does not match invoked app's.";
+
+    public static final String FAIL_TO_SHOW_PAYMENT_REQUEST_UI =
+        "Fails to show payment request UI. Please try again.";
+
+    public static final String NO_FRAME = "The frame that initiated payment is gone.";
 
     // Prevent instantiation.
     private ErrorStrings() {{}}

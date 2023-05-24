@@ -1,19 +1,19 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/task/post_task.h"
+#include "base/functional/bind.h"
 #include "base/task/task_traits.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "net/base/network_change_notifier_posix.h"
 #include "net/dns/dns_config_service_posix.h"
 #include "net/dns/system_dns_config_change_notifier.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "net/android/network_change_notifier_android.h"
 #endif
 
@@ -92,15 +92,14 @@ void NetworkChangeNotifierPosix::GetCurrentMaxBandwidthAndConnectionType(
 NetworkChangeNotifier::NetworkChangeCalculatorParams
 NetworkChangeNotifierPosix::NetworkChangeCalculatorParamsPosix() {
   NetworkChangeCalculatorParams params;
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
   // Delay values arrived at by simple experimentation and adjusted so as to
   // produce a single signal when switching between network connections.
-  params.ip_address_offline_delay_ = base::TimeDelta::FromMilliseconds(4000);
-  params.ip_address_online_delay_ = base::TimeDelta::FromMilliseconds(1000);
-  params.connection_type_offline_delay_ =
-      base::TimeDelta::FromMilliseconds(500);
-  params.connection_type_online_delay_ = base::TimeDelta::FromMilliseconds(500);
-#elif defined(OS_ANDROID)
+  params.ip_address_offline_delay_ = base::Milliseconds(4000);
+  params.ip_address_online_delay_ = base::Milliseconds(1000);
+  params.connection_type_offline_delay_ = base::Milliseconds(500);
+  params.connection_type_online_delay_ = base::Milliseconds(500);
+#elif BUILDFLAG(IS_ANDROID)
   params =
       net::NetworkChangeNotifierAndroid::NetworkChangeCalculatorParamsAndroid();
 #else

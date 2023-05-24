@@ -1,12 +1,12 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/signin/internal/identity_manager/oauth_multilogin_helper.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/test/task_environment.h"
 #include "components/prefs/testing_pref_service.h"
 #include "components/signin/internal/identity_manager/fake_profile_oauth2_token_service.h"
@@ -184,7 +184,7 @@ class OAuthMultiloginHelperTest
     return std::make_unique<OAuthMultiloginHelper>(
         &test_signin_client_, this, token_service(),
         gaia::MultiloginMode::MULTILOGIN_UPDATE_COOKIE_ACCOUNTS_ORDER, accounts,
-        std::string(),
+        std::string(), gaia::GaiaSource::kChrome,
         base::BindOnce(&OAuthMultiloginHelperTest::OnOAuthMultiloginFinished,
                        base::Unretained(this)));
   }
@@ -194,7 +194,7 @@ class OAuthMultiloginHelperTest
     return std::make_unique<OAuthMultiloginHelper>(
         &test_signin_client_, this, token_service(),
         gaia::MultiloginMode::MULTILOGIN_UPDATE_COOKIE_ACCOUNTS_ORDER, accounts,
-        kExternalCcResult,
+        kExternalCcResult, gaia::GaiaSource::kChrome,
         base::BindOnce(&OAuthMultiloginHelperTest::OnOAuthMultiloginFinished,
                        base::Unretained(this)));
   }
@@ -226,9 +226,9 @@ class OAuthMultiloginHelperTest
 
   // AccountsCookieMuator::PartitionDelegate:
   std::unique_ptr<GaiaAuthFetcher> CreateGaiaAuthFetcherForPartition(
-      GaiaAuthConsumer* consumer) override {
-    return test_signin_client_.CreateGaiaAuthFetcher(consumer,
-                                                     gaia::GaiaSource::kChrome);
+      GaiaAuthConsumer* consumer,
+      const gaia::GaiaSource& source) override {
+    return test_signin_client_.CreateGaiaAuthFetcher(consumer, source);
   }
 
   network::mojom::CookieManager* GetCookieManagerForPartition() override {

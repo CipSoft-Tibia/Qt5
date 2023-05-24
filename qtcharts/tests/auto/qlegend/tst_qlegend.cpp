@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QtCharts/QChartView>
@@ -42,7 +16,7 @@
 #include <QtCharts/QBarLegendMarker>
 #include "tst_definitions.h"
 
-QT_CHARTS_USE_NAMESPACE
+QT_USE_NAMESPACE
 
 class tst_QLegend : public QObject
 {
@@ -102,7 +76,7 @@ void tst_QLegend::qlegend()
     QVERIFY(legend);
 
     QList<QLegendMarker*> markers = legend->markers();
-    QVERIFY(markers.count() == 0);
+    QVERIFY(markers.size() == 0);
 }
 
 void tst_QLegend::qpieLegendMarker()
@@ -119,7 +93,7 @@ void tst_QLegend::qpieLegendMarker()
 
     // Should have one marker
     QList<QLegendMarker*> markers = legend->markers();
-    QVERIFY(markers.count() == 1);
+    QVERIFY(markers.size() == 1);
     QLegendMarker *m = markers.at(0);
 
     // Should be piemarker
@@ -136,7 +110,7 @@ void tst_QLegend::qpieLegendMarker()
     series->append(s2);
 
     markers = legend->markers();
-    QVERIFY(markers.count() == 2);
+    QVERIFY(markers.size() == 2);
     m = markers.at(1);
 
     QVERIFY(m->type() == QLegendMarker::LegendMarkerTypePie);
@@ -167,7 +141,7 @@ void tst_QLegend::qareaLegendMarker()
 
     // Should have one marker
     QList<QLegendMarker *> markers = legend->markers();
-    QVERIFY(markers.count() == 1);
+    QVERIFY(markers.size() == 1);
     QLegendMarker *m = markers.at(0);
 
     QVERIFY(m->series() == series);
@@ -188,7 +162,7 @@ void tst_QLegend::qxyLegendMarker()
 
     // Should have one marker
     QList<QLegendMarker *> markers = legend->markers();
-    QVERIFY(markers.count() == 1);
+    QVERIFY(markers.size() == 1);
     QLegendMarker *m = markers.at(0);
 
     QVERIFY(m->series() == series);
@@ -213,7 +187,7 @@ void tst_QLegend::qbarLegendMarker()
 
     // Should have one marker
     QList<QLegendMarker *> markers = legend->markers();
-    QVERIFY(markers.count() == 1);
+    QVERIFY(markers.size() == 1);
     QLegendMarker *m = markers.at(0);
 
     QVERIFY(m->series() == series);
@@ -229,7 +203,7 @@ void tst_QLegend::qbarLegendMarker()
     series->append(set1);
 
     markers = legend->markers();
-    QVERIFY(markers.count() == 2);
+    QVERIFY(markers.size() == 2);
     m = markers.at(1);
 
     QVERIFY(m->series() == series);
@@ -276,11 +250,11 @@ void tst_QLegend::markers()
 
     m_chart->addSeries(area);
 
-    QVERIFY(legend->markers(pie).count() == 3);
-    QVERIFY(legend->markers(bar).count() == 2);
-    QVERIFY(legend->markers(line).count() == 1);
-    QVERIFY(legend->markers(area).count() == 1);
-    QVERIFY(legend->markers().count() == 3+2+1+1);
+    QVERIFY(legend->markers(pie).size() == 3);
+    QVERIFY(legend->markers(bar).size() == 2);
+    QVERIFY(legend->markers(line).size() == 1);
+    QVERIFY(legend->markers(area).size() == 1);
+    QVERIFY(legend->markers().size() == 3+2+1+1);
 }
 
 void tst_QLegend::addAndRemoveSeries()
@@ -298,12 +272,12 @@ void tst_QLegend::addAndRemoveSeries()
     m_chart->addSeries(pie);
 
     QList<QLegendMarker *> markers = legend->markers();
-    QVERIFY(markers.count() == 3);
+    QVERIFY(markers.size() == 3);
 
     m_chart->removeSeries(pie);
 
     markers = legend->markers();
-    QVERIFY(markers.count() == 0);
+    QVERIFY(markers.size() == 0);
 
     delete pie;
 }
@@ -564,7 +538,7 @@ void tst_QLegend::markerSignals()
         QTest::mouseMove(view.viewport(), QPoint(333, i));
 
     foreach (QSignalSpy *spy, spies)
-        TRY_COMPARE(spy->count(), 2);
+        TRY_COMPARE(spy->size(), 2);
 
     qDeleteAll(spies);
 }

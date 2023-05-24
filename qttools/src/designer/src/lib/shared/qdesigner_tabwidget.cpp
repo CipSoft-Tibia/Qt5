@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdesigner_tabwidget_p.h"
 #include "qdesigner_command_p.h"
@@ -36,17 +11,20 @@
 
 #include <QtWidgets/qapplication.h>
 #include <QtWidgets/qtabbar.h>
-#include <QtWidgets/qaction.h>
-#include <QtGui/qevent.h>
-#include <QtGui/qdrag.h>
 #include <QtWidgets/qmenu.h>
 #include <QtWidgets/qlabel.h>
 #include <QtWidgets/qtabwidget.h>
+
+#include <QtGui/qaction.h>
+#include <QtGui/qevent.h>
+#include <QtGui/qdrag.h>
 
 #include <QtCore/qdebug.h>
 #include <QtCore/qmimedata.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace qdesigner_internal {
 // Store tab widget as drag source
@@ -128,7 +106,7 @@ QTabBar *QTabWidgetEventFilter::tabBar() const
 
 static bool canMove(const QPoint &pressPoint, const QMouseEvent *e)
 {
-    const QPoint pt = pressPoint - e->pos();
+    const QPoint pt = pressPoint - e->position().toPoint();
     return pt.manhattanLength() > QApplication::startDragDistance();
 }
 
@@ -170,7 +148,7 @@ bool QTabWidgetEventFilter::eventFilter(QObject *o, QEvent *e)
         }
         if (mev->button() & Qt::LeftButton) {
             m_mousePressed = true;
-            m_pressPoint = mev->pos();
+            m_pressPoint = mev->position().toPoint();
 
             QTabBar *tabbar = tabBar();
             const int count = tabbar->count();
@@ -178,7 +156,7 @@ bool QTabWidgetEventFilter::eventFilter(QObject *o, QEvent *e)
                 if (tabbar->tabRect(i).contains(m_pressPoint)) {
                     if (i != tabbar->currentIndex()) {
                         qdesigner_internal::SetPropertyCommand *cmd = new qdesigner_internal::SetPropertyCommand(fw);
-                        cmd->init(m_tabWidget, QStringLiteral("currentIndex"), i);
+                        cmd->init(m_tabWidget, u"currentIndex"_s, i);
                         fw->commandHistory()->push(cmd);
                     }
                     break;
@@ -249,7 +227,7 @@ bool QTabWidgetEventFilter::eventFilter(QObject *o, QEvent *e)
         }
 
         QRect rect;
-        const int index = pageFromPosition(de->pos(), rect);
+        const int index = pageFromPosition(de->position().toPoint(), rect);
 
         if (!m_dropIndicator) {
             m_dropIndicator = new QWidget(m_tabWidget);
@@ -276,7 +254,7 @@ bool QTabWidgetEventFilter::eventFilter(QObject *o, QEvent *e)
         de->accept();
 
         QRect rect;
-        const int newIndex = pageFromPosition(de->pos(), rect);
+        const int newIndex = pageFromPosition(de->position().toPoint(), rect);
 
         qdesigner_internal::MoveTabPageCommand *cmd = new qdesigner_internal::MoveTabPageCommand(fw);
         m_tabWidget->insertTab(m_dragIndex, m_dragPage, m_dragIcon, m_dragLabel);
@@ -380,26 +358,26 @@ QMenu *QTabWidgetEventFilter::addContextMenuActions(QMenu *popup)
 
 // ----------- QTabWidgetPropertySheet
 
-static const char *currentTabTextKey = "currentTabText";
-static const char *currentTabNameKey = "currentTabName";
-static const char *currentTabIconKey = "currentTabIcon";
-static const char *currentTabToolTipKey = "currentTabToolTip";
-static const char *currentTabWhatsThisKey = "currentTabWhatsThis";
-static const char *tabMovableKey = "movable";
+static const char currentTabTextKey[] = "currentTabText";
+static const char currentTabNameKey[] = "currentTabName";
+static const char currentTabIconKey[] = "currentTabIcon";
+static const char currentTabToolTipKey[] = "currentTabToolTip";
+static const char currentTabWhatsThisKey[] = "currentTabWhatsThis";
+static const char tabMovableKey[] = "movable";
 
 QTabWidgetPropertySheet::QTabWidgetPropertySheet(QTabWidget *object, QObject *parent) :
     QDesignerPropertySheet(object, parent),
     m_tabWidget(object)
 {
-    createFakeProperty(QLatin1String(currentTabTextKey), QVariant::fromValue(qdesigner_internal::PropertySheetStringValue()));
-    createFakeProperty(QLatin1String(currentTabNameKey), QString());
-    createFakeProperty(QLatin1String(currentTabIconKey), QVariant::fromValue(qdesigner_internal::PropertySheetIconValue()));
+    createFakeProperty(QLatin1StringView(currentTabTextKey), QVariant::fromValue(qdesigner_internal::PropertySheetStringValue()));
+    createFakeProperty(QLatin1StringView(currentTabNameKey), QString());
+    createFakeProperty(QLatin1StringView(currentTabIconKey), QVariant::fromValue(qdesigner_internal::PropertySheetIconValue()));
     if (formWindowBase())
-        formWindowBase()->addReloadableProperty(this, indexOf(QLatin1String(currentTabIconKey)));
-    createFakeProperty(QLatin1String(currentTabToolTipKey), QVariant::fromValue(qdesigner_internal::PropertySheetStringValue()));
-    createFakeProperty(QLatin1String(currentTabWhatsThisKey), QVariant::fromValue(qdesigner_internal::PropertySheetStringValue()));
+        formWindowBase()->addReloadableProperty(this, indexOf(QLatin1StringView(currentTabIconKey)));
+    createFakeProperty(QLatin1StringView(currentTabToolTipKey), QVariant::fromValue(qdesigner_internal::PropertySheetStringValue()));
+    createFakeProperty(QLatin1StringView(currentTabWhatsThisKey), QVariant::fromValue(qdesigner_internal::PropertySheetStringValue()));
     // Prevent the tab widget's drag and drop handling from interfering with Designer's
-    createFakeProperty(QLatin1String(tabMovableKey), QVariant(false));
+    createFakeProperty(QLatin1StringView(tabMovableKey), QVariant(false));
 }
 
 QTabWidgetPropertySheet::TabWidgetProperty QTabWidgetPropertySheet::tabWidgetPropertyFromName(const QString &name)
@@ -407,11 +385,11 @@ QTabWidgetPropertySheet::TabWidgetProperty QTabWidgetPropertySheet::tabWidgetPro
     using TabWidgetPropertyHash = QHash<QString, TabWidgetProperty>;
     static TabWidgetPropertyHash tabWidgetPropertyHash;
     if (tabWidgetPropertyHash.isEmpty()) {
-        tabWidgetPropertyHash.insert(QLatin1String(currentTabTextKey),      PropertyCurrentTabText);
-        tabWidgetPropertyHash.insert(QLatin1String(currentTabNameKey),      PropertyCurrentTabName);
-        tabWidgetPropertyHash.insert(QLatin1String(currentTabIconKey),      PropertyCurrentTabIcon);
-        tabWidgetPropertyHash.insert(QLatin1String(currentTabToolTipKey),   PropertyCurrentTabToolTip);
-        tabWidgetPropertyHash.insert(QLatin1String(currentTabWhatsThisKey), PropertyCurrentTabWhatsThis);
+        tabWidgetPropertyHash.insert(QLatin1StringView(currentTabTextKey),      PropertyCurrentTabText);
+        tabWidgetPropertyHash.insert(QLatin1StringView(currentTabNameKey),      PropertyCurrentTabName);
+        tabWidgetPropertyHash.insert(QLatin1StringView(currentTabIconKey),      PropertyCurrentTabIcon);
+        tabWidgetPropertyHash.insert(QLatin1StringView(currentTabToolTipKey),   PropertyCurrentTabToolTip);
+        tabWidgetPropertyHash.insert(QLatin1StringView(currentTabWhatsThisKey), PropertyCurrentTabWhatsThis);
     }
     return tabWidgetPropertyHash.value(name, PropertyTabWidgetNone);
 }

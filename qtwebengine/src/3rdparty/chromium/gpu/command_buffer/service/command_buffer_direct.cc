@@ -1,11 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "gpu/command_buffer/service/command_buffer_direct.h"
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "gpu/command_buffer/service/transfer_buffer_manager.h"
 
 namespace gpu {
@@ -63,6 +63,11 @@ void CommandBufferDirect::DestroyTransferBuffer(int32_t id) {
   service_.DestroyTransferBuffer(id);
 }
 
+void CommandBufferDirect::ForceLostContext(error::ContextLostReason reason) {
+  service_.SetContextLostReason(reason);
+  service_.SetParseError(error::kLostContext);
+}
+
 CommandBufferServiceClient::CommandBatchProcessedResult
 CommandBufferDirect::OnCommandBatchProcessed() {
   return kContinueExecution;
@@ -73,8 +78,9 @@ void CommandBufferDirect::OnParseError() {}
 void CommandBufferDirect::OnConsoleMessage(int32_t id,
                                            const std::string& message) {}
 
-void CommandBufferDirect::CacheShader(const std::string& key,
-                                      const std::string& shader) {}
+void CommandBufferDirect::CacheBlob(gpu::GpuDiskCacheType type,
+                                    const std::string& key,
+                                    const std::string& blob) {}
 
 void CommandBufferDirect::OnFenceSyncRelease(uint64_t release) {
   NOTIMPLEMENTED();

@@ -1,11 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_WEB_TEST_RENDERER_TEST_PREFERENCES_H_
 #define CONTENT_WEB_TEST_RENDERER_TEST_PREFERENCES_H_
 
-#include "third_party/blink/public/common/web_preferences/editing_behavior_types.h"
+#include "third_party/blink/public/mojom/webpreferences/web_preferences.mojom.h"
 #include "third_party/blink/public/platform/web_string.h"
 #include "third_party/blink/public/platform/web_url.h"
 
@@ -24,11 +24,10 @@ struct TestPreferences {
   bool loads_images_automatically;
   bool plugins_enabled;
   bool allow_universal_access_from_file_urls;
-  blink::web_pref::EditingBehaviorType editing_behavior;
+  blink::mojom::EditingBehavior editing_behavior;
   bool tabs_to_links;
   bool hyperlink_auditing_enabled;
   bool caret_browsing_enabled;
-  bool should_respect_image_orientation;
   bool asynchronous_spell_checking_enabled;
   bool web_security_enabled;
   bool disable_reading_from_canvas;

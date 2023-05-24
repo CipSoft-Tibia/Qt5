@@ -1,15 +1,18 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/virtualkeyboard/virtual_keyboard.h"
 
+#include "third_party/blink/public/mojom/frame/frame.mojom-blink.h"
 #include "third_party/blink/renderer/core/css/document_style_environment_variables.h"
 #include "third_party/blink/renderer/core/css/style_engine.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/editing/ime/input_method_controller.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
+#include "third_party/blink/renderer/core/frame/navigator.h"
+#include "third_party/blink/renderer/core/frame/viewport_data.h"
 #include "third_party/blink/renderer/core/geometry/dom_rect.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/modules/event_target_modules.h"
@@ -19,13 +22,28 @@
 
 namespace blink {
 
-VirtualKeyboard::VirtualKeyboard(LocalFrame* frame)
-    : ExecutionContextClient(frame ? frame->DomWindow()->GetExecutionContext()
-                                   : nullptr),
-      VirtualKeyboardOverlayChangedObserver(frame) {}
+// static
+const char VirtualKeyboard::kSupplementName[] = "VirtualKeyboard";
+
+// static
+VirtualKeyboard* VirtualKeyboard::virtualKeyboard(Navigator& navigator) {
+  auto* keyboard = Supplement<Navigator>::From<VirtualKeyboard>(navigator);
+  if (!keyboard) {
+    keyboard = MakeGarbageCollected<VirtualKeyboard>(navigator);
+    ProvideTo(navigator, keyboard);
+  }
+  return keyboard;
+}
+
+VirtualKeyboard::VirtualKeyboard(Navigator& navigator)
+    : Supplement<Navigator>(navigator),
+      VirtualKeyboardOverlayChangedObserver(
+          navigator.DomWindow() ? navigator.DomWindow()->GetFrame() : nullptr) {
+  bounding_rect_ = DOMRect::Create();
+}
 
 ExecutionContext* VirtualKeyboard::GetExecutionContext() const {
-  return ExecutionContextClient::GetExecutionContext();
+  return GetSupplementable()->DomWindow();
 }
 
 const AtomicString& VirtualKeyboard::InterfaceName() const {
@@ -35,7 +53,19 @@ const AtomicString& VirtualKeyboard::InterfaceName() const {
 VirtualKeyboard::~VirtualKeyboard() = default;
 
 bool VirtualKeyboard::overlaysContent() const {
-  return overlays_content_;
+  LocalDOMWindow* window = GetSupplementable()->DomWindow();
+  if (!window)
+    return false;
+
+  DCHECK(window->GetFrame());
+
+  if (!window->GetFrame()->IsOutermostMainFrame())
+    return false;
+
+  return window->GetFrame()
+      ->GetDocument()
+      ->GetViewportData()
+      .GetVirtualKeyboardOverlaysContent();
 }
 
 DOMRect* VirtualKeyboard::boundingRect() const {
@@ -43,13 +73,17 @@ DOMRect* VirtualKeyboard::boundingRect() const {
 }
 
 void VirtualKeyboard::setOverlaysContent(bool overlays_content) {
-  LocalFrame* frame = GetFrame();
-  if (frame && frame->IsMainFrame()) {
-    if (overlays_content != overlays_content_) {
-      auto& local_frame_host = frame->GetLocalFrameHostRemote();
-      local_frame_host.SetVirtualKeyboardOverlayPolicy(overlays_content);
-      overlays_content_ = overlays_content;
-    }
+  LocalDOMWindow* window = GetSupplementable()->DomWindow();
+  if (!window)
+    return;
+
+  DCHECK(window->GetFrame());
+
+  if (window->GetFrame()->IsOutermostMainFrame()) {
+    window->GetFrame()
+        ->GetDocument()
+        ->GetViewportData()
+        .SetVirtualKeyboardOverlaysContent(overlays_content);
   } else {
     GetExecutionContext()->AddConsoleMessage(
         MakeGarbageCollected<ConsoleMessage>(
@@ -62,36 +96,36 @@ void VirtualKeyboard::setOverlaysContent(bool overlays_content) {
 
 void VirtualKeyboard::VirtualKeyboardOverlayChanged(
     const gfx::Rect& keyboard_rect) {
-  bounding_rect_ = DOMRect::FromFloatRect(FloatRect(gfx::RectF(keyboard_rect)));
-  LocalFrame* frame = GetFrame();
-  if (frame && frame->GetDocument()) {
-    DocumentStyleEnvironmentVariables& vars =
-        frame->GetDocument()->GetStyleEngine().EnsureEnvironmentVariables();
-    vars.SetVariable(UADefinedVariable::kKeyboardInsetTop,
-                     StyleEnvironmentVariables::FormatPx(keyboard_rect.y()));
-    vars.SetVariable(UADefinedVariable::kKeyboardInsetLeft,
-                     StyleEnvironmentVariables::FormatPx(keyboard_rect.x()));
-    vars.SetVariable(
-        UADefinedVariable::kKeyboardInsetBottom,
-        StyleEnvironmentVariables::FormatPx(keyboard_rect.bottom()));
-    vars.SetVariable(
-        UADefinedVariable::kKeyboardInsetRight,
-        StyleEnvironmentVariables::FormatPx(keyboard_rect.right()));
-    vars.SetVariable(
-        UADefinedVariable::kKeyboardInsetWidth,
-        StyleEnvironmentVariables::FormatPx(keyboard_rect.width()));
-    vars.SetVariable(
-        UADefinedVariable::kKeyboardInsetHeight,
-        StyleEnvironmentVariables::FormatPx(keyboard_rect.height()));
-  }
+  LocalDOMWindow* window = GetSupplementable()->DomWindow();
+  if (!window)
+    return;
+
+  bounding_rect_ = DOMRect::FromRectF(gfx::RectF(keyboard_rect));
+  DocumentStyleEnvironmentVariables& vars =
+      window->document()->GetStyleEngine().EnsureEnvironmentVariables();
+  vars.SetVariable(UADefinedVariable::kKeyboardInsetTop,
+                   StyleEnvironmentVariables::FormatPx(keyboard_rect.y()));
+  vars.SetVariable(UADefinedVariable::kKeyboardInsetLeft,
+                   StyleEnvironmentVariables::FormatPx(keyboard_rect.x()));
+  vars.SetVariable(UADefinedVariable::kKeyboardInsetBottom,
+                   StyleEnvironmentVariables::FormatPx(keyboard_rect.bottom()));
+  vars.SetVariable(UADefinedVariable::kKeyboardInsetRight,
+                   StyleEnvironmentVariables::FormatPx(keyboard_rect.right()));
+  vars.SetVariable(UADefinedVariable::kKeyboardInsetWidth,
+                   StyleEnvironmentVariables::FormatPx(keyboard_rect.width()));
+  vars.SetVariable(UADefinedVariable::kKeyboardInsetHeight,
+                   StyleEnvironmentVariables::FormatPx(keyboard_rect.height()));
   DispatchEvent(*(MakeGarbageCollected<VirtualKeyboardGeometryChangeEvent>(
-      event_type_names::kGeometrychange, bounding_rect_)));
+      event_type_names::kGeometrychange)));
 }
 
 void VirtualKeyboard::show() {
-  LocalFrame* frame = GetFrame();
-  if (frame && frame->HasStickyUserActivation()) {
-    frame->GetInputMethodController().SetVirtualKeyboardVisibilityRequest(
+  LocalDOMWindow* window = GetSupplementable()->DomWindow();
+  if (!window)
+    return;
+
+  if (window->GetFrame()->HasStickyUserActivation()) {
+    window->GetInputMethodController().SetVirtualKeyboardVisibilityRequest(
         ui::mojom::VirtualKeyboardVisibilityRequest::SHOW);
   } else {
     GetExecutionContext()->AddConsoleMessage(
@@ -104,17 +138,18 @@ void VirtualKeyboard::show() {
 }
 
 void VirtualKeyboard::hide() {
-  LocalFrame* frame = GetFrame();
-  if (frame) {
-    frame->GetInputMethodController().SetVirtualKeyboardVisibilityRequest(
-        ui::mojom::VirtualKeyboardVisibilityRequest::HIDE);
-  }
+  LocalDOMWindow* window = GetSupplementable()->DomWindow();
+  if (!window)
+    return;
+
+  window->GetInputMethodController().SetVirtualKeyboardVisibilityRequest(
+      ui::mojom::VirtualKeyboardVisibilityRequest::HIDE);
 }
 
 void VirtualKeyboard::Trace(Visitor* visitor) const {
   visitor->Trace(bounding_rect_);
   EventTargetWithInlineData::Trace(visitor);
-  ExecutionContextClient::Trace(visitor);
+  Supplement<Navigator>::Trace(visitor);
 }
 
 }  // namespace blink

@@ -1,10 +1,15 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//build/config/jumbo.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
+
+group("policy_namespace") {
+  public_deps = [ ":policy_namespace_internal" ]
+}
 
 group("common") {
   if (is_component_build) {
@@ -14,22 +19,68 @@ group("common") {
   }
 }
 
-jumbo_source_set("internal") {
+jumbo_source_set("policy_namespace_internal") {
   visibility = [ "//components/policy/*" ]
 
   configs += [ "//components/policy:component_implementation" ]
 
   sources = [
     "../../policy_export.h",
+    "policy_namespace.cc",
+    "policy_namespace.h",
+  ]
+}
+
+jumbo_source_set("util") {
+  sources = [
+    "cloud/cloud_policy_util.cc",
+    "cloud/cloud_policy_util.h",
+  ]
+
+  configs += [ "//components/policy:component_implementation" ]
+
+  public_deps = [
+    ":common_constants",
+    "//components/policy/proto",
+    "//components/version_info",
+  ]
+
+  deps = [
+    "//base",
+    "//build:chromeos_buildflags",
+  ]
+
+  if (is_chromeos) {
+    deps += [ "//components/user_manager" ]
+  }
+  if (is_chromeos_lacros) {
+    deps += [ "//chromeos/startup:startup" ]
+  }
+  if (is_chromeos_ash) {
+    deps += [ "//chromeos/ash/components/system" ]
+  }
+}
+
+jumbo_source_set("internal") {
+  visibility = [ "//components/policy/*" ]
+
+  configs += [ "//components/policy:component_implementation" ]
+
+  sources = [
     "async_policy_loader.cc",
     "async_policy_loader.h",
     "async_policy_provider.cc",
     "async_policy_provider.h",
     "chrome_schema.cc",
     "chrome_schema.h",
+    "cloud/affiliation.cc",
+    "cloud/affiliation.h",
     "cloud/chrome_browser_cloud_management_metrics.h",
+    "cloud/client_data_delegate.h",
     "cloud/cloud_external_data_manager.cc",
     "cloud/cloud_external_data_manager.h",
+    "cloud/cloud_external_data_store.cc",
+    "cloud/cloud_external_data_store.h",
     "cloud/cloud_policy_client.cc",
     "cloud/cloud_policy_client.h",
     "cloud/cloud_policy_client_registration_helper.cc",
@@ -40,16 +91,16 @@ jumbo_source_set("internal") {
     "cloud/cloud_policy_manager.h",
     "cloud/cloud_policy_refresh_scheduler.cc",
     "cloud/cloud_policy_refresh_scheduler.h",
+    "cloud/cloud_policy_refresh_scheduler_observer.h",
     "cloud/cloud_policy_service.cc",
     "cloud/cloud_policy_service.h",
     "cloud/cloud_policy_store.cc",
     "cloud/cloud_policy_store.h",
-    "cloud/cloud_policy_util.cc",
-    "cloud/cloud_policy_util.h",
     "cloud/cloud_policy_validator.cc",
     "cloud/cloud_policy_validator.h",
     "cloud/component_cloud_policy_service.cc",
     "cloud/component_cloud_policy_service.h",
+    "cloud/component_cloud_policy_service_observer.h",
     "cloud/component_cloud_policy_store.cc",
     "cloud/component_cloud_policy_store.h",
     "cloud/component_cloud_policy_updater.cc",
@@ -62,6 +113,8 @@ jumbo_source_set("internal") {
     "cloud/dm_token.h",
     "cloud/dmserver_job_configurations.cc",
     "cloud/dmserver_job_configurations.h",
+    "cloud/encrypted_reporting_job_configuration.cc",
+    "cloud/encrypted_reporting_job_configuration.h",
     "cloud/enterprise_metrics.cc",
     "cloud/enterprise_metrics.h",
     "cloud/external_policy_data_fetcher.cc",
@@ -76,6 +129,8 @@ jumbo_source_set("internal") {
     "cloud/policy_value_validator.h",
     "cloud/realtime_reporting_job_configuration.cc",
     "cloud/realtime_reporting_job_configuration.h",
+    "cloud/reporting_job_configuration_base.cc",
+    "cloud/reporting_job_configuration_base.h",
     "cloud/resource_cache.cc",
     "cloud/resource_cache.h",
     "cloud/signing_service.h",
@@ -100,14 +155,10 @@ jumbo_source_set("internal") {
     "features.h",
     "json_schema_constants.cc",
     "json_schema_constants.h",
-    "legacy_chrome_policy_migrator.cc",
-    "legacy_chrome_policy_migrator.h",
     "management/management_service.cc",
     "management/management_service.h",
     "management/platform_management_service.cc",
     "management/platform_management_service.h",
-    "plist_writer.cc",
-    "plist_writer.h",
     "policy_bundle.cc",
     "policy_bundle.h",
     "policy_details.h",
@@ -115,16 +166,14 @@ jumbo_source_set("internal") {
     "policy_load_status.h",
     "policy_loader_command_line.cc",
     "policy_loader_command_line.h",
-    "policy_loader_common.cc",
-    "policy_loader_common.h",
+    "policy_logger.cc",
+    "policy_logger.h",
     "policy_map.cc",
     "policy_map.h",
     "policy_merger.cc",
     "policy_merger.h",
     "policy_migrator.cc",
     "policy_migrator.h",
-    "policy_namespace.cc",
-    "policy_namespace.h",
     "policy_proto_decoders.cc",
     "policy_proto_decoders.h",
     "policy_service.cc",
@@ -133,6 +182,8 @@ jumbo_source_set("internal") {
     "policy_service_impl.h",
     "policy_statistics_collector.cc",
     "policy_statistics_collector.h",
+    "proxy_policy_provider.cc",
+    "proxy_policy_provider.h",
     "remote_commands/remote_command_job.cc",
     "remote_commands/remote_command_job.h",
     "remote_commands/remote_commands_factory.cc",
@@ -158,13 +209,18 @@ jumbo_source_set("internal") {
 
   public_deps = [
     ":common_constants",
+    ":policy_namespace",
+    ":util",
     "//components/policy:generated",
     "//components/policy/proto",
+    "//components/reporting/proto:record_constants",
+    "//components/reporting/proto:record_proto",
   ]
 
   deps = [
     "//base:i18n",
     "//base/third_party/dynamic_annotations",
+    "//build:chromeos_buildflags",
     "//components/account_id",
     "//components/enterprise/common:strings",
     "//components/prefs",
@@ -182,11 +238,30 @@ jumbo_source_set("internal") {
     "//url",
   ]
 
+  if (is_chromeos_lacros) {
+    sources += [
+      "policy_loader_lacros.cc",
+      "policy_loader_lacros.h",
+    ]
+    deps += [
+      "//chromeos/crosapi/mojom",
+      "//chromeos/lacros",
+      "//chromeos/startup:startup",
+    ]
+  }
+
   allow_circular_includes_from = [
     # Generated files use policy_details.h and policy_map.h from this target.
     # TODO(https://crbug.com/945868) - refactor so we don't have dep cycles.
     "//components/policy:generated",
   ]
+
+  if (is_mac) {
+    sources += [
+      "management/platform_management_status_provider_mac.cc",
+      "management/platform_management_status_provider_mac.h",
+    ]
+  }
 
   if (is_win) {
     sources += [
@@ -204,6 +279,13 @@ jumbo_source_set("internal") {
     ]
   }
 
+  if (is_win || is_mac) {
+    sources += [
+      "policy_loader_common.cc",
+      "policy_loader_common.h",
+    ]
+  }
+
   # Compile on Linux for fuzzer and since code is reused on Chrome OS.
   if (is_win || is_linux || is_chromeos) {
     sources += [
@@ -216,6 +298,8 @@ jumbo_source_set("internal") {
   if (is_android || is_ios) {
     sources += [ "cloud/component_cloud_policy_service_stub.cc" ]
     sources -= [
+      "cloud/cloud_external_data_store.cc",
+      "cloud/cloud_external_data_store.h",
       "cloud/component_cloud_policy_service.cc",
       "cloud/component_cloud_policy_store.cc",
       "cloud/component_cloud_policy_store.h",
@@ -247,12 +331,16 @@ jumbo_source_set("internal") {
     deps += [ "//components/policy/android:jni_headers" ]
   }
   if (is_chromeos) {
-    deps += [ "//chromeos/system" ]
+    sources += [
+      "default_chrome_apps_migrator.cc",
+      "default_chrome_apps_migrator.h",
+    ]
+  }
+  if (is_chromeos_ash) {
+    deps += [ "//chromeos/ash/components/system" ]
     sources += [
       "policy_scheduler.cc",
       "policy_scheduler.h",
-      "proxy_policy_provider.cc",
-      "proxy_policy_provider.h",
     ]
     sources -= [
       "cloud/chrome_browser_cloud_management_metrics.h",
@@ -279,8 +367,8 @@ jumbo_source_set("internal") {
       sources += [
         "policy_loader_mac.h",
         "policy_loader_mac.mm",
-        "preferences_mac.cc",
         "preferences_mac.h",
+        "preferences_mac.mm",
       ]
       frameworks += [ "SystemConfiguration.framework" ]
     }
@@ -313,8 +401,8 @@ jumbo_static_library("test_support") {
     "cloud/mock_signing_service.h",
     "cloud/mock_user_cloud_policy_store.cc",
     "cloud/mock_user_cloud_policy_store.h",
-    "cloud/policy_builder.cc",
-    "cloud/policy_builder.h",
+    "cloud/test/policy_builder.cc",
+    "cloud/test/policy_builder.h",
     "configuration_policy_provider_test.cc",
     "configuration_policy_provider_test.h",
     "fake_async_policy_loader.cc",
@@ -327,13 +415,15 @@ jumbo_static_library("test_support") {
     "mock_policy_service.h",
     "policy_test_utils.cc",
     "policy_test_utils.h",
-    "remote_commands/test_remote_command_job.cc",
-    "remote_commands/test_remote_command_job.h",
-    "remote_commands/testing_remote_commands_server.cc",
-    "remote_commands/testing_remote_commands_server.h",
+    "remote_commands/test_support/echo_remote_command_job.cc",
+    "remote_commands/test_support/echo_remote_command_job.h",
+    "remote_commands/test_support/remote_command_builders.cc",
+    "remote_commands/test_support/remote_command_builders.h",
+    "remote_commands/test_support/testing_remote_commands_server.cc",
+    "remote_commands/test_support/testing_remote_commands_server.h",
   ]
 
-  if (is_chromeos) {
+  if (is_chromeos_ash) {
     sources -= [
       "cloud/mock_user_cloud_policy_store.cc",
       "cloud/mock_user_cloud_policy_store.h",
@@ -358,6 +448,8 @@ jumbo_static_library("test_support") {
     "//components/account_id",
     "//components/policy:generated",
     "//components/policy/proto",
+    "//components/reporting/proto:record_constants",
+    "//components/reporting/proto:record_proto",
     "//components/strings",
     "//crypto",
     "//net",
@@ -365,11 +457,16 @@ jumbo_static_library("test_support") {
     "//testing/gmock",
     "//testing/gtest",
   ]
+
+  deps = [ "//build:chromeos_buildflags" ]
 }
 
 source_set("common_constants") {
   configs += [ "//components/policy:component_implementation" ]
-  deps = [ "//base" ]
+  deps = [
+    "//base",
+    "//build:chromeos_buildflags",
+  ]
   sources = [
     "../../policy_export.h",
     "cloud/cloud_policy_constants.cc",
@@ -379,6 +476,8 @@ source_set("common_constants") {
     "policy_switches.cc",
     "policy_switches.h",
     "policy_types.h",
+    "proxy_settings_constants.cc",
+    "proxy_settings_constants.h",
   ]
 
   if (is_ios) {
@@ -394,24 +493,23 @@ source_set("common_constants") {
 source_set("unit_tests") {
   testonly = true
   sources = [
+    "cloud/affiliation_unittest.cc",
     "cloud/cloud_policy_client_unittest.cc",
     "cloud/cloud_policy_core_unittest.cc",
-    "cloud/cloud_policy_manager_unittest.cc",
     "cloud/cloud_policy_refresh_scheduler_unittest.cc",
     "cloud/cloud_policy_service_unittest.cc",
-    "cloud/cloud_policy_validator_unittest.cc",
     "cloud/device_management_service_unittest.cc",
     "cloud/user_info_fetcher_unittest.cc",
     "command_line_policy_provider_unittest.cc",
     "generate_policy_source_unittest.cc",
-    "legacy_chrome_policy_migrator_unittest.cc",
     "management/management_service_unittest.cc",
-    "plist_writer_unittest.cc",
     "policy_bundle_unittest.cc",
     "policy_loader_command_line_unittest.cc",
     "policy_map_unittest.cc",
+    "policy_proto_decoders_unittest.cc",
     "policy_service_impl_unittest.cc",
     "policy_statistics_collector_unittest.cc",
+    "proxy_policy_provider_unittest.cc",
     "remote_commands/remote_commands_queue_unittest.cc",
     "remote_commands/remote_commands_service_unittest.cc",
     "schema_map_unittest.cc",
@@ -420,33 +518,43 @@ source_set("unit_tests") {
     "schema_unittest.cc",
     "values_util_unittest.cc",
   ]
+
+  # TODO(crbug.com/1270429): Enable these tests on Fuchsia if appropriate.
+  if (!is_fuchsia) {
+    sources += [
+      "cloud/cloud_policy_manager_unittest.cc",
+      "cloud/cloud_policy_validator_unittest.cc",
+    ]
+  }
+
   if (is_win || is_linux || is_chromeos) {
     sources += [
       "preg_parser_unittest.cc",
       "registry_dict_unittest.cc",
     ]
   }
-  if (is_chromeos) {
+  if (is_chromeos_ash) {
     sources += [
+      "default_chrome_apps_migrator_unittest.cc",
       "policy_scheduler_unittest.cc",
-      "proxy_policy_provider_unittest.cc",
     ]
   } else {
     sources += [
       "cloud/machine_level_user_cloud_policy_manager_unittest.cc",
-      "cloud/machine_level_user_cloud_policy_store_unittest.cc",
       "cloud/user_cloud_policy_manager_unittest.cc",
-      "cloud/user_cloud_policy_store_unittest.cc",
     ]
+
+    # TODO(crbug.com/1270429): Enable these tests on Fuchsia if appropriate.
+    if (!is_fuchsia) {
+      sources += [
+        "cloud/machine_level_user_cloud_policy_store_unittest.cc",
+        "cloud/user_cloud_policy_store_unittest.cc",
+      ]
+    }
   }
 
-  if (is_fuchsia) {
-    sources -= [
-      "cloud/cloud_policy_manager_unittest.cc",
-      "cloud/cloud_policy_validator_unittest.cc",
-      "cloud/machine_level_user_cloud_policy_store_unittest.cc",
-      "cloud/user_cloud_policy_store_unittest.cc",
-    ]
+  if (is_win || is_mac) {
+    sources += [ "policy_loader_common_unittest.cc" ]
   }
 
   if (is_android) {
@@ -455,15 +563,18 @@ source_set("unit_tests") {
       "android/policy_converter_unittest.cc",
       "android/policy_map_android_unittest.cc",
       "android/policy_service_android_unittest.cc",
+      "policy_logger_unittest.cc",
     ]
   } else {
     sources += [ "async_policy_provider_unittest.cc" ]
   }
   if (!is_android && !is_ios) {
     sources += [
+      "cloud/cloud_external_data_store_unittest.cc",
       "cloud/component_cloud_policy_service_unittest.cc",
       "cloud/component_cloud_policy_store_unittest.cc",
       "cloud/component_cloud_policy_updater_unittest.cc",
+      "cloud/encrypted_reporting_job_configuration_unittest.cc",
       "cloud/external_policy_data_fetcher_unittest.cc",
       "cloud/external_policy_data_updater_unittest.cc",
       "cloud/realtime_reporting_job_configuration_unittest.cc",
@@ -490,12 +601,16 @@ source_set("unit_tests") {
   if (is_win) {
     sources += [ "policy_loader_win_unittest.cc" ]
   }
+  if (is_chromeos_lacros) {
+    sources += [ "policy_loader_lacros_unittest.cc" ]
+  }
 
   deps = [
     ":common_constants",
     ":test_support",
     "//base",
     "//base/test:test_support",
+    "//build:chromeos_buildflags",
     "//components/account_id",
     "//components/policy:generated",
     "//components/prefs:test_support",
@@ -509,11 +624,20 @@ source_set("unit_tests") {
     "//third_party/libxml:xml_reader",
     "//ui/base",
   ]
-  if (is_chromeos) {
-    deps += [ "//chromeos/system" ]
+  if (is_chromeos_ash) {
+    deps += [ "//chromeos/ash/components/system" ]
   }
   if (is_android) {
     deps += [ "//components/policy/android:test_jni_headers" ]
+  }
+  if (is_chromeos_lacros) {
+    deps += [
+      "//chrome/browser",
+      "//chromeos/crosapi/mojom",
+      "//chromeos/lacros",
+      "//chromeos/lacros:test_support",
+      "//chromeos/startup:startup",
+    ]
   }
 }
 
@@ -527,4 +651,12 @@ if (is_win || is_linux || is_chromeos) {
       "//base",
     ]
   }
+}
+
+fuzzer_test("policy_schema_fuzzer") {
+  sources = [ "schema_fuzzer.cc" ]
+  deps = [
+    ":internal",
+    "//base",
+  ]
 }

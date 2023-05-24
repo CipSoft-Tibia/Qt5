@@ -166,15 +166,15 @@ premultiply_data(png_structp   png,
     png_bytep p;
 
     for (i = 0, p = data; i < row_info->rowbytes; i += 4, p += 4) {
-	png_byte  alpha = p[3];
+	uint32_t alpha = p[3];
 	uint32_t w;
 
 	if (alpha == 0) {
 		w = 0;
 	} else {
-		png_byte red   = p[0];
-		png_byte green = p[1];
-		png_byte blue  = p[2];
+		uint32_t red   = p[0];
+		uint32_t green = p[1];
+		uint32_t blue  = p[2];
 
 		if (alpha != 0xff) {
 			red   = multiply_alpha(alpha, red);

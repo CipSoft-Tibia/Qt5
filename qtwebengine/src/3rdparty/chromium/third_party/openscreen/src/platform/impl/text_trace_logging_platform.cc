@@ -7,16 +7,16 @@
 #include <limits>
 #include <sstream>
 
+#include "platform/impl/logging.h"
 #include "util/chrono_helpers.h"
 #include "util/osp_logging.h"
 
 namespace openscreen {
 
-bool TextTraceLoggingPlatform::IsTraceLoggingEnabled(
-    TraceCategory::Value category) {
-  constexpr uint64_t kAllLogCategoriesMask =
-      std::numeric_limits<uint64_t>::max();
-  return (kAllLogCategoriesMask & category) != 0;
+using clock_operators::operator<<;
+
+bool TextTraceLoggingPlatform::IsTraceLoggingEnabled(TraceCategory category) {
+  return true;
 }
 
 TextTraceLoggingPlatform::TextTraceLoggingPlatform() {
@@ -27,43 +27,25 @@ TextTraceLoggingPlatform::~TextTraceLoggingPlatform() {
   StopTracing();
 }
 
-void TextTraceLoggingPlatform::LogTrace(const char* name,
-                                        const uint32_t line,
-                                        const char* file,
-                                        Clock::time_point start_time,
-                                        Clock::time_point end_time,
-                                        TraceIdHierarchy ids,
-                                        Error::Code error) {
-  auto total_runtime = to_microseconds(end_time - start_time).count();
-  constexpr auto microseconds_symbol = "\u03BCs";  // Greek Mu + 's'
+void TextTraceLoggingPlatform::LogTrace(TraceEvent event,
+                                        Clock::time_point end_time) {
+  const auto total_runtime = (end_time - event.start_time);
   std::stringstream ss;
-  ss << "TRACE [" << std::hex << ids.root << ":" << ids.parent << ":"
-     << ids.current << "] (" << std::dec << total_runtime << microseconds_symbol
-     << ") " << name << "<" << file << ":" << line << "> " << error;
-
-  OSP_LOG_INFO << ss.str();
+  ss << "[TRACE"
+     << " (" << std::dec << total_runtime << ")] " << event.ToString();
+  LogTraceMessage(ss.str());
 }
 
-void TextTraceLoggingPlatform::LogAsyncStart(const char* name,
-                                             const uint32_t line,
-                                             const char* file,
-                                             Clock::time_point timestamp,
-                                             TraceIdHierarchy ids) {
+void TextTraceLoggingPlatform::LogAsyncStart(TraceEvent event) {
   std::stringstream ss;
-  ss << "ASYNC TRACE START [" << std::hex << ids.root << ":" << ids.parent
-     << ":" << ids.current << std::dec << "] (" << timestamp << ") " << name
-     << "<" << file << ":" << line << ">";
-
-  OSP_LOG_INFO << ss.str();
+  ss << "[ASYNC TRACE START]  " << event.ToString();
+  LogTraceMessage(ss.str());
 }
 
-void TextTraceLoggingPlatform::LogAsyncEnd(const uint32_t line,
-                                           const char* file,
-                                           Clock::time_point timestamp,
-                                           TraceId trace_id,
-                                           Error::Code error) {
-  OSP_LOG_INFO << "ASYNC TRACE END [" << std::hex << trace_id << std::dec
-               << "] (" << timestamp << ") " << error;
+void TextTraceLoggingPlatform::LogAsyncEnd(TraceEvent event) {
+  std::stringstream ss;
+  ss << "[ASYNC TRACE END] " << event.ToString();
+  LogTraceMessage(ss.str());
 }
 
 }  // namespace openscreen

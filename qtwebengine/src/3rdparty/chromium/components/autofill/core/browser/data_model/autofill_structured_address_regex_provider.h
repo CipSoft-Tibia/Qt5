@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,6 @@
 #include "third_party/re2/src/re2/re2.h"
 
 namespace autofill {
-namespace structured_address {
 
 // Enumeration of all regular expressions supported for matching and parsing
 // values in an AddressComponent tree.
@@ -36,7 +35,9 @@ enum class RegEx {
   kMatchMiddleNameInitialsCharacteristics,
   kParseStreetNameHouseNumber,
   kParseStreetNameHouseNumberSuffixedFloor,
+  kParseStreetNameHouseNumberSuffixedFloorAndAppartmentRe,
   kParseHouseNumberStreetName,
+  kParsePrefixedName,
   kLastRegEx = kParseLastNameIntoSecondLastName,
 };
 
@@ -86,8 +87,6 @@ class StructuredAddressesRegExProvider {
   // A lock to prevent concurrent access to the cached expressions map.
   base::Lock lock_;
 };
-
-}  // namespace structured_address
 
 }  // namespace autofill
 

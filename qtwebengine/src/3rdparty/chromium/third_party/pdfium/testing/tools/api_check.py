@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright 2017 The PDFium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2017 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Verifies exported functions in public/*.h are in fpdf_view_c_api_test.c.
@@ -99,16 +99,16 @@ def _GetFunctionsFromTest(api_test_path):
 
 
 def _FindDuplicates(functions):
-  return set([f for f in functions if functions.count(f) > 1])
+  return {f for f in functions if functions.count(f) > 1}
 
 
 def _CheckAndPrintFailures(failure_list, failure_message):
   if not failure_list:
     return True
 
-  print '%s:' % failure_message
+  print('%s:' % failure_message)
   for f in sorted(failure_list):
-    print f
+    print(f)
   return False
 
 

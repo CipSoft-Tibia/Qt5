@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <QtTest/QtTest>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QScopedPointer>
@@ -34,16 +9,19 @@
 #include <QtGui/QFont>
 #include <QtQml/QQmlEngine>
 #include <QtQml/QQmlComponent>
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 class tst_QQmlSettings : public QQmlDataTest
 {
     Q_OBJECT
 
-private slots:
-    void initTestCase();
+public:
+    tst_QQmlSettings();
 
-    void init();
+private slots:
+    void initTestCase() override;
+
+    void init() override;
     void cleanup();
 
     void basic();
@@ -117,7 +95,7 @@ signals:
     void intListPropertyChanged(const QVariantList &arg);
     void stringListPropertyChanged(const QVariantList &arg);
     void objectListPropertyChanged(const QVariantList &arg);
-    void datePropertyChanged(const QDate &arg);
+    void datePropertyChanged(QDate arg);
     void sizePropertyChanged(const QSizeF &arg);
     void pointPropertyChanged(const QPointF &arg);
     void rectPropertyChanged(const QRectF &arg);
@@ -144,6 +122,11 @@ private:
     QFont m_fontProperty;
 };
 
+tst_QQmlSettings::tst_QQmlSettings()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
+{
+}
+
 void tst_QQmlSettings::initTestCase()
 {
     QQmlDataTest::initTestCase();
@@ -153,6 +136,8 @@ void tst_QQmlSettings::initTestCase()
 
 void tst_QQmlSettings::init()
 {
+    QQmlDataTest::init();
+
     QSettings settings;
     settings.clear();
 
@@ -494,7 +479,7 @@ void tst_QQmlSettings::noApplicationIdentifiersSet()
 
     QTest::ignoreMessage(QtWarningMsg, QRegularExpression(".*QML Settings: Failed to initialize QSettings instance. Status code is: 1"));
     // Can't set an empty applicationName because QCoreApplication won't allow it, which is why it's not listed here.
-    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(".*QML Settings: The following application identifiers have not been set: QVector\\(\"organizationName\", \"organizationDomain\"\\)"));
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(".*QML Settings: The following application identifiers have not been set: QList\\(\"organizationName\", \"organizationDomain\"\\)"));
 
     QQmlEngine engine;
     QQmlComponent component(&engine, testFileUrl("basic.qml"));

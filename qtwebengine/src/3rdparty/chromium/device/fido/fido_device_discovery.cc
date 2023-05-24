@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,15 +6,14 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/task/sequenced_task_runner.h"
 #include "device/fido/fido_authenticator.h"
 #include "device/fido/fido_device.h"
 #include "device/fido/fido_device_authenticator.h"
 
 namespace device {
 
-FidoDeviceDiscovery::BLEObserver::~BLEObserver() = default;
 FidoDeviceDiscovery::Observer::~Observer() = default;
 
 FidoDeviceDiscovery::FidoDeviceDiscovery(FidoTransportProtocol transport)
@@ -28,7 +27,7 @@ void FidoDeviceDiscovery::Start() {
 
   // To ensure that that NotifyStarted() is never invoked synchronously,
   // post task asynchronously.
-  base::SequencedTaskRunnerHandle::Get()->PostTask(
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&FidoDeviceDiscovery::StartInternal,
                                 weak_factory_.GetWeakPtr()));
 }
@@ -66,15 +65,6 @@ void FidoDeviceDiscovery::NotifyAuthenticatorRemoved(
   observer()->AuthenticatorRemoved(this, authenticator);
 }
 
-std::vector<FidoDeviceAuthenticator*>
-FidoDeviceDiscovery::GetAuthenticatorsForTesting() {
-  std::vector<FidoDeviceAuthenticator*> authenticators;
-  authenticators.reserve(authenticators_.size());
-  for (const auto& authenticator : authenticators_)
-    authenticators.push_back(authenticator.second.get());
-  return authenticators;
-}
-
 std::vector<const FidoDeviceAuthenticator*>
 FidoDeviceDiscovery::GetAuthenticatorsForTesting() const {
   std::vector<const FidoDeviceAuthenticator*> authenticators;
@@ -86,21 +76,20 @@ FidoDeviceDiscovery::GetAuthenticatorsForTesting() const {
 
 FidoDeviceAuthenticator* FidoDeviceDiscovery::GetAuthenticatorForTesting(
     base::StringPiece authenticator_id) {
-  return GetAuthenticator(authenticator_id);
-}
-
-FidoDeviceAuthenticator* FidoDeviceDiscovery::GetAuthenticator(
-    base::StringPiece authenticator_id) {
   auto found = authenticators_.find(authenticator_id);
   return found != authenticators_.end() ? found->second.get() : nullptr;
 }
 
 bool FidoDeviceDiscovery::AddDevice(std::unique_ptr<FidoDevice> device) {
+  return AddAuthenticator(
+      std::make_unique<FidoDeviceAuthenticator>(std::move(device)));
+}
+
+bool FidoDeviceDiscovery::AddAuthenticator(
+    std::unique_ptr<FidoDeviceAuthenticator> authenticator) {
   if (state_ == State::kStopped)
     return false;
 
-  auto authenticator =
-      std::make_unique<FidoDeviceAuthenticator>(std::move(device));
   std::string authenticator_id = authenticator->GetId();
   const auto result = authenticators_.emplace(std::move(authenticator_id),
                                               std::move(authenticator));
@@ -126,9 +115,8 @@ bool FidoDeviceDiscovery::RemoveDevice(base::StringPiece device_id) {
   return true;
 }
 
-bool FidoDeviceDiscovery::MaybeStop() {
+void FidoDeviceDiscovery::Stop() {
   state_ = State::kStopped;
-  return true;
 }
 
 }  // namespace device

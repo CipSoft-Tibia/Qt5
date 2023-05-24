@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -62,8 +62,8 @@ void WebGLQuery::UpdateCachedResult(gpu::gles2::GLES2Interface* gl) {
   gl->GetQueryObjectuivEXT(Object(), GL_QUERY_RESULT_AVAILABLE_EXT, &available);
   query_result_available_ = !!available;
   if (query_result_available_) {
-    GLuint result = 0;
-    gl->GetQueryObjectuivEXT(Object(), GL_QUERY_RESULT_EXT, &result);
+    GLuint64 result = 0;
+    gl->GetQueryObjectui64vEXT(Object(), GL_QUERY_RESULT_EXT, &result);
     query_result_ = result;
     task_handle_.Cancel();
   } else {
@@ -75,7 +75,7 @@ bool WebGLQuery::IsQueryResultAvailable() {
   return query_result_available_;
 }
 
-GLuint WebGLQuery::GetQueryResult() {
+GLuint64 WebGLQuery::GetQueryResult() {
   return query_result_;
 }
 
@@ -84,8 +84,8 @@ void WebGLQuery::ScheduleAllowAvailabilityUpdate() {
     return;
   task_handle_ =
       PostCancellableTask(*task_runner_, FROM_HERE,
-                          WTF::Bind(&WebGLQuery::AllowAvailabilityUpdate,
-                                    WrapWeakPersistent(this)));
+                          WTF::BindOnce(&WebGLQuery::AllowAvailabilityUpdate,
+                                        WrapWeakPersistent(this)));
 }
 
 void WebGLQuery::AllowAvailabilityUpdate() {

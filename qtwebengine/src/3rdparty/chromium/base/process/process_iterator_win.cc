@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,8 @@
 namespace base {
 
 ProcessIterator::ProcessIterator(const ProcessFilter* filter)
-    : started_iteration_(false),
-      filter_(filter) {
-  snapshot_ = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-}
+    : snapshot_(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)),
+      filter_(filter) {}
 
 ProcessIterator::~ProcessIterator() {
   CloseHandle(snapshot_);

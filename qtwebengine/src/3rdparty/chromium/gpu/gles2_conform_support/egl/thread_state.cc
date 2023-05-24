@@ -1,4 +1,4 @@
-// Copyright (c) 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,7 @@
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "build/build_config.h"
 #include "gpu/command_buffer/client/gles2_lib.h"
 #include "gpu/command_buffer/common/thread_local.h"
 #include "gpu/config/gpu_info_collector.h"
@@ -21,10 +22,16 @@
 #include "gpu/gles2_conform_support/egl/surface.h"
 #include "gpu/gles2_conform_support/egl/test_support.h"
 #include "ui/gl/gl_context.h"
+#include "ui/gl/gl_display.h"
 #include "ui/gl/gl_surface.h"
 #include "ui/gl/gl_switches.h"
 #include "ui/gl/init/gl_factory.h"
 
+#if BUILDFLAG(IS_OZONE)
+#include "ui/ozone/public/ozone_platform.h"
+#endif
+
+namespace gles2_conform_support {
 // Thread local key for ThreadState instance. Accessed when holding g_egl_lock
 // only, since the initialization can not be Guaranteed otherwise.  Not in
 // anonymous namespace due to Mac OS X 10.6 linker. See gles2_lib.cc.
@@ -63,11 +70,11 @@ egl::ThreadState* ThreadState::Get() {
       std::unique_ptr<base::Environment> env(base::Environment::Create());
       std::string env_string;
       env->GetVar("CHROME_COMMAND_BUFFER_GLES2_ARGS", &env_string);
-#if defined(OS_WIN)
-      argv = base::SplitString(base::UTF8ToUTF16(env_string),
-                               base::kWhitespaceUTF16, base::TRIM_WHITESPACE,
-                               base::SPLIT_WANT_NONEMPTY);
-      argv.insert(argv.begin(), base::UTF8ToUTF16("dummy"));
+#if BUILDFLAG(IS_WIN)
+      argv =
+          base::SplitString(base::UTF8ToWide(env_string), base::kWhitespaceWide,
+                            base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
+      argv.insert(argv.begin(), base::UTF8ToWide("dummy"));
 #else
       argv =
           base::SplitString(env_string, base::kWhitespaceASCII,
@@ -79,7 +86,12 @@ egl::ThreadState* ThreadState::Get() {
       // Need to call both Init and InitFromArgv, since Windows does not use
       // argc, argv in CommandLine::Init(argc, argv).
       command_line->InitFromArgv(argv);
-      gl::init::InitializeGLNoExtensionsOneOff(/*init_bindings*/ true);
+#if BUILDFLAG(IS_OZONE)
+      ui::OzonePlatform::InitializeForGPU(ui::OzonePlatform::InitParams());
+#endif
+      gl::GLDisplay* display = gl::init::InitializeGLNoExtensionsOneOff(
+          /*init_bindings=*/true,
+          /*gpu_preference=*/gl::GpuPreference::kDefault);
       gpu::GpuFeatureInfo gpu_feature_info;
       if (!command_line->HasSwitch(switches::kDisableGpuDriverBugWorkarounds)) {
         gpu::GPUInfo gpu_info;
@@ -91,7 +103,7 @@ egl::ThreadState* ThreadState::Get() {
 
       gl::init::SetDisabledExtensionsPlatform(
           gpu_feature_info.disabled_extensions);
-      gl::init::InitializeExtensionSettingsOneOffPlatform();
+      gl::init::InitializeExtensionSettingsOneOffPlatform(display);
     }
 
     g_egl_default_display = new egl::Display();
@@ -204,3 +216,4 @@ void ThreadState::AutoCurrentContextRestore::SetCurrent(Surface* surface,
 }
 
 }  // namespace egl
+}  // namespace gles2_conform_support

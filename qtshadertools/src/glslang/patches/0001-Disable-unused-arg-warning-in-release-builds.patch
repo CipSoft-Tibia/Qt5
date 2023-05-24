@@ -1,0 +1,26 @@
+From 7b5dffd20da0a9a458479298050b17ec917c5a90 Mon Sep 17 00:00:00 2001
+From: Laszlo Agocs <laszlo.agocs@qt.io>
+Date: Wed, 23 Oct 2019 12:12:46 +0200
+Subject: [PATCH] Disable unused arg warning in release builds
+
+Change-Id: Ib68abb9658ae2bb2374071ce3f11e04cffae05c0
+---
+ src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h b/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h
+index 13b0f6c..7e11aa9 100644
+--- a/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h
++++ b/src/3rdparty/glslang/glslang/MachineIndependent/localintermediate.h
+@@ -377,7 +377,7 @@ public:
+     void setSource(EShSource s) { source = s; }
+     EShSource getSource() const { return source; }
+ #else
+-    void setSource(EShSource s) { assert(s == EShSourceGlsl); }
++    void setSource(EShSource /*s*/) { /*assert(s == EShSourceGlsl);*/ }
+     EShSource getSource() const { return EShSourceGlsl; }
+ #endif
+ 
+-- 
+2.9.3.windows.2
+

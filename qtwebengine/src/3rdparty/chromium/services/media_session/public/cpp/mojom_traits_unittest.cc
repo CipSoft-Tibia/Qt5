@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,7 +21,7 @@ TEST_F(MojoTraitsTest, ColorTypeConversion_RGBA_8888) {
 
   SkBitmap output;
   ASSERT_TRUE(
-      mojo::test::SerializeAndDeserialize<MediaImageBitmap>(&input, &output));
+      mojo::test::SerializeAndDeserialize<MediaImageBitmap>(input, output));
 
   // The output image should have the same properties but should have the
   // color type standardised on the platform default.
@@ -40,7 +40,7 @@ TEST_F(MojoTraitsTest, ColorTypeConversion_BGRA_8888) {
 
   SkBitmap output;
   ASSERT_TRUE(
-      mojo::test::SerializeAndDeserialize<MediaImageBitmap>(&input, &output));
+      mojo::test::SerializeAndDeserialize<MediaImageBitmap>(input, output));
 
   // The output image should have the same properties but should have the
   // color type standardised on the platform default.

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,11 @@
 
 #import <Cocoa/Cocoa.h>
 
-#include "base/bind.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
 #include "base/notreached.h"
-#include "base/threading/thread_task_runner_handle.h"
+#import "base/task/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "ui/gfx/animation/linear_animation.h"
 #include "ui/views/controls/menu/menu_item_view.h"
 #include "ui/views/controls/menu/submenu_view.h"
@@ -24,10 +25,7 @@ namespace views {
 MenuClosureAnimationMac::MenuClosureAnimationMac(MenuItemView* item,
                                                  SubmenuView* menu,
                                                  base::OnceClosure callback)
-    : callback_(std::move(callback)),
-      item_(item),
-      menu_(menu),
-      step_(AnimationStep::kStart) {}
+    : callback_(std::move(callback)), item_(item), menu_(menu) {}
 
 MenuClosureAnimationMac::~MenuClosureAnimationMac() = default;
 
@@ -38,7 +36,7 @@ void MenuClosureAnimationMac::Start() {
     // accept callback will happen after a runloop cycle by skipping to the end
     // of the animation.
     step_ = AnimationStep::kFading;
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&MenuClosureAnimationMac::AdvanceAnimation,
                                   AsWeakPtr()));
     return;
@@ -68,12 +66,12 @@ void MenuClosureAnimationMac::AdvanceAnimation() {
   if (step_ == AnimationStep::kUnselected ||
       step_ == AnimationStep::kSelected) {
     item_->SetForcedVisualSelection(step_ == AnimationStep::kSelected);
-    timer_.Start(FROM_HERE, base::TimeDelta::FromMilliseconds(80),
+    timer_.Start(FROM_HERE, base::Milliseconds(80),
                  base::BindRepeating(&MenuClosureAnimationMac::AdvanceAnimation,
                                      base::Unretained(this)));
   } else if (step_ == AnimationStep::kFading) {
     auto fade = std::make_unique<gfx::LinearAnimation>(this);
-    fade->SetDuration(base::TimeDelta::FromMilliseconds(200));
+    fade->SetDuration(base::Milliseconds(200));
     fade_animation_ = std::move(fade);
     fade_animation_->Start();
   } else if (step_ == AnimationStep::kFinish) {
@@ -107,7 +105,7 @@ void MenuClosureAnimationMac::AnimationEnded(const gfx::Animation* animation) {
 
 void MenuClosureAnimationMac::AnimationCanceled(
     const gfx::Animation* animation) {
-  NOTREACHED();
+  NOTREACHED_NORETURN();
 }
 
 }  // namespace views

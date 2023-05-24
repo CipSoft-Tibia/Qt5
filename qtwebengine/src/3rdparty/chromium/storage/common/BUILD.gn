@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -7,8 +7,6 @@ import("//mojo/public/tools/bindings/mojom.gni")
 component("common") {
   output_name = "storage_common"
   sources = [
-    "database/database_connections.cc",
-    "database/database_connections.h",
     "database/database_identifier.cc",
     "database/database_identifier.h",
     "file_system/file_system_info.cc",
@@ -21,11 +19,7 @@ component("common") {
     "quota/padding_key.h",
   ]
 
-  # TODO(jschuh): crbug.com/167187 fix size_t to int truncations.
-  configs += [
-    "//build/config/compiler:no_size_t_to_int_warning",
-    "//build/config/compiler:wexit_time_destructors",
-  ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   defines = [ "IS_STORAGE_COMMON_IMPL" ]
 
@@ -33,6 +27,7 @@ component("common") {
     "//components/services/filesystem/public/mojom",
     "//services/network/public/mojom",
     "//third_party/blink/public:blink_headers",
+    "//third_party/blink/public/common",
   ]
 
   deps = [
@@ -47,7 +42,6 @@ source_set("unittests") {
   testonly = true
 
   sources = [
-    "database/database_connections_unittest.cc",
     "database/database_identifier_unittest.cc",
     "file_system/file_system_util_unittest.cc",
     "run_all_unittests.cc",

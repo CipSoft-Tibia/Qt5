@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 #include <memory>
 
 #include "base/base64.h"
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "gpu/command_buffer/common/activity_flags.h"
 #include "gpu/command_buffer/common/gles2_cmd_format.h"
 #include "gpu/command_buffer/service/decoder_client.h"
@@ -41,8 +41,9 @@ class PassthroughProgramCacheTest : public GpuServiceTest,
   ~PassthroughProgramCacheTest() override {}
 
   void OnConsoleMessage(int32_t id, const std::string& message) override {}
-  void CacheShader(const std::string& key, const std::string& shader) override {
-  }
+  void CacheBlob(gpu::GpuDiskCacheType type,
+                 const std::string& key,
+                 const std::string& blob) override {}
   void OnFenceSyncRelease(uint64_t release) override {}
   void OnDescheduleUntilFinished() override {}
   void OnRescheduleAfterFinished() override {}

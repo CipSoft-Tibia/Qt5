@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,15 +11,17 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
 #include "base/i18n/rtl.h"
 #include "base/json/json_reader.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/simple_test_clock.h"
@@ -124,7 +126,7 @@ const char kImageUrl[] = "http://image/image.png";
 
 const char kSuggestionUrl2[] = "http://foo.com/bar";
 
-const char kTestJsonDefaultCategoryTitle[] = "Some title";
+const char16_t kTestJsonDefaultCategoryTitle[] = u"Some title";
 
 const int kOtherCategoryId = 2;
 const int kUnknownRemoteCategoryId = 1234;
@@ -138,7 +140,7 @@ base::Time GetDefaultCreationTime() {
 }
 
 base::Time GetDefaultExpirationTime() {
-  return base::Time::Now() + base::TimeDelta::FromHours(1);
+  return base::Time::Now() + base::Hours(1);
 }
 
 // TODO(vitaliii): Remove this and use RemoteSuggestionBuilder instead.
@@ -164,7 +166,7 @@ void ServeOneByOneImage(
     image_fetcher::ImageFetcherCallback* callback) {
   std::move(*image_data_callback)
       .Run("1-by-1-image-data", image_fetcher::RequestMetadata());
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       base::BindOnce(std::move(*callback), gfx::test::CreateImage(1, 1),
                      image_fetcher::RequestMetadata()));
@@ -284,7 +286,8 @@ class RemoteSuggestionsProviderImplTest : public ::testing::Test {
     } else {
       remote_suggestions_status_service =
           std::make_unique<RemoteSuggestionsStatusServiceImpl>(
-              /*has_signed_in=*/false, utils_.pref_service(), std::string());
+              /*has_signed_in=*/false, utils_.pref_service(),
+              std::vector<std::string>());
     }
     remote_suggestions_status_service_ =
         remote_suggestions_status_service.get();
@@ -395,7 +398,7 @@ class RemoteSuggestionsProviderImplTest : public ::testing::Test {
   void FetchTheseSuggestions(
       bool interactive_request,
       Status status,
-      base::Optional<std::vector<FetchedCategory>> fetched_categories) {
+      absl::optional<std::vector<FetchedCategory>> fetched_categories) {
     RemoteSuggestionsFetcher::SnippetsAvailableCallback snippets_callback;
     EXPECT_CALL(*mock_suggestions_fetcher(), FetchSnippets(_, _))
         .WillOnce(MoveSecondArgumentPointeeTo(&snippets_callback))
@@ -410,7 +413,7 @@ class RemoteSuggestionsProviderImplTest : public ::testing::Test {
       const std::set<std::string>& known_suggestion_ids,
       FetchDoneCallback fetch_done_callback,
       Status status,
-      base::Optional<std::vector<FetchedCategory>> fetched_categories) {
+      absl::optional<std::vector<FetchedCategory>> fetched_categories) {
     RemoteSuggestionsFetcher::SnippetsAvailableCallback snippets_callback;
     EXPECT_CALL(*mock_suggestions_fetcher(), FetchSnippets(_, _))
         .WillOnce(MoveSecondArgumentPointeeTo(&snippets_callback))
@@ -534,22 +537,22 @@ class RemoteSuggestionsProviderImplTest : public ::testing::Test {
   std::unique_ptr<CategoryRanker> category_ranker_;
   UserClassifier user_classifier_;
   std::unique_ptr<FakeContentSuggestionsProviderObserver> observer_;
-  StrictMock<MockRemoteSuggestionsFetcher>* mock_suggestions_fetcher_;
-  NiceMock<MockImageFetcher>* image_fetcher_;
+  raw_ptr<StrictMock<MockRemoteSuggestionsFetcher>> mock_suggestions_fetcher_;
+  raw_ptr<NiceMock<MockImageFetcher>> image_fetcher_;
   image_fetcher::FakeImageDecoder image_decoder_;
   std::unique_ptr<MockScheduler> scheduler_;
-  RemoteSuggestionsStatusService* remote_suggestions_status_service_;
+  raw_ptr<RemoteSuggestionsStatusService> remote_suggestions_status_service_;
   base::test::TaskEnvironment task_environment_;
 
   RemoteSuggestionsStatusService::StatusChangeCallback status_change_callback_;
 
-  RemoteSuggestionsDatabase* database_;
+  raw_ptr<RemoteSuggestionsDatabase> database_;
   std::map<std::string, SnippetProto> suggestion_db_storage_;
   std::map<std::string, SnippetImageProto> image_db_storage_;
 
   // Owned by |database_|.
-  FakeDB<SnippetProto>* suggestion_db_;
-  FakeDB<SnippetImageProto>* image_db_;
+  raw_ptr<FakeDB<SnippetProto>> suggestion_db_;
+  raw_ptr<FakeDB<SnippetImageProto>> image_db_;
 
   scoped_refptr<TestMockTimeTaskRunner> timer_mock_task_runner_;
 };
@@ -591,8 +594,7 @@ TEST_F(RemoteSuggestionsProviderImplTest, Full) {
 }
 
 TEST_F(RemoteSuggestionsProviderImplTest, CategoryTitle) {
-  const base::string16 test_default_title =
-      base::UTF8ToUTF16(kTestJsonDefaultCategoryTitle);
+  const std::u16string test_default_title = kTestJsonDefaultCategoryTitle;
 
   // Don't send an initial response -- we want to test what happens without any
   // server status.
@@ -746,7 +748,7 @@ TEST_F(RemoteSuggestionsProviderImplTest, ExperimentalCategoryInfo) {
 }
 
 TEST_F(RemoteSuggestionsProviderImplTest, AddRemoteCategoriesToCategoryRanker) {
-  auto mock_ranker = std::make_unique<MockCategoryRanker>();
+  auto mock_ranker = std::make_unique<NiceMock<MockCategoryRanker>>();
   MockCategoryRanker* raw_mock_ranker = mock_ranker.get();
   SetCategoryRanker(std::move(mock_ranker));
   std::vector<FetchedCategory> fetched_categories;
@@ -785,7 +787,7 @@ TEST_F(RemoteSuggestionsProviderImplTest, AddRemoteCategoriesToCategoryRanker) {
 TEST_F(RemoteSuggestionsProviderImplTest,
        AddRemoteCategoriesToCategoryRankerRelativeToArticles) {
   SetOrderNewRemoteCategoriesBasedOnArticlesCategoryParam(true);
-  auto mock_ranker = std::make_unique<MockCategoryRanker>();
+  auto mock_ranker = std::make_unique<NiceMock<MockCategoryRanker>>();
   MockCategoryRanker* raw_mock_ranker = mock_ranker.get();
   SetCategoryRanker(std::move(mock_ranker));
   std::vector<FetchedCategory> fetched_categories;
@@ -839,7 +841,7 @@ TEST_F(
     RemoteSuggestionsProviderImplTest,
     AddRemoteCategoriesToCategoryRankerRelativeToArticlesWithArticlesAbsent) {
   SetOrderNewRemoteCategoriesBasedOnArticlesCategoryParam(true);
-  auto mock_ranker = std::make_unique<MockCategoryRanker>();
+  auto mock_ranker = std::make_unique<NiceMock<MockCategoryRanker>>();
   MockCategoryRanker* raw_mock_ranker = mock_ranker.get();
   SetCategoryRanker(std::move(mock_ranker));
   std::vector<FetchedCategory> fetched_categories;
@@ -943,7 +945,7 @@ TEST_F(RemoteSuggestionsProviderImplTest, PersistRemoteCategoryOrder) {
 
   // We manually recreate the provider to simulate Chrome restart and enforce a
   // mock ranker.
-  auto mock_ranker = std::make_unique<MockCategoryRanker>();
+  auto mock_ranker = std::make_unique<NiceMock<MockCategoryRanker>>();
   MockCategoryRanker* raw_mock_ranker = mock_ranker.get();
   SetCategoryRanker(std::move(mock_ranker));
   // Ensure that the order is not fetched.
@@ -1291,7 +1293,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   std::vector<FetchedCategory> fetched_categories;
   fetched_categories.push_back(FetchedCategory(
       articles_category(),
-      BuildRemoteCategoryInfo(base::UTF8ToUTF16("title"),
+      BuildRemoteCategoryInfo(u"title",
                               /*allow_fetching_more_results=*/true)));
   fetched_categories[0].suggestions.push_back(
       CreateTestRemoteSuggestion("http://fetched-more.com/"));
@@ -1319,7 +1321,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   fetched_categories.clear();
   fetched_categories.push_back(FetchedCategory(
       articles_category(),
-      BuildRemoteCategoryInfo(base::UTF8ToUTF16("title"),
+      BuildRemoteCategoryInfo(u"title",
                               /*allow_fetching_more_results=*/true)));
   fetched_categories[0].suggestions.push_back(
       CreateTestRemoteSuggestion("http://fetched-more.com/"));
@@ -1476,7 +1478,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   ASSERT_FALSE(snippets_callback.is_null());
   std::move(snippets_callback)
       .Run(Status(StatusCode::TEMPORARY_ERROR, "Received invalid JSON"),
-           base::nullopt);
+           absl::nullopt);
 }
 
 TEST_F(RemoteSuggestionsProviderImplTest,
@@ -1487,7 +1489,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   FetchTheseSuggestions(
       /*interactive_request=*/false,
       Status(StatusCode::TEMPORARY_ERROR, "Received invalid JSON"),
-      base::nullopt);
+      absl::nullopt);
   EXPECT_THAT(provider()->GetSuggestionsForTesting(articles_category()),
               IsEmpty());
 }
@@ -1500,7 +1502,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   std::vector<FetchedCategory> fetched_categories;
   fetched_categories.push_back(FetchedCategory(
       articles_category(),
-      BuildRemoteCategoryInfo(base::UTF8ToUTF16("title"),
+      BuildRemoteCategoryInfo(u"title",
                               /*allow_fetching_more_results=*/true)));
   fetched_categories[0].suggestions.push_back(
       CreateTestRemoteSuggestion(base::StringPrintf("http://abc.com/")));
@@ -1514,7 +1516,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   FetchTheseSuggestions(
       /*interactive_request=*/false,
       Status(StatusCode::TEMPORARY_ERROR, "Received invalid JSON"),
-      base::nullopt);
+      absl::nullopt);
   // This should not have changed the existing suggestions.
   EXPECT_THAT(
       provider()->GetSuggestionsForTesting(articles_category()),
@@ -1760,7 +1762,7 @@ TEST_F(RemoteSuggestionsProviderImplTest, LogNumArticlesHistogram) {
 
   FetchTheseSuggestions(/*interactive_request=*/true,
                         Status(StatusCode::TEMPORARY_ERROR, "message"),
-                        base::nullopt);
+                        absl::nullopt);
   // Error responses don't update the list of suggestions and shouldn't
   // influence these metrics.
   EXPECT_THAT(tester.GetAllSamples("NewTabPage.Snippets.NumArticles"),
@@ -2107,7 +2109,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
 
   // Advance the time and check whether the time was updated correctly after the
   // background fetch.
-  simple_test_clock.Advance(base::TimeDelta::FromHours(1));
+  simple_test_clock.Advance(base::Hours(1));
 
   RemoteSuggestionsFetcher::SnippetsAvailableCallback snippets_callback;
   EXPECT_CALL(*mock_suggestions_fetcher(), FetchSnippets(_, _))
@@ -2116,7 +2118,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   provider()->RefetchInTheBackground(
       RemoteSuggestionsProvider::FetchStatusCallback());
   RunUntilIdle();
-  std::move(snippets_callback).Run(Status::Success(), base::nullopt);
+  std::move(snippets_callback).Run(Status::Success(), absl::nullopt);
   // TODO(jkrcal): Move together with the pref storage into the scheduler.
   EXPECT_EQ(
       SerializeTime(simple_test_clock.Now()),
@@ -2541,7 +2543,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   std::vector<FetchedCategory> fetched_categories;
   fetched_categories.push_back(FetchedCategory(
       articles_category(),
-      BuildRemoteCategoryInfo(base::UTF8ToUTF16("title"),
+      BuildRemoteCategoryInfo(u"title",
                               /*allow_fetching_more_results=*/true)));
 
   for (int i = 0; i < kMaxExcludedDismissedIds; ++i) {
@@ -2551,7 +2553,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   // Add other category suggestion.
   fetched_categories.push_back(FetchedCategory(
       Category::FromRemoteCategory(kOtherCategoryId),
-      BuildRemoteCategoryInfo(base::UTF8ToUTF16("title"),
+      BuildRemoteCategoryInfo(u"title",
                               /*allow_fetching_more_results=*/true)));
   fetched_categories[1].suggestions.push_back(
       CreateTestRemoteSuggestion("http://other.com/"));
@@ -3024,7 +3026,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   // Next fetch returns an error (with an empty section).
   FetchTheseSuggestions(/*interactive_request=*/true,
                         Status(StatusCode::TEMPORARY_ERROR, "some error"),
-                        base::nullopt);
+                        absl::nullopt);
 
   // Articles category should stay unchanged.
   EXPECT_EQ(CategoryStatus::AVAILABLE,
@@ -3097,9 +3099,8 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   auto response_callback = RefetchWhileDisplayingAndGetResponseCallback();
 
   // The timeout does not fire earlier than it should.
-  FastForwardBy(
-      base::TimeDelta::FromSeconds(kTimeoutForRefetchWhileDisplayingSeconds) -
-      base::TimeDelta::FromMilliseconds(1));
+  FastForwardBy(base::Seconds(kTimeoutForRefetchWhileDisplayingSeconds) -
+                base::Milliseconds(1));
 
   // Before the results come, the status is AVAILABLE_LOADING.
   ASSERT_EQ(CategoryStatus::AVAILABLE_LOADING,
@@ -3140,7 +3141,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
 
   // After the results come, the status is flipped back to AVAILABLE.
   std::move(response_callback)
-      .Run(Status(StatusCode::TEMPORARY_ERROR, "some error"), base::nullopt);
+      .Run(Status(StatusCode::TEMPORARY_ERROR, "some error"), absl::nullopt);
   // The category is available with the previous suggestion.
   EXPECT_EQ(CategoryStatus::AVAILABLE,
             observer().StatusForCategory(articles_category()));
@@ -3169,15 +3170,14 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   // No need to finish the fetch, we ignore the response callback.
   RefetchWhileDisplayingAndGetResponseCallback();
 
-  FastForwardBy(
-      base::TimeDelta::FromSeconds(kTimeoutForRefetchWhileDisplayingSeconds) -
-      base::TimeDelta::FromMilliseconds(1));
+  FastForwardBy(base::Seconds(kTimeoutForRefetchWhileDisplayingSeconds) -
+                base::Milliseconds(1));
 
   // Before the timeout, the status is flipped to AVAILABLE_LOADING.
   ASSERT_EQ(CategoryStatus::AVAILABLE_LOADING,
             observer().StatusForCategory(articles_category()));
 
-  FastForwardBy(base::TimeDelta::FromMilliseconds(2));
+  FastForwardBy(base::Milliseconds(2));
 
   // After the timeout, the status is flipped back to AVAILABLE, with the
   // previous suggestion.
@@ -3208,9 +3208,8 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   // No need to finish the fetch, we ignore the response callback.
   RefetchWhileDisplayingAndGetResponseCallback();
 
-  FastForwardBy(
-      base::TimeDelta::FromSeconds(kTimeoutForRefetchWhileDisplayingSeconds) -
-      base::TimeDelta::FromMilliseconds(1));
+  FastForwardBy(base::Seconds(kTimeoutForRefetchWhileDisplayingSeconds) -
+                base::Milliseconds(1));
 
   // Before the timeout, the status is flipped to AVAILABLE_LOADING.
   ASSERT_EQ(CategoryStatus::AVAILABLE_LOADING,
@@ -3224,7 +3223,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
 
   // Trigger the timeout. The provider should gracefully handle(i.e. not crash
   // because of) the category being disabled in the interim.
-  FastForwardBy(base::TimeDelta::FromMilliseconds(2));
+  FastForwardBy(base::Milliseconds(2));
 }
 
 TEST_F(RemoteSuggestionsProviderImplTest,
@@ -3248,14 +3247,13 @@ TEST_F(RemoteSuggestionsProviderImplTest,
   // No need to finish the fetch, we ignore the response callback.
   RefetchWhileDisplayingAndGetResponseCallback();
 
-  FastForwardBy(
-      base::TimeDelta::FromSeconds(kTimeoutForRefetchWhileDisplayingSeconds) -
-      base::TimeDelta::FromMilliseconds(1));
+  FastForwardBy(base::Seconds(kTimeoutForRefetchWhileDisplayingSeconds) -
+                base::Milliseconds(1));
 
   // Another fetch does nothing to the deadline.
   RefetchWhileDisplayingAndGetResponseCallback();
 
-  FastForwardBy(base::TimeDelta::FromMilliseconds(2));
+  FastForwardBy(base::Milliseconds(2));
 
   // After the timeout, the status is flipped back to AVAILABLE, with the
   // previous suggestion.
@@ -3281,7 +3279,7 @@ TEST_F(RemoteSuggestionsProviderImplTest,
 
   // After the results come, the status is flipped back to AVAILABLE.
   std::move(response_callback)
-      .Run(Status(StatusCode::TEMPORARY_ERROR, "some error"), base::nullopt);
+      .Run(Status(StatusCode::TEMPORARY_ERROR, "some error"), absl::nullopt);
   // The category is available, with no suggestions.
   EXPECT_EQ(CategoryStatus::AVAILABLE,
             observer().StatusForCategory(articles_category()));

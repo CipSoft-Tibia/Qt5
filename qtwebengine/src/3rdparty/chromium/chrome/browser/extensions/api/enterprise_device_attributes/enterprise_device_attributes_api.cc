@@ -1,140 +1,173 @@
-// Copyright (c) 2015 The Chromium Authors. All rights reserved.
+// Copyright 2021 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/extensions/api/enterprise_device_attributes/enterprise_device_attributes_api.h"
 
-#include "base/values.h"
-#include "chrome/browser/app_mode/app_mode_utils.h"
-#include "chrome/browser/browser_process.h"
-#include "chrome/browser/browser_process_platform_part.h"
-#include "chrome/browser/chromeos/policy/browser_policy_connector_chromeos.h"
-#include "chrome/browser/chromeos/policy/hostname_handler.h"
-#include "chrome/browser/chromeos/profiles/profile_helper.h"
-#include "chrome/browser/profiles/profile.h"
-#include "chrome/common/extensions/api/enterprise_device_attributes.h"
-#include "chromeos/system/statistics_provider.h"
-#include "components/user_manager/user.h"
-#include "components/user_manager/user_manager.h"
+#include <utility>
 
-namespace extensions {
+#include "base/functional/bind.h"
+
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+#include "chrome/browser/profiles/profile.h"
+#include "chromeos/lacros/lacros_service.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#else
+#include "chrome/browser/ash/crosapi/crosapi_ash.h"
+#include "chrome/browser/ash/crosapi/crosapi_manager.h"
+#include "chrome/browser/ash/crosapi/device_attributes_ash.h"
+#endif
 
 namespace {
 
-// TODO(http://crbug.com/1056550): Return an error if the user is not permitted
-// to get device attributes instead of an empty string.
-
-// Checks for the current browser context if the user is affiliated or belongs
-// to the sign-in profile.
-bool CanGetDeviceAttributesForBrowserContext(content::BrowserContext* context) {
-  const Profile* profile = Profile::FromBrowserContext(context);
-
-  if (chromeos::ProfileHelper::IsSigninProfile(profile))
-    return true;
-
-  if (!profile->IsRegularProfile())
-    return false;
-
-  const user_manager::User* user =
-      chromeos::ProfileHelper::Get()->GetUserByProfile(profile);
-  return user->IsAffiliated();
+crosapi::mojom::DeviceAttributes* GetDeviceAttributesApi() {
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  return chromeos::LacrosService::Get()
+      ->GetRemote<crosapi::mojom::DeviceAttributes>()
+      .get();
+#else
+  return crosapi::CrosapiManager::Get()->crosapi_ash()->device_attributes_ash();
+#endif
 }
 
-}  //  namespace
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+const char kUnsupportedByAsh[] = "Not supported by ash.";
+const char kUnsupportedProfile[] = "Not available for this profile.";
 
-EnterpriseDeviceAttributesGetDirectoryDeviceIdFunction::
-    EnterpriseDeviceAttributesGetDirectoryDeviceIdFunction() {}
+// Performs common crosapi validation. These errors are not caused by the
+// extension so they are considered recoverable. Returns an error message on
+// error, or nullopt on success. |context| is the browser context in which the
+// extension is hosted.
+absl::optional<std::string> ValidateCrosapi(content::BrowserContext* context) {
+  if (!chromeos::LacrosService::Get()
+           ->IsAvailable<crosapi::mojom::DeviceAttributes>()) {
+    return kUnsupportedByAsh;
+  }
 
-EnterpriseDeviceAttributesGetDirectoryDeviceIdFunction::
-    ~EnterpriseDeviceAttributesGetDirectoryDeviceIdFunction() {}
+  // These APIs are used in security-sensitive contexts. We need to ensure that
+  // the user for ash is the same as the user for lacros. We do this by
+  // restricting the API to the default profile, which is guaranteed to be the
+  // same user.
+  if (!Profile::FromBrowserContext(context)->IsMainProfile())
+    return kUnsupportedProfile;
+
+  return absl::nullopt;
+}
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
+
+}  // namespace
+
+namespace extensions {
+
+void EnterpriseDeviceAttributesBase::OnCrosapiResult(
+    crosapi::mojom::DeviceAttributesStringResultPtr result) {
+  using Result = crosapi::mojom::DeviceAttributesStringResult;
+  switch (result->which()) {
+    case Result::Tag::kErrorMessage:
+      // We intentionally drop the error message here because the extension API
+      // is expected to return "" on validation error.
+      Respond(OneArgument(base::Value("")));
+      return;
+    case Result::Tag::kContents:
+      Respond(OneArgument(base::Value(result->get_contents())));
+      return;
+  }
+}
 
 ExtensionFunction::ResponseAction
 EnterpriseDeviceAttributesGetDirectoryDeviceIdFunction::Run() {
-  std::string device_id;
-  if (CanGetDeviceAttributesForBrowserContext(browser_context())) {
-    device_id = g_browser_process->platform_part()
-                    ->browser_policy_connector_chromeos()
-                    ->GetDirectoryApiID();
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  absl::optional<std::string> error = ValidateCrosapi(browser_context());
+  if (error.has_value()) {
+    return RespondNow(Error(error.value()));
   }
-  return RespondNow(ArgumentList(
-      api::enterprise_device_attributes::GetDirectoryDeviceId::Results::Create(
-          device_id)));
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
+
+  // We don't need Unretained() or WeakPtr because ExtensionFunction is
+  // ref-counted.
+  auto cb = base::BindOnce(
+      &EnterpriseDeviceAttributesGetDirectoryDeviceIdFunction::OnCrosapiResult,
+      this);
+
+  GetDeviceAttributesApi()->GetDirectoryDeviceId(std::move(cb));
+  return did_respond() ? AlreadyResponded() : RespondLater();
 }
-
-EnterpriseDeviceAttributesGetDeviceSerialNumberFunction::
-    EnterpriseDeviceAttributesGetDeviceSerialNumberFunction() {}
-
-EnterpriseDeviceAttributesGetDeviceSerialNumberFunction::
-    ~EnterpriseDeviceAttributesGetDeviceSerialNumberFunction() {}
 
 ExtensionFunction::ResponseAction
 EnterpriseDeviceAttributesGetDeviceSerialNumberFunction::Run() {
-  std::string serial_number;
-  if (CanGetDeviceAttributesForBrowserContext(browser_context())) {
-    serial_number = chromeos::system::StatisticsProvider::GetInstance()
-                        ->GetEnterpriseMachineID();
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  absl::optional<std::string> error = ValidateCrosapi(browser_context());
+  if (error.has_value()) {
+    return RespondNow(Error(error.value()));
   }
-  return RespondNow(ArgumentList(
-      api::enterprise_device_attributes::GetDeviceSerialNumber::Results::Create(
-          serial_number)));
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
+
+  // We don't need Unretained() or WeakPtr because ExtensionFunction is
+  // ref-counted.
+  auto cb = base::BindOnce(
+      &EnterpriseDeviceAttributesGetDeviceSerialNumberFunction::OnCrosapiResult,
+      this);
+
+  GetDeviceAttributesApi()->GetDeviceSerialNumber(std::move(cb));
+  return did_respond() ? AlreadyResponded() : RespondLater();
 }
-
-EnterpriseDeviceAttributesGetDeviceAssetIdFunction::
-    EnterpriseDeviceAttributesGetDeviceAssetIdFunction() {}
-
-EnterpriseDeviceAttributesGetDeviceAssetIdFunction::
-    ~EnterpriseDeviceAttributesGetDeviceAssetIdFunction() {}
 
 ExtensionFunction::ResponseAction
 EnterpriseDeviceAttributesGetDeviceAssetIdFunction::Run() {
-  std::string asset_id;
-  if (CanGetDeviceAttributesForBrowserContext(browser_context())) {
-    asset_id = g_browser_process->platform_part()
-                   ->browser_policy_connector_chromeos()
-                   ->GetDeviceAssetID();
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  absl::optional<std::string> error = ValidateCrosapi(browser_context());
+  if (error.has_value()) {
+    return RespondNow(Error(error.value()));
   }
-  return RespondNow(ArgumentList(
-      api::enterprise_device_attributes::GetDeviceAssetId::Results::Create(
-          asset_id)));
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
+
+  // We don't need Unretained() or WeakPtr because ExtensionFunction is
+  // ref-counted.
+  auto cb = base::BindOnce(
+      &EnterpriseDeviceAttributesGetDeviceAssetIdFunction::OnCrosapiResult,
+      this);
+
+  GetDeviceAttributesApi()->GetDeviceAssetId(std::move(cb));
+  return did_respond() ? AlreadyResponded() : RespondLater();
 }
-
-EnterpriseDeviceAttributesGetDeviceAnnotatedLocationFunction::
-    EnterpriseDeviceAttributesGetDeviceAnnotatedLocationFunction() {}
-
-EnterpriseDeviceAttributesGetDeviceAnnotatedLocationFunction::
-    ~EnterpriseDeviceAttributesGetDeviceAnnotatedLocationFunction() {}
 
 ExtensionFunction::ResponseAction
 EnterpriseDeviceAttributesGetDeviceAnnotatedLocationFunction::Run() {
-  std::string annotated_location;
-  if (CanGetDeviceAttributesForBrowserContext(browser_context())) {
-    annotated_location = g_browser_process->platform_part()
-                             ->browser_policy_connector_chromeos()
-                             ->GetDeviceAnnotatedLocation();
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  absl::optional<std::string> error = ValidateCrosapi(browser_context());
+  if (error.has_value()) {
+    return RespondNow(Error(error.value()));
   }
-  return RespondNow(ArgumentList(
-      api::enterprise_device_attributes::GetDeviceAnnotatedLocation::Results::
-          Create(annotated_location)));
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
+
+  // We don't need Unretained() or WeakPtr because ExtensionFunction is
+  // ref-counted.
+  auto cb = base::BindOnce(
+      &EnterpriseDeviceAttributesGetDeviceAnnotatedLocationFunction::
+          OnCrosapiResult,
+      this);
+
+  GetDeviceAttributesApi()->GetDeviceAnnotatedLocation(std::move(cb));
+  return did_respond() ? AlreadyResponded() : RespondLater();
 }
-
-EnterpriseDeviceAttributesGetDeviceHostnameFunction::
-    EnterpriseDeviceAttributesGetDeviceHostnameFunction() = default;
-
-EnterpriseDeviceAttributesGetDeviceHostnameFunction::
-    ~EnterpriseDeviceAttributesGetDeviceHostnameFunction() = default;
 
 ExtensionFunction::ResponseAction
 EnterpriseDeviceAttributesGetDeviceHostnameFunction::Run() {
-  std::string hostname;
-  if (CanGetDeviceAttributesForBrowserContext(browser_context())) {
-    hostname = g_browser_process->platform_part()
-                   ->browser_policy_connector_chromeos()
-                   ->GetHostnameHandler()
-                   ->GetDeviceHostname();
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  absl::optional<std::string> error = ValidateCrosapi(browser_context());
+  if (error.has_value()) {
+    return RespondNow(Error(error.value()));
   }
-  return RespondNow(ArgumentList(
-      api::enterprise_device_attributes::GetDeviceHostname::Results::Create(
-          hostname)));
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
+
+  // We don't need Unretained() or WeakPtr because ExtensionFunction is
+  // ref-counted.
+  auto cb = base::BindOnce(
+      &EnterpriseDeviceAttributesGetDeviceHostnameFunction::OnCrosapiResult,
+      this);
+
+  GetDeviceAttributesApi()->GetDeviceHostname(std::move(cb));
+  return did_respond() ? AlreadyResponded() : RespondLater();
 }
 
 }  // namespace extensions

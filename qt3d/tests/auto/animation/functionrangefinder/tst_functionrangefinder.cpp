@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <private/functionrangefinder_p.h>
@@ -39,10 +14,10 @@ private Q_SLOTS:
     void checkDefaultConstruction()
     {
         // GIVEN
-        QVector<float> data;
+        QList<float> data;
 
         // WHEN
-        FunctionRangeFinder finder(data);
+        FunctionRangeFinder finder(&data);
 
         // THEN
         QCOMPARE(finder.rangeSize(), 2);
@@ -52,7 +27,7 @@ private Q_SLOTS:
 
     void checkConstructionWithData_data()
     {
-        QTest::addColumn<QVector<float>>("x");
+        QTest::addColumn<QList<float>>("x");
         QTest::addColumn<int>("correlationThreshold");
         QTest::addColumn<bool>("ascending");
 
@@ -82,12 +57,12 @@ private Q_SLOTS:
     void checkConstructionWithData()
     {
         // GIVEN
-        QFETCH(QVector<float>, x);
+        QFETCH(QList<float>, x);
         QFETCH(int, correlationThreshold);
         QFETCH(bool, ascending);
 
         // WHEN
-        FunctionRangeFinder finder(x);
+        FunctionRangeFinder finder(&x);
 
         // THEN
         QCOMPARE(finder.rangeSize(), 2);
@@ -97,9 +72,9 @@ private Q_SLOTS:
 
     void checkFindLowerBound_data()
     {
-        QTest::addColumn<QVector<float>>("x");
-        QTest::addColumn<QVector<float>>("needles");
-        QTest::addColumn<QVector<int>>("lowerBounds");
+        QTest::addColumn<QList<float>>("x");
+        QTest::addColumn<QList<float>>("needles");
+        QTest::addColumn<QList<int>>("lowerBounds");
 
         QVector<float> data = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f };
         QVector<float> needles = { 2.5f };
@@ -153,10 +128,10 @@ private Q_SLOTS:
     void checkFindLowerBound()
     {
         // GIVEN
-        QFETCH(QVector<float>, x);
-        QFETCH(QVector<float>, needles);
-        QFETCH(QVector<int>, lowerBounds);
-        FunctionRangeFinder finder(x);
+        QFETCH(QList<float>, x);
+        QFETCH(QList<float>, needles);
+        QFETCH(QList<int>, lowerBounds);
+        FunctionRangeFinder finder(&x);
 
         for (int i = 0; i < needles.size(); ++i) {
             // WHEN

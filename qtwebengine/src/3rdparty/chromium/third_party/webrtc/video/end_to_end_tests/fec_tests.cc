@@ -53,7 +53,7 @@ TEST_F(FecEndToEndTest, ReceivesUlpfec) {
                                public rtc::VideoSinkInterface<VideoFrame> {
    public:
     UlpfecRenderObserver()
-        : EndToEndTest(kDefaultTimeoutMs),
+        : EndToEndTest(kDefaultTimeout),
           encoder_factory_([]() { return VP8Encoder::Create(); }),
           random_(0xcafef00d1),
           num_packets_sent_(0) {}
@@ -110,7 +110,7 @@ TEST_F(FecEndToEndTest, ReceivesUlpfec) {
 
     void ModifyVideoConfigs(
         VideoSendStream::Config* send_config,
-        std::vector<VideoReceiveStream::Config>* receive_configs,
+        std::vector<VideoReceiveStreamInterface::Config>* receive_configs,
         VideoEncoderConfig* encoder_config) override {
       // Use VP8 instead of FAKE, since the latter does not have PictureID
       // in the packetization headers.
@@ -118,7 +118,7 @@ TEST_F(FecEndToEndTest, ReceivesUlpfec) {
       send_config->rtp.payload_name = "VP8";
       send_config->rtp.payload_type = kVideoSendPayloadType;
       encoder_config->codec_type = kVideoCodecVP8;
-      VideoReceiveStream::Decoder decoder =
+      VideoReceiveStreamInterface::Decoder decoder =
           test::CreateMatchingDecoder(*send_config);
       (*receive_configs)[0].decoder_factory = &decoder_factory_;
       (*receive_configs)[0].decoders.clear();
@@ -159,7 +159,7 @@ class FlexfecRenderObserver : public test::EndToEndTest,
   static constexpr uint32_t kFlexfecLocalSsrc = 456;
 
   explicit FlexfecRenderObserver(bool enable_nack, bool expect_flexfec_rtcp)
-      : test::EndToEndTest(test::CallTest::kDefaultTimeoutMs),
+      : test::EndToEndTest(test::CallTest::kLongTimeout),
         enable_nack_(enable_nack),
         expect_flexfec_rtcp_(expect_flexfec_rtcp),
         received_flexfec_rtcp_(false),
@@ -256,19 +256,12 @@ class FlexfecRenderObserver : public test::EndToEndTest,
     return SEND_PACKET;
   }
 
-  std::unique_ptr<test::PacketTransport> CreateSendTransport(
-      TaskQueueBase* task_queue,
-      Call* sender_call) override {
+  BuiltInNetworkBehaviorConfig GetSendTransportConfig() const override {
     // At low RTT (< kLowRttNackMs) -> NACK only, no FEC.
     const int kNetworkDelayMs = 100;
     BuiltInNetworkBehaviorConfig config;
     config.queue_delay_ms = kNetworkDelayMs;
-    return std::make_unique<test::PacketTransport>(
-        task_queue, sender_call, this, test::PacketTransport::kSender,
-        test::CallTest::payload_type_map_,
-        std::make_unique<FakeNetworkPipe>(
-            Clock::GetRealTimeClock(),
-            std::make_unique<SimulatedNetwork>(config)));
+    return config;
   }
 
   void OnFrame(const VideoFrame& video_frame) override {
@@ -287,7 +280,7 @@ class FlexfecRenderObserver : public test::EndToEndTest,
 
   void ModifyVideoConfigs(
       VideoSendStream::Config* send_config,
-      std::vector<VideoReceiveStream::Config>* receive_configs,
+      std::vector<VideoReceiveStreamInterface::Config>* receive_configs,
       VideoEncoderConfig* encoder_config) override {
     (*receive_configs)[0].rtp.local_ssrc = kVideoLocalSsrc;
     (*receive_configs)[0].renderer = this;
@@ -314,7 +307,7 @@ class FlexfecRenderObserver : public test::EndToEndTest,
 
   void ModifyFlexfecConfigs(
       std::vector<FlexfecReceiveStream::Config>* receive_configs) override {
-    (*receive_configs)[0].local_ssrc = kFlexfecLocalSsrc;
+    (*receive_configs)[0].rtp.local_ssrc = kFlexfecLocalSsrc;
   }
 
   void PerformTest() override {
@@ -352,7 +345,7 @@ TEST_F(FecEndToEndTest, ReceivedUlpfecPacketsNotNacked) {
   class UlpfecNackObserver : public test::EndToEndTest {
    public:
     UlpfecNackObserver()
-        : EndToEndTest(kDefaultTimeoutMs),
+        : EndToEndTest(kDefaultTimeout),
           state_(kFirstPacket),
           ulpfec_sequence_number_(0),
           has_last_sequence_number_(false),
@@ -406,13 +399,12 @@ TEST_F(FecEndToEndTest, ReceivedUlpfecPacketsNotNacked) {
             return DROP_PACKET;
           state_ = kPassOneMediaPacket;
           return DROP_PACKET;
-          break;
         case kPassOneMediaPacket:
           if (ulpfec_packet)
             return DROP_PACKET;
           // Pass one media packet after dropped packet after last FEC,
           // otherwise receiver might never see a seq_no after
-          // |ulpfec_sequence_number_|
+          // `ulpfec_sequence_number_`
           state_ = kVerifyUlpfecPacketNotInNackList;
           break;
         case kVerifyUlpfecPacketNotInNackList:
@@ -440,20 +432,13 @@ TEST_F(FecEndToEndTest, ReceivedUlpfecPacketsNotNacked) {
       return SEND_PACKET;
     }
 
-    std::unique_ptr<test::PacketTransport> CreateSendTransport(
-        TaskQueueBase* task_queue,
-        Call* sender_call) override {
+    BuiltInNetworkBehaviorConfig GetSendTransportConfig() const override {
       // At low RTT (< kLowRttNackMs) -> NACK only, no FEC.
       // Configure some network delay.
       const int kNetworkDelayMs = 50;
       BuiltInNetworkBehaviorConfig config;
       config.queue_delay_ms = kNetworkDelayMs;
-      return std::make_unique<test::PacketTransport>(
-          task_queue, sender_call, this, test::PacketTransport::kSender,
-          payload_type_map_,
-          std::make_unique<FakeNetworkPipe>(
-              Clock::GetRealTimeClock(),
-              std::make_unique<SimulatedNetwork>(config)));
+      return config;
     }
 
     // TODO(holmer): Investigate why we don't send FEC packets when the bitrate
@@ -466,7 +451,7 @@ TEST_F(FecEndToEndTest, ReceivedUlpfecPacketsNotNacked) {
 
     void ModifyVideoConfigs(
         VideoSendStream::Config* send_config,
-        std::vector<VideoReceiveStream::Config>* receive_configs,
+        std::vector<VideoReceiveStreamInterface::Config>* receive_configs,
         VideoEncoderConfig* encoder_config) override {
       // Configure hybrid NACK/FEC.
       send_config->rtp.nack.rtp_history_ms = kNackRtpHistoryMs;

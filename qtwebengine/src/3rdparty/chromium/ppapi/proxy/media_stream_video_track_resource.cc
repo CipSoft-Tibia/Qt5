@@ -1,11 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ppapi/proxy/media_stream_video_track_resource.h"
 
-#include "base/bind.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
 #include "ppapi/proxy/ppapi_messages.h"
 #include "ppapi/proxy/video_frame_resource.h"
 #include "ppapi/shared_impl/media_stream_buffer.h"
@@ -91,10 +91,9 @@ int32_t MediaStreamVideoTrackResource::Configure(
 
   configure_callback_ = callback;
   Call<PpapiPluginMsg_MediaStreamVideoTrack_ConfigureReply>(
-      RENDERER,
-      PpapiHostMsg_MediaStreamVideoTrack_Configure(attributes),
-      base::Bind(&MediaStreamVideoTrackResource::OnPluginMsgConfigureReply,
-                 base::Unretained(this)),
+      RENDERER, PpapiHostMsg_MediaStreamVideoTrack_Configure(attributes),
+      base::BindOnce(&MediaStreamVideoTrackResource::OnPluginMsgConfigureReply,
+                     base::Unretained(this)),
       callback);
   return PP_OK_COMPLETIONPENDING;
 }

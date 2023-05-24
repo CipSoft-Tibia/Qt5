@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QREMOTEOBJECTNODE_P_H
 #define QREMOTEOBJECTNODE_P_H
@@ -90,12 +54,14 @@ public:
     ~QRemoteObjectMetaObjectManager();
 
     const QMetaObject *metaObjectForType(const QString &type);
-    QMetaObject *addDynamicType(IoDeviceBase* connection, QDataStream &in);
+    QMetaObject *addDynamicType(QtROIoDeviceBase* connection, QDataStream &in);
     void addFromMetaObject(const QMetaObject *);
 
 private:
     QHash<QString, QMetaObject*> dynamicTypes;
     QHash<QString, const QMetaObject*> staticTypes;
+    QHash<QtPrivate::QMetaTypeInterface *, QMetaType> enumsToBeAssignedMetaObject;
+    QHash<QMetaObject *, QList<QMetaType>> enumTypes;
 };
 
 struct ProxyReplicaInfo;
@@ -154,19 +120,21 @@ public:
     void onRemoteObjectSourceAdded(const QRemoteObjectSourceLocation &entry);
     void onRemoteObjectSourceRemoved(const QRemoteObjectSourceLocation &entry);
     void onRegistryInitialized();
-    void onShouldReconnect(ClientIoDevice *ioDevice);
+    void onShouldReconnect(QtROClientIoDevice *ioDevice);
 
     virtual QReplicaImplementationInterface *handleNewAcquire(const QMetaObject *meta, QRemoteObjectReplica *instance, const QString &name);
     void handleReplicaConnection(const QString &name);
-    void handleReplicaConnection(const QByteArray &sourceSignature, QConnectedReplicaImplementation *rep, IoDeviceBase *connection);
+    void handleReplicaConnection(const QByteArray &sourceSignature, QConnectedReplicaImplementation *rep, QtROIoDeviceBase *connection);
     void initialize();
+    bool setRegistryUrlNodeImpl(const QUrl &registryAddr);
+
 private:
     bool checkSignatures(const QByteArray &a, const QByteArray &b);
 
 public:
     struct SourceInfo
     {
-        IoDeviceBase* device;
+        QtROIoDeviceBase* device;
         QString typeName;
         QByteArray objectSignature;
     };
@@ -176,7 +144,7 @@ public:
     QHash<QString, QWeakPointer<QReplicaImplementationInterface> > replicas;
     QMap<QString, SourceInfo> connectedSources;
     QMap<QString, QRemoteObjectNode::RemoteObjectSchemaHandler> schemaHandlers;
-    QSet<ClientIoDevice*> pendingReconnect;
+    QSet<QtROClientIoDevice*> pendingReconnect;
     QSet<QUrl> requestedUrls;
     QRemoteObjectRegistry *registry;
     int retryInterval;
@@ -187,7 +155,6 @@ public:
     QVariantList rxArgs;
     QVariant rxValue;
     QRemoteObjectAbstractPersistedStore *persistedStore;
-    bool m_handshakeReceived = false;
     int m_heartbeatInterval = 0;
     QRemoteObjectMetaObjectManager dynamicTypeManager;
     Q_DECLARE_PUBLIC(QRemoteObjectNode)
@@ -200,6 +167,10 @@ public:
     ~QRemoteObjectHostBasePrivate() override;
     QReplicaImplementationInterface *handleNewAcquire(const QMetaObject *meta, QRemoteObjectReplica *instance, const QString &name) override;
 
+    bool setHostUrlBaseImpl(const QUrl &hostAddress,
+                            QRemoteObjectHostBase::AllowedSchemas allowedSchemas =
+                                    QRemoteObjectHostBase::BuiltInSchemasOnly);
+
 public:
     QRemoteObjectSourceIo *remoteObjectIo;
     ProxyInfo *proxyInfo = nullptr;
@@ -211,6 +182,11 @@ class QRemoteObjectHostPrivate : public QRemoteObjectHostBasePrivate
 public:
     QRemoteObjectHostPrivate();
     ~QRemoteObjectHostPrivate() override;
+
+    bool setHostUrlHostImpl(const QUrl &hostAddress,
+                            QRemoteObjectHostBase::AllowedSchemas allowedSchemas =
+                                    QRemoteObjectHostBase::BuiltInSchemasOnly);
+
     Q_DECLARE_PUBLIC(QRemoteObjectHost);
 };
 
@@ -221,6 +197,9 @@ public:
     ~QRemoteObjectRegistryHostPrivate() override;
     QRemoteObjectSourceLocations remoteObjectAddresses() const override;
     QRegistrySource *registrySource;
+
+    bool setRegistryUrlRegistryHostImpl(const QUrl &registryUrl);
+
     Q_DECLARE_PUBLIC(QRemoteObjectRegistryHost);
 };
 

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,24 +13,34 @@ namespace cssvalue {
 
 String CSSCounterValue::CustomCSSText() const {
   StringBuilder result;
-  if (Separator().IsEmpty())
+  if (Separator().empty()) {
     result.Append("counter(");
-  else
+  } else {
     result.Append("counters(");
+  }
 
   result.Append(Identifier());
-  if (!Separator().IsEmpty()) {
+  if (!Separator().empty()) {
     result.Append(", ");
     result.Append(separator_->CssText());
   }
-  bool is_default_list_style = ListStyle() == CSSValueID::kDecimal;
+  bool is_default_list_style = ListStyle() == "decimal";
   if (!is_default_list_style) {
     result.Append(", ");
     result.Append(list_style_->CssText());
   }
   result.Append(')');
 
-  return result.ToString();
+  return result.ReleaseString();
+}
+
+const CSSCounterValue& CSSCounterValue::PopulateWithTreeScope(
+    const TreeScope* tree_scope) const {
+  DCHECK(!IsScopedValue());
+  return *MakeGarbageCollected<CSSCounterValue>(
+      &To<CSSCustomIdentValue>(identifier_->EnsureScopedValue(tree_scope)),
+      &To<CSSCustomIdentValue>(list_style_->EnsureScopedValue(tree_scope)),
+      separator_);
 }
 
 void CSSCounterValue::TraceAfterDispatch(blink::Visitor* visitor) const {

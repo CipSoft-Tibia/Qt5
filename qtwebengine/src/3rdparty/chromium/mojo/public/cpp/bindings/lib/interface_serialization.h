@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,10 @@
 
 #include <type_traits>
 
-#include "mojo/public/cpp/bindings/associated_group_controller.h"
 #include "mojo/public/cpp/bindings/associated_interface_ptr_info.h"
-#include "mojo/public/cpp/bindings/associated_interface_request.h"
 #include "mojo/public/cpp/bindings/interface_data_view.h"
-#include "mojo/public/cpp/bindings/interface_ptr.h"
-#include "mojo/public/cpp/bindings/interface_request.h"
 #include "mojo/public/cpp/bindings/lib/bindings_internal.h"
-#include "mojo/public/cpp/bindings/lib/serialization_context.h"
+#include "mojo/public/cpp/bindings/lib/handle_serialization.h"
 #include "mojo/public/cpp/bindings/lib/serialization_forward.h"
 #include "mojo/public/cpp/bindings/pending_associated_receiver.h"
 #include "mojo/public/cpp/bindings/pending_associated_remote.h"
@@ -24,34 +20,10 @@
 #include "mojo/public/cpp/system/message_pipe.h"
 
 namespace mojo {
+
+class Message;
+
 namespace internal {
-
-template <typename Base, typename T>
-struct Serializer<AssociatedInterfacePtrInfoDataView<Base>,
-                  AssociatedInterfacePtrInfo<T>> {
-  static_assert(std::is_base_of<Base, T>::value, "Interface type mismatch.");
-
-  static void Serialize(AssociatedInterfacePtrInfo<T>& input,
-                        AssociatedInterface_Data* output,
-                        SerializationContext* context) {
-    DCHECK(!input.handle().is_valid() || input.handle().pending_association());
-    context->AddAssociatedInterfaceInfo(input.PassHandle(), input.version(),
-                                        output);
-  }
-
-  static bool Deserialize(AssociatedInterface_Data* input,
-                          AssociatedInterfacePtrInfo<T>* output,
-                          SerializationContext* context) {
-    auto handle = context->TakeAssociatedEndpointHandle(input->handle);
-    if (!handle.is_valid()) {
-      *output = AssociatedInterfacePtrInfo<T>();
-    } else {
-      output->set_handle(std::move(handle));
-      output->set_version(input->version);
-    }
-    return true;
-  }
-};
 
 template <typename Base, typename T>
 struct Serializer<AssociatedInterfacePtrInfoDataView<Base>,
@@ -60,16 +32,16 @@ struct Serializer<AssociatedInterfacePtrInfoDataView<Base>,
 
   static void Serialize(PendingAssociatedRemote<T>& input,
                         AssociatedInterface_Data* output,
-                        SerializationContext* context) {
+                        Message* message) {
     DCHECK(!input.handle().is_valid() || input.handle().pending_association());
-    context->AddAssociatedInterfaceInfo(input.PassHandle(), input.version(),
-                                        output);
+    SerializeAssociatedInterfaceInfo(input.PassHandle(), input.version(),
+                                     *message, *output);
   }
 
   static bool Deserialize(AssociatedInterface_Data* input,
                           PendingAssociatedRemote<T>* output,
-                          SerializationContext* context) {
-    auto handle = context->TakeAssociatedEndpointHandle(input->handle);
+                          Message* message) {
+    auto handle = DeserializeAssociatedEndpointHandle(input->handle, *message);
     if (!handle.is_valid()) {
       *output = PendingAssociatedRemote<T>();
     } else {
@@ -82,44 +54,20 @@ struct Serializer<AssociatedInterfacePtrInfoDataView<Base>,
 
 template <typename Base, typename T>
 struct Serializer<AssociatedInterfaceRequestDataView<Base>,
-                  AssociatedInterfaceRequest<T>> {
-  static_assert(std::is_base_of<Base, T>::value, "Interface type mismatch.");
-
-  static void Serialize(AssociatedInterfaceRequest<T>& input,
-                        AssociatedEndpointHandle_Data* output,
-                        SerializationContext* context) {
-    DCHECK(!input.handle().is_valid() || input.handle().pending_association());
-    context->AddAssociatedEndpoint(input.PassHandle(), output);
-  }
-
-  static bool Deserialize(AssociatedEndpointHandle_Data* input,
-                          AssociatedInterfaceRequest<T>* output,
-                          SerializationContext* context) {
-    auto handle = context->TakeAssociatedEndpointHandle(*input);
-    if (!handle.is_valid())
-      *output = AssociatedInterfaceRequest<T>();
-    else
-      *output = AssociatedInterfaceRequest<T>(std::move(handle));
-    return true;
-  }
-};
-
-template <typename Base, typename T>
-struct Serializer<AssociatedInterfaceRequestDataView<Base>,
                   PendingAssociatedReceiver<T>> {
   static_assert(std::is_base_of<Base, T>::value, "Interface type mismatch.");
 
   static void Serialize(PendingAssociatedReceiver<T>& input,
                         AssociatedEndpointHandle_Data* output,
-                        SerializationContext* context) {
+                        Message* message) {
     DCHECK(!input.handle().is_valid() || input.handle().pending_association());
-    context->AddAssociatedEndpoint(input.PassHandle(), output);
+    SerializeAssociatedEndpoint(input.PassHandle(), *message, *output);
   }
 
   static bool Deserialize(AssociatedEndpointHandle_Data* input,
                           PendingAssociatedReceiver<T>* output,
-                          SerializationContext* context) {
-    auto handle = context->TakeAssociatedEndpointHandle(*input);
+                          Message* message) {
+    auto handle = DeserializeAssociatedEndpointHandle(*input, *message);
     if (!handle.is_valid())
       *output = PendingAssociatedReceiver<T>();
     else
@@ -128,43 +76,20 @@ struct Serializer<AssociatedInterfaceRequestDataView<Base>,
   }
 };
 
-template <typename Base, typename T>
-struct Serializer<InterfacePtrDataView<Base>, InterfacePtr<T>> {
-  static_assert(std::is_base_of<Base, T>::value, "Interface type mismatch.");
-
-  static void Serialize(InterfacePtr<T>& input,
-                        Interface_Data* output,
-                        SerializationContext* context) {
-    InterfacePtrInfo<T> info = input.PassInterface();
-    context->AddInterfaceInfo(info.PassHandle(), info.version(), output);
+template <typename T>
+struct Serializer<AssociatedInterfaceRequestDataView<T>,
+                  ScopedInterfaceEndpointHandle> {
+  static void Serialize(ScopedInterfaceEndpointHandle& input,
+                        AssociatedEndpointHandle_Data* output,
+                        Message* message) {
+    DCHECK(!input.is_valid() || input.pending_association());
+    SerializeAssociatedEndpoint(std::move(input), *message, *output);
   }
 
-  static bool Deserialize(Interface_Data* input,
-                          InterfacePtr<T>* output,
-                          SerializationContext* context) {
-    output->Bind(InterfacePtrInfo<T>(
-        context->TakeHandleAs<mojo::MessagePipeHandle>(input->handle),
-        input->version));
-    return true;
-  }
-};
-
-template <typename Base, typename T>
-struct Serializer<InterfacePtrDataView<Base>, InterfacePtrInfo<T>> {
-  static_assert(std::is_base_of<Base, T>::value, "Interface type mismatch.");
-
-  static void Serialize(InterfacePtrInfo<T>& input,
-                        Interface_Data* output,
-                        SerializationContext* context) {
-    context->AddInterfaceInfo(input.PassHandle(), input.version(), output);
-  }
-
-  static bool Deserialize(Interface_Data* input,
-                          InterfacePtrInfo<T>* output,
-                          SerializationContext* context) {
-    *output = InterfacePtrInfo<T>(
-        context->TakeHandleAs<mojo::MessagePipeHandle>(input->handle),
-        input->version);
+  static bool Deserialize(AssociatedEndpointHandle_Data* input,
+                          ScopedInterfaceEndpointHandle* output,
+                          Message* message) {
+    *output = DeserializeAssociatedEndpointHandle(*input, *message);
     return true;
   }
 };
@@ -175,36 +100,18 @@ struct Serializer<InterfacePtrDataView<Base>, PendingRemote<T>> {
 
   static void Serialize(PendingRemote<T>& input,
                         Interface_Data* output,
-                        SerializationContext* context) {
+                        Message* message) {
     // |PassPipe()| invalidates all state, so capture |version()| first.
     uint32_t version = input.version();
-    context->AddInterfaceInfo(input.PassPipe(), version, output);
+    SerializeInterfaceInfo(input.PassPipe(), version, *message, *output);
   }
 
   static bool Deserialize(Interface_Data* input,
                           PendingRemote<T>* output,
-                          SerializationContext* context) {
+                          Message* message) {
     *output = PendingRemote<T>(
-        context->TakeHandleAs<mojo::MessagePipeHandle>(input->handle),
+        DeserializeHandleAs<MessagePipeHandle>(input->handle, *message),
         input->version);
-    return true;
-  }
-};
-
-template <typename Base, typename T>
-struct Serializer<InterfaceRequestDataView<Base>, InterfaceRequest<T>> {
-  static_assert(std::is_base_of<Base, T>::value, "Interface type mismatch.");
-
-  static void Serialize(InterfaceRequest<T>& input,
-                        Handle_Data* output,
-                        SerializationContext* context) {
-    context->AddHandle(ScopedHandle::From(input.PassMessagePipe()), output);
-  }
-
-  static bool Deserialize(Handle_Data* input,
-                          InterfaceRequest<T>* output,
-                          SerializationContext* context) {
-    context->TakeHandleAsReceiver(*input, output->internal_state());
     return true;
   }
 };
@@ -215,14 +122,14 @@ struct Serializer<InterfaceRequestDataView<Base>, PendingReceiver<T>> {
 
   static void Serialize(PendingReceiver<T>& input,
                         Handle_Data* output,
-                        SerializationContext* context) {
-    context->AddHandle(ScopedHandle::From(input.PassPipe()), output);
+                        Message* message) {
+    SerializeHandle(ScopedHandle::From(input.PassPipe()), *message, *output);
   }
 
   static bool Deserialize(Handle_Data* input,
                           PendingReceiver<T>* output,
-                          SerializationContext* context) {
-    context->TakeHandleAsReceiver(*input, output->internal_state());
+                          Message* message) {
+    DeserializeHandleAsReceiver(*input, *message, *output->internal_state());
     return true;
   }
 };

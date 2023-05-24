@@ -22,6 +22,7 @@
 #include "libavutil/crc.h"
 #include "libavutil/intreadwrite.h"
 
+#include "libavcodec/packet_internal.h"
 #include "apetag.h"
 #include "avformat.h"
 #include "avio_internal.h"
@@ -29,7 +30,7 @@
 
 typedef struct TTAMuxContext {
     AVIOContext *seek_table;
-    AVPacketList *queue, *queue_end;
+    PacketList queue;
     uint32_t nb_samples;
     int frame_size;
     int last_frame;
@@ -81,7 +82,7 @@ static int tta_write_header(AVFormatContext *s)
     ffio_init_checksum(tta->seek_table, ff_crcEDB88320_update, UINT32_MAX);
     avio_write(s->pb, "TTA1", 4);
     avio_wl16(s->pb, par->extradata ? AV_RL16(par->extradata + 4) : 1);
-    avio_wl16(s->pb, par->channels);
+    avio_wl16(s->pb, par->ch_layout.nb_channels);
     avio_wl16(s->pb, par->bits_per_raw_sample);
     avio_wl32(s->pb, par->sample_rate);
 
@@ -93,11 +94,11 @@ static int tta_write_packet(AVFormatContext *s, AVPacket *pkt)
     TTAMuxContext *tta = s->priv_data;
     int ret;
 
-    ret = ff_packet_list_put(&tta->queue, &tta->queue_end, pkt,
-                             FF_PACKETLIST_FLAG_REF_PACKET);
+    ret = avpriv_packet_list_put(&tta->queue, pkt, NULL, 0);
     if (ret < 0) {
         return ret;
     }
+    pkt = &tta->queue.tail->pkt;
 
     avio_wl32(tta->seek_table, pkt->size);
     tta->nb_samples += pkt->duration;
@@ -122,12 +123,12 @@ static int tta_write_packet(AVFormatContext *s, AVPacket *pkt)
 static void tta_queue_flush(AVFormatContext *s)
 {
     TTAMuxContext *tta = s->priv_data;
-    AVPacket pkt;
+    AVPacket *const pkt = ffformatcontext(s)->pkt;
 
-    while (tta->queue) {
-        ff_packet_list_get(&tta->queue, &tta->queue_end, &pkt);
-        avio_write(s->pb, pkt.data, pkt.size);
-        av_packet_unref(&pkt);
+    while (tta->queue.head) {
+        avpriv_packet_list_get(&tta->queue, pkt);
+        avio_write(s->pb, pkt->data, pkt->size);
+        av_packet_unref(pkt);
     }
 }
 
@@ -161,10 +162,10 @@ static void tta_deinit(AVFormatContext *s)
     TTAMuxContext *tta = s->priv_data;
 
     ffio_free_dyn_buf(&tta->seek_table);
-    ff_packet_list_free(&tta->queue, &tta->queue_end);
+    avpriv_packet_list_free(&tta->queue);
 }
 
-AVOutputFormat ff_tta_muxer = {
+const AVOutputFormat ff_tta_muxer = {
     .name              = "tta",
     .long_name         = NULL_IF_CONFIG_SMALL("TTA (True Audio)"),
     .mime_type         = "audio/x-tta",

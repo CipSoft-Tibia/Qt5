@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,7 +20,9 @@ void LoadMainAndroidPackFile(const char* path_within_apk,
                              const base::FilePath& disk_file_path);
 
 // Loads a PAK file from the APK and makes the contained resources accessible.
-COMPONENT_EXPORT(UI_BASE) void LoadPackFileFromApk(const std::string& path);
+COMPONENT_EXPORT(UI_BASE)
+void LoadPackFileFromApk(const std::string& path,
+                         const std::string& split_name);
 
 // Returns the file descriptor and region for resources.pak.
 COMPONENT_EXPORT(UI_BASE)

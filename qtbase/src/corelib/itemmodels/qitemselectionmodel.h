@@ -1,51 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QITEMSELECTIONMODEL_H
 #define QITEMSELECTIONMODEL_H
 
 #include <QtCore/qglobal.h>
 
-#include <QtCore/qset.h>
-#include <QtCore/qvector.h>
-#include <QtCore/qlist.h>
 #include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qset.h>
 
 QT_REQUIRE_CONFIG(itemmodel);
 
@@ -55,25 +18,14 @@ class Q_CORE_EXPORT QItemSelectionRange
 {
 
 public:
-    inline QItemSelectionRange() : tl(), br() {}
-#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
-    // ### Qt 6: remove them all, the compiler-generated ones are fine
-    inline QItemSelectionRange(const QItemSelectionRange &other)
-        : tl(other.tl), br(other.br) {}
-    QItemSelectionRange(QItemSelectionRange &&other) noexcept
-        : tl(std::move(other.tl)), br(std::move(other.br)) {}
-    QItemSelectionRange &operator=(QItemSelectionRange &&other) noexcept
-    { tl = std::move(other.tl); br = std::move(other.br); return *this; }
-    QItemSelectionRange &operator=(const QItemSelectionRange &other)
-    { tl = other.tl; br = other.br; return *this; }
-#endif // Qt < 6
+    QItemSelectionRange() = default;
     QItemSelectionRange(const QModelIndex &topL, const QModelIndex &bottomR) : tl(topL), br(bottomR) {}
     explicit QItemSelectionRange(const QModelIndex &index) : tl(index), br(tl) {}
 
     void swap(QItemSelectionRange &other) noexcept
     {
-        qSwap(tl, other.tl);
-        qSwap(br, other.br);
+        tl.swap(other.tl);
+        br.swap(other.br);
     }
 
     inline int top() const { return tl.row(); }
@@ -103,10 +55,6 @@ public:
     }
 
     bool intersects(const QItemSelectionRange &other) const;
-#if QT_DEPRECATED_SINCE(5, 0)
-    inline QItemSelectionRange intersect(const QItemSelectionRange &other) const
-        { return intersected(other); }
-#endif
     QItemSelectionRange intersected(const QItemSelectionRange &other) const;
 
 
@@ -114,9 +62,6 @@ public:
         { return (tl == other.tl && br == other.br); }
     inline bool operator!=(const QItemSelectionRange &other) const
         { return !operator==(other); }
-#if QT_DEPRECATED_SINCE(5, 15)
-    QT_DEPRECATED bool operator<(const QItemSelectionRange &other) const;
-#endif
 
     inline bool isValid() const
     {
@@ -131,7 +76,7 @@ public:
 private:
     QPersistentModelIndex tl, br;
 };
-Q_DECLARE_TYPEINFO(QItemSelectionRange, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QItemSelectionRange, Q_RELOCATABLE_TYPE);
 
 class QItemSelection;
 class QItemSelectionModelPrivate;
@@ -139,11 +84,16 @@ class QItemSelectionModelPrivate;
 class Q_CORE_EXPORT QItemSelectionModel : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(QAbstractItemModel *model READ model WRITE setModel NOTIFY modelChanged)
-    Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY selectionChanged STORED false DESIGNABLE false)
-    Q_PROPERTY(QModelIndex currentIndex READ currentIndex NOTIFY currentChanged STORED false DESIGNABLE false)
-    Q_PROPERTY(QItemSelection selection READ selection NOTIFY selectionChanged STORED false DESIGNABLE false)
-    Q_PROPERTY(QModelIndexList selectedIndexes READ selectedIndexes NOTIFY selectionChanged STORED false DESIGNABLE false)
+    Q_PROPERTY(QAbstractItemModel *model READ model WRITE setModel NOTIFY modelChanged
+               BINDABLE bindableModel)
+    Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY selectionChanged STORED false
+               DESIGNABLE false)
+    Q_PROPERTY(QModelIndex currentIndex READ currentIndex NOTIFY currentChanged STORED false
+               DESIGNABLE false)
+    Q_PROPERTY(QItemSelection selection READ selection NOTIFY selectionChanged STORED false
+               DESIGNABLE false)
+    Q_PROPERTY(QModelIndexList selectedIndexes READ selectedIndexes NOTIFY selectionChanged
+               STORED false DESIGNABLE false)
 
     Q_DECLARE_PRIVATE(QItemSelectionModel)
 
@@ -186,9 +136,9 @@ public:
     Q_INVOKABLE QModelIndexList selectedColumns(int row = 0) const;
     const QItemSelection selection() const;
 
-    // ### Qt 6: Merge these two as "QAbstractItemModel *model() const"
     const QAbstractItemModel *model() const;
     QAbstractItemModel *model();
+    QBindable<QAbstractItemModel *> bindableModel();
 
     void setModel(QAbstractItemModel *model);
 
@@ -215,54 +165,29 @@ protected:
 
 private:
     Q_DISABLE_COPY(QItemSelectionModel)
-    Q_PRIVATE_SLOT(d_func(), void _q_columnsAboutToBeRemoved(const QModelIndex&, int, int))
-    Q_PRIVATE_SLOT(d_func(), void _q_rowsAboutToBeRemoved(const QModelIndex&, int, int))
-    Q_PRIVATE_SLOT(d_func(), void _q_columnsAboutToBeInserted(const QModelIndex&, int, int))
-    Q_PRIVATE_SLOT(d_func(), void _q_rowsAboutToBeInserted(const QModelIndex&, int, int))
-    Q_PRIVATE_SLOT(d_func(), void _q_layoutAboutToBeChanged(const QList<QPersistentModelIndex> &parents = QList<QPersistentModelIndex>(), QAbstractItemModel::LayoutChangeHint hint = QAbstractItemModel::NoHint))
-    Q_PRIVATE_SLOT(d_func(), void _q_layoutChanged(const QList<QPersistentModelIndex> &parents = QList<QPersistentModelIndex>(), QAbstractItemModel::LayoutChangeHint hint = QAbstractItemModel::NoHint))
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QItemSelectionModel::SelectionFlags)
 
-// dummy implentation of qHash() necessary for instantiating QList<QItemSelectionRange>::toSet() with MSVC
-inline uint qHash(const QItemSelectionRange &) { return 0; }
-
-#ifdef Q_CC_MSVC
-
-/*
-   ### Qt 6:
-   ### This needs to be removed for next releases of Qt. It is a workaround for vc++ because
-   ### Qt exports QItemSelection that inherits QList<QItemSelectionRange>.
-*/
-
-# ifndef Q_TEMPLATE_EXTERN
-#  if defined(QT_BUILD_CORE_LIB)
-#   define Q_TEMPLATE_EXTERN
-#  else
-#   define Q_TEMPLATE_EXTERN extern
-#  endif
-# endif
-Q_TEMPLATE_EXTERN template class Q_CORE_EXPORT QList<QItemSelectionRange>;
-#endif // Q_CC_MSVC
-
-class Q_CORE_EXPORT QItemSelection : public QList<QItemSelectionRange>
+// We export each out-of-line method individually to prevent MSVC from
+// exporting the whole QList class.
+class QItemSelection : public QList<QItemSelectionRange>
 {
 public:
-    QItemSelection() noexcept : QList<QItemSelectionRange>() {}
-    QItemSelection(const QModelIndex &topLeft, const QModelIndex &bottomRight);
+    using QList<QItemSelectionRange>::QList;
+    Q_CORE_EXPORT QItemSelection(const QModelIndex &topLeft, const QModelIndex &bottomRight);
 
     // reusing QList::swap() here is OK!
 
-    void select(const QModelIndex &topLeft, const QModelIndex &bottomRight);
-    bool contains(const QModelIndex &index) const;
-    QModelIndexList indexes() const;
-    void merge(const QItemSelection &other, QItemSelectionModel::SelectionFlags command);
-    static void split(const QItemSelectionRange &range,
+    Q_CORE_EXPORT void select(const QModelIndex &topLeft, const QModelIndex &bottomRight);
+    Q_CORE_EXPORT bool contains(const QModelIndex &index) const;
+    Q_CORE_EXPORT QModelIndexList indexes() const;
+    Q_CORE_EXPORT void merge(const QItemSelection &other, QItemSelectionModel::SelectionFlags command);
+    Q_CORE_EXPORT static void split(const QItemSelectionRange &range,
                       const QItemSelectionRange &other,
                       QItemSelection *result);
 };
-Q_DECLARE_SHARED_NOT_MOVABLE_UNTIL_QT6(QItemSelection)
+Q_DECLARE_SHARED(QItemSelection)
 
 #ifndef QT_NO_DEBUG_STREAM
 Q_CORE_EXPORT QDebug operator<<(QDebug, const QItemSelectionRange &);
@@ -270,7 +195,7 @@ Q_CORE_EXPORT QDebug operator<<(QDebug, const QItemSelectionRange &);
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE(QItemSelectionRange)
-Q_DECLARE_METATYPE(QItemSelection)
+QT_DECL_METATYPE_EXTERN(QItemSelectionRange, Q_CORE_EXPORT)
+QT_DECL_METATYPE_EXTERN(QItemSelection, Q_CORE_EXPORT)
 
 #endif // QITEMSELECTIONMODEL_H

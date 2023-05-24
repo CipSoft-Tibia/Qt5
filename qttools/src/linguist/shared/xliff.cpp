@@ -1,40 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "translator.h"
 #include "xmlparser.h"
 
 #include <QtCore/QDebug>
 #include <QtCore/QMap>
-#include <QtCore/QRegExp>
+#include <QtCore/QRegularExpression>
 #include <QtCore/QStack>
 #include <QtCore/QString>
-#include <QtCore/QTextCodec>
 #include <QtCore/QTextStream>
 
 // The string value is historical and reflects the main purpose: Keeping
@@ -66,7 +40,7 @@ static QString dataType(const TranslatorMessage &m)
 {
     QByteArray fileName = m.fileName().toLatin1();
     unsigned int extHash = 0;
-    int pos = fileName.count() - 1;
+    int pos = fileName.size() - 1;
     for (int pass = 0; pass < 4 && pos >=0; ++pass, --pos) {
         if (fileName.at(pos) == '.')
             break;
@@ -127,7 +101,7 @@ static char charFromEscape(char escape)
     return escape;
 }
 
-static QString numericEntity(int ch, bool makePhs)
+static QString xlNumericEntity(int ch, bool makePhs)
 {
     // ### This needs to be reviewed, to reflect the updated XLIFF-PO spec.
     if (!makePhs || ch < 7 || ch > 0x0d)
@@ -142,7 +116,7 @@ static QString numericEntity(int ch, bool makePhs)
               .arg(++id) .arg(name) .arg(escapechar);
 }
 
-static QString protect(const QString &str, bool makePhs = true)
+static QString xlProtect(const QString &str, bool makePhs = true)
 {
     QString result;
     int len = str.size();
@@ -166,7 +140,7 @@ static QString protect(const QString &str, bool makePhs = true)
             break;
         default:
             if (c < 0x20 && c != '\r' && c != '\n' && c != '\t')
-                result += numericEntity(c, makePhs);
+                result += xlNumericEntity(c, makePhs);
             else // this also covers surrogates
                 result += QChar(c);
         }
@@ -176,13 +150,13 @@ static QString protect(const QString &str, bool makePhs = true)
 
 
 static void writeExtras(QTextStream &ts, int indent,
-                        const TranslatorMessage::ExtraData &extras, QRegExp drops)
+                        const TranslatorMessage::ExtraData &extras, QRegularExpression drops)
 {
-    for (Translator::ExtraData::ConstIterator it = extras.begin(); it != extras.end(); ++it) {
-        if (!drops.exactMatch(it.key())) {
+    for (auto it = extras.cbegin(), end = extras.cend(); it != end; ++it) {
+        if (!drops.match(it.key()).hasMatch()) {
             writeIndent(ts, indent);
             ts << "<trolltech:" << it.key() << '>'
-               << protect(it.value())
+               << xlProtect(it.value())
                << "</trolltech:" << it.key() << ">\n";
         }
     }
@@ -195,7 +169,8 @@ static void writeLineNumber(QTextStream &ts, const TranslatorMessage &msg, int i
     writeIndent(ts, indent);
     ts << "<context-group purpose=\"location\"><context context-type=\"linenumber\">"
        << msg.lineNumber() << "</context></context-group>\n";
-    foreach (const TranslatorMessage::Reference &ref, msg.extraReferences()) {
+    const auto refs = msg.extraReferences();
+    for (const TranslatorMessage::Reference &ref : refs) {
         writeIndent(ts, indent);
         ts << "<context-group purpose=\"location\">";
         if (ref.fileName() != msg.fileName())
@@ -205,50 +180,51 @@ static void writeLineNumber(QTextStream &ts, const TranslatorMessage &msg, int i
     }
 }
 
-static void writeComment(QTextStream &ts, const TranslatorMessage &msg, const QRegExp &drops, int indent)
+static void writeComment(QTextStream &ts, const TranslatorMessage &msg, const QRegularExpression &drops, int indent)
 {
     if (!msg.comment().isEmpty()) {
         writeIndent(ts, indent);
         ts << "<context-group><context context-type=\"" << contextMsgctxt << "\">"
-           << protect(msg.comment(), false)
+           << xlProtect(msg.comment(), false)
            << "</context></context-group>\n";
     }
     if (!msg.oldComment().isEmpty()) {
         writeIndent(ts, indent);
         ts << "<context-group><context context-type=\"" << contextOldMsgctxt << "\">"
-           << protect(msg.oldComment(), false)
+           << xlProtect(msg.oldComment(), false)
            << "</context></context-group>\n";
     }
     writeExtras(ts, indent, msg.extras(), drops);
     if (!msg.extraComment().isEmpty()) {
         writeIndent(ts, indent);
         ts << "<note annotates=\"source\" from=\"developer\">"
-           << protect(msg.extraComment()) << "</note>\n";
+           << xlProtect(msg.extraComment()) << "</note>\n";
     }
     if (!msg.translatorComment().isEmpty()) {
         writeIndent(ts, indent);
         ts << "<note from=\"translator\">"
-           << protect(msg.translatorComment()) << "</note>\n";
+           << xlProtect(msg.translatorComment()) << "</note>\n";
     }
 }
 
-static void writeTransUnits(QTextStream &ts, const TranslatorMessage &msg, const QRegExp &drops, int indent)
+static void writeTransUnits(QTextStream &ts, const TranslatorMessage &msg, const QRegularExpression &drops, int indent)
 {
     static int msgid;
     QString msgidstr = !msg.id().isEmpty() ? msg.id() : QString::fromLatin1("_msg%1").arg(++msgid);
 
     QStringList translns = msg.translations();
-    QHash<QString, QString>::const_iterator it;
     QString pluralStr;
     QStringList sources(msg.sourceText());
-    if ((it = msg.extras().find(QString::fromLatin1("po-msgid_plural"))) != msg.extras().end())
+    const auto &extras = msg.extras();
+    const auto extrasEnd = extras.cend();
+    if (const auto it = extras.constFind(QString::fromLatin1("po-msgid_plural")); it != extrasEnd)
         sources.append(*it);
     QStringList oldsources;
     if (!msg.oldSourceText().isEmpty())
         oldsources.append(msg.oldSourceText());
-    if ((it = msg.extras().find(QString::fromLatin1("po-old_msgid_plural"))) != msg.extras().end()) {
+    if (const auto it = extras.constFind(QString::fromLatin1("po-old_msgid_plural")); it != extrasEnd) {
         if (oldsources.isEmpty()) {
-            if (sources.count() == 2)
+            if (sources.size() == 2)
                 oldsources.append(QString());
             else
                 pluralStr = QLatin1Char(' ') + QLatin1String(attribPlural) + QLatin1String("=\"yes\"");
@@ -256,10 +232,9 @@ static void writeTransUnits(QTextStream &ts, const TranslatorMessage &msg, const
         oldsources.append(*it);
     }
 
-    QStringList::const_iterator
-        srcit = sources.begin(), srcend = sources.end(),
-        oldsrcit = oldsources.begin(), oldsrcend = oldsources.end(),
-        transit = translns.begin(), transend = translns.end();
+    auto srcit = sources.cbegin(), srcend = sources.cend(),
+         oldsrcit = oldsources.cbegin(), oldsrcend = oldsources.cend(),
+         transit = translns.cbegin(), transend = translns.cend();
     int plural = 0;
     QString source;
     while (srcit != srcend || oldsrcit != oldsrcend || transit != transend) {
@@ -289,7 +264,7 @@ static void writeTransUnits(QTextStream &ts, const TranslatorMessage &msg, const
             source = *srcit;
             ++srcit;
         } // else just repeat last element
-        ts << "<source xml:space=\"preserve\">" << protect(source) << "</source>\n";
+        ts << "<source xml:space=\"preserve\">" << xlProtect(source) << "</source>\n";
 
         bool puttrans = false;
         QString translation;
@@ -306,7 +281,7 @@ static void writeTransUnits(QTextStream &ts, const TranslatorMessage &msg, const
                 ts << "<alt-trans>\n";
                 ++indent;
                 writeIndent(ts, indent);
-                ts << "<source xml:space=\"preserve\"" << pluralStr << '>' << protect(*oldsrcit) << "</source>\n";
+                ts << "<source xml:space=\"preserve\"" << pluralStr << '>' << xlProtect(*oldsrcit) << "</source>\n";
                 if (!puttrans) {
                     writeIndent(ts, indent);
                     ts << "<target restype=\"" << restypeDummy << "\"/>\n";
@@ -315,7 +290,7 @@ static void writeTransUnits(QTextStream &ts, const TranslatorMessage &msg, const
 
             if (puttrans) {
                 writeIndent(ts, indent);
-                ts << "<target xml:space=\"preserve\"" << state << ">" << protect(translation) << "</target>\n";
+                ts << "<target xml:space=\"preserve\"" << state << ">" << xlProtect(translation) << "</target>\n";
             }
 
             if (oldsrcit != oldsrcend) {
@@ -341,7 +316,7 @@ static void writeTransUnits(QTextStream &ts, const TranslatorMessage &msg, const
     }
 }
 
-static void writeMessage(QTextStream &ts, const TranslatorMessage &msg, const QRegExp &drops, int indent)
+static void writeMessage(QTextStream &ts, const TranslatorMessage &msg, const QRegularExpression &drops, int indent)
 {
     if (msg.isPlural()) {
         writeIndent(ts, indent);
@@ -371,11 +346,11 @@ public:
     ~XLIFFHandler() override = default;
 
 private:
-    bool startElement(const QStringRef &namespaceURI, const QStringRef &localName,
-                      const QStringRef &qName, const QXmlStreamAttributes &atts) override;
-    bool endElement(const QStringRef &namespaceURI, const QStringRef &localName,
-                    const QStringRef &qName) override;
-    bool characters(const QStringRef &ch) override;
+    bool startElement(QStringView namespaceURI, QStringView localName,
+                      QStringView qName, const QXmlStreamAttributes &atts) override;
+    bool endElement(QStringView namespaceURI, QStringView localName,
+                    QStringView qName) override;
+    bool characters(QStringView ch) override;
     bool fatalError(qint64 line, qint64 column, const QString &message) override;
 
     bool endDocument() override;
@@ -397,6 +372,7 @@ private:
         XC_translator_comment,
         XC_restype_context,
         XC_restype_translation,
+        XC_mtype_seg_translation,
         XC_restype_plurals,
         XC_alt_trans
     };
@@ -476,15 +452,15 @@ XLIFFHandler::XliffContext XLIFFHandler::currentContext() const
 // traverses to the top to check all of the parent contexes.
 bool XLIFFHandler::hasContext(XliffContext ctx) const
 {
-    for (int i = m_contextStack.count() - 1; i >= 0; --i) {
+    for (int i = m_contextStack.size() - 1; i >= 0; --i) {
         if (m_contextStack.at(i) == ctx)
             return true;
     }
     return false;
 }
 
-bool XLIFFHandler::startElement(const QStringRef &namespaceURI, const QStringRef &localName,
-                                const QStringRef &qName, const QXmlStreamAttributes &atts)
+bool XLIFFHandler::startElement(QStringView namespaceURI, QStringView localName,
+                                QStringView qName, const QXmlStreamAttributes &atts)
 {
     Q_UNUSED(qName);
     if (namespaceURI == m_URITT)
@@ -538,6 +514,11 @@ bool XLIFFHandler::startElement(const QStringRef &namespaceURI, const QStringRef
     } else if (localName == QLatin1String("target")) {
         if (atts.value(QLatin1String("restype")) != QLatin1String(restypeDummy))
             pushContext(XC_restype_translation);
+    } else if (localName == QLatin1String("mrk")) {
+        if (atts.value(QLatin1String("mtype")) == QLatin1String("seg")) {
+            if (currentContext() == XC_restype_translation)
+                pushContext(XC_mtype_seg_translation);
+        }
     } else if (localName == QLatin1String("context-group")) {
         if (atts.value(QLatin1String("purpose")) == QLatin1String("location"))
             pushContext(XC_context_group);
@@ -568,13 +549,13 @@ bool XLIFFHandler::startElement(const QStringRef &namespaceURI, const QStringRef
         pushContext(XC_ph);
     }
 bail:
-    if (currentContext() != XC_ph)
+    if (currentContext() != XC_ph && currentContext() != XC_mtype_seg_translation)
         accum.clear();
     return true;
 }
 
-bool XLIFFHandler::endElement(const QStringRef &namespaceURI, const QStringRef &localName,
-                              const QStringRef &qName)
+bool XLIFFHandler::endElement(QStringView namespaceURI, QStringView localName,
+                              QStringView qName)
 {
     Q_UNUSED(qName);
     if (namespaceURI == m_URITT) {
@@ -606,6 +587,8 @@ bool XLIFFHandler::endElement(const QStringRef &namespaceURI, const QStringRef &
                           QChar(Translator::BinaryVariantSeparator));
             m_translations.append(accum);
         }
+    } else if (localName == QLatin1String("mrk")) {
+        popContext(XC_mtype_seg_translation);
     } else if (localName == QLatin1String("context-group")) {
         if (popContext(XC_context_group)) {
             m_refs.append(TranslatorMessage::Reference(
@@ -663,11 +646,11 @@ bool XLIFFHandler::endElement(const QStringRef &namespaceURI, const QStringRef &
     return true;
 }
 
-bool XLIFFHandler::characters(const QStringRef &ch)
+bool XLIFFHandler::characters(QStringView ch)
 {
     if (currentContext() == XC_ph) {
         // handle the content of <ph> elements
-        for (int i = 0; i < ch.count(); ++i) {
+        for (int i = 0; i < ch.size(); ++i) {
             QChar chr = ch.at(i);
             if (accum.endsWith(QLatin1Char('\\')))
                 accum[accum.size() - 1] = QLatin1Char(charFromEscape(chr.toLatin1()));
@@ -709,12 +692,12 @@ bool XLIFFHandler::finalizeMessage(bool isPlural)
     msg.setOldComment(m_oldComment);
     msg.setExtraComment(m_extraComment);
     msg.setTranslatorComment(m_translatorComment);
-    if (m_sources.count() > 1 && m_sources[1] != m_sources[0])
+    if (m_sources.size() > 1 && m_sources[1] != m_sources[0])
         m_extra.insert(QLatin1String("po-msgid_plural"), m_sources[1]);
     if (!m_oldSources.isEmpty()) {
         if (!m_oldSources[0].isEmpty())
             msg.setOldSourceText(m_oldSources[0]);
-        if (m_oldSources.count() > 1 && m_oldSources[1] != m_oldSources[0])
+        if (m_oldSources.size() > 1 && m_oldSources[1] != m_oldSources[0])
             m_extra.insert(QLatin1String("po-old_msgid_plural"), m_oldSources[1]);
     }
     msg.setExtras(m_extra);
@@ -757,16 +740,15 @@ bool saveXLIFF(const Translator &translator, QIODevice &dev, ConversionData &cd)
     int indent = 0;
 
     QTextStream ts(&dev);
-    ts.setCodec(QTextCodec::codecForName("UTF-8"));
 
     QStringList dtgs = cd.dropTags();
     dtgs << QLatin1String("po-(old_)?msgid_plural");
-    QRegExp drops(dtgs.join(QLatin1Char('|')));
+    QRegularExpression drops(QRegularExpression::anchoredPattern(dtgs.join(QLatin1Char('|'))));
 
     QHash<QString, QHash<QString, QList<TranslatorMessage> > > messageOrder;
     QHash<QString, QList<QString> > contextOrder;
     QList<QString> fileOrder;
-    foreach (const TranslatorMessage &msg, translator.messages()) {
+    for (const TranslatorMessage &msg : translator.messages()) {
         QString fn = msg.fileName();
         if (fn.isEmpty() && msg.type() == TranslatorMessage::Obsolete)
             fn = QLatin1String(MAGIC_OBSOLETE_REFERENCE);
@@ -793,24 +775,24 @@ bool saveXLIFF(const Translator &translator, QIODevice &dev, ConversionData &cd)
         sourceLanguageCode.replace(QLatin1Char('_'), QLatin1Char('-'));
     QString languageCode = translator.languageCode();
     languageCode.replace(QLatin1Char('_'), QLatin1Char('-'));
-    foreach (const QString &fn, fileOrder) {
+    for (const QString &fn : std::as_const(fileOrder)) {
         writeIndent(ts, indent);
         ts << "<file original=\"" << fn << "\""
-            << " datatype=\"" << dataType(messageOrder[fn].begin()->first()) << "\""
+            << " datatype=\"" << dataType(messageOrder[fn].cbegin()->first()) << "\""
             << " source-language=\"" << sourceLanguageCode.toLatin1() << "\""
             << " target-language=\"" << languageCode.toLatin1() << "\""
             << "><body>\n";
         ++indent;
 
-        foreach (const QString &ctx, contextOrder[fn]) {
+        for (const QString &ctx : std::as_const(contextOrder[fn])) {
             if (!ctx.isEmpty()) {
                 writeIndent(ts, indent);
                 ts << "<group restype=\"" << restypeContext << "\""
-                    << " resname=\"" << protect(ctx) << "\">\n";
+                    << " resname=\"" << xlProtect(ctx) << "\">\n";
                 ++indent;
             }
 
-            foreach (const TranslatorMessage &msg, messageOrder[fn][ctx])
+            for (const TranslatorMessage &msg : std::as_const(messageOrder[fn][ctx]))
                 writeMessage(ts, msg, drops, indent);
 
             if (!ctx.isEmpty()) {

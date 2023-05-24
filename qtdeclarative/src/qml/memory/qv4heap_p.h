@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QV4HEAP_P_H
 #define QV4HEAP_P_H
 
@@ -50,12 +14,11 @@
 // We mean it.
 //
 
-#include <QtCore/QString>
 #include <private/qv4global_p.h>
 #include <private/qv4mmdefs_p.h>
 #include <private/qv4writebarrier_p.h>
 #include <private/qv4vtable_p.h>
-#include <QSharedPointer>
+#include <QtCore/QSharedPointer>
 
 // To check if Heap::Base::init is called (meaning, all subclasses did their init and called their
 // parent's init all up the inheritance chain), define QML_CHECK_INIT_DESTROY_CALLS below.
@@ -69,7 +32,7 @@ namespace Heap {
 
 template <typename T, size_t o>
 struct Pointer {
-    static Q_CONSTEXPR size_t offset = o;
+    static constexpr size_t offset = o;
     T operator->() const { return get(); }
     operator T () const { return get(); }
 
@@ -90,7 +53,7 @@ private:
     Base *ptr;
 };
 typedef Pointer<char *, 0> V4PointerCheck;
-Q_STATIC_ASSERT(std::is_trivial< V4PointerCheck >::value);
+Q_STATIC_ASSERT(std::is_trivial_v<V4PointerCheck>);
 
 struct Q_QML_EXPORT Base {
     void *operator new(size_t) = delete;
@@ -113,12 +76,6 @@ struct Q_QML_EXPORT Base {
         Chunk *c = h->chunk();
         Q_ASSERT(!Chunk::testBit(c->extendsBitmap, h - c->realBase()));
         return Chunk::setBit(c->blackBitmap, h - c->realBase());
-    }
-    inline void setGrayBit() {
-        const HeapItem *h = reinterpret_cast<const HeapItem *>(this);
-        Chunk *c = h->chunk();
-        Q_ASSERT(!Chunk::testBit(c->extendsBitmap, h - c->realBase()));
-        return Chunk::setBit(c->grayBitmap, h - c->realBase());
     }
 
     inline bool inUse() const {
@@ -169,7 +126,7 @@ struct Q_QML_EXPORT Base {
     Q_ALWAYS_INLINE void _setDestroyed() {}
 #endif
 };
-Q_STATIC_ASSERT(std::is_trivial< Base >::value);
+Q_STATIC_ASSERT(std::is_trivial_v<Base>);
 // This class needs to consist only of pointer sized members to allow
 // for a size/offset translation when cross-compiling between 32- and
 // 64-bit.
@@ -204,11 +161,11 @@ Base *Pointer<T, o>::base() {
 
 #ifdef QT_NO_QOBJECT
 template <class T>
-struct QQmlQPointer {
+struct QV4QPointer {
 };
 #else
 template <class T>
-struct QQmlQPointer {
+struct QV4QPointer {
     void init()
     {
         d = nullptr;
@@ -238,23 +195,29 @@ struct QQmlQPointer {
     }
     operator T*() const { return data(); }
     inline T* operator->() const { return data(); }
-    QQmlQPointer &operator=(T *o)
+    QV4QPointer &operator=(T *o)
     {
         if (d)
             destroy();
         init(o);
         return *this;
     }
-    bool isNull() const Q_DECL_NOTHROW
+
+    bool isNull() const noexcept
     {
-        return d == nullptr || qObject == nullptr || d->strongref.loadRelaxed() == 0;
+        return !isValid() || d->strongref.loadRelaxed() == 0;
+    }
+
+    bool isValid() const noexcept
+    {
+        return d != nullptr && qObject != nullptr;
     }
 
 private:
     QtSharedPointer::ExternalRefCountData *d;
     QObject *qObject;
 };
-Q_STATIC_ASSERT(std::is_trivial< QQmlQPointer<QObject> >::value);
+Q_STATIC_ASSERT(std::is_trivial_v<QV4QPointer<QObject>>);
 #endif
 
 }

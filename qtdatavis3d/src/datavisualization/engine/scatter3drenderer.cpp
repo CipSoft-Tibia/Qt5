@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "scatter3drenderer_p.h"
 #include "q3dcamera_p.h"
@@ -42,7 +16,7 @@
 // You should see the scene from  where the light is
 //#define SHOW_DEPTH_TEXTURE_SCENE
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 const GLfloat defaultMinSize = 0.01f;
 const GLfloat defaultMaxSize = 0.1f;
@@ -353,7 +327,7 @@ SeriesRenderCache *Scatter3DRenderer::createNewCache(QAbstract3DSeries *series)
     return new ScatterSeriesRenderCache(series, this);
 }
 
-void Scatter3DRenderer::updateItems(const QVector<Scatter3DController::ChangeItem> &items)
+void Scatter3DRenderer::updateItems(const QList<Scatter3DController::ChangeItem> &items)
 {
     ScatterSeriesRenderCache *cache = 0;
     const QScatter3DSeries *prevSeries = 0;
@@ -376,7 +350,7 @@ void Scatter3DRenderer::updateItems(const QVector<Scatter3DController::ChangeIte
             const int index = item.index;
             if (index >= cache->renderArray().size())
                 continue; // Items removed from array for same render
-            bool oldVisibility;
+            bool oldVisibility = false;
             ScatterRenderItem &item = cache->renderArray()[index];
             if (optimizationStatic)
                 oldVisibility = item.isVisible();
@@ -554,7 +528,7 @@ void Scatter3DRenderer::drawScene(const GLuint defaultFboHandle)
 
     ShaderHelper *pointSelectionShader;
     if (!m_isOpenGLES) {
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
         if (m_havePointSeries) {
             glEnable(GL_POINT_SMOOTH);
             glEnable(GL_PROGRAM_POINT_SIZE);
@@ -751,7 +725,7 @@ void Scatter3DRenderer::drawScene(const GLuint defaultFboHandle)
                 float itemSize = cache->itemSize() / itemScaler;
                 if (itemSize == 0.0f)
                     itemSize = m_dotSizeScale;
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
                 if (drawingPoints && !m_isOpenGLES)
                     m_funcs_2_1->glPointSize(itemSize * activeCamera->zoomLevel());
 #endif
@@ -884,7 +858,7 @@ void Scatter3DRenderer::drawScene(const GLuint defaultFboHandle)
             float itemSize = cache->itemSize() / itemScaler;
             if (itemSize == 0.0f)
                 itemSize = m_dotSizeScale;
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
             if (drawingPoints && !m_isOpenGLES)
                 m_funcs_2_1->glPointSize(itemSize * activeCamera->zoomLevel());
 #endif
@@ -1195,7 +1169,7 @@ void Scatter3DRenderer::drawScene(const GLuint defaultFboHandle)
         }
     }
 
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
     if (m_havePointSeries) {
         glDisable(GL_POINT_SMOOTH);
         glDisable(GL_PROGRAM_POINT_SIZE);
@@ -1932,7 +1906,7 @@ void Scatter3DRenderer::drawLabels(bool drawSelection, const Q3DCamera *activeCa
         }
         float offsetValue = 0.0f;
         bool showLastLabel = false;
-        QVector<float> &labelPositions = m_axisCacheX.formatter()->labelPositions();
+        QList<float> &labelPositions = m_axisCacheX.formatter()->labelPositions();
         int lastLabelPosIndex = labelPositions.size() - 1;
         if (labelPositions.size()
                 && (labelPositions.at(lastLabelPosIndex) != 1.0f || labelPositions.at(0) != 0.0f)) {
@@ -2528,4 +2502,4 @@ QVector3D Scatter3DRenderer::convertPositionToTranslation(const QVector3D &posit
     return QVector3D(xTrans, yTrans, zTrans);
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

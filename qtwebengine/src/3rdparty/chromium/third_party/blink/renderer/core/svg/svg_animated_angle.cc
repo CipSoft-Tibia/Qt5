@@ -31,7 +31,7 @@
 #include "third_party/blink/renderer/core/svg/svg_animated_angle.h"
 
 #include "third_party/blink/renderer/core/svg_names.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -71,11 +71,6 @@ void SVGAnimatedAngle::SynchronizeAttribute() {
 void SVGAnimatedAngle::SetAnimatedValue(SVGPropertyBase* value) {
   SVGAnimatedProperty<SVGAngle>::SetAnimatedValue(value);
   orient_type_->SetAnimatedValue(CurrentValue()->OrientType());
-}
-
-void SVGAnimatedAngle::AnimationEnded() {
-  SVGAnimatedProperty<SVGAngle>::AnimationEnded();
-  orient_type_->AnimationEnded();
 }
 
 }  // namespace blink

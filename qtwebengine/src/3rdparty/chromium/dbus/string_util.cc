@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -41,22 +41,6 @@ bool IsValidObjectPath(const std::string& value) {
   if (value.size() > 1 &&
       base::EndsWith(value, "/", base::CompareCase::SENSITIVE))
     return false;
-
-  return true;
-}
-
-bool IsValidServiceNameElement(const std::string& value) {
-  if (value.empty())
-    return false;
-  for (size_t i = 0; i < value.size(); ++i) {
-    const char c = value[i];
-    // Each element must only contain "[A-Z][a-z][0-9]_-", but can not start with a digit.
-    const bool is_valid_character =
-        ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z') ||
-        (i > 0 && '0' <= c && c <= '9') || c == '_' || c == '-';
-    if (!is_valid_character)
-      return false;
-  }
 
   return true;
 }

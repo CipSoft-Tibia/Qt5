@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,9 @@
 #include <utility>
 
 #include "base/atomic_sequence_num.h"
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/command_line.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/memory/discardable_memory.h"
 #include "base/memory/shared_memory_tracker.h"
 #include "base/numerics/safe_math.h"
@@ -22,7 +21,7 @@
 #include "base/synchronization/waitable_event.h"
 #include "base/system/sys_info.h"
 #include "base/task/current_thread.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/memory_allocator_dump.h"
 #include "base/trace_event/memory_dump_manager.h"
 #include "base/trace_event/process_memory_dump.h"
@@ -33,7 +32,7 @@
 #include "components/discardable_memory/common/discardable_shared_memory_heap.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/metrics/histogram_macros.h"
@@ -56,6 +55,11 @@ class MojoDiscardableSharedMemoryManagerImpl
       base::WeakPtr<::discardable_memory::DiscardableSharedMemoryManager>
           manager)
       : client_id_(client_id), manager_(manager) {}
+
+  MojoDiscardableSharedMemoryManagerImpl(
+      const MojoDiscardableSharedMemoryManagerImpl&) = delete;
+  MojoDiscardableSharedMemoryManagerImpl& operator=(
+      const MojoDiscardableSharedMemoryManagerImpl&) = delete;
 
   ~MojoDiscardableSharedMemoryManagerImpl() override {
     // Remove this client from the |manager_|, so all allocated discardable
@@ -85,8 +89,6 @@ class MojoDiscardableSharedMemoryManagerImpl
  private:
   const int32_t client_id_;
   base::WeakPtr<::discardable_memory::DiscardableSharedMemoryManager> manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(MojoDiscardableSharedMemoryManagerImpl);
 };
 
 class DiscardableMemoryImpl : public base::DiscardableMemory {
@@ -97,6 +99,9 @@ class DiscardableMemoryImpl : public base::DiscardableMemory {
       : shared_memory_(std::move(shared_memory)),
         deleted_callback_(std::move(deleted_callback)),
         is_locked_(true) {}
+
+  DiscardableMemoryImpl(const DiscardableMemoryImpl&) = delete;
+  DiscardableMemoryImpl& operator=(const DiscardableMemoryImpl&) = delete;
 
   ~DiscardableMemoryImpl() override {
     if (is_locked_)
@@ -148,27 +153,25 @@ class DiscardableMemoryImpl : public base::DiscardableMemory {
   std::unique_ptr<base::DiscardableSharedMemory> shared_memory_;
   base::OnceClosure deleted_callback_;
   bool is_locked_;
-
-  DISALLOW_COPY_AND_ASSIGN(DiscardableMemoryImpl);
 };
 
 // Returns the default memory limit to use for discardable memory, taking
 // the amount physical memory available and other platform specific constraints
 // into account.
-int64_t GetDefaultMemoryLimit() {
-  const int kMegabyte = 1024 * 1024;
+uint64_t GetDefaultMemoryLimit() {
+  const uint64_t kMegabyte = 1024ull * 1024;
 
-#if BUILDFLAG(IS_CHROMECAST)
+#if BUILDFLAG(IS_CASTOS) || BUILDFLAG(IS_CAST_ANDROID)
   // Bypass IsLowEndDevice() check and fix max_default_memory_limit to 64MB on
   // Chromecast devices. Set value here as IsLowEndDevice() is used on some, but
   // not all Chromecast devices.
-  int64_t max_default_memory_limit = 64 * kMegabyte;
+  uint64_t max_default_memory_limit = 64 * kMegabyte;
 #else
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // Limits the number of FDs used to 32, assuming a 4MB allocation size.
-  int64_t max_default_memory_limit = 128 * kMegabyte;
+  uint64_t max_default_memory_limit = 128 * kMegabyte;
 #else
-  int64_t max_default_memory_limit = 512 * kMegabyte;
+  uint64_t max_default_memory_limit = 512 * kMegabyte;
 #endif
 
   // Use 1/8th of discardable memory on low-end devices.
@@ -176,7 +179,7 @@ int64_t GetDefaultMemoryLimit() {
     max_default_memory_limit /= 8;
 #endif
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   base::FilePath shmem_dir;
   if (base::GetShmemTempDir(false, &shmem_dir)) {
     int64_t shmem_dir_amount_of_free_space =
@@ -198,7 +201,8 @@ int64_t GetDefaultMemoryLimit() {
 
     // Allow 1/2 of available shmem dir space to be used for discardable memory.
     max_default_memory_limit =
-        std::min(max_default_memory_limit, shmem_dir_amount_of_free_space / 2);
+        std::min(max_default_memory_limit,
+                 static_cast<uint64_t>(shmem_dir_amount_of_free_space / 2));
   }
 #endif
 
@@ -232,7 +236,8 @@ DiscardableSharedMemoryManager::DiscardableSharedMemoryManager()
           base::BindRepeating(&DiscardableSharedMemoryManager::OnMemoryPressure,
                               base::Unretained(this)))),
       // Current thread might not have a task runner in tests.
-      enforce_memory_policy_task_runner_(base::ThreadTaskRunnerHandle::Get()),
+      enforce_memory_policy_task_runner_(
+          base::SingleThreadTaskRunner::GetCurrentDefault()),
       enforce_memory_policy_pending_(false),
       mojo_thread_message_loop_(base::CurrentThread::GetNull()) {
   DCHECK(!g_instance)
@@ -244,7 +249,7 @@ DiscardableSharedMemoryManager::DiscardableSharedMemoryManager()
                           weak_ptr_factory_.GetWeakPtr());
   base::trace_event::MemoryDumpManager::GetInstance()->RegisterDumpProvider(
       this, "DiscardableSharedMemoryManager",
-      base::ThreadTaskRunnerHandle::Get());
+      base::SingleThreadTaskRunner::GetCurrentDefault());
 }
 
 DiscardableSharedMemoryManager::~DiscardableSharedMemoryManager() {
@@ -293,7 +298,8 @@ void DiscardableSharedMemoryManager::Bind(
     DCHECK(!mojo_thread_message_loop_);
     mojo_thread_message_loop_ = base::CurrentThread::Get();
     mojo_thread_message_loop_->AddDestructionObserver(this);
-    mojo_thread_task_runner_ = base::ThreadTaskRunnerHandle::Get();
+    mojo_thread_task_runner_ =
+        base::SingleThreadTaskRunner::GetCurrentDefault();
   }
 
   mojo::MakeSelfOwnedReceiver(
@@ -633,7 +639,7 @@ void DiscardableSharedMemoryManager::ScheduleEnforceMemoryPolicy() {
   DCHECK(enforce_memory_policy_task_runner_);
   enforce_memory_policy_task_runner_->PostDelayedTask(
       FROM_HERE, enforce_memory_policy_callback_,
-      base::TimeDelta::FromMilliseconds(kEnforceMemoryPolicyDelayMs));
+      base::Milliseconds(kEnforceMemoryPolicyDelayMs));
 }
 
 void DiscardableSharedMemoryManager::InvalidateMojoThreadWeakPtrs(

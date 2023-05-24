@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -111,13 +111,13 @@ VideoCaptureSettings::VideoCaptureSettings(const char* failed_constraint_name)
 VideoCaptureSettings::VideoCaptureSettings(
     std::string device_id,
     media::VideoCaptureParams capture_params,
-    base::Optional<bool> noise_reduction,
+    absl::optional<bool> noise_reduction,
     const VideoTrackAdapterSettings& track_adapter_settings,
-    base::Optional<double> min_frame_rate,
-    base::Optional<double> max_frame_rate,
-    base::Optional<double> pan,
-    base::Optional<double> tilt,
-    base::Optional<double> zoom)
+    absl::optional<double> min_frame_rate,
+    absl::optional<double> max_frame_rate,
+    absl::optional<double> pan,
+    absl::optional<double> tilt,
+    absl::optional<double> zoom)
     : failed_constraint_name_(nullptr),
       device_id_(std::move(device_id)),
       capture_params_(capture_params),
@@ -157,18 +157,20 @@ AudioCaptureSettings::AudioCaptureSettings(const char* failed_constraint_name)
 
 AudioCaptureSettings::AudioCaptureSettings(
     std::string device_id,
-    const base::Optional<int>& requested_buffer_size,
+    const absl::optional<int>& requested_buffer_size,
     bool disable_local_echo,
     bool enable_automatic_output_device_selection,
     ProcessingType processing_type,
-    const AudioProcessingProperties& audio_processing_properties)
+    const AudioProcessingProperties& audio_processing_properties,
+    int num_channels)
     : failed_constraint_name_(nullptr),
       device_id_(std::move(device_id)),
       requested_buffer_size_(requested_buffer_size),
       disable_local_echo_(disable_local_echo),
       render_to_associated_sink_(enable_automatic_output_device_selection),
       processing_type_(processing_type),
-      audio_processing_properties_(audio_processing_properties) {}
+      audio_processing_properties_(audio_processing_properties),
+      num_channels_(num_channels) {}
 
 AudioCaptureSettings::AudioCaptureSettings(const AudioCaptureSettings& other) =
     default;
@@ -220,7 +222,7 @@ VideoTrackAdapterSettings SelectVideoTrackAdapterSettings(
     const media_constraints::NumericRangeSet<double>& frame_rate_set,
     const media::VideoCaptureFormat& source_format,
     bool enable_rescale) {
-  base::Optional<gfx::Size> target_resolution;
+  absl::optional<gfx::Size> target_resolution;
   if (enable_rescale) {
     media_constraints::ResolutionSet::Point resolution =
         resolution_set.SelectClosestPointToIdeal(
@@ -238,16 +240,18 @@ VideoTrackAdapterSettings SelectVideoTrackAdapterSettings(
       std::min(resolution_set.max_aspect_ratio(),
                static_cast<double>(resolution_set.max_width()) /
                    static_cast<double>(resolution_set.min_height()));
-  // VideoTrackAdapter uses a frame rate of 0.0 to disable frame-rate
+  // VideoTrackAdapter uses an unset frame rate to disable frame-rate
   // adjustment.
-  double track_max_frame_rate = frame_rate_set.Max().value_or(0.0);
+  absl::optional<double> track_max_frame_rate = frame_rate_set.Max();
   if (basic_constraint_set.frame_rate.HasIdeal()) {
     track_max_frame_rate = std::max(basic_constraint_set.frame_rate.Ideal(),
                                     kMinDeviceCaptureFrameRate);
-    if (frame_rate_set.Min() && track_max_frame_rate < *frame_rate_set.Min())
+    if (frame_rate_set.Min() && *track_max_frame_rate < *frame_rate_set.Min()) {
       track_max_frame_rate = *frame_rate_set.Min();
-    if (frame_rate_set.Max() && track_max_frame_rate > *frame_rate_set.Max())
+    }
+    if (frame_rate_set.Max() && *track_max_frame_rate > *frame_rate_set.Max()) {
       track_max_frame_rate = *frame_rate_set.Max();
+    }
   }
 
   return VideoTrackAdapterSettings(target_resolution, track_min_aspect_ratio,
@@ -281,9 +285,9 @@ double StringConstraintFitnessDistance(const WebString& value,
 MediaStreamSource::Capabilities ComputeCapabilitiesForVideoSource(
     const String& device_id,
     const media::VideoCaptureFormats& formats,
-    media::VideoFacingMode facing_mode,
+    mojom::blink::FacingMode facing_mode,
     bool is_device_capture,
-    const base::Optional<std::string>& group_id) {
+    const absl::optional<std::string>& group_id) {
   MediaStreamSource::Capabilities capabilities;
   capabilities.device_id = std::move(device_id);
   if (is_device_capture) {
@@ -302,8 +306,8 @@ MediaStreamSource::Capabilities ComputeCapabilitiesForVideoSource(
       max_height = std::max(max_height, format.frame_size.height());
       max_frame_rate = std::max(max_frame_rate, format.frame_rate);
     }
-    capabilities.width = {1, unsigned(max_width)};
-    capabilities.height = {1, unsigned(max_height)};
+    capabilities.width = {1, static_cast<uint32_t>(max_width)};
+    capabilities.height = {1, static_cast<uint32_t>(max_height)};
     capabilities.aspect_ratio = {1.0 / max_height,
                                  static_cast<double>(max_width)};
     capabilities.frame_rate = {min_frame_rate, max_frame_rate};

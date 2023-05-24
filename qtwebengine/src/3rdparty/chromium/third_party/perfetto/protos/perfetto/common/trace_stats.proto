@@ -20,7 +20,7 @@ package perfetto.protos;
 
 // Statistics for the internals of the tracing service.
 //
-// Next id: 11.
+// Next id: 16.
 message TraceStats {
   // From TraceBuffer::Stats.
   //
@@ -158,4 +158,32 @@ message TraceStats {
   // Packets that failed validation of the TrustedPacket. If this is > 0, there
   // is a bug in the producer.
   optional uint64 invalid_packets = 10;
+
+  // This is set only when the TraceConfig specifies a TraceFilter.
+  message FilterStats {
+    optional uint64 input_packets = 1;
+    optional uint64 input_bytes = 2;
+    optional uint64 output_bytes = 3;
+    optional uint64 errors = 4;
+  }
+  optional FilterStats filter_stats = 11;
+
+  // Count of Flush() requests (either from the Consumer, or self-induced
+  // periodic flushes). The final Flush() is also included in the count.
+  optional uint64 flushes_requested = 12;
+
+  // The count of the Flush() requests that were completed successfully.
+  // In a well behaving trace this should always be == `flush_requests`.
+  optional uint64 flushes_succeeded = 13;
+
+  // The count of the Flush() requests that failed (in most timed out).
+  // In a well behaving trace this should always be == 0.
+  optional uint64 flushes_failed = 14;
+
+  enum FinalFlushOutcome {
+    FINAL_FLUSH_UNSPECIFIED = 0;
+    FINAL_FLUSH_SUCCEEDED = 1;
+    FINAL_FLUSH_FAILED = 2;
+  }
+  optional FinalFlushOutcome final_flush_outcome = 15;
 }

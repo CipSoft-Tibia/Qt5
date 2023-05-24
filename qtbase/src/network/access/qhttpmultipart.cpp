@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhttpmultipart.h"
 #include "qhttpmultipart_p.h"
@@ -353,11 +317,11 @@ void QHttpMultiPart::setBoundary(const QByteArray &boundary)
 qint64 QHttpPartPrivate::bytesAvailable() const
 {
     checkHeaderCreated();
-    qint64 bytesAvailable = header.count();
+    qint64 bytesAvailable = header.size();
     if (bodyDevice) {
         bytesAvailable += bodyDevice->bytesAvailable() - readPointer;
     } else {
-        bytesAvailable += body.count() - readPointer;
+        bytesAvailable += body.size() - readPointer;
     }
     // the device might have closed etc., so make sure we do not return a negative value
     return qMax(bytesAvailable, (qint64) 0);
@@ -367,7 +331,7 @@ qint64 QHttpPartPrivate::readData(char *data, qint64 maxSize)
 {
     checkHeaderCreated();
     qint64 bytesRead = 0;
-    qint64 headerDataCount = header.count();
+    qint64 headerDataCount = header.size();
 
     // read header if it has not been read yet
     if (readPointer < headerDataCount) {
@@ -385,7 +349,7 @@ qint64 QHttpPartPrivate::readData(char *data, qint64 maxSize)
             bytesRead += dataBytesRead;
             readPointer += dataBytesRead;
         } else {
-            qint64 contentBytesRead = qMin(body.count() - readPointer + headerDataCount, maxSize - bytesRead);
+            qint64 contentBytesRead = qMin(body.size() - readPointer + headerDataCount, maxSize - bytesRead);
             const char *contentData = body.constData();
             // if this method is called several times, we need to find the
             // right offset in the content ourselves:
@@ -400,11 +364,11 @@ qint64 QHttpPartPrivate::readData(char *data, qint64 maxSize)
 qint64 QHttpPartPrivate::size() const
 {
     checkHeaderCreated();
-    qint64 size = header.count();
+    qint64 size = header.size();
     if (bodyDevice) {
         size += bodyDevice->size();
     } else {
-        size += body.count();
+        size += body.size();
     }
     return size;
 }
@@ -440,7 +404,7 @@ QHttpMultiPartPrivate::QHttpMultiPartPrivate() : contentType(QHttpMultiPart::Mix
                + QByteArray::fromRawData(reinterpret_cast<char *>(random), sizeof(random)).toBase64();
 
     // boundary must not be longer than 70 characters, see RFC 2046, section 5.1.1
-    Q_ASSERT(boundary.count() <= 70);
+    Q_ASSERT(boundary.size() <= 70);
 }
 
 qint64 QHttpMultiPartIODevice::size() const
@@ -449,8 +413,8 @@ qint64 QHttpMultiPartIODevice::size() const
     // including boundary (needed later in readData)
     if (deviceSize == -1) {
         qint64 currentSize = 0;
-        qint64 boundaryCount = multiPart->boundary.count();
-        for (int a = 0; a < multiPart->parts.count(); a++) {
+        qint64 boundaryCount = multiPart->boundary.size();
+        for (int a = 0; a < multiPart->parts.size(); a++) {
             partOffsets.append(currentSize);
             // 4 additional bytes for the "--" before and the "\r\n" after the boundary,
             // and 2 bytes for the "\r\n" after the content
@@ -464,7 +428,7 @@ qint64 QHttpMultiPartIODevice::size() const
 
 bool QHttpMultiPartIODevice::isSequential() const
 {
-    for (int a = 0; a < multiPart->parts.count(); a++) {
+    for (int a = 0; a < multiPart->parts.size(); a++) {
         QIODevice *device = multiPart->parts.at(a).d->bodyDevice;
         // we are sequential if any of the bodyDevices of our parts are sequential;
         // when reading from a byte array, we are not sequential
@@ -478,7 +442,7 @@ bool QHttpMultiPartIODevice::reset()
 {
     // Reset QIODevice's data
     QIODevice::reset();
-    for (int a = 0; a < multiPart->parts.count(); a++)
+    for (int a = 0; a < multiPart->parts.size(); a++)
         if (!multiPart->parts[a].d->reset())
             return false;
     readPointer = 0;
@@ -489,17 +453,17 @@ qint64 QHttpMultiPartIODevice::readData(char *data, qint64 maxSize)
     qint64 bytesRead = 0, index = 0;
 
     // skip the parts we have already read
-    while (index < multiPart->parts.count() &&
+    while (index < multiPart->parts.size() &&
            readPointer >= partOffsets.at(index) + multiPart->parts.at(index).d->size()
-           + multiPart->boundary.count() + 6) // 6 == 2 boundary dashes, \r\n after boundary, \r\n after multipart
+           + multiPart->boundary.size() + 6) // 6 == 2 boundary dashes, \r\n after boundary, \r\n after multipart
         index++;
 
     // read the data
-    while (bytesRead < maxSize && index < multiPart->parts.count()) {
+    while (bytesRead < maxSize && index < multiPart->parts.size()) {
 
         // check whether we need to read the boundary of the current part
         QByteArray boundaryData = "--" + multiPart->boundary + "\r\n";
-        qint64 boundaryCount = boundaryData.count();
+        qint64 boundaryCount = boundaryData.size();
         qint64 partIndex = readPointer - partOffsets.at(index);
         if (partIndex < boundaryCount) {
             qint64 boundaryBytesRead = qMin(boundaryCount - partIndex, maxSize - bytesRead);
@@ -530,10 +494,10 @@ qint64 QHttpMultiPartIODevice::readData(char *data, qint64 maxSize)
         }
     }
     // check whether we need to return the final boundary
-    if (bytesRead < maxSize && index == multiPart->parts.count()) {
+    if (bytesRead < maxSize && index == multiPart->parts.size()) {
         QByteArray finalBoundary = "--" + multiPart->boundary + "--\r\n";
-        qint64 boundaryIndex = readPointer + finalBoundary.count() - size();
-        qint64 lastBoundaryBytesRead = qMin(finalBoundary.count() - boundaryIndex, maxSize - bytesRead);
+        qint64 boundaryIndex = readPointer + finalBoundary.size() - size();
+        qint64 lastBoundaryBytesRead = qMin(finalBoundary.size() - boundaryIndex, maxSize - bytesRead);
         memcpy(data + bytesRead, finalBoundary.constData() + boundaryIndex, lastBoundaryBytesRead);
         bytesRead += lastBoundaryBytesRead;
         readPointer += lastBoundaryBytesRead;
@@ -550,3 +514,5 @@ qint64 QHttpMultiPartIODevice::writeData(const char *data, qint64 maxSize)
 
 
 QT_END_NAMESPACE
+
+#include "moc_qhttpmultipart.cpp"

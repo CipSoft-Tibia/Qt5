@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,8 @@
 
 #include "xfa/fxfa/cxfa_fftext.h"
 
-#include "xfa/fgas/layout/cfx_linkuserdata.h"
+#include "xfa/fgas/graphics/cfgas_gegraphics.h"
+#include "xfa/fgas/layout/cfgas_linkuserdata.h"
 #include "xfa/fwl/fwl_widgethit.h"
 #include "xfa/fxfa/cxfa_ffapp.h"
 #include "xfa/fxfa/cxfa_ffdoc.h"
@@ -14,13 +15,12 @@
 #include "xfa/fxfa/cxfa_ffwidget.h"
 #include "xfa/fxfa/cxfa_textlayout.h"
 #include "xfa/fxfa/parser/cxfa_margin.h"
-#include "xfa/fxgraphics/cxfa_graphics.h"
 
 CXFA_FFText::CXFA_FFText(CXFA_Node* pNode) : CXFA_FFWidget(pNode) {}
 
 CXFA_FFText::~CXFA_FFText() = default;
 
-void CXFA_FFText::RenderWidget(CXFA_Graphics* pGS,
+void CXFA_FFText::RenderWidget(CFGAS_GEGraphics* pGS,
                                const CFX_Matrix& matrix,
                                HighlightOption highlight) {
   if (!HasVisibleStatus())
@@ -82,7 +82,7 @@ bool CXFA_FFText::PerformLayout() {
 
   pItem = pItem->GetFirst();
   while (pItem) {
-    CFX_RectF rtText = pItem->GetRect(false);
+    CFX_RectF rtText = pItem->GetAbsoluteRect();
     CXFA_Margin* margin = m_pNode->GetMarginIfExists();
     if (margin) {
       if (!pItem->GetPrev())
@@ -97,38 +97,35 @@ bool CXFA_FFText::PerformLayout() {
   return true;
 }
 
-bool CXFA_FFText::AcceptsFocusOnButtonDown(uint32_t dwFlags,
-                                           const CFX_PointF& point,
-                                           FWL_MouseCommand command) {
-  if (command != FWL_MouseCommand::LeftButtonDown)
-    return false;
-
-  if (!GetRectWithoutRotate().Contains(point))
-    return false;
-
-  const wchar_t* wsURLContent = GetLinkURLAtPoint(point);
-  if (!wsURLContent)
-    return false;
-
-  return true;
+bool CXFA_FFText::AcceptsFocusOnButtonDown(
+    Mask<XFA_FWL_KeyFlag> dwFlags,
+    const CFX_PointF& point,
+    CFWL_MessageMouse::MouseCommand command) {
+  return command == CFWL_MessageMouse::MouseCommand::kLeftButtonDown &&
+         GetRectWithoutRotate().Contains(point) &&
+         !GetLinkURLAtPoint(point).IsEmpty();
 }
 
-bool CXFA_FFText::OnLButtonDown(uint32_t dwFlags, const CFX_PointF& point) {
+bool CXFA_FFText::OnLButtonDown(Mask<XFA_FWL_KeyFlag> dwFlags,
+                                const CFX_PointF& point) {
   SetButtonDown(true);
   return true;
 }
 
-bool CXFA_FFText::OnMouseMove(uint32_t dwFlags, const CFX_PointF& point) {
-  return GetRectWithoutRotate().Contains(point) && !!GetLinkURLAtPoint(point);
+bool CXFA_FFText::OnMouseMove(Mask<XFA_FWL_KeyFlag> dwFlags,
+                              const CFX_PointF& point) {
+  return GetRectWithoutRotate().Contains(point) &&
+         !GetLinkURLAtPoint(point).IsEmpty();
 }
 
-bool CXFA_FFText::OnLButtonUp(uint32_t dwFlags, const CFX_PointF& point) {
+bool CXFA_FFText::OnLButtonUp(Mask<XFA_FWL_KeyFlag> dwFlags,
+                              const CFX_PointF& point) {
   if (!IsButtonDown())
     return false;
 
   SetButtonDown(false);
-  const wchar_t* wsURLContent = GetLinkURLAtPoint(point);
-  if (!wsURLContent)
+  WideString wsURLContent = GetLinkURLAtPoint(point);
+  if (wsURLContent.IsEmpty())
     return false;
 
   GetDoc()->GotoURL(wsURLContent);
@@ -136,17 +133,17 @@ bool CXFA_FFText::OnLButtonUp(uint32_t dwFlags, const CFX_PointF& point) {
 }
 
 FWL_WidgetHit CXFA_FFText::HitTest(const CFX_PointF& point) {
-  if (!GetRectWithoutRotate().Contains(point))
-    return FWL_WidgetHit::Unknown;
-  if (!GetLinkURLAtPoint(point))
-    return FWL_WidgetHit::Unknown;
-  return FWL_WidgetHit::HyperLink;
+  if (GetRectWithoutRotate().Contains(point) &&
+      !GetLinkURLAtPoint(point).IsEmpty()) {
+    return FWL_WidgetHit::HyperLink;
+  }
+  return FWL_WidgetHit::Unknown;
 }
 
-const wchar_t* CXFA_FFText::GetLinkURLAtPoint(const CFX_PointF& point) {
+WideString CXFA_FFText::GetLinkURLAtPoint(const CFX_PointF& point) {
   CXFA_TextLayout* pTextLayout = m_pNode->GetTextLayout();
   if (!pTextLayout)
-    return nullptr;
+    return WideString();
 
   CFX_RectF rect = GetRectWithoutRotate();
   return pTextLayout->GetLinkURLAtPoint(point - rect.TopLeft());

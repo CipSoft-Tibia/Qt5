@@ -43,6 +43,8 @@
 
 namespace gfx {
 class PointF;
+class Range;
+class Rect;
 }  // namespace gfx
 
 namespace ui {
@@ -58,7 +60,6 @@ class WebPluginContainer;
 class WebURLResponse;
 struct WebPrintParams;
 struct WebPrintPresetOptions;
-struct WebRect;
 struct WebURLError;
 template <typename T>
 class WebVector;
@@ -110,12 +111,12 @@ class WebPlugin {
   virtual bool CanProcessDrag() const { return false; }
 
   virtual void UpdateAllLifecyclePhases(blink::DocumentUpdateReason) = 0;
-  virtual void Paint(cc::PaintCanvas*, const WebRect&) = 0;
+  virtual void Paint(cc::PaintCanvas*, const gfx::Rect&) = 0;
 
   // Coordinates are relative to the containing window.
-  virtual void UpdateGeometry(const WebRect& window_rect,
-                              const WebRect& clip_rect,
-                              const WebRect& unobscured_rect,
+  virtual void UpdateGeometry(const gfx::Rect& window_rect,
+                              const gfx::Rect& clip_rect,
+                              const gfx::Rect& unobscured_rect,
                               bool is_visible) = 0;
 
   virtual void UpdateFocus(bool focused, mojom::FocusType) = 0;
@@ -147,16 +148,18 @@ class WebPlugin {
   virtual bool GetPrintPresetOptionsFromDocument(WebPrintPresetOptions*) {
     return false;
   }
-  // Returns true if the plugin is a PDF plugin.
-  virtual bool IsPdfPlugin() { return false; }
 
-  // Sets up printing with the specified printParams. Returns the number of
-  // pages to be printed at these settings.
+  // Begins a print session with the given `print_params`. A call to
+  // `PrintPage()` can only be made after after a successful call to
+  // `PrintBegin()`. Returns the number of pages required for the print output.
+  // A returned value of 0 indicates failure.
   virtual int PrintBegin(const WebPrintParams& print_params) { return 0; }
 
+  // Prints the page specified by `page_number`, using the parameters passed to
+  // `PrintBegin()`, into `canvas`.
   virtual void PrintPage(int page_number, cc::PaintCanvas* canvas) {}
 
-  // Ends the print operation.
+  // Ends the print session. Further calls to `PrintPages()` will fail.
   virtual void PrintEnd() {}
 
   virtual bool HasSelection() const { return false; }
@@ -168,8 +171,8 @@ class WebPlugin {
 
   virtual bool CanUndo() const { return false; }
   virtual bool CanRedo() const { return false; }
+  virtual bool CanCopy() const { return true; }
 
-  virtual bool ExecuteEditCommand(const WebString& name) { return false; }
   virtual bool ExecuteEditCommand(const WebString& name,
                                   const WebString& value) {
     return false;
@@ -239,10 +242,7 @@ class WebPlugin {
   virtual void StopFind() {}
 
   // View rotation types.
-  enum RotationType {
-    kRotationType90Clockwise,
-    kRotationType90Counterclockwise
-  };
+  enum class RotationType { k90Clockwise, k90Counterclockwise };
   // Whether the plugin can rotate the view of its content.
   virtual bool CanRotateView() { return false; }
   // Rotates the plugin's view of its content.
@@ -254,6 +254,46 @@ class WebPlugin {
   // Check whether a plugin failed to load, with there being no possibility of
   // it loading later.
   virtual bool IsErrorPlaceholder() { return false; }
+
+  // Indication that a current mouse lock has been lost.
+  virtual void DidLoseMouseLock() {}
+
+  // A response has been received from a previous WebPluginContainer::LockMouse
+  // call.
+  virtual void DidReceiveMouseLockResult(bool success) {}
+
+  // Determines whether composition can happen inline.
+  virtual bool CanComposeInline() { return false; }
+
+  // Determines if IME events should be sent to plugin instead of processed to
+  // the currently focused frame.
+  virtual bool ShouldDispatchImeEventsToPlugin() { return false; }
+
+  // Returns the current plugin text input type.
+  virtual WebTextInputType GetPluginTextInputType() {
+    return WebTextInputType::kWebTextInputTypeNone;
+  }
+
+  // Returns the current plugin caret bounds in blink/viewport coordinates.
+  virtual gfx::Rect GetPluginCaretBounds() { return gfx::Rect(); }
+
+  // Set the composition in plugin.
+  virtual void ImeSetCompositionForPlugin(
+      const WebString& text,
+      const std::vector<ui::ImeTextSpan>& ime_text_spans,
+      const gfx::Range& replacement_range,
+      int selection_start,
+      int selection_end) {}
+
+  // Commit the text to plugin.
+  virtual void ImeCommitTextForPlugin(
+      const WebString& text,
+      const std::vector<ui::ImeTextSpan>& ime_text_spans,
+      const gfx::Range& replacement_range,
+      int relative_cursor_pos) {}
+
+  // Indicate composition is complete to plugin.
+  virtual void ImeFinishComposingTextForPlugin(bool keep_selection) {}
 
  protected:
   virtual ~WebPlugin() = default;

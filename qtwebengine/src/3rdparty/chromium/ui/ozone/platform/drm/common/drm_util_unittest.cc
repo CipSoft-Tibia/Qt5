@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,13 +9,12 @@
 
 #include <map>
 
-#include "base/stl_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/skia/include/core/SkColorSpace.h"
-#include "third_party/skia/include/core/SkMatrix44.h"
 #include "ui/display/types/display_snapshot.h"
 #include "ui/display/util/edid_parser.h"
 #include "ui/gfx/geometry/size.h"
+#include "ui/ozone/platform/drm/common/scoped_drm_types.h"
 
 namespace ui {
 
@@ -24,113 +23,26 @@ class DrmUtilTest : public testing::Test {};
 TEST_F(DrmUtilTest, TestDisplayModesExtraction) {
   // Initialize a list of display modes.
   constexpr size_t kNumModes = 5;
-  drmModeModeInfo modes[kNumModes] = {
-      {0,
-       640 /* hdisplay */,
-       0,
-       0,
-       0,
-       0,
-       400 /* vdisplay */,
-       0,
-       0,
-       0,
-       0,
-       0,
-       0,
-       0,
-       {}},
-      {0,
-       640 /* hdisplay */,
-       0,
-       0,
-       0,
-       0,
-       480 /* vdisplay */,
-       0,
-       0,
-       0,
-       0,
-       0,
-       0,
-       0,
-       {}},
-      {0,
-       800 /* hdisplay */,
-       0,
-       0,
-       0,
-       0,
-       600 /* vdisplay */,
-       0,
-       0,
-       0,
-       0,
-       0,
-       0,
-       0,
-       {}},
-      {0,
-       1024 /* hdisplay */,
-       0,
-       0,
-       0,
-       0,
-       768 /* vdisplay */,
-       0,
-       0,
-       0,
-       0,
-       0,
-       0,
-       0,
-       {}},
-      {0,
-       1280 /* hdisplay */,
-       0,
-       0,
-       0,
-       0,
-       768 /* vdisplay */,
-       0,
-       0,
-       0,
-       0,
-       0,
-       0,
-       0,
-       {}},
-  };
+  drmModeModeInfo modes[kNumModes] = {{.hdisplay = 640, .vdisplay = 400},
+                                      {.hdisplay = 640, .vdisplay = 480},
+                                      {.hdisplay = 800, .vdisplay = 600},
+                                      {.hdisplay = 1024, .vdisplay = 768},
+                                      {.hdisplay = 1280, .vdisplay = 768}};
   drmModeModeInfoPtr modes_ptr = static_cast<drmModeModeInfoPtr>(
       drmMalloc(kNumModes * sizeof(drmModeModeInfo)));
   std::memcpy(modes_ptr, &modes[0], kNumModes * sizeof(drmModeModeInfo));
 
   // Initialize a connector.
-  drmModeConnector connector = {
-      0,
-      0,
-      0,
-      0,
-      DRM_MODE_CONNECTED,
-      0,
-      0,
-      DRM_MODE_SUBPIXEL_UNKNOWN,
-      5 /* count_modes */,
-      modes_ptr,
-      0,
-      nullptr,
-      nullptr,
-      0,
-      nullptr,
-  };
+  drmModeConnector connector = {.connection = DRM_MODE_CONNECTED,
+                                .subpixel = DRM_MODE_SUBPIXEL_UNKNOWN,
+                                .count_modes = 5,
+                                .modes = modes_ptr};
   drmModeConnector* connector_ptr =
       static_cast<drmModeConnector*>(drmMalloc(sizeof(drmModeConnector)));
   *connector_ptr = connector;
 
   // Initialize a CRTC.
-  drmModeCrtc crtc = {
-      0, 0, 0, 0, 0, 0, 1 /* mode_valid */, modes[0], 0,
-  };
+  drmModeCrtc crtc = {.mode_valid = 1, .mode = modes[0]};
   drmModeCrtcPtr crtc_ptr =
       static_cast<drmModeCrtcPtr>(drmMalloc(sizeof(drmModeCrtc)));
   *crtc_ptr = crtc;
@@ -178,6 +90,178 @@ TEST_F(DrmUtilTest, TestDisplayModesExtraction) {
                                         &native_mode);
   ASSERT_EQ(5u, extracted_modes.size());
   EXPECT_EQ(extracted_modes[1].get(), native_mode);
+}
+
+TEST(PathBlobParser, InvalidBlob) {
+  char data[] = "this doesn't matter";
+  drmModePropertyBlobRes blob{1, 0, data};
+  EXPECT_TRUE(ParsePathBlob(blob).empty());
+}
+
+TEST(PathBlobParser, EmptyOrNullString) {
+  {
+    char empty[] = "";
+    drmModePropertyBlobRes blob{1, sizeof(empty), empty};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char null[] = "\0";
+    drmModePropertyBlobRes blob{1, sizeof(null), null};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+}
+
+TEST(PathBlobParser, InvalidPathFormat) {
+  // Space(s)
+  {
+    char s[] = " ";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char s[] = "           ";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  // Missing colon
+  {
+    char s[] = "mst6-2-1";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  // Caps 'mst:'
+  {
+    char s[] = "MST:6-2-1";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  // Subset of "mst:"
+  {
+    char s[] = "ms";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  // No 'mst:'
+  {
+    char s[] = "6-2-1";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  // Other colon-delimited prefix
+  {
+    char s[] = "path:6-2-1";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  // Invalid port number or format
+  {
+    char s[] = "mst:";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char s[] = "mst:6";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char s[] = "mst::6-2-1";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char s[] = "mst:-6-2-1";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char s[] = "mst:6-2-1-";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char s[] = "mst:c7";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char s[] = "mst:6-b-1";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char s[] = "mst:6--2";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char s[] = "mst:---";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char s[] = "mst:6- -2- -1";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char s[] = "mst:6 -2-1";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  {
+    char s[] = "mst:6-'2'-1";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+
+  // Null character
+  {
+    char s[] = "mst:6-\0-2-1";
+    drmModePropertyBlobRes blob{1, sizeof(s), s};
+    EXPECT_TRUE(ParsePathBlob(blob).empty());
+  }
+}
+
+TEST(PathBlobParser, ValidPathFormat) {
+  std::vector<uint64_t> expected = {6u, 2u, 1u};
+
+  {
+    char valid[] = "mst:6-2-1";
+    drmModePropertyBlobRes blob{1, sizeof(valid), valid};
+    EXPECT_EQ(expected, ParsePathBlob(blob));
+  }
+
+  {
+    char valid[] = "mst:6-2-1\0";
+    drmModePropertyBlobRes blob{1, sizeof(valid), valid};
+    EXPECT_EQ(expected, ParsePathBlob(blob));
+  }
+
+  {
+    char valid[] = {'m', 's', 't', ':', '6', '-', '2', '-', '1'};
+    drmModePropertyBlobRes blob{1, sizeof(valid), valid};
+    EXPECT_EQ(expected, ParsePathBlob(blob));
+  }
 }
 
 }  // namespace ui

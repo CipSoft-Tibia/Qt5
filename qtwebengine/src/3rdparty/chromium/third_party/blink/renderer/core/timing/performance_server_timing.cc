@@ -1,11 +1,13 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/timing/performance_server_timing.h"
 
 #include "third_party/blink/renderer/bindings/core/v8/v8_object_builder.h"
-#include "third_party/blink/renderer/platform/loader/fetch/resource_timing_info.h"
+#include "third_party/blink/renderer/platform/loader/fetch/resource_response.h"
+#include "third_party/blink/renderer/platform/loader/fetch/resource_timing_utils.h"
+#include "third_party/blink/renderer/platform/network/http_names.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
@@ -26,28 +28,12 @@ ScriptValue PerformanceServerTiming::toJSONForBinding(
   return builder.GetScriptValue();
 }
 
-Vector<mojom::blink::ServerTimingInfoPtr>
-PerformanceServerTiming::ParseServerTimingToMojo(
-    const ResourceTimingInfo& info) {
-  Vector<mojom::blink::ServerTimingInfoPtr> result;
-  const ResourceResponse& response = info.FinalResponse();
-  std::unique_ptr<ServerTimingHeaderVector> headers = ParseServerTimingHeader(
-      response.HttpHeaderField(http_names::kServerTiming));
-  result.ReserveCapacity(headers->size());
-  for (const auto& header : *headers) {
-    result.emplace_back(mojom::blink::ServerTimingInfo::New(
-        header->Name(), header->Duration(), header->Description()));
-  }
-  return result;
-}
-
 HeapVector<Member<PerformanceServerTiming>>
-PerformanceServerTiming::ParseServerTiming(const ResourceTimingInfo& info) {
+PerformanceServerTiming::ParseServerTiming(const ResourceResponse& response) {
   HeapVector<Member<PerformanceServerTiming>> result;
-  const ResourceResponse& response = info.FinalResponse();
   std::unique_ptr<ServerTimingHeaderVector> headers = ParseServerTimingHeader(
       response.HttpHeaderField(http_names::kServerTiming));
-  result.ReserveCapacity(headers->size());
+  result.reserve(headers->size());
   for (const auto& header : *headers) {
     result.push_back(MakeGarbageCollected<PerformanceServerTiming>(
         header->Name(), header->Duration(), header->Description()));

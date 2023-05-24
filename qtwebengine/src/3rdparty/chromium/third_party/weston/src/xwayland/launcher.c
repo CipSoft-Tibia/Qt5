@@ -230,7 +230,7 @@ weston_xserver_destroy(struct wl_listener *l, void *data)
 	if (wxs->loop)
 		weston_xserver_shutdown(wxs);
 
-	weston_compositor_log_scope_destroy(wxs->wm_debug);
+	weston_log_scope_destroy(wxs->wm_debug);
 
 	free(wxs);
 }
@@ -367,19 +367,24 @@ weston_module_init(struct weston_compositor *compositor)
 	wxs->wl_display = display;
 	wxs->compositor = compositor;
 
+	if (!weston_compositor_add_destroy_listener_once(compositor,
+							 &wxs->destroy_listener,
+							 weston_xserver_destroy)) {
+		free(wxs);
+		return 0;
+	}
+
 	if (weston_xwayland_get_api(compositor) != NULL ||
 	    weston_xwayland_surface_get_api(compositor) != NULL) {
 		weston_log("The xwayland module APIs are already loaded.\n");
-		free(wxs);
-		return -1;
+		goto out_free;
 	}
 
 	ret = weston_plugin_api_register(compositor, WESTON_XWAYLAND_API_NAME,
 					 &api, sizeof(api));
 	if (ret < 0) {
 		weston_log("Failed to register the xwayland module API.\n");
-		free(wxs);
-		return -1;
+		goto out_free;
 	}
 
 	ret = weston_plugin_api_register(compositor,
@@ -387,18 +392,18 @@ weston_module_init(struct weston_compositor *compositor)
 					 &surface_api, sizeof(surface_api));
 	if (ret < 0) {
 		weston_log("Failed to register the xwayland surface API.\n");
-		free(wxs);
-		return -1;
+		goto out_free;
 	}
 
-	wxs->destroy_listener.notify = weston_xserver_destroy;
-	wl_signal_add(&compositor->destroy_signal, &wxs->destroy_listener);
-
 	wxs->wm_debug =
-		weston_compositor_add_log_scope(wxs->compositor->weston_log_ctx,
-						"xwm-wm-x11",
+		weston_compositor_add_log_scope(wxs->compositor, "xwm-wm-x11",
 						"XWM's window management X11 events\n",
-						NULL, NULL);
+						NULL, NULL, NULL);
 
 	return 0;
+
+out_free:
+	wl_list_remove(&wxs->destroy_listener.link);
+	free(wxs);
+	return -1;
 }

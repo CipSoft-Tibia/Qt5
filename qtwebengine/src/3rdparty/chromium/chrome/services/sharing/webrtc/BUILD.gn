@@ -1,6 +1,10 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
+import("//build/config/chromeos/ui_mode.gni")
+
+assert(is_chromeos_ash)
 
 source_set("webrtc") {
   sources = [
@@ -20,14 +24,15 @@ source_set("webrtc") {
   ]
 
   deps = [
-    "//jingle:webrtc_glue",
+    "//components/webrtc:net_address_utils",
+    "//components/webrtc:thread_wrapper",
     "//third_party/webrtc_overrides:webrtc_component",
   ]
 
   public_deps = [
     "//base",
     "//chrome/services/sharing/public/cpp",
-    "//chrome/services/sharing/public/mojom",
+    "//chromeos/ash/services/nearby/public/mojom",
     "//mojo/public/cpp/bindings",
   ]
 }

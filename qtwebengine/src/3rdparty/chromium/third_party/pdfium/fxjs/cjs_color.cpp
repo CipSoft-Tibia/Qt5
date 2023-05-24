@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,10 +11,11 @@
 
 #include "core/fxge/cfx_color.h"
 #include "fxjs/cjs_event_context.h"
-#include "fxjs/cjs_eventrecorder.h"
 #include "fxjs/cjs_object.h"
 #include "fxjs/cjs_runtime.h"
+#include "fxjs/fxv8.h"
 #include "fxjs/js_define.h"
+#include "v8/include/v8-container.h"
 
 const JSPropertySpec CJS_Color::PropertySpecs[] = {
     {"black", get_black_static, set_black_static},
@@ -33,11 +34,11 @@ const JSPropertySpec CJS_Color::PropertySpecs[] = {
 const JSMethodSpec CJS_Color::MethodSpecs[] = {{"convert", convert_static},
                                                {"equal", equal_static}};
 
-int CJS_Color::ObjDefnID = -1;
+uint32_t CJS_Color::ObjDefnID = 0;
 const char CJS_Color::kName[] = "color";
 
 // static
-int CJS_Color::GetObjDefnID() {
+uint32_t CJS_Color::GetObjDefnID() {
   return ObjDefnID;
 }
 
@@ -54,23 +55,23 @@ v8::Local<v8::Array> CJS_Color::ConvertPWLColorToArray(CJS_Runtime* pRuntime,
                                                        const CFX_Color& color) {
   v8::Local<v8::Array> array;
   switch (color.nColorType) {
-    case CFX_Color::kTransparent:
+    case CFX_Color::Type::kTransparent:
       array = pRuntime->NewArray();
       pRuntime->PutArrayElement(array, 0, pRuntime->NewString("T"));
       break;
-    case CFX_Color::kGray:
+    case CFX_Color::Type::kGray:
       array = pRuntime->NewArray();
       pRuntime->PutArrayElement(array, 0, pRuntime->NewString("G"));
       pRuntime->PutArrayElement(array, 1, pRuntime->NewNumber(color.fColor1));
       break;
-    case CFX_Color::kRGB:
+    case CFX_Color::Type::kRGB:
       array = pRuntime->NewArray();
       pRuntime->PutArrayElement(array, 0, pRuntime->NewString("RGB"));
       pRuntime->PutArrayElement(array, 1, pRuntime->NewNumber(color.fColor1));
       pRuntime->PutArrayElement(array, 2, pRuntime->NewNumber(color.fColor2));
       pRuntime->PutArrayElement(array, 3, pRuntime->NewNumber(color.fColor3));
       break;
-    case CFX_Color::kCMYK:
+    case CFX_Color::Type::kCMYK:
       array = pRuntime->NewArray();
       pRuntime->PutArrayElement(array, 0, pRuntime->NewString("CMYK"));
       pRuntime->PutArrayElement(array, 1, pRuntime->NewNumber(color.fColor1));
@@ -85,14 +86,14 @@ v8::Local<v8::Array> CJS_Color::ConvertPWLColorToArray(CJS_Runtime* pRuntime,
 // static
 CFX_Color CJS_Color::ConvertArrayToPWLColor(CJS_Runtime* pRuntime,
                                             v8::Local<v8::Array> array) {
-  int nArrayLen = pRuntime->GetArrayLength(array);
-  if (nArrayLen < 1)
+  size_t nArrayLen = pRuntime->GetArrayLength(array);
+  if (nArrayLen == 0)
     return CFX_Color();
 
   WideString sSpace =
       pRuntime->ToWideString(pRuntime->GetArrayElement(array, 0));
   if (sSpace.EqualsASCII("T"))
-    return CFX_Color(CFX_Color::kTransparent);
+    return CFX_Color(CFX_Color::Type::kTransparent);
 
   float d1 = 0;
   if (nArrayLen > 1) {
@@ -100,7 +101,7 @@ CFX_Color CJS_Color::ConvertArrayToPWLColor(CJS_Runtime* pRuntime,
         pRuntime->ToDouble(pRuntime->GetArrayElement(array, 1)));
   }
   if (sSpace.EqualsASCII("G"))
-    return CFX_Color(CFX_Color::kGray, d1);
+    return CFX_Color(CFX_Color::Type::kGray, d1);
 
   float d2 = 0;
   float d3 = 0;
@@ -113,7 +114,7 @@ CFX_Color CJS_Color::ConvertArrayToPWLColor(CJS_Runtime* pRuntime,
         pRuntime->ToDouble(pRuntime->GetArrayElement(array, 3)));
   }
   if (sSpace.EqualsASCII("RGB"))
-    return CFX_Color(CFX_Color::kRGB, d1, d2, d3);
+    return CFX_Color(CFX_Color::Type::kRGB, d1, d2, d3);
 
   float d4 = 0;
   if (nArrayLen > 4) {
@@ -121,25 +122,25 @@ CFX_Color CJS_Color::ConvertArrayToPWLColor(CJS_Runtime* pRuntime,
         pRuntime->ToDouble(pRuntime->GetArrayElement(array, 4)));
   }
   if (sSpace.EqualsASCII("CMYK"))
-    return CFX_Color(CFX_Color::kCMYK, d1, d2, d3, d4);
+    return CFX_Color(CFX_Color::Type::kCMYK, d1, d2, d3, d4);
 
   return CFX_Color();
 }
 
 CJS_Color::CJS_Color(v8::Local<v8::Object> pObject, CJS_Runtime* pRuntime)
     : CJS_Object(pObject, pRuntime),
-      m_crTransparent(CFX_Color::kTransparent),
-      m_crBlack(CFX_Color::kGray, 0),
-      m_crWhite(CFX_Color::kGray, 1),
-      m_crRed(CFX_Color::kRGB, 1, 0, 0),
-      m_crGreen(CFX_Color::kRGB, 0, 1, 0),
-      m_crBlue(CFX_Color::kRGB, 0, 0, 1),
-      m_crCyan(CFX_Color::kCMYK, 1, 0, 0, 0),
-      m_crMagenta(CFX_Color::kCMYK, 0, 1, 0, 0),
-      m_crYellow(CFX_Color::kCMYK, 0, 0, 1, 0),
-      m_crDKGray(CFX_Color::kGray, 0.25),
-      m_crGray(CFX_Color::kGray, 0.5),
-      m_crLTGray(CFX_Color::kGray, 0.75) {}
+      m_crTransparent(CFX_Color::Type::kTransparent),
+      m_crBlack(CFX_Color::Type::kGray, 0),
+      m_crWhite(CFX_Color::Type::kGray, 1),
+      m_crRed(CFX_Color::Type::kRGB, 1, 0, 0),
+      m_crGreen(CFX_Color::Type::kRGB, 0, 1, 0),
+      m_crBlue(CFX_Color::Type::kRGB, 0, 0, 1),
+      m_crCyan(CFX_Color::Type::kCMYK, 1, 0, 0, 0),
+      m_crMagenta(CFX_Color::Type::kCMYK, 0, 1, 0, 0),
+      m_crYellow(CFX_Color::Type::kCMYK, 0, 0, 1, 0),
+      m_crDKGray(CFX_Color::Type::kGray, 0.25),
+      m_crGray(CFX_Color::Type::kGray, 0.5),
+      m_crLTGray(CFX_Color::Type::kGray, 0.75) {}
 
 CJS_Color::~CJS_Color() = default;
 
@@ -273,19 +274,19 @@ CJS_Result CJS_Color::convert(CJS_Runtime* pRuntime,
   if (params.size() < 2)
     return CJS_Result::Failure(JSMessage::kParamError);
 
-  if (params[0].IsEmpty() || !params[0]->IsArray())
+  if (!fxv8::IsArray(params[0]))
     return CJS_Result::Failure(JSMessage::kTypeError);
 
   WideString sDestSpace = pRuntime->ToWideString(params[1]);
-  int nColorType = CFX_Color::kTransparent;
+  CFX_Color::Type nColorType = CFX_Color::Type::kTransparent;
   if (sDestSpace.EqualsASCII("T"))
-    nColorType = CFX_Color::kTransparent;
+    nColorType = CFX_Color::Type::kTransparent;
   else if (sDestSpace.EqualsASCII("G"))
-    nColorType = CFX_Color::kGray;
+    nColorType = CFX_Color::Type::kGray;
   else if (sDestSpace.EqualsASCII("RGB"))
-    nColorType = CFX_Color::kRGB;
+    nColorType = CFX_Color::Type::kRGB;
   else if (sDestSpace.EqualsASCII("CMYK"))
-    nColorType = CFX_Color::kCMYK;
+    nColorType = CFX_Color::Type::kCMYK;
 
   CFX_Color color =
       ConvertArrayToPWLColor(pRuntime, pRuntime->ToArray(params[0]));
@@ -302,10 +303,8 @@ CJS_Result CJS_Color::equal(CJS_Runtime* pRuntime,
   if (params.size() < 2)
     return CJS_Result::Failure(JSMessage::kParamError);
 
-  if (params[0].IsEmpty() || !params[0]->IsArray() || params[1].IsEmpty() ||
-      !params[1]->IsArray()) {
+  if (!fxv8::IsArray(params[0]) || !fxv8::IsArray(params[1]))
     return CJS_Result::Failure(JSMessage::kTypeError);
-  }
 
   CFX_Color color1 =
       ConvertArrayToPWLColor(pRuntime, pRuntime->ToArray(params[0]));
@@ -313,7 +312,7 @@ CJS_Result CJS_Color::equal(CJS_Runtime* pRuntime,
       ConvertArrayToPWLColor(pRuntime, pRuntime->ToArray(params[1]));
 
   // Relies on higher values having more components.
-  int32_t best = std::max(color1.nColorType, color2.nColorType);
+  CFX_Color::Type best = std::max(color1.nColorType, color2.nColorType);
   return CJS_Result::Success(pRuntime->NewBoolean(
       color1.ConvertColorType(best) == color2.ConvertColorType(best)));
 }

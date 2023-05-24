@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,9 +27,9 @@ class LineLayoutBR : public LineLayoutText {
   }
 
  private:
-  LayoutBR* ToBR() { return ToLayoutBR(GetLayoutObject()); }
+  LayoutBR* ToBR() { return To<LayoutBR>(GetLayoutObject()); }
 
-  const LayoutBR* ToBR() const { return ToLayoutBR(GetLayoutObject()); }
+  const LayoutBR* ToBR() const { return To<LayoutBR>(GetLayoutObject()); }
 };
 
 }  // namespace blink

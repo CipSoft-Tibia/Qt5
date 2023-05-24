@@ -1,11 +1,10 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/html/custom/custom_element_upgrade_sorter.h"
 
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/blink/renderer/bindings/core/v8/string_or_element_creation_options.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_shadow_root_init.h"
 #include "third_party/blink/renderer/core/dom/document.h"
@@ -13,22 +12,22 @@
 #include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/html/html_document.h"
 #include "third_party/blink/renderer/core/html_names.h"
+#include "third_party/blink/renderer/core/testing/null_execution_context.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 
 namespace blink {
 
 class CustomElementUpgradeSorterTest : public PageTestBase {
  protected:
-  void SetUp() override { PageTestBase::SetUp(IntSize(1, 1)); }
+  void SetUp() override { PageTestBase::SetUp(gfx::Size(1, 1)); }
 
   Element* CreateElementWithId(const char* local_name, const char* id) {
     NonThrowableExceptionState no_exceptions;
     Element* element = GetDocument().CreateElementForBinding(
-        local_name, StringOrElementCreationOptions(), no_exceptions);
+        local_name, nullptr, no_exceptions);
     element->setAttribute(html_names::kIdAttr, id);
     return element;
   }
@@ -40,10 +39,12 @@ class CustomElementUpgradeSorterTest : public PageTestBase {
 
 TEST_F(CustomElementUpgradeSorterTest, inOtherDocument_notInSet) {
   NonThrowableExceptionState no_exceptions;
-  Element* element = GetDocument().CreateElementForBinding(
-      "a-a", StringOrElementCreationOptions(), no_exceptions);
+  Element* element =
+      GetDocument().CreateElementForBinding("a-a", nullptr, no_exceptions);
 
-  auto* other_document = HTMLDocument::CreateForTest();
+  ScopedNullExecutionContext execution_context;
+  auto* other_document =
+      HTMLDocument::CreateForTest(execution_context.GetExecutionContext());
   other_document->AppendChild(element);
   EXPECT_EQ(other_document, element->ownerDocument())
       << "sanity: another document should have adopted an element on append";
@@ -59,8 +60,8 @@ TEST_F(CustomElementUpgradeSorterTest, inOtherDocument_notInSet) {
 
 TEST_F(CustomElementUpgradeSorterTest, oneCandidate) {
   NonThrowableExceptionState no_exceptions;
-  Element* element = GetDocument().CreateElementForBinding(
-      "a-a", StringOrElementCreationOptions(), no_exceptions);
+  Element* element =
+      GetDocument().CreateElementForBinding("a-a", nullptr, no_exceptions);
   GetDocument().documentElement()->AppendChild(element);
 
   CustomElementUpgradeSorter sorter;

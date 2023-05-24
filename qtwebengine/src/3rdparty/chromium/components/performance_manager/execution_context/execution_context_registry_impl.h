@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,9 +25,9 @@ class ExecutionContext;
 // to any nodes being created.
 class ExecutionContextRegistryImpl
     : public ExecutionContextRegistry,
-      public FrameNode::ObserverDefaultImpl,
       public GraphOwned,
       public GraphRegisteredImpl<ExecutionContextRegistryImpl>,
+      public FrameNode::ObserverDefaultImpl,
       public WorkerNode::ObserverDefaultImpl {
  public:
   ExecutionContextRegistryImpl();
@@ -38,6 +38,7 @@ class ExecutionContextRegistryImpl
 
   // ExecutionContextRegistry implementation:
   void AddObserver(ExecutionContextObserver* observer) override;
+  bool HasObserver(ExecutionContextObserver* observer) const override;
   void RemoveObserver(ExecutionContextObserver* observer) override;
   const ExecutionContext* GetExecutionContextByToken(
       const blink::ExecutionContextToken& token) override;
@@ -45,27 +46,34 @@ class ExecutionContextRegistryImpl
       const blink::LocalFrameToken& token) override;
   const WorkerNode* GetWorkerNodeByWorkerToken(
       const blink::WorkerToken& token) override;
-  const ExecutionContext* GetExecutionContextForFrameNode(
+  const ExecutionContext* GetExecutionContextForFrameNodeImpl(
       const FrameNode* frame_node) override;
-  const ExecutionContext* GetExecutionContextForWorkerNode(
+  const ExecutionContext* GetExecutionContextForWorkerNodeImpl(
       const WorkerNode* worker_node) override;
 
   size_t GetExecutionContextCountForTesting() const {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return execution_contexts_.size();
   }
 
  private:
-  // FrameNode::ObserverDefaultImpl implementation:
-  void OnFrameNodeAdded(const FrameNode* frame_node) override;
-  void OnBeforeFrameNodeRemoved(const FrameNode* frame_node) override;
-
   // GraphOwned implementation:
   void OnPassedToGraph(Graph* graph) override;
   void OnTakenFromGraph(Graph* graph) override;
 
+  // FrameNode::ObserverDefaultImpl implementation:
+  void OnFrameNodeAdded(const FrameNode* frame_node) override;
+  void OnBeforeFrameNodeRemoved(const FrameNode* frame_node) override;
+  void OnPriorityAndReasonChanged(
+      const FrameNode* frame_node,
+      const PriorityAndReason& previous_value) override;
+
   // WorkerNode::ObserverDefaultImpl implementation:
   void OnWorkerNodeAdded(const WorkerNode* worker_node) override;
   void OnBeforeWorkerNodeRemoved(const WorkerNode* worker_node) override;
+  void OnPriorityAndReasonChanged(
+      const WorkerNode* worker_node,
+      const PriorityAndReason& previous_value) override;
 
   // Maintains the collection of all currently known ExecutionContexts in the
   // Graph. It is expected that there are O(100s) to O(1000s) of these being
@@ -82,10 +90,12 @@ class ExecutionContextRegistryImpl
   std::unordered_set<const ExecutionContext*,
                      ExecutionContextHash,
                      ExecutionContextKeyEqual>
-      execution_contexts_;
+      execution_contexts_ GUARDED_BY_CONTEXT(sequence_checker_);
 
-  base::ObserverList<ExecutionContextObserver, /* check_empty = */ true>
-      observers_;
+  base::ObserverList<ExecutionContextObserver,
+                     /* check_empty = */ true,
+                     /* allow_reentrancy */ false>
+      observers_ GUARDED_BY_CONTEXT(sequence_checker_);
 
   SEQUENCE_CHECKER(sequence_checker_);
 };
@@ -93,4 +103,4 @@ class ExecutionContextRegistryImpl
 }  // namespace execution_context
 }  // namespace performance_manager
 
-#endif  // COMPONENTS_PERFORMANCE_MANAGER_PUBLIC_EXECUTION_CONTEXT_EXECUTION_CONTEXT_REGISTRY_H_
+#endif  // COMPONENTS_PERFORMANCE_MANAGER_EXECUTION_CONTEXT_EXECUTION_CONTEXT_REGISTRY_IMPL_H_

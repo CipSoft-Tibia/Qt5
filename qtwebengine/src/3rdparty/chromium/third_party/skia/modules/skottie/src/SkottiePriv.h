@@ -13,12 +13,12 @@
 #include "include/core/SkFontStyle.h"
 #include "include/core/SkString.h"
 #include "include/core/SkTypeface.h"
-#include "include/private/SkTHash.h"
-#include "include/utils/SkCustomTypeface.h"
 #include "modules/skottie/include/SkottieProperty.h"
 #include "modules/skottie/src/animator/Animator.h"
+#include "modules/skottie/src/text/Font.h"
 #include "modules/sksg/include/SkSGScene.h"
-#include "src/utils/SkUTF.h"
+#include "src/base/SkUTF.h"
+#include "src/core/SkTHash.h"
 
 #include <vector>
 
@@ -53,6 +53,7 @@ class AnimationBuilder final : public SkNoncopyable {
 public:
     AnimationBuilder(sk_sp<ResourceProvider>, sk_sp<SkFontMgr>, sk_sp<PropertyObserver>,
                      sk_sp<Logger>, sk_sp<MarkerObserver>, sk_sp<PrecompInterceptor>,
+                     sk_sp<ExpressionManager>,
                      Animation::Builder::Stats*, const SkSize& comp_size,
                      float duration, float framerate, uint32_t flags);
 
@@ -64,18 +65,18 @@ public:
     AnimationInfo parse(const skjson::ObjectValue&);
 
     struct FontInfo {
-        SkString                fFamily,
-                                fStyle,
-                                fPath;
-        SkScalar                fAscentPct;
-        sk_sp<SkTypeface>       fTypeface;
-        SkCustomTypefaceBuilder fCustomBuilder;
+        SkString            fFamily,
+                            fStyle,
+                            fPath;
+        SkScalar            fAscentPct;
+        sk_sp<SkTypeface>   fTypeface;
+        CustomFont::Builder fCustomFontBuilder;
 
         bool matches(const char family[], const char style[]) const;
     };
     const FontInfo* findFont(const SkString& name) const;
 
-    void log(Logger::Level, const skjson::Value*, const char fmt[], ...) const;
+    void log(Logger::Level, const skjson::Value*, const char fmt[], ...) const SK_PRINTF_LIKE(4, 5);
 
     sk_sp<sksg::Transform> attachMatrix2D(const skjson::ObjectValue&, sk_sp<sksg::Transform>,
                                           bool auto_orient = false) const;
@@ -146,19 +147,19 @@ public:
 
     class AutoPropertyTracker {
     public:
-        AutoPropertyTracker(const AnimationBuilder* builder, const skjson::ObjectValue& obj)
+        AutoPropertyTracker(const AnimationBuilder* builder, const skjson::ObjectValue& obj, const PropertyObserver::NodeType node_type)
             : fBuilder(builder)
-            , fPrevContext(builder->fPropertyObserverContext) {
+            , fPrevContext(builder->fPropertyObserverContext), fNodeType(node_type) {
             if (fBuilder->fPropertyObserver) {
                 auto observer = builder->fPropertyObserver.get();
                 this->updateContext(observer, obj);
-                observer->onEnterNode(fBuilder->fPropertyObserverContext);
+                observer->onEnterNode(fBuilder->fPropertyObserverContext, fNodeType);
             }
         }
 
         ~AutoPropertyTracker() {
             if (fBuilder->fPropertyObserver) {
-                fBuilder->fPropertyObserver->onLeavingNode(fBuilder->fPropertyObserverContext);
+                fBuilder->fPropertyObserver->onLeavingNode(fBuilder->fPropertyObserverContext, fNodeType);
                 fBuilder->fPropertyObserverContext = fPrevContext;
             }
         }
@@ -167,6 +168,7 @@ public:
 
         const AnimationBuilder* fBuilder;
         const char*             fPrevContext;
+        const PropertyObserver::NodeType fNodeType;
     };
 
     bool dispatchColorProperty(const sk_sp<sksg::Color>&) const;
@@ -174,8 +176,11 @@ public:
     bool dispatchTextProperty(const sk_sp<TextAdapter>&) const;
     bool dispatchTransformProperty(const sk_sp<TransformAdapter2D>&) const;
 
+    sk_sp<ExpressionManager> expression_manager() const;
+
 private:
     friend class CompositionBuilder;
+    friend class CustomFont;
     friend class LayerBuilder;
 
     struct AttachLayerContext;
@@ -236,6 +241,7 @@ private:
     sk_sp<Logger>              fLogger;
     sk_sp<MarkerObserver>      fMarkerObserver;
     sk_sp<PrecompInterceptor>  fPrecompInterceptor;
+    sk_sp<ExpressionManager>   fExpressionManager;
     Animation::Builder::Stats* fStats;
     const SkSize               fCompSize;
     const float                fDuration,
@@ -271,7 +277,7 @@ private:
             }
         }
 
-        operator bool() const { return !!fInfo; }
+        explicit operator bool() const { return !!fInfo; }
 
         const skjson::ObjectValue& operator*() const { return *fInfo->fAsset; }
 
@@ -281,6 +287,7 @@ private:
 
     SkTHashMap<SkString, AssetInfo>                fAssets;
     SkTHashMap<SkString, FontInfo>                 fFonts;
+    sk_sp<CustomFont::GlyphCompMapper>             fCustomGlyphMapper;
     mutable SkTHashMap<SkString, FootageAssetInfo> fImageAssetCache;
 
     using INHERITED = SkNoncopyable;

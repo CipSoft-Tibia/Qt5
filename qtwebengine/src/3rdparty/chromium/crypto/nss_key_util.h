@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,6 @@
 
 #include <secoidt.h>
 #include <stdint.h>
-
-#include <vector>
 
 #include "base/containers/span.h"
 #include "build/build_config.h"
@@ -45,18 +43,24 @@ CRYPTO_EXPORT bool GenerateECKeyPairNSS(
 // plaintext form.
 CRYPTO_EXPORT ScopedSECKEYPrivateKey
 ImportNSSKeyFromPrivateKeyInfo(PK11SlotInfo* slot,
-                               const std::vector<uint8_t>& input,
+                               base::span<const uint8_t> input,
                                bool permanent);
 
 // Decodes |input| as a DER-encoded X.509 SubjectPublicKeyInfo and searches for
 // the private key half in the key database. Returns the private key on success
 // or nullptr on error.
+// Note: This function assumes the CKA_ID for public/private key pairs is
+// derived from the public key. NSS does this, but this is not guaranteed by
+// PKCS#11, so keys generated outside of NSS may not be found.
 CRYPTO_EXPORT ScopedSECKEYPrivateKey
 FindNSSKeyFromPublicKeyInfo(base::span<const uint8_t> input);
 
 // Decodes |input| as a DER-encoded X.509 SubjectPublicKeyInfo and searches for
 // the private key half in the slot specified by |slot|. Returns the private key
 // on success or nullptr on error.
+// Note: This function assumes the CKA_ID for public/private key pairs is
+// derived from the public key. NSS does this, but this is not guaranteed by
+// PKCS#11, so keys generated outside of NSS may not be found.
 CRYPTO_EXPORT ScopedSECKEYPrivateKey
 FindNSSKeyFromPublicKeyInfoInSlot(base::span<const uint8_t> input,
                                   PK11SlotInfo* slot);

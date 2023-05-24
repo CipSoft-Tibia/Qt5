@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCOMPLETER_P_H
 #define QCOMPLETER_P_H
@@ -57,8 +21,9 @@
 
 #include "QtWidgets/qabstractitemview.h"
 #include "QtCore/qabstractproxymodel.h"
+#include "QtCore/qmap.h"
 #include "qcompleter.h"
-#include "QtWidgets/qitemdelegate.h"
+#include "qstyleditemdelegate.h"
 #include "QtGui/qpainter.h"
 #include "private/qabstractproxymodel_p.h"
 
@@ -111,9 +76,9 @@ class QIndexMapper
 public:
     QIndexMapper() : v(false), f(0), t(-1) { }
     QIndexMapper(int f, int t) : v(false), f(f), t(t) { }
-    QIndexMapper(const QVector<int> &vec) : v(true), vector(vec), f(-1), t(-1) { }
+    QIndexMapper(const QList<int> &vec) : v(true), vector(vec), f(-1), t(-1) { }
 
-    inline int count() const { return v ? vector.count() : t - f + 1; }
+    inline int count() const { return v ? vector.size() : t - f + 1; }
     inline int operator[] (int index) const { return v ? vector[index] : f + index; }
     inline int indexOf(int x) const { return v ? vector.indexOf(x) : ((t < f) ? -1 : x - f); }
     inline bool isValid() const { return !isEmpty(); }
@@ -123,11 +88,11 @@ public:
     inline int last() const { return v ? vector.last() : t; }
     inline int from() const { Q_ASSERT(!v); return f; }
     inline int to() const { Q_ASSERT(!v); return t; }
-    inline int cost() const { return vector.count()+2; }
+    inline int cost() const { return vector.size()+2; }
 
 private:
     bool v;
-    QVector<int> vector;
+    QList<int> vector;
     int f, t;
 };
 
@@ -194,18 +159,17 @@ private:
                      const QIndexMapper& iv, QMatchData* m);
 };
 
-// ### Qt6: QStyledItemDelegate
-class QCompleterItemDelegate : public QItemDelegate
+class QCompleterItemDelegate : public QStyledItemDelegate
 {
 public:
     QCompleterItemDelegate(QAbstractItemView *view)
-        : QItemDelegate(view), view(view) { }
+        : QStyledItemDelegate(view), view(view) { }
     void paint(QPainter *p, const QStyleOptionViewItem& opt, const QModelIndex& idx) const override {
         QStyleOptionViewItem optCopy = opt;
         optCopy.showDecorationSelected = true;
         if (view->currentIndex() == idx)
             optCopy.state |= QStyle::State_HasFocus;
-        QItemDelegate::paint(p, optCopy, idx);
+        QStyledItemDelegate::paint(p, optCopy, idx);
     }
 
 private:

@@ -1,33 +1,25 @@
-﻿/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 /*!
 \page qtqml-cppintegration-contextproperties.html
 \title Embedding C++ Objects into QML with Context Properties
 \brief Description of how to embed C++ data into QML using context properties
+
+\warning By using context properties in your QML code, you create a dependency from your QML code
+         to the specific context you have in mind when writing it. This limits re-usability of your
+         code since the context may be different in other places where it might be used.
+         Furthermore, the dependency is not declared. You never \c import the context or otherwise
+         state what you expect. Therefore, anyone trying to re-use your code will have difficulties
+         finding out whether the place of re-use has a context sufficient for your code.
+
+\warning Context properties are invisible to any tooling that processes QML code ahead of time,
+         before you load it into the QML engine. The \l{Qt Quick Compiler}, \l{qmllint}, and the
+         \l{QML Language Server} do not know anything about your context properties and will
+         consider any access to context properties as an \e{unqualified access}.
+
+\note Context properties can generally be replaced either by regular properties on the root object
+      of a component, or by singletons defined either in C++ using \l{QML_SINGLETON}{QML_SINGLETON}
+      or in QML using \l{qtqml-documents-definetypes.html#singleton}{pragma Singleton}.
 
 When loading a QML object into a C++ application, it can be useful to directly embed some C++ data
 that can be used from within the QML code. This makes it possible, for example, to invoke a C++

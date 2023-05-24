@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 //================ Based on ChromeProxyConfigService =======================
@@ -45,23 +9,22 @@
 
 #include "proxy_config_service_qt.h"
 
-#include "base/bind.h"
 #include "components/proxy_config/pref_proxy_config_tracker_impl.h"
-#include "content/public/browser/browser_thread.h"
-#include "net/proxy_resolution/configured_proxy_resolution_service.h"
+#include "net/base/proxy_server.h"
 
-using content::BrowserThread;
+#include <QNetworkProxy>
 
 net::ProxyServer ProxyConfigServiceQt::fromQNetworkProxy(const QNetworkProxy &qtProxy)
 {
-    net::HostPortPair hostPortPair(qtProxy.hostName().toStdString(), qtProxy.port());
+    std::string host = qtProxy.hostName().toStdString();
+    uint16_t port = qtProxy.port();
     switch (qtProxy.type()) {
     case QNetworkProxy::Socks5Proxy:
-        return net::ProxyServer(net::ProxyServer::SCHEME_SOCKS5, hostPortPair);
+        return net::ProxyServer::FromSchemeHostAndPort(net::ProxyServer::SCHEME_SOCKS5, host, port);
     case QNetworkProxy::HttpProxy:
     case QNetworkProxy::HttpCachingProxy:
     case QNetworkProxy::FtpCachingProxy:
-        return net::ProxyServer(net::ProxyServer::SCHEME_HTTP, hostPortPair);
+        return net::ProxyServer::FromSchemeHostAndPort(net::ProxyServer::SCHEME_HTTP, host, port);
     case QNetworkProxy::NoProxy:
     case QNetworkProxy::DefaultProxy:
         return net::ProxyServer(net::ProxyServer::SCHEME_DIRECT, net::HostPortPair());
@@ -71,8 +34,8 @@ net::ProxyServer ProxyConfigServiceQt::fromQNetworkProxy(const QNetworkProxy &qt
 }
 
 ProxyConfigServiceQt::ProxyConfigServiceQt(PrefService *prefService,
-                                           const scoped_refptr<base::SingleThreadTaskRunner> &taskRunner)
-    : m_baseService(net::ConfiguredProxyResolutionService::CreateSystemProxyConfigService(taskRunner))
+                                           const scoped_refptr<base::SequencedTaskRunner> &taskRunner)
+    : m_baseService(net::ProxyConfigService::CreateSystemProxyConfigService(taskRunner))
     , m_usesSystemConfiguration(false)
     , m_registeredObserver(false)
     , m_prefState(prefService

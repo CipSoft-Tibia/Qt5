@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qscxmlcppdatamodel_p.h"
 #include "qscxmlstatemachine.h"
@@ -64,12 +28,12 @@ using namespace QScxmlExecutableContent;
    The format of the \e datamodel attribute is: \c{cplusplus:<class-name>:<classdef-header>}.
    So, for the example above, there should be a file \e thedatamodel.h containing a subclass of
    QScxmlCppDataModel, containing at least the following:
-   \code
+   \badcode
 #include "qscxmlcppdatamodel.h"
 
 class TheDataModel: public QScxmlCppDataModel
 {
-    Q_OBJECT
+    \Q_OBJECT
     Q_SCXML_DATAMODEL
 };
    \endcode
@@ -123,7 +87,7 @@ void TheDataModel::evaluateToVoid(QScxmlExecutableContent::EvaluatorId id, bool 
    statements, and in \e cond or \e expr attributes you can use any C++ expression that can be
    converted to the respective bool or QVariant. And, as the \c this pointer is also captured, you
    can call or access the data model (the \e media attribute in the example above). For the full
-   example, see \l {Qt SCXML: Media Player QML Example (C++ Data Model)}.
+   example, see \l {SCXML Media Player}.
  */
 
 /*!
@@ -137,6 +101,8 @@ QScxmlCppDataModel::QScxmlCppDataModel(QObject *parent)
  * Called during state machine initialization to set up a state machine using the initial values
  * for data model variables specified by their keys, \a initialDataValues. These
  * are the values specified by \c <param> tags in an \c <invoke> element.
+ *
+ * Returns \c true on success.
  *
  * \sa QScxmlStateMachine::init
  */

@@ -1,44 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qslider.h"
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 #include "qaccessible.h"
 #endif
 #include "qapplication.h"
@@ -46,6 +10,7 @@
 #include "qpainter.h"
 #include "qstyle.h"
 #include "qstyleoption.h"
+#include "qstylepainter.h"
 #include "private/qapplication_p.h"
 #include "private/qabstractslider_p.h"
 #include "qdebug.h"
@@ -91,6 +56,8 @@ void QSliderPrivate::resetLayoutItemMargins()
 {
     Q_Q(QSlider);
     QStyleOptionSlider opt;
+    // ### This is (also) reached from the ctor which is unfortunate since a possible
+    // ### re-implementation of initStyleOption is then not called.
     q->initStyleOption(&opt);
     setLayoutItemMargins(QStyle::SE_SliderLayoutItem, &opt);
 }
@@ -153,6 +120,13 @@ void QSlider::initStyleOption(QStyleOptionSlider *option) const
     option->pageStep = d->pageStep;
     if (d->orientation == Qt::Horizontal)
         option->state |= QStyle::State_Horizontal;
+
+    if (d->pressedControl) {
+        option->activeSubControls = d->pressedControl;
+        option->state |= QStyle::State_Sunken;
+    } else {
+        option->activeSubControls = d->hoverControl;
+    }
 }
 
 bool QSliderPrivate::updateHoverControl(const QPoint &pos)
@@ -250,11 +224,11 @@ QStyle::SubControl QSliderPrivate::newHoverControl(const QPoint &pos)
         \li Up/Down move a vertical slider by one single step.
         \li PageUp moves up one page.
         \li PageDown moves down one page.
-        \li Home moves to the start (mininum).
+        \li Home moves to the start (minimum).
         \li End moves to the end (maximum).
     \endlist
 
-    \sa QScrollBar, QSpinBox, QDial, {fowler}{GUI Design Handbook: Slider}, {Sliders Example}
+    \sa QScrollBar, QSpinBox, QDial, {Sliders Example}
 */
 
 
@@ -308,21 +282,15 @@ QSlider::~QSlider()
 void QSlider::paintEvent(QPaintEvent *)
 {
     Q_D(QSlider);
-    QPainter p(this);
+    QStylePainter p(this);
     QStyleOptionSlider opt;
     initStyleOption(&opt);
 
     opt.subControls = QStyle::SC_SliderGroove | QStyle::SC_SliderHandle;
     if (d->tickPosition != NoTicks)
         opt.subControls |= QStyle::SC_SliderTickmarks;
-    if (d->pressedControl) {
-        opt.activeSubControls = d->pressedControl;
-        opt.state |= QStyle::State_Sunken;
-    } else {
-        opt.activeSubControls = d->hoverControl;
-    }
 
-    style()->drawComplexControl(QStyle::CC_Slider, &opt, &p, this);
+    p.drawComplexControl(QStyle::CC_Slider, opt);
 }
 
 /*!
@@ -338,7 +306,7 @@ bool QSlider::event(QEvent *event)
     case QEvent::HoverLeave:
     case QEvent::HoverMove:
         if (const QHoverEvent *he = static_cast<const QHoverEvent *>(event))
-            d->updateHoverControl(he->pos());
+            d->updateHoverControl(he->position().toPoint());
         break;
     case QEvent::StyleChange:
     case QEvent::MacSizeChange:
@@ -372,7 +340,7 @@ void QSlider::mousePressEvent(QMouseEvent *ev)
         const QPoint center = sliderRect.center() - sliderRect.topLeft();
         // to take half of the slider off for the setSliderPosition call we use the center - topLeft
 
-        setSliderPosition(d->pixelPosToRangeValue(d->pick(ev->pos() - center)));
+        setSliderPosition(d->pixelPosToRangeValue(d->pick(ev->position().toPoint() - center)));
         triggerAction(SliderMove);
         setRepeatAction(SliderNoAction);
         d->pressedControl = QStyle::SC_SliderHandle;
@@ -381,11 +349,11 @@ void QSlider::mousePressEvent(QMouseEvent *ev)
         QStyleOptionSlider opt;
         initStyleOption(&opt);
         d->pressedControl = style()->hitTestComplexControl(QStyle::CC_Slider,
-                                                           &opt, ev->pos(), this);
+                                                           &opt, ev->position().toPoint(), this);
         SliderAction action = SliderNoAction;
         if (d->pressedControl == QStyle::SC_SliderGroove) {
             const QRect sliderRect = style()->subControlRect(QStyle::CC_Slider, &opt, QStyle::SC_SliderHandle, this);
-            int pressValue = d->pixelPosToRangeValue(d->pick(ev->pos() - sliderRect.center() + sliderRect.topLeft()));
+            int pressValue = d->pixelPosToRangeValue(d->pick(ev->position().toPoint() - sliderRect.center() + sliderRect.topLeft()));
             d->pressValue = pressValue;
             if (pressValue > d->value)
                 action = SliderPageStepAdd;
@@ -406,7 +374,7 @@ void QSlider::mousePressEvent(QMouseEvent *ev)
         initStyleOption(&opt);
         setRepeatAction(SliderNoAction);
         QRect sr = style()->subControlRect(QStyle::CC_Slider, &opt, QStyle::SC_SliderHandle, this);
-        d->clickOffset = d->pick(ev->pos() - sr.topLeft());
+        d->clickOffset = d->pick(ev->position().toPoint() - sr.topLeft());
         update(sr);
         setSliderDown(true);
     }
@@ -423,9 +391,7 @@ void QSlider::mouseMoveEvent(QMouseEvent *ev)
         return;
     }
     ev->accept();
-    int newPosition = d->pixelPosToRangeValue(d->pick(ev->pos()) - d->clickOffset);
-    QStyleOptionSlider opt;
-    initStyleOption(&opt);
+    int newPosition = d->pixelPosToRangeValue(d->pick(ev->position().toPoint()) - d->clickOffset);
     setSliderPosition(newPosition);
 }
 
@@ -472,7 +438,7 @@ QSize QSlider::sizeHint() const
         w = SliderLength;
         h = thick;
     }
-    return style()->sizeFromContents(QStyle::CT_Slider, &opt, QSize(w, h), this).expandedTo(QApplication::globalStrut());
+    return style()->sizeFromContents(QStyle::CT_Slider, &opt, QSize(w, h), this);
 }
 
 /*!

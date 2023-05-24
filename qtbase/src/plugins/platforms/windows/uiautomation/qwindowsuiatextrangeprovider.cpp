@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtGui/qtguiglobal.h>
 #if QT_CONFIG(accessibility)
@@ -343,14 +307,14 @@ HRESULT QWindowsUiaTextRangeProvider::Move(TextUnit unit, int count, int *pRetVa
 
     int len = textInterface->characterCount();
 
-    if (len < 1)
+    if (len < 1 || count == 0)  // MSDN: "Zero has no effect."
         return S_OK;
 
     if (unit == TextUnit_Character) {
         // Moves the start point, ensuring it lies within the bounds.
-        int start = qBound(0, m_startOffset + count, len - 1);
+        int start = qBound(0, m_startOffset + count, len);
         // If range was initially empty, leaves it as is; otherwise, normalizes it to one char.
-        m_endOffset = (m_endOffset > m_startOffset) ? start + 1 : start;
+        m_endOffset = (m_endOffset > m_startOffset) ? qMin(start + 1, len) : start;
         *pRetVal = start - m_startOffset; // Returns the actually moved distance.
         m_startOffset = start;
     } else {
@@ -421,7 +385,7 @@ HRESULT QWindowsUiaTextRangeProvider::MoveEndpointByUnit(TextPatternRangeEndpoin
 
     if (unit == TextUnit_Character) {
         if (endpoint == TextPatternRangeEndpoint_Start) {
-            int boundedValue = qBound(0, m_startOffset + count, len - 1);
+            int boundedValue = qBound(0, m_startOffset + count, len);
             *pRetVal = boundedValue - m_startOffset;
             m_startOffset = boundedValue;
             m_endOffset = qBound(m_startOffset, m_endOffset, len);

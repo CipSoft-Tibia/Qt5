@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">O pacote é inválido: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Voltada para o ambiente</translation>
 <translation id="1196338895211115272">Falha ao exportar chave privada.</translation>
+<translation id="132960226125594336">Não foi possível carregar o arquivo "<ph name="RELATIVE_PATH" />" como script de conteúdo, porque ele excederia o tamanho máximo permitido ou o tamanho total máximo para um script de conteúdo da extensão.</translation>
 <translation id="1420684932347524586">Ops! Falha ao gerar a chave privada RSA aleatória.</translation>
 <translation id="1445572445564823378">Esta extensão está deixando <ph name="PRODUCT_NAME" /> mais lento. Você deve desativá-lo para restaurar o desempenho de <ph name="PRODUCT_NAME" />.</translation>
 <translation id="1468038450257740950">O WebGL não é suportado.</translation>
@@ -61,6 +62,7 @@
 <translation id="8636666366616799973">O pacote é inválido. Detalhes "<ph name="ERROR_MESSAGE" />".</translation>
 <translation id="8761756413268424715">"<ph name="APP_NAME" />" está solicitando acesso a um dos seus dispositivos:</translation>
 <translation id="8885905466771744233">Já existe uma chave privada para a extensão especificada. Reutilize essa chave ou exclua-a primeiro.</translation>
+<translation id="9039223174332979184">O administrador desta máquina requer que a extensão <ph name="EXTENSION_NAME" /> tenha, no mínimo, a versão 3 do manifesto.</translation>
 <translation id="907841381057066561">Falha ao criar arquivo zip temporário durante a compactação.</translation>
 <translation id="941543339607623937">Chave privada inválida.</translation>
 </translationbundle>

@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -48,6 +48,11 @@ versions array. This can be overridden by supplying a 'known_as' key.
 
 """
 GL_FUNCTIONS = [
+{ 'return_type': 'void',
+  'versions': [{ 'name': 'glAcquireTexturesANGLE',
+                 'extensions': ['GL_ANGLE_vulkan_image'] }],
+  'arguments': 'GLuint numTextures, const GLuint* textures, '
+               'const GLenum* layouts', },
 { 'return_type': 'void',
   'names': ['glActiveShaderProgram'],
   'arguments': 'GLuint pipeline, GLuint program', },
@@ -206,6 +211,8 @@ GL_FUNCTIONS = [
 { 'return_type': 'void',
   'versions' : [{'name': 'glBlitFramebuffer',
                  'extensions': ['GL_ARB_framebuffer_object']},
+                {'name': 'glBlitFramebufferNV',
+                 'extensions': ['GL_NV_framebuffer_blit']},
                 {'name': 'glBlitFramebufferANGLE'},
                 {'name': 'glBlitFramebufferEXT'}],
   'arguments': 'GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, '
@@ -384,13 +391,6 @@ GL_FUNCTIONS = [
       'GLint destLevel, GLint internalFormat, GLenum destType, '
       'GLboolean unpackFlipY, GLboolean unpackPremultiplyAlpha, '
       'GLboolean unpackUnmultiplyAlpha', },
-{ 'return_type': 'void',
-  'names': ['glCoverageModulationNV'],
-  'versions': [{ 'name': 'glCoverageModulationNV',
-                 'extensions': ['GL_NV_framebuffer_mixed_samples'] },
-               { 'name': 'glCoverageModulationCHROMIUM',
-                 'extensions': ['GL_CHROMIUM_framebuffer_mixed_samples'] }],
-  'arguments': 'GLenum components'},
 { 'return_type': 'void',
   'names': ['glCoverFillPathInstancedNV'],
   'versions': [{ 'name': 'glCoverFillPathInstancedNV',
@@ -1212,7 +1212,9 @@ GL_FUNCTIONS = [
     'GLsync sync, GLenum pname, GLsizei bufSize, GLsizei* length,'
     'GLint* values', },
 { 'return_type': 'void',
-  'names': ['glGetTexLevelParameterfv'],
+  'versions': [{ 'name': 'glGetTexLevelParameterfv' },
+               {'name': 'glGetTexLevelParameterfvANGLE',
+                'extensions': ['GL_ANGLE_get_tex_level_parameter']}],
   'arguments': 'GLenum target, GLint level, GLenum pname, GLfloat* params', },
 { 'return_type': 'void',
   'versions': [{'name': 'glGetTexLevelParameterfvRobustANGLE',
@@ -1221,7 +1223,9 @@ GL_FUNCTIONS = [
       'GLenum target, GLint level, GLenum pname, GLsizei bufSize, '
       'GLsizei* length, GLfloat* params', },
 { 'return_type': 'void',
-  'names': ['glGetTexLevelParameteriv'],
+  'versions': [{ 'name': 'glGetTexLevelParameteriv' },
+               {'name': 'glGetTexLevelParameterivANGLE',
+                'extensions': ['GL_ANGLE_get_tex_level_parameter']}],
   'arguments': 'GLenum target, GLint level, GLenum pname, GLint* params', },
 { 'return_type': 'void',
   'versions': [{'name': 'glGetTexLevelParameterivRobustANGLE',
@@ -1772,6 +1776,10 @@ GL_FUNCTIONS = [
   'arguments': 'GLuint program, GLint location, GLsizei count, '
                'GLboolean transpose, const GLfloat* value' },
 { 'return_type': 'void',
+  'versions': [{'name': 'glProvokingVertexANGLE',
+                'extensions': ['GL_ANGLE_provoking_vertex']}],
+  'arguments': 'GLenum provokeMode', },
+{ 'return_type': 'void',
   'versions': [{ 'name': 'glPushDebugGroup' },
                { 'name': 'glPushDebugGroupKHR',
                  'extensions': ['GL_KHR_debug'] }],
@@ -1810,6 +1818,10 @@ GL_FUNCTIONS = [
 { 'return_type': 'void',
   'names': ['glReleaseShaderCompiler'],
   'arguments': 'void', },
+{ 'return_type': 'void',
+  'versions': [{ 'name': 'glReleaseTexturesANGLE',
+                 'extensions': ['GL_ANGLE_vulkan_image'] }],
+  'arguments': 'GLuint numTextures, const GLuint* textures, GLenum* layouts', },
 { 'return_type': 'void',
   'names': ['glRenderbufferStorageEXT', 'glRenderbufferStorage'],
   'arguments':
@@ -2127,7 +2139,8 @@ GL_FUNCTIONS = [
                  'extensions': ['GL_ANGLE_memory_object_flags'] }],
   'arguments': 'GLenum target, GLsizei levels, GLenum internalFormat, '
   'GLsizei width, GLsizei height, GLuint memory, GLuint64 offset, '
-  'GLbitfield createFlags, GLbitfield usageFlags', },
+  'GLbitfield createFlags, GLbitfield usageFlags, '
+  'const void* imageCreateInfoPNext', },
 { 'return_type': 'void',
   'names': ['glTexSubImage2D'],
   'arguments':
@@ -2387,6 +2400,9 @@ EGL_FUNCTIONS = [
   'arguments': 'EGLDisplay dpy, const EGLint* attrib_list, EGLConfig* configs, '
                'EGLint config_size, EGLint* num_config', },
 { 'return_type': 'EGLint',
+  'names': ['eglClientWaitSync'],
+  'arguments': 'EGLDisplay dpy, EGLSync sync, EGLint flags, EGLTime timeout' },
+{ 'return_type': 'EGLint',
   'versions': [{ 'name': 'eglClientWaitSyncKHR',
                  'extensions': [
                    'EGL_KHR_fence_sync',
@@ -2398,10 +2414,21 @@ EGL_FUNCTIONS = [
   'names': ['eglCopyBuffers'],
   'arguments':
       'EGLDisplay dpy, EGLSurface surface, EGLNativePixmapType target', },
+{ 'return_type': 'void*',
+  'versions': [{ 'name': 'eglCopyMetalSharedEventANGLE',
+                 'extensions': [
+                   'EGL_ANGLE_metal_shared_event_sync',
+                 ] }],
+  'arguments': 'EGLDisplay dpy, EGLSync sync', },
 { 'return_type': 'EGLContext',
   'names': ['eglCreateContext'],
   'arguments': 'EGLDisplay dpy, EGLConfig config, EGLContext share_context, '
               'const EGLint* attrib_list', },
+{ 'return_type': 'EGLImage',
+  'names': ['eglCreateImage'],
+  'arguments':
+      'EGLDisplay dpy, EGLContext ctx, EGLenum target, EGLClientBuffer buffer, '
+      'const EGLAttrib* attrib_list' },
 { 'return_type': 'EGLImageKHR',
   'versions': [{ 'name': 'eglCreateImageKHR',
                  'extensions':
@@ -2421,6 +2448,14 @@ EGL_FUNCTIONS = [
   'names': ['eglCreatePixmapSurface'],
   'arguments': 'EGLDisplay dpy, EGLConfig config, EGLNativePixmapType pixmap, '
                'const EGLint* attrib_list', },
+{ 'return_type': 'EGLSurface',
+  'names': ['eglCreatePlatformPixmapSurface'],
+  'arguments': 'EGLDisplay dpy, EGLConfig config, void* native_pixmap, '
+               'const EGLAttrib* attrib_list', },
+{ 'return_type': 'EGLSurface',
+  'names': ['eglCreatePlatformWindowSurface'],
+  'arguments': 'EGLDisplay dpy, EGLConfig config, void* native_window, '
+               'const EGLAttrib* attrib_list', },
 { 'return_type': 'EGLStreamKHR',
   'versions': [{ 'name': 'eglCreateStreamKHR',
                  'extensions': ['EGL_KHR_stream'] }],
@@ -2431,6 +2466,9 @@ EGL_FUNCTIONS = [
                       ['EGL_ANGLE_stream_producer_d3d_texture']}],
   'arguments':
       'EGLDisplay dpy, EGLStreamKHR stream, EGLAttrib* attrib_list', },
+{ 'return_type': 'EGLSync',
+  'names': ['eglCreateSync'],
+  'arguments': 'EGLDisplay dpy, EGLenum type, const EGLAttrib* attrib_list' },
 { 'return_type': 'EGLSyncKHR',
   'versions': [{ 'name': 'eglCreateSyncKHR',
                  'extensions': [
@@ -2451,6 +2489,9 @@ EGL_FUNCTIONS = [
   'names': ['eglDestroyContext'],
   'arguments': 'EGLDisplay dpy, EGLContext ctx', },
 { 'return_type': 'EGLBoolean',
+  'names': ['eglDestroyImage'],
+  'arguments': 'EGLDisplay dpy, EGLImage image' },
+{ 'return_type': 'EGLBoolean',
   'versions': [{ 'name' : 'eglDestroyImageKHR',
                  'extensions': ['EGL_KHR_image_base'] }],
   'arguments': 'EGLDisplay dpy, EGLImageKHR image' },
@@ -2461,6 +2502,9 @@ EGL_FUNCTIONS = [
 { 'return_type': 'EGLBoolean',
   'names': ['eglDestroySurface'],
   'arguments': 'EGLDisplay dpy, EGLSurface surface', },
+{ 'return_type': 'EGLBoolean',
+  'names': ['eglDestroySync'],
+  'arguments': 'EGLDisplay dpy, EGLSync sync' },
 { 'return_type': 'EGLBoolean',
   'versions': [{ 'name': 'eglDestroySyncKHR',
                  'extensions': [
@@ -2487,6 +2531,12 @@ EGL_FUNCTIONS = [
                  'extensions': ['EGL_MESA_image_dma_buf_export'] }],
   'arguments': 'EGLDisplay dpy, EGLImageKHR image, int* fourcc, '
                'int* num_planes, EGLuint64KHR* modifiers', },
+{ 'return_type': 'EGLBoolean',
+    'versions': [{'name': 'eglExportVkImageANGLE',
+                  'extensions':
+                      ['EGL_ANGLE_vulkan_image']}],
+  'arguments': 'EGLDisplay dpy, EGLImageKHR image, void* vk_image, '
+               'void* vk_image_create_info', },
 { 'return_type': 'EGLBoolean',
   'versions': [{ 'name': 'eglGetCompositorTimingANDROID',
                  'extensions': [
@@ -2566,6 +2616,10 @@ EGL_FUNCTIONS = [
   GL_SERVICE_LOG("GL_RESULT: " << reinterpret_cast<void*>(result));
 """, },
 { 'return_type': 'EGLBoolean',
+  'names': ['eglGetSyncAttrib'],
+  'arguments': 'EGLDisplay dpy, EGLSync sync, EGLint attribute, '
+      'EGLAttrib* value' },
+{ 'return_type': 'EGLBoolean',
   'versions': [{ 'name': 'eglGetSyncAttribKHR',
                  'extensions': [
                    'EGL_KHR_fence_sync',
@@ -2620,6 +2674,11 @@ EGL_FUNCTIONS = [
   'versions': [{ 'name': 'eglQueryDebugKHR',
                  'client_extensions': ['EGL_KHR_debug'], }],
   'arguments': 'EGLint attribute, EGLAttrib* value', },
+{
+  'return_type': 'EGLBoolean',
+  'versions': [{ 'name': 'eglQueryDeviceAttribEXT',
+                 'client_extensions': ['EGL_EXT_device_query'], }],
+  'arguments': 'EGLDeviceEXT device, EGLint attribute, EGLAttrib* value' },
 { 'return_type': 'EGLBoolean',
   'known_as': 'eglQueryDevicesEXT',
   'versions': [{ 'name': 'eglQueryDevicesEXT',
@@ -2635,6 +2694,28 @@ EGL_FUNCTIONS = [
   'versions': [{ 'name': 'eglQueryDisplayAttribANGLE',
                  'client_extensions': ['EGL_ANGLE_feature_control'] }],
   'arguments': 'EGLDisplay dpy, EGLint attribute, EGLAttrib* value' },
+{
+  'return_type': 'EGLBoolean',
+  'versions': [{ 'name': 'eglQueryDisplayAttribEXT',
+                 'client_extensions': ['EGL_EXT_device_query'], }],
+  'arguments': 'EGLDisplay dpy, EGLint attribute, EGLAttrib* value' },
+{
+  'return_type': 'EGLBoolean',
+  'versions': [{ 'name': 'eglQueryDmaBufFormatsEXT',
+                 'extensions':
+                     ['EGL_EXT_image_dma_buf_import_modifiers'], }],
+  'arguments':
+      'EGLDisplay dpy, EGLint max_formats, '
+      'EGLint* formats, EGLint* num_formats' },
+{
+  'return_type': 'EGLBoolean',
+  'versions': [{ 'name': 'eglQueryDmaBufModifiersEXT',
+                 'extensions':
+                     ['EGL_EXT_image_dma_buf_import_modifiers'], }],
+  'arguments':
+      'EGLDisplay dpy, EGLint format, EGLint max_modifiers, '
+      'EGLuint64KHR* modifiers, EGLBoolean* external_only, '
+      'EGLint* num_modifiers' },
 { 'return_type': 'EGLBoolean',
   'versions': [{ 'name': 'eglQueryStreamKHR',
                  'extensions': ['EGL_KHR_stream'] }],
@@ -2740,9 +2821,64 @@ EGL_FUNCTIONS = [
   'names': ['eglWaitNative'],
   'arguments': 'EGLint engine', },
 { 'return_type': 'EGLint',
+  'names': ['eglWaitSync'],
+  'arguments': 'EGLDisplay dpy, EGLSync sync, EGLint flags' },
+{ 'return_type': 'EGLint',
   'versions': [{ 'name': 'eglWaitSyncKHR',
                  'extensions': ['EGL_KHR_wait_sync'] }],
   'arguments': 'EGLDisplay dpy, EGLSyncKHR sync, EGLint flags' },
+{ 'return_type': 'void',
+  'versions': [{ 'name': 'eglWaitUntilWorkScheduledANGLE',
+                 'extensions': ['EGL_ANGLE_wait_until_work_scheduled'] }],
+  'arguments': 'EGLDisplay dpy' },
+]
+
+# EGL client extensions that may not add a function but are still queried.
+EGL_CLIENT_EXTENSIONS_EXTRA = [
+  'EGL_ANGLE_display_power_preference',
+  'EGL_ANGLE_platform_angle',
+  'EGL_ANGLE_platform_angle_d3d',
+  'EGL_ANGLE_platform_angle_device_id',
+  'EGL_ANGLE_platform_angle_device_type_egl_angle',
+  'EGL_ANGLE_platform_angle_device_type_swiftshader',
+  'EGL_ANGLE_platform_angle_metal',
+  'EGL_ANGLE_platform_angle_null',
+  'EGL_ANGLE_platform_angle_opengl',
+  'EGL_ANGLE_platform_angle_vulkan',
+  'EGL_EXT_platform_device',
+  'EGL_MESA_platform_surfaceless',
+]
+
+# EGL extensions that may not add a function but are still queried.
+EGL_EXTENSIONS_EXTRA = [
+  'EGL_ANDROID_create_native_client_buffer',
+  'EGL_ANDROID_front_buffer_auto_refresh',
+  'EGL_ANGLE_display_semaphore_share_group',
+  'EGL_ANGLE_display_texture_share_group',
+  'EGL_ANGLE_context_virtualization',
+  'EGL_ANGLE_create_context_backwards_compatible',
+  'EGL_ANGLE_create_context_client_arrays',
+  'EGL_ANGLE_create_context_webgl_compatibility',
+  'EGL_ANGLE_external_context_and_surface',
+  'EGL_ANGLE_iosurface_client_buffer',
+  'EGL_ANGLE_keyed_mutex',
+  'EGL_ANGLE_robust_resource_initialization',
+  'EGL_ANGLE_surface_orientation',
+  'EGL_ANGLE_window_fixed_size',
+  'EGL_ARM_implicit_external_sync',
+  'EGL_CHROMIUM_create_context_bind_generates_resource',
+  'EGL_EXT_create_context_robustness',
+  'EGL_EXT_gl_colorspace_display_p3',
+  'EGL_EXT_gl_colorspace_display_p3_passthrough',
+  'EGL_EXT_image_dma_buf_import',
+  'EGL_EXT_pixel_format_float',
+  'EGL_IMG_context_priority',
+  'EGL_KHR_create_context',
+  'EGL_KHR_gl_colorspace',
+  'EGL_KHR_no_config_context',
+  'EGL_KHR_surfaceless_context',
+  'EGL_NV_robustness_video_memory_purge',
+  'EGL_NOK_texture_from_pixmap',
 ]
 
 WGL_FUNCTIONS = [
@@ -2984,6 +3120,8 @@ FUNCTION_SETS = [
       'GLES2/gl2chromium.h',
       'GLES2/gl2extchromium.h'
     ], [
+      "GL_ANGLE_robust_resource_initialization",
+      "GL_ANGLE_webgl_compatibility",
       "GL_ARB_texture_swizzle",
       "GL_EXT_texture_swizzle",
       "GL_EXT_texture_format_BGRA8888",
@@ -2992,8 +3130,6 @@ FUNCTION_SETS = [
   ],
   [EGL_FUNCTIONS, 'egl', [
       'EGL/eglext.h',
-      # Files below are Chromium-specific and shipped with Chromium sources.
-      'EGL/eglextchromium.h',
     ],
     [
       'EGL_ANGLE_d3d_share_handle_client_buffer',
@@ -3016,7 +3152,7 @@ GLES2_HEADERS_WITH_ENUMS = [
 SELF_LOCATION = os.path.dirname(os.path.abspath(__file__))
 
 LICENSE_AND_HEADER = """\
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -3091,7 +3227,6 @@ def GenerateHeader(file, functions, set_name,
 namespace gl {
 
 class GLContext;
-
 """ % {'name': set_name.upper()})
 
   # Write typedefs for function pointer types. Always use the GL name for the
@@ -3103,11 +3238,36 @@ class GLContext;
 
   # Write declarations for booleans indicating which extensions are available.
   file.write('\n')
-  file.write("struct Extensions%s {\n" % set_name.upper())
-  for extension in sorted(used_client_extensions):
-    file.write('  bool b_%s;\n' % extension)
+  if set_name == 'egl':
+    file.write('struct GL_EXPORT ClientExtensionsEGL {\n')
+    for extension in sorted(used_client_extensions):
+      file.write('  bool b_%s;\n' % extension)
+    file.write(
+"""
+
+  void InitializeClientExtensionSettings();
+
+ private:
+  static std::string GetClientExtensions();
+};
+
+struct GL_EXPORT DisplayExtensionsEGL {
+""")
+  else:
+    assert len(used_client_extensions) == 0
+    file.write("struct Extensions%s {\n" % set_name.upper())
+
   for extension in sorted(used_extensions):
     file.write('  bool b_%s;\n' % extension)
+  if set_name == 'egl':
+    file.write(
+"""
+
+  void InitializeExtensionSettings(EGLDisplay display);
+  void UpdateConditionalExtensionSettings(EGLDisplay display);
+
+  static std::string GetPlatformExtensions(EGLDisplay display);
+""")
   file.write('};\n')
   file.write('\n')
 
@@ -3145,7 +3305,7 @@ class GLContext;
         (func['known_as'], set_name.lower(), func['known_as']))
 
   file.write('\n')
-  file.write('#endif  //  UI_GL_GL_BINDINGS_AUTOGEN_%s_H_\n' %
+  file.write('#endif  // UI_GL_GL_BINDINGS_AUTOGEN_%s_H_\n' %
       set_name.upper())
 
 
@@ -3211,8 +3371,8 @@ def GenerateStubHeader(file, functions):
   file.write(LICENSE_AND_HEADER +
 """
 
-#ifndef UI_GL_GL_STUB_AUTOGEN_H_
-#define UI_GL_GL_STUB_AUTOGEN_H_
+#ifndef UI_GL_GL_STUB_AUTOGEN_GL_H_
+#define UI_GL_GL_STUB_AUTOGEN_GL_H_
 
 """)
 
@@ -3231,7 +3391,7 @@ def GenerateStubHeader(file, functions):
       file.write(';\n');
 
   file.write('\n')
-  file.write('#endif  //  UI_GL_GL_STUB_AUTOGEN_H_')
+  file.write('#endif  //  UI_GL_GL_STUB_AUTOGEN_GL_H_')
 
 def GenerateStubSource(file, functions):
   """Generates gl_stub_autogen_gl.cc"""
@@ -3303,8 +3463,8 @@ namespace gl {
     else:
       num_dynamic = num_dynamic + 1
 
-  print "[%s] %d static bindings, %d dynamic bindings" % (
-      set_name, len(functions) - num_dynamic, num_dynamic)
+  print("[%s] %d static bindings, %d dynamic bindings" % (
+      set_name, len(functions) - num_dynamic, num_dynamic))
 
   # Write function to initialize the function pointers that are always the same
   # and to initialize bindings where choice of the function depends on the
@@ -3319,6 +3479,9 @@ namespace gl {
              'memcmp(this_bytes, this_bytes + 1, sizeof(*this) - 1) == 0);\n');
   file.write('\n')
 
+  def BindingsAreAllStatic(api_set_name):
+    return api_set_name == 'egl'
+
   def WriteFuncBinding(file, known_as, version_name):
     file.write(
         '  fn.%sFn = reinterpret_cast<%sProc>(GetGLProcAddress("%s"));\n' %
@@ -3327,6 +3490,10 @@ namespace gl {
   for func in functions:
     if 'static_binding' in func:
       WriteFuncBinding(file, func['known_as'], func['static_binding'])
+    elif BindingsAreAllStatic(set_name):
+      assert len(func['versions']) == 1
+      version = func['versions'][0]
+      WriteFuncBinding(file, func['known_as'], version['name'])
 
   def GetGLVersionCondition(gl_version):
     if GLVersionBindAlways(gl_version):
@@ -3345,10 +3512,10 @@ namespace gl {
     conditions = []
     if 'gl_versions' in version:
       conditions.extend(
-          [GetGLVersionCondition(v) for v in version['gl_versions']])
+          sorted([GetGLVersionCondition(v) for v in version['gl_versions']]))
     if 'extensions' in version and version['extensions']:
       conditions.extend(
-          ['ext.b_%s' % e for e in version['extensions']])
+          sorted(['ext.b_%s' % e for e in version['extensions']]))
     return ' || '.join(conditions)
 
   def WriteConditionalFuncBinding(file, func):
@@ -3389,53 +3556,60 @@ void DriverGL::InitializeDynamicBindings(const GLVersionInfo* ver,
 """)
   elif set_name == 'egl':
     file.write("""\
-void DriverEGL::InitializeClientExtensionBindings() {
+void ClientExtensionsEGL::InitializeClientExtensionSettings() {
   std::string client_extensions(GetClientExtensions());
-  gfx::ExtensionSet extensions(gfx::MakeExtensionSet(client_extensions));
-  ALLOW_UNUSED_LOCAL(extensions);
+  [[maybe_unused]] gfx::ExtensionSet extensions(
+      gfx::MakeExtensionSet(client_extensions));
 
 """)
   else:
     file.write("""\
 void Driver%s::InitializeExtensionBindings() {
   std::string platform_extensions(GetPlatformExtensions());
-  gfx::ExtensionSet extensions(gfx::MakeExtensionSet(platform_extensions));
-  ALLOW_UNUSED_LOCAL(extensions);
+  [[maybe_unused]] gfx::ExtensionSet extensions(
+      gfx::MakeExtensionSet(platform_extensions));
 
 """ % (set_name.upper(),))
 
-  def OutputExtensionBindings(extension_var, extensions, extension_funcs):
+  def OutputExtensionSettings(extension_var, extensions, struct_qualifier):
     # Extra space at the end of the extension name is intentional,
     # it is used as a separator
     for extension in extensions:
-      file.write('  ext.b_%s = gfx::HasExtension(%s, "%s");\n' %
-                 (extension, extension_var, extension))
+      file.write('  %sb_%s = gfx::HasExtension(%s, "%s");\n' %
+                 (struct_qualifier, extension, extension_var, extension))
 
+  def OutputExtensionBindings(extension_funcs):
     for func in extension_funcs:
       if not 'static_binding' in func:
         file.write('\n')
         WriteConditionalFuncBinding(file, func)
 
-  OutputExtensionBindings(
+  OutputExtensionSettings(
     'extensions',
     sorted(used_client_extensions),
-    [ f for f in functions if IsClientExtensionFunc(f) ])
+    '' if BindingsAreAllStatic(set_name) else 'ext.')
+  if not BindingsAreAllStatic(set_name):
+    OutputExtensionBindings(
+      [ f for f in functions if IsClientExtensionFunc(f) ])
 
   if set_name == 'egl':
     file.write("""\
 }
 
-void DriverEGL::InitializeExtensionBindings() {
-  std::string platform_extensions(GetPlatformExtensions());
-  gfx::ExtensionSet extensions(gfx::MakeExtensionSet(platform_extensions));
-  ALLOW_UNUSED_LOCAL(extensions);
+void DisplayExtensionsEGL::InitializeExtensionSettings(EGLDisplay display) {
+  std::string platform_extensions(GetPlatformExtensions(display));
+  [[maybe_unused]] gfx::ExtensionSet extensions(
+      gfx::MakeExtensionSet(platform_extensions));
 
 """)
 
-  OutputExtensionBindings(
+  OutputExtensionSettings(
     'extensions',
     sorted(used_extensions),
-    [ f for f in functions if not IsClientExtensionFunc(f) ])
+    '' if BindingsAreAllStatic(set_name) else 'ext.')
+  if not BindingsAreAllStatic(set_name):
+    OutputExtensionBindings(
+      [ f for f in functions if not IsClientExtensionFunc(f) ])
   file.write('}\n')
 
   # Write function to clear all function pointers.
@@ -3480,7 +3654,7 @@ void DriverEGL::InitializeExtensionBindings() {
     file.write('%s Trace%sApi::%sFn(%s) {\n' %
         (return_type, set_name.upper(), function_name, arguments))
     argument_names = MakeArgNames(arguments)
-    file.write('  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "Trace%sAPI::%s")\n' %
+    file.write('  TRACE_EVENT_BINARY_EFFICIENT0("gpu", "Trace%sAPI::%s");\n' %
                (set_name.upper(), function_name))
     if return_type == 'void':
       file.write('  %s_api_->%sFn(%s);\n' %
@@ -3660,7 +3834,7 @@ def GenerateMockBindingsHeader(file, functions):
 """)
   uniquely_named_functions = GetUniquelyNamedFunctions(functions)
 
-  for key in sorted(uniquely_named_functions.iterkeys()):
+  for key in sorted(uniquely_named_functions.keys()):
     func = uniquely_named_functions[key]
     file.write('static %s GL_BINDING_CALL Mock_%s(%s);\n' %
         (func['return_type'], func['name'], func['arguments']))
@@ -3692,7 +3866,7 @@ namespace gl {
 
   # Write functions that trampoline into the set MockGLInterface instance.
   uniquely_named_functions = GetUniquelyNamedFunctions(functions)
-  sorted_function_names = sorted(uniquely_named_functions.iterkeys())
+  sorted_function_names = sorted(uniquely_named_functions.keys())
 
   for key in sorted_function_names:
     func = uniquely_named_functions[key]
@@ -3971,12 +4145,12 @@ def FillExtensionsFromHeaders(functions, extension_headers, extra_extensions):
 
       in_both = explicit_extensions.intersection(extensions_from_headers)
       if len(in_both):
-        print "[%s] Specified redundant extensions for binding: %s" % (
-            name, ', '.join(in_both))
+        print("[%s] Specified redundant extensions for binding: %s" % (
+            name, ', '.join(in_both)))
       diff = explicit_extensions - extensions_from_headers
       if len(diff):
-        print "[%s] Specified extra extensions for binding: %s" % (
-            name, ', '.join(diff))
+        print("[%s] Specified extra extensions for binding: %s" % (
+            name, ', '.join(diff)))
 
       if version.get('explicit_only', False):
         all_extensions = explicit_extensions
@@ -4009,11 +4183,11 @@ def FillExtensionsFromHeaders(functions, extension_headers, extra_extensions):
 
   # Print out used function count by GL(ES) version.
   for v in sorted([v for v in used_functions_by_version if v.is_es]):
-    print "OpenGL ES %d.%d: %d used functions" % (
-        v.major_version, v.minor_version, len(used_functions_by_version[v]))
+    print("OpenGL ES %d.%d: %d used functions" % (
+        v.major_version, v.minor_version, len(used_functions_by_version[v])))
   for v in sorted([v for v in used_functions_by_version if not v.is_es]):
-    print "OpenGL %d.%d: %d used functions" % (
-        v.major_version, v.minor_version, len(used_functions_by_version[v]))
+    print("OpenGL %d.%d: %d used functions" % (
+        v.major_version, v.minor_version, len(used_functions_by_version[v])))
 
   return used_extensions, used_client_extensions
 
@@ -4050,7 +4224,7 @@ def main(argv):
   if options.inputs:
     for [_, _, headers, _] in FUNCTION_SETS:
       for header in headers:
-        print ResolveHeader(header, HEADER_PATHS)
+        print(ResolveHeader(header, HEADER_PATHS))
     return 0
 
   directory = SELF_LOCATION
@@ -4093,8 +4267,12 @@ def main(argv):
     used_extensions, used_client_extensions = FillExtensionsFromHeaders(
         functions, extension_headers, extensions)
 
+    if set_name == 'egl':
+      used_extensions.update(EGL_EXTENSIONS_EXTRA)
+      used_client_extensions.update(EGL_CLIENT_EXTENSIONS_EXTRA)
+
     header_file = open(
-        os.path.join(directory, 'gl_bindings_autogen_%s.h' % set_name), 'wb')
+        os.path.join(directory, 'gl_bindings_autogen_%s.h' % set_name), 'w')
     GenerateHeader(header_file, functions, set_name,
                    used_extensions, used_client_extensions)
     header_file.close()
@@ -4102,13 +4280,13 @@ def main(argv):
 
     header_file = open(
         os.path.join(directory, 'gl_bindings_api_autogen_%s.h' % set_name),
-        'wb')
+        'w')
     GenerateAPIHeader(header_file, functions, set_name)
     header_file.close()
     ClangFormat(header_file.name)
 
     source_file = open(
-        os.path.join(directory, 'gl_bindings_autogen_%s.cc' % set_name), 'wb')
+        os.path.join(directory, 'gl_bindings_autogen_%s.cc' % set_name), 'w')
     GenerateSource(source_file, functions, set_name,
                    used_extensions, used_client_extensions, options)
     source_file.close()
@@ -4116,37 +4294,37 @@ def main(argv):
 
   if not options.verify_order:
     header_file = open(
-        os.path.join(directory, 'gl_mock_autogen_gl.h'), 'wb')
+        os.path.join(directory, 'gl_mock_autogen_gl.h'), 'w')
     GenerateMockHeader(header_file, GL_FUNCTIONS, 'gl')
     header_file.close()
     ClangFormat(header_file.name)
 
     header_file = open(os.path.join(directory, 'gl_bindings_autogen_mock.h'),
-                       'wb')
+                       'w')
     GenerateMockBindingsHeader(header_file, GL_FUNCTIONS)
     header_file.close()
     ClangFormat(header_file.name)
 
     source_file = open(os.path.join(directory, 'gl_bindings_autogen_mock.cc'),
-                       'wb')
+                       'w')
     GenerateMockBindingsSource(source_file, GL_FUNCTIONS, 'gl')
     source_file.close()
     ClangFormat(source_file.name)
 
     header_file = open(
-        os.path.join(directory, 'gl_mock_autogen_egl.h'), 'wb')
+        os.path.join(directory, 'gl_mock_autogen_egl.h'), 'w')
     GenerateMockHeader(header_file, EGL_FUNCTIONS, 'egl')
     header_file.close()
     ClangFormat(header_file.name)
 
     header_file = open(os.path.join(directory, 'egl_bindings_autogen_mock.h'),
-                       'wb')
+                       'w')
     GenerateMockBindingsHeader(header_file, EGL_FUNCTIONS)
     header_file.close()
     ClangFormat(header_file.name)
 
     source_file = open(os.path.join(directory, 'egl_bindings_autogen_mock.cc'),
-                       'wb')
+                       'w')
     GenerateMockBindingsSource(source_file, EGL_FUNCTIONS, 'egl')
     source_file.close()
     ClangFormat(source_file.name)
@@ -4155,19 +4333,19 @@ def main(argv):
                              for h in GLES2_HEADERS_WITH_ENUMS]
     header_file = open(os.path.join(directory,
                                     'gl_enums_implementation_autogen.h'),
-                       'wb')
+                       'w')
     GenerateEnumUtils(header_file, enum_header_filenames)
     header_file.close()
     ClangFormat(header_file.name)
 
     header_file = open(
-        os.path.join(directory, 'gl_stub_autogen_gl.h'), 'wb')
+        os.path.join(directory, 'gl_stub_autogen_gl.h'), 'w')
     GenerateStubHeader(header_file, GL_FUNCTIONS)
     header_file.close()
     ClangFormat(header_file.name)
 
     header_file = open(
-        os.path.join(directory, 'gl_stub_autogen_gl.cc'), 'wb')
+        os.path.join(directory, 'gl_stub_autogen_gl.cc'), 'w')
     GenerateStubSource(header_file, GL_FUNCTIONS)
     header_file.close()
     ClangFormat(header_file.name)

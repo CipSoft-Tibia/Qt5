@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,20 @@ namespace blink {
 
 // Outline styles
 enum class NGOutlineType {
-  kDontIncludeBlockVisualOverflow,  // Standard outline
-  kIncludeBlockVisualOverflow,      // Focus outline
+  kDontIncludeBlockVisualOverflow,       // Standard outline
+  kIncludeBlockVisualOverflow,           // Focus outline
+  kIncludeBlockVisualOverflowForAnchor,  // Focus outline for anchor
 };
+
+inline bool ShouldIncludeBlockVisualOverflow(NGOutlineType type) {
+  return type == NGOutlineType::kIncludeBlockVisualOverflow ||
+         type == NGOutlineType::kIncludeBlockVisualOverflowForAnchor;
+}
+
+inline bool ShouldIncludeBlockVisualOverflowForAnchorOnly(NGOutlineType type) {
+  return type == NGOutlineType::kIncludeBlockVisualOverflowForAnchor;
+}
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_NG_OUTLINE_TYPE_H_

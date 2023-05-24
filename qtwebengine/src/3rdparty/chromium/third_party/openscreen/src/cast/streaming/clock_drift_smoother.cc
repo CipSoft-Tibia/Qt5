@@ -6,15 +6,18 @@
 
 #include <cmath>
 
+#include "util/chrono_helpers.h"
 #include "util/osp_logging.h"
 #include "util/saturate_cast.h"
 
 namespace openscreen {
 namespace cast {
-
 namespace {
+
 constexpr Clock::time_point kNullTime = Clock::time_point::min();
 }
+
+using clock_operators::operator<<;
 
 ClockDriftSmoother::ClockDriftSmoother(Clock::duration time_constant)
     : time_constant_(time_constant),
@@ -55,8 +58,20 @@ void ClockDriftSmoother::Update(Clock::time_point now,
     // Update(), the more-heavily |measured_offset| will be weighed.
     const double weight =
         elapsed_ticks / (elapsed_ticks + time_constant_.count());
-    estimated_tick_offset_ = weight * measured_offset.count() +
-                             (1.0 - weight) * estimated_tick_offset_;
+    estimated_tick_offset_ =
+        weight * static_cast<double>(measured_offset.count()) +
+        (1.0 - weight) * estimated_tick_offset_;
+
+    // If after calculation the current offset is lower than the weighted
+    // average, we can simply use it and eliminate some of the error due to
+    // transmission time.
+    if (measured_offset < Current()) {
+      Reset(now, measured_offset);
+    }
+
+    OSP_VLOG << "Local clock is ahead of the remote clock by: measured = "
+             << measured_offset << ", "
+             << "filtered = " << Current() << ".";
   }
 }
 

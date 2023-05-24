@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
  * \qmltype Bars3D
@@ -33,7 +9,7 @@
  * \ingroup datavisualization_qml
  * \brief 3D bar graph.
  *
- * This type enables developers to render bar graphs in 3D with Qt Quick 2.
+ * This type enables developers to render bar graphs in 3D with Qt Quick.
  *
  * You will need to import data visualization module to use this type:
  *
@@ -43,7 +19,7 @@
  *
  * \snippet doc_src_qmldatavisualization.cpp 1
  *
- * See \l{Qt Quick 2 Bars Example} for more thorough usage example.
+ * See \l{Simple Bar Graph} for more thorough usage example.
  *
  * \sa Bar3DSeries, ItemModelBarDataProxy, Scatter3D, Surface3D, {Qt Data Visualization C++ Classes}
  */
@@ -108,6 +84,14 @@
  */
 
 /*!
+ * \qmlproperty size Bars3D::barSeriesMargin
+ * \since 6.3
+ *
+ * Margin between series columns in X and Z dimensions. Preset to \c {(0.0, 0.0)} by default.
+ * Sensible values are on the range [0,1).
+ */
+
+/*!
  * \qmlproperty Bar3DSeries Bars3D::selectedSeries
  * The selected series or \c null. If \l {QAbstract3DGraph::selectionMode}{selectionMode} has
  * the \c SelectionMultiSeries flag set, this property holds the series that
@@ -116,7 +100,7 @@
 
 /*!
  * \qmlproperty list<Bar3DSeries> Bars3D::seriesList
- * \default
+ * \qmldefault
  * The series of the graph.
  * By default, this property contains an empty list.
  * To set the series, either use the addSeries() function or define them as children of the graph.
@@ -156,11 +140,13 @@
  * generate the row or column labels on the axes in cases where the labels are not explicitly set
  * to the axes. If the newly added series has specified a selected bar, it will be highlighted and
  * any existing selection will be cleared. Only one added series can have an active selection.
+ * \sa AbstractGraph3D::hasSeries()
  */
 
 /*!
  * \qmlmethod void Bars3D::removeSeries(Bar3DSeries series)
  * Remove the \a series from the graph.
+ * \sa AbstractGraph3D::hasSeries()
  */
 
 /*!
@@ -171,4 +157,5 @@
  * \note When moving a series to a new \a index that is after its old index,
  * the new position in list is calculated as if the series was still in its old
  * index, so the final index is actually the \a index decremented by one.
+ * \sa AbstractGraph3D::hasSeries()
  */

@@ -1,44 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include "connectionedit_p.h"
 
 #include <QtDesigner/abstractformwindow.h>
 
+#include <QtWidgets/qapplication.h>
+#include <QtWidgets/qmenu.h>
+
+#include <QtGui/qaction.h>
 #include <QtGui/qpainter.h>
 #include <QtGui/qevent.h>
 #include <QtGui/qfontmetrics.h>
 #include <QtGui/qpixmap.h>
 #include <QtGui/qtransform.h>
-#include <QtWidgets/qapplication.h>
-#include <QtWidgets/qmenu.h>
-#include <QtWidgets/qaction.h>
 
 #include <QtCore/qmap.h>
 
@@ -204,7 +180,7 @@ DeleteConnectionsCommand::DeleteConnectionsCommand(ConnectionEdit *edit,
 
 void DeleteConnectionsCommand::redo()
 {
-    for (Connection *con : qAsConst(m_con_list)) {
+    for (Connection *con : std::as_const(m_con_list)) {
         const int idx = edit()->indexOfConnection(con);
         emit edit()->aboutToRemoveConnection(con);
         Q_ASSERT(edit()->m_con_list.contains(con));
@@ -218,7 +194,7 @@ void DeleteConnectionsCommand::redo()
 
 void DeleteConnectionsCommand::undo()
 {
-    for (Connection *con : qAsConst(m_con_list)) {
+    for (Connection *con : std::as_const(m_con_list)) {
         Q_ASSERT(!edit()->m_con_list.contains(con));
         emit edit()->aboutToAddConnection(edit()->m_con_list.size());
         edit()->m_con_list.append(con);
@@ -632,7 +608,7 @@ void Connection::trimLine()
 {
     if (m_source == nullptr || m_source_pos == QPoint(-1, -1) || m_target_pos == QPoint(-1, -1))
         return;
-    int cnt = m_knee_list.size();
+    auto cnt = m_knee_list.size();
     if (cnt < 2)
         return;
 
@@ -721,7 +697,7 @@ QRegion Connection::region() const
 {
     QRegion result;
 
-    for (int i = 0; i < m_knee_list.size() - 1; ++i)
+    for (qsizetype i = 0; i < m_knee_list.size() - 1; ++i)
         result = result.united(lineRect(m_knee_list.at(i), m_knee_list.at(i + 1)));
 
     if (!m_arrow_head.isEmpty()) {
@@ -754,7 +730,7 @@ void Connection::update(bool update_widgets) const
 
 void Connection::paint(QPainter *p) const
 {
-    for (int i = 0; i < m_knee_list.size() - 1; ++i)
+    for (qsizetype i = 0; i < m_knee_list.size() - 1; ++i)
         p->drawLine(m_knee_list.at(i), m_knee_list.at(i + 1));
 
     if (!m_arrow_head.isEmpty()) {
@@ -786,7 +762,7 @@ QRect Connection::endPointRect(EndPoint::Type type) const
 
 CETypes::LineDir Connection::labelDir(EndPoint::Type type) const
 {
-    const int cnt = m_knee_list.size();
+    const auto cnt = m_knee_list.size();
     if (cnt < 2)
         return RightDir;
 
@@ -806,7 +782,7 @@ CETypes::LineDir Connection::labelDir(EndPoint::Type type) const
 
 QRect Connection::labelRect(EndPoint::Type type) const
 {
-    const int cnt = m_knee_list.size();
+    const auto cnt = m_knee_list.size();
     if (cnt < 2)
         return QRect();
     const QString text = label(type);
@@ -984,7 +960,7 @@ void ConnectionEdit::updateBackground()
     if (!m_enable_update_background)
         return;
 
-    for (Connection *c : qAsConst(m_con_list))
+    for (Connection *c : std::as_const(m_con_list))
         c->updateVisibility();
 
     updateLines();
@@ -1062,7 +1038,7 @@ void ConnectionEdit::paintEvent(QPaintEvent *e)
 
     WidgetSet heavy_highlight_set, light_highlight_set;
 
-    for (Connection *con : qAsConst(m_con_list)) {
+    for (Connection *con : std::as_const(m_con_list)) {
         if (!con->isVisible())
             continue;
 
@@ -1080,7 +1056,7 @@ void ConnectionEdit::paintEvent(QPaintEvent *e)
     c.setAlpha(BG_ALPHA);
     p.setBrush(c);
 
-    for (QWidget *w : qAsConst(heavy_highlight_set)) {
+    for (QWidget *w : std::as_const(heavy_highlight_set)) {
         p.drawRect(fixRect(widgetRect(w)));
         light_highlight_set.remove(w);
     }
@@ -1090,12 +1066,12 @@ void ConnectionEdit::paintEvent(QPaintEvent *e)
     c.setAlpha(BG_ALPHA);
     p.setBrush(c);
 
-    for (QWidget *w : qAsConst(light_highlight_set))
+    for (QWidget *w : std::as_const(light_highlight_set))
         p.drawRect(fixRect(widgetRect(w)));
 
     p.setBrush(palette().color(QPalette::Base));
     p.setPen(palette().color(QPalette::Text));
-    for (Connection *con : qAsConst(m_con_list)) {
+    for (Connection *con : std::as_const(m_con_list)) {
         if (con->isVisible()) {
             paintLabel(&p, EndPoint::Source, con);
             paintLabel(&p, EndPoint::Target, con);
@@ -1105,7 +1081,7 @@ void ConnectionEdit::paintEvent(QPaintEvent *e)
     p.setPen(m_active_color);
     p.setBrush(m_active_color);
 
-    for (Connection *con : qAsConst(m_con_list)) {
+    for (Connection *con : std::as_const(m_con_list)) {
         if (!selected(con) || !con->isVisible())
             continue;
 
@@ -1143,7 +1119,7 @@ void ConnectionEdit::mousePressEvent(QMouseEvent *e)
     // otherwise, widgets covered by the connection labels cannot be accessed
     Connection *con_under_mouse = nullptr;
     if (!m_widget_under_mouse || m_widget_under_mouse == m_bg_widget)
-        con_under_mouse = connectionAt(e->pos());
+        con_under_mouse = connectionAt(e->position().toPoint());
 
     m_start_connection_on_drag = false;
     const bool toggleSelection = e->modifiers().testFlag(Qt::ControlModifier);
@@ -1157,7 +1133,7 @@ void ConnectionEdit::mousePressEvent(QMouseEvent *e)
         case Editing:
             if (!m_end_point_under_mouse.isNull()) {
                 if (!toggleSelection)
-                    startDrag(m_end_point_under_mouse, e->pos());
+                    startDrag(m_end_point_under_mouse, e->position().toPoint());
             } else if (con_under_mouse != nullptr) {
                 if (toggleSelection) {
                     setSelected(con_under_mouse, !selected(con_under_mouse));
@@ -1213,7 +1189,7 @@ void ConnectionEdit::mouseReleaseEvent(QMouseEvent *e)
             if (m_widget_under_mouse.isNull())
                 abortConnection();
             else
-                endConnection(m_widget_under_mouse, e->pos());
+                endConnection(m_widget_under_mouse, e->position().toPoint());
 #if QT_CONFIG(cursor)
             setCursor(QCursor());
 #endif
@@ -1221,7 +1197,7 @@ void ConnectionEdit::mouseReleaseEvent(QMouseEvent *e)
         case Editing:
             break;
         case Dragging:
-            endDrag(e->pos());
+            endDrag(e->position().toPoint());
             break;
     }
 }
@@ -1261,24 +1237,24 @@ void ConnectionEdit::findObjectsUnderMouse(const QPoint &pos)
 
 void ConnectionEdit::mouseMoveEvent(QMouseEvent *e)
 {
-    findObjectsUnderMouse(e->pos());
+    findObjectsUnderMouse(e->position().toPoint());
     switch (state()) {
         case Connecting:
-            continueConnection(m_widget_under_mouse, e->pos());
+            continueConnection(m_widget_under_mouse, e->position().toPoint());
             break;
         case Editing:
             if ((e->buttons() & Qt::LeftButton)
                     && m_start_connection_on_drag
                     && !m_widget_under_mouse.isNull()) {
                 m_start_connection_on_drag = false;
-                startConnection(m_widget_under_mouse, e->pos());
+                startConnection(m_widget_under_mouse, e->position().toPoint());
 #if QT_CONFIG(cursor)
                 setCursor(Qt::CrossCursor);
 #endif
             }
             break;
         case Dragging:
-            continueDrag(e->pos());
+            continueDrag(e->position().toPoint());
             break;
     }
 
@@ -1357,9 +1333,9 @@ static ConnectionEdit::ConnectionSet findConnectionsOf(const ConnectionEdit::Con
 {
     ConnectionEdit::ConnectionSet rc;
 
-    const ConnectionEdit::ConnectionList::const_iterator ccend = cl.constEnd();
+    const auto ccend = cl.cend();
     for ( ; oi1 != oi2; ++oi1) {
-        for (ConnectionEdit::ConnectionList::const_iterator cit = cl.constBegin(); cit != ccend; ++cit) {
+        for (auto cit = cl.constBegin(); cit != ccend; ++cit) {
             Connection *con = *cit;
             if (con->object(ConnectionEdit::EndPoint::Source) == *oi1 || con->object(ConnectionEdit::EndPoint::Target) == *oi1)
                 rc.insert(con, con);
@@ -1426,7 +1402,7 @@ bool ConnectionEdit::selected(const Connection *con) const
 
 void ConnectionEdit::selectNone()
 {
-    for (Connection *con : qAsConst(m_sel_con_set))
+    for (Connection *con : std::as_const(m_sel_con_set))
         con->update();
 
     m_sel_con_set.clear();
@@ -1436,7 +1412,7 @@ void ConnectionEdit::selectAll()
 {
     if (m_sel_con_set.size() == m_con_list.size())
         return;
-    for (Connection *con : qAsConst(m_con_list))
+    for (Connection *con : std::as_const(m_con_list))
         setSelected(con, true);
 }
 
@@ -1515,7 +1491,7 @@ void ConnectionEdit::addConnection(Connection *con)
 
 void ConnectionEdit::updateLines()
 {
-    for (Connection *con : qAsConst(m_con_list))
+    for (Connection *con : std::as_const(m_con_list))
         con->checkWidgets();
 }
 

@@ -1,44 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLCOMPONENT_H
 #define QQMLCOMPONENT_H
+
+#include <QtCore/qvariant.h>
+#include <QtCore/qmap.h>
 
 #include <QtQml/qqml.h>
 #include <QtQml/qqmlerror.h>
@@ -71,8 +38,9 @@ class Q_QML_EXPORT QQmlComponent : public QObject
     Q_PROPERTY(Status status READ status NOTIFY statusChanged)
     Q_PROPERTY(QUrl url READ url CONSTANT)
     QML_NAMED_ELEMENT(Component)
+    QML_ADDED_IN_VERSION(2, 0)
     QML_ATTACHED(QQmlComponentAttached)
-    Q_CLASSINFO("QML.Builtin", "QML")
+    Q_CLASSINFO("QML.OmitFromQmlTypes", "true")
 
 public:
     enum CompilationMode { PreferSynchronous, Asynchronous };
@@ -84,6 +52,10 @@ public:
     QQmlComponent(QQmlEngine *, const QString &fileName, CompilationMode mode, QObject *parent = nullptr);
     QQmlComponent(QQmlEngine *, const QUrl &url, QObject *parent = nullptr);
     QQmlComponent(QQmlEngine *, const QUrl &url, CompilationMode mode, QObject *parent = nullptr);
+
+    explicit QQmlComponent(QQmlEngine *engine, QAnyStringView uri, QAnyStringView typeName, QObject *parent = nullptr);
+    explicit QQmlComponent(QQmlEngine *engine, QAnyStringView uri, QAnyStringView typeName, CompilationMode mode, QObject *parent = nullptr);
+
     ~QQmlComponent() override;
 
     enum Status { Null, Ready, Loading, Error };
@@ -94,6 +66,8 @@ public:
     bool isReady() const;
     bool isError() const;
     bool isLoading() const;
+
+    bool isBound() const;
 
     QList<QQmlError> errors() const;
     Q_INVOKABLE QString errorString() const;
@@ -119,6 +93,8 @@ public:
 public Q_SLOTS:
     void loadUrl(const QUrl &url);
     void loadUrl(const QUrl &url, CompilationMode mode);
+    void loadFromModule(QAnyStringView uri, QAnyStringView typeName,
+                        QQmlComponent::CompilationMode mode = PreferSynchronous);
     void setData(const QByteArray &, const QUrl &baseUrl);
 
 Q_SIGNALS:
@@ -127,7 +103,14 @@ Q_SIGNALS:
 
 protected:
     QQmlComponent(QQmlComponentPrivate &dd, QObject* parent);
+
+#if QT_DEPRECATED_SINCE(6, 3)
+    QT_DEPRECATED_X("Use the overload with proper arguments")
     Q_INVOKABLE void createObject(QQmlV4Function *);
+#endif
+
+    Q_INVOKABLE QObject *createObject(
+            QObject *parent = nullptr, const QVariantMap &properties = {});
     Q_INVOKABLE void incubateObject(QQmlV4Function *);
 
 private:

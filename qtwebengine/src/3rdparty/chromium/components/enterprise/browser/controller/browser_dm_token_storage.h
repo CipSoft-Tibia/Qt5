@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,17 +8,15 @@
 #include <memory>
 #include <string>
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
-#include "base/optional.h"
 #include "base/run_loop.h"
 #include "base/sequence_checker.h"
-#include "base/single_thread_task_runner.h"
 #include "base/strings/string_piece_forward.h"
 #include "base/system/sys_info.h"
+#include "base/task/single_thread_task_runner.h"
 #include "components/policy/core/common/cloud/dm_token.h"
 
 namespace base {
@@ -53,10 +51,16 @@ class BrowserDMTokenStorage {
     // Gets the boolean value that determines if error message will be
     // displayed when enrollment fails.
     virtual bool InitEnrollmentErrorOption() = 0;
-    // Function called by |SaveDMToken| that returns if the operation was a
+    // Returns whether the enrollment token can be initialized (if it is not
+    // already) when `InitIfNeeded` is called.
+    virtual bool CanInitEnrollmentToken() const = 0;
+    // Function called by `SaveDMToken()` that returns if the operation was a
     // success.
     virtual StoreTask SaveDMTokenTask(const std::string& token,
                                       const std::string& client_id) = 0;
+    // Function called by `DeleteDMToken()` that returns if the operation was a
+    // success.
+    virtual StoreTask DeleteDMTokenTask(const std::string& client_id) = 0;
     // Gets the specific task runner that should be used by |SaveDMToken|.
     virtual scoped_refptr<base::TaskRunner> SaveDMTokenTaskRunner() = 0;
   };
@@ -64,13 +68,15 @@ class BrowserDMTokenStorage {
   // Returns the global singleton object. Must be called from the UI thread. The
   // first caller must set the platform-specific delegate via SetDelegate().
   static BrowserDMTokenStorage* Get();
+
+  BrowserDMTokenStorage(const BrowserDMTokenStorage&) = delete;
+  BrowserDMTokenStorage& operator=(const BrowserDMTokenStorage&) = delete;
+
   // Sets the delegate to use for platform-specific operations.
   static void SetDelegate(std::unique_ptr<Delegate> delegate);
 
   // Returns a client ID unique to the machine.
   std::string RetrieveClientId();
-  // Returns the serial number of the machine.
-  std::string RetrieveSerialNumber();
   // Returns the enrollment token, or an empty string if there is none.
   std::string RetrieveEnrollmentToken();
   // Asynchronously stores |dm_token| and calls |callback| with a boolean to
@@ -120,20 +126,18 @@ class BrowserDMTokenStorage {
   // is called the first time the BrowserDMTokenStorage is interacted with.
   void InitIfNeeded();
 
-  // Gets the client ID and returns it. This implementation is shared by all
-  // platforms.
-  std::string InitSerialNumber();
-
   // Saves the DM token.
   void SaveDMToken(const std::string& token);
+  // Deletes the DM token.
+  void DeleteDMToken();
 
   // Will be called after the DM token is stored.
   StoreCallback store_callback_;
 
-  bool is_initialized_;
+  bool is_initialized_{false};
+  bool is_init_enrollment_token_skipped_{true};
 
   std::string client_id_;
-  base::Optional<std::string> serial_number_;
   std::string enrollment_token_;
   DMToken dm_token_;
   bool should_display_error_message_on_failure_;
@@ -141,8 +145,6 @@ class BrowserDMTokenStorage {
   SEQUENCE_CHECKER(sequence_checker_);
 
   base::WeakPtrFactory<BrowserDMTokenStorage> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(BrowserDMTokenStorage);
 };
 
 }  // namespace policy

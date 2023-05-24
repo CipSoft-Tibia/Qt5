@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,12 @@
 #include <utility>
 
 #include "components/prefs/pref_service.h"
+#include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
+#include "components/safe_browsing/core/common/safe_browsing_settings_metrics.h"
 #include "components/security_interstitials/content/settings_page_helper.h"
 #include "components/security_interstitials/core/metrics_helper.h"
+#include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/referrer.h"
 
@@ -85,7 +88,16 @@ void SecurityInterstitialControllerClient::OpenUrlInNewForegroundTab(
 }
 
 void SecurityInterstitialControllerClient::OpenEnhancedProtectionSettings() {
+#if BUILDFLAG(IS_ANDROID)
   settings_page_helper_->OpenEnhancedProtectionSettings(web_contents_);
+#else
+  if (safe_browsing::kEsbIphBubbleAndCollapseSettingsEnableIph.Get()) {
+    safe_browsing::LogShowEnhancedProtectionAction();
+    settings_page_helper_->OpenEnhancedProtectionSettingsWithIph(web_contents_);
+  } else {
+    settings_page_helper_->OpenEnhancedProtectionSettings(web_contents_);
+  }
+#endif
 }
 
 const std::string&
@@ -114,8 +126,12 @@ void SecurityInterstitialControllerClient::LaunchDateAndTimeSettings() {
 
 bool SecurityInterstitialControllerClient::CanGoBackBeforeNavigation() {
   // If checking before navigating to the interstitial, back to safety is
-  // possible if there is already at least one prior entry.
-  return web_contents_->GetController().GetEntryCount() > 0;
+  // possible if the current entry is not the initial NavigationEtry. This
+  // preserves old behavior to when we return nullptr instead of the initial
+  // entry when no navigation has committed.
+  return !web_contents_->GetController()
+              .GetLastCommittedEntry()
+              ->IsInitialEntry();
 }
 
 }  // namespace security_interstitials

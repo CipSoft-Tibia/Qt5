@@ -1,10 +1,11 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "printing/page_setup.h"
 
 #include <algorithm>
+#include <tuple>
 
 #include "base/check_op.h"
 
@@ -12,13 +13,13 @@ namespace printing {
 
 namespace {
 
-// Checks whether |printable_area| can be used to form a valid symmetrical
+// Checks whether `printable_area` can be used to form a valid symmetrical
 // printable area, so that margin_left equals margin_right, and margin_top
 // equals margin_bottom.  For example if
 // printable_area.x() * 2 >= page_size.width(), then the
 // content_width = page_size.width() - 2 * printable_area.x() would be zero or
 // negative, which is invalid.
-// |page_size| is the physical page size that includes margins.
+// `page_size` is the physical page size that includes margins.
 bool IsValidPrintableArea(const gfx::Size& page_size,
                           const gfx::Rect& printable_area) {
   return !printable_area.IsEmpty() && printable_area.x() >= 0 &&
@@ -36,6 +37,25 @@ bool IsValidPrintableArea(const gfx::Size& page_size,
 PageMargins::PageMargins()
     : header(0), footer(0), left(0), right(0), top(0), bottom(0) {}
 
+PageMargins::PageMargins(int header,
+                         int footer,
+                         int left,
+                         int right,
+                         int top,
+                         int bottom)
+    : header(header),
+      footer(footer),
+      left(left),
+      right(right),
+      top(top),
+      bottom(bottom) {}
+
+bool PageMargins::operator==(const PageMargins& other) const {
+  return std::tie(header, footer, left, right, top, bottom) ==
+         std::tie(other.header, other.footer, other.left, other.right,
+                  other.top, other.bottom);
+}
+
 void PageMargins::Clear() {
   header = 0;
   footer = 0;
@@ -45,18 +65,32 @@ void PageMargins::Clear() {
   bottom = 0;
 }
 
-bool PageMargins::Equals(const PageMargins& rhs) const {
-  return header == rhs.header && footer == rhs.footer && left == rhs.left &&
-         top == rhs.top && right == rhs.right && bottom == rhs.bottom;
-}
-
 PageSetup::PageSetup() {
   Clear();
+}
+
+PageSetup::PageSetup(const gfx::Size& physical_size,
+                     const gfx::Rect& printable_area,
+                     const PageMargins& requested_margins,
+                     bool forced_margins,
+                     int text_height)
+    : requested_margins_(requested_margins), forced_margins_(forced_margins) {
+  Init(physical_size, printable_area, text_height);
 }
 
 PageSetup::PageSetup(const PageSetup& other) = default;
 
 PageSetup::~PageSetup() = default;
+
+bool PageSetup::operator==(const PageSetup& other) const {
+  return std::tie(physical_size_, printable_area_, overlay_area_, content_area_,
+                  effective_margins_, requested_margins_, forced_margins_,
+                  text_height_) ==
+         std::tie(other.physical_size_, other.printable_area_,
+                  other.overlay_area_, other.content_area_,
+                  other.effective_margins_, other.requested_margins_,
+                  other.forced_margins_, other.text_height_);
+}
 
 // static
 gfx::Rect PageSetup::GetSymmetricalPrintableArea(
@@ -86,16 +120,6 @@ void PageSetup::Clear() {
   effective_margins_.Clear();
   text_height_ = 0;
   forced_margins_ = false;
-}
-
-bool PageSetup::Equals(const PageSetup& rhs) const {
-  return physical_size_ == rhs.physical_size_ &&
-         printable_area_ == rhs.printable_area_ &&
-         overlay_area_ == rhs.overlay_area_ &&
-         content_area_ == rhs.content_area_ &&
-         effective_margins_.Equals(rhs.effective_margins_) &&
-         requested_margins_.Equals(rhs.requested_margins_) &&
-         text_height_ == rhs.text_height_;
 }
 
 void PageSetup::Init(const gfx::Size& physical_size,

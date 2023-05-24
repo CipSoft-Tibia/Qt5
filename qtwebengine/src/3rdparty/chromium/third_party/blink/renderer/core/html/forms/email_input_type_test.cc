@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,7 @@ namespace blink {
 namespace {
 
 void ExpectToSucceed(const String& source) {
-  std::unique_ptr<ScriptRegexp> email_regexp =
-      EmailInputType::CreateEmailRegexp();
+  ScriptRegexp* email_regexp = EmailInputType::CreateEmailRegexp();
   String result =
       EmailInputType::ConvertEmailAddressToASCII(*email_regexp, source);
   EXPECT_NE(source, result);
@@ -21,8 +20,7 @@ void ExpectToSucceed(const String& source) {
 }
 
 void ExpectToFail(const String& source) {
-  std::unique_ptr<ScriptRegexp> email_regexp =
-      EmailInputType::CreateEmailRegexp();
+  ScriptRegexp* email_regexp = EmailInputType::CreateEmailRegexp();
   // Conversion failed.  The resultant value might contains non-ASCII
   // characters, and not a valid email address.
   EXPECT_FALSE(EmailInputType::IsValidEmailAddress(

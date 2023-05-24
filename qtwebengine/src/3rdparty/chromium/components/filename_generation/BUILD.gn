@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -15,6 +15,7 @@ static_library("filename_generation") {
   deps = [
     "//base",
     "//base:i18n",
+    "//build:chromeos_buildflags",
     "//components/url_formatter:url_formatter",
     "//net",
     "//url",
@@ -28,6 +29,7 @@ source_set("unit_tests") {
   deps = [
     ":filename_generation",
     "//base",
+    "//build:chromeos_buildflags",
     "//net",
     "//testing/gtest",
     "//url",

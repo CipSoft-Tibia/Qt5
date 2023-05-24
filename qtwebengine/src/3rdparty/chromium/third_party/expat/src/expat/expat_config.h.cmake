@@ -1,5 +1,8 @@
 /* expat_config.h.cmake.  Based upon generated expat_config.h.in.  */
 
+#ifndef EXPAT_CONFIG_H
+#define EXPAT_CONFIG_H 1
+
 /* 1234 = LIL_ENDIAN, 4321 = BIGENDIAN */
 #cmakedefine BYTEORDER @BYTEORDER@
 
@@ -94,7 +97,7 @@
 
 #if ! defined(_WIN32)
 /* Define to include code reading entropy from `/dev/urandom'. */
-  #cmakedefine XML_DEV_URANDOM
+#cmakedefine XML_DEV_URANDOM
 #endif
 
 /* Define to make parameter entity parsing functionality available. */
@@ -109,7 +112,9 @@
 #endif
 
 /* Define to `long' if <sys/types.h> does not define. */
-#cmakedefine off_t @OFF_T@
+#cmakedefine off_t @off_t@
 
 /* Define to `unsigned' if <sys/types.h> does not define. */
-#cmakedefine size_t @SIZE_T@
+#cmakedefine size_t @size_t@
+
+#endif // ndef EXPAT_CONFIG_H

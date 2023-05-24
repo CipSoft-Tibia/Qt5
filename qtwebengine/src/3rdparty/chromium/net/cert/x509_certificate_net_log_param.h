@@ -1,12 +1,10 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef NET_CERT_X509_CERTIFICATE_NET_LOG_PARAM_H_
 #define NET_CERT_X509_CERTIFICATE_NET_LOG_PARAM_H_
 
-#include <memory>
-#include <string>
 #include "net/base/net_export.h"
 
 namespace base {

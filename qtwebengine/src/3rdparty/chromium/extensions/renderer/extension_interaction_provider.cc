@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -28,12 +28,12 @@ constexpr char ExtensionInteractionData::kPerContextDataKey[];
 // ExtensionInteractionProvider::Token -----------------------------------------
 ExtensionInteractionProvider::Token::Token(bool for_worker)
     : is_for_service_worker_(for_worker) {}
-ExtensionInteractionProvider::Token::~Token() {}
+ExtensionInteractionProvider::Token::~Token() = default;
 
 // ExtensionInteractionProvider::Scope -----------------------------------------
 
-ExtensionInteractionProvider::Scope::Scope() {}
-ExtensionInteractionProvider::Scope::~Scope() {}
+ExtensionInteractionProvider::Scope::Scope() = default;
+ExtensionInteractionProvider::Scope::~Scope() = default;
 
 // static.
 std::unique_ptr<ExtensionInteractionProvider::Scope>

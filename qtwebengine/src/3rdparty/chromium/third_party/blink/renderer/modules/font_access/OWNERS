@@ -1,6 +1,3 @@
-drott@chromium.org
-jsbell@chromium.org
-oyiptong@chromium.org
+file://content/browser/font_access/OWNERS
 
-# TEAM: storage-dev@chromium.org
-# COMPONENT: Blink>Storage>FontAccess
+drott@chromium.org

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qaxwidgetpropertysheet.h"
 #include "qdesigneraxwidget.h"
@@ -43,6 +18,8 @@ static const char *geometryPropertyC = "geometry";
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 const char *QAxWidgetPropertySheet::controlPropertyName = "control";
 
 static QString designerPropertyToString(const QVariant &value)
@@ -55,7 +32,7 @@ static QString designerPropertyToString(const QVariant &value)
 QAxWidgetPropertySheet::QAxWidgetPropertySheet(QDesignerAxWidget *object, QObject *parent) :
     QDesignerPropertySheet(object, parent),
     m_controlProperty(controlPropertyName),
-    m_propertyGroup(QStringLiteral("QAxWidget"))
+    m_propertyGroup(u"QAxWidget"_s)
 {
      if (!axWidget()->loaded()) { // For some obscure reason....
         const int controlIndex = QDesignerPropertySheet::indexOf(m_controlProperty);
@@ -68,6 +45,12 @@ bool QAxWidgetPropertySheet::isEnabled(int index) const
     if (propertyName(index) == m_controlProperty)
         return false;
     return QDesignerPropertySheet::isEnabled(index);
+}
+
+bool QAxWidgetPropertySheet::isVisible(int index) const
+{
+    // classContext is ulong, which the property editor does not support
+    return propertyName(index) != "classContext"_L1;
 }
 
 bool QAxWidgetPropertySheet::dynamicPropertiesAllowed() const
@@ -84,7 +67,7 @@ QDesignerAxWidget *QAxWidgetPropertySheet::axWidget() const
 bool QAxWidgetPropertySheet::reset(int index)
 {
     const QString name = propertyName(index);
-    QMap<QString, QVariant>::iterator it = m_currentProperties.changedProperties.find(name);
+    const auto it = m_currentProperties.changedProperties.find(name);
     if (it !=  m_currentProperties.changedProperties.end())
         m_currentProperties.changedProperties.erase(it);
     if (name != m_controlProperty)

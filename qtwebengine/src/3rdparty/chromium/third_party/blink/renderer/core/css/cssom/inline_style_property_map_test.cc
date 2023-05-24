@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/style_property_shorthand.h"
+#include "third_party/blink/renderer/core/testing/null_execution_context.h"
 
 namespace blink {
 
@@ -16,7 +17,9 @@ TEST(InlineStylePropertyMapTest, PendingSubstitutionValueCrash) {
   // Test that trying to reify any longhands with a CSSPendingSubstitutionValue
   // does not cause a crash.
 
-  Document* document = Document::CreateForTest();
+  ScopedNullExecutionContext execution_context;
+  Document* document =
+      Document::CreateForTest(execution_context.GetExecutionContext());
   Element* div = document->CreateRawElement(html_names::kDivTag);
   InlineStylePropertyMap map(div);
 
@@ -24,8 +27,12 @@ TEST(InlineStylePropertyMapTest, PendingSubstitutionValueCrash) {
   // reifying all longhands.
   for (CSSPropertyID property_id : CSSPropertyIDList()) {
     const CSSProperty& shorthand = CSSProperty::Get(property_id);
-    if (!shorthand.IsShorthand())
+    if (!shorthand.IsShorthand()) {
       continue;
+    }
+    if (shorthand.Exposure() == CSSExposure::kNone) {
+      continue;
+    }
     div->SetInlineStyleProperty(property_id, "var(--dummy)");
     const StylePropertyShorthand& longhands = shorthandForProperty(property_id);
     for (unsigned i = 0; i < longhands.length(); i++) {

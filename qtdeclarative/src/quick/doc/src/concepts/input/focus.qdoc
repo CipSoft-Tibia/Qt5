@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page qtquick-input-focus.html
@@ -42,8 +18,8 @@ scope based extension to Qt's traditional keyboard focus model.
 When the user presses or releases a key, the following occurs:
 \list 1
 \li Qt receives the key action and generates a key event.
-\li If a \l QQuickWindow is the active window, the key event
-is delivered to it.
+\li If a \l QQuickWindow is the \l{QGuiApplication::focusWindow()}{focus window}
+of the application, the key event is delivered to it.
 \li The key event is delivered by the scene to the \l Item with
 \e {active focus}. If no item has active focus, the key event is ignored.
 \li If the \l QQuickItem with active focus accepts the key event, propagation
@@ -76,8 +52,9 @@ type whose text is determined by whether or not it has active focus.
 An \l Item requests focus by setting the \c focus property to \c true.
 
 For very simple cases simply setting the \c focus property is sometimes
-sufficient. If we run the following example with \l{qtquick-qmlscene.html}
-{qmlscene}, we see that the \c {keyHandler} type has active focus and
+sufficient. If we run the following example with the
+\l {Prototyping with the QML Runtime Tool}{qml tool},
+we see that the \c {keyHandler} type has active focus and
 pressing the \c A, \c B, or \c C keys modifies the text appropriately.
 
 \snippet qml/focus/basicwidget.qml focus true
@@ -196,7 +173,7 @@ property. As the \l ListView is a focus scope, this doesn't affect the
 rest of the application. However, if the \l ListView itself has
 active focus this causes the delegate itself to receive active focus.
 In this example, the root type of the delegate is also a focus scope,
-which in turn gives active focus to the \c {Text} type that actually performs
+which in turn gives active focus to the \l {TextInput} type that actually performs
 the work of handling the \c {Return} key.
 
 All of the QML view classes, such as \l PathView and \l GridView, behave

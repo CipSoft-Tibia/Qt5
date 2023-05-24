@@ -1,12 +1,14 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/editing/visible_position.h"
 
 #include "third_party/blink/renderer/core/css/css_style_declaration.h"
+#include "third_party/blink/renderer/core/dom/text.h"
 #include "third_party/blink/renderer/core/editing/testing/editing_test_base.h"
 #include "third_party/blink/renderer/core/editing/visible_units.h"
+#include "third_party/blink/renderer/core/layout/layout_text.h"
 
 namespace blink {
 
@@ -138,41 +140,6 @@ TEST_F(VisiblePositionTest, PlaceholderBRWithCollapsedSpace) {
       CreateVisiblePosition(Position(target.lastChild(), 1)).DeepEquivalent());
 }
 
-TEST_F(VisiblePositionTest, ShadowV0DistributedNodes) {
-  const char* body_content =
-      "<p id='host'>00<b id='one'>11</b><b id='two'>22</b>33</p>";
-  const char* shadow_content =
-      "<a><span id='s4'>44</span><content select=#two></content><span "
-      "id='s5'>55</span><content select=#one></content><span "
-      "id='s6'>66</span></a>";
-  SetBodyContent(body_content);
-  ShadowRoot* shadow_root = SetShadowContent(shadow_content, "host");
-
-  Element* body = GetDocument().body();
-  Element* one = body->QuerySelector("#one");
-  Element* two = body->QuerySelector("#two");
-  Element* four = shadow_root->QuerySelector("#s4");
-  Element* five = shadow_root->QuerySelector("#s5");
-
-  EXPECT_EQ(Position(one->firstChild(), 0),
-            CanonicalPositionOf(Position(one, 0)));
-  EXPECT_EQ(Position(one->firstChild(), 0),
-            CreateVisiblePosition(Position(one, 0)).DeepEquivalent());
-  EXPECT_EQ(Position(one->firstChild(), 2),
-            CanonicalPositionOf(Position(two, 0)));
-  EXPECT_EQ(Position(one->firstChild(), 2),
-            CreateVisiblePosition(Position(two, 0)).DeepEquivalent());
-
-  EXPECT_EQ(PositionInFlatTree(five->firstChild(), 2),
-            CanonicalPositionOf(PositionInFlatTree(one, 0)));
-  EXPECT_EQ(PositionInFlatTree(five->firstChild(), 2),
-            CreateVisiblePosition(PositionInFlatTree(one, 0)).DeepEquivalent());
-  EXPECT_EQ(PositionInFlatTree(four->firstChild(), 2),
-            CanonicalPositionOf(PositionInFlatTree(two, 0)));
-  EXPECT_EQ(PositionInFlatTree(four->firstChild(), 2),
-            CreateVisiblePosition(PositionInFlatTree(two, 0)).DeepEquivalent());
-}
-
 #if DCHECK_IS_ON()
 
 TEST_F(VisiblePositionTest, NullIsValid) {
@@ -234,5 +201,162 @@ TEST_F(VisiblePositionTest, NonNullInvalidatedAfterStyleChange) {
 }
 
 #endif
+
+TEST_F(VisiblePositionTest, NormalizationAroundLineBreak) {
+  LoadAhem();
+  InsertStyleElement(
+      "div {"
+      "width: 5.5ch;"
+      "font: 10px/10px Ahem;"
+      "word-wrap: break-word;"
+      "}");
+  SetBodyContent(
+      "<div>line1line2</div>"
+      "<div>line1<br>line2</div>"
+      "<div>line1<wbr>line2</div>"
+      "<div>line1<span></span>line2</div>"
+      "<div>line1<span></span><span></span>line2</div>");
+
+  StaticElementList* tests = GetDocument().QuerySelectorAll("div");
+  for (unsigned i = 0; i < tests->length(); ++i) {
+    Element* test = tests->item(i);
+    Node* node1 = test->firstChild();
+    Node* node2 = test->lastChild();
+    PositionWithAffinity line1_end(Position(node1, 5), TextAffinity::kUpstream);
+    PositionWithAffinity line2_start(Position(node2, node1 == node2 ? 5 : 0),
+                                     TextAffinity::kDownstream);
+    PositionWithAffinity line1_end_normalized =
+        CreateVisiblePosition(line1_end).ToPositionWithAffinity();
+    PositionWithAffinity line2_start_normalized =
+        CreateVisiblePosition(line2_start).ToPositionWithAffinity();
+
+    EXPECT_FALSE(InSameLine(line1_end, line2_start));
+    EXPECT_FALSE(InSameLine(line1_end_normalized, line2_start_normalized));
+    EXPECT_TRUE(InSameLine(line1_end, line1_end_normalized));
+    EXPECT_TRUE(InSameLine(line2_start, line2_start_normalized));
+  }
+}
+
+TEST_F(VisiblePositionTest, SpacesAroundLineBreak) {
+  // Narrow <body> forces "a" and "b" to be in different lines.
+  InsertStyleElement("body { width: 1px }");
+  {
+    SetBodyContent("a b");
+    Node* ab = GetDocument().body()->firstChild();
+    EXPECT_EQ(Position(ab, 0),
+              CreateVisiblePosition(Position(ab, 0)).DeepEquivalent());
+    EXPECT_EQ(Position(ab, 1),
+              CreateVisiblePosition(Position(ab, 1)).DeepEquivalent());
+    EXPECT_EQ(Position(ab, 2),
+              CreateVisiblePosition(Position(ab, 2)).DeepEquivalent());
+  }
+  {
+    SetBodyContent("a<span> b</span>");
+    Node* a = GetDocument().body()->firstChild();
+    Node* b = a->nextSibling()->firstChild();
+    EXPECT_EQ(Position(a, 0),
+              CreateVisiblePosition(Position(a, 0)).DeepEquivalent());
+    EXPECT_EQ(Position(a, 1),
+              CreateVisiblePosition(Position(a, 1)).DeepEquivalent());
+    EXPECT_EQ(Position(a, 1),
+              CreateVisiblePosition(Position(b, 0)).DeepEquivalent());
+    EXPECT_EQ(Position(b, 1),
+              CreateVisiblePosition(Position(b, 1)).DeepEquivalent());
+    EXPECT_EQ(Position(b, 2),
+              CreateVisiblePosition(Position(b, 2)).DeepEquivalent());
+  }
+  {
+    SetBodyContent("<span>a</span> b");
+    Node* b = GetDocument().body()->lastChild();
+    Node* a = b->previousSibling()->firstChild();
+    EXPECT_EQ(Position(a, 0),
+              CreateVisiblePosition(Position(a, 0)).DeepEquivalent());
+    EXPECT_EQ(Position(a, 1),
+              CreateVisiblePosition(Position(a, 1)).DeepEquivalent());
+    EXPECT_EQ(Position(a, 1),
+              CreateVisiblePosition(Position(b, 0)).DeepEquivalent());
+    EXPECT_EQ(Position(b, 1),
+              CreateVisiblePosition(Position(b, 1)).DeepEquivalent());
+    EXPECT_EQ(Position(b, 2),
+              CreateVisiblePosition(Position(b, 2)).DeepEquivalent());
+  }
+  {
+    SetBodyContent("a <span>b</span>");
+    Node* a = GetDocument().body()->firstChild();
+    Node* b = a->nextSibling()->firstChild();
+    EXPECT_EQ(Position(a, 0),
+              CreateVisiblePosition(Position(a, 0)).DeepEquivalent());
+    EXPECT_EQ(Position(a, 1),
+              CreateVisiblePosition(Position(a, 1)).DeepEquivalent());
+    EXPECT_EQ(Position(a, 2),
+              CreateVisiblePosition(Position(a, 2)).DeepEquivalent());
+    EXPECT_EQ(Position(a, 2),
+              CreateVisiblePosition(Position(b, 0)).DeepEquivalent());
+    EXPECT_EQ(Position(b, 1),
+              CreateVisiblePosition(Position(b, 1)).DeepEquivalent());
+  }
+  {
+    SetBodyContent("<span>a </span>b");
+    Node* b = GetDocument().body()->lastChild();
+    Node* a = b->previousSibling()->firstChild();
+    EXPECT_EQ(Position(a, 0),
+              CreateVisiblePosition(Position(a, 0)).DeepEquivalent());
+    EXPECT_EQ(Position(a, 1),
+              CreateVisiblePosition(Position(a, 1)).DeepEquivalent());
+    EXPECT_EQ(Position(a, 2),
+              CreateVisiblePosition(Position(a, 2)).DeepEquivalent());
+    EXPECT_EQ(Position(a, 2),
+              CreateVisiblePosition(Position(b, 0)).DeepEquivalent());
+    EXPECT_EQ(Position(b, 1),
+              CreateVisiblePosition(Position(b, 1)).DeepEquivalent());
+  }
+}
+
+TEST_F(VisiblePositionTest, TextCombine) {
+  InsertStyleElement(
+      "div {"
+      "  font: 100px/110px Ahem;"
+      "  writing-mode: vertical-rl;"
+      "}"
+      "tcy { text-combine-upright: all; }");
+  SetBodyInnerHTML("<div>a<tcy id=target>01234</tcy>b</div>");
+  const auto& target = *GetElementById("target");
+  const auto& text_a = *To<Text>(target.previousSibling());
+  const auto& text_01234 = *To<Text>(target.firstChild());
+  const auto& text_b = *To<Text>(target.nextSibling());
+
+  EXPECT_EQ(Position(text_a, 0),
+            CreateVisiblePosition(Position(text_a, 0)).DeepEquivalent());
+  EXPECT_EQ(Position(text_a, 1),
+            CreateVisiblePosition(Position(text_a, 1)).DeepEquivalent());
+
+  if (text_01234.GetLayoutObject()->Parent()->IsLayoutNGTextCombine()) {
+    EXPECT_EQ(Position(text_01234, 0),
+              CreateVisiblePosition(Position(text_01234, 0)).DeepEquivalent());
+  } else {
+    EXPECT_EQ(Position(text_a, 1),
+              CreateVisiblePosition(Position(text_01234, 0)).DeepEquivalent());
+  }
+  EXPECT_EQ(Position(text_01234, 1),
+            CreateVisiblePosition(Position(text_01234, 1)).DeepEquivalent());
+  EXPECT_EQ(Position(text_01234, 2),
+            CreateVisiblePosition(Position(text_01234, 2)).DeepEquivalent());
+  EXPECT_EQ(Position(text_01234, 3),
+            CreateVisiblePosition(Position(text_01234, 3)).DeepEquivalent());
+  EXPECT_EQ(Position(text_01234, 4),
+            CreateVisiblePosition(Position(text_01234, 4)).DeepEquivalent());
+  EXPECT_EQ(Position(text_01234, 5),
+            CreateVisiblePosition(Position(text_01234, 5)).DeepEquivalent());
+
+  if (text_01234.GetLayoutObject()->Parent()->IsLayoutNGTextCombine()) {
+    EXPECT_EQ(Position(text_b, 0),
+              CreateVisiblePosition(Position(text_b, 0)).DeepEquivalent());
+  } else {
+    EXPECT_EQ(Position(text_01234, 5),
+              CreateVisiblePosition(Position(text_b, 0)).DeepEquivalent());
+  }
+  EXPECT_EQ(Position(text_b, 1),
+            CreateVisiblePosition(Position(text_b, 1)).DeepEquivalent());
+}
 
 }  // namespace blink

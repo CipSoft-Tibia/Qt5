@@ -1,85 +1,43 @@
-/***************************************************************************
-**
-** Copyright (C) 2013 BlackBerry Limited. All rights reserved.
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 BlackBerry Limited. All rights reserved.
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "device.h"
 
-#include <qbluetoothaddress.h>
-#include <qbluetoothdevicediscoveryagent.h>
-#include <qbluetoothlocaldevice.h>
-#include <qbluetoothdeviceinfo.h>
-#include <qbluetoothservicediscoveryagent.h>
-#include <QDebug>
-#include <QList>
-#include <QMetaEnum>
-#include <QTimer>
+#include <QtBluetooth/qbluetoothdeviceinfo.h>
+#include <QtBluetooth/qbluetoothuuid.h>
+
+#include <QtCore/qdebug.h>
+#include <QtCore/qmetaobject.h>
+#include <QtCore/qtimer.h>
+
+#if QT_CONFIG(permissions)
+#include <QtCore/qpermissions.h>
+#include <QtGui/qguiapplication.h>
+#endif
+
+using namespace Qt::StringLiterals;
 
 Device::Device()
 {
     //! [les-devicediscovery-1]
-    discoveryAgent = new QBluetoothDeviceDiscoveryAgent();
-    discoveryAgent->setLowEnergyDiscoveryTimeout(5000);
+    discoveryAgent = new QBluetoothDeviceDiscoveryAgent(this);
+    discoveryAgent->setLowEnergyDiscoveryTimeout(25000);
     connect(discoveryAgent, &QBluetoothDeviceDiscoveryAgent::deviceDiscovered,
             this, &Device::addDevice);
-    connect(discoveryAgent, QOverload<QBluetoothDeviceDiscoveryAgent::Error>::of(&QBluetoothDeviceDiscoveryAgent::error),
+    connect(discoveryAgent, &QBluetoothDeviceDiscoveryAgent::errorOccurred,
             this, &Device::deviceScanError);
-    connect(discoveryAgent, &QBluetoothDeviceDiscoveryAgent::finished, this, &Device::deviceScanFinished);
+    connect(discoveryAgent, &QBluetoothDeviceDiscoveryAgent::finished,
+            this, &Device::deviceScanFinished);
+    connect(discoveryAgent, &QBluetoothDeviceDiscoveryAgent::canceled,
+            this, &Device::deviceScanFinished);
     //! [les-devicediscovery-1]
 
-    setUpdate("Search");
+    setUpdate(u"Search"_s);
 }
 
 Device::~Device()
 {
-    delete discoveryAgent;
-    delete controller;
     qDeleteAll(devices);
     qDeleteAll(m_services);
     qDeleteAll(m_characteristics);
@@ -94,39 +52,52 @@ void Device::startDeviceDiscovery()
     devices.clear();
     emit devicesUpdated();
 
-    setUpdate("Scanning for devices ...");
     //! [les-devicediscovery-2]
     discoveryAgent->start(QBluetoothDeviceDiscoveryAgent::LowEnergyMethod);
     //! [les-devicediscovery-2]
 
     if (discoveryAgent->isActive()) {
+        setUpdate(u"Stop"_s);
         m_deviceScanState = true;
         Q_EMIT stateChanged();
     }
 }
 
+void Device::stopDeviceDiscovery()
+{
+    if (discoveryAgent->isActive())
+        discoveryAgent->stop();
+}
+
 //! [les-devicediscovery-3]
 void Device::addDevice(const QBluetoothDeviceInfo &info)
 {
-    if (info.coreConfigurations() & QBluetoothDeviceInfo::LowEnergyCoreConfiguration)
-        setUpdate("Last device added: " + info.name());
+    if (info.coreConfigurations() & QBluetoothDeviceInfo::LowEnergyCoreConfiguration) {
+        auto devInfo = new DeviceInfo(info);
+        auto it = std::find_if(devices.begin(), devices.end(),
+                               [devInfo](DeviceInfo *dev) {
+                                   return devInfo->getAddress() == dev->getAddress();
+                               });
+        if (it == devices.end()) {
+            devices.append(devInfo);
+        } else {
+            auto oldDev = *it;
+            *it = devInfo;
+            delete oldDev;
+        }
+        emit devicesUpdated();
+    }
 }
 //! [les-devicediscovery-3]
 
 void Device::deviceScanFinished()
 {
-    const QList<QBluetoothDeviceInfo> foundDevices = discoveryAgent->discoveredDevices();
-    for (auto nextDevice : foundDevices)
-        if (nextDevice.coreConfigurations() & QBluetoothDeviceInfo::LowEnergyCoreConfiguration)
-            devices.append(new DeviceInfo(nextDevice));
-
-    emit devicesUpdated();
     m_deviceScanState = false;
     emit stateChanged();
     if (devices.isEmpty())
-        setUpdate("No Low Energy devices found...");
+        setUpdate(u"No Low Energy devices found..."_s);
     else
-        setUpdate("Done! Scan Again!");
+        setUpdate(u"Done! Scan Again!"_s);
 }
 
 QVariant Device::getDevices()
@@ -153,9 +124,9 @@ void Device::scanServices(const QString &address)
 {
     // We need the current device for service discovery.
 
-    for (auto d: qAsConst(devices)) {
+    for (auto d: std::as_const(devices)) {
         if (auto device = qobject_cast<DeviceInfo *>(d)) {
-            if (device->getAddress() == address ) {
+            if (device->getAddress() == address) {
                 currentDevice.setDevice(device->getDevice());
                 break;
             }
@@ -174,7 +145,7 @@ void Device::scanServices(const QString &address)
     m_services.clear();
     emit servicesUpdated();
 
-    setUpdate("Back\n(Connecting to device...)");
+    setUpdate(u"Back\n(Connecting to device...)"_s);
 
     if (controller && m_previousAddress != currentDevice.getAddress()) {
         controller->disconnectFromDevice();
@@ -185,11 +156,10 @@ void Device::scanServices(const QString &address)
     //! [les-controller-1]
     if (!controller) {
         // Connecting signals and slots for connecting to LE services.
-        controller = QLowEnergyController::createCentral(currentDevice.getDevice());
+        controller = QLowEnergyController::createCentral(currentDevice.getDevice(), this);
         connect(controller, &QLowEnergyController::connected,
                 this, &Device::deviceConnected);
-        connect(controller, QOverload<QLowEnergyController::Error>::of(&QLowEnergyController::error),
-                this, &Device::errorReceived);
+        connect(controller, &QLowEnergyController::errorOccurred, this, &Device::errorReceived);
         connect(controller, &QLowEnergyController::disconnected,
                 this, &Device::deviceDisconnected);
         connect(controller, &QLowEnergyController::serviceDiscovered,
@@ -226,7 +196,7 @@ void Device::addLowEnergyService(const QBluetoothUuid &serviceUuid)
 
 void Device::serviceScanDone()
 {
-    setUpdate("Back\n(Service scan done!)");
+    setUpdate(u"Back\n(Service scan done!)"_s);
     // force UI in case we didn't find anything
     if (m_services.isEmpty())
         emit servicesUpdated();
@@ -235,7 +205,7 @@ void Device::serviceScanDone()
 void Device::connectToService(const QString &uuid)
 {
     QLowEnergyService *service = nullptr;
-    for (auto s: qAsConst(m_services)) {
+    for (auto s: std::as_const(m_services)) {
         auto serviceInfo = qobject_cast<ServiceInfo *>(s);
         if (!serviceInfo)
             continue;
@@ -253,12 +223,12 @@ void Device::connectToService(const QString &uuid)
     m_characteristics.clear();
     emit characteristicsUpdated();
 
-    if (service->state() == QLowEnergyService::DiscoveryRequired) {
+    if (service->state() == QLowEnergyService::RemoteService) {
         //! [les-service-3]
         connect(service, &QLowEnergyService::stateChanged,
                 this, &Device::serviceDetailsDiscovered);
         service->discoverDetails();
-        setUpdate("Back\n(Discovering details...)");
+        setUpdate(u"Back\n(Discovering details...)"_s);
         //! [les-service-3]
         return;
     }
@@ -275,7 +245,7 @@ void Device::connectToService(const QString &uuid)
 
 void Device::deviceConnected()
 {
-    setUpdate("Back\n(Discovering services...)");
+    setUpdate(u"Back\n(Discovering services...)"_s);
     connected = true;
     //! [les-service-2]
     controller->discoverServices();
@@ -285,7 +255,7 @@ void Device::deviceConnected()
 void Device::errorReceived(QLowEnergyController::Error /*error*/)
 {
     qWarning() << "Error: " << controller->errorString();
-    setUpdate(QString("Back\n(%1)").arg(controller->errorString()));
+    setUpdate(u"Back\n(%1)"_s.arg(controller->errorString()));
 }
 
 void Device::setUpdate(const QString &message)
@@ -315,12 +285,12 @@ void Device::deviceDisconnected()
 
 void Device::serviceDetailsDiscovered(QLowEnergyService::ServiceState newState)
 {
-    if (newState != QLowEnergyService::ServiceDiscovered) {
+    if (newState != QLowEnergyService::RemoteServiceDiscovered) {
         // do not hang in "Scanning for characteristics" mode forever
         // in case the service discovery failed
         // We have to queue the signal up to give UI time to even enter
         // the above mode
-        if (newState != QLowEnergyService::DiscoveringServices) {
+        if (newState != QLowEnergyService::RemoteServiceDiscovering) {
             QMetaObject::invokeMethod(this, "characteristicsUpdated",
                                       Qt::QueuedConnection);
         }
@@ -346,18 +316,17 @@ void Device::serviceDetailsDiscovered(QLowEnergyService::ServiceState newState)
 
 void Device::deviceScanError(QBluetoothDeviceDiscoveryAgent::Error error)
 {
-    if (error == QBluetoothDeviceDiscoveryAgent::PoweredOffError)
-        setUpdate("The Bluetooth adaptor is powered off, power it on before doing discovery.");
-    else if (error == QBluetoothDeviceDiscoveryAgent::InputOutputError)
-        setUpdate("Writing or reading from the device resulted in an error.");
-    else {
+    if (error == QBluetoothDeviceDiscoveryAgent::PoweredOffError) {
+        setUpdate(u"The Bluetooth adaptor is powered off, power it on before doing discovery."_s);
+    } else if (error == QBluetoothDeviceDiscoveryAgent::InputOutputError) {
+        setUpdate(u"Writing or reading from the device resulted in an error."_s);
+    } else {
         static QMetaEnum qme = discoveryAgent->metaObject()->enumerator(
                     discoveryAgent->metaObject()->indexOfEnumerator("Error"));
-        setUpdate("Error: " + QLatin1String(qme.valueToKey(error)));
+        setUpdate(u"Error: "_s + QLatin1StringView(qme.valueToKey(error)));
     }
 
     m_deviceScanState = false;
-    emit devicesUpdated();
     emit stateChanged();
 }
 

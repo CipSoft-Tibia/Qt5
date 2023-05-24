@@ -1,38 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "datasource.h"
 #include <QtCore/qmath.h>
 #include <QtGui/QRgb>
 #include <QtGui/QVector3D>
-
-using namespace QtDataVisualization;
 
 Q_DECLARE_METATYPE(QCustom3DVolume *)
 
@@ -52,12 +24,12 @@ void DataSource::fillVolume(QCustom3DVolume *volumeItem)
     // This can take a while if the dimensions are large, so we support incremental data generation.
 
     int index = 0;
-    int textureSize = 256;
+    int textureSize = 1024;
     QVector3D midPoint(float(textureSize) / 2.0f,
                        float(textureSize) / 2.0f,
                        float(textureSize) / 2.0f);
 
-    QVector<uchar> *textureData = new QVector<uchar>(textureSize * textureSize * textureSize / 2);
+    QList<uchar> *textureData = new QList<uchar>(textureSize * textureSize * textureSize / 2);
     for (int i = 0; i < textureSize; i++) {
         for (int j = 0; j < textureSize / 2; j++) {
             for (int k = 0; k < textureSize; k++) {
@@ -82,7 +54,7 @@ void DataSource::fillVolume(QCustom3DVolume *volumeItem)
     volumeItem->setTextureFormat(QImage::Format_Indexed8);
     volumeItem->setTextureData(textureData);
 
-    QVector<QRgb> colorTable(256);
+    QList<QRgb> colorTable(256);
 
     for (int i = 1; i < 256; i++) {
         if (i < 15)

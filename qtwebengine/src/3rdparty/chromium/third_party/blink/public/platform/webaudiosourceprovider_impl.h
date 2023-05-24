@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,14 +10,14 @@
 #include <memory>
 #include <string>
 
-#include "base/callback.h"
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/synchronization/lock.h"
 #include "media/base/audio_renderer_sink.h"
-#include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_audio_source_provider.h"
+#include "third_party/blink/public/platform/web_common.h"
 #include "third_party/blink/public/platform/web_vector.h"
 
 namespace media {
@@ -61,10 +61,14 @@ class BLINK_PLATFORM_EXPORT WebAudioSourceProviderImpl
       media::MediaLog* media_log,
       base::OnceClosure on_set_client_callback = base::OnceClosure());
 
+  WebAudioSourceProviderImpl(const WebAudioSourceProviderImpl&) = delete;
+  WebAudioSourceProviderImpl& operator=(const WebAudioSourceProviderImpl&) =
+      delete;
+
   // WebAudioSourceProvider implementation.
   void SetClient(WebAudioSourceProviderClient* client) override;
   void ProvideInput(const WebVector<float*>& audio_data,
-                    size_t number_of_frames) override;
+                    int number_of_frames) override;
 
   // RestartableAudioRendererSink implementation.
   void Initialize(const media::AudioParameters& params,
@@ -89,6 +93,8 @@ class BLINK_PLATFORM_EXPORT WebAudioSourceProviderImpl
 
   int RenderForTesting(media::AudioBus* audio_bus);
 
+  bool IsAudioBeingCaptured() const;
+
  protected:
   ~WebAudioSourceProviderImpl() override;
 
@@ -99,17 +105,17 @@ class BLINK_PLATFORM_EXPORT WebAudioSourceProviderImpl
   void OnSetFormat();
 
   // Used to keep the volume across reconfigurations.
-  double volume_;
+  double volume_ = 1.0;
 
   // Tracks the current playback state.
   enum PlaybackState { kStopped, kStarted, kPlaying };
-  PlaybackState state_;
+  PlaybackState state_ = kStopped;
 
   // Closure that calls OnSetFormat() on |client_| on the renderer thread.
   base::RepeatingClosure set_format_cb_;
 
   // When set via setClient() it overrides |sink_| for consuming audio.
-  WebAudioSourceProviderClient* client_;
+  raw_ptr<WebAudioSourceProviderClient> client_ = nullptr;
 
   // Where audio ends up unless overridden by |client_|.
   base::Lock sink_lock_;
@@ -121,14 +127,14 @@ class BLINK_PLATFORM_EXPORT WebAudioSourceProviderImpl
   class TeeFilter;
   const std::unique_ptr<TeeFilter> tee_filter_;
 
-  media::MediaLog* const media_log_;
+  const raw_ptr<media::MediaLog> media_log_;
 
   base::OnceClosure on_set_client_callback_;
 
+  bool has_copy_audio_callback_ = false;
+
   // NOTE: Weak pointers must be invalidated before all other member variables.
   base::WeakPtrFactory<WebAudioSourceProviderImpl> weak_factory_{this};
-
-  DISALLOW_IMPLICIT_CONSTRUCTORS(WebAudioSourceProviderImpl);
 };
 
 }  // namespace blink

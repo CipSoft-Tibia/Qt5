@@ -94,8 +94,25 @@ ScopedJavaLocalRef<jobject> MemberToJava(
     case RTCStatsMemberInterface::kSequenceString:
       return NativeToJavaStringArray(
           env, *member.cast_to<RTCStatsMember<std::vector<std::string>>>());
+
+    case RTCStatsMemberInterface::kMapStringUint64:
+      return NativeToJavaMap(
+          env,
+          *member.cast_to<RTCStatsMember<std::map<std::string, uint64_t>>>(),
+          [](JNIEnv* env, const auto& entry) {
+            return std::make_pair(NativeToJavaString(env, entry.first),
+                                  NativeToJavaBigInteger(env, entry.second));
+          });
+
+    case RTCStatsMemberInterface::kMapStringDouble:
+      return NativeToJavaMap(
+          env, *member.cast_to<RTCStatsMember<std::map<std::string, double>>>(),
+          [](JNIEnv* env, const auto& entry) {
+            return std::make_pair(NativeToJavaString(env, entry.first),
+                                  NativeToJavaDouble(env, entry.second));
+          });
   }
-  RTC_NOTREACHED();
+  RTC_DCHECK_NOTREACHED();
   return nullptr;
 }
 
@@ -109,7 +126,7 @@ ScopedJavaLocalRef<jobject> NativeToJavaRtcStats(JNIEnv* env,
                 MemberToJava(env, *member));
   }
   return Java_RTCStats_create(
-      env, stats.timestamp_us(), NativeToJavaString(env, stats.type()),
+      env, stats.timestamp().us(), NativeToJavaString(env, stats.type()),
       NativeToJavaString(env, stats.id()), builder.GetJavaMap());
 }
 
@@ -121,7 +138,7 @@ ScopedJavaLocalRef<jobject> NativeToJavaRtcStatsReport(
         return std::make_pair(NativeToJavaString(env, stats.id()),
                               NativeToJavaRtcStats(env, stats));
       });
-  return Java_RTCStatsReport_create(env, report->timestamp_us(), j_stats_map);
+  return Java_RTCStatsReport_create(env, report->timestamp().us(), j_stats_map);
 }
 
 }  // namespace

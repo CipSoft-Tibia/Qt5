@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquicktextnode_p.h"
 
@@ -45,14 +9,15 @@
 #include <private/qsgdistancefieldglyphnode_p.h>
 #include <private/qquickclipnode_p.h>
 #include <private/qquickitem_p.h>
+#include <private/qquicktextdocument_p.h>
 #include <QtQuick/private/qsgcontext_p.h>
 
 #include <QtCore/qpoint.h>
 #include <qtextdocument.h>
 #include <qtextlayout.h>
 #include <qabstracttextdocumentlayout.h>
-#include <qxmlstream.h>
 #include <private/qquickstyledtext_p.h>
+#include <private/qquicktext_p_p.h>
 #include <private/qfont_p.h>
 #include <private/qfontengine_p.h>
 
@@ -61,24 +26,13 @@
 
 QT_BEGIN_NAMESPACE
 
-namespace {
-
-    class ProtectedLayoutAccessor: public QAbstractTextDocumentLayout
-    {
-    public:
-        inline QTextCharFormat formatAccessor(int pos)
-        {
-            return format(pos);
-        }
-    };
-
-}
+Q_DECLARE_LOGGING_CATEGORY(lcVP)
 
 /*!
   Creates an empty QQuickTextNode
 */
 QQuickTextNode::QQuickTextNode(QQuickItem *ownerElement)
-    : m_cursorNode(nullptr), m_ownerElement(ownerElement), m_useNativeRenderer(false)
+    : m_cursorNode(nullptr), m_ownerElement(ownerElement), m_useNativeRenderer(false), m_renderTypeQuality(-1)
 {
 #ifdef QSG_RUNTIME_DESCRIPTION
     qsgnode_set_description(this, QLatin1String("text"));
@@ -107,7 +61,7 @@ QSGGlyphNode *QQuickTextNode::addGlyphs(const QPointF &position, const QGlyphRun
         }
     }
 
-    QSGGlyphNode *node = sg->sceneGraphContext()->createGlyphNode(sg, preferNativeGlyphNode);
+    QSGGlyphNode *node = sg->sceneGraphContext()->createGlyphNode(sg, preferNativeGlyphNode, m_renderTypeQuality);
 
     node->setOwnerElement(m_ownerElement);
     node->setGlyphs(position + QPointF(0, glyphs.rawFont().ascent()), glyphs);
@@ -130,7 +84,7 @@ QSGGlyphNode *QQuickTextNode::addGlyphs(const QPointF &position, const QGlyphRun
     parentNode->appendChildNode(node);
 
     if (style == QQuickText::Outline && color.alpha() > 0 && styleColor != color) {
-        QSGGlyphNode *fillNode = sg->sceneGraphContext()->createGlyphNode(sg, preferNativeGlyphNode);
+        QSGGlyphNode *fillNode = sg->sceneGraphContext()->createGlyphNode(sg, preferNativeGlyphNode, m_renderTypeQuality);
         fillNode->setOwnerElement(m_ownerElement);
         fillNode->setGlyphs(position + QPointF(0, glyphs.rawFont().ascent()), glyphs);
         fillNode->setStyle(QQuickText::Normal);
@@ -215,7 +169,7 @@ void QQuickTextNode::addTextDocument(const QPointF &position, QTextDocument *tex
         if (textFrame->firstPosition() > textFrame->lastPosition()
          && textFrame->frameFormat().position() != QTextFrameFormat::InFlow) {
             const int pos = textFrame->firstPosition() - 1;
-            ProtectedLayoutAccessor *a = static_cast<ProtectedLayoutAccessor *>(textDocument->documentLayout());
+            auto *a = static_cast<QtPrivate::ProtectedLayoutAccessor *>(textDocument->documentLayout());
             QTextCharFormat format = a->formatAccessor(pos);
             QRectF rect = a->frameBoundingRect(textFrame);
 
@@ -230,7 +184,9 @@ void QQuickTextNode::addTextDocument(const QPointF &position, QTextDocument *tex
                 Q_ASSERT(!engine.currentLine().isValid());
 
                 QTextBlock block = it.currentBlock();
-                engine.addTextBlock(textDocument, block, position, textColor, anchorColor, selectionStart, selectionEnd);
+                engine.addTextBlock(textDocument, block, position, textColor, anchorColor, selectionStart, selectionEnd,
+                                    (textDocument->characterCount() > QQuickTextPrivate::largeTextSizeThreshold ?
+                                         m_ownerElement->clipRect() : QRectF()));
                 ++it;
             }
         }
@@ -254,17 +210,24 @@ void QQuickTextNode::addTextLayout(const QPointF &position, QTextLayout *textLay
     engine.setPosition(position);
 
 #if QT_CONFIG(im)
-    int preeditLength = textLayout->preeditAreaText().length();
+    int preeditLength = textLayout->preeditAreaText().size();
     int preeditPosition = textLayout->preeditAreaPosition();
 #endif
 
     QVarLengthArray<QTextLayout::FormatRange> colorChanges;
     engine.mergeFormats(textLayout, &colorChanges);
 
+    // If there's a lot of text, insert only the range of lines that can possibly be visible within the viewport.
+    QRectF viewport;
+    if (m_ownerElement->flags().testFlag(QQuickItem::ItemObservesViewport)) {
+        viewport = m_ownerElement->clipRect();
+        qCDebug(lcVP) << "text viewport" << viewport;
+    }
     lineCount = lineCount >= 0
             ? qMin(lineStart + lineCount, textLayout->lineCount())
             : textLayout->lineCount();
 
+    bool inViewport = false;
     for (int i=lineStart; i<lineCount; ++i) {
         QTextLine line = textLayout->lineAt(i);
 
@@ -279,9 +242,20 @@ void QQuickTextNode::addTextLayout(const QPointF &position, QTextLayout *textLay
             end += preeditLength;
         }
 #endif
-
-        engine.setCurrentLine(line);
-        engine.addGlyphsForRanges(colorChanges, start, end, selectionStart, selectionEnd);
+        if (viewport.isNull() || (line.y() + line.height() > viewport.top() && line.y() < viewport.bottom())) {
+            if (!inViewport && !viewport.isNull()) {
+                m_firstLineInViewport = i;
+                qCDebug(lcVP) << "first line in viewport" << i << "@" << line.y();
+            }
+            inViewport = true;
+            engine.setCurrentLine(line);
+            engine.addGlyphsForRanges(colorChanges, start, end, selectionStart, selectionEnd);
+        } else if (inViewport) {
+            Q_ASSERT(!viewport.isNull());
+            m_firstLinePastViewport = i;
+            qCDebug(lcVP) << "first omitted line past bottom of viewport" << i << "@" << line.y();
+            break; // went past the bottom of the viewport, so we're done
+        }
     }
 
     engine.addToSceneGraph(this, style, styleColor);

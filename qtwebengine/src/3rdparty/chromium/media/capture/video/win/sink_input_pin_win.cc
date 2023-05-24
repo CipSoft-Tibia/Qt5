@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,9 +12,10 @@
 #include <stdint.h>
 
 #include "base/logging.h"
-#include "base/stl_util.h"
+#include "base/time/time.h"
 #include "base/win/win_util.h"
 #include "media/base/timestamp_constants.h"
+#include "media/base/video_frame.h"
 
 namespace media {
 
@@ -210,7 +211,9 @@ HRESULT SinkInputPin::Receive(IMediaSample* sample) {
   const int length = sample->GetActualDataLength();
 
   if (length <= 0 ||
-      static_cast<size_t>(length) < resulting_format_.ImageAllocationSize()) {
+      static_cast<size_t>(length) <
+          media::VideoFrame::AllocationSize(resulting_format_.pixel_format,
+                                            resulting_format_.frame_size)) {
     DLOG(WARNING) << "Wrong media sample length: " << length;
     observer_->FrameDropped(
         VideoCaptureFrameDropReason::kWinDirectShowUnexpectedSampleLength);
@@ -229,7 +232,7 @@ HRESULT SinkInputPin::Receive(IMediaSample* sample) {
   base::TimeDelta timestamp = kNoTimestamp;
   if (SUCCEEDED(sample->GetTime(&start_time, &end_time))) {
     DCHECK(start_time <= end_time);
-    timestamp = base::TimeDelta::FromMicroseconds(start_time / 10);
+    timestamp = base::Microseconds(start_time / 10);
   }
 
   observer_->FrameReceived(buffer, length, resulting_format_, timestamp,
@@ -237,7 +240,6 @@ HRESULT SinkInputPin::Receive(IMediaSample* sample) {
   return S_OK;
 }
 
-SinkInputPin::~SinkInputPin() {
-}
+SinkInputPin::~SinkInputPin() {}
 
 }  // namespace media

@@ -1,4 +1,4 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -62,10 +62,12 @@ def DoPresubmit(argv,
     original_xml = f.read()
 
   # Check there are no CR ('\r') characters in the file.
-  if '\r' in original_xml:
+  if b'\r' in original_xml:
     logging.error('DOS-style line endings (CR characters) detected - these are '
                   'not allowed. Please run dos2unix %s', original_filename)
     return 1
+
+  original_xml = original_xml.decode('utf-8')
 
   try:
     pretty = prettyFn(original_xml)
@@ -78,8 +80,9 @@ def DoPresubmit(argv,
     return 0
 
   if presubmit:
-    logging.error('%s is not formatted correctly; run %s to fix.',
-                  original_filename, script_name)
+    if interactive:
+      logging.error('%s is not formatted correctly; run %s to fix.',
+                    original_filename, script_name)
     return 1
 
   # Prompt user to consent on the change.
@@ -97,6 +100,7 @@ def DoPresubmit(argv,
   logging.info('Creating backup file: %s', backup_filename)
   shutil.move(xml_path, os.path.join(xml_dir, backup_filename))
 
+  pretty = pretty.encode('utf-8')
   with open(xml_path, 'wb') as f:
     f.write(pretty)
   logging.info('Updated %s. Don\'t forget to add it to your changelist',

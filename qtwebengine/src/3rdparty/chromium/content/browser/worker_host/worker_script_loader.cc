@@ -1,46 +1,45 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/worker_host/worker_script_loader.h"
 
-#include "base/bind.h"
-#include "base/task/post_task.h"
-#include "content/browser/appcache/appcache_request_handler.h"
+#include "base/functional/bind.h"
 #include "content/browser/loader/navigation_loader_interceptor.h"
 #include "content/browser/service_worker/service_worker_main_resource_handle.h"
-#include "content/browser/service_worker/service_worker_main_resource_handle_core.h"
 #include "content/browser/service_worker/service_worker_main_resource_loader_interceptor.h"
-#include "content/browser/worker_host/worker_script_fetch_initiator.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "net/url_request/redirect_util.h"
+#include "services/network/public/cpp/record_ontransfersizeupdate_utils.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "services/network/public/cpp/url_loader_completion_status.h"
+#include "services/network/public/mojom/early_hints.mojom.h"
 
 namespace content {
 
 WorkerScriptLoader::WorkerScriptLoader(
     int process_id,
     const DedicatedOrSharedWorkerToken& worker_token,
-    int32_t routing_id,
     int32_t request_id,
     uint32_t options,
     const network::ResourceRequest& resource_request,
+    const net::IsolationInfo& isolation_info,
     mojo::PendingRemote<network::mojom::URLLoaderClient> client,
     base::WeakPtr<ServiceWorkerMainResourceHandle> service_worker_handle,
-    base::WeakPtr<AppCacheHost> appcache_host,
     const BrowserContextGetter& browser_context_getter,
     scoped_refptr<network::SharedURLLoaderFactory> default_loader_factory,
-    const net::MutableNetworkTrafficAnnotationTag& traffic_annotation)
-    : routing_id_(routing_id),
-      request_id_(request_id),
+    const net::MutableNetworkTrafficAnnotationTag& traffic_annotation,
+    ukm::SourceId ukm_source_id)
+    : request_id_(request_id),
       options_(options),
       resource_request_(resource_request),
       client_(std::move(client)),
       service_worker_handle_(std::move(service_worker_handle)),
       browser_context_getter_(browser_context_getter),
       default_loader_factory_(std::move(default_loader_factory)),
-      traffic_annotation_(traffic_annotation) {
+      traffic_annotation_(traffic_annotation),
+      ukm_source_id_(ukm_source_id) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
   if (!service_worker_handle_) {
@@ -50,18 +49,11 @@ WorkerScriptLoader::WorkerScriptLoader(
   }
   auto service_worker_interceptor =
       ServiceWorkerMainResourceLoaderInterceptor::CreateForWorker(
-          resource_request_, process_id, worker_token, service_worker_handle_);
+          resource_request_, isolation_info, process_id, worker_token,
+          service_worker_handle_);
 
   if (service_worker_interceptor)
     interceptors_.push_back(std::move(service_worker_interceptor));
-
-  if (appcache_host) {
-    std::unique_ptr<NavigationLoaderInterceptor> appcache_interceptor =
-        AppCacheRequestHandler::InitializeForMainResourceNetworkService(
-            resource_request_, appcache_host);
-    if (appcache_interceptor)
-      interceptors_.push_back(std::move(appcache_interceptor));
-  }
 
   Start();
 }
@@ -117,6 +109,12 @@ void WorkerScriptLoader::MaybeStartLoader(
   DCHECK(!completed_);
   DCHECK(interceptor);
 
+  if (!service_worker_handle_) {
+    // The DedicatedWorkerHost or SharedWorkerHost is already destroyed.
+    Abort();
+    return;
+  }
+
   // Create SubresourceLoaderParams for intercepting subresource requests and
   // populating the "controller" field in ServiceWorkerContainer. This can be
   // null if the interceptor is not interested in this request.
@@ -128,8 +126,8 @@ void WorkerScriptLoader::MaybeStartLoader(
     url_loader_factory_ = std::move(single_request_factory);
     url_loader_.reset();
     url_loader_factory_->CreateLoaderAndStart(
-        url_loader_.BindNewPipeAndPassReceiver(), routing_id_, request_id_,
-        options_, resource_request_,
+        url_loader_.BindNewPipeAndPassReceiver(), request_id_, options_,
+        resource_request_,
         url_loader_client_receiver_.BindNewPipeAndPassRemote(),
         traffic_annotation_);
     // We continue in URLLoaderClient calls.
@@ -155,9 +153,8 @@ void WorkerScriptLoader::LoadFromNetwork(bool reset_subresource_loader_params) {
   url_loader_factory_ = default_loader_factory_;
   url_loader_.reset();
   url_loader_factory_->CreateLoaderAndStart(
-      url_loader_.BindNewPipeAndPassReceiver(), routing_id_, request_id_,
-      options_, resource_request_,
-      url_loader_client_receiver_.BindNewPipeAndPassRemote(),
+      url_loader_.BindNewPipeAndPassReceiver(), request_id_, options_,
+      resource_request_, url_loader_client_receiver_.BindNewPipeAndPassRemote(),
       traffic_annotation_);
   // We continue in URLLoaderClient calls.
 }
@@ -170,7 +167,7 @@ void WorkerScriptLoader::FollowRedirect(
     const std::vector<std::string>& removed_headers,
     const net::HttpRequestHeaders& modified_headers,
     const net::HttpRequestHeaders& modified_cors_exempt_headers,
-    const base::Optional<GURL>& new_url) {
+    const absl::optional<GURL>& new_url) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   DCHECK(!new_url.has_value()) << "Redirect with modified URL was not "
                                   "supported yet. crbug.com/845683";
@@ -229,10 +226,19 @@ void WorkerScriptLoader::ResumeReadingBodyFromNet() {
 // Additionally, on redirects it saves the redirect info so if the renderer
 // calls FollowRedirect(), it can do so.
 
-void WorkerScriptLoader::OnReceiveResponse(
-    network::mojom::URLResponseHeadPtr response_head) {
+void WorkerScriptLoader::OnReceiveEarlyHints(
+    network::mojom::EarlyHintsPtr early_hints) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  client_->OnReceiveResponse(std::move(response_head));
+  client_->OnReceiveEarlyHints(std::move(early_hints));
+}
+
+void WorkerScriptLoader::OnReceiveResponse(
+    network::mojom::URLResponseHeadPtr response_head,
+    mojo::ScopedDataPipeConsumerHandle body,
+    absl::optional<mojo_base::BigBuffer> cached_metadata) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  client_->OnReceiveResponse(std::move(response_head), std::move(body),
+                             std::move(cached_metadata));
 }
 
 void WorkerScriptLoader::OnReceiveRedirect(
@@ -258,20 +264,11 @@ void WorkerScriptLoader::OnUploadProgress(
                             std::move(ack_callback));
 }
 
-void WorkerScriptLoader::OnReceiveCachedMetadata(mojo_base::BigBuffer data) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  client_->OnReceiveCachedMetadata(std::move(data));
-}
-
 void WorkerScriptLoader::OnTransferSizeUpdated(int32_t transfer_size_diff) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  network::RecordOnTransferSizeUpdatedUMA(
+      network::OnTransferSizeUpdatedFrom::kWorkerScriptLoader);
   client_->OnTransferSizeUpdated(transfer_size_diff);
-}
-
-void WorkerScriptLoader::OnStartLoadingResponseBody(
-    mojo::ScopedDataPipeConsumerHandle consumer) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  client_->OnStartLoadingResponseBody(std::move(consumer));
 }
 
 void WorkerScriptLoader::OnComplete(
@@ -283,6 +280,7 @@ void WorkerScriptLoader::OnComplete(
 // URLLoaderClient end ---------------------------------------------------------
 
 bool WorkerScriptLoader::MaybeCreateLoaderForResponse(
+    const network::URLLoaderCompletionStatus& status,
     network::mojom::URLResponseHeadPtr* response_head,
     mojo::ScopedDataPipeConsumerHandle* response_body,
     mojo::PendingRemote<network::mojom::URLLoader>* response_url_loader,
@@ -302,12 +300,11 @@ bool WorkerScriptLoader::MaybeCreateLoaderForResponse(
     bool skip_other_interceptors = false;
     bool will_return_unsafe_redirect = false;
     if (interceptor->MaybeCreateLoaderForResponse(
-            resource_request_, response_head, response_body,
+            status, resource_request_, response_head, response_body,
             response_url_loader, response_client_receiver, url_loader,
             &skip_other_interceptors, &will_return_unsafe_redirect)) {
-      // Both ServiceWorkerMainResourceLoaderInterceptor and
-      // AppCacheRequestHandler don't set skip_other_interceptors nor
-      // will_return_unsafe_redirect.
+      // ServiceWorkerMainResourceLoaderInterceptor doesn't set
+      // skip_other_interceptors or will_return_unsafe_redirect.
       DCHECK(!skip_other_interceptors);
       DCHECK(!will_return_unsafe_redirect);
       subresource_loader_params_ =
@@ -325,10 +322,11 @@ void WorkerScriptLoader::CommitCompleted(
   completed_ = true;
 
   if (status.error_code == net::OK && service_worker_handle_) {
-    // TODO(https://crbug.com/999049): Parse the COEP header and pass it to
-    // the service worker handle.
-    service_worker_handle_->OnBeginWorkerCommit(
-        network::CrossOriginEmbedderPolicy());
+    // TODO(https://crbug.com/999049): Pass the PolicyContainerPolicies. It can
+    // be built from `WorkerScriptLoader::OnReceiveResponse` from the
+    // `response_head->parsed_headers`.
+    service_worker_handle_->OnBeginWorkerCommit(PolicyContainerPolicies(),
+                                                ukm_source_id_);
   }
 
   client_->OnComplete(status);

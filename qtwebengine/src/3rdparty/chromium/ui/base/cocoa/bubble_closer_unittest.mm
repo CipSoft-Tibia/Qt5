@@ -1,10 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/base/cocoa/bubble_closer.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #import "ui/base/test/cocoa_helper.h"
 #import "ui/base/test/menu_test_observer.h"
 #import "ui/events/test/cocoa_test_event_utils.h"
@@ -18,11 +18,14 @@ class BubbleCloserTest : public CocoaTest {
 
   BubbleCloserTest() = default;
 
+  BubbleCloserTest(const BubbleCloserTest&) = delete;
+  BubbleCloserTest& operator=(const BubbleCloserTest&) = delete;
+
   void SetUp() override {
     CocoaTest::SetUp();
     bubble_window_.reset([[NSWindow alloc]
         initWithContentRect:NSMakeRect(100, 100, 320, 200)
-                  styleMask:NSBorderlessWindowMask
+                  styleMask:NSWindowStyleMaskBorderless
                     backing:NSBackingStoreBuffered
                       defer:NO]);
     [bubble_window_ setReleasedWhenClosed:NO];  // Owned by scoped_nsobject.
@@ -61,8 +64,6 @@ class BubbleCloserTest : public CocoaTest {
   base::scoped_nsobject<NSWindow> bubble_window_;
   std::unique_ptr<BubbleCloser> bubble_closer_;
   int click_outside_count_ = 0;
-
-  DISALLOW_COPY_AND_ASSIGN(BubbleCloserTest);
 };
 
 // Test for lifetime issues around NSEvent monitors.

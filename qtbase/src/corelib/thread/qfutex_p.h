@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QFUTEX_P_H
 #define QFUTEX_P_H
@@ -51,16 +15,16 @@
 // We mean it.
 //
 
-#include <qglobal.h>
+#include <private/qglobal_p.h>
 #include <QtCore/qtsan_impl.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace QtDummyFutex {
-    Q_DECL_CONSTEXPR inline bool futexAvailable() { return false; }
+    constexpr inline bool futexAvailable() { return false; }
     template <typename Atomic>
     inline bool futexWait(Atomic &, typename Atomic::Type, int = 0)
-    { Q_UNREACHABLE(); return false; }
+    { Q_UNREACHABLE_RETURN(false); }
     template <typename Atomic> inline void futexWakeOne(Atomic &)
     { Q_UNREACHABLE(); }
     template <typename Atomic> inline void futexWakeAll(Atomic &)
@@ -82,24 +46,10 @@ QT_END_NAMESPACE
 // if not defined in linux/futex.h
 #  define FUTEX_PRIVATE_FLAG        128         // added in v2.6.22
 
-#  if __has_feature(thread_sanitizer) || defined(__SANITIZE_THREAD__)
-#    include <sanitizer/tsan_interface.h>
-inline void _q_tsan_acquire(void *addr, void *addr2)
-{
-    __tsan_acquire(addr);
-    if (addr2)
-        __tsan_acquire(addr2);
-}
-inline void _q_tsan_release(void *addr, void *addr2)
-{
-    if (addr2)
-        __tsan_release(addr2);
-    __tsan_release(addr);
-}
-#  else
-inline void _q_tsan_acquire(void *, void *) {}
-inline void _q_tsan_release(void *, void *) {}
-#  endif // __has_feature(thread_sanitizer) || defined(__SANITIZE_THREAD__)
+// RISC-V does not supply __NR_futex
+#  ifndef __NR_futex
+#    define __NR_futex __NR_futex_time64
+#  endif
 
 QT_BEGIN_NAMESPACE
 namespace QtLinuxFutex {
@@ -158,6 +108,38 @@ namespace QtLinuxFutex {
 namespace QtFutex = QtLinuxFutex;
 QT_END_NAMESPACE
 
+#elif defined(Q_OS_WIN)
+#  include <qt_windows.h>
+
+QT_BEGIN_NAMESPACE
+namespace QtWindowsFutex {
+#define QT_ALWAYS_USE_FUTEX
+constexpr inline bool futexAvailable() { return true; }
+
+template <typename Atomic>
+inline void futexWait(Atomic &futex, typename Atomic::Type expectedValue)
+{
+    QtTsan::futexRelease(&futex);
+    WaitOnAddress(&futex, &expectedValue, sizeof(expectedValue), INFINITE);
+    QtTsan::futexAcquire(&futex);
+}
+template <typename Atomic>
+inline bool futexWait(Atomic &futex, typename Atomic::Type expectedValue, qint64 nstimeout)
+{
+    BOOL r = WaitOnAddress(&futex, &expectedValue, sizeof(expectedValue), DWORD(nstimeout / 1000 / 1000));
+    return r || GetLastError() != ERROR_TIMEOUT;
+}
+template <typename Atomic> inline void futexWakeAll(Atomic &futex)
+{
+    WakeByAddressAll(&futex);
+}
+template <typename Atomic> inline void futexWakeOne(Atomic &futex)
+{
+    WakeByAddressSingle(&futex);
+}
+}
+namespace QtFutex = QtWindowsFutex;
+QT_END_NAMESPACE
 #else
 
 QT_BEGIN_NAMESPACE

@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2008-2012 NVIDIA Corporation.
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2008-2012 NVIDIA Corporation.
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSGDATAREF_H
 #define QSSGDATAREF_H
@@ -44,7 +18,7 @@
 
 #include <QtQuick3DUtils/private/qtquick3dutilsglobal_p.h>
 
-#include <QtCore/qvector.h>
+#include <QtCore/qlist.h>
 #include <QtCore/qbytearray.h>
 
 QT_BEGIN_NAMESPACE
@@ -53,16 +27,21 @@ template<typename T>
 struct QSSGDataView
 {
     const T *mData;
-    int mSize;
+    qsizetype mSize;
 
-    explicit QSSGDataView(const QVector<T> &data) : mData(data.constBegin()), mSize(data.size()) { Q_ASSERT(mSize >= 0); }
-    QSSGDataView(const T *inData, qint32 inSize) : mData(inData), mSize(inSize) { Q_ASSERT(mSize >= 0); }
+    explicit QSSGDataView(const QList<T> &data) : mData(data.constData()), mSize(data.size()) { Q_ASSERT(mSize >= 0); }
+    template <qsizetype N>
+    explicit QSSGDataView(const QVarLengthArray<T, N> &data) : mData(data.constData()), mSize(data.size()) { Q_ASSERT(mSize >= 0); }
+    QSSGDataView(const T *inData, qsizetype inSize) : mData(inData), mSize(inSize) { Q_ASSERT(mSize >= 0); }
     constexpr QSSGDataView() : mData(nullptr), mSize(0) {}
 
-    qint32 size() const { return mSize; }
+    qsizetype size() const { return mSize; }
 
     const T *begin() const { return mData; }
     const T *end() const { return mData + mSize; }
+
+    const T& first() const { Q_ASSERT(!isEmpty()); return *begin(); }
+    const T& last() const { Q_ASSERT(!isEmpty()); return *(end()-1); }
 
     const T &operator[](int index) const
     {
@@ -70,6 +49,8 @@ struct QSSGDataView
         Q_ASSERT(index < mSize);
         return mData[index];
     }
+
+    bool isEmpty() const { return (mSize == 0); }
 
     void clear()
     {
@@ -84,23 +65,24 @@ template<>
 struct QSSGDataView<quint8>
 {
     const quint8 *mData;
-    int mSize;
+    qsizetype mSize;
 
     explicit QSSGDataView(const QByteArray &data)
         : mData(reinterpret_cast<const quint8 *>(data.constBegin())), mSize(data.size())
     { Q_ASSERT(mSize >= 0); }
     template<typename T>
-    explicit QSSGDataView(const QVector<T> &data)
-        : mData(reinterpret_cast<const quint8 *>(data.constBegin())), mSize(data.size()*sizeof(T))
+    explicit QSSGDataView(const QList<T> &data)
+        : mData(reinterpret_cast<const quint8 *>(data.constData())), mSize(data.size()*sizeof(T))
     { Q_ASSERT(mSize >= 0); }
-    QSSGDataView(const quint8 *inData, qint32 inSize) : mData(inData), mSize(inSize) { Q_ASSERT(mSize >= 0); }
+    QSSGDataView(const quint8 *inData, qsizetype inSize) : mData(inData), mSize(inSize) { Q_ASSERT(mSize >= 0); }
     template<typename T>
-    QSSGDataView(const T *inData, qint32 inSize)
+    QSSGDataView(const T *inData, qsizetype inSize)
         : mData(reinterpret_cast<const quint8 *>(inData)), mSize(inSize*sizeof(T))
     { Q_ASSERT(mSize >= 0); }
     constexpr QSSGDataView() : mData(nullptr), mSize(0) {}
 
-    qint32 size() const { return mSize; }
+    qsizetype size() const { return mSize; }
+    bool isEmpty() const { return (mSize == 0); }
 
     const quint8 *begin() const { return mData; }
     const quint8 *end() const { return mData + mSize; }
@@ -130,7 +112,7 @@ inline QSSGDataView<T> toDataView(const T &type)
 }
 
 template<typename T>
-inline QSSGDataView<T> toDataView(const QVector<T> &type)
+inline QSSGDataView<T> toDataView(const QList<T> &type)
 {
     return QSSGDataView<T>(type);
 }
@@ -142,7 +124,7 @@ inline QSSGByteView toByteView(const T &type)
 }
 
 template<typename T>
-inline QSSGByteView toByteView(const QVector<T> &type)
+inline QSSGByteView toByteView(const QList<T> &type)
 {
     return QSSGByteView(type);
 }
@@ -159,13 +141,13 @@ inline QSSGByteView toByteView(const char *str)
 }
 
 template<typename T>
-inline QSSGDataView<T> toDataView(const T *type, quint32 count)
+inline QSSGDataView<T> toDataView(const T *type, qsizetype count)
 {
     return QSSGDataView<T>(type, count);
 }
 
 template<typename T>
-inline QSSGByteView toByteView(const T *type, quint32 count)
+inline QSSGByteView toByteView(const T *type, qsizetype count)
 {
     return QSSGByteView(type, count);
 }
@@ -174,11 +156,11 @@ template<typename T>
 struct QSSGDataRef
 {
     T *mData;
-    qint32 mSize;
+    qsizetype mSize;
 
-    QSSGDataRef(T *inData, qint32 inSize) : mData(inData), mSize(inSize) { Q_ASSERT(inSize >= 0); }
+    QSSGDataRef(T *inData, qsizetype inSize) : mData(inData), mSize(inSize) { Q_ASSERT(inSize >= 0); }
     QSSGDataRef() : mData(nullptr), mSize(0) {}
-    qint32 size() const { return mSize; }
+    qsizetype size() const { return mSize; }
 
     T *begin() { return mData; }
     T *end() { return mData + mSize; }
@@ -186,14 +168,22 @@ struct QSSGDataRef
     T *begin() const { return mData; }
     T *end() const { return mData + mSize; }
 
-    T &operator[](qint32 index)
+    T& first() { Q_ASSERT(!isEmpty()); return *begin(); }
+    T& last() { Q_ASSERT(!isEmpty()); return *(end()-1); }
+
+    const T &first() const { Q_ASSERT(!isEmpty()); return *begin(); }
+    const T &last() const { Q_ASSERT(!isEmpty()); return *(end()-1); }
+
+    bool isEmpty() const { return (mSize == 0); }
+
+    T &operator[](qsizetype index)
     {
         Q_ASSERT(index >= 0);
         Q_ASSERT(index < mSize);
         return mData[index];
     }
 
-    const T &operator[](qint32 index) const
+    const T &operator[](qsizetype index) const
     {
         Q_ASSERT(index >= 0);
         Q_ASSERT(index < mSize);
@@ -225,13 +215,13 @@ inline QSSGByteRef toByteRef(T &type)
 }
 
 template<typename T>
-inline QSSGDataRef<T> toDataRef(T *type, quint32 count)
+inline QSSGDataRef<T> toDataRef(T *type, qsizetype count)
 {
     return QSSGDataRef<T>(type, count);
 }
 
 template<typename T>
-inline QSSGByteRef toByteRef(T *type, quint32 count)
+inline QSSGByteRef toByteRef(T *type, qsizetype count)
 {
     return QSSGByteRef(reinterpret_cast<quint8 *>(type), sizeof(T) * count);
 }

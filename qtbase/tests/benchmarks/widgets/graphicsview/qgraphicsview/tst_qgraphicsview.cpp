@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QtCore/QDebug>
@@ -33,7 +8,6 @@
 #include <QtWidgets/QGraphicsView>
 #include <QtGui/QImage>
 #include <QtGui/QPixmapCache>
-#include <QtWidgets/QDesktopWidget>
 
 #include "chiptester/chiptester.h"
 //#define CALLGRIND_DEBUG
@@ -69,11 +43,11 @@ public:
 
     void tryResize(int width, int height)
     {
-        QDesktopWidget *desktop = QApplication::desktop();
-        if (desktop->width() < width)
-            width = desktop->width();
-        if (desktop->height() < height)
-            height = desktop->height();
+        const QSize desktopSize = QGuiApplication::primaryScreen()->size();
+        if (desktopSize.width() < width)
+            width = desktopSize.width();
+        if (desktopSize.height() < height)
+            height = desktopSize.height();
         if (size() != QSize(width, height)) {
             resize(width, height);
             QTest::qWait(250);
@@ -82,14 +56,14 @@ public:
     }
 
 protected:
-    void paintEvent(QPaintEvent *event)
+    void paintEvent(QPaintEvent *event) override
     {
         QGraphicsView::paintEvent(event);
         if (waiting)
             eventLoop.exit();
     }
 
-    void timerEvent(QTimerEvent *event)
+    void timerEvent(QTimerEvent *event) override
     {
         if (event->timerId() == timerId)
             eventLoop.exit();
@@ -382,31 +356,22 @@ void tst_QGraphicsView::mapRectFromScene()
 void tst_QGraphicsView::chipTester_data()
 {
     QTest::addColumn<bool>("antialias");
-    QTest::addColumn<bool>("opengl");
     QTest::addColumn<int>("operation");
-    QTest::newRow("rotate, normal") << false << false << 0;
-    QTest::newRow("rotate, normal, antialias") << true << false << 0;
-    QTest::newRow("rotate, opengl") << false << true << 0;
-    QTest::newRow("rotate, opengl, antialias") << true << true << 0;
-    QTest::newRow("zoom, normal") << false << false << 1;
-    QTest::newRow("zoom, normal, antialias") << true << false << 1;
-    QTest::newRow("zoom, opengl") << false << true << 1;
-    QTest::newRow("zoom, opengl, antialias") << true << true << 1;
-    QTest::newRow("translate, normal") << false << false << 2;
-    QTest::newRow("translate, normal, antialias") << true << false << 2;
-    QTest::newRow("translate, opengl") << false << true << 2;
-    QTest::newRow("translate, opengl, antialias") << true << true << 2;
+    QTest::newRow("rotate") << false << 0;
+    QTest::newRow("rotate, antialias") << true << 0;
+    QTest::newRow("zoom") << false << 1;
+    QTest::newRow("zoom, antialias") << true << 1;
+    QTest::newRow("translate") << false << 2;
+    QTest::newRow("translate, antialias") << true << 2;
 }
 
 void tst_QGraphicsView::chipTester()
 {
     QFETCH(bool, antialias);
-    QFETCH(bool, opengl);
     QFETCH(int, operation);
 
     ChipTester tester;
     tester.setAntialias(antialias);
-    tester.setOpenGL(opengl);
     tester.setOperation(ChipTester::Operation(operation));
     tester.show();
     QVERIFY(QTest::qWaitForWindowExposed(&tester));
@@ -432,23 +397,17 @@ static void addChildHelper(QGraphicsItem *parent, int n, bool rotate)
 void tst_QGraphicsView::deepNesting_data()
 {
     QTest::addColumn<bool>("rotate");
-    QTest::addColumn<bool>("sortCache");
     QTest::addColumn<bool>("bsp");
 
-    QTest::newRow("bsp, no transform") << false << false << true;
-    QTest::newRow("bsp, rotation") << true << false << true;
-    QTest::newRow("bsp, no transform, sort cache") << false << true << true;
-    QTest::newRow("bsp, rotation, sort cache") << true << true << true;
-    QTest::newRow("no transform") << false << false << false;
-    QTest::newRow("rotation") << true << false << false;
-    QTest::newRow("no transform, sort cache") << false << true << false;
-    QTest::newRow("rotation, sort cache") << true << true << false;
+    QTest::newRow("bsp, no transform") << false << true;
+    QTest::newRow("bsp, rotation") << true << true;
+    QTest::newRow("no transform") << false << false;
+    QTest::newRow("rotation") << true << false;
 }
 
 void tst_QGraphicsView::deepNesting()
 {
     QFETCH(bool, rotate);
-    QFETCH(bool, sortCache);
     QFETCH(bool, bsp);
 
     QGraphicsScene scene;
@@ -462,7 +421,6 @@ void tst_QGraphicsView::deepNesting()
         }
     }
     scene.setItemIndexMethod(bsp ? QGraphicsScene::BspTreeIndex : QGraphicsScene::NoIndex);
-    scene.setSortCacheEnabled(sortCache);
     scene.setSceneRect(scene.sceneRect());
 
     mView.setRenderHint(QPainter::Antialiasing);
@@ -486,7 +444,7 @@ void tst_QGraphicsView::deepNesting()
 class AnimatedPixmapItem : public QGraphicsPixmapItem
 {
 public:
-    AnimatedPixmapItem(int x, int y, bool rot, bool scal, QGraphicsItem *parent = 0)
+    AnimatedPixmapItem(int x, int y, bool rot, bool scal, QGraphicsItem *parent = nullptr)
         : QGraphicsPixmapItem(parent), rotateFactor(0), scaleFactor(0)
     {
         rotate = rot;
@@ -496,7 +454,7 @@ public:
     }
 
 protected:
-    void advance(int i)
+    void advance(int i) override
     {
         if (!i)
             return;
@@ -593,7 +551,7 @@ void tst_QGraphicsView::imageRiver()
 class AnimatedTextItem : public QGraphicsSimpleTextItem
 {
 public:
-    AnimatedTextItem(int x, int y, bool rot, bool scal, QGraphicsItem *parent = 0)
+    AnimatedTextItem(int x, int y, bool rot, bool scal, QGraphicsItem *parent = nullptr)
         : QGraphicsSimpleTextItem(parent), rotateFactor(0), scaleFactor(25)
     {
         setText("River of text");
@@ -604,7 +562,7 @@ public:
     }
 
 protected:
-    void advance(int i)
+    void advance(int i) override
     {
         if (!i)
             return;
@@ -703,21 +661,22 @@ void tst_QGraphicsView::textRiver()
 class AnimatedPixmapCacheItem : public QGraphicsPixmapItem
 {
 public:
-    AnimatedPixmapCacheItem(int x, int y, QGraphicsItem *parent = 0)
+    AnimatedPixmapCacheItem(int x, int y, QGraphicsItem *parent = nullptr)
         : QGraphicsPixmapItem(parent)
     {
         xspeed = x;
         yspeed = y;
     }
 
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget = 0)
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
+               QWidget *widget = 0) override
     {
         QGraphicsPixmapItem::paint(painter,option,widget);
         //We just want to wait, and we don't want to process the event loop with qWait
         QTest::qSleep(3);
     }
 protected:
-    void advance(int i)
+    void advance(int i) override
     {
         if (!i)
             return;
@@ -804,17 +763,18 @@ void tst_QGraphicsView::moveItemCache()
 class UpdatedPixmapCacheItem : public QGraphicsPixmapItem
 {
 public:
-    UpdatedPixmapCacheItem(bool partial, QGraphicsItem *parent = 0)
+    UpdatedPixmapCacheItem(bool partial, QGraphicsItem *parent = nullptr)
         : QGraphicsPixmapItem(parent), partial(partial)
     {
     }
 
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget = 0)
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
+               QWidget *widget = 0) override
     {
         QGraphicsPixmapItem::paint(painter,option,widget);
     }
 protected:
-    void advance(int i)
+    void advance(int i) override
     {
         Q_UNUSED(i);
         if (partial)

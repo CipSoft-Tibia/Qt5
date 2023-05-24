@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,12 @@
 
 #include <string>
 
-#include "base/bind.h"
 #include "base/containers/span.h"
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/observer_list.h"
 #include "base/strings/string_piece.h"
-#include "base/task/post_task.h"
 #include "base/task/thread_pool.h"
 #include "services/network/public/cpp/features.h"
 
@@ -23,13 +23,8 @@ namespace {
 // CRLSet.
 scoped_refptr<net::CRLSet> ParseCRLSet(std::string crl_set) {
   scoped_refptr<net::CRLSet> result;
-  if (base::FeatureList::IsEnabled(network::features::kCertVerifierService)) {
-    if (!net::CRLSet::ParseAndStoreUnparsedData(std::move(crl_set), &result))
-      return nullptr;
-  } else {
-    if (!net::CRLSet::Parse(std::move(crl_set), &result))
-      return nullptr;
-  }
+  if (!net::CRLSet::ParseAndStoreUnparsedData(std::move(crl_set), &result))
+    return nullptr;
   return result;
 }
 

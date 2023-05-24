@@ -1,4 +1,4 @@
-// Copyright (c) 2010 Google Inc. All Rights Reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -10,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -39,7 +39,7 @@
 #include "common/dwarf/dwarf2diehandler.h"
 #include "common/using_std_string.h"
 
-namespace dwarf2reader {
+namespace google_breakpad {
 
 DIEDispatcher::~DIEDispatcher() {
   while (!die_handlers_.empty()) {
@@ -196,4 +196,4 @@ void DIEDispatcher::ProcessAttributeSignature(uint64_t offset,
   current.handler_->ProcessAttributeSignature(attr, form, signature);
 }
 
-} // namespace dwarf2reader
+} // namespace google_breakpad

@@ -27,7 +27,7 @@ namespace profiling {
 struct SymbolizedFrame {
   std::string function_name;
   std::string file_name;
-  uint32_t line;
+  uint32_t line = 0;
 };
 
 class Symbolizer {
@@ -40,8 +40,15 @@ class Symbolizer {
   virtual std::vector<std::vector<SymbolizedFrame>> Symbolize(
       const std::string& mapping_name,
       const std::string& build_id,
+      uint64_t load_bias,
       const std::vector<uint64_t>& address) = 0;
   virtual ~Symbolizer();
+
+  // LocalSymbolizer uses a specific conversion of a symbol file's |build_id| to
+  // bytes, but BreakpadSymbolizer requires the |build_id| as given. Return true
+  // if the |build_id| passed to Symbolize() requires the conversion to bytes
+  // and false otherwise.
+  virtual bool BuildIdNeedsHexConversion() = 0;
 };
 
 }  // namespace profiling

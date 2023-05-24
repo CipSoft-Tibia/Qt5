@@ -15,7 +15,7 @@
 #include "include/core/SkShader.h"
 #include "include/core/SkSize.h"
 #include "include/core/SkString.h"
-#include "include/private/SkTArray.h"
+#include "include/private/base/SkTArray.h"
 
 /** This GM draws with invalid paints. It should draw nothing other than the background. */
 class BadPaintGM : public skiagm::GM {
@@ -39,16 +39,16 @@ protected:
 
         // Empty bitmap.
         fPaints.push_back().setColor(SK_ColorGREEN);
-        fPaints.back().setShader(emptyBmp.makeShader());
+        fPaints.back().setShader(emptyBmp.makeShader(SkSamplingOptions()));
 
         // Non-invertible local matrix.
         fPaints.push_back().setColor(SK_ColorGREEN);
-        fPaints.back().setShader(blueBmp.makeShader(&badMatrix));
+        fPaints.back().setShader(blueBmp.makeShader(SkSamplingOptions(), badMatrix));
     }
 
     void onDraw(SkCanvas* canvas) override {
         SkRect rect = SkRect::MakeXYWH(10, 10, 80, 80);
-        for (int i = 0; i < fPaints.count(); ++i) {
+        for (int i = 0; i < fPaints.size(); ++i) {
             canvas->drawRect(rect, fPaints[i]);
         }
     }

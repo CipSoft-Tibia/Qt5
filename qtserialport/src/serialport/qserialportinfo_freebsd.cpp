@@ -1,48 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSerialPort module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qserialportinfo.h"
 #include "qserialportinfo_p.h"
 #include "qserialport_p.h"
 
 #include <QtCore/qdatastream.h>
-#include <QtCore/qvector.h>
+#include <QtCore/qlist.h>
 #include <QtCore/qdir.h>
 
 #include <errno.h>
@@ -109,23 +73,23 @@ struct NodeInfo
     QString value;
 };
 
-static QVector<int> mibFromName(const QString &name)
+static QList<int> mibFromName(const QString &name)
 {
     size_t mibsize = 0;
     if (::sysctlnametomib(name.toLocal8Bit().constData(), nullptr, &mibsize) < 0
             || mibsize == 0) {
-        return QVector<int>();
+        return QList<int>();
     }
-    QVector<int> mib(mibsize);
+    QList<int> mib(mibsize);
     if (::sysctlnametomib(name.toLocal8Bit().constData(), &mib[0], &mibsize) < 0)
-        return QVector<int>();
+        return QList<int>();
 
     return mib;
 }
 
-static QVector<int> nextOid(const QVector<int> &previousOid)
+static QList<int> nextOid(const QList<int> &previousOid)
 {
-    QVector<int> mib;
+    QList<int> mib;
     mib.append(0); // Magic undocumented code (CTL_UNSPEC ?)
     mib.append(2); // Magic undocumented code
     for (int code : previousOid)
@@ -133,21 +97,21 @@ static QVector<int> nextOid(const QVector<int> &previousOid)
 
     size_t requiredLength = 0;
     if (::sysctl(&mib[0], mib.count(), nullptr, &requiredLength, nullptr, 0) < 0)
-        return QVector<int>();
+        return QList<int>();
     const size_t oidLength = requiredLength / sizeof(int);
-    QVector<int> oid(oidLength, 0);
+    QList<int> oid(oidLength, 0);
     if (::sysctl(&mib[0], mib.count(), &oid[0], &requiredLength, nullptr, 0) < 0)
-        return QVector<int>();
+        return QList<int>();
 
     if (previousOid.first() != oid.first())
-        return QVector<int>();
+        return QList<int>();
 
     return oid;
 }
 
-static NodeInfo nodeForOid(const QVector<int> &oid)
+static NodeInfo nodeForOid(const QList<int> &oid)
 {
-    QVector<int> mib;
+    QList<int> mib;
     mib.append(0); // Magic undocumented code (CTL_UNSPEC ?)
     mib.append(1); // Magic undocumented code
     for (int code : oid)
@@ -195,14 +159,14 @@ static NodeInfo nodeForOid(const QVector<int> &oid)
     return result;
 }
 
-static QList<NodeInfo> enumerateDesiredNodes(const QVector<int> &mib)
+static QList<NodeInfo> enumerateDesiredNodes(const QList<int> &mib)
 {
     QList<NodeInfo> nodes;
 
-    QVector<int> oid = mib;
+    QList<int> oid = mib;
 
     for (;;) {
-        const QVector<int> nextoid = nextOid(oid);
+        const QList<int> nextoid = nextOid(oid);
         if (nextoid.isEmpty())
             break;
 
@@ -222,7 +186,7 @@ static QList<NodeInfo> enumerateDesiredNodes(const QVector<int> &mib)
 
 QList<QSerialPortInfo> QSerialPortInfo::availablePorts()
 {
-    const QVector<int> mib = mibFromName(QLatin1String("dev"));
+    const QList<int> mib = mibFromName(QLatin1String("dev"));
     if (mib.isEmpty())
         return QList<QSerialPortInfo>();
 
@@ -320,10 +284,10 @@ QList<QSerialPortInfo> QSerialPortInfo::availablePorts()
 
     QList<QSerialPortInfo> serialPortInfoList;
 
-    for (const QSerialPortInfo &cuaCandidate : qAsConst(cuaCandidates)) {
+    for (const QSerialPortInfo &cuaCandidate : std::as_const(cuaCandidates)) {
         const QString cuaPortName = cuaCandidate.portName();
         const QString cuaToken = deviceProperty(cuaPortName, "cua");
-        for (const QSerialPortInfo &ttyCandidate : qAsConst(ttyCandidates)) {
+        for (const QSerialPortInfo &ttyCandidate : std::as_const(ttyCandidates)) {
             const QString ttyPortName = ttyCandidate.portName();
             const QString ttyToken = deviceProperty(ttyPortName, "tty");
             if (cuaToken != ttyToken)
@@ -336,37 +300,6 @@ QList<QSerialPortInfo> QSerialPortInfo::availablePorts()
 
     return serialPortInfoList;
 }
-
-bool QSerialPortInfo::isBusy() const
-{
-    QString lockFilePath = serialPortLockFilePath(portName());
-    if (lockFilePath.isEmpty())
-        return false;
-
-    QFile reader(lockFilePath);
-    if (!reader.open(QIODevice::ReadOnly))
-        return false;
-
-    QByteArray pidLine = reader.readLine();
-    pidLine.chop(1);
-    if (pidLine.isEmpty())
-        return false;
-
-    qint64 pid = pidLine.toLongLong();
-
-    if (pid && (::kill(pid, 0) == -1) && (errno == ESRCH))
-        return false; // PID doesn't exist anymore
-
-    return true;
-}
-
-#if QT_DEPRECATED_SINCE(5, 2)
-bool QSerialPortInfo::isValid() const
-{
-    QFile f(systemLocation());
-    return f.exists();
-}
-#endif // QT_DEPRECATED_SINCE(5, 2)
 
 QString QSerialPortInfoPrivate::portNameToSystemLocation(const QString &source)
 {

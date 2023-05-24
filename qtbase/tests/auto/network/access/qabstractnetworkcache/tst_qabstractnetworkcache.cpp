@@ -1,41 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QTemporaryDir>
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtNetwork/QtNetwork>
-#include "../../../network-settings.h"
+#include <QSignalSpy>
 
-#ifndef QT_NO_BEARERMANAGEMENT
-#include <QtNetwork/qnetworkconfigmanager.h>
-#include <QtNetwork/qnetworkconfiguration.h>
-#include <QtNetwork/qnetworksession.h>
-#endif
+#include "../../../network-settings.h"
 
 #include <algorithm>
 
@@ -77,18 +48,13 @@ private:
     void runTest();
     void checkSynchronous();
 
-#ifndef QT_NO_BEARERMANAGEMENT
-    QNetworkConfigurationManager *netConfMan;
-    QNetworkConfiguration networkConfiguration;
-    QScopedPointer<QNetworkSession> networkSession;
-#endif
 };
 
 class NetworkDiskCache : public QNetworkDiskCache
 {
     Q_OBJECT
 public:
-    NetworkDiskCache(QObject *parent = 0)
+    NetworkDiskCache(QObject *parent = nullptr)
         : QNetworkDiskCache(parent)
         , tempDir(QDir::tempPath() + QLatin1String("/tst_qabstractnetworkcache.XXXXXX"))
         , gotData(false)
@@ -97,7 +63,7 @@ public:
         clear();
     }
 
-    QIODevice *data(const QUrl &url)
+    QIODevice *data(const QUrl &url) override
     {
         gotData = true;
         return QNetworkDiskCache::data(url);
@@ -132,16 +98,6 @@ void tst_QAbstractNetworkCache::initTestCase()
 #else
     if (!QtNetworkSettings::verifyTestNetworkSettings())
         QSKIP("No network test server available");
-#endif
-
-#ifndef QT_NO_BEARERMANAGEMENT
-    netConfMan = new QNetworkConfigurationManager(this);
-    networkConfiguration = netConfMan->defaultConfiguration();
-    networkSession.reset(new QNetworkSession(networkConfiguration));
-    if (!networkSession->isOpen()) {
-        networkSession->open();
-        QVERIFY(networkSession->waitForOpened(30000));
-    }
 #endif
 }
 
@@ -309,7 +265,7 @@ void tst_QAbstractNetworkCache::runTest()
     // prime the cache
     QNetworkReply *reply = manager.get(request);
     QSignalSpy downloaded1(reply, SIGNAL(finished()));
-    QTRY_COMPARE(downloaded1.count(), 1);
+    QTRY_COMPARE(downloaded1.size(), 1);
     QCOMPARE(diskCache->gotData, false);
     QByteArray goodData = reply->readAll();
 
@@ -318,7 +274,7 @@ void tst_QAbstractNetworkCache::runTest()
     // should be in the cache now
     QNetworkReply *reply2 = manager.get(request);
     QSignalSpy downloaded2(reply2, SIGNAL(finished()));
-    QTRY_COMPARE(downloaded2.count(), 1);
+    QTRY_COMPARE(downloaded2.size(), 1);
 
     QByteArray secondData = reply2->readAll();
     if (!fetchFromCache && cacheLoadControl == QNetworkRequest::AlwaysCache) {
@@ -407,7 +363,7 @@ void tst_QAbstractNetworkCache::deleteCache()
     QNetworkReply *reply = manager.get(request);
     QSignalSpy downloaded1(reply, SIGNAL(finished()));
     manager.setCache(0);
-    QTRY_COMPARE(downloaded1.count(), 1);
+    QTRY_COMPARE(downloaded1.size(), 1);
 }
 
 

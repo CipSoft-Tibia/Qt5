@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QVALIDATOR_H
 #define QVALIDATOR_H
@@ -44,7 +8,6 @@
 #include <QtGui/qtguiglobal.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qstring.h>
-#include <QtCore/qregexp.h>
 #if QT_CONFIG(regularexpression)
 #  include <QtCore/qregularexpression.h>
 #endif
@@ -105,7 +68,7 @@ public:
 
     void setBottom(int);
     void setTop(int);
-    virtual void setRange(int bottom, int top);
+    void setRange(int bottom, int top);
 
     int bottom() const { return b; }
     int top() const { return t; }
@@ -119,8 +82,6 @@ private:
     int b;
     int t;
 };
-
-#ifndef QT_NO_REGEXP
 
 class QDoubleValidatorPrivate;
 
@@ -143,8 +104,10 @@ public:
     };
     Q_ENUM(Notation)
     QValidator::State validate(QString &, int &) const override;
+    void fixup(QString &input) const override;
 
-    virtual void setRange(double bottom, double top, int decimals = 0);
+    void setRange(double bottom, double top, int decimals);
+    void setRange(double bottom, double top);
     void setBottom(double);
     void setTop(double);
     void setDecimals(int);
@@ -170,33 +133,6 @@ private:
     int dec;
 };
 
-
-class Q_GUI_EXPORT QRegExpValidator : public QValidator
-{
-    Q_OBJECT
-    Q_PROPERTY(QRegExp regExp READ regExp WRITE setRegExp NOTIFY regExpChanged)
-
-public:
-    explicit QRegExpValidator(QObject *parent = nullptr);
-    explicit QRegExpValidator(const QRegExp& rx, QObject *parent = nullptr);
-    ~QRegExpValidator();
-
-    virtual QValidator::State validate(QString& input, int& pos) const override;
-
-    void setRegExp(const QRegExp& rx);
-    const QRegExp& regExp() const { return r; }
-
-Q_SIGNALS:
-    void regExpChanged(const QRegExp& regExp);
-
-private:
-    Q_DISABLE_COPY(QRegExpValidator)
-
-    QRegExp r;
-};
-
-#endif // QT_NO_REGEXP
-
 #if QT_CONFIG(regularexpression)
 
 class QRegularExpressionValidatorPrivate;
@@ -211,7 +147,7 @@ public:
     explicit QRegularExpressionValidator(const QRegularExpression &re, QObject *parent = nullptr);
     ~QRegularExpressionValidator();
 
-    virtual QValidator::State validate(QString &input, int &pos) const override;
+    QValidator::State validate(QString &input, int &pos) const override;
 
     QRegularExpression regularExpression() const;
 

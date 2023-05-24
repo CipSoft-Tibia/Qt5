@@ -1,29 +1,32 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/webui/downloads/downloads_list_tracker.h"
 
 #include <iterator>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/i18n/rtl.h"
 #include "base/i18n/unicodestring.h"
-#include "base/strings/string16.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "chrome/browser/download/download_crx_util.h"
 #include "chrome/browser/download/download_item_model.h"
 #include "chrome/browser/download/download_query.h"
+#include "chrome/browser/enterprise/connectors/common.h"
 #include "chrome/browser/extensions/api/downloads/downloads_api.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/webui/downloads/downloads.mojom.h"
 #include "components/download/public/common/download_danger_type.h"
 #include "components/download/public/common/download_item.h"
+#include "components/safe_browsing/core/common/features.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/download_item_utils.h"
 #include "content/public/browser/download_manager.h"
@@ -35,8 +38,8 @@
 #include "ui/base/l10n/time_format.h"
 
 using content::BrowserContext;
-using download::DownloadItem;
 using content::DownloadManager;
+using download::DownloadItem;
 
 using DownloadVector = DownloadManager::DownloadVector;
 
@@ -54,6 +57,7 @@ const char* GetDangerTypeString(download::DownloadDangerType danger_type) {
       return "DANGEROUS_FILE";
     case download::DOWNLOAD_DANGER_TYPE_DANGEROUS_URL:
       return "DANGEROUS_URL";
+    case download::DOWNLOAD_DANGER_TYPE_DANGEROUS_ACCOUNT_COMPROMISE:
     case download::DOWNLOAD_DANGER_TYPE_DANGEROUS_CONTENT:
       return "DANGEROUS_CONTENT";
     case download::DOWNLOAD_DANGER_TYPE_UNCOMMON_CONTENT:
@@ -82,13 +86,13 @@ const char* GetDangerTypeString(download::DownloadDangerType danger_type) {
     case download::DOWNLOAD_DANGER_TYPE_NOT_DANGEROUS:
     case download::DOWNLOAD_DANGER_TYPE_MAYBE_DANGEROUS_CONTENT:
     case download::DOWNLOAD_DANGER_TYPE_USER_VALIDATED:
-    case download::DOWNLOAD_DANGER_TYPE_WHITELISTED_BY_POLICY:
+    case download::DOWNLOAD_DANGER_TYPE_ALLOWLISTED_BY_POLICY:
     case download::DOWNLOAD_DANGER_TYPE_MAX:
       break;
   }
 
   // Don't return a danger type string if it is NOT_DANGEROUS,
-  // MAYBE_DANGEROUS_CONTENT, or USER_VALIDATED, or WHITELISTED_BY_POLICY.
+  // MAYBE_DANGEROUS_CONTENT, or USER_VALIDATED, or ALLOWLISTED_BY_POLICY.
   return "";
 }
 
@@ -123,7 +127,7 @@ void DownloadsListTracker::Reset() {
 
 bool DownloadsListTracker::SetSearchTerms(
     const std::vector<std::string>& search_terms) {
-  std::vector<base::string16> new_terms;
+  std::vector<std::u16string> new_terms;
   new_terms.resize(search_terms.size());
 
   for (const auto& t : search_terms)
@@ -200,10 +204,10 @@ void DownloadsListTracker::OnDownloadRemoved(DownloadManager* manager,
 DownloadsListTracker::DownloadsListTracker(
     DownloadManager* download_manager,
     mojo::PendingRemote<downloads::mojom::Page> page,
-    base::Callback<bool(const DownloadItem&)> should_show)
+    base::RepeatingCallback<bool(const DownloadItem&)> should_show)
     : main_notifier_(download_manager, this),
       page_(std::move(page)),
-      should_show_(should_show) {
+      should_show_(std::move(should_show)) {
   DCHECK(page_);
   Init();
 }
@@ -220,7 +224,7 @@ downloads::mojom::DataPtr DownloadsListTracker::CreateDownloadData(
   file_value->started =
       static_cast<int>(download_item->GetStartTime().ToTimeT());
   file_value->since_string = base::UTF16ToUTF8(
-      ui::TimeFormat::RelativeDate(download_item->GetStartTime(), NULL));
+      ui::TimeFormat::RelativeDate(download_item->GetStartTime(), nullptr));
   file_value->date_string = TimeFormatLongDate(download_item->GetStartTime());
 
   file_value->id = base::NumberToString(download_item->GetId());
@@ -253,7 +257,7 @@ downloads::mojom::DataPtr DownloadsListTracker::CreateDownloadData(
   file_value->by_ext_name = by_ext_name;
 
   // Keep file names as LTR. TODO(dbeam): why?
-  base::string16 file_name =
+  std::u16string file_name =
       download_item->GetFileNameToReportUser().LossyDisplayName();
   file_name = base::i18n::GetDisplayStringInLTRDirectionality(file_name);
 
@@ -269,22 +273,25 @@ downloads::mojom::DataPtr DownloadsListTracker::CreateDownloadData(
   file_value->otr = IsIncognito(*download_item);
 
   const char* danger_type = GetDangerTypeString(download_item->GetDangerType());
-  base::string16 last_reason_text;
+  std::u16string last_reason_text;
   // -2 is invalid, -1 means indeterminate, and 0-100 are in-progress.
   int percent = -2;
-  base::string16 progress_status_text;
+  std::u16string progress_status_text;
   bool retry = false;
   const char* state = nullptr;
 
   switch (download_item->GetState()) {
     case download::DownloadItem::IN_PROGRESS: {
-      if (download_item->IsDangerous()) {
-        state = "DANGEROUS";
-      } else if (download_item->IsMixedContent()) {
-        state = "MIXED_CONTENT";
+      if (download_item->GetDangerType() ==
+          download::DOWNLOAD_DANGER_TYPE_PROMPT_FOR_SCANNING) {
+        state = "PROMPT_FOR_SCANNING";
       } else if (download_item->GetDangerType() ==
                  download::DOWNLOAD_DANGER_TYPE_ASYNC_SCANNING) {
         state = "ASYNC_SCANNING";
+      } else if (download_item->IsDangerous()) {
+        state = "DANGEROUS";
+      } else if (download_item->IsInsecure()) {
+        state = "INSECURE";
       } else if (download_item->IsPaused()) {
         state = "PAUSED";
       } else {
@@ -302,11 +309,11 @@ downloads::mojom::DataPtr DownloadsListTracker::CreateDownloadData(
       if (download_item->CanResume())
         percent = download_item->PercentComplete();
 
-      // TODO(asanka): last_reason_text should be set via
-      // download_model.GetInterruptReasonText(). But we are using
+      // TODO(https://crbug.com/609255): GetHistoryPageStatusText() is using
       // GetStatusText() as a temporary measure until the layout is fixed to
-      // accommodate the longer string. http://crbug.com/609255
-      last_reason_text = download_model.GetStatusText();
+      // accommodate the longer string. Should update it to simply use
+      // GetInterruptDescription().
+      last_reason_text = download_model.GetHistoryPageStatusText();
       if (download::DOWNLOAD_INTERRUPT_REASON_CRASH ==
               download_item->GetLastReason() &&
           !download_item->CanResume()) {
@@ -332,10 +339,18 @@ downloads::mojom::DataPtr DownloadsListTracker::CreateDownloadData(
 
   file_value->danger_type = danger_type;
   file_value->is_dangerous = download_item->IsDangerous();
-  file_value->is_mixed_content = download_item->IsMixedContent();
+  file_value->is_insecure = download_item->IsInsecure();
+  file_value->is_reviewable =
+      enterprise_connectors::ShouldPromptReviewForDownload(
+          Profile::FromBrowserContext(
+              content::DownloadItemUtils::GetBrowserContext(download_item)),
+          download_item->GetDangerType());
+
   file_value->last_reason_text = base::UTF16ToUTF8(last_reason_text);
   file_value->percent = percent;
   file_value->progress_status_text = base::UTF16ToUTF8(progress_status_text);
+  file_value->show_in_folder_text =
+      base::UTF16ToUTF8(download_model.GetShowInFolderText());
   file_value->retry = retry;
   file_value->state = state;
 
@@ -344,11 +359,11 @@ downloads::mojom::DataPtr DownloadsListTracker::CreateDownloadData(
 
 bool DownloadsListTracker::IsIncognito(const DownloadItem& item) const {
   return GetOriginalNotifierManager() && GetMainNotifierManager() &&
-      GetMainNotifierManager()->GetDownload(item.GetId()) == &item;
+         GetMainNotifierManager()->GetDownload(item.GetId()) == &item;
 }
 
-const DownloadItem* DownloadsListTracker::GetItemForTesting(size_t index)
-    const {
+const DownloadItem* DownloadsListTracker::GetItemForTesting(
+    size_t index) const {
   if (index >= sorted_items_.size())
     return nullptr;
 
@@ -387,7 +402,7 @@ void DownloadsListTracker::Init() {
   if (profile->IsOffTheRecord()) {
     Profile* original_profile = profile->GetOriginalProfile();
     original_notifier_ = std::make_unique<download::AllDownloadItemNotifier>(
-        BrowserContext::GetDownloadManager(original_profile), this);
+        original_profile->GetDownloadManager(), this);
   }
 
   RebuildSortedItems();

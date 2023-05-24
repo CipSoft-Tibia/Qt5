@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,10 +12,10 @@
 #include <vector>
 
 #include "base/containers/span.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "media/base/limits.h"
 #include "media/base/subsample_entry.h"
+#include "media/base/video_types.h"
 #include "media/gpu/accelerated_video_decoder.h"
 #include "media/gpu/h264_dpb.h"
 #include "media/gpu/media_gpu_export.h"
@@ -60,6 +60,10 @@ class MEDIA_GPU_EXPORT H264Decoder : public AcceleratedVideoDecoder {
     };
 
     H264Accelerator();
+
+    H264Accelerator(const H264Accelerator&) = delete;
+    H264Accelerator& operator=(const H264Accelerator&) = delete;
+
     virtual ~H264Accelerator();
 
     // Create a new H264Picture that the decoder client can use for decoding
@@ -70,6 +74,18 @@ class MEDIA_GPU_EXPORT H264Decoder : public AcceleratedVideoDecoder {
     // any new pictures at given time. The decoder is expected to handle
     // this situation as normal and return from Decode() with kRanOutOfSurfaces.
     virtual scoped_refptr<H264Picture> CreateH264Picture() = 0;
+
+    // Provides the raw NALU data for an SPS. The |sps| passed to
+    // SubmitFrameMetadata() is always the most recent SPS passed to
+    // ProcessSPS() with the same |seq_parameter_set_id|.
+    virtual void ProcessSPS(const H264SPS* sps,
+                            base::span<const uint8_t> sps_nalu_data);
+
+    // Provides the raw NALU data for a PPS. The |pps| passed to
+    // SubmitFrameMetadata() is always the most recent PPS passed to
+    // ProcessPPS() with the same |pic_parameter_set_id|.
+    virtual void ProcessPPS(const H264PPS* pps,
+                            base::span<const uint8_t> pps_nalu_data);
 
     // Submit metadata for the current frame, providing the current |sps| and
     // |pps| for it, |dpb| has to contain all the pictures in DPB for current
@@ -89,6 +105,21 @@ class MEDIA_GPU_EXPORT H264Decoder : public AcceleratedVideoDecoder {
         const H264Picture::Vector& ref_pic_listb0,
         const H264Picture::Vector& ref_pic_listb1,
         scoped_refptr<H264Picture> pic) = 0;
+
+    // Used for handling CENCv1 streams where the entire slice header, except
+    // for the NALU type byte, is encrypted. |data| represents the encrypted
+    // ranges which will include any SEI NALUs along with the encrypted slice
+    // NALU. |subsamples| specifies what is encrypted and should have just a
+    // single clear byte for each and the rest is encrypted. |sps_nalu_data|
+    // and |pps_nalu_data| are the SPS and PPS NALUs respectively.
+    // |slice_header_out| should have its fields filled in upon successful
+    // return. Returns kOk if successful, kFail if there are errors, or
+    // kTryAgain if the accelerator needs additional data before being able to
+    // proceed.
+    virtual Status ParseEncryptedSliceHeader(
+        const std::vector<base::span<const uint8_t>>& data,
+        const std::vector<SubsampleEntry>& subsamples,
+        H264SliceHeader* slice_header_out);
 
     // Submit one slice for the current frame, passing the current |pps| and
     // |pic| (same as in SubmitFrameMetadata()), the parsed header for the
@@ -141,24 +172,28 @@ class MEDIA_GPU_EXPORT H264Decoder : public AcceleratedVideoDecoder {
     // kNotSupported.
     virtual Status SetStream(base::span<const uint8_t> stream,
                              const DecryptConfig* decrypt_config);
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(H264Accelerator);
   };
 
   H264Decoder(std::unique_ptr<H264Accelerator> accelerator,
               VideoCodecProfile profile,
               const VideoColorSpace& container_color_space = VideoColorSpace());
+
+  H264Decoder(const H264Decoder&) = delete;
+  H264Decoder& operator=(const H264Decoder&) = delete;
+
   ~H264Decoder() override;
 
   // AcceleratedVideoDecoder implementation.
   void SetStream(int32_t id, const DecoderBuffer& decoder) override;
-  bool Flush() override WARN_UNUSED_RESULT;
+  [[nodiscard]] bool Flush() override;
   void Reset() override;
-  DecodeResult Decode() override WARN_UNUSED_RESULT;
+  [[nodiscard]] DecodeResult Decode() override;
   gfx::Size GetPicSize() const override;
   gfx::Rect GetVisibleRect() const override;
   VideoCodecProfile GetProfile() const override;
+  uint8_t GetBitDepth() const override;
+  VideoChromaSampling GetChromaSampling() const override;
+  absl::optional<gfx::HDRMetadata> GetHDRMetadata() const override;
   size_t GetRequiredNumOfPictures() const override;
   size_t GetNumReferenceFrames() const override;
 
@@ -176,7 +211,7 @@ class MEDIA_GPU_EXPORT H264Decoder : public AcceleratedVideoDecoder {
 
  private:
   // Internal state of the decoder.
-  enum State {
+  enum class State {
     // After initialization, need an SPS.
     kNeedStreamMetadata,
     // Ready to decode from any point.
@@ -188,6 +223,7 @@ class MEDIA_GPU_EXPORT H264Decoder : public AcceleratedVideoDecoder {
     // retryable error) is returned. The next time Decode() is called the call
     // that previously failed will be retried and execution continues from
     // there (if possible).
+    kParseSliceHeader,
     kTryPreprocessCurrentSlice,
     kEnsurePicture,
     kTryNewFrame,
@@ -198,6 +234,12 @@ class MEDIA_GPU_EXPORT H264Decoder : public AcceleratedVideoDecoder {
 
   // Process H264 stream structures.
   bool ProcessSPS(int sps_id, bool* need_new_buffers);
+
+  // Processes a CENCv1 encrypted slice header and fills in |curr_slice_hdr_|
+  // with the relevant parsed fields.
+  H264Accelerator::Status ProcessEncryptedSliceHeader(
+      const std::vector<SubsampleEntry>& subsamples);
+
   // Process current slice header to discover if we need to start a new picture,
   // finishing up the current one.
   H264Accelerator::Status PreprocessCurrentSlice();
@@ -222,7 +264,7 @@ class MEDIA_GPU_EXPORT H264Decoder : public AcceleratedVideoDecoder {
   bool UpdateMaxNumReorderFrames(const H264SPS* sps);
 
   // Prepare reference picture lists for the current frame.
-  void PrepareRefPicLists(const H264SliceHeader* slice_hdr);
+  void PrepareRefPicLists();
   // Prepare reference picture lists for the given slice.
   bool ModifyReferencePicLists(const H264SliceHeader* slice_hdr,
                                H264Picture::Vector* ref_pic_list0,
@@ -230,8 +272,8 @@ class MEDIA_GPU_EXPORT H264Decoder : public AcceleratedVideoDecoder {
 
   // Construct initial reference picture lists for use in decoding of
   // P and B pictures (see 8.2.4 in spec).
-  void ConstructReferencePicListsP(const H264SliceHeader* slice_hdr);
-  void ConstructReferencePicListsB(const H264SliceHeader* slice_hdr);
+  void ConstructReferencePicListsP();
+  void ConstructReferencePicListsB();
 
   // Helper functions for reference list construction, per spec.
   int PicNumF(const H264Picture& pic);
@@ -289,13 +331,6 @@ class MEDIA_GPU_EXPORT H264Decoder : public AcceleratedVideoDecoder {
   // The colorspace for the h264 container.
   const VideoColorSpace container_color_space_;
 
-  // If |decoder_buffer_is_complete_frame_| is true, then it is assumed that
-  // each DecoderBuffer contains a complete frame of video. After processing a
-  // DecoderBuffer, if there is a pending frame, it will be sent to the
-  // |accelerator_| immediately rather than waiting for a bitstream indication
-  // for the next frame, EOS or an AUD.
-  bool decoder_buffer_is_complete_frame_ = false;
-
   // Parser in use.
   H264Parser parser_;
 
@@ -346,9 +381,28 @@ class MEDIA_GPU_EXPORT H264Decoder : public AcceleratedVideoDecoder {
   int curr_sps_id_;
   int curr_pps_id_;
 
+  // Last PPS that was parsed. Used for full sample encryption, which has the
+  // assumption this is streaming content which does not switch between
+  // different PPSes in the stream (they are present once in the container for
+  // the stream).
+  int last_parsed_pps_id_;
+
   // Current NALU and slice header being processed.
   std::unique_ptr<H264NALU> curr_nalu_;
   std::unique_ptr<H264SliceHeader> curr_slice_hdr_;
+
+  // Encrypted NALUs preceding a fully encrypted (CENCv1) slice NALU. We need to
+  // save these that are part of a single sample so they can all be decrypted
+  // together.
+  std::vector<base::span<const uint8_t>> prior_cencv1_nalus_;
+  std::vector<SubsampleEntry> prior_cencv1_subsamples_;
+
+  // These are absl::nullopt unless get recovery point SEI message after Reset.
+  // A frame_num of the frame at output order that is correct in content.
+  absl::optional<int> recovery_frame_num_;
+  // A value in the recovery point SEI message to compute |recovery_frame_num_|
+  // later.
+  absl::optional<int> recovery_frame_cnt_;
 
   // Output picture size.
   gfx::Size pic_size_;
@@ -357,13 +411,17 @@ class MEDIA_GPU_EXPORT H264Decoder : public AcceleratedVideoDecoder {
 
   // Profile of input bitstream.
   VideoCodecProfile profile_;
+  // Bit depth of input bitstream.
+  uint8_t bit_depth_ = 0;
+  // Chroma subsampling format of input bitstream.
+  VideoChromaSampling chroma_sampling_ = VideoChromaSampling::kUnknown;
+  // HDR metadata in the bitstream.
+  absl::optional<gfx::HDRMetadata> hdr_metadata_;
 
   // PicOrderCount of the previously outputted frame.
   int last_output_poc_;
 
   const std::unique_ptr<H264Accelerator> accelerator_;
-
-  DISALLOW_COPY_AND_ASSIGN(H264Decoder);
 };
 
 }  // namespace media

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "content/browser/loader/navigation_url_loader.h"
 
 namespace content {
@@ -16,20 +15,21 @@ namespace content {
 // the loader. This is intended for testing.
 class NavigationURLLoaderFactory {
  public:
+  NavigationURLLoaderFactory(const NavigationURLLoaderFactory&) = delete;
+  NavigationURLLoaderFactory& operator=(const NavigationURLLoaderFactory&) =
+      delete;
+
   virtual std::unique_ptr<NavigationURLLoader> CreateLoader(
       StoragePartition* storage_partition,
       std::unique_ptr<NavigationRequestInfo> request_info,
       std::unique_ptr<NavigationUIData> navigation_ui_data,
       ServiceWorkerMainResourceHandle* service_worker_handle,
       NavigationURLLoaderDelegate* delegate,
-      bool is_served_from_back_forward_cache) = 0;
+      NavigationURLLoader::LoaderType loader_type) = 0;
 
  protected:
   NavigationURLLoaderFactory() {}
   virtual ~NavigationURLLoaderFactory() {}
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(NavigationURLLoaderFactory);
 };
 
 }  // namespace content

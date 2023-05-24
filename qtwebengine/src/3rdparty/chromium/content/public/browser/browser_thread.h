@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,15 +9,16 @@
 #include <string>
 #include <utility>
 
-#include "base/callback.h"
+#include "base/check.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
-#include "base/logging.h"
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/single_thread_task_runner.h"
-#include "base/task_runner_util.h"
-#include "base/time/time.h"
+#include "base/task/single_thread_task_runner.h"
 #include "content/common/content_export.h"
+
+#if defined(UNIT_TEST)
+#include "base/logging.h"
+#endif
 
 namespace content {
 
@@ -26,14 +27,12 @@ namespace content {
 // browser_task_traits.h on BrowserThread::ID is broken.
 class BrowserTaskTraits;
 
-class BrowserThreadImpl;
-
 // Use DCHECK_CURRENTLY_ON(BrowserThread::ID) to assert that a function can only
 // be called on the named BrowserThread.
-#define DCHECK_CURRENTLY_ON(thread_identifier)                      \
-  (DCHECK(::content::BrowserThread::CurrentlyOn(thread_identifier)) \
-   << ::content::BrowserThread::GetDCheckCurrentlyOnErrorMessage(   \
-          thread_identifier))
+#define DCHECK_CURRENTLY_ON(thread_identifier)                       \
+  DCHECK(::content::BrowserThread::CurrentlyOn(thread_identifier))   \
+      << ::content::BrowserThread::GetDCheckCurrentlyOnErrorMessage( \
+             thread_identifier)
 
 // The main entry point to post tasks to the UI thread. Tasks posted with the
 // same |traits| will run in posting order (i.e. according to the
@@ -81,6 +80,9 @@ class CONTENT_EXPORT BrowserThread {
     ID_COUNT
   };
 
+  BrowserThread(const BrowserThread&) = delete;
+  BrowserThread& operator=(const BrowserThread&) = delete;
+
   // Delete/ReleaseSoon() helpers allow future deletion of an owned object on
   // its associated thread. If you already have a task runner bound to a
   // BrowserThread you should use its SequencedTaskRunner::DeleteSoon() member
@@ -123,15 +125,15 @@ class CONTENT_EXPORT BrowserThread {
 
   // Callable on any thread.  Returns whether the given well-known thread is
   // initialized.
-  static bool IsThreadInitialized(ID identifier) WARN_UNUSED_RESULT;
+  [[nodiscard]] static bool IsThreadInitialized(ID identifier);
 
   // Callable on any thread.  Returns whether you're currently on a particular
   // thread.  To DCHECK this, use the DCHECK_CURRENTLY_ON() macro above.
-  static bool CurrentlyOn(ID identifier) WARN_UNUSED_RESULT;
+  [[nodiscard]] static bool CurrentlyOn(ID identifier);
 
   // If the current message loop is one of the known threads, returns true and
   // sets identifier to its ID.  Otherwise returns false.
-  static bool GetCurrentThreadIdentifier(ID* identifier) WARN_UNUSED_RESULT;
+  [[nodiscard]] static bool GetCurrentThreadIdentifier(ID* identifier);
 
   // Use these templates in conjunction with RefCountedThreadSafe or scoped_ptr
   // when you want to ensure that an object is deleted on a specific thread.
@@ -201,8 +203,8 @@ class CONTENT_EXPORT BrowserThread {
   // NOTE: Can only be called from the UI thread.
   static void RunAllPendingTasksOnThreadForTesting(ID identifier);
 
- protected:
-  // For DeleteSoon(). Requires that the BrowserThread with the provided
+  // Helper that returns GetUIThreadTaskRunner({}) or GetIOThreadTaskRunner({})
+  // based on |identifier|. Requires that the BrowserThread with the provided
   // |identifier| was started.
   static scoped_refptr<base::SingleThreadTaskRunner> GetTaskRunnerForThread(
       ID identifier);
@@ -210,18 +212,7 @@ class CONTENT_EXPORT BrowserThread {
  private:
   friend class BrowserThreadImpl;
   BrowserThread() = default;
-
-  DISALLOW_COPY_AND_ASSIGN(BrowserThread);
 };
-
-// Runs |task| on the thread specified by |thread_id| if already on that thread,
-// otherwise posts a task to that thread.
-//
-// This is intended to be a temporary helper function for the IO/UI thread
-// simplification effort.
-CONTENT_EXPORT void RunOrPostTaskOnThread(const base::Location& location,
-                                          BrowserThread::ID thread_id,
-                                          base::OnceClosure task);
 
 }  // namespace content
 

@@ -30,23 +30,32 @@
  * Theora decoder by Alex Beregszaszi
  */
 
-#include <stdio.h>
-#include <stdlib.h>
+#include "config_components.h"
+
+#include <stddef.h>
 #include <string.h>
 
 #include "libavutil/imgutils.h"
+#include "libavutil/mem_internal.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "hpeldsp.h"
-#include "internal.h"
+#include "jpegquanttables.h"
 #include "mathops.h"
 #include "thread.h"
+#include "threadframe.h"
 #include "videodsp.h"
 #include "vp3data.h"
 #include "vp4data.h"
 #include "vp3dsp.h"
 #include "xiph.h"
+
+#define VP3_MV_VLC_BITS     6
+#define VP4_MV_VLC_BITS     6
+#define SUPERBLOCK_VLC_BITS 6
 
 #define FRAGMENT_PIXELS 8
 
@@ -155,6 +164,15 @@ typedef struct {
 
 #define MIN_DEQUANT_VAL 2
 
+typedef struct HuffEntry {
+    uint8_t len, sym;
+} HuffEntry;
+
+typedef struct HuffTable {
+    HuffEntry entries[32];
+    uint8_t   nb_entries;
+} HuffTable;
+
 typedef struct Vp3DecodeContext {
     AVCodecContext *avctx;
     int theora, theora_tables, theora_header;
@@ -257,11 +275,9 @@ typedef struct Vp3DecodeContext {
     int *nkf_coded_fragment_list;
     int num_kf_coded_fragment[3];
 
-    VLC dc_vlc[16];
-    VLC ac_vlc_1[16];
-    VLC ac_vlc_2[16];
-    VLC ac_vlc_3[16];
-    VLC ac_vlc_4[16];
+    /* The first 16 of the following VLCs are for the dc coefficients;
+       the others are four groups of 16 VLCs each for ac coefficients. */
+    VLC coeff_vlc[5 * 16];
 
     VLC superblock_run_length_vlc; /* version < 2 */
     VLC fragment_run_length_vlc; /* version < 2 */
@@ -287,11 +303,7 @@ typedef struct Vp3DecodeContext {
     uint8_t *edge_emu_buffer;
 
     /* Huffman decode */
-    int hti;
-    unsigned int hbits;
-    int entries;
-    int huff_code_size;
-    uint32_t huffman_table[80][32][2];
+    HuffTable huffman_table[5 * 16];
 
     uint8_t filter_limit_values[64];
     DECLARE_ALIGNED(8, int, bounding_values_array)[256 + 2];
@@ -324,11 +336,11 @@ static void vp3_decode_flush(AVCodecContext *avctx)
     Vp3DecodeContext *s = avctx->priv_data;
 
     if (s->golden_frame.f)
-        ff_thread_release_buffer(avctx, &s->golden_frame);
+        ff_thread_release_ext_buffer(avctx, &s->golden_frame);
     if (s->last_frame.f)
-        ff_thread_release_buffer(avctx, &s->last_frame);
+        ff_thread_release_ext_buffer(avctx, &s->last_frame);
     if (s->current_frame.f)
-        ff_thread_release_buffer(avctx, &s->current_frame);
+        ff_thread_release_ext_buffer(avctx, &s->current_frame);
 }
 
 static av_cold int vp3_decode_end(AVCodecContext *avctx)
@@ -347,13 +359,8 @@ static av_cold int vp3_decode_end(AVCodecContext *avctx)
     av_frame_free(&s->last_frame.f);
     av_frame_free(&s->golden_frame.f);
 
-    for (i = 0; i < 16; i++) {
-        ff_free_vlc(&s->dc_vlc[i]);
-        ff_free_vlc(&s->ac_vlc_1[i]);
-        ff_free_vlc(&s->ac_vlc_2[i]);
-        ff_free_vlc(&s->ac_vlc_3[i]);
-        ff_free_vlc(&s->ac_vlc_4[i]);
-    }
+    for (i = 0; i < FF_ARRAY_ELEMS(s->coeff_vlc); i++)
+        ff_free_vlc(&s->coeff_vlc[i]);
 
     ff_free_vlc(&s->superblock_run_length_vlc);
     ff_free_vlc(&s->fragment_run_length_vlc);
@@ -491,7 +498,7 @@ static int unpack_superblocks(Vp3DecodeContext *s, GetBitContext *gb)
                 bit ^= 1;
 
             current_run = get_vlc2(gb, s->superblock_run_length_vlc.table,
-                                   6, 2) + 1;
+                                   SUPERBLOCK_VLC_BITS, 2);
             if (current_run == 34)
                 current_run += get_bits(gb, 12);
 
@@ -525,7 +532,7 @@ static int unpack_superblocks(Vp3DecodeContext *s, GetBitContext *gb)
                     bit ^= 1;
 
                 current_run = get_vlc2(gb, s->superblock_run_length_vlc.table,
-                                       6, 2) + 1;
+                                       SUPERBLOCK_VLC_BITS, 2);
                 if (current_run == 34)
                     current_run += get_bits(gb, 12);
 
@@ -684,11 +691,6 @@ static int vp4_get_mb_count(Vp3DecodeContext *s, GetBitContext *gb)
 static int vp4_get_block_pattern(Vp3DecodeContext *s, GetBitContext *gb, int *next_block_pattern_table)
 {
     int v = get_vlc2(gb, s->block_pattern_vlc[*next_block_pattern_table].table, 3, 2);
-    if (v == -1) {
-        av_log(s->avctx, AV_LOG_ERROR, "Invalid block pattern\n");
-        *next_block_pattern_table = 0;
-        return 0;
-    }
     *next_block_pattern_table = vp4_block_pattern_table_selector[v];
     return v + 1;
 }
@@ -892,7 +894,8 @@ static int unpack_modes(Vp3DecodeContext *s, GetBitContext *gb)
 
 static int vp4_get_mv(Vp3DecodeContext *s, GetBitContext *gb, int axis, int last_motion)
 {
-    int v = get_vlc2(gb, s->vp4_mv_vlc[axis][vp4_mv_table_selector[FFABS(last_motion)]].table, 6, 2) - 31;
+    int v = get_vlc2(gb, s->vp4_mv_vlc[axis][vp4_mv_table_selector[FFABS(last_motion)]].table,
+                     VP4_MV_VLC_BITS, 2);
     return last_motion < 0 ? -v : v;
 }
 
@@ -949,8 +952,10 @@ static int unpack_vectors(Vp3DecodeContext *s, GetBitContext *gb)
                 case MODE_INTER_PLUS_MV:
                     /* all 6 fragments use the same motion vector */
                     if (coding_mode == 0) {
-                        motion_x[0] = motion_vector_table[get_vlc2(gb, s->motion_vector_vlc.table, 6, 2)];
-                        motion_y[0] = motion_vector_table[get_vlc2(gb, s->motion_vector_vlc.table, 6, 2)];
+                        motion_x[0] = get_vlc2(gb, s->motion_vector_vlc.table,
+                                               VP3_MV_VLC_BITS, 2);
+                        motion_y[0] = get_vlc2(gb, s->motion_vector_vlc.table,
+                                               VP3_MV_VLC_BITS, 2);
                     } else if (coding_mode == 1) {
                         motion_x[0] = fixed_motion_vector_table[get_bits(gb, 6)];
                         motion_y[0] = fixed_motion_vector_table[get_bits(gb, 6)];
@@ -979,8 +984,10 @@ static int unpack_vectors(Vp3DecodeContext *s, GetBitContext *gb)
                         current_fragment = BLOCK_Y * s->fragment_width[0] + BLOCK_X;
                         if (s->all_fragments[current_fragment].coding_method != MODE_COPY) {
                             if (coding_mode == 0) {
-                                motion_x[k] = motion_vector_table[get_vlc2(gb, s->motion_vector_vlc.table, 6, 2)];
-                                motion_y[k] = motion_vector_table[get_vlc2(gb, s->motion_vector_vlc.table, 6, 2)];
+                                motion_x[k] = get_vlc2(gb, s->motion_vector_vlc.table,
+                                                       VP3_MV_VLC_BITS, 2);
+                                motion_y[k] = get_vlc2(gb, s->motion_vector_vlc.table,
+                                                       VP3_MV_VLC_BITS, 2);
                             } else if (coding_mode == 1) {
                                 motion_x[k] = fixed_motion_vector_table[get_bits(gb, 6)];
                                 motion_y[k] = fixed_motion_vector_table[get_bits(gb, 6)];
@@ -1111,7 +1118,8 @@ static int unpack_block_qpis(Vp3DecodeContext *s, GetBitContext *gb)
             else
                 bit ^= 1;
 
-            run_length = get_vlc2(gb, s->superblock_run_length_vlc.table, 6, 2) + 1;
+            run_length = get_vlc2(gb, s->superblock_run_length_vlc.table,
+                                  SUPERBLOCK_VLC_BITS, 2);
             if (run_length == 34)
                 run_length += get_bits(gb, 12);
             blocks_decoded += run_length;
@@ -1189,7 +1197,7 @@ static int unpack_vlcs(Vp3DecodeContext *s, GetBitContext *gb,
     /* local references to structure members to avoid repeated dereferences */
     int *coded_fragment_list   = s->coded_fragment_list[plane];
     Vp3Fragment *all_fragments = s->all_fragments;
-    VLC_TYPE(*vlc_table)[2] = table->table;
+    const VLCElem *vlc_table = table->table;
 
     if (num_coeffs < 0) {
         av_log(s->avctx, AV_LOG_ERROR,
@@ -1314,7 +1322,7 @@ static int unpack_dct_coeffs(Vp3DecodeContext *s, GetBitContext *gb)
     dc_c_table = get_bits(gb, 4);
 
     /* unpack the Y plane DC coefficients */
-    residual_eob_run = unpack_vlcs(s, gb, &s->dc_vlc[dc_y_table], 0,
+    residual_eob_run = unpack_vlcs(s, gb, &s->coeff_vlc[dc_y_table], 0,
                                    0, residual_eob_run);
     if (residual_eob_run < 0)
         return residual_eob_run;
@@ -1325,11 +1333,11 @@ static int unpack_dct_coeffs(Vp3DecodeContext *s, GetBitContext *gb)
     reverse_dc_prediction(s, 0, s->fragment_width[0], s->fragment_height[0]);
 
     /* unpack the C plane DC coefficients */
-    residual_eob_run = unpack_vlcs(s, gb, &s->dc_vlc[dc_c_table], 0,
+    residual_eob_run = unpack_vlcs(s, gb, &s->coeff_vlc[dc_c_table], 0,
                                    1, residual_eob_run);
     if (residual_eob_run < 0)
         return residual_eob_run;
-    residual_eob_run = unpack_vlcs(s, gb, &s->dc_vlc[dc_c_table], 0,
+    residual_eob_run = unpack_vlcs(s, gb, &s->coeff_vlc[dc_c_table], 0,
                                    2, residual_eob_run);
     if (residual_eob_run < 0)
         return residual_eob_run;
@@ -1350,20 +1358,24 @@ static int unpack_dct_coeffs(Vp3DecodeContext *s, GetBitContext *gb)
 
     /* build tables of AC VLC tables */
     for (i = 1; i <= 5; i++) {
-        y_tables[i] = &s->ac_vlc_1[ac_y_table];
-        c_tables[i] = &s->ac_vlc_1[ac_c_table];
+        /* AC VLC table group 1 */
+        y_tables[i] = &s->coeff_vlc[ac_y_table + 16];
+        c_tables[i] = &s->coeff_vlc[ac_c_table + 16];
     }
     for (i = 6; i <= 14; i++) {
-        y_tables[i] = &s->ac_vlc_2[ac_y_table];
-        c_tables[i] = &s->ac_vlc_2[ac_c_table];
+        /* AC VLC table group 2 */
+        y_tables[i] = &s->coeff_vlc[ac_y_table + 32];
+        c_tables[i] = &s->coeff_vlc[ac_c_table + 32];
     }
     for (i = 15; i <= 27; i++) {
-        y_tables[i] = &s->ac_vlc_3[ac_y_table];
-        c_tables[i] = &s->ac_vlc_3[ac_c_table];
+        /* AC VLC table group 3 */
+        y_tables[i] = &s->coeff_vlc[ac_y_table + 48];
+        c_tables[i] = &s->coeff_vlc[ac_c_table + 48];
     }
     for (i = 28; i <= 63; i++) {
-        y_tables[i] = &s->ac_vlc_4[ac_y_table];
-        c_tables[i] = &s->ac_vlc_4[ac_c_table];
+        /* AC VLC table group 4 */
+        y_tables[i] = &s->coeff_vlc[ac_y_table + 64];
+        c_tables[i] = &s->coeff_vlc[ac_c_table + 64];
     }
 
     /* decode all AC coefficients */
@@ -1542,23 +1554,28 @@ static int vp4_unpack_dct_coeffs(Vp3DecodeContext *s, GetBitContext *gb)
 
     /* build tables of DC/AC VLC tables */
 
-    tables[0][0] = &s->dc_vlc[dc_y_table];
-    tables[1][0] = &s->dc_vlc[dc_c_table];
+    /* DC table group */
+    tables[0][0] = &s->coeff_vlc[dc_y_table];
+    tables[1][0] = &s->coeff_vlc[dc_c_table];
     for (i = 1; i <= 5; i++) {
-        tables[0][i] = &s->ac_vlc_1[ac_y_table];
-        tables[1][i] = &s->ac_vlc_1[ac_c_table];
+        /* AC VLC table group 1 */
+        tables[0][i] = &s->coeff_vlc[ac_y_table + 16];
+        tables[1][i] = &s->coeff_vlc[ac_c_table + 16];
     }
     for (i = 6; i <= 14; i++) {
-        tables[0][i] = &s->ac_vlc_2[ac_y_table];
-        tables[1][i] = &s->ac_vlc_2[ac_c_table];
+        /* AC VLC table group 2 */
+        tables[0][i] = &s->coeff_vlc[ac_y_table + 32];
+        tables[1][i] = &s->coeff_vlc[ac_c_table + 32];
     }
     for (i = 15; i <= 27; i++) {
-        tables[0][i] = &s->ac_vlc_3[ac_y_table];
-        tables[1][i] = &s->ac_vlc_3[ac_c_table];
+        /* AC VLC table group 3 */
+        tables[0][i] = &s->coeff_vlc[ac_y_table + 48];
+        tables[1][i] = &s->coeff_vlc[ac_c_table + 48];
     }
     for (i = 28; i <= 63; i++) {
-        tables[0][i] = &s->ac_vlc_4[ac_y_table];
-        tables[1][i] = &s->ac_vlc_4[ac_c_table];
+        /* AC VLC table group 4 */
+        tables[0][i] = &s->coeff_vlc[ac_y_table + 64];
+        tables[1][i] = &s->coeff_vlc[ac_c_table + 64];
     }
 
     vp4_set_tokens_base(s);
@@ -1933,7 +1950,7 @@ static void vp3_draw_horiz_band(Vp3DecodeContext *s, int y)
 static void await_reference_row(Vp3DecodeContext *s, Vp3Fragment *fragment,
                                 int motion_y, int y)
 {
-    ThreadFrame *ref_frame;
+    const ThreadFrame *ref_frame;
     int ref_row;
     int border = motion_y & 1;
 
@@ -2264,19 +2281,19 @@ static av_cold int allocate_tables(AVCodecContext *avctx)
 
     /* superblock_coding is used by unpack_superblocks (VP3/Theora) and vp4_unpack_macroblocks (VP4) */
     s->superblock_coding = av_mallocz(FFMAX(s->superblock_count, s->yuv_macroblock_count));
-    s->all_fragments     = av_mallocz_array(s->fragment_count, sizeof(Vp3Fragment));
+    s->all_fragments     = av_calloc(s->fragment_count, sizeof(*s->all_fragments));
 
-    s-> kf_coded_fragment_list = av_mallocz_array(s->fragment_count, sizeof(int));
-    s->nkf_coded_fragment_list = av_mallocz_array(s->fragment_count, sizeof(int));
+    s-> kf_coded_fragment_list = av_calloc(s->fragment_count, sizeof(int));
+    s->nkf_coded_fragment_list = av_calloc(s->fragment_count, sizeof(int));
     memset(s-> num_kf_coded_fragment, -1, sizeof(s-> num_kf_coded_fragment));
 
-    s->dct_tokens_base = av_mallocz_array(s->fragment_count,
-                                          64 * sizeof(*s->dct_tokens_base));
-    s->motion_val[0] = av_mallocz_array(y_fragment_count, sizeof(*s->motion_val[0]));
-    s->motion_val[1] = av_mallocz_array(c_fragment_count, sizeof(*s->motion_val[1]));
+    s->dct_tokens_base = av_calloc(s->fragment_count,
+                                   64 * sizeof(*s->dct_tokens_base));
+    s->motion_val[0] = av_calloc(y_fragment_count, sizeof(*s->motion_val[0]));
+    s->motion_val[1] = av_calloc(c_fragment_count, sizeof(*s->motion_val[1]));
 
     /* work out the block mapping tables */
-    s->superblock_fragments = av_mallocz_array(s->superblock_count, 16 * sizeof(int));
+    s->superblock_fragments = av_calloc(s->superblock_count, 16 * sizeof(int));
     s->macroblock_coding    = av_mallocz(s->macroblock_count + 1);
 
     s->dc_pred_row = av_malloc_array(s->y_superblock_width * 4, sizeof(*s->dc_pred_row));
@@ -2287,7 +2304,6 @@ static av_cold int allocate_tables(AVCodecContext *avctx)
         !s->superblock_fragments || !s->macroblock_coding      ||
         !s->dc_pred_row ||
         !s->motion_val[0]        || !s->motion_val[1]) {
-        vp3_decode_end(avctx);
         return -1;
     }
 
@@ -2302,12 +2318,8 @@ static av_cold int init_frames(Vp3DecodeContext *s)
     s->last_frame.f    = av_frame_alloc();
     s->golden_frame.f  = av_frame_alloc();
 
-    if (!s->current_frame.f || !s->last_frame.f || !s->golden_frame.f) {
-        av_frame_free(&s->current_frame.f);
-        av_frame_free(&s->last_frame.f);
-        av_frame_free(&s->golden_frame.f);
+    if (!s->current_frame.f || !s->last_frame.f || !s->golden_frame.f)
         return AVERROR(ENOMEM);
-    }
 
     return 0;
 }
@@ -2327,9 +2339,13 @@ static av_cold int vp3_decode_init(AVCodecContext *avctx)
     if (ret < 0)
         return ret;
 
-    if (avctx->codec_tag == MKTAG('V', 'P', '4', '0'))
+    if (avctx->codec_tag == MKTAG('V', 'P', '4', '0')) {
         s->version = 3;
-    else if (avctx->codec_tag == MKTAG('V', 'P', '3', '0'))
+#if !CONFIG_VP4_DECODER
+        av_log(avctx, AV_LOG_ERROR, "This build does not support decoding VP4.\n");
+        return AVERROR_DECODER_NOT_FOUND;
+#endif
+    } else if (avctx->codec_tag == MKTAG('V', 'P', '3', '0'))
         s->version = 0;
     else
         s->version = 1;
@@ -2396,12 +2412,14 @@ static av_cold int vp3_decode_init(AVCodecContext *avctx)
     s->fragment_start[2] = y_fragment_count + c_fragment_count;
 
     if (!s->theora_tables) {
+        const uint8_t (*bias_tabs)[32][2];
+
         for (i = 0; i < 64; i++) {
             s->coded_dc_scale_factor[0][i] = s->version < 2 ? vp31_dc_scale_factor[i] : vp4_y_dc_scale_factor[i];
             s->coded_dc_scale_factor[1][i] = s->version < 2 ? vp31_dc_scale_factor[i] : vp4_uv_dc_scale_factor[i];
             s->coded_ac_scale_factor[i] = s->version < 2 ? vp31_ac_scale_factor[i] : vp4_ac_scale_factor[i];
             s->base_matrix[0][i]        = s->version < 2 ? vp31_intra_y_dequant[i] : vp4_generic_dequant[i];
-            s->base_matrix[1][i]        = s->version < 2 ? vp31_intra_c_dequant[i] : vp4_generic_dequant[i];
+            s->base_matrix[1][i]        = s->version < 2 ? ff_mjpeg_std_chrominance_quant_tbl[i] : vp4_generic_dequant[i];
             s->base_matrix[2][i]        = s->version < 2 ? vp31_inter_dequant[i]   : vp4_generic_dequant[i];
             s->filter_limit_values[i]   = s->version < 2 ? vp31_filter_limit_values[i] : vp4_filter_limit_values[i];
         }
@@ -2416,132 +2434,73 @@ static av_cold int vp3_decode_init(AVCodecContext *avctx)
         }
 
         /* init VLC tables */
-        if (s->version < 2) {
-            for (i = 0; i < 16; i++) {
-                /* DC histograms */
-                init_vlc(&s->dc_vlc[i], 11, 32,
-                         &dc_bias[i][0][1], 4, 2,
-                         &dc_bias[i][0][0], 4, 2, 0);
-
-                /* group 1 AC histograms */
-                init_vlc(&s->ac_vlc_1[i], 11, 32,
-                         &ac_bias_0[i][0][1], 4, 2,
-                         &ac_bias_0[i][0][0], 4, 2, 0);
-
-                /* group 2 AC histograms */
-                init_vlc(&s->ac_vlc_2[i], 11, 32,
-                         &ac_bias_1[i][0][1], 4, 2,
-                         &ac_bias_1[i][0][0], 4, 2, 0);
-
-                /* group 3 AC histograms */
-                init_vlc(&s->ac_vlc_3[i], 11, 32,
-                         &ac_bias_2[i][0][1], 4, 2,
-                         &ac_bias_2[i][0][0], 4, 2, 0);
-
-                /* group 4 AC histograms */
-                init_vlc(&s->ac_vlc_4[i], 11, 32,
-                         &ac_bias_3[i][0][1], 4, 2,
-                         &ac_bias_3[i][0][0], 4, 2, 0);
-            }
-#if CONFIG_VP4_DECODER
-        } else { /* version >= 2 */
-            for (i = 0; i < 16; i++) {
-                /* DC histograms */
-                init_vlc(&s->dc_vlc[i], 11, 32,
-                         &vp4_dc_bias[i][0][1], 4, 2,
-                         &vp4_dc_bias[i][0][0], 4, 2, 0);
-
-                /* group 1 AC histograms */
-                init_vlc(&s->ac_vlc_1[i], 11, 32,
-                         &vp4_ac_bias_0[i][0][1], 4, 2,
-                         &vp4_ac_bias_0[i][0][0], 4, 2, 0);
-
-                /* group 2 AC histograms */
-                init_vlc(&s->ac_vlc_2[i], 11, 32,
-                         &vp4_ac_bias_1[i][0][1], 4, 2,
-                         &vp4_ac_bias_1[i][0][0], 4, 2, 0);
-
-                /* group 3 AC histograms */
-                init_vlc(&s->ac_vlc_3[i], 11, 32,
-                         &vp4_ac_bias_2[i][0][1], 4, 2,
-                         &vp4_ac_bias_2[i][0][0], 4, 2, 0);
-
-                /* group 4 AC histograms */
-                init_vlc(&s->ac_vlc_4[i], 11, 32,
-                         &vp4_ac_bias_3[i][0][1], 4, 2,
-                         &vp4_ac_bias_3[i][0][0], 4, 2, 0);
-            }
-#endif
+        bias_tabs = CONFIG_VP4_DECODER && s->version >= 2 ? vp4_bias : vp3_bias;
+        for (int i = 0; i < FF_ARRAY_ELEMS(s->coeff_vlc); i++) {
+            ret = ff_init_vlc_from_lengths(&s->coeff_vlc[i], 11, 32,
+                                           &bias_tabs[i][0][1], 2,
+                                           &bias_tabs[i][0][0], 2, 1,
+                                           0, 0, avctx);
+            if (ret < 0)
+                return ret;
         }
     } else {
-        for (i = 0; i < 16; i++) {
-            /* DC histograms */
-            if (init_vlc(&s->dc_vlc[i], 11, 32,
-                         &s->huffman_table[i][0][1], 8, 4,
-                         &s->huffman_table[i][0][0], 8, 4, 0) < 0)
-                goto vlc_fail;
+        for (i = 0; i < FF_ARRAY_ELEMS(s->coeff_vlc); i++) {
+            const HuffTable *tab = &s->huffman_table[i];
 
-            /* group 1 AC histograms */
-            if (init_vlc(&s->ac_vlc_1[i], 11, 32,
-                         &s->huffman_table[i + 16][0][1], 8, 4,
-                         &s->huffman_table[i + 16][0][0], 8, 4, 0) < 0)
-                goto vlc_fail;
-
-            /* group 2 AC histograms */
-            if (init_vlc(&s->ac_vlc_2[i], 11, 32,
-                         &s->huffman_table[i + 16 * 2][0][1], 8, 4,
-                         &s->huffman_table[i + 16 * 2][0][0], 8, 4, 0) < 0)
-                goto vlc_fail;
-
-            /* group 3 AC histograms */
-            if (init_vlc(&s->ac_vlc_3[i], 11, 32,
-                         &s->huffman_table[i + 16 * 3][0][1], 8, 4,
-                         &s->huffman_table[i + 16 * 3][0][0], 8, 4, 0) < 0)
-                goto vlc_fail;
-
-            /* group 4 AC histograms */
-            if (init_vlc(&s->ac_vlc_4[i], 11, 32,
-                         &s->huffman_table[i + 16 * 4][0][1], 8, 4,
-                         &s->huffman_table[i + 16 * 4][0][0], 8, 4, 0) < 0)
-                goto vlc_fail;
+            ret = ff_init_vlc_from_lengths(&s->coeff_vlc[i], 11, tab->nb_entries,
+                                           &tab->entries[0].len, sizeof(*tab->entries),
+                                           &tab->entries[0].sym, sizeof(*tab->entries), 1,
+                                           0, 0, avctx);
+            if (ret < 0)
+                return ret;
         }
     }
 
-    init_vlc(&s->superblock_run_length_vlc, 6, 34,
-             &superblock_run_length_vlc_table[0][1], 4, 2,
-             &superblock_run_length_vlc_table[0][0], 4, 2, 0);
+    ret = ff_init_vlc_from_lengths(&s->superblock_run_length_vlc, SUPERBLOCK_VLC_BITS, 34,
+                                   superblock_run_length_vlc_lens, 1,
+                                   NULL, 0, 0, 1, 0, avctx);
+    if (ret < 0)
+        return ret;
 
-    init_vlc(&s->fragment_run_length_vlc, 5, 30,
-             &fragment_run_length_vlc_table[0][1], 4, 2,
-             &fragment_run_length_vlc_table[0][0], 4, 2, 0);
+    ret = ff_init_vlc_from_lengths(&s->fragment_run_length_vlc, 5, 30,
+                                   fragment_run_length_vlc_len, 1,
+                                   NULL, 0, 0, 0, 0, avctx);
+    if (ret < 0)
+        return ret;
 
-    init_vlc(&s->mode_code_vlc, 3, 8,
-             &mode_code_vlc_table[0][1], 2, 1,
-             &mode_code_vlc_table[0][0], 2, 1, 0);
+    ret = ff_init_vlc_from_lengths(&s->mode_code_vlc, 3, 8,
+                                   mode_code_vlc_len, 1,
+                                   NULL, 0, 0, 0, 0, avctx);
+    if (ret < 0)
+        return ret;
 
-    init_vlc(&s->motion_vector_vlc, 6, 63,
-             &motion_vector_vlc_table[0][1], 2, 1,
-             &motion_vector_vlc_table[0][0], 2, 1, 0);
+    ret = ff_init_vlc_from_lengths(&s->motion_vector_vlc, VP3_MV_VLC_BITS, 63,
+                                   &motion_vector_vlc_table[0][1], 2,
+                                   &motion_vector_vlc_table[0][0], 2, 1,
+                                   -31, 0, avctx);
+    if (ret < 0)
+        return ret;
 
 #if CONFIG_VP4_DECODER
     for (j = 0; j < 2; j++)
-        for (i = 0; i < 7; i++)
-            init_vlc(&s->vp4_mv_vlc[j][i], 6, 63,
-                 &vp4_mv_vlc[j][i][0][1], 4, 2,
-                 &vp4_mv_vlc[j][i][0][0], 4, 2, 0);
+        for (i = 0; i < 7; i++) {
+            ret = ff_init_vlc_from_lengths(&s->vp4_mv_vlc[j][i], VP4_MV_VLC_BITS, 63,
+                                           &vp4_mv_vlc[j][i][0][1], 2,
+                                           &vp4_mv_vlc[j][i][0][0], 2, 1, -31,
+                                           0, avctx);
+            if (ret < 0)
+                return ret;
+        }
 
     /* version >= 2 */
     for (i = 0; i < 2; i++)
-        init_vlc(&s->block_pattern_vlc[i], 3, 14,
-             &vp4_block_pattern_vlc[i][0][1], 2, 1,
-             &vp4_block_pattern_vlc[i][0][0], 2, 1, 0);
+        if ((ret = init_vlc(&s->block_pattern_vlc[i], 3, 14,
+                            &vp4_block_pattern_vlc[i][0][1], 2, 1,
+                            &vp4_block_pattern_vlc[i][0][0], 2, 1, 0)) < 0)
+            return ret;
 #endif
 
     return allocate_tables(avctx);
-
-vlc_fail:
-    av_log(avctx, AV_LOG_FATAL, "Invalid huffman table\n");
-    return -1;
 }
 
 /// Release and shuffle frames after decode finishes
@@ -2551,25 +2510,25 @@ static int update_frames(AVCodecContext *avctx)
     int ret = 0;
 
     /* shuffle frames (last = current) */
-    ff_thread_release_buffer(avctx, &s->last_frame);
+    ff_thread_release_ext_buffer(avctx, &s->last_frame);
     ret = ff_thread_ref_frame(&s->last_frame, &s->current_frame);
     if (ret < 0)
         goto fail;
 
     if (s->keyframe) {
-        ff_thread_release_buffer(avctx, &s->golden_frame);
+        ff_thread_release_ext_buffer(avctx, &s->golden_frame);
         ret = ff_thread_ref_frame(&s->golden_frame, &s->current_frame);
     }
 
 fail:
-    ff_thread_release_buffer(avctx, &s->current_frame);
+    ff_thread_release_ext_buffer(avctx, &s->current_frame);
     return ret;
 }
 
 #if HAVE_THREADS
 static int ref_frame(Vp3DecodeContext *s, ThreadFrame *dst, ThreadFrame *src)
 {
-    ff_thread_release_buffer(s->avctx, dst);
+    ff_thread_release_ext_buffer(s->avctx, dst);
     if (src->f->data[0])
         return ff_thread_ref_frame(dst, src);
     return 0;
@@ -2627,11 +2586,9 @@ static int vp3_update_thread_context(AVCodecContext *dst, const AVCodecContext *
 }
 #endif
 
-static int vp3_decode_frame(AVCodecContext *avctx,
-                            void *data, int *got_frame,
-                            AVPacket *avpkt)
+static int vp3_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                            int *got_frame, AVPacket *avpkt)
 {
-    AVFrame     *frame  = data;
     const uint8_t *buf  = avpkt->data;
     int buf_size        = avpkt->size;
     Vp3DecodeContext *s = avctx->priv_data;
@@ -2719,18 +2676,31 @@ static int vp3_decode_frame(AVCodecContext *avctx,
     s->current_frame.f->pict_type = s->keyframe ? AV_PICTURE_TYPE_I
                                                 : AV_PICTURE_TYPE_P;
     s->current_frame.f->key_frame = s->keyframe;
-    if ((ret = ff_thread_get_buffer(avctx, &s->current_frame, AV_GET_BUFFER_FLAG_REF)) < 0)
+    if ((ret = ff_thread_get_ext_buffer(avctx, &s->current_frame,
+                                        AV_GET_BUFFER_FLAG_REF)) < 0)
         goto error;
 
-    if (!s->edge_emu_buffer)
+    if (!s->edge_emu_buffer) {
         s->edge_emu_buffer = av_malloc(9 * FFABS(s->current_frame.f->linesize[0]));
+        if (!s->edge_emu_buffer) {
+            ret = AVERROR(ENOMEM);
+            goto error;
+        }
+    }
 
     if (s->keyframe) {
         if (!s->theora) {
             skip_bits(&gb, 4); /* width code */
             skip_bits(&gb, 4); /* height code */
             if (s->version) {
-                s->version = get_bits(&gb, 5);
+                int version = get_bits(&gb, 5);
+#if !CONFIG_VP4_DECODER
+                if (version >= 2) {
+                    av_log(avctx, AV_LOG_ERROR, "This build does not support decoding VP4.\n");
+                    return AVERROR_DECODER_NOT_FOUND;
+                }
+#endif
+                s->version = version;
                 if (avctx->frame_number == 0)
                     av_log(s->avctx, AV_LOG_DEBUG,
                            "VP version: %d\n", s->version);
@@ -2771,10 +2741,10 @@ static int vp3_decode_frame(AVCodecContext *avctx,
                    "vp3: first frame not a keyframe\n");
 
             s->golden_frame.f->pict_type = AV_PICTURE_TYPE_I;
-            if ((ret = ff_thread_get_buffer(avctx, &s->golden_frame,
-                                     AV_GET_BUFFER_FLAG_REF)) < 0)
+            if ((ret = ff_thread_get_ext_buffer(avctx, &s->golden_frame,
+                                                AV_GET_BUFFER_FLAG_REF)) < 0)
                 goto error;
-            ff_thread_release_buffer(avctx, &s->last_frame);
+            ff_thread_release_ext_buffer(avctx, &s->last_frame);
             if ((ret = ff_thread_ref_frame(&s->last_frame,
                                            &s->golden_frame)) < 0)
                 goto error;
@@ -2846,7 +2816,7 @@ static int vp3_decode_frame(AVCodecContext *avctx,
     vp3_draw_horiz_band(s, s->height);
 
     /* output frame, offset as needed */
-    if ((ret = av_frame_ref(data, s->current_frame.f)) < 0)
+    if ((ret = av_frame_ref(frame, s->current_frame.f)) < 0)
         return ret;
 
     frame->crop_left   = s->offset_x;
@@ -2873,36 +2843,30 @@ error:
     return ret;
 }
 
-static int read_huffman_tree(AVCodecContext *avctx, GetBitContext *gb)
+static int read_huffman_tree(HuffTable *huff, GetBitContext *gb, int length,
+                             AVCodecContext *avctx)
 {
-    Vp3DecodeContext *s = avctx->priv_data;
-
     if (get_bits1(gb)) {
         int token;
-        if (s->entries >= 32) { /* overflow */
+        if (huff->nb_entries >= 32) { /* overflow */
             av_log(avctx, AV_LOG_ERROR, "huffman tree overflow\n");
             return -1;
         }
         token = get_bits(gb, 5);
-        ff_dlog(avctx, "hti %d hbits %x token %d entry : %d size %d\n",
-                s->hti, s->hbits, token, s->entries, s->huff_code_size);
-        s->huffman_table[s->hti][token][0] = s->hbits;
-        s->huffman_table[s->hti][token][1] = s->huff_code_size;
-        s->entries++;
+        ff_dlog(avctx, "code length %d, curr entry %d, token %d\n",
+                length, huff->nb_entries, token);
+        huff->entries[huff->nb_entries++] = (HuffEntry){ length, token };
     } else {
-        if (s->huff_code_size >= 32) { /* overflow */
+        /* The following bound follows from the fact that nb_entries <= 32. */
+        if (length >= 31) { /* overflow */
             av_log(avctx, AV_LOG_ERROR, "huffman tree overflow\n");
             return -1;
         }
-        s->huff_code_size++;
-        s->hbits <<= 1;
-        if (read_huffman_tree(avctx, gb))
+        length++;
+        if (read_huffman_tree(huff, gb, length, avctx))
             return -1;
-        s->hbits |= 1;
-        if (read_huffman_tree(avctx, gb))
+        if (read_huffman_tree(huff, gb, length, avctx))
             return -1;
-        s->hbits >>= 1;
-        s->huff_code_size--;
     }
     return 0;
 }
@@ -2919,6 +2883,9 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
     uint8_t offset_x = 0, offset_y = 0;
     int ret;
     AVRational fps, aspect;
+
+    if (get_bits_left(gb) < 206)
+        return AVERROR_INVALIDDATA;
 
     s->theora_header = 0;
     s->theora = get_bits(gb, 24);
@@ -3027,7 +2994,7 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
 static int theora_decode_tables(AVCodecContext *avctx, GetBitContext *gb)
 {
     Vp3DecodeContext *s = avctx->priv_data;
-    int i, n, matrices, inter, plane;
+    int i, n, matrices, inter, plane, ret;
 
     if (!s->theora_header)
         return AVERROR_INVALIDDATA;
@@ -3119,17 +3086,10 @@ static int theora_decode_tables(AVCodecContext *avctx, GetBitContext *gb)
     }
 
     /* Huffman tables */
-    for (s->hti = 0; s->hti < 80; s->hti++) {
-        s->entries        = 0;
-        s->huff_code_size = 1;
-        if (!get_bits1(gb)) {
-            s->hbits = 0;
-            if (read_huffman_tree(avctx, gb))
-                return -1;
-            s->hbits = 1;
-            if (read_huffman_tree(avctx, gb))
-                return -1;
-        }
+    for (int i = 0; i < FF_ARRAY_ELEMS(s->huffman_table); i++) {
+        s->huffman_table[i].nb_entries = 0;
+        if ((ret = read_huffman_tree(&s->huffman_table[i], gb, 0, avctx)) < 0)
+            return ret;
     }
 
     s->theora_tables = 1;
@@ -3197,10 +3157,10 @@ static av_cold int theora_decode_init(AVCodecContext *avctx)
                    "Unknown Theora config packet: %d\n", ptype & ~0x80);
             break;
         }
-        if (ptype != 0x81 && 8 * header_len[i] != get_bits_count(&gb))
+        if (ptype != 0x81 && get_bits_left(&gb) >= 8U)
             av_log(avctx, AV_LOG_WARNING,
                    "%d bits left in packet %X\n",
-                   8 * header_len[i] - get_bits_count(&gb), ptype);
+                   get_bits_left(&gb), ptype);
         if (s->theora < 0x030200)
             break;
     }
@@ -3208,53 +3168,56 @@ static av_cold int theora_decode_init(AVCodecContext *avctx)
     return vp3_decode_init(avctx);
 }
 
-AVCodec ff_theora_decoder = {
-    .name                  = "theora",
-    .long_name             = NULL_IF_CONFIG_SMALL("Theora"),
-    .type                  = AVMEDIA_TYPE_VIDEO,
-    .id                    = AV_CODEC_ID_THEORA,
+const FFCodec ff_theora_decoder = {
+    .p.name                = "theora",
+    CODEC_LONG_NAME("Theora"),
+    .p.type                = AVMEDIA_TYPE_VIDEO,
+    .p.id                  = AV_CODEC_ID_THEORA,
     .priv_data_size        = sizeof(Vp3DecodeContext),
     .init                  = theora_decode_init,
     .close                 = vp3_decode_end,
-    .decode                = vp3_decode_frame,
-    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
+    FF_CODEC_DECODE_CB(vp3_decode_frame),
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
                              AV_CODEC_CAP_FRAME_THREADS,
     .flush                 = vp3_decode_flush,
-    .update_thread_context = ONLY_IF_THREADS_ENABLED(vp3_update_thread_context),
-    .caps_internal         = FF_CODEC_CAP_EXPORTS_CROPPING | FF_CODEC_CAP_ALLOCATE_PROGRESS,
+    UPDATE_THREAD_CONTEXT(vp3_update_thread_context),
+    .caps_internal         = FF_CODEC_CAP_INIT_CLEANUP |
+                             FF_CODEC_CAP_EXPORTS_CROPPING | FF_CODEC_CAP_ALLOCATE_PROGRESS,
 };
 #endif
 
-AVCodec ff_vp3_decoder = {
-    .name                  = "vp3",
-    .long_name             = NULL_IF_CONFIG_SMALL("On2 VP3"),
-    .type                  = AVMEDIA_TYPE_VIDEO,
-    .id                    = AV_CODEC_ID_VP3,
+const FFCodec ff_vp3_decoder = {
+    .p.name                = "vp3",
+    CODEC_LONG_NAME("On2 VP3"),
+    .p.type                = AVMEDIA_TYPE_VIDEO,
+    .p.id                  = AV_CODEC_ID_VP3,
     .priv_data_size        = sizeof(Vp3DecodeContext),
     .init                  = vp3_decode_init,
     .close                 = vp3_decode_end,
-    .decode                = vp3_decode_frame,
-    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
+    FF_CODEC_DECODE_CB(vp3_decode_frame),
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
                              AV_CODEC_CAP_FRAME_THREADS,
     .flush                 = vp3_decode_flush,
-    .update_thread_context = ONLY_IF_THREADS_ENABLED(vp3_update_thread_context),
-    .caps_internal         = FF_CODEC_CAP_ALLOCATE_PROGRESS,
+    UPDATE_THREAD_CONTEXT(vp3_update_thread_context),
+    .caps_internal         = FF_CODEC_CAP_INIT_CLEANUP |
+                             FF_CODEC_CAP_ALLOCATE_PROGRESS,
 };
 
 #if CONFIG_VP4_DECODER
-AVCodec ff_vp4_decoder = {
-    .name                  = "vp4",
-    .long_name             = NULL_IF_CONFIG_SMALL("On2 VP4"),
-    .type                  = AVMEDIA_TYPE_VIDEO,
-    .id                    = AV_CODEC_ID_VP4,
+const FFCodec ff_vp4_decoder = {
+    .p.name                = "vp4",
+    CODEC_LONG_NAME("On2 VP4"),
+    .p.type                = AVMEDIA_TYPE_VIDEO,
+    .p.id                  = AV_CODEC_ID_VP4,
     .priv_data_size        = sizeof(Vp3DecodeContext),
     .init                  = vp3_decode_init,
     .close                 = vp3_decode_end,
-    .decode                = vp3_decode_frame,
-    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
+    FF_CODEC_DECODE_CB(vp3_decode_frame),
+    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DRAW_HORIZ_BAND |
                              AV_CODEC_CAP_FRAME_THREADS,
     .flush                 = vp3_decode_flush,
-    .update_thread_context = ONLY_IF_THREADS_ENABLED(vp3_update_thread_context),
-    .caps_internal         = FF_CODEC_CAP_ALLOCATE_PROGRESS,
+    UPDATE_THREAD_CONTEXT(vp3_update_thread_context),
+    .caps_internal         = FF_CODEC_CAP_INIT_CLEANUP |
+                             FF_CODEC_CAP_ALLOCATE_PROGRESS,
 };
 #endif

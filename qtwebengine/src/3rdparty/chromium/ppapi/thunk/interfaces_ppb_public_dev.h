@@ -1,10 +1,14 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // Please see inteface_ppb_public_stable for the documentation on the format of
 // this file.
 
+// no-include-guard-because-multiply-included
+// NOLINT(build/header_guard)
+
+#include "build/build_config.h"
 #include "ppapi/thunk/interfaces_preamble.h"
 
 // Map the old dev console interface to the stable one (which is the same) to
@@ -17,10 +21,9 @@ PROXIED_IFACE(PPB_IME_INPUT_EVENT_DEV_INTERFACE_0_2, PPB_IMEInputEvent_Dev_0_2)
 PROXIED_IFACE(PPB_MEMORY_DEV_INTERFACE_0_1, PPB_Memory_Dev_0_1)
 PROXIED_IFACE(PPB_PRINTING_DEV_INTERFACE_0_7, PPB_Printing_Dev_0_7)
 PROXIED_IFACE(PPB_TEXTINPUT_DEV_INTERFACE_0_2, PPB_TextInput_Dev_0_2)
-PROXIED_IFACE(PPB_TRUETYPEFONT_DEV_INTERFACE_0_1, PPB_TrueTypeFont_Dev_0_1)
 PROXIED_IFACE(PPB_VIEW_DEV_INTERFACE_0_1, PPB_View_Dev_0_1)
 
-#if !defined(OS_NACL)
+#if !BUILDFLAG(IS_NACL)
 PROXIED_API(PPB_Buffer)
 PROXIED_API(PPB_VideoDecoder)
 
@@ -39,6 +42,6 @@ PROXIED_IFACE(PPB_URLUTIL_DEV_INTERFACE_0_6, PPB_URLUtil_Dev_0_6)
 PROXIED_IFACE(PPB_URLUTIL_DEV_INTERFACE_0_7, PPB_URLUtil_Dev_0_7)
 PROXIED_IFACE(PPB_VIDEOCAPTURE_DEV_INTERFACE_0_3, PPB_VideoCapture_Dev_0_3)
 PROXIED_IFACE(PPB_VIDEODECODER_DEV_INTERFACE_0_16, PPB_VideoDecoder_Dev_0_16)
-#endif  // !defined(OS_NACL)
+#endif  // !BUILDFLAG(IS_NACL)
 
 #include "ppapi/thunk/interfaces_postamble.h"

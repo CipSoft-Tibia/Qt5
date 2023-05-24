@@ -1,12 +1,13 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/layout/ng/flex/layout_ng_flexible_box.h"
 
 #include "third_party/blink/renderer/core/html/forms/html_select_element.h"
-#include "third_party/blink/renderer/core/layout/layout_analyzer.h"
+#include "third_party/blink/renderer/core/inspector/inspector_trace_events.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
+#include "third_party/blink/renderer/core/layout/ng/flex/ng_flex_layout_algorithm.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_block_node.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_constraint_space.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_layout_result.h"
@@ -19,23 +20,31 @@ LayoutNGFlexibleBox::LayoutNGFlexibleBox(Element* element)
     : LayoutNGMixin<LayoutBlock>(element) {}
 
 bool LayoutNGFlexibleBox::HasTopOverflow() const {
-  if (IsHorizontalWritingMode())
-    return StyleRef().ResolvedIsColumnReverseFlexDirection();
-  return StyleRef().IsLeftToRightDirection() ==
-         StyleRef().ResolvedIsRowReverseFlexDirection();
+  const auto& style = StyleRef();
+  bool is_wrap_reverse = StyleRef().FlexWrap() == EFlexWrap::kWrapReverse;
+  if (style.IsHorizontalWritingMode()) {
+    return style.ResolvedIsColumnReverseFlexDirection() ||
+           (style.ResolvedIsRowFlexDirection() && is_wrap_reverse);
+  }
+  return style.IsLeftToRightDirection() ==
+         (style.ResolvedIsRowReverseFlexDirection() ||
+          (style.ResolvedIsColumnFlexDirection() && is_wrap_reverse));
 }
 
 bool LayoutNGFlexibleBox::HasLeftOverflow() const {
-  if (IsHorizontalWritingMode()) {
-    return StyleRef().IsLeftToRightDirection() ==
-           StyleRef().ResolvedIsRowReverseFlexDirection();
+  const auto& style = StyleRef();
+  bool is_wrap_reverse = StyleRef().FlexWrap() == EFlexWrap::kWrapReverse;
+  if (style.IsHorizontalWritingMode()) {
+    return style.IsLeftToRightDirection() ==
+           (style.ResolvedIsRowReverseFlexDirection() ||
+            (style.ResolvedIsColumnFlexDirection() && is_wrap_reverse));
   }
-  return StyleRef().ResolvedIsColumnReverseFlexDirection();
+  return (style.GetWritingMode() == WritingMode::kVerticalLr) ==
+         (style.ResolvedIsColumnReverseFlexDirection() ||
+          (style.ResolvedIsRowFlexDirection() && is_wrap_reverse));
 }
 
 void LayoutNGFlexibleBox::UpdateBlockLayout(bool relayout_children) {
-  LayoutAnalyzer::BlockScope analyzer(*this);
-
   if (IsOutOfFlowPositioned()) {
     UpdateOutOfFlowBlockLayout();
     return;
@@ -56,7 +65,8 @@ void MergeAnonymousFlexItems(LayoutObject* remove_child) {
   LayoutObject* next = remove_child->NextSibling();
   if (!next || !next->IsAnonymousBlock())
     return;
-  ToLayoutBoxModelObject(next)->MoveAllChildrenTo(ToLayoutBoxModelObject(prev));
+  To<LayoutBoxModelObject>(next)->MoveAllChildrenTo(
+      To<LayoutBoxModelObject>(prev));
   To<LayoutBlockFlow>(next)->DeleteLineBoxTree();
   next->Destroy();
 }
@@ -74,6 +84,18 @@ bool LayoutNGFlexibleBox::IsChildAllowed(LayoutObject* object,
     return object->GetNode() == &select->InnerElement();
   }
   return LayoutNGMixin<LayoutBlock>::IsChildAllowed(object, style);
+}
+
+void LayoutNGFlexibleBox::SetNeedsLayoutForDevtools() {
+  SetNeedsLayout(layout_invalidation_reason::kDevtools);
+  SetNeedsDevtoolsInfo(true);
+}
+
+const DevtoolsFlexInfo* LayoutNGFlexibleBox::FlexLayoutData() const {
+  const wtf_size_t fragment_count = PhysicalFragmentCount();
+  DCHECK_GE(fragment_count, 1u);
+  // Currently, devtools data is on the first fragment of a fragmented flexbox.
+  return GetLayoutResult(0)->FlexLayoutData();
 }
 
 void LayoutNGFlexibleBox::RemoveChild(LayoutObject* child) {

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,15 +6,16 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_INDEXEDDB_IDB_VALUE_H_
 
 #include <memory>
+#include <utility>
 
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
-#include "third_party/blink/public/mojom/file_system_access/native_file_system_transfer_token.mojom-blink-forward.h"
+#include "third_party/blink/public/mojom/file_system_access/file_system_access_transfer_token.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/indexeddb/indexeddb.mojom-blink-forward.h"
 #include "third_party/blink/renderer/modules/indexeddb/idb_key.h"
 #include "third_party/blink/renderer/modules/indexeddb/idb_key_path.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
+#include "v8/include/v8.h"
 
 namespace blink {
 
@@ -41,9 +42,13 @@ class MODULES_EXPORT IDBValue final {
   IDBValue(
       scoped_refptr<SharedBuffer>,
       Vector<WebBlobInfo>,
-      Vector<mojo::PendingRemote<mojom::blink::NativeFileSystemTransferToken>> =
+      Vector<mojo::PendingRemote<mojom::blink::FileSystemAccessTransferToken>> =
           {});
   ~IDBValue();
+
+  // Disallow copy and assign.
+  IDBValue(const IDBValue&) = delete;
+  IDBValue& operator=(const IDBValue&) = delete;
 
   size_t DataSize() const { return data_ ? data_->size() : 0; }
 
@@ -54,9 +59,9 @@ class MODULES_EXPORT IDBValue final {
   const IDBKey* PrimaryKey() const { return primary_key_.get(); }
   const IDBKeyPath& KeyPath() const { return key_path_; }
 
-  Vector<mojo::PendingRemote<mojom::blink::NativeFileSystemTransferToken>>&
-  NativeFileSystemTokens() {
-    return native_file_system_tokens_;
+  Vector<mojo::PendingRemote<mojom::blink::FileSystemAccessTransferToken>>&
+  FileSystemAccessTokens() {
+    return file_system_access_tokens_;
   }
 
   // Injects a primary key into a value coming from the backend.
@@ -93,8 +98,6 @@ class MODULES_EXPORT IDBValue final {
       const mojom::blink::IDBReturnValuePtr& input);
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(IDBValue);
-
   friend class IDBValueUnwrapper;
 
   // Keep this private to prevent new refs because we manually bookkeep the
@@ -103,8 +106,8 @@ class MODULES_EXPORT IDBValue final {
 
   Vector<WebBlobInfo> blob_info_;
 
-  Vector<mojo::PendingRemote<mojom::blink::NativeFileSystemTransferToken>>
-      native_file_system_tokens_;
+  Vector<mojo::PendingRemote<mojom::blink::FileSystemAccessTransferToken>>
+      file_system_access_tokens_;
 
   std::unique_ptr<IDBKey> primary_key_;
   IDBKeyPath key_path_;
@@ -118,4 +121,4 @@ class MODULES_EXPORT IDBValue final {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_MODULES_INDEXEDDB_IDB_VALUE_H_

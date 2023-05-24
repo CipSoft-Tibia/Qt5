@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,7 +19,7 @@ struct ServiceWorkerRunningInfo;
 class ServiceWorkerContextObserver {
  public:
   struct ErrorInfo {
-    ErrorInfo(const base::string16& message,
+    ErrorInfo(const std::u16string& message,
               int line,
               int column,
               const GURL& url)
@@ -28,7 +28,7 @@ class ServiceWorkerContextObserver {
           column_number(column),
           source_url(url) {}
     ErrorInfo(const ErrorInfo& info) = default;
-    const base::string16 error_message;
+    const std::u16string error_message;
     const int line_number;
     const int column_number;
     const GURL source_url;
@@ -85,12 +85,12 @@ class ServiceWorkerContextObserver {
 
   // Called when the navigation for a window client commits to a render frame
   // host. At this point, if there was a previous controllee attached to that
-  // render frame host, it has already been removed and OnControlleeRemoved()
+  // RenderFrameHost, it has already been removed and OnControlleeRemoved()
   // has been called.
   virtual void OnControlleeNavigationCommitted(
       int64_t version_id,
       const std::string& client_uuid,
-      GlobalFrameRoutingId render_frame_host_id) {}
+      GlobalRenderFrameHostId render_frame_host_id) {}
 
   // Called when an error is reported for the service worker with id
   // |version_id|.

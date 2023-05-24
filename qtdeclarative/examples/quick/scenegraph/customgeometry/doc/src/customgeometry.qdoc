@@ -1,39 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example scenegraph/customgeometry
     \title Scene Graph - Custom Geometry
+    \examplecategory {Graphics & Multimedia}
     \ingroup qtquickexamples
     \brief Shows how to implement a custom geometry in the Qt Quick Scene Graph.
 
-    The custom geometry example shows how to create a QQuickItem which
+    The custom geometry example shows how to create a \l QQuickItem that
     uses the scene graph API to build a custom geometry for the scene
-    graph. It does this by creating a BezierCurve item which is made
+    graph. It does this by creating a \c BezierCurve item, which is made
     part of the CustomGeometry module and makes use of this in a QML
     file.
 
@@ -138,7 +115,7 @@
     \snippet scenegraph/customgeometry/beziercurve.cpp 6
 
     The scene graph API provides a few commonly used material
-    implementations. In this example we use the QSGFlatColorMaterial
+    implementations. In this example we use the QSGFlatColorMaterial,
     which will fill the shape defined by the geometry with a solid
     color. Again we pass the ownership of the material to the node, so
     it can be cleaned up by the scene graph.
@@ -153,7 +130,7 @@
 
     \snippet scenegraph/customgeometry/beziercurve.cpp 8
 
-    To fill the geometry, we first extract the vertex array from
+    To fill the geometry we first extract the vertex array from
     it. Since we are using one of the default attribute sets, we can
     use the convenience function QSGGeometry::vertexDataAsPoint2D().
     Then we go through each segment and calculate its position and
@@ -161,7 +138,7 @@
 
     \snippet scenegraph/customgeometry/beziercurve.cpp 9
 
-    In the end of the function, we return the node so the scene graph
+    At the end of the function we return the node so the scene graph
     can render it.
 
     \section1 Application Entry-Point
@@ -176,11 +153,28 @@
     To make use of the BezierCurve item, we need to register it in the QML
     engine, using the QML_ELEMENT macro. This gives it the name
     BezierCurve and makes it part of the \c {CustomGeometry 1.0}
-    module as defined in the customgeometry.pro file:
+    module as defined in the project's build files:
 
-    \quotefile scenegraph/customgeometry/customgeometry.pro
+    \if defined(onlinedocs)
+      \tab {build-qt-app}{tab-cmake}{CMake}{checked}
+      \tab {build-qt-app}{tab-qmake}{qmake}{}
+      \tabcontent {tab-cmake}
+    \else
+      \section1 Using CMake
+    \endif
+    \quotefile scenegraph/customgeometry/CMakeLists.txt
+    \if defined(onlinedocs)
+      \endtabcontent
+      \tabcontent {tab-qmake}
+    \else
+      \section1 Using qmake
+    \endif
+      \quotefile scenegraph/customgeometry/customgeometry.pro
+    \if defined(onlinedocs)
+      \endtabcontent
+    \endif
 
-    As the bezier curve is drawn using GL_LINE_STRIP, we specify that
+    As the bezier curve is drawn as line strips, we specify that
     the view should be multisampled to get antialiasing. This is not
     required, but it will make the item look a bit nicer on hardware
     that supports it. Multisampling is not enabled by default because

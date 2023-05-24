@@ -1,10 +1,9 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "device/vr/android/arcore/ar_renderer.h"
 
-#include "base/stl_util.h"
 #include "device/vr/vr_gl_util.h"
 
 namespace device {
@@ -82,12 +81,12 @@ void ArRenderer::Draw(int texture_handle, const float (&uv_transform)[16]) {
     index_buffer_ = buffers[1];
 
     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_);
-    glBufferData(GL_ARRAY_BUFFER, base::size(kQuadVertices) * sizeof(float),
+    glBufferData(GL_ARRAY_BUFFER, std::size(kQuadVertices) * sizeof(float),
                  kQuadVertices, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer_);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                 base::size(kQuadIndices) * sizeof(GLushort), kQuadIndices,
+                 std::size(kQuadIndices) * sizeof(GLushort), kQuadIndices,
                  GL_STATIC_DRAW);
   }
 
@@ -100,19 +99,22 @@ void ArRenderer::Draw(int texture_handle, const float (&uv_transform)[16]) {
   glVertexAttribPointer(position_handle_, 2, GL_FLOAT, false, 0, 0);
   glEnableVertexAttribArray(position_handle_);
 
-  // Bind texture. This is a 1:1 pixel copy since the source surface
-  // and renderbuffer destination size are resized to match, so use
-  // GL_NEAREST.
+  // Bind texture. This is not necessarily a 1:1 pixel copy since the
+  // size is modified by framebufferScaleFactor and requestViewportScale,
+  // so use GL_LINEAR.
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_EXTERNAL_OES, texture_handle);
-  vr::SetTexParameters(GL_TEXTURE_EXTERNAL_OES);
+  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glUniform1i(texture_handle_, 0);
 
   glUniformMatrix4fv(uv_transform_, 1, GL_FALSE, &uv_transform[0]);
 
   // Blit texture to buffer
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer_);
-  glDrawElements(GL_TRIANGLES, base::size(kQuadIndices), GL_UNSIGNED_SHORT, 0);
+  glDrawElements(GL_TRIANGLES, std::size(kQuadIndices), GL_UNSIGNED_SHORT, 0);
 
   glDisableVertexAttribArray(position_handle_);
 }

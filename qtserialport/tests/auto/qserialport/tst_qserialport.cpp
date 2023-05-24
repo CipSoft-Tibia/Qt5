@@ -1,32 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Denis Shienkov <denis.shienkov@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSerialPort module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Denis Shienkov <denis.shienkov@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
+#include <QtTest/private/qpropertytesthelper_p.h>
 #include <QtSerialPort/QSerialPort>
 #include <QtSerialPort/QSerialPortInfo>
 
@@ -131,6 +107,8 @@ private slots:
 
     void readWriteWithDifferentBaudRate_data();
     void readWriteWithDifferentBaudRate();
+
+    void bindingsAndProperties();
 
 protected slots:
     void handleBytesWrittenAndExitLoopSlot(qint64 bytesWritten);
@@ -270,7 +248,7 @@ void tst_QSerialPort::openExisting()
     QFETCH(bool, openResult);
     QFETCH(QSerialPort::SerialPortError, errorCode);
 
-    for (const QString &serialPortName : qAsConst(m_availablePortNames)) {
+    for (const QString &serialPortName : std::as_const(m_availablePortNames)) {
         QSerialPort serialPort(serialPortName);
         QSignalSpy errorSpy(&serialPort, &QSerialPort::errorOccurred);
         QVERIFY(errorSpy.isValid());
@@ -280,7 +258,7 @@ void tst_QSerialPort::openExisting()
         QCOMPARE(serialPort.isOpen(), openResult);
         QCOMPARE(serialPort.error(), errorCode);
 
-        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(errorSpy.size(), 1);
         QCOMPARE(qvariant_cast<QSerialPort::SerialPortError>(errorSpy.at(0).at(0)), errorCode);
     }
 }
@@ -503,11 +481,11 @@ void tst_QSerialPort::rts()
     QCOMPARE(serialPort.isRequestToSend(), !toggle3); // same as before
     QCOMPARE(serialPort.error(), QSerialPort::UnsupportedOperationError);
 
-    QCOMPARE(errorSpy.count(), 2);
+    QCOMPARE(errorSpy.size(), 2);
     QCOMPARE(qvariant_cast<QSerialPort::SerialPortError>(errorSpy.at(0).at(0)), QSerialPort::NoError);
     QCOMPARE(qvariant_cast<QSerialPort::SerialPortError>(errorSpy.at(1).at(0)), QSerialPort::UnsupportedOperationError);
 
-    QCOMPARE(rtsSpy.count(), 2);
+    QCOMPARE(rtsSpy.size(), 2);
     QCOMPARE(qvariant_cast<bool>(rtsSpy.at(0).at(0)), toggle1);
     QCOMPARE(qvariant_cast<bool>(rtsSpy.at(1).at(0)), toggle2);
 }
@@ -541,10 +519,10 @@ void tst_QSerialPort::dtr()
     QVERIFY(serialPort.setDataTerminalReady(toggle3));
     QCOMPARE(serialPort.isDataTerminalReady(), toggle3);
 
-    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(errorSpy.size(), 1);
     QCOMPARE(qvariant_cast<QSerialPort::SerialPortError>(errorSpy.at(0).at(0)), QSerialPort::NoError);
 
-    QCOMPARE(dtrSpy.count(), 3);
+    QCOMPARE(dtrSpy.size(), 3);
     QCOMPARE(qvariant_cast<bool>(dtrSpy.at(0).at(0)), toggle1);
     QCOMPARE(qvariant_cast<bool>(dtrSpy.at(1).at(0)), toggle2);
     QCOMPARE(qvariant_cast<bool>(dtrSpy.at(2).at(0)), toggle3);
@@ -629,7 +607,7 @@ void tst_QSerialPort::flush()
     QCOMPARE(serialPort.bytesToWrite(), qint64(0));
     enterLoop(1);
     QVERIFY2(!timeout(), "Timed out when waiting for the bytesWritten(qint64) signal.");
-    QCOMPARE(bytesWrittenSpy.count(), 1);
+    QCOMPARE(bytesWrittenSpy.size(), 1);
 }
 
 void tst_QSerialPort::handleBytesWrittenAndExitLoopSlot2(qint64 bytesWritten)
@@ -669,7 +647,7 @@ void tst_QSerialPort::doubleFlush()
 
     enterLoop(1);
     QVERIFY2(!timeout(), "Timed out when waiting for the bytesWritten(qint64) signal.");
-    QCOMPARE(bytesWrittenSpy.count(), 2);
+    QCOMPARE(bytesWrittenSpy.size(), 2);
 }
 
 void tst_QSerialPort::waitForBytesWritten()
@@ -715,7 +693,7 @@ void tst_QSerialPort::waitForReadyReadWithOneByte()
     QVERIFY(receiverSerialPort.waitForReadyRead(waitMsecs));
     QCOMPARE(receiverSerialPort.bytesAvailable(), oneByte);
     QCOMPARE(receiverSerialPort.error(), QSerialPort::NoError);
-    QCOMPARE(readyReadSpy.count(), 1);
+    QCOMPARE(readyReadSpy.size(), 1);
 }
 
 void tst_QSerialPort::waitForReadyReadWithAlphabet()
@@ -736,7 +714,7 @@ void tst_QSerialPort::waitForReadyReadWithAlphabet()
     } while (receiverSerialPort.bytesAvailable() < qint64(alphabetArray.size()));
 
     QCOMPARE(receiverSerialPort.error(), QSerialPort::NoError);
-    QVERIFY(readyReadSpy.count() > 0);
+    QVERIFY(readyReadSpy.size() > 0);
 }
 
 void tst_QSerialPort::twoStageSynchronousLoopback()
@@ -1048,11 +1026,11 @@ void tst_QSerialPort::readAfterInputClear()
     QVERIFY(receiverPort.bytesAvailable() == 0);
 }
 
-class MasterTransactor : public QObject
+class SenderTransactor : public QObject
 {
     Q_OBJECT
 public:
-    explicit MasterTransactor(const QString &name)
+    explicit SenderTransactor(const QString &name)
         : serialPort(name)
     {
     }
@@ -1085,7 +1063,7 @@ private slots:
 private:
     void createAsynchronousConnection()
     {
-        connect(&serialPort, &QSerialPort::readyRead, this, &MasterTransactor::transaction);
+        connect(&serialPort, &QSerialPort::readyRead, this, &SenderTransactor::transaction);
     }
 
     void deleteAsyncronousConnection()
@@ -1096,14 +1074,14 @@ private:
     QSerialPort serialPort;
 };
 
-class SlaveTransactor : public QObject
+class ReceiverTransactor : public QObject
 {
     Q_OBJECT
 public:
-    explicit SlaveTransactor(const QString &name)
+    explicit ReceiverTransactor(const QString &name)
         : serialPort(new QSerialPort(name, this))
     {
-        connect(serialPort, &QSerialPort::readyRead, this, &SlaveTransactor::transaction);
+        connect(serialPort, &QSerialPort::readyRead, this, &ReceiverTransactor::transaction);
     }
 
 public slots:
@@ -1128,17 +1106,17 @@ private:
 
 void tst_QSerialPort::synchronousReadWriteAfterAsynchronousReadWrite()
 {
-    MasterTransactor master(m_senderPortName);
-    auto slave = new SlaveTransactor(m_receiverPortName);
+    SenderTransactor sender(m_senderPortName);
+    auto receiver = new ReceiverTransactor(m_receiverPortName);
 
     QThread thread;
-    slave->moveToThread(&thread);
+    receiver->moveToThread(&thread);
     thread.start();
 
-    QObject::connect(&thread, &QThread::finished, slave, &SlaveTransactor::deleteLater);
-    QObject::connect(slave, &SlaveTransactor::ready, &master, &MasterTransactor::open);
+    QObject::connect(&thread, &QThread::finished, receiver, &ReceiverTransactor::deleteLater);
+    QObject::connect(receiver, &ReceiverTransactor::ready, &sender, &SenderTransactor::open);
 
-    QMetaObject::invokeMethod(slave, "open", Qt::QueuedConnection);
+    QMetaObject::invokeMethod(receiver, "open", Qt::QueuedConnection);
 
     tst_QSerialPort::enterLoopMsecs(2000);
 
@@ -1196,7 +1174,7 @@ void tst_QSerialPort::controlBreak()
     QVERIFY(senderPort.setBreakEnabled(false));
     QCOMPARE(senderPort.isBreakEnabled(), false);
 
-    QCOMPARE(breakSpy.count(), 2);
+    QCOMPARE(breakSpy.size(), 2);
     QCOMPARE(qvariant_cast<bool>(breakSpy.at(0).at(0)), true);
     QCOMPARE(qvariant_cast<bool>(breakSpy.at(1).at(0)), false);
 }
@@ -1281,6 +1259,90 @@ void tst_QSerialPort::readWriteWithDifferentBaudRate()
             QVERIFY(receiverSerialPort.readAll() == alphabetArray);
         else
             QVERIFY(receiverSerialPort.readAll() != alphabetArray);
+    }
+}
+
+void tst_QSerialPort::bindingsAndProperties()
+{
+    QSerialPort sp;
+
+    // -- data bits
+
+    QTestPrivate::testReadWritePropertyBasics(sp, QSerialPort::DataBits::Data6,
+                                              QSerialPort::DataBits::Data5, "dataBits");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QSetialPort::dataBits");
+        return;
+    }
+
+    // -- parity
+
+    QTestPrivate::testReadWritePropertyBasics(sp, QSerialPort::Parity::SpaceParity,
+                                              QSerialPort::Parity::EvenParity, "parity");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QSetialPort::parity");
+        return;
+    }
+
+    // -- stop bits
+
+    QTestPrivate::testReadWritePropertyBasics(sp, QSerialPort::StopBits::OneAndHalfStop,
+                                              QSerialPort::StopBits::TwoStop, "stopBits");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QSetialPort::stopBits");
+        return;
+    }
+
+    // -- flow control
+
+    QTestPrivate::testReadWritePropertyBasics(sp, QSerialPort::FlowControl::HardwareControl,
+                                              QSerialPort::FlowControl::SoftwareControl,
+                                              "flowControl");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QSetialPort::flowControl");
+        return;
+    }
+
+    // -- error
+
+    QTestPrivate::testReadOnlyPropertyBasics(
+            sp, QSerialPort::SerialPortError::NoError,
+            QSerialPort::SerialPortError::UnsupportedOperationError, "error",
+            [&sp]() { sp.open(QIODevice::Truncate); });
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QSetialPort::error");
+        return;
+    }
+
+    // -- break enabled
+
+    sp.setPortName(m_receiverPortName);
+    const bool portOpened = sp.open(QIODevice::ReadOnly);
+
+    if (portOpened) {
+        // To test the binding loop we need to create another instance of
+        // QSerialPort, open it, and set breakEnabled == true as a default
+        // value, so use a custom lambda for that.
+        QTestPrivate::testReadWritePropertyBasics<QSerialPort, bool>(
+                sp, true, false, "breakEnabled",
+                [name = this->m_senderPortName]() {
+                    auto ptr = std::make_unique<QSerialPort>();
+                    ptr->setPortName(name);
+                    if (ptr->open(QIODevice::ReadOnly)) {
+                        ptr->setBreakEnabled(true);
+                        return ptr;
+                    }
+                    // skip binding loop test if we failed to open the port
+                    return std::unique_ptr<QSerialPort>{};
+                });
+        if (QTest::currentTestFailed()) {
+            qDebug("Failed property test for QSetialPort::breakEnabled");
+            return;
+        }
+    } else {
+        // setting isBreakEnabled() will return false and raise an error
+        sp.setBreakEnabled(true);
+        QCOMPARE(sp.error(), QSerialPort::SerialPortError::NotOpenError);
     }
 }
 

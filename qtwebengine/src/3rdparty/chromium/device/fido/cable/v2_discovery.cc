@@ -1,11 +1,14 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "device/fido/cable/v2_discovery.h"
 
-#include "base/bind.h"
-#include "base/callback.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/strings/string_number_conversions.h"
 #include "components/device_event_log/device_event_log.h"
 #include "device/fido/cable/fido_tunnel_device.h"
@@ -16,28 +19,62 @@
 namespace device {
 namespace cablev2 {
 
+namespace {
+
+// CableV2DiscoveryEvent enumerates several steps that occur while listening for
+// BLE adverts. Do not change the assigned values since they are used in
+// histograms, only append new values. Keep synced with enums.xml.
+enum class CableV2DiscoveryEvent {
+  kStarted = 0,
+  kHavePairings = 1,
+  kHaveQRKeys = 2,
+  kHaveExtensionKeys = 3,
+  kTunnelMatch = 4,
+  kQRMatch = 5,
+  kExtensionMatch = 6,
+  kNoMatch = 7,
+
+  kMaxValue = 7,
+};
+
+void RecordEvent(CableV2DiscoveryEvent event) {
+  base::UmaHistogramEnumeration("WebAuthentication.CableV2.DiscoveryEvent",
+                                event);
+}
+
+}  // namespace
+
 Discovery::Discovery(
+    CableRequestType request_type,
     network::mojom::NetworkContext* network_context,
-    base::span<const uint8_t, kQRKeySize> qr_generator_key,
+    absl::optional<base::span<const uint8_t, kQRKeySize>> qr_generator_key,
+    std::unique_ptr<AdvertEventStream> advert_stream,
     std::vector<std::unique_ptr<Pairing>> pairings,
-    base::Optional<base::RepeatingCallback<void(std::unique_ptr<Pairing>)>>
-        pairing_callback)
-    : FidoDeviceDiscovery(
-          FidoTransportProtocol::kCloudAssistedBluetoothLowEnergy),
+    std::unique_ptr<EventStream<size_t>> contact_device_stream,
+    const std::vector<CableDiscoveryData>& extension_contents,
+    absl::optional<base::RepeatingCallback<void(std::unique_ptr<Pairing>)>>
+        pairing_callback,
+    absl::optional<base::RepeatingCallback<void(size_t)>>
+        invalidated_pairing_callback)
+    : FidoDeviceDiscovery(FidoTransportProtocol::kHybrid),
+      request_type_(request_type),
       network_context_(network_context),
-      local_identity_seed_(fido_parsing_utils::Materialize(
-          base::span<const uint8_t, kQRSeedSize>(qr_generator_key.data(),
-                                                 kQRSeedSize))),
-      qr_secret_(fido_parsing_utils::Materialize(
-          base::span<const uint8_t, kQRSecretSize>(
-              qr_generator_key.data() + kQRSeedSize,
-              kQRSecretSize))),
-      eid_key_(Derive<EXTENT(eid_key_)>(qr_secret_,
-                                        base::span<const uint8_t>(),
-                                        DerivedValueType::kEIDKey)),
+      qr_keys_(KeysFromQRGeneratorKey(qr_generator_key)),
+      extension_keys_(KeysFromExtension(extension_contents)),
+      advert_stream_(std::move(advert_stream)),
       pairings_(std::move(pairings)),
-      pairing_callback_(std::move(pairing_callback)) {
-  static_assert(EXTENT(qr_generator_key) == kQRSecretSize + kQRSeedSize, "");
+      contact_device_stream_(std::move(contact_device_stream)),
+      pairing_callback_(std::move(pairing_callback)),
+      invalidated_pairing_callback_(std::move(invalidated_pairing_callback)) {
+  static_assert(EXTENT(*qr_generator_key) == kQRSecretSize + kQRSeedSize, "");
+  advert_stream_->Connect(
+      base::BindRepeating(&Discovery::OnBLEAdvertSeen, base::Unretained(this)));
+
+  DCHECK(pairings_.empty() || contact_device_stream_);
+  if (contact_device_stream_) {
+    contact_device_stream_->Connect(base::BindRepeating(
+        &Discovery::OnContactDevice, base::Unretained(this)));
+  }
 }
 
 Discovery::~Discovery() = default;
@@ -45,42 +82,52 @@ Discovery::~Discovery() = default;
 void Discovery::StartInternal() {
   DCHECK(!started_);
 
-  for (auto& pairing : pairings_) {
-    tunnels_pending_advert_.emplace_back(std::make_unique<FidoTunnelDevice>(
-        network_context_, std::move(pairing)));
+  RecordEvent(CableV2DiscoveryEvent::kStarted);
+  if (!pairings_.empty()) {
+    RecordEvent(CableV2DiscoveryEvent::kHavePairings);
   }
-  pairings_.clear();
+  if (qr_keys_) {
+    RecordEvent(CableV2DiscoveryEvent::kHaveQRKeys);
+  }
+  if (!extension_keys_.empty()) {
+    RecordEvent(CableV2DiscoveryEvent::kHaveExtensionKeys);
+  }
 
   started_ = true;
   NotifyDiscoveryStarted(true);
 
-  std::vector<CableEidArray> pending_eids(std::move(pending_eids_));
-  for (const auto& eid : pending_eids) {
-    OnBLEAdvertSeen("", eid);
+  std::vector<std::array<uint8_t, kAdvertSize>> pending_adverts(
+      std::move(pending_adverts_));
+  for (const auto& advert : pending_adverts) {
+    OnBLEAdvertSeen(advert);
   }
 }
 
-void Discovery::OnBLEAdvertSeen(const std::string& address,
-                                const CableEidArray& eid) {
+void Discovery::OnBLEAdvertSeen(base::span<const uint8_t, kAdvertSize> advert) {
+  const std::array<uint8_t, kAdvertSize> advert_array =
+      fido_parsing_utils::Materialize<kAdvertSize>(advert);
+
   if (!started_) {
-    pending_eids_.push_back(eid);
+    // Server-linked devices may have started advertising already.
+    pending_adverts_.push_back(advert_array);
     return;
   }
 
-  if (base::Contains(observed_eids_, eid)) {
+  if (base::Contains(observed_adverts_, advert_array)) {
     return;
   }
-  observed_eids_.insert(eid);
+  observed_adverts_.insert(advert_array);
 
   // Check whether the EID satisfies any pending tunnels.
   for (std::vector<std::unique_ptr<FidoTunnelDevice>>::iterator i =
            tunnels_pending_advert_.begin();
        i != tunnels_pending_advert_.end(); i++) {
-    if (!(*i)->MatchEID(eid)) {
+    if (!(*i)->MatchAdvert(advert_array)) {
       continue;
     }
 
-    FIDO_LOG(DEBUG) << "  (" << base::HexEncode(eid)
+    RecordEvent(CableV2DiscoveryEvent::kTunnelMatch);
+    FIDO_LOG(DEBUG) << "  (" << base::HexEncode(advert)
                     << " matches pending tunnel)";
     std::unique_ptr<FidoTunnelDevice> device(std::move(*i));
     tunnels_pending_advert_.erase(i);
@@ -88,31 +135,103 @@ void Discovery::OnBLEAdvertSeen(const std::string& address,
     return;
   }
 
-  // Check whether the EID matches a QR code.
-  AES_KEY aes_key;
-  CHECK(AES_set_decrypt_key(eid_key_.data(),
-                            /*bits=*/8 * eid_key_.size(), &aes_key) == 0);
-  CableEidArray plaintext;
-  static_assert(EXTENT(plaintext) == AES_BLOCK_SIZE, "EIDs are not AES blocks");
-  AES_decrypt(/*in=*/eid.data(), /*out=*/plaintext.data(), &aes_key);
-  if (cablev2::eid::IsValid(plaintext)) {
-    FIDO_LOG(DEBUG) << "  (" << base::HexEncode(eid) << " matches QR code)";
-    AddDevice(std::make_unique<cablev2::FidoTunnelDevice>(
-        network_context_,
-        base::BindOnce(&Discovery::AddPairing, weak_factory_.GetWeakPtr()),
-        qr_secret_, local_identity_seed_, eid, plaintext));
-    return;
+  if (qr_keys_) {
+    // Check whether the EID matches a QR code.
+    absl::optional<CableEidArray> plaintext =
+        eid::Decrypt(advert_array, qr_keys_->eid_key);
+    if (plaintext) {
+      FIDO_LOG(DEBUG) << "  (" << base::HexEncode(advert)
+                      << " matches QR code)";
+      RecordEvent(CableV2DiscoveryEvent::kQRMatch);
+      AddDevice(std::make_unique<cablev2::FidoTunnelDevice>(
+          network_context_, pairing_callback_, qr_keys_->qr_secret,
+          qr_keys_->local_identity_seed, *plaintext));
+      return;
+    }
   }
 
-  FIDO_LOG(DEBUG) << "  (" << base::HexEncode(eid) << ": no v2 match)";
+  // Check whether the EID matches the extension.
+  for (const auto& extension : extension_keys_) {
+    absl::optional<CableEidArray> plaintext =
+        eid::Decrypt(advert_array, extension.eid_key);
+    if (plaintext) {
+      FIDO_LOG(DEBUG) << "  (" << base::HexEncode(advert)
+                      << " matches extension)";
+      RecordEvent(CableV2DiscoveryEvent::kExtensionMatch);
+      AddDevice(std::make_unique<cablev2::FidoTunnelDevice>(
+          network_context_, base::DoNothing(), extension.qr_secret,
+          extension.local_identity_seed, *plaintext));
+      return;
+    }
+  }
+
+  RecordEvent(CableV2DiscoveryEvent::kNoMatch);
+  FIDO_LOG(DEBUG) << "  (" << base::HexEncode(advert) << ": no v2 match)";
 }
 
-void Discovery::AddPairing(std::unique_ptr<Pairing> pairing) {
-  if (!pairing_callback_) {
+void Discovery::OnContactDevice(size_t pairing_index) {
+  DCHECK_LT(pairing_index, pairings_.size());
+  if (!pairings_[pairing_index]) {
     return;
   }
 
-  pairing_callback_->Run(std::move(pairing));
+  tunnels_pending_advert_.emplace_back(std::make_unique<FidoTunnelDevice>(
+      request_type_, network_context_, std::move(pairings_[pairing_index]),
+      base::BindOnce(&Discovery::PairingIsInvalid, weak_factory_.GetWeakPtr(),
+                     pairing_index)));
+}
+
+void Discovery::PairingIsInvalid(size_t pairing_index) {
+  if (!invalidated_pairing_callback_) {
+    return;
+  }
+
+  invalidated_pairing_callback_->Run(pairing_index);
+}
+
+// static
+absl::optional<Discovery::UnpairedKeys> Discovery::KeysFromQRGeneratorKey(
+    const absl::optional<base::span<const uint8_t, kQRKeySize>>
+        qr_generator_key) {
+  if (!qr_generator_key) {
+    return absl::nullopt;
+  }
+
+  UnpairedKeys ret;
+  static_assert(EXTENT(*qr_generator_key) == kQRSeedSize + kQRSecretSize, "");
+  ret.local_identity_seed = fido_parsing_utils::Materialize(
+      qr_generator_key->subspan<0, kQRSeedSize>());
+  ret.qr_secret = fido_parsing_utils::Materialize(
+      qr_generator_key->subspan<kQRSeedSize, kQRSecretSize>());
+  ret.eid_key = Derive<EXTENT(ret.eid_key)>(
+      ret.qr_secret, base::span<const uint8_t>(), DerivedValueType::kEIDKey);
+  return ret;
+}
+
+// static
+std::vector<Discovery::UnpairedKeys> Discovery::KeysFromExtension(
+    const std::vector<CableDiscoveryData>& extension_contents) {
+  std::vector<Discovery::UnpairedKeys> ret;
+
+  for (auto const& data : extension_contents) {
+    if (data.version != CableDiscoveryData::Version::V2) {
+      continue;
+    }
+
+    if (data.v2->server_link_data.size() != kQRKeySize) {
+      FIDO_LOG(ERROR) << "caBLEv2 extension has incorrect length ("
+                      << data.v2->server_link_data.size() << ")";
+      continue;
+    }
+
+    absl::optional<Discovery::UnpairedKeys> keys = KeysFromQRGeneratorKey(
+        base::make_span<kQRKeySize>(data.v2->server_link_data));
+    if (keys.has_value()) {
+      ret.emplace_back(std::move(keys.value()));
+    }
+  }
+
+  return ret;
 }
 
 }  // namespace cablev2

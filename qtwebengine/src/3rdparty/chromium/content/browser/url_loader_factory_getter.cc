@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,13 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/lazy_instance.h"
 #include "base/run_loop.h"
 #include "content/browser/storage_partition_impl.h"
-#include "content/common/service_worker/service_worker_utils.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/common/content_switches.h"
 #include "services/network/public/cpp/features.h"
@@ -35,6 +34,12 @@ class URLLoaderFactoryGetter::PendingURLLoaderFactoryForIOThread
   explicit PendingURLLoaderFactoryForIOThread(
       scoped_refptr<URLLoaderFactoryGetter> factory_getter)
       : factory_getter_(std::move(factory_getter)) {}
+
+  PendingURLLoaderFactoryForIOThread(
+      const PendingURLLoaderFactoryForIOThread&) = delete;
+  PendingURLLoaderFactoryForIOThread& operator=(
+      const PendingURLLoaderFactoryForIOThread&) = delete;
+
   ~PendingURLLoaderFactoryForIOThread() override = default;
 
   scoped_refptr<URLLoaderFactoryGetter>& url_loader_factory_getter() {
@@ -46,8 +51,6 @@ class URLLoaderFactoryGetter::PendingURLLoaderFactoryForIOThread
   scoped_refptr<network::SharedURLLoaderFactory> CreateFactory() override;
 
   scoped_refptr<URLLoaderFactoryGetter> factory_getter_;
-
-  DISALLOW_COPY_AND_ASSIGN(PendingURLLoaderFactoryForIOThread);
 };
 
 class URLLoaderFactoryGetter::URLLoaderFactoryForIOThread
@@ -69,10 +72,13 @@ class URLLoaderFactoryGetter::URLLoaderFactoryForIOThread
     DCHECK_CURRENTLY_ON(BrowserThread::IO);
   }
 
+  URLLoaderFactoryForIOThread(const URLLoaderFactoryForIOThread&) = delete;
+  URLLoaderFactoryForIOThread& operator=(const URLLoaderFactoryForIOThread&) =
+      delete;
+
   // mojom::URLLoaderFactory implementation:
   void CreateLoaderAndStart(
       mojo::PendingReceiver<network::mojom::URLLoader> receiver,
-      int32_t routing_id,
       int32_t request_id,
       uint32_t options,
       const network::ResourceRequest& url_request,
@@ -83,8 +89,8 @@ class URLLoaderFactoryGetter::URLLoaderFactoryForIOThread
     if (!factory_getter_)
       return;
     factory_getter_->GetURLLoaderFactory(is_corb_enabled_)
-        ->CreateLoaderAndStart(std::move(receiver), routing_id, request_id,
-                               options, url_request, std::move(client),
+        ->CreateLoaderAndStart(std::move(receiver), request_id, options,
+                               url_request, std::move(client),
                                traffic_annotation);
   }
 
@@ -109,8 +115,6 @@ class URLLoaderFactoryGetter::URLLoaderFactoryForIOThread
 
   scoped_refptr<URLLoaderFactoryGetter> factory_getter_;
   bool is_corb_enabled_;
-
-  DISALLOW_COPY_AND_ASSIGN(URLLoaderFactoryForIOThread);
 };
 
 scoped_refptr<network::SharedURLLoaderFactory>

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,16 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 
 namespace content {
 
 MediaPlayerRendererClient::MediaPlayerRendererClient(
     mojo::PendingRemote<RendererExtention> renderer_extension_remote,
     mojo::PendingReceiver<ClientExtention> client_extension_receiver,
-    scoped_refptr<base::SingleThreadTaskRunner> media_task_runner,
+    scoped_refptr<base::SequencedTaskRunner> media_task_runner,
     scoped_refptr<base::SingleThreadTaskRunner> compositor_task_runner,
     std::unique_ptr<media::MojoRenderer> mojo_renderer,
     media::ScopedStreamTextureWrapper stream_texture_wrapper,
@@ -41,7 +43,7 @@ void MediaPlayerRendererClient::Initialize(
     media::MediaResource* media_resource,
     media::RendererClient* client,
     media::PipelineStatusCallback init_cb) {
-  DCHECK(media_task_runner_->BelongsToCurrentThread());
+  DCHECK(media_task_runner_->RunsTasksInCurrentSequence());
   DCHECK(!init_cb_);
 
   // Consume and bind the delayed PendingRemote and PendingReceiver now that we
@@ -67,13 +69,17 @@ void MediaPlayerRendererClient::Initialize(
           weak_factory_.GetWeakPtr(), media_resource));
 }
 
+media::RendererType MediaPlayerRendererClient::GetRendererType() {
+  return media::RendererType::kMediaPlayer;
+}
+
 void MediaPlayerRendererClient::OnStreamTextureWrapperInitialized(
     media::MediaResource* media_resource,
     bool success) {
-  DCHECK(media_task_runner_->BelongsToCurrentThread());
+  DCHECK(media_task_runner_->RunsTasksInCurrentSequence());
   if (!success) {
     std::move(init_cb_).Run(
-        media::PipelineStatus::PIPELINE_ERROR_INITIALIZATION_FAILED);
+        media::PipelineStatus::Codes::PIPELINE_ERROR_INITIALIZATION_FAILED);
     return;
   }
 
@@ -95,7 +101,7 @@ void MediaPlayerRendererClient::OnScopedSurfaceRequested(
 
 void MediaPlayerRendererClient::OnRemoteRendererInitialized(
     media::PipelineStatus status) {
-  DCHECK(media_task_runner_->BelongsToCurrentThread());
+  DCHECK(media_task_runner_->RunsTasksInCurrentSequence());
   DCHECK(!init_cb_.is_null());
 
   if (status == media::PIPELINE_OK) {
@@ -108,8 +114,10 @@ void MediaPlayerRendererClient::OnRemoteRendererInitialized(
     // Signal that we're using MediaPlayer so that we can properly differentiate
     // within our metrics.
     media::PipelineStatistics stats;
-    stats.video_decoder_info =
-        stats.audio_decoder_info = {true, false, "MediaPlayer"};
+    stats.video_pipeline_info = {true, false,
+                                 media::VideoDecoderType::kMediaCodec};
+    stats.audio_pipeline_info = {true, false,
+                                 media::AudioDecoderType::kMediaCodec};
     client_->OnStatisticsUpdate(stats);
   }
   std::move(init_cb_).Run(status);
@@ -134,7 +142,7 @@ void MediaPlayerRendererClient::OnVideoSizeChange(const gfx::Size& size) {
 }
 
 void MediaPlayerRendererClient::OnDurationChange(base::TimeDelta duration) {
-  DCHECK(media_task_runner_->BelongsToCurrentThread());
+  DCHECK(media_task_runner_->RunsTasksInCurrentSequence());
 
   media_resource_->ForwardDurationChangeToDemuxerHost(duration);
 }

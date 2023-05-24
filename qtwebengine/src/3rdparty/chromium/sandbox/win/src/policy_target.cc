@@ -1,9 +1,10 @@
-// Copyright (c) 2006-2008 The Chromium Authors. All rights reserved.
+// Copyright 2006-2008 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "sandbox/win/src/policy_target.h"
 
+#include <ntstatus.h>
 #include <stddef.h>
 
 #include "sandbox/win/src/crosscall_client.h"
@@ -17,12 +18,6 @@
 #include "sandbox/win/src/target_services.h"
 
 namespace sandbox {
-
-// Handle for our private heap.
-extern void* g_heap;
-
-// This is the list of all imported symbols from ntdll.dll.
-SANDBOX_INTERCEPT NtExports g_nt;
 
 // Policy data.
 extern void* volatile g_shared_policy_memory;
@@ -77,7 +72,7 @@ bool QueryBroker(IpcTag ipc_id, CountedParameterSetBase* params) {
 NTSTATUS WINAPI TargetNtSetInformationThread(
     NtSetInformationThreadFunction orig_SetInformationThread,
     HANDLE thread,
-    NT_THREAD_INFORMATION_CLASS thread_info_class,
+    THREADINFOCLASS thread_info_class,
     PVOID thread_information,
     ULONG thread_information_bytes) {
   do {

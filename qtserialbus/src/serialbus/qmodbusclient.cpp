@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmodbusclient.h"
 #include "qmodbusclient_p.h"
@@ -129,7 +96,7 @@ QModbusReply *QModbusClient::sendReadWriteRequest(const QModbusDataUnit &read,
     fits inside the Modbus PDU data section and has a valid function code.
     The only check performed before sending is therefore the validity check,
     see \l QModbusPdu::isValid. If no error occurred the function returns a
-    a new valid \l QModbusReply; nullptr otherwise. Modbus networks may have
+    new valid \l QModbusReply; nullptr otherwise. Modbus networks may have
     multiple servers, each server has a unique \a serverAddress.
 
     \sa QModbusReply::rawResult()
@@ -140,13 +107,10 @@ QModbusReply *QModbusClient::sendRawRequest(const QModbusRequest &request, int s
 }
 
 /*!
-    \property QModbusClient::timeout
-    \brief the timeout value used by this client
-
     Returns the timeout value used by this QModbusClient instance in ms.
     A timeout is indicated by a \l TimeoutError. The default value is 1000 ms.
 
-    \sa setTimeout
+    \sa setTimeout timeoutChanged()
 */
 int QModbusClient::timeout() const
 {
@@ -222,8 +186,12 @@ QModbusClient::QModbusClient(QModbusClientPrivate &dd, QObject *parent) :
 }
 
 /*!
-    Processes a Modbus server \a response and stores the decoded information in \a data. Returns
-    true on success; otherwise false.
+    Processes a Modbus server \a response and stores the decoded information in
+    \a data. Returns \c true on success; otherwise \c false.
+
+    \note The default implementation does not support all
+    \l {QModbusPdu::}{FunctionCode}s. Override this method in a custom Modbus
+    client implementations to handle the needed functions.
 */
 bool QModbusClient::processResponse(const QModbusResponse &response, QModbusDataUnit *data)
 {
@@ -236,8 +204,8 @@ bool QModbusClient::processResponse(const QModbusResponse &response, QModbusData
 */
 bool QModbusClient::processPrivateResponse(const QModbusResponse &response, QModbusDataUnit *data)
 {
-    Q_UNUSED(response)
-    Q_UNUSED(data)
+    Q_UNUSED(response);
+    Q_UNUSED(data);
     return false;
 }
 
@@ -297,12 +265,12 @@ QModbusRequest QModbusClientPrivate::createWriteRequest(const QModbusDataUnit &d
                                   quint16((data.value(0) == 0u) ? Coil::Off : Coil::On));
         }
 
-        quint8 byteCount = data.valueCount() / 8;
+        quint8 byteCount = quint8(data.valueCount() / 8);
         if ((data.valueCount() % 8) != 0)
             byteCount += 1;
 
-        quint8 address = 0;
-        QVector<quint8> bytes;
+        qsizetype address = 0;
+        QList<quint8> bytes;
         for (quint8 i = 0; i < byteCount; ++i) {
             quint8 byte = 0;
             for (int currentBit = 0; currentBit < 8; ++currentBit)
@@ -321,7 +289,7 @@ QModbusRequest QModbusClientPrivate::createWriteRequest(const QModbusDataUnit &d
                                   data.value(0));
         }
 
-        const quint8 byteCount = data.valueCount() * 2;
+        const quint8 byteCount = quint8(data.valueCount() * 2);
         return QModbusRequest(QModbusRequest::WriteMultipleRegisters, quint16(data.startAddress()),
                               quint16(data.valueCount()), byteCount, data.values());
     }   break;
@@ -342,7 +310,7 @@ QModbusRequest QModbusClientPrivate::createRWRequest(const QModbusDataUnit &read
         return QModbusRequest();
     }
 
-    const quint8 byteCount = write.valueCount() * 2;
+    const quint8 byteCount = quint8(write.valueCount() * 2);
     return QModbusRequest(QModbusRequest::ReadWriteMultipleRegisters, quint16(read.startAddress()),
                           quint16(read.valueCount()), quint16(write.startAddress()),
                           quint16(write.valueCount()), byteCount, write.values());
@@ -367,8 +335,8 @@ void QModbusClientPrivate::processQueueElement(const QModbusResponse &pdu,
     }
 
     QModbusDataUnit unit = element.unit;
-    if (!processResponse(pdu, &unit)) {
-        element.reply->setError(QModbusDevice::UnknownError,
+    if (!q_func()->processResponse(pdu, &unit)) {
+        element.reply->setError(QModbusDevice::InvalidResponseError,
             QModbusClient::tr("An invalid response has been received."));
         return;
     }
@@ -450,18 +418,23 @@ bool QModbusClientPrivate::collateBits(const QModbusPdu &response,
     if (response.dataSize() < QModbusResponse::minimumDataSize(response))
         return false;
 
-    const QByteArray payload = response.data();
     // byte count needs to match available bytes
-    if ((payload.size() - 1) != payload[0])
+    const quint8 byteCount = quint8(response.data().at(0));
+    if ((response.dataSize() - 1) != byteCount)
         return false;
 
     if (data) {
-        uint value = 0;
-        for (qint32 i = 1; i < payload.size(); ++i) {
+        const int valueCount = byteCount *8;
+        const QByteArray payload = response.data();
+
+        qsizetype value = 0;
+        QList<quint16> values(valueCount);
+        for (qsizetype i = 1; i < payload.size(); ++i) {
             const quint8 byte = quint8(payload[i]);
-            for (qint32 currentBit = 0; currentBit < 8 && value < data->valueCount(); ++currentBit)
-                data->setValue(value++, byte & (1U << currentBit) ? 1 : 0);
+            for (qint32 currentBit = 0; currentBit < 8 && value < valueCount; ++currentBit)
+                values[value++] = (byte & (1U << currentBit) ? 1 : 0);
         }
+        data->setValues(values);
         data->setRegisterType(type);
     }
     return true;
@@ -494,14 +467,14 @@ bool QModbusClientPrivate::collateBytes(const QModbusPdu &response,
     if ((response.dataSize() - 1) != byteCount)
         return false;
 
-    // byte count needs to be odd to match full registers
+    // byte count needs to be even to match full registers
     if (byteCount % 2 != 0)
         return false;
 
     if (data) {
         QDataStream stream(response.data().remove(0, 1));
 
-        QVector<quint16> values;
+        QList<quint16> values;
         const quint8 itemCount = byteCount / 2;
         for (int i = 0; i < itemCount; i++) {
             quint16 tmp;
@@ -544,7 +517,7 @@ bool QModbusClientPrivate::collateSingleValue(const QModbusPdu &response,
     if (data) {
         data->setRegisterType(type);
         data->setStartAddress(address);
-        data->setValues(QVector<quint16>{ value });
+        data->setValues(QList<quint16> { value });
     }
     return true;
 }

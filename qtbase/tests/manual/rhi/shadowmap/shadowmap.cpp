@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "../shared/examplefw.h"
 #include "../shared/cube.h"
@@ -68,7 +21,7 @@ static quint16 quadIndexData[] =
 };
 
 struct {
-    QVector<QRhiResource *> releasePool;
+    QList<QRhiResource *> releasePool;
     QRhiBuffer *vbuf = nullptr;
     QRhiBuffer *ibuf = nullptr;
     QRhiBuffer *ubuf = nullptr;
@@ -96,34 +49,34 @@ void Window::customInit()
         qFatal("Depth texture is not supported");
 
     d.vbuf = m_r->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, sizeof(quadVertexData) + sizeof(cube));
-    d.vbuf->build();
+    d.vbuf->create();
     d.releasePool << d.vbuf;
 
     d.ibuf = m_r->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::IndexBuffer, sizeof(quadIndexData));
-    d.ibuf->build();
+    d.ibuf->create();
     d.releasePool << d.ibuf;
 
     const int oneRoundedUniformBlockSize = m_r->ubufAligned(UBLOCK_SIZE);
     d.ubuf = m_r->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, UBUF_SLOTS * oneRoundedUniformBlockSize);
-    d.ubuf->build();
+    d.ubuf->create();
     d.releasePool << d.ubuf;
 
     d.shadowMap = m_r->newTexture(QRhiTexture::D32F, QSize(1024, 1024), 1, QRhiTexture::RenderTarget);
     d.releasePool << d.shadowMap;
-    d.shadowMap->build();
+    d.shadowMap->create();
 
-    d.shadowSampler = m_r->newSampler(QRhiSampler::Linear, QRhiSampler::Linear, QRhiSampler::None,
+    d.shadowSampler = m_r->newSampler(QRhiSampler::Nearest, QRhiSampler::Nearest, QRhiSampler::None,
                                       QRhiSampler::ClampToEdge, QRhiSampler::ClampToEdge);
     d.releasePool << d.shadowSampler;
     d.shadowSampler->setTextureCompareOp(QRhiSampler::Less);
-    d.shadowSampler->build();
+    d.shadowSampler->create();
 
     d.srb = m_r->newShaderResourceBindings();
     d.releasePool << d.srb;
     const QRhiShaderResourceBinding::StageFlags stages = QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage;
     d.srb->setBindings({ QRhiShaderResourceBinding::uniformBufferWithDynamicOffset(0, stages, d.ubuf, UBLOCK_SIZE),
                          QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, d.shadowMap, d.shadowSampler) });
-    d.srb->build();
+    d.srb->create();
 
     d.ps = m_r->newGraphicsPipeline();
     d.releasePool << d.ps;
@@ -144,7 +97,7 @@ void Window::customInit()
     d.ps->setVertexInputLayout(inputLayout);
     d.ps->setShaderResourceBindings(d.srb);
     d.ps->setRenderPassDescriptor(m_rp);
-    d.ps->build();
+    d.ps->create();
 
     d.initialUpdates = m_r->nextResourceUpdateBatch();
     d.initialUpdates->uploadStaticBuffer(d.vbuf, 0, sizeof(quadVertexData), quadVertexData);
@@ -158,12 +111,12 @@ void Window::customInit()
     d.rtRp = d.rt->newCompatibleRenderPassDescriptor();
     d.releasePool << d.rtRp;
     d.rt->setRenderPassDescriptor(d.rtRp);
-    d.rt->build();
+    d.rt->create();
 
     d.shadowSrb = m_r->newShaderResourceBindings();
     d.releasePool << d.shadowSrb;
     d.shadowSrb->setBindings({ QRhiShaderResourceBinding::uniformBufferWithDynamicOffset(0, stages, d.ubuf, SHADOW_UBLOCK_SIZE) });
-    d.shadowSrb->build();
+    d.shadowSrb->create();
 
     d.shadowPs = m_r->newGraphicsPipeline();
     d.releasePool << d.shadowPs;
@@ -182,7 +135,7 @@ void Window::customInit()
     d.shadowPs->setVertexInputLayout(inputLayout);
     d.shadowPs->setShaderResourceBindings(d.shadowSrb);
     d.shadowPs->setRenderPassDescriptor(d.rtRp);
-    d.shadowPs->build();
+    d.shadowPs->create();
 }
 
 void Window::customRelease()

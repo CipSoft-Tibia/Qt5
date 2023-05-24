@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwaylandseat.h"
 #include "qwaylandseat_p.h"
@@ -41,6 +15,7 @@
 #include <QtWaylandCompositor/QWaylandKeymap>
 #include <QtWaylandCompositor/private/qwaylandseat_p.h>
 #include <QtWaylandCompositor/private/qwaylandcompositor_p.h>
+#include <QtWaylandCompositor/private/qwaylandkeyboard_p.h>
 #if QT_CONFIG(wayland_datadevice)
 #include <QtWaylandCompositor/private/qwldatadevice_p.h>
 #endif
@@ -48,6 +23,10 @@
 
 #include "extensions/qwlqtkey_p.h"
 #include "extensions/qwaylandtextinput.h"
+#if QT_WAYLAND_TEXT_INPUT_V4_WIP
+#include "extensions/qwaylandtextinputv4.h"
+#endif // QT_WAYLAND_TEXT_INPUT_V4_WIP
+#include "extensions/qwaylandqttextinputmethod.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -178,6 +157,9 @@ QWaylandSeat::QWaylandSeat(QWaylandCompositor *compositor, CapabilityFlags capab
     d->capabilities = capabilityFlags;
     if (compositor->isCreated())
         initialize();
+
+    // Support deprecated signal for backward compatibility
+    connect(this, &QWaylandSeat::cursorSurfaceRequested, this, &QWaylandSeat::cursorSurfaceRequest);
 }
 
 /*!
@@ -297,7 +279,7 @@ uint QWaylandSeat::sendTouchPointEvent(QWaylandSurface *surface, int id, const Q
 }
 
 /*!
- * \qmlmethod uint QtWaylandCompositor::WaylandSeat::sendTouchPointPressed(WaylandSurface surface, int id, point position)
+ * \qmlmethod uint QtWayland.Compositor::WaylandSeat::sendTouchPointPressed(WaylandSurface surface, int id, point position)
  *
  * Sends a touch pressed event for the touch point \a id on \a surface with
  * position \a position.
@@ -331,7 +313,7 @@ uint QWaylandSeat::sendTouchPointPressed(QWaylandSurface *surface, int id, const
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::WaylandSeat::sendTouchPointReleased(WaylandSurface surface, int id, point position)
+ * \qmlmethod void QtWayland.Compositor::WaylandSeat::sendTouchPointReleased(WaylandSurface surface, int id, point position)
  *
  * Sends a touch released event for the touch point \a id on \a surface with
  * position \a position.
@@ -365,7 +347,7 @@ uint QWaylandSeat::sendTouchPointReleased(QWaylandSurface *surface, int id, cons
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::WaylandSeat::sendTouchPointMoved(WaylandSurface surface, int id, point position)
+ * \qmlmethod void QtWayland.Compositor::WaylandSeat::sendTouchPointMoved(WaylandSurface surface, int id, point position)
  *
  * Sends a touch moved event for the touch point \a id on \a surface with
  * position \a position.
@@ -399,7 +381,7 @@ uint QWaylandSeat::sendTouchPointMoved(QWaylandSurface *surface, int id, const Q
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::WaylandSeat::sendTouchFrameEvent(WaylandClient client)
+ * \qmlmethod void QtWayland.Compositor::WaylandSeat::sendTouchFrameEvent(WaylandClient client)
  *
  * Sends a frame event to the touch device of a \a client to indicate the end
  * of a series of touch up, down, and motion events.
@@ -417,7 +399,7 @@ void QWaylandSeat::sendTouchFrameEvent(QWaylandClient *client)
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::WaylandSeat::sendTouchCancelEvent(WaylandClient client)
+ * \qmlmethod void QtWayland.Compositor::WaylandSeat::sendTouchCancelEvent(WaylandClient client)
  *
  * Sends a cancel event to the touch device of a \a client.
  */
@@ -435,7 +417,7 @@ void QWaylandSeat::sendTouchCancelEvent(QWaylandClient *client)
 /*!
  * Sends the \a event to the specified \a surface on the touch device.
  *
- * \warning This API will automatically map \l QTouchEvent::TouchPoint::id to a
+ * \warning This API will automatically map \l QEventPoint::id() to a
  * sequential id before sending it to the client. It should therefore not be
  * used in combination with the other API using explicit ids, as collisions
  * might occur.
@@ -452,6 +434,11 @@ void QWaylandSeat::sendFullTouchEvent(QWaylandSurface *surface, QTouchEvent *eve
 
 /*!
  * Sends the \a event to the keyboard device.
+ *
+ * \note The \a event should correspond to an actual keyboard key in the current mapping.
+ * For example, \c Qt::Key_Exclam is normally not a separate key: with most keyboards the
+ * exclamation mark is produced with Shift + 1. In that case, to send an exclamation mark
+ * key press event, use \c{QKeyEvent(QEvent::KeyPress, Qt::Key_1, Qt::ShiftModifier)}.
  */
 void QWaylandSeat::sendFullKeyEvent(QKeyEvent *event)
 {
@@ -465,11 +452,33 @@ void QWaylandSeat::sendFullKeyEvent(QKeyEvent *event)
 #if QT_CONFIG(im)
     if (keyboardFocus()->inputMethodControl()->enabled()
         && event->nativeScanCode() == 0) {
-        QWaylandTextInput *textInput = QWaylandTextInput::findIn(this);
-        if (textInput) {
-            textInput->sendKeyEvent(event);
-            return;
+        if (keyboardFocus()->client()->textInputProtocols().testFlag(QWaylandClient::TextInputProtocol::TextInputV2)) {
+            QWaylandTextInput *textInput = QWaylandTextInput::findIn(this);
+            if (textInput) {
+                textInput->sendKeyEvent(event);
+                return;
+            }
         }
+
+        if (keyboardFocus()->client()->textInputProtocols().testFlag(QWaylandClient::TextInputProtocol::QtTextInputMethodV1)) {
+            QWaylandQtTextInputMethod *textInputMethod = QWaylandQtTextInputMethod::findIn(this);
+            if (textInputMethod) {
+                textInputMethod->sendKeyEvent(event);
+                return;
+            }
+        }
+
+#if QT_WAYLAND_TEXT_INPUT_V4_WIP
+        if (keyboardFocus()->client()->textInputProtocols().testFlag(QWaylandClient::TextInputProtocol::TextInputV4)) {
+            QWaylandTextInputV4 *textInputV4 = QWaylandTextInputV4::findIn(this);
+            if (textInputV4 && !event->text().isEmpty()) {
+                // it will just commit the text for text-input-unstable-v4-wip when keyPress
+                if (event->type() == QEvent::KeyPress)
+                    textInputV4->sendKeyEvent(event);
+                return;
+            }
+        }
+#endif // QT_WAYLAND_TEXT_INPUT_V4_WIP
     }
 #endif
 
@@ -488,15 +497,17 @@ void QWaylandSeat::sendFullKeyEvent(QKeyEvent *event)
             return;
         }
 
-        if (event->type() == QEvent::KeyPress)
+        if (event->type() == QEvent::KeyPress) {
+            QWaylandKeyboardPrivate::get(d->keyboard.data())->checkAndRepairModifierState(event);
             d->keyboard->sendKeyPressEvent(scanCode);
-        else if (event->type() == QEvent::KeyRelease)
+        } else if (event->type() == QEvent::KeyRelease) {
             d->keyboard->sendKeyReleaseEvent(scanCode);
+        }
     }
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::WaylandSeat::sendKeyEvent(int qtKey, bool pressed)
+ * \qmlmethod void QtWayland.Compositor::WaylandSeat::sendKeyEvent(int qtKey, bool pressed)
  * \since 5.12
  *
  * Sends a key press (if \a pressed is \c true) or release (if \a pressed is \c false)
@@ -506,6 +517,9 @@ void QWaylandSeat::sendFullKeyEvent(QKeyEvent *event)
 /*!
  * Sends a key press (if \a pressed is \c true) or release (if \a pressed is \c false)
  * event of a key \a qtKey to the keyboard device.
+ *
+ * \note This function does not support key events that require modifiers, such as \c Qt::Key_Exclam.
+ * Use \l{sendFullKeyEvent} instead.
  *
  * \since 5.12
  */
@@ -699,7 +713,7 @@ void QWaylandSeat::handleMouseFocusDestroyed()
 }
 
 
-/*! \qmlsignal void QtWaylandCompositor::QWaylandSeat::keyboardFocusChanged(QWaylandSurface newFocus, QWaylandSurface oldFocus)
+/*! \qmlsignal void QtWayland.Compositor::WaylandSeat::keyboardFocusChanged(QWaylandSurface newFocus, QWaylandSurface oldFocus)
  *
  * This signal is emitted when setKeyboardFocus() is called or when a WaylandQuickItem has focus
  * and the user starts pressing keys.
@@ -719,7 +733,7 @@ void QWaylandSeat::handleMouseFocusDestroyed()
  * \a oldFocus has the surface that lost keyboard focus; or \c nullptr if no surface had focus.
  */
 
-/*! \qmlsignal void QtWaylandCompositor::QWaylandSeat::cursorSurfaceRequest(QWaylandSurface surface, int hotspotX, int hotspotY)
+/*! \qmlsignal void QtWayland.Compositor::WaylandSeat::cursorSurfaceRequest(QWaylandSurface surface, int hotspotX, int hotspotY)
  *
  * This signal is emitted when the client has requested for a specific \a surface to be the mouse
  * cursor. For example, when the user hovers over a particular surface, and you want the cursor
@@ -764,3 +778,5 @@ void QWaylandSeat::handleMouseFocusDestroyed()
  */
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandseat.cpp"

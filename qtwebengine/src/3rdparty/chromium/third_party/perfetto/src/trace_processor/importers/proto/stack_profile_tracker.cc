@@ -16,11 +16,11 @@
 
 #include "src/trace_processor/importers/proto/stack_profile_tracker.h"
 
-#include "src/trace_processor/importers/proto/profiler_util.h"
-#include "src/trace_processor/types/trace_processor_context.h"
-
 #include "perfetto/base/logging.h"
 #include "perfetto/ext/base/string_utils.h"
+#include "src/trace_processor/importers/proto/profiler_util.h"
+#include "src/trace_processor/types/trace_processor_context.h"
+#include "src/trace_processor/util/stack_traces_util.h"
 
 namespace perfetto {
 namespace trace_processor {
@@ -58,6 +58,11 @@ base::Optional<MappingId> SequenceStackProfileTracker::AddMapping(
       break;
     path += "/" + *opt_str;
   }
+  // When path strings just have single full path(like Chrome does), the mapping
+  // path gets an extra '/' prepended, strip the extra '/'.
+  if(base::StartsWith(path, "//")) {
+    path = path.substr(1);
+  }
 
   auto opt_build_id = FindAndInternString(mapping.build_id, intern_lookup,
                                           InternedStringType::kBuildId);
@@ -70,12 +75,12 @@ base::Optional<MappingId> SequenceStackProfileTracker::AddMapping(
   NullTermStringView raw_build_id_str =
       context_->storage->GetString(raw_build_id);
   StringId build_id = GetEmptyStringId();
-  if (raw_build_id_str.size() > 0) {
+  if (!raw_build_id_str.empty()) {
     // If the build_id is 33 characters long, we assume it's a Breakpad debug
     // identifier which is already in Hex and doesn't need conversion.
     // TODO(b/148109467): Remove workaround once all active Chrome versions
     // write raw bytes instead of a string as build_id.
-    if (raw_build_id_str.size() == 33) {
+    if (util::IsHexModuleId(raw_build_id_str)) {
       build_id = raw_build_id;
     } else {
       std::string hex_build_id =
@@ -185,7 +190,7 @@ base::Optional<FrameId> SequenceStackProfileTracker::AddFrame(
       cur_id = frames->Insert(row).id;
       context_->global_stack_profile_tracker->InsertFrameRow(
           mapping_id, static_cast<uint64_t>(row.rel_pc), *cur_id);
-      if (name.find('.') != std::string::npos) {
+      if (base::Contains(name, '.')) {
         // Java frames always contain a '.'
         base::Optional<std::string> package =
             PackageFromLocation(context_->storage.get(), mapping_name);

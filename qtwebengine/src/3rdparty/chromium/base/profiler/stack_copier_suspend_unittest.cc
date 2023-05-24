@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,18 +8,24 @@
 #include <numeric>
 #include <utility>
 
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
 #include "base/profiler/stack_buffer.h"
 #include "base/profiler/stack_copier_suspend.h"
 #include "base/profiler/suspendable_thread_delegate.h"
-#include "base/stl_util.h"
 #include "build/build_config.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "base/memory/page_size.h"
+#endif
 
 namespace base {
 
 namespace {
 
+using ::testing::Each;
 using ::testing::ElementsAre;
 
 // A thread delegate for use in tests that provides the expected behavior when
@@ -56,16 +62,17 @@ class TestSuspendableThreadDelegate : public SuspendableThreadDelegate {
       *thread_context = *thread_context_;
     // Set the stack pointer to be consistent with the provided fake stack.
     RegisterContextStackPointer(thread_context) =
-        reinterpret_cast<uintptr_t>(&fake_stack_[0]);
+        reinterpret_cast<uintptr_t>(&(*fake_stack_)[0]);
     RegisterContextInstructionPointer(thread_context) =
-        reinterpret_cast<uintptr_t>(fake_stack_[0]);
+        reinterpret_cast<uintptr_t>((*fake_stack_)[0]);
     return true;
   }
 
   PlatformThreadId GetThreadId() const override { return PlatformThreadId(); }
 
   uintptr_t GetStackBaseAddress() const override {
-    return reinterpret_cast<uintptr_t>(&fake_stack_[0] + fake_stack_.size());
+    return reinterpret_cast<uintptr_t>(&(*fake_stack_)[0] +
+                                       fake_stack_->size());
   }
 
   bool CanCopyStack(uintptr_t stack_pointer) override { return true; }
@@ -78,8 +85,8 @@ class TestSuspendableThreadDelegate : public SuspendableThreadDelegate {
  private:
   // Must be a reference to retain the underlying allocation from the vector
   // passed to the constructor.
-  const std::vector<uintptr_t>& fake_stack_;
-  RegisterContext* thread_context_;
+  const raw_ref<const std::vector<uintptr_t>> fake_stack_;
+  raw_ptr<RegisterContext> thread_context_;
 };
 
 class TestStackCopierDelegate : public StackCopier::Delegate {
@@ -118,14 +125,30 @@ TEST(StackCopierSuspendTest, CopyStack) {
 }
 
 TEST(StackCopierSuspendTest, CopyStackBufferTooSmall) {
-  std::vector<uintptr_t> stack = {0, 1, 2, 3, 4};
+  std::vector<uintptr_t> stack;
+#if BUILDFLAG(IS_CHROMEOS)
+  // ChromeOS will round up the size of the stack up to the next multiple of
+  // the page size. To make the buffer "too small", the stack must be 1 element
+  // larger than the page size.
+  const size_t kStackElements = (GetPageSize() / sizeof(stack[0])) + 1;
+#else  // #if BUILDFLAG(IS_CHROMEOS)
+  const size_t kStackElements = 5;  // Arbitrary
+#endif
+  stack.reserve(kStackElements);
+  for (size_t i = 0; i < kStackElements; ++i) {
+    stack.push_back(i);
+  }
   StackCopierSuspend stack_copier_suspend(
       std::make_unique<TestSuspendableThreadDelegate>(stack));
 
   std::unique_ptr<StackBuffer> stack_buffer =
-      std::make_unique<StackBuffer>((stack.size() - 1) * sizeof(uintptr_t));
+      std::make_unique<StackBuffer>((stack.size() - 1) * sizeof(stack[0]));
   // Make the buffer different than the input stack.
-  stack_buffer->buffer()[0] = 100;
+  constexpr uintptr_t kBufferInitializer = 100;
+  size_t stack_buffer_elements =
+      stack_buffer->size() / sizeof(stack_buffer->buffer()[0]);
+  std::fill_n(stack_buffer->buffer(), stack_buffer_elements,
+              kBufferInitializer);
   uintptr_t stack_top = 0;
   TimeTicks timestamp;
   RegisterContext register_context{};
@@ -136,10 +159,10 @@ TEST(StackCopierSuspendTest, CopyStackBufferTooSmall) {
   uintptr_t* stack_copy_bottom =
       reinterpret_cast<uintptr_t*>(stack_buffer.get()->buffer());
   std::vector<uintptr_t> stack_copy(stack_copy_bottom,
-                                    stack_copy_bottom + stack.size());
+                                    stack_copy_bottom + stack_buffer_elements);
   // Use the buffer not being overwritten as a proxy for the unwind being
   // aborted.
-  EXPECT_NE(stack, stack_copy);
+  EXPECT_THAT(stack_copy, Each(kBufferInitializer));
 }
 
 TEST(StackCopierSuspendTest, CopyStackAndRewritePointers) {

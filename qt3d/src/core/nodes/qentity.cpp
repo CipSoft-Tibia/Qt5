@@ -1,47 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qentity.h"
 #include "qentity_p.h"
 
 #include <Qt3DCore/qcomponent.h>
-#include <Qt3DCore/qnodecreatedchange.h>
 #include <QtCore/QMetaObject>
 #include <QtCore/QMetaProperty>
 
@@ -85,7 +48,7 @@ QStringList dumpSG(const Qt3DCore::QNode *n, int level = 0)
     const auto *entity = qobject_cast<const Qt3DCore::QEntity *>(n);
     if (entity != nullptr) {
         QString res = dumpNode(entity);
-        reply += res.rightJustified(res.length() + level * 2, ' ');
+        reply += res.rightJustified(res.size() + level * 2, QLatin1Char(' '));
         level++;
     }
 
@@ -120,7 +83,7 @@ namespace Qt3DCore {
  */
 
 /*!
-    \fn template<typename T> QVector<T *> Qt3DCore::QEntity::componentsOfType() const
+    \fn template<typename T> QList<T *> Qt3DCore::QEntity::componentsOfType() const
 
     Returns all the components added to this entity that can be cast to
     type T or an empty vector if there are no such components.
@@ -130,11 +93,18 @@ namespace Qt3DCore {
 QEntityPrivate::QEntityPrivate()
     : QNodePrivate()
     , m_parentEntityId()
+    , m_dirty(false)
 {}
 
 /*! \internal */
 QEntityPrivate::~QEntityPrivate()
 {
+}
+
+/*! \internal */
+QEntityPrivate *QEntityPrivate::get(QEntity *q)
+{
+    return q->d_func();
 }
 
 /*! \internal */
@@ -145,8 +115,9 @@ void QEntityPrivate::removeDestroyedComponent(QComponent *comp)
     Q_CHECK_PTR(comp);
     qCDebug(Nodes) << Q_FUNC_INFO << comp;
 
-    updateNode(comp, nullptr, ComponentRemoved);
+    updateComponentRelationShip(comp, ComponentRelationshipChange::Removed);
     m_components.removeOne(comp);
+    m_dirty = true;
 
     // Remove bookkeeping connection
     unregisterDestructionHelper(comp);
@@ -168,7 +139,7 @@ QEntity::QEntity(QEntityPrivate &dd, QNode *parent)
 QEntity::~QEntity()
 {
     // remove all component aggregations
-    Q_D(const QEntity);
+    Q_D(QEntity);
     // to avoid hammering m_components by repeated removeComponent()
     // calls below, move all contents out, so the removeOne() calls in
     // removeComponent() don't actually remove something:
@@ -220,11 +191,12 @@ void QEntity::addComponent(QComponent *comp)
     QNodePrivate::get(comp)->_q_ensureBackendNodeCreated();
 
     d->m_components.append(comp);
+    d->m_dirty = true;
 
     // Ensures proper bookkeeping
     d->registerPrivateDestructionHelper(comp, &QEntityPrivate::removeDestroyedComponent);
 
-    d->updateNode(comp, nullptr, ComponentAdded);
+    d->updateComponentRelationShip(comp, ComponentRelationshipChange::Added);
     static_cast<QComponentPrivate *>(QComponentPrivate::get(comp))->addEntity(this);
 }
 
@@ -239,9 +211,10 @@ void QEntity::removeComponent(QComponent *comp)
 
     static_cast<QComponentPrivate *>(QComponentPrivate::get(comp))->removeEntity(this);
 
-    d->updateNode(comp, nullptr, ComponentRemoved);
+    d->updateComponentRelationShip(comp, ComponentRelationshipChange::Removed);
 
     d->m_components.removeOne(comp);
+    d->m_dirty = true;
 
     // Remove bookkeeping connection
     d->unregisterDestructionHelper(comp);
@@ -292,38 +265,20 @@ QNodeId QEntityPrivate::parentEntityId() const
 QString QEntityPrivate::dumpSceneGraph() const
 {
     Q_Q(const QEntity);
-    return dumpSG(q).join('\n');
+    return dumpSG(q).join(QLatin1Char('\n'));
 }
 
-QNodeCreatedChangeBasePtr QEntity::createNodeCreationChange() const
+void QEntityPrivate::updateComponentRelationShip(QComponent *component, ComponentRelationshipChange::RelationShip change)
 {
-    auto creationChange = QNodeCreatedChangePtr<QEntityData>::create(this);
-    auto &data = creationChange->data;
+    if (m_changeArbiter) {
+        // Ensure node has its postConstructorInit called if we reach this
+        // point, we could otherwise endup referencing a node that has yet
+        // to be created in the backend
+        QNodePrivate::get(component)->_q_ensureBackendNodeCreated();
 
-    Q_D(const QEntity);
-    data.parentEntityId = parentEntity() ? parentEntity()->id() : Qt3DCore::QNodeId();
-
-    // Find all child entities
-    QQueue<QNode *> queue;
-    queue.append(childNodes().toList());
-    data.childEntityIds.reserve(queue.size());
-    while (!queue.isEmpty()) {
-        auto *child = queue.dequeue();
-        auto *childEntity = qobject_cast<QEntity *>(child);
-        if (childEntity != nullptr)
-            data.childEntityIds.push_back(childEntity->id());
-        else
-            queue.append(child->childNodes().toList());
+        Q_Q(QEntity);
+        m_changeArbiter->addDirtyEntityComponentNodes(q, component, change);
     }
-
-    data.componentIdsAndTypes.reserve(d->m_components.size());
-    const QComponentVector &components = d->m_components;
-    for (QComponent *c : components) {
-        const auto idAndType = QNodeIdTypePair(c->id(), QNodePrivate::findStaticMetaObject(c->metaObject()));
-        data.componentIdsAndTypes.push_back(idAndType);
-    }
-
-    return creationChange;
 }
 
 void QEntity::onParentChanged(QObject *)
@@ -338,3 +293,5 @@ void QEntity::onParentChanged(QObject *)
 } // namespace Qt3DCore
 
 QT_END_NAMESPACE
+
+#include "moc_qentity.cpp"

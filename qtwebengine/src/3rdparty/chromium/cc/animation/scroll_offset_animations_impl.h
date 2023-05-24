@@ -1,15 +1,18 @@
-// Copyright (c) 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CC_ANIMATION_SCROLL_OFFSET_ANIMATIONS_IMPL_H_
 #define CC_ANIMATION_SCROLL_OFFSET_ANIMATIONS_IMPL_H_
 
+#include <memory>
+
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "cc/animation/animation_delegate.h"
 #include "cc/animation/scroll_offset_animation_curve.h"
 #include "cc/trees/mutator_host_client.h"
-#include "ui/gfx/geometry/scroll_offset.h"
+#include "ui/gfx/geometry/vector2d_f.h"
 
 namespace cc {
 
@@ -33,8 +36,8 @@ class CC_ANIMATION_EXPORT ScrollOffsetAnimationsImpl
       delete;
 
   void AutoScrollAnimationCreate(ElementId element_id,
-                                 const gfx::ScrollOffset& target_offset,
-                                 const gfx::ScrollOffset& current_offset,
+                                 const gfx::PointF& target_offset,
+                                 const gfx::PointF& current_offset,
                                  float autoscroll_velocity,
                                  base::TimeDelta animation_start_offset);
 
@@ -42,13 +45,13 @@ class CC_ANIMATION_EXPORT ScrollOffsetAnimationsImpl
   // animation. |animation_start_offset| causes us to start the animation
   // partway through.
   void MouseWheelScrollAnimationCreate(ElementId element_id,
-                                       const gfx::ScrollOffset& target_offset,
-                                       const gfx::ScrollOffset& current_offset,
+                                       const gfx::PointF& target_offset,
+                                       const gfx::PointF& current_offset,
                                        base::TimeDelta delayed_by,
                                        base::TimeDelta animation_start_offset);
 
   bool ScrollAnimationUpdateTarget(const gfx::Vector2dF& scroll_delta,
-                                   const gfx::ScrollOffset& max_scroll_offset,
+                                   const gfx::PointF& max_scroll_offset,
                                    base::TimeTicks frame_monotonic_time,
                                    base::TimeDelta delayed_by);
 
@@ -58,6 +61,7 @@ class CC_ANIMATION_EXPORT ScrollOffsetAnimationsImpl
                                       const gfx::Vector2dF& adjustment);
 
   void ScrollAnimationAbort(bool needs_completion);
+  void AnimatingElementRemovedByCommit();
 
   // AnimationDelegate implementation.
   void NotifyAnimationStarted(base::TimeTicks monotonic_time,
@@ -69,25 +73,25 @@ class CC_ANIMATION_EXPORT ScrollOffsetAnimationsImpl
   void NotifyAnimationAborted(base::TimeTicks monotonic_time,
                               int target_property,
                               int group) override {}
-  void NotifyAnimationTakeover(base::TimeTicks monotonic_time,
-                               int target_property,
-                               base::TimeTicks animation_start_time,
-                               std::unique_ptr<AnimationCurve> curve) override {
-  }
+  void NotifyAnimationTakeover(
+      base::TimeTicks monotonic_time,
+      int target_property,
+      base::TimeTicks animation_start_time,
+      std::unique_ptr<gfx::AnimationCurve> curve) override {}
   void NotifyLocalTimeUpdated(
-      base::Optional<base::TimeDelta> local_time) override {}
+      absl::optional<base::TimeDelta> local_time) override {}
 
   bool IsAnimating() const;
   ElementId GetElementId() const;
 
  private:
   void ScrollAnimationCreateInternal(ElementId element_id,
-                                     std::unique_ptr<AnimationCurve> curve,
+                                     std::unique_ptr<gfx::AnimationCurve> curve,
                                      base::TimeDelta animation_start_offset);
 
   void ReattachScrollOffsetAnimationIfNeeded(ElementId element_id);
 
-  AnimationHost* animation_host_;
+  raw_ptr<AnimationHost> animation_host_;
   scoped_refptr<AnimationTimeline> scroll_offset_timeline_;
 
   // We have just one animation for impl-only scroll offset animations.

@@ -1,53 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtConcurrent module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTCONCURRENT_MAP_H
 #define QTCONCURRENT_MAP_H
 
+#if 0
+#pragma qt_class(QtConcurrentMap)
+#endif
+
 #include <QtConcurrent/qtconcurrent_global.h>
 
-#if !defined(QT_NO_CONCURRENT) || defined(Q_CLANG_QDOC)
+#if !defined(QT_NO_CONCURRENT) || defined(Q_QDOC)
 
 #include <QtConcurrent/qtconcurrentmapkernel.h>
 #include <QtConcurrent/qtconcurrentreducekernel.h>
 #include <QtConcurrent/qtconcurrentfunctionwrappers.h>
-#include <QtCore/qstringlist.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -57,210 +24,793 @@ namespace QtConcurrent {
 
 // map() on sequences
 template <typename Sequence, typename MapFunctor>
-QFuture<void> map(Sequence &sequence, MapFunctor map)
+QFuture<void> map(QThreadPool *pool, Sequence &&sequence, MapFunctor &&map)
 {
-    return startMap(sequence.begin(), sequence.end(), QtPrivate::createFunctionWrapper(map));
+    return startMap(pool, sequence.begin(), sequence.end(), std::forward<MapFunctor>(map));
+}
+
+template <typename Sequence, typename MapFunctor>
+QFuture<void> map(Sequence &&sequence, MapFunctor &&map)
+{
+    return startMap(QThreadPool::globalInstance(), sequence.begin(), sequence.end(),
+                    std::forward<MapFunctor>(map));
 }
 
 // map() on iterators
 template <typename Iterator, typename MapFunctor>
-QFuture<void> map(Iterator begin, Iterator end, MapFunctor map)
+QFuture<void> map(QThreadPool *pool, Iterator begin, Iterator end, MapFunctor &&map)
 {
-    return startMap(begin, end, QtPrivate::createFunctionWrapper(map));
+    return startMap(pool, begin, end, std::forward<MapFunctor>(map));
+}
+
+template <typename Iterator, typename MapFunctor>
+QFuture<void> map(Iterator begin, Iterator end, MapFunctor &&map)
+{
+    return startMap(QThreadPool::globalInstance(), begin, end, std::forward<MapFunctor>(map));
 }
 
 // mappedReduced() for sequences.
 template <typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor>
-QFuture<ResultType> mappedReduced(const Sequence &sequence,
-                                  MapFunctor map,
-                                  ReduceFunctor reduce,
-                                  ReduceOptions options = ReduceOptions(UnorderedReduce | SequentialReduce))
+QFuture<ResultType> mappedReduced(QThreadPool *pool,
+                                  Sequence &&sequence,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
 {
-    return startMappedReduced<typename QtPrivate::MapResultType<void, MapFunctor>::ResultType, ResultType>
-        (sequence,
-         QtPrivate::createFunctionWrapper(map),
-         QtPrivate::createFunctionWrapper(reduce),
-         options);
+    return startMappedReduced<QtPrivate::MapResultType<Sequence, MapFunctor>, ResultType>
+        (pool, std::forward<Sequence>(sequence), std::forward<MapFunctor>(map),
+         std::forward<ReduceFunctor>(reduce), options);
 }
 
-template <typename Sequence, typename MapFunctor, typename ReduceFunctor>
-QFuture<typename QtPrivate::ReduceResultType<ReduceFunctor>::ResultType> mappedReduced(const Sequence &sequence,
-                                  MapFunctor map,
-                                  ReduceFunctor reduce,
-                                  ReduceOptions options = ReduceOptions(UnorderedReduce | SequentialReduce))
+template <typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor>
+QFuture<ResultType> mappedReduced(Sequence &&sequence,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
 {
-    return startMappedReduced<typename QtPrivate::MapResultType<void, MapFunctor>::ResultType, typename QtPrivate::ReduceResultType<ReduceFunctor>::ResultType>
-        (sequence,
-         QtPrivate::createFunctionWrapper(map),
-         QtPrivate::createFunctionWrapper(reduce),
-         options);
+    return startMappedReduced<QtPrivate::MapResultType<Sequence, MapFunctor>, ResultType>
+        (QThreadPool::globalInstance(), std::forward<Sequence>(sequence),
+         std::forward<MapFunctor>(map), std::forward<ReduceFunctor>(reduce), options);
+}
+
+#ifdef Q_QDOC
+template <typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType>
+#else
+template <typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+QFuture<ResultType> mappedReduced(QThreadPool *pool,
+                                  Sequence &&sequence,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  InitialValueType &&initialValue,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
+{
+    return startMappedReduced<QtPrivate::MapResultType<Sequence, MapFunctor>, ResultType>(
+            pool, std::forward<Sequence>(sequence), std::forward<MapFunctor>(map),
+            std::forward<ReduceFunctor>(reduce),
+            ResultType(std::forward<InitialValueType>(initialValue)), options);
+}
+#ifdef Q_QDOC
+template <typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType>
+#else
+template <typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+QFuture<ResultType> mappedReduced(Sequence &&sequence,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  InitialValueType &&initialValue,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
+{
+    return startMappedReduced<QtPrivate::MapResultType<Sequence, MapFunctor>, ResultType>
+        (QThreadPool::globalInstance(), std::forward<Sequence>(sequence),
+         std::forward<MapFunctor>(map), std::forward<ReduceFunctor>(reduce),
+         ResultType(std::forward<InitialValueType>(initialValue)),  options);
+}
+
+template <typename Sequence, typename MapFunctor, typename ReduceFunctor,
+          std::enable_if_t<QtPrivate::isInvocable<MapFunctor, Sequence>::value, int> = 0,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type>
+QFuture<ResultType> mappedReduced(QThreadPool *pool,
+                                  Sequence &&sequence,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
+{
+    return startMappedReduced<QtPrivate::MapResultType<Sequence, MapFunctor>, ResultType>
+        (pool, std::forward<Sequence>(sequence), std::forward<MapFunctor>(map),
+         std::forward<ReduceFunctor>(reduce), options);
+}
+
+template <typename Sequence, typename MapFunctor, typename ReduceFunctor,
+          std::enable_if_t<QtPrivate::isInvocable<MapFunctor, Sequence>::value, int> = 0,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type>
+QFuture<ResultType> mappedReduced(Sequence &&sequence,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
+{
+    return startMappedReduced<QtPrivate::MapResultType<Sequence, MapFunctor>, ResultType>
+        (QThreadPool::globalInstance(), std::forward<Sequence>(sequence),
+         std::forward<MapFunctor>(map), std::forward<ReduceFunctor>(reduce), options);
+}
+
+#ifdef Q_QDOC
+template <typename Sequence, typename MapFunctor, typename ReduceFunctor, typename ResultType,
+          typename InitialValueType>
+#else
+template <typename Sequence, typename MapFunctor, typename ReduceFunctor, typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInvocable<MapFunctor, Sequence>::value, int> = 0,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+QFuture<ResultType> mappedReduced(QThreadPool *pool,
+                                  Sequence &&sequence,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  InitialValueType &&initialValue,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
+{
+    return startMappedReduced<QtPrivate::MapResultType<Sequence, MapFunctor>, ResultType>(
+            pool, std::forward<Sequence>(sequence), std::forward<MapFunctor>(map),
+            std::forward<ReduceFunctor>(reduce),
+            ResultType(std::forward<InitialValueType>(initialValue)), options);
+}
+
+#ifdef Q_QDOC
+template <typename Sequence, typename MapFunctor, typename ReduceFunctor, typename ResultType,
+          typename InitialValueType>
+#else
+template <typename Sequence, typename MapFunctor, typename ReduceFunctor, typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInvocable<MapFunctor, Sequence>::value, int> = 0,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+QFuture<ResultType> mappedReduced(Sequence &&sequence,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  InitialValueType &&initialValue,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
+{
+    return startMappedReduced<QtPrivate::MapResultType<Sequence, MapFunctor>, ResultType>
+        (QThreadPool::globalInstance(), std::forward<Sequence>(sequence),
+         std::forward<MapFunctor>(map), std::forward<ReduceFunctor>(reduce),
+         ResultType(std::forward<InitialValueType>(initialValue)), options);
 }
 
 // mappedReduced() for iterators
 template <typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor>
-QFuture<ResultType> mappedReduced(Iterator begin,
+QFuture<ResultType> mappedReduced(QThreadPool *pool,
+                                  Iterator begin,
                                   Iterator end,
-                                  MapFunctor map,
-                                  ReduceFunctor reduce,
-                                  ReduceOptions options = ReduceOptions(UnorderedReduce | SequentialReduce))
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
 {
-    return startMappedReduced<typename QtPrivate::MapResultType<void, MapFunctor>::ResultType, ResultType>
-        (begin, end,
-         QtPrivate::createFunctionWrapper(map),
-         QtPrivate::createFunctionWrapper(reduce),
+    return startMappedReduced<QtPrivate::MapResultType<Iterator, MapFunctor>, ResultType>
+        (pool, begin, end, std::forward<MapFunctor>(map), std::forward<ReduceFunctor>(reduce),
          options);
 }
 
-template <typename Iterator, typename MapFunctor, typename ReduceFunctor>
-QFuture<typename QtPrivate::ReduceResultType<ReduceFunctor>::ResultType> mappedReduced(Iterator begin,
+template <typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor>
+QFuture<ResultType> mappedReduced(Iterator begin,
                                   Iterator end,
-                                  MapFunctor map,
-                                  ReduceFunctor reduce,
-                                  ReduceOptions options = ReduceOptions(UnorderedReduce | SequentialReduce))
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
 {
-    return startMappedReduced<typename QtPrivate::MapResultType<void, MapFunctor>::ResultType, typename QtPrivate::ReduceResultType<ReduceFunctor>::ResultType>
-        (begin, end,
-         QtPrivate::createFunctionWrapper(map),
-         QtPrivate::createFunctionWrapper(reduce),
-         options);
+    return startMappedReduced<QtPrivate::MapResultType<Iterator, MapFunctor>, ResultType>
+        (QThreadPool::globalInstance(), begin, end, std::forward<MapFunctor>(map),
+         std::forward<ReduceFunctor>(reduce), options);
+}
+
+#ifdef Q_QDOC
+template <typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType>
+#else
+template <typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+QFuture<ResultType> mappedReduced(QThreadPool *pool,
+                                  Iterator begin,
+                                  Iterator end,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  InitialValueType &&initialValue,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
+{
+    return startMappedReduced<QtPrivate::MapResultType<Iterator, MapFunctor>, ResultType>
+        (pool, begin, end, std::forward<MapFunctor>(map), std::forward<ReduceFunctor>(reduce),
+         ResultType(std::forward<InitialValueType>(initialValue)), options);
+}
+
+#ifdef Q_QDOC
+template <typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType>
+#else
+template <typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+QFuture<ResultType> mappedReduced(Iterator begin,
+                                  Iterator end,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  InitialValueType &&initialValue,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
+{
+    return startMappedReduced<QtPrivate::MapResultType<Iterator, MapFunctor>, ResultType>
+        (QThreadPool::globalInstance(), begin, end, std::forward<MapFunctor>(map),
+         std::forward<ReduceFunctor>(reduce),
+         ResultType(std::forward<InitialValueType>(initialValue)), options);
+}
+
+template <typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type>
+QFuture<ResultType> mappedReduced(QThreadPool *pool,
+                                  Iterator begin,
+                                  Iterator end,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
+{
+    return startMappedReduced<QtPrivate::MapResultType<Iterator, MapFunctor>, ResultType>(
+            pool, begin, end, std::forward<MapFunctor>(map), std::forward<ReduceFunctor>(reduce),
+            options);
+}
+
+template <typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type>
+QFuture<ResultType> mappedReduced(Iterator begin,
+                                  Iterator end,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
+{
+    return startMappedReduced<QtPrivate::MapResultType<Iterator, MapFunctor>, ResultType>
+        (QThreadPool::globalInstance(), begin, end, std::forward<MapFunctor>(map),
+         std::forward<ReduceFunctor>(reduce), options);
+}
+
+#ifdef Q_QDOC
+template <typename Iterator, typename MapFunctor, typename ReduceFunctor, typename ResultType,
+          typename InitialValueType>
+#else
+template <typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type,
+          typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+QFuture<ResultType> mappedReduced(QThreadPool *pool,
+                                  Iterator begin,
+                                  Iterator end,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  InitialValueType &&initialValue,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
+{
+    return startMappedReduced<QtPrivate::MapResultType<Iterator, MapFunctor>, ResultType>
+        (pool, begin, end, std::forward<MapFunctor>(map), std::forward<ReduceFunctor>(reduce),
+         ResultType(std::forward<InitialValueType>(initialValue)), options);
+}
+
+#ifdef Q_QDOC
+template <typename Iterator, typename MapFunctor, typename ReduceFunctor, typename ResultType,
+          typename InitialValueType>
+#else
+template<typename Iterator, typename MapFunctor, typename ReduceFunctor,
+         std::enable_if_t<QtPrivate::isIterator_v<Iterator>, int> = 0,
+         typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type,
+         typename InitialValueType,
+         std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                          int> = 0>
+#endif
+QFuture<ResultType> mappedReduced(Iterator begin,
+                                  Iterator end,
+                                  MapFunctor &&map,
+                                  ReduceFunctor &&reduce,
+                                  InitialValueType &&initialValue,
+                                  ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                        | SequentialReduce))
+{
+    return startMappedReduced<QtPrivate::MapResultType<Iterator, MapFunctor>, ResultType>
+        (QThreadPool::globalInstance(), begin, end, std::forward<MapFunctor>(map),
+         std::forward<ReduceFunctor>(reduce),
+         ResultType(std::forward<InitialValueType>(initialValue)), options);
 }
 
 // mapped() for sequences
 template <typename Sequence, typename MapFunctor>
-QFuture<typename QtPrivate::MapResultType<void, MapFunctor>::ResultType> mapped(const Sequence &sequence, MapFunctor map)
+QFuture<QtPrivate::MapResultType<Sequence, MapFunctor>> mapped(
+                                  QThreadPool *pool,
+                                  Sequence &&sequence,
+                                  MapFunctor &&map)
 {
-    return startMapped<typename QtPrivate::MapResultType<void, MapFunctor>::ResultType>(sequence, QtPrivate::createFunctionWrapper(map));
+    return startMapped<QtPrivate::MapResultType<Sequence, MapFunctor>>(
+            pool, std::forward<Sequence>(sequence), std::forward<MapFunctor>(map));
+}
+
+template <typename Sequence, typename MapFunctor>
+QFuture<QtPrivate::MapResultType<Sequence, MapFunctor>> mapped(
+                                  Sequence &&sequence,
+                                  MapFunctor &&map)
+{
+    return startMapped<QtPrivate::MapResultType<Sequence, MapFunctor>>
+        (QThreadPool::globalInstance(), std::forward<Sequence>(sequence),
+         std::forward<MapFunctor>(map));
 }
 
 // mapped() for iterator ranges.
 template <typename Iterator, typename MapFunctor>
-QFuture<typename QtPrivate::MapResultType<void, MapFunctor>::ResultType> mapped(Iterator begin, Iterator end, MapFunctor map)
+QFuture<QtPrivate::MapResultType<Iterator, MapFunctor>> mapped(
+                                  QThreadPool *pool,
+                                  Iterator begin,
+                                  Iterator end,
+                                  MapFunctor &&map)
 {
-    return startMapped<typename QtPrivate::MapResultType<void, MapFunctor>::ResultType>(begin, end, QtPrivate::createFunctionWrapper(map));
+    return startMapped<QtPrivate::MapResultType<Iterator, MapFunctor>>(
+            pool, begin, end, std::forward<MapFunctor>(map));
+}
+
+template <typename Iterator, typename MapFunctor>
+QFuture<QtPrivate::MapResultType<Iterator, MapFunctor>> mapped(
+                                  Iterator begin,
+                                  Iterator end,
+                                  MapFunctor &&map)
+{
+    return startMapped<QtPrivate::MapResultType<Iterator, MapFunctor>>
+        (QThreadPool::globalInstance(), begin, end, std::forward<MapFunctor>(map));
 }
 
 // blockingMap() for sequences
 template <typename Sequence, typename MapFunctor>
-void blockingMap(Sequence &sequence, MapFunctor map)
+void blockingMap(QThreadPool *pool, Sequence &&sequence, MapFunctor map)
 {
-    QFuture<void> future = startMap(sequence.begin(), sequence.end(), QtPrivate::createFunctionWrapper(map));
+    QFuture<void> future =
+            startMap(pool, sequence.begin(), sequence.end(), std::forward<MapFunctor>(map));
+    future.waitForFinished();
+}
+
+template <typename Sequence, typename MapFunctor>
+void blockingMap(Sequence &&sequence, MapFunctor &&map)
+{
+    QFuture<void> future = startMap(QThreadPool::globalInstance(), sequence.begin(), sequence.end(),
+                                    std::forward<MapFunctor>(map));
     future.waitForFinished();
 }
 
 // blockingMap() for iterator ranges
 template <typename Iterator, typename MapFunctor>
-void blockingMap(Iterator begin, Iterator end, MapFunctor map)
+void blockingMap(QThreadPool *pool, Iterator begin, Iterator end, MapFunctor &&map)
 {
-    QFuture<void> future = startMap(begin, end, QtPrivate::createFunctionWrapper(map));
+    QFuture<void> future = startMap(pool, begin, end, map);
+    future.waitForFinished();
+}
+
+template <typename Iterator, typename MapFunctor>
+void blockingMap(Iterator begin, Iterator end, MapFunctor &&map)
+{
+    QFuture<void> future = startMap(QThreadPool::globalInstance(), begin, end,
+                                    std::forward<MapFunctor>(map));
     future.waitForFinished();
 }
 
 // blockingMappedReduced() for sequences
 template <typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor>
-ResultType blockingMappedReduced(const Sequence &sequence,
-                                 MapFunctor map,
-                                 ReduceFunctor reduce,
-                                 ReduceOptions options = ReduceOptions(UnorderedReduce | SequentialReduce))
+ResultType blockingMappedReduced(QThreadPool *pool,
+                                 Sequence &&sequence,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
 {
     QFuture<ResultType> future =
-    QtConcurrent::startMappedReduced<typename QtPrivate::MapResultType<void, MapFunctor>::ResultType, ResultType>
-        (sequence,
-         QtPrivate::createFunctionWrapper(map),
-         QtPrivate::createFunctionWrapper(reduce),
-         options);
-    return future.result();
+            mappedReduced<ResultType>(pool, std::forward<Sequence>(sequence),
+                                      std::forward<MapFunctor>(map),
+                                      std::forward<ReduceFunctor>(reduce), options);
+    return future.takeResult();
 }
 
-template <typename MapFunctor, typename ReduceFunctor, typename Sequence>
-typename QtPrivate::ReduceResultType<ReduceFunctor>::ResultType blockingMappedReduced(const Sequence &sequence,
-                                 MapFunctor map,
-                                 ReduceFunctor reduce,
-                                 ReduceOptions options = ReduceOptions(UnorderedReduce | SequentialReduce))
+template <typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor>
+ResultType blockingMappedReduced(Sequence &&sequence,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
 {
-    QFuture<typename QtPrivate::ReduceResultType<ReduceFunctor>::ResultType> future =
-    QtConcurrent::startMappedReduced<typename QtPrivate::MapResultType<void, MapFunctor>::ResultType, typename QtPrivate::ReduceResultType<ReduceFunctor>::ResultType>
-        (sequence,
-         QtPrivate::createFunctionWrapper(map),
-         QtPrivate::createFunctionWrapper(reduce),
-         options);
-    return future.result();
+    QFuture<ResultType> future =
+            mappedReduced<ResultType>(std::forward<Sequence>(sequence),
+                                      std::forward<MapFunctor>(map),
+                                      std::forward<ReduceFunctor>(reduce), options);
+    return future.takeResult();
+}
+
+#ifdef Q_QDOC
+template <typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType>
+#else
+template <typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+ResultType blockingMappedReduced(QThreadPool *pool,
+                                 Sequence &&sequence,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 InitialValueType &&initialValue,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
+{
+    QFuture<ResultType> future = mappedReduced<ResultType>(
+            pool, std::forward<Sequence>(sequence), std::forward<MapFunctor>(map),
+            std::forward<ReduceFunctor>(reduce),
+            ResultType(std::forward<InitialValueType>(initialValue)), options);
+    return future.takeResult();
+}
+
+#ifdef Q_QDOC
+template <typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType>
+#else
+template <typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+ResultType blockingMappedReduced(Sequence &&sequence,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 InitialValueType &&initialValue,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
+{
+    QFuture<ResultType> future = mappedReduced<ResultType>(
+            std::forward<Sequence>(sequence), std::forward<MapFunctor>(map),
+                std::forward<ReduceFunctor>(reduce),
+            ResultType(std::forward<InitialValueType>(initialValue)), options);
+    return future.takeResult();
+}
+
+template <typename MapFunctor, typename ReduceFunctor, typename Sequence,
+          std::enable_if_t<QtPrivate::isInvocable<MapFunctor, Sequence>::value, int> = 0,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type>
+ResultType blockingMappedReduced(QThreadPool *pool,
+                                 Sequence &&sequence,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
+{
+    QFuture<ResultType> future =
+            mappedReduced<ResultType>(pool, std::forward<Sequence>(sequence),
+                                      std::forward<MapFunctor>(map),
+                                      std::forward<ReduceFunctor>(reduce), options);
+    return future.takeResult();
+}
+
+template <typename MapFunctor, typename ReduceFunctor, typename Sequence,
+          std::enable_if_t<QtPrivate::isInvocable<MapFunctor, Sequence>::value, int> = 0,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type>
+ResultType blockingMappedReduced(Sequence &&sequence,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
+{
+    QFuture<ResultType> future =
+            mappedReduced<ResultType>(std::forward<Sequence>(sequence),
+                                      std::forward<MapFunctor>(map),
+                                      std::forward<ReduceFunctor>(reduce), options);
+    return future.takeResult();
+}
+
+#ifdef Q_QDOC
+template <typename MapFunctor, typename ReduceFunctor, typename Sequence, typename ResultType,
+          typename InitialValueType>
+#else
+template <typename MapFunctor, typename ReduceFunctor, typename Sequence, typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInvocable<MapFunctor, Sequence>::value, int> = 0,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+ResultType blockingMappedReduced(QThreadPool *pool,
+                                 Sequence &&sequence,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 InitialValueType &&initialValue,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
+{
+    QFuture<ResultType> future = mappedReduced<ResultType>(
+            pool, std::forward<Sequence>(sequence), std::forward<MapFunctor>(map),
+            std::forward<ReduceFunctor>(reduce),
+            ResultType(std::forward<InitialValueType>(initialValue)), options);
+    return future.takeResult();
+}
+
+#ifdef Q_QDOC
+template <typename MapFunctor, typename ReduceFunctor, typename Sequence, typename ResultType,
+          typename InitialValueType>
+#else
+template<typename MapFunctor, typename ReduceFunctor, typename Sequence, typename InitialValueType,
+         std::enable_if_t<QtPrivate::isInvocable<MapFunctor, Sequence>::value, int> = 0,
+         typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type,
+         std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                          int> = 0>
+#endif
+ResultType blockingMappedReduced(Sequence &&sequence,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 InitialValueType &&initialValue,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
+{
+    QFuture<ResultType> future = mappedReduced<ResultType>(
+            std::forward<Sequence>(sequence), std::forward<MapFunctor>(map),
+            std::forward<ReduceFunctor>(reduce),
+            ResultType(std::forward<InitialValueType>(initialValue)), options);
+    return future.takeResult();
 }
 
 // blockingMappedReduced() for iterator ranges
 template <typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor>
-ResultType blockingMappedReduced(Iterator begin,
+ResultType blockingMappedReduced(QThreadPool *pool,
+                                 Iterator begin,
                                  Iterator end,
-                                 MapFunctor map,
-                                 ReduceFunctor reduce,
-                                 QtConcurrent::ReduceOptions options = QtConcurrent::ReduceOptions(QtConcurrent::UnorderedReduce | QtConcurrent::SequentialReduce))
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
 {
     QFuture<ResultType> future =
-    QtConcurrent::startMappedReduced<typename QtPrivate::MapResultType<void, MapFunctor>::ResultType, ResultType>
-        (begin, end,
-         QtPrivate::createFunctionWrapper(map),
-         QtPrivate::createFunctionWrapper(reduce),
-         options);
-    return future.result();
+            mappedReduced<ResultType>(pool, begin, end, std::forward<MapFunctor>(map),
+                                      std::forward<ReduceFunctor>(reduce), options);
+    return future.takeResult();
 }
 
-template <typename Iterator, typename MapFunctor, typename ReduceFunctor>
-typename QtPrivate::ReduceResultType<ReduceFunctor>::ResultType blockingMappedReduced(Iterator begin,
+template <typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor>
+ResultType blockingMappedReduced(Iterator begin,
                                  Iterator end,
-                                 MapFunctor map,
-                                 ReduceFunctor reduce,
-                                 QtConcurrent::ReduceOptions options = QtConcurrent::ReduceOptions(QtConcurrent::UnorderedReduce | QtConcurrent::SequentialReduce))
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
 {
-    QFuture<typename QtPrivate::ReduceResultType<ReduceFunctor>::ResultType> future =
-    QtConcurrent::startMappedReduced<typename QtPrivate::MapResultType<void, MapFunctor>::ResultType, typename QtPrivate::ReduceResultType<ReduceFunctor>::ResultType>
-        (begin, end,
-         QtPrivate::createFunctionWrapper(map),
-         QtPrivate::createFunctionWrapper(reduce),
-         options);
-    return future.result();
+    QFuture<ResultType> future =
+            mappedReduced<ResultType>(begin, end, std::forward<MapFunctor>(map),
+                                      std::forward<ReduceFunctor>(reduce), options);
+    return future.takeResult();
+}
+
+#ifdef Q_QDOC
+template <typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType>
+#else
+template <typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+ResultType blockingMappedReduced(QThreadPool *pool,
+                                 Iterator begin,
+                                 Iterator end,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 InitialValueType &&initialValue,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
+{
+    QFuture<ResultType> future = mappedReduced<ResultType>(
+            pool, begin, end, std::forward<MapFunctor>(map), std::forward<ReduceFunctor>(reduce),
+            ResultType(std::forward<InitialValueType>(initialValue)),
+            options);
+    return future.takeResult();
+}
+
+#ifdef Q_QDOC
+template <typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType>
+#else
+template <typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+ResultType blockingMappedReduced(Iterator begin,
+                                 Iterator end,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 InitialValueType &&initialValue,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
+{
+    QFuture<ResultType> future = mappedReduced<ResultType>(
+            begin, end, std::forward<MapFunctor>(map), std::forward<ReduceFunctor>(reduce),
+            ResultType(std::forward<InitialValueType>(initialValue)),
+            options);
+    return future.takeResult();
+}
+
+template <typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type>
+ResultType blockingMappedReduced(QThreadPool *pool,
+                                 Iterator begin,
+                                 Iterator end,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
+{
+    QFuture<ResultType> future =
+            mappedReduced<ResultType>(pool, begin, end, std::forward<MapFunctor>(map),
+                                      std::forward<ReduceFunctor>(reduce), options);
+    return future.takeResult();
+}
+
+template <typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type>
+ResultType blockingMappedReduced(Iterator begin,
+                                 Iterator end,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
+{
+    QFuture<ResultType> future =
+            mappedReduced<ResultType>(begin, end, std::forward<MapFunctor>(map),
+                                      std::forward<ReduceFunctor>(reduce), options);
+    return future.takeResult();
+}
+
+#ifdef Q_QDOC
+template <typename Iterator, typename MapFunctor, typename ReduceFunctor, typename ResultType,
+          typename InitialValueType>
+#else
+template <typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type,
+          typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+ResultType blockingMappedReduced(QThreadPool *pool,
+                                 Iterator begin,
+                                 Iterator end,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 InitialValueType &&initialValue,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
+{
+    QFuture<ResultType> future = mappedReduced<ResultType>(
+            pool, begin, end, std::forward<MapFunctor>(map), std::forward<ReduceFunctor>(reduce),
+            ResultType(std::forward<InitialValueType>(initialValue)), options);
+    return future.takeResult();
+}
+
+#ifdef Q_QDOC
+template <typename Iterator, typename MapFunctor, typename ReduceFunctor, typename ResultType,
+          typename InitialValueType>
+#else
+template <typename Iterator, typename MapFunctor, typename ReduceFunctor,
+          std::enable_if_t<QtPrivate::isIterator_v<Iterator>, int> = 0,
+          typename ResultType = typename QtPrivate::ReduceResultTypeHelper<ReduceFunctor>::type,
+          typename InitialValueType,
+          std::enable_if_t<QtPrivate::isInitialValueCompatible_v<InitialValueType, ResultType>,
+                           int> = 0>
+#endif
+ResultType blockingMappedReduced(Iterator begin,
+                                 Iterator end,
+                                 MapFunctor &&map,
+                                 ReduceFunctor &&reduce,
+                                 InitialValueType &&initialValue,
+                                 ReduceOptions options = ReduceOptions(UnorderedReduce
+                                                                       | SequentialReduce))
+{
+    QFuture<ResultType> future = mappedReduced<ResultType>(
+            begin, end, std::forward<MapFunctor>(map), std::forward<ReduceFunctor>(reduce),
+            ResultType(std::forward<InitialValueType>(initialValue)), options);
+    return future.takeResult();
 }
 
 // mapped() for sequences with a different putput sequence type.
 template <typename OutputSequence, typename InputSequence, typename MapFunctor>
-OutputSequence blockingMapped(const InputSequence &sequence, MapFunctor map)
+OutputSequence blockingMapped(QThreadPool *pool, InputSequence &&sequence, MapFunctor &&map)
 {
-    return blockingMappedReduced<OutputSequence>
-        (sequence,
-         QtPrivate::createFunctionWrapper(map),
-         QtPrivate::PushBackWrapper(),
-         QtConcurrent::OrderedReduce);
+    return blockingMappedReduced<OutputSequence>(pool, std::forward<InputSequence>(sequence),
+                                                 std::forward<MapFunctor>(map),
+                                                 QtPrivate::PushBackWrapper(), OrderedReduce);
+}
+
+template <typename OutputSequence, typename InputSequence, typename MapFunctor>
+OutputSequence blockingMapped(InputSequence &&sequence, MapFunctor &&map)
+{
+    return blockingMappedReduced<OutputSequence>(
+            QThreadPool::globalInstance(), std::forward<InputSequence>(sequence),
+            std::forward<MapFunctor>(map), QtPrivate::PushBackWrapper(), OrderedReduce);
 }
 
 template <typename MapFunctor, typename InputSequence>
-typename QtPrivate::MapResultType<InputSequence, MapFunctor>::ResultType blockingMapped(const InputSequence &sequence, MapFunctor map)
+auto blockingMapped(QThreadPool *pool, InputSequence &&sequence, MapFunctor &&map)
 {
-    typedef typename QtPrivate::MapResultType<InputSequence, MapFunctor>::ResultType OutputSequence;
-    return blockingMappedReduced<OutputSequence>
-        (sequence,
-         QtPrivate::createFunctionWrapper(map),
-         QtPrivate::PushBackWrapper(),
-         QtConcurrent::OrderedReduce);
+    using OutputSequence = typename QtPrivate::MapSequenceResultType<std::decay_t<InputSequence>,
+                                                                     MapFunctor>::ResultType;
+    return blockingMappedReduced<OutputSequence>(pool, std::forward<InputSequence>(sequence),
+                                                 std::forward<MapFunctor>(map),
+                                                 QtPrivate::PushBackWrapper(), OrderedReduce);
+}
+
+template <typename MapFunctor, typename InputSequence>
+auto blockingMapped(InputSequence &&sequence, MapFunctor &&map)
+{
+    using OutputSequence = typename QtPrivate::MapSequenceResultType<std::decay_t<InputSequence>,
+                                                                     MapFunctor>::ResultType;
+    return blockingMappedReduced<OutputSequence>(QThreadPool::globalInstance(),
+                                                 std::forward<InputSequence>(sequence),
+                                                 std::forward<MapFunctor>(map),
+                                                 QtPrivate::PushBackWrapper(), OrderedReduce);
 }
 
 // mapped()  for iterator ranges
 template <typename Sequence, typename Iterator, typename MapFunctor>
-Sequence blockingMapped(Iterator begin, Iterator end, MapFunctor map)
+Sequence blockingMapped(QThreadPool *pool, Iterator begin, Iterator end, MapFunctor &&map)
 {
-    return blockingMappedReduced<Sequence>
-        (begin, end,
-         QtPrivate::createFunctionWrapper(map),
-         QtPrivate::PushBackWrapper(),
-         QtConcurrent::OrderedReduce);
+    return blockingMappedReduced<Sequence>(pool, begin, end, std::forward<MapFunctor>(map),
+        QtPrivate::PushBackWrapper(), OrderedReduce);
+}
+
+template <typename Sequence, typename Iterator, typename MapFunctor>
+Sequence blockingMapped(Iterator begin, Iterator end, MapFunctor &&map)
+{
+    return blockingMappedReduced<Sequence>(QThreadPool::globalInstance(), begin, end,
+                                           std::forward<MapFunctor>(map),
+                                           QtPrivate::PushBackWrapper(), OrderedReduce);
 }
 
 template <typename Iterator, typename MapFunctor>
-typename QtPrivate::MapResultType<Iterator, MapFunctor>::ResultType blockingMapped(Iterator begin, Iterator end, MapFunctor map)
+auto blockingMapped(QThreadPool *pool, Iterator begin, Iterator end, MapFunctor &&map)
 {
-    typedef typename QtPrivate::MapResultType<Iterator, MapFunctor>::ResultType OutputSequence;
-    return blockingMappedReduced<OutputSequence>
-        (begin, end,
-         QtPrivate::createFunctionWrapper(map),
-         QtPrivate::PushBackWrapper(),
-         QtConcurrent::OrderedReduce);
+    using OutputSequence = QtPrivate::MapResultType<Iterator, MapFunctor>;
+    return blockingMappedReduced<OutputSequence>(pool, begin, end, std::forward<MapFunctor>(map),
+        QtPrivate::PushBackWrapper(), OrderedReduce);
+}
+
+template <typename Iterator, typename MapFunctor>
+auto blockingMapped(Iterator begin, Iterator end, MapFunctor &&map)
+{
+    using OutputSequence = QtPrivate::MapResultType<Iterator, MapFunctor>;
+    return blockingMappedReduced<OutputSequence>(QThreadPool::globalInstance(), begin, end,
+                                                 std::forward<MapFunctor>(map),
+                                                 QtPrivate::PushBackWrapper(), OrderedReduce);
 }
 
 } // namespace QtConcurrent

@@ -17,9 +17,9 @@
 #ifndef SRC_TRACE_PROCESSOR_IMPORTERS_PROTO_PROTO_IMPORTER_MODULE_H_
 #define SRC_TRACE_PROCESSOR_IMPORTERS_PROTO_PROTO_IMPORTER_MODULE_H_
 
+#include "perfetto/base/status.h"
 #include "perfetto/ext/base/optional.h"
-#include "perfetto/trace_processor/status.h"
-#include "src/trace_processor/trace_blob_view.h"
+#include "src/trace_processor/importers/common/trace_parser.h"
 
 namespace perfetto {
 
@@ -33,7 +33,7 @@ class TracePacket_Decoder;
 namespace trace_processor {
 
 class PacketSequenceState;
-struct TimestampedTracePiece;
+class TraceBlobView;
 class TraceProcessorContext;
 
 // This file contains a base class for ProtoTraceReader/Parser modules.
@@ -52,7 +52,7 @@ class TraceProcessorContext;
 class ModuleResult {
  public:
   // Allow auto conversion from util::Status to Handled / Error result.
-  ModuleResult(util::Status status)
+  ModuleResult(base::Status status)
       : ignored_(false),
         error_(status.ok() ? base::nullopt
                            : base::make_optional(status.message())) {}
@@ -75,11 +75,11 @@ class ModuleResult {
   bool ok() const { return !error_.has_value(); }
   const std::string& message() const { return *error_; }
 
-  util::Status ToStatus() const {
+  base::Status ToStatus() const {
     PERFETTO_DCHECK(!ignored_);
     if (error_)
-      return util::Status(*error_);
-    return util::OkStatus();
+      return base::Status(*error_);
+    return base::OkStatus();
   }
 
  private:
@@ -110,11 +110,26 @@ class ProtoImporterModule {
       PacketSequenceState*,
       uint32_t field_id);
 
-  // Called by ProtoTraceParser after the sorting stage for each non-ftrace
-  // TracePacket that contains fields for which the module was registered.
-  virtual void ParsePacket(const protos::pbzero::TracePacket_Decoder&,
-                           const TimestampedTracePiece&,
-                           uint32_t field_id);
+  // Called by ProtoTraceReader during the tokenization stage i.e. before
+  // sorting. Indicates that sequence with id |packet_sequence_id| has cleared
+  // its incremental state. This should be used to clear any cached state the
+  // tokenizer has built up while reading packets until this point for this
+  // packet sequence.
+  virtual void OnIncrementalStateCleared(uint32_t /* packet_sequence_id */) {}
+
+  // Called by ProtoTraceReader during the tokenization stage i.e. before
+  // sorting. Indicates that sequence with id |packet_sequence_id| has a packet
+  // with first_packet_on_sequence = true. This implies that there was no data
+  // loss, including ring buffer overwrittes, on this sequence.
+  virtual void OnFirstPacketOnSequence(uint32_t /* packet_sequence_id */) {}
+
+  // ParsePacket functions are called by ProtoTraceParser after the sorting
+  // stage for each non-ftrace TracePacket that contains fields for which the
+  // module was registered.
+  virtual void ParseTracePacketData(const protos::pbzero::TracePacket_Decoder&,
+                                    int64_t ts,
+                                    const TracePacketData&,
+                                    uint32_t /*field_id*/);
 
   // Called by ProtoTraceParser for trace config packets after the sorting
   // stage, on all existing modules.
@@ -124,6 +139,10 @@ class ProtoImporterModule {
 
  protected:
   void RegisterForField(uint32_t field_id, TraceProcessorContext*);
+  // Primarily intended for special modules that need to get all TracePacket's,
+  // for example for trace proto content analysis. Most modules need to register
+  // for specific fields using the method above.
+  void RegisterForAllFields(TraceProcessorContext*);
 };
 
 }  // namespace trace_processor

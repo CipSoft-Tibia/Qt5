@@ -13,7 +13,7 @@
     </message>
     <message>
         <source>Input Output Error</source>
-        <translation>Giriş Çıkış Hatası</translation>
+        <translation>Girdi Çıktı Hatası</translation>
     </message>
     <message>
         <source>Bluetooth LE is not supported</source>
@@ -69,7 +69,7 @@
     </message>
     <message>
         <source>Bluetooth adapter error</source>
-        <translation>Bluetooth adaptör hatası</translation>
+        <translation>Bluetooth bağdaştırıcısı hatası</translation>
     </message>
     <message>
         <source>Device discovery not supported on this platform</source>
@@ -92,7 +92,7 @@
     </message>
     <message>
         <source>Invalid Bluetooth adapter address</source>
-        <translation>Geçersiz Bluetooth adaptörü adresi</translation>
+        <translation>Geçersiz Bluetooth bağdaştırıcısı adresi</translation>
     </message>
     <message>
         <source>Platform does not support Bluetooth</source>
@@ -112,7 +112,7 @@
     </message>
     <message>
         <source>Serial Port Profile</source>
-        <translation>Seri Bağlantı Noktası Profili</translation>
+        <translation>Seri Kapı Profili</translation>
     </message>
     <message>
         <source>Device is powered off</source>
@@ -124,7 +124,7 @@
     </message>
     <message>
         <source>Cannot find local Bluetooth adapter</source>
-        <translation>Yerel Bluetooth adaptörü bulunamıyor</translation>
+        <translation>Yerel Bluetooth bağdaştırıcısı bulunamıyor</translation>
     </message>
     <message>
         <source>Unable to find sdpscanner</source>
@@ -152,7 +152,7 @@
     </message>
     <message>
         <source>Public Browse Group</source>
-        <translation>Herkese Açık Gözatma Grubu</translation>
+        <translation>Herkese Açık Göz Atma Grubu</translation>
     </message>
     <message>
         <source>LAN Access Profile</source>
@@ -164,7 +164,7 @@
     </message>
     <message>
         <source>Synchronization</source>
-        <translation>Eşitleme</translation>
+        <translation>Eşzamanlama</translation>
     </message>
     <message>
         <source>Object Push</source>
@@ -172,11 +172,11 @@
     </message>
     <message>
         <source>File Transfer</source>
-        <translation>Dosya Transferi</translation>
+        <translation>Dosya Aktarımı</translation>
     </message>
     <message>
         <source>Synchronization Command</source>
-        <translation>Eşitleme Komutu</translation>
+        <translation>Eşzamanlama Komutu</translation>
     </message>
     <message>
         <source>Headset</source>
@@ -200,11 +200,11 @@
     </message>
     <message>
         <source>Audio/Video Remote Control</source>
-        <translation>Ses/Video Uzaktan Kumanda</translation>
+        <translation>Ses/Video Uzaktan Kumandası</translation>
     </message>
     <message>
         <source>Audio/Video Remote Control Controller</source>
-        <translation>Ses/Video Uzaktan Kumanda Denetleyici</translation>
+        <translation>Ses/Video Uzaktan Kumandası Denetleyici</translation>
     </message>
     <message>
         <source>Headset AG</source>
@@ -244,7 +244,7 @@
     </message>
     <message>
         <source>Basic Imaging Ref Objects</source>
-        <translation>Temel Görüntüleme Referans Nesneleri</translation>
+        <translation>Temel Görüntüleme Başvuru Nesneleri</translation>
     </message>
     <message>
         <source>Hands-Free</source>
@@ -256,7 +256,7 @@
     </message>
     <message>
         <source>Basic Printing RefObject Service</source>
-        <translation>Temel Yazdırma ReferansNesne Hizmeti</translation>
+        <translation>Temel Yazdırma Başvuru Nesnesi Hizmeti</translation>
     </message>
     <message>
         <source>Basic Printing Reflected UI</source>
@@ -308,35 +308,35 @@
     </message>
     <message>
         <source>Message Access Server</source>
-        <translation>Mesaj Erişim Sunucusu</translation>
+        <translation>İleti Erişim Sunucusu</translation>
     </message>
     <message>
         <source>Message Notification Server</source>
-        <translation>Mesaj Bildirim Sunucusu</translation>
+        <translation>İleti Bildirim Sunucusu</translation>
     </message>
     <message>
         <source>Message Access</source>
-        <translation>Mesaj Erişimi</translation>
+        <translation>İleti Erişimi</translation>
     </message>
     <message>
         <source>Global Navigation Satellite System</source>
-        <translation>Küresel Gezinme Uydu Sistemi</translation>
+        <translation>Global Dolaşım Uydu Sistemi</translation>
     </message>
     <message>
         <source>Global Navigation Satellite System Server</source>
-        <translation>Küresel Gezinme Uydu Sistemi Sunucusu</translation>
+        <translation>Global Dolaşım Uydu Sistemi Sunucusu</translation>
     </message>
     <message>
         <source>3D Synchronization Display</source>
-        <translation>3B Eşitleme Ekranı</translation>
+        <translation>3B Eşzamanlama Ekranı</translation>
     </message>
     <message>
         <source>3D Synchronization Glasses</source>
-        <translation>3B Eşitleme Gözlüğü</translation>
+        <translation>3B Eşzamanlama Gözlüğü</translation>
     </message>
     <message>
         <source>3D Synchronization</source>
-        <translation>3B Eşitleme</translation>
+        <translation>3B Eşzamanlama</translation>
     </message>
     <message>
         <source>Multi-Profile Specification (Profile)</source>
@@ -472,7 +472,7 @@
     </message>
     <message>
         <source>Location and Navigation</source>
-        <translation>Konum ve Gezinme</translation>
+        <translation>Konum ve Dolaşım</translation>
     </message>
     <message>
         <source>Environmental Sensing</source>
@@ -513,15 +513,15 @@
     </message>
     <message>
         <source>Transmission Control Protocol</source>
-        <translation>Geçiş Kontrol Protokolü</translation>
+        <translation>Geçiş Denetimi Protokolü</translation>
     </message>
     <message>
         <source>Telephony Control Specification - Binary</source>
-        <translation>Telefon Kontrol Özellikleri - İkili</translation>
+        <translation>Telefon Denetimi Özellikleri - İkili</translation>
     </message>
     <message>
         <source>Telephony Control Specification - AT</source>
-        <translation>Telefon Kontrol Özellikleri - AT</translation>
+        <translation>Telefon Denetimi Özellikleri - AT</translation>
     </message>
     <message>
         <source>Attribute Protocol</source>
@@ -561,7 +561,7 @@
     </message>
     <message>
         <source>Hardcopy Control Channel</source>
-        <translation>Basılı Kontrol Kanalı</translation>
+        <translation>Basılı Denetim Kanalı</translation>
     </message>
     <message>
         <source>Hardcopy Data Channel</source>
@@ -573,7 +573,7 @@
     </message>
     <message>
         <source>Audio/Video Control Transport Protocol</source>
-        <translation>Ses/Video Kontrol Aktarım Protokolü</translation>
+        <translation>Ses/Video Denetimi Aktarım Protokolü</translation>
     </message>
     <message>
         <source>Audio/Video Distribution Transport Protocol</source>
@@ -589,7 +589,7 @@
     </message>
     <message>
         <source>Multi-Channel Adaptation Protocol - Control</source>
-        <translation>Çok Kanallı Uyum Protokolü - Kontrol</translation>
+        <translation>Çok Kanallı Uyum Protokolü - Denetim</translation>
     </message>
     <message>
         <source>Multi-Channel Adaptation Protocol - Data</source>
@@ -597,7 +597,7 @@
     </message>
     <message>
         <source>Layer 2 Control Protocol</source>
-        <translation>Katman 2 Kontrol Protokolü</translation>
+        <translation>Katman 2 Denetim Protokolü</translation>
     </message>
     <message>
         <source>GAP Device Name</source>
@@ -630,7 +630,7 @@
     </message>
     <message>
         <source>Alert Level</source>
-        <translation>Uyarı Seviyesi</translation>
+        <translation>Uyarı Düzeyi</translation>
     </message>
     <message>
         <source>TX Power</source>
@@ -638,7 +638,7 @@
     </message>
     <message>
         <source>Date Time</source>
-        <translation>Tarih Saat</translation>
+        <translation>Tarih Zaman</translation>
     </message>
     <message>
         <source>Day Of Week</source>
@@ -646,7 +646,7 @@
     </message>
     <message>
         <source>Day Date Time</source>
-        <translation>Gün Tarih Saat</translation>
+        <translation>Gün Tarih Zaman</translation>
     </message>
     <message>
         <source>Exact Time 256</source>
@@ -662,7 +662,7 @@
     </message>
     <message>
         <source>Local Time Information</source>
-        <translation>Yerel Zaman Bilgileri</translation>
+        <translation>Yerel Zaman Bilgisi</translation>
     </message>
     <message>
         <source>Time With DST</source>
@@ -678,11 +678,11 @@
     </message>
     <message>
         <source>Reference Time Information</source>
-        <translation>Referans Zamanı Bilgileri</translation>
+        <translation>Başvuru Zamanı Bilgisi</translation>
     </message>
     <message>
         <source>Time Update Control Point</source>
-        <translation>Zaman Güncelleme Kontrol Noktası</translation>
+        <translation>Zaman Güncelleme Denetim Noktası</translation>
     </message>
     <message>
         <source>Time Update State</source>
@@ -694,7 +694,7 @@
     </message>
     <message>
         <source>Battery Level</source>
-        <translation>Pil Seviyesi</translation>
+        <translation>Pil Düzeyi</translation>
     </message>
     <message>
         <source>Temperature Measurement</source>
@@ -722,27 +722,27 @@
     </message>
     <message>
         <source>Model Number String</source>
-        <translation>Model Numarası Dizesi</translation>
+        <translation>Model Numarası Dizisi</translation>
     </message>
     <message>
         <source>Serial Number String</source>
-        <translation>Seri Numarası Dizesi</translation>
+        <translation>Seri Numarası Dizisi</translation>
     </message>
     <message>
         <source>Firmware Revision String</source>
-        <translation>Ürün Yazılımı Revizyon Dizesi</translation>
+        <translation>Donanım Yazılımı Revizyon Dizisi</translation>
     </message>
     <message>
         <source>Hardware Revision String</source>
-        <translation>Donanım Revizyon Dizesi</translation>
+        <translation>Donanım Revizyon Dizisi</translation>
     </message>
     <message>
         <source>Software Revision String</source>
-        <translation>Yazılım Revizyon Dizesi</translation>
+        <translation>Yazılım Revizyon Dizisi</translation>
     </message>
     <message>
         <source>Manufacturer Name String</source>
-        <translation>Üretici Adı Dizesi</translation>
+        <translation>Üretici Adı Dizisi</translation>
     </message>
     <message>
         <source>IEEE 11073 20601 Regulatory Certification Data List</source>
@@ -786,7 +786,7 @@
     </message>
     <message>
         <source>Heart Rate Control Point</source>
-        <translation>Kalp Atış Hızı Kontrol Noktası</translation>
+        <translation>Kalp Atış Hızı Denetim Noktası</translation>
     </message>
     <message>
         <source>Alert Status</source>
@@ -794,7 +794,7 @@
     </message>
     <message>
         <source>Ringer Control Point</source>
-        <translation>Zil Kontrol Noktası</translation>
+        <translation>Zil Denetim Noktası</translation>
     </message>
     <message>
         <source>Ringer Setting</source>
@@ -810,7 +810,7 @@
     </message>
     <message>
         <source>Alert Notification Control Point</source>
-        <translation>Uyarı Bildirimi Kontrol Noktası</translation>
+        <translation>Uyarı Bildirimi Denetim Noktası</translation>
     </message>
     <message>
         <source>Unread Alert Status</source>
@@ -844,7 +844,7 @@
     <message>
         <source>HID Control Point</source>
         <extracomment>HID: Human Interface Device Profile (Bluetooth)</extracomment>
-        <translation>HID Kontrol Noktası</translation>
+        <translation>HID Denetim Noktası</translation>
     </message>
     <message>
         <source>Report</source>
@@ -852,7 +852,7 @@
     </message>
     <message>
         <source>Protocol Mode</source>
-        <translation>Protokol Modu</translation>
+        <translation>Protokol Kipi</translation>
     </message>
     <message>
         <source>Scan Interval Window</source>
@@ -869,7 +869,7 @@
     <message>
         <source>Record Access Control Point</source>
         <extracomment>Glucose Sensor patient record database.</extracomment>
-        <translation>Kayıt Erişimi Kontrol Noktası</translation>
+        <translation>Kayıt Erişimi Denetim Noktası</translation>
     </message>
     <message>
         <source>RSC Measurement</source>
@@ -883,7 +883,7 @@
     </message>
     <message>
         <source>SC Control Point</source>
-        <translation>SC Kontrol Noktası</translation>
+        <translation>SC Denetim Noktası</translation>
     </message>
     <message>
         <source>CSC Measurement</source>
@@ -913,7 +913,7 @@
     </message>
     <message>
         <source>Cycling Power Control Point</source>
-        <translation>Bisiklet Gücü Kontrol Noktası</translation>
+        <translation>Bisiklet Gücü Denetim Noktası</translation>
     </message>
     <message>
         <source>Location And Speed</source>
@@ -921,7 +921,7 @@
     </message>
     <message>
         <source>Navigation</source>
-        <translation>Gezinme</translation>
+        <translation>Dolaşım</translation>
     </message>
     <message>
         <source>Position Quality</source>
@@ -933,7 +933,7 @@
     </message>
     <message>
         <source>LN Control Point</source>
-        <translation>LN Kontrol Noktası</translation>
+        <translation>LN Denetim Noktası</translation>
     </message>
     <message>
         <source>Magnetic Declination</source>
@@ -1146,7 +1146,7 @@
     </message>
     <message>
         <source>User Control Point</source>
-        <translation>Kullanıcı Kontrol Noktası</translation>
+        <translation>Kullanıcı Denetim Noktası</translation>
     </message>
     <message>
         <source>Magnetic Flux Density 2D</source>
@@ -1268,7 +1268,7 @@
     </message>
     <message>
         <source>Socket type not supported</source>
-        <translation>Soket türü desteklenmiyor</translation>
+        <translation>Yuva türü desteklenmiyor</translation>
     </message>
     <message>
         <source>Obtaining streams for service failed</source>
@@ -1284,7 +1284,7 @@
     </message>
     <message>
         <source>Error during write on socket.</source>
-        <translation>Sokete yazma sırasında hata.</translation>
+        <translation>Yuva yazma sırasında hata.</translation>
     </message>
     <message>
         <source>Network error during read</source>
@@ -1292,7 +1292,7 @@
     </message>
     <message>
         <source>Unknown socket error</source>
-        <translation>Bilinmeyen soket hatası</translation>
+        <translation>Bilinmeyen yuva hatası</translation>
     </message>
     <message>
         <source>Cannot set connection security level</source>
@@ -1332,11 +1332,11 @@
     </message>
     <message>
         <source>Failed to create socket</source>
-        <translation>Soket oluşturulamadı</translation>
+        <translation>Yuva oluşturulamadı</translation>
     </message>
     <message>
         <source>Socket type not handled: %1</source>
-        <translation>Soket türü ele alınmadı: %1</translation>
+        <translation>Yuva türü ele alınmadı: %1</translation>
     </message>
     <message>
         <source>Logic error: more bytes sent than passed to ::send</source>
@@ -1367,14 +1367,14 @@
     <name>QBluetoothSocketPrivateAndroid</name>
     <message>
         <source>Connecting to port is not supported</source>
-        <translation>Bağlantı noktasına bağlanma desteklenmiyor</translation>
+        <translation>Kapıya bağlanma desteklenmiyor</translation>
     </message>
 </context>
 <context>
     <name>QBluetoothSocketPrivateBluezDBus</name>
     <message>
         <source>Connecting to port is not supported via Bluez DBus</source>
-        <translation>Bağlantı noktasına bağlantı Bluez DBus ile desteklenmiyor</translation>
+        <translation>Kapıya bağlantı Bluez DBus ile desteklenmiyor</translation>
     </message>
 </context>
 <context>
@@ -1413,7 +1413,7 @@
     </message>
     <message>
         <source>Transfer already started</source>
-        <translation>Aktarım zaten başladı</translation>
+        <translation>Aktarım halihazırda başladı</translation>
     </message>
     <message>
         <source>Push service not found</source>

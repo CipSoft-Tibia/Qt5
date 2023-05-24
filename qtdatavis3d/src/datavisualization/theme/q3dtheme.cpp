@@ -1,36 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "q3dtheme_p.h"
 #include "thememanager_p.h"
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 /*!
  * \class Q3DTheme
@@ -335,6 +309,8 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * \qmlproperty color Theme3D::gridLineColor
  *
  * The color of the grid lines.
+ *
+ * \note Transparency is not supported and will result in undefined behavior.
  */
 
 /*!
@@ -343,6 +319,8 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * The highlight color for a selected object. Used if
  * \l{AbstractGraph3D::selectionMode}{selectionMode}
  * has the \c AbstractGraph3D.SelectionItem flag set.
+ *
+ * \note Transparency is not supported and will result in undefined behavior.
  */
 
 /*!
@@ -352,6 +330,8 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * \l{AbstractGraph3D::selectionMode}{selectionMode}
  * has the \c AbstractGraph3D.SelectionRow or \c AbstractGraph3D.SelectionColumn
  * flag set.
+ *
+ * \note Transparency is not supported and will result in undefined behavior.
  */
 
 /*!
@@ -380,6 +360,8 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * The highlight gradient for a selected object. Used if
  * \l{AbstractGraph3D::selectionMode}{selectionMode}
  * has the \c AbstractGraph3D.SelectionItem flag set.
+ *
+ * \note Transparency is not supported and will result in undefined behavior.
  */
 
 /*!
@@ -389,6 +371,8 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * \l{AbstractGraph3D::selectionMode}{selectionMode}
  * has the \c AbstractGraph3D.SelectionRow or \c AbstractGraph3D.SelectionColumn
  * flag set.
+ *
+ * \note Transparency is not supported and will result in undefined behavior.
  */
 
 /*!
@@ -632,6 +616,8 @@ QColor Q3DTheme::labelBackgroundColor() const
  * \property Q3DTheme::gridLineColor
  *
  * \brief The color of the grid lines.
+ *
+ * \note Transparency is not supported and will result in undefined behavior.
  */
 void Q3DTheme::setGridLineColor(const QColor &color)
 {
@@ -1022,11 +1008,13 @@ Q3DTheme::ColorStyle Q3DTheme::colorStyle() const
  */
 void Q3DTheme::setType(Theme themeType)
 {
-    d_ptr->m_dirtyBits.themeIdDirty = true;
-    if (d_ptr->m_themeId != themeType) {
-        d_ptr->m_themeId = themeType;
-        ThemeManager::setPredefinedPropertiesToTheme(this, themeType);
-        emit typeChanged(themeType);
+    if (themeType >= ThemeQt && themeType <= ThemeUserDefined) {
+        d_ptr->m_dirtyBits.themeIdDirty = true;
+        if (d_ptr->m_themeId != themeType) {
+            d_ptr->m_themeId = themeType;
+            ThemeManager::setPredefinedPropertiesToTheme(this, themeType);
+            emit typeChanged(themeType);
+        }
     }
 }
 
@@ -1203,4 +1191,4 @@ bool Q3DThemePrivate::sync(Q3DThemePrivate &other)
     return updateDrawer;
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

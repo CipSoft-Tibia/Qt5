@@ -46,7 +46,7 @@ class MessageHandleBase;
 // append-only operations and is designed for performance. None of the methods
 // require any dynamic memory allocation, unless more than 16 nested messages
 // are created via BeginNestedMessage() calls.
-class PERFETTO_EXPORT Message {
+class PERFETTO_EXPORT_COMPONENT Message {
  public:
   friend class MessageHandleBase;
 
@@ -170,7 +170,10 @@ class PERFETTO_EXPORT Message {
     return static_cast<T*>(BeginNestedMessageInternal(field_id));
   }
 
-  ScatteredStreamWriter* stream_writer_for_testing() { return stream_writer_; }
+  // Gives read-only access to the underlying stream_writer. This is used only
+  // by few internals to query the state of the underlying buffer. It is almost
+  // always a bad idea to poke at the stream_writer() internals.
+  const ScatteredStreamWriter* stream_writer() const { return stream_writer_; }
 
   // Appends some raw bytes to the message. The use-case for this is preserving
   // unknown fields in the decode -> re-encode path of xxx.gen.cc classes

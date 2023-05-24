@@ -1,12 +1,12 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SERVICES_AUDIO_TESTING_API_BINDER_H_
 #define SERVICES_AUDIO_TESTING_API_BINDER_H_
 
-#include "base/callback.h"
 #include "base/component_export.h"
+#include "base/functional/callback.h"
 #include "services/audio/public/mojom/system_info.mojom.h"
 #include "services/audio/public/mojom/testing_api.mojom.h"
 

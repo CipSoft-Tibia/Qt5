@@ -1,9 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/download/internal/background_service/in_memory_download_driver.h"
 
+#include "base/task/single_thread_task_runner.h"
 #include "components/download/internal/background_service/in_memory_download.h"
 #include "services/network/public/cpp/resource_request_body.h"
 
@@ -46,7 +47,7 @@ DriverEntry CreateDriverEntry(const InMemoryDownload& download) {
   if (download.state() == InMemoryDownload::State::COMPLETE) {
     auto blob_handle = download.ResultAsBlob();
     if (blob_handle)
-      entry.blob_handle = base::Optional<storage::BlobDataHandle>(*blob_handle);
+      entry.blob_handle = absl::optional<storage::BlobDataHandle>(*blob_handle);
   }
   return entry;
 }
@@ -128,9 +129,9 @@ void InMemoryDownloadDriver::Resume(const std::string& guid) {
     it->second->Resume();
 }
 
-base::Optional<DriverEntry> InMemoryDownloadDriver::Find(
+absl::optional<DriverEntry> InMemoryDownloadDriver::Find(
     const std::string& guid) {
-  base::Optional<DriverEntry> entry;
+  absl::optional<DriverEntry> entry;
   auto it = downloads_.find(guid);
   if (it != downloads_.end())
     entry = CreateDriverEntry(*it->second);

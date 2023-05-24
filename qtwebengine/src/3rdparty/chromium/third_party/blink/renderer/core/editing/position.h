@@ -26,10 +26,10 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_EDITING_POSITION_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_EDITING_POSITION_H_
 
+#include "base/dcheck_is_on.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/editing/editing_strategy.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -40,7 +40,6 @@ enum class PositionAnchorType : unsigned {
   kOffsetInAnchor,
   kBeforeAnchor,
   kAfterAnchor,
-  kBeforeChildren,
   kAfterChildren,
 };
 
@@ -51,8 +50,7 @@ class PositionTemplate {
   DISALLOW_NEW();
 
  public:
-  PositionTemplate()
-      : offset_(0), anchor_type_(PositionAnchorType::kOffsetInAnchor) {}
+  PositionTemplate();
 
   static const TreeScope* CommonAncestorTreeScope(
       const PositionTemplate<Strategy>&,
@@ -72,6 +70,7 @@ class PositionTemplate {
   PositionTemplate(const Node* anchor_node, int offset);
 
   PositionTemplate(const PositionTemplate&);
+  PositionTemplate& operator=(const PositionTemplate&);
 
   // Returns a newly created |Position| with |kOffsetInAnchor|. |offset| can be
   // out of bound. Out of bound position is used for computing undo/redo
@@ -98,9 +97,7 @@ class PositionTemplate {
   bool IsBeforeAnchor() const {
     return anchor_type_ == PositionAnchorType::kBeforeAnchor;
   }
-  bool IsBeforeChildren() const {
-    return anchor_type_ == PositionAnchorType::kBeforeChildren;
-  }
+  bool IsBeforeChildren() const;
   bool IsOffsetInAnchor() const {
     return anchor_type_ == PositionAnchorType::kOffsetInAnchor;
   }
@@ -135,7 +132,6 @@ class PositionTemplate {
   // Returns an offset for editing based on anchor type for using with
   // |AnchorNode()| function:
   //   - kOffsetInAnchor  offset_
-  //   - kBeforeChildren  0
   //   - kBeforeAnchor    0
   //   - kAfterChildren   last editing offset in anchor node
   //   - kAfterAnchor     last editing offset in anchor node
@@ -200,7 +196,6 @@ class PositionTemplate {
   bool AtLastEditingPositionForNode() const;
 
   bool AtStartOfTree() const;
-  bool AtEndOfTree() const;
 
   static PositionTemplate<Strategy> BeforeNode(const Node& anchor_node);
   static PositionTemplate<Strategy> AfterNode(const Node& anchor_node);
@@ -235,8 +230,8 @@ class PositionTemplate {
   // EditingIgnoresContent(anchor_node_) returns true, then other places in
   // editing will treat offset_ == 0 as "before the anchor" and offset_ > 0 as
   // "after the anchor node".  See ParentAnchoredEquivalent for more info.
-  int offset_;
-  PositionAnchorType anchor_type_;
+  int offset_ = 0;
+  PositionAnchorType anchor_type_ = PositionAnchorType::kOffsetInAnchor;
 };
 
 extern template class CORE_EXTERN_TEMPLATE_EXPORT
@@ -274,6 +269,7 @@ bool operator!=(const PositionTemplate<Strategy>& a,
 }
 
 CORE_EXPORT PositionInFlatTree ToPositionInFlatTree(const Position&);
+CORE_EXPORT PositionInFlatTree ToPositionInFlatTree(const PositionInFlatTree&);
 CORE_EXPORT Position ToPositionInDOMTree(const Position&);
 CORE_EXPORT Position ToPositionInDOMTree(const PositionInFlatTree&);
 
@@ -300,8 +296,8 @@ CORE_EXPORT std::ostream& operator<<(std::ostream&, const PositionInFlatTree&);
 
 #if DCHECK_IS_ON()
 // Outside the blink namespace for ease of invocation from gdb.
-void showTree(const blink::Position&);
-void showTree(const blink::Position*);
+void ShowTree(const blink::Position&);
+void ShowTree(const blink::Position*);
 #endif
 
 #endif  // THIRD_PARTY_BLINK_RENDERER_CORE_EDITING_POSITION_H_

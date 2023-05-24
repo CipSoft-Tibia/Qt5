@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,7 @@ class GlobalTimer;
 
 class CJS_TimerObj final : public CJS_Object {
  public:
-  static int GetObjDefnID();
+  static uint32_t GetObjDefnID();
   static void DefineJSObjects(CFXJS_Engine* pEngine);
 
   CJS_TimerObj(v8::Local<v8::Object> pObject, CJS_Runtime* pRuntime);
@@ -23,7 +23,7 @@ class CJS_TimerObj final : public CJS_Object {
   int GetTimerID() const { return m_nTimerID; }
 
  private:
-  static int ObjDefnID;
+  static uint32_t ObjDefnID;
 
   int m_nTimerID = 0;  // Weak reference to GlobalTimer through global map.
 };

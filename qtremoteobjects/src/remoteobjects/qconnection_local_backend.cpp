@@ -1,51 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qconnection_local_backend_p.h"
 
 QT_BEGIN_NAMESPACE
 
 LocalClientIo::LocalClientIo(QObject *parent)
-    : ClientIoDevice(parent)
+    : QtROClientIoDevice(parent)
     , m_socket(new QLocalSocket(this))
 {
-    connect(m_socket, &QLocalSocket::readyRead, this, &ClientIoDevice::readyRead);
+    connect(m_socket, &QLocalSocket::readyRead, this, &QtROClientIoDevice::readyRead);
     connect(m_socket, &QLocalSocket::errorOccurred, this, &LocalClientIo::onError);
     connect(m_socket, &QLocalSocket::stateChanged, this, &LocalClientIo::onStateChanged);
 }
@@ -77,6 +41,10 @@ void LocalClientIo::doDisconnectFromServer()
 
 void LocalClientIo::connectToServer()
 {
+#ifdef Q_OS_ANDROID
+    if (!m_socket->socketOptions().testFlag(QLocalSocket::AbstractNamespaceOption))
+        qWarning() << "It is recommended to use 'localabstract' over 'local' on Android.";
+#endif
     if (!isOpen())
         m_socket->connectToServer(url().path());
 }
@@ -121,11 +89,11 @@ void LocalClientIo::onStateChanged(QLocalSocket::LocalSocketState state)
 }
 
 LocalServerIo::LocalServerIo(QLocalSocket *conn, QObject *parent)
-    : ServerIoDevice(parent), m_connection(conn)
+    : QtROServerIoDevice(parent), m_connection(conn)
 {
     m_connection->setParent(this);
-    connect(conn, &QIODevice::readyRead, this, &ServerIoDevice::readyRead);
-    connect(conn, &QLocalSocket::disconnected, this, &ServerIoDevice::disconnected);
+    connect(conn, &QIODevice::readyRead, this, &QtROServerIoDevice::readyRead);
+    connect(conn, &QLocalSocket::disconnected, this, &QtROServerIoDevice::disconnected);
 }
 
 QIODevice *LocalServerIo::connection() const
@@ -149,7 +117,7 @@ LocalServerImpl::~LocalServerImpl()
     m_server.close();
 }
 
-ServerIoDevice *LocalServerImpl::configureNewConnection()
+QtROServerIoDevice *LocalServerImpl::configureNewConnection()
 {
     if (!m_server.isListening())
         return nullptr;
@@ -173,6 +141,10 @@ QUrl LocalServerImpl::address() const
 
 bool LocalServerImpl::listen(const QUrl &address)
 {
+#ifdef Q_OS_ANDROID
+    if (!m_server.socketOptions().testFlag(QLocalServer::AbstractNamespaceOption))
+        qWarning() << "It is recommended to use 'localabstract' over 'local' on Android.";
+#endif
 #ifdef Q_OS_UNIX
     bool res = m_server.listen(address.path());
     if (!res) {
@@ -194,5 +166,30 @@ void LocalServerImpl::close()
 {
     m_server.close();
 }
+
+#ifdef Q_OS_LINUX
+
+AbstractLocalClientIo::AbstractLocalClientIo(QObject *parent)
+    : LocalClientIo(parent)
+{
+    m_socket->setSocketOptions(QLocalSocket::AbstractNamespaceOption);
+}
+
+AbstractLocalServerImpl::AbstractLocalServerImpl(QObject *parent)
+    : LocalServerImpl(parent)
+{
+    m_server.setSocketOptions(QLocalServer::AbstractNamespaceOption);
+}
+
+QUrl AbstractLocalServerImpl::address() const
+{
+    QUrl result;
+    result.setPath(m_server.serverName());
+    result.setScheme(QRemoteObjectStringLiterals::localabstract());
+
+    return result;
+}
+
+#endif // Q_OS_LINUX
 
 QT_END_NAMESPACE

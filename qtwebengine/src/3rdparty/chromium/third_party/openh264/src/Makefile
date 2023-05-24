@@ -36,8 +36,8 @@ STATIC_LDFLAGS=-lstdc++
 STRIP ?= strip
 USE_STACK_PROTECTOR = Yes
 
-SHAREDLIB_MAJORVERSION=6
-FULL_VERSION := 2.1.0
+SHAREDLIB_MAJORVERSION=7
+FULL_VERSION := 2.3.0
 
 ifeq (,$(wildcard $(SRC_PATH)gmp-api))
 HAVE_GMP_API=No
@@ -104,7 +104,7 @@ ifneq ($(V),Yes)
 endif
 
 
-INCLUDES += -I$(SRC_PATH)codec/api/svc -I$(SRC_PATH)codec/common/inc -Icodec/common/inc
+INCLUDES += -I$(SRC_PATH)codec/api/wels -I$(SRC_PATH)codec/common/inc -Icodec/common/inc
 
 DECODER_INCLUDES += \
     -I$(SRC_PATH)codec/decoder/core/inc \
@@ -293,7 +293,7 @@ $(PROJECT_NAME)-static.pc: $(PROJECT_NAME).pc.in
 
 install-headers:
 	mkdir -p $(DESTDIR)$(PREFIX)/include/wels
-	install -m 644 $(SRC_PATH)/codec/api/svc/codec*.h $(DESTDIR)$(PREFIX)/include/wels
+	install -m 644 $(SRC_PATH)/codec/api/wels/codec*.h $(DESTDIR)$(PREFIX)/include/wels
 
 install-static-lib: $(LIBPREFIX)$(PROJECT_NAME).$(LIBSUFFIX) install-headers
 	mkdir -p $(DESTDIR)$(PREFIX)/$(LIBDIR_NAME)

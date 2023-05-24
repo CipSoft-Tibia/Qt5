@@ -25,38 +25,31 @@
 #import "base/RTCVideoDecoderFactory.h"
 #import "base/RTCVideoEncoderFactory.h"
 #import "helpers/NSString+StdString.h"
+#include "rtc_base/checks.h"
 #include "sdk/objc/native/api/network_monitor_factory.h"
+#include "sdk/objc/native/api/ssl_certificate_verifier.h"
 #include "system_wrappers/include/field_trial.h"
 
-#ifndef HAVE_NO_MEDIA
-#import "components/video_codec/RTCVideoDecoderFactoryH264.h"
-#import "components/video_codec/RTCVideoEncoderFactoryH264.h"
-// The no-media version PeerConnectionFactory doesn't depend on these files, but the gn check tool
-// is not smart enough to take the #ifdef into account.
-#include "api/audio_codecs/builtin_audio_decoder_factory.h"     // nogncheck
-#include "api/audio_codecs/builtin_audio_encoder_factory.h"     // nogncheck
+#include "api/audio_codecs/builtin_audio_decoder_factory.h"
+#include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/rtc_event_log/rtc_event_log_factory.h"
 #include "api/task_queue/default_task_queue_factory.h"
 #include "api/transport/field_trial_based_config.h"
-#include "modules/audio_device/include/audio_device.h"          // nogncheck
-#include "modules/audio_processing/include/audio_processing.h"  // nogncheck
+#import "components/video_codec/RTCVideoDecoderFactoryH264.h"
+#import "components/video_codec/RTCVideoEncoderFactoryH264.h"
+#include "media/engine/webrtc_media_engine.h"
+#include "modules/audio_device/include/audio_device.h"
+#include "modules/audio_processing/include/audio_processing.h"
 
+#include "sdk/objc/native/api/objc_audio_device_module.h"
 #include "sdk/objc/native/api/video_decoder_factory.h"
 #include "sdk/objc/native/api/video_encoder_factory.h"
 #include "sdk/objc/native/src/objc_video_decoder_factory.h"
 #include "sdk/objc/native/src/objc_video_encoder_factory.h"
-#endif
 
 #if defined(WEBRTC_IOS)
 #import "sdk/objc/native/api/audio_device_module.h"
 #endif
-
-// Adding the nogncheck to disable the including header check.
-// The no-media version PeerConnectionFactory doesn't depend on media related
-// C++ target.
-// TODO(zhihuang): Remove nogncheck once MediaEngineInterface is moved to C++
-// API layer.
-#include "media/engine/webrtc_media_engine.h"  // nogncheck
 
 @implementation RTC_OBJC_TYPE (RTCPeerConnectionFactory) {
   std::unique_ptr<rtc::Thread> _networkThread;
@@ -76,9 +69,6 @@
 }
 
 - (instancetype)init {
-#ifdef HAVE_NO_MEDIA
-  return [self initWithNoMedia];
-#else
   return [self
       initWithNativeAudioEncoderFactory:webrtc::CreateBuiltinAudioEncoderFactory()
               nativeAudioDecoderFactory:webrtc::CreateBuiltinAudioDecoderFactory()
@@ -86,14 +76,20 @@
                                             RTCVideoEncoderFactoryH264) alloc] init])
               nativeVideoDecoderFactory:webrtc::ObjCToNativeVideoDecoderFactory([[RTC_OBJC_TYPE(
                                             RTCVideoDecoderFactoryH264) alloc] init])
-                      audioDeviceModule:[self audioDeviceModule]
+                      audioDeviceModule:[self audioDeviceModule].get()
                   audioProcessingModule:nullptr];
-#endif
 }
 
 - (instancetype)
     initWithEncoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)>)encoderFactory
             decoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoDecoderFactory)>)decoderFactory {
+  return [self initWithEncoderFactory:encoderFactory decoderFactory:decoderFactory audioDevice:nil];
+}
+
+- (instancetype)
+    initWithEncoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)>)encoderFactory
+            decoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoDecoderFactory)>)decoderFactory
+               audioDevice:(nullable id<RTC_OBJC_TYPE(RTCAudioDevice)>)audioDevice {
 #ifdef HAVE_NO_MEDIA
   return [self initWithNoMedia];
 #else
@@ -105,30 +101,37 @@
   if (decoderFactory) {
     native_decoder_factory = webrtc::ObjCToNativeVideoDecoderFactory(decoderFactory);
   }
+  rtc::scoped_refptr<webrtc::AudioDeviceModule> audio_device_module;
+  if (audioDevice) {
+    audio_device_module = webrtc::CreateAudioDeviceModule(audioDevice);
+  } else {
+    audio_device_module = [self audioDeviceModule];
+  }
   return [self initWithNativeAudioEncoderFactory:webrtc::CreateBuiltinAudioEncoderFactory()
                        nativeAudioDecoderFactory:webrtc::CreateBuiltinAudioDecoderFactory()
                        nativeVideoEncoderFactory:std::move(native_encoder_factory)
                        nativeVideoDecoderFactory:std::move(native_decoder_factory)
-                               audioDeviceModule:[self audioDeviceModule]
+                               audioDeviceModule:audio_device_module.get()
                            audioProcessingModule:nullptr];
 #endif
 }
+
 - (instancetype)initNative {
   if (self = [super init]) {
     _networkThread = rtc::Thread::CreateWithSocketServer();
     _networkThread->SetName("network_thread", _networkThread.get());
     BOOL result = _networkThread->Start();
-    NSAssert(result, @"Failed to start network thread.");
+    RTC_DCHECK(result) << "Failed to start network thread.";
 
     _workerThread = rtc::Thread::Create();
     _workerThread->SetName("worker_thread", _workerThread.get());
     result = _workerThread->Start();
-    NSAssert(result, @"Failed to start worker thread.");
+    RTC_DCHECK(result) << "Failed to start worker thread.";
 
     _signalingThread = rtc::Thread::Create();
     _signalingThread->SetName("signaling_thread", _signalingThread.get());
     result = _signalingThread->Start();
-    NSAssert(result, @"Failed to start signaling thread.");
+    RTC_DCHECK(result) << "Failed to start signaling thread.";
   }
   return self;
 }
@@ -189,9 +192,9 @@
     if (webrtc::field_trial::IsEnabled("WebRTC-Network-UseNWPathMonitor")) {
       dependencies.network_monitor_factory = webrtc::CreateNetworkMonitorFactory();
     }
-#ifndef HAVE_NO_MEDIA
-    dependencies.task_queue_factory = webrtc::CreateDefaultTaskQueueFactory();
     dependencies.trials = std::make_unique<webrtc::FieldTrialBasedConfig>();
+    dependencies.task_queue_factory =
+        webrtc::CreateDefaultTaskQueueFactory(dependencies.trials.get());
     cricket::MediaEngineDependencies media_deps;
     media_deps.adm = std::move(audioDeviceModule);
     media_deps.task_queue_factory = dependencies.task_queue_factory.get();
@@ -210,7 +213,6 @@
     dependencies.event_log_factory =
         std::make_unique<webrtc::RtcEventLogFactory>(dependencies.task_queue_factory.get());
     dependencies.network_controller_factory = std::move(networkControllerFactory);
-#endif
     _nativeFactory = webrtc::CreateModularPeerConnectionFactory(std::move(dependencies));
     NSAssert(_nativeFactory, @"Failed to initialize PeerConnectionFactory!");
   }
@@ -247,6 +249,13 @@
                                                    workerThread:_workerThread.get()];
 }
 
+- (RTC_OBJC_TYPE(RTCVideoSource) *)videoSourceForScreenCast:(BOOL)forScreenCast {
+  return [[RTC_OBJC_TYPE(RTCVideoSource) alloc] initWithFactory:self
+                                                signalingThread:_signalingThread.get()
+                                                   workerThread:_workerThread.get()
+                                                   isScreenCast:forScreenCast];
+}
+
 - (RTC_OBJC_TYPE(RTCVideoTrack) *)videoTrackWithSource:(RTC_OBJC_TYPE(RTCVideoSource) *)source
                                                trackId:(NSString *)trackId {
   return [[RTC_OBJC_TYPE(RTCVideoTrack) alloc] initWithFactory:self source:source trackId:trackId];
@@ -256,7 +265,7 @@
   return [[RTC_OBJC_TYPE(RTCMediaStream) alloc] initWithFactory:self streamId:streamId];
 }
 
-- (RTC_OBJC_TYPE(RTCPeerConnection) *)
+- (nullable RTC_OBJC_TYPE(RTCPeerConnection) *)
     peerConnectionWithConfiguration:(RTC_OBJC_TYPE(RTCConfiguration) *)configuration
                         constraints:(RTC_OBJC_TYPE(RTCMediaConstraints) *)constraints
                            delegate:
@@ -264,10 +273,25 @@
   return [[RTC_OBJC_TYPE(RTCPeerConnection) alloc] initWithFactory:self
                                                      configuration:configuration
                                                        constraints:constraints
+                                               certificateVerifier:nil
                                                           delegate:delegate];
 }
 
-- (RTC_OBJC_TYPE(RTCPeerConnection) *)
+- (nullable RTC_OBJC_TYPE(RTCPeerConnection) *)
+    peerConnectionWithConfiguration:(RTC_OBJC_TYPE(RTCConfiguration) *)configuration
+                        constraints:(RTC_OBJC_TYPE(RTCMediaConstraints) *)constraints
+                certificateVerifier:
+                    (id<RTC_OBJC_TYPE(RTCSSLCertificateVerifier)>)certificateVerifier
+                           delegate:
+                               (nullable id<RTC_OBJC_TYPE(RTCPeerConnectionDelegate)>)delegate {
+  return [[RTC_OBJC_TYPE(RTCPeerConnection) alloc] initWithFactory:self
+                                                     configuration:configuration
+                                                       constraints:constraints
+                                               certificateVerifier:certificateVerifier
+                                                          delegate:delegate];
+}
+
+- (nullable RTC_OBJC_TYPE(RTCPeerConnection) *)
     peerConnectionWithDependencies:(RTC_OBJC_TYPE(RTCConfiguration) *)configuration
                        constraints:(RTC_OBJC_TYPE(RTCMediaConstraints) *)constraints
                       dependencies:(std::unique_ptr<webrtc::PeerConnectionDependencies>)dependencies
@@ -305,6 +329,14 @@
 - (void)stopAecDump {
   _nativeFactory->StopAecDump();
   _hasStartedAecDump = NO;
+}
+
+- (rtc::Thread *)signalingThread {
+  return _signalingThread.get();
+}
+
+- (rtc::Thread *)workerThread {
+  return _workerThread.get();
 }
 
 @end

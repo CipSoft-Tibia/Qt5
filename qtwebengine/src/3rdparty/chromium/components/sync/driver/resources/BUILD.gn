@@ -1,102 +1,46 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//third_party/closure_compiler/compile_js.gni")
+import("//ui/webui/resources/tools/build_webui.gni")
 
-js_type_check("closure_compile") {
-  deps = [
-    #TODO(crbug.com/986001): Fix compilation errors and enable all targets.
+build_webui("build") {
+  grd_prefix = "sync_driver_sync_internals"
 
-    #":about",
-    ":chrome_sync",
-
-    #":data",
-    ":events",
-    ":search",
-    ":sync_index",
-    ":sync_log",
-
-    #":sync_node_browser",
-    #":sync_search",
-    ":traffic_log",
-
-    #":types",
-    ":user_events",
+  static_files = [
+    "about.css",
+    "index.html",
+    "invalidations.css",
+    "star_small.png",
+    "sync_node_browser.css",
+    "sync_search.css",
+    "traffic_log.css",
   ]
-}
 
-js_library("about") {
-  deps = [
-    "//third_party/jstemplate:jstemplate",
-    "//ui/webui/resources/js:util",
+  non_web_component_files = [
+    "about.ts",
+    "chrome_sync.ts",
+    "data.ts",
+    "invalidations.ts",
+    "search.ts",
+    "sync_index.ts",
+    "sync_log.ts",
+    "sync_node_browser.ts",
+    "sync_search.ts",
+    "traffic_log.ts",
+    "user_events.ts",
   ]
-}
 
-js_library("chrome_sync") {
-  deps = [
-    "//ui/webui/resources/js:cr",
-    "//ui/webui/resources/js:util",
+  ts_deps = [
+    "//ui/webui/resources/cr_elements:build_ts",
+    "//ui/webui/resources/js:build_ts",
   ]
-}
-
-js_library("data") {
-}
-
-js_library("events") {
-  deps = [
-    "//third_party/jstemplate:jstemplate",
-    "//ui/webui/resources/js:cr",
+  ts_definitions = [
+    "//tools/typescript/definitions/chrome_send.d.ts",
+    "//tools/typescript/definitions/pending.d.ts",
+    "jstemplate.d.ts",
   ]
-}
+  ts_use_local_config = false
 
-js_library("search") {
-  deps = [
-    "//ui/webui/resources/js:util",
-    "//ui/webui/resources/js/cr/ui:splitter",
-  ]
-}
-
-js_library("sync_index") {
-  deps = [
-    "//ui/webui/resources/js:util",
-    "//ui/webui/resources/js/cr/ui:tabs",
-  ]
-}
-
-js_library("sync_log") {
-  deps = [
-    "//ui/webui/resources/js:cr",
-    "//ui/webui/resources/js/cr:event_target",
-  ]
-}
-
-js_library("sync_node_browser") {
-  deps = [
-    "//ui/webui/resources/js:cr",
-    "//ui/webui/resources/js/cr/ui:tree",
-  ]
-}
-
-js_library("sync_search") {
-  deps = [
-    "//ui/webui/resources/js:cr",
-    "//ui/webui/resources/js/cr/ui:array_data_model",
-    "//ui/webui/resources/js/cr/ui:list",
-  ]
-}
-
-js_library("traffic_log") {
-  deps = [ "//ui/webui/resources/js:cr" ]
-}
-
-js_library("types") {
-  deps = [ "//ui/webui/resources/js:cr" ]
-}
-
-js_library("user_events") {
-  deps = [
-    "//ui/webui/resources/js:cr",
-    "//ui/webui/resources/js:util",
-  ]
+  grit_output_dir = "$root_gen_dir/components"
 }

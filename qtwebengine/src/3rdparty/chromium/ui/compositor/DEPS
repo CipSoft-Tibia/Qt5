@@ -5,12 +5,13 @@ include_rules = [
   "+gpu/command_buffer/client/gles2_interface.h",
   "+mojo/public/cpp/bindings/pending_remote.h",
   "+services/viz/privileged/mojom/compositing",
-  "+skia/ext/refptr.h",
+  "+skia/ext",
   "+third_party/khronos/GLES2/gl2.h",
   "+third_party/skia",
   "+ui/base",
   "+ui/accelerated_widget_mac",
   "+ui/display/display_switches.h",
+  "+ui/display/types/display_constants.h",
   "+ui/gfx",
   "+ui/gl",
 ]
@@ -19,11 +20,11 @@ specific_include_rules = {
   "compositor.cc": [
     "+mojo/public/cpp/bindings",
   ],
+  "compositor.h": [
+    "+mojo/public/cpp/bindings",
+  ],
   "run_all_unittests\.cc": [
     "+mojo/core/embedder",
-  ],
-  "test.*_x11\.cc": [
-    "+ui/events/x",
   ],
   ".*_(unit|pixel|perf)test.*\.cc": [
     "+components/viz/test",

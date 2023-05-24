@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,12 +10,12 @@
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/events/event.h"
 #include "third_party/blink/renderer/platform/bindings/dom_wrapper_world.h"
-#include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/bindings/trace_wrapper_v8_reference.h"
 
 namespace blink {
 
 class PromiseRejectionEventInit;
+class ScriptState;
 
 class CORE_EXPORT PromiseRejectionEvent final : public Event {
   DEFINE_WRAPPERTYPEINFO();
@@ -32,6 +32,7 @@ class CORE_EXPORT PromiseRejectionEvent final : public Event {
   PromiseRejectionEvent(ScriptState*,
                         const AtomicString&,
                         const PromiseRejectionEventInit*);
+  ~PromiseRejectionEvent() override;
 
   ScriptValue reason(ScriptState*) const;
   ScriptPromise promise(ScriptState*) const;
@@ -45,8 +46,6 @@ class CORE_EXPORT PromiseRejectionEvent final : public Event {
   void Trace(Visitor*) const override;
 
  private:
-  ~PromiseRejectionEvent() override;
-
   scoped_refptr<DOMWrapperWorld> world_;
   TraceWrapperV8Reference<v8::Value> promise_;
   TraceWrapperV8Reference<v8::Value> reason_;

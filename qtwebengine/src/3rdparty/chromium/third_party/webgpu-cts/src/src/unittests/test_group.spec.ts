@@ -1,10 +1,12 @@
+/* eslint-disable @typescript-eslint/require-await */
 export const description = `
 Unit tests for TestGroup.
 `;
 
 import { Fixture } from '../common/framework/fixture.js';
-import { makeTestGroup, makeTestGroupForUnitTesting } from '../common/framework/test_group.js';
-import { assert } from '../common/framework/util/util.js';
+import { makeTestGroup } from '../common/framework/test_group.js';
+import { makeTestGroupForUnitTesting } from '../common/internal/test_group.js';
+import { assert } from '../common/util/util.js';
 
 import { TestGroupTest } from './test_group_test.js';
 import { UnitTest } from './unit_test.js';
@@ -13,7 +15,6 @@ export const g = makeTestGroup(TestGroupTest);
 
 g.test('UnitTest_fixture').fn(async t0 => {
   let seen = 0;
-  /* eslint-disable-next-line  @typescript-eslint/no-unused-vars */
   function count(t: Fixture): void {
     seen++;
   }
@@ -22,7 +23,7 @@ g.test('UnitTest_fixture').fn(async t0 => {
 
   g.test('test').fn(count);
   g.test('testp')
-    .params([{ a: 1 }])
+    .paramsSimple([{ a: 1 }])
     .fn(count);
 
   await t0.run(g);
@@ -43,7 +44,7 @@ g.test('custom_fixture').fn(async t0 => {
     t.count();
   });
   g.test('testp')
-    .params([{ a: 1 }])
+    .paramsSimple([{ a: 1 }])
     .fn(t => {
       t.count();
     });
@@ -64,11 +65,9 @@ g.test('stack').fn(async t0 => {
   g.test('fail').fn(t => {
     t.fail();
   });
-  /* eslint-disable-next-line  @typescript-eslint/no-unused-vars */
   g.test('throw').fn(t => {
     throw new Error('hello');
   });
-  /* eslint-disable-next-line  @typescript-eslint/no-unused-vars */
   g.test('throw_nested').fn(t => {
     doNestedThrow2();
   });
@@ -84,6 +83,16 @@ g.test('stack').fn(async t0 => {
   }
 });
 
+g.test('no_fn').fn(t => {
+  const g = makeTestGroupForUnitTesting(UnitTest);
+
+  g.test('missing');
+
+  t.shouldThrow('Error', () => {
+    g.validate();
+  });
+});
+
 g.test('duplicate_test_name').fn(t => {
   const g = makeTestGroupForUnitTesting(UnitTest);
   g.test('abc').fn(() => {});
@@ -97,66 +106,93 @@ g.test('duplicate_test_params,none').fn(() => {
   {
     const g = makeTestGroupForUnitTesting(UnitTest);
     g.test('abc')
-      .params([])
+      .paramsSimple([])
       .fn(() => {});
-    g.checkCaseNamesAndDuplicates();
+    g.validate();
   }
 
   {
     const g = makeTestGroupForUnitTesting(UnitTest);
     g.test('abc').fn(() => {});
-    g.checkCaseNamesAndDuplicates();
+    g.validate();
   }
 
   {
     const g = makeTestGroupForUnitTesting(UnitTest);
     g.test('abc')
-      .params([
+      .paramsSimple([
         { a: 1 }, //
       ])
       .fn(() => {});
-    g.checkCaseNamesAndDuplicates();
+    g.validate();
   }
 });
 
 g.test('duplicate_test_params,basic').fn(t => {
   {
     const g = makeTestGroupForUnitTesting(UnitTest);
-    g.test('abc')
-      .params([
+    const builder = g.test('abc');
+    t.shouldThrow('Error', () => {
+      builder.paramsSimple([
         { a: 1 }, //
         { a: 1 },
-      ])
-      .fn(() => {});
-    t.shouldThrow('Error', () => {
-      g.checkCaseNamesAndDuplicates();
+      ]);
+      g.validate();
     });
   }
   {
     const g = makeTestGroupForUnitTesting(UnitTest);
     g.test('abc')
-      .params([
+      .params(u =>
+        u.expandWithParams(() => [
+          { a: 1 }, //
+          { a: 1 },
+        ])
+      )
+      .fn(() => {});
+    t.shouldThrow('Error', () => {
+      g.validate();
+    });
+  }
+  {
+    const g = makeTestGroupForUnitTesting(UnitTest);
+    g.test('abc')
+      .paramsSimple([
         { a: 1, b: 3 }, //
         { b: 3, a: 1 },
       ])
       .fn(() => {});
     t.shouldThrow('Error', () => {
-      g.checkCaseNamesAndDuplicates();
+      g.validate();
     });
   }
 });
 
 g.test('duplicate_test_params,with_different_private_params').fn(t => {
-  const g = makeTestGroupForUnitTesting(UnitTest);
-  g.test('abc')
-    .params([
-      { a: 1, _b: 1 }, //
-      { a: 1, _b: 2 },
-    ])
-    .fn(() => {});
-  t.shouldThrow('Error', () => {
-    g.checkCaseNamesAndDuplicates();
-  });
+  {
+    const g = makeTestGroupForUnitTesting(UnitTest);
+    const builder = g.test('abc');
+    t.shouldThrow('Error', () => {
+      builder.paramsSimple([
+        { a: 1, _b: 1 }, //
+        { a: 1, _b: 2 },
+      ]);
+    });
+  }
+  {
+    const g = makeTestGroupForUnitTesting(UnitTest);
+    g.test('abc')
+      .params(u =>
+        u.expandWithParams(() => [
+          { a: 1, _b: 1 }, //
+          { a: 1, _b: 2 },
+        ])
+      )
+      .fn(() => {});
+    t.shouldThrow('Error', () => {
+      g.validate();
+    });
+  }
 });
 
 g.test('invalid_test_name').fn(t => {
@@ -177,23 +213,89 @@ g.test('invalid_test_name').fn(t => {
 
 g.test('param_value,valid').fn(() => {
   const g = makeTestGroup(UnitTest);
-  g.test('a').params([{ x: JSON.stringify({ a: 1, b: 2 }) }]);
+  g.test('a').paramsSimple([{ x: JSON.stringify({ a: 1, b: 2 }) }]);
 });
 
 g.test('param_value,invalid').fn(t => {
   for (const badChar of ';=*') {
     const g = makeTestGroupForUnitTesting(UnitTest);
-    g.test('a').params([{ badChar }]);
+    const builder = g.test('a');
     t.shouldThrow('Error', () => {
-      g.checkCaseNamesAndDuplicates();
+      builder.paramsSimple([{ badChar }]);
     });
   }
 });
 
+g.test('subcases').fn(async t0 => {
+  const g = makeTestGroupForUnitTesting(UnitTest);
+  g.test('a')
+    .paramsSubcasesOnly(u =>
+      u //
+        .combineWithParams([{ a: 1 }])
+    )
+    .fn(t => {
+      t.expect(t.params.a === 1, 'a must be 1');
+    });
+
+  function* gen({ a, b }: { a?: number; b?: number }) {
+    if (b === 2) {
+      yield { ret: 2 };
+    } else if (a === 1) {
+      yield { ret: 1 };
+    } else {
+      yield { ret: -1 };
+    }
+  }
+  g.test('b')
+    .params(u =>
+      u
+        .combineWithParams([{ a: 1 }, { b: 2 }])
+        .beginSubcases()
+        .expandWithParams(gen)
+    )
+    .fn(t => {
+      const { a, b, ret } = t.params;
+      t.expect((a === 1 && ret === 1) || (b === 2 && ret === 2));
+    });
+
+  const result = await t0.run(g);
+  t0.expect(Array.from(result.values()).every(v => v.status === 'pass'));
+});
+
+g.test('exceptions')
+  .params(u =>
+    u
+      .combine('useSubcases', [false, true]) //
+      .combine('useDOMException', [false, true])
+  )
+  .fn(async t0 => {
+    const { useSubcases, useDOMException } = t0.params;
+    const g = makeTestGroupForUnitTesting(UnitTest);
+
+    const b1 = g.test('a');
+    let b2;
+    if (useSubcases) {
+      b2 = b1.paramsSubcasesOnly(u => u);
+    } else {
+      b2 = b1.params(u => u);
+    }
+    b2.fn(t => {
+      if (useDOMException) {
+        throw new DOMException('Message!', 'Name!');
+      } else {
+        throw new Error('Message!');
+      }
+    });
+
+    const result = await t0.run(g);
+    const values = Array.from(result.values());
+    t0.expect(values.length === 1);
+    t0.expect(values[0].status === 'fail');
+  });
+
 g.test('throws').fn(async t0 => {
   const g = makeTestGroupForUnitTesting(UnitTest);
 
-  /* eslint-disable-next-line  @typescript-eslint/no-unused-vars */
   g.test('a').fn(t => {
     throw new Error();
   });
@@ -233,7 +335,7 @@ g.test('shouldReject').fn(async t0 => {
 
   const g = makeTestGroupForUnitTesting(UnitTest);
 
-  g.test('a').fn(async t => {
+  g.test('a').fn(t => {
     t.shouldReject(
       'Error',
       (async () => {

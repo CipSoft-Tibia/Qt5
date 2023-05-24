@@ -25,12 +25,13 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_DOM_LIVE_NODE_LIST_BASE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_DOM_LIVE_NODE_LIST_BASE_H_
 
+#include "base/check_op.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element_traversal.h"
 #include "third_party/blink/renderer/core/html/collection_type.h"
 #include "third_party/blink/renderer/core/html_names.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -129,6 +130,11 @@ ALWAYS_INLINE bool LiveNodeListBase::ShouldInvalidateTypeOnAttributeChange(
              attr_name == html_names::kTypeAttr;
     case kInvalidateOnHRefAttrChange:
       return attr_name == html_names::kHrefAttr;
+    case kInvalidateOnPopoverInvokerAttrChange:
+      return attr_name == html_names::kPopoverAttr ||
+             attr_name == html_names::kPopovertoggletargetAttr ||
+             attr_name == html_names::kPopoverhidetargetAttr ||
+             attr_name == html_names::kPopovershowtargetAttr;
     case kDoNotInvalidateOnAttributeChanges:
       return false;
     case kInvalidateOnAnyAttrChange:

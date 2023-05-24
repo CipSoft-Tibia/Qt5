@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPAINTENGINE_RASTER_P_H
 #define QPAINTENGINE_RASTER_P_H
@@ -109,10 +73,10 @@ public:
         uint non_complex_pen : 1;           // can use rasterizer, rather than stroker
         uint antialiased : 1;
         uint bilinear : 1;
-        uint legacy_rounding : 1;
         uint fast_text : 1;
         uint tx_noshear : 1;
         uint fast_images : 1;
+        uint cosmetic_brush : 1;
     };
 
     union {
@@ -205,7 +169,7 @@ public:
         ComplexClip
     };
     ClipType clipType() const;
-    QRect clipBoundingRect() const;
+    QRectF clipBoundingRect() const;
 
 #ifdef Q_OS_WIN
     void setDC(HDC hdc);
@@ -276,6 +240,7 @@ public:
     void rasterize(QT_FT_Outline *outline, ProcessSpans callback, QSpanData *spanData, QRasterBuffer *rasterBuffer);
     void rasterize(QT_FT_Outline *outline, ProcessSpans callback, void *userData, QRasterBuffer *rasterBuffer);
     void updateMatrixData(QSpanData *spanData, const QBrush &brush, const QTransform &brushMatrix);
+    void updateClipping();
 
     void systemStateChanged() override;
 
@@ -350,7 +315,7 @@ public:
     int clipSpanHeight;
     struct ClipLine {
         int count;
-        QSpan *spans;
+        QT_FT_Span *spans;
     } *m_clipLines;
 
     void initialize();
@@ -361,7 +326,7 @@ public:
         return m_clipLines;
     }
 
-    inline QSpan *spans() {
+    inline QT_FT_Span *spans() {
         if (!m_spans)
             initialize();
         return m_spans;
@@ -369,7 +334,7 @@ public:
 
     int allocated;
     int count;
-    QSpan *m_spans;
+    QT_FT_Span *m_spans;
     int xmin, xmax, ymin, ymax;
 
     QRect clipRect;
@@ -380,7 +345,7 @@ public:
     uint hasRegionClip : 1;
 
     void appendSpan(int x, int length, int y, int coverage);
-    void appendSpans(const QSpan *s, int num);
+    void appendSpans(const QT_FT_Span *s, int num);
 
     // ### Should optimize and actually kill the QSpans if the rect is
     // ### a subset of The current region. Thus the "fast" clipspan
@@ -396,7 +361,7 @@ inline void QClipData::appendSpan(int x, int length, int y, int coverage)
 
     if (count == allocated) {
         allocated *= 2;
-        m_spans = (QSpan *)realloc(m_spans, allocated*sizeof(QSpan));
+        m_spans = (QT_FT_Span *)realloc(m_spans, allocated*sizeof(QT_FT_Span));
     }
     m_spans[count].x = x;
     m_spans[count].len = length;
@@ -405,7 +370,7 @@ inline void QClipData::appendSpan(int x, int length, int y, int coverage)
     ++count;
 }
 
-inline void QClipData::appendSpans(const QSpan *s, int num)
+inline void QClipData::appendSpans(const QT_FT_Span *s, int num)
 {
     Q_ASSERT(m_spans);
 
@@ -413,9 +378,9 @@ inline void QClipData::appendSpans(const QSpan *s, int num)
         do {
             allocated *= 2;
         } while (count + num > allocated);
-        m_spans = (QSpan *)realloc(m_spans, allocated*sizeof(QSpan));
+        m_spans = (QT_FT_Span *)realloc(m_spans, allocated*sizeof(QT_FT_Span));
     }
-    memcpy(m_spans+count, s, num*sizeof(QSpan));
+    memcpy(m_spans+count, s, num*sizeof(QT_FT_Span));
     count += num;
 }
 
@@ -433,14 +398,14 @@ public:
 
     QImage::Format prepare(QImage *image);
 
-    uchar *scanLine(int y) { Q_ASSERT(y>=0); Q_ASSERT(y<m_height); return m_buffer + y * qsizetype(bytes_per_line); }
+    uchar *scanLine(int y) { Q_ASSERT(y>=0); Q_ASSERT(y<m_height); return m_buffer + y * bytes_per_line; }
 
     int width() const { return m_width; }
     int height() const { return m_height; }
-    int bytesPerLine() const { return bytes_per_line; }
+    qsizetype bytesPerLine() const { return bytes_per_line; }
     int bytesPerPixel() const { return bytes_per_pixel; }
     template<typename T>
-    int stride() { return bytes_per_line / sizeof(T); }
+    int stride() { return static_cast<int>(bytes_per_line / sizeof(T)); }
 
     uchar *buffer() const { return m_buffer; }
 
@@ -450,12 +415,13 @@ public:
 
     QPainter::CompositionMode compositionMode;
     QImage::Format format;
+    QColorSpace colorSpace;
     QImage colorizeBitmap(const QImage &image, const QColor &color);
 
 private:
     int m_width;
     int m_height;
-    int bytes_per_line;
+    qsizetype bytes_per_line;
     int bytes_per_pixel;
     uchar *m_buffer;
 };

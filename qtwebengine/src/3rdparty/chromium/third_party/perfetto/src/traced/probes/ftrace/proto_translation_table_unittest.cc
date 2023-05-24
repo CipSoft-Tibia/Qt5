@@ -27,15 +27,17 @@
 #include "protos/perfetto/trace/ftrace/generic.pbzero.h"
 
 using testing::_;
-using testing::Values;
-using testing::ValuesIn;
-using testing::TestWithParam;
-using testing::Return;
+using testing::AllOf;
 using testing::AnyNumber;
-using testing::IsNull;
 using testing::Contains;
 using testing::Eq;
+using testing::IsNull;
 using testing::Pointee;
+using testing::Return;
+using testing::StrEq;
+using testing::TestWithParam;
+using testing::Values;
+using testing::ValuesIn;
 
 namespace perfetto {
 namespace {
@@ -68,7 +70,8 @@ class AllTranslationTableTest : public TestWithParam<const char*> {
 class TranslationTableCreationTest : public TestWithParam<uint16_t> {};
 
 const char* kDevices[] = {
-    "android_seed_N2F62_3.10.49", "android_hammerhead_MRA59G_3.4.0",
+    "android_seed_N2F62_3.10.49",
+    "android_hammerhead_MRA59G_3.4.0",
 };
 
 TEST_P(AllTranslationTableTest, Create) {
@@ -262,9 +265,9 @@ print fmt: "some format")"));
 INSTANTIATE_TEST_SUITE_P(BySize, TranslationTableCreationTest, Values(4, 8));
 
 TEST(TranslationTableTest, CompactSchedFormatParsingWalleyeData) {
-  std::string path =
+  std::string path = base::GetTestDataPath(
       "src/traced/probes/ftrace/test/data/"
-      "android_walleye_OPM5.171019.017.A1_4.4.88/";
+      "android_walleye_OPM5.171019.017.A1_4.4.88/");
   FtraceProcfs ftrace_procfs(path);
   auto table = ProtoTranslationTable::Create(
       &ftrace_procfs, GetStaticEventInfo(), GetStaticCommonFieldsInfo());
@@ -319,6 +322,14 @@ TEST(TranslationTableTest, InferFtraceType) {
   ASSERT_TRUE(InferFtraceType("char foo[16]", 16, false, &type));
   EXPECT_EQ(type, kFtraceFixedCString);
 
+  ASSERT_TRUE(InferFtraceType("char comm[TASK_COMM_LEN]", 16, false, &type));
+  EXPECT_EQ(type, kFtraceFixedCString);
+
+  ASSERT_TRUE(InferFtraceType("char identifier22[16]", 16, false, &type));
+  EXPECT_EQ(type, kFtraceFixedCString);
+
+  EXPECT_FALSE(InferFtraceType("char 2invalid[16]", 16, false, &type));
+
   ASSERT_TRUE(InferFtraceType("char[] foo", 8, false, &type));
   EXPECT_EQ(type, kFtraceStringPtr);
 
@@ -362,6 +373,12 @@ TEST(TranslationTableTest, InferFtraceType) {
   ASSERT_EQ(type, kFtraceDataLoc);
   ASSERT_FALSE(InferFtraceType("__data_loc char[] foo", 8, false, &type));
 
+  ASSERT_TRUE(InferFtraceType("unsigned long args[6]", 24, true, &type));
+  ASSERT_EQ(type, kFtraceUint32);
+  ASSERT_TRUE(InferFtraceType("unsigned long args[6]", 48, true, &type));
+  ASSERT_EQ(type, kFtraceUint64);
+  ASSERT_FALSE(InferFtraceType("unsigned long args[6]", 96, true, &type));
+
   EXPECT_FALSE(InferFtraceType("foo", 64, false, &type));
 }
 
@@ -371,7 +388,7 @@ TEST(TranslationTableTest, Getters) {
   std::vector<Event> events;
 
   {
-    Event event;
+    Event event{};
     event.name = "foo";
     event.group = "group_one";
     event.ftrace_event_id = 1;
@@ -379,7 +396,7 @@ TEST(TranslationTableTest, Getters) {
   }
 
   {
-    Event event;
+    Event event{};
     event.name = "bar";
     event.group = "group_one";
     event.ftrace_event_id = 2;
@@ -387,7 +404,7 @@ TEST(TranslationTableTest, Getters) {
   }
 
   {
-    Event event;
+    Event event{};
     event.name = "baz";
     event.group = "group_two";
     event.ftrace_event_id = 100;
@@ -397,7 +414,7 @@ TEST(TranslationTableTest, Getters) {
   ProtoTranslationTable table(
       &ftrace, events, std::move(common_fields),
       ProtoTranslationTable::DefaultPageHeaderSpecForTesting(),
-      InvalidCompactSchedEventFormatForTesting());
+      InvalidCompactSchedEventFormatForTesting(), PrintkMap());
 
   EXPECT_EQ(table.largest_id(), 100ul);
   EXPECT_EQ(table.EventToFtraceId(GroupAndName("group_one", "foo")), 1ul);
@@ -533,6 +550,54 @@ TEST(EventFilterTest, EnableEventsFrom) {
   EXPECT_TRUE(empty_filter.IsEventEnabled(4));
   EXPECT_TRUE(empty_filter.IsEventEnabled(17));
   EXPECT_TRUE(empty_filter.IsEventEnabled(1));
+}
+
+TEST(TranslationTableTest, FuncgraphEvents) {
+  std::string path =
+      base::GetTestDataPath("src/traced/probes/ftrace/test/data/synthetic/");
+  FtraceProcfs ftrace_procfs(path);
+  auto table = ProtoTranslationTable::Create(
+      &ftrace_procfs, GetStaticEventInfo(), GetStaticCommonFieldsInfo());
+  PERFETTO_CHECK(table);
+
+  {
+    auto* event = table->GetEvent(GroupAndName("ftrace", "funcgraph_entry"));
+    EXPECT_EQ(std::string(event->name), "funcgraph_entry");
+    EXPECT_EQ(std::string(event->group), "ftrace");
+
+    // field:unsigned long func;  offset:8;   size:8;  signed:0;
+    // field:int depth;           offset:16;  size:4;  signed:1;
+    ASSERT_EQ(event->fields.size(), 2u);
+
+    // note: fields in struct are ordered as in the proto, not the format file
+    EXPECT_THAT(
+        event->fields,
+        Contains(
+            AllOf(testing::Field(&Field::ftrace_name, StrEq("func")),
+                  testing::Field(&Field::ftrace_offset, Eq(8u)),
+                  testing::Field(&Field::ftrace_type, kFtraceSymAddr64),
+                  testing::Field(&Field::strategy, kFtraceSymAddr64ToUint64))));
+  }
+  {
+    auto* event = table->GetEvent(GroupAndName("ftrace", "funcgraph_exit"));
+    EXPECT_EQ(std::string(event->name), "funcgraph_exit");
+    EXPECT_EQ(std::string(event->group), "ftrace");
+
+    // field:unsigned long func;           offset:8;   size:8;  signed:0;
+    // field:int depth;                    offset:16;  size:4;  signed:1;
+    // field:unsigned int overrun;         offset:20;  size:4;  signed:0;
+    // field:unsigned long long calltime;  offset:24;  size:8;  signed:0;
+    // field:unsigned long long rettime;   offset:32;  size:8;  signed:0;
+    ASSERT_EQ(event->fields.size(), 5u);
+    // note: fields in struct are ordered as in the proto, not the format file
+    EXPECT_THAT(
+        event->fields,
+        Contains(
+            AllOf(testing::Field(&Field::ftrace_name, StrEq("func")),
+                  testing::Field(&Field::ftrace_offset, Eq(8u)),
+                  testing::Field(&Field::ftrace_type, kFtraceSymAddr64),
+                  testing::Field(&Field::strategy, kFtraceSymAddr64ToUint64))));
+  }
 }
 
 }  // namespace

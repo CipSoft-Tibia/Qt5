@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwebenginecookiestore.h"
 #include "qwebenginecookiestore_p.h"
@@ -62,11 +26,10 @@ using namespace QtWebEngineCore;
 
 QWebEngineCookieStorePrivate::QWebEngineCookieStorePrivate(QWebEngineCookieStore *q)
     : q_ptr(q)
-    , m_nextCallbackId(CallbackDirectory::ReservedCallbackIdsEnd)
     , m_deleteSessionCookiesPending(false)
     , m_deleteAllCookiesPending(false)
     , m_getAllCookiesPending(false)
-    , delegate(0)
+    , delegate(nullptr)
 {}
 
 void QWebEngineCookieStorePrivate::processPendingUserCookies()
@@ -76,17 +39,17 @@ void QWebEngineCookieStorePrivate::processPendingUserCookies()
 
     if (m_getAllCookiesPending) {
         m_getAllCookiesPending = false;
-        delegate->getAllCookies(CallbackDirectory::GetAllCookiesCallbackId);
+        delegate->getAllCookies();
     }
 
     if (m_deleteAllCookiesPending) {
         m_deleteAllCookiesPending = false;
-        delegate->deleteAllCookies(CallbackDirectory::DeleteAllCookiesCallbackId);
+        delegate->deleteAllCookies();
     }
 
     if (m_deleteSessionCookiesPending) {
         m_deleteSessionCookiesPending = false;
-        delegate->deleteSessionCookies(CallbackDirectory::DeleteSessionCookiesCallbackId);
+        delegate->deleteSessionCookies();
     }
 
     if (bool(filterCallback))
@@ -95,11 +58,11 @@ void QWebEngineCookieStorePrivate::processPendingUserCookies()
     if (m_pendingUserCookies.isEmpty())
         return;
 
-    for (const CookieData &cookieData : qAsConst(m_pendingUserCookies)) {
-        if (cookieData.callbackId == CallbackDirectory::DeleteCookieCallbackId)
+    for (const CookieData &cookieData : std::as_const(m_pendingUserCookies)) {
+        if (cookieData.wasDelete)
             delegate->deleteCookie(cookieData.cookie, cookieData.origin);
         else
-            delegate->setCookie(cookieData.callbackId, cookieData.cookie, cookieData.origin);
+            delegate->setCookie(cookieData.cookie, cookieData.origin);
     }
 
     m_pendingUserCookies.clear();
@@ -113,26 +76,20 @@ void QWebEngineCookieStorePrivate::rejectPendingUserCookies()
     m_pendingUserCookies.clear();
 }
 
-void QWebEngineCookieStorePrivate::setCookie(const QWebEngineCallback<bool> &callback, const QNetworkCookie &cookie,
-                                             const QUrl &origin)
+void QWebEngineCookieStorePrivate::setCookie(const QNetworkCookie &cookie, const QUrl &origin)
 {
-    const quint64 currentCallbackId = callback ? m_nextCallbackId++ : static_cast<quint64>(CallbackDirectory::NoCallbackId);
-
-    if (currentCallbackId != CallbackDirectory::NoCallbackId)
-        callbackDirectory.registerCallback(currentCallbackId, callback);
-
     if (!delegate || !delegate->hasCookieMonster()) {
-        m_pendingUserCookies.append(CookieData{ currentCallbackId, cookie, origin });
+        m_pendingUserCookies.append(CookieData{ false, cookie, origin });
         return;
     }
 
-    delegate->setCookie(currentCallbackId, cookie, origin);
+    delegate->setCookie(cookie, origin);
 }
 
 void QWebEngineCookieStorePrivate::deleteCookie(const QNetworkCookie &cookie, const QUrl &url)
 {
     if (!delegate || !delegate->hasCookieMonster()) {
-        m_pendingUserCookies.append(CookieData{ CallbackDirectory::DeleteCookieCallbackId, cookie, url });
+        m_pendingUserCookies.append(CookieData{ true, cookie, url });
         return;
     }
 
@@ -146,7 +103,7 @@ void QWebEngineCookieStorePrivate::deleteSessionCookies()
         return;
     }
 
-    delegate->deleteSessionCookies(CallbackDirectory::DeleteSessionCookiesCallbackId);
+    delegate->deleteSessionCookies();
 }
 
 void QWebEngineCookieStorePrivate::deleteAllCookies()
@@ -157,7 +114,7 @@ void QWebEngineCookieStorePrivate::deleteAllCookies()
         return;
     }
 
-    delegate->deleteAllCookies(CallbackDirectory::DeleteAllCookiesCallbackId);
+    delegate->deleteAllCookies();
 }
 
 void QWebEngineCookieStorePrivate::getAllCookies()
@@ -167,22 +124,9 @@ void QWebEngineCookieStorePrivate::getAllCookies()
         return;
     }
 
-    delegate->getAllCookies(CallbackDirectory::GetAllCookiesCallbackId);
+    delegate->getAllCookies();
 }
 
-void QWebEngineCookieStorePrivate::onGetAllCallbackResult(qint64 callbackId, const QByteArray &cookieList)
-{
-    callbackDirectory.invoke(callbackId, cookieList);
-}
-void QWebEngineCookieStorePrivate::onSetCallbackResult(qint64 callbackId, bool success)
-{
-    callbackDirectory.invoke(callbackId, success);
-}
-
-void QWebEngineCookieStorePrivate::onDeleteCallbackResult(qint64 callbackId, int numCookies)
-{
-    callbackDirectory.invoke(callbackId, numCookies);
-}
 
 void QWebEngineCookieStorePrivate::onCookieChanged(const QNetworkCookie &cookie, bool removed)
 {
@@ -266,8 +210,7 @@ QWebEngineCookieStore::~QWebEngineCookieStore() {}
 
 void QWebEngineCookieStore::setCookie(const QNetworkCookie &cookie, const QUrl &origin)
 {
-    //TODO: use callbacks or delete dummy ones
-    d_ptr->setCookie(QWebEngineCallback<bool>(), cookie, origin);
+    d_ptr->setCookie(cookie, origin);
 }
 
 /*!
@@ -294,11 +237,8 @@ void QWebEngineCookieStore::deleteCookie(const QNetworkCookie &cookie, const QUr
 
 void QWebEngineCookieStore::loadAllCookies()
 {
-    //TODO: use callbacks or delete dummy ones
     if (d_ptr->m_getAllCookiesPending)
         return;
-    d_ptr->callbackDirectory.registerCallback(CallbackDirectory::GetAllCookiesCallbackId,
-                                              QWebEngineCallback<const QByteArray &>());
     //this will trigger cookieAdded signal
     d_ptr->getAllCookies();
 }
@@ -313,10 +253,8 @@ void QWebEngineCookieStore::loadAllCookies()
 
 void QWebEngineCookieStore::deleteSessionCookies()
 {
-    //TODO: use callbacks or delete dummy ones
     if (d_ptr->m_deleteAllCookiesPending || d_ptr->m_deleteSessionCookiesPending)
         return;
-    d_ptr->callbackDirectory.registerCallback(CallbackDirectory::DeleteSessionCookiesCallbackId, QWebEngineCallback<int>());
     d_ptr->deleteSessionCookies();
 }
 
@@ -328,10 +266,8 @@ void QWebEngineCookieStore::deleteSessionCookies()
 
 void QWebEngineCookieStore::deleteAllCookies()
 {
-    //TODO: use callbacks or delete dummy ones
     if (d_ptr->m_deleteAllCookiesPending)
         return;
-    d_ptr->callbackDirectory.registerCallback(CallbackDirectory::DeleteAllCookiesCallbackId, QWebEngineCallback<int>());
     d_ptr->deleteAllCookies();
 }
 
@@ -438,3 +374,5 @@ void QWebEngineCookieStore::setCookieFilter(std::function<bool(const FilterReque
 */
 
 QT_END_NAMESPACE
+
+#include "moc_qwebenginecookiestore.cpp"

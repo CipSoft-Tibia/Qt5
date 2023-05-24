@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QOPENGLPROGRAMBINARYCACHE_P_H
 #define QOPENGLPROGRAMBINARYCACHE_P_H
@@ -54,8 +18,9 @@
 #include <QtGui/qtguiglobal.h>
 #include <QtCore/qcache.h>
 #include <QtCore/qmutex.h>
+#include <QtCore/QLoggingCategory>
 #include <QtGui/private/qopenglcontext_p.h>
-#include <QtGui/private/qshader_p.h>
+#include <rhi/qshader.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -63,10 +28,12 @@ QT_BEGIN_NAMESPACE
 // therefore stay independent from QOpenGLShader(Program). Must rely only on
 // QOpenGLContext/Functions.
 
-class QOpenGLProgramBinaryCache
+Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcOpenGLProgramDiskCache, Q_GUI_EXPORT)
+
+class Q_GUI_EXPORT QOpenGLProgramBinaryCache
 {
 public:
-    struct ShaderDesc {
+    struct Q_GUI_EXPORT ShaderDesc {
         ShaderDesc() { }
         ShaderDesc(QShader::Stage stage, const QByteArray &source = QByteArray())
           : stage(stage), source(source)
@@ -74,8 +41,8 @@ public:
         QShader::Stage stage;
         QByteArray source;
     };
-    struct ProgramDesc {
-        QVector<ShaderDesc> shaders;
+    struct Q_GUI_EXPORT ProgramDesc {
+        QList<ShaderDesc> shaders;
         QByteArray cacheKey() const;
     };
 
@@ -102,7 +69,7 @@ private:
         uint format;
     };
     QCache<QByteArray, MemCacheEntry> m_memCache;
-#if defined(QT_OPENGL_ES_2)
+#if QT_CONFIG(opengles2)
     void (QOPENGLF_APIENTRYP programBinaryOES)(GLuint program, GLenum binaryFormat, const GLvoid *binary, GLsizei length);
     void (QOPENGLF_APIENTRYP getProgramBinaryOES)(GLuint program, GLsizei bufSize, GLsizei *length, GLenum *binaryFormat, GLvoid *binary);
     void initializeProgramBinaryOES(QOpenGLContext *context);
@@ -116,7 +83,7 @@ private:
 // per-context basis, not just once per process. QOpenGLSharedResource enables this,
 // although it's once-per-sharing-context-group, not per-context. Still, this should
 // be good enough in practice.
-class QOpenGLProgramBinarySupportCheck : public QOpenGLSharedResource
+class Q_GUI_EXPORT QOpenGLProgramBinarySupportCheck : public QOpenGLSharedResource
 {
 public:
     QOpenGLProgramBinarySupportCheck(QOpenGLContext *context);

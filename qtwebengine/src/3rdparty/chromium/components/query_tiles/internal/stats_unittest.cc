@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -58,6 +58,15 @@ TEST(QueryTilesStatsTest, RecordGroupPruned) {
   stats::RecordGroupPruned(stats::PrunedGroupReason::kInvalidLocale);
   tester.ExpectBucketCount(stats::kPrunedGroupReasonHistogram, 0, 1);
   tester.ExpectBucketCount(stats::kPrunedGroupReasonHistogram, 1, 1);
+}
+
+TEST(QueryTilesStatsTest, RecordTrendingTileEvent) {
+  base::HistogramTester tester;
+  stats::RecordTrendingTileEvent(stats::TrendingTileEvent::kRemoved);
+  stats::RecordTrendingTileEvent(stats::TrendingTileEvent::kClicked);
+  tester.ExpectBucketCount(stats::kTrendingTileEventHistogram, 0, 0);
+  tester.ExpectBucketCount(stats::kTrendingTileEventHistogram, 1, 1);
+  tester.ExpectBucketCount(stats::kTrendingTileEventHistogram, 2, 1);
 }
 
 }  // namespace

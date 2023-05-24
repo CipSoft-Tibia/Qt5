@@ -92,16 +92,16 @@ protected:
 
             SkPaint fillPaint;
             fillPaint.setAntiAlias(true);
-            fillPaint.setFilterQuality(kLow_SkFilterQuality);
             fillPaint.setColor(faceColors[i]);
 
-            // Leverages GrFillRectOp on GPU backend
+            // Leverages FillRectOp on GPU backend
             canvas->drawRect(SkRect::MakeWH(viewportWidth, viewportWidth), fillPaint);
 
-            // Leverages GrTextureOp on GPU backend, to ensure sure both quad paths handle clipping
+            // Leverages TextureOp on GPU backend, to ensure sure both quad paths handle clipping
             canvas->drawImageRect(fCubeImage.get(),
                                   SkRect::MakeWH(fCubeImage->width(), fCubeImage->height()),
-                                  SkRect::MakeWH(viewportWidth, viewportWidth), &fillPaint,
+                                  SkRect::MakeWH(viewportWidth, viewportWidth),
+                                  SkSamplingOptions(SkFilterMode::kLinear), &fillPaint,
                                   SkCanvas::kFast_SrcRectConstraint);
 
             canvas->restore();

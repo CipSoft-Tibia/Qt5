@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the ActiveQt framework of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #ifndef QAXBASE_H
 #define QAXBASE_H
@@ -65,16 +18,12 @@ class QUuid;
 class QAxEventSink;
 class QAxObject;
 class QAxBasePrivate;
-struct QAxMetaObject;
 
 class QAxBase
 {
-    QDOC_PROPERTY(QString control READ control WRITE setControl)
-
 public:
     using PropertyBag = QMap<QString, QVariant>;
 
-    explicit QAxBase(IUnknown *iface = nullptr);
     virtual ~QAxBase();
 
     QString control() const;
@@ -100,12 +49,10 @@ public:
                                            const QVariant &v8 = QVariant());
     QAxObject* querySubObject(const char *name, QList<QVariant> &vars);
 
-    virtual const QMetaObject *metaObject() const;
-    virtual int qt_metacall(QMetaObject::Call, int, void **);
-    static int qt_static_metacall(QAxBase *, QMetaObject::Call, int, void **);
+    const QMetaObject *axBaseMetaObject() const;
 
-    virtual QObject *qObject() const = 0;
-    virtual const char *className() const = 0;
+    const char *className() const;
+    QObject *qObject() const;
 
     PropertyBag propertyBag() const;
     void setPropertyBag(const PropertyBag&);
@@ -121,25 +68,20 @@ public:
 
     QVariant asVariant() const;
 
-#ifdef Q_QDOC
-Q_SIGNALS:
-    void signal(const QString&,int,void*);
-    void propertyChanged(const QString&);
-    void exception(int,const QString&,const QString&,const QString&);
-#endif
-
 public:
-    virtual void clear();
+    void clear();
     bool setControl(const QString&);
 
     void disableMetaObject();
     void disableClassInfo();
     void disableEventSink();
 
-    unsigned long classContext() const;
-    void setClassContext(unsigned long classContext);
+    ulong classContext() const;
+    void setClassContext(ulong classContext);
 
 protected:
+    QAxBase();
+
     virtual bool initialize(IUnknown** ptr);
     bool initializeRemote(IUnknown** ptr);
     bool initializeLicensed(IUnknown** ptr);
@@ -156,14 +98,7 @@ protected:
                                         const QVariant &var5, const QVariant &var6,
                                         const QVariant &var7, const QVariant &var8);
 
-    virtual const QMetaObject *fallbackMetaObject() const = 0;
-
-    struct qt_meta_stringdata_QAxBase_t {
-        QByteArrayData data[13];
-        char stringdata[88];
-    };
-    static const qt_meta_stringdata_QAxBase_t qt_meta_stringdata_QAxBase;
-    static const uint qt_meta_data_QAxBase[];
+    void axBaseInit(QAxBasePrivate *b, IUnknown *iface = nullptr);
 
 private:
     enum DynamicCallHelperFlags {
@@ -172,12 +107,11 @@ private:
 
     friend class QAxScript;
     friend class QAxEventSink;
+    friend class QAxBasePrivate;
     friend void *qax_createObjectWrapper(int, IUnknown*);
     bool initializeLicensedHelper(void *factory, const QString &key, IUnknown **ptr);
-    QAxBasePrivate *d;
-    QAxMetaObject *internalMetaObject() const;
+    QAxBasePrivate *d = nullptr;
 
-    virtual const QMetaObject *parentMetaObject() const = 0;
     int internalProperty(QMetaObject::Call, int index, void **v);
     int internalInvoke(QMetaObject::Call, int index, void **v);
     bool dynamicCallHelper(const char *name, void *out, QList<QVariant> &var,

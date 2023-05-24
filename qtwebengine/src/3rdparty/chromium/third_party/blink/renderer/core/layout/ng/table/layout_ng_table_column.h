@@ -1,10 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_TABLE_LAYOUT_NG_TABLE_COLUMN_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_TABLE_LAYOUT_NG_TABLE_COLUMN_H_
 
+#include "base/notreached.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/layout_box.h"
 
@@ -16,6 +17,7 @@ class LayoutNGTable;
 class CORE_EXPORT LayoutNGTableColumn : public LayoutBox {
  public:
   explicit LayoutNGTableColumn(Element*);
+  void Trace(Visitor*) const override;
 
   LayoutNGTable* Table() const;
 
@@ -37,6 +39,8 @@ class CORE_EXPORT LayoutNGTableColumn : public LayoutBox {
   // Clears needs-layout for child columns too.
   void ClearNeedsLayoutForChildren() const;
 
+  LayoutSize Size() const override;
+
   // LayoutObject methods start.
 
   const char* GetName() const override {
@@ -57,6 +61,15 @@ class CORE_EXPORT LayoutNGTableColumn : public LayoutBox {
 
   void ImageChanged(WrappedImagePtr, CanDeferInvalidation) final;
 
+  void InsertedIntoTree() override;
+
+  void WillBeRemovedFromTree() override;
+
+  bool VisualRectRespectsVisibility() const final {
+    NOT_DESTROYED();
+    return false;
+  }
+
  protected:
   // Required by LayoutBox, but not used.
   MinMaxSizes ComputeIntrinsicLogicalWidths() const override {
@@ -67,7 +80,7 @@ class CORE_EXPORT LayoutNGTableColumn : public LayoutBox {
 
   bool IsOfType(LayoutObjectType type) const override {
     NOT_DESTROYED();
-    return type == kLayoutObjectLayoutTableCol || LayoutBox::IsOfType(type);
+    return type == kLayoutObjectTableCol || LayoutBox::IsOfType(type);
   }
 
  private:

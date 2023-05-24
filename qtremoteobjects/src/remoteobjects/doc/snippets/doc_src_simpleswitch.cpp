@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 //! [simpleSwitch_rep]
 class SimpleSwitch
@@ -57,7 +21,7 @@ QT       += remoteobjects
 #ifndef SIMPLESWITCH_H
 #define SIMPLESWITCH_H
 
-#include "rep_SimpleSwitch_source.h"
+#include "rep_simpleswitch_source.h"
 
 class SimpleSwitch : public SimpleSwitchSimpleSource
 {
@@ -65,7 +29,7 @@ class SimpleSwitch : public SimpleSwitchSimpleSource
 public:
     SimpleSwitch(QObject *parent = nullptr);
     ~SimpleSwitch();
-    virtual void server_slot(bool clientState);
+    void server_slot(bool clientState) override;
 public Q_SLOTS:
     void timeout_slot();
 private:
@@ -82,7 +46,7 @@ private:
 SimpleSwitch::SimpleSwitch(QObject *parent) : SimpleSwitchSimpleSource(parent)
 {
     stateChangeTimer = new QTimer(this); // Initialize timer
-    QObject::connect(stateChangeTimer, &SimpleSwitch::timeout, this, &SimpleSwitch::timeout_slot); // connect timeout() signal from stateChangeTimer to timeout_slot() of simpleSwitch
+    QObject::connect(stateChangeTimer, &QTimer::timeout, this, &SimpleSwitch::timeout_slot); // connect timeout() signal from stateChangeTimer to timeout_slot() of simpleSwitch
     stateChangeTimer->start(2000); // Start timer and set timout to 2 seconds
     qDebug() << "Source Node Started";
 }
@@ -101,7 +65,7 @@ void SimpleSwitch::server_slot(bool clientState)
 void SimpleSwitch::timeout_slot()
 {
     // slot called on timer timeout
-    if (currState()) // check if current state is true, currState() is defined in repc generated rep_SimpleSwitch_source.h
+    if (currState()) // check if current state is true, currState() is defined in repc generated rep_simpleswitch_source.h
         setCurrState(false); // set state to false
     else
         setCurrState(true); // set state to true
@@ -111,7 +75,7 @@ void SimpleSwitch::timeout_slot()
 //! [simpleSwitch_serversource_example1]
 
 //! [simpleSwitch_serverhostnode_example1]
-QRemoteObjectHost srcNode(QUrl(QStringLiteral("local:switch")));
+QRemoteObjectHost srcNode(QUrl(QStringLiteral("local:replica")));
 //! [simpleSwitch_serverhostnode_example1]
 
 //! [simpleSwitch_enableremoting_example1]
@@ -129,7 +93,8 @@ int main(int argc, char *argv[])
 
     SimpleSwitch srcSwitch; // create simple switch
 
-    QRemoteObjectHost srcNode(QUrl(QStringLiteral("local:switch"))); // create host node without Registry
+    // Create host node without Registry:
+    QRemoteObjectHost srcNode(QUrl(QStringLiteral("local:replica")));
     srcNode.enableRemoting(&srcSwitch); // enable remoting/sharing
 
     return a.exec();
@@ -142,8 +107,8 @@ REPC_REPLICA = simpleswitch.rep
 
 //! [simpleSwitch_clientremotenode_example1]
 QRemoteObjectNode repNode; // create remote object node
-repNode.connectToNode(QUrl(QStringLiteral("local:switch"))); // connect with remote host node
- //! [simpleSwitch_clientremotenode_example1]
+repNode.connectToNode(QUrl(QStringLiteral("local:replica"))); // connect with remote host node
+//! [simpleSwitch_clientremotenode_example1]
 
  //! [simpleSwitch_clientacquirereplica_example1]
 QSharedPointer<SimpleSwitchReplica> ptr;
@@ -157,21 +122,21 @@ ptr.reset(repNode.acquire<SimpleSwitchReplica>()); // acquire replica of source 
 #include <QObject>
 #include <QSharedPointer>
 
-#include "rep_SimpleSwitch_replica.h"
+#include "rep_simpleswitch_replica.h"
 
 class Client : public QObject
 {
     Q_OBJECT
 public:
     Client(QSharedPointer<SimpleSwitchReplica> ptr);
-    ~Client();
+    ~Client() override = default;
     void initConnections();// Function to connect signals and slots of source and client
 
 Q_SIGNALS:
     void echoSwitchState(bool switchState);// this signal is connected with server_slot(..) on the source object and echoes back switch state received from source
 
 public Q_SLOTS:
-    void recSwitchState_slot(); // slot to receive source state
+    void recSwitchState_slot(bool); // slot to receive source state
 private:
     bool clientSwitchState; // holds received server switch state
     QSharedPointer<SimpleSwitchReplica> reptr;// holds reference to replica
@@ -188,14 +153,10 @@ private:
 Client::Client(QSharedPointer<SimpleSwitchReplica> ptr) :
     QObject(nullptr),reptr(ptr)
 {
+    // Connect signal for replica initialized with initialization slot.
     initConnections();
-    //We can connect to SimpleSwitchReplica Signals/Slots
-    //directly because our Replica was generated by repc.
-}
-
-//destructor
-Client::~Client()
-{
+    // We can connect to SimpleSwitchReplica Signals/Slots
+    // directly because our Replica was generated by repc.
 }
 
 void Client::initConnections()
@@ -208,9 +169,9 @@ void Client::initConnections()
     QObject::connect(this, &Client::echoSwitchState, reptr.data(), &SimpleSwitchReplica::server_slot);
 }
 
-void Client::recSwitchState_slot()
+void Client::recSwitchState_slot(bool value)
 {
-    qDebug() << "Received source state "<<reptr.data()->currState();
+    qDebug() << "Received source state "<< value << reptr.data()->currState();
     clientSwitchState = reptr.data()->currState();
     Q_EMIT echoSwitchState(clientSwitchState); // Emit signal to echo received state back to server
 }
@@ -228,7 +189,7 @@ int main(int argc, char *argv[])
     QSharedPointer<SimpleSwitchReplica> ptr; // shared pointer to hold source replica
 
     QRemoteObjectNode repNode; // create remote object node
-    repNode.connectToNode(QUrl(QStringLiteral("local:switch"))); // connect with remote host node
+    repNode.connectToNode(QUrl(QStringLiteral("local:replica"))); // connect with remote host node
 
     ptr.reset(repNode.acquire<SimpleSwitchReplica>()); // acquire replica of source from host node
 
@@ -240,7 +201,7 @@ int main(int argc, char *argv[])
 
 //! [simpleSwitch_dynamicclientnode_example2]
 QRemoteObjectNode repNode; // create remote object node
-repNode.connectToNode(QUrl(QStringLiteral("local:switch"))); // connect with remote host node
+repNode.connectToNode(QUrl(QStringLiteral("local:replica"))); // connect with remote host node
 //! [simpleSwitch_dynamicclientnode_example2]
 
 //! [simpleSwitch_dynamicclientacquirereplica_example2]
@@ -263,14 +224,14 @@ class DynamicClient : public QObject
     Q_OBJECT
 public:
     DynamicClient(QSharedPointer<QRemoteObjectDynamicReplica> ptr);
-    ~DynamicClient();
+    ~DynamicClient() override = default;
 
 Q_SIGNALS:
     void echoSwitchState(bool switchState);// this signal is connected with server_slot(..) slot of source object and echoes back switch state received from source
 
 public Q_SLOTS:
-    void recSwitchState_slot(); // Slot to receive source state
-    void initConnection_slot(); //Slot to connect signals/slot on replica initialization
+    void recSwitchState_slot(bool); // Slot to receive source state
+    void initConnection_slot(); // Slot to connect signals/slot on replica initialization
 
 private:
     bool clientSwitchState; // holds received server switch state
@@ -284,35 +245,33 @@ private:
 #include "dynamicclient.h"
 
 // constructor
-DynamicClient::DynamicClient(QSharedPointer<QRemoteObjectDynamicReplica> ptr) :
-    QObject(nullptr), reptr(ptr)
+DynamicClient::DynamicClient(QSharedPointer<QRemoteObjectDynamicReplica> ptr)
+    : QObject(nullptr), clientSwitchState(false), reptr(ptr)
 {
-
     //connect signal for replica valid changed with signal slot initialization
     QObject::connect(reptr.data(), &QRemoteObjectDynamicReplica::initialized, this,
                      &DynamicClient::initConnection_slot);
 }
 
-//destructor
-DynamicClient::~DynamicClient()
-{
-}
-
 // Function to initialize connections between slots and signals
 void DynamicClient::initConnection_slot()
 {
-
-    // connect source replica signal currStateChanged() with client's recSwitchState() slot to receive source's current state
-   QObject::connect(reptr.data(), SIGNAL(currStateChanged()), this, SLOT(recSwitchState_slot()));
-   // connect client's echoSwitchState(..) signal with replica's server_slot(..) to echo back received state
-   QObject::connect(this, SIGNAL(echoSwitchState(bool)),reptr.data(), SLOT(server_slot(bool)));
+    // Connect source replica signal currStateChanged() with client's
+    // recSwitchState() slot to receive source's current state:
+    QObject::connect(reptr.data(), SIGNAL(currStateChanged(bool)), this,
+                     SLOT(recSwitchState_slot(bool)));
+    // Connect client's echoSwitchState(..) signal with replica's
+    // server_slot(..) to echo back received state:
+    QObject::connect(this, SIGNAL(echoSwitchState(bool)), reptr.data(), SLOT(server_slot(bool)));
 }
 
-void DynamicClient::recSwitchState_slot()
+void DynamicClient::recSwitchState_slot(bool value)
 {
-   clientSwitchState = reptr->property("currState").toBool(); // use replica property to get currState from source
-   qDebug() << "Received source state " << clientSwitchState;
-   Q_EMIT echoSwitchState(clientSwitchState); // Emit signal to echo received state back to server
+    // Use replica property to get "currState" from source:
+    clientSwitchState = reptr->property("currState").toBool();
+    qDebug() << "Received source state " << value << clientSwitchState;
+    // Emit signal to echo received state back to server:
+    Q_EMIT echoSwitchState(clientSwitchState);
 }
 
 //! [simpleSwitch_dynamicclientcpp_example2]
@@ -329,11 +288,13 @@ int main(int argc, char *argv[])
     QSharedPointer<QRemoteObjectDynamicReplica> ptr; // shared pointer to hold replica
 
     QRemoteObjectNode repNode;
-    repNode.connectToNode(QUrl(QStringLiteral("local:switch")));
+    repNode.connectToNode(QUrl(QStringLiteral("local:replica")));
 
     ptr.reset(repNode.acquireDynamic("SimpleSwitch")); // acquire replica of source from host node
 
     DynamicClient rswitch(ptr); // create client switch object and pass replica reference to it
+
+    return a.exec();
 }
 //! [simpleSwitch_dynamicclientmaincpp_example2]
 
@@ -347,10 +308,14 @@ int main(int argc, char *argv[])
 
     SimpleSwitch srcSwitch; // create SimpleSwitch
 
-    QRemoteObjectRegistryHost regNode(QUrl(QStringLiteral("local:registry"))); // create node that hosts registry
-    QRemoteObjectHost srcNode(QUrl(QStringLiteral("local:switch")), QUrl(QStringLiteral("local:registry"))); // create node that will host source and connect to registry
-    //Note, you can add srcSwitch directly to regNode if desired.
-    //We use two Nodes here, as the regNode could easily be in a third process.
+    // Create node that hosts registry:
+    QRemoteObjectRegistryHost regNode(QUrl(QStringLiteral("local:registry")));
+
+    // Create node that will host source and connect to registry:
+    QRemoteObjectHost srcNode(QUrl(QStringLiteral("local:replica")),
+                              QUrl(QStringLiteral("local:registry")));
+    // Note, you can add srcSwitch directly to regNode if desired.
+    // We use two Nodes here, as the regNode could easily be in a third process.
 
     srcNode.enableRemoting(&srcSwitch); // enable remoting of source object
 

@@ -16,7 +16,6 @@
 #include <vector>
 
 #include "absl/types/optional.h"
-#include "absl/types/span.h"
 #include "cast/streaming/compound_rtcp_builder.h"
 #include "cast/streaming/constants.h"
 #include "cast/streaming/encoded_frame.h"
@@ -32,12 +31,16 @@
 #include "cast/streaming/sender_report_parser.h"
 #include "cast/streaming/session_config.h"
 #include "cast/streaming/ssrc.h"
+#include "cast/streaming/testing/simple_socket_subscriber.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "platform/base/span.h"
+#include "platform/test/byte_view_test_util.h"
 #include "platform/test/fake_clock.h"
 #include "platform/test/fake_task_runner.h"
 #include "util/alarm.h"
 #include "util/chrono_helpers.h"
+#include "util/std_util.h"
 #include "util/yet_another_bit_vector.h"
 
 using testing::_;
@@ -100,6 +103,11 @@ constexpr milliseconds kCaptureDelay{11};
   } else {                                                   \
     EXPECT_GE((duration_a), (duration_b) - (epsilon));       \
   }
+
+void OverrideRtpTimestamp(int frame_count, EncodedFrame* frame, int fps) {
+  const int ticks = frame_count * kRtpTimebase / fps;
+  frame->rtp_timestamp = RtpTimeTicks() + RtpTimeDelta::FromTicks(ticks);
+}
 
 // Simulates UDP/IPv6 traffic in one direction (from Sender→Receiver, or
 // Receiver→Sender), with a settable amount of delay.
@@ -240,13 +248,11 @@ class MockReceiver : public Environment::PacketConsumer {
       ASSERT_TRUE(part_of_frame);
 
       // Return early if simulating packet drops over the network.
-      if (std::find_if(ignore_list_.begin(), ignore_list_.end(),
-                       [&](const PacketNack& baddie) {
-                         return (
-                             baddie.frame_id == part_of_frame->frame_id &&
-                             (baddie.packet_id == kAllPacketsLost ||
-                              baddie.packet_id == part_of_frame->packet_id));
-                       }) != ignore_list_.end()) {
+      if (ContainsIf(ignore_list_, [&](const PacketNack& baddie) {
+            return (baddie.frame_id == part_of_frame->frame_id &&
+                    (baddie.packet_id == kAllPacketsLost ||
+                     baddie.packet_id == part_of_frame->packet_id));
+          })) {
         return;
       }
 
@@ -298,8 +304,9 @@ class MockReceiver : public Environment::PacketConsumer {
     // testing should exist elsewhere to confirm frame play-out times with real
     // Receivers.
     decrypted->buffer.resize(FrameCrypto::GetPlaintextSize(encrypted));
-    decrypted->data = absl::Span<uint8_t>(decrypted->buffer);
-    crypto_.Decrypt(encrypted, decrypted);
+    crypto_.Decrypt(encrypted, decrypted->buffer);
+    encrypted.CopyMetadataTo(decrypted);
+    decrypted->data = decrypted->buffer;
     incomplete_frames_.erase(frame_id);
     OnFrameComplete(frame_id);
   }
@@ -339,13 +346,13 @@ class SenderTest : public testing::Test {
                  /* .channels = */ 2,
                  /* .target_playout_delay = */ kTargetPlayoutDelay,
                  /* .aes_secret_key = */ kAesKey,
-                 /* .aes_iv_mask = */ kCastIvMask},
+                 /* .aes_iv_mask = */ kCastIvMask,
+                 /* .is_pli_enabled = */ true},
                 kRtpPayloadType),
         receiver_to_sender_pipe_(&task_runner_, &sender_packet_router_),
         receiver_(&receiver_to_sender_pipe_),
         sender_to_receiver_pipe_(&task_runner_, &receiver_) {
-    sender_environment_.set_socket_error_handler(
-        [](Error error) { ASSERT_TRUE(error.ok()) << error; });
+    sender_environment_.SetSocketSubscriber(&socket_subscriber_);
     sender_environment_.set_remote_endpoint(
         receiver_to_sender_pipe_.local_endpoint());
     ON_CALL(sender_environment_, SendPacket(_))
@@ -388,8 +395,8 @@ class SenderTest : public testing::Test {
                                         int num_payload_bytes,
                                         EncodedFrameWithBuffer* frame) {
     frame->dependency = (frame_id == FrameId::first())
-                            ? EncodedFrame::KEY_FRAME
-                            : EncodedFrame::DEPENDS_ON_ANOTHER;
+                            ? EncodedFrame::Dependency::kKeyFrame
+                            : EncodedFrame::Dependency::kDependent;
     frame->frame_id = frame_id;
     frame->referenced_frame_id = frame->frame_id;
     if (frame_id != FrameId::first()) {
@@ -400,7 +407,7 @@ class SenderTest : public testing::Test {
                           (frame_id - FrameId::first()));
     frame->reference_time = reference_time;
     PopulateFramePayloadBuffer(seed, num_payload_bytes, &frame->buffer);
-    frame->data = absl::Span<uint8_t>(frame->buffer);
+    frame->data = frame->buffer;
   }
 
   // Confirms that all |sent_frames| exist in |received_frames|, with identical
@@ -423,7 +430,7 @@ class SenderTest : public testing::Test {
       EXPECT_EQ(sent_frame.referenced_frame_id,
                 received_frame.referenced_frame_id);
       EXPECT_EQ(sent_frame.rtp_timestamp, received_frame.rtp_timestamp);
-      EXPECT_TRUE(sent_frame.data == received_frame.data);
+      ExpectByteViewsHaveSameBytes(sent_frame.data, received_frame.data);
     }
   }
 
@@ -436,6 +443,7 @@ class SenderTest : public testing::Test {
   SimulatedNetworkPipe receiver_to_sender_pipe_;
   NiceMock<MockReceiver> receiver_;
   SimulatedNetworkPipe sender_to_receiver_pipe_;
+  SimpleSubscriber socket_subscriber_;
 };
 
 // Tests that the Sender can send EncodedFrames over an ideal network (i.e., low
@@ -613,12 +621,7 @@ TEST_F(SenderTest, RejectsEnqueuingBeforeProtocolDesignLimit) {
   // For this test, use 1000 FPS. This makes the frames all one millisecond
   // apart to avoid triggering the media-duration rejection logic.
   constexpr int kFramesPerSecond = 1000;
-  constexpr milliseconds kFrameDuration{1};
-
-  const auto OverrideRtpTimestamp = [](int frame_count, EncodedFrame* frame) {
-    const int ticks = frame_count * kRtpTimebase / kFramesPerSecond;
-    frame->rtp_timestamp = RtpTimeTicks() + RtpTimeDelta::FromTicks(ticks);
-  };
+  constexpr milliseconds kSmallFrameDuration{1};
 
   // Send the absolute design-limit maximum number of frames.
   int frame_count = 0;
@@ -626,19 +629,19 @@ TEST_F(SenderTest, RejectsEnqueuingBeforeProtocolDesignLimit) {
     EncodedFrameWithBuffer frame;
     PopulateFrameWithDefaults(sender()->GetNextFrameId(), FakeClock::now(), 0,
                               13 /* bytes */, &frame);
-    OverrideRtpTimestamp(frame_count, &frame);
+    OverrideRtpTimestamp(frame_count, &frame, kFramesPerSecond);
     ASSERT_EQ(Sender::OK, sender()->EnqueueFrame(frame));
-    SimulateExecution(kFrameDuration);
+    SimulateExecution(kSmallFrameDuration);
   }
 
   // Now, attempting to enqueue just one more frame should fail.
   EncodedFrameWithBuffer one_frame_too_much;
   PopulateFrameWithDefaults(sender()->GetNextFrameId(), FakeClock::now(), 0,
                             13 /* bytes */, &one_frame_too_much);
-  OverrideRtpTimestamp(frame_count++, &one_frame_too_much);
+  OverrideRtpTimestamp(frame_count++, &one_frame_too_much, kFramesPerSecond);
   EXPECT_EQ(Sender::REACHED_ID_SPAN_LIMIT,
             sender()->EnqueueFrame(one_frame_too_much));
-  SimulateExecution(kFrameDuration);
+  SimulateExecution(kSmallFrameDuration);
 
   // Now, simulate the Receiver ACKing the first frame, and enqueuing should
   // then succeed again.
@@ -646,16 +649,35 @@ TEST_F(SenderTest, RejectsEnqueuingBeforeProtocolDesignLimit) {
   receiver()->TransmitRtcpFeedbackPacket();
   SimulateExecution();  // RTCP transmitted to Sender.
   EXPECT_EQ(Sender::OK, sender()->EnqueueFrame(one_frame_too_much));
-  SimulateExecution(kFrameDuration);
+  SimulateExecution(kSmallFrameDuration);
 
   // Finally, attempting to enqueue another frame should fail again.
   EncodedFrameWithBuffer another_frame_too_much;
   PopulateFrameWithDefaults(sender()->GetNextFrameId(), FakeClock::now(), 0,
                             13 /* bytes */, &another_frame_too_much);
-  OverrideRtpTimestamp(frame_count++, &another_frame_too_much);
+  OverrideRtpTimestamp(frame_count++, &another_frame_too_much,
+                       kFramesPerSecond);
   EXPECT_EQ(Sender::REACHED_ID_SPAN_LIMIT,
             sender()->EnqueueFrame(another_frame_too_much));
-  SimulateExecution(kFrameDuration);
+  SimulateExecution(kSmallFrameDuration);
+}
+
+TEST_F(SenderTest, CanCancelAllInFlightFrames) {
+  NiceMock<MockObserver> observer;
+  sender()->SetObserver(&observer);
+
+  // Send the absolute design-limit maximum number of frames.
+  for (int i = 0; i < kMaxUnackedFrames; ++i) {
+    EncodedFrameWithBuffer frame;
+    PopulateFrameWithDefaults(sender()->GetNextFrameId(), FakeClock::now(), 0,
+                              13 /* bytes */, &frame);
+    OverrideRtpTimestamp(i, &frame, 1000 /* fps */);
+    ASSERT_EQ(Sender::OK, sender()->EnqueueFrame(frame));
+    SimulateExecution(kFrameDuration);
+  }
+
+  EXPECT_CALL(observer, OnFrameCanceled(_)).Times(kMaxUnackedFrames);
+  sender()->CancelInFlightData();
 }
 
 // Tests that the Sender rejects frames if too-long a media duration is
@@ -664,12 +686,7 @@ TEST_F(SenderTest, RejectsEnqueuingIfTooLongMediaDurationIsInFlight) {
   // For this test, use 20 FPS. This makes all frames 50 ms apart, which should
   // make it easy to trigger the media-duration rejection logic.
   constexpr int kFramesPerSecond = 20;
-  constexpr milliseconds kFrameDuration{50};
-
-  const auto OverrideRtpTimestamp = [](int frame_count, EncodedFrame* frame) {
-    const int ticks = frame_count * kRtpTimebase / kFramesPerSecond;
-    frame->rtp_timestamp = RtpTimeTicks() + RtpTimeDelta::FromTicks(ticks);
-  };
+  constexpr milliseconds kLargeFrameDuration{50};
 
   // Enqueue frames until one is rejected because the in-flight duration would
   // be too high.
@@ -678,9 +695,9 @@ TEST_F(SenderTest, RejectsEnqueuingIfTooLongMediaDurationIsInFlight) {
   for (; frame_count < kMaxUnackedFrames; ++frame_count) {
     PopulateFrameWithDefaults(sender()->GetNextFrameId(), FakeClock::now(), 0,
                               13 /* bytes */, &frame);
-    OverrideRtpTimestamp(frame_count, &frame);
+    OverrideRtpTimestamp(frame_count, &frame, kFramesPerSecond);
     const auto result = sender()->EnqueueFrame(frame);
-    SimulateExecution(kFrameDuration);
+    SimulateExecution(kLargeFrameDuration);
     if (result == Sender::MAX_DURATION_IN_FLIGHT) {
       break;
     }
@@ -693,16 +710,16 @@ TEST_F(SenderTest, RejectsEnqueuingIfTooLongMediaDurationIsInFlight) {
   receiver()->TransmitRtcpFeedbackPacket();
   SimulateExecution();  // RTCP transmitted to Sender.
   EXPECT_EQ(Sender::OK, sender()->EnqueueFrame(frame));
-  SimulateExecution(kFrameDuration);
+  SimulateExecution(kLargeFrameDuration);
 
   // However, attempting to enqueue another frame should fail again.
   EncodedFrameWithBuffer one_frame_too_much;
   PopulateFrameWithDefaults(sender()->GetNextFrameId(), FakeClock::now(), 0,
                             13 /* bytes */, &one_frame_too_much);
-  OverrideRtpTimestamp(++frame_count, &one_frame_too_much);
+  OverrideRtpTimestamp(++frame_count, &one_frame_too_much, kFramesPerSecond);
   EXPECT_EQ(Sender::MAX_DURATION_IN_FLIGHT,
             sender()->EnqueueFrame(one_frame_too_much));
-  SimulateExecution(kFrameDuration);
+  SimulateExecution(kLargeFrameDuration);
 }
 
 // Tests that the Sender propagates the Receiver's picture loss indicator to the
@@ -774,7 +791,7 @@ TEST_F(SenderTest, ManagesReceiverPictureLossWorkflow) {
   PopulateFrameWithDefaults(FrameId::first() + 4,
                             FakeClock::now() - kCaptureDelay, 0, 24 /* bytes */,
                             &recovery_frame);
-  recovery_frame.dependency = EncodedFrame::KEY_FRAME;
+  recovery_frame.dependency = EncodedFrame::Dependency::kKeyFrame;
   recovery_frame.referenced_frame_id = recovery_frame.frame_id;
   ASSERT_EQ(Sender::OK, sender()->EnqueueFrame(recovery_frame));
   SimulateExecution(kFrameDuration);
@@ -813,7 +830,7 @@ TEST_F(SenderTest, ManagesReceiverPictureLossWorkflow) {
   PopulateFrameWithDefaults(FrameId::first() + 5,
                             FakeClock::now() - kCaptureDelay, 0, 24 /* bytes */,
                             &another_recovery_frame);
-  another_recovery_frame.dependency = EncodedFrame::KEY_FRAME;
+  another_recovery_frame.dependency = EncodedFrame::Dependency::kKeyFrame;
   another_recovery_frame.referenced_frame_id = another_recovery_frame.frame_id;
   ASSERT_EQ(Sender::OK, sender()->EnqueueFrame(another_recovery_frame));
   SimulateExecution(kFrameDuration);
@@ -1013,9 +1030,8 @@ TEST_F(SenderTest, ResendsIndividuallyNackedPackets) {
   EXPECT_CALL(*receiver(), OnRtpPacket(_))
       .Times(3)
       .WillRepeatedly(Invoke([&](const RtpPacketParser::ParseResult& packet) {
-        EXPECT_FALSE(std::find(dropped_packets.begin(), dropped_packets.end(),
-                               PacketNack{packet.frame_id, packet.packet_id}) ==
-                     dropped_packets.end());
+        EXPECT_TRUE(Contains(dropped_packets,
+                             PacketNack{packet.frame_id, packet.packet_id}));
       }));
   SimulateExecution(kOneWayNetworkDelay);
   Mock::VerifyAndClearExpectations(receiver());

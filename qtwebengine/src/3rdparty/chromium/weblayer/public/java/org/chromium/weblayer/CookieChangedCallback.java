@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,7 @@ import androidx.annotation.NonNull;
 
 /**
  * Callback used to listen for cookie changes.
- *
- * @since 83
  */
-public abstract class CookieChangedCallback {
+abstract class CookieChangedCallback {
     public abstract void onCookieChanged(@NonNull String cookie, @CookieChangeCause int cause);
 }

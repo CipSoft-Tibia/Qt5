@@ -1,255 +1,82 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//third_party/closure_compiler/compile_js.gni")
-import("../tools/js_modulizer.gni")
+import("//build/config/chromeos/ui_mode.gni")
+import("../tools/build_cr_component.gni")
 
-group("closure_compile") {
-  deps = [
-    ":js_resources",
-    "cr:closure_compile",
-    "cr/ui:closure_compile",
-  ]
-}
+include_polymer = !is_android && !is_ios
 
-js_type_check("js_resources") {
-  deps = [
-    ":action_link",
-    ":assert",
-    ":cr",
-    ":event_tracker",
-    ":i18n_behavior",
-    ":i18n_template_no_process",
-    ":icon",
-    ":list_property_update_behavior",
-    ":load_time_data",
-    ":parse_html_subset",
-    ":promise_resolver",
-    ":search_highlight_utils",
-    ":util",
-    ":web_ui_listener_behavior",
-    ":webui_resource_test",
+build_cr_component("build") {
+  grd_prefix = "webui_js"
+
+  non_web_component_files = [
+    "action_link.ts",
+    "assert_ts.ts",
+    "color_utils.ts",
+    "cr.ts",
+    "custom_element.ts",
+    "drag_wrapper.ts",
+    "event_tracker.ts",
+    "focus_grid.ts",
+    "focus_outline_manager.ts",
+    "focus_row.ts",
+    "icon.ts",
+    "keyboard_shortcut_list.ts",
+    "load_time_data_deprecated.js",
+    "load_time_data.ts",
+    "metrics_reporter/browser_proxy.ts",
+    "metrics_reporter/metrics_reporter.ts",
+    "open_window_proxy.ts",
+    "parse_html_subset.ts",
+    "platform.ts",
+    "plural_string_proxy.ts",
+    "promise_resolver.ts",
+    "search_highlight_utils.ts",
+    "static_types.ts",
+    "store_ts.ts",
+    "test_loader.ts",
+    "test_loader_util.ts",
+    "util_ts.ts",
   ]
+
   if (is_chromeos) {
-    deps += [ ":i18n_template_process" ]
+    non_web_component_files += [ "os_about.ts" ]
   }
+
   if (is_ios) {
-    deps += [ "ios:web_ui" ]
+    non_web_component_files += [
+      "ios/mojo_api.js",
+      "ios/web_ui.js",
+    ]
   }
-}
 
-js_library("action_link") {
-}
+  if (is_chromeos_ash || is_ios) {
+    # Used by ChromeOS UIs and ios inspect and omaha UIs
+    non_web_component_files += [ "util_deprecated.js" ]
+  }
 
-js_library("assert") {
-}
+  if (include_polymer) {
+    non_web_component_files += [
+      "focus_row_mixin.ts",
+      "focus_without_ink.ts",
+      "browser_command/browser_command_proxy.ts",
+    ]
+  }
 
-js_library("cr") {
-  deps = [
-    ":assert",
-    ":promise_resolver",
+  mojo_files_deps = [ "./metrics_reporter:mojo_bindings_ts__generator" ]
+  mojo_files = [ "$root_gen_dir/ui/webui/resources/js/metrics_reporter/metrics_reporter.mojom-webui.ts" ]
+
+  if (include_polymer) {
+    mojo_files_deps += [ "./browser_command:mojo_bindings_ts__generator" ]
+    mojo_files += [ "$root_gen_dir/ui/webui/resources/js/browser_command/browser_command.mojom-webui.ts" ]
+  }
+
+  tsc_dir = "$root_gen_dir/ui/webui/resources/tsc/js"
+  tsc_allow_js = true
+  ts_deps = [ "../mojo:library" ]
+  ts_definitions = [
+    "//tools/typescript/definitions/chrome_send.d.ts",
+    "//tools/typescript/definitions/chrome_timeticks.d.ts",
   ]
-  externs_list = [ "$externs_path/chrome_send.js" ]
-}
-
-js_library("event_tracker") {
-}
-
-js_library("search_highlight_utils") {
-  deps = [
-    ":assert",
-    ":cr",
-  ]
-}
-
-js_library("icon") {
-  deps = [
-    ":cr",
-    ":util",
-  ]
-}
-
-js_library("i18n_template_no_process") {
-  deps = [ ":load_time_data" ]
-}
-
-js_library("i18n_template_process") {
-  deps = [ ":i18n_template_no_process" ]
-}
-
-js_library("i18n_behavior") {
-  deps = [ ":load_time_data" ]
-}
-
-js_library("list_property_update_behavior") {
-}
-
-js_library("load_time_data") {
-  deps = [
-    ":assert",
-    ":parse_html_subset",
-    "//third_party/jstemplate:jstemplate",
-  ]
-}
-
-js_library("parse_html_subset") {
-}
-
-js_library("promise_resolver") {
-  deps = [ ":assert" ]
-}
-
-js_library("util") {
-  deps = [ ":cr" ]
-  externs_list = [ "$externs_path/chrome_send.js" ]
-}
-
-js_library("web_ui_listener_behavior") {
-  deps = [ ":cr" ]
-}
-
-js_library("webui_resource_test") {
-  externs_list = [ "dom_automation_controller.js" ]
-}
-
-# Targets for auto-generating and type-checking JS Modules
-
-js_modulizer("modulize") {
-  input_files = [
-    "assert.js",
-    "event_tracker.js",
-    "icon.js",
-    "i18n_behavior.js",
-    "list_property_update_behavior.js",
-    "load_time_data.js",
-    "parse_html_subset.js",
-    "promise_resolver.js",
-    "search_highlight_utils.js",
-    "util.js",
-    "web_ui_listener_behavior.js",
-  ]
-  namespace_rewrites = [
-    "cr.search_highlight_utils.Range|Range",
-    "Polymer.ArraySplice.calculateSplices|calculateSplices",
-  ]
-  deps = [ "cr:modulize" ]
-}
-
-group("closure_compile_modules") {
-  deps = [
-    ":js_resources_modules",
-    "cr:closure_compile_modules",
-  ]
-}
-
-js_type_check("js_resources_modules") {
-  is_polymer3 = true
-  deps = [
-    ":assert.m",
-    ":cr.m",
-    ":event_tracker.m",
-    ":i18n_behavior.m",
-    ":icon.m",
-    ":list_property_update_behavior.m",
-    ":load_time_data.m",
-    ":parse_html_subset.m",
-    ":plural_string_proxy",
-    ":promise_resolver.m",
-    ":search_highlight_utils.m",
-    ":util.m",
-    ":web_ui_listener_behavior.m",
-  ]
-}
-
-js_library("assert.m") {
-  sources = [ "$root_gen_dir/ui/webui/resources/js/assert.m.js" ]
-  extra_deps = [ ":modulize" ]
-}
-
-js_library("cr.m") {
-  deps = [
-    ":assert.m",
-    ":promise_resolver.m",
-  ]
-  externs_list = [ "$externs_path/chrome_send.js" ]
-}
-
-js_library("event_tracker.m") {
-  sources = [ "$root_gen_dir/ui/webui/resources/js/event_tracker.m.js" ]
-  extra_deps = [ ":modulize" ]
-}
-
-js_library("icon.m") {
-  sources = [ "$root_gen_dir/ui/webui/resources/js/icon.m.js" ]
-  deps = [ ":cr.m" ]
-  extra_deps = [ ":modulize" ]
-}
-
-js_library("i18n_behavior.m") {
-  sources = [ "$root_gen_dir/ui/webui/resources/js/i18n_behavior.m.js" ]
-  deps = [
-    ":load_time_data.m",
-    ":parse_html_subset.m",
-  ]
-  extra_deps = [ ":modulize" ]
-}
-
-js_library("list_property_update_behavior.m") {
-  sources = [
-    "$root_gen_dir/ui/webui/resources/js/list_property_update_behavior.m.js",
-  ]
-  deps = [
-    "//third_party/polymer/v3_0/components-chromium/polymer:polymer_bundled",
-  ]
-  extra_deps = [ ":modulize" ]
-}
-
-js_library("load_time_data.m") {
-  sources = [ "$root_gen_dir/ui/webui/resources/js/load_time_data.m.js" ]
-  deps = [
-    ":assert.m",
-    ":parse_html_subset.m",
-    "//third_party/jstemplate:jstemplate",
-  ]
-  extra_deps = [ ":modulize" ]
-}
-
-js_library("parse_html_subset.m") {
-  sources = [ "$root_gen_dir/ui/webui/resources/js/parse_html_subset.m.js" ]
-  extra_deps = [ ":modulize" ]
-}
-
-js_library("plural_string_proxy") {
-  deps = [ ":cr.m" ]
-}
-
-js_library("promise_resolver.m") {
-  sources = [ "$root_gen_dir/ui/webui/resources/js/promise_resolver.m.js" ]
-  deps = [ ":assert.m" ]
-  extra_deps = [ ":modulize" ]
-}
-
-js_library("search_highlight_utils.m") {
-  sources =
-      [ "$root_gen_dir/ui/webui/resources/js/search_highlight_utils.m.js" ]
-  deps = [ ":assert.m" ]
-  extra_deps = [ ":modulize" ]
-}
-
-js_library("util.m") {
-  sources = [ "$root_gen_dir/ui/webui/resources/js/util.m.js" ]
-  deps = [
-    ":assert.m",
-    ":cr.m",
-  ]
-  externs_list = [ "$externs_path/chrome_send.js" ]
-  extra_deps = [ ":modulize" ]
-}
-
-js_library("web_ui_listener_behavior.m") {
-  sources =
-      [ "$root_gen_dir/ui/webui/resources/js/web_ui_listener_behavior.m.js" ]
-  deps = [ ":cr.m" ]
-  extra_deps = [ ":modulize" ]
 }

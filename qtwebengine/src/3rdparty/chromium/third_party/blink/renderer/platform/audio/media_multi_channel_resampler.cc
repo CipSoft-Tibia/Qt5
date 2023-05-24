@@ -1,11 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/platform/audio/media_multi_channel_resampler.h"
 
 #include <memory>
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "media/base/audio_bus.h"
 #include "third_party/blink/renderer/platform/audio/audio_bus.h"
 
@@ -14,16 +14,16 @@ namespace blink {
 MediaMultiChannelResampler::MediaMultiChannelResampler(
     int channels,
     double io_sample_rate_ratio,
-    size_t request_frames,
+    uint32_t request_frames,
     ReadCB read_cb)
     : resampler_input_bus_wrapper_(media::AudioBus::CreateWrapper(channels)),
       resampler_output_bus_wrapper_(
           AudioBus::Create(channels, request_frames, false)),
       read_cb_(std::move(read_cb)) {
-  resampler_.reset(new media::MultiChannelResampler(
+  resampler_ = std::make_unique<media::MultiChannelResampler>(
       channels, io_sample_rate_ratio, request_frames,
       base::BindRepeating(&MediaMultiChannelResampler::ProvideResamplerInput,
-                          base::Unretained(this))));
+                          base::Unretained(this)));
 }
 
 void MediaMultiChannelResampler::Resample(

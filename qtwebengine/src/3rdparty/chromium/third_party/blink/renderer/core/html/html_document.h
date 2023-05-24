@@ -23,6 +23,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_HTML_HTML_DOCUMENT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_HTML_HTML_DOCUMENT_H_
 
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/document_init.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_client.h"
@@ -39,7 +40,7 @@ class CORE_EXPORT HTMLDocument : public Document {
       DocumentClassFlags extended_document_classes = kDefaultDocumentClass);
   ~HTMLDocument() override;
 
-  static HTMLDocument* CreateForTest();
+  static HTMLDocument* CreateForTest(ExecutionContext& execution_context);
 
   void AddNamedItem(const AtomicString& name);
   void RemoveNamedItem(const AtomicString& name);

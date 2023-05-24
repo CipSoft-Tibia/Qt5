@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,7 +21,7 @@ void SystemColorsDidChange(int aqua_color_variant,
 
   // Register the defaults in the NSArgumentDomain, which is considered
   // volatile. Registering in the normal application domain fails from within
-  // the sandbox on 10.10+.
+  // the sandbox.
   [defaults removeVolatileDomainForName:NSArgumentDomain];
 
   NSDictionary* domain_values = @{

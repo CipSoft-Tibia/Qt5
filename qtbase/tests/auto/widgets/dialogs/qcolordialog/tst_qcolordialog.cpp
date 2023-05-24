@@ -1,35 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtGui/QtGui>
 #include <QtWidgets/QColorDialog>
+#include <QtWidgets/QLineEdit>
+#include <QSignalSpy>
 
 QT_FORWARD_DECLARE_CLASS(QtTestEventThread)
 
@@ -50,6 +27,10 @@ private slots:
     void native_activeModalWidget();
     void task247349_alpha();
     void QTBUG_43548_initialColor();
+    void hexColor_data();
+    void hexColor();
+
+    void hideNativeByDestruction();
 };
 
 class TestNativeDialog : public QColorDialog
@@ -58,7 +39,7 @@ class TestNativeDialog : public QColorDialog
 public:
     QWidget *m_activeModalWidget;
 
-    TestNativeDialog(QWidget *parent = 0)
+    TestNativeDialog(QWidget *parent = nullptr)
         : QColorDialog(parent), m_activeModalWidget(0)
     {
         QTimer::singleShot(1, this, SLOT(test_activeModalWidgetSignal()));
@@ -102,7 +83,7 @@ void tst_QColorDialog::native_activeModalWidget()
 
 void tst_QColorDialog::postKeyReturn() {
     QWidgetList list = QApplication::topLevelWidgets();
-    for (int i=0; i<list.count(); ++i) {
+    for (int i=0; i<list.size(); ++i) {
         QColorDialog *dialog = qobject_cast<QColorDialog *>(list[i]);
         if (dialog) {
             QTest::keyClick( list[i], Qt::Key_Return, Qt::NoModifier );
@@ -149,6 +130,82 @@ void tst_QColorDialog::QTBUG_43548_initialColor()
     dialog.setCurrentColor(QColor(Qt::red));
     QColor a(Qt::red);
     QCOMPARE(a, dialog.currentColor());
+}
+
+void tst_QColorDialog::hexColor_data()
+{
+    QTest::addColumn<const QString>("colorString");
+    QTest::addColumn<const QString>("expectedHexColor");
+    QTest::addColumn<const int>("expectedSignalCount");
+
+    QTest::newRow("White-#") << "#FFFFFE" << "#FFFFFE" << 1;
+    QTest::newRow("White") << "FFFFFD" << "#FFFFFD" << 1;
+    QTest::newRow("Blue-#") << "#77fffb" << "#77fffb" << 2;
+    QTest::newRow("Blue") << "77fffa" << "#77fffa" << 2;
+}
+
+void tst_QColorDialog::hexColor()
+{
+    QColorDialog dialog;
+    dialog.setOption(QColorDialog::DontUseNativeDialog);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    QLineEdit *lineEdit = dialog.findChild<QLineEdit *>("qt_colorname_lineedit",
+                                                        Qt::FindChildrenRecursively);
+    QVERIFY2(lineEdit, "QLineEdit for color not found. Adapt this test.");
+    QVERIFY(lineEdit); // eliminate compiler warning
+
+    QFETCH(const QString, colorString);
+    QFETCH(const QString, expectedHexColor);
+    QFETCH(const int, expectedSignalCount);
+
+    QSignalSpy spy(&dialog, &QColorDialog::currentColorChanged);
+
+    // Delete existing color
+    lineEdit->activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(lineEdit));
+    for (int i = 0; i < 8; ++i)
+        QTest::keyEvent(QTest::KeyAction::Click, lineEdit, Qt::Key_Backspace);
+    QVERIFY(lineEdit->text().isEmpty());
+
+    // Enter new color
+    for (const QChar &key : colorString)
+        QTest::keyEvent(QTest::KeyAction::Click, lineEdit, key.toLatin1());
+    QCOMPARE(lineEdit->text().toLower(), expectedHexColor.toLower());
+
+    // Consume all color change signals
+    QTRY_COMPARE(spy.count(), expectedSignalCount);
+
+    const QColor color = qvariant_cast<QColor>(spy.last().at(0));
+    QCOMPARE(color.name(QColor::HexRgb), expectedHexColor.toLower());
+}
+
+void tst_QColorDialog::hideNativeByDestruction()
+{
+    QWidget window;
+    QWidget *child = new QWidget(&window);
+    QPointer<QColorDialog> dialog = new QColorDialog(child);
+    // Make it application modal so that we don't end up with a sheet on macOS
+    dialog->setWindowModality(Qt::ApplicationModal);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+    dialog->open();
+
+    // We test that the dialog opens and closes by watching the activation of the
+    // transient parent window. If it doesn't deactivate, then we have to skip.
+    const auto windowActive = [&window]{ return window.isActiveWindow(); };
+    const auto windowInactive = [&window]{ return !window.isActiveWindow(); };
+    if (!QTest::qWaitFor(windowInactive, 2000))
+        QSKIP("Dialog didn't activate");
+
+    // This should destroy the dialog and close the native window
+    child->deleteLater();
+    QTRY_VERIFY(!dialog);
+    // If the native window is still open, then the transient parent can't become
+    // active
+    window.activateWindow();
+    QVERIFY(QTest::qWaitFor(windowActive));
 }
 
 QTEST_MAIN(tst_QColorDialog)

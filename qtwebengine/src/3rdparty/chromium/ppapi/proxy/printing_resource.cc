@@ -1,10 +1,10 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ppapi/proxy/printing_resource.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "ipc/ipc_message.h"
 #include "ppapi/c/pp_errors.h"
 #include "ppapi/proxy/dispatch_reply_message.h"
@@ -34,10 +34,9 @@ int32_t PrintingResource::GetDefaultPrintSettings(
     SendCreate(BROWSER, PpapiHostMsg_Printing_Create());
 
   Call<PpapiPluginMsg_Printing_GetDefaultPrintSettingsReply>(
-      BROWSER,
-      PpapiHostMsg_Printing_GetDefaultPrintSettings(),
-      base::Bind(&PrintingResource::OnPluginMsgGetDefaultPrintSettingsReply,
-          this, print_settings, callback));
+      BROWSER, PpapiHostMsg_Printing_GetDefaultPrintSettings(),
+      base::BindOnce(&PrintingResource::OnPluginMsgGetDefaultPrintSettingsReply,
+                     this, print_settings, callback));
   return PP_OK_COMPLETIONPENDING;
 }
 

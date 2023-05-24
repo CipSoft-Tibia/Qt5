@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,23 +7,21 @@
 
 #include <stddef.h>
 
-#include <memory>
 #include <string>
 #include <vector>
 
 #include "base/files/file_path.h"
 #include "base/memory/ref_counted.h"
-#include "base/sequenced_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
+#include "base/values.h"
+#include "build/build_config.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/preferences/public/mojom/preferences.mojom-forward.h"
 #include "services/preferences/public/mojom/tracked_preference_validation_delegate.mojom-forward.h"
 
 class PersistentPrefStore;
 class PrefService;
-
-namespace base {
-class DictionaryValue;
-}  // namespace base
 
 namespace service_manager {
 class Connector;
@@ -66,12 +64,12 @@ class ProfilePrefStoreManager {
   // was built by ProfilePrefStoreManager.
   static void ClearResetTime(PrefService* pref_service);
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // Call before startup tasks kick in to use a different registry path for
   // storing and validating tracked preference MACs. Callers are responsible
   // for ensuring that the key is deleted on shutdown. For testing only.
   static void SetPreferenceValidationRegistryPathForTesting(
-      const base::string16* path);
+      const std::wstring* path);
 #endif
 
   // Creates a PersistentPrefStore providing access to the user preferences of
@@ -99,7 +97,7 @@ class ProfilePrefStoreManager {
       std::vector<prefs::mojom::TrackedPreferenceMetadataPtr>
           tracking_configuration,
       size_t reporting_ids_count,
-      std::unique_ptr<base::DictionaryValue> master_prefs);
+      base::Value::Dict master_prefs);
 
  private:
   // Connects to the pref service over mojo and configures it.

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,8 @@
 
 #include "base/gtest_prod_util.h"
 #include "base/mac/scoped_cftyperef.h"
-#include "base/memory/ref_counted.h"
 #include "net/base/net_export.h"
-#include "net/cert/internal/trust_store.h"
+#include "net/cert/pki/trust_store.h"
 
 namespace net {
 
@@ -68,6 +67,21 @@ class NET_EXPORT TrustStoreMac : public TrustStore {
     // One of the trustSettings dictionaries contained a
     // kSecTrustSettingsAllowedError key.
     TRUST_SETTINGS_DICT_CONTAINS_ALLOWED_ERROR = 1 << 10,
+
+    // SecTrustSettingsCopyTrustSettings returned a value other than
+    // errSecSuccess or errSecItemNotFound.
+    COPY_TRUST_SETTINGS_ERROR = 1 << 11,
+  };
+
+  // NOTE: When updating this enum, also update ParamToTrustImplType in
+  // system_trust_store.cc
+  enum class TrustImplType {
+    // Values 1 and 3 were used for implementation strategies that have since
+    // been removed.
+    kUnknown = 0,
+    kSimple = 2,
+    kDomainCacheFullCerts = 4,
+    kKeychainCacheFullCerts = 5,
   };
 
   class ResultDebugData : public base::SupportsUserData::Data {
@@ -75,7 +89,7 @@ class NET_EXPORT TrustStoreMac : public TrustStore {
     static const ResultDebugData* Get(const base::SupportsUserData* debug_data);
     static ResultDebugData* GetOrCreate(base::SupportsUserData* debug_data);
 
-    void UpdateTrustDebugInfo(int trust_debug_info);
+    void UpdateTrustDebugInfo(int trust_debug_info, TrustImplType impl_type);
 
     // base::SupportsUserData::Data implementation:
     std::unique_ptr<Data> Clone() override;
@@ -85,40 +99,46 @@ class NET_EXPORT TrustStoreMac : public TrustStore {
     // union of all the TrustDebugInfo flags.
     int combined_trust_debug_info() const { return combined_trust_debug_info_; }
 
+    // Returns an enum representing which trust implementation was used.
+    TrustImplType trust_impl() const { return trust_impl_; }
+
    private:
     int combined_trust_debug_info_ = 0;
+
+    TrustImplType trust_impl_ = TrustImplType::kUnknown;
   };
 
   // Creates a TrustStoreMac which will find anchors that are trusted for
   // |policy_oid|. For list of possible policy values, see:
   // https://developer.apple.com/reference/security/1667150-certificate_key_and_trust_servic/1670151-standard_policies_for_specific_c?language=objc
-  // TODO(mattm): policy oids are actually CFStrings, but the constants are
-  // defined as CFTypeRef in older SDK versions. Change |policy_oid| type to
-  // const CFStringRef when Chromium switches to building against the 10.11 SDK
-  // (or newer).
-  explicit TrustStoreMac(CFTypeRef policy_oid);
+  // |impl| selects which internal implementation is used for checking trust
+  // settings.
+  TrustStoreMac(CFStringRef policy_oid, TrustImplType impl);
+
+  TrustStoreMac(const TrustStoreMac&) = delete;
+  TrustStoreMac& operator=(const TrustStoreMac&) = delete;
+
   ~TrustStoreMac() override;
 
-  // Returns true if the given certificate is present in the system trust
-  // domain.
-  bool IsKnownRoot(const ParsedCertificate* cert) const;
+  // Initializes the trust cache, if it isn't already initialized.
+  void InitializeTrustCache() const;
 
   // TrustStore implementation:
   void SyncGetIssuersOf(const ParsedCertificate* cert,
                         ParsedCertificateList* issuers) override;
-  void GetTrust(const scoped_refptr<ParsedCertificate>& cert,
-                CertificateTrust* trust,
-                base::SupportsUserData* debug_data) const override;
+  CertificateTrust GetTrust(const ParsedCertificate* cert,
+                            base::SupportsUserData* debug_data) override;
 
  private:
-  FRIEND_TEST_ALL_PREFIXES(TrustStoreMacTest, MultiRootNotTrusted);
-  FRIEND_TEST_ALL_PREFIXES(TrustStoreMacTest, SystemCerts);
-
-  class TrustCache;
+  class TrustImpl;
+  class TrustImplDomainCacheFullCerts;
+  class TrustImplKeychainCacheFullCerts;
+  class TrustImplNoCache;
 
   // Finds certificates in the OS keychains whose Subject matches |name_data|.
-  // The result is an array of SecCertificateRef.
-  static base::ScopedCFTypeRef<CFArrayRef>
+  // The result is an array of CRYPTO_BUFFERs containing the DER certificate
+  // data.
+  static std::vector<bssl::UniquePtr<CRYPTO_BUFFER>>
   FindMatchingCertificatesForMacNormalizedSubject(CFDataRef name_data);
 
   // Returns the OS-normalized issuer of |cert|.
@@ -128,9 +148,7 @@ class NET_EXPORT TrustStoreMac : public TrustStore {
   static base::ScopedCFTypeRef<CFDataRef> GetMacNormalizedIssuer(
       const ParsedCertificate* cert);
 
-  std::unique_ptr<TrustCache> trust_cache_;
-
-  DISALLOW_COPY_AND_ASSIGN(TrustStoreMac);
+  std::unique_ptr<TrustImpl> trust_cache_;
 };
 
 }  // namespace net

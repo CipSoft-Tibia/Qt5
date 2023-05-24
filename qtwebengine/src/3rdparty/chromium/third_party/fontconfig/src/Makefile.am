@@ -31,14 +31,32 @@ endif
 
 ACLOCAL_AMFLAGS = -I m4
 
+MESON_FILES = \
+	conf.d/link_confs.py \
+	conf.d/write-35-lang-normalize-conf.py \
+	doc/edit-sgml.py \
+	doc/extract-man-list.py \
+	doc/run-quiet.py \
+	fc-case/fc-case.py \
+	fc-lang/fc-lang.py \
+	meson.build \
+	meson_options.txt \
+	src/cutout.py \
+	src/fcstdint.h.in \
+	src/fcwindows.h \
+	src/fontconfig.def.in \
+	src/makealias.py \
+	$(wildcard $(srcdir)/*/meson.build) \
+	$(wildcard $(srcdir)/meson-cc-tests/*) \
+	$(wildcard $(srcdir)/subprojects/*.wrap)
+
 EXTRA_DIST = config.rpath  \
 	fontconfig.pc.in \
 	fonts.conf.in \
 	fonts.dtd \
-	fontconfig.spec.in \
-	fontconfig.spec \
 	fontconfig-zip.in \
-	config-fixups.h
+	config-fixups.h \
+	$(MESON_FILES)
 CLEANFILES = fonts.conf
 DISTCLEANFILES = config.cache doltcompile
 MAINTAINERCLEANFILES = \
@@ -65,7 +83,7 @@ configdir = $(CONFIGDIR)
 xmldir = $(XMLDIR)
 xml_DATA = fonts.dtd
 
-if CROSS_COMPILING
+if !ENABLE_CACHE_BUILD
   RUN_FC_CACHE_TEST=false
 else
   RUN_FC_CACHE_TEST=test -z "$(DESTDIR)"
@@ -96,7 +114,7 @@ FC_CONFIGDIR = $(subst $(BASECONFIGDIR)/,,$(CONFIGDIR))
 fonts.conf: fonts.conf.in Makefile
 	sed \
 		-e 's,@FC_CACHEDIR\@,$(FC_CACHEDIR),g' \
-		-e 's,@FC_DEFAULT_FONTS\@,$(FC_DEFAULT_FONTS),g' \
+		-e 's,@FC_DEFAULT_FONTS\@,	$(FC_DEFAULT_FONTS),g' \
 		-e 's,@FC_FONTPATH\@,$(FC_FONTPATH),g' \
 		-e 's,@CONFIGDIR\@,$(FC_CONFIGDIR),g' \
 		-e 's,@PACKAGE\@,$(PACKAGE),g' \
@@ -154,5 +172,15 @@ debuild-dirs: distdir
 	$(RM) -r $(distdir).orig/debian
 
 DISTCHECK_CONFIGURE_FLAGS =
+
+check-versions:
+	@$(GREP) -e "^[[:space:]]*version[[:space:]]*:[[:space:]]*'$(VERSION)'," $(srcdir)/meson.build >/dev/null || { \
+	  echo "======================================================================================"; \
+	  echo "Meson version does not seem to match autotools version $(VERSION), update meson.build!"; \
+	  echo "======================================================================================"; \
+	  exit 1; \
+	}
+
+all-local: check-versions
 
 -include $(top_srcdir)/git.mk

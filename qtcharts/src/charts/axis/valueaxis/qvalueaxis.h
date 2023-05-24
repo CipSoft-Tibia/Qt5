@@ -1,38 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QVALUEAXIS_H
 #define QVALUEAXIS_H
 
 #include <QtCharts/QAbstractAxis>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class QValueAxisPrivate;
 
@@ -44,9 +18,12 @@ class Q_CHARTS_EXPORT QValueAxis : public QAbstractAxis
     Q_PROPERTY(qreal max READ max WRITE setMax NOTIFY maxChanged)
     Q_PROPERTY(QString labelFormat READ labelFormat WRITE setLabelFormat NOTIFY labelFormatChanged)
     Q_PROPERTY(int minorTickCount READ minorTickCount WRITE setMinorTickCount NOTIFY minorTickCountChanged)
-    Q_PROPERTY(qreal tickAnchor READ tickAnchor WRITE setTickAnchor NOTIFY tickAnchorChanged REVISION 1)
-    Q_PROPERTY(qreal tickInterval READ tickInterval WRITE setTickInterval NOTIFY tickIntervalChanged REVISION 1)
-    Q_PROPERTY(TickType tickType READ tickType WRITE setTickType NOTIFY tickTypeChanged REVISION 1)
+    Q_PROPERTY(qreal tickAnchor READ tickAnchor WRITE setTickAnchor NOTIFY tickAnchorChanged
+                       REVISION(2, 3))
+    Q_PROPERTY(qreal tickInterval READ tickInterval WRITE setTickInterval NOTIFY tickIntervalChanged
+                       REVISION(2, 3))
+    Q_PROPERTY(TickType tickType READ tickType WRITE setTickType NOTIFY tickTypeChanged REVISION(2,
+                                                                                                 3))
     Q_ENUMS(TickType)
 
 public:
@@ -63,7 +40,7 @@ protected:
     QValueAxis(QValueAxisPrivate &d, QObject *parent = nullptr);
 
 public:
-    AxisType type() const;
+    AxisType type() const override;
 
     //range handling
     void setMin(qreal min);
@@ -97,15 +74,15 @@ Q_SIGNALS:
     void tickCountChanged(int tickCount);
     void minorTickCountChanged(int tickCount);
     void labelFormatChanged(const QString &format);
-    Q_REVISION(1) void tickIntervalChanged(qreal interval);
-    Q_REVISION(1) void tickAnchorChanged(qreal anchor);
-    Q_REVISION(1) void tickTypeChanged(QValueAxis::TickType type);
+    Q_REVISION(2, 3) void tickIntervalChanged(qreal interval);
+    Q_REVISION(2, 3) void tickAnchorChanged(qreal anchor);
+    Q_REVISION(2, 3) void tickTypeChanged(QValueAxis::TickType type);
 
 private:
     Q_DECLARE_PRIVATE(QValueAxis)
     Q_DISABLE_COPY(QValueAxis)
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif // QVALUEAXIS_H

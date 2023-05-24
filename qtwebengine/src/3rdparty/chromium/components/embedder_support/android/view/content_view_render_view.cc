@@ -1,19 +1,18 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/embedder_support/android/view/content_view_render_view.h"
 #include <android/bitmap.h>
-#include <android/native_window_jni.h>
 
 #include <memory>
 
 #include "base/android/jni_android.h"
 #include "base/android/jni_string.h"
 #include "base/android/scoped_java_ref.h"
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/lazy_instance.h"
-#include "cc/layers/layer.h"
+#include "cc/slim/layer.h"
 #include "components/embedder_support/android/view_jni_headers/ContentViewRenderView_jni.h"
 #include "content/public/browser/android/compositor.h"
 #include "content/public/browser/web_contents.h"
@@ -62,7 +61,7 @@ void ContentViewRenderView::SetCurrentWebContents(
       content::WebContents::FromJavaWebContents(jweb_contents);
   compositor_->SetRootLayer(web_contents
                                 ? web_contents->GetNativeView()->GetLayer()
-                                : scoped_refptr<cc::Layer>());
+                                : scoped_refptr<cc::slim::Layer>());
 }
 
 void ContentViewRenderView::OnPhysicalBackingSizeChanged(
@@ -85,6 +84,12 @@ void ContentViewRenderView::SurfaceCreated(JNIEnv* env,
 
 void ContentViewRenderView::SurfaceDestroyed(JNIEnv* env,
                                              const JavaParamRef<jobject>& obj) {
+  // When we switch from Chrome to other app we can't detach child surface
+  // controls because it leads to a visible hole: b/157439199. To avoid this we
+  // don't detach surfaces if the surface is going to be destroyed, they will be
+  // detached and freed by OS.
+  compositor_->PreserveChildSurfaceControls();
+
   compositor_->SetSurface(nullptr, false);
   current_surface_format_ = 0;
 }

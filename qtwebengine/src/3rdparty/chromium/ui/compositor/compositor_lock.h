@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,12 @@
 
 #include <vector>
 
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
 #include "ui/compositor/compositor_export.h"
-
-namespace cc {
-class ScopedDeferMainFrameUpdate;
-}
 
 namespace ui {
 
@@ -39,14 +37,13 @@ class COMPOSITOR_EXPORT CompositorLockManager {
       scoped_refptr<base::SingleThreadTaskRunner> task_runner);
   ~CompositorLockManager();
 
-  // Creates a compositor lock. Returns NULL if it is not possible to lock at
-  // this time (i.e. we're waiting to complete a previous unlock). If the
-  // timeout is null, then no timeout is used.
+  // Creates a compositor lock. If the timeout is null, then no timeout is used.
+  // Runs `release_callback` on timeout or when the returned `CompositorLock`
+  // is destroyed.
   std::unique_ptr<CompositorLock> GetCompositorLock(
       CompositorLockClient* client,
       base::TimeDelta timeout,
-      std::unique_ptr<cc::ScopedDeferMainFrameUpdate>
-          scoped_defer_main_frame_update);
+      base::OnceClosure release_callback);
 
   void set_allow_locks_to_extend_timeout(bool allowed) {
     allow_locks_to_extend_timeout_ = allowed;
@@ -96,8 +93,11 @@ class COMPOSITOR_EXPORT CompositorLock {
   // no timeout is scheduled, else a timeout is scheduled on the |task_runner|.
   explicit CompositorLock(CompositorLockClient* client,
                           base::WeakPtr<CompositorLockManager> manager,
-                          std::unique_ptr<cc::ScopedDeferMainFrameUpdate>
-                              scoped_defer_main_frame_update);
+                          base::OnceClosure release_callback);
+
+  CompositorLock(const CompositorLock&) = delete;
+  CompositorLock& operator=(const CompositorLock&) = delete;
+
   ~CompositorLock();
 
  private:
@@ -106,12 +106,9 @@ class COMPOSITOR_EXPORT CompositorLock {
   // Causes the CompositorLock to end due to a timeout.
   void TimeoutLock();
 
-  CompositorLockClient* const client_;
-  std::unique_ptr<cc::ScopedDeferMainFrameUpdate>
-      scoped_defer_main_frame_update_;
+  const raw_ptr<CompositorLockClient> client_;
+  base::OnceClosure release_callback_;
   base::WeakPtr<CompositorLockManager> manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(CompositorLock);
 };
 
 }  // namespace ui

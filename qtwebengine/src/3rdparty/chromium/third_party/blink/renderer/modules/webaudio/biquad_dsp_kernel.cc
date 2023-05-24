@@ -23,15 +23,19 @@
  * DAMAGE.
  */
 
-#include <limits.h>
 #include "third_party/blink/renderer/modules/webaudio/biquad_dsp_kernel.h"
+
+#include <limits.h>
+
 #include "third_party/blink/renderer/platform/audio/audio_utilities.h"
 #include "third_party/blink/renderer/platform/wtf/math_extras.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
 
-static bool hasConstantValues(float* values, int frames_to_process) {
+namespace {
+
+bool HasConstantValues(float* values, int frames_to_process) {
   // TODO(rtoy): Use SIMD to optimize this.  This would speed up
   // processing by a factor of 4 because we can process 4 floats at a
   // time.
@@ -46,45 +50,47 @@ static bool hasConstantValues(float* values, int frames_to_process) {
   return true;
 }
 
+}  // namespace
+
 void BiquadDSPKernel::UpdateCoefficientsIfNecessary(int frames_to_process) {
   if (GetBiquadProcessor()->FilterCoefficientsDirty()) {
-    float cutoff_frequency[audio_utilities::kRenderQuantumFrames];
-    float q[audio_utilities::kRenderQuantumFrames];
-    float gain[audio_utilities::kRenderQuantumFrames];
-    float detune[audio_utilities::kRenderQuantumFrames];  // in Cents
+    Vector<float> cutoff_frequency(RenderQuantumFrames());
+    Vector<float> q(RenderQuantumFrames());
+    Vector<float> gain(RenderQuantumFrames());
+    Vector<float> detune(RenderQuantumFrames());  // in Cents
 
     SECURITY_CHECK(static_cast<unsigned>(frames_to_process) <=
-                   audio_utilities::kRenderQuantumFrames);
+                   RenderQuantumFrames());
 
     if (GetBiquadProcessor()->HasSampleAccurateValues() &&
         GetBiquadProcessor()->IsAudioRate()) {
       GetBiquadProcessor()->Parameter1().CalculateSampleAccurateValues(
-          cutoff_frequency, frames_to_process);
+          cutoff_frequency.data(), frames_to_process);
       GetBiquadProcessor()->Parameter2().CalculateSampleAccurateValues(
-          q, frames_to_process);
+          q.data(), frames_to_process);
       GetBiquadProcessor()->Parameter3().CalculateSampleAccurateValues(
-          gain, frames_to_process);
+          gain.data(), frames_to_process);
       GetBiquadProcessor()->Parameter4().CalculateSampleAccurateValues(
-          detune, frames_to_process);
+          detune.data(), frames_to_process);
 
       // If all the values are actually constant for this render (or the
       // automation rate is "k-rate" for all of the AudioParams), we don't need
       // to compute filter coefficients for each frame since they would be the
       // same as the first.
       bool isConstant =
-          hasConstantValues(cutoff_frequency, frames_to_process) &&
-          hasConstantValues(q, frames_to_process) &&
-          hasConstantValues(gain, frames_to_process) &&
-          hasConstantValues(detune, frames_to_process);
+          HasConstantValues(cutoff_frequency.data(), frames_to_process) &&
+          HasConstantValues(q.data(), frames_to_process) &&
+          HasConstantValues(gain.data(), frames_to_process) &&
+          HasConstantValues(detune.data(), frames_to_process);
 
-      UpdateCoefficients(isConstant ? 1 : frames_to_process, cutoff_frequency,
-                         q, gain, detune);
+      UpdateCoefficients(isConstant ? 1 : frames_to_process, cutoff_frequency.data(),
+                         q.data(), gain.data(), detune.data());
     } else {
       cutoff_frequency[0] = GetBiquadProcessor()->Parameter1().FinalValue();
       q[0] = GetBiquadProcessor()->Parameter2().FinalValue();
       gain[0] = GetBiquadProcessor()->Parameter3().FinalValue();
       detune[0] = GetBiquadProcessor()->Parameter4().FinalValue();
-      UpdateCoefficients(1, cutoff_frequency, q, gain, detune);
+      UpdateCoefficients(1, cutoff_frequency.data(), q.data(), gain.data(), detune.data());
     }
   }
 }
@@ -95,7 +101,7 @@ void BiquadDSPKernel::UpdateCoefficients(int number_of_frames,
                                          const float* gain,
                                          const float* detune) {
   // Convert from Hertz to normalized frequency 0 -> 1.
-  double nyquist = this->Nyquist();
+  double nyquist = Nyquist();
 
   biquad_.SetHasSampleAccurateValues(number_of_frames > 1);
 
@@ -154,13 +160,13 @@ void BiquadDSPKernel::UpdateTailTime(int coef_index) {
   // this, limit the maximum to this value so that we don't keep such
   // nodes alive "forever".
   // TODO: What is a reasonable upper limit?
-  const double kMaxTailTime = 30;
+  constexpr double kMaxTailTime = 30.0;
 
   double sample_rate = SampleRate();
   double tail =
       biquad_.TailFrame(coef_index, kMaxTailTime * sample_rate) / sample_rate;
 
-  tail_time_ = clampTo(tail, 0.0, kMaxTailTime);
+  tail_time_ = ClampTo(tail, 0.0, kMaxTailTime);
 }
 
 void BiquadDSPKernel::Process(const float* source,
@@ -179,9 +185,10 @@ void BiquadDSPKernel::Process(const float* source,
   // The audio thread can't block on this lock; skip updating the coefficients
   // for this block if necessary. We'll get them the next time around.
   {
-    MutexTryLocker try_locker(process_lock_);
-    if (try_locker.Locked())
+    base::AutoTryLock try_locker(process_lock_);
+    if (try_locker.is_acquired()) {
       UpdateCoefficientsIfNecessary(frames_to_process);
+    }
   }
 
   biquad_.Process(source, destination, frames_to_process);
@@ -193,7 +200,7 @@ void BiquadDSPKernel::GetFrequencyResponse(BiquadDSPKernel& kernel,
                                            float* mag_response,
                                            float* phase_response) {
   // Only allow on the main thread because we don't want the audio thread to be
-  // updating |kernel| while we're computing the response.
+  // updating `kernel` while we're computing the response.
   DCHECK(IsMainThread());
 
   DCHECK_GE(n_frequencies, 0);
@@ -206,8 +213,9 @@ void BiquadDSPKernel::GetFrequencyResponse(BiquadDSPKernel& kernel,
 
   // Convert from frequency in Hz to normalized frequency (0 -> 1),
   // with 1 equal to the Nyquist frequency.
-  for (int k = 0; k < n_frequencies; ++k)
+  for (int k = 0; k < n_frequencies; ++k) {
     frequency[k] = frequency_hz[k] / nyquist;
+  }
 
   kernel.biquad_.GetFrequencyResponse(n_frequencies, frequency.data(),
                                       mag_response, phase_response);

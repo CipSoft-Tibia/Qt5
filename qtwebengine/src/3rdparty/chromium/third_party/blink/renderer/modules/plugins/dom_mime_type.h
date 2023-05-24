@@ -24,20 +24,20 @@
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
 #include "third_party/blink/renderer/core/page/plugin_data.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 
 namespace blink {
 
 class DOMPlugin;
-class LocalFrame;
+class LocalDOMWindow;
 
 class DOMMimeType final : public ScriptWrappable,
                           public ExecutionContextClient {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
-  DOMMimeType(LocalFrame*, const MimeClassInfo&);
+  DOMMimeType(LocalDOMWindow*, const MimeClassInfo&);
 
   const String& type() const;
   String suffixes() const;

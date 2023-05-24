@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qerrormessage.h"
 
@@ -62,17 +26,17 @@
 
 QT_BEGIN_NAMESPACE
 
-namespace {
-struct Message {
-    QString content;
-    QString type;
-};
-}
+using namespace Qt::StringLiterals;
 
 class QErrorMessagePrivate : public QDialogPrivate
 {
     Q_DECLARE_PUBLIC(QErrorMessage)
 public:
+    struct Message {
+        QString content;
+        QString type;
+    };
+
     QPushButton * ok;
     QCheckBox * again;
     QTextEdit * errors;
@@ -86,7 +50,45 @@ public:
     bool isMessageToBeShown(const QString &message, const QString &type) const;
     bool nextPending();
     void retranslateStrings();
+
+    void setVisible(bool) override;
+
+private:
+    void initHelper(QPlatformDialogHelper *) override;
+    void helperPrepareShow(QPlatformDialogHelper *) override;
 };
+
+
+void QErrorMessagePrivate::initHelper(QPlatformDialogHelper *helper)
+{
+    Q_Q(QErrorMessage);
+    auto *messageDialogHelper = static_cast<QPlatformMessageDialogHelper *>(helper);
+    QObject::connect(messageDialogHelper, &QPlatformMessageDialogHelper::checkBoxStateChanged, q,
+        [this](Qt::CheckState state) {
+            again->setCheckState(state);
+        }
+    );
+    QObject::connect(messageDialogHelper, &QPlatformMessageDialogHelper::clicked, q,
+        [this](QPlatformDialogHelper::StandardButton, QPlatformDialogHelper::ButtonRole) {
+            Q_Q(QErrorMessage);
+            q->accept();
+        }
+    );
+}
+
+void QErrorMessagePrivate::helperPrepareShow(QPlatformDialogHelper *helper)
+{
+    Q_Q(QErrorMessage);
+    auto *messageDialogHelper = static_cast<QPlatformMessageDialogHelper *>(helper);
+    QSharedPointer<QMessageDialogOptions> options = QMessageDialogOptions::create();
+    options->setText(currentMessage);
+    options->setWindowTitle(q->windowTitle());
+    options->setText(QErrorMessage::tr("An error occurred"));
+    options->setInformativeText(currentMessage);
+    options->setStandardIcon(QMessageDialogOptions::Critical);
+    options->setCheckBox(again->text(), again->checkState());
+    messageDialogHelper->setOptions(options);
+}
 
 namespace {
 class QErrorMessageTextView : public QTextEdit
@@ -163,11 +165,11 @@ static bool metFatal = false;
 
 static QString msgType2i18nString(QtMsgType t)
 {
-    Q_STATIC_ASSERT(QtDebugMsg == 0);
-    Q_STATIC_ASSERT(QtWarningMsg == 1);
-    Q_STATIC_ASSERT(QtCriticalMsg == 2);
-    Q_STATIC_ASSERT(QtFatalMsg == 3);
-    Q_STATIC_ASSERT(QtInfoMsg == 4);
+    static_assert(QtDebugMsg == 0);
+    static_assert(QtWarningMsg == 1);
+    static_assert(QtCriticalMsg == 2);
+    static_assert(QtFatalMsg == 3);
+    static_assert(QtInfoMsg == 4);
 
     // adjust the array below if any of the above fire...
 
@@ -183,16 +185,28 @@ static QString msgType2i18nString(QtMsgType t)
     return QCoreApplication::translate("QErrorMessage", messages[t]);
 }
 
-static void jump(QtMsgType t, const QMessageLogContext & /*context*/, const QString &m)
+static QtMessageHandler originalMessageHandler = nullptr;
+
+static void jump(QtMsgType t, const QMessageLogContext &context, const QString &m)
 {
+    const auto forwardToOriginalHandler = qScopeGuard([&] {
+       if (originalMessageHandler)
+            originalMessageHandler(t, context, m);
+    });
+
     if (!qtMessageHandler)
         return;
 
-    QString rich = QLatin1String("<p><b>") + msgType2i18nString(t) + QLatin1String("</b></p>")
+    auto *defaultCategory = QLoggingCategory::defaultCategory();
+    if (context.category && defaultCategory
+        && qstrcmp(context.category, defaultCategory->categoryName()) != 0)
+        return;
+
+    QString rich = "<p><b>"_L1 + msgType2i18nString(t) + "</b></p>"_L1
                    + Qt::convertFromPlainText(m, Qt::WhiteSpaceNormal);
 
     // ### work around text engine quirk
-    if (rich.endsWith(QLatin1String("</p>")))
+    if (rich.endsWith("</p>"_L1))
         rich.chop(4);
 
     if (!metFatal) {
@@ -212,12 +226,20 @@ static void jump(QtMsgType t, const QMessageLogContext & /*context*/, const QStr
 /*!
     Constructs and installs an error handler window with the given \a
     parent.
+
+    The default \l{Qt::WindowModality} {window modality} of the dialog
+    depends on the platform. The window modality can be overridden via
+    setWindowModality() before calling showMessage().
 */
 
 QErrorMessage::QErrorMessage(QWidget * parent)
     : QDialog(*new QErrorMessagePrivate, parent)
 {
     Q_D(QErrorMessage);
+
+#if defined(Q_OS_MACOS)
+    setWindowModality(parent ? Qt::WindowModal : Qt::ApplicationModal);
+#endif
 
     d->icon = new QLabel(this);
     d->errors = new QErrorMessageTextView(this);
@@ -235,7 +257,7 @@ QErrorMessage::QErrorMessage(QWidget * parent)
     grid->setRowStretch(0, 42);
 
 #if QT_CONFIG(messagebox)
-    d->icon->setPixmap(QMessageBox::standardIcon(QMessageBox::Information));
+    d->icon->setPixmap(style()->standardPixmap(QStyle::SP_MessageBoxInformation));
     d->icon->setAlignment(Qt::AlignHCenter | Qt::AlignTop);
 #endif
     d->again->setChecked(true);
@@ -253,10 +275,12 @@ QErrorMessage::~QErrorMessage()
 {
     if (this == qtMessageHandler) {
         qtMessageHandler = nullptr;
-        QtMessageHandler tmp = qInstallMessageHandler(nullptr);
-        // in case someone else has later stuck in another...
-        if (tmp != jump)
-            qInstallMessageHandler(tmp);
+        QtMessageHandler currentMessagHandler = qInstallMessageHandler(nullptr);
+        if (currentMessagHandler != jump)
+            qInstallMessageHandler(currentMessagHandler);
+        else
+            qInstallMessageHandler(originalMessageHandler);
+        originalMessageHandler = nullptr;
     }
 }
 
@@ -276,8 +300,12 @@ void QErrorMessage::done(int a)
     }
     d->currentMessage.clear();
     d->currentType.clear();
-    if (!d->nextPending()) {
-        QDialog::done(a);
+
+    QDialog::done(a);
+
+    if (d->nextPending()) {
+        show();
+    } else {
         if (this == qtMessageHandler && metFatal)
             exit(1);
     }
@@ -288,6 +316,12 @@ void QErrorMessage::done(int a)
     Returns a pointer to a QErrorMessage object that outputs the
     default Qt messages. This function creates such an object, if there
     isn't one already.
+
+    The object will only output log messages of QLoggingCategory::defaultCategory().
+
+    The object will forward all messages to the original message handler.
+
+    \sa qInstallMessageHandler
 */
 
 QErrorMessage * QErrorMessage::qtHandler()
@@ -296,7 +330,7 @@ QErrorMessage * QErrorMessage::qtHandler()
         qtMessageHandler = new QErrorMessage(nullptr);
         qAddPostRoutine(deleteStaticcQErrorMessage); // clean up
         qtMessageHandler->setWindowTitle(QCoreApplication::applicationName());
-        qInstallMessageHandler(jump);
+        originalMessageHandler = qInstallMessageHandler(jump);
     }
     return qtMessageHandler;
 }
@@ -324,6 +358,7 @@ bool QErrorMessagePrivate::nextPending()
 #endif
             currentMessage = std::move(message);
             currentType = std::move(type);
+            again->setChecked(true);
             return true;
         }
     }
@@ -367,6 +402,23 @@ void QErrorMessage::showMessage(const QString &message, const QString &type)
     d->pending.push({message, type});
     if (!isVisible() && d->nextPending())
         show();
+}
+
+void QErrorMessagePrivate::setVisible(bool visible)
+{
+    Q_Q(QErrorMessage);
+    if (q->testAttribute(Qt::WA_WState_ExplicitShowHide) && q->testAttribute(Qt::WA_WState_Hidden) != visible)
+        return;
+
+    if (canBeNativeDialog())
+        setNativeDialogVisible(visible);
+
+    // Update WA_DontShowOnScreen based on whether the native dialog was shown,
+    // so that QDialog::setVisible(visible) below updates the QWidget state correctly,
+    // but skips showing the non-native version.
+    q->setAttribute(Qt::WA_DontShowOnScreen, nativeDialogInUse);
+
+    QDialogPrivate::setVisible(visible);
 }
 
 /*!

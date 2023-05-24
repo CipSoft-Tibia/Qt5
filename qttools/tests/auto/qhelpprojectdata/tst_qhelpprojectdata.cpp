@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <QtTest/QtTest>
 
 #include <QtCore/QFileInfo>
@@ -86,7 +61,7 @@ void tst_QHelpProjectData::customFilters()
         QFAIL("Cannot read qhp file!");
 
     const QList<QHelpDataCustomFilter> filters = data.customFilters();
-    QCOMPARE(filters.count(), 2);
+    QCOMPARE(filters.size(), 2);
 
     for (const QHelpDataCustomFilter &f : filters) {
         if (f.name == QLatin1String("Custom Filter 1")) {
@@ -114,7 +89,7 @@ void tst_QHelpProjectData::filterSections()
         QFAIL("Cannot read qhp file!");
 
     const QList<QHelpDataFilterSection> sections = data.filterSections();
-    QCOMPARE(sections.count(), 2);
+    QCOMPARE(sections.size(), 2);
 
     for (const QHelpDataFilterSection &s : sections) {
         if (s.filterAttributes().contains("filter1")) {
@@ -135,10 +110,10 @@ void tst_QHelpProjectData::filterSections()
                     QFAIL("Unexpected index!");
                 }
             }
-            QCOMPARE(s.contents().count(), 1);
-            QCOMPARE(s.contents().first()->children().count(), 5);
+            QCOMPARE(s.contents().size(), 1);
+            QCOMPARE(s.contents().first()->children().size(), 5);
         } else if (s.filterAttributes().contains("filter2")) {
-            QCOMPARE(s.contents().count(), 1);
+            QCOMPARE(s.contents().size(), 1);
             const QStringList lst = {
                 "cars.html",
                 "classic.css",
@@ -159,7 +134,7 @@ void tst_QHelpProjectData::metaData()
     if (!data.readData(m_inputFile))
         QFAIL("Cannot read qhp file!");
 
-    QCOMPARE(data.metaData().count(), 2);
+    QCOMPARE(data.metaData().size(), 2);
     QCOMPARE(data.metaData().value("author").toString(),
         QString("Digia Plc and/or its subsidiary(-ies)"));
 }

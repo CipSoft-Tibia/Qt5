@@ -1,17 +1,19 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/platform/peerconnection/webrtc_audio_sink.h"
 
-#include <algorithm>
 #include <limits>
 
-#include "base/bind_helpers.h"
 #include "base/check_op.h"
+#include "base/containers/contains.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
-#include "base/stl_util.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/stringprintf.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/trace_event/trace_event.h"
 #include "media/base/audio_timestamp_helper.h"
 #include "third_party/blink/public/platform/modules/webrtc/webrtc_logging.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
@@ -58,7 +60,8 @@ WebRtcAudioSink::WebRtcAudioSink(
                                              std::move(main_task_runner))),
       fifo_(ConvertToBaseRepeatingCallback(
           CrossThreadBindRepeating(&WebRtcAudioSink::DeliverRebufferedAudio,
-                                   CrossThreadUnretained(this)))) {
+                                   CrossThreadUnretained(this)))),
+      num_preferred_channels_(-1) {
   SendLogMessage(base::StringPrintf("WebRtcAudioSink({label=%s})",
                                     adapter_->label().c_str()));
 }
@@ -99,6 +102,9 @@ void WebRtcAudioSink::OnData(const media::AudioBus& audio_bus,
                              base::TimeTicks estimated_capture_time) {
   // No thread check: OnData might be called on different threads (but not
   // concurrently).
+  TRACE_EVENT2(TRACE_DISABLED_BY_DEFAULT("mediastream"),
+               "WebRtcAudioSink::OnData", "this", static_cast<void*>(this),
+               "frames", audio_bus.frames());
 
   // TODO(crbug.com/1054769): Better to let |fifo_| handle the estimated capture
   // time and let it return a corrected interpolated capture time to
@@ -115,7 +121,7 @@ void WebRtcAudioSink::OnData(const media::AudioBus& audio_bus,
 }
 
 void WebRtcAudioSink::OnSetFormat(const media::AudioParameters& params) {
-  DCHECK(params.IsValid());
+  CHECK(params.IsValid());
   SendLogMessage(base::StringPrintf("OnSetFormat([label=%s] {params=[%s]})",
                                     adapter_->label().c_str(),
                                     params.AsHumanReadableString().c_str()));
@@ -131,9 +137,8 @@ void WebRtcAudioSink::OnSetFormat(const media::AudioParameters& params) {
 void WebRtcAudioSink::DeliverRebufferedAudio(const media::AudioBus& audio_bus,
                                              int frame_delay) {
   DCHECK(params_.IsValid());
-
-  // TODO(miu): Why doesn't a WebRTC sink care about reference time passed to
-  // OnData(), and the |frame_delay| here?  How is AV sync achieved otherwise?
+  TRACE_EVENT1("audio", "WebRtcAudioSink::DeliverRebufferedAudio", "frames",
+               audio_bus.frames());
 
   // TODO(henrika): Remove this conversion once the interface in libjingle
   // supports float vectors.
@@ -146,13 +151,12 @@ void WebRtcAudioSink::DeliverRebufferedAudio(const media::AudioBus& audio_bus,
       last_estimated_capture_time_ + media::AudioTimestampHelper::FramesToTime(
                                          frame_delay, params_.sample_rate());
 
-  adapter_->DeliverPCMToWebRtcSinks(interleaved_data_.get(),
-                                    params_.sample_rate(), audio_bus.channels(),
-                                    audio_bus.frames(), estimated_capture_time);
+  num_preferred_channels_ = adapter_->DeliverPCMToWebRtcSinks(
+      interleaved_data_.get(), params_.sample_rate(), audio_bus.channels(),
+      audio_bus.frames(), estimated_capture_time);
 }
 
 namespace {
-// TODO(miu): MediaStreamAudioProcessor destructor requires this nonsense.
 void DereferenceOnMainThread(
     const scoped_refptr<webrtc::AudioProcessorInterface>& processor) {}
 }  // namespace
@@ -183,7 +187,7 @@ WebRtcAudioSink::Adapter::~Adapter() {
   }
 }
 
-void WebRtcAudioSink::Adapter::DeliverPCMToWebRtcSinks(
+int WebRtcAudioSink::Adapter::DeliverPCMToWebRtcSinks(
     const int16_t* audio_data,
     int sample_rate,
     size_t number_of_channels,
@@ -197,11 +201,15 @@ void WebRtcAudioSink::Adapter::DeliverPCMToWebRtcSinks(
   const int64_t capture_timestamp_us = timestamp_aligner_.TranslateTimestamp(
       estimated_capture_time.since_origin().InMicroseconds());
 
+  int num_preferred_channels = -1;
   for (webrtc::AudioTrackSinkInterface* sink : sinks_) {
     sink->OnData(audio_data, sizeof(int16_t) * 8, sample_rate,
                  number_of_channels, number_of_frames,
                  capture_timestamp_us / rtc::kNumMicrosecsPerMillisec);
+    num_preferred_channels =
+        std::max(num_preferred_channels, sink->NumPreferredChannels());
   }
+  return num_preferred_channels;
 }
 
 std::string WebRtcAudioSink::Adapter::kind() const {
@@ -236,7 +244,7 @@ void WebRtcAudioSink::Adapter::RemoveSink(
   SendLogMessage(
       base::StringPrintf("Adapter::RemoveSink([label=%s])", label_.c_str()));
   base::AutoLock auto_lock(lock_);
-  const auto it = std::find(sinks_.begin(), sinks_.end(), sink);
+  auto** it = base::ranges::find(sinks_, sink);
   if (it != sinks_.end())
     sinks_.erase(it);
 }
@@ -264,7 +272,8 @@ rtc::scoped_refptr<webrtc::AudioProcessorInterface>
 WebRtcAudioSink::Adapter::GetAudioProcessor() {
   DCHECK(!signaling_task_runner_ ||
          signaling_task_runner_->RunsTasksInCurrentSequence());
-  return audio_processor_.get();
+  return rtc::scoped_refptr<webrtc::AudioProcessorInterface>(
+      audio_processor_.get());
 }
 
 webrtc::AudioSourceInterface* WebRtcAudioSink::Adapter::GetSource() const {

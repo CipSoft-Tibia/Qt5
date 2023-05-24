@@ -1,18 +1,20 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
+#include "base/memory/read_only_shared_memory_region.h"
+#include "base/memory/shared_memory_mapping.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_simple_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "device/vr/orientation/orientation_device.h"
 #include "device/vr/orientation/orientation_session.h"
 #include "device/vr/test/fake_orientation_provider.h"
@@ -27,19 +29,16 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
-#include "ui/display/test/scoped_screen_override.h"
 #include "ui/gfx/geometry/quaternion.h"
 
 namespace device {
-
-using display::test::ScopedScreenOverride;
 
 namespace {
 
 class FakeScreen : public display::Screen {
  public:
-  FakeScreen() = default;
-  ~FakeScreen() override = default;
+  FakeScreen() { display::Screen::SetScreenInstance(this); }
+  ~FakeScreen() override { display::Screen::SetScreenInstance(nullptr); }
   display::Display GetPrimaryDisplay() const override { return display; }
 
   // Unused functions
@@ -80,6 +79,9 @@ class FakeScreen : public display::Screen {
 
 class VROrientationDeviceTest : public testing::Test {
  public:
+  VROrientationDeviceTest(const VROrientationDeviceTest&) = delete;
+  VROrientationDeviceTest& operator=(const VROrientationDeviceTest&) = delete;
+
   void onDisplaySynced() {}
 
  protected:
@@ -92,24 +94,17 @@ class VROrientationDeviceTest : public testing::Test {
     fake_sensor_ = std::make_unique<FakeOrientationSensor>(
         sensor_.InitWithNewPipeAndPassReceiver());
 
-    shared_buffer_handle_ = mojo::SharedBufferHandle::Create(
+    mapped_region_ = base::ReadOnlySharedMemoryRegion::Create(
         sizeof(SensorReadingSharedBuffer) *
         (static_cast<uint64_t>(mojom::SensorType::kMaxValue) + 1));
-
-    shared_buffer_mapping_ = shared_buffer_handle_->MapAtOffset(
-        mojom::SensorInitParams::kReadBufferSizeForTests, GetBufferOffset());
+    ASSERT_TRUE(mapped_region_.IsValid());
 
     fake_screen_ = std::make_unique<FakeScreen>();
-
-    scoped_screen_override_ =
-        std::make_unique<ScopedScreenOverride>(fake_screen_.get());
 
     task_environment_.RunUntilIdle();
   }
 
-  void TearDown() override { shared_buffer_handle_.reset(); }
-
-  double GetBufferOffset() {
+  uint64_t GetBufferOffset() {
     return SensorReadingSharedBuffer::GetOffset(kOrientationSensorType);
   }
 
@@ -143,7 +138,7 @@ class VROrientationDeviceTest : public testing::Test {
         [](base::OnceClosure quit_closure,
            base::OnceCallback<void(mojom::VRPosePtr)> callback,
            mojom::XRFrameDataPtr ptr) {
-          std::move(callback).Run(std::move(ptr->pose));
+          std::move(callback).Run(std::move(ptr->mojo_from_viewer));
           std::move(quit_closure).Run();
         },
         loop.QuitClosure(), std::move(callback)));
@@ -195,8 +190,7 @@ class VROrientationDeviceTest : public testing::Test {
 
     init_params->client_receiver = sensor_client_.BindNewPipeAndPassReceiver();
 
-    init_params->memory = shared_buffer_handle_->Clone(
-        mojo::SharedBufferHandle::AccessMode::READ_ONLY);
+    init_params->memory = mapped_region_.region.Duplicate();
 
     init_params->buffer_offset = GetBufferOffset();
 
@@ -204,11 +198,10 @@ class VROrientationDeviceTest : public testing::Test {
   }
 
   void WriteToBuffer(gfx::Quaternion q) {
-    if (!shared_buffer_mapping_)
-      return;
-
     SensorReadingSharedBuffer* buffer =
-        static_cast<SensorReadingSharedBuffer*>(shared_buffer_mapping_.get());
+        reinterpret_cast<SensorReadingSharedBuffer*>(
+            static_cast<char*>(mapped_region_.mapping.memory()) +
+            GetBufferOffset());
 
     auto& seqlock = buffer->seqlock.value();
     seqlock.WriteBegin();
@@ -233,14 +226,10 @@ class VROrientationDeviceTest : public testing::Test {
   // Fake Sensor Init params objects
   std::unique_ptr<FakeOrientationSensor> fake_sensor_;
   mojo::PendingRemote<mojom::Sensor> sensor_;
-  mojo::ScopedSharedBufferHandle shared_buffer_handle_;
-  mojo::ScopedSharedBufferMapping shared_buffer_mapping_;
+  base::MappedReadOnlyRegion mapped_region_;
   mojo::Remote<mojom::SensorClient> sensor_client_;
 
   std::unique_ptr<FakeScreen> fake_screen_;
-  std::unique_ptr<ScopedScreenOverride> scoped_screen_override_;
-
-  DISALLOW_COPY_AND_ASSIGN(VROrientationDeviceTest);
 };
 
 TEST_F(VROrientationDeviceTest, InitializationTest) {

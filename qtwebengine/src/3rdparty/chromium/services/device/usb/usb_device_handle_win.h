@@ -1,16 +1,17 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SERVICES_DEVICE_USB_USB_DEVICE_HANDLE_WIN_H_
 #define SERVICES_DEVICE_USB_USB_DEVICE_HANDLE_WIN_H_
 
+#include <list>
 #include <map>
 #include <memory>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
@@ -30,6 +31,9 @@ class UsbDeviceWin;
 // UsbDeviceHandle class provides basic I/O related functionalities.
 class UsbDeviceHandleWin : public UsbDeviceHandle {
  public:
+  UsbDeviceHandleWin(const UsbDeviceHandleWin&) = delete;
+  UsbDeviceHandleWin& operator=(const UsbDeviceHandleWin&) = delete;
+
   scoped_refptr<UsbDevice> GetDevice() const override;
   void Close() override;
   void SetConfiguration(int configuration_value,
@@ -79,9 +83,13 @@ class UsbDeviceHandleWin : public UsbDeviceHandle {
   // Constructor used to build a connection to the device.
   UsbDeviceHandleWin(scoped_refptr<UsbDeviceWin> device);
 
-  // Constructor used to build a connection to the device's parent hub.
-  UsbDeviceHandleWin(scoped_refptr<UsbDeviceWin> device,
-                     base::win::ScopedHandle handle);
+  // Constructor used to build a connection to the device's parent hub. To avoid
+  // bugs in USB hub drivers a single global sequenced task runner is used for
+  // all calls to the driver.
+  UsbDeviceHandleWin(
+      scoped_refptr<UsbDeviceWin> device,
+      base::win::ScopedHandle handle,
+      scoped_refptr<base::SequencedTaskRunner> blocking_task_runner);
 
   ~UsbDeviceHandleWin() override;
 
@@ -97,9 +105,22 @@ class UsbDeviceHandleWin : public UsbDeviceHandle {
 
   struct Interface {
     Interface();
+
+    Interface(const Interface&) = delete;
+    Interface& operator=(const Interface&) = delete;
+
     ~Interface();
 
-    const mojom::UsbInterfaceInfo* info;
+    // This may be nullptr in the rare case of a device which doesn't have any
+    // interfaces. In that case the Windows API still considers the device to
+    // have a single function which is represented here by initializing
+    // |interface_number| and |first_interface| to create a fake interface 0.
+    raw_ptr<const mojom::UsbInterfaceInfo> info = nullptr;
+
+    // These fields are copied from |info| and initialized to 0 in case it is
+    // nullptr.
+    uint8_t interface_number = 0;
+    uint8_t first_interface = 0;
 
     // In a composite device each function has its own driver and path to open.
     std::wstring function_driver;
@@ -119,17 +140,22 @@ class UsbDeviceHandleWin : public UsbDeviceHandle {
 
     // Closures to execute when |function_path| has been populated.
     std::vector<OpenInterfaceCallback> ready_callbacks;
-
-    DISALLOW_COPY_AND_ASSIGN(Interface);
   };
 
   struct Endpoint {
-    const mojom::UsbInterfaceInfo* interface;
+    raw_ptr<const mojom::UsbInterfaceInfo, DanglingUntriaged> interface;
     mojom::UsbTransferType type;
   };
 
   void OpenInterfaceHandle(Interface* interface,
                            OpenInterfaceCallback callback);
+
+  // Interfaces on a USB device are organized into "functions". When making a
+  // request to a device the first interface of each function is the one that
+  // has a valid |function_handle|. This function finds the correct interface
+  // for making requests to the provided interface based on the device's driver
+  // configuration.
+  Interface* GetFirstInterfaceForFunction(Interface* interface);
   void OnFunctionAvailable(OpenInterfaceCallback callback,
                            Interface* interface);
   void OnFirstInterfaceOpened(int interface_number,
@@ -163,19 +189,16 @@ class UsbDeviceHandleWin : public UsbDeviceHandle {
       Interface* interface);
   Request* MakeRequest(Interface* interface);
   std::unique_ptr<Request> UnlinkRequest(Request* request);
-  void GotNodeConnectionInformation(TransferCallback callback,
-                                    void* node_connection_info,
-                                    scoped_refptr<base::RefCountedBytes> buffer,
-                                    Request* request_ptr,
-                                    DWORD win32_result,
-                                    size_t bytes_transferred);
+  void GotNodeConnectionInformation(
+      TransferCallback callback,
+      void* node_connection_info,
+      scoped_refptr<base::RefCountedBytes> buffer,
+      std::pair<DWORD, DWORD> result_and_bytes_transferred);
   void GotDescriptorFromNodeConnection(
       TransferCallback callback,
       scoped_refptr<base::RefCountedBytes> request_buffer,
       scoped_refptr<base::RefCountedBytes> original_buffer,
-      Request* request_ptr,
-      DWORD win32_result,
-      size_t bytes_transferred);
+      std::pair<DWORD, DWORD> result_and_bytes_transferred);
   void TransferComplete(TransferCallback callback,
                         scoped_refptr<base::RefCountedBytes> buffer,
                         Request* request_ptr,
@@ -199,7 +222,7 @@ class UsbDeviceHandleWin : public UsbDeviceHandle {
 
   std::map<uint8_t, Interface> interfaces_;
   std::map<uint8_t, Endpoint> endpoints_;
-  std::map<Request*, std::unique_ptr<Request>> requests_;
+  std::list<std::unique_ptr<Request>> requests_;
 
   // Control transfers which are waiting for a function handle to be ready.
   std::vector<OpenInterfaceCallback> ep0_ready_callbacks_;
@@ -208,8 +231,6 @@ class UsbDeviceHandleWin : public UsbDeviceHandle {
   scoped_refptr<base::SequencedTaskRunner> blocking_task_runner_;
 
   base::WeakPtrFactory<UsbDeviceHandleWin> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(UsbDeviceHandleWin);
 };
 
 }  // namespace device

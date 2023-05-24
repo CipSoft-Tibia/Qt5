@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,9 @@ class CSSTokenizerInputStream {
   USING_FAST_MALLOC(CSSTokenizerInputStream);
 
  public:
-  explicit CSSTokenizerInputStream(const String& input);
+  explicit CSSTokenizerInputStream(const String& input)
+      : string_length_(input.length()), string_(input.Impl()) {}
+
   CSSTokenizerInputStream(const CSSTokenizerInputStream&) = delete;
   CSSTokenizerInputStream& operator=(const CSSTokenizerInputStream&) = delete;
 
@@ -22,8 +24,9 @@ class CSSTokenizerInputStream {
   // replacement character. Will return (NUL) kEndOfFileMarker when at the
   // end of the stream.
   UChar NextInputChar() const {
-    if (offset_ >= string_length_)
+    if (offset_ >= string_length_) {
       return '\0';
+    }
     UChar result = (*string_)[offset_];
     return result ? result : 0xFFFD;
   }
@@ -33,9 +36,13 @@ class CSSTokenizerInputStream {
   // NOTE: This may *also* return NUL if there's one in the input! Never
   // compare the return value to '\0'.
   UChar PeekWithoutReplacement(unsigned lookahead_offset) const {
-    if ((offset_ + lookahead_offset) >= string_length_)
+    if ((offset_ + lookahead_offset) >= string_length_) {
       return '\0';
+    }
     return (*string_)[offset_ + lookahead_offset];
+  }
+  StringView Peek() const {
+    return StringView(*string_, offset_, length() - offset_);
   }
 
   void Advance(unsigned offset = 1) { offset_ += offset; }
@@ -51,13 +58,15 @@ class CSSTokenizerInputStream {
     if (string_->Is8Bit()) {
       const LChar* characters8 = string_->Characters8();
       while ((offset_ + offset) < string_length_ &&
-             characterPredicate(characters8[offset_ + offset]))
+             characterPredicate(characters8[offset_ + offset])) {
         ++offset;
+      }
     } else {
       const UChar* characters16 = string_->Characters16();
       while ((offset_ + offset) < string_length_ &&
-             characterPredicate(characters16[offset_ + offset]))
+             characterPredicate(characters16[offset_ + offset])) {
         ++offset;
+      }
     }
     return offset;
   }
@@ -73,7 +82,7 @@ class CSSTokenizerInputStream {
   }
 
  private:
-  wtf_size_t offset_;
+  wtf_size_t offset_ = 0;
   const wtf_size_t string_length_;
   const scoped_refptr<StringImpl> string_;
 };

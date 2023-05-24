@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,7 +18,7 @@
 
 namespace blink {
 
-class UnderlyingImageListChecker
+class UnderlyingImageListChecker final
     : public CSSInterpolationType::CSSConversionChecker {
  public:
   explicit UnderlyingImageListChecker(const InterpolationValue& underlying)
@@ -65,7 +65,7 @@ InterpolationValue CSSImageListInterpolationType::MaybeConvertStyleImageList(
       });
 }
 
-class InheritedImageListChecker
+class InheritedImageListChecker final
     : public CSSInterpolationType::CSSConversionChecker {
  public:
   InheritedImageListChecker(const CSSProperty& property,
@@ -179,7 +179,7 @@ void CSSImageListInterpolationType::ApplyStandardPropertyValue(
         CssProperty(), *interpolable_list.Get(i), non_interpolable_list.Get(i),
         state);
   }
-  ImageListPropertyFunctions::SetImageList(CssProperty(), *state.Style(),
+  ImageListPropertyFunctions::SetImageList(CssProperty(), state.StyleBuilder(),
                                            image_list);
 }
 

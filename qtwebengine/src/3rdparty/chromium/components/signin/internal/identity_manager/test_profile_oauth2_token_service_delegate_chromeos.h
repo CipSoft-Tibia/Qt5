@@ -1,18 +1,21 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_SIGNIN_INTERNAL_IDENTITY_MANAGER_TEST_PROFILE_OAUTH2_TOKEN_SERVICE_DELEGATE_CHROMEOS_H_
 #define COMPONENTS_SIGNIN_INTERNAL_IDENTITY_MANAGER_TEST_PROFILE_OAUTH2_TOKEN_SERVICE_DELEGATE_CHROMEOS_H_
 
+#include "components/account_manager_core/account_manager_facade.h"
 #include "components/signin/internal/identity_manager/profile_oauth2_token_service_delegate.h"
 #include "components/signin/internal/identity_manager/profile_oauth2_token_service_delegate_chromeos.h"
 #include "components/signin/internal/identity_manager/profile_oauth2_token_service_observer.h"
 #include "services/network/test/test_network_connection_tracker.h"
 
 class AccountTrackerService;
-namespace chromeos {
-class AccountManager;
+class SigninClient;
+
+namespace crosapi {
+class AccountManagerMojoService;
 }
 
 namespace signin {
@@ -26,8 +29,9 @@ class TestProfileOAuth2TokenServiceDelegateChromeOS
       public ProfileOAuth2TokenServiceObserver {
  public:
   TestProfileOAuth2TokenServiceDelegateChromeOS(
+      SigninClient* client,
       AccountTrackerService* account_tracker_service,
-      chromeos::AccountManager* account_manager,
+      crosapi::AccountManagerMojoService* account_manager_mojo_service,
       bool is_regular_profile);
   ~TestProfileOAuth2TokenServiceDelegateChromeOS() override;
   TestProfileOAuth2TokenServiceDelegateChromeOS(
@@ -42,11 +46,13 @@ class TestProfileOAuth2TokenServiceDelegateChromeOS
       OAuth2AccessTokenConsumer* consumer) override;
   bool RefreshTokenIsAvailable(const CoreAccountId& account_id) const override;
   void UpdateAuthError(const CoreAccountId& account_id,
-                       const GoogleServiceAuthError& error) override;
+                       const GoogleServiceAuthError& error,
+                       bool fire_auth_error_changed) override;
   GoogleServiceAuthError GetAuthError(
       const CoreAccountId& account_id) const override;
   std::vector<CoreAccountId> GetAccounts() const override;
-  void LoadCredentials(const CoreAccountId& primary_account_id) override;
+  void LoadCredentials(const CoreAccountId& primary_account_id,
+                       bool is_syncing) override;
   void UpdateCredentials(const CoreAccountId& account_id,
                          const std::string& refresh_token) override;
   scoped_refptr<network::SharedURLLoaderFactory> GetURLLoaderFactory()
@@ -54,6 +60,9 @@ class TestProfileOAuth2TokenServiceDelegateChromeOS
   void RevokeCredentials(const CoreAccountId& account_id) override;
   void RevokeAllCredentials() override;
   const net::BackoffEntry* BackoffEntry() const override;
+  void ClearAuthError(const absl::optional<CoreAccountId>& account_id) override;
+  GoogleServiceAuthError BackOffError() const override;
+  void ResetBackOffEntry() override;
 
   // |ProfileOAuth2TokenServiceObserver| implementation.
   void OnRefreshTokenAvailable(const CoreAccountId& account_id) override;
@@ -67,6 +76,8 @@ class TestProfileOAuth2TokenServiceDelegateChromeOS
   // Owning pointer to TestNetworkConnectionTracker. Set only if it wasn't
   // created before initialization of this class.
   std::unique_ptr<network::TestNetworkConnectionTracker> owned_tracker_;
+  std::unique_ptr<account_manager::AccountManagerFacade>
+      account_manager_facade_;
   std::unique_ptr<ProfileOAuth2TokenServiceDelegateChromeOS> delegate_;
 };
 

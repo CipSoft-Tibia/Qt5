@@ -1,56 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-import QtQml 2.0
-import QtQuick 2.0
-import QtQml.Models 2.1
+import QtQml
+import QtQuick
+import QtQml.Models
+
+pragma ComponentBehavior: Bound
 
 Item {
     id: root
@@ -85,14 +40,33 @@ Item {
 
                     Drag.active: visibleContainer.drag.active
 
-                    anchors { horizontalCenter: parent.horizontalCenter; verticalCenter: parent.verticalCenter }
+                    anchors {
+                        horizontalCenter: parent.horizontalCenter
+                        verticalCenter: parent.verticalCenter
+                    }
 
                     states: State {
                         when: visibleContainer.drag.active
-                        AnchorChanges { target:  draggable; anchors { horizontalCenter: undefined; verticalCenter: undefined} }
-                        ParentChange { target: selectionView; parent: draggable; x: 0; y: 0 }
-                        PropertyChanges { target: root; dragging: true }
-                        ParentChange { target: draggable; parent: root }
+                        AnchorChanges {
+                            target:  draggable
+                            anchors {
+                                horizontalCenter: undefined
+                                verticalCenter: undefined
+                            }
+                        }
+                        ParentChange {
+                            target: selectionView
+                            parent: draggable
+                            x: 0
+                            y: 0
+                        }
+                        PropertyChanges {
+                            root.dragging: true
+                        }
+                        ParentChange {
+                            target: draggable
+                            parent: root
+                        }
                     }
                 }
                 DropArea {
@@ -119,8 +93,16 @@ Item {
                 radius: 8
 
                 gradient: Gradient {
-                    GradientStop { id: gradientStart; position: 0.0; color: "#8AC953" }
-                    GradientStop { id: gradientEnd; position: 1.0; color: "#8BC953" }
+                    GradientStop {
+                        id: gradientStart
+                        position: 0.0
+                        color: "#8AC953"
+                    }
+                    GradientStop {
+                        id: gradientEnd
+                        position: 1.0
+                        color: "#8BC953"
+                    }
                 }
 
                 border.width: 2
@@ -138,8 +120,13 @@ Item {
                 }
 
                 Rectangle {
-                    anchors { right: parent.right; top: parent.top; margins: 3 }
-                    width: 12; height: 12
+                    anchors {
+                        right: parent.right
+                        top: parent.top
+                        margins: 3
+                    }
+                    width: 12
+                    height: 12
                     color: packageRoot.DelegateModel.inSelected ? "black" : "white"
                     radius: 6
 
@@ -155,25 +142,55 @@ Item {
                 states: [
                     State {
                         name: "selected"
-                        ParentChange { target: content; parent: selectionContainer; x: 3; y: 3 }
-                        PropertyChanges { target: packageRoot; DelegateModel.inItems: visibleContainer.drag.active }
-                        PropertyChanges { target: gradientStart; color: "#017423" }
-                        PropertyChanges { target: gradientStart; color: "#007423" }
+                        ParentChange {
+                            target: content
+                            parent: selectionContainer
+                            x: 3
+                            y: 3
+                        }
+                        PropertyChanges {
+                            packageRoot.DelegateModel.inItems: visibleContainer.drag.active
+                            gradientStart.color: "#017423"
+                        }
+                        PropertyChanges {
+                            gradientStart.color: "#007423"
+                        }
                     }, State {
                         name: "visible"
-                        PropertyChanges { target: packageRoot; DelegateModel.inItems: true }
-                        ParentChange { target: content; parent: visibleContainer; x: 3; y: 3 }
-                        PropertyChanges { target: gradientStart; color: "#8AC953" }
-                        PropertyChanges { target: gradientStart; color: "#8BC953" }
+                        PropertyChanges {
+                            packageRoot.DelegateModel.inItems: true
+                        }
+                        ParentChange {
+                            target: content
+                            parent: visibleContainer
+                            x: 3
+                            y: 3
+                        }
+                        PropertyChanges {
+                            gradientStart.color: "#8AC953"
+                        }
+                        PropertyChanges {
+                            gradientStart.color: "#8BC953"
+                        }
                     }
                 ]
                 transitions: Transition {
-                    PropertyAction { target: packageRoot; properties: "DelegateModel.inItems" }
+                    PropertyAction {
+                        target: packageRoot
+                        properties: "DelegateModel.inItems"
+                    }
                     ParentAnimation {
                         target: content
-                        NumberAnimation { target: content; properties: "x,y"; duration: 500 }
+                        NumberAnimation {
+                            target: content
+                            properties: "x,y"
+                            duration: 500
+                        }
                     }
-                    ColorAnimation { targets: [gradientStart, gradientEnd]; duration: 500 }
+                    ColorAnimation {
+                        targets: [gradientStart, gradientEnd]
+                        duration: 500
+                    }
                 }
             }
         }
@@ -184,7 +201,10 @@ Item {
         model: 35
         delegate: packageDelegate
 
-        groups: DelegateModelGroup { id: selectedItems; name: "selected" }
+        groups: DelegateModelGroup {
+            id: selectedItems
+            name: "selected"
+        }
 
         Component.onCompleted:  parts.selection.filterOnGroup = "selected"
     }
@@ -200,13 +220,16 @@ Item {
         path: Path {
             startX: 0
             startY: 0
-            PathLine { x: 64; y: 64 }
+            PathLine {
+                x: 64
+                y: 64
+            }
         }
     }
 
     GridView {
         id: itemsView
-        anchors { fill: parent }
+        anchors.fill: parent
         cellWidth: 64
         cellHeight: 64
         model: visualModel.parts.visible

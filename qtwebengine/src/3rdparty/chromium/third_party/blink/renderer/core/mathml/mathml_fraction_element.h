@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,15 +9,18 @@
 
 namespace blink {
 
-class ComputedStyle;
+class ComputedStyleBuilder;
 class CSSToLengthConversionData;
 
 class MathMLFractionElement final : public MathMLElement {
  public:
   explicit MathMLFractionElement(Document&);
 
-  void AddMathFractionBarThicknessIfNeeded(ComputedStyle&,
+  void AddMathFractionBarThicknessIfNeeded(ComputedStyleBuilder&,
                                            const CSSToLengthConversionData&);
+
+ private:
+  void ParseAttribute(const AttributeModificationParams&) final;
 };
 
 }  // namespace blink

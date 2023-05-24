@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -135,30 +135,20 @@ TEST_F(VisualRectPerfTest, GeometryMapper) {
 
   unsigned kIterationCount = 1000000;
   LOG(ERROR) << "Test with single div:";
-  RunPerfTest(kIterationCount,
-              *ToLayoutBox(
-                  GetDocument().getElementById("singleDiv")->GetLayoutObject()),
-              *view, rect);
+  RunPerfTest(kIterationCount, *GetLayoutBoxByElementId("singleDiv"), *view,
+              rect);
 
   LOG(ERROR) << "Test with nested div:";
-  RunPerfTest(kIterationCount,
-              *ToLayoutBox(
-                  GetDocument().getElementById("nestedDiv")->GetLayoutObject()),
-              *view, rect);
+  RunPerfTest(kIterationCount, *GetLayoutBoxByElementId("nestedDiv"), *view,
+              rect);
 
   LOG(ERROR) << "Test with div nested under PaintLayers:";
-  RunPerfTest(
-      kIterationCount,
-      *ToLayoutBox(
-          GetDocument().getElementById("nestedPaintLayers")->GetLayoutObject()),
-      *view, rect);
+  RunPerfTest(kIterationCount, *GetLayoutBoxByElementId("nestedPaintLayers"),
+              *view, rect);
 
   LOG(ERROR) << "Test with div nested under transforms:";
-  RunPerfTest(
-      kIterationCount,
-      *ToLayoutBox(
-          GetDocument().getElementById("nestedTransform")->GetLayoutObject()),
-      *view, rect);
+  RunPerfTest(kIterationCount, *GetLayoutBoxByElementId("nestedTransform"),
+              *view, rect);
 }
 
 }  // namespace blink

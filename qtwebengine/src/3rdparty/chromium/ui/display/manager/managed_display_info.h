@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,11 +12,13 @@
 #include <vector>
 
 #include "base/files/file_path.h"
+#include "build/chromeos_buildflags.h"
 #include "ui/display/display.h"
 #include "ui/display/manager/display_manager_export.h"
 #include "ui/display/types/display_constants.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/rounded_corners_f.h"
 
 namespace display {
 
@@ -85,33 +87,49 @@ class DISPLAY_MANAGER_EXPORT ManagedDisplayInfo {
   // The format is
   //
   // [origin-]widthxheight[*device_scale_factor][#resolutions list]
-  //     [/<properties>][@zoom-factor]
+  //     [/<properties>][@zoom-factor][~rounded-display-radius]
   //
   // where [] are optional:
   // - |origin| is given in x+y- format.
   // - |device_scale_factor| is either 2 or 1 (or empty).
-  // - properties can combination of 'o', which adds default overscan insets
-  //   (5%), and one rotation property where 'r' is 90 degree clock-wise
-  //   (to the 'r'ight) 'u' is 180 degrees ('u'pside-down) and 'l' is
-  //   270 degrees (to the 'l'eft).
-  // - zoom-factor is floating value, e.g. @1.5 or @1.25.
+  // - |properties| can combination of:
+  //     - 'o', which adds default overscan insets (5%)
+  //     - 'h', which adds an HDR color space
+  //     - one rotation property, either:
+  //       - 'r' is 90 degree clock-wise (to the 'r'ight)
+  //       - 'u' is 180 degrees ('u'pside-down)
+  //       - 'l' is 270 degrees (to the 'l'eft).
+  // - |zoom-factor| is floating value, e.g. @1.5 or @1.25.
   // - |resolution list| is the list of size that is given in
   //   |width x height [% refresh_rate]| separated by '|'.
-  //
+  // - |rounded_display_radii| is a list of integer values separated by '|'
+  //   that specifies the radius of each corner of display with format:
+  //     upper_left|upper_right|lower_right|lower_left
+  //   If only one radius is specified, |radius|, it is the radius for all four
+  //   corners.
   // A couple of examples:
   // "100x100"
   //      100x100 window at 0,0 origin. 1x device scale factor. no overscan.
-  //      no rotation. 1.0 zoom factor.
+  //      no rotation. 1.0 zoom factor. no rounded display.
+  // "100x100~16|16|10|10"
+  //      100x100 window at 0,0 origin. 1x device scale factor. no overscan.
+  //      no rotation. 1.0 zoom factor. display with rounded
+  //      corners of radii (16,16,10,10).
+  // "5+5-300x200~18"
+  //      300x200 window at 5,5 origin. 2x device scale factor.
+  //      no overscan, no rotation. 1.0 zoom factor. display with rounded
+  //      corners of radii (18,18,18,18).
   // "5+5-300x200*2"
   //      300x200 window at 5,5 origin. 2x device scale factor.
-  //      no overscan, no rotation. 1.0 zoom factor.
+  //      no overscan, no rotation. 1.0 zoom factor. no rounded display.
   // "300x200/ol"
   //      300x200 window at 0,0 origin. 1x device scale factor.
   //      with 5% overscan. rotated to left (90 degree counter clockwise).
-  //      1.0 zoom factor.
+  //      1.0 zoom factor. no rounded display.
   // "10+20-300x200/u@1.5"
   //      300x200 window at 10,20 origin. 1x device scale factor.
   //      no overscan. flipped upside-down (180 degree) and 1.5 zoom factor.
+  //      no rounded display.
   // "200x100#300x200|200x100%59.0|100x100%60"
   //      200x100 window at 0,0 origin, with 3 possible resolutions,
   //      300x200, 200x100 at 59 Hz, and 100x100 at 60 Hz.
@@ -127,6 +145,15 @@ class DISPLAY_MANAGER_EXPORT ManagedDisplayInfo {
   ~ManagedDisplayInfo();
 
   int64_t id() const { return id_; }
+
+  int64_t port_display_id() const { return port_display_id_; }
+  void set_port_display_id(int64_t id) { port_display_id_ = id; }
+
+  int64_t edid_display_id() const { return edid_display_id_; }
+  void set_edid_display_id(int64_t id) { edid_display_id_ = id; }
+
+  uint16_t connector_index() const { return connector_index_; }
+  void set_connector_index(uint16_t index) { connector_index_ = index; }
 
   // The name of the display.
   const std::string& name() const { return name_; }
@@ -202,10 +229,6 @@ class DISPLAY_MANAGER_EXPORT ManagedDisplayInfo {
   // Returns the rotation set by a given |source|.
   Display::Rotation GetRotation(Display::RotationSource source) const;
 
-  // Returns a measure of density relative to a display with 1.0 DSF. Unlike the
-  // effective DSF, this is independent from the UI scale.
-  float GetDensityRatio() const;
-
   // Returns the ui scale and device scale factor actually used to create
   // display that chrome sees. This is |device_scale_factor| x |zoom_factor_|.
   // TODO(oshima): Rename to |GetDeviceScaleFactor()|.
@@ -227,6 +250,12 @@ class DISPLAY_MANAGER_EXPORT ManagedDisplayInfo {
   // Sets/Clears the overscan insets.
   void SetOverscanInsets(const gfx::Insets& insets_in_dip);
   gfx::Insets GetOverscanInsetsInPixel() const;
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  // Snapshot ColorSpace is only valid for Ash Chrome.
+  void SetSnapshotColorSpace(const gfx::ColorSpace& snapshot_color);
+  gfx::ColorSpace GetSnapshotColorSpace() const;
+#endif
 
   // Sets/Gets the flag to clear overscan insets.
   bool clear_overscan_insets() const { return clear_overscan_insets_; }
@@ -285,6 +314,13 @@ class DISPLAY_MANAGER_EXPORT ManagedDisplayInfo {
   int32_t year_of_manufacture() const { return year_of_manufacture_; }
   void set_year_of_manufacture(int32_t year) { year_of_manufacture_ = year; }
 
+  const gfx::RoundedCornersF& rounded_corners_radii() const {
+    return rounded_corners_radii_;
+  }
+  void set_rounded_corners_radii(const gfx::RoundedCornersF radii) {
+    rounded_corners_radii_ = radii;
+  }
+
   // Returns a string representation of the ManagedDisplayInfo, excluding
   // display modes.
   std::string ToString() const;
@@ -293,12 +329,33 @@ class DISPLAY_MANAGER_EXPORT ManagedDisplayInfo {
   // display modes.
   std::string ToFullString() const;
 
+  const DrmFormatsAndModifiers& GetDRMFormatsAndModifiers() const {
+    return drm_formats_and_modifiers_;
+  }
+
+  void SetDRMFormatsAndModifiers(
+      const DrmFormatsAndModifiers& drm_formats_and_modifiers) {
+    drm_formats_and_modifiers_ = drm_formats_and_modifiers;
+  }
+
  private:
   // Return the rotation with the panel orientation applied.
   Display::Rotation GetRotationWithPanelOrientation(
       Display::Rotation rotation) const;
 
   int64_t id_;
+  // Legacy port-based display ID
+  int64_t port_display_id_ = kInvalidDisplayId;
+  // EDID-based display ID
+  int64_t edid_display_id_ = kInvalidDisplayId;
+
+  // A connector's index is a combination of:
+  // 1) the display's index in DRM          bits 0-7
+  // 2) the display's DRM's index in KMS    bits 8-15
+  // e.g. - A 3rd display in a 2nd DRM would produce a connector index == 0x0102
+  //        (since display index == 2 and DRM index == 1)
+  uint16_t connector_index_ = 0u;
+
   std::string name_;
   std::string manufacturer_id_;
   std::string product_id_;
@@ -364,9 +421,19 @@ class DISPLAY_MANAGER_EXPORT ManagedDisplayInfo {
   // Colorimetry information of the Display.
   gfx::DisplayColorSpaces display_color_spaces_;
 
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  // Color Space information as generated from the display EDID.
+  gfx::ColorSpace snapshot_color_space_;
+#endif
+
   // Bit depth of every channel, extracted from its EDID, usually 8, but can be
   // 0 if EDID says so or if the EDID (retrieval) was faulty.
   uint32_t bits_per_channel_;
+
+  // Radii for the corners of the display. The default radii is (0, 0, 0, 0).
+  gfx::RoundedCornersF rounded_corners_radii_;
+
+  DrmFormatsAndModifiers drm_formats_and_modifiers_;
 
   // If you add a new member, you need to update Copy().
 };
@@ -378,6 +445,10 @@ void DISPLAY_MANAGER_EXPORT ResetDisplayIdForTest();
 // Generates a fake, synthesized display ID that will be used when the
 // |kInvalidDisplayId| is passed to |ManagedDisplayInfo| constructor.
 int64_t DISPLAY_MANAGER_EXPORT GetNextSynthesizedDisplayId(int64_t id);
+
+// Generates the next fake connector index for displays who's ID was generated
+// by hashing their EDIDs.
+int64_t DISPLAY_MANAGER_EXPORT GetNextSynthesizedEdidDisplayConnectorIndex();
 
 }  // namespace display
 

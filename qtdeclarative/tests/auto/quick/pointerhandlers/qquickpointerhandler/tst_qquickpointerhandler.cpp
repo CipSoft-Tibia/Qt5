@@ -1,41 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 
 #include <private/qdebug_p.h>
 #include <QtGui/qstylehints.h>
+#include <QtGui/private/qpointingdevice_p.h>
 #include <QtQuick/private/qquickpointerhandler_p.h>
 #include <QtQuick/qquickitem.h>
+#include <QtQuick/private/qquickitem_p.h>
 #include <QtQuick/qquickview.h>
+#include <QtQml/private/qqmlglobal_p.h> // qmlobject_cast
 
-#include "../../../shared/util.h"
-#include "../../shared/viewtestutil.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/viewtestutils_p.h>
+#include <QQmlComponent>
 
 Q_LOGGING_CATEGORY(lcPointerTests, "qt.quick.pointer.tests")
 
@@ -51,14 +30,14 @@ public:
     };
     Q_ENUM(Destination)
 
-    Event(Destination d, QEvent::Type t, Qt::TouchPointState s, int grabTransition, QPointF item, QPointF scene)
+    Event(Destination d, QEvent::Type t, QEventPoint::State s, int grabTransition, QPointF item, QPointF scene)
         : destination(d), type(t), state(s), grabTransition(grabTransition), posWrtItem(item), posWrtScene(scene)
     {}
 
     Destination destination;
     QEvent::Type type;                      // if this represents a QEvent that was received
-    Qt::TouchPointState state;              // if this represents an event (pointer, touch or mouse)
-    int grabTransition;                     // if this represents an onGrabChanged() notification (QQuickEventPoint::GrabTransition)
+    QEventPoint::State state;              // if this represents an event (pointer, touch or mouse)
+    int grabTransition;                     // if this represents an onGrabChanged() notification (QPointingDevice::GrabTransition)
     QPointF posWrtItem;
     QPointF posWrtScene;
 };
@@ -75,7 +54,7 @@ QDebug operator<<(QDebug dbg, const class Event &event) {
     QtDebugUtils::formatQEnum(dbg, event.state);
     if (event.grabTransition) {
         dbg << ' ';
-        QtDebugUtils::formatQEnum(dbg, QQuickEventPoint::GrabTransition(event.grabTransition));
+        QtDebugUtils::formatQEnum(dbg, QPointingDevice::GrabTransition(event.grabTransition));
     }
     dbg << " @ ";
     QtDebugUtils::formatQPoint(dbg, event.posWrtItem);
@@ -98,49 +77,49 @@ public:
         : QQuickItem(parent), acceptPointer(false), grabPointer(false), acceptMouse(false), acceptTouch(false), filterTouch(false)
     {}
 
-    inline int grabTransition(bool accept, Qt::TouchPointState state) {
-        return (accept && (state != Qt::TouchPointReleased)) ? (int)QQuickEventPoint::GrabExclusive : (int)NoGrab;
+    inline int grabTransition(bool accept, QEventPoint::State state) {
+        return (accept && (state != QEventPoint::State::Released)) ? (int)QPointingDevice::GrabExclusive : (int)NoGrab;
     }
 
-    void touchEvent(QTouchEvent *event)
+    void touchEvent(QTouchEvent *event) override
     {
         qCDebug(lcPointerTests) << event << "will accept?" << acceptTouch;
-        for (const QTouchEvent::TouchPoint &tp : event->touchPoints())
-            eventList.append(Event(Event::TouchDestination, event->type(), tp.state(), grabTransition(acceptTouch, tp.state()), tp.pos(), tp.scenePos()));
+        for (auto &tp : event->points())
+            eventList.append(Event(Event::TouchDestination, event->type(), tp.state(), grabTransition(acceptTouch, tp.state()), tp.position(), tp.scenePosition()));
         event->setAccepted(acceptTouch);
     }
-    void mousePressEvent(QMouseEvent *event)
+    void mousePressEvent(QMouseEvent *event) override
     {
-        qCDebug(lcPointerTests) << event;
-        eventList.append(Event(Event::MouseDestination, event->type(), Qt::TouchPointPressed, grabTransition(acceptMouse, Qt::TouchPointPressed), event->pos(), event->windowPos()));
+        qCDebug(lcPointerTests) << event << "will accept?" << acceptMouse;
+        eventList.append(Event(Event::MouseDestination, event->type(), QEventPoint::State::Pressed, grabTransition(acceptMouse, QEventPoint::State::Pressed), event->position().toPoint(), event->scenePosition()));
         event->setAccepted(acceptMouse);
     }
-    void mouseMoveEvent(QMouseEvent *event)
+    void mouseMoveEvent(QMouseEvent *event) override
     {
-        qCDebug(lcPointerTests) << event;
-        eventList.append(Event(Event::MouseDestination, event->type(), Qt::TouchPointMoved, grabTransition(acceptMouse, Qt::TouchPointMoved), event->pos(), event->windowPos()));
+        qCDebug(lcPointerTests) << event << "will accept?" << acceptMouse;
+        eventList.append(Event(Event::MouseDestination, event->type(), QEventPoint::State::Updated, grabTransition(acceptMouse, QEventPoint::State::Updated), event->position().toPoint(), event->scenePosition()));
         event->setAccepted(acceptMouse);
     }
-    void mouseReleaseEvent(QMouseEvent *event)
+    void mouseReleaseEvent(QMouseEvent *event) override
     {
-        qCDebug(lcPointerTests) << event;
-        eventList.append(Event(Event::MouseDestination, event->type(), Qt::TouchPointReleased, grabTransition(acceptMouse, Qt::TouchPointReleased), event->pos(), event->windowPos()));
+        qCDebug(lcPointerTests) << event << "will accept?" << acceptMouse;
+        eventList.append(Event(Event::MouseDestination, event->type(), QEventPoint::State::Released, grabTransition(acceptMouse, QEventPoint::State::Released), event->position().toPoint(), event->scenePosition()));
         event->setAccepted(acceptMouse);
     }
-    void mouseDoubleClickEvent(QMouseEvent *event)
+    void mouseDoubleClickEvent(QMouseEvent *event) override
     {
-        qCDebug(lcPointerTests) << event;
-        eventList.append(Event(Event::MouseDestination, event->type(), Qt::TouchPointPressed, grabTransition(acceptMouse, Qt::TouchPointPressed), event->pos(), event->windowPos()));
+        qCDebug(lcPointerTests) << event << "will accept?" << acceptMouse;
+        eventList.append(Event(Event::MouseDestination, event->type(), QEventPoint::State::Pressed, grabTransition(acceptMouse, QEventPoint::State::Pressed), event->position().toPoint(), event->scenePosition()));
         event->setAccepted(acceptMouse);
     }
 
-    void mouseUngrabEvent()
+    void mouseUngrabEvent() override
     {
         qCDebug(lcPointerTests);
-        eventList.append(Event(Event::MouseDestination, QEvent::UngrabMouse, Qt::TouchPointReleased, QQuickEventPoint::UngrabExclusive, QPoint(0,0), QPoint(0,0)));
+        eventList.append(Event(Event::MouseDestination, QEvent::UngrabMouse, QEventPoint::State::Released, QPointingDevice::UngrabExclusive, QPoint(0,0), QPoint(0,0)));
     }
 
-    bool event(QEvent *event)
+    bool event(QEvent *event) override
     {
         qCDebug(lcPointerTests) << event;
         return QQuickItem::event(event);
@@ -153,7 +132,7 @@ public:
     bool acceptTouch;
     bool filterTouch; // when used as event filter
 
-    bool eventFilter(QObject *o, QEvent *event)
+    bool eventFilter(QObject *o, QEvent *event) override
     {
         qCDebug(lcPointerTests) << event << o;
         if (event->type() == QEvent::TouchBegin ||
@@ -161,8 +140,9 @@ public:
                 event->type() == QEvent::TouchCancel ||
                 event->type() == QEvent::TouchEnd) {
             QTouchEvent *touch = static_cast<QTouchEvent*>(event);
-            for (const QTouchEvent::TouchPoint &tp : touch->touchPoints())
-                eventList.append(Event(Event::FilterDestination, event->type(), tp.state(), QQuickEventPoint::GrabExclusive, tp.pos(), tp.scenePos()));
+            for (auto &tp : touch->points())
+                eventList.append(Event(Event::FilterDestination, event->type(), tp.state(),
+                                       QPointingDevice::GrabExclusive, tp.position(), tp.scenePosition()));
             if (filterTouch)
                 event->accept();
             return true;
@@ -183,42 +163,46 @@ public:
 class EventHandler : public QQuickPointerHandler
 {
 public:
-    void handlePointerEventImpl(QQuickPointerEvent *event) override
+    EventHandler(QQuickItem *parent = nullptr) :
+        QQuickPointerHandler(parent) {}
+
+    void handlePointerEventImpl(QPointerEvent *event) override
     {
         QQuickPointerHandler::handlePointerEventImpl(event);
         if (!enabled())
             return;
-        if (event->isPressEvent())
+        if (event->isBeginEvent())
             ++pressEventCount;
-        if (event->isReleaseEvent())
+        if (event->isEndEvent())
             ++releaseEventCount;
         EventItem *item = qmlobject_cast<EventItem *>(target());
         if (!item) {
-            event->point(0)->setGrabberPointerHandler(this);
+            event->setExclusiveGrabber(event->point(0), this);
             return;
         }
         qCDebug(lcPointerTests) << item->objectName() << event;
-        int c = event->pointCount();
-        for (int i = 0; i < c; ++i) {
-            QQuickEventPoint *point = event->point(i);
+        for (auto point : event->points()) {
             if (item->acceptPointer)
-                point->setAccepted(item->acceptPointer); // does NOT imply a grab
+                point.setAccepted(item->acceptPointer); // does NOT imply a grab
             if (item->grabPointer)
-                setExclusiveGrab(point, true);
-            qCDebug(lcPointerTests) << "        " << i << ":" << point << "accepted?" << item->acceptPointer << "grabbed?" << (point->exclusiveGrabber() == this);
+                setExclusiveGrab(event, point, true);
+            qCDebug(lcPointerTests) << "        " << point << "accepted?" << item->acceptPointer
+                                    << "grabbed?" << (event->exclusiveGrabber(point) == this);
             item->eventList.append(Event(Event::HandlerDestination, QEvent::Pointer,
-                static_cast<Qt::TouchPointState>(point->state()),
-                item->grabPointer ? (int)QQuickEventPoint::GrabExclusive : (int)NoGrab,
-                eventPos(point), point->scenePosition()));
+                static_cast<QEventPoint::State>(point.state()),
+                item->grabPointer ? (int)QPointingDevice::GrabExclusive : (int)NoGrab,
+                eventPos(point), point.scenePosition()));
         }
     }
 
-    void onGrabChanged(QQuickPointerHandler *, QQuickEventPoint::GrabTransition stateChange, QQuickEventPoint *point) override
+    void onGrabChanged(QQuickPointerHandler *, QPointingDevice::GrabTransition stateChange,
+                       QPointerEvent *ev, QEventPoint &point) override
     {
+        Q_UNUSED(ev);
         EventItem *item = qmlobject_cast<EventItem *>(target());
         if (item)
             item->eventList.append(Event(Event::HandlerDestination, QEvent::None,
-                static_cast<Qt::TouchPointState>(point->state()), stateChange, eventPos(point), point->scenePosition()));
+                static_cast<QEventPoint::State>(point.state()), stateChange, eventPos(point), point.scenePosition()));
     }
 
     int pressEventCount = 0;
@@ -230,11 +214,12 @@ class tst_PointerHandlers : public QQmlDataTest
     Q_OBJECT
 public:
     tst_PointerHandlers()
-        :touchDevice(QTest::createTouchDevice())
+        : QQmlDataTest(QT_QMLTEST_DATADIR)
+        , touchDevice(QTest::createTouchDevice())
     {}
 
 private slots:
-    void initTestCase();
+    void initTestCase() override;
 
     void touchEventDelivery_data();
     void touchEventDelivery();
@@ -244,20 +229,25 @@ private slots:
     void dynamicCreation();
     void handlerInWindow();
     void dynamicCreationInWindow();
+    void cppConstruction();
+    void reparenting();
+    void grabberSceneChange_data();
+    void grabberSceneChange();
+    void clip();
 
 protected:
-    bool eventFilter(QObject *, QEvent *event)
+    bool eventFilter(QObject *, QEvent *event) override
     {
-        Qt::TouchPointState tpState;
+        QEventPoint::State tpState;
         switch (event->type()) {
         case QEvent::MouseButtonPress:
-            tpState = Qt::TouchPointPressed;
+            tpState = QEventPoint::State::Pressed;
             break;
         case QEvent::MouseMove:
-            tpState = Qt::TouchPointMoved;
+            tpState = QEventPoint::State::Updated;
             break;
         case QEvent::MouseButtonRelease:
-            tpState = Qt::TouchPointReleased;
+            tpState = QEventPoint::State::Released;
             break;
         default:
             // So far we aren't recording filtered touch events here - they would be quite numerous in some cases
@@ -265,13 +255,13 @@ protected:
         }
         QMouseEvent *me = static_cast<QMouseEvent*>(event);
         filteredEventList.append(Event(Event::FilterDestination, event->type(), tpState,
-                                       0, me->pos(), me->globalPos()));
+                                       0, me->position().toPoint(), me->globalPosition().toPoint()));
         return false;
     }
 
 private:
     void createView(QScopedPointer<QQuickView> &window, const char *fileName);
-    QTouchDevice *touchDevice;
+    QPointingDevice *touchDevice;
     QList<Event> filteredEventList;
 };
 
@@ -281,8 +271,8 @@ void tst_PointerHandlers::createView(QScopedPointer<QQuickView> &window, const c
 //    window->setGeometry(0,0,240,320);
     window->setSource(testFileUrl(fileName));
     QTRY_COMPARE(window->status(), QQuickView::Ready);
-    QQuickViewTestUtil::centerOnScreen(window.data());
-    QQuickViewTestUtil::moveMouseAway(window.data());
+    QQuickViewTestUtils::centerOnScreen(window.data());
+    QQuickViewTestUtils::moveMouseAway(window.data());
 
     window->show();
     QVERIFY(QTest::qWaitForWindowActive(window.data()));
@@ -314,96 +304,85 @@ void tst_PointerHandlers::touchEventDelivery()
 
     EventItem *eventItem1 = window->rootObject()->findChild<EventItem*>("eventItem1");
     QVERIFY(eventItem1);
+    auto devPriv = QPointingDevicePrivate::get(touchDevice);
+    // In Qt 5, QQItem::acceptTouchEvents(true) was the default, but not in Qt 6.
+    // This test is written to expect touch events on eventItem1.
+    // acceptTouch = false just tells it to reject the events as they come.
+    eventItem1->setAcceptTouchEvents(true);
 
-    // Do not accept anything
+    // Reject incoming mouse and touch events
     QPoint p1 = QPoint(20, 20);
     QTest::touchEvent(window, touchDevice).press(0, p1, window);
     QQuickTouchUtils::flush(window);
-    QTRY_COMPARE(eventItem1->eventList.size(), synthMouse ? 3 : 2);
-    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointPressed, NoGrab);
-    QCOMPARE_EVENT(1, Event::TouchDestination, QEvent::TouchBegin, Qt::TouchPointPressed, NoGrab);
-    if (synthMouse)
-        QCOMPARE_EVENT(2, Event::MouseDestination, QEvent::MouseButtonPress, Qt::TouchPointPressed, NoGrab);
+    qCDebug(lcPointerTests) << "events from touch press" << eventItem1->eventList;
+    QTRY_COMPARE(eventItem1->eventList.size(), 2);
+    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Pressed, NoGrab);
+    QCOMPARE_EVENT(1, Event::TouchDestination, QEvent::TouchBegin, QEventPoint::State::Pressed, NoGrab);
     p1 += QPoint(10, 0);
     QTest::touchEvent(window, touchDevice).move(0, p1, window);
     QQuickTouchUtils::flush(window);
-    QCOMPARE(eventItem1->eventList.size(), synthMouse ? 4 : 3);
-    QCOMPARE_EVENT(eventItem1->eventList.size() - 1, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointMoved, NoGrab);
+    qCDebug(lcPointerTests) << "events after touch move" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 3); // no grabs -> only the handler gets the update
     QTest::touchEvent(window, touchDevice).release(0, p1, window);
     QQuickTouchUtils::flush(window);
-    QCOMPARE(eventItem1->eventList.size(), synthMouse ? 5 : 4);
-    QCOMPARE_EVENT(eventItem1->eventList.size() - 1, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointReleased, NoGrab);
+    qCDebug(lcPointerTests) << "events after touch release" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 4);
+    QCOMPARE_EVENT(eventItem1->eventList.size() - 1, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Released, NoGrab);
     eventItem1->eventList.clear();
 
-    // Accept touch
+    // Accept touch events only
     eventItem1->acceptTouch = true;
     p1 = QPoint(20, 20);
     QTest::touchEvent(window, touchDevice).press(0, p1, window);
     QQuickTouchUtils::flush(window);
     QCOMPARE(eventItem1->eventList.size(), 2);
-    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointPressed, NoGrab);
-    QCOMPARE_EVENT(1, Event::TouchDestination, QEvent::TouchBegin, Qt::TouchPointPressed, QQuickEventPoint::GrabExclusive);
-    auto pointerEvent = QQuickWindowPrivate::get(window)->pointerEventInstance(QQuickPointerDevice::touchDevices().at(0));
-    QCOMPARE(pointerEvent->point(0)->exclusiveGrabber(), eventItem1);
+    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Pressed, NoGrab);
+    QCOMPARE_EVENT(1, Event::TouchDestination, QEvent::TouchBegin, QEventPoint::State::Pressed, QPointingDevice::GrabExclusive);
+    QCOMPARE(devPriv->pointById(0)->exclusiveGrabber, eventItem1);
     p1 += QPoint(10, 0);
     QTest::touchEvent(window, touchDevice).move(0, p1, window);
     QQuickTouchUtils::flush(window);
     QCOMPARE(eventItem1->eventList.size(), 4);
-    QCOMPARE_EVENT(2, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointMoved, NoGrab);
-    QCOMPARE_EVENT(3, Event::TouchDestination, QEvent::TouchUpdate, Qt::TouchPointMoved, QQuickEventPoint::GrabExclusive);
+    QCOMPARE_EVENT(2, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Updated, NoGrab);
+    QCOMPARE_EVENT(3, Event::TouchDestination, QEvent::TouchUpdate, QEventPoint::State::Updated, QPointingDevice::GrabExclusive);
     QTest::touchEvent(window, touchDevice).release(0, p1, window);
     QQuickTouchUtils::flush(window);
     QCOMPARE(eventItem1->eventList.size(), 6);
-    QCOMPARE_EVENT(4, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointReleased, NoGrab);
-    QCOMPARE_EVENT(5, Event::TouchDestination, QEvent::TouchEnd, Qt::TouchPointReleased, NoGrab);
+    QCOMPARE_EVENT(4, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Released, NoGrab);
+    QCOMPARE_EVENT(5, Event::TouchDestination, QEvent::TouchEnd, QEventPoint::State::Released, NoGrab);
     eventItem1->eventList.clear();
 
     // wait to avoid getting a double click event
     QTest::qWait(qApp->styleHints()->mouseDoubleClickInterval() + 10);
 
-    // Accept mouse
+    // Accept mouse events only
     eventItem1->acceptTouch = false;
     eventItem1->acceptMouse = true;
     eventItem1->setAcceptedMouseButtons(Qt::LeftButton);
     p1 = QPoint(20, 20);
     QTest::touchEvent(window, touchDevice).press(0, p1, window);
     QQuickTouchUtils::flush(window);
-    QCOMPARE(eventItem1->eventList.size(), synthMouse ? 3 : 2);
-    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointPressed, NoGrab);
-    QCOMPARE_EVENT(1, Event::TouchDestination, QEvent::TouchBegin, Qt::TouchPointPressed, NoGrab);
-    if (synthMouse)
-        QCOMPARE_EVENT(2, Event::MouseDestination, QEvent::MouseButtonPress, Qt::TouchPointPressed, QQuickEventPoint::GrabExclusive);
-    QCOMPARE(window->mouseGrabberItem(), synthMouse ? eventItem1 : nullptr);
+    qCDebug(lcPointerTests) << "events after touch press" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 2);
+    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Pressed, NoGrab);
+    QCOMPARE_EVENT(1, Event::TouchDestination, QEvent::TouchBegin, QEventPoint::State::Pressed, NoGrab);
+    QCOMPARE(devPriv->pointById(0)->exclusiveGrabber, nullptr);
 
     QPointF localPos = eventItem1->mapFromScene(p1);
     QPointF scenePos = p1; // item is at 0,0
     QCOMPARE(eventItem1->eventList.at(1).posWrtItem, localPos);
     QCOMPARE(eventItem1->eventList.at(1).posWrtScene, scenePos);
-    if (synthMouse) {
-        QCOMPARE(eventItem1->eventList.at(2).posWrtItem, localPos);
-        QCOMPARE(eventItem1->eventList.at(2).posWrtScene, scenePos);
-    }
 
     p1 += QPoint(10, 0);
     QTest::touchEvent(window, touchDevice).move(0, p1, window);
     QQuickTouchUtils::flush(window);
-    QCOMPARE(eventItem1->eventList.size(), synthMouse ? 6 : 3);
-    if (synthMouse) {
-        QCOMPARE_EVENT(3, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointMoved, NoGrab);
-        QCOMPARE_EVENT(4, Event::TouchDestination, QEvent::TouchUpdate, Qt::TouchPointMoved, NoGrab);
-        QCOMPARE_EVENT(5, Event::MouseDestination, QEvent::MouseMove, Qt::TouchPointMoved, QQuickEventPoint::GrabExclusive);
-    }
+    qCDebug(lcPointerTests) << "events after touch move" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 3);
     QTest::touchEvent(window, touchDevice).release(0, p1, window);
     QQuickTouchUtils::flush(window);
-    QCOMPARE(eventItem1->eventList.size(), synthMouse ? 10 : 4);
-    if (synthMouse) {
-        QCOMPARE_EVENT(6, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointReleased, NoGrab);
-        QCOMPARE_EVENT(7, Event::TouchDestination, QEvent::TouchEnd, Qt::TouchPointReleased, NoGrab);
-        QCOMPARE_EVENT(8, Event::MouseDestination, QEvent::MouseButtonRelease, Qt::TouchPointReleased, NoGrab);
-        QCOMPARE_EVENT(9, Event::MouseDestination, QEvent::UngrabMouse, Qt::TouchPointReleased, QQuickEventPoint::UngrabExclusive);
-    } else {
-        QCOMPARE_EVENT(3, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointReleased, NoGrab);
-    }
+    qCDebug(lcPointerTests) << "events after touch release" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 4);
+    QCOMPARE_EVENT(3, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Released, NoGrab);
     eventItem1->eventList.clear();
 
     // wait to avoid getting a double click event
@@ -416,67 +395,72 @@ void tst_PointerHandlers::touchEventDelivery()
     p1 = QPoint(20, 20);
     QTest::touchEvent(window, touchDevice).press(0, p1, window);
     QQuickTouchUtils::flush(window);
-    QCOMPARE(eventItem1->eventList.size(), synthMouse ? 3 : 2);
-    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointPressed, NoGrab);
-    QCOMPARE_EVENT(1, Event::TouchDestination, QEvent::TouchBegin, Qt::TouchPointPressed, NoGrab);
-    if (synthMouse)
-        QCOMPARE_EVENT(2, Event::MouseDestination, QEvent::MouseButtonPress, Qt::TouchPointPressed, NoGrab);
-    QCOMPARE(pointerEvent->point(0)->exclusiveGrabber(), nullptr);
+    qCDebug(lcPointerTests) << "events after touch press" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 2);
+    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Pressed, NoGrab);
+    QCOMPARE_EVENT(1, Event::TouchDestination, QEvent::TouchBegin, QEventPoint::State::Pressed, NoGrab);
+    QCOMPARE(devPriv->pointById(0)->exclusiveGrabber, nullptr);
     p1 += QPoint(10, 0);
     QTest::touchEvent(window, touchDevice).move(0, p1, window);
     QQuickTouchUtils::flush(window);
-    QCOMPARE(eventItem1->eventList.size(), synthMouse ? 4 : 3);
+    qCDebug(lcPointerTests) << "events after touch move" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 3);
     QTest::touchEvent(window, touchDevice).release(0, p1, window);
     QQuickTouchUtils::flush(window);
-    QCOMPARE(eventItem1->eventList.size(), synthMouse ? 5 : 4);
+    qCDebug(lcPointerTests) << "events after touch release" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 4);
     eventItem1->eventList.clear();
 
     // wait to avoid getting a double click event
     QTest::qWait(qApp->styleHints()->mouseDoubleClickInterval() + 10);
 
-    // Accept touch
+    // Accept touch events
     eventItem1->acceptTouch = true;
     eventItem1->setAcceptedMouseButtons(Qt::LeftButton);
     p1 = QPoint(20, 20);
     QTest::touchEvent(window, touchDevice).press(0, p1, window);
     QQuickTouchUtils::flush(window);
     QCOMPARE(eventItem1->eventList.size(), 2);
-    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointPressed, NoGrab);
-    QCOMPARE_EVENT(1, Event::TouchDestination, QEvent::TouchBegin, Qt::TouchPointPressed, QQuickEventPoint::GrabExclusive);
+    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Pressed, NoGrab);
+    QCOMPARE_EVENT(1, Event::TouchDestination, QEvent::TouchBegin, QEventPoint::State::Pressed, QPointingDevice::GrabExclusive);
     p1 += QPoint(10, 0);
     QTest::touchEvent(window, touchDevice).move(0, p1, window);
     QQuickTouchUtils::flush(window);
     QCOMPARE(eventItem1->eventList.size(), 4);
-    QCOMPARE_EVENT(2, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointMoved, NoGrab);
-    QCOMPARE_EVENT(3, Event::TouchDestination, QEvent::TouchUpdate, Qt::TouchPointMoved, QQuickEventPoint::GrabExclusive);
+    QCOMPARE_EVENT(2, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Updated, NoGrab);
+    QCOMPARE_EVENT(3, Event::TouchDestination, QEvent::TouchUpdate, QEventPoint::State::Updated, QPointingDevice::GrabExclusive);
     QTest::touchEvent(window, touchDevice).release(0, p1, window);
     QQuickTouchUtils::flush(window);
     QCOMPARE(eventItem1->eventList.size(), 6);
-    QCOMPARE_EVENT(4, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointReleased, NoGrab);
-    QCOMPARE_EVENT(5, Event::TouchDestination, QEvent::TouchEnd, Qt::TouchPointReleased, NoGrab);
+    QCOMPARE_EVENT(4, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Released, NoGrab);
+    QCOMPARE_EVENT(5, Event::TouchDestination, QEvent::TouchEnd, QEventPoint::State::Released, NoGrab);
     eventItem1->eventList.clear();
 
     // Accept pointer events
+    // TODO acceptPointer currently does nothing unique, but we could
+    // re-enable this test if we define the best way to handle generic QPointerEvents in Item subclasses
+    /*
     eventItem1->acceptPointer = true;
     eventItem1->grabPointer = true;
     p1 = QPoint(20, 20);
     QTest::touchEvent(window, touchDevice).press(0, p1, window);
     QQuickTouchUtils::flush(window);
     QCOMPARE(eventItem1->eventList.size(), 2);
-    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::None, Qt::TouchPointPressed, QQuickEventPoint::GrabExclusive);
-    QCOMPARE_EVENT(1, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointPressed, QQuickEventPoint::GrabExclusive);
+    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::None, QEventPoint::State::Pressed, QPointingDevice::GrabExclusive);
+    QCOMPARE_EVENT(1, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Pressed, QPointingDevice::GrabExclusive);
     p1 += QPoint(10, 0);
     QTest::touchEvent(window, touchDevice).move(0, p1, window);
     QQuickTouchUtils::flush(window);
     QCOMPARE(eventItem1->eventList.size(), 3);
-    QCOMPARE_EVENT(2, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointMoved, QQuickEventPoint::GrabExclusive);
+    QCOMPARE_EVENT(2, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Updated, QPointingDevice::GrabExclusive);
     QTest::touchEvent(window, touchDevice).release(0, p1, window);
     QQuickTouchUtils::flush(window);
     QCOMPARE(eventItem1->eventList.size(), 5);
     qCDebug(lcPointerTests) << eventItem1->eventList;
-    QCOMPARE_EVENT(3, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointReleased, QQuickEventPoint::GrabExclusive);
-    QCOMPARE_EVENT(4, Event::HandlerDestination, QEvent::None, Qt::TouchPointReleased, QQuickEventPoint::UngrabExclusive);
+    QCOMPARE_EVENT(3, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Released, QPointingDevice::GrabExclusive);
+    QCOMPARE_EVENT(4, Event::HandlerDestination, QEvent::None, QEventPoint::State::Released, QPointingDevice::UngrabExclusive);
     eventItem1->eventList.clear();
+    */
 }
 
 void tst_PointerHandlers::mouseEventDelivery()
@@ -488,15 +472,24 @@ void tst_PointerHandlers::mouseEventDelivery()
     EventItem *eventItem1 = window->rootObject()->findChild<EventItem*>("eventItem1");
     QVERIFY(eventItem1);
 
+    EventHandler *handler = window->rootObject()->findChild<EventHandler*>("eventHandler");
+    QVERIFY(handler);
+    QCOMPARE(handler->parentItem(), eventItem1);
+    QCOMPARE(handler->target(), eventItem1);
+    QVERIFY(QQuickItemPrivate::get(eventItem1)->extra->resourcesList.contains(handler));
+
     // Do not accept anything
     QPoint p1 = QPoint(20, 20);
     QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, p1);
-    QCOMPARE(eventItem1->eventList.size(), 2);
+    qCDebug(lcPointerTests) << "events after mouse press" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 3); // handler: hover; handler: press; item: press
     p1 += QPoint(10, 0);
     QTest::mouseMove(window, p1);
-    QCOMPARE(eventItem1->eventList.size(), 3);
+    qCDebug(lcPointerTests) << "events after mouse move" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 4); // handler: hover
     QTest::mouseRelease(window, Qt::LeftButton);
-    QCOMPARE(eventItem1->eventList.size(), 3);
+    qCDebug(lcPointerTests) << "events after mouse release" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 4);
     eventItem1->eventList.clear();
 
     // wait to avoid getting a double click event
@@ -508,9 +501,10 @@ void tst_PointerHandlers::mouseEventDelivery()
     eventItem1->setAcceptedMouseButtons(Qt::LeftButton);
     p1 = QPoint(20, 20);
     QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, p1);
-    QCOMPARE(eventItem1->eventList.size(), 2);
-    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointPressed, NoGrab);
-    QCOMPARE_EVENT(1, Event::MouseDestination, QEvent::MouseButtonPress, Qt::TouchPointPressed, QQuickEventPoint::GrabExclusive);
+    qCDebug(lcPointerTests) << "events after mouse press" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 3);
+    QCOMPARE_EVENT(1, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Pressed, NoGrab);
+    QCOMPARE_EVENT(2, Event::MouseDestination, QEvent::MouseButtonPress, QEventPoint::State::Pressed, QPointingDevice::GrabExclusive);
     QCOMPARE(window->mouseGrabberItem(), eventItem1);
 
     QPointF localPos = eventItem1->mapFromScene(p1);
@@ -522,36 +516,42 @@ void tst_PointerHandlers::mouseEventDelivery()
 
     p1 += QPoint(10, 0);
     QTest::mouseMove(window, p1);
-    QCOMPARE(eventItem1->eventList.size(), 3);
-    QCOMPARE_EVENT(2, Event::MouseDestination, QEvent::MouseMove, Qt::TouchPointMoved, QQuickEventPoint::GrabExclusive);
-    QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, p1);
+    qCDebug(lcPointerTests) << "events after mouse move" << eventItem1->eventList;
     QCOMPARE(eventItem1->eventList.size(), 5);
-    QCOMPARE_EVENT(3, Event::MouseDestination, QEvent::MouseButtonRelease, Qt::TouchPointReleased, NoGrab);
-    QCOMPARE_EVENT(4, Event::MouseDestination, QEvent::UngrabMouse, Qt::TouchPointReleased, QQuickEventPoint::UngrabExclusive);
+    QCOMPARE_EVENT(4, Event::MouseDestination, QEvent::MouseMove, QEventPoint::State::Updated, QPointingDevice::GrabExclusive);
+    QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, p1);
+    qCDebug(lcPointerTests) << "events after mouse release" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 8);
+    QCOMPARE_EVENT(eventItem1->eventList.size() - 2, Event::MouseDestination, QEvent::MouseButtonRelease, QEventPoint::State::Released, NoGrab);
+    QCOMPARE_EVENT(eventItem1->eventList.size() - 1, Event::MouseDestination, QEvent::UngrabMouse, QEventPoint::State::Released, QPointingDevice::UngrabExclusive);
     eventItem1->eventList.clear();
 
     // wait to avoid getting a double click event
     QTest::qWait(qApp->styleHints()->mouseDoubleClickInterval() + 10);
 
     // Grab pointer events
+    // TODO acceptPointer currently does nothing unique, but we could
+    // re-enable this test if we define the best way to handle generic QPointerEvents in Item subclasses
+    /*
     eventItem1->acceptMouse = false;
     eventItem1->acceptPointer = true;
     eventItem1->grabPointer = true;
     p1 = QPoint(20, 20);
     QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, p1);
     QTRY_COMPARE(eventItem1->eventList.size(), 3);
-    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::None, Qt::TouchPointPressed, QQuickEventPoint::GrabExclusive);
-    QCOMPARE_EVENT(1, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointPressed, QQuickEventPoint::GrabExclusive);
-    QCOMPARE_EVENT(2, Event::MouseDestination, QEvent::MouseButtonPress, Qt::TouchPointPressed, 0);
+    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::None, QEventPoint::State::Pressed, QPointingDevice::GrabExclusive);
+    QCOMPARE_EVENT(1, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Pressed, QPointingDevice::GrabExclusive);
+    QCOMPARE_EVENT(2, Event::MouseDestination, QEvent::MouseButtonPress, QEventPoint::State::Pressed, 0);
     p1 += QPoint(10, 0);
     QTest::mouseMove(window, p1);
     QCOMPARE(eventItem1->eventList.size(), 4);
-    QCOMPARE_EVENT(3, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointMoved, QQuickEventPoint::GrabExclusive);
+    QCOMPARE_EVENT(3, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Updated, QPointingDevice::GrabExclusive);
     QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, p1);
     QCOMPARE(eventItem1->eventList.size(), 6);
-    QCOMPARE_EVENT(4, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointReleased, QQuickEventPoint::GrabExclusive);
-    QCOMPARE_EVENT(5, Event::HandlerDestination, QEvent::None, Qt::TouchPointReleased, QQuickEventPoint::UngrabExclusive);
+    QCOMPARE_EVENT(4, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Released, QPointingDevice::GrabExclusive);
+    QCOMPARE_EVENT(5, Event::HandlerDestination, QEvent::None, QEventPoint::State::Released, QPointingDevice::UngrabExclusive);
     eventItem1->eventList.clear();
+    */
 }
 
 void tst_PointerHandlers::touchReleaseOutside_data()
@@ -562,17 +562,17 @@ void tst_PointerHandlers::touchReleaseOutside_data()
     QTest::addColumn<int>("endIndexToTest");
     QTest::addColumn<int>("endDestination");    // Event::Destination
     QTest::addColumn<int>("endType");           // QEvent::Type
-    QTest::addColumn<int>("endState");          // Qt::TouchPointState
-    QTest::addColumn<int>("endGrabState");      // Qt::TouchPointState
+    QTest::addColumn<int>("endState");          // QEventPoint::State
+    QTest::addColumn<int>("endGrabState");      // QEventPoint::State
 
     QTest::newRow("reject and ignore") << false << false << 6 << 5 << (int)Event::TouchDestination
-        << (int)QEvent::TouchEnd << (int)Qt::TouchPointReleased << (int)NoGrab;
+        << (int)QEvent::TouchEnd << (int)QEventPoint::State::Released << (int)NoGrab;
     QTest::newRow("reject and grab") << false << true << 5 << 4 << (int)Event::HandlerDestination
-        << (int)QEvent::None << (int)Qt::TouchPointReleased << (int)QQuickEventPoint::UngrabExclusive;
+        << (int)QEvent::None << (int)QEventPoint::State::Released << (int)QPointingDevice::UngrabExclusive;
     QTest::newRow("accept and ignore") << true << false << 1 << 0 << (int)Event::HandlerDestination
-        << (int)QEvent::Pointer << (int)Qt::TouchPointPressed << (int)NoGrab;
+        << (int)QEvent::Pointer << (int)QEventPoint::State::Pressed << (int)NoGrab;
     QTest::newRow("accept and grab") << true << true << 5 << 4 << (int)Event::HandlerDestination
-        << (int)QEvent::None << (int)Qt::TouchPointReleased << (int)QQuickEventPoint::UngrabExclusive;
+        << (int)QEvent::None << (int)QEventPoint::State::Released << (int)QPointingDevice::UngrabExclusive;
 }
 
 void tst_PointerHandlers::touchReleaseOutside()
@@ -594,17 +594,19 @@ void tst_PointerHandlers::touchReleaseOutside()
     QVERIFY(eventItem1);
 
     eventItem1->acceptTouch = true;
+    eventItem1->setAcceptTouchEvents(true);
     eventItem1->acceptPointer = acceptPointer;
     eventItem1->grabPointer = grabPointer;
 
     QPoint p1 = QPoint(20, 20);
     QTest::touchEvent(window, touchDevice).press(0, p1, window);
     QQuickTouchUtils::flush(window);
+    qCDebug(lcPointerTests) << "events after touch press" << eventItem1->eventList;
     p1.setX(eventItem1->mapToScene(eventItem1->clipRect().bottomRight()).x() + 10);
     QTest::touchEvent(window, touchDevice).move(0, p1, window);
     QTest::touchEvent(window, touchDevice).release(0, p1, window);
     QQuickTouchUtils::flush(window);
-    qCDebug(lcPointerTests) << eventItem1->eventList;
+    qCDebug(lcPointerTests) << "events after touch release" << eventItem1->eventList;
     QCOMPARE(eventItem1->eventList.size(), eventCount);
     QCOMPARE_EVENT(endIndexToTest, endDestination, endType, endState, endGrabState);
 }
@@ -622,12 +624,14 @@ void tst_PointerHandlers::dynamicCreation()
 
     QCOMPARE(handler->parentItem(), eventItem1);
     QCOMPARE(handler->target(), eventItem1);
+    QVERIFY(QQuickItemPrivate::get(eventItem1)->extra->resourcesList.contains(handler));
 
     QPoint p1(20, 20);
     QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, p1);
-    QTRY_COMPARE(eventItem1->eventList.size(), 2);
-    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, Qt::TouchPointPressed, NoGrab);
-    QCOMPARE_EVENT(1, Event::MouseDestination, QEvent::MouseButtonPress, Qt::TouchPointPressed, NoGrab);
+    QTRY_COMPARE(eventItem1->eventList.size(), 3);
+    QCOMPARE_EVENT(0, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Updated, NoGrab);
+    QCOMPARE_EVENT(1, Event::HandlerDestination, QEvent::Pointer, QEventPoint::State::Pressed, NoGrab);
+    QCOMPARE_EVENT(2, Event::MouseDestination, QEvent::MouseButtonPress, QEventPoint::State::Pressed, NoGrab);
     QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, p1);
 }
 
@@ -677,6 +681,181 @@ void tst_PointerHandlers::dynamicCreationInWindow()
     QTRY_COMPARE(handler->pressEventCount, 1);
     QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, p1);
     QTRY_COMPARE(handler->releaseEventCount, 1);
+}
+
+void tst_PointerHandlers::cppConstruction()
+{
+    QScopedPointer<QQuickView> windowPtr;
+    createView(windowPtr, "itemOnly.qml");
+    QQuickView * window = windowPtr.data();
+
+    EventItem *eventItem1 = window->rootObject()->findChild<EventItem*>("eventItem1");
+    QVERIFY(eventItem1);
+    QQuickItemPrivate *eventItemPriv = QQuickItemPrivate::get(eventItem1);
+    // tell the handler to grab on press
+    eventItem1->grabPointer = true;
+
+    EventHandler handler(eventItem1);
+    QCOMPARE(handler.parentItem(), eventItem1);
+    QCOMPARE(handler.target(), eventItem1);
+    QCOMPARE(eventItemPriv->extra->pointerHandlers.first(), &handler);
+    QVERIFY(eventItemPriv->extra->resourcesList.contains(&handler));
+
+    // the handler and then eventItem1 sees each event
+    QPoint p1 = QPoint(20, 20);
+    QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, p1);
+    QCOMPARE(handler.pressEventCount, 1);
+    qCDebug(lcPointerTests) << "events after mouse press" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 3);
+    QTest::mouseRelease(window, Qt::LeftButton);
+    QCOMPARE(handler.releaseEventCount, 1);
+    qCDebug(lcPointerTests) << "events after mouse release" << eventItem1->eventList;
+    QCOMPARE(eventItem1->eventList.size(), 7);
+
+    // wait to avoid getting a double click event
+    QTest::qWait(qApp->styleHints()->mouseDoubleClickInterval() + 10);
+}
+
+void tst_PointerHandlers::reparenting()
+{
+    QScopedPointer<QQuickView> windowPtr;
+    createView(windowPtr, "reparenting.qml");
+    QQuickView * window = windowPtr.data();
+
+    QQuickItem *topItem = window->rootObject()->findChild<QQuickItem*>("top");
+    QVERIFY(topItem);
+    QQuickItem *bottomItem = window->rootObject()->findChild<QQuickItem*>("bottom");
+    QVERIFY(bottomItem);
+    EventHandler *handler = window->rootObject()->findChild<EventHandler*>("eventHandler");
+    QVERIFY(handler);
+    topItem->setAcceptedMouseButtons(Qt::RightButton);
+
+    for (int i = 1; i < 5; ++i) {
+        QQuickItem *expectedParentItem = (i % 2 ? topItem : bottomItem);
+        QQuickItem *unexpectedParentItem = (i % 2 ? bottomItem : topItem);
+        qCDebug(lcPointerTests) << "initial parent" << handler->parentItem() << "waiting for" << expectedParentItem;
+        QTRY_COMPARE(handler->parentItem(), expectedParentItem);
+        QCOMPARE(handler->target(), expectedParentItem);
+        QVERIFY(QQuickItemPrivate::get(expectedParentItem)->extra.isAllocated());
+        QVERIFY(QQuickItemPrivate::get(expectedParentItem)->extra->resourcesList.contains(handler));
+        if (QQuickItemPrivate::get(unexpectedParentItem)->extra.isAllocated())
+            QVERIFY(!QQuickItemPrivate::get(unexpectedParentItem)->extra->resourcesList.contains(handler));
+        QCOMPARE(expectedParentItem->acceptedMouseButtons(), Qt::AllButtons);
+        QCOMPARE(unexpectedParentItem->acceptedMouseButtons(), unexpectedParentItem == topItem ? Qt::RightButton : Qt::NoButton);
+
+        QPoint pt = expectedParentItem->mapToScene(expectedParentItem->boundingRect().center()).toPoint();
+        qCDebug(lcPointerTests) << "click @" << pt;
+        QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, pt);
+        QTRY_COMPARE(handler->pressEventCount, i);
+        QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, pt);
+        QTRY_COMPARE(handler->releaseEventCount, i);
+    }
+}
+
+/*!
+    Verify that removing an item that has a grabbing handler from the scene
+    does not result in crashes in our event dispatching code. The item's window()
+    pointer will be nullptr, so the handler must have released the grab, or never
+    gotten the grab, depending on when the item gets removed.
+
+    See QTBUG-114475.
+*/
+void tst_PointerHandlers::grabberSceneChange_data()
+{
+    QTest::addColumn<bool>("useTimer");
+    QTest::addColumn<int>("grabChangedCount");
+
+    QTest::addRow("Immediately") << false << 0;
+    QTest::addRow("Delayed") << true << 2;
+}
+
+void tst_PointerHandlers::grabberSceneChange()
+{
+    QFETCH(const bool, useTimer);
+    QFETCH(const int, grabChangedCount);
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.loadUrl(testFileUrl("grabberSceneChange.qml"));
+    QQuickWindow *window = qobject_cast<QQuickWindow*>(component.create());
+    QScopedPointer<QQuickWindow> cleanup(window);
+    QVERIFY(window);
+    window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+
+    window->setProperty("useTimer", useTimer);
+
+    QQuickItem *container = window->findChild<QQuickItem *>("container");
+
+    QPoint p1 = QPoint(window->width() / 2, window->height() / 2);
+    QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, p1);
+    // The container gets removed from this window, either immediately on
+    // press, or through a timer.
+    QTRY_COMPARE(container->parentItem(), nullptr);
+
+    QEXPECT_FAIL("Delayed",
+                 "PointerHandlers don't release their grab when item is removed", Continue);
+    QCOMPARE(window->property("grabChangedCounter").toInt(), grabChangedCount);
+
+    // this should not crash
+    QTest::mouseMove(window, p1 + QPoint(5, 5));
+}
+
+void tst_PointerHandlers::clip()
+{
+    QScopedPointer<QQuickView> windowPtr;
+    createView(windowPtr, "clip.qml");
+    QQuickView * window = windowPtr.data();
+    QVERIFY(window);
+    window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+
+    EventHandler *handler = window->contentItem()->findChild<EventHandler*>("eventHandler");
+    EventHandler *circleHandler = window->contentItem()->findChild<EventHandler*>("circle eventHandler");
+
+    QCOMPARE(handler->pressEventCount, 0);
+    QCOMPARE(circleHandler->pressEventCount, 0);
+    QCOMPARE(handler->releaseEventCount, 0);
+    QCOMPARE(circleHandler->releaseEventCount, 0);
+
+    const QPoint rectPt = QPoint(1, 1);
+    QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, rectPt);
+    QCOMPARE(handler->pressEventCount, 1);
+    QCOMPARE(circleHandler->pressEventCount, 0);
+
+    QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, rectPt);
+    QCOMPARE(handler->releaseEventCount, 1);
+    QCOMPARE(circleHandler->releaseEventCount, 0);
+
+
+    handler->pressEventCount = 0;
+    circleHandler->pressEventCount = 0;
+    handler->releaseEventCount = 0;
+    circleHandler->releaseEventCount = 0;
+
+    const QPoint rectAndCirclePt = QPoint(49 ,49);
+    QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, rectAndCirclePt);
+    QCOMPARE(handler->pressEventCount, 1);
+    QCOMPARE(circleHandler->pressEventCount, 1);
+
+    QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, rectAndCirclePt);
+    QCOMPARE(handler->releaseEventCount, 1);
+    QCOMPARE(circleHandler->releaseEventCount, 1);
+
+
+    handler->pressEventCount = 0;
+    circleHandler->pressEventCount = 0;
+    handler->releaseEventCount = 0;
+    circleHandler->releaseEventCount = 0;
+
+    const QPoint circlePt = QPoint(51 ,51);
+    QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, circlePt);
+    QCOMPARE(handler->pressEventCount, 0);
+    QCOMPARE(circleHandler->pressEventCount, 1);
+
+    QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, circlePt);
+    QCOMPARE(handler->releaseEventCount, 0);
+    QCOMPARE(circleHandler->releaseEventCount, 1);
 }
 
 QTEST_MAIN(tst_PointerHandlers)

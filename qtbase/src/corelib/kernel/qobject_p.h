@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Copyright (C) 2013 Olivier Goffart <ogoffart@woboq.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// Copyright (C) 2013 Olivier Goffart <ogoffart@woboq.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QOBJECT_P_H
 #define QOBJECT_P_H
@@ -53,16 +17,27 @@
 //
 
 #include <QtCore/private/qglobal_p.h>
+#include "QtCore/qcoreevent.h"
+#include <QtCore/qfunctionaltools_impl.h>
+#include "QtCore/qlist.h"
 #include "QtCore/qobject.h"
 #include "QtCore/qpointer.h"
-#include "QtCore/qsharedpointer.h"
-#include "QtCore/qcoreevent.h"
-#include "QtCore/qlist.h"
-#include "QtCore/qvector.h"
 #include "QtCore/qvariant.h"
-#include "QtCore/qreadwritelock.h"
+#include "QtCore/qproperty.h"
+#include <QtCore/qshareddata.h>
+#include "QtCore/private/qproperty_p.h"
+
+#include <string>
 
 QT_BEGIN_NAMESPACE
+
+#ifdef Q_MOC_RUN
+#define QT_ANONYMOUS_PROPERTY(text) QT_ANONYMOUS_PROPERTY(text)
+#define QT_ANONYMOUS_PRIVATE_PROPERTY(d, text) QT_ANONYMOUS_PRIVATE_PROPERTY(d, text)
+#elif !defined QT_NO_META_MACROS
+#define QT_ANONYMOUS_PROPERTY(...) QT_ANNOTATE_CLASS(qt_anonymous_property, __VA_ARGS__)
+#define QT_ANONYMOUS_PRIVATE_PROPERTY(d, text) QT_ANNOTATE_CLASS2(qt_anonymous_private_property, d, text)
+#endif
 
 class QVariant;
 class QThreadData;
@@ -89,158 +64,55 @@ class Q_CORE_EXPORT QAbstractDeclarativeData
 {
 public:
     static void (*destroyed)(QAbstractDeclarativeData *, QObject *);
-    static void (*destroyed_qml1)(QAbstractDeclarativeData *, QObject *);
-    static void (*parentChanged)(QAbstractDeclarativeData *, QObject *, QObject *);
     static void (*signalEmitted)(QAbstractDeclarativeData *, QObject *, int, void **);
     static int  (*receivers)(QAbstractDeclarativeData *, const QObject *, int);
     static bool (*isSignalConnected)(QAbstractDeclarativeData *, const QObject *, int);
     static void (*setWidgetParent)(QObject *, QObject *); // Used by the QML engine to specify parents for widgets. Set by QtWidgets.
 };
 
-// This is an implementation of QAbstractDeclarativeData that is identical with
-// the implementation in QtDeclarative and QtQml for the first bit
-struct QAbstractDeclarativeDataImpl : public QAbstractDeclarativeData
-{
-    quint32 ownedByQml1:1;
-    quint32 unused: 31;
-};
-
 class Q_CORE_EXPORT QObjectPrivate : public QObjectData
 {
+public:
     Q_DECLARE_PUBLIC(QObject)
 
-public:
     struct ExtraData
     {
-        ExtraData() {}
-    #ifndef QT_NO_USERDATA
-        QVector<QObjectUserData *> userData;
-    #endif
+        ExtraData(QObjectPrivate *ptr) : parent(ptr) { }
+
+        inline void setObjectNameForwarder(const QString &name)
+        {
+            parent->q_func()->setObjectName(name);
+        }
+
+        inline void nameChangedForwarder(const QString &name)
+        {
+            Q_EMIT parent->q_func()->objectNameChanged(name, QObject::QPrivateSignal());
+        }
+
         QList<QByteArray> propertyNames;
-        QVector<QVariant> propertyValues;
-        QVector<int> runningTimers;
-        QList<QPointer<QObject> > eventFilters;
-        QString objectName;
+        QList<QVariant> propertyValues;
+        QList<int> runningTimers;
+        QList<QPointer<QObject>> eventFilters;
+        Q_OBJECT_COMPAT_PROPERTY(QObjectPrivate::ExtraData, QString, objectName,
+                                 &QObjectPrivate::ExtraData::setObjectNameForwarder,
+                                 &QObjectPrivate::ExtraData::nameChangedForwarder)
+        QObjectPrivate *parent;
     };
+
+    void ensureExtraData()
+    {
+        if (!extraData)
+            extraData = new ExtraData(this);
+    }
 
     typedef void (*StaticMetaCallFunction)(QObject *, QMetaObject::Call, int, void **);
     struct Connection;
+    struct ConnectionData;
+    struct ConnectionList;
+    struct ConnectionOrSignalVector;
     struct SignalVector;
-
-    struct ConnectionOrSignalVector {
-        union {
-            // linked list of orphaned connections that need cleaning up
-            ConnectionOrSignalVector *nextInOrphanList;
-            // linked list of connections connected to slots in this object
-            Connection *next;
-        };
-
-        static SignalVector *asSignalVector(ConnectionOrSignalVector *c) {
-            if (reinterpret_cast<quintptr>(c) & 1)
-                return reinterpret_cast<SignalVector *>(reinterpret_cast<quintptr>(c) & ~quintptr(1u));
-            return nullptr;
-        }
-        static Connection *fromSignalVector(SignalVector *v) {
-            return reinterpret_cast<Connection *>(reinterpret_cast<quintptr>(v) | quintptr(1u));
-        }
-    };
-
-    struct Connection : public ConnectionOrSignalVector
-    {
-        // linked list of connections connected to slots in this object, next is in base class
-        Connection **prev;
-        // linked list of connections connected to signals in this object
-        QAtomicPointer<Connection> nextConnectionList;
-        Connection *prevConnectionList;
-
-        QObject *sender;
-        QAtomicPointer<QObject> receiver;
-        QAtomicPointer<QThreadData> receiverThreadData;
-        union {
-            StaticMetaCallFunction callFunction;
-            QtPrivate::QSlotObjectBase *slotObj;
-        };
-        QAtomicPointer<const int> argumentTypes;
-        QAtomicInt ref_;
-        uint id = 0;
-        ushort method_offset;
-        ushort method_relative;
-        signed int signal_index : 27; // In signal range (see QObjectPrivate::signalIndex())
-        ushort connectionType : 3; // 0 == auto, 1 == direct, 2 == queued, 4 == blocking
-        ushort isSlotObject : 1;
-        ushort ownArgumentTypes : 1;
-        Connection() : ref_(2), ownArgumentTypes(true) {
-            //ref_ is 2 for the use in the internal lists, and for the use in QMetaObject::Connection
-        }
-        ~Connection();
-        int method() const { Q_ASSERT(!isSlotObject); return method_offset + method_relative; }
-        void ref() { ref_.ref(); }
-        void freeSlotObject()
-        {
-            if (isSlotObject) {
-                slotObj->destroyIfLastRef();
-                isSlotObject = false;
-            }
-        }
-        void deref() {
-            if (!ref_.deref()) {
-                Q_ASSERT(!receiver.loadRelaxed());
-                Q_ASSERT(!isSlotObject);
-                delete this;
-            }
-        }
-    };
-    // ConnectionList is a singly-linked list
-    struct ConnectionList {
-        QAtomicPointer<Connection> first;
-        QAtomicPointer<Connection> last;
-    };
-
-    struct Sender
-    {
-        Sender(QObject *receiver, QObject *sender, int signal)
-            : receiver(receiver), sender(sender), signal(signal)
-        {
-            if (receiver) {
-                ConnectionData *cd = receiver->d_func()->connections.loadRelaxed();
-                previous = cd->currentSender;
-                cd->currentSender = this;
-            }
-        }
-        ~Sender()
-        {
-            if (receiver)
-                receiver->d_func()->connections.loadRelaxed()->currentSender = previous;
-        }
-        void receiverDeleted()
-        {
-            Sender *s = this;
-            while (s) {
-                s->receiver = nullptr;
-                s = s->previous;
-            }
-        }
-        Sender *previous;
-        QObject *receiver;
-        QObject *sender;
-        int signal;
-    };
-
-    struct SignalVector : public ConnectionOrSignalVector {
-        quintptr allocated;
-        // ConnectionList signals[]
-        ConnectionList &at(int i)
-        {
-            return reinterpret_cast<ConnectionList *>(this + 1)[i + 1];
-        }
-        const ConnectionList &at(int i) const
-        {
-            return reinterpret_cast<const ConnectionList *>(this + 1)[i + 1];
-        }
-        int count() const { return static_cast<int>(allocated); }
-    };
-
-
+    struct Sender;
+    struct TaggedSignalVector;
 
     /*
         This contains the all connections from and to an object.
@@ -256,104 +128,29 @@ public:
         to a slot in this object. The mutex of the receiver must be locked when touching the pointers of this
         linked list.
     */
-    struct ConnectionData {
-        // the id below is used to avoid activating new connections. When the object gets
-        // deleted it's set to 0, so that signal emission stops
-        QAtomicInteger<uint> currentConnectionId;
-        QAtomicInt ref;
-        QAtomicPointer<SignalVector> signalVector;
-        Connection *senders = nullptr;
-        Sender *currentSender = nullptr;   // object currently activating the object
-        QAtomicPointer<Connection> orphaned;
-
-        ~ConnectionData()
-        {
-            Q_ASSERT(ref.loadRelaxed() == 0);
-            auto *c = orphaned.fetchAndStoreRelaxed(nullptr);
-            if (c)
-                deleteOrphaned(c);
-            SignalVector *v = signalVector.loadRelaxed();
-            if (v)
-                free(v);
-        }
-
-        // must be called on the senders connection data
-        // assumes the senders and receivers lock are held
-        void removeConnection(Connection *c);
-        enum LockPolicy {
-            NeedToLock,
-            // Beware that we need to temporarily release the lock
-            // and thus calling code must carefully consider whether
-            // invariants still hold.
-            AlreadyLockedAndTemporarilyReleasingLock
-        };
-        void cleanOrphanedConnections(QObject *sender, LockPolicy lockPolicy = NeedToLock)
-        {
-            if (orphaned.loadRelaxed() && ref.loadAcquire() == 1)
-                cleanOrphanedConnectionsImpl(sender, lockPolicy);
-        }
-        void cleanOrphanedConnectionsImpl(QObject *sender, LockPolicy lockPolicy);
-
-        ConnectionList &connectionsForSignal(int signal)
-        {
-            return signalVector.loadRelaxed()->at(signal);
-        }
-
-        void resizeSignalVector(uint size) {
-            SignalVector *vector = this->signalVector.loadRelaxed();
-            if (vector && vector->allocated > size)
-                return;
-            size = (size + 7) & ~7;
-            SignalVector *newVector = reinterpret_cast<SignalVector *>(malloc(sizeof(SignalVector) + (size + 1) * sizeof(ConnectionList)));
-            int start = -1;
-            if (vector) {
-                memcpy(newVector, vector, sizeof(SignalVector) + (vector->allocated + 1) * sizeof(ConnectionList));
-                start = vector->count();
-            }
-            for (int i = start; i < int(size); ++i)
-                newVector->at(i) = ConnectionList();
-            newVector->next = nullptr;
-            newVector->allocated = size;
-
-            signalVector.storeRelaxed(newVector);
-            if (vector) {
-                Connection *o = nullptr;
-                /* No ABA issue here: When adding a node, we only care about the list head, it doesn't
-                 * matter if the tail changes.
-                 */
-                do {
-                    o = orphaned.loadRelaxed();
-                    vector->nextInOrphanList = o;
-                } while (!orphaned.testAndSetRelease(o, ConnectionOrSignalVector::fromSignalVector(vector)));
-            }
-        }
-        int signalVectorCount() const {
-            return  signalVector.loadAcquire() ? signalVector.loadRelaxed()->count() : -1;
-        }
-
-        static void deleteOrphaned(ConnectionOrSignalVector *c);
-    };
 
     QObjectPrivate(int version = QObjectPrivateVersion);
     virtual ~QObjectPrivate();
     void deleteChildren();
+    // used to clear binding storage early in ~QObject
+    void clearBindingStorage();
 
     inline void checkForIncompatibleLibraryVersion(int version) const;
 
     void setParent_helper(QObject *);
     void moveToThread_helper();
-    void setThreadData_helper(QThreadData *currentData, QThreadData *targetData);
+    void setThreadData_helper(QThreadData *currentData, QThreadData *targetData, QBindingStatus *status);
     void _q_reregisterTimers(void *pointer);
 
     bool isSender(const QObject *receiver, const char *signal) const;
     QObjectList receiverList(const char *signal) const;
     QObjectList senderList() const;
 
-    void addConnection(int signal, Connection *c);
+    inline void ensureConnectionData();
+    inline void addConnection(int signal, Connection *c);
+    static inline bool removeConnection(Connection *c);
 
-    static QObjectPrivate *get(QObject *o) {
-        return o->d_func();
-    }
+    static QObjectPrivate *get(QObject *o) { return o->d_func(); }
     static const QObjectPrivate *get(const QObject *o) { return o->d_func(); }
 
     int signalIndex(const char *signalName, const QMetaObject **meta = nullptr) const;
@@ -366,6 +163,8 @@ public:
     inline void connectNotify(const QMetaMethod &signal);
     inline void disconnectNotify(const QMetaMethod &signal);
 
+    void reinitBindingStorageAfterThreadMove();
+
     template <typename Func1, typename Func2>
     static inline QMetaObject::Connection connect(const typename QtPrivate::FunctionPointer<Func1>::Object *sender, Func1 signal,
                                                   const typename QtPrivate::FunctionPointer<Func2>::Object *receiverPrivate, Func2 slot,
@@ -377,7 +176,7 @@ public:
 
     static QMetaObject::Connection connectImpl(const QObject *sender, int signal_index,
                                                const QObject *receiver, void **slot,
-                                               QtPrivate::QSlotObjectBase *slotObj, Qt::ConnectionType type,
+                                               QtPrivate::QSlotObjectBase *slotObj, int type,
                                                const int *types, const QMetaObject *senderMetaObject);
     static QMetaObject::Connection connect(const QObject *sender, int signal_index, QtPrivate::QSlotObjectBase *slotObj, Qt::ConnectionType type);
     static QMetaObject::Connection connect(const QObject *sender, int signal_index,
@@ -388,16 +187,13 @@ public:
     static bool disconnect(const QObject *sender, int signal_index, const QObject *receiver,
                            void **slot);
 
-    void ensureConnectionData()
-    {
-        if (connections.loadRelaxed())
-            return;
-        ConnectionData *cd = new ConnectionData;
-        cd->ref.ref();
-        connections.storeRelaxed(cd);
-    }
+    virtual std::string flagsForDumping() const;
+
+    QtPrivate::QPropertyAdaptorSlotObject *
+    getPropertyAdaptorSlotObject(const QMetaProperty &property);
+
 public:
-    ExtraData *extraData;    // extra data set by the user
+    mutable ExtraData *extraData; // extra data set by the user
     // This atomic requires acquire/release semantics in a few places,
     // e.g. QObject::moveToThread must synchronize with QCoreApplication::postEvent,
     // because postEvent is thread-safe.
@@ -417,8 +213,6 @@ public:
     // plus QPointer, which keeps a separate list
     QAtomicPointer<QtSharedPointer::ExternalRefCountData> sharedRefcount;
 };
-
-Q_DECLARE_TYPEINFO(QObjectPrivate::ConnectionList, Q_MOVABLE_TYPE);
 
 /*
     Catch mixing of incompatible library versions.
@@ -459,28 +253,44 @@ inline void QObjectPrivate::disconnectNotify(const QMetaMethod &signal)
 }
 
 namespace QtPrivate {
-template<typename Func, typename Args, typename R> class QPrivateSlotObject : public QSlotObjectBase
+inline const QObject *getQObject(const QObjectPrivate *d) { return d->q_func(); }
+
+template <typename Func>
+using FunctionStorage = QtPrivate::CompactStorage<Func>;
+
+template <typename ObjPrivate> inline void assertObjectType(QObjectPrivate *d)
+{
+    using Obj = std::remove_pointer_t<decltype(std::declval<ObjPrivate *>()->q_func())>;
+    assertObjectType<Obj>(d->q_ptr);
+}
+
+template<typename Func, typename Args, typename R>
+class QPrivateSlotObject : public QSlotObjectBase, private FunctionStorage<Func>
 {
     typedef QtPrivate::FunctionPointer<Func> FuncType;
-    Func function;
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     static void impl(int which, QSlotObjectBase *this_, QObject *r, void **a, bool *ret)
+#else
+    static void impl(QSlotObjectBase *this_, QObject *r, void **a, int which, bool *ret)
+#endif
     {
+        const auto that = static_cast<QPrivateSlotObject*>(this_);
         switch (which) {
             case Destroy:
-                delete static_cast<QPrivateSlotObject*>(this_);
+                delete that;
                 break;
             case Call:
-                FuncType::template call<Args, R>(static_cast<QPrivateSlotObject*>(this_)->function,
+                FuncType::template call<Args, R>(that->object(),
                                                  static_cast<typename FuncType::Object *>(QObjectPrivate::get(r)), a);
                 break;
             case Compare:
-                *ret = *reinterpret_cast<Func *>(a) == static_cast<QPrivateSlotObject*>(this_)->function;
+                *ret = *reinterpret_cast<Func *>(a) == that->object();
                 break;
             case NumOperations: ;
         }
     }
 public:
-    explicit QPrivateSlotObject(Func f) : QSlotObjectBase(&impl), function(f) {}
+    explicit QPrivateSlotObject(Func f) : QSlotObjectBase(&impl), FunctionStorage<Func>{std::move(f)} {}
 };
 } //namespace QtPrivate
 
@@ -491,15 +301,15 @@ inline QMetaObject::Connection QObjectPrivate::connect(const typename QtPrivate:
 {
     typedef QtPrivate::FunctionPointer<Func1> SignalType;
     typedef QtPrivate::FunctionPointer<Func2> SlotType;
-    Q_STATIC_ASSERT_X(QtPrivate::HasQ_OBJECT_Macro<typename SignalType::Object>::Value,
+    static_assert(QtPrivate::HasQ_OBJECT_Macro<typename SignalType::Object>::Value,
                       "No Q_OBJECT in the class with the signal");
 
     //compilation error if the arguments does not match.
-    Q_STATIC_ASSERT_X(int(SignalType::ArgumentCount) >= int(SlotType::ArgumentCount),
+    static_assert(int(SignalType::ArgumentCount) >= int(SlotType::ArgumentCount),
                       "The slot requires more arguments than the signal provides.");
-    Q_STATIC_ASSERT_X((QtPrivate::CheckCompatibleArguments<typename SignalType::Arguments, typename SlotType::Arguments>::value),
+    static_assert((QtPrivate::CheckCompatibleArguments<typename SignalType::Arguments, typename SlotType::Arguments>::value),
                       "Signal and slot arguments are not compatible.");
-    Q_STATIC_ASSERT_X((QtPrivate::AreArgumentsCompatible<typename SlotType::ReturnType, typename SignalType::ReturnType>::value),
+    static_assert((QtPrivate::AreArgumentsCompatible<typename SlotType::ReturnType, typename SignalType::ReturnType>::value),
                       "Return type of the slot is not compatible with the return type of the signal.");
 
     const int *types = nullptr;
@@ -507,7 +317,7 @@ inline QMetaObject::Connection QObjectPrivate::connect(const typename QtPrivate:
         types = QtPrivate::ConnectionTypes<typename SignalType::Arguments>::types();
 
     return QObject::connectImpl(sender, reinterpret_cast<void **>(&signal),
-        receiverPrivate->q_ptr, reinterpret_cast<void **>(&slot),
+        QtPrivate::getQObject(receiverPrivate), reinterpret_cast<void **>(&slot),
         new QtPrivate::QPrivateSlotObject<Func2, typename QtPrivate::List_Left<typename SignalType::Arguments, SlotType::ArgumentCount>::Value,
                                         typename SignalType::ReturnType>(slot),
         type, types, &SignalType::Object::staticMetaObject);
@@ -519,18 +329,15 @@ bool QObjectPrivate::disconnect(const typename QtPrivate::FunctionPointer< Func1
 {
     typedef QtPrivate::FunctionPointer<Func1> SignalType;
     typedef QtPrivate::FunctionPointer<Func2> SlotType;
-    Q_STATIC_ASSERT_X(QtPrivate::HasQ_OBJECT_Macro<typename SignalType::Object>::Value,
+    static_assert(QtPrivate::HasQ_OBJECT_Macro<typename SignalType::Object>::Value,
                       "No Q_OBJECT in the class with the signal");
     //compilation error if the arguments does not match.
-    Q_STATIC_ASSERT_X((QtPrivate::CheckCompatibleArguments<typename SignalType::Arguments, typename SlotType::Arguments>::value),
+    static_assert((QtPrivate::CheckCompatibleArguments<typename SignalType::Arguments, typename SlotType::Arguments>::value),
                       "Signal and slot arguments are not compatible.");
     return QObject::disconnectImpl(sender, reinterpret_cast<void **>(&signal),
                           receiverPrivate->q_ptr, reinterpret_cast<void **>(&slot),
                           &SignalType::Object::staticMetaObject);
 }
-
-Q_DECLARE_TYPEINFO(QObjectPrivate::Connection, Q_MOVABLE_TYPE);
-Q_DECLARE_TYPEINFO(QObjectPrivate::Sender, Q_MOVABLE_TYPE);
 
 class QSemaphore;
 class Q_CORE_EXPORT QAbstractMetaCallEvent : public QEvent
@@ -568,6 +375,9 @@ public:
     QMetaCallEvent(QtPrivate::QSlotObjectBase *slotObj,
                    const QObject *sender, int signalId,
                    void **args, QSemaphore *semaphore);
+    QMetaCallEvent(QtPrivate::SlotObjUniquePtr slotObj,
+                   const QObject *sender, int signalId,
+                   void **args, QSemaphore *semaphore);
 
     // queued - args allocated by event, copied by caller
     QMetaCallEvent(ushort method_offset, ushort method_relative,
@@ -577,22 +387,56 @@ public:
     QMetaCallEvent(QtPrivate::QSlotObjectBase *slotObj,
                    const QObject *sender, int signalId,
                    int nargs);
+    QMetaCallEvent(QtPrivate::SlotObjUniquePtr slotObj,
+                   const QObject *sender, int signalId,
+                   int nargs);
 
     ~QMetaCallEvent() override;
+
+    template<typename ...Args>
+    static QMetaCallEvent *create(QtPrivate::QSlotObjectBase *slotObj, const QObject *sender,
+                                  int signal_index, const Args &...argv)
+    {
+        const void* const argp[] = { nullptr, std::addressof(argv)... };
+        const QMetaType metaTypes[] = { QMetaType::fromType<void>(), QMetaType::fromType<Args>()... };
+        constexpr auto argc = sizeof...(Args) + 1;
+        return create_impl(slotObj, sender, signal_index, argc, argp, metaTypes);
+    }
+    template<typename ...Args>
+    static QMetaCallEvent *create(QtPrivate::SlotObjUniquePtr slotObj, const QObject *sender,
+                                  int signal_index, const Args &...argv)
+    {
+        const void* const argp[] = { nullptr, std::addressof(argv)... };
+        const QMetaType metaTypes[] = { QMetaType::fromType<void>(), QMetaType::fromType<Args>()... };
+        constexpr auto argc = sizeof...(Args) + 1;
+        return create_impl(std::move(slotObj), sender, signal_index, argc, argp, metaTypes);
+    }
 
     inline int id() const { return d.method_offset_ + d.method_relative_; }
     inline const void * const* args() const { return d.args_; }
     inline void ** args() { return d.args_; }
-    inline const int *types() const { return reinterpret_cast<int*>(d.args_ + d.nargs_); }
-    inline int *types() { return reinterpret_cast<int*>(d.args_ + d.nargs_); }
+    inline const QMetaType *types() const { return reinterpret_cast<QMetaType *>(d.args_ + d.nargs_); }
+    inline QMetaType *types() { return reinterpret_cast<QMetaType *>(d.args_ + d.nargs_); }
 
     virtual void placeMetaCall(QObject *object) override;
 
 private:
+    static QMetaCallEvent *create_impl(QtPrivate::QSlotObjectBase *slotObj, const QObject *sender,
+                                       int signal_index, size_t argc, const void * const argp[],
+                                       const QMetaType metaTypes[])
+    {
+        if (slotObj)
+            slotObj->ref();
+        return create_impl(QtPrivate::SlotObjUniquePtr{slotObj}, sender,
+                           signal_index, argc, argp, metaTypes);
+    }
+    static QMetaCallEvent *create_impl(QtPrivate::SlotObjUniquePtr slotObj, const QObject *sender,
+                                       int signal_index, size_t argc, const void * const argp[],
+                                       const QMetaType metaTypes[]);
     inline void allocArgs();
 
     struct Data {
-        QtPrivate::QSlotObjectBase *slotObj_;
+        QtPrivate::SlotObjUniquePtr slotObj_;
         void **args_;
         QObjectPrivate::StaticMetaCallFunction callFunction_;
         int nargs_;
@@ -600,15 +444,18 @@ private:
         ushort method_relative_;
     } d;
     // preallocate enough space for three arguments
-    char prealloc_[3*(sizeof(void*) + sizeof(int))];
+    alignas(void *) char prealloc_[3 * sizeof(void *) + 3 * sizeof(QMetaType)];
 };
 
 class QBoolBlocker
 {
     Q_DISABLE_COPY_MOVE(QBoolBlocker)
 public:
-    explicit inline QBoolBlocker(bool &b, bool value=true):block(b), reset(b){block = value;}
-    inline ~QBoolBlocker(){block = reset; }
+    Q_NODISCARD_CTOR explicit QBoolBlocker(bool &b, bool value = true)
+        : block(b), reset(b)
+    { block = value; }
+    inline ~QBoolBlocker() { block = reset; }
+
 private:
     bool &block;
     bool reset;
@@ -622,7 +469,7 @@ struct Q_CORE_EXPORT QDynamicMetaObjectData
     virtual ~QDynamicMetaObjectData();
     virtual void objectDestroyed(QObject *) { delete this; }
 
-    virtual QAbstractDynamicMetaObject *toDynamicMetaObject(QObject *) = 0;
+    virtual QMetaObject *toDynamicMetaObject(QObject *) = 0;
     virtual int metaCall(QObject *, QMetaObject::Call, int _id, void **) = 0;
 };
 
@@ -630,12 +477,29 @@ struct Q_CORE_EXPORT QAbstractDynamicMetaObject : public QDynamicMetaObjectData,
 {
     ~QAbstractDynamicMetaObject();
 
-    QAbstractDynamicMetaObject *toDynamicMetaObject(QObject *) override { return this; }
+    QMetaObject *toDynamicMetaObject(QObject *) override { return this; }
     virtual int createProperty(const char *, const char *) { return -1; }
     int metaCall(QObject *, QMetaObject::Call c, int _id, void **a) override
     { return metaCall(c, _id, a); }
     virtual int metaCall(QMetaObject::Call, int _id, void **) { return _id; } // Compat overload
 };
+
+inline const QBindingStorage *qGetBindingStorage(const QObjectPrivate *o)
+{
+    return &o->bindingStorage;
+}
+inline QBindingStorage *qGetBindingStorage(QObjectPrivate *o)
+{
+    return &o->bindingStorage;
+}
+inline const QBindingStorage *qGetBindingStorage(const QObjectPrivate::ExtraData *ed)
+{
+    return &ed->parent->bindingStorage;
+}
+inline QBindingStorage *qGetBindingStorage(QObjectPrivate::ExtraData *ed)
+{
+    return &ed->parent->bindingStorage;
+}
 
 QT_END_NAMESPACE
 

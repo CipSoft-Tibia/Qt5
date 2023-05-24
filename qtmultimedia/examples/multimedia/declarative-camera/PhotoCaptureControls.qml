@@ -1,174 +1,228 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-import QtQuick 2.0
-import QtMultimedia 5.4
+import QtQuick
+import QtMultimedia
+import QtQuick.Layouts
 
 FocusScope {
-    property Camera camera
+    id : captureControls
+    property CaptureSession captureSession
     property bool previewAvailable : false
 
-    property int buttonsPanelWidth: buttonPaneShadow.width
+    property int buttonsmargin: 8
+    property int buttonsPanelWidth
+    property int buttonsPanelPortraitHeight
+    property int buttonsWidth
 
     signal previewSelected
     signal videoModeSelected
-    id : captureControls
 
     Rectangle {
         id: buttonPaneShadow
-        width: bottomColumn.width + 16
-        height: parent.height
-        anchors.top: parent.top
-        anchors.right: parent.right
         color: Qt.rgba(0.08, 0.08, 0.08, 1)
 
-        Column {
-            anchors {
-                right: parent.right
-                top: parent.top
-                margins: 8
-            }
-
+        GridLayout {
             id: buttonsColumn
-            spacing: 8
-
-            FocusButton {
-                camera: captureControls.camera
-                visible: camera.cameraStatus == Camera.ActiveStatus && camera.focus.isFocusModeSupported(Camera.FocusAuto)
-            }
-
+            anchors.margins: captureControls.buttonsmargin
+            flow: captureControls.state === "MobilePortrait"
+                  ? GridLayout.LeftToRight : GridLayout.TopToBottom
             CameraButton {
                 text: "Capture"
-                visible: camera.imageCapture.ready
-                onClicked: camera.imageCapture.capture()
+                implicitWidth: captureControls.buttonsWidth
+                visible: captureControls.captureSession.imageCapture.readyForCapture
+                onClicked: captureControls.captureSession.imageCapture.captureToFile("")
             }
 
             CameraPropertyButton {
                 id : wbModesButton
-                value: CameraImageProcessing.WhiteBalanceAuto
+                implicitWidth: captureControls.buttonsWidth
+                state: captureControls.state
+                value: Camera.WhiteBalanceAuto
                 model: ListModel {
                     ListElement {
                         icon: "images/camera_auto_mode.png"
-                        value: CameraImageProcessing.WhiteBalanceAuto
+                        value: Camera.WhiteBalanceAuto
                         text: "Auto"
                     }
                     ListElement {
                         icon: "images/camera_white_balance_sunny.png"
-                        value: CameraImageProcessing.WhiteBalanceSunlight
+                        value: Camera.WhiteBalanceSunlight
                         text: "Sunlight"
                     }
                     ListElement {
                         icon: "images/camera_white_balance_cloudy.png"
-                        value: CameraImageProcessing.WhiteBalanceCloudy
+                        value: Camera.WhiteBalanceCloudy
                         text: "Cloudy"
                     }
                     ListElement {
                         icon: "images/camera_white_balance_incandescent.png"
-                        value: CameraImageProcessing.WhiteBalanceTungsten
+                        value: Camera.WhiteBalanceTungsten
                         text: "Tungsten"
                     }
                     ListElement {
                         icon: "images/camera_white_balance_flourescent.png"
-                        value: CameraImageProcessing.WhiteBalanceFluorescent
+                        value: Camera.WhiteBalanceFluorescent
                         text: "Fluorescent"
                     }
                 }
-                onValueChanged: captureControls.camera.imageProcessing.whiteBalanceMode = wbModesButton.value
+                onValueChanged: captureControls.captureSession.camera.whiteBalanceMode = wbModesButton.value
             }
 
-            CameraButton {
-                text: "View"
-                onClicked: captureControls.previewSelected()
-                visible: captureControls.previewAvailable
+            Item {
+                implicitWidth: captureControls.buttonsWidth
+                implicitHeight: 70
+                CameraButton {
+                    text: "View"
+                    anchors.fill: parent
+                    onClicked: captureControls.previewSelected()
+                    visible: captureControls.previewAvailable
+                }
             }
         }
 
-        Column {
-            anchors {
-                bottom: parent.bottom
-                right: parent.right
-                margins: 8
-            }
-
+        GridLayout {
             id: bottomColumn
-            spacing: 8
+            anchors.margins: captureControls.buttonsmargin
+            flow: captureControls.state === "MobilePortrait"
+                  ? GridLayout.LeftToRight : GridLayout.TopToBottom
 
             CameraListButton {
-                model: QtMultimedia.availableCameras
-                onValueChanged: captureControls.camera.deviceId = value
+                implicitWidth: captureControls.buttonsWidth
+                state: captureControls.state
+                onValueChanged: captureControls.captureSession.camera.cameraDevice = value
             }
 
             CameraButton {
                 text: "Switch to Video"
+                implicitWidth: captureControls.buttonsWidth
                 onClicked: captureControls.videoModeSelected()
             }
 
             CameraButton {
                 id: quitButton
+                implicitWidth: captureControls.buttonsWidth
                 text: "Quit"
                 onClicked: Qt.quit()
             }
         }
-
-
     }
 
-
     ZoomControl {
+        id: zoomControl
         x : 0
-        y : 0
+        y : captureControls.state === "MobilePortrait" ? -buttonPaneShadow.height : 0
         width : 100
         height: parent.height
 
-        currentZoom: camera.digitalZoom
-        maximumZoom: Math.min(4.0, camera.maximumDigitalZoom)
-        onZoomTo: camera.setDigitalZoom(value)
+        currentZoom: captureControls.captureSession.camera.zoomFactor
+        maximumZoom: captureControls.captureSession.camera.maximumZoomFactor
+        onZoomTo: (target) => captureControls.captureSession.camera.zoomFactor = target
     }
+
+    FlashControl {
+        x : 10
+        y : captureControls.state === "MobilePortrait" ?
+                parent.height - (buttonPaneShadow.height + height) : parent.height - height
+
+        cameraDevice: captureControls.captureSession.camera
+    }
+
+    states: [
+        State {
+            name: "MobilePortrait"
+            PropertyChanges {
+                buttonPaneShadow.width: parent.width
+                buttonPaneShadow.height: captureControls.buttonsPanelPortraitHeight
+                buttonsColumn.height: captureControls.buttonsPanelPortraitHeight / 2 - buttonsmargin
+                bottomColumn.height: captureControls.buttonsPanelPortraitHeight / 2 - buttonsmargin
+            }
+            AnchorChanges {
+                target: buttonPaneShadow
+                // qmllint disable incompatible-type
+                anchors.bottom: captureControls.bottom
+                anchors.left: captureControls.left
+                anchors.right: captureControls.right
+                // qmllint enable incompatible-type
+            }
+            AnchorChanges {
+                target: buttonsColumn
+                // qmllint disable incompatible-type
+                anchors.left: buttonPaneShadow.left
+                anchors.right: buttonPaneShadow.right
+                anchors.top: buttonPaneShadow.top
+                // qmllint enable incompatible-type
+            }
+            AnchorChanges {
+                target: bottomColumn
+                // qmllint disable incompatible-type
+                anchors.bottom: buttonPaneShadow.bottom
+                anchors.left: buttonPaneShadow.left
+                anchors.right: buttonPaneShadow.right
+                // qmllint enable incompatible-type
+            }
+        },
+        State {
+            name: "MobileLandscape"
+            PropertyChanges {
+                buttonPaneShadow.width: buttonsPanelWidth
+                buttonPaneShadow.height: parent.height
+                buttonsColumn.height: parent.height
+                buttonsColumn.width: buttonPaneShadow.width / 2
+                bottomColumn.height: parent.height
+                bottomColumn.width: buttonPaneShadow.width / 2
+            }
+            AnchorChanges {
+                target: buttonPaneShadow
+                // qmllint disable incompatible-type
+                anchors.top: captureControls.top
+                anchors.right: captureControls.right
+                // qmllint enable incompatible-type
+            }
+            AnchorChanges {
+                target: buttonsColumn
+                // qmllint disable incompatible-type
+                anchors.top: buttonPaneShadow.top
+                anchors.bottom: buttonPaneShadow.bottom
+                anchors.left: buttonPaneShadow.left
+                // qmllint enable incompatible-type
+            }
+            AnchorChanges {
+                target: bottomColumn
+                // qmllint disable incompatible-type
+                anchors.top: buttonPaneShadow.top
+                anchors.bottom: buttonPaneShadow.bottom
+                anchors.right: buttonPaneShadow.right
+                // qmllint enable incompatible-type
+            }
+        },
+        State {
+            name: "Other"
+            PropertyChanges {
+                buttonPaneShadow.width: bottomColumn.width + 16
+                buttonPaneShadow.height: parent.height
+            }
+            AnchorChanges {
+                target: buttonPaneShadow
+                // qmllint disable incompatible-type
+                anchors.top: captureControls.top
+                anchors.right: captureControls.right
+                // qmllint enable incompatible-type
+            }
+            AnchorChanges {
+                target: buttonsColumn
+                // qmllint disable incompatible-type
+                anchors.top: buttonPaneShadow.top
+                anchors.right: buttonPaneShadow.right
+                // qmllint enable incompatible-type
+            }
+            AnchorChanges {
+                target: bottomColumn
+                // qmllint disable incompatible-type
+                anchors.bottom: buttonPaneShadow.bottom
+                anchors.right: buttonPaneShadow.right
+                // qmllint enable incompatible-type
+            }
+        }
+    ]
 }

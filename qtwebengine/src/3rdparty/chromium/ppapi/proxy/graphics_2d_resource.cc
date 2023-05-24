@@ -1,10 +1,10 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ppapi/proxy/graphics_2d_resource.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "ppapi/c/pp_bool.h"
 #include "ppapi/c/pp_point.h"
 #include "ppapi/c/pp_rect.h"
@@ -139,9 +139,8 @@ int32_t Graphics2DResource::Flush(scoped_refptr<TrackedCallback> callback) {
   current_flush_callback_ = callback;
 
   Call<PpapiPluginMsg_Graphics2D_FlushAck>(
-      RENDERER,
-      PpapiHostMsg_Graphics2D_Flush(),
-      base::Bind(&Graphics2DResource::OnPluginMsgFlushACK, this));
+      RENDERER, PpapiHostMsg_Graphics2D_Flush(),
+      base::BindOnce(&Graphics2DResource::OnPluginMsgFlushACK, this));
   return PP_OK_COMPLETIONPENDING;
 }
 

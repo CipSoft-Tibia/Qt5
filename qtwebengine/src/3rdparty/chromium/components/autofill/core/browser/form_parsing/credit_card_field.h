@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,10 @@
 #include <vector>
 
 #include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "components/autofill/core/browser/autofill_type.h"
 #include "components/autofill/core/browser/form_parsing/form_field.h"
+#include "components/autofill/core/common/language_code.h"
 
 namespace autofill {
 
@@ -22,13 +23,18 @@ class LogManager;
 class CreditCardField : public FormField {
  public:
   explicit CreditCardField(LogManager* log_manager);
+
+  CreditCardField(const CreditCardField&) = delete;
+  CreditCardField& operator=(const CreditCardField&) = delete;
+
   ~CreditCardField() override;
   static std::unique_ptr<FormField> Parse(AutofillScanner* scanner,
-                                          const std::string& page_language,
+                                          const LanguageCode& page_language,
+                                          PatternSource pattern_source,
                                           LogManager* log_manager);
 
  protected:
-  void AddClassifications(FieldCandidatesMap* field_candidates) const override;
+  void AddClassifications(FieldCandidatesMap& field_candidates) const override;
 
  private:
   friend class CreditCardFieldTestBase;
@@ -42,7 +48,9 @@ class CreditCardField : public FormField {
   // the next few years. |log_manager| is used to log any parsing details
   // to chrome://autofill-internals
   static bool LikelyCardYearSelectField(AutofillScanner* scanner,
-                                        LogManager* log_manager);
+                                        LogManager* log_manager,
+                                        const LanguageCode& page_language,
+                                        PatternSource pattern_source);
 
   // Returns true if |scanner| points to a <select> field that contains credit
   // card type options.
@@ -53,11 +61,16 @@ class CreditCardField : public FormField {
   // Prepaid debit cards do not count as gift cards, since they can be used like
   // a credit card.
   static bool IsGiftCardField(AutofillScanner* scanner,
-                              LogManager* log_manager);
+                              LogManager* log_manager,
+                              const LanguageCode& page_language,
+                              PatternSource pattern_source);
 
   // Parses the expiration month/year/date fields. Returns true if it finds
   // something new.
-  bool ParseExpirationDate(AutofillScanner* scanner, LogManager* log_manager);
+  bool ParseExpirationDate(AutofillScanner* scanner,
+                           LogManager* log_manager,
+                           const LanguageCode& page_language,
+                           PatternSource pattern_source);
 
   // For the combined expiration field we return |exp_year_type_|; otherwise if
   // |expiration_year_| is having year with |max_length| of 2-digits we return
@@ -68,7 +81,7 @@ class CreditCardField : public FormField {
   // It can be either a date or both the month and the year.
   bool HasExpiration() const;
 
-  LogManager* log_manager_;  // Optional.
+  raw_ptr<LogManager> log_manager_;  // Optional.
 
   AutofillField* cardholder_;  // Optional.
 
@@ -81,7 +94,7 @@ class CreditCardField : public FormField {
   // middle names or suffixes.)
   AutofillField* cardholder_last_;
 
-  AutofillField* type_;                  // Optional.
+  raw_ptr<AutofillField> type_;          // Optional.
   std::vector<AutofillField*> numbers_;  // Required.
 
   // The 3-digit card verification number; we don't currently fill this.
@@ -97,8 +110,6 @@ class CreditCardField : public FormField {
   // |CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR|; otherwise we store
   // |CREDIT_CARD_EXP_DATE_4_DIGIT_YEAR|.
   ServerFieldType exp_year_type_;
-
-  DISALLOW_COPY_AND_ASSIGN(CreditCardField);
 };
 
 }  // namespace autofill

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qtextstream.h>
 #include <qpa/qwindowsysteminterface.h>
@@ -45,9 +9,9 @@
 #ifndef QT_NO_OPENGL
 # include <QtGui/private/qopenglcontext_p.h>
 # include <QtGui/QOpenGLContext>
-# include <QtPlatformCompositorSupport/private/qopenglcompositorbackingstore_p.h>
+# include <QtOpenGL/private/qopenglcompositorbackingstore_p.h>
 #endif
-#include <QtEglSupport/private/qeglconvenience_p.h>
+#include <QtGui/private/qeglconvenience_p.h>
 
 #include "qeglfswindow_p.h"
 #ifndef QT_NO_OPENGL
@@ -57,6 +21,8 @@
 #include "qeglfsdeviceintegration_p.h"
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(qLcEglDevDebug)
 
 QEglFSWindow::QEglFSWindow(QWindow *w)
     : QPlatformWindow(w),
@@ -110,12 +76,12 @@ void QEglFSWindow::create()
 #ifndef QT_NO_OPENGL
     QOpenGLCompositor *compositor = QOpenGLCompositor::instance();
     if (screen->primarySurface() != EGL_NO_SURFACE) {
-        if (Q_UNLIKELY(!isRaster() || !compositor->targetWindow())) {
-#if !defined(Q_OS_ANDROID) || defined(Q_OS_ANDROID_EMBEDDED)
+        if (Q_UNLIKELY(isRaster() != (compositor->targetWindow() != nullptr))) {
+#  ifndef Q_OS_ANDROID
             // We can have either a single OpenGL window or multiple raster windows.
             // Other combinations cannot work.
             qFatal("EGLFS: OpenGL windows cannot be mixed with others.");
-#endif
+#  endif
             return;
         }
         m_format = compositor->targetWindow()->format();
@@ -137,21 +103,30 @@ void QEglFSWindow::create()
     screen->setPrimarySurface(m_surface);
 
 #ifndef QT_NO_OPENGL
-    if (isRaster()) {
+    compositor->setTargetWindow(window(), screen->rawGeometry());
+    compositor->setRotation(qEnvironmentVariableIntValue("QT_QPA_EGLFS_ROTATION"));
+#endif
+}
+
+void QEglFSWindow::setBackingStore(QOpenGLCompositorBackingStore *backingStore)
+{
+#ifndef QT_NO_OPENGL
+    if (!m_rasterCompositingContext) {
         m_rasterCompositingContext = new QOpenGLContext;
         m_rasterCompositingContext->setShareContext(qt_gl_global_share_context());
         m_rasterCompositingContext->setFormat(m_format);
         m_rasterCompositingContext->setScreen(window()->screen());
         if (Q_UNLIKELY(!m_rasterCompositingContext->create()))
             qFatal("EGLFS: Failed to create compositing context");
-        compositor->setTarget(m_rasterCompositingContext, window(), screen->rawGeometry());
-        compositor->setRotation(qEnvironmentVariableIntValue("QT_QPA_EGLFS_ROTATION"));
         // If there is a "root" window into which raster and QOpenGLWidget content is
         // composited, all other contexts must share with its context.
         if (!qt_gl_global_share_context())
             qt_gl_set_global_share_context(m_rasterCompositingContext);
     }
-#endif // QT_NO_OPENGL
+    QOpenGLCompositor *compositor = QOpenGLCompositor::instance();
+    compositor->setTargetContext(m_rasterCompositingContext);
+#endif
+    m_backingStore = backingStore;
 }
 
 void QEglFSWindow::destroy()
@@ -177,6 +152,8 @@ void QEglFSWindow::destroy()
 
 #ifndef QT_NO_OPENGL
         QOpenGLCompositor::destroy();
+        if (qt_gl_global_share_context() == m_rasterCompositingContext)
+            qt_gl_set_global_share_context(nullptr);
         delete m_rasterCompositingContext;
 #endif
     }
@@ -187,8 +164,29 @@ void QEglFSWindow::destroy()
 void QEglFSWindow::invalidateSurface()
 {
     if (m_surface != EGL_NO_SURFACE) {
-        eglDestroySurface(screen()->display(), m_surface);
+        qCDebug(qLcEglDevDebug) << Q_FUNC_INFO << " about to destroy EGLSurface: " << m_surface;
+
+        bool ok = eglDestroySurface(screen()->display(), m_surface);
+
+        if (!ok) {
+            qCWarning(qLcEglDevDebug, "QEglFSWindow::invalidateSurface() eglDestroySurface failed!"
+                                      " Follow-up errors or memory leaks are possible."
+                                      " eglGetError(): %x", eglGetError());
+        }
+
+        if (eglGetCurrentSurface(EGL_READ) == m_surface ||
+                eglGetCurrentSurface(EGL_DRAW) == m_surface) {
+            bool ok = eglMakeCurrent(eglGetCurrentDisplay(), EGL_NO_DISPLAY, EGL_NO_DISPLAY, EGL_NO_CONTEXT);
+            qCDebug(qLcEglDevDebug) << Q_FUNC_INFO << " due to eglDestroySurface on *currently* bound surface"
+                                    << "we just called eglMakeCurrent(..,0,0,0)! It returned: " << ok;
+        }
+
+        if (screen()->primarySurface() == m_surface)
+            screen()->setPrimarySurface(EGL_NO_SURFACE);
+
+
         m_surface = EGL_NO_SURFACE;
+        m_flags = m_flags & ~Created;
     }
     qt_egl_device_integration()->destroyNativeWindow(m_window);
     m_window = 0;
@@ -265,7 +263,7 @@ void QEglFSWindow::requestActivateWindow()
         QOpenGLCompositor::instance()->moveToTop(this);
 #endif
     QWindow *wnd = window();
-    QWindowSystemInterface::handleWindowActivated(wnd);
+    QWindowSystemInterface::handleWindowActivated(wnd, Qt::ActiveWindowFocusReason);
     QWindowSystemInterface::handleExposeEvent(wnd, QRect(QPoint(0, 0), wnd->geometry().size()));
 }
 
@@ -285,7 +283,7 @@ void QEglFSWindow::lower()
 #ifndef QT_NO_OPENGL
     QOpenGLCompositor *compositor = QOpenGLCompositor::instance();
     QList<QOpenGLCompositorWindow *> windows = compositor->windows();
-    if (window()->type() != Qt::Desktop && windows.count() > 1) {
+    if (window()->type() != Qt::Desktop && windows.size() > 1) {
         int idx = windows.indexOf(this);
         if (idx > 0) {
             compositor->changeWindowIndex(this, idx - 1);
@@ -350,7 +348,7 @@ WId QEglFSWindow::winId() const
 
 void QEglFSWindow::setOpacity(qreal)
 {
-    if (!isRaster())
+    if (!isRaster() && !backingStore())
         qWarning("QEglFSWindow: Cannot set opacity for non-raster windows");
 
     // Nothing to do here. The opacity is stored in the QWindow.

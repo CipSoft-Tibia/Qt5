@@ -44,14 +44,16 @@ HTMLProgressElement* ProgressShadowElement::ProgressElement() const {
   return To<HTMLProgressElement>(OwnerShadowHost());
 }
 
-scoped_refptr<ComputedStyle>
-ProgressShadowElement::CustomStyleForLayoutObject() {
-  scoped_refptr<ComputedStyle> style = OriginalStyleForLayoutObject();
+void ProgressShadowElement::AdjustStyle(ComputedStyleBuilder& builder) {
   const ComputedStyle* progress_style = ProgressElement()->GetComputedStyle();
   DCHECK(progress_style);
-  if (progress_style->HasEffectiveAppearance())
-    style->SetDisplay(EDisplay::kNone);
-  return style;
+  if (progress_style->HasEffectiveAppearance()) {
+    builder.SetDisplay(EDisplay::kNone);
+  } else if (!IsHorizontalWritingMode(builder.GetWritingMode())) {
+    // For vertical writing-mode, we need to set the direction to rtl so that
+    // the progress value bar is rendered bottom up.
+    builder.SetDirection(TextDirection::kRtl);
+  }
 }
 
 }  // namespace blink

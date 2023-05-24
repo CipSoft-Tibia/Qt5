@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,11 +13,9 @@
 #include <type_traits>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
-#include "base/optional.h"
 #include "base/threading/thread_checker.h"
 #include "base/win/winrt_foundation_helpers.h"
 
@@ -65,7 +63,7 @@ namespace win {
 //
 // // Offloading a heavy computation:
 // auto my_op = WRL::Make<base::win::AsyncOperation<FooBar*>>();
-// base::PostTaskAndReplyWithResult(
+// base::ThreadPool::PostTaskAndReplyWithResult(
 //     base::BindOnce(MakeFooBar), my_op->callback());
 
 namespace internal {
@@ -110,7 +108,10 @@ class AsyncOperation
         base::BindOnce(&AsyncOperation::OnResult, weak_factory_.GetWeakPtr());
   }
 
-  ~AsyncOperation() { DCHECK_CALLED_ON_VALID_THREAD(thread_checker_); }
+  AsyncOperation(const AsyncOperation&) = delete;
+  AsyncOperation& operator=(const AsyncOperation&) = delete;
+
+  ~AsyncOperation() override { DCHECK_CALLED_ON_VALID_THREAD(thread_checker_); }
 
   // ABI::Windows::Foundation::IAsyncOperation:
   IFACEMETHODIMP put_Completed(Handler* handler) override {
@@ -151,8 +152,6 @@ class AsyncOperation
 
   THREAD_CHECKER(thread_checker_);
   base::WeakPtrFactory<AsyncOperation> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(AsyncOperation);
 };
 
 }  // namespace win

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,8 @@
 #include <string>
 #include <unordered_map>
 
-#include "base/macros.h"
-#include "base/optional.h"
+#include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/threading/thread_checker.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/media_router/common/media_route.h"
@@ -19,7 +19,12 @@
 #include "content/public/browser/presentation_service_delegate.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/presentation/presentation.mojom.h"
+
+namespace content {
+class WebContents;
+}
 
 namespace media_router {
 // Manages all local presentations started in the associated Profile and
@@ -105,6 +110,9 @@ namespace media_router {
 // thread.
 class LocalPresentationManager : public KeyedService {
  public:
+  LocalPresentationManager(const LocalPresentationManager&) = delete;
+  LocalPresentationManager& operator=(const LocalPresentationManager&) = delete;
+
   ~LocalPresentationManager() override;
 
   // Registers controller PresentationConnectionPtr to presentation with
@@ -116,7 +124,7 @@ class LocalPresentationManager : public KeyedService {
   // |receiver_callback| passed below.
   virtual void RegisterLocalPresentationController(
       const blink::mojom::PresentationInfo& presentation_info,
-      const content::GlobalFrameRoutingId& render_frame_id,
+      const content::GlobalRenderFrameHostId& render_frame_id,
       mojo::PendingRemote<blink::mojom::PresentationConnection>
           controller_connection_remote,
       mojo::PendingReceiver<blink::mojom::PresentationConnection>
@@ -130,12 +138,14 @@ class LocalPresentationManager : public KeyedService {
   // and any other pending controller.
   virtual void UnregisterLocalPresentationController(
       const std::string& presentation_id,
-      const content::GlobalFrameRoutingId& render_frame_id);
+      const content::GlobalRenderFrameHostId& render_frame_id);
 
-  // Registers |receiver_callback| to presentation with |presentation_info|.
+  // Registers |receiver_callback| and set |receiver_web_contents| to
+  // presentation with |presentation_info|.
   virtual void OnLocalPresentationReceiverCreated(
       const blink::mojom::PresentationInfo& presentation_info,
-      const content::ReceiverConnectionAvailableCallback& receiver_callback);
+      const content::ReceiverConnectionAvailableCallback& receiver_callback,
+      content::WebContents* receiver_web_contents);
 
   // Unregisters ReceiverConnectionAvailableCallback associated with
   // |presentation_id|.
@@ -145,6 +155,9 @@ class LocalPresentationManager : public KeyedService {
   // Returns true if this class has a local presentation with
   // |presentation_id|.
   virtual bool IsLocalPresentation(const std::string& presentation_id);
+
+  // Returns true if this class has a local presentation with |web_contents|.
+  virtual bool IsLocalPresentation(content::WebContents* web_contents);
 
   // Returns nullptr if |presentation_id| is not associated with a local
   // presentation.
@@ -160,6 +173,10 @@ class LocalPresentationManager : public KeyedService {
    public:
     explicit LocalPresentation(
         const blink::mojom::PresentationInfo& presentation_info);
+
+    LocalPresentation(const LocalPresentation&) = delete;
+    LocalPresentation& operator=(const LocalPresentation&) = delete;
+
     ~LocalPresentation();
 
     // Register controller with |render_frame_id|. If |receiver_callback_| has
@@ -169,7 +186,7 @@ class LocalPresentationManager : public KeyedService {
     // |receiver_connection_receiver|, and store it in |pending_controllers_|
     // map.
     void RegisterController(
-        const content::GlobalFrameRoutingId& render_frame_id,
+        const content::GlobalRenderFrameHostId& render_frame_id,
         mojo::PendingRemote<blink::mojom::PresentationConnection>
             controller_connection_remote,
         mojo::PendingReceiver<blink::mojom::PresentationConnection>
@@ -179,14 +196,15 @@ class LocalPresentationManager : public KeyedService {
     // Unregister controller with |render_frame_id|. Do nothing if there is no
     // pending controller with |render_frame_id|.
     void UnregisterController(
-        const content::GlobalFrameRoutingId& render_frame_id);
+        const content::GlobalRenderFrameHostId& render_frame_id);
 
-    // Register |receiver_callback| to current local_presentation object.
-    // For each controller in |pending_controllers_| map, invoke
-    // |receiver_callback| with controller as parameter. Clear
+    // Register |receiver_callback| and set |receiver_web_contents| to current
+    // local_presentation object. For each controller in |pending_controllers_|
+    // map, invoke |receiver_callback| with controller as parameter. Clear
     // |pending_controllers_| map afterwards.
     void RegisterReceiver(
-        const content::ReceiverConnectionAvailableCallback& receiver_callback);
+        const content::ReceiverConnectionAvailableCallback& receiver_callback,
+        content::WebContents* receiver_web_contents);
 
    private:
     friend class LocalPresentationManagerTest;
@@ -197,7 +215,8 @@ class LocalPresentationManager : public KeyedService {
     bool IsValid() const;
 
     const blink::mojom::PresentationInfo presentation_info_;
-    base::Optional<MediaRoute> route_;
+    absl::optional<MediaRoute> route_;
+    raw_ptr<content::WebContents> receiver_web_contents_ = nullptr;
 
     // Callback to invoke whenever a receiver connection is available.
     content::ReceiverConnectionAvailableCallback receiver_callback_;
@@ -224,12 +243,10 @@ class LocalPresentationManager : public KeyedService {
 
     // Contains ControllerConnection objects registered via
     // |RegisterController()| before |receiver_callback_| is set.
-    std::unordered_map<content::GlobalFrameRoutingId,
+    std::unordered_map<content::GlobalRenderFrameHostId,
                        std::unique_ptr<ControllerConnection>,
-                       content::GlobalFrameRoutingIdHasher>
+                       content::GlobalRenderFrameHostIdHasher>
         pending_controllers_;
-
-    DISALLOW_COPY_AND_ASSIGN(LocalPresentation);
   };
 
  private:
@@ -253,8 +270,6 @@ class LocalPresentationManager : public KeyedService {
   LocalPresentationMap local_presentations_;
 
   THREAD_CHECKER(thread_checker_);
-
-  DISALLOW_COPY_AND_ASSIGN(LocalPresentationManager);
 };
 
 }  // namespace media_router

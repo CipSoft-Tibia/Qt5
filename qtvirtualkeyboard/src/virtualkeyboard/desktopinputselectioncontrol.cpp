@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtVirtualKeyboard/private/desktopinputselectioncontrol_p.h>
 #include <QtVirtualKeyboard/qvirtualkeyboardinputcontext.h>
@@ -160,7 +134,7 @@ void DesktopInputSelectionControl::updateVisibility()
 void DesktopInputSelectionControl::reloadGraphics()
 {
     Settings *settings = Settings::instance();
-    const QString stylePath = QString::fromLatin1(":/QtQuick/VirtualKeyboard/content/styles/%1/images/selectionhandle-bottom.svg")
+    const QString stylePath = QString::fromLatin1(":/qt-project.org/imports/QtQuick/VirtualKeyboard/Styles/Builtin/%1/images/selectionhandle-bottom.svg")
                                 .arg(settings->styleName());
     QImageReader imageReader(stylePath);
     QSize sz = imageReader.size(); // SVG handler will return default size
@@ -206,6 +180,8 @@ void DesktopInputSelectionControl::setEnabled(bool enable)
         connect(m_inputContext, &QVirtualKeyboardInputContext::cursorRectangleChanged, this, &DesktopInputSelectionControl::updateCursorHandlePosition);
         connect(m_inputContext, &QVirtualKeyboardInputContext::anchorRectIntersectsClipRectChanged, this, &DesktopInputSelectionControl::updateVisibility);
         connect(m_inputContext, &QVirtualKeyboardInputContext::cursorRectIntersectsClipRectChanged, this, &DesktopInputSelectionControl::updateVisibility);
+        updateAnchorHandlePosition();
+        updateCursorHandlePosition();
         if (focusWindow)
             focusWindow->installEventFilter(this);
     } else {
@@ -241,7 +217,7 @@ bool DesktopInputSelectionControl::eventFilter(QObject *object, QEvent *event)
         }
     } else if (event->type() == QEvent::MouseButtonPress) {
         QMouseEvent *me = static_cast<QMouseEvent*>(event);
-        const QPoint mousePos = me->screenPos().toPoint();
+        const QPoint mousePos = me->globalPosition().toPoint();
 
         // calculate distances from mouse pos to each handle,
         // then choose to interact with the nearest handle
@@ -256,8 +232,8 @@ bool DesktopInputSelectionControl::eventFilter(QObject *object, QEvent *event)
 
         for (int i = 0; i <= CursorHandle; ++i) {
             SelectionHandleInfo &h = handles[i];
-            QPoint curHandleCenter = focusWindow->mapToGlobal(h.rect.center());  // ### map to desktoppanel
-            const QPoint delta = mousePos - curHandleCenter;
+            QPoint curHandleTopCenter = focusWindow->mapToGlobal(QPoint(h.rect.x() + qRound((qreal)h.rect.width() / 2), h.rect.top()));  // ### map to desktoppanel
+            const QPoint delta = mousePos - curHandleTopCenter;
             h.delta = delta;
             h.squaredDistance = QPoint::dotProduct(delta, delta);
         }
@@ -265,24 +241,24 @@ bool DesktopInputSelectionControl::eventFilter(QObject *object, QEvent *event)
         // (squared) distances calculated, pick the closest handle
         HandleType closestHandle = (handles[AnchorHandle].squaredDistance < handles[CursorHandle].squaredDistance ? AnchorHandle : CursorHandle);
 
-        // Can not be replaced with me->windowPos(); because the event might be forwarded from the window of the handle
+        // Can not be replaced with me->scenePosition(); because the event might be forwarded from the window of the handle
         const QPoint windowPos = focusWindow->mapFromGlobal(mousePos);
         if (m_anchorHandleVisible && handles[closestHandle].rect.contains(windowPos)) {
             m_currentDragHandle = closestHandle;
-            m_distanceBetweenMouseAndCursor = handles[closestHandle].delta -  QPoint(0, m_handleWindowSize.height()/2 + 4);
+            m_distanceBetweenMouseAndCursor = handles[closestHandle].delta;
             m_handleState = HandleIsHeld;
             m_handleDragStartedPosition = mousePos;
             const QRect otherRect = handles[1 - closestHandle].rect;
             m_otherSelectionPoint = QPoint(otherRect.x() + otherRect.width()/2, otherRect.top() - 4);
 
-            QMouseEvent *mouseEvent = new QMouseEvent(me->type(), me->localPos(), me->windowPos(), me->screenPos(),
+            QMouseEvent *mouseEvent = new QMouseEvent(me->type(), me->position(), me->scenePosition(), me->globalPosition(),
                                                       me->button(), me->buttons(), me->modifiers(), me->source());
             m_eventQueue.append(mouseEvent);
             return true;
         }
     } else if (event->type() == QEvent::MouseMove) {
         QMouseEvent *me = static_cast<QMouseEvent*>(event);
-        QPoint mousePos = me->screenPos().toPoint();
+        QPoint mousePos = me->globalPosition().toPoint();
         if (m_handleState == HandleIsHeld) {
             QPoint delta = m_handleDragStartedPosition - mousePos;
             const int startDragDistance = QGuiApplication::styleHints()->startDragDistance();

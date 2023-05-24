@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGRAPHICSSCENE_H
 #define QGRAPHICSSCENE_H
@@ -53,7 +17,6 @@ QT_REQUIRE_CONFIG(graphicsview);
 
 QT_BEGIN_NAMESPACE
 
-template<typename T> class QList;
 class QFocusEvent;
 class QFont;
 class QFontMetrics;
@@ -102,9 +65,6 @@ class Q_WIDGETS_EXPORT QGraphicsScene : public QObject
     Q_PROPERTY(int bspTreeDepth READ bspTreeDepth WRITE setBspTreeDepth)
     Q_PROPERTY(QPalette palette READ palette WRITE setPalette)
     Q_PROPERTY(QFont font READ font WRITE setFont)
-#if QT_DEPRECATED_SINCE(5, 13)
-    Q_PROPERTY(bool sortCacheEnabled READ isSortCacheEnabled WRITE setSortCacheEnabled)
-#endif
     Q_PROPERTY(bool stickyFocus READ stickyFocus WRITE setStickyFocus)
     Q_PROPERTY(qreal minimumRenderSize READ minimumRenderSize WRITE setMinimumRenderSize)
     Q_PROPERTY(bool focusOnTouch READ focusOnTouch WRITE setFocusOnTouch)
@@ -142,11 +102,6 @@ public:
     ItemIndexMethod itemIndexMethod() const;
     void setItemIndexMethod(ItemIndexMethod method);
 
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED bool isSortCacheEnabled() const;
-    QT_DEPRECATED void setSortCacheEnabled(bool enabled);
-#endif
-
     int bspTreeDepth() const;
     void setBspTreeDepth(int depth);
 
@@ -158,37 +113,19 @@ public:
     QList<QGraphicsItem *> items(const QRectF &rect, Qt::ItemSelectionMode mode = Qt::IntersectsItemShape, Qt::SortOrder order = Qt::DescendingOrder, const QTransform &deviceTransform = QTransform()) const;
     QList<QGraphicsItem *> items(const QPolygonF &polygon, Qt::ItemSelectionMode mode = Qt::IntersectsItemShape, Qt::SortOrder order = Qt::DescendingOrder, const QTransform &deviceTransform = QTransform()) const;
     QList<QGraphicsItem *> items(const QPainterPath &path, Qt::ItemSelectionMode mode = Qt::IntersectsItemShape, Qt::SortOrder order = Qt::DescendingOrder, const QTransform &deviceTransform = QTransform()) const;
-
-    QList<QGraphicsItem *> collidingItems(const QGraphicsItem *item, Qt::ItemSelectionMode mode = Qt::IntersectsItemShape) const;
-#if QT_DEPRECATED_SINCE(5, 0)
-    QT_DEPRECATED inline QGraphicsItem *itemAt(const QPointF &position) const {
-        QList<QGraphicsItem *> itemsAtPoint = items(position);
-        return itemsAtPoint.isEmpty() ? nullptr : itemsAtPoint.first();
-    }
-#endif
-    QGraphicsItem *itemAt(const QPointF &pos, const QTransform &deviceTransform) const;
-#if QT_DEPRECATED_SINCE(5, 0)
-    QT_DEPRECATED inline QList<QGraphicsItem *> items(qreal x, qreal y, qreal w, qreal h, Qt::ItemSelectionMode mode = Qt::IntersectsItemShape) const
-    { return items(QRectF(x, y, w, h), mode); }
-#endif
     inline QList<QGraphicsItem *> items(qreal x, qreal y, qreal w, qreal h, Qt::ItemSelectionMode mode, Qt::SortOrder order,
                                         const QTransform &deviceTransform = QTransform()) const
     { return items(QRectF(x, y, w, h), mode, order, deviceTransform); }
-#if QT_DEPRECATED_SINCE(5, 0)
-    QT_DEPRECATED inline QGraphicsItem *itemAt(qreal x, qreal y) const {
-        QList<QGraphicsItem *> itemsAtPoint = items(QPointF(x, y));
-        return itemsAtPoint.isEmpty() ? nullptr : itemsAtPoint.first();
-    }
-#endif
+
+    QList<QGraphicsItem *> collidingItems(const QGraphicsItem *item, Qt::ItemSelectionMode mode = Qt::IntersectsItemShape) const;
+    QGraphicsItem *itemAt(const QPointF &pos, const QTransform &deviceTransform) const;
     inline QGraphicsItem *itemAt(qreal x, qreal y, const QTransform &deviceTransform) const
     { return itemAt(QPointF(x, y), deviceTransform); }
 
     QList<QGraphicsItem *> selectedItems() const;
     QPainterPath selectionArea() const;
     void setSelectionArea(const QPainterPath &path, const QTransform &deviceTransform);
-    void setSelectionArea(const QPainterPath &path, Qt::ItemSelectionMode mode = Qt::IntersectsItemShape, const QTransform &deviceTransform = QTransform());
-    void setSelectionArea(const QPainterPath &path, Qt::ItemSelectionOperation selectionOperation, Qt::ItemSelectionMode mode = Qt::IntersectsItemShape, const QTransform &deviceTransform = QTransform());
-    // ### Qt6 merge the last 2 functions and add a default: Qt::ItemSelectionOperation selectionOperation = Qt::ReplaceSelection
+    void setSelectionArea(const QPainterPath &path, Qt::ItemSelectionOperation selectionOperation = Qt::ReplaceSelection, Qt::ItemSelectionMode mode = Qt::IntersectsItemShape, const QTransform &deviceTransform = QTransform());
 
     QGraphicsItemGroup *createItemGroup(const QList<QGraphicsItem *> &items);
     void destroyItemGroup(QGraphicsItemGroup *group);
@@ -295,7 +232,7 @@ protected:
                            QWidget *widget = nullptr);
 
 protected Q_SLOTS:
-    QT6_VIRTUAL bool focusNextPrevChild(bool next);
+    virtual bool focusNextPrevChild(bool next);
 
 Q_SIGNALS:
     void changed(const QList<QRectF> &region);

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 // TODO Remove in Qt6
 #include <QtCore/qcompilerdetection.h>
@@ -62,7 +37,7 @@ public:
     }
 
     bool operator ==(const Qt3DRender::QTextureImageDataGenerator &other) const override {
-        const TestImageDataGenerator *otherFunctor = Qt3DRender::functor_cast<TestImageDataGenerator>(&other);
+        const TestImageDataGenerator *otherFunctor = Qt3DCore::functor_cast<TestImageDataGenerator>(&other);
         return (otherFunctor != nullptr && otherFunctor->m_id == m_id);
     }
 
@@ -83,7 +58,7 @@ public:
     }
 
     bool operator ==(const Qt3DRender::QTextureGenerator &other) const override {
-        const TestTextureGenerator *otherFunctor = Qt3DRender::functor_cast<TestTextureGenerator>(&other);
+        const TestTextureGenerator *otherFunctor = Qt3DCore::functor_cast<TestTextureGenerator>(&other);
         return (otherFunctor != nullptr && otherFunctor->m_id == m_id);
     }
 
@@ -150,7 +125,7 @@ public:
         Qt3DRender::QAbstractTextureImage::notifyDataGeneratorChanged();
     }
 
-    Qt3DRender::QTextureImageDataGeneratorPtr dataGenerator() const
+    Qt3DRender::QTextureImageDataGeneratorPtr dataGenerator() const override
     {
         return Qt3DRender::QTextureImageDataGeneratorPtr(new TestImageDataGenerator(m_genId));
     }
@@ -166,7 +141,7 @@ public:
     {
     }
 
-    Qt3DRender::QTextureImageDataGeneratorPtr dataGenerator() const
+    Qt3DRender::QTextureImageDataGeneratorPtr dataGenerator() const override
     {
         return {};
     }
@@ -177,7 +152,7 @@ class tst_RenderTextures : public Qt3DCore::QBackendNodeTester
     Q_OBJECT
 
     Qt3DRender::QAbstractTexture *createQTexture(int genId,
-                                                 const QVector<int> &imgGenIds,
+                                                 const QList<int> &imgGenIds,
                                                  bool genMipMaps)
     {
         TestTexture *tex = new TestTexture(genId);
@@ -222,7 +197,7 @@ private Q_SLOTS:
     {
         QSKIP("Texture Sharing is now disabled");
         QScopedPointer<Qt3DRender::Render::NodeManagers> mgrs(new Qt3DRender::Render::NodeManagers());
-        Qt3DRender::Render::OpenGL::Renderer renderer(Qt3DRender::QRenderAspect::Synchronous);
+        Qt3DRender::Render::OpenGL::Renderer renderer;
         renderer.setNodeManagers(mgrs.data());
 
         // GIVEN
@@ -250,20 +225,20 @@ private Q_SLOTS:
     void shouldCreateDifferentGLTexturess()
     {
         QScopedPointer<Qt3DRender::Render::NodeManagers> mgrs(new Qt3DRender::Render::NodeManagers());
-        Qt3DRender::Render::OpenGL::Renderer renderer(Qt3DRender::QRenderAspect::Synchronous);
+        Qt3DRender::Render::OpenGL::Renderer renderer;
         renderer.setNodeManagers(mgrs.data());
 
         // GIVEN
-        QVector<Qt3DRender::QAbstractTexture*> textures;
-        textures << createQTexture(-1, {1,2}, true);
-        textures << createQTexture(-1, {1,2}, false);
-        textures << createQTexture(1, {1,2}, true);
-        textures << createQTexture(1, {1,2}, false);
-        textures << createQTexture(1, {1,2,3}, true);
-        textures << createQTexture(1, {1,2,3}, false);
+        const QList<Qt3DRender::QAbstractTexture*> textures
+                = { createQTexture(-1, {1,2}, true),
+                    createQTexture(-1, {1,2}, false),
+                    createQTexture(1, {1,2}, true),
+                    createQTexture(1, {1,2}, false),
+                    createQTexture(1, {1,2,3}, true),
+                    createQTexture(1, {1,2,3}, false) };
 
         // WHEN
-        QVector<Qt3DRender::Render::Texture*> backend;
+        QList<Qt3DRender::Render::Texture *> backend;
         for (auto *t : textures) {
             Qt3DRender::Render::Texture *backendTexture = createBackendTexture(t,
                                                                                mgrs->textureManager(),
@@ -281,7 +256,7 @@ private Q_SLOTS:
                 QVERIFY(renderer.glResourceManagers()->glTextureManager()->lookupResource(backend[i]->peerId()) !=
                         renderer.glResourceManagers()->glTextureManager()->lookupResource(backend[k]->peerId()));
 
-        QVector<Qt3DRender::Render::OpenGL::GLTexture *> glTextures;
+        QList<Qt3DRender::Render::OpenGL::GLTexture *> glTextures;
         for (Qt3DRender::Render::Texture *t : backend)
             glTextures.push_back(renderer.glResourceManagers()->glTextureManager()->lookupResource(t->peerId()));
 
@@ -306,7 +281,7 @@ private Q_SLOTS:
     void shouldCreateDifferentGLTexturesWhenUsingSharedTextureIds()
     {
         QScopedPointer<Qt3DRender::Render::NodeManagers> mgrs(new Qt3DRender::Render::NodeManagers());
-        Qt3DRender::Render::OpenGL::Renderer renderer(Qt3DRender::QRenderAspect::Synchronous);
+        Qt3DRender::Render::OpenGL::Renderer renderer;
         renderer.setNodeManagers(mgrs.data());
 
         Qt3DRender::Render::OpenGL::GLResourceManagers *glMgrs = renderer.glResourceManagers();
@@ -379,17 +354,17 @@ private Q_SLOTS:
     void generatorsShouldCreateSameData()
     {
         QScopedPointer<Qt3DRender::Render::NodeManagers> mgrs(new Qt3DRender::Render::NodeManagers());
-        Qt3DRender::Render::OpenGL::Renderer renderer(Qt3DRender::QRenderAspect::Synchronous);
+        Qt3DRender::Render::OpenGL::Renderer renderer;
         renderer.setNodeManagers(mgrs.data());
 
         // GIVEN
-        QVector<Qt3DRender::QAbstractTexture*> textures;
-        textures << createQTexture(1, {1}, true);
-        textures << createQTexture(2, {1,2}, true);
-        textures << createQTexture(1, {1,2}, true);
+        const QList<Qt3DRender::QAbstractTexture*> textures
+                = { createQTexture(1, {1}, true),
+                    createQTexture(2, {1,2}, true),
+                    createQTexture(1, {1,2}, true) };
 
         // WHEN
-        QVector<Qt3DRender::Render::Texture*> backend;
+        QList<Qt3DRender::Render::Texture*> backend;
         for (auto *t : textures) {
             Qt3DRender::Render::Texture *backendTexture = createBackendTexture(t,
                                                                                mgrs->textureManager(),
@@ -438,7 +413,7 @@ private Q_SLOTS:
     void checkTextureImageCleanupState()
     {
         // GIVEN
-        Qt3DRender::Render::OpenGL::Renderer renderer(Qt3DRender::QRenderAspect::Synchronous);
+        Qt3DRender::Render::OpenGL::Renderer renderer;
         TestTextureImage img(1);
         img.setLayer(2);
         img.setMipLevel(3);
@@ -462,7 +437,7 @@ private Q_SLOTS:
     void checkTextureImageInitializeFromPeer()
     {
         // GIVEN
-        Qt3DRender::Render::OpenGL::Renderer renderer(Qt3DRender::QRenderAspect::Synchronous);
+        Qt3DRender::Render::OpenGL::Renderer renderer;
         TestTextureImage img(1);
 
         {
@@ -594,7 +569,7 @@ private Q_SLOTS:
     void checkTextureImageProperlyReleaseGenerator()
     {
         QScopedPointer<Qt3DRender::Render::NodeManagers> mgrs(new Qt3DRender::Render::NodeManagers());
-        Qt3DRender::Render::OpenGL::Renderer renderer(Qt3DRender::QRenderAspect::Synchronous);
+        Qt3DRender::Render::OpenGL::Renderer renderer;
         Qt3DRender::Render::TextureManager *texMgr = mgrs->textureManager();
         Qt3DRender::Render::TextureImageManager *texImgMgr = mgrs->textureImageManager();
         renderer.setNodeManagers(mgrs.data());
@@ -634,7 +609,7 @@ private Q_SLOTS:
     void checkTextureIsMarkedForDeletion()
     {
         QScopedPointer<Qt3DRender::Render::NodeManagers> mgrs(new Qt3DRender::Render::NodeManagers());
-        Qt3DRender::Render::OpenGL::Renderer renderer(Qt3DRender::QRenderAspect::Synchronous);
+        Qt3DRender::Render::OpenGL::Renderer renderer;
         Qt3DRender::Render::TextureManager *texMgr = mgrs->textureManager();
         renderer.setNodeManagers(mgrs.data());
 
@@ -644,7 +619,7 @@ private Q_SLOTS:
         // GIVEN
         Qt3DRender::QAbstractTexture* frontendTexture = createQTexture(1, {1}, true);
 
-        Qt3DRender::Render::Texture *backendTexture = static_cast<Qt3DRender::Render::Texture *>(textureBackendNodeMapper.create(creationChange(frontendTexture)));
+        Qt3DRender::Render::Texture *backendTexture = static_cast<Qt3DRender::Render::Texture *>(textureBackendNodeMapper.create(frontendTexture->id()));
         backendTexture->setRenderer(&renderer);
         simulateInitializationSync(frontendTexture, backendTexture);
 
@@ -668,7 +643,7 @@ private Q_SLOTS:
     void checkTextureDestructionReconstructionWithinSameLoop()
     {
         QScopedPointer<Qt3DRender::Render::NodeManagers> mgrs(new Qt3DRender::Render::NodeManagers());
-        Qt3DRender::Render::OpenGL::Renderer renderer(Qt3DRender::QRenderAspect::Synchronous);
+        Qt3DRender::Render::OpenGL::Renderer renderer;
         Qt3DRender::Render::TextureManager *texMgr = mgrs->textureManager();
         renderer.setNodeManagers(mgrs.data());
 
@@ -678,7 +653,7 @@ private Q_SLOTS:
         // GIVEN
         Qt3DRender::QAbstractTexture* frontendTexture = createQTexture(1, {1}, true);
 
-        Qt3DRender::Render::Texture *backendTexture = static_cast<Qt3DRender::Render::Texture *>(textureBackendNodeMapper.create(creationChange(frontendTexture)));
+        Qt3DRender::Render::Texture *backendTexture = static_cast<Qt3DRender::Render::Texture *>(textureBackendNodeMapper.create(frontendTexture->id()));
         backendTexture->setRenderer(&renderer);
         simulateInitializationSync(frontendTexture, backendTexture);
 
@@ -691,7 +666,7 @@ private Q_SLOTS:
         QVERIFY(texMgr->lookupResource(frontendTexture->id()) == nullptr);
 
         // WHEN
-        backendTexture = static_cast<Qt3DRender::Render::Texture *>(textureBackendNodeMapper.create(creationChange(frontendTexture)));
+        backendTexture = static_cast<Qt3DRender::Render::Texture *>(textureBackendNodeMapper.create(frontendTexture->id()));
         backendTexture->setRenderer(&renderer);
         simulateInitializationSync(frontendTexture, backendTexture);
 
@@ -707,7 +682,7 @@ private Q_SLOTS:
     {
         // GIVEN
         QScopedPointer<Qt3DRender::Render::NodeManagers> mgrs(new Qt3DRender::Render::NodeManagers());
-        Qt3DRender::Render::OpenGL::Renderer renderer(Qt3DRender::QRenderAspect::Synchronous);
+        Qt3DRender::Render::OpenGL::Renderer renderer;
         Qt3DRender::Render::TextureManager *texMgr = mgrs->textureManager();
         Qt3DRender::Render::TextureImageManager *texImgMgr = mgrs->textureImageManager();
         renderer.setNodeManagers(mgrs.data());

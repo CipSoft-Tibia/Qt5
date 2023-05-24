@@ -1,16 +1,23 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #import "ui/views/controls/menu/menu_runner_impl_cocoa.h"
 
+#include <dispatch/dispatch.h>
+
+#include "base/i18n/rtl.h"
 #include "base/mac/mac_util.h"
 #import "base/message_loop/message_pump_mac.h"
+#include "base/numerics/safe_conversions.h"
 #import "skia/ext/skia_utils_mac.h"
 #import "ui/base/cocoa/cocoa_base_utils.h"
 #import "ui/base/cocoa/menu_controller.h"
+#include "ui/base/interaction/element_tracker_mac.h"
 #include "ui/base/l10n/l10n_util_mac.h"
 #include "ui/base/models/menu_model.h"
+#include "ui/color/color_id.h"
+#include "ui/color/color_provider.h"
 #include "ui/events/base_event_utils.h"
 #include "ui/events/event_utils.h"
 #include "ui/gfx/geometry/rect.h"
@@ -19,175 +26,29 @@
 #include "ui/native_theme/native_theme.h"
 #include "ui/strings/grit/ui_strings.h"
 #include "ui/views/controls/menu/menu_config.h"
+#import "ui/views/controls/menu/menu_controller_cocoa_delegate_impl.h"
 #include "ui/views/controls/menu/menu_runner_impl_adapter.h"
+#include "ui/views/interaction/element_tracker_views.h"
 #include "ui/views/views_features.h"
 #include "ui/views/widget/widget.h"
 
 namespace {
 
-NSImage* NewTagImage() {
-  static NSImage* new_tag = []() {
-    // 1. Make the attributed string.
-
-    NSString* badge_text = l10n_util::GetNSString(IDS_MENU_ITEM_NEW_BADGE);
-
-    // The preferred font is slightly smaller and slightly more bold than the
-    // menu font. The size change is required to make it look correct in the
-    // badge; we add a small degree of bold to prevent color smearing/blurring
-    // due to font smoothing. This ensures readability on all platforms and in
-    // both light and dark modes.
-    gfx::Font badge_font = gfx::Font(
-        new gfx::PlatformFontMac(gfx::PlatformFontMac::SystemFontType::kMenu));
-    badge_font =
-        badge_font.Derive(views::MenuConfig::kNewBadgeFontSizeAdjustment,
-                          gfx::Font::NORMAL, gfx::Font::Weight::MEDIUM);
-
-    NSColor* badge_text_color = skia::SkColorToSRGBNSColor(
-        ui::NativeTheme::GetInstanceForNativeUi()->GetSystemColor(
-            ui::NativeTheme::kColorId_TextOnProminentButtonColor));
-
-    NSDictionary* badge_attrs = @{
-      NSFontAttributeName : badge_font.GetNativeFont(),
-      NSForegroundColorAttributeName : badge_text_color,
-    };
-
-    NSMutableAttributedString* badge_attr_string =
-        [[NSMutableAttributedString alloc] initWithString:badge_text
-                                               attributes:badge_attrs];
-
-    if (base::mac::IsOS10_10()) {
-      // The system font for 10.10 is Helvetica Neue, and when used for this
-      // "new tag" the letters look cramped. Track it out so that there's some
-      // breathing room. There is no tracking attribute, so instead add kerning
-      // to all but the last character.
-      [badge_attr_string
-          addAttribute:NSKernAttributeName
-                 value:@0.4
-                 range:NSMakeRange(0, [badge_attr_string length] - 1)];
-    }
-
-    // 2. Calculate the size required.
-
-    NSSize badge_size = [badge_attr_string size];
-    badge_size.width = trunc(badge_size.width);
-    badge_size.height = trunc(badge_size.height);
-
-    badge_size.width += 2 * views::MenuConfig::kNewBadgeInternalPadding +
-                        2 * views::MenuConfig::kNewBadgeHorizontalMargin;
-    badge_size.height += views::MenuConfig::kNewBadgeInternalPaddingTopMac;
-
-    // 3. Craft the image.
-
-    return [[NSImage
-         imageWithSize:badge_size
-               flipped:NO
-        drawingHandler:^(NSRect dest_rect) {
-          NSRect badge_frame = NSInsetRect(
-              dest_rect, views::MenuConfig::kNewBadgeHorizontalMargin, 0);
-          NSBezierPath* rounded_badge_rect = [NSBezierPath
-              bezierPathWithRoundedRect:badge_frame
-                                xRadius:views::MenuConfig::kNewBadgeCornerRadius
-                                yRadius:views::MenuConfig::
-                                            kNewBadgeCornerRadius];
-          NSColor* badge_color = skia::SkColorToSRGBNSColor(
-              ui::NativeTheme::GetInstanceForNativeUi()->GetSystemColor(
-                  ui::NativeTheme::kColorId_ProminentButtonColor));
-          [badge_color set];
-          [rounded_badge_rect fill];
-
-          NSPoint badge_text_location = NSMakePoint(
-              NSMinX(badge_frame) + views::MenuConfig::kNewBadgeInternalPadding,
-              NSMinY(badge_frame) +
-                  views::MenuConfig::kNewBadgeInternalPaddingTopMac);
-          [badge_attr_string drawAtPoint:badge_text_location];
-
-          return YES;
-        }] retain];
-  }();
-
-  return new_tag;
-}
+constexpr CGFloat kNativeCheckmarkWidth = 18;
+constexpr CGFloat kNativeMenuItemHeight = 18;
 
 }  // namespace
 
-@interface NewTagAttachmentCell : NSTextAttachmentCell
-@end
-
-@implementation NewTagAttachmentCell
-
-- (instancetype)init {
-  if (self = [super init]) {
-    self.image = NewTagImage();
-  }
-  return self;
-}
-
-- (NSPoint)cellBaselineOffset {
-  return NSMakePoint(0, views::MenuConfig::kNewBadgeBaslineOffsetMac);
-}
-
-- (NSSize)cellSize {
-  return [self.image size];
-}
-
-@end
-
-@interface MenuControllerDelegate : NSObject <MenuControllerCocoaDelegate>
-@end
-
-@implementation MenuControllerDelegate
-
-- (void)controllerWillAddItem:(NSMenuItem*)menuItem
-                    fromModel:(ui::MenuModel*)model
-                      atIndex:(NSInteger)index {
-  static const bool feature_enabled =
-      base::FeatureList::IsEnabled(views::features::kEnableNewBadgeOnMenuItems);
-  if (!feature_enabled || !model->IsNewFeatureAt(index))
-    return;
-
-  // TODO(avi): When moving to 10.11 as the minimum macOS, switch to using
-  // NSTextAttachment's |image| and |bounds| properties and avoid the whole
-  // NSTextAttachmentCell subclassing mishegas.
-  base::scoped_nsobject<NSTextAttachment> attachment(
-      [[NSTextAttachment alloc] init]);
-  attachment.get().attachmentCell =
-      [[[NewTagAttachmentCell alloc] init] autorelease];
-
-  // Starting in 10.13, if an attributed string is set as a menu item title, and
-  // NSFontAttributeName is not specified for it, it is automatically rendered
-  // in a font matching other menu items. Prior to then, a menu item with no
-  // specified font is rendered in Helvetica. In addition, while the
-  // documentation says that -[NSFont menuFontOfSize:0] gives the standard menu
-  // font, that doesn't actually match up. Therefore, specify a font that
-  // visually matches.
-  NSDictionary* attrs = nil;
-  if (base::mac::IsAtMostOS10_12())
-    attrs = @{NSFontAttributeName : [NSFont menuFontOfSize:14]};
-
-  base::scoped_nsobject<NSMutableAttributedString> attrTitle(
-      [[NSMutableAttributedString alloc] initWithString:menuItem.title
-                                             attributes:attrs]);
-  [attrTitle
-      appendAttributedString:[NSAttributedString
-                                 attributedStringWithAttachment:attachment]];
-
-  menuItem.attributedTitle = attrTitle;
-}
-
-@end
-
-namespace views {
-namespace internal {
+namespace views::internal {
 namespace {
-
-constexpr CGFloat kNativeCheckmarkWidth = 18;
-constexpr CGFloat kNativeMenuItemHeight = 18;
 
 // Returns the first item in |menu_controller|'s menu that will be checked.
 NSMenuItem* FirstCheckedItem(MenuControllerCocoa* menu_controller) {
   for (NSMenuItem* item in [[menu_controller menu] itemArray]) {
-    if ([menu_controller model]->IsItemCheckedAt([item tag]))
+    if ([menu_controller model]->IsItemCheckedAt(
+            base::checked_cast<size_t>([item tag]))) {
       return item;
+    }
   }
   return nil;
 }
@@ -254,19 +115,19 @@ NSEvent* EventForPositioningContextMenu(const gfx::Rect& anchor,
                                         NSWindow* window) {
   NSEvent* event = [NSApp currentEvent];
   switch ([event type]) {
-    case NSLeftMouseDown:
-    case NSLeftMouseUp:
-    case NSRightMouseDown:
-    case NSRightMouseUp:
-    case NSOtherMouseDown:
-    case NSOtherMouseUp:
+    case NSEventTypeLeftMouseDown:
+    case NSEventTypeLeftMouseUp:
+    case NSEventTypeRightMouseDown:
+    case NSEventTypeRightMouseUp:
+    case NSEventTypeOtherMouseDown:
+    case NSEventTypeOtherMouseUp:
       return event;
     default:
       break;
   }
   NSPoint location_in_window = ui::ConvertPointFromScreenToWindow(
       window, gfx::ScreenPointToNSPoint(anchor.CenterPoint()));
-  return [NSEvent mouseEventWithType:NSRightMouseDown
+  return [NSEvent mouseEventWithType:NSEventTypeRightMouseDown
                             location:location_in_window
                        modifierFlags:0
                            timestamp:0
@@ -296,11 +157,8 @@ MenuRunnerImplInterface* MenuRunnerImplInterface::Create(
 MenuRunnerImplCocoa::MenuRunnerImplCocoa(
     ui::MenuModel* menu,
     base::RepeatingClosure on_menu_closed_callback)
-    : running_(false),
-      delete_after_run_(false),
-      closing_event_time_(base::TimeTicks()),
-      on_menu_closed_callback_(std::move(on_menu_closed_callback)) {
-  menu_delegate_.reset([[MenuControllerDelegate alloc] init]);
+    : on_menu_closed_callback_(std::move(on_menu_closed_callback)) {
+  menu_delegate_.reset([[MenuControllerCocoaDelegateImpl alloc] init]);
   menu_controller_.reset([[MenuControllerCocoa alloc]
                initWithModel:menu
                     delegate:menu_delegate_.get()
@@ -329,28 +187,40 @@ void MenuRunnerImplCocoa::Release() {
   }
 }
 
-void MenuRunnerImplCocoa::RunMenuAt(Widget* parent,
-                                    MenuButtonController* button_controller,
-                                    const gfx::Rect& bounds,
-                                    MenuAnchorPosition anchor,
-                                    int32_t run_types) {
+void MenuRunnerImplCocoa::RunMenuAt(
+    Widget* parent,
+    MenuButtonController* button_controller,
+    const gfx::Rect& bounds,
+    MenuAnchorPosition anchor,
+    int32_t run_types,
+    gfx::NativeView native_view_for_gestures,
+    absl::optional<gfx::RoundedCornersF> corners) {
   DCHECK(!IsRunning());
   DCHECK(parent);
   closing_event_time_ = base::TimeTicks();
   running_ = true;
+  [menu_delegate_ setAnchorRect:bounds];
 
   // Ensure the UI can update while the menu is fading out.
   base::ScopedPumpMessagesInPrivateModes pump_private;
 
   NSWindow* window = parent->GetNativeWindow().GetNativeNSWindow();
   NSView* view = parent->GetNativeView().GetNativeNSView();
+  [menu_controller_ maybeBuildWithColorProvider:parent->GetColorProvider()];
+  NSMenu* const menu = [menu_controller_ menu];
   if (run_types & MenuRunner::CONTEXT_MENU) {
-    [NSMenu popUpContextMenu:[menu_controller_ menu]
+    ui::ElementTrackerMac::GetInstance()->NotifyMenuWillShow(
+        menu, views::ElementTrackerViews::GetContextForWidget(parent));
+
+    [NSMenu popUpContextMenu:menu
                    withEvent:EventForPositioningContextMenu(bounds, window)
                      forView:view];
-  } else if (run_types & MenuRunner::COMBOBOX) {
-    NSMenuItem* checked_item = FirstCheckedItem(menu_controller_);
-    NSMenu* menu = [menu_controller_ menu];
+
+    ui::ElementTrackerMac::GetInstance()->NotifyMenuDoneShowing(menu);
+
+  } else {
+    CHECK(run_types & MenuRunner::COMBOBOX);
+    NSMenuItem* const checked_item = FirstCheckedItem(menu_controller_);
     base::scoped_nsobject<NSView> anchor_view(CreateMenuAnchorView(
         window, bounds, checked_item, menu.size.width, anchor));
     [menu setMinimumWidth:bounds.width() + kNativeCheckmarkWidth];
@@ -359,8 +229,6 @@ void MenuRunnerImplCocoa::RunMenuAt(Widget* parent,
                             inView:anchor_view];
 
     [anchor_view removeFromSuperview];
-  } else {
-    NOTREACHED();
   }
 
   closing_event_time_ = ui::EventTimeForNow();
@@ -385,7 +253,6 @@ base::TimeTicks MenuRunnerImplCocoa::GetClosingEventTime() const {
   return closing_event_time_;
 }
 
-MenuRunnerImplCocoa::~MenuRunnerImplCocoa() {}
+MenuRunnerImplCocoa::~MenuRunnerImplCocoa() = default;
 
-}  // namespace internal
-}  // namespace views
+}  // namespace views::internal

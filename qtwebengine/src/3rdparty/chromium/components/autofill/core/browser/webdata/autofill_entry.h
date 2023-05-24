@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 
 #include <string>
 
-#include "base/strings/string16.h"
 #include "base/time/time.h"
 
 namespace autofill {
@@ -15,20 +14,20 @@ namespace autofill {
 class AutofillKey {
  public:
   AutofillKey();
-  AutofillKey(const base::string16& name, const base::string16& value);
+  AutofillKey(const std::u16string& name, const std::u16string& value);
   AutofillKey(const std::string& name, const std::string& value);
   AutofillKey(const AutofillKey& key);
   virtual ~AutofillKey();
 
-  const base::string16& name() const { return name_; }
-  const base::string16& value() const { return value_; }
+  const std::u16string& name() const { return name_; }
+  const std::u16string& value() const { return value_; }
 
   bool operator==(const AutofillKey& key) const;
   bool operator<(const AutofillKey& key) const;
 
  private:
-  base::string16 name_;
-  base::string16 value_;
+  std::u16string name_;
+  std::u16string value_;
 };
 
 class AutofillEntry {

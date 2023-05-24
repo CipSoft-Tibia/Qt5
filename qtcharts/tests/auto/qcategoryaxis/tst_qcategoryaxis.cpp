@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "../qabstractaxis/tst_qabstractaxis.h"
 #include <QtCharts/QCategoryAxis>
@@ -36,10 +10,10 @@ class tst_QCategoryAxis: public tst_QAbstractAxis
 Q_OBJECT
 
 public slots:
-    void initTestCase();
-    void cleanupTestCase();
+    void initTestCase() override;
+    void cleanupTestCase() override;
     void init();
-    void cleanup();
+    void cleanup() override;
 
 private slots:
     void qcategoryaxis_data();
@@ -146,9 +120,9 @@ void tst_QCategoryAxis::max_raw()
     m_categoryaxis->setMax(max);
     QVERIFY2(qFuzzyCompare(m_categoryaxis->max(), max), "Not equal");
 
-    QCOMPARE(spy0.count(), 1);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 1);
+    QCOMPARE(spy0.size(), 1);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 1);
 }
 
 void tst_QCategoryAxis::max_data()
@@ -195,9 +169,9 @@ void tst_QCategoryAxis::min_raw()
     m_categoryaxis->setMin(min);
     QVERIFY2(qFuzzyCompare(m_categoryaxis->min(), min), "Not equal");
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 1);
-    QCOMPARE(spy2.count(), 1);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 1);
+    QCOMPARE(spy2.size(), 1);
 }
 
 void tst_QCategoryAxis::min_data()
@@ -250,9 +224,9 @@ void tst_QCategoryAxis::range_raw()
     QVERIFY2(qFuzzyCompare(m_categoryaxis->min(), min), "Min not equal");
     QVERIFY2(qFuzzyCompare(m_categoryaxis->max(), max), "Max not equal");
 
-    QCOMPARE(spy0.count(), 1);
-    QCOMPARE(spy1.count(), 1);
-    QCOMPARE(spy2.count(), 1);
+    QCOMPARE(spy0.size(), 1);
+    QCOMPARE(spy1.size(), 1);
+    QCOMPARE(spy2.size(), 1);
 }
 
 void tst_QCategoryAxis::range_data()
@@ -328,7 +302,7 @@ void tst_QCategoryAxis::labels_position()
                    SIGNAL(labelsPositionChanged(QCategoryAxis::AxisLabelsPosition)));
     m_categoryaxis->setLabelsPosition(QCategoryAxis::AxisLabelsPositionOnValue);
     QCOMPARE(m_categoryaxis->labelsPosition(), QCategoryAxis::AxisLabelsPositionOnValue);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 }
 
 void tst_QCategoryAxis::reverse()
@@ -341,7 +315,7 @@ void tst_QCategoryAxis::reverse()
 
     m_chart->addAxis(m_categoryaxis, Qt::AlignBottom);
     m_series->attachAxis(m_categoryaxis);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     m_view->show();
     QVERIFY(QTest::qWaitForWindowExposed(m_view));

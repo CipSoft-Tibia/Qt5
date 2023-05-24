@@ -1,10 +1,11 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//build/config/android/config.gni")
 import("//build/config/android/rules.gni")
 import("//build/config/locales.gni")
+import("//tools/grit/grit_rule.gni")
 
 android_library("java") {
   resources_package = "org.chromium.components.media_router"
@@ -16,16 +17,16 @@ android_library("java") {
     "$google_play_services_package:google_play_services_cast_java",
     "//base:base_java",
     "//base:jni_java",
+    "//build/android:build_java",
     "//components/browser_ui/media/android:java",
     "//content/public/android:content_java",
     "//services/media_session/public/cpp/android:media_session_java",
-    "//third_party/android_deps:android_support_v7_appcompat_java",
-    "//third_party/android_deps:androidx_annotation_annotation_java",
-    "//third_party/android_deps:androidx_collection_collection_java",
-    "//third_party/android_deps:androidx_core_core_java",
-    "//third_party/android_deps:androidx_fragment_fragment_java",
-    "//third_party/android_deps:androidx_mediarouter_mediarouter_java",
     "//third_party/android_media:android_media_java",
+    "//third_party/androidx:androidx_annotation_annotation_java",
+    "//third_party/androidx:androidx_collection_collection_java",
+    "//third_party/androidx:androidx_fragment_fragment_java",
+    "//third_party/androidx:androidx_media_media_java",
+    "//third_party/androidx:androidx_mediarouter_mediarouter_java",
   ]
   sources = [
     "java/src/org/chromium/components/media_router/BaseMediaRouteDialogManager.java",
@@ -45,6 +46,7 @@ android_library("java") {
     "java/src/org/chromium/components/media_router/MediaRouteDialogDelegate.java",
     "java/src/org/chromium/components/media_router/MediaRouteManager.java",
     "java/src/org/chromium/components/media_router/MediaRouteProvider.java",
+    "java/src/org/chromium/components/media_router/MediaRouteUmaRecorder.java",
     "java/src/org/chromium/components/media_router/MediaRouterClient.java",
     "java/src/org/chromium/components/media_router/MediaSink.java",
     "java/src/org/chromium/components/media_router/MediaSource.java",
@@ -57,7 +59,6 @@ android_library("java") {
     "java/src/org/chromium/components/media_router/caf/CafMessageHandler.java",
     "java/src/org/chromium/components/media_router/caf/CafNotificationController.java",
     "java/src/org/chromium/components/media_router/caf/CastMediaSource.java",
-    "java/src/org/chromium/components/media_router/caf/CastOptionsProvider.java",
     "java/src/org/chromium/components/media_router/caf/CastSessionController.java",
     "java/src/org/chromium/components/media_router/caf/CastUtils.java",
     "java/src/org/chromium/components/media_router/caf/CreateRouteRequestInfo.java",
@@ -70,6 +71,14 @@ android_library("java") {
     "java/src/org/chromium/components/media_router/caf/remoting/StreamPositionExtrapolator.java",
   ]
   annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
+}
+
+android_library("cast_options_provider_java") {
+  sources = [ "java/src/org/chromium/components/media_router/caf/CastOptionsProvider.java" ]
+  deps = [
+    "$google_play_services_package:google_play_services_cast_framework_java",
+    "$google_play_services_package:google_play_services_cast_java",
+  ]
 }
 
 generate_jni("jni_headers") {
@@ -86,16 +95,21 @@ android_library("test_support_java") {
   sources = [
     "java/src/org/chromium/components/media_router/TestMediaRouterClient.java",
     "javatests/src/org/chromium/components/media_router/MockMediaRouteProvider.java",
+    "javatests/src/org/chromium/components/media_router/RouterTestUtils.java",
   ]
 
   deps = [
     ":java",
     ":test_jni_headers",
     "//base:base_java",
+    "//base:base_java_test_support",
+    "//base:jni_java",
     "//components/browser_ui/media/android:java",
     "//content/public/android:content_java",
-    "//third_party/android_deps:androidx_annotation_annotation_java",
-    "//third_party/android_deps:androidx_fragment_fragment_java",
+    "//content/public/test/android:content_java_test_support",
+    "//third_party/androidx:androidx_annotation_annotation_java",
+    "//third_party/androidx:androidx_fragment_fragment_java",
+    "//third_party/hamcrest:hamcrest_java",
   ]
 }
 
@@ -105,10 +119,7 @@ generate_jni("test_jni_headers") {
   ]
 }
 
-java_library("junit") {
-  # Skip platform checks since Robolectric depends on requires_android targets.
-  bypass_platform_checks = true
-  testonly = true
+robolectric_library("junit") {
   sources = [
     "junit/src/org/chromium/components/media_router/BrowserMediaRouterRouteTest.java",
     "junit/src/org/chromium/components/media_router/BrowserMediaRouterSinkObservationTest.java",
@@ -137,9 +148,8 @@ java_library("junit") {
     "//base:base_java_test_support",
     "//base:base_junit_test_support",
     "//content/public/android:content_java",
-    "//third_party/android_deps:androidx_annotation_annotation_java",
-    "//third_party/android_deps:androidx_mediarouter_mediarouter_java",
-    "//third_party/android_deps:robolectric_all_java",
+    "//third_party/androidx:androidx_annotation_annotation_java",
+    "//third_party/androidx:androidx_mediarouter_mediarouter_java",
     "//third_party/junit",
     "//third_party/mockito:mockito_java",
   ]
@@ -168,7 +178,6 @@ android_resources("java_resources") {
     "java/res/drawable/ic_cast_dark_chrome.xml",
     "java/res/layout/caf_controller_media_route_button.xml",
     "java/res/layout/expanded_cast_controller.xml",
-    "java/res/values/ids.xml",
     "java/res/values/styles.xml",
   ]
   deps = [

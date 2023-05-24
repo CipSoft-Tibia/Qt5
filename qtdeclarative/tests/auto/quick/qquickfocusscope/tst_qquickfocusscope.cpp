@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <qtest.h>
 #include <QSignalSpy>
 #include <QtQml/qqmlengine.h>
@@ -34,16 +9,16 @@
 #include <private/qquicktextedit_p.h>
 #include <QtQuick/private/qquicktext_p.h>
 #include <QtQuick/private/qquickfocusscope_p.h>
-#include "../../shared/util.h"
-#include "../shared/visualtestutil.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/visualtestutils_p.h>
 
-using namespace QQuickVisualTestUtil;
+using namespace QQuickVisualTestUtils;
 
 class tst_qquickfocusscope : public QQmlDataTest
 {
     Q_OBJECT
 public:
-    tst_qquickfocusscope() {}
+    tst_qquickfocusscope() : QQmlDataTest(QT_QMLTEST_DATADIR) {}
 
 private slots:
     void basic();
@@ -404,78 +379,78 @@ void tst_qquickfocusscope::forceActiveFocus()
     itemA1->forceActiveFocus();
     QVERIFY(itemA1->hasActiveFocus());
     QVERIFY(!rootObject->hasActiveFocus());
-    QCOMPARE(rootSpy.count(), 0);
-    QCOMPARE(scopeSpy.count(), 1);
+    QCOMPARE(rootSpy.size(), 0);
+    QCOMPARE(scopeSpy.size(), 1);
 
     scopeA->forceActiveFocus();
     QVERIFY(!itemA1->hasActiveFocus());
     QVERIFY(scopeA->hasActiveFocus());
-    QCOMPARE(scopeASpy.count(), 1);
-    QCOMPARE(rootSpy.count(), 0);
-    QCOMPARE(scopeSpy.count(), 1);
+    QCOMPARE(scopeASpy.size(), 1);
+    QCOMPARE(rootSpy.size(), 0);
+    QCOMPARE(scopeSpy.size(), 1);
 
     itemA2->forceActiveFocus();
     QVERIFY(!itemA1->hasActiveFocus());
     QVERIFY(itemA2->hasActiveFocus());
     QVERIFY(scopeA->hasActiveFocus());
-    QCOMPARE(scopeASpy.count(), 1);
-    QCOMPARE(rootSpy.count(), 0);
-    QCOMPARE(scopeSpy.count(), 1);
+    QCOMPARE(scopeASpy.size(), 1);
+    QCOMPARE(rootSpy.size(), 0);
+    QCOMPARE(scopeSpy.size(), 1);
 
     scopeA->forceActiveFocus();
     QVERIFY(!itemA1->hasActiveFocus());
     QVERIFY(itemA2->hasActiveFocus());
     QVERIFY(scopeA->hasActiveFocus());
-    QCOMPARE(scopeASpy.count(), 1);
-    QCOMPARE(rootSpy.count(), 0);
-    QCOMPARE(scopeSpy.count(), 1);
+    QCOMPARE(scopeASpy.size(), 1);
+    QCOMPARE(rootSpy.size(), 0);
+    QCOMPARE(scopeSpy.size(), 1);
 
     itemA1->forceActiveFocus();
     QVERIFY(itemA1->hasActiveFocus());
     QVERIFY(!scopeA->hasActiveFocus());
     QVERIFY(!itemA2->hasActiveFocus());
-    QCOMPARE(scopeASpy.count(), 2);
-    QCOMPARE(rootSpy.count(), 0);
-    QCOMPARE(scopeSpy.count(), 1);
+    QCOMPARE(scopeASpy.size(), 2);
+    QCOMPARE(rootSpy.size(), 0);
+    QCOMPARE(scopeSpy.size(), 1);
 
     // Then jump back and forth between branch 'a' and 'b'
     itemB1->forceActiveFocus();
     QVERIFY(itemB1->hasActiveFocus());
-    QCOMPARE(rootSpy.count(), 0);
-    QCOMPARE(scopeSpy.count(), 1);
+    QCOMPARE(rootSpy.size(), 0);
+    QCOMPARE(scopeSpy.size(), 1);
 
     scopeA->forceActiveFocus();
     QVERIFY(!itemA1->hasActiveFocus());
     QVERIFY(!itemB1->hasActiveFocus());
     QVERIFY(scopeA->hasActiveFocus());
-    QCOMPARE(scopeASpy.count(), 3);
-    QCOMPARE(rootSpy.count(), 0);
-    QCOMPARE(scopeSpy.count(), 1);
+    QCOMPARE(scopeASpy.size(), 3);
+    QCOMPARE(rootSpy.size(), 0);
+    QCOMPARE(scopeSpy.size(), 1);
 
     scopeB->forceActiveFocus();
     QVERIFY(!scopeA->hasActiveFocus());
     QVERIFY(!itemB1->hasActiveFocus());
     QVERIFY(scopeB->hasActiveFocus());
-    QCOMPARE(scopeASpy.count(), 4);
-    QCOMPARE(scopeBSpy.count(), 1);
-    QCOMPARE(rootSpy.count(), 0);
-    QCOMPARE(scopeSpy.count(), 1);
+    QCOMPARE(scopeASpy.size(), 4);
+    QCOMPARE(scopeBSpy.size(), 1);
+    QCOMPARE(rootSpy.size(), 0);
+    QCOMPARE(scopeSpy.size(), 1);
 
     itemA2->forceActiveFocus();
     QVERIFY(!scopeB->hasActiveFocus());
     QVERIFY(itemA2->hasActiveFocus());
-    QCOMPARE(scopeASpy.count(), 5);
-    QCOMPARE(scopeBSpy.count(), 2);
-    QCOMPARE(rootSpy.count(), 0);
-    QCOMPARE(scopeSpy.count(), 1);
+    QCOMPARE(scopeASpy.size(), 5);
+    QCOMPARE(scopeBSpy.size(), 2);
+    QCOMPARE(rootSpy.size(), 0);
+    QCOMPARE(scopeSpy.size(), 1);
 
     itemB2->forceActiveFocus();
     QVERIFY(!itemA2->hasActiveFocus());
     QVERIFY(itemB2->hasActiveFocus());
-    QCOMPARE(scopeASpy.count(), 6);
-    QCOMPARE(scopeBSpy.count(), 3);
-    QCOMPARE(rootSpy.count(), 0);
-    QCOMPARE(scopeSpy.count(), 1);
+    QCOMPARE(scopeASpy.size(), 6);
+    QCOMPARE(scopeBSpy.size(), 3);
+    QCOMPARE(rootSpy.size(), 0);
+    QCOMPARE(scopeSpy.size(), 1);
 
     delete view;
 }
@@ -541,12 +516,12 @@ void tst_qquickfocusscope::canvasFocus()
     QCOMPARE(item2->hasFocus(), false);
     QCOMPARE(item2->hasActiveFocus(), false);
 
-    QCOMPARE(rootFocusSpy.count(), 1);
-    QCOMPARE(rootActiveFocusSpy.count(), 1);
-    QCOMPARE(scope1FocusSpy.count(), 0);
-    QCOMPARE(scope1ActiveFocusSpy.count(), 1);
-    QCOMPARE(item1FocusSpy.count(), 0);
-    QCOMPARE(item1ActiveFocusSpy.count(), 1);
+    QCOMPARE(rootFocusSpy.size(), 1);
+    QCOMPARE(rootActiveFocusSpy.size(), 1);
+    QCOMPARE(scope1FocusSpy.size(), 0);
+    QCOMPARE(scope1ActiveFocusSpy.size(), 1);
+    QCOMPARE(item1FocusSpy.size(), 0);
+    QCOMPARE(item1ActiveFocusSpy.size(), 1);
 
 
     //    view->hide(); // seemingly doesn't remove focus, so have an another view steal it.
@@ -562,12 +537,12 @@ void tst_qquickfocusscope::canvasFocus()
     QCOMPARE(item1->hasFocus(), true);
     QCOMPARE(item1->hasActiveFocus(), false);
 
-    QCOMPARE(rootFocusSpy.count(), 2);
-    QCOMPARE(rootActiveFocusSpy.count(), 2);
-    QCOMPARE(scope1FocusSpy.count(), 0);
-    QCOMPARE(scope1ActiveFocusSpy.count(), 2);
-    QCOMPARE(item1FocusSpy.count(), 0);
-    QCOMPARE(item1ActiveFocusSpy.count(), 2);
+    QCOMPARE(rootFocusSpy.size(), 2);
+    QCOMPARE(rootActiveFocusSpy.size(), 2);
+    QCOMPARE(scope1FocusSpy.size(), 0);
+    QCOMPARE(scope1ActiveFocusSpy.size(), 2);
+    QCOMPARE(item1FocusSpy.size(), 0);
+    QCOMPARE(item1ActiveFocusSpy.size(), 2);
 
 
     // window does not have focus, so item2 will not get active focus
@@ -584,16 +559,16 @@ void tst_qquickfocusscope::canvasFocus()
     QCOMPARE(item2->hasFocus(), true);
     QCOMPARE(item2->hasActiveFocus(), false);
 
-    QCOMPARE(rootFocusSpy.count(), 2);
-    QCOMPARE(rootActiveFocusSpy.count(), 2);
-    QCOMPARE(scope1FocusSpy.count(), 1);
-    QCOMPARE(scope1ActiveFocusSpy.count(), 2);
-    QCOMPARE(item1FocusSpy.count(), 0);
-    QCOMPARE(item1ActiveFocusSpy.count(), 2);
-    QCOMPARE(scope2FocusSpy.count(), 1);
-    QCOMPARE(scope2ActiveFocusSpy.count(), 0);
-    QCOMPARE(item2FocusSpy.count(), 1);
-    QCOMPARE(item2ActiveFocusSpy.count(), 0);
+    QCOMPARE(rootFocusSpy.size(), 2);
+    QCOMPARE(rootActiveFocusSpy.size(), 2);
+    QCOMPARE(scope1FocusSpy.size(), 1);
+    QCOMPARE(scope1ActiveFocusSpy.size(), 2);
+    QCOMPARE(item1FocusSpy.size(), 0);
+    QCOMPARE(item1ActiveFocusSpy.size(), 2);
+    QCOMPARE(scope2FocusSpy.size(), 1);
+    QCOMPARE(scope2ActiveFocusSpy.size(), 0);
+    QCOMPARE(item2FocusSpy.size(), 1);
+    QCOMPARE(item2ActiveFocusSpy.size(), 0);
 
     // give the window focus, and item2 will get active focus
     view->show();
@@ -607,12 +582,12 @@ void tst_qquickfocusscope::canvasFocus()
     QCOMPARE(scope2->hasActiveFocus(), true);
     QCOMPARE(item2->hasFocus(), true);
     QCOMPARE(item2->hasActiveFocus(), true);
-    QCOMPARE(rootFocusSpy.count(), 3);
-    QCOMPARE(rootActiveFocusSpy.count(), 3);
-    QCOMPARE(scope2FocusSpy.count(), 1);
-    QCOMPARE(scope2ActiveFocusSpy.count(), 1);
-    QCOMPARE(item2FocusSpy.count(), 1);
-    QCOMPARE(item2ActiveFocusSpy.count(), 1);
+    QCOMPARE(rootFocusSpy.size(), 3);
+    QCOMPARE(rootActiveFocusSpy.size(), 3);
+    QCOMPARE(scope2FocusSpy.size(), 1);
+    QCOMPARE(scope2ActiveFocusSpy.size(), 1);
+    QCOMPARE(item2FocusSpy.size(), 1);
+    QCOMPARE(item2ActiveFocusSpy.size(), 1);
 
     delete view;
 }

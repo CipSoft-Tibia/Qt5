@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
 #include "base/threading/thread.h"
@@ -160,4 +160,5 @@ TEST_F(ProxyHelpersTest, PostTask) {
   EXPECT_TRUE(original_string_ == "This is a string");
   EXPECT_TRUE(derived_string_ == "This is a stringer");
 }
+
 }  // namespace ui

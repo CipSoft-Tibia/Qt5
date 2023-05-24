@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <QGraphicsLayout>
 
 #include "abstractitemview.h"
@@ -215,7 +190,7 @@ void AbstractItemView::setSelectionModel(QItemSelectionModel *smodel)
 /*virtual*/
 void AbstractItemView::currentIndexChanged(const QModelIndex &current, const QModelIndex &previous)
 {
-    Q_UNUSED(previous)
+    Q_UNUSED(previous);
 
     if (current != m_currentIndex)
         m_currentIndex = current;
@@ -225,24 +200,24 @@ void AbstractItemView::currentIndexChanged(const QModelIndex &current, const QMo
 void AbstractItemView::currentSelectionChanged(const QItemSelection &selected,
                                                const QItemSelection &deselected)
 {
-   Q_UNUSED(selected)
-   Q_UNUSED(deselected)
+   Q_UNUSED(selected);
+   Q_UNUSED(deselected);
 }
 
 /*virtual*/
 void AbstractItemView::dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight)
 {
-    Q_UNUSED(topLeft)
-    Q_UNUSED(bottomRight)
+    Q_UNUSED(topLeft);
+    Q_UNUSED(bottomRight);
     // TODO implement if we like to edit view items.
 }
 
 /*virtual*/
 void AbstractItemView::rowsAboutToBeInserted(const QModelIndex &index, int start, int end)
 {
-    Q_UNUSED(index)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(index);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
 
     // TODO implement
 }
@@ -250,17 +225,17 @@ void AbstractItemView::rowsAboutToBeInserted(const QModelIndex &index, int start
 /*virtual*/
 void AbstractItemView::rowsAboutToBeRemoved(const QModelIndex &index,int start, int end)
 {
-    Q_UNUSED(index)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(index);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
 }
 
 /*virtual*/
 void AbstractItemView::rowsRemoved(const QModelIndex &parent,int start, int end)
 {
-    Q_UNUSED(parent)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(parent);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
 
     if (start <= m_currentIndex.row() && m_currentIndex.row() <= end) {
         QModelIndex newCurrentIndex = m_model->index(start, 0, m_rootIndex);

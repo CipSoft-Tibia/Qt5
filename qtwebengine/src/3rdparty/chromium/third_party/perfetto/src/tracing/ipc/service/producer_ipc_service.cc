@@ -16,7 +16,7 @@
 
 #include "src/tracing/ipc/service/producer_ipc_service.h"
 
-#include <inttypes.h>
+#include <cinttypes>
 
 #include "perfetto/base/logging.h"
 #include "perfetto/base/task_runner.h"
@@ -26,7 +26,12 @@
 #include "perfetto/ext/tracing/core/tracing_service.h"
 #include "perfetto/tracing/core/data_source_config.h"
 #include "perfetto/tracing/core/data_source_descriptor.h"
+
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
+#include "src/tracing/ipc/shared_memory_windows.h"
+#else
 #include "src/tracing/ipc/posix_shared_memory.h"
+#endif
 
 // The remote Producer(s) are not trusted. All the methods from the ProducerPort
 // IPC layer (e.g. RegisterDataSource()) must assume that the remote Producer is
@@ -79,26 +84,21 @@ void ProducerIPCService::InitializeConnection(
       break;
   }
 
-  bool dcheck_mismatch = false;
-#if PERFETTO_DCHECK_IS_ON()
-  dcheck_mismatch =
-      req.build_flags() ==
-      protos::gen::InitializeConnectionRequest::BUILD_FLAGS_DCHECKS_OFF;
-#else
-  dcheck_mismatch =
-      req.build_flags() ==
-      protos::gen::InitializeConnectionRequest::BUILD_FLAGS_DCHECKS_ON;
-#endif
-  if (dcheck_mismatch) {
-    PERFETTO_LOG(
-        "The producer and the service binaries are built using different "
-        "DEBUG/NDEBUG flags. This will likely cause crashes.");
-  }
-
   // If the producer provided an SMB, tell the service to attempt to adopt it.
   std::unique_ptr<SharedMemory> shmem;
   if (req.producer_provided_shmem()) {
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
+    if (!req.has_shm_key_windows() || req.shm_key_windows().empty()) {
+      PERFETTO_ELOG(
+          "shm_key_windows must be non-empty when "
+          "producer_provided_shmem = true");
+    } else {
+      shmem = SharedMemoryWindows::Attach(req.shm_key_windows());
+      // Attach() does error logging if something fails, no need to extra ELOGs.
+    }
+#else
     base::ScopedFile shmem_fd = ipc::Service::TakeReceivedFD();
+
     if (shmem_fd) {
       shmem = PosixSharedMemory::AttachToFd(
           std::move(shmem_fd), /*require_seals_if_supported=*/true);
@@ -112,14 +112,16 @@ void ProducerIPCService::InitializeConnection(
           "InitializeConnectionRequest's producer_provided_shmem flag is set "
           "but the producer didn't provide an FD");
     }
+#endif
   }
 
   // ConnectProducer will call OnConnect() on the next task.
   producer->service_endpoint = core_service_->ConnectProducer(
-      producer.get(), client_info.uid(), req.producer_name(),
+      producer.get(), client_info.uid(), client_info.pid(), req.producer_name(),
       req.shared_memory_size_hint_bytes(),
       /*in_process=*/false, smb_scraping_mode,
-      req.shared_memory_page_size_hint_bytes(), std::move(shmem));
+      req.shared_memory_page_size_hint_bytes(), std::move(shmem),
+      req.sdk_version());
 
   // Could happen if the service has too many producers connected.
   if (!producer->service_endpoint) {
@@ -136,6 +138,7 @@ void ProducerIPCService::InitializeConnection(
   auto async_res =
       ipc::AsyncResult<protos::gen::InitializeConnectionResponse>::Create();
   async_res->set_using_shmem_provided_by_producer(using_producer_shmem);
+  async_res->set_direct_smb_patching_supported(true);
   response.Resolve(std::move(async_res));
 }
 
@@ -159,6 +162,29 @@ void ProducerIPCService::RegisterDataSource(
   if (response.IsBound()) {
     response.Resolve(
         ipc::AsyncResult<protos::gen::RegisterDataSourceResponse>::Create());
+  }
+}
+
+// Called by the remote Producer through the IPC channel.
+void ProducerIPCService::UpdateDataSource(
+    const protos::gen::UpdateDataSourceRequest& req,
+    DeferredUpdateDataSourceResponse response) {
+  RemoteProducer* producer = GetProducerForCurrentRequest();
+  if (!producer) {
+    PERFETTO_DLOG(
+        "Producer invoked UpdateDataSource() before InitializeConnection()");
+    if (response.IsBound())
+      response.Reject();
+    return;
+  }
+
+  const DataSourceDescriptor& dsd = req.data_source_descriptor();
+  GetProducerForCurrentRequest()->service_endpoint->UpdateDataSource(dsd);
+
+  // UpdateDataSource doesn't expect any meaningful response.
+  if (response.IsBound()) {
+    response.Resolve(
+        ipc::AsyncResult<protos::gen::UpdateDataSourceResponse>::Create());
   }
 }
 
@@ -459,10 +485,17 @@ void ProducerIPCService::RemoteProducer::SendSetupTracing() {
     // Nominal case (% Chrome): service provides SMB.
     setup_tracing->set_shared_buffer_page_size_kb(
         static_cast<uint32_t>(service_endpoint->shared_buffer_page_size_kb()));
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
+    const std::string& shm_key =
+        static_cast<SharedMemoryWindows*>(service_endpoint->shared_memory())
+            ->key();
+    setup_tracing->set_shm_key_windows(shm_key);
+#else
     const int shm_fd =
         static_cast<PosixSharedMemory*>(service_endpoint->shared_memory())
             ->fd();
     cmd.set_fd(shm_fd);
+#endif
   }
   async_producer_commands.Resolve(std::move(cmd));
 }

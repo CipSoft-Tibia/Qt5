@@ -1,11 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/download/internal/background_service/entry_utils.h"
 
-#include <algorithm>
-
+#include "base/ranges/algorithm.h"
 #include "components/download/internal/background_service/test/entry_utils.h"
 #include "components/download/internal/background_service/test/test_download_driver.h"
 #include "components/download/public/background_service/clients.h"
@@ -13,6 +12,11 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace download {
+
+namespace {
+constexpr char kKey[] = "k";
+constexpr char kValue[] = "v";
+}  // namespace
 
 TEST(DownloadServiceEntryUtilsTest, TestGetNumberOfLiveEntriesForClient) {
   Entry entry1 = test::BuildBasicEntry();
@@ -58,9 +62,7 @@ TEST(DownloadServiceEntryUtilsTest, MapEntriesToClients) {
   EXPECT_EQ(mapped1.end(), mapped1.find(DownloadClient::TEST));
 
   auto list1 = mapped1.find(DownloadClient::INVALID)->second;
-  EXPECT_EQ(5U, list1.size());
-  EXPECT_TRUE(
-      std::equal(expected_list.begin(), expected_list.end(), list1.begin()));
+  EXPECT_TRUE(base::ranges::equal(expected_list, list1));
 
   // If DownloadClient::TEST is a valid Client, it should have the associated
   // entries.
@@ -72,9 +74,7 @@ TEST(DownloadServiceEntryUtilsTest, MapEntriesToClients) {
   EXPECT_EQ(mapped2.end(), mapped2.find(DownloadClient::INVALID));
 
   auto list2 = mapped2.find(DownloadClient::TEST)->second;
-  EXPECT_EQ(5U, list2.size());
-  EXPECT_TRUE(
-      std::equal(expected_list.begin(), expected_list.end(), list2.begin()));
+  EXPECT_TRUE(base::ranges::equal(expected_list, list2));
 }
 
 TEST(DownloadServiceEntryUtilsTest, GetSchedulingCriteria) {
@@ -155,10 +155,13 @@ TEST(DownloadServiceEntryUtilsTest, BuildDownloadMetaData) {
   entry = test::BuildBasicEntry(Entry::State::COMPLETE);
   entry.target_file_path = base::FilePath::FromUTF8Unsafe("123");
   entry.bytes_downloaded = 100u;
+  entry.custom_data = {{kKey, kValue}};
   meta_data = util::BuildDownloadMetaData(&entry, &driver);
   EXPECT_EQ(entry.guid, meta_data.guid);
   EXPECT_TRUE(meta_data.completion_info.has_value());
   EXPECT_EQ(entry.target_file_path, meta_data.completion_info->path);
+  EXPECT_EQ(1u, meta_data.completion_info->custom_data.size());
+  EXPECT_EQ(kValue, meta_data.completion_info->custom_data[kKey]);
   EXPECT_EQ(entry.bytes_downloaded,
             meta_data.completion_info->bytes_downloaded);
 }

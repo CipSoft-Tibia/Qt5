@@ -15,7 +15,6 @@
 
 #include "config/aom_config.h"
 #include "config/aom_dsp_rtcd.h"
-#include "config/av1_rtcd.h"
 
 #include "aom_dsp/x86/synonyms.h"
 
@@ -54,7 +53,8 @@ unsigned int aom_sad4xh_sse2(const uint8_t *a, int a_stride, const uint8_t *b,
 
   // At this point, we have two 32-bit partial SADs at bit[0:31] and [64:95].
   const unsigned int res =
-      _mm_cvtsi128_si32(sad) + _mm_cvtsi128_si32(_mm_srli_si128(sad, 8));
+      (unsigned int)(_mm_cvtsi128_si32(sad) +
+                     _mm_cvtsi128_si32(_mm_srli_si128(sad, 8)));
 
   return res;
 }
@@ -85,7 +85,8 @@ unsigned int aom_sad8xh_sse2(const uint8_t *a, int a_stride, const uint8_t *b,
   }
 
   const unsigned int res =
-      _mm_cvtsi128_si32(sad) + _mm_cvtsi128_si32(_mm_srli_si128(sad, 8));
+      (unsigned int)(_mm_cvtsi128_si32(sad) +
+                     _mm_cvtsi128_si32(_mm_srli_si128(sad, 8)));
 
   return res;
 }
@@ -109,7 +110,8 @@ unsigned int aom_sad16xh_sse2(const uint8_t *a, int a_stride, const uint8_t *b,
   }
 
   const unsigned int res =
-      _mm_cvtsi128_si32(sad) + _mm_cvtsi128_si32(_mm_srli_si128(sad, 8));
+      (unsigned int)(_mm_cvtsi128_si32(sad) +
+                     _mm_cvtsi128_si32(_mm_srli_si128(sad, 8)));
 
   return res;
 }
@@ -135,7 +137,8 @@ unsigned int aom_sad32xh_sse2(const uint8_t *a, int a_stride, const uint8_t *b,
   }
 
   const unsigned int res =
-      _mm_cvtsi128_si32(sad) + _mm_cvtsi128_si32(_mm_srli_si128(sad, 8));
+      (unsigned int)(_mm_cvtsi128_si32(sad) +
+                     _mm_cvtsi128_si32(_mm_srli_si128(sad, 8)));
 
   return res;
 }
@@ -161,7 +164,8 @@ unsigned int aom_sad64xh_sse2(const uint8_t *a, int a_stride, const uint8_t *b,
   }
 
   const unsigned int res =
-      _mm_cvtsi128_si32(sad) + _mm_cvtsi128_si32(_mm_srli_si128(sad, 8));
+      (unsigned int)(_mm_cvtsi128_si32(sad) +
+                     _mm_cvtsi128_si32(_mm_srli_si128(sad, 8)));
 
   return res;
 }
@@ -187,7 +191,8 @@ unsigned int aom_sad128xh_sse2(const uint8_t *a, int a_stride, const uint8_t *b,
   }
 
   const unsigned int res =
-      _mm_cvtsi128_si32(sad) + _mm_cvtsi128_si32(_mm_srli_si128(sad, 8));
+      (unsigned int)(_mm_cvtsi128_si32(sad) +
+                     _mm_cvtsi128_si32(_mm_srli_si128(sad, 8)));
 
   return res;
 }

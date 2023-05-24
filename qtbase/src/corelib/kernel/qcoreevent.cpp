@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcoreevent.h"
 #include "qcoreapplication.h"
@@ -49,6 +13,9 @@
 #include <limits>
 
 QT_BEGIN_NAMESPACE
+
+Q_TRACE_POINT(qtcore, QEvent_ctor, QEvent *event, QEvent::Type type);
+Q_TRACE_POINT(qtcore, QEvent_dtor, QEvent *event, QEvent::Type type);
 
 /*!
     \class QEvent
@@ -118,6 +85,8 @@ QT_BEGIN_NAMESPACE
     \value ContextMenu                      Context popup menu (QContextMenuEvent).
     \value CursorChange                     The widget's cursor has changed.
     \value DeferredDelete                   The object will be deleted after it has cleaned up (QDeferredDeleteEvent)
+    \value [since 6.6] DevicePixelRatioChange
+                                            The devicePixelRatio has changed for this widget's or window's underlying backing store.
     \value DragEnter                        The cursor enters a widget during a drag and drop operation (QDragEnterEvent).
     \value DragLeave                        The cursor leaves a widget during a drag and drop operation (QDragLeaveEvent).
     \value DragMove                         A drag and drop operation is in progress (QDragMoveEvent).
@@ -153,6 +122,7 @@ QT_BEGIN_NAMESPACE
     \value GraphicsSceneMove                Widget was moved (QGraphicsSceneMoveEvent).
     \value GraphicsSceneResize              Widget was resized (QGraphicsSceneResizeEvent).
     \value GraphicsSceneWheel               Mouse wheel rolled in a graphics scene (QGraphicsSceneWheelEvent).
+    \value GraphicsSceneLeave               The cursor leaves a graphics scene (QGraphicsSceneWheelEvent).
     \value Hide                             Widget was hidden (QHideEvent).
     \value HideToParent                     A child widget has been hidden.
     \value HoverEnter                       The mouse cursor enters a hover widget (QHoverEvent).
@@ -197,7 +167,8 @@ QT_BEGIN_NAMESPACE
     \value Polish                           The widget is polished.
     \value PolishRequest                    The widget should be polished.
     \value QueryWhatsThis                   The widget should accept the event if it has "What's This?" help (QHelpEvent).
-    \value ReadOnlyChange                   Widget's read-only state has changed (since Qt 5.4).
+    \value Quit                             The application has exited.
+    \value [since 5.4] ReadOnlyChange       Widget's read-only state has changed.
     \value RequestSoftwareInputPanel        A widget wants to open a software input panel (SIP).
     \value Resize                           Widget's size changed (QResizeEvent).
     \value ScrollPrepare                    The object needs to fill in its geometry information (QScrollPrepareEvent).
@@ -224,7 +195,7 @@ QT_BEGIN_NAMESPACE
     \omitvalue OkRequest
     \value TabletEnterProximity             Wacom tablet enter proximity event (QTabletEvent), sent to QApplication.
     \value TabletLeaveProximity             Wacom tablet leave proximity event (QTabletEvent), sent to QApplication.
-    \value TabletTrackingChange             The Wacom tablet tracking state has changed (since Qt 5.9).
+    \value [since 5.9] TabletTrackingChange The Wacom tablet tracking state has changed.
     \omitvalue ThemeChange
     \value ThreadChange                     The object is moved to another thread. This is the last event sent to this object in the previous thread. See QObject::moveToThread().
     \value Timer                            Regular timer events (QTimerEvent).
@@ -250,7 +221,7 @@ QT_BEGIN_NAMESPACE
     \value WindowStateChange                The \l{QWindow::windowState()}{window's state} (minimized, maximized or full-screen) has changed (QWindowStateChangeEvent).
     \value WindowTitleChange                The window title has changed.
     \value WindowUnblocked                  The window is unblocked after a modal dialog exited.
-    \value WinIdChange                      The window system identifer for this native widget has changed.
+    \value WinIdChange                      The window system identifier for this native widget has changed.
     \value ZOrderChange                     The widget's z-order has changed. This event is never sent to top level windows.
 
     User events should have values between \c User and \c{MaxUser}:
@@ -283,59 +254,64 @@ QT_BEGIN_NAMESPACE
     \omitvalue ApplicationDeactivate
     \omitvalue ApplicationDeactivated
     \omitvalue MacGLWindowChange
-    \omitvalue MacGLClearDrawable
     \omitvalue NetworkReplyUpdated
     \omitvalue FutureCallOut
     \omitvalue NativeGesture
     \omitvalue WindowChangeInternal
     \omitvalue ScreenChangeInternal
+    \omitvalue WindowAboutToChangeInternal
 */
 
 /*!
-    Contructs an event object of type \a type.
+    Constructs an event object of type \a type.
 */
 QEvent::QEvent(Type type)
-    : d(nullptr), t(type), posted(false), spont(false), m_accept(true)
+    : t(type), m_reserved(0),
+      m_inputEvent(false), m_pointerEvent(false), m_singlePointEvent(false)
 {
-    Q_TRACE(QEvent_ctor, this, t);
+    Q_TRACE(QEvent_ctor, this, type);
 }
 
 /*!
+    \fn QEvent::QEvent(const QEvent &other)
+    \internal
+    Copies the \a other event.
+*/
+
+/*!
+    \internal
+    \since 6.0
+    \fn QEvent::QEvent(Type type, QEvent::InputEventTag)
+
+    Constructs an event object of type \a type, setting the inputEvent flag to \c true.
+*/
+
+/*!
+    \internal
+    \since 6.0
+    \fn QEvent::QEvent(Type type, QEvent::PointerEventTag)
+
+    Constructs an event object of type \a type, setting the pointerEvent and
+    inputEvent flags to \c true.
+*/
+
+/*!
+    \internal
+    \since 6.0
+    \fn QEvent::QEvent(Type type, QEvent::SinglePointEventTag)
+
+    Constructs an event object of type \a type, setting the singlePointEvent,
+    pointerEvent and inputEvent flags to \c true.
+*/
+
+/*!
+    \fn QEvent &QEvent::operator=(const QEvent &other)
     \internal
     Attempts to copy the \a other event.
 
     Copying events is a bad idea, yet some Qt 4 code does it (notably,
     QApplication and the state machine).
  */
-QEvent::QEvent(const QEvent &other)
-    : d(other.d), t(other.t), posted(other.posted), spont(other.spont),
-      m_accept(other.m_accept)
-{
-    Q_TRACE(QEvent_ctor, this, t);
-    // if QEventPrivate becomes available, make sure to implement a
-    // virtual QEventPrivate *clone() const; function so we can copy here
-    Q_ASSERT_X(!d, "QEvent", "Impossible, this can't happen: QEventPrivate isn't defined anywhere");
-}
-
-/*!
-    \internal
-    Attempts to copy the \a other event.
-
-    Copying events is a bad idea, yet some Qt 4 code does it (notably,
-    QApplication and the state machine).
- */
-QEvent &QEvent::operator=(const QEvent &other)
-{
-    // if QEventPrivate becomes available, make sure to implement a
-    // virtual QEventPrivate *clone() const; function so we can copy here
-    Q_ASSERT_X(!other.d, "QEvent", "Impossible, this can't happen: QEventPrivate isn't defined anywhere");
-
-    t = other.t;
-    posted = other.posted;
-    spont = other.spont;
-    m_accept = other.m_accept;
-    return *this;
-}
 
 /*!
     Destroys the event. If it was \l{QCoreApplication::postEvent()}{posted},
@@ -344,16 +320,20 @@ QEvent &QEvent::operator=(const QEvent &other)
 
 QEvent::~QEvent()
 {
-    Q_TRACE(QEvent_dtor, this, t);
-    if (posted && QCoreApplication::instance())
+    if (m_posted && QCoreApplication::instance())
         QCoreApplicationPrivate::removePostedEvent(this);
-    Q_ASSERT_X(!d, "QEvent", "Impossible, this can't happen: QEventPrivate isn't defined anywhere");
 }
 
+/*!
+    Creates and returns an identical copy of this event.
+    \since 6.0
+*/
+QEvent *QEvent::clone() const
+{ return new QEvent(*this); }
 
 /*!
     \property  QEvent::accepted
-    the accept flag of the event object
+    \brief the accept flag of the event object.
 
     Setting the accept parameter indicates that the event receiver
     wants the event. Unwanted events might be propagated to the parent
@@ -362,6 +342,10 @@ QEvent::~QEvent()
 
     For convenience, the accept flag can also be set with accept(),
     and cleared with ignore().
+
+    \note Accepting a QPointerEvent implicitly
+    \l {QEventPoint::setAccepted()}{accepts} all the
+    \l {QPointerEvent::points()}{points} that the event carries.
 */
 
 /*!
@@ -403,8 +387,29 @@ QEvent::~QEvent()
 
     Returns \c true if the event originated outside the application (a
     system event); otherwise returns \c false.
+*/
 
-    The return value of this function is not defined for paint events.
+/*!
+    \fn bool QEvent::isInputEvent() const
+    \since 6.0
+
+    Returns \c true if the event object is a QInputEvent or one of its
+    subclasses.
+*/
+
+/*!
+    \fn bool QEvent::isPointerEvent() const
+    \since 6.0
+
+    Returns \c true if the event object is a QPointerEvent or one of its
+    subclasses.
+*/
+
+/*!
+    \fn bool QEvent::isSinglePointEvent() const
+    \since 6.0
+
+    Returns \c true if the event object is a subclass of QSinglePointEvent.
 */
 
 namespace {
@@ -420,6 +425,8 @@ struct QBasicAtomicBitField {
     // the otherwise necessary scan through 'data':
     QBasicAtomicInteger<uint> next;
     QBasicAtomicInteger<uint> data[NumInts];
+
+    constexpr QBasicAtomicBitField() = default;
 
     bool allocateSpecific(int which) noexcept
     {
@@ -461,7 +468,7 @@ struct QBasicAtomicBitField {
 
 typedef QBasicAtomicBitField<QEvent::MaxUser - QEvent::User + 1> UserEventTypeRegistry;
 
-static UserEventTypeRegistry userEventTypeRegistry;
+Q_CONSTINIT static UserEventTypeRegistry userEventTypeRegistry {};
 
 static inline int registerEventTypeZeroBased(int id) noexcept
 {
@@ -521,12 +528,7 @@ QTimerEvent::QTimerEvent(int timerId)
     : QEvent(Timer), id(timerId)
 {}
 
-/*!
-    \internal
-*/
-QTimerEvent::~QTimerEvent()
-{
-}
+Q_IMPL_EVENT_COMMON(QTimerEvent)
 
 /*!
     \fn int QTimerEvent::timerId() const
@@ -568,12 +570,7 @@ QChildEvent::QChildEvent(Type type, QObject *child)
     : QEvent(type), c(child)
 {}
 
-/*!
-    \internal
-*/
-QChildEvent::~QChildEvent()
-{
-}
+Q_IMPL_EVENT_COMMON(QChildEvent)
 
 /*!
     \fn QObject *QChildEvent::child() const
@@ -625,12 +622,7 @@ QDynamicPropertyChangeEvent::QDynamicPropertyChangeEvent(const QByteArray &name)
 {
 }
 
-/*!
-    \internal
-*/
-QDynamicPropertyChangeEvent::~QDynamicPropertyChangeEvent()
-{
-}
+Q_IMPL_EVENT_COMMON(QDynamicPropertyChangeEvent)
 
 /*!
     \fn QByteArray QDynamicPropertyChangeEvent::propertyName() const
@@ -649,11 +641,7 @@ QDeferredDeleteEvent::QDeferredDeleteEvent()
     , level(0)
 { }
 
-/*!
-    \internal
-*/
-QDeferredDeleteEvent::~QDeferredDeleteEvent()
-{ }
+Q_IMPL_EVENT_COMMON(QDeferredDeleteEvent)
 
 /*! \fn int QDeferredDeleteEvent::loopLevel() const
 

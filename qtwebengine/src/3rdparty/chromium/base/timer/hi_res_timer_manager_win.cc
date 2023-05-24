@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,14 +11,13 @@
 #include "base/command_line.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/power_monitor/power_monitor.h"
-#include "base/task/post_task.h"
 #include "base/time/time.h"
 
 namespace base {
 
 namespace {
 
-constexpr TimeDelta kUsageSampleInterval = TimeDelta::FromMinutes(10);
+constexpr TimeDelta kUsageSampleInterval = Minutes(10);
 
 void ReportHighResolutionTimerUsage() {
   UMA_HISTOGRAM_PERCENTAGE("Windows.HighResolutionTimerUsage",
@@ -42,8 +41,10 @@ HighResolutionTimerManager::HighResolutionTimerManager()
   // hi_res_clock_available_ will remain at its initial value.
   if (HighResolutionTimerAllowed()) {
     DCHECK(PowerMonitor::IsInitialized());
-    PowerMonitor::AddObserver(this);
-    UseHiResClock(!PowerMonitor::IsOnBatteryPower());
+    PowerMonitor::AddPowerSuspendObserver(this);
+    const bool on_battery =
+        PowerMonitor::AddPowerStateObserverAndReturnOnBatteryState(this);
+    UseHiResClock(!on_battery);
 
     // Start polling the high resolution timer usage.
     Time::ResetHighResolutionTimerUsage();
@@ -54,7 +55,8 @@ HighResolutionTimerManager::HighResolutionTimerManager()
 
 HighResolutionTimerManager::~HighResolutionTimerManager() {
   if (HighResolutionTimerAllowed()) {
-    PowerMonitor::RemoveObserver(this);
+    PowerMonitor::RemovePowerSuspendObserver(this);
+    PowerMonitor::RemovePowerStateObserver(this);
     UseHiResClock(false);
   }
 }

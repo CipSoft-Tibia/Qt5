@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,11 +11,11 @@
 #include <string>
 #include <vector>
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/strings/string16.h"
+#include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "crypto/scoped_nss_types.h"
 #include "net/base/net_errors.h"
 #include "net/base/net_export.h"
@@ -37,17 +37,17 @@ class NET_EXPORT NSSCertDatabase {
  public:
   class NET_EXPORT Observer {
    public:
-    virtual ~Observer() {}
+    Observer(const Observer&) = delete;
+    Observer& operator=(const Observer&) = delete;
+
+    virtual ~Observer() = default;
 
     // Will be called when a certificate is added, removed, or trust settings
     // are changed.
     virtual void OnCertDBChanged() {}
 
    protected:
-    Observer() {}
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(Observer);
+    Observer() = default;
   };
 
   // Holds an NSS certificate along with additional information.
@@ -137,6 +137,10 @@ class NET_EXPORT NSSCertDatabase {
   // be identical.
   NSSCertDatabase(crypto::ScopedPK11Slot public_slot,
                   crypto::ScopedPK11Slot private_slot);
+
+  NSSCertDatabase(const NSSCertDatabase&) = delete;
+  NSSCertDatabase& operator=(const NSSCertDatabase&) = delete;
+
   virtual ~NSSCertDatabase();
 
   // Asynchronously get a list of unique certificates in the certificate
@@ -155,18 +159,14 @@ class NET_EXPORT NSSCertDatabase {
   // deleted.
   virtual void ListCertsInfo(ListCertsInfoCallback callback);
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
   // Get the slot for system-wide key data. May be NULL if the system token was
-  // not explicitly set.
-  // Note: The System slot is set after the NSSCertDatabase is constructed and
-  // this call returns synchronously. Thus, it is possible to call this function
-  // before SetSystemSlot is called and get a NULL result.
-  // See https://crbug.com/399554 .
+  // not enabled for this database.
   virtual crypto::ScopedPK11Slot GetSystemSlot() const;
 
   // Checks whether |cert| is stored on |slot|.
   static bool IsCertificateOnSlot(CERTCertificate* cert, PK11SlotInfo* slot);
-#endif
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
   // Get the default slot for public key data.
   crypto::ScopedPK11Slot GetPublicSlot() const;
@@ -180,6 +180,12 @@ class NET_EXPORT NSSCertDatabase {
   virtual void ListModules(std::vector<crypto::ScopedPK11Slot>* modules,
                            bool need_rw) const;
 
+  // Set trust values for certificate.
+  // Returns true on success or false on failure.
+  virtual bool SetCertTrust(CERTCertificate* cert,
+                            CertType type,
+                            TrustBits trust_bits);
+
   // Import certificates and private keys from PKCS #12 blob into the module.
   // If |is_extractable| is false, mark the private key as being unextractable
   // from the module.
@@ -188,7 +194,7 @@ class NET_EXPORT NSSCertDatabase {
   // of certs that were imported.
   int ImportFromPKCS12(PK11SlotInfo* slot_info,
                        const std::string& data,
-                       const base::string16& password,
+                       const std::u16string& password,
                        bool is_extractable,
                        ScopedCERTCertificateList* imported_certs);
 
@@ -196,7 +202,7 @@ class NET_EXPORT NSSCertDatabase {
   // storing into |output|.
   // Returns the number of certificates successfully exported.
   int ExportToPKCS12(const ScopedCERTCertificateList& certs,
-                     const base::string16& password,
+                     const std::u16string& password,
                      std::string* output) const;
 
   // Uses similar logic to nsNSSCertificateDB::handleCACertDownload to find the
@@ -240,10 +246,6 @@ class NET_EXPORT NSSCertDatabase {
   // Get trust bits for certificate.
   TrustBits GetCertTrust(const CERTCertificate* cert, CertType type) const;
 
-  // Set trust values for certificate.
-  // Returns true on success or false on failure.
-  bool SetCertTrust(CERTCertificate* cert, CertType type, TrustBits trust_bits);
-
   // Delete certificate and associated private key (if one exists).
   // |cert| is still valid when this function returns. Returns true on
   // success.
@@ -272,6 +274,18 @@ class NET_EXPORT NSSCertDatabase {
   // behind it.
   static bool IsHardwareBacked(const CERTCertificate* cert);
 
+  // Registers |observer| to receive notifications of certificate changes.  The
+  // thread on which this is called is the thread on which |observer| will be
+  // called back with notifications.
+  // NOTE: Observers registered here will only receive notifications generated
+  // directly through the NSSCertDatabase, but not those from the CertDatabase.
+  // CertDatabase observers will receive all certificate notifications.
+  void AddObserver(Observer* observer);
+
+  // Unregisters |observer| from receiving notifications.  This must be called
+  // on the same thread on which AddObserver() was called.
+  void RemoveObserver(Observer* observer);
+
  protected:
   // Returns a list of certificates extracted from |certs_info| list ignoring
   // additional information.
@@ -296,18 +310,6 @@ class NET_EXPORT NSSCertDatabase {
   void NotifyObserversCertDBChanged();
 
  private:
-  // Registers |observer| to receive notifications of certificate changes.  The
-  // thread on which this is called is the thread on which |observer| will be
-  // called back with notifications.
-  // NOTE: Observers registered here will only receive notifications generated
-  // directly through the NSSCertDatabase, but not those from the CertDatabase.
-  // CertDatabase observers will receive all certificate notifications.
-  void AddObserver(Observer* observer);
-
-  // Unregisters |observer| from receiving notifications.  This must be called
-  // on the same thread on which AddObserver() was called.
-  void RemoveObserver(Observer* observer);
-
   // Notifies observers of the removal of a cert and calls |callback| with
   // |success| as argument.
   void NotifyCertRemovalAndCallBack(DeleteCertCallback callback, bool success);
@@ -329,8 +331,6 @@ class NET_EXPORT NSSCertDatabase {
   const scoped_refptr<base::ObserverListThreadSafe<Observer>> observer_list_;
 
   base::WeakPtrFactory<NSSCertDatabase> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(NSSCertDatabase);
 };
 
 }  // namespace net

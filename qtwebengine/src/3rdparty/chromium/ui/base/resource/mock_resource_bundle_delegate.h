@@ -1,9 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_BASE_RESOURCE_MOCK_RESOURCE_BUNDLE_DELEGATE_H_
 #define UI_BASE_RESOURCE_MOCK_RESOURCE_BUNDLE_DELEGATE_H_
+
+#include <string>
 
 #include "testing/gmock/include/gmock/gmock.h"
 #include "ui/base/resource/resource_bundle.h"
@@ -17,7 +19,7 @@ class MockResourceBundleDelegate : public ResourceBundle::Delegate {
 
   MOCK_METHOD2(GetPathForResourcePack,
                base::FilePath(const base::FilePath& pack_path,
-                              ScaleFactor scale_factor));
+                              ResourceScaleFactor scale_factor));
   MOCK_METHOD2(GetPathForLocalePack,
                base::FilePath(const base::FilePath& pack_path,
                               const std::string& locale));
@@ -25,13 +27,15 @@ class MockResourceBundleDelegate : public ResourceBundle::Delegate {
   MOCK_METHOD1(GetNativeImageNamed, gfx::Image(int resource_id));
   MOCK_METHOD2(LoadDataResourceBytes,
                base::RefCountedMemory*(int resource_id,
-                                       ScaleFactor scale_factor));
+                                       ResourceScaleFactor scale_factor));
+  MOCK_METHOD1(LoadDataResourceString,
+               absl::optional<std::string>(int resource_id));
   MOCK_CONST_METHOD3(GetRawDataResource,
                      bool(int resource_id,
-                          ScaleFactor scale_factor,
+                          ResourceScaleFactor scale_factor,
                           base::StringPiece* value));
   MOCK_CONST_METHOD2(GetLocalizedString,
-                     bool(int message_id, base::string16* value));
+                     bool(int message_id, std::u16string* value));
 };
 
 }  // namespace ui

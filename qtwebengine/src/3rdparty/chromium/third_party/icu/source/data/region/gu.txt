@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 gu{
     Countries{
         001{"વિશ્વ"}
@@ -307,8 +308,8 @@ gu{
         CG{"કોંગો (રિપબ્લિક)"}
         CI{"આઇવરી કોસ્ટ"}
         CZ{"ચેક રિપબ્લિક"}
+        NZ{"ઓટેરોઆ ન્યૂઝીલેન્ડ"}
         SZ{"સ્વાઝીલેન્ડ"}
         TL{"પૂર્વ તિમોર"}
     }
-    Version{"37"}
 }

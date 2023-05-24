@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,9 @@
 #define EXTENSIONS_BROWSER_EVENTS_EVENT_ACK_DATA_H_
 
 #include <map>
+#include <string>
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/weak_ptr.h"
 
 namespace content {
@@ -20,6 +21,10 @@ namespace extensions {
 class EventAckData {
  public:
   EventAckData();
+
+  EventAckData(const EventAckData&) = delete;
+  EventAckData& operator=(const EventAckData&) = delete;
+
   ~EventAckData();
 
   // Records the fact that an event with |event_id| was dispatched to an
@@ -40,31 +45,20 @@ class EventAckData {
                               base::OnceClosure failure_callback);
 
  private:
-  class CoreThreadEventInfo;
-
-  static void StartExternalRequestOnCoreThread(
-      content::ServiceWorkerContext* context,
-      int render_process_id,
-      int64_t version_id,
-      int event_id,
-      scoped_refptr<EventAckData::CoreThreadEventInfo> unacked_events);
-
-  static void FinishExternalRequestOnCoreThread(
-      content::ServiceWorkerContext* context,
-      int render_process_id,
-      int64_t version_id,
-      int event_id,
-      bool worker_stopped,
-      scoped_refptr<CoreThreadEventInfo> unacked_events,
-      base::OnceClosure failure_callback);
+  // Information about an unacked event.
+  struct EventInfo {
+    // GUID of the Service Worker's external request for the event.
+    std::string request_uuid;
+    // RenderProcessHost id.
+    int render_process_id;
+    // Whether or not StartExternalRequest succeeded.
+    bool start_ok;
+  };
 
   // Contains map of unacked event information keyed by event id.
-  // Created on UI thread, but accessed only on the core thread.
-  scoped_refptr<CoreThreadEventInfo> unacked_events_;
+  std::map<int, EventInfo> unacked_events_;
 
   base::WeakPtrFactory<EventAckData> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(EventAckData);
 };
 
 }  // namespace extensions

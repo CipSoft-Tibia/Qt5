@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright 2015 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -37,7 +37,7 @@ class FeatureCompilerTest(unittest.TestCase):
   def testFeature(self):
     # Test some basic feature parsing for a sanity check.
     f = self._parseFeature({
-      'blacklist': [
+      'blocklist': [
         'ABCDEF0123456789ABCDEF0123456789ABCDEF01',
         '10FEDCBA9876543210FEDCBA9876543210FEDCBA'
       ],
@@ -51,16 +51,18 @@ class FeatureCompilerTest(unittest.TestCase):
       ],
       'default_parent': True,
       'dependencies': ['dependency1', 'dependency2'],
+      'developer_mode_only': True,
       'disallow_for_service_workers': True,
       'extension_types': ['extension'],
       'location': 'component',
       'internal': True,
       'matches': ['*://*/*'],
       'max_manifest_version': 1,
+      'requires_delegated_availability_check': True,
       'noparent': True,
       'platforms': ['mac', 'win'],
       'session_types': ['kiosk', 'regular'],
-      'whitelist': [
+      'allowlist': [
         '0123456789ABCDEF0123456789ABCDEF01234567',
         '76543210FEDCBA9876543210FEDCBA9876543210'
       ]
@@ -364,13 +366,28 @@ class FeatureCompilerTest(unittest.TestCase):
           'contexts': ['webui'],
         }])
 
-    with self.assertRaisesRegexp(AssertionError,
-                                 'No default parent found for bookmarks'):
-      c._CompileFeature('bookmarks.export', { "whitelist": ["asdf"] })
+    with self.assertRaisesRegex(AssertionError,
+                                'No default parent found for bookmarks'):
+      c._CompileFeature('bookmarks.export', { "allowlist": ["asdf"] })
 
-  def testRealIdsDisallowedInWhitelist(self):
+  def testComplexFeatureWithSinglePropertyBlock(self):
+    compiler = self._createTestFeatureCompiler('APIFeature')
+
+    error = ('Error parsing feature "feature_alpha": A complex feature '
+             'definition is only needed when there are multiple objects '
+             'specifying different groups of properties for feature '
+             'availability. You can reduce it down to a single object on the '
+             'feature key instead of a list.')
+    with self.assertRaisesRegex(AssertionError, error):
+      compiler._CompileFeature('feature_alpha',
+        [{
+          'contexts': ['blessed_extension'],
+          'channel': 'stable',
+        }])
+
+  def testRealIdsDisallowedInAllowlist(self):
     fake_id = 'a' * 32;
-    f = self._parseFeature({'whitelist': [fake_id],
+    f = self._parseFeature({'allowlist': [fake_id],
                             'extension_types': ['extension'],
                             'channel': 'beta'})
     f.Validate('PermissionFeature', {})
@@ -380,7 +397,7 @@ class FeatureCompilerTest(unittest.TestCase):
   def testHostedAppsCantUseAllowlistedFeatures_SimpleFeature(self):
     f = self._parseFeature({
         'extension_types': ['extension', 'hosted_app'],
-        'whitelist': ['0123456789ABCDEF0123456789ABCDEF01234567'],
+        'allowlist': ['0123456789ABCDEF0123456789ABCDEF01234567'],
         'channel': 'beta',
     })
     f.Validate('PermissionFeature', {})
@@ -396,13 +413,13 @@ class FeatureCompilerTest(unittest.TestCase):
         }, {
           'channel': 'beta',
           'extension_types': ['hosted_app'],
-          'whitelist': ['0123456789ABCDEF0123456789ABCDEF01234567'],
+          'allowlist': ['0123456789ABCDEF0123456789ABCDEF01234567'],
         }])
     c._CompileFeature('valid_feature',
         [{
           'extension_types': ['extension'],
           'channel': 'beta',
-          'whitelist': ['0123456789ABCDEF0123456789ABCDEF01234567'],
+          'allowlist': ['0123456789ABCDEF0123456789ABCDEF01234567'],
         }, {
           'channel': 'beta',
           'extension_types': ['hosted_app'],
@@ -429,7 +446,7 @@ class FeatureCompilerTest(unittest.TestCase):
 
     c._CompileFeature('parent.child',
         {
-          'whitelist': ['0123456789ABCDEF0123456789ABCDEF01234567']
+          'allowlist': ['0123456789ABCDEF0123456789ABCDEF01234567']
         })
     feature = c._features.get('parent.child')
     self.assertTrue(feature)

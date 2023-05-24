@@ -1,48 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qdeadlinetimer.h>
 
 #include <QtNetwork/qhostinfo.h>
+#include <QtNetwork/qnetworkinformation.h>
 #include <QtNetwork/private/qnetconmonitor_p.h>
 
 #include <QtTest/qsignalspy.h>
 
-void testDetectDisconnection();
 void testDetectRouteDisrupted();
 
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
 
-    if (!QNetworkStatusMonitor::isEnabled()) {
-        qWarning("QNetworkStatusMonitor is not enabled for this platform!");
+    if (!QNetworkConnectionMonitor::isEnabled()) {
+        qWarning("QNetworkConnectionMonitor is not enabled for this platform!");
         return 0;
     }
 
@@ -51,10 +26,8 @@ int main(int argc, char *argv[])
         QByteArray indent("  ");
         {
             QTextStream writer(stdout);
-            writer << "Manual test for QNetwork{Status|Connection}Monitor\n"
+            writer << "Manual test for QNetworkConnection}Monitor\n"
                    << "The tests are grouped by what they test. Run them in any order\n"
-                   << "- QNetworkStatusMonitor tests:\n"
-                   << indent << "c" << indent << "Test connection and disconnection detection.\n"
                    << "- QNetworkConnectionMonitor tests:\n"
                    << indent << "r" << indent << "Test detection of disruption of route to target.\n"
                    << "- General\n"
@@ -70,9 +43,6 @@ int main(int argc, char *argv[])
         };
 
         switch (getCommand()) {
-        case 'c':
-            testDetectDisconnection();
-            break;
         case 'r':
             testDetectRouteDisrupted();
             break;
@@ -84,16 +54,19 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-bool ensureNetworkAccessible(QNetworkStatusMonitor &status, QTextStream &writer)
+bool ensureNetworkAccessible(QTextStream &writer)
 {
-    if (!status.isNetworkAccessible()) {
+    auto netInfo = QNetworkInformation::instance();
+    if (netInfo->reachability() == QNetworkInformation::Reachability::Disconnected) {
         writer << "Network currently not accessible, please make sure you have an internet "
                   "connection. Will wait for a connection for 20 seconds.\n";
         writer.flush();
         QDeadlineTimer timer{ 20 * 1000 };
-        while (!timer.hasExpired() && !status.isNetworkAccessible())
+        while (!timer.hasExpired()
+               && netInfo->reachability() == QNetworkInformation::Reachability::Disconnected) {
             QCoreApplication::processEvents();
-        if (!status.isNetworkAccessible()) {
+        }
+        if (netInfo->reachability() == QNetworkInformation::Reachability::Disconnected) {
             writer << "Error: No network in 20 seconds, ending now!\n";
             return false;
         }
@@ -102,53 +75,16 @@ bool ensureNetworkAccessible(QNetworkStatusMonitor &status, QTextStream &writer)
     return true;
 }
 
-void testDetectDisconnection()
-{
-    QTextStream writer(stdout);
-    QNetworkStatusMonitor status;
-
-    if (!status.start()) {
-        writer << "Error: Failed to start";
-        return;
-    }
-
-    if (!ensureNetworkAccessible(status, writer))
-        return;
-
-    QSignalSpy onlineStateSpy(&status, &QNetworkStatusMonitor::onlineStateChanged);
-
-    writer << "Please disconnect from the internet within 20 seconds\n";
-    writer.flush();
-    QDeadlineTimer timer{ 20 * 1000 };
-    while (!timer.hasExpired() && status.isNetworkAccessible())
-        QCoreApplication::processEvents();
-    if (status.isNetworkAccessible()) {
-        writer << "Error: Still connected after 20 seconds, ending now!\n";
-        return;
-    }
-    if (onlineStateSpy.count() == 0) {
-        writer << "Error: There was a disconnection but there was no signal emitted!\n";
-        return;
-    }
-    // Get the final parameter of the final signal emission and make sure it is false.
-    if (onlineStateSpy.last().last().toBool()) {
-        writer << "Error: There was a disconnection but the latest signal emitted says we are online!\n";
-        return;
-    }
-    writer << "Success, connection loss was detected!\n";
-}
-
 void testDetectRouteDisrupted()
 {
     QTextStream writer(stdout);
 
     {
-        QNetworkStatusMonitor status;
-        if (!status.start()) {
+        if (!QNetworkInformation::loadDefaultBackend()) {
             writer << "Error: Failed to start";
             return;
         }
-        if (!ensureNetworkAccessible(status, writer))
+        if (!ensureNetworkAccessible(writer))
             return;
     }
 

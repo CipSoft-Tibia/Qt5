@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
+#include "third_party/blink/renderer/modules/mediastream/media_stream_track_impl.h"
 
 namespace blink {
 
@@ -19,6 +20,14 @@ ScriptPromise InternalsMediaStream::addFakeDevice(
   ScriptPromise promise = resolver->Promise();
   resolver->Reject();
   return promise;
+}
+
+void InternalsMediaStream::fakeCaptureConfigurationChanged(
+    Internals&,
+    MediaStreamTrack* track) {
+  DCHECK(track);
+  auto* video_track = static_cast<MediaStreamTrackImpl*>(track);
+  video_track->SourceChangedCaptureConfiguration();
 }
 
 }  // namespace blink

@@ -1,35 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QSignalSpy>
+
 #include <QtWidgets/private/qsidebar_p.h>
-#include <QtWidgets/private/qfilesystemmodel_p.h>
+#include <QtGui/private/qfilesystemmodel_p.h>
+#include <QtWidgets/qfileiconprovider.h>
 
 class tst_QSidebar : public QObject {
   Q_OBJECT
@@ -40,12 +18,16 @@ private slots:
     void addUrls();
 
     void goToUrl();
+
+private:
+    QFileIconProvider defaultIconProvider;
 };
 
 void tst_QSidebar::setUrls()
 {
     QList<QUrl> urls;
     QFileSystemModel fsmodel;
+    fsmodel.setIconProvider(&defaultIconProvider);
     QSidebar qsidebar;
     qsidebar.setModelAndUrls(&fsmodel, urls);
     QAbstractItemModel *model = qsidebar.model();
@@ -55,13 +37,10 @@ void tst_QSidebar::setUrls()
 
     QCOMPARE(model->rowCount(), 0);
     qsidebar.setUrls(urls);
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "One of the URLs is not seen as valid on WinRT - QTBUG-68297", Abort);
-#endif
     QCOMPARE(qsidebar.urls(), urls);
-    QCOMPARE(model->rowCount(), urls.count());
+    QCOMPARE(model->rowCount(), urls.size());
     qsidebar.setUrls(urls);
-    QCOMPARE(model->rowCount(), urls.count());
+    QCOMPARE(model->rowCount(), urls.size());
 }
 
 void tst_QSidebar::selectUrls()
@@ -70,24 +49,26 @@ void tst_QSidebar::selectUrls()
     urls << QUrl::fromLocalFile(QDir::rootPath())
          << QUrl::fromLocalFile(QDir::temp().absolutePath());
     QFileSystemModel fsmodel;
+    fsmodel.setIconProvider(&defaultIconProvider);
     QSidebar qsidebar;
     qsidebar.setModelAndUrls(&fsmodel, urls);
 
     QSignalSpy spy(&qsidebar, SIGNAL(goToUrl(QUrl)));
     qsidebar.selectUrl(urls.at(0));
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 }
 
 void tst_QSidebar::addUrls()
 {
     QList<QUrl> emptyUrls;
     QFileSystemModel fsmodel;
+    fsmodel.setIconProvider(&defaultIconProvider);
     QSidebar qsidebar;
     qsidebar.setModelAndUrls(&fsmodel, emptyUrls);
     QAbstractItemModel *model = qsidebar.model();
     QDir testDir = QDir::home();
 
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
+#ifdef Q_OS_ANDROID
     // temp and home is the same directory on Android
     testDir.mkdir(QStringLiteral("test"));
     QVERIFY(testDir.cd(QStringLiteral("test")));
@@ -102,9 +83,6 @@ void tst_QSidebar::addUrls()
 
     // test < 0
     qsidebar.addUrls(urls, -1);
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "One of the URLs is not seen as valid on WinRT - QTBUG-68297", Abort);
-#endif
     QCOMPARE(model->rowCount(), 2);
 
     // test = 0
@@ -185,6 +163,7 @@ void tst_QSidebar::goToUrl()
     urls << QUrl::fromLocalFile(QDir::rootPath())
          << QUrl::fromLocalFile(QDir::temp().absolutePath());
     QFileSystemModel fsmodel;
+    fsmodel.setIconProvider(&defaultIconProvider);
     QSidebar qsidebar;
     qsidebar.setModelAndUrls(&fsmodel, urls);
     qsidebar.show();
@@ -192,10 +171,7 @@ void tst_QSidebar::goToUrl()
     QSignalSpy spy(&qsidebar, SIGNAL(goToUrl(QUrl)));
     QTest::mousePress(qsidebar.viewport(), Qt::LeftButton, {},
                       qsidebar.visualRect(qsidebar.model()->index(0, 0)).center());
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Fails on WinRT - QTBUG-68297", Abort);
-#endif
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QCOMPARE((spy.value(0)).at(0).toUrl(), urls.first());
 }
 

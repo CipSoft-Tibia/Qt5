@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,22 +8,23 @@
 
 #include "base/at_exit.h"
 #include "base/base_paths.h"
-#include "base/bind.h"
 #include "base/files/file_path.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/native_library.h"
 #include "base/path_service.h"
-#include "base/strings/stringprintf.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/trace_event/trace_event.h"
 #include "base/win/windows_version.h"
-#include "ui/gl/buildflags.h"
+#include "ui/gl/direct_composition_support.h"
 #include "ui/gl/gl_bindings.h"
+#include "ui/gl/gl_display.h"
 #include "ui/gl/gl_egl_api_implementation.h"
 #include "ui/gl/gl_gl_api_implementation.h"
-#include "ui/gl/gl_surface_egl.h"
+#include "ui/gl/gl_utils.h"
 #include "ui/gl/gl_surface_wgl.h"
 #include "ui/gl/gl_wgl_api_implementation.h"
+#include "ui/gl/init/gl_display_initializer.h"
 #include "ui/gl/vsync_provider_win.h"
 
 namespace gl {
@@ -33,20 +34,12 @@ namespace {
 
 const wchar_t kD3DCompiler[] = L"D3DCompiler_47.dll";
 
-#if defined(NDEBUG) || !defined(TOOLKIT_QT)
-const wchar_t kGLESv2Library[] = L"libglesv2.dll";
-const wchar_t kEGLLibrary[] = L"libegl.dll";
-#else
-const wchar_t kGLESv2Library[] = L"libglesv2d.dll";
-const wchar_t kEGLLibrary[] = L"libegld.dll";
-#endif
-
 bool LoadD3DXLibrary(const base::FilePath& module_path,
                      const base::FilePath::StringType& name) {
   base::NativeLibrary library =
-      base::LoadNativeLibrary(base::FilePath(name), nullptr);
+      base::LoadNativeLibrary(module_path.Append(name), nullptr);
   if (!library) {
-    library = base::LoadNativeLibrary(module_path.Append(name), nullptr);
+    library = base::LoadNativeLibrary(base::FilePath(name), nullptr);
     if (!library) {
       DVLOG(1) << name << " not found.";
       return false;
@@ -55,46 +48,38 @@ bool LoadD3DXLibrary(const base::FilePath& module_path,
   return true;
 }
 
-bool InitializeStaticEGLInternal(GLImplementation implementation) {
+bool InitializeStaticEGLInternalFromLibrary(GLImplementation implementation) {
+#if BUILDFLAG(USE_STATIC_ANGLE)
+  NOTREACHED();
+#endif
+
   base::FilePath module_path;
   if (!base::PathService::Get(base::DIR_MODULE, &module_path))
     return false;
 
-  // Attempt to load the D3DX shader compiler using the default search path
-  // and if that fails, using an absolute path. This is to ensure these DLLs
-  // are loaded before ANGLE is loaded in case they are not in the default
-  // search path.
+  // Attempt to load the D3DX shader compiler using an absolute path. This is to
+  // ensure that we load the versions of these DLLs that we ship. If that fails,
+  // load the OS version.
   LoadD3DXLibrary(module_path, kD3DCompiler);
 
-  base::FilePath gles_path;
-  if (implementation == kGLImplementationSwiftShaderGL) {
-#if BUILDFLAG(ENABLE_SWIFTSHADER)
-    gles_path = module_path.Append(L"swiftshader/");
-    // Preload library
-    LoadLibrary(L"ddraw.dll");
-#else
-    return false;
-#endif
-  } else {
-    gles_path = module_path;
-  }
+  base::FilePath gles_path = module_path;
 
   // Load libglesv2.dll before libegl.dll because the latter is dependent on
   // the former and if there is another version of libglesv2.dll in the dll
   // search path, it will get loaded instead.
   base::NativeLibrary gles_library =
-      base::LoadNativeLibrary(gles_path.Append(kGLESv2Library), nullptr);
+      base::LoadNativeLibrary(gles_path.Append(L"libglesv2.dll"), nullptr);
   if (!gles_library) {
-    DVLOG(1) << kGLESv2Library << "not found";
+    DVLOG(1) << "libglesv2.dll not found";
     return false;
   }
 
   // When using EGL, first try eglGetProcAddress and then Windows
   // GetProcAddress on both the EGL and GLES2 DLLs.
   base::NativeLibrary egl_library =
-      base::LoadNativeLibrary(gles_path.Append(kEGLLibrary), nullptr);
+      base::LoadNativeLibrary(gles_path.Append(L"libegl.dll"), nullptr);
   if (!egl_library) {
-    DVLOG(1) << kEGLLibrary << "not found.";
+    DVLOG(1) << "libegl.dll not found.";
     base::UnloadNativeLibrary(gles_library);
     return false;
   }
@@ -113,8 +98,26 @@ bool InitializeStaticEGLInternal(GLImplementation implementation) {
   SetGLGetProcAddressProc(get_proc_address);
   AddGLNativeLibrary(egl_library);
   AddGLNativeLibrary(gles_library);
-  SetGLImplementation(implementation);
 
+  return true;
+}
+
+bool InitializeStaticEGLInternal(GLImplementationParts implementation) {
+#if BUILDFLAG(USE_STATIC_ANGLE)
+  if (implementation.gl == kGLImplementationEGLANGLE) {
+    // Use ANGLE if it is requested and it is statically linked
+    if (!InitializeStaticANGLEEGL())
+      return false;
+  } else if (!InitializeStaticEGLInternalFromLibrary(implementation.gl)) {
+    return false;
+  }
+#else
+  if (!InitializeStaticEGLInternalFromLibrary(implementation.gl)) {
+    return false;
+  }
+#endif  // !BUILDFLAG(USE_STATIC_ANGLE)
+
+  SetGLImplementationParts(implementation);
   InitializeStaticGLBindingsGL();
   InitializeStaticGLBindingsEGL();
 
@@ -202,9 +205,10 @@ bool InitializeStaticWGLInternal() {
 }  // namespace
 
 #if !defined(TOOLKIT_QT)
-bool InitializeGLOneOffPlatform() {
+GLDisplay* InitializeGLOneOffPlatform(gl::GpuPreference gpu_preference) {
   VSyncProviderWin::InitializeOneOff();
 
+  GLDisplayEGL* display = GetDisplayEGL(gpu_preference);
   switch (GetGLImplementation()) {
     case kGLImplementationDesktopGL:
       if (!GLSurfaceWGL::InitializeOneOff()) {
@@ -212,12 +216,12 @@ bool InitializeGLOneOffPlatform() {
         return false;
       }
       break;
-    case kGLImplementationSwiftShaderGL:
     case kGLImplementationEGLANGLE:
-      if (!GLSurfaceEGL::InitializeOneOff(EGLDisplayPlatform(GetDC(nullptr)))) {
-        LOG(ERROR) << "GLSurfaceEGL::InitializeOneOff failed.";
-        return false;
+      if (!InitializeDisplay(display, EGLDisplayPlatform(GetDC(nullptr)))) {
+        LOG(ERROR) << "GLDisplayEGL::Initialize failed.";
+        return nullptr;
       }
+      InitializeDirectComposition(display);
       break;
     case kGLImplementationMockGL:
     case kGLImplementationStubGL:
@@ -225,11 +229,11 @@ bool InitializeGLOneOffPlatform() {
     default:
       NOTREACHED();
   }
-  return true;
+  return display;
 }
 #endif
 
-bool InitializeStaticGLBindings(GLImplementation implementation) {
+bool InitializeStaticGLBindings(GLImplementationParts implementation) {
   // Prevent reinitialization with a different implementation. Once the gpu
   // unit tests have initialized with kGLImplementationMock, we don't want to
   // later switch to another GL implementation.
@@ -239,17 +243,16 @@ bool InitializeStaticGLBindings(GLImplementation implementation) {
   // after instituting restrictions on I/O. Going forward they will
   // likely be used in the browser process on most platforms. The
   // one-time initialization cost is small, between 2 and 5 ms.
-  base::ThreadRestrictions::ScopedAllowIO allow_io;
+  base::ScopedAllowBlocking allow_blocking;
 
-  switch (implementation) {
-    case kGLImplementationSwiftShaderGL:
+  switch (implementation.gl) {
     case kGLImplementationEGLANGLE:
       return InitializeStaticEGLInternal(implementation);
     case kGLImplementationDesktopGL:
       return InitializeStaticWGLInternal();
     case kGLImplementationMockGL:
     case kGLImplementationStubGL:
-      SetGLImplementation(implementation);
+      SetGLImplementationParts(implementation);
       InitializeStaticGLBindingsGL();
       return true;
     default:
@@ -259,8 +262,10 @@ bool InitializeStaticGLBindings(GLImplementation implementation) {
   return false;
 }
 
-void ShutdownGLPlatform() {
-  GLSurfaceEGL::ShutdownOneOff();
+void ShutdownGLPlatform(GLDisplay* display) {
+  ShutdownDirectComposition();
+  if (display)
+    display->Shutdown();
   ClearBindingsEGL();
   ClearBindingsGL();
   ClearBindingsWGL();

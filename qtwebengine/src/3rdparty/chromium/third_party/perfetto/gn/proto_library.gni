@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import("perfetto.gni")
+import("perfetto_component.gni")
 
 # This gni file defines rules for proto generation. There are various types of
 # proto targets that can be defined in our codebase:
@@ -84,7 +85,16 @@ template("protozero_library") {
       deps = []
     }
 
-    deps += [ perfetto_root_path + "src/protozero" ]
+    # omit_protozero_dep is intended to be used when protozero_library
+    # is used in Chrome (for generation of code for proto extensions)
+    # to avoid ODR violations in case of component builds. The embedder
+    # (Chrome) is then responsible for adding the appropriate transitive
+    # dependency on Protozero.
+    #
+    # TODO(b/173041866): use fine-grained components instead when available
+    if (!(defined(invoker.omit_protozero_dep) && invoker.omit_protozero_dep)) {
+      deps += [ perfetto_root_path + "src/protozero" ]
+    }
 
     forward_variables_from(invoker,
                            [
@@ -157,10 +167,23 @@ template("ipc_library") {
     generator_plugin_label =
         "$perfetto_root_path/src/ipc/protoc_plugin:ipc_plugin"
     generator_plugin_suffix = ".ipc"
-    deps = [
-      "$perfetto_root_path/gn:default_deps",
-      "$perfetto_root_path/src/ipc:common",
-    ]
+    deps = [ "$perfetto_root_path/gn:default_deps" ]
+    if (perfetto_component_type == "static_library") {
+      deps += [ "$perfetto_root_path/src/ipc:perfetto_ipc" ]
+    } else {
+      deps += [ "$perfetto_root_path/src/ipc:common" ]
+    }
+    if (is_win) {
+      # TODO(primiano): investigate this. In Windows standalone builds, some
+      # executable targets end up in a state where no code pulls a dep on the
+      # ipc:client (in turn that seems a subtle consequence of not having
+      # traced_probes on Windows). This dep here is effectively needed because
+      # the client-side code in the generated .ipc.cc effectively depends on the
+      # client-side IPC library. Perhaps we just should do this unconditionally
+      # on all platforms?
+      deps += [ "$perfetto_root_path/src/ipc:client" ]
+    }
+
     if (defined(invoker.deps)) {
       deps += invoker.deps
     }
@@ -178,6 +201,40 @@ template("ipc_library") {
                              "propagate_imports_configs",
                              "import_dirs",
                            ])
+  }
+}
+
+# Generates .grpc.{h,cc} stubs for services defined in .proto files.
+# We require explicit opt-in as gRPC is very heavyweight so we do not
+# want accidental dependencies on this.
+if (enable_perfetto_grpc) {
+  template("perfetto_grpc_library") {
+    proto_library(target_name) {
+      proto_in_dir = perfetto_root_path
+      proto_out_dir = perfetto_root_path
+      propagate_imports_configs = false
+
+      perfetto_root_path = perfetto_root_path
+      generate_cc = false
+      generate_python = false
+      generator_plugin_label =
+          "$perfetto_root_path/buildtools/grpc:grpc_cpp_plugin"
+      generator_plugin_suffix = ".grpc.pb"
+      deps = [ "$perfetto_root_path/buildtools/grpc:grpc++" ]
+      public_configs = [ "$perfetto_root_path/buildtools:grpc_gen_config" ]
+      if (defined(invoker.deps)) {
+        deps += invoker.deps
+      }
+      forward_variables_from(invoker,
+                             [
+                               "defines",
+                               "extra_configs",
+                               "include_dirs",
+                               "sources",
+                               "testonly",
+                               "visibility",
+                             ])
+    }
   }
 }
 
@@ -211,6 +268,7 @@ template("perfetto_proto_library") {
     "sources",
     "visibility",
     "testonly",
+    "exclude_imports",
   ]
   expansion_token = "@TYPE@"
 
@@ -229,6 +287,16 @@ template("perfetto_proto_library") {
         deps_ += [ string_replace(dep, expansion_token, gen_type) ]
       }
     }
+
+    # The distinction between deps and public_deps does not matter for GN
+    # but Bazel cares about the difference so we distinguish between the two.
+    public_deps_ = []
+    if (defined(invoker.public_deps)) {
+      foreach(dep, invoker.public_deps) {
+        public_deps_ = [ string_replace(dep, expansion_token, gen_type) ]
+      }
+    }
+    deps_ += public_deps_
 
     if (gen_type == "zero") {
       protozero_library(target_name_) {
@@ -304,6 +372,7 @@ template("perfetto_proto_library") {
         metadata = {
           proto_library_sources = invoker.sources
           import_dirs = import_dirs_
+          exports = get_path_info(public_deps_, "abspath")
         }
         forward_variables_from(invoker, vars_to_forward)
       }

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,24 +6,26 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/callback.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/sequenced_task_runner.h"
-#include "base/stl_util.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_tokenizer.h"
 #include "base/strings/string_util.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/scoped_thread_priority.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "base/time/time.h"
 #include "google_apis/gcm/base/encryptor.h"
+#include "google_apis/gcm/base/gcm_constants.h"
+#include "google_apis/gcm/base/gcm_features.h"
 #include "google_apis/gcm/base/mcs_message.h"
 #include "google_apis/gcm/base/mcs_util.h"
 #include "google_apis/gcm/protocol/mcs.pb.h"
@@ -63,6 +65,9 @@ enum LoadStatus {
 
 // Limit to the number of outstanding messages per app.
 const int kMessagesPerAppLimit = 20;
+
+// Separator used to split persistent ID and expiration time.
+constexpr char kIncomingMsgSeparator[] = "|";
 
 // ---- LevelDB keys. ----
 // Key for this device's android id.
@@ -125,11 +130,19 @@ std::string MakeRegistrationKey(const std::string& app_id) {
 }
 
 std::string ParseRegistrationKey(const std::string& key) {
-  return key.substr(base::size(kRegistrationKeyStart) - 1);
+  return key.substr(std::size(kRegistrationKeyStart) - 1);
 }
 
 std::string MakeIncomingKey(const std::string& persistent_id) {
   return kIncomingMsgKeyStart + persistent_id;
+}
+
+std::string MakeIncomingData(const std::string& persistent_id) {
+  return base::StrCat(
+      {persistent_id, kIncomingMsgSeparator,
+       base::NumberToString(
+           base::Time::Now().ToDeltaSinceWindowsEpoch().InMicroseconds() +
+           kIncomingMessageTTL.InMicroseconds())});
 }
 
 std::string MakeOutgoingKey(const std::string& persistent_id) {
@@ -137,7 +150,7 @@ std::string MakeOutgoingKey(const std::string& persistent_id) {
 }
 
 std::string ParseOutgoingKey(const std::string& key) {
-  return key.substr(base::size(kOutgoingMsgKeyStart) - 1);
+  return key.substr(std::size(kOutgoingMsgKeyStart) - 1);
 }
 
 std::string MakeGServiceSettingKey(const std::string& setting_name) {
@@ -145,7 +158,7 @@ std::string MakeGServiceSettingKey(const std::string& setting_name) {
 }
 
 std::string ParseGServiceSettingKey(const std::string& key) {
-  return key.substr(base::size(kGServiceSettingKeyStart) - 1);
+  return key.substr(std::size(kGServiceSettingKeyStart) - 1);
 }
 
 std::string MakeAccountKey(const CoreAccountId& account_id) {
@@ -153,8 +166,7 @@ std::string MakeAccountKey(const CoreAccountId& account_id) {
 }
 
 CoreAccountId ParseAccountKey(const std::string& key) {
-  return CoreAccountId::FromString(
-      key.substr(base::size(kAccountKeyStart) - 1));
+  return CoreAccountId::FromString(key.substr(std::size(kAccountKeyStart) - 1));
 }
 
 std::string MakeHeartbeatKey(const std::string& scope) {
@@ -162,7 +174,7 @@ std::string MakeHeartbeatKey(const std::string& scope) {
 }
 
 std::string ParseHeartbeatKey(const std::string& key) {
-  return key.substr(base::size(kHeartbeatKeyStart) - 1);
+  return key.substr(std::size(kHeartbeatKeyStart) - 1);
 }
 
 std::string MakeInstanceIDKey(const std::string& app_id) {
@@ -170,7 +182,7 @@ std::string MakeInstanceIDKey(const std::string& app_id) {
 }
 
 std::string ParseInstanceIDKey(const std::string& key) {
-  return key.substr(base::size(kInstanceIDKeyStart) - 1);
+  return key.substr(std::size(kInstanceIDKeyStart) - 1);
 }
 
 // Note: leveldb::Slice keeps a pointer to the data in |s|, which must therefore
@@ -513,9 +525,9 @@ void GCMStoreImpl::Backend::AddIncomingMessage(const std::string& persistent_id,
   write_options.sync = true;
 
   std::string key = MakeIncomingKey(persistent_id);
-  const leveldb::Status s = db_->Put(write_options,
-                                     MakeSlice(key),
-                                     MakeSlice(persistent_id));
+  std::string data = MakeIncomingData(persistent_id);
+  const leveldb::Status s =
+      db_->Put(write_options, MakeSlice(key), MakeSlice(data));
   if (s.ok()) {
     foreground_task_runner_->PostTask(
         FROM_HERE, base::BindOnce(std::move(callback), true));
@@ -699,19 +711,19 @@ void GCMStoreImpl::Backend::SetGServicesSettings(
   // Remove all existing settings.
   leveldb::ReadOptions read_options;
   read_options.verify_checksums = true;
-  std::unique_ptr<leveldb::Iterator> iter(db_->NewIterator(read_options));
-  for (iter->Seek(MakeSlice(kGServiceSettingKeyStart));
-       iter->Valid() && iter->key().ToString() < kGServiceSettingKeyEnd;
-       iter->Next()) {
-    write_batch.Delete(iter->key());
+  std::unique_ptr<leveldb::Iterator> db_it(db_->NewIterator(read_options));
+  for (db_it->Seek(MakeSlice(kGServiceSettingKeyStart));
+       db_it->Valid() && db_it->key().ToString() < kGServiceSettingKeyEnd;
+       db_it->Next()) {
+    write_batch.Delete(db_it->key());
   }
 
   // Add the new settings.
-  for (std::map<std::string, std::string>::const_iterator iter =
+  for (std::map<std::string, std::string>::const_iterator map_it =
            settings.begin();
-       iter != settings.end(); ++iter) {
-    write_batch.Put(MakeSlice(MakeGServiceSettingKey(iter->first)),
-                    MakeSlice(iter->second));
+       map_it != settings.end(); ++map_it) {
+    write_batch.Put(MakeSlice(MakeGServiceSettingKey(map_it->first)),
+                    MakeSlice(map_it->second));
   }
 
   // Update the settings digest.
@@ -981,6 +993,7 @@ bool GCMStoreImpl::Backend::LoadIncomingMessages(
   read_options.verify_checksums = true;
 
   std::unique_ptr<leveldb::Iterator> iter(db_->NewIterator(read_options));
+  std::vector<std::string> expired_incoming_messages;
   for (iter->Seek(MakeSlice(kIncomingMsgKeyStart));
        iter->Valid() && iter->key().ToString() < kIncomingMsgKeyEnd;
        iter->Next()) {
@@ -991,9 +1004,43 @@ bool GCMStoreImpl::Backend::LoadIncomingMessages(
       return false;
     }
     DVLOG(1) << "Found incoming message with id " << s.ToString();
-    incoming_messages->push_back(s.ToString());
+    std::string data = s.ToString();
+    size_t found = data.find(kIncomingMsgSeparator);
+    if (found != std::string::npos) {
+      std::string persistent_id = data.substr(0, found);
+      int64_t expiration_time = 0LL;
+      if (!base::StringToInt64(
+              data.substr(found + std::size(kIncomingMsgSeparator) - 1),
+              &expiration_time)) {
+        LOG(ERROR)
+            << "Failed to parse expiration time from the incoming message "
+            << data;
+        expiration_time = 0LL;
+      }
+      if (base::Time::Now() < base::Time::FromDeltaSinceWindowsEpoch(
+                                  base::Microseconds(expiration_time))) {
+        incoming_messages->push_back(std::move(persistent_id));
+      } else {
+        expired_incoming_messages.push_back(std::move(persistent_id));
+      }
+    } else {
+      if (base::FeatureList::IsEnabled(
+              features::kGCMDeleteIncomingMessagesWithoutTTL)) {
+        // No expiration time can be found from |data|. The messeage should be
+        // added with the legacy non-TTL path. Treat it as expired.
+        expired_incoming_messages.push_back(std::move(data));
+      } else {
+        incoming_messages->push_back(std::move(data));
+      }
+    }
   }
-
+  if (!expired_incoming_messages.empty()) {
+    DVLOG(1) << "Removing " << expired_incoming_messages.size()
+             << " expired incoming messages.";
+    UMA_HISTOGRAM_COUNTS_1M("GCM.ExpiredIncomingMessages",
+                            expired_incoming_messages.size());
+    RemoveIncomingMessages(expired_incoming_messages, base::DoNothing());
+  }
   return true;
 }
 
@@ -1115,8 +1162,7 @@ bool GCMStoreImpl::Backend::LoadAccountMappingInfo(
                   account_mapping.account_id.IsEmail();
     base::UmaHistogramBoolean("GCM.RemoveAccountMappingWhenLoading", remove);
     if (remove) {
-      RemoveAccountMapping(account_mapping.account_id,
-                           base::DoNothing::Repeatedly<bool>());
+      RemoveAccountMapping(account_mapping.account_id, base::DoNothing());
     } else {
       account_mappings->push_back(account_mapping);
     }
@@ -1199,11 +1245,15 @@ GCMStoreImpl::GCMStoreImpl(
     std::unique_ptr<Encryptor> encryptor)
     : backend_(new Backend(path,
                            remove_account_mappings_with_email_key,
-                           base::ThreadTaskRunnerHandle::Get(),
+                           base::SingleThreadTaskRunner::GetCurrentDefault(),
                            std::move(encryptor))),
       blocking_task_runner_(blocking_task_runner) {}
 
-GCMStoreImpl::~GCMStoreImpl() {}
+GCMStoreImpl::~GCMStoreImpl() {
+  // |backend_| owns an sql::Database object, which may perform IO when
+  // |destroyed.
+  blocking_task_runner_->ReleaseSoon(FROM_HERE, std::move(backend_));
+}
 
 void GCMStoreImpl::Load(StoreOpenMode open_mode, LoadCallback callback) {
   blocking_task_runner_->PostTask(

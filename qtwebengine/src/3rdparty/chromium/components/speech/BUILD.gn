@@ -1,9 +1,15 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 source_set("speech") {
   sources = [
+    "audio_buffer.cc",
+    "audio_buffer.h",
+    "audio_encoder.cc",
+    "audio_encoder.h",
+    "chunked_byte_buffer.cc",
+    "chunked_byte_buffer.h",
     "downstream_loader.cc",
     "downstream_loader.h",
     "downstream_loader_client.h",
@@ -18,5 +24,15 @@ source_set("speech") {
     "//mojo/public/cpp/system",
     "//services/network/public/cpp",
     "//services/network/public/mojom",
+    "//third_party/flac",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "chunked_byte_buffer_unittest.cc" ]
+  deps = [
+    ":speech",
+    "//testing/gtest",
   ]
 }

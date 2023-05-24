@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef GRAPHMODIFIER_H
 #define GRAPHMODIFIER_H
@@ -40,8 +14,6 @@
 
 #define MULTI_SERIES
 
-using namespace QtDataVisualization;
-
 class GraphModifier : public QObject
 {
     Q_OBJECT
@@ -55,29 +27,29 @@ public:
     explicit GraphModifier(Q3DSurface *graph, QWidget *parentWidget);
     ~GraphModifier();
 
-    void toggleSeries1(bool enabled);
-    void toggleSeries2(bool enabled);
-    void toggleSeries3(bool enabled);
-    void toggleSeries4(bool enabled);
-    void toggleSmooth(bool enabled);
-    void toggleSurfaceGrid(bool enable);
-    void toggleSurface(bool enable);
-    void toggleSeriesVisible(bool enable);
-    void toggleSmoothS2(bool enabled);
-    void toggleSurfaceGridS2(bool enable);
-    void toggleSurfaceS2(bool enable);
-    void toggleSeries2Visible(bool enable);
-    void toggleSmoothS3(bool enabled);
-    void toggleSurfaceGridS3(bool enable);
-    void toggleSurfaceS3(bool enable);
-    void toggleSeries3Visible(bool enable);
-    void toggleSmoothS4(bool enabled);
-    void toggleSurfaceGridS4(bool enable);
-    void toggleSurfaceS4(bool enable);
-    void toggleSeries4Visible(bool enable);
+    void toggleSeries1(int enabled);
+    void toggleSeries2(int enabled);
+    void toggleSeries3(int enabled);
+    void toggleSeries4(int enabled);
+    void toggleSmooth(int enabled);
+    void toggleSurfaceGrid(int enable);
+    void toggleSurface(int enable);
+    void toggleSeriesVisible(int enable);
+    void toggleSmoothS2(int enabled);
+    void toggleSurfaceGridS2(int enable);
+    void toggleSurfaceS2(int enable);
+    void toggleSeries2Visible(int enable);
+    void toggleSmoothS3(int enabled);
+    void toggleSurfaceGridS3(int enable);
+    void toggleSurfaceS3(int enable);
+    void toggleSeries3Visible(int enable);
+    void toggleSmoothS4(int enabled);
+    void toggleSurfaceGridS4(int enable);
+    void toggleSurfaceS4(int enable);
+    void toggleSeries4Visible(int enable);
 
-    void toggleSqrtSin(bool enable);
-    void togglePlane(bool enable);
+    void toggleSqrtSin(int enable);
+    void togglePlane(int enable);
     void setHeightMapData(bool enable);
     void toggleGridSliderLock(bool enable);
     void setGridSliderX(QSlider *slider) { m_gridSliderX = slider; }
@@ -125,7 +97,7 @@ public:
     void testDataOrdering();
     void setAspectRatio(int ratio);
     void setHorizontalAspectRatio(int ratio);
-    void setSurfaceTexture(bool enabled);
+    void setSurfaceTexture(int enabled);
 
 public Q_SLOTS:
     void changeShadowQuality(int quality);
@@ -140,11 +112,11 @@ public Q_SLOTS:
     void handleAxisZChanged(QValue3DAxis *axis);
     void handleFpsChange(qreal fps);
     void changeLabelRotation(int rotation);
-    void toggleAxisTitleVisibility(bool enabled);
-    void toggleAxisTitleFixed(bool enabled);
-    void toggleXAscending(bool enabled);
-    void toggleZAscending(bool enabled);
-    void togglePolar(bool enabled);
+    void toggleAxisTitleVisibility(int enabled);
+    void toggleAxisTitleFixed(int enabled);
+    void toggleXAscending(int enabled);
+    void toggleZAscending(int enabled);
+    void togglePolar(int enabled);
     void setCameraTargetX(int value);
     void setCameraTargetY(int value);
     void setCameraTargetZ(int value);

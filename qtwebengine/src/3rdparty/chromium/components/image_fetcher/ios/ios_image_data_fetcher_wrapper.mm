@@ -1,13 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #import "components/image_fetcher/ios/ios_image_data_fetcher_wrapper.h"
 
-#include "base/bind.h"
-#include "base/task/post_task.h"
+#include "base/functional/bind.h"
+#import "base/ios/ios_util.h"
 #include "base/task/thread_pool.h"
-#import "components/image_fetcher/ios/webp_decoder.h"
 #include "net/http/http_response_headers.h"
 #include "net/http/http_status_code.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
@@ -56,29 +55,9 @@ IOSImageDataFetcherWrapper::CallbackForImageDataFetcher(
   return base::BindOnce(^(const std::string& image_data,
                           const RequestMetadata& metadata) {
     // Create a NSData from the returned data and notify the callback.
-    NSData* data =
-        [NSData dataWithBytes:image_data.data() length:image_data.size()];
-
-    if (!webp_transcode::WebpDecoder::IsWebpImage(image_data)) {
-      callback(data, metadata);
-      return;
-    }
-
-    // The image is a webp image.
-    RequestMetadata webp_metadata = metadata;
-
-    base::ThreadPool::PostTaskAndReplyWithResult(
-        FROM_HERE,
-        {
-            base::TaskPriority::BEST_EFFORT,
-            base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN,
-        },
-        base::BindOnce(^NSData*() {
-          return webp_transcode::WebpDecoder::DecodeWebpImage(data);
-        }),
-        base::BindOnce(^(NSData* decoded_data) {
-          callback(decoded_data, webp_metadata);
-        }));
+    NSData* data = [NSData dataWithBytes:image_data.data()
+                                  length:image_data.size()];
+    callback(data, metadata);
   });
 }
 

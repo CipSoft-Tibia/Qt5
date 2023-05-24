@@ -52,9 +52,11 @@ struct weston_log_subscription;
 struct weston_log_subscriber {
 	/** write the data pointed by @param data */
 	void (*write)(struct weston_log_subscriber *sub, const char *data, size_t len);
+	/** For destroying the subscriber */
+	void (*destroy)(struct weston_log_subscriber *sub);
 	/** For the type of streams that required additional destroy operation
 	 * for destroying the stream */
-	void (*destroy)(struct weston_log_subscriber *sub);
+	void (*destroy_subscription)(struct weston_log_subscriber *sub);
 	/** For the type of streams that can inform the 'consumer' part that
 	 * write operation has been terminated/finished and should close the
 	 * stream.
@@ -70,15 +72,14 @@ weston_log_subscription_create(struct weston_log_subscriber *owner,
 void
 weston_log_subscription_destroy(struct weston_log_subscription *sub);
 
-struct weston_log_subscription *
-weston_log_subscriber_get_only_subscription(struct weston_log_subscriber *subscriber);
-
 void
 weston_log_subscription_add(struct weston_log_scope *scope,
 			    struct weston_log_subscription *sub);
 void
 weston_log_subscription_remove(struct weston_log_subscription *sub);
 
+void
+weston_log_subscriber_release(struct weston_log_subscriber *subscriber);
 
 void
 weston_log_bind_weston_debug(struct wl_client *client,
@@ -88,18 +89,29 @@ struct weston_log_scope *
 weston_log_get_scope(struct weston_log_context *log_ctx, const char *name);
 
 void
-weston_log_run_cb_new_subscriber(struct weston_log_subscription *sub);
+weston_log_run_cb_new_subscription(struct weston_log_subscription *sub);
 
 void
 weston_debug_protocol_advertise_scopes(struct weston_log_context *log_ctx,
 				       struct wl_resource *res);
-int
-weston_log_ctx_compositor_setup(struct weston_compositor *compositor,
-			      struct weston_log_context *log_ctx);
 
 int
 weston_vlog(const char *fmt, va_list ap);
 int
 weston_vlog_continue(const char *fmt, va_list ap);
+
+void *
+weston_log_subscription_get_data(struct weston_log_subscription *sub);
+
+void
+weston_log_subscription_set_data(struct weston_log_subscription *sub, void *data);
+
+void
+weston_timeline_create_subscription(struct weston_log_subscription *sub,
+				    void *user_data);
+
+void
+weston_timeline_destroy_subscription(struct weston_log_subscription *sub,
+				     void *user_data);
 
 #endif /* WESTON_LOG_INTERNAL_H */

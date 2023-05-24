@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Canonical, Ltd
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSensors module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Canonical, Ltd
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include <qlidsensor.h>
 #include "qlidsensor_p.h"
 
@@ -48,6 +12,7 @@ IMPLEMENT_READING(QLidReading)
     \ingroup sensors_reading
     \inmodule QtSensors
     \since 5.9
+    \internal
 
     \brief The QLidReading class holds readings from the Lid sensor.
 
@@ -110,6 +75,7 @@ void QLidReading::setFrontLidClosed(bool closed)
     \ingroup sensors_filter
     \inmodule QtSensors
     \since 5.9
+    \internal
 
     \brief The QLidFilter class is a convenience wrapper around QSensorFilter.
 
@@ -130,13 +96,14 @@ bool QLidFilter::filter(QSensorReading *reading)
     return filter(static_cast<QLidReading*>(reading));
 }
 
-char const * const QLidSensor::type("QLidSensor");
+char const * const QLidSensor::sensorType("QLidSensor");
 
 /*!
     \class QLidSensor
     \ingroup sensors_type
     \inmodule QtSensors
     \since 5.9
+    \internal
 
     \brief The QLidSensor class is a convenience wrapper around QSensor.
 
@@ -154,7 +121,7 @@ char const * const QLidSensor::type("QLidSensor");
     Construct the sensor as a child of \a parent.
 */
 QLidSensor::QLidSensor(QObject *parent)
-    : QSensor(QLidSensor::type, parent)
+    : QSensor(QLidSensor::sensorType, parent)
 {
 }
 

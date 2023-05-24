@@ -1,85 +1,27 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSql module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsqlrecord.h"
 
-#include "qdebug.h"
-#include "qstringlist.h"
 #include "qatomic.h"
+#include "qdebug.h"
+#include "qlist.h"
 #include "qsqlfield.h"
 #include "qstring.h"
-#include "qvector.h"
 
 QT_BEGIN_NAMESPACE
 
-class QSqlRecordPrivate
+class QSqlRecordPrivate : public QSharedData
 {
 public:
-    QSqlRecordPrivate();
-    QSqlRecordPrivate(const QSqlRecordPrivate &other);
+    inline bool contains(qsizetype index) const
+    {
+      return index >= 0 && index < fields.size();
+    }
 
-    inline bool contains(int index) { return index >= 0 && index < fields.count(); }
-    QString createField(int index, const QString &prefix) const;
-
-    QVector<QSqlField> fields;
-    QAtomicInt ref;
+    QList<QSqlField> fields;
 };
-
-QSqlRecordPrivate::QSqlRecordPrivate() : ref(1)
-{
-}
-
-QSqlRecordPrivate::QSqlRecordPrivate(const QSqlRecordPrivate &other): fields(other.fields), ref(1)
-{
-}
-
-/*! \internal
-    Just for compat
-*/
-QString QSqlRecordPrivate::createField(int index, const QString &prefix) const
-{
-    QString f;
-    if (!prefix.isEmpty())
-        f = prefix + QLatin1Char('.');
-    f += fields.at(index).name();
-    return f;
-}
+QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QSqlRecordPrivate)
 
 /*!
     \class QSqlRecord
@@ -122,8 +64,8 @@ QString QSqlRecordPrivate::createField(int index, const QString &prefix) const
 */
 
 QSqlRecord::QSqlRecord()
+  : d(new QSqlRecordPrivate)
 {
-    d = new QSqlRecordPrivate();
 }
 
 /*!
@@ -133,11 +75,39 @@ QSqlRecord::QSqlRecord()
     of a record in \l{constant time}.
 */
 
-QSqlRecord::QSqlRecord(const QSqlRecord& other)
-{
-    d = other.d;
-    d->ref.ref();
-}
+QSqlRecord::QSqlRecord(const QSqlRecord &other)
+    = default;
+
+/*!
+    \fn QSqlRecord::QSqlRecord(QSqlRecord &&other)
+    \since 6.6
+
+    Move-constructs a new QSqlRecord from \a other.
+
+    \note The moved-from object \a other is placed in a partially-formed state,
+    in which the only valid operations are destruction and assignment of a new
+    value.
+*/
+
+/*!
+    \fn QSqlRecord &QSqlRecord::operator=(QSqlRecord &&other)
+    \since 6.6
+
+    Move-assigns \a other to this QSqlRecord instance.
+
+    \note The moved-from object \a other is placed in a partially-formed state,
+    in which the only valid operations are destruction and assignment of a new
+    value.
+*/
+
+/*!
+    \fn void QSqlRecord::swap(QSqlRecord &other)
+    \since 6.6
+
+    Swaps SQL record \a other with this SQL record. This operation is very fast
+    and never fails.
+*/
+
 
 /*!
     Sets the record equal to \a other.
@@ -146,21 +116,16 @@ QSqlRecord::QSqlRecord(const QSqlRecord& other)
     of a record in \l{constant time}.
 */
 
-QSqlRecord& QSqlRecord::operator=(const QSqlRecord& other)
-{
-    qAtomicAssign(d, other.d);
-    return *this;
-}
+QSqlRecord& QSqlRecord::operator=(const QSqlRecord &other)
+    = default;
 
 /*!
     Destroys the object and frees any allocated resources.
 */
 
 QSqlRecord::~QSqlRecord()
-{
-    if (!d->ref.deref())
-        delete d;
-}
+    = default;
+
 
 /*!
     \fn bool QSqlRecord::operator!=(const QSqlRecord &other) const
@@ -204,7 +169,7 @@ QVariant QSqlRecord::value(int index) const
     \sa indexOf()
 */
 
-QVariant QSqlRecord::value(const QString& name) const
+QVariant QSqlRecord::value(const QString &name) const
 {
     return value(indexOf(name));
 }
@@ -230,14 +195,14 @@ QString QSqlRecord::fieldName(int index) const
     \sa fieldName()
 */
 
-int QSqlRecord::indexOf(const QString& name) const
+int QSqlRecord::indexOf(const QString &name) const
 {
-    QStringRef tableName;
-    QStringRef fieldName(&name);
-    const int idx = name.indexOf(QLatin1Char('.'));
+    QStringView tableName;
+    QStringView fieldName(name);
+    const qsizetype idx = name.indexOf(u'.');
     if (idx != -1) {
-        tableName = name.leftRef(idx);
-        fieldName = name.midRef(idx + 1);
+        tableName = fieldName.left(idx);
+        fieldName = fieldName.mid(idx + 1);
     }
     const int cnt = count();
     for (int i = 0; i < cnt; ++i) {
@@ -279,7 +244,7 @@ QSqlField QSqlRecord::field(const QString &name) const
     \sa insert(), replace(), remove()
 */
 
-void QSqlRecord::append(const QSqlField& field)
+void QSqlRecord::append(const QSqlField &field)
 {
     detach();
     d->fields.append(field);
@@ -290,7 +255,7 @@ void QSqlRecord::append(const QSqlField& field)
 
     \sa append(), replace(), remove()
  */
-void QSqlRecord::insert(int pos, const QSqlField& field)
+void QSqlRecord::insert(int pos, const QSqlField &field)
 {
    detach();
    d->fields.insert(pos, field);
@@ -303,7 +268,7 @@ void QSqlRecord::insert(int pos, const QSqlField& field)
     \sa append(), insert(), remove()
 */
 
-void QSqlRecord::replace(int pos, const QSqlField& field)
+void QSqlRecord::replace(int pos, const QSqlField &field)
 {
     if (!d->contains(pos))
         return;
@@ -358,7 +323,7 @@ bool QSqlRecord::isEmpty() const
     otherwise returns \c false.
 */
 
-bool QSqlRecord::contains(const QString& name) const
+bool QSqlRecord::contains(const QString &name) const
 {
     return indexOf(name) >= 0;
 }
@@ -373,9 +338,8 @@ bool QSqlRecord::contains(const QString& name) const
 void QSqlRecord::clearValues()
 {
     detach();
-    int count = d->fields.count();
-    for (int i = 0; i < count; ++i)
-        d->fields[i].clear();
+    for (QSqlField &f : d->fields)
+        f.clear();
 }
 
 /*!
@@ -387,7 +351,7 @@ void QSqlRecord::clearValues()
     \sa isGenerated()
 */
 
-void QSqlRecord::setGenerated(const QString& name, bool generated)
+void QSqlRecord::setGenerated(const QString &name, bool generated)
 {
     setGenerated(indexOf(name), generated);
 }
@@ -425,7 +389,7 @@ bool QSqlRecord::isNull(int index) const
 
     \sa setNull()
 */
-bool QSqlRecord::isNull(const QString& name) const
+bool QSqlRecord::isNull(const QString &name) const
 {
     return isNull(indexOf(name));
 }
@@ -450,7 +414,7 @@ void QSqlRecord::setNull(int index)
     Sets the value of the field called \a name to null. If the field
     does not exist, nothing happens.
 */
-void QSqlRecord::setNull(const QString& name)
+void QSqlRecord::setNull(const QString &name)
 {
     setNull(indexOf(name));
 }
@@ -462,7 +426,7 @@ void QSqlRecord::setNull(const QString& name)
 
     \sa setGenerated()
 */
-bool QSqlRecord::isGenerated(const QString& name) const
+bool QSqlRecord::isGenerated(const QString &name) const
 {
     return isGenerated(indexOf(name));
 }
@@ -487,7 +451,7 @@ bool QSqlRecord::isGenerated(int index) const
 
 int QSqlRecord::count() const
 {
-    return d->fields.count();
+    return d->fields.size();
 }
 
 /*!
@@ -497,7 +461,7 @@ int QSqlRecord::count() const
     \sa setNull()
 */
 
-void QSqlRecord::setValue(int index, const QVariant& val)
+void QSqlRecord::setValue(int index, const QVariant &val)
 {
     if (!d->contains(index))
         return;
@@ -513,7 +477,7 @@ void QSqlRecord::setValue(int index, const QVariant& val)
     does not exist, nothing happens.
 */
 
-void QSqlRecord::setValue(const QString& name, const QVariant& val)
+void QSqlRecord::setValue(const QString &name, const QVariant &val)
 {
     setValue(indexOf(name), val);
 }
@@ -523,7 +487,7 @@ void QSqlRecord::setValue(const QString& name, const QVariant& val)
 */
 void QSqlRecord::detach()
 {
-    qAtomicDetach(d);
+    d.detach();
 }
 
 #ifndef QT_NO_DEBUG_STREAM

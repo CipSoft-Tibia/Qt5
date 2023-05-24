@@ -1,48 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QML preview debug service.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlpreviewhandler.h"
 
 #include <QtCore/qtimer.h>
 #include <QtCore/qsettings.h>
 #include <QtCore/qlibraryinfo.h>
-#include <QtCore/qtranslator.h>
 
 #include <QtGui/qwindow.h>
 #include <QtGui/qguiapplication.h>
@@ -60,7 +23,8 @@ struct QuitLockDisabler
 {
     const bool quitLockEnabled;
 
-    QuitLockDisabler() : quitLockEnabled(QCoreApplication::isQuitLockEnabled())
+    Q_NODISCARD_CTOR QuitLockDisabler()
+        : quitLockEnabled(QCoreApplication::isQuitLockEnabled())
     {
         QCoreApplication::setQuitLockEnabled(false);
     }
@@ -93,9 +57,6 @@ QQmlPreviewHandler::QQmlPreviewHandler(QObject *parent) : QObject(parent)
 
 QQmlPreviewHandler::~QQmlPreviewHandler()
 {
-#if QT_CONFIG(translation)
-    removeTranslators();
-#endif
     clear();
 }
 
@@ -116,6 +77,11 @@ bool QQmlPreviewHandler::eventFilter(QObject *obj, QEvent *event)
     return QObject::eventFilter(obj, event);
 }
 
+QQuickItem *QQmlPreviewHandler::currentRootItem()
+{
+    return m_currentRootItem;
+}
+
 void QQmlPreviewHandler::addEngine(QQmlEngine *qmlEngine)
 {
     m_engines.append(qmlEngine);
@@ -126,7 +92,7 @@ void QQmlPreviewHandler::removeEngine(QQmlEngine *qmlEngine)
     const bool found = m_engines.removeOne(qmlEngine);
     Q_ASSERT(found);
     for (QObject *obj : m_createdObjects)
-    if (obj && QtQml::qmlEngine(obj) == qmlEngine)
+    if (obj && ::qmlEngine(obj) == qmlEngine)
       delete obj;
     m_createdObjects.removeAll(nullptr);
 }
@@ -139,7 +105,7 @@ void QQmlPreviewHandler::loadUrl(const QUrl &url)
     m_component.reset(nullptr);
     QQuickPixmap::purgeCache();
 
-    const int numEngines = m_engines.count();
+    const int numEngines = m_engines.size();
     if (numEngines > 1) {
         emit error(QString::fromLatin1("%1 QML engines available. We cannot decide which one "
                                        "should load the component.").arg(numEngines));
@@ -225,41 +191,6 @@ void QQmlPreviewHandler::doZoom()
     m_lastPosition.initLastSavedWindowPosition(m_currentWindow);
 }
 
-#if QT_CONFIG(translation)
-void QQmlPreviewHandler::removeTranslators()
-{
-    if (!m_qtTranslator.isNull()) {
-        QCoreApplication::removeTranslator(m_qtTranslator.get());
-        m_qtTranslator.reset();
-    }
-
-    if (m_qmlTranslator.isNull()) {
-        QCoreApplication::removeTranslator(m_qmlTranslator.get());
-        m_qmlTranslator.reset();
-    }
-}
-
-void QQmlPreviewHandler::language(const QUrl &context, const QLocale &locale)
-{
-    removeTranslators();
-
-    m_qtTranslator.reset(new QTranslator(this));
-    if (m_qtTranslator->load(locale, QLatin1String("qt"), QLatin1String("_"),
-                           QLibraryInfo::location(QLibraryInfo::TranslationsPath))) {
-        QCoreApplication::installTranslator(m_qtTranslator.get());
-    }
-
-    m_qmlTranslator.reset(new QTranslator(this));
-    if (m_qmlTranslator->load(locale, QLatin1String("qml"), QLatin1String("_"),
-                              context.toLocalFile() + QLatin1String("/i18n"))) {
-        QCoreApplication::installTranslator(m_qmlTranslator.get());
-    }
-
-    for (QQmlEngine *engine : qAsConst(m_engines))
-        engine->retranslate();
-}
-#endif
-
 void QQmlPreviewHandler::clear()
 {
     qDeleteAll(m_createdObjects);
@@ -327,6 +258,8 @@ void QQmlPreviewHandler::showObject(QObject *object)
             item->setParentItem(m_currentWindow->contentItem());
 
         m_currentWindow->resize(item->size().toSize());
+        // used by debug translation service to get the states
+        m_currentRootItem = item;
     } else {
         emit error(QLatin1String("Created object is neither a QWindow nor a QQuickItem."));
     }
@@ -456,3 +389,5 @@ void QQmlPreviewHandler::tryCreateObject()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qqmlpreviewhandler.cpp"

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -41,11 +41,12 @@ class BlockPainter {
  private:
   void PaintBlockFlowContents(const PaintInfo&, const PhysicalOffset&);
   void PaintCarets(const PaintInfo&, const PhysicalOffset& paint_offset);
+  bool PaintOverflowControls(const PaintInfo&,
+                             const PhysicalOffset& paint_offset);
 
   bool ShouldPaint(const ScopedPaintState&) const;
 
-  CORE_EXPORT PhysicalRect
-  OverflowRectForCullRectTesting(bool is_printing) const;
+  CORE_EXPORT PhysicalRect OverflowRectForCullRectTesting() const;
 
   FRIEND_TEST_ALL_PREFIXES(BlockPainterTest, OverflowRectForCullRectTesting);
   FRIEND_TEST_ALL_PREFIXES(BlockPainterTest,

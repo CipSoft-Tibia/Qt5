@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 #
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 #
 # Script to build a CIPD package for weblayer_instrumentation_test_apk from
 # the current Chromium checkout.
 #
-# This should be run from the src directory of a release branch. After the
-# package is built the user should run two cipd commands (printed at the end
-# of script execution) to upload the package to the CIPD server and to update
-# the ref for the corresponding milestone. Once the ref is updated, the version
-# skew test will pick up the new package in successive runs.
+# This should be run from the src directory of a release branch. This will
+# take care of the build, you need not do that yourself. After the package is
+# built run two cipd commands (printed at the end of script execution) to
+# upload the package to the CIPD server and to update the ref for the
+# corresponding milestone. Once the ref is updated, the version skew test will
+# pick up the new package in successive runs.
 
 import argparse
 import contextlib
@@ -138,7 +139,7 @@ def main():
     print('Use "cipd set-ref chromium/testing/weblayer-x86 --version ' +
           '<CIPD instance version> -ref m<milestone>" to update the ref.')
     print('The CIPD instance version can be found on the "Instance" line ' +
-          'above after "chromium/testing/weblayer-x86:".')
+          'after "chromium/testing/weblayer-x86:".')
 
 
 if __name__ == '__main__':

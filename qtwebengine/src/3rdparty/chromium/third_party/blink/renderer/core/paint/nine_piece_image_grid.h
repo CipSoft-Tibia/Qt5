@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,16 @@
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/geometry/box_sides.h"
 #include "third_party/blink/renderer/core/style/nine_piece_image.h"
-#include "third_party/blink/renderer/platform/geometry/float_rect.h"
-#include "third_party/blink/renderer/platform/geometry/float_size.h"
-#include "third_party/blink/renderer/platform/geometry/int_rect.h"
-#include "third_party/blink/renderer/platform/geometry/int_size.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/rect_f.h"
+#include "ui/gfx/geometry/size.h"
+#include "ui/gfx/geometry/size_f.h"
+
+namespace gfx {
+class Outsets;
+}
 
 namespace blink {
-
-class IntRectOutsets;
 
 enum NinePiece {
   kMinPiece = 0,
@@ -63,9 +64,11 @@ class CORE_EXPORT NinePieceImageGrid {
 
  public:
   NinePieceImageGrid(const NinePieceImage&,
-                     IntSize image_size,
-                     IntRect border_image_area,
-                     const IntRectOutsets& border_widths,
+                     const gfx::SizeF& image_size,
+                     const gfx::Vector2dF& slice_scale,
+                     float zoom,
+                     const gfx::Rect& border_image_area,
+                     const gfx::Outsets& border_widths,
                      PhysicalBoxSides sides_to_include = PhysicalBoxSides());
 
   struct CORE_EXPORT NinePieceDrawInfo {
@@ -74,24 +77,24 @@ class CORE_EXPORT NinePieceImageGrid {
    public:
     bool is_drawable;
     bool is_corner_piece;
-    FloatRect destination;
-    FloatRect source;
+    gfx::RectF destination;
+    gfx::RectF source;
 
     // tileScale and tileRule are only useful for non-corners, i.e. edge and
     // center pieces.
-    FloatSize tile_scale;
+    gfx::Vector2dF tile_scale;
     struct {
       ENinePieceImageRule horizontal;
       ENinePieceImageRule vertical;
     } tile_rule;
   };
-  NinePieceDrawInfo GetNinePieceDrawInfo(NinePiece, float) const;
+  NinePieceDrawInfo GetNinePieceDrawInfo(NinePiece) const;
 
   struct Edge {
     DISALLOW_NEW();
     bool IsDrawable() const { return slice > 0 && width > 0; }
-    float Scale() const { return IsDrawable() ? (float)width / slice : 1; }
-    int slice;
+    float Scale() const { return IsDrawable() ? width / slice : 1; }
+    float slice;
     int width;
   };
 
@@ -100,10 +103,11 @@ class CORE_EXPORT NinePieceImageGrid {
   void SetDrawInfoEdge(NinePieceDrawInfo&, NinePiece) const;
   void SetDrawInfoMiddle(NinePieceDrawInfo&) const;
 
-  IntRect border_image_area_;
-  IntSize image_size_;
+  gfx::Rect border_image_area_;
+  gfx::SizeF image_size_;
   ENinePieceImageRule horizontal_tile_rule_;
   ENinePieceImageRule vertical_tile_rule_;
+  float zoom_;
   bool fill_;
 
   Edge top_;

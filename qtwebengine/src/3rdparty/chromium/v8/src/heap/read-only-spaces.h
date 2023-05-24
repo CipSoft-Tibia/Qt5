@@ -11,21 +11,26 @@
 #include "include/v8-platform.h"
 #include "src/base/macros.h"
 #include "src/common/globals.h"
+#include "src/heap/allocation-result.h"
 #include "src/heap/allocation-stats.h"
 #include "src/heap/base-space.h"
 #include "src/heap/basic-memory-chunk.h"
+#include "src/heap/heap-verifier.h"
 #include "src/heap/list.h"
 #include "src/heap/memory-chunk.h"
 
 namespace v8 {
 namespace internal {
 
-class ReadOnlyDeserializer;
 class MemoryAllocator;
 class ReadOnlyHeap;
+class SnapshotByteSource;
 
 class ReadOnlyPage : public BasicMemoryChunk {
  public:
+  ReadOnlyPage(Heap* heap, BaseSpace* space, size_t chunk_size,
+               Address area_start, Address area_end, VirtualMemory reservation);
+
   // Clears any pointers in the header that point out of the page that would
   // otherwise make the header non-relocatable.
   void MakeHeaderRelocatable();
@@ -35,10 +40,11 @@ class ReadOnlyPage : public BasicMemoryChunk {
   // Returns the address for a given offset in this page.
   Address OffsetToAddress(size_t offset) const {
     Address address_in_page = address() + offset;
-    if (V8_SHARED_RO_HEAP_BOOL && COMPRESS_POINTERS_BOOL) {
-      // Pointer compression with share ReadOnlyPages means that the area_start
-      // and area_end cannot be defined since they are stored within the pages
-      // which can be mapped at multiple memory addresses.
+    if (V8_SHARED_RO_HEAP_BOOL && COMPRESS_POINTERS_IN_ISOLATE_CAGE_BOOL) {
+      // Pointer compression with a per-Isolate cage and shared ReadOnlyPages
+      // means that the area_start and area_end cannot be defined since they are
+      // stored within the pages which can be mapped at multiple memory
+      // addresses.
       DCHECK_LT(offset, size());
     } else {
       DCHECK_GE(address_in_page, area_start());
@@ -100,8 +106,9 @@ class ReadOnlyArtifacts {
   void set_read_only_heap(std::unique_ptr<ReadOnlyHeap> read_only_heap);
   ReadOnlyHeap* read_only_heap() const { return read_only_heap_.get(); }
 
-  void InitializeChecksum(ReadOnlyDeserializer* des);
-  void VerifyChecksum(ReadOnlyDeserializer* des, bool read_only_heap_created);
+  void InitializeChecksum(SnapshotData* read_only_snapshot_data);
+  void VerifyChecksum(SnapshotData* read_only_snapshot_data,
+                      bool read_only_heap_created);
 
  protected:
   ReadOnlyArtifacts() = default;
@@ -130,6 +137,9 @@ class SingleCopyReadOnlyArtifacts : public ReadOnlyArtifacts {
                   const AllocationStats& stats) override;
   void ReinstallReadOnlySpace(Isolate* isolate) override;
   void VerifyHeapAndSpaceRelationships(Isolate* isolate) override;
+
+ private:
+  v8::PageAllocator* page_allocator_ = nullptr;
 };
 
 // -----------------------------------------------------------------------------
@@ -204,29 +214,32 @@ class ReadOnlySpace : public BaseSpace {
   // to write it into the free space nodes that were already created.
   void RepairFreeSpacesAfterDeserialization();
 
-  size_t Size() override { return accounting_stats_.Size(); }
-  V8_EXPORT_PRIVATE size_t CommittedPhysicalMemory() override;
+  size_t Size() const override { return accounting_stats_.Size(); }
+  V8_EXPORT_PRIVATE size_t CommittedPhysicalMemory() const override;
 
   const std::vector<ReadOnlyPage*>& pages() const { return pages_; }
   Address top() const { return top_; }
   Address limit() const { return limit_; }
   size_t Capacity() const { return capacity_; }
 
-  bool ContainsSlow(Address addr);
+  bool ContainsSlow(Address addr) const;
   V8_EXPORT_PRIVATE void ShrinkPages();
 #ifdef VERIFY_HEAP
-  void Verify(Isolate* isolate);
+  void Verify(Isolate* isolate, SpaceVerificationVisitor* visitor) const final;
 #ifdef DEBUG
-  void VerifyCounters(Heap* heap);
+  void VerifyCounters(Heap* heap) const;
 #endif  // DEBUG
 #endif  // VERIFY_HEAP
 
   // Return size of allocatable area on a page in this space.
   int AreaSize() const { return static_cast<int>(area_size_); }
 
-  ReadOnlyPage* InitializePage(BasicMemoryChunk* chunk);
-
   Address FirstPageAddress() const { return pages_.front()->address(); }
+
+  void InitFromMemoryDump(Isolate* isolate, SnapshotByteSource* source);
+
+  // Ensure the read only space has at least one allocated page
+  void EnsurePage();
 
  protected:
   friend class SingleCopyReadOnlyArtifacts;
@@ -259,13 +272,10 @@ class ReadOnlySpace : public BaseSpace {
   void EnsureSpaceForAllocation(int size_in_bytes);
   void FreeLinearAllocationArea();
 
-  // String padding must be cleared just before serialization and therefore
-  // the string padding in the space will already have been cleared if the
-  // space was deserialized.
-  bool is_string_padding_cleared_;
-
   size_t capacity_;
   const size_t area_size_;
+
+  friend class Heap;
 };
 
 class SharedReadOnlySpace : public ReadOnlySpace {

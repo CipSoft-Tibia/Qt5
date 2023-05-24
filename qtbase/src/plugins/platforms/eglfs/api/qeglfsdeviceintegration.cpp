@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qeglfsdeviceintegration_p.h"
 #include "qeglfsintegration_p.h"
@@ -46,7 +10,7 @@
 #include "qeglfsscreen_p.h"
 #include "qeglfshooks_p.h"
 
-#include <QtEglSupport/private/qeglconvenience_p.h>
+#include <QtGui/private/qeglconvenience_p.h>
 #include <QGuiApplication>
 #include <private/qguiapplication_p.h>
 #include <QScreen>
@@ -69,52 +33,24 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 Q_LOGGING_CATEGORY(qLcEglDevDebug, "qt.qpa.egldeviceintegration")
 
 Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
-                          (QEglFSDeviceIntegrationFactoryInterface_iid, QLatin1String("/egldeviceintegrations"), Qt::CaseInsensitive))
+                          (QEglFSDeviceIntegrationFactoryInterface_iid, "/egldeviceintegrations"_L1, Qt::CaseInsensitive))
 
-#if QT_CONFIG(library)
-Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, directLoader,
-                          (QEglFSDeviceIntegrationFactoryInterface_iid, QLatin1String(""), Qt::CaseInsensitive))
-
-#endif // QT_CONFIG(library)
-
-QStringList QEglFSDeviceIntegrationFactory::keys(const QString &pluginPath)
+QStringList QEglFSDeviceIntegrationFactory::keys()
 {
     QStringList list;
-#if QT_CONFIG(library)
-    if (!pluginPath.isEmpty()) {
-        QCoreApplication::addLibraryPath(pluginPath);
-        list = directLoader()->keyMap().values();
-        if (!list.isEmpty()) {
-            const QString postFix = QLatin1String(" (from ")
-                    + QDir::toNativeSeparators(pluginPath)
-                    + QLatin1Char(')');
-            const QStringList::iterator end = list.end();
-            for (QStringList::iterator it = list.begin(); it != end; ++it)
-                (*it).append(postFix);
-        }
-    }
-#else
-    Q_UNUSED(pluginPath);
-#endif
     list.append(loader()->keyMap().values());
     qCDebug(qLcEglDevDebug) << "EGL device integration plugin keys:" << list;
     return list;
 }
 
-QEglFSDeviceIntegration *QEglFSDeviceIntegrationFactory::create(const QString &key, const QString &pluginPath)
+QEglFSDeviceIntegration *QEglFSDeviceIntegrationFactory::create(const QString &key)
 {
     QEglFSDeviceIntegration *integration = nullptr;
-#if QT_CONFIG(library)
-    if (!pluginPath.isEmpty()) {
-        QCoreApplication::addLibraryPath(pluginPath);
-        integration = qLoadPlugin<QEglFSDeviceIntegration, QEglFSDeviceIntegrationPlugin>(directLoader(), key);
-    }
-#else
-    Q_UNUSED(pluginPath);
-#endif
     if (!integration)
         integration = qLoadPlugin<QEglFSDeviceIntegration, QEglFSDeviceIntegrationPlugin>(loader(), key);
     if (integration)
@@ -144,7 +80,7 @@ int QEglFSDeviceIntegration::framebufferIndex() const
 {
     int fbIndex = 0;
 #if QT_CONFIG(regularexpression)
-    QRegularExpression fbIndexRx(QLatin1String("fb(\\d+)"));
+    QRegularExpression fbIndexRx("fb(\\d+)"_L1);
     QFileInfo fbinfo(QString::fromLocal8Bit(fbDeviceName()));
     QRegularExpressionMatch match;
     if (fbinfo.isSymLink())
@@ -224,19 +160,12 @@ QSize QEglFSDeviceIntegration::screenSize() const
 
 QDpi QEglFSDeviceIntegration::logicalDpi() const
 {
-    const QSizeF ps = physicalScreenSize();
-    const QSize s = screenSize();
-
-    if (!ps.isEmpty() && !s.isEmpty())
-        return QDpi(25.4 * s.width() / ps.width(),
-                    25.4 * s.height() / ps.height());
-    else
-        return QDpi(100, 100);
+    return QDpi(100, 100);
 }
 
-qreal QEglFSDeviceIntegration::pixelDensity() const
+QDpi QEglFSDeviceIntegration::logicalBaseDpi() const
 {
-    return qMax(1, qRound(logicalDpi().first / qreal(100)));
+    return QDpi(100, 100);
 }
 
 Qt::ScreenOrientation QEglFSDeviceIntegration::nativeOrientation() const
@@ -383,14 +312,6 @@ void *QEglFSDeviceIntegration::wlDisplay() const
     return nullptr;
 }
 
-#if QT_CONFIG(vulkan)
-QPlatformVulkanInstance *QEglFSDeviceIntegration::createPlatformVulkanInstance(QVulkanInstance *instance)
-{
-    Q_UNUSED(instance);
-    return nullptr;
-}
-#endif
-
 EGLConfig QEglFSDeviceIntegration::chooseConfig(EGLDisplay display, const QSurfaceFormat &format)
 {
     class Chooser : public QEglConfigChooser {
@@ -410,3 +331,5 @@ EGLConfig QEglFSDeviceIntegration::chooseConfig(EGLDisplay display, const QSurfa
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qeglfsdeviceintegration_p.cpp"

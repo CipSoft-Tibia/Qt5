@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,23 +7,26 @@
 #include <stdint.h>
 
 #include "base/base_paths.h"
-#include "base/compiler_specific.h"
+#include "base/clang_profiling_buildflags.h"
 #include "base/containers/span.h"
 #include "base/files/file_path.h"
-#include "base/optional.h"
 #include "base/path_service.h"
+#include "base/ranges/algorithm.h"
 #include "base/scoped_native_library.h"
 #include "base/strings/string_number_conversions.h"
 #include "build/build_config.h"
+#include "build/buildflag.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
 
 namespace {
 
-// Compile test.
-int ALLOW_UNUSED_TYPE TestImmediateCrashTreatedAsNoReturn() {
-  IMMEDIATE_CRASH();
+// If ImmediateCrash() is not treated as noreturn by the compiler, the compiler
+// will complain that not all paths through this function return a value.
+[[maybe_unused]] int TestImmediateCrashTreatedAsNoReturn() {
+  ImmediateCrash();
 }
 
 #if defined(ARCH_CPU_X86_FAMILY)
@@ -59,7 +62,7 @@ using Instruction = uint32_t;
 // Use an enum here rather than separate constexpr vars because otherwise some
 // of the vars will end up unused on each platform, upsetting
 // -Wunused-const-variable.
-enum {
+enum : Instruction {
   // There are multiple valid encodings of return (which is really a special
   // form of branch). This is the one clang seems to use:
   kRet = 0xd65f03c0,
@@ -69,12 +72,12 @@ enum {
   kHlt0 = 0xd4400000,
 };
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 
 constexpr Instruction kRequiredBody[] = {kBrkF000, kBrk1};
 constexpr Instruction kOptionalFooter[] = {};
 
-#elif defined(OS_MAC)
+#elif BUILDFLAG(IS_MAC)
 
 constexpr Instruction kRequiredBody[] = {kBrk0, kHlt0};
 // Some clangs emit a BRK #1 for __builtin_unreachable(), but some do not, so
@@ -95,7 +98,7 @@ constexpr Instruction kOptionalFooter[] = {};
 // whichever of those functions happens to come first in the library.
 void GetTestFunctionInstructions(std::vector<Instruction>* body) {
   FilePath helper_library_path;
-#if !defined(OS_ANDROID) && !defined(OS_FUCHSIA)
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_FUCHSIA)
   // On Android M, DIR_EXE == /system/bin when running base_unittests.
   // On Fuchsia, NativeLibrary understands the native convention that libraries
   // are not colocated with the binary.
@@ -103,7 +106,7 @@ void GetTestFunctionInstructions(std::vector<Instruction>* body) {
 #endif
   helper_library_path = helper_library_path.AppendASCII(
       GetNativeLibraryName("immediate_crash_test_helper"));
-#if defined(OS_ANDROID) && defined(COMPONENT_BUILD)
+#if BUILDFLAG(IS_ANDROID) && defined(COMPONENT_BUILD)
   helper_library_path = helper_library_path.ReplaceExtension(".cr.so");
 #endif
   ScopedNativeLibrary helper_library(helper_library_path);
@@ -139,16 +142,16 @@ void GetTestFunctionInstructions(std::vector<Instruction>* body) {
     body->push_back(instruction);
 }
 
-base::Optional<std::vector<Instruction>> ExpectImmediateCrashInvocation(
+absl::optional<std::vector<Instruction>> ExpectImmediateCrashInvocation(
     std::vector<Instruction> instructions) {
   auto iter = instructions.begin();
   for (const auto inst : kRequiredBody) {
     if (iter == instructions.end())
-      return base::nullopt;
+      return absl::nullopt;
     EXPECT_EQ(inst, *iter);
     iter++;
   }
-  return base::make_optional(
+  return absl::make_optional(
       std::vector<Instruction>(iter, instructions.end()));
 }
 
@@ -163,22 +166,69 @@ std::vector<Instruction> MaybeSkipOptionalFooter(
   return std::vector<Instruction>(iter, instructions.end());
 }
 
+#if BUILDFLAG(USE_CLANG_COVERAGE) || BUILDFLAG(CLANG_PROFILING)
+bool MatchPrefix(const std::vector<Instruction>& haystack,
+                 const base::span<const Instruction>& needle) {
+  for (size_t i = 0; i < needle.size(); i++) {
+    if (i >= haystack.size() || needle[i] != haystack[i])
+      return false;
+  }
+  return true;
+}
+
+std::vector<Instruction> DropUntilMatch(
+    std::vector<Instruction> haystack,
+    const base::span<const Instruction>& needle) {
+  while (!haystack.empty() && !MatchPrefix(haystack, needle))
+    haystack.erase(haystack.begin());
+  return haystack;
+}
+#endif  // USE_CLANG_COVERAGE || BUILDFLAG(CLANG_PROFILING)
+
+std::vector<Instruction> MaybeSkipCoverageHook(
+    std::vector<Instruction> instructions) {
+#if BUILDFLAG(USE_CLANG_COVERAGE) || BUILDFLAG(CLANG_PROFILING)
+  // Warning: it is not illegal for the entirety of the expected crash sequence
+  // to appear as a subsequence of the coverage hook code. If that happens, this
+  // code will falsely exit early, having not found the real expected crash
+  // sequence, so this may not adequately ensure that the immediate crash
+  // sequence is present. We do check when not under coverage, at least.
+  return DropUntilMatch(instructions, base::make_span(kRequiredBody));
+#else
+  return instructions;
+#endif  // USE_CLANG_COVERAGE || BUILDFLAG(CLANG_PROFILING)
+}
+
 }  // namespace
 
-// Checks that the IMMEDIATE_CRASH() macro produces specific instructions; see
-// comments in immediate_crash.h for the requirements.
+// Attempts to verify the actual instructions emitted by ImmediateCrash().
+// While the test results are highly implementation-specific, this allows macro
+// changes (e.g. CLs like https://crrev.com/671123) to be verified using the
+// trybots/waterfall, without having to build and disassemble Chrome on
+// multiple platforms. This makes it easier to evaluate changes to
+// ImmediateCrash() against its requirements (e.g. size of emitted sequence,
+// whether or not multiple ImmediateCrash sequences can be folded together, et
+// cetera). Please see immediate_crash.h for more details about the
+// requirements.
+//
+// Note that C++ provides no way to get the size of a function. Instead, the
+// test relies on a shared library which defines only two functions and assumes
+// the two functions will be laid out contiguously as a heuristic for finding
+// the size of the function.
 TEST(ImmediateCrashTest, ExpectedOpcodeSequence) {
   std::vector<Instruction> body;
   ASSERT_NO_FATAL_FAILURE(GetTestFunctionInstructions(&body));
   SCOPED_TRACE(HexEncode(body.data(), body.size() * sizeof(Instruction)));
 
-  auto it = std::find(body.begin(), body.end(), kRet);
+  auto it = ranges::find(body, kRet);
   ASSERT_NE(body.end(), it) << "Failed to find return opcode";
   it++;
 
   body = std::vector<Instruction>(it, body.end());
-  auto result = ExpectImmediateCrashInvocation(body);
+  absl::optional<std::vector<Instruction>> result = MaybeSkipCoverageHook(body);
+  result = ExpectImmediateCrashInvocation(result.value());
   result = MaybeSkipOptionalFooter(result.value());
+  result = MaybeSkipCoverageHook(result.value());
   result = ExpectImmediateCrashInvocation(result.value());
   ASSERT_TRUE(result);
 }

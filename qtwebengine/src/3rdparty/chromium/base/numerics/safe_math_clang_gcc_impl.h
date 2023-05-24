@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -97,7 +97,7 @@ struct CheckedMulFastOp {
       (IsTypeInRangeForNumericType<uintptr_t, T>::value &&
        IsTypeInRangeForNumericType<uintptr_t, U>::value);
 #else
-  static const bool is_supported = __GNUC__ > 6;
+  static const bool is_supported = true;
 #endif
   template <typename V>
   __attribute__((always_inline)) static constexpr bool Do(T x, U y, V* result) {

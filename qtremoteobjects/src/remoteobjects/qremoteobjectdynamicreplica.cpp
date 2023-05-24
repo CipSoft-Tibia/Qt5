@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qremoteobjectdynamicreplica.h"
 #include "qremoteobjectreplica_p.h"
@@ -49,11 +13,21 @@ QT_BEGIN_NAMESPACE
     \inmodule QtRemoteObjects
     \brief A dynamically instantiated \l {Replica}.
 
-    There are generated replicas (replicas having the header files produced by the \l {repc} {Replica Compiler}), and dynamic replicas, which are generated on-the-fly.  This is the class for the dynamic type of replica.
+    There are generated replicas (replicas having the header files produced by
+    the \l {repc} {Replica Compiler}), and dynamic replicas, that are generated
+    on-the-fly. This is the class for the dynamic type of replica.
 
-    When the connection to the \l {Source} object is made, the initialization step passes the current property values (see \l {Replica Initialization}).  In a DynamicReplica, the property/signal/slot details are also sent, allowing the replica object to be created on-the-fly.  This can be conventient in QML or scripting, but has two primary disadvantages.  First, the object is in effect "empty" until it is successfully initialized by the \l {Source}.  Second, in C++, calls must be made using QMetaObject::invokeMethod(), as the moc generated lookup will not be available.
+    When the connection to the \l {Source} object is made, the initialization
+    step passes the current property values (see \l {Replica Initialization}).
+    In a DynamicReplica, the property/signal/slot details are also sent,
+    allowing the replica object to be created on-the-fly. This can be convenient
+    in QML or scripting, but has two primary disadvantages. First, the object is
+    in effect "empty" until it is successfully initialized by the \l {Source}.
+    Second, in C++, calls must be made using QMetaObject::invokeMethod(), as the
+    moc generated lookup will not be available.
 
-    This class does not have a public constructor. It can only be instantiated by using the dynamic QRemoteObjectNode::acquire method.
+    This class does not have a public constructor. It can only be instantiated
+    by using the dynamic QRemoteObjectNode::acquire method.
 */
 
 QRemoteObjectDynamicReplica::QRemoteObjectDynamicReplica()
@@ -110,7 +84,7 @@ const QMetaObject* QRemoteObjectDynamicReplica::metaObject() const
 void *QRemoteObjectDynamicReplica::qt_metacast(const char *name)
 {
     if (!name)
-        return 0;
+        return nullptr;
 
     if (!strcmp(name, "QRemoteObjectDynamicReplica"))
         return static_cast<void*>(const_cast<QRemoteObjectDynamicReplica*>(this));
@@ -148,15 +122,15 @@ int QRemoteObjectDynamicReplica::qt_metacall(QMetaObject::Call call, int id, voi
             if (mp.userType() == QMetaType::QVariant)
                 args << *reinterpret_cast<QVariant*>(argv[0]);
             else
-                args << QVariant(mp.userType(), argv[0]);
+                args << QVariant(mp.metaType(), argv[0]);
             QRemoteObjectReplica::send(QMetaObject::WriteProperty, saved_id, args);
         } else {
             if (mp.userType() == QMetaType::QVariant)
                 *reinterpret_cast<QVariant*>(argv[0]) = impl->m_propertyStorage[id];
             else {
                 const QVariant value = propAsVariant(id);
-                QMetaType::destruct(mp.userType(), argv[0]);
-                QMetaType::construct(mp.userType(), argv[0], value.data());
+                mp.metaType().destruct(argv[0]);
+                mp.metaType().construct(argv[0], value.data());
             }
         }
 
@@ -170,27 +144,16 @@ int QRemoteObjectDynamicReplica::qt_metacall(QMetaObject::Call call, int id, voi
         } else {
             // method relay from Replica to Source
             const QMetaMethod mm = impl->m_metaObject->method(saved_id);
-            const QList<QByteArray> types = mm.parameterTypes();
-
-            const int typeSize = types.size();
+            const int nParam = mm.parameterCount();
             QVariantList args;
-            args.reserve(typeSize);
-            for (int i = 0; i < typeSize; ++i) {
-                const int type = QMetaType::type(types[i].constData());
-                if (impl->m_metaObject->indexOfEnumerator(types[i].constData()) != -1) {
-                    const auto size = QMetaType(type).sizeOf();
-                    switch (size) {
-                    case 1: args.push_back(QVariant(QMetaType::Char, argv[i + 1])); break;
-                    case 2: args.push_back(QVariant(QMetaType::Short, argv[i + 1])); break;
-                    case 4: args.push_back(QVariant(QMetaType::Int, argv[i + 1])); break;
-                    // Qt currently only supports enum values of 4 or less bytes (QMetaEnum value(index) returns int)
-//                    case 8: args.push_back(QVariant(QMetaType::Int, argv[i + 1])); break;
-                    default:
-                        qWarning() << "Invalid enum detected (Dynamic Replica)" << QMetaType::typeName(type) << "with size" << size;
-                        args.push_back(QVariant(QMetaType::Int, argv[i + 1])); break;
-                    }
+            args.reserve(nParam);
+            for (int i = 0; i < nParam; ++i) {
+                const auto metaType = mm.parameterMetaType(i);
+                if (metaType.flags().testFlag(QMetaType::IsEnumeration)) {
+                    auto transferType = QRemoteObjectPackets::transferTypeForEnum(metaType);
+                    args.push_back(QVariant(transferType, argv[i + 1]));
                 } else
-                    args.push_back(QVariant(type, argv[i + 1]));
+                    args.push_back(QVariant(metaType, argv[i + 1]));
             }
 
             if (debugArgs) {

@@ -1,18 +1,19 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CC_PAINT_IMAGE_PROVIDER_H_
 #define CC_PAINT_IMAGE_PROVIDER_H_
 
-#include "base/callback.h"
-#include "base/optional.h"
+#include <utility>
+
+#include "base/functional/callback.h"
+#include "base/types/optional_util.h"
 #include "cc/paint/decoded_draw_image.h"
 #include "cc/paint/draw_image.h"
 #include "cc/paint/paint_export.h"
 #include "cc/paint/paint_op_buffer.h"
-
-#include <vector>
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace cc {
 class PaintImage;
@@ -27,7 +28,7 @@ class CC_PAINT_EXPORT ImageProvider {
 
     ScopedResult();
     explicit ScopedResult(DecodedDrawImage image);
-    explicit ScopedResult(sk_sp<PaintRecord> record);
+    explicit ScopedResult(absl::optional<PaintRecord> record);
     ScopedResult(DecodedDrawImage image, DestructionCallback callback);
     ScopedResult(const ScopedResult&) = delete;
     ScopedResult(ScopedResult&& other);
@@ -36,23 +37,25 @@ class CC_PAINT_EXPORT ImageProvider {
     ScopedResult& operator=(const ScopedResult&) = delete;
     ScopedResult& operator=(ScopedResult&& other);
 
-    operator bool() const { return image_ || record_; }
+    explicit operator bool() const { return image_ || record_; }
     const DecodedDrawImage& decoded_image() const { return image_; }
     bool needs_unlock() const { return !destruction_callback_.is_null(); }
-    const PaintRecord* paint_record() {
-      DCHECK(record_);
-      return record_.get();
+
+    bool has_paint_record() const { return record_.has_value(); }
+    PaintRecord ReleaseAsRecord() {
+      DCHECK(has_paint_record());
+      return std::move(record_.value());
     }
 
    private:
     void DestroyDecode();
 
     DecodedDrawImage image_;
-    sk_sp<PaintRecord> record_;
+    absl::optional<PaintRecord> record_;
     DestructionCallback destruction_callback_;
   };
 
-  virtual ~ImageProvider() {}
+  virtual ~ImageProvider() = default;
 
   // Returns either:
   // 1. The DecodedDrawImage to use for this PaintImage. If no image is

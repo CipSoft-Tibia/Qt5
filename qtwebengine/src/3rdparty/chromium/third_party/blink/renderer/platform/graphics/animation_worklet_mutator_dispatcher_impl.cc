@@ -1,14 +1,18 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/platform/graphics/animation_worklet_mutator_dispatcher_impl.h"
 
+#include <utility>
+
 #include "base/barrier_closure.h"
-#include "base/callback_helpers.h"
+#include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/synchronization/waitable_event.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/time/default_tick_clock.h"
+#include "base/time/time.h"
 #include "base/timer/elapsed_timer.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/renderer/platform/graphics/animation_worklet_mutator.h"
@@ -18,7 +22,10 @@
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
+#include "third_party/blink/renderer/platform/wtf/wtf.h"
 
 namespace blink {
 
@@ -66,16 +73,10 @@ struct AnimationWorkletMutatorDispatcherImpl::AsyncMutationRequest {
 };
 
 AnimationWorkletMutatorDispatcherImpl::AnimationWorkletMutatorDispatcherImpl(
-    bool main_thread_task_runner)
-    : client_(nullptr), outputs_(OutputVectorRef::Create()) {
-  // By default web tests run without threaded compositing. See
-  // https://crbug.com/770028. If threaded compositing is disabled or
-  // |main_thread_task_runner| is true we run on the main thread's compositor
-  // task runner otherwise we run tasks on the compositor thread's default
-  // task runner.
-  host_queue_ = main_thread_task_runner || !Thread::CompositorThread()
-                    ? Thread::MainThread()->Scheduler()->CompositorTaskRunner()
-                    : Thread::CompositorThread()->GetTaskRunner();
+    scoped_refptr<base::SingleThreadTaskRunner> task_runner)
+    : host_queue_(task_runner),
+      client_(nullptr),
+      outputs_(OutputVectorRef::Create()) {
   tick_clock_ = std::make_unique<base::DefaultTickClock>();
 }
 
@@ -85,15 +86,13 @@ AnimationWorkletMutatorDispatcherImpl::
 // static
 template <typename ClientType>
 std::unique_ptr<ClientType> AnimationWorkletMutatorDispatcherImpl::CreateClient(
-    base::WeakPtr<AnimationWorkletMutatorDispatcherImpl>* weak_interface,
-    scoped_refptr<base::SingleThreadTaskRunner>* queue,
-    bool main_thread_client) {
+    base::WeakPtr<AnimationWorkletMutatorDispatcherImpl>& weak_interface,
+    scoped_refptr<base::SingleThreadTaskRunner> queue) {
   DCHECK(IsMainThread());
-  auto mutator = std::make_unique<AnimationWorkletMutatorDispatcherImpl>(
-      main_thread_client);
+  auto mutator =
+      std::make_unique<AnimationWorkletMutatorDispatcherImpl>(std::move(queue));
   // This is allowed since we own the class for the duration of creation.
-  *weak_interface = mutator->weak_factory_.GetWeakPtr();
-  *queue = mutator->GetTaskRunner();
+  weak_interface = mutator->weak_factory_.GetWeakPtr();
 
   return std::make_unique<ClientType>(std::move(mutator));
 }
@@ -101,32 +100,34 @@ std::unique_ptr<ClientType> AnimationWorkletMutatorDispatcherImpl::CreateClient(
 // static
 std::unique_ptr<CompositorMutatorClient>
 AnimationWorkletMutatorDispatcherImpl::CreateCompositorThreadClient(
-    base::WeakPtr<AnimationWorkletMutatorDispatcherImpl>* weak_interface,
-    scoped_refptr<base::SingleThreadTaskRunner>* queue) {
-  return CreateClient<CompositorMutatorClient>(weak_interface, queue, false);
+    base::WeakPtr<AnimationWorkletMutatorDispatcherImpl>& weak_interface,
+    scoped_refptr<base::SingleThreadTaskRunner> queue) {
+  return CreateClient<CompositorMutatorClient>(weak_interface,
+                                               std::move(queue));
 }
 
 // static
 std::unique_ptr<MainThreadMutatorClient>
 AnimationWorkletMutatorDispatcherImpl::CreateMainThreadClient(
-    base::WeakPtr<AnimationWorkletMutatorDispatcherImpl>* weak_interface,
-    scoped_refptr<base::SingleThreadTaskRunner>* queue) {
-  return CreateClient<MainThreadMutatorClient>(weak_interface, queue, true);
+    base::WeakPtr<AnimationWorkletMutatorDispatcherImpl>& weak_interface,
+    scoped_refptr<base::SingleThreadTaskRunner> queue) {
+  return CreateClient<MainThreadMutatorClient>(weak_interface,
+                                               std::move(queue));
 }
 
 void AnimationWorkletMutatorDispatcherImpl::MutateSynchronously(
     std::unique_ptr<AnimationWorkletDispatcherInput> mutator_input) {
   TRACE_EVENT0("cc", "AnimationWorkletMutatorDispatcherImpl::mutate");
-  if (mutator_map_.IsEmpty() || !mutator_input)
+  if (mutator_map_.empty() || !mutator_input)
     return;
   base::ElapsedTimer timer;
   DCHECK(client_);
   DCHECK(host_queue_->BelongsToCurrentThread());
-  DCHECK(mutator_input_map_.IsEmpty());
-  DCHECK(outputs_->get().IsEmpty());
+  DCHECK(mutator_input_map_.empty());
+  DCHECK(outputs_->get().empty());
 
   mutator_input_map_ = CreateInputMap(*mutator_input);
-  if (mutator_input_map_.IsEmpty())
+  if (mutator_input_map_.empty())
     return;
 
   base::WaitableEvent event;
@@ -139,8 +140,7 @@ void AnimationWorkletMutatorDispatcherImpl::MutateSynchronously(
 
   UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
       "Animation.AnimationWorklet.Dispatcher.SynchronousMutateDuration",
-      timer.Elapsed(), base::TimeDelta::FromMicroseconds(1),
-      base::TimeDelta::FromMilliseconds(100), 50);
+      timer.Elapsed(), base::Microseconds(1), base::Milliseconds(100), 50);
 }
 
 base::TimeTicks AnimationWorkletMutatorDispatcherImpl::NowTicks() const {
@@ -154,11 +154,11 @@ bool AnimationWorkletMutatorDispatcherImpl::MutateAsynchronously(
     AsyncMutationCompleteCallback done_callback) {
   DCHECK(client_);
   DCHECK(host_queue_->BelongsToCurrentThread());
-  if (mutator_map_.IsEmpty() || !mutator_input)
+  if (mutator_map_.empty() || !mutator_input)
     return false;
 
   base::TimeTicks request_time = NowTicks();
-  if (!mutator_input_map_.IsEmpty()) {
+  if (!mutator_input_map_.empty()) {
     // Still running mutations from a previous frame.
     switch (queuing_strategy) {
       case MutateQueuingStrategy::kDrop:
@@ -186,7 +186,7 @@ bool AnimationWorkletMutatorDispatcherImpl::MutateAsynchronously(
   }
 
   mutator_input_map_ = CreateInputMap(*mutator_input);
-  if (mutator_input_map_.IsEmpty())
+  if (mutator_input_map_.empty())
     return false;
 
   MutateAsynchronouslyInternal(request_time, std::move(done_callback));
@@ -228,9 +228,9 @@ void AnimationWorkletMutatorDispatcherImpl::AsyncMutationsDone(
   auto done_callback = std::move(on_async_mutation_complete_);
   std::unique_ptr<AsyncMutationRequest> queued_request;
   if (queued_priority_request.get()) {
-    queued_request.reset(queued_priority_request.release());
+    queued_request = std::move(queued_priority_request);
   } else if (queued_replaceable_request.get()) {
-    queued_request.reset(queued_replaceable_request.release());
+    queued_request = std::move(queued_replaceable_request);
   }
   if (queued_request.get()) {
     mutator_input_map_ = CreateInputMap(*queued_request->input_state);
@@ -246,8 +246,8 @@ void AnimationWorkletMutatorDispatcherImpl::AsyncMutationsDone(
   // completion, and thus includes queuing time.
   UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
       "Animation.AnimationWorklet.Dispatcher.AsynchronousMutateDuration",
-      NowTicks() - request_time, base::TimeDelta::FromMicroseconds(1),
-      base::TimeDelta::FromMilliseconds(100), 50);
+      NowTicks() - request_time, base::Microseconds(1), base::Milliseconds(100),
+      50);
 
   std::move(done_callback)
       .Run(update_applied ? MutateStatus::kCompletedWithUpdate
@@ -284,7 +284,7 @@ void AnimationWorkletMutatorDispatcherImpl::SynchronizeAnimatorName(
 }
 
 bool AnimationWorkletMutatorDispatcherImpl::HasMutators() {
-  return !mutator_map_.IsEmpty();
+  return !mutator_map_.empty();
 }
 
 AnimationWorkletMutatorDispatcherImpl::InputMap
@@ -306,7 +306,7 @@ AnimationWorkletMutatorDispatcherImpl::CreateInputMap(
 void AnimationWorkletMutatorDispatcherImpl::RequestMutations(
     CrossThreadOnceClosure done_callback) {
   DCHECK(client_);
-  DCHECK(outputs_->get().IsEmpty());
+  DCHECK(outputs_->get().empty());
 
   int num_requests = mutator_map_.size();
   if (num_requests == 0) {
@@ -352,12 +352,11 @@ void AnimationWorkletMutatorDispatcherImpl::RequestMutations(
             // The mutator is created and destroyed on the worklet thread.
             WrapCrossThreadWeakPersistent(mutator),
             // The worklet input is not required after the Mutate call.
-            WTF::Passed(std::move(it->value)),
+            std::move(it->value),
             // The vector of outputs is wrapped in a scoped_refptr initialized
             // on the host thread. It can outlive the dispatcher during shutdown
             // of a process with a running animation.
-            outputs_, next_request_index++,
-            WTF::Passed(std::move(on_done_runner))));
+            outputs_, next_request_index++, std::move(on_done_runner)));
   }
 }
 

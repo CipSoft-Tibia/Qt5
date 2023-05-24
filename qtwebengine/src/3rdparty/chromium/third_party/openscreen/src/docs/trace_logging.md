@@ -102,39 +102,72 @@ the below functions will be treated as a NoOp.
   TRACE_DEFAULT_SCOPED(category, traceId, parentId, rootId)
   TRACE_DEFAULT_SCOPED(category, traceIdHierarchy)
   ```
-  Same as TRACE_SCOPED(), but use the current function/method signature as the operation
+  Same as `TRACE_SCOPED()`, but use the current function/method signature as the operation
   name.
 
+  Both synchronous and asynchronous tracing can also be done with either one or two arguments provided
+  as strings.
+
+  ```c++
+  TRACE_SCOPED1(category, name, argname, argval)
+  TRACE_SCOPED1(category, name, argname, argval, traceId, parentId, rootId)
+  TRACE_SCOPED1(category, name, argname, argval, traceIdHierarchy)
+  TRACE_DEFAULT_SCOPED1(category, argname, argval)
+  TRACE_DEFAULT_SCOPED1(category, argname, argval, traceId, parentId, rootId)
+  TRACE_DEFAULT_SCOPED1(category, argname, argval, traceIdHierarchy)
+
+  TRACE_SCOPED2(category, name, argname, argval, argname_two, argval_two)
+  TRACE_SCOPED2(category, name, argname, argval, argname_two, argval_two, traceId, parentId, rootId)
+  TRACE_SCOPED2(category, name, argname, argval, argname_two, argval_two, traceIdHierarchy)
+  TRACE_DEFAULT_SCOPED2(category, argname, argval, argname_two, argval_two)
+  TRACE_DEFAULT_SCOPED2(category, argname, argval, argname_two, argval_two, traceId, parentId, rootId)
+  TRACE_DEFAULT_SCOPED2(category, argname, argval, argname_two, argval_two, traceIdHierarchy)
+  ```
+
 ### Asynchronous Tracing
-  `TRACE_ASYNC_START(category, name)`
-    If logging is enabled for the provided category, this function will initiate
-    a new asynchronous function trace with name as provided. It will not end
-    until TRACE_ASYNC_END is called with the same Trace ID generated for this
-    async trace. When this call is used, the Trace ID Hierarchy will be
-    determined automatically and the caller does not need to worry about it and,
-    as such, **this call should be used in the majority of asynchronous tracing
-    cases**.
+  ```c++
+  TRACE_ASYNC_START(category, name)
+  TRACE_ASYNC_START1(category, name, argname, argval)
+  TRACE_ASYNC_START2(category, name, argname, argval, argname_two, argval_two)
+  ```
+  If logging is enabled for the provided category, these functions will initiate
+  a new asynchronous function trace with name as provided. It will not end
+  until `TRACE_ASYNC_END` is called with the same Trace ID generated for this
+  async trace. When these calls are used, the Trace ID Hierarchy will be
+  determined automatically and the caller does not need to worry about it and,
+  as such, **these calls should be used in the majority of asynchronous tracing
+  cases**.
 
-  `TRACE_ASYNC_START(category, name, traceId, parentId, rootId)`
-    If logging is enabled for the provided category, this function will initiate
-    a new asynchronous function trace with name and full Trac ID Hierarchy as
-    provided. It will not end until TRACE_ASYNC_END is called with the same
-    Trace ID provided for this async trace. Each of trace ID, parent ID, and
-    root ID is optional, so providing only a subset of these values is also
-    valid if the caller only desires to set specific ones.
+  ```c++
+  TRACE_ASYNC_START(category, name)
+  TRACE_ASYNC_START1(category, name, argname, argval, traceId, parentId, rootId)
+  TRACE_ASYNC_START2(category, name, argname, argval, argname_two, argval_two, traceId, parentId, rootId)
+  ```
+  If logging is enabled for the provided category, these versions of the start macros
+  will initiate a new asynchronous function trace with name and full trace ID Hierarchy as
+  provided. It will not end until `TRACE_ASYNC_END` is called with the same
+  Trace ID provided for this async trace. Each of trace ID, parent ID, and
+  root ID is optional, so providing only a subset of these values is also
+  valid if the caller only desires to set specific ones.
 
-  `TRACE_ASYNC_START(category, name, traceIdHierarchy)`
-    This call is intended for use in conjunction with the TRACE_HIERARCHY macro
-    (as described below). this function will initiate a new asynchronous
-    function trace with name and full Trace ID Hierarchy as provided. It will
-    not end until TRACE_ASYNC_END is called with the same Trace ID provided for
-    this async trace.
+  ```c++
+  TRACE_ASYNC_START(category, name, traceIdHierarchy)
+  TRACE_ASYNC_START1(category, name, argname, argval, traceIdHierarchy)
+  TRACE_ASYNC_START2(category, name, argname, argval, argname_two, argval_two, traceIdHierarchy)
+  ```
+  This version of the start macro is intended for use in conjunction with the `TRACE_HIERARCHY` macro
+  (as described below). These versions of the start macro will initiate a new asynchronous
+  function trace with name and full Trace ID Hierarchy as provided. It will
+  not end until `TRACE_ASYNC_END` is called with the same Trace ID provided for
+  this async trace.
 
-  `TRACE_ASYNC_END(category, id, result)`
-    This call will end a trace initiated by TRACE_ASYNC_START (as described
-    above) if logging is enabled for the associated category. The id is expected
-    to match that used by an TRACE_ASYNC_START call, and result is the same as
-    TRACE_SET_RESULT's argument.
+  ```c++
+  TRACE_ASYNC_END(category, id, result)
+  ```
+  This call will end a trace initiated by `TRACE_ASYNC_START` (as described
+  above) if logging is enabled for the associated category. The id is expected
+  to match that used by an `TRACE_ASYNC_START` call, and result is the same as
+  `TRACE_SET_RESULT`'s argument.
 
 ### Other Tracing Macros
   `TRACE_CURRENT_ID`
@@ -162,8 +195,8 @@ the below functions will be treated as a NoOp.
 ### Example Code
 Synchronous Tracing:
 ``` cpp
-    public void DoThings() {
-      TRACE_SCOPED(category, "DoThings");
+    public void DoThings(int important_value) {
+      TRACE_SCOPED(category, "DoThings", "important_value", important_value);
 
       // Do Things.
       // A trace log is generated when the scope containing the above call ends.

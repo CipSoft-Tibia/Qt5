@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,13 +6,12 @@
 
 #include "net/base/test_completion_callback.h"
 
-#include "base/bind.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "net/base/completion_once_callback.h"
 #include "net/test/test_with_task_environment.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -38,6 +37,8 @@ void CallClosureAfterCheckingResult(base::OnceClosure closure,
 class ExampleEmployer {
  public:
   ExampleEmployer();
+  ExampleEmployer(const ExampleEmployer&) = delete;
+  ExampleEmployer& operator=(const ExampleEmployer&) = delete;
   ~ExampleEmployer();
 
   // Posts to the current thread a task which itself posts |callback| to the
@@ -48,7 +49,6 @@ class ExampleEmployer {
   class ExampleWorker;
   friend class ExampleWorker;
   scoped_refptr<ExampleWorker> request_;
-  DISALLOW_COPY_AND_ASSIGN(ExampleEmployer);
 };
 
 // Helper class; this is how ExampleEmployer schedules work.
@@ -65,11 +65,11 @@ class ExampleEmployer::ExampleWorker
   ~ExampleWorker() = default;
 
   // Only used on the origin thread (where DoSomething was called).
-  ExampleEmployer* employer_;
+  raw_ptr<ExampleEmployer> employer_;
   CompletionOnceCallback callback_;
   // Used to post ourselves onto the origin thread.
   const scoped_refptr<base::SingleThreadTaskRunner> origin_task_runner_ =
-      base::ThreadTaskRunnerHandle::Get();
+      base::SingleThreadTaskRunner::GetCurrentDefault();
 };
 
 void ExampleEmployer::ExampleWorker::DoWork() {
@@ -97,9 +97,9 @@ ExampleEmployer::~ExampleEmployer() = default;
 bool ExampleEmployer::DoSomething(CompletionOnceCallback callback) {
   DCHECK(!request_.get()) << "already in use";
 
-  request_ = new ExampleWorker(this, std::move(callback));
+  request_ = base::MakeRefCounted<ExampleWorker>(this, std::move(callback));
 
-  if (!base::ThreadTaskRunnerHandle::Get()->PostTask(
+  if (!base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
           FROM_HERE, base::BindOnce(&ExampleWorker::DoWork, request_))) {
     NOTREACHED();
     request_ = nullptr;

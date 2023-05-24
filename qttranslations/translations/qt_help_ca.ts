@@ -257,7 +257,7 @@
     </message>
     <message>
         <source>The file %1 cannot be overwritten.</source>
-        <translation type="vanished">El fitxer %1 no es pot sobreecriure.</translation>
+        <translation type="vanished">El fitxer %1 no es pot sobreescriure.</translation>
     </message>
     <message>
         <source>Building up file structure...</source>
@@ -387,7 +387,7 @@
     <name>QHelpSearchQueryWidget</name>
     <message>
         <source>Search for:</source>
-        <translation>Cerca per:</translation>
+        <translation>Cerca:</translation>
     </message>
     <message>
         <source>Previous search</source>

@@ -1,42 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qchar.h>
 #include <qfile.h>
 #include <qstringlist.h>
-#include <private/qunicodetables_p.h>
 
 class tst_QChar : public QObject
 {
     Q_OBJECT
 private slots:
     void fromChar16_t();
+    void fromUcs4_data();
+    void fromUcs4();
     void fromWchar_t();
     void operator_eqeq_null();
     void operators_data();
@@ -65,36 +41,58 @@ private slots:
     void digitValue();
     void mirroredChar();
     void decomposition();
-    void lineBreakClass();
     void script();
+#if !defined(Q_OS_WASM)
     void normalization_data();
     void normalization();
+#endif // !defined(Q_OS_WASM)
     void normalization_manual();
     void normalizationCorrections();
     void unicodeVersion();
 };
 
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-
 void tst_QChar::fromChar16_t()
 {
-#if defined(Q_COMPILER_UNICODE_STRINGS)
     QChar aUmlaut = u'\u00E4'; // German small letter a-umlaut
     QCOMPARE(aUmlaut, QChar(0xE4));
     QChar replacementCharacter = u'\uFFFD';
     QCOMPARE(replacementCharacter, QChar(QChar::ReplacementCharacter));
-#else
-    QSKIP("This test requires C++11 char16_t support enabled in the compiler.");
-#endif
+}
+
+void tst_QChar::fromUcs4_data()
+{
+    QTest::addColumn<uint>("ucs4");
+    auto row = [](uint ucs4) {
+        QTest::addRow("0x%08X", ucs4) << ucs4;
+    };
+
+    row(0x2f868); // a CJK Compatibility Ideograph
+    row(0x11139); // Chakma digit 3
+    row(0x1D157); // Musical Symbol Void Notehead
+}
+
+void tst_QChar::fromUcs4()
+{
+    QFETCH(const uint, ucs4);
+
+    const auto result = QChar::fromUcs4(ucs4);
+    if (QChar::requiresSurrogates(ucs4)) {
+        QCOMPARE(result.chars[0], QChar::highSurrogate(ucs4));
+        QCOMPARE(result.chars[1], QChar::lowSurrogate(ucs4));
+        QCOMPARE(QStringView{result}.size(), 2);
+    } else {
+        QCOMPARE(result.chars[0], ucs4);
+        QCOMPARE(result.chars[1], 0u);
+        QCOMPARE(QStringView{result}.size(), 1);
+    }
 }
 
 void tst_QChar::fromWchar_t()
 {
 #if defined(Q_OS_WIN)
-    QChar aUmlaut = L'\u00E4'; // German small letter a-umlaut
+    QChar aUmlaut(L'\u00E4'); // German small letter a-umlaut
     QCOMPARE(aUmlaut, QChar(0xE4));
-    QChar replacementCharacter = L'\uFFFD';
+    QChar replacementCharacter(L'\uFFFD');
     QCOMPARE(replacementCharacter, QChar(QChar::ReplacementCharacter));
 #else
     QSKIP("This is a Windows-only test.");
@@ -725,24 +723,6 @@ void tst_QChar::decomposition()
     }
 }
 
-void tst_QChar::lineBreakClass()
-{
-    QVERIFY(QUnicodeTables::lineBreakClass(0x0029) == QUnicodeTables::LineBreak_CP);
-    QVERIFY(QUnicodeTables::lineBreakClass(0x0041) == QUnicodeTables::LineBreak_AL);
-    QVERIFY(QUnicodeTables::lineBreakClass(0x0033) == QUnicodeTables::LineBreak_NU);
-    QVERIFY(QUnicodeTables::lineBreakClass(0x00ad) == QUnicodeTables::LineBreak_BA);
-    QVERIFY(QUnicodeTables::lineBreakClass(0x05d0) == QUnicodeTables::LineBreak_HL);
-    QVERIFY(QUnicodeTables::lineBreakClass(0xfffc) == QUnicodeTables::LineBreak_CB);
-    QVERIFY(QUnicodeTables::lineBreakClass(0xe0164) == QUnicodeTables::LineBreak_CM);
-    QVERIFY(QUnicodeTables::lineBreakClass(0x2f9a4) == QUnicodeTables::LineBreak_ID);
-    QVERIFY(QUnicodeTables::lineBreakClass(0x10000) == QUnicodeTables::LineBreak_AL);
-    QVERIFY(QUnicodeTables::lineBreakClass(0x1f1e6) == QUnicodeTables::LineBreak_RI);
-
-    // mapped to AL:
-    QVERIFY(QUnicodeTables::lineBreakClass(0xfffd) == QUnicodeTables::LineBreak_AL); // AI -> AL
-    QVERIFY(QUnicodeTables::lineBreakClass(0x100000) == QUnicodeTables::LineBreak_AL); // XX -> AL
-}
-
 void tst_QChar::script()
 {
     QVERIFY(QChar::script(0x0020) == QChar::Script_Common);
@@ -781,6 +761,8 @@ void tst_QChar::script()
     QVERIFY(QChar::script(0xe0100) == QChar::Script_Inherited);
 }
 
+// wasm is limited in reading filesystems, so omit this test for now
+#if !defined(Q_OS_WASM)
 void tst_QChar::normalization_data()
 {
     QTest::addColumn<QStringList>("columns");
@@ -819,7 +801,7 @@ void tst_QChar::normalization_data()
 
         line = line.trimmed();
         if (line.endsWith(';'))
-            line.truncate(line.length()-1);
+            line.truncate(line.size()-1);
 
         QList<QByteArray> l = line.split(';');
 
@@ -835,13 +817,7 @@ void tst_QChar::normalization_data()
             for (int j = 0; j < c.size(); ++j) {
                 bool ok;
                 uint uc = c.at(j).toInt(&ok, 16);
-                if (!QChar::requiresSurrogates(uc)) {
-                    columns[i].append(QChar(uc));
-                } else {
-                    // convert to utf16
-                    columns[i].append(QChar(QChar::highSurrogate(uc)));
-                    columns[i].append(QChar(QChar::lowSurrogate(uc)));
-                }
+                columns[i].append(QChar::fromUcs4(uc));
             }
         }
 
@@ -857,7 +833,7 @@ void tst_QChar::normalization()
     QFETCH(QStringList, columns);
     QFETCH(int, part);
 
-    Q_UNUSED(part)
+    Q_UNUSED(part);
 
         // CONFORMANCE:
         // 1. The following invariants must be true for all conformant implementations
@@ -909,6 +885,7 @@ void tst_QChar::normalization()
         // #################
 
 }
+#endif // !defined(Q_OS_WASM)
 
 void tst_QChar::normalization_manual()
 {

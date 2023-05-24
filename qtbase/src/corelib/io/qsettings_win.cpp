@@ -1,48 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsettings.h"
 
 #include "qsettings_p.h"
-#include "qvector.h"
+#include "qlist.h"
 #include "qmap.h"
 #include "qdebug.h"
+#include "qscopeguard.h"
 #include <qt_windows.h>
 
 // See "Accessing an Alternate Registry View" at:
@@ -58,6 +23,8 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*  Keys are stored in QStrings. If the variable name starts with 'u', this is a "user"
     key, ie. "foo/bar/alpha/beta". If the variable name starts with 'r', this is a "registry"
@@ -75,7 +42,7 @@ static const REGSAM registryPermissions = KEY_READ | KEY_WRITE;
 
 static QString keyPath(const QString &rKey)
 {
-    int idx = rKey.lastIndexOf(QLatin1Char('\\'));
+    int idx = rKey.lastIndexOf(u'\\');
     if (idx == -1)
         return QString();
     return rKey.left(idx + 1);
@@ -83,7 +50,7 @@ static QString keyPath(const QString &rKey)
 
 static QString keyName(const QString &rKey)
 {
-    int idx = rKey.lastIndexOf(QLatin1Char('\\'));
+    int idx = rKey.lastIndexOf(u'\\');
 
     QString res;
     if (idx == -1)
@@ -91,8 +58,8 @@ static QString keyName(const QString &rKey)
     else
         res = rKey.mid(idx + 1);
 
-    if (res == QLatin1String("Default") || res == QLatin1String("."))
-        res = QLatin1String("");
+    if (res == "Default"_L1 || res == "."_L1)
+        res = ""_L1;
 
     return res;
 }
@@ -102,7 +69,7 @@ static QString escapedKey(QString uKey)
     QChar *data = uKey.data();
     int l = uKey.length();
     for (int i = 0; i < l; ++i) {
-        ushort &ucs = data[i].unicode();
+        auto &ucs = data[i].unicode();
         if (ucs == '\\')
             ucs = '/';
         else if (ucs == '/')
@@ -233,7 +200,7 @@ static QStringList childKeysOrGroups(HKEY parentHandle, QSettingsPrivate::ChildS
     QByteArray buff(m * sizeof(wchar_t), 0);
     for (int i = 0; i < n; ++i) {
         QString item;
-        DWORD l = buff.size() / sizeof(wchar_t);
+        DWORD l = DWORD(buff.size()) / DWORD(sizeof(wchar_t));
         if (spec == QSettingsPrivate::ChildKeys) {
             res = RegEnumValue(parentHandle, i, reinterpret_cast<wchar_t *>(buff.data()), &l, 0, 0, 0, 0);
         } else {
@@ -247,7 +214,7 @@ static QStringList childKeysOrGroups(HKEY parentHandle, QSettingsPrivate::ChildS
             continue;
         }
         if (item.isEmpty())
-            item = QLatin1String(".");
+            item = "."_L1;
         result.append(item);
     }
     return result;
@@ -266,7 +233,7 @@ static void allKeys(HKEY parentHandle, const QString &rSubKey, NameSet *result, 
     for (int i = 0; i < childKeys.size(); ++i) {
         QString s = rSubKey;
         if (!s.isEmpty())
-            s += QLatin1Char('\\');
+            s += u'\\';
         s += childKeys.at(i);
         result->insert(s, QString());
     }
@@ -274,7 +241,7 @@ static void allKeys(HKEY parentHandle, const QString &rSubKey, NameSet *result, 
     for (int i = 0; i < childGroups.size(); ++i) {
         QString s = rSubKey;
         if (!s.isEmpty())
-            s += QLatin1Char('\\');
+            s += u'\\';
         s += childGroups.at(i);
         allKeys(parentHandle, s, result, access);
     }
@@ -369,7 +336,7 @@ void RegistryKey::close()
     m_handle = 0;
 }
 
-typedef QVector<RegistryKey> RegistryKeyList;
+typedef QList<RegistryKey> RegistryKeyList;
 
 /*******************************************************************************
 ** class QWinSettingsPrivate
@@ -386,14 +353,14 @@ public:
 
     void remove(const QString &uKey) override;
     void set(const QString &uKey, const QVariant &value) override;
-    bool get(const QString &uKey, QVariant *value) const override;
+    std::optional<QVariant> get(const QString &uKey) const override;
     QStringList children(const QString &uKey, ChildSpec spec) const override;
     void clear() override;
     void sync() override;
     void flush() override;
     bool isWritable() const override;
     HKEY writeHandle() const;
-    bool readKey(HKEY parentHandle, const QString &rSubKey, QVariant *value) const;
+    std::optional<QVariant> readKey(HKEY parentHandle, const QString &rSubKey) const;
     QString fileName() const override;
 
 private:
@@ -410,9 +377,9 @@ QWinSettingsPrivate::QWinSettingsPrivate(QSettings::Scope scope, const QString &
     deleteWriteHandleOnExit = false;
 
     if (!organization.isEmpty()) {
-        QString prefix = QLatin1String("Software\\") + organization;
-        QString orgPrefix = prefix + QLatin1String("\\OrganizationDefaults");
-        QString appPrefix = prefix + QLatin1Char('\\') + application;
+        QString prefix = "Software\\"_L1 + organization;
+        QString orgPrefix = prefix + "\\OrganizationDefaults"_L1;
+        QString appPrefix = prefix + u'\\' + application;
 
         if (scope == QSettings::UserScope) {
             if (!application.isEmpty())
@@ -437,34 +404,34 @@ QWinSettingsPrivate::QWinSettingsPrivate(QString rPath, REGSAM access)
 {
     deleteWriteHandleOnExit = false;
 
-    if (rPath.startsWith(QLatin1Char('\\')))
+    if (rPath.startsWith(u'\\'))
         rPath.remove(0, 1);
 
     int keyLength;
     HKEY keyName;
 
-    if (rPath.startsWith(QLatin1String("HKEY_CURRENT_USER"))) {
+    if (rPath.startsWith("HKEY_CURRENT_USER"_L1)) {
         keyLength = 17;
         keyName = HKEY_CURRENT_USER;
-    } else if (rPath.startsWith(QLatin1String("HKCU"))) {
+    } else if (rPath.startsWith("HKCU"_L1)) {
         keyLength = 4;
         keyName = HKEY_CURRENT_USER;
-    } else if (rPath.startsWith(QLatin1String("HKEY_LOCAL_MACHINE"))) {
+    } else if (rPath.startsWith("HKEY_LOCAL_MACHINE"_L1)) {
         keyLength = 18;
         keyName = HKEY_LOCAL_MACHINE;
-    } else if (rPath.startsWith(QLatin1String("HKLM"))) {
+    } else if (rPath.startsWith("HKLM"_L1)) {
         keyLength = 4;
         keyName = HKEY_LOCAL_MACHINE;
-    } else if (rPath.startsWith(QLatin1String("HKEY_CLASSES_ROOT"))) {
+    } else if (rPath.startsWith("HKEY_CLASSES_ROOT"_L1)) {
         keyLength = 17;
         keyName = HKEY_CLASSES_ROOT;
-    } else if (rPath.startsWith(QLatin1String("HKCR"))) {
+    } else if (rPath.startsWith("HKCR"_L1)) {
         keyLength = 4;
         keyName = HKEY_CLASSES_ROOT;
-    } else if (rPath.startsWith(QLatin1String("HKEY_USERS"))) {
+    } else if (rPath.startsWith("HKEY_USERS"_L1)) {
         keyLength = 10;
         keyName = HKEY_USERS;
-    } else if (rPath.startsWith(QLatin1String("HKU"))) {
+    } else if (rPath.startsWith("HKU"_L1)) {
         keyLength = 3;
         keyName = HKEY_USERS;
     } else {
@@ -473,11 +440,11 @@ QWinSettingsPrivate::QWinSettingsPrivate(QString rPath, REGSAM access)
 
     if (rPath.length() == keyLength)
         regList.append(RegistryKey(keyName, QString(), false, access));
-    else if (rPath[keyLength] == QLatin1Char('\\'))
+    else if (rPath[keyLength] == u'\\')
         regList.append(RegistryKey(keyName, rPath.mid(keyLength+1), false, access));
 }
 
-bool QWinSettingsPrivate::readKey(HKEY parentHandle, const QString &rSubKey, QVariant *value) const
+std::optional<QVariant> QWinSettingsPrivate::readKey(HKEY parentHandle, const QString &rSubKey) const
 {
     QString rSubkeyName = keyName(rSubKey);
     QString rSubkeyPath = keyPath(rSubKey);
@@ -485,16 +452,16 @@ bool QWinSettingsPrivate::readKey(HKEY parentHandle, const QString &rSubKey, QVa
     // open a handle on the subkey
     HKEY handle = openKey(parentHandle, KEY_READ, rSubkeyPath, access);
     if (handle == 0)
-        return false;
+        return std::nullopt;
+
+    const auto closeKey = qScopeGuard([handle] { RegCloseKey(handle); });
 
     // get the size and type of the value
     DWORD dataType;
     DWORD dataSize;
     LONG res = RegQueryValueEx(handle, reinterpret_cast<const wchar_t *>(rSubkeyName.utf16()), 0, &dataType, 0, &dataSize);
-    if (res != ERROR_SUCCESS) {
-        RegCloseKey(handle);
-        return false;
-    }
+    if (res != ERROR_SUCCESS)
+        return std::nullopt;
 
     // workaround for rare cases where trailing '\0' are missing in registry
     if (dataType == REG_SZ || dataType == REG_EXPAND_SZ)
@@ -506,10 +473,8 @@ bool QWinSettingsPrivate::readKey(HKEY parentHandle, const QString &rSubKey, QVa
     QByteArray data(dataSize, 0);
     res = RegQueryValueEx(handle, reinterpret_cast<const wchar_t *>(rSubkeyName.utf16()), 0, 0,
                            reinterpret_cast<unsigned char*>(data.data()), &dataSize);
-    if (res != ERROR_SUCCESS) {
-        RegCloseKey(handle);
-        return false;
-    }
+    if (res != ERROR_SUCCESS)
+        return std::nullopt;
 
     switch (dataType) {
         case REG_EXPAND_SZ:
@@ -518,9 +483,7 @@ bool QWinSettingsPrivate::readKey(HKEY parentHandle, const QString &rSubKey, QVa
             if (dataSize) {
                 s = QString::fromWCharArray(reinterpret_cast<const wchar_t *>(data.constData()));
             }
-            if (value != 0)
-                *value = stringToVariant(s);
-            break;
+            return stringToVariant(s);
         }
 
         case REG_MULTI_SZ: {
@@ -536,9 +499,7 @@ bool QWinSettingsPrivate::readKey(HKEY parentHandle, const QString &rSubKey, QVa
                     l.append(s);
                 }
             }
-            if (value != 0)
-                *value = stringListToVariantList(l);
-            break;
+            return stringListToVariantList(l);
         }
 
         case REG_NONE:
@@ -547,9 +508,7 @@ bool QWinSettingsPrivate::readKey(HKEY parentHandle, const QString &rSubKey, QVa
             if (dataSize) {
                 s = QString::fromWCharArray(reinterpret_cast<const wchar_t *>(data.constData()), data.size() / 2);
             }
-            if (value != 0)
-                *value = stringToVariant(s);
-            break;
+            return stringToVariant(s);
         }
 
         case REG_DWORD_BIG_ENDIAN:
@@ -557,29 +516,22 @@ bool QWinSettingsPrivate::readKey(HKEY parentHandle, const QString &rSubKey, QVa
             Q_ASSERT(data.size() == sizeof(int));
             int i;
             memcpy(reinterpret_cast<char*>(&i), data.constData(), sizeof(int));
-            if (value != 0)
-                *value = i;
-            break;
+            return i;
         }
 
         case REG_QWORD: {
             Q_ASSERT(data.size() == sizeof(qint64));
             qint64 i;
             memcpy(reinterpret_cast<char*>(&i), data.constData(), sizeof(qint64));
-            if (value != 0)
-                *value = i;
-            break;
+            return i;
         }
 
         default:
             qWarning("QSettings: Unknown data %d type in Windows registry", static_cast<int>(dataType));
-            if (value != 0)
-                *value = QVariant();
             break;
     }
 
-    RegCloseKey(handle);
-    return true;
+    return std::nullopt;
 }
 
 HKEY QWinSettingsPrivate::writeHandle() const
@@ -670,9 +622,9 @@ void QWinSettingsPrivate::set(const QString &uKey, const QVariant &value)
     QByteArray regValueBuff;
 
     // Determine the type
-    switch (value.type()) {
-        case QVariant::List:
-        case QVariant::StringList: {
+    switch (value.typeId()) {
+        case QMetaType::QVariantList:
+        case QMetaType::QStringList: {
             // If none of the elements contains '\0', we can use REG_MULTI_SZ, the
             // native registry string list type. Otherwise we use REG_BINARY.
             type = REG_MULTI_SZ;
@@ -686,8 +638,8 @@ void QWinSettingsPrivate::set(const QString &uKey, const QVariant &value)
             }
 
             if (type == REG_BINARY) {
-                QString s = variantToString(value);
-                regValueBuff = QByteArray(reinterpret_cast<const char*>(s.utf16()), s.length() * 2);
+                const QString s = variantToString(value);
+                regValueBuff = QByteArray(reinterpret_cast<const char *>(s.data()), s.length() * 2);
             } else {
                 QStringList::const_iterator it = l.constBegin();
                 for (; it != l.constEnd(); ++it) {
@@ -700,23 +652,23 @@ void QWinSettingsPrivate::set(const QString &uKey, const QVariant &value)
             break;
         }
 
-        case QVariant::Int:
-        case QVariant::UInt: {
+        case QMetaType::Int:
+        case QMetaType::UInt: {
             type = REG_DWORD;
             qint32 i = value.toInt();
             regValueBuff = QByteArray(reinterpret_cast<const char*>(&i), sizeof(qint32));
             break;
         }
 
-        case QVariant::LongLong:
-        case QVariant::ULongLong: {
+        case QMetaType::LongLong:
+        case QMetaType::ULongLong: {
             type = REG_QWORD;
             qint64 i = value.toLongLong();
             regValueBuff = QByteArray(reinterpret_cast<const char*>(&i), sizeof(qint64));
             break;
         }
 
-        case QVariant::ByteArray:
+        case QMetaType::QByteArray:
             Q_FALLTHROUGH();
 
         default: {
@@ -749,20 +701,21 @@ void QWinSettingsPrivate::set(const QString &uKey, const QVariant &value)
     RegCloseKey(handle);
 }
 
-bool QWinSettingsPrivate::get(const QString &uKey, QVariant *value) const
+std::optional<QVariant> QWinSettingsPrivate::get(const QString &uKey) const
 {
     QString rKey = escapedKey(uKey);
 
     for (const RegistryKey &r : regList) {
         HKEY handle = r.handle();
-        if (handle != 0 && readKey(handle, rKey, value))
-            return true;
-
+        if (handle != 0) {
+            if (auto result = readKey(handle, rKey))
+                return result;
+        }
         if (!fallbacks)
-            return false;
+            return std::nullopt;
     }
 
-    return false;
+    return std::nullopt;
 }
 
 QStringList QWinSettingsPrivate::children(const QString &uKey, ChildSpec spec) const
@@ -772,15 +725,21 @@ QStringList QWinSettingsPrivate::children(const QString &uKey, ChildSpec spec) c
 
     for (const RegistryKey &r : regList) {
         HKEY parent_handle = r.handle();
-        if (parent_handle == 0)
-            continue;
+        if (parent_handle == 0) {
+            if (fallbacks)
+                continue;
+            break;
+        }
         HKEY handle = openKey(parent_handle, KEY_READ, rKey, access);
-        if (handle == 0)
-            continue;
+        if (handle == 0) {
+            if (fallbacks)
+                continue;
+            break;
+        }
 
         if (spec == AllKeys) {
             NameSet keys;
-            allKeys(handle, QLatin1String(""), &keys, access);
+            allKeys(handle, ""_L1, &keys, access);
             mergeKeySets(&result, keys);
         } else { // ChildGroups or ChildKeys
             QStringList names = childKeysOrGroups(handle, spec);
@@ -820,9 +779,9 @@ QString QWinSettingsPrivate::fileName() const
     const RegistryKey &key = regList.at(0);
     QString result;
     if (key.parentHandle() == HKEY_CURRENT_USER)
-        result = QLatin1String("\\HKEY_CURRENT_USER\\");
+        result = "\\HKEY_CURRENT_USER\\"_L1;
     else
-        result = QLatin1String("\\HKEY_LOCAL_MACHINE\\");
+        result = "\\HKEY_LOCAL_MACHINE\\"_L1;
 
     return result + regList.at(0).key();
 }

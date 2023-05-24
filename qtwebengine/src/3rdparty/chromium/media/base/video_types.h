@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 #include <string>
 
 #include "build/build_config.h"
-#include "media/base/media_export.h"
+#include "media/base/media_shmem_export.h"
 
 namespace media {
 
@@ -77,32 +77,67 @@ enum VideoPixelFormat {
 
   PIXEL_FORMAT_BGRA = 32,  // 32bpp ARGB (byte-order), 1 plane.
 
+  PIXEL_FORMAT_RGBAF16 = 33,  // Half float RGBA, 1 plane.
+
+  PIXEL_FORMAT_I422A = 34,  // 24bpp YUVA planar 1x1 Y, 2x1 UV, 1x1 A samples.
+
+  PIXEL_FORMAT_I444A = 35,  // 32bpp YUVA planar, no subsampling.
+
+  // YUVA planar, 10 bits per pixel component.
+  PIXEL_FORMAT_YUV420AP10 = 36,
+  PIXEL_FORMAT_YUV422AP10 = 37,
+  PIXEL_FORMAT_YUV444AP10 = 38,
+
+  // 20bpp YUVA planar 1x1 Y, 2x2 interleaved UV, 1x1 A samples.
+  PIXEL_FORMAT_NV12A = 39,
+
   // Please update UMA histogram enumeration when adding new formats here.
   PIXEL_FORMAT_MAX =
-      PIXEL_FORMAT_BGRA,  // Must always be equal to largest entry logged.
+      PIXEL_FORMAT_NV12A,  // Must always be equal to largest entry logged.
 };
 
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class VideoChromaSampling : uint8_t {
+  kUnknown = 0,
+  k420,  // 4:2:0 chroma channel has 1/2 height/width of luma channel.
+  k422,  // 4:2:2 chroma channel has same height & 1/2 width of luma channel.
+  k444,  // 4:4:4 chroma channel has same height/width of luma channel.
+  k400,  // 4:0:0 monochrome without chroma subsampling.
+
+  // Please update UMA histogram enumeration when adding new formats here.
+  kMaxValue = k400,  // Must always be equal to largest entry logged.
+};
+
+// Return the name of chroma sampling format as a string.
+MEDIA_SHMEM_EXPORT std::string VideoChromaSamplingToString(
+    VideoChromaSampling chroma_sampling);
+
 // Returns the name of a Format as a string.
-MEDIA_EXPORT std::string VideoPixelFormatToString(VideoPixelFormat format);
+MEDIA_SHMEM_EXPORT std::string VideoPixelFormatToString(
+    VideoPixelFormat format);
 
 // Stream operator of Format for logging etc.
-MEDIA_EXPORT std::ostream& operator<<(std::ostream& os,
-                                      VideoPixelFormat format);
+MEDIA_SHMEM_EXPORT std::ostream& operator<<(std::ostream& os,
+                                            VideoPixelFormat format);
 
 // Returns human readable fourcc string.
 // If any of the four characters is non-printable, it outputs
 // "0x<32-bit integer in hex>", e.g. FourccToString(0x66616b00) returns
 // "0x66616b00".
-MEDIA_EXPORT std::string FourccToString(uint32_t fourcc);
+MEDIA_SHMEM_EXPORT std::string FourccToString(uint32_t fourcc);
 
 // Returns true if |format| is a YUV format with multiple planes.
-MEDIA_EXPORT bool IsYuvPlanar(VideoPixelFormat format);
+MEDIA_SHMEM_EXPORT bool IsYuvPlanar(VideoPixelFormat format);
+
+// Returns true if |format| is an RGB format.
+MEDIA_SHMEM_EXPORT bool IsRGB(VideoPixelFormat format);
 
 // Returns true if |format| has no Alpha channel (hence is always opaque).
-MEDIA_EXPORT bool IsOpaque(VideoPixelFormat format);
+MEDIA_SHMEM_EXPORT bool IsOpaque(VideoPixelFormat format);
 
 // Returns the number of significant bits per channel.
-MEDIA_EXPORT size_t BitDepth(VideoPixelFormat format);
+MEDIA_SHMEM_EXPORT size_t BitDepth(VideoPixelFormat format);
 
 }  // namespace media
 

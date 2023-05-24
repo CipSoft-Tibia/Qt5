@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,16 @@
 
 #include <memory>
 
-#include "base/bind.h"
 #include "base/environment.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_timeouts.h"
 #include "base/threading/platform_thread.h"
+#include "build/build_config.h"
 #include "media/audio/audio_device_description.h"
 #include "media/audio/audio_device_info_accessor_for_tests.h"
 #include "media/audio/audio_io.h"
@@ -106,7 +108,7 @@ class WriteToFileAudioSink : public AudioInputStream::AudioInputCallback {
 
  private:
   media::SeekableBuffer buffer_;
-  FILE* file_;
+  raw_ptr<FILE> file_;
   int bytes_to_write_;
 };
 
@@ -124,8 +126,14 @@ class MacAudioInputTest : public testing::Test {
   ~MacAudioInputTest() override { audio_manager_->Shutdown(); }
 
   bool InputDevicesAvailable() {
+#if BUILDFLAG(IS_MAC) && defined(ARCH_CPU_ARM64)
+    // TODO(crbug.com/1128458): macOS on ARM64 says it has devices, but won't
+    // let any of them be opened or listed.
+    return false;
+#else
     return AudioDeviceInfoAccessorForTests(audio_manager_.get())
         .HasAudioInputDevices();
+#endif
   }
 
   // Convenience method which creates a default AudioInputStream object using
@@ -136,7 +144,7 @@ class MacAudioInputTest : public testing::Test {
     int samples_per_packet = fs / 100;
     AudioInputStream* ais = audio_manager_->MakeAudioInputStream(
         AudioParameters(AudioParameters::AUDIO_PCM_LOW_LATENCY,
-                        CHANNEL_LAYOUT_STEREO, fs, samples_per_packet),
+                        ChannelLayoutConfig::Stereo(), fs, samples_per_packet),
         AudioDeviceDescription::kDefaultDeviceId,
         base::BindRepeating(&MacAudioInputTest::OnLogMessage,
                             base::Unretained(this)));
@@ -146,12 +154,13 @@ class MacAudioInputTest : public testing::Test {
 
   // Convenience method which creates an AudioInputStream object with a
   // specified channel layout.
-  AudioInputStream* CreateAudioInputStream(ChannelLayout channel_layout) {
+  AudioInputStream* CreateAudioInputStream(
+      ChannelLayoutConfig channel_layout_config) {
     int fs = static_cast<int>(AUAudioInputStream::HardwareSampleRate());
     int samples_per_packet = fs / 100;
     AudioInputStream* ais = audio_manager_->MakeAudioInputStream(
-        AudioParameters(AudioParameters::AUDIO_PCM_LOW_LATENCY, channel_layout,
-                        fs, samples_per_packet),
+        AudioParameters(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+                        channel_layout_config, fs, samples_per_packet),
         AudioDeviceDescription::kDefaultDeviceId,
         base::BindRepeating(&MacAudioInputTest::OnLogMessage,
                             base::Unretained(this)));
@@ -177,7 +186,7 @@ TEST_F(MacAudioInputTest, AUAudioInputStreamCreateAndClose) {
 TEST_F(MacAudioInputTest, AUAudioInputStreamOpenAndClose) {
   ABORT_AUDIO_TEST_IF_NOT(InputDevicesAvailable());
   AudioInputStream* ais = CreateDefaultAudioInputStream();
-  EXPECT_TRUE(ais->Open());
+  EXPECT_EQ(ais->Open(), AudioInputStream::OpenOutcome::kSuccess);
   ais->Close();
 }
 
@@ -185,7 +194,7 @@ TEST_F(MacAudioInputTest, AUAudioInputStreamOpenAndClose) {
 TEST_F(MacAudioInputTest, AUAudioInputStreamOpenStartAndClose) {
   ABORT_AUDIO_TEST_IF_NOT(InputDevicesAvailable());
   AudioInputStream* ais = CreateDefaultAudioInputStream();
-  EXPECT_TRUE(ais->Open());
+  EXPECT_EQ(ais->Open(), AudioInputStream::OpenOutcome::kSuccess);
   MockAudioInputCallback sink;
   ais->Start(&sink);
   ais->Close();
@@ -195,7 +204,7 @@ TEST_F(MacAudioInputTest, AUAudioInputStreamOpenStartAndClose) {
 TEST_F(MacAudioInputTest, AUAudioInputStreamOpenStartStopAndClose) {
   ABORT_AUDIO_TEST_IF_NOT(InputDevicesAvailable());
   AudioInputStream* ais = CreateDefaultAudioInputStream();
-  EXPECT_TRUE(ais->Open());
+  EXPECT_EQ(ais->Open(), AudioInputStream::OpenOutcome::kSuccess);
   MockAudioInputCallback sink;
   ais->Start(&sink);
   ais->Stop();
@@ -209,8 +218,8 @@ TEST_F(MacAudioInputTest, AUAudioInputStreamVerifyMonoRecording) {
   int count = 0;
 
   // Create an audio input stream which records in mono.
-  AudioInputStream* ais = CreateAudioInputStream(CHANNEL_LAYOUT_MONO);
-  EXPECT_TRUE(ais->Open());
+  AudioInputStream* ais = CreateAudioInputStream(ChannelLayoutConfig::Mono());
+  EXPECT_EQ(ais->Open(), AudioInputStream::OpenOutcome::kSuccess);
 
   MockAudioInputCallback sink;
 
@@ -238,8 +247,8 @@ TEST_F(MacAudioInputTest, AUAudioInputStreamVerifyStereoRecording) {
   int count = 0;
 
   // Create an audio input stream which records in stereo.
-  AudioInputStream* ais = CreateAudioInputStream(CHANNEL_LAYOUT_STEREO);
-  EXPECT_TRUE(ais->Open());
+  AudioInputStream* ais = CreateAudioInputStream(ChannelLayoutConfig::Stereo());
+  EXPECT_EQ(ais->Open(), AudioInputStream::OpenOutcome::kSuccess);
 
   MockAudioInputCallback sink;
 
@@ -279,7 +288,7 @@ TEST_F(MacAudioInputTest, DISABLED_AUAudioInputStreamRecordToFile) {
 
   int fs = static_cast<int>(AUAudioInputStream::HardwareSampleRate());
   AudioInputStream* ais = CreateDefaultAudioInputStream();
-  EXPECT_TRUE(ais->Open());
+  EXPECT_EQ(ais->Open(), AudioInputStream::OpenOutcome::kSuccess);
 
   fprintf(stderr, "               File name  : %s\n", file_name);
   fprintf(stderr, "               Sample rate: %d\n", fs);

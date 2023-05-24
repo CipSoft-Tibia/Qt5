@@ -12,6 +12,8 @@
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkScalar.h"
 
+#include <memory>
+
 class GrBackendDrawableInfo;
 class SkCanvas;
 class SkMatrix;
@@ -104,6 +106,12 @@ public:
     SkRect getBounds();
 
     /**
+     *  Return approximately how many bytes would be freed if this drawable is destroyed.
+     *  The base implementation returns 0 to indicate that this is unknown.
+     */
+    size_t approximateBytesUsed();
+
+    /**
      *  Calling this invalidates the previous generation ID, and causes a new one to be computed
      *  the next time getGenerationID() is called. Typically this is called by the object itself,
      *  in response to its internal state changing.
@@ -132,6 +140,7 @@ protected:
     SkDrawable();
 
     virtual SkRect onGetBounds() = 0;
+    virtual size_t onApproximateBytesUsed();
     virtual void onDraw(SkCanvas*) = 0;
 
     virtual std::unique_ptr<GpuDrawHandler> onSnapGpuDrawHandler(GrBackendApi, const SkMatrix&,

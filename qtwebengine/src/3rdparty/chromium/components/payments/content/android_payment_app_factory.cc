@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,8 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/stl_util.h"
 #include "base/supports_user_data.h"
@@ -25,7 +26,7 @@
 #include "components/payments/core/payment_request_data_util.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_thread.h"
-#include "content/public/browser/render_document_host_user_data.h"
+#include "content/public/browser/document_user_data.h"
 #include "content/public/browser/web_contents.h"
 
 namespace payments {
@@ -64,15 +65,23 @@ class AppFinder : public base::SupportsUserData::Data {
     delegate_ = delegate;
     communication_ = communication;
 
-    std::string twa_package_name = delegate_->GetTwaPackageName();
     std::set<std::string> twa_payment_method_names = {
         methods::kGooglePlayBilling,
     };
-    if (twa_package_name.empty() ||
-        base::STLSetIntersection<std::set<std::string>>(
+    if (base::STLSetIntersection<std::set<std::string>>(
             delegate_->GetSpec()->payment_method_identifiers_set(),
             twa_payment_method_names)
             .empty()) {
+      OnDoneCreatingPaymentApps();
+      return;
+    }
+
+    delegate_->GetTwaPackageName(base::BindOnce(
+        &AppFinder::OnGetTwaPackageName, weak_ptr_factory_.GetWeakPtr()));
+  }
+
+  void OnGetTwaPackageName(const std::string& twa_package_name) {
+    if (twa_package_name.empty()) {
       OnDoneCreatingPaymentApps();
       return;
     }
@@ -83,13 +92,21 @@ class AppFinder : public base::SupportsUserData::Data {
   }
 
  private:
+  // Check that our required dependencies are still valid, i.e. that the page
+  // isn't currently being torn down.
+  bool PageIsValid() {
+    return communication_ && delegate_ && delegate_->GetSpec() &&
+           delegate_->GetInitiatorRenderFrameHost();
+  }
+
   void OnGetAppDescriptions(
-      const base::Optional<std::string>& error_message,
+      const absl::optional<std::string>& error_message,
       std::vector<std::unique_ptr<AndroidAppDescription>> app_descriptions) {
     DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
     // The browser could be shutting down.
-    if (!communication_ || !delegate_ || !delegate_->GetSpec())
+    if (!PageIsValid()) {
       return;
+    }
 
     if (error_message.has_value()) {
       delegate_->OnPaymentAppCreationError(error_message.value());
@@ -147,7 +164,7 @@ class AppFinder : public base::SupportsUserData::Data {
           single_activity_app->service_names.empty()) {
         OnIsReadyToPay(std::move(single_activity_app), payment_method_names,
                        std::move(stringified_method_data),
-                       /*error_message=*/base::nullopt,
+                       /*error_message=*/absl::nullopt,
                        /*is_ready_to_pay=*/true);
         continue;
       }
@@ -173,13 +190,13 @@ class AppFinder : public base::SupportsUserData::Data {
       const std::set<std::string>& payment_method_names,
       std::unique_ptr<std::map<std::string, std::set<std::string>>>
           stringified_method_data,
-      const base::Optional<std::string>& error_message,
+      const absl::optional<std::string>& error_message,
       bool is_ready_to_pay) {
     DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
     DCHECK_LT(0U, number_of_pending_is_ready_to_pay_queries_);
 
     // The browser could be shutting down.
-    if (!communication_ || !delegate_ || !delegate_->GetSpec()) {
+    if (!PageIsValid()) {
       OnDoneCreatingPaymentApps();
       return;
     }
@@ -191,7 +208,8 @@ class AppFinder : public base::SupportsUserData::Data {
           payment_method_names, std::move(stringified_method_data),
           delegate_->GetTopOrigin(), delegate_->GetFrameOrigin(),
           delegate_->GetSpec()->details().id.value(),
-          std::move(app_description), communication_));
+          std::move(app_description), communication_,
+          delegate_->GetInitiatorRenderFrameHost()->GetGlobalId()));
     }
 
     if (--number_of_pending_is_ready_to_pay_queries_ == 0)
@@ -205,7 +223,7 @@ class AppFinder : public base::SupportsUserData::Data {
     owner_->RemoveUserData(this);
   }
 
-  base::SupportsUserData* owner_;
+  raw_ptr<base::SupportsUserData> owner_;
   base::WeakPtr<PaymentAppFactory::Delegate> delegate_;
   size_t number_of_pending_is_ready_to_pay_queries_ = 0;
   base::WeakPtr<AndroidAppCommunication> communication_;

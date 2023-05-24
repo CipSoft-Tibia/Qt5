@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,24 +9,26 @@
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
-#include "base/optional.h"
-#include "base/process/process.h"
-#include "base/strings/stringprintf.h"
 #include "base/task/thread_pool.h"
-#include "base/test/bind_test_util.h"
-#include "base/test/metrics/histogram_tester.h"
+#include "base/test/bind.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_waitable_event.h"
-#include "base/threading/sequenced_task_runner_handle.h"
 #include "base/time/time.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 using ::testing::ElementsAre;
 
 namespace base {
 
 class ImportantFileWriterCleanerTest : public ::testing::Test {
+ public:
+  ImportantFileWriterCleanerTest()
+      : old_file_time_(ImportantFileWriterCleaner::GetInstance()
+                           .GetUpperBoundTimeForTest() -
+                       Milliseconds(1)) {}
+
  protected:
   // Initializes and Starts the global cleaner at construction and Stops it
   // at destruction. ("Lifetime" refers to its activity rather than existence.)
@@ -66,24 +68,28 @@ class ImportantFileWriterCleanerTest : public ::testing::Test {
     cleaner_lifetime_.reset();
   }
 
-  void CreateNewFile(const FilePath& path) {
-    File file(path, File::FLAG_CREATE | File::FLAG_WRITE);
+  void CreateNewFileInDir(const FilePath& dir, FilePath& path) {
+    File file = CreateAndOpenTemporaryFileInDir(dir, &path);
     ASSERT_TRUE(file.IsValid());
   }
 
+  void CreateOldFileInDir(const FilePath& dir, FilePath& path) {
+    File file = CreateAndOpenTemporaryFileInDir(dir, &path);
+    ASSERT_TRUE(file.IsValid());
+    ASSERT_TRUE(file.SetTimes(Time::Now(), old_file_time_));
+  }
+
   void CreateOldFile(const FilePath& path) {
-    const Time old_time =
-        Process::Current().CreationTime() - TimeDelta::FromSeconds(1);
     File file(path, File::FLAG_CREATE | File::FLAG_WRITE);
     ASSERT_TRUE(file.IsValid());
-    ASSERT_TRUE(file.SetTimes(Time::Now(), old_time));
+    ASSERT_TRUE(file.SetTimes(Time::Now(), old_file_time_));
   }
 
   ScopedTempDir temp_dir_;
   test::TaskEnvironment task_environment_;
-  HistogramTester histogram_tester_;
 
  private:
+  const Time old_file_time_;
   FilePath dir_1_;
   FilePath dir_2_;
   FilePath dir_1_file_new_;
@@ -92,7 +98,7 @@ class ImportantFileWriterCleanerTest : public ::testing::Test {
   FilePath dir_2_file_new_;
   FilePath dir_2_file_old_;
   FilePath dir_2_file_other_;
-  Optional<ScopedCleanerLifetime> cleaner_lifetime_;
+  absl::optional<ScopedCleanerLifetime> cleaner_lifetime_;
 };
 
 void ImportantFileWriterCleanerTest::SetUp() {
@@ -105,20 +111,16 @@ void ImportantFileWriterCleanerTest::SetUp() {
   ASSERT_TRUE(CreateDirectory(dir_2_));
 
   // Create some old and new files in each dir.
-  dir_1_file_new_ = dir_1_.Append(FILE_PATH_LITERAL("new.tmp"));
-  ASSERT_NO_FATAL_FAILURE(CreateNewFile(dir_1_file_new_));
+  ASSERT_NO_FATAL_FAILURE(CreateNewFileInDir(dir_1_, dir_1_file_new_));
 
-  dir_1_file_old_ = dir_1_.Append(FILE_PATH_LITERAL("old.tmp"));
-  ASSERT_NO_FATAL_FAILURE(CreateOldFile(dir_1_file_old_));
+  ASSERT_NO_FATAL_FAILURE(CreateOldFileInDir(dir_1_, dir_1_file_old_));
 
   dir_1_file_other_ = dir_1_.Append(FILE_PATH_LITERAL("other.nottmp"));
   ASSERT_NO_FATAL_FAILURE(CreateOldFile(dir_1_file_other_));
 
-  dir_2_file_new_ = dir_2_.Append(FILE_PATH_LITERAL("new.tmp"));
-  ASSERT_NO_FATAL_FAILURE(CreateNewFile(dir_2_file_new_));
+  ASSERT_NO_FATAL_FAILURE(CreateNewFileInDir(dir_2_, dir_2_file_new_));
 
-  dir_2_file_old_ = dir_2_.Append(FILE_PATH_LITERAL("old.tmp"));
-  ASSERT_NO_FATAL_FAILURE(CreateOldFile(dir_2_file_old_));
+  ASSERT_NO_FATAL_FAILURE(CreateOldFileInDir(dir_2_, dir_2_file_old_));
 
   dir_2_file_other_ = dir_2_.Append(FILE_PATH_LITERAL("other.nottmp"));
   ASSERT_NO_FATAL_FAILURE(CreateOldFile(dir_2_file_other_));
@@ -176,12 +178,6 @@ TEST_F(ImportantFileWriterCleanerTest, AddStart) {
   EXPECT_TRUE(PathExists(dir_2_file_new()));
   EXPECT_TRUE(PathExists(dir_2_file_old()));
   EXPECT_TRUE(PathExists(dir_2_file_other()));
-
-  // There should be 1 success and 0 failure logged for the one dir.
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.SuccessCount", 1,
-                                       1);
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.FailCount", 0,
-                                       1);
 }
 
 // Tests that adding multiple directories before starting cleans both.
@@ -199,12 +195,6 @@ TEST_F(ImportantFileWriterCleanerTest, AddAddStart) {
   EXPECT_TRUE(PathExists(dir_2_file_new()));
   EXPECT_FALSE(PathExists(dir_2_file_old()));
   EXPECT_TRUE(PathExists(dir_2_file_other()));
-
-  // There should be 2 success and 2 failure samples (one for each dir).
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.SuccessCount", 1,
-                                       2);
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.FailCount", 0,
-                                       2);
 }
 
 // Tests that starting the cleaner then adding a directory works.
@@ -220,12 +210,6 @@ TEST_F(ImportantFileWriterCleanerTest, StartAdd) {
   EXPECT_TRUE(PathExists(dir_2_file_new()));
   EXPECT_TRUE(PathExists(dir_2_file_old()));
   EXPECT_TRUE(PathExists(dir_2_file_other()));
-
-  // There should be 1 success and 0 failure logged for the one dir.
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.SuccessCount", 1,
-                                       1);
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.FailCount", 0,
-                                       1);
 }
 
 // Tests that starting the cleaner twice doesn't cause it to clean twice.
@@ -242,10 +226,6 @@ TEST_F(ImportantFileWriterCleanerTest, StartTwice) {
   task_environment_.RunUntilIdle();
 
   EXPECT_TRUE(PathExists(dir_1_file_old()));
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.SuccessCount", 1,
-                                       1);
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.FailCount", 0,
-                                       1);
 }
 
 // Tests that adding a dir twice doesn't cause it to clean twice.
@@ -262,10 +242,6 @@ TEST_F(ImportantFileWriterCleanerTest, AddTwice) {
   task_environment_.RunUntilIdle();
 
   EXPECT_TRUE(PathExists(dir_1_file_old()));
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.SuccessCount", 1,
-                                       1);
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.FailCount", 0,
-                                       1);
 }
 
 // Tests that AddDirectory called from another thread properly bounces back to
@@ -291,12 +267,6 @@ TEST_F(ImportantFileWriterCleanerTest, StartAddFromOtherThread) {
   EXPECT_TRUE(PathExists(dir_2_file_new()));
   EXPECT_TRUE(PathExists(dir_2_file_old()));
   EXPECT_TRUE(PathExists(dir_2_file_other()));
-
-  // There should be 1 success and 0 failure logged for the one dir.
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.SuccessCount", 1,
-                                       1);
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.FailCount", 0,
-                                       1);
 }
 
 // Tests that adding a directory while a session is processing a previous
@@ -315,23 +285,16 @@ TEST_F(ImportantFileWriterCleanerTest, AddStartAdd) {
   EXPECT_TRUE(PathExists(dir_2_file_new()));
   EXPECT_FALSE(PathExists(dir_2_file_old()));
   EXPECT_TRUE(PathExists(dir_2_file_other()));
-
-  // There should be 2 success and 2 failure samples (one for each dir).
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.SuccessCount", 1,
-                                       2);
-  histogram_tester_.ExpectUniqueSample("Windows.TmpFileDeleter.FailCount", 0,
-                                       2);
 }
 
-// Tests that stopping while the background task is running results in at least
-// recording of partial metrics.
+// Tests stopping while the background task is running.
 TEST_F(ImportantFileWriterCleanerTest, StopWhileRunning) {
   ImportantFileWriterCleaner::GetInstance().Initialize();
 
   // Create a great many old files in dir1.
   for (int i = 0; i < 100; ++i) {
-    CreateOldFile(
-        dir_1().Append(StringPrintf(FILE_PATH_LITERAL("oldie%d.tmp"), i)));
+    FilePath path;
+    CreateOldFileInDir(dir_1(), path);
   }
 
   ImportantFileWriterCleaner::AddDirectory(dir_1());
@@ -342,9 +305,6 @@ TEST_F(ImportantFileWriterCleanerTest, StopWhileRunning) {
   // then. Either case is a success.
   StopCleaner();
   task_environment_.RunUntilIdle();
-
-  // Expect a single sample indicating that one or more files were deleted.
-  histogram_tester_.ExpectTotalCount("Windows.TmpFileDeleter.SuccessCount", 1);
 }
 
 }  // namespace base

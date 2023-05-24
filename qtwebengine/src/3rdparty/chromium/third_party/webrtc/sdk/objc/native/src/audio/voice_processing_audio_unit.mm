@@ -10,7 +10,6 @@
 
 #import "voice_processing_audio_unit.h"
 
-#include "absl/base/macros.h"
 #include "rtc_base/checks.h"
 #include "system_wrappers/include/metrics.h"
 
@@ -72,9 +71,12 @@ static OSStatus GetAGCState(AudioUnit audio_unit, UInt32* enabled) {
   return result;
 }
 
-VoiceProcessingAudioUnit::VoiceProcessingAudioUnit(
-    VoiceProcessingAudioUnitObserver* observer)
-    : observer_(observer), vpio_unit_(nullptr), state_(kInitRequired) {
+VoiceProcessingAudioUnit::VoiceProcessingAudioUnit(bool bypass_voice_processing,
+                                                   VoiceProcessingAudioUnitObserver* observer)
+    : bypass_voice_processing_(bypass_voice_processing),
+      observer_(observer),
+      vpio_unit_(nullptr),
+      state_(kInitRequired) {
   RTC_DCHECK(observer);
 }
 
@@ -250,6 +252,24 @@ bool VoiceProcessingAudioUnit::Initialize(Float64 sample_rate) {
     RTCLog(@"Voice Processing I/O unit is now initialized.");
   }
 
+  if (bypass_voice_processing_) {
+    // Attempt to disable builtin voice processing.
+    UInt32 toggle = 1;
+    result = AudioUnitSetProperty(vpio_unit_,
+                                  kAUVoiceIOProperty_BypassVoiceProcessing,
+                                  kAudioUnitScope_Global,
+                                  kInputBus,
+                                  &toggle,
+                                  sizeof(toggle));
+    if (result == noErr) {
+      RTCLog(@"Successfully bypassed voice processing.");
+    } else {
+      RTCLogError(@"Failed to bypass voice processing. Error=%ld.", (long)result);
+    }
+    state_ = kInitialized;
+    return true;
+  }
+
   // AGC should be enabled by default for Voice Processing I/O units but it is
   // checked below and enabled explicitly if needed. This scheme is used
   // to be absolutely sure that the AGC is enabled since we have seen cases
@@ -311,19 +331,19 @@ bool VoiceProcessingAudioUnit::Initialize(Float64 sample_rate) {
   return true;
 }
 
-bool VoiceProcessingAudioUnit::Start() {
+OSStatus VoiceProcessingAudioUnit::Start() {
   RTC_DCHECK_GE(state_, kUninitialized);
   RTCLog(@"Starting audio unit.");
 
   OSStatus result = AudioOutputUnitStart(vpio_unit_);
   if (result != noErr) {
     RTCLogError(@"Failed to start audio unit. Error=%ld", (long)result);
-    return false;
+    return result;
   } else {
     RTCLog(@"Started audio unit");
   }
   state_ = kStarted;
-  return true;
+  return noErr;
 }
 
 bool VoiceProcessingAudioUnit::Stop() {
@@ -445,13 +465,11 @@ void VoiceProcessingAudioUnit::DisposeAudioUnit() {
     switch (state_) {
       case kStarted:
         Stop();
-        // Fall through.
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case kInitialized:
         Uninitialize();
         break;
       case kUninitialized:
-        ABSL_FALLTHROUGH_INTENDED;
       case kInitRequired:
         break;
     }

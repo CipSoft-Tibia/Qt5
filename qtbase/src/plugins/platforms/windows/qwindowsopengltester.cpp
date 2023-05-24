@@ -1,46 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwindowsopengltester.h"
 #include "qwindowscontext.h"
 
 #include <QtCore/qvariant.h>
+#include <QtCore/qmap.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qtextstream.h>
 #include <QtCore/qcoreapplication.h>
@@ -50,13 +15,13 @@
 #include <QtCore/qlibraryinfo.h>
 #include <QtCore/qhash.h>
 #include <private/qsystemlibrary_p.h>
+#include <QtGui/qtgui-config.h>
 
 #ifndef QT_NO_OPENGL
 #include <private/qopengl_p.h>
 #endif
 
 #include <QtCore/qt_windows.h>
-#include <private/qsystemlibrary_p.h>
 #include <d3d9.h>
 
 QT_BEGIN_NAMESPACE
@@ -70,7 +35,7 @@ static GpuDescription adapterIdentifierToGpuDescription(const D3DADAPTER_IDENTIF
     result.deviceId = adapterIdentifier.DeviceId;
     result.revision = adapterIdentifier.Revision;
     result.subSysId = adapterIdentifier.SubSysId;
-    QVector<int> version(4, 0);
+    QList<int> version(4, 0);
     version[0] = HIWORD(adapterIdentifier.DriverVersion.HighPart); // Product
     version[1] = LOWORD(adapterIdentifier.DriverVersion.HighPart); // Version
     version[2] = HIWORD(adapterIdentifier.DriverVersion.LowPart); // Sub version
@@ -95,19 +60,12 @@ public:
     bool retrieveAdapterIdentifier(UINT n, D3DADAPTER_IDENTIFIER9 *adapterIdentifier) const;
 
 private:
-    QSystemLibrary m_d3d9lib;
     IDirect3D9 *m_direct3D9 = nullptr;
 };
 
-QDirect3D9Handle::QDirect3D9Handle() :
-    m_d3d9lib(QStringLiteral("d3d9"))
+QDirect3D9Handle::QDirect3D9Handle()
 {
-    using PtrDirect3DCreate9 = IDirect3D9 *(WINAPI *)(UINT);
-
-    if (m_d3d9lib.load()) {
-        if (auto direct3DCreate9 = (PtrDirect3DCreate9)m_d3d9lib.resolve("Direct3DCreate9"))
-            m_direct3D9 = direct3DCreate9(D3D_SDK_VERSION);
-    }
+    m_direct3D9 = Direct3DCreate9(D3D_SDK_VERSION);
 }
 
 QDirect3D9Handle::~QDirect3D9Handle()
@@ -170,9 +128,9 @@ GpuDescription GpuDescription::detect()
     return result;
 }
 
-QVector<GpuDescription> GpuDescription::detectAll()
+QList<GpuDescription> GpuDescription::detectAll()
 {
-    QVector<GpuDescription> result;
+    QList<GpuDescription> result;
     QDirect3D9Handle direct3D9;
     if (const UINT adapterCount = direct3D9.adapterCount()) {
         for (UINT adp = 0; adp < adapterCount; ++adp) {
@@ -225,50 +183,30 @@ QVariant GpuDescription::toVariant() const
     result.insert(QStringLiteral("deviceId"), QVariant(deviceId));
     result.insert(QStringLiteral("subSysId"),QVariant(subSysId));
     result.insert(QStringLiteral("revision"), QVariant(revision));
-    result.insert(QStringLiteral("driver"), QVariant(QLatin1String(driverName)));
+    result.insert(QStringLiteral("driver"), QVariant(QLatin1StringView(driverName)));
     result.insert(QStringLiteral("driverProduct"), QVariant(driverVersion.segmentAt(0)));
     result.insert(QStringLiteral("driverVersion"), QVariant(driverVersion.segmentAt(1)));
     result.insert(QStringLiteral("driverSubVersion"), QVariant(driverVersion.segmentAt(2)));
     result.insert(QStringLiteral("driverBuild"), QVariant(driverVersion.segmentAt(3)));
     result.insert(QStringLiteral("driverVersionString"), driverVersion.toString());
-    result.insert(QStringLiteral("description"), QVariant(QLatin1String(description)));
+    result.insert(QStringLiteral("description"), QVariant(QLatin1StringView(description)));
     result.insert(QStringLiteral("printable"), QVariant(toString()));
     return result;
-}
-
-QWindowsOpenGLTester::Renderer QWindowsOpenGLTester::requestedGlesRenderer()
-{
-    const char platformVar[] = "QT_ANGLE_PLATFORM";
-    if (qEnvironmentVariableIsSet(platformVar)) {
-        const QByteArray anglePlatform = qgetenv(platformVar);
-        if (anglePlatform == "d3d11")
-            return QWindowsOpenGLTester::AngleRendererD3d11;
-        if (anglePlatform == "d3d9")
-            return QWindowsOpenGLTester::AngleRendererD3d9;
-        if (anglePlatform == "warp")
-            return QWindowsOpenGLTester::AngleRendererD3d11Warp;
-        qCWarning(lcQpaGl) << "Invalid value set for " << platformVar << ": " << anglePlatform;
-    }
-    return QWindowsOpenGLTester::InvalidRenderer;
 }
 
 QWindowsOpenGLTester::Renderer QWindowsOpenGLTester::requestedRenderer()
 {
     const char openGlVar[] = "QT_OPENGL";
-    if (QCoreApplication::testAttribute(Qt::AA_UseOpenGLES)) {
-        const Renderer glesRenderer = QWindowsOpenGLTester::requestedGlesRenderer();
-        return glesRenderer != InvalidRenderer ? glesRenderer : Gles;
-    }
+    if (QCoreApplication::testAttribute(Qt::AA_UseOpenGLES))
+        qWarning("Qt::AA_UseOpenGLES is no longer supported in Qt 6");
     if (QCoreApplication::testAttribute(Qt::AA_UseDesktopOpenGL))
         return QWindowsOpenGLTester::DesktopGl;
     if (QCoreApplication::testAttribute(Qt::AA_UseSoftwareOpenGL))
         return QWindowsOpenGLTester::SoftwareRasterizer;
     if (qEnvironmentVariableIsSet(openGlVar)) {
         const QByteArray requested = qgetenv(openGlVar);
-        if (requested == "angle") {
-            const Renderer glesRenderer = QWindowsOpenGLTester::requestedGlesRenderer();
-            return glesRenderer != InvalidRenderer ? glesRenderer : Gles;
-        }
+        if (requested == "angle")
+            qWarning("QT_OPENGL=angle is no longer supported in Qt 6");
         if (requested == "desktop")
             return QWindowsOpenGLTester::DesktopGl;
         if (requested == "software")
@@ -284,7 +222,7 @@ static inline QString resolveBugListFile(const QString &fileName)
         return fileName;
     // Try QLibraryInfo::SettingsPath which is typically empty unless specified in qt.conf,
     // then resolve via QStandardPaths::ConfigLocation.
-    const QString settingsPath = QLibraryInfo::location(QLibraryInfo::SettingsPath);
+    const QString settingsPath = QLibraryInfo::path(QLibraryInfo::SettingsPath);
     if (!settingsPath.isEmpty()) { // SettingsPath is empty unless specified in qt.conf.
         const QFileInfo fi(settingsPath + u'/' + fileName);
         if (fi.isFile())
@@ -302,9 +240,9 @@ QWindowsOpenGLTester::Renderers QWindowsOpenGLTester::detectSupportedRenderers(c
                                                                                Renderer requested)
 {
 #if defined(QT_NO_OPENGL)
-    Q_UNUSED(gpu)
-    Q_UNUSED(requested)
-    return 0;
+    Q_UNUSED(gpu);
+    Q_UNUSED(requested);
+    return {};
 #else
     QOpenGLConfig::Gpu qgpu = QOpenGLConfig::Gpu::fromDevice(gpu.vendorId, gpu.deviceId, gpu.driverVersion, gpu.description);
     SupportedRenderersCache *srCache = supportedRenderersCache();
@@ -312,16 +250,11 @@ QWindowsOpenGLTester::Renderers QWindowsOpenGLTester::detectSupportedRenderers(c
     if (it != srCache->cend())
         return *it;
 
-    QWindowsOpenGLTester::Renderers result(QWindowsOpenGLTester::AngleRendererD3d11
-        | QWindowsOpenGLTester::AngleRendererD3d9
-        | QWindowsOpenGLTester::AngleRendererD3d11Warp
-        | QWindowsOpenGLTester::SoftwareRasterizer);
+    QWindowsOpenGLTester::Renderers result(QWindowsOpenGLTester::SoftwareRasterizer);
 
     // Don't test for GL if explicitly requested or GLES only is requested
-    if (requested == DesktopGl
-        || ((requested & GlesMask) == 0 && testDesktopGL())) {
-            result |= QWindowsOpenGLTester::DesktopGl;
-    }
+    if (requested == DesktopGl || testDesktopGL())
+        result |= QWindowsOpenGLTester::DesktopGl;
 
     QSet<QString> features; // empty by default -> nothing gets disabled
     if (!qEnvironmentVariableIsSet("QT_NO_OPENGL_BUGLIST")) {
@@ -339,19 +272,6 @@ QWindowsOpenGLTester::Renderers QWindowsOpenGLTester::detectSupportedRenderers(c
     if (features.contains(QStringLiteral("disable_desktopgl"))) { // Qt-specific
         qCDebug(lcQpaGl) << "Disabling Desktop GL: " << gpu;
         result &= ~QWindowsOpenGLTester::DesktopGl;
-    }
-    if (features.contains(QStringLiteral("disable_angle"))) { // Qt-specific keyword
-        qCDebug(lcQpaGl) << "Disabling ANGLE: " << gpu;
-        result &= ~QWindowsOpenGLTester::GlesMask;
-    } else {
-        if (features.contains(QStringLiteral("disable_d3d11"))) { // standard keyword
-            qCDebug(lcQpaGl) << "Disabling D3D11: " << gpu;
-            result &= ~QWindowsOpenGLTester::AngleRendererD3d11;
-        }
-        if (features.contains(QStringLiteral("disable_d3d9"))) { // Qt-specific
-            qCDebug(lcQpaGl) << "Disabling D3D9: " << gpu;
-            result &= ~QWindowsOpenGLTester::AngleRendererD3d9;
-        }
     }
     if (features.contains(QStringLiteral("disable_rotation"))) {
         qCDebug(lcQpaGl) << "Disabling rotation: " << gpu;

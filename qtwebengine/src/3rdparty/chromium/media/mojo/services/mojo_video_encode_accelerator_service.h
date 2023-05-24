@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,15 +12,20 @@
 #include <vector>
 
 #include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/containers/lru_cache.h"
+#include "base/memory/raw_ref.h"
+#include "base/memory/unsafe_shared_memory_region.h"
 #include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
+#include "base/time/time.h"
 #include "gpu/config/gpu_driver_bug_workarounds.h"
+#include "gpu/config/gpu_info.h"
 #include "media/mojo/mojom/video_encode_accelerator.mojom.h"
 #include "media/mojo/services/media_mojo_export.h"
 #include "media/video/video_encode_accelerator.h"
-#include "mojo/public/cpp/bindings/pending_receiver.h"
-#include "mojo/public/cpp/bindings/pending_remote.h"
+#include "mojo/public/cpp/bindings/associated_remote.h"
+#include "mojo/public/cpp/bindings/pending_associated_receiver.h"
+#include "mojo/public/cpp/bindings/pending_associated_remote.h"
 #include "mojo/public/cpp/bindings/remote.h"
 
 namespace gpu {
@@ -28,6 +33,8 @@ struct GpuPreferences;
 }  // namespace gpu
 
 namespace media {
+
+class MojoMediaLog;
 
 // This class implements the interface mojom::VideoEncodeAccelerator.
 class MEDIA_MOJO_EXPORT MojoVideoEncodeAcceleratorService
@@ -40,31 +47,45 @@ class MEDIA_MOJO_EXPORT MojoVideoEncodeAcceleratorService
           const ::media::VideoEncodeAccelerator::Config& config,
           Client* client,
           const gpu::GpuPreferences& gpu_preferences,
-          const gpu::GpuDriverBugWorkarounds& gpu_workarounds)>;
+          const gpu::GpuDriverBugWorkarounds& gpu_workarounds,
+          const gpu::GPUInfo::GPUDevice& gpu_device,
+          std::unique_ptr<MediaLog> media_log)>;
 
   static void Create(
       mojo::PendingReceiver<mojom::VideoEncodeAccelerator> receiver,
       CreateAndInitializeVideoEncodeAcceleratorCallback create_vea_callback,
       const gpu::GpuPreferences& gpu_preferences,
-      const gpu::GpuDriverBugWorkarounds& gpu_workarounds);
+      const gpu::GpuDriverBugWorkarounds& gpu_workarounds,
+      const gpu::GPUInfo::GPUDevice& gpu_device);
 
   MojoVideoEncodeAcceleratorService(
       CreateAndInitializeVideoEncodeAcceleratorCallback create_vea_callback,
       const gpu::GpuPreferences& gpu_preferences,
-      const gpu::GpuDriverBugWorkarounds& gpu_workarounds);
+      const gpu::GpuDriverBugWorkarounds& gpu_workarounds,
+      const gpu::GPUInfo::GPUDevice& gpu_device);
+
+  MojoVideoEncodeAcceleratorService(const MojoVideoEncodeAcceleratorService&) =
+      delete;
+  MojoVideoEncodeAcceleratorService& operator=(
+      const MojoVideoEncodeAcceleratorService&) = delete;
+
   ~MojoVideoEncodeAcceleratorService() override;
 
   // mojom::VideoEncodeAccelerator impl.
   void Initialize(
       const media::VideoEncodeAccelerator::Config& config,
-      mojo::PendingRemote<mojom::VideoEncodeAcceleratorClient> client,
+      mojo::PendingAssociatedRemote<mojom::VideoEncodeAcceleratorClient> client,
+      mojo::PendingRemote<mojom::MediaLog> media_log,
       InitializeCallback callback) override;
   void Encode(const scoped_refptr<VideoFrame>& frame,
               bool force_keyframe,
               EncodeCallback callback) override;
   void UseOutputBitstreamBuffer(int32_t bitstream_buffer_id,
-                                mojo::ScopedSharedBufferHandle buffer) override;
-  void RequestEncodingParametersChange(
+                                base::UnsafeSharedMemoryRegion region) override;
+  void RequestEncodingParametersChangeWithBitrate(
+      const media::Bitrate& bitrate_allocation,
+      uint32_t framerate) override;
+  void RequestEncodingParametersChangeWithLayers(
       const media::VideoBitrateAllocation& bitrate_allocation,
       uint32_t framerate) override;
   void IsFlushSupported(IsFlushSupportedCallback callback) override;
@@ -85,23 +106,27 @@ class MEDIA_MOJO_EXPORT MojoVideoEncodeAcceleratorService
   void NotifyEncoderInfoChange(const ::media::VideoEncoderInfo& info) override;
 
   CreateAndInitializeVideoEncodeAcceleratorCallback create_vea_callback_;
-  const gpu::GpuPreferences& gpu_preferences_;
+  const raw_ref<const gpu::GpuPreferences> gpu_preferences_;
   const gpu::GpuDriverBugWorkarounds gpu_workarounds_;
+  const raw_ref<const gpu::GPUInfo::GPUDevice> gpu_device_;
 
   // Owned pointer to the underlying VideoEncodeAccelerator.
   std::unique_ptr<::media::VideoEncodeAccelerator> encoder_;
-  mojo::Remote<mojom::VideoEncodeAcceleratorClient> vea_client_;
+  mojo::AssociatedRemote<mojom::VideoEncodeAcceleratorClient> vea_client_;
+
+  // Proxy object for providing media log services.
+  std::unique_ptr<MojoMediaLog> media_log_;
 
   // Cache of parameters for sanity verification.
   size_t output_buffer_size_;
   gfx::Size input_coded_size_;
 
+  base::LRUCache<int64_t, base::TimeTicks> timestamps_;
+
   // Note that this class is already thread hostile when bound.
   SEQUENCE_CHECKER(sequence_checker_);
 
   base::WeakPtrFactory<MojoVideoEncodeAcceleratorService> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(MojoVideoEncodeAcceleratorService);
 };
 
 }  // namespace media

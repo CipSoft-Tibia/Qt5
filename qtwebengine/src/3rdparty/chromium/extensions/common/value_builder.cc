@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,25 +13,23 @@ namespace extensions {
 
 // DictionaryBuilder
 
-DictionaryBuilder::DictionaryBuilder() : dict_(new base::DictionaryValue) {}
+DictionaryBuilder::DictionaryBuilder() = default;
 
-DictionaryBuilder::DictionaryBuilder(const base::DictionaryValue& init)
-    : dict_(init.CreateDeepCopy()) {}
+DictionaryBuilder::DictionaryBuilder(const base::Value::Dict& init)
+    : dict_(init.Clone()) {}
 
-DictionaryBuilder::~DictionaryBuilder() {}
+DictionaryBuilder::~DictionaryBuilder() = default;
 
 std::string DictionaryBuilder::ToJSON() const {
   std::string json;
   base::JSONWriter::WriteWithOptions(
-      *dict_, base::JSONWriter::OPTIONS_PRETTY_PRINT, &json);
+      dict_, base::JSONWriter::OPTIONS_PRETTY_PRINT, &json);
   return json;
 }
 
 // ListBuilder
 
-ListBuilder::ListBuilder() : list_(new base::ListValue) {}
-ListBuilder::ListBuilder(const base::ListValue& init)
-    : list_(init.CreateDeepCopy()) {}
-ListBuilder::~ListBuilder() {}
+ListBuilder::ListBuilder() = default;
+ListBuilder::~ListBuilder() = default;
 
 }  // namespace extensions

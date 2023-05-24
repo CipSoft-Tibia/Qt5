@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpagesetupdialog.h"
 
@@ -49,7 +13,7 @@
 
 #include "qpainter.h"
 #include "qprintdialog.h"
-#include "qtextcodec.h"
+#include "qstringconverter.h"
 #include "qdialogbuttonbox.h"
 #include <ui_qpagesetupwidget.h>
 
@@ -59,6 +23,8 @@
 #include <qpa/qplatformprintersupport.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 extern QMarginsF qt_convertMargins(const QMarginsF &margins, QPageLayout::Unit fromUnits, QPageLayout::Unit toUnits);
 
@@ -157,7 +123,7 @@ protected:
             font.setPointSizeF(font.pointSizeF()*0.25);
             p.setFont(font);
             p.setPen(palette().color(QPalette::Dark));
-            QString text(QLatin1String("Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."));
+            QString text("Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."_L1);
             for (int i=0; i<3; ++i)
                 text += text;
 
@@ -249,9 +215,6 @@ QPageSetupWidget::QPageSetupWidget(QWidget *parent)
 {
     m_ui.setupUi(this);
 
-    if (!QMetaType::hasRegisteredComparators<QPageSize>())
-        QMetaType::registerEqualsComparator<QPageSize>();
-
     QVBoxLayout *lay = new QVBoxLayout(m_ui.preview);
     m_pagePreview = new QPagePreview(m_ui.preview);
     m_pagePreview->setPagePreviewLayout(1, 1);
@@ -274,21 +237,21 @@ QPageSetupWidget::QPageSetupWidget(QWidget *parent)
     initUnits();
     initPagesPerSheet();
 
-    connect(m_ui.unitCombo, QOverload<int>::of(&QComboBox::activated), this, &QPageSetupWidget::unitChanged);
+    connect(m_ui.unitCombo, &QComboBox::activated, this, &QPageSetupWidget::unitChanged);
 
-    connect(m_ui.pageSizeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &QPageSetupWidget::pageSizeChanged);
-    connect(m_ui.pageWidth, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &QPageSetupWidget::pageSizeChanged);
-    connect(m_ui.pageHeight, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &QPageSetupWidget::pageSizeChanged);
+    connect(m_ui.pageSizeCombo, &QComboBox::currentIndexChanged, this, &QPageSetupWidget::pageSizeChanged);
+    connect(m_ui.pageWidth, &QDoubleSpinBox::valueChanged, this, &QPageSetupWidget::pageSizeChanged);
+    connect(m_ui.pageHeight, &QDoubleSpinBox::valueChanged, this, &QPageSetupWidget::pageSizeChanged);
 
-    connect(m_ui.leftMargin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &QPageSetupWidget::leftMarginChanged);
-    connect(m_ui.topMargin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &QPageSetupWidget::topMarginChanged);
-    connect(m_ui.rightMargin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &QPageSetupWidget::rightMarginChanged);
-    connect(m_ui.bottomMargin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &QPageSetupWidget::bottomMarginChanged);
+    connect(m_ui.leftMargin, &QDoubleSpinBox::valueChanged, this, &QPageSetupWidget::leftMarginChanged);
+    connect(m_ui.topMargin, &QDoubleSpinBox::valueChanged, this, &QPageSetupWidget::topMarginChanged);
+    connect(m_ui.rightMargin, &QDoubleSpinBox::valueChanged, this, &QPageSetupWidget::rightMarginChanged);
+    connect(m_ui.bottomMargin, &QDoubleSpinBox::valueChanged, this, &QPageSetupWidget::bottomMarginChanged);
 
     connect(m_ui.portrait, &QRadioButton::clicked, this, &QPageSetupWidget::pageOrientationChanged);
     connect(m_ui.landscape, &QRadioButton::clicked, this, &QPageSetupWidget::pageOrientationChanged);
 
-    connect(m_ui.pagesPerSheetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &QPageSetupWidget::pagesPerSheetChanged);
+    connect(m_ui.pagesPerSheetCombo, &QComboBox::currentIndexChanged, this, &QPageSetupWidget::pagesPerSheetChanged);
 }
 
 // Init the Units combo box
@@ -301,7 +264,7 @@ void QPageSetupWidget::initUnits()
     m_ui.unitCombo->addItem(tr("Didot (DD)"), QVariant::fromValue(QPageLayout::Didot));
     m_ui.unitCombo->addItem(tr("Cicero (CC)"), QVariant::fromValue(QPageLayout::Cicero));
 
-    // Initailly default to locale measurement system, mm if metric, in otherwise
+    // Initially default to locale measurement system, mm if metric, in otherwise
     m_ui.unitCombo->setCurrentIndex(QLocale().measurementSystem() != QLocale::MetricSystem);
 }
 
@@ -593,10 +556,14 @@ void QPageSetupWidget::pageSizeChanged()
 #if QT_CONFIG(cups)
         if (m_pageSizePpdOption) {
             ppd_file_t *ppd = qvariant_cast<ppd_file_t*>(m_printDevice->property(PDPK_PpdFile));
-            QTextCodec *cupsCodec = QTextCodec::codecForName(ppd->lang_encoding);
+            QStringDecoder toUtf16(ppd->lang_encoding, QStringDecoder::Flag::Stateless);
+            if (!toUtf16.isValid()) {
+                qWarning() << "QPrinSupport: Cups uses unsupported encoding" << ppd->lang_encoding;
+                toUtf16 = QStringDecoder(QStringDecoder::Utf8);
+            }
             for (int i = 0; i < m_pageSizePpdOption->num_choices; ++i) {
                 const ppd_choice_t *choice = &m_pageSizePpdOption->choices[i];
-                if (cupsCodec->toUnicode(choice->text) == m_ui.pageSizeCombo->currentText()) {
+                if (toUtf16(choice->text) == m_ui.pageSizeCombo->currentText()) {
                     const auto values = QStringList{} << QString::fromLatin1(m_pageSizePpdOption->keyword)
                                                       << QString::fromLatin1(choice->choice);
                     m_printDevice->setProperty(PDPK_PpdOption, values);
@@ -748,5 +715,7 @@ int QPageSetupDialog::exec()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qpagesetupdialog_unix_p.cpp"
 
 #include "moc_qpagesetupdialog.cpp"

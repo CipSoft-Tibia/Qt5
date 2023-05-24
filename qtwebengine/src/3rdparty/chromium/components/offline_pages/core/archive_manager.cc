@@ -1,21 +1,21 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/offline_pages/core/archive_manager.h"
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/files/file_enumerator.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/sequenced_task_runner.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/system/sys_info.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 
 namespace offline_pages {
@@ -72,7 +72,7 @@ void GetStorageStatsImpl(const base::FilePath& temporary_archives_dir,
     base::FileEnumerator file_enumerator(public_archives_dir, false,
                                          base::FileEnumerator::FILES);
     while (!file_enumerator.Next().empty()) {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
       std::string extension = base::WideToUTF8(
           file_enumerator.GetInfo().GetName().FinalExtension());
 #else
@@ -125,7 +125,8 @@ void ArchiveManager::GetStorageStats(StorageStatsCallback callback) const {
       FROM_HERE,
       base::BindOnce(GetStorageStatsImpl, temporary_archives_dir_,
                      private_archives_dir_, public_archives_dir_,
-                     base::ThreadTaskRunnerHandle::Get(), std::move(callback)));
+                     base::SingleThreadTaskRunner::GetCurrentDefault(),
+                     std::move(callback)));
 }
 
 const base::FilePath& ArchiveManager::GetTemporaryArchivesDir() const {

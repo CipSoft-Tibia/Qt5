@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,13 +9,12 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
-#include "base/sequenced_task_runner.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_restrictions.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "net/base/net_errors.h"
 #include "storage/browser/file_system/file_stream_writer.h"
 #include "storage/browser/file_system/file_system_context.h"
@@ -135,7 +134,7 @@ void FileWriterDelegate::Read() {
         OnReadCompleted(blob_reader_->net_error());
         return;
       case BlobReader::Status::DONE:
-        base::ThreadTaskRunnerHandle::Get()->PostTask(
+        base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
             FROM_HERE, base::BindOnce(&FileWriterDelegate::OnReadCompleted,
                                       weak_factory_.GetWeakPtr(), bytes_read_));
         return;
@@ -192,7 +191,7 @@ void FileWriterDelegate::Write() {
       base::BindOnce(&FileWriterDelegate::OnDataWritten,
                      weak_factory_.GetWeakPtr()));
   if (write_response > 0) {
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&FileWriterDelegate::OnDataWritten,
                                   weak_factory_.GetWeakPtr(), write_response));
   } else if (net::ERR_IO_PENDING != write_response) {

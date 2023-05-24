@@ -1,4 +1,4 @@
-// Copyright 2003 Google Inc. All rights reserved.
+// Copyright 2003 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -10,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -215,7 +215,7 @@ TEST_P(DumpSymsRegressionTest, EnsureDumpedSymbolsMatch) {
   EXPECT_EQ(expected_symbols, symbols);
 }
 
-INSTANTIATE_TEST_CASE_P(DumpSyms, DumpSymsRegressionTest,
+INSTANTIATE_TEST_SUITE_P(DumpSyms, DumpSymsRegressionTest,
   testing::ValuesIn(kRootNames));
 
 TEST_P(DumpSymsPEOnlyRegressionTest, EnsurePEOnlyDumpedSymbolsMatch) {
@@ -235,7 +235,7 @@ TEST_P(DumpSymsPEOnlyRegressionTest, EnsurePEOnlyDumpedSymbolsMatch) {
   EXPECT_EQ(expected_symbols, symbols);
 }
 
-INSTANTIATE_TEST_CASE_P(PEOnlyDumpSyms, DumpSymsPEOnlyRegressionTest,
+INSTANTIATE_TEST_SUITE_P(PEOnlyDumpSyms, DumpSymsPEOnlyRegressionTest,
   testing::ValuesIn(kPEOnlyRootNames));
 
 

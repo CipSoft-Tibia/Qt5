@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \class QGraphicsGridLayout
@@ -47,12 +11,15 @@
     \inmodule QtWidgets
 
     The most common way to use QGraphicsGridLayout is to construct an object
-    on the heap with no parent, add widgets and layouts by calling addItem(),
-    and finally assign the layout to a widget by calling
-    QGraphicsWidget::setLayout(). QGraphicsGridLayout automatically computes
+    on the heap, passing a parent widget to the constructor, then add widgets
+    and layouts by calling addItem(). QGraphicsGridLayout automatically computes
     the dimensions of the grid as you add items.
 
     \snippet code/src_gui_graphicsview_qgraphicsgridlayout.cpp 0
+
+    Alternatively, if you do not pass a parent widget to the layout's constructor,
+    you will need to call QGraphicsWidget::setLayout() to set this layout as the
+    top-level layout for that widget, the widget will take ownership of the layout.
 
     The layout takes ownership of the items. In some cases when the layout
     item also inherits from QGraphicsItem (such as QGraphicsWidget) there will be a
@@ -587,9 +554,7 @@ void QGraphicsGridLayout::removeAt(int index)
         d->engine.removeItem(gridItem);
 
         // recalculate rowInfo.count if we remove an item that is on the right/bottommost row
-        for (int j = 0; j < NOrientations; ++j) {
-            // 0: Hor, 1: Ver
-            const Qt::Orientation orient = (j == 0 ? Qt::Horizontal : Qt::Vertical);
+        for (const Qt::Orientation orient : {Qt::Horizontal, Qt::Vertical}) {
             const int oldCount = d->engine.rowCount(orient);
             if (gridItem->lastRow(orient) == oldCount - 1) {
                 const int newCount = d->engine.effectiveLastRow(orient) + 1;

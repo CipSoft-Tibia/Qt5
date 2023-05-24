@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -77,6 +77,9 @@ class MockPaintPreviewRecorder : public mojom::PaintPreviewRecorder {
     EXPECT_EQ(input_params->guid, expected_params_->guid);
     EXPECT_EQ(input_params->clip_rect, expected_params_->clip_rect);
     EXPECT_EQ(input_params->is_main_frame, expected_params_->is_main_frame);
+    if (expected_params_->is_main_frame) {
+      EXPECT_FALSE(input_params->clip_rect_is_hint);
+    }
   }
 
   base::OnceClosure closure_;
@@ -101,6 +104,7 @@ mojom::PaintPreviewCaptureParamsPtr ToMojoParams(
   params_ptr->guid = params.inner.document_guid;
   params_ptr->is_main_frame = params.inner.is_main_frame;
   params_ptr->clip_rect = params.inner.clip_rect;
+  params_ptr->skip_accelerated_content = params.inner.skip_accelerated_content;
   return params_ptr;
 }
 
@@ -133,7 +137,7 @@ class PaintPreviewClientRenderViewHostTest
 
   void OverrideInterface(MockPaintPreviewRecorder* service) {
     blink::AssociatedInterfaceProvider* remote_interfaces =
-        web_contents()->GetMainFrame()->GetRemoteAssociatedInterfaces();
+        web_contents()->GetPrimaryMainFrame()->GetRemoteAssociatedInterfaces();
     remote_interfaces->OverrideBinderForTesting(
         mojom::PaintPreviewRecorder::Name_,
         base::BindRepeating(&MockPaintPreviewRecorder::BindRequest,
@@ -158,17 +162,25 @@ TEST_P(PaintPreviewClientRenderViewHostTest, CaptureMainFrameMock) {
   GURL expected_url = rfh->GetLastCommittedURL();
 
   auto response = NewMockPaintPreviewCaptureResponse();
-  response->embedding_token = base::nullopt;
-  response->scroll_offsets = gfx::Size(5, 10);
+  response->embedding_token = absl::nullopt;
+  response->scroll_offsets = gfx::Point(5, 10);
+  response->frame_offsets = gfx::Point(20, 30);
 
   PaintPreviewProto expected_proto;
   auto* metadata = expected_proto.mutable_metadata();
   metadata->set_url(expected_url.spec());
   metadata->set_version(kPaintPreviewVersion);
+  auto* chromeVersion = metadata->mutable_chrome_version();
+  chromeVersion->set_major(CHROME_VERSION_MAJOR);
+  chromeVersion->set_minor(CHROME_VERSION_MINOR);
+  chromeVersion->set_build(CHROME_VERSION_BUILD);
+  chromeVersion->set_patch(CHROME_VERSION_PATCH);
   PaintPreviewFrameProto* main_frame = expected_proto.mutable_root_frame();
   main_frame->set_is_main_frame(true);
   main_frame->set_scroll_offset_x(5);
   main_frame->set_scroll_offset_y(10);
+  main_frame->set_frame_offset_x(20);
+  main_frame->set_frame_offset_y(30);
 
   base::RunLoop loop;
   auto callback = base::BindOnce(
@@ -180,8 +192,9 @@ TEST_P(PaintPreviewClientRenderViewHostTest, CaptureMainFrameMock) {
         EXPECT_EQ(status, mojom::PaintPreviewStatus::kOk);
 
         auto token = base::UnguessableToken::Deserialize(
-            result->proto.root_frame().embedding_token_high(),
-            result->proto.root_frame().embedding_token_low());
+                         result->proto.root_frame().embedding_token_high(),
+                         result->proto.root_frame().embedding_token_low())
+                         .value();
         EXPECT_NE(token, base::UnguessableToken::Null());
 
         // The token for the main frame is set internally since the render frame
@@ -202,9 +215,9 @@ TEST_P(PaintPreviewClientRenderViewHostTest, CaptureMainFrameMock) {
         switch (GetParam()) {
           case RecordingPersistence::kFileSystem: {
             base::ScopedAllowBlockingForTesting scope;
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
             base::FilePath path = base::FilePath(
-                base::UTF8ToUTF16(result->proto.root_frame().file_path()));
+                base::UTF8ToWide(result->proto.root_frame().file_path()));
 #else
             base::FilePath path =
                 base::FilePath(result->proto.root_frame().file_path());
@@ -282,11 +295,12 @@ TEST_P(PaintPreviewClientRenderViewHostTest, RenderFrameDeletedDuringCapture) {
   PaintPreviewClient::PaintPreviewParams params(GetParam());
   params.root_dir = temp_dir_.GetPath();
   params.inner.is_main_frame = true;
+  params.inner.skip_accelerated_content = true;
 
   content::RenderFrameHost* rfh = main_rfh();
 
   auto response = NewMockPaintPreviewCaptureResponse();
-  response->embedding_token = base::nullopt;
+  response->embedding_token = absl::nullopt;
 
   base::RunLoop loop;
   auto callback = base::BindOnce(

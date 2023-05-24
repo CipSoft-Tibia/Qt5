@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLMETATYPEDATA_P_H
 #define QQMLMETATYPEDATA_P_H
@@ -54,12 +18,29 @@
 #include <private/qqmltype_p.h>
 #include <private/qqmlmetatype_p.h>
 #include <private/qhashedstring_p.h>
+#include <private/qqmlvaluetype_p.h>
 
 #include <QtCore/qset.h>
 #include <QtCore/qvector.h>
-#include <QtCore/qbitarray.h>
 
 QT_BEGIN_NAMESPACE
+
+struct InlineComponentKey
+{
+    const QQmlTypePrivate *containingType = nullptr;
+    QString name;
+
+private:
+    friend bool operator==(const InlineComponentKey &a, const InlineComponentKey &b)
+    {
+        return a.containingType == b.containingType && a.name == b.name;
+    }
+
+    friend size_t qHash(const InlineComponentKey &byId, size_t seed = 0)
+    {
+        return qHashMulti(seed, byId.containingType, byId.name);
+    }
+};
 
 class QQmlTypePrivate;
 struct QQmlMetaTypeData
@@ -71,8 +52,10 @@ struct QQmlMetaTypeData
     QSet<QQmlType> undeletableTypes;
     typedef QHash<int, QQmlTypePrivate *> Ids;
     Ids idToType;
-    typedef QMultiHash<QHashedStringRef, QQmlTypePrivate *> Names;
+
+    using Names = QMultiHash<QHashedString, const QQmlTypePrivate *>;
     Names nameToType;
+
     typedef QHash<QUrl, QQmlTypePrivate *> Files; //For file imported composite types only
     Files urlToType;
     Files urlToNonFileImportType; // For non-file imported composite and composite
@@ -81,45 +64,64 @@ struct QQmlMetaTypeData
             // a module via QQmlPrivate::RegisterCompositeType
     typedef QMultiHash<const QMetaObject *, QQmlTypePrivate *> MetaObjects;
     MetaObjects metaObjectToType;
-    typedef QHash<int, QQmlMetaType::StringConverter> StringConverters;
-    StringConverters stringConverters;
-    QVector<QHash<int, QQmlRefPointer<QQmlPropertyCache>>> typePropertyCaches;
+    QVector<QHash<QTypeRevision, QQmlPropertyCache::ConstPtr>> typePropertyCaches;
+    QHash<int, QQmlValueType *> metaTypeToValueType;
+    QHash<const QtPrivate::QMetaTypeInterface *, QV4::ExecutableCompilationUnit *> compositeTypes;
+    QHash<InlineComponentKey, QQmlType> inlineComponentTypes;
 
     struct VersionedUri {
-        VersionedUri()
-            : majorVersion(0) {}
-        VersionedUri(const QHashedString &uri, int majorVersion)
-            : uri(uri), majorVersion(majorVersion) {}
-        bool operator==(const VersionedUri &other) const {
-            return other.majorVersion == majorVersion && other.uri == uri;
+        VersionedUri() = default;
+        VersionedUri(const QString &uri, QTypeRevision version)
+            : uri(uri), majorVersion(version.majorVersion()) {}
+        VersionedUri(const std::unique_ptr<QQmlTypeModule> &module);
+
+        friend bool operator==(const VersionedUri &a, const VersionedUri &b)
+        {
+            return a.majorVersion == b.majorVersion && a.uri == b.uri;
         }
-        QHashedString uri;
-        int majorVersion;
+
+        friend size_t qHash(const VersionedUri &v, size_t seed = 0)
+        {
+            return qHashMulti(seed, v.uri, v.majorVersion);
+        }
+
+        friend bool operator<(const QQmlMetaTypeData::VersionedUri &a,
+                              const QQmlMetaTypeData::VersionedUri &b)
+        {
+            const int diff = a.uri.compare(b.uri);
+            return diff < 0 || (diff == 0 && a.majorVersion < b.majorVersion);
+        }
+
+        QString uri;
+        quint8 majorVersion = 0;
     };
 
-    typedef QHash<VersionedUri, QQmlTypeModule *> TypeModules;
+    typedef std::vector<std::unique_ptr<QQmlTypeModule>> TypeModules;
     TypeModules uriToModule;
+    QQmlTypeModule *findTypeModule(const QString &module, QTypeRevision version);
+    QQmlTypeModule *addTypeModule(std::unique_ptr<QQmlTypeModule> module);
 
-    QHash<VersionedUri, void (*)()> moduleTypeRegistrationFunctions;
-    bool registerModuleTypes(const VersionedUri &versionedUri);
+    using ModuleImports = QMultiMap<VersionedUri, QQmlDirParser::Import>;
+    ModuleImports moduleImports;
 
-    QBitArray objects;
-    QBitArray interfaces;
-    QBitArray lists;
+    QHash<QString, void (*)()> moduleTypeRegistrationFunctions;
+    bool registerModuleTypes(const QString &uri);
+
+    QSet<int> interfaces;
 
     QList<QQmlPrivate::AutoParentFunction> parentFunctions;
     QVector<QQmlPrivate::QmlUnitCacheLookupFunction> lookupCachedQmlUnit;
 
-    QHash<int, int> qmlLists;
+    QHash<const QMetaObject *, QQmlPropertyCache::ConstPtr> propertyCaches;
 
-    QHash<const QMetaObject *, QQmlPropertyCache *> propertyCaches;
+    QQmlPropertyCache::ConstPtr propertyCacheForVersion(int index, QTypeRevision version) const;
+    void setPropertyCacheForVersion(
+            int index, QTypeRevision version, const QQmlPropertyCache::ConstPtr &cache);
+    void clearPropertyCachesForVersion(int index);
 
-    QQmlPropertyCache *propertyCacheForMinorVersion(int index, int minorVersion) const;
-    void setPropertyCacheForMinorVersion(int index, int minorVersion, QQmlPropertyCache *cache);
-    void clearPropertyCachesForMinorVersion(int index);
-
-    QQmlRefPointer<QQmlPropertyCache> propertyCache(const QMetaObject *metaObject, int minorVersion);
-    QQmlPropertyCache *propertyCache(const QQmlType &type, int minorVersion);
+    QQmlPropertyCache::ConstPtr propertyCache(const QMetaObject *metaObject, QTypeRevision version);
+    QQmlPropertyCache::ConstPtr propertyCache(const QQmlType &type, QTypeRevision version);
+    QQmlPropertyCache::ConstPtr findPropertyCacheInCompositeTypes(QMetaType t) const;
 
     void setTypeRegistrationFailures(QStringList *failures)
     {
@@ -137,11 +139,6 @@ struct QQmlMetaTypeData
 private:
     QStringList *m_typeRegistrationFailures = nullptr;
 };
-
-inline uint qHash(const QQmlMetaTypeData::VersionedUri &v)
-{
-    return v.uri.hash() ^ qHash(v.majorVersion);
-}
 
 QT_END_NAMESPACE
 

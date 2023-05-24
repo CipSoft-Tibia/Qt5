@@ -1,20 +1,41 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// https://github.com/WICG/raw-sockets/blob/master/docs/explainer.md#tcp
+// https://github.com/WICG/direct-sockets/blob/main/docs/explainer.md#tcp
+
+enum SocketDnsQueryType { "ipv4", "ipv6" };
 
 dictionary SocketOptions {
-  DOMString localAddress;
-  unsigned short localPort;
+  [EnforceRange] unsigned long sendBufferSize;
+  [EnforceRange] unsigned long receiveBufferSize;
+};
 
+dictionary TCPSocketOptions : SocketOptions {
+  boolean noDelay = false;
+  [EnforceRange] unsigned long keepAliveDelay;
+
+  SocketDnsQueryType dnsQueryType;
+};
+
+dictionary UDPSocketOptions : SocketOptions {
   DOMString remoteAddress;
-  unsigned short remotePort;
+  [EnforceRange] unsigned short remotePort;
 
-  unsigned long sendBufferSize;
-  unsigned long receiveBufferSize;
+  DOMString localAddress;
+  [EnforceRange] unsigned short localPort;
 
-  // These are only relevant for TCP:
-  boolean keepAlive;
-  boolean noDelay;
+  SocketDnsQueryType dnsQueryType;
+
+  // TODO(crbug.com/1413161): Implement ipv6Only support.
+  boolean ipv6Only;
+};
+
+dictionary TCPServerSocketOptions {
+  [EnforceRange] unsigned short localPort;
+
+  [EnforceRange] unsigned long backlog;
+
+  // TODO(crbug.com/1413161): Implement ipv6Only support.
+  boolean ipv6Only;
 };

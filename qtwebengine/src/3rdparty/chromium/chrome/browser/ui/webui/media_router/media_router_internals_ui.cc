@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,17 +22,15 @@ MediaRouterInternalsUI::MediaRouterInternalsUI(content::WebUI* web_ui)
     : content::WebUIController(web_ui) {
   // Create a WebUIDataSource containing the chrome://media-router-internals
   // page's content.
-  std::unique_ptr<content::WebUIDataSource> html_source(
-      content::WebUIDataSource::Create(
-          chrome::kChromeUIMediaRouterInternalsHost));
+  content::WebUIDataSource* html_source =
+      content::WebUIDataSource::CreateAndAdd(
+          Profile::FromWebUI(web_ui),
+          chrome::kChromeUIMediaRouterInternalsHost);
   html_source->AddResourcePath("media_router_internals.js",
                                IDR_MEDIA_ROUTER_INTERNALS_JS);
   html_source->AddResourcePath("media_router_internals.css",
                                IDR_MEDIA_ROUTER_INTERNALS_CSS);
   html_source->SetDefaultResource(IDR_MEDIA_ROUTER_INTERNALS_HTML);
-  // Ownership of |html_source| is transferred to the BrowserContext.
-  content::WebUIDataSource::Add(Profile::FromWebUI(web_ui),
-                                html_source.release());
 
   content::WebContents* wc = web_ui->GetWebContents();
   DCHECK(wc);

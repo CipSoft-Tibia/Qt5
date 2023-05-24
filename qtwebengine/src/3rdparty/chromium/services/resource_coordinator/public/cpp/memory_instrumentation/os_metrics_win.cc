@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,11 +9,11 @@
 #include <psapi.h>
 #include <tchar.h>
 
-#include <base/numerics/safe_conversions.h>
-#include <base/strings/stringprintf.h>
-#include <base/strings/sys_string_conversions.h>
-#include <base/win/pe_image.h>
-#include <base/win/win_util.h>
+#include "base/numerics/safe_conversions.h"
+#include "base/strings/stringprintf.h"
+#include "base/strings/sys_string_conversions.h"
+#include "base/win/pe_image.h"
+#include "base/win/win_util.h"
 
 namespace memory_instrumentation {
 

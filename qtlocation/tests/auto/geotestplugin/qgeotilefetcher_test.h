@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef QGEOTILEFETCHER_TEST_H
 #define QGEOTILEFETCHER_TEST_H
@@ -56,7 +31,7 @@ public:
     void callSetCached(bool cached) { setFinished(cached);}
     void callSetMapImageData(const QByteArray &data) { setMapImageData(data); }
     void callSetMapImageFormat(const QString &format) { setMapImageFormat(format); }
-    void abort() { emit aborted(); }
+    void abort() override { emit aborted(); }
 
 Q_SIGNALS:
     void aborted();
@@ -76,12 +51,12 @@ public:
         return true;
     }
 
-    QGeoTiledMapReply* getTileImage(const QGeoTileSpec &spec)
+    QGeoTiledMapReply* getTileImage(const QGeoTileSpec &spec) override
     {
         TiledMapReplyTest* mappingReply =  new TiledMapReplyTest(spec, this);
 
         QImage im(256, 256, QImage::Format_RGB888);
-        im.fill(QColor("lightgray"));
+        im.fill(QColor::fromString("lightgray"));
         QRectF rect;
         QString text("X: " + QString::number(spec.x()) + "\nY: " + QString::number(spec.y()) + "\nZ: " + QString::number(spec.zoom()));
         rect.setWidth(250);
@@ -89,14 +64,14 @@ public:
         rect.setLeft(3);
         rect.setTop(3);
         QPainter painter;
-        QPen pen(QColor("firebrick"));
+        QPen pen(QColor::fromString("firebrick"));
         painter.begin(&im);
         painter.setPen(pen);
         painter.setFont( QFont("Times", 35, 10, false));
         painter.drawText(rect, text);
         // different border color for vertically and horizontally adjacent frames
         if ((spec.x() + spec.y()) % 2 == 0)
-            pen.setColor(QColor("yellow"));
+            pen.setColor(QColor::fromString("yellow"));
         pen.setWidth(5);
         painter.setPen(pen);
         painter.drawRect(0,0,255,255);
@@ -155,7 +130,7 @@ protected:
         }
     }
 
-    void timerEvent(QTimerEvent *event)
+    void timerEvent(QTimerEvent *event) override
     {
         if (event->timerId() != timer_.timerId()) {
             QGeoTileFetcher::timerEvent(event);

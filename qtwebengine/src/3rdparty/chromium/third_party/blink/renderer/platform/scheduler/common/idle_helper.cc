@@ -1,22 +1,31 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/platform/scheduler/common/idle_helper.h"
 
-#include "base/bind.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/task/sequence_manager/sequence_manager.h"
 #include "base/task/sequence_manager/task_queue.h"
 #include "base/task/sequence_manager/time_domain.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/traced_value.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/renderer/platform/scheduler/common/blink_scheduler_single_thread_task_runner.h"
 #include "third_party/blink/renderer/platform/scheduler/common/scheduler_helper.h"
+#include "third_party/blink/renderer/platform/scheduler/common/task_priority.h"
 
 namespace blink {
 namespace scheduler {
 
 using base::sequence_manager::TaskQueue;
+
+// static
+constexpr base::TimeDelta IdleHelper::kMaximumIdlePeriod;
 
 IdleHelper::IdleHelper(
     SchedulerHelper* helper,
@@ -37,14 +46,19 @@ IdleHelper::IdleHelper(
   on_idle_task_posted_closure_.Reset(base::BindRepeating(
       &IdleHelper::OnIdleTaskPostedOnMainThread, weak_idle_helper_ptr_));
 
+  int idle_task_type = static_cast<int>(TaskType::kMainThreadTaskQueueIdle);
+  scoped_refptr<base::SingleThreadTaskRunner> idle_queue_task_runner =
+      base::FeatureList::IsEnabled(
+          features::kUseBlinkSchedulerTaskRunnerWithCustomDeleter)
+          ? base::MakeRefCounted<BlinkSchedulerSingleThreadTaskRunner>(
+                idle_queue_->CreateTaskRunner(idle_task_type), nullptr)
+          : idle_queue_->CreateTaskRunner(idle_task_type);
   idle_task_runner_ = base::MakeRefCounted<SingleThreadIdleTaskRunner>(
-      idle_queue_->CreateTaskRunner(
-          static_cast<int>(TaskType::kMainThreadTaskQueueIdle)),
-      this);
+      std::move(idle_queue_task_runner), helper_->ControlTaskRunner(), this);
 
   // This fence will block any idle tasks from running.
   idle_queue_->InsertFence(TaskQueue::InsertFencePosition::kBeginningOfTime);
-  idle_queue_->SetQueuePriority(TaskQueue::kBestEffortPriority);
+  idle_queue_->SetQueuePriority(TaskPriority::kBestEffortPriority);
 }
 
 IdleHelper::~IdleHelper() {
@@ -67,7 +81,6 @@ IdleHelper::Delegate::Delegate() = default;
 IdleHelper::Delegate::~Delegate() = default;
 
 scoped_refptr<SingleThreadIdleTaskRunner> IdleHelper::IdleTaskRunner() {
-  helper_->CheckOnValidThread();
   return idle_task_runner_;
 }
 
@@ -81,34 +94,30 @@ IdleHelper::IdlePeriodState IdleHelper::ComputeNewLongIdlePeriodState(
     return IdlePeriodState::kNotInIdlePeriod;
   }
 
-  base::sequence_manager::LazyNow lazy_now(now);
-  base::Optional<base::TimeDelta> delay_till_next_task =
-      helper_->real_time_domain()->DelayTillNextTask(&lazy_now);
+  auto wake_up = helper_->GetNextWakeUp();
 
-  base::TimeDelta max_long_idle_period_duration =
-      base::TimeDelta::FromMilliseconds(kMaximumIdlePeriodMillis);
   base::TimeDelta long_idle_period_duration;
 
-  if (delay_till_next_task) {
+  if (wake_up) {
     // Limit the idle period duration to be before the next pending task.
     long_idle_period_duration =
-        std::min(*delay_till_next_task, max_long_idle_period_duration);
+        std::min(wake_up->time - now, kMaximumIdlePeriod);
   } else {
-    long_idle_period_duration = max_long_idle_period_duration;
+    long_idle_period_duration = kMaximumIdlePeriod;
   }
 
   if (long_idle_period_duration >=
-      base::TimeDelta::FromMilliseconds(kMinimumIdlePeriodDurationMillis)) {
+      base::Milliseconds(kMinimumIdlePeriodDurationMillis)) {
     *next_long_idle_period_delay_out = long_idle_period_duration;
-    if (!idle_queue_->HasTaskToRunImmediately())
+    if (!idle_queue_->HasTaskToRunImmediatelyOrReadyDelayedTask())
       return IdlePeriodState::kInLongIdlePeriodPaused;
-    if (long_idle_period_duration == max_long_idle_period_duration)
+    if (long_idle_period_duration == kMaximumIdlePeriod)
       return IdlePeriodState::kInLongIdlePeriodWithMaxDeadline;
     return IdlePeriodState::kInLongIdlePeriod;
   } else {
     // If we can't start the idle period yet then try again after wake-up.
-    *next_long_idle_period_delay_out = base::TimeDelta::FromMilliseconds(
-        kRetryEnableLongIdlePeriodDelayMillis);
+    *next_long_idle_period_delay_out =
+        base::Milliseconds(kRetryEnableLongIdlePeriodDelayMillis);
     return IdlePeriodState::kNotInIdlePeriod;
   }
 }
@@ -139,7 +148,7 @@ void IdleHelper::EnableLongIdlePeriod() {
   EndIdlePeriod();
 
   if (ShouldWaitForQuiescence()) {
-    helper_->ControlTaskQueue()->task_runner()->PostDelayedTask(
+    helper_->ControlTaskRunner()->PostDelayedTask(
         FROM_HERE, enable_next_long_idle_period_closure_.GetCallback(),
         required_quiescence_duration_before_long_idle_period_);
     delegate_->IsNotQuiescent();
@@ -155,7 +164,7 @@ void IdleHelper::EnableLongIdlePeriod() {
                     now + next_long_idle_period_delay);
   } else {
     // Otherwise wait for the next long idle period delay before trying again.
-    helper_->ControlTaskQueue()->task_runner()->PostDelayedTask(
+    helper_->ControlTaskRunner()->PostDelayedTask(
         FROM_HERE, enable_next_long_idle_period_closure_.GetCallback(),
         next_long_idle_period_delay);
   }
@@ -174,7 +183,7 @@ void IdleHelper::StartIdlePeriod(IdlePeriodState new_state,
 
   base::TimeDelta idle_period_duration(idle_period_deadline - now);
   if (idle_period_duration <
-      base::TimeDelta::FromMilliseconds(kMinimumIdlePeriodDurationMillis)) {
+      base::Milliseconds(kMinimumIdlePeriodDurationMillis)) {
     TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("renderer.scheduler"),
                  "NotStartingIdlePeriodBecauseDeadlineIsTooClose",
                  "idle_period_duration_ms",
@@ -248,7 +257,7 @@ void IdleHelper::UpdateLongIdlePeriodStateAfterIdleTask() {
   TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("renderer.scheduler"),
                "UpdateLongIdlePeriodStateAfterIdleTask");
 
-  if (!idle_queue_->HasTaskToRunImmediately()) {
+  if (!idle_queue_->HasTaskToRunImmediatelyOrReadyDelayedTask()) {
     // If there are no more idle tasks then pause long idle period ticks until a
     // new idle task is posted.
     state_.UpdateState(IdlePeriodState::kInLongIdlePeriodPaused,
@@ -263,7 +272,7 @@ void IdleHelper::UpdateLongIdlePeriodStateAfterIdleTask() {
     if (next_long_idle_period_delay.is_zero()) {
       EnableLongIdlePeriod();
     } else {
-      helper_->ControlTaskQueue()->task_runner()->PostDelayedTask(
+      helper_->ControlTaskRunner()->PostDelayedTask(
           FROM_HERE, enable_next_long_idle_period_closure_.GetCallback(),
           next_long_idle_period_delay);
     }
@@ -283,7 +292,7 @@ void IdleHelper::OnIdleTaskPosted() {
   if (idle_task_runner_->RunsTasksInCurrentSequence()) {
     OnIdleTaskPostedOnMainThread();
   } else {
-    helper_->ControlTaskQueue()->task_runner()->PostTask(
+    helper_->ControlTaskRunner()->PostTask(
         FROM_HERE, on_idle_task_posted_closure_.GetCallback());
   }
 }
@@ -296,7 +305,7 @@ void IdleHelper::OnIdleTaskPostedOnMainThread() {
   delegate_->OnPendingTasksChanged(true);
   if (state_.idle_period_state() == IdlePeriodState::kInLongIdlePeriodPaused) {
     // Restart long idle period ticks.
-    helper_->ControlTaskQueue()->task_runner()->PostTask(
+    helper_->ControlTaskRunner()->PostTask(
         FROM_HERE, enable_next_long_idle_period_closure_.GetCallback());
   }
 }

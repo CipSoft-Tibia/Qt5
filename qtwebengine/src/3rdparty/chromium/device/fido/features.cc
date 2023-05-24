@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,70 +7,59 @@
 #include <vector>
 
 #include "base/feature_list.h"
-#include "base/strings/string_split.h"
 #include "build/build_config.h"
-#include "url/origin.h"
+#include "build/chromeos_buildflags.h"
 
 namespace device {
 
-#if defined(OS_WIN)
-const base::Feature kWebAuthUseNativeWinApi{"WebAuthenticationUseNativeWinApi",
-                                            base::FEATURE_ENABLED_BY_DEFAULT};
-#endif  // defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
+BASE_FEATURE(kWebAuthUseNativeWinApi,
+             "WebAuthenticationUseNativeWinApi",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_WIN)
 
-extern const base::Feature kWebAuthBiometricEnrollment{
-    "WebAuthenticationBiometricEnrollment", base::FEATURE_ENABLED_BY_DEFAULT};
+BASE_FEATURE(kWebAuthCableExtensionAnywhere,
+             "WebAuthenticationCableExtensionAnywhere",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
-extern const base::Feature kWebAuthPhoneSupport{
-    "WebAuthenticationPhoneSupport", base::FEATURE_DISABLED_BY_DEFAULT};
+#if BUILDFLAG(IS_CHROMEOS)
+BASE_FEATURE(kWebAuthCrosPlatformAuthenticator,
+             "WebAuthenticationCrosPlatformAuthenticator",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
-extern const base::Feature kWebAuthGetAssertionFeaturePolicy{
-    "WebAuthenticationGetAssertionFeaturePolicy",
-    base::FEATURE_ENABLED_BY_DEFAULT};
+BASE_FEATURE(kWebAuthnGoogleCorpRemoteDesktopClientPrivilege,
+             "WebAuthenticationGoogleCorpRemoteDesktopClientPrivilege",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
-#if defined(OS_CHROMEOS) || defined(OS_LINUX)
-const base::Feature kWebAuthCableLowLatency{"WebAuthenticationCableLowLatency",
-                                            base::FEATURE_ENABLED_BY_DEFAULT};
-#endif  // defined(OS_CHROMEOS) || defined(OS_LINUX)
+BASE_FEATURE(kWebAuthPasskeysUI,
+             "WebAuthenticationPasskeysUI",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
-#if defined(OS_CHROMEOS)
-const base::Feature kWebAuthCrosPlatformAuthenticator{
-    "WebAuthenticationCrosPlatformAuthenticator",
-    base::FEATURE_DISABLED_BY_DEFAULT};
-#endif  // defined(OS_CHROMEOS)
+BASE_FEATURE(kWebAuthnNoEmptyDisplayNameCBOR,
+             "WebAuthenticationNoEmptyDisplayNameCBOR",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
-extern const base::Feature kWebAuthAttestationBlockList{
-    "WebAuthentiationAttestationBlockList", base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kWebAuthnNonDiscoverableMakeCredentialQRFlag,
+             "WebAuthenticationNonDiscoverableMakeCredentialQRFlag",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
-extern const base::FeatureParam<std::string> kWebAuthAttestationBlockedDomains{
-    &kWebAuthAttestationBlockList,
-    "domains",
-    "",
-};
+BASE_FEATURE(kDisableWebAuthnWithBrokenCerts,
+             "DisableWebAuthnWithBrokenCerts",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
-bool DoesMatchWebAuthAttestationBlockedDomains(const url::Origin& origin) {
-  const std::string& blocked_domains = kWebAuthAttestationBlockedDomains.Get();
-  if (blocked_domains.empty()) {
-    return false;
-  }
+BASE_FEATURE(kWebAuthnNoPasskeysError,
+             "WebAuthenticationNoPasskeysError",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
-  const std::vector<std::string> domains = base::SplitString(
-      blocked_domains, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
-  for (const std::string& domain : domains) {
-    static constexpr char kWildcardPrefix[] = "(*.)";
-    if (!domain.empty() && domain[0] == '(' &&
-        domain.find(kWildcardPrefix) == 0) {
-      base::StringPiece domain_part(domain);
-      domain_part.remove_prefix(sizeof(kWildcardPrefix) - 1);
-      if (origin.DomainIs(domain_part)) {
-        return true;
-      }
-    } else if (!origin.opaque() && origin.host() == domain) {
-      return true;
-    }
-  }
+// Added in M112. Remove in or after M115.
+BASE_FEATURE(kWebAuthnCredProtectThree,
+             "WebAuthenticationCredProtectThree",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
-  return false;
-}
+// Added in M112. Disabled while we wait for Play Services support.
+BASE_FEATURE(kWebAuthnPRFAsAuthenticator,
+             "WebAuthenticationPRFAsAuthenticator",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 }  // namespace device

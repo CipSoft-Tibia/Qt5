@@ -1,55 +1,36 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGEOMANEUVER_H
 #define QGEOMANEUVER_H
 
+#include <QtCore/QObject>
 #include <QtCore/qshareddata.h>
 #include <QtLocation/qlocationglobal.h>
-#include <QtCore/qvariant.h>
+#include <QtQml/qqml.h>
 
 QT_BEGIN_NAMESPACE
 
 class QString;
-
 class QGeoCoordinate;
 class QGeoManeuverPrivate;
+QT_DECLARE_QSDP_SPECIALIZATION_DTOR_WITH_EXPORT(QGeoManeuverPrivate, Q_LOCATION_EXPORT)
 
 class Q_LOCATION_EXPORT QGeoManeuver
 {
+    Q_GADGET
+    QML_VALUE_TYPE(routeManeuver)
+    QML_STRUCTURED_VALUE
+    Q_ENUMS(InstructionDirection)
+
+    Q_PROPERTY(bool valid READ isValid CONSTANT)
+    Q_PROPERTY(QGeoCoordinate position READ position CONSTANT)
+    Q_PROPERTY(QString instructionText READ instructionText CONSTANT)
+    Q_PROPERTY(InstructionDirection direction READ direction CONSTANT)
+    Q_PROPERTY(int timeToNextInstruction READ timeToNextInstruction CONSTANT)
+    Q_PROPERTY(qreal distanceToNextInstruction READ distanceToNextInstruction CONSTANT)
+    Q_PROPERTY(QGeoCoordinate waypoint READ waypoint CONSTANT)
+    Q_PROPERTY(QVariantMap extendedAttributes READ extendedAttributes CONSTANT)
 
 public:
     enum InstructionDirection {
@@ -68,13 +49,19 @@ public:
     };
 
     QGeoManeuver();
-    QGeoManeuver(const QGeoManeuver &other);
+    QGeoManeuver(const QGeoManeuver &other) noexcept;
+    QGeoManeuver(QGeoManeuver &&other) noexcept = default;
     ~QGeoManeuver();
 
     QGeoManeuver &operator= (const QGeoManeuver &other);
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QGeoManeuver)
 
-    bool operator== (const QGeoManeuver &other) const;
-    bool operator!= (const QGeoManeuver &other) const;
+    void swap(QGeoManeuver &other) noexcept { d_ptr.swap(other.d_ptr); }
+
+    friend inline bool operator==(const QGeoManeuver &lhs, const QGeoManeuver &rhs) noexcept
+    { return lhs.isEqual(rhs); }
+    friend inline bool operator!=(const QGeoManeuver &lhs, const QGeoManeuver &rhs) noexcept
+    { return !lhs.isEqual(rhs); }
 
     bool isValid() const;
 
@@ -99,13 +86,17 @@ public:
     void setExtendedAttributes(const QVariantMap &extendedAttributes);
     QVariantMap extendedAttributes() const;
 
-protected:
-    QGeoManeuver(const QSharedDataPointer<QGeoManeuverPrivate> &dd);
-
 private:
     QSharedDataPointer<QGeoManeuverPrivate> d_ptr;
+
+    bool isEqual(const QGeoManeuver &other) const;
 };
 
+Q_DECLARE_SHARED(QGeoManeuver)
+
 QT_END_NAMESPACE
+
+Q_DECLARE_METATYPE(QGeoManeuver)
+Q_DECLARE_METATYPE(QGeoManeuver::InstructionDirection)
 
 #endif

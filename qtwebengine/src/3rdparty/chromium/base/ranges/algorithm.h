@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,10 +11,13 @@
 #include <type_traits>
 #include <utility>
 
+#include "base/check.h"
+#include "base/compiler_specific.h"
+#include "base/cxx20_is_constant_evaluated.h"
+#include "base/functional/identity.h"
+#include "base/functional/invoke.h"
 #include "base/ranges/functional.h"
 #include "base/ranges/ranges.h"
-#include "base/stl_util.h"
-#include "base/template_util.h"
 
 namespace base {
 
@@ -60,9 +63,9 @@ class BinaryPredicateProjector {
 
  private:
   template <typename ProjT, typename ProjU, typename T, typename U>
-  using InvokeResult = invoke_result_t<Pred&,
-                                       invoke_result_t<ProjT&, T&&>,
-                                       invoke_result_t<ProjU&, U&&>>;
+  using InvokeResult = std::invoke_result_t<Pred&,
+                                            std::invoke_result_t<ProjT&, T&&>,
+                                            std::invoke_result_t<ProjU&, U&&>>;
 
   template <typename T, typename U, typename = InvokeResult<Proj1, Proj2, T, U>>
   constexpr std::pair<Proj1&, Proj2&> GetProjs(priority_tag<3>) const {
@@ -149,14 +152,13 @@ using range_category_t = iterator_category_t<ranges::iterator_t<Range>>;
 
 namespace ranges {
 
-// C++14 implementation of std::ranges::in_fun_result. Note the because C++14
-// lacks the `no_unique_address` attribute it is commented out.
+// C++14 implementation of std::ranges::in_fun_result.
 //
 // Reference: https://wg21.link/algorithms.results#:~:text=in_fun_result
 template <typename I, typename F>
 struct in_fun_result {
-  /* [[no_unique_address]] */ I in;
-  /* [[no_unique_address]] */ F fun;
+  NO_UNIQUE_ADDRESS I in;
+  NO_UNIQUE_ADDRESS F fun;
 
   template <typename I2,
             typename F2,
@@ -293,7 +295,7 @@ constexpr bool none_of(InputIterator first,
                        Pred pred,
                        Proj proj = {}) {
   for (; first != last; ++first) {
-    if (invoke(pred, invoke(proj, *first)))
+    if (base::invoke(pred, base::invoke(proj, *first)))
       return false;
   }
 
@@ -344,7 +346,7 @@ constexpr auto for_each(InputIterator first,
                         Fun f,
                         Proj proj = {}) {
   for (; first != last; ++first)
-    invoke(f, invoke(proj, *first));
+    base::invoke(f, base::invoke(proj, *first));
   return for_each_result<InputIterator, Fun>{first, std::move(f)};
 }
 
@@ -389,7 +391,7 @@ template <typename InputIterator,
           typename = internal::iterator_category_t<InputIterator>>
 constexpr auto for_each_n(InputIterator first, Size n, Fun f, Proj proj = {}) {
   while (n > 0) {
-    invoke(f, invoke(proj, *first));
+    base::invoke(f, base::invoke(proj, *first));
     ++first;
     --n;
   }
@@ -417,11 +419,12 @@ constexpr auto find(InputIterator first,
                     InputIterator last,
                     const T& value,
                     Proj proj = {}) {
-  // Note: In order to be able to apply `proj` to each element in [first, last)
-  // we are dispatching to std::find_if instead of std::find.
-  return std::find_if(first, last, [&proj, &value](auto&& lhs) {
-    return invoke(proj, std::forward<decltype(lhs)>(lhs)) == value;
-  });
+  for (; first != last; ++first) {
+    if (base::invoke(proj, *first) == value)
+      break;
+  }
+
+  return first;
 }
 
 // Let `E(i)` be `bool(invoke(proj, *i) == value)`.
@@ -694,8 +697,23 @@ constexpr auto adjacent_find(ForwardIterator first,
                              ForwardIterator last,
                              Pred pred = {},
                              Proj proj = {}) {
-  return std::adjacent_find(
-      first, last, internal::ProjectedBinaryPredicate(pred, proj, proj));
+  // Implementation inspired by cppreference.com:
+  // https://en.cppreference.com/w/cpp/algorithm/adjacent_find
+  //
+  // A reimplementation is required, because std::adjacent_find is not constexpr
+  // prior to C++20. Once we have C++20, we should switch to standard library
+  // implementation.
+  if (first == last)
+    return last;
+
+  for (ForwardIterator next = first; ++next != last; ++first) {
+    if (base::invoke(pred, base::invoke(proj, *first),
+                     base::invoke(proj, *next))) {
+      return first;
+    }
+  }
+
+  return last;
 }
 
 // Let `E(i)` be `bool(invoke(pred, invoke(proj, *i), invoke(proj, *(i + 1))))`.
@@ -742,7 +760,7 @@ constexpr auto count(InputIterator first,
   // Note: In order to be able to apply `proj` to each element in [first, last)
   // we are dispatching to std::count_if instead of std::count.
   return std::count_if(first, last, [&proj, &value](auto&& lhs) {
-    return invoke(proj, std::forward<decltype(lhs)>(lhs)) == value;
+    return base::invoke(proj, std::forward<decltype(lhs)>(lhs)) == value;
   });
 }
 
@@ -906,6 +924,17 @@ constexpr bool equal(ForwardIterator1 first1,
                      Pred pred = {},
                      Proj1 proj1 = {},
                      Proj2 proj2 = {}) {
+  if (base::is_constant_evaluated()) {
+    for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
+      if (!base::invoke(pred, base::invoke(proj1, *first1),
+                        base::invoke(proj2, *first2))) {
+        return false;
+      }
+    }
+
+    return first1 == last1 && first2 == last2;
+  }
+
   return std::equal(first1, last1, first2, last2,
                     internal::ProjectedBinaryPredicate(pred, proj1, proj2));
 }
@@ -1523,7 +1552,8 @@ constexpr auto transform(InputIterator first1,
                          UnaryOperation op,
                          Proj proj = {}) {
   return std::transform(first1, last1, result, [&op, &proj](auto&& arg) {
-    return invoke(op, invoke(proj, std::forward<decltype(arg)>(arg)));
+    return base::invoke(op,
+                        base::invoke(proj, std::forward<decltype(arg)>(arg)));
   });
 }
 
@@ -1603,13 +1633,13 @@ constexpr auto transform(ForwardIterator1 first1,
   // `last1` to ensure to not read past `last2`.
   last1 = std::next(first1, std::min(std::distance(first1, last1),
                                      std::distance(first2, last2)));
-  return std::transform(first1, last1, first2, result,
-                        [&binary_op, &proj1, &proj2](auto&& lhs, auto&& rhs) {
-                          return invoke(
-                              binary_op,
-                              invoke(proj1, std::forward<decltype(lhs)>(lhs)),
-                              invoke(proj2, std::forward<decltype(rhs)>(rhs)));
-                        });
+  return std::transform(
+      first1, last1, first2, result,
+      [&binary_op, &proj1, &proj2](auto&& lhs, auto&& rhs) {
+        return base::invoke(
+            binary_op, base::invoke(proj1, std::forward<decltype(lhs)>(lhs)),
+            base::invoke(proj2, std::forward<decltype(rhs)>(rhs)));
+      });
 }
 
 // Let:
@@ -1685,7 +1715,8 @@ constexpr auto replace(ForwardIterator first,
   std::replace_if(
       first, last,
       [&proj, &old_value](auto&& lhs) {
-        return invoke(proj, std::forward<decltype(lhs)>(lhs)) == old_value;
+        return base::invoke(proj, std::forward<decltype(lhs)>(lhs)) ==
+               old_value;
       },
       new_value);
   return last;
@@ -1805,7 +1836,8 @@ constexpr auto replace_copy(InputIterator first,
   std::replace_copy_if(
       first, last, result,
       [&proj, &old_value](auto&& lhs) {
-        return invoke(proj, std::forward<decltype(lhs)>(lhs)) == old_value;
+        return base::invoke(proj, std::forward<decltype(lhs)>(lhs)) ==
+               old_value;
       },
       new_value);
   return last;
@@ -2065,7 +2097,7 @@ constexpr auto remove(ForwardIterator first,
   // Note: In order to be able to apply `proj` to each element in [first, last)
   // we are dispatching to std::remove_if instead of std::remove.
   return std::remove_if(first, last, [&proj, &value](auto&& lhs) {
-    return invoke(proj, std::forward<decltype(lhs)>(lhs)) == value;
+    return base::invoke(proj, std::forward<decltype(lhs)>(lhs)) == value;
   });
 }
 
@@ -2172,7 +2204,7 @@ constexpr auto remove_copy(InputIterator first,
   // Note: In order to be able to apply `proj` to each element in [first, last)
   // we are dispatching to std::remove_copy_if instead of std::remove_copy.
   return std::remove_copy_if(first, last, result, [&proj, &value](auto&& lhs) {
-    return invoke(proj, std::forward<decltype(lhs)>(lhs)) == value;
+    return base::invoke(proj, std::forward<decltype(lhs)>(lhs)) == value;
   });
 }
 
@@ -2887,44 +2919,6 @@ constexpr auto partial_sort_copy(Range1&& range,
 // [is.sorted] is_sorted
 // Reference: https://wg21.link/is.sorted
 
-// Returns: Whether the range `[first, last)` is sorted with respect to `comp`
-// and `proj`.
-//
-// Complexity: Linear.
-//
-// Reference: https://wg21.link/is.sorted#:~:text=ranges::is_sorted(I
-template <typename ForwardIterator,
-          typename Comp = ranges::less,
-          typename Proj = identity,
-          typename = internal::iterator_category_t<ForwardIterator>,
-          typename = indirect_result_t<Comp&,
-                                       projected<ForwardIterator, Proj>,
-                                       projected<ForwardIterator, Proj>>>
-constexpr auto is_sorted(ForwardIterator first,
-                         ForwardIterator last,
-                         Comp comp = {},
-                         Proj proj = {}) {
-  return std::is_sorted(first, last,
-                        internal::ProjectedBinaryPredicate(comp, proj, proj));
-}
-
-// Returns: Whether `range` is sorted with respect to `comp` and `proj`.
-//
-// Complexity: Linear.
-//
-// Reference: https://wg21.link/is.sorted#:~:text=ranges::is_sorted(R
-template <typename Range,
-          typename Comp = ranges::less,
-          typename Proj = identity,
-          typename = internal::range_category_t<Range>,
-          typename = indirect_result_t<Comp&,
-                                       projected<iterator_t<Range>, Proj>,
-                                       projected<iterator_t<Range>, Proj>>>
-constexpr auto is_sorted(Range&& range, Comp comp = {}, Proj proj = {}) {
-  return ranges::is_sorted(ranges::begin(range), ranges::end(range),
-                           std::move(comp), std::move(proj));
-}
-
 // Returns: The last iterator `i` in `[first, last]` for which the range
 // `[first, i)` is sorted with respect to `comp` and `proj`.
 //
@@ -2942,8 +2936,23 @@ constexpr auto is_sorted_until(ForwardIterator first,
                                ForwardIterator last,
                                Comp comp = {},
                                Proj proj = {}) {
-  return std::is_sorted_until(
-      first, last, internal::ProjectedBinaryPredicate(comp, proj, proj));
+  // Implementation inspired by cppreference.com:
+  // https://en.cppreference.com/w/cpp/algorithm/is_sorted_until
+  //
+  // A reimplementation is required, because std::is_sorted_until is not
+  // constexpr prior to C++20. Once we have C++20, we should switch to standard
+  // library implementation.
+  if (first == last)
+    return last;
+
+  for (ForwardIterator next = first; ++next != last; ++first) {
+    if (base::invoke(comp, base::invoke(proj, *next),
+                     base::invoke(proj, *first))) {
+      return next;
+    }
+  }
+
+  return last;
 }
 
 // Returns: The last iterator `i` in `[begin(range), end(range)]` for which the
@@ -2962,6 +2971,44 @@ template <typename Range,
 constexpr auto is_sorted_until(Range&& range, Comp comp = {}, Proj proj = {}) {
   return ranges::is_sorted_until(ranges::begin(range), ranges::end(range),
                                  std::move(comp), std::move(proj));
+}
+
+// Returns: Whether the range `[first, last)` is sorted with respect to `comp`
+// and `proj`.
+//
+// Complexity: Linear.
+//
+// Reference: https://wg21.link/is.sorted#:~:text=ranges::is_sorted(I
+template <typename ForwardIterator,
+          typename Comp = ranges::less,
+          typename Proj = identity,
+          typename = internal::iterator_category_t<ForwardIterator>,
+          typename = indirect_result_t<Comp&,
+                                       projected<ForwardIterator, Proj>,
+                                       projected<ForwardIterator, Proj>>>
+constexpr auto is_sorted(ForwardIterator first,
+                         ForwardIterator last,
+                         Comp comp = {},
+                         Proj proj = {}) {
+  return ranges::is_sorted_until(first, last, std::move(comp),
+                                 std::move(proj)) == last;
+}
+
+// Returns: Whether `range` is sorted with respect to `comp` and `proj`.
+//
+// Complexity: Linear.
+//
+// Reference: https://wg21.link/is.sorted#:~:text=ranges::is_sorted(R
+template <typename Range,
+          typename Comp = ranges::less,
+          typename Proj = identity,
+          typename = internal::range_category_t<Range>,
+          typename = indirect_result_t<Comp&,
+                                       projected<iterator_t<Range>, Proj>,
+                                       projected<iterator_t<Range>, Proj>>>
+constexpr auto is_sorted(Range&& range, Comp comp = {}, Proj proj = {}) {
+  return ranges::is_sorted(ranges::begin(range), ranges::end(range),
+                           std::move(comp), std::move(proj));
 }
 
 // [alg.nth.element] Nth element
@@ -3219,7 +3266,8 @@ constexpr auto binary_search(ForwardIterator first,
                              Comp comp = {},
                              Proj proj = {}) {
   first = ranges::lower_bound(first, last, value, comp, proj);
-  return first != last && !invoke(comp, value, invoke(proj, *first));
+  return first != last &&
+         !base::invoke(comp, value, base::invoke(proj, *first));
 }
 
 // Preconditions: The elements `e` of `range` are partitioned with
@@ -3697,6 +3745,8 @@ constexpr auto includes(InputIterator1 first1,
                         Comp comp = {},
                         Proj1 proj1 = {},
                         Proj2 proj2 = {}) {
+  DCHECK(ranges::is_sorted(first1, last1, comp, proj1));
+  DCHECK(ranges::is_sorted(first2, last2, comp, proj2));
   // Needs to opt-in to all permutations, since std::includes expects
   // comp(proj1(lhs), proj2(rhs)) and comp(proj2(lhs), proj1(rhs)) to compile.
   return std::includes(
@@ -4261,7 +4311,7 @@ constexpr auto pop_heap(Range&& range, Comp comp = {}, Proj proj = {}) {
 //
 // Returns: `last`.
 //
-// Complexity: At most `3 log(last - first)` comparisons and twice as many
+// Complexity: At most `3 * (last - first)` comparisons and twice as many
 // projections.
 //
 // Reference: https://wg21.link/make.heap#:~:text=ranges::make_heap(I
@@ -4285,7 +4335,7 @@ constexpr auto make_heap(RandomAccessIterator first,
 //
 // Returns: `end(range)`.
 //
-// Complexity: At most `3 log(size(range))` comparisons and twice as many
+// Complexity: At most `3 * size(range)` comparisons and twice as many
 // projections.
 //
 // Reference: https://wg21.link/make.heap#:~:text=ranges::make_heap(R
@@ -4447,7 +4497,8 @@ constexpr auto is_heap_until(Range&& range, Comp comp = {}, Proj proj = {}) {
 // Reference: https://wg21.link/alg.min.max#:~:text=ranges::min
 template <typename T, typename Comp = ranges::less, typename Proj = identity>
 constexpr const T& min(const T& a, const T& b, Comp comp = {}, Proj proj = {}) {
-  return invoke(comp, invoke(proj, b), invoke(proj, a)) ? b : a;
+  return base::invoke(comp, base::invoke(proj, b), base::invoke(proj, a)) ? b
+                                                                          : a;
 }
 
 // Preconditions: `!empty(ilist)`.
@@ -4496,7 +4547,8 @@ constexpr auto min(Range&& range, Comp comp = {}, Proj proj = {}) {
 // Reference: https://wg21.link/alg.min.max#:~:text=ranges::max
 template <typename T, typename Comp = ranges::less, typename Proj = identity>
 constexpr const T& max(const T& a, const T& b, Comp comp = {}, Proj proj = {}) {
-  return invoke(comp, invoke(proj, a), invoke(proj, b)) ? b : a;
+  return base::invoke(comp, base::invoke(proj, a), base::invoke(proj, b)) ? b
+                                                                          : a;
 }
 
 // Preconditions: `!empty(ilist)`.
@@ -4747,11 +4799,11 @@ constexpr const T& clamp(const T& v,
                          const T& hi,
                          Comp comp = {},
                          Proj proj = {}) {
-  auto&& projected_v = invoke(proj, v);
-  if (invoke(comp, projected_v, invoke(proj, lo)))
+  auto&& projected_v = base::invoke(proj, v);
+  if (base::invoke(comp, projected_v, base::invoke(proj, lo)))
     return lo;
 
-  return invoke(comp, invoke(proj, hi), projected_v) ? hi : v;
+  return base::invoke(comp, base::invoke(proj, hi), projected_v) ? hi : v;
 }
 
 // [alg.lex.comparison] Lexicographical comparison
@@ -4795,11 +4847,11 @@ constexpr bool lexicographical_compare(ForwardIterator1 first1,
                                        Proj1 proj1 = {},
                                        Proj2 proj2 = {}) {
   for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
-    auto&& projected_first1 = invoke(proj1, *first1);
-    auto&& projected_first2 = invoke(proj2, *first2);
-    if (invoke(comp, projected_first1, projected_first2))
+    auto&& projected_first1 = base::invoke(proj1, *first1);
+    auto&& projected_first2 = base::invoke(proj2, *first2);
+    if (base::invoke(comp, projected_first1, projected_first2))
       return true;
-    if (invoke(comp, projected_first2, projected_first1))
+    if (base::invoke(comp, projected_first2, projected_first1))
       return false;
   }
 

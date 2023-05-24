@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QABSTRACTSOCKET_P_H
 #define QABSTRACTSOCKET_P_H
@@ -71,9 +35,6 @@ public:
     QAbstractSocketPrivate();
     virtual ~QAbstractSocketPrivate();
 
-    // from QIODevicePrivate
-    qint64 skip(qint64 maxSize) override;
-
     // from QAbstractSocketEngineReceiver
     inline void readNotification() override { canReadNotification(); }
     inline void writeNotification() override { canWriteNotification(); }
@@ -99,27 +60,27 @@ public:
     void _q_testConnection();
     void _q_abortConnectionAttempt();
 
-    bool emittedReadyRead;
-    bool emittedBytesWritten;
+    bool emittedReadyRead = false;
+    bool emittedBytesWritten = false;
 
-    bool abortCalled;
-    bool pendingClose;
+    bool abortCalled = false;
+    bool pendingClose = false;
 
-    QAbstractSocket::PauseModes pauseMode;
+    QAbstractSocket::PauseModes pauseMode = QAbstractSocket::PauseNever;
 
     QString hostName;
-    quint16 port;
+    quint16 port = 0;
     QHostAddress host;
     QList<QHostAddress> addresses;
 
-    quint16 localPort;
-    quint16 peerPort;
+    quint16 localPort = 0;
+    quint16 peerPort = 0;
     QHostAddress localAddress;
     QHostAddress peerAddress;
     QString peerName;
 
-    QAbstractSocketEngine *socketEngine;
-    qintptr cachedSocketDescriptor;
+    QAbstractSocketEngine *socketEngine = nullptr;
+    qintptr cachedSocketDescriptor = -1;
 
 #ifndef QT_NO_NETWORKPROXY
     QNetworkProxy proxy;
@@ -146,25 +107,27 @@ public:
     void setError(QAbstractSocket::SocketError errorCode, const QString &errorString);
     void setErrorAndEmit(QAbstractSocket::SocketError errorCode, const QString &errorString);
 
-    qint64 readBufferMaxSize;
-    bool isBuffered;
-    bool hasPendingData;
+    qint64 readBufferMaxSize = 0;
+    bool isBuffered = false;
+    bool hasPendingData = false;
+    bool hasPendingDatagram = false;
 
-    QTimer *connectTimer;
+    QTimer *connectTimer = nullptr;
 
-    int hostLookupId;
+    int hostLookupId = -1;
 
-    QAbstractSocket::SocketType socketType;
-    QAbstractSocket::SocketState state;
+    QAbstractSocket::SocketType socketType = QAbstractSocket::UnknownSocketType;
+    QAbstractSocket::SocketState state = QAbstractSocket::UnconnectedState;
 
     // Must be kept in sync with QIODevicePrivate::errorString.
-    QAbstractSocket::SocketError socketError;
+    QAbstractSocket::SocketError socketError = QAbstractSocket::UnknownSocketError;
 
-    QAbstractSocket::NetworkLayerProtocol preferredNetworkLayerProtocol;
+    QAbstractSocket::NetworkLayerProtocol preferredNetworkLayerProtocol =
+            QAbstractSocket::UnknownNetworkLayerProtocol;
 
-    bool prePauseReadSocketNotifierState;
-    bool prePauseWriteSocketNotifierState;
-    bool prePauseExceptionSocketNotifierState;
+    bool prePauseReadSocketNotifierState = false;
+    bool prePauseWriteSocketNotifierState = false;
+    bool prePauseExceptionSocketNotifierState = false;
     static void pauseSocketNotifiers(QAbstractSocket*);
     static void resumeSocketNotifiers(QAbstractSocket*);
     static QAbstractSocketEngine* getSocketEngine(QAbstractSocket*);

@@ -1,9 +1,10 @@
-// Copyright (c) 2006-2010 The Chromium Authors. All rights reserved.
+// Copyright 2006-2010 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "sandbox/win/src/resolver.h"
 
+#include <ntstatus.h>
 #include <stddef.h>
 
 // For placement new. This file must not depend on the CRT at runtime, but

@@ -17,25 +17,26 @@
 #ifndef INCLUDE_PERFETTO_EXT_BASE_UTILS_H_
 #define INCLUDE_PERFETTO_EXT_BASE_UTILS_H_
 
-#include "perfetto/base/build_config.h"
-#include "perfetto/base/compiler.h"
-
 #include <errno.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
-#if !PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
-#include <sys/types.h>
-#endif
-
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) || \
-    PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
-#include <unistd.h>  // For getpagesize().
-#elif PERFETTO_BUILDFLAG(PERFETTO_OS_APPLE)
-#include <mach/vm_page_size.h>
-#endif
 
 #include <atomic>
+#include <functional>
+#include <memory>
+#include <string>
 
+#include "perfetto/base/build_config.h"
+#include "perfetto/base/compiler.h"
+#include "perfetto/ext/base/sys_types.h"
+
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
+// Even if Windows has errno.h, the all syscall-restart behavior does not apply.
+// Trying to handle EINTR can cause more harm than good if errno is left stale.
+// Chromium does the same.
+#define PERFETTO_EINTR(x) (x)
+#else
 #define PERFETTO_EINTR(x)                                   \
   ([&] {                                                    \
     decltype(x) eintr_wrapper_result;                       \
@@ -44,23 +45,10 @@
     } while (eintr_wrapper_result == -1 && errno == EINTR); \
     return eintr_wrapper_result;                            \
   }())
-
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
-// TODO(brucedawson) - create a ::perfetto::base::IOSize to replace this.
-#if defined(_WIN64)
-using ssize_t = __int64;
-#else
-using ssize_t = long;
-#endif
 #endif
 
 namespace perfetto {
 namespace base {
-
-#if !PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
-constexpr uid_t kInvalidUid = static_cast<uid_t>(-1);
-constexpr pid_t kInvalidPid = static_cast<pid_t>(-1);
-#endif
 
 // Do not add new usages of kPageSize, consider using GetSysPageSize() below.
 // TODO(primiano): over time the semantic of kPageSize became too ambiguous.
@@ -72,30 +60,11 @@ constexpr size_t kPageSize = 4096;
 
 // Returns the system's page size. Use this when dealing with mmap, madvise and
 // similar mm-related syscalls.
-inline uint32_t GetSysPageSize() {
-  ignore_result(kPageSize);  // Just to keep the amalgamated build happy.
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) || \
-    PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
-  static std::atomic<uint32_t> page_size{0};
-  // This function might be called in hot paths. Avoid calling getpagesize() all
-  // the times, in many implementations getpagesize() calls sysconf() which is
-  // not cheap.
-  uint32_t cached_value = page_size.load(std::memory_order_relaxed);
-  if (PERFETTO_UNLIKELY(cached_value == 0)) {
-    cached_value = static_cast<uint32_t>(getpagesize());
-    page_size.store(cached_value, std::memory_order_relaxed);
-  }
-  return cached_value;
-#elif PERFETTO_BUILDFLAG(PERFETTO_OS_APPLE)
-  return static_cast<uint32_t>(vm_page_size);
-#else
-  return 4096;
-#endif
-}
+uint32_t GetSysPageSize();
 
-template <typename T>
-constexpr size_t ArraySize(const T& array) {
-  return sizeof(array) / sizeof(array[0]);
+template <typename T, size_t TSize>
+constexpr size_t ArraySize(const T (&)[TSize]) {
+  return TSize;
 }
 
 // Function object which invokes 'free' on its parameter, which must be
@@ -109,8 +78,9 @@ struct FreeDeleter {
 
 template <typename T>
 constexpr T AssumeLittleEndian(T value) {
-  static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
-                "Unimplemented on big-endian archs");
+#if !PERFETTO_IS_LITTLE_ENDIAN()
+  static_assert(false, "Unimplemented on big-endian archs");
+#endif
   return value;
 }
 
@@ -123,6 +93,91 @@ constexpr size_t AlignUp(size_t size) {
 
 inline bool IsAgain(int err) {
   return err == EAGAIN || err == EWOULDBLOCK;
+}
+
+// setenv(2)-equivalent. Deals with Windows vs Posix discrepancies.
+void SetEnv(const std::string& key, const std::string& value);
+
+// unsetenv(2)-equivalent. Deals with Windows vs Posix discrepancies.
+void UnsetEnv(const std::string& key);
+
+// Calls mallopt(M_PURGE, 0) on Android. Does nothing on other platforms.
+// This forces the allocator to release freed memory. This is used to work
+// around various Scudo inefficiencies. See b/170217718.
+void MaybeReleaseAllocatorMemToOS();
+
+// geteuid() on POSIX OSes, returns 0 on Windows (See comment in utils.cc).
+uid_t GetCurrentUserId();
+
+// Forks the process.
+// Parent: prints the PID of the child, calls |parent_cb| and exits from the
+//         process with its return value.
+// Child: redirects stdio onto /dev/null, chdirs into / and returns.
+void Daemonize(std::function<int()> parent_cb);
+
+// Returns the path of the current executable, e.g. /foo/bar/exe.
+std::string GetCurExecutablePath();
+
+// Returns the directory where the current executable lives in, e.g. /foo/bar.
+// This is independent of cwd().
+std::string GetCurExecutableDir();
+
+// Memory returned by AlignedAlloc() must be freed via AlignedFree() not just
+// free. It makes a difference on Windows where _aligned_malloc() and
+// _aligned_free() must be paired.
+// Prefer using the AlignedAllocTyped() below which takes care of the pairing.
+void* AlignedAlloc(size_t alignment, size_t size);
+void AlignedFree(void*);
+
+// A RAII version of the above, which takes care of pairing Aligned{Alloc,Free}.
+template <typename T>
+struct AlignedDeleter {
+  inline void operator()(T* ptr) const { AlignedFree(ptr); }
+};
+
+// The remove_extent<T> here and below is to allow defining unique_ptr<T[]>.
+// As per https://en.cppreference.com/w/cpp/memory/unique_ptr the Deleter takes
+// always a T*, not a T[]*.
+template <typename T>
+using AlignedUniquePtr =
+    std::unique_ptr<T, AlignedDeleter<typename std::remove_extent<T>::type>>;
+
+template <typename T>
+AlignedUniquePtr<T> AlignedAllocTyped(size_t n_membs) {
+  using TU = typename std::remove_extent<T>::type;
+  return AlignedUniquePtr<T>(
+      static_cast<TU*>(AlignedAlloc(alignof(TU), sizeof(TU) * n_membs)));
+}
+
+// A RAII wrapper to invoke a function when leaving a function/scope.
+template <typename Func>
+class OnScopeExitWrapper {
+ public:
+  explicit OnScopeExitWrapper(Func f) : f_(std::move(f)), active_(true) {}
+  OnScopeExitWrapper(OnScopeExitWrapper&& other) noexcept
+      : f_(std::move(other.f_)), active_(other.active_) {
+    other.active_ = false;
+  }
+  ~OnScopeExitWrapper() {
+    if (active_)
+      f_();
+  }
+
+ private:
+  Func f_;
+  bool active_;
+};
+
+template <typename Func>
+PERFETTO_WARN_UNUSED_RESULT OnScopeExitWrapper<Func> OnScopeExit(Func f) {
+  return OnScopeExitWrapper<Func>(std::move(f));
+}
+
+// Returns a xxd-style hex dump (hex + ascii chars) of the input data.
+std::string HexDump(const void* data, size_t len, size_t bytes_per_line = 16);
+inline std::string HexDump(const std::string& data,
+                           size_t bytes_per_line = 16) {
+  return HexDump(data.data(), data.size(), bytes_per_line);
 }
 
 }  // namespace base

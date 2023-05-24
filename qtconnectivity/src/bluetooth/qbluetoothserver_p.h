@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QBLUETOOTHSERVER_P_H
 #define QBLUETOOTHSERVER_P_H
@@ -57,13 +21,13 @@
 #include "qbluetoothserver.h"
 #include "qbluetooth.h"
 
-#if QT_CONFIG(bluez) || defined(QT_WIN_BLUETOOTH)
+#if QT_CONFIG(bluez)
 QT_FORWARD_DECLARE_CLASS(QSocketNotifier)
 #endif
 
 #ifdef QT_ANDROID_BLUETOOTH
-#include <QtAndroidExtras/QAndroidJniEnvironment>
-#include <QtAndroidExtras/QAndroidJniObject>
+#include <QtCore/QJniEnvironment>
+#include <QtCore/QJniObject>
 #include <QtBluetooth/QBluetoothUuid>
 
 class ServerAcceptanceThread;
@@ -79,10 +43,10 @@ class ServerAcceptanceThread;
 
 #ifdef QT_OSX_BLUETOOTH
 
-#include "osx/btdelegates_p.h"
-#include "osx/btraii_p.h"
+#include "darwin/btdelegates_p.h"
+#include "darwin/btraii_p.h"
 
-#include <QtCore/qvector.h>
+#include <QtCore/QMutex>
 
 #endif // QT_OSX_BLUETOOTH
 
@@ -110,23 +74,20 @@ public:
     static QBluetoothSocket *createSocketForServer(
                 QBluetoothServiceInfo::Protocol socketType = QBluetoothServiceInfo::RfcommProtocol);
 #endif
-#if defined(QT_WIN_BLUETOOTH)
-    void _q_newConnection();
-#endif
 
 public:
-    QBluetoothSocket *socket;
+    QBluetoothSocket *socket = nullptr;
 
-    int maxPendingConnections;
-    QBluetooth::SecurityFlags securityFlags;
+    int maxPendingConnections = 1;
+    QBluetooth::SecurityFlags securityFlags = QBluetooth::Security::NoSecurity;
     QBluetoothServiceInfo::Protocol serverType;
 
 protected:
     QBluetoothServer *q_ptr;
 
 private:
-    QBluetoothServer::Error m_lastError;
-#if QT_CONFIG(bluez) || defined(QT_WIN_BLUETOOTH)
+    QBluetoothServer::Error m_lastError = QBluetoothServer::NoError;
+#if QT_CONFIG(bluez)
     QSocketNotifier *socketNotifier = nullptr;
 #elif defined(QT_ANDROID_BLUETOOTH)
     ServerAcceptanceThread *thread;
@@ -140,7 +101,8 @@ public:
     EventRegistrationToken connectionToken {-1};
 
     mutable QMutex pendingConnectionsMutex;
-    QVector<Microsoft::WRL::ComPtr<ABI::Windows::Networking::Sockets::IStreamSocket>> pendingConnections;
+    QList<Microsoft::WRL::ComPtr<ABI::Windows::Networking::Sockets::IStreamSocket>>
+            pendingConnections;
 
     Microsoft::WRL::ComPtr<ABI::Windows::Networking::Sockets::IStreamSocketListener> socketListener;
     HRESULT handleClientConnection(ABI::Windows::Networking::Sockets::IStreamSocketListener *listener,
@@ -195,7 +157,7 @@ private:
     static void unregisterServer(QBluetoothServerPrivate *server);
 
     using PendingConnection = DarwinBluetooth::StrongReference;
-    QVector<PendingConnection> pendingConnections;
+    QList<PendingConnection> pendingConnections;
 
 #endif // QT_OSX_BLUETOOTH
 };

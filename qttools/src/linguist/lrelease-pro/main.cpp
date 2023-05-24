@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <profileutils.h>
 #include <runqttool.h>
@@ -38,18 +13,7 @@
 
 QT_USE_NAMESPACE
 
-#ifdef QT_BOOTSTRAPPED
-struct LR {
-    static inline QString tr(const char *sourceText, const char *comment = 0)
-    {
-        return QCoreApplication::translate("LRelease", sourceText, comment);
-    }
-};
-#else
-class LR {
-    Q_DECLARE_TR_FUNCTIONS(LRelease)
-};
-#endif
+using namespace Qt::StringLiterals;
 
 static void printOut(const QString &out)
 {
@@ -63,21 +27,22 @@ static void printErr(const QString &out)
 
 static void printUsage()
 {
-    printOut(LR::tr(
-        "Usage:\n"
-        "    lrelease-pro [options] [project-file]...\n"
-        "lrelease-pro is part of Qt's Linguist tool chain. It extracts project\n"
-        "information from qmake projects and passes it to lrelease.\n"
-        "All command line options that are not consumed by lrelease-pro are\n"
-        "passed to lrelease.\n\n"
-        "Options:\n"
-        "    -help  Display this information and exit\n"
-        "    -keep  Keep the temporary project dump around\n"
-        "    -silent\n"
-        "           Do not explain what is being done\n"
-        "    -version\n"
-        "           Display the version of lrelease-pro and exit\n"
-    ));
+    printOut(uR"(
+Usage:
+    lrelease-pro [options] [project-file]...
+lrelease-pro is part of Qt's Linguist tool chain. It extracts project
+information from qmake projects and passes it to lrelease.
+All command line options that are not consumed by lrelease-pro are
+passed to lrelease.
+
+Options:
+    -help  Display this information and exit
+    -keep  Keep the temporary project dump around
+    -silent
+           Do not explain what is being done
+    -version
+           Display the version of lrelease-pro and exit
+)"_s);
 }
 
 int main(int argc, char **argv)
@@ -88,7 +53,7 @@ int main(int argc, char **argv)
     QTranslator translator;
     QTranslator qtTranslator;
     QString sysLocale = QLocale::system().name();
-    QString resourceDir = QLibraryInfo::location(QLibraryInfo::TranslationsPath);
+    QString resourceDir = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
     if (translator.load(QLatin1String("linguist_") + sysLocale, resourceDir)
         && qtTranslator.load(QLatin1String("qt_") + sysLocale, resourceDir)) {
         app.installTranslator(&translator);
@@ -110,7 +75,8 @@ int main(int argc, char **argv)
             lprodumpOptions << arg;
             lreleaseOptions << arg;
         } else if (!strcmp(argv[i], "-version")) {
-            printOut(LR::tr("lrelease-pro version %1\n").arg(QLatin1String(QT_VERSION_STR)));
+            printOut(QStringLiteral("lrelease-pro version %1\n")
+                     .arg(QLatin1String(QT_VERSION_STR)));
             return 0;
         } else if (!strcmp(argv[i], "-help")) {
             printUsage();
@@ -127,14 +93,17 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    lprodumpOptions << QStringLiteral("-translations-variables")
+                    << QStringLiteral("TRANSLATIONS,EXTRA_TRANSLATIONS");
+
     const QStringList proFiles = extractProFiles(&inputFiles);
     if (proFiles.isEmpty()) {
-        printErr(LR::tr("lrelease-pro: No .pro/.pri files given.\n"));
+        printErr(u"lrelease-pro: No .pro/.pri files given.\n"_s);
         return 1;
     }
     if (!inputFiles.isEmpty()) {
-        printErr(LR::tr("lrelease-pro: Only .pro/.pri files are supported. "
-                        "Offending files:\n    %1\n")
+        printErr(QStringLiteral("lrelease-pro: Only .pro/.pri files are supported. "
+                                "Offending files:\n    %1\n")
                  .arg(inputFiles.join(QLatin1String("\n    "))));
         return 1;
     }

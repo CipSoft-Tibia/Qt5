@@ -29,8 +29,10 @@
 
 #include <memory>
 
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/css_selector_list.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/persistent.h"
+#include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string_hash.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
@@ -53,7 +55,7 @@ class CORE_EXPORT SelectorQuery {
   SelectorQuery(const SelectorQuery&) = delete;
   SelectorQuery& operator=(const SelectorQuery&) = delete;
 
-  static std::unique_ptr<SelectorQuery> Adopt(CSSSelectorList);
+  static std::unique_ptr<SelectorQuery> Adopt(CSSSelectorList*);
 
   // https://dom.spec.whatwg.org/#dom-element-matches
   bool Matches(Element&) const;
@@ -82,7 +84,7 @@ class CORE_EXPORT SelectorQuery {
   static QueryStats LastQueryStats();
 
  private:
-  explicit SelectorQuery(CSSSelectorList);
+  explicit SelectorQuery(CSSSelectorList*);
 
   template <typename SelectorQueryTrait>
   void ExecuteWithId(ContainerNode& root_node,
@@ -99,16 +101,13 @@ class CORE_EXPORT SelectorQuery {
   void ExecuteSlow(ContainerNode& root_node,
                    typename SelectorQueryTrait::OutputType&) const;
   template <typename SelectorQueryTrait>
-  void ExecuteSlowTraversingShadowTree(
-      ContainerNode& root_node,
-      typename SelectorQueryTrait::OutputType&) const;
-  template <typename SelectorQueryTrait>
   void Execute(ContainerNode& root_node,
                typename SelectorQueryTrait::OutputType&) const;
 
   bool SelectorListMatches(ContainerNode& root_node, Element&) const;
 
-  CSSSelectorList selector_list_;
+  // TODO(sesse): Consider moving SelectorQuery to Oilpan.
+  Persistent<CSSSelectorList> selector_list_;
   // Contains the list of CSSSelector's to match, but without ones that could
   // never match like pseudo elements, div::before. This can be empty, while
   // |selector_list_| will never be empty as SelectorQueryCache::add would have
@@ -117,8 +116,6 @@ class CORE_EXPORT SelectorQuery {
   AtomicString selector_id_;
   bool selector_id_is_rightmost_ : 1;
   bool selector_id_affected_by_sibling_combinator_ : 1;
-  bool uses_deep_combinator_or_shadow_pseudo_ : 1;
-  bool needs_updated_distribution_ : 1;
   bool use_slow_scan_ : 1;
 };
 
@@ -135,4 +132,4 @@ class SelectorQueryCache {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_CSS_SELECTOR_QUERY_H_

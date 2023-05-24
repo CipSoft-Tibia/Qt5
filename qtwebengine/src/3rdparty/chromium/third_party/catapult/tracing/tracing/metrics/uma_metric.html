@@ -20,15 +20,12 @@ found in the LICENSE file.
  *
  * UMA histograms are logged in trace events titled 'UMAHistogramSamples'. The
  * event arguments contain the histogram name and the base-64 coded of an
- * snapshot of histogram samples serialized in a pickle.
+ * snapshot of histogram samples serialized in a pickle. These are emitted at
+ * the end of tracing, and represent the difference in the UMA histograms from
+ * when the tracing began.
  *
  * If there are several processes that have snapshots of the same histogram,
  * the snapshots will be merged.
- *
- * If there are two snapshots of the same histogram in the same process, we
- * assume that the first snapshot is taken when tracing started and the second
- * snapshot is taken when tracing is stopped. So, we compute the difference to
- * show the samples added during the tracing session.
  */
 tr.exportTo('tr.metrics', function() {
   function parseBuckets_(event, processName) {
@@ -78,34 +75,14 @@ tr.exportTo('tr.metrics', function() {
     }
   }
 
-  function subtractBins_(x, y) {
-    x.sum -= y.sum;
-    let p1 = 0;
-    let p2 = 0;
-    while (p2 < y.bins.length) {
-      while (p1 < x.bins.length && x.bins[p1].min !== y.bins[p2].min) {
-        p1++;
-      }
-      if (p1 === x.bins.length) throw new Error('Cannot subtract');
-      if (x.bins[p1].max !== y.bins[p2].max) {
-        throw new Error('Incompatible bins');
-      }
-      if (x.bins[p1].count < y.bins[p2].count) {
-        throw new Error('Cannot subtract');
-      }
-      x.bins[p1].count -= y.bins[p2].count;
-      for (const event of y.bins[p2].events) {
-        x.bins[p1].events.add(event);
-      }
-      const processName = tr.b.getOnlyElement(x.bins[p1].processes)[0];
-      x.bins[p1].processes.set(processName, x.bins[p1].count);
-      p2++;
-    }
-  }
-
   function getHistogramUnit_(name) {
     // Customize histogram units here.
     return tr.b.Unit.byName.unitlessNumber_smallerIsBetter;
+  }
+
+  function getIsHistogramBinsLinear_(histogramName) {
+    return histogramName.startsWith('Graphics.Smoothness.Throughput') ||
+           histogramName.startsWith('Memory.Memory.GPU.PeakMemoryUsage');
   }
 
   function getHistogramBoundaries_(name) {
@@ -150,13 +127,10 @@ tr.exportTo('tr.metrics', function() {
         if (!histogramValues.has(name)) histogramValues.set(name, values);
         const endValues = parseBuckets_(events[events.length - 1], processName);
         if (events.length === 1) {
-          mergeBins_(values, endValues);
-        } else if (events.length === 2) {
-          subtractBins_(endValues, parseBuckets_(events[0], processName));
-          mergeBins_(values, endValues);
+          mergeBins_(values, endValues, name);
         } else {
-          throw new Error('There should be at most two snapshots of an UMA ' +
-                          'histogram in each process');
+          throw new Error('There should be at most one snapshot of UMA ' +
+                          `histogram for ${name} in each process.`);
         }
       }
     }
@@ -164,6 +138,7 @@ tr.exportTo('tr.metrics', function() {
     for (const [name, values] of histogramValues) {
       const histogram = new tr.v.Histogram(
           name, getHistogramUnit_(name), getHistogramBoundaries_(name));
+      const isLinear = getIsHistogramBinsLinear_(name);
       // If we just put samples at the middle of the bins, their sum may not
       // match the sum we read from traces. Compute how much samples should be
       // shifted so that their sum matches what we expect.
@@ -173,16 +148,45 @@ tr.exportTo('tr.metrics', function() {
         sumOfMiddles += bin.count * (bin.min + bin.max) / 2;
         sumOfBinLengths += bin.count * (bin.max - bin.min);
       }
+
+      if (name.startsWith('CompositorLatency.Type')) {
+        let histogramBoundaries = tr.v.HistogramBinBoundaries.createLinear(0, 100, 101);
+        let histogramUnit = getHistogramUnit_(name);
+        let presentedCount = values.bins[0] ? values.bins[0].count : 0;
+        let delayedCount = values.bins[1] ? values.bins[1].count : 0;
+        let droppedCount = values.bins[2] ? values.bins[2].count : 0;
+        let inTimeCount = presentedCount - delayedCount;
+        let totalCount = presentedCount + droppedCount;
+
+        const inTimeHistogram = new tr.v.Histogram(
+          name+'.Percentage_of_in_time_frames', histogramUnit, histogramBoundaries);
+        inTimeHistogram.addSample(100.0 * inTimeCount / totalCount);
+        histograms.addHistogram(inTimeHistogram);
+
+        const delayedHistogram = new tr.v.Histogram(
+          name+'.Percentage_of_delayed_frames', histogramUnit, histogramBoundaries);
+        delayedHistogram.addSample(100.0 * delayedCount / totalCount);
+        histograms.addHistogram(delayedHistogram);
+
+        const droppedHistogram = new tr.v.Histogram(
+          name+'.Percentage_of_dropped_frames', histogramUnit, histogramBoundaries);
+        droppedHistogram.addSample(100.0 * droppedCount / totalCount);
+        histograms.addHistogram(droppedHistogram);
+      }
+
       const shift = (values.sum - sumOfMiddles) / sumOfBinLengths;
-      // Note: if shift is less than -0.5, it means that even if we put all
-      // samples at the lowest value of their bins their sum will be less than
-      // the sum we read from traces. So, there is an inconsistency: either the
-      // bins are reported incorrectly, or the sum is reported incorrectly.
+      // Note: for linear bins, if shift is less than -0.5, it means that even
+      // if we put all samples at the lowest value of their bins their sum will
+      // be less than the sum we read from traces. So, there is an
+      // inconsistency: either the bins are reported incorrectly, or the sum is
+      // reported incorrectly.
       //
       // Similarly, if shift is greater than 0.5, the sum of samples cannot add
       // up to the sum we read from traces, even if we put all samples at the
       // highest value of their bins.
-      if (Math.abs(shift) > 0.5) throw new Error('Samples sum is wrong');
+      if (isLinear && Math.abs(shift) > 0.5) {
+        throw new Error(`Samples sum is wrong for ${name}.`);
+      }
 
       for (const bin of values.bins) {
         if (bin.count === 0) continue;

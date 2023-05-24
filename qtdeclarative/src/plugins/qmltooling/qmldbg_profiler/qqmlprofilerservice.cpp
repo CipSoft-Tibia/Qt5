@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlprofilerservice.h"
 #include "qv4profileradapter.h"
@@ -67,6 +31,16 @@ QQmlProfilerServiceImpl::QQmlProfilerServiceImpl(QObject *parent) :
         addGlobalProfiler(quickAdapter);
         quickAdapter->setService(this);
     }
+
+    // try to load QQuick3D profiler adapter if it exists
+    QQmlAbstractProfilerAdapter *quick3DAdapter =
+            loadQQmlAbstractProfilerAdapter(QLatin1String("QQuick3DProfilerAdapter"));
+    if (quick3DAdapter) {
+        addGlobalProfiler(quick3DAdapter);
+        quick3DAdapter->setService(this);
+    }
+
+
 }
 
 QQmlProfilerServiceImpl::~QQmlProfilerServiceImpl()
@@ -93,8 +67,8 @@ void QQmlProfilerServiceImpl::dataReady(QQmlAbstractProfilerAdapter *profiler)
     m_startTimes.insert(0, profiler);
     if (dataComplete) {
         QList<QJSEngine *> enginesToRelease;
-        for (QJSEngine *engine : qAsConst(m_stoppingEngines)) {
-            const auto range = qAsConst(m_engineProfilers).equal_range(engine);
+        for (QJSEngine *engine : std::as_const(m_stoppingEngines)) {
+            const auto range = std::as_const(m_engineProfilers).equal_range(engine);
             const auto startTimesEnd = m_startTimes.cend();
             for (auto it = range.first; it != range.second; ++it) {
                 if (std::find(m_startTimes.cbegin(), startTimesEnd, *it) != startTimesEnd) {
@@ -104,7 +78,7 @@ void QQmlProfilerServiceImpl::dataReady(QQmlAbstractProfilerAdapter *profiler)
             }
         }
         sendMessages();
-        for (QJSEngine *engine : qAsConst(enginesToRelease)) {
+        for (QJSEngine *engine : std::as_const(enginesToRelease)) {
             m_stoppingEngines.removeOne(engine);
             emit detachedFromEngine(engine);
         }
@@ -140,7 +114,7 @@ void QQmlProfilerServiceImpl::engineAdded(QJSEngine *engine)
     if (m_globalEnabled)
         startProfiling(engine, m_globalFeatures);
 
-    const auto range = qAsConst(m_engineProfilers).equal_range(engine);
+    const auto range = std::as_const(m_engineProfilers).equal_range(engine);
     for (auto it = range.first; it != range.second; ++it)
         (*it)->stopWaiting();
 }
@@ -152,7 +126,7 @@ void QQmlProfilerServiceImpl::engineAboutToBeRemoved(QJSEngine *engine)
 
     QMutexLocker lock(&m_configMutex);
     bool isRunning = false;
-    const auto range = qAsConst(m_engineProfilers).equal_range(engine);
+    const auto range = std::as_const(m_engineProfilers).equal_range(engine);
     for (auto it = range.first; it != range.second; ++it) {
         QQmlAbstractProfilerAdapter *profiler = *it;
         if (profiler->isRunning())
@@ -173,7 +147,7 @@ void QQmlProfilerServiceImpl::engineRemoved(QJSEngine *engine)
                "QML profilers have to be removed from the engine thread");
 
     QMutexLocker lock(&m_configMutex);
-    const auto range = qAsConst(m_engineProfilers).equal_range(engine);
+    const auto range = std::as_const(m_engineProfilers).equal_range(engine);
     for (auto it = range.first; it != range.second; ++it) {
         QQmlAbstractProfilerAdapter *profiler = *it;
         removeProfilerFromStartTimes(profiler);
@@ -198,7 +172,7 @@ void QQmlProfilerServiceImpl::addGlobalProfiler(QQmlAbstractProfilerAdapter *pro
     // Global profilers are started whenever any engine profiler is started and stopped when
     // all engine profilers are stopped.
     quint64 features = 0;
-    for (QQmlAbstractProfilerAdapter *engineProfiler : qAsConst(m_engineProfilers))
+    for (QQmlAbstractProfilerAdapter *engineProfiler : std::as_const(m_engineProfilers))
         features |= engineProfiler->features();
 
     if (features != 0)
@@ -246,7 +220,7 @@ void QQmlProfilerServiceImpl::startProfiling(QJSEngine *engine, quint64 features
     d << m_timer.nsecsElapsed() << static_cast<qint32>(Event) << static_cast<qint32>(StartTrace);
     bool startedAny = false;
     if (engine != nullptr) {
-        const auto range = qAsConst(m_engineProfilers).equal_range(engine);
+        const auto range = std::as_const(m_engineProfilers).equal_range(engine);
         for (auto it = range.first; it != range.second; ++it) {
             QQmlAbstractProfilerAdapter *profiler = *it;
             if (!profiler->isRunning()) {
@@ -269,12 +243,12 @@ void QQmlProfilerServiceImpl::startProfiling(QJSEngine *engine, quint64 features
                 startedAny = true;
             }
         }
-        for (QJSEngine *profiledEngine : qAsConst(engines))
+        for (QJSEngine *profiledEngine : std::as_const(engines))
             d << idForObject(profiledEngine);
     }
 
     if (startedAny) {
-        for (QQmlAbstractProfilerAdapter *profiler : qAsConst(m_globalProfilers)) {
+        for (QQmlAbstractProfilerAdapter *profiler : std::as_const(m_globalProfilers)) {
             if (!profiler->isRunning())
                 profiler->startProfiling(features);
         }
@@ -317,7 +291,7 @@ void QQmlProfilerServiceImpl::stopProfiling(QJSEngine *engine)
     if (stopping.isEmpty())
         return;
 
-    for (QQmlAbstractProfilerAdapter *profiler : qAsConst(m_globalProfilers)) {
+    for (QQmlAbstractProfilerAdapter *profiler : std::as_const(m_globalProfilers)) {
         if (!profiler->isRunning())
             continue;
         m_startTimes.insert(-1, profiler);
@@ -331,10 +305,10 @@ void QQmlProfilerServiceImpl::stopProfiling(QJSEngine *engine)
     emit stopFlushTimer();
     m_waitingForStop = true;
 
-    for (QQmlAbstractProfilerAdapter *profiler : qAsConst(reporting))
+    for (QQmlAbstractProfilerAdapter *profiler : std::as_const(reporting))
         profiler->reportData();
 
-    for (QQmlAbstractProfilerAdapter *profiler : qAsConst(stopping))
+    for (QQmlAbstractProfilerAdapter *profiler : std::as_const(stopping))
         profiler->stopProfiling();
 }
 
@@ -351,7 +325,7 @@ void QQmlProfilerServiceImpl::sendMessages()
                  << static_cast<qint32>(EndTrace);
 
         QSet<QJSEngine *> seen;
-        for (QQmlAbstractProfilerAdapter *profiler : qAsConst(m_startTimes)) {
+        for (QQmlAbstractProfilerAdapter *profiler : std::as_const(m_startTimes)) {
             for (QMultiHash<QJSEngine *, QQmlAbstractProfilerAdapter *>::iterator i(m_engineProfilers.begin());
                     i != m_engineProfilers.end(); ++i) {
                 if (i.value() == profiler && !seen.contains(i.key())) {
@@ -371,14 +345,14 @@ void QQmlProfilerServiceImpl::sendMessages()
         if (next != -1)
             m_startTimes.insert(next, first);
 
-        if (messages.length() >= QQmlAbstractProfilerAdapter::s_numMessagesPerBatch) {
+        if (messages.size() >= QQmlAbstractProfilerAdapter::s_numMessagesPerBatch) {
             emit messagesToClient(name(), messages);
             messages.clear();
         }
     }
 
     bool stillRunning = false;
-    for (const QQmlAbstractProfilerAdapter *profiler : qAsConst(m_engineProfilers)) {
+    for (const QQmlAbstractProfilerAdapter *profiler : std::as_const(m_engineProfilers)) {
         if (profiler->isRunning()) {
             stillRunning = true;
             break;
@@ -472,21 +446,21 @@ void QQmlProfilerServiceImpl::flush()
     QMutexLocker lock(&m_configMutex);
     QList<QQmlAbstractProfilerAdapter *> reporting;
 
-    for (QQmlAbstractProfilerAdapter *profiler : qAsConst(m_engineProfilers)) {
+    for (QQmlAbstractProfilerAdapter *profiler : std::as_const(m_engineProfilers)) {
         if (profiler->isRunning()) {
             m_startTimes.insert(-1, profiler);
             reporting.append(profiler);
         }
     }
 
-    for (QQmlAbstractProfilerAdapter *profiler : qAsConst(m_globalProfilers)) {
+    for (QQmlAbstractProfilerAdapter *profiler : std::as_const(m_globalProfilers)) {
         if (profiler->isRunning()) {
             m_startTimes.insert(-1, profiler);
             reporting.append(profiler);
         }
     }
 
-    for (QQmlAbstractProfilerAdapter *profiler : qAsConst(reporting))
+    for (QQmlAbstractProfilerAdapter *profiler : std::as_const(reporting))
         profiler->reportData();
 }
 

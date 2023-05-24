@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,12 +10,12 @@
 
 #include <memory>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
-#include "base/optional.h"
+#include "base/task/sequenced_task_runner.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "content/common/content_export.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -26,11 +26,7 @@
 #include "ppapi/c/private/ppb_net_address_private.h"
 #include "ppapi/host/resource_message_filter.h"
 #include "services/network/public/mojom/tcp_socket.mojom.h"
-
-#if defined(OS_CHROMEOS)
-#include "chromeos/network/firewall_hole.h"
-#include "content/public/browser/browser_thread.h"
-#endif  // defined(OS_CHROMEOS)
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace network {
 namespace mojom {
@@ -42,12 +38,13 @@ namespace ppapi {
 namespace host {
 class PpapiHost;
 }
-}
+}  // namespace ppapi
 
 namespace content {
 
 class BrowserPpapiHostImpl;
 class ContentBrowserPepperHostFactory;
+class FirewallHoleProxy;
 
 // TODO(yzshen): Remove this class entirely and let
 // TCPServerSocketPrivateResource inherit TCPSocketResourceBase.
@@ -58,6 +55,11 @@ class CONTENT_EXPORT PepperTCPServerSocketMessageFilter
                                      BrowserPpapiHostImpl* host,
                                      PP_Instance instance,
                                      bool private_api);
+
+  PepperTCPServerSocketMessageFilter(
+      const PepperTCPServerSocketMessageFilter&) = delete;
+  PepperTCPServerSocketMessageFilter& operator=(
+      const PepperTCPServerSocketMessageFilter&) = delete;
 
   // Sets a global NetworkContext object to be used instead of the real one for
   // doing all network operations.
@@ -97,17 +99,17 @@ class CONTENT_EXPORT PepperTCPServerSocketMessageFilter
 
   void OnListenCompleted(const ppapi::host::ReplyMessageContext& context,
                          int net_result,
-                         const base::Optional<net::IPEndPoint>& local_addr);
+                         const absl::optional<net::IPEndPoint>& local_addr);
   void OnAcceptCompleted(
       const ppapi::host::ReplyMessageContext& context,
       mojo::PendingReceiver<network::mojom::SocketObserver>
           socket_observer_receiver,
       int net_result,
-      const base::Optional<net::IPEndPoint>& remote_addr,
+      const absl::optional<net::IPEndPoint>& remote_addr,
       mojo::PendingRemote<network::mojom::TCPConnectedSocket> connected_socket,
       mojo::ScopedDataPipeConsumerHandle receive_stream,
       mojo::ScopedDataPipeProducerHandle send_stream);
-  void OnAcceptCompletedOnIOThread(
+  void OnAcceptCompletedOnUIThread(
       const ppapi::host::ReplyMessageContext& context,
       mojo::PendingRemote<network::mojom::TCPConnectedSocket> connected_socket,
       mojo::PendingReceiver<network::mojom::SocketObserver>
@@ -134,18 +136,20 @@ class CONTENT_EXPORT PepperTCPServerSocketMessageFilter
   void SendAcceptError(const ppapi::host::ReplyMessageContext& context,
                        int32_t pp_result);
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
   void OpenFirewallHole(const ppapi::host::ReplyMessageContext& context,
                         const net::IPEndPoint& local_addr);
   void OnFirewallHoleOpened(const ppapi::host::ReplyMessageContext& context,
-                            std::unique_ptr<chromeos::FirewallHole> hole);
-#endif  // defined(OS_CHROMEOS)
+                            std::unique_ptr<FirewallHoleProxy> hole);
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
   // Following fields are initialized and used only on the IO thread.
   // Non-owning ptr.
-  ppapi::host::PpapiHost* ppapi_host_;
+  raw_ptr<BrowserPpapiHostImpl, DanglingUntriaged> host_;
   // Non-owning ptr.
-  ContentBrowserPepperHostFactory* factory_;
+  raw_ptr<ppapi::host::PpapiHost, DanglingUntriaged> ppapi_host_;
+  // Non-owning ptr.
+  raw_ptr<ContentBrowserPepperHostFactory, DanglingUntriaged> factory_;
   PP_Instance instance_;
 
   State state_;
@@ -153,11 +157,9 @@ class CONTENT_EXPORT PepperTCPServerSocketMessageFilter
 
   PP_NetAddress_Private bound_addr_;
 
-#if defined(OS_CHROMEOS)
-  std::unique_ptr<chromeos::FirewallHole,
-                  content::BrowserThread::DeleteOnUIThread>
-      firewall_hole_;
-#endif  // defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
+  std::unique_ptr<FirewallHoleProxy> firewall_hole_;
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
   // Following fields are initialized on the IO thread but used only
   // on the UI thread.
@@ -173,8 +175,6 @@ class CONTENT_EXPORT PepperTCPServerSocketMessageFilter
   // pipes not owned by |this|. All weak pointers released in Close().
   base::WeakPtrFactory<PepperTCPServerSocketMessageFilter> weak_ptr_factory_{
       this};
-
-  DISALLOW_COPY_AND_ASSIGN(PepperTCPServerSocketMessageFilter);
 };
 
 }  // namespace content

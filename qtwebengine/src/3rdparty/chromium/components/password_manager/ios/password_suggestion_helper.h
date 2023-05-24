@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,9 @@
 #import <Foundation/Foundation.h>
 #include <memory>
 
-#include "components/autofill/core/common/renderer_id.h"
+#include "components/autofill/core/common/unique_ids.h"
 #import "components/autofill/ios/browser/form_suggestion_provider.h"
+#include "url/gurl.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -25,6 +26,7 @@ struct FillData;
 }  // namespace password_manager
 
 namespace web {
+class WebFrame;
 class WebState;
 }  // namespace web
 
@@ -34,7 +36,8 @@ class WebState;
 // Called when form extraction is required for checking suggestion availability.
 // The caller must trigger the form extraction in this method.
 - (void)suggestionHelperShouldTriggerFormExtraction:
-    (PasswordSuggestionHelper*)suggestionHelper;
+            (PasswordSuggestionHelper*)suggestionHelper
+                                            inFrame:(web::WebFrame*)frame;
 
 @end
 
@@ -47,6 +50,12 @@ class WebState;
 // Delegate to receive callbacks.
 @property(nonatomic, weak) id<PasswordSuggestionHelperDelegate> delegate;
 
+// Creates a instance with the given |webState|.
+- (instancetype)initWithWebState:(web::WebState*)webState
+    NS_DESIGNATED_INITIALIZER;
+
+- (instancetype)init NS_UNAVAILABLE;
+
 // Retrieves suggestions as username and realm pairs
 // (defined in |password_manager::UsernameAndRealm|) and converts
 // them into objective C representations. In the returned |FormSuggestion|
@@ -55,6 +64,7 @@ class WebState;
 - (NSArray<FormSuggestion*>*)
     retrieveSuggestionsWithFormID:(autofill::FormRendererId)formIdentifier
                   fieldIdentifier:(autofill::FieldRendererId)fieldIdentifier
+                          inFrame:(web::WebFrame*)frame
                         fieldType:(NSString*)fieldType;
 
 // Checks if suggestions are available for the field.
@@ -64,30 +74,32 @@ class WebState;
 // of other parameters.
 - (void)checkIfSuggestionsAvailableForForm:
             (FormSuggestionProviderQuery*)formQuery
-                               isMainFrame:(BOOL)isMainFrame
-                                  webState:(web::WebState*)webState
                          completionHandler:
                              (SuggestionsAvailableCompletion)completion;
 
 // Retrieves password form fill data for |username| for use in
 // |PasswordFormHelper|'s
 // -fillPasswordFormWithFillData:completionHandler:.
-- (std::unique_ptr<password_manager::FillData>)getFillDataForUsername:
-    (NSString*)username;
+- (std::unique_ptr<password_manager::FillData>)
+    passwordFillDataForUsername:(NSString*)username
+                        inFrame:(web::WebFrame*)frame;
 
 // The following methods should be called to maintain the correct state along
 // with password forms.
 
 // Resets fill data, callbacks and state flags for new page. This method should
-// be called in password controller's -webState:didLoadPageWithSuccess:.
+// be called in password controller's -webState:didFinishNavigation:.
 - (void)resetForNewPage;
 
 // Prepares fill data with given password form data. Triggers callback for
 // -checkIfSuggestionsAvailableForForm... if needed.
 // This method should be called in password controller's
-// -fillPasswordForm:completionHandler:.
+// -processPasswordFormFillData.
 - (void)processWithPasswordFormFillData:
-    (const autofill::PasswordFormFillData&)formData;
+            (const autofill::PasswordFormFillData&)formData
+                                inFrame:(web::WebFrame*)frame
+                            isMainFrame:(BOOL)isMainFrame
+                      forSecurityOrigin:(const GURL&)origin;
 
 // Processes field for which no saved credentials are available.
 // Triggers callback for -checkIfSuggestionsAvailableForForm... if needed.

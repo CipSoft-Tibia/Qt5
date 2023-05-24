@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,15 @@
 
 #include <utility>
 
-#include "base/bind.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/sequenced_task_runner.h"
-#include "base/single_thread_task_runner.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/trace_event/trace_event.h"
 #include "components/offline_pages/core/client_namespace_constants.h"
 #include "components/offline_pages/core/offline_page_item.h"
 #include "components/offline_pages/core/offline_store_types.h"
@@ -271,9 +272,8 @@ bool UpgradeFromLegacyVersion(sql::Database* db) {
 
 bool UpgradeFromVersion1ToVersion2(sql::Database* db,
                                    sql::MetaTable* meta_table) {
-  meta_table->SetVersionNumber(2);
+  return meta_table->SetVersionNumber(2);
   // No actual changes necessary, because upgrade_attempt was deprecated.
-  return true;
 }
 
 bool UpgradeFromVersion2ToVersion3(sql::Database* db,
@@ -291,8 +291,7 @@ bool UpgradeFromVersion2ToVersion3(sql::Database* db,
   if (!db->Execute(kCreatePageThumbnailsSql))
     return false;
 
-  meta_table->SetVersionNumber(3);
-  return transaction.Commit();
+  return meta_table->SetVersionNumber(3) && transaction.Commit();
 }
 
 bool UpgradeFromVersion3ToVersion4(sql::Database* db,
@@ -314,8 +313,7 @@ bool UpgradeFromVersion3ToVersion4(sql::Database* db,
   if (!db->Execute(kUpgradeThumbnailsTableSql))
     return false;
 
-  meta_table->SetVersionNumber(4);
-  return transaction.Commit();
+  return meta_table->SetVersionNumber(4) && transaction.Commit();
 }
 
 bool CreateSchema(sql::Database* db) {

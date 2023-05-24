@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,8 @@
 #include "mojo/public/cpp/base/unguessable_token_mojom_traits.h"
 #include "mojo/public/cpp/bindings/array_traits_wtf_vector.h"
 #include "mojo/public/cpp/bindings/string_traits_wtf.h"
-#include "third_party/blink/public/mojom/file_system_access/native_file_system_transfer_token.mojom-blink.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/public/mojom/file_system_access/file_system_access_transfer_token.mojom-blink.h"
 #include "third_party/blink/public/mojom/messaging/cloneable_message.mojom-shared.h"
 #include "third_party/blink/renderer/bindings/core/v8/serialization/serialized_script_value.h"
 #include "third_party/blink/renderer/core/core_export.h"
@@ -54,15 +55,20 @@ struct CORE_EXPORT StructTraits<blink::mojom::CloneableMessageDataView,
     return input.sender_stack_trace_id.should_pause;
   }
 
-  static const base::Optional<base::UnguessableToken>& locked_agent_cluster_id(
+  static const base::UnguessableToken& sender_agent_cluster_id(
       const blink::BlinkCloneableMessage& input) {
-    return input.locked_agent_cluster_id;
+    return input.sender_agent_cluster_id;
+  }
+
+  static bool locked_to_sender_agent_cluster(
+      const blink::BlinkCloneableMessage& input) {
+    return input.locked_to_sender_agent_cluster;
   }
 
   static Vector<
-      mojo::PendingRemote<blink::mojom::blink::NativeFileSystemTransferToken>>
-  native_file_system_tokens(blink::BlinkCloneableMessage& input) {
-    return std::move(input.message->NativeFileSystemTokens());
+      mojo::PendingRemote<blink::mojom::blink::FileSystemAccessTransferToken>>
+  file_system_access_tokens(blink::BlinkCloneableMessage& input) {
+    return std::move(input.message->FileSystemAccessTokens());
   }
 
   static bool Read(blink::mojom::CloneableMessageDataView,

@@ -1,129 +1,165 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QWASMWINDOW_H
 #define QWASMWINDOW_H
 
 #include "qwasmintegration.h"
 #include <qpa/qplatformwindow.h>
+#include <qpa/qplatformwindow_p.h>
 #include <emscripten/html5.h>
 #include "qwasmbackingstore.h"
 #include "qwasmscreen.h"
 #include "qwasmcompositor.h"
+#include "qwasmwindownonclientarea.h"
+
+#include <QtCore/private/qstdweb_p.h>
+#include "QtGui/qopenglcontext.h"
+#include <QtOpenGL/qopengltextureblitter.h>
+
+#include <emscripten/val.h>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
-class QWasmCompositor;
+namespace qstdweb {
+struct CancellationFlag;
+}
 
-class QWasmWindow : public QPlatformWindow
+namespace qstdweb {
+class EventCallback;
+}
+
+class ClientArea;
+struct DragEvent;
+struct KeyEvent;
+struct PointerEvent;
+class QWasmDeadKeySupport;
+struct WheelEvent;
+
+class QWasmWindow final : public QPlatformWindow, public QNativeInterface::Private::QWasmWindow
 {
 public:
-    enum ResizeMode {
-        ResizeNone,
-        ResizeTopLeft,
-        ResizeTop,
-        ResizeTopRight,
-        ResizeRight,
-        ResizeBottomRight,
-        ResizeBottom,
-        ResizeBottomLeft,
-        ResizeLeft
-    };
+    QWasmWindow(QWindow *w, QWasmDeadKeySupport *deadKeySupport, QWasmCompositor *compositor,
+                QWasmBackingStore *backingStore);
+    ~QWasmWindow() final;
 
-    QWasmWindow(QWindow *w, QWasmCompositor *compositor, QWasmBackingStore *backingStore);
-    ~QWasmWindow();
+    QSurfaceFormat format() const override;
+
     void destroy();
+    void paint();
+    void setZOrder(int order);
+    void setWindowCursor(QByteArray cssCursorName);
+    void onActivationChanged(bool active);
+    bool isVisible() const;
 
+    void onNonClientAreaInteraction();
+    void onRestoreClicked();
+    void onMaximizeClicked();
+    void onToggleMaximized();
+    void onCloseClicked();
+    bool onNonClientEvent(const PointerEvent &event);
+
+    // QPlatformWindow:
     void initialize() override;
-
     void setGeometry(const QRect &) override;
     void setVisible(bool visible) override;
     QMargins frameMargins() const override;
-
     WId winId() const override;
-
     void propagateSizeHints() override;
+    void setOpacity(qreal level) override;
     void raise() override;
     void lower() override;
     QRect normalGeometry() const override;
     qreal devicePixelRatio() const override;
     void requestUpdate() override;
     void requestActivateWindow() override;
+    void setWindowFlags(Qt::WindowFlags flags) override;
+    void setWindowState(Qt::WindowStates state) override;
+    void setWindowTitle(const QString &title) override;
+    void setWindowIcon(const QIcon &icon) override;
+    bool setKeyboardGrabEnabled(bool) override { return false; }
+    bool setMouseGrabEnabled(bool grab) final;
+    bool windowEvent(QEvent *event) final;
+    void setMask(const QRegion &region) final;
 
     QWasmScreen *platformScreen() const;
     void setBackingStore(QWasmBackingStore *store) { m_backingStore = store; }
     QWasmBackingStore *backingStore() const { return m_backingStore; }
     QWindow *window() const { return m_window; }
 
-    void injectMousePressed(const QPoint &local, const QPoint &global,
-                            Qt::MouseButton button, Qt::KeyboardModifiers mods);
-    void injectMouseReleased(const QPoint &local, const QPoint &global,
-                            Qt::MouseButton button, Qt::KeyboardModifiers mods);
+    std::string canvasSelector() const;
+    emscripten::val context2d() const { return m_context2d; }
+    emscripten::val a11yContainer() const { return m_a11yContainer; }
+    emscripten::val inputHandlerElement() const { return m_windowContents; }
 
-    int titleHeight() const;
-    int borderWidth() const;
-    QRegion titleGeometry() const;
-    QRegion resizeRegion() const;
-    bool isPointOnTitle(QPoint point) const;
-    bool isPointOnResizeRegion(QPoint point) const;
-    ResizeMode resizeModeAtPoint(QPoint point) const;
-    QRect maxButtonRect() const;
-    QRect minButtonRect() const;
-    QRect closeButtonRect() const;
-    QRect sysMenuRect() const;
-    QRect normButtonRect() const;
-    QRegion titleControlRegion() const;
-    QWasmCompositor::SubControls activeSubControl() const;
+    // QNativeInterface::Private::QWasmWindow
+    emscripten::val document() const override { return m_document; }
+    emscripten::val clientArea() const override { return m_qtWindow; }
 
-    void setWindowState(Qt::WindowStates state) override;
-    bool setKeyboardGrabEnabled(bool) override { return false; }
-    bool setMouseGrabEnabled(bool) override { return false; }
-
-protected:
-    void invalidate();
-    bool hasTitleBar() const;
-
-protected:
+private:
     friend class QWasmScreen;
+    static constexpr auto minSizeForRegularWindows = 100;
 
-    QWindow* m_window = nullptr;
+    void invalidate();
+    bool hasFrame() const;
+    bool hasTitleBar() const;
+    bool hasBorder() const;
+    bool hasShadow() const;
+    bool hasMaximizeButton() const;
+    void applyWindowState();
+
+    bool processKey(const KeyEvent &event);
+    bool processPointer(const PointerEvent &event);
+    bool processDrop(const DragEvent &event);
+    bool processWheel(const WheelEvent &event);
+
+    QWindow *m_window = nullptr;
     QWasmCompositor *m_compositor = nullptr;
     QWasmBackingStore *m_backingStore = nullptr;
+    QWasmDeadKeySupport *m_deadKeySupport;
     QRect m_normalGeometry {0, 0, 0 ,0};
 
-    Qt::WindowState m_windowState = Qt::WindowNoState;
-    QWasmCompositor::SubControls m_activeControl = QWasmCompositor::SC_None;
-    WId m_winid = 0;
+    emscripten::val m_document;
+    emscripten::val m_qtWindow;
+    emscripten::val m_windowContents;
+    emscripten::val m_canvasContainer;
+    emscripten::val m_a11yContainer;
+    emscripten::val m_canvas;
+    emscripten::val m_context2d = emscripten::val::undefined();
+
+    std::unique_ptr<NonClientArea> m_nonClientArea;
+    std::unique_ptr<ClientArea> m_clientArea;
+
+    std::unique_ptr<qstdweb::EventCallback> m_keyDownCallback;
+    std::unique_ptr<qstdweb::EventCallback> m_keyUpCallback;
+
+    std::unique_ptr<qstdweb::EventCallback> m_pointerLeaveCallback;
+    std::unique_ptr<qstdweb::EventCallback> m_pointerEnterCallback;
+
+    std::unique_ptr<qstdweb::EventCallback> m_dropCallback;
+
+    std::unique_ptr<qstdweb::EventCallback> m_wheelEventCallback;
+
+    Qt::WindowStates m_state = Qt::WindowNoState;
+    Qt::WindowStates m_previousWindowState = Qt::WindowNoState;
+
+    Qt::WindowFlags m_flags = Qt::Widget;
+
+    QPoint m_lastPointerMovePoint;
+
+    WId m_winId = 0;
+    bool m_wantCapture = false;
     bool m_hasTitle = false;
     bool m_needsCompositor = false;
+    long m_requestAnimationFrameId = -1;
     friend class QWasmCompositor;
     friend class QWasmEventTranslator;
+    bool windowIsPopupType(Qt::WindowFlags flags) const;
+
+    std::shared_ptr<qstdweb::CancellationFlag> m_dropDataReadCancellationFlag;
 };
+
 QT_END_NAMESPACE
 #endif // QWASMWINDOW_H

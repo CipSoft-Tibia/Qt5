@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,6 +13,14 @@
 class GURL;
 
 namespace signin {
+
+enum class Tribool;
+
+// Name of the cookie used by Chrome sign-in to inform GAIA that an
+// authenticating user is already signed in to Chrome. Because it is not
+// possible to intercept headers from iOS WKWebView, Chrome requires this cookie
+// to communicate its signed-in state with GAIA.
+extern const char kChromeConnectedCookieName[];
 
 // SigninHeaderHelper implementation managing the "X-Chrome-Connected" header.
 class ChromeConnectedHeaderHelper : public SigninHeaderHelper {
@@ -40,6 +48,7 @@ class ChromeConnectedHeaderHelper : public SigninHeaderHelper {
   std::string BuildRequestHeader(bool is_header_request,
                                  const GURL& url,
                                  const std::string& gaia_id,
+                                 Tribool is_child_account,
                                  int profile_mode_mask,
                                  const std::string& source,
                                  bool force_account_consistency);

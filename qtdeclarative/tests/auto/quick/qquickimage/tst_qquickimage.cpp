@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <qtest.h>
 #include <QTextDocument>
 #include <QTcpServer>
@@ -47,13 +22,16 @@
 #include <QQuickImageProvider>
 #include <QQmlAbstractUrlInterceptor>
 
-#include "../../shared/util.h"
-#include "../../shared/testhttpserver.h"
-#include "../shared/visualtestutil.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/testhttpserver_p.h>
+#include <QtQuickTestUtils/private/viewtestutils_p.h>
+#include <QtQuickTestUtils/private/visualtestutils_p.h>
 
 // #define DEBUG_WRITE_OUTPUT
 
-using namespace QQuickVisualTestUtil;
+Q_LOGGING_CATEGORY(lcTests, "qt.quick.tests")
+
+using namespace QQuickVisualTestUtils;
 
 Q_DECLARE_METATYPE(QQuickImageBase::Status)
 
@@ -64,7 +42,7 @@ public:
     tst_qquickimage();
 
 private slots:
-    void initTestCase();
+    void initTestCase() override;
     void cleanup();
     void noSource();
     void imageSource();
@@ -93,6 +71,7 @@ private slots:
     void sourceClipRect_data();
     void sourceClipRect();
     void progressAndStatusChanges();
+    void progressAndChangeSignalOrder();
     void sourceSizeChanges();
     void correctStatus();
     void highdpi();
@@ -110,6 +89,7 @@ private:
 };
 
 tst_qquickimage::tst_qquickimage()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
 {
 }
 
@@ -169,10 +149,11 @@ void tst_qquickimage::imageSource_data()
         QTest::newRow("remote svg") << "/heart.svg" << 595.0 << 841.0 << true << false << false << "";
     if (QImageReader::supportedImageFormats().contains("svgz"))
         QTest::newRow("remote svgz") << "/heart.svgz" << 595.0 << 841.0 << true << false << false << "";
-    if (graphicsApi == QSGRendererInterface::OpenGL) {
+    if (graphicsApi != QSGRendererInterface::Software) {
         QTest::newRow("texturefile pkm format") << testFileUrl("logo.pkm").toString() << 256.0 << 256.0 << false << false << true << "";
         QTest::newRow("texturefile ktx format") << testFileUrl("car.ktx").toString() << 146.0 << 80.0 << false << false << true << "";
         QTest::newRow("texturefile async") << testFileUrl("logo.pkm").toString() << 256.0 << 256.0 << false << true << true << "";
+        QTest::newRow("texturefile remote") << "/logo.pkm" << 256.0 << 256.0 << true << false << true << "";
     }
     QTest::newRow("remote not found") << "/no-such-file.png" << 0.0 << 0.0 << true
         << false << true << "<Unknown File>:2:1: QML Image: Error transferring {{ServerBaseUrl}}/no-such-file.png - server replied: Not found";
@@ -183,7 +164,7 @@ void tst_qquickimage::imageSource_data()
         << false << true << "<Unknown File>:2:1: QML Image: Cannot open: " + testFileUrl("no-such-file").toString();
     // Test that texture file is preferred over image file, when supported.
     // Since pattern.pkm has different size than pattern.png, these tests verify that the right file has been loaded
-    if (graphicsApi == QSGRendererInterface::OpenGL) {
+    if (graphicsApi != QSGRendererInterface::Software) {
         QTest::newRow("extless prefer-tex") << testFileUrl("pattern").toString() << 64.0 << 64.0 << false << false << true << "";
         QTest::newRow("extless prefer-tex async") << testFileUrl("pattern").toString() << 64.0 << 64.0 << false << true << true << "";
     } else {
@@ -202,18 +183,6 @@ void tst_qquickimage::imageSource()
     QFETCH(bool, async);
     QFETCH(bool, cache);
     QFETCH(QString, error);
-
-
-#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
-    if (qstrcmp(QTest::currentDataTag(), "remote") == 0
-        || qstrcmp(QTest::currentDataTag(), "remote redirected") == 0
-        || qstrcmp(QTest::currentDataTag(), "remote svg") == 0
-        || qstrcmp(QTest::currentDataTag(), "remote svgz") == 0
-        || qstrcmp(QTest::currentDataTag(), "remote not found") == 0
-       ) {
-        QSKIP("Remote tests cause occasional hangs in the CI system -- QTBUG-45655");
-    }
-#endif
 
     TestHTTPServer server;
     if (remote) {
@@ -339,20 +308,23 @@ void tst_qquickimage::smooth()
 
 void tst_qquickimage::mirror()
 {
-    if ((QGuiApplication::platformName() == QLatin1String("offscreen"))
-        || (QGuiApplication::platformName() == QLatin1String("minimal")))
-        QSKIP("Skipping due to grabWindow not functional on offscreen/minimal platforms");
+    if (QGuiApplication::platformName() == QLatin1String("minimal"))
+        QSKIP("Skipping due to grabWindow not functional on minimal platforms");
 
     QMap<QQuickImage::FillMode, QImage> screenshots;
-    QList<QQuickImage::FillMode> fillModes;
-    fillModes << QQuickImage::Stretch << QQuickImage::PreserveAspectFit << QQuickImage::PreserveAspectCrop
-              << QQuickImage::Tile << QQuickImage::TileVertically << QQuickImage::TileHorizontally << QQuickImage::Pad;
+    const QList<QQuickImage::FillMode> fillModes{QQuickImage::Stretch,
+                                                 QQuickImage::PreserveAspectFit,
+                                                 QQuickImage::PreserveAspectCrop,
+                                                 QQuickImage::Tile,
+                                                 QQuickImage::TileVertically,
+                                                 QQuickImage::TileHorizontally,
+                                                 QQuickImage::Pad};
 
     qreal width = 300;
     qreal height = 250;
     qreal devicePixelRatio = 1.0;
 
-    foreach (QQuickImage::FillMode fillMode, fillModes) {
+    for (QQuickImage::FillMode fillMode : fillModes) {
         QScopedPointer<QQuickView> window(new QQuickView);
         window->setSource(testFileUrl("mirror.qml"));
 
@@ -369,7 +341,7 @@ void tst_qquickimage::mirror()
         devicePixelRatio = window->devicePixelRatio();
     }
 
-    foreach (QQuickImage::FillMode fillMode, fillModes) {
+    for (QQuickImage::FillMode fillMode : fillModes) {
         QPixmap srcPixmap;
         QVERIFY(srcPixmap.load(testFile("pattern.png")));
 
@@ -489,9 +461,8 @@ void tst_qquickimage::geometry_data()
     QTest::newRow("PreserveAspectCrop explicit width 300, height 400") << "PreserveAspectCrop" << true << true << 300.0 << 800.0 << 800.0 << 400.0 << 400.0 << 400.0;
 
     // bounding rect, painted rect and item rect are equal in stretching and tiling images
-    QStringList fillModes;
-    fillModes << "Stretch" << "Tile" << "TileVertically" << "TileHorizontally";
-    foreach (QString fillMode, fillModes) {
+    QStringList fillModes{"Stretch", "Tile", "TileVertically", "TileHorizontally"};
+    for (const auto &fillMode : fillModes) {
         QTest::newRow(fillMode.toLatin1()) << fillMode << false << false << 200.0 << 200.0 << 200.0 << 100.0 << 100.0 << 100.0;
         QTest::newRow(QString(fillMode + " explicit width 300").toLatin1()) << fillMode << true << false << 300.0 << 300.0 << 300.0 << 100.0 << 100.0 << 100.0;
         QTest::newRow(QString(fillMode + " explicit height 400").toLatin1()) << fillMode << false << true << 200.0 << 200.0 << 200.0 << 400.0 << 400.0 << 400.0;
@@ -554,9 +525,8 @@ void tst_qquickimage::big()
 
 void tst_qquickimage::tiling_QTBUG_6716()
 {
-    if ((QGuiApplication::platformName() == QLatin1String("offscreen"))
-        || (QGuiApplication::platformName() == QLatin1String("minimal")))
-        QSKIP("Skipping due to grabWindow not functional on offscreen/minimal platforms");
+    if (QGuiApplication::platformName() == QLatin1String("minimal"))
+        QSKIP("Skipping due to grabWindow not functional on minimal platforms");
 
     QFETCH(QString, source);
 
@@ -608,9 +578,9 @@ void tst_qquickimage::noLoading()
     ctxt->setContextProperty("srcImage", testFileUrl("green.png"));
     QTRY_COMPARE(obj->status(), QQuickImage::Ready);
     QTRY_COMPARE(obj->progress(), 1.0);
-    QTRY_COMPARE(sourceSpy.count(), 1);
-    QTRY_COMPARE(progressSpy.count(), 0);
-    QTRY_COMPARE(statusSpy.count(), 1);
+    QTRY_COMPARE(sourceSpy.size(), 1);
+    QTRY_COMPARE(progressSpy.size(), 0);
+    QTRY_COMPARE(statusSpy.size(), 1);
 
     // Loading remote file
     ctxt->setContextProperty("srcImage", server.url("/rect.png"));
@@ -618,9 +588,9 @@ void tst_qquickimage::noLoading()
     QTRY_COMPARE(obj->progress(), 0.0);
     QTRY_COMPARE(obj->status(), QQuickImage::Ready);
     QTRY_COMPARE(obj->progress(), 1.0);
-    QTRY_COMPARE(sourceSpy.count(), 2);
-    QTRY_VERIFY(progressSpy.count() >= 2);
-    QTRY_COMPARE(statusSpy.count(), 3);
+    QTRY_COMPARE(sourceSpy.size(), 2);
+    QTRY_VERIFY(progressSpy.size() >= 2);
+    QTRY_COMPARE(statusSpy.size(), 3);
 
     // Loading remote file again - should not go through 'Loading' state.
     progressSpy.clear();
@@ -628,9 +598,9 @@ void tst_qquickimage::noLoading()
     ctxt->setContextProperty("srcImage", server.url("/rect.png"));
     QTRY_COMPARE(obj->status(), QQuickImage::Ready);
     QTRY_COMPARE(obj->progress(), 1.0);
-    QTRY_COMPARE(sourceSpy.count(), 4);
-    QTRY_COMPARE(progressSpy.count(), 0);
-    QTRY_COMPARE(statusSpy.count(), 5);
+    QTRY_COMPARE(sourceSpy.size(), 4);
+    QTRY_COMPARE(progressSpy.size(), 0);
+    QTRY_COMPARE(statusSpy.size(), 5);
 
     delete obj;
 }
@@ -685,17 +655,17 @@ void tst_qquickimage::sourceSize_QTBUG_14303()
 
     QTRY_COMPARE(obj->sourceSize().width(), 200);
     QTRY_COMPARE(obj->sourceSize().height(), 200);
-    QTRY_COMPARE(sourceSizeSpy.count(), 0);
+    QTRY_COMPARE(sourceSizeSpy.size(), 0);
 
     ctxt->setContextProperty("srcImage", testFileUrl("colors.png"));
     QTRY_COMPARE(obj->sourceSize().width(), 120);
     QTRY_COMPARE(obj->sourceSize().height(), 120);
-    QTRY_COMPARE(sourceSizeSpy.count(), 1);
+    QTRY_COMPARE(sourceSizeSpy.size(), 1);
 
     ctxt->setContextProperty("srcImage", testFileUrl("heart200.png"));
     QTRY_COMPARE(obj->sourceSize().width(), 200);
     QTRY_COMPARE(obj->sourceSize().height(), 200);
-    QTRY_COMPARE(sourceSizeSpy.count(), 2);
+    QTRY_COMPARE(sourceSizeSpy.size(), 2);
 
     delete obj;
 }
@@ -837,48 +807,48 @@ void tst_qquickimage::sourceSizeChanges()
     // Local
     ctxt->setContextProperty("srcImage", QUrl(""));
     QTRY_COMPARE(img->status(), QQuickImage::Null);
-    QTRY_COMPARE(sourceSizeSpy.count(), 0);
+    QTRY_COMPARE(sourceSizeSpy.size(), 0);
 
     ctxt->setContextProperty("srcImage", testFileUrl("heart.png"));
     QTRY_COMPARE(img->status(), QQuickImage::Ready);
-    QTRY_COMPARE(sourceSizeSpy.count(), 1);
+    QTRY_COMPARE(sourceSizeSpy.size(), 1);
 
     ctxt->setContextProperty("srcImage", testFileUrl("heart.png"));
     QTRY_COMPARE(img->status(), QQuickImage::Ready);
-    QTRY_COMPARE(sourceSizeSpy.count(), 1);
+    QTRY_COMPARE(sourceSizeSpy.size(), 1);
 
     ctxt->setContextProperty("srcImage", testFileUrl("heart_copy.png"));
     QTRY_COMPARE(img->status(), QQuickImage::Ready);
-    QTRY_COMPARE(sourceSizeSpy.count(), 1);
+    QTRY_COMPARE(sourceSizeSpy.size(), 1);
 
     ctxt->setContextProperty("srcImage", testFileUrl("colors.png"));
     QTRY_COMPARE(img->status(), QQuickImage::Ready);
-    QTRY_COMPARE(sourceSizeSpy.count(), 2);
+    QTRY_COMPARE(sourceSizeSpy.size(), 2);
 
     ctxt->setContextProperty("srcImage", QUrl(""));
     QTRY_COMPARE(img->status(), QQuickImage::Null);
-    QTRY_COMPARE(sourceSizeSpy.count(), 3);
+    QTRY_COMPARE(sourceSizeSpy.size(), 3);
 
     // Remote
     ctxt->setContextProperty("srcImage", server.url("/heart.png"));
     QTRY_COMPARE(img->status(), QQuickImage::Ready);
-    QTRY_COMPARE(sourceSizeSpy.count(), 4);
+    QTRY_COMPARE(sourceSizeSpy.size(), 4);
 
     ctxt->setContextProperty("srcImage", server.url("/heart.png"));
     QTRY_COMPARE(img->status(), QQuickImage::Ready);
-    QTRY_COMPARE(sourceSizeSpy.count(), 4);
+    QTRY_COMPARE(sourceSizeSpy.size(), 4);
 
     ctxt->setContextProperty("srcImage", server.url("/heart_copy.png"));
     QTRY_COMPARE(img->status(), QQuickImage::Ready);
-    QTRY_COMPARE(sourceSizeSpy.count(), 4);
+    QTRY_COMPARE(sourceSizeSpy.size(), 4);
 
     ctxt->setContextProperty("srcImage", server.url("/colors.png"));
     QTRY_COMPARE(img->status(), QQuickImage::Ready);
-    QTRY_COMPARE(sourceSizeSpy.count(), 5);
+    QTRY_COMPARE(sourceSizeSpy.size(), 5);
 
     ctxt->setContextProperty("srcImage", QUrl(""));
     QTRY_COMPARE(img->status(), QQuickImage::Null);
-    QTRY_COMPARE(sourceSizeSpy.count(), 6);
+    QTRY_COMPARE(sourceSizeSpy.size(), 6);
 
     delete img;
 }
@@ -902,6 +872,12 @@ void tst_qquickimage::sourceClipRect_data()
     QTest::newRow("miniMiddle") << QRectF(20, 20, 60, 60) << QSize(100, 100)
                                 << (QList<QPoint>() << QPoint(59, 0) << QPoint(6, 12) << QPoint(42, 42))
                                 << (QList<QPoint>() << QPoint(54, 54) << QPoint(15, 59));
+}
+
+static QImage toUnscaledImage(const QImage &image)
+{
+    auto dpr = image.devicePixelRatio();
+    return image.scaled(image.width() / dpr, image.height() / dpr);
 }
 
 void tst_qquickimage::sourceClipRect()
@@ -928,10 +904,9 @@ void tst_qquickimage::sourceClipRect()
     QCOMPARE(image->implicitWidth(), sourceClipRect.isNull() ? 300 : sourceClipRect.width());
     QCOMPARE(image->implicitHeight(), sourceClipRect.isNull() ? 300 : sourceClipRect.height());
 
-    if ((QGuiApplication::platformName() == QLatin1String("offscreen"))
-        || (QGuiApplication::platformName() == QLatin1String("minimal")))
+    if (QGuiApplication::platformName() == QLatin1String("minimal"))
         QSKIP("Skipping due to grabWindow not functional on offscreen/minimal platforms");
-    QImage contents = window->grabWindow();
+    QImage contents = toUnscaledImage(window->grabWindow());
     if (contents.width() < sourceClipRect.width())
         QSKIP("Skipping due to grabWindow not functional");
 #ifdef DEBUG_WRITE_OUTPUT
@@ -975,17 +950,17 @@ void tst_qquickimage::progressAndStatusChanges()
     ctxt->setContextProperty("srcImage", testFileUrl("heart.png"));
     QTRY_COMPARE(obj->status(), QQuickImage::Ready);
     QTRY_COMPARE(obj->progress(), 1.0);
-    QTRY_COMPARE(sourceSpy.count(), 0);
-    QTRY_COMPARE(progressSpy.count(), 0);
-    QTRY_COMPARE(statusSpy.count(), 0);
+    QTRY_COMPARE(sourceSpy.size(), 0);
+    QTRY_COMPARE(progressSpy.size(), 0);
+    QTRY_COMPARE(statusSpy.size(), 0);
 
     // Loading local file
     ctxt->setContextProperty("srcImage", testFileUrl("colors.png"));
     QTRY_COMPARE(obj->status(), QQuickImage::Ready);
     QTRY_COMPARE(obj->progress(), 1.0);
-    QTRY_COMPARE(sourceSpy.count(), 1);
-    QTRY_COMPARE(progressSpy.count(), 0);
-    QTRY_COMPARE(statusSpy.count(), 1);
+    QTRY_COMPARE(sourceSpy.size(), 1);
+    QTRY_COMPARE(progressSpy.size(), 0);
+    QTRY_COMPARE(statusSpy.size(), 1);
 
     // Loading remote file
     ctxt->setContextProperty("srcImage", server.url("/heart.png"));
@@ -993,18 +968,40 @@ void tst_qquickimage::progressAndStatusChanges()
     QTRY_COMPARE(obj->progress(), 0.0);
     QTRY_COMPARE(obj->status(), QQuickImage::Ready);
     QTRY_COMPARE(obj->progress(), 1.0);
-    QTRY_COMPARE(sourceSpy.count(), 2);
-    QTRY_VERIFY(progressSpy.count() > 1);
-    QTRY_COMPARE(statusSpy.count(), 3);
+    QTRY_COMPARE(sourceSpy.size(), 2);
+    QTRY_VERIFY(progressSpy.size() > 1);
+    QTRY_COMPARE(statusSpy.size(), 3);
 
     ctxt->setContextProperty("srcImage", "");
     QTRY_COMPARE(obj->status(), QQuickImage::Null);
     QTRY_COMPARE(obj->progress(), 0.0);
-    QTRY_COMPARE(sourceSpy.count(), 3);
-    QTRY_VERIFY(progressSpy.count() > 2);
-    QTRY_COMPARE(statusSpy.count(), 4);
+    QTRY_COMPARE(sourceSpy.size(), 3);
+    QTRY_VERIFY(progressSpy.size() > 2);
+    QTRY_COMPARE(statusSpy.size(), 4);
 
     delete obj;
+}
+
+void tst_qquickimage::progressAndChangeSignalOrder()
+{
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("statusChanged.qml")));
+    QQuickImage *image = qmlobject_cast<QQuickImage *>(window.rootObject());
+    QVERIFY(image);
+
+    QTRY_COMPARE(image->status(), QQuickImageBase::Ready);
+    // QTBUG-120205: implicitSize should be correct when status changes to Ready
+    QCOMPARE(image->property("statusChangedFirstImplicitSize").toSize(), QSize(300, 300));
+    QCOMPARE(image->property("statusChanges").toList().size(), 1); // just Ready
+    const QStringList signalOrder = image->property("changeSignals").toStringList();
+    const QStringList expectedOrder = {"progress", "paintedHeight", "paintedWidth",
+                                        "implicitWidth", "implicitHeight",
+                                        "paintedHeight", "paintedWidth",
+                                        "status", "sourceSize", "frameCount"};
+    qCDebug(lcTests) << "signal order" << signalOrder;
+    // exact order may not be critical, and repeated signals may be silly;
+    // but this way we'll find out when it changes
+    QCOMPARE(signalOrder, expectedOrder);
 }
 
 class TestQImageProvider : public QQuickImageProvider
@@ -1012,7 +1009,7 @@ class TestQImageProvider : public QQuickImageProvider
 public:
     TestQImageProvider() : QQuickImageProvider(Image) {}
 
-    QImage requestImage(const QString &id, QSize *size, const QSize& requestedSize)
+    QImage requestImage(const QString &id, QSize *size, const QSize& requestedSize) override
     {
         Q_UNUSED(requestedSize);
         if (id == QLatin1String("first-image.png")) {
@@ -1157,16 +1154,16 @@ void tst_qquickimage::highDpiFillModesAndSizes()
 
 void tst_qquickimage::hugeImages()
 {
-    if ((QGuiApplication::platformName() == QLatin1String("offscreen"))
-        || (QGuiApplication::platformName() == QLatin1String("minimal")))
-        QSKIP("Skipping due to grabWindow not functional on offscreen/minimal platforms");
+    if (QGuiApplication::platformName() == QLatin1String("minimal"))
+        QSKIP("Skipping due to grabWindow not functional on minimal platforms");
 
     QQuickView view;
     view.setSource(testFileUrl("hugeImages.qml"));
     view.setGeometry(0, 0, 200, 200);
-    view.create();
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
 
-    QImage contents = view.grabWindow();
+    QImage contents = toUnscaledImage(view.grabWindow());
 
     QCOMPARE(contents.pixel(0, 0), qRgba(255, 0, 0, 255));
     QCOMPARE(contents.pixel(99, 99), qRgba(255, 0, 0, 255));
@@ -1179,7 +1176,7 @@ class MyInterceptor : public QQmlAbstractUrlInterceptor
 {
 public:
     MyInterceptor(QUrl url) : QQmlAbstractUrlInterceptor(), m_url(url) {}
-    QUrl intercept(const QUrl &url, QQmlAbstractUrlInterceptor::DataType)
+    QUrl intercept(const QUrl &url, QQmlAbstractUrlInterceptor::DataType) override
     {
         if (url.scheme() == "interceptthis")
             return m_url;
@@ -1193,7 +1190,7 @@ void tst_qquickimage::urlInterceptor()
 {
     QQmlEngine engine;
     MyInterceptor interceptor {testFileUrl("colors.png")};
-    engine.setUrlInterceptor(&interceptor);
+    engine.addUrlInterceptor(&interceptor);
 
     QQmlComponent c(&engine);
 
@@ -1215,13 +1212,12 @@ void tst_qquickimage::multiFrame_data()
 
 void tst_qquickimage::multiFrame()
 {
-    if ((QGuiApplication::platformName() == QLatin1String("offscreen"))
-        || (QGuiApplication::platformName() == QLatin1String("minimal")))
-        QSKIP("Skipping due to grabWindow not functional on offscreen/minimal platforms");
+    if (QGuiApplication::platformName() == QLatin1String("minimal"))
+        QSKIP("Skipping due to grabWindow not functional on minimal platforms");
 
     QFETCH(QString, qmlfile);
     QFETCH(bool, asynchronous);
-    Q_UNUSED(asynchronous)
+    Q_UNUSED(asynchronous);
 
     QQuickView view(testFileUrl(qmlfile));
     QQuickImage *image = qobject_cast<QQuickImage*>(view.rootObject());
@@ -1231,7 +1227,7 @@ void tst_qquickimage::multiFrame()
     if (asynchronous) {
         QCOMPARE(image->frameCount(), 0);
         QTRY_COMPARE(image->frameCount(), 4);
-        QCOMPARE(countSpy.count(), 1);
+        QCOMPARE(countSpy.size(), 1);
     } else {
         QCOMPARE(image->frameCount(), 4);
     }
@@ -1239,7 +1235,7 @@ void tst_qquickimage::multiFrame()
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
 
-    QImage contents = view.grabWindow();
+    QImage contents = toUnscaledImage(view.grabWindow());
     if (contents.width() < 40)
         QSKIP("Skipping due to grabWindow not functional");
     // The first frame is a blue ball, approximately qRgba(0x33, 0x6d, 0xcc, 0xff)
@@ -1250,9 +1246,9 @@ void tst_qquickimage::multiFrame()
 
     image->setCurrentFrame(1);
     QTRY_COMPARE(image->status(), QQuickImageBase::Ready);
-    QCOMPARE(currentSpy.count(), 1);
+    QCOMPARE(currentSpy.size(), 1);
     QCOMPARE(image->currentFrame(), 1);
-    contents = view.grabWindow();
+    contents = toUnscaledImage(view.grabWindow());
     // The second frame is a green ball, approximately qRgba(0x27, 0xc8, 0x22, 0xff)
     color = contents.pixel(16, 16);
     QVERIFY(qRed(color) < 0xc0);

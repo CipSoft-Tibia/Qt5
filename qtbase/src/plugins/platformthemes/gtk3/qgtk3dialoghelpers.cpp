@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgtk3dialoghelpers.h"
 #include "qgtk3theme.h"
@@ -45,24 +9,42 @@
 #include <qcolor.h>
 #include <qdebug.h>
 #include <qfont.h>
+#include <qfileinfo.h>
 
 #include <private/qguiapplication_p.h>
+#include <private/qgenericunixservices_p.h>
+#include <qpa/qplatformintegration.h>
 #include <qpa/qplatformfontdatabase.h>
 
 #undef signals
 #include <gtk/gtk.h>
 #include <gdk/gdk.h>
-#include <gdk/gdkx.h>
 #include <pango/pango.h>
+
+#if QT_CONFIG(xlib) && defined(GDK_WINDOWING_X11)
+#include <gdk/gdkx.h>
+#endif
+
+#ifdef GDK_WINDOWING_WAYLAND
+#include <gdk/gdkwayland.h>
+#endif
+
+// The size of the preview we display for selected image files. We set height
+// larger than width because generally there is more free space vertically
+// than horizontally (setting the preview image will always expand the width of
+// the dialog, but usually not the height). The image's aspect ratio will always
+// be preserved.
+#define PREVIEW_WIDTH 256
+#define PREVIEW_HEIGHT 512
 
 QT_BEGIN_NAMESPACE
 
-class QGtk3Dialog : public QWindow
-{
-    Q_OBJECT
+using namespace Qt::StringLiterals;
 
+class QGtk3Dialog
+{
 public:
-    QGtk3Dialog(GtkWidget *gtkWidget);
+    QGtk3Dialog(GtkWidget *gtkWidget, QPlatformDialogHelper *helper);
     ~QGtk3Dialog();
 
     GtkDialog *gtkDialog() const;
@@ -71,23 +53,20 @@ public:
     bool show(Qt::WindowFlags flags, Qt::WindowModality modality, QWindow *parent);
     void hide();
 
-Q_SIGNALS:
-    void accept();
-    void reject();
-
 protected:
-    static void onResponse(QGtk3Dialog *dialog, int response);
-
-private slots:
-    void onParentWindowDestroyed();
+    static void onResponse(QPlatformDialogHelper *helper, int response);
 
 private:
     GtkWidget *gtkWidget;
+    QPlatformDialogHelper *helper;
+    Qt::WindowModality modality;
 };
 
-QGtk3Dialog::QGtk3Dialog(GtkWidget *gtkWidget) : gtkWidget(gtkWidget)
+QGtk3Dialog::QGtk3Dialog(GtkWidget *gtkWidget, QPlatformDialogHelper *helper)
+    : gtkWidget(gtkWidget)
+    , helper(helper)
 {
-    g_signal_connect_swapped(G_OBJECT(gtkWidget), "response", G_CALLBACK(onResponse), this);
+    g_signal_connect_swapped(G_OBJECT(gtkWidget), "response", G_CALLBACK(onResponse), helper);
     g_signal_connect(G_OBJECT(gtkWidget), "delete-event", G_CALLBACK(gtk_widget_hide_on_delete), NULL);
 }
 
@@ -104,43 +83,52 @@ GtkDialog *QGtk3Dialog::gtkDialog() const
 
 void QGtk3Dialog::exec()
 {
-    if (modality() == Qt::ApplicationModal) {
+    if (modality == Qt::ApplicationModal) {
         // block input to the whole app, including other GTK dialogs
         gtk_dialog_run(gtkDialog());
     } else {
         // block input to the window, allow input to other GTK dialogs
         QEventLoop loop;
-        connect(this, SIGNAL(accept()), &loop, SLOT(quit()));
-        connect(this, SIGNAL(reject()), &loop, SLOT(quit()));
+        loop.connect(helper, SIGNAL(accept()), SLOT(quit()));
+        loop.connect(helper, SIGNAL(reject()), SLOT(quit()));
         loop.exec();
     }
 }
 
 bool QGtk3Dialog::show(Qt::WindowFlags flags, Qt::WindowModality modality, QWindow *parent)
 {
-    if (parent) {
-        connect(parent, &QWindow::destroyed, this, &QGtk3Dialog::onParentWindowDestroyed,
-                Qt::UniqueConnection);
-    }
-    setParent(parent);
-    setFlags(flags);
-    setModality(modality);
+    Q_UNUSED(flags);
+    this->modality = modality;
 
     gtk_widget_realize(gtkWidget); // creates X window
 
     GdkWindow *gdkWindow = gtk_widget_get_window(gtkWidget);
     if (parent) {
-        if (GDK_IS_X11_WINDOW(gdkWindow)) {
+        if (false) {
+#if defined(GDK_WINDOWING_WAYLAND) && GTK_CHECK_VERSION(3, 22, 0)
+        } else if (GDK_IS_WAYLAND_WINDOW(gdkWindow)) {
+            const auto unixServices = dynamic_cast<QGenericUnixServices *>(
+                    QGuiApplicationPrivate::platformIntegration()->services());
+            if (unixServices) {
+                const auto handle = unixServices->portalWindowIdentifier(parent);
+                if (handle.startsWith("wayland:"_L1)) {
+                    auto handleBa = handle.sliced(8).toUtf8();
+                    gdk_wayland_window_set_transient_for_exported(gdkWindow, handleBa.data());
+                }
+            }
+#endif
+#if QT_CONFIG(xlib) && defined(GDK_WINDOWING_X11)
+        } else if (GDK_IS_X11_WINDOW(gdkWindow)) {
             GdkDisplay *gdkDisplay = gdk_window_get_display(gdkWindow);
             XSetTransientForHint(gdk_x11_display_get_xdisplay(gdkDisplay),
                                  gdk_x11_window_get_xid(gdkWindow),
                                  parent->winId());
+#endif
         }
     }
 
     if (modality != Qt::NonModal) {
         gdk_window_set_modal_hint(gdkWindow, true);
-        QGuiApplicationPrivate::showModalWindow(this);
     }
 
     gtk_widget_show(gtkWidget);
@@ -150,30 +138,20 @@ bool QGtk3Dialog::show(Qt::WindowFlags flags, Qt::WindowModality modality, QWind
 
 void QGtk3Dialog::hide()
 {
-    QGuiApplicationPrivate::hideModalWindow(this);
     gtk_widget_hide(gtkWidget);
 }
 
-void QGtk3Dialog::onResponse(QGtk3Dialog *dialog, int response)
+void QGtk3Dialog::onResponse(QPlatformDialogHelper *helper, int response)
 {
     if (response == GTK_RESPONSE_OK)
-        emit dialog->accept();
+        emit helper->accept();
     else
-        emit dialog->reject();
-}
-
-void QGtk3Dialog::onParentWindowDestroyed()
-{
-    // The QGtk3*DialogHelper classes own this object. Make sure the parent doesn't delete it.
-    setParent(nullptr);
+        emit helper->reject();
 }
 
 QGtk3ColorDialogHelper::QGtk3ColorDialogHelper()
 {
-    d.reset(new QGtk3Dialog(gtk_color_chooser_dialog_new("", nullptr)));
-    connect(d.data(), SIGNAL(accept()), this, SLOT(onAccepted()));
-    connect(d.data(), SIGNAL(reject()), this, SIGNAL(reject()));
-
+    d.reset(new QGtk3Dialog(gtk_color_chooser_dialog_new("", nullptr), this));
     g_signal_connect_swapped(d->gtkDialog(), "notify::rgba", G_CALLBACK(onColorChanged), this);
 }
 
@@ -218,11 +196,6 @@ QColor QGtk3ColorDialogHelper::currentColor() const
     return QColor::fromRgbF(gdkColor.red, gdkColor.green, gdkColor.blue, gdkColor.alpha);
 }
 
-void QGtk3ColorDialogHelper::onAccepted()
-{
-    emit accept();
-}
-
 void QGtk3ColorDialogHelper::onColorChanged(QGtk3ColorDialogHelper *dialog)
 {
     emit dialog->currentColorChanged(dialog->currentColor());
@@ -242,14 +215,15 @@ QGtk3FileDialogHelper::QGtk3FileDialogHelper()
                                                         GTK_FILE_CHOOSER_ACTION_OPEN,
                                                         qUtf8Printable(QGtk3Theme::defaultStandardButtonText(QPlatformDialogHelper::Cancel)), GTK_RESPONSE_CANCEL,
                                                         qUtf8Printable(QGtk3Theme::defaultStandardButtonText(QPlatformDialogHelper::Ok)), GTK_RESPONSE_OK,
-                                                        NULL)));
-
-    connect(d.data(), SIGNAL(accept()), this, SLOT(onAccepted()));
-    connect(d.data(), SIGNAL(reject()), this, SIGNAL(reject()));
+                                                        NULL), this));
 
     g_signal_connect(GTK_FILE_CHOOSER(d->gtkDialog()), "selection-changed", G_CALLBACK(onSelectionChanged), this);
     g_signal_connect_swapped(GTK_FILE_CHOOSER(d->gtkDialog()), "current-folder-changed", G_CALLBACK(onCurrentFolderChanged), this);
     g_signal_connect_swapped(GTK_FILE_CHOOSER(d->gtkDialog()), "notify::filter", G_CALLBACK(onFilterChanged), this);
+
+    previewWidget = gtk_image_new();
+    g_signal_connect(G_OBJECT(d->gtkDialog()), "update-preview", G_CALLBACK(onUpdatePreview), this);
+    gtk_file_chooser_set_preview_widget(GTK_FILE_CHOOSER(d->gtkDialog()), previewWidget);
 }
 
 QGtk3FileDialogHelper::~QGtk3FileDialogHelper()
@@ -364,11 +338,6 @@ QString QGtk3FileDialogHelper::selectedNameFilter() const
     return _filterNames.value(gtkFilter);
 }
 
-void QGtk3FileDialogHelper::onAccepted()
-{
-    emit accept();
-}
-
 void QGtk3FileDialogHelper::onSelectionChanged(GtkDialog *gtkDialog, QGtk3FileDialogHelper *helper)
 {
     QString selection;
@@ -388,6 +357,33 @@ void QGtk3FileDialogHelper::onCurrentFolderChanged(QGtk3FileDialogHelper *dialog
 void QGtk3FileDialogHelper::onFilterChanged(QGtk3FileDialogHelper *dialog)
 {
     emit dialog->filterSelected(dialog->selectedNameFilter());
+}
+
+void QGtk3FileDialogHelper::onUpdatePreview(GtkDialog *gtkDialog, QGtk3FileDialogHelper *helper)
+{
+    gchar *filename = gtk_file_chooser_get_preview_filename(GTK_FILE_CHOOSER(gtkDialog));
+    if (!filename) {
+        gtk_file_chooser_set_preview_widget_active(GTK_FILE_CHOOSER(gtkDialog), false);
+        return;
+    }
+
+    // Don't attempt to open anything which isn't a regular file. If a named pipe,
+    // this may hang.
+    QFileInfo fileinfo(filename);
+    if (!fileinfo.exists() || !fileinfo.isFile()) {
+        g_free(filename);
+        gtk_file_chooser_set_preview_widget_active(GTK_FILE_CHOOSER(gtkDialog), false);
+        return;
+    }
+
+    // This will preserve the image's aspect ratio.
+    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_size(filename, PREVIEW_WIDTH, PREVIEW_HEIGHT, 0);
+    g_free(filename);
+    if (pixbuf) {
+        gtk_image_set_from_pixbuf(GTK_IMAGE(helper->previewWidget), pixbuf);
+        g_object_unref(pixbuf);
+    }
+    gtk_file_chooser_set_preview_widget_active(GTK_FILE_CHOOSER(gtkDialog), pixbuf ? true : false);
 }
 
 static GtkFileChooserAction gtkFileChooserAction(const QSharedPointer<QFileDialogOptions> &options)
@@ -481,10 +477,10 @@ void QGtk3FileDialogHelper::setNameFilters(const QStringList &filters)
 
     foreach (const QString &filter, filters) {
         GtkFileFilter *gtkFilter = gtk_file_filter_new();
-        const QString name = filter.left(filter.indexOf(QLatin1Char('(')));
+        const QString name = filter.left(filter.indexOf(u'('));
         const QStringList extensions = cleanFilterList(filter);
 
-        gtk_file_filter_set_name(gtkFilter, qUtf8Printable(name.isEmpty() ? extensions.join(QLatin1String(", ")) : name));
+        gtk_file_filter_set_name(gtkFilter, qUtf8Printable(name.isEmpty() ? extensions.join(", "_L1) : name));
         foreach (const QString &ext, extensions)
             gtk_file_filter_add_pattern(gtkFilter, qUtf8Printable(ext));
 
@@ -497,10 +493,7 @@ void QGtk3FileDialogHelper::setNameFilters(const QStringList &filters)
 
 QGtk3FontDialogHelper::QGtk3FontDialogHelper()
 {
-    d.reset(new QGtk3Dialog(gtk_font_chooser_dialog_new("", nullptr)));
-    connect(d.data(), SIGNAL(accept()), this, SLOT(onAccepted()));
-    connect(d.data(), SIGNAL(reject()), this, SIGNAL(reject()));
-
+    d.reset(new QGtk3Dialog(gtk_font_chooser_dialog_new("", nullptr), this));
     g_signal_connect_swapped(d->gtkDialog(), "notify::font", G_CALLBACK(onFontChanged), this);
 }
 
@@ -573,10 +566,9 @@ static QFont qt_fontFromString(const QString &name)
 
     QString family = QString::fromUtf8(pango_font_description_get_family(desc));
     if (!family.isEmpty())
-        font.setFamily(family);
+        font.setFamilies(QStringList{family});
 
-    const int weight = pango_font_description_get_weight(desc);
-    font.setWeight(QPlatformFontDatabase::weightFromInteger(weight));
+    font.setWeight(QFont::Weight(pango_font_description_get_weight(desc)));
 
     PangoStyle style = pango_font_description_get_style(desc);
     if (style == PANGO_STYLE_ITALIC)
@@ -605,11 +597,6 @@ QFont QGtk3FontDialogHelper::currentFont() const
     return font;
 }
 
-void QGtk3FontDialogHelper::onAccepted()
-{
-    emit accept();
-}
-
 void QGtk3FontDialogHelper::onFontChanged(QGtk3FontDialogHelper *dialog)
 {
     emit dialog->currentFontChanged(dialog->currentFont());
@@ -625,4 +612,4 @@ void QGtk3FontDialogHelper::applyOptions()
 
 QT_END_NAMESPACE
 
-#include "qgtk3dialoghelpers.moc"
+#include "moc_qgtk3dialoghelpers.cpp"

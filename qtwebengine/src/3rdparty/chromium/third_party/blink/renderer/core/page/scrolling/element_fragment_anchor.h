@@ -1,19 +1,22 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_PAGE_SCROLLING_ELEMENT_FRAGMENT_ANCHOR_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_PAGE_SCROLLING_ELEMENT_FRAGMENT_ANCHOR_H_
 
+#include "base/gtest_prod_util.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/page/scrolling/fragment_anchor.h"
 #include "third_party/blink/renderer/core/scroll/scroll_types.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
 
 namespace blink {
 
 class LocalFrame;
 class KURL;
+class Node;
 
 // An element fragment anchor is a FragmentAnchor based on a single element.
 // This is the traditional fragment anchor of the web. For example, the fragment
@@ -34,6 +37,8 @@ class CORE_EXPORT ElementFragmentAnchor final : public FragmentAnchor {
                                           bool should_scroll);
 
   ElementFragmentAnchor(Node& anchor_node, LocalFrame& frame);
+  ElementFragmentAnchor(const ElementFragmentAnchor&) = delete;
+  ElementFragmentAnchor& operator=(const ElementFragmentAnchor&) = delete;
   ~ElementFragmentAnchor() override = default;
 
   // Will attempt to scroll the anchor into view.
@@ -50,10 +55,7 @@ class CORE_EXPORT ElementFragmentAnchor final : public FragmentAnchor {
   // Attempts to focus the anchor if we couldn't focus right after install
   // (because rendering was blocked at the time). This can cause script to run
   // so we can't do it in Invoke.
-  void PerformPreRafActions() override;
-
-  // Does nothing as an element anchor does not have any dismissal work.
-  bool Dismiss() override;
+  void PerformScriptableActions() override;
 
   void Trace(Visitor*) const override;
 
@@ -64,7 +66,6 @@ class CORE_EXPORT ElementFragmentAnchor final : public FragmentAnchor {
   void ApplyFocusIfNeeded();
 
   WeakMember<Node> anchor_node_;
-  Member<LocalFrame> frame_;
   bool needs_focus_;
 
   // While this is true, the fragment is still "active" in the sense that we
@@ -72,8 +73,6 @@ class CORE_EXPORT ElementFragmentAnchor final : public FragmentAnchor {
   // Invoke has no effect and the fragment can be disposed (unless focus is
   // still needed).
   bool needs_invoke_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(ElementFragmentAnchor);
 };
 
 }  // namespace blink

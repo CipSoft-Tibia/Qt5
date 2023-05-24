@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,14 +10,17 @@
 namespace zoom {
 
 // Interface for objects that wish to be notified of changes in ZoomController.
-class ZoomObserver {
+class ZoomObserver : public base::CheckedObserver {
  public:
+  // Fired when the ZoomController is destructed. Observers should deregister
+  // themselves from the ZoomObserver in this event handler. Note that
+  // ZoomController::FromWebContents() returns nullptr at this point already.
+  virtual void OnZoomControllerDestroyed(
+      zoom::ZoomController* zoom_controller) = 0;
+
   // Notification that the zoom percentage has changed.
   virtual void OnZoomChanged(const ZoomController::ZoomChangedEventData& data) {
   }
-
- protected:
-  virtual ~ZoomObserver() {}
 };
 
 }  // namespace zoom

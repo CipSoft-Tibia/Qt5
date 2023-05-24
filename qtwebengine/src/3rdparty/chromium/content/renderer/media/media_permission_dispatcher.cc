@@ -1,14 +1,13 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/renderer/media/media_permission_dispatcher.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
-#include "media/base/bind_to_current_loop.h"
+#include "base/task/bind_post_task.h"
+#include "base/task/single_thread_task_runner.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "url/gurl.h"
 
@@ -44,7 +43,7 @@ namespace content {
 
 MediaPermissionDispatcher::MediaPermissionDispatcher(
     RenderFrameImpl* render_frame)
-    : task_runner_(base::ThreadTaskRunnerHandle::Get()),
+    : task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
       next_request_id_(0),
       render_frame_(render_frame) {
   DCHECK(render_frame_);
@@ -69,10 +68,10 @@ void MediaPermissionDispatcher::HasPermission(
     PermissionStatusCB permission_status_cb) {
   if (!task_runner_->RunsTasksInCurrentSequence()) {
     task_runner_->PostTask(
-        FROM_HERE,
-        base::BindOnce(
-            &MediaPermissionDispatcher::HasPermission, weak_ptr_, type,
-            media::BindToCurrentLoop(std::move(permission_status_cb))));
+        FROM_HERE, base::BindOnce(&MediaPermissionDispatcher::HasPermission,
+                                  weak_ptr_, type,
+                                  base::BindPostTaskToCurrentDefault(
+                                      std::move(permission_status_cb))));
     return;
   }
 
@@ -92,10 +91,10 @@ void MediaPermissionDispatcher::RequestPermission(
     PermissionStatusCB permission_status_cb) {
   if (!task_runner_->RunsTasksInCurrentSequence()) {
     task_runner_->PostTask(
-        FROM_HERE,
-        base::BindOnce(
-            &MediaPermissionDispatcher::RequestPermission, weak_ptr_, type,
-            media::BindToCurrentLoop(std::move(permission_status_cb))));
+        FROM_HERE, base::BindOnce(&MediaPermissionDispatcher::RequestPermission,
+                                  weak_ptr_, type,
+                                  base::BindPostTaskToCurrentDefault(
+                                      std::move(permission_status_cb))));
     return;
   }
 
@@ -113,10 +112,6 @@ void MediaPermissionDispatcher::RequestPermission(
 
 bool MediaPermissionDispatcher::IsEncryptedMediaEnabled() {
   return render_frame_->GetRendererPreferences().enable_encrypted_media;
-}
-
-void MediaPermissionDispatcher::NotifyUnsupportedPlatform() {
-  GetCdmInfobarService()->NotifyUnsupportedPlatform();
 }
 
 uint32_t MediaPermissionDispatcher::RegisterCallback(
@@ -140,16 +135,6 @@ MediaPermissionDispatcher::GetPermissionService() {
   }
 
   return permission_service_.get();
-}
-
-media::mojom::CdmInfobarService*
-MediaPermissionDispatcher::GetCdmInfobarService() {
-  if (!cdm_infobar_service_) {
-    render_frame_->GetBrowserInterfaceBroker()->GetInterface(
-        cdm_infobar_service_.BindNewPipeAndPassReceiver());
-  }
-
-  return cdm_infobar_service_.get();
 }
 
 void MediaPermissionDispatcher::OnPermissionStatus(

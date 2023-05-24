@@ -21,6 +21,7 @@
 #import "api/peerconnection/RTCRtpTransceiver.h"
 #import "api/peerconnection/RTCSessionDescription.h"
 #import "api/peerconnection/RTCVideoSource.h"
+#import "rtc_base/system/unused.h"
 
 #import <XCTest/XCTest.h>
 
@@ -64,6 +65,7 @@
       factory = nil;
     }
     mediaStream = nil;
+    RTC_UNUSED(mediaStream);
   }
 
   XCTAssertTrue(true, "Expect test does not crash");
@@ -132,6 +134,7 @@
 - (void)testRTCRtpSenderLifetime {
   @autoreleasepool {
     RTC_OBJC_TYPE(RTCConfiguration) *config = [[RTC_OBJC_TYPE(RTCConfiguration) alloc] init];
+    config.sdpSemantics = RTCSdpSemanticsPlanB;
     RTC_OBJC_TYPE(RTCMediaConstraints) *constraints =
         [[RTC_OBJC_TYPE(RTCMediaConstraints) alloc] initWithMandatoryConstraints:@{}
                                                              optionalConstraints:nil];
@@ -159,6 +162,7 @@
 - (void)testRTCRtpReceiverLifetime {
   @autoreleasepool {
     RTC_OBJC_TYPE(RTCConfiguration) *config = [[RTC_OBJC_TYPE(RTCConfiguration) alloc] init];
+    config.sdpSemantics = RTCSdpSemanticsPlanB;
     RTC_OBJC_TYPE(RTCMediaConstraints) *constraints =
         [[RTC_OBJC_TYPE(RTCMediaConstraints) alloc] initWithMandatoryConstraints:@{}
                                                              optionalConstraints:nil];

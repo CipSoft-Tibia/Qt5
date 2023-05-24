@@ -128,11 +128,14 @@ bool RE2::Set::Match(const StringPiece& text, std::vector<int>* v) const {
 bool RE2::Set::Match(const StringPiece& text, std::vector<int>* v,
                      ErrorInfo* error_info) const {
   if (!compiled_) {
-    LOG(DFATAL) << "RE2::Set::Match() called before compiling";
     if (error_info != NULL)
       error_info->kind = kNotCompiled;
+    LOG(DFATAL) << "RE2::Set::Match() called before compiling";
     return false;
   }
+#ifdef RE2_HAVE_THREAD_LOCAL
+  hooks::context = NULL;
+#endif
   bool dfa_failed = false;
   std::unique_ptr<SparseSet> matches;
   if (v != NULL) {
@@ -158,9 +161,9 @@ bool RE2::Set::Match(const StringPiece& text, std::vector<int>* v,
   }
   if (v != NULL) {
     if (matches->empty()) {
-      LOG(DFATAL) << "RE2::Set::Match() matched, but no matches returned?!";
       if (error_info != NULL)
         error_info->kind = kInconsistent;
+      LOG(DFATAL) << "RE2::Set::Match() matched, but no matches returned?!";
       return false;
     }
     v->assign(matches->begin(), matches->end());

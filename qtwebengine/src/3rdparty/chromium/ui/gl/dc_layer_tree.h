@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,15 +12,49 @@
 
 #include <memory>
 
+#include "base/containers/flat_map.h"
+#include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "ui/gfx/color_space_win.h"
 #include "ui/gfx/geometry/size.h"
-#include "ui/gl/dc_renderer_layer_params.h"
+#include "ui/gl/dc_layer_overlay_params.h"
+#include "ui/gl/delegated_ink_point_renderer_gpu.h"
 #include "ui/gl/hdr_metadata_helper_win.h"
+
+namespace gfx {
+namespace mojom {
+class DelegatedInkPointRenderer;
+}  // namespace mojom
+class DelegatedInkMetadata;
+}  // namespace gfx
 
 namespace gl {
 
 class DirectCompositionChildSurfaceWin;
 class SwapChainPresenter;
+
+enum class VideoProcessorType { kSDR, kHDR };
+
+// Cache video processor and its size.
+struct VideoProcessorWrapper {
+  VideoProcessorWrapper();
+  ~VideoProcessorWrapper();
+  VideoProcessorWrapper(VideoProcessorWrapper&& other);
+  VideoProcessorWrapper& operator=(VideoProcessorWrapper&& other);
+  VideoProcessorWrapper(const VideoProcessorWrapper&) = delete;
+  VideoProcessorWrapper& operator=(VideoProcessorWrapper& other) = delete;
+
+  // Input and output size of video processor .
+  gfx::Size video_input_size;
+  gfx::Size video_output_size;
+
+  // The video processor is cached so SwapChains don't have to recreate it
+  // whenever they're created.
+  Microsoft::WRL::ComPtr<ID3D11VideoDevice> video_device;
+  Microsoft::WRL::ComPtr<ID3D11VideoContext> video_context;
+  Microsoft::WRL::ComPtr<ID3D11VideoProcessor> video_processor;
+  Microsoft::WRL::ComPtr<ID3D11VideoProcessorEnumerator>
+      video_processor_enumerator;
+};
 
 // DCLayerTree manages a tree of direct composition visuals, and associated
 // swap chains for given overlay layers.  It maintains a list of pending layers
@@ -28,16 +62,26 @@ class SwapChainPresenter;
 // CommitAndClearPendingOverlays().
 class DCLayerTree {
  public:
+  using VideoProcessorMap =
+      base::flat_map<VideoProcessorType, VideoProcessorWrapper>;
+  using DelegatedInkRenderer =
+      DelegatedInkPointRendererGpu<IDCompositionInkTrailDevice,
+                                   IDCompositionDelegatedInkTrail,
+                                   DCompositionInkTrailPoint>;
+
   DCLayerTree(bool disable_nv12_dynamic_textures,
-              bool disable_larger_than_screen_overlays,
               bool disable_vp_scaling,
-              bool reset_vp_when_colorspace_changes);
+              bool disable_vp_super_resolution,
+              bool force_dcomp_triple_buffer_video_swap_chain,
+              bool no_downscaled_overlay_promotion);
+
+  DCLayerTree(const DCLayerTree&) = delete;
+  DCLayerTree& operator=(const DCLayerTree&) = delete;
+
   ~DCLayerTree();
 
   // Returns true on success.
-  bool Initialize(HWND window,
-                  Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device,
-                  Microsoft::WRL::ComPtr<IDCompositionDevice2> dcomp_device);
+  bool Initialize(HWND window);
 
   // Present pending overlay layers, and perform a direct composition commit if
   // necessary.  Returns true if presentation and commit succeeded.
@@ -45,54 +89,47 @@ class DCLayerTree {
       DirectCompositionChildSurfaceWin* root_surface);
 
   // Schedule an overlay layer for the next CommitAndClearPendingOverlays call.
-  bool ScheduleDCLayer(const ui::DCRendererLayerParams& params);
+  bool ScheduleDCLayer(std::unique_ptr<DCLayerOverlayParams> params);
 
   // Called by SwapChainPresenter to initialize video processor that can handle
   // at least given input and output size.  The video processor is shared across
   // layers so the same one can be reused if it's large enough.  Returns true on
   // success.
-  bool InitializeVideoProcessor(const gfx::Size& input_size,
-                                const gfx::Size& output_size,
-                                const gfx::ColorSpace& input_color_space,
-                                const gfx::ColorSpace& output_color_space);
-
-  void SetColorspaceForVideoProcessor(
-      const gfx::ColorSpace& input_color_space,
-      const gfx::ColorSpace& output_color_space,
-      Microsoft::WRL::ComPtr<IDXGISwapChain1> swapchain,
-      bool is_yuv_swapchain);
-
-  void SetNeedsRebuildVisualTree() { needs_rebuild_visual_tree_ = true; }
+  VideoProcessorWrapper* InitializeVideoProcessor(const gfx::Size& input_size,
+                                                  const gfx::Size& output_size,
+                                                  bool is_hdr_output);
 
   bool disable_nv12_dynamic_textures() const {
     return disable_nv12_dynamic_textures_;
   }
 
-  bool disable_larger_than_screen_overlays() const {
-    return disable_larger_than_screen_overlays_;
-  }
-
   bool disable_vp_scaling() const { return disable_vp_scaling_; }
 
-  const Microsoft::WRL::ComPtr<ID3D11VideoDevice>& video_device() const {
-    return video_device_;
+  bool disable_vp_super_resolution() const {
+    return disable_vp_super_resolution_;
   }
 
-  const Microsoft::WRL::ComPtr<ID3D11VideoContext>& video_context() const {
-    return video_context_;
+  bool force_dcomp_triple_buffer_video_swap_chain() const {
+    return force_dcomp_triple_buffer_video_swap_chain_;
   }
 
-  const Microsoft::WRL::ComPtr<ID3D11VideoProcessor>& video_processor() const {
-    return video_processor_;
+  bool no_downscaled_overlay_promotion() const {
+    return no_downscaled_overlay_promotion_;
   }
 
-  const Microsoft::WRL::ComPtr<ID3D11VideoProcessorEnumerator>&
-  video_processor_enumerator() const {
-    return video_processor_enumerator_;
-  }
+  VideoProcessorWrapper& GetOrCreateVideoProcessor(bool is_hdr);
 
   Microsoft::WRL::ComPtr<IDXGISwapChain1> GetLayerSwapChainForTesting(
       size_t index) const;
+
+  void GetSwapChainVisualInfoForTesting(size_t index,
+                                        gfx::Transform* transform,
+                                        gfx::Point* offset,
+                                        gfx::Rect* clip_rect) const;
+
+  size_t GetSwapChainPresenterCountForTesting() const {
+    return video_swap_chains_.size();
+  }
 
   void SetFrameRate(float frame_rate);
 
@@ -100,36 +137,124 @@ class DCLayerTree {
     return hdr_metadata_helper_;
   }
 
- private:
-  const bool disable_nv12_dynamic_textures_;
-  const bool disable_larger_than_screen_overlays_;
-  const bool disable_vp_scaling_;
-  const bool reset_vp_when_colorspace_changes_;
+  HWND window() const { return window_; }
 
+  bool SupportsDelegatedInk();
+
+  void SetDelegatedInkTrailStartPoint(
+      std::unique_ptr<gfx::DelegatedInkMetadata>);
+
+  void InitDelegatedInkPointRendererReceiver(
+      mojo::PendingReceiver<gfx::mojom::DelegatedInkPointRenderer>
+          pending_receiver);
+
+  DelegatedInkRenderer* GetInkRendererForTesting() const {
+    return ink_renderer_.get();
+  }
+
+  // Owns a subtree of DComp visual that apply clip, offset, etc. and contains
+  // some content at its leaf.
+  // This class keeps track about what properties are currently set on the
+  // visuals.
+  class VisualSubtree {
+   public:
+    VisualSubtree();
+    ~VisualSubtree();
+    VisualSubtree(VisualSubtree&& other) = delete;
+    VisualSubtree& operator=(VisualSubtree&& other) = delete;
+    VisualSubtree(const VisualSubtree&) = delete;
+    VisualSubtree& operator=(VisualSubtree& other) = delete;
+
+    // Returns true if something was changed.
+    bool Update(IDCompositionDevice2* dcomp_device,
+                Microsoft::WRL::ComPtr<IUnknown> dcomp_visual_content,
+                uint64_t dcomp_surface_serial,
+                const gfx::Vector2d& quad_rect_offset,
+                const gfx::Transform& quad_to_root_transform,
+                const absl::optional<gfx::Rect>& clip_rect_in_root);
+
+    IDCompositionVisual2* container_visual() const {
+      return clip_visual_.Get();
+    }
+    IDCompositionVisual2* content_visual() const {
+      return content_visual_.Get();
+    }
+
+    void GetSwapChainVisualInfoForTesting(gfx::Transform* transform,
+                                          gfx::Point* offset,
+                                          gfx::Rect* clip_rect) const;
+
+    int z_order() const { return z_order_; }
+    void set_z_order(int z_order) { z_order_ = z_order; }
+
+   private:
+    Microsoft::WRL::ComPtr<IDCompositionVisual2> clip_visual_;
+    Microsoft::WRL::ComPtr<IDCompositionVisual2> content_visual_;
+
+    // The content to be placed at the leaf of the visual subtree. Either an
+    // IDCompositionSurface or an IDXGISwapChain.
+    Microsoft::WRL::ComPtr<IUnknown> dcomp_visual_content_;
+    // |dcomp_surface_serial_| is associated with |dcomp_visual_content_| of
+    // IDCompositionSurface type. New value indicates that dcomp surface data is
+    // updated.
+    uint64_t dcomp_surface_serial_ = 0;
+
+    // Offset of the top left of the visual in quad space
+    gfx::Vector2d offset_;
+
+    // Transform from quad space to root space
+    gfx::Transform transform_;
+
+    // Clip rect in root space
+    absl::optional<gfx::Rect> clip_rect_;
+
+    // The order relative to the root surface. Positive values means the visual
+    // appears in front of the root surface (i.e. overlay) and negative values
+    // means the visual appears below the root surface (i.e. underlay)
+    int z_order_ = 0;
+  };
+
+ private:
+  // Given pending overlays, builds or updates visual tree.
+  // Returns true if commit succeeded.
+  bool BuildVisualTreeHelper(
+      const std::vector<std::unique_ptr<DCLayerOverlayParams>>& overlays,
+      // True if the caller determined that rebuilding the tree is required.
+      bool needs_rebuild_visual_tree);
+
+  // This will add an ink visual to the visual tree to enable delegated ink
+  // trails. This will initially always be called directly before an OS
+  // delegated ink API is used. After that, it can also be added anytime the
+  // visual tree is rebuilt.
+  void AddDelegatedInkVisualToTree();
+
+  // The ink renderer must be initialized before an OS API is used in order to
+  // set up the delegated ink visual and delegated ink trail object.
+  bool InitializeInkRenderer();
+
+  const bool disable_nv12_dynamic_textures_;
+  const bool disable_vp_scaling_;
+  const bool disable_vp_super_resolution_;
+  const bool force_dcomp_triple_buffer_video_swap_chain_;
+  const bool no_downscaled_overlay_promotion_;
+
+  HWND window_;
   Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device_;
   Microsoft::WRL::ComPtr<IDCompositionDevice2> dcomp_device_;
   Microsoft::WRL::ComPtr<IDCompositionTarget> dcomp_target_;
 
-  // The video processor is cached so SwapChains don't have to recreate it
-  // whenever they're created.
-  Microsoft::WRL::ComPtr<ID3D11VideoDevice> video_device_;
-  Microsoft::WRL::ComPtr<ID3D11VideoContext> video_context_;
-  Microsoft::WRL::ComPtr<ID3D11VideoProcessor> video_processor_;
-  Microsoft::WRL::ComPtr<ID3D11VideoProcessorEnumerator>
-      video_processor_enumerator_;
-
-  // Current video processor input and output size.
-  gfx::Size video_input_size_;
-  gfx::Size video_output_size_;
+  // Store video processor for SDR/HDR mode separately, which could avoid
+  // problem in (http://crbug.com/1121061).
+  VideoProcessorMap video_processor_map_;
 
   // Current video processor input and output colorspace.
   gfx::ColorSpace video_input_color_space_;
   gfx::ColorSpace video_output_color_space_;
 
-  // Cache the last swapchain that has been set output colorspace.
-  Microsoft::WRL::ComPtr<IDXGISwapChain1> last_swapchain_setting_colorspace_;
-
-  // Set to true if a direct composition visual tree needs rebuild.
+  // Set to true if a direct composition root visual needs rebuild.
+  // Each overlay is represented by a VisualSubtree, which is placed in the root
+  // visual's child list in draw order. Whenever the number of overlays or their
+  // draw order changes, the root visual needs to be rebuilt.
   bool needs_rebuild_visual_tree_ = false;
 
   // Set if root surface is using a swap chain currently.
@@ -137,7 +262,6 @@ class DCLayerTree {
 
   // Set if root surface is using a direct composition surface currently.
   Microsoft::WRL::ComPtr<IDCompositionSurface> root_dcomp_surface_;
-  uint64_t root_dcomp_surface_serial_;
 
   // Direct composition visual for root surface.
   Microsoft::WRL::ComPtr<IDCompositionVisual2> root_surface_visual_;
@@ -146,10 +270,13 @@ class DCLayerTree {
   Microsoft::WRL::ComPtr<IDCompositionVisual2> dcomp_root_visual_;
 
   // List of pending overlay layers from ScheduleDCLayer().
-  std::vector<std::unique_ptr<ui::DCRendererLayerParams>> pending_overlays_;
+  std::vector<std::unique_ptr<DCLayerOverlayParams>> pending_overlays_;
 
   // List of swap chain presenters for previous frame.
   std::vector<std::unique_ptr<SwapChainPresenter>> video_swap_chains_;
+
+  // List of DCOMP visual subtrees for previous frame.
+  std::vector<std::unique_ptr<VisualSubtree>> visual_subtrees_;
 
   // Number of frames per second.
   float frame_rate_ = 0.f;
@@ -157,7 +284,11 @@ class DCLayerTree {
   // dealing with hdr metadata
   std::unique_ptr<HDRMetadataHelperWin> hdr_metadata_helper_;
 
-  DISALLOW_COPY_AND_ASSIGN(DCLayerTree);
+  // Renderer for drawing delegated ink trails using OS APIs. This is created
+  // when the DCLayerTree is created, but can only be queried to check if the
+  // platform supports delegated ink trails. It must be initialized via the
+  // Initialize() method in order to be used for drawing delegated ink trails.
+  std::unique_ptr<DelegatedInkRenderer> ink_renderer_;
 };
 
 }  // namespace gl

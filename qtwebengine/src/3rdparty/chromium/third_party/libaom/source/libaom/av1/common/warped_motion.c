@@ -27,7 +27,6 @@
 // We need an extra 2 taps to fit this in, for a total of 8 taps.
 /* clang-format off */
 const int16_t av1_warped_filter[WARPEDPIXEL_PREC_SHIFTS * 3 + 1][8] = {
-#if WARPEDPIXEL_PREC_BITS == 6
   // [-1, 0)
   { 0,   0, 127,   1,   0, 0, 0, 0 }, { 0, - 1, 127,   2,   0, 0, 0, 0 },
   { 1, - 3, 127,   4, - 1, 0, 0, 0 }, { 1, - 4, 126,   6, - 2, 1, 0, 0 },
@@ -131,63 +130,6 @@ const int16_t av1_warped_filter[WARPEDPIXEL_PREC_SHIFTS * 3 + 1][8] = {
   { 0, 0, 0, - 1,   4, 127, - 3, 1 }, { 0, 0, 0,   0,   2, 127, - 1, 0 },
   // dummy (replicate row index 191)
   { 0, 0, 0,   0,   2, 127, - 1, 0 },
-
-#elif WARPEDPIXEL_PREC_BITS == 5
-  // [-1, 0)
-  {0,   0, 127,   1,   0, 0, 0, 0}, {1,  -3, 127,   4,  -1, 0, 0, 0},
-  {1,  -5, 126,   8,  -3, 1, 0, 0}, {1,  -7, 124,  13,  -4, 1, 0, 0},
-  {2,  -9, 122,  18,  -6, 1, 0, 0}, {2, -11, 120,  22,  -7, 2, 0, 0},
-  {3, -13, 117,  27,  -8, 2, 0, 0}, {3, -14, 114,  32, -10, 3, 0, 0},
-  {3, -15, 111,  37, -11, 3, 0, 0}, {3, -16, 108,  42, -12, 3, 0, 0},
-  {4, -17, 104,  47, -13, 3, 0, 0}, {4, -17, 100,  52, -14, 3, 0, 0},
-  {4, -18,  96,  58, -15, 3, 0, 0}, {4, -18,  91,  63, -16, 4, 0, 0},
-  {4, -18,  87,  68, -17, 4, 0, 0}, {4, -18,  82,  73, -17, 4, 0, 0},
-  {4, -18,  78,  78, -18, 4, 0, 0}, {4, -17,  73,  82, -18, 4, 0, 0},
-  {4, -17,  68,  87, -18, 4, 0, 0}, {4, -16,  63,  91, -18, 4, 0, 0},
-  {3, -15,  58,  96, -18, 4, 0, 0}, {3, -14,  52, 100, -17, 4, 0, 0},
-  {3, -13,  47, 104, -17, 4, 0, 0}, {3, -12,  42, 108, -16, 3, 0, 0},
-  {3, -11,  37, 111, -15, 3, 0, 0}, {3, -10,  32, 114, -14, 3, 0, 0},
-  {2,  -8,  27, 117, -13, 3, 0, 0}, {2,  -7,  22, 120, -11, 2, 0, 0},
-  {1,  -6,  18, 122,  -9, 2, 0, 0}, {1,  -4,  13, 124,  -7, 1, 0, 0},
-  {1,  -3,   8, 126,  -5, 1, 0, 0}, {0,  -1,   4, 127,  -3, 1, 0, 0},
-  // [0, 1)
-  { 0,  0,   0, 127,   1,   0,   0,  0}, { 0,  1,  -3, 127,   4,  -2,   1,  0},
-  { 0,  2,  -6, 126,   8,  -3,   1,  0}, {-1,  3,  -8, 125,  13,  -5,   2, -1},
-  {-1,  4, -11, 123,  18,  -7,   3, -1}, {-1,  4, -13, 121,  23,  -8,   3, -1},
-  {-1,  5, -15, 119,  27, -10,   4, -1}, {-2,  6, -17, 116,  33, -12,   5, -1},
-  {-2,  6, -18, 113,  38, -13,   5, -1}, {-2,  7, -19, 110,  43, -15,   6, -2},
-  {-2,  7, -20, 106,  49, -16,   6, -2}, {-2,  7, -21, 102,  54, -17,   7, -2},
-  {-2,  8, -22,  98,  59, -18,   7, -2}, {-2,  8, -22,  94,  64, -19,   7, -2},
-  {-2,  8, -22,  89,  69, -20,   8, -2}, {-2,  8, -21,  84,  74, -21,   8, -2},
-  {-2,  8, -21,  79,  79, -21,   8, -2}, {-2,  8, -21,  74,  84, -21,   8, -2},
-  {-2,  8, -20,  69,  89, -22,   8, -2}, {-2,  7, -19,  64,  94, -22,   8, -2},
-  {-2,  7, -18,  59,  98, -22,   8, -2}, {-2,  7, -17,  54, 102, -21,   7, -2},
-  {-2,  6, -16,  49, 106, -20,   7, -2}, {-2,  6, -15,  43, 110, -19,   7, -2},
-  {-1,  5, -13,  38, 113, -18,   6, -2}, {-1,  5, -12,  33, 116, -17,   6, -2},
-  {-1,  4, -10,  27, 119, -15,   5, -1}, {-1,  3,  -8,  23, 121, -13,   4, -1},
-  {-1,  3,  -7,  18, 123, -11,   4, -1}, {-1,  2,  -5,  13, 125,  -8,   3, -1},
-  { 0,  1,  -3,   8, 126,  -6,   2,  0}, { 0,  1,  -2,   4, 127,  -3,   1,  0},
-  // [1, 2)
-  {0, 0, 0,   1, 127,   0,   0, 0}, {0, 0, 1,  -3, 127,   4,  -1, 0},
-  {0, 0, 1,  -5, 126,   8,  -3, 1}, {0, 0, 1,  -7, 124,  13,  -4, 1},
-  {0, 0, 2,  -9, 122,  18,  -6, 1}, {0, 0, 2, -11, 120,  22,  -7, 2},
-  {0, 0, 3, -13, 117,  27,  -8, 2}, {0, 0, 3, -14, 114,  32, -10, 3},
-  {0, 0, 3, -15, 111,  37, -11, 3}, {0, 0, 3, -16, 108,  42, -12, 3},
-  {0, 0, 4, -17, 104,  47, -13, 3}, {0, 0, 4, -17, 100,  52, -14, 3},
-  {0, 0, 4, -18,  96,  58, -15, 3}, {0, 0, 4, -18,  91,  63, -16, 4},
-  {0, 0, 4, -18,  87,  68, -17, 4}, {0, 0, 4, -18,  82,  73, -17, 4},
-  {0, 0, 4, -18,  78,  78, -18, 4}, {0, 0, 4, -17,  73,  82, -18, 4},
-  {0, 0, 4, -17,  68,  87, -18, 4}, {0, 0, 4, -16,  63,  91, -18, 4},
-  {0, 0, 3, -15,  58,  96, -18, 4}, {0, 0, 3, -14,  52, 100, -17, 4},
-  {0, 0, 3, -13,  47, 104, -17, 4}, {0, 0, 3, -12,  42, 108, -16, 3},
-  {0, 0, 3, -11,  37, 111, -15, 3}, {0, 0, 3, -10,  32, 114, -14, 3},
-  {0, 0, 2,  -8,  27, 117, -13, 3}, {0, 0, 2,  -7,  22, 120, -11, 2},
-  {0, 0, 1,  -6,  18, 122,  -9, 2}, {0, 0, 1,  -4,  13, 124,  -7, 1},
-  {0, 0, 1,  -3,   8, 126,  -5, 1}, {0, 0, 0,  -1,   4, 127,  -3, 1},
-  // dummy (replicate row index 95)
-  {0, 0, 0,  -1,   4, 127,  -3, 1},
-
-#endif  // WARPEDPIXEL_PREC_BITS == 6
 };
 
 /* clang-format on */
@@ -350,14 +292,16 @@ void av1_highbd_warp_affine_c(const int32_t *mat, const uint16_t *ref,
       // then convert back to the original coordinates (if necessary)
       const int32_t src_x = (j + 4) << subsampling_x;
       const int32_t src_y = (i + 4) << subsampling_y;
-      const int32_t dst_x = mat[2] * src_x + mat[3] * src_y + mat[0];
-      const int32_t dst_y = mat[4] * src_x + mat[5] * src_y + mat[1];
-      const int32_t x4 = dst_x >> subsampling_x;
-      const int32_t y4 = dst_y >> subsampling_y;
+      const int64_t dst_x =
+          (int64_t)mat[2] * src_x + (int64_t)mat[3] * src_y + (int64_t)mat[0];
+      const int64_t dst_y =
+          (int64_t)mat[4] * src_x + (int64_t)mat[5] * src_y + (int64_t)mat[1];
+      const int64_t x4 = dst_x >> subsampling_x;
+      const int64_t y4 = dst_y >> subsampling_y;
 
-      const int32_t ix4 = x4 >> WARPEDMODEL_PREC_BITS;
+      const int32_t ix4 = (int32_t)(x4 >> WARPEDMODEL_PREC_BITS);
       int32_t sx4 = x4 & ((1 << WARPEDMODEL_PREC_BITS) - 1);
-      const int32_t iy4 = y4 >> WARPEDMODEL_PREC_BITS;
+      const int32_t iy4 = (int32_t)(y4 >> WARPEDMODEL_PREC_BITS);
       int32_t sy4 = y4 & ((1 << WARPEDMODEL_PREC_BITS) - 1);
 
       sx4 += alpha * (-4) + beta * (-4);
@@ -540,7 +484,7 @@ static int64_t highbd_segmented_frame_error(
    are set appropriately (if using a ROTZOOM model), and that alpha, beta,
    gamma, delta are all in range.
 
-   TODO(david.barker): Maybe support scaled references?
+   TODO(rachelbarker): Maybe support scaled references?
 */
 /* A note on hardware implementation:
     The warp filter is intended to be implementable using the same hardware as
@@ -621,14 +565,16 @@ void av1_warp_affine_c(const int32_t *mat, const uint8_t *ref, int width,
       // then convert back to the original coordinates (if necessary)
       const int32_t src_x = (j + 4) << subsampling_x;
       const int32_t src_y = (i + 4) << subsampling_y;
-      const int32_t dst_x = mat[2] * src_x + mat[3] * src_y + mat[0];
-      const int32_t dst_y = mat[4] * src_x + mat[5] * src_y + mat[1];
-      const int32_t x4 = dst_x >> subsampling_x;
-      const int32_t y4 = dst_y >> subsampling_y;
+      const int64_t dst_x =
+          (int64_t)mat[2] * src_x + (int64_t)mat[3] * src_y + (int64_t)mat[0];
+      const int64_t dst_y =
+          (int64_t)mat[4] * src_x + (int64_t)mat[5] * src_y + (int64_t)mat[1];
+      const int64_t x4 = dst_x >> subsampling_x;
+      const int64_t y4 = dst_y >> subsampling_y;
 
-      int32_t ix4 = x4 >> WARPEDMODEL_PREC_BITS;
+      int32_t ix4 = (int32_t)(x4 >> WARPEDMODEL_PREC_BITS);
       int32_t sx4 = x4 & ((1 << WARPEDMODEL_PREC_BITS) - 1);
-      int32_t iy4 = y4 >> WARPEDMODEL_PREC_BITS;
+      int32_t iy4 = (int32_t)(y4 >> WARPEDMODEL_PREC_BITS);
       int32_t sy4 = y4 & ((1 << WARPEDMODEL_PREC_BITS) - 1);
 
       sx4 += alpha * (-4) + beta * (-4);
@@ -1052,8 +998,6 @@ static int find_affine_int(int np, const int *pts1, const int *pts2,
       clamp(vx, -WARPEDMODEL_TRANS_CLAMP, WARPEDMODEL_TRANS_CLAMP - 1);
   wm->wmmat[1] =
       clamp(vy, -WARPEDMODEL_TRANS_CLAMP, WARPEDMODEL_TRANS_CLAMP - 1);
-
-  wm->wmmat[6] = wm->wmmat[7] = 0;
   return 0;
 }
 

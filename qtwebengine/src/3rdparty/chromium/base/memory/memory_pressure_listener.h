@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,9 +11,9 @@
 #define BASE_MEMORY_MEMORY_PRESSURE_LISTENER_H_
 
 #include "base/base_export.h"
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
-#include "base/macros.h"
+#include "base/tracing_buildflags.h"
 
 namespace base {
 
@@ -84,6 +84,9 @@ class BASE_EXPORT MemoryPressureListener {
       const MemoryPressureCallback& memory_pressure_callback,
       const SyncMemoryPressureCallback& sync_memory_pressure_callback);
 
+  MemoryPressureListener(const MemoryPressureListener&) = delete;
+  MemoryPressureListener& operator=(const MemoryPressureListener&) = delete;
+
   ~MemoryPressureListener();
 
   // Intended for use by the platform specific implementation.
@@ -107,8 +110,6 @@ class BASE_EXPORT MemoryPressureListener {
   SyncMemoryPressureCallback sync_memory_pressure_callback_;
 
   const base::Location creation_location_;
-
-  DISALLOW_COPY_AND_ASSIGN(MemoryPressureListener);
 };
 
 }  // namespace base

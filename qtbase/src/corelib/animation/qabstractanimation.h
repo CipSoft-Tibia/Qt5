@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QABSTRACTANIMATION_H
 #define QABSTRACTANIMATION_H
@@ -49,17 +13,20 @@ QT_BEGIN_NAMESPACE
 class QAnimationGroup;
 class QSequentialAnimationGroup;
 class QAnimationDriver;
+class QUnifiedTimer;
 
 class QAbstractAnimationPrivate;
 class Q_CORE_EXPORT QAbstractAnimation : public QObject
 {
     Q_OBJECT
 
-    Q_PROPERTY(State state READ state NOTIFY stateChanged)
-    Q_PROPERTY(int loopCount READ loopCount WRITE setLoopCount)
-    Q_PROPERTY(int currentTime READ currentTime WRITE setCurrentTime)
-    Q_PROPERTY(int currentLoop READ currentLoop NOTIFY currentLoopChanged)
-    Q_PROPERTY(Direction direction READ direction WRITE setDirection NOTIFY directionChanged)
+    Q_PROPERTY(State state READ state NOTIFY stateChanged BINDABLE bindableState)
+    Q_PROPERTY(int loopCount READ loopCount WRITE setLoopCount BINDABLE bindableLoopCount)
+    Q_PROPERTY(int currentTime READ currentTime WRITE setCurrentTime BINDABLE bindableCurrentTime)
+    Q_PROPERTY(int currentLoop READ currentLoop NOTIFY currentLoopChanged
+               BINDABLE bindableCurrentLoop)
+    Q_PROPERTY(Direction direction READ direction WRITE setDirection NOTIFY directionChanged
+               BINDABLE bindableDirection)
     Q_PROPERTY(int duration READ duration)
 
 public:
@@ -85,18 +52,25 @@ public:
     virtual ~QAbstractAnimation();
 
     State state() const;
+    QBindable<QAbstractAnimation::State> bindableState() const;
 
     QAnimationGroup *group() const;
 
     Direction direction() const;
     void setDirection(Direction direction);
+    QBindable<Direction> bindableDirection();
 
     int currentTime() const;
+    QBindable<int> bindableCurrentTime();
+
     int currentLoopTime() const;
 
     int loopCount() const;
     void setLoopCount(int loopCount);
+    QBindable<int> bindableLoopCount();
+
     int currentLoop() const;
+    QBindable<int> bindableCurrentLoop() const;
 
     virtual int duration() const = 0;
     int totalDuration() const;
@@ -147,18 +121,12 @@ public:
 
     virtual qint64 elapsed() const;
 
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED void setStartTime(qint64 startTime);
-    QT_DEPRECATED qint64 startTime() const;
-#endif
-
 Q_SIGNALS:
     void started();
     void stopped();
 
 protected:
-    // ### Qt6: Remove timestep argument
-    void advanceAnimation(qint64 timeStep = -1);
+    void advanceAnimation();
     virtual void start();
     virtual void stop();
 

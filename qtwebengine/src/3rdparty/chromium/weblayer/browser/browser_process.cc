@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,8 @@
 #include "base/path_service.h"
 #include "base/time/default_clock.h"
 #include "base/time/default_tick_clock.h"
+#include "build/build_config.h"
+#include "components/embedder_support/user_agent_utils.h"
 #include "components/network_time/network_time_tracker.h"
 #include "components/prefs/pref_service.h"
 #include "components/subresource_filter/content/browser/ruleset_service.h"
@@ -16,12 +18,10 @@
 #include "content/public/browser/network_service_instance.h"
 #include "services/network/public/cpp/network_quality_tracker.h"
 #include "weblayer/browser/system_network_context_manager.h"
-#include "weblayer/browser/user_agent.h"
 #include "weblayer/common/weblayer_paths.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "weblayer/browser/safe_browsing/safe_browsing_service.h"
-#include "weblayer/browser/url_bar/page_info_client_impl.h"
 #endif
 
 namespace weblayer {
@@ -50,10 +50,6 @@ BrowserProcess* BrowserProcess::GetInstance() {
 
 void BrowserProcess::PreMainMessageLoopRun() {
   CreateNetworkQualityObserver();
-
-#if defined(OS_ANDROID)
-  page_info::SetPageInfoClient(PageInfoClientImpl::GetInstance());
-#endif
 }
 
 void BrowserProcess::StartTearDown() {
@@ -120,13 +116,13 @@ void BrowserProcess::CreateSubresourceFilterRulesetService() {
                                                  user_data_dir);
 }
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 SafeBrowsingService* BrowserProcess::GetSafeBrowsingService() {
   if (!safe_browsing_service_) {
     // Create and initialize safe_browsing_service on first get.
     // Note: Initialize() needs to happen on UI thread.
     safe_browsing_service_ =
-        std::make_unique<SafeBrowsingService>(GetUserAgent());
+        std::make_unique<SafeBrowsingService>(embedder_support::GetUserAgent());
     safe_browsing_service_->Initialize();
   }
   return safe_browsing_service_.get();

@@ -1,20 +1,18 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/aura/native_window_occlusion_tracker_win.h"
 
+#include <dwmapi.h>
 #include <winuser.h>
 
 #include "base/win/scoped_gdi_object.h"
 #include "base/win/scoped_hdc.h"
-#include "base/win/windows_version.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/aura/test/aura_test_base.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/win/window_impl.h"
-
-#include "dwmapi.h"
 
 namespace aura {
 
@@ -22,6 +20,10 @@ namespace aura {
 class TestNativeWindow : public gfx::WindowImpl {
  public:
   TestNativeWindow() {}
+
+  TestNativeWindow(const TestNativeWindow&) = delete;
+  TestNativeWindow& operator=(const TestNativeWindow&) = delete;
+
   ~TestNativeWindow() override;
 
  private:
@@ -34,13 +36,47 @@ class TestNativeWindow : public gfx::WindowImpl {
                             DWORD msg_map_id) override {
     return FALSE;  // Results in DefWindowProc().
   }
-
-  DISALLOW_COPY_AND_ASSIGN(TestNativeWindow);
 };
 
 TestNativeWindow::~TestNativeWindow() {
   if (hwnd())
     DestroyWindow(hwnd());
+}
+
+// Test wrapper around native window HWND.
+class TestWin32Window {
+ public:
+  TestWin32Window() {}
+
+  TestWin32Window(const TestWin32Window&) = delete;
+  TestWin32Window& operator=(const TestWin32Window&) = delete;
+
+  ~TestWin32Window();
+
+  HWND Create(DWORD style);
+
+ private:
+  HWND hwnd_ = NULL;
+};
+
+TestWin32Window::~TestWin32Window() {
+  if (hwnd_)
+    DestroyWindow(hwnd_);
+}
+
+HWND TestWin32Window::Create(DWORD style) {
+  const wchar_t class_name[] = L"TestWin32Window";
+  WNDCLASSEX wcex = {sizeof(wcex)};
+  wcex.lpfnWndProc = DefWindowProc;
+  wcex.hInstance = ::GetModuleHandle(nullptr);
+  wcex.lpszClassName = class_name;
+  wcex.style = CS_HREDRAW | CS_VREDRAW;
+  RegisterClassEx(&wcex);
+  hwnd_ = CreateWindowEx(0, class_name, class_name, style, 0, 0, 100, 100,
+                         nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
+  ShowWindow(hwnd_, SW_SHOWNORMAL);
+  EXPECT_TRUE(UpdateWindow(hwnd_));
+  return hwnd_;
 }
 
 // This class currently tests the behavior of
@@ -50,11 +86,17 @@ class NativeWindowOcclusionTrackerTest : public test::AuraTestBase {
  public:
   NativeWindowOcclusionTrackerTest() {}
 
+  NativeWindowOcclusionTrackerTest(const NativeWindowOcclusionTrackerTest&) =
+      delete;
+  NativeWindowOcclusionTrackerTest& operator=(
+      const NativeWindowOcclusionTrackerTest&) = delete;
+
   TestNativeWindow* native_win() { return native_win_.get(); }
 
-  HWND CreateNativeWindow(DWORD ex_style) {
+  HWND CreateNativeWindow(DWORD style, DWORD ex_style) {
     native_win_ = std::make_unique<TestNativeWindow>();
-    native_win_->set_window_style(WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN);
+    native_win_->set_window_style(WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN |
+                                  style);
     native_win_->set_window_ex_style(ex_style);
     gfx::Rect bounds(0, 0, 100, 100);
     native_win_->Init(nullptr, bounds);
@@ -89,12 +131,10 @@ class NativeWindowOcclusionTrackerTest : public test::AuraTestBase {
 
  private:
   std::unique_ptr<TestNativeWindow> native_win_;
-
-  DISALLOW_COPY_AND_ASSIGN(NativeWindowOcclusionTrackerTest);
 };
 
 TEST_F(NativeWindowOcclusionTrackerTest, VisibleOpaqueWindow) {
-  HWND hwnd = CreateNativeWindow(/*ex_style=*/0);
+  HWND hwnd = CreateNativeWindow(/*style=*/0, /*ex_style=*/0);
   gfx::Rect returned_rect;
   // Normal windows should be visible.
   EXPECT_TRUE(CheckWindowVisibleAndFullyOpaque(hwnd, &returned_rect));
@@ -106,7 +146,7 @@ TEST_F(NativeWindowOcclusionTrackerTest, VisibleOpaqueWindow) {
 }
 
 TEST_F(NativeWindowOcclusionTrackerTest, MinimizedWindow) {
-  HWND hwnd = CreateNativeWindow(/*ex_style=*/0);
+  HWND hwnd = CreateNativeWindow(/*style=*/0, /*ex_style=*/0);
   gfx::Rect win_rect;
   ShowWindow(hwnd, SW_MINIMIZE);
   // Minimized windows are not considered visible.
@@ -114,21 +154,21 @@ TEST_F(NativeWindowOcclusionTrackerTest, MinimizedWindow) {
 }
 
 TEST_F(NativeWindowOcclusionTrackerTest, TransparentWindow) {
-  HWND hwnd = CreateNativeWindow(WS_EX_TRANSPARENT);
+  HWND hwnd = CreateNativeWindow(/*style=*/0, WS_EX_TRANSPARENT);
   gfx::Rect win_rect;
   // Transparent windows are not considered visible and opaque.
   EXPECT_FALSE(CheckWindowVisibleAndFullyOpaque(hwnd, &win_rect));
 }
 
 TEST_F(NativeWindowOcclusionTrackerTest, ToolWindow) {
-  HWND hwnd = CreateNativeWindow(WS_EX_TOOLWINDOW);
+  HWND hwnd = CreateNativeWindow(/*style=*/0, WS_EX_TOOLWINDOW);
   gfx::Rect win_rect;
   // Tool windows are not considered visible and opaque.
   EXPECT_FALSE(CheckWindowVisibleAndFullyOpaque(hwnd, &win_rect));
 }
 
 TEST_F(NativeWindowOcclusionTrackerTest, LayeredAlphaWindow) {
-  HWND hwnd = CreateNativeWindow(WS_EX_LAYERED);
+  HWND hwnd = CreateNativeWindow(/*style=*/0, WS_EX_LAYERED);
   gfx::Rect win_rect;
   BYTE alpha = 1;
   DWORD flags = LWA_ALPHA;
@@ -139,7 +179,7 @@ TEST_F(NativeWindowOcclusionTrackerTest, LayeredAlphaWindow) {
 }
 
 TEST_F(NativeWindowOcclusionTrackerTest, UpdatedLayeredAlphaWindow) {
-  HWND hwnd = CreateNativeWindow(WS_EX_LAYERED);
+  HWND hwnd = CreateNativeWindow(/*style=*/0, WS_EX_LAYERED);
   gfx::Rect win_rect;
   base::win::ScopedCreateDC hdc(::CreateCompatibleDC(nullptr));
   BLENDFUNCTION blend = {AC_SRC_OVER, 0x00, 0xFF, AC_SRC_ALPHA};
@@ -152,7 +192,7 @@ TEST_F(NativeWindowOcclusionTrackerTest, UpdatedLayeredAlphaWindow) {
 }
 
 TEST_F(NativeWindowOcclusionTrackerTest, LayeredNonAlphaWindow) {
-  HWND hwnd = CreateNativeWindow(WS_EX_LAYERED);
+  HWND hwnd = CreateNativeWindow(/*style=*/0, WS_EX_LAYERED);
   gfx::Rect win_rect;
   BYTE alpha = 1;
   DWORD flags = 0;
@@ -163,7 +203,7 @@ TEST_F(NativeWindowOcclusionTrackerTest, LayeredNonAlphaWindow) {
 }
 
 TEST_F(NativeWindowOcclusionTrackerTest, ComplexRegionWindow) {
-  HWND hwnd = CreateNativeWindow(/*ex_style=*/0);
+  HWND hwnd = CreateNativeWindow(/*style=*/0, /*ex_style=*/0);
   gfx::Rect win_rect;
   // Create a region with rounded corners, which should be a complex region.
   base::win::ScopedRegion region(CreateRoundRectRgn(1, 1, 100, 100, 5, 5));
@@ -172,11 +212,23 @@ TEST_F(NativeWindowOcclusionTrackerTest, ComplexRegionWindow) {
   EXPECT_FALSE(CheckWindowVisibleAndFullyOpaque(hwnd, &win_rect));
 }
 
+TEST_F(NativeWindowOcclusionTrackerTest, PopupChromeWindow) {
+  HWND hwnd = CreateNativeWindow(WS_POPUP, /*ex_style=*/0);
+  gfx::Rect win_rect;
+  // Chrome Popup Windows of class Chrome_WidgetWin_ are considered visible.
+  EXPECT_TRUE(CheckWindowVisibleAndFullyOpaque(hwnd, &win_rect));
+}
+
+TEST_F(NativeWindowOcclusionTrackerTest, PopupWindow) {
+  TestWin32Window test_window;
+  HWND hwnd = test_window.Create(WS_POPUPWINDOW);
+  gfx::Rect win_rect;
+  // Normal Popup Windows are not considered visible.
+  EXPECT_FALSE(CheckWindowVisibleAndFullyOpaque(hwnd, &win_rect));
+}
+
 TEST_F(NativeWindowOcclusionTrackerTest, CloakedWindow) {
-  // Cloaking is only supported in Windows 8 and above.
-  if (base::win::GetVersion() < base::win::Version::WIN8)
-    return;
-  HWND hwnd = CreateNativeWindow(/*ex_style=*/0);
+  HWND hwnd = CreateNativeWindow(/*style=*/0, /*ex_style=*/0);
   gfx::Rect win_rect;
   BOOL cloak = TRUE;
   DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &cloak, sizeof(cloak));

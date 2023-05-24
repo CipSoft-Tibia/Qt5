@@ -20,12 +20,13 @@ static_library("perfetto_cts_deps") {
   complete_static_lib = true
   testonly = true
   deps = [
-    "..:end_to_end_integrationtests",
+    "..:integrationtests",
     "../..:libperfetto_client_experimental",
     "../../gn:default_deps",
     "../../gn:gtest_and_gmock",
     "../../include/perfetto/ext/tracing/core",
     "../../protos/perfetto/config:cpp",
+    "../../protos/perfetto/config/process_stats:cpp",
     "../../protos/perfetto/config/profiling:cpp",
     "../../protos/perfetto/trace:cpp",
     "../../protos/perfetto/trace/profiling:cpp",
@@ -38,7 +39,6 @@ static_library("perfetto_cts_deps") {
     "heapprofd_java_test_cts.cc",
     "heapprofd_test_cts.cc",
     "traced_perf_test_cts.cc",
-    "utils.cc",
   ]
 }
 

@@ -1,10 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/viz/common/quads/frame_deadline.h"
 
 #include <cinttypes>
+#include <ostream>
 
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
@@ -17,7 +18,7 @@ FrameDeadline FrameDeadline::MakeZero() {
 }
 
 base::TimeTicks FrameDeadline::ToWallTime(
-    base::Optional<uint32_t> default_deadline_in_frames) const {
+    absl::optional<uint32_t> default_deadline_in_frames) const {
   uint32_t deadline_in_frames = deadline_in_frames_;
   if (use_default_lower_bound_deadline_) {
     deadline_in_frames =

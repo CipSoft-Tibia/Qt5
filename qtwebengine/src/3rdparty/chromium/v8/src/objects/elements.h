@@ -22,6 +22,8 @@ class ElementsAccessor {
  public:
   ElementsAccessor() = default;
   virtual ~ElementsAccessor() = default;
+  ElementsAccessor(const ElementsAccessor&) = delete;
+  ElementsAccessor& operator=(const ElementsAccessor&) = delete;
 
   // Returns a shared ElementsAccessor for the specified ElementsKind.
   static ElementsAccessor* ForKind(ElementsKind elements_kind) {
@@ -54,7 +56,14 @@ class ElementsAccessor {
   // typed array elements.
   virtual bool HasEntry(JSObject holder, InternalIndex entry) = 0;
 
-  virtual Handle<Object> Get(Handle<JSObject> holder, InternalIndex entry) = 0;
+  virtual Handle<Object> Get(Isolate* isolate, Handle<JSObject> holder,
+                             InternalIndex entry) = 0;
+
+  // Currently only shared array elements support sequentially consistent
+  // access.
+  virtual Handle<Object> GetAtomic(Isolate* isolate, Handle<JSObject> holder,
+                                   InternalIndex entry,
+                                   SeqCstAccessTag tag) = 0;
 
   virtual bool HasAccessors(JSObject holder) = 0;
   virtual size_t NumberOfElements(JSObject holder) = 0;
@@ -64,7 +73,8 @@ class ElementsAccessor {
   // changing array sizes as defined in EcmaScript 5.1 15.4.5.2, i.e. array that
   // have non-deletable elements can only be shrunk to the size of highest
   // element that is non-deletable.
-  virtual void SetLength(Handle<JSArray> holder, uint32_t new_length) = 0;
+  V8_WARN_UNUSED_RESULT virtual Maybe<bool> SetLength(Handle<JSArray> holder,
+                                                      uint32_t new_length) = 0;
 
   // Copy all indices that have elements from |object| into the given
   // KeyAccumulator. For Dictionary-based element-kinds we filter out elements
@@ -82,25 +92,26 @@ class ElementsAccessor {
       PropertyFilter filter = ALL_PROPERTIES) = 0;
 
   virtual MaybeHandle<FixedArray> PrependElementIndices(
-      Handle<JSObject> object, Handle<FixedArrayBase> backing_store,
-      Handle<FixedArray> keys, GetKeysConversion convert,
-      PropertyFilter filter = ALL_PROPERTIES) = 0;
+      Isolate* isolate, Handle<JSObject> object,
+      Handle<FixedArrayBase> backing_store, Handle<FixedArray> keys,
+      GetKeysConversion convert, PropertyFilter filter = ALL_PROPERTIES) = 0;
 
   inline MaybeHandle<FixedArray> PrependElementIndices(
-      Handle<JSObject> object, Handle<FixedArray> keys,
+      Isolate* isolate, Handle<JSObject> object, Handle<FixedArray> keys,
       GetKeysConversion convert, PropertyFilter filter = ALL_PROPERTIES);
 
   V8_WARN_UNUSED_RESULT virtual ExceptionStatus AddElementsToKeyAccumulator(
       Handle<JSObject> receiver, KeyAccumulator* accumulator,
       AddKeyConversion convert) = 0;
 
-  virtual void TransitionElementsKind(Handle<JSObject> object,
-                                      Handle<Map> map) = 0;
-  virtual void GrowCapacityAndConvert(Handle<JSObject> object,
-                                      uint32_t capacity) = 0;
+  V8_WARN_UNUSED_RESULT virtual Maybe<bool> TransitionElementsKind(
+      Handle<JSObject> object, Handle<Map> map) = 0;
+  V8_WARN_UNUSED_RESULT virtual Maybe<bool> GrowCapacityAndConvert(
+      Handle<JSObject> object, uint32_t capacity) = 0;
   // Unlike GrowCapacityAndConvert do not attempt to convert the backing store
   // and simply return false in this case.
-  virtual bool GrowCapacity(Handle<JSObject> object, uint32_t index) = 0;
+  V8_WARN_UNUSED_RESULT virtual Maybe<bool> GrowCapacity(
+      Handle<JSObject> object, uint32_t index) = 0;
 
   static void InitializeOncePerProcess();
   static void TearDown();
@@ -108,29 +119,47 @@ class ElementsAccessor {
   virtual void Set(Handle<JSObject> holder, InternalIndex entry,
                    Object value) = 0;
 
-  virtual void Add(Handle<JSObject> object, uint32_t index,
-                   Handle<Object> value, PropertyAttributes attributes,
-                   uint32_t new_capacity) = 0;
+  // Currently only shared array elements support sequentially consistent
+  // access.
+  virtual void SetAtomic(Handle<JSObject> holder, InternalIndex entry,
+                         Object value, SeqCstAccessTag tag) = 0;
+
+  // Currently only shared array elements support sequentially consistent
+  // access.
+  virtual Handle<Object> SwapAtomic(Isolate* isolate, Handle<JSObject> holder,
+                                    InternalIndex entry, Object value,
+                                    SeqCstAccessTag tag) = 0;
+
+  V8_WARN_UNUSED_RESULT virtual Maybe<bool> Add(Handle<JSObject> object,
+                                                uint32_t index,
+                                                Handle<Object> value,
+                                                PropertyAttributes attributes,
+                                                uint32_t new_capacity) = 0;
 
   static Handle<JSArray> Concat(Isolate* isolate, BuiltinArguments* args,
                                 uint32_t concat_size, uint32_t result_length);
 
-  virtual uint32_t Push(Handle<JSArray> receiver, BuiltinArguments* args,
-                        uint32_t push_size) = 0;
+  V8_WARN_UNUSED_RESULT virtual Maybe<uint32_t> Push(Handle<JSArray> receiver,
+                                                     BuiltinArguments* args,
+                                                     uint32_t push_size) = 0;
 
-  virtual uint32_t Unshift(Handle<JSArray> receiver, BuiltinArguments* args,
-                           uint32_t unshift_size) = 0;
+  V8_WARN_UNUSED_RESULT virtual Maybe<uint32_t> Unshift(
+      Handle<JSArray> receiver, BuiltinArguments* args,
+      uint32_t unshift_size) = 0;
 
-  virtual Handle<Object> Pop(Handle<JSArray> receiver) = 0;
+  V8_WARN_UNUSED_RESULT virtual MaybeHandle<Object> Pop(
+      Handle<JSArray> receiver) = 0;
 
-  virtual Handle<Object> Shift(Handle<JSArray> receiver) = 0;
+  V8_WARN_UNUSED_RESULT virtual MaybeHandle<Object> Shift(
+      Handle<JSArray> receiver) = 0;
 
   virtual Handle<NumberDictionary> Normalize(Handle<JSObject> object) = 0;
 
   virtual size_t GetCapacity(JSObject holder, FixedArrayBase backing_store) = 0;
 
-  virtual Object Fill(Handle<JSObject> receiver, Handle<Object> obj_value,
-                      size_t start, size_t end) = 0;
+  V8_WARN_UNUSED_RESULT virtual MaybeHandle<Object> Fill(
+      Handle<JSObject> receiver, Handle<Object> obj_value, size_t start,
+      size_t end) = 0;
 
   // Check an Object's own elements for an element (using SameValueZero
   // semantics)
@@ -202,8 +231,6 @@ class ElementsAccessor {
 
  private:
   V8_EXPORT_PRIVATE static ElementsAccessor** elements_accessors_;
-
-  DISALLOW_COPY_AND_ASSIGN(ElementsAccessor);
 };
 
 V8_WARN_UNUSED_RESULT MaybeHandle<Object> ArrayConstructInitializeElements(

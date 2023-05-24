@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPRIVATELINEARBUFFER_P_H
 #define QPRIVATELINEARBUFFER_P_H
@@ -64,13 +28,15 @@ public:
         first = buf;
         len = 0;
     }
-    int size() const {
+    qsizetype size() const
+    {
         return len;
     }
     bool isEmpty() const {
         return len == 0;
     }
-    void skip(int n) {
+    void skip(qsizetype n)
+    {
         if (n >= len) {
             clear();
         } else {
@@ -86,20 +52,23 @@ public:
         first++;
         return ch;
     }
-    int read(char* target, int size) {
-        int r = qMin(size, len);
+    qsizetype read(char* target, qsizetype size)
+    {
+        qsizetype r = (std::min)(size, len);
         memcpy(target, first, r);
         len -= r;
         first += r;
         return r;
     }
-    char* reserve(int size) {
+    char* reserve(qsizetype size)
+    {
         makeSpace(size + len, freeSpaceAtEnd);
         char* writePtr = first + len;
         len += size;
         return writePtr;
     }
-    void chop(int size) {
+    void chop(qsizetype size)
+    {
         if (size >= len) {
             clear();
         } else {
@@ -108,20 +77,21 @@ public:
     }
     QByteArray readAll() {
         char* f = first;
-        int l = len;
+        qsizetype l = len;
         clear();
         return QByteArray(f, l);
     }
-    int readLine(char* target, int size) {
-        int r = qMin(size, len);
+    qsizetype readLine(char* target, qsizetype size)
+    {
+        qsizetype r = (std::min)(size, len);
         char* eol = static_cast<char*>(memchr(first, '\n', r));
         if (eol)
             r = 1+(eol-first);
         memcpy(target, first, r);
         len -= r;
         first += r;
-        return int(r);
-        }
+        return r;
+    }
     bool canReadLine() const {
         return memchr(first, '\n', len);
     }
@@ -134,7 +104,8 @@ public:
         len++;
         *first = c;
     }
-    void ungetBlock(const char* block, int size) {
+    void ungetBlock(const char* block, qsizetype size)
+    {
         if ((first - buf) < size) {
             // underflow, the existing valid data needs to move to the end of the (potentially bigger) buffer
             makeSpace(len + size, freeSpaceAtStart);
@@ -147,10 +118,10 @@ public:
 private:
     enum FreeSpacePos {freeSpaceAtStart, freeSpaceAtEnd};
     void makeSpace(size_t required, FreeSpacePos where) {
-        size_t newCapacity = qMax(capacity, size_t(QPRIVATELINEARBUFFER_BUFFERSIZE));
+        size_t newCapacity = (std::max)(capacity, size_t(QPRIVATELINEARBUFFER_BUFFERSIZE));
         while (newCapacity < required)
             newCapacity *= 2;
-        const int moveOffset = (where == freeSpaceAtEnd) ? 0 : int(newCapacity) - len;
+        const qsizetype moveOffset = (where == freeSpaceAtEnd) ? 0 : qsizetype(newCapacity) - len;
         if (newCapacity > capacity) {
             // allocate more space
             char* newBuf = new char[newCapacity];
@@ -167,7 +138,7 @@ private:
 
 private:
     // length of the unread data
-    int len;
+    qsizetype len;
     // start of the unread data
     char* first;
     // the allocated buffer

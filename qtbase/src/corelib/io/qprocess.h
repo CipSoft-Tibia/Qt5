@@ -1,41 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2023 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPROCESS_H
 #define QPROCESS_H
@@ -48,13 +13,13 @@
 
 QT_REQUIRE_CONFIG(processenvironment);
 
-#ifdef Q_OS_WIN
-typedef struct _PROCESS_INFORMATION *Q_PID;
-#endif
-
-#if defined(Q_OS_WIN) || defined(Q_CLANG_QDOC)
-typedef struct _SECURITY_ATTRIBUTES Q_SECURITY_ATTRIBUTES;
-typedef struct _STARTUPINFOW Q_STARTUPINFO;
+#if defined(Q_OS_WIN) || defined(Q_QDOC)
+struct _PROCESS_INFORMATION;
+struct _SECURITY_ATTRIBUTES;
+struct _STARTUPINFOW;
+using Q_PROCESS_INFORMATION = _PROCESS_INFORMATION;
+using Q_SECURITY_ATTRIBUTES = _SECURITY_ATTRIBUTES;
+using Q_STARTUPINFO = _STARTUPINFOW;
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -62,26 +27,26 @@ QT_BEGIN_NAMESPACE
 class QProcessPrivate;
 class QProcessEnvironmentPrivate;
 
-#ifndef Q_OS_WIN
-typedef qint64 Q_PID;
-#endif
-
 class Q_CORE_EXPORT QProcessEnvironment
 {
 public:
+    enum Initialization { InheritFromParent };
+
     QProcessEnvironment();
+    QProcessEnvironment(Initialization) noexcept;
     QProcessEnvironment(const QProcessEnvironment &other);
     ~QProcessEnvironment();
-    QProcessEnvironment &operator=(QProcessEnvironment && other) noexcept { swap(other); return *this; }
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QProcessEnvironment)
     QProcessEnvironment &operator=(const QProcessEnvironment &other);
 
-    void swap(QProcessEnvironment &other) noexcept { qSwap(d, other.d); }
+    void swap(QProcessEnvironment &other) noexcept { d.swap(other.d); }
 
     bool operator==(const QProcessEnvironment &other) const;
     inline bool operator!=(const QProcessEnvironment &other) const
     { return !(*this == other); }
 
     bool isEmpty() const;
+    [[nodiscard]] bool inheritsFromParent() const;
     void clear();
 
     bool contains(const QString &name) const;
@@ -112,7 +77,7 @@ class Q_CORE_EXPORT QProcess : public QIODevice
     Q_OBJECT
 public:
     enum ProcessError {
-        FailedToStart, //### file not found, resource error
+        FailedToStart,
         Crashed,
         Timedout,
         ReadError,
@@ -158,17 +123,9 @@ public:
     explicit QProcess(QObject *parent = nullptr);
     virtual ~QProcess();
 
-    void start(const QString &program, const QStringList &arguments, OpenMode mode = ReadWrite);
-#if !defined(QT_NO_PROCESS_COMBINED_ARGUMENT_START)
-#if QT_DEPRECATED_SINCE(5, 15)
-    QT_DEPRECATED_X(
-        "Use QProcess::start(const QString &program, const QStringList &arguments,"
-        "OpenMode mode = ReadWrite) instead"
-    )
-    void start(const QString &command, OpenMode mode = ReadWrite);
-#endif
-#endif
+    void start(const QString &program, const QStringList &arguments = {}, OpenMode mode = ReadWrite);
     void start(OpenMode mode = ReadWrite);
+    void startCommand(const QString &command, OpenMode mode = ReadWrite);
     bool startDetached(qint64 *pid = nullptr);
     bool open(OpenMode mode = ReadWrite) override;
 
@@ -178,12 +135,6 @@ public:
     QStringList arguments() const;
     void setArguments(const QStringList & arguments);
 
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X("Use QProcess::processChannelMode() instead")
-    ProcessChannelMode readChannelMode() const;
-    QT_DEPRECATED_X("Use QProcess::setProcessChannelMode() instead")
-    void setReadChannelMode(ProcessChannelMode mode);
-#endif
     ProcessChannelMode processChannelMode() const;
     void setProcessChannelMode(ProcessChannelMode mode);
     InputChannelMode inputChannelMode() const;
@@ -200,7 +151,7 @@ public:
     void setStandardErrorFile(const QString &fileName, OpenMode mode = Truncate);
     void setStandardOutputProcess(QProcess *destination);
 
-#if defined(Q_OS_WIN) || defined(Q_CLANG_QDOC)
+#if defined(Q_OS_WIN) || defined(Q_QDOC)
     QString nativeArguments() const;
     void setNativeArguments(const QString &arguments);
     struct CreateProcessArguments
@@ -214,12 +165,35 @@ public:
         void *environment;
         const wchar_t *currentDirectory;
         Q_STARTUPINFO *startupInfo;
-        Q_PID processInformation;
+        Q_PROCESS_INFORMATION *processInformation;
     };
     typedef std::function<void(CreateProcessArguments *)> CreateProcessArgumentModifier;
     CreateProcessArgumentModifier createProcessArgumentsModifier() const;
     void setCreateProcessArgumentsModifier(CreateProcessArgumentModifier modifier);
-#endif // Q_OS_WIN || Q_CLANG_QDOC
+#endif // Q_OS_WIN || Q_QDOC
+#if defined(Q_OS_UNIX) || defined(Q_QDOC)
+    std::function<void(void)> childProcessModifier() const;
+    void setChildProcessModifier(const std::function<void(void)> &modifier);
+
+    enum class UnixProcessFlag : quint32 {
+        ResetSignalHandlers                 = 0x0001, // like POSIX_SPAWN_SETSIGDEF
+        IgnoreSigPipe                       = 0x0002,
+        // some room if we want to add IgnoreSigHup or so
+        CloseFileDescriptors                = 0x0010,
+        UseVFork                            = 0x0020, // like POSIX_SPAWN_USEVFORK
+    };
+    Q_DECLARE_FLAGS(UnixProcessFlags, UnixProcessFlag)
+    struct UnixProcessParameters
+    {
+        UnixProcessFlags flags = {};
+        int lowestFileDescriptorToClose = 0;
+
+        quint32 _reserved[6] {};
+    };
+    UnixProcessParameters unixProcessParameters() const noexcept;
+    void setUnixProcessParameters(const UnixProcessParameters &params);
+    void setUnixProcessParameters(UnixProcessFlags flagsOnly);
+#endif
 
     QString workingDirectory() const;
     void setWorkingDirectory(const QString &dir);
@@ -232,10 +206,6 @@ public:
     QProcess::ProcessError error() const;
     QProcess::ProcessState state() const;
 
-#if QT_DEPRECATED_SINCE(5, 15)
-    QT_DEPRECATED_VERSION_X_5_15("Use processId() instead")
-    Q_PID pid() const;
-#endif
     qint64 processId() const;
 
     bool waitForStarted(int msecs = 30000);
@@ -250,35 +220,13 @@ public:
     QProcess::ExitStatus exitStatus() const;
 
     // QIODevice
-    qint64 bytesAvailable() const override; // ### Qt6: remove trivial override
     qint64 bytesToWrite() const override;
     bool isSequential() const override;
-    bool canReadLine() const override; // ### Qt6: remove trivial override
     void close() override;
-    bool atEnd() const override; // ### Qt6: remove trivial override
 
-    static int execute(const QString &program, const QStringList &arguments);
-#if QT_DEPRECATED_SINCE(5, 15)
-    QT_DEPRECATED_X(
-        "Use QProcess::execute(const QString &program, const QStringList &arguments) instead"
-    )
-    static int execute(const QString &command);
-#endif
-    static bool startDetached(const QString &program, const QStringList &arguments,
-                              const QString &workingDirectory
-#if defined(Q_QDOC)
-                              = QString()
-#endif
-                              , qint64 *pid = nullptr);
-#if !defined(Q_QDOC)
-    static bool startDetached(const QString &program, const QStringList &arguments); // ### Qt6: merge overloads
-#endif
-#if QT_DEPRECATED_SINCE(5, 15)
-    QT_DEPRECATED_X(
-        "Use QProcess::startDetached(const QString &program, const QStringList &arguments) instead"
-    )
-    static bool startDetached(const QString &command);
-#endif
+    static int execute(const QString &program, const QStringList &arguments = {});
+    static bool startDetached(const QString &program, const QStringList &arguments = {},
+                              const QString &workingDirectory = QString(), qint64 *pid = nullptr);
 
     static QStringList systemEnvironment();
 
@@ -292,15 +240,7 @@ public Q_SLOTS:
 
 Q_SIGNALS:
     void started(QPrivateSignal);
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X("Use QProcess::finished(int, QProcess::ExitStatus) instead")
-    void finished(int exitCode); // ### Qt 6: merge the two signals with a default value
-#endif
-    void finished(int exitCode, QProcess::ExitStatus exitStatus);
-#if QT_DEPRECATED_SINCE(5, 6)
-    QT_DEPRECATED_X("Use QProcess::errorOccurred(QProcess::ProcessError) instead")
-    void error(QProcess::ProcessError error);
-#endif
+    void finished(int exitCode, QProcess::ExitStatus exitStatus = NormalExit);
     void errorOccurred(QProcess::ProcessError error);
     void stateChanged(QProcess::ProcessState state, QPrivateSignal);
 
@@ -310,8 +250,6 @@ Q_SIGNALS:
 protected:
     void setProcessState(ProcessState state);
 
-    virtual void setupChildProcess();
-
     // QIODevice
     qint64 readData(char *data, qint64 maxlen) override;
     qint64 writeData(const char *data, qint64 len) override;
@@ -320,13 +258,27 @@ private:
     Q_DECLARE_PRIVATE(QProcess)
     Q_DISABLE_COPY(QProcess)
 
+#if QT_VERSION < QT_VERSION_CHECK(7,0,0)
+    // ### Qt7: Remove this struct and the virtual function; they're here only
+    // to cause build errors in Qt 5 code that wasn't updated to Qt 6's
+    // setChildProcessModifier()
+    struct Use_setChildProcessModifier_Instead {};
+    QT_DEPRECATED_X("Use setChildProcessModifier() instead")
+    virtual Use_setChildProcessModifier_Instead setupChildProcess();
+#endif
+
     Q_PRIVATE_SLOT(d_func(), bool _q_canReadStandardOutput())
     Q_PRIVATE_SLOT(d_func(), bool _q_canReadStandardError())
+#ifdef Q_OS_UNIX
     Q_PRIVATE_SLOT(d_func(), bool _q_canWrite())
+#endif
     Q_PRIVATE_SLOT(d_func(), bool _q_startupNotification())
-    Q_PRIVATE_SLOT(d_func(), bool _q_processDied())
-    friend class QProcessManager;
+    Q_PRIVATE_SLOT(d_func(), void _q_processDied())
 };
+
+#ifdef Q_OS_UNIX
+Q_DECLARE_OPERATORS_FOR_FLAGS(QProcess::UnixProcessFlags)
+#endif
 
 #endif // QT_CONFIG(process)
 

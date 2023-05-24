@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QHTTPTHREADDELEGATE_H
 #define QHTTPTHREADDELEGATE_H
@@ -62,6 +26,7 @@
 #include <QNetworkReply>
 #include "qhttpnetworkrequest_p.h"
 #include "qhttpnetworkconnection_p.h"
+#include "qhttp1configuration.h"
 #include "qhttp2configuration.h"
 #include <QSharedPointer>
 #include <QScopedPointer>
@@ -97,14 +62,15 @@ public:
     qint64 readBufferMaxSize;
     qint64 bytesEmitted;
     // From backend, modified by us for signal compression
-    QSharedPointer<QAtomicInt> pendingDownloadData;
-    QSharedPointer<QAtomicInt> pendingDownloadProgress;
+    std::shared_ptr<QAtomicInt> pendingDownloadData;
+    std::shared_ptr<QAtomicInt> pendingDownloadProgress;
 #ifndef QT_NO_NETWORKPROXY
     QNetworkProxy cacheProxy;
     QNetworkProxy transparentProxy;
 #endif
-    QSharedPointer<QNetworkAccessAuthenticationManager> authenticationManager;
+    std::shared_ptr<QNetworkAccessAuthenticationManager> authenticationManager;
     bool synchronous;
+    qint64 connectionCacheExpiryTimeoutSeconds;
 
     // outgoing, Retrieved in the synchronous HTTP case
     QByteArray synchronousDownloadData;
@@ -112,15 +78,15 @@ public:
     int incomingStatusCode;
     QString incomingReasonPhrase;
     bool isPipeliningUsed;
-    bool isSpdyUsed;
+    bool isHttp2Used;
     qint64 incomingContentLength;
     qint64 removedContentLength;
     QNetworkReply::NetworkError incomingErrorCode;
     QString incomingErrorDetail;
+    QHttp1Configuration http1Parameters;
     QHttp2Configuration http2Parameters;
-#ifndef QT_NO_BEARERMANAGEMENT // ### Qt6: Remove section
-    QSharedPointer<QNetworkSession> networkSession;
-#endif
+
+    bool isCompressed;
 
 protected:
     // The zerocopy download buffer, if used:
@@ -144,8 +110,10 @@ signals:
     void sslConfigurationChanged(const QSslConfiguration &);
     void preSharedKeyAuthenticationRequired(QSslPreSharedKeyAuthenticator *);
 #endif
+    void socketStartedConnecting();
+    void requestSent();
     void downloadMetaData(const QList<QPair<QByteArray,QByteArray> > &, int, const QString &, bool,
-                          QSharedPointer<char>, qint64, qint64, bool);
+                          QSharedPointer<char>, qint64, qint64, bool, bool);
     void downloadProgress(qint64, qint64);
     void downloadData(const QByteArray &);
     void error(QNetworkReply::NetworkError, const QString &);
@@ -284,6 +252,7 @@ public:
         if (b) {
             // the reset succeeded, we're at pos 0 again
             m_pos = 0;
+            m_atEnd = false;
             // the HTTP code will anyway abort the request if !b.
         }
         return b;

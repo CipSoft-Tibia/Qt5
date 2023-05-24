@@ -1,45 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformdefs.h"
 #include "qmutex.h"
 #include "qmutex_p.h"
+
+#include "private/qcore_unix_p.h"
 
 #include <mach/mach.h>
 #include <mach/task.h>
@@ -62,18 +28,19 @@ QMutexPrivate::~QMutexPrivate()
         qWarning("QMutex: failed to destroy semaphore, error %d", r);
 }
 
-bool QMutexPrivate::wait(int timeout)
+bool QMutexPrivate::wait(QDeadlineTimer timeout)
 {
     kern_return_t r;
-    if (timeout < 0) {
+    if (timeout.isForever()) {
         do {
             r = semaphore_wait(mach_semaphore);
         } while (r == KERN_ABORTED);
         Q_ASSERT(r == KERN_SUCCESS);
     } else {
+        timespec tv = durationToTimespec(timeout.remainingTimeAsDuration());
         mach_timespec_t ts;
-        ts.tv_nsec = ((timeout % 1000) * 1000) * 1000;
-        ts.tv_sec = (timeout / 1000);
+        ts.tv_nsec = tv.tv_nsec;
+        ts.tv_sec = tv.tv_sec;
         r = semaphore_timedwait(mach_semaphore, ts);
     }
     return (r == KERN_SUCCESS);

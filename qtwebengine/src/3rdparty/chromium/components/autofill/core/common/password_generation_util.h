@@ -1,12 +1,15 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_AUTOFILL_CORE_COMMON_PASSWORD_GENERATION_UTIL_H_
 #define COMPONENTS_AUTOFILL_CORE_COMMON_PASSWORD_GENERATION_UTIL_H_
 
-#include "components/autofill/core/common/password_form.h"
-#include "components/autofill/core/common/renderer_id.h"
+#include <string>
+
+#include "base/i18n/rtl.h"
+#include "components/autofill/core/common/form_data.h"
+#include "components/autofill/core/common/unique_ids.h"
 #include "ui/gfx/geometry/rect_f.h"
 
 namespace autofill {
@@ -108,11 +111,12 @@ struct PasswordGenerationActions {
 struct PasswordGenerationUIData {
   PasswordGenerationUIData(const gfx::RectF& bounds,
                            int max_length,
-                           const base::string16& generation_element,
+                           const std::u16string& generation_element,
+                           const std::u16string& user_typed_password,
                            FieldRendererId generation_element_id,
                            bool is_generation_element_password_type,
                            base::i18n::TextDirection text_direction,
-                           const autofill::FormData& form_data);
+                           const FormData& form_data);
   PasswordGenerationUIData();
   PasswordGenerationUIData(const PasswordGenerationUIData& rhs);
   PasswordGenerationUIData(PasswordGenerationUIData&& rhs);
@@ -129,7 +133,10 @@ struct PasswordGenerationUIData {
   int max_length;
 
   // Name of the password field to which the generation popup is attached.
-  base::string16 generation_element;
+  std::u16string generation_element;
+
+  // The password typed by the user.
+  std::u16string user_typed_password;
 
   // Renderer ID of the generation element.
   FieldRendererId generation_element_id;
@@ -141,7 +148,7 @@ struct PasswordGenerationUIData {
   base::i18n::TextDirection text_direction;
 
   // The form associated with the password field.
-  autofill::FormData form_data;
+  FormData form_data;
 };
 
 void LogPasswordGenerationEvent(PasswordGenerationEvent event);

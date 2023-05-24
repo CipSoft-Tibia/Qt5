@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,17 +8,19 @@
 #include <list>
 #include <set>
 
-#include "base/bind.h"
 #include "base/containers/adapters.h"
+#include "base/functional/bind.h"
 #include "base/json/json_string_value_serializer.h"
 #include "base/json/json_writer.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/process/process_handle.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_tokenizer.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/values.h"
 #include "build/build_config.h"
 
@@ -26,18 +28,21 @@ namespace device_event_log {
 
 namespace {
 
-const char* kLogLevelName[] = {"Error", "User", "Event", "Debug"};
+const char* const kLogLevelName[] = {"Error", "User", "Event", "Debug"};
 
-const char* kLogTypeNetworkDesc = "Network";
-const char* kLogTypePowerDesc = "Power";
-const char* kLogTypeLoginDesc = "Login";
-const char* kLogTypeBluetoothDesc = "Bluetooth";
-const char* kLogTypeUsbDesc = "USB";
-const char* kLogTypeHidDesc = "HID";
-const char* kLogTypeMemoryDesc = "Memory";
-const char* kLogTypePrinterDesc = "Printer";
-const char* kLogTypeFidoDesc = "FIDO";
-const char* kLogTypeSerialDesc = "Serial";
+const char kLogTypeNetworkDesc[] = "Network";
+const char kLogTypePowerDesc[] = "Power";
+const char kLogTypeLoginDesc[] = "Login";
+const char kLogTypeBluetoothDesc[] = "Bluetooth";
+const char kLogTypeUsbDesc[] = "USB";
+const char kLogTypeHidDesc[] = "HID";
+const char kLogTypeMemoryDesc[] = "Memory";
+const char kLogTypePrinterDesc[] = "Printer";
+const char kLogTypeFidoDesc[] = "FIDO";
+const char kLogTypeSerialDesc[] = "Serial";
+const char kLogTypeCameraDesc[] = "Camera";
+const char kLogTypeGeolocationDesc[] = "Geolocation";
+const char kLogTypeExtensionsDesc[] = "Extensions";
 
 enum class ShowTime {
   kNone,
@@ -67,6 +72,12 @@ std::string GetLogTypeString(LogType type) {
       return kLogTypeFidoDesc;
     case LOG_TYPE_SERIAL:
       return kLogTypeSerialDesc;
+    case LOG_TYPE_CAMERA:
+      return kLogTypeCameraDesc;
+    case LOG_TYPE_GEOLOCATION:
+      return kLogTypeGeolocationDesc;
+    case LOG_TYPE_EXTENSIONS:
+      return kLogTypeExtensionsDesc;
     case LOG_TYPE_UNKNOWN:
       break;
   }
@@ -74,7 +85,7 @@ std::string GetLogTypeString(LogType type) {
   return "Unknown";
 }
 
-LogType GetLogTypeFromString(const std::string& desc) {
+LogType GetLogTypeFromString(base::StringPiece desc) {
   std::string desc_lc = base::ToLowerASCII(desc);
   for (int i = 0; i < LOG_TYPE_UNKNOWN; ++i) {
     auto type = static_cast<LogType>(i);
@@ -113,7 +124,7 @@ std::string TimeWithMillieconds(const base::Time& time) {
                             exploded.millisecond);
 }
 
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
 std::string UnixTime(const base::Time& time) {
   base::Time::Exploded utc_exploded, exploded;
   time.UTCExplode(&utc_exploded);
@@ -148,7 +159,7 @@ std::string LogEntryToString(const DeviceEventLogImpl::LogEntry& log_entry,
   std::string line;
   if (show_time == ShowTime::kTimeWithMs)
     line += "[" + TimeWithMillieconds(log_entry.time) + "] ";
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
   if (show_time == ShowTime::kUnix)
     line += UnixTime(log_entry.time) + " ";
 #endif
@@ -157,7 +168,7 @@ std::string LogEntryToString(const DeviceEventLogImpl::LogEntry& log_entry,
   if (show_level) {
     const char* kLevelDesc[] = {"ERROR", "USER", "EVENT", "DEBUG"};
     line += std::string(kLevelDesc[log_entry.log_level]);
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
     if (show_time == ShowTime::kUnix) {
       // Format the level consistently with /var/log/messages.
       line += base::StringPrintf(" chrome[%d]", base::GetCurrentProcId());
@@ -175,23 +186,23 @@ std::string LogEntryToString(const DeviceEventLogImpl::LogEntry& log_entry,
   return line;
 }
 
-void LogEntryToDictionary(const DeviceEventLogImpl::LogEntry& log_entry,
-                          base::DictionaryValue* output) {
-  output->SetString("timestamp", DateAndTimeWithMicroseconds(log_entry.time));
-  output->SetString("timestampshort", TimeWithSeconds(log_entry.time));
-  output->SetString("level", kLogLevelName[log_entry.log_level]);
-  output->SetString("type", GetLogTypeString(log_entry.log_type));
-  output->SetString("file", base::StringPrintf("%s:%d ", log_entry.file.c_str(),
-                                               log_entry.file_line));
-  output->SetString("event", log_entry.event);
+base::Value::Dict LogEntryToDictionary(
+    const DeviceEventLogImpl::LogEntry& log_entry) {
+  base::Value::Dict entry_dict;
+  entry_dict.Set("timestamp", DateAndTimeWithMicroseconds(log_entry.time));
+  entry_dict.Set("timestampshort", TimeWithSeconds(log_entry.time));
+  entry_dict.Set("level", kLogLevelName[log_entry.log_level]);
+  entry_dict.Set("type", GetLogTypeString(log_entry.log_type));
+  entry_dict.Set("file", base::StringPrintf("%s:%d ", log_entry.file.c_str(),
+                                            log_entry.file_line));
+  entry_dict.Set("event", log_entry.event);
+  return entry_dict;
 }
 
 std::string LogEntryAsJSON(const DeviceEventLogImpl::LogEntry& log_entry) {
-  base::DictionaryValue entry_dict;
-  LogEntryToDictionary(log_entry, &entry_dict);
   std::string json;
   JSONStringValueSerializer serializer(&json);
-  if (!serializer.Serialize(entry_dict)) {
+  if (!serializer.Serialize(LogEntryToDictionary(log_entry))) {
     LOG(ERROR) << "Failed to serialize to JSON";
   }
   return json;
@@ -245,24 +256,24 @@ void GetFormat(const std::string& format_string,
   *show_level = false;
   *format_json = false;
   while (tokens.GetNext()) {
-    std::string tok(tokens.token());
-    if (tok == "time")
+    base::StringPiece tok = tokens.token_piece();
+    if (tok == "time") {
       *show_time = ShowTime::kTimeWithMs;
-    if (tok == "unixtime") {
-#if defined(OS_POSIX)
+    } else if (tok == "unixtime") {
+#if BUILDFLAG(IS_POSIX)
       *show_time = ShowTime::kUnix;
 #else
       *show_time = ShowTime::kTimeWithMs;
 #endif
-    }
-    if (tok == "file")
+    } else if (tok == "file") {
       *show_file = true;
-    if (tok == "type")
+    } else if (tok == "type") {
       *show_type = true;
-    if (tok == "level")
+    } else if (tok == "level") {
       *show_level = true;
-    if (tok == "json")
+    } else if (tok == "json") {
       *format_json = true;
+    }
   }
 }
 
@@ -271,8 +282,8 @@ void GetLogTypes(const std::string& types,
                  std::set<LogType>* exclude_types) {
   base::StringTokenizer tokens(types, ",");
   while (tokens.GetNext()) {
-    std::string tok(tokens.token());
-    if (tok.substr(0, 4) == "non-") {
+    base::StringPiece tok = tokens.token_piece();
+    if (base::StartsWith(tok, "non-")) {
       LogType type = GetLogTypeFromString(tok.substr(4));
       if (type != LOG_TYPE_UNKNOWN)
         exclude_types->insert(type);
@@ -396,7 +407,7 @@ std::string DeviceEventLogImpl::GetAsString(StringOrder order,
   GetLogTypes(types, &include_types, &exclude_types);
 
   std::string result;
-  base::ListValue log_entries;
+  base::Value::List log_entries;
   if (order == OLDEST_FIRST) {
     size_t offset = 0;
     if (max_events > 0 && max_events < entries_.size()) {
@@ -425,7 +436,7 @@ std::string DeviceEventLogImpl::GetAsString(StringOrder order,
       if (entry.log_level > max_level)
         continue;
       if (format_json) {
-        log_entries.AppendString(LogEntryAsJSON(entry));
+        log_entries.Append(LogEntryAsJSON(entry));
       } else {
         result += LogEntryToString(entry, show_time, show_file, show_type,
                                    show_level);
@@ -441,7 +452,7 @@ std::string DeviceEventLogImpl::GetAsString(StringOrder order,
       if (entry.log_level > max_level)
         continue;
       if (format_json) {
-        log_entries.AppendString(LogEntryAsJSON(entry));
+        log_entries.Append(LogEntryAsJSON(entry));
       } else {
         result += LogEntryToString(entry, show_time, show_file, show_type,
                                    show_level);
@@ -464,14 +475,9 @@ void DeviceEventLogImpl::ClearAll() {
 }
 
 void DeviceEventLogImpl::Clear(const base::Time& begin, const base::Time& end) {
-  auto begin_it = std::find_if(
-      entries_.begin(), entries_.end(),
-      [begin](const LogEntry& entry) { return entry.time >= begin; });
-  auto end_rev_it =
-      std::find_if(entries_.rbegin(), entries_.rend(),
-                   [end](const LogEntry& entry) { return entry.time <= end; });
-
-  entries_.erase(begin_it, end_rev_it.base());
+  entries_.erase(
+      base::ranges::lower_bound(entries_, begin, {}, &LogEntry::time),
+      base::ranges::upper_bound(entries_, end, {}, &LogEntry::time));
 }
 
 int DeviceEventLogImpl::GetCountByLevelForTesting(LogLevel level) {

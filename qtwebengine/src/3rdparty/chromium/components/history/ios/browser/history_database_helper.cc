@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,11 +25,10 @@ const DownloadInterruptReason kDownloadInterruptReasonCrash = 50;
 }  // namespace
 
 HistoryDatabaseParams HistoryDatabaseParamsForPath(
-    const base::FilePath& history_dir) {
-  return HistoryDatabaseParams(
-      history_dir,
-      kDownloadInterruptReasonNone,
-      kDownloadInterruptReasonCrash);
+    const base::FilePath& history_dir,
+    version_info::Channel channel) {
+  return HistoryDatabaseParams(history_dir, kDownloadInterruptReasonNone,
+                               kDownloadInterruptReasonCrash, channel);
 }
 
 }  // namespace

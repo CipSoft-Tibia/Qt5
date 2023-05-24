@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QAbstractAxis>
 #include <private/qabstractaxis_p.h>
@@ -33,7 +7,7 @@
 #include <private/charttheme_p.h>
 #include <private/qchart_p.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 /*!
     \class QAbstractAxis
@@ -71,6 +45,7 @@ QT_CHARTS_BEGIN_NAMESPACE
     \value AxisTypeCategory
     \value AxisTypeDateTime
     \value AxisTypeLogValue
+    \value AxisTypeColor
 */
 
 /*!
@@ -211,6 +186,35 @@ QT_CHARTS_BEGIN_NAMESPACE
 /*!
   \qmlproperty int AbstractAxis::labelsAngle
   The angle of the axis labels in degrees.
+*/
+
+/*!
+  \property QAbstractAxis::labelsTruncated
+  \brief Returns \c true if at least one label on the axis is truncated.
+
+  Returned value will not be accurate before the axis is shown.
+*/
+/*!
+  \qmlproperty int AbstractAxis::labelsTruncated
+  Returns \c true if at least one label on the axis is truncated.
+
+  Returned value will not be accurate before the axis is shown.
+  \readonly
+*/
+
+/*!
+  \property QAbstractAxis::truncateLabels
+  \brief The truncation state of labels.
+
+  Indicates whether labels should be truncated if there is no enough space for full text.
+  It is equal to \c true by default.
+*/
+/*!
+  \qmlproperty int AbstractAxis::truncateLabels
+  The truncation state of labels.
+
+  Indicates whether labels should be truncated if there is no enough space for full text.
+  It is equal to \c true by default.
 */
 
 /*!
@@ -371,6 +375,20 @@ QT_CHARTS_BEGIN_NAMESPACE
   \fn void QAbstractAxis::labelsEditableChanged(bool editable)
   \since 5.13
   This signal is emitted when the \a editable state of the label changes.
+*/
+
+/*!
+  \fn void QAbstractAxis::labelsTruncatedChanged(bool labelsTruncated)
+  \since 6.2
+  This signal is emitted in two cases; when the axis changes from having one or more truncated
+  labels to having no truncated labels, and when the axis changes from having no truncated
+  labels to having one or more truncated labels. Current state is identified by \a labelsTruncated.
+*/
+
+/*!
+  \fn void QAbstractAxis::truncateLabelsChanged(bool truncateLabels)
+  \since 6.2
+  This signal is emitted when the truncation of the labels changes to \a truncateLabels.
 */
 
 /*!
@@ -987,6 +1005,24 @@ bool QAbstractAxis::labelsEditable() const
     return d_ptr->m_labelsEditable;
 }
 
+bool QAbstractAxis::labelsTruncated() const
+{
+    return d_ptr->m_labelsTruncated;
+}
+
+void QAbstractAxis::setTruncateLabels(bool truncateLabels)
+{
+    if (d_ptr->m_truncateLabels != truncateLabels) {
+        d_ptr->m_truncateLabels = truncateLabels;
+        emit truncateLabelsChanged(d_ptr->m_truncateLabels);
+    }
+}
+
+bool QAbstractAxis::truncateLabels() const
+{
+    return d_ptr->m_truncateLabels;
+}
+
 void QAbstractAxis::setReverse(bool reverse)
 {
     if (d_ptr->m_reverse != reverse && type() != QAbstractAxis::AxisTypeBarCategory) {
@@ -1016,22 +1052,31 @@ QAbstractAxisPrivate::~QAbstractAxisPrivate()
 {
 }
 
-void QAbstractAxisPrivate::setAlignment( Qt::Alignment alignment)
+void QAbstractAxisPrivate::setAlignment(Qt::Alignment alignment)
 {
-    switch(alignment) {
-        case Qt::AlignTop:
-        case Qt::AlignBottom:
+    switch (alignment) {
+    case Qt::AlignTop:
+    case Qt::AlignBottom:
         m_orientation = Qt::Horizontal;
         break;
-        case Qt::AlignLeft:
-        case Qt::AlignRight:
+    case Qt::AlignLeft:
+    case Qt::AlignRight:
         m_orientation = Qt::Vertical;
         break;
-        default:
-        qWarning()<<"No alignment specified !";
+    default:
+        qWarning("No alignment specified !");
         break;
-    };
-    m_alignment=alignment;
+    }
+    m_alignment = alignment;
+}
+
+void QAbstractAxisPrivate::setLabelsTruncated(bool labelsTruncated)
+{
+    Q_Q(QAbstractAxis);
+    if (m_labelsTruncated != labelsTruncated) {
+        m_labelsTruncated = labelsTruncated;
+        emit q->labelsTruncatedChanged(m_labelsTruncated);
+    }
 }
 
 void QAbstractAxisPrivate::initializeTheme(ChartTheme* theme, bool forced)
@@ -1085,7 +1130,7 @@ void QAbstractAxisPrivate::initializeGraphics(QGraphicsItem* parent)
 void QAbstractAxisPrivate::initializeAnimations(QChart::AnimationOptions options, int duration,
                                                 QEasingCurve &curve)
 {
-    ChartAxisElement *axis = m_item.data();
+    ChartAxisElement *axis = m_item.get();
     Q_ASSERT(axis);
     if (axis->animation())
         axis->animation()->stopAndDestroyLater();
@@ -1096,7 +1141,7 @@ void QAbstractAxisPrivate::initializeAnimations(QChart::AnimationOptions options
         axis->setAnimation(0);
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qabstractaxis.cpp"
 #include "moc_qabstractaxis_p.cpp"

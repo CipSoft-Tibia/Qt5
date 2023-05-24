@@ -1,60 +1,27 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "profile_io_data_qt.h"
 
-#include "base/task/post_task.h"
 #include "content/browser/storage_partition_impl.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/browsing_data_remover.h"
+#include "content/public/browser/network_service_instance.h"
+#include "content/public/browser/resource_context.h"
 #include "content/public/browser/shared_cors_origin_access_list.h"
 #include "content/public/common/content_features.h"
 #include "net/ssl/ssl_config_service_defaults.h"
+#include "services/cert_verifier/cert_verifier_creation.h"
+#include "services/cert_verifier/public/mojom/cert_verifier_service_factory.mojom.h"
 #include "services/network/public/cpp/cors/origin_access_list.h"
+#include "services/network/public/mojom/cert_verifier_service.mojom.h"
 
-#include "net/client_cert_override.h"
+#include "net/client_cert_qt.h"
 #include "net/client_cert_store_data.h"
 #include "net/cookie_monster_delegate_qt.h"
 #include "net/system_network_context_manager.h"
 #include "profile_qt.h"
-#include "resource_context_qt.h"
 #include "type_conversion.h"
 
 #include <QDebug>
@@ -97,6 +64,14 @@ void ProfileIODataQt::shutdownOnUIThread()
     if (m_cookieDelegate)
         m_cookieDelegate->unsetMojoCookieManager();
     m_proxyConfigMonitor.reset();
+
+    if (m_clearHttpCacheInProgress) {
+        m_clearHttpCacheInProgress = false;
+        content::BrowsingDataRemover *remover =
+                m_profileAdapter->profile()->GetBrowsingDataRemover();
+        remover->RemoveObserver(&m_removerObserver);
+    }
+
     bool posted = content::BrowserThread::DeleteSoon(content::BrowserThread::IO, FROM_HERE, this);
     if (!posted) {
         qWarning() << "Could not delete ProfileIODataQt on io thread !";
@@ -126,7 +101,7 @@ void ProfileIODataQt::initializeOnUIThread()
 {
     m_profileAdapter = m_profile->profileAdapter();
     DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-    m_resourceContext.reset(new ResourceContextQt(this));
+    m_resourceContext.reset(new content::ResourceContext());
     m_cookieDelegate = new CookieMonsterDelegateQt();
     m_cookieDelegate->setClient(m_profile->profileAdapter()->cookieStore());
     m_proxyConfigMonitor.reset(new ProxyConfigMonitor(m_profile->GetPrefs()));
@@ -138,7 +113,7 @@ void ProfileIODataQt::clearHttpCache()
     if (!m_clearHttpCacheInProgress) {
         m_clearHttpCacheInProgress = true;
         content::BrowsingDataRemover *remover =
-                content::BrowserContext::GetBrowsingDataRemover(m_profileAdapter->profile());
+                m_profileAdapter->profile()->GetBrowsingDataRemover();
         remover->AddObserver(&m_removerObserver);
         remover->RemoveAndReply(base::Time(), base::Time::Max(),
             content::BrowsingDataRemover::DATA_TYPE_CACHE,
@@ -151,7 +126,7 @@ void ProfileIODataQt::clearHttpCache()
 void ProfileIODataQt::removeBrowsingDataRemoverObserver()
 {
     content::BrowsingDataRemover *remover =
-            content::BrowserContext::GetBrowsingDataRemover(m_profileAdapter->profile());
+            m_profileAdapter->profile()->GetBrowsingDataRemover();
     remover->RemoveObserver(&m_removerObserver);
 }
 
@@ -186,8 +161,8 @@ void ProfileIODataQt::resetNetworkContext()
 {
     Q_ASSERT(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI));
     setFullConfiguration();
-    content::BrowserContext::ForEachStoragePartition(
-            m_profile, base::BindRepeating([](content::StoragePartition *storage) {
+    m_profile->ForEachLoadedStoragePartition(
+            base::BindRepeating([](content::StoragePartition *storage) {
                 auto storage_impl = static_cast<content::StoragePartitionImpl *>(storage);
                 storage_impl->ResetURLLoaderFactories();
                 storage_impl->ResetNetworkContext();
@@ -209,25 +184,21 @@ ClientCertificateStoreData *ProfileIODataQt::clientCertificateStoreData()
 std::unique_ptr<net::ClientCertStore> ProfileIODataQt::CreateClientCertStore()
 {
 #if QT_CONFIG(ssl)
-    return std::unique_ptr<net::ClientCertStore>(new ClientCertOverrideStore(m_clientCertificateStoreData));
+    return std::unique_ptr<net::ClientCertStore>(new ClientCertStoreQt(m_clientCertificateStoreData));
 #else
-    return std::unique_ptr<net::ClientCertStore>(new ClientCertOverrideStore(nullptr));
+    return std::unique_ptr<net::ClientCertStore>(new ClientCertStoreQt(nullptr));
 #endif
 }
 
 void ProfileIODataQt::ConfigureNetworkContextParams(bool in_memory,
                                                     const base::FilePath &relative_partition_path,
                                                     network::mojom::NetworkContextParams *network_context_params,
-                                                    network::mojom::CertVerifierCreationParams *cert_verifier_creation_params)
+                                                    cert_verifier::mojom::CertVerifierCreationParams *cert_verifier_creation_params)
 {
     setFullConfiguration();
 
-    SystemNetworkContextManager::GetInstance()->ConfigureDefaultNetworkContextParams(network_context_params);
+    SystemNetworkContextManager::GetInstance()->ConfigureDefaultNetworkContextParams(network_context_params, cert_verifier_creation_params);
 
-    // FIXME: Faking old behavior to allow not enabling OCSP
-    network_context_params->initial_ssl_config->rev_checking_enabled = !ProfileAdapter::s_profileForGlobalCertificateVerification.isNull();
-
-    network_context_params->context_name = m_storageName.toStdString();
     network_context_params->user_agent = m_httpUserAgent.toStdString();
     network_context_params->accept_language = m_httpAcceptLanguage.toStdString();
 
@@ -238,24 +209,22 @@ void ProfileIODataQt::ConfigureNetworkContextParams(bool in_memory,
     network_context_params->http_cache_enabled = m_httpCacheType != ProfileAdapter::NoCache;
     network_context_params->http_cache_max_size = m_httpCacheMaxSize;
     if (m_httpCacheType == ProfileAdapter::DiskHttpCache && !m_httpCachePath.isEmpty() && !m_inMemoryOnly && !in_memory)
-        network_context_params->http_cache_path = toFilePath(m_httpCachePath);
+        network_context_params->http_cache_directory = toFilePath(m_httpCachePath);
 
-    if (m_persistentCookiesPolicy != ProfileAdapter::NoPersistentCookies && !m_inMemoryOnly && !in_memory) {
-        base::FilePath cookie_path = toFilePath(m_dataPath);
-        cookie_path = cookie_path.AppendASCII("Cookies");
-        network_context_params->cookie_path = cookie_path;
-
-        network_context_params->restore_old_session_cookies = m_persistentCookiesPolicy == ProfileAdapter::ForcePersistentCookies;
-        network_context_params->persist_session_cookies = m_persistentCookiesPolicy != ProfileAdapter::NoPersistentCookies;
-    }
+    network_context_params->persist_session_cookies = false;
     if (!m_inMemoryOnly && !in_memory) {
-        network_context_params->http_server_properties_path = toFilePath(m_dataPath).AppendASCII("Network Persistent State");
-        network_context_params->transport_security_persister_path = toFilePath(m_dataPath);
+        network_context_params->file_paths =
+            network::mojom::NetworkContextFilePaths::New();
+        network_context_params->file_paths->data_directory = toFilePath(m_dataPath);
+        network_context_params->file_paths->http_server_properties_file_name = base::FilePath::FromASCII("Network Persistent State");
+        network_context_params->file_paths->transport_security_persister_file_name = base::FilePath::FromASCII("TransportSecurity");
+        network_context_params->file_paths->trust_token_database_name = base::FilePath::FromASCII("Trust Tokens");
+        if (m_persistentCookiesPolicy != ProfileAdapter::NoPersistentCookies) {
+            network_context_params->file_paths->cookie_database_name = base::FilePath::FromASCII("Cookies");
+            network_context_params->restore_old_session_cookies = m_persistentCookiesPolicy == ProfileAdapter::ForcePersistentCookies;
+            network_context_params->persist_session_cookies = m_persistentCookiesPolicy != ProfileAdapter::NoPersistentCookies;
+        }
     }
-
-#if !BUILDFLAG(DISABLE_FTP_SUPPORT)
-    network_context_params->enable_ftp_url_support = true;
-#endif  // !BUILDFLAG(DISABLE_FTP_SUPPORT)
 
     network_context_params->enforce_chrome_ct_policy = false;
 
@@ -271,13 +240,6 @@ ProfileIODataQt *ProfileIODataQt::FromBrowserContext(content::BrowserContext *br
 {
     Q_ASSERT(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI));
     return static_cast<ProfileQt *>(browser_context)->m_profileIOData.get();
-}
-
-// static
-ProfileIODataQt *ProfileIODataQt::FromResourceContext(content::ResourceContext *resource_context)
-{
-    Q_ASSERT(content::BrowserThread::CurrentlyOn(content::BrowserThread::IO));
-    return static_cast<ResourceContextQt *>(resource_context)->m_io_data;
 }
 
 } // namespace QtWebEngineCore

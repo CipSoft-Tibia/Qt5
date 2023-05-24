@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 #include <unordered_set>
 
 #include "base/compiler_specific.h"
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
 #include "net/base/net_export.h"
 #include "net/base/network_change_notifier.h"
@@ -33,6 +32,10 @@ class NET_EXPORT_PRIVATE NetworkChangeNotifierLinux
   explicit NetworkChangeNotifierLinux(
       const std::unordered_set<std::string>& ignored_interfaces);
 
+  NetworkChangeNotifierLinux(const NetworkChangeNotifierLinux&) = delete;
+  NetworkChangeNotifierLinux& operator=(const NetworkChangeNotifierLinux&) =
+      delete;
+
   ~NetworkChangeNotifierLinux() override;
 
  private:
@@ -54,8 +57,6 @@ class NET_EXPORT_PRIVATE NetworkChangeNotifierLinux
   // Also used for DnsConfigService which also must live on blocking sequences.
   std::unique_ptr<BlockingThreadObjects, base::OnTaskRunnerDeleter>
       blocking_thread_objects_;
-
-  DISALLOW_COPY_AND_ASSIGN(NetworkChangeNotifierLinux);
 };
 
 }  // namespace net

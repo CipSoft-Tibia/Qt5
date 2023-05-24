@@ -23,22 +23,28 @@
 #include <vector>
 
 #include "perfetto/ext/base/optional.h"
-#include "perfetto/ext/base/pipe.h"
+#include "perfetto/ext/base/scoped_file.h"
+#include "src/profiling/symbolizer/subprocess.h"
 #include "src/profiling/symbolizer/symbolizer.h"
 
 namespace perfetto {
 namespace profiling {
 
-#if PERFETTO_BUILDFLAG(PERFETTO_LOCAL_SYMBOLIZER)
-
 bool ParseLlvmSymbolizerLine(const std::string& line,
                              std::string* file_name,
                              uint32_t* line_no);
+std::vector<std::string> GetLines(
+    std::function<int64_t(char*, size_t)> fn_read);
+
+struct FoundBinary {
+  std::string file_name;
+  uint64_t load_bias;
+};
 
 class BinaryFinder {
  public:
   virtual ~BinaryFinder();
-  virtual base::Optional<std::string> FindBinary(
+  virtual base::Optional<FoundBinary> FindBinary(
       const std::string& abspath,
       const std::string& build_id) = 0;
 };
@@ -47,73 +53,61 @@ class LocalBinaryIndexer : public BinaryFinder {
  public:
   explicit LocalBinaryIndexer(std::vector<std::string> roots);
 
-  base::Optional<std::string> FindBinary(const std::string& abspath,
+  base::Optional<FoundBinary> FindBinary(const std::string& abspath,
                                          const std::string& build_id) override;
   ~LocalBinaryIndexer() override;
 
  private:
-  std::map<std::string, std::string> buildid_to_file_;
+  std::map<std::string, FoundBinary> buildid_to_file_;
 };
 
 class LocalBinaryFinder : public BinaryFinder {
  public:
   explicit LocalBinaryFinder(std::vector<std::string> roots);
 
-  base::Optional<std::string> FindBinary(const std::string& abspath,
+  base::Optional<FoundBinary> FindBinary(const std::string& abspath,
                                          const std::string& build_id) override;
 
   ~LocalBinaryFinder() override;
 
  private:
-  bool IsCorrectFile(const std::string& symbol_file,
-                     const std::string& build_id);
+  base::Optional<FoundBinary> IsCorrectFile(const std::string& symbol_file,
+                                            const std::string& build_id);
 
-  base::Optional<std::string> FindBinaryInRoot(const std::string& root_str,
+  base::Optional<FoundBinary> FindBinaryInRoot(const std::string& root_str,
                                                const std::string& abspath,
                                                const std::string& build_id);
 
  private:
   std::vector<std::string> roots_;
-  std::map<std::string, base::Optional<std::string>> cache_;
-};
-
-class Subprocess {
- public:
-  Subprocess(const std::string& file, std::vector<std::string> args);
-
-  ~Subprocess();
-
-  int read_fd() { return output_pipe_.rd.get(); }
-  int write_fd() { return input_pipe_.wr.get(); }
-
- private:
-  base::Pipe input_pipe_;
-  base::Pipe output_pipe_;
-
-  pid_t pid_ = -1;
+  std::map<std::string, base::Optional<FoundBinary>> cache_;
 };
 
 class LLVMSymbolizerProcess {
  public:
-  LLVMSymbolizerProcess();
+  explicit LLVMSymbolizerProcess(const std::string& symbolizer_path);
 
   std::vector<SymbolizedFrame> Symbolize(const std::string& binary,
                                          uint64_t address);
 
  private:
   Subprocess subprocess_;
-  FILE* read_file_;
 };
 
 class LocalSymbolizer : public Symbolizer {
  public:
-  explicit LocalSymbolizer(std::unique_ptr<BinaryFinder> finder)
-      : finder_(std::move(finder)) {}
+  LocalSymbolizer(const std::string& symbolizer_path,
+                  std::unique_ptr<BinaryFinder> finder);
+
+  explicit LocalSymbolizer(std::unique_ptr<BinaryFinder> finder);
 
   std::vector<std::vector<SymbolizedFrame>> Symbolize(
       const std::string& mapping_name,
       const std::string& build_id,
+      uint64_t load_bias,
       const std::vector<uint64_t>& address) override;
+
+  bool BuildIdNeedsHexConversion() override { return true; }
 
   ~LocalSymbolizer() override;
 
@@ -121,8 +115,6 @@ class LocalSymbolizer : public Symbolizer {
   LLVMSymbolizerProcess llvm_symbolizer_;
   std::unique_ptr<BinaryFinder> finder_;
 };
-
-#endif  // PERFETTO_BUILDFLAG(PERFETTO_LOCAL_SYMBOLIZER)
 
 std::unique_ptr<Symbolizer> LocalSymbolizerOrDie(
     std::vector<std::string> binary_path,

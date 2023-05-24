@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,13 +10,12 @@
 
 #include "base/check.h"
 #include "base/compiler_specific.h"
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/sequenced_task_runner.h"
+#include "base/strings/string_piece.h"
+#include "base/task/sequenced_task_runner.h"
 #include "mojo/public/cpp/bindings/async_flusher.h"
 #include "mojo/public/cpp/bindings/connection_error_callback.h"
 #include "mojo/public/cpp/bindings/connection_group.h"
-#include "mojo/public/cpp/bindings/interface_request.h"
 #include "mojo/public/cpp/bindings/lib/binding_state.h"
 #include "mojo/public/cpp/bindings/pending_flush.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -52,7 +51,7 @@ class Receiver {
   using ImplPointerType = typename ImplRefTraits::PointerType;
 
   // Constructs an unbound Receiver linked to |impl| for the duration of the
-  // Receive's lifetime. The Receiver can be bound later by calling |Bind()| or
+  // Receiver's lifetime. The Receiver can be bound later by calling |Bind()| or
   // |BindNewPipeAndPassRemote()|. An unbound Receiver does not schedule any
   // asynchronous tasks.
   explicit Receiver(ImplPointerType impl) : internal_state_(std::move(impl)) {}
@@ -60,7 +59,7 @@ class Receiver {
   // Constructs a bound Receiver by consuming |pending_receiver|. The Receiver
   // is permanently linked to |impl| and will schedule incoming |impl| method
   // and disconnection notifications on the default SequencedTaskRunner (i.e.
-  // base::SequencedTaskRunnerHandle::Get() at construction time).
+  // base::SequencedTaskRunner::GetCurrentDefault() at construction time).
   Receiver(ImplPointerType impl, PendingReceiver<Interface> pending_receiver)
       : Receiver(std::move(impl), std::move(pending_receiver), nullptr) {}
 
@@ -73,6 +72,9 @@ class Receiver {
       : internal_state_(std::move(impl)) {
     Bind(std::move(pending_receiver), std::move(task_runner));
   }
+
+  Receiver(const Receiver&) = delete;
+  Receiver& operator=(const Receiver&) = delete;
 
   ~Receiver() = default;
 
@@ -111,7 +113,7 @@ class Receiver {
 
   // Similar to the method above, but also specifies a disconnect reason.
   void ResetWithReason(uint32_t custom_reason_code,
-                       const std::string& description) {
+                       base::StringPiece description) {
     internal_state_.CloseWithReason(custom_reason_code, description);
   }
 
@@ -121,9 +123,9 @@ class Receiver {
   //
   // The Receiver will schedule incoming |impl| method calls and disconnection
   // notifications on the default SequencedTaskRunner (i.e.
-  // base::SequencedTaskRunnerHandle::Get() at the time of this call). Must only
-  // be called on an unbound Receiver.
-  PendingRemote<Interface> BindNewPipeAndPassRemote() WARN_UNUSED_RESULT {
+  // base::SequencedTaskRunner::GetCurrentDefault() at the time of this call).
+  // Must only be called on an unbound Receiver.
+  [[nodiscard]] PendingRemote<Interface> BindNewPipeAndPassRemote() {
     return BindNewPipeAndPassRemote(nullptr);
   }
 
@@ -131,11 +133,20 @@ class Receiver {
   // disconnection notifications on |task_runner| rather than on the default
   // SequencedTaskRunner. Must only be called on an unbound Receiver.
   // |task_runner| must run tasks on the same sequence that owns this Receiver.
-  PendingRemote<Interface> BindNewPipeAndPassRemote(
-      scoped_refptr<base::SequencedTaskRunner> task_runner) WARN_UNUSED_RESULT {
-    DCHECK(!is_bound()) << "Receiver is already bound";
+  [[nodiscard]] PendingRemote<Interface> BindNewPipeAndPassRemote(
+      scoped_refptr<base::SequencedTaskRunner> task_runner) {
+    DCHECK(!is_bound()) << "Receiver for " << Interface::Name_
+                        << " is already bound";
     PendingRemote<Interface> remote;
     Bind(remote.InitWithNewPipeAndPassReceiver(), std::move(task_runner));
+    return remote;
+  }
+
+  // Like above, but the returned PendingRemote has the version annotated.
+  [[nodiscard]] PendingRemote<Interface> BindNewPipeAndPassRemoteWithVersion(
+      scoped_refptr<base::SequencedTaskRunner> task_runner = nullptr) {
+    auto remote = BindNewPipeAndPassRemote(task_runner);
+    remote.internal_state()->version = Interface::Version_;
     return remote;
   }
 
@@ -144,8 +155,10 @@ class Receiver {
   //
   // The newly bound Receiver will schedule incoming |impl| method calls and
   // disconnection notifications on the default SequencedTaskRunner (i.e.
-  // base::SequencedTaskRunnerHandle::Get() at the time of this call).
+  // base::SequencedTaskRunner::GetCurrentDefault() at the time of this call).
   void Bind(PendingReceiver<Interface> pending_receiver) {
+    DCHECK(!is_bound()) << "Receiver for " << Interface::Name_
+                        << " is already bound";
     Bind(std::move(pending_receiver), nullptr);
   }
 
@@ -156,6 +169,8 @@ class Receiver {
   // Receiver.
   void Bind(PendingReceiver<Interface> pending_receiver,
             scoped_refptr<base::SequencedTaskRunner> task_runner) {
+    DCHECK(!is_bound()) << "Receiver for " << Interface::Name_
+                        << " is already bound";
     if (pending_receiver) {
       internal_state_.Bind(pending_receiver.internal_state(),
                            std::move(task_runner));
@@ -178,16 +193,16 @@ class Receiver {
   // response callbacks that haven't been invoked, as once the Receiver is
   // unbound those response callbacks are no longer valid and the Remote will
   // never be able to receive its expected responses.
-  PendingReceiver<Interface> Unbind() WARN_UNUSED_RESULT {
+  [[nodiscard]] PendingReceiver<Interface> Unbind() {
+    DCHECK(is_bound());
     CHECK(!internal_state_.HasAssociatedInterfaces());
-    return PendingReceiver<Interface>(
-        internal_state_.Unbind().PassMessagePipe());
+    return internal_state_.Unbind();
   }
 
   // Sets the message filter to be notified of each incoming message before
-  // dispatch. If a filter returns |false| from Accept(), the message is not
-  // dispatched and the pipe is closed. Filters cannot be removed once added
-  // and only one can be set.
+  // dispatch. If a filter returns |false| from WillDispatch(), the message is
+  // not dispatched and the pipe is closed. Filters cannot be removed once
+  // added and only one can be set.
   void SetFilter(std::unique_ptr<MessageFilter> filter) {
     DCHECK(is_bound());
     internal_state_.SetFilter(std::move(filter));
@@ -258,8 +273,16 @@ class Receiver {
   void EnableTestingMode() { internal_state_.EnableTestingMode(); }
 
   // Allows test code to swap the interface implementation.
-  ImplPointerType SwapImplForTesting(ImplPointerType new_impl) {
-    return internal_state_.SwapImplForTesting(new_impl);
+  //
+  // Returns the existing interface implementation to the caller.
+  //
+  // The caller needs to guarantee that `new_impl` will live longer than
+  // `this` Receiver.  One way to achieve this is to store the returned
+  // `old_impl` and swap it back in when `new_impl` is getting destroyed.
+  // Test code should prefer using `mojo::test::ScopedSwapImplForTesting` if
+  // possible.
+  [[nodiscard]] ImplPointerType SwapImplForTesting(ImplPointerType new_impl) {
+    return internal_state_.SwapImplForTesting(std::move(new_impl));
   }
 
   // Reports the currently dispatching message as bad and resets this receiver.
@@ -267,7 +290,7 @@ class Receiver {
   // message dispatch. If you need to do asynchronous work before determining
   // the legitimacy of a message, use GetBadMessageCallback() and retain its
   // result until ready to invoke or discard it.
-  void ReportBadMessage(const std::string& error) {
+  NOT_TAIL_CALLED void ReportBadMessage(base::StringPiece error) {
     GetBadMessageCallback().Run(error);
   }
 
@@ -289,8 +312,6 @@ class Receiver {
 
  private:
   internal::BindingState<Interface, ImplRefTraits> internal_state_;
-
-  DISALLOW_COPY_AND_ASSIGN(Receiver);
 };
 
 }  // namespace mojo

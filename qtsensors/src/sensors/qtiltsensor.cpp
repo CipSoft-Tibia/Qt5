@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSensors module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtiltsensor.h"
 #include "qtiltsensor_p.h"
@@ -63,7 +27,8 @@ IMPLEMENT_READING(QTiltReading)
 
 /*!
     \property QTiltReading::yRotation
-    \brief  This property holds the amount of tilt on the Y axis.
+    \brief  This property holds the amount of tilt on the Y axis,
+            measured in degrees.
 */
 qreal QTiltReading::yRotation() const
 {
@@ -71,7 +36,7 @@ qreal QTiltReading::yRotation() const
 }
 
 /*!
-    Sets yRotation to \a y.
+    Sets yRotation to \a y degrees.
 */
 void QTiltReading::setYRotation(qreal y)
 {
@@ -80,7 +45,8 @@ void QTiltReading::setYRotation(qreal y)
 
 /*!
     \property QTiltReading::xRotation
-    \brief  This property holds the amount of tilt on the X axis.
+    \brief  This property holds the amount of tilt on the X axis,
+            measured in degrees.
 
 */
 qreal QTiltReading::xRotation() const
@@ -89,7 +55,7 @@ qreal QTiltReading::xRotation() const
 }
 
 /*!
-    Sets xRotation to \a x.
+    Sets xRotation to \a x degrees.
 */
 void QTiltReading::setXRotation(qreal x)
 {
@@ -123,7 +89,7 @@ bool QTiltFilter::filter(QSensorReading *reading)
     return filter(static_cast<QTiltReading*>(reading));
 }
 
-char const * const QTiltSensor::type("QTiltSensor");
+char const * const QTiltSensor::sensorType("QTiltSensor");
 
 /*!
     \class QTiltSensor
@@ -133,7 +99,7 @@ char const * const QTiltSensor::type("QTiltSensor");
 
     \brief The QTiltSensor class is a convenience wrapper around QSensor.
 
-    The only behavioural difference is that this class sets the type properly.QMetaObject::invokeMethod(backend(), "calibrate");
+    The only behavioural difference is that this class sets the type properly.
 
     This class also features a reading() function that returns a QTiltReading instead of a QSensorReading.
 
@@ -148,7 +114,7 @@ char const * const QTiltSensor::type("QTiltSensor");
     Construct the sensor as a child of \a parent.
 */
 QTiltSensor::QTiltSensor(QObject *parent)
-    : QSensor(QTiltSensor::type, parent)
+    : QSensor(QTiltSensor::sensorType, parent)
 {
 }
 
@@ -174,7 +140,7 @@ QTiltReading *QTiltSensor::reading() const
 }
 
 /*!
-   Calibrates the tilt sensor. Uses the current tilt angles as 0.
+   Calibrates the tilt sensor. Uses the current tilt angles as 0 degrees.
   */
 void QTiltSensor::calibrate()
 {

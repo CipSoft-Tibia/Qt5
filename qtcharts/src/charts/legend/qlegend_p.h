@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //  W A R N I N G
 //  -------------
@@ -41,13 +15,16 @@
 
 #include <QtCharts/QLegend>
 #include <QtCharts/private/qchartglobal_p.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qhash.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class QChart;
 class ChartPresenter;
 class QAbstractSeries;
 class LegendLayout;
+class LegendMoveResizeHandler;
 class QLegendMarker;
 
 class Q_CHARTS_PRIVATE_EXPORT QLegendPrivate : public QObject
@@ -77,17 +54,18 @@ public Q_SLOTS:
 private:
     // Internal helpers
     void insertMarkerHelper(QLegendMarker *marker);
-    void addMarkers(QList<QLegendMarker *> markers);
+    void addMarkers(const QList<QLegendMarker *> &markers);
     void removeMarkerHelper(QLegendMarker *marker);
-    void removeMarkers(QList<QLegendMarker *> markers);
+    void removeMarkers(const QList<QLegendMarker *> &markers);
     void decorateMarker(QLegendMarker *marker);
-    void decorateMarkers(QList<QLegendMarker *> markers);
+    void decorateMarkers(const QList<QLegendMarker *> &markers);
     void updateToolTips();
 
 private:
     QLegend *q_ptr;
     ChartPresenter *m_presenter;
     LegendLayout *m_layout;
+    LegendMoveResizeHandler *m_resizer;
     QChart *m_chart;
     QGraphicsItemGroup *m_items;
     Qt::Alignment m_alignment;
@@ -101,6 +79,7 @@ private:
     bool m_backgroundVisible;
     bool m_reverseMarkers;
     bool m_showToolTips;
+    bool m_interactive;
     QLegend::MarkerShape m_markerShape;
 
     QList<QLegendMarker *> m_markers;
@@ -113,8 +92,9 @@ private:
     friend class LegendLayout;
     friend class QLegendMarkerPrivate;
     friend class LegendScroller;
+    friend class LegendMoveResizeHandler;
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif

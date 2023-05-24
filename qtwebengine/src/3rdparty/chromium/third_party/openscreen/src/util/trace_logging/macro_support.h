@@ -41,7 +41,7 @@
 namespace openscreen {
 namespace internal {
 
-inline bool IsTraceLoggingEnabled(TraceCategory::Value category) {
+inline bool IsTraceLoggingEnabled(TraceCategory category) {
   const CurrentTracingDestination destination;
   return destination && destination->IsTraceLoggingEnabled(category);
 }
@@ -58,7 +58,7 @@ inline bool IsTraceLoggingEnabled(TraceCategory::Value category) {
       tracing_storage, line)[sizeof(openscreen::internal::TraceIdSetter)]; \
   TRACE_INTERNAL_IGNORE_UNUSED_VAR                                         \
   const auto TRACE_INTERNAL_UNIQUE_VAR_NAME(trace_ref_) =                  \
-      TRACE_IS_ENABLED(openscreen::TraceCategory::Value::kAny)             \
+      TRACE_IS_ENABLED(openscreen::TraceCategory::kAny)                    \
           ? openscreen::internal::TraceInstanceHelper<                     \
                 openscreen::internal::TraceIdSetter>::                     \
                 Create(TRACE_INTERNAL_CONCAT_CONST(tracing_storage, line), \

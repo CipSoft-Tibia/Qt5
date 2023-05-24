@@ -1,9 +1,10 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/extensions/api/storage/sync_storage_backend.h"
 
+#include <memory>
 #include <utility>
 
 #include "base/logging.h"
@@ -12,50 +13,50 @@
 #include "chrome/browser/extensions/api/storage/settings_sync_util.h"
 #include "chrome/browser/extensions/api/storage/syncable_settings_storage.h"
 #include "components/sync/model/sync_change_processor.h"
-#include "components/sync/model/sync_error_factory.h"
 #include "extensions/browser/api/storage/backend_task_runner.h"
+#include "extensions/browser/api/storage/value_store_util.h"
 
 namespace extensions {
 
 namespace {
 
 void AddAllSyncData(const std::string& extension_id,
-                    const base::DictionaryValue& src,
+                    const base::Value::Dict& src,
                     syncer::ModelType type,
                     syncer::SyncDataList* dst) {
-  for (base::DictionaryValue::Iterator it(src); !it.IsAtEnd(); it.Advance()) {
-    dst->push_back(settings_sync_util::CreateData(extension_id, it.key(),
-                                                  it.value(), type));
+  for (auto it : src) {
+    dst->push_back(settings_sync_util::CreateData(extension_id, it.first,
+                                                  it.second, type));
   }
 }
 
-std::unique_ptr<base::DictionaryValue> EmptyDictionaryValue() {
-  return std::make_unique<base::DictionaryValue>();
+base::Value::Dict EmptyDict() {
+  return base::Value::Dict();
 }
 
-ValueStoreFactory::ModelType ToFactoryModelType(syncer::ModelType sync_type) {
+value_store_util::ModelType ToFactoryModelType(syncer::ModelType sync_type) {
   switch (sync_type) {
     case syncer::APP_SETTINGS:
-      return ValueStoreFactory::ModelType::APP;
+      return value_store_util::ModelType::APP;
     case syncer::EXTENSION_SETTINGS:
-      return ValueStoreFactory::ModelType::EXTENSION;
+      return value_store_util::ModelType::EXTENSION;
     default:
       NOTREACHED();
   }
-  return ValueStoreFactory::ModelType::EXTENSION;
+  return value_store_util::ModelType::EXTENSION;
 }
 
 }  // namespace
 
 SyncStorageBackend::SyncStorageBackend(
-    scoped_refptr<ValueStoreFactory> storage_factory,
+    scoped_refptr<value_store::ValueStoreFactory> storage_factory,
     const SettingsStorageQuotaEnforcer::Limits& quota,
-    scoped_refptr<SettingsObserverList> observers,
+    SequenceBoundSettingsChangedCallback observer,
     syncer::ModelType sync_type,
     const syncer::SyncableService::StartSyncFlare& flare)
     : storage_factory_(std::move(storage_factory)),
       quota_(quota),
-      observers_(std::move(observers)),
+      observer_(std::move(observer)),
       sync_type_(sync_type),
       flare_(flare) {
   DCHECK(IsOnBackendSequence());
@@ -65,14 +66,15 @@ SyncStorageBackend::SyncStorageBackend(
 
 SyncStorageBackend::~SyncStorageBackend() {}
 
-ValueStore* SyncStorageBackend::GetStorage(const std::string& extension_id) {
+value_store::ValueStore* SyncStorageBackend::GetStorage(
+    const std::string& extension_id) {
   DCHECK(IsOnBackendSequence());
-  return GetOrCreateStorageWithSyncData(extension_id, EmptyDictionaryValue());
+  return GetOrCreateStorageWithSyncData(extension_id, EmptyDict());
 }
 
 SyncableSettingsStorage* SyncStorageBackend::GetOrCreateStorageWithSyncData(
     const std::string& extension_id,
-    std::unique_ptr<base::DictionaryValue> sync_data) const {
+    base::Value::Dict sync_data) const {
   DCHECK(IsOnBackendSequence());
 
   auto maybe_storage = storage_objs_.find(extension_id);
@@ -82,21 +84,21 @@ SyncableSettingsStorage* SyncStorageBackend::GetOrCreateStorageWithSyncData(
 
   std::unique_ptr<SettingsStorageQuotaEnforcer> settings_storage(
       new SettingsStorageQuotaEnforcer(
-          quota_, storage_factory_->CreateSettingsStore(
+          quota_, value_store_util::CreateSettingsStore(
                       settings_namespace::SYNC, ToFactoryModelType(sync_type_),
-                      extension_id)));
+                      extension_id, storage_factory_)));
 
   // It's fine to create the quota enforcer underneath the sync layer, since
   // sync will only go ahead if each underlying storage operation succeeds.
   std::unique_ptr<SyncableSettingsStorage> syncable_storage(
-      new SyncableSettingsStorage(observers_, extension_id,
+      new SyncableSettingsStorage(observer_, extension_id,
                                   settings_storage.release(), sync_type_,
                                   flare_));
   SyncableSettingsStorage* raw_syncable_storage = syncable_storage.get();
   storage_objs_[extension_id] = std::move(syncable_storage);
 
   if (sync_processor_.get()) {
-    base::Optional<syncer::ModelError> error =
+    absl::optional<syncer::ModelError> error =
         raw_syncable_storage->StartSyncing(
             std::move(sync_data), CreateSettingsSyncProcessor(extension_id));
     if (error.has_value())
@@ -117,24 +119,6 @@ void SyncStorageBackend::DeleteStorage(const std::string& extension_id) {
   storage_objs_.erase(extension_id);
 }
 
-std::set<std::string> SyncStorageBackend::GetKnownExtensionIDs(
-    ValueStoreFactory::ModelType model_type) const {
-  DCHECK(IsOnBackendSequence());
-  std::set<std::string> result;
-
-  // Storage areas can be in-memory as well as on disk. |storage_objs_| will
-  // contain all that are in-memory.
-  for (const auto& storage_obj : storage_objs_) {
-    result.insert(storage_obj.first);
-  }
-
-  std::set<std::string> disk_ids = storage_factory_->GetKnownExtensionIDs(
-      settings_namespace::SYNC, model_type);
-  result.insert(disk_ids.begin(), disk_ids.end());
-
-  return result;
-}
-
 void SyncStorageBackend::WaitUntilReadyToSync(base::OnceClosure done) {
   DCHECK(IsOnBackendSequence());
   // This class is ready to sync immediately upon construction.
@@ -147,53 +131,46 @@ syncer::SyncDataList SyncStorageBackend::GetAllSyncDataForTesting(
   // For all extensions, get all their settings.  This has the effect
   // of bringing in the entire state of extension settings in memory; sad.
   syncer::SyncDataList all_sync_data;
-  std::set<std::string> known_extension_ids(
-      GetKnownExtensionIDs(ToFactoryModelType(type)));
 
-  for (auto it = known_extension_ids.cbegin(); it != known_extension_ids.cend();
-       ++it) {
-    ValueStore::ReadResult maybe_settings =
-        GetOrCreateStorageWithSyncData(*it, EmptyDictionaryValue())->Get();
+  // For tests, all storage areas are kept in memory in `storage_objs_`.
+  for (const auto& storage_obj : storage_objs_) {
+    std::string extension_id = storage_obj.first;
+
+    value_store::ValueStore::ReadResult maybe_settings =
+        GetOrCreateStorageWithSyncData(extension_id, EmptyDict())->Get();
     if (!maybe_settings.status().ok()) {
-      LOG(WARNING) << "Failed to get settings for " << *it << ": "
+      LOG(WARNING) << "Failed to get settings for " << extension_id << ": "
                    << maybe_settings.status().message;
       continue;
     }
-    AddAllSyncData(*it, maybe_settings.settings(), type, &all_sync_data);
+    AddAllSyncData(extension_id, maybe_settings.settings(), type,
+                   &all_sync_data);
   }
 
   return all_sync_data;
 }
 
-base::Optional<syncer::ModelError> SyncStorageBackend::MergeDataAndStartSyncing(
+absl::optional<syncer::ModelError> SyncStorageBackend::MergeDataAndStartSyncing(
     syncer::ModelType type,
     const syncer::SyncDataList& initial_sync_data,
-    std::unique_ptr<syncer::SyncChangeProcessor> sync_processor,
-    std::unique_ptr<syncer::SyncErrorFactory> sync_error_factory) {
+    std::unique_ptr<syncer::SyncChangeProcessor> sync_processor) {
   DCHECK(IsOnBackendSequence());
   DCHECK_EQ(sync_type_, type);
   DCHECK(!sync_processor_.get());
   DCHECK(sync_processor.get());
-  DCHECK(sync_error_factory.get());
 
   sync_processor_ = std::move(sync_processor);
-  sync_error_factory_ = std::move(sync_error_factory);
 
   // Group the initial sync data by extension id.
-  // The raw pointers are safe because ownership of each item is passed to
-  // storage->StartSyncing or GetOrCreateStorageWithSyncData.
-  std::map<std::string, base::DictionaryValue*> grouped_sync_data;
+  std::map<std::string, base::Value::Dict> grouped_sync_data;
 
   for (const syncer::SyncData& sync_data : initial_sync_data) {
     SettingSyncData data(sync_data);
-    // Yes this really is a reference to a pointer.
-    base::DictionaryValue*& settings = grouped_sync_data[data.extension_id()];
-    if (!settings)
-      settings = new base::DictionaryValue();
-    DCHECK(!settings->HasKey(data.key()))
+    base::Value::Dict& settings = grouped_sync_data[data.extension_id()];
+    DCHECK(!settings.Find(data.key()))
         << "Duplicate settings for " << data.extension_id() << "/"
         << data.key();
-    settings->SetWithoutPathExpansion(data.key(), data.PassValue());
+    settings.Set(data.key(), data.ExtractValue());
   }
 
   // Start syncing all existing storage areas.  Any storage areas created in
@@ -203,13 +180,13 @@ base::Optional<syncer::ModelError> SyncStorageBackend::MergeDataAndStartSyncing(
     SyncableSettingsStorage* storage = storage_obj.second.get();
 
     auto group = grouped_sync_data.find(extension_id);
-    base::Optional<syncer::ModelError> error;
+    absl::optional<syncer::ModelError> error;
     if (group != grouped_sync_data.end()) {
-      error = storage->StartSyncing(base::WrapUnique(group->second),
+      error = storage->StartSyncing(std::move(group->second),
                                     CreateSettingsSyncProcessor(extension_id));
       grouped_sync_data.erase(group);
     } else {
-      error = storage->StartSyncing(EmptyDictionaryValue(),
+      error = storage->StartSyncing(EmptyDict(),
                                     CreateSettingsSyncProcessor(extension_id));
     }
 
@@ -220,14 +197,14 @@ base::Optional<syncer::ModelError> SyncStorageBackend::MergeDataAndStartSyncing(
   // Eagerly create and init the rest of the storage areas that have sync data.
   // Under normal circumstances (i.e. not first-time sync) this will be all of
   // them.
-  for (const auto& group : grouped_sync_data) {
-    GetOrCreateStorageWithSyncData(group.first, base::WrapUnique(group.second));
+  for (auto& group : grouped_sync_data) {
+    GetOrCreateStorageWithSyncData(group.first, std::move(group.second));
   }
 
-  return base::nullopt;
+  return absl::nullopt;
 }
 
-base::Optional<syncer::ModelError> SyncStorageBackend::ProcessSyncChanges(
+absl::optional<syncer::ModelError> SyncStorageBackend::ProcessSyncChanges(
     const base::Location& from_here,
     const syncer::SyncChangeList& sync_changes) {
   DCHECK(IsOnBackendSequence());
@@ -249,14 +226,14 @@ base::Optional<syncer::ModelError> SyncStorageBackend::ProcessSyncChanges(
   // Create any storage areas that don't exist yet but have sync data.
   for (const auto& group : grouped_sync_data) {
     SyncableSettingsStorage* storage =
-        GetOrCreateStorageWithSyncData(group.first, EmptyDictionaryValue());
-    base::Optional<syncer::ModelError> error =
+        GetOrCreateStorageWithSyncData(group.first, EmptyDict());
+    absl::optional<syncer::ModelError> error =
         storage->ProcessSyncChanges(base::WrapUnique(group.second));
     if (error.has_value())
       storage->StopSyncing();
   }
 
-  return base::nullopt;
+  return absl::nullopt;
 }
 
 void SyncStorageBackend::StopSyncing(syncer::ModelType type) {
@@ -271,15 +248,14 @@ void SyncStorageBackend::StopSyncing(syncer::ModelType type) {
   }
 
   sync_processor_.reset();
-  sync_error_factory_.reset();
 }
 
 std::unique_ptr<SettingsSyncProcessor>
 SyncStorageBackend::CreateSettingsSyncProcessor(
     const std::string& extension_id) const {
   CHECK(sync_processor_.get());
-  return std::unique_ptr<SettingsSyncProcessor>(new SettingsSyncProcessor(
-      extension_id, sync_type_, sync_processor_.get()));
+  return std::make_unique<SettingsSyncProcessor>(extension_id, sync_type_,
+                                                 sync_processor_.get());
 }
 
 }  // namespace extensions

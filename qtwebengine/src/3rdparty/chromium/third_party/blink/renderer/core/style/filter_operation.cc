@@ -26,7 +26,6 @@
 #include "third_party/blink/renderer/core/style/filter_operation.h"
 
 #include "third_party/blink/renderer/core/svg/svg_resource.h"
-#include "third_party/blink/renderer/platform/animation/animation_utilities.h"
 #include "third_party/blink/renderer/platform/geometry/length_functions.h"
 #include "third_party/blink/renderer/platform/graphics/filters/fe_drop_shadow.h"
 #include "third_party/blink/renderer/platform/graphics/filters/fe_gaussian_blur.h"
@@ -41,53 +40,56 @@ void ReferenceFilterOperation::Trace(Visitor* visitor) const {
   FilterOperation::Trace(visitor);
 }
 
-FloatRect ReferenceFilterOperation::MapRect(const FloatRect& rect) const {
+gfx::RectF ReferenceFilterOperation::MapRect(const gfx::RectF& rect) const {
   const auto* last_effect = filter_ ? filter_->LastEffect() : nullptr;
-  if (!last_effect)
+  if (!last_effect) {
     return rect;
+  }
   return last_effect->MapRect(rect);
 }
 
 ReferenceFilterOperation::ReferenceFilterOperation(const AtomicString& url,
                                                    SVGResource* resource)
-    : FilterOperation(REFERENCE), url_(url), resource_(resource) {}
+    : FilterOperation(OperationType::kReference),
+      url_(url),
+      resource_(resource) {}
 
 void ReferenceFilterOperation::AddClient(SVGResourceClient& client) {
-  if (resource_)
+  if (resource_) {
     resource_->AddClient(client);
+  }
 }
 
 void ReferenceFilterOperation::RemoveClient(SVGResourceClient& client) {
-  if (resource_)
+  if (resource_) {
     resource_->RemoveClient(client);
+  }
 }
 
-bool ReferenceFilterOperation::operator==(const FilterOperation& o) const {
-  if (!IsSameType(o))
-    return false;
+bool ReferenceFilterOperation::IsEqualAssumingSameType(
+    const FilterOperation& o) const {
   const auto& other = To<ReferenceFilterOperation>(o);
   return url_ == other.url_ && resource_ == other.resource_;
 }
 
-FloatRect BlurFilterOperation::MapRect(const FloatRect& rect) const {
+gfx::RectF BlurFilterOperation::MapRect(const gfx::RectF& rect) const {
   float std_deviation = FloatValueForLength(std_deviation_, 0);
-  return FEGaussianBlur::MapEffect(FloatSize(std_deviation, std_deviation),
+  return FEGaussianBlur::MapEffect(gfx::SizeF(std_deviation, std_deviation),
                                    rect);
 }
 
-FloatRect DropShadowFilterOperation::MapRect(const FloatRect& rect) const {
+gfx::RectF DropShadowFilterOperation::MapRect(const gfx::RectF& rect) const {
   float std_deviation = shadow_.Blur();
-  return FEDropShadow::MapEffect(FloatSize(std_deviation, std_deviation),
+  return FEDropShadow::MapEffect(gfx::SizeF(std_deviation, std_deviation),
                                  shadow_.Location(), rect);
 }
 
-FloatRect BoxReflectFilterOperation::MapRect(const FloatRect& rect) const {
+gfx::RectF BoxReflectFilterOperation::MapRect(const gfx::RectF& rect) const {
   return reflection_.MapRect(rect);
 }
 
-bool BoxReflectFilterOperation::operator==(const FilterOperation& o) const {
-  if (!IsSameType(o))
-    return false;
+bool BoxReflectFilterOperation::IsEqualAssumingSameType(
+    const FilterOperation& o) const {
   const auto& other = static_cast<const BoxReflectFilterOperation&>(o);
   return reflection_ == other.reflection_;
 }

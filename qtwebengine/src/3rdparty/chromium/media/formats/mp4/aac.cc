@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 #include <algorithm>
 
 #include "base/logging.h"
-#include "build/build_config.h"
 #include "media/base/bit_reader.h"
 #include "media/formats/mp4/rcheck.h"
 #include "media/formats/mpeg/adts_constants.h"
@@ -29,9 +28,8 @@ AAC::AAC(const AAC& other) = default;
 AAC::~AAC() = default;
 
 bool AAC::Parse(const std::vector<uint8_t>& data, MediaLog* media_log) {
-#if defined(OS_ANDROID)
   codec_specific_data_ = data;
-#endif
+
   if (data.empty())
     return false;
 
@@ -185,11 +183,14 @@ ChannelLayout AAC::GetChannelLayout(bool sbr_in_mimetype) const {
   return channel_layout_;
 }
 
-bool AAC::ConvertEsdsToADTS(std::vector<uint8_t>* buffer) const {
+bool AAC::ConvertEsdsToADTS(std::vector<uint8_t>* buffer,
+                            int* adts_header_size) const {
   // Don't append ADTS header for XHE-AAC; it doesn't have enough bits to signal
   // the correct profile.
-  if (profile_ == kXHeAAcType)
+  if (profile_ == kXHeAAcType) {
+    *adts_header_size = 0;
     return true;
+  }
 
   size_t size = buffer->size() + kADTSHeaderMinSize;
 
@@ -212,6 +213,7 @@ bool AAC::ConvertEsdsToADTS(std::vector<uint8_t>* buffer) const {
   adts[5] = ((size & 7) << 5) + 0x1f;
   adts[6] = 0xfc;
 
+  *adts_header_size = kADTSHeaderMinSize;
   return true;
 }
 

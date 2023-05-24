@@ -26,7 +26,12 @@
 
 #include "third_party/blink/renderer/modules/webdatabase/dom_window_web_database.h"
 
+#include "base/command_line.h"
+#include "base/feature_list.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/switches.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_database_callback.h"
+#include "third_party/blink/renderer/core/frame/deprecation/deprecation.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/modules/webdatabase/database.h"
@@ -67,10 +72,29 @@ Database* DOMWindowWebDatabase::openDatabase(
     if (window.GetSecurityOrigin()->IsLocal())
       UseCounter::Count(window, WebFeature::kFileAccessedDatabase);
 
+    if (!base::FeatureList::IsEnabled(blink::features::kWebSQLAccess) &&
+        !base::CommandLine::ForCurrentProcess()->HasSwitch(
+            blink::switches::kWebSQLAccess)) {
+      exception_state.ThrowSecurityError(
+          "Access to the WebDatabase API is denied.");
+      return nullptr;
+    }
+
+    if (!window.GetExecutionContext()->IsSecureContext()) {
+      exception_state.ThrowSecurityError(
+          "Access to the WebDatabase API is denied in non-secure contexts.");
+      return nullptr;
+    }
+
+    if (window.IsCrossSiteSubframeIncludingScheme()) {
+      exception_state.ThrowSecurityError(
+          "Access to the WebDatabase API is denied in third party contexts.");
+      return nullptr;
+    }
+
     String error_message;
     database = db_manager.OpenDatabase(&window, name, version, display_name,
-                                       estimated_size, creation_callback, error,
-                                       error_message);
+                                       creation_callback, error, error_message);
     DCHECK(database || error != DatabaseError::kNone);
     if (error != DatabaseError::kNone)
       DatabaseManager::ThrowExceptionForDatabaseError(error, error_message,

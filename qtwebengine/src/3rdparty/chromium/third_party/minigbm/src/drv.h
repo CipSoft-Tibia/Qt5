@@ -14,6 +14,7 @@ extern "C" {
 #include <drm_fourcc.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #define DRV_MAX_PLANES 4
 
@@ -37,7 +38,10 @@ extern "C" {
 #define BO_USE_HW_VIDEO_DECODER         (1ull << 13)
 #define BO_USE_HW_VIDEO_ENCODER         (1ull << 14)
 #define BO_USE_TEST_ALLOC		(1ull << 15)
-#define BO_USE_RENDERSCRIPT		(1ull << 16)
+#define BO_USE_FRONT_RENDERING		(1ull << 16)
+#define BO_USE_RENDERSCRIPT		(1ull << 17)
+#define BO_USE_GPU_DATA_BUFFER		(1ull << 18)
+#define BO_USE_SENSOR_DIRECT_DATA	(1ull << 19)
 
 /* Quirks for allocating a buffer. */
 #define BO_QUIRK_NONE			0
@@ -68,6 +72,15 @@ extern "C" {
 #define DRM_FORMAT_P010 fourcc_code('P', '0', '1', '0')
 #endif
 
+//TODO: remove this defination once drm_fourcc.h contains it.
+#ifndef I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS
+#define I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS fourcc_mod_code(INTEL, 6)
+#endif
+
+//TODO: remove this defination once drm_fourcc.h contains it.
+#ifndef I915_FORMAT_MOD_4_TILED
+#define I915_FORMAT_MOD_4_TILED         fourcc_mod_code(INTEL, 9)
+#endif
 // clang-format on
 struct driver;
 struct bo;
@@ -85,10 +98,11 @@ struct drv_import_fd_data {
 	int fds[DRV_MAX_PLANES];
 	uint32_t strides[DRV_MAX_PLANES];
 	uint32_t offsets[DRV_MAX_PLANES];
-	uint64_t format_modifiers[DRV_MAX_PLANES];
+	uint64_t format_modifier;
 	uint32_t width;
 	uint32_t height;
 	uint32_t format;
+	uint32_t tiling;
 	uint64_t use_flags;
 };
 
@@ -145,6 +159,8 @@ int drv_bo_unmap(struct bo *bo, struct mapping *mapping);
 
 int drv_bo_invalidate(struct bo *bo, struct mapping *mapping);
 
+int drv_bo_flush(struct bo *bo, struct mapping *mapping);
+
 int drv_bo_flush_or_unmap(struct bo *bo, struct mapping *mapping);
 
 uint32_t drv_bo_get_width(struct bo *bo);
@@ -163,15 +179,26 @@ uint32_t drv_bo_get_plane_size(struct bo *bo, size_t plane);
 
 uint32_t drv_bo_get_plane_stride(struct bo *bo, size_t plane);
 
-uint64_t drv_bo_get_plane_format_modifier(struct bo *bo, size_t plane);
+uint64_t drv_bo_get_format_modifier(struct bo *bo);
 
 uint32_t drv_bo_get_format(struct bo *bo);
+
+uint32_t drv_bo_get_tiling(struct bo *bo);
+
+uint64_t drv_bo_get_use_flags(struct bo *bo);
+
+size_t drv_bo_get_total_size(struct bo *bo);
+
+uint32_t drv_get_standard_fourcc(uint32_t fourcc_internal);
 
 uint32_t drv_bytes_per_pixel_from_format(uint32_t format, size_t plane);
 
 uint32_t drv_stride_from_format(uint32_t format, uint32_t width, size_t plane);
 
-uint32_t drv_resolve_format(struct driver *drv, uint32_t format, uint64_t use_flags);
+void drv_resolve_format_and_use_flags(struct driver *drv, uint32_t format, uint64_t use_flags,
+				      uint32_t *out_format, uint64_t *out_use_flags);
+
+uint64_t drv_resolve_use_flags(struct driver *drv, uint32_t format, uint64_t use_flags);
 
 size_t drv_num_planes_from_format(uint32_t format);
 
@@ -180,14 +207,29 @@ size_t drv_num_planes_from_modifier(struct driver *drv, uint32_t format, uint64_
 uint32_t drv_num_buffers_per_bo(struct bo *bo);
 
 int drv_resource_info(struct bo *bo, uint32_t strides[DRV_MAX_PLANES],
-		      uint32_t offsets[DRV_MAX_PLANES]);
+		      uint32_t offsets[DRV_MAX_PLANES], uint64_t *format_modifier);
 
-#define drv_log(format, ...)                                                                       \
+uint32_t drv_get_max_texture_2d_size(struct driver *drv);
+
+enum drv_log_level {
+	DRV_LOGV,
+	DRV_LOGD,
+	DRV_LOGI,
+	DRV_LOGE,
+};
+
+#define _drv_log(level, format, ...)                                                               \
 	do {                                                                                       \
-		drv_log_prefix("minigbm", __FILE__, __LINE__, format, ##__VA_ARGS__);              \
+		drv_log_prefix(level, "minigbm", __FILE__, __LINE__, format, ##__VA_ARGS__);       \
 	} while (0)
 
-__attribute__((format(printf, 4, 5))) void drv_log_prefix(const char *prefix, const char *file,
+#define drv_loge(format, ...) _drv_log(DRV_LOGE, format, ##__VA_ARGS__)
+#define drv_logv(format, ...) _drv_log(DRV_LOGV, format, ##__VA_ARGS__)
+#define drv_logd(format, ...) _drv_log(DRV_LOGD, format, ##__VA_ARGS__)
+#define drv_logi(format, ...) _drv_log(DRV_LOGI, format, ##__VA_ARGS__)
+
+__attribute__((format(printf, 5, 6))) void drv_log_prefix(enum drv_log_level level,
+							  const char *prefix, const char *file,
 							  int line, const char *format, ...);
 
 #ifdef __cplusplus

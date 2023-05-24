@@ -1,56 +1,25 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformfontdatabase.h"
 #include <QtGui/private/qfontengine_p.h>
-#include <QtGui/private/qfontengine_qpf2_p.h>
+#include <QtGui/private/qfontdatabase_p.h>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QScreen>
 #include <qpa/qplatformscreen.h>
 #include <QtCore/QLibraryInfo>
 #include <QtCore/QDir>
 #include <QtCore/QMetaEnum>
+#include <QtCore/qendian.h>
 
 #include <algorithm>
 #include <iterator>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+Q_LOGGING_CATEGORY(lcQpaFonts, "qt.qpa.fonts")
 
 void qt_registerFont(const QString &familyname, const QString &stylename,
                      const QString &foundryname, int weight,
@@ -61,48 +30,6 @@ void qt_registerFont(const QString &familyname, const QString &stylename,
 void qt_registerFontFamily(const QString &familyName);
 void qt_registerAliasToFontFamily(const QString &familyName, const QString &alias);
 bool qt_isFontFamilyPopulated(const QString &familyName);
-
-/*!
-    Registers the pre-rendered QPF2 font contained in the given \a dataArray.
-
-    \sa registerFont()
-*/
-void QPlatformFontDatabase::registerQPF2Font(const QByteArray &dataArray, void *handle)
-{
-    if (dataArray.size() == 0)
-        return;
-
-    const uchar *data = reinterpret_cast<const uchar *>(dataArray.constData());
-    if (QFontEngineQPF2::verifyHeader(data, dataArray.size())) {
-        QString fontName = QFontEngineQPF2::extractHeaderField(data, QFontEngineQPF2::Tag_FontName).toString();
-        int pixelSize = QFontEngineQPF2::extractHeaderField(data, QFontEngineQPF2::Tag_PixelSize).toInt();
-        QVariant weight = QFontEngineQPF2::extractHeaderField(data, QFontEngineQPF2::Tag_Weight);
-        QVariant style = QFontEngineQPF2::extractHeaderField(data, QFontEngineQPF2::Tag_Style);
-        QByteArray writingSystemBits = QFontEngineQPF2::extractHeaderField(data, QFontEngineQPF2::Tag_WritingSystems).toByteArray();
-
-        if (!fontName.isEmpty() && pixelSize) {
-            QFont::Weight fontWeight = QFont::Normal;
-            if (weight.userType() == QMetaType::Int || weight.userType() == QMetaType::UInt)
-                fontWeight = QFont::Weight(weight.toInt());
-
-            QFont::Style fontStyle = static_cast<QFont::Style>(style.toInt());
-
-            QSupportedWritingSystems writingSystems;
-            for (int i = 0; i < writingSystemBits.count(); ++i) {
-                uchar currentByte = writingSystemBits.at(i);
-                for (int j = 0; j < 8; ++j) {
-                    if (currentByte & 1)
-                        writingSystems.setSupported(QFontDatabase::WritingSystem(i * 8 + j));
-                    currentByte >>= 1;
-                }
-            }
-            QFont::Stretch stretch = QFont::Unstretched;
-            registerFont(fontName,QString(),QString(),fontWeight,fontStyle,stretch,true,false,pixelSize,false,writingSystems,handle);
-        }
-    } else {
-        qDebug("header verification of QPF2 font failed. maybe it is corrupt?");
-    }
-}
 
 /*!
     Registers a font with the given set of attributes describing the font's
@@ -123,7 +50,7 @@ void QPlatformFontDatabase::registerQPF2Font(const QByteArray &dataArray, void *
     The writing systems supported by the font are specified by the
     \a writingSystems argument.
 
-    \sa registerQPF2Font(), registerFontFamily()
+    \sa registerFontFamily()
 */
 void QPlatformFontDatabase::registerFont(const QString &familyname, const QString &stylename,
                                          const QString &foundryname, QFont::Weight weight,
@@ -156,18 +83,18 @@ class QWritingSystemsPrivate
 public:
     QWritingSystemsPrivate()
         : ref(1)
-        , vector(QFontDatabase::WritingSystemsCount,false)
+        , list(QFontDatabase::WritingSystemsCount, false)
     {
     }
 
     QWritingSystemsPrivate(const QWritingSystemsPrivate *other)
         : ref(1)
-        , vector(other->vector)
+        , list(other->list)
     {
     }
 
     QAtomicInt ref;
-    QVector<bool> vector;
+    QList<bool> list;
 };
 
 /*!
@@ -201,18 +128,38 @@ QSupportedWritingSystems &QSupportedWritingSystems::operator=(const QSupportedWr
     return *this;
 }
 
+bool operator==(const QSupportedWritingSystems &lhs, const QSupportedWritingSystems &rhs)
+{
+    return !(lhs != rhs);
+}
+
+bool operator!=(const QSupportedWritingSystems &lhs, const QSupportedWritingSystems &rhs)
+{
+    if (lhs.d == rhs.d)
+        return false;
+
+    Q_ASSERT(lhs.d->list.size() == rhs.d->list.size());
+    Q_ASSERT(lhs.d->list.size() == QFontDatabase::WritingSystemsCount);
+    for (int i = 0; i < QFontDatabase::WritingSystemsCount; ++i) {
+        if (lhs.d->list.at(i) != rhs.d->list.at(i))
+            return true;
+    }
+
+    return false;
+}
+
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug debug, const QSupportedWritingSystems &sws)
 {
-    QMetaObject mo = QFontDatabase::staticMetaObject;
-    QMetaEnum me = mo.enumerator(mo.indexOfEnumerator("WritingSystem"));
+    const QMetaObject *mo = &QFontDatabase::staticMetaObject;
+    QMetaEnum me = mo->enumerator(mo->indexOfEnumerator("WritingSystem"));
 
     QDebugStateSaver saver(debug);
     debug.nospace() << "QSupportedWritingSystems(";
-    int i = sws.d->vector.indexOf(true);
+    int i = sws.d->list.indexOf(true);
     while (i > 0) {
         debug << me.valueToKey(i);
-        i = sws.d->vector.indexOf(true, i + 1);
+        i = sws.d->list.indexOf(true, i + 1);
         if (i > 0)
             debug << ", ";
     }
@@ -250,7 +197,7 @@ void QSupportedWritingSystems::detach()
 void QSupportedWritingSystems::setSupported(QFontDatabase::WritingSystem writingSystem, bool support)
 {
     detach();
-    d->vector[writingSystem] = support;
+    d->list[writingSystem] = support;
 }
 
 /*!
@@ -259,7 +206,7 @@ void QSupportedWritingSystems::setSupported(QFontDatabase::WritingSystem writing
 */
 bool QSupportedWritingSystems::supported(QFontDatabase::WritingSystem writingSystem) const
 {
-    return d->vector.at(writingSystem);
+    return d->list.at(writingSystem);
 }
 
 /*!
@@ -291,30 +238,10 @@ QPlatformFontDatabase::~QPlatformFontDatabase()
   when the required family needs population. You then call registerFont() to
   finish population of the family.
 
-  The default implementation looks in the fontDir() location and registers all
-  QPF2 fonts.
+  The default implementation does nothing.
 */
 void QPlatformFontDatabase::populateFontDatabase()
 {
-    QString fontpath = fontDir();
-    if(!QFile::exists(fontpath)) {
-        qWarning("QFontDatabase: Cannot find font directory '%s' - is Qt installed correctly?",
-                 qPrintable(QDir::toNativeSeparators(fontpath)));
-        return;
-    }
-
-    QDir dir(fontpath);
-    dir.setNameFilters(QStringList() << QLatin1String("*.qpf2"));
-    dir.refresh();
-    for (int i = 0; i < int(dir.count()); ++i) {
-        const QByteArray fileName = QFile::encodeName(dir.absoluteFilePath(dir[i]));
-        QFile file(QString::fromLocal8Bit(fileName));
-        if (file.open(QFile::ReadOnly)) {
-            const QByteArray fileData = file.readAll();
-            QByteArray *fileDataPtr = new QByteArray(fileData);
-            registerQPF2Font(fileData, fileDataPtr);
-        }
-    }
 }
 
 /*!
@@ -352,15 +279,33 @@ QFontEngineMulti *QPlatformFontDatabase::fontEngineMulti(QFontEngine *fontEngine
 /*!
     Returns the font engine that can be used to render the font described by
     the font definition, \a fontDef, in the specified \a script.
+
+    This function is called by QFontDatabase both for system fonts provided
+    by the platform font database, as well as for application fonts added by
+    the application developer.
+
+    The handle is the QPlatformFontDatabase specific handle passed when
+    registering the font family via QPlatformFontDatabase::registerFont.
+
+    The function is called for both fonts added via a filename as well
+    as fonts added from QByteArray data. Subclasses will need to handle
+    both cases via its platform specific handle.
 */
 QFontEngine *QPlatformFontDatabase::fontEngine(const QFontDef &fontDef, void *handle)
 {
-    QByteArray *fileDataPtr = static_cast<QByteArray *>(handle);
-    QFontEngineQPF2 *engine = new QFontEngineQPF2(fontDef,*fileDataPtr);
-    //qDebug() << fontDef.pixelSize << fontDef.weight << fontDef.style << fontDef.stretch << fontDef.styleHint << fontDef.styleStrategy << fontDef.family;
-    return engine;
+    Q_UNUSED(fontDef);
+    Q_UNUSED(handle);
+    qWarning("This plugin does not support loading system fonts.");
+    return nullptr;
 }
 
+/*!
+    Returns the font engine that will be used to back a QRawFont,
+    based on the given \fontData, \a pixelSize, and \a hintingPreference.
+
+    This function is called by QRawFont, and does not play a part in
+    the normal operations of QFontDatabase.
+*/
 QFontEngine *QPlatformFontDatabase::fontEngine(const QByteArray &fontData, qreal pixelSize,
                                                QFont::HintingPreference hintingPreference)
 {
@@ -376,16 +321,27 @@ QFontEngine *QPlatformFontDatabase::fontEngine(const QByteArray &fontData, qreal
     or using the font contained in the file referenced by \a fileName. Returns
     a list of family names, or an empty list if the font could not be added.
 
+    If \a applicationFont is non-null, its \c properties list should be filled
+    with information from the loaded fonts. This is exposed through FontLoader in
+    Qt Quick where it is needed for disambiguating fonts in the same family. When
+    the function exits, the \a applicationFont should contain an entry of properties
+    per font in the file, or it should be empty if no font was loaded.
+
     \note The default implementation of this function does not add an application
     font. Subclasses should reimplement this function to perform the necessary
     loading and registration of fonts.
 */
-QStringList QPlatformFontDatabase::addApplicationFont(const QByteArray &fontData, const QString &fileName)
+QStringList QPlatformFontDatabase::addApplicationFont(const QByteArray &fontData, const QString &fileName, QFontDatabasePrivate::ApplicationFont *applicationFont)
 {
     Q_UNUSED(fontData);
     Q_UNUSED(fileName);
+    Q_UNUSED(applicationFont);
+
+    if (applicationFont != nullptr)
+        applicationFont->properties.clear();
 
     qWarning("This plugin does not support application fonts");
+
     return QStringList();
 }
 
@@ -405,7 +361,7 @@ QString QPlatformFontDatabase::fontDir() const
 {
     QString fontpath = QString::fromLocal8Bit(qgetenv("QT_QPA_FONTDIR"));
     if (fontpath.isEmpty())
-        fontpath = QLibraryInfo::location(QLibraryInfo::LibrariesPath) + QLatin1String("/fonts");
+        fontpath = QLibraryInfo::path(QLibraryInfo::LibrariesPath) + "/fonts"_L1;
 
     return fontpath;
 }
@@ -429,7 +385,7 @@ bool QPlatformFontDatabase::isPrivateFontFamily(const QString &family) const
 
 QFont QPlatformFontDatabase::defaultFont() const
 {
-    return QFont(QLatin1String("Helvetica"));
+    return QFont("Helvetica"_L1);
 }
 
 
@@ -473,8 +429,6 @@ bool QPlatformFontDatabase::fontsAlwaysScalable() const
     std::copy(standard, standard + num_standards, std::back_inserter(ret));
     return ret;
 }
-
-// ### copied to tools/makeqpf/qpf2.cpp
 
 // see the Unicode subset bitfields in the MSDN docs
 static const quint8 requiredUnicodeBits[QFontDatabase::WritingSystemsCount][2] = {
@@ -532,6 +486,32 @@ enum CsbBits {
     KoreanJohabCsbBit = 21,
     SymbolCsbBit = 31
 };
+
+/*!
+    Helper function that determines the writing system support based on the contents of the OS/2 table
+    in the font.
+
+    \since 6.0
+*/
+QSupportedWritingSystems QPlatformFontDatabase::writingSystemsFromOS2Table(const char *os2Table, size_t length)
+{
+    if (length >= 86)  {
+        quint32 unicodeRange[4] = {
+            qFromBigEndian<quint32>(os2Table + 42),
+            qFromBigEndian<quint32>(os2Table + 46),
+            qFromBigEndian<quint32>(os2Table + 50),
+            qFromBigEndian<quint32>(os2Table + 54)
+        };
+        quint32 codePageRange[2] = {
+            qFromBigEndian<quint32>(os2Table + 78),
+            qFromBigEndian<quint32>(os2Table + 82)
+        };
+
+        return writingSystemsFromTrueTypeBits(unicodeRange, codePageRange);
+    }
+
+    return QSupportedWritingSystems();
+}
 
 /*!
     Helper function that determines the writing systems support by a given
@@ -627,35 +607,6 @@ QSupportedWritingSystems QPlatformFontDatabase::writingSystemsFromTrueTypeBits(q
 }
 
 /*!
-    Helper function that returns the Qt font weight matching
-    a given opentype integer value. Converts the integer
-    \a weight (0 ~ 1000) to QFont::Weight and returns it.
-
-    \since 5.5
-*/
-
-QFont::Weight QPlatformFontDatabase::weightFromInteger(int weight)
-{
-    if (weight < 150)
-        return QFont::Thin;
-    if (weight < 250)
-        return QFont::ExtraLight;
-    if (weight < 350)
-        return QFont::Light;
-    if (weight < 450)
-        return QFont::Normal;
-    if (weight < 550)
-        return QFont::Medium;
-    if (weight < 650)
-        return QFont::DemiBold;
-    if (weight < 750)
-        return QFont::Bold;
-    if (weight < 850)
-        return QFont::ExtraBold;
-    return QFont::Black;
-}
-
-/*!
     Helper function that register the \a alias for the \a familyName.
 
     \since 5.2
@@ -664,6 +615,24 @@ QFont::Weight QPlatformFontDatabase::weightFromInteger(int weight)
 void QPlatformFontDatabase::registerAliasToFontFamily(const QString &familyName, const QString &alias)
 {
     qt_registerAliasToFontFamily(familyName, alias);
+}
+
+/*!
+    Requests that the platform font database should be repopulated.
+
+    This will result in invalidating the entire font database.
+
+    The next time the font database is accessed it will be repopulated
+    via a call to QPlatformFontDatabase::populate().
+
+    Application fonts will not be removed, and will be automatically
+    populated when the font database is repopulated.
+
+    \since 6.4
+*/
+void QPlatformFontDatabase::repopulateFontDatabase()
+{
+    QFontDatabasePrivate::instance()->invalidate();
 }
 
 /*!

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -38,10 +38,4 @@ jint JNI_SecurityStateModel_GetSecurityLevelForWebContents(
   return security_state::GetSecurityLevel(
       *security_state::GetVisibleSecurityState(web_contents),
       /* used_policy_installed_certificate= */ false);
-}
-
-// static
-jboolean JNI_SecurityStateModel_ShouldShowDangerTriangleForWarningLevel(
-    JNIEnv* env) {
-  return security_state::ShouldShowDangerTriangleForWarningLevel();
 }

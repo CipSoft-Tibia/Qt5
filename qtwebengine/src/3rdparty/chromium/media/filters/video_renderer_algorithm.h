@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "base/callback.h"
 #include "base/containers/circular_deque.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/time/time.h"
 #include "media/base/media_export.h"
 #include "media/base/moving_average.h"
@@ -51,6 +51,10 @@ class MEDIA_EXPORT VideoRendererAlgorithm {
  public:
   VideoRendererAlgorithm(const TimeSource::WallClockTimeCB& wall_clock_time_cb,
                          MediaLog* media_log);
+
+  VideoRendererAlgorithm(const VideoRendererAlgorithm&) = delete;
+  VideoRendererAlgorithm& operator=(const VideoRendererAlgorithm&) = delete;
+
   ~VideoRendererAlgorithm();
 
   // Chooses the best frame for the interval [deadline_min, deadline_max] based
@@ -267,6 +271,9 @@ class MEDIA_EXPORT VideoRendererAlgorithm {
   base::TimeDelta CalculateAbsoluteDriftForFrame(base::TimeTicks deadline_min,
                                                  int frame_index) const;
 
+  // Returns the index of the first usable frame or -1 if no usable frames.
+  int FindFirstGoodFrame() const;
+
   // Updates |effective_frames_queued_| which is typically called far more
   // frequently (~4x) than the value changes.  This must be called whenever
   // frames are added or removed from the queue or when any property of a
@@ -277,7 +284,7 @@ class MEDIA_EXPORT VideoRendererAlgorithm {
   // UpdateEffectiveFramesQueued().
   size_t CountEffectiveFramesQueued() const;
 
-  MediaLog* media_log_;
+  raw_ptr<MediaLog> media_log_;
   int out_of_order_frame_logs_ = 0;
 
   // Queue of incoming frames waiting for rendering.
@@ -342,8 +349,6 @@ class MEDIA_EXPORT VideoRendererAlgorithm {
   // Current number of effective frames in the |frame_queue_|.  Updated by calls
   // to UpdateEffectiveFramesQueued() whenever the |frame_queue_| is changed.
   size_t effective_frames_queued_;
-
-  DISALLOW_COPY_AND_ASSIGN(VideoRendererAlgorithm);
 };
 
 }  // namespace media

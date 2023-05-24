@@ -26,7 +26,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_BINDINGS_CORE_V8_V8_SCRIPT_RUNNER_H_
 #define THIRD_PARTY_BLINK_RENDERER_BINDINGS_CORE_V8_V8_SCRIPT_RUNNER_H_
 
-#include "third_party/blink/public/mojom/v8_cache_options.mojom-blink.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/bindings/core/v8/sanitize_script_errors.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
@@ -40,14 +40,18 @@ class TextPosition;
 
 namespace blink {
 
-class ScriptEvaluationResult;
+class ClassicScript;
 class ExecutionContext;
-class KURL;
+class ModuleScript;
+class ModuleScriptCreationParams;
 class ReferrerScriptInfo;
-class ScriptFetchOptions;
-class ScriptSourceCode;
+class ScriptEvaluationResult;
 class ScriptState;
-class SingleCachedMetadataHandler;
+
+enum class ExecuteScriptPolicy {
+  kExecuteScriptWhenScriptsDisabled,
+  kDoNotExecuteScriptWhenScriptsDisabled
+};
 
 class CORE_EXPORT V8ScriptRunner final {
   STATIC_ONLY(V8ScriptRunner);
@@ -55,6 +59,9 @@ class CORE_EXPORT V8ScriptRunner final {
  public:
   // Rethrow errors flag in
   // https://html.spec.whatwg.org/C/#run-a-classic-script
+  // implemented by CompileAndRunScript() and
+  // https://html.spec.whatwg.org/C/#run-a-module-script
+  // implemented by EvaluateModule().
   class RethrowErrorsOption final {
     STACK_ALLOCATED();
 
@@ -67,14 +74,23 @@ class CORE_EXPORT V8ScriptRunner final {
 
     // Rethrow errors flag is false.
     static RethrowErrorsOption DoNotRethrow() {
-      return RethrowErrorsOption(base::nullopt);
+      return RethrowErrorsOption(absl::nullopt);
     }
 
-    // Rethrow errors flag is true. When rethrowing, a NetworkError with
-    // `message` is thrown. This is used only for importScripts(), and
-    // `message` is used to throw NetworkErrors with the same message text,
-    // no matter whether the NetworkError is thrown inside or outside
-    // EvaluateAndReturnValue().
+    // Rethrow errors flag is true.
+    // When an exception is to be rethrown,
+    // For classic scripts:
+    //    The exception is rethrown to V8, and ScriptEvaluationResult doesn't
+    //    retain the exception.
+    //    When script's muted errors is true, a NetworkError with
+    //    `message` is thrown. This is used only for importScripts(), and
+    //    `message` is used to throw NetworkErrors with the same message text,
+    //    no matter whether the NetworkError is thrown inside or outside
+    //    V8ScriptRunner.
+    // For module scripts:
+    //    The exception is caught and
+    //    ScriptEvaluationResult::GetExceptionForModule() returns the exception
+    //    to be rethrown.
     static RethrowErrorsOption Rethrow(const String& message) {
       return RethrowErrorsOption(message);
     }
@@ -83,45 +99,32 @@ class CORE_EXPORT V8ScriptRunner final {
     String Message() const { return *message_; }
 
    private:
-    explicit RethrowErrorsOption(base::Optional<String> message)
+    explicit RethrowErrorsOption(absl::optional<String> message)
         : message_(std::move(message)) {}
 
     // `nullopt` <=> rethrow errors is false.
-    base::Optional<String> message_;
+    absl::optional<String> message_;
   };
 
   // For the following methods, the caller sites have to hold
   // a HandleScope and a ContextScope.
   static v8::MaybeLocal<v8::Script> CompileScript(
       ScriptState*,
-      const ScriptSourceCode&,
-      SanitizeScriptErrors,
+      const ClassicScript&,
+      v8::ScriptOrigin,
       v8::ScriptCompiler::CompileOptions,
-      v8::ScriptCompiler::NoCacheReason,
-      const ReferrerScriptInfo&);
+      v8::ScriptCompiler::NoCacheReason);
   static v8::MaybeLocal<v8::Module> CompileModule(
       v8::Isolate*,
-      const String& source,
-      SingleCachedMetadataHandler*,
-      const String& file_name,
+      const ModuleScriptCreationParams&,
       const WTF::TextPosition&,
       v8::ScriptCompiler::CompileOptions,
       v8::ScriptCompiler::NoCacheReason,
       const ReferrerScriptInfo&);
-  static ScriptEvaluationResult CompileAndRunScript(
-      v8::Isolate*,
-      ScriptState*,
-      ExecutionContext*,
-      const ScriptSourceCode&,
-      const KURL&,
-      SanitizeScriptErrors,
-      const ScriptFetchOptions&,
-      mojom::blink::V8CacheOptions,
-      RethrowErrorsOption);
-  static v8::MaybeLocal<v8::Value> CompileAndRunInternalScript(
-      v8::Isolate*,
-      ScriptState*,
-      const ScriptSourceCode&);
+  static ScriptEvaluationResult CompileAndRunScript(ScriptState*,
+                                                    ClassicScript*,
+                                                    ExecuteScriptPolicy,
+                                                    RethrowErrorsOption);
   static v8::MaybeLocal<v8::Value> CallAsConstructor(
       v8::Isolate*,
       v8::Local<v8::Object>,
@@ -132,12 +135,15 @@ class CORE_EXPORT V8ScriptRunner final {
                                                 ExecutionContext*,
                                                 v8::Local<v8::Value> receiver,
                                                 int argc,
-                                                v8::Local<v8::Value> info[],
+                                                v8::Local<v8::Value> argv[],
                                                 v8::Isolate*);
-  static v8::MaybeLocal<v8::Value> EvaluateModule(v8::Isolate*,
-                                                  ExecutionContext*,
-                                                  v8::Local<v8::Module>,
-                                                  v8::Local<v8::Context>);
+
+  // https://html.spec.whatwg.org/C/#run-a-module-script
+  // Callers must enter a v8::HandleScope before calling.
+  // See the class comments of RethrowErrorsOption and ScriptEvaluationResult
+  // for exception handling and return value semantics.
+  static ScriptEvaluationResult EvaluateModule(ModuleScript*,
+                                               RethrowErrorsOption);
 
   // Only to be used from ModuleRecord::ReportException().
   static void ReportExceptionForModule(v8::Isolate*,
@@ -153,9 +159,11 @@ class CORE_EXPORT V8ScriptRunner final {
   static void ReportException(v8::Isolate*, v8::Local<v8::Value> exception);
 
  private:
-  static v8::MaybeLocal<v8::Value> RunCompiledScript(v8::Isolate*,
-                                                     v8::Local<v8::Script>,
-                                                     ExecutionContext*);
+  static v8::MaybeLocal<v8::Value> RunCompiledScript(
+      v8::Isolate*,
+      v8::Local<v8::Script>,
+      v8::Local<v8::Data> host_defined_options,
+      ExecutionContext*);
 };
 
 }  // namespace blink

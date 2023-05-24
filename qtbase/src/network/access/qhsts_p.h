@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QHSTS_P_H
 #define QHSTS_P_H
@@ -61,13 +25,11 @@
 #include <QtCore/qglobal.h>
 #include <QtCore/qpair.h>
 #include <QtCore/qurl.h>
+#include <QtCore/qcontainerfwd.h>
 
 #include <map>
 
 QT_BEGIN_NAMESPACE
-
-template<typename T> class QList;
-template <typename T> class QVector;
 
 class Q_AUTOTEST_EXPORT QHstsCache
 {
@@ -75,13 +37,13 @@ public:
 
     void updateFromHeaders(const QList<QPair<QByteArray, QByteArray>> &headers,
                            const QUrl &url);
-    void updateFromPolicies(const QVector<QHstsPolicy> &hosts);
+    void updateFromPolicies(const QList<QHstsPolicy> &hosts);
     void updateKnownHost(const QUrl &url, const QDateTime &expires,
                          bool includeSubDomains);
     bool isKnownHost(const QUrl &url) const;
     void clear();
 
-    QVector<QHstsPolicy> policies() const;
+    QList<QHstsPolicy> policies() const;
 
 #if QT_CONFIG(settings)
     void setStore(class QHstsStore *store);
@@ -95,18 +57,18 @@ private:
     struct HostName
     {
         explicit HostName(const QString &n) : name(n) { }
-        explicit HostName(const QStringRef &r) : fragment(r) { }
+        explicit HostName(QStringView r) : fragment(r) { }
 
         bool operator < (const HostName &rhs) const
         {
             if (fragment.size()) {
                 if (rhs.fragment.size())
                     return fragment < rhs.fragment;
-                return fragment < QStringRef(&rhs.name);
+                return fragment < QStringView{rhs.name};
             }
 
             if (rhs.fragment.size())
-                return QStringRef(&name) < rhs.fragment;
+                return QStringView{name} < rhs.fragment;
             return name < rhs.name;
         }
 
@@ -115,7 +77,7 @@ private:
         // name, removing subdomain names (such HostName object is 'transient', it
         // must not outlive the original QString object.
         QString name;
-        QStringRef fragment;
+        QStringView fragment;
     };
 
     mutable std::map<HostName, QHstsPolicy> knownHosts;

@@ -17,14 +17,12 @@ if (is_chromeos && is_chrome_branded) {
   _default_ffmpeg_branding = "ChromeOS"
 }
 
-if (is_chromecast) {
-  if (is_android) {
-    _default_ffmpeg_branding = "Chrome"
-  } else {
-    # TODO(alokp): What audio codecs does Chromecast want here?  Sort
-    # out and add configs if necessary.  http://crbug.com/570754
-    _default_ffmpeg_branding = "ChromeOS"
-  }
+if (is_cast_android) {
+  _default_ffmpeg_branding = "Chrome"
+} else if (is_castos) {
+  # TODO(crbug.com/570754): What audio codecs does Chromecast want here?  Sort
+  # out and add configs if necessary.
+  _default_ffmpeg_branding = "ChromeOS"
 }
 
 declare_args() {
@@ -40,7 +38,8 @@ declare_args() {
   # https://groups.google.com/a/chromium.org/forum/#!msg/chromium-packagers/R5rcZXWxBEQ/B6k0zzmJbvcJ
   is_component_ffmpeg = is_component_build
 
-  # Set to true to force the use of ffmpeg's stdatomic fallback code.
+  # Set to true to force the use of ffmpeg's stdatomic fallback code. This code
+  # is unsafe and does not implement atomics properly. https://crbug.com/161723.
   #
   # Windows and GCC prior to 4.9 lack stdatomic.h.
   #
@@ -48,9 +47,9 @@ declare_args() {
   # clang's -frewrite-includes flag which is broken with #include_next
   # directives as used in chromium's clang stdatomic.h.
   # Some background: https://bugs.llvm.org/show_bug.cgi?id=26828
-  ffmpeg_use_atomics_fallback = !is_clang
 
   use_system_ffmpeg = false
+  ffmpeg_use_unsafe_atomics = is_win && !is_clang
 }
 
 assert(ffmpeg_branding == "Chromium" ||

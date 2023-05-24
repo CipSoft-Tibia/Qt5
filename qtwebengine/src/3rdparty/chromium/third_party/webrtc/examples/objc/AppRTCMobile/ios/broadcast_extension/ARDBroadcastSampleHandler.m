@@ -15,8 +15,8 @@
 #import "ARDExternalSampleCapturer.h"
 #import "ARDSettingsModel.h"
 
-#import <WebRTC/RTCCallbackLogger.h>
-#import <WebRTC/RTCLogging.h>
+#import "sdk/objc/api/logging/RTCCallbackLogger.h"
+#import "sdk/objc/base/RTCLogging.h"
 
 @implementation ARDBroadcastSampleHandler {
   ARDAppClient *_client;
@@ -120,7 +120,7 @@
     didReceiveRemoteVideoTrack:(RTC_OBJC_TYPE(RTCVideoTrack) *)remoteVideoTrack {
 }
 
-- (void)appClient:(ARDAppClient *)client didGetStats:(NSArray *)stats {
+- (void)appClient:(ARDAppClient *)client didGetStats:(RTC_OBJC_TYPE(RTCStatisticsReport) *)stats {
 }
 
 - (void)appClient:(ARDAppClient *)client didError:(NSError *)error {

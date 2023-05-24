@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,9 @@
 
 #include <memory>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/ref_counted.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "components/prefs/testing_pref_service.h"
 #include "components/signin/internal/identity_manager/fake_profile_oauth2_token_service.h"
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
@@ -17,6 +16,8 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace {
+
+using TokenResponseBuilder = OAuth2AccessTokenConsumer::TokenResponse::Builder;
 
 const char kTestAccountId[] = "test@gmail.com";
 
@@ -76,9 +77,8 @@ class UbertokenFetcherImplTest : public testing::Test {
 TEST_F(UbertokenFetcherImplTest, Basic) {}
 
 TEST_F(UbertokenFetcherImplTest, Success) {
-  fetcher_->OnGetTokenSuccess(nullptr,
-                              OAuth2AccessTokenConsumer::TokenResponse(
-                                  "accessToken", base::Time(), std::string()));
+  fetcher_->OnGetTokenSuccess(
+      nullptr, TokenResponseBuilder().WithAccessToken("accessToken").build());
   fetcher_->OnUberAuthTokenSuccess("uberToken");
 
   EXPECT_EQ(0, consumer_.nb_error_);
@@ -105,9 +105,8 @@ TEST_F(UbertokenFetcherImplTest, FailureToGetAccessToken) {
 
 TEST_F(UbertokenFetcherImplTest, TransientFailureEventualFailure) {
   GoogleServiceAuthError error(GoogleServiceAuthError::CONNECTION_FAILED);
-  fetcher_->OnGetTokenSuccess(nullptr,
-                              OAuth2AccessTokenConsumer::TokenResponse(
-                                  "accessToken", base::Time(), std::string()));
+  fetcher_->OnGetTokenSuccess(
+      nullptr, TokenResponseBuilder().WithAccessToken("accessToken").build());
 
   for (int i = 0; i < signin::UbertokenFetcherImpl::kMaxRetries; ++i) {
     fetcher_->OnUberAuthTokenFailure(error);
@@ -124,9 +123,8 @@ TEST_F(UbertokenFetcherImplTest, TransientFailureEventualFailure) {
 
 TEST_F(UbertokenFetcherImplTest, TransientFailureEventualSuccess) {
   GoogleServiceAuthError error(GoogleServiceAuthError::CONNECTION_FAILED);
-  fetcher_->OnGetTokenSuccess(nullptr,
-                              OAuth2AccessTokenConsumer::TokenResponse(
-                                  "accessToken", base::Time(), std::string()));
+  fetcher_->OnGetTokenSuccess(
+      nullptr, TokenResponseBuilder().WithAccessToken("accessToken").build());
 
   for (int i = 0; i < signin::UbertokenFetcherImpl::kMaxRetries; ++i) {
     fetcher_->OnUberAuthTokenFailure(error);
@@ -142,9 +140,8 @@ TEST_F(UbertokenFetcherImplTest, TransientFailureEventualSuccess) {
 }
 
 TEST_F(UbertokenFetcherImplTest, PermanentFailureEventualFailure) {
-  fetcher_->OnGetTokenSuccess(nullptr,
-                              OAuth2AccessTokenConsumer::TokenResponse(
-                                  "accessToken", base::Time(), std::string()));
+  fetcher_->OnGetTokenSuccess(
+      nullptr, TokenResponseBuilder().WithAccessToken("accessToken").build());
 
   GoogleServiceAuthError error(GoogleServiceAuthError::USER_NOT_SIGNED_UP);
   fetcher_->OnUberAuthTokenFailure(error);
@@ -152,9 +149,9 @@ TEST_F(UbertokenFetcherImplTest, PermanentFailureEventualFailure) {
   EXPECT_EQ(0, consumer_.nb_correct_token_);
   EXPECT_EQ("", consumer_.last_token_);
 
-  fetcher_->OnGetTokenSuccess(nullptr,
-                              OAuth2AccessTokenConsumer::TokenResponse(
-                                  "accessToken", base::Time(), std::string()));
+  fetcher_->OnGetTokenSuccess(
+      nullptr, TokenResponseBuilder().WithAccessToken("accessToken").build());
+
   fetcher_->OnUberAuthTokenFailure(error);
   EXPECT_EQ(1, consumer_.nb_error_);
   EXPECT_EQ(0, consumer_.nb_correct_token_);
@@ -163,18 +160,18 @@ TEST_F(UbertokenFetcherImplTest, PermanentFailureEventualFailure) {
 
 TEST_F(UbertokenFetcherImplTest, PermanentFailureEventualSuccess) {
   GoogleServiceAuthError error(GoogleServiceAuthError::USER_NOT_SIGNED_UP);
-  fetcher_->OnGetTokenSuccess(nullptr,
-                              OAuth2AccessTokenConsumer::TokenResponse(
-                                  "accessToken", base::Time(), std::string()));
+
+  fetcher_->OnGetTokenSuccess(
+      nullptr, TokenResponseBuilder().WithAccessToken("accessToken").build());
 
   fetcher_->OnUberAuthTokenFailure(error);
   EXPECT_EQ(0, consumer_.nb_error_);
   EXPECT_EQ(0, consumer_.nb_correct_token_);
   EXPECT_EQ("", consumer_.last_token_);
 
-  fetcher_->OnGetTokenSuccess(nullptr,
-                              OAuth2AccessTokenConsumer::TokenResponse(
-                                  "accessToken", base::Time(), std::string()));
+  fetcher_->OnGetTokenSuccess(
+      nullptr, TokenResponseBuilder().WithAccessToken("accessToken").build());
+
   fetcher_->OnUberAuthTokenSuccess("uberToken");
   EXPECT_EQ(0, consumer_.nb_error_);
   EXPECT_EQ(1, consumer_.nb_correct_token_);

@@ -1,12 +1,13 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <stdint.h>
 
-#include "base/bind.h"
+#include <memory>
+
 #include "base/files/file_path.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "base/synchronization/waitable_event.h"
 #include "media/base/test_data_util.h"
 #include "media/ffmpeg/ffmpeg_common.h"
@@ -22,10 +23,13 @@ class BlockingUrlProtocolTest : public testing::Test {
   BlockingUrlProtocolTest()
       : url_protocol_(new BlockingUrlProtocol(
             &data_source_,
-            base::Bind(&BlockingUrlProtocolTest::OnDataSourceError,
-                       base::Unretained(this)))) {
+            base::BindRepeating(&BlockingUrlProtocolTest::OnDataSourceError,
+                                base::Unretained(this)))) {
     CHECK(data_source_.Initialize(GetTestDataFilePath("bear-320x240.webm")));
   }
+
+  BlockingUrlProtocolTest(const BlockingUrlProtocolTest&) = delete;
+  BlockingUrlProtocolTest& operator=(const BlockingUrlProtocolTest&) = delete;
 
   ~BlockingUrlProtocolTest() override { data_source_.Stop(); }
 
@@ -33,9 +37,6 @@ class BlockingUrlProtocolTest : public testing::Test {
 
   FileDataSource data_source_;
   std::unique_ptr<BlockingUrlProtocol> url_protocol_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(BlockingUrlProtocolTest);
 };
 
 
@@ -113,9 +114,10 @@ TEST_F(BlockingUrlProtocolTest, IsStreaming) {
   EXPECT_FALSE(url_protocol_->IsStreaming());
 
   data_source_.force_streaming_for_testing();
-  url_protocol_.reset(new BlockingUrlProtocol(
-      &data_source_, base::Bind(&BlockingUrlProtocolTest::OnDataSourceError,
-                                base::Unretained(this))));
+  url_protocol_ = std::make_unique<BlockingUrlProtocol>(
+      &data_source_,
+      base::BindRepeating(&BlockingUrlProtocolTest::OnDataSourceError,
+                          base::Unretained(this)));
   EXPECT_TRUE(data_source_.IsStreaming());
   EXPECT_TRUE(url_protocol_->IsStreaming());
 }

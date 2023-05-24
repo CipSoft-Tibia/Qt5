@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium OS Authors. All rights reserved.
+// Copyright 2020 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,6 +19,13 @@ constexpr char kArcDataSnapshotdServiceName[] = "org.chromium.ArcDataSnapshotd";
 
 // Methods:
 constexpr char kGenerateKeyPairMethod[] = "GenerateKeyPair";
+constexpr char kClearSnapshotMethod[] = "ClearSnapshot";
+constexpr char kTakeSnapshotMethod[] = "TakeSnapshot";
+constexpr char kLoadSnapshotMethod[] = "LoadSnapshot";
+constexpr char kUpdateMethod[] = "Update";
+
+// Signals:
+constexpr char kUiCancelled[] = "UiCancelled";
 
 }  // namespace data_snapshotd
 }  // namespace arc

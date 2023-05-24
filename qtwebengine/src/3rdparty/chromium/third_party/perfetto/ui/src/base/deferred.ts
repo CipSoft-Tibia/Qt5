@@ -12,19 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// tslint:disable:no-any
-
-/**
- * Promise wrapper with exposed resolve and reject callbacks.
- */
+// Promise wrapper with exposed resolve and reject callbacks.
 export interface Deferred<T> extends Promise<T> {
   readonly resolve: (value?: T|PromiseLike<T>) => void;
   readonly reject: (reason?: any) => void;
 }
 
-/**
- * Create a promise with exposed resolve and reject callbacks.
- */
+// Create a promise with exposed resolve and reject callbacks.
 export function defer<T>(): Deferred<T> {
   let resolve = null as any;
   let reject = null as any;

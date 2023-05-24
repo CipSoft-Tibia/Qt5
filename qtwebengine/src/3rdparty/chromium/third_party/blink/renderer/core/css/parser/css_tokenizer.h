@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,7 +23,7 @@ class CORE_EXPORT CSSTokenizer {
   DISALLOW_NEW();
 
  public:
-  CSSTokenizer(const String&, wtf_size_t offset = 0);
+  explicit CSSTokenizer(const String&, wtf_size_t offset = 0);
   CSSTokenizer(const CSSTokenizer&) = delete;
   CSSTokenizer& operator=(const CSSTokenizer&) = delete;
 
@@ -33,13 +33,13 @@ class CORE_EXPORT CSSTokenizer {
   wtf_size_t Offset() const { return input_.Offset(); }
   wtf_size_t PreviousOffset() const { return prev_offset_; }
   StringView StringRangeAt(wtf_size_t start, wtf_size_t length) const;
-  wtf_size_t BlockStackDepth() const;
-
- private:
+  const Vector<String>& StringPool() const { return string_pool_; }
   CSSParserToken TokenizeSingle();
   CSSParserToken TokenizeSingleWithComments();
 
-  CSSParserToken NextToken();
+ private:
+  template <bool SkipComments, bool StoreOffset>
+  ALWAYS_INLINE CSSParserToken NextToken();
 
   UChar Consume();
   void Reconsume(UChar);
@@ -83,7 +83,6 @@ class CORE_EXPORT CSSTokenizer {
   CSSParserToken HyphenMinus(UChar);
   CSSParserToken Asterisk(UChar);
   CSSParserToken LessThan(UChar);
-  CSSParserToken Solidus(UChar);
   CSSParserToken Colon(UChar);
   CSSParserToken SemiColon(UChar);
   CSSParserToken Hash(UChar);
@@ -101,9 +100,6 @@ class CORE_EXPORT CSSTokenizer {
 
   StringView RegisterString(const String&);
 
-  using CodePoint = CSSParserToken (CSSTokenizer::*)(UChar);
-  static const CodePoint kCodePoints[];
-
   CSSTokenizerInputStream input_;
   Vector<CSSParserTokenType, 8> block_stack_;
 
@@ -115,7 +111,6 @@ class CORE_EXPORT CSSTokenizer {
   wtf_size_t prev_offset_ = 0;
   wtf_size_t token_count_ = 0;
 };
-
 }  // namespace blink
 
 #endif  // THIRD_PARTY_BLINK_RENDERER_CORE_CSS_PARSER_CSS_TOKENIZER_H_

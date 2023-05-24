@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,15 +12,10 @@
 
 #include <memory>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/mac/scoped_nsobject.h"
-#include "base/macros.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/gfx/geometry/rect_f.h"
-
-#if defined(MAC_OS_X_VERSION_10_13) && MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_13
-#import <Vision/Vision.h>
-#endif
 
 namespace shape_detection {
 
@@ -33,12 +28,15 @@ gfx::RectF ConvertCGToGfxCoordinates(CGRect bounds, int height);
 
 // This class submits an image analysis request for asynchronous execution on a
 // dispatch queue with default priority.
-class API_AVAILABLE(macos(10.13)) VisionAPIAsyncRequestMac {
+class VisionAPIAsyncRequestMac {
  public:
   // A callback run when the asynchronous execution completes. The callback is
   // repeating for the instance.
   using Callback =
       base::RepeatingCallback<void(VNRequest* request, NSError* error)>;
+
+  VisionAPIAsyncRequestMac(const VisionAPIAsyncRequestMac&) = delete;
+  VisionAPIAsyncRequestMac& operator=(const VisionAPIAsyncRequestMac&) = delete;
 
   ~VisionAPIAsyncRequestMac();
 
@@ -61,8 +59,6 @@ class API_AVAILABLE(macos(10.13)) VisionAPIAsyncRequestMac {
 
   base::scoped_nsobject<VNRequest> request_;
   const Callback callback_;
-
-  DISALLOW_COPY_AND_ASSIGN(VisionAPIAsyncRequestMac);
 };
 
 }  // namespace shape_detection

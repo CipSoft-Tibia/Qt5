@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 /*
     treeitem.cpp
@@ -57,77 +10,74 @@
 #include "treeitem.h"
 
 //! [0]
-TreeItem::TreeItem(const QVector<QVariant> &data, TreeItem *parent)
-    : itemData(data),
-      parentItem(parent)
+TreeItem::TreeItem(QVariantList data, TreeItem *parent)
+    : itemData(std::move(data)), m_parentItem(parent)
 {}
 //! [0]
 
 //! [1]
-TreeItem::~TreeItem()
+TreeItem *TreeItem::child(int number)
 {
-    qDeleteAll(childItems);
+    return (number >= 0 && number < childCount())
+        ? m_childItems.at(number).get() : nullptr;
 }
 //! [1]
 
 //! [2]
-TreeItem *TreeItem::child(int number)
+int TreeItem::childCount() const
 {
-    if (number < 0 || number >= childItems.size())
-        return nullptr;
-    return childItems.at(number);
+    return int(m_childItems.size());
 }
 //! [2]
 
 //! [3]
-int TreeItem::childCount() const
+int TreeItem::row() const
 {
-    return childItems.count();
+    if (!m_parentItem)
+        return 0;
+    const auto it = std::find_if(m_parentItem->m_childItems.cbegin(), m_parentItem->m_childItems.cend(),
+                                 [this](const std::unique_ptr<TreeItem> &treeItem) {
+        return treeItem.get() == this;
+    });
+
+    if (it != m_parentItem->m_childItems.cend())
+        return std::distance(m_parentItem->m_childItems.cbegin(), it);
+    Q_ASSERT(false); // should not happen
+    return -1;
 }
 //! [3]
 
 //! [4]
-int TreeItem::childNumber() const
+int TreeItem::columnCount() const
 {
-    if (parentItem)
-        return parentItem->childItems.indexOf(const_cast<TreeItem*>(this));
-    return 0;
+    return int(itemData.count());
 }
 //! [4]
 
 //! [5]
-int TreeItem::columnCount() const
+QVariant TreeItem::data(int column) const
 {
-    return itemData.count();
+    return itemData.value(column);
 }
 //! [5]
 
 //! [6]
-QVariant TreeItem::data(int column) const
-{
-    if (column < 0 || column >= itemData.size())
-        return QVariant();
-    return itemData.at(column);
-}
-//! [6]
-
-//! [7]
 bool TreeItem::insertChildren(int position, int count, int columns)
 {
-    if (position < 0 || position > childItems.size())
+    if (position < 0 || position > qsizetype(m_childItems.size()))
         return false;
 
     for (int row = 0; row < count; ++row) {
-        QVector<QVariant> data(columns);
-        TreeItem *item = new TreeItem(data, this);
-        childItems.insert(position, item);
+        QVariantList data(columns);
+        m_childItems.insert(m_childItems.cbegin() + position,
+                std::make_unique<TreeItem>(data, this));
     }
 
     return true;
 }
-//! [7]
+//! [6]
 
-//! [8]
+//! [7]
 bool TreeItem::insertColumns(int position, int columns)
 {
     if (position < 0 || position > itemData.size())
@@ -136,32 +86,32 @@ bool TreeItem::insertColumns(int position, int columns)
     for (int column = 0; column < columns; ++column)
         itemData.insert(position, QVariant());
 
-    for (TreeItem *child : qAsConst(childItems))
+    for (auto &child : std::as_const(m_childItems))
         child->insertColumns(position, columns);
 
     return true;
 }
+//! [7]
+
+//! [8]
+TreeItem *TreeItem::parent()
+{
+    return m_parentItem;
+}
 //! [8]
 
 //! [9]
-TreeItem *TreeItem::parent()
-{
-    return parentItem;
-}
-//! [9]
-
-//! [10]
 bool TreeItem::removeChildren(int position, int count)
 {
-    if (position < 0 || position + count > childItems.size())
+    if (position < 0 || position + count > qsizetype(m_childItems.size()))
         return false;
 
     for (int row = 0; row < count; ++row)
-        delete childItems.takeAt(position);
+        m_childItems.erase(m_childItems.cbegin() + position);
 
     return true;
 }
-//! [10]
+//! [9]
 
 bool TreeItem::removeColumns(int position, int columns)
 {
@@ -171,13 +121,13 @@ bool TreeItem::removeColumns(int position, int columns)
     for (int column = 0; column < columns; ++column)
         itemData.remove(position);
 
-    for (TreeItem *child : qAsConst(childItems))
+    for (auto &child : std::as_const(m_childItems))
         child->removeColumns(position, columns);
 
     return true;
 }
 
-//! [11]
+//! [10]
 bool TreeItem::setData(int column, const QVariant &value)
 {
     if (column < 0 || column >= itemData.size())
@@ -186,4 +136,4 @@ bool TreeItem::setData(int column, const QVariant &value)
     itemData[column] = value;
     return true;
 }
-//! [11]
+//! [10]

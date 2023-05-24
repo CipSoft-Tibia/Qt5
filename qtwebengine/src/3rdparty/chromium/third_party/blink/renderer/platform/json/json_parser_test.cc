@@ -1,10 +1,9 @@
-// Copyright (c) 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/platform/json/json_parser.h"
 
-#include "base/stl_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/renderer/platform/json/json_values.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
@@ -13,13 +12,14 @@ namespace blink {
 
 TEST(JSONParserTest, Reading) {
   JSONParseError error;
+  bool has_comments = false;
   JSONValue* tmp_value;
   std::unique_ptr<JSONValue> root;
   std::unique_ptr<JSONValue> root2;
   String str_val;
   int int_val = 0;
 
-  // Successfull parsing returns kNoError.
+  // Successful parsing returns kNoError.
   root = ParseJSON("1", &error);
   ASSERT_TRUE(root.get());
   EXPECT_EQ(JSONParseErrorType::kNoError, error.type);
@@ -58,30 +58,44 @@ TEST(JSONParserTest, Reading) {
   EXPECT_EQ(JSONValue::kTypeBoolean, root->GetType());
 
   // Embedded comment
-  root = ParseJSON("40 /*/", &error);
-  // EXPECT_FALSE(root.get());
+  root = ParseJSONWithCommentsDeprecated("40 /*/", &error, &has_comments);
+  EXPECT_EQ(has_comments, true);
+  EXPECT_FALSE(root.get());
   EXPECT_EQ("Line: 1, column: 4, Syntax error.", error.message);
-  root = ParseJSON("/* comment */null");
+  root = ParseJSONWithCommentsDeprecated("/* comment */null", &error,
+                                         &has_comments);
+  EXPECT_EQ(has_comments, true);
   ASSERT_TRUE(root.get());
   EXPECT_EQ(JSONValue::kTypeNull, root->GetType());
-  root = ParseJSON("40 /* comment */");
+  root = ParseJSONWithCommentsDeprecated("40 /* comment */", &error,
+                                         &has_comments);
+  EXPECT_EQ(has_comments, true);
   ASSERT_TRUE(root.get());
   EXPECT_EQ(JSONValue::kTypeInteger, root->GetType());
   EXPECT_TRUE(root->AsInteger(&int_val));
   EXPECT_EQ(40, int_val);
-  root = ParseJSON("/**/ 40 /* multi-line\n comment */ // more comment");
+  root = ParseJSONWithCommentsDeprecated(
+      "/**/ 40 /* multi-line\n comment */ // more comment", &error,
+      &has_comments);
+  EXPECT_EQ(has_comments, true);
   ASSERT_TRUE(root.get());
   EXPECT_EQ(JSONValue::kTypeInteger, root->GetType());
   EXPECT_TRUE(root->AsInteger(&int_val));
   EXPECT_EQ(40, int_val);
-  root = ParseJSON("true // comment");
+  root =
+      ParseJSONWithCommentsDeprecated("true // comment", &error, &has_comments);
+  EXPECT_EQ(has_comments, true);
   ASSERT_TRUE(root.get());
   EXPECT_EQ(JSONValue::kTypeBoolean, root->GetType());
-  root = ParseJSON("/* comment */\"sample string\"");
+  root = ParseJSONWithCommentsDeprecated("/* comment */\"sample string\"",
+                                         &error, &has_comments);
+  EXPECT_EQ(has_comments, true);
   ASSERT_TRUE(root.get());
   EXPECT_TRUE(root->AsString(&str_val));
   EXPECT_EQ("sample string", str_val);
-  root = ParseJSON("[1, /* comment, 2 ] */ \n 3]");
+  root = ParseJSONWithCommentsDeprecated("[1, /* comment, 2 ] */ \n 3]", &error,
+                                         &has_comments);
+  EXPECT_EQ(has_comments, true);
   ASSERT_TRUE(root.get());
   JSONArray* list = JSONArray::Cast(root.get());
   ASSERT_TRUE(list);
@@ -94,24 +108,42 @@ TEST(JSONParserTest, Reading) {
   ASSERT_TRUE(tmp_value);
   EXPECT_TRUE(tmp_value->AsInteger(&int_val));
   EXPECT_EQ(3, int_val);
-  root = ParseJSON("[1, /*a*/2, 3]");
+  root =
+      ParseJSONWithCommentsDeprecated("[1, /*a*/2, 3]", &error, &has_comments);
+  EXPECT_EQ(has_comments, true);
   ASSERT_TRUE(root.get());
   list = JSONArray::Cast(root.get());
   ASSERT_TRUE(list);
   EXPECT_EQ(3u, list->size());
-  root = ParseJSON("/* comment **/42");
+  root = ParseJSONWithCommentsDeprecated("/* comment **/42", &error,
+                                         &has_comments);
+  EXPECT_EQ(has_comments, true);
   ASSERT_TRUE(root.get());
   EXPECT_EQ(JSONValue::kTypeInteger, root->GetType());
   EXPECT_TRUE(root->AsInteger(&int_val));
   EXPECT_EQ(42, int_val);
-  root = ParseJSON(
+  root = ParseJSONWithCommentsDeprecated(
       "/* comment **/\n"
       "// */ 43\n"
-      "44");
+      "44",
+      &error, &has_comments);
+  EXPECT_EQ(has_comments, true);
   ASSERT_TRUE(root.get());
   EXPECT_EQ(JSONValue::kTypeInteger, root->GetType());
   EXPECT_TRUE(root->AsInteger(&int_val));
   EXPECT_EQ(44, int_val);
+
+  // Comments are otherwise rejected.
+  root = ParseJSON("/* comment */null", &error);
+  EXPECT_FALSE(root.get());
+  EXPECT_EQ("Line: 1, column: 1, Syntax error.", error.message);
+  root = ParseJSON("40 /* comment */", &error);
+  EXPECT_FALSE(root.get());
+  EXPECT_EQ("Line: 1, column: 4, Unexpected data after root element.",
+            error.message);
+  root = ParseJSON("[1, /*a*/2, 3]", &error);
+  EXPECT_FALSE(root.get());
+  EXPECT_EQ("Line: 1, column: 5, Syntax error.", error.message);
 
   // Test number formats
   root = ParseJSON("43");
@@ -448,11 +480,11 @@ TEST(JSONParserTest, Reading) {
   ASSERT_FALSE(root.get());
   // U+00A0 NO-BREAK SPACE is not allowed
   UChar invalid_space_1[] = {0x5b, 0x00a0, 0x5d};  // [<U+00A0>]
-  root = ParseJSON(String(invalid_space_1, base::size(invalid_space_1)));
+  root = ParseJSON(String(invalid_space_1, std::size(invalid_space_1)));
   ASSERT_FALSE(root.get());
   // U+3000 IDEOGRAPHIC SPACE is not allowed
   UChar invalid_space_2[] = {0x5b, 0x3000, 0x5d};  // [<U+3000>]
-  root = ParseJSON(String(invalid_space_2, base::size(invalid_space_2)));
+  root = ParseJSON(String(invalid_space_2, std::size(invalid_space_2)));
   ASSERT_FALSE(root.get());
 
   // Test nesting
@@ -575,14 +607,14 @@ TEST(JSONParserTest, Reading) {
   EXPECT_EQ(JSONValue::kTypeString, root->GetType());
   EXPECT_TRUE(root->AsString(&str_val));
   UChar tmp2[] = {0x20ac, 0x33, 0x2c, 0x31, 0x34};
-  EXPECT_EQ(String(tmp2, base::size(tmp2)), str_val);
+  EXPECT_EQ(String(tmp2, std::size(tmp2)), str_val);
 
   root = ParseJSON("\"\\ud83d\\udca9\\ud83d\\udc6c\"");
   ASSERT_TRUE(root.get());
   EXPECT_EQ(JSONValue::kTypeString, root->GetType());
   EXPECT_TRUE(root->AsString(&str_val));
   UChar tmp3[] = {0xd83d, 0xdca9, 0xd83d, 0xdc6c};
-  EXPECT_EQ(String(tmp3, base::size(tmp3)), str_val);
+  EXPECT_EQ(String(tmp3, std::size(tmp3)), str_val);
 
   // Invalid unicode in a string literal after applying escape sequences.
   root = ParseJSON("\n\n    \"\\ud800\"", &error);
@@ -594,7 +626,7 @@ TEST(JSONParserTest, Reading) {
 
   // Invalid unicode in a JSON itself.
   UChar tmp4[] = {0x22, 0xd800, 0x22};  // "?"
-  root = ParseJSON(String(tmp4, base::size(tmp4)), &error);
+  root = ParseJSON(String(tmp4, std::size(tmp4)), &error);
   EXPECT_FALSE(root.get());
   EXPECT_EQ(
       "Line: 1, column: 1, Unsupported encoding. JSON and all string literals "
@@ -603,7 +635,7 @@ TEST(JSONParserTest, Reading) {
 
   // Invalid unicode in a JSON itself.
   UChar tmp5[] = {0x7b, 0x22, 0xd800, 0x22, 0x3a, 0x31, 0x7d};  // {"?":1}
-  root = ParseJSON(String(tmp5, base::size(tmp5)), &error);
+  root = ParseJSON(String(tmp5, std::size(tmp5)), &error);
   EXPECT_FALSE(root.get());
   EXPECT_EQ(
       "Line: 1, column: 2, Unsupported encoding. JSON and all string literals "
@@ -636,7 +668,7 @@ TEST(JSONParserTest, InvalidSanity) {
       "/* test *", "{\"foo\"", "{\"foo\":", "  [", "\"\\u123g\"", "{\n\"eh:\n}",
       "////",      "*/**/",    "/**/",      "/*/", "//**/",       "\"\\"};
 
-  for (size_t i = 0; i < base::size(kInvalidJson); ++i) {
+  for (size_t i = 0; i < std::size(kInvalidJson); ++i) {
     std::unique_ptr<JSONValue> result = ParseJSON(kInvalidJson[i]);
     EXPECT_FALSE(result.get());
   }
@@ -646,6 +678,7 @@ TEST(JSONParserTest, InvalidSanity) {
 // cannot be extended past that maximum.
 TEST(JSONParserTest, LimitedDepth) {
   std::unique_ptr<JSONValue> root;
+  JSONCommentState comment_state = JSONCommentState::kDisallowed;
   JSONParseError error;
 
   // Test cases. Each pair is a JSON string, and the minimum depth required
@@ -663,22 +696,22 @@ TEST(JSONParserTest, LimitedDepth) {
     EXPECT_TRUE(root.get());
 
     // ... and should parse successfully at the minimum depth
-    root = ParseJSON(test_case.first, test_case.second);
+    root = ParseJSON(test_case.first, comment_state, test_case.second);
     EXPECT_TRUE(root.get());
 
     // ... but should fail to parse at a shallower depth.
-    root = ParseJSON(test_case.first, test_case.second - 1);
+    root = ParseJSON(test_case.first, comment_state, test_case.second - 1);
     EXPECT_FALSE(root.get());
   }
 
   // Test that everything fails to parse with depth 0
-  root = ParseJSON("", 0, &error);
+  root = ParseJSON("", comment_state, 0, &error);
   EXPECT_FALSE(root.get());
   EXPECT_EQ("Line: 1, column: 1, Syntax error.", error.message);
-  root = ParseJSON("", -1, &error);
+  root = ParseJSON("", comment_state, -1, &error);
   EXPECT_FALSE(root.get());
   EXPECT_EQ("Line: 1, column: 1, Syntax error.", error.message);
-  root = ParseJSON("true", 0, &error);
+  root = ParseJSON("true", comment_state, 0, &error);
   EXPECT_FALSE(root.get());
   EXPECT_EQ("Line: 1, column: 1, Too much nesting.", error.message);
 
@@ -691,7 +724,7 @@ TEST(JSONParserTest, LimitedDepth) {
     evil.Append(']');
   root = ParseJSON(evil.ToString());
   EXPECT_TRUE(root.get());
-  root = ParseJSON(evil.ToString(), 1000);
+  root = ParseJSON(evil.ToString(), comment_state, 1000);
   EXPECT_TRUE(root.get());
 
   // Test that the limit cannot be set higher than the constant maximum.
@@ -703,7 +736,7 @@ TEST(JSONParserTest, LimitedDepth) {
   root = ParseJSON(evil.ToString(), &error);
   EXPECT_FALSE(root.get());
   EXPECT_EQ("Line: 1, column: 1001, Too much nesting.", error.message);
-  root = ParseJSON(evil.ToString(), 1001, &error);
+  root = ParseJSON(evil.ToString(), comment_state, 1001, &error);
   EXPECT_FALSE(root.get());
   EXPECT_EQ("Line: 1, column: 1001, Too much nesting.", error.message);
 }

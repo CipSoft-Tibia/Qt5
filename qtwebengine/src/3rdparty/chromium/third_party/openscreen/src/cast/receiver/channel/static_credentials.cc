@@ -20,9 +20,11 @@
 namespace openscreen {
 namespace cast {
 namespace {
-
 using FileUniquePtr = std::unique_ptr<FILE, decltype(&fclose)>;
 
+constexpr char kGeneratedRootCertificateName[] =
+    "generated_root_cast_receiver.crt";
+constexpr char kGeneratedPrivateKey[] = "generated_root_cast_receiver.key";
 constexpr int kThreeDaysInSeconds = 3 * 24 * 60 * 60;
 constexpr auto kCertificateDuration = std::chrono::seconds(kThreeDaysInSeconds);
 
@@ -117,6 +119,12 @@ ErrorOr<GeneratedCredentials> GenerateCredentials(
       std::move(trust_anchor_der)};
 }
 
+bssl::UniquePtr<EVP_PKEY> GeneratePrivateKey() {
+  bssl::UniquePtr<EVP_PKEY> root_key = GenerateRsaKeyPair();
+  OSP_CHECK(root_key);
+  return root_key;
+}
+
 bssl::UniquePtr<X509> GenerateRootCert(const EVP_PKEY& root_key) {
   ErrorOr<bssl::UniquePtr<X509>> root_cert_or_error =
       CreateSelfSignedX509Certificate("Cast Root CA", kCertificateDuration,
@@ -135,19 +143,37 @@ StaticCredentialsProvider::StaticCredentialsProvider(
       tls_cert_der(std::move(tls_cert_der)) {}
 
 StaticCredentialsProvider::StaticCredentialsProvider(
-    StaticCredentialsProvider&&) = default;
+    StaticCredentialsProvider&&) noexcept = default;
 StaticCredentialsProvider& StaticCredentialsProvider::operator=(
     StaticCredentialsProvider&&) = default;
 StaticCredentialsProvider::~StaticCredentialsProvider() = default;
 
-ErrorOr<GeneratedCredentials> GenerateCredentials(
-    const std::string& device_certificate_id) {
-  bssl::UniquePtr<EVP_PKEY> root_key = GenerateRsaKeyPair();
-  OSP_CHECK(root_key);
-
+void GenerateDeveloperCredentialsToFile() {
+  bssl::UniquePtr<EVP_PKEY> root_key = GeneratePrivateKey();
   bssl::UniquePtr<X509> root_cert = GenerateRootCert(*root_key);
-  OSP_CHECK(root_cert);
 
+  FileUniquePtr f(fopen(kGeneratedPrivateKey, "w"), &fclose);
+  if (PEM_write_PrivateKey(f.get(), root_key.get(), nullptr, nullptr, 0, 0,
+                           nullptr) != 1) {
+    OSP_LOG_ERROR << "Failed to write private key, check permissions?";
+    return;
+  }
+  OSP_LOG_INFO << "Generated new private key for session: ./"
+               << kGeneratedPrivateKey;
+
+  FileUniquePtr cert_file(fopen(kGeneratedRootCertificateName, "w"), &fclose);
+  if (PEM_write_X509(cert_file.get(), root_cert.get()) != 1) {
+    OSP_LOG_ERROR << "Failed to write root certificate, check permissions?";
+    return;
+  }
+  OSP_LOG_INFO << "Generated new root certificate for session: ./"
+               << kGeneratedRootCertificateName;
+}
+
+ErrorOr<GeneratedCredentials> GenerateCredentialsForTesting(
+    const std::string& device_certificate_id) {
+  bssl::UniquePtr<EVP_PKEY> root_key = GeneratePrivateKey();
+  bssl::UniquePtr<X509> root_cert = GenerateRootCert(*root_key);
   return GenerateCredentials(device_certificate_id, root_key.get(),
                              root_cert.get());
 }
@@ -156,22 +182,26 @@ ErrorOr<GeneratedCredentials> GenerateCredentials(
     const std::string& device_certificate_id,
     const std::string& private_key_path,
     const std::string& server_certificate_path) {
-  OSP_CHECK(!private_key_path.empty() && !server_certificate_path.empty());
+  if (private_key_path.empty() || server_certificate_path.empty()) {
+    return Error(Error::Code::kParameterInvalid,
+                 "Missing either private key or server certificate");
+  }
 
   FileUniquePtr key_file(fopen(private_key_path.c_str(), "r"), &fclose);
   if (!key_file) {
     return Error(Error::Code::kParameterInvalid,
                  "Missing private key file path");
   }
-  bssl::UniquePtr<EVP_PKEY> root_key(PEM_read_PrivateKey(
-      key_file.get(), nullptr /* x */, nullptr /* cb */, nullptr /* u */));
+  bssl::UniquePtr<EVP_PKEY> root_key =
+      bssl::UniquePtr<EVP_PKEY>(PEM_read_PrivateKey(
+          key_file.get(), nullptr /* x */, nullptr /* cb */, nullptr /* u */));
 
   FileUniquePtr cert_file(fopen(server_certificate_path.c_str(), "r"), &fclose);
   if (!cert_file) {
     return Error(Error::Code::kParameterInvalid,
                  "Missing server certificate file path");
   }
-  bssl::UniquePtr<X509> root_cert(PEM_read_X509(
+  bssl::UniquePtr<X509> root_cert = bssl::UniquePtr<X509>(PEM_read_X509(
       cert_file.get(), nullptr /* x */, nullptr /* cb */, nullptr /* u */));
 
   return GenerateCredentials(device_certificate_id, root_key.get(),

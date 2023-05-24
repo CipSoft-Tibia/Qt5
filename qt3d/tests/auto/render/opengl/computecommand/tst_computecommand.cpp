@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016  Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016  Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtTest/QTest>
@@ -36,19 +11,17 @@
 #include <Qt3DCore/private/qbackendnode_p.h>
 #include <Qt3DCore/private/qaspectmanager_p.h>
 #include <Qt3DCore/private/qscene_p.h>
-#include <Qt3DCore/qpropertyupdatedchange.h>
 #include <renderer_p.h>
-#include "qbackendnodetester.h"
 #include "testrenderer.h"
-#include "testpostmanarbiter.h"
-
+#include "testarbiter.h"
+#include "qbackendnodetester.h"
 
 // tst_Renderer is a friend class of Renderer
 class tst_Renderer : public Qt3DRender::Render::OpenGL::Renderer
 {
 public:
     tst_Renderer()
-        : Qt3DRender::Render::OpenGL::Renderer(Qt3DRender::QRenderAspect::Synchronous)
+        : Qt3DRender::Render::OpenGL::Renderer()
     {}
 
     ~tst_Renderer() {
@@ -68,7 +41,6 @@ private Q_SLOTS:
         // GIVEN
         Qt3DRender::Render::NodeManagers nodeManager;
         tst_Renderer renderer;
-        TestArbiter arbiter;
 
         Qt3DCore::QAspectManager manager;
         Qt3DCore::QScene scene;
@@ -100,7 +72,6 @@ private Q_SLOTS:
         computeCommand.setRunType(Qt3DRender::QComputeCommand::Manual);
         computeCommand.trigger(1);
 
-        Qt3DCore::QBackendNodePrivate::get(backendComputeCommand)->setArbiter(&arbiter);
         backendComputeCommand->setRenderer(&renderer);
         simulateInitializationSync(&computeCommand, backendComputeCommand);
 

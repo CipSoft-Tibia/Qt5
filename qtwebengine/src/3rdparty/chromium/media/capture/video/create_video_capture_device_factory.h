@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,24 +7,18 @@
 
 #include <memory>
 
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
+#include "build/chromeos_buildflags.h"
 #include "media/capture/capture_export.h"
 #include "media/capture/video/video_capture_device_factory.h"
 
 namespace media {
 
-class CameraAppDeviceBridgeImpl;
+bool CAPTURE_EXPORT ShouldUseFakeVideoCaptureDeviceFactory();
 
 std::unique_ptr<VideoCaptureDeviceFactory> CAPTURE_EXPORT
 CreateVideoCaptureDeviceFactory(
     scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner);
-
-#if defined(OS_CHROMEOS)
-std::unique_ptr<VideoCaptureDeviceFactory> CAPTURE_EXPORT
-CreateVideoCaptureDeviceFactory(
-    scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner,
-    media::CameraAppDeviceBridgeImpl* camera_app_device_bridge);
-#endif  // defined(OS_CHROMEOS)
 
 }  // namespace media
 

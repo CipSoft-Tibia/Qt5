@@ -1,10 +1,12 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/presentation/presentation_connection.h"
 
 #include <memory>
+#include "base/task/single_thread_task_runner.h"
+#include "third_party/blink/public/mojom/frame/lifecycle.mojom-blink.h"
 #include "third_party/blink/public/platform/task_type.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/core/dom/events/event.h"
@@ -12,9 +14,7 @@
 #include "third_party/blink/renderer/core/fileapi/file_error.h"
 #include "third_party/blink/renderer/core/fileapi/file_reader_loader.h"
 #include "third_party/blink/renderer/core/fileapi/file_reader_loader_client.h"
-#include "third_party/blink/renderer/core/frame/deprecation.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
-#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_array_buffer.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_array_buffer_view.h"
 #include "third_party/blink/renderer/modules/event_target_modules.h"
@@ -24,10 +24,7 @@
 #include "third_party/blink/renderer/modules/presentation/presentation_controller.h"
 #include "third_party/blink/renderer/modules/presentation/presentation_receiver.h"
 #include "third_party/blink/renderer/modules/presentation/presentation_request.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
-#include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 
 namespace blink {
@@ -43,7 +40,7 @@ mojom::blink::PresentationConnectionMessagePtr MakeBinaryMessage(
       WTF::Vector<uint8_t>());
   WTF::Vector<uint8_t>& data = message->get_data();
   data.Append(static_cast<const uint8_t*>(buffer->Data()),
-              base::checked_cast<wtf_size_t>(buffer->ByteLengthAsSizeT()));
+              base::checked_cast<wtf_size_t>(buffer->ByteLength()));
   return message;
 }
 
@@ -199,12 +196,14 @@ void PresentationConnection::DidChangeState(
     case mojom::blink::PresentationConnectionState::CONNECTING:
       return;
     case mojom::blink::PresentationConnectionState::CONNECTED:
-      DispatchStateChangeEvent(Event::Create(event_type_names::kConnect));
+      EnqueueEvent(*Event::Create(event_type_names::kConnect),
+                   TaskType::kPresentation);
       return;
     case mojom::blink::PresentationConnectionState::CLOSED:
       return;
     case mojom::blink::PresentationConnectionState::TERMINATED:
-      DispatchStateChangeEvent(Event::Create(event_type_names::kTerminate));
+      EnqueueEvent(*Event::Create(event_type_names::kTerminate),
+                   TaskType::kPresentation);
       return;
   }
   NOTREACHED();
@@ -245,14 +244,9 @@ ControllerPresentationConnection* ControllerPresentationConnection::Take(
   controller->RegisterConnection(connection);
 
   // Fire onconnectionavailable event asynchronously.
-  auto* event = PresentationConnectionAvailableEvent::Create(
-      event_type_names::kConnectionavailable, connection);
-  request->GetExecutionContext()
-      ->GetTaskRunner(TaskType::kPresentation)
-      ->PostTask(FROM_HERE,
-                 WTF::Bind(&PresentationConnection::DispatchEventAsync,
-                           WrapPersistent(request), WrapPersistent(event)));
-
+  request->EnqueueEvent(*PresentationConnectionAvailableEvent::Create(
+                            event_type_names::kConnectionavailable, connection),
+                        TaskType::kPresentation);
   return connection;
 }
 
@@ -458,8 +452,7 @@ void PresentationConnection::send(DOMArrayBuffer* array_buffer,
   DCHECK(array_buffer);
   if (!CanSendMessage(exception_state))
     return;
-  if (!base::CheckedNumeric<wtf_size_t>(array_buffer->ByteLengthAsSizeT())
-           .IsValid()) {
+  if (!base::CheckedNumeric<wtf_size_t>(array_buffer->ByteLength()).IsValid()) {
     static_assert(
         4294967295 == std::numeric_limits<wtf_size_t>::max(),
         "Change the error message below if this static_assert fails.");
@@ -478,8 +471,7 @@ void PresentationConnection::send(
   DCHECK(array_buffer_view);
   if (!CanSendMessage(exception_state))
     return;
-  if (!base::CheckedNumeric<wtf_size_t>(
-           array_buffer_view.View()->byteLengthAsSizeT())
+  if (!base::CheckedNumeric<wtf_size_t>(array_buffer_view->byteLength())
            .IsValid()) {
     static_assert(
         4294967295 == std::numeric_limits<wtf_size_t>::max(),
@@ -490,7 +482,7 @@ void PresentationConnection::send(
   }
 
   messages_.push_back(
-      MakeGarbageCollected<Message>(array_buffer_view.View()->buffer()));
+      MakeGarbageCollected<Message>(array_buffer_view->buffer()));
   HandleMessageQueue();
 }
 
@@ -531,7 +523,7 @@ void PresentationConnection::HandleMessageQueue() {
   if (!target_connection_.is_bound())
     return;
 
-  while (!messages_.IsEmpty() && !blob_loader_) {
+  while (!messages_.empty() && !blob_loader_) {
     Message* message = messages_.front().Get();
     switch (message->type) {
       case kMessageTypeText:
@@ -639,17 +631,17 @@ void PresentationConnection::DidClose(
   }
 
   state_ = mojom::blink::PresentationConnectionState::CLOSED;
-  DispatchStateChangeEvent(PresentationConnectionCloseEvent::Create(
-      event_type_names::kClose, ConnectionCloseReasonToString(reason),
-      message));
+  EnqueueEvent(*PresentationConnectionCloseEvent::Create(
+                   event_type_names::kClose,
+                   ConnectionCloseReasonToString(reason), message),
+               TaskType::kPresentation);
 }
 
 void PresentationConnection::DidFinishLoadingBlob(DOMArrayBuffer* buffer) {
-  DCHECK(!messages_.IsEmpty());
+  DCHECK(!messages_.empty());
   DCHECK_EQ(messages_.front()->type, kMessageTypeBlob);
   DCHECK(buffer);
-  if (!base::CheckedNumeric<wtf_size_t>(buffer->ByteLengthAsSizeT())
-           .IsValid()) {
+  if (!base::CheckedNumeric<wtf_size_t>(buffer->ByteLength()).IsValid()) {
     // TODO(crbug.com/1036565): generate error message? The problem is that the
     // content of {buffer} is copied into a WTF::Vector, but a DOMArrayBuffer
     // has a bigger maximum size than a WTF::Vector. Ignore the current failed
@@ -667,29 +659,13 @@ void PresentationConnection::DidFinishLoadingBlob(DOMArrayBuffer* buffer) {
 }
 
 void PresentationConnection::DidFailLoadingBlob(FileErrorCode error_code) {
-  DCHECK(!messages_.IsEmpty());
+  DCHECK(!messages_.empty());
   DCHECK_EQ(messages_.front()->type, kMessageTypeBlob);
   // TODO(crbug.com/1036565): generate error message?
   // Ignore the current failed blob item and continue with next items.
   messages_.pop_front();
   blob_loader_.Clear();
   HandleMessageQueue();
-}
-
-void PresentationConnection::DispatchStateChangeEvent(Event* event) {
-  GetExecutionContext()
-      ->GetTaskRunner(TaskType::kPresentation)
-      ->PostTask(FROM_HERE,
-                 WTF::Bind(&PresentationConnection::DispatchEventAsync,
-                           WrapPersistent(this), WrapPersistent(event)));
-}
-
-// static
-void PresentationConnection::DispatchEventAsync(EventTarget* target,
-                                                Event* event) {
-  DCHECK(target);
-  DCHECK(event);
-  target->DispatchEvent(*event);
 }
 
 void PresentationConnection::TearDown() {

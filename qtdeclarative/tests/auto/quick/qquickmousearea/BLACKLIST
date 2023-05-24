@@ -1,8 +1,13 @@
-# QTBUG-78153
-[nestedStopAtBounds]
-opensuse-leap
+# QTBUG-82043
+[pressAndHold]
+macos ci
 
 # QTBUG-82282
 [pressOneAndTapAnother]
 opensuse-leap
 
+# QTBUG-103092
+[pressOneAndTapAnother]
+android
+[containsMouseAndVisibility]
+android

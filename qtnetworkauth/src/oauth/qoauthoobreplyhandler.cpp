@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Network Auth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QT_NO_HTTP
 
@@ -41,6 +15,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 QOAuthOobReplyHandler::QOAuthOobReplyHandler(QObject *parent)
     : QAbstractOAuthReplyHandler(parent)
 {}
@@ -53,11 +29,12 @@ QString QOAuthOobReplyHandler::callback() const
 void QOAuthOobReplyHandler::networkReplyFinished(QNetworkReply *reply)
 {
     if (reply->error() != QNetworkReply::NoError) {
-        qCWarning(lcReplyHandler, "%s", qPrintable(reply->errorString()));
+        emit tokenRequestErrorOccurred(QAbstractOAuth::Error::NetworkError, reply->errorString());
         return;
     }
     if (reply->header(QNetworkRequest::ContentTypeHeader).isNull()) {
-        qCWarning(lcReplyHandler, "Empty Content-type header");
+        emit tokenRequestErrorOccurred(QAbstractOAuth::Error::NetworkError,
+                                       u"Empty Content-type header"_s);
         return;
     }
     const QString contentType = reply->header(QNetworkRequest::ContentTypeHeader).isNull() ?
@@ -65,7 +42,7 @@ void QOAuthOobReplyHandler::networkReplyFinished(QNetworkReply *reply)
                 reply->header(QNetworkRequest::ContentTypeHeader).toString();
     const QByteArray data = reply->readAll();
     if (data.isEmpty()) {
-        qCWarning(lcReplyHandler, "No received data");
+        emit tokenRequestErrorOccurred(QAbstractOAuth::Error::NetworkError, u"No received data"_s);
         return;
     }
 
@@ -80,8 +57,8 @@ void QOAuthOobReplyHandler::networkReplyFinished(QNetworkReply *reply)
                || contentType.startsWith(QStringLiteral("text/javascript"))) {
         const QJsonDocument document = QJsonDocument::fromJson(data);
         if (!document.isObject()) {
-            qCWarning(lcReplyHandler, "Received data is not a JSON object: %s",
-                      qPrintable(QString::fromUtf8(data)));
+            emit tokenRequestErrorOccurred(QAbstractOAuth::Error::ServerError,
+                          u"Received data is not a JSON object: %1"_s.arg(QString::fromUtf8(data)));
             return;
         }
         const QJsonObject object = document.object();
@@ -91,7 +68,8 @@ void QOAuthOobReplyHandler::networkReplyFinished(QNetworkReply *reply)
         }
         ret = object.toVariantMap();
     } else {
-        qCWarning(lcReplyHandler, "Unknown Content-type: %s", qPrintable(contentType));
+        emit tokenRequestErrorOccurred(QAbstractOAuth::Error::ServerError,
+                               u"Unknown Content-type %1"_s.arg(contentType));
         return;
     }
 
@@ -109,5 +87,7 @@ QVariantMap QOAuthOobReplyHandler::parseResponse(const QByteArray &response)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qoauthoobreplyhandler.cpp"
 
 #endif // QT_NO_HTTP

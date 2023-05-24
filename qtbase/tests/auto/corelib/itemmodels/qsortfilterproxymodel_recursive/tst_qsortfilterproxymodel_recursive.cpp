@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, authors Filipe Azevedo <filipe.azevedo@kdab.com> and David Faure <david.faure@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, authors Filipe Azevedo <filipe.azevedo@kdab.com> and David Faure <david.faure@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QTest>
 #include <QSignalSpy>
@@ -142,9 +117,9 @@ static QString treeAsString(const QAbstractItemModel &model, const QModelIndex &
 static void fillModel(QStandardItemModel &model, const QString &str)
 {
     QCOMPARE(str.count('['), str.count(']'));
-    QStandardItem *item = 0;
+    QStandardItem *item = nullptr;
     QString data;
-    for ( int i = 0 ; i < str.length() ; ++i ) {
+    for ( int i = 0 ; i < str.size() ; ++i ) {
         const QChar ch = str.at(i);
         if ((ch == '[' || ch == ']' || ch == ' ') && !data.isEmpty()) {
             if (data.endsWith('*')) {
@@ -713,6 +688,38 @@ private Q_SLOTS:
 
         QCOMPARE(treeAsString(proxy), expectedProxyStr);
 
+    }
+
+    void testChildrenFiltering_data()
+    {
+        QTest::addColumn<QString>("sourceStr");
+        QTest::addColumn<QString>("noChildrenProxyStr");
+        QTest::addColumn<QString>("childrenProxyStr");
+        QTest::addColumn<QString>("noParentProxyStr");
+
+        QTest::newRow("filter_parent") << "[1*[1.1 1.2[1.2.1]]]" << "[1*]" << "[1*[1.1 1.2[1.2.1]]]" << "[1*[1.1 1.2[1.2.1]]]";
+        QTest::newRow("filter_child") << "[1[1.1 1.2*[1.2.1]]]" << "[1[1.2*]]" << "[1[1.2*[1.2.1]]]" << "";
+
+    }
+
+    void testChildrenFiltering()
+    {
+        QFETCH(QString, sourceStr);
+        QFETCH(QString, noChildrenProxyStr);
+        QFETCH(QString, childrenProxyStr);
+        QFETCH(QString, noParentProxyStr);
+
+        QStandardItemModel model;
+        fillModel(model, sourceStr);
+
+        TestModel proxy(&model);
+        QCOMPARE(treeAsString(proxy), noChildrenProxyStr);
+
+        proxy.setAutoAcceptChildRows(true);
+        QCOMPARE(treeAsString(proxy), childrenProxyStr);
+
+        proxy.setRecursiveFilteringEnabled(false);
+        QCOMPARE(treeAsString(proxy), noParentProxyStr);
     }
 
 private:

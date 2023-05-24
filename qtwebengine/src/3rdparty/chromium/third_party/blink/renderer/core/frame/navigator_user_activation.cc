@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -35,7 +35,8 @@ void NavigatorUserActivation::Trace(Visitor* visitor) const {
   Supplement<Navigator>::Trace(visitor);
 }
 
-NavigatorUserActivation::NavigatorUserActivation(Navigator& navigator) {
+NavigatorUserActivation::NavigatorUserActivation(Navigator& navigator)
+    : Supplement(navigator) {
   user_activation_ =
       MakeGarbageCollected<UserActivation>(navigator.DomWindow());
 }

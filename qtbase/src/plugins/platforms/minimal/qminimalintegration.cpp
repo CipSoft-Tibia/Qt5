@@ -1,80 +1,43 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qminimalintegration.h"
 #include "qminimalbackingstore.h"
 
 #include <QtGui/private/qpixmap_raster_p.h>
 #include <QtGui/private/qguiapplication_p.h>
+#include <qpa/qplatformfontdatabase.h>
+#include <qpa/qplatformnativeinterface.h>
 #include <qpa/qplatformwindow.h>
 #include <qpa/qwindowsysteminterface.h>
 
-#include <QtFontDatabaseSupport/private/qfreetypefontdatabase_p.h>
-#if defined(Q_OS_WINRT)
-#  include <QtFontDatabaseSupport/private/qwinrtfontdatabase_p.h>
-#elif defined(Q_OS_WIN)
-#  include <QtFontDatabaseSupport/private/qwindowsfontdatabase_p.h>
+#if defined(Q_OS_WIN)
+#  include <QtGui/private/qwindowsfontdatabase_p.h>
 #  if QT_CONFIG(freetype)
-#    include <QtFontDatabaseSupport/private/qwindowsfontdatabase_ft_p.h>
+#    include <QtGui/private/qwindowsfontdatabase_ft_p.h>
 #  endif
 #elif defined(Q_OS_DARWIN)
-#  include <QtFontDatabaseSupport/private/qcoretextfontdatabase_p.h>
+#  include <QtGui/private/qcoretextfontdatabase_p.h>
 #endif
 
 #if QT_CONFIG(fontconfig)
-#  include <QtFontDatabaseSupport/private/qgenericunixfontdatabase_p.h>
-#  include <qpa/qplatformfontdatabase.h>
+#  include <QtGui/private/qgenericunixfontdatabase_p.h>
 #endif
 
 #if QT_CONFIG(freetype)
-#include <QtFontDatabaseSupport/private/qfontengine_ft_p.h>
+#include <QtGui/private/qfontengine_ft_p.h>
+#include <QtGui/private/qfreetypefontdatabase_p.h>
 #endif
 
 #if !defined(Q_OS_WIN)
-#include <QtEventDispatcherSupport/private/qgenericunixeventdispatcher_p.h>
-#elif defined(Q_OS_WINRT)
-#include <QtCore/private/qeventdispatcher_winrt_p.h>
+#include <QtGui/private/qgenericunixeventdispatcher_p.h>
 #else
 #include <QtCore/private/qeventdispatcher_win_p.h>
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 class QCoreTextFontEngine;
 
@@ -84,18 +47,18 @@ static inline unsigned parseOptions(const QStringList &paramList)
 {
     unsigned options = 0;
     for (const QString &param : paramList) {
-        if (param == QLatin1String("enable_fonts"))
+        if (param == "enable_fonts"_L1)
             options |= QMinimalIntegration::EnableFonts;
-        else if (param == QLatin1String("freetype"))
+        else if (param == "freetype"_L1)
             options |= QMinimalIntegration::FreeTypeFontDatabase;
-        else if (param == QLatin1String("fontconfig"))
+        else if (param == "fontconfig"_L1)
             options |= QMinimalIntegration::FontconfigDatabase;
     }
     return options;
 }
 
 QMinimalIntegration::QMinimalIntegration(const QStringList &parameters)
-    : m_fontDatabase(0)
+    : m_fontDatabase(nullptr)
     , m_options(parseOptions(parameters))
 {
     if (qEnvironmentVariableIsSet(debugBackingStoreEnvironmentVariable)
@@ -123,6 +86,7 @@ bool QMinimalIntegration::hasCapability(QPlatformIntegration::Capability cap) co
     switch (cap) {
     case ThreadedPixmaps: return true;
     case MultipleWindows: return true;
+    case RhiBasedRendering: return false;
     default: return QPlatformIntegration::hasCapability(cap);
     }
 }
@@ -139,9 +103,7 @@ public:
 QPlatformFontDatabase *QMinimalIntegration::fontDatabase() const
 {
     if (!m_fontDatabase && (m_options & EnableFonts)) {
-#if defined(Q_OS_WINRT)
-        m_fontDatabase = new QWinRTFontDatabase;
-#elif defined(Q_OS_WIN)
+#if defined(Q_OS_WIN)
         if (m_options & FreeTypeFontDatabase) {
 #  if QT_CONFIG(freetype)
             m_fontDatabase = new QWindowsFontDatabaseFT;
@@ -190,14 +152,17 @@ QPlatformBackingStore *QMinimalIntegration::createPlatformBackingStore(QWindow *
 QAbstractEventDispatcher *QMinimalIntegration::createEventDispatcher() const
 {
 #ifdef Q_OS_WIN
-#ifndef Q_OS_WINRT
     return new QEventDispatcherWin32;
-#else // !Q_OS_WINRT
-    return new QEventDispatcherWinRT;
-#endif // Q_OS_WINRT
 #else
     return createUnixEventDispatcher();
 #endif
+}
+
+QPlatformNativeInterface *QMinimalIntegration::nativeInterface() const
+{
+    if (!m_nativeInterface)
+        m_nativeInterface.reset(new QPlatformNativeInterface);
+    return m_nativeInterface.get();
 }
 
 QMinimalIntegration *QMinimalIntegration::instance()

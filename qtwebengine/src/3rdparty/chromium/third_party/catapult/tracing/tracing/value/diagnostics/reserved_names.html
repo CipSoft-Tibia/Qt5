@@ -17,12 +17,14 @@ tr.exportTo('tr.v.d', function() {
   // Diagnostics that are produced outside of metrics (e.g. by telemetry) use
   // reserved names.
   const RESERVED_INFOS = {
+    ALERT_GROUPING: { name: 'alertGrouping', type: tr.v.d.GenericSet },
     ANGLE_REVISIONS: {name: 'angleRevisions', type: tr.v.d.GenericSet},
     ARCHITECTURES: {name: 'architectures', type: tr.v.d.GenericSet},
     BENCHMARKS: {name: 'benchmarks', type: tr.v.d.GenericSet},
     BENCHMARK_START: {name: 'benchmarkStart', type: tr.v.d.DateRange},
     BENCHMARK_DESCRIPTIONS: {name: 'benchmarkDescriptions',
       type: tr.v.d.GenericSet},
+    BOT_ID: {name: 'botId', type: tr.v.d.GenericSet},
     BOTS: {name: 'bots', type: tr.v.d.GenericSet},
     BUG_COMPONENTS: {name: 'bugComponents', type: tr.v.d.GenericSet},
     BUILDS: {name: 'builds', type: tr.v.d.GenericSet},
@@ -32,7 +34,7 @@ tr.exportTo('tr.v.d', function() {
     CHROMIUM_REVISIONS: {name: 'chromiumRevisions', type: tr.v.d.GenericSet},
     DESCRIPTION: {name: 'description', type: tr.v.d.GenericSet},
     DEVICE_IDS: {name: 'deviceIds', type: tr.v.d.GenericSet},
-    DOCUMENTATION_URLS: {name: 'documentationUrls', type: tr.v.d.GenericSet},
+    DOCUMENTATION_URLS: {name: 'documentationLinks', type: tr.v.d.GenericSet},
     INFO_BLURB: {name: 'infoBlurb', type: tr.v.d.GenericSet},
     FUCHSIA_GARNET_REVISIONS: {
       name: 'fuchsiaGarnetRevisions', type: tr.v.d.GenericSet},
@@ -50,6 +52,7 @@ tr.exportTo('tr.v.d', function() {
     MEMORY_AMOUNTS: {name: 'memoryAmounts', type: tr.v.d.GenericSet},
     OS_NAMES: {name: 'osNames', type: tr.v.d.GenericSet},
     OS_VERSIONS: {name: 'osVersions', type: tr.v.d.GenericSet},
+    OS_DETAILED_VERSIONS: {name: 'osDetailedVersions', type: tr.v.d.GenericSet},
     OWNERS: {name: 'owners', type: tr.v.d.GenericSet},
     POINT_ID: {name: 'pointId', type: tr.v.d.GenericSet},
     PRODUCT_VERSIONS: {name: 'productVersions', type: tr.v.d.GenericSet},
@@ -66,8 +69,16 @@ tr.exportTo('tr.v.d', function() {
     V8_COMMIT_POSITIONS: {name: 'v8CommitPositions', type: tr.v.d.DateRange},
     V8_REVISIONS: {name: 'v8Revisions', type: tr.v.d.GenericSet},
     WEBRTC_REVISIONS: {name: 'webrtcRevisions', type: tr.v.d.GenericSet},
-    WEBRTC_INTERNAL_REVISIONS: {
-      name: 'webrtcInternalRevisions', type: tr.v.d.GenericSet},
+    WEBRTC_INTERNAL_SIRIUS_REVISIONS: {
+      name:'webrtcInternalSiriusRevisions', type: tr.v.d.GenericSet},
+    WEBRTC_INTERNAL_VEGA_REVISIONS: {
+      name:'webrtcInternalVegaRevisions', type: tr.v.d.GenericSet},
+    WEBRTC_INTERNAL_CANOPUS_REVISIONS: {
+      name:'webrtcInternalCanopusRevisions', type: tr.v.d.GenericSet},
+    WEBRTC_INTERNAL_ARCTURUS_REVISIONS: {
+      name:'webrtcInternalArcturusRevisions', type: tr.v.d.GenericSet},
+    WEBRTC_INTERNAL_RIGEL_REVISIONS: {
+      name:'webrtcInternalRigelRevisions', type: tr.v.d.GenericSet},
   };
 
   const RESERVED_NAMES = {};

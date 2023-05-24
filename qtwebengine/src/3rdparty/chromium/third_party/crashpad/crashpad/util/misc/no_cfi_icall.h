@@ -1,4 +1,4 @@
-// Copyright 2020 The Crashpad Authors. All rights reserved.
+// Copyright 2020 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@
 
 #include "build/build_config.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include <windows.h>
-#endif  // OS_WIN
+#endif  // BUILDFLAG(IS_WIN)
 
 namespace crashpad {
 
@@ -39,7 +39,7 @@ namespace {
 #endif
 
 // DISABLE_CFI_ICALL -- Disable Control Flow Integrity indirect call checks.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 // Windows also needs __declspec(guard(nocf)).
 #define DISABLE_CFI_ICALL NO_SANITIZE("cfi-icall") __declspec(guard(nocf))
 #else
@@ -49,6 +49,38 @@ namespace {
 template <typename Functor>
 struct FunctorTraits;
 
+template <typename R, typename... Args>
+struct FunctorTraits<R (*)(Args...) noexcept> {
+  template <typename Function, typename... RunArgs>
+  DISABLE_CFI_ICALL static R Invoke(Function&& function, RunArgs&&... args) {
+    return std::forward<Function>(function)(std::forward<RunArgs>(args)...);
+  }
+};
+
+template <typename R, typename... Args>
+struct FunctorTraits<R (*)(Args..., ...) noexcept> {
+  template <typename Function, typename... RunArgs>
+  DISABLE_CFI_ICALL static R Invoke(Function&& function, RunArgs&&... args) {
+    return std::forward<Function>(function)(std::forward<RunArgs>(args)...);
+  }
+};
+
+#if BUILDFLAG(IS_WIN) && defined(ARCH_CPU_X86)
+template <typename R, typename... Args>
+struct FunctorTraits<R(__stdcall*)(Args...) noexcept> {
+  template <typename... RunArgs>
+  DISABLE_CFI_ICALL static R Invoke(R(__stdcall* function)(Args...),
+                                    RunArgs&&... args) {
+    return function(std::forward<RunArgs>(args)...);
+  }
+};
+#endif  // BUILDFLAG(IS_WIN) && ARCH_CPU_X86
+
+#if __cplusplus >= 201703L
+// These specializations match functions which are not explicitly declared
+// noexcept. They must only be present at C++17 when noexcept is part of a
+// function's type. If they are present earlier, they redefine the
+// specializations above.
 template <typename R, typename... Args>
 struct FunctorTraits<R (*)(Args...)> {
   template <typename Function, typename... RunArgs>
@@ -65,7 +97,7 @@ struct FunctorTraits<R (*)(Args..., ...)> {
   }
 };
 
-#if defined(OS_WIN) && defined(ARCH_CPU_X86)
+#if BUILDFLAG(IS_WIN) && defined(ARCH_CPU_X86)
 template <typename R, typename... Args>
 struct FunctorTraits<R(__stdcall*)(Args...)> {
   template <typename... RunArgs>
@@ -74,7 +106,9 @@ struct FunctorTraits<R(__stdcall*)(Args...)> {
     return function(std::forward<RunArgs>(args)...);
   }
 };
-#endif  // OS_WIN && ARCH_CPU_X86
+#endif  // BUILDFLAG(IS_WIN) && ARCH_CPU_X86
+
+#endif  // __cplusplus >= 201703L
 
 }  // namespace
 
@@ -102,6 +136,9 @@ class NoCfiIcall {
   explicit NoCfiIcall(Functor function) : function_(function) {}
 
   //! \see NoCfiIcall
+  NoCfiIcall() : function_(static_cast<Functor>(nullptr)) {}
+
+  //! \see NoCfiIcall
   template <typename PointerType,
             typename = std::enable_if_t<
                 std::is_same<typename std::remove_cv<PointerType>::type,
@@ -109,16 +146,30 @@ class NoCfiIcall {
   explicit NoCfiIcall(PointerType function)
       : function_(reinterpret_cast<Functor>(function)) {}
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   //! \see NoCfiIcall
   template <typename = std::enable_if_t<
                 !std::is_same<typename std::remove_cv<Functor>::type,
                               FARPROC>::value>>
   explicit NoCfiIcall(FARPROC function)
       : function_(reinterpret_cast<Functor>(function)) {}
-#endif  // OS_WIN
+#endif  // BUILDFLAG(IS_WIN)
 
   ~NoCfiIcall() = default;
+
+  //! \brief Updates the pointer to the function to be called.
+  //!
+  //! \param function A pointer to the function to be called.
+  void SetPointer(Functor function) { function_ = function; }
+
+  //! \see SetPointer
+  template <typename PointerType,
+            typename = std::enable_if_t<
+                std::is_same<typename std::remove_cv<PointerType>::type,
+                             void*>::value>>
+  void SetPointer(PointerType function) {
+    function_ = reinterpret_cast<Functor>(function);
+  }
 
   //! \brief Calls the function without sanitization by cfi-icall.
   template <typename... RunArgs>

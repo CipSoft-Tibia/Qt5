@@ -1,37 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "placemanager_utils.h"
 
 #include <QtCore/QDebug>
 #include <QtLocation/QPlace>
+#include <QtLocation/QPlaceCategory>
+#include <QtLocation/QPlaceContentReply>
+#include <QtLocation/QPlaceDetailsReply>
+#include <QtLocation/QPlaceIdReply>
 #include <QtLocation/QPlaceManager>
+#include <QtLocation/QPlaceMatchReply>
 #include <QtLocation/QPlaceSearchReply>
+#include <QtLocation/QPlaceSearchSuggestionReply>
 #include <QtLocation/QPlaceResult>
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
@@ -72,7 +53,7 @@ void PlaceManagerUtils::doSavePlaces(QPlaceManager *manager, QList<QPlace> &plac
 {
     QPlaceIdReply *saveReply;
 
-    foreach (QPlace place, places) {
+    for (const auto &place : places) {
         saveReply = manager->savePlace(place);
         QSignalSpy saveSpy(saveReply, SIGNAL(finished()));
         QTRY_VERIFY_WITH_TIMEOUT(saveSpy.count() == 1, Timeout);
@@ -86,7 +67,7 @@ void PlaceManagerUtils::doSavePlaces(QPlaceManager *manager, const QList<QPlace 
     QPlaceIdReply *saveReply;
 
     static int count= 0;
-    foreach (QPlace *place, places) {
+    for (QPlace *place : places) {
         count++;
         saveReply = manager->savePlace(*place);
         QSignalSpy saveSpy(saveReply, SIGNAL(finished()));
@@ -116,7 +97,7 @@ bool PlaceManagerUtils::doSearch(QPlaceManager *manager,
     results->clear();
     QList<QPlaceSearchResult> searchResults;
     success = doSearch(manager, request, &searchResults, expectedError);
-    foreach (const QPlaceSearchResult &searchResult, searchResults) {
+    for (const QPlaceSearchResult &searchResult : searchResults) {
         if (searchResult.type() == QPlaceSearchResult::PlaceResult) {
             QPlaceResult placeResult = searchResult;
             results->append(placeResult.place());
@@ -267,9 +248,9 @@ bool PlaceManagerUtils::checkSignals(QPlaceReply *reply, QPlaceReply::Error expe
 {
     Q_ASSERT(reply);
     QSignalSpy finishedSpy(reply, SIGNAL(finished()));
-    QSignalSpy errorSpy(reply, SIGNAL(error(QPlaceReply::Error,QString)));
+    QSignalSpy errorSpy(reply, SIGNAL(errorOccurred(QPlaceReply::Error,QString)));
     QSignalSpy managerFinishedSpy(manager, SIGNAL(finished(QPlaceReply*)));
-    QSignalSpy managerErrorSpy(manager,SIGNAL(error(QPlaceReply*,QPlaceReply::Error,QString)));
+    QSignalSpy managerErrorSpy(manager,SIGNAL(errorOccurred(QPlaceReply*,QPlaceReply::Error,QString)));
 
     if (expectedError != QPlaceReply::NoError) {
         //check that we get an error signal from the reply
@@ -351,11 +332,11 @@ bool PlaceManagerUtils::compare(const QList<QPlace> &actualResults,
                                       const QList<QPlace> &expectedResults)
 {
     QSet<QString> actualIds;
-    foreach (const QPlace &place, actualResults)
+    for (const QPlace &place : actualResults)
         actualIds.insert(place.placeId());
 
     QSet<QString> expectedIds;
-    foreach (const QPlace &place, expectedResults)
+    for (const QPlace &place : expectedResults)
         expectedIds.insert(place.placeId());
 
     bool isMatch = (actualIds == expectedIds);
@@ -371,6 +352,6 @@ bool PlaceManagerUtils::compare(const QList<QPlace> &actualResults,
 
 void PlaceManagerUtils::setVisibility(QList<QPlace *> places, QLocation::Visibility visibility)
 {
-    foreach (QPlace *place, places)
+    for (QPlace *place : places)
         place->setVisibility(visibility);
 }

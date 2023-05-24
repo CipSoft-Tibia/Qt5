@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,14 @@
 #ifndef XFA_FWL_CFWL_SCROLLBAR_H_
 #define XFA_FWL_CFWL_SCROLLBAR_H_
 
+#include <stdint.h>
+
 #include <memory>
 
 #include "core/fxcrt/cfx_timer.h"
-#include "core/fxcrt/fx_system.h"
+#include "third_party/base/check.h"
 #include "xfa/fwl/cfwl_eventscroll.h"
+#include "xfa/fwl/cfwl_themepart.h"
 #include "xfa/fwl/cfwl_widget.h"
 
 #define FWL_STYLEEXT_SCB_Horz (0L << 0)
@@ -26,17 +29,16 @@ class CFWL_ScrollBar final : public CFWL_Widget,
   // CFWL_Widget:
   FWL_Type GetClassID() const override;
   void Update() override;
-  void DrawWidget(CXFA_Graphics* pGraphics, const CFX_Matrix& matrix) override;
+  void DrawWidget(CFGAS_GEGraphics* pGraphics,
+                  const CFX_Matrix& matrix) override;
   void OnProcessMessage(CFWL_Message* pMessage) override;
-  void OnDrawWidget(CXFA_Graphics* pGraphics,
+  void OnDrawWidget(CFGAS_GEGraphics* pGraphics,
                     const CFX_Matrix& matrix) override;
 
   // CFX_Timer::CallbackIface:
   void OnTimerFired() override;
 
   void GetRange(float* fMin, float* fMax) const {
-    ASSERT(fMin);
-    ASSERT(fMax);
     *fMin = m_fRangeMin;
     *fMax = m_fRangeMax;
   }
@@ -57,16 +59,12 @@ class CFWL_ScrollBar final : public CFWL_Widget,
                  const Properties& properties,
                  CFWL_Widget* pOuter);
 
-  bool IsVertical() const {
-    return !!(m_Properties.m_dwStyleExes & FWL_STYLEEXT_SCB_Vert);
-  }
-  void DrawTrack(CXFA_Graphics* pGraphics,
-                 bool bLower,
-                 const CFX_Matrix* pMatrix);
-  void DrawArrowBtn(CXFA_Graphics* pGraphics,
-                    bool bMinBtn,
-                    const CFX_Matrix* pMatrix);
-  void DrawThumb(CXFA_Graphics* pGraphics, const CFX_Matrix* pMatrix);
+  bool IsVertical() const { return !!(GetStyleExts() & FWL_STYLEEXT_SCB_Vert); }
+  void DrawUpperTrack(CFGAS_GEGraphics* pGraphics, const CFX_Matrix& mtMatrix);
+  void DrawLowerTrack(CFGAS_GEGraphics* pGraphics, const CFX_Matrix& mtMatrix);
+  void DrawMaxArrowBtn(CFGAS_GEGraphics* pGraphics, const CFX_Matrix& mtMatrix);
+  void DrawMinArrowBtn(CFGAS_GEGraphics* pGraphics, const CFX_Matrix& mtMatrix);
+  void DrawThumb(CFGAS_GEGraphics* pGraphics, const CFX_Matrix& mtMatrix);
   void Layout();
   void CalcButtonLen();
   CFX_RectF CalcMinButtonRect();
@@ -86,18 +84,22 @@ class CFWL_ScrollBar final : public CFWL_Widget,
   bool DoScroll(CFWL_EventScroll::Code dwCode, float fPos);
   void DoMouseDown(int32_t iItem,
                    const CFX_RectF& rtItem,
-                   int32_t& iState,
+                   CFWL_PartState* pState,
                    const CFX_PointF& point);
   void DoMouseUp(int32_t iItem,
                  const CFX_RectF& rtItem,
-                 int32_t& iState,
+                 CFWL_PartState* pState,
                  const CFX_PointF& point);
   void DoMouseMove(int32_t iItem,
                    const CFX_RectF& rtItem,
-                   int32_t& iState,
+                   CFWL_PartState* pState,
                    const CFX_PointF& point);
-  void DoMouseLeave(int32_t iItem, const CFX_RectF& rtItem, int32_t& iState);
-  void DoMouseHover(int32_t iItem, const CFX_RectF& rtItem, int32_t& iState);
+  void DoMouseLeave(int32_t iItem,
+                    const CFX_RectF& rtItem,
+                    CFWL_PartState* pState);
+  void DoMouseHover(int32_t iItem,
+                    const CFX_RectF& rtItem,
+                    CFWL_PartState* pState);
 
   float m_fRangeMin = 0.0f;
   float m_fRangeMax = -1.0f;
@@ -105,11 +107,11 @@ class CFWL_ScrollBar final : public CFWL_Widget,
   float m_fStepSize = 0.0f;
   float m_fPos = 0.0f;
   float m_fTrackPos = 0.0f;
-  int32_t m_iMinButtonState = CFWL_PartState_Normal;
-  int32_t m_iMaxButtonState = CFWL_PartState_Normal;
-  int32_t m_iThumbButtonState = CFWL_PartState_Normal;
-  int32_t m_iMinTrackState = CFWL_PartState_Normal;
-  int32_t m_iMaxTrackState = CFWL_PartState_Normal;
+  CFWL_PartState m_iMinButtonState = CFWL_PartState::kNormal;
+  CFWL_PartState m_iMaxButtonState = CFWL_PartState::kNormal;
+  CFWL_PartState m_iThumbButtonState = CFWL_PartState::kNormal;
+  CFWL_PartState m_iMinTrackState = CFWL_PartState::kNormal;
+  CFWL_PartState m_iMaxTrackState = CFWL_PartState::kNormal;
   float m_fLastTrackPos = 0.0f;
   CFX_PointF m_cpTrackPoint;
   int32_t m_iMouseWheel = 0;

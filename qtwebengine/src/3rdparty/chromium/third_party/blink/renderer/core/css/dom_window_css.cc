@@ -34,7 +34,7 @@
 #include "third_party/blink/renderer/core/css/parser/css_parser.h"
 #include "third_party/blink/renderer/core/css/properties/css_property.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
@@ -44,9 +44,10 @@ bool DOMWindowCSS::supports(const ExecutionContext* execution_context,
                             const String& property,
                             const String& value) {
   CSSPropertyID unresolved_property =
-      unresolvedCSSPropertyID(execution_context, property);
-  if (unresolved_property == CSSPropertyID::kInvalid)
+      UnresolvedCSSPropertyID(execution_context, property);
+  if (unresolved_property == CSSPropertyID::kInvalid) {
     return false;
+  }
   if (unresolved_property == CSSPropertyID::kVariable) {
     auto* dummy_style =
         MakeGarbageCollected<MutableCSSPropertyValueSet>(kHTMLStandardMode);
@@ -54,12 +55,11 @@ bool DOMWindowCSS::supports(const ExecutionContext* execution_context,
     return CSSParser::ParseValueForCustomProperty(
                dummy_style, "--valid", value, false,
                execution_context->GetSecureContextMode(), nullptr,
-               is_animation_tainted)
-        .did_parse;
+               is_animation_tainted) != MutableCSSPropertyValueSet::kParseError;
   }
 
 #if DCHECK_IS_ON()
-  DCHECK(CSSProperty::Get(resolveCSSPropertyID(unresolved_property))
+  DCHECK(CSSProperty::Get(ResolveCSSPropertyID(unresolved_property))
              .IsWebExposed(execution_context));
 #endif
 
@@ -67,20 +67,19 @@ bool DOMWindowCSS::supports(const ExecutionContext* execution_context,
   auto* dummy_style =
       MakeGarbageCollected<MutableCSSPropertyValueSet>(kHTMLStandardMode);
   return CSSParser::ParseValue(dummy_style, unresolved_property, value, false,
-                               execution_context->GetSecureContextMode())
-      .did_parse;
+                               execution_context) !=
+         MutableCSSPropertyValueSet::kParseError;
 }
 
 bool DOMWindowCSS::supports(const ExecutionContext* execution_context,
                             const String& condition_text) {
-  return CSSParser::ParseSupportsCondition(
-      condition_text, execution_context->GetSecureContextMode());
+  return CSSParser::ParseSupportsCondition(condition_text, execution_context);
 }
 
 String DOMWindowCSS::escape(const String& ident) {
   StringBuilder builder;
   SerializeIdentifier(ident, builder);
-  return builder.ToString();
+  return builder.ReleaseString();
 }
 
 }  // namespace blink

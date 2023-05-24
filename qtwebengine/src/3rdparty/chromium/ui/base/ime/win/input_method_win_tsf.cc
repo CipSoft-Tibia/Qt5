@@ -1,11 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/base/ime/win/input_method_win_tsf.h"
 
-#include "ui/base/ime/input_method_keyboard_controller.h"
 #include "ui/base/ime/text_input_client.h"
+#include "ui/base/ime/virtual_keyboard_controller.h"
 #include "ui/base/ime/win/tsf_bridge.h"
 #include "ui/base/ime/win/tsf_event_router.h"
 
@@ -14,6 +14,9 @@ namespace ui {
 class InputMethodWinTSF::TSFEventObserver : public TSFEventRouterObserver {
  public:
   TSFEventObserver() = default;
+
+  TSFEventObserver(const TSFEventObserver&) = delete;
+  TSFEventObserver& operator=(const TSFEventObserver&) = delete;
 
   // Returns true if we know for sure that a candidate window (or IME suggest,
   // etc.) is open.
@@ -27,13 +30,12 @@ class InputMethodWinTSF::TSFEventObserver : public TSFEventRouterObserver {
  private:
   // True if we know for sure that a candidate window is open.
   bool is_candidate_popup_open_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(TSFEventObserver);
 };
 
-InputMethodWinTSF::InputMethodWinTSF(internal::InputMethodDelegate* delegate,
-                                     HWND toplevel_window_handle)
-    : InputMethodWinBase(delegate, toplevel_window_handle),
+InputMethodWinTSF::InputMethodWinTSF(
+    ImeKeyEventDispatcher* ime_key_event_dispatcher,
+    HWND attached_window_handle)
+    : InputMethodWinBase(ime_key_event_dispatcher, attached_window_handle),
       tsf_event_observer_(new TSFEventObserver()),
       tsf_event_router_(new TSFEventRouter(tsf_event_observer_.get())) {}
 
@@ -47,8 +49,8 @@ void InputMethodWinTSF::OnFocus() {
   }
   tsf_event_router_->SetManager(
       ui::TSFBridge::GetInstance()->GetThreadManager().Get());
-  ui::TSFBridge::GetInstance()->SetInputMethodDelegate(
-      InputMethodBase::delegate());
+  ui::TSFBridge::GetInstance()->SetImeKeyEventDispatcher(
+      InputMethodBase::ime_key_event_dispatcher());
 }
 
 void InputMethodWinTSF::OnBlur() {
@@ -58,11 +60,11 @@ void InputMethodWinTSF::OnBlur() {
     return;
   }
   tsf_event_router_->SetManager(nullptr);
-  ui::TSFBridge::GetInstance()->RemoveInputMethodDelegate();
+  ui::TSFBridge::GetInstance()->RemoveImeKeyEventDispatcher();
 }
 
 bool InputMethodWinTSF::OnUntranslatedIMEMessage(
-    const MSG event,
+    const CHROME_MSG event,
     InputMethod::NativeEventResult* result) {
   LRESULT original_result = 0;
   BOOL handled = FALSE;
@@ -92,7 +94,7 @@ bool InputMethodWinTSF::OnUntranslatedIMEMessage(
   return !!handled;
 }
 
-void InputMethodWinTSF::OnTextInputTypeChanged(const TextInputClient* client) {
+void InputMethodWinTSF::OnTextInputTypeChanged(TextInputClient* client) {
   InputMethodBase::OnTextInputTypeChanged(client);
   if (!ui::TSFBridge::GetInstance() || !IsTextInputClientFocused(client) ||
       !IsWindowFocused(client)) {
@@ -127,6 +129,8 @@ void InputMethodWinTSF::DetachTextInputClient(TextInputClient* client) {
   ui::TSFBridge::GetInstance()->RemoveFocusedClient(client);
 }
 
+void InputMethodWinTSF::OnInputLocaleChanged() {}
+
 bool InputMethodWinTSF::IsInputLocaleCJK() const {
   if (!ui::TSFBridge::GetInstance()) {
     return false;
@@ -153,7 +157,7 @@ void InputMethodWinTSF::OnDidChangeFocusedClient(
     TextInputClient* focused) {
   if (ui::TSFBridge::GetInstance() && IsWindowFocused(focused) &&
       IsTextInputClientFocused(focused)) {
-    ui::TSFBridge::GetInstance()->SetFocusedClient(toplevel_window_handle_,
+    ui::TSFBridge::GetInstance()->SetFocusedClient(attached_window_handle_,
                                                    focused);
     // Force to update the input type since client's TextInputStateChanged()
     // function might not be called if text input types before the client loses
@@ -173,15 +177,6 @@ void InputMethodWinTSF::ConfirmCompositionText() {
 
   if (ui::TSFBridge::GetInstance())
     ui::TSFBridge::GetInstance()->ConfirmComposition();
-}
-
-void InputMethodWinTSF::ShowVirtualKeyboardIfEnabled() {
-  // TODO(crbug.com/1031786): Enable this once TSF input pane policy bug is
-  // fixed if (ui::TSFBridge::GetInstance())
-  //   ui::TSFBridge::GetInstance()->SetInputPanelPolicy(
-  //       /*inputPanelPolicyManual*/ false);
-  if (auto* controller = GetInputMethodKeyboardController())
-    controller->DisplayVirtualKeyboard();
 }
 
 }  // namespace ui

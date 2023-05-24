@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qrc_url_scheme_handler.h"
 
@@ -45,6 +9,8 @@
 #include <QFileInfo>
 #include <QMimeDatabase>
 #include <QMimeType>
+
+#include <memory>
 
 namespace QtWebEngineCore {
 
@@ -58,7 +24,7 @@ void QrcUrlSchemeHandler::requestStarted(QWebEngineUrlRequestJob *job)
 
     QUrl requestUrl = job->requestUrl();
     QString requestPath = requestUrl.path();
-    QScopedPointer<QFile> file(new QFile(':' + requestPath, job));
+    auto file = std::make_unique<QFile>(':' + requestPath, job);
     if (!file->exists() || file->size() == 0) {
         qWarning("QResource '%s' not found or is empty", qUtf8Printable(requestPath));
         job->fail(QWebEngineUrlRequestJob::UrlNotFound);
@@ -68,9 +34,9 @@ void QrcUrlSchemeHandler::requestStarted(QWebEngineUrlRequestJob *job)
     QMimeDatabase mimeDatabase;
     QMimeType mimeType = mimeDatabase.mimeTypeForFile(fileInfo);
     if (mimeType.name() == QStringLiteral("application/x-extension-html"))
-        job->reply("text/html", file.take());
+        job->reply("text/html", file.release());
     else
-        job->reply(mimeType.name().toUtf8(), file.take());
+        job->reply(mimeType.name().toUtf8(), file.release());
 }
 
 } // namespace QtWebEngineCore

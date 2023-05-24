@@ -1,7 +1,8 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/memory/raw_ptr.h"
 #include "content/browser/media/session/media_session_impl.h"
 
 #include <map>
@@ -28,8 +29,12 @@ static const int kPlayerId = 0;
 
 class MockMediaSessionPlayerObserver : public MediaSessionPlayerObserver {
  public:
-  explicit MockMediaSessionPlayerObserver(RenderFrameHost* rfh)
-      : render_frame_host_(rfh) {}
+  MockMediaSessionPlayerObserver(RenderFrameHost* rfh,
+                                 media::MediaContentType media_content_type)
+      : render_frame_host_(rfh), media_content_type_(media_content_type) {}
+  explicit MockMediaSessionPlayerObserver(
+      media::MediaContentType media_content_type)
+      : MockMediaSessionPlayerObserver(nullptr, media_content_type) {}
 
   ~MockMediaSessionPlayerObserver() override = default;
 
@@ -37,22 +42,26 @@ class MockMediaSessionPlayerObserver : public MediaSessionPlayerObserver {
   void OnResume(int player_id) override {}
   void OnSeekForward(int player_id, base::TimeDelta seek_time) override {}
   void OnSeekBackward(int player_id, base::TimeDelta seek_time) override {}
+  void OnSeekTo(int player_id, base::TimeDelta seek_time) override {}
   void OnSetVolumeMultiplier(int player_id, double volume_multiplier) override {
   }
   void OnEnterPictureInPicture(int player_id) override {}
   void OnExitPictureInPicture(int player_id) override {}
   void OnSetAudioSinkId(int player_id,
                         const std::string& raw_device_id) override {}
+  void OnSetMute(int player_id, bool mute) override {}
+  void OnRequestMediaRemoting(int player_id) override {}
 
-  base::Optional<media_session::MediaPosition> GetPosition(
+  absl::optional<media_session::MediaPosition> GetPosition(
       int player_id) const override {
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   bool IsPictureInPictureAvailable(int player_id) const override {
     return false;
   }
 
+  bool HasAudio(int player_id) const override { return true; }
   bool HasVideo(int player_id) const override { return false; }
 
   std::string GetAudioOutputSinkId(int player_id) const override { return ""; }
@@ -61,12 +70,21 @@ class MockMediaSessionPlayerObserver : public MediaSessionPlayerObserver {
     return false;
   }
 
+  media::MediaContentType GetMediaContentType() const override {
+    return media_content_type_;
+  }
+
+  void SetMediaContentType(media::MediaContentType media_content_type) {
+    media_content_type_ = media_content_type;
+  }
+
   RenderFrameHost* render_frame_host() const override {
     return render_frame_host_;
   }
 
  private:
-  RenderFrameHost* render_frame_host_;
+  raw_ptr<RenderFrameHost, DanglingUntriaged> render_frame_host_;
+  media::MediaContentType media_content_type_;
 };
 
 struct ActionMappingEntry {
@@ -75,13 +93,32 @@ struct ActionMappingEntry {
 };
 
 ActionMappingEntry kActionMappings[] = {
-    {MediaSessionAction::kPlay, MediaSessionUserAction::Play},
-    {MediaSessionAction::kPause, MediaSessionUserAction::Pause},
-    {MediaSessionAction::kPreviousTrack, MediaSessionUserAction::PreviousTrack},
-    {MediaSessionAction::kNextTrack, MediaSessionUserAction::NextTrack},
-    {MediaSessionAction::kSeekBackward, MediaSessionUserAction::SeekBackward},
-    {MediaSessionAction::kSeekForward, MediaSessionUserAction::SeekForward},
-    {MediaSessionAction::kSkipAd, MediaSessionUserAction::SkipAd},
+    {MediaSessionAction::kPlay, MediaSessionUserAction::kPlay},
+    {MediaSessionAction::kPause, MediaSessionUserAction::kPause},
+    {MediaSessionAction::kPreviousTrack,
+     MediaSessionUserAction::kPreviousTrack},
+    {MediaSessionAction::kNextTrack, MediaSessionUserAction::kNextTrack},
+    {MediaSessionAction::kSeekBackward, MediaSessionUserAction::kSeekBackward},
+    {MediaSessionAction::kSeekForward, MediaSessionUserAction::kSeekForward},
+    {MediaSessionAction::kSkipAd, MediaSessionUserAction::kSkipAd},
+    {MediaSessionAction::kStop, MediaSessionUserAction::kStop},
+    {MediaSessionAction::kSeekTo, MediaSessionUserAction::kSeekTo},
+    {MediaSessionAction::kScrubTo, MediaSessionUserAction::kScrubTo},
+    {MediaSessionAction::kEnterPictureInPicture,
+     MediaSessionUserAction::kEnterPictureInPicture},
+    {MediaSessionAction::kExitPictureInPicture,
+     MediaSessionUserAction::kExitPictureInPicture},
+    {MediaSessionAction::kSwitchAudioDevice,
+     MediaSessionUserAction::kSwitchAudioDevice},
+    {MediaSessionAction::kToggleMicrophone,
+     MediaSessionUserAction::kToggleMicrophone},
+    {MediaSessionAction::kToggleCamera, MediaSessionUserAction::kToggleCamera},
+    {MediaSessionAction::kHangUp, MediaSessionUserAction::kHangUp},
+    {MediaSessionAction::kRaise, MediaSessionUserAction::kRaise},
+    {MediaSessionAction::kSetMute, MediaSessionUserAction::kSetMute},
+    {MediaSessionAction::kPreviousSlide,
+     MediaSessionUserAction::kPreviousSlide},
+    {MediaSessionAction::kNextSlide, MediaSessionUserAction::kNextSlide},
 };
 
 }  // anonymous namespace
@@ -94,12 +131,12 @@ class MediaSessionImplUmaTest : public RenderViewHostImplTestHarness {
   void SetUp() override {
     RenderViewHostImplTestHarness::SetUp();
 
-    contents()->GetMainFrame()->InitializeRenderFrameIfNeeded();
+    contents()->GetPrimaryMainFrame()->InitializeRenderFrameIfNeeded();
     StartPlayer();
 
-    mock_media_session_service_.reset(
-        new testing::NiceMock<MockMediaSessionServiceImpl>(
-            contents()->GetMainFrame()));
+    mock_media_session_service_ =
+        std::make_unique<testing::NiceMock<MockMediaSessionServiceImpl>>(
+            contents()->GetPrimaryMainFrame());
   }
 
   void TearDown() override {
@@ -111,10 +148,9 @@ class MediaSessionImplUmaTest : public RenderViewHostImplTestHarness {
   MediaSessionImpl* GetSession() { return MediaSessionImpl::Get(contents()); }
 
   void StartPlayer() {
-    player_.reset(
-        new MockMediaSessionPlayerObserver(contents()->GetMainFrame()));
-    GetSession()->AddPlayer(player_.get(), kPlayerId,
-                            media::MediaContentType::Persistent);
+    player_ = std::make_unique<MockMediaSessionPlayerObserver>(
+        contents()->GetPrimaryMainFrame(), media::MediaContentType::Persistent);
+    GetSession()->AddPlayer(player_.get(), kPlayerId);
   }
 
   std::unique_ptr<base::HistogramSamples> GetHistogramSamplesSinceTestStart(
@@ -133,7 +169,7 @@ TEST_F(MediaSessionImplUmaTest, RecordPauseDefaultOnUISuspend) {
       GetHistogramSamplesSinceTestStart("Media.Session.UserAction"));
   EXPECT_EQ(1, samples->TotalCount());
   EXPECT_EQ(1, samples->GetCount(static_cast<base::HistogramBase::Sample>(
-                   MediaSessionUserAction::PauseDefault)));
+                   MediaSessionUserAction::kPauseDefault)));
 }
 
 TEST_F(MediaSessionImplUmaTest, RecordPauseDefaultOnUISuspendWithAction) {
@@ -146,7 +182,7 @@ TEST_F(MediaSessionImplUmaTest, RecordPauseDefaultOnUISuspendWithAction) {
       GetHistogramSamplesSinceTestStart("Media.Session.UserAction"));
   EXPECT_EQ(1, samples->TotalCount());
   EXPECT_EQ(1, samples->GetCount(static_cast<base::HistogramBase::Sample>(
-                   MediaSessionUserAction::Pause)));
+                   MediaSessionUserAction::kPause)));
 }
 
 TEST_F(MediaSessionImplUmaTest, RecordPauseDefaultOnSystemSuspend) {
@@ -170,7 +206,7 @@ TEST_F(MediaSessionImplUmaTest, RecordPauseDefaultOnUIResume) {
       GetHistogramSamplesSinceTestStart("Media.Session.UserAction"));
   EXPECT_EQ(1, samples->TotalCount());
   EXPECT_EQ(1, samples->GetCount(static_cast<base::HistogramBase::Sample>(
-                   MediaSessionUserAction::PlayDefault)));
+                   MediaSessionUserAction::kPlayDefault)));
 }
 
 TEST_F(MediaSessionImplUmaTest, RecordPauseDefaultOnUIResumeWithAction) {
@@ -184,7 +220,7 @@ TEST_F(MediaSessionImplUmaTest, RecordPauseDefaultOnUIResumeWithAction) {
       GetHistogramSamplesSinceTestStart("Media.Session.UserAction"));
   EXPECT_EQ(1, samples->TotalCount());
   EXPECT_EQ(1, samples->GetCount(static_cast<base::HistogramBase::Sample>(
-                   MediaSessionUserAction::Play)));
+                   MediaSessionUserAction::kPlay)));
 }
 
 TEST_F(MediaSessionImplUmaTest, RecordPauseDefaultOnSystemResume) {
@@ -210,7 +246,7 @@ TEST_F(MediaSessionImplUmaTest, RecordPauseDefaultOnUIStop) {
       GetHistogramSamplesSinceTestStart("Media.Session.UserAction"));
   EXPECT_EQ(1, samples->TotalCount());
   EXPECT_EQ(1, samples->GetCount(static_cast<base::HistogramBase::Sample>(
-                   MediaSessionUserAction::StopDefault)));
+                   MediaSessionUserAction::kStopDefault)));
 }
 
 // This should never happen but just check this to be safe.

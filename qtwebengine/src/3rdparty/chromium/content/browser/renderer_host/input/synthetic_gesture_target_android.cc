@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -130,9 +130,9 @@ void SyntheticGestureTargetAndroid::DispatchWebMouseEventToPlatform(
   CHECK(false);
 }
 
-SyntheticGestureParams::GestureSourceType
+content::mojom::GestureSourceType
 SyntheticGestureTargetAndroid::GetDefaultSyntheticGestureSourceType() const {
-  return SyntheticGestureParams::TOUCH_INPUT;
+  return content::mojom::GestureSourceType::kTouchInput;
 }
 
 float SyntheticGestureTargetAndroid::GetTouchSlopInDips() const {

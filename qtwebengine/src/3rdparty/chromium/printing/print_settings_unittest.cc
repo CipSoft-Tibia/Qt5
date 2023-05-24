@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,8 @@
 
 #include "base/test/gtest_util.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
+#include "printing/buildflags/buildflags.h"
 #include "printing/mojom/print.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -13,7 +15,7 @@ namespace printing {
 
 TEST(PrintSettingsTest, ColorModeToColorModel) {
   for (int mode = static_cast<int>(mojom::ColorModel::kUnknownColorModel);
-       mode <= static_cast<int>(mojom::ColorModel::kColorModelLast); ++mode) {
+       mode <= static_cast<int>(mojom::ColorModel::kMaxValue); ++mode) {
     EXPECT_EQ(ColorModeToColorModel(mode),
               static_cast<mojom::ColorModel>(mode));
   }
@@ -22,14 +24,14 @@ TEST(PrintSettingsTest, ColorModeToColorModel) {
   EXPECT_EQ(ColorModeToColorModel(
                 static_cast<int>(mojom::ColorModel::kUnknownColorModel) - 1),
             mojom::ColorModel::kUnknownColorModel);
-  EXPECT_EQ(ColorModeToColorModel(
-                static_cast<int>(mojom::ColorModel::kColorModelLast) + 1),
-            mojom::ColorModel::kUnknownColorModel);
+  EXPECT_EQ(
+      ColorModeToColorModel(static_cast<int>(mojom::ColorModel::kMaxValue) + 1),
+      mojom::ColorModel::kUnknownColorModel);
 }
 
 TEST(PrintSettingsTest, IsColorModelSelected) {
   for (int model = static_cast<int>(mojom::ColorModel::kUnknownColorModel) + 1;
-       model <= static_cast<int>(mojom::ColorModel::kColorModelLast); ++model) {
+       model <= static_cast<int>(mojom::ColorModel::kMaxValue); ++model) {
     EXPECT_TRUE(IsColorModelSelected(static_cast<mojom::ColorModel>(model))
                     .has_value());
   }
@@ -40,12 +42,12 @@ TEST(PrintSettingsDeathTest, IsColorModelSelectedEdges) {
   EXPECT_DCHECK_DEATH(
       IsColorModelSelected(mojom::ColorModel::kUnknownColorModel));
 }
-#if defined(USE_CUPS)
+#if BUILDFLAG(USE_CUPS)
 TEST(PrintSettingsTest, GetColorModelForModel) {
   std::string color_setting_name;
   std::string color_value;
   for (int model = static_cast<int>(mojom::ColorModel::kUnknownColorModel);
-       model <= static_cast<int>(mojom::ColorModel::kColorModelLast); ++model) {
+       model <= static_cast<int>(mojom::ColorModel::kMaxValue); ++model) {
     GetColorModelForModel(static_cast<mojom::ColorModel>(model),
                           &color_setting_name, &color_value);
     EXPECT_FALSE(color_setting_name.empty());
@@ -55,15 +57,15 @@ TEST(PrintSettingsTest, GetColorModelForModel) {
   }
 }
 
-#if defined(OS_MAC) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS_ASH)
 TEST(PrintSettingsTest, GetIppColorModelForModel) {
   for (int model = static_cast<int>(mojom::ColorModel::kUnknownColorModel);
-       model <= static_cast<int>(mojom::ColorModel::kColorModelLast); ++model) {
+       model <= static_cast<int>(mojom::ColorModel::kMaxValue); ++model) {
     EXPECT_FALSE(GetIppColorModelForModel(static_cast<mojom::ColorModel>(model))
                      .empty());
   }
 }
-#endif  // defined(OS_MAC) || defined(OS_CHROMEOS)
-#endif  // defined(USE_CUPS)
+#endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(USE_CUPS)
 
 }  // namespace printing

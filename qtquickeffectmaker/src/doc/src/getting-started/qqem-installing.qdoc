@@ -1,0 +1,62 @@
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial
+/*!
+    \page qqem-installing.html
+
+    \title Installing \QQEM
+
+    You can run \QQEM as a standalone tool but it is also included in
+    \l{https://doc.qt.io/qtdesignstudio/}{Qt Design Studio}.
+
+    \section1 Installing \QQEM standalone
+
+    Install \QQEM with the Unified Qt Installer.
+
+    \list 1
+        \li Sign in to \l{https://account.qt.io/s/downloads}{Qt Account Downloads}.
+        \li Download \uicontrol {Unified Qt Installer}.
+        \li Open the Installer.
+        \li Continue to \uicontrol {Installation Folder} and select
+        \uicontrol {Custom installation}.
+        \li Select \uicontrol {Next}.
+        \li Go to \uicontrol Qt > \uicontrol {Qt 6.5} (or newer version) >
+        \uicontrol {Additional Libraries} and select \uicontrol {\QQEM}.
+        \li Complete the installation and close the Unified Qt Installer.
+    \endlist
+
+    \image qqem-online-installer.webp
+
+    \section1 Opening \QQEM standalone
+
+    To open \QQEM, run \c qqem.exe located in
+    the \c bin folder of your Qt installation, for example,
+    \e {C:\\Qt\\\QtVersion\\msvc2019_64\\bin}.
+
+    \section1 Opening \QQEM from Qt Design Studio
+
+    To open a \QQEM file in \QQEM from
+    Qt Design Studio, double-click the file in the \uicontrol Assets view.
+
+    \section1 Creating an effect file in Qt Design Studio
+
+    Create \QQEM effect (.qep) files in Qt Design Studio and
+    then edit them in \QQEM.
+
+    To create an effect file:
+
+    \list 1
+      \li In Qt Design Studio, right-click in the \uicontrol Assets view and
+      select \uicontrol {New Effect}.
+      Qt Design Studio creates an effect file and opens it in \QQEM.
+      \li In \QQEM:
+        \list 1
+          \li Edit the effect.
+          \li Select \uicontrol File > \uicontrol Save.
+          \li Select \uicontrol File > \uicontrol Export.
+          \li With the default settings, select \uicontrol OK.
+          \image effect-maker-export.png
+        \endlist
+    \endlist
+
+    Now, close \QQEM and go back to Qt Design Studio.
+*/

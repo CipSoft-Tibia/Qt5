@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,8 +29,8 @@ namespace net {
 // service_worker_start_time
 // proxy_start
 // proxy_end
-// dns_start
-// dns_end
+// domain_lookup_start
+// domain_lookup_end
 // connect_start
 // ssl_start
 // ssl_end
@@ -42,6 +42,7 @@ namespace net {
 // service_worker_respond_with_settled
 // first_early_hints_time
 // receive_headers_start
+// receive_non_informational_headers_start
 // receive_headers_end
 //
 // Times represent when a request starts/stops blocking on an event(*), not the
@@ -77,8 +78,8 @@ struct NET_EXPORT LoadTimingInfo {
     // Corresponds to |domainLookupStart| and |domainLookupEnd| in
     // ResourceTiming (http://www.w3.org/TR/resource-timing/) for Web-surfacing
     // requests.
-    base::TimeTicks dns_start;
-    base::TimeTicks dns_end;
+    base::TimeTicks domain_lookup_start;
+    base::TimeTicks domain_lookup_end;
 
     // The time spent establishing the connection. Connect time includes proxy
     // connect times (though not proxy_resolve or DNS lookup times), time spent
@@ -118,7 +119,7 @@ struct NET_EXPORT LoadTimingInfo {
   // Responding to a proxy AUTH challenge is never considered to be reusing a
   // socket, since a connection to the host wasn't established when the
   // challenge was received.
-  bool socket_reused;
+  bool socket_reused = false;
 
   // Unique socket ID, can be used to identify requests served by the same
   // socket.  For connections tunnelled over SPDY proxies, this is the ID of
@@ -174,10 +175,19 @@ struct NET_EXPORT LoadTimingInfo {
   base::TimeTicks send_end;
 
   // The time at which the first / last byte of the HTTP headers were received.
+  //
   // |receive_headers_start| corresponds to |responseStart| in ResourceTiming
-  // (http://www.w3.org/TR/resource-timing/) for Web-surfacing requests.
+  // (http://www.w3.org/TR/resource-timing/) for Web-surfacing requests. This
+  // can be the time at which the first byte of the HTTP headers for
+  // informational responses (1xx) as per the ResourceTiming spec (see note at
+  // https://www.w3.org/TR/resource-timing-2/#dom-performanceresourcetiming-responsestart).
   base::TimeTicks receive_headers_start;
   base::TimeTicks receive_headers_end;
+
+  // The time at which the first byte of the HTTP headers for the
+  // non-informational response (non-1xx). See also comments on
+  // |receive_headers_start|.
+  base::TimeTicks receive_non_informational_headers_start;
 
   // The time that the first 103 Early Hints response is received.
   base::TimeTicks first_early_hints_time;

@@ -1,19 +1,17 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
+
+if (is_chromeos) {
+  import("//chromeos/components/sensors/buildflags.gni")
+}
 
 if (is_android) {
   import("//build/config/android/rules.gni")  # For generate_jni().
 }
-
-# This file depends on the legacy global sources assignment filter. It should
-# be converted to check target platform before assigning source files to the
-# sources variable. Remove this import and set_sources_assignment_filter call
-# when the file has been converted. See https://crbug.com/1018739 for details.
-import("//build/config/deprecated_default_sources_assignment_filter.gni")
-set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
 
 source_set("generic_sensor") {
   visibility = [ "//services/device:*" ]
@@ -23,10 +21,10 @@ source_set("generic_sensor") {
     "absolute_orientation_euler_angles_fusion_algorithm_using_accelerometer_and_magnetometer.cc",
     "absolute_orientation_euler_angles_fusion_algorithm_using_accelerometer_and_magnetometer.h",
     "generic_sensor_consts.h",
+    "gravity_fusion_algorithm_using_accelerometer.cc",
+    "gravity_fusion_algorithm_using_accelerometer.h",
     "linear_acceleration_fusion_algorithm_using_accelerometer.cc",
     "linear_acceleration_fusion_algorithm_using_accelerometer.h",
-    "linux/sensor_data_linux.cc",
-    "linux/sensor_data_linux.h",
     "orientation_euler_angles_fusion_algorithm_using_quaternion.cc",
     "orientation_euler_angles_fusion_algorithm_using_quaternion.h",
     "orientation_quaternion_fusion_algorithm_using_euler_angles.cc",
@@ -35,37 +33,16 @@ source_set("generic_sensor") {
     "orientation_util.h",
     "platform_sensor.cc",
     "platform_sensor.h",
-    "platform_sensor_accelerometer_mac.cc",
-    "platform_sensor_accelerometer_mac.h",
-    "platform_sensor_ambient_light_mac.cc",
-    "platform_sensor_ambient_light_mac.h",
-    "platform_sensor_android.cc",
-    "platform_sensor_android.h",
     "platform_sensor_fusion.cc",
     "platform_sensor_fusion.h",
     "platform_sensor_fusion_algorithm.cc",
     "platform_sensor_fusion_algorithm.h",
-    "platform_sensor_linux.cc",
-    "platform_sensor_linux.h",
     "platform_sensor_provider.cc",
     "platform_sensor_provider.h",
-    "platform_sensor_provider_android.cc",
-    "platform_sensor_provider_android.h",
     "platform_sensor_provider_base.cc",
     "platform_sensor_provider_base.h",
-    "platform_sensor_provider_mac.cc",
-    "platform_sensor_provider_mac.h",
-    "platform_sensor_provider_win.cc",
-    "platform_sensor_provider_win.h",
-    "platform_sensor_reader_linux.cc",
-    "platform_sensor_reader_linux.h",
-    "platform_sensor_reader_win.cc",
-    "platform_sensor_reader_win.h",
-    "platform_sensor_reader_win_base.h",
     "platform_sensor_util.cc",
     "platform_sensor_util.h",
-    "platform_sensor_win.cc",
-    "platform_sensor_win.h",
     "relative_orientation_euler_angles_fusion_algorithm_using_accelerometer.cc",
     "relative_orientation_euler_angles_fusion_algorithm_using_accelerometer.h",
     "relative_orientation_euler_angles_fusion_algorithm_using_accelerometer_and_gyroscope.cc",
@@ -78,6 +55,7 @@ source_set("generic_sensor") {
 
   deps = [
     "//base",
+    "//build:chromeos_buildflags",
     "//device/base/synchronization",
     "//services/device/public/cpp:device_features",
     "//ui/gfx/geometry:geometry",
@@ -86,10 +64,27 @@ source_set("generic_sensor") {
   public_deps = [ "//services/device/public/cpp/generic_sensor" ]
 
   if (is_android) {
-    deps += [ ":jni_headers" ]
+    sources += [
+      "platform_sensor_android.cc",
+      "platform_sensor_android.h",
+      "platform_sensor_provider_android.cc",
+      "platform_sensor_provider_android.h",
+    ]
+    deps += [
+      ":jni_headers",
+      "//services/device/public/cpp:device_feature_list",
+    ]
   }
 
   if (is_mac) {
+    sources += [
+      "platform_sensor_accelerometer_mac.cc",
+      "platform_sensor_accelerometer_mac.h",
+      "platform_sensor_ambient_light_mac.cc",
+      "platform_sensor_ambient_light_mac.h",
+      "platform_sensor_provider_mac.cc",
+      "platform_sensor_provider_mac.h",
+    ]
     deps += [ "//third_party/sudden_motion_sensor" ]
     frameworks = [
       "CoreFoundation.framework",
@@ -97,37 +92,59 @@ source_set("generic_sensor") {
     ]
   }
 
-  if (use_udev) {
+  if (is_chromeos) {
+    deps += [ "//chromeos/components/sensors:buildflags" ]
+  }
+
+  if (is_chromeos && use_iioservice) {
+    deps += [
+      "//chromeos/components/sensors",
+      "//chromeos/components/sensors/mojom",
+    ]
+
+    sources += [
+      "platform_sensor_chromeos.cc",
+      "platform_sensor_chromeos.h",
+      "platform_sensor_provider_chromeos.cc",
+      "platform_sensor_provider_chromeos.h",
+      "platform_sensor_provider_linux_base.cc",
+      "platform_sensor_provider_linux_base.h",
+    ]
+  } else if ((is_linux || is_chromeos) && use_udev) {
     deps += [
       "//device/base",
       "//device/udev_linux",
     ]
 
     sources += [
+      "linux/sensor_data_linux.cc",
+      "linux/sensor_data_linux.h",
       "linux/sensor_device_manager.cc",
       "linux/sensor_device_manager.h",
+      "platform_sensor_linux.cc",
+      "platform_sensor_linux.h",
       "platform_sensor_provider_linux.cc",
       "platform_sensor_provider_linux.h",
+      "platform_sensor_provider_linux_base.cc",
+      "platform_sensor_provider_linux_base.h",
+      "platform_sensor_reader_linux.cc",
+      "platform_sensor_reader_linux.h",
     ]
   }
 
   if (is_win) {
-    # Windows doesn't use these, and their file-name length can make them break Windows builds
-    # depending on starting depth.
-    sources -= [
-      "absolute_orientation_euler_angles_fusion_algorithm_using_accelerometer_and_magnetometer.cc",
-      "absolute_orientation_euler_angles_fusion_algorithm_using_accelerometer_and_magnetometer.h",
-      "relative_orientation_euler_angles_fusion_algorithm_using_accelerometer.cc",
-      "relative_orientation_euler_angles_fusion_algorithm_using_accelerometer.h",
-      "relative_orientation_euler_angles_fusion_algorithm_using_accelerometer_and_gyroscope.cc",
-      "relative_orientation_euler_angles_fusion_algorithm_using_accelerometer_and_gyroscope.h",
-    ]
-
     sources += [
+      "platform_sensor_provider_win.cc",
+      "platform_sensor_provider_win.h",
       "platform_sensor_provider_winrt.cc",
       "platform_sensor_provider_winrt.h",
+      "platform_sensor_reader_win.cc",
+      "platform_sensor_reader_win.h",
+      "platform_sensor_reader_win_base.h",
       "platform_sensor_reader_winrt.cc",
       "platform_sensor_reader_winrt.h",
+      "platform_sensor_win.cc",
+      "platform_sensor_win.h",
     ]
 
     libs = [
@@ -159,7 +176,10 @@ if (is_android) {
     deps = [
       "//base:base_java",
       "//base:jni_java",
+      "//build/android:build_java",
+      "//services/device/public/java:device_feature_list_java",
       "//services/device/public/mojom:generic_sensor_java",
+      "//third_party/androidx:androidx_annotation_annotation_java",
     ]
     annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
   }

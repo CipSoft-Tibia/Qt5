@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -13,18 +13,20 @@ import shutil
 import sys
 import tempfile
 
-from jinja2 import contextfilter
+import jinja2
 
 import mojom.fileutil as fileutil
 import mojom.generate.generator as generator
 import mojom.generate.module as mojom
 from mojom.generate.template_expander import UseJinja
 
-sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir,
-                             os.pardir, os.pardir, os.pardir, os.pardir,
-                             'build', 'android', 'gyp'))
+# Item 0 of sys.path is the directory of the main file; item 1 is PYTHONPATH
+# (if set); item 2 is system libraries.
+sys.path.insert(
+    1,
+    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir,
+                 os.pardir, os.pardir, 'build', 'android', 'gyp'))
 from util import build_utils
-
 
 GENERATOR_PREFIX = 'java'
 
@@ -139,10 +141,10 @@ def GetNameForElement(element):
   raise Exception('Unexpected element: %s' % element)
 
 def GetInterfaceResponseName(method):
-  return UpperCamelCase(method.name + '_Response')
+  return UpperCamelCase(method.name) + '_Response'
 
 def ParseStringAttribute(attribute):
-  assert isinstance(attribute, basestring)
+  assert isinstance(attribute, str)
   return attribute
 
 def GetJavaTrueFalse(value):
@@ -197,7 +199,7 @@ def AppendEncodeDecodeParams(initial_params, context, kind, bit):
   return params
 
 
-@contextfilter
+@jinja2.pass_context
 def DecodeMethod(context, kind, offset, bit):
   def _DecodeMethodName(kind):
     if mojom.IsArrayKind(kind):
@@ -219,7 +221,8 @@ def DecodeMethod(context, kind, offset, bit):
   params = AppendEncodeDecodeParams([ str(offset) ], context, kind, bit)
   return '%s(%s)' % (methodName, ', '.join(params))
 
-@contextfilter
+
+@jinja2.pass_context
 def EncodeMethod(context, kind, variable, offset, bit):
   params = AppendEncodeDecodeParams(
       [ variable, str(offset) ], context, kind, bit)
@@ -248,7 +251,8 @@ def GetNameForKind(context, kind):
   elements += _GetNameHierachy(kind)
   return '.'.join(elements)
 
-@contextfilter
+
+@jinja2.pass_context
 def GetJavaClassForEnum(context, kind):
   return GetNameForKind(context, kind)
 
@@ -258,7 +262,8 @@ def GetBoxedJavaType(context, kind, with_generics=True):
     return _java_primitive_to_boxed_type[unboxed_type]
   return unboxed_type
 
-@contextfilter
+
+@jinja2.pass_context
 def GetJavaType(context, kind, boxed=False, with_generics=True):
   if boxed:
     return GetBoxedJavaType(context, kind)
@@ -290,7 +295,8 @@ def GetJavaType(context, kind, boxed=False, with_generics=True):
     return 'int'
   return _spec_to_java_type[kind.spec]
 
-@contextfilter
+
+@jinja2.pass_context
 def DefaultValue(context, field):
   assert field.default
   if isinstance(field.kind, mojom.Struct):
@@ -300,20 +306,23 @@ def DefaultValue(context, field):
       GetJavaType(context, field.kind),
       ExpressionToText(context, field.default, kind_spec=field.kind.spec))
 
-@contextfilter
+
+@jinja2.pass_context
 def ConstantValue(context, constant):
   return '(%s) %s' % (
       GetJavaType(context, constant.kind),
       ExpressionToText(context, constant.value, kind_spec=constant.kind.spec))
 
-@contextfilter
+
+@jinja2.pass_context
 def NewArray(context, kind, size):
   if mojom.IsArrayKind(kind.kind):
     return NewArray(context, kind.kind, size) + '[]'
   return 'new %s[%s]' % (
       GetJavaType(context, kind.kind, boxed=False, with_generics=False), size)
 
-@contextfilter
+
+@jinja2.pass_context
 def ExpressionToText(context, token, kind_spec=''):
   def _TranslateNamedValue(named_value):
     entity_name = GetNameForElement(named_value)
@@ -331,7 +340,7 @@ def ExpressionToText(context, token, kind_spec=''):
     return _TranslateNamedValue(token)
   if kind_spec.startswith('i') or kind_spec.startswith('u'):
     number = ast.literal_eval(token.lstrip('+ '))
-    if not isinstance(number, (int, long)):
+    if not isinstance(number, int):
       raise ValueError('got unexpected type %r for int literal %r' % (
           type(number), token))
     # If the literal is too large to fit a signed long, convert it to the
@@ -434,35 +443,35 @@ class Generator(generator.Generator):
 
   def GetFilters(self):
     java_filters = {
-      'array_expected_length': GetArrayExpectedLength,
-      'array': GetArrayKind,
-      'constant_value': ConstantValue,
-      'covers_continuous_range': EnumCoversContinuousRange,
-      'decode_method': DecodeMethod,
-      'default_value': DefaultValue,
-      'encode_method': EncodeMethod,
-      'expression_to_text': ExpressionToText,
-      'has_method_without_response': HasMethodWithoutResponse,
-      'has_method_with_response': HasMethodWithResponse,
-      'interface_response_name': GetInterfaceResponseName,
-      'is_array_kind': mojom.IsArrayKind,
-      'is_any_handle_kind': mojom.IsAnyHandleKind,
-      "is_enum_kind": mojom.IsEnumKind,
-      'is_interface_request_kind': mojom.IsInterfaceRequestKind,
-      'is_map_kind': mojom.IsMapKind,
-      'is_nullable_kind': mojom.IsNullableKind,
-      'is_pointer_array_kind': IsPointerArrayKind,
-      'is_reference_kind': mojom.IsReferenceKind,
-      'is_struct_kind': mojom.IsStructKind,
-      'is_union_array_kind': IsUnionArrayKind,
-      'is_union_kind': mojom.IsUnionKind,
-      'java_class_for_enum': GetJavaClassForEnum,
-      'java_true_false': GetJavaTrueFalse,
-      'java_type': GetJavaType,
-      'method_ordinal_name': GetMethodOrdinalName,
-      'name': GetNameForElement,
-      'new_array': NewArray,
-      'ucc': lambda x: UpperCamelCase(x.name),
+        'array_expected_length': GetArrayExpectedLength,
+        'array': GetArrayKind,
+        'constant_value': ConstantValue,
+        'covers_continuous_range': EnumCoversContinuousRange,
+        'decode_method': DecodeMethod,
+        'default_value': DefaultValue,
+        'encode_method': EncodeMethod,
+        'expression_to_text': ExpressionToText,
+        'has_method_without_response': HasMethodWithoutResponse,
+        'has_method_with_response': HasMethodWithResponse,
+        'interface_response_name': GetInterfaceResponseName,
+        'is_array_kind': mojom.IsArrayKind,
+        'is_any_handle_kind': mojom.IsAnyHandleKind,
+        "is_enum_kind": mojom.IsEnumKind,
+        'is_interface_request_kind': mojom.IsInterfaceRequestKind,
+        'is_map_kind': mojom.IsMapKind,
+        'is_nullable_kind': mojom.IsNullableKind,
+        'is_pointer_array_kind': IsPointerArrayKind,
+        'is_reference_kind': mojom.IsReferenceKind,
+        'is_struct_kind': mojom.IsStructKind,
+        'is_union_array_kind': IsUnionArrayKind,
+        'is_union_kind': mojom.IsUnionKind,
+        'java_class_for_enum': GetJavaClassForEnum,
+        'java_true_false': GetJavaTrueFalse,
+        'java_type': GetJavaType,
+        'method_ordinal_name': GetMethodOrdinalName,
+        'name': GetNameForElement,
+        'new_array': NewArray,
+        'ucc': lambda x: UpperCamelCase(x.name),
     }
     return java_filters
 

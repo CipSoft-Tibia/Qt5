@@ -1,12 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 module content.mojom;
 
 import "mojo/public/mojom/base/file_path.mojom";
-import "mojo/public/mojom/base/values.mojom";
 import "mojo/public/mojom/base/string16.mojom";
+import "mojo/public/mojom/base/values.mojom";
 import "skia/public/mojom/bitmap.mojom";
 import "third_party/blink/public/mojom/permissions/permission_status.mojom";
 import "third_party/blink/public/mojom/webpreferences/web_preferences.mojom";
@@ -29,6 +29,9 @@ struct WebTestRunTestConfiguration {
   // The expected MD5 hash of the pixel results.
   string expected_pixel_hash;
 
+  // Whether the test is supposed to run as a WPT print reftest.
+  bool wpt_print_mode;
+
   // Whether the test is running in protocol mode.
   // See TestInfo::protocol_mode in browser/web_test/test_info_extractor.h.
   bool protocol_mode;
@@ -43,11 +46,53 @@ struct WebTestRendererDumpResult {
   string? layout;
 
   // Image dump.
-  skia.mojom.Bitmap? pixels;
+  skia.mojom.BitmapN32? pixels;
   string actual_pixel_hash;
 
   // Selection rect dump.
   gfx.mojom.Rect selection_rect;
+};
+
+// Tasks in the work queue. TestRunner on the main window's process manages
+// the queue, but TestRunner can migrate processes on navigations, so the queue
+// is stored on the browser side.
+// The work queue can be populated in the first page's loading on the main
+// window's main frame, and gets frozen at the end of the loading.
+// Work queues on non-main windows are frozen from the beginning, and can't
+// add work items.
+
+// Navigates backward/forward in history
+struct WorkItemBackForward {
+  // Navigation distance. If |distance| is negative, navigates to backward.
+  int32 distance;
+};
+
+// Navigates a frame named |target| to |url|
+struct WorkItemLoad {
+  string url;
+  // If |target| is empty, it means the main frame.
+  string target;
+};
+
+// Reloads
+struct WorkItemReload {};
+
+// Runs JavaScript code |script| which may trigger a navigation
+struct WorkItemLoadingScript {
+  string script;
+};
+
+// Runs JavaScript code |script| which does not trigger navigations
+struct WorkItemNonLoadingScript {
+  string script;
+};
+
+union WorkItem {
+  WorkItemBackForward back_forward;
+  WorkItemLoad load;
+  WorkItemReload reload;
+  WorkItemLoadingScript loading_script;
+  WorkItemNonLoadingScript non_loading_script;
 };
 
 // Web test messages sent from the browser process to the renderer. This
@@ -61,12 +106,21 @@ interface WebTestRenderFrame {
   DumpFrameLayout() => (string frame_layout_dump);
 
   // Sets the test config for a web test that is being started.  This message
-  // is sent once to each RenderView that hosts parts of the main test window.
-  // The `starting_test` indicates if this is the first call to this IPC method
+  // is sent once to each `blink::WebView` that hosts parts of the main test
+  // window.
+  // `starting_test` indicates if this is the first call to this IPC method
   // for the given test. After the initial call, this may be called for new
-  // RenderViews created to host frames for the main window, either as OOPIFs or
-  // to handle cross-site navigations.
+  // `blink::WebView`s created to host frames for the main window, either as
+  // OOPIFs or to handle cross-site navigations.
   SetTestConfiguration(WebTestRunTestConfiguration config, bool starting_test);
+
+  // Notifies a frame that has been navigated away. This is called only on main
+  // frames to remove the frame from TestRunner's management list.
+  OnDeactivated();
+
+  // Notifies a frame that has been restored from backward/forward cache.
+  // This is called on main frames to add them to TestRunner's management list.
+  OnReactivated();
 };
 
 // Web test messages related runtime flags sent from the browser process to the
@@ -84,17 +138,31 @@ interface WebTestRenderThread {
   // 1) broadcasting change happening in one renderer to all other renderers, or
   // 2) sending accumulated changes to a single new renderer.
   ReplicateWebTestRuntimeFlagsChanges(
-      mojo_base.mojom.DictionaryValue changed_layout_test_runtime_flags);
+      mojo_base.mojom.DictionaryValue
+      changed_layout_test_runtime_flags);
 
   // Called on the renderer process with the main window's local main frame to
   // conclude the test. Used to bounce this request from another renderer.
   TestFinishedFromSecondaryRenderer();
 
-  // Tells the renderer to navigate the main window's main frame to about:blank
-  // and reset all state in preparation for the next test. This happens before
+  // Reset all state in preparation for the next test. This happens before
   // leak detection in order for the test harness to drop anything that tests
   // passed in and which could cause a leak otherwise.
-  ResetRendererAfterWebTest() => ();
+  // The flow is:
+  // - browser process detects test is finished
+  // - browser process initiates navigation to about:blank and waits for the
+  //   document to commit.
+  // - browser process calls ResetRendererAfterWebTest() for the renderer
+  //   process that about:blank committed in.
+  ResetRendererAfterWebTest();
+
+  // Processes a work item. This is called for the process with the main
+  // window's main frame.
+  ProcessWorkItem(WorkItem work_item);
+
+  // Syncs the work queue states to the new renderer.
+  ReplicateWorkQueueStates(
+      mojo_base.mojom.DictionaryValue work_queue_states);
 };
 
 // Web test messages sent from the renderer process to the browser. This
@@ -230,4 +298,43 @@ interface WebTestControlHost {
   [Sync]
   RegisterIsolatedFileSystem(
       array<mojo_base.mojom.FilePath> file_paths) => (string filesystem_id);
+
+  // Drop pointer lock, or disallow a pending request.
+  DropPointerLock();
+
+  // Set that the next pointer lock request will fail.
+  SetPointerLockWillFail();
+
+  // Set that the next pointer lock request will not be processed immediately.
+  // A subsequent call for DropPointerLock or AllowPointerLock will come
+  // from the test at a later point.
+  SetPointerLockWillRespondAsynchronously();
+
+  // Allow a pending pointer lock request.
+  AllowPointerLock();
+
+  // Notifies the browser that a work item is enqueued.
+  WorkItemAdded(WorkItem work_item);
+
+  // Requests the browser to send a work item. If the work queue has N items,
+  // there will be N+1 calls to RequestWorkItem and N replies via
+  // WebTestRenderThread.ProcessWorkItem. The last RequestWorkItem sets
+  // |has_items| bit false, and is replied via
+  // WebTestRenderThread.ReplicateWorkQueueStates.
+  RequestWorkItem();
+
+  // Notifies the browser that the work queue states changed.
+  WorkQueueStatesChanged(
+      mojo_base.mojom.DictionaryValue changed_work_queue_states);
+
+  // Set Accept Languages via RendererPreferences on the WebContents.
+  SetAcceptLanguages(string accept_languages);
+
+  // Enable Auto Resize mode. This will cause a layout of the content and
+  // the new size will be determined by the renderer after it dispatches
+  // the resize event.
+  EnableAutoResize(gfx.mojom.Size min_size, gfx.mojom.Size max_size);
+
+  // Disable Auto Resize mode, resizing the contents to `new_size`.
+  DisableAutoResize(gfx.mojom.Size new_size);
 };

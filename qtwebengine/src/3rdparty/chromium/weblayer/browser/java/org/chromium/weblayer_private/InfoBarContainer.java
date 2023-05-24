@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -94,8 +94,8 @@ public class InfoBarContainer implements KeyboardVisibilityListener, InfoBar.Con
      */
     private final WebContentsObserver mWebContentsObserver = new WebContentsObserver() {
         @Override
-        public void didFinishNavigation(NavigationHandle navigation) {
-            if (navigation.hasCommitted() && navigation.isInMainFrame()) {
+        public void didFinishNavigationInPrimaryMainFrame(NavigationHandle navigation) {
+            if (navigation.hasCommitted()) {
                 setHidden(false);
             }
         }
@@ -415,10 +415,17 @@ public class InfoBarContainer implements KeyboardVisibilityListener, InfoBar.Con
                 });
 
         mInfoBarContainerView.setHidden(mIsHidden);
-        setParentView(mTab.getBrowser().getViewController().getInfoBarContainerParentView());
+        BrowserViewController viewController =
+                mTab.getBrowser().getBrowserFragment().getPossiblyNullViewController();
+        if (viewController != null) {
+            setParentView(viewController.getInfoBarContainerParentView());
+        }
 
-        mTab.getBrowser().getWindowAndroid().getKeyboardDelegate().addKeyboardVisibilityListener(
-                this);
+        mTab.getBrowser()
+                .getBrowserFragment()
+                .getWindowAndroid()
+                .getKeyboardDelegate()
+                .addKeyboardVisibilityListener(this);
     }
 
     private void destroyContainerView() {
@@ -432,8 +439,11 @@ public class InfoBarContainer implements KeyboardVisibilityListener, InfoBar.Con
             mInfoBarContainerView = null;
         }
 
-        mTab.getBrowser().getWindowAndroid().getKeyboardDelegate().removeKeyboardVisibilityListener(
-                this);
+        mTab.getBrowser()
+                .getBrowserFragment()
+                .getWindowAndroid()
+                .getKeyboardDelegate()
+                .removeKeyboardVisibilityListener(this);
     }
 
     @Override

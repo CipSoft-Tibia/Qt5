@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 
 #include <vector>
 
-#include "build/build_config.h"
 #include "media/base/audio_codecs.h"
 #include "media/base/channel_layout.h"
 #include "media/base/media_export.h"
@@ -52,20 +51,20 @@ class MEDIA_EXPORT AAC {
   ChannelLayout GetChannelLayout(bool sbr_in_mimetype) const;
 
   // This function converts a raw AAC frame into an AAC frame with an ADTS
-  // header. On success, the function returns true and stores the converted data
-  // in the buffer. The function returns false on failure and leaves the buffer
+  // header. On success, the function returns true, stores the converted data
+  // in the `buffer`, and sets the header size in `adts_header_size`. Otherwise
+  // the function returns false and leaves the `buffer` and `adts_header_size`
   // unchanged.
-  bool ConvertEsdsToADTS(std::vector<uint8_t>* buffer) const;
+  bool ConvertEsdsToADTS(std::vector<uint8_t>* buffer,
+                         int* adts_header_size) const;
 
   // If known, returns the AudioCodecProfile.
   AudioCodecProfile GetProfile() const;
 
-#if defined(OS_ANDROID)
   // Returns the codec specific data needed by android MediaCodec.
   std::vector<uint8_t> codec_specific_data() const {
     return codec_specific_data_;
   }
-#endif
 
  private:
   bool SkipDecoderGASpecificConfig(BitReader* bit_reader) const;
@@ -78,10 +77,8 @@ class MEDIA_EXPORT AAC {
   uint8_t frequency_index_;
   uint8_t channel_config_;
 
-#if defined(OS_ANDROID)
   // The codec specific data needed by the android MediaCodec.
   std::vector<uint8_t> codec_specific_data_;
-#endif
 
   // The following variables store audio configuration information that
   // can be used by Chromium. They are based on the AAC specific

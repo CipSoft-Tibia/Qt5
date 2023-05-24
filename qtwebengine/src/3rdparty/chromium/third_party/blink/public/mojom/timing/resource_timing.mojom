@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,6 +29,13 @@ struct ServerTimingInfo {
   // PerformanceServerTiming.
   // (https://w3c.github.io/server-timing/#the-performanceservertiming-interface).
   string description;
+};
+
+// https://fetch.spec.whatwg.org/#concept-response-cache-state
+enum CacheState {
+  kNone,
+  kLocal,
+  kValidated,
 };
 
 // This struct holds the information from PerformanceResourceTiming that needs
@@ -67,14 +74,8 @@ struct ResourceTimingInfo {
   // (http://www.w3.org/TR/resource-timing-1/).
   mojo_base.mojom.TimeTicks response_end;
 
-  // Deprecated, use |request_destination| instead in new code.
-  // TODO(crbug.com/889751): Remove this once all the code migrates.
-  RequestContextType context_type;
-  network.mojom.RequestDestination request_destination;
-
-  // Corresponds to |transferSize| in PerformanceResourceTiming
-  // (http://www.w3.org/TR/resource-timing-2/).
-  uint64 transfer_size;
+  // https://w3c.github.io/resource-timing/#dfn-cache-mode
+  CacheState cache_state;
 
   // Corresponds to |encodedBodySize| in PerformanceResourceTiming
   // (http://www.w3.org/TR/resource-timing-2/).
@@ -87,9 +88,8 @@ struct ResourceTimingInfo {
   // Whether the connection was reused or not.
   bool did_reuse_connection;
 
-  // Whether the execution context that created this resource entry
-  // was a secure context or not.
-  bool is_secure_context;
+  // Whether the connection used secured transport or not.
+  bool is_secure_transport;
 
   // TODO(dcheng): The way this code works is fairly confusing: it might seem
   // unusual to store policy members like |allow_timing_details| inline, rather
@@ -98,7 +98,6 @@ struct ResourceTimingInfo {
   // exposed by PerformanceResourceTiming, but the underlying behavior is a
   // little different.
   bool allow_timing_details;
-  bool allow_redirect_details;
 
   // Normally, the timestamps are relative to the time origin. In most cases,
   // these timestamps should be positive value, so 0 is used to mark invalid
@@ -113,4 +112,16 @@ struct ResourceTimingInfo {
   // PerformanceResourceTiming. See
   // https://w3c.github.io/server-timing/#extension-to-the-performanceresourcetiming-interface
   array<ServerTimingInfo> server_timing;
+
+  // Holds the boolean used to determine |renderBlockingStatus| in
+  // PerformanceResourceTiming (http://www.w3.org/TR/resource-timing-2/).
+  bool render_blocking_status;
+
+  // Holds the HTTP status code corresponding to |responseStatus| in
+  // PerformanceResourceTiming (http://www.w3.org/TR/resource-timing-2/).
+  uint16 response_status;
+
+  // Holds the string corresponding to |contentType| in
+  // PerformanceResourceTiming (https://w3c.github.io/resource-timing/).
+  string content_type;
 };

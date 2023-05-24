@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <memory>
 
-#include "base/macros.h"
-#include "base/stl_util.h"
+#include "base/containers/contains.h"
+#include "base/ranges/algorithm.h"
 #include "base/time/time.h"
 #include "ui/aura/test/aura_test_base.h"
 #include "ui/aura/test/test_windows.h"
@@ -31,7 +31,7 @@ namespace {
 template<typename T>int GetZPosition(const T* child) {
   const T* parent = child->parent();
   const std::vector<T*> children = parent->children();
-  auto iter = std::find(children.begin(), children.end(), child);
+  auto iter = base::ranges::find(children, child);
   DCHECK(iter != children.end());
   return iter - children.begin();
 }
@@ -50,8 +50,8 @@ class WindowAnimationsTest : public aura::test::AuraTestBase {
  public:
   WindowAnimationsTest() {}
 
- private:
-  DISALLOW_COPY_AND_ASSIGN(WindowAnimationsTest);
+  WindowAnimationsTest(const WindowAnimationsTest&) = delete;
+  WindowAnimationsTest& operator=(const WindowAnimationsTest&) = delete;
 };
 
 TEST_F(WindowAnimationsTest, LayerTargetVisibility) {
@@ -247,6 +247,12 @@ TEST_F(WindowAnimationsTest, HideAnimationDetachLayersWithTransientChildren) {
 class NotifyHideCompletedAnimationHost : public AnimationHost {
  public:
   NotifyHideCompletedAnimationHost() : hide_completed_(false) {}
+
+  NotifyHideCompletedAnimationHost(const NotifyHideCompletedAnimationHost&) =
+      delete;
+  NotifyHideCompletedAnimationHost& operator=(
+      const NotifyHideCompletedAnimationHost&) = delete;
+
   ~NotifyHideCompletedAnimationHost() override {}
 
   // Overridden from AnimationHost:
@@ -259,8 +265,6 @@ class NotifyHideCompletedAnimationHost : public AnimationHost {
 
  private:
   bool hide_completed_;
-
-  DISALLOW_COPY_AND_ASSIGN(NotifyHideCompletedAnimationHost);
 };
 
 TEST_F(WindowAnimationsTest, NotifyHideCompleted) {
@@ -285,7 +289,7 @@ TEST_F(WindowAnimationsTest, RotateHideNoLeak) {
       ui::ScopedAnimationDurationScaleMode::FAST_DURATION);
 
   std::unique_ptr<aura::Window> window(
-      aura::test::CreateTestWindowWithId(0, NULL));
+      aura::test::CreateTestWindowWithId(0, nullptr));
   ui::Layer* animating_layer = window->layer();
   wm::SetWindowVisibilityAnimationType(window.get(),
                                        WINDOW_VISIBILITY_ANIMATION_TYPE_ROTATE);
@@ -294,6 +298,37 @@ TEST_F(WindowAnimationsTest, RotateHideNoLeak) {
   AnimateOnChildWindowVisibilityChanged(window.get(), false);
 
   animating_layer->GetAnimator()->StopAnimating();
+}
+
+// The rotation animation for hiding a window should not crash with a zero
+// duration.
+TEST_F(WindowAnimationsTest, RotateHideNoCrashZeroDuration) {
+  std::unique_ptr<aura::Window> window(
+      aura::test::CreateTestWindowWithId(0, nullptr));
+  wm::SetWindowVisibilityAnimationType(window.get(),
+                                       WINDOW_VISIBILITY_ANIMATION_TYPE_ROTATE);
+
+  AnimateOnChildWindowVisibilityChanged(window.get(), true);
+  AnimateOnChildWindowVisibilityChanged(window.get(), false);
+}
+
+TEST_F(WindowAnimationsTest, RotateHideCreatesNewLayer) {
+  ui::ScopedAnimationDurationScaleMode scale_mode(
+      ui::ScopedAnimationDurationScaleMode::FAST_DURATION);
+
+  std::unique_ptr<aura::Window> window(
+      aura::test::CreateTestWindowWithId(0, nullptr));
+  wm::SetWindowVisibilityAnimationType(window.get(),
+                                       WINDOW_VISIBILITY_ANIMATION_TYPE_ROTATE);
+  AnimateOnChildWindowVisibilityChanged(window.get(), true);
+  window->layer()->GetAnimator()->StopAnimating();
+
+  auto* original_layer = window->layer();
+  AnimateOnChildWindowVisibilityChanged(window.get(), false);
+  // The layer should have changed, as the Layer is cloned and detached.
+  EXPECT_NE(original_layer, window->layer());
+  // Need to stop the animation, otherwise there is a leak.
+  original_layer->GetAnimator()->StopAnimating();
 }
 
 // The rotation animation for hiding a window should not crash when terminated
@@ -309,7 +344,7 @@ TEST_F(WindowAnimationsTest, RotateHideNoCrash) {
                                        WINDOW_VISIBILITY_ANIMATION_TYPE_ROTATE);
   AnimateOnChildWindowVisibilityChanged(window.get(), true);
   window->layer()->GetAnimator()->Step(base::TimeTicks::Now() +
-                                       base::TimeDelta::FromSeconds(5));
+                                       base::Seconds(5));
   AnimateOnChildWindowVisibilityChanged(window.get(), false);
   animating_layer->GetAnimator()->StopAnimating();
 }

@@ -2,8 +2,10 @@ include_rules = [
   '+core',
   '+fxjs',
   '+public',
+  '+third_party/skia/include',
   '+v8',
+  '+xfa/fgas/font',
+  '+xfa/fgas/graphics',
   '+xfa/fwl',
   '+xfa/fxfa',
-  '+xfa/fxgraphics',
 ]

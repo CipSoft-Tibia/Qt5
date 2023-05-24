@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,9 +12,9 @@
 namespace {
 
 const CXFA_Node::PropertyData kCheckButtonPropertyData[] = {
-    {XFA_Element::Margin, 1, 0},
-    {XFA_Element::Border, 1, 0},
-    {XFA_Element::Extras, 1, 0},
+    {XFA_Element::Margin, 1, {}},
+    {XFA_Element::Border, 1, {}},
+    {XFA_Element::Extras, 1, {}},
 };
 
 const CXFA_Node::AttributeData kCheckButtonAttributeData[] = {
@@ -31,10 +31,17 @@ const CXFA_Node::AttributeData kCheckButtonAttributeData[] = {
 
 }  // namespace
 
+// static
+CXFA_CheckButton* CXFA_CheckButton::FromNode(CXFA_Node* pNode) {
+  return pNode && pNode->GetElementType() == XFA_Element::CheckButton
+             ? static_cast<CXFA_CheckButton*>(pNode)
+             : nullptr;
+}
+
 CXFA_CheckButton::CXFA_CheckButton(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                (XFA_XDPPACKET_Template | XFA_XDPPACKET_Form),
+                {XFA_XDPPACKET::kTemplate, XFA_XDPPACKET::kForm},
                 XFA_ObjectType::Node,
                 XFA_Element::CheckButton,
                 kCheckButtonPropertyData,

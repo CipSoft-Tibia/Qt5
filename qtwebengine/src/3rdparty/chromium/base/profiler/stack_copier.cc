@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -35,7 +35,7 @@ NO_SANITIZE("address")
 const uint8_t* StackCopier::CopyStackContentsAndRewritePointers(
     const uint8_t* original_stack_bottom,
     const uintptr_t* original_stack_top,
-    int platform_stack_alignment,
+    size_t platform_stack_alignment,
     uintptr_t* stack_buffer_bottom) {
   const uint8_t* byte_src = original_stack_bottom;
   // The first address in the stack with pointer alignment. Pointer-aligned
@@ -43,7 +43,7 @@ const uint8_t* StackCopier::CopyStackContentsAndRewritePointers(
   // RewritePointerIfInOriginalStack(). Bytes before this cannot be a pointer
   // because they occupy less space than a pointer would.
   const uint8_t* first_aligned_address =
-      bits::Align(byte_src, sizeof(uintptr_t));
+      bits::AlignUp(byte_src, sizeof(uintptr_t));
 
   // The stack copy bottom, which is offset from |stack_buffer_bottom| by the
   // same alignment as in the original stack. This guarantees identical

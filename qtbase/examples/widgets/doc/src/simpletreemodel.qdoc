@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example itemviews/simpletreemodel
     \title Simple Tree Model Example
+    \examplecategory {User Interface Components}
     \ingroup examples-itemviews
     \ingroup examples-layout
     \brief The Simple Tree Model example shows how to use a hierarchical model
@@ -128,16 +105,14 @@
     \snippet itemviews/simpletreemodel/treeitem.cpp 0
 
     A pointer to each of the child items belonging to this item will be
-    stored in the \c childItems private member variable. When the class's
-    destructor is called, it must delete each of these to ensure that
-    their memory is reused:
-
-    \snippet itemviews/simpletreemodel/treeitem.cpp 1
+    stored in the \c childItems private member variable as an std::unique_ptr.
+    When the class's destructor is called, the child items will be automatically
+    deleted to ensure that their memory is reused:
 
     Since each of the child items are constructed when the model is initially
     populated with data, the function to add child items is straightforward:
 
-    \snippet itemviews/simpletreemodel/treeitem.cpp 2
+    \snippet itemviews/simpletreemodel/treeitem.cpp 1
 
     Each item is able to return any of its child items when given a suitable
     row number. For example, in the \l{#SimpleTreeModelStructure}{above diagram},
@@ -148,11 +123,11 @@
     The \c child() function returns the child that corresponds to
     the specified row number in the item's list of child items:
 
-    \snippet itemviews/simpletreemodel/treeitem.cpp 3
+    \snippet itemviews/simpletreemodel/treeitem.cpp 2
 
     The number of child items held can be found with \c childCount():
 
-    \snippet itemviews/simpletreemodel/treeitem.cpp 4
+    \snippet itemviews/simpletreemodel/treeitem.cpp 3
 
     The \c TreeModel uses this function to determine the number of rows that
     exist for a given parent item.
@@ -160,7 +135,7 @@
     The \c row() function reports the item's location within its parent's
     list of items:
 
-    \snippet itemviews/simpletreemodel/treeitem.cpp 8
+    \snippet itemviews/simpletreemodel/treeitem.cpp 7
 
     Note that, although the root item (with no parent item) is automatically
     assigned a row number of 0, this information is never used by the model.
@@ -168,16 +143,17 @@
     The number of columns of data in the item is trivially returned by the
     \c columnCount() function.
 
+    \snippet itemviews/simpletreemodel/treeitem.cpp 4
+
+    Column data is returned by the \c data() function. We use
+    the QList::value() convenience function which checks the bounds
+    and returns a default-constructed QVariant in case they are violated:
+
     \snippet itemviews/simpletreemodel/treeitem.cpp 5
-
-    Column data is returned by the \c data() function. The bounds are checked
-    before accessing the container with the data:
-
-    \snippet itemviews/simpletreemodel/treeitem.cpp 6
 
     The item's parent is found with \c parent():
 
-    \snippet itemviews/simpletreemodel/treeitem.cpp 7
+    \snippet itemviews/simpletreemodel/treeitem.cpp 6
 
     Note that, since the root item in the model will not have a parent, this
     function will return zero in that case. We need to ensure that the model
@@ -207,14 +183,16 @@
     item only contains vertical header data for convenience. We also use it
     to reference the internal data structure that contains the model data,
     and it is used to represent an imaginary parent of top-level items in
-    the model.
+    the model. The root item is managed with a std::unique_ptr to ensure the
+    entire tree of item is deleted when the model is deleted.
 
     The model's internal data structure is populated with items by the
     \c setupModelData() function. We will examine this function separately
     at the end of this document.
 
     The destructor ensures that the root item and all of its descendants
-    are deleted when the model is destroyed:
+    are deleted when the model is destroyed. This is done automatically
+    since the root item is stored in a unique_ptr.
 
     \snippet itemviews/simpletreemodel/treemodel.cpp 1
 
@@ -341,4 +319,20 @@
 
     To ensure that the model works correctly, it is only necessary to
     create instances of \c TreeItem with the correct data and parent item.
+
+    \section1 Testing the model
+
+    Correctly implementing an item model can be challenging. The class
+    \l QAbstractItemModelTester from the \l{Qt Test} module checks for model
+    consistency, like the model index creation and parent-child relationships.
+
+    You can test your model by just passing a model instance to the class
+    constructor, for instance as part of a Qt unit test:
+
+    \snippet itemviews/simpletreemodel/test.cpp 1
+
+    To create a test which can be run using the \c ctest executable,
+    \c add_test() is used:
+
+    \snippet itemviews/simpletreemodel/CMakeLists.txt 1
 */

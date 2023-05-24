@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -58,7 +58,8 @@ Channel::MessagePtr WaitForBrokerMessage(HANDLE pipe_handle,
   }
 
   Channel::MessagePtr message =
-      Channel::Message::Deserialize(buffer, static_cast<size_t>(bytes_read));
+      Channel::Message::Deserialize(buffer, static_cast<size_t>(bytes_read),
+                                    Channel::HandlePolicy::kAcceptHandles);
   if (!message || message->payload_size() < sizeof(BrokerMessageHeader)) {
     LOG(ERROR) << "Invalid broker message";
 
@@ -110,12 +111,11 @@ Broker::Broker(PlatformHandle handle, bool wait_for_channel_handle)
     const InitData* data = reinterpret_cast<const InitData*>(header + 1);
     CHECK_EQ(message->payload_size(),
              sizeof(BrokerMessageHeader) + sizeof(InitData) +
-                 data->pipe_name_length * sizeof(base::char16));
-    const base::char16* name_data =
-        reinterpret_cast<const base::char16*>(data + 1);
+                 data->pipe_name_length * sizeof(char16_t));
+    auto* name_data = reinterpret_cast<const wchar_t*>(data + 1);
     CHECK(data->pipe_name_length);
     inviter_endpoint_ = NamedPlatformChannel::ConnectToServer(
-        base::string16(name_data, data->pipe_name_length));
+        NamedPlatformChannel::ServerName(name_data, data->pipe_name_length));
   }
 }
 
@@ -150,14 +150,17 @@ base::WritableSharedMemoryRegion Broker::GetWritableSharedMemoryRegion(
     BufferResponseData* data;
     if (!GetBrokerMessageData(response.get(), &data))
       return base::WritableSharedMemoryRegion();
+    absl::optional<base::UnguessableToken> guid =
+        base::UnguessableToken::Deserialize(data->guid_high, data->guid_low);
+    if (!guid.has_value()) {
+      return base::WritableSharedMemoryRegion();
+    }
     return base::WritableSharedMemoryRegion::Deserialize(
         base::subtle::PlatformSharedMemoryRegion::Take(
             CreateSharedMemoryRegionHandleFromPlatformHandles(std::move(handle),
                                                               PlatformHandle()),
             base::subtle::PlatformSharedMemoryRegion::Mode::kWritable,
-            num_bytes,
-            base::UnguessableToken::Deserialize(data->guid_high,
-                                                data->guid_low)));
+            num_bytes, guid.value()));
   }
 
   return base::WritableSharedMemoryRegion();

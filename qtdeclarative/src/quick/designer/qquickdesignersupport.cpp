@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickdesignersupport_p.h"
 #include <private/qquickitem_p.h>
@@ -47,16 +11,12 @@
 #include <QtQml/private/qabstractanimationjob_p.h>
 #include <private/qqmlengine_p.h>
 #include <private/qquickview_p.h>
-#include <private/qsgrenderloop_p.h>
 #include <QtQuick/private/qquickstategroup_p.h>
 #include <QtGui/QImage>
 #include <private/qqmlvme_p.h>
 #include <private/qqmlcomponentattached_p.h>
 #include <private/qqmldata_p.h>
 #include <private/qsgadaptationlayer_p.h>
-
-#include "qquickdesignerwindowmanager_p.h"
-
 
 QT_BEGIN_NAMESPACE
 
@@ -96,16 +56,7 @@ void QQuickDesignerSupport::refFromEffectItem(QQuickItem *referencedItem, bool h
         texture->setRect(QRectF(QPointF(0, 0), itemSize));
         texture->setSize(itemSize.toSize());
         texture->setRecursive(true);
-#if QT_CONFIG(opengl)
-#ifndef QT_OPENGL_ES
-        if (QOpenGLContext::openGLModuleType() == QOpenGLContext::LibGL)
-            texture->setFormat(GL_RGBA8);
-        else
-            texture->setFormat(GL_RGBA);
-#else
-        texture->setFormat(GL_RGBA);
-#endif
-#endif
+        texture->setFormat(QSGLayer::RGBA8);
         texture->setHasMipmaps(false);
 
         m_itemTextureHash.insert(referencedItem, texture);
@@ -188,7 +139,7 @@ QTransform QQuickDesignerSupport::parentTransform(QQuickItem *referencedItem)
 
     QTransform parentTransform;
 
-    QQuickItemPrivate::get(referencedItem)->itemToParentTransform(parentTransform);
+    QQuickItemPrivate::get(referencedItem)->itemToParentTransform(&parentTransform);
 
     return parentTransform;
 }
@@ -390,13 +341,13 @@ void QQuickDesignerSupport::emitComponentCompleteSignalForAttachedProperty(QObje
 
     QQmlData *data = QQmlData::get(object);
     if (data && data->context) {
-        QQmlComponentAttached *componentAttached = data->context->componentAttached;
+        QQmlComponentAttached *componentAttached = data->context->componentAttacheds();
         while (componentAttached) {
             if (componentAttached->parent())
                 if (componentAttached->parent() == object)
                     emit componentAttached->completed();
 
-            componentAttached = componentAttached->next;
+            componentAttached = componentAttached->next();
         }
     }
 }
@@ -429,7 +380,7 @@ int QQuickDesignerSupport::borderWidth(QQuickItem *item)
 
 void QQuickDesignerSupport::refreshExpressions(QQmlContext *context)
 {
-    QQmlContextPrivate::get(context)->data->refreshExpressions();
+    QQmlContextData::get(context)->refreshExpressions();
 }
 
 void QQuickDesignerSupport::setRootItem(QQuickView *view, QQuickItem *item)
@@ -439,23 +390,18 @@ void QQuickDesignerSupport::setRootItem(QQuickView *view, QQuickItem *item)
 
 bool QQuickDesignerSupport::isValidWidth(QQuickItem *item)
 {
-    return QQuickItemPrivate::get(item)->heightValid;
+    return QQuickItemPrivate::get(item)->heightValid();
 }
 
 bool QQuickDesignerSupport::isValidHeight(QQuickItem *item)
 {
-    return QQuickItemPrivate::get(item)->widthValid;
+    return QQuickItemPrivate::get(item)->widthValid();
 }
 
 void QQuickDesignerSupport::updateDirtyNode(QQuickItem *item)
 {
     if (item->window())
         QQuickWindowPrivate::get(item->window())->updateDirtyNode(item);
-}
-
-void QQuickDesignerSupport::activateDesignerWindowManager()
-{
-    QSGRenderLoop::setInstance(new QQuickDesignerWindowManager);
 }
 
 void QQuickDesignerSupport::activateDesignerMode()
@@ -471,11 +417,6 @@ void QQuickDesignerSupport::disableComponentComplete()
 void QQuickDesignerSupport::enableComponentComplete()
 {
     QQmlVME::enableComponentComplete();
-}
-
-void QQuickDesignerSupport::createOpenGLContext(QQuickWindow *window)
-{
-    QQuickDesignerWindowManager::createOpenGLContext(window);
 }
 
 void QQuickDesignerSupport::polishItems(QQuickWindow *window)

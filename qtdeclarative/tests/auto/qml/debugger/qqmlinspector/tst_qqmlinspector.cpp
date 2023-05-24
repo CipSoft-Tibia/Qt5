@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "../shared/debugutil_p.h"
 #include "../shared/qqmldebugprocess_p.h"
-#include "../../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 #include <private/qqmldebugconnection_p.h>
 #include <private/qqmlinspectorclient_p.h>
@@ -44,6 +19,9 @@
 class tst_QQmlInspector : public QQmlDebugTest
 {
     Q_OBJECT
+
+public:
+    tst_QQmlInspector();
 
 private:
     ConnectResult startQmlProcess(const QString &qmlFile, bool restrictMode = true);
@@ -61,10 +39,15 @@ private slots:
     void showAppOnTop();
 };
 
+tst_QQmlInspector::tst_QQmlInspector()
+    : QQmlDebugTest(QT_QMLTEST_DATADIR)
+{
+}
+
 QQmlDebugTest::ConnectResult tst_QQmlInspector::startQmlProcess(const QString &qmlFile,
                                                                 bool restrictServices)
 {
-    return QQmlDebugTest::connectTo(QLibraryInfo::location(QLibraryInfo::BinariesPath) + "/qml",
+    return QQmlDebugTest::connectTo(QLibraryInfo::path(QLibraryInfo::BinariesPath) + "/qml",
                                   restrictServices ? QStringLiteral("QmlInspector") : QString(),
                                   testFile(qmlFile), true);
 }
@@ -81,7 +64,7 @@ void tst_QQmlInspector::checkAnimationSpeed(int targetMillisPerDegree)
 
     for (int i = 0; i < 10; ++i) {
         QString output = m_process->output();
-        int position = output.length();
+        int position = output.size();
         do {
             QVERIFY(QQmlDebugTest::waitForSignal(m_process, SIGNAL(readyReadStandardOutput())));
             output = m_process->output();

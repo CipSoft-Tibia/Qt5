@@ -54,24 +54,6 @@ New Procedures and Functions
 
     The command
 
-      GLuint glCreateAndTexStorage2DSharedImageWithInternalFormatCHROMIUM (
-                                                  const GLbyte *mailbox,
-                                                  GLenum internal_format)
-
-    takes two arguments:
-
-    internal_format - Must match the internal format of the SharedImage at
-      creation time, with the exception that a caller may pass GL_RGB or
-      GL_RGBA for a SharedImage created as RGBA_8888.
-
-    mailbox - the mailbox referring to the SharedImage to assign to the
-      first level of the mailbox.
-
-    This function works similar to glCreateAndTexStorage2DSharedImageCHROMIUM
-    in other respects.
-
-    The command
-
       void glBeginSharedImageAccessDirectCHROMIUM (GLuint texture,
                                                    GLenum mode)
 
@@ -98,8 +80,7 @@ New Procedures and Functions
 
     INVALID_ENUM is generated if <mode> is not one of
     SHARED_IMAGE_ACCESS_MODE_READ_CHROMIUM,
-    SHARED_IMAGE_ACCESS_MODE_READWRITE_CHROMIUM, or
-    SHARED_IMAGE_ACCESS_MODE_OVERLAY_CHROMIUM.
+    SHARED_IMAGE_ACCESS_MODE_READWRITE_CHROMIUM.
 
     The command
 
@@ -117,7 +98,6 @@ New Tokens
     Accepted by the <mode> parameter of BeginSharedImageAccessCHROMIUM:
     SHARED_IMAGE_ACCESS_MODE_READ_CHROMIUM        0x8AF6
     SHARED_IMAGE_ACCESS_MODE_READWRITE_CHROMIUM   0x8AF7
-    SHARED_IMAGE_ACCESS_MODE_OVERLAY_CHROMIUM     0x8AF8
 
 Errors
 
@@ -132,3 +112,4 @@ Revision History
     2018-10-15   Created.
     2018-10-31   Added Begin/End calls.
     2020-06-21   Added mode SHARED_IMAGE_ACCESS_MODE_OVERLAY_CHROMIUM.
+    2023-01-18   Removed mode SHARED_IMAGE_ACCESS_MODE_OVERLAY_CHROMIUM.

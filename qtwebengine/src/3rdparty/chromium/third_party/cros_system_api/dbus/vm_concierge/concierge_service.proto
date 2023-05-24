@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium OS Authors. All rights reserved.
+// Copyright 2017 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,9 @@ option optimize_for = LITE_RUNTIME;
 
 // This file defines messages used for starting, stopping, and managing VMs.
 package vm_tools.concierge;
-option go_package = "vm_concierge_proto";
+option go_package = "chromiumos/system_api/vm_concierge_proto";
+
+import "arc/arc.proto";
 
 // Specification of the key components of a VM.
 //
@@ -28,6 +30,20 @@ message VirtualMachineSpec {
 
   // Optional path to the initrd that should be used for the VM.
   string initrd = 4;
+
+  // ID of a DLC package that contains the vm_tools.img for this vm. If empty
+  // the vm_tools.img from the above dlc_id is used if available.
+  string tools_dlc_id = 5;
+
+  // Optional path to the wayland server which should be passed into the VM. If
+  // absent the default path (${XDG_RUNTIME_DIR}/wayland-0) will be used.
+  string wayland_server = 6;
+
+  // ID of a DLC package that contains the BIOS img for this vm. If empty
+  // an `FdType` of `BIOS` is used from the `fds` field in `StartVmRequest` for
+  // the BIOS image. Both the DLC id and Fd are optional, for e.g. we could have
+  // neither if a kernel image or fd is passed in.
+  string bios_dlc_id = 7;
 }
 
 // The type of disk image.
@@ -43,6 +59,17 @@ enum DiskImageType {
 
   // A plugin VM disk image.
   DISK_IMAGE_PLUGINVM = 3;
+}
+
+// The type of filesystem.
+enum FilesystemType {
+  // Default option. We make no extra assumptions about the filesystem. Most
+  // existing disk functions don't interact with the filesystem directly or
+  // assume that it is Btrfs.
+  UNSPECIFIED = 0;
+
+  // The Ext4 filesystem.
+  EXT4 = 1;
 }
 
 // Describes any additional disk images that should be mounted inside the VM.
@@ -71,6 +98,10 @@ message DiskImage {
 
   // Image type of the disk.
   DiskImageType image_type = 8;
+
+  // The block size of the device. The default block size is used when zero.
+  // Only ARCVM supports the field at the moment.
+  uint32 block_size = 9;
 }
 
 // Information about a particular VM.
@@ -103,10 +134,14 @@ message VmInfo {
     TERMINA = 1;
     ARC_VM = 2;
     PLUGIN_VM = 3;
+    BOREALIS = 4;
   };
 
   // What type of VM this is.
   VmType vm_type = 6;
+
+  // Whether the VM is using storage ballooning.
+  bool storage_ballooning = 7;
 }
 
 // Optional fields for network configuration.
@@ -136,6 +171,8 @@ message StartVmRequest {
   // If true, concierge should also perform termina-specific setup.
   bool start_termina = 5;
 
+  reserved 6;
+
   // The owner of the vm.
   string owner_id = 7;
 
@@ -162,24 +199,69 @@ message StartVmRequest {
   // CPUs on the device and cannot be 0.
   uint32 cpus = 12;
 
-  // If true, a file descriptor must be passed along with the message and that
-  // file descriptor will be used for kernel.
-  // Ignored unless |start_termina| is true.
-  bool use_fd_for_kernel = 13;
+  reserved 13, 14;
 
-  // If true, a file descriptor must be passed along with the message and that
-  // file descriptor will be used for rootfs.
-  // If |use_fd_for_kernel| is true, the fd for rootfs must be passed after
-  // that for kernel.
-  // Ignored unless |start_termina| is true.
-  bool use_fd_for_rootfs = 14;
+  // Make the rootfs writable.
+  bool writable_rootfs = 15;
 
-  // If true, a file descriptor must be passed along with the message and that
-  // file descriptor will be used for storage.
-  // If |use_fd_for_kernel| or |use_fd_for_rootfs| is true, the fd for storage
-  // must be passed after ones for kernel and rootfs.
-  // Ignored unless |start_termina| is true.
-  bool use_fd_for_storage = 6;
+  enum FdType {
+    // Kernel image.
+    KERNEL = 0;
+    // RootFS image.
+    ROOTFS = 1;
+    // File to be used for storage.
+    STORAGE = 2;
+    // Initrd image.
+    INITRD = 3;
+    // BIOS image.
+    BIOS = 4;
+    // BIOS pflash image.
+    PFLASH = 5;
+  }
+  // For each FdType in fds a file descriptor must be passed along with the
+  // message and that file descriptor will be used for the type's purpose.
+  repeated FdType fds = 16;
+
+  // Kernel cmdline parameters that will be passed to crosvm.
+  repeated string kernel_params = 17;
+
+  // Enable Vulkan in the started Vm.
+  bool enable_vulkan = 18;
+
+  // Enable Big GL rendering for the started Vm (default is GLES).
+  bool enable_big_gl = 19;
+
+  // Timeout (seconds) for VM startup
+  uint32 timeout = 20;
+
+  enum TerminaFeature {
+    // This list must stay in sync with the one in vm_guest.proto
+    UNKNOWN = 0;
+    USED_BY_TESTS = 1;
+    START_LXD = 2 [deprecated = true];
+    RESET_LXD_ON_LAUNCH = 3 [deprecated = true];
+    LXD_4_LTS = 4;
+    // This list must stay in sync with the one in vm_guest.proto
+  }
+  // Experimental Termina features to enable. Like Chrome feature flags but for
+  // inside the VM.
+  repeated TerminaFeature features = 21;
+
+  // If true, connects the virtio-tpm device to the vtpm daemon.
+  bool vtpm_proxy = 22;
+
+  // Whether the VM should use storage ballooning.
+  bool storage_ballooning = 23;
+
+  // Type 11 SMBIOS DMI OEM strings to pass to the VM.
+  repeated string oem_strings = 24;
+
+  // Enable virtgpu drm native context:
+  bool enable_virtgpu_native_context = 25;
+
+  // Optional suggested username of the owner of the VM. Only used by
+  // VM types that support dynamic usernames.
+  string vm_username = 26;
 }
 
 // Information that must be included with every StartPluginVm request.
@@ -238,7 +320,7 @@ message StartArcVmRequest {
   string owner_id = 4;
 
   // Parameters to pass to the ARCVM's init process.
-  repeated string params = 5;
+  repeated string params = 5 [deprecated = true];
 
   // Path to Android fstab.
   string fstab = 6;
@@ -252,6 +334,166 @@ message StartArcVmRequest {
 
   // Ignore development configuration directives when ARCVM is started.
   bool ignore_dev_conf = 9;
+
+  // Whether rt-vcpus are enabled.
+  bool enable_rt_vcpu = 10;
+
+  // Whether Huge Pages should be used.
+  bool use_hugepages = 11;
+
+  // How much memory to give ARCVM, in MiB. Optional.
+  uint32 memory_mib = 12;
+
+  // Deprecated BalloonPolicyOptions. Do not use.
+  reserved 13;
+
+  // Whether per-VM core scheduling should be used instead of the default one
+  // (per-vCPU core scheduing.) This option is no-op on devices that have
+  // neither MDS nor L1TF vulnerability. On those non-vulnerable devices, core
+  // scheduling is not used, and all vCPU threads can be assigned to any CPU
+  // cores without restrictions.
+  bool use_per_vm_core_scheduling = 14;
+
+  // The block size of the rootfs. The default block size is used when zero.
+  uint32 rootfs_block_size = 15;
+
+  // Option to enable disable consumer auto update toggle.
+  // deprecated: exists in StartArcMiniInstanceRequest
+  bool enable_consumer_auto_update_toggle = 16 [deprecated = true];
+
+  // Display orientation in clock-wise degrees. ORIENTATION_90 means the panel's
+  // right side is the top side of the natural device orientation.
+  enum DisplayOrientation {
+    ORIENTATION_0 = 0;
+    ORIENTATION_90 = 1;
+    ORIENTATION_180 = 2;
+    ORIENTATION_270 = 3;
+  }
+  // The orientation of the display panel in respect to the natural device
+  // orientation. For some devices, the panel's orientation doesn't match to the
+  // device's default orientation. (e.g. a device this is default landscape may
+  // have a portrait display.). It's used to set
+  // 'ro.surface_flinger.primary_display_orientation' property to tell the
+  // orientation to surfaceflinger.
+  DisplayOrientation panel_orientation = 17;
+
+  // Whether to lock guest memory (for the purpose of disabling host swap).
+  bool lock_guest_memory = 18;
+
+  // Whether the file picker experiment feature is enabled.
+  // deprecated: exists in StartArcMiniInstanceRequest
+  bool enable_arc_file_picker_experiment = 19 [deprecated = true];
+
+  // Whether the custom tabs experiment feature is enabled.
+  // deprecated: exists in StartArcMiniInstanceRequest
+  bool enable_custom_tabs_experiment = 20 [deprecated = true];
+
+  // Whether the keyboard shortcut helper integration feature is enabled.
+  bool enable_keyboard_shortcut_helper_integration = 21;
+
+  // Whether the notifications refresh is enabled.
+  // deprecated: exists in StartArcMiniInstanceRequest
+  bool enable_notifications_refresh = 22 [deprecated = true];
+
+  // Whether the tts caching feature is enabled.
+  // deprecated: exists in StartArcMiniInstanceRequest
+  bool enable_tts_caching = 23 [deprecated = true];
+
+  // Whether gmscore lmk protection is enabled.
+  bool enable_gmscore_lmk_protection = 24;
+
+  // Whether broadcast anr prenotify is enabled.
+  bool enable_broadcast_anr_prenotify = 25;
+
+  // Size of logd config in kBytes, -1 if disabled
+  int32 logd_config_size = 26 [deprecated = true];
+
+  // Whether virtio blk data is enabled
+  bool enable_virtio_blk_data = 27;
+
+  // ArcVM metrics memory PSI period, -1 if disabled
+  int32 vm_memory_psi_period = 28;
+
+  // Whether media store maintenance is disabled
+  // deprecated: exists in StartArcMiniInstanceRequest
+  bool disable_media_store_maintenance = 29 [deprecated = true];
+
+  // Whether Play auto install is generated
+  // deprecated: exists in StartArcMiniInstanceRequest
+  bool arc_generate_play_auto_install = 30 [deprecated = true];
+
+  // Whether download provider is disabled
+  // deprecated: exists in StartArcMiniInstanceRequest
+  bool disable_download_provider = 31 [deprecated = true];
+
+  // Size of Guest Zram in bytes
+  int32 guest_zram_size = 32;
+
+  // Likelihood of sending cold memory to swap.
+  // Default value of zero means "unset" - will use the system default.
+  // Positive values will be used to set the guest's vm.swappiness parameter.
+  // NOTE: we are intentionally making it impossible to set vm.swappiness=0,
+  //       as that disables swap - which can be done more appropriately by
+  //       setting |guest_zram_size| to zero.
+  int32 guest_swappiness = 33;
+
+  // List of parameters that are shared by ARCVM and container.
+  arc.StartArcMiniInstanceRequest mini_instance_request = 34;
+
+  // Reclaim interval in milliseconds
+  // A value of 0 will disable the MGLRU reclaim feature
+  int32 mglru_reclaim_interval = 35;
+
+  // Swappiness value for MGLRU reclaim (0 - 200)
+  // 0 means only filecache will be used while 200 means only swap will be used
+  // any value in between will be a mix of both
+  // The lower the value, the higher the ratio of freeing filecache pages
+  // Implementation and a more detailed description can be found in
+  // src/third_party/kernel/v5.10-arcvm/mm/vmscan.c
+  int32 mglru_reclaim_swappiness = 36;
+
+  // Whether updating O4C (Optimized for Chromebook applications) list via A2C2
+  // (ARC Application Compatibility Configuration Delivery) is enabled (See
+  // go/a2c2 for project details.)
+  bool update_o4c_list_via_a2c2 = 37;
+
+  enum UsapProfileType {
+    // Default USAP profile suitable for all devices.
+    USAP_PROFILE_DEFAULT = 0;
+    // USAP profile suitable for 4G devices.
+    USAP_PROFILE_4G = 1;
+    // USAP profile suitable for 8G devices.
+    USAP_PROFILE_8G = 2;
+    // USAP profile suitable for 16G devices.
+    USAP_PROFILE_16G = 3;
+  }
+
+  // USAP Profile of the device
+  UsapProfileType usap_profile = 38;
+
+  enum BinaryTranslationType {
+    BINARY_TRANSLATION_TYPE_NONE = 0;
+    BINARY_TRANSLATION_TYPE_HOUDINI = 1;
+    BINARY_TRANSLATION_TYPE_NDK_TRANSLATION = 2;
+  }
+
+  // Type of binary translation used in natvie bridge experiment
+  BinaryTranslationType native_bridge_experiment = 39;
+
+  enum UreadaheadMode {
+    UREADAHEAD_MODE_READAHEAD = 0;
+    UREADAHEAD_MODE_GENERATE = 1;
+    UREADAHEAD_MODE_DISABLED = 2;
+  }
+
+  // Ureadahead mode used
+  UreadaheadMode ureadahead_mode = 40;
+
+  // Whether rw is enabled
+  bool enable_rw = 41;
+
+  // Controls whether WebView Zygote is lazily initialized in ARC.
+  bool enable_web_view_zygote_lazy_init = 42;
 }
 
 enum VmStatus {
@@ -266,6 +508,12 @@ enum VmStatus {
 
   // The VM failed to startup.
   VM_STATUS_FAILURE = 3;
+
+  // The VM can't start because its disk/image is being manipulated.
+  VM_STATUS_DISK_OP_IN_PROGRESS = 4;
+
+  // The VM is stopped.
+  VM_STATUS_STOPPED = 5;
 }
 
 // Information sent back by vm_concierge in response to a StartVm dbus message.
@@ -302,6 +550,15 @@ message StartVmResponse {
   }
 
   MountResult mount_result = 5;
+
+  // The amount of free space on the stateful partition in bytes. -1 if unable
+  // to calculate the amount of free space (e.g. error mounting the partition).
+  // Only valid when free_bytes_has_value is true.
+  int64 free_bytes = 6;
+
+  // Whether the free_bytes field has been filled in. If false, ignore whatever
+  // value is in the field.
+  bool free_bytes_has_value = 7;
 }
 
 // Message used in the signal for when a VM has started.
@@ -338,6 +595,26 @@ message StopVmResponse {
   string failure_reason = 2;
 }
 
+enum VmStopReason {
+  // VM exited.
+  VM_EXITED = 0;
+
+  // StopVm() was requested.
+  STOP_VM_REQUESTED = 1;
+
+  // StopAllVms() was requested.
+  STOP_ALL_VMS_REQUESTED = 2;
+
+  // DestroyDiskImage() was requested.
+  DESTROY_DISK_IMAGE_REQUESTED = 3;
+
+  // The service process is shutting down.
+  SERVICE_SHUTDOWN = 4;
+
+  // Sibling Vm process has exited on the hypervisor.
+  SIBLING_VM_EXITED = 5;
+}
+
 // Message used in the signal for when a VM has stopped.
 message VmStoppedSignal {
   // The name of the VM which has stopped.
@@ -347,6 +624,21 @@ message VmStoppedSignal {
   string owner_id = 2;
 
   // The virtual socket context id assigned to the VM that was stopped.
+  int64 cid = 3;
+
+  // Why the VM has stopped.
+  VmStopReason reason = 4;
+}
+
+// Message used in the signal for when a VM is stopping.
+message VmStoppingSignal {
+  // The name of the VM which is stopping.
+  string name = 1;
+
+  // The owner of the vm.
+  string owner_id = 2;
+
+  // The virtual socket context id assigned to the VM that is stopping.
   int64 cid = 3;
 }
 
@@ -433,6 +725,47 @@ message GetVmEnterpriseReportingInfoResponse {
   string vm_kernel_version = 3;
 }
 
+// Request for completing the boot process of the ARC VM
+message ArcVmCompleteBootRequest {
+  // The owner of the vm.
+  string owner_id = 1;
+}
+
+// Result of an ArcVmCompleteBootRequest
+enum ArcVmCompleteBootResult {
+  // Not used
+  UNKNOWN = 0;
+
+  // ArcVm boot completion operations completed successfully.
+  SUCCESS = 1;
+
+  // The incoming boot complete request was mal-formed
+  BAD_REQUEST = 2;
+
+  // ArcVm does not exist or could not be found
+  ARCVM_NOT_FOUND = 3;
+}
+
+// Response sent back by vm_concierge for a ArcVmCompleteBoot dbus message.
+message ArcVmCompleteBootResponse {
+  ArcVmCompleteBootResult result = 1;
+}
+
+// Request for setting balloon timer interval.
+message SetBalloonTimerRequest {
+  // The interval of the balloon timer in milliseconds.
+  uint64 timer_interval_millis = 1;
+}
+
+// Response sent back by vm_concierge for a SetBalloonTimerRequest dbus message.
+message SetBalloonTimerResponse {
+  // If true, the request succeeded.
+  bool success = 1;
+
+  // The failure_reason if the request could not be processed.
+  string failure_reason = 2;
+}
+
 // The type of storage location for a disk image.
 enum StorageLocation {
   // Subdirectory under /home/root/<id>/crosvm.
@@ -468,6 +801,9 @@ enum DiskImageStatus {
 
   // The disk image was resized.
   DISK_STATUS_RESIZED = 7;
+
+  // Operation failed because of lack of disk space.
+  DISK_STATUS_NOT_ENOUGH_SPACE = 8;
 }
 
 // Request to concierge to create a disk image.
@@ -475,9 +811,8 @@ message CreateDiskImageRequest {
   // The cryptohome id for the user's encrypted storage.
   string cryptohome_id = 1;
 
-  // The path to the disk image. This must be a relative path, and any
-  // directories must already exist.
-  string disk_path = 2;
+  // The name of the VM.
+  string vm_name = 2;
 
   // The logical size of the new disk image, in bytes.
   // If non-zero, the disk will be preallocated and fixed to the given size.
@@ -497,6 +832,23 @@ message CreateDiskImageRequest {
   // Parameters to pass to Plugin VM helper to facilitate creating
   // new image.
   repeated string params = 7;
+
+  // Will create the specified filesystem on the image. If unspecified, no
+  // filesystem will be created.
+  FilesystemType filesystem_type = 8;
+
+  // Sets up the disk image to support storage ballooning. This setting is
+  // used exclusively with sparse images. If this is true and disk_size is
+  // non-zero, the request will fail.
+  bool storage_ballooning = 9;
+
+  // Options passed to `mkfs` when creating a filesystem on the image. If
+  // unspecified, the default ones will be used.
+  repeated string mkfs_opts = 10;
+
+  // Options passed to `tune2fs` when creating a filesystem on the image. If
+  // unspecified or |filesystem_type| is not EXT4, `tune2fs` will not run.
+  repeated string tune2fs_opts = 11;
 }
 
 // Response to a CreateDiskImageRequest.
@@ -520,8 +872,8 @@ message DestroyDiskImageRequest {
   // The cryptohome id for the user's encrypted storage.
   string cryptohome_id = 1;
 
-  // The path to the disk image. This must be a relative path.
-  string disk_path = 2;
+  // The name of the VM.
+  string vm_name = 2;
 }
 
 // Response to a DestroyDiskImageRequest.
@@ -560,18 +912,22 @@ message ResizeDiskImageResponse {
 }
 
 // Request to concierge to export a disk image.
-// Must be accompanied by an FD. The contents of `disk_path` will be written to
+// Must be accompanied by an FD, the contents of the image will be written to
 // the passed FD.
 message ExportDiskImageRequest {
   // The cryptohome id for the user's encrypted storage.
   string cryptohome_id = 1;
 
-  // The path to the disk image. This must be a relative path.
-  string disk_path = 2;
+  // The name of the VM.
+  string vm_name = 2;
 
   // Whether we should calculate SHA256 digest of the resulting image. The
   // digest is supposed to be written into the second attached file descriptor.
   bool generate_sha256_digest = 3;
+
+  // Export image even if it may produce inconsistent result because, for
+  // example, VM is not shut down.
+  bool force = 4;
 }
 
 // Response to a ExportDiskImageRequest.
@@ -586,15 +942,13 @@ message ExportDiskImageResponse {
   string command_uuid = 3;
 }
 
-// Request to concierge to import a disk image.
-// Must be accompanied by an FD. The contents will be written at `disk_path`
-// location.
+// Request to concierge to import a disk image. Must be accompanied by an FD.
 message ImportDiskImageRequest {
   // The cryptohome id for the user's encrypted storage.
   string cryptohome_id = 1;
 
-  // The path to the resulting disk image. This must be a relative path.
-  string disk_path = 2;
+  // The name of the VM that's being imported.
+  string vm_name = 2;
 
   // The storage location for the disk image.
   StorageLocation storage_location = 3;
@@ -696,6 +1050,9 @@ message VmDiskInfo {
 
   // The absolute path to the disk.
   string path = 7;
+
+  // The available space on the disk, or 0 if unknown.
+  uint64 available_space = 8;
 }
 
 // Response to ListVmDisks {
@@ -711,91 +1068,6 @@ message ListVmDisksResponse {
 
   // The total size in bytes on disk of the disk images in the response.
   uint64 total_size = 4;
-}
-
-// Message used in the signal for when a container has failed to start up.
-message ContainerStartedSignal {
-  // Name of the VM the container is in.
-  string vm_name = 1;
-
-  // Name of the container within the VM.
-  string container_name = 2;
-
-  // The owner of the vm and container.
-  string owner_id = 3;
-}
-
-// Request to start a specified container image within a VM. If the container
-// does not exist in the VM it will be created. Used with the StartContainer
-// D-Bus message into vm_concierge.
-// This method is deprecated and no longer implemented in vm_concierge.
-// Requests to start a container should be handled through tremplin instead.
-message StartContainerRequest {
-  option deprecated = true;
-
-  // Name of the VM to start the container in.
-  string vm_name = 1;
-
-  // Name of the container to start within the VM. If empty, the default
-  // container name will be used.
-  string container_name = 2;
-
-  // Username for the default user in the container. This is only used if the
-  // container has not been created yet.
-  string container_username = 3;
-
-  // Async mode is always used now.
-  bool async = 4 [deprecated = true];
-
-  // The cryptohome id for the user's encrypted storage. This is used for SSH
-  // key storage.
-  string cryptohome_id = 5;
-
-  // Represents the privilege level with which a container should be started. If
-  // the container is already running this should take effect on the next boot.
-  enum PrivilegeLevel {
-    // Don't change the privilege level of the container.
-    UNCHANGED = 0;
-
-    // Make the container unprivileged.
-    UNPRIVILEGED = 1;
-
-    // Make the container privileged.
-    PRIVILEGED = 2;
-  }
-
-  PrivilegeLevel privilege_level = 6;
-}
-
-enum ContainerStatus {
-  // Unknown status.
-  CONTAINER_STATUS_UNKNOWN = 0;
-
-  // The container is already running.
-  CONTAINER_STATUS_RUNNING = 1;
-
-  // The container is currently starting up.
-  CONTAINER_STATUS_STARTING = 2;
-
-  // The container failed to startup.
-  CONTAINER_STATUS_FAILURE = 3;
-}
-
-// Response sent back by vm_concierge when it receives a StartContaienr D-Bus
-// message.
-message StartContainerResponse {
-  // Use the status field instead.
-  bool success = 1 [deprecated = true];
-
-  // The failure_reason if the status is CONTAINER_STATUS_FAILURE.
-  string failure_reason = 2;
-
-  // The status of the container as a result of the StartContainer call. If the
-  // status is CONTAINER_STATUS_STARTING then a D-Bus signal will be sent to
-  // indicate whether success or failure occurred. The signal should be
-  // registered for before the StartContainer call is made because it may be
-  // sent before the call returns.
-  ContainerStatus status = 3;
 }
 
 // Request to get the SSH keys associated with the host and a specific
@@ -960,8 +1232,13 @@ enum CpuCgroup {
 enum CpuRestrictionState {
   // The CPU usage is relaxed.
   CPU_RESTRICTION_FOREGROUND = 0;
-  // The CPU usage is tightly restricted.
+  // The CPU usage is tightly restricted with cpu.shares.
   CPU_RESTRICTION_BACKGROUND = 1;
+  // The CPU usage is tightly restricted with both cpu.shares and
+  // cpu.cfs_quota_us cgroup. The latter sets an absolute quota for the VM
+  // even when other (non-VM) processes are not busy. Currently, this works
+  // only for ARCVM.
+  CPU_RESTRICTION_BACKGROUND_WITH_CFS_QUOTA_ENFORCED = 2;
 }
 
 // Information that must be included with every SetVmCpuRestriction dbus
@@ -1004,23 +1281,153 @@ message AdjustVmResponse {
   string failure_reason = 2;
 };
 
-// Request to set owner id of a given VM.
-message SetVmIdRequest {
+// Request to reclaim memory of a given VM.
+message ReclaimVmMemoryRequest {
   // An identifier for this VM.
   string name = 1;
 
   // The current cyptohome id of this VM.
-  string src_owner_id = 2;
+  string owner_id = 2;
 
-  // The cryptohome id to set for this VM.
-  string dest_owner_id = 3;
+  // number of pages allowed to be reclaimed in this round - 0 means unlimited
+  int32 page_limit = 3;
 }
 
-// Response to a SetVmIdRequest.
-message SetVmIdResponse {
-  // If true, the owner id of the VM was successfully changed.
+// Response to a ReclaimVmMemoryRequest.
+message ReclaimVmMemoryResponse {
+  // If true, the memory of the VM was successfully reclaimed.
   bool success = 1;
 
-  // If the attempt to set the owner id failed, the reason for failure.
+  // If the attempt to reclaim memory failed, the reason for failure.
   string failure_reason = 2;
+}
+
+// Request a list of all VMs owned by an id. Returns all VMs in Concierge's
+// VmMap that match the owner_id, which includes starting and running VMs, but
+// not stopped.
+message ListVmsRequest {
+  // The cryptohome id to get the list of VMs for.
+  string owner_id = 1;
+}
+
+// Message used for listing VMs.
+message ExtendedVmInfo {
+  // The name of the VM which has started.
+  string name = 1;
+
+  // The owner of the vm.
+  string owner_id = 2;
+
+  // Information about the VM that was started, if successful.
+  VmInfo vm_info = 3;
+
+  // Status of the VM.
+  VmStatus status = 4;
+}
+
+// Response to a ListVmsRequest.
+message ListVmsResponse {
+  // If true, vms is valid.
+  bool success = 1;
+
+  // If getting a list of VMs failed, the reason for the failure.
+  string failure_reason = 2;
+
+  // The list of VMs that concierge is managing.
+  repeated ExtendedVmInfo vms = 3;
+}
+
+message GetVmGpuCachePathRequest {
+  // The name of the VM.
+  string name = 1;
+
+  // The owner of the VM.
+  string owner_id = 2;
+}
+
+message GetVmGpuCachePathResponse {
+  // Path to VM's GPU cache path.
+  string path = 1;
+}
+
+message AddGroupPermissionMesaRequest {
+  // The name of the VM.
+  string name = 1;
+
+  // The owner of the VM.
+  string owner_id = 2;
+}
+
+message GetVmLaunchAllowedRequest {
+  // Request untrusted VM regardless of other arguments.
+  bool run_as_untrusted = 1;
+
+  // The VM disk image is considered trusted.
+  bool is_trusted_image = 2;
+
+  // The VM kernel is started with custom kernel parameters.
+  bool has_custom_kernel_params = 3;
+}
+
+message GetVmLaunchAllowedResponse {
+  // Whether the launch would be allowed.
+  bool allowed = 1;
+
+  // If not allowed, the reason why.
+  string reason = 2;
+}
+
+message GetVmLogsRequest {
+  // The name of the VM to get logs for.
+  string name = 1;
+
+  // The owner of the vm.
+  string owner_id = 2;
+}
+
+message GetVmLogsResponse {
+  // The log for the vm.
+  string log = 1;
+}
+
+// Vmm swap operations.
+enum SwapOperation {
+  // Disable vmm swap.
+  DISABLE = 0;
+
+  // Enable vmm swap and staging memory.
+  ENABLE = 1;
+
+  // Swapout staged memory.
+  SWAPOUT = 2;
+}
+
+// Request sent to vm_concierge for executing vmm swap operation on a VM.
+message SwapVmRequest {
+  // The name of the VM.
+  string name = 1;
+
+  // The owner of the VM.
+  string owner_id = 2;
+
+  // The swap state changing operation.
+  SwapOperation operation = 3;
+}
+
+// Response to an SwapVmRequest.
+message SwapVmResponse {
+  // If true, the swap state changing operation of the VM was success.
+  bool success = 1;
+
+  // If the attempt to change swap state failed, the reason for failure.
+  string failure_reason = 2;
+}
+
+// Message used in the signal for when a VM enabled vmm swap.
+message VmSwappingSignal {
+  // The name of the VM.
+  string name = 1;
+
+  // The owner of the VM.
+  string owner_id = 2;
 }

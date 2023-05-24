@@ -1,39 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Denis Shienkov <denis.shienkov@gmail.com>
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Denis Shienkov <denis.shienkov@gmail.com>
+// Copyright (c) 2020 Andre Hartmann <aha_1980@gmx.de>
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "peakcanbackend.h"
 #include "peakcanbackend_p.h"
@@ -46,6 +14,7 @@
 #include <QtCore/qloggingcategory.h>
 
 #include <algorithm>
+#include <vector>
 
 #ifdef Q_OS_WIN32
 #   include <QtCore/qwineventnotifier.h>
@@ -64,7 +33,7 @@ Q_GLOBAL_STATIC(QLibrary, pcanLibrary)
 bool PeakCanBackend::canCreate(QString *errorReason)
 {
 #ifdef LINK_LIBPCANBASIC
-    return true;
+    Q_UNUSED(errorReason);
 #else
     static bool symbolsResolved = resolvePeakCanSymbols(pcanLibrary());
     if (Q_UNLIKELY(!symbolsResolved)) {
@@ -73,8 +42,17 @@ bool PeakCanBackend::canCreate(QString *errorReason)
         *errorReason = pcanLibrary()->errorString();
         return false;
     }
-    return true;
 #endif
+
+    char apiVersion[32];
+    TPCANStatus stat = CAN_GetValue(PCAN_NONEBUS, PCAN_API_VERSION, apiVersion, sizeof(apiVersion));
+    if (Q_UNLIKELY(stat != PCAN_ERROR_OK)) {
+        qCWarning(QT_CANBUS_PLUGINS_PEAKCAN, "Cannot resolve PCAN-API version!");
+        return false;
+    }
+    qCInfo(QT_CANBUS_PLUGINS_PEAKCAN, "Using PCAN-API version: %s", apiVersion);
+
+    return true;
 }
 
 struct PcanChannel{
@@ -117,7 +95,7 @@ static const PcanChannel pcanChannels[] = {
     { "none",  PCAN_NONEBUS  }
 };
 
-QList<QCanBusDeviceInfo> PeakCanBackend::interfaces()
+QList<QCanBusDeviceInfo> PeakCanBackend::interfacesByChannelCondition(Availability available)
 {
     QList<QCanBusDeviceInfo> result;
 
@@ -126,7 +104,7 @@ QList<QCanBusDeviceInfo> PeakCanBackend::interfaces()
         const TPCANHandle index = pcanChannels[i].index;
         const TPCANStatus stat = ::CAN_GetValue(index, PCAN_CHANNEL_CONDITION,
                                                 &value, sizeof(value));
-        if ((stat == PCAN_ERROR_OK) && (value & PCAN_CHANNEL_AVAILABLE)) {
+        if ((stat == PCAN_ERROR_OK) && (value & uint(available))) {
             const TPCANStatus fdStat = ::CAN_GetValue(index, PCAN_CHANNEL_FEATURES,
                                                       &value, sizeof(value));
             const bool isFd = (fdStat == PCAN_ERROR_OK) && (value & FEATURE_FD_CAPABLE);
@@ -143,13 +121,113 @@ QList<QCanBusDeviceInfo> PeakCanBackend::interfaces()
             if (chnStat != PCAN_ERROR_OK)
                 channel = 0;
 
-            result.append(std::move(createDeviceInfo(QLatin1String(pcanChannels[i].name),
-                                                     QString(), QLatin1String(description),
-                                                     channel, false, isFd)));
+            QString alias;
+            quint32 deviceId = 0;
+            const TPCANStatus idStat = ::CAN_GetValue(index, PCAN_DEVICE_ID,
+                                                      &deviceId, sizeof(deviceId));
+            if (idStat == PCAN_ERROR_OK)
+                alias = QString::number(deviceId);
+
+            result.append(QCanBusDevice::createDeviceInfo(QStringLiteral("peakcan"),
+                                           QLatin1String(pcanChannels[i].name),
+                                           QString(), QLatin1String(description),
+                                           alias, channel, false, isFd));
         }
     }
 
     return result;
+}
+
+static QString pcanChannelNameForIndex(uint index)
+{
+    const auto pcanChannel = std::find_if(std::begin(pcanChannels), std::end(pcanChannels),
+                                          [index](PcanChannel channel) {
+        return channel.index == index;
+    });
+    if (Q_LIKELY(pcanChannel != std::end(pcanChannels)))
+        return pcanChannel->name;
+
+    qWarning("%s: Cannot get channel name for index %u.", Q_FUNC_INFO, index);
+    return QStringLiteral("none");
+}
+
+QList<QCanBusDeviceInfo> PeakCanBackend::interfacesByAttachedChannels(Availability available, bool *ok)
+{
+    *ok = true;
+    quint32 count = 0;
+    const TPCANStatus countStat = ::CAN_GetValue(0, PCAN_ATTACHED_CHANNELS_COUNT,
+                                                 &count, sizeof(count));
+    if (Q_UNLIKELY(countStat != PCAN_ERROR_OK)) {
+        qCWarning(QT_CANBUS_PLUGINS_PEAKCAN, "Cannot query PCAN_ATTACHED_CHANNELS_COUNT.");
+        *ok = false;
+        return {};
+    }
+    if (count == 0)
+        return {};
+
+    std::vector<TPCANChannelInformation> infos(count);
+    const TPCANStatus infosStat = ::CAN_GetValue(0, PCAN_ATTACHED_CHANNELS, infos.data(),
+                                                 quint32(infos.size() * sizeof(TPCANChannelInformation)));
+    if (Q_UNLIKELY(infosStat != PCAN_ERROR_OK)) {
+        qCWarning(QT_CANBUS_PLUGINS_PEAKCAN, "Cannot query PCAN_ATTACHED_CHANNELS.");
+        *ok = false;
+        return {};
+    }
+
+    QList<QCanBusDeviceInfo> result;
+    for (quint32 i = 0; i < count; ++i) {
+        auto info = infos[i];
+        if (info.channel_condition & uint(available)) {
+            const QString name = pcanChannelNameForIndex(info.channel_handle);
+            const QString description = info.device_name;
+            const QString alias = QString::number(info.device_id);
+            const int channel = info.controller_number;
+            const bool isCanFd = (info.device_features & FEATURE_FD_CAPABLE);
+
+            result.append(createDeviceInfo(QStringLiteral("peakcan"), name, QString(),
+                                           description, alias,
+                                           channel, false, isCanFd));
+        }
+    }
+
+    return result;
+}
+
+QList<QCanBusDeviceInfo> PeakCanBackend::attachedInterfaces(Availability available)
+{
+#ifdef Q_OS_WIN
+    bool ok = false;
+    QList<QCanBusDeviceInfo> attachedChannelsResult = interfacesByAttachedChannels(available, &ok);
+    if (ok)
+        return attachedChannelsResult;
+#endif
+
+    QList<QCanBusDeviceInfo> result = interfacesByChannelCondition(available);
+    return result;
+}
+
+QList<QCanBusDeviceInfo> PeakCanBackend::interfaces()
+{
+    return attachedInterfaces(Availability::Available);
+}
+
+QCanBusDeviceInfo PeakCanBackend::deviceInfo() const
+{
+    const uint index = d_ptr->channelIndex;
+    const QString name = pcanChannelNameForIndex(index);
+    const QList<QCanBusDeviceInfo> availableDevices = attachedInterfaces(Availability::Occupied);
+
+    const auto deviceInfo = std::find_if(availableDevices.constBegin(),
+                                         availableDevices.constEnd(),
+                                         [name](const QCanBusDeviceInfo &info) {
+        return name == info.name();
+    });
+
+    if (Q_LIKELY(deviceInfo != availableDevices.constEnd()))
+        return *deviceInfo;
+
+    qWarning("%s: Cannot get device info for index %u.", Q_FUNC_INFO, index);
+    return QCanBusDevice::deviceInfo();
 }
 
 #if defined(Q_OS_WIN32)
@@ -162,16 +240,10 @@ public:
         , dptr(d)
     {
         setHandle(dptr->readHandle);
-    }
 
-protected:
-    bool event(QEvent *e) override
-    {
-        if (e->type() == QEvent::WinEventAct) {
+        connect(this, &QWinEventNotifier::activated, this, [this]() {
             dptr->startRead();
-            return true;
-        }
-        return QWinEventNotifier::event(e);
+        });
     }
 
 private:
@@ -419,7 +491,8 @@ void PeakCanBackendPrivate::close()
     isOpen = false;
 }
 
-bool PeakCanBackendPrivate::setConfigurationParameter(int key, const QVariant &value)
+bool PeakCanBackendPrivate::setConfigurationParameter(QCanBusDevice::ConfigurationKey key,
+                                                      const QVariant &value)
 {
     Q_Q(PeakCanBackend);
 
@@ -557,13 +630,13 @@ void PeakCanBackendPrivate::startWrite()
 
     const QCanBusFrame frame = q->dequeueOutgoingFrame();
     const QByteArray payload = frame.payload();
+    const qsizetype payloadSize = payload.size();
     TPCANStatus st = PCAN_ERROR_OK;
 
     if (isFlexibleDatarateEnabled) {
-        const int size = payload.size();
         TPCANMsgFD message = {};
         message.ID = frame.frameId();
-        message.DLC = sizeToDlc(size);
+        message.DLC = sizeToDlc(payloadSize);
         message.MSGTYPE = frame.hasExtendedFrameFormat() ? PCAN_MESSAGE_EXTENDED
                                                          : PCAN_MESSAGE_STANDARD;
 
@@ -575,7 +648,7 @@ void PeakCanBackendPrivate::startWrite()
         if (frame.frameType() == QCanBusFrame::RemoteRequestFrame)
             message.MSGTYPE |= PCAN_MESSAGE_RTR; // we do not care about the payload
         else
-            ::memcpy(message.DATA, payload.constData(), sizeof(message.DATA));
+            ::memcpy(message.DATA, payload.constData(), payloadSize);
         st = ::CAN_WriteFD(channelIndex, &message);
     } else if (frame.hasFlexibleDataRateFormat()) {
         const char errorString[] = "Cannot send CAN FD frame format as CAN FD is not enabled.";
@@ -584,14 +657,14 @@ void PeakCanBackendPrivate::startWrite()
     } else {
         TPCANMsg message = {};
         message.ID = frame.frameId();
-        message.LEN = static_cast<quint8>(payload.size());
+        message.LEN = static_cast<quint8>(payloadSize);
         message.MSGTYPE = frame.hasExtendedFrameFormat() ? PCAN_MESSAGE_EXTENDED
                                                          : PCAN_MESSAGE_STANDARD;
 
         if (frame.frameType() == QCanBusFrame::RemoteRequestFrame)
             message.MSGTYPE |= PCAN_MESSAGE_RTR; // we do not care about the payload
         else
-            ::memcpy(message.DATA, payload.constData(), sizeof(message.DATA));
+            ::memcpy(message.DATA, payload.constData(), payloadSize);
         st = ::CAN_Write(channelIndex, &message);
     }
 
@@ -612,7 +685,7 @@ void PeakCanBackendPrivate::startRead()
 {
     Q_Q(PeakCanBackend);
 
-    QVector<QCanBusFrame> newFrames;
+    QList<QCanBusFrame> newFrames;
 
     for (;;) {
         if (isFlexibleDatarateEnabled) {
@@ -632,8 +705,7 @@ void PeakCanBackendPrivate::startRead()
                 continue;
 
             const int size = dlcToSize(static_cast<CanFrameDlc>(message.DLC));
-            QCanBusFrame frame(TPCANLongToFrameID(message.ID),
-                               QByteArray(reinterpret_cast<const char *>(message.DATA), size));
+            QCanBusFrame frame(message.ID, QByteArray(reinterpret_cast<const char *>(message.DATA), size));
             frame.setTimeStamp(QCanBusFrame::TimeStamp::fromMicroSeconds(static_cast<qint64>(timestamp)));
             frame.setExtendedFrameFormat(message.MSGTYPE & PCAN_MESSAGE_EXTENDED);
             frame.setFrameType((message.MSGTYPE & PCAN_MESSAGE_RTR)
@@ -660,9 +732,8 @@ void PeakCanBackendPrivate::startRead()
                 continue;
 
             const int size = static_cast<int>(message.LEN);
-            QCanBusFrame frame(TPCANLongToFrameID(message.ID),
-                               QByteArray(reinterpret_cast<const char *>(message.DATA), size));
-            const quint64 millis = timestamp.millis + Q_UINT64_C(0xFFFFFFFF) * timestamp.millis_overflow;
+            QCanBusFrame frame(message.ID, QByteArray(reinterpret_cast<const char *>(message.DATA), size));
+            const quint64 millis = timestamp.millis + Q_UINT64_C(0x100000000) * timestamp.millis_overflow;
             const quint64 micros = Q_UINT64_C(1000) * millis + timestamp.micros;
             frame.setTimeStamp(QCanBusFrame::TimeStamp::fromMicroSeconds(static_cast<qint64>(micros)));
             frame.setExtendedFrameFormat(message.MSGTYPE & PCAN_MESSAGE_EXTENDED);
@@ -710,12 +781,6 @@ PeakCanBackend::PeakCanBackend(const QString &name, QObject *parent)
 
     d->setupChannel(name.toLatin1());
     d->setupDefaultConfigurations();
-
-    std::function<void()> f = std::bind(&PeakCanBackend::resetController, this);
-    setResetControllerFunction(f);
-
-    std::function<CanBusStatus()> g = std::bind(&PeakCanBackend::busStatus, this);
-    setCanBusStatusGetter(g);
 }
 
 PeakCanBackend::~PeakCanBackend()
@@ -739,7 +804,7 @@ bool PeakCanBackend::open()
         // Apply all stored configurations except bitrate, because
         // the bitrate cannot be changed after opening the device
         const auto keys = configurationKeys();
-        for (int key : keys) {
+        for (ConfigurationKey key : keys) {
             if (key == QCanBusDevice::BitRateKey || key == QCanBusDevice::DataBitRateKey)
                 continue;
             const QVariant param = configurationParameter(key);
@@ -764,7 +829,7 @@ void PeakCanBackend::close()
     setState(QCanBusDevice::UnconnectedState);
 }
 
-void PeakCanBackend::setConfigurationParameter(int key, const QVariant &value)
+void PeakCanBackend::setConfigurationParameter(ConfigurationKey key, const QVariant &value)
 {
     Q_D(PeakCanBackend);
 
@@ -813,7 +878,12 @@ void PeakCanBackend::resetController()
     open();
 }
 
-QCanBusDevice::CanBusStatus PeakCanBackend::busStatus() const
+bool PeakCanBackend::hasBusStatus() const
+{
+    return true;
+}
+
+QCanBusDevice::CanBusStatus PeakCanBackend::busStatus()
 {
     const TPCANStatus status = ::CAN_GetStatus(d_ptr->channelIndex);
 

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,18 +16,20 @@
 #include "content/public/browser/favicon_status.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
+#include "content/public/browser/navigation_entry_restore_context.h"
 #include "content/public/browser/replaced_navigation_entry_data.h"
-#include "content/public/common/page_state.h"
 #include "content/public/common/referrer.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "third_party/blink/public/common/page_state/page_state.h"
 
 namespace sessions {
 namespace {
 
-base::Optional<SerializedNavigationEntry::ReplacedNavigationEntryData>
+absl::optional<SerializedNavigationEntry::ReplacedNavigationEntryData>
 ConvertReplacedEntryData(
-    const base::Optional<content::ReplacedNavigationEntryData>& input_data) {
+    const absl::optional<content::ReplacedNavigationEntryData>& input_data) {
   if (!input_data.has_value())
-    return base::nullopt;
+    return absl::nullopt;
 
   SerializedNavigationEntry::ReplacedNavigationEntryData output_data;
   output_data.first_committed_url = input_data->first_committed_url;
@@ -70,7 +72,6 @@ ContentSerializedNavigationBuilder::FromNavigationEntry(
   navigation.task_id_ = NavigationTaskId::Get(entry)->id();
   navigation.parent_task_id_ = NavigationTaskId::Get(entry)->parent_id();
   navigation.root_task_id_ = NavigationTaskId::Get(entry)->root_id();
-  navigation.children_task_ids_ = NavigationTaskId::Get(entry)->children_ids();
 
   for (const auto& handler_entry :
        ContentSerializedNavigationDriver::GetInstance()
@@ -89,22 +90,33 @@ ContentSerializedNavigationBuilder::FromNavigationEntry(
 std::unique_ptr<content::NavigationEntry>
 ContentSerializedNavigationBuilder::ToNavigationEntry(
     const SerializedNavigationEntry* navigation,
-    content::BrowserContext* browser_context) {
+    content::BrowserContext* browser_context,
+    content::NavigationEntryRestoreContext* restore_context) {
   DCHECK(navigation);
   DCHECK(browser_context);
+  DCHECK(restore_context);
 
-  // The initial values of the NavigationEntry are only temporary - they
-  // will get cloberred by one of the SetPageState calls below.
+  // The initial values of the NavigationEntry are usually temporary - they will
+  // normally get clobbered by one of the SetPageState calls below.
   //
   // This means that things like |navigation->referrer_url| are ignored
   // in favor of using the data stored in |navigation->encoded_page_state|.
-  GURL temporary_url;
-  content::Referrer temporary_referrer;
-  base::Optional<url::Origin> temporary_initiator_origin;
+  //
+  // We still use the URL and referrer from |navigation| here for the temporary
+  // values, though, in case the PageState fails to decode and clobber them.
+  // This allows us to load the original URL and referrer even if other state is
+  // lost.
+  GURL temporary_url = navigation->virtual_url_;
+  content::Referrer temporary_referrer(
+      navigation->referrer_url(),
+      content::Referrer::ConvertToPolicy(navigation->referrer_policy()));
+  absl::optional<url::Origin> temporary_initiator_origin;
+  absl::optional<GURL> temporary_initiator_base_url;
 
   std::unique_ptr<content::NavigationEntry> entry(
       content::NavigationController::CreateNavigationEntry(
           temporary_url, temporary_referrer, temporary_initiator_origin,
+          temporary_initiator_base_url,
           // Use a transition type of reload so that we don't incorrectly
           // increase the typed count.
           ui::PAGE_TRANSITION_RELOAD, false,
@@ -122,7 +134,8 @@ ContentSerializedNavigationBuilder::ToNavigationEntry(
     // Ensure that the deserialized/restored content::NavigationEntry (and
     // the content::FrameNavigationEntry underneath) has a valid PageState.
     entry->SetPageState(
-        content::PageState::CreateFromURL(navigation->virtual_url_));
+        blink::PageState::CreateFromURL(navigation->virtual_url_),
+        restore_context);
 
     // The |navigation|-based referrer set below might be inconsistent with the
     // referrer embedded inside the PageState set above.  Nevertheless, to
@@ -133,22 +146,24 @@ ContentSerializedNavigationBuilder::ToNavigationEntry(
     // PageState set above + drop the SetReferrer call below.  This will
     // slightly change the legacy behavior, but will make PageState and
     // Referrer consistent.
-    content::Referrer referrer(
-        navigation->referrer_url(),
-        content::Referrer::ConvertToPolicy(navigation->referrer_policy()));
-    entry->SetReferrer(referrer);
+    entry->SetReferrer(temporary_referrer);
   } else {
     // Note that PageState covers some of the values inside |navigation| (e.g.
     // URL, Referrer).  Calling SetPageState will clobber these values in
-    // content::NavigationEntry (and FrameNavigationEntry(s) below).
-    entry->SetPageState(content::PageState::CreateFromEncodedData(
-        navigation->encoded_page_state_));
+    // content::NavigationEntry (and FrameNavigationEntry(s) below), as long as
+    // the PageState successfully decodes.
+    entry->SetPageState(blink::PageState::CreateFromEncodedData(
+                            navigation->encoded_page_state_),
+                        restore_context);
 
-    // |navigation|-level referrer information is redundant wrt PageState, but
-    // they should be consistent / in-sync.
-    DCHECK_EQ(navigation->referrer_url(), entry->GetReferrer().url);
-    DCHECK_EQ(navigation->referrer_policy(),
-              static_cast<int>(entry->GetReferrer().policy));
+    // In theory the referrer information in the PageState should exactly match
+    // the `navigation`-level data, but there are sometimes discrepancies in
+    // practice (e.g. see https://crbug.com/1362322).
+    //
+    // TODO(https://crbug.com/1373216): Reintroduce DCHECKs that verify
+    // consistency between `navigation->referrer_url()` and
+    // `entry->GetReferrer().url` (and between referrer policies restored in
+    // `entry` and remembered in `navigation`).
   }
 
   entry->SetTitle(navigation->title_);
@@ -180,10 +195,9 @@ ContentSerializedNavigationBuilder::ToNavigationEntry(
                                                entry.get());
   }
 
-  // These fields should have default values.
+  // This field should have the default value.
   DCHECK_EQ(SerializedNavigationEntry::STATE_INVALID,
             navigation->blocked_state_);
-  DCHECK_EQ(0u, navigation->content_pack_categories_.size());
 
   return entry;
 }
@@ -193,10 +207,14 @@ std::vector<std::unique_ptr<content::NavigationEntry>>
 ContentSerializedNavigationBuilder::ToNavigationEntries(
     const std::vector<SerializedNavigationEntry>& navigations,
     content::BrowserContext* browser_context) {
+  std::unique_ptr<content::NavigationEntryRestoreContext> restore_context =
+      content::NavigationEntryRestoreContext::Create();
   std::vector<std::unique_ptr<content::NavigationEntry>> entries;
   entries.reserve(navigations.size());
-  for (const auto& navigation : navigations)
-    entries.push_back(ToNavigationEntry(&navigation, browser_context));
+  for (const auto& navigation : navigations) {
+    entries.push_back(
+        ToNavigationEntry(&navigation, browser_context, restore_context.get()));
+  }
   return entries;
 }
 

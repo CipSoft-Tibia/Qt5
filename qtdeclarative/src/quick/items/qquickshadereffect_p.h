@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKSHADEREFFECT_P_H
 #define QQUICKSHADEREFFECT_P_H
@@ -57,25 +21,25 @@ QT_REQUIRE_CONFIG(quick_shadereffect);
 
 #include <QtQuick/qquickitem.h>
 #include <private/qtquickglobal_p.h>
+#include <private/qsgadaptationlayer_p.h>
 
 QT_BEGIN_NAMESPACE
 
-class QQuickOpenGLShaderEffect;
-class QQuickGenericShaderEffect;
 class QQuickShaderEffectPrivate;
 
 class Q_QUICK_PRIVATE_EXPORT QQuickShaderEffect : public QQuickItem
 {
     Q_OBJECT
-    Q_PROPERTY(QByteArray fragmentShader READ fragmentShader WRITE setFragmentShader NOTIFY fragmentShaderChanged)
-    Q_PROPERTY(QByteArray vertexShader READ vertexShader WRITE setVertexShader NOTIFY vertexShaderChanged)
-    Q_PROPERTY(bool blending READ blending WRITE setBlending NOTIFY blendingChanged)
-    Q_PROPERTY(QVariant mesh READ mesh WRITE setMesh NOTIFY meshChanged)
-    Q_PROPERTY(CullMode cullMode READ cullMode WRITE setCullMode NOTIFY cullModeChanged)
-    Q_PROPERTY(QString log READ log NOTIFY logChanged)
-    Q_PROPERTY(Status status READ status NOTIFY statusChanged)
-    Q_PROPERTY(bool supportsAtlasTextures READ supportsAtlasTextures WRITE setSupportsAtlasTextures NOTIFY supportsAtlasTexturesChanged REVISION 4)
+    Q_PROPERTY(QUrl fragmentShader READ fragmentShader WRITE setFragmentShader NOTIFY fragmentShaderChanged FINAL)
+    Q_PROPERTY(QUrl vertexShader READ vertexShader WRITE setVertexShader NOTIFY vertexShaderChanged FINAL)
+    Q_PROPERTY(bool blending READ blending WRITE setBlending NOTIFY blendingChanged FINAL)
+    Q_PROPERTY(QVariant mesh READ mesh WRITE setMesh NOTIFY meshChanged FINAL)
+    Q_PROPERTY(CullMode cullMode READ cullMode WRITE setCullMode NOTIFY cullModeChanged FINAL)
+    Q_PROPERTY(QString log READ log NOTIFY logChanged FINAL)
+    Q_PROPERTY(Status status READ status NOTIFY statusChanged FINAL)
+    Q_PROPERTY(bool supportsAtlasTextures READ supportsAtlasTextures WRITE setSupportsAtlasTextures NOTIFY supportsAtlasTexturesChanged REVISION(2, 4) FINAL)
     QML_NAMED_ELEMENT(ShaderEffect)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     enum CullMode {
@@ -95,11 +59,11 @@ public:
     QQuickShaderEffect(QQuickItem *parent = nullptr);
     ~QQuickShaderEffect() override;
 
-    QByteArray fragmentShader() const;
-    void setFragmentShader(const QByteArray &code);
+    QUrl fragmentShader() const;
+    void setFragmentShader(const QUrl &fileUrl);
 
-    QByteArray vertexShader() const;
-    void setVertexShader(const QByteArray &code);
+    QUrl vertexShader() const;
+    void setVertexShader(const QUrl &fileUrl);
 
     bool blending() const;
     void setBlending(bool enable);
@@ -117,11 +81,8 @@ public:
     Status status() const;
 
     bool isComponentComplete() const;
-    QString parseLog();
 
-#if QT_CONFIG(opengl)
-    bool isOpenGLShaderEffect() const;
-#endif
+    bool updateUniformValue(const QByteArray &name, const QVariant &value);
 
 Q_SIGNALS:
     void fragmentShaderChanged();
@@ -135,17 +96,12 @@ Q_SIGNALS:
 
 protected:
     bool event(QEvent *e) override;
-    void geometryChanged(const QRectF &newGeometry, const QRectF &oldGeometry) override;
+    void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
     QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *updatePaintNodeData) override;
     void componentComplete() override;
     void itemChange(ItemChange change, const ItemChangeData &value) override;
 
 private:
-#if QT_CONFIG(opengl)
-    QQuickOpenGLShaderEffect *m_glImpl;
-#endif
-    QQuickGenericShaderEffect *m_impl;
-
     Q_DECLARE_PRIVATE(QQuickShaderEffect)
 };
 

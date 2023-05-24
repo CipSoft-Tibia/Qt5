@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,6 +15,9 @@ class UniqueIDDataTabHelper
     : public web::WebStateObserver,
       public web::WebStateUserData<UniqueIDDataTabHelper> {
  public:
+  UniqueIDDataTabHelper(const UniqueIDDataTabHelper&) = delete;
+  UniqueIDDataTabHelper& operator=(const UniqueIDDataTabHelper&) = delete;
+
   ~UniqueIDDataTabHelper() override;
 
   // Returns the next available renderer id for WebState.
@@ -32,7 +35,7 @@ class UniqueIDDataTabHelper
   // web::WebStateObserver implementation.
   void WebStateDestroyed(web::WebState* web_state) override;
 
-  uint32_t next_available_renderer_id_ = 0;
+  uint32_t next_available_renderer_id_ = 1;
 
   // Maps UniqueFieldId of an input element to the pair of:
   // 1) The most recent text that user typed or PasswordManager autofilled in
@@ -43,8 +46,6 @@ class UniqueIDDataTabHelper
   scoped_refptr<autofill::FieldDataManager> field_data_manager_;
 
   WEB_STATE_USER_DATA_KEY_DECL();
-
-  DISALLOW_COPY_AND_ASSIGN(UniqueIDDataTabHelper);
 };
 
 #endif  // COMPONENTS_AUTOFILL_IOS_FORM_UTIL_UNIQUE_ID_DATA_TAB_HELPER_H_

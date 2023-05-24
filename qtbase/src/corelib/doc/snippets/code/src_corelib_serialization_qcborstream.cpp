@@ -1,52 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+
+using namespace Qt::StringLiterals;
 
 //! [0]
    QCborValue(QCborTag(2), QByteArray("\x01\0\0\0\0\0\0\0\0", 9));
@@ -55,18 +10,18 @@
 //! [1]
    writer.startMap(4);    // 4 elements in the map
 
-   writer.append(QLatin1String("label"));
-   writer.append(QLatin1String("journald"));
+   writer.append("label"_L1);
+   writer.append("journald"_L1);
 
-   writer.append(QLatin1String("autoDetect"));
+   writer.append("autoDetect"_L1);
    writer.append(false);
 
-   writer.append(QLatin1String("condition"));
-   writer.append(QLatin1String("libs.journald"));
+   writer.append("condition"_L1);
+   writer.append("libs.journald"_L1);
 
-   writer.append(QLatin1String("output"));
+   writer.append("output"_L1);
    writer.startArray(1);
-   writer.append(QLatin1String("privateFeature"));
+   writer.append("privateFeature"_L1);
    writer.endArray();
 
    writer.endMap();
@@ -118,7 +73,7 @@
 //! [7]
 
 //! [8]
-   writer.append(QLatin1String("Hello, World"));
+   writer.append("Hello, World"_L1);
 //! [8]
 
 //! [9]
@@ -208,10 +163,10 @@
 //! [19]
 
 //! [20]
-   void appendList(QCborStreamWriter &writer, const QLinkedList<QString> &list)
+   void appendList(QCborStreamWriter &writer, const QList<QString> &values)
    {
        writer.startArray();
-       for (const QString &s : list)
+       for (const QString &s : values)
            writer.append(s);
        writer.endArray();
    }
@@ -228,10 +183,10 @@
 //! [21]
 
 //! [22]
-   void appendMap(QCborStreamWriter &writer, const QLinkedList<QPair<int, QString>> &list)
+   void appendMap(QCborStreamWriter &writer, const QList<std::pair<int, QString>> &values)
    {
        writer.startMap();
-       for (const auto pair : list) {
+       for (const auto pair : values) {
            writer.append(pair.first)
            writer.append(pair.second);
        }
@@ -243,7 +198,7 @@
    void appendMap(QCborStreamWriter &writer, const QMap<int, QString> &map)
    {
        writer.startMap(map.size());
-       for (auto it = map.begin(); it != map.end(); ++it) {
+       for (auto it = map.cbegin(), end = map.cend(); it != end; ++it) {
            writer.append(it.key());
            writer.append(it.value());
        }
@@ -316,12 +271,12 @@
    {
        QString result;
        auto r = reader.readString();
-       while (r.code == QCborStreamReader::Ok) {
+       while (r.status == QCborStreamReader::Ok) {
            result += r.data;
            r = reader.readString();
        }
 
-       if (r.code == QCborStreamReader::Error) {
+       if (r.status == QCborStreamReader::Error) {
            // handle error condition
            result.clear();
        }
@@ -334,12 +289,12 @@
    {
        QBytearray result;
        auto r = reader.readBytearray();
-       while (r.code == QCborStreamReader::Ok) {
+       while (r.status == QCborStreamReader::Ok) {
            result += r.data;
            r = reader.readByteArray();
        }
 
-       if (r.code == QCborStreamReader::Error) {
+       if (r.status == QCborStreamReader::Error) {
            // handle error condition
            result.clear();
        }

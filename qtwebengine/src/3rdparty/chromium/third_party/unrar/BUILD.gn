@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -23,6 +23,8 @@ config("unrar_warnings") {
 
 static_library("unrar") {
   sources = [
+    "google/unrar_wrapper.cc",
+    "google/unrar_wrapper.h",
     "src/archive.cpp",
     "src/arcread.cpp",
     "src/blake2s.cpp",
@@ -69,7 +71,6 @@ static_library("unrar") {
     "src/ui.cpp",
     "src/unicode.cpp",
     "src/unpack.cpp",
-    "src/unrar_wrapper.cc",
     "src/volume.cpp",
   ]
   if (is_win) {

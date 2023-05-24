@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
 # Copyright (c) 2014 Google Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -44,7 +44,7 @@ READ_LOCATION = path.join(ROOT_DIRECTORY, 'third_party', 'blink', 'renderer', 'c
 
 
 def _keep_only_required_keys(entry):
-    for key in entry.keys():
+    for key in list(entry.keys()):
         if key not in ("name", "longhands", "svg", "inherited", "keywords"):
             del entry[key]
     return entry
@@ -70,9 +70,10 @@ def properties_from_file(file_name):
         properties.append(_keep_only_required_keys(entry))
         property_names[entry["name"]] = entry
         if "keywords" in entry:
-            keywords = list(
-                filter(lambda keyword: not keyword.startswith("-internal-"),
-                       entry["keywords"]))
+            keywords = [
+                keyword for keyword in entry["keywords"]
+                if not keyword.startswith("-internal-")
+            ]
             property_values[entry["name"]] = {"values": keywords}
 
     properties.sort(key=lambda entry: entry["name"])
@@ -107,7 +108,10 @@ with open(GENERATED_LOCATION, "w+") as f:
     f.write('// Use of this source code is governed by a BSD-style license that can be\n')
     f.write('// found in the LICENSE file.\n')
     f.write('\n')
-    f.write("export const generatedProperties = %s;\n" % json.dumps(properties))
+    f.write("export const generatedProperties = %s;\n" %
+            json.dumps(properties, sort_keys=True, indent=1))
     # sort keys to ensure entries are generated in a deterministic way to avoid inconsistencies across different OS
-    f.write("export const generatedPropertyValues = %s;\n" % json.dumps(property_values, sort_keys=True))
-    f.write("export const generatedAliasesFor = new Map(%s);\n" % json.dumps(aliases_for))
+    f.write("export const generatedPropertyValues = %s;\n" %
+            json.dumps(property_values, sort_keys=True, indent=1))
+    f.write("export const generatedAliasesFor = new Map(%s);\n" %
+            json.dumps(aliases_for, sort_keys=True, indent=1))

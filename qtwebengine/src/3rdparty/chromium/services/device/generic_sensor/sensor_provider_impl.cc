@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,9 @@
 
 #include <utility>
 
-#include "base/bind.h"
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/device/generic_sensor/platform_sensor_provider.h"
 #include "services/device/generic_sensor/sensor_impl.h"
@@ -24,6 +23,7 @@ bool IsExtraSensorClass(mojom::SensorType type) {
   switch (type) {
     case mojom::SensorType::ACCELEROMETER:
     case mojom::SensorType::LINEAR_ACCELERATION:
+    case mojom::SensorType::GRAVITY:
     case mojom::SensorType::GYROSCOPE:
     case mojom::SensorType::ABSOLUTE_ORIENTATION_EULER_ANGLES:
     case mojom::SensorType::ABSOLUTE_ORIENTATION_QUATERNION:
@@ -43,7 +43,7 @@ SensorProviderImpl::SensorProviderImpl(
   DCHECK(provider_);
 }
 
-SensorProviderImpl::~SensorProviderImpl() {}
+SensorProviderImpl::~SensorProviderImpl() = default;
 
 void SensorProviderImpl::Bind(
     mojo::PendingReceiver<mojom::SensorProvider> receiver) {
@@ -58,8 +58,8 @@ void SensorProviderImpl::GetSensor(mojom::SensorType type,
                             nullptr);
     return;
   }
-  auto cloned_handle = provider_->CloneSharedBufferHandle();
-  if (!cloned_handle.is_valid()) {
+  auto cloned_region = provider_->CloneSharedMemoryRegion();
+  if (!cloned_region.IsValid()) {
     std::move(callback).Run(mojom::SensorCreationResult::ERROR_NOT_AVAILABLE,
                             nullptr);
     return;
@@ -69,18 +69,17 @@ void SensorProviderImpl::GetSensor(mojom::SensorType type,
   if (!sensor) {
     provider_->CreateSensor(
         type, base::BindOnce(&SensorProviderImpl::SensorCreated,
-                             weak_ptr_factory_.GetWeakPtr(), type,
-                             std::move(cloned_handle), std::move(callback)));
+                             weak_ptr_factory_.GetWeakPtr(),
+                             std::move(cloned_region), std::move(callback)));
     return;
   }
 
-  SensorCreated(type, std::move(cloned_handle), std::move(callback),
+  SensorCreated(std::move(cloned_region), std::move(callback),
                 std::move(sensor));
 }
 
 void SensorProviderImpl::SensorCreated(
-    mojom::SensorType type,
-    mojo::ScopedSharedBufferHandle cloned_handle,
+    base::ReadOnlySharedMemoryRegion cloned_region,
     GetSensorCallback callback,
     scoped_refptr<PlatformSensor> sensor) {
   if (!sensor) {
@@ -99,8 +98,9 @@ void SensorProviderImpl::SensorCreated(
                         pending_sensor.InitWithNewPipeAndPassReceiver());
   init_params->sensor = std::move(pending_sensor);
 
-  init_params->memory = std::move(cloned_handle);
-  init_params->buffer_offset = SensorReadingSharedBuffer::GetOffset(type);
+  init_params->memory = std::move(cloned_region);
+  init_params->buffer_offset =
+      SensorReadingSharedBuffer::GetOffset(sensor->GetType());
   init_params->mode = sensor->GetReportingMode();
 
   double maximum_frequency = sensor->GetMaximumSupportedFrequency();
@@ -109,7 +109,8 @@ void SensorProviderImpl::SensorCreated(
   double minimum_frequency = sensor->GetMinimumSupportedFrequency();
   DCHECK_GT(minimum_frequency, 0.0);
 
-  const double maximum_allowed_frequency = GetSensorMaxAllowedFrequency(type);
+  const double maximum_allowed_frequency =
+      GetSensorMaxAllowedFrequency(sensor->GetType());
   if (maximum_frequency > maximum_allowed_frequency)
     maximum_frequency = maximum_allowed_frequency;
   // These checks are to make sure the following assertion is still true:

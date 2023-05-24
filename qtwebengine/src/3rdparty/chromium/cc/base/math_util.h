@@ -1,24 +1,22 @@
-// Copyright 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CC_BASE_MATH_UTIL_H_
 #define CC_BASE_MATH_UTIL_H_
 
+#include <cmath>
 #include <limits>
-#include <memory>
-#include <vector>
 
 #include "base/check.h"
-#include "base/numerics/ranges.h"
+#include "base/cxx17_backports.h"
 #include "build/build_config.h"
 #include "cc/base/base_export.h"
+#include "third_party/skia/include/core/SkM44.h"
+#include "third_party/skia/include/core/SkScalar.h"
 #include "ui/gfx/geometry/box_f.h"
 #include "ui/gfx/geometry/point3_f.h"
 #include "ui/gfx/geometry/point_f.h"
-#include "ui/gfx/geometry/scroll_offset.h"
-#include "ui/gfx/geometry/size.h"
-#include "ui/gfx/transform.h"
 
 namespace base {
 class Value;
@@ -32,11 +30,13 @@ class QuadF;
 class Rect;
 class RectF;
 class RRectF;
+class Size;
 class SizeF;
 class Transform;
 class Vector2dF;
 class Vector2d;
 class Vector3dF;
+class LinearGradient;
 }  // namespace gfx
 
 namespace cc {
@@ -69,10 +69,10 @@ struct HomogeneousCoordinate {
     SkScalar inv_w = SK_Scalar1 / w();
     // However, w may be close to 0 and we lose precision on our geometry
     // calculations if we allow scaling to extremely large values.
-    return gfx::PointF(base::ClampToRange(x() * inv_w, -kInfiniteCoordinate,
-                                          float{kInfiniteCoordinate}),
-                       base::ClampToRange(y() * inv_w, -kInfiniteCoordinate,
-                                          float{kInfiniteCoordinate}));
+    return gfx::PointF(base::clamp(x() * inv_w, -kInfiniteCoordinate,
+                                   float{kInfiniteCoordinate}),
+                       base::clamp(y() * inv_w, -kInfiniteCoordinate,
+                                   float{kInfiniteCoordinate}));
   }
 
   gfx::Point3F CartesianPoint3d() const {
@@ -85,12 +85,25 @@ struct HomogeneousCoordinate {
     SkScalar inv_w = SK_Scalar1 / w();
     // However, w may be close to 0 and we lose precision on our geometry
     // calculations if we allow scaling to extremely large values.
-    return gfx::Point3F(base::ClampToRange(x() * inv_w, -kInfiniteCoordinate,
-                                           float{kInfiniteCoordinate}),
-                        base::ClampToRange(y() * inv_w, -kInfiniteCoordinate,
-                                           float{kInfiniteCoordinate}),
-                        base::ClampToRange(z() * inv_w, -kInfiniteCoordinate,
-                                           float{kInfiniteCoordinate}));
+    return gfx::Point3F(base::clamp(x() * inv_w, -kInfiniteCoordinate,
+                                    float{kInfiniteCoordinate}),
+                        base::clamp(y() * inv_w, -kInfiniteCoordinate,
+                                    float{kInfiniteCoordinate}),
+                        base::clamp(z() * inv_w, -kInfiniteCoordinate,
+                                    float{kInfiniteCoordinate}));
+  }
+
+  gfx::Point3F CartesianPoint3dUnclamped() const {
+    if (w() == SK_Scalar1)
+      return gfx::Point3F(x(), y(), z());
+
+    // For now, because this code is used privately only by MathUtil, it should
+    // never be called when w == 0, and we do not yet need to handle that case.
+    DCHECK(w());
+    SkScalar inv_w = SK_Scalar1 / w();
+    // However, w may be close to 0 and we lose precision on our geometry
+    // calculations if we allow scaling to extremely large values.
+    return gfx::Point3F(x() * inv_w, y() * inv_w, z() * inv_w);
   }
 
   SkScalar x() const { return vec[0]; }
@@ -105,7 +118,7 @@ class CC_BASE_EXPORT MathUtil {
  public:
   // Returns true if rounded up value does not overflow, false otherwise.
   template <typename T>
-  static bool VerifyRoundup(T n, T mul) {
+  static constexpr bool VerifyRoundup(T n, T mul) {
     return mul && (n <= (std::numeric_limits<T>::max() -
                          (std::numeric_limits<T>::max() % mul)));
   }
@@ -115,7 +128,7 @@ class CC_BASE_EXPORT MathUtil {
   //    - RoundUp(123, 50) returns 150.
   //    - RoundUp(-123, 50) returns -100.
   template <typename T>
-  static T UncheckedRoundUp(T n, T mul) {
+  static constexpr T UncheckedRoundUp(T n, T mul) {
     static_assert(std::numeric_limits<T>::is_integer,
                   "T must be an integer type");
     return RoundUpInternal(n, mul);
@@ -124,7 +137,7 @@ class CC_BASE_EXPORT MathUtil {
   // Similar to UncheckedRoundUp(), but dies with a CRASH() if rounding up a
   // given |n| overflows T.
   template <typename T>
-  static T CheckedRoundUp(T n, T mul) {
+  static constexpr T CheckedRoundUp(T n, T mul) {
     static_assert(std::numeric_limits<T>::is_integer,
                   "T must be an integer type");
     CHECK(VerifyRoundup(n, mul));
@@ -133,7 +146,7 @@ class CC_BASE_EXPORT MathUtil {
 
   // Returns true if rounded down value does not underflow, false otherwise.
   template <typename T>
-  static bool VerifyRoundDown(T n, T mul) {
+  static constexpr bool VerifyRoundDown(T n, T mul) {
     return mul && (n >= (std::numeric_limits<T>::min() -
                          (std::numeric_limits<T>::min() % mul)));
   }
@@ -143,7 +156,7 @@ class CC_BASE_EXPORT MathUtil {
   //    - RoundDown(123, 50) returns 100.
   //    - RoundDown(-123, 50) returns -150.
   template <typename T>
-  static T UncheckedRoundDown(T n, T mul) {
+  static constexpr T UncheckedRoundDown(T n, T mul) {
     static_assert(std::numeric_limits<T>::is_integer,
                   "T must be an integer type");
     return RoundDownInternal(n, mul);
@@ -152,7 +165,7 @@ class CC_BASE_EXPORT MathUtil {
   // Similar to UncheckedRoundDown(), but dies with a CRASH() if rounding down a
   // given |n| underflows T.
   template <typename T>
-  static T CheckedRoundDown(T n, T mul) {
+  static constexpr T CheckedRoundDown(T n, T mul) {
     static_assert(std::numeric_limits<T>::is_integer,
                   "T must be an integer type");
     CHECK(VerifyRoundDown(n, mul));
@@ -160,7 +173,7 @@ class CC_BASE_EXPORT MathUtil {
   }
 
   template <typename T>
-  static bool IsWithinEpsilon(T a, T b) {
+  static constexpr bool IsWithinEpsilon(T a, T b) {
     return std::abs(a - b) < std::numeric_limits<T>::epsilon();
   }
 
@@ -233,13 +246,6 @@ class CC_BASE_EXPORT MathUtil {
                                      const gfx::PointF& point,
                                      bool* clipped);
 
-  static gfx::Vector2dF ComputeTransform2dScaleComponents(const gfx::Transform&,
-                                                          float fallbackValue);
-  // Returns an approximate max scale value of the transform even if it has
-  // perspective. Prefer to use ComputeTransform2dScaleComponents if there is no
-  // perspective, since it can produce more accurate results.
-  static float ComputeApproximateMaxScale(const gfx::Transform& transform);
-
   // Makes a rect that has the same relationship to input_outer_rect as
   // scale_inner_rect has to scale_outer_rect. scale_inner_rect should be
   // contained within scale_outer_rect, and likewise the rectangle that is
@@ -286,9 +292,6 @@ class CC_BASE_EXPORT MathUtil {
                                const gfx::Vector2dF& v,
                                base::trace_event::TracedValue* res);
   static void AddToTracedValue(const char* name,
-                               const gfx::ScrollOffset& v,
-                               base::trace_event::TracedValue* res);
-  static void AddToTracedValue(const char* name,
                                const gfx::QuadF& q,
                                base::trace_event::TracedValue* res);
   static void AddToTracedValue(const char* name,
@@ -302,6 +305,12 @@ class CC_BASE_EXPORT MathUtil {
                                base::trace_event::TracedValue* res);
   static void AddToTracedValue(const char* name,
                                const gfx::RRectF& rect,
+                               base::trace_event::TracedValue* res);
+  static void AddCornerRadiiToTracedValue(const char* name,
+                                          const gfx::RRectF& rect,
+                                          base::trace_event::TracedValue* res);
+  static void AddToTracedValue(const char* name,
+                               const gfx::LinearGradient& gradient,
                                base::trace_event::TracedValue* res);
 
   // Returns a base::Value representation of the floating point value.
@@ -321,14 +330,20 @@ class CC_BASE_EXPORT MathUtil {
   static bool IsNearlyTheSameForTesting(const gfx::Point3F& l,
                                         const gfx::Point3F& r);
 
+  // Helper functions for migration from SkMatrix->SkM44. It may make sense to
+  // move these to skia itself at some point.
+  static bool SkM44HasPerspective(const SkM44& m);
+  static bool SkM44Is2D(const SkM44& m);
+  static bool SkM44Preserves2DAxisAlignment(const SkM44& m);
+
  private:
   template <typename T>
-  static T RoundUpInternal(T n, T mul) {
+  static constexpr T RoundUpInternal(T n, T mul) {
     return (n > 0) ? ((n + mul - 1) / mul) * mul : (n / mul) * mul;
   }
 
   template <typename T>
-  static T RoundDownInternal(T n, T mul) {
+  static constexpr T RoundDownInternal(T n, T mul) {
     return (n > 0) ? (n / mul) * mul : (n == 0) ? 0
                                                 : ((n - mul + 1) / mul) * mul;
   }

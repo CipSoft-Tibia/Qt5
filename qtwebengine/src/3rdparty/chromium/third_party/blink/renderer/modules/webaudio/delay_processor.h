@@ -27,6 +27,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_DELAY_PROCESSOR_H_
 
 #include <memory>
+
 #include "base/memory/scoped_refptr.h"
 #include "third_party/blink/renderer/modules/webaudio/audio_param.h"
 #include "third_party/blink/renderer/platform/audio/audio_dsp_kernel_processor.h"
@@ -39,6 +40,7 @@ class DelayProcessor final : public AudioDSPKernelProcessor {
  public:
   DelayProcessor(float sample_rate,
                  unsigned number_of_channels,
+                 unsigned render_quantum_frames,
                  AudioParamHandler& delay_time,
                  double max_delay_time);
   ~DelayProcessor() override;

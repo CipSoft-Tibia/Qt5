@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "recentfiles.h"
 #include "globals.h"
@@ -50,7 +25,8 @@ RecentFiles::RecentFiles(const int maxEntries)
 {
     m_timer.setSingleShot(true);
     m_timer.setInterval(3 * 60 * 1000);
-    connect(&m_timer, SIGNAL(timeout()), SLOT(closeGroup()));
+    connect(&m_timer, &QTimer::timeout,
+            this, &RecentFiles::closeGroup);
 }
 
 /*
@@ -95,7 +71,7 @@ void RecentFiles::addFiles(const QStringList &names)
             m_strLists.removeAt(index);
             m_clone1st = true;
         } else {
-            if (m_strLists.count() >= m_maxEntries)
+            if (m_strLists.size() >= m_maxEntries)
                 m_strLists.removeLast();
             m_clone1st = false;
         }
@@ -114,18 +90,17 @@ void RecentFiles::readConfig()
 {
     m_strLists.clear();
     QVariant val = QSettings().value(configKey());
-    if (val.type() == QVariant::StringList) // Backwards compat to Qt < 4.5
-        foreach (const QString &s, val.toStringList())
-            m_strLists << QStringList(QFileInfo(s).canonicalFilePath());
-    else
-        foreach (const QVariant &v, val.toList())
+    if (val.metaType().id() == QMetaType::QVariantList) {
+        const auto list = val.toList();
+        for (const QVariant &v : list)
             m_strLists << v.toStringList();
+    }
 }
 
 void RecentFiles::writeConfig() const
 {
     QList<QVariant> vals;
-    foreach (const QStringList &sl, m_strLists)
+    for (const QStringList &sl : m_strLists)
         vals << sl;
     QSettings().setValue(configKey(), vals);
 }

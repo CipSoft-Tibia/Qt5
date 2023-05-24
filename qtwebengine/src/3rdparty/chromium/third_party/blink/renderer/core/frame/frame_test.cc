@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/mojom/frame/user_activation_notification_type.mojom-blink.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/loader/document_loader.h"
@@ -31,7 +32,8 @@ class FrameTest : public PageTestBase {
   void Navigate(const String& destinationUrl, bool user_activated) {
     const KURL& url = KURL(NullURL(), destinationUrl);
     auto navigation_params =
-        WebNavigationParams::CreateWithHTMLBuffer(SharedBuffer::Create(), url);
+        WebNavigationParams::CreateWithHTMLBufferForTesting(
+            SharedBuffer::Create(), url);
     if (user_activated)
       navigation_params->is_user_activated = true;
     GetDocument().GetFrame()->Loader().CommitNavigation(

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -28,18 +28,22 @@ class GFX_EXPORT ImageSkiaRep {
   // Creates a bitmap with kARGB_8888_Config config with given |size| in DIP.
   // This allocates pixels in the bitmap. It is guaranteed that the data in the
   // bitmap are initialized but the actual values are undefined.
-  // Specifying 0 scale means the image is for unscaled image. (unscaled()
-  // returns truen, and scale() returns 1.0f;)
+  // Specifying 0 scale means the image is for unscaled image (unscaled()
+  // returns true, and scale() returns 1.0f).
   ImageSkiaRep(const gfx::Size& size, float scale);
 
-  // Creates a bitmap with given scale.
-  // Adds ref to |src|.
+  // Creates an ImageSkiaRep that holds the `src` bitmap, which is created for
+  // display at the given device scale factor. Takes ownership of a reference to
+  // the SkBitmap's backing store. The `src` bitmap may not be uninitialized,
+  // null or empty; in that case the default constructor should be used
+  // instead.
   ImageSkiaRep(const SkBitmap& src, float scale);
 
   // Creates an image rep backed by a paint record of given size and scale. This
-  // is used when the image representation is sourced from a drawable sunch as
-  // CanvasImageSource.
-  ImageSkiaRep(sk_sp<cc::PaintRecord> paint_record,
+  // is used when the image representation is sourced from a drawable such as
+  // CanvasImageSource. The `size` must not be empty; in that case the default
+  // constructor should be used instead.
+  ImageSkiaRep(cc::PaintRecord paint_record,
                const gfx::Size& size,
                float scale);
 
@@ -71,7 +75,7 @@ class GFX_EXPORT ImageSkiaRep {
 
   // Returns the backing drawable as a PaintRecord. Use this when the type of
   // ImageRep is |kImageTypeDrawable|.
-  sk_sp<cc::PaintRecord> GetPaintRecord() const;
+  cc::PaintRecord GetPaintRecord() const;
 
   const cc::PaintImage& paint_image() const { return paint_image_; }
   bool has_paint_image() const { return !!paint_image_; }
@@ -85,7 +89,7 @@ class GFX_EXPORT ImageSkiaRep {
 
   // TODO(malaykeshav): Remove when migration is complete and it is safe.
   cc::PaintImage paint_image_;
-  mutable sk_sp<cc::PaintRecord> paint_record_;
+  mutable absl::optional<cc::PaintRecord> paint_record_;
   ImageRepType type_;
 
   Size pixel_size_;

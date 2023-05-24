@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef LINUXDMABUF_H
 #define LINUXDMABUF_H
@@ -35,13 +9,15 @@
 #include <QtWaylandCompositor/private/qwayland-server-wayland.h>
 #include <QtWaylandCompositor/private/qwlclientbufferintegration_p.h>
 
+#include <QtOpenGL/QOpenGLTexture>
 #include <QtCore/QObject>
 #include <QtCore/QHash>
 #include <QtCore/QSize>
 #include <QtCore/QTextStream>
-#include <QtGui/QOpenGLTexture>
 
 #include <array>
+#include <QtGui/QOpenGLContext>
+#include <QtCore/QMutex>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -85,14 +61,14 @@ class LinuxDmabuf : public QtWaylandServer::zwp_linux_dmabuf_v1
 public:
     explicit LinuxDmabuf(wl_display *display, LinuxDmabufClientBufferIntegration *clientBufferIntegration);
 
-    void setSupportedModifiers(const QHash<uint32_t, QVector<uint64_t>> &modifiers);
+    void setSupportedModifiers(const QHash<uint32_t, QList<uint64_t>> &modifiers);
 
 protected:
     void zwp_linux_dmabuf_v1_bind_resource(Resource *resource) override;
     void zwp_linux_dmabuf_v1_create_params(Resource *resource, uint32_t params_id) override;
 
 private:
-    QHash<uint32_t, QVector<uint64_t>> m_modifiers; // key=DRM format, value=supported DRM modifiers for format
+    QHash<uint32_t, QList<uint64_t>> m_modifiers; // key=DRM format, value=supported DRM modifiers for format
     LinuxDmabufClientBufferIntegration *m_clientBufferIntegration;
 };
 
@@ -149,6 +125,10 @@ private:
     LinuxDmabufClientBufferIntegration *m_clientBufferIntegration = nullptr;
     std::array<EGLImageKHR, MaxDmabufPlanes> m_eglImages = { {EGL_NO_IMAGE_KHR, EGL_NO_IMAGE_KHR, EGL_NO_IMAGE_KHR, EGL_NO_IMAGE_KHR} };
     std::array<QOpenGLTexture *, MaxDmabufPlanes> m_textures = { {nullptr, nullptr, nullptr, nullptr} };
+    std::array<QOpenGLContext *, MaxDmabufPlanes> m_texturesContext = { {nullptr, nullptr, nullptr, nullptr} };
+    std::array<QMetaObject::Connection, MaxDmabufPlanes> m_texturesAboutToBeDestroyedConnection = { {QMetaObject::Connection(), QMetaObject::Connection(), QMetaObject::Connection(), QMetaObject::Connection()} };
+    QMutex m_texturesLock;
+
     void freeResources();
     void buffer_destroy(Resource *resource) override;
 

@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QDECLARATIVESUPPORTEDCATEGORIESMODEL_H
 #define QDECLARATIVESUPPORTEDCATEGORIESMODEL_H
@@ -68,17 +35,11 @@ class QGeoServiceProvider;
 class QPlaceManager;
 class QPlaceReply;
 
-class PlaceCategoryNode
-{
-public:
-    QString parentId;
-    QStringList childIds;
-    QSharedPointer<QDeclarativeCategory> declCategory;
-};
-
 class Q_LOCATION_PRIVATE_EXPORT QDeclarativeSupportedCategoriesModel : public QAbstractItemModel, public QQmlParserStatus
 {
     Q_OBJECT
+    QML_NAMED_ELEMENT(CategoryModel)
+    QML_ADDED_IN_VERSION(5, 0)
 
     Q_ENUMS(Status)
 
@@ -90,22 +51,22 @@ class Q_LOCATION_PRIVATE_EXPORT QDeclarativeSupportedCategoriesModel : public QA
     Q_ENUMS(Roles) //The Roles enum is for internal usage only.
 
 public:
-    explicit QDeclarativeSupportedCategoriesModel(QObject *parent = 0);
+    explicit QDeclarativeSupportedCategoriesModel(QObject *parent = nullptr);
     virtual ~QDeclarativeSupportedCategoriesModel();
 
     // From QQmlParserStatus
-    virtual void classBegin() {}
-    virtual void componentComplete();
+    void classBegin() override {}
+    void componentComplete() override;
 
     // From QAbstractItemModel
-    int rowCount(const QModelIndex &parent) const;
-    int columnCount(const QModelIndex &parent) const;
+    int rowCount(const QModelIndex &parent) const override;
+    int columnCount(const QModelIndex &parent) const override;
 
-    QModelIndex index(int row, int column, const QModelIndex &parent) const;
-    QModelIndex parent(const QModelIndex &child) const;
+    QModelIndex index(int row, int column, const QModelIndex &parent) const override;
+    QModelIndex parent(const QModelIndex &child) const override;
 
-    Q_INVOKABLE QVariant data(const QModelIndex &index, int role) const;
-    QHash<int, QByteArray> roleNames() const;
+    Q_INVOKABLE QVariant data(const QModelIndex &index, int role) const override;
+    QHash<int, QByteArray> roleNames() const override;
 
     enum Roles {
         CategoryRole = Qt::UserRole,
@@ -143,17 +104,25 @@ private Q_SLOTS:
     void connectNotificationSignals();
 
 private:
+    struct PlaceCategoryNode
+    {
+        QString parentId;
+        QStringList childIds;
+        QSharedPointer<QDeclarativeCategory> declCategory;
+    };
+
     QStringList populateCategories(QPlaceManager *, const QPlaceCategory &parent);
     QModelIndex index(const QString &categoryId) const;
     int rowToAddChild(PlaceCategoryNode *, const QPlaceCategory &category);
     void updateLayout();
+    void emitDataChanged() { Q_EMIT dataChanged(); }
 
-    QPlaceReply *m_response;
+    QPlaceReply *m_response = nullptr;
 
-    QDeclarativeGeoServiceProvider *m_plugin;
-    bool m_hierarchical;
-    bool m_complete;
-    Status m_status;
+    QDeclarativeGeoServiceProvider *m_plugin = nullptr;
+    bool m_hierarchical = true;
+    bool m_complete = false;
+    Status m_status = Null;
     QString m_errorString;
 
     QHash<QString, PlaceCategoryNode *> m_categoriesTree;

@@ -1,4 +1,4 @@
-// Copyright (c) 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,14 @@
 
 namespace cc {
 
-enum class BrowserControlsState { kShown = 1, kHidden = 2, kBoth = 3 };
+// A Java counterpart will be generated for this enum.
+// GENERATED_JAVA_ENUM_PACKAGE: org.chromium.cc.input
+enum class BrowserControlsState {
+  kShown = 1,
+  kHidden = 2,
+  kBoth = 3,
+  kMaxValue = kBoth
+};
 
 }  // namespace cc
 

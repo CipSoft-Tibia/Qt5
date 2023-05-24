@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,12 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
-#include "base/memory/weak_ptr.h"
-#include "base/sequenced_task_runner.h"
-#include "base/task_runner_util.h"
+#include "base/task/sequenced_task_runner.h"
 
 namespace offline_items_collection {
 
@@ -33,6 +30,9 @@ class FileExistenceChecker {
   template <typename T>
   using ResultCallback = base::OnceCallback<void(FileWithIdCollection<T>)>;
 
+  FileExistenceChecker(const FileExistenceChecker&) = delete;
+  FileExistenceChecker& operator=(const FileExistenceChecker&) = delete;
+
   // Checks which of the provided |items_to_check| don't point to existing
   // files.
   template <typename T>
@@ -40,8 +40,8 @@ class FileExistenceChecker {
       const scoped_refptr<base::SequencedTaskRunner>& blocking_task_runner,
       FileWithIdCollection<T> items_to_check,
       ResultCallback<T> callback) {
-    base::PostTaskAndReplyWithResult(
-        blocking_task_runner.get(), FROM_HERE,
+    blocking_task_runner->PostTaskAndReplyWithResult(
+        FROM_HERE,
         base::BindOnce(&FileExistenceChecker::CheckForMissingFilesBlocking<T>,
                        std::move(items_to_check)),
         std::move(callback));
@@ -58,8 +58,6 @@ class FileExistenceChecker {
     }
     return missing_items;
   }
-
-  DISALLOW_COPY_AND_ASSIGN(FileExistenceChecker);
 };
 
 }  // namespace offline_items_collection

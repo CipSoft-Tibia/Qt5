@@ -10,13 +10,14 @@
 
 #include "sdk/objc/native/api/video_frame_buffer.h"
 
+#include "api/make_ref_counted.h"
 #include "sdk/objc/native/src/objc_frame_buffer.h"
 
 namespace webrtc {
 
 rtc::scoped_refptr<VideoFrameBuffer> ObjCToNativeVideoFrameBuffer(
     id<RTC_OBJC_TYPE(RTCVideoFrameBuffer)> objc_video_frame_buffer) {
-  return new rtc::RefCountedObject<ObjCFrameBuffer>(objc_video_frame_buffer);
+  return rtc::make_ref_counted<ObjCFrameBuffer>(objc_video_frame_buffer);
 }
 
 id<RTC_OBJC_TYPE(RTCVideoFrameBuffer)> NativeToObjCVideoFrameBuffer(

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 
 #include <map>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/strings/string_piece.h"
 #include "printing/backend/print_backend.h"
 
@@ -15,7 +15,7 @@ namespace printing {
 
 class CupsOptionProvider;
 
-// Handles IPP attribute, usually by adding 1 or more items to |caps|.
+// Handles IPP attribute, usually by adding 1 or more items to `caps`.
 using AttributeHandler =
     base::RepeatingCallback<void(const CupsOptionProvider& printer,
                                  const char* name,

@@ -1,10 +1,10 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/signin/public/base/persistent_repeating_timer.h"
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "components/prefs/pref_service.h"
 
 namespace signin {
@@ -30,8 +30,8 @@ void PersistentRepeatingTimer::Start() {
     OnTimerFired();
   } else {
     timer_.Start(FROM_HERE, delay_ - time_since_update,
-                 base::Bind(&PersistentRepeatingTimer::OnTimerFired,
-                            base::Unretained(this)));
+                 base::BindRepeating(&PersistentRepeatingTimer::OnTimerFired,
+                                     base::Unretained(this)));
   }
   DCHECK(timer_.IsRunning());
 }

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <memory>
 
-#include "base/bind_helpers.h"
+#include "base/functional/callback_helpers.h"
 #include "base/win/scoped_com_initializer.h"
 #include "media/audio/audio_unittest_util.h"
 #include "media/audio/win/core_audio_util_win.h"

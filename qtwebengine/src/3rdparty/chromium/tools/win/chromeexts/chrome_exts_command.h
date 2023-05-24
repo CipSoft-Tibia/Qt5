@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
+#include "base/command_line.h"
 #include "base/memory/ptr_util.h"
 
 namespace tools {
@@ -42,6 +42,9 @@ class ChromeExtsCommand {
     return hr;
   }
 
+  ChromeExtsCommand(const ChromeExtsCommand&) = delete;
+  ChromeExtsCommand& operator=(const ChromeExtsCommand&) = delete;
+
   virtual ~ChromeExtsCommand();
 
  protected:
@@ -57,16 +60,20 @@ class ChromeExtsCommand {
   HRESULT PrintErrorf(const char* format, ...);
   HRESULT PrintErrorV(const char* format, va_list ap);
 
-  const std::string& args() const { return args_; }
-  IDebugClient* debug_client() { return debug_client_.Get(); }
-  IDebugControl* debug_control() { return debug_control_.Get(); }
+  const base::CommandLine& command_line() const { return command_line_; }
+
+  // Returns the Debug Client as T, null ComPtr<T> otherwise.
+  template <typename T>
+  ComPtr<T> GetDebugClientAs() {
+    ComPtr<T> target_interface;
+    debug_client_.As(&target_interface);
+    return target_interface;
+  }
 
  private:
-  std::string args_;
+  base::CommandLine command_line_{base::CommandLine::NO_PROGRAM};
   ComPtr<IDebugClient> debug_client_;
   ComPtr<IDebugControl> debug_control_;
-
-  DISALLOW_COPY_AND_ASSIGN(ChromeExtsCommand);
 };
 
 }  // namespace chromeexts

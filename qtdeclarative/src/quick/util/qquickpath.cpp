@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickpath_p.h"
 #include "qquickpath_p_p.h"
@@ -89,12 +53,10 @@ QT_BEGIN_NAMESPACE
         \li Element
         \li PathView
         \li Shape
-        \li Shape, GL_NV_path_rendering
         \li Shape, software
     \row
         \li PathMove
         \li N/A
-        \li Yes
         \li Yes
         \li Yes
     \row
@@ -102,22 +64,18 @@ QT_BEGIN_NAMESPACE
         \li Yes
         \li Yes
         \li Yes
-        \li Yes
     \row
         \li PathPolyline
         \li Yes
         \li Yes
-        \li No
         \li Yes
     \row
-        \li PathMultiLine
+    \li PathMultiLine
         \li Yes
         \li Yes
-        \li No
         \li Yes
     \row
         \li PathQuad
-        \li Yes
         \li Yes
         \li Yes
         \li Yes
@@ -126,10 +84,8 @@ QT_BEGIN_NAMESPACE
         \li Yes
         \li Yes
         \li Yes
-        \li Yes
     \row
         \li PathArc
-        \li Yes
         \li Yes
         \li Yes
         \li Yes
@@ -138,10 +94,8 @@ QT_BEGIN_NAMESPACE
         \li Yes
         \li Yes
         \li Yes
-        \li Yes
     \row
         \li PathSvg
-        \li Yes
         \li Yes
         \li Yes
         \li Yes
@@ -150,17 +104,14 @@ QT_BEGIN_NAMESPACE
         \li Yes
         \li N/A
         \li N/A
-        \li N/A
     \row
         \li PathPercent
         \li Yes
         \li N/A
         \li N/A
-        \li N/A
     \row
         \li PathCurve
         \li Yes
-        \li No
         \li No
         \li No
     \endtable
@@ -247,7 +198,7 @@ bool QQuickPath::isClosed() const
     \qmlproperty list<PathElement> QtQuick::Path::pathElements
     This property holds the objects composing the path.
 
-    \default
+    \qmldefault
 
     A path can contain the following path objects:
     \list
@@ -284,7 +235,7 @@ static QQuickPathPrivate *privatePath(QObject *object)
     return QQuickPathPrivate::get(path);
 }
 
-QQuickPathElement *QQuickPath::pathElements_at(QQmlListProperty<QQuickPathElement> *property, int index)
+QQuickPathElement *QQuickPath::pathElements_at(QQmlListProperty<QQuickPathElement> *property, qsizetype index)
 {
     QQuickPathPrivate *d = privatePath(property->object);
 
@@ -316,11 +267,11 @@ void QQuickPath::pathElements_append(QQmlListProperty<QQuickPathElement> *proper
     }
 }
 
-int QQuickPath::pathElements_count(QQmlListProperty<QQuickPathElement> *property)
+qsizetype QQuickPath::pathElements_count(QQmlListProperty<QQuickPathElement> *property)
 {
     QQuickPathPrivate *d = privatePath(property->object);
 
-    return d->_pathElements.count();
+    return d->_pathElements.size();
 }
 
 void QQuickPath::pathElements_clear(QQmlListProperty<QQuickPathElement> *property)
@@ -376,10 +327,10 @@ void QQuickPath::endpoint(const QString &name)
     Q_D(QQuickPath);
     const AttributePoint &first = d->_attributePoints.first();
     qreal val = first.values.value(name);
-    for (int ii = d->_attributePoints.count() - 1; ii >= 0; ii--) {
+    for (int ii = d->_attributePoints.size() - 1; ii >= 0; ii--) {
         const AttributePoint &point = d->_attributePoints.at(ii);
         if (point.values.contains(name)) {
-            for (int jj = ii + 1; jj < d->_attributePoints.count(); ++jj) {
+            for (int jj = ii + 1; jj < d->_attributePoints.size(); ++jj) {
                 AttributePoint &setPoint = d->_attributePoints[jj];
                 setPoint.values.insert(name, val);
             }
@@ -392,10 +343,10 @@ void QQuickPath::endpoint(QList<AttributePoint> &attributePoints, const QString 
 {
     const AttributePoint &first = attributePoints.first();
     qreal val = first.values.value(name);
-    for (int ii = attributePoints.count() - 1; ii >= 0; ii--) {
+    for (int ii = attributePoints.size() - 1; ii >= 0; ii--) {
         const AttributePoint &point = attributePoints.at(ii);
         if (point.values.contains(name)) {
-            for (int jj = ii + 1; jj < attributePoints.count(); ++jj) {
+            for (int jj = ii + 1; jj < attributePoints.size(); ++jj) {
                 AttributePoint &setPoint = attributePoints[jj];
                 setPoint.values.insert(name, val);
             }
@@ -420,6 +371,9 @@ void QQuickPath::processPath()
     } else {
         d->_path = createPath(QPointF(), QPointF(), d->_attributes, d->pathLength, d->_attributePoints, &d->closed);
     }
+
+    if (d->simplify)
+        d->_path = d->_path.simplified();
 
     emit changed();
 }
@@ -450,7 +404,7 @@ QPainterPath QQuickPath::createPath(const QPointF &startPoint, const QPointF &en
     QPainterPath path;
 
     AttributePoint first;
-    for (int ii = 0; ii < attributes.count(); ++ii)
+    for (int ii = 0; ii < attributes.size(); ++ii)
         first.values[attributes.at(ii)] = 0;
     attributePoints << first;
 
@@ -462,7 +416,7 @@ QPainterPath QQuickPath::createPath(const QPointF &startPoint, const QPointF &en
 
     bool usesPercent = false;
     int index = 0;
-    for (QQuickPathElement *pathElement : qAsConst(d->_pathElements)) {
+    for (QQuickPathElement *pathElement : std::as_const(d->_pathElements)) {
         if (QQuickCurve *curve = qobject_cast<QQuickCurve *>(pathElement)) {
             QQuickPathData data;
             data.index = index;
@@ -476,11 +430,11 @@ QPainterPath QQuickPath::createPath(const QPointF &startPoint, const QPointF &en
         } else if (QQuickPathAttribute *attribute = qobject_cast<QQuickPathAttribute *>(pathElement)) {
             AttributePoint &point = attributePoints.last();
             point.values[attribute->name()] = attribute->value();
-            interpolate(attributePoints, attributePoints.count() - 1, attribute->name(), attribute->value());
+            interpolate(attributePoints, attributePoints.size() - 1, attribute->name(), attribute->value());
         } else if (QQuickPathPercent *percent = qobject_cast<QQuickPathPercent *>(pathElement)) {
             AttributePoint &point = attributePoints.last();
             point.values[percentString] = percent->value();
-            interpolate(attributePoints, attributePoints.count() - 1, percentString, percent->value());
+            interpolate(attributePoints, attributePoints.size() - 1, percentString, percent->value());
             usesPercent = true;
         } else if (QQuickPathText *text = qobject_cast<QQuickPathText *>(pathElement)) {
             text->addToPath(path);
@@ -489,13 +443,13 @@ QPainterPath QQuickPath::createPath(const QPointF &startPoint, const QPointF &en
 
     // Fixup end points
     const AttributePoint &last = attributePoints.constLast();
-    for (int ii = 0; ii < attributes.count(); ++ii) {
+    for (int ii = 0; ii < attributes.size(); ++ii) {
         if (!last.values.contains(attributes.at(ii)))
             endpoint(attributePoints, attributes.at(ii));
     }
     if (usesPercent && !last.values.contains(percentString)) {
         d->_attributePoints.last().values[percentString] = 1;
-        interpolate(d->_attributePoints.count() - 1, percentString, 1);
+        interpolate(d->_attributePoints.size() - 1, percentString, 1);
     }
     scalePath(path, d->scale);
 
@@ -503,7 +457,7 @@ QPainterPath QQuickPath::createPath(const QPointF &startPoint, const QPointF &en
     qreal length = path.length();
     qreal prevpercent = 0;
     qreal prevorigpercent = 0;
-    for (int ii = 0; ii < attributePoints.count(); ++ii) {
+    for (int ii = 0; ii < attributePoints.size(); ++ii) {
         const AttributePoint &point = attributePoints.at(ii);
         if (point.values.contains(percentString)) { //special string for QQuickPathPercent
             if ( ii > 0) {
@@ -544,7 +498,7 @@ QPainterPath QQuickPath::createShapePath(const QPointF &startPoint, const QPoint
     path.moveTo(startX, startY);
 
     int index = 0;
-    for (QQuickCurve *curve : qAsConst(d->_pathCurves)) {
+    for (QQuickCurve *curve : std::as_const(d->_pathCurves)) {
         QQuickPathData data;
         data.index = index;
         data.endPoint = endPoint;
@@ -553,7 +507,7 @@ QPainterPath QQuickPath::createShapePath(const QPointF &startPoint, const QPoint
         ++index;
     }
 
-    for (QQuickPathText *text : qAsConst(d->_pathTexts))
+    for (QQuickPathText *text : std::as_const(d->_pathTexts))
         text->addToPath(path);
 
     if (closed) {
@@ -599,7 +553,7 @@ void QQuickPath::gatherAttributes()
     QSet<QString> attributes;
 
     // First gather up all the attributes
-    for (QQuickPathElement *pathElement : qAsConst(d->_pathElements)) {
+    for (QQuickPathElement *pathElement : std::as_const(d->_pathElements)) {
         if (QQuickCurve *curve = qobject_cast<QQuickCurve *>(pathElement))
             d->_pathCurves.append(curve);
         else if (QQuickPathText *text = qobject_cast<QQuickPathText *>(pathElement))
@@ -725,10 +679,10 @@ void QQuickPath::createPointCache() const
         //find which set we are in
         qreal prevPercent = 0;
         qreal prevOrigPercent = 0;
-        for (int ii = 0; ii < d->_attributePoints.count(); ++ii) {
+        for (int ii = 0; ii < d->_attributePoints.size(); ++ii) {
             qreal percent = qreal(i)/segments;
             const AttributePoint &point = d->_attributePoints.at(ii);
-            if (percent < point.percent || ii == d->_attributePoints.count() - 1) { //### || is special case for very last item
+            if (percent < point.percent || ii == d->_attributePoints.size() - 1) { //### || is special case for very last item
                 qreal elementPercent = (percent - prevPercent);
 
                 qreal spc = prevOrigPercent + elementPercent * point.scale;
@@ -759,6 +713,32 @@ void QQuickPath::invalidateSequentialHistory() const
 {
     Q_D(const QQuickPath);
     d->prevBez.isValid = false;
+}
+
+/*! \qmlproperty bool QtQuick::Path::simplify
+    \since 6.6
+
+    When set to true, the path will be simplified. This implies merging all subpaths that intersect,
+    creating a path where there are no self-intersections. Consecutive parallel lines will also be
+    merged. The simplified path is intended to be used with ShapePath.OddEvenFill. Bezier curves may
+    be flattened to line segments due to numerical instability of doing bezier curve intersections.
+*/
+void QQuickPath::setSimplify(bool s)
+{
+    Q_D(QQuickPath);
+    if (d->simplify == s)
+        return;
+
+    d->simplify = s;
+    processPath();
+
+    emit simplifyChanged();
+}
+
+bool QQuickPath::simplify() const
+{
+    Q_D(const QQuickPath);
+    return d->simplify;
 }
 
 /*!
@@ -822,10 +802,10 @@ QPointF QQuickPath::forwardsPointAt(const QPainterPath &path, const qreal &pathL
     //find which set we are in
     qreal prevPercent = 0;
     qreal prevOrigPercent = 0;
-    for (int ii = 0; ii < attributePoints.count(); ++ii) {
+    for (int ii = 0; ii < attributePoints.size(); ++ii) {
         qreal percent = p;
         const AttributePoint &point = attributePoints.at(ii);
-        if (percent < point.percent || ii == attributePoints.count() - 1) {
+        if (percent < point.percent || ii == attributePoints.size() - 1) {
             qreal elementPercent = (percent - prevPercent);
 
             qreal spc = prevOrigPercent + elementPercent * point.scale;
@@ -876,7 +856,7 @@ QPointF QQuickPath::backwardsPointAt(const QPainterPath &path, const qreal &path
     qreal prevLength = currLength - bezLength;
     qreal epc = prevLength / pathLength;
 
-    for (int ii = attributePoints.count() - 1; ii > 0; --ii) {
+    for (int ii = attributePoints.size() - 1; ii > 0; --ii) {
         qreal percent = p;
         const AttributePoint &point = attributePoints.at(ii);
         const AttributePoint &prevPoint = attributePoints.at(ii-1);
@@ -977,7 +957,7 @@ qreal QQuickPath::attributeAt(const QString &name, qreal percent) const
     if (percent < 0 || percent > 1)
         return 0;
 
-    for (int ii = 0; ii < d->_attributePoints.count(); ++ii) {
+    for (int ii = 0; ii < d->_attributePoints.size(); ++ii) {
         const AttributePoint &point = d->_attributePoints.at(ii);
 
         if (point.percent == percent) {
@@ -1760,17 +1740,17 @@ void QQuickPathCatmullRomCurve::addToPath(QPainterPath &path, const QQuickPathDa
     } else {
         prev = path.currentPosition();
         bool prevFarSet = false;
-        if (index == -1 && data.curves.count() > 1) {
-            if (qobject_cast<QQuickPathCatmullRomCurve*>(data.curves.at(data.curves.count()-1))) {
+        if (index == -1 && data.curves.size() > 1) {
+            if (qobject_cast<QQuickPathCatmullRomCurve*>(data.curves.at(data.curves.size()-1))) {
                 //TODO: profile and optimize
                 QPointF pos = prev;
                 QQuickPathData loopData;
                 loopData.endPoint = data.endPoint;
                 loopData.curves = data.curves;
-                for (int i = data.index; i < data.curves.count(); ++i) {
+                for (int i = data.index; i < data.curves.size(); ++i) {
                     loopData.index = i;
                     pos = positionForCurve(loopData, pos);
-                    if (i == data.curves.count()-2)
+                    if (i == data.curves.size()-2)
                         prevFar = pos;
                 }
                 if (pos == QPointF(path.elementAt(0))) {
@@ -1789,7 +1769,7 @@ void QQuickPathCatmullRomCurve::addToPath(QPainterPath &path, const QQuickPathDa
 
     //get next point
     index = data.index + 1;
-    if (index < data.curves.count() && qobject_cast<QQuickPathCatmullRomCurve*>(data.curves.at(index))) {
+    if (index < data.curves.size() && qobject_cast<QQuickPathCatmullRomCurve*>(data.curves.at(index))) {
         QQuickPathData nextData;
         nextData.index = index;
         nextData.endPoint = data.endPoint;
@@ -2236,11 +2216,6 @@ void QQuickPathAngleArc::addToPath(QPainterPath &path, const QQuickPathData &)
     }
     \endqml
     \endtable
-
-    \note Mixing PathSvg with other type of elements is not always supported.
-    For example, when \l Shape is backed by \c{GL_NV_path_rendering}, a
-    ShapePath can contain one or more PathSvg elements, or one or more other
-    type of elements, but not both.
 
     \sa Path, PathLine, PathQuad, PathCubic, PathArc, PathAngleArc, PathCurve
 */
@@ -2703,22 +2678,21 @@ void QQuickPathMultiline::addToPath(QPainterPath &path, const QQuickPathData &)
 */
 
 /*!
-    \qmlproperty enumeration QtQuick::PathText::font.weight
+    \qmlproperty int QtQuick::PathText::font.weight
 
     Sets the font's weight.
 
     The weight can be one of:
-    \list
-    \li Font.Thin
-    \li Font.Light
-    \li Font.ExtraLight
-    \li Font.Normal - the default
-    \li Font.Medium
-    \li Font.DemiBold
-    \li Font.Bold
-    \li Font.ExtraBold
-    \li Font.Black
-    \endlist
+
+    \value Font.Thin        100
+    \value Font.ExtraLight  200
+    \value Font.Light       300
+    \value Font.Normal      400 (default)
+    \value Font.Medium      500
+    \value Font.DemiBold    600
+    \value Font.Bold        700
+    \value Font.ExtraBold   800
+    \value Font.Black       900
 
     \qml
     PathText { text: "Hello"; font.weight: Font.DemiBold }
@@ -2782,13 +2756,12 @@ void QQuickPathMultiline::addToPath(QPainterPath &path, const QQuickPathData &)
 
     Sets the capitalization for the text.
 
-    \list
-    \li Font.MixedCase - This is the normal text rendering option where no capitalization change is applied.
-    \li Font.AllUppercase - This alters the text to be rendered in all uppercase type.
-    \li Font.AllLowercase - This alters the text to be rendered in all lowercase type.
-    \li Font.SmallCaps - This alters the text to be rendered in small-caps type.
-    \li Font.Capitalize - This alters the text to be rendered with the first character of each word as an uppercase character.
-    \endlist
+    \value Font.MixedCase       no capitalization change is applied
+    \value Font.AllUppercase    alters the text to be rendered in all uppercase type
+    \value Font.AllLowercase    alters the text to be rendered in all lowercase type
+    \value Font.SmallCaps       alters the text to be rendered in small-caps type
+    \value Font.Capitalize      alters the text to be rendered with the first character of
+                                each word as an uppercase character
 
     \qml
     PathText { text: "Hello"; font.capitalization: Font.AllLowercase }
@@ -2823,6 +2796,12 @@ void QQuickPathMultiline::addToPath(QPainterPath &path, const QQuickPathData &)
     \endqml
 */
 
+/*!
+    \qmlproperty object QtQuick::PathText::font.features
+    \since 6.6
+
+    \include qquicktext.cpp qml-font-features
+*/
 void QQuickPathText::updatePath() const
 {
     if (!_path.isEmpty())

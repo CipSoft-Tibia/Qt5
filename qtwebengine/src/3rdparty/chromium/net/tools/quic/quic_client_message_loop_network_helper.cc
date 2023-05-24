@@ -1,14 +1,15 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "net/tools/quic/quic_client_message_loop_network_helper.h"
 
+#include <memory>
 #include <utility>
 
 #include "base/logging.h"
 #include "base/run_loop.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "net/base/net_errors.h"
 #include "net/http/http_request_info.h"
 #include "net/http/http_response_info.h"
@@ -21,14 +22,13 @@
 #include "net/quic/quic_chromium_packet_writer.h"
 #include "net/socket/udp_client_socket.h"
 #include "net/spdy/spdy_http_utils.h"
-#include "net/third_party/quiche/src/quic/core/crypto/quic_random.h"
-#include "net/third_party/quiche/src/quic/core/http/spdy_utils.h"
-#include "net/third_party/quiche/src/quic/core/quic_connection.h"
-#include "net/third_party/quiche/src/quic/core/quic_packets.h"
-#include "net/third_party/quiche/src/quic/core/quic_server_id.h"
-#include "net/third_party/quiche/src/quic/platform/api/quic_flags.h"
-#include "net/third_party/quiche/src/quic/platform/api/quic_ptr_util.h"
-#include "net/third_party/quiche/src/spdy/core/spdy_header_block.h"
+#include "net/third_party/quiche/src/quiche/quic/core/crypto/quic_random.h"
+#include "net/third_party/quiche/src/quiche/quic/core/http/spdy_utils.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_connection.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_packets.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_server_id.h"
+#include "net/third_party/quiche/src/quiche/quic/platform/api/quic_flags.h"
+#include "net/third_party/quiche/src/quiche/spdy/core/http2_header_block.h"
 
 using std::string;
 
@@ -37,7 +37,7 @@ namespace net {
 QuicClientMessageLooplNetworkHelper::QuicClientMessageLooplNetworkHelper(
     quic::QuicChromiumClock* clock,
     quic::QuicClientBase* client)
-    : packet_reader_started_(false), clock_(clock), client_(client) {}
+    : clock_(clock), client_(client) {}
 
 QuicClientMessageLooplNetworkHelper::~QuicClientMessageLooplNetworkHelper() =
     default;
@@ -53,7 +53,7 @@ bool QuicClientMessageLooplNetworkHelper::CreateUDPSocketAndBind(
     client_address_ =
         quic::QuicSocketAddress(bind_to_address, client_->local_port());
   } else if (server_address.host().address_family() ==
-             quic::IpAddressFamily::IP_V4) {
+             quiche::IpAddressFamily::IP_V4) {
     client_address_ =
         quic::QuicSocketAddress(quic::QuicIpAddress::Any4(), bind_to_port);
   } else {
@@ -88,11 +88,11 @@ bool QuicClientMessageLooplNetworkHelper::CreateUDPSocketAndBind(
   client_address_ = ToQuicSocketAddress(address);
 
   socket_.swap(socket);
-  packet_reader_.reset(new QuicChromiumPacketReader(
+  packet_reader_ = std::make_unique<QuicChromiumPacketReader>(
       socket_.get(), clock_, this, kQuicYieldAfterPacketsRead,
       quic::QuicTime::Delta::FromMilliseconds(
           kQuicYieldAfterDurationMilliseconds),
-      NetLogWithSource()));
+      NetLogWithSource());
 
   if (socket != nullptr) {
     socket->Close();
@@ -128,14 +128,15 @@ QuicClientMessageLooplNetworkHelper::CreateQuicPacketWriter() {
   packet_reader_started_ = false;
 
   return new QuicChromiumPacketWriter(
-      socket_.get(), base::ThreadTaskRunnerHandle::Get().get());
+      socket_.get(), base::SingleThreadTaskRunner::GetCurrentDefault().get());
 }
 
-void QuicClientMessageLooplNetworkHelper::OnReadError(
+bool QuicClientMessageLooplNetworkHelper::OnReadError(
     int result,
     const DatagramClientSocket* socket) {
   LOG(ERROR) << "QuicSimpleClient read failed: " << ErrorToShortString(result);
   client_->Disconnect();
+  return false;
 }
 
 quic::QuicSocketAddress

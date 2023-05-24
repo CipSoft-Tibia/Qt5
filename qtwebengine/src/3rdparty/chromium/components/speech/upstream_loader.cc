@@ -1,11 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/speech/upstream_loader.h"
 
-#include "base/callback_forward.h"
 #include "components/speech/upstream_loader_client.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
 
 namespace speech {
 
@@ -19,8 +19,11 @@ UpstreamLoader::UpstreamLoader(
   // Attach a chunked upload body.
   mojo::PendingRemote<network::mojom::ChunkedDataPipeGetter> data_remote;
   receiver_set_.Add(this, data_remote.InitWithNewPipeAndPassReceiver());
-  resource_request->request_body = new network::ResourceRequestBody();
-  resource_request->request_body->SetToChunkedDataPipe(std::move(data_remote));
+  resource_request->request_body =
+      base::MakeRefCounted<network::ResourceRequestBody>();
+  resource_request->request_body->SetToChunkedDataPipe(
+      std::move(data_remote),
+      network::ResourceRequestBody::ReadOnlyOnce(false));
   simple_url_loader_ = network::SimpleURLLoader::Create(
       std::move(resource_request), upstream_traffic_annotation);
   simple_url_loader_->DownloadToStringOfUnboundedSizeUntilCrashAndDie(

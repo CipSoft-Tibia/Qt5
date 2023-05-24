@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -77,7 +77,7 @@ void OVRMultiview2::framebufferTextureMultiviewOVR(GLenum target,
   framebuffer_binding->SetAttachmentForBoundFramebuffer(
       target, attachment, textarget, texture, level, base_view_index,
       num_views);
-  scoped.Context()->ApplyStencilTest();
+  scoped.Context()->ApplyDepthAndStencilTest();
 }
 
 bool OVRMultiview2::Supported(WebGLRenderingContextBase* context) {

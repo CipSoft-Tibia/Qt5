@@ -1,38 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qline.h>
-#include <math.h>
+#include <qmath.h>
 
-#ifndef M_2PI
-#define M_2PI 6.28318530717958647692528676655900576
-#endif
+#include <array>
 
 class tst_QLine : public QObject
 {
@@ -53,11 +26,6 @@ private slots:
     void testNormalVector();
     void testNormalVector_data();
 
-#if QT_DEPRECATED_SINCE(5, 14)
-    void testAngle();
-    void testAngle_data();
-#endif
-
     void testAngle2();
     void testAngle2_data();
 
@@ -67,13 +35,10 @@ private slots:
     void testAngleTo_data();
 
     void testSet();
+
+    void toLineF_data();
+    void toLineF();
 };
-
-// Square root of two
-#define SQRT2 1.4142135623731
-
-// Length of unit vector projected to x from 45 degrees
-#define UNITX_45 0.707106781186547
 
 const qreal epsilon = sizeof(qreal) == sizeof(double) ? 1e-8 : 1e-4;
 
@@ -208,9 +173,6 @@ void tst_QLine::testIntersection()
 
     QPointF ip;
     QLineF::IntersectionType itype = a.intersects(b, &ip);
-#if QT_DEPRECATED_SINCE(5, 14)
-    QCOMPARE(a.intersect(b, &ip), itype);
-#endif
 
     QCOMPARE(int(itype), type);
     if (type != QLineF::NoIntersection) {
@@ -236,26 +198,26 @@ void tst_QLine::testLength_data()
     QTest::newRow("[0,1]->|2|") << 0.0 << 0.0 << 0.0 << 1.0 << 1.0 << 2.0 << 0.0 << 2.0;
     QTest::newRow("[-1,0]->|2|") << 0.0 << 0.0 << -1.0 << 0.0 << 1.0 << 2.0 << -2.0 << 0.0;
     QTest::newRow("[0,-1]->|2|") << 0.0 << 0.0 << 0.0 << -1.0 << 1.0 << 2.0 << 0.0 << -2.0;
-    QTest::newRow("[1,1]->|1|") << 0.0 << 0.0 << 1.0 << 1.0
-                             << double(SQRT2) << 1.0 << double(UNITX_45) << double(UNITX_45);
+    QTest::newRow("[1,1]->->|1|") << 0.0 << 0.0 << 1.0 << 1.0
+                             << M_SQRT2 << 1.0 << M_SQRT1_2 << M_SQRT1_2;
     QTest::newRow("[-1,1]->|1|") << 0.0 << 0.0 << -1.0 << 1.0
-                             << double(SQRT2) << 1.0 << double(-UNITX_45) << double(UNITX_45);
+                             << M_SQRT2 << 1.0 << -M_SQRT1_2 << M_SQRT1_2;
     QTest::newRow("[1,-1]->|1|") << 0.0 << 0.0 << 1.0 << -1.0
-                             << double(SQRT2) << 1.0 << double(UNITX_45) << double(-UNITX_45);
+                             << M_SQRT2 << 1.0 << M_SQRT1_2 << -M_SQRT1_2;
     QTest::newRow("[-1,-1]->|1|") << 0.0 << 0.0 << -1.0 << -1.0
-                             << double(SQRT2) << 1.0 << double(-UNITX_45) << double(-UNITX_45);
+                             << M_SQRT2 << 1.0 << -M_SQRT1_2 << -M_SQRT1_2;
     QTest::newRow("[1,0]->|2| (2,2)") << 2.0 << 2.0 << 3.0 << 2.0 << 1.0 << 2.0 << 2.0 << 0.0;
     QTest::newRow("[0,1]->|2| (2,2)") << 2.0 << 2.0 << 2.0 << 3.0 << 1.0 << 2.0 << 0.0 << 2.0;
     QTest::newRow("[-1,0]->|2| (2,2)") << 2.0 << 2.0 << 1.0 << 2.0 << 1.0 << 2.0 << -2.0 << 0.0;
     QTest::newRow("[0,-1]->|2| (2,2)") << 2.0 << 2.0 << 2.0 << 1.0 << 1.0 << 2.0 << 0.0 << -2.0;
     QTest::newRow("[1,1]->|1| (2,2)") << 2.0 << 2.0 << 3.0 << 3.0
-                                   << double(SQRT2) << 1.0 << double(UNITX_45) << double(UNITX_45);
+                                   << M_SQRT2 << 1.0 << M_SQRT1_2 << M_SQRT1_2;
     QTest::newRow("[-1,1]->|1| (2,2)") << 2.0 << 2.0 << 1.0 << 3.0
-                                    << double(SQRT2) << 1.0 << double(-UNITX_45) << double(UNITX_45);
+                                    << M_SQRT2 << 1.0 << -M_SQRT1_2 << M_SQRT1_2;
     QTest::newRow("[1,-1]->|1| (2,2)") << 2.0 << 2.0 << 3.0 << 1.0
-                                    << double(SQRT2) << 1.0 << double(UNITX_45) << double(-UNITX_45);
+                                    << M_SQRT2 << 1.0 << M_SQRT1_2 << -M_SQRT1_2;
     QTest::newRow("[-1,-1]->|1| (2,2)") << 2.0 << 2.0 << 1.0 << 1.0
-                                     << double(SQRT2) << 1.0 << double(-UNITX_45) << double(-UNITX_45);
+                                     << M_SQRT2 << 1.0 << -M_SQRT1_2 << -M_SQRT1_2;
     const double small = qSqrt(std::numeric_limits<qreal>::denorm_min()) / 8;
     QTest::newRow("[small,small]->|2| (-small/2,-small/2)")
         << -(small * .5) << -(small * .5) << (small * .5) << (small * .5)
@@ -287,6 +249,13 @@ void tst_QLine::testLength()
     QCOMPARE(l.length(), qreal(length));
 
     l.setLength(lengthToSet);
+
+    if constexpr (std::numeric_limits<double>::has_denorm != std::denorm_present) {
+        if (qstrcmp(QTest::currentDataTag(), "[tiny,tiny]->|2| (-tiny/2,-tiny/2)") == 0
+            || qstrcmp(QTest::currentDataTag(), "[4e-323,5e-324]|1892|") == 0) {
+            QSKIP("Skipping 'denorm' as this type lacks denormals on this system");
+        }
+    }
     // Scaling tiny values up to big can be imprecise: don't try to test vx, vy
     if (length > 0 && qFuzzyIsNull(length)) {
         QVERIFY(l.length() > lengthToSet / 2 && l.length() < lengthToSet * 2);
@@ -404,57 +373,6 @@ void tst_QLine::testNormalVector()
     QCOMPARE(n.dy(), qreal(nvy));
 }
 
-#if QT_DEPRECATED_SINCE(5, 14)
-void tst_QLine::testAngle_data()
-{
-    QTest::addColumn<double>("xa1");
-    QTest::addColumn<double>("ya1");
-    QTest::addColumn<double>("xa2");
-    QTest::addColumn<double>("ya2");
-    QTest::addColumn<double>("xb1");
-    QTest::addColumn<double>("yb1");
-    QTest::addColumn<double>("xb2");
-    QTest::addColumn<double>("yb2");
-    QTest::addColumn<double>("angle");
-
-    QTest::newRow("parallel") << 1.0 << 1.0 << 3.0 << 4.0
-                           << 5.0 << 6.0 << 7.0 << 9.0
-                           << 0.0;
-    QTest::newRow("[4,4]-[4,0]") << 1.0 << 1.0 << 5.0 << 5.0
-                              << 0.0 << 4.0 << 3.0 << 4.0
-                              << 45.0;
-    QTest::newRow("[4,4]-[-4,0]") << 1.0 << 1.0 << 5.0 << 5.0
-                              << 3.0 << 4.0 << 0.0 << 4.0
-                              << 135.0;
-
-    for (int i=0; i<180; ++i) {
-        QTest::newRow(("angle:" + QByteArray::number(i)).constData())
-            << 0.0 << 0.0 << double(cos(i*M_2PI/360)) << double(sin(i*M_2PI/360))
-            << 0.0 << 0.0 << 1.0 << 0.0
-            << double(i);
-    }
-}
-
-void tst_QLine::testAngle()
-{
-    QFETCH(double, xa1);
-    QFETCH(double, ya1);
-    QFETCH(double, xa2);
-    QFETCH(double, ya2);
-    QFETCH(double, xb1);
-    QFETCH(double, yb1);
-    QFETCH(double, xb2);
-    QFETCH(double, yb2);
-    QFETCH(double, angle);
-
-    QLineF a(xa1, ya1, xa2, ya2);
-    QLineF b(xb1, yb1, xb2, yb2);
-
-    double resultAngle = a.angle(b);
-    QCOMPARE(qRound(resultAngle), qRound(angle));
-}
-#endif
-
 void tst_QLine::testAngle2_data()
 {
     QTest::addColumn<qreal>("x1");
@@ -563,6 +481,36 @@ void tst_QLine::testAngleTo_data()
             << qreal(i);
     }
 }
+
+void tst_QLine::toLineF_data()
+{
+    QTest::addColumn<QLine>("input");
+    QTest::addColumn<QLineF>("result");
+
+    auto row = [](int x1, int y1, int x2, int y2) {
+        QTest::addRow("((%d, %d)->(%d, %d))", x1, y1, x2, y2)
+                << QLine(x1, y1, x2, y2) << QLineF(x1, y1, x2, y2);
+    };
+    constexpr std::array samples = {-1, 0, 1};
+    for (int x1 : samples) {
+        for (int y1 : samples) {
+            for (int x2 : samples) {
+                for (int y2 : samples) {
+                    row(x1, y1, x2, y2);
+                }
+            }
+        }
+    }
+}
+
+void tst_QLine::toLineF()
+{
+    QFETCH(const QLine, input);
+    QFETCH(const QLineF, result);
+
+    QCOMPARE(input.toLineF(), result);
+}
+
 
 QTEST_MAIN(tst_QLine)
 #include "tst_qline.moc"

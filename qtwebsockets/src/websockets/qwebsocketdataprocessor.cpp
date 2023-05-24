@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebSockets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 /*!
     \class QWebSocketDataProcessor
     The class QWebSocketDataProcessor is responsible for reading, validating and
@@ -60,9 +24,9 @@
 #include "qwebsocketframe_p.h"
 
 #include <QtCore/QtEndian>
-#include <QtCore/QTextCodec>
-#include <QtCore/QTextDecoder>
 #include <QtCore/QDebug>
+#include <QtCore/QIODevice>
+#include <QtCore/QStringDecoder>
 
 #include <limits.h>
 
@@ -83,8 +47,8 @@ QWebSocketDataProcessor::QWebSocketDataProcessor(QObject *parent) :
     m_binaryMessage(),
     m_textMessage(),
     m_payloadLength(0),
-    m_pConverterState(nullptr),
-    m_pTextCodec(QTextCodec::codecForName("UTF-8")),
+    m_decoder(QStringDecoder(QStringDecoder::Utf8, QStringDecoder::Flag::Stateless
+        | QStringDecoder::Flag::ConvertInvalidToNull)),
     m_waitTimer(new QTimer(this))
 {
     clear();
@@ -100,10 +64,6 @@ QWebSocketDataProcessor::QWebSocketDataProcessor(QObject *parent) :
 QWebSocketDataProcessor::~QWebSocketDataProcessor()
 {
     clear();
-    if (m_pConverterState) {
-        delete m_pConverterState;
-        m_pConverterState = nullptr;
-    }
 }
 
 void QWebSocketDataProcessor::setMaxAllowedFrameSize(quint64 maxAllowedFrameSize)
@@ -192,9 +152,9 @@ bool QWebSocketDataProcessor::process(QIODevice *pIoDevice)
                     m_isFragmented = !frame.isFinalFrame();
                 }
                 quint64 messageLength = m_opCode == QWebSocketProtocol::OpCodeText
-                        ? quint64(m_textMessage.length())
-                        : quint64(m_binaryMessage.length());
-                if (Q_UNLIKELY((messageLength + quint64(frame.payload().length())) >
+                        ? quint64(m_textMessage.size())
+                        : quint64(m_binaryMessage.size());
+                if (Q_UNLIKELY((messageLength + quint64(frame.payload().size())) >
                                maxAllowedMessageSize())) {
                     clear();
                     Q_EMIT errorEncountered(QWebSocketProtocol::CloseCodeTooMuchData,
@@ -204,12 +164,8 @@ bool QWebSocketDataProcessor::process(QIODevice *pIoDevice)
 
                 bool isFinalFrame = frame.isFinalFrame();
                 if (m_opCode == QWebSocketProtocol::OpCodeText) {
-                    QString frameTxt = m_pTextCodec->toUnicode(frame.payload().constData(),
-                                                               frame.payload().size(),
-                                                               m_pConverterState);
-                    bool failed = (m_pConverterState->invalidChars != 0)
-                            || (frame.isFinalFrame() && (m_pConverterState->remainingChars != 0));
-                    if (Q_UNLIKELY(failed)) {
+                    QString frameTxt = m_decoder(frame.payload());
+                    if (Q_UNLIKELY(m_decoder.hasError())) {
                         clear();
                         Q_EMIT errorEncountered(QWebSocketProtocol::CloseCodeWrongDatatype,
                                                 tr("Invalid UTF-8 code encountered."));
@@ -263,16 +219,7 @@ void QWebSocketDataProcessor::clear()
     m_binaryMessage.clear();
     m_textMessage.clear();
     m_payloadLength = 0;
-    frame.clear();
-    if (m_pConverterState) {
-        if ((m_pConverterState->remainingChars != 0) || (m_pConverterState->invalidChars != 0)) {
-            delete m_pConverterState;
-            m_pConverterState = nullptr;
-        }
-    }
-    if (!m_pConverterState)
-        m_pConverterState = new QTextCodec::ConverterState(QTextCodec::ConvertInvalidToNull |
-                                                           QTextCodec::IgnoreHeader);
+    m_decoder.resetState();
     frame.clear();
 }
 
@@ -309,11 +256,10 @@ bool QWebSocketDataProcessor::processControlFrame(const QWebSocketFrame &frame)
                 closeReason = tr("Invalid close code %1 detected.").arg(closeCode);
             } else {
                 if (payload.size() > 2) {
-                    QTextCodec *tc = QTextCodec::codecForName(QByteArrayLiteral("UTF-8"));
-                    QTextCodec::ConverterState state(QTextCodec::ConvertInvalidToNull);
-                    closeReason = tc->toUnicode(payload.constData() + 2, payload.size() - 2, &state);
-                    const bool failed = (state.invalidChars != 0) || (state.remainingChars != 0);
-                    if (Q_UNLIKELY(failed)) {
+                    auto toUtf16 = QStringDecoder(QStringDecoder::Utf8,
+                        QStringDecoder::Flag::Stateless | QStringDecoder::Flag::ConvertInvalidToNull);
+                    closeReason = toUtf16(QByteArrayView(payload).sliced(2));
+                    if (Q_UNLIKELY(toUtf16.hasError())) {
                         closeCode = QWebSocketProtocol::CloseCodeWrongDatatype;
                         closeReason = tr("Invalid UTF-8 code encountered.");
                     }

@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,8 @@
 namespace {
 
 const CXFA_Node::PropertyData kArcPropertyData[] = {
-    {XFA_Element::Edge, 1, 0},
-    {XFA_Element::Fill, 1, 0},
+    {XFA_Element::Edge, 1, {}},
+    {XFA_Element::Fill, 1, {}},
 };
 
 const CXFA_Node::AttributeData kArcAttributeData[] = {
@@ -29,10 +29,17 @@ const CXFA_Node::AttributeData kArcAttributeData[] = {
 
 }  // namespace
 
+// static
+CXFA_Arc* CXFA_Arc::FromNode(CXFA_Node* pNode) {
+  return pNode && pNode->GetElementType() == XFA_Element::Arc
+             ? static_cast<CXFA_Arc*>(pNode)
+             : nullptr;
+}
+
 CXFA_Arc::CXFA_Arc(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Box(doc,
                packet,
-               (XFA_XDPPACKET_Template | XFA_XDPPACKET_Form),
+               {XFA_XDPPACKET::kTemplate, XFA_XDPPACKET::kForm},
                XFA_ObjectType::Node,
                XFA_Element::Arc,
                kArcPropertyData,

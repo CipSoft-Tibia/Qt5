@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLLISTCOMPOSITOR_P_H
 #define QQMLLISTCOMPOSITOR_P_H
@@ -116,10 +80,8 @@ public:
     class Q_AUTOTEST_EXPORT iterator
     {
     public:
-        inline iterator();
-        inline iterator(const iterator &it) = default;
+        inline iterator() = default;
         inline iterator(Range *range, int offset, Group group, int groupCount);
-        inline ~iterator() {}
 
         bool operator ==(const iterator &it) const { return range == it.range && offset == it.offset; }
         bool operator !=(const iterator &it) const { return range != it.range || offset != it.offset; }
@@ -132,7 +94,6 @@ public:
         Range *operator ->() { return range; }
         const Range *operator ->() const { return range; }
 
-        iterator &operator=(const iterator &) = default;
         iterator &operator +=(int difference);
 
         template<typename T> T *list() const { return static_cast<T *>(range->list); }
@@ -149,14 +110,17 @@ public:
         Range *range = nullptr;
         int offset = 0;
         Group group = Default;
-        int groupFlag;
+        int groupFlag = 0;
         int groupCount = 0;
-        union {
-            struct {
-                int cacheIndex;
-            };
-            int index[MaximumGroupCount];
-        };
+        int index[MaximumGroupCount] = { 0 };
+
+        int cacheIndex() const {
+            return index[Cache];
+        }
+
+        void setCacheIndex(int cacheIndex) {
+            index[Cache] = cacheIndex;
+        }
     };
 
     class Q_AUTOTEST_EXPORT insert_iterator : public iterator
@@ -172,17 +136,20 @@ public:
 
     struct Change
     {
-        inline Change() {}
+        inline Change() = default;
         inline Change(const iterator &it, int count, uint flags, int moveId = -1);
-        int count;
-        uint flags;
-        int moveId;
-        union {
-            struct {
-                int cacheIndex;
-            };
-            int index[MaximumGroupCount];
-        };
+        int count = 0;
+        uint flags = 0;
+        int moveId = 0;
+        int index[MaximumGroupCount] = { 0 };
+
+        int cacheIndex() const {
+            return index[Cache];
+        }
+
+        void setCacheIndex(int cacheIndex) {
+            index[Cache] = cacheIndex;
+        }
 
         inline bool isMove() const { return moveId >= 0; }
         inline bool inCache() const { return flags & CacheFlag; }
@@ -309,8 +276,10 @@ Q_DECLARE_TYPEINFO(QQmlListCompositor::Change, Q_PRIMITIVE_TYPE);
 Q_DECLARE_TYPEINFO(QQmlListCompositor::Remove, Q_PRIMITIVE_TYPE);
 Q_DECLARE_TYPEINFO(QQmlListCompositor::Insert, Q_PRIMITIVE_TYPE);
 
-inline QQmlListCompositor::iterator::iterator() {}
-
+QT_WARNING_PUSH
+// GCC isn't wrong, as groupCount is public in iterator, but we tried Q_ASSUME(),
+// right in front of the loops, and it didn't help, so we disable the warning:
+QT_WARNING_DISABLE_GCC("-Warray-bounds")
 inline QQmlListCompositor::iterator::iterator(
         Range *range, int offset, Group group, int groupCount)
     : range(range)
@@ -338,6 +307,7 @@ inline void QQmlListCompositor::iterator::decrementIndexes(int difference, uint 
             index[i] -= difference;
     }
 }
+QT_WARNING_POP // -Warray-bounds
 
 inline QQmlListCompositor::insert_iterator::insert_iterator(
         Range *range, int offset, Group group, int groupCount)

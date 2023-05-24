@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,9 +14,6 @@ ExecutionContextClient::ExecutionContextClient(
     ExecutionContext* execution_context)
     : execution_context_(execution_context) {}
 
-ExecutionContextClient::ExecutionContextClient(LocalFrame* frame)
-    : execution_context_(frame ? frame->DomWindow() : nullptr) {}
-
 ExecutionContext* ExecutionContextClient::GetExecutionContext() const {
   return execution_context_ && !execution_context_->IsContextDestroyed()
              ? execution_context_.Get()
@@ -25,11 +22,6 @@ ExecutionContext* ExecutionContextClient::GetExecutionContext() const {
 
 LocalDOMWindow* ExecutionContextClient::DomWindow() const {
   return DynamicTo<LocalDOMWindow>(GetExecutionContext());
-}
-
-LocalFrame* ExecutionContextClient::GetFrame() const {
-  auto* window = DomWindow();
-  return window ? window->GetFrame() : nullptr;
 }
 
 void ExecutionContextClient::Trace(Visitor* visitor) const {
@@ -53,9 +45,8 @@ void ExecutionContextLifecycleObserver::SetExecutionContext(
   SetContextLifecycleNotifier(execution_context);
 }
 
-LocalFrame* ExecutionContextLifecycleObserver::GetFrame() const {
-  auto* window = DynamicTo<LocalDOMWindow>(GetExecutionContext());
-  return window ? window->GetFrame() : nullptr;
+LocalDOMWindow* ExecutionContextLifecycleObserver::DomWindow() const {
+  return DynamicTo<LocalDOMWindow>(GetExecutionContext());
 }
 
 void ExecutionContextLifecycleObserver::Trace(Visitor* visitor) const {

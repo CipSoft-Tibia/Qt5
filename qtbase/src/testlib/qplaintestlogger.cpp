@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtTest/private/qtestresult_p.h>
 #include <QtTest/qtestassert.h>
@@ -46,17 +10,11 @@
 
 #include <QtCore/private/qlogging_p.h>
 
-#include <stdarg.h>
+#include <array>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef min // windows.h without NOMINMAX is included by the benchmark headers.
-#  undef min
-#endif
-#ifdef max
-#  undef max
-#endif
 
 #include <QtCore/QByteArray>
 #include <QtCore/qmath.h>
@@ -72,11 +30,84 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
+namespace {
+static const char multiplePrefixes[] = "\0kMGTPE"; // kilo, mega, giga, tera, peta, exa
+static const char submultiplePrefixes[] = "afpnum"; // atto, femto, pico, nano, micro, milli
+
+template <int N> struct FixedBufString
+{
+    static constexpr size_t MaxSize = N;
+    size_t used = 0;
+    std::array<char, N + 2> buf;    // for the newline and terminating null
+    FixedBufString()
+    {
+        clear();
+    }
+    void clear()
+    {
+        used = 0;
+        buf[0] = '\0';
+    }
+
+    operator const char *() const
+    {
+        return buf.data();
+    }
+
+    void append(const char *text)
+    {
+        size_t len = qMin(strlen(text), MaxSize - used);
+        memcpy(buf.data() + used, text, len);
+        used += len;
+        buf[used] = '\0';
+    }
+
+    template <typename... Args> void appendf(const char *format, Args &&... args)
+    {
+        // vsnprintf includes the terminating null
+        used += qsnprintf(buf.data() + used, MaxSize - used + 1, format,
+                          std::forward<Args>(args)...);
+    }
+
+    template <int Power = 1000> void appendScaled(qreal value, const char *unit)
+    {
+        char prefix[2] = {};
+        qreal v = qAbs(value);
+        qint64 ratio;
+        if (v < 1 && Power == 1000) {
+            const char *prefixes = submultiplePrefixes;
+            ratio = qreal(std::atto::num) / std::atto::den;
+            while (value * ratio > 1000 && *prefixes) {
+                ++prefixes;
+                ratio *= 1000;
+            }
+            prefix[0] = *prefixes;
+        } else {
+            const char *prefixes = multiplePrefixes;
+            ratio = 1;
+            while (value > 1000 * ratio) {  // yes, even for binary
+                ++prefixes;
+                ratio *= Power;
+            }
+            prefix[0] = *prefixes;
+        }
+
+        // adjust the value by the ratio
+        value /= ratio;
+        appendf(", %.3g %s%s", value, prefix, unit);
+    }
+};
+} // unnamed namespace
+
 namespace QTest {
 
-    static const char *incidentType2String(QAbstractTestLogger::IncidentTypes type)
+    static const char *ptIncidentType2String(QAbstractTestLogger::IncidentTypes type)
     {
         switch (type) {
+        case QAbstractTestLogger::Skip:
+            return "SKIP   ";
         case QAbstractTestLogger::Pass:
             return "PASS   ";
         case QAbstractTestLogger::XFail:
@@ -94,7 +125,7 @@ namespace QTest {
         case QAbstractTestLogger::BlacklistedXFail:
             return "BXFAIL ";
         }
-        return "??????";
+        Q_UNREACHABLE_RETURN(nullptr);
     }
 
     static const char *benchmarkResult2String()
@@ -102,27 +133,25 @@ namespace QTest {
         return "RESULT ";
     }
 
-    static const char *messageType2String(QAbstractTestLogger::MessageTypes type)
+    static const char *ptMessageType2String(QAbstractTestLogger::MessageTypes type)
     {
         switch (type) {
-        case QAbstractTestLogger::Skip:
-            return "SKIP   ";
-        case QAbstractTestLogger::Warn:
-            return "WARNING";
-        case QAbstractTestLogger::QWarning:
-            return "QWARN  ";
         case QAbstractTestLogger::QDebug:
             return "QDEBUG ";
         case QAbstractTestLogger::QInfo:
             return "QINFO  ";
-        case QAbstractTestLogger::QSystem:
-            return "QSYSTEM";
+        case QAbstractTestLogger::QWarning:
+            return "QWARN  ";
+        case QAbstractTestLogger::QCritical:
+            return "QCRITICAL";
         case QAbstractTestLogger::QFatal:
             return "QFATAL ";
         case QAbstractTestLogger::Info:
             return "INFO   ";
+        case QAbstractTestLogger::Warn:
+            return "WARNING";
         }
-        return "??????";
+        Q_UNREACHABLE_RETURN(nullptr);
     }
 
     template <typename T>
@@ -143,54 +172,53 @@ namespace QTest {
     }
 
     // Pretty-prints a benchmark result using the given number of digits.
-    template <typename T> QString formatResult(T number, int significantDigits)
+    template <typename T> QByteArray formatResult(T number, int significantDigits)
     {
         if (number < T(0))
-            return QLatin1String("NAN");
+            return "NAN";
         if (number == T(0))
-            return QLatin1String("0");
+            return "0";
 
-        QString beforeDecimalPoint = QString::number(qint64(number), 'f', 0);
-        QString afterDecimalPoint = QString::number(number, 'f', 20);
-        afterDecimalPoint.remove(0, beforeDecimalPoint.count() + 1);
+        QByteArray beforeDecimalPoint = QByteArray::number(qint64(number), 'f', 0);
+        QByteArray afterDecimalPoint = QByteArray::number(number, 'f', 20);
+        afterDecimalPoint.remove(0, beforeDecimalPoint.size() + 1);
 
-        int beforeUse = qMin(beforeDecimalPoint.count(), significantDigits);
-        int beforeRemove = beforeDecimalPoint.count() - beforeUse;
+        int beforeUse = qMin(beforeDecimalPoint.size(), significantDigits);
+        int beforeRemove = beforeDecimalPoint.size() - beforeUse;
 
         // Replace insignificant digits before the decimal point with zeros.
         beforeDecimalPoint.chop(beforeRemove);
         for (int i = 0; i < beforeRemove; ++i) {
-            beforeDecimalPoint.append(QLatin1Char('0'));
+            beforeDecimalPoint.append(u'0');
         }
 
         int afterUse = significantDigits - beforeUse;
 
         // leading zeroes after the decimal point does not count towards the digit use.
-        if (beforeDecimalPoint == QLatin1String("0") && afterDecimalPoint.isEmpty() == false) {
+        if (beforeDecimalPoint == "0" && !afterDecimalPoint.isEmpty()) {
             ++afterUse;
 
             int i = 0;
-            while (i < afterDecimalPoint.count() && afterDecimalPoint.at(i) == QLatin1Char('0')) {
+            while (i < afterDecimalPoint.size() && afterDecimalPoint.at(i) == '0')
                 ++i;
-            }
 
             afterUse += i;
         }
 
-        int afterRemove = afterDecimalPoint.count() - afterUse;
+        int afterRemove = afterDecimalPoint.size() - afterUse;
         afterDecimalPoint.chop(afterRemove);
 
-        QChar separator = QLatin1Char(',');
-        QChar decimalPoint = QLatin1Char('.');
+        char separator = ',';
+        char decimalPoint = '.';
 
         // insert thousands separators
-        int length = beforeDecimalPoint.length();
-        for (int i = beforeDecimalPoint.length() -1; i >= 1; --i) {
+        int length = beforeDecimalPoint.size();
+        for (int i = beforeDecimalPoint.size() -1; i >= 1; --i) {
             if ((length - i) % 3 == 0)
                 beforeDecimalPoint.insert(i, separator);
         }
 
-        QString print;
+        QByteArray print;
         print = beforeDecimalPoint;
         if (afterUse > 0)
             print.append(decimalPoint);
@@ -200,16 +228,16 @@ namespace QTest {
 
         return print;
     }
-
-    template <typename T>
-    int formatResult(char * buffer, int bufferSize, T number, int significantDigits)
-    {
-        QString result = formatResult(number, significantDigits);
-        int size = result.count();
-        qstrncpy(buffer, std::move(result).toLatin1().constData(), bufferSize);
-        return size;
-    }
 }
+
+/*! \internal
+    \class QPlainTestLogger
+    \inmodule QtTest
+
+    QPlainTestLogger implements basic logging of test results.
+
+    The format is Qt-specific and aims to be easy to read.
+*/
 
 void QPlainTestLogger::outputMessage(const char *str)
 {
@@ -225,28 +253,39 @@ void QPlainTestLogger::outputMessage(const char *str)
     outputString(str);
 }
 
-void QPlainTestLogger::printMessage(const char *type, const char *msg, const char *file, int line)
+void QPlainTestLogger::printMessage(MessageSource source, const char *type, const char *msg,
+                                    const char *file, int line)
 {
     QTEST_ASSERT(type);
     QTEST_ASSERT(msg);
 
     QTestCharBuffer messagePrefix;
 
-    QTestCharBuffer failureLocation;
-    if (file) {
+    QTestCharBuffer messageLocation;
 #ifdef Q_OS_WIN
-#define FAILURE_LOCATION_STR "\n%s(%d) : failure location"
+    constexpr const char *INCIDENT_LOCATION_STR = "\n%s(%d) : failure location";
+    constexpr const char *OTHER_LOCATION_STR = "\n%s(%d) : message location";
 #else
-#define FAILURE_LOCATION_STR "\n   Loc: [%s(%d)]"
+    constexpr const char *INCIDENT_LOCATION_STR = "\n   Loc: [%s(%d)]";
+    constexpr const char *OTHER_LOCATION_STR = INCIDENT_LOCATION_STR;
 #endif
-        QTest::qt_asprintf(&failureLocation, FAILURE_LOCATION_STR, file, line);
+
+    if (file) {
+        switch (source) {
+        case MessageSource::Incident:
+            QTest::qt_asprintf(&messageLocation, INCIDENT_LOCATION_STR, file, line);
+            break;
+        case MessageSource::Other:
+            QTest::qt_asprintf(&messageLocation, OTHER_LOCATION_STR, file, line);
+            break;
+        }
     }
 
     const char *msgFiller = msg[0] ? " " : "";
     QTestCharBuffer testIdentifier;
     QTestPrivate::generateTestIdentifier(&testIdentifier);
     QTest::qt_asprintf(&messagePrefix, "%s: %s%s%s%s\n",
-                       type, testIdentifier.data(), msgFiller, msg, failureLocation.data());
+                       type, testIdentifier.data(), msgFiller, msg, messageLocation.data());
 
     // In colored mode, printf above stripped our nonprintable control characters.
     // Put them back.
@@ -255,60 +294,110 @@ void QPlainTestLogger::printMessage(const char *type, const char *msg, const cha
     outputMessage(messagePrefix.data());
 }
 
-void QPlainTestLogger::printBenchmarkResult(const QBenchmarkResult &result)
+void QPlainTestLogger::printBenchmarkResultsHeader(const QBenchmarkResult &result)
 {
-    const char *bmtag = QTest::benchmarkResult2String();
+    FixedBufString<1022> buf;
+    buf.appendf("%s: %s::%s", QTest::benchmarkResult2String(),
+                QTestResult::currentTestObjectName(), result.context.slotName.toLatin1().data());
 
-    char buf1[1024];
-    qsnprintf(
-        buf1, sizeof(buf1), "%s: %s::%s",
-        bmtag,
-        QTestResult::currentTestObjectName(),
-        result.context.slotName.toLatin1().data());
-
-    char bufTag[1024];
-    bufTag[0] = 0;
-    QByteArray tag = result.context.tag.toLocal8Bit();
-    if (tag.isEmpty() == false) {
-        qsnprintf(bufTag, sizeof(bufTag), ":\"%s\"", tag.data());
-    }
-
-
-    char fillFormat[8];
-    int fillLength = 5;
-    qsnprintf(fillFormat, sizeof(fillFormat), ":\n%%%ds", fillLength);
-    char fill[1024];
-    qsnprintf(fill, sizeof(fill), fillFormat, "");
-
-    const char * unitText = QTest::benchmarkMetricUnit(result.metric);
-
-    qreal valuePerIteration = qreal(result.value) / qreal(result.iterations);
-    char resultBuffer[100] = "";
-    QTest::formatResult(resultBuffer, 100, valuePerIteration, QTest::countSignificantDigits(result.value));
-
-    char buf2[1024];
-    qsnprintf(buf2, sizeof(buf2), "%s %s", resultBuffer, unitText);
-
-    char buf2_[1024];
-    QByteArray iterationText = " per iteration";
-    Q_ASSERT(result.iterations > 0);
-    qsnprintf(buf2_, sizeof(buf2_), "%s", iterationText.data());
-
-    char buf3[1024];
-    Q_ASSERT(result.iterations > 0);
-    QTest::formatResult(resultBuffer, 100, result.value, QTest::countSignificantDigits(result.value));
-    qsnprintf(buf3, sizeof(buf3), " (total: %s, iterations: %d)", resultBuffer, result.iterations);
-
-    char buf[1024];
-
-    if (result.setByMacro) {
-        qsnprintf(buf, sizeof(buf), "%s%s%s%s%s%s\n", buf1, bufTag, fill, buf2, buf2_, buf3);
-    } else {
-        qsnprintf(buf, sizeof(buf), "%s%s%s%s\n", buf1, bufTag, fill, buf2);
-    }
-
-    memcpy(buf, bmtag, strlen(bmtag));
+    if (QByteArray tag = result.context.tag.toLocal8Bit(); !tag.isEmpty())
+        buf.appendf(":\"%s\":\n", tag.data());
+    else
+        buf.append(":\n");
     outputMessage(buf);
+}
+
+void QPlainTestLogger::printBenchmarkResults(const QList<QBenchmarkResult> &results)
+{
+    using namespace std::chrono;
+    FixedBufString<1022> buf;
+    auto findResultFor = [&results](QTest::QBenchmarkMetric metric) -> std::optional<qreal> {
+        for (const QBenchmarkResult &result : results) {
+            if (result.measurement.metric == metric)
+                return result.measurement.value;
+        }
+        return std::nullopt;
+    };
+
+    // we need the execution time quite often, so find it first
+    qreal executionTime = 0;
+    if (auto ns = findResultFor(QTest::WalltimeNanoseconds))
+        executionTime = *ns / (1000 * 1000 * 1000);
+    else if (auto ms = findResultFor(QTest::WalltimeMilliseconds))
+        executionTime = *ms / 1000;
+
+    for (const QBenchmarkResult &result : results) {
+        buf.clear();
+
+        const char * unitText = QTest::benchmarkMetricUnit(result.measurement.metric);
+        int significantDigits = QTest::countSignificantDigits(result.measurement.value);
+        qreal valuePerIteration = qreal(result.measurement.value) / qreal(result.iterations);
+        buf.appendf("     %s %s%s", QTest::formatResult(valuePerIteration, significantDigits).constData(),
+                    unitText, result.setByMacro ? " per iteration" : "");
+
+        switch (result.measurement.metric) {
+        case QTest::BitsPerSecond:
+            // for bits/s, we'll use powers of 10 (1 Mbit/s = 1000 kbit/s = 1000000 bit/s)
+            buf.appendScaled<1000>(result.measurement.value, "bit/s");
+            break;
+        case QTest::BytesPerSecond:
+            // for B/s, we'll use powers of 2 (1 MB/s = 1024 kB/s = 1048576 B/s)
+            buf.appendScaled<1024>(result.measurement.value, "B/s");
+            break;
+
+        case QTest::CPUCycles:
+        case QTest::RefCPUCycles:
+            if (!qIsNull(executionTime))
+                buf.appendScaled(result.measurement.value / executionTime, "Hz");
+            break;
+
+        case QTest::Instructions:
+            if (auto cycles = findResultFor(QTest::CPUCycles)) {
+                buf.appendf(", %.3f instr/cycle", result.measurement.value / *cycles);
+                break;
+            }
+            Q_FALLTHROUGH();
+
+        case QTest::InstructionReads:
+        case QTest::Events:
+        case QTest::BytesAllocated:
+        case QTest::CPUMigrations:
+        case QTest::BusCycles:
+        case QTest::StalledCycles:
+        case QTest::BranchInstructions:
+        case QTest::BranchMisses:
+        case QTest::CacheReferences:
+        case QTest::CacheReads:
+        case QTest::CacheWrites:
+        case QTest::CachePrefetches:
+        case QTest::CacheMisses:
+        case QTest::CacheReadMisses:
+        case QTest::CacheWriteMisses:
+        case QTest::CachePrefetchMisses:
+        case QTest::ContextSwitches:
+        case QTest::PageFaults:
+        case QTest::MinorPageFaults:
+        case QTest::MajorPageFaults:
+        case QTest::AlignmentFaults:
+        case QTest::EmulationFaults:
+            if (!qIsNull(executionTime))
+                buf.appendScaled(result.measurement.value / executionTime, "/sec");
+            break;
+
+        case QTest::FramesPerSecond:
+        case QTest::CPUTicks:
+        case QTest::WalltimeMilliseconds:
+        case QTest::WalltimeNanoseconds:
+            break;  // no additional information
+        }
+
+        Q_ASSERT(result.iterations > 0);
+        buf.appendf(" (total: %s, iterations: %d)\n",
+                    QTest::formatResult(result.measurement.value, significantDigits).constData(),
+                    result.iterations);
+
+        outputMessage(buf);
+    }
 }
 
 QPlainTestLogger::QPlainTestLogger(const char *filename)
@@ -360,7 +449,7 @@ void QPlainTestLogger::stopLogging()
 void QPlainTestLogger::enterTestFunction(const char * /*function*/)
 {
     if (QTestLog::verboseLevel() >= 1)
-        printMessage(QTest::messageType2String(Info), "entering");
+        printMessage(MessageSource::Other, QTest::ptMessageType2String(Info), "entering");
 }
 
 void QPlainTestLogger::leaveTestFunction()
@@ -370,21 +459,22 @@ void QPlainTestLogger::leaveTestFunction()
 void QPlainTestLogger::addIncident(IncidentTypes type, const char *description,
                                    const char *file, int line)
 {
-    // suppress PASS and XFAIL in silent mode
-    if ((type == QAbstractTestLogger::Pass || type == QAbstractTestLogger::XFail)
+    // suppress B?PASS and B?XFAIL in silent mode
+    if ((type == Pass || type == BlacklistedPass || type == XFail || type == BlacklistedXFail)
         && QTestLog::verboseLevel() < 0)
         return;
 
-    printMessage(QTest::incidentType2String(type), description, file, line);
+    printMessage(MessageSource::Incident, QTest::ptIncidentType2String(type), description, file, line);
 }
 
-void QPlainTestLogger::addBenchmarkResult(const QBenchmarkResult &result)
+void QPlainTestLogger::addBenchmarkResults(const QList<QBenchmarkResult> &results)
 {
     // suppress benchmark results in silent mode
-    if (QTestLog::verboseLevel() < 0)
+    if (QTestLog::verboseLevel() < 0 || results.isEmpty())
         return;
 
-    printBenchmarkResult(result);
+    printBenchmarkResultsHeader(results.first());
+    printBenchmarkResults(results);
 }
 
 void QPlainTestLogger::addMessage(QtMsgType type, const QMessageLogContext &context, const QString &message)
@@ -396,10 +486,10 @@ void QPlainTestLogger::addMessage(MessageTypes type, const QString &message,
                                   const char *file, int line)
 {
     // suppress non-fatal messages in silent mode
-    if (type != QAbstractTestLogger::QFatal && QTestLog::verboseLevel() < 0)
+    if (type != QFatal && QTestLog::verboseLevel() < 0)
         return;
 
-    printMessage(QTest::messageType2String(type), qPrintable(message), file, line);
+    printMessage(MessageSource::Other, QTest::ptMessageType2String(type), qPrintable(message), file, line);
 }
 
 QT_END_NAMESPACE

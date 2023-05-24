@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Alex Trotsenko <alex1973tr@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Alex Trotsenko <alex1973tr@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QDebug>
-#include <QEventLoop>
+#include <QTestEventLoop>
 #include <QByteArray>
 #include <QString>
 #include <QHostAddress>
@@ -152,12 +127,13 @@ void tst_QSctpSocket::bind_data()
     // these ranges are guaranteed to be reserved for 'documentation purposes',
     // and thus, should be unused in the real world. Not that I'm assuming the
     // world is full of competent administrators, or anything.
-    QStringList knownBad;
-    knownBad << "198.51.100.1";
-    knownBad << "2001:0DB8::1";
-    foreach (const QString &badAddress, knownBad) {
+    const QString knownBad[] = {
+        "198.51.100.1",
+        "2001:0DB8::1",
+    };
+
+    for (const QString &badAddress : knownBad)
         QTest::newRow(badAddress.toLatin1().constData()) << badAddress << false << QString();
-    }
 }
 
 // Testing bind function

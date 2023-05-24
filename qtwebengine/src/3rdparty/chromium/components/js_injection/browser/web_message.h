@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,8 @@
 
 #include <vector>
 
-#include "base/strings/string16.h"
 #include "third_party/blink/public/common/messaging/message_port_descriptor.h"
+#include "third_party/blink/public/common/messaging/string_message_codec.h"
 
 namespace js_injection {
 
@@ -17,7 +17,7 @@ struct WebMessage {
   WebMessage();
   ~WebMessage();
 
-  base::string16 message;
+  blink::WebMessagePayload message;
   std::vector<blink::MessagePortDescriptor> ports;
 };
 

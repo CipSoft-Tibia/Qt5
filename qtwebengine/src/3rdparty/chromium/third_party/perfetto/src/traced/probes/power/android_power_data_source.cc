@@ -28,9 +28,12 @@
 #include "perfetto/tracing/core/data_source_config.h"
 #include "src/android_internal/health_hal.h"
 #include "src/android_internal/lazy_library_loader.h"
-#include "src/android_internal/power_stats_hal.h"
+#include "src/android_internal/power_stats.h"
 
+#include "protos/perfetto/common/android_energy_consumer_descriptor.pbzero.h"
 #include "protos/perfetto/config/power/android_power_config.pbzero.h"
+#include "protos/perfetto/trace/power/android_energy_estimation_breakdown.pbzero.h"
+#include "protos/perfetto/trace/power/android_entity_state_residency.pbzero.h"
 #include "protos/perfetto/trace/power/battery_counters.pbzero.h"
 #include "protos/perfetto/trace/power/power_rails.pbzero.h"
 #include "protos/perfetto/trace/trace_packet.pbzero.h"
@@ -39,13 +42,17 @@ namespace perfetto {
 
 namespace {
 constexpr uint32_t kMinPollIntervalMs = 100;
+constexpr uint32_t kDefaultPollIntervalMs = 1000;
 constexpr size_t kMaxNumRails = 32;
+constexpr size_t kMaxNumEnergyConsumer = 32;
+constexpr size_t kMaxNumPowerEntities = 1024;
 }  // namespace
 
 // static
 const ProbesDataSource::Descriptor AndroidPowerDataSource::descriptor = {
     /*name*/ "android.power",
-    /*flags*/ Descriptor::kFlagsNone,
+    /*flags*/ Descriptor::kHandlesIncrementalState,
+    /*fill_descriptor_func*/ nullptr,
 };
 
 // Dynamically loads the libperfetto_android_internal.so library which
@@ -55,6 +62,13 @@ struct AndroidPowerDataSource::DynamicLibLoader {
   PERFETTO_LAZY_LOAD(android_internal::GetAvailableRails, get_available_rails_);
   PERFETTO_LAZY_LOAD(android_internal::GetRailEnergyData,
                      get_rail_energy_data_);
+  PERFETTO_LAZY_LOAD(android_internal::GetEnergyConsumerInfo,
+                     get_energy_consumer_info_);
+  PERFETTO_LAZY_LOAD(android_internal::GetEnergyConsumed, get_energy_consumed_);
+  PERFETTO_LAZY_LOAD(android_internal::GetPowerEntityStates,
+                     get_power_entity_states_);
+  PERFETTO_LAZY_LOAD(android_internal::GetPowerEntityStateResidency,
+                     get_power_entity_state_residency_);
 
   base::Optional<int64_t> GetCounter(android_internal::BatteryCounter counter) {
     if (!get_battery_counter_)
@@ -72,7 +86,10 @@ struct AndroidPowerDataSource::DynamicLibLoader {
     std::vector<android_internal::RailDescriptor> rail_descriptors(
         kMaxNumRails);
     size_t num_rails = rail_descriptors.size();
-    get_available_rails_(&rail_descriptors[0], &num_rails);
+    if (!get_available_rails_(&rail_descriptors[0], &num_rails)) {
+      PERFETTO_ELOG("Failed to retrieve rail descriptors.");
+      num_rails = 0;
+    }
     rail_descriptors.resize(num_rails);
     return rail_descriptors;
   }
@@ -83,9 +100,73 @@ struct AndroidPowerDataSource::DynamicLibLoader {
 
     std::vector<android_internal::RailEnergyData> energy_data(kMaxNumRails);
     size_t num_rails = energy_data.size();
-    get_rail_energy_data_(&energy_data[0], &num_rails);
+    if (!get_rail_energy_data_(&energy_data[0], &num_rails)) {
+      PERFETTO_ELOG("Failed to retrieve rail energy data.");
+      num_rails = 0;
+    }
     energy_data.resize(num_rails);
     return energy_data;
+  }
+
+  std::vector<android_internal::EnergyConsumerInfo> GetEnergyConsumerInfo() {
+    if (!get_energy_consumer_info_)
+      return std::vector<android_internal::EnergyConsumerInfo>();
+
+    std::vector<android_internal::EnergyConsumerInfo> consumers(
+        kMaxNumEnergyConsumer);
+    size_t num_power_entities = consumers.size();
+    if (!get_energy_consumer_info_(&consumers[0], &num_power_entities)) {
+      PERFETTO_ELOG("Failed to retrieve energy consumer info.");
+      num_power_entities = 0;
+    }
+    consumers.resize(num_power_entities);
+    return consumers;
+  }
+
+  std::vector<android_internal::EnergyEstimationBreakdown> GetEnergyConsumed() {
+    if (!get_energy_consumed_)
+      return std::vector<android_internal::EnergyEstimationBreakdown>();
+
+    std::vector<android_internal::EnergyEstimationBreakdown> energy_breakdown(
+        kMaxNumPowerEntities);
+    size_t num_power_entities = energy_breakdown.size();
+    if (!get_energy_consumed_(&energy_breakdown[0], &num_power_entities)) {
+      PERFETTO_ELOG("Failed to retrieve energy estimation breakdown.");
+      num_power_entities = 0;
+    }
+    energy_breakdown.resize(num_power_entities);
+    return energy_breakdown;
+  }
+
+  std::vector<android_internal::PowerEntityState> GetPowerEntityStates() {
+    if (!get_power_entity_states_)
+      return std::vector<android_internal::PowerEntityState>();
+
+    std::vector<android_internal::PowerEntityState> entity(
+        kMaxNumPowerEntities);
+    size_t num_power_entities = entity.size();
+    if (!get_power_entity_states_(&entity[0], &num_power_entities)) {
+      PERFETTO_ELOG("Failed to retrieve power entities.");
+      num_power_entities = 0;
+    }
+    entity.resize(num_power_entities);
+    return entity;
+  }
+
+  std::vector<android_internal::PowerEntityStateResidency>
+  GetPowerEntityStateResidency() {
+    if (!get_power_entity_state_residency_)
+      return std::vector<android_internal::PowerEntityStateResidency>();
+
+    std::vector<android_internal::PowerEntityStateResidency> entity(
+        kMaxNumPowerEntities);
+    size_t num_power_entities = entity.size();
+    if (!get_power_entity_state_residency_(&entity[0], &num_power_entities)) {
+      PERFETTO_ELOG("Failed to retrieve power entities.");
+      num_power_entities = 0;
+    }
+    entity.resize(num_power_entities);
+    return entity;
   }
 };
 
@@ -96,13 +177,19 @@ AndroidPowerDataSource::AndroidPowerDataSource(
     std::unique_ptr<TraceWriter> writer)
     : ProbesDataSource(session_id, &descriptor),
       task_runner_(task_runner),
-      rail_descriptors_logged_(false),
       writer_(std::move(writer)),
       weak_factory_(this) {
   using protos::pbzero::AndroidPowerConfig;
   AndroidPowerConfig::Decoder pcfg(cfg.android_power_config_raw());
   poll_interval_ms_ = pcfg.battery_poll_ms();
   rails_collection_enabled_ = pcfg.collect_power_rails();
+  energy_breakdown_collection_enabled_ =
+      pcfg.collect_energy_estimation_breakdown();
+  entity_state_residency_collection_enabled_ =
+      pcfg.collect_entity_state_residency();
+
+  if (poll_interval_ms_ == 0)
+    poll_interval_ms_ = kDefaultPollIntervalMs;
 
   if (poll_interval_ms_ < kMinPollIntervalMs) {
     PERFETTO_ELOG("Battery poll interval of %" PRIu32
@@ -151,8 +238,20 @@ void AndroidPowerDataSource::Tick() {
       },
       poll_interval_ms_ - static_cast<uint32_t>(now_ms % poll_interval_ms_));
 
+  if (should_emit_descriptors_) {
+    // We write incremental state cleared in its own packet to avoid the subtle
+    // code we'd need if we were to set this on the first enabled data source.
+    auto packet = writer_->NewTracePacket();
+    packet->set_sequence_flags(
+        protos::pbzero::TracePacket::SEQ_INCREMENTAL_STATE_CLEARED);
+  }
+
   WriteBatteryCounters();
   WritePowerRailsData();
+  WriteEnergyEstimationBreakdown();
+  WriteEntityStateResidency();
+
+  should_emit_descriptors_ = false;
 }
 
 void AndroidPowerDataSource::WriteBatteryCounters() {
@@ -201,15 +300,14 @@ void AndroidPowerDataSource::WritePowerRailsData() {
 
   auto packet = writer_->NewTracePacket();
   packet->set_timestamp(static_cast<uint64_t>(base::GetBootTimeNs().count()));
-  auto* rails_proto = packet->set_power_rails();
+  packet->set_sequence_flags(
+      protos::pbzero::TracePacket::SEQ_NEEDS_INCREMENTAL_STATE);
 
-  if (!rail_descriptors_logged_) {
-    // We only add the rail descriptors to the first package, to avoid logging
-    // all rail names etc. on each one.
-    rail_descriptors_logged_ = true;
+  auto* rails_proto = packet->set_power_rails();
+  if (should_emit_descriptors_) {
     auto rail_descriptors = lib_->GetRailDescriptors();
     if (rail_descriptors.empty()) {
-      // No rails to collect data for. Don't try again in the next iteration.
+      // No rails to collect data for. Don't try again.
       rails_collection_enabled_ = false;
       return;
     }
@@ -231,9 +329,101 @@ void AndroidPowerDataSource::WritePowerRailsData() {
   }
 }
 
+void AndroidPowerDataSource::WriteEnergyEstimationBreakdown() {
+  if (!energy_breakdown_collection_enabled_)
+    return;
+  auto timestamp = static_cast<uint64_t>(base::GetBootTimeNs().count());
+
+  TraceWriter::TracePacketHandle packet;
+  protos::pbzero::AndroidEnergyEstimationBreakdown* energy_estimation_proto =
+      nullptr;
+
+  if (should_emit_descriptors_) {
+    packet = writer_->NewTracePacket();
+    energy_estimation_proto = packet->set_android_energy_estimation_breakdown();
+    auto* descriptor_proto =
+        energy_estimation_proto->set_energy_consumer_descriptor();
+    auto consumers = lib_->GetEnergyConsumerInfo();
+    for (const auto& consumer : consumers) {
+      auto* desc_proto = descriptor_proto->add_energy_consumers();
+      desc_proto->set_energy_consumer_id(consumer.energy_consumer_id);
+      desc_proto->set_ordinal(consumer.ordinal);
+      desc_proto->set_type(consumer.type);
+      desc_proto->set_name(consumer.name);
+    }
+  }
+
+  auto energy_breakdowns = lib_->GetEnergyConsumed();
+  for (const auto& breakdown : energy_breakdowns) {
+    if (breakdown.uid == android_internal::ALL_UIDS_FOR_CONSUMER) {
+      // Finalize packet before calling NewTracePacket.
+      if (packet) {
+        packet->Finalize();
+      }
+      packet = writer_->NewTracePacket();
+      packet->set_timestamp(timestamp);
+      packet->set_sequence_flags(
+          protos::pbzero::TracePacket::SEQ_NEEDS_INCREMENTAL_STATE);
+
+      energy_estimation_proto =
+          packet->set_android_energy_estimation_breakdown();
+      energy_estimation_proto->set_energy_consumer_id(
+          breakdown.energy_consumer_id);
+      energy_estimation_proto->set_energy_uws(breakdown.energy_uws);
+    } else {
+      PERFETTO_CHECK(energy_estimation_proto != nullptr);
+      auto* uid_breakdown_proto =
+          energy_estimation_proto->add_per_uid_breakdown();
+      uid_breakdown_proto->set_uid(breakdown.uid);
+      uid_breakdown_proto->set_energy_uws(breakdown.energy_uws);
+    }
+  }
+}
+
+void AndroidPowerDataSource::WriteEntityStateResidency() {
+  if (!entity_state_residency_collection_enabled_)
+    return;
+
+  auto packet = writer_->NewTracePacket();
+  packet->set_timestamp(static_cast<uint64_t>(base::GetBootTimeNs().count()));
+  packet->set_sequence_flags(
+      protos::pbzero::TracePacket::SEQ_NEEDS_INCREMENTAL_STATE);
+
+  auto* outer_proto = packet->set_entity_state_residency();
+  if (should_emit_descriptors_) {
+    auto entity_states = lib_->GetPowerEntityStates();
+    if (entity_states.empty()) {
+      // No entities to collect data for. Don't try again.
+      entity_state_residency_collection_enabled_ = false;
+      return;
+    }
+
+    for (const auto& entity_state : entity_states) {
+      auto* entity_state_proto = outer_proto->add_power_entity_state();
+      entity_state_proto->set_entity_index(entity_state.entity_id);
+      entity_state_proto->set_state_index(entity_state.state_id);
+      entity_state_proto->set_entity_name(entity_state.entity_name);
+      entity_state_proto->set_state_name(entity_state.state_name);
+    }
+  }
+
+  for (const auto& residency_data : lib_->GetPowerEntityStateResidency()) {
+    auto* data = outer_proto->add_residency();
+    data->set_entity_index(residency_data.entity_id);
+    data->set_state_index(residency_data.state_id);
+    data->set_total_time_in_state_ms(residency_data.total_time_in_state_ms);
+    data->set_total_state_entry_count(residency_data.total_state_entry_count);
+    data->set_last_entry_timestamp_ms(residency_data.last_entry_timestamp_ms);
+  }
+}
+
 void AndroidPowerDataSource::Flush(FlushRequestID,
                                    std::function<void()> callback) {
   writer_->Flush(callback);
+}
+
+void AndroidPowerDataSource::ClearIncrementalState() {
+  should_emit_descriptors_ = true;
 }
 
 }  // namespace perfetto

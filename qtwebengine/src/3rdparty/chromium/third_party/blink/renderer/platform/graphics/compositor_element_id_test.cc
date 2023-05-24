@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -30,13 +30,20 @@ TEST_F(CompositorElementIdTest, EncodeDecode) {
 TEST_F(CompositorElementIdTest, FromDOMNodeId) {
   auto element_id = CompositorElementIdFromDOMNodeId(1);
   EXPECT_EQ(1u, IdFromCompositorElementId(element_id));
-  EXPECT_EQ(CompositorElementIdNamespace::kUniqueObjectId,
+  EXPECT_EQ(CompositorElementIdNamespace::kDOMNodeId,
             NamespaceFromCompositorElementId(element_id));
 }
 
 TEST_F(CompositorElementIdTest, ToDOMNodeId) {
   auto element_id = CompositorElementIdFromUniqueObjectId(
       1, CompositorElementIdNamespace::kDOMNodeId);
+  EXPECT_EQ(CompositorElementIdNamespace::kDOMNodeId,
+            NamespaceFromCompositorElementId(element_id));
+  EXPECT_EQ(1, DOMNodeIdFromCompositorElementId(element_id));
+}
+
+TEST_F(CompositorElementIdTest, EncodeDecodeDOMNodeId) {
+  auto element_id = CompositorElementIdFromDOMNodeId(1);
   EXPECT_EQ(CompositorElementIdNamespace::kDOMNodeId,
             NamespaceFromCompositorElementId(element_id));
   EXPECT_EQ(1, DOMNodeIdFromCompositorElementId(element_id));

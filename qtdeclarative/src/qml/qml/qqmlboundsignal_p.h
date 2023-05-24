@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLBOUNDSIGNAL_P_H
 #define QQMLBOUNDSIGNAL_P_H
@@ -54,27 +18,26 @@
 #include <QtCore/qmetaobject.h>
 
 #include <private/qqmljavascriptexpression_p.h>
-#include <private/qqmlboundsignalexpressionpointer_p.h>
 #include <private/qqmlnotifier_p.h>
-#include <private/qflagpointer_p.h>
 #include <private/qqmlrefcount_p.h>
-#include <private/qqmlglobal_p.h>
-#include <private/qbitfield_p.h>
+#include <private/qtqmlglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
-class Q_QML_PRIVATE_EXPORT QQmlBoundSignalExpression : public QQmlJavaScriptExpression, public QQmlRefCount
+class Q_QML_PRIVATE_EXPORT QQmlBoundSignalExpression
+    : public QQmlJavaScriptExpression,
+      public QQmlRefCounted<QQmlBoundSignalExpression>
 {
+    friend class QQmlRefCounted<QQmlBoundSignalExpression>;
 public:
-    QQmlBoundSignalExpression(QObject *target, int index,
-                              QQmlContextData *ctxt, QObject *scope, const QString &expression,
-                              const QString &fileName, quint16 line, quint16 column,
-                              const QString &handlerName = QString(),
-                              const QString &parameterString = QString());
+    QQmlBoundSignalExpression(
+            const QObject *target, int index, const QQmlRefPointer<QQmlContextData> &ctxt, QObject *scope,
+            const QString &expression, const QString &fileName, quint16 line, quint16 column,
+            const QString &handlerName = QString(), const QString &parameterString = QString());
 
-    QQmlBoundSignalExpression(QObject *target, int index,
-                              QQmlContextData *ctxt, QObject *scopeObject, QV4::Function *function,
-                              QV4::ExecutionContext *scope = nullptr);
+    QQmlBoundSignalExpression(
+            const QObject *target, int index, const QQmlRefPointer<QQmlContextData> &ctxt,
+            QObject *scopeObject, QV4::Function *function, QV4::ExecutionContext *scope = nullptr);
 
     // inherited from QQmlJavaScriptExpression.
     QString expressionIdentifier() const override;
@@ -82,22 +45,21 @@ public:
 
     // evaluation of a bound signal expression doesn't return any value
     void evaluate(void **a);
-    void evaluate(const QList<QVariant> &args);
+
+    bool mustCaptureBindableProperty() const final {return true;}
 
     QString expression() const;
-    QObject *target() const { return m_target; }
-
-    QQmlEngine *engine() const { return context() ? context()->engine : nullptr; }
+    const QObject *target() const { return m_target; }
 
 private:
     ~QQmlBoundSignalExpression() override;
 
-    void init(QQmlContextData *ctxt, QObject *scope);
+    void init(const QQmlRefPointer<QQmlContextData> &ctxt, QObject *scope);
 
     bool expressionFunctionValid() const { return function() != nullptr; }
 
     int m_index;
-    QObject *m_target;
+    const QObject *m_target;
 };
 
 class Q_QML_PRIVATE_EXPORT QQmlBoundSignal : public QQmlNotifierEndpoint
@@ -126,7 +88,16 @@ private:
 
     bool m_enabled;
 
-    QQmlBoundSignalExpressionPointer m_expression;
+    QQmlRefPointer<QQmlBoundSignalExpression> m_expression;
+};
+
+class QQmlPropertyObserver : public QPropertyObserver
+{
+public:
+    QQmlPropertyObserver(QQmlBoundSignalExpression *expr);
+
+private:
+    QQmlRefPointer<QQmlBoundSignalExpression> expression;
 };
 
 QT_END_NAMESPACE

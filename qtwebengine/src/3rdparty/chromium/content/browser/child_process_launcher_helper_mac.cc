@@ -1,14 +1,15 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/command_line.h"
-#include "base/feature_list.h"
-#include "base/metrics/field_trial.h"
+#include "base/containers/flat_map.h"
+#include "base/no_destructor.h"
 #include "base/path_service.h"
 #include "base/posix/global_descriptors.h"
 #include "base/strings/stringprintf.h"
-#include "build/build_config.h"
+#include "base/synchronization/lock.h"
+#include "base/thread_annotations.h"
 #include "content/browser/child_process_launcher.h"
 #include "content/browser/child_process_launcher_helper.h"
 #include "content/browser/child_process_launcher_helper_posix.h"
@@ -17,28 +18,82 @@
 #include "content/grit/content_resources.h"
 #include "content/public/browser/child_process_launcher_utils.h"
 #include "content/public/browser/content_browser_client.h"
-#include "content/public/common/content_features.h"
 #include "content/public/common/content_paths.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/result_codes.h"
 #include "content/public/common/sandboxed_process_launcher_delegate.h"
+#include "ppapi/buildflags/buildflags.h"
+#include "sandbox/mac/sandbox_compiler.h"
 #include "sandbox/mac/seatbelt_exec.h"
+#include "sandbox/policy/features.h"
 #include "sandbox/policy/mac/sandbox_mac.h"
 #include "sandbox/policy/sandbox.h"
 #include "sandbox/policy/sandbox_type.h"
 #include "sandbox/policy/switches.h"
 
+#if BUILDFLAG(ENABLE_PPAPI)
+#include "content/public/browser/plugin_service.h"
+#include "content/public/common/webplugininfo.h"
+#include "sandbox/policy/mojom/sandbox.mojom.h"
+#endif
+
 namespace content {
 namespace internal {
 
-base::Optional<mojo::NamedPlatformChannel>
-ChildProcessLauncherHelper::CreateNamedPlatformChannelOnClientThread() {
-  DCHECK(client_task_runner_->RunsTasksInCurrentSequence());
-  return base::nullopt;
+namespace {
+
+// Class that holds a map of SandboxTypes to compiled policy protos. Only
+// certain sandbox types can be cached, depending on the nature of the
+// runtime parameters that are bound into the profile.
+class SandboxProfileCache {
+ public:
+  SandboxProfileCache() = default;
+  ~SandboxProfileCache() = default;
+
+  static SandboxProfileCache& Get() {
+    static base::NoDestructor<SandboxProfileCache> cache;
+    return *cache;
+  }
+
+  const sandbox::mac::SandboxPolicy* Query(
+      sandbox::mojom::Sandbox sandbox_type) {
+    base::AutoLock lock(lock_);
+    auto it = cache_.find(sandbox_type);
+    if (it == cache_.end())
+      return nullptr;
+    return &it->second;
+  }
+
+  void Insert(sandbox::mojom::Sandbox sandbox_type,
+              const sandbox::mac::SandboxPolicy& policy) {
+    DCHECK(sandbox::policy::CanCacheSandboxPolicy(sandbox_type));
+    base::AutoLock lock(lock_);
+    cache_.emplace(sandbox_type, policy);
+  }
+
+ private:
+  base::Lock lock_;
+  base::flat_map<sandbox::mojom::Sandbox, sandbox::mac::SandboxPolicy> cache_
+      GUARDED_BY(lock_);
+};
+
+}  // namespace
+
+absl::optional<mojo::NamedPlatformChannel>
+ChildProcessLauncherHelper::CreateNamedPlatformChannelOnLauncherThread() {
+  DCHECK(CurrentlyOnProcessLauncherTaskRunner());
+  return absl::nullopt;
 }
 
 void ChildProcessLauncherHelper::BeforeLaunchOnClientThread() {
   DCHECK(client_task_runner_->RunsTasksInCurrentSequence());
+
+#if BUILDFLAG(ENABLE_PPAPI)
+  auto sandbox_type =
+      sandbox::policy::SandboxTypeFromCommandLine(*command_line_);
+  if (sandbox_type == sandbox::mojom::Sandbox::kPpapi)
+    PluginService::GetInstance()->GetInternalPlugins(&plugins_);
+#endif
 }
 
 std::unique_ptr<PosixFileDescriptorInfo>
@@ -49,6 +104,10 @@ ChildProcessLauncherHelper::GetFilesToMap() {
       /*files_to_preload=*/{}, GetProcessType(), command_line());
 }
 
+bool ChildProcessLauncherHelper::IsUsingLaunchOptions() {
+  return true;
+}
+
 bool ChildProcessLauncherHelper::BeforeLaunchOnLauncherThread(
     FileMappedForLaunch& files_to_register,
     base::LaunchOptions* options) {
@@ -56,22 +115,17 @@ bool ChildProcessLauncherHelper::BeforeLaunchOnLauncherThread(
   options->fds_to_remap = files_to_register.GetMappingWithIDAdjustment(
       base::GlobalDescriptors::kBaseDescriptor);
 
-  base::FieldTrialList::InsertFieldTrialHandleIfNeeded(
-      &options->mach_ports_for_rendezvous);
-
   mojo::PlatformHandle endpoint =
       mojo_channel_->TakeRemoteEndpoint().TakePlatformHandle();
   DCHECK(endpoint.is_valid_mach_receive());
   options->mach_ports_for_rendezvous.insert(std::make_pair(
       'mojo', base::MachRendezvousPort(endpoint.TakeMachReceiveRight())));
 
-#if defined(OS_MAC) && defined(ARCH_CPU_ARM64)
-  options->launch_x86_64 = delegate_->LaunchX86_64();
-#endif  // OS_MAC && ARCH_CPU_ARM64
-
   options->environment = delegate_->GetEnvironment();
 
   options->disclaim_responsibility = delegate_->DisclaimResponsibility();
+  options->enable_cpu_security_mitigations =
+      delegate_->EnableCpuSecurityMitigations();
 
   auto sandbox_type =
       sandbox::policy::SandboxTypeFromCommandLine(*command_line_);
@@ -80,24 +134,41 @@ bool ChildProcessLauncherHelper::BeforeLaunchOnLauncherThread(
       command_line_->HasSwitch(sandbox::policy::switches::kNoSandbox) ||
       sandbox::policy::IsUnsandboxedSandboxType(sandbox_type);
 
-  bool use_v2 = (sandbox_type != sandbox::policy::SandboxType::kGpu) ||
-                base::FeatureList::IsEnabled(features::kMacV2GPUSandbox);
-
-  if (use_v2 && !no_sandbox) {
-    // Generate the profile string.
-    std::string profile =
-        sandbox::policy::SandboxMac::GetSandboxProfile(sandbox_type);
-
+  if (!no_sandbox) {
     // Disable os logging to com.apple.diagnosticd which is a performance
     // problem.
     options->environment.insert(std::make_pair("OS_ACTIVITY_MODE", "disable"));
 
+    const auto* cached_policy = SandboxProfileCache::Get().Query(sandbox_type);
+    if (cached_policy) {
+      policy_ = *cached_policy;
+    } else {
+      const bool can_cache_policy =
+          sandbox::policy::CanCacheSandboxPolicy(sandbox_type);
+
+      // Generate the sandbox policy profile.
+      sandbox::SandboxCompiler compiler(
+          can_cache_policy ? sandbox::SandboxCompiler::Target::kCompiled
+                           : sandbox::SandboxCompiler::Target::kSource);
+      compiler.SetProfile(sandbox::policy::GetSandboxProfile(sandbox_type));
+      SetupSandboxParameters(sandbox_type, *command_line_.get(),
+#if BUILDFLAG(ENABLE_PPAPI)
+                             plugins_,
+#endif
+                             &compiler);
+
+      std::string error;
+      if (!compiler.CompilePolicyToProto(policy_, error)) {
+        LOG(ERROR) << "Failed to compile sandbox policy: " << error;
+        return false;
+      }
+
+      if (can_cache_policy) {
+        SandboxProfileCache::Get().Insert(sandbox_type, policy_);
+      }
+    }
+
     seatbelt_exec_client_ = std::make_unique<sandbox::SeatbeltExecClient>();
-    seatbelt_exec_client_->SetProfile(profile);
-
-    SetupSandboxParameters(sandbox_type, *command_line_.get(),
-                           seatbelt_exec_client_.get());
-
     int pipe = seatbelt_exec_client_->GetReadFD();
     if (pipe < 0) {
       LOG(ERROR) << "The file descriptor for the sandboxed child is invalid.";
@@ -117,13 +188,13 @@ bool ChildProcessLauncherHelper::BeforeLaunchOnLauncherThread(
 
 ChildProcessLauncherHelper::Process
 ChildProcessLauncherHelper::LaunchProcessOnLauncherThread(
-    const base::LaunchOptions& options,
+    const base::LaunchOptions* options,
     std::unique_ptr<PosixFileDescriptorInfo> files_to_register,
     bool* is_synchronous_launch,
     int* launch_result) {
   *is_synchronous_launch = true;
   ChildProcessLauncherHelper::Process process;
-  process.process = base::LaunchProcess(*command_line(), options);
+  process.process = base::LaunchProcess(*command_line(), *options);
   *launch_result = process.process.IsValid() ? LAUNCH_RESULT_SUCCESS
                                              : LAUNCH_RESULT_FAILURE;
   return process;
@@ -131,11 +202,11 @@ ChildProcessLauncherHelper::LaunchProcessOnLauncherThread(
 
 void ChildProcessLauncherHelper::AfterLaunchOnLauncherThread(
     const ChildProcessLauncherHelper::Process& process,
-    const base::LaunchOptions& options) {
+    const base::LaunchOptions* options) {
   // Send the sandbox profile after launch so that the child will exist and be
   // waiting for the message on its side of the pipe.
   if (process.process.IsValid() && seatbelt_exec_client_.get() != nullptr) {
-    seatbelt_exec_client_->SendProfile();
+    seatbelt_exec_client_->SendPolicy(policy_);
   }
 }
 
@@ -168,16 +239,15 @@ void ChildProcessLauncherHelper::ForceNormalProcessTerminationSync(
   base::EnsureProcessTerminated(std::move(process.process));
 }
 
-void ChildProcessLauncherHelper::SetProcessPriorityOnLauncherThread(
+void ChildProcessLauncherHelper::SetProcessBackgroundedOnLauncherThread(
     base::Process process,
-    const ChildProcessLauncherPriority& priority) {
+    bool is_background) {
   if (process.CanBackgroundProcesses()) {
     process.SetProcessBackgrounded(ChildProcessTaskPortProvider::GetInstance(),
-                                   priority.is_background());
+                                   is_background);
   }
 }
 
-// static
 base::File OpenFileToShare(const base::FilePath& path,
                            base::MemoryMappedFile::Region* region) {
   // Not used yet (until required files are described in the service manifest on

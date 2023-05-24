@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,8 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/public/platform/web_http_body.h"
 #include "third_party/blink/public/platform/web_security_origin.h"
 #include "third_party/blink/public/platform/web_string.h"
@@ -31,24 +32,27 @@ class MultiResolutionImageResourceFetcher::ClientImpl
 
  public:
   explicit ClientImpl(StartCallback callback)
-      : completed_(false), status_(LOADING), callback_(std::move(callback)) {}
+      : completed_(false), status_(kLoading), callback_(std::move(callback)) {}
+
+  ClientImpl(const ClientImpl&) = delete;
+  ClientImpl& operator=(const ClientImpl&) = delete;
 
   ~ClientImpl() override {}
 
-  virtual void Cancel() { OnLoadCompleteInternal(LOAD_FAILED); }
+  virtual void Cancel() { OnLoadCompleteInternal(kLoadFailed); }
 
   bool completed() const { return completed_; }
 
  private:
   enum LoadStatus {
-    LOADING,
-    LOAD_FAILED,
-    LOAD_SUCCEEDED,
+    kLoading,
+    kLoadFailed,
+    kLoadSucceeded,
   };
 
   void OnLoadCompleteInternal(LoadStatus status) {
     DCHECK(!completed_);
-    DCHECK_EQ(status_, LOADING);
+    DCHECK_EQ(status_, kLoading);
 
     completed_ = true;
     status_ = status;
@@ -56,18 +60,14 @@ class MultiResolutionImageResourceFetcher::ClientImpl
     if (callback_.is_null())
       return;
     std::move(callback_).Run(
-        status_ == LOAD_FAILED ? WebURLResponse() : response_,
-        status_ == LOAD_FAILED ? std::string() : data_);
+        status_ == kLoadFailed ? WebURLResponse() : response_,
+        status_ == kLoadFailed ? std::string() : data_);
   }
 
   // WebAssociatedURLLoaderClient methods:
   void DidReceiveResponse(const WebURLResponse& response) override {
     DCHECK(!completed_);
     response_ = response;
-  }
-  void DidReceiveCachedMetadata(const char* data, int data_length) override {
-    DCHECK(!completed_);
-    DCHECK_GT(data_length, 0);
   }
   void DidReceiveData(const char* data, int data_length) override {
     // The WebAssociatedURLLoader will continue after a load failure.
@@ -83,10 +83,10 @@ class MultiResolutionImageResourceFetcher::ClientImpl
     // For example, for an Access Control error.
     if (completed_)
       return;
-    OnLoadCompleteInternal(LOAD_SUCCEEDED);
+    OnLoadCompleteInternal(kLoadSucceeded);
   }
   void DidFail(const WebURLError& error) override {
-    OnLoadCompleteInternal(LOAD_FAILED);
+    OnLoadCompleteInternal(kLoadFailed);
   }
 
  private:
@@ -103,14 +103,12 @@ class MultiResolutionImageResourceFetcher::ClientImpl
 
   // Callback when we're done.
   StartCallback callback_;
-
-  DISALLOW_COPY_AND_ASSIGN(ClientImpl);
 };
 
 MultiResolutionImageResourceFetcher::MultiResolutionImageResourceFetcher(
     const KURL& image_url,
     LocalFrame* frame,
-    mojom::blink::RequestContextType request_context,
+    bool is_favicon,
     mojom::blink::FetchCacheMode cache_mode,
     Callback callback)
     : callback_(std::move(callback)),
@@ -119,7 +117,7 @@ MultiResolutionImageResourceFetcher::MultiResolutionImageResourceFetcher(
   WebAssociatedURLLoaderOptions options;
   SetLoaderOptions(options);
 
-  if (request_context == mojom::blink::RequestContextType::FAVICON) {
+  if (is_favicon) {
     // To prevent cache tainting, the cross-origin favicon requests have to
     // by-pass the service workers. This should ideally not happen. But Chrome’s
     // FaviconDatabase is using the icon URL as a key of the "favicons" table.
@@ -133,10 +131,10 @@ MultiResolutionImageResourceFetcher::MultiResolutionImageResourceFetcher(
 
   SetCacheMode(cache_mode);
 
-  Start(frame, request_context, network::mojom::RequestMode::kNoCors,
+  Start(frame, is_favicon, network::mojom::RequestMode::kNoCors,
         network::mojom::CredentialsMode::kInclude,
-        WTF::Bind(&MultiResolutionImageResourceFetcher::OnURLFetchComplete,
-          WTF::Unretained(this)));
+        WTF::BindOnce(&MultiResolutionImageResourceFetcher::OnURLFetchComplete,
+                      WTF::Unretained(this)));
 }
 
 MultiResolutionImageResourceFetcher::~MultiResolutionImageResourceFetcher() {
@@ -196,7 +194,7 @@ void MultiResolutionImageResourceFetcher::SetLoaderOptions(
 
 void MultiResolutionImageResourceFetcher::Start(
     LocalFrame* frame,
-    mojom::RequestContextType request_context,
+    bool is_favicon,
     network::mojom::RequestMode request_mode,
     network::mojom::CredentialsMode credentials_mode,
     StartCallback callback) {
@@ -206,11 +204,15 @@ void MultiResolutionImageResourceFetcher::Start(
   if (!request_.HttpBody().IsNull())
     DCHECK_NE("GET", request_.HttpMethod().Utf8()) << "GETs can't have bodies.";
 
+  mojom::blink::RequestContextType request_context =
+      is_favicon ? mojom::blink::RequestContextType::FAVICON
+                 : mojom::blink::RequestContextType::IMAGE;
   request_.SetRequestContext(request_context);
   request_.SetSiteForCookies(frame->GetDocument()->SiteForCookies());
   request_.SetMode(request_mode);
   request_.SetCredentialsMode(credentials_mode);
   request_.SetRequestDestination(network::mojom::RequestDestination::kImage);
+  request_.SetFavicon(is_favicon);
 
   client_ = std::make_unique<ClientImpl>(std::move(callback));
 

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,9 @@
 #include <utility>
 #include <vector>
 
-#include "base/callback.h"
 #include "base/containers/flat_map.h"
-#include "base/optional.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "cc/cc_export.h"
 #include "cc/metrics/frame_sequence_metrics.h"
 
@@ -27,12 +27,11 @@ struct BeginFrameArgs;
 namespace cc {
 class FrameSequenceTracker;
 class CompositorFrameReportingController;
-class ThroughputUkmReporter;
 class UkmManager;
 
 // Map of kCustom tracker results keyed by a sequence id.
 using CustomTrackerResults =
-    base::flat_map<int, FrameSequenceMetrics::ThroughputData>;
+    base::flat_map<int, FrameSequenceMetrics::CustomReportData>;
 
 typedef uint16_t ActiveFrameSequenceTrackers;
 
@@ -55,7 +54,7 @@ class CC_EXPORT FrameSequenceTrackerCollection {
   FrameSequenceTracker* StartSequence(FrameSequenceTrackerType type);
   FrameSequenceTracker* StartScrollSequence(
       FrameSequenceTrackerType type,
-      FrameSequenceMetrics::ThreadType scrolling_thread);
+      FrameInfo::SmoothEffectDrivingThread scrolling_thread);
 
   // Schedules |tracker| for destruction. This is preferred instead of outright
   // desrtruction of the tracker, since this ensures that the actual tracker
@@ -85,7 +84,8 @@ class CC_EXPORT FrameSequenceTrackerCollection {
   void NotifyBeginMainFrame(const viz::BeginFrameArgs& args);
   void NotifyMainFrameProcessed(const viz::BeginFrameArgs& args);
   void NotifyImplFrameCausedNoDamage(const viz::BeginFrameAck& ack);
-  void NotifyMainFrameCausedNoDamage(const viz::BeginFrameArgs& args);
+  void NotifyMainFrameCausedNoDamage(const viz::BeginFrameArgs& args,
+                                     bool aborted);
   void NotifyPauseFrameProduction();
   void NotifySubmitFrame(uint32_t frame_token,
                          bool has_missing_content,
@@ -105,7 +105,7 @@ class CC_EXPORT FrameSequenceTrackerCollection {
   // Return the type of each active frame tracker, encoded into a 16 bit
   // integer with the bit at each position corresponding to the enum value of
   // each type.
-  ActiveFrameSequenceTrackers FrameSequenceTrackerActiveTypes();
+  ActiveFrameSequenceTrackers FrameSequenceTrackerActiveTypes() const;
 
   FrameSequenceTracker* GetRemovalTrackerForTesting(
       FrameSequenceTrackerType type);
@@ -113,18 +113,21 @@ class CC_EXPORT FrameSequenceTrackerCollection {
   void SetUkmManager(UkmManager* manager);
 
   using NotifyCustomerTrackerResutlsCallback =
-      base::RepeatingCallback<void(CustomTrackerResults)>;
+      base::RepeatingCallback<void(const CustomTrackerResults&)>;
   void set_custom_tracker_results_added_callback(
       NotifyCustomerTrackerResutlsCallback callback) {
     custom_tracker_results_added_callback_ = std::move(callback);
   }
+
+  void AddSortedFrame(const viz::BeginFrameArgs& args,
+                      const FrameInfo& frame_info);
 
  private:
   friend class FrameSequenceTrackerTest;
 
   FrameSequenceTracker* StartSequenceInternal(
       FrameSequenceTrackerType type,
-      FrameSequenceMetrics::ThreadType scrolling_thread);
+      FrameInfo::SmoothEffectDrivingThread scrolling_thread);
 
   void RecreateTrackers(const viz::BeginFrameArgs& args);
   // Destroy the trackers that are ready to be terminated.
@@ -138,21 +141,13 @@ class CC_EXPORT FrameSequenceTrackerCollection {
   // TakeCustomTrackerResults() below.
   void AddCustomTrackerResult(
       int custom_sequence_id,
-      FrameSequenceMetrics::ThroughputData throughput_data);
+      const FrameSequenceMetrics::CustomReportData& data);
 
   const bool is_single_threaded_;
-  // The reporter takes throughput data and connect to UkmManager to report it.
-  // Note: this has to be before the frame_trackers_. The reason is that a
-  // FrameSequenceTracker owners a FrameSequenceMetrics, so the destructor of
-  // the former calls the destructor of the later. FrameSequenceMetrics's
-  // destructor calls its ReportMetrics() which requires
-  // |throughput_ukm_reporter_| to be alive. So putting it before
-  // |frame_trackers_| to ensure that it is destroyed after the tracker.
-  std::unique_ptr<ThroughputUkmReporter> throughput_ukm_reporter_;
 
   // The callsite can use the type to manipulate the tracker.
   base::flat_map<
-      std::pair<FrameSequenceTrackerType, FrameSequenceMetrics::ThreadType>,
+      std::pair<FrameSequenceTrackerType, FrameInfo::SmoothEffectDrivingThread>,
       std::unique_ptr<FrameSequenceTracker>>
       frame_trackers_;
 
@@ -165,11 +160,11 @@ class CC_EXPORT FrameSequenceTrackerCollection {
   NotifyCustomerTrackerResutlsCallback custom_tracker_results_added_callback_;
 
   std::vector<std::unique_ptr<FrameSequenceTracker>> removal_trackers_;
-  CompositorFrameReportingController* const
+  const raw_ptr<CompositorFrameReportingController>
       compositor_frame_reporting_controller_;
 
   base::flat_map<
-      std::pair<FrameSequenceTrackerType, FrameSequenceMetrics::ThreadType>,
+      std::pair<FrameSequenceTrackerType, FrameInfo::SmoothEffectDrivingThread>,
       std::unique_ptr<FrameSequenceMetrics>>
       accumulated_metrics_;
 

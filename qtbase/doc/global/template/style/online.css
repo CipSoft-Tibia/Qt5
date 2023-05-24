@@ -489,17 +489,12 @@ h1,h2,h3,h4,h5,h6 {
   text-align:left;
   padding:5px 0 0 0
 }
-.qmlreadonly,.qmldefault {
+.qmlreadonly,.qmldefault,.qmlextra {
+  color:#414141;
   padding:0 5px 0 5px;
   font-size:0.75em;
   background-color:#eee;
   float:right
-}
-.qmlreadonly {
-  color:#414141
-}
-.qmldefault {
-  color:#D14141
 }
 .rightAlign {
   padding:3px 5px 3px 10px;
@@ -509,6 +504,18 @@ h1,h2,h3,h4,h5,h6 {
   text-align:center;
   font-size:150%;
   margin-bottom: 1em
+}
+span.status.technical-preview {
+  display:inline-block;
+  position:relative;
+  background:center/contain no-repeat url(tech_preview.svg);
+  width:26px;
+  height:23px
+}
+td.memItemRight span.status {
+  margin-top:-10px;
+  right:-10px;
+  top:6px
 }
 article,aside,details,figcaption,figure,footer,header,hgroup,menu,nav,section {
   display:block
@@ -563,7 +570,6 @@ blockquote:before,blockquote:after,q:before,q:after {
 table {
   border-collapse:collapse;
   border-spacing:0;
-  margin-bottom:5px;
   width:100%
 }
 a {
@@ -945,7 +951,8 @@ div.main_index .row:after {
   background-color:#f3f3f4
 }
 div.table {
-  overflow-x:auto
+  overflow-x:auto;
+  margin-bottom:1.5em;
 }
 .context tr > td > pre {
   font-size:0.75em
@@ -1237,7 +1244,7 @@ pre:hover>.copy_text {
     width:initial
   }
 }
-[id]:target,[name]:target,[name]:target+* {
+[id]:target,[name]:target,[name]:target+*,span:target+* {
   -webkit-animation:highlighter 3s;
   animation:highlighter 3s
 }
@@ -1573,4 +1580,10 @@ a.plink {
 }
 a.plink::before {
   content:'\00B6'
+}
+
+/* Add margin for all anchor tags in a translated page */
+html.translated-ltr .mainContent p a,
+html.translated-rtl .mainContent p a {
+  margin:0 2px 0 2px;
 }

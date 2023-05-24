@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -40,6 +40,8 @@ mojom("url_mojom_gurl") {
       traits_public_deps = [ "//url" ]
     },
   ]
+
+  webui_module_path = "chrome://resources/mojo/url/mojom"
 }
 
 mojom("url_mojom_origin") {
@@ -82,6 +84,26 @@ mojom("url_mojom_origin") {
       traits_public_deps = [ "//url" ]
     },
   ]
+
+  webui_module_path = "chrome://resources/mojo/url/mojom"
+}
+
+mojom("url_mojom_scheme_host_port") {
+  generate_java = true
+  sources = [ "scheme_host_port.mojom" ]
+
+  cpp_typemaps = [
+    {
+      types = [
+        {
+          mojom = "url.mojom.SchemeHostPort"
+          cpp = "::url::SchemeHostPort"
+        },
+      ]
+      traits_headers = [ "//url/mojom/scheme_host_port_mojom_traits.h" ]
+      traits_public_deps = [ "//url" ]
+    },
+  ]
 }
 
 mojom("test_url_mojom_gurl") {
@@ -90,6 +112,7 @@ mojom("test_url_mojom_gurl") {
   public_deps = [
     ":url_mojom_gurl",
     ":url_mojom_origin",
+    ":url_mojom_scheme_host_port",
   ]
 }
 
@@ -99,6 +122,8 @@ component("mojom_traits") {
   sources = [
     "origin_mojom_traits.cc",
     "origin_mojom_traits.h",
+    "scheme_host_port_mojom_traits.cc",
+    "scheme_host_port_mojom_traits.h",
     "url_gurl_mojom_traits.cc",
     "url_gurl_mojom_traits.h",
   ]
@@ -108,6 +133,7 @@ component("mojom_traits") {
   public_deps = [
     ":url_mojom_gurl_shared",
     ":url_mojom_origin_shared",
+    ":url_mojom_scheme_host_port",
     "//base",
     "//mojo/public/cpp/base:shared_typemap_traits",
     "//url",

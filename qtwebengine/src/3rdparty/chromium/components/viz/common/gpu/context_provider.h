@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,8 @@
 
 #include <memory>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/synchronization/lock.h"
 #include "components/viz/common/gpu/context_cache_controller.h"
@@ -28,9 +29,7 @@ class Lock;
 namespace gpu {
 class ContextSupport;
 struct GpuFeatureInfo;
-class MemoryTracker;
 class SharedImageInterface;
-class SharedImageManager;
 
 namespace gles2 {
 class GLES2Interface;
@@ -52,7 +51,7 @@ class VIZ_COMMON_EXPORT ContextProvider {
     }
 
    private:
-    ContextProvider* const context_provider_;
+    const raw_ptr<ContextProvider> context_provider_;
     base::AutoLock context_lock_;
     std::unique_ptr<ContextCacheController::ScopedBusy> busy_;
   };
@@ -67,10 +66,10 @@ class VIZ_COMMON_EXPORT ContextProvider {
   // from the same thread unless the function has some explicitly specified
   // rules for access on a different thread. See SetupLockOnMainThread(), which
   // can be used to provide access from multiple threads.
-  virtual gpu::ContextResult BindToCurrentThread() = 0;
+  virtual gpu::ContextResult BindToCurrentSequence() = 0;
 
   // Adds/removes an observer to be called when the context is lost. AddObserver
-  // should be called before BindToCurrentThread from the same thread that the
+  // should be called before BindToCurrentSequence from the same thread that the
   // context is bound to, or any time while the lock is acquired after checking
   // for context loss.
   // NOTE: Implementations must avoid post-tasking the to the observer directly
@@ -111,12 +110,6 @@ class VIZ_COMMON_EXPORT ContextProvider {
   // Get a GLES2 interface to the 3d context.  The context provider must have
   // been successfully bound to a thread before calling this.
   virtual gpu::gles2::GLES2Interface* ContextGL() = 0;
-
-  // Returns the SharedImageManager. Only available inside the GPU process.
-  virtual gpu::SharedImageManager* GetSharedImageManager();
-
-  // Plumbs out the memory tracker to be shared with overlay.
-  virtual gpu::MemoryTracker* GetMemoryTracker();
 
  protected:
   virtual ~ContextProvider() = default;

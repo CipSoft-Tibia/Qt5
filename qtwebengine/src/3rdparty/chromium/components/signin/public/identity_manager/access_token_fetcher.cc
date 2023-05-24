@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,57 +7,28 @@
 #include <utility>
 
 #include "base/check_op.h"
+#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
+#include "components/signin/public/identity_manager/access_token_constants.h"
 #include "components/signin/public/identity_manager/access_token_info.h"
+#include "google_apis/gaia/gaia_constants.h"
 #include "google_apis/gaia/google_service_auth_error.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 
 namespace signin {
 
-AccessTokenFetcher::AccessTokenFetcher(const CoreAccountId& account_id,
-                                       const std::string& oauth_consumer_name,
-                                       ProfileOAuth2TokenService* token_service,
-                                       const ScopeSet& scopes,
-                                       TokenCallback callback,
-                                       Mode mode)
-    : AccessTokenFetcher(account_id,
-                         oauth_consumer_name,
-                         token_service,
-                         /*url_loader_factory=*/nullptr,
-                         scopes,
-                         std::move(callback),
-                         mode) {}
-
 AccessTokenFetcher::AccessTokenFetcher(
     const CoreAccountId& account_id,
     const std::string& oauth_consumer_name,
     ProfileOAuth2TokenService* token_service,
-    scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
+    PrimaryAccountManager* primary_account_manager,
     const ScopeSet& scopes,
     TokenCallback callback,
     Mode mode)
     : AccessTokenFetcher(account_id,
-                         /*client_id=*/std::string(),
-                         /*client_secret=*/std::string(),
                          oauth_consumer_name,
                          token_service,
-                         std::move(url_loader_factory),
-                         scopes,
-                         std::move(callback),
-                         mode) {}
-
-AccessTokenFetcher::AccessTokenFetcher(const CoreAccountId& account_id,
-                                       const std::string client_id,
-                                       const std::string client_secret,
-                                       const std::string& oauth_consumer_name,
-                                       ProfileOAuth2TokenService* token_service,
-                                       const ScopeSet& scopes,
-                                       TokenCallback callback,
-                                       Mode mode)
-    : AccessTokenFetcher(account_id,
-                         client_id,
-                         client_secret,
-                         oauth_consumer_name,
-                         token_service,
+                         primary_account_manager,
                          /*url_loader_factory=*/nullptr,
                          scopes,
                          std::move(callback),
@@ -65,26 +36,21 @@ AccessTokenFetcher::AccessTokenFetcher(const CoreAccountId& account_id,
 
 AccessTokenFetcher::AccessTokenFetcher(
     const CoreAccountId& account_id,
-    const std::string client_id,
-    const std::string client_secret,
     const std::string& oauth_consumer_name,
     ProfileOAuth2TokenService* token_service,
+    PrimaryAccountManager* primary_account_manager,
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
     const ScopeSet& scopes,
     TokenCallback callback,
     Mode mode)
     : OAuth2AccessTokenManager::Consumer(oauth_consumer_name),
       account_id_(account_id),
-      client_id_(client_id),
-      client_secret_(client_secret),
       token_service_(token_service),
+      primary_account_manager_(primary_account_manager),
       url_loader_factory_(std::move(url_loader_factory)),
       scopes_(scopes),
       mode_(mode),
       callback_(std::move(callback)) {
-  DCHECK(client_id_.empty() == client_secret_.empty());
-  DCHECK(client_id_.empty() || !url_loader_factory);
-
   if (mode_ == Mode::kImmediate || IsRefreshTokenAvailable()) {
     StartAccessTokenRequest();
     return;
@@ -93,10 +59,51 @@ AccessTokenFetcher::AccessTokenFetcher(
   // Start observing the IdentityManager. This observer will be removed either
   // when a refresh token is obtained and an access token request is started or
   // when this object is destroyed.
-  token_service_observer_.Add(token_service_);
+  token_service_observation_.Observe(token_service_.get());
 }
 
 AccessTokenFetcher::~AccessTokenFetcher() {}
+
+void AccessTokenFetcher::VerifyScopeAccess() {
+  if (account_id_.empty()) {
+    // Fetching access tokens for an empty account should fail, but not crash.
+    // Verifying the OAuth scopes based on the consent level is thus not needed.
+    return;
+  }
+
+  // The consumer has privileged access to all scopes, return early.
+  if (GetPrivilegedOAuth2Consumers().count(/*oauth_consumer_name=*/id())) {
+    VLOG(1) << id() << " has access rights to scopes: "
+            << base::JoinString(
+                   std::vector<std::string>(scopes_.begin(), scopes_.end()),
+                   ",");
+    return;
+  }
+
+  for (const std::string& scope : scopes_) {
+    CHECK(!GetPrivilegedOAuth2Scopes().count(scope)) << base::StringPrintf(
+        "You are attempting to access a privileged scope '%s' without the "
+        "required access, please file a bug for access at "
+        "https://bugs.chromium.org/p/chromium/issues/"
+        "list?q=component:Services>SignIn.",
+        scope.c_str());
+  }
+
+  // Only validate scope access if the user has not given sync consent.
+  if (!primary_account_manager_->HasPrimaryAccount(ConsentLevel::kSync)) {
+    for (const std::string& scope : scopes_) {
+      CHECK(GetUnconsentedOAuth2Scopes().count(scope)) << base::StringPrintf(
+          "Consumer '%s' is requesting scope '%s' that requires user consent. "
+          "Please check that the user has consented to Sync before "
+          "using this API.",
+          id().c_str(), scope.c_str());
+    }
+  }
+
+  VLOG(1) << id() << " has access rights to scopes: "
+          << base::JoinString(
+                 std::vector<std::string>(scopes_.begin(), scopes_.end()), ",");
+}
 
 bool AccessTokenFetcher::IsRefreshTokenAvailable() const {
   DCHECK_EQ(Mode::kWaitUntilRefreshTokenAvailable, mode_);
@@ -109,23 +116,16 @@ void AccessTokenFetcher::StartAccessTokenRequest() {
 
   // By the time of starting an access token request, we should no longer be
   // listening for signin-related events.
-  DCHECK(!token_service_observer_.IsObserving(token_service_));
+  DCHECK(!token_service_observation_.IsObservingSource(token_service_.get()));
 
   // Note: We might get here even in cases where we know that there's no refresh
   // token. We're requesting an access token anyway, so that the token service
   // will generate an appropriate error code that we can return to the client.
   DCHECK(!access_token_request_);
 
-  // TODO(843510): Consider making the request to ProfileOAuth2TokenService
-  // asynchronously once there are no direct clients of PO2TS (i.e., PO2TS is
-  // used only by this class and IdentityManager).
-  if (!client_id_.empty()) {
-    // Setting both the client ID/secret and the URL loader factory is not
-    // currently supported.
-    access_token_request_ = token_service_->StartRequestForClient(
-        account_id_, client_id_, client_secret_, scopes_, this);
-    return;
-  }
+  // Ensure that the client has the appropriate user consent for accessing the
+  // OAuth API scopes in this request.
+  VerifyScopeAccess();
 
   if (url_loader_factory_) {
     access_token_request_ = token_service_->StartRequestWithContext(
@@ -144,7 +144,8 @@ void AccessTokenFetcher::OnRefreshTokenAvailable(
   if (!IsRefreshTokenAvailable())
     return;
 
-  token_service_observer_.Remove(token_service_);
+  DCHECK(token_service_observation_.IsObservingSource(token_service_.get()));
+  token_service_observation_.Reset();
 
   StartAccessTokenRequest();
 }

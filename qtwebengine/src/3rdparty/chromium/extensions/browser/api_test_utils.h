@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,11 @@
 #include <memory>
 #include <string>
 
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/run_loop.h"
+#include "base/values.h"
 #include "extensions/browser/extension_function.h"
-
-namespace base {
-class DictionaryValue;
-class ListValue;
-class Value;
-}
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace content {
 class BrowserContext;
@@ -36,6 +32,10 @@ namespace api_test_utils {
 class SendResponseHelper {
  public:
   explicit SendResponseHelper(ExtensionFunction* function);
+
+  SendResponseHelper(const SendResponseHelper&) = delete;
+  SendResponseHelper& operator=(const SendResponseHelper&) = delete;
+
   ~SendResponseHelper();
 
   bool has_response() { return response_.get() != nullptr; }
@@ -49,51 +49,50 @@ class SendResponseHelper {
  private:
   // Response handler.
   void OnResponse(ExtensionFunction::ResponseType response,
-                  const base::ListValue& results,
-                  const std::string& error);
+                  base::Value::List results,
+                  const std::string& error,
+                  mojom::ExtraResponseDataPtr);
 
   base::RunLoop run_loop_;
   std::unique_ptr<bool> response_;
-
-  DISALLOW_COPY_AND_ASSIGN(SendResponseHelper);
 };
 
 enum RunFunctionFlags { NONE = 0, INCLUDE_INCOGNITO = 1 << 0 };
 
-// Parse JSON and return as the specified type, or NULL if the JSON is invalid
-// or not the specified type.
-std::unique_ptr<base::DictionaryValue> ParseDictionary(const std::string& data);
+// Parses JSON and returns the dictionary, or absl::nullopt if the JSON is
+// invalid or not a dictionary.
+absl::optional<base::Value::Dict> ParseDictionary(const std::string& data);
 
 // Get |key| from |val| as the specified type. If |key| does not exist, or is
 // not of the specified type, adds a failure to the current test and returns
 // false, 0, empty string, etc.
-bool GetBoolean(const base::DictionaryValue* val, const std::string& key);
-int GetInteger(const base::DictionaryValue* val, const std::string& key);
-std::string GetString(const base::DictionaryValue* val, const std::string& key);
+bool GetBoolean(const base::Value::Dict& val, const std::string& key);
+int GetInteger(const base::Value::Dict& val, const std::string& key);
+std::string GetString(const base::Value::Dict& val, const std::string& key);
+base::Value::List GetList(const base::Value::Dict& val, const std::string& key);
+base::Value::Dict GetDict(const base::Value::Dict& val, const std::string& key);
 
 // Run |function| with |args| and return the result. Adds an error to the
 // current test if |function| returns an error. Takes ownership of
 // |function|. The caller takes ownership of the result.
-std::unique_ptr<base::Value> RunFunctionWithDelegateAndReturnSingleResult(
+absl::optional<base::Value> RunFunctionWithDelegateAndReturnSingleResult(
     scoped_refptr<ExtensionFunction> function,
     const std::string& args,
-    content::BrowserContext* context,
     std::unique_ptr<ExtensionFunctionDispatcher> dispatcher,
     RunFunctionFlags flags);
-std::unique_ptr<base::Value> RunFunctionWithDelegateAndReturnSingleResult(
+absl::optional<base::Value> RunFunctionWithDelegateAndReturnSingleResult(
     scoped_refptr<ExtensionFunction> function,
-    std::unique_ptr<base::ListValue> args,
-    content::BrowserContext* context,
+    base::Value::List args,
     std::unique_ptr<ExtensionFunctionDispatcher> dispatcher,
     RunFunctionFlags flags);
 
 // RunFunctionWithDelegateAndReturnSingleResult, except with a NULL
 // implementation of the Delegate.
-std::unique_ptr<base::Value> RunFunctionAndReturnSingleResult(
+absl::optional<base::Value> RunFunctionAndReturnSingleResult(
     ExtensionFunction* function,
     const std::string& args,
     content::BrowserContext* context);
-std::unique_ptr<base::Value> RunFunctionAndReturnSingleResult(
+absl::optional<base::Value> RunFunctionAndReturnSingleResult(
     ExtensionFunction* function,
     const std::string& args,
     content::BrowserContext* context,
@@ -125,12 +124,10 @@ bool RunFunction(ExtensionFunction* function,
                  content::BrowserContext* context);
 bool RunFunction(ExtensionFunction* function,
                  const std::string& args,
-                 content::BrowserContext* context,
                  std::unique_ptr<ExtensionFunctionDispatcher> dispatcher,
                  RunFunctionFlags flags);
 bool RunFunction(ExtensionFunction* function,
-                 std::unique_ptr<base::ListValue> args,
-                 content::BrowserContext* context,
+                 base::Value::List args,
                  std::unique_ptr<ExtensionFunctionDispatcher> dispatcher,
                  RunFunctionFlags flags);
 

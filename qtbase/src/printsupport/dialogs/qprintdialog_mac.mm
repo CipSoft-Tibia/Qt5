@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <AppKit/AppKit.h>
 
@@ -49,7 +13,11 @@
 #include <QtPrintSupport/qprintengine.h>
 #include <qpa/qplatformprintdevice.h>
 
+#include <QtPrintSupport/private/qprintengine_mac_p.h>
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 extern qreal qt_pointMultiplier(QPageLayout::Unit unit);
 
@@ -115,7 +83,7 @@ QT_USE_NAMESPACE
         // (Apologies to the folks with more than INT_MAX pages)
         if (dialog->fromPage() == 1 && dialog->toPage() == INT_MAX) {
             dialog->setPrintRange(QPrintDialog::AllPages);
-            dialog->setFromTo(0, 0);
+            printer->setPageRanges(QPageRanges());
         } else {
             dialog->setPrintRange(QPrintDialog::PageRange); // In a way a lie, but it shouldn't hurt.
             // Carbon hands us back a very large number here even for ALL, set it to max
@@ -133,7 +101,7 @@ QT_USE_NAMESPACE
             UInt8 localFile[2048];  // Assuming there's a POSIX file system here.
             CFURLGetFileSystemRepresentation(file, true, localFile, sizeof(localFile));
             auto outputFile = QFileInfo(QString::fromUtf8(reinterpret_cast<const char *>(localFile)));
-            if (outputFile.suffix() == QLatin1String("pdf"))
+            if (outputFile.suffix() == "pdf"_L1)
                 printer->setOutputFileName(outputFile.absoluteFilePath());
             else
                 qWarning() << "Can not print to file type" << outputFile.suffix();
@@ -142,7 +110,7 @@ QT_USE_NAMESPACE
             auto documentName = printer->docName();
             if (documentName.isEmpty())
                 documentName = QGuiApplication::applicationDisplayName();
-            auto fileName = printPreviews.filePath(QString(QLatin1String("%1.pdf")).arg(documentName));
+            auto fileName = printPreviews.filePath(QString("%1.pdf"_L1).arg(documentName));
             printer->setOutputFileName(fileName);
             // Ideally we would have a callback when the PDF engine is done writing
             // to the file, and open Preview in response to that. Lacking that, we
@@ -150,7 +118,7 @@ QT_USE_NAMESPACE
             // happen synchronously after the dialog is accepted, so we can defer
             // the opening of the file to the next runloop pass.
             dispatch_async(dispatch_get_main_queue(), ^{
-                [NSWorkspace.sharedWorkspace openFile:fileName.toNSString()];
+                [NSWorkspace.sharedWorkspace openURL:[NSURL fileURLWithPath:fileName.toNSString()]];
             });
         } else if (dest == kPMDestinationProcessPDF) {
             qWarning("Printing workflows are not supported");
@@ -216,16 +184,16 @@ void QPrintDialogPrivate::openCocoaPrintPanel(Qt::WindowModality modality)
     Q_Q(QPrintDialog);
 
     if (printer->outputFormat() == QPrinter::NativeFormat) {
-        // get the NSPrintInfo from the print engine in the platform plugin
-        void *voidp = 0;
-        (void) QMetaObject::invokeMethod(qApp->platformNativeInterface(),
-                                         "NSPrintInfoForPrintEngine",
-                                         Q_RETURN_ARG(void *, voidp),
-                                         Q_ARG(QPrintEngine *, printer->printEngine()));
-        printInfo = static_cast<NSPrintInfo *>(voidp);
+        printInfo = static_cast<QMacPrintEngine *>(printer->printEngine())->printInfo();
         [printInfo retain];
     } else {
-        printInfo = [NSPrintInfo.sharedPrintInfo retain];
+        const QPageLayout pageLayout = printer->pageLayout();
+        // initialize the printInfo using the dictionary from the application-wide print info
+        const auto dictionary = [NSPrintInfo.sharedPrintInfo dictionary];
+        printInfo = [[NSPrintInfo alloc] initWithDictionary:dictionary];
+        printInfo.orientation = pageLayout.orientation() == QPageLayout::Landscape
+                              ? NSPaperOrientationLandscape : NSPaperOrientationPortrait;
+        printInfo.paperSize = pageLayout.pageSize().size(QPageSize::Point).toCGSize();
     }
 
     // It seems the only way that PM lets you use all is if the minimum
@@ -270,8 +238,8 @@ void QPrintDialogPrivate::openCocoaPrintPanel(Qt::WindowModality modality)
         int rval = [printPanel runModalWithPrintInfo:printInfo];
         [delegate printPanelDidEnd:printPanel returnCode:rval contextInfo:q];
     } else {
-        Q_ASSERT(q->parentWidget());
-        QWindow *parentWindow = q->parentWidget()->windowHandle();
+        Q_ASSERT(q->window());
+        QWindow *parentWindow = q->window()->windowHandle();
         NSWindow *window = static_cast<NSWindow *>(qApp->platformNativeInterface()->nativeResourceForWindow("nswindow", parentWindow));
         [printPanel beginSheetWithPrintInfo:printInfo
                              modalForWindow:window
@@ -303,6 +271,7 @@ QPrintDialog::QPrintDialog(QWidget *parent)
 
 QPrintDialog::~QPrintDialog()
 {
+    hide();
 }
 
 int QPrintDialog::exec()

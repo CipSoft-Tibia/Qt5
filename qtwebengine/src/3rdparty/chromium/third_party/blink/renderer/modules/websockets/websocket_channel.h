@@ -32,12 +32,11 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBSOCKETS_WEBSOCKET_CHANNEL_H_
 
 #include <memory>
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
 #include "third_party/blink/public/mojom/devtools/console_message.mojom-blink.h"
-#include "third_party/blink/renderer/bindings/core/v8/source_location.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/bindings/source_location.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 
 namespace blink {
@@ -49,9 +48,13 @@ class KURL;
 class MODULES_EXPORT WebSocketChannel
     : public GarbageCollected<WebSocketChannel> {
  public:
-  enum class SendResult { SENT_SYNCHRONOUSLY, CALLBACK_WILL_BE_CALLED };
+  enum class SendResult { kSentSynchronously, kCallbackWillBeCalled };
 
   WebSocketChannel() = default;
+
+  WebSocketChannel(const WebSocketChannel&) = delete;
+  WebSocketChannel& operator=(const WebSocketChannel&) = delete;
+
   virtual ~WebSocketChannel() = default;
 
   enum CloseEventCode {
@@ -116,9 +119,6 @@ class MODULES_EXPORT WebSocketChannel
   virtual void RemoveBackpressure() = 0;
 
   virtual void Trace(Visitor* visitor) const {}
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(WebSocketChannel);
 };
 
 }  // namespace blink

@@ -1,10 +1,11 @@
-// Copyright (c) 2010 The Chromium Authors. All rights reserved.
+// Copyright 2010 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "net/cert/pem.h"
 
 #include "base/base64.h"
+#include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 
@@ -27,7 +28,7 @@ struct PEMTokenizer::PEMType {
 };
 
 PEMTokenizer::PEMTokenizer(
-    const StringPiece& str,
+    StringPiece str,
     const std::vector<std::string>& allowed_block_types) {
   Init(str, allowed_block_types);
 }
@@ -61,9 +62,8 @@ bool PEMTokenizer::GetNext() {
       block_type_ = it->type;
 
       StringPiece encoded = str_.substr(data_begin, footer_pos - data_begin);
-      if (!base::Base64Decode(
-              base::CollapseWhitespaceASCII(encoded.as_string(), true),
-              &data_)) {
+      if (!base::Base64Decode(base::CollapseWhitespaceASCII(encoded, true),
+                              &data_)) {
         // The most likely cause for a decode failure is a datatype that
         // includes PEM headers, which are not supported.
         break;
@@ -83,19 +83,20 @@ bool PEMTokenizer::GetNext() {
   return false;
 }
 
-void PEMTokenizer::Init(const StringPiece& str,
+void PEMTokenizer::Init(StringPiece str,
                         const std::vector<std::string>& allowed_block_types) {
   str_ = str;
   pos_ = 0;
 
   // Construct PEM header/footer strings for all the accepted types, to
   // reduce parsing later.
-  for (auto it = allowed_block_types.begin(); it != allowed_block_types.end();
-       ++it) {
+  for (const auto& allowed_block_type : allowed_block_types) {
     PEMType allowed_type;
-    allowed_type.type = *it;
-    allowed_type.header = base::StringPrintf(kPEMBeginBlock, it->c_str());
-    allowed_type.footer = base::StringPrintf(kPEMEndBlock, it->c_str());
+    allowed_type.type = allowed_block_type;
+    allowed_type.header =
+        base::StringPrintf(kPEMBeginBlock, allowed_block_type.c_str());
+    allowed_type.footer =
+        base::StringPrintf(kPEMEndBlock, allowed_block_type.c_str());
     block_types_.push_back(allowed_type);
   }
 }

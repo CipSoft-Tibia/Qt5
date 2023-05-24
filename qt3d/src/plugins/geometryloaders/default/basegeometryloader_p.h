@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DRENDER_BASEGEOMETRYLOADER_H
 #define QT3DRENDER_BASEGEOMETRYLOADER_H
@@ -52,13 +16,14 @@
 //
 
 #include <QtCore/QObject>
-#include <QtCore/QVector>
 
 #include <QtGui/QVector2D>
 #include <QtGui/QVector3D>
 #include <QtGui/QVector4D>
 
 #include <Qt3DRender/private/qgeometryloaderinterface_p.h>
+
+#include <vector>
 
 #include <private/qlocale_tools_p.h>
 
@@ -67,9 +32,11 @@ QT_BEGIN_NAMESPACE
 class QIODevice;
 class QString;
 
-namespace Qt3DRender {
-
+namespace Qt3DCore {
 class QGeometry;
+}
+
+namespace Qt3DRender {
 
 class BaseGeometryLoader : public QGeometryLoaderInterface
 {
@@ -86,45 +53,45 @@ public:
     void setMeshCenteringEnabled(bool b) { m_centerMesh = b; }
     bool isMeshCenteringEnabled() const { return m_centerMesh; }
 
-    bool hasNormals() const { return !m_normals.isEmpty(); }
-    bool hasTextureCoordinates() const { return !m_texCoords.isEmpty(); }
-    bool hasTangents() const { return !m_tangents.isEmpty(); }
+    bool hasNormals() const { return !m_normals.empty(); }
+    bool hasTextureCoordinates() const { return !m_texCoords.empty(); }
+    bool hasTangents() const { return !m_tangents.empty(); }
 
-    QVector<QVector3D> vertices() const { return m_points; }
-    QVector<QVector3D> normals() const { return m_normals; }
-    QVector<QVector2D> textureCoordinates() const { return m_texCoords; }
-    QVector<QVector4D> tangents() const { return m_tangents; }
-    QVector<unsigned int> indices() const { return m_indices; }
+    const std::vector<QVector3D> &vertices() const { return m_points; }
+    const std::vector<QVector3D> &normals() const { return m_normals; }
+    const std::vector<QVector2D> &textureCoordinates() const { return m_texCoords; }
+    const std::vector<QVector4D> &tangents() const { return m_tangents; }
+    const std::vector<unsigned int> &indices() const { return m_indices; }
 
-    QGeometry *geometry() const override;
+    Qt3DCore::QGeometry *geometry() const override;
 
     bool load(QIODevice *ioDev, const QString &subMesh = QString()) override;
 
 protected:
     virtual bool doLoad(QIODevice *ioDev, const QString &subMesh = QString()) = 0;
 
-    void generateAveragedNormals(const QVector<QVector3D>& points,
-                                 QVector<QVector3D>& normals,
-                                 const QVector<unsigned int>& faces) const;
+    void generateAveragedNormals(const std::vector<QVector3D>& points,
+                                 std::vector<QVector3D>& normals,
+                                 const std::vector<unsigned int>& faces) const;
     void generateGeometry();
-    void generateTangents(const QVector<QVector3D>& points,
-                          const QVector<QVector3D>& normals,
-                          const QVector<unsigned int>& faces,
-                          const QVector<QVector2D>& texCoords,
-                          QVector<QVector4D>& tangents) const;
-    void center(QVector<QVector3D>& points);
+    void generateTangents(const std::vector<QVector3D>& points,
+                          const std::vector<QVector3D>& normals,
+                          const std::vector<unsigned int>& faces,
+                          const std::vector<QVector2D>& texCoords,
+                          std::vector<QVector4D>& tangents) const;
+    void center(std::vector<QVector3D>& points);
 
     bool m_loadTextureCoords;
     bool m_generateTangents;
     bool m_centerMesh;
 
-    QVector<QVector3D> m_points;
-    QVector<QVector3D> m_normals;
-    QVector<QVector2D> m_texCoords;
-    QVector<QVector4D> m_tangents;
-    QVector<unsigned int> m_indices;
+    std::vector<QVector3D> m_points;
+    std::vector<QVector3D> m_normals;
+    std::vector<QVector2D> m_texCoords;
+    std::vector<QVector4D> m_tangents;
+    std::vector<unsigned int> m_indices;
 
-    QGeometry *m_geometry;
+    Qt3DCore::QGeometry *m_geometry;
 };
 
 struct FaceIndices

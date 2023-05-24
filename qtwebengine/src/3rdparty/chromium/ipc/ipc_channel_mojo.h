@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,20 +13,18 @@
 #include <vector>
 
 #include "base/component_export.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
-#include "base/single_thread_task_runner.h"
 #include "base/synchronization/lock.h"
-#include "base/task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/task/task_runner.h"
 #include "build/build_config.h"
 #include "ipc/ipc.mojom.h"
 #include "ipc/ipc_channel.h"
 #include "ipc/ipc_channel_factory.h"
 #include "ipc/ipc_message_pipe_reader.h"
 #include "ipc/ipc_mojo_bootstrap.h"
-#include "mojo/public/cpp/system/core.h"
 
 namespace IPC {
 
@@ -50,8 +48,7 @@ class COMPONENT_EXPORT(IPC) ChannelMojo
       Mode mode,
       Listener* listener,
       const scoped_refptr<base::SingleThreadTaskRunner>& ipc_task_runner,
-      const scoped_refptr<base::SingleThreadTaskRunner>& proxy_task_runner,
-      const scoped_refptr<mojo::internal::MessageQuotaChecker>& quota_checker);
+      const scoped_refptr<base::SingleThreadTaskRunner>& proxy_task_runner);
 
   // Create a factory object for ChannelMojo.
   // The factory is used to create Mojo-based ChannelProxy family.
@@ -65,6 +62,9 @@ class COMPONENT_EXPORT(IPC) ChannelMojo
       mojo::ScopedMessagePipeHandle handle,
       const scoped_refptr<base::SingleThreadTaskRunner>& ipc_task_runner,
       const scoped_refptr<base::SingleThreadTaskRunner>& proxy_task_runner);
+
+  ChannelMojo(const ChannelMojo&) = delete;
+  ChannelMojo& operator=(const ChannelMojo&) = delete;
 
   ~ChannelMojo() override;
 
@@ -80,11 +80,11 @@ class COMPONENT_EXPORT(IPC) ChannelMojo
   // These access protected API of IPC::Message, which has ChannelMojo
   // as a friend class.
   static MojoResult WriteToMessageAttachmentSet(
-      base::Optional<std::vector<mojo::native::SerializedHandlePtr>> handles,
+      absl::optional<std::vector<mojo::native::SerializedHandlePtr>> handles,
       Message* message);
   static MojoResult ReadFromMessageAttachmentSet(
       Message* message,
-      base::Optional<std::vector<mojo::native::SerializedHandlePtr>>* handles);
+      absl::optional<std::vector<mojo::native::SerializedHandlePtr>>* handles);
 
   // MessagePipeReader::Delegate
   void OnPeerPidReceived(int32_t peer_pid) override;
@@ -92,8 +92,7 @@ class COMPONENT_EXPORT(IPC) ChannelMojo
   void OnBrokenDataReceived() override;
   void OnPipeError() override;
   void OnAssociatedInterfaceRequest(
-      const std::string& name,
-      mojo::ScopedInterfaceEndpointHandle handle) override;
+      mojo::GenericPendingAssociatedReceiver receiver) override;
 
  private:
   ChannelMojo(
@@ -101,13 +100,9 @@ class COMPONENT_EXPORT(IPC) ChannelMojo
       Mode mode,
       Listener* listener,
       const scoped_refptr<base::SingleThreadTaskRunner>& ipc_task_runner,
-      const scoped_refptr<base::SingleThreadTaskRunner>& proxy_task_runner,
-      const scoped_refptr<mojo::internal::MessageQuotaChecker>& quota_checker);
+      const scoped_refptr<base::SingleThreadTaskRunner>& proxy_task_runner);
 
-  void ForwardMessageFromThreadSafePtr(mojo::Message message);
-  void ForwardMessageWithResponderFromThreadSafePtr(
-      mojo::Message message,
-      std::unique_ptr<mojo::MessageReceiver> responder);
+  void ForwardMessage(mojo::Message message);
 
   // Channel::AssociatedInterfaceSupport:
   std::unique_ptr<mojo::ThreadSafeForwarder<mojom::Channel>>
@@ -115,9 +110,10 @@ class COMPONENT_EXPORT(IPC) ChannelMojo
   void AddGenericAssociatedInterface(
       const std::string& name,
       const GenericAssociatedInterfaceFactory& factory) override;
-  void GetGenericRemoteAssociatedInterface(
-      const std::string& name,
-      mojo::ScopedInterfaceEndpointHandle handle) override;
+  void GetRemoteAssociatedInterface(
+      mojo::GenericPendingAssociatedReceiver receiver) override;
+
+  void FinishConnectOnIOThread();
 
   base::WeakPtr<ChannelMojo> weak_ptr_;
 
@@ -126,7 +122,7 @@ class COMPONENT_EXPORT(IPC) ChannelMojo
 
   const mojo::MessagePipeHandle pipe_;
   std::unique_ptr<MojoBootstrap> bootstrap_;
-  Listener* listener_;
+  raw_ptr<Listener> listener_;
 
   std::unique_ptr<internal::MessagePipeReader> message_reader_;
 
@@ -135,8 +131,6 @@ class COMPONENT_EXPORT(IPC) ChannelMojo
       associated_interfaces_;
 
   base::WeakPtrFactory<ChannelMojo> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(ChannelMojo);
 };
 
 }  // namespace IPC

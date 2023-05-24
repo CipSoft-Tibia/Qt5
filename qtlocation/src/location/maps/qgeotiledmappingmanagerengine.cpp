@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeotiledmappingmanagerengine_p.h"
 #include "qgeotiledmappingmanagerengine_p_p.h"
@@ -53,7 +20,6 @@ QT_BEGIN_NAMESPACE
 
 QGeoTiledMappingManagerEngine::QGeoTiledMappingManagerEngine(QObject *parent)
     : QGeoMappingManagerEngine(parent),
-      m_prefetchStyle(QGeoTiledMap::PrefetchTwoNeighbourLayers),
       d_ptr(new QGeoTiledMappingManagerEnginePrivate)
 {
 }
@@ -80,15 +46,11 @@ void QGeoTiledMappingManagerEngine::setTileFetcher(QGeoTileFetcher *fetcher)
 
     qRegisterMetaType<QGeoTileSpec>();
 
-    connect(d->fetcher_,
-            SIGNAL(tileFinished(QGeoTileSpec,QByteArray,QString)),
-            this,
-            SLOT(engineTileFinished(QGeoTileSpec,QByteArray,QString)),
+    connect(d->fetcher_, &QGeoTileFetcher::tileFinished,
+            this, &QGeoTiledMappingManagerEngine::engineTileFinished,
             Qt::QueuedConnection);
-    connect(d->fetcher_,
-            SIGNAL(tileError(QGeoTileSpec,QString)),
-            this,
-            SLOT(engineTileError(QGeoTileSpec,QString)),
+    connect(d->fetcher_, &QGeoTileFetcher::tileError,
+            this, &QGeoTiledMappingManagerEngine::engineTileError,
             Qt::QueuedConnection);
 
     engineInitialized();
@@ -289,7 +251,7 @@ void QGeoTiledMappingManagerEngine::setTileCache(QAbstractGeoTileCache *cache)
     Q_D(QGeoTiledMappingManagerEngine);
     Q_ASSERT_X(!d->tileCache_, Q_FUNC_INFO, "This should be called only once");
     cache->setParent(this);
-    d->tileCache_ = cache;
+    d->tileCache_.reset(cache);
     d->tileCache_->init();
 }
 
@@ -300,30 +262,15 @@ QAbstractGeoTileCache *QGeoTiledMappingManagerEngine::tileCache()
         QString cacheDirectory;
         if (!managerName().isEmpty())
             cacheDirectory = QAbstractGeoTileCache::baseLocationCacheDirectory() + managerName();
-        d->tileCache_ = new QGeoFileTileCache(cacheDirectory);
+        d->tileCache_.reset(new QGeoFileTileCache(cacheDirectory));
         d->tileCache_->init();
     }
-    return d->tileCache_;
+    return d->tileCache_.get();
 }
 
 QSharedPointer<QGeoTileTexture> QGeoTiledMappingManagerEngine::getTileTexture(const QGeoTileSpec &spec)
 {
     return d_ptr->tileCache_->get(spec);
-}
-
-/*******************************************************************************
-*******************************************************************************/
-
-QGeoTiledMappingManagerEnginePrivate::QGeoTiledMappingManagerEnginePrivate()
-:   m_tileVersion(-1),
-    cacheHint_(QAbstractGeoTileCache::AllCaches),
-    tileCache_(0),
-    fetcher_(0)
-{
-}
-
-QGeoTiledMappingManagerEnginePrivate::~QGeoTiledMappingManagerEnginePrivate()
-{
 }
 
 QT_END_NAMESPACE

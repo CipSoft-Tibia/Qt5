@@ -1,16 +1,17 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/flags_ui/flags_test_helpers.h"
 
 #include <gtest/gtest.h>
-#include <algorithm>
+
 #include <map>
 #include <string>
 #include <vector>
 
 #include "base/base_paths.h"
+#include "base/containers/contains.h"
 #include "base/files/file_path.h"
 #include "base/json/json_file_value_serializer.h"
 #include "base/path_service.h"
@@ -68,14 +69,16 @@ FlagMetadataMap LoadFlagMetadata() {
   base::Value metadata_json = FileContents(FlagFile::kFlagMetadata);
 
   FlagMetadataMap metadata;
-  for (const auto& entry : metadata_json.GetList()) {
-    std::string name = entry.FindKey("name")->GetString();
+  for (const auto& entry_val : metadata_json.GetList()) {
+    const base::Value::Dict& entry = entry_val.GetDict();
+    std::string name = *entry.FindString("name");
     std::vector<std::string> owners;
-    if (const base::Value* e = entry.FindKey("owners")) {
-      for (const auto& owner : e->GetList())
+    if (const base::Value::List* e = entry.FindList("owners")) {
+      for (const auto& owner : *e) {
         owners.push_back(owner.GetString());
+      }
     }
-    int expiry_milestone = entry.FindKey("expiry_milestone")->GetInt();
+    int expiry_milestone = entry.FindInt("expiry_milestone").value();
     metadata[name] = FlagMetadataEntry{owners, expiry_milestone};
   }
 
@@ -93,6 +96,16 @@ std::vector<std::string> LoadFlagNeverExpireList() {
 }
 
 bool IsValidLookingOwner(base::StringPiece owner) {
+  // Never allow ',' or ' ' in owner names, regardless of all other constraints.
+  // It is otherwise too easy to accidentally do this:
+  //   "owners": [ "foo@chromium.org,bar@chromium.org" ]
+  // or this:
+  //   "owners": [ "foo@chromium.org bar@chromium.org" ]
+  // Apologies to those who have spaces in their email addresses or OWNERS file
+  // path names :)
+  if (owner.find_first_of(", ") != std::string::npos)
+    return false;
+
   // Per the specification at the top of flag-metadata.json, an owner is one of:
   // 1) A string containing '@', which is treated as a full email address
   // 2) A string beginning with '//', which is a path to an OWNERS file
@@ -189,11 +202,6 @@ namespace flags_ui {
 
 namespace testing {
 
-void EnsureEveryFlagHasMetadata(const flags_ui::FeatureEntry* entries,
-                                size_t count) {
-  EnsureEveryFlagHasMetadata(base::make_span(entries, count));
-}
-
 void EnsureEveryFlagHasMetadata(
     const base::span<const flags_ui::FeatureEntry>& entries) {
   FlagMetadataMap metadata = LoadFlagMetadata();
@@ -222,8 +230,7 @@ void EnsureOnlyPermittedFlagsNeverExpire() {
 
   for (const auto& entry : metadata) {
     if (entry.second.expiry_milestone == -1 &&
-        std::find(listed_flags.begin(), listed_flags.end(), entry.first) ==
-            listed_flags.end()) {
+        !base::Contains(listed_flags, entry.first)) {
       missing_flags.push_back(entry.first);
     }
   }
@@ -270,10 +277,10 @@ void EnsureFlagsAreListedInAlphabeticalOrder() {
 
   std::vector<std::string> normalized_names;
   std::vector<std::string> names;
-  for (const auto& entry : metadata_json.GetList()) {
-    normalized_names.push_back(
-        NormalizeName(entry.FindKey("name")->GetString()));
-    names.push_back(entry.FindKey("name")->GetString());
+  for (const auto& entry_val : metadata_json.GetList()) {
+    const base::Value::Dict& entry = entry_val.GetDict();
+    normalized_names.push_back(NormalizeName(*entry.FindString("name")));
+    names.push_back(*entry.FindString("name"));
   }
 
   EnsureNamesAreAlphabetical(normalized_names, names, FlagFile::kFlagMetadata);
@@ -291,7 +298,8 @@ void EnsureFlagsAreListedInAlphabeticalOrder() {
                              FlagFile::kFlagNeverExpire);
 }
 
-// TODO(ellyjones): Does this / should this run on iOS as well?
+// TODO(https://crbug.com/1241068): Call this from the iOS flags unittests once
+// flag expiration is supported there.
 void EnsureRecentUnexpireFlagsArePresent(
     const base::span<const flags_ui::FeatureEntry>& entries,
     int current_milestone) {

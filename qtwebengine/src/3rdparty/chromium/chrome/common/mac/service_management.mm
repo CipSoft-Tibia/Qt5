@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,10 +11,8 @@
 #include <errno.h>
 #include <launch.h>
 
-#include "base/compiler_specific.h"
 #include "base/mac/foundation_util.h"
 #include "base/mac/scoped_nsobject.h"
-#include "base/macros.h"
 #include "base/strings/sys_string_conversions.h"
 
 // This entire file is written in terms of the launch_data_t API, which is
@@ -30,6 +28,10 @@ class ScopedLaunchData {
       : data_(launch_data_alloc(type)) {}
   explicit ScopedLaunchData(launch_data_t data) : data_(data) {}
   ScopedLaunchData(ScopedLaunchData&& other) : data_(other.release()) {}
+
+  ScopedLaunchData(const ScopedLaunchData&) = delete;
+  ScopedLaunchData& operator=(const ScopedLaunchData&) = delete;
+
   ~ScopedLaunchData() { reset(); }
 
   void reset() {
@@ -38,7 +40,7 @@ class ScopedLaunchData {
     data_ = nullptr;
   }
 
-  launch_data_t release() WARN_UNUSED_RESULT {
+  [[nodiscard]] launch_data_t release() {
     launch_data_t val = data_;
     data_ = nullptr;
     return val;
@@ -50,8 +52,6 @@ class ScopedLaunchData {
 
  private:
   launch_data_t data_;
-
-  DISALLOW_COPY_AND_ASSIGN(ScopedLaunchData);
 };
 
 ScopedLaunchData SendLaunchMessage(ScopedLaunchData&& msg) {
@@ -202,9 +202,9 @@ bool RemoveJob(const std::string& label) {
   if (!error)
     error = ErrnoFromLaunchData(resp.get());
 
-  // On macOS 10.10+, removing a running job yields EINPROGRESS but the
-  // operation completes eventually (but not necessarily by the time RemoveJob
-  // is done). See rdar://18398683 for details.
+  // Removing a running job yields EINPROGRESS but the operation completes
+  // eventually (but not necessarily by the time RemoveJob is done). See
+  // rdar://18398683 for details.
   if (error == EINPROGRESS)
     error = 0;
 

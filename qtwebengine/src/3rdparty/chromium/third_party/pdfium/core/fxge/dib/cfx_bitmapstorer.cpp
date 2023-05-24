@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,15 @@
 
 #include "core/fxge/dib/cfx_bitmapstorer.h"
 
+#include <string.h>
+
 #include <utility>
 
+#include "core/fxcrt/span_util.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
+#include "third_party/base/check_op.h"
 
-CFX_BitmapStorer::CFX_BitmapStorer() {}
+CFX_BitmapStorer::CFX_BitmapStorer() = default;
 
 CFX_BitmapStorer::~CFX_BitmapStorer() = default;
 
@@ -23,32 +27,24 @@ void CFX_BitmapStorer::Replace(RetainPtr<CFX_DIBitmap>&& pBitmap) {
 }
 
 void CFX_BitmapStorer::ComposeScanline(int line,
-                                       const uint8_t* scanline,
-                                       const uint8_t* scan_extra_alpha) {
-  uint8_t* dest_buf = m_pBitmap->GetWritableScanline(line);
-  uint8_t* dest_alpha_buf =
-      m_pBitmap->m_pAlphaMask
-          ? m_pBitmap->m_pAlphaMask->GetWritableScanline(line)
-          : nullptr;
-  if (dest_buf)
-    memcpy(dest_buf, scanline, m_pBitmap->GetPitch());
-
-  if (dest_alpha_buf) {
-    memcpy(dest_alpha_buf, scan_extra_alpha,
-           m_pBitmap->m_pAlphaMask->GetPitch());
-  }
+                                       pdfium::span<const uint8_t> scanline) {
+  pdfium::span<uint8_t> dest_buf = m_pBitmap->GetWritableScanline(line);
+  if (!dest_buf.empty())
+    fxcrt::spancpy(dest_buf, scanline);
 }
 
 bool CFX_BitmapStorer::SetInfo(int width,
                                int height,
                                FXDIB_Format src_format,
-                               uint32_t* pSrcPalette) {
+                               pdfium::span<const uint32_t> src_palette) {
+  DCHECK_NE(src_format, FXDIB_Format::k1bppMask);
+  DCHECK_NE(src_format, FXDIB_Format::k1bppRgb);
   auto pBitmap = pdfium::MakeRetain<CFX_DIBitmap>();
   if (!pBitmap->Create(width, height, src_format))
     return false;
 
-  if (pSrcPalette)
-    pBitmap->SetPalette(pSrcPalette);
+  if (!src_palette.empty())
+    pBitmap->SetPalette(src_palette);
 
   m_pBitmap = std::move(pBitmap);
   return true;

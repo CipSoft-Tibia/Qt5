@@ -38,6 +38,7 @@
 #include <sys/mman.h>
 #include <linux/input.h>
 
+#include <drm_fourcc.h>
 #include <wayland-client.h>
 #include <wayland-cursor.h>
 
@@ -48,7 +49,7 @@
 #include <libweston/libweston.h>
 #include <libweston/backend-wayland.h>
 #include "renderer-gl/gl-renderer.h"
-#include "weston-egl-ext.h"
+#include "shared/weston-egl-ext.h"
 #include "pixman-renderer.h"
 #include "shared/helpers.h"
 #include "shared/image-loader.h"
@@ -62,6 +63,10 @@
 #include <libweston/windowed-output-api.h>
 
 #define WINDOW_TITLE "Weston Compositor"
+
+static const uint32_t wayland_formats[] = {
+	DRM_FORMAT_ARGB8888,
+};
 
 struct wayland_backend {
 	struct weston_backend base;
@@ -175,6 +180,8 @@ struct wayland_shm_buffer {
 	struct wl_buffer *buffer;
 	void *data;
 	size_t size;
+	int width;
+	int height;
 	pixman_region32_t damage;		/**< in global coords */
 	int frame_damaged;
 
@@ -334,6 +341,8 @@ wayland_output_get_shm_buffer(struct wayland_output *output)
 	sb->frame_damaged = 1;
 
 	sb->data = data;
+	sb->width = width;
+	sb->height = height;
 	sb->size = height * stride;
 
 	pool = wl_shm_create_pool(shm, fd, sb->size);
@@ -405,8 +414,7 @@ draw_initial_frame(struct wayland_output *output)
 
 	wl_surface_attach(output->parent.surface, sb->buffer, 0, 0);
 	wl_surface_damage(output->parent.surface, 0, 0,
-			  output->base.current_mode->width,
-			  output->base.current_mode->height);
+			  sb->width, sb->height);
 }
 
 #ifdef ENABLE_EGL
@@ -754,6 +762,10 @@ static int
 wayland_output_init_gl_renderer(struct wayland_output *output)
 {
 	int32_t fwidth = 0, fheight = 0;
+	struct gl_renderer_output_options options = {
+		.drm_formats = wayland_formats,
+		.drm_formats_count = ARRAY_LENGTH(wayland_formats),
+	};
 
 	if (output->frame) {
 		fwidth = frame_width(output->frame);
@@ -770,13 +782,10 @@ wayland_output_init_gl_renderer(struct wayland_output *output)
 		weston_log("failure to create wl_egl_window\n");
 		return -1;
 	}
+	options.window_for_legacy = output->gl.egl_window;
+	options.window_for_platform = output->gl.egl_window;
 
-	if (gl_renderer->output_window_create(&output->base,
-					      output->gl.egl_window,
-					      output->gl.egl_window,
-					      gl_renderer->alpha_attribs,
-					      NULL,
-					      0) < 0)
+	if (gl_renderer->output_window_create(&output->base, &options) < 0)
 		goto cleanup_window;
 
 	return 0;
@@ -790,8 +799,10 @@ cleanup_window:
 static int
 wayland_output_init_pixman_renderer(struct wayland_output *output)
 {
-	return pixman_renderer_output_create(&output->base,
-				     PIXMAN_RENDERER_OUTPUT_USE_SHADOW);
+	const struct pixman_renderer_output_options options = {
+		.use_shadow = true,
+	};
+	return pixman_renderer_output_create(&output->base, &options);
 }
 
 static void
@@ -2766,13 +2777,14 @@ wayland_backend_create(struct weston_compositor *compositor,
 	}
 
 	if (!b->use_pixman) {
-		if (gl_renderer->display_create(compositor,
-						EGL_PLATFORM_WAYLAND_KHR,
-						b->parent.wl_display,
-						NULL,
-						gl_renderer->alpha_attribs,
-						NULL,
-						0) < 0) {
+		const struct gl_renderer_display_options options = {
+			.egl_platform = EGL_PLATFORM_WAYLAND_KHR,
+			.egl_native_display = b->parent.wl_display,
+			.egl_surface_type = EGL_WINDOW_BIT,
+			.drm_formats = wayland_formats,
+			.drm_formats_count = ARRAY_LENGTH(wayland_formats),
+		};
+		if (gl_renderer->display_create(compositor, &options) < 0) {
 			weston_log("Failed to initialize the GL renderer; "
 				   "falling back to pixman.\n");
 			b->use_pixman = true;

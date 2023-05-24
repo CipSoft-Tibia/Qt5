@@ -8,6 +8,7 @@
 
 #include "discovery/dnssd/impl/conversion_layer.h"
 #include "discovery/dnssd/impl/instance_key.h"
+#include "util/std_util.h"
 
 namespace openscreen {
 namespace discovery {
@@ -223,9 +224,8 @@ DnsDataGraphImpl::Node::~Node() {
   // the holding graph. In that case, the state of the graph no longer matters
   // and all nodes will be deleted, so no need to consider the child pointers.
   if (!graph_->is_dtor_running_) {
-    auto it = std::find_if(parents_.begin(), parents_.end(),
-                           [this](Node* parent) { return parent != this; });
-    OSP_DCHECK(it == parents_.end());
+    OSP_DCHECK(
+        !ContainsIf(parents_, [this](Node* parent) { return parent != this; }));
 
     // Erase all childrens' parent pointers to this node.
     for (Node* child : children_) {
@@ -252,7 +252,10 @@ Error DnsDataGraphImpl::Node::ApplyDataRecordChange(MdnsRecord record,
 
   if (record.dns_type() == DnsType::kPTR) {
     child_name = absl::get<PtrRecordRdata>(record.rdata()).ptr_domain();
-    it = std::find(records_.begin(), records_.end(), record);
+    it = std::find_if(records_.begin(), records_.end(),
+                      [record](const MdnsRecord& rhs) {
+                        return record.IsReannouncementOf(rhs);
+                      });
   } else {
     if (record.dns_type() == DnsType::kSRV) {
       child_name = absl::get<SrvRecordRdata>(record.rdata()).target();
@@ -575,7 +578,6 @@ DnsDataGraphImpl::DomainGroup DnsDataGraph::GetDomainGroup(DnsType type) {
       return DnsDataGraphImpl::DomainGroup::kPtr;
     default:
       OSP_NOTREACHED();
-      return DnsDataGraphImpl::DomainGroup::kNone;
   }
 }
 

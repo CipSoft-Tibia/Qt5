@@ -1,12 +1,10 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CHROME_BROWSER_UI_WEBUI_DEVTOOLS_UI_H_
 #define CHROME_BROWSER_UI_WEBUI_DEVTOOLS_UI_H_
 
-#include "base/macros.h"
-#include "base/values.h"
 #ifndef TOOLKIT_QT
 #include "chrome/browser/devtools/devtools_ui_bindings.h"
 #endif
@@ -19,13 +17,16 @@ class DevToolsUI : public content::WebUIController {
   static bool IsFrontendResourceURL(const GURL& url);
 
   explicit DevToolsUI(content::WebUI* web_ui);
+
+  DevToolsUI(const DevToolsUI&) = delete;
+  DevToolsUI& operator=(const DevToolsUI&) = delete;
+
   ~DevToolsUI() override;
 
  private:
 #ifndef TOOLKIT_QT
   DevToolsUIBindings bindings_;
 #endif
-  DISALLOW_COPY_AND_ASSIGN(DevToolsUI);
 };
 
 #endif  // CHROME_BROWSER_UI_WEBUI_DEVTOOLS_UI_H_

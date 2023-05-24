@@ -1,45 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgdistancefieldglyphnode_p_p.h"
 #include "qsgrhidistancefieldglyphcache_p.h"
-#include <QtGui/qopenglfunctions.h>
 #include <QtGui/qsurface.h>
 #include <QtGui/qwindow.h>
 #include <qmath.h>
@@ -70,144 +33,7 @@ static float spreadFunc(float glyphScale)
     return range / glyphScale;
 }
 
-class QSGDistanceFieldTextMaterialShader : public QSGMaterialShader
-{
-public:
-    QSGDistanceFieldTextMaterialShader();
-
-    void updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect) override;
-    char const *const *attributeNames() const override;
-
-protected:
-    void initialize() override;
-
-    void updateAlphaRange();
-    void updateColor(const QVector4D &c);
-    void updateTextureScale(const QVector2D &ts);
-
-    float m_fontScale = 1.0;
-    float m_matrixScale = 1.0;
-
-    int m_matrix_id = -1;
-    int m_textureScale_id = -1;
-    int m_alphaMin_id = -1;
-    int m_alphaMax_id = -1;
-    int m_color_id = -1;
-
-    QVector2D m_lastTextureScale;
-    QVector4D m_lastColor;
-    float m_lastAlphaMin = -1;
-    float m_lastAlphaMax = -1;
-};
-
-char const *const *QSGDistanceFieldTextMaterialShader::attributeNames() const {
-    static char const *const attr[] = { "vCoord", "tCoord", nullptr };
-    return attr;
-}
-
-QSGDistanceFieldTextMaterialShader::QSGDistanceFieldTextMaterialShader()
-{
-    setShaderSourceFile(QOpenGLShader::Vertex, QStringLiteral(":/qt-project.org/scenegraph/shaders/distancefieldtext.vert"));
-    setShaderSourceFile(QOpenGLShader::Fragment, QStringLiteral(":/qt-project.org/scenegraph/shaders/distancefieldtext.frag"));
-}
-
-void QSGDistanceFieldTextMaterialShader::updateAlphaRange()
-{
-    float combinedScale = m_fontScale * m_matrixScale;
-    float base = thresholdFunc(combinedScale);
-    float range = spreadFunc(combinedScale);
-    float alphaMin = qMax(0.0f, base - range);
-    float alphaMax = qMin(base + range, 1.0f);
-    if (alphaMin != m_lastAlphaMin) {
-        program()->setUniformValue(m_alphaMin_id, GLfloat(alphaMin));
-        m_lastAlphaMin = alphaMin;
-    }
-    if (alphaMax != m_lastAlphaMax) {
-        program()->setUniformValue(m_alphaMax_id, GLfloat(alphaMax));
-        m_lastAlphaMax = alphaMax;
-    }
-}
-
-void QSGDistanceFieldTextMaterialShader::updateColor(const QVector4D &c)
-{
-    if (m_lastColor != c) {
-        program()->setUniformValue(m_color_id, c);
-        m_lastColor = c;
-    }
-}
-
-void QSGDistanceFieldTextMaterialShader::updateTextureScale(const QVector2D &ts)
-{
-    if (m_lastTextureScale != ts) {
-        program()->setUniformValue(m_textureScale_id, ts);
-        m_lastTextureScale = ts;
-    }
-}
-
-void QSGDistanceFieldTextMaterialShader::initialize()
-{
-    QSGMaterialShader::initialize();
-    m_matrix_id = program()->uniformLocation("matrix");
-    m_textureScale_id = program()->uniformLocation("textureScale");
-    m_color_id = program()->uniformLocation("color");
-    m_alphaMin_id = program()->uniformLocation("alphaMin");
-    m_alphaMax_id = program()->uniformLocation("alphaMax");
-}
-
-void QSGDistanceFieldTextMaterialShader::updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect)
-{
-    Q_ASSERT(oldEffect == nullptr || newEffect->type() == oldEffect->type());
-    QSGDistanceFieldTextMaterial *material = static_cast<QSGDistanceFieldTextMaterial *>(newEffect);
-    QSGDistanceFieldTextMaterial *oldMaterial = static_cast<QSGDistanceFieldTextMaterial *>(oldEffect);
-
-    bool updated = material->updateTextureSize();
-
-    if (oldMaterial == nullptr
-           || material->color() != oldMaterial->color()
-           || state.isOpacityDirty()) {
-        QVector4D color = material->color();
-        color *= state.opacity();
-        updateColor(color);
-    }
-
-    bool updateRange = false;
-    if (oldMaterial == nullptr
-            || material->fontScale() != oldMaterial->fontScale()) {
-        m_fontScale = material->fontScale();
-        updateRange = true;
-    }
-    if (state.isMatrixDirty()) {
-        program()->setUniformValue(m_matrix_id, state.combinedMatrix());
-        m_matrixScale = qSqrt(qAbs(state.determinant())) * state.devicePixelRatio();
-        updateRange = true;
-    }
-    if (updateRange) {
-        updateAlphaRange();
-    }
-
-    Q_ASSERT(material->glyphCache());
-
-    if (updated
-            || oldMaterial == nullptr
-            || oldMaterial->texture()->textureId != material->texture()->textureId) {
-        updateTextureScale(QVector2D(1.0 / material->textureSize().width(),
-                                     1.0 / material->textureSize().height()));
-
-        QOpenGLFunctions *funcs = state.context()->functions();
-        funcs->glBindTexture(GL_TEXTURE_2D, material->texture()->textureId);
-
-        if (updated) {
-            // Set the mag/min filters to be linear. We only need to do this when the texture
-            // has been recreated.
-            funcs->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            funcs->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            funcs->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            funcs->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        }
-    }
-}
-
-class QSGDistanceFieldTextMaterialRhiShader : public QSGMaterialRhiShader
+class QSGDistanceFieldTextMaterialRhiShader : public QSGMaterialShader
 {
 public:
     QSGDistanceFieldTextMaterialRhiShader(bool alphaTexture);
@@ -227,6 +53,7 @@ QSGDistanceFieldTextMaterialRhiShader::QSGDistanceFieldTextMaterialRhiShader(boo
 {
     setShaderFileName(VertexStage,
                       QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldtext.vert.qsb"));
+
     if (alphaTexture)
         setShaderFileName(FragmentStage,
                           QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldtext_a.frag.qsb"));
@@ -304,13 +131,32 @@ void QSGDistanceFieldTextMaterialRhiShader::updateSampledImage(RenderState &stat
     *texture = t;
 }
 
+class DistanceFieldAnisotropicTextMaterialRhiShader : public QSGDistanceFieldTextMaterialRhiShader
+{
+public:
+    DistanceFieldAnisotropicTextMaterialRhiShader(bool alphaTexture);
+};
+
+DistanceFieldAnisotropicTextMaterialRhiShader::DistanceFieldAnisotropicTextMaterialRhiShader(bool alphaTexture)
+    : QSGDistanceFieldTextMaterialRhiShader(alphaTexture)
+{
+    setShaderFileName(VertexStage,
+                      QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldtext.vert.qsb"));
+    if (alphaTexture)
+        setShaderFileName(FragmentStage,
+                          QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldtext_a_fwidth.frag.qsb"));
+    else
+        setShaderFileName(FragmentStage,
+                          QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldtext_fwidth.frag.qsb"));
+}
+
 QSGDistanceFieldTextMaterial::QSGDistanceFieldTextMaterial()
     : m_glyph_cache(nullptr)
     , m_texture(nullptr)
     , m_fontScale(1.0)
     , m_sgTexture(nullptr)
 {
-   setFlag(Blending | RequiresDeterminant | SupportsRhiShader, true);
+   setFlag(Blending | RequiresDeterminant, true);
 }
 
 QSGDistanceFieldTextMaterial::~QSGDistanceFieldTextMaterial()
@@ -326,18 +172,17 @@ QSGMaterialType *QSGDistanceFieldTextMaterial::type() const
 
 void QSGDistanceFieldTextMaterial::setColor(const QColor &color)
 {
-    m_color = QVector4D(color.redF() * color.alphaF(),
-                        color.greenF() * color.alphaF(),
-                        color.blueF() * color.alphaF(),
-                        color.alphaF());
+    float r, g, b, a;
+    color.getRgbF(&r, &g, &b, &a);
+    m_color = QVector4D(r * a, g * a, b * a, a);
 }
 
-QSGMaterialShader *QSGDistanceFieldTextMaterial::createShader() const
+QSGMaterialShader *QSGDistanceFieldTextMaterial::createShader(QSGRendererInterface::RenderMode renderMode) const
 {
-    if (flags().testFlag(RhiShaderWanted))
-        return new QSGDistanceFieldTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
+    if (renderMode == QSGRendererInterface::RenderMode3D && m_glyph_cache->screenSpaceDerivativesSupported())
+        return new DistanceFieldAnisotropicTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
     else
-        return new QSGDistanceFieldTextMaterialShader;
+        return new QSGDistanceFieldTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
 }
 
 bool QSGDistanceFieldTextMaterial::updateTextureSize()
@@ -381,52 +226,11 @@ int QSGDistanceFieldTextMaterial::compare(const QSGMaterial *o) const
     }
     if (m_color != other->m_color)
         return &m_color < &other->m_color ? -1 : 1;
-    int t0 = m_texture ? (m_texture->rhiBased ? qintptr(m_texture->texture) : m_texture->textureId) : 0;
-    int t1 = other->m_texture ? (other->m_texture->rhiBased ? qintptr(other->m_texture->texture) : other->m_texture->textureId) : 0;
-    return t0 - t1;
+    qintptr t0 = m_texture ? qintptr(m_texture->texture) : 0;
+    qintptr t1 = other->m_texture ? qintptr(other->m_texture->texture) : 0;
+    const qintptr diff = t0 - t1;
+    return diff < 0 ? -1 : (diff > 0 ? 1 : 0);
 }
-
-
-class DistanceFieldStyledTextMaterialShader : public QSGDistanceFieldTextMaterialShader
-{
-public:
-    DistanceFieldStyledTextMaterialShader();
-
-    void updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect) override;
-
-protected:
-    void initialize() override;
-
-    int m_styleColor_id = -1;
-};
-
-DistanceFieldStyledTextMaterialShader::DistanceFieldStyledTextMaterialShader()
-    : QSGDistanceFieldTextMaterialShader()
-{
-}
-
-void DistanceFieldStyledTextMaterialShader::initialize()
-{
-    QSGDistanceFieldTextMaterialShader::initialize();
-    m_styleColor_id = program()->uniformLocation("styleColor");
-}
-
-void DistanceFieldStyledTextMaterialShader::updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect)
-{
-    QSGDistanceFieldTextMaterialShader::updateState(state, newEffect, oldEffect);
-
-    QSGDistanceFieldStyledTextMaterial *material = static_cast<QSGDistanceFieldStyledTextMaterial *>(newEffect);
-    QSGDistanceFieldStyledTextMaterial *oldMaterial = static_cast<QSGDistanceFieldStyledTextMaterial *>(oldEffect);
-
-    if (oldMaterial == nullptr
-           || material->styleColor() != oldMaterial->styleColor()
-           || (state.isOpacityDirty())) {
-        QVector4D color = material->styleColor();
-        color *= state.opacity();
-        program()->setUniformValue(m_styleColor_id, color);
-    }
-}
-
 class DistanceFieldStyledTextMaterialRhiShader : public QSGDistanceFieldTextMaterialRhiShader
 {
 public:
@@ -471,10 +275,9 @@ QSGDistanceFieldStyledTextMaterial::~QSGDistanceFieldStyledTextMaterial()
 
 void QSGDistanceFieldStyledTextMaterial::setStyleColor(const QColor &color)
 {
-    m_styleColor = QVector4D(color.redF() * color.alphaF(),
-                             color.greenF() * color.alphaF(),
-                             color.blueF() * color.alphaF(),
-                             color.alphaF());
+    float r, g, b, a;
+    color.getRgbF(&r, &g, &b, &a);
+    m_styleColor = QVector4D(r * a, g * a, b * a, a);
 }
 
 int QSGDistanceFieldStyledTextMaterial::compare(const QSGMaterial *o) const
@@ -484,63 +287,6 @@ int QSGDistanceFieldStyledTextMaterial::compare(const QSGMaterial *o) const
     if (m_styleColor != other->m_styleColor)
         return &m_styleColor < &other->m_styleColor ? -1 : 1;
     return QSGDistanceFieldTextMaterial::compare(o);
-}
-
-
-class DistanceFieldOutlineTextMaterialShader : public DistanceFieldStyledTextMaterialShader
-{
-public:
-    DistanceFieldOutlineTextMaterialShader();
-
-    void updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect) override;
-
-protected:
-    void initialize() override;
-
-    void updateOutlineAlphaRange(int dfRadius);
-
-    int m_outlineAlphaMax0_id = -1;
-    int m_outlineAlphaMax1_id = -1;
-};
-
-DistanceFieldOutlineTextMaterialShader::DistanceFieldOutlineTextMaterialShader()
-    : DistanceFieldStyledTextMaterialShader()
-{
-    setShaderSourceFile(QOpenGLShader::Fragment, QStringLiteral(":/qt-project.org/scenegraph/shaders/distancefieldoutlinetext.frag"));
-}
-
-void DistanceFieldOutlineTextMaterialShader::initialize()
-{
-    DistanceFieldStyledTextMaterialShader::initialize();
-    m_outlineAlphaMax0_id = program()->uniformLocation("outlineAlphaMax0");
-    m_outlineAlphaMax1_id = program()->uniformLocation("outlineAlphaMax1");
-}
-
-void DistanceFieldOutlineTextMaterialShader::updateOutlineAlphaRange(int dfRadius)
-{
-    float combinedScale = m_fontScale * m_matrixScale;
-    float base = thresholdFunc(combinedScale);
-    float range = spreadFunc(combinedScale);
-    float outlineLimit = qMax(0.2f, base - 0.5f / dfRadius / m_fontScale);
-
-    float alphaMin = qMax(0.0f, base - range);
-    float styleAlphaMin0 = qMax(0.0f, outlineLimit - range);
-    float styleAlphaMin1 = qMin(outlineLimit + range, alphaMin);
-    program()->setUniformValue(m_outlineAlphaMax0_id, GLfloat(styleAlphaMin0));
-    program()->setUniformValue(m_outlineAlphaMax1_id, GLfloat(styleAlphaMin1));
-}
-
-void DistanceFieldOutlineTextMaterialShader::updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect)
-{
-    DistanceFieldStyledTextMaterialShader::updateState(state, newEffect, oldEffect);
-
-    QSGDistanceFieldOutlineTextMaterial *material = static_cast<QSGDistanceFieldOutlineTextMaterial *>(newEffect);
-    QSGDistanceFieldOutlineTextMaterial *oldMaterial = static_cast<QSGDistanceFieldOutlineTextMaterial *>(oldEffect);
-
-    if (oldMaterial == nullptr
-            || material->fontScale() != oldMaterial->fontScale()
-            || state.isMatrixDirty())
-        updateOutlineAlphaRange(material->glyphCache()->distanceFieldRadius());
 }
 
 class DistanceFieldOutlineTextMaterialRhiShader : public DistanceFieldStyledTextMaterialRhiShader
@@ -556,12 +302,32 @@ DistanceFieldOutlineTextMaterialRhiShader::DistanceFieldOutlineTextMaterialRhiSh
 {
     setShaderFileName(VertexStage,
                       QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldoutlinetext.vert.qsb"));
+
     if (alphaTexture)
         setShaderFileName(FragmentStage,
                           QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldoutlinetext_a.frag.qsb"));
     else
         setShaderFileName(FragmentStage,
                           QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldoutlinetext.frag.qsb"));
+}
+
+class DistanceFieldAnisotropicOutlineTextMaterialRhiShader : public DistanceFieldOutlineTextMaterialRhiShader
+{
+public:
+    DistanceFieldAnisotropicOutlineTextMaterialRhiShader(bool alphaTexture);
+};
+
+DistanceFieldAnisotropicOutlineTextMaterialRhiShader::DistanceFieldAnisotropicOutlineTextMaterialRhiShader(bool alphaTexture)
+    : DistanceFieldOutlineTextMaterialRhiShader(alphaTexture)
+{
+    setShaderFileName(VertexStage,
+                      QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldoutlinetext.vert.qsb"));
+    if (alphaTexture)
+        setShaderFileName(FragmentStage,
+                          QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldoutlinetext_a_fwidth.frag.qsb"));
+    else
+        setShaderFileName(FragmentStage,
+                          QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldoutlinetext_fwidth.frag.qsb"));
 }
 
 bool DistanceFieldOutlineTextMaterialRhiShader::updateUniformData(RenderState &state,
@@ -606,63 +372,12 @@ QSGMaterialType *QSGDistanceFieldOutlineTextMaterial::type() const
     return &type;
 }
 
-QSGMaterialShader *QSGDistanceFieldOutlineTextMaterial::createShader() const
+QSGMaterialShader *QSGDistanceFieldOutlineTextMaterial::createShader(QSGRendererInterface::RenderMode renderMode) const
 {
-    if (flags().testFlag(RhiShaderWanted))
-        return new DistanceFieldOutlineTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
+    if (renderMode == QSGRendererInterface::RenderMode3D && m_glyph_cache->screenSpaceDerivativesSupported())
+        return new DistanceFieldAnisotropicOutlineTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
     else
-        return new DistanceFieldOutlineTextMaterialShader;
-}
-
-
-class DistanceFieldShiftedStyleTextMaterialShader : public DistanceFieldStyledTextMaterialShader
-{
-public:
-    DistanceFieldShiftedStyleTextMaterialShader();
-
-    void updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect) override;
-
-protected:
-    void initialize() override;
-
-    void updateShift(qreal fontScale, const QPointF& shift);
-
-    int m_shift_id = -1;
-};
-
-DistanceFieldShiftedStyleTextMaterialShader::DistanceFieldShiftedStyleTextMaterialShader()
-    : DistanceFieldStyledTextMaterialShader()
-{
-    setShaderSourceFile(QOpenGLShader::Vertex, QStringLiteral(":/qt-project.org/scenegraph/shaders/distancefieldshiftedtext.vert"));
-    setShaderSourceFile(QOpenGLShader::Fragment, QStringLiteral(":/qt-project.org/scenegraph/shaders/distancefieldshiftedtext.frag"));
-}
-
-void DistanceFieldShiftedStyleTextMaterialShader::initialize()
-{
-    DistanceFieldStyledTextMaterialShader::initialize();
-    m_shift_id = program()->uniformLocation("shift");
-}
-
-void DistanceFieldShiftedStyleTextMaterialShader::updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect)
-{
-    DistanceFieldStyledTextMaterialShader::updateState(state, newEffect, oldEffect);
-
-    QSGDistanceFieldShiftedStyleTextMaterial *material = static_cast<QSGDistanceFieldShiftedStyleTextMaterial *>(newEffect);
-    QSGDistanceFieldShiftedStyleTextMaterial *oldMaterial = static_cast<QSGDistanceFieldShiftedStyleTextMaterial *>(oldEffect);
-
-    if (oldMaterial == nullptr
-            || oldMaterial->fontScale() != material->fontScale()
-            || oldMaterial->shift() != material->shift()
-            || oldMaterial->textureSize() != material->textureSize()) {
-        updateShift(material->fontScale(), material->shift());
-    }
-}
-
-void DistanceFieldShiftedStyleTextMaterialShader::updateShift(qreal fontScale, const QPointF &shift)
-{
-    QPointF texel(1.0 / fontScale * shift.x(),
-                  1.0 / fontScale * shift.y());
-    program()->setUniformValue(m_shift_id, texel);
+        return new DistanceFieldOutlineTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
 }
 
 class DistanceFieldShiftedStyleTextMaterialRhiShader : public DistanceFieldStyledTextMaterialRhiShader
@@ -699,13 +414,32 @@ bool DistanceFieldShiftedStyleTextMaterialRhiShader::updateUniformData(RenderSta
     if (!oldMat || oldMat->fontScale() != mat->fontScale() || oldMat->shift() != mat->shift()
             || oldMat->textureSize() != mat->textureSize())
     {
-        QPointF shift(1.0 / mat->fontScale() * mat->shift().x(),
-                      1.0 / mat->fontScale() * mat->shift().y());
+        QVector2D shift(1.0 / mat->fontScale() * mat->shift().x(),
+                        1.0 / mat->fontScale() * mat->shift().y());
         memcpy(buf->data() + 128, &shift, 8);
         changed = true;
     }
 
     return changed;
+}
+
+class DistanceFieldAnisotropicShiftedTextMaterialRhiShader : public DistanceFieldShiftedStyleTextMaterialRhiShader
+{
+public:
+    DistanceFieldAnisotropicShiftedTextMaterialRhiShader(bool alphaTexture);
+};
+
+DistanceFieldAnisotropicShiftedTextMaterialRhiShader::DistanceFieldAnisotropicShiftedTextMaterialRhiShader(bool alphaTexture)
+    : DistanceFieldShiftedStyleTextMaterialRhiShader(alphaTexture)
+{
+    setShaderFileName(VertexStage,
+                      QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldshiftedtext.vert.qsb"));
+    if (alphaTexture)
+        setShaderFileName(FragmentStage,
+                          QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldshiftedtext_a_fwidth.frag.qsb"));
+    else
+        setShaderFileName(FragmentStage,
+                          QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/distancefieldshiftedtext_fwidth.frag.qsb"));
 }
 
 QSGDistanceFieldShiftedStyleTextMaterial::QSGDistanceFieldShiftedStyleTextMaterial()
@@ -723,12 +457,12 @@ QSGMaterialType *QSGDistanceFieldShiftedStyleTextMaterial::type() const
     return &type;
 }
 
-QSGMaterialShader *QSGDistanceFieldShiftedStyleTextMaterial::createShader() const
+QSGMaterialShader *QSGDistanceFieldShiftedStyleTextMaterial::createShader(QSGRendererInterface::RenderMode renderMode) const
 {
-    if (flags().testFlag(RhiShaderWanted))
-        return new DistanceFieldShiftedStyleTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
+    if (renderMode == QSGRendererInterface::RenderMode3D && m_glyph_cache->screenSpaceDerivativesSupported())
+        return new DistanceFieldAnisotropicShiftedTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
     else
-        return new DistanceFieldShiftedStyleTextMaterialShader;
+        return new DistanceFieldShiftedStyleTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
 }
 
 int QSGDistanceFieldShiftedStyleTextMaterial::compare(const QSGMaterial *o) const
@@ -737,71 +471,6 @@ int QSGDistanceFieldShiftedStyleTextMaterial::compare(const QSGMaterial *o) cons
     if (m_shift != other->m_shift)
         return &m_shift < &other->m_shift ? -1 : 1;
     return QSGDistanceFieldStyledTextMaterial::compare(o);
-}
-
-
-class QSGHiQSubPixelDistanceFieldTextMaterialShader : public QSGDistanceFieldTextMaterialShader
-{
-public:
-    QSGHiQSubPixelDistanceFieldTextMaterialShader();
-
-    void initialize() override;
-    void activate() override;
-    void deactivate() override;
-    void updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect) override;
-
-private:
-    int m_fontScale_id = -1;
-    int m_vecDelta_id = -1;
-};
-
-QSGHiQSubPixelDistanceFieldTextMaterialShader::QSGHiQSubPixelDistanceFieldTextMaterialShader()
-    : QSGDistanceFieldTextMaterialShader()
-{
-    setShaderSourceFile(QOpenGLShader::Vertex, QStringLiteral(":/qt-project.org/scenegraph/shaders/hiqsubpixeldistancefieldtext.vert"));
-    setShaderSourceFile(QOpenGLShader::Fragment, QStringLiteral(":/qt-project.org/scenegraph/shaders/hiqsubpixeldistancefieldtext.frag"));
-}
-
-void QSGHiQSubPixelDistanceFieldTextMaterialShader::initialize()
-{
-    QSGDistanceFieldTextMaterialShader::initialize();
-    m_fontScale_id = program()->uniformLocation("fontScale");
-    m_vecDelta_id = program()->uniformLocation("vecDelta");
-}
-
-void QSGHiQSubPixelDistanceFieldTextMaterialShader::activate()
-{
-    QSGDistanceFieldTextMaterialShader::activate();
-    QOpenGLContext::currentContext()->functions()->glBlendFunc(GL_CONSTANT_COLOR, GL_ONE_MINUS_SRC_COLOR);
-}
-
-void QSGHiQSubPixelDistanceFieldTextMaterialShader::deactivate()
-{
-    QSGDistanceFieldTextMaterialShader::deactivate();
-    QOpenGLContext::currentContext()->functions()->glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-}
-
-void QSGHiQSubPixelDistanceFieldTextMaterialShader::updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect)
-{
-    Q_ASSERT(oldEffect == nullptr || newEffect->type() == oldEffect->type());
-    QSGDistanceFieldTextMaterial *material = static_cast<QSGDistanceFieldTextMaterial *>(newEffect);
-    QSGDistanceFieldTextMaterial *oldMaterial = static_cast<QSGDistanceFieldTextMaterial *>(oldEffect);
-
-    if (oldMaterial == nullptr || material->color() != oldMaterial->color()) {
-        QVector4D c = material->color();
-        state.context()->functions()->glBlendColor(c.x(), c.y(), c.z(), 1.0f);
-    }
-
-    if (oldMaterial == nullptr || material->fontScale() != oldMaterial->fontScale())
-        program()->setUniformValue(m_fontScale_id, GLfloat(material->fontScale()));
-
-    if (oldMaterial == nullptr || state.isMatrixDirty()) {
-        int viewportWidth = state.viewportRect().width();
-        QMatrix4x4 mat = state.combinedMatrix().inverted();
-        program()->setUniformValue(m_vecDelta_id, mat.column(0) * (qreal(2) / viewportWidth));
-    }
-
-    QSGDistanceFieldTextMaterialShader::updateState(state, newEffect, oldEffect);
 }
 
 class QSGHiQSubPixelDistanceFieldTextMaterialRhiShader : public QSGDistanceFieldTextMaterialRhiShader
@@ -879,26 +548,12 @@ QSGMaterialType *QSGHiQSubPixelDistanceFieldTextMaterial::type() const
     return &type;
 }
 
-QSGMaterialShader *QSGHiQSubPixelDistanceFieldTextMaterial::createShader() const
+QSGMaterialShader *QSGHiQSubPixelDistanceFieldTextMaterial::createShader(QSGRendererInterface::RenderMode renderMode) const
 {
-    if (flags().testFlag(RhiShaderWanted))
-        return new QSGHiQSubPixelDistanceFieldTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
+    if (renderMode == QSGRendererInterface::RenderMode3D && m_glyph_cache->screenSpaceDerivativesSupported())
+        return new DistanceFieldAnisotropicTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
     else
-        return new QSGHiQSubPixelDistanceFieldTextMaterialShader;
-}
-
-
-class QSGLoQSubPixelDistanceFieldTextMaterialShader : public QSGHiQSubPixelDistanceFieldTextMaterialShader
-{
-public:
-    QSGLoQSubPixelDistanceFieldTextMaterialShader();
-};
-
-QSGLoQSubPixelDistanceFieldTextMaterialShader::QSGLoQSubPixelDistanceFieldTextMaterialShader()
-    : QSGHiQSubPixelDistanceFieldTextMaterialShader()
-{
-    setShaderSourceFile(QOpenGLShader::Vertex, QStringLiteral(":/qt-project.org/scenegraph/shaders/loqsubpixeldistancefieldtext.vert"));
-    setShaderSourceFile(QOpenGLShader::Fragment, QStringLiteral(":/qt-project.org/scenegraph/shaders/loqsubpixeldistancefieldtext.frag"));
+        return new QSGHiQSubPixelDistanceFieldTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
 }
 
 class QSGLoQSubPixelDistanceFieldTextMaterialRhiShader : public QSGHiQSubPixelDistanceFieldTextMaterialRhiShader
@@ -926,12 +581,12 @@ QSGMaterialType *QSGLoQSubPixelDistanceFieldTextMaterial::type() const
     return &type;
 }
 
-QSGMaterialShader *QSGLoQSubPixelDistanceFieldTextMaterial::createShader() const
+QSGMaterialShader *QSGLoQSubPixelDistanceFieldTextMaterial::createShader(QSGRendererInterface::RenderMode renderMode) const
 {
-    if (flags().testFlag(RhiShaderWanted))
-        return new QSGLoQSubPixelDistanceFieldTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
+    if (renderMode == QSGRendererInterface::RenderMode3D && m_glyph_cache->screenSpaceDerivativesSupported())
+        return new DistanceFieldAnisotropicTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
     else
-        return new QSGLoQSubPixelDistanceFieldTextMaterialShader;
+        return new QSGLoQSubPixelDistanceFieldTextMaterialRhiShader(m_glyph_cache->eightBitFormatIsAlphaSwizzled());
 }
 
 QT_END_NAMESPACE

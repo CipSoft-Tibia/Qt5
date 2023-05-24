@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import QtQuick 2.15
 
@@ -34,58 +9,95 @@ Rectangle {
     height: 480
     color: "#444"
 
-    Component {
-        id: buttonsAndStuff
-        Column {
-            anchors.fill: parent
-            anchors.margins: 8
-            spacing: 8
+    component CheckBox: Row {
+        id: cbRoot
+        property bool checked : true
+        property string label : "CheckBox"
+        spacing: 4
+        Rectangle {
+            width: 16; height: 16
+            // comment out this color change to test whether we rely on "dirty" items to
+            // trigger QQuickDeliveryAgentPrivate::flushFrameSynchronousEvents() to update hover state
+            color: cbRoot.checked ? "cadetblue" : "transparent"
+            border.color: "black"
+            TapHandler { onTapped: cbRoot.checked = !cbRoot.checked }
+        }
+        Text { text: cbRoot.label }
+    }
 
-            Rectangle {
-                objectName: "buttonWithMA"
-                width: parent.width
-                height: 30
-                color: buttonMA.pressed ? "lightsteelblue" : "#999"
-                border.color: buttonMA.containsMouse ? "cyan" : "transparent"
+    component ButtonsAndStuff: Column {
+        anchors.fill: parent
+        anchors.margins: 8
+        spacing: 8
+        function toggleMAEnabled() { maButtonCB.checked = !maButtonCB.checked }
+        function toggleMAHover() { maButtonHoverCB.checked = !maButtonHoverCB.checked }
+        function toggleHHEnabled() { hhButtonHoverCB.checked = !hhButtonHoverCB.checked }
 
-                MouseArea {
-                    id: buttonMA
-                    objectName: "buttonMA"
-                    hoverEnabled: true
-                    cursorShape: Qt.UpArrowCursor
-                    anchors.fill: parent
-                    onClicked: console.log("clicked MA")
-                }
+        CheckBox {
+            id: maButtonCB
+            label: "enabled"
+        }
 
-                Text {
-                    anchors.centerIn: parent
-                    text: "MouseArea"
+        CheckBox {
+            id: maButtonHoverCB
+            label: "hover enabled"
+        }
+
+        Rectangle {
+            objectName: "buttonWithMA"
+            width: parent.width
+            height: 30
+            color: buttonMA.pressed ? "lightsteelblue" : "#999"
+            border.color: buttonMA.containsMouse ? "cyan" : "transparent"
+
+            MouseArea {
+                id: buttonMA
+                objectName: "buttonMA"
+                enabled: maButtonCB.checked
+                hoverEnabled: maButtonHoverCB.checked
+                cursorShape: Qt.UpArrowCursor
+                anchors.fill: parent
+            }
+
+            Text {
+                anchors.centerIn: parent
+                text: "MouseArea"
+            }
+        }
+
+        CheckBox {
+            id: hhButtonHoverCB
+            label: "hover enabled"
+        }
+
+        Rectangle {
+            id: buttonRoot
+            objectName: "buttonWithHH"
+            width: parent.width
+            height: 30
+            color: flash ? "#999" : "white"
+            border.color: buttonHH.hovered ? "cyan" : "transparent"
+            property bool flash: true
+
+            HoverHandler {
+                id: buttonHH
+                objectName: "buttonHH"
+                acceptedDevices: PointerDevice.AllDevices
+                enabled: hhButtonHoverCB.checked
+                cursorShape: tapHandler.pressed ? Qt.BusyCursor : Qt.PointingHandCursor
+            }
+
+            TapHandler {
+                id: tapHandler
+                onTapped: {
+                    console.log("buttonRoot tapped")
+                    buttonHH.enabled = !buttonHH.enabled
                 }
             }
 
-            Rectangle {
-                objectName: "buttonWithHH"
-                width: parent.width
-                height: 30
-                color: flash ? "#999" : "white"
-                border.color: buttonHH.hovered ? "cyan" : "transparent"
-                property bool flash: true
-
-                HoverHandler {
-                    id: buttonHH
-                    objectName: "buttonHH"
-                    acceptedDevices: PointerDevice.AllDevices
-                    cursorShape: tapHandler.pressed ? Qt.BusyCursor : Qt.PointingHandCursor
-                }
-
-                TapHandler {
-                    id: tapHandler
-                }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "HoverHandler"
-                }
+            Text {
+                anchors.centerIn: parent
+                text: "HoverHandler"
             }
         }
     }
@@ -134,10 +146,22 @@ Rectangle {
             cursorShape: Qt.OpenHandCursor
         }
 
-        Loader {
-            objectName: "topSidebarLoader"
-            sourceComponent: buttonsAndStuff
+        ButtonsAndStuff {
+            id: tbs
+            objectName: "topSidebarContents"
             anchors.fill: parent
+            Shortcut {
+                sequence: "Ctrl+E"
+                onActivated: tbs.toggleMAEnabled()
+            }
+            Shortcut {
+                sequence: "Ctrl+M"
+                onActivated: tbs.toggleMAHover()
+            }
+            Shortcut {
+                sequence: "Ctrl+H"
+                onActivated: tbs.toggleHHEnabled()
+            }
         }
     }
 
@@ -161,9 +185,8 @@ Rectangle {
             anchors.fill: parent
         }
 
-        Loader {
-            objectName: "bottomSidebarLoader"
-            sourceComponent: buttonsAndStuff
+        ButtonsAndStuff {
+            objectName: "bottomSidebarContents"
             anchors.fill: parent
         }
     }

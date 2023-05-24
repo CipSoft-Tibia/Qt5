@@ -17,18 +17,38 @@
 #ifndef INCLUDE_PERFETTO_EXT_BASE_FILE_UTILS_H_
 #define INCLUDE_PERFETTO_EXT_BASE_FILE_UTILS_H_
 
+#include <fcntl.h>  // For mode_t & O_RDONLY/RDWR. Exists also on Windows.
 #include <stddef.h>
 
 #include <string>
+#include <vector>
 
+#include "perfetto/base/build_config.h"
+#include "perfetto/base/export.h"
+#include "perfetto/base/status.h"
+#include "perfetto/ext/base/scoped_file.h"
+#include "perfetto/ext/base/optional.h"
 #include "perfetto/ext/base/utils.h"
 
 namespace perfetto {
 namespace base {
 
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
+using FileOpenMode = int;
+#else
+using FileOpenMode = mode_t;
+#endif
+
+constexpr FileOpenMode kFileModeInvalid = static_cast<FileOpenMode>(-1);
+
+bool ReadPlatformHandle(PlatformHandle, std::string* out);
 bool ReadFileDescriptor(int fd, std::string* out);
 bool ReadFileStream(FILE* f, std::string* out);
 bool ReadFile(const std::string& path, std::string* out);
+
+// A wrapper around read(2). It deals with Linux vs Windows includes. It also
+// deals with handling EINTR. Has the same semantics of UNIX's read(2).
+ssize_t Read(int fd, void* dst, size_t dst_size);
 
 // Call write until all data is written or an error is detected.
 //
@@ -39,7 +59,43 @@ bool ReadFile(const std::string& path, std::string* out);
 //   succeeds, and returns the number of bytes written.
 ssize_t WriteAll(int fd, const void* buf, size_t count);
 
+ssize_t WriteAllHandle(PlatformHandle, const void* buf, size_t count);
+
+ScopedFile OpenFile(const std::string& path,
+                    int flags,
+                    FileOpenMode = kFileModeInvalid);
+ScopedFstream OpenFstream(const char* path, const char* mode);
+
+// This is an alias for close(). It's to avoid leaking Windows.h in headers.
+// Exported because ScopedFile is used in the /include/ext API by Chromium
+// component builds.
+int PERFETTO_EXPORT_COMPONENT CloseFile(int fd);
+
 bool FlushFile(int fd);
+
+// Returns true if mkdir succeeds, false if it fails (see errno in that case).
+bool Mkdir(const std::string& path);
+
+// Calls rmdir() on UNIX, _rmdir() on Windows.
+bool Rmdir(const std::string& path);
+
+// Wrapper around access(path, F_OK).
+bool FileExists(const std::string& path);
+
+// Gets the extension for a filename. If the file has two extensions, returns
+// only the last one (foo.pb.gz => .gz). Returns empty string if there is no
+// extension.
+std::string GetFileExtension(const std::string& filename);
+
+// Puts the path to all files under |dir_path| in |output|, recursively walking
+// subdirectories. File paths are relative to |dir_path|. Only files are
+// included, not directories. Path separator is always '/', even on windows (not
+// '\').
+base::Status ListFilesRecursive(const std::string& dir_path,
+                                std::vector<std::string>& output);
+
+// Returns the size of the file at `path` or nullopt in case of error.
+Optional<size_t> GetFileSize(const std::string& path);
 
 }  // namespace base
 }  // namespace perfetto

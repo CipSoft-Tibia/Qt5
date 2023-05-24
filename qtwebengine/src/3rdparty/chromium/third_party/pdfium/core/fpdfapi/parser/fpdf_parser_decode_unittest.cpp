@@ -1,8 +1,10 @@
-// Copyright 2015 PDFium Authors. All rights reserved.
+// Copyright 2015 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "core/fpdfapi/parser/fpdf_parser_decode.h"
+
+#include <iterator>
 
 #include "core/fpdfapi/parser/cpdf_array.h"
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
@@ -11,9 +13,8 @@
 #include "core/fxcrt/fx_memory_wrappers.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/test_support.h"
-#include "third_party/base/stl_util.h"
 
-TEST(fpdf_parser_decode, ValidateDecoderPipeline) {
+TEST(ParserDecodeTest, ValidateDecoderPipeline) {
   {
     // Empty decoder list is always valid.
     auto decoders = pdfium::MakeRetain<CPDF_Array>();
@@ -115,11 +116,11 @@ TEST(fpdf_parser_decode, ValidateDecoderPipeline) {
 }
 
 // TODO(thestig): Test decoder params.
-TEST(fpdf_parser_decode, GetDecoderArray) {
+TEST(ParserDecodeTest, GetDecoderArray) {
   {
     // Treat no filter as an empty filter array.
     auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
-    Optional<DecoderArray> decoder_array = GetDecoderArray(dict.Get());
+    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     ASSERT_TRUE(decoder_array.has_value());
     EXPECT_TRUE(decoder_array.value().empty());
   }
@@ -127,14 +128,14 @@ TEST(fpdf_parser_decode, GetDecoderArray) {
     // Wrong filter type.
     auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
     dict->SetNewFor<CPDF_String>("Filter", "RL", false);
-    Optional<DecoderArray> decoder_array = GetDecoderArray(dict.Get());
+    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     EXPECT_FALSE(decoder_array.has_value());
   }
   {
     // Filter name.
     auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
     dict->SetNewFor<CPDF_Name>("Filter", "RL");
-    Optional<DecoderArray> decoder_array = GetDecoderArray(dict.Get());
+    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     ASSERT_TRUE(decoder_array.has_value());
     ASSERT_EQ(1u, decoder_array.value().size());
     EXPECT_EQ("RL", decoder_array.value()[0].first);
@@ -143,16 +144,16 @@ TEST(fpdf_parser_decode, GetDecoderArray) {
     // Empty filter array.
     auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
     dict->SetNewFor<CPDF_Array>("Filter");
-    Optional<DecoderArray> decoder_array = GetDecoderArray(dict.Get());
+    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     ASSERT_TRUE(decoder_array.has_value());
     EXPECT_TRUE(decoder_array.value().empty());
   }
   {
     // Valid 1 element filter array.
     auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
-    auto* filter_array = dict->SetNewFor<CPDF_Array>("Filter");
+    auto filter_array = dict->SetNewFor<CPDF_Array>("Filter");
     filter_array->AppendNew<CPDF_Name>("FooBar");
-    Optional<DecoderArray> decoder_array = GetDecoderArray(dict.Get());
+    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     ASSERT_TRUE(decoder_array.has_value());
     ASSERT_EQ(1u, decoder_array.value().size());
     EXPECT_EQ("FooBar", decoder_array.value()[0].first);
@@ -160,10 +161,10 @@ TEST(fpdf_parser_decode, GetDecoderArray) {
   {
     // Valid 2 element filter array.
     auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
-    auto* filter_array = dict->SetNewFor<CPDF_Array>("Filter");
+    auto filter_array = dict->SetNewFor<CPDF_Array>("Filter");
     filter_array->AppendNew<CPDF_Name>("AHx");
     filter_array->AppendNew<CPDF_Name>("LZWDecode");
-    Optional<DecoderArray> decoder_array = GetDecoderArray(dict.Get());
+    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     ASSERT_TRUE(decoder_array.has_value());
     ASSERT_EQ(2u, decoder_array.value().size());
     EXPECT_EQ("AHx", decoder_array.value()[0].first);
@@ -172,15 +173,15 @@ TEST(fpdf_parser_decode, GetDecoderArray) {
   {
     // Invalid 2 element filter array.
     auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
-    auto* invalid_filter_array = dict->SetNewFor<CPDF_Array>("Filter");
+    auto invalid_filter_array = dict->SetNewFor<CPDF_Array>("Filter");
     invalid_filter_array->AppendNew<CPDF_Name>("DCTDecode");
     invalid_filter_array->AppendNew<CPDF_Name>("CCITTFaxDecode");
-    Optional<DecoderArray> decoder_array = GetDecoderArray(dict.Get());
+    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     EXPECT_FALSE(decoder_array.has_value());
   }
 }
 
-TEST(fpdf_parser_decode, A85Decode) {
+TEST(ParserDecodeTest, A85Decode) {
   const pdfium::DecodeTestData kTestData[] = {
       // Empty src string.
       STR_IN_OUT_CASE("", "", 0),
@@ -239,7 +240,7 @@ TEST(FPDFParserDecodeEmbedderTest, FlateDecode) {
           96),
   };
 
-  for (size_t i = 0; i < pdfium::size(flate_decode_cases); ++i) {
+  for (size_t i = 0; i < std::size(flate_decode_cases); ++i) {
     const pdfium::DecodeTestData& data = flate_decode_cases[i];
     std::unique_ptr<uint8_t, FxFreeDeleter> buf;
     uint32_t buf_size;
@@ -255,7 +256,7 @@ TEST(FPDFParserDecodeEmbedderTest, FlateDecode) {
   }
 }
 
-TEST(fpdf_parser_decode, FlateEncode) {
+TEST(ParserDecodeTest, FlateEncode) {
   static const pdfium::StrFuncTestData flate_encode_cases[] = {
       STR_IN_OUT_CASE("", "\x78\x9c\x03\x00\x00\x00\x00\x01"),
       STR_IN_OUT_CASE(" ", "\x78\x9c\x53\x00\x00\x00\x21\x00\x21"),
@@ -273,21 +274,18 @@ TEST(fpdf_parser_decode, FlateEncode) {
           "\x2b\x58\x1a\x9a\x83\x8c\x49\xe3\x0a\x04\x42\x00\x37\x4c\x1b\x42"),
   };
 
-  for (size_t i = 0; i < pdfium::size(flate_encode_cases); ++i) {
+  for (size_t i = 0; i < std::size(flate_encode_cases); ++i) {
     const pdfium::StrFuncTestData& data = flate_encode_cases[i];
-    std::unique_ptr<uint8_t, FxFreeDeleter> buf;
-    uint32_t buf_size;
-    EXPECT_TRUE(FlateEncode({data.input, data.input_size}, &buf, &buf_size));
-    ASSERT_TRUE(buf);
-    EXPECT_EQ(data.expected_size, buf_size) << " for case " << i;
-    if (data.expected_size != buf_size)
+    DataVector<uint8_t> result = FlateEncode({data.input, data.input_size});
+    EXPECT_EQ(data.expected_size, result.size()) << " for case " << i;
+    if (data.expected_size != result.size())
       continue;
-    EXPECT_EQ(0, memcmp(data.expected, buf.get(), data.expected_size))
+    EXPECT_EQ(0, memcmp(data.expected, result.data(), data.expected_size))
         << " for case " << i;
   }
 }
 
-TEST(fpdf_parser_decode, HexDecode) {
+TEST(ParserDecodeTest, HexDecode) {
   const pdfium::DecodeTestData kTestData[] = {
       // Empty src string.
       STR_IN_OUT_CASE("", "", 0),
@@ -322,7 +320,7 @@ TEST(fpdf_parser_decode, HexDecode) {
   }
 }
 
-TEST(fpdf_parser_decode, DecodeText) {
+TEST(ParserDecodeTest, DecodeText) {
   const struct DecodeTestData {
     const char* input;
     size_t input_length;
@@ -371,7 +369,7 @@ TEST(fpdf_parser_decode, DecodeText) {
   }
 }
 
-TEST(fpdf_parser_decode, EncodeText) {
+TEST(ParserDecodeTest, EncodeText) {
   const struct EncodeTestData {
     const wchar_t* input;
     const char* expected_output;

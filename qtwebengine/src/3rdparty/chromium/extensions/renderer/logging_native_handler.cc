@@ -1,20 +1,21 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/renderer/logging_native_handler.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/strings/stringprintf.h"
 #include "extensions/renderer/script_context.h"
+#include "v8/include/v8-function-callback.h"
+#include "v8/include/v8-primitive.h"
 
 namespace extensions {
 
 LoggingNativeHandler::LoggingNativeHandler(ScriptContext* context)
     : ObjectBackedNativeHandler(context) {}
 
-LoggingNativeHandler::~LoggingNativeHandler() {}
+LoggingNativeHandler::~LoggingNativeHandler() = default;
 
 void LoggingNativeHandler::AddRoutes() {
   RouteHandlerFunction("DCHECK",

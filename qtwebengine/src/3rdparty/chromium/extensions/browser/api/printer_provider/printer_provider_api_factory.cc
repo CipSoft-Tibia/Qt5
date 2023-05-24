@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "extensions/browser/api/printer_provider/printer_provider_api.h"
-#include "extensions/browser/api/printer_provider_internal/printer_provider_internal_api.h"
+#include "extensions/browser/api/printer_provider/printer_provider_internal_api.h"
 #include "extensions/browser/extension_registry_factory.h"
 #include "extensions/browser/extensions_browser_client.h"
 

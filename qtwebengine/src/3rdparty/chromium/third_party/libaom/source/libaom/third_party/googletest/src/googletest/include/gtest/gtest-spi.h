@@ -27,14 +27,11 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//
 // Utilities for testing Google Test itself and code that uses Google Test
 // (e.g. frameworks built on top of Google Test).
 
-// GOOGLETEST_CM0004 DO NOT DELETE
-
-#ifndef GTEST_INCLUDE_GTEST_GTEST_SPI_H_
-#define GTEST_INCLUDE_GTEST_GTEST_SPI_H_
+#ifndef GOOGLETEST_INCLUDE_GTEST_GTEST_SPI_H_
+#define GOOGLETEST_INCLUDE_GTEST_GTEST_SPI_H_
 
 #include "gtest/gtest.h"
 
@@ -65,11 +62,11 @@ class GTEST_API_ ScopedFakeTestPartResultReporter
   // by Google Test.  The 'result' parameter specifies where to report the
   // results. This reporter will only catch failures generated in the current
   // thread. DEPRECATED
-  explicit ScopedFakeTestPartResultReporter(TestPartResultArray *result);
+  explicit ScopedFakeTestPartResultReporter(TestPartResultArray* result);
 
   // Same as above, but you can choose the interception scope of this object.
   ScopedFakeTestPartResultReporter(InterceptMode intercept_mode,
-                                   TestPartResultArray *result);
+                                   TestPartResultArray* result);
 
   // The d'tor restores the previous test part result reporter.
   ~ScopedFakeTestPartResultReporter() override;
@@ -79,16 +76,19 @@ class GTEST_API_ ScopedFakeTestPartResultReporter
   //
   // This method is from the TestPartResultReporterInterface
   // interface.
-  void ReportTestPartResult(const TestPartResult &result) override;
+  void ReportTestPartResult(const TestPartResult& result) override;
 
  private:
   void Init();
 
   const InterceptMode intercept_mode_;
-  TestPartResultReporterInterface *old_reporter_;
-  TestPartResultArray *const result_;
+  TestPartResultReporterInterface* old_reporter_;
+  TestPartResultArray* const result_;
 
-  GTEST_DISALLOW_COPY_AND_ASSIGN_(ScopedFakeTestPartResultReporter);
+  ScopedFakeTestPartResultReporter(const ScopedFakeTestPartResultReporter&) =
+      delete;
+  ScopedFakeTestPartResultReporter& operator=(
+      const ScopedFakeTestPartResultReporter&) = delete;
 };
 
 namespace internal {
@@ -101,16 +101,17 @@ namespace internal {
 class GTEST_API_ SingleFailureChecker {
  public:
   // The constructor remembers the arguments.
-  SingleFailureChecker(const TestPartResultArray *results,
-                       TestPartResult::Type type, const std::string &substr);
+  SingleFailureChecker(const TestPartResultArray* results,
+                       TestPartResult::Type type, const std::string& substr);
   ~SingleFailureChecker();
 
  private:
-  const TestPartResultArray *const results_;
+  const TestPartResultArray* const results_;
   const TestPartResult::Type type_;
   const std::string substr_;
 
-  GTEST_DISALLOW_COPY_AND_ASSIGN_(SingleFailureChecker);
+  SingleFailureChecker(const SingleFailureChecker&) = delete;
+  SingleFailureChecker& operator=(const SingleFailureChecker&) = delete;
 };
 
 }  // namespace internal
@@ -120,7 +121,8 @@ class GTEST_API_ SingleFailureChecker {
 GTEST_DISABLE_MSC_WARNINGS_POP_()  //  4251
 
 // A set of macros for testing Google Test assertions or code that's expected
-// to generate Google Test fatal failures.  It verifies that the given
+// to generate Google Test fatal failures (e.g. a failure from an ASSERT_EQ, but
+// not a non-fatal failure, as from EXPECT_EQ).  It verifies that the given
 // statement will cause exactly one fatal Google Test failure with 'substr'
 // being part of the failure message.
 //
@@ -178,9 +180,10 @@ GTEST_DISABLE_MSC_WARNINGS_POP_()  //  4251
   } while (::testing::internal::AlwaysFalse())
 
 // A macro for testing Google Test assertions or code that's expected to
-// generate Google Test non-fatal failures.  It asserts that the given
-// statement will cause exactly one non-fatal Google Test failure with 'substr'
-// being part of the failure message.
+// generate Google Test non-fatal failures (e.g. a failure from an EXPECT_EQ,
+// but not from an ASSERT_EQ). It asserts that the given statement will cause
+// exactly one non-fatal Google Test failure with 'substr' being part of the
+// failure message.
 //
 // There are two different versions of this macro. EXPECT_NONFATAL_FAILURE only
 // affects and considers failures generated in the current thread and
@@ -242,4 +245,4 @@ GTEST_DISABLE_MSC_WARNINGS_POP_()  //  4251
     }                                                                         \
   } while (::testing::internal::AlwaysFalse())
 
-#endif  // GTEST_INCLUDE_GTEST_GTEST_SPI_H_
+#endif  // GOOGLETEST_INCLUDE_GTEST_GTEST_SPI_H_

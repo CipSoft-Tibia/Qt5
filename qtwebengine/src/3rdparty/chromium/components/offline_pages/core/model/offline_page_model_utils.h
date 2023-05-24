@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 
 #include <string>
 
-#include "base/strings/string16.h"
 
 class GURL;
 
@@ -29,7 +28,7 @@ std::string AddHistogramSuffix(const std::string& name_space,
                                const char* histogram_name);
 
 base::FilePath GenerateUniqueFilenameForOfflinePage(
-    const base::string16& title,
+    const std::u16string& title,
     const GURL& url,
     const base::FilePath& target_dir);
 

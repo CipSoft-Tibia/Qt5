@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,6 +13,10 @@
 
 namespace blink {
 
+namespace {
+constexpr char kIsolatedAppScheme[] = "isolated-app";
+}
+
 void RecordLoadHistograms(const url::Origin& origin,
                           network::mojom::RequestDestination destination,
                           int net_error) {
@@ -21,22 +25,22 @@ void RecordLoadHistograms(const url::Origin& origin,
 
   if (destination == network::mojom::RequestDestination::kDocument) {
     base::UmaHistogramSparse("Net.ErrorCodesForMainFrame4", -net_error);
-    if (GURL::SchemeIsCryptographic(origin.scheme())) {
-      if (origin.host() == "www.google.com") {
-        base::UmaHistogramSparse("Net.ErrorCodesForHTTPSGoogleMainFrame3",
-                                 -net_error);
-      }
-
-      if (net::IsTLS13ExperimentHost(origin.host())) {
-        base::UmaHistogramSparse("Net.ErrorCodesForTLS13ExperimentMainFrame2",
-                                 -net_error);
-      }
+    if (GURL::SchemeIsCryptographic(origin.scheme()) &&
+        origin.host() == "www.google.com") {
+      base::UmaHistogramSparse("Net.ErrorCodesForHTTPSGoogleMainFrame3",
+                               -net_error);
     }
   } else {
     if (destination == network::mojom::RequestDestination::kImage) {
       base::UmaHistogramSparse("Net.ErrorCodesForImages2", -net_error);
     }
     base::UmaHistogramSparse("Net.ErrorCodesForSubresources3", -net_error);
+  }
+
+  // TODO(crbug.com/1384451): This is a temporary metric for monitoring the
+  // launch of Isolated Web Apps over the course of 2023.
+  if (origin.scheme() == kIsolatedAppScheme) {
+    base::UmaHistogramSparse("Net.ErrorCodesForIsolatedAppScheme", -net_error);
   }
 }
 

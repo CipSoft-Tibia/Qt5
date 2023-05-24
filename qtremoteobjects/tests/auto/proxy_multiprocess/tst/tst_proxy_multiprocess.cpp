@@ -1,50 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <QMetaType>
 #include <QProcess>
-#include <QStandardPaths>
 
-namespace {
-
-QString findExecutable(const QString &executableName, const QStringList &paths)
-{
-    const auto path = QStandardPaths::findExecutable(executableName, paths);
-    if (!path.isEmpty()) {
-        return path;
-    }
-
-    qWarning() << "Could not find executable:" << executableName << "in any of" << paths;
-    return QString();
-}
-
-}
+#include "../../../shared/testutils.h"
 
 class tst_Proxy_MultiProcess: public QObject
 {
@@ -57,6 +18,7 @@ public:
 private slots:
     void initTestCase()
     {
+        QVERIFY(TestUtils::init("tst"));
     }
 
     void cleanup()
@@ -77,6 +39,9 @@ private slots:
 
     void testRun()
     {
+#ifdef Q_OS_ANDROID
+        QSKIP("QProcess doesn't support running user bundled binaries on Android");
+#endif
         QFETCH(bool, templated);
         QFETCH(ObjectMode, objectMode);
 
@@ -89,9 +54,8 @@ private slots:
             env.insert("TEMPLATED_REMOTING", "true");
         }
         serverProc.setProcessEnvironment(env);
-        serverProc.start(findExecutable("proxy_multiprocess_server", {
-            QCoreApplication::applicationDirPath() + "/../server/"
-        }), QStringList());
+        serverProc.start(TestUtils::findExecutable("proxy_multiprocess_server", "/server"),
+                         QStringList());
         QVERIFY(serverProc.waitForStarted());
 
         // wait for server start
@@ -102,9 +66,8 @@ private slots:
         QProcess clientProc;
         clientProc.setProcessChannelMode(QProcess::ForwardedChannels);
         clientProc.setProcessEnvironment(env);
-        clientProc.start(findExecutable("proxy_multiprocess_client", {
-            QCoreApplication::applicationDirPath() + "/../client/"
-        }), QStringList());
+        clientProc.start(TestUtils::findExecutable("proxy_multiprocess_client", "/client"),
+                         QStringList());
         QVERIFY(clientProc.waitForStarted());
 
         // wait for client start
@@ -114,9 +77,8 @@ private slots:
         qDebug() << "Starting proxy process";
         QProcess proxyProc;
         proxyProc.setProcessChannelMode(QProcess::ForwardedChannels);
-        proxyProc.start(findExecutable("proxy", {
-            QCoreApplication::applicationDirPath() + "/../proxy/"
-        }), QStringList());
+        proxyProc.start(TestUtils::findExecutable("proxy", "/proxy"),
+                        QStringList());
         QVERIFY(proxyProc.waitForStarted());
 
         // wait for proxy start

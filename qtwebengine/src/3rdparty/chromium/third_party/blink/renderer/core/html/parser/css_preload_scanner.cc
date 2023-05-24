@@ -32,6 +32,7 @@
 #include "third_party/blink/renderer/core/html/parser/html_parser_idioms.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_initiator_type_names.h"
 #include "third_party/blink/renderer/platform/network/http_names.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/text/segmented_string.h"
 
 namespace blink {
@@ -44,46 +45,62 @@ void CSSPreloadScanner::Reset() {
   state_ = kInitial;
   rule_.Clear();
   rule_value_.Clear();
+  maybe_layer_value_.Clear();
+  has_trailing_contents_ = false;
+  in_body_ = false;
+  media_matches_ = true;
 }
 
 template <typename Char>
-void CSSPreloadScanner::ScanCommon(const Char* begin,
-                                   const Char* end,
-                                   const SegmentedString& source,
-                                   PreloadRequestStream& requests,
-                                   const KURL& predicted_base_element_url) {
+void CSSPreloadScanner::ScanCommon(
+    const Char* begin,
+    const Char* end,
+    const SegmentedString& source,
+    PreloadRequestStream& requests,
+    const KURL& predicted_base_element_url,
+    const PreloadRequest::ExclusionInfo* exclusion_info) {
   requests_ = &requests;
   predicted_base_element_url_ = &predicted_base_element_url;
+  exclusion_info_ = exclusion_info;
 
   for (const Char* it = begin; it != end && state_ != kDoneParsingImportRules;
        ++it)
     Tokenize(*it, source);
 
+  if (state_ == kRuleValue || state_ == kAfterRuleValue ||
+      state_ == kAfterMaybeLayerValue)
+    EmitRule(source);
+
   requests_ = nullptr;
   predicted_base_element_url_ = nullptr;
+  exclusion_info_ = nullptr;
 }
 
-void CSSPreloadScanner::Scan(const HTMLToken::DataVector& data,
-                             const SegmentedString& source,
-                             PreloadRequestStream& requests,
-                             const KURL& predicted_base_element_url) {
+void CSSPreloadScanner::Scan(
+    const HTMLToken::DataVector& data,
+    const SegmentedString& source,
+    PreloadRequestStream& requests,
+    const KURL& predicted_base_element_url,
+    const PreloadRequest::ExclusionInfo* exclusion_info) {
   ScanCommon(data.data(), data.data() + data.size(), source, requests,
-             predicted_base_element_url);
+             predicted_base_element_url, exclusion_info);
 }
 
-void CSSPreloadScanner::Scan(const String& tag_name,
-                             const SegmentedString& source,
-                             PreloadRequestStream& requests,
-                             const KURL& predicted_base_element_url) {
+void CSSPreloadScanner::Scan(
+    const String& tag_name,
+    const SegmentedString& source,
+    PreloadRequestStream& requests,
+    const KURL& predicted_base_element_url,
+    const PreloadRequest::ExclusionInfo* exclusion_info) {
   if (tag_name.Is8Bit()) {
     const LChar* begin = tag_name.Characters8();
     ScanCommon(begin, begin + tag_name.length(), source, requests,
-               predicted_base_element_url);
+               predicted_base_element_url, exclusion_info);
     return;
   }
   const UChar* begin = tag_name.Characters16();
   ScanCommon(begin, begin + tag_name.length(), source, requests,
-             predicted_base_element_url);
+             predicted_base_element_url, exclusion_info);
 }
 
 void CSSPreloadScanner::SetReferrerPolicy(
@@ -159,33 +176,66 @@ inline void CSSPreloadScanner::Tokenize(UChar c,
     case kRuleValue:
       if (IsHTMLSpace<UChar>(c)) {
         state_ = kAfterRuleValue;
+        has_trailing_contents_ = false;
       } else if (c == ';') {
-        EmitRule(source);
+        if (HasFinishedRuleValue())
+          EmitRule(source);
+        else
+          rule_value_.Append(c);
       } else {
         rule_value_.Append(c);
-        // When reading the rule and hitting ')', which signifies the URL end,
-        // emit the rule.
-        if (c == ')') {
-          EmitRule(source);
-        }
       }
       break;
     case kAfterRuleValue:
       if (IsHTMLSpace<UChar>(c))
         break;
-      if (c == ';')
+      if (c == ';') {
         EmitRule(source);
-      else if (c == '{')
+      } else if (c == '{') {
         state_ = kDoneParsingImportRules;
-      else {
-        // FIXME: media rules
-        state_ = kInitial;
+      } else {
+        state_ = kMaybeLayerValue;
+        maybe_layer_value_.Clear();
+        maybe_layer_value_.Append(c);
+      }
+      break;
+    case kMaybeLayerValue:
+      if (IsHTMLSpace<UChar>(c)) {
+        state_ = kAfterMaybeLayerValue;
+        has_trailing_contents_ = false;
+      } else if (c == ';') {
+        EmitRule(source);
+      } else {
+        maybe_layer_value_.Append(c);
+      }
+      break;
+    case kAfterMaybeLayerValue:
+      if (IsHTMLSpace<UChar>(c))
+        break;
+      if (c == ';') {
+        EmitRule(source);
+      } else if (c == '{') {
+        state_ = kDoneParsingImportRules;
+      } else {
+        has_trailing_contents_ = true;
       }
       break;
     case kDoneParsingImportRules:
       NOTREACHED();
       break;
   }
+}
+
+bool CSSPreloadScanner::HasFinishedRuleValue() const {
+  if (!EqualIgnoringASCIICase(rule_, "import"))
+    return true;
+  if (rule_value_.length() < 2 || rule_value_[rule_value_.length() - 2] == '\\')
+    return false;
+  // String
+  if (rule_value_[0] == '\'' || rule_value_[0] == '"')
+    return rule_value_[0] == rule_value_[rule_value_.length() - 1];
+  // url()
+  return rule_value_[rule_value_.length() - 1] == ')';
 }
 
 static String ParseCSSStringOrURL(const String& string) {
@@ -235,26 +285,58 @@ static String ParseCSSStringOrURL(const String& string) {
   return string.Substring(offset, reduced_length);
 }
 
+bool CSSPreloadScanner::CanPreloadImportRule() const {
+  // TODO(crbug.com/1277771): Handle media conditions
+  if (has_trailing_contents_)
+    return false;
+  // Unlayered import
+  if (!maybe_layer_value_.length())
+    return true;
+  // Import into an anonymous layer
+  if (EqualIgnoringASCIICase(maybe_layer_value_, "layer"))
+    return true;
+  // Import into a named layer
+  if (maybe_layer_value_.length() >= 8) {
+    StringView view(maybe_layer_value_);
+    return EqualIgnoringASCIICase(StringView(view, 0, 6), "layer(") &&
+           view[view.length() - 1] == ')';
+  }
+  return false;
+}
+
 void CSSPreloadScanner::EmitRule(const SegmentedString& source) {
   if (EqualIgnoringASCIICase(rule_, "import")) {
-    String url = ParseCSSStringOrURL(rule_value_.ToString());
-    TextPosition position =
-        TextPosition(source.CurrentLine(), source.CurrentColumn());
-    auto request = PreloadRequest::CreateIfNeeded(
-        fetch_initiator_type_names::kCSS, position, url,
-        *predicted_base_element_url_, ResourceType::kCSSStyleSheet,
-        referrer_policy_, ResourceFetcher::kImageNotImageSet);
-    if (request) {
-      // FIXME: Should this be including the charset in the preload request?
-      requests_->push_back(std::move(request));
+    if (CanPreloadImportRule()) {
+      String url = ParseCSSStringOrURL(rule_value_.ToString());
+      TextPosition position =
+          TextPosition(source.CurrentLine(), source.CurrentColumn());
+      auto request = PreloadRequest::CreateIfNeeded(
+          fetch_initiator_type_names::kCSS, position, url,
+          *predicted_base_element_url_, ResourceType::kCSSStyleSheet,
+          referrer_policy_, ResourceFetcher::kImageNotImageSet,
+          exclusion_info_);
+      if (request) {
+        RenderBlockingBehavior behavior =
+            !media_matches_
+                ? RenderBlockingBehavior::kNonBlocking
+                : (in_body_ ? RenderBlockingBehavior::kInBodyParserBlocking
+                            : RenderBlockingBehavior::kBlocking);
+        request->SetRenderBlockingBehavior(behavior);
+        // FIXME: Should this be including the charset in the preload request?
+        requests_->push_back(std::move(request));
+      }
     }
     state_ = kInitial;
-  } else if (EqualIgnoringASCIICase(rule_, "charset"))
+  } else if (EqualIgnoringASCIICase(rule_, "charset") ||
+             EqualIgnoringASCIICase(rule_, "layer")) {
     state_ = kInitial;
-  else
+  } else {
     state_ = kDoneParsingImportRules;
+  }
   rule_.Clear();
   rule_value_.Clear();
+  maybe_layer_value_.Clear();
+  has_trailing_contents_ = false;
 }
 
 }  // namespace blink

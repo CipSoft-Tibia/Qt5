@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,7 +29,7 @@ TEST(DisplayLayoutBuilderTest, MultiplePlacement) {
 
   ASSERT_EQ(3u, layout->placement_list.size());
 
-  // placmenets are sorted by display_id.
+  // placements are sorted by display_id.
   EXPECT_EQ(3, layout->placement_list[0].display_id);
   EXPECT_EQ(5, layout->placement_list[0].parent_display_id);
   EXPECT_EQ(20, layout->placement_list[0].offset);

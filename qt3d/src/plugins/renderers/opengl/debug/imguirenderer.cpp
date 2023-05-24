@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*
  * Based on https://github.com/seanchas116/qtimgui/
@@ -46,6 +10,7 @@
 
 #include "imguirenderer_p.h"
 #include <renderview_p.h>
+#include <rendercommand_p.h>
 #include <renderer_p.h>
 #include <submissioncontext_p.h>
 #include <Qt3DRender/private/geometryrenderermanager_p.h>
@@ -66,10 +31,8 @@
 
 QT_BEGIN_NAMESPACE
 
-using namespace Qt3DRender;
-using namespace Render;
-using namespace Render::Debug;
-using namespace Render::OpenGL;
+namespace Qt3DRR = Qt3DRender::Render;
+namespace Qt3DRRD = Qt3DRR::Debug;
 
 namespace {
 
@@ -101,42 +64,69 @@ namespace {
     int vertexToPrimitiveCount(Qt3DRender::QGeometryRenderer::PrimitiveType primitiveType, int numVertices) {
         int nPrimitives = 0;
         switch (primitiveType) {
-        case QGeometryRenderer::Points:
-        case QGeometryRenderer::LineLoop: nPrimitives += numVertices; break;
-        case QGeometryRenderer::Triangles: nPrimitives += numVertices / 3; break;
-        case QGeometryRenderer::Lines: nPrimitives += numVertices / 2; break;
-        case QGeometryRenderer::TriangleFan:
-        case QGeometryRenderer::TriangleStrip:
-        case QGeometryRenderer::LineStrip: nPrimitives += numVertices - 1; break;
-        case QGeometryRenderer::TrianglesAdjacency: nPrimitives += numVertices / 6; break;
-        case QGeometryRenderer::TriangleStripAdjacency:
-        case QGeometryRenderer::LineStripAdjacency: nPrimitives += numVertices / 2 - 1; break;
-        case QGeometryRenderer::LinesAdjacency: nPrimitives += numVertices / 4; break;
-        case QGeometryRenderer::Patches: nPrimitives += 1;
+        case Qt3DRender::QGeometryRenderer::Points:
+        case Qt3DRender::QGeometryRenderer::LineLoop:
+            nPrimitives += numVertices;
+            break;
+        case Qt3DRender::QGeometryRenderer::Triangles:
+            nPrimitives += numVertices / 3;
+            break;
+        case Qt3DRender::QGeometryRenderer::Lines:
+            nPrimitives += numVertices / 2;
+            break;
+        case Qt3DRender::QGeometryRenderer::TriangleFan:
+        case Qt3DRender::QGeometryRenderer::TriangleStrip:
+        case Qt3DRender::QGeometryRenderer::LineStrip:
+            nPrimitives += numVertices - 1;
+            break;
+        case Qt3DRender::QGeometryRenderer::TrianglesAdjacency:
+            nPrimitives += numVertices / 6;
+            break;
+        case Qt3DRender::QGeometryRenderer::TriangleStripAdjacency:
+        case Qt3DRender::QGeometryRenderer::LineStripAdjacency:
+            nPrimitives += numVertices / 2 - 1;
+            break;
+        case Qt3DRender::QGeometryRenderer::LinesAdjacency:
+            nPrimitives += numVertices / 4;
+            break;
+        case Qt3DRender::QGeometryRenderer::Patches:
+            nPrimitives += 1;
         }
         return nPrimitives;
     }
 
     const char *primitiveTypeName(Qt3DRender::QGeometryRenderer::PrimitiveType primitiveType) {
         switch (primitiveType) {
-        case QGeometryRenderer::Points: return "Points";
-        case QGeometryRenderer::LineLoop: return "LineLoop";
-        case QGeometryRenderer::Triangles: return "Triangles";
-        case QGeometryRenderer::TrianglesAdjacency: return "TriangleAdjacency";
-        case QGeometryRenderer::TriangleFan: return "TriangleFan";
-        case QGeometryRenderer::TriangleStrip: return "TriangleStrip";
-        case QGeometryRenderer::TriangleStripAdjacency: return "TriangleStringAdjacency";
-        case QGeometryRenderer::LineStrip: return "LineStrip";
-        case QGeometryRenderer::LineStripAdjacency: return "LineStripAdjacency";
-        case QGeometryRenderer::Lines: return "Lines";
-        case QGeometryRenderer::LinesAdjacency: return "LinesAdjacency";
-        case QGeometryRenderer::Patches: return "Patches";
+        case Qt3DRender::QGeometryRenderer::Points:
+            return "Points";
+        case Qt3DRender::QGeometryRenderer::LineLoop:
+            return "LineLoop";
+        case Qt3DRender::QGeometryRenderer::Triangles:
+            return "Triangles";
+        case Qt3DRender::QGeometryRenderer::TrianglesAdjacency:
+            return "TriangleAdjacency";
+        case Qt3DRender::QGeometryRenderer::TriangleFan:
+            return "TriangleFan";
+        case Qt3DRender::QGeometryRenderer::TriangleStrip:
+            return "TriangleStrip";
+        case Qt3DRender::QGeometryRenderer::TriangleStripAdjacency:
+            return "TriangleStringAdjacency";
+        case Qt3DRender::QGeometryRenderer::LineStrip:
+            return "LineStrip";
+        case Qt3DRender::QGeometryRenderer::LineStripAdjacency:
+            return "LineStripAdjacency";
+        case Qt3DRender::QGeometryRenderer::Lines:
+            return "Lines";
+        case Qt3DRender::QGeometryRenderer::LinesAdjacency:
+            return "LinesAdjacency";
+        case Qt3DRender::QGeometryRenderer::Patches:
+            return "Patches";
         }
         return "";
     }
 }
 
-ImGuiRenderer::ImGuiRenderer(Qt3DRender::Render::OpenGL::Renderer *renderer)
+Qt3DRRD::ImGuiRenderer::ImGuiRenderer(Qt3DRR::OpenGL::Renderer *renderer)
     : m_renderer(renderer)
 {
     ImGui::CreateContext();
@@ -147,11 +137,11 @@ ImGuiRenderer::ImGuiRenderer(Qt3DRender::Render::OpenGL::Renderer *renderer)
 
 #ifndef QT_NO_CLIPBOARD
     io.SetClipboardTextFn = [](void *user_data, const char *text) {
-        Q_UNUSED(user_data)
+        Q_UNUSED(user_data);
         QGuiApplication::clipboard()->setText(QString::fromLatin1(text));
     };
     io.GetClipboardTextFn = [](void *user_data) {
-        Q_UNUSED(user_data)
+        Q_UNUSED(user_data);
         g_currentClipboardText = QGuiApplication::clipboard()->text().toUtf8();
         return static_cast<const char *>(g_currentClipboardText.data());
     };
@@ -163,12 +153,14 @@ ImGuiRenderer::ImGuiRenderer(Qt3DRender::Render::OpenGL::Renderer *renderer)
     m_jobsRange.first = m_jobsRange.second = 0.f;
 }
 
-void ImGuiRenderer::renderDebugOverlay(const QVector<RenderView *> &renderViews, const RenderView *renderView, int jobsInLastFrame)
+Qt3DRRD::ImGuiRenderer::~ImGuiRenderer() = default;
+
+void Qt3DRRD::ImGuiRenderer::renderDebugOverlay(const std::vector<Qt3DRR::OpenGL::RenderView *> &renderViews, const Qt3DRR::OpenGL::RenderView *renderView, int jobsInLastFrame)
 {
     if (!newFrame(renderView))
         return;
 
-    const int renderViewsCount = renderViews.size();
+    const int renderViewsCount = int(renderViews.size());
 
     int logIndex = qMin(IMGUI_PERF_LOG_SIZE - 1, ImGui::GetFrameCount());
     if (logIndex == IMGUI_PERF_LOG_SIZE - 1) {
@@ -191,7 +183,7 @@ void ImGuiRenderer::renderDebugOverlay(const QVector<RenderView *> &renderViews,
     {
         ImGui::Begin("Qt3D Profiling");
         char caption[50];
-        sprintf(caption, "Avg %.3f ms/frame (%.1f FPS)", static_cast<double>(1000.0f / ImGui::GetIO().Framerate), static_cast<double>(ImGui::GetIO().Framerate));
+        snprintf(caption, sizeof(caption), "Avg %.3f ms/frame (%.1f FPS)", static_cast<double>(1000.0f / ImGui::GetIO().Framerate), static_cast<double>(ImGui::GetIO().Framerate));
         ImGui::PlotLines("FPS", m_fpsLog, logIndex + 1, 0, caption, m_fpsRange.first, m_fpsRange.second, ImVec2(0, 80));
         ImGui::PlotHistogram("Jobs", m_jobsLog, logIndex + 1, 0, nullptr, m_jobsRange.first, m_jobsRange.second, ImVec2(0, 80));
 
@@ -201,10 +193,10 @@ void ImGuiRenderer::renderDebugOverlay(const QVector<RenderView *> &renderViews,
         QSet<HGeometryRenderer> inUseGeometries;
         QSet<Qt3DCore::QNodeId> inUseTextures;
         for (int j=0; j<renderViewsCount; j++) {
-            RenderView *rv = renderViews.at(j);
+            Qt3DRR::OpenGL::RenderView *rv = renderViews.at(j);
             nCommands += rv->commandCount();
-            rv->forEachCommand([&] (const RenderCommand &command) {
-                if (command.m_type != RenderCommand::Draw)
+            rv->forEachCommand([&](const Qt3DRR::OpenGL::RenderCommand &command) {
+                if (command.m_type != Qt3DRR::OpenGL::RenderCommand::Draw)
                     return;
                 nVertices += command.m_primitiveCount;
                 nPrimitives += vertexToPrimitiveCount(command.m_primitiveType, command.m_primitiveCount);
@@ -309,24 +301,24 @@ void ImGuiRenderer::renderDebugOverlay(const QVector<RenderView *> &renderViews,
     renderDrawList(ImGui::GetDrawData());
 }
 
-void ImGuiRenderer::setCapabilities(const QString &capabilities)
+void Qt3DRRD::ImGuiRenderer::setCapabilities(const QString &capabilities)
 {
     m_capabilities = capabilities.toLatin1();
 }
 
-void ImGuiRenderer::showGLInfo()
+void Qt3DRRD::ImGuiRenderer::showGLInfo()
 {
     ImGui::Begin("Open GL Details", &m_showGLInfoWindow);
     ImGui::Text("%s", m_capabilities.data());
     ImGui::End();
 }
 
-void ImGuiRenderer::showRenderDetails(const QVector<RenderView *> &renderViews)
+void Qt3DRRD::ImGuiRenderer::showRenderDetails(const std::vector<Qt3DRR::OpenGL::RenderView *> &renderViews)
 {
     ImGui::Begin("Render Views", &m_showRenderDetailsWindow);
 
     int i = 1;
-    for (const RenderView *view: renderViews) {
+    for (const Qt3DRR::OpenGL::RenderView *view : renderViews) {
         QString label(QLatin1String("View ") + QString::number(i++));
         if (ImGui::TreeNode(label.toLatin1().data())) {
             ImGui::Text("Viewport: (%.1f, %.1f, %.1f, %.1f)", view->viewport().x(), view->viewport().y(),
@@ -340,7 +332,7 @@ void ImGuiRenderer::showRenderDetails(const QVector<RenderView *> &renderViews)
             ImGui::Text("Clear Stencil Value: %d", view->clearStencilValue());
             int j = 1;
 
-            view->forEachCommand([&] (const RenderCommand &command) {
+            view->forEachCommand([&](const Qt3DRR::OpenGL::RenderCommand &command) {
                 GeometryRenderer *rGeometryRenderer = m_renderer->nodeManagers()->data<GeometryRenderer, GeometryRendererManager>(command.m_geometryRenderer);
                 QString label = QString(QLatin1String("Command %1 {%2}")).arg(QString::number(j++), QString::number(rGeometryRenderer->peerId().id()));
                 if (ImGui::TreeNode(label.toLatin1().data())) {
@@ -363,7 +355,7 @@ void ImGuiRenderer::showRenderDetails(const QVector<RenderView *> &renderViews)
     ImGui::End();
 }
 
-void ImGuiRenderer::renderDrawList(ImDrawData *draw_data)
+void Qt3DRRD::ImGuiRenderer::renderDrawList(ImDrawData *draw_data)
 {
     // Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
     ImGuiIO& io = ImGui::GetIO();
@@ -460,7 +452,7 @@ void ImGuiRenderer::renderDrawList(ImDrawData *draw_data)
     m_funcs->glScissor(last_scissor_box[0], last_scissor_box[1], static_cast<GLsizei>(last_scissor_box[2]), static_cast<GLsizei>(last_scissor_box[3]));
 }
 
-bool ImGuiRenderer::createFontsTexture()
+bool Qt3DRRD::ImGuiRenderer::createFontsTexture()
 {
     // Build texture atlas
     ImGuiIO& io = ImGui::GetIO();
@@ -486,7 +478,7 @@ bool ImGuiRenderer::createFontsTexture()
     return true;
 }
 
-bool ImGuiRenderer::createDeviceObjects()
+bool Qt3DRRD::ImGuiRenderer::createDeviceObjects()
 {
     auto *glContext = m_renderer->submissionContext()->openGLContext();
     if (glContext->format().majorVersion() < 3) {
@@ -553,18 +545,6 @@ bool ImGuiRenderer::createDeviceObjects()
         "  Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n"
         "}\n";
 
-//    m_shaderHandle = m_funcs->glCreateProgram();
-//    m_vertHandle = m_funcs->glCreateShader(GL_VERTEX_SHADER);
-//    m_fragHandle = m_funcs->glCreateShader(GL_FRAGMENT_SHADER);
-//    auto *glContext = m_renderer->submissionContext()->openGLContext();
-//    m_funcs->glShaderSource(m_vertHandle, 1, &vertex_shader, nullptr);
-//    m_funcs->glShaderSource(m_fragHandle, 1, &fragment_shader, nullptr);
-//    m_funcs->glCompileShader(m_vertHandle);
-//    m_funcs->glCompileShader(m_fragHandle);
-//    m_funcs->glAttachShader(m_shaderHandle, m_vertHandle);
-//    m_funcs->glAttachShader(m_shaderHandle, m_fragHandle);
-//    m_funcs->glLinkProgram(m_shaderHandle);
-
     QString logs;
     m_shader = new QOpenGLShaderProgram(this);
     if (glContext->isOpenGLES()) {
@@ -616,7 +596,7 @@ bool ImGuiRenderer::createDeviceObjects()
     return true;
 }
 
-bool ImGuiRenderer::newFrame(const RenderView *renderView)
+bool Qt3DRRD::ImGuiRenderer::newFrame(const Qt3DRR::OpenGL::RenderView *renderView)
 {
     if (!m_funcs)
         m_funcs = m_renderer->submissionContext()->openGLContext()->extraFunctions();
@@ -652,7 +632,7 @@ bool ImGuiRenderer::newFrame(const RenderView *renderView)
     return true;
 }
 
-void ImGuiRenderer::onMouseChange(QMouseEvent *event)
+void Qt3DRRD::ImGuiRenderer::onMouseChange(QMouseEvent *event)
 {
     ImGuiIO& io = ImGui::GetIO();
     io.MousePos = ImVec2(event->pos().x(), event->pos().y());
@@ -661,14 +641,14 @@ void ImGuiRenderer::onMouseChange(QMouseEvent *event)
     m_mousePressed[2] = event->buttons() & Qt::MiddleButton;
 }
 
-void ImGuiRenderer::onWheel(QWheelEvent *event)
+void Qt3DRRD::ImGuiRenderer::onWheel(QWheelEvent *event)
 {
     // 5 lines per unit
     m_mouseWheelH += event->pixelDelta().x() / (ImGui::GetTextLineHeight());
     m_mouseWheel += event->pixelDelta().y() / (5.f * ImGui::GetTextLineHeight());
 }
 
-void ImGuiRenderer::onKeyPressRelease(QKeyEvent *event)
+void Qt3DRRD::ImGuiRenderer::onKeyPressRelease(QKeyEvent *event)
 {
     ImGuiIO& io = ImGui::GetIO();
     if (keyMap.contains(event->key()))
@@ -693,7 +673,7 @@ void ImGuiRenderer::onKeyPressRelease(QKeyEvent *event)
 #endif
 }
 
-void ImGuiRenderer::processEvent(QEvent *event)
+void Qt3DRRD::ImGuiRenderer::processEvent(QEvent *event)
 {
     switch (event->type()) {
     case QEvent::MouseMove:

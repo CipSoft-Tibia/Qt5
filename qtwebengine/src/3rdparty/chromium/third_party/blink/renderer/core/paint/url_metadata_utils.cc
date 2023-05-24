@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,7 +18,7 @@ void AddURLRectsForInlineChildrenRecursively(
   for (LayoutObject* child = layout_object.SlowFirstChild(); child;
        child = child->NextSibling()) {
     if (!child->IsLayoutInline() ||
-        ToLayoutBoxModelObject(child)->HasSelfPaintingLayer())
+        To<LayoutBoxModelObject>(child)->HasSelfPaintingLayer())
       continue;
     ObjectPainter(*child).AddURLRectIfNeeded(paint_info, paint_offset);
     AddURLRectsForInlineChildrenRecursively(*child, paint_info, paint_offset);

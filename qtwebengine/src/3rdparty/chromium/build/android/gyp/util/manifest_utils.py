@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -8,6 +8,7 @@ import hashlib
 import os
 import re
 import shlex
+import sys
 import xml.dom.minidom as minidom
 
 from util import build_utils
@@ -44,6 +45,14 @@ def _RegisterElementTreeNamespaces():
   ElementTree.register_namespace('dist', DIST_NAMESPACE)
 
 
+def NamespacedGet(node, key):
+  return node.get('{%s}%s' % (ANDROID_NAMESPACE, key))
+
+
+def NamespacedSet(node, key, value):
+  node.set('{%s}%s' % (ANDROID_NAMESPACE, key), value)
+
+
 def ParseManifest(path):
   """Parses an AndroidManifest.xml using ElementTree.
 
@@ -62,6 +71,7 @@ def ParseManifest(path):
     manifest_node = doc.getroot()
   else:
     manifest_node = doc.find('manifest')
+  assert manifest_node is not None, 'Manifest is none for path ' + path
 
   app_node = doc.find('application')
   if app_node is None:
@@ -79,82 +89,61 @@ def GetPackage(manifest_node):
   return manifest_node.get('package')
 
 
-def AssertUsesSdk(manifest_node,
-                  min_sdk_version=None,
-                  target_sdk_version=None,
-                  max_sdk_version=None,
-                  fail_if_not_exist=False):
-  """Asserts values of attributes of <uses-sdk> element.
-
-  Unless |fail_if_not_exist| is true, will only assert if both the passed value
-  is not None and the value of attribute exist. If |fail_if_not_exist| is true
-  will fail if passed value is not None but attribute does not exist.
-  """
+def SetUsesSdk(manifest_node,
+               target_sdk_version,
+               min_sdk_version,
+               max_sdk_version=None):
   uses_sdk_node = manifest_node.find('./uses-sdk')
   if uses_sdk_node is None:
-    return
-  for prefix, sdk_version in (('min', min_sdk_version), ('target',
-                                                         target_sdk_version),
-                              ('max', max_sdk_version)):
-    value = uses_sdk_node.get('{%s}%sSdkVersion' % (ANDROID_NAMESPACE, prefix))
-    if fail_if_not_exist and not value and sdk_version:
-      assert False, (
-          '%sSdkVersion in Android manifest does not exist but we expect %s' %
-          (prefix, sdk_version))
-    if not value or not sdk_version:
-      continue
-    assert value == sdk_version, (
-        '%sSdkVersion in Android manifest is %s but we expect %s' %
-        (prefix, value, sdk_version))
+    uses_sdk_node = ElementTree.SubElement(manifest_node, 'uses-sdk')
+  NamespacedSet(uses_sdk_node, 'targetSdkVersion', target_sdk_version)
+  NamespacedSet(uses_sdk_node, 'minSdkVersion', min_sdk_version)
+  if max_sdk_version:
+    NamespacedSet(uses_sdk_node, 'maxSdkVersion', max_sdk_version)
 
 
-def AssertPackage(manifest_node, package):
-  """Asserts that manifest package has desired value.
-
-  Will only assert if both |package| is not None and the package is set in the
-  manifest.
-  """
-  package_value = GetPackage(manifest_node)
-  if package_value is None or package is None:
-    return
-  assert package_value == package, (
-      'Package in Android manifest is %s but we expect %s' % (package_value,
-                                                              package))
+def SetTargetApiIfUnset(manifest_node, target_sdk_version):
+  uses_sdk_node = manifest_node.find('./uses-sdk')
+  if uses_sdk_node is None:
+    uses_sdk_node = ElementTree.SubElement(manifest_node, 'uses-sdk')
+  curr_target_sdk_version = NamespacedGet(uses_sdk_node, 'targetSdkVersion')
+  if curr_target_sdk_version is None:
+    NamespacedSet(uses_sdk_node, 'targetSdkVersion', target_sdk_version)
+  return curr_target_sdk_version is None
 
 
 def _SortAndStripElementTree(root):
-  def sort_key(node):
+  # Sort alphabetically with two exceptions:
+  # 1) Put <application> node last (since it's giant).
+  # 2) Put android:name before other attributes.
+  def element_sort_key(node):
+    if node.tag == 'application':
+      return 'z'
     ret = ElementTree.tostring(node)
     # ElementTree.tostring inserts namespace attributes for any that are needed
     # for the node or any of its descendants. Remove them so as to prevent a
     # change to a child that adds/removes a namespace usage from changing sort
     # order.
-    return re.sub(r' xmlns:.*?".*?"', '', ret)
+    return re.sub(r' xmlns:.*?".*?"', '', ret.decode('utf8'))
+
+  name_attr = '{%s}name' % ANDROID_NAMESPACE
+
+  def attribute_sort_key(tup):
+    return ('', '') if tup[0] == name_attr else tup
 
   def helper(node):
     for child in node:
       if child.text and child.text.isspace():
         child.text = None
       helper(child)
-    node[:] = sorted(node, key=sort_key)
 
-  def rename_attrs(node, from_name, to_name):
-    value = node.attrib.get(from_name)
-    if value is not None:
-      node.attrib[to_name] = value
-      del node.attrib[from_name]
-    for child in node:
-      rename_attrs(child, from_name, to_name)
+    # Sort attributes (requires Python 3.8+).
+    node.attrib = dict(sorted(node.attrib.items(), key=attribute_sort_key))
 
-  # Sort alphabetically with two exceptions:
-  # 1) Put <application> node last (since it's giant).
-  # 2) Pretend android:name appears before other attributes.
-  app_node = root.find('application')
-  app_node.tag = 'zz'
-  rename_attrs(root, '{%s}name' % ANDROID_NAMESPACE, '__name__')
+    # Sort nodes
+    node[:] = sorted(node, key=element_sort_key)
+
   helper(root)
-  rename_attrs(root, '__name__', '{%s}name' % ANDROID_NAMESPACE)
-  app_node.tag = 'application'
 
 
 def _SplitElement(line):
@@ -195,7 +184,7 @@ def _CreateNodeHash(lines):
     if cur_indent != -1 and cur_indent <= target_indent:
       tag_lines = lines[:i + 1]
       break
-    elif not tag_closed and 'android:name="' in l:
+    if not tag_closed and 'android:name="' in l:
       # To reduce noise of node tags changing, use android:name as the
       # basis the hash since they usually unique.
       tag_lines = [l]
@@ -205,7 +194,7 @@ def _CreateNodeHash(lines):
     assert False, 'Did not find end of node:\n' + '\n'.join(lines)
 
   # Insecure and truncated hash as it only needs to be unique vs. its neighbors.
-  return hashlib.md5('\n'.join(tag_lines)).hexdigest()[:8]
+  return hashlib.md5(('\n'.join(tag_lines)).encode('utf8')).hexdigest()[:8]
 
 
 def _IsSelfClosing(lines):
@@ -214,7 +203,7 @@ def _IsSelfClosing(lines):
     idx = l.find('>')
     if idx != -1:
       return l[idx - 1] == '/'
-  assert False, 'Did not find end of tag:\n' + '\n'.join(lines)
+  raise RuntimeError('Did not find end of tag:\n%s' % '\n'.join(lines))
 
 
 def _AddDiffTags(lines):
@@ -251,22 +240,40 @@ def _AddDiffTags(lines):
   assert not hash_stack, 'hash_stack was not empty:\n' + '\n'.join(hash_stack)
 
 
-def NormalizeManifest(manifest_contents):
+def NormalizeManifest(manifest_contents, version_code_offset,
+                      library_version_offset):
   _RegisterElementTreeNamespaces()
   # This also strips comments and sorts node attributes alphabetically.
   root = ElementTree.fromstring(manifest_contents)
   package = GetPackage(root)
 
-  # Trichrome's static library version number is updated daily. To avoid
-  # frequent manifest check failures, we remove the exact version number
-  # during normalization.
   app_node = root.find('application')
   if app_node is not None:
-    for node in app_node.getchildren():
-      if (node.tag in ['uses-static-library', 'static-library']
-          and '{%s}version' % ANDROID_NAMESPACE in node.keys()
-          and '{%s}name' % ANDROID_NAMESPACE in node.keys()):
-        node.set('{%s}version' % ANDROID_NAMESPACE, '$VERSION_NUMBER')
+    # android:debuggable is added when !is_official_build. Strip it out to avoid
+    # expectation diffs caused by not adding is_official_build. Play store
+    # blocks uploading apps with it set, so there's no risk of it slipping in.
+    debuggable_name = '{%s}debuggable' % ANDROID_NAMESPACE
+    if debuggable_name in app_node.attrib:
+      del app_node.attrib[debuggable_name]
+
+    version_code = NamespacedGet(root, 'versionCode')
+    if version_code and version_code_offset:
+      version_code = int(version_code) - int(version_code_offset)
+      NamespacedSet(root, 'versionCode', f'OFFSET={version_code}')
+    version_name = NamespacedGet(root, 'versionName')
+    if version_name:
+      version_name = re.sub(r'\d+', '#', version_name)
+      NamespacedSet(root, 'versionName', version_name)
+
+    # Trichrome's static library version number is updated daily. To avoid
+    # frequent manifest check failures, we remove the exact version number
+    # during normalization.
+    for node in app_node:
+      if node.tag in ['uses-static-library', 'static-library']:
+        version = NamespacedGet(node, 'version')
+        if version and library_version_offset:
+          version = int(version) - int(library_version_offset)
+          NamespacedSet(node, 'version', f'OFFSET={version}')
 
   # We also remove the exact package name (except the one at the root level)
   # to avoid noise during manifest comparison.
@@ -274,14 +281,14 @@ def NormalizeManifest(manifest_contents):
     for key in node.keys():
       node.set(key, node.get(key).replace(package, '$PACKAGE'))
 
-    for child in node.getchildren():
+    for child in node:
       blur_package_name(child)
 
   # We only blur the package names of non-root nodes because they generate a lot
   # of diffs when doing manifest checks for upstream targets. We still want to
   # have 1 piece of package name not blurred just in case the package name is
   # mistakenly changed.
-  for child in root.getchildren():
+  for child in root:
     blur_package_name(child)
 
   _SortAndStripElementTree(root)

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,9 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "content/public/browser/browser_thread.h"
 #include "extensions/browser/api/api_resource.h"
 #include "extensions/browser/api/socket/mojo_data_pump.h"
@@ -52,8 +52,8 @@ void TLSSocket::Connect(const net::AddressList& address,
 void TLSSocket::Disconnect(bool socket_destroying) {
   is_connected_ = false;
   tls_socket_.reset();
-  local_addr_ = base::nullopt;
-  peer_addr_ = base::nullopt;
+  local_addr_ = absl::nullopt;
+  peer_addr_ = absl::nullopt;
   mojo_data_pump_ = nullptr;
   // TODO(devlin): Should we do this for all callbacks?
   if (read_callback_) {

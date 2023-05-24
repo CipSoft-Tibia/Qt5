@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,12 +9,13 @@
 #include "third_party/blink/public/mojom/background_fetch/background_fetch.mojom-blink.h"
 #include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_typedefs.h"
 #include "third_party/blink/renderer/core/dom/events/event_target.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_receiver.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_wrapper_mode.h"
+#include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
@@ -25,7 +26,6 @@ class ExceptionState;
 class ScriptPromiseResolver;
 class ScriptState;
 class ServiceWorkerRegistration;
-class RequestOrUSVString;
 
 // Represents an individual Background Fetch registration. Gives developers
 // access to its properties, options, and enables them to abort the fetch.
@@ -60,13 +60,13 @@ class BackgroundFetchRegistration final
   // |developer_id| used elsewhere in the codebase.
   String id() const;
   ScriptPromise match(ScriptState* script_state,
-                      const RequestOrUSVString& request,
+                      const V8RequestInfo* request,
                       const CacheQueryOptions* options,
                       ExceptionState& exception_state);
   ScriptPromise matchAll(ScriptState* scrip_state,
                          ExceptionState& exception_state);
   ScriptPromise matchAll(ScriptState* script_state,
-                         const RequestOrUSVString& request,
+                         const V8RequestInfo* request,
                          const CacheQueryOptions* options,
                          ExceptionState& exception_state);
 
@@ -80,7 +80,8 @@ class BackgroundFetchRegistration final
 
   DEFINE_ATTRIBUTE_EVENT_LISTENER(progress, kProgress)
 
-  ScriptPromise abort(ScriptState* script_state);
+  ScriptPromise abort(ScriptState* script_state,
+                      ExceptionState& exception_state);
 
   // EventTargetWithInlineData implementation.
   const AtomicString& InterfaceName() const override;
@@ -102,7 +103,7 @@ class BackgroundFetchRegistration final
                 mojom::blink::BackgroundFetchError error);
   ScriptPromise MatchImpl(
       ScriptState* script_state,
-      base::Optional<RequestOrUSVString> request,
+      const V8RequestInfo* request,
       mojom::blink::CacheQueryOptionsPtr cache_query_options,
       ExceptionState& exception_state,
       bool match_all);
@@ -133,12 +134,12 @@ class BackgroundFetchRegistration final
   mojom::BackgroundFetchFailureReason failure_reason_;
   HeapVector<Member<BackgroundFetchRecord>> observers_;
 
+  GC_PLUGIN_IGNORE("https://crbug.com/1381979")
   mojo::Remote<mojom::blink::BackgroundFetchRegistrationService>
       registration_service_;
 
   HeapMojoReceiver<blink::mojom::blink::BackgroundFetchRegistrationObserver,
-                   BackgroundFetchRegistration,
-                   HeapMojoWrapperMode::kWithoutContextObserver>
+                   BackgroundFetchRegistration>
       observer_receiver_;
 };
 

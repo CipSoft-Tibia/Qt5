@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKTABLEVIEW_P_P_H
 #define QQUICKTABLEVIEW_P_P_H
@@ -54,13 +18,20 @@
 #include "qquicktableview_p.h"
 
 #include <QtCore/qtimer.h>
+#include <QtCore/qitemselectionmodel.h>
 #include <QtQmlModels/private/qqmltableinstancemodel_p.h>
 #include <QtQml/private/qqmlincubator_p.h>
 #include <QtQmlModels/private/qqmlchangeset_p.h>
 #include <QtQml/qqmlinfo.h>
 
+#include <QtQuick/private/qminimalflatset_p.h>
 #include <QtQuick/private/qquickflickable_p_p.h>
 #include <QtQuick/private/qquickitemviewfxitem_p_p.h>
+#include <QtQuick/private/qquickanimation_p.h>
+#include <QtQuick/private/qquickselectable_p.h>
+#include <QtQuick/private/qquicksinglepointhandler_p.h>
+#include <QtQuick/private/qquickhoverhandler_p.h>
+#include <QtQuick/private/qquicktaphandler_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -68,33 +39,96 @@ Q_DECLARE_LOGGING_CATEGORY(lcTableViewDelegateLifecycle)
 
 static const qreal kDefaultRowHeight = 50;
 static const qreal kDefaultColumnWidth = 50;
+static const int kEdgeIndexNotSet = -2;
+static const int kEdgeIndexAtEnd = -3;
 
 class FxTableItem;
 class QQuickTableSectionSizeProviderPrivate;
 
-class Q_QUICK_PRIVATE_EXPORT QQuickTableSectionSizeProvider : public QObject {
+/*! \internal
+ *  TableView uses QQuickTableViewHoverHandler to track where the pointer is
+ *  on top of the table, and change the cursor at the places where a drag
+ *  would start a resize of a row or a column.
+ */
+class QQuickTableViewHoverHandler : public QQuickHoverHandler
+{
     Q_OBJECT
 
 public:
-    QQuickTableSectionSizeProvider(QObject *parent=nullptr);
-    void setSize(int section, qreal size);
-    qreal size(int section);
-    bool resetSize(int section);
-    void resetAll();
+    QQuickTableViewHoverHandler(QQuickTableView *view);
+    inline bool isHoveringGrid() const { return m_row != -1 || m_column != -1; };
 
-Q_SIGNALS:
-    void sizeChanged();
+    int m_row = -1;
+    int m_column = -1;
 
-private:
-    Q_DISABLE_COPY(QQuickTableSectionSizeProvider)
-    Q_DECLARE_PRIVATE(QQuickTableSectionSizeProvider)
+    friend class QQuickTableViewPrivate;
+
+protected:
+    void handleEventPoint(QPointerEvent *event, QEventPoint &point) override;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickTableViewPrivate : public QQuickFlickablePrivate
+/*! \internal
+ *  TableView uses QQuickTableViewResizeHandler to enable the user to resize
+ *  rows and columns. By using a custom pointer handler, we can get away with
+ *  using a single pointer handler for the whole content item, rather than
+ *  e.g having to split it up into multiple items with drag handlers placed
+ *  between the cells.
+ */
+class QQuickTableViewResizeHandler : public QQuickSinglePointHandler
 {
-    Q_DECLARE_PUBLIC(QQuickTableView)
+public:
+    enum State {
+        Listening, // the pointer is not being pressed between the cells
+        Tracking, // the pointer is being pressed between the cells
+        DraggingStarted, // dragging started
+        Dragging, // a drag is ongoing
+        DraggingFinished // dragging was finished
+    };
+
+    QQuickTableViewResizeHandler(QQuickTableView *view);
+    State state() { return m_state; }
+    void updateState(QEventPoint &point);
+    void updateDrag(QPointerEvent *event, QEventPoint &point);
+
+    State m_state = Listening;
+
+    int m_row = -1;
+    qreal m_rowStartY = -1;
+    qreal m_rowStartHeight = -1;
+
+    int m_column = -1;
+    qreal m_columnStartX = -1;
+    qreal m_columnStartWidth = -1;
+
+    friend class QQuickTableViewPrivate;
+
+protected:
+    bool wantsEventPoint(const QPointerEvent *event, const QEventPoint &point) override;
+    void handleEventPoint(QPointerEvent *event, QEventPoint &point) override;
+    void onGrabChanged(QQuickPointerHandler *grabber, QPointingDevice::GrabTransition transition,
+                       QPointerEvent *ev, QEventPoint &point) override;
+};
+
+/*! \internal
+ *  QQuickTableViewTapHandler used to handle tap events explicitly for table view
+ */
+class QQuickTableViewTapHandler : public QQuickTapHandler
+{
+    Q_OBJECT
 
 public:
+    explicit QQuickTableViewTapHandler(QQuickTableView *view);
+    bool wantsEventPoint(const QPointerEvent *event, const QEventPoint &point) override;
+
+    friend class QQuickTableViewPrivate;
+};
+
+
+class Q_QUICK_PRIVATE_EXPORT QQuickTableViewPrivate : public QQuickFlickablePrivate, public QQuickSelectable
+{
+public:
+    Q_DECLARE_PUBLIC(QQuickTableView)
+
     class TableEdgeLoadRequest
     {
         // Whenever we need to load new rows or columns in the
@@ -119,7 +153,7 @@ public:
             qCDebug(lcTableViewDelegateLifecycle()) << "begin top-left:" << toString();
         }
 
-        void begin(Qt::Edge edgeToLoad, int edgeIndex, const QList<int> visibleCellsInEdge, QQmlIncubator::IncubationMode incubationMode)
+        void begin(Qt::Edge edgeToLoad, int edgeIndex, const QVector<int> visibleCellsInEdge, QQmlIncubator::IncubationMode incubationMode)
         {
             Q_ASSERT(!m_active);
             m_active = true;
@@ -132,20 +166,20 @@ public:
         }
 
         inline void markAsDone() { m_active = false; }
-        inline bool isActive() { return m_active; }
+        inline bool isActive() const { return m_active; }
 
-        inline QPoint currentCell() { return cellAt(m_currentIndex); }
-        inline bool hasCurrentCell() { return m_currentIndex < m_visibleCellsInEdge.count(); }
+        inline QPoint currentCell() const { return cellAt(m_currentIndex); }
+        inline bool hasCurrentCell() const { return m_currentIndex < m_visibleCellsInEdge.size(); }
         inline void moveToNextCell() { ++m_currentIndex; }
 
-        inline Qt::Edge edge() { return m_edge; }
-        inline int row() { return cellAt(0).y(); }
-        inline int column() { return cellAt(0).x(); }
-        inline QQmlIncubator::IncubationMode incubationMode() { return m_mode; }
+        inline Qt::Edge edge() const { return m_edge; }
+        inline int row() const { return cellAt(0).y(); }
+        inline int column() const { return cellAt(0).x(); }
+        inline QQmlIncubator::IncubationMode incubationMode() const { return m_mode; }
 
-        inline QPointF startPosition() { return m_startPos; }
+        inline QPointF startPosition() const { return m_startPos; }
 
-        QString toString()
+        QString toString() const
         {
             QString str;
             QDebug dbg(&str);
@@ -169,14 +203,14 @@ public:
 
     private:
         Qt::Edge m_edge = Qt::Edge(0);
-        QList<int> m_visibleCellsInEdge;
+        QVector<int> m_visibleCellsInEdge;
         int m_edgeIndex = 0;
         int m_currentIndex = 0;
         bool m_active = false;
         QQmlIncubator::IncubationMode m_mode = QQmlIncubator::AsynchronousIfNested;
         QPointF m_startPos;
 
-        inline QPoint cellAt(int index) {
+        inline QPoint cellAt(int index) const {
             return !m_edge || (m_edge & (Qt::LeftEdge | Qt::RightEdge))
                     ? QPoint(m_edgeIndex, m_visibleCellsInEdge[index])
                     : QPoint(m_visibleCellsInEdge[index], m_edgeIndex);
@@ -198,7 +232,8 @@ public:
         LoadInitalTable,
         VerifyTable,
         LayoutTable,
-        LoadAndUnloadAfterLayout,
+        CancelOvershoot,
+        UpdateContentSize,
         PreloadColumns,
         PreloadRows,
         MovePreloadedItemsToPool,
@@ -207,13 +242,15 @@ public:
 
     enum class RebuildOption {
         None = 0,
-        LayoutOnly = 0x1,
-        ViewportOnly = 0x2,
-        CalculateNewTopLeftRow = 0x4,
-        CalculateNewTopLeftColumn = 0x8,
-        CalculateNewContentWidth = 0x10,
-        CalculateNewContentHeight = 0x20,
-        All = 0x40,
+        All = 0x1,
+        LayoutOnly = 0x2,
+        ViewportOnly = 0x4,
+        CalculateNewTopLeftRow = 0x8,
+        CalculateNewTopLeftColumn = 0x10,
+        CalculateNewContentWidth = 0x20,
+        CalculateNewContentHeight = 0x40,
+        PositionViewAtRow = 0x80,
+        PositionViewAtColumn = 0x100,
     };
     Q_DECLARE_FLAGS(RebuildOptions, RebuildOption)
 
@@ -240,7 +277,7 @@ public:
     // When the applications assignes a new model or delegate to the view, we keep them
     // around until we're ready to take them into use (syncWithPendingChanges).
     QVariant assignedModel = QVariant(int(0));
-    QQmlComponent *assignedDelegate = nullptr;
+    QQmlGuard<QQmlComponent> assignedDelegate;
 
     // loadedRows/Columns describes the rows and columns that are currently loaded (from top left
     // row/column to bottom right row/column). loadedTableOuterRect describes the actual
@@ -248,8 +285,8 @@ public:
     // we need to fill up with more rows/columns. loadedTableInnerRect describes the pixels
     // that the loaded table covers if you remove one row/column on each side of the table, and
     // is used to determine rows/columns that are no longer visible and can be unloaded.
-    QMap<int, int> loadedColumns;
-    QMap<int, int> loadedRows;
+    QMinimalFlatSet<int> loadedColumns;
+    QMinimalFlatSet<int> loadedRows;
     QRectF loadedTableOuterRect;
     QRectF loadedTableInnerRect;
 
@@ -271,26 +308,35 @@ public:
     QQmlTableInstanceModel::ReusableFlag reusableFlag = QQmlTableInstanceModel::Reusable;
 
     bool blockItemCreatedCallback = false;
-    bool layoutWarningIssued = false;
+    mutable bool layoutWarningIssued = false;
     bool polishing = false;
     bool syncVertically = false;
     bool syncHorizontally = false;
     bool inSetLocalViewportPos = false;
     bool inSyncViewportPosRecursive = false;
     bool inUpdateContentSize = false;
+    bool animate = true;
+    bool keyNavigationEnabled = true;
+    bool pointerNavigationEnabled = true;
+    bool alternatingRows = true;
+    bool resizableColumns = false;
+    bool resizableRows = false;
+#if QT_CONFIG(cursor)
+    bool m_cursorSet = false;
+#endif
 
     // isTransposed is currently only used by HeaderView.
     // Consider making it public.
     bool isTransposed = false;
 
+    bool warnNoSelectionModel = true;
+
     QJSValue rowHeightProvider;
     QJSValue columnWidthProvider;
-    QQuickTableSectionSizeProvider rowHeights;
-    QQuickTableSectionSizeProvider columnWidths;
 
-    EdgeRange cachedNextVisibleEdgeIndex[4];
-    EdgeRange cachedColumnWidth;
-    EdgeRange cachedRowHeight;
+    mutable EdgeRange cachedNextVisibleEdgeIndex[4];
+    mutable EdgeRange cachedColumnWidth;
+    mutable EdgeRange cachedRowHeight;
 
     // TableView uses contentWidth/height to report the size of the table (this
     // will e.g make scrollbars written for Flickable work out of the box). This
@@ -311,38 +357,82 @@ public:
     QList<QPointer<QQuickTableView> > syncChildren;
     Qt::Orientations assignedSyncDirection = Qt::Horizontal | Qt::Vertical;
 
-    const static QPoint kLeft;
-    const static QPoint kRight;
-    const static QPoint kUp;
-    const static QPoint kDown;
+    QPointer<QItemSelectionModel> selectionModel;
+    QQuickTableView::SelectionBehavior selectionBehavior = QQuickTableView::SelectCells;
+    QQuickTableView::SelectionMode selectionMode = QQuickTableView::ExtendedSelection;
+
+    int assignedPositionViewAtRowAfterRebuild = 0;
+    int assignedPositionViewAtColumnAfterRebuild = 0;
+    int positionViewAtRowAfterRebuild = 0;
+    int positionViewAtColumnAfterRebuild = 0;
+    qreal positionViewAtRowOffset = 0;
+    qreal positionViewAtColumnOffset = 0;
+    QRectF positionViewAtRowSubRect;
+    QRectF positionViewAtColumnSubRect;
+    Qt::Alignment positionViewAtRowAlignment = Qt::AlignTop;
+    Qt::Alignment positionViewAtColumnAlignment = Qt::AlignLeft;
+
+    QQuickPropertyAnimation positionXAnimation;
+    QQuickPropertyAnimation positionYAnimation;
+
+    QPoint selectionStartCell = {-1, -1};
+    QPoint selectionEndCell = {-1, -1};
+    QItemSelection existingSelection;
+
+    QMargins edgesBeforeRebuild;
+    QSize tableSizeBeforeRebuild;
+
+    int currentRow = -1;
+    int currentColumn = -1;
+
+    QHash<int, qreal> explicitColumnWidths;
+    QHash<int, qreal> explicitRowHeights;
+
+    QQuickTableViewHoverHandler *hoverHandler = nullptr;
+    QQuickTableViewResizeHandler *resizeHandler = nullptr;
+
+    QQmlTableInstanceModel *editModel = nullptr;
+    QQuickItem *editItem = nullptr;
+    QPersistentModelIndex editIndex;
+    QQuickTableView::EditTriggers editTriggers = QQuickTableView::DoubleTapped | QQuickTableView::EditKeyPressed;
 
 #ifdef QT_DEBUG
     QString forcedIncubationMode = qEnvironmentVariable("QT_TABLEVIEW_INCUBATION_MODE");
 #endif
 
 public:
+    void init();
+
     QQuickTableViewAttached *getAttachedObject(const QObject *object) const;
 
     int modelIndexAtCell(const QPoint &cell) const;
     QPoint cellAtModelIndex(int modelIndex) const;
+    int modelIndexToCellIndex(const QModelIndex &modelIndex) const;
+    inline bool cellIsValid(const QPoint &cell) const { return cell.x() != -1 && cell.y() != -1; }
 
-    qreal sizeHintForColumn(int column);
-    qreal sizeHintForRow(int row);
+    qreal sizeHintForColumn(int column) const;
+    qreal sizeHintForRow(int row) const;
     QSize calculateTableSize();
     void updateTableSize();
 
-    inline bool isColumnHidden(int column);
-    inline bool isRowHidden(int row);
+    inline bool isColumnHidden(int column) const;
+    inline bool isRowHidden(int row) const;
 
     qreal getColumnLayoutWidth(int column);
     qreal getRowLayoutHeight(int row);
-    qreal getColumnWidth(int column);
-    qreal getRowHeight(int row);
+    qreal getColumnWidth(int column) const;
+    qreal getRowHeight(int row) const;
+    qreal getEffectiveRowY(int row) const;
+    qreal getEffectiveRowHeight(int row) const;
+    qreal getEffectiveColumnX(int column) const;
+    qreal getEffectiveColumnWidth(int column) const;
+    qreal getAlignmentContentX(int column, Qt::Alignment alignment, const qreal offset, const QRectF &subRect);
+    qreal getAlignmentContentY(int row, Qt::Alignment alignment, const qreal offset, const QRectF &subRect);
 
-    inline int topRow() const { return loadedRows.firstKey(); }
-    inline int bottomRow() const { return loadedRows.lastKey(); }
-    inline int leftColumn() const { return loadedColumns.firstKey(); }
-    inline int rightColumn() const { return loadedColumns.lastKey(); }
+    int topRow() const { return *loadedRows.cbegin(); }
+    int bottomRow() const { return *loadedRows.crbegin(); }
+    int leftColumn() const { return *loadedColumns.cbegin(); }
+    int rightColumn() const { return *loadedColumns.crbegin(); }
 
     QQuickTableView *rootSyncView() const;
 
@@ -360,17 +450,18 @@ public:
     void updateAverageColumnWidth();
     void updateAverageRowHeight();
     RebuildOptions checkForVisibilityChanges();
-    void forceLayout();
+    void forceLayout(bool immediate);
 
     void updateExtents();
     void syncLoadedTableRectFromLoadedTable();
     void syncLoadedTableFromLoadRequest();
+    void shiftLoadedTableRect(const QPointF newPosition);
 
-    int nextVisibleEdgeIndex(Qt::Edge edge, int startIndex);
-    int nextVisibleEdgeIndexAroundLoadedTable(Qt::Edge edge);
-    bool allColumnsLoaded();
-    bool allRowsLoaded();
-    inline int edgeToArrayIndex(Qt::Edge edge);
+    int nextVisibleEdgeIndex(Qt::Edge edge, int startIndex) const;
+    int nextVisibleEdgeIndexAroundLoadedTable(Qt::Edge edge) const;
+    inline bool atTableEnd(Qt::Edge edge) const { return nextVisibleEdgeIndexAroundLoadedTable(edge) == kEdgeIndexAtEnd; }
+    inline bool atTableEnd(Qt::Edge edge, int startIndex) const { return nextVisibleEdgeIndex(edge, startIndex) == kEdgeIndexAtEnd; }
+    inline int edgeToArrayIndex(Qt::Edge edge) const;
     void clearEdgeSizeCache();
 
     bool canLoadTableEdge(Qt::Edge tableEdge, const QRectF fillRect) const;
@@ -378,8 +469,8 @@ public:
     Qt::Edge nextEdgeToLoad(const QRectF rect);
     Qt::Edge nextEdgeToUnload(const QRectF rect);
 
-    qreal cellWidth(const QPoint &cell);
-    qreal cellHeight(const QPoint &cell);
+    qreal cellWidth(const QPoint &cell) const;
+    qreal cellHeight(const QPoint &cell) const;
 
     FxTableItem *loadedTableItem(const QPoint &cell) const;
     FxTableItem *createFxTableItem(const QPoint &cell, QQmlIncubator::IncubationMode incubationMode);
@@ -391,34 +482,47 @@ public:
     void unloadItem(const QPoint &cell);
     void loadEdge(Qt::Edge edge, QQmlIncubator::IncubationMode incubationMode);
     void unloadEdge(Qt::Edge edge);
-    void loadAndUnloadVisibleEdges();
+    void loadAndUnloadVisibleEdges(QQmlIncubator::IncubationMode incubationMode = QQmlIncubator::AsynchronousIfNested);
     void drainReusePoolAfterLoadRequest();
     void processLoadRequest();
 
     void processRebuildTable();
     bool moveToNextRebuildState();
     void calculateTopLeft(QPoint &topLeft, QPointF &topLeftPos);
-    void beginRebuildTable();
+    void loadInitialTable();
+
     void layoutAfterLoadingInitialTable();
+    void adjustViewportXAccordingToAlignment();
+    void adjustViewportYAccordingToAlignment();
+    void cancelOvershootAfterLayout();
 
     void scheduleRebuildTable(QQuickTableViewPrivate::RebuildOptions options);
 
-    int resolveImportVersion();
-    void createWrapperModel();
+#if QT_CONFIG(cursor)
+    void updateCursor();
+#endif
+    void updateEditItem();
+    void updateContentSize();
 
-    void initItemCallback(int modelIndex, QObject *item);
-    void itemCreatedCallback(int modelIndex, QObject *object);
-    void itemPooledCallback(int modelIndex, QObject *object);
-    void itemReusedCallback(int modelIndex, QObject *object);
-    void modelUpdated(const QQmlChangeSet &changeSet, bool reset);
+    QTypeRevision resolveImportVersion();
+    void createWrapperModel();
+    QAbstractItemModel *qaim(QVariant modelAsVariant) const;
+
+    virtual void initItemCallback(int modelIndex, QObject *item);
+    virtual void itemCreatedCallback(int modelIndex, QObject *object);
+    virtual void itemPooledCallback(int modelIndex, QObject *object);
+    virtual void itemReusedCallback(int modelIndex, QObject *object);
+    virtual void modelUpdated(const QQmlChangeSet &changeSet, bool reset);
 
     virtual void syncWithPendingChanges();
     virtual void syncDelegate();
     virtual QVariant modelImpl() const;
     virtual void setModelImpl(const QVariant &newModel);
     virtual void syncModel();
-    inline void syncRebuildOptions();
     virtual void syncSyncView();
+    virtual void syncPositionView();
+    virtual QAbstractItemModel *selectionSourceModel();
+    inline void syncRebuildOptions();
 
     void connectToModel();
     void disconnectFromModel();
@@ -431,12 +535,28 @@ public:
     void columnsRemovedCallback(const QModelIndex &parent, int begin, int end);
     void layoutChangedCallback(const QList<QPersistentModelIndex> &parents, QAbstractItemModel::LayoutChangeHint hint);
     void modelResetCallback();
+    bool compareModel(const QVariant& model1, const QVariant& model2) const;
+
+    void positionViewAtRow(int row, Qt::Alignment alignment, qreal offset, const QRectF subRect = QRectF());
+    void positionViewAtColumn(int column, Qt::Alignment alignment, qreal offset, const QRectF subRect = QRectF());
+    bool scrollToRow(int row, Qt::Alignment alignment, qreal offset, const QRectF subRect = QRectF());
+    bool scrollToColumn(int column, Qt::Alignment alignment, qreal offset, const QRectF subRect = QRectF());
 
     void scheduleRebuildIfFastFlick();
     void setLocalViewportX(qreal contentX);
     void setLocalViewportY(qreal contentY);
     void syncViewportRect();
     void syncViewportPosRecursive();
+
+    bool selectedInSelectionModel(const QPoint &cell) const;
+    void selectionChangedInSelectionModel(const QItemSelection &selected, const QItemSelection &deselected);
+    void updateSelectedOnAllDelegateItems();
+    void setSelectedOnDelegateItem(const QModelIndex &modelIndex, bool select);
+
+    bool currentInSelectionModel(const QPoint &cell) const;
+    void currentChangedInSelectionModel(const QModelIndex &current, const QModelIndex &previous);
+    void setCurrentOnDelegateItem(const QModelIndex &index, bool isCurrent);
+    void updateCurrentRowAndColumn();
 
     void fetchMoreData();
 
@@ -445,6 +565,33 @@ public:
 
     inline QString tableLayoutToString() const;
     void dumpTable() const;
+
+    void setRequiredProperty(const char *property,
+                             const QVariant &value,
+                             int serializedModelIndex,
+                             QObject *object, bool init);
+
+    void handleTap(const QQuickHandlerPoint &point);
+    void setCurrentIndexFromTap(const QPointF &pos);
+    void setCurrentIndex(const QPoint &cell);
+    bool setCurrentIndexFromKeyEvent(QKeyEvent *e);
+    bool canEdit(const QModelIndex tappedIndex, bool warn);
+    bool editFromKeyEvent(QKeyEvent *e);
+
+    // QQuickSelectable
+    QQuickItem *selectionPointerHandlerTarget() const override;
+    bool startSelection(const QPointF &pos) override;
+    void setSelectionStartPos(const QPointF &pos) override;
+    void setSelectionEndPos(const QPointF &pos) override;
+    void clearSelection() override;
+    void normalizeSelection() override;
+    QRectF selectionRectangle() const override;
+    QSizeF scrollTowardsSelectionPoint(const QPointF &pos, const QSizeF &step) override;
+
+    QPoint clampedCellAtPos(const QPointF &pos) const;
+    virtual void updateSelection(const QRect &oldSelection, const QRect &newSelection);
+    QRect selection() const;
+    // ----------------
 };
 
 class FxTableItem : public QQuickItemViewFxItem

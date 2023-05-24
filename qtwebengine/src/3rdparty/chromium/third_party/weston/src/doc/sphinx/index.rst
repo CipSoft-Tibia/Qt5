@@ -6,6 +6,8 @@ Welcome to Weston documentation!
    :caption: Contents:
 
    toc/libweston.rst
+   toc/test-suite.rst
+   toc/kiosk-shell.rst
 
 Weston
 ------

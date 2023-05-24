@@ -21,7 +21,24 @@ macro(libgav1_set_build_definitions)
   string(TOLOWER "${CMAKE_BUILD_TYPE}" build_type_lowercase)
 
   libgav1_load_version_info()
-  set(LIBGAV1_SOVERSION 0)
+
+  # Library version info. See the libtool docs for updating the values:
+  # https://www.gnu.org/software/libtool/manual/libtool.html#Updating-version-info
+  #
+  # c=<current>, r=<revision>, a=<age>
+  #
+  # libtool generates a .so file as .so.[c-a].a.r, while -version-info c:r:a is
+  # passed to libtool.
+  #
+  # We set LIBGAV1_SOVERSION = [c-a].a.r
+  set(LT_CURRENT 0)
+  set(LT_REVISION 1)
+  set(LT_AGE 0)
+  math(EXPR LIBGAV1_SOVERSION_MAJOR "${LT_CURRENT} - ${LT_AGE}")
+  set(LIBGAV1_SOVERSION "${LIBGAV1_SOVERSION_MAJOR}.${LT_AGE}.${LT_REVISION}")
+  unset(LT_CURRENT)
+  unset(LT_REVISION)
+  unset(LT_AGE)
 
   list(APPEND libgav1_include_paths "${libgav1_root}" "${libgav1_root}/src"
               "${libgav1_build}" "${libgav1_root}/third_party/abseil-cpp")
@@ -36,7 +53,8 @@ macro(libgav1_set_build_definitions)
               "LIBGAV1_FLAGS_TMPDIR=\"/tmp\"")
 
   if(MSVC OR WIN32)
-    list(APPEND libgav1_defines "_CRT_SECURE_NO_DEPRECATE=1" "NOMINMAX=1")
+    list(APPEND libgav1_defines "_CRT_SECURE_NO_WARNINGS" "NOMINMAX"
+                "_SCL_SECURE_NO_WARNINGS")
   endif()
 
   if(ANDROID)
@@ -89,9 +107,7 @@ macro(libgav1_set_build_definitions)
   endif()
 
   if(build_type_lowercase MATCHES "rel")
-    # TODO(tomfinegan): this value is only a concern for the core library and
-    # can be made smaller if the test targets are avoided.
-    list(APPEND libgav1_base_cxx_flags "-Wstack-usage=196608")
+    list(APPEND libgav1_base_cxx_flags "-Wframe-larger-than=196608")
   endif()
 
   list(APPEND libgav1_msvc_cxx_flags
@@ -126,8 +142,10 @@ macro(libgav1_set_build_definitions)
 
   if(NOT LIBGAV1_MAX_BITDEPTH)
     set(LIBGAV1_MAX_BITDEPTH 10)
-  elseif(NOT LIBGAV1_MAX_BITDEPTH EQUAL 8 AND NOT LIBGAV1_MAX_BITDEPTH EQUAL 10)
-    libgav1_die("LIBGAV1_MAX_BITDEPTH must be 8 or 10.")
+  elseif(NOT LIBGAV1_MAX_BITDEPTH EQUAL 8
+         AND NOT LIBGAV1_MAX_BITDEPTH EQUAL 10
+         AND NOT LIBGAV1_MAX_BITDEPTH EQUAL 12)
+    libgav1_die("LIBGAV1_MAX_BITDEPTH must be 8, 10 or 12.")
   endif()
 
   list(APPEND libgav1_defines "LIBGAV1_MAX_BITDEPTH=${LIBGAV1_MAX_BITDEPTH}")
@@ -144,6 +162,7 @@ macro(libgav1_set_build_definitions)
 
   # Source file names ending in these suffixes will have the appropriate
   # compiler flags added to their compile commands to enable intrinsics.
-  set(libgav1_neon_source_file_suffix "neon.cc")
-  set(libgav1_sse4_source_file_suffix "sse4.cc")
+  set(libgav1_avx2_source_file_suffix "avx2(_test)?.cc")
+  set(libgav1_neon_source_file_suffix "neon(_test)?.cc")
+  set(libgav1_sse4_source_file_suffix "sse4(_test)?.cc")
 endmacro()

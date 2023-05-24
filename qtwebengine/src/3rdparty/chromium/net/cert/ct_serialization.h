@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,16 +8,14 @@
 #include <string>
 #include <vector>
 
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/strings/string_piece.h"
 #include "base/time/time.h"
 #include "net/base/net_export.h"
 
-namespace net {
-
 // Utility functions for encoding/decoding structures used by Certificate
 // Transparency to/from the TLS wire format encoding.
-namespace ct {
+namespace net::ct {
 
 struct DigitallySigned;
 struct MerkleTreeLeaf;
@@ -95,10 +93,8 @@ NET_EXPORT bool EncodeSignedCertificateTimestamp(
     std::string* output);
 
 // Writes an SCTList into |output|, containing a single |sct|.
-NET_EXPORT_PRIVATE bool EncodeSCTListForTesting(const base::StringPiece& sct,
+NET_EXPORT_PRIVATE bool EncodeSCTListForTesting(base::StringPiece sct,
                                                 std::string* output);
-}  // namespace ct
-
-}  // namespace net
+}  // namespace net::ct
 
 #endif  // NET_CERT_CT_SERIALIZATION_H_

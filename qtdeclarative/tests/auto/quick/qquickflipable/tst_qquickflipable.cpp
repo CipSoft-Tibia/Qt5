@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <qtest.h>
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcomponent.h>
@@ -34,12 +9,13 @@
 #include <QFontMetrics>
 #include <QtQuick/private/qquickrectangle_p.h>
 #include <math.h>
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 class tst_qquickflipable : public QQmlDataTest
 {
     Q_OBJECT
 public:
+    tst_qquickflipable();
 
 private slots:
     void create();
@@ -51,9 +27,17 @@ private slots:
     void QTBUG_9161_crash();
     void QTBUG_8474_qgv_abort();
 
+    void flipRotationAngle_data();
+    void flipRotationAngle();
+
 private:
     QQmlEngine engine;
 };
+
+tst_qquickflipable::tst_qquickflipable()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
+{
+}
 
 void tst_qquickflipable::create()
 {
@@ -129,6 +113,31 @@ void tst_qquickflipable::QTBUG_8474_qgv_abort()
     QVERIFY(root != nullptr);
     window->show();
     delete window;
+}
+
+void tst_qquickflipable::flipRotationAngle_data()
+{
+    QTest::addColumn<int>("angle");
+    QTest::addColumn<QQuickFlipable::Side>("side");
+
+    QTest::newRow("89") << 89 << QQuickFlipable::Front;
+    QTest::newRow("91") << 91 << QQuickFlipable::Back;
+    QTest::newRow("-89") << -89 << QQuickFlipable::Front;
+    QTest::newRow("-91") << -91 << QQuickFlipable::Back;
+}
+
+void tst_qquickflipable::flipRotationAngle() // QTBUG-75954
+{
+    QFETCH(int, angle);
+    QFETCH(QQuickFlipable::Side, side);
+
+    QQmlEngine engine;
+    QQmlComponent c(&engine, testFileUrl("flip-y-axis-flipable.qml"));
+    QQuickFlipable *obj = qobject_cast<QQuickFlipable*>(c.create());
+    QVERIFY(obj != nullptr);
+    obj->setProperty("angle", angle);
+    QCOMPARE(obj->side(), side);
+    delete obj;
 }
 
 QTEST_MAIN(tst_qquickflipable)

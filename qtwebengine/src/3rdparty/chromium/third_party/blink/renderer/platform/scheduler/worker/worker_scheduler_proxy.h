@@ -1,17 +1,16 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_SCHEDULER_WORKER_WORKER_SCHEDULER_PROXY_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_SCHEDULER_WORKER_WORKER_SCHEDULER_PROXY_H_
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/optional.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/scheduler/main_thread/frame_origin_type.h"
 #include "third_party/blink/renderer/platform/scheduler/public/frame_or_worker_scheduler.h"
@@ -33,6 +32,8 @@ class WorkerScheduler;
 class PLATFORM_EXPORT WorkerSchedulerProxy {
  public:
   explicit WorkerSchedulerProxy(FrameOrWorkerScheduler* scheduler);
+  WorkerSchedulerProxy(const WorkerSchedulerProxy&) = delete;
+  WorkerSchedulerProxy& operator=(const WorkerSchedulerProxy&) = delete;
   ~WorkerSchedulerProxy();
 
   void OnWorkerSchedulerCreated(
@@ -47,7 +48,7 @@ class PLATFORM_EXPORT WorkerSchedulerProxy {
   }
 
   // Accessed only during init.
-  base::Optional<FrameOriginType> parent_frame_type() const {
+  absl::optional<FrameOriginType> parent_frame_type() const {
     DCHECK(!initialized_);
     return parent_frame_type_;
   }
@@ -78,13 +79,11 @@ class PLATFORM_EXPORT WorkerSchedulerProxy {
       throttling_observer_handle_;
 
   bool initialized_ = false;
-  base::Optional<FrameOriginType> parent_frame_type_;
+  absl::optional<FrameOriginType> parent_frame_type_;
   FrameStatus initial_frame_status_ = FrameStatus::kNone;
   ukm::SourceId ukm_source_id_ = ukm::kInvalidSourceId;
 
   THREAD_CHECKER(parent_thread_checker_);
-
-  DISALLOW_COPY_AND_ASSIGN(WorkerSchedulerProxy);
 };
 
 }  // namespace scheduler

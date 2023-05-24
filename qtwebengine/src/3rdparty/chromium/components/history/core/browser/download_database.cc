@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,11 +11,11 @@
 #include <string>
 #include <vector>
 
+#include "base/containers/contains.h"
 #include "base/debug/alias.h"
 #include "base/files/file_path.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/rand_util.h"
-#include "base/stl_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
@@ -33,6 +33,7 @@ namespace {
 const char kDownloadsTable[] = "downloads";
 
 const char kDownloadsSlicesTable[] = "downloads_slices";
+const char kDownloadsRerouteInfoTable[] = "downloads_reroute_info";
 
 // Reason for dropping a particular record. Used for UMA.
 enum DroppedReason {
@@ -43,7 +44,7 @@ enum DroppedReason {
   DROPPED_REASON_MAX
 };
 
-#if defined(OS_POSIX) || defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
 
 // Binds/reads the given file path to the given column of the given statement.
 void BindFilePath(sql::Statement& statement,
@@ -61,10 +62,10 @@ base::FilePath ColumnFilePath(sql::Statement& statement, int col) {
 void BindFilePath(sql::Statement& statement,
                   const base::FilePath& path,
                   int col) {
-  statement.BindString16(col, path.value());
+  statement.BindString(col, path.AsUTF8Unsafe());
 }
 base::FilePath ColumnFilePath(sql::Statement& statement, int col) {
-  return base::FilePath(statement.ColumnString16(col));
+  return base::FilePath::FromUTF8Unsafe(statement.ColumnString(col));
 }
 
 #endif
@@ -295,6 +296,11 @@ bool DownloadDatabase::MigrateDownloadSiteInstanceUrl() {
   return EnsureColumnExists("site_url", "VARCHAR NOT NULL DEFAULT ''");
 }
 
+bool DownloadDatabase::MigrateEmbedderDownloadData() {
+  return EnsureColumnExists("embedder_download_data",
+                            "VARCHAR NOT NULL DEFAULT ''");
+}
+
 bool DownloadDatabase::MigrateDownloadLastAccessTime() {
   return EnsureColumnExists("last_access_time", "INTEGER NOT NULL DEFAULT 0");
 }
@@ -331,16 +337,20 @@ bool DownloadDatabase::InitDownloadTable() {
       "referrer VARCHAR NOT NULL,"          // HTTP Referrer
       "site_url VARCHAR NOT NULL,"          // Site URL for initiating site
                                             // instance.
-      "tab_url VARCHAR NOT NULL,"           // Tab URL for initiator.
-      "tab_referrer_url VARCHAR NOT NULL,"  // Tag referrer URL for
-                                            // initiator.
-      "http_method VARCHAR NOT NULL,"       // HTTP method.
-      "by_ext_id VARCHAR NOT NULL,"         // ID of extension that started the
-                                            // download
-      "by_ext_name VARCHAR NOT NULL,"       // name of extension
-      "etag VARCHAR NOT NULL,"              // ETag
-      "last_modified VARCHAR NOT NULL,"     // Last-Modified header
-      "mime_type VARCHAR(255) NOT NULL,"    // MIME type.
+      "embedder_download_data VARCHAR NOT NULL,"  // Serialized proto for
+                                                  // embedder data pertaining to
+                                                  // the initiating site
+                                                  // instance.
+      "tab_url VARCHAR NOT NULL,"                 // Tab URL for initiator.
+      "tab_referrer_url VARCHAR NOT NULL,"        // Tag referrer URL for
+                                                  // initiator.
+      "http_method VARCHAR NOT NULL,"             // HTTP method.
+      "by_ext_id VARCHAR NOT NULL,"       // ID of extension that started the
+                                          // download
+      "by_ext_name VARCHAR NOT NULL,"     // name of extension
+      "etag VARCHAR NOT NULL,"            // ETag
+      "last_modified VARCHAR NOT NULL,"   // Last-Modified header
+      "mime_type VARCHAR(255) NOT NULL,"  // MIME type.
       "original_mime_type VARCHAR(255) NOT NULL)"  // Original MIME type.
       ,
       kDownloadsTable);
@@ -363,7 +373,10 @@ bool DownloadDatabase::InitDownloadTable() {
       "PRIMARY KEY (download_id, offset) )",
       kDownloadsSlicesTable);
 
-  bool ret;
+  const std::string kRerouteInfoDropTable =
+      base::StringPrintf("DROP TABLE %s", kDownloadsRerouteInfoTable);
+
+  bool ret = true;
   if (GetDB().DoesTableExist(kDownloadsTable)) {
     // If the "downloads" table exists, "downloads_url_chain" might not be there
     // as it is introduced in version 24. A migration function will be run to
@@ -379,8 +392,15 @@ bool DownloadDatabase::InitDownloadTable() {
           GetDB().Execute(kUrlChainSchema);
   }
 
-  // Making sure the "downloads_slices" table is created as it is introduced in
-  // version 33. This table doesn't require migration of existing tables.
+  // The "downloads_reroute_info" table is introduced in version 46 but needs
+  // to be dropped as part of the removal of the FileSystem Connector code.
+  if (GetDB().DoesTableExist(kDownloadsRerouteInfoTable)) {
+    ret = ret && GetDB().Execute(kRerouteInfoDropTable.c_str());
+  }
+
+  // Making sure these tables introduced in later versions are created or
+  // dropped as needed. They don't require migration of existing tables.
+  // The "downloads_slices" table is introduced in version 33.
   return ret && (GetDB().DoesTableExist(kDownloadsSlicesTable) ||
                  GetDB().Execute(kSlicesSchema.c_str()));
 }
@@ -394,11 +414,11 @@ uint32_t DownloadDatabase::GetNextDownloadId() {
   // return 0 = kInvalidDownloadId, so GetNextDownloadId() will set
   // *id = kInvalidDownloadId + 1.
   //
-  // If there is at least one record but all of the |id|s are
+  // If there is at least one record but all of the `id`s are
   // <= kInvalidDownloadId, then max(id) will return <= kInvalidDownloadId,
   // so GetNextDownloadId() should return kInvalidDownloadId + 1.
   //
-  // Note that any records with |id <= kInvalidDownloadId| will be dropped in
+  // Note that any records with `id <= kInvalidDownloadId` will be dropped in
   // QueryDownloads().
   //
   // SQLITE doesn't have unsigned integers.
@@ -426,9 +446,10 @@ void DownloadDatabase::QueryDownloads(std::vector<DownloadRow>* results) {
           "SELECT id, guid, current_path, target_path, mime_type, "
           "original_mime_type, start_time, received_bytes, total_bytes, state, "
           "danger_type, interrupt_reason, hash, end_time, opened, "
-          "last_access_time, transient, referrer, site_url, tab_url, "
-          "tab_referrer_url, http_method, by_ext_id, by_ext_name, etag, "
-          "last_modified FROM %s ORDER BY start_time",
+          "last_access_time, transient, referrer, site_url, "
+          "embedder_download_data, tab_url, tab_referrer_url, http_method, "
+          "by_ext_id, by_ext_name, etag, last_modified FROM %s ORDER BY "
+          "start_time",
           kDownloadsTable)
           .c_str()));
 
@@ -437,7 +458,7 @@ void DownloadDatabase::QueryDownloads(std::vector<DownloadRow>* results) {
     int column = 0;
 
     // SQLITE does not have unsigned integers, so explicitly handle negative
-    // |id|s instead of casting them to very large uint32s, which would break
+    // `id`s instead of casting them to very large uint32s, which would break
     // the max(id) logic in GetNextDownloadId().
     int64_t signed_id = statement_main.ColumnInt64(column++);
     bool valid = ConvertIntToDownloadId(signed_id, &(info->id));
@@ -465,6 +486,7 @@ void DownloadDatabase::QueryDownloads(std::vector<DownloadRow>* results) {
     info->transient = statement_main.ColumnInt(column++) != 0;
     info->referrer_url = GURL(statement_main.ColumnString(column++));
     info->site_url = GURL(statement_main.ColumnString(column++));
+    info->embedder_download_data = statement_main.ColumnString(column++);
     info->tab_url = GURL(statement_main.ColumnString(column++));
     info->tab_referrer_url = GURL(statement_main.ColumnString(column++));
     info->http_method = statement_main.ColumnString(column++);
@@ -588,11 +610,11 @@ bool DownloadDatabase::UpdateDownload(const DownloadRow& data) {
   statement.BindInt(column++, DownloadDangerTypeToInt(data.danger_type));
   statement.BindInt(column++,
                     DownloadInterruptReasonToInt(data.interrupt_reason));
-  statement.BindBlob(column++, data.hash.data(), data.hash.size());
-  statement.BindInt64(column++, data.end_time.ToInternalValue());
+  statement.BindBlob(column++, data.hash);
+  statement.BindTime(column++, data.end_time);
   statement.BindInt64(column++, data.total_bytes);
   statement.BindInt(column++, (data.opened ? 1 : 0));
-  statement.BindInt64(column++, data.last_access_time.ToInternalValue());
+  statement.BindTime(column++, data.last_access_time);
   statement.BindInt(column++, (data.transient ? 1 : 0));
   statement.BindString(column++, data.by_ext_id);
   statement.BindString(column++, data.by_ext_name);
@@ -654,15 +676,14 @@ bool DownloadDatabase::CreateDownload(const DownloadRow& info) {
         base::StringPrintf(
             "INSERT INTO %s "
             "(id, guid, current_path, target_path, mime_type, "
-            "original_mime_type, "
-            " start_time, received_bytes, total_bytes, state, danger_type, "
-            " interrupt_reason, hash, end_time, opened, last_access_time, "
-            "transient, referrer, site_url, tab_url, tab_referrer_url, "
-            "http_method, "
-            " by_ext_id, by_ext_name, etag, last_modified) "
+            "original_mime_type, start_time, received_bytes, total_bytes, "
+            "state, danger_type, interrupt_reason, hash, end_time, opened, "
+            "last_access_time, transient, referrer, site_url, "
+            "embedder_download_data, tab_url, tab_referrer_url, http_method, "
+            "by_ext_id, by_ext_name, etag, last_modified) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
             "        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-            "        ?, ?, ?, ?, ?, ?)",
+            "        ?, ?, ?, ?, ?, ?, ?)",
             kDownloadsTable)
             .c_str()));
 
@@ -673,7 +694,7 @@ bool DownloadDatabase::CreateDownload(const DownloadRow& info) {
     BindFilePath(statement_insert, info.target_path, column++);
     statement_insert.BindString(column++, info.mime_type);
     statement_insert.BindString(column++, info.original_mime_type);
-    statement_insert.BindInt64(column++, info.start_time.ToInternalValue());
+    statement_insert.BindTime(column++, info.start_time);
     statement_insert.BindInt64(column++, info.received_bytes);
     statement_insert.BindInt64(column++, info.total_bytes);
     statement_insert.BindInt(column++, DownloadStateToInt(info.state));
@@ -681,14 +702,14 @@ bool DownloadDatabase::CreateDownload(const DownloadRow& info) {
                              DownloadDangerTypeToInt(info.danger_type));
     statement_insert.BindInt(
         column++, DownloadInterruptReasonToInt(info.interrupt_reason));
-    statement_insert.BindBlob(column++, info.hash.data(), info.hash.size());
-    statement_insert.BindInt64(column++, info.end_time.ToInternalValue());
+    statement_insert.BindBlob(column++, info.hash);
+    statement_insert.BindTime(column++, info.end_time);
     statement_insert.BindInt(column++, info.opened ? 1 : 0);
-    statement_insert.BindInt64(column++,
-                               info.last_access_time.ToInternalValue());
+    statement_insert.BindTime(column++, info.last_access_time);
     statement_insert.BindInt(column++, info.transient ? 1 : 0);
     statement_insert.BindString(column++, info.referrer_url.spec());
     statement_insert.BindString(column++, info.site_url.spec());
+    statement_insert.BindString(column++, info.embedder_download_data);
     statement_insert.BindString(column++, info.tab_url.spec());
     statement_insert.BindString(column++, info.tab_referrer_url.spec());
     statement_insert.BindString(column++, info.http_method);
@@ -791,8 +812,8 @@ size_t DownloadDatabase::CountDownloads() {
 bool DownloadDatabase::CreateOrUpdateDownloadSlice(
     const DownloadSliceInfo& info) {
   // If the slice has no data, there is no need to insert it into the db. Note
-  // that for each slice, |received_bytes| can only go up. So if a slice is
-  // already in the db, its |received_bytes| should always be larger than 0.
+  // that for each slice, `received_bytes` can only go up. So if a slice is
+  // already in the db, its `received_bytes` should always be larger than 0.
   if (info.received_bytes == 0)
     return true;
   sql::Statement statement_replace(GetDB().GetCachedStatement(
@@ -835,8 +856,8 @@ void DownloadDatabase::QueryDownloadSlices(DownloadRowMap* download_row_map) {
     // Convert signed integer from sqlite to unsigned DownloadId.
     int64_t signed_id = statement_query.ColumnInt64(column++);
     bool success = ConvertIntToDownloadId(signed_id, &info.download_id);
-    DCHECK(success) << "Invalid download ID found in downloads_slices table "
-                    << signed_id;
+    DCHECK(success) << "Invalid download ID found in " << kDownloadsSlicesTable
+                    << " table " << signed_id;
     info.offset = statement_query.ColumnInt64(column++);
     info.received_bytes = statement_query.ColumnInt64(column++);
     info.finished = static_cast<bool>(statement_query.ColumnInt64(column++));

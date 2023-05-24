@@ -1,8 +1,9 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "net/test/url_request/url_request_test_job_backed_by_file.h"
+#include "base/memory/raw_ptr.h"
 
 #include <memory>
 
@@ -12,12 +13,14 @@
 #include "base/files/scoped_temp_dir.h"
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "net/base/filename_util.h"
 #include "net/base/net_errors.h"
 #include "net/test/test_with_task_environment.h"
 #include "net/traffic_annotation/network_traffic_annotation_test_helper.h"
 #include "net/url_request/url_request.h"
+#include "net/url_request/url_request_context.h"
+#include "net/url_request/url_request_context_builder.h"
 #include "net/url_request/url_request_test_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/url_constants.h"
@@ -79,10 +82,10 @@ class TestURLRequestTestJobBackedByFile : public URLRequestTestJobBackedByFile {
 
   void DoneReading() override { *done_reading_ = true; }
 
-  int* const open_result_;
-  int64_t* const seek_position_;
-  bool* done_reading_;
-  std::string* const observed_content_;
+  const raw_ptr<int> open_result_;
+  const raw_ptr<int64_t> seek_position_;
+  raw_ptr<bool> done_reading_;
+  const raw_ptr<std::string> observed_content_;
 };
 
 // Helper function to create a file at |path| filled with |content|.
@@ -146,12 +149,13 @@ class URLRequestTestJobBackedByFileEventsTest : public TestWithTaskEnvironment {
                           std::string* observed_content);
 
   base::ScopedTempDir directory_;
-  TestURLRequestContext context_;
+  std::unique_ptr<URLRequestContext> context_;
   TestDelegate delegate_;
 };
 
 URLRequestTestJobBackedByFileEventsTest::
-    URLRequestTestJobBackedByFileEventsTest() = default;
+    URLRequestTestJobBackedByFileEventsTest()
+    : context_(CreateTestURLRequestContextBuilder()->Build()) {}
 
 void URLRequestTestJobBackedByFileEventsTest::TearDown() {
   // Gives a chance to close the opening file.
@@ -226,12 +230,13 @@ void URLRequestTestJobBackedByFileEventsTest::RunRequestWithPath(
     std::string* observed_content) {
   const GURL kUrl("http://intercepted-url/");
 
-  std::unique_ptr<URLRequest> request(context_.CreateRequest(
+  std::unique_ptr<URLRequest> request(context_->CreateRequest(
       kUrl, DEFAULT_PRIORITY, &delegate_, TRAFFIC_ANNOTATION_FOR_TESTS));
   TestScopedURLInterceptor interceptor(
       kUrl, std::make_unique<TestURLRequestTestJobBackedByFile>(
-                request.get(), path, base::ThreadTaskRunnerHandle::Get(),
-                open_result, seek_position, done_reading, observed_content));
+                request.get(), path,
+                base::SingleThreadTaskRunner::GetCurrentDefault(), open_result,
+                seek_position, done_reading, observed_content));
   if (!range.empty()) {
     request->SetExtraRequestHeaderByName(HttpRequestHeaders::kRange, range,
                                          true /*overwrite*/);

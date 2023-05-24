@@ -1,12 +1,13 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SERVICES_NETWORK_PUBLIC_CPP_WEAK_WRAPPER_SHARED_URL_LOADER_FACTORY_H_
 #define SERVICES_NETWORK_PUBLIC_CPP_WEAK_WRAPPER_SHARED_URL_LOADER_FACTORY_H_
 
-#include "base/callback.h"
 #include "base/component_export.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
@@ -34,7 +35,6 @@ class COMPONENT_EXPORT(NETWORK_CPP) WeakWrapperSharedURLLoaderFactory
 
   // SharedURLLoaderFactory implementation.
   void CreateLoaderAndStart(mojo::PendingReceiver<mojom::URLLoader> loader,
-                            int32_t routing_id,
                             int32_t request_id,
                             uint32_t options,
                             const network::ResourceRequest& request,
@@ -53,7 +53,7 @@ class COMPONENT_EXPORT(NETWORK_CPP) WeakWrapperSharedURLLoaderFactory
   base::OnceCallback<mojom::URLLoaderFactory*()> make_factory_ptr_;
 
   // Not owned.
-  mojom::URLLoaderFactory* factory_ptr_ = nullptr;
+  raw_ptr<mojom::URLLoaderFactory> factory_ptr_ = nullptr;
 };
 
 }  // namespace network

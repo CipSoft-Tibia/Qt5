@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,14 +8,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <functional>
-#include <random>
+#include <cstdint>
 #include <string>
-#include <vector>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/component_export.h"
 #include "base/metrics/field_trial.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace variations {
 
@@ -23,22 +21,31 @@ namespace variations {
 // It works by taking the first 64 bits of the SHA1 hash of the entropy source
 // concatenated with the trial name, or randomization seed and using that for
 // the final entropy value.
-class SHA1EntropyProvider : public base::FieldTrial::EntropyProvider {
+class COMPONENT_EXPORT(VARIATIONS) SHA1EntropyProvider
+    : public base::FieldTrial::EntropyProvider {
  public:
   // Creates a SHA1EntropyProvider with the given |entropy_source|, which
   // should contain a large amount of entropy - for example, a textual
   // representation of a persistent randomly-generated 128-bit value.
   explicit SHA1EntropyProvider(const std::string& entropy_source);
+
+  SHA1EntropyProvider(const SHA1EntropyProvider&) = delete;
+  SHA1EntropyProvider& operator=(const SHA1EntropyProvider&) = delete;
+
   ~SHA1EntropyProvider() override;
 
   // base::FieldTrial::EntropyProvider implementation:
-  double GetEntropyForTrial(const std::string& trial_name,
+  double GetEntropyForTrial(base::StringPiece trial_name,
                             uint32_t randomization_seed) const override;
 
  private:
   const std::string entropy_source_;
+};
 
-  DISALLOW_COPY_AND_ASSIGN(SHA1EntropyProvider);
+// A |value| in the range [0, range).
+struct ValueInRange {
+  uint32_t value;
+  uint32_t range;
 };
 
 // NormalizedMurmurHashEntropyProvider is an entropy provider suitable for low
@@ -47,22 +54,74 @@ class SHA1EntropyProvider : public base::FieldTrial::EntropyProvider {
 // the actual low entropy source's hash would fall in the sorted list of all
 // those hashes, and uses that as the final value. For more info, see:
 // https://docs.google.com/document/d/1cPF5PruriWNP2Z5gSkq4MBTm0wSZqLyIJkUO9ekibeo
-class NormalizedMurmurHashEntropyProvider
+//
+// Note: this class should be kept consistent with
+// NormalizedMurmurHashEntropyProvider on the Java side.
+class COMPONENT_EXPORT(VARIATIONS) NormalizedMurmurHashEntropyProvider final
     : public base::FieldTrial::EntropyProvider {
  public:
-  NormalizedMurmurHashEntropyProvider(uint16_t low_entropy_source,
-                                      size_t low_entropy_source_max);
+  // Creates a provider with |entropy_value| in the range of possible values.
+  explicit NormalizedMurmurHashEntropyProvider(ValueInRange entropy_value);
+
+  NormalizedMurmurHashEntropyProvider(
+      const NormalizedMurmurHashEntropyProvider&) = default;
+
   ~NormalizedMurmurHashEntropyProvider() override;
 
   // base::FieldTrial::EntropyProvider:
-  double GetEntropyForTrial(const std::string& trial_name,
+  double GetEntropyForTrial(base::StringPiece trial_name,
                             uint32_t randomization_seed) const override;
 
- private:
-  const uint16_t low_entropy_source_;
-  const size_t low_entropy_source_max_;
+  uint32_t entropy_value() const { return entropy_value_.value; }
+  uint32_t entropy_domain() const { return entropy_value_.range; }
 
-  DISALLOW_COPY_AND_ASSIGN(NormalizedMurmurHashEntropyProvider);
+ private:
+  const ValueInRange entropy_value_;
+};
+
+class SessionEntropyProvider : public base::FieldTrial::EntropyProvider {
+ public:
+  SessionEntropyProvider() = default;
+  ~SessionEntropyProvider() override;
+
+  double GetEntropyForTrial(base::StringPiece trial_name,
+                            uint32_t randomization_seed) const override;
+};
+
+class COMPONENT_EXPORT(VARIATIONS) EntropyProviders {
+ public:
+  // Construct providers from the given entropy sources.
+  // If |high_entropy_source| is empty, no high entropy provider is created.
+  // If |enable_benchmarking| is true, randomization should be suppressed.
+  EntropyProviders(const std::string& high_entropy_value,
+                   ValueInRange low_entropy_value,
+                   bool enable_benchmarking = false);
+  EntropyProviders(const EntropyProviders&) = delete;
+  EntropyProviders& operator=(const EntropyProviders&) = delete;
+  virtual ~EntropyProviders();
+
+  // Accessors are virtual for testing purposes.
+
+  // Gets the high entropy source, if available, otherwise returns low entropy.
+  virtual const base::FieldTrial::EntropyProvider& default_entropy() const;
+  // Gets the low entropy source.
+  virtual const base::FieldTrial::EntropyProvider& low_entropy() const;
+  virtual const base::FieldTrial::EntropyProvider& session_entropy() const;
+
+  bool default_entropy_is_high_entropy() const {
+    return high_entropy_.has_value();
+  }
+
+  size_t low_entropy_value() const { return low_entropy_.entropy_value(); }
+  size_t low_entropy_domain() const { return low_entropy_.entropy_domain(); }
+
+  bool benchmarking_enabled() const { return benchmarking_enabled_; }
+
+ private:
+  absl::optional<SHA1EntropyProvider> high_entropy_;
+  NormalizedMurmurHashEntropyProvider low_entropy_;
+  SessionEntropyProvider session_entropy_;
+  bool benchmarking_enabled_;
 };
 
 }  // namespace variations

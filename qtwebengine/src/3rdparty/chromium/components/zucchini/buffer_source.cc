@@ -1,11 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/zucchini/buffer_source.h"
 
-#include <algorithm>
-
+#include "base/ranges/algorithm.h"
 #include "components/zucchini/algorithm.h"
 
 namespace zucchini {
@@ -20,8 +19,7 @@ BufferSource& BufferSource::Skip(size_type n) {
 bool BufferSource::CheckNextBytes(std::initializer_list<uint8_t> bytes) const {
   if (Remaining() < bytes.size())
     return false;
-  return std::mismatch(bytes.begin(), bytes.end(), begin()).first ==
-         bytes.end();
+  return base::ranges::mismatch(bytes, *this).first == bytes.end();
 }
 
 bool BufferSource::ConsumeBytes(std::initializer_list<uint8_t> bytes) {

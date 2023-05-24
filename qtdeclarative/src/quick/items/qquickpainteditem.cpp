@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickpainteditem.h"
 #include <private/qquickpainteditem_p.h>
@@ -44,6 +8,7 @@
 #include <QtQuick/private/qsgcontext_p.h>
 #include <private/qsgadaptationlayer_p.h>
 #include <qsgtextureprovider.h>
+#include <rhi/qrhi.h>
 
 #include <qmath.h>
 
@@ -64,14 +29,12 @@ public:
 
     \inmodule QtQuick
 
-    The QQuickPaintedItem makes it possible to use the QPainter API with the
-    QML Scene Graph. It sets up a textured rectangle in the Scene Graph and
-    uses a QPainter to paint onto the texture. The render target can be either
-    a QImage or, when OpenGL is in use, a QOpenGLFramebufferObject. When the
-    render target is a QImage, QPainter first renders into the image then the
-    content is uploaded to the texture. When a QOpenGLFramebufferObject is
-    used, QPainter paints directly onto the texture. Call update() to trigger a
-    repaint.
+    The QQuickPaintedItem makes it possible to use the QPainter API with the QML
+    Scene Graph. It sets up a textured rectangle in the Scene Graph and uses a
+    QPainter to paint onto the texture. The render target in Qt 6 is always a
+    QImage.  When the render target is a QImage, QPainter first renders into the
+    image then the content is uploaded to the texture.  Call update() to trigger
+    a repaint.
 
     To enable QPainter to do anti-aliased rendering, use setAntialiasing().
 
@@ -84,6 +47,8 @@ public:
     \note It important to understand the performance implications such items
     can incur. See QQuickPaintedItem::RenderTarget and
     QQuickPaintedItem::renderTarget.
+
+    \sa {Scene Graph - Painted Item}, {Writing QML Extensions with C++}
 */
 
 /*!
@@ -97,16 +62,9 @@ public:
     can potentially be slow if the item is large. This render target allows high quality
     anti-aliasing and fast item resizing.
 
-    \value FramebufferObject QPainter paints into a QOpenGLFramebufferObject using the GL
-    paint engine. Painting can be faster as no texture upload is required, but anti-aliasing
-    quality is not as good as if using an image. This render target allows faster rendering
-    in some cases, but you should avoid using it if the item is resized often.
+    \value FramebufferObject As of Qt 6.0, this value is ignored.
 
-    \value InvertedYFramebufferObject Exactly as for FramebufferObject above, except once
-    the painting is done, prior to rendering the painted image is flipped about the
-    x-axis so that the top-most pixels are now at the bottom.  Since this is done with the
-    OpenGL texture coordinates it is a much faster way to achieve this effect than using a
-    painter transform.
+    \value InvertedYFramebufferObject As of Qt 6.0, this value is ignored.
 
     \sa setRenderTarget()
 */
@@ -117,12 +75,7 @@ public:
     This enum describes flags that you can enable to improve rendering
     performance in QQuickPaintedItem. By default, none of these flags are set.
 
-    \value FastFBOResizing Resizing an FBO can be a costly operation on a few
-    OpenGL driver implementations. To work around this, one can set this flag
-    to let the QQuickPaintedItem allocate one large framebuffer object and
-    instead draw into a subregion of it. This saves the resize at the cost of
-    using more memory. Please note that this is not a common problem.
-
+    \value FastFBOResizing As of Qt 6.0, this value is ignored.
 */
 
 /*!
@@ -368,12 +321,8 @@ void QQuickPaintedItem::setTextureSize(const QSize &size)
     emit textureSizeChanged();
 }
 
-#if QT_VERSION >= 0x060000
-#warning "Remove: QQuickPaintedItem::contentsBoundingRect, contentsScale, contentsSize. Also remove them from qsgadaptationlayer_p.h and qsgdefaultpainternode.h/cpp."
-#endif
-
 /*!
-    \obsolete
+    \deprecated
 
     This function is provided for compatibility, use size in combination
     with textureSize to decide the size of what you are drawing.
@@ -398,7 +347,7 @@ QRectF QQuickPaintedItem::contentsBoundingRect() const
 /*!
     \property QQuickPaintedItem::contentsSize
     \brief Obsolete method for setting the contents size.
-    \obsolete
+    \deprecated
 
     This function is provided for compatibility, use size in combination
     with textureSize to decide the size of what you are drawing.
@@ -425,7 +374,7 @@ void QQuickPaintedItem::setContentsSize(const QSize &size)
 }
 
 /*!
-    \obsolete
+    \deprecated
     This convenience function is equivalent to calling setContentsSize(QSize()).
 */
 void QQuickPaintedItem::resetContentsSize()
@@ -436,7 +385,7 @@ void QQuickPaintedItem::resetContentsSize()
 /*!
     \property QQuickPaintedItem::contentsScale
     \brief Obsolete method for scaling the contents.
-    \obsolete
+    \deprecated
 
     This function is provided for compatibility, use size() in combination
     with textureSize() to decide the size of what you are drawing.
@@ -467,6 +416,10 @@ void QQuickPaintedItem::setContentsScale(qreal scale)
     \brief The item's background fill color.
 
     By default, the fill color is set to Qt::transparent.
+
+    Set the fill color to an invalid color (e.g. QColor()) to disable background
+    filling. This may improve performance, and is safe to do if the paint() function
+    draws to all pixels on each frame.
 */
 QColor QQuickPaintedItem::fillColor() const
 {
@@ -502,12 +455,6 @@ void QQuickPaintedItem::setFillColor(const QColor &c)
     the QQuickPaintedItem::FramebufferObject render target if the item gets resized often.
 
     By default, the render target is QQuickPaintedItem::Image.
-
-    \note Some Qt Quick backends may not support all render target options. For
-    example, it is likely that non-OpenGL backends will lack support for
-    QQuickPaintedItem::FramebufferObject and
-    QQuickPaintedItem::InvertedYFramebufferObject. Requesting these will then
-    be ignored.
 */
 QQuickPaintedItem::RenderTarget QQuickPaintedItem::renderTarget() const
 {
@@ -542,11 +489,13 @@ void QQuickPaintedItem::setRenderTarget(RenderTarget target)
     Reimplement this function in a QQuickPaintedItem subclass to provide the
     item's painting implementation, using \a painter.
 
-    \note The QML Scene Graph uses two separate threads, the main thread does things such as
-    processing events or updating animations while a second thread does the actual OpenGL rendering.
-    As a consequence, paint() is not called from the main GUI thread but from the GL enabled
-    renderer thread. At the moment paint() is called, the GUI thread is blocked and this is
-    therefore thread-safe.
+    \note The QML Scene Graph uses two separate threads, the main thread does
+    things such as processing events or updating animations while a second
+    thread does the actual issuing of graphics resource updates and the
+    recording of draw calls.  As a consequence, paint() is not called from the
+    main GUI thread but from the GL enabled renderer thread. At the moment
+    paint() is called, the GUI thread is blocked and this is therefore
+    thread-safe.
 
     \warning Extreme caution must be used when creating QObjects, emitting signals, starting
     timers and similar inside this function as these will have affinity to the rendering thread.
@@ -661,13 +610,11 @@ QSGTextureProvider *QQuickPaintedItem::textureProvider() const
         return QQuickItem::textureProvider();
 
     Q_D(const QQuickPaintedItem);
-#if QT_CONFIG(opengl)
     QQuickWindow *w = window();
-    if (!w || !w->openglContext() || QThread::currentThread() != w->openglContext()->thread()) {
+    if (!w || !w->isSceneGraphInitialized() || QThread::currentThread() != d->sceneGraphContext()->thread()) {
         qWarning("QQuickPaintedItem::textureProvider: can only be queried on the rendering thread of an exposed window");
         return nullptr;
     }
-#endif
     if (!d->textureProvider)
         d->textureProvider = new QQuickPaintedItemTextureProvider();
     d->textureProvider->node = d->node;

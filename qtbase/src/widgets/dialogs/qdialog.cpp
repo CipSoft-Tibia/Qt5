@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtWidgets/qtwidgetsglobal.h>
 #if QT_CONFIG(colordialog)
@@ -49,8 +13,6 @@
 #endif
 
 #include "qevent.h"
-#include "qdesktopwidget.h"
-#include <private/qdesktopwidget_p.h>
 #include "qapplication.h"
 #include "qlayout.h"
 #if QT_CONFIG(sizegrip)
@@ -72,7 +34,7 @@
 #include <qpa/qplatformtheme.h>
 #include "private/qdialog_p.h"
 #include "private/qguiapplication_p.h"
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 #include "qaccessible.h"
 #endif
 
@@ -136,6 +98,9 @@ QPlatformDialogHelper *QDialogPrivate::platformHelper() const
 
 bool QDialogPrivate::canBeNativeDialog() const
 {
+    if (QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs))
+        return false;
+
     QDialogPrivate *ncThis = const_cast<QDialogPrivate *>(this);
     QDialog *dialog = ncThis->q_func();
     const int type = themeDialogType(dialog);
@@ -148,36 +113,40 @@ bool QDialogPrivate::canBeNativeDialog() const
 /*!
     \internal
 
-    Properly hides dialog and sets the \a resultCode.
+    Properly closes dialog and sets the \a resultCode.
  */
-void QDialogPrivate::hide(int resultCode)
+void QDialogPrivate::close(int resultCode)
 {
     Q_Q(QDialog);
 
     q->setResult(resultCode);
-    q->hide();
 
-    close_helper(QWidgetPrivate::CloseNoEvent);
+    if (!data.is_closing) {
+        // Until Qt 6.3 we didn't close dialogs, so they didn't receive a QCloseEvent.
+        // It is likely that subclasses implement closeEvent and handle them as rejection
+        // (like QMessageBox and QProgressDialog do), so eat those events.
+        struct CloseEventEater : QObject
+        {
+            using QObject::QObject;
+        protected:
+            bool eventFilter(QObject *o, QEvent *e) override
+            {
+                if (e->type() == QEvent::Close)
+                    return true;
+                return QObject::eventFilter(o, e);
+            }
+        } closeEventEater;
+        q->installEventFilter(&closeEventEater);
+        QWidgetPrivate::close();
+    } else {
+        // If the close was initiated outside of QDialog we will end up
+        // here via QDialog::closeEvent calling reject(), in which case
+        // we need to hide the dialog to ensure QDialog::closeEvent does
+        // not ignore the close event. FIXME: Why is QDialog doing this?
+        q->hide();
+    }
+
     resetModalitySetByOpen();
-}
-
-/*!
-    \internal
-
-    Emits finished() signal with \a resultCode. If the \a dialogCode
-    is equal to 0 emits rejected(), if the \a dialogCode is equal to
-    1 emits accepted().
- */
-void QDialogPrivate::finalize(int resultCode, int dialogCode)
-{
-    Q_Q(QDialog);
-
-    if (dialogCode == QDialog::Accepted)
-        emit q->accepted();
-    else if (dialogCode == QDialog::Rejected)
-        emit q->rejected();
-
-    emit q->finished(resultCode);
 }
 
 QWindow *QDialogPrivate::transientParentWindow() const
@@ -209,14 +178,6 @@ QVariant QDialogPrivate::styleHint(QPlatformDialogHelper::StyleHint hint) const
     if (const QPlatformDialogHelper *helper = platformHelper())
         return helper->styleHint(hint);
     return QPlatformDialogHelper::defaultStyleHint(hint);
-}
-
-void QDialogPrivate::deletePlatformHelper()
-{
-    delete m_platformHelper;
-    m_platformHelper = nullptr;
-    m_platformHelperCreated = false;
-    nativeDialogInUse = false;
 }
 
 /*!
@@ -319,7 +280,8 @@ void QDialogPrivate::deletePlatformHelper()
     \section1 Escape Key
 
     If the user presses the Esc key in a dialog, QDialog::reject()
-    will be called. This will cause the window to close: The \l{QCloseEvent}{close event} cannot be \l{QEvent::ignore()}{ignored}.
+    will be called. This will cause the window to close:
+    The \l{QCloseEvent}{close event} cannot be \l{QEvent::ignore()}{ignored}.
 
     \section1 Extensibility
 
@@ -327,9 +289,8 @@ void QDialogPrivate::deletePlatformHelper()
     partial dialog that shows the most commonly used options, and a
     full dialog that shows all the options. Typically an extensible
     dialog will initially appear as a partial dialog, but with a
-    \uicontrol More toggle button. If the user presses the \uicontrol More button down,
-    the dialog is expanded. The \l{Extension Example} shows how to achieve
-    extensible dialogs using Qt.
+    \uicontrol More toggle button. If the user presses the
+    \uicontrol More button down, the dialog is expanded.
 
     \target return
     \section1 Return Value (Modal Dialogs)
@@ -359,8 +320,15 @@ void QDialogPrivate::deletePlatformHelper()
 
     \snippet dialogs/dialogs.cpp 0
 
+    A dialog with an extension:
+
+    \snippet dialogs/dialogs.cpp extension
+
+    By setting the \l{QLayout::}{sizeConstraint} property of the dialog's
+    layout to \l{QLayout::}{SetFixedSize}, the dialog will not be resizable
+    by the user, and will automatically shrink when the extension gets hidden.
+
     \sa QDialogButtonBox, QTabWidget, QWidget, QProgressDialog,
-        {fowler}{GUI Design Handbook: Dialogs, Standard}, {Extension Example},
         {Standard Dialogs Example}
 */
 
@@ -625,7 +593,7 @@ int QDialog::exec()
   As with QWidget::close(), done() deletes the dialog if the
   Qt::WA_DeleteOnClose flag is set. If the dialog is the application's
   main widget, the application terminates. If the dialog is the
-  last window closed, the QApplication::lastWindowClosed() signal is
+  last window closed, the QGuiApplication::lastWindowClosed() signal is
   emitted.
 
   \sa accept(), reject(), QApplication::activeWindow(), QCoreApplication::quit()
@@ -633,9 +601,22 @@ int QDialog::exec()
 
 void QDialog::done(int r)
 {
+    QPointer<QDialog> guard(this);
+
     Q_D(QDialog);
-    d->hide(r);
-    d->finalize(r, r);
+    d->close(r);
+
+    if (!guard)
+        return;
+
+    int dialogCode = d->dialogCode();
+    if (dialogCode == QDialog::Accepted)
+        emit accepted();
+    else if (dialogCode == QDialog::Rejected)
+        emit rejected();
+
+    if (guard)
+        emit finished(r);
 }
 
 /*!
@@ -763,104 +744,109 @@ void QDialog::closeEvent(QCloseEvent *e)
 void QDialog::setVisible(bool visible)
 {
     Q_D(QDialog);
-    if (!testAttribute(Qt::WA_DontShowOnScreen) && d->canBeNativeDialog() && d->setNativeDialogVisible(visible))
+    d->setVisible(visible);
+}
+
+void QDialogPrivate::setVisible(bool visible)
+{
+    Q_Q(QDialog);
+    if (!q->testAttribute(Qt::WA_DontShowOnScreen) && canBeNativeDialog() && setNativeDialogVisible(visible))
         return;
 
     // We should not block windows by the invisible modal dialog
     // if a platform-specific dialog is implemented as an in-process
     // Qt window, because in this case it will also be blocked.
-    const bool dontBlockWindows = testAttribute(Qt::WA_DontShowOnScreen)
-            && d->styleHint(QPlatformDialogHelper::DialogIsQtWindow).toBool();
+    const bool dontBlockWindows = q->testAttribute(Qt::WA_DontShowOnScreen)
+            && styleHint(QPlatformDialogHelper::DialogIsQtWindow).toBool();
     Qt::WindowModality oldModality;
     bool wasModalitySet;
 
     if (dontBlockWindows) {
-        oldModality = windowModality();
-        wasModalitySet = testAttribute(Qt::WA_SetWindowModality);
-        setWindowModality(Qt::NonModal);
+        oldModality = q->windowModality();
+        wasModalitySet = q->testAttribute(Qt::WA_SetWindowModality);
+        q->setWindowModality(Qt::NonModal);
     }
 
     if (visible) {
-        if (testAttribute(Qt::WA_WState_ExplicitShowHide) && !testAttribute(Qt::WA_WState_Hidden))
+        if (q->testAttribute(Qt::WA_WState_ExplicitShowHide) && !q->testAttribute(Qt::WA_WState_Hidden))
             return;
 
-        QWidget::setVisible(visible);
-#if QT_DEPRECATED_SINCE(5, 13)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-        showExtension(d->doShowExtension);
-QT_WARNING_POP
-#endif
-        QWidget *fw = window()->focusWidget();
-        if (!fw)
-            fw = this;
+        q->QWidget::setVisible(visible);
 
-        /*
-          The following block is to handle a special case, and does not
-          really follow propper logic in concern of autoDefault and TAB
-          order. However, it's here to ease usage for the users. If a
-          dialog has a default QPushButton, and first widget in the TAB
-          order also is a QPushButton, then we give focus to the main
-          default QPushButton. This simplifies code for the developers,
-          and actually catches most cases... If not, then they simply
-          have to use [widget*]->setFocus() themselves...
-        */
+        // Window activation might be prevented. We can't test isActiveWindow here,
+        // as the window will be activated asynchronously by the window manager.
+        if (!q->testAttribute(Qt::WA_ShowWithoutActivating)) {
+            QWidget *fw = q->window()->focusWidget();
+            if (!fw)
+                fw = q;
+
+            /*
+            The following block is to handle a special case, and does not
+            really follow proper logic in concern of autoDefault and TAB
+            order. However, it's here to ease usage for the users. If a
+            dialog has a default QPushButton, and first widget in the TAB
+            order also is a QPushButton, then we give focus to the main
+            default QPushButton. This simplifies code for the developers,
+            and actually catches most cases... If not, then they simply
+            have to use [widget*]->setFocus() themselves...
+            */
 #if QT_CONFIG(pushbutton)
-        if (d->mainDef && fw->focusPolicy() == Qt::NoFocus) {
-            QWidget *first = fw;
-            while ((first = first->nextInFocusChain()) != fw && first->focusPolicy() == Qt::NoFocus)
-                ;
-            if (first != d->mainDef && qobject_cast<QPushButton*>(first))
-                d->mainDef->setFocus();
-        }
-        if (!d->mainDef && isWindow()) {
-            QWidget *w = fw;
-            while ((w = w->nextInFocusChain()) != fw) {
-                QPushButton *pb = qobject_cast<QPushButton *>(w);
-                if (pb && pb->autoDefault() && pb->focusPolicy() != Qt::NoFocus) {
-                    pb->setDefault(true);
-                    break;
+            if (mainDef && fw->focusPolicy() == Qt::NoFocus) {
+                QWidget *first = fw;
+                while ((first = first->nextInFocusChain()) != fw && first->focusPolicy() == Qt::NoFocus)
+                    ;
+                if (first != mainDef && qobject_cast<QPushButton*>(first))
+                    mainDef->setFocus();
+            }
+            if (!mainDef && q->isWindow()) {
+                QWidget *w = fw;
+                while ((w = w->nextInFocusChain()) != fw) {
+                    QPushButton *pb = qobject_cast<QPushButton *>(w);
+                    if (pb && pb->autoDefault() && pb->focusPolicy() != Qt::NoFocus) {
+                        pb->setDefault(true);
+                        break;
+                    }
                 }
             }
-        }
 #endif
-        if (fw && !fw->hasFocus()) {
-            QFocusEvent e(QEvent::FocusIn, Qt::TabFocusReason);
-            QCoreApplication::sendEvent(fw, &e);
+            if (fw && !fw->hasFocus()) {
+                QFocusEvent e(QEvent::FocusIn, Qt::TabFocusReason);
+                QCoreApplication::sendEvent(fw, &e);
+            }
         }
 
-#ifndef QT_NO_ACCESSIBILITY
-        QAccessibleEvent event(this, QAccessible::DialogStart);
+#if QT_CONFIG(accessibility)
+        QAccessibleEvent event(q, QAccessible::DialogStart);
         QAccessible::updateAccessibility(&event);
 #endif
 
     } else {
-        if (testAttribute(Qt::WA_WState_ExplicitShowHide) && testAttribute(Qt::WA_WState_Hidden))
+        if (q->testAttribute(Qt::WA_WState_ExplicitShowHide) && q->testAttribute(Qt::WA_WState_Hidden))
             return;
 
-#ifndef QT_NO_ACCESSIBILITY
-        if (isVisible()) {
-            QAccessibleEvent event(this, QAccessible::DialogEnd);
+#if QT_CONFIG(accessibility)
+        if (q->isVisible()) {
+            QAccessibleEvent event(q, QAccessible::DialogEnd);
             QAccessible::updateAccessibility(&event);
         }
 #endif
 
         // Reimplemented to exit a modal event loop when the dialog is hidden.
-        QWidget::setVisible(visible);
-        if (d->eventLoop)
-            d->eventLoop->exit();
+        q->QWidget::setVisible(visible);
+        if (eventLoop)
+            eventLoop->exit();
     }
 
     if (dontBlockWindows) {
-        setWindowModality(oldModality);
-        setAttribute(Qt::WA_SetWindowModality, wasModalitySet);
+        q->setWindowModality(oldModality);
+        q->setAttribute(Qt::WA_SetWindowModality, wasModalitySet);
     }
 
 #if QT_CONFIG(pushbutton)
     const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme();
-    if (d->mainDef && isActiveWindow()
+    if (mainDef && q->isActiveWindow()
         && theme->themeHint(QPlatformTheme::DialogSnapToDefaultButton).toBool())
-        QCursor::setPos(d->mainDef->mapToGlobal(d->mainDef->rect().center()));
+        QCursor::setPos(mainDef->mapToGlobal(mainDef->rect().center()));
 #endif
 }
 
@@ -879,23 +865,31 @@ void QDialog::showEvent(QShowEvent *event)
 /*! \internal */
 void QDialog::adjustPosition(QWidget* w)
 {
+    Q_D(QDialog);
 
     if (const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme())
         if (theme->themeHint(QPlatformTheme::WindowAutoPlacement).toBool())
             return;
     QPoint p(0, 0);
-    int extraw = 0, extrah = 0, scrn = 0;
-    if (w)
-        w = w->window();
-    QRect desk;
+    int extraw = 0, extrah = 0;
+    const QWindow *parentWindow = nullptr;
     if (w) {
-        scrn = QDesktopWidgetPrivate::screenNumber(w);
-    } else if (QDesktopWidgetPrivate::isVirtualDesktop()) {
-        scrn = QDesktopWidgetPrivate::screenNumber(QCursor::pos());
+        w = w->window();
     } else {
-        scrn = QDesktopWidgetPrivate::screenNumber(this);
+        parentWindow = d->transientParentWindow();
     }
-    desk = QDesktopWidgetPrivate::availableGeometry(scrn);
+    QRect desk;
+    QScreen *scrn = nullptr;
+    if (w)
+        scrn = w->screen();
+    else if (parentWindow)
+        scrn = parentWindow->screen();
+    else if (QGuiApplication::primaryScreen()->virtualSiblings().size() > 1)
+        scrn = QGuiApplication::screenAt(QCursor::pos());
+    else
+        scrn = screen();
+    if (scrn)
+        desk = scrn->availableGeometry();
 
     QWidgetList list = QApplication::topLevelWidgets();
     for (int i = 0; (extraw == 0 || extrah == 0) && i < list.size(); ++i) {
@@ -926,6 +920,11 @@ void QDialog::adjustPosition(QWidget* w)
             pp = w->mapToGlobal(QPoint(0,0));
         p = QPoint(pp.x() + w->width()/2,
                     pp.y() + w->height()/ 2);
+    } else if (parentWindow) {
+        // QTBUG-63406: Widget-based dialog in QML, which has no Widget parent
+        // but a transient parent window.
+        QPoint pp = parentWindow->mapToGlobal(QPoint(0, 0));
+        p = QPoint(pp.x() + parentWindow->width() / 2, pp.y() + parentWindow->height() / 2);
     } else {
         // p = middle of the desktop
         p = QPoint(desk.x() + desk.width()/2, desk.y() + desk.height()/2);
@@ -949,160 +948,13 @@ void QDialog::adjustPosition(QWidget* w)
     // QTBUG-52735: Manually set the correct target screen since scaling in a
     // subsequent call to QWindow::resize() may otherwise use the wrong factor
     // if the screen changed notification is still in an event queue.
-    if (scrn >= 0) {
+    if (scrn) {
         if (QWindow *window = windowHandle())
-            window->setScreen(QGuiApplication::screens().at(scrn));
+            window->setScreen(scrn);
     }
 
     move(p);
 }
-
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \obsolete
-
-    If \a orientation is Qt::Horizontal, the extension will be displayed
-    to the right of the dialog's main area. If \a orientation is
-    Qt::Vertical, the extension will be displayed below the dialog's main
-    area.
-
-    Instead of using this functionality, we recommend that you simply call
-    show() or hide() on the part of the dialog that you want to use as an
-    extension. See the \l{Extension Example} for details.
-
-    \sa setExtension()
-*/
-void QDialog::setOrientation(Qt::Orientation orientation)
-{
-    Q_D(QDialog);
-    d->orientation = orientation;
-}
-
-/*!
-    \obsolete
-
-    Returns the dialog's extension orientation.
-
-    Instead of using this functionality, we recommend that you simply call
-    show() or hide() on the part of the dialog that you want to use as an
-    extension. See the \l{Extension Example} for details.
-
-    \sa extension()
-*/
-Qt::Orientation QDialog::orientation() const
-{
-    Q_D(const QDialog);
-    return d->orientation;
-}
-
-/*!
-    \obsolete
-
-    Sets the widget, \a extension, to be the dialog's extension,
-    deleting any previous extension. The dialog takes ownership of the
-    extension. Note that if \nullptr is passed, any existing extension will be
-    deleted. This function must only be called while the dialog is hidden.
-
-    Instead of using this functionality, we recommend that you simply call
-    show() or hide() on the part of the dialog that you want to use as an
-    extension. See the \l{Extension Example} for details.
-
-    \sa showExtension(), setOrientation()
-*/
-void QDialog::setExtension(QWidget* extension)
-{
-    Q_D(QDialog);
-    delete d->extension;
-    d->extension = extension;
-
-    if (!extension)
-        return;
-
-    if (extension->parentWidget() != this)
-        extension->setParent(this);
-    extension->hide();
-}
-
-/*!
-    \obsolete
-
-    Returns the dialog's extension or \nullptr if no extension has been
-    defined.
-
-    Instead of using this functionality, we recommend that you simply call
-    show() or hide() on the part of the dialog that you want to use as an
-    extension. See the \l{Extension Example} for details.
-
-    \sa showExtension(), setOrientation()
-*/
-QWidget* QDialog::extension() const
-{
-    Q_D(const QDialog);
-    return d->extension;
-}
-
-
-/*!
-    \obsolete
-
-    If \a showIt is true, the dialog's extension is shown; otherwise the
-    extension is hidden.
-
-    Instead of using this functionality, we recommend that you simply call
-    show() or hide() on the part of the dialog that you want to use as an
-    extension. See the \l{Extension Example} for details.
-
-    \sa show(), setExtension(), setOrientation()
-*/
-void QDialog::showExtension(bool showIt)
-{
-    Q_D(QDialog);
-    d->doShowExtension = showIt;
-    if (!d->extension)
-        return;
-    if (!testAttribute(Qt::WA_WState_Visible))
-        return;
-    if (d->extension->isVisible() == showIt)
-        return;
-
-    if (showIt) {
-        d->size = size();
-        d->min = minimumSize();
-        d->max = maximumSize();
-        if (layout())
-            layout()->setEnabled(false);
-        QSize s(d->extension->sizeHint()
-                 .expandedTo(d->extension->minimumSize())
-                 .boundedTo(d->extension->maximumSize()));
-        if (d->orientation == Qt::Horizontal) {
-            int h = qMax(height(), s.height());
-            d->extension->setGeometry(width(), 0, s.width(), h);
-            setFixedSize(width() + s.width(), h);
-        } else {
-            int w = qMax(width(), s.width());
-            d->extension->setGeometry(0, height(), w, s.height());
-            setFixedSize(w, height() + s.height());
-        }
-        d->extension->show();
-#if QT_CONFIG(sizegrip)
-        const bool sizeGripEnabled = isSizeGripEnabled();
-        setSizeGripEnabled(false);
-        d->sizeGripEnabled = sizeGripEnabled;
-#endif
-    } else {
-        d->extension->hide();
-        // workaround for CDE window manager that won't shrink with (-1,-1)
-        setMinimumSize(d->min.expandedTo(QSize(1, 1)));
-        setMaximumSize(d->max);
-        resize(d->size);
-        if (layout())
-            layout()->setEnabled(true);
-#if QT_CONFIG(sizegrip)
-        setSizeGripEnabled(d->sizeGripEnabled);
-#endif
-    }
-}
-#endif
 
 /*! \reimp */
 QSize QDialog::sizeHint() const

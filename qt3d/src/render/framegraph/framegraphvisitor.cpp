@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 Paul Lemire
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 Paul Lemire
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "framegraphvisitor_p.h"
 
@@ -59,7 +23,7 @@ FrameGraphVisitor::FrameGraphVisitor(const FrameGraphManager *manager)
     m_leaves.reserve(8);
 }
 
-QVector<FrameGraphNode *> FrameGraphVisitor::traverse(FrameGraphNode *root)
+std::vector<FrameGraphNode *> &&FrameGraphVisitor::traverse(FrameGraphNode *root)
 {
     m_leaves.clear();
     m_enablersToDisable.clear();
@@ -71,12 +35,12 @@ QVector<FrameGraphNode *> FrameGraphVisitor::traverse(FrameGraphNode *root)
     if (node == nullptr)
         qCritical() << Q_FUNC_INFO << "FrameGraph is null";
     visit(node);
-    return m_leaves;
+    return std::move(m_leaves);
 }
 
 // intended to be called after traverse
 // (returns data that is captured during the traverse)
-QVector<FrameGraphNode *> &&FrameGraphVisitor::takeEnablersToDisable()
+std::vector<FrameGraphNode *> &&FrameGraphVisitor::takeEnablersToDisable()
 {
     return std::move(m_enablersToDisable);
 }
@@ -94,9 +58,9 @@ void FrameGraphVisitor::visit(Render::FrameGraphNode *node)
 
     // Recurse to children (if we have any), otherwise if this is a leaf node,
     // initiate a rendering from the current camera
-    const QVector<Qt3DCore::QNodeId> fgChildIds = node->childrenIds();
+    const QList<Qt3DCore::QNodeId> fgChildIds = node->childrenIds();
 
-    for (const Qt3DCore::QNodeId fgChildId : fgChildIds)
+    for (const Qt3DCore::QNodeId &fgChildId : fgChildIds)
         visit(m_manager->lookupNode(fgChildId));
 
     // Leaf node - create a RenderView ready to be populated

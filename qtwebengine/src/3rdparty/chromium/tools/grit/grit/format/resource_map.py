@@ -1,4 +1,4 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 resource_map_source files.  A resource map is a mapping between resource names
 (string) and the internal resource ID.'''
 
-from __future__ import print_function
 
 import os
 from functools import partial
@@ -54,17 +53,13 @@ def _FormatHeader(root, lang='en', output_dir='.'):
 
 #include <stddef.h>
 
-#ifndef GRIT_RESOURCE_MAP_STRUCT_
-#define GRIT_RESOURCE_MAP_STRUCT_
-struct GritResourceMap {
-  const char* const name;
-  int value;
-};
-#endif // GRIT_RESOURCE_MAP_STRUCT_
+#include "ui/base/webui/resource_path.h"
 
-extern const GritResourceMap %(map_name)s[];
+extern const webui::ResourcePath %(map_name)s[];
 extern const size_t %(map_name)sSize;
-''' % { 'map_name': GetMapName(root) }
+''' % {
+      'map_name': GetMapName(root)
+  }
 
 
 def _FormatSourceHeader(root, output_dir):
@@ -89,15 +84,16 @@ def _FormatSourceHeader(root, output_dir):
 
 #include <stddef.h>
 
-#include "base/stl_util.h"
+#include <iterator>
 
 #include "%(rc_header_file)s"
 
-const GritResourceMap %(map_name)s[] = {
-''' % { 'map_header_file': map_header_file,
-        'rc_header_file': rc_header_file,
-        'map_name': GetMapName(root),
-      }
+const webui::ResourcePath %(map_name)s[] = {
+''' % {
+      'map_header_file': map_header_file,
+      'rc_header_file': rc_header_file,
+      'map_name': GetMapName(root),
+  }
 
 
 def _FormatSourceFooter(root):
@@ -105,8 +101,10 @@ def _FormatSourceFooter(root):
   return '''\
 };
 
-const size_t %(map_name)sSize = base::size(%(map_name)s);
-''' % { 'map_name': GetMapName(root) }
+const size_t %(map_name)sSize = std::size(%(map_name)s);
+''' % {
+      'map_name': GetMapName(root)
+  }
 
 
 def _FormatSource(get_key, root, lang, output_dir):
@@ -129,31 +127,21 @@ def _FormatSource(get_key, root, lang, output_dir):
 def _GetItemName(item):
   return item.attrs['name']
 
-# Check if |path2| is a subpath of |path1|.
-def _IsSubpath(path1, path2):
-  path1_abs = os.path.abspath(path1)
-  path2_abs = os.path.abspath(path2)
-  common = os.path.commonprefix([path1_abs, path2_abs])
-  return path1_abs == common
-
 def _GetItemPath(item):
+  resource_path = item.attrs.get('resource_path', '')
+  if resource_path:
+    return resource_path
+
   path = item.GetInputPath().replace("\\", "/")
 
-  # Handle the case where the file resides within the output folder,
-  # by expanding any variables as well as replacing the output folder name with
-  # a fixed string such that the key added to the map does not depend on a given
-  # developer's setup.
-  #
-  # For example this will convert the following path:
-  # ../../out/gchrome/${root_gen_dir}/ui/webui/resources/js/foo.js
-  # to:
-  # @out_folder@/gen/ui/webui/resources/js/foo.js
-
-  real_path = item.ToRealPath(item.GetInputPath())
-  if (item.attrs.get('use_base_dir', 'true') != 'true' and
-          _IsSubpath(os.path.curdir, real_path)):
-    path = os.path.join(
-        '@out_folder@', os.path.relpath(real_path)).replace("\\", "/")
+  # For the case of generated files such as
+  # out/gchrome/${root_gen_dir}/ui/webui/resources/js/foo.js
+  # |resource_path| must be provided. It will be used as the |path| in the
+  # generated ResourcePath entry. For WebUI files, it will also be used as
+  # the URL subpath under which a file will be served at runtime.
+  assert item.attrs.get('use_base_dir', 'true') == 'true', \
+      'resource_path attribute missing for %s. Generated files must specify' \
+      ' resource_path' % item.attrs.get('name')
 
   assert '$' not in path, 'all variables should have been expanded'
   return path

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,20 +11,15 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 
-#if defined(OS_WIN)
-#include <vector>
-#endif
-
-#include "base/bind.h"
-#include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/optional.h"
-#include "base/strings/string16.h"
-#include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/ime/text_edit_commands.h"
 #include "ui/base/ime/text_input_client.h"
@@ -39,7 +34,6 @@
 #include "ui/gfx/selection_model.h"
 #include "ui/gfx/text_constants.h"
 #include "ui/views/context_menu_controller.h"
-#include "ui/views/controls/focus_ring.h"
 #include "ui/views/controls/textfield/textfield_model.h"
 #include "ui/views/drag_controller.h"
 #include "ui/views/metadata/view_factory.h"
@@ -48,15 +42,19 @@
 #include "ui/views/view.h"
 #include "ui/views/word_lookup_client.h"
 
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+#include <vector>
+#endif
+
 namespace base {
 class TimeDelta;
 }
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_MAC)
 namespace ui {
 class ScopedPasswordInputEnabler;
 }
-#endif  // defined(OS_APPLE)
+#endif  // BUILDFLAG(IS_MAC)
 
 namespace views {
 
@@ -80,9 +78,31 @@ class VIEWS_EXPORT Textfield : public View,
   enum MenuCommands {
     kUndo = kLastTouchEditableCommandId + 1,
     kDelete,
-    kSelectAll,
-    kLastCommandId = kSelectAll,
+    kLastCommandId = kDelete,
   };
+
+#if BUILDFLAG(IS_MAC)
+  static constexpr gfx::SelectionBehavior kLineSelectionBehavior =
+      gfx::SELECTION_EXTEND;
+  static constexpr gfx::SelectionBehavior kWordSelectionBehavior =
+      gfx::SELECTION_CARET;
+  static constexpr gfx::SelectionBehavior kMoveParagraphSelectionBehavior =
+      gfx::SELECTION_CARET;
+  static constexpr gfx::SelectionBehavior kPageSelectionBehavior =
+      gfx::SELECTION_EXTEND;
+#else
+  static constexpr gfx::SelectionBehavior kLineSelectionBehavior =
+      gfx::SELECTION_RETAIN;
+  static constexpr gfx::SelectionBehavior kWordSelectionBehavior =
+      gfx::SELECTION_RETAIN;
+  static constexpr gfx::SelectionBehavior kMoveParagraphSelectionBehavior =
+      gfx::SELECTION_RETAIN;
+  static constexpr gfx::SelectionBehavior kPageSelectionBehavior =
+      gfx::SELECTION_RETAIN;
+#endif
+
+  // Pair of |text_changed|, |cursor_changed|.
+  using EditCommandResult = std::pair<bool, bool>;
 
   // Returns the text cursor blink time, or 0 for no blinking.
   static base::TimeDelta GetCaretBlinkInterval();
@@ -91,12 +111,17 @@ class VIEWS_EXPORT Textfield : public View,
   static const gfx::FontList& GetDefaultFontList();
 
   Textfield();
+  Textfield(const Textfield&) = delete;
+  Textfield& operator=(const Textfield&) = delete;
   ~Textfield() override;
 
   // Set the controller for this textfield.
   void set_controller(TextfieldController* controller) {
     controller_ = controller;
   }
+
+  // TODD (kylixrd): Remove set_controller and refactor codebase.
+  void SetController(TextfieldController* controller);
 
   // Gets/Sets whether or not the Textfield is read-only.
   bool GetReadOnly() const;
@@ -112,10 +137,10 @@ class VIEWS_EXPORT Textfield : public View,
   // Gets the text for the Textfield.
   // NOTE: Call sites should take care to not reveal the text for a password
   // textfield.
-  const base::string16& GetText() const;
+  const std::u16string& GetText() const;
 
   // Sets the text currently displayed in the Textfield.
-  void SetText(const base::string16& new_text);
+  void SetText(const std::u16string& new_text);
 
   // Sets the text currently displayed in the Textfield and the cursor position.
   // Does not fire notifications about the caret bounds changing. This is
@@ -125,7 +150,7 @@ class VIEWS_EXPORT Textfield : public View,
   // selection or cursor separately afterwards does not update the edit history,
   // i.e. the cursor position after redoing this change will be determined by
   // |cursor_position| and not by subsequent calls to e.g. SetSelectedRange().
-  void SetTextWithoutCaretBoundsChangeNotification(const base::string16& text,
+  void SetTextWithoutCaretBoundsChangeNotification(const std::u16string& text,
                                                    size_t cursor_position);
 
   // Scrolls all of |scroll_positions| into view, if possible. For each
@@ -138,23 +163,28 @@ class VIEWS_EXPORT Textfield : public View,
   void Scroll(const std::vector<size_t>& scroll_positions);
 
   // Appends the given string to the previously-existing text in the field.
-  void AppendText(const base::string16& new_text);
+  void AppendText(const std::u16string& new_text);
 
   // Inserts |new_text| at the cursor position, replacing any selected text.
   // This method is used to handle user input via paths Textfield doesn't
   // normally handle, so it calls UpdateAfterChange() and notifies observers of
   // changes.
-  void InsertOrReplaceText(const base::string16& new_text);
+  void InsertOrReplaceText(const std::u16string& new_text);
 
   // Returns the text that is currently selected.
   // NOTE: Call sites should take care to not reveal the text for a password
   // textfield.
-  base::string16 GetSelectedText() const;
+  std::u16string GetSelectedText() const;
 
   // Select the entire text range. If |reversed| is true, the range will end at
   // the logical beginning of the text; this generally shows the leading portion
   // of text that overflows its display area.
   void SelectAll(bool reversed);
+
+  // Selects the word at which the cursor is currently positioned. If there is a
+  // non-empty selection, the selection bounds are extended to their nearest
+  // word boundaries.
+  void SelectWord();
 
   // A convenience method to select the word closest to |point|.
   void SelectWordAt(const gfx::Point& point);
@@ -198,8 +228,8 @@ class VIEWS_EXPORT Textfield : public View,
   void SetMinimumWidthInChars(int minimum_width);
 
   // Gets/Sets the text to display when empty.
-  base::string16 GetPlaceholderText() const;
-  void SetPlaceholderText(const base::string16& text);
+  std::u16string GetPlaceholderText() const;
+  void SetPlaceholderText(const std::u16string& text);
 
   void set_placeholder_text_color(SkColor color) {
     placeholder_text_color_ = color;
@@ -209,9 +239,19 @@ class VIEWS_EXPORT Textfield : public View,
     placeholder_font_list_ = font_list;
   }
 
+  int placeholder_text_draw_flags() const {
+    return placeholder_text_draw_flags_;
+  }
   void set_placeholder_text_draw_flags(int flags) {
     placeholder_text_draw_flags_ = flags;
   }
+
+  bool force_text_directionality() const { return force_text_directionality_; }
+  void set_force_text_directionality(bool force) {
+    force_text_directionality_ = force;
+  }
+
+  bool drop_cursor_visible() const { return drop_cursor_visible_; }
 
   // Gets/Sets whether to indicate the textfield has invalid content.
   bool GetInvalid() const;
@@ -263,11 +303,6 @@ class VIEWS_EXPORT Textfield : public View,
   // Clears Edit history.
   void ClearEditHistory();
 
-  // Get/Set the accessible name of the text field. If the textfield has a
-  // visible label, use SetAssociatedLabel() instead.
-  base::string16 GetAccessibleName() const;
-  void SetAccessibleName(const base::string16& name);
-
   // If the accessible name should be the same as the labelling view's text,
   // use this. It will set the accessible label relationship and copy the
   // accessible name from the labelling views's accessible name. Any view with
@@ -277,7 +312,9 @@ class VIEWS_EXPORT Textfield : public View,
   // Set extra spacing placed between glyphs; used for obscured text styling.
   void SetObscuredGlyphSpacing(int spacing);
 
-  int GetPasswordCharRevealIndex() const { return password_char_reveal_index_; }
+  absl::optional<size_t> GetPasswordCharRevealIndex() const {
+    return password_char_reveal_index_;
+  }
 
   void SetExtraInsets(const gfx::Insets& insets);
 
@@ -290,7 +327,7 @@ class VIEWS_EXPORT Textfield : public View,
   gfx::Size CalculatePreferredSize() const override;
   gfx::Size GetMinimumSize() const override;
   void SetBorder(std::unique_ptr<Border> b) override;
-  gfx::NativeCursor GetCursor(const ui::MouseEvent& event) override;
+  ui::Cursor GetCursor(const ui::MouseEvent& event) override;
   bool OnMousePressed(const ui::MouseEvent& event) override;
   bool OnMouseDragged(const ui::MouseEvent& event) override;
   void OnMouseReleased(const ui::MouseEvent& event) override;
@@ -307,7 +344,8 @@ class VIEWS_EXPORT Textfield : public View,
   bool CanDrop(const ui::OSExchangeData& data) override;
   int OnDragUpdated(const ui::DropTargetEvent& event) override;
   void OnDragExited() override;
-  int OnPerformDrop(const ui::DropTargetEvent& event) override;
+  views::View::DropCallback GetDropCallback(
+      const ui::DropTargetEvent& event) override;
   void OnDragDone() override;
   void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
   bool HandleAccessibleAction(const ui::AXActionData& action_data) override;
@@ -349,8 +387,10 @@ class VIEWS_EXPORT Textfield : public View,
   bool HasTextBeingDragged() const override;
 
   // ui::TouchEditable overrides:
-  void SelectRect(const gfx::Point& start, const gfx::Point& end) override;
-  void MoveCaretTo(const gfx::Point& point) override;
+  void MoveCaret(const gfx::Point& position) override;
+  void MoveRangeSelectionExtent(const gfx::Point& extent) override;
+  void SelectBetweenCoordinates(const gfx::Point& base,
+                                const gfx::Point& extent) override;
   void GetSelectionEndPoints(gfx::SelectionBound* anchor,
                              gfx::SelectionBound* focus) override;
   gfx::Rect GetBounds() override;
@@ -370,9 +410,10 @@ class VIEWS_EXPORT Textfield : public View,
 
   // ui::TextInputClient overrides:
   void SetCompositionText(const ui::CompositionText& composition) override;
-  uint32_t ConfirmCompositionText(bool keep_selection) override;
+  size_t ConfirmCompositionText(bool keep_selection) override;
   void ClearCompositionText() override;
-  void InsertText(const base::string16& text) override;
+  void InsertText(const std::u16string& text,
+                  InsertTextCursorBehavior cursor_behavior) override;
   void InsertChar(const ui::KeyEvent& event) override;
   ui::TextInputType GetTextInputType() const override;
   ui::TextInputMode GetTextInputMode() const override;
@@ -380,7 +421,8 @@ class VIEWS_EXPORT Textfield : public View,
   int GetTextInputFlags() const override;
   bool CanComposeInline() const override;
   gfx::Rect GetCaretBounds() const override;
-  bool GetCompositionCharacterBounds(uint32_t index,
+  gfx::Rect GetSelectionBoundingBox() const override;
+  bool GetCompositionCharacterBounds(size_t index,
                                      gfx::Rect* rect) const override;
   bool HasCompositionText() const override;
   FocusReason GetFocusReason() const override;
@@ -388,9 +430,13 @@ class VIEWS_EXPORT Textfield : public View,
   bool GetCompositionTextRange(gfx::Range* range) const override;
   bool GetEditableSelectionRange(gfx::Range* range) const override;
   bool SetEditableSelectionRange(const gfx::Range& range) override;
+#if BUILDFLAG(IS_MAC)
   bool DeleteRange(const gfx::Range& range) override;
+#else
+  bool DeleteRange(const gfx::Range& range);
+#endif
   bool GetTextFromRange(const gfx::Range& range,
-                        base::string16* text) const override;
+                        std::u16string* text) const override;
   void OnInputMethodChanged() override;
   bool ChangeTextDirectionAndLayoutAlignment(
       base::i18n::TextDirection direction) override;
@@ -404,36 +450,41 @@ class VIEWS_EXPORT Textfield : public View,
   // Set whether the text should be used to improve typing suggestions.
   void SetShouldDoLearning(bool value) { should_do_learning_ = value; }
 
-#if defined(OS_WIN) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   bool SetCompositionFromExistingText(
       const gfx::Range& range,
       const std::vector<ui::ImeTextSpan>& ui_ime_text_spans) override;
 #endif
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
   gfx::Range GetAutocorrectRange() const override;
   gfx::Rect GetAutocorrectCharacterBounds() const override;
-  bool SetAutocorrectRange(const base::string16& autocorrect_text,
-                           const gfx::Range& range) override;
-  void ClearAutocorrectRange() override;
+  bool SetAutocorrectRange(const gfx::Range& range) override;
+  bool AddGrammarFragments(
+      const std::vector<ui::GrammarFragment>& fragments) override;
 #endif
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
   void GetActiveTextInputControlLayoutBounds(
-      base::Optional<gfx::Rect>* control_bounds,
-      base::Optional<gfx::Rect>* selection_bounds) override;
+      absl::optional<gfx::Rect>* control_bounds,
+      absl::optional<gfx::Rect>* selection_bounds) override;
+#endif
+
+#if BUILDFLAG(IS_WIN)
   void SetActiveCompositionForAccessibility(
       const gfx::Range& range,
-      const base::string16& active_composition_text,
+      const std::u16string& active_composition_text,
       bool is_composition_committed) override;
 #endif
 
-  views::PropertyChangedSubscription AddTextChangedCallback(
-      views::PropertyChangedCallback callback) WARN_UNUSED_RESULT;
+  [[nodiscard]] base::CallbackListSubscription AddTextChangedCallback(
+      views::PropertyChangedCallback callback);
 
  protected:
+  TextfieldModel* textfield_model() { return model_.get(); }
+
   // Inserts or appends a character in response to an IME operation.
-  virtual void DoInsertChar(base::char16 ch);
+  virtual void DoInsertChar(char16_t ch);
 
   // Returns the TextfieldModel's text/cursor/selection rendering model.
   gfx::RenderText* GetRenderText() const;
@@ -442,7 +493,7 @@ class VIEWS_EXPORT Textfield : public View,
   gfx::Point GetLastClickRootLocation() const;
 
   // Get the text from the selection clipboard.
-  virtual base::string16 GetSelectionClipboardText() const;
+  virtual std::u16string GetSelectionClipboardText() const;
 
   // Executes the given |command|.
   virtual void ExecuteTextEditCommand(ui::TextEditCommand command);
@@ -450,7 +501,7 @@ class VIEWS_EXPORT Textfield : public View,
   // Offsets the double-clicked word's range. This is only used in the unusual
   // case where the text changes on the second mousedown of a double-click.
   // This is harmless if there is not a currently double-clicked word.
-  void OffsetDoubleClickWord(int offset);
+  void OffsetDoubleClickWord(size_t offset);
 
   // Returns true if the drop cursor is for insertion at a target text location,
   // the standard behavior/style. Returns false when drop will do something
@@ -468,6 +519,20 @@ class VIEWS_EXPORT Textfield : public View,
   // Like RequestFocus, but explicitly states that the focus is triggered by a
   // gesture event.
   void RequestFocusForGesture(const ui::GestureEventDetails& details);
+
+  virtual Textfield::EditCommandResult DoExecuteTextEditCommand(
+      ui::TextEditCommand command);
+
+  // Handles key press event ahead of OnKeyPressed(). This is used for Textarea
+  // to handle the return key. Use TextfieldController::HandleKeyEvent to
+  // intercept the key event in other cases.
+  virtual bool PreHandleKeyPressed(const ui::KeyEvent& event);
+
+  // Get the default command for a given key |event|.
+  virtual ui::TextEditCommand GetCommandForKeyEvent(const ui::KeyEvent& event);
+
+  // Update the cursor position in the text field.
+  void UpdateCursorViewPosition();
 
  private:
   friend class TextfieldTestApi;
@@ -514,16 +579,13 @@ class VIEWS_EXPORT Textfield : public View,
   void UpdateAfterChange(
       TextChangeType text_change_type,
       bool cursor_changed,
-      base::Optional<bool> notify_caret_bounds_changed = base::nullopt);
+      absl::optional<bool> notify_caret_bounds_changed = absl::nullopt);
 
   // Updates cursor visibility and blinks the cursor if needed.
   void ShowCursor();
 
   // A callback function to periodically update the cursor node_data.
   void UpdateCursorVisibility();
-
-  // Update the cursor position in the text field.
-  void UpdateCursorViewPosition();
 
   // Gets the style::TextStyle that should be used.
   int GetTextStyle() const;
@@ -532,6 +594,9 @@ class VIEWS_EXPORT Textfield : public View,
 
   // Helper function to call MoveCursorTo on the TextfieldModel.
   void MoveCursorTo(const gfx::Point& point, bool select);
+
+  // Recalculates cursor view bounds based on model_.
+  gfx::Rect CalculateCursorViewBounds() const;
 
   // Convenience method to notify the InputMethod and TouchSelectionController.
   void OnCaretBoundsChanged();
@@ -559,9 +624,10 @@ class VIEWS_EXPORT Textfield : public View,
   bool ImeEditingAllowed() const;
 
   // Reveals the password character at |index| for a set duration.
-  // If |index| is -1, the existing revealed character will be reset.
+  // If |index| is nullopt, the existing revealed character will be reset.
   // |duration| is the time to remain the password char to be visible.
-  void RevealPasswordChar(int index, base::TimeDelta duration);
+  void RevealPasswordChar(absl::optional<size_t> index,
+                          base::TimeDelta duration);
 
   void CreateTouchSelectionControllerAndNotifyIt();
 
@@ -588,16 +654,29 @@ class VIEWS_EXPORT Textfield : public View,
   // Textfield::GetCaretBlinkMs().
   void OnCursorBlinkTimerFired();
 
-  // Returns the color to use for the FocusRing, if one is present.
-  SkColor GetFocusRingColor() const;
-
   void OnEnabledChanged();
+
+  // Drops the dragged text.
+  void DropDraggedText(const ui::DropTargetEvent& event,
+                       ui::mojom::DragOperation& output_drag_op);
+
+  // Returns the corner radius of the text field.
+  float GetCornerRadius();
+
+#if BUILDFLAG(IS_CHROMEOS)
+  // Checks and updates the selection dragging state for the upcoming scroll
+  // sequence, if required. If the scroll sequence starts while long pressing,
+  // it will be used for adjusting the text selection. Otherwise, if the scroll
+  // begins horizontally it will be used for cursor placement. Otherwise, the
+  // scroll sequence won't be used for selection dragging.
+  void MaybeStartSelectionDragging(ui::GestureEvent* event);
+#endif
 
   // The text model.
   std::unique_ptr<TextfieldModel> model_;
 
   // This is the current listener for events from this Textfield.
-  TextfieldController* controller_ = nullptr;
+  raw_ptr<TextfieldController, DanglingUntriaged> controller_ = nullptr;
 
   // An edit command to execute on the next key event. When set to a valid
   // value, the key event is still passed to |controller_|, but otherwise
@@ -622,36 +701,30 @@ class VIEWS_EXPORT Textfield : public View,
   int minimum_width_in_chars_ = -1;
 
   // Colors which override default system colors.
-  base::Optional<SkColor> text_color_;
-  base::Optional<SkColor> background_color_;
-  base::Optional<SkColor> selection_text_color_;
-  base::Optional<SkColor> selection_background_color_;
+  absl::optional<SkColor> text_color_;
+  absl::optional<SkColor> background_color_;
+  absl::optional<SkColor> selection_text_color_;
+  absl::optional<SkColor> selection_background_color_;
 
   // Text to display when empty.
-  base::string16 placeholder_text_;
+  std::u16string placeholder_text_;
 
   // Placeholder text color.
   // TODO(newcomer): Use NativeTheme to define different default placeholder
   // text colors for chrome/CrOS when harmony is enabled by default
   // (https://crbug.com/803279).
-  base::Optional<SkColor> placeholder_text_color_;
+  absl::optional<SkColor> placeholder_text_color_;
 
   // The draw flags specified for |placeholder_text_|.
   int placeholder_text_draw_flags_;
 
   // The font used for the placeholder text. If this value is null, the
   // placeholder text uses the same font list as the underlying RenderText.
-  base::Optional<gfx::FontList> placeholder_font_list_;
+  absl::optional<gfx::FontList> placeholder_font_list_;
 
   // True when the contents are deemed unacceptable and should be indicated as
   // such.
   bool invalid_ = false;
-
-  // The unique id for the associated label's accessible object.
-  int32_t label_ax_id_ = 0;
-
-  // The accessible name of the text field.
-  base::string16 accessible_name_;
 
   // The input type of this text field.
   ui::TextInputType text_input_type_ = ui::TEXT_INPUT_TYPE_TEXT;
@@ -685,20 +758,49 @@ class VIEWS_EXPORT Textfield : public View,
 
   SelectionController selection_controller_;
 
+  // Tracks when the current scroll sequence should be used for cursor placement
+  // or adjusting the text selection.
+  enum class SelectionDraggingState {
+    kNone,
+    kDraggingCursor,
+    kDraggingSelectionExtent
+  };
+  SelectionDraggingState selection_dragging_state_ =
+      SelectionDraggingState::kNone;
+
+  // The offset applied to the touch drag location when determining selection
+  // updates.
+  gfx::Vector2d selection_dragging_offset_;
+
   // Used to track touch drag starting location and offset to enable touch
   // scrolling.
-  gfx::Point drag_start_location_;
+  int drag_start_location_x_;
   int drag_start_display_offset_ = 0;
+
+  // Tracks the selection extent, which is used to determine the logical end of
+  // the selection. Roughly, this corresponds to the last drag position of the
+  // touch handle used to update the selection range. Note that the extent may
+  // be different to the logical end of the selection due to "expand by word,
+  // shrink by character" behaviour, in which the selection end can move to the
+  // next word boundary from the extent when expanding.
+  gfx::SelectionModel extent_caret_;
+
+  // Break type which selection endpoints can be moved to when updating the
+  // selection extent. For "expand by word, shrink by character" behaviour, the
+  // break type is set to WORD_BREAK if the selection has expanded past the
+  // current word boundary and back to CHARACTER_BREAK if the selection is
+  // shrinking.
+  gfx::BreakType break_type_ = gfx::CHARACTER_BREAK;
 
   // Tracks if touch editing handles are hidden because user has started
   // scrolling. If |true|, handles are shown after scrolling ends.
   bool touch_handles_hidden_due_to_scroll_ = false;
 
-  // True if this textfield should use a focus ring to indicate focus.
-  bool use_focus_ring_ = true;
+  // Whether the user should be notified if the clipboard is restricted.
+  bool show_rejection_ui_if_any_ = false;
 
   // Whether the text should be used to improve typing suggestions.
-  base::Optional<bool> should_do_learning_;
+  absl::optional<bool> should_do_learning_;
 
   // Context menu related members.
   std::unique_ptr<ui::SimpleMenuModel> context_menu_contents_;
@@ -706,28 +808,30 @@ class VIEWS_EXPORT Textfield : public View,
   std::unique_ptr<views::MenuRunner> context_menu_runner_;
 
   // View containing the text cursor.
-  View* cursor_view_ = nullptr;
+  raw_ptr<View, DanglingUntriaged> cursor_view_ = nullptr;
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_MAC)
   // Used to track active password input sessions.
   std::unique_ptr<ui::ScopedPasswordInputEnabler> password_input_enabler_;
-#endif  // defined(OS_APPLE)
+#endif  // BUILDFLAG(IS_MAC)
 
   // How this textfield was focused.
   ui::TextInputClient::FocusReason focus_reason_ =
       ui::TextInputClient::FOCUS_REASON_NONE;
 
-  // The focus ring for this TextField.
-  FocusRing* focus_ring_ = nullptr;
-
   // The password char reveal index, for testing only.
-  int password_char_reveal_index_ = -1;
+  absl::optional<size_t> password_char_reveal_index_;
 
   // Extra insets, useful to make room for a button for example.
   gfx::Insets extra_insets_ = gfx::Insets();
 
+  // Whether the client forces a specific text directionality for this
+  // textfield, which should inhibit the user's ability to control the
+  // directionality.
+  bool force_text_directionality_ = false;
+
   // Holds the subscription object for the enabled changed callback.
-  PropertyChangedSubscription enabled_changed_subscription_ =
+  base::CallbackListSubscription enabled_changed_subscription_ =
       AddEnabledChangedCallback(
           base::BindRepeating(&Textfield::OnEnabledChanged,
                               base::Unretained(this)));
@@ -735,26 +839,31 @@ class VIEWS_EXPORT Textfield : public View,
   // Used to bind callback functions to this object.
   base::WeakPtrFactory<Textfield> weak_ptr_factory_{this};
 
-  DISALLOW_COPY_AND_ASSIGN(Textfield);
+  // Used to bind drop callback functions to this object.
+  base::WeakPtrFactory<Textfield> drop_weak_ptr_factory_{this};
 };
 
 BEGIN_VIEW_BUILDER(VIEWS_EXPORT, Textfield, View)
-VIEW_BUILDER_PROPERTY(bool, ReadOnly)
-VIEW_BUILDER_PROPERTY(base::string16, Text)
-VIEW_BUILDER_PROPERTY(ui::TextInputType, TextInputType)
-VIEW_BUILDER_PROPERTY(int, TextInputFlags)
-VIEW_BUILDER_PROPERTY(SkColor, TextColor)
-VIEW_BUILDER_PROPERTY(SkColor, SelectionTextColor)
 VIEW_BUILDER_PROPERTY(SkColor, BackgroundColor)
-VIEW_BUILDER_PROPERTY(SkColor, SelectionBackgroundColor)
+VIEW_BUILDER_PROPERTY(TextfieldController*, Controller)
 VIEW_BUILDER_PROPERTY(bool, CursorEnabled)
-VIEW_BUILDER_PROPERTY(base::string16, PlaceholderText)
-VIEW_BUILDER_PROPERTY(bool, Invalid)
+VIEW_BUILDER_PROPERTY(int, DefaultWidthInChars)
 VIEW_BUILDER_PROPERTY(gfx::HorizontalAlignment, HorizontalAlignment)
+VIEW_BUILDER_PROPERTY(bool, Invalid)
+VIEW_BUILDER_PROPERTY(int, MinimumWidthInChars)
+VIEW_BUILDER_PROPERTY(std::u16string, PlaceholderText)
+VIEW_BUILDER_PROPERTY(bool, ReadOnly)
 VIEW_BUILDER_PROPERTY(gfx::Range, SelectedRange)
-VIEW_BUILDER_PROPERTY(base::string16, AccessibleName)
-END_VIEW_BUILDER(VIEWS_EXPORT, Textfield)
+VIEW_BUILDER_PROPERTY(SkColor, SelectionBackgroundColor)
+VIEW_BUILDER_PROPERTY(SkColor, SelectionTextColor)
+VIEW_BUILDER_PROPERTY(std::u16string, Text)
+VIEW_BUILDER_PROPERTY(SkColor, TextColor)
+VIEW_BUILDER_PROPERTY(int, TextInputFlags)
+VIEW_BUILDER_PROPERTY(ui::TextInputType, TextInputType)
+END_VIEW_BUILDER
 
 }  // namespace views
+
+DEFINE_VIEW_BUILDER(VIEWS_EXPORT, Textfield)
 
 #endif  // UI_VIEWS_CONTROLS_TEXTFIELD_TEXTFIELD_H_

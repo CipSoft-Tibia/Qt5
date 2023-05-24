@@ -4,15 +4,19 @@
 
 #include "src/execution/arm64/simulator-arm64.h"
 
+#include "src/execution/isolate.h"
+
 #if defined(USE_SIMULATOR)
 
 #include <stdlib.h>
+
 #include <cmath>
 #include <cstdarg>
 #include <type_traits>
 
-#include "src/base/lazy-instance.h"
 #include "src/base/overflowing-math.h"
+#include "src/base/platform/platform.h"
+#include "src/base/platform/wrappers.h"
 #include "src/codegen/arm64/decoder-arm64-inl.h"
 #include "src/codegen/assembler-inl.h"
 #include "src/codegen/macro-assembler.h"
@@ -22,6 +26,14 @@
 #include "src/runtime/runtime-utils.h"
 #include "src/utils/ostreams.h"
 
+#if V8_OS_WIN
+#include <windows.h>
+#endif
+
+#if V8_ENABLE_WEBASSEMBLY
+#include "src/trap-handler/trap-handler-simulator.h"
+#endif  // V8_ENABLE_WEBASSEMBLY
+
 namespace v8 {
 namespace internal {
 
@@ -29,7 +41,7 @@ namespace internal {
 // SScanF not being implemented in a platform independent way through
 // ::v8::internal::OS in the same way as SNPrintF is that the
 // Windows C Run-Time Library does not provide vsscanf.
-#define SScanF sscanf  // NOLINT
+#define SScanF sscanf
 
 // Helpers for colors.
 #define COLOUR(colour_code) "\033[0;" colour_code "m"
@@ -45,24 +57,38 @@ namespace internal {
 #define WHITE "37"
 
 using TEXT_COLOUR = char const* const;
-TEXT_COLOUR clr_normal = FLAG_log_colour ? COLOUR(NORMAL) : "";
-TEXT_COLOUR clr_flag_name = FLAG_log_colour ? COLOUR_BOLD(WHITE) : "";
-TEXT_COLOUR clr_flag_value = FLAG_log_colour ? COLOUR(NORMAL) : "";
-TEXT_COLOUR clr_reg_name = FLAG_log_colour ? COLOUR_BOLD(CYAN) : "";
-TEXT_COLOUR clr_reg_value = FLAG_log_colour ? COLOUR(CYAN) : "";
-TEXT_COLOUR clr_vreg_name = FLAG_log_colour ? COLOUR_BOLD(MAGENTA) : "";
-TEXT_COLOUR clr_vreg_value = FLAG_log_colour ? COLOUR(MAGENTA) : "";
-TEXT_COLOUR clr_memory_address = FLAG_log_colour ? COLOUR_BOLD(BLUE) : "";
-TEXT_COLOUR clr_debug_number = FLAG_log_colour ? COLOUR_BOLD(YELLOW) : "";
-TEXT_COLOUR clr_debug_message = FLAG_log_colour ? COLOUR(YELLOW) : "";
-TEXT_COLOUR clr_printf = FLAG_log_colour ? COLOUR(GREEN) : "";
+TEXT_COLOUR clr_normal = v8_flags.log_colour ? COLOUR(NORMAL) : "";
+TEXT_COLOUR clr_flag_name = v8_flags.log_colour ? COLOUR_BOLD(WHITE) : "";
+TEXT_COLOUR clr_flag_value = v8_flags.log_colour ? COLOUR(NORMAL) : "";
+TEXT_COLOUR clr_reg_name = v8_flags.log_colour ? COLOUR_BOLD(CYAN) : "";
+TEXT_COLOUR clr_reg_value = v8_flags.log_colour ? COLOUR(CYAN) : "";
+TEXT_COLOUR clr_vreg_name = v8_flags.log_colour ? COLOUR_BOLD(MAGENTA) : "";
+TEXT_COLOUR clr_vreg_value = v8_flags.log_colour ? COLOUR(MAGENTA) : "";
+TEXT_COLOUR clr_memory_address = v8_flags.log_colour ? COLOUR_BOLD(BLUE) : "";
+TEXT_COLOUR clr_debug_number = v8_flags.log_colour ? COLOUR_BOLD(YELLOW) : "";
+TEXT_COLOUR clr_debug_message = v8_flags.log_colour ? COLOUR(YELLOW) : "";
+TEXT_COLOUR clr_printf = v8_flags.log_colour ? COLOUR(GREEN) : "";
 
 DEFINE_LAZY_LEAKY_OBJECT_GETTER(Simulator::GlobalMonitor,
                                 Simulator::GlobalMonitor::Get)
 
-// This is basically the same as PrintF, with a guard for FLAG_trace_sim.
+bool Simulator::ProbeMemory(uintptr_t address, uintptr_t access_size) {
+#if V8_ENABLE_WEBASSEMBLY && V8_TRAP_HANDLER_SUPPORTED
+  uintptr_t last_accessed_byte = address + access_size - 1;
+  uintptr_t current_pc = reinterpret_cast<uintptr_t>(pc_);
+  uintptr_t landing_pad =
+      trap_handler::ProbeMemory(last_accessed_byte, current_pc);
+  if (!landing_pad) return true;
+  set_pc(landing_pad);
+  return false;
+#else
+  return true;
+#endif
+}
+
+// This is basically the same as PrintF, with a guard for v8_flags.trace_sim.
 void Simulator::TraceSim(const char* format, ...) {
-  if (FLAG_trace_sim) {
+  if (v8_flags.trace_sim) {
     va_list arguments;
     va_start(arguments, format);
     base::OS::VFPrint(stream_, format, arguments);
@@ -102,7 +128,7 @@ Simulator* Simulator::current(Isolate* isolate) {
 
   Simulator* sim = isolate_data->simulator();
   if (sim == nullptr) {
-    if (FLAG_trace_sim || FLAG_debug_sim) {
+    if (v8_flags.trace_sim || v8_flags.debug_sim) {
       sim = new Simulator(new Decoder<DispatchingDecoderVisitor>(), isolate);
     } else {
       sim = new Decoder<Simulator>();
@@ -161,7 +187,7 @@ int PopLowestIndexAsCode(CPURegList* list) {
   if (list->IsEmpty()) {
     return -1;
   }
-  RegList reg_list = list->list();
+  uint64_t reg_list = list->bits();
   int index = base::bits::CountTrailingZeros(reg_list);
   DCHECK((1LL << index) & reg_list);
   list->Remove(index);
@@ -283,13 +309,13 @@ uintptr_t Simulator::PopAddress() {
 uintptr_t Simulator::StackLimit(uintptr_t c_limit) const {
   // The simulator uses a separate JS stack. If we have exhausted the C stack,
   // we also drop down the JS limit to reflect the exhaustion on the JS stack.
-  if (GetCurrentStackPosition() < c_limit) {
+  if (base::Stack::GetCurrentStackPosition() < c_limit) {
     return get_sp();
   }
 
-  // Otherwise the limit is the JS stack. Leave a safety margin of 1024 bytes
+  // Otherwise the limit is the JS stack. Leave a safety margin of 4 KiB
   // to prevent overrunning the stack when pushing values.
-  return stack_limit_ + 1024;
+  return stack_limit_ + 4 * KB;
 }
 
 void Simulator::SetRedirectInstruction(Instruction* instruction) {
@@ -310,7 +336,7 @@ Simulator::Simulator(Decoder<DispatchingDecoderVisitor>* decoder,
 
   Init(stream);
 
-  if (FLAG_trace_sim) {
+  if (v8_flags.trace_sim) {
     decoder_->InsertVisitorBefore(print_disasm_, this);
     log_parameters_ = LOG_ALL;
   }
@@ -323,14 +349,14 @@ Simulator::Simulator()
       log_parameters_(NO_PARAM),
       isolate_(nullptr) {
   Init(stdout);
-  CHECK(!FLAG_trace_sim);
+  CHECK(!v8_flags.trace_sim);
 }
 
 void Simulator::Init(FILE* stream) {
   ResetState();
 
   // Allocate and setup the simulator stack.
-  stack_size_ = (FLAG_sim_stack_size * KB) + (2 * stack_protection_size_);
+  stack_size_ = (v8_flags.sim_stack_size * KB) + (2 * stack_protection_size_);
   stack_ = reinterpret_cast<uintptr_t>(new byte[stack_size_]);
   stack_limit_ = stack_ + stack_protection_size_;
   uintptr_t tos = stack_ + stack_size_ - stack_protection_size_;
@@ -375,7 +401,6 @@ Simulator::~Simulator() {
   delete[] reinterpret_cast<byte*>(stack_);
   delete disassembler_decoder_;
   delete print_disasm_;
-  DeleteArray(last_debugger_input_);
   delete decoder_;
 }
 
@@ -386,19 +411,19 @@ void Simulator::Run() {
 
   pc_modified_ = false;
 
-  if (::v8::internal::FLAG_stop_sim_at == 0) {
+  if (v8_flags.stop_sim_at == 0) {
     // Fast version of the dispatch loop without checking whether the simulator
     // should be stopping at a particular executed instruction.
     while (pc_ != kEndOfSimAddress) {
       ExecuteInstruction();
     }
   } else {
-    // FLAG_stop_sim_at is at the non-default value. Stop in the debugger when
-    // we reach the particular instruction count.
+    // v8_flags.stop_sim_at is at the non-default value. Stop in the debugger
+    // when we reach the particular instruction count.
     while (pc_ != kEndOfSimAddress) {
       icount_for_stop_sim_at_ =
           base::AddWithWraparound(icount_for_stop_sim_at_, 1);
-      if (icount_for_stop_sim_at_ == ::v8::internal::FLAG_stop_sim_at) {
+      if (icount_for_stop_sim_at_ == v8_flags.stop_sim_at) {
         Debug();
       }
       ExecuteInstruction();
@@ -417,18 +442,18 @@ void Simulator::RunFrom(Instruction* start) {
 // The simulator assumes all runtime calls return two 64-bits values. If they
 // don't, register x1 is clobbered. This is fine because x1 is caller-saved.
 #if defined(V8_OS_WIN)
-using SimulatorRuntimeCall_ReturnPtr = int64_t (*)(int64_t arg0, int64_t arg1,
-                                                   int64_t arg2, int64_t arg3,
-                                                   int64_t arg4, int64_t arg5,
-                                                   int64_t arg6, int64_t arg7,
-                                                   int64_t arg8, int64_t arg9);
+using SimulatorRuntimeCall_ReturnPtr = int64_t (*)(
+    int64_t arg0, int64_t arg1, int64_t arg2, int64_t arg3, int64_t arg4,
+    int64_t arg5, int64_t arg6, int64_t arg7, int64_t arg8, int64_t arg9,
+    int64_t arg10, int64_t arg11, int64_t arg12, int64_t arg13, int64_t arg14,
+    int64_t arg15, int64_t arg16, int64_t arg17, int64_t arg18, int64_t arg19);
 #endif
 
-using SimulatorRuntimeCall = ObjectPair (*)(int64_t arg0, int64_t arg1,
-                                            int64_t arg2, int64_t arg3,
-                                            int64_t arg4, int64_t arg5,
-                                            int64_t arg6, int64_t arg7,
-                                            int64_t arg8, int64_t arg9);
+using SimulatorRuntimeCall = ObjectPair (*)(
+    int64_t arg0, int64_t arg1, int64_t arg2, int64_t arg3, int64_t arg4,
+    int64_t arg5, int64_t arg6, int64_t arg7, int64_t arg8, int64_t arg9,
+    int64_t arg10, int64_t arg11, int64_t arg12, int64_t arg13, int64_t arg14,
+    int64_t arg15, int64_t arg16, int64_t arg17, int64_t arg18, int64_t arg19);
 
 using SimulatorRuntimeCompareCall = int64_t (*)(double arg1, double arg2);
 using SimulatorRuntimeFPFPCall = double (*)(double arg1, double arg2);
@@ -449,13 +474,17 @@ using SimulatorRuntimeProfilingGetterCall = void (*)(int64_t arg0, int64_t arg1,
 // function to {SimulatorRuntimeCall} is undefined behavior; but since
 // the target function can indeed be any function that's exposed via
 // the "fast C call" mechanism, we can't reconstruct its signature here.
-ObjectPair UnsafeGenericFunctionCall(int64_t function, int64_t arg0,
-                                     int64_t arg1, int64_t arg2, int64_t arg3,
-                                     int64_t arg4, int64_t arg5, int64_t arg6,
-                                     int64_t arg7, int64_t arg8, int64_t arg9) {
+ObjectPair UnsafeGenericFunctionCall(
+    int64_t function, int64_t arg0, int64_t arg1, int64_t arg2, int64_t arg3,
+    int64_t arg4, int64_t arg5, int64_t arg6, int64_t arg7, int64_t arg8,
+    int64_t arg9, int64_t arg10, int64_t arg11, int64_t arg12, int64_t arg13,
+    int64_t arg14, int64_t arg15, int64_t arg16, int64_t arg17, int64_t arg18,
+    int64_t arg19) {
   SimulatorRuntimeCall target =
       reinterpret_cast<SimulatorRuntimeCall>(function);
-  return target(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+  return target(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9,
+                arg10, arg11, arg12, arg13, arg14, arg15, arg16, arg17, arg18,
+                arg19);
 }
 void UnsafeDirectApiCall(int64_t function, int64_t arg0) {
   SimulatorRuntimeDirectApiCall target =
@@ -471,6 +500,126 @@ void UnsafeDirectGetterCall(int64_t function, int64_t arg0, int64_t arg1) {
   SimulatorRuntimeDirectGetterCall target =
       reinterpret_cast<SimulatorRuntimeDirectGetterCall>(function);
   target(arg0, arg1);
+}
+
+using MixedRuntimeCall_0 = AnyCType (*)();
+
+#define BRACKETS(ident, N) ident[N]
+
+#define REP_0(expr, FMT)
+#define REP_1(expr, FMT) FMT(expr, 0)
+#define REP_2(expr, FMT) REP_1(expr, FMT), FMT(expr, 1)
+#define REP_3(expr, FMT) REP_2(expr, FMT), FMT(expr, 2)
+#define REP_4(expr, FMT) REP_3(expr, FMT), FMT(expr, 3)
+#define REP_5(expr, FMT) REP_4(expr, FMT), FMT(expr, 4)
+#define REP_6(expr, FMT) REP_5(expr, FMT), FMT(expr, 5)
+#define REP_7(expr, FMT) REP_6(expr, FMT), FMT(expr, 6)
+#define REP_8(expr, FMT) REP_7(expr, FMT), FMT(expr, 7)
+#define REP_9(expr, FMT) REP_8(expr, FMT), FMT(expr, 8)
+#define REP_10(expr, FMT) REP_9(expr, FMT), FMT(expr, 9)
+#define REP_11(expr, FMT) REP_10(expr, FMT), FMT(expr, 10)
+#define REP_12(expr, FMT) REP_11(expr, FMT), FMT(expr, 11)
+#define REP_13(expr, FMT) REP_12(expr, FMT), FMT(expr, 12)
+#define REP_14(expr, FMT) REP_13(expr, FMT), FMT(expr, 13)
+#define REP_15(expr, FMT) REP_14(expr, FMT), FMT(expr, 14)
+#define REP_16(expr, FMT) REP_15(expr, FMT), FMT(expr, 15)
+#define REP_17(expr, FMT) REP_16(expr, FMT), FMT(expr, 16)
+#define REP_18(expr, FMT) REP_17(expr, FMT), FMT(expr, 17)
+#define REP_19(expr, FMT) REP_18(expr, FMT), FMT(expr, 18)
+#define REP_20(expr, FMT) REP_19(expr, FMT), FMT(expr, 19)
+
+#define GEN_MAX_PARAM_COUNT(V) \
+  V(0)                         \
+  V(1)                         \
+  V(2)                         \
+  V(3)                         \
+  V(4)                         \
+  V(5)                         \
+  V(6)                         \
+  V(7)                         \
+  V(8)                         \
+  V(9)                         \
+  V(10)                        \
+  V(11)                        \
+  V(12)                        \
+  V(13)                        \
+  V(14)                        \
+  V(15)                        \
+  V(16)                        \
+  V(17)                        \
+  V(18)                        \
+  V(19)                        \
+  V(20)
+
+#define MIXED_RUNTIME_CALL(N) \
+  using MixedRuntimeCall_##N = AnyCType (*)(REP_##N(AnyCType arg, CONCAT));
+
+GEN_MAX_PARAM_COUNT(MIXED_RUNTIME_CALL)
+#undef MIXED_RUNTIME_CALL
+
+#define CALL_ARGS(N) REP_##N(args, BRACKETS)
+#define CALL_TARGET_VARARG(N)                                   \
+  if (signature.ParameterCount() == N) { /* NOLINT */           \
+    MixedRuntimeCall_##N target =                               \
+        reinterpret_cast<MixedRuntimeCall_##N>(target_address); \
+    result = target(CALL_ARGS(N));                              \
+  } else /* NOLINT */
+
+void Simulator::CallAnyCTypeFunction(Address target_address,
+                                     const EncodedCSignature& signature) {
+  TraceSim("Type: mixed types BUILTIN_CALL\n");
+
+  const int64_t* stack_pointer = reinterpret_cast<int64_t*>(sp());
+  const double* double_stack_pointer = reinterpret_cast<double*>(sp());
+  int num_gp_params = 0, num_fp_params = 0, num_stack_params = 0;
+
+  CHECK_LE(signature.ParameterCount(), kMaxCParameters);
+  static_assert(sizeof(AnyCType) == 8, "AnyCType is assumed to be 64-bit.");
+  AnyCType args[kMaxCParameters];
+  // The first 8 parameters of each type (GP or FP) are placed in corresponding
+  // registers. The rest are expected to be on the stack, where each parameter
+  // type counts on its own. For example a function like:
+  // foo(int i1, ..., int i9, float f1, float f2) will use up all 8 GP
+  // registers, place i9 on the stack, and place f1 and f2 in FP registers.
+  // Source: https://developer.arm.com/documentation/ihi0055/d/, section
+  // "Parameter Passing".
+  for (int i = 0; i < signature.ParameterCount(); ++i) {
+    if (signature.IsFloat(i)) {
+      if (num_fp_params < 8) {
+        args[i].double_value = dreg(num_fp_params++);
+      } else {
+        args[i].double_value = double_stack_pointer[num_stack_params++];
+      }
+    } else {
+      if (num_gp_params < 8) {
+        args[i].int64_value = xreg(num_gp_params++);
+      } else {
+        args[i].int64_value = stack_pointer[num_stack_params++];
+      }
+    }
+  }
+  AnyCType result;
+  GEN_MAX_PARAM_COUNT(CALL_TARGET_VARARG)
+  /* else */ {
+    UNREACHABLE();
+  }
+  static_assert(20 == kMaxCParameters,
+                "If you've changed kMaxCParameters, please change the "
+                "GEN_MAX_PARAM_COUNT macro.");
+
+#undef CALL_TARGET_VARARG
+#undef CALL_ARGS
+#undef GEN_MAX_PARAM_COUNT
+
+#ifdef DEBUG
+  CorruptAllCallerSavedCPURegisters();
+#endif
+
+  if (signature.IsReturnFloat()) {
+    set_dreg(0, result.double_value);
+  } else {
+    set_xreg(0, result.int64_value);
+  }
 }
 
 void Simulator::DoRuntimeCall(Instruction* instr) {
@@ -493,6 +642,20 @@ void Simulator::DoRuntimeCall(Instruction* instr) {
     FATAL("ALIGNMENT EXCEPTION");
   }
 
+  Address func_addr =
+      reinterpret_cast<Address>(redirection->external_function());
+  SimulatorData* simulator_data = isolate_->simulator_data();
+  DCHECK_NOT_NULL(simulator_data);
+  const EncodedCSignature& signature =
+      simulator_data->GetSignatureForTarget(func_addr);
+  if (signature.IsValid()) {
+    CHECK(redirection->type() == ExternalReference::FAST_C_CALL);
+    CallAnyCTypeFunction(external, signature);
+    set_lr(return_address);
+    set_pc(return_address);
+    return;
+  }
+
   int64_t* stack_pointer = reinterpret_cast<int64_t*>(sp());
 
   const int64_t arg0 = xreg(0);
@@ -505,7 +668,17 @@ void Simulator::DoRuntimeCall(Instruction* instr) {
   const int64_t arg7 = xreg(7);
   const int64_t arg8 = stack_pointer[0];
   const int64_t arg9 = stack_pointer[1];
-  STATIC_ASSERT(kMaxCParameters == 10);
+  const int64_t arg10 = stack_pointer[2];
+  const int64_t arg11 = stack_pointer[3];
+  const int64_t arg12 = stack_pointer[4];
+  const int64_t arg13 = stack_pointer[5];
+  const int64_t arg14 = stack_pointer[6];
+  const int64_t arg15 = stack_pointer[7];
+  const int64_t arg16 = stack_pointer[8];
+  const int64_t arg17 = stack_pointer[9];
+  const int64_t arg18 = stack_pointer[10];
+  const int64_t arg19 = stack_pointer[11];
+  static_assert(kMaxCParameters == 20);
 
   switch (redirection->type()) {
     default:
@@ -537,14 +710,26 @@ void Simulator::DoRuntimeCall(Instruction* instr) {
           ", "
           "0x%016" PRIx64 ", 0x%016" PRIx64
           ", "
+          "0x%016" PRIx64 ", 0x%016" PRIx64
+          ", "
+          "0x%016" PRIx64 ", 0x%016" PRIx64
+          ", "
+          "0x%016" PRIx64 ", 0x%016" PRIx64
+          ", "
+          "0x%016" PRIx64 ", 0x%016" PRIx64
+          ", "
+          "0x%016" PRIx64 ", 0x%016" PRIx64
+          ", "
           "0x%016" PRIx64 ", 0x%016" PRIx64,
-          arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+          arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10,
+          arg11, arg12, arg13, arg14, arg15, arg16, arg17, arg18, arg19);
 
       SimulatorRuntimeCall_ReturnPtr target =
           reinterpret_cast<SimulatorRuntimeCall_ReturnPtr>(external);
 
-      int64_t result =
-          target(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+      int64_t result = target(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7,
+                              arg8, arg9, arg10, arg11, arg12, arg13, arg14,
+                              arg15, arg16, arg17, arg18, arg19);
       TraceSim("Returned: 0x%16\n", result);
 #ifdef DEBUG
       CorruptAllCallerSavedCPURegisters();
@@ -572,10 +757,23 @@ void Simulator::DoRuntimeCall(Instruction* instr) {
           ", "
           "0x%016" PRIx64 ", 0x%016" PRIx64
           ", "
+          "0x%016" PRIx64 ", 0x%016" PRIx64
+          ", "
+          "0x%016" PRIx64 ", 0x%016" PRIx64
+          ", "
+          "0x%016" PRIx64 ", 0x%016" PRIx64
+          ", "
+          "0x%016" PRIx64 ", 0x%016" PRIx64
+          ", "
+          "0x%016" PRIx64 ", 0x%016" PRIx64
+          ", "
           "0x%016" PRIx64 ", 0x%016" PRIx64,
-          arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+          arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10,
+          arg11, arg12, arg13, arg14, arg15, arg16, arg17, arg18, arg19);
+
       ObjectPair result = UnsafeGenericFunctionCall(
-          external, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+          external, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9,
+          arg10, arg11, arg12, arg13, arg14, arg15, arg16, arg17, arg18, arg19);
       TraceSim("Returned: {%p, %p}\n", reinterpret_cast<void*>(result.x),
                reinterpret_cast<void*>(result.y));
 #ifdef DEBUG
@@ -674,7 +872,7 @@ void Simulator::DoRuntimeCall(Instruction* instr) {
     case ExternalReference::PROFILING_API_CALL: {
       // void f(v8::FunctionCallbackInfo&, v8::FunctionCallback)
       TraceSim("Type: PROFILING_API_CALL\n");
-      void* arg1 = Redirection::ReverseRedirection(xreg(1));
+      void* arg1 = Redirection::UnwrapRedirection(xreg(1));
       TraceSim("Arguments: 0x%016" PRIx64 ", %p\n", xreg(0), arg1);
       UnsafeProfilingApiCall(external, xreg(0), arg1);
       TraceSim("No return value.");
@@ -690,7 +888,7 @@ void Simulator::DoRuntimeCall(Instruction* instr) {
       TraceSim("Type: PROFILING_GETTER_CALL\n");
       SimulatorRuntimeProfilingGetterCall target =
           reinterpret_cast<SimulatorRuntimeProfilingGetterCall>(external);
-      void* arg2 = Redirection::ReverseRedirection(xreg(2));
+      void* arg2 = Redirection::UnwrapRedirection(xreg(2));
       TraceSim("Arguments: 0x%016" PRIx64 ", 0x%016" PRIx64 ", %p\n", xreg(0),
                xreg(1), arg2);
       target(xreg(0), xreg(1), arg2);
@@ -1491,7 +1689,6 @@ void Simulator::VisitPCRelAddressing(Instruction* instr) {
       break;
     case ADRP:  // Not implemented in the assembler.
       UNIMPLEMENTED();
-      break;
     default:
       UNREACHABLE();
   }
@@ -1797,6 +1994,10 @@ void Simulator::LoadStoreHelper(Instruction* instr, int64_t offset,
   uintptr_t address = LoadStoreAddress(addr_reg, offset, addrmode);
   uintptr_t stack = 0;
 
+  unsigned access_size = 1 << instr->SizeLS();
+  // First, check whether the memory is accessible (for wasm trap handling).
+  if (!ProbeMemory(address, access_size)) return;
+
   {
     base::MutexGuard lock_guard(&GlobalMonitor::Get()->mutex);
     if (instr->IsLoad()) {
@@ -1903,7 +2104,6 @@ void Simulator::LoadStoreHelper(Instruction* instr, int64_t offset,
 
   // Print a detailed trace (including the memory address) instead of the basic
   // register:value trace generated by set_*reg().
-  unsigned access_size = 1 << instr->SizeLS();
   if (instr->IsLoad()) {
     if ((op == LDR_s) || (op == LDR_d)) {
       LogVRead(address, srcdst, GetPrintRegisterFormatForSizeFP(access_size));
@@ -2183,7 +2383,6 @@ Simulator::TransactionSize Simulator::get_transaction_size(unsigned size) {
     default:
       UNREACHABLE();
   }
-  return TransactionSize::None;
 }
 
 void Simulator::VisitLoadStoreAcquireRelease(Instruction* instr) {
@@ -2191,6 +2390,48 @@ void Simulator::VisitLoadStoreAcquireRelease(Instruction* instr) {
   unsigned rn = instr->Rn();
   LoadStoreAcquireReleaseOp op = static_cast<LoadStoreAcquireReleaseOp>(
       instr->Mask(LoadStoreAcquireReleaseMask));
+
+  switch (op) {
+    case CAS_w:
+    case CASA_w:
+    case CASL_w:
+    case CASAL_w:
+      CompareAndSwapHelper<uint32_t>(instr);
+      return;
+    case CAS_x:
+    case CASA_x:
+    case CASL_x:
+    case CASAL_x:
+      CompareAndSwapHelper<uint64_t>(instr);
+      return;
+    case CASB:
+    case CASAB:
+    case CASLB:
+    case CASALB:
+      CompareAndSwapHelper<uint8_t>(instr);
+      return;
+    case CASH:
+    case CASAH:
+    case CASLH:
+    case CASALH:
+      CompareAndSwapHelper<uint16_t>(instr);
+      return;
+    case CASP_w:
+    case CASPA_w:
+    case CASPL_w:
+    case CASPAL_w:
+      CompareAndSwapPairHelper<uint32_t>(instr);
+      return;
+    case CASP_x:
+    case CASPA_x:
+    case CASPL_x:
+    case CASPAL_x:
+      CompareAndSwapPairHelper<uint64_t>(instr);
+      return;
+    default:
+      break;
+  }
+
   int32_t is_acquire_release = instr->LoadStoreXAcquireRelease();
   int32_t is_exclusive = (instr->LoadStoreXNotExclusive() == 0);
   int32_t is_load = instr->LoadStoreXLoad();
@@ -2202,6 +2443,8 @@ void Simulator::VisitLoadStoreAcquireRelease(Instruction* instr) {
   unsigned access_size = 1 << instr->LoadStoreXSizeLog2();
   uintptr_t address = LoadStoreAddress(rn, 0, AddrMode::Offset);
   DCHECK_EQ(address % access_size, 0);
+  // First, check whether the memory is accessible (for wasm trap handling).
+  if (!ProbeMemory(address, access_size)) return;
   base::MutexGuard lock_guard(&GlobalMonitor::Get()->mutex);
   if (is_load != 0) {
     if (is_exclusive) {
@@ -2282,6 +2525,319 @@ void Simulator::VisitLoadStoreAcquireRelease(Instruction* instr) {
           UNIMPLEMENTED();
       }
     }
+  }
+}
+
+template <typename T>
+void Simulator::CompareAndSwapHelper(const Instruction* instr) {
+  unsigned rs = instr->Rs();
+  unsigned rt = instr->Rt();
+  unsigned rn = instr->Rn();
+
+  unsigned element_size = sizeof(T);
+  uint64_t address = reg<uint64_t>(rn, Reg31IsStackPointer);
+
+  // First, check whether the memory is accessible (for wasm trap handling).
+  if (!ProbeMemory(address, element_size)) return;
+
+  bool is_acquire = instr->Bit(22) == 1;
+  bool is_release = instr->Bit(15) == 1;
+
+  T comparevalue = reg<T>(rs);
+  T newvalue = reg<T>(rt);
+
+  // The architecture permits that the data read clears any exclusive monitors
+  // associated with that location, even if the compare subsequently fails.
+  local_monitor_.NotifyLoad();
+
+  T data = MemoryRead<T>(address);
+  if (is_acquire) {
+    // Approximate load-acquire by issuing a full barrier after the load.
+    __sync_synchronize();
+  }
+
+  if (data == comparevalue) {
+    base::MutexGuard lock_guard(&GlobalMonitor::Get()->mutex);
+
+    if (is_release) {
+      local_monitor_.NotifyStore();
+      GlobalMonitor::Get()->NotifyStore_Locked(&global_monitor_processor_);
+      // Approximate store-release by issuing a full barrier before the store.
+      __sync_synchronize();
+    }
+
+    MemoryWrite<T>(address, newvalue);
+    LogWrite(address, rt, GetPrintRegisterFormatForSize(element_size));
+  }
+
+  set_reg<T>(rs, data);
+  LogRead(address, rs, GetPrintRegisterFormatForSize(element_size));
+}
+
+template <typename T>
+void Simulator::CompareAndSwapPairHelper(const Instruction* instr) {
+  DCHECK((sizeof(T) == 4) || (sizeof(T) == 8));
+  unsigned rs = instr->Rs();
+  unsigned rt = instr->Rt();
+  unsigned rn = instr->Rn();
+
+  DCHECK((rs % 2 == 0) && (rt % 2 == 0));
+
+  unsigned element_size = sizeof(T);
+  uint64_t address = reg<uint64_t>(rn, Reg31IsStackPointer);
+
+  uint64_t address2 = address + element_size;
+
+  // First, check whether the memory is accessible (for wasm trap handling).
+  if (!ProbeMemory(address, element_size)) return;
+  if (!ProbeMemory(address2, element_size)) return;
+
+  bool is_acquire = instr->Bit(22) == 1;
+  bool is_release = instr->Bit(15) == 1;
+
+  T comparevalue_high = reg<T>(rs + 1);
+  T comparevalue_low = reg<T>(rs);
+  T newvalue_high = reg<T>(rt + 1);
+  T newvalue_low = reg<T>(rt);
+
+  // The architecture permits that the data read clears any exclusive monitors
+  // associated with that location, even if the compare subsequently fails.
+  local_monitor_.NotifyLoad();
+
+  T data_low = MemoryRead<T>(address);
+  T data_high = MemoryRead<T>(address2);
+
+  if (is_acquire) {
+    // Approximate load-acquire by issuing a full barrier after the load.
+    __sync_synchronize();
+  }
+
+  bool same =
+      (data_high == comparevalue_high) && (data_low == comparevalue_low);
+  if (same) {
+    base::MutexGuard lock_guard(&GlobalMonitor::Get()->mutex);
+
+    if (is_release) {
+      local_monitor_.NotifyStore();
+      GlobalMonitor::Get()->NotifyStore_Locked(&global_monitor_processor_);
+      // Approximate store-release by issuing a full barrier before the store.
+      __sync_synchronize();
+    }
+
+    MemoryWrite<T>(address, newvalue_low);
+    MemoryWrite<T>(address2, newvalue_high);
+  }
+
+  set_reg<T>(rs + 1, data_high);
+  set_reg<T>(rs, data_low);
+
+  PrintRegisterFormat format = GetPrintRegisterFormatForSize(element_size);
+  LogRead(address, rs, format);
+  LogRead(address2, rs + 1, format);
+
+  if (same) {
+    LogWrite(address, rt, format);
+    LogWrite(address2, rt + 1, format);
+  }
+}
+
+template <typename T>
+void Simulator::AtomicMemorySimpleHelper(const Instruction* instr) {
+  unsigned rs = instr->Rs();
+  unsigned rt = instr->Rt();
+  unsigned rn = instr->Rn();
+
+  bool is_acquire = (instr->Bit(23) == 1) && (rt != kZeroRegCode);
+  bool is_release = instr->Bit(22) == 1;
+
+  unsigned element_size = sizeof(T);
+  uint64_t address = xreg(rn, Reg31IsStackPointer);
+  DCHECK_EQ(address % element_size, 0);
+
+  // First, check whether the memory is accessible (for wasm trap handling).
+  if (!ProbeMemory(address, element_size)) return;
+
+  local_monitor_.NotifyLoad();
+
+  T value = reg<T>(rs);
+
+  T data = MemoryRead<T>(address);
+
+  if (is_acquire) {
+    // Approximate load-acquire by issuing a full barrier after the load.
+    __sync_synchronize();
+  }
+
+  T result = 0;
+  switch (instr->Mask(AtomicMemorySimpleOpMask)) {
+    case LDADDOp:
+      result = data + value;
+      break;
+    case LDCLROp:
+      DCHECK(!std::numeric_limits<T>::is_signed);
+      result = data & ~value;
+      break;
+    case LDEOROp:
+      DCHECK(!std::numeric_limits<T>::is_signed);
+      result = data ^ value;
+      break;
+    case LDSETOp:
+      DCHECK(!std::numeric_limits<T>::is_signed);
+      result = data | value;
+      break;
+
+    // Signed/Unsigned difference is done via the templated type T.
+    case LDSMAXOp:
+    case LDUMAXOp:
+      result = (data > value) ? data : value;
+      break;
+    case LDSMINOp:
+    case LDUMINOp:
+      result = (data > value) ? value : data;
+      break;
+  }
+
+  if (is_release) {
+    base::MutexGuard lock_guard(&GlobalMonitor::Get()->mutex);
+    local_monitor_.NotifyStore();
+    GlobalMonitor::Get()->NotifyStore_Locked(&global_monitor_processor_);
+    // Approximate store-release by issuing a full barrier before the store.
+    __sync_synchronize();
+  }
+
+  MemoryWrite<T>(address, result);
+  set_reg<T>(rt, data);
+
+  PrintRegisterFormat format = GetPrintRegisterFormatForSize(element_size);
+  LogRead(address, rt, format);
+  LogWrite(address, rs, format);
+}
+
+template <typename T>
+void Simulator::AtomicMemorySwapHelper(const Instruction* instr) {
+  unsigned rs = instr->Rs();
+  unsigned rt = instr->Rt();
+  unsigned rn = instr->Rn();
+
+  bool is_acquire = (instr->Bit(23) == 1) && (rt != kZeroRegCode);
+  bool is_release = instr->Bit(22) == 1;
+
+  unsigned element_size = sizeof(T);
+  uint64_t address = xreg(rn, Reg31IsStackPointer);
+
+  // First, check whether the memory is accessible (for wasm trap handling).
+  if (!ProbeMemory(address, element_size)) return;
+
+  local_monitor_.NotifyLoad();
+
+  T data = MemoryRead<T>(address);
+  if (is_acquire) {
+    // Approximate load-acquire by issuing a full barrier after the load.
+    __sync_synchronize();
+  }
+
+  if (is_release) {
+    base::MutexGuard lock_guard(&GlobalMonitor::Get()->mutex);
+    local_monitor_.NotifyStore();
+    GlobalMonitor::Get()->NotifyStore_Locked(&global_monitor_processor_);
+    // Approximate store-release by issuing a full barrier before the store.
+    __sync_synchronize();
+  }
+  MemoryWrite<T>(address, reg<T>(rs));
+
+  set_reg<T>(rt, data);
+
+  PrintRegisterFormat format = GetPrintRegisterFormatForSize(element_size);
+  LogRead(address, rt, format);
+  LogWrite(address, rs, format);
+}
+
+#define ATOMIC_MEMORY_SIMPLE_UINT_LIST(V) \
+  V(LDADD)                                \
+  V(LDCLR)                                \
+  V(LDEOR)                                \
+  V(LDSET)                                \
+  V(LDUMAX)                               \
+  V(LDUMIN)
+
+#define ATOMIC_MEMORY_SIMPLE_INT_LIST(V) \
+  V(LDSMAX)                              \
+  V(LDSMIN)
+
+void Simulator::VisitAtomicMemory(Instruction* instr) {
+  switch (instr->Mask(AtomicMemoryMask)) {
+// clang-format off
+#define SIM_FUNC_B(A) \
+    case A##B:        \
+    case A##AB:       \
+    case A##LB:       \
+    case A##ALB:
+#define SIM_FUNC_H(A) \
+    case A##H:        \
+    case A##AH:       \
+    case A##LH:       \
+    case A##ALH:
+#define SIM_FUNC_w(A) \
+    case A##_w:       \
+    case A##A_w:      \
+    case A##L_w:      \
+    case A##AL_w:
+#define SIM_FUNC_x(A) \
+    case A##_x:       \
+    case A##A_x:      \
+    case A##L_x:      \
+    case A##AL_x:
+
+    ATOMIC_MEMORY_SIMPLE_UINT_LIST(SIM_FUNC_B)
+      AtomicMemorySimpleHelper<uint8_t>(instr);
+      break;
+    ATOMIC_MEMORY_SIMPLE_INT_LIST(SIM_FUNC_B)
+      AtomicMemorySimpleHelper<int8_t>(instr);
+      break;
+    ATOMIC_MEMORY_SIMPLE_UINT_LIST(SIM_FUNC_H)
+      AtomicMemorySimpleHelper<uint16_t>(instr);
+      break;
+    ATOMIC_MEMORY_SIMPLE_INT_LIST(SIM_FUNC_H)
+      AtomicMemorySimpleHelper<int16_t>(instr);
+      break;
+    ATOMIC_MEMORY_SIMPLE_UINT_LIST(SIM_FUNC_w)
+      AtomicMemorySimpleHelper<uint32_t>(instr);
+      break;
+    ATOMIC_MEMORY_SIMPLE_INT_LIST(SIM_FUNC_w)
+      AtomicMemorySimpleHelper<int32_t>(instr);
+      break;
+    ATOMIC_MEMORY_SIMPLE_UINT_LIST(SIM_FUNC_x)
+      AtomicMemorySimpleHelper<uint64_t>(instr);
+      break;
+    ATOMIC_MEMORY_SIMPLE_INT_LIST(SIM_FUNC_x)
+      AtomicMemorySimpleHelper<int64_t>(instr);
+      break;
+      // clang-format on
+
+    case SWPB:
+    case SWPAB:
+    case SWPLB:
+    case SWPALB:
+      AtomicMemorySwapHelper<uint8_t>(instr);
+      break;
+    case SWPH:
+    case SWPAH:
+    case SWPLH:
+    case SWPALH:
+      AtomicMemorySwapHelper<uint16_t>(instr);
+      break;
+    case SWP_w:
+    case SWPA_w:
+    case SWPL_w:
+    case SWPAL_w:
+      AtomicMemorySwapHelper<uint32_t>(instr);
+      break;
+    case SWP_x:
+    case SWPA_x:
+    case SWPL_x:
+    case SWPAL_x:
+      AtomicMemorySwapHelper<uint64_t>(instr);
+      break;
   }
 }
 
@@ -2492,27 +3048,6 @@ void Simulator::VisitDataProcessing2Source(Instruction* instr) {
   }
 }
 
-// The algorithm used is described in section 8.2 of
-//   Hacker's Delight, by Henry S. Warren, Jr.
-// It assumes that a right shift on a signed integer is an arithmetic shift.
-static int64_t MultiplyHighSigned(int64_t u, int64_t v) {
-  uint64_t u0, v0, w0;
-  int64_t u1, v1, w1, w2, t;
-
-  u0 = u & 0xFFFFFFFFLL;
-  u1 = u >> 32;
-  v0 = v & 0xFFFFFFFFLL;
-  v1 = v >> 32;
-
-  w0 = u0 * v0;
-  t = u1 * v0 + (w0 >> 32);
-  w1 = t & 0xFFFFFFFFLL;
-  w2 = t >> 32;
-  w1 = u0 * v1 + w1;
-
-  return u1 * v1 + w2 + (w1 >> 32);
-}
-
 void Simulator::VisitDataProcessing3Source(Instruction* instr) {
   int64_t result = 0;
   // Extract and sign- or zero-extend 32-bit arguments for widening operations.
@@ -2547,7 +3082,13 @@ void Simulator::VisitDataProcessing3Source(Instruction* instr) {
       break;
     case SMULH_x:
       DCHECK_EQ(instr->Ra(), kZeroRegCode);
-      result = MultiplyHighSigned(xreg(instr->Rn()), xreg(instr->Rm()));
+      result =
+          base::bits::SignedMulHigh64(xreg(instr->Rn()), xreg(instr->Rm()));
+      break;
+    case UMULH_x:
+      DCHECK_EQ(instr->Ra(), kZeroRegCode);
+      result =
+          base::bits::UnsignedMulHigh64(xreg(instr->Rn()), xreg(instr->Rm()));
       break;
     default:
       UNIMPLEMENTED();
@@ -3254,7 +3795,7 @@ bool Simulator::PrintValue(const char* desc) {
   if (desc[0] == 'v') {
     PrintF(stream_, "%s %s:%s 0x%016" PRIx64 "%s (%s%s:%s %g%s %s:%s %g%s)\n",
            clr_vreg_name, VRegNameForCode(i), clr_vreg_value,
-           bit_cast<uint64_t>(dreg(i)), clr_normal, clr_vreg_name,
+           base::bit_cast<uint64_t>(dreg(i)), clr_normal, clr_vreg_name,
            DRegNameForCode(i), clr_vreg_value, dreg(i), clr_vreg_name,
            SRegNameForCode(i), clr_vreg_value, sreg(i), clr_normal);
     return true;
@@ -3280,6 +3821,21 @@ bool Simulator::PrintValue(const char* desc) {
 }
 
 void Simulator::Debug() {
+  if (v8_flags.correctness_fuzzer_suppressions) {
+    PrintF("Debugger disabled for differential fuzzing.\n");
+    return;
+  }
+  bool done = false;
+  while (!done) {
+    // Disassemble the next instruction to execute before doing anything else.
+    PrintInstructionsAt(pc_, 1);
+    // Read the command line.
+    ArrayUniquePtr<char> line(ReadLine("sim> "));
+    done = ExecDebugCommand(std::move(line));
+  }
+}
+
+bool Simulator::ExecDebugCommand(ArrayUniquePtr<char> line_ptr) {
 #define COMMAND_SIZE 63
 #define ARG_SIZE 255
 
@@ -3296,291 +3852,313 @@ void Simulator::Debug() {
   arg1[ARG_SIZE] = 0;
   arg2[ARG_SIZE] = 0;
 
-  bool done = false;
   bool cleared_log_disasm_bit = false;
 
-  while (!done) {
-    // Disassemble the next instruction to execute before doing anything else.
-    PrintInstructionsAt(pc_, 1);
-    // Read the command line.
-    char* line = ReadLine("sim> ");
-    if (line == nullptr) {
-      break;
-    } else {
-      // Repeat last command by default.
-      char* last_input = last_debugger_input();
-      if (strcmp(line, "\n") == 0 && (last_input != nullptr)) {
-        DeleteArray(line);
-        line = last_input;
-      } else {
-        // Update the latest command ran
-        set_last_debugger_input(line);
-      }
+  if (line_ptr == nullptr) return false;
 
-      // Use sscanf to parse the individual parts of the command line. At the
-      // moment no command expects more than two parameters.
-      int argc = SScanF(line,
-                        "%" XSTR(COMMAND_SIZE) "s "
-                        "%" XSTR(ARG_SIZE) "s "
-                        "%" XSTR(ARG_SIZE) "s",
-                        cmd, arg1, arg2);
-
-      // stepi / si ------------------------------------------------------------
-      if ((strcmp(cmd, "si") == 0) || (strcmp(cmd, "stepi") == 0)) {
-        // We are about to execute instructions, after which by default we
-        // should increment the pc_. If it was set when reaching this debug
-        // instruction, it has not been cleared because this instruction has not
-        // completed yet. So clear it manually.
-        pc_modified_ = false;
-
-        if (argc == 1) {
-          ExecuteInstruction();
-        } else {
-          int64_t number_of_instructions_to_execute = 1;
-          GetValue(arg1, &number_of_instructions_to_execute);
-
-          set_log_parameters(log_parameters() | LOG_DISASM);
-          while (number_of_instructions_to_execute-- > 0) {
-            ExecuteInstruction();
-          }
-          set_log_parameters(log_parameters() & ~LOG_DISASM);
-          PrintF("\n");
-        }
-
-        // If it was necessary, the pc has already been updated or incremented
-        // when executing the instruction. So we do not want it to be updated
-        // again. It will be cleared when exiting.
-        pc_modified_ = true;
-
-        // next / n
-        // --------------------------------------------------------------
-      } else if ((strcmp(cmd, "next") == 0) || (strcmp(cmd, "n") == 0)) {
-        // Tell the simulator to break after the next executed BL.
-        break_on_next_ = true;
-        // Continue.
-        done = true;
-
-        // continue / cont / c
-        // ---------------------------------------------------
-      } else if ((strcmp(cmd, "continue") == 0) || (strcmp(cmd, "cont") == 0) ||
-                 (strcmp(cmd, "c") == 0)) {
-        // Leave the debugger shell.
-        done = true;
-
-        // disassemble / disasm / di
-        // ---------------------------------------------
-      } else if (strcmp(cmd, "disassemble") == 0 ||
-                 strcmp(cmd, "disasm") == 0 || strcmp(cmd, "di") == 0) {
-        int64_t n_of_instrs_to_disasm = 10;                // default value.
-        int64_t address = reinterpret_cast<int64_t>(pc_);  // default value.
-        if (argc >= 2) {  // disasm <n of instrs>
-          GetValue(arg1, &n_of_instrs_to_disasm);
-        }
-        if (argc >= 3) {  // disasm <n of instrs> <address>
-          GetValue(arg2, &address);
-        }
-
-        // Disassemble.
-        PrintInstructionsAt(reinterpret_cast<Instruction*>(address),
-                            n_of_instrs_to_disasm);
-        PrintF("\n");
-
-        // print / p
-        // -------------------------------------------------------------
-      } else if ((strcmp(cmd, "print") == 0) || (strcmp(cmd, "p") == 0)) {
-        if (argc == 2) {
-          if (strcmp(arg1, "all") == 0) {
-            PrintRegisters();
-            PrintVRegisters();
-          } else {
-            if (!PrintValue(arg1)) {
-              PrintF("%s unrecognized\n", arg1);
-            }
-          }
-        } else {
-          PrintF(
-              "print <register>\n"
-              "    Print the content of a register. (alias 'p')\n"
-              "    'print all' will print all registers.\n"
-              "    Use 'printobject' to get more details about the value.\n");
-        }
-
-        // printobject / po
-        // ------------------------------------------------------
-      } else if ((strcmp(cmd, "printobject") == 0) ||
-                 (strcmp(cmd, "po") == 0)) {
-        if (argc == 2) {
-          int64_t value;
-          StdoutStream os;
-          if (GetValue(arg1, &value)) {
-            Object obj(value);
-            os << arg1 << ": \n";
-#ifdef DEBUG
-            obj.Print(os);
-            os << "\n";
-#else
-            os << Brief(obj) << "\n";
-#endif
-          } else {
-            os << arg1 << " unrecognized\n";
-          }
-        } else {
-          PrintF(
-              "printobject <value>\n"
-              "printobject <register>\n"
-              "    Print details about the value. (alias 'po')\n");
-        }
-
-        // stack / mem
-        // ----------------------------------------------------------
-      } else if (strcmp(cmd, "stack") == 0 || strcmp(cmd, "mem") == 0 ||
-                 strcmp(cmd, "dump") == 0) {
-        int64_t* cur = nullptr;
-        int64_t* end = nullptr;
-        int next_arg = 1;
-
-        if (strcmp(cmd, "stack") == 0) {
-          cur = reinterpret_cast<int64_t*>(sp());
-
-        } else {  // "mem"
-          int64_t value;
-          if (!GetValue(arg1, &value)) {
-            PrintF("%s unrecognized\n", arg1);
-            continue;
-          }
-          cur = reinterpret_cast<int64_t*>(value);
-          next_arg++;
-        }
-
-        int64_t words = 0;
-        if (argc == next_arg) {
-          words = 10;
-        } else if (argc == next_arg + 1) {
-          if (!GetValue(argv[next_arg], &words)) {
-            PrintF("%s unrecognized\n", argv[next_arg]);
-            PrintF("Printing 10 double words by default");
-            words = 10;
-          }
-        } else {
-          UNREACHABLE();
-        }
-        end = cur + words;
-
-        bool skip_obj_print = (strcmp(cmd, "dump") == 0);
-        while (cur < end) {
-          PrintF("  0x%016" PRIx64 ":  0x%016" PRIx64 " %10" PRId64,
-                 reinterpret_cast<uint64_t>(cur), *cur, *cur);
-          if (!skip_obj_print) {
-            Object obj(*cur);
-            Heap* current_heap = isolate_->heap();
-            if (obj.IsSmi() ||
-                IsValidHeapObject(current_heap, HeapObject::cast(obj))) {
-              PrintF(" (");
-              if (obj.IsSmi()) {
-                PrintF("smi %" PRId32, Smi::ToInt(obj));
-              } else {
-                obj.ShortPrint();
-              }
-              PrintF(")");
-            }
-          }
-          PrintF("\n");
-          cur++;
-        }
-
-        // trace / t
-        // -------------------------------------------------------------
-      } else if (strcmp(cmd, "trace") == 0 || strcmp(cmd, "t") == 0) {
-        if ((log_parameters() & LOG_ALL) != LOG_ALL) {
-          PrintF("Enabling disassembly, registers and memory write tracing\n");
-          set_log_parameters(log_parameters() | LOG_ALL);
-        } else {
-          PrintF("Disabling disassembly, registers and memory write tracing\n");
-          set_log_parameters(log_parameters() & ~LOG_ALL);
-        }
-
-        // break / b
-        // -------------------------------------------------------------
-      } else if (strcmp(cmd, "break") == 0 || strcmp(cmd, "b") == 0) {
-        if (argc == 2) {
-          int64_t value;
-          if (GetValue(arg1, &value)) {
-            SetBreakpoint(reinterpret_cast<Instruction*>(value));
-          } else {
-            PrintF("%s unrecognized\n", arg1);
-          }
-        } else {
-          ListBreakpoints();
-          PrintF("Use `break <address>` to set or disable a breakpoint\n");
-        }
-
-        // gdb
-        // -------------------------------------------------------------------
-      } else if (strcmp(cmd, "gdb") == 0) {
-        PrintF("Relinquishing control to gdb.\n");
-        base::OS::DebugBreak();
-        PrintF("Regaining control from gdb.\n");
-
-        // sysregs
-        // ---------------------------------------------------------------
-      } else if (strcmp(cmd, "sysregs") == 0) {
-        PrintSystemRegisters();
-
-        // help / h
-        // --------------------------------------------------------------
-      } else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "h") == 0) {
-        PrintF(
-            "stepi / si\n"
-            "    stepi <n>\n"
-            "    Step <n> instructions.\n"
-            "next / n\n"
-            "    Continue execution until a BL instruction is reached.\n"
-            "    At this point a breakpoint is set just after this BL.\n"
-            "    Then execution is resumed. It will probably later hit the\n"
-            "    breakpoint just set.\n"
-            "continue / cont / c\n"
-            "    Continue execution from here.\n"
-            "disassemble / disasm / di\n"
-            "    disassemble <n> <address>\n"
-            "    Disassemble <n> instructions from current <address>.\n"
-            "    By default <n> is 20 and <address> is the current pc.\n"
-            "print / p\n"
-            "    print <register>\n"
-            "    Print the content of a register.\n"
-            "    'print all' will print all registers.\n"
-            "    Use 'printobject' to get more details about the value.\n"
-            "printobject / po\n"
-            "    printobject <value>\n"
-            "    printobject <register>\n"
-            "    Print details about the value.\n"
-            "stack\n"
-            "    stack [<words>]\n"
-            "    Dump stack content, default dump 10 words\n"
-            "mem\n"
-            "    mem <address> [<words>]\n"
-            "    Dump memory content, default dump 10 words\n"
-            "dump\n"
-            "    dump <address> [<words>]\n"
-            "    Dump memory content without pretty printing JS objects, "
-            "default dump 10 words\n"
-            "trace / t\n"
-            "    Toggle disassembly and register tracing\n"
-            "break / b\n"
-            "    break : list all breakpoints\n"
-            "    break <address> : set / enable / disable a breakpoint.\n"
-            "gdb\n"
-            "    Enter gdb.\n"
-            "sysregs\n"
-            "    Print all system registers (including NZCV).\n");
-      } else {
-        PrintF("Unknown command: %s\n", cmd);
-        PrintF("Use 'help' for more information.\n");
-      }
-    }
-    if (cleared_log_disasm_bit == true) {
-      set_log_parameters(log_parameters_ | LOG_DISASM);
-    }
+  // Repeat last command by default.
+  const char* line = line_ptr.get();
+  const char* last_input = last_debugger_input();
+  if (strcmp(line, "\n") == 0 && (last_input != nullptr)) {
+    line_ptr.reset();
+    line = last_input;
+  } else {
+    // Update the latest command ran
+    set_last_debugger_input(std::move(line_ptr));
   }
+
+  // Use sscanf to parse the individual parts of the command line. At the
+  // moment no command expects more than two parameters.
+  int argc = SScanF(line,
+                      "%" XSTR(COMMAND_SIZE) "s "
+                      "%" XSTR(ARG_SIZE) "s "
+                      "%" XSTR(ARG_SIZE) "s",
+                      cmd, arg1, arg2);
+
+  // stepi / si ------------------------------------------------------------
+  if ((strcmp(cmd, "si") == 0) || (strcmp(cmd, "stepi") == 0)) {
+    // We are about to execute instructions, after which by default we
+    // should increment the pc_. If it was set when reaching this debug
+    // instruction, it has not been cleared because this instruction has not
+    // completed yet. So clear it manually.
+    pc_modified_ = false;
+
+    if (argc == 1) {
+      ExecuteInstruction();
+    } else {
+      int64_t number_of_instructions_to_execute = 1;
+      GetValue(arg1, &number_of_instructions_to_execute);
+
+      set_log_parameters(log_parameters() | LOG_DISASM);
+      while (number_of_instructions_to_execute-- > 0) {
+        ExecuteInstruction();
+      }
+      set_log_parameters(log_parameters() & ~LOG_DISASM);
+      PrintF("\n");
+    }
+
+    // If it was necessary, the pc has already been updated or incremented
+    // when executing the instruction. So we do not want it to be updated
+    // again. It will be cleared when exiting.
+    pc_modified_ = true;
+
+    // next / n
+    // --------------------------------------------------------------
+  } else if ((strcmp(cmd, "next") == 0) || (strcmp(cmd, "n") == 0)) {
+    // Tell the simulator to break after the next executed BL.
+    break_on_next_ = true;
+    // Continue.
+    return true;
+
+    // continue / cont / c
+    // ---------------------------------------------------
+  } else if ((strcmp(cmd, "continue") == 0) || (strcmp(cmd, "cont") == 0) ||
+             (strcmp(cmd, "c") == 0)) {
+    // Leave the debugger shell.
+    return true;
+
+    // disassemble / disasm / di
+    // ---------------------------------------------
+  } else if (strcmp(cmd, "disassemble") == 0 || strcmp(cmd, "disasm") == 0 ||
+             strcmp(cmd, "di") == 0) {
+    int64_t n_of_instrs_to_disasm = 10;                // default value.
+    int64_t address = reinterpret_cast<int64_t>(pc_);  // default value.
+    if (argc >= 2) {                                   // disasm <n of instrs>
+      GetValue(arg1, &n_of_instrs_to_disasm);
+    }
+    if (argc >= 3) {  // disasm <n of instrs> <address>
+      GetValue(arg2, &address);
+    }
+
+    // Disassemble.
+    PrintInstructionsAt(reinterpret_cast<Instruction*>(address),
+                        n_of_instrs_to_disasm);
+    PrintF("\n");
+
+    // print / p
+    // -------------------------------------------------------------
+  } else if ((strcmp(cmd, "print") == 0) || (strcmp(cmd, "p") == 0)) {
+    if (argc == 2) {
+      if (strcmp(arg1, "all") == 0) {
+        PrintRegisters();
+        PrintVRegisters();
+      } else {
+        if (!PrintValue(arg1)) {
+          PrintF("%s unrecognized\n", arg1);
+        }
+      }
+    } else {
+      PrintF(
+          "print <register>\n"
+          "    Print the content of a register. (alias 'p')\n"
+          "    'print all' will print all registers.\n"
+          "    Use 'printobject' to get more details about the value.\n");
+    }
+
+    // printobject / po
+    // ------------------------------------------------------
+  } else if ((strcmp(cmd, "printobject") == 0) || (strcmp(cmd, "po") == 0)) {
+    if (argc == 2) {
+      int64_t value;
+      StdoutStream os;
+      if (GetValue(arg1, &value)) {
+        Object obj(value);
+        os << arg1 << ": \n";
+#ifdef DEBUG
+        obj.Print(os);
+        os << "\n";
+#else
+        os << Brief(obj) << "\n";
+#endif
+      } else {
+        os << arg1 << " unrecognized\n";
+      }
+    } else {
+      PrintF(
+          "printobject <value>\n"
+          "printobject <register>\n"
+          "    Print details about the value. (alias 'po')\n");
+    }
+
+    // stack / mem
+    // ----------------------------------------------------------
+  } else if (strcmp(cmd, "stack") == 0 || strcmp(cmd, "mem") == 0 ||
+             strcmp(cmd, "dump") == 0) {
+    int64_t* cur = nullptr;
+    int64_t* end = nullptr;
+    int next_arg = 1;
+
+    if (strcmp(cmd, "stack") == 0) {
+      cur = reinterpret_cast<int64_t*>(sp());
+
+    } else {  // "mem"
+      int64_t value;
+      if (!GetValue(arg1, &value)) {
+        PrintF("%s unrecognized\n", arg1);
+        return false;
+      }
+      cur = reinterpret_cast<int64_t*>(value);
+      next_arg++;
+    }
+
+    int64_t words = 0;
+    if (argc == next_arg) {
+      words = 10;
+    } else if (argc == next_arg + 1) {
+      if (!GetValue(argv[next_arg], &words)) {
+        PrintF("%s unrecognized\n", argv[next_arg]);
+        PrintF("Printing 10 double words by default");
+        words = 10;
+      }
+    } else {
+      UNREACHABLE();
+    }
+    end = cur + words;
+
+    bool skip_obj_print = (strcmp(cmd, "dump") == 0);
+    while (cur < end) {
+      PrintF("  0x%016" PRIx64 ":  0x%016" PRIx64 " %10" PRId64,
+             reinterpret_cast<uint64_t>(cur), *cur, *cur);
+      if (!skip_obj_print) {
+        Object obj(*cur);
+        Heap* current_heap = isolate_->heap();
+        if (obj.IsSmi() ||
+            IsValidHeapObject(current_heap, HeapObject::cast(obj))) {
+          PrintF(" (");
+          if (obj.IsSmi()) {
+            PrintF("smi %" PRId32, Smi::ToInt(obj));
+          } else {
+            obj.ShortPrint();
+          }
+          PrintF(")");
+        }
+      }
+      PrintF("\n");
+      cur++;
+    }
+
+    // trace / t
+    // -------------------------------------------------------------
+  } else if (strcmp(cmd, "trace") == 0 || strcmp(cmd, "t") == 0) {
+    if ((log_parameters() & LOG_ALL) != LOG_ALL) {
+      PrintF("Enabling disassembly, registers and memory write tracing\n");
+      set_log_parameters(log_parameters() | LOG_ALL);
+    } else {
+      PrintF("Disabling disassembly, registers and memory write tracing\n");
+      set_log_parameters(log_parameters() & ~LOG_ALL);
+    }
+
+    // break / b
+    // -------------------------------------------------------------
+  } else if (strcmp(cmd, "break") == 0 || strcmp(cmd, "b") == 0) {
+    if (argc == 2) {
+      int64_t value;
+      if (GetValue(arg1, &value)) {
+        SetBreakpoint(reinterpret_cast<Instruction*>(value));
+      } else {
+        PrintF("%s unrecognized\n", arg1);
+      }
+    } else {
+      ListBreakpoints();
+      PrintF("Use `break <address>` to set or disable a breakpoint\n");
+    }
+
+    // backtrace / bt
+    // ---------------------------------------------------------------
+  } else if (strcmp(cmd, "backtrace") == 0 || strcmp(cmd, "bt") == 0) {
+    Address pc = reinterpret_cast<Address>(pc_);
+    Address lr = reinterpret_cast<Address>(this->lr());
+    Address sp = static_cast<Address>(this->sp());
+    Address fp = static_cast<Address>(this->fp());
+
+    int i = 0;
+    while (true) {
+      PrintF("#%d: " V8PRIxPTR_FMT " (sp=" V8PRIxPTR_FMT ", fp=" V8PRIxPTR_FMT
+             ")\n",
+             i, pc, sp, fp);
+      pc = lr;
+      sp = fp;
+      if (pc == reinterpret_cast<Address>(kEndOfSimAddress)) {
+        break;
+      }
+      lr = *(reinterpret_cast<Address*>(fp) + 1);
+      fp = *reinterpret_cast<Address*>(fp);
+      i++;
+      if (i > 100) {
+        PrintF("Too many frames\n");
+        break;
+      }
+    }
+
+    // gdb
+    // -------------------------------------------------------------------
+  } else if (strcmp(cmd, "gdb") == 0) {
+    PrintF("Relinquishing control to gdb.\n");
+    base::OS::DebugBreak();
+    PrintF("Regaining control from gdb.\n");
+
+    // sysregs
+    // ---------------------------------------------------------------
+  } else if (strcmp(cmd, "sysregs") == 0) {
+    PrintSystemRegisters();
+
+    // help / h
+    // --------------------------------------------------------------
+  } else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "h") == 0) {
+    PrintF(
+        "stepi / si\n"
+        "    stepi <n>\n"
+        "    Step <n> instructions.\n"
+        "next / n\n"
+        "    Continue execution until a BL instruction is reached.\n"
+        "    At this point a breakpoint is set just after this BL.\n"
+        "    Then execution is resumed. It will probably later hit the\n"
+        "    breakpoint just set.\n"
+        "continue / cont / c\n"
+        "    Continue execution from here.\n"
+        "disassemble / disasm / di\n"
+        "    disassemble <n> <address>\n"
+        "    Disassemble <n> instructions from current <address>.\n"
+        "    By default <n> is 20 and <address> is the current pc.\n"
+        "print / p\n"
+        "    print <register>\n"
+        "    Print the content of a register.\n"
+        "    'print all' will print all registers.\n"
+        "    Use 'printobject' to get more details about the value.\n"
+        "printobject / po\n"
+        "    printobject <value>\n"
+        "    printobject <register>\n"
+        "    Print details about the value.\n"
+        "stack\n"
+        "    stack [<words>]\n"
+        "    Dump stack content, default dump 10 words\n"
+        "mem\n"
+        "    mem <address> [<words>]\n"
+        "    Dump memory content, default dump 10 words\n"
+        "dump\n"
+        "    dump <address> [<words>]\n"
+        "    Dump memory content without pretty printing JS objects, "
+        "default dump 10 words\n"
+        "trace / t\n"
+        "    Toggle disassembly and register tracing\n"
+        "break / b\n"
+        "    break : list all breakpoints\n"
+        "    break <address> : set / enable / disable a breakpoint.\n"
+        "backtrace / bt\n"
+        "    Walk the frame pointers, dumping the pc/sp/fp for each frame.\n"
+        "gdb\n"
+        "    Enter gdb.\n"
+        "sysregs\n"
+        "    Print all system registers (including NZCV).\n");
+  } else {
+    PrintF("Unknown command: %s\n", cmd);
+    PrintF("Use 'help' for more information.\n");
+  }
+
+  if (cleared_log_disasm_bit == true) {
+    set_log_parameters(log_parameters_ | LOG_DISASM);
+  }
+  return false;
 }
 
 void Simulator::VisitException(Instruction* instr) {
@@ -3600,7 +4178,8 @@ void Simulator::VisitException(Instruction* instr) {
         // Always print something when we hit a debug point that breaks.
         // We are going to break, so printing something is not an issue in
         // terms of speed.
-        if (FLAG_trace_sim_messages || FLAG_trace_sim || (parameters & BREAK)) {
+        if (v8_flags.trace_sim_messages || v8_flags.trace_sim ||
+            (parameters & BREAK)) {
           if (message != nullptr) {
             PrintF(stream_, "# %sDebugger hit %d: %s%s%s\n", clr_debug_number,
                    code, clr_debug_message, message, clr_normal);
@@ -4849,6 +5428,7 @@ void Simulator::NEONLoadStoreSingleStructHelper(const Instruction* instr,
     case NEON_LD1R:
     case NEON_LD1R_post: {
       vf = vf_t;
+      if (!ProbeMemory(addr, LaneSizeInBytesFromFormat(vf))) return;
       ld1r(vf, vreg(rt), addr);
       do_load = true;
       break;
@@ -4857,6 +5437,7 @@ void Simulator::NEONLoadStoreSingleStructHelper(const Instruction* instr,
     case NEON_LD2R:
     case NEON_LD2R_post: {
       vf = vf_t;
+      if (!ProbeMemory(addr, 2 * LaneSizeInBytesFromFormat(vf))) return;
       int rt2 = (rt + 1) % kNumberOfVRegisters;
       ld2r(vf, vreg(rt), vreg(rt2), addr);
       do_load = true;
@@ -4866,6 +5447,7 @@ void Simulator::NEONLoadStoreSingleStructHelper(const Instruction* instr,
     case NEON_LD3R:
     case NEON_LD3R_post: {
       vf = vf_t;
+      if (!ProbeMemory(addr, 3 * LaneSizeInBytesFromFormat(vf))) return;
       int rt2 = (rt + 1) % kNumberOfVRegisters;
       int rt3 = (rt2 + 1) % kNumberOfVRegisters;
       ld3r(vf, vreg(rt), vreg(rt2), vreg(rt3), addr);
@@ -4876,6 +5458,7 @@ void Simulator::NEONLoadStoreSingleStructHelper(const Instruction* instr,
     case NEON_LD4R:
     case NEON_LD4R_post: {
       vf = vf_t;
+      if (!ProbeMemory(addr, 4 * LaneSizeInBytesFromFormat(vf))) return;
       int rt2 = (rt + 1) % kNumberOfVRegisters;
       int rt3 = (rt2 + 1) % kNumberOfVRegisters;
       int rt4 = (rt3 + 1) % kNumberOfVRegisters;
@@ -4903,6 +5486,7 @@ void Simulator::NEONLoadStoreSingleStructHelper(const Instruction* instr,
   switch (instr->Mask(NEONLoadStoreSingleLenMask)) {
     case NEONLoadStoreSingle1:
       scale = 1;
+      if (!ProbeMemory(addr, scale * esize)) return;
       if (do_load) {
         ld1(vf, vreg(rt), lane, addr);
         LogVRead(addr, rt, print_format, lane);
@@ -4913,6 +5497,7 @@ void Simulator::NEONLoadStoreSingleStructHelper(const Instruction* instr,
       break;
     case NEONLoadStoreSingle2:
       scale = 2;
+      if (!ProbeMemory(addr, scale * esize)) return;
       if (do_load) {
         ld2(vf, vreg(rt), vreg(rt2), lane, addr);
         LogVRead(addr, rt, print_format, lane);
@@ -4925,6 +5510,7 @@ void Simulator::NEONLoadStoreSingleStructHelper(const Instruction* instr,
       break;
     case NEONLoadStoreSingle3:
       scale = 3;
+      if (!ProbeMemory(addr, scale * esize)) return;
       if (do_load) {
         ld3(vf, vreg(rt), vreg(rt2), vreg(rt3), lane, addr);
         LogVRead(addr, rt, print_format, lane);
@@ -4939,6 +5525,7 @@ void Simulator::NEONLoadStoreSingleStructHelper(const Instruction* instr,
       break;
     case NEONLoadStoreSingle4:
       scale = 4;
+      if (!ProbeMemory(addr, scale * esize)) return;
       if (do_load) {
         ld4(vf, vreg(rt), vreg(rt2), vreg(rt3), vreg(rt4), lane, addr);
         LogVRead(addr, rt, print_format, lane);
@@ -5033,10 +5620,10 @@ void Simulator::VisitNEONModifiedImmediate(Instruction* instr) {
       } else {  // cmode_0 == 1, cmode == 0xF.
         if (op_bit == 0) {
           vform = q ? kFormat4S : kFormat2S;
-          imm = bit_cast<uint32_t>(instr->ImmNEONFP32());
+          imm = base::bit_cast<uint32_t>(instr->ImmNEONFP32());
         } else if (q == 1) {
           vform = kFormat2D;
-          imm = bit_cast<uint64_t>(instr->ImmNEONFP64());
+          imm = base::bit_cast<uint64_t>(instr->ImmNEONFP64());
         } else {
           DCHECK((q == 0) && (op_bit == 1) && (cmode == 0xF));
           VisitUnallocated(instr);
@@ -5140,7 +5727,6 @@ void Simulator::VisitNEONScalar2RegMisc(Instruction* instr) {
         break;
       default:
         UNIMPLEMENTED();
-        break;
     }
   } else {
     VectorFormat fpf = nfd.GetVectorFormat(nfd.FPScalarFormatMap());
@@ -5811,7 +6397,7 @@ void Simulator::DoPrintf(Instruction* instr) {
   // Read the arguments encoded inline in the instruction stream.
   uint32_t arg_count;
   uint32_t arg_pattern_list;
-  STATIC_ASSERT(sizeof(*instr) == 1);
+  static_assert(sizeof(*instr) == 1);
   memcpy(&arg_count, instr + kPrintfArgCountOffset, sizeof(arg_count));
   memcpy(&arg_pattern_list, instr + kPrintfArgPatternListOffset,
          sizeof(arg_pattern_list));
@@ -6124,5 +6710,29 @@ void Simulator::GlobalMonitor::RemoveProcessor(Processor* processor) {
 
 }  // namespace internal
 }  // namespace v8
+
+//
+// The following functions are used by our gdb macros.
+//
+V8_EXPORT_PRIVATE extern bool _v8_internal_Simulator_ExecDebugCommand(
+    const char* command) {
+  i::Isolate* isolate = i::Isolate::Current();
+  if (!isolate) {
+    fprintf(stderr, "No V8 Isolate found\n");
+    return false;
+  }
+  i::Simulator* simulator = i::Simulator::current(isolate);
+  if (!simulator) {
+    fprintf(stderr, "No Arm64 simulator found\n");
+    return false;
+  }
+  // Copy the command so that the simulator can take ownership of it.
+  size_t len = strlen(command);
+  i::ArrayUniquePtr<char> command_copy(i::NewArray<char>(len + 1));
+  i::MemCopy(command_copy.get(), command, len + 1);
+  return simulator->ExecDebugCommand(std::move(command_copy));
+}
+
+#undef BRACKETS
 
 #endif  // USE_SIMULATOR

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,14 +9,13 @@
 #include <memory>
 #include <vector>
 
-#include "base/files/file.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/files/scoped_file.h"
+#include "base/memory/scoped_refptr.h"
 #include "ui/gfx/native_widget_types.h"
 
 namespace base {
 class FilePath;
-}
+}  // namespace base
 
 namespace ui {
 
@@ -29,11 +28,16 @@ typedef std::vector<scoped_refptr<DrmDevice>> DrmDeviceVector;
 // buffers for the window represented by the widget.
 class DrmDeviceManager {
  public:
-  DrmDeviceManager(std::unique_ptr<DrmDeviceGenerator> drm_device_generator);
+  explicit DrmDeviceManager(
+      std::unique_ptr<DrmDeviceGenerator> drm_device_generator);
+
+  DrmDeviceManager(const DrmDeviceManager&) = delete;
+  DrmDeviceManager& operator=(const DrmDeviceManager&) = delete;
+
   ~DrmDeviceManager();
 
   // The first device registered is assumed to be the primary device.
-  bool AddDrmDevice(const base::FilePath& path, base::File file);
+  bool AddDrmDevice(const base::FilePath& path, base::ScopedFD fd);
   void RemoveDrmDevice(const base::FilePath& path);
 
   // Updates the device associated with |widget|.
@@ -63,8 +67,6 @@ class DrmDeviceManager {
   // 2) in order to allocate buffers for unmatched surfaces (surfaces without a
   // display; ie: when in headless mode).
   scoped_refptr<DrmDevice> primary_device_;
-
-  DISALLOW_COPY_AND_ASSIGN(DrmDeviceManager);
 };
 
 }  // namespace ui

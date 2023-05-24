@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -28,7 +28,8 @@ source_set("lib") {
     "//device/base",
     "//device/vr:vr",
     "//device/vr:vr_base",
-    "//device/vr/public/mojom",
+    "//device/vr/public/mojom:isolated_xr_service",
     "//device/vr/public/mojom:test_mojom",
+    "//services/viz/public/cpp/gpu",
   ]
 }

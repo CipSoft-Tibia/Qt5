@@ -30,10 +30,9 @@
 #include "pixfmt.h"
 #include "imgutils.h"
 
-#define CUDA_FRAME_ALIGNMENT 256
-
 typedef struct CUDAFramesContext {
     int shift_width, shift_height;
+    int tex_alignment;
 } CUDAFramesContext;
 
 static const enum AVPixelFormat supported_formats[] = {
@@ -94,7 +93,7 @@ static void cuda_buffer_free(void *opaque, uint8_t *data)
     CHECK_CU(cu->cuCtxPopCurrent(&dummy));
 }
 
-static AVBufferRef *cuda_pool_alloc(void *opaque, int size)
+static AVBufferRef *cuda_pool_alloc(void *opaque, size_t size)
 {
     AVHWFramesContext        *ctx = opaque;
     AVHWDeviceContext *device_ctx = ctx->device_ctx;
@@ -127,8 +126,11 @@ fail:
 
 static int cuda_frames_init(AVHWFramesContext *ctx)
 {
-    CUDAFramesContext *priv = ctx->internal->priv;
-    int i;
+    AVHWDeviceContext *device_ctx = ctx->device_ctx;
+    AVCUDADeviceContext    *hwctx = device_ctx->hwctx;
+    CUDAFramesContext       *priv = ctx->internal->priv;
+    CudaFunctions             *cu = hwctx->internal->cuda_dl;
+    int err, i;
 
     for (i = 0; i < FF_ARRAY_ELEMS(supported_formats); i++) {
         if (ctx->sw_format == supported_formats[i])
@@ -140,10 +142,24 @@ static int cuda_frames_init(AVHWFramesContext *ctx)
         return AVERROR(ENOSYS);
     }
 
+    err = CHECK_CU(cu->cuDeviceGetAttribute(&priv->tex_alignment,
+                                            14 /* CU_DEVICE_ATTRIBUTE_TEXTURE_ALIGNMENT */,
+                                            hwctx->internal->cuda_device));
+    if (err < 0)
+        return err;
+
+    av_log(ctx, AV_LOG_DEBUG, "CUDA texture alignment: %d\n", priv->tex_alignment);
+
+    // YUV420P is a special case.
+    // Since nvenc expects the U/V planes to have half the linesize of the Y plane
+    // alignment has to be doubled to ensure the U/V planes still end up aligned.
+    if (ctx->sw_format == AV_PIX_FMT_YUV420P)
+        priv->tex_alignment *= 2;
+
     av_pix_fmt_get_chroma_sub_sample(ctx->sw_format, &priv->shift_width, &priv->shift_height);
 
     if (!ctx->pool) {
-        int size = av_image_get_buffer_size(ctx->sw_format, ctx->width, ctx->height, CUDA_FRAME_ALIGNMENT);
+        int size = av_image_get_buffer_size(ctx->sw_format, ctx->width, ctx->height, priv->tex_alignment);
         if (size < 0)
             return size;
 
@@ -157,6 +173,7 @@ static int cuda_frames_init(AVHWFramesContext *ctx)
 
 static int cuda_get_buffer(AVHWFramesContext *ctx, AVFrame *frame)
 {
+    CUDAFramesContext *priv = ctx->internal->priv;
     int res;
 
     frame->buf[0] = av_buffer_pool_get(ctx->pool);
@@ -164,7 +181,7 @@ static int cuda_get_buffer(AVHWFramesContext *ctx, AVFrame *frame)
         return AVERROR(ENOMEM);
 
     res = av_image_fill_arrays(frame->data, frame->linesize, frame->buf[0]->data,
-                               ctx->sw_format, ctx->width, ctx->height, CUDA_FRAME_ALIGNMENT);
+                               ctx->sw_format, ctx->width, ctx->height, priv->tex_alignment);
     if (res < 0)
         return res;
 
@@ -173,7 +190,7 @@ static int cuda_get_buffer(AVHWFramesContext *ctx, AVFrame *frame)
     if (ctx->sw_format == AV_PIX_FMT_YUV420P) {
         frame->linesize[1] = frame->linesize[2] = frame->linesize[0] / 2;
         frame->data[2]     = frame->data[1];
-        frame->data[1]     = frame->data[2] + frame->linesize[2] * ctx->height / 2;
+        frame->data[1]     = frame->data[2] + frame->linesize[2] * (ctx->height / 2);
     }
 
     frame->format = AV_PIX_FMT_CUDA;
@@ -359,6 +376,22 @@ static int cuda_context_init(AVHWDeviceContext *device_ctx, int flags) {
     return 0;
 }
 
+static int cuda_flags_from_opts(AVHWDeviceContext *device_ctx,
+                                AVDictionary *opts, int *flags)
+{
+    AVDictionaryEntry *primary_ctx_opt = av_dict_get(opts, "primary_ctx", NULL, 0);
+
+    if (primary_ctx_opt && strtol(primary_ctx_opt->value, NULL, 10)) {
+        av_log(device_ctx, AV_LOG_VERBOSE, "Using CUDA primary device context\n");
+        *flags |= AV_CUDA_USE_PRIMARY_CONTEXT;
+    } else if (primary_ctx_opt) {
+        av_log(device_ctx, AV_LOG_VERBOSE, "Disabling use of CUDA primary device context\n");
+        *flags &= ~AV_CUDA_USE_PRIMARY_CONTEXT;
+    }
+
+    return 0;
+}
+
 static int cuda_device_create(AVHWDeviceContext *device_ctx,
                               const char *device,
                               AVDictionary *opts, int flags)
@@ -367,10 +400,15 @@ static int cuda_device_create(AVHWDeviceContext *device_ctx,
     CudaFunctions *cu;
     int ret, device_idx = 0;
 
+    ret = cuda_flags_from_opts(device_ctx, opts, &flags);
+    if (ret < 0)
+        goto error;
+
     if (device)
         device_idx = strtol(device, NULL, 0);
 
-    if (cuda_device_init(device_ctx) < 0)
+    ret = cuda_device_init(device_ctx);
+    if (ret < 0)
         goto error;
 
     cu = hwctx->internal->cuda_dl;
@@ -391,7 +429,7 @@ static int cuda_device_create(AVHWDeviceContext *device_ctx,
 
 error:
     cuda_device_uninit(device_ctx);
-    return AVERROR_UNKNOWN;
+    return ret;
 }
 
 static int cuda_device_derive(AVHWDeviceContext *device_ctx,
@@ -400,38 +438,51 @@ static int cuda_device_derive(AVHWDeviceContext *device_ctx,
     AVCUDADeviceContext *hwctx = device_ctx->hwctx;
     CudaFunctions *cu;
     const char *src_uuid = NULL;
+#if CONFIG_VULKAN
+    VkPhysicalDeviceIDProperties vk_idp;
+#endif
     int ret, i, device_count;
 
+    ret = cuda_flags_from_opts(device_ctx, opts, &flags);
+    if (ret < 0)
+        goto error;
+
 #if CONFIG_VULKAN
-    VkPhysicalDeviceIDProperties vk_idp = {
+    vk_idp = (VkPhysicalDeviceIDProperties) {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES,
     };
 #endif
 
     switch (src_ctx->type) {
 #if CONFIG_VULKAN
+#define TYPE PFN_vkGetPhysicalDeviceProperties2
     case AV_HWDEVICE_TYPE_VULKAN: {
         AVVulkanDeviceContext *vkctx = src_ctx->hwctx;
+        TYPE prop_fn = (TYPE)vkctx->get_proc_addr(vkctx->inst, "vkGetPhysicalDeviceProperties2");
         VkPhysicalDeviceProperties2 vk_dev_props = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
             .pNext = &vk_idp,
         };
-        vkGetPhysicalDeviceProperties2(vkctx->phys_dev, &vk_dev_props);
+        prop_fn(vkctx->phys_dev, &vk_dev_props);
         src_uuid = vk_idp.deviceUUID;
         break;
     }
+#undef TYPE
 #endif
     default:
-        return AVERROR(ENOSYS);
+        ret = AVERROR(ENOSYS);
+        goto error;
     }
 
     if (!src_uuid) {
         av_log(device_ctx, AV_LOG_ERROR,
                "Failed to get UUID of source device.\n");
+        ret = AVERROR(EINVAL);
         goto error;
     }
 
-    if (cuda_device_init(device_ctx) < 0)
+    ret = cuda_device_init(device_ctx);
+    if (ret < 0)
         goto error;
 
     cu = hwctx->internal->cuda_dl;
@@ -476,7 +527,7 @@ static int cuda_device_derive(AVHWDeviceContext *device_ctx,
 
 error:
     cuda_device_uninit(device_ctx);
-    return AVERROR_UNKNOWN;
+    return ret;
 }
 
 const HWContextType ff_hwcontext_type_cuda = {

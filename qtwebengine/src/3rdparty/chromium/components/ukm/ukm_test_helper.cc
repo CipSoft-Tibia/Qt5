@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,13 @@
 #include <algorithm>
 #include <string>
 
+#include "base/containers/contains.h"
 #include "base/feature_list.h"
 #include "base/run_loop.h"
-#include "base/stl_util.h"
 #include "components/metrics/log_decoder.h"
+#include "components/metrics/metrics_logs_event_manager.h"
 #include "components/metrics/unsent_log_store.h"
+#include "ukm_test_helper.h"
 
 namespace ukm {
 
@@ -19,16 +21,16 @@ UkmTestHelper::UkmTestHelper(UkmService* ukm_service)
     : ukm_service_(ukm_service) {}
 
 bool UkmTestHelper::IsExtensionRecordingEnabled() const {
-  return ukm_service_ ? ukm_service_->extensions_enabled_ : false;
+  return ukm_service_ ? ukm_service_->recording_enabled(EXTENSIONS) : false;
 }
 
 bool UkmTestHelper::IsRecordingEnabled() const {
-  return ukm_service_ ? ukm_service_->recording_enabled_ : false;
+  return ukm_service_ ? ukm_service_->recording_enabled() : false;
 }
 
 bool UkmTestHelper::IsReportUserNoisedUserBirthYearAndGenderEnabled() {
   return base::FeatureList::IsEnabled(
-      ukm::UkmService::kReportUserNoisedUserBirthYearAndGender);
+      ukm::kReportUserNoisedUserBirthYearAndGender);
 }
 
 uint64_t UkmTestHelper::GetClientId() {
@@ -88,12 +90,17 @@ void UkmTestHelper::BuildAndStoreLog() {
       run_loop.QuitClosure());
   run_loop.Run();
 
-  ukm_service_->Flush();
+  ukm_service_->Flush(metrics::MetricsLogsEventManager::CreateReason::kUnknown);
 }
 
 bool UkmTestHelper::HasUnsentLogs() {
   return ukm_service_ &&
          ukm_service_->reporting_service_.ukm_log_store()->has_unsent_logs();
+}
+
+void UkmTestHelper::SetMsbbConsent() {
+  DCHECK(ukm_service_);
+  ukm_service_->UpdateRecording(ukm::MSBB);
 }
 
 }  // namespace ukm

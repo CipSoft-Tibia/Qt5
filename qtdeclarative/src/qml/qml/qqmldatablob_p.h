@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLDATABLOB_P_H
 #define QQMLDATABLOB_P_H
@@ -59,8 +23,10 @@
 #include <QtNetwork/qnetworkreply.h>
 #endif
 
+#include <QtQml/qqmlprivate.h>
 #include <QtQml/qqmlerror.h>
 #include <QtQml/qqmlabstracturlinterceptor.h>
+#include <QtQml/qqmlprivate.h>
 
 #include <QtCore/qdatetime.h>
 #include <QtCore/qfileinfo.h>
@@ -69,9 +35,11 @@
 QT_BEGIN_NAMESPACE
 
 class QQmlTypeLoader;
-class Q_QML_PRIVATE_EXPORT QQmlDataBlob : public QQmlRefCount
+class Q_QML_PRIVATE_EXPORT QQmlDataBlob : public QQmlRefCounted<QQmlDataBlob>
 {
 public:
+    using Ptr = QQmlRefPointer<QQmlDataBlob>;
+
     enum Status {
         Null,                    // Prior to QQmlTypeLoader::load()
         Loading,                 // Prior to data being received and dataReceived() being called
@@ -119,6 +87,11 @@ public:
         QDateTime sourceTimeStamp() const;
         bool exists() const;
         bool isEmpty() const;
+        bool isValid() const
+        {
+            return hasInlineSourceCode || !fileInfo.filePath().isEmpty();
+        }
+
     private:
         friend class QQmlDataBlob;
         friend class QQmlTypeLoader;
@@ -132,13 +105,12 @@ protected:
     void setError(const QQmlError &);
     void setError(const QList<QQmlError> &errors);
     void setError(const QQmlJS::DiagnosticMessage &error);
-    void setError(const QVector<QQmlError> &errors);
     void setError(const QString &description);
     void addDependency(QQmlDataBlob *);
 
     // Callbacks made in load thread
     virtual void dataReceived(const SourceCodeData &) = 0;
-    virtual void initializeFromCachedUnit(const QV4::CompiledData::Unit*) = 0;
+    virtual void initializeFromCachedUnit(const QQmlPrivate::CachedQmlUnit *) = 0;
     virtual void done();
 #if QT_CONFIG(qml_network)
     virtual void networkError(QNetworkReply::NetworkError);
@@ -209,13 +181,14 @@ private:
             }
         }
 
-        inline quint8 progress() const
+        inline qreal progress() const
         {
-            return quint8((_p.loadRelaxed() & ProgressMask) >> ProgressShift);
+            return quint8((_p.loadRelaxed() & ProgressMask) >> ProgressShift) / float(0xFF);
         }
 
-        inline void setProgress(quint8 v)
+        inline void setProgress(qreal progress)
         {
+            quint8 v = 0xFF * progress;
             while (true) {
                 int d = _p.loadRelaxed();
                 int nd = (d & ~ProgressMask) | ((v << ProgressShift) & ProgressMask);

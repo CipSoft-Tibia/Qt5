@@ -2,6 +2,13 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="fr_FR">
 <context>
+    <name>%1: key is empty</name>
+    <message>
+        <source>QSystemSemaphore</source>
+        <translation>%1&#xa0;: la clé est vide</translation>
+    </message>
+</context>
+<context>
     <name>CloseButton</name>
     <message>
         <source>Close Tab</source>
@@ -28,7 +35,7 @@
     </message>
     <message>
         <source>Preferences...</source>
-        <translation>Préférences...</translation>
+        <translation>Préférences…</translation>
     </message>
     <message>
         <source>Quit %1</source>
@@ -40,6 +47,20 @@
     </message>
 </context>
 <context>
+    <name>Print Device Input Slot</name>
+    <message>
+        <source>Automatic</source>
+        <translation>Automatique</translation>
+    </message>
+</context>
+<context>
+    <name>Print Device Output Bin</name>
+    <message>
+        <source>Automatic</source>
+        <translation>Automatique</translation>
+    </message>
+</context>
+<context>
     <name>QAbstractSocket</name>
     <message>
         <source>Socket operation timed out</source>
@@ -47,7 +68,7 @@
     </message>
     <message>
         <source>Operation on socket is not supported</source>
-        <translation>L&apos;opération sur la socket n&apos;est pas supportée</translation>
+        <translation>L&apos;opération sur le socket n&apos;est pas supportée</translation>
     </message>
     <message>
         <source>Host not found</source>
@@ -284,35 +305,35 @@
     <name>QColorDialog</name>
     <message>
         <source>Hu&amp;e:</source>
-        <translation>&amp;Teinte :</translation>
+        <translation>&amp;Teinte&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Sat:</source>
-        <translation>&amp;Sat :</translation>
+        <translation>&amp;Sat&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Val:</source>
-        <translation>&amp;Val :</translation>
+        <translation>&amp;Val&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Red:</source>
-        <translation>&amp;Rouge :</translation>
+        <translation>&amp;Rouge&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Green:</source>
-        <translation>&amp;Vert :</translation>
+        <translation>&amp;Vert&#xa0;:</translation>
     </message>
     <message>
         <source>Bl&amp;ue:</source>
-        <translation>Ble&amp;u :</translation>
+        <translation>Ble&amp;u&#xa0;:</translation>
     </message>
     <message>
         <source>A&amp;lpha channel:</source>
-        <translation>Canal a&amp;lpha :</translation>
+        <translation>Canal a&amp;lpha&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;HTML:</source>
-        <translation>&amp;HTML :</translation>
+        <translation>&amp;HTML&#xa0;:</translation>
     </message>
     <message>
         <source>Cursor at %1, %2
@@ -364,7 +385,15 @@ Appuyer sur Échap pour annuler</translation>
     </message>
     <message>
         <source>Displays this help.</source>
-        <translation>Afficher cette aide.</translation>
+        <translation type="vanished">Afficher cette aide.</translation>
+    </message>
+    <message>
+        <source>Displays help on commandline options.</source>
+        <translation>Afficher l&apos;aide des options de la ligne de commande.</translation>
+    </message>
+    <message>
+        <source>Displays help including Qt specific options.</source>
+        <translation>Afficher l&apos;aide en incluant les options spécifiques à Qt.</translation>
     </message>
     <message>
         <source>Unknown option &apos;%1&apos;.</source>
@@ -372,7 +401,7 @@ Appuyer sur Échap pour annuler</translation>
     </message>
     <message>
         <source>Unknown options: %1.</source>
-        <translation>Options inconnues : %1.</translation>
+        <translation>Options inconnues&#xa0;: %1.</translation>
     </message>
     <message>
         <source>Missing value after &apos;%1&apos;.</source>
@@ -388,15 +417,15 @@ Appuyer sur Échap pour annuler</translation>
     </message>
     <message>
         <source>Usage: %1</source>
-        <translation>Utilisation : %1</translation>
+        <translation>Utilisation&#xa0;: %1</translation>
     </message>
     <message>
         <source>Options:</source>
-        <translation>Options :</translation>
+        <translation>Options&#xa0;:</translation>
     </message>
     <message>
         <source>Arguments:</source>
-        <translation>Arguments :</translation>
+        <translation>Arguments&#xa0;:</translation>
     </message>
 </context>
 <context>
@@ -404,17 +433,17 @@ Appuyer sur Échap pour annuler</translation>
     <message>
         <source>%1: key is empty</source>
         <comment>QSystemSemaphore</comment>
-        <translation>%1 : la clé est vide</translation>
+        <translation>%1&#xa0;: la clé est vide</translation>
     </message>
     <message>
         <source>%1: unable to make key</source>
         <comment>QSystemSemaphore</comment>
-        <translation>%1 : impossible de créer la clé</translation>
+        <translation>%1&#xa0;: impossible de créer la clé</translation>
     </message>
     <message>
         <source>%1: ftok failed</source>
         <comment>QSystemSemaphore</comment>
-        <translation>%1 : ftok a échoué</translation>
+        <translation>%1&#xa0;: ftok a échoué</translation>
     </message>
 </context>
 <context>
@@ -429,15 +458,15 @@ Appuyer sur Échap pour annuler</translation>
     </message>
     <message>
         <source>Scheduled printing:</source>
-        <translation>Impressions planifiées :</translation>
+        <translation>Impressions planifiées&#xa0;:</translation>
     </message>
     <message>
         <source>Billing information:</source>
-        <translation>Informations de facturation :</translation>
+        <translation>Informations de facturation&#xa0;:</translation>
     </message>
     <message>
         <source>Job priority:</source>
-        <translation>Priorité de la tâche :</translation>
+        <translation>Priorité de la tâche&#xa0;:</translation>
     </message>
     <message>
         <source>Banner Pages</source>
@@ -446,12 +475,12 @@ Appuyer sur Échap pour annuler</translation>
     <message>
         <source>End:</source>
         <comment>Banner page at end</comment>
-        <translation>Finales :</translation>
+        <translation>Finales&#xa0;:</translation>
     </message>
     <message>
         <source>Start:</source>
         <comment>Banner page at start</comment>
-        <translation>Premières :</translation>
+        <translation>Premières&#xa0;:</translation>
     </message>
     <message>
         <source>Print Immediately</source>
@@ -519,6 +548,29 @@ Appuyer sur Échap pour annuler</translation>
         <source>Top Secret</source>
         <comment>CUPS Banner page</comment>
         <translation>Top secret</translation>
+    </message>
+</context>
+<context>
+    <name>QCupsPrinterSupport</name>
+    <message>
+        <source>Authentication Needed</source>
+        <translation>Authentification nécessaire</translation>
+    </message>
+    <message>
+        <source>Authentication needed to use %1.</source>
+        <translation>Authentification nécessaire pour utiliser %1.</translation>
+    </message>
+    <message>
+        <source>Authentication needed to use %1 on %2.</source>
+        <translation>Authentification nécessaire pour utiliser %1 sur %2.</translation>
+    </message>
+    <message>
+        <source>Username:</source>
+        <translation>Nom d&apos;utilisateur&#xa0;:</translation>
+    </message>
+    <message>
+        <source>Password:</source>
+        <translation>Mot de passe&#xa0;:</translation>
     </message>
 </context>
 <context>
@@ -597,7 +649,7 @@ Appuyer sur Échap pour annuler</translation>
     <name>QDialog</name>
     <message>
         <source>What&apos;s This?</source>
-        <translation>Qu&apos;est-ce que c&apos;est ?</translation>
+        <translation>Qu&apos;est-ce que c&apos;est&#xa0;?</translation>
     </message>
 </context>
 <context>
@@ -642,6 +694,10 @@ Appuyer sur Échap pour annuler</translation>
 <context>
     <name>QDnsLookupRunnable</name>
     <message>
+        <source>IPv6 addresses for nameservers are currently not supported</source>
+        <translation>Les adresses IPv6 pour les serveurs de noms ne sont pas encore supportées</translation>
+    </message>
+    <message>
         <source>Invalid domain name</source>
         <translation>Nom de domaine invalide</translation>
     </message>
@@ -659,7 +715,7 @@ Appuyer sur Échap pour annuler</translation>
     </message>
     <message>
         <source>IPv6 addresses for nameservers is currently not supported</source>
-        <translation>Les adresses IPv6 pour les serveurs de noms ne sont pas encore supportées</translation>
+        <translation type="vanished">Les adresses IPv6 pour les serveurs de noms ne sont pas encore supportées</translation>
     </message>
     <message>
         <source>Server could not process query</source>
@@ -719,7 +775,7 @@ Appuyer sur Échap pour annuler</translation>
     </message>
     <message>
         <source>Resolver library can&apos;t be loaded: No runtime library loading support</source>
-        <translation>La bibliothèque du résolveur ne peut pas être chargée : le chargement de bibliothèque à l&apos;exécution n&apos;est pas supporté</translation>
+        <translation>La bibliothèque du résolveur ne peut pas être chargée&#xa0;: le chargement de bibliothèque à l&apos;exécution n&apos;est pas supporté</translation>
     </message>
     <message>
         <source>No hostname given</source>
@@ -728,6 +784,14 @@ Appuyer sur Échap pour annuler</translation>
     <message>
         <source>Invalid hostname</source>
         <translation>Nom d&apos;hôte invalide</translation>
+    </message>
+    <message>
+        <source>Host %1 could not be found.</source>
+        <translation>Impossible de trouver l&apos;hôte %1.</translation>
+    </message>
+    <message>
+        <source>Unknown error</source>
+        <translation>Erreur inconnue</translation>
     </message>
 </context>
 <context>
@@ -752,18 +816,216 @@ Appuyer sur Échap pour annuler</translation>
     </message>
 </context>
 <context>
+    <name>QDomParser</name>
+    <message>
+        <source>Error occurred while processing XML declaration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Multiple DTD sections are not allowed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error occurred while processing document type declaration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error occurred while processing comment</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error occurred while processing a processing instruction</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error occurred while processing a start element</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unexpected end element &apos;%1&apos;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error occurred while processing an end element</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error occurred while processing the element content</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error occurred while processing comments</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error occurred while processing an entity reference</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unexpected token</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tag mismatch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error occurred while processing entity declaration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error occurred while processing notation declaration</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>QDtls</name>
+    <message>
+        <source>Invalid (empty) secret</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Multicast and broadcast addresses are not supported</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot set peer after handshake started</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot set verification name after handshake started</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot set configuration after handshake started</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot start/continue handshake, invalid handshake state</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid (nullptr) socket</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>To start a handshake you must set peer&apos;s address and port first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>To start a handshake, DTLS server requires non-empty datagram (client hello)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot start handshake, already done/in progress</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A valid QUdpSocket and non-empty datagram are needed to continue the handshake</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot continue handshake, not in InProgress state</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot resume, not in VerificationError state</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No handshake in progress, nothing to abort</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot send shutdown alert, not encrypted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot write a datagram, not in encrypted state</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot read a datagram, not in encrypted state</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 failed</source>
+        <extracomment>%1: Some function</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid SslMode, SslServerMode or SslClientMode expected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid protocol version, DTLS protocol expected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BIO_ADD_new failed, cannot start handshake</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot start the handshake, verified client hello expected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Peer verification failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The DTLS connection has been closed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error while writing: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The DTLS connection has been shutdown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error while reading: %1</source>
+        <translation type="unfinished">Erreur lors de la lecture&#xa0;: %1</translation>
+    </message>
+</context>
+<context>
+    <name>QDtlsClientVerifier</name>
+    <message>
+        <source>A valid UDP socket, non-empty datagram, valid address/port were expected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BIO_ADDR_new failed, ignoring client hello</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>QErrorMessage</name>
     <message>
         <source>Debug Message:</source>
-        <translation>Message de débogage :</translation>
+        <translation>Message de débogage&#xa0;:</translation>
     </message>
     <message>
         <source>Warning:</source>
-        <translation>Avertissement :</translation>
+        <translation>Avertissement&#xa0;:</translation>
+    </message>
+    <message>
+        <source>Critical Error:</source>
+        <translation>Erreur critique&#xa0;:</translation>
     </message>
     <message>
         <source>Fatal Error:</source>
-        <translation>Erreur fatale :</translation>
+        <translation>Erreur fatale&#xa0;:</translation>
+    </message>
+    <message>
+        <source>Information:</source>
+        <translation>Information&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Show this message again</source>
@@ -790,11 +1052,15 @@ Appuyer sur Échap pour annuler</translation>
     </message>
     <message>
         <source>Error while renaming.</source>
-        <translation>Erreur lors du renommage.</translation>
+        <translation type="vanished">Erreur lors du renommage.</translation>
+    </message>
+    <message>
+        <source>Error while renaming: %1</source>
+        <translation>Erreur lors du renommage de %1</translation>
     </message>
     <message>
         <source>Unable to restore from %1: %2</source>
-        <translation>Impossible de restaurer à partir de %1 : %2</translation>
+        <translation>Impossible de restaurer à partir de %1&#xa0;: %2</translation>
     </message>
     <message>
         <source>Will not rename sequential file using block copy</source>
@@ -805,12 +1071,20 @@ Appuyer sur Échap pour annuler</translation>
         <translation>Impossible de supprimer le fichier source</translation>
     </message>
     <message>
+        <source>Cannot open destination file: %1</source>
+        <translation>Impossible d&apos;ouvrir le fichier de destination&#xa0;: %1</translation>
+    </message>
+    <message>
         <source>Cannot open %1 for input</source>
         <translation>Impossible d&apos;ouvrir %1 en lecture</translation>
     </message>
     <message>
+        <source>Cannot open for output: %1</source>
+        <translation>Impossible d&apos;ouvrir en écriture&#xa0;: %1</translation>
+    </message>
+    <message>
         <source>Cannot open for output</source>
-        <translation>Impossible d&apos;ouvrir en écriture</translation>
+        <translation type="vanished">Impossible d&apos;ouvrir en écriture</translation>
     </message>
     <message>
         <source>Failure to write block</source>
@@ -827,12 +1101,16 @@ Appuyer sur Échap pour annuler</translation>
         <source>No file engine available or engine does not support UnMapExtension</source>
         <translation>Aucun moteur de fichier disponible ou celui-ci ne supporte pas UnMapExtension</translation>
     </message>
+    <message>
+        <source>No file engine available</source>
+        <translation>Aucun moteur de fichier disponible</translation>
+    </message>
 </context>
 <context>
     <name>QFileDialog</name>
     <message>
         <source>Look in:</source>
-        <translation>Voir dans :</translation>
+        <translation>Voir dans&#xa0;:</translation>
     </message>
     <message>
         <source>Back</source>
@@ -908,7 +1186,7 @@ Appuyer sur Échap pour annuler</translation>
     </message>
     <message>
         <source>Files of type:</source>
-        <translation>Fichiers de type :</translation>
+        <translation>Fichiers de type&#xa0;:</translation>
     </message>
     <message>
         <source>Find Directory</source>
@@ -924,11 +1202,11 @@ Appuyer sur Échap pour annuler</translation>
     </message>
     <message>
         <source>Directory:</source>
-        <translation>Dossier :</translation>
+        <translation>Dossier&#xa0;:</translation>
     </message>
     <message>
         <source>File &amp;name:</source>
-        <translation>&amp;Nom de fichier :</translation>
+        <translation>&amp;Nom de fichier&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Open</source>
@@ -986,7 +1264,7 @@ Veuillez vérifier que le nom du dossier est correct.</translation>
         <source>%1 already exists.
 Do you want to replace it?</source>
         <translation>Le fichier %1 existe déjà
-Voulez-vous l&apos;écraser ?</translation>
+Voulez-vous l&apos;écraser&#xa0;?</translation>
     </message>
     <message>
         <source>%1
@@ -1008,11 +1286,11 @@ Veuillez vérifier que le nom du fichier est correct.</translation>
         <source>&apos;%1&apos; is write protected.
 Do you want to delete it anyway?</source>
         <translation>&quot;%1&quot; est protégé en écriture.
-Voulez-vous quand même le supprimer ?</translation>
+Voulez-vous quand même le supprimer&#xa0;?</translation>
     </message>
     <message>
         <source>Are you sure you want to delete &apos;%1&apos;?</source>
-        <translation>Êtes-vous sûr de vouloir supprimer &quot;%1&quot; ?</translation>
+        <translation>Êtes-vous sûr de vouloir supprimer &quot;%1&quot;&#xa0;?</translation>
     </message>
     <message>
         <source>Could not delete directory.</source>
@@ -1055,8 +1333,13 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>Alias</source>
-        <comment>Mac OS X Finder</comment>
+        <comment>OS X Finder</comment>
         <translation>Alias</translation>
+    </message>
+    <message>
+        <source>Alias</source>
+        <comment>Mac OS X Finder</comment>
+        <translation type="vanished">Alias</translation>
     </message>
     <message>
         <source>Shortcut</source>
@@ -1072,23 +1355,23 @@ Voulez-vous quand même le supprimer ?</translation>
     <name>QFileSystemModel</name>
     <message>
         <source>%1 TB</source>
-        <translation>%1 To</translation>
+        <translation type="vanished">%1 To</translation>
     </message>
     <message>
         <source>%1 GB</source>
-        <translation>%1 Go</translation>
+        <translation type="vanished">%1 Go</translation>
     </message>
     <message>
         <source>%1 MB</source>
-        <translation>%1 Mo</translation>
+        <translation type="vanished">%1 Mo</translation>
     </message>
     <message>
         <source>%1 KB</source>
-        <translation>%1 Ko</translation>
+        <translation type="vanished">%1 Ko</translation>
     </message>
     <message>
         <source>%1 bytes</source>
-        <translation>%1 octets</translation>
+        <translation type="vanished">%1 octets</translation>
     </message>
     <message>
         <source>Invalid filename</source>
@@ -1096,6 +1379,10 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>&lt;b&gt;The name &quot;%1&quot; can not be used.&lt;/b&gt;&lt;p&gt;Try using another name, with fewer characters or no punctuations marks.</source>
+        <translation type="vanished">&lt;b&gt;Le nom &quot;%1&quot; ne peut pas être utilisé.&lt;/b&gt;&lt;p&gt;Essayez un autre nom avec moins de caractères ou sans ponctuation.</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;The name &quot;%1&quot; cannot be used.&lt;/b&gt;&lt;p&gt;Try using another name, with fewer characters or no punctuation marks.</source>
         <translation>&lt;b&gt;Le nom &quot;%1&quot; ne peut pas être utilisé.&lt;/b&gt;&lt;p&gt;Essayez un autre nom avec moins de caractères ou sans ponctuation.</translation>
     </message>
     <message>
@@ -1130,7 +1417,7 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>%1 byte(s)</source>
-        <translation>%1 octet(s)</translation>
+        <translation type="vanished">%1 octet(s)</translation>
     </message>
 </context>
 <context>
@@ -1193,7 +1480,7 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>Normal</source>
-        <translation>Normal</translation>
+        <translation type="vanished">Normal</translation>
     </message>
     <message>
         <source>Any</source>
@@ -1404,55 +1691,55 @@ Voulez-vous quand même le supprimer ?</translation>
     <message>
         <source>Connecting to host failed:
 %1</source>
-        <translation>Échec de la connexion à l&apos;hôte :
+        <translation>Échec de la connexion à l&apos;hôte&#xa0;:
 %1</translation>
     </message>
     <message>
         <source>Login failed:
 %1</source>
-        <translation>Échec de l&apos;identification :
+        <translation>Échec de l&apos;identification&#xa0;:
 %1</translation>
     </message>
     <message>
         <source>Listing directory failed:
 %1</source>
-        <translation>Échec du listage du dossier :
+        <translation>Échec du listage du dossier&#xa0;:
 %1</translation>
     </message>
     <message>
         <source>Changing directory failed:
 %1</source>
-        <translation>Échec du changement de dossier :
+        <translation>Échec du changement de dossier&#xa0;:
 %1</translation>
     </message>
     <message>
         <source>Downloading file failed:
 %1</source>
-        <translation>Échec du téléchargement du fichier :
+        <translation>Échec du téléchargement du fichier&#xa0;:
 %1</translation>
     </message>
     <message>
         <source>Uploading file failed:
 %1</source>
-        <translation>Échec de l&apos;envoi du fichier :
+        <translation>Échec de l&apos;envoi du fichier&#xa0;:
 %1</translation>
     </message>
     <message>
         <source>Removing file failed:
 %1</source>
-        <translation>Échec de la suppression du fichier :
+        <translation>Échec de la suppression du fichier&#xa0;:
 %1</translation>
     </message>
     <message>
         <source>Creating directory failed:
 %1</source>
-        <translation>Échec de la création du dossier :
+        <translation>Échec de la création du dossier&#xa0;:
 %1</translation>
     </message>
     <message>
         <source>Removing directory failed:
 %1</source>
-        <translation>Échec de la suppression du dossier :
+        <translation>Échec de la suppression du dossier&#xa0;:
 %1</translation>
     </message>
     <message>
@@ -1490,6 +1777,74 @@ Voulez-vous quand même le supprimer ?</translation>
         <comment>Translate this string to the string &apos;LTR&apos; in left-to-right languages or to &apos;RTL&apos; in right-to-left languages (such as Hebrew and Arabic) to get proper widget layout.</comment>
         <translation>LTR</translation>
     </message>
+    <message>
+        <source>QPA plugin. See QGuiApplication documentation for available options for each plugin.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Path to the platform plugins.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Platform theme.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Additional plugins to load, can be specified multiple times.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Window geometry for the main window, using the X11-syntax, like 100x100+50+50.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default window icon.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Title of the first window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sets the application&apos;s layout direction to Qt::RightToLeft (debugging helper).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restores the application from an earlier session.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display name, overrides $DISPLAY.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Instance name according to ICCCM 4.1.2.5.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disable mouse grabbing (useful in debuggers).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Force mouse grabbing (even when running in a debugger).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ID of the X11 Visual to use.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Alias for --qwindowgeometry.</source>
+        <translation>Alias pour --qwindowgeometry.</translation>
+    </message>
+    <message>
+        <source>Alias for --qwindowicon.</source>
+        <translation>Alias pour --qwindowicon.</translation>
+    </message>
+    <message>
+        <source>Alias for --qwindowtitle.</source>
+        <translation>Alias pour --qwindowtitle.</translation>
+    </message>
 </context>
 <context>
     <name>QHostInfo</name>
@@ -1522,11 +1877,11 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>Unknown error</source>
-        <translation>Erreur inconnue</translation>
+        <translation type="vanished">Erreur inconnue</translation>
     </message>
     <message>
         <source>Unknown error (%1)</source>
-        <translation>Erreur inconnue (%1)</translation>
+        <translation type="vanished">Erreur inconnue (%1)</translation>
     </message>
 </context>
 <context>
@@ -1562,6 +1917,14 @@ Voulez-vous quand même le supprimer ?</translation>
     <message>
         <source>SSL handshake failed</source>
         <translation>Le handshake SSL a échoué</translation>
+    </message>
+    <message>
+        <source>Too many redirects</source>
+        <translation>Trop de redirections</translation>
+    </message>
+    <message>
+        <source>Insecure redirect</source>
+        <translation>Redirection non sécurisée</translation>
     </message>
 </context>
 <context>
@@ -1751,22 +2114,30 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>Device is not set</source>
-        <translation>La cible n&apos;est pas prête</translation>
+        <translation>Le périphérique n&apos;est pas prêt</translation>
+    </message>
+    <message>
+        <source>Cannot open device for writing: %1</source>
+        <translation>Impossible d&apos;ouvrir le périphérique en écriture&#xa0;: %1</translation>
     </message>
     <message>
         <source>Device not writable</source>
-        <translation>La cible n&apos;est pas accessible en écriture</translation>
+        <translation>Le périphérique n&apos;est pas accessible en écriture</translation>
     </message>
     <message>
         <source>Unsupported image format</source>
         <translation>Format d&apos;image non supporté</translation>
+    </message>
+    <message>
+        <source>Image is empty</source>
+        <translation>L&apos;image est vide</translation>
     </message>
 </context>
 <context>
     <name>QInputDialog</name>
     <message>
         <source>Enter a value:</source>
-        <translation>Entrer une valeur :</translation>
+        <translation>Entrer une valeur&#xa0;:</translation>
     </message>
 </context>
 <context>
@@ -1841,7 +2212,7 @@ Voulez-vous quand même le supprimer ?</translation>
     <message>
         <source>%1, ...</source>
         <extracomment>This text is an &quot;unfinished&quot; shortcut, expands like &quot;Ctrl+A, ...&quot;</extracomment>
-        <translation>%1, ...</translation>
+        <translation>%1, …</translation>
     </message>
 </context>
 <context>
@@ -1859,8 +2230,59 @@ Voulez-vous quand même le supprimer ?</translation>
         <translation>&quot;%1&quot; n&apos;est pas un objet ELF valide (%2)</translation>
     </message>
     <message>
+        <source>odd cpu architecture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>wrong cpu architecture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>odd endianness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unexpected e_shsize</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unexpected e_shentsize</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>announced %n section(s), each %1 byte(s), exceed file size</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>shstrtab section header seems to be at %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>string table seems to be at %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>section name %1 of %2 behind end of file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>empty .rodata. not a library.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>missing section data. This is not a library.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Plugin verification data mismatch in &apos;%1&apos;</source>
-        <translation>Les données de vérification du plugin sont différentes dans &quot;%1&quot;</translation>
+        <translation type="vanished">Les données de vérification du plugin sont différentes dans &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>Failed to extract plugin meta data from &apos;%1&apos;</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>The shared library was not found.</source>
@@ -1884,15 +2306,15 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>Cannot load library %1: %2</source>
-        <translation>Impossible de charger la bibliothèque %1 : %2</translation>
+        <translation>Impossible de charger la bibliothèque %1&#xa0;: %2</translation>
     </message>
     <message>
         <source>Cannot unload library %1: %2</source>
-        <translation>Impossible de libérer la bibliothèque %1 : %2</translation>
+        <translation>Impossible de libérer la bibliothèque %1&#xa0;: %2</translation>
     </message>
     <message>
         <source>Cannot resolve symbol &quot;%1&quot; in %2: %3</source>
-        <translation>Impossible de résoudre le symbole &quot;%1&quot; dans %2 : %3</translation>
+        <translation type="vanished">Impossible de résoudre le symbole &quot;%1&quot; dans %2&#xa0;: %3</translation>
     </message>
     <message>
         <source>&apos;%1&apos; is not a valid Mach-O binary (%2)</source>
@@ -1962,66 +2384,66 @@ Voulez-vous quand même le supprimer ?</translation>
     <name>QLocalServer</name>
     <message>
         <source>%1: Name error</source>
-        <translation>%1 : Erreur de nom</translation>
+        <translation>%1&#xa0;: Erreur de nom</translation>
     </message>
     <message>
         <source>%1: Permission denied</source>
-        <translation>%1 : Permission refusée</translation>
+        <translation>%1&#xa0;: Permission refusée</translation>
     </message>
     <message>
         <source>%1: Address in use</source>
-        <translation>%1 : Adresse déjà utilisée</translation>
+        <translation>%1&#xa0;: Adresse déjà utilisée</translation>
     </message>
     <message>
         <source>%1: Unknown error %2</source>
-        <translation>%1 : Erreur inconnue %2</translation>
+        <translation>%1&#xa0;: Erreur inconnue %2</translation>
     </message>
 </context>
 <context>
     <name>QLocalSocket</name>
     <message>
         <source>%1: Connection refused</source>
-        <translation>%1 : Connexion refusée</translation>
+        <translation>%1&#xa0;: Connexion refusée</translation>
     </message>
     <message>
         <source>%1: Remote closed</source>
-        <translation>%1 : Connexion fermée</translation>
+        <translation>%1&#xa0;: Connexion fermée</translation>
     </message>
     <message>
         <source>%1: Invalid name</source>
-        <translation>%1 : Nom invalide</translation>
+        <translation>%1&#xa0;: Nom invalide</translation>
     </message>
     <message>
         <source>%1: Socket access error</source>
-        <translation>%1 : Erreur d&apos;accès à la socket</translation>
+        <translation>%1&#xa0;: Erreur d&apos;accès au socket</translation>
     </message>
     <message>
         <source>%1: Socket resource error</source>
-        <translation>%1 : Erreur de ressource de la socket</translation>
+        <translation>%1&#xa0;: Erreur de ressource du socket</translation>
     </message>
     <message>
         <source>%1: Socket operation timed out</source>
-        <translation>%1 : L&apos;opération socket est expirée</translation>
+        <translation>%1&#xa0;: L&apos;opération socket est expirée</translation>
     </message>
     <message>
         <source>%1: Datagram too large</source>
-        <translation>%1 : Le datagramme est trop grand</translation>
+        <translation>%1&#xa0;: Le datagramme est trop grand</translation>
     </message>
     <message>
         <source>%1: Connection error</source>
-        <translation>%1 : Erreur de connexion</translation>
+        <translation>%1&#xa0;: Erreur de connexion</translation>
     </message>
     <message>
         <source>%1: The socket operation is not supported</source>
-        <translation>%1 : L&apos;opération n&apos;est pas supportée</translation>
+        <translation>%1&#xa0;: L&apos;opération n&apos;est pas supportée</translation>
     </message>
     <message>
         <source>%1: Operation not permitted when socket is in this state</source>
-        <translation>%1 : L&apos;opération n&apos;est pas permise lorsque la socket est dans cet état</translation>
+        <translation>%1&#xa0;: L&apos;opération n&apos;est pas permise lorsque le socket est dans cet état</translation>
     </message>
     <message>
         <source>%1: Unknown error</source>
-        <translation>%1 : L&apos;erreur est inconnue</translation>
+        <translation>%1&#xa0;: L&apos;erreur est inconnue</translation>
     </message>
     <message>
         <source>Trying to connect while connection is in progress</source>
@@ -2029,15 +2451,23 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>%1: Unknown error %2</source>
-        <translation>%1 : Erreur inconnue %2</translation>
+        <translation>%1&#xa0;: Erreur inconnue %2</translation>
     </message>
     <message>
         <source>%1: Access denied</source>
-        <translation>%1 : Autorisation refusée</translation>
+        <translation>%1&#xa0;: Autorisation refusée</translation>
+    </message>
+    <message>
+        <source>Socket is not connected</source>
+        <translation>Le socket n&apos;est pas connecté</translation>
     </message>
 </context>
 <context>
     <name>QMYSQLDriver</name>
+    <message>
+        <source>Unable to allocate a MYSQL object</source>
+        <translation>Impossible d&apos;allouer un objet MYSQL</translation>
+    </message>
     <message>
         <source>Unable to open database &apos;%1&apos;</source>
         <translation>Impossible d&apos;ouvrir la base de données &quot;%1&quot;</translation>
@@ -2192,19 +2622,24 @@ Voulez-vous quand même le supprimer ?</translation>
     <name>QMessageBox</name>
     <message>
         <source>Show Details...</source>
-        <translation>Montrer les détails...</translation>
+        <translation>Montrer les détails…</translation>
     </message>
     <message>
         <source>Hide Details...</source>
-        <translation>Masquer les détails...</translation>
+        <translation>Masquer les détails…</translation>
+    </message>
+    <message>
+        <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
+        <extracomment>Leave this text untranslated or include a verbatim copy of it below and note that it is the authoritative version in case of doubt.</extracomment>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>OK</source>
-        <translation>OK</translation>
+        <translation type="vanished">OK</translation>
     </message>
     <message>
         <source>Help</source>
-        <translation>Aide</translation>
+        <translation type="vanished">Aide</translation>
     </message>
     <message>
         <source>&lt;h3&gt;About Qt&lt;/h3&gt;&lt;p&gt;This program uses Qt version %1.&lt;/p&gt;</source>
@@ -2212,7 +2647,7 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under three different licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of the GNU LGPL version 3 or GNU LGPL version 2.1.&lt;/p&gt;&lt;p&gt;Qt licensed under the GNU LGPL version 3 is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the GNU LGPL version 3.&lt;/p&gt;&lt;p&gt;Qt licensed under the GNU LGPL version 2.1 is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the GNU LGPL version 2.1.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
-        <translation>&lt;p&gt;Qt est dédié au développement d&apos;applications C++ multiplateformes.&lt;/p&gt;&lt;p&gt;Qt offre un code source unique compatible avec les principaux systèmes d&apos;exploitation &quot;de bureau&quot; (Linux, Mac, Windows). Qt est également compatible avec des systèmes d&apos;exploitation embarqués de type Linux ou autres.&lt;/p&gt;&lt;p&gt;Qt est utilisable sous les termes de trois types de licence différents, afin de répondre aux besoins d&apos;un maximum d&apos;utilisateurs.&lt;/p&gt;&lt;p&gt;La licence commerciale de Qt est appropriée pour le développement de logiciels propriétaires/commerciaux pour lesquels vous ne souhaitez pas partager le code source avec des tierces parties ou pour lesquels les termes de la licence GNU LGPL version 3 ou GNU LGPL version 2.1 ne vous conviennent pas.&lt;/p&gt;&lt;p&gt;La licence GNU LGPL version 3 de Qt est appropriée pour le développement d&apos;applications Qt si vous acceptez les termes et conditions de la licence GNU LGPL version 3.&lt;/p&gt;&lt;p&gt;La licence GNU LGPL version 2.1 est appropriée pour le développement d&apos;applications Qt si vous acceptez les termes et conditions de la licence GNU LGPL version 2.1.&lt;/p&gt;&lt;p&gt;Veuillez consulter &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; pour le détail des différents types de licence Qt.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 &quot;The Qt Company Ltd&quot; et autres contributeurs.&lt;/p&gt;&lt;p&gt;Qt et le logo Qt sont des marques de &quot;The Qt Company Ltd&quot;.&lt;/p&gt;&lt;p&gt;Qt est le produit de &quot;The Qt Company Ltd&quot;, développé sous forme de projet open source. Veuillez trouver de plus amples information à &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt;.&lt;/p&gt;</translation>
+        <translation type="vanished">&lt;p&gt;Qt est dédié au développement d&apos;applications C++ multiplateformes.&lt;/p&gt;&lt;p&gt;Qt offre un code source unique compatible avec les principaux systèmes d&apos;exploitation &quot;de bureau&quot; (Linux, Mac, Windows). Qt est également compatible avec des systèmes d&apos;exploitation embarqués de type Linux ou autres.&lt;/p&gt;&lt;p&gt;Qt est utilisable sous les termes de trois types de licence différents, afin de répondre aux besoins d&apos;un maximum d&apos;utilisateurs.&lt;/p&gt;&lt;p&gt;La licence commerciale de Qt est appropriée pour le développement de logiciels propriétaires/commerciaux pour lesquels vous ne souhaitez pas partager le code source avec des tierces parties ou pour lesquels les termes de la licence GNU LGPL version 3 ou GNU LGPL version 2.1 ne vous conviennent pas.&lt;/p&gt;&lt;p&gt;La licence GNU LGPL version 3 de Qt est appropriée pour le développement d&apos;applications Qt si vous acceptez les termes et conditions de la licence GNU LGPL version 3.&lt;/p&gt;&lt;p&gt;La licence GNU LGPL version 2.1 est appropriée pour le développement d&apos;applications Qt si vous acceptez les termes et conditions de la licence GNU LGPL version 2.1.&lt;/p&gt;&lt;p&gt;Veuillez consulter &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; pour le détail des différents types de licence Qt.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 &quot;The Qt Company Ltd&quot; et autres contributeurs.&lt;/p&gt;&lt;p&gt;Qt et le logo Qt sont des marques de &quot;The Qt Company Ltd&quot;.&lt;/p&gt;&lt;p&gt;Qt est le produit de &quot;The Qt Company Ltd&quot;, développé sous forme de projet open source. Veuillez trouver de plus amples information à &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt;.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -2223,15 +2658,15 @@ Voulez-vous quand même le supprimer ?</translation>
     <name>QNativeSocketEngine</name>
     <message>
         <source>Unable to initialize non-blocking socket</source>
-        <translation>Impossible d&apos;initialiser la socket asynchrone</translation>
+        <translation>Impossible d&apos;initialiser le socket asynchrone</translation>
     </message>
     <message>
         <source>Unable to initialize broadcast socket</source>
-        <translation>Impossible d&apos;initialiser la socket en broadcast</translation>
+        <translation>Impossible d&apos;initialiser le socket en broadcast</translation>
     </message>
     <message>
         <source>Attempt to use IPv6 socket on a platform with no IPv6 support</source>
-        <translation>Tentative d&apos;utiliser une socket IPv6 sur une plateforme qui ne supporte pas IPv6</translation>
+        <translation>Tentative d&apos;utiliser un socket IPv6 sur une plateforme qui ne supporte pas IPv6</translation>
     </message>
     <message>
         <source>The remote host closed the connection</source>
@@ -2326,6 +2761,14 @@ Voulez-vous quand même le supprimer ?</translation>
         <translation>Erreur temporaire</translation>
     </message>
     <message>
+        <source>Network dropped connection on reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connection reset by peer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Unknown error</source>
         <translation>Erreur inconnue</translation>
     </message>
@@ -2341,18 +2784,18 @@ Voulez-vous quand même le supprimer ?</translation>
     <name>QNetworkAccessDataBackend</name>
     <message>
         <source>Invalid URI: %1</source>
-        <translation>URI invalide : %1</translation>
+        <translation>URI invalide&#xa0;: %1</translation>
     </message>
 </context>
 <context>
     <name>QNetworkAccessDebugPipeBackend</name>
     <message>
         <source>Write error writing to %1: %2</source>
-        <translation>Erreur lors de l&apos;écriture dans %1 : %2</translation>
+        <translation>Erreur lors de l&apos;écriture dans %1&#xa0;: %2</translation>
     </message>
     <message>
         <source>Socket error on %1: %2</source>
-        <translation>Erreur de socket sur %1 : %2</translation>
+        <translation>Erreur de socket sur %1&#xa0;: %2</translation>
     </message>
     <message>
         <source>Remote host closed the connection prematurely on %1</source>
@@ -2367,19 +2810,19 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>Error opening %1: %2</source>
-        <translation>Erreur lors de l&apos;ouverture de %1 : %2</translation>
+        <translation>Erreur lors de l&apos;ouverture de %1&#xa0;: %2</translation>
     </message>
     <message>
         <source>Write error writing to %1: %2</source>
-        <translation>Erreur d&apos;écriture de %1 : %2</translation>
+        <translation>Erreur d&apos;écriture de %1&#xa0;: %2</translation>
     </message>
     <message>
         <source>Cannot open %1: Path is a directory</source>
-        <translation>Impossible d&apos;ouvrir %1 : le chemin est un dossier</translation>
+        <translation>Impossible d&apos;ouvrir %1&#xa0;: le chemin est un dossier</translation>
     </message>
     <message>
         <source>Read error reading from %1: %2</source>
-        <translation>Erreur de lecture de %1 : %2</translation>
+        <translation>Erreur de lecture de %1&#xa0;: %2</translation>
     </message>
 </context>
 <context>
@@ -2390,33 +2833,33 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>Cannot open %1: is a directory</source>
-        <translation>Impossible d&apos;ouvrir %1 : le chemin est un dossier</translation>
+        <translation>Impossible d&apos;ouvrir %1&#xa0;: le chemin est un dossier</translation>
     </message>
     <message>
         <source>Logging in to %1 failed: authentication required</source>
-        <translation>La connexion à %1 a échoué : authentification requise</translation>
+        <translation>La connexion à %1 a échoué&#xa0;: authentification requise</translation>
     </message>
     <message>
         <source>Error while downloading %1: %2</source>
-        <translation>Erreur lors du téléchargement de %1 : %2</translation>
+        <translation>Erreur lors du téléchargement de %1&#xa0;: %2</translation>
     </message>
     <message>
         <source>Error while uploading %1: %2</source>
-        <translation>Erreur lors de l&apos;envoi de %1 : %2</translation>
+        <translation>Erreur lors de l&apos;envoi de %1&#xa0;: %2</translation>
     </message>
 </context>
 <context>
     <name>QNetworkAccessManager</name>
     <message>
         <source>Network access is disabled.</source>
-        <translation>L&apos;accès au réseau est désactivé.</translation>
+        <translation type="vanished">L&apos;accès au réseau est désactivé.</translation>
     </message>
 </context>
 <context>
     <name>QNetworkReply</name>
     <message>
         <source>Error downloading %1 - server replied: %2</source>
-        <translation>Erreur lors du téléchargement de %1 - le serveur a répondu : %2</translation>
+        <translation type="vanished">Erreur lors du téléchargement de %1 - le serveur a répondu&#xa0;: %2</translation>
     </message>
     <message>
         <source>Background request not allowed.</source>
@@ -2437,6 +2880,10 @@ Voulez-vous quand même le supprimer ?</translation>
     <message>
         <source>Protocol &quot;%1&quot; is unknown</source>
         <translation>Le protocole &quot;%1&quot; est inconnu</translation>
+    </message>
+    <message>
+        <source>Error transferring %1 - server replied: %2</source>
+        <translation>Erreur lors du transfert de %1 - le serveur a répondu&#xa0;: %2</translation>
     </message>
 </context>
 <context>
@@ -2581,7 +3028,7 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>QODBCResult::reset: Unable to set &apos;SQL_CURSOR_STATIC&apos; as statement attribute. Please check your ODBC driver configuration</source>
-        <translation>QODBCResult::reset : Impossible d&apos;utiliser &quot;SQL_CURSOR_STATIC&quot; comme attribut de requête. Veuillez vérifier la configuration de votre pilote ODBC</translation>
+        <translation>QODBCResult::reset&#xa0;: Impossible d&apos;utiliser &quot;SQL_CURSOR_STATIC&quot; comme attribut de requête. Veuillez vérifier la configuration de votre pilote ODBC</translation>
     </message>
     <message>
         <source>Unable to execute statement</source>
@@ -2642,8 +3089,20 @@ Voulez-vous quand même le supprimer ?</translation>
 <context>
     <name>QPSQLResult</name>
     <message>
+        <source>Query results lost - probably discarded on executing another SQL query.</source>
+        <translation>La requête a perdu des résultats - probablement ignorés lors de l&apos;exécution d&apos;une autre requête SQL.</translation>
+    </message>
+    <message>
         <source>Unable to create query</source>
         <translation>Impossible de créer la requête</translation>
+    </message>
+    <message>
+        <source>Unable to get result</source>
+        <translation>Impossible de récupérer le résultat</translation>
+    </message>
+    <message>
+        <source>Unable to send query</source>
+        <translation>Impossible d&apos;envoyer la requête</translation>
     </message>
     <message>
         <source>Unable to prepare statement</source>
@@ -2662,19 +3121,19 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>Page size:</source>
-        <translation>Dimensions :</translation>
+        <translation>Dimensions&#xa0;:</translation>
     </message>
     <message>
         <source>Width:</source>
-        <translation>Largeur :</translation>
+        <translation>Largeur&#xa0;:</translation>
     </message>
     <message>
         <source>Height:</source>
-        <translation>Hauteur :</translation>
+        <translation>Hauteur&#xa0;:</translation>
     </message>
     <message>
         <source>Paper source:</source>
-        <translation>Source du papier :</translation>
+        <translation>Source du papier&#xa0;:</translation>
     </message>
     <message>
         <source>Orientation</source>
@@ -2722,11 +3181,11 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>Page order:</source>
-        <translation>Ordre des pages :</translation>
+        <translation>Ordre des pages&#xa0;:</translation>
     </message>
     <message>
         <source>Pages per sheet:</source>
-        <translation>Pages par feuille :</translation>
+        <translation>Pages par feuille&#xa0;:</translation>
     </message>
     <message>
         <source>Millimeters (mm)</source>
@@ -3438,6 +3897,22 @@ Voulez-vous quand même le supprimer ?</translation>
         <translation>&amp;Options &lt;&lt;</translation>
     </message>
     <message>
+        <source>Invalid Pages Definition</source>
+        <translation>Définition des pages non valable</translation>
+    </message>
+    <message>
+        <source>%1 does not follow the correct syntax. Please use &apos;,&apos; to separate ranges and pages, &apos;-&apos; to define ranges and make sure ranges do not intersect with each other.</source>
+        <translation>%1 est syntaxiquement incorrect. Veuillez utiliser &quot;,&quot; pour séparer les pages ou les suites de pages, &quot;-&quot; pour définir des suites de pages et assurez-vous que les suites de pages ne se recouvrent pas.</translation>
+    </message>
+    <message>
+        <source>Duplex Settings Conflicts</source>
+        <translation>Conflits dans les pages recto&#xa0;/ verso</translation>
+    </message>
+    <message>
+        <source>There are conflicts in duplex settings. Do you want to fix them?</source>
+        <translation>Il y a des conflits dans la configuration des pages recto&#xa0;/ verso. Voulez-vous les corriger&#xa0;?</translation>
+    </message>
+    <message>
         <source>Print to File (PDF)</source>
         <translation>Imprimer dans un fichier (PDF)</translation>
     </message>
@@ -3451,7 +3926,7 @@ Voulez-vous quand même le supprimer ?</translation>
     </message>
     <message>
         <source>Print To File ...</source>
-        <translation>Imprimer dans un fichier...</translation>
+        <translation>Imprimer dans un fichier…</translation>
     </message>
     <message>
         <source>%1 is a directory.
@@ -3469,7 +3944,7 @@ Veuillez choisir un nom de fichier différent.</translation>
         <source>%1 already exists.
 Do you want to overwrite it?</source>
         <translation>%1 existe.
-Voulez-vous l&apos;écraser ?</translation>
+Voulez-vous l&apos;écraser&#xa0;?</translation>
     </message>
     <message>
         <source>Options &apos;Pages Per Sheet&apos; and &apos;Page Set&apos; cannot be used together.
@@ -3487,7 +3962,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>Automatic</source>
-        <translation>Automatique</translation>
+        <translation type="vanished">Automatique</translation>
     </message>
 </context>
 <context>
@@ -3572,8 +4047,28 @@ Veuillez désactiver l&apos;une de ces options.</translation>
 <context>
     <name>QPrintPropertiesDialog</name>
     <message>
+        <source>Printer Properties</source>
+        <translation>Propriétés de l&apos;imprimante</translation>
+    </message>
+    <message>
         <source>Job Options</source>
         <translation>Options de la tâche</translation>
+    </message>
+    <message>
+        <source>Page Setup Conflicts</source>
+        <translation>Conflits dans la configuration des pages</translation>
+    </message>
+    <message>
+        <source>There are conflicts in page setup options. Do you want to fix them?</source>
+        <translation>Il y a des conflits dans les options de la configuration des pages. Voulez-vous les corriger&#xa0;?</translation>
+    </message>
+    <message>
+        <source>Advanced Option Conflicts</source>
+        <translation>Conflits d&apos;options avancés</translation>
+    </message>
+    <message>
+        <source>There are conflicts in some advanced options. Do you want to fix them?</source>
+        <translation>Il y a des conflits dans certaines options avancées. Voulez-vous les corriger&#xa0;?</translation>
     </message>
 </context>
 <context>
@@ -3585,6 +4080,14 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     <message>
         <source>Page</source>
         <translation>Page</translation>
+    </message>
+    <message>
+        <source>Advanced</source>
+        <translation>Avancé</translation>
+    </message>
+    <message>
+        <source>There are conflicts in some options. Please fix them.</source>
+        <translation>Il y a des conflits entre certaines options. Veuillez les corriger.</translation>
     </message>
 </context>
 <context>
@@ -3623,7 +4126,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>Page Set:</source>
-        <translation>Configuration de la page :</translation>
+        <translation>Configuration de la page&#xa0;:</translation>
     </message>
     <message>
         <source>Output Settings</source>
@@ -3631,7 +4134,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>Copies:</source>
-        <translation>Copies :</translation>
+        <translation>Copies&#xa0;:</translation>
     </message>
     <message>
         <source>Collate</source>
@@ -3659,19 +4162,43 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>Duplex Printing</source>
-        <translation>Impression recto-verso</translation>
+        <translation type="vanished">Impression recto&#xa0;/ verso</translation>
     </message>
     <message>
         <source>None</source>
-        <translation>Non</translation>
+        <translation type="vanished">Non</translation>
     </message>
     <message>
         <source>Long side</source>
-        <translation>Côté long</translation>
+        <translation type="vanished">Côté long</translation>
     </message>
     <message>
         <source>Short side</source>
-        <translation>Côté court</translation>
+        <translation type="vanished">Côté court</translation>
+    </message>
+    <message>
+        <source>Pages</source>
+        <translation>Pages</translation>
+    </message>
+    <message>
+        <source>Specify pages or ranges separated by commas. Ranges are specified by two numbers separated by a hyphen. E.g: 3,5-7,9 prints pages 3, 5, 6, 7 and 9.</source>
+        <translation>Spécifiez des pages ou des suites de pages séparées par des virgules. Les suites de pages sont spécifiées en utilisant deux nombres séparés par un tiret. Par exemple&#xa0;: 3,5-7,9 imprimera les pages 3, 5, 6, 7 et 9.</translation>
+    </message>
+    <message>
+        <source>Double Sided Printing</source>
+        <translation>Impression en recto verso</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Non</translation>
+    </message>
+    <message>
+        <source>Long side binding</source>
+        <translation>Portrait</translation>
+    </message>
+    <message>
+        <source>Short side binding</source>
+        <translation>Paysage</translation>
     </message>
 </context>
 <context>
@@ -3686,7 +4213,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>&amp;Name:</source>
-        <translation>&amp;Nom :</translation>
+        <translation>&amp;Nom&#xa0;:</translation>
     </message>
     <message>
         <source>P&amp;roperties</source>
@@ -3694,7 +4221,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>Location:</source>
-        <translation>Emplacement :</translation>
+        <translation>Emplacement&#xa0;:</translation>
     </message>
     <message>
         <source>Preview</source>
@@ -3702,19 +4229,23 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>Type:</source>
-        <translation>Type :</translation>
+        <translation>Type&#xa0;:</translation>
     </message>
     <message>
         <source>Output &amp;file:</source>
-        <translation>&amp;Fichier de sortie :</translation>
+        <translation>&amp;Fichier de sortie&#xa0;:</translation>
     </message>
     <message>
         <source>...</source>
-        <translation>...</translation>
+        <translation>…</translation>
     </message>
 </context>
 <context>
     <name>QProcess</name>
+    <message>
+        <source>Process failed to start</source>
+        <translation>Le processus n&apos;a pas réussi à démarrer</translation>
+    </message>
     <message>
         <source>Error reading from process</source>
         <translation>Erreur de lecture depuis le processus</translation>
@@ -3729,7 +4260,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>Process failed to start (spawned process exited with code 127)</source>
-        <translation>Le processus n&apos;a pu démarrer (le processus généré a terminé avec le code 127)</translation>
+        <translation type="vanished">Le processus n&apos;a pu démarrer (le processus généré a terminé avec le code 127)</translation>
     </message>
     <message>
         <source>No program defined</source>
@@ -3745,7 +4276,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>Resource error (fork failure): %1</source>
-        <translation>Erreur de ressouce (échec du fork) : %1</translation>
+        <translation>Erreur de ressouce (échec du fork)&#xa0;: %1</translation>
     </message>
     <message>
         <source>Process operation timed out</source>
@@ -3753,7 +4284,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>Process failed to start: %1</source>
-        <translation>Le démarrage du processus a échoué : %1</translation>
+        <translation>Le démarrage du processus a échoué&#xa0;: %1</translation>
     </message>
 </context>
 <context>
@@ -3767,14 +4298,14 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     <name>QQnxFileDialogHelper</name>
     <message>
         <source>All files (*.*)</source>
-        <translation>Tous les fichiers (*.*)</translation>
+        <translation type="vanished">Tous les fichiers (*.*)</translation>
     </message>
 </context>
 <context>
     <name>QQnxFilePicker</name>
     <message>
         <source>Pick a file</source>
-        <translation>Choisir un fichier</translation>
+        <translation type="vanished">Choisir un fichier</translation>
     </message>
 </context>
 <context>
@@ -3860,7 +4391,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>invalid escape sequence in character class</source>
-        <translation>la classe de caractères contient une séquence d&apos;échappement invalide</translation>
+        <translation type="vanished">la classe de caractères contient une séquence d&apos;échappement invalide</translation>
     </message>
     <message>
         <source>range out of order in character class</source>
@@ -3868,11 +4399,11 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>nothing to repeat</source>
-        <translation>il n&apos;y a rien à répéter</translation>
+        <translation type="vanished">il n&apos;y a rien à répéter</translation>
     </message>
     <message>
         <source>internal error: unexpected repeat</source>
-        <translation>erreur interne : répétition inattendue</translation>
+        <translation>erreur interne&#xa0;: répétition inattendue</translation>
     </message>
     <message>
         <source>unrecognized character after (? or (?-</source>
@@ -3884,7 +4415,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>missing )</source>
-        <translation>le caractère ) est manquant</translation>
+        <translation type="vanished">le caractère ) est manquant</translation>
     </message>
     <message>
         <source>reference to non-existent subpattern</source>
@@ -3892,15 +4423,15 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>erroffset passed as NULL</source>
-        <translation>le paramètre erroffset est passé à NULL</translation>
+        <translation type="vanished">le paramètre erroffset est passé à NULL</translation>
     </message>
     <message>
         <source>unknown option bit(s) set</source>
-        <translation>l&apos;option définie est inconnue</translation>
+        <translation type="vanished">l&apos;option définie est inconnue</translation>
     </message>
     <message>
         <source>missing ) after comment</source>
-        <translation>le caractère ) est manquant après le commentaire</translation>
+        <translation type="vanished">le caractère ) est manquant après le commentaire</translation>
     </message>
     <message>
         <source>regular expression is too large</source>
@@ -3908,19 +4439,19 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>failed to get memory</source>
-        <translation>impossible de récupérer la mémoire</translation>
+        <translation type="vanished">impossible de récupérer la mémoire</translation>
     </message>
     <message>
         <source>unmatched parentheses</source>
-        <translation>les parenthèses ne correspondent pas</translation>
+        <translation type="vanished">les parenthèses ne correspondent pas</translation>
     </message>
     <message>
         <source>internal error: code overflow</source>
-        <translation>erreur interne : débordement du code</translation>
+        <translation>erreur interne&#xa0;: débordement du code</translation>
     </message>
     <message>
         <source>unrecognized character after (?&lt;</source>
-        <translation>le caractère après (?&lt; n&apos;est pas reconnu</translation>
+        <translation type="vanished">le caractère après (?&lt; n&apos;est pas reconnu</translation>
     </message>
     <message>
         <source>lookbehind assertion is not fixed length</source>
@@ -3928,19 +4459,19 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>malformed number or name after (?(</source>
-        <translation>le nombre ou le nom après (?( n&apos;est pas formé correctement</translation>
+        <translation type="vanished">le nombre ou le nom après (?( n&apos;est pas formé correctement</translation>
     </message>
     <message>
         <source>conditional group contains more than two branches</source>
-        <translation>le groupe conditionnel contient plus de deux branches</translation>
+        <translation type="vanished">le groupe conditionnel contient plus de deux branches</translation>
     </message>
     <message>
         <source>assertion expected after (?(</source>
-        <translation>une assertion est attendue après (?(</translation>
+        <translation type="vanished">une assertion est attendue après (?(</translation>
     </message>
     <message>
         <source>(?R or (?[+-]digits must be followed by )</source>
-        <translation>les chiffres dans (?R ou (?[+-] doivent être suivis par )</translation>
+        <translation type="vanished">les chiffres dans (?R ou (?[+-] doivent être suivis par )</translation>
     </message>
     <message>
         <source>unknown POSIX class name</source>
@@ -3952,35 +4483,35 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>this version of PCRE is not compiled with PCRE_UTF8 support</source>
-        <translation>cette version de PCRE n&apos;est pas compilée avec le support de PCRE_UTF8</translation>
+        <translation type="vanished">cette version de PCRE n&apos;est pas compilée avec le support de PCRE_UTF8</translation>
     </message>
     <message>
         <source>character value in \x{...} sequence is too large</source>
-        <translation>les valeurs de caractères dans la séquence \x{...} est trop large</translation>
+        <translation type="vanished">les valeurs de caractères dans la séquence \x{…} est trop large</translation>
     </message>
     <message>
         <source>invalid condition (?(0)</source>
-        <translation>la condition (?(0) est invalide</translation>
+        <translation type="vanished">la condition (?(0) est invalide</translation>
     </message>
     <message>
         <source>\C not allowed in lookbehind assertion</source>
-        <translation>\C n&apos;est pas autorisé dans une assertion de type lookbehind</translation>
+        <translation type="vanished">\C n&apos;est pas autorisé dans une assertion de type lookbehind</translation>
     </message>
     <message>
         <source>PCRE does not support \L, \l, \N{name}, \U, or \u</source>
-        <translation>PCRE ne supporte pas \L, \l, \N{name}, \U ou \u</translation>
+        <translation type="vanished">PCRE ne supporte pas \L, \l, \N{name}, \U ou \u</translation>
     </message>
     <message>
         <source>number after (?C is &gt; 255</source>
-        <translation>le nombre après (?C est supérieur à 255</translation>
+        <translation type="vanished">le nombre après (?C est supérieur à 255</translation>
     </message>
     <message>
         <source>closing ) for (?C expected</source>
-        <translation>une parenthèse fermante ) est attendue pour (?C</translation>
+        <translation type="vanished">une parenthèse fermante ) est attendue pour (?C</translation>
     </message>
     <message>
         <source>recursive call could loop indefinitely</source>
-        <translation>un appel récursif ne peut pas boucler indéfiniment</translation>
+        <translation type="vanished">un appel récursif ne peut pas boucler indéfiniment</translation>
     </message>
     <message>
         <source>unrecognized character after (?P</source>
@@ -3988,19 +4519,19 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>syntax error in subpattern name (missing terminator)</source>
-        <translation>erreur de syntaxe dans le nom du sous-motif (la terminaison est manquante)</translation>
+        <translation type="vanished">erreur de syntaxe dans le nom du sous-motif (la terminaison est manquante)</translation>
     </message>
     <message>
         <source>two named subpatterns have the same name</source>
-        <translation>deux sous-motifs nommés possèdent le même nom</translation>
+        <translation type="vanished">deux sous-motifs nommés possèdent le même nom</translation>
     </message>
     <message>
         <source>invalid UTF-8 string</source>
-        <translation>la chaîne UTF-8 est invalide</translation>
+        <translation type="vanished">la chaîne UTF-8 est invalide</translation>
     </message>
     <message>
         <source>support for \P, \p, and \X has not been compiled</source>
-        <translation>le support de \P, \p et \X n&apos;a pas été compilé</translation>
+        <translation type="vanished">le support de \P, \p et \X n&apos;a pas été compilé</translation>
     </message>
     <message>
         <source>malformed \P or \p sequence</source>
@@ -4012,7 +4543,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>subpattern name is too long (maximum 32 characters)</source>
-        <translation>le nom du sous-motif est trop long (maximum 32 caractères)</translation>
+        <translation type="vanished">le nom du sous-motif est trop long (maximum 32 caractères)</translation>
     </message>
     <message>
         <source>too many named subpatterns (maximum 10000)</source>
@@ -4020,27 +4551,27 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>octal value is greater than \377 (not in UTF-8 mode)</source>
-        <translation>la valeur octale est plus grande que \377 (pas dans le mode UTF-8)</translation>
+        <translation type="vanished">la valeur octale est plus grande que \377 (pas dans le mode UTF-8)</translation>
     </message>
     <message>
         <source>internal error: overran compiling workspace</source>
-        <translation>erreur interne : dépassement de l&apos;espace de travail de compilation</translation>
+        <translation>erreur interne&#xa0;: dépassement de l&apos;espace de travail de compilation</translation>
     </message>
     <message>
         <source>internal error: previously-checked referenced subpattern not found</source>
-        <translation>erreur interne : le sous-motif référencé qui a déjà été vérifié n&apos;a pas été trouvé</translation>
+        <translation>erreur interne&#xa0;: le sous-motif référencé qui a déjà été vérifié n&apos;a pas été trouvé</translation>
     </message>
     <message>
         <source>DEFINE group contains more than one branch</source>
-        <translation>le groupe DEFINE contient plus d&apos;une branche</translation>
+        <translation type="vanished">le groupe DEFINE contient plus d&apos;une branche</translation>
     </message>
     <message>
         <source>repeating a DEFINE group is not allowed</source>
-        <translation>la répétion d&apos;un groupe DEFINE n&apos;est pas autorisée</translation>
+        <translation type="vanished">la répétion d&apos;un groupe DEFINE n&apos;est pas autorisée</translation>
     </message>
     <message>
         <source>inconsistent NEWLINE options</source>
-        <translation>les options de NEWLINE ne sont pas compatibles</translation>
+        <translation type="vanished">les options de NEWLINE ne sont pas compatibles</translation>
     </message>
     <message>
         <source>\g is not followed by a braced, angle-bracketed, or quoted name/number or by a plain number</source>
@@ -4048,19 +4579,19 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>a numbered reference must not be zero</source>
-        <translation>une référence numérique ne doit pas être zéro</translation>
+        <translation type="vanished">une référence numérique ne doit pas être zéro</translation>
     </message>
     <message>
         <source>an argument is not allowed for (*ACCEPT), (*FAIL), or (*COMMIT)</source>
-        <translation>un argument n&apos;est pas autorisé pour (*ACCEPT), (*FAIL) ou (*COMMIT)</translation>
+        <translation type="vanished">un argument n&apos;est pas autorisé pour (*ACCEPT), (*FAIL) ou (*COMMIT)</translation>
     </message>
     <message>
         <source>(*VERB) not recognized</source>
-        <translation>(*VERB) n&apos;est pas reconnu</translation>
+        <translation type="vanished">(*VERB) n&apos;est pas reconnu</translation>
     </message>
     <message>
         <source>number is too big</source>
-        <translation>le nombre est trop grand</translation>
+        <translation type="vanished">le nombre est trop grand</translation>
     </message>
     <message>
         <source>subpattern name expected</source>
@@ -4068,11 +4599,11 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>digit expected after (?+</source>
-        <translation>un chiffre est attendu après (?+</translation>
+        <translation type="vanished">un chiffre est attendu après (?+</translation>
     </message>
     <message>
         <source>] is an invalid data character in JavaScript compatibility mode</source>
-        <translation>le caractère ] n&apos;est pas une donnée valide dans le mode de compatibilité avec le JavaScript</translation>
+        <translation type="vanished">le caractère ] n&apos;est pas une donnée valide dans le mode de compatibilité avec le JavaScript</translation>
     </message>
     <message>
         <source>different names for subpatterns of the same number are not allowed</source>
@@ -4084,11 +4615,11 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>this version of PCRE is not compiled with PCRE_UCP support</source>
-        <translation>cette version de PCRE n&apos;est pas compilée avec le support de PCRE_UCP</translation>
+        <translation type="vanished">cette version de PCRE n&apos;est pas compilée avec le support de PCRE_UCP</translation>
     </message>
     <message>
         <source>\c must be followed by an ASCII character</source>
-        <translation>\c doit être suivi par un caractère ASCII</translation>
+        <translation type="vanished">\c doit être suivi par un caractère ASCII</translation>
     </message>
     <message>
         <source>\k is not followed by a braced, angle-bracketed, or quoted name</source>
@@ -4096,7 +4627,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>internal error: unknown opcode in find_fixedlength()</source>
-        <translation>erreur interne : l&apos;opcode dans find_fixedlenght() est inconnu</translation>
+        <translation type="vanished">erreur interne&#xa0;: l&apos;opcode dans find_fixedlenght() est inconnu</translation>
     </message>
     <message>
         <source>\N is not supported in a class</source>
@@ -4104,7 +4635,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>too many forward references</source>
-        <translation>il y a trop de références en avant</translation>
+        <translation type="vanished">il y a trop de références en avant</translation>
     </message>
     <message>
         <source>disallowed Unicode code point (&gt;= 0xd800 &amp;&amp; &lt;= 0xdfff)</source>
@@ -4112,7 +4643,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>invalid UTF-16 string</source>
-        <translation>la chaîne UTF-16 est invalide</translation>
+        <translation type="vanished">la chaîne UTF-16 est invalide</translation>
     </message>
     <message>
         <source>name is too long in (*MARK), (*PRUNE), (*SKIP), or (*THEN)</source>
@@ -4120,27 +4651,543 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>character value in \u.... sequence is too large</source>
-        <translation>la valeur dans la séquence \u... est trop longue</translation>
+        <translation type="vanished">la valeur dans la séquence \u.... est trop longue</translation>
     </message>
     <message>
         <source>invalid UTF-32 string</source>
-        <translation>la chaîne UTF-32 est invalide</translation>
+        <translation type="vanished">la chaîne UTF-32 est invalide</translation>
     </message>
     <message>
         <source>setting UTF is disabled by the application</source>
-        <translation>l&apos;application ne permet pas d&apos;utiliser UTF</translation>
+        <translation type="vanished">l&apos;application ne permet pas d&apos;utiliser UTF</translation>
     </message>
     <message>
         <source>non-hex character in \x{} (closing brace missing?)</source>
-        <translation>caractère non-hexa dans \x{} (accolade fermante manquante ?)</translation>
+        <translation>caractère non-hexa dans \x{} (accolade fermante manquante&#xa0;?)</translation>
     </message>
     <message>
         <source>non-octal character in \o{} (closing brace missing?)</source>
-        <translation>caractère non-octal dans \o{} (accolade fermante manquante ?)</translation>
+        <translation>caractère non-octal dans \o{} (accolade fermante manquante&#xa0;?)</translation>
+    </message>
+    <message>
+        <source>escape sequence is invalid in character class</source>
+        <translation>la classe de caractères contient une séquence d&apos;échappement invalide</translation>
+    </message>
+    <message>
+        <source>quantifier does not follow a repeatable item</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>missing closing parenthesis</source>
+        <translation>parenthèse fermante manquante</translation>
+    </message>
+    <message>
+        <source>pattern passed as NULL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unrecognised compile-time option bit(s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>missing ) after (?# comment</source>
+        <translation>le caractère ) est manquant après le commentaire (?#</translation>
+    </message>
+    <message>
+        <source>failed to allocate heap memory</source>
+        <translation>impossible d&apos;allouer la mémoire sur le tas</translation>
+    </message>
+    <message>
+        <source>unmatched closing parenthesis</source>
+        <translation>parenthèse fermante ne correspond pas</translation>
+    </message>
+    <message>
+        <source>missing closing parenthesis for condition</source>
+        <translation>parenthèse fermante manquante pour la condition</translation>
+    </message>
+    <message>
+        <source>a relative value of zero is not allowed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>conditional subpattern contains more than two branches</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>assertion expected after (?( or (?(?C)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>digit expected after (?+ or (?-</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>internal error in pcre2_study(): should not occur</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>this version of PCRE2 does not have Unicode support</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>character code point value in \x{} or \o{} is too large</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>lookbehind is too complicated</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>\C is not allowed in a lookbehind assertion in UTF-16 mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PCRE2 does not support \F, \L, \l, \N{name}, \U, or \u</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>number after (?C is greater than 255</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>closing parenthesis for (?C expected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>invalid escape sequence in (*VERB) name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>syntax error in subpattern name (missing terminator?)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>two named subpatterns have the same name (PCRE2_DUPNAMES not set)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>subpattern name must start with a non-digit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>this version of PCRE2 does not have support for \P, \p, or \X</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>subpattern name is too long (maximum 32 code units)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>octal value is greater than \377 in 8-bit non-UTF-8 mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DEFINE subpattern contains more than one branch</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>missing opening brace after \o</source>
         <translation>accolade ouvrante manquante après \o</translation>
+    </message>
+    <message>
+        <source>internal error: unknown newline setting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(?R (recursive pattern call) must be followed by a closing parenthesis</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>obsolete error (should not occur)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(*VERB) not recognized or malformed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>subpattern number is too big</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>internal error: parsed pattern overflow</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>\c must be followed by a printable ASCII character</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>\c must be followed by a letter or one of [\]^_?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>internal error: unknown meta code in check_lookbehinds()</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>callout string is too long</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>using UTF is disabled by the application</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>using UCP is disabled by the application</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>character code point value in \u.... sequence is too large</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>digits missing in \x{} or \o{} or \N{U+}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>syntax error or number too big in (?(VERSION condition</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>internal error: unknown opcode in auto_possessify()</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>missing terminating delimiter for callout with string argument</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unrecognized string delimiter follows (?C</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>using \C is disabled by the application</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(?| and/or (?J: or (?x: parentheses are too deeply nested</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>using \C is disabled in this PCRE2 library</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>regular expression is too complicated</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>lookbehind assertion is too long</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>pattern string is longer than the limit set by the application</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>internal error: unknown code in parsed pattern</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>internal error: bad code value in parsed_skip()</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PCRE2_EXTRA_ALLOW_SURROGATE_ESCAPES is not allowed in UTF-16 mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>invalid option bits with PCRE2_LITERAL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>\N{U+dddd} is supported only in Unicode (UTF) mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>invalid hyphen in option setting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(*alpha_assertion) not recognized</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>script runs require Unicode support, which this version of PCRE2 does not have</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>too many capturing groups (maximum 65535)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>atomic assertion expected after (?( or (?(?C)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>no match</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>partial match</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: 1 byte missing at end</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: 2 bytes missing at end</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: 3 bytes missing at end</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: 4 bytes missing at end</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: 5 bytes missing at end</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: byte 2 top bits not 0x80</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: byte 3 top bits not 0x80</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: byte 4 top bits not 0x80</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: byte 5 top bits not 0x80</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: byte 6 top bits not 0x80</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: 5-byte character is not allowed (RFC 3629)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: 6-byte character is not allowed (RFC 3629)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: code points greater than 0x10ffff are not defined</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: code points 0xd800-0xdfff are not defined</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: overlong 2-byte sequence</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: overlong 3-byte sequence</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: overlong 4-byte sequence</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: overlong 5-byte sequence</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: overlong 6-byte sequence</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: isolated byte with 0x80 bit set</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-8 error: illegal byte (0xfe or 0xff)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-16 error: missing low surrogate at end</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-16 error: invalid low surrogate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-16 error: isolated low surrogate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-32 error: code points 0xd800-0xdfff are not defined</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UTF-32 error: code points greater than 0x10ffff are not defined</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>bad data value</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>patterns do not all use the same character tables</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>magic number missing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>pattern compiled in wrong mode: 8/16/32-bit error</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>bad offset value</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>bad option value</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>invalid replacement string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>bad offset into UTF string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>callout error code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>invalid data in workspace for DFA restart</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>too much recursion for DFA matching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>backreference condition or recursion test is not supported for DFA matching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>function is not supported for DFA matching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>pattern contains an item that is not supported for DFA matching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>workspace size exceeded in DFA matching</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>internal error - pattern overwritten?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>bad JIT option</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>JIT stack limit reached</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>match limit exceeded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>no more memory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unknown substring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>non-unique substring name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>NULL argument passed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>nested recursion at the same subject position</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>matching depth limit exceeded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>requested value is not available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>requested value is not set</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>offset limit set without PCRE2_USE_OFFSET_LIMIT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>bad escape sequence in replacement string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>expected closing curly bracket in replacement string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>bad substitution in replacement string</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>match with end before start or start moved backwards is not supported</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>too many replacements (more than INT_MAX)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>bad serialized data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>heap limit exceeded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>invalid syntax</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>internal error - duplicate substitution match</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PCRE2_MATCH_INVALID_UTF is not supported for DFA matching</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>parentheses are too deeply nested</source>
@@ -4152,7 +5199,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>group name must start with a non-digit</source>
-        <translation>le nom du groupe ne doit pas commencer par un chiffre</translation>
+        <translation type="vanished">le nom du groupe ne doit pas commencer par un chiffre</translation>
     </message>
     <message>
         <source>parentheses are too deeply nested (stack check)</source>
@@ -4160,7 +5207,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>digits missing in \x{} or \o{}</source>
-        <translation>chiffres manquants dans \x{} ou \o{}</translation>
+        <translation type="vanished">chiffres manquants dans \x{} ou \o{}</translation>
     </message>
 </context>
 <context>
@@ -4258,6 +5305,10 @@ Veuillez désactiver l&apos;une de ces options.</translation>
         <translation>Le nom de fichier est associé à un répertoire</translation>
     </message>
     <message>
+        <source>QSaveFile cannot open &apos;%1&apos; without direct write fallback enabled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Writing canceled by application</source>
         <translation>L&apos;écriture a été annulée par l&apos;application</translation>
     </message>
@@ -4318,82 +5369,89 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
 </context>
 <context>
+    <name>QSctpSocket</name>
+    <message>
+        <source>The remote host closed the connection</source>
+        <translation>L&apos;hôte distant a fermé la connexion</translation>
+    </message>
+</context>
+<context>
     <name>QSharedMemory</name>
     <message>
         <source>%1: unable to set key on lock</source>
-        <translation>%1 : impossible d&apos;affecter la clé au verrou</translation>
+        <translation>%1&#xa0;: impossible d&apos;affecter la clé au verrou</translation>
     </message>
     <message>
         <source>%1: create size is less then 0</source>
-        <translation>%1 : taille de création est inférieur à 0</translation>
+        <translation>%1&#xa0;: taille de création est inférieur à 0</translation>
     </message>
     <message>
         <source>%1: unable to lock</source>
-        <translation>%1 : impossible de vérrouiller</translation>
+        <translation>%1&#xa0;: impossible de vérrouiller</translation>
     </message>
     <message>
         <source>%1: unable to unlock</source>
-        <translation>%1 : impossible de déverrouiller</translation>
+        <translation>%1&#xa0;: impossible de déverrouiller</translation>
     </message>
     <message>
         <source>%1: key is empty</source>
-        <translation>%1 : la clé est vide</translation>
+        <translation>%1&#xa0;: la clé est vide</translation>
     </message>
     <message>
         <source>%1: bad name</source>
-        <translation>%1 : nom incorrect</translation>
+        <translation>%1&#xa0;: nom incorrect</translation>
     </message>
     <message>
         <source>%1: UNIX key file doesn&apos;t exist</source>
-        <translation>%1 : le fichier de clés UNIX n&apos;existe pas</translation>
+        <translation>%1&#xa0;: le fichier de clés UNIX n&apos;existe pas</translation>
     </message>
     <message>
         <source>%1: ftok failed</source>
-        <translation>%1 : ftok a échoué</translation>
+        <translation>%1&#xa0;: ftok a échoué</translation>
     </message>
     <message>
         <source>%1: unable to make key</source>
-        <translation>%1 : impossible de créer la clé</translation>
+        <translation>%1&#xa0;: impossible de créer la clé</translation>
     </message>
     <message>
         <source>%1: system-imposed size restrictions</source>
-        <translation>%1 : le système impose des restrictions sur la taille</translation>
+        <translation>%1&#xa0;: le système impose des restrictions sur la taille</translation>
     </message>
     <message>
         <source>%1: not attached</source>
-        <translation>%1 : n&apos;est attaché</translation>
+        <translation>%1&#xa0;: n&apos;est attaché</translation>
     </message>
     <message>
         <source>%1: permission denied</source>
-        <translation>%1 : permission refusée</translation>
+        <translation>%1&#xa0;: permission refusée</translation>
     </message>
     <message>
         <source>%1: already exists</source>
-        <translation>%1 : existe déjà</translation>
+        <translation>%1&#xa0;: existe déjà</translation>
     </message>
     <message>
         <source>%1: doesn&apos;t exist</source>
-        <translation>%1 : n&apos;existe pas</translation>
+        <translation>%1&#xa0;: n&apos;existe pas</translation>
     </message>
     <message>
         <source>%1: out of resources</source>
-        <translation>%1 : manque de ressources</translation>
+        <translation>%1&#xa0;: manque de ressources</translation>
     </message>
     <message>
         <source>%1: unknown error %2</source>
-        <translation>%1 : erreur inconnue %2</translation>
+        <translation>%1&#xa0;: erreur inconnue %2</translation>
     </message>
     <message>
         <source>%1: invalid size</source>
-        <translation>%1 : la taille est invalide</translation>
+        <translation>%1&#xa0;: la taille est invalide</translation>
     </message>
     <message>
         <source>%1: key error</source>
-        <translation>%1 : erreur de clé</translation>
+        <translation>%1&#xa0;: erreur de clé</translation>
     </message>
     <message>
         <source>%1: size query failed</source>
-        <translation>%1 : la requête de taille a échoué</translation>
+        <translation>%1&#xa0;: la requête de taille a échoué</translation>
     </message>
 </context>
 <context>
@@ -4670,6 +5728,14 @@ Veuillez désactiver l&apos;une de ces options.</translation>
         <translation>Lancer (F)</translation>
     </message>
     <message>
+        <source>Launch (G)</source>
+        <translation>Lancer (G)</translation>
+    </message>
+    <message>
+        <source>Launch (H)</source>
+        <translation>Lancer (H)</translation>
+    </message>
+    <message>
         <source>Monitor Brightness Up</source>
         <translation>Luminosité moniteur haut</translation>
     </message>
@@ -4774,6 +5840,10 @@ Veuillez désactiver l&apos;une de ces options.</translation>
         <translation>Calculatrice</translation>
     </message>
     <message>
+        <source>Calendar</source>
+        <translation>Calendrier</translation>
+    </message>
+    <message>
         <source>Clear</source>
         <translation>Effacer</translation>
     </message>
@@ -4784,6 +5854,10 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     <message>
         <source>Close</source>
         <translation>Fermer</translation>
+    </message>
+    <message>
+        <source>Adjust contrast</source>
+        <translation>Ajuster le contraste</translation>
     </message>
     <message>
         <source>Copy</source>
@@ -4836,6 +5910,10 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     <message>
         <source>Meeting</source>
         <translation>Réunion</translation>
+    </message>
+    <message>
+        <source>Memo</source>
+        <translation>Mémo</translation>
     </message>
     <message>
         <source>Keyboard Menu</source>
@@ -4916,6 +5994,10 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     <message>
         <source>Terminal</source>
         <translation>Terminal</translation>
+    </message>
+    <message>
+        <source>To-do list</source>
+        <translation>Tâches à faire</translation>
     </message>
     <message>
         <source>Tools</source>
@@ -5386,6 +6468,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>+</source>
+        <extracomment>Key separator in shortcut string</extracomment>
         <translation>+</translation>
     </message>
     <message>
@@ -5417,7 +6500,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>Proxy authentication failed: %1</source>
-        <translation>L&apos;authentification proxy a échoué : %1</translation>
+        <translation>L&apos;authentification proxy a échoué&#xa0;: %1</translation>
     </message>
     <message>
         <source>SOCKS version 5 protocol error</source>
@@ -5445,7 +6528,7 @@ Veuillez désactiver l&apos;une de ces options.</translation>
     </message>
     <message>
         <source>Unknown SOCKSv5 proxy error code 0x%1</source>
-        <translation>Erreur proxy SOCKSv5 inconnue : 0x%1</translation>
+        <translation>Erreur proxy SOCKSv5 inconnue&#xa0;: 0x%1</translation>
     </message>
     <message>
         <source>Network operation timed out</source>
@@ -5807,13 +6890,47 @@ Role of an accessible object</extracomment>
         <translation>contenu additionnel</translation>
     </message>
     <message>
+        <source>terminal</source>
+        <extracomment>Role of an accessible object</extracomment>
+        <translation>terminal</translation>
+    </message>
+    <message>
+        <source>desktop</source>
+        <extracomment>Role of an accessible object</extracomment>
+        <translation>bureau</translation>
+    </message>
+    <message>
+        <source>notification</source>
+        <extracomment>Role of an accessible object</extracomment>
+        <translation>notification</translation>
+    </message>
+    <message>
         <source>unknown</source>
         <extracomment>Role of an accessible object</extracomment>
         <translation>inconnu</translation>
     </message>
 </context>
 <context>
+    <name>QSslDiffieHellmanParameter</name>
+    <message>
+        <source>No error</source>
+        <translation>Aucune erreur</translation>
+    </message>
+    <message>
+        <source>Invalid input data</source>
+        <translation>Donnée d&apos;entrée non valable</translation>
+    </message>
+    <message>
+        <source>The given Diffie-Hellman parameters are deemed unsafe</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>QSslSocket</name>
+    <message>
+        <source>Error when setting the OpenSSL configuration (%1)</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Error when setting the elliptic curves (%1)</source>
         <translation>La définition des courbes elliptiques a provoqué une erreur (%1)</translation>
@@ -5825,6 +6942,14 @@ Role of an accessible object</extracomment>
     <message>
         <source>unsupported protocol</source>
         <translation>protocole non supporté</translation>
+    </message>
+    <message>
+        <source>Error while setting the minimal protocol version</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error while setting the maximum protocol version</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Invalid or empty cipher list (%1)</source>
@@ -5847,8 +6972,40 @@ Role of an accessible object</extracomment>
         <translation>La clé privée ne certifie pas la clé publique, %1</translation>
     </message>
     <message>
+        <source>Diffie-Hellman parameters are not valid</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OpenSSL version with disabled elliptic curves</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Expecting QByteArray for %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An error occurred attempting to set %1 to %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wrong value for %1 (%2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unrecognized command %1 = %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SSL_CONF_finish() failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SSL_CONF_CTX_new() failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>OpenSSL version too old, need at least v1.0.2</source>
-        <translation>La version de OpenSSL est trop ancienne, requiert au moins v1.0.2</translation>
+        <translation type="vanished">La version de OpenSSL est trop ancienne, requiert au moins v1.0.2</translation>
     </message>
     <message>
         <source>No error</source>
@@ -5943,6 +7100,50 @@ Role of an accessible object</extracomment>
         <translation>Le certificat du peer est sur liste noire</translation>
     </message>
     <message>
+        <source>No OCSP status response found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The OCSP status request had invalid syntax</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OCSP response contains an unexpected number of SingleResponse structures</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OCSP responder reached an inconsistent internal state</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OCSP responder was unable to return a status for the requested certificate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The server requires the client to sign the OCSP request in order to construct a response</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The client is not authorized to request OCSP status from this server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OCSP responder&apos;s identity cannot be verified</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The identity of a certificate in an OCSP response cannot be established</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The certificate status response has expired</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The certificate&apos;s status is unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Unknown error</source>
         <translation>Erreur inconnue</translation>
     </message>
@@ -5952,19 +7153,51 @@ Role of an accessible object</extracomment>
     </message>
     <message>
         <source>Error creating SSL session: %1</source>
-        <translation>Erreur lors de la création de la session SSL : %1</translation>
+        <translation>Erreur lors de la création de la session SSL&#xa0;: %1</translation>
+    </message>
+    <message>
+        <source>Server-side QSslSocket does not support OCSP stapling</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to enable OCSP stapling</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Client-side sockets do not send OCSP responses</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Unable to init SSL Context: %1</source>
-        <translation>Impossible d&apos;initialiser le contexte SSL : %1</translation>
+        <translation>Impossible d&apos;initialiser le contexte SSL&#xa0;: %1</translation>
     </message>
     <message>
         <source>Unable to write data: %1</source>
-        <translation>Impossible d&apos;écrire les données : %1</translation>
+        <translation>Impossible d&apos;écrire les données&#xa0;: %1</translation>
     </message>
     <message>
         <source>Unable to decrypt data: %1</source>
-        <translation>Impossible de décrypter les données : %1</translation>
+        <translation>Impossible de décrypter les données&#xa0;: %1</translation>
+    </message>
+    <message>
+        <source>Failed to decode OCSP response</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to extract basic OCSP response</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No certificate verification store, cannot verify OCSP response</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to decode a SingleResponse from OCSP status response</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to extract &apos;this update time&apos; from the SingleResponse</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>The TLS/SSL connection has been closed</source>
@@ -5972,11 +7205,139 @@ Role of an accessible object</extracomment>
     </message>
     <message>
         <source>Error while reading: %1</source>
-        <translation>Erreur lors de la lecture : %1</translation>
+        <translation>Erreur lors de la lecture&#xa0;: %1</translation>
     </message>
     <message>
         <source>Error during SSL handshake: %1</source>
-        <translation>Erreur lors de la connexion SSL : %1</translation>
+        <translation>Erreur lors de la connexion SSL&#xa0;: %1</translation>
+    </message>
+    <message>
+        <source>TLS initialization failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Attempted to use an unsupported protocol.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Insufficient memory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Internal error</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An internal handle was invalid</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An internal token was invalid</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Access denied</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No authority could be contacted for authorization</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No credentials</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The target is unknown or unreachable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An unsupported function was requested</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hostname provided does not match the one received from the peer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No common protocol exists between the client and the server</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unexpected or badly-formatted message received</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The data could not be encrypted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No cipher suites in common</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The credentials were not recognized / Invalid argument</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The message was tampered with, damaged or out of sequence.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A message was received out of sequence.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown error occurred: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid protocol chosen</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The certificate provided cannot be used for a client.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The certificate provided cannot be used for a server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Server did not accept any certificate we could present.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Algorithm mismatch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Handshake failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to query the TLS context: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Did not get the required attributes for the connection.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unwanted protocol was negotiated</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Renegotiation was unsuccessful: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Schannel failed to encrypt data: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot provide a certificate with no key</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -6069,6 +7430,10 @@ Role of an accessible object</extracomment>
         <translation>Aucun ancêtre commun pour les cibles et la source de la transition depuis l&apos;état &quot;%1&quot;</translation>
     </message>
     <message>
+        <source>Child mode of state machine &apos;%1&apos; is not &apos;ExclusiveStates&apos;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Unknown error</source>
         <translation>Erreur inconnue</translation>
     </message>
@@ -6077,23 +7442,23 @@ Role of an accessible object</extracomment>
     <name>QSystemSemaphore</name>
     <message>
         <source>%1: permission denied</source>
-        <translation>%1 : permission refusée</translation>
+        <translation>%1&#xa0;: permission refusée</translation>
     </message>
     <message>
         <source>%1: already exists</source>
-        <translation>%1 : existe déjà</translation>
+        <translation>%1&#xa0;: existe déjà</translation>
     </message>
     <message>
         <source>%1: does not exist</source>
-        <translation>%1 : n&apos;existe pas</translation>
+        <translation>%1&#xa0;: n&apos;existe pas</translation>
     </message>
     <message>
         <source>%1: out of resources</source>
-        <translation>%1 : manque de ressources</translation>
+        <translation>%1&#xa0;: manque de ressources</translation>
     </message>
     <message>
         <source>%1: unknown error %2</source>
-        <translation>%1 : erreur inconnue %2</translation>
+        <translation>%1&#xa0;: erreur inconnue %2</translation>
     </message>
 </context>
 <context>
@@ -6129,43 +7494,54 @@ Role of an accessible object</extracomment>
     <name>QTgaFile</name>
     <message>
         <source>Could not read image data</source>
-        <translation>Impossible de lire les données de l&apos;image</translation>
+        <translation type="vanished">Impossible de lire les données de l&apos;image</translation>
     </message>
     <message>
         <source>Sequential device (eg socket) for image read not supported</source>
-        <translation>Les périphériques séquentiels (par exemple un socket) pour la lecture d&apos;image ne sont pas supportés</translation>
+        <translation type="vanished">Les périphériques séquentiels (par exemple un socket) pour la lecture d&apos;image ne sont pas supportés</translation>
     </message>
     <message>
         <source>Seek file/device for image read failed</source>
-        <translation>La recherche d&apos;un fichier/périphérique pour la lecture d&apos;image a échoué</translation>
+        <translation type="vanished">La recherche d&apos;un fichier/périphérique pour la lecture d&apos;image a échoué</translation>
     </message>
     <message>
         <source>Image header read failed</source>
-        <translation>La lecture de l&apos;en-tête de l&apos;image a échoué</translation>
+        <translation type="vanished">La lecture de l&apos;en-tête de l&apos;image a échoué</translation>
     </message>
     <message>
         <source>Image type not supported</source>
-        <translation>Le type d&apos;image n&apos;est pas supporté</translation>
+        <translation type="vanished">Le type d&apos;image n&apos;est pas supporté</translation>
     </message>
     <message>
         <source>Image depth not valid</source>
-        <translation>La profondeur de l&apos;image n&apos;est pas valide</translation>
+        <translation type="vanished">La profondeur de l&apos;image n&apos;est pas valide</translation>
     </message>
     <message>
         <source>Could not seek to image read footer</source>
-        <translation>Impossible de trouver le pied de page de l&apos;image lue</translation>
+        <translation type="vanished">Impossible de trouver le pied de page de l&apos;image lue</translation>
     </message>
     <message>
         <source>Could not read footer</source>
-        <translation>Impossible de lire le pied de page</translation>
+        <translation type="vanished">Impossible de lire le pied de page</translation>
     </message>
     <message>
         <source>Image type (non-TrueVision 2.0) not supported</source>
-        <translation>Le type d&apos;image (non-TrueVision 2.0) n&apos;est pas supporté</translation>
+        <translation type="vanished">Le type d&apos;image (non-TrueVision 2.0) n&apos;est pas supporté</translation>
     </message>
     <message>
         <source>Could not reset to read data</source>
-        <translation>Impossible de réinitialiser pour lire les données</translation>
+        <translation type="vanished">Impossible de réinitialiser pour lire les données</translation>
+    </message>
+</context>
+<context>
+    <name>QUdpSocket</name>
+    <message>
+        <source>Unable to send a datagram</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No datagram available for reading</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -6284,7 +7660,7 @@ Role of an accessible object</extracomment>
     <name>QWhatsThisAction</name>
     <message>
         <source>What&apos;s This?</source>
-        <translation>Qu&apos;est-ce que c&apos;est ?</translation>
+        <translation>Qu&apos;est-ce que c&apos;est&#xa0;?</translation>
     </message>
 </context>
 <context>
@@ -6335,9 +7711,17 @@ Role of an accessible object</extracomment>
         <source>Qt cannot load the direct2d platform plugin because the Direct2D version on this system is too old. The minimum system requirement for this platform plugin is Windows 7 SP1 with Platform Update.
 
 The minimum Direct2D version required is %1.%2.%3.%4. The Direct2D version on this system is %5.%6.%7.%8.</source>
-        <translation>Qt ne peut pas charger le plugin direct2d parceque la version système de Direct2D est trop ancienne. Le support système minimal requis pour ce plugin est Windows 7 SP1 avec Mise à jour de plateforme.
+        <translation type="vanished">Qt ne peut pas charger le plugin direct2d parceque la version système de Direct2D est trop ancienne. Le support système minimal requis pour ce plugin est Windows 7 SP1 avec Mise à jour de plateforme.
 
 La version Direct2D minimale requise est %1.%2.%3.%4. La version Direct2D courante est %5.%6.%7.%8.</translation>
+    </message>
+    <message>
+        <source>Qt cannot load the direct2d platform plugin because the Direct2D version on this system is too old. The minimum system requirement for this platform plugin is Windows 7 SP1 with Platform Update.
+
+The minimum Direct2D version required is %1. The Direct2D version on this system is %2.</source>
+        <translation>Qt ne peut pas charger le plugin direct2d parce que la version système de Direct2D est trop ancienne. Le support système minimal requis pour ce plugin est Windows 7 SP1 avec Mise à jour de plateforme.
+
+La version Direct2D minimale requise est %1. La version Direct2D courante est %2.</translation>
     </message>
     <message>
         <source>Cannot load direct2d platform plugin</source>
@@ -6561,16 +7945,48 @@ La version Direct2D minimale requise est %1.%2.%3.%4. La version Direct2D couran
         <translation>Le document est invalide.</translation>
     </message>
     <message>
+        <source>&apos;%1&apos;</source>
+        <comment>expected</comment>
+        <extracomment>&apos;&lt;first option&gt;&apos;</extracomment>
+        <translation>&quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>%1 or &apos;%2&apos;</source>
+        <comment>expected</comment>
+        <extracomment>&lt;first option&gt;, &apos;&lt;second option&gt;&apos;</extracomment>
+        <translation>%1 ou &quot;%2&quot;</translation>
+    </message>
+    <message>
+        <source>%1, &apos;%2&apos;</source>
+        <comment>expected</comment>
+        <extracomment>&lt;options so far&gt;, &apos;&lt;next option&gt;&apos;</extracomment>
+        <translation>%1, &quot;%2&quot;</translation>
+    </message>
+    <message>
+        <source>%1, or &apos;%2&apos;</source>
+        <comment>expected</comment>
+        <extracomment>&lt;options so far&gt;, or &apos;&lt;final option&gt;&apos;</extracomment>
+        <translation>%1, ou &quot;%2&quot;</translation>
+    </message>
+    <message>
+        <source>Expected %1, but got &apos;%2&apos;.</source>
+        <translation>Attendu %1, obtenu &quot;%2&quot;.</translation>
+    </message>
+    <message>
+        <source>Unexpected &apos;%1&apos;.</source>
+        <translation>&quot;%1&quot; inattendu.</translation>
+    </message>
+    <message>
         <source>Expected </source>
-        <translation>Attendu </translation>
+        <translation type="vanished">Attendu </translation>
     </message>
     <message>
         <source>, but got &apos;</source>
-        <translation>, mais trouvé &apos;</translation>
+        <translation type="vanished">, mais trouvé &apos;</translation>
     </message>
     <message>
         <source>Unexpected &apos;</source>
-        <translation>Inattendu &apos;</translation>
+        <translation type="vanished">Inattendu &apos;</translation>
     </message>
     <message>
         <source>Expected character data.</source>
@@ -6578,7 +7994,15 @@ La version Direct2D minimale requise est %1.%2.%3.%4. La version Direct2D couran
     </message>
     <message>
         <source>Recursive entity detected.</source>
-        <translation>Une entité récursive est détectée.</translation>
+        <translation type="vanished">Une entité récursive est détectée.</translation>
+    </message>
+    <message>
+        <source>Self-referencing entity detected.</source>
+        <translation>Entité qui se référence elle-même détectée.</translation>
+    </message>
+    <message>
+        <source>Entity expands to more characters than the entity expansion limit.</source>
+        <translation>L&apos;entité se développe en plus de caractères que la limite autorisée.</translation>
     </message>
     <message>
         <source>Start tag expected.</source>

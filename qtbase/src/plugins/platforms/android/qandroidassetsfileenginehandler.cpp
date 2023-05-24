@@ -1,71 +1,39 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qandroidassetsfileenginehandler.h"
 #include "androidjnimain.h"
+#include "qandroidassetsfileenginehandler.h"
+
 #include <optional>
 
 #include <QCoreApplication>
-#include <QVector>
-#include <QtCore/private/qjni_p.h>
+#include <QList>
+#include <QtCore/QJniEnvironment>
+#include <QtCore/QJniObject>
 
 QT_BEGIN_NAMESPACE
 
-static const QLatin1String assetsPrefix("assets:");
+using namespace Qt::StringLiterals;
+
+static const auto assetsPrefix = "assets:"_L1;
 const static int prefixSize = 7;
 
 static inline QString cleanedAssetPath(QString file)
 {
     if (file.startsWith(assetsPrefix))
         file.remove(0, prefixSize);
-    file.replace(QLatin1String("//"), QLatin1String("/"));
-    if (file.startsWith(QLatin1Char('/')))
+    file.replace("//"_L1, "/"_L1);
+    if (file.startsWith(u'/'))
         file.remove(0, 1);
-    if (file.endsWith(QLatin1Char('/')))
+    if (file.endsWith(u'/'))
         file.chop(1);
     return file;
 }
 
 static inline QString prefixedPath(QString path)
 {
-    path = assetsPrefix + QLatin1Char('/') + path;
-    path.replace(QLatin1String("//"), QLatin1String("/"));
+    path = assetsPrefix + u'/' + path;
+    path.replace("//"_L1, "/"_L1);
     return path;
 }
 
@@ -79,16 +47,17 @@ struct AssetItem {
     AssetItem (const QString &rawName)
         : name(rawName)
     {
-        if (name.endsWith(QLatin1Char('/'))) {
+        if (name.endsWith(u'/')) {
             type = Type::Folder;
             name.chop(1);
         }
     }
     Type type = Type::File;
     QString name;
+    qint64 size = -1;
 };
 
-using AssetItemList = QVector<AssetItem>;
+using AssetItemList = QList<AssetItem>;
 
 class FolderIterator : public AssetItemList
 {
@@ -112,7 +81,7 @@ public:
     {
         if (filePath.isEmpty())
             return AssetItem::Type::Folder;
-        const QStringList paths = filePath.split(QLatin1Char('/'));
+        const QStringList paths = filePath.split(u'/');
         QString fullPath;
         AssetItem::Type res = AssetItem::Type::Invalid;
         for (const auto &path: paths) {
@@ -123,7 +92,7 @@ public:
             if (it == folder->end() || it->name != path)
                 return AssetItem::Type::Invalid;
             if (!fullPath.isEmpty())
-                fullPath.append(QLatin1Char('/'));
+                fullPath.append(u'/');
             fullPath += path;
             res = it->type;
         }
@@ -139,23 +108,25 @@ public:
     FolderIterator(const QString &path)
         : m_path(path)
     {
-        QJNIObjectPrivate files = QJNIObjectPrivate::callStaticObjectMethod(QtAndroid::applicationClass(),
+        // Note that empty dirs in the assets dir before the build are not going to be
+        // included in the final apk, so no empty folders should expected to be listed.
+        QJniObject files = QJniObject::callStaticObjectMethod(QtAndroid::applicationClass(),
                                                                             "listAssetContent",
                                                                             "(Landroid/content/res/AssetManager;Ljava/lang/String;)[Ljava/lang/String;",
-                                                                            QtAndroid::assets(), QJNIObjectPrivate::fromString(path).object());
+                                                                            QtAndroid::assets(), QJniObject::fromString(path).object());
         if (files.isValid()) {
-            QJNIEnvironmentPrivate env;
-            jobjectArray jFiles = static_cast<jobjectArray>(files.object());
+            QJniEnvironment env;
+            jobjectArray jFiles = files.object<jobjectArray>();
             const jint nFiles = env->GetArrayLength(jFiles);
             for (int i = 0; i < nFiles; ++i) {
-                AssetItem item{QJNIObjectPrivate::fromLocalRef(env->GetObjectArrayElement(jFiles, i)).toString()};
+                AssetItem item{QJniObject::fromLocalRef(env->GetObjectArrayElement(jFiles, i)).toString()};
                 insert(std::upper_bound(begin(), end(), item, [](const auto &a, const auto &b){
                     return a.name < b.name;
                 }), item);
             }
         }
-        m_path = assetsPrefix + QLatin1Char('/') + m_path + QLatin1Char('/');
-        m_path.replace(QLatin1String("//"), QLatin1String("/"));
+        m_path = assetsPrefix + u'/' + m_path + u'/';
+        m_path.replace("//"_L1, "/"_L1);
     }
 
     QString currentFileName() const
@@ -192,7 +163,7 @@ private:
 };
 
 QCache<QString, QSharedPointer<FolderIterator>> FolderIterator::m_assetsCache(std::max(50, qEnvironmentVariableIntValue("QT_ANDROID_MAX_ASSETS_CACHE_SIZE")));
-QMutex FolderIterator::m_assetsCacheMutex;
+Q_CONSTINIT QMutex FolderIterator::m_assetsCacheMutex;
 
 class AndroidAbstractFileEngineIterator: public QAbstractFileEngineIterator
 {
@@ -217,7 +188,7 @@ public:
         return m_currentIterator->currentFileName();
     }
 
-    virtual QString currentFilePath() const
+    QString currentFilePath() const override
     {
         if (!m_currentIterator)
             return {};
@@ -259,9 +230,11 @@ public:
         close();
     }
 
-    bool open(QIODevice::OpenMode openMode) override
+    bool open(QIODevice::OpenMode openMode, std::optional<QFile::Permissions> permissions) override
     {
-        if (m_isFolder || (openMode & QIODevice::WriteOnly))
+        Q_UNUSED(permissions);
+
+        if (!m_assetInfo || m_assetInfo->type != AssetItem::Type::File || (openMode & QIODevice::WriteOnly))
             return false;
         close();
         m_assetFile = AAssetManager_open(m_assetManager, m_fileName.toUtf8(), AASSET_MODE_BUFFER);
@@ -275,14 +248,13 @@ public:
             m_assetFile = 0;
             return true;
         }
-        m_isFolder = false;
         return false;
     }
 
     qint64 size() const override
     {
-        if (m_assetFile)
-            return AAsset_getLength(m_assetFile);
+        if (m_assetInfo)
+            return m_assetInfo->size;
         return -1;
     }
 
@@ -307,49 +279,41 @@ public:
         return -1;
     }
 
-    bool isSequential() const override
-    {
-        return false;
-    }
-
     bool caseSensitive() const override
     {
         return true;
-    }
-
-    bool isRelativePath() const override
-    {
-        return false;
     }
 
     FileFlags fileFlags(FileFlags type = FileInfoAll) const override
     {
         FileFlags commonFlags(ReadOwnerPerm|ReadUserPerm|ReadGroupPerm|ReadOtherPerm|ExistsFlag);
         FileFlags flags;
-        if (m_assetFile)
-            flags = FileType | commonFlags;
-        else if (m_isFolder)
-            flags = DirectoryType | commonFlags;
+        if (m_assetInfo) {
+            if (m_assetInfo->type == AssetItem::Type::File)
+                flags = FileType | commonFlags;
+            else if (m_assetInfo->type == AssetItem::Type::Folder)
+                flags = DirectoryType | commonFlags;
+        }
         return type & flags;
     }
 
     QString fileName(FileName file = DefaultName) const override
     {
-        int pos;
+        qsizetype pos;
         switch (file) {
         case DefaultName:
         case AbsoluteName:
         case CanonicalName:
                 return prefixedPath(m_fileName);
         case BaseName:
-            if ((pos = m_fileName.lastIndexOf(QChar(QLatin1Char('/')))) != -1)
-                return prefixedPath(m_fileName.mid(pos));
+            if ((pos = m_fileName.lastIndexOf(u'/')) != -1)
+                return m_fileName.mid(pos + 1);
             else
-                return prefixedPath(m_fileName);
+                return m_fileName;
         case PathName:
         case AbsolutePathName:
         case CanonicalPathName:
-            if ((pos = m_fileName.lastIndexOf(QChar(QLatin1Char('/')))) != -1)
+            if ((pos = m_fileName.lastIndexOf(u'/')) != -1)
                 return prefixedPath(m_fileName.left(pos));
             else
                 return prefixedPath(m_fileName);
@@ -364,21 +328,48 @@ public:
             return;
         close();
         m_fileName = cleanedAssetPath(file);
-        switch (FolderIterator::fileType(m_fileName)) {
-        case AssetItem::Type::File:
-            open(QIODevice::ReadOnly);
-            break;
-        case AssetItem::Type::Folder:
-            m_isFolder = true;
-            break;
-        case AssetItem::Type::Invalid:
-            break;
+
+        {
+            QMutexLocker lock(&m_assetsInfoCacheMutex);
+            QSharedPointer<AssetItem> *assetInfoPtr = m_assetsInfoCache.object(m_fileName);
+            if (assetInfoPtr) {
+                m_assetInfo = *assetInfoPtr;
+                return;
+            }
         }
+
+        QSharedPointer<AssetItem> *newAssetInfoPtr = new QSharedPointer<AssetItem>(new AssetItem);
+
+        m_assetInfo = *newAssetInfoPtr;
+        m_assetInfo->name = m_fileName;
+        m_assetInfo->type = AssetItem::Type::Invalid;
+
+        m_assetFile = AAssetManager_open(m_assetManager, m_fileName.toUtf8(), AASSET_MODE_BUFFER);
+
+        if (m_assetFile) {
+            m_assetInfo->type = AssetItem::Type::File;
+            m_assetInfo->size = AAsset_getLength(m_assetFile);
+        } else {
+            auto *assetDir = AAssetManager_openDir(m_assetManager, m_fileName.toUtf8());
+            if (assetDir) {
+                if (AAssetDir_getNextFileName(assetDir)
+                        || (!FolderIterator::fromCache(m_fileName, false)->empty())) {
+                    // If AAssetDir_getNextFileName is not valid, it still can be a directory that
+                    // contains only other directories (no files). FolderIterator will not be called
+                    // on the directory containing files so it should not be too time consuming now.
+                    m_assetInfo->type = AssetItem::Type::Folder;
+                }
+                AAssetDir_close(assetDir);
+            }
+        }
+
+        QMutexLocker lock(&m_assetsInfoCacheMutex);
+        m_assetsInfoCache.insert(m_fileName, newAssetInfoPtr);
     }
 
     Iterator *beginEntryList(QDir::Filters filters, const QStringList &filterNames) override
     {
-        if (m_isFolder)
+        if (m_assetInfo && m_assetInfo->type == AssetItem::Type::Folder)
             return new AndroidAbstractFileEngineIterator(filters, filterNames, m_fileName);
         return nullptr;
     }
@@ -387,10 +378,15 @@ private:
     AAsset *m_assetFile = nullptr;
     AAssetManager *m_assetManager = nullptr;
     // initialize with a name that can't be used as a file name
-    QString m_fileName = QLatin1String(".");
-    bool m_isFolder = false;
+    QString m_fileName = "."_L1;
+    QSharedPointer<AssetItem> m_assetInfo;
+
+    static QCache<QString, QSharedPointer<AssetItem>> m_assetsInfoCache;
+    static QMutex m_assetsInfoCacheMutex;
 };
 
+QCache<QString, QSharedPointer<AssetItem>> AndroidAbstractFileEngine::m_assetsInfoCache(std::max(200, qEnvironmentVariableIntValue("QT_ANDROID_MAX_FILEINFO_ASSETS_CACHE_SIZE")));
+Q_CONSTINIT QMutex AndroidAbstractFileEngine::m_assetsInfoCacheMutex;
 
 AndroidAssetsFileEngineHandler::AndroidAssetsFileEngineHandler()
 {
@@ -406,10 +402,10 @@ QAbstractFileEngine * AndroidAssetsFileEngineHandler::create(const QString &file
         return nullptr;
 
     QString path = fileName.mid(prefixSize);
-    path.replace(QLatin1String("//"), QLatin1String("/"));
-    if (path.startsWith(QLatin1Char('/')))
+    path.replace("//"_L1, "/"_L1);
+    if (path.startsWith(u'/'))
         path.remove(0, 1);
-    if (path.endsWith(QLatin1Char('/')))
+    if (path.endsWith(u'/'))
         path.chop(1);
     return new AndroidAbstractFileEngine(m_assetManager, path);
 }

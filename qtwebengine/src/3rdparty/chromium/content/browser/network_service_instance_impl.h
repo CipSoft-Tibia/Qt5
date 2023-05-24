@@ -1,13 +1,17 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_BROWSER_NETWORK_SERVICE_INSTANCE_IMPL_H_
 #define CONTENT_BROWSER_NETWORK_SERVICE_INSTANCE_IMPL_H_
 
-#include "base/callback.h"
 #include "base/callback_list.h"
+#include "base/functional/callback.h"
 #include "content/common/content_export.h"
+
+namespace base {
+class TimeDelta;
+}
 
 namespace content {
 
@@ -24,7 +28,7 @@ CONTENT_EXPORT void ResetNetworkServiceForTesting();
 // mojo::Remote<URLLoaderFactory>).
 //
 // Can only be called on the UI thread.  No-op if NetworkService is disabled.
-CONTENT_EXPORT std::unique_ptr<base::CallbackList<void()>::Subscription>
+CONTENT_EXPORT base::CallbackListSubscription
 RegisterNetworkServiceCrashHandler(base::RepeatingClosure handler);
 
 // Corresponds to the "NetworkServiceAvailability" histogram enumeration type in
@@ -53,9 +57,9 @@ enum class SSLKeyLogFileAction {
 
 // TODO(http://crbug.com/934317): Remove these when done debugging renderer
 // hangs.
-CONTENT_EXPORT NetworkServiceAvailability GetNetworkServiceAvailability();
-CONTENT_EXPORT base::TimeDelta GetTimeSinceLastNetworkServiceCrash();
-CONTENT_EXPORT void PingNetworkService(base::OnceClosure closure);
+NetworkServiceAvailability GetNetworkServiceAvailability();
+base::TimeDelta GetTimeSinceLastNetworkServiceCrash();
+void PingNetworkService(base::OnceClosure closure);
 
 // Shuts down the in-process network service or disconnects from the out-of-
 // process one, allowing it to shut down.

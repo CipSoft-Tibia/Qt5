@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebSockets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \class QWebSocket
@@ -52,9 +16,7 @@
 
     This class was modeled after QAbstractSocket.
 
-    QWebSocket currently does not support
-    \l {WebSocket Extensions} and
-    \l {WebSocket Subprotocols}.
+    QWebSocket currently does not support \l {WebSocket Extensions}.
 
     QWebSocket only supports version 13 of the WebSocket protocol, as outlined in
     \l {RFC 6455}.
@@ -78,7 +40,7 @@
 */
 
 /*!
-    \page echoclient.html example
+    \page echoclient.html
     \title QWebSocket client example
     \brief A sample WebSocket client that sends a message and displays the message that
     it receives back.
@@ -136,6 +98,27 @@ not been filled in with new information when the signal returns.
 
 \sa QAuthenticator, QNetworkProxy
 */
+
+/*!
+    \fn void QWebSocket::authenticationRequired(QAuthenticator *authenticator)
+    \since 6.6
+
+    This signal is emitted when the server requires authentication.
+    The \a authenticator object must then be filled in with the required details
+    to allow authentication and continue the connection.
+
+    If you know that the server may require authentication, you can set the
+    username and password on the initial QUrl, using QUrl::setUserName and
+    QUrl::setPassword. QWebSocket will still try to connect \e{once} without
+    using the provided credentials.
+
+    \note It is not possible to use a QueuedConnection to connect to
+    this signal, as the connection will fail if the authenticator has
+    not been filled in with new information when the signal returns.
+
+    \sa QAuthenticator
+*/
+
 /*!
     \fn void QWebSocket::stateChanged(QAbstractSocket::SocketState state);
 
@@ -210,18 +193,6 @@ not been filled in with new information when the signal returns.
     \sa textMessageReceived()
 */
 /*!
-    \fn void QWebSocket::error(QAbstractSocket::SocketError error);
-
-    This signal is emitted after an error occurred. The \a error
-    parameter describes the type of error that occurred.
-
-    QAbstractSocket::SocketError is not a registered metatype, so for queued
-    connections, you will have to register it with Q_DECLARE_METATYPE() and
-    qRegisterMetaType().
-
-    \sa error(), errorString()
-*/
-/*!
     \fn void QWebSocket::sslErrors(const QList<QSslError> &errors)
     QWebSocket emits this signal after the SSL handshake to indicate that one or more errors have
     occurred while establishing the identity of the peer.
@@ -261,6 +232,67 @@ not been filled in with new information when the signal returns.
     \sa QSslSocket::preSharedKeyAuthenticationRequired()
 */
 /*!
+    \fn void QWebSocket::peerVerifyError(const QSslError &error)
+    \since 6.2
+
+    QWebSocket can emit this signal several times during the SSL handshake,
+    before encryption has been established, to indicate that an error has
+    occurred while establishing the identity of the peer. The \a error is
+    usually an indication that QWebSocket is unable to securely identify the
+    peer.
+
+    This signal provides you with an early indication when something's wrong.
+    By connecting to this signal, you can manually choose to tear down the
+    connection from inside the connected slot before the handshake has
+    completed. If no action is taken, QWebSocket will proceed to emitting
+    QWebSocket::sslErrors().
+
+    \sa sslErrors()
+*/
+/*!
+    \fn void QWebSocket::alertSent(QSsl::AlertLevel level, QSsl::AlertType type, const QString &description)
+    \since 6.2
+
+    QWebSocket emits this signal if an alert message was sent to a peer. \a level
+    describes if it was a warning or a fatal error. \a type gives the code
+    of the alert message. When a textual description of the alert message is
+    available, it is supplied in \a description.
+
+    \note This signal is mostly informational and can be used for debugging
+    purposes, normally it does not require any actions from the application.
+    \note Not all backends support this functionality.
+
+    \sa alertReceived(), QSsl::AlertLevel, QSsl::AlertType
+*/
+/*!
+    \fn void QWebSocket::alertReceived(QSsl::AlertLevel level, QSsl::AlertType type, const QString &description)
+    \since 6.2
+
+    QWebSocket emits this signal if an alert message was received from a peer.
+    \a level tells if the alert was fatal or it was a warning. \a type is the
+    code explaining why the alert was sent. When a textual description of
+    the alert message is available, it is supplied in \a description.
+
+    \note The signal is mostly for informational and debugging purposes and does not
+    require any handling in the application. If the alert was fatal, underlying
+    backend will handle it and close the connection.
+    \note Not all backends support this functionality.
+
+    \sa alertSent(), QSsl::AlertLevel, QSsl::AlertType
+*/
+/*!
+    \fn void QWebSocket::handshakeInterruptedOnError(const QSslError &error)
+    \since 6.2
+
+    QWebSocket emits this signal if a certificate verification error was
+    found and if early error reporting was enabled in QSslConfiguration.
+    An application is expected to inspect the \a error and decide if
+    it wants to continue the handshake, or abort it and send an alert message
+    to the peer. The signal-slot connection must be direct.
+
+    \sa continueInterruptedHandshake(), sslErrors(), QSslConfiguration::setHandshakeMustInterruptOnError()
+*/
+/*!
     \fn void QWebSocket::pong(quint64 elapsedTime, const QByteArray &payload)
 
     Emitted when a pong message is received in reply to a previous ping.
@@ -271,6 +303,7 @@ not been filled in with new information when the signal returns.
   */
 #include "qwebsocket.h"
 #include "qwebsocket_p.h"
+#include "qwebsockethandshakeoptions.h"
 
 #include <QtCore/QUrl>
 #include <QtNetwork/QTcpSocket>
@@ -423,7 +456,7 @@ void QWebSocket::open(const QUrl &url)
 {
     Q_D(QWebSocket);
     QNetworkRequest request(url);
-    d->open(request, true);
+    d->open(request, QWebSocketHandshakeOptions{}, true);
 }
 
 /*!
@@ -437,7 +470,41 @@ void QWebSocket::open(const QUrl &url)
 void QWebSocket::open(const QNetworkRequest &request)
 {
     Q_D(QWebSocket);
-    d->open(request, true);
+    d->open(request, QWebSocketHandshakeOptions{}, true);
+}
+
+/*!
+    \brief Opens a WebSocket connection using the given \a url and \a options.
+    \since 6.4
+
+    If the url contains newline characters (\\r\\n), then the error signal will be emitted
+    with QAbstractSocket::ConnectionRefusedError as error type.
+
+    Additional options for the WebSocket handshake such as subprotocols can be specified in
+    \a options.
+ */
+void QWebSocket::open(const QUrl &url, const QWebSocketHandshakeOptions &options)
+{
+    Q_D(QWebSocket);
+    QNetworkRequest request(url);
+    d->open(request, options, true);
+}
+
+/*!
+    \brief Opens a WebSocket connection using the given \a request and \a options.
+    \since 6.4
+
+    The \a request url will be used to open the WebSocket connection.
+    Headers present in the request will be sent to the server in the upgrade request,
+    together with the ones needed for the websocket handshake.
+
+    Additional options for the WebSocket handshake such as subprotocols can be specified in
+    \a options.
+ */
+void QWebSocket::open(const QNetworkRequest &request, const QWebSocketHandshakeOptions &options)
+{
+    Q_D(QWebSocket);
+    d->open(request, options, true);
 }
 
 /*!
@@ -483,6 +550,22 @@ void QWebSocket::ignoreSslErrors()
 {
     Q_D(QWebSocket);
     d->ignoreSslErrors();
+}
+
+/*!
+    \since 6.2
+
+    If an application wants to conclude a handshake even after receiving
+    handshakeInterruptedOnError() signal, it must call this function.
+    This call must be done from a slot function attached to the signal.
+    The signal-slot connection must be direct.
+
+    \sa handshakeInterruptedOnError(), QSslConfiguration::setHandshakeMustInterruptOnError()
+*/
+void QWebSocket::continueInterruptedHandshake()
+{
+    Q_D(QWebSocket);
+    d->continueInterruptedHandshake();
 }
 
 /*!
@@ -577,12 +660,32 @@ QNetworkRequest QWebSocket::request() const
 }
 
 /*!
+    \brief Returns the handshake options that were used to open this socket.
+    \since 6.4
+ */
+QWebSocketHandshakeOptions QWebSocket::handshakeOptions() const
+{
+    Q_D(const QWebSocket);
+    return d->handshakeOptions();
+}
+
+/*!
     \brief Returns the current origin.
  */
 QString QWebSocket::origin() const
 {
     Q_D(const QWebSocket);
     return d->origin();
+}
+
+/*!
+    \brief Returns the used WebSocket protocol.
+    \since 6.4
+ */
+QString QWebSocket::subprotocol() const
+{
+    Q_D(const QWebSocket);
+    return d->protocol();
 }
 
 /*!
@@ -901,5 +1004,26 @@ quint64 QWebSocket::maxOutgoingFrameSize()
 {
     return QWebSocketPrivate::maxOutgoingFrameSize();
 }
+
+/*!
+    \fn void QWebSocket::errorOccurred(QAbstractSocket::SocketError error);
+
+    \since 6.5
+    \brief This signal is emitted after an error occurred.
+
+    The \a error parameter describes the type of error that occurred.
+
+    QAbstractSocket::SocketError is not a registered metatype, so for queued
+    connections, you will have to register it with Q_DECLARE_METATYPE() and
+    qRegisterMetaType().
+
+    \sa error(), errorString()
+*/
+#if QT_DEPRECATED_SINCE(6, 5)
+/*!
+    \fn void QWebSocket::error(QAbstractSocket::SocketError error);
+    \deprecated [6.5] Use errorOccurred(QAbstractSocket::SocketError error) instead.
+*/
+#endif
 
 QT_END_NAMESPACE

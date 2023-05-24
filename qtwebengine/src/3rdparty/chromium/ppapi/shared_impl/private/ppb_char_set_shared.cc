@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -222,7 +222,7 @@ PP_Bool PPB_CharSet_Shared::CharSetToUTF16(
 
   // We can convert this call to the implementation in base to avoid code
   // duplication, although this does introduce an extra copy of the data.
-  base::string16 output;
+  std::u16string output;
   if (!base::CodepageToUTF16(std::string(input, input_len), input_char_set,
                              base_on_error, &output)) {
     *output_utf16_length = 0;

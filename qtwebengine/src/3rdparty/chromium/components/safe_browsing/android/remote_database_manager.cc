@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,23 +8,26 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/timer/elapsed_timer.h"
-#include "components/safe_browsing/android/safe_browsing_api_handler.h"
-#include "components/safe_browsing/core/db/v4_get_hash_protocol_manager.h"
-#include "components/safe_browsing/core/db/v4_protocol_manager_util.h"
+#include "components/safe_browsing/android/real_time_url_checks_allowlist.h"
+#include "components/safe_browsing/android/safe_browsing_api_handler_bridge.h"
+#include "components/safe_browsing/core/browser/db/v4_get_hash_protocol_manager.h"
+#include "components/safe_browsing/core/browser/db/v4_protocol_manager_util.h"
+#include "components/safe_browsing/core/common/features.h"
 #include "components/variations/variations_associated_data.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
-#include "third_party/blink/public/mojom/loader/resource_load_info.mojom-shared.h"
 
 using content::BrowserThread;
-
 namespace safe_browsing {
 
+using IsInAllowlistResult = RealTimeUrlChecksAllowlist::IsInAllowlistResult;
 namespace {
 
 // Android field trial for controlling types_to_check.
@@ -56,8 +59,8 @@ class RemoteSafeBrowsingDatabaseManager::ClientRequest {
   }
 
  private:
-  Client* client_;
-  RemoteSafeBrowsingDatabaseManager* db_manager_;
+  raw_ptr<Client, DanglingUntriaged> client_;
+  raw_ptr<RemoteSafeBrowsingDatabaseManager, DanglingUntriaged> db_manager_;
   GURL url_;
   base::ElapsedTimer timer_;
   base::WeakPtrFactory<ClientRequest> weak_factory_{this};
@@ -75,8 +78,9 @@ void RemoteSafeBrowsingDatabaseManager::ClientRequest::OnRequestDoneWeak(
     SBThreatType matched_threat_type,
     const ThreatMetadata& metadata) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
-  if (!req)
+  if (!req) {
     return;  // Previously canceled
+  }
   req->OnRequestDone(matched_threat_type, metadata);
 }
 
@@ -96,15 +100,23 @@ void RemoteSafeBrowsingDatabaseManager::ClientRequest::OnRequestDone(
 //
 
 // TODO(nparker): Add more tests for this class
-RemoteSafeBrowsingDatabaseManager::RemoteSafeBrowsingDatabaseManager() {
+RemoteSafeBrowsingDatabaseManager::RemoteSafeBrowsingDatabaseManager()
+    : SafeBrowsingDatabaseManager(content::GetUIThreadTaskRunner({}),
+                                  content::GetIOThreadTaskRunner({})) {
   // Avoid memory allocations growing the underlying vector. Although this
   // usually wastes a bit of memory, it will still be less than the default
   // vector allocation strategy.
-  resource_types_to_check_.reserve(
-      static_cast<int>(blink::mojom::ResourceType::kMaxValue) + 1);
-  // Decide which resource types to check. These two are the minimum.
-  resource_types_to_check_.insert(blink::mojom::ResourceType::kMainFrame);
-  resource_types_to_check_.insert(blink::mojom::ResourceType::kSubFrame);
+  request_destinations_to_check_.reserve(
+      static_cast<int>(network::mojom::RequestDestination::kMaxValue) + 1);
+  // Decide which request destinations to check. These three are the minimum.
+  request_destinations_to_check_.insert(
+      network::mojom::RequestDestination::kDocument);
+  request_destinations_to_check_.insert(
+      network::mojom::RequestDestination::kIframe);
+  request_destinations_to_check_.insert(
+      network::mojom::RequestDestination::kFrame);
+  request_destinations_to_check_.insert(
+      network::mojom::RequestDestination::kFencedframe);
 
   // The param is expected to be a comma-separated list of ints
   // corresponding to the enum types.  We're keeping this finch
@@ -113,22 +125,23 @@ RemoteSafeBrowsingDatabaseManager::RemoteSafeBrowsingDatabaseManager() {
       kAndroidFieldExperiment, kAndroidTypesToCheckParam);
   if (ints_str.empty()) {
     // By default, we check all types except a few.
-    static_assert(blink::mojom::ResourceType::kMaxValue ==
-                      blink::mojom::ResourceType::kNavigationPreloadSubFrame,
-                  "Decide if new resource type should be skipped on mobile.");
+    static_assert(
+        network::mojom::RequestDestination::kMaxValue ==
+            network::mojom::RequestDestination::kWebIdentity,
+        "Decide if new request destination should be skipped on mobile.");
     for (int t_int = 0;
-         t_int <= static_cast<int>(blink::mojom::ResourceType::kMaxValue);
+         t_int <=
+         static_cast<int>(network::mojom::RequestDestination::kMaxValue);
          t_int++) {
-      blink::mojom::ResourceType t =
-          static_cast<blink::mojom::ResourceType>(t_int);
+      network::mojom::RequestDestination t =
+          static_cast<network::mojom::RequestDestination>(t_int);
       switch (t) {
-        case blink::mojom::ResourceType::kStylesheet:
-        case blink::mojom::ResourceType::kImage:
-        case blink::mojom::ResourceType::kFontResource:
-        case blink::mojom::ResourceType::kFavicon:
+        case network::mojom::RequestDestination::kStyle:
+        case network::mojom::RequestDestination::kImage:
+        case network::mojom::RequestDestination::kFont:
           break;
         default:
-          resource_types_to_check_.insert(t);
+          request_destinations_to_check_.insert(t);
       }
     }
   } else {
@@ -137,9 +150,10 @@ RemoteSafeBrowsingDatabaseManager::RemoteSafeBrowsingDatabaseManager() {
              ints_str, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL)) {
       int i;
       if (base::StringToInt(val_str, &i) && i >= 0 &&
-          i <= static_cast<int>(blink::mojom::ResourceType::kMaxValue)) {
-        resource_types_to_check_.insert(
-            static_cast<blink::mojom::ResourceType>(i));
+          i <=
+              static_cast<int>(network::mojom::RequestDestination::kMaxValue)) {
+        request_destinations_to_check_.insert(
+            static_cast<network::mojom::RequestDestination>(i));
       }
     }
   }
@@ -163,9 +177,9 @@ void RemoteSafeBrowsingDatabaseManager::CancelCheck(Client* client) {
   }
 }
 
-bool RemoteSafeBrowsingDatabaseManager::CanCheckResourceType(
-    blink::mojom::ResourceType resource_type) const {
-  return resource_types_to_check_.count(resource_type) > 0;
+bool RemoteSafeBrowsingDatabaseManager::CanCheckRequestDestination(
+    network::mojom::RequestDestination request_destination) const {
+  return request_destinations_to_check_.count(request_destination) > 0;
 }
 
 bool RemoteSafeBrowsingDatabaseManager::CanCheckUrl(const GURL& url) const {
@@ -180,31 +194,29 @@ bool RemoteSafeBrowsingDatabaseManager::ChecksAreAlwaysAsync() const {
 bool RemoteSafeBrowsingDatabaseManager::CheckBrowseUrl(
     const GURL& url,
     const SBThreatTypeSet& threat_types,
-    Client* client) {
+    Client* client,
+    MechanismExperimentHashDatabaseCache experiment_cache_selection) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
   DCHECK(!threat_types.empty());
   DCHECK(SBThreatTypeSetIsValidForCheckBrowseUrl(threat_types));
-  if (!enabled_)
+  if (!enabled_) {
     return true;
+  }
 
   bool can_check_url = CanCheckUrl(url);
   UMA_HISTOGRAM_BOOLEAN("SB2.RemoteCall.CanCheckUrl", can_check_url);
-  if (!can_check_url)
+  if (!can_check_url) {
     return true;  // Safe, continue right away.
+  }
 
   std::unique_ptr<ClientRequest> req(new ClientRequest(client, this, url));
 
   DVLOG(1) << "Checking for client " << client << " and URL " << url;
-  SafeBrowsingApiHandler* api_handler = SafeBrowsingApiHandler::GetInstance();
-  // This shouldn't happen since SafeBrowsingResourceThrottle and
-  // SubresourceFilterSafeBrowsingActivationThrottle check IsSupported()
-  // earlier.
-  DCHECK(api_handler) << "SafeBrowsingApiHandler was never constructed";
-
   auto callback =
-      std::make_unique<SafeBrowsingApiHandler::URLCheckCallbackMeta>(
+      std::make_unique<SafeBrowsingApiHandlerBridge::ResponseCallback>(
           base::BindOnce(&ClientRequest::OnRequestDoneWeak, req->GetWeakPtr()));
-  api_handler->StartURLCheck(std::move(callback), url, threat_types);
+  SafeBrowsingApiHandlerBridge::GetInstance().StartURLCheck(std::move(callback),
+                                                            url, threat_types);
 
   current_requests_.push_back(req.release());
 
@@ -232,19 +244,26 @@ bool RemoteSafeBrowsingDatabaseManager::CheckResourceUrl(const GURL& url,
   return true;
 }
 
-AsyncMatch
-RemoteSafeBrowsingDatabaseManager::CheckUrlForHighConfidenceAllowlist(
+bool RemoteSafeBrowsingDatabaseManager::CheckUrlForHighConfidenceAllowlist(
     const GURL& url,
-    Client* client) {
+    const std::string& metric_variation) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
 
-  if (!enabled_ || !CanCheckUrl(url))
-    return AsyncMatch::NO_MATCH;
+  if (!enabled_ || !CanCheckUrl(url)) {
+    return false;
+  }
 
-  // TODO(crbug.com/1014202): Make this call async.
-  SafeBrowsingApiHandler* api_handler = SafeBrowsingApiHandler::GetInstance();
-  bool is_match = api_handler->StartHighConfidenceAllowlistCheck(url);
-  return is_match ? AsyncMatch::MATCH : AsyncMatch::NO_MATCH;
+  if (base::FeatureList::IsEnabled(kComponentUpdaterAndroidProtegoAllowlist)) {
+    // SafeBrowsingComponentUpdaterAndroidProtegoAllowlist is enabled.
+    IsInAllowlistResult match_result =
+        RealTimeUrlChecksAllowlist::GetInstance()->IsInAllowlist(url);
+    // Note that if the allowlist is unavailable, we say that is a match.
+    return match_result == IsInAllowlistResult::kInAllowlist ||
+           match_result == IsInAllowlistResult::kAllowlistUnavailable;
+  }
+
+  return SafeBrowsingApiHandlerBridge::GetInstance()
+      .StartHighConfidenceAllowlistCheck(url);
 }
 
 bool RemoteSafeBrowsingDatabaseManager::CheckUrlForSubresourceFilter(
@@ -252,21 +271,17 @@ bool RemoteSafeBrowsingDatabaseManager::CheckUrlForSubresourceFilter(
     Client* client) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
 
-  if (!enabled_ || !CanCheckUrl(url))
+  if (!enabled_ || !CanCheckUrl(url)) {
     return true;
+  }
 
   std::unique_ptr<ClientRequest> req(new ClientRequest(client, this, url));
 
   DVLOG(1) << "Checking for client " << client << " and URL " << url;
-  SafeBrowsingApiHandler* api_handler = SafeBrowsingApiHandler::GetInstance();
-  // This shouldn't happen since SafeBrowsingResourceThrottle and
-  // SubresourceFilterSafeBrowsingActivationThrottle check IsSupported()
-  // earlier.
-  DCHECK(api_handler) << "SafeBrowsingApiHandler was never constructed";
   auto callback =
-      std::make_unique<SafeBrowsingApiHandler::URLCheckCallbackMeta>(
+      std::make_unique<SafeBrowsingApiHandlerBridge::ResponseCallback>(
           base::BindOnce(&ClientRequest::OnRequestDoneWeak, req->GetWeakPtr()));
-  api_handler->StartURLCheck(
+  SafeBrowsingApiHandlerBridge::GetInstance().StartURLCheck(
       std::move(callback), url,
       CreateSBThreatTypeSet(
           {SB_THREAT_TYPE_SUBRESOURCE_FILTER, SB_THREAT_TYPE_URL_PHISHING}));
@@ -277,7 +292,7 @@ bool RemoteSafeBrowsingDatabaseManager::CheckUrlForSubresourceFilter(
   return false;
 }
 
-AsyncMatch RemoteSafeBrowsingDatabaseManager::CheckCsdWhitelistUrl(
+AsyncMatch RemoteSafeBrowsingDatabaseManager::CheckCsdAllowlistUrl(
     const GURL& url,
     Client* client) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
@@ -287,19 +302,13 @@ AsyncMatch RemoteSafeBrowsingDatabaseManager::CheckCsdWhitelistUrl(
     return AsyncMatch::MATCH;
   }
 
-  // TODO(crbug.com/995926): Make this call async
-  SafeBrowsingApiHandler* api_handler = SafeBrowsingApiHandler::GetInstance();
-  bool is_match = api_handler->StartCSDAllowlistCheck(url);
+  // TODO(crbug.com/995926): Make this call async.
+  bool is_match =
+      SafeBrowsingApiHandlerBridge::GetInstance().StartCSDAllowlistCheck(url);
   return is_match ? AsyncMatch::MATCH : AsyncMatch::NO_MATCH;
 }
 
-bool RemoteSafeBrowsingDatabaseManager::MatchDownloadWhitelistString(
-    const std::string& str) {
-  NOTREACHED();
-  return true;
-}
-
-bool RemoteSafeBrowsingDatabaseManager::MatchDownloadWhitelistUrl(
+bool RemoteSafeBrowsingDatabaseManager::MatchDownloadAllowlistUrl(
     const GURL& url) {
   NOTREACHED();
   return true;
@@ -318,10 +327,6 @@ safe_browsing::ThreatSource RemoteSafeBrowsingDatabaseManager::GetThreatSource()
 
 bool RemoteSafeBrowsingDatabaseManager::IsDownloadProtectionEnabled() const {
   return false;
-}
-
-bool RemoteSafeBrowsingDatabaseManager::IsSupported() const {
-  return SafeBrowsingApiHandler::GetInstance() != nullptr;
 }
 
 void RemoteSafeBrowsingDatabaseManager::StartOnIOThread(

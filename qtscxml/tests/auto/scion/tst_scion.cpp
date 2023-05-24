@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <QCoreApplication>
@@ -109,7 +84,7 @@ QByteArray DynamicLoader::load(const QString &name,
     QUrl url(name);
     if (!url.isLocalFile() && !url.isRelative())
         errs << QStringLiteral("src attribute is not a local file (%1)").arg(name);
-    QFileInfo fInfo = url.isLocalFile() ? url.toLocalFile() : name;
+    QFileInfo fInfo(url.isLocalFile() ? url.toLocalFile() : name);
     if (fInfo.isRelative())
         fInfo = QFileInfo(QDir(baseDir).filePath(fInfo.filePath()));
     fInfo = QFileInfo(QLatin1String(":/") + fInfo.filePath()); // take it from resources
@@ -269,16 +244,38 @@ void TestScion::compiled()
 
 static bool verifyStates(QScxmlStateMachine *stateMachine, const QJsonObject &stateDescription, const QString &key, int counter)
 {
+    const auto errorMessage = [&key, &counter](const QStringList& current,
+                                     const QStringList& expected, const QLatin1String& details) {
+        qWarning("Incorrect %s (%d)!", qPrintable(key), counter);
+        qWarning() << "Current configuration:" << current;
+        qWarning() << "Expected configuration:" << expected;
+        qWarning() << "Failed state read was done with:" << details;
+    };
+    using namespace Qt::StringLiterals;
+
+    // Verify that activeStateNames() matches the expectation
     auto current = stateMachine->activeStateNames();
     std::sort(current.begin(), current.end());
     auto expected = getStates(stateDescription, key);
-    if (current == expected)
-        return true;
+    if (current != expected) {
+        errorMessage(current, expected, "activeStateNames()"_L1);
+        return false;
+    }
 
-    qWarning("Incorrect %s (%d)!", qPrintable(key), counter);
-    qWarning() << "Current configuration:" << current;
-    qWarning() << "Expected configuration:" << expected;
-    return false;
+    for (const auto& s : expected) {
+        // Verify that isActive(stateName) matches the expectation
+        if (!stateMachine->isActive(s)) {
+            errorMessage(current, expected, "isActive()"_L1);
+            return false;
+        }
+        // Verify that the metaobject matches the expectation
+        const auto mo = stateMachine->metaObject();
+        if (!mo->property(mo->indexOfProperty(s.toLocal8Bit())).read(stateMachine).toBool()) {
+            errorMessage(current, expected, "metaobject read"_L1);
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool playEvent(QScxmlStateMachine *stateMachine, const QJsonObject &eventDescription, int counter)
@@ -344,11 +341,32 @@ static bool playEvent(QScxmlStateMachine *stateMachine, const QJsonObject &event
     });
     MySignalSpy triggerSpy(&trigger, SIGNAL(timeout()));
 
+    // Create a signal spy for each state we expect to be (de)activated in next transition.
+    using namespace Qt::StringLiterals;
+    const auto expectedActive = getStates(eventDescription, QLatin1String("nextConfiguration"));
+    std::list<std::unique_ptr<QSignalSpy>> stateSpies;
+    const auto mo = stateMachine->metaObject();
+
+    for (const auto& s : stateMachine->stateNames()) {
+        if (expectedActive.contains(s) == stateMachine->isActive(s))
+            continue;
+        // The state is expected to undergo an activation change, create a signal spy
+        const auto changedSignal = s + "Changed(bool)"_L1;
+        auto signalIndex = mo->indexOfSignal(changedSignal.toUtf8().constData());
+        stateSpies.push_back(std::make_unique<QSignalSpy>(stateMachine, mo->method(signalIndex)));
+    }
+
     stateMachine->submitEvent(e);
 
     if (!triggerSpy.fastWait()) {
         qWarning() << "State machine did not reach a stable state.";
     } else if (verifyStates(stateMachine, eventDescription, QLatin1String("nextConfiguration"), counter)) {
+        for (const auto& spy : stateSpies) {
+            if (spy->size() != 1) {
+                qWarning() << "Signal error for:" << spy->signal() << ", size:" << spy->size();
+                return false;
+            }
+        }
         return true;
     }
 
@@ -383,6 +401,11 @@ QDebug operator<<(QDebug debug, const QScxmlEvent &event)
     obj.insert(QLatin1String("originType"), event.originType());
     obj.insert(QLatin1String("invokeid"), event.invokeId());
     return debug << obj;
+}
+
+QDebug operator<<(QDebug debug, const QList<QScxmlEvent> &events)
+{
+    return QtPrivate::printSequentialContainer(debug, "QList", events);
 }
 QT_END_NAMESPACE
 
@@ -421,7 +444,7 @@ static int verifyEvent(const QList<QScxmlEvent> &receivedEvents, const QJsonObje
     const QString invokeId = verifyInvokeId ? event.value(QLatin1String("invokeid")).toString()
                                             : QString();
 
-    while (position < receivedEvents.length()) {
+    while (position < receivedEvents.size()) {
         const QScxmlEvent &receivedEvent = receivedEvents[position];
         if ((verifyName && receivedEvent.name() != name)
                 || (verifyEventType && receivedEvent.eventType() != eventType)

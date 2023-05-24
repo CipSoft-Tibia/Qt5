@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,9 @@
 
 #import <MediaPlayer/MediaPlayer.h>
 
+#include "base/time/time.h"
 #include "components/system_media_controls/mac/remote_command_center_delegate.h"
 
-API_AVAILABLE(macos(10.12.2))
 @interface RemoteCommandCenterDelegateCocoa ()
 
 - (void)setCommand:(MPRemoteCommand*)command enabled:(bool)enabled;
@@ -66,6 +66,11 @@ API_AVAILABLE(macos(10.12.2))
     _delegate->OnNext();
   } else if (event.command == commandCenter.previousTrackCommand) {
     _delegate->OnPrevious();
+  } else if (event.command == commandCenter.changePlaybackPositionCommand) {
+    MPChangePlaybackPositionCommandEvent* changePlaybackPositionCommandEvent =
+        (MPChangePlaybackPositionCommandEvent*)event;
+    _delegate->OnSeekTo(
+        base::Seconds(changePlaybackPositionCommandEvent.positionTime));
   }
   return MPRemoteCommandHandlerStatusSuccess;
 }
@@ -105,6 +110,13 @@ API_AVAILABLE(macos(10.12.2))
       [MPRemoteCommandCenter sharedCommandCenter];
   [self setCommand:commandCenter.previousTrackCommand
            enabled:can_go_prev_track];
+}
+
+- (void)setCanSeekTo:(bool)can_seek_to {
+  MPRemoteCommandCenter* commandCenter =
+      [MPRemoteCommandCenter sharedCommandCenter];
+  [self setCommand:commandCenter.changePlaybackPositionCommand
+           enabled:can_seek_to];
 }
 
 - (void)setCommand:(MPRemoteCommand*)command enabled:(bool)enabled {

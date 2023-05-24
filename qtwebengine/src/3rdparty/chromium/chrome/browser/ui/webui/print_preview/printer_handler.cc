@@ -1,19 +1,17 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/webui/print_preview/printer_handler.h"
 
+#include "build/build_config.h"
 #include "build/buildflag.h"
+#include "build/chromeos_buildflags.h"
 #include "chrome/browser/ui/webui/print_preview/extension_printer_handler.h"
 #include "chrome/browser/ui/webui/print_preview/pdf_printer_handler.h"
 #include "chrome/common/buildflags.h"
 
-#if BUILDFLAG(ENABLE_SERVICE_DISCOVERY)
-#include "chrome/browser/ui/webui/print_preview/privet_printer_handler.h"
-#endif
-
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ui/webui/print_preview/local_printer_handler_chromeos.h"
 #else
 #include "chrome/browser/ui/webui/print_preview/local_printer_handler_default.h"
@@ -31,9 +29,8 @@ std::unique_ptr<PrinterHandler> PrinterHandler::CreateForExtensionPrinters(
 std::unique_ptr<PrinterHandler> PrinterHandler::CreateForLocalPrinters(
     content::WebContents* preview_web_contents,
     Profile* profile) {
-#if defined(OS_CHROMEOS)
-  return LocalPrinterHandlerChromeos::CreateDefault(profile,
-                                                    preview_web_contents);
+#if BUILDFLAG(IS_CHROMEOS)
+  return LocalPrinterHandlerChromeos::Create(preview_web_contents);
 #else
   return std::make_unique<LocalPrinterHandlerDefault>(preview_web_contents);
 #endif
@@ -48,14 +45,6 @@ std::unique_ptr<PrinterHandler> PrinterHandler::CreateForPdfPrinter(
                                              sticky_settings);
 }
 
-#if BUILDFLAG(ENABLE_SERVICE_DISCOVERY)
-// static
-std::unique_ptr<PrinterHandler> PrinterHandler::CreateForPrivetPrinters(
-    Profile* profile) {
-  return std::make_unique<PrivetPrinterHandler>(profile);
-}
-#endif
-
 void PrinterHandler::GetDefaultPrinter(DefaultPrinterCallback cb) {
   NOTREACHED();
 }
@@ -65,7 +54,7 @@ void PrinterHandler::StartGrantPrinterAccess(const std::string& printer_id,
   NOTREACHED();
 }
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
 void PrinterHandler::StartGetEulaUrl(const std::string& destination_id,
                                      GetEulaUrlCallback callback) {
   NOTREACHED();

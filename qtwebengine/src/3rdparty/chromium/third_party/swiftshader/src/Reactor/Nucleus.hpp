@@ -39,120 +39,6 @@ class SwitchCases;
 class BasicBlock;
 class Routine;
 
-// Optimization holds the optimization settings for code generation.
-class Optimization
-{
-public:
-	enum class Level
-	{
-		None,
-		Less,
-		Default,
-		Aggressive,
-	};
-
-	enum class Pass
-	{
-		Disabled,
-		InstructionCombining,
-		CFGSimplification,
-		LICM,
-		AggressiveDCE,
-		GVN,
-		Reassociate,
-		DeadStoreElimination,
-		SCCP,
-		ScalarReplAggregates,
-		EarlyCSEPass,
-
-		Count,
-	};
-
-	using Passes = std::vector<Pass>;
-
-	Optimization(Level level = Level::Default, const Passes &passes = {})
-	    : level(level)
-	    , passes(passes)
-	{
-#if defined(REACTOR_DEFAULT_OPT_LEVEL)
-		{
-			this->level = Level::REACTOR_DEFAULT_OPT_LEVEL;
-		}
-#endif
-	}
-
-	Level getLevel() const { return level; }
-	const Passes &getPasses() const { return passes; }
-
-private:
-	Level level = Level::Default;
-	Passes passes;
-};
-
-// Config holds the Reactor configuration settings.
-class Config
-{
-public:
-	// Edit holds a number of modifications to a config, that can be applied
-	// on an existing Config to produce a new Config with the specified
-	// changes.
-	class Edit
-	{
-	public:
-		static const Edit None;
-
-		Edit &set(Optimization::Level level)
-		{
-			optLevel = level;
-			optLevelChanged = true;
-			return *this;
-		}
-		Edit &add(Optimization::Pass pass)
-		{
-			optPassEdits.push_back({ ListEdit::Add, pass });
-			return *this;
-		}
-		Edit &remove(Optimization::Pass pass)
-		{
-			optPassEdits.push_back({ ListEdit::Remove, pass });
-			return *this;
-		}
-		Edit &clearOptimizationPasses()
-		{
-			optPassEdits.push_back({ ListEdit::Clear, Optimization::Pass::Disabled });
-			return *this;
-		}
-
-		Config apply(const Config &cfg) const;
-
-	private:
-		enum class ListEdit
-		{
-			Add,
-			Remove,
-			Clear
-		};
-		using OptPassesEdit = std::pair<ListEdit, Optimization::Pass>;
-
-		template<typename T>
-		void apply(const std::vector<std::pair<ListEdit, T>> &edits, std::vector<T> &list) const;
-
-		Optimization::Level optLevel;
-		bool optLevelChanged = false;
-		std::vector<OptPassesEdit> optPassEdits;
-	};
-
-	Config() = default;
-	Config(const Optimization &optimization)
-	    : optimization(optimization)
-	{}
-
-	const Optimization &getOptimization() const { return optimization; }
-
-private:
-	Optimization optimization;
-};
-
 class Nucleus
 {
 public:
@@ -160,13 +46,7 @@ public:
 
 	virtual ~Nucleus();
 
-	// Default configuration to use when no other configuration is specified.
-	// The new configuration will be applied to subsequent reactor calls.
-	static void setDefaultConfig(const Config &cfg);
-	static void adjustDefaultConfig(const Config::Edit &cfgEdit);
-	static Config getDefaultConfig();
-
-	std::shared_ptr<Routine> acquireRoutine(const char *name, const Config::Edit &cfgEdit = Config::Edit::None);
+	std::shared_ptr<Routine> acquireRoutine(const char *name);
 
 	static Value *allocateStackVariable(Type *type, int arraySize = 0);
 	static BasicBlock *createBasicBlock();
@@ -203,7 +83,7 @@ public:
 	static void yield(Value *val);
 	// Called to finalize coroutine creation. After this call, Routine::getEntry can be called to retrieve the entry point to any
 	// of the three coroutine functions. Called by Coroutine::finalize.
-	std::shared_ptr<Routine> acquireCoroutine(const char *name, const Config::Edit &cfg = Config::Edit::None);
+	std::shared_ptr<Routine> acquireCoroutine(const char *name);
 	// Called by Coroutine::operator() to execute CoroutineEntryBegin wrapped up in func. This is needed in case
 	// the call must be run on a separate thread of execution (e.g. on a fiber).
 	static CoroutineHandle invokeCoroutineBegin(Routine &routine, std::function<CoroutineHandle()> func);
@@ -276,7 +156,6 @@ public:
 	static Value *createBitCast(Value *V, Type *destType);
 
 	// Compare instructions
-	static Value *createPtrEQ(Value *lhs, Value *rhs);
 	static Value *createICmpEQ(Value *lhs, Value *rhs);
 	static Value *createICmpNE(Value *lhs, Value *rhs);
 	static Value *createICmpUGT(Value *lhs, Value *rhs);
@@ -305,7 +184,7 @@ public:
 	// Vector instructions
 	static Value *createExtractElement(Value *vector, Type *type, int index);
 	static Value *createInsertElement(Value *vector, Value *element, int index);
-	static Value *createShuffleVector(Value *V1, Value *V2, const int *select);
+	static Value *createShuffleVector(Value *V1, Value *V2, std::vector<int> select);
 
 	// Other instructions
 	static Value *createSelect(Value *C, Value *ifTrue, Value *ifFalse);
@@ -325,8 +204,8 @@ public:
 	static Value *createConstantShort(unsigned short i);
 	static Value *createConstantFloat(float x);
 	static Value *createNullPointer(Type *type);
-	static Value *createConstantVector(const int64_t *constants, Type *type);
-	static Value *createConstantVector(const double *constants, Type *type);
+	static Value *createConstantVector(std::vector<int64_t> constants, Type *type);
+	static Value *createConstantVector(std::vector<double> constants, Type *type);
 	static Value *createConstantString(const char *v);
 	static Value *createConstantString(const std::string &v) { return createConstantString(v.c_str()); }
 
@@ -334,6 +213,20 @@ public:
 	static Type *getContainedType(Type *vectorType);
 	static Type *getPointerType(Type *elementType);
 	static Type *getPrintfStorageType(Type *valueType);
+
+	// Diagnostic utilities
+	struct OptimizerReport
+	{
+		int allocas = 0;
+		int loads = 0;
+		int stores = 0;
+	};
+
+	using OptimizerCallback = void(const OptimizerReport *report);
+
+	// Sets the callback to be used by the next optimizer invocation (during acquireRoutine),
+	// for reporting stats about the resulting IR code. For testing only.
+	static void setOptimizerCallback(OptimizerCallback *callback);
 };
 
 }  // namespace rr

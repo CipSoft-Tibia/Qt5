@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,13 +11,10 @@ StringView CSSParserTokenStream::StringRangeAt(wtf_size_t start,
   return tokenizer_.StringRangeAt(start, length);
 }
 
-wtf_size_t CSSParserTokenStream::BlockStackDepth() const {
-  return tokenizer_.BlockStackDepth();
-}
-
 void CSSParserTokenStream::ConsumeWhitespace() {
-  while (Peek().GetType() == kWhitespaceToken)
+  while (Peek().GetType() == kWhitespaceToken) {
     UncheckedConsume();
+  }
 }
 
 CSSParserToken CSSParserTokenStream::ConsumeIncludingWhitespace() {
@@ -48,10 +45,11 @@ void CSSParserTokenStream::UncheckedConsumeComponentValue() {
   unsigned nesting_level = 0;
   do {
     const CSSParserToken& token = UncheckedConsumeInternal();
-    if (token.GetBlockType() == CSSParserToken::kBlockStart)
+    if (token.GetBlockType() == CSSParserToken::kBlockStart) {
       nesting_level++;
-    else if (token.GetBlockType() == CSSParserToken::kBlockEnd)
+    } else if (token.GetBlockType() == CSSParserToken::kBlockEnd) {
       nesting_level--;
+    }
   } while (!PeekInternal().IsEOF() && nesting_level);
 }
 
@@ -62,10 +60,11 @@ void CSSParserTokenStream::UncheckedSkipToEndOfBlock() {
   unsigned nesting_level = 1;
   do {
     const CSSParserToken& token = UncheckedConsumeInternal();
-    if (token.GetBlockType() == CSSParserToken::kBlockStart)
+    if (token.GetBlockType() == CSSParserToken::kBlockStart) {
       nesting_level++;
-    else if (token.GetBlockType() == CSSParserToken::kBlockEnd)
+    } else if (token.GetBlockType() == CSSParserToken::kBlockEnd) {
       nesting_level--;
+    }
   } while (nesting_level && !PeekInternal().IsEOF());
 }
 

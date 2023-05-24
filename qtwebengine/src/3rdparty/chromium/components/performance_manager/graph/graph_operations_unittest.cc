@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <algorithm>
 
-#include "base/bind.h"
+#include "base/functional/function_ref.h"
 #include "components/performance_manager/test_support/graph_test_harness.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -17,24 +17,25 @@ namespace {
 
 class GraphOperationsTest : public GraphTestHarness {
  public:
+  using Super = GraphTestHarness;
+
   // Sets up two parallel frame trees that span multiple processes each.
   void SetUp() override {
+    Super::SetUp();
     process1_ = CreateNode<ProcessNodeImpl>();
     process2_ = CreateNode<ProcessNodeImpl>();
     page1_ = CreateNode<PageNodeImpl>();
     page2_ = CreateNode<PageNodeImpl>();
-    mainframe1_ =
-        CreateFrameNodeAutoId(process1_.get(), page1_.get(), nullptr, 0);
-    mainframe2_ =
-        CreateFrameNodeAutoId(process2_.get(), page2_.get(), nullptr, 1);
-    childframe1a_ = CreateFrameNodeAutoId(process2_.get(), page1_.get(),
-                                          mainframe1_.get(), 2);
-    childframe1b_ = CreateFrameNodeAutoId(process2_.get(), page1_.get(),
-                                          mainframe1_.get(), 3);
-    childframe2a_ = CreateFrameNodeAutoId(process1_.get(), page2_.get(),
-                                          mainframe2_.get(), 4);
-    childframe2b_ = CreateFrameNodeAutoId(process1_.get(), page2_.get(),
-                                          mainframe2_.get(), 5);
+    mainframe1_ = CreateFrameNodeAutoId(process1_.get(), page1_.get(), nullptr);
+    mainframe2_ = CreateFrameNodeAutoId(process2_.get(), page2_.get(), nullptr);
+    childframe1a_ =
+        CreateFrameNodeAutoId(process2_.get(), page1_.get(), mainframe1_.get());
+    childframe1b_ =
+        CreateFrameNodeAutoId(process2_.get(), page1_.get(), mainframe1_.get());
+    childframe2a_ =
+        CreateFrameNodeAutoId(process1_.get(), page2_.get(), mainframe2_.get());
+    childframe2b_ =
+        CreateFrameNodeAutoId(process1_.get(), page2_.get(), mainframe2_.get());
   }
 
   TestNodeWrapper<ProcessNodeImpl> process1_;
@@ -81,8 +82,8 @@ TEST_F(GraphOperationsTest, GetAssociatedProcessNodes) {
 
 TEST_F(GraphOperationsTest, GetFrameNodes) {
   // Add a grandchild frame.
-  auto grandchild = CreateFrameNodeAutoId(process1_.get(), page1_.get(),
-                                          childframe1a_.get(), 6);
+  auto grandchild =
+      CreateFrameNodeAutoId(process1_.get(), page1_.get(), childframe1a_.get());
 
   auto frame_nodes = GraphOperations::GetFrameNodes(page1_.get());
   EXPECT_THAT(frame_nodes,
@@ -100,13 +101,10 @@ TEST_F(GraphOperationsTest, VisitFrameTree) {
 
   std::vector<const FrameNode*> visited;
   EXPECT_TRUE(GraphOperations::VisitFrameTreePreOrder(
-      page1_.get(), base::BindRepeating(
-                        [](std::vector<const FrameNode*>* visited,
-                           const FrameNode* frame_node) -> bool {
-                          visited->push_back(frame_node);
-                          return true;
-                        },
-                        base::Unretained(&visited))));
+      page1_.get(), [&visited](const FrameNode* frame_node) -> bool {
+        visited.push_back(frame_node);
+        return true;
+      }));
   EXPECT_THAT(visited,
               testing::UnorderedElementsAre(ToPublic(mainframe1_.get()),
                                             ToPublic(childframe1a_.get()),
@@ -117,24 +115,18 @@ TEST_F(GraphOperationsTest, VisitFrameTree) {
   // Do an aborted pre-order visit.
   visited.clear();
   EXPECT_FALSE(GraphOperations::VisitFrameTreePreOrder(
-      page1_.get(), base::BindRepeating(
-                        [](std::vector<const FrameNode*>* visited,
-                           const FrameNode* frame_node) -> bool {
-                          visited->push_back(frame_node);
-                          return false;
-                        },
-                        base::Unretained(&visited))));
+      page1_.get(), [&visited](const FrameNode* frame_node) -> bool {
+        visited.push_back(frame_node);
+        return false;
+      }));
   EXPECT_EQ(1u, visited.size());
 
   visited.clear();
   EXPECT_TRUE(GraphOperations::VisitFrameTreePostOrder(
-      page1_.get(), base::BindRepeating(
-                        [](std::vector<const FrameNode*>* visited,
-                           const FrameNode* frame_node) -> bool {
-                          visited->push_back(frame_node);
-                          return true;
-                        },
-                        base::Unretained(&visited))));
+      page1_.get(), [&visited](const FrameNode* frame_node) -> bool {
+        visited.push_back(frame_node);
+        return true;
+      }));
   EXPECT_THAT(visited,
               testing::UnorderedElementsAre(ToPublic(mainframe1_.get()),
                                             ToPublic(childframe1a_.get()),
@@ -145,13 +137,10 @@ TEST_F(GraphOperationsTest, VisitFrameTree) {
   // Do an aborted post-order visit.
   visited.clear();
   EXPECT_FALSE(GraphOperations::VisitFrameTreePostOrder(
-      page1_.get(), base::BindRepeating(
-                        [](std::vector<const FrameNode*>* visited,
-                           const FrameNode* frame_node) -> bool {
-                          visited->push_back(frame_node);
-                          return false;
-                        },
-                        base::Unretained(&visited))));
+      page1_.get(), [&visited](const FrameNode* frame_node) -> bool {
+        visited.push_back(frame_node);
+        return false;
+      }));
   EXPECT_EQ(1u, visited.size());
 }
 

@@ -1,36 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-import QtQuick 2.0
-import QtTest 1.0
-import QtLocation 5.9
-import QtPositioning 5.5
-import QtLocation.Test 5.6
+import QtQuick
+import QtTest
+import QtLocation
+import QtPositioning
+import QtLocation.Test
 
     /*
 
@@ -66,13 +41,13 @@ Item {
     property variant someCoordinate1: QtPositioning.coordinate(15, 15)
     property variant someCoordinate2: QtPositioning.coordinate(16, 16)
 
-    Route { id: someRoute;
+    property route someRoute: ({
         path: [
             { latitude: 22, longitude: 15 },
             { latitude: 21, longitude: 16 },
             { latitude: 23, longitude: 17 }
         ]
-    }
+    })
     Item { id: someItem }
 
     ItemGroup {
@@ -81,16 +56,17 @@ Item {
 
     MapCircle {
         id: extMapCircle
+        objectName: "extMapCircle"
         center {
             latitude: 35
             longitude: 15
         }
         color: 'firebrick'
         radius: 600000
-        MouseArea {
-            anchors.fill: parent
-            SignalSpy { id: extMapCircleClicked; target: parent; signalName: "clicked" }
+        TapHandler {
+            id: extMapCircleTap
         }
+        SignalSpy { id: extMapCircleClicked; target: extMapCircleTap; signalName: "tapped" }
     }
 
     MapQuickItem {
@@ -118,8 +94,10 @@ Item {
 
         MapRectangle {
             id: preMapRect
+            objectName: "preMapRect"
             MouseArea {
                 id: preMapRectMa
+                objectName: "preMapRectMa"
                 anchors.fill: parent
                 drag.target: parent
                 preventStealing: true
@@ -132,14 +110,18 @@ Item {
         }
         MapCircle {
             id: preMapCircle
-            MouseArea {
-                id: preMapCircleMa
-                anchors.fill: parent
-                drag.target: parent
-                preventStealing: true
-                SignalSpy { id: preMapCircleClicked; target: parent; signalName: "clicked" }
-                SignalSpy { id: preMapCircleActiveChanged; target: parent.drag; signalName: "activeChanged" }
+            objectName: "preMapCircle"
+
+            TapHandler {
+                id: preMapCircleTap
+                objectName: "preMapCircleTap"
             }
+            DragHandler {
+                id: preMapCircleDrag
+            }
+
+            SignalSpy { id: preMapCircleClicked; target: preMapCircleTap; signalName: "tapped" }
+            SignalSpy { id: preMapCircleActiveChanged; target: preMapCircleDrag; signalName: "activeChanged" }
             SignalSpy {id: preMapCircleCenterChanged; target: parent; signalName: "centerChanged"}
             SignalSpy {id: preMapCircleColorChanged; target: parent; signalName: "colorChanged"}
             SignalSpy {id: preMapCircleRadiusChanged; target: parent; signalName: "radiusChanged"}
@@ -202,13 +184,13 @@ Item {
             id: preMapRoute
             line.color: 'yellow'
             // don't try this at home - route is not user instantiable
-            route: Route {
+            route: ({
                 path: [
                     { latitude: 25, longitude: 14 },
                     { latitude: 20, longitude: 18 },
                     { latitude: 15, longitude: 15 }
                 ]
-            }
+            })
             SignalSpy {id: preMapRouteRouteChanged; target: parent; signalName: "routeChanged"}
             SignalSpy {id: preMapRouteLineWidthChanged; target: parent.line; signalName: "widthChanged"}
             SignalSpy {id: preMapRouteLineColorChanged; target: parent.line; signalName: "colorChanged"}
@@ -421,7 +403,7 @@ Item {
             verify(LocationTestHelper.waitForPolished(map))
             var i
             var point = map.fromCoordinate(preMapRect.topLeft)
-            var targetCoordinate = map.toCoordinate(51, 51)
+            var targetCoordinate = map.toCoordinate(Qt.point(51, 51))
             mousePress(map, point.x + 5, point.y + 5)
             for (i = 0; i < 50; i += 1) {
                 wait(1)
@@ -462,7 +444,7 @@ Item {
             map.center = preMapQuickItem.coordinate
             verify(LocationTestHelper.waitForPolished(map))
             point = map.fromCoordinate(preMapQuickItem.coordinate)
-            targetCoordinate = map.toCoordinate(51, 51)
+            targetCoordinate = map.toCoordinate(Qt.point(51, 51))
             mousePress(map, point.x + 5, point.y + 5)
             for (i = 0; i < 50; i += 1) {
                 wait(1)

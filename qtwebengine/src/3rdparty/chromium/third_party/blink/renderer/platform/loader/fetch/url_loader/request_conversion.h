@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,10 @@
 
 // This file consists of request conversion functions between blink and network.
 
+#include "base/memory/scoped_refptr.h"
+
 namespace network {
+class ResourceRequestBody;
 struct ResourceRequest;
 }  // namespace network
 
@@ -15,6 +18,9 @@ namespace blink {
 
 class ResourceRequestHead;
 class ResourceRequestBody;
+
+scoped_refptr<network::ResourceRequestBody> NetworkResourceRequestBodyFor(
+    const ResourceRequestBody src_body);
 
 void PopulateResourceRequest(const ResourceRequestHead& src,
                              ResourceRequestBody src_body,

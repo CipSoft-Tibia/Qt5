@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_GRAPHICS_UNACCELERATED_STATIC_BITMAP_IMAGE_H_
 
 #include "base/memory/weak_ptr.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
 #include "third_party/blink/renderer/platform/graphics/static_bitmap_image.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread.h"
@@ -21,32 +21,34 @@ class PLATFORM_EXPORT UnacceleratedStaticBitmapImage final
   // The ImageOrientation should be derived from the source of the image data.
   static scoped_refptr<UnacceleratedStaticBitmapImage> Create(
       sk_sp<SkImage>,
-      ImageOrientation orientation = kDefaultImageOrientation);
+      ImageOrientation orientation = ImageOrientationEnum::kDefault);
   static scoped_refptr<UnacceleratedStaticBitmapImage> Create(
       PaintImage,
-      ImageOrientation orientation = kDefaultImageOrientation);
+      ImageOrientation orientation = ImageOrientationEnum::kDefault);
 
   bool CurrentFrameKnownToBeOpaque() override;
-  IntSize Size() const override;
-  bool IsPremultiplied() const override;
   scoped_refptr<StaticBitmapImage> ConvertToColorSpace(sk_sp<SkColorSpace>,
                                                        SkColorType) override;
 
   void Draw(cc::PaintCanvas*,
             const cc::PaintFlags&,
-            const FloatRect& dst_rect,
-            const FloatRect& src_rect,
-            RespectImageOrientationEnum,
-            ImageClampingMode,
-            ImageDecodingMode) override;
+            const gfx::RectF& dst_rect,
+            const gfx::RectF& src_rect,
+            const ImageDrawOptions&) override;
 
   PaintImage PaintImageForCurrentFrame() override;
 
   void Transfer() final;
 
+  bool CopyToResourceProvider(CanvasResourceProvider*) override;
+
+  bool CopyToResourceProvider(CanvasResourceProvider* resource_provider,
+                              const gfx::Rect& copy_rect) override;
+
  private:
   UnacceleratedStaticBitmapImage(sk_sp<SkImage>, ImageOrientation);
   UnacceleratedStaticBitmapImage(PaintImage, ImageOrientation);
+  SkImageInfo GetSkImageInfoInternal() const override;
 
   PaintImage paint_image_;
   THREAD_CHECKER(thread_checker_);
@@ -57,4 +59,4 @@ class PLATFORM_EXPORT UnacceleratedStaticBitmapImage final
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_GRAPHICS_UNACCELERATED_STATIC_BITMAP_IMAGE_H_

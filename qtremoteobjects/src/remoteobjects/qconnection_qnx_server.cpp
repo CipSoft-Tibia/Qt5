@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017-2016 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017-2016 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qconnection_qnx_global_p.h"
 #include "qconnection_qnx_qiodevices_p.h"
@@ -118,8 +82,8 @@ bool QQnxNativeServer::waitForNewConnection(int msec, bool *timedOut)
     //TODO - This method isn't used by Qt Remote Objects, but would
     //need to be implemented before this class could be used as a
     //connection server (like QTcpServer or QLocalServer).
-    Q_UNUSED(msec);
-    Q_UNUSED(timedOut);
+    Q_UNUSED(msec)
+    Q_UNUSED(timedOut)
     Q_ASSERT(false);
     return false;
 }
@@ -150,11 +114,11 @@ void QQnxNativeServerPrivate::thread_func()
 {
     struct _msg_info msg_info;
     recv_msgs recv_buf;
-    QVector<iov_t> resp_repeat_iov(5);
+    QList<iov_t> resp_repeat_iov(5);
 
     qCDebug(QT_REMOTEOBJECT) << "Server thread_func running";
 
-    while (running.load()) {
+    while (running.loadRelaxed()) {
         // wait for messages and pulses
         int rcvid = MsgReceive(attachStruct->chid, &recv_buf, sizeof(_pulse), &msg_info);
         qCDebug(QT_REMOTEOBJECT) << "MsgReceive unblocked.  Rcvid" << rcvid << " Scoid" << msg_info.scoid;
@@ -235,7 +199,7 @@ void QQnxNativeServerPrivate::thread_func()
             }
                 break;
             case _PULSE_CODE_UNBLOCK:
-                if (running.load()) {
+                if (running.loadRelaxed()) {
                     // did we forget to Reply to our client?
                     qCWarning(QT_REMOTEOBJECT) << "got an unblock pulse, did you forget to reply to your client?";
                     WARN_ON_ERROR(MsgError, recv_buf.pulse.value.sival_int, EINTR)
@@ -308,7 +272,7 @@ void QQnxNativeServerPrivate::thread_func()
 
             iov_t reply_vector[2];
             SETIOV(reply_vector, &bytesLeft, sizeof(bytesLeft));
-            SETIOV(reply_vector+1, data.data(), data.length());
+            SETIOV(reply_vector+1, data.data(), size_t(data.length()));
 
             FATAL_ON_ERROR(MsgReplyv, rcvid, EOK, reply_vector, 2)
         }
@@ -324,7 +288,7 @@ void QQnxNativeServerPrivate::thread_func()
 
             int len_taken = 0;
             const int to_send = msg_info.dstmsglen - sizeof(int); //Exclude the buffer count
-            QVector<QByteArray> qba_array;
+            QByteArrayList qba_array;
             io->d_func()->obLock.lockForWrite(); //NAR (Not-An-Error)
             qCDebug(QT_REMOTEOBJECT) << "server received SOURCE_TX_RESP_REPEAT with length" << msg_info.dstmsglen << "Available:" << io->d_func()->obuffer.size();
             while (len_taken != to_send)
@@ -346,7 +310,7 @@ void QQnxNativeServerPrivate::thread_func()
             resp_repeat_iov.resize(buffers_taken+1);
             SETIOV(&resp_repeat_iov[0], &buffers_taken, sizeof(buffers_taken));
             for (int i = 1; i <= buffers_taken; ++i)
-                SETIOV(&resp_repeat_iov[i], qba_array.at(i-1).constData(), qba_array.at(i-1).length());
+                SETIOV(&resp_repeat_iov[i], qba_array.at(i-1).constData(), size_t(qba_array.at(i-1).length()));
             FATAL_ON_ERROR(MsgReplyv, rcvid, EOK, resp_repeat_iov.data(), buffers_taken+1)
         }
             break;
@@ -459,7 +423,7 @@ void QQnxNativeServerPrivate::createSource(int rcvid, uint64_t uid, pid_t toPid)
 {
     Q_Q(QQnxNativeServer);
 #ifndef USE_HAM
-    Q_UNUSED(toPid);
+    Q_UNUSED(toPid)
 #endif
     auto io = QSharedPointer<QIOQnxSource>(new QIOQnxSource(rcvid));
     io->moveToThread(q->thread());

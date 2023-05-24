@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2008-2012 NVIDIA Corporation.
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2008-2012 NVIDIA Corporation.
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSG_RENDER_DEFAULT_MATERIAL_H
 #define QSSG_RENDER_DEFAULT_MATERIAL_H
@@ -43,14 +17,16 @@
 //
 
 #include <QtQuick3DRuntimeRender/private/qssgrendergraphobject_p.h>
-#include <QtQuick3DRuntimeRender/private/qssgrendermaterialdirty_p.h>
-#include <QtQuick3DRuntimeRender/private/qssgrenderlightmaps_p.h>
+
+#include <QtQuick3DUtils/private/qssgrenderbasetypes_p.h>
 
 #include <QtGui/QVector3D>
 
 QT_BEGIN_NAMESPACE
 
 struct QSSGRenderImage;
+struct QSSGRenderModel;
+struct QSSGShaderMaterialAdapter;
 
 struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderDefaultMaterial : QSSGRenderGraphObject
 {
@@ -63,23 +39,19 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderDefaultMaterial : QSSGRenderGraph
     {
         SourceOver = 0,
         Screen,
-        Multiply,
-        Overlay,
-        ColorBurn,
-        ColorDodge
+        Multiply
     };
     enum class MaterialSpecularModel : quint8
     {
         Default = 0,
-        KGGX,
-        KWard
+        KGGX
     };
     enum MaterialAlphaMode : quint8
     {
-        Opaque = 0,
+        Default = 0,
         Mask,
         Blend,
-        Default
+        Opaque
     };
     enum TextureChannelMapping : quint8
     {
@@ -89,9 +61,6 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderDefaultMaterial : QSSGRenderGraph
         A
     };
 
-    // Materials are stored as a linked list on models.
-    QSSGRenderGraphObject *nextSibling = nullptr;
-    QSSGRenderModel *parent = nullptr;
     QSSGRenderImage *colorMap = nullptr;
     // material section
     QSSGRenderImage *iblProbe = nullptr;
@@ -102,49 +71,81 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderDefaultMaterial : QSSGRenderGraph
     QSSGRenderImage *opacityMap = nullptr;
     QSSGRenderImage *bumpMap = nullptr;
     QSSGRenderImage *normalMap = nullptr;
-    QSSGRenderImage *displacementMap = nullptr;
     QSSGRenderImage *translucencyMap = nullptr;
     QSSGRenderImage *metalnessMap = nullptr;
     QSSGRenderImage *occlusionMap = nullptr;
-    // lightmap section
-    QSSGRenderLightmaps lightmaps;
+    QSSGRenderImage *heightMap = nullptr;
+    QSSGRenderImage *clearcoatMap = nullptr;
+    QSSGRenderImage *clearcoatRoughnessMap = nullptr;
+    QSSGRenderImage *clearcoatNormalMap = nullptr;
+    QSSGRenderImage *transmissionMap = nullptr;
+    QSSGRenderImage *thicknessMap = nullptr;
 
+    // Note that most default values here are irrelevant as the material
+    // (Default or Principled) will write its own defaults or actual values
+    // during sync.
     QVector3D specularTint{ 1.0f, 1.0f, 1.0f };
-    float ior = 0.2f;
+    float ior = 1.45f; // relevant for Default only
     QVector3D emissiveColor = { 1.0f, 1.0f, 1.0f };
     QVector4D color{ 1.0f, 1.0f, 1.0f, 1.0f }; // colors are 0-1 normalized
     float diffuseLightWrap = 0.0f; // 0 - 1
     float fresnelPower = 0.0f;
-    float specularAmount = 0.0f; // 0-??, defaults to 0
-    float specularRoughness = 50.0f; // 0-??, defaults to 50
+    float specularAmount = 1.0f; // 0-1
+    float specularRoughness = 0.0f; // 0-1
     float metalnessAmount = 0.0f;
     float opacity = 1.0f; // 0-1
     float bumpAmount = 0.0f; // 0-??
-    float displaceAmount = 0.0f; // 0-??
     float translucentFalloff = 0.0f; // 0 - ??
     float occlusionAmount = 1.0f; // 0 - 1
     float alphaCutoff = 0.5f; // 0 - 1
+    float heightAmount = 0.0f; // 0 - 1
+    int minHeightSamples = 8;
+    int maxHeightSamples = 32;
+    float clearcoatAmount = 0.0f; // 0 - 1
+    float clearcoatRoughnessAmount = 0.0f; // 0 - 1
+    float transmissionFactor = 0.0f; // 0 - 1
+    float thicknessFactor = 0.0f; // 0 - 1
+    float attenuationDistance = std::numeric_limits<float>::infinity();
+    QVector3D attenuationColor { 1.0f, 1.0f, 1.0f };
 
-    QSSGMaterialDirty dirty;
     MaterialLighting lighting = MaterialLighting::FragmentLighting;
     QSSGRenderDefaultMaterial::MaterialBlendMode blendMode = QSSGRenderDefaultMaterial::MaterialBlendMode::SourceOver;
     QSSGRenderDefaultMaterial::MaterialSpecularModel specularModel = QSSGRenderDefaultMaterial::MaterialSpecularModel::Default;
     QSSGRenderDefaultMaterial::MaterialAlphaMode alphaMode = QSSGRenderDefaultMaterial::Default;
     QSSGCullFaceMode cullMode = QSSGCullFaceMode::Back;
+    QSSGDepthDrawMode depthDrawMode = QSSGDepthDrawMode::OpaqueOnly;
     bool vertexColorsEnabled = false;
+    bool dirty = true;
     TextureChannelMapping roughnessChannel = TextureChannelMapping::R;
     TextureChannelMapping opacityChannel = TextureChannelMapping::A;
     TextureChannelMapping translucencyChannel = TextureChannelMapping::A;
     TextureChannelMapping metalnessChannel = TextureChannelMapping::R;
     TextureChannelMapping occlusionChannel = TextureChannelMapping::R;
+    TextureChannelMapping heightChannel = TextureChannelMapping::R;
+    TextureChannelMapping clearcoatChannel = TextureChannelMapping::R;
+    TextureChannelMapping clearcoatRoughnessChannel = TextureChannelMapping::G;
+    TextureChannelMapping transmissionChannel = TextureChannelMapping::R;
+    TextureChannelMapping thicknessChannel = TextureChannelMapping::G;
+    float pointSize = 1.0f;
+    float lineWidth = 1.0f;
 
     QSSGRenderDefaultMaterial(Type type = Type::DefaultMaterial);
+    ~QSSGRenderDefaultMaterial();
 
     bool isSpecularEnabled() const { return specularAmount > .01f; }
     bool isMetalnessEnabled() const { return metalnessAmount > 0.01f; }
     bool isFresnelEnabled() const { return fresnelPower > 0.0f; }
     bool isVertexColorsEnabled() const { return vertexColorsEnabled; }
     bool hasLighting() const { return lighting != MaterialLighting::NoLighting; }
+    bool isClearcoatEnabled() const { return clearcoatAmount > 0.01f; }
+    bool isTransmissionEnabled() const { return transmissionFactor > 0.01f; }
+
+    [[nodiscard]] inline bool isDirty() const { return dirty; }
+    void clearDirty();
+
+    QSSGShaderMaterialAdapter *adapter = nullptr;
+
+    QString debugObjectName;
 };
 
 QT_END_NAMESPACE

@@ -1,9 +1,10 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
+#include "build/build_config.h"
 #include "components/page_load_metrics/browser/page_load_metrics_observer.h"
 #include "components/page_load_metrics/browser/page_load_tracker.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
@@ -24,12 +25,46 @@ class PageLoadMetricsObserver
   ~PageLoadMetricsObserver() override = default;
 
   // page_load_metrics::PageLoadMetricsObserver implementation:
+
+  ObservePolicy OnFencedFramesStart(
+      content::NavigationHandle* navigation_handle,
+      const GURL& currently_committed_url) override {
+    // This class is only interested in events for outer-most frame that are
+    // forwarded by PageLoadTracker. So, this class doesn't need observer-level
+    // forwarding.
+    return STOP_OBSERVING;
+  }
+
+  PageLoadMetricsObserver::ObservePolicy OnPrerenderStart(
+      content::NavigationHandle* navigation_handle,
+      const GURL& currently_committed_url) override {
+    // Currently, prerendering is not enabled for WebLayer.
+    //
+    // TODO(https://crbug.com/1267224): If support prerendering, add callbacks
+    // and tests.
+    return STOP_OBSERVING;
+  }
+
+  void OnFirstPaintInPage(
+      const page_load_metrics::mojom::PageLoadTiming& timing) override {
+    on_first_paint_seen_ = true;
+    QuitRunLoopIfReady();
+  }
+
   void OnFirstContentfulPaintInPage(
       const page_load_metrics::mojom::PageLoadTiming& timing) override {
-    quit_closure_.Run();
+    on_first_contentful_paint_seen_ = true;
+    QuitRunLoopIfReady();
   }
 
  private:
+  void QuitRunLoopIfReady() {
+    if (on_first_paint_seen_ && on_first_contentful_paint_seen_)
+      quit_closure_.Run();
+  }
+
+  bool on_first_paint_seen_ = false;
+  bool on_first_contentful_paint_seen_ = false;
   base::RepeatingClosure quit_closure_;
 };
 
@@ -54,10 +89,18 @@ IN_PROC_BROWSER_TEST_F(PageLoadMetricsBrowserTest, Heartbeat) {
 
   run_loop.Run();
 
-  histogram_tester.ExpectTotalCount(
-      "PageLoad.PaintTiming.NavigationToFirstPaint", 1);
-  histogram_tester.ExpectTotalCount(
-      "PageLoad.PaintTiming.NavigationToFirstContentfulPaint", 1);
+  // Look for prefix because on Android the name would be different if the tab
+  // is not in foreground initially. This seems to happen on a slow test bot.
+  EXPECT_GE(histogram_tester
+                .GetTotalCountsForPrefix(
+                    "PageLoad.PaintTiming.NavigationToFirstPaint")
+                .size(),
+            1u);
+  EXPECT_GE(histogram_tester
+                .GetTotalCountsForPrefix(
+                    "PageLoad.PaintTiming.NavigationToFirstContentfulPaint")
+                .size(),
+            1u);
 }
 
 IN_PROC_BROWSER_TEST_F(PageLoadMetricsBrowserTest, UserCounter) {

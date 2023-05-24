@@ -12,52 +12,12 @@
 #include <arm_neon.h>
 #include <assert.h>
 
+#include "aom_dsp/arm/mem_neon.h"
+#include "aom_dsp/arm/transpose_neon.h"
 #include "av1/common/resize.h"
-#include "av1/common/arm/mem_neon.h"
-#include "av1/common/arm/transpose_neon.h"
+#include "av1/common/arm/convolve_neon.h"
 #include "config/av1_rtcd.h"
 #include "config/aom_scale_rtcd.h"
-
-static INLINE uint8x8_t convolve8_8(const int16x8_t s0, const int16x8_t s1,
-                                    const int16x8_t s2, const int16x8_t s3,
-                                    const int16x8_t s4, const int16x8_t s5,
-                                    const int16x8_t s6, const int16x8_t s7,
-                                    const int16x8_t filters,
-                                    const int16x8_t filter3,
-                                    const int16x8_t filter4) {
-  const int16x4_t filters_lo = vget_low_s16(filters);
-  const int16x4_t filters_hi = vget_high_s16(filters);
-  int16x8_t sum;
-
-  sum = vmulq_lane_s16(s0, filters_lo, 0);
-  sum = vmlaq_lane_s16(sum, s1, filters_lo, 1);
-  sum = vmlaq_lane_s16(sum, s2, filters_lo, 2);
-  sum = vmlaq_lane_s16(sum, s5, filters_hi, 1);
-  sum = vmlaq_lane_s16(sum, s6, filters_hi, 2);
-  sum = vmlaq_lane_s16(sum, s7, filters_hi, 3);
-  sum = vqaddq_s16(sum, vmulq_s16(s3, filter3));
-  sum = vqaddq_s16(sum, vmulq_s16(s4, filter4));
-  return vqrshrun_n_s16(sum, 7);
-}
-
-static INLINE uint8x8_t scale_filter_8(const uint8x8_t *const s,
-                                       const int16x8_t filters) {
-  const int16x8_t filter3 = vdupq_lane_s16(vget_low_s16(filters), 3);
-  const int16x8_t filter4 = vdupq_lane_s16(vget_high_s16(filters), 0);
-  int16x8_t ss[8];
-
-  ss[0] = vreinterpretq_s16_u16(vmovl_u8(s[0]));
-  ss[1] = vreinterpretq_s16_u16(vmovl_u8(s[1]));
-  ss[2] = vreinterpretq_s16_u16(vmovl_u8(s[2]));
-  ss[3] = vreinterpretq_s16_u16(vmovl_u8(s[3]));
-  ss[4] = vreinterpretq_s16_u16(vmovl_u8(s[4]));
-  ss[5] = vreinterpretq_s16_u16(vmovl_u8(s[5]));
-  ss[6] = vreinterpretq_s16_u16(vmovl_u8(s[6]));
-  ss[7] = vreinterpretq_s16_u16(vmovl_u8(s[7]));
-
-  return convolve8_8(ss[0], ss[1], ss[2], ss[3], ss[4], ss[5], ss[6], ss[7],
-                     filters, filter3, filter4);
-}
 
 static INLINE void scale_plane_2_to_1_phase_0(const uint8_t *src,
                                               const int src_stride,
@@ -595,7 +555,7 @@ static void scale_plane_4_to_3_bilinear(const uint8_t *src,
 static void scale_plane_4_to_3_general(const uint8_t *src, const int src_stride,
                                        uint8_t *dst, const int dst_stride,
                                        const int w, const int h,
-                                       const int16_t *const coef,
+                                       const InterpKernel *const coef,
                                        const int phase_scaler,
                                        uint8_t *const temp_buffer) {
   static const int step_q4 = 16 * 4 / 3;
@@ -606,12 +566,12 @@ static void scale_plane_4_to_3_general(const uint8_t *src, const int src_stride,
   // above and (SUBPEL_TAPS / 2) extra rows below.
   const int height_hor = (4 * h / 3 + SUBPEL_TAPS - 1 + 7) & ~7;
   const int height_ver = (h + 5) - ((h + 5) % 6);
-  const int16x8_t filters0 =
-      vld1q_s16(&coef[(phase_scaler + 0 * step_q4) & SUBPEL_MASK]);
-  const int16x8_t filters1 =
-      vld1q_s16(&coef[(phase_scaler + 1 * step_q4) & SUBPEL_MASK]);
-  const int16x8_t filters2 =
-      vld1q_s16(&coef[(phase_scaler + 2 * step_q4) & SUBPEL_MASK]);
+  const int16x8_t filters0 = vld1q_s16(
+      (const int16_t *)&coef[(phase_scaler + 0 * step_q4) & SUBPEL_MASK]);
+  const int16x8_t filters1 = vld1q_s16(
+      (const int16_t *)&coef[(phase_scaler + 1 * step_q4) & SUBPEL_MASK]);
+  const int16x8_t filters2 = vld1q_s16(
+      (const int16_t *)&coef[(phase_scaler + 2 * step_q4) & SUBPEL_MASK]);
   int x, y = height_hor;
   uint8_t *t = temp_buffer;
   uint8x8_t s[15], d[8];
@@ -734,12 +694,42 @@ static void scale_plane_4_to_3_general(const uint8_t *src, const int src_stride,
   } while (x);
 }
 
+// There's SIMD optimizations for 1/4, 1/2 and 3/4 downscaling in NEON.
+static INLINE bool has_normative_scaler_neon(const int src_width,
+                                             const int src_height,
+                                             const int dst_width,
+                                             const int dst_height) {
+  const bool has_normative_scaler =
+      (2 * dst_width == src_width && 2 * dst_height == src_height) ||
+      (4 * dst_width == src_width && 4 * dst_height == src_height) ||
+      (4 * dst_width == 3 * src_width && 4 * dst_height == 3 * src_height);
+
+  return has_normative_scaler;
+}
+
 void av1_resize_and_extend_frame_neon(const YV12_BUFFER_CONFIG *src,
                                       YV12_BUFFER_CONFIG *dst,
                                       const InterpFilter filter,
                                       const int phase, const int num_planes) {
+  bool has_normative_scaler =
+      has_normative_scaler_neon(src->y_crop_width, src->y_crop_height,
+                                dst->y_crop_width, dst->y_crop_height);
+
+  if (num_planes > 1) {
+    has_normative_scaler =
+        has_normative_scaler &&
+        has_normative_scaler_neon(src->uv_crop_width, src->uv_crop_height,
+                                  dst->uv_crop_width, dst->uv_crop_height);
+  }
+
+  if (!has_normative_scaler) {
+    av1_resize_and_extend_frame_c(src, dst, filter, phase, num_planes);
+    return;
+  }
+
   // We use AOMMIN(num_planes, MAX_MB_PLANE) instead of num_planes to quiet
   // the static analysis warnings.
+  int malloc_failed = 0;
   for (int i = 0; i < AOMMIN(num_planes, MAX_MB_PLANE); ++i) {
     const int is_uv = i > 0;
     const int src_w = src->crop_widths[is_uv];
@@ -765,16 +755,17 @@ void av1_resize_and_extend_frame_neon(const YV12_BUFFER_CONFIG *src,
         const int buffer_height = (2 * dst_y_h + SUBPEL_TAPS - 2 + 7) & ~7;
         uint8_t *const temp_buffer =
             (uint8_t *)malloc(buffer_stride * buffer_height);
-        if (temp_buffer) {
-          const InterpKernel *interp_kernel =
-              (const InterpKernel *)av1_interp_filter_params_list[filter]
-                  .filter_ptr;
-          scale_plane_2_to_1_general(src->buffers[i], src->strides[is_uv],
-                                     dst->buffers[i], dst->strides[is_uv],
-                                     dst_w, dst_h, interp_kernel[phase],
-                                     temp_buffer);
-          free(temp_buffer);
+        if (!temp_buffer) {
+          malloc_failed = 1;
+          break;
         }
+        const InterpKernel *interp_kernel =
+            (const InterpKernel *)av1_interp_filter_params_list[filter]
+                .filter_ptr;
+        scale_plane_2_to_1_general(src->buffers[i], src->strides[is_uv],
+                                   dst->buffers[i], dst->strides[is_uv], dst_w,
+                                   dst_h, interp_kernel[phase], temp_buffer);
+        free(temp_buffer);
       }
     } else if (4 * dst_w == src_w && 4 * dst_h == src_h) {
       if (phase == 0) {
@@ -793,41 +784,47 @@ void av1_resize_and_extend_frame_neon(const YV12_BUFFER_CONFIG *src,
         uint8_t *const temp_buffer =
             (uint8_t *)malloc(buffer_stride * buffer_height);
         if (temp_buffer) {
-          const InterpKernel *interp_kernel =
-              (const InterpKernel *)av1_interp_filter_params_list[filter]
-                  .filter_ptr;
-          scale_plane_4_to_1_general(src->buffers[i], src->strides[is_uv],
-                                     dst->buffers[i], dst->strides[is_uv],
-                                     dst_w, dst_h, interp_kernel[phase],
-                                     temp_buffer);
-          free(temp_buffer);
+          malloc_failed = 1;
+          break;
         }
+        const InterpKernel *interp_kernel =
+            (const InterpKernel *)av1_interp_filter_params_list[filter]
+                .filter_ptr;
+        scale_plane_4_to_1_general(src->buffers[i], src->strides[is_uv],
+                                   dst->buffers[i], dst->strides[is_uv], dst_w,
+                                   dst_h, interp_kernel[phase], temp_buffer);
+        free(temp_buffer);
       }
-    } else if (4 * dst_w == 3 * src_w && 4 * dst_h == 3 * src_h) {
+    } else {
+      assert(4 * dst_w == 3 * src_w && 4 * dst_h == 3 * src_h);
       // 4 to 3
       const int buffer_stride = (dst_y_w + 5) - ((dst_y_w + 5) % 6) + 2;
       const int buffer_height = (4 * dst_y_h / 3 + SUBPEL_TAPS - 1 + 7) & ~7;
       uint8_t *const temp_buffer =
           (uint8_t *)malloc(buffer_stride * buffer_height);
-      if (temp_buffer) {
-        if (filter == BILINEAR) {
-          scale_plane_4_to_3_bilinear(src->buffers[i], src->strides[is_uv],
-                                      dst->buffers[i], dst->strides[is_uv],
-                                      dst_w, dst_h, phase, temp_buffer);
-        } else {
-          const InterpKernel *interp_kernel =
-              (const InterpKernel *)av1_interp_filter_params_list[filter]
-                  .filter_ptr;
-          scale_plane_4_to_3_general(src->buffers[i], src->strides[is_uv],
-                                     dst->buffers[i], dst->strides[is_uv],
-                                     dst_w, dst_h, interp_kernel[phase], phase,
-                                     temp_buffer);
-        }
+      if (!temp_buffer) {
+        malloc_failed = 1;
+        break;
       }
-    } else {
-      av1_resize_plane(src->buffers[i], src_h, src_w, src->strides[is_uv],
-                       dst->buffers[i], dst_h, dst_w, dst->strides[is_uv]);
+      if (filter == BILINEAR) {
+        scale_plane_4_to_3_bilinear(src->buffers[i], src->strides[is_uv],
+                                    dst->buffers[i], dst->strides[is_uv], dst_w,
+                                    dst_h, phase, temp_buffer);
+      } else {
+        const InterpKernel *interp_kernel =
+            (const InterpKernel *)av1_interp_filter_params_list[filter]
+                .filter_ptr;
+        scale_plane_4_to_3_general(src->buffers[i], src->strides[is_uv],
+                                   dst->buffers[i], dst->strides[is_uv], dst_w,
+                                   dst_h, interp_kernel, phase, temp_buffer);
+      }
+      free(temp_buffer);
     }
+  }
+
+  if (malloc_failed) {
+    av1_resize_and_extend_frame_c(src, dst, filter, phase, num_planes);
+  } else {
     aom_extend_frame_borders(dst, num_planes);
   }
 }

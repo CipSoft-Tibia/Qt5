@@ -1,7 +1,8 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//chrome/common/apps/platform_apps/api/api_sources.gni")
 import("//extensions/buildflags/buildflags.gni")
@@ -10,7 +11,7 @@ import("//tools/json_schema_compiler/json_schema_api.gni")
 assert(enable_extensions)
 
 function_registration("api_registration") {
-  sources = chrome_apps_api_schema_files + chrome_apps_uncompiled_schema_files
+  sources = chrome_apps_api_schema_files
   impl_dir = "//chrome/browser/apps/platform_apps/api"
   configs = [ "//build/config:precompiled_headers" ]
   bundle_name = "ChromeApps"
@@ -28,6 +29,8 @@ source_set("api") {
     "browser/browser_api.h",
     "browser_context_keyed_service_factories.cc",
     "browser_context_keyed_service_factories.h",
+    "deprecation_features.cc",
+    "deprecation_features.h",
     "media_galleries/blob_data_source_factory.cc",
     "media_galleries/blob_data_source_factory.h",
     "media_galleries/media_galleries_api.cc",
@@ -42,14 +45,18 @@ source_set("api") {
     "sync_file_system/sync_file_system_api_helpers.h",
   ]
 
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+
   deps = [
+    "//build:chromeos_buildflags",
     "//chrome/app:generated_resources_grit",
 
     # TODO(https://crbug.com/883570): It'd be nice to have more APIs here
     # extracted into their own BUILD files (so they are easy to audit, add, or
     # remove), but any that depend on //chrome/browser:browser can't.
-    "//chrome/browser/apps/platform_apps/api/music_manager_private",
+    "//chrome/browser:browser_process",
     "//chrome/browser/extensions",
+    "//chrome/browser/profiles:profile",
     "//chrome/common",
     "//chrome/common/apps/platform_apps",
     "//chrome/common/apps/platform_apps/api",
@@ -59,30 +66,24 @@ source_set("api") {
     "//extensions/browser",
   ]
 
-  public_deps =
-      [ "//chrome/browser/apps/platform_apps/api/music_manager_private" ]
-
   if (is_chromeos) {
+    sources += [
+      "enterprise_remote_apps/enterprise_remote_apps_api.cc",
+      "enterprise_remote_apps/enterprise_remote_apps_api.h",
+    ]
+
+    deps += [ "//chromeos/components/remote_apps/mojom" ]
+  }
+
+  if (is_chromeos_ash) {
     sources += [
       "arc_apps_private/arc_apps_private_api.cc",
       "arc_apps_private/arc_apps_private_api.h",
-      "first_run_private/first_run_private_api.cc",
-      "first_run_private/first_run_private_api.h",
-      "webstore_widget_private/app_installer.cc",
-      "webstore_widget_private/app_installer.h",
-      "webstore_widget_private/webstore_widget_private_api.cc",
-      "webstore_widget_private/webstore_widget_private_api.h",
     ]
 
     deps += [
-      "//chrome:strings",
-      "//chromeos/components/multidevice/logging",
-      "//chromeos/components/proximity_auth",
-      "//components/account_id",
-      "//components/strings:components_strings_grit",
-      "//components/user_manager",
-      "//device/bluetooth",
-      "//ui/chromeos",
+      "//chrome/browser/ash/crosapi",
+      "//ui/events:event_constants",
     ]
   }
 
@@ -100,7 +101,8 @@ source_set("api") {
     ]
   }
   visibility += [
-    "//chrome/browser/chromeos",
     ":api_registration",
+    "//chrome/browser/ash",
+    "//chrome/browser/chromeos",
   ]
 }

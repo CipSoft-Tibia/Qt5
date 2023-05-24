@@ -16,9 +16,9 @@
 
 #include "src/trace_processor/importers/proto/heap_graph_tracker.h"
 
-#include "src/trace_processor/importers/proto/profiler_util.h"
-
 #include "perfetto/base/logging.h"
+#include "src/trace_processor/importers/common/process_tracker.h"
+#include "src/trace_processor/importers/proto/profiler_util.h"
 #include "test/gtest_and_gmock.h"
 
 namespace perfetto {
@@ -28,17 +28,168 @@ namespace {
 using ::testing::UnorderedElementsAre;
 
 TEST(HeapGraphTrackerTest, PackageFromLocationApp) {
-  TraceStorage storage;
-  EXPECT_EQ(
-      PackageFromLocation(&storage,
-                          "/data/app/~~ASDFGH1234QWerT==/"
-                          "com.twitter.android-MNBVCX7890SDTst6==/test.apk"),
-      "com.twitter.android");
-  EXPECT_EQ(PackageFromLocation(
-                &storage,
-                "/data/app/com.google.android.webview-6XfQhnaSkFwGK0sYL9is0G==/"
-                "base.apk"),
-            "com.google.android.webview");
+  std::unique_ptr<TraceStorage> storage(new TraceStorage());
+
+  const char data_app_path[] =
+      "/data/app/org.perfetto.test-6XfQhnaSkFwGK0sYL9is0G==/base.apk";
+  EXPECT_EQ(PackageFromLocation(storage.get(), data_app_path),
+            "org.perfetto.test");
+
+  const char with_extra_dir[] =
+      "/data/app/~~ASDFGH1234QWerT==/"
+      "com.perfetto.test-MNBVCX7890SDTst6==/test.apk";
+  EXPECT_EQ(PackageFromLocation(storage.get(), with_extra_dir),
+            "com.perfetto.test");
+
+  const char odex[] =
+      "/data/app/com.google.android.apps.wellbeing-"
+      "qfQCaB4uJ7P0OPpZQqOu0Q==/oat/arm64/base.odex";
+  EXPECT_EQ(PackageFromLocation(storage.get(), odex),
+            "com.google.android.apps.wellbeing");
+
+  const char inmem_dex[] =
+      "[anon:dalvik-classes.dex extracted in memory from "
+      "/data/app/~~uUgHYtbjPNr2VFa3byIF4Q==/"
+      "com.perfetto.example-aC94wTfXRC60l2HJU5YvjQ==/base.apk]";
+  EXPECT_EQ(PackageFromLocation(storage.get(), inmem_dex),
+            "com.perfetto.example");
+}
+
+TEST(HeapGraphTrackerTest, PopulateNativeSize) {
+  constexpr uint64_t kSeqId = 1;
+  constexpr UniquePid kPid = 1;
+  constexpr int64_t kTimestamp = 1;
+
+  TraceProcessorContext context;
+  context.storage.reset(new TraceStorage());
+  context.process_tracker.reset(new ProcessTracker(&context));
+  context.process_tracker->GetOrCreateProcess(kPid);
+
+  HeapGraphTracker tracker(context.storage.get());
+
+  StringPool::Id normal_kind = context.storage->InternString("KIND_NORMAL");
+
+  constexpr uint64_t kLocation = 0;
+  tracker.AddInternedLocationName(kSeqId, kLocation,
+                                  context.storage->InternString("location"));
+
+  enum Fields : uint64_t { kReferent = 1, kThunk, kThis0, kNext };
+
+  tracker.AddInternedFieldName(kSeqId, kReferent,
+                               "java.lang.ref.Reference.referent");
+  tracker.AddInternedFieldName(kSeqId, kThunk, "sun.misc.Cleaner.thunk");
+  tracker.AddInternedFieldName(
+      kSeqId, kThis0,
+      "libcore.util.NativeAllocationRegistry$CleanerThunk.this$0");
+  tracker.AddInternedFieldName(kSeqId, kNext, "sun.misc.Cleaner.next");
+
+  enum Types : uint64_t {
+    kTypeBitmap = 1,
+    kTypeCleaner,
+    kTypeCleanerThunk,
+    kTypeNativeAllocationRegistry,
+  };
+
+  tracker.AddInternedType(
+      kSeqId, kTypeBitmap,
+      context.storage->InternString("android.graphics.Bitmap"), kLocation,
+      /*object_size=*/0,
+      /*reference_field_name_ids=*/{}, /*superclass_id=*/0,
+      /*classloader_id=*/0, /*no_reference_fields=*/false,
+      /*kind=*/normal_kind);
+
+  tracker.AddInternedType(
+      kSeqId, kTypeCleaner, context.storage->InternString("sun.misc.Cleaner"),
+      kLocation, /*object_size=*/0,
+      /*reference_field_name_ids=*/{kReferent, kThunk, kNext},
+      /*superclass_id=*/0,
+      /*classloader_id=*/0, /*no_reference_fields=*/false,
+      /*kind=*/normal_kind);
+
+  tracker.AddInternedType(
+      kSeqId, kTypeCleanerThunk,
+      context.storage->InternString(
+          "libcore.util.NativeAllocationRegistry$CleanerThunk"),
+      kLocation, /*object_size=*/0,
+      /*reference_field_name_ids=*/{kThis0}, /*superclass_id=*/0,
+      /*classloader_id=*/0, /*no_reference_fields=*/false,
+      /*kind=*/normal_kind);
+
+  tracker.AddInternedType(
+      kSeqId, kTypeNativeAllocationRegistry,
+      context.storage->InternString("libcore.util.NativeAllocationRegistry"),
+      kLocation, /*object_size=*/0,
+      /*reference_field_name_ids=*/{}, /*superclass_id=*/0,
+      /*classloader_id=*/0, /*no_reference_fields=*/false,
+      /*kind=*/normal_kind);
+
+  enum Objects : uint64_t {
+    kObjBitmap = 1,
+    kObjCleaner,
+    kObjThunk,
+    kObjNativeAllocationRegistry,
+  };
+
+  {
+    HeapGraphTracker::SourceObject obj;
+    obj.object_id = kObjBitmap;
+    obj.type_id = kTypeBitmap;
+
+    tracker.AddObject(kSeqId, kPid, kTimestamp, std::move(obj));
+  }
+
+  {
+    HeapGraphTracker::SourceObject obj;
+    obj.object_id = kObjCleaner;
+    obj.type_id = kTypeCleaner;
+    obj.referred_objects = {kObjBitmap, kObjThunk, 0};
+
+    tracker.AddObject(kSeqId, kPid, kTimestamp, std::move(obj));
+  }
+
+  {
+    HeapGraphTracker::SourceObject obj;
+    obj.object_id = kObjThunk;
+    obj.type_id = kTypeCleanerThunk;
+    obj.referred_objects = {kObjNativeAllocationRegistry};
+
+    tracker.AddObject(kSeqId, kPid, kTimestamp, std::move(obj));
+  }
+
+  {
+    HeapGraphTracker::SourceObject obj;
+    obj.object_id = kObjNativeAllocationRegistry;
+    obj.type_id = kTypeNativeAllocationRegistry;
+
+    // NativeAllocationRegistry.size least significant bit is used to encode the
+    // source of the allocation (1: malloc, 0: other).
+    obj.native_allocation_registry_size = 24242 | 1;
+
+    tracker.AddObject(kSeqId, kPid, kTimestamp, std::move(obj));
+  }
+
+  tracker.FinalizeProfile(kSeqId);
+
+  const auto& objs_table = context.storage->heap_graph_object_table();
+  const auto& class_table = context.storage->heap_graph_class_table();
+  size_t count_bitmaps = 0;
+  for (uint32_t obj_row = 0; obj_row < objs_table.row_count(); ++obj_row) {
+    base::Optional<uint32_t> class_row =
+        class_table.id().IndexOf(objs_table.type_id()[obj_row]);
+    ASSERT_TRUE(class_row.has_value());
+    if (context.storage->string_pool().Get(class_table.name()[*class_row]) ==
+        "android.graphics.Bitmap") {
+      EXPECT_EQ(objs_table.native_size()[obj_row], 24242);
+      count_bitmaps++;
+    } else {
+      EXPECT_EQ(objs_table.native_size()[obj_row], 0)
+          << context.storage->string_pool()
+                 .Get(class_table.name()[*class_row])
+                 .c_str()
+          << " has non zero native_size";
+    }
+  }
+  EXPECT_EQ(count_bitmaps, 1u);
 }
 
 TEST(HeapGraphTrackerTest, BuildFlamegraph) {
@@ -54,8 +205,10 @@ TEST(HeapGraphTrackerTest, BuildFlamegraph) {
 
   TraceProcessorContext context;
   context.storage.reset(new TraceStorage());
+  context.process_tracker.reset(new ProcessTracker(&context));
+  context.process_tracker->GetOrCreateProcess(kPid);
 
-  HeapGraphTracker tracker(&context);
+  HeapGraphTracker tracker(context.storage.get());
 
   constexpr uint64_t kField = 1;
   constexpr uint64_t kLocation = 0;
@@ -64,29 +217,53 @@ TEST(HeapGraphTrackerTest, BuildFlamegraph) {
   constexpr uint64_t kY = 2;
   constexpr uint64_t kA = 3;
   constexpr uint64_t kB = 4;
+  constexpr uint64_t kWeakRef = 5;
 
   base::StringView field = base::StringView("foo");
   StringPool::Id x = context.storage->InternString("X");
   StringPool::Id y = context.storage->InternString("Y");
   StringPool::Id a = context.storage->InternString("A");
   StringPool::Id b = context.storage->InternString("B");
+  StringPool::Id weak_ref = context.storage->InternString("WeakReference");
 
+  StringPool::Id normal_kind = context.storage->InternString("KIND_NORMAL");
+  StringPool::Id weak_ref_kind =
+      context.storage->InternString("KIND_WEAK_REFERENCE");
   tracker.AddInternedFieldName(kSeqId, kField, field);
 
   tracker.AddInternedLocationName(kSeqId, kLocation,
                                   context.storage->InternString("location"));
   tracker.AddInternedType(kSeqId, kX, x, kLocation, /*object_size=*/0,
                           /*field_name_ids=*/{}, /*superclass_id=*/0,
-                          /*no_fields=*/false);
+                          /*classloader_id=*/0, /*no_fields=*/false,
+                          /*kind=*/normal_kind);
   tracker.AddInternedType(kSeqId, kY, y, kLocation, /*object_size=*/0,
                           /*field_name_ids=*/{}, /*superclass_id=*/0,
-                          /*no_fields=*/false);
+                          /*classloader_id=*/0, /*no_fields=*/false,
+                          /*kind=*/normal_kind);
   tracker.AddInternedType(kSeqId, kA, a, kLocation, /*object_size=*/0,
                           /*field_name_ids=*/{}, /*superclass_id=*/0,
-                          /*no_fields=*/false);
+                          /*classloader_id=*/0, /*no_fields=*/false,
+                          /*kind=*/normal_kind);
   tracker.AddInternedType(kSeqId, kB, b, kLocation, /*object_size=*/0,
                           /*field_name_ids=*/{}, /*superclass_id=*/0,
-                          /*no_fields=*/false);
+                          /*classloader_id=*/0, /*no_fields=*/false,
+                          /*kind=*/normal_kind);
+  tracker.AddInternedType(kSeqId, kWeakRef, weak_ref, kLocation,
+                          /*object_size=*/0,
+                          /*field_name_ids=*/{}, /*superclass_id=*/0,
+                          /*classloader_id=*/0, /*no_fields=*/false,
+                          /*kind=*/weak_ref_kind);
+  {
+    HeapGraphTracker::SourceObject obj;
+    obj.object_id = 999;
+    obj.self_size = 999;
+    obj.type_id = kWeakRef;
+    obj.field_name_ids = {kField};
+    obj.referred_objects = {5};
+
+    tracker.AddObject(kSeqId, kPid, kTimestamp, std::move(obj));
+  }
 
   {
     HeapGraphTracker::SourceObject obj;
@@ -137,6 +314,7 @@ TEST(HeapGraphTrackerTest, BuildFlamegraph) {
   HeapGraphTracker::SourceRoot root;
   root.root_type = context.storage->InternString("ROOT");
   root.object_ids.emplace_back(1);
+  root.object_ids.emplace_back(999);
   tracker.AddRoot(kSeqId, kPid, kTimestamp, root);
 
   tracker.FinalizeProfile(kSeqId);
@@ -145,16 +323,16 @@ TEST(HeapGraphTrackerTest, BuildFlamegraph) {
   ASSERT_NE(flame, nullptr);
 
   auto cumulative_sizes = flame->cumulative_size().ToVectorForTesting();
-  EXPECT_THAT(cumulative_sizes, UnorderedElementsAre(15, 4, 14, 5));
+  EXPECT_THAT(cumulative_sizes, UnorderedElementsAre(15, 4, 14, 5, 999));
 
   auto cumulative_counts = flame->cumulative_count().ToVectorForTesting();
-  EXPECT_THAT(cumulative_counts, UnorderedElementsAre(5, 4, 1, 1));
+  EXPECT_THAT(cumulative_counts, UnorderedElementsAre(5, 4, 1, 1, 1));
 
   auto sizes = flame->size().ToVectorForTesting();
-  EXPECT_THAT(sizes, UnorderedElementsAre(1, 5, 4, 5));
+  EXPECT_THAT(sizes, UnorderedElementsAre(1, 5, 4, 5, 999));
 
   auto counts = flame->count().ToVectorForTesting();
-  EXPECT_THAT(counts, UnorderedElementsAre(1, 2, 1, 1));
+  EXPECT_THAT(counts, UnorderedElementsAre(1, 2, 1, 1, 1));
 }
 
 static const char kArray[] = "X[]";

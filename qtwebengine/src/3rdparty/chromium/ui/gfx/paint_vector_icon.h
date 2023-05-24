@@ -1,10 +1,11 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_GFX_PAINT_VECTOR_ICON_H_
 #define UI_GFX_PAINT_VECTOR_ICON_H_
 
+#include "base/memory/raw_ref.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/color_palette.h"
 #include "ui/gfx/gfx_export.h"
@@ -29,10 +30,10 @@ struct GFX_EXPORT IconDescription {
 
   ~IconDescription();
 
-  const VectorIcon& icon;
+  const raw_ref<const VectorIcon> icon;
   int dip_size;
   SkColor color;
-  const VectorIcon& badge_icon;
+  const raw_ref<const VectorIcon> badge_icon;
 };
 
 GFX_EXPORT extern const VectorIcon kNoneIcon;
@@ -80,10 +81,6 @@ GFX_EXPORT ImageSkia CreateVectorIconFromSource(const std::string& source,
                                                 int dip_size,
                                                 SkColor color);
 #endif
-
-// Calculates the size that will be default for |icon|, in dip. This will be the
-// smallest icon size |icon| contains.
-GFX_EXPORT int GetDefaultSizeOfVectorIcon(const gfx::VectorIcon& icon);
 
 }  // namespace gfx
 

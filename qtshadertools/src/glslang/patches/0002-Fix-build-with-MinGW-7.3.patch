@@ -1,0 +1,25 @@
+From ecf2dfc0f1b5cd7c4d47f64279c3f9b7d6dd3b3b Mon Sep 17 00:00:00 2001
+From: Laszlo Agocs <laszlo.agocs@qt.io>
+Date: Fri, 10 Jan 2020 14:23:10 +0100
+Subject: [PATCH] Fix build with MinGW 7.3
+
+---
+ src/3rdparty/glslang/glslang/Include/Common.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/3rdparty/glslang/glslang/Include/Common.h b/src/3rdparty/glslang/glslang/Include/Common.h
+index 733a790..0de5d96 100644
+--- a/src/3rdparty/glslang/glslang/Include/Common.h
++++ b/src/3rdparty/glslang/glslang/Include/Common.h
+@@ -50,7 +50,7 @@ std::string to_string(const T& val) {
+ }
+ #endif
+ 
+-#if (defined(_MSC_VER) && _MSC_VER < 1900 /*vs2015*/) || defined MINGW_HAS_SECURE_API
++#if (defined(_MSC_VER) && _MSC_VER < 1900 /*vs2015*/) // || defined MINGW_HAS_SECURE_API
+     #include <basetsd.h>
+     #ifndef snprintf
+     #define snprintf sprintf_s
+-- 
+2.9.3.windows.2
+

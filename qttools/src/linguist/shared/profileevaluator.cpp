@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "profileevaluator.h"
 
@@ -73,7 +48,7 @@ QStringList ProFileEvaluator::values(const QString &variableName) const
     const ProStringList &values = d->values(ProKey(variableName));
     QStringList ret;
     ret.reserve(values.size());
-    foreach (const ProString &str, values)
+    for (const ProString &str : values)
         ret << d->m_option->expandEnvVars(str.toQString());
     return ret;
 }
@@ -84,7 +59,7 @@ QStringList ProFileEvaluator::values(const QString &variableName, const ProFile 
     const ProStringList &values = d->m_valuemapStack.front().value(ProKey(variableName));
     QStringList ret;
     ret.reserve(values.size());
-    foreach (const ProString &str, values)
+    for (const ProString &str : values)
         if (str.sourceFile() == pro->id())
             ret << d->m_option->expandEnvVars(str.toQString());
     return ret;
@@ -109,7 +84,7 @@ QStringList ProFileEvaluator::absolutePathValues(
         const QString &variable, const QString &baseDirectory) const
 {
     QStringList result;
-    foreach (const QString &el, values(variable)) {
+    for (const QString &el : values(variable)) {
         QString absEl = IoUtils::isAbsolutePath(el)
             ? sysrootify(el, baseDirectory) : IoUtils::resolvePath(baseDirectory, el);
         if (IoUtils::fileType(absEl) == IoUtils::FileIsDir)
@@ -123,7 +98,8 @@ QStringList ProFileEvaluator::absoluteFileValues(
         const ProFile *pro) const
 {
     QStringList result;
-    foreach (const QString &el, pro ? values(variable, pro) : values(variable)) {
+    const auto vals = pro ? values(variable, pro) : values(variable);
+    for (const QString &el : vals) {
         QString absEl;
         if (IoUtils::isAbsolutePath(el)) {
             const QString elWithSysroot = QDir::cleanPath(sysrootify(el, baseDirectory));
@@ -133,7 +109,7 @@ QStringList ProFileEvaluator::absoluteFileValues(
             }
             absEl = elWithSysroot;
         } else {
-            foreach (const QString &dir, searchDirs) {
+            for (const QString &dir : searchDirs) {
                 QString fn = QDir::cleanPath(dir + QLatin1Char('/') + el);
                 if (d->m_vfs->exists(fn, QMakeVfs::VfsCumulative)) {
                     result << fn;
@@ -151,11 +127,10 @@ QStringList ProFileEvaluator::absoluteFileValues(
             // because no sane project would add generated files by wildcard.
             if (IoUtils::fileType(absDir) == IoUtils::FileIsDir) {
                 QString wildcard = d->m_tmp2.setRawData(absEl.constData() + nameOff + 1,
-                                                        absEl.length() - nameOff - 1);
+                                                        absEl.size() - nameOff - 1);
                 if (wildcard.contains(QLatin1Char('*')) || wildcard.contains(QLatin1Char('?'))) {
-                    wildcard.detach(); // Keep m_tmp out of QRegExp's cache
                     QDir theDir(absDir);
-                    foreach (const QString &fn, theDir.entryList(QStringList(wildcard)))
+                    for (const QString &fn : theDir.entryList(QStringList(wildcard)))
                         if (fn != QLatin1String(".") && fn != QLatin1String(".."))
                             result << absDir + QLatin1Char('/') + fn;
                 } // else if (acceptMissing)
@@ -169,7 +144,7 @@ QStringList ProFileEvaluator::absoluteFileValues(
 ProFileEvaluator::TemplateType ProFileEvaluator::templateType() const
 {
     const ProStringList &templ = d->values(ProKey("TEMPLATE"));
-    if (templ.count() >= 1) {
+    if (templ.size() >= 1) {
         const QString &t = templ.at(0).toQString();
         if (!t.compare(QLatin1String("app"), Qt::CaseInsensitive))
             return TT_Application;
@@ -219,9 +194,7 @@ void ProFileEvaluator::setCumulative(bool on)
 void ProFileEvaluator::setExtraVars(const QHash<QString, QStringList> &extraVars)
 {
     ProValueMap map;
-    QHash<QString, QStringList>::const_iterator it = extraVars.constBegin();
-    QHash<QString, QStringList>::const_iterator end = extraVars.constEnd();
-    for ( ; it != end; ++it)
+    for (auto it = extraVars.cbegin(), end = extraVars.cend() ; it != end; ++it)
         map.insert(ProKey(it.key()), ProStringList(it.value()));
     d->setExtraVars(map);
 }

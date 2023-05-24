@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 
 #include "base/compiler_specific.h"
 #include "base/component_export.h"
+#include "base/memory/raw_ptr.h"
 #include "url/url_canon.h"
 
 typedef struct UConverter UConverter;
@@ -26,13 +27,13 @@ class COMPONENT_EXPORT(URL) ICUCharsetConverter : public CharsetConverter {
 
   ~ICUCharsetConverter() override;
 
-  void ConvertFromUTF16(const base::char16* input,
+  void ConvertFromUTF16(const char16_t* input,
                         int input_len,
                         CanonOutput* output) override;
 
  private:
   // The ICU converter, not owned by this class.
-  UConverter* converter_;
+  raw_ptr<UConverter> converter_;
 };
 
 }  // namespace url

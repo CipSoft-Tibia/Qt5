@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,7 @@
 
 #include "base/strings/utf_string_conversions.h"
 
-namespace extensions {
-namespace test {
+namespace extensions::test {
 
 const struct TestStorageUnitInfo kRemovableStorageData = {"dcim:device:001",
                                                           "/media/usb1",
@@ -19,10 +18,9 @@ storage_monitor::StorageInfo BuildStorageInfoFromTestStorageUnitInfo(
   return storage_monitor::StorageInfo(
       unit.device_id, base::FilePath::StringType(), /* no location */
       base::UTF8ToUTF16(unit.name),                 /* storage label */
-      base::string16(),                             /* no storage vendor */
-      base::string16(),                             /* no storage model */
+      std::u16string(),                             /* no storage vendor */
+      std::u16string(),                             /* no storage model */
       unit.capacity);
 }
 
-}  // namespace test
-}  // namespace extensions
+}  // namespace extensions::test

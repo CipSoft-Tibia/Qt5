@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QSignalSpy>
+#include <QTimer>
 
 #include <qtextedit.h>
 #include <qtextcursor.h>
@@ -55,6 +32,10 @@
 #include "../../../shared/platformclipboard.h"
 #include "../../../shared/platforminputcontext.h"
 #include <private/qinputmethod_p.h>
+
+#include <QtWidgets/private/qapplication_p.h>
+
+Q_LOGGING_CATEGORY(lcTests, "qt.widgets.tests")
 
 //Used in copyAvailable
 typedef QPair<Qt::Key, Qt::KeyboardModifier> keyPairType;
@@ -135,7 +116,13 @@ private slots:
     void moveCursor();
 #ifndef QT_NO_CLIPBOARD
     void mimeDataReimplementations();
+#ifndef QT_NO_TEXTHTMLPARSER
+    void mimeTypesAvailableFromRichText();
 #endif
+#if QT_CONFIG(textmarkdownreader)
+    void mimeTypesAvailableFromMarkdown();
+#endif
+#endif // QT_NO_CLIPBOARD
     void ctrlEnterShouldInsertLineSeparator_NOT();
     void shiftEnterShouldInsertLineSeparator();
     void selectWordsFromStringsContainingSeparators_data();
@@ -171,6 +158,7 @@ private slots:
     void setDocumentPreservesPalette();
 #endif
     void pasteFromQt3RichText();
+    void pasteFromMarkdown();
     void noWrapBackgrounds();
     void preserveCharFormatAfterUnchangingSetPosition();
     void twoSameInputMethodEvents();
@@ -194,12 +182,6 @@ private slots:
 
     void countTextChangedOnRemove();
 
-#ifndef QT_NO_REGEXP
-    void findWithRegExp();
-    void findBackwardWithRegExp();
-    void findWithRegExpReturnsFalseIfNoMoreResults();
-#endif
-
 #if QT_CONFIG(regularexpression)
     void findWithRegularExpression();
     void findBackwardWithRegularExpression();
@@ -213,10 +195,16 @@ private slots:
     void preeditCharFormat_data();
     void preeditCharFormat();
 
+    void nextFormatAfterEnterPressed_data();
+    void nextFormatAfterEnterPressed();
+
+    void dontCrashWithCss();
+
 private:
     void createSelection();
     int blockCount() const;
     void compareWidgetAndImage(QTextEdit &widget, const QString &imageFileName);
+    bool isMainFontFixed();
 
     QTextEdit *ed;
     qreal rootFrameMargin;
@@ -340,18 +328,18 @@ public:
     inline QtTestDocumentLayout(QTextEdit *edit, QTextDocument *doc, int &itCount)
         : QAbstractTextDocumentLayout(doc), useBiggerSize(false), ed(edit), iterationCounter(itCount) {}
 
-    virtual void draw(QPainter *, const QAbstractTextDocumentLayout::PaintContext &)  {}
+    virtual void draw(QPainter *, const QAbstractTextDocumentLayout::PaintContext &) override {}
 
-    virtual int hitTest(const QPointF &, Qt::HitTestAccuracy ) const { return 0; }
+    virtual int hitTest(const QPointF &, Qt::HitTestAccuracy ) const override { return 0; }
 
-    virtual void documentChanged(int, int, int) {}
+    virtual void documentChanged(int, int, int) override {}
 
-    virtual int pageCount() const { return 1; }
+    virtual int pageCount() const override { return 1; }
 
-    virtual QSizeF documentSize() const { return usedSize; }
+    virtual QSizeF documentSize() const override { return usedSize; }
 
-    virtual QRectF frameBoundingRect(QTextFrame *) const { return QRectF(); }
-    virtual QRectF blockBoundingRect(const QTextBlock &) const { return QRectF(); }
+    virtual QRectF frameBoundingRect(QTextFrame *) const override { return QRectF(); }
+    virtual QRectF blockBoundingRect(const QTextBlock &) const override { return QRectF(); }
 
     bool useBiggerSize;
     QSize usedSize;
@@ -533,9 +521,9 @@ void tst_QTextEdit::clearShouldClearExtraSelections()
     sel.cursor = ed->textCursor();
     sel.format.setProperty(QTextFormat::FullWidthSelection, true);
     ed->setExtraSelections(QList<QTextEdit::ExtraSelection>() << sel);
-    QCOMPARE(ed->extraSelections().count(), 1);
+    QCOMPARE(ed->extraSelections().size(), 1);
     ed->clear();
-    QCOMPARE(ed->extraSelections().count(), 0);
+    QCOMPARE(ed->extraSelections().size(), 0);
 }
 
 void tst_QTextEdit::paragSeparatorOnPlaintextAppend()
@@ -735,7 +723,7 @@ void tst_QTextEdit::cursorPositionChanged()
 
     spy.clear();
     QTest::keyClick(ed, Qt::Key_A);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     QTextCursor cursor = ed->textCursor();
     cursor.movePosition(QTextCursor::Start);
@@ -743,18 +731,18 @@ void tst_QTextEdit::cursorPositionChanged()
     cursor.movePosition(QTextCursor::End);
     spy.clear();
     cursor.insertText("Test");
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     cursor.movePosition(QTextCursor::End);
     ed->setTextCursor(cursor);
     cursor.movePosition(QTextCursor::Start);
     spy.clear();
     cursor.insertText("Test");
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     spy.clear();
     QTest::keyClick(ed, Qt::Key_Left);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     cursor.movePosition(QTextCursor::Start);
     ed->setTextCursor(cursor);
@@ -763,14 +751,19 @@ void tst_QTextEdit::cursorPositionChanged()
     QTest::mouseDClick(ed->viewport(), Qt::LeftButton, {}, ed->cursorRect().center());
     QVERIFY(ed->textCursor().hasSelection());
 
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     CursorPositionChangedRecorder spy2(ed);
     QVERIFY(ed->textCursor().position() > 0);
     ed->setPlainText("Hello World");
-    QCOMPARE(spy2.cursorPositions.count(), 1);
+    QCOMPARE(spy2.cursorPositions.size(), 1);
     QCOMPARE(spy2.cursorPositions.at(0), 0);
     QCOMPARE(ed->textCursor().position(), 0);
+
+    ed->selectAll();
+    QCOMPARE(spy2.cursorPositions.size(), 2);
+    QCOMPARE(spy2.cursorPositions.at(1), 11);
+    QCOMPARE(ed->textCursor().position(), 11);
 }
 
 void tst_QTextEdit::setTextCursor()
@@ -785,7 +778,7 @@ void tst_QTextEdit::setTextCursor()
     spy.clear();
 
     ed->setTextCursor(cursor);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 }
 
 #ifndef QT_NO_CLIPBOARD
@@ -802,7 +795,7 @@ void tst_QTextEdit::undoAvailableAfterPaste()
     const QString txt("Test");
     QApplication::clipboard()->setText(txt);
     ed->paste();
-    QVERIFY(spy.count() >= 1);
+    QVERIFY(spy.size() >= 1);
     QCOMPARE(ed->toPlainText(), txt);
 }
 #endif
@@ -1055,7 +1048,7 @@ void tst_QTextEdit::noPropertiesOnDefaultTextEditCharFormat()
     // on a text edit. Font properties instead should be taken from the
     // widget's font (in sync with defaultFont property in document) and the
     // foreground color should be taken from the palette.
-    QCOMPARE(ed->currentCharFormat().properties().count(), 0);
+    QCOMPARE(ed->currentCharFormat().properties().size(), 0);
 }
 
 void tst_QTextEdit::setPlainTextShouldUseCurrentCharFormat()
@@ -1077,9 +1070,9 @@ void tst_QTextEdit::setPlainTextShouldEmitTextChangedOnce()
 {
     QSignalSpy spy(ed, SIGNAL(textChanged()));
     ed->setPlainText("Yankee Doodle");
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     ed->setPlainText("");
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 }
 
 void tst_QTextEdit::overwriteMode()
@@ -1361,7 +1354,7 @@ void tst_QTextEdit::copyAvailable_data()
 //Tests the copyAvailable slot for several cases
 void tst_QTextEdit::copyAvailable()
 {
-    QFETCH(pairListType,keystrokes);
+    QFETCH(const pairListType, keystrokes);
     QFETCH(QList<bool>, copyAvailable);
     QFETCH(QString, function);
 
@@ -1374,9 +1367,8 @@ void tst_QTextEdit::copyAvailable()
     QSignalSpy spyCopyAvailabe(ed, SIGNAL(copyAvailable(bool)));
 
     //Execute Keystrokes
-    foreach(keyPairType keyPair, keystrokes) {
+    for (keyPairType keyPair : keystrokes)
         QTest::keyClick(ed, keyPair.first, keyPair.second );
-    }
 
     //Execute ed->"function"
     if (function == "cut")
@@ -1393,8 +1385,8 @@ void tst_QTextEdit::copyAvailable()
     //Compare spied signals
     QEXPECT_FAIL("Case7 T,A,A, <- + shift, <- + shift, <- + shift, ctrl + x, undo() | signals: true, false, true",
         "Wrong undo selection behaviour. Should be fixed in some future release. (See task: 132482)", Abort);
-    QCOMPARE(spyCopyAvailabe.count(), copyAvailable.count());
-    for (int i=0;i<spyCopyAvailabe.count(); i++) {
+    QCOMPARE(spyCopyAvailabe.size(), copyAvailable.size());
+    for (int i=0;i<spyCopyAvailabe.size(); i++) {
         QVariant variantSpyCopyAvailable = spyCopyAvailabe.at(i).at(0);
         QVERIFY2(variantSpyCopyAvailable.toBool() == copyAvailable.at(i), QString("Spied singnal: %1").arg(i).toLatin1());
     }
@@ -1430,10 +1422,10 @@ void tst_QTextEdit::moveCursor()
     QCOMPARE(ed->textCursor().position(), 0);
     ed->moveCursor(QTextCursor::NextCharacter);
     QCOMPARE(ed->textCursor().position(), 1);
-    QCOMPARE(cursorMovedSpy.count(), 1);
+    QCOMPARE(cursorMovedSpy.size(), 1);
     ed->moveCursor(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
     QCOMPARE(ed->textCursor().position(), 2);
-    QCOMPARE(cursorMovedSpy.count(), 2);
+    QCOMPARE(cursorMovedSpy.size(), 2);
     QCOMPARE(ed->textCursor().selectedText(), QString("e"));
 }
 
@@ -1450,15 +1442,15 @@ public:
     mutable int canInsertCallCount;
     mutable int insertCallCount;
 
-    virtual QMimeData *createMimeDataFromSelection() const {
+    virtual QMimeData *createMimeDataFromSelection() const override {
         createMimeDataCallCount++;
         return QTextEdit::createMimeDataFromSelection();
     }
-    virtual bool canInsertFromMimeData(const QMimeData *source) const {
+    virtual bool canInsertFromMimeData(const QMimeData *source) const override {
         canInsertCallCount++;
         return QTextEdit::canInsertFromMimeData(source);
     }
-    virtual void insertFromMimeData(const QMimeData *source) {
+    virtual void insertFromMimeData(const QMimeData *source) override {
         insertCallCount++;
         QTextEdit::insertFromMimeData(source);
     }
@@ -1504,7 +1496,63 @@ void tst_QTextEdit::mimeDataReimplementations()
     QCOMPARE(ed.insertCallCount, 1);
 #endif
 }
+
+#ifndef QT_NO_TEXTHTMLPARSER
+void tst_QTextEdit::mimeTypesAvailableFromRichText()
+{
+    MyTextEdit ed;
+    ed.setHtml("<i>Hello <b>World</b></i>");
+    ed.selectAll();
+    ed.copy();
+    const auto *mimeData = QApplication::clipboard()->mimeData();
+    qCDebug(lcTests) << "available mime types" << mimeData->formats();
+    QVERIFY(mimeData->formats().contains("text/plain"));
+#if QT_CONFIG(textmarkdownwriter)
+    QVERIFY(mimeData->formats().contains("text/markdown"));
+    const QByteArray expectedMarkdown = "*Hello **World***\n\n";
+    if (mimeData->data("text/markdown") != expectedMarkdown && isMainFontFixed())
+        QEXPECT_FAIL("", "fixed-pitch main font (QTBUG-103484)", Continue);
+    QCOMPARE(mimeData->data("text/markdown"), expectedMarkdown);
 #endif
+#ifndef QT_NO_TEXTHTMLPARSER
+    QVERIFY(mimeData->formats().contains("text/html"));
+    QVERIFY(mimeData->hasHtml());
+#endif
+#ifndef QT_NO_TEXTODFWRITER
+    QVERIFY(mimeData->formats().contains("application/vnd.oasis.opendocument.text"));
+#endif
+}
+#endif // QT_NO_TEXTHTMLPARSER
+
+#if QT_CONFIG(textmarkdownreader)
+void tst_QTextEdit::mimeTypesAvailableFromMarkdown()
+{
+    MyTextEdit ed;
+    const QString md("# TODO\n\n- [x] Fix bugs\n- [ ] Have a beer\n");
+    ed.setMarkdown(md);
+    ed.selectAll();
+    ed.copy();
+    const auto *mimeData = QApplication::clipboard()->mimeData();
+    qCDebug(lcTests) << "available mime types" << mimeData->formats();
+    QVERIFY(mimeData->formats().contains("text/plain"));
+#if QT_CONFIG(textmarkdownwriter)
+    QVERIFY(mimeData->formats().contains("text/markdown"));
+    if (mimeData->data("text/markdown") != md && isMainFontFixed())
+        QEXPECT_FAIL("", "fixed-pitch main font (QTBUG-103484)", Continue);
+    QCOMPARE(mimeData->data("text/markdown"), md);
+#endif
+#ifndef QT_NO_TEXTHTMLPARSER
+    QVERIFY(mimeData->formats().contains("text/html"));
+    QVERIFY(mimeData->hasHtml());
+    QVERIFY(mimeData->html().contains("checked")); // <li class=\"checked\" ...
+#endif
+#ifndef QT_NO_TEXTODFWRITER
+    QVERIFY(mimeData->formats().contains("application/vnd.oasis.opendocument.text"));
+#endif
+}
+#endif // textmarkdownreader
+
+#endif // QT_NO_CLIPBOARD
 
 void tst_QTextEdit::ctrlEnterShouldInsertLineSeparator_NOT()
 {
@@ -1610,7 +1658,7 @@ public:
     bool resizeEventCalled;
 
 protected:
-    virtual void resizeEvent(QResizeEvent *e)
+    virtual void resizeEvent(QResizeEvent *e) override
     {
         QTextEdit::resizeEvent(e);
         setHtml("<img src=qtextbrowser-resizeevent.png width=" + QString::number(size().width()) + "><br>Size is " + QString::number(size().width()) + " x " + QString::number(size().height()));
@@ -1652,7 +1700,7 @@ void tst_QTextEdit::ensureVisibleWithRtl()
     ed->setLayoutDirection(Qt::RightToLeft);
     ed->setLineWrapMode(QTextEdit::NoWrap);
     QString txt(500, QChar(QLatin1Char('a')));
-    QCOMPARE(txt.length(), 500);
+    QCOMPARE(txt.size(), 500);
     ed->setPlainText(txt);
     ed->resize(100, 100);
     ed->show();
@@ -1703,7 +1751,7 @@ void tst_QTextEdit::extraSelections()
     ed->setExtraSelections(QList<QTextEdit::ExtraSelection>() << sel);
 
     QList<QTextEdit::ExtraSelection> selections = ed->extraSelections();
-    QCOMPARE(selections.count(), 1);
+    QCOMPARE(selections.size(), 1);
     QCOMPARE(selections.at(0).cursor.position(), endPos);
     QCOMPARE(selections.at(0).cursor.anchor(), wordPos);
 }
@@ -1722,9 +1770,6 @@ void tst_QTextEdit::adjustScrollbars()
     QLatin1String txt("\nabc def ghi jkl mno pqr stu vwx");
     ed->setText(txt + txt + txt + txt);
 
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "setMinimum/MaximumSize does not work on WinRT", Abort);
-#endif
     QVERIFY(ed->verticalScrollBar()->maximum() > 0);
 
     ed->moveCursor(QTextCursor::End);
@@ -1848,27 +1893,27 @@ void tst_QTextEdit::selectionChanged()
 
     QTest::keyClick(ed, Qt::Key_Right);
     QCOMPARE(ed->textCursor().position(), 1);
-    QCOMPARE(selectionChangedSpy.count(), 0);
+    QCOMPARE(selectionChangedSpy.size(), 0);
 
     QTest::keyClick(ed, Qt::Key_Right, Qt::ShiftModifier);
     QCOMPARE(ed->textCursor().position(), 2);
-    QCOMPARE(selectionChangedSpy.count(), 1);
+    QCOMPARE(selectionChangedSpy.size(), 1);
 
     QTest::keyClick(ed, Qt::Key_Right, Qt::ShiftModifier);
     QCOMPARE(ed->textCursor().position(), 3);
-    QCOMPARE(selectionChangedSpy.count(), 2);
+    QCOMPARE(selectionChangedSpy.size(), 2);
 
     QTest::keyClick(ed, Qt::Key_Right, Qt::ShiftModifier);
     QCOMPARE(ed->textCursor().position(), 4);
-    QCOMPARE(selectionChangedSpy.count(), 3);
+    QCOMPARE(selectionChangedSpy.size(), 3);
 
     QTest::keyClick(ed, Qt::Key_Right);
     QCOMPARE(ed->textCursor().position(), 4);
-    QCOMPARE(selectionChangedSpy.count(), 4);
+    QCOMPARE(selectionChangedSpy.size(), 4);
 
     QTest::keyClick(ed, Qt::Key_Right);
     QCOMPARE(ed->textCursor().position(), 5);
-    QCOMPARE(selectionChangedSpy.count(), 4);
+    QCOMPARE(selectionChangedSpy.size(), 4);
 }
 
 #ifndef QT_NO_CLIPBOARD
@@ -1908,9 +1953,6 @@ void tst_QTextEdit::copyPasteBackgroundImage()
     QBrush ba = a->cellAt(0, 0).format().background();
     QBrush bb = b->cellAt(0, 0).format().background();
 
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Fails on WinRT - QTBUG-68297", Abort);
-#endif
     QCOMPARE(ba.style(), Qt::TexturePattern);
     QCOMPARE(ba.style(), bb.style());
 
@@ -2017,7 +2059,8 @@ void tst_QTextEdit::fullWidthSelection()
 
     // enable full-width-selection for our test widget.
     class FullWidthStyle : public QCommonStyle {
-        int styleHint(StyleHint stylehint, const QStyleOption *opt, const QWidget *widget, QStyleHintReturn *returnData) const {
+        int styleHint(StyleHint stylehint, const QStyleOption *opt, const QWidget *widget, QStyleHintReturn *returnData) const override
+        {
             if (stylehint == QStyle::SH_RichText_FullWidthSelection)
                 return 1;
             return QCommonStyle::styleHint(stylehint, opt, widget, returnData);
@@ -2136,7 +2179,7 @@ void tst_QTextEdit::compareWidgetAndImage(QTextEdit &widget, const QString &imag
     QCOMPARE(image.depth(), 32);
     QCOMPARE(original.depth(), image.depth());
 
-    const int bytesPerLine = image.bytesPerLine();
+    const qsizetype bytesPerLine = image.bytesPerLine();
     const int width = image.width();
     const int height = image.height();
 
@@ -2162,6 +2205,18 @@ void tst_QTextEdit::compareWidgetAndImage(QTextEdit &widget, const QString &imag
     }
 }
 
+bool tst_QTextEdit::isMainFontFixed()
+{
+    bool ret = QFontInfo(QGuiApplication::font()).fixedPitch();
+    if (ret) {
+        qCWarning(lcTests) << "QFontDatabase::GeneralFont is monospaced: markdown writing is likely to use too many backticks";
+        qCWarning(lcTests) << "system fonts: fixed" << QFontDatabase::systemFont(QFontDatabase::FixedFont)
+                           << "fixed?" << QFontInfo(QFontDatabase::systemFont(QFontDatabase::FixedFont)).fixedPitch()
+                           << "general" << QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+    }
+    return ret;
+}
+
 void tst_QTextEdit::cursorRect()
 {
     ed->show();
@@ -2182,9 +2237,8 @@ void tst_QTextEdit::setDocumentPreservesPalette()
     QWidgetTextControl *control = ed->findChild<QWidgetTextControl *>();
     QVERIFY(control);
 
-    QPalette defaultPal = ed->palette();
     QPalette whitePal = ed->palette();
-    whitePal.setColor(QPalette::Active, QPalette::Text, "white");
+    whitePal.setColor(QPalette::Active, QPalette::Text, Qt::white);
 
 
     QVERIFY(whitePal != ed->palette());
@@ -2227,6 +2281,24 @@ void tst_QTextEdit::pasteFromQt3RichText()
     static_cast<PublicTextEdit *>(ed)->publicInsertFromMimeData(&mimeData);
 
     QCOMPARE(ed->toPlainText(), QString::fromLatin1("  QTextEdit is an  "));
+}
+
+void tst_QTextEdit::pasteFromMarkdown()
+{
+    QByteArray richtext("*This* text is **rich**");
+
+    QMimeData mimeData;
+    mimeData.setData("text/markdown", richtext);
+
+    static_cast<PublicTextEdit *>(ed)->publicInsertFromMimeData(&mimeData);
+
+    QCOMPARE(ed->toPlainText(), "This text is rich");
+#if QT_CONFIG(textmarkdownwriter)
+    const auto expectedMarkdown = QString::fromLatin1(richtext + "\n\n");
+    if (ed->toMarkdown() != expectedMarkdown && isMainFontFixed())
+        QEXPECT_FAIL("", "fixed-pitch main font (QTBUG-103484)", Continue);
+    QCOMPARE(ed->toMarkdown(), expectedMarkdown);
+#endif
 }
 
 void tst_QTextEdit::noWrapBackgrounds()
@@ -2301,7 +2373,8 @@ void tst_QTextEdit::taskQTBUG_7902_contextMenuCrash()
     w->connect(&ti, SIGNAL(timeout()), w, SLOT(deleteLater()));
     ti.start(200);
 
-    QContextMenuEvent *cme = new QContextMenuEvent(QContextMenuEvent::Mouse, w->rect().center());
+    QContextMenuEvent *cme = new QContextMenuEvent(QContextMenuEvent::Mouse, w->rect().center(),
+                                                   w->viewport()->mapToGlobal(w->rect().center()));
     qApp->postEvent(w->viewport(), cme);
 
     QTest::qWait(300);
@@ -2467,12 +2540,12 @@ void tst_QTextEdit::inputMethodEvent()
     QInputMethodEvent event;
     event.setCommitString("text");
     QApplication::sendEvent(ed, &event);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QCOMPARE(ed->toPlainText(), QString("text"));
 
     // test that input method gets chance to commit preedit when removing focus
     ed->setText("");
-    QApplication::setActiveWindow(ed);
+    QApplicationPrivate::setActiveWindow(ed);
     QTRY_VERIFY(QApplication::focusWindow());
     QCOMPARE(qApp->focusObject(), ed);
 
@@ -2497,7 +2570,7 @@ void tst_QTextEdit::inputMethodSelection()
     cursor.setPosition(5, QTextCursor::KeepAnchor);
     ed->setTextCursor(cursor);
 
-    QCOMPARE(selectionSpy.count(), 1);
+    QCOMPARE(selectionSpy.size(), 1);
     QCOMPARE(ed->textCursor().selectionStart(), 0);
     QCOMPARE(ed->textCursor().selectionEnd(), 5);
 
@@ -2506,7 +2579,7 @@ void tst_QTextEdit::inputMethodSelection()
     QInputMethodEvent event("", attributes);
     QApplication::sendEvent(ed, &event);
 
-    QCOMPARE(selectionSpy.count(), 2);
+    QCOMPARE(selectionSpy.size(), 2);
     QCOMPARE(ed->textCursor().selectionStart(), 12);
     QCOMPARE(ed->textCursor().selectionEnd(), 17);
 }
@@ -2521,7 +2594,7 @@ void tst_QTextEdit::inputMethodQuery()
     QGuiApplication::sendEvent(ed, &event);
     int anchor = event.value(Qt::ImAnchorPosition).toInt();
     int position = event.value(Qt::ImCursorPosition).toInt();
-    QCOMPARE(qAbs(position - anchor), text.length());
+    QCOMPARE(qAbs(position - anchor), text.size());
     QCOMPARE(event.value(Qt::ImEnabled).toBool(), true);
 
     ed->setEnabled(false);
@@ -2556,7 +2629,7 @@ void tst_QTextEdit::inputMethodCursorRect()
     ed->moveCursor(QTextCursor::End);
     const QRectF cursorRect = ed->cursorRect();
     const QVariant cursorRectV = ed->inputMethodQuery(Qt::ImCursorRectangle);
-    QCOMPARE(cursorRectV.type(), QVariant::RectF);
+    QCOMPARE(cursorRectV.userType(), QMetaType::QRectF);
     QCOMPARE(cursorRectV.toRect(), cursorRect.toRect());
 }
 
@@ -2577,7 +2650,7 @@ void tst_QTextEdit::highlightLongLine()
     class NumHighlighter : public QSyntaxHighlighter {
     public:
         explicit NumHighlighter(QTextDocument*doc) : QSyntaxHighlighter(doc) {};
-        virtual void highlightBlock(const QString& text) {
+        virtual void highlightBlock(const QString& text) override {
             // odd number in bold
             QTextCharFormat format;
             format.setFontWeight(QFont::Bold);
@@ -2606,47 +2679,8 @@ void tst_QTextEdit::countTextChangedOnRemove()
     QKeyEvent event(QEvent::KeyPress, Qt::Key_Backspace, Qt::NoModifier);
     QCoreApplication::instance()->notify(&edit, &event);
 
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 }
-
-#ifndef QT_NO_REGEXP
-void tst_QTextEdit::findWithRegExp()
-{
-    ed->setHtml(QStringLiteral("arbitrary te<span style=\"color:#ff0000\">xt</span>"));
-    QRegExp rx("\\w{2}xt");
-
-    bool found = ed->find(rx);
-
-    QVERIFY(found);
-    QCOMPARE(ed->textCursor().selectedText(), QStringLiteral("text"));
-}
-
-void tst_QTextEdit::findBackwardWithRegExp()
-{
-    ed->setPlainText(QStringLiteral("arbitrary text"));
-    QTextCursor cursor = ed->textCursor();
-    cursor.movePosition(QTextCursor::End);
-    ed->setTextCursor(cursor);
-    QRegExp rx("a\\w*t");
-
-    bool found = ed->find(rx, QTextDocument::FindBackward);
-
-    QVERIFY(found);
-    QCOMPARE(ed->textCursor().selectedText(), QStringLiteral("arbit"));
-}
-
-void tst_QTextEdit::findWithRegExpReturnsFalseIfNoMoreResults()
-{
-    ed->setPlainText(QStringLiteral("arbitrary text"));
-    QRegExp rx("t.xt");
-    ed->find(rx);
-
-    bool found = ed->find(rx);
-
-    QVERIFY(!found);
-    QCOMPARE(ed->textCursor().selectedText(), QStringLiteral("text"));
-}
-#endif
 
 #if QT_CONFIG(regularexpression)
 void tst_QTextEdit::findWithRegularExpression()
@@ -2692,10 +2726,10 @@ void tst_QTextEdit::findWithRegularExpressionReturnsFalseIfNoMoreResults()
 class TextEdit : public QTextEdit
 {
 public:
-    TextEdit(QWidget *parent = 0)
+    TextEdit(QWidget *parent = nullptr)
         : QTextEdit(parent)
     {}
-    void wheelEvent(QWheelEvent *event)
+    void wheelEvent(QWheelEvent *event) override
     {
         QTextEdit::wheelEvent(event);
     }
@@ -2754,12 +2788,12 @@ namespace {
         }
 
 
-        QPaintEngine *paintEngine () const
+        QPaintEngine *paintEngine () const override
         {
             return m_paintEngine;
         }
 
-        int metric (QPaintDevice::PaintDeviceMetric metric) const {
+        int metric (QPaintDevice::PaintDeviceMetric metric) const override {
             switch (metric) {
             case QPaintDevice::PdmWidth:
             case QPaintDevice::PdmHeight:
@@ -2942,6 +2976,104 @@ void tst_QTextEdit::preeditCharFormat()
 
     delete w;
 }
+
+void tst_QTextEdit::nextFormatAfterEnterPressed_data()
+{
+    typedef QMap<int, QVariant> pmap;
+    QTest::addColumn<QString>("html");
+    QTest::addColumn<int>("enterKeyCount");
+    QTest::addColumn<pmap>("expectedPrevBlockProps");
+    QTest::addColumn<pmap>("expectedPrevCharProps");
+    QTest::addColumn<pmap>("expectedNewBlockProps");
+    QTest::addColumn<pmap>("expectedNewCharProps");
+
+    // the BlockBottomMargin on "two" will be removed: property() returns invalid QVariant
+    QTest::newRow("bottom margin after ordered list") << "<ol><li>one</li><li>two</li></ol>" << 1
+        << pmap{{QTextFormat::BlockBottomMargin, {}}} << pmap{}
+        << pmap{{QTextFormat::BlockBottomMargin, 12}} << pmap{};
+    QTest::newRow("double enter after list: default format") << "<ol><li>one</li><li>two</li></ol>" << 2
+        << pmap{{QTextFormat::BlockBottomMargin, {}}} << pmap{}
+        << pmap{} << pmap{};
+    QTest::newRow("continue block quote") << "<blockquote>I'll be back</blockquote>" << 1
+        << pmap{{QTextFormat::BlockLeftMargin, 40}} << pmap{}
+        << pmap{{QTextFormat::BlockLeftMargin, 40}} << pmap{};
+    QTest::newRow("double enter after block quote") << "<blockquote>I'll be back</blockquote>" << 2
+        << pmap{{QTextFormat::BlockLeftMargin, 40}} << pmap{}
+        << pmap{{QTextFormat::BlockLeftMargin, {}}} << pmap{};
+    QTest::newRow("bottom margin after bullet list") << "<ul><li>one</li><li>two</li></ul>" << 1
+        << pmap{{QTextFormat::BlockBottomMargin, {}}} << pmap{}
+        << pmap{{QTextFormat::BlockBottomMargin, 12}} << pmap{};
+    QTest::newRow("paragraph after heading") << "<h1>so big!</h1>" << 1
+        << pmap{{QTextFormat::HeadingLevel, 1}} << pmap{}
+        << pmap{{QTextFormat::HeadingLevel, {}}} << pmap{};
+    QTest::newRow("paragraph after hrule") << "<p style='font-size:18px;'>blah blah<hr/></p>" << 1
+        << pmap{} << pmap{}
+        << pmap{{QTextFormat::BlockTrailingHorizontalRulerWidth, {}}} << pmap{};
+}
+
+void tst_QTextEdit::nextFormatAfterEnterPressed()
+{
+    typedef QMap<int, QVariant> pmap;
+    QFETCH(QString, html);
+    QFETCH(int, enterKeyCount);
+    QFETCH(pmap, expectedPrevBlockProps);
+    QFETCH(pmap, expectedPrevCharProps);
+    QFETCH(pmap, expectedNewBlockProps);
+    QFETCH(pmap, expectedNewCharProps);
+
+    ed->setHtml(html);
+    QTextCursor cursor = ed->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    ed->setTextCursor(cursor);
+
+    if (lcTests().isDebugEnabled()) {
+        ed->show();
+        QTest::qWait(500);
+    }
+
+    for (int i = 0; i < enterKeyCount; ++i)
+        QTest::keyClick(ed, Qt::Key_Enter);
+    QTest::keyClicks(ed, "foo");
+
+    if (lcTests().isDebugEnabled()) {
+        // visually see what happened when debug is enabled
+        QTest::qWait(500);
+        qCDebug(lcTests) << "new block" << Qt::hex << ed->textCursor().blockFormat().properties();
+        qCDebug(lcTests) << "new char" << Qt::hex << ed->textCursor().charFormat().properties();
+    }
+
+    // if expectedNewBlockProps is empty, we expect the current block format to be the default format
+    if (expectedNewBlockProps.isEmpty())
+        QCOMPARE(ed->textCursor().blockFormat(), QTextBlockFormat());
+    // otherwise we expect to find certain property values in the current block format
+    else for (auto it = expectedNewBlockProps.constBegin(); it != expectedNewBlockProps.constEnd(); ++it)
+        QCOMPARE(ed->textCursor().blockFormat().property(it.key()), it.value());
+
+    // if expectedNewCharProps is empty, we expect the current char format to be the default format
+    if (expectedNewCharProps.isEmpty())
+        QCOMPARE(ed->textCursor().charFormat(), QTextCharFormat());
+    // otherwise we expect to find certain property values in the current char format
+    else for (auto it = expectedNewCharProps.constBegin(); it != expectedNewCharProps.constEnd(); ++it)
+        QCOMPARE(ed->textCursor().charFormat().property(it.key()), it.value());
+
+    // check the cases where QWidgetTextControlPrivate::insertParagraphSeparator() should modify
+    // the previous block's block format and/or char format
+    auto prevBlockCursor = ed->textCursor();
+    prevBlockCursor.movePosition(QTextCursor::PreviousBlock);
+    for (auto it = expectedPrevBlockProps.constBegin(); it != expectedPrevBlockProps.constEnd(); ++it)
+        QCOMPARE(prevBlockCursor.blockFormat().property(it.key()), it.value());
+    for (auto it = expectedPrevCharProps.constBegin(); it != expectedPrevCharProps.constEnd(); ++it)
+        QCOMPARE(prevBlockCursor.charFormat().property(it.key()), it.value());
+}
+
+void tst_QTextEdit::dontCrashWithCss()
+{
+    qApp->setStyleSheet("QWidget { font: 10pt; }");
+    QTextEdit edit;
+    edit.show();
+    qApp->setStyleSheet(QString());
+}
+
 
 QTEST_MAIN(tst_QTextEdit)
 #include "tst_qtextedit.moc"

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,9 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "content/browser/process_internals/process_internals.mojom.h"
 #include "content/browser/process_internals/process_internals_handler_impl.h"
-#include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/grit/dev_ui_content_resources.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
@@ -29,37 +27,36 @@ ProcessInternalsUI::ProcessInternalsUI(WebUI* web_ui)
     : WebUIController(web_ui) {
   // This WebUI does not require any process bindings, so disable it early in
   // initialization time.
-  web_ui->SetBindings(0);
+  web_ui->SetBindings(BINDINGS_POLICY_NONE);
 
   // Create a WebUIDataSource to serve the HTML/JS files to the WebUI.
-  WebUIDataSource* source =
-      WebUIDataSource::Create(kChromeUIProcessInternalsHost);
+  WebUIDataSource* source = WebUIDataSource::CreateAndAdd(
+      web_ui->GetWebContents()->GetBrowserContext(),
+      kChromeUIProcessInternalsHost);
 
   source->AddResourcePath("process_internals.js", IDR_PROCESS_INTERNALS_JS);
   source->AddResourcePath("process_internals.css", IDR_PROCESS_INTERNALS_CSS);
-  source->AddResourcePath("process_internals.mojom-lite.js",
+  source->AddResourcePath("process_internals.mojom-webui.js",
                           IDR_PROCESS_INTERNALS_MOJO_JS);
   source->SetDefaultResource(IDR_PROCESS_INTERNALS_HTML);
   source->OverrideContentSecurityPolicy(
       network::mojom::CSPDirectiveName::TrustedTypes,
-      "trusted-types cr-ui-tree-js-static;");
-
-  WebUIDataSource::Add(web_ui->GetWebContents()->GetBrowserContext(), source);
+      "trusted-types static-types;");
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(ProcessInternalsUI)
 
 ProcessInternalsUI::~ProcessInternalsUI() = default;
 
-void ProcessInternalsUI::RenderFrameCreated(RenderFrameHost* rfh) {
+void ProcessInternalsUI::WebUIRenderFrameCreated(RenderFrameHost* rfh) {
   // Enable the JavaScript Mojo bindings in the renderer process, so the JS
   // code can call the Mojo APIs exposed by this WebUI.
-  static_cast<RenderFrameHostImpl*>(rfh)->EnableMojoJsBindings();
+  rfh->EnableMojoJsBindings(nullptr);
 }
 
-void ProcessInternalsUI::BindProcessInternalsHandler(
-    mojo::PendingReceiver<::mojom::ProcessInternalsHandler> receiver,
-    RenderFrameHost* render_frame_host) {
+void ProcessInternalsUI::BindInterface(
+    RenderFrameHost* render_frame_host,
+    mojo::PendingReceiver<::mojom::ProcessInternalsHandler> receiver) {
   ui_handler_ = std::make_unique<ProcessInternalsHandlerImpl>(
       render_frame_host->GetSiteInstance()->GetBrowserContext(),
       std::move(receiver));

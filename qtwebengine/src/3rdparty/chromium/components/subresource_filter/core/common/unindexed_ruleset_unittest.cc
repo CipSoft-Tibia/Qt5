@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/strings/string_number_conversions.h"
 #include "components/url_pattern_index/url_pattern.h"
@@ -46,6 +45,10 @@ class UnindexedRulesetTestBuilder {
                                                         array_size)),
         ruleset_writer_(output_.get()) {}
 
+  UnindexedRulesetTestBuilder(const UnindexedRulesetTestBuilder&) = delete;
+  UnindexedRulesetTestBuilder& operator=(const UnindexedRulesetTestBuilder&) =
+      delete;
+
   int max_rules_per_chunk() const {
     return ruleset_writer_.max_rules_per_chunk();
   }
@@ -55,7 +58,7 @@ class UnindexedRulesetTestBuilder {
                   bool is_allowlist = false) {
     auto rule = testing::MakeUrlRule(url_pattern);
     if (is_allowlist)
-      rule.set_semantics(proto::RULE_SEMANTICS_WHITELIST);
+      rule.set_semantics(proto::RULE_SEMANTICS_ALLOWLIST);
     rule.set_source_type(source_type);
 
     url_rules_.push_back(rule);
@@ -89,8 +92,6 @@ class UnindexedRulesetTestBuilder {
   std::string ruleset_contents_;
   std::unique_ptr<google::protobuf::io::ZeroCopyOutputStream> output_;
   UnindexedRulesetWriter ruleset_writer_;
-
-  DISALLOW_COPY_AND_ASSIGN(UnindexedRulesetTestBuilder);
 };
 
 bool IsRulesetValid(const std::string& ruleset_contents,

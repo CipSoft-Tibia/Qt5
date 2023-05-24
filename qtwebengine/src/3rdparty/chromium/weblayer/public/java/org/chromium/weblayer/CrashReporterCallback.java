@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@ import androidx.annotation.NonNull;
 /**
  * Callback object for results of asynchronous {@link CrashReporterController} operations.
  */
-public abstract class CrashReporterCallback {
+abstract class CrashReporterCallback {
     /**
      * Called as a result of a new crash being detected, or with the result of {@link
      * CrashReporterController#getPendingCrashes}
@@ -39,5 +39,5 @@ public abstract class CrashReporterCallback {
      * @param localId the local identifier of the crash that failed to upload.
      * @param failureReason a free text string giving the failure reason.
      */
-    public void onCrashUploadFailed(@NonNull String localId, @NonNull String faulreReason) {}
+    public void onCrashUploadFailed(@NonNull String localId, @NonNull String failureReason) {}
 }

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,10 +33,6 @@ class Browser {
 
     // Last key used to encrypt incognito profile.
     std::vector<uint8_t> last_crypto_key;
-
-    // If non-empty used to restore the state of the browser. This is only used
-    // if |id| is empty.
-    std::vector<uint8_t> minimal_state;
   };
 
   // Creates a new Browser. |persistence_info|, if non-null, is used for saving
@@ -63,15 +59,8 @@ class Browser {
   // Returns the id supplied to Create() that is used for persistence.
   virtual std::string GetPersistenceId() = 0;
 
-  // Returns the tabs and navigations in a format suitable for serialization.
-  // This state can be later restored via |PersistenceInfo::minimal_state|.
-  // This is not the full state, only a minimal snapshot intended for
-  // lightweight restore when full persistence is not desirable.
-  virtual std::vector<uint8_t> GetMinimalPersistenceState() = 0;
-
   // Returns true if this Browser is in the process of restoring the previous
-  // state. That is, PersistenceInfo was supplied to the constructor and
-  // the state is asynchronously being loaded.
+  // state.
   virtual bool IsRestoringPreviousState() = 0;
 
   virtual void AddObserver(BrowserObserver* observer) = 0;

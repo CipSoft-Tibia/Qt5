@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,35 +9,54 @@
 #include <queue>
 #include <utility>
 
+#include "base/time/time.h"
 #include "cc/metrics/frame_sequence_metrics.h"
 
 namespace cc {
+// This class reports 3 sets of metrics related to janks:
+// - Graphics.Smoothness.Jank.*: Percent of frames that have longer
+//                               presentation interval than its previous frame.
+//                               Reports one percentage number per tracker.
+// - Graphics.Smoothness.Stale.*: The difference between the real presentation
+//                                interval and its expected value. Reports one
+//                                TimeDelta per frame.
+// - Graphics.Smoothness.MaxStale.*: The maximum staleness value that occurred
+//                                   during the course of an interaction.
+//                                   Reports one TimeDelta per tracker.
 class CC_EXPORT JankMetrics {
  public:
   JankMetrics(FrameSequenceTrackerType tracker_type,
-              FrameSequenceMetrics::ThreadType effective_thread);
+              FrameInfo::SmoothEffectDrivingThread effective_thread);
   ~JankMetrics();
 
   JankMetrics(const JankMetrics&) = delete;
   JankMetrics& operator=(const JankMetrics&) = delete;
 
+  void AddFrameWithNoUpdate(uint32_t sequence_number,
+                            base::TimeDelta frame_interval);
+
   // Check if a jank occurs based on the timestamps of recent presentations.
   // If there is a jank, increment |jank_count_| and log a trace event.
+  // Graphics.Smoothness.Stale.* metrics are reported in this function.
   void AddPresentedFrame(uint32_t presented_frame_token,
                          base::TimeTicks current_presentation_timestamp,
                          base::TimeDelta frame_interval);
 
-  // Report the occurrence rate of janks as a UMA metric.
-  void ReportJankMetrics(int frames_expected);
+  void AddSubmitFrame(uint32_t frame_token, uint32_t sequence_number);
 
   // Merge the current jank count with a previously unreported jank metrics.
   void Merge(std::unique_ptr<JankMetrics> jank_metrics);
 
-  void AddSubmitFrame(uint32_t frame_token, uint32_t sequence_number);
+  // Report Graphics.Smoothness.(Jank|MaxStale).* metrics.
+  void ReportJankMetrics(int frames_expected);
 
-  void AddFrameWithNoUpdate(uint32_t sequence_number,
-                            base::TimeDelta frame_interval);
-  FrameSequenceMetrics::ThreadType thread_type() const {
+  // Reset the internal jank count
+  void Reset();
+
+  int jank_count() const { return jank_count_; }
+
+  base::TimeDelta max_staleness() const { return max_staleness_; }
+  FrameInfo::SmoothEffectDrivingThread thread_type() const {
     return effective_thread_;
   }
 
@@ -47,7 +66,7 @@ class CC_EXPORT JankMetrics {
 
   // The thread that contributes to the janks detected by the current
   // JankMetrics object.
-  const FrameSequenceMetrics::ThreadType effective_thread_;
+  const FrameInfo::SmoothEffectDrivingThread effective_thread_;
 
   // Number of janks detected.
   int jank_count_ = 0;
@@ -68,6 +87,9 @@ class CC_EXPORT JankMetrics {
   // A queue storing {sequence number, frame interval} of unprocessed no-update
   // frames, in ascending order of sequence number.
   std::queue<std::pair<uint32_t, base::TimeDelta>> queue_frame_id_and_interval_;
+
+  // The maximum frame staleness that occurred during the tracker's lifetime.
+  base::TimeDelta max_staleness_;
 };
 
 }  // namespace cc

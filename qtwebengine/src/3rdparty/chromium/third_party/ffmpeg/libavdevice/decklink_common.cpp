@@ -70,9 +70,30 @@ static IDeckLinkIterator *decklink_create_iterator(AVFormatContext *avctx)
 #else
     iter = CreateDeckLinkIteratorInstance();
 #endif
-    if (!iter)
+    if (!iter) {
         av_log(avctx, AV_LOG_ERROR, "Could not create DeckLink iterator. "
                                     "Make sure you have DeckLink drivers " BLACKMAGIC_DECKLINK_API_VERSION_STRING " or newer installed.\n");
+    } else {
+        IDeckLinkAPIInformation *api;
+        int64_t version;
+#ifdef _WIN32
+        if (CoCreateInstance(CLSID_CDeckLinkAPIInformation, NULL, CLSCTX_ALL,
+                             IID_IDeckLinkAPIInformation, (void**) &api) != S_OK) {
+            api = NULL;
+        }
+#else
+        api = CreateDeckLinkAPIInformationInstance();
+#endif
+        if (api && api->GetInt(BMDDeckLinkAPIVersion, &version) == S_OK) {
+            if (version < BLACKMAGIC_DECKLINK_API_VERSION)
+                av_log(avctx, AV_LOG_WARNING, "Installed DeckLink drivers are too old and may be incompatible with the SDK this module was built against. "
+                                              "Make sure you have DeckLink drivers " BLACKMAGIC_DECKLINK_API_VERSION_STRING " or newer installed.\n");
+        } else {
+            av_log(avctx, AV_LOG_ERROR, "Failed to check installed DeckLink API version.\n");
+        }
+        if (api)
+            api->Release();
+    }
 
     return iter;
 }
@@ -161,7 +182,11 @@ int ff_decklink_set_configs(AVFormatContext *avctx,
         if (duplex_supported) {
 #if BLACKMAGIC_DECKLINK_API_VERSION >= 0x0b000000
             IDeckLinkProfile *profile = NULL;
-            BMDProfileID bmd_profile_id = ctx->duplex_mode == 2 ? bmdProfileOneSubDeviceFullDuplex : bmdProfileTwoSubDevicesHalfDuplex;
+            BMDProfileID bmd_profile_id;
+
+            if (ctx->duplex_mode < 0 || ctx->duplex_mode >= FF_ARRAY_ELEMS(decklink_profile_id_map))
+                return EINVAL;
+            bmd_profile_id = decklink_profile_id_map[ctx->duplex_mode];
             res = manager->GetProfile(bmd_profile_id, &profile);
             if (res == S_OK) {
                 res = profile->SetActive();
@@ -174,7 +199,7 @@ int ff_decklink_set_configs(AVFormatContext *avctx,
             if (res != S_OK)
                 av_log(avctx, AV_LOG_WARNING, "Setting duplex mode failed.\n");
             else
-                av_log(avctx, AV_LOG_VERBOSE, "Successfully set duplex mode to %s duplex.\n", ctx->duplex_mode == 2 ? "full" : "half");
+                av_log(avctx, AV_LOG_VERBOSE, "Successfully set duplex mode to %s duplex.\n", ctx->duplex_mode == 2 || ctx->duplex_mode == 4 ? "full" : "half");
         } else {
             av_log(avctx, AV_LOG_WARNING, "Unable to set duplex mode, because it is not supported.\n");
         }
@@ -193,6 +218,39 @@ int ff_decklink_set_configs(AVFormatContext *avctx,
         if (res != S_OK)
             av_log(avctx, AV_LOG_WARNING, "Setting timing offset failed.\n");
     }
+
+    if (direction == DIRECTION_OUT && ctx->link > 0) {
+        res = ctx->cfg->SetInt(bmdDeckLinkConfigSDIOutputLinkConfiguration, ctx->link);
+        if (res != S_OK)
+            av_log(avctx, AV_LOG_WARNING, "Setting link configuration failed.\n");
+        else
+            av_log(avctx, AV_LOG_VERBOSE, "Successfully set link configuration: 0x%x.\n", ctx->link);
+        if (ctx->link == bmdLinkConfigurationQuadLink && cctx->sqd >= 0) {
+            res = ctx->cfg->SetFlag(bmdDeckLinkConfigQuadLinkSDIVideoOutputSquareDivisionSplit, cctx->sqd);
+            if (res != S_OK)
+                av_log(avctx, AV_LOG_WARNING, "Setting SquareDivisionSplit failed.\n");
+            else
+                av_log(avctx, AV_LOG_VERBOSE, "Successfully set SquareDivisionSplit.\n");
+        }
+    }
+
+    if (direction == DIRECTION_OUT && cctx->level_a >= 0) {
+        DECKLINK_BOOL level_a_supported = false;
+
+        if (ctx->attr->GetFlag(BMDDeckLinkSupportsSMPTELevelAOutput, &level_a_supported) != S_OK)
+            level_a_supported = false;
+
+        if (level_a_supported) {
+            res = ctx->cfg->SetFlag(bmdDeckLinkConfigSMPTELevelAOutput, cctx->level_a);
+            if (res != S_OK)
+                av_log(avctx, AV_LOG_WARNING, "Setting SMPTE levelA failed.\n");
+            else
+                av_log(avctx, AV_LOG_VERBOSE, "Successfully set SMPTE levelA.\n");
+        } else {
+            av_log(avctx, AV_LOG_WARNING, "Unable to set SMPTE levelA mode, because it is not supported.\n");
+        }
+    }
+
     return 0;
 }
 
@@ -272,7 +330,7 @@ int ff_decklink_set_format(AVFormatContext *avctx,
 #if BLACKMAGIC_DECKLINK_API_VERSION >= 0x0b050000
     if (direction == DIRECTION_IN) {
         BMDDisplayMode actualMode = ctx->bmd_mode;
-        if (ctx->dli->DoesSupportVideoMode(ctx->video_input, ctx->bmd_mode, (BMDPixelFormat) cctx->raw_format,
+        if (ctx->dli->DoesSupportVideoMode(ctx->video_input, ctx->bmd_mode, ctx->raw_format,
                                            bmdNoVideoInputConversion, bmdSupportedVideoModeDefault,
                                            &actualMode, &support) != S_OK || !support || ctx->bmd_mode != actualMode)
             return -1;
@@ -286,7 +344,7 @@ int ff_decklink_set_format(AVFormatContext *avctx,
     return 0;
 #elif BLACKMAGIC_DECKLINK_API_VERSION >= 0x0b000000
     if (direction == DIRECTION_IN) {
-        if (ctx->dli->DoesSupportVideoMode(ctx->video_input, ctx->bmd_mode, (BMDPixelFormat) cctx->raw_format,
+        if (ctx->dli->DoesSupportVideoMode(ctx->video_input, ctx->bmd_mode, ctx->raw_format,
                                            bmdSupportedVideoModeDefault,
                                            &support) != S_OK)
             return -1;
@@ -303,7 +361,7 @@ int ff_decklink_set_format(AVFormatContext *avctx,
         return 0;
 #else
     if (direction == DIRECTION_IN) {
-        if (ctx->dli->DoesSupportVideoMode(ctx->bmd_mode, (BMDPixelFormat) cctx->raw_format,
+        if (ctx->dli->DoesSupportVideoMode(ctx->bmd_mode, ctx->raw_format,
                                            bmdVideoOutputFlagDefault,
                                            &support, NULL) != S_OK)
             return -1;

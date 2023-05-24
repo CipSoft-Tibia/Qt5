@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -176,10 +176,11 @@ DOMMatrix* CSSTranslate::toMatrix(ExceptionState& exception_state) const {
   }
 
   DOMMatrix* matrix = DOMMatrix::Create();
-  if (is2D())
+  if (is2D()) {
     matrix->translateSelf(x->value(), y->value());
-  else
+  } else {
     matrix->translateSelf(x->value(), y->value(), z->value());
+  }
 
   return matrix;
 }

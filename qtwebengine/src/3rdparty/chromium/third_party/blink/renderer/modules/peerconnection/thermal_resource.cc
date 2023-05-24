@@ -1,9 +1,12 @@
-// Copyright (c) 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/peerconnection/thermal_resource.h"
 
+#include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
+#include "build/build_config.h"
 #include "third_party/webrtc/rtc_base/ref_counted_object.h"
 
 namespace blink {
@@ -14,8 +17,14 @@ const int kReportIntervalSeconds = 10;
 
 }  // namespace
 
-const base::Feature kWebRtcThermalResource{"WebRtcThermalResource",
-                                           base::FEATURE_ENABLED_BY_DEFAULT};
+CONSTINIT const base::Feature kWebRtcThermalResource(
+             "WebRtcThermalResource",
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS)
+             base::FEATURE_ENABLED_BY_DEFAULT
+#else
+             base::FEATURE_DISABLED_BY_DEFAULT
+#endif
+);
 
 // static
 scoped_refptr<ThermalResource> ThermalResource::Create(
@@ -28,7 +37,7 @@ ThermalResource::ThermalResource(
     : task_runner_(std::move(task_runner)) {}
 
 void ThermalResource::OnThermalMeasurement(
-    base::PowerObserver::DeviceThermalState measurement) {
+    mojom::blink::DeviceThermalState measurement) {
   base::AutoLock auto_lock(lock_);
   measurement_ = measurement;
   ++measurement_id_;
@@ -43,8 +52,7 @@ void ThermalResource::SetResourceListener(webrtc::ResourceListener* listener) {
   base::AutoLock auto_lock(lock_);
   DCHECK(!listener_ || !listener) << "Must not overwrite existing listener.";
   listener_ = listener;
-  if (listener_ &&
-      measurement_ != base::PowerObserver::DeviceThermalState::kUnknown) {
+  if (listener_ && measurement_ != mojom::blink::DeviceThermalState::kUnknown) {
     ReportMeasurementWhileHoldingLock(measurement_id_);
   }
 }
@@ -61,18 +69,20 @@ void ThermalResource::ReportMeasurementWhileHoldingLock(size_t measurement_id) {
   if (measurement_id != measurement_id_ || !listener_)
     return;
   switch (measurement_) {
-    case base::PowerObserver::DeviceThermalState::kUnknown:
+    case mojom::blink::DeviceThermalState::kUnknown:
       // Stop repeating measurements.
       return;
-    case base::PowerObserver::DeviceThermalState::kNominal:
-    case base::PowerObserver::DeviceThermalState::kFair:
+    case mojom::blink::DeviceThermalState::kNominal:
+    case mojom::blink::DeviceThermalState::kFair:
       listener_->OnResourceUsageStateMeasured(
-          this, webrtc::ResourceUsageState::kUnderuse);
+          rtc::scoped_refptr<Resource>(this),
+          webrtc::ResourceUsageState::kUnderuse);
       break;
-    case base::PowerObserver::DeviceThermalState::kSerious:
-    case base::PowerObserver::DeviceThermalState::kCritical:
+    case mojom::blink::DeviceThermalState::kSerious:
+    case mojom::blink::DeviceThermalState::kCritical:
       listener_->OnResourceUsageStateMeasured(
-          this, webrtc::ResourceUsageState::kOveruse);
+          rtc::scoped_refptr<Resource>(this),
+          webrtc::ResourceUsageState::kOveruse);
       break;
   }
   // Repeat the reporting every 10 seconds until a new measurement is made or
@@ -80,8 +90,8 @@ void ThermalResource::ReportMeasurementWhileHoldingLock(size_t measurement_id) {
   task_runner_->PostDelayedTask(
       FROM_HERE,
       base::BindOnce(&ThermalResource::ReportMeasurement,
-                     scoped_refptr<ThermalResource>(this), measurement_id),
-      base::TimeDelta::FromSeconds(kReportIntervalSeconds));
+                     rtc::scoped_refptr<ThermalResource>(this), measurement_id),
+      base::Seconds(kReportIntervalSeconds));
 }
 
 }  // namespace blink

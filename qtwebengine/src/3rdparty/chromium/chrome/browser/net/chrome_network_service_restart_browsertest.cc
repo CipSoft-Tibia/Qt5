@@ -1,8 +1,7 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/net/system_network_context_manager.h"
@@ -27,14 +26,16 @@ class ChromeNetworkServiceRestartBrowserTest : public InProcessBrowserTest {
     EXPECT_TRUE(embedded_test_server()->Start());
   }
 
+  ChromeNetworkServiceRestartBrowserTest(
+      const ChromeNetworkServiceRestartBrowserTest&) = delete;
+  ChromeNetworkServiceRestartBrowserTest& operator=(
+      const ChromeNetworkServiceRestartBrowserTest&) = delete;
+
   GURL GetTestURL() const {
     // Use '/echoheader' instead of '/echo' to avoid a disk_cache bug.
     // See https://crbug.com/792255.
     return embedded_test_server()->GetURL("/echoheader");
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ChromeNetworkServiceRestartBrowserTest);
 };
 
 // Make sure |StoragePartition::GetNetworkContext()| returns valid interface
@@ -44,9 +45,9 @@ IN_PROC_BROWSER_TEST_F(ChromeNetworkServiceRestartBrowserTest,
   if (content::IsInProcessNetworkService())
     return;
   // |NetworkServiceTestHelper| doesn't work on browser_tests on macOS.
-#if !defined(OS_MAC)
+#if !BUILDFLAG(IS_MAC)
   StoragePartition* partition =
-      BrowserContext::GetDefaultStoragePartition(browser()->profile());
+      browser()->profile()->GetDefaultStoragePartition();
 
   network::mojom::NetworkContext* old_network_context =
       partition->GetNetworkContext();
@@ -73,7 +74,7 @@ IN_PROC_BROWSER_TEST_F(ChromeNetworkServiceRestartBrowserTest,
   if (content::IsInProcessNetworkService())
     return;
   // |NetworkServiceTestHelper| doesn't work on browser_tests on macOS.
-#if !defined(OS_MAC)
+#if !BUILDFLAG(IS_MAC)
   SystemNetworkContextManager* system_network_context_manager =
       g_browser_process->system_network_context_manager();
 

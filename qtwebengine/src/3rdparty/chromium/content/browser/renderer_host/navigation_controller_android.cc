@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,27 +6,36 @@
 
 #include <stdint.h>
 
+#include <string>
+
 #include "base/android/jni_android.h"
 #include "base/android/jni_string.h"
-#include "base/bind_helpers.h"
-#include "base/callback.h"
 #include "base/containers/flat_map.h"
-#include "base/strings/string16.h"
+#include "base/debug/crash_logging.h"
+#include "base/debug/dump_without_crashing.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "content/browser/renderer_host/navigation_controller_impl.h"
 #include "content/browser/renderer_host/navigation_entry_impl.h"
 #include "content/public/android/content_jni_headers/NavigationControllerImpl_jni.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
+#include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/ssl_host_state_delegate.h"
 #include "content/public/common/referrer.h"
 #include "content/public/common/resource_request_body_android.h"
+#include "content/public/common/url_constants.h"
 #include "net/base/data_url.h"
 #include "ui/gfx/android/java_bitmap.h"
+#include "url/android/gurl_android.h"
+#include "url/gurl.h"
+#include "url/origin.h"
 
 using base::android::AttachCurrentThread;
 using base::android::ConvertJavaStringToUTF16;
 using base::android::ConvertJavaStringToUTF8;
 using base::android::ConvertUTF16ToJavaString;
-using base::android::ConvertUTF8ToJavaString;
 using base::android::JavaParamRef;
 using base::android::JavaRef;
 using base::android::ScopedJavaLocalRef;
@@ -44,27 +53,25 @@ JNI_NavigationControllerImpl_CreateJavaNavigationEntry(
   DCHECK(entry);
 
   // Get the details of the current entry
-  ScopedJavaLocalRef<jstring> j_url(
-      ConvertUTF8ToJavaString(env, entry->GetURL().spec()));
-  ScopedJavaLocalRef<jstring> j_virtual_url(
-      ConvertUTF8ToJavaString(env, entry->GetVirtualURL().spec()));
-  ScopedJavaLocalRef<jstring> j_original_url(
-      ConvertUTF8ToJavaString(env, entry->GetOriginalRequestURL().spec()));
+  ScopedJavaLocalRef<jobject> j_url(
+      url::GURLAndroid::FromNativeGURL(env, entry->GetURL()));
+  ScopedJavaLocalRef<jobject> j_virtual_url(
+      url::GURLAndroid::FromNativeGURL(env, entry->GetVirtualURL()));
+  ScopedJavaLocalRef<jobject> j_original_url(
+      url::GURLAndroid::FromNativeGURL(env, entry->GetOriginalRequestURL()));
   ScopedJavaLocalRef<jstring> j_title(
       ConvertUTF16ToJavaString(env, entry->GetTitle()));
-  ScopedJavaLocalRef<jstring> j_referrer_url(
-      ConvertUTF8ToJavaString(env, entry->GetReferrer().url.spec()));
   ScopedJavaLocalRef<jobject> j_bitmap;
   const content::FaviconStatus& status = entry->GetFavicon();
   if (status.valid && status.image.ToSkBitmap()->computeByteSize() > 0) {
-    j_bitmap = gfx::ConvertToJavaBitmap(status.image.ToSkBitmap(),
+    j_bitmap = gfx::ConvertToJavaBitmap(*status.image.ToSkBitmap(),
                                         gfx::OomBehavior::kReturnNullOnOom);
   }
   jlong j_timestamp = entry->GetTimestamp().ToJavaTime();
 
   return content::Java_NavigationControllerImpl_createNavigationEntry(
-      env, index, j_url, j_virtual_url, j_original_url, j_referrer_url, j_title,
-      j_bitmap, entry->GetTransitionType(), j_timestamp);
+      env, index, j_url, j_virtual_url, j_original_url, j_title, j_bitmap,
+      entry->GetTransitionType(), j_timestamp, entry->IsInitialEntry());
 }
 
 static void JNI_NavigationControllerImpl_AddNavigationEntryToHistory(
@@ -81,6 +88,10 @@ static void JNI_NavigationControllerImpl_AddNavigationEntryToHistory(
 class MapData : public base::SupportsUserData::Data {
  public:
   MapData() = default;
+
+  MapData(const MapData&) = delete;
+  MapData& operator=(const MapData&) = delete;
+
   ~MapData() override = default;
 
   static MapData* Get(content::NavigationEntry* entry) {
@@ -93,7 +104,7 @@ class MapData : public base::SupportsUserData::Data {
     return map_data;
   }
 
-  base::flat_map<std::string, base::string16>& map() { return map_; }
+  base::flat_map<std::string, std::u16string>& map() { return map_; }
 
   // base::SupportsUserData::Data:
   std::unique_ptr<Data> Clone() override {
@@ -103,9 +114,7 @@ class MapData : public base::SupportsUserData::Data {
   }
 
  private:
-  base::flat_map<std::string, base::string16> map_;
-
-  DISALLOW_COPY_AND_ASSIGN(MapData);
+  base::flat_map<std::string, std::u16string> map_;
 };
 
 }  // namespace
@@ -146,7 +155,7 @@ jboolean NavigationControllerAndroid::CanGoToOffset(
     JNIEnv* env,
     const JavaParamRef<jobject>& obj,
     jint offset) {
-  return navigation_controller_->CanGoToOffset(offset);
+  return navigation_controller_->CanGoToOffsetWithSkipping(offset);
 }
 
 void NavigationControllerAndroid::GoBack(JNIEnv* env,
@@ -162,7 +171,7 @@ void NavigationControllerAndroid::GoForward(JNIEnv* env,
 void NavigationControllerAndroid::GoToOffset(JNIEnv* env,
                                              const JavaParamRef<jobject>& obj,
                                              jint offset) {
-  navigation_controller_->GoToOffset(offset);
+  navigation_controller_->GoToOffsetWithSkipping(offset);
 }
 
 jboolean NavigationControllerAndroid::IsInitialNavigation(
@@ -186,6 +195,8 @@ void NavigationControllerAndroid::ContinuePendingReload(
 void NavigationControllerAndroid::Reload(JNIEnv* env,
                                          const JavaParamRef<jobject>& obj,
                                          jboolean check_for_repost) {
+  SCOPED_CRASH_KEY_BOOL("nav_reentrancy_caller2", "Reload_check",
+                        (bool)check_for_repost);
   navigation_controller_->Reload(ReloadType::NORMAL, check_for_repost);
 }
 
@@ -193,6 +204,8 @@ void NavigationControllerAndroid::ReloadBypassingCache(
     JNIEnv* env,
     const JavaParamRef<jobject>& obj,
     jboolean check_for_repost) {
+  SCOPED_CRASH_KEY_BOOL("nav_reentrancy_caller2", "ReloadB_check",
+                        (bool)check_for_repost);
   navigation_controller_->Reload(ReloadType::BYPASSING_CACHE, check_for_repost);
 }
 
@@ -221,7 +234,8 @@ void NavigationControllerAndroid::GoToNavigationIndex(
   navigation_controller_->GoToIndex(index);
 }
 
-void NavigationControllerAndroid::LoadUrl(
+base::android::ScopedJavaGlobalRef<jobject>
+NavigationControllerAndroid::LoadUrl(
     JNIEnv* env,
     const JavaParamRef<jobject>& obj,
     const JavaParamRef<jstring>& url,
@@ -237,11 +251,18 @@ void NavigationControllerAndroid::LoadUrl(
     const JavaParamRef<jstring>& data_url_as_string,
     jboolean can_load_local_resources,
     jboolean is_renderer_initiated,
-    jboolean should_replace_current_entry) {
+    jboolean should_replace_current_entry,
+    const JavaParamRef<jobject>& j_initiator_origin,
+    jboolean has_user_gesture,
+    jboolean should_clear_history_list,
+    jlong input_start,
+    jlong navigation_ui_data_ptr) {
   DCHECK(url);
   NavigationController::LoadURLParams params(
       GURL(ConvertJavaStringToUTF8(env, url)));
-
+  // Wrap the raw pointer in case on an early return.
+  std::unique_ptr<NavigationUIData> navigation_ui_data = base::WrapUnique(
+      reinterpret_cast<NavigationUIData*>(navigation_ui_data_ptr));
   params.load_type =
       static_cast<NavigationController::LoadURLType>(load_url_type);
   params.transition_type = ui::PageTransitionFromInt(transition_type);
@@ -251,6 +272,8 @@ void NavigationControllerAndroid::LoadUrl(
   params.can_load_local_resources = can_load_local_resources;
   params.is_renderer_initiated = is_renderer_initiated;
   params.should_replace_current_entry = should_replace_current_entry;
+  params.has_user_gesture = has_user_gesture;
+  params.should_clear_history_list = should_clear_history_list;
 
   if (extra_headers)
     params.extra_headers = ConvertJavaStringToUTF8(env, extra_headers);
@@ -282,7 +305,8 @@ void NavigationControllerAndroid::LoadUrl(
     }
 #endif
     std::string s = data_url.spec();
-    params.data_url_as_string = base::RefCountedString::TakeString(&s);
+    params.data_url_as_string =
+        base::MakeRefCounted<base::RefCountedString>(std::move(s));
   }
 
   if (j_referrer_url) {
@@ -291,7 +315,24 @@ void NavigationControllerAndroid::LoadUrl(
                  Referrer::ConvertToPolicy(referrer_policy));
   }
 
-  navigation_controller_->LoadURLWithParams(params);
+  if (j_initiator_origin) {
+    params.initiator_origin = url::Origin::FromJavaObject(j_initiator_origin);
+  }
+
+  if (input_start != 0)
+    params.input_start = base::TimeTicks::FromUptimeMillis(input_start);
+
+  params.navigation_ui_data = std::move(navigation_ui_data);
+
+  base::WeakPtr<NavigationHandle> handle =
+      navigation_controller_->LoadURLWithParams(params);
+
+  if (!handle) {
+    return nullptr;
+  }
+
+  return base::android::ScopedJavaGlobalRef<jobject>(
+      handle->GetJavaNavigationHandle());
 }
 
 void NavigationControllerAndroid::ClearHistory(
@@ -357,14 +398,55 @@ void NavigationControllerAndroid::SetUseDesktopUserAgent(
     JNIEnv* env,
     const JavaParamRef<jobject>& obj,
     jboolean enabled,
-    jboolean reload_on_state_change) {
+    jboolean reload_on_state_change,
+    jint source) {
+  SCOPED_CRASH_KEY_BOOL("nav_reentrancy_caller2", "SetUA_enabled",
+                        (bool)enabled);
   if (GetUseDesktopUserAgent(env, obj) == enabled)
     return;
 
+  if (navigation_controller_->in_navigate_to_pending_entry() &&
+      reload_on_state_change) {
+    // Sometimes it's possible to call this function in response to a
+    // navigation to a pending entry. In this case, we should avoid triggering
+    // another navigation synchronously, as it will crash due to navigation
+    // re-entrancy checks. To do that, post a task to update the UA and
+    // reload asynchronously.
+    // TODO(https://crbug.com/1327907): Figure out the case that leads to this
+    // situation and avoid calling this function entirely in that case. For now,
+    // do a do a DumpWithoutCrashing so that we can investigate.
+    GetUIThreadTaskRunner({})->PostTask(
+        FROM_HERE,
+        base::BindOnce(
+            &NavigationControllerAndroid::SetUseDesktopUserAgentInternal,
+            weak_factory_.GetWeakPtr(), enabled, reload_on_state_change));
+    LOG(WARNING) << "NavigationControllerAndroid::SetUseDesktopUserAgent "
+                 << "triggers re-entrant navigation, override: "
+                 << (bool)enabled << ", source: " << (int)source;
+    SCOPED_CRASH_KEY_NUMBER("SetUseDesktopUserAgent", "caller", (int)source);
+    base::debug::DumpWithoutCrashing();
+  } else {
+    SetUseDesktopUserAgentInternal(enabled, reload_on_state_change);
+  }
+}
+
+void NavigationControllerAndroid::SetUseDesktopUserAgentInternal(
+    bool enabled,
+    bool reload_on_state_change) {
   // Make sure the navigation entry actually exists.
   NavigationEntry* entry = navigation_controller_->GetLastCommittedEntry();
-  if (!entry)
+  // TODO(crbug.com/1414625): Early return for initial NavigationEntries as a
+  // workaround. Currently, doing a reload while on the initial NavigationEntry
+  // might result in committing an unrelated pending NavigationEntry and
+  // mistakenly marking that entry as an initial NavigationEntry. That will
+  // cause problems, such as the URL bar showing about:blank instead of the URL
+  // of the NavigationEntry. To prevent that happening in this case, skip
+  // reloading initial NavigationEntries entirely. This is a short-term fix,
+  // while we work on a long-term fix to no longer mistakenly mark the unrelated
+  // pending NavigationEntry as the initial NavigationEntry.
+  if (!entry || entry->IsInitialEntry()) {
     return;
+  }
 
   // Set the flag in the NavigationEntry.
   entry->SetIsOverridingUserAgent(enabled);
@@ -446,7 +528,7 @@ ScopedJavaLocalRef<jstring> NavigationControllerAndroid::GetEntryExtraData(
       MapData::Get(navigation_controller_->GetEntryAtIndex(index));
   auto iter = map_data->map().find(key);
   return ConvertUTF16ToJavaString(
-      env, iter == map_data->map().end() ? base::string16() : iter->second);
+      env, iter == map_data->map().end() ? std::u16string() : iter->second);
 }
 
 void NavigationControllerAndroid::SetEntryExtraData(
@@ -459,7 +541,7 @@ void NavigationControllerAndroid::SetEntryExtraData(
     return;
 
   std::string key = base::android::ConvertJavaStringToUTF8(env, jkey);
-  base::string16 value = base::android::ConvertJavaStringToUTF16(env, jvalue);
+  std::u16string value = base::android::ConvertJavaStringToUTF16(env, jvalue);
   MapData* map_data =
       MapData::Get(navigation_controller_->GetEntryAtIndex(index));
   map_data->map()[key] = value;

@@ -21,6 +21,7 @@ class InjectedScript;
 class RemoteObjectIdBase;
 class V8ConsoleAgentImpl;
 class V8DebuggerAgentImpl;
+class V8DebuggerBarrier;
 class V8InspectorImpl;
 class V8HeapProfilerAgentImpl;
 class V8ProfilerAgentImpl;
@@ -32,12 +33,14 @@ using protocol::Response;
 class V8InspectorSessionImpl : public V8InspectorSession,
                                public protocol::FrontendChannel {
  public:
-  static std::unique_ptr<V8InspectorSessionImpl> create(V8InspectorImpl*,
-                                                        int contextGroupId,
-                                                        int sessionId,
-                                                        V8Inspector::Channel*,
-                                                        StringView state);
+  static std::unique_ptr<V8InspectorSessionImpl> create(
+      V8InspectorImpl*, int contextGroupId, int sessionId,
+      V8Inspector::Channel*, StringView state,
+      v8_inspector::V8Inspector::ClientTrustLevel,
+      std::shared_ptr<V8DebuggerBarrier>);
   ~V8InspectorSessionImpl() override;
+  V8InspectorSessionImpl(const V8InspectorSessionImpl&) = delete;
+  V8InspectorSessionImpl& operator=(const V8InspectorSessionImpl&) = delete;
 
   V8InspectorImpl* inspector() const { return m_inspector; }
   V8ConsoleAgentImpl* consoleAgent() { return m_consoleAgent.get(); }
@@ -47,6 +50,9 @@ class V8InspectorSessionImpl : public V8InspectorSession,
   V8RuntimeAgentImpl* runtimeAgent() { return m_runtimeAgent.get(); }
   int contextGroupId() const { return m_contextGroupId; }
   int sessionId() const { return m_sessionId; }
+
+  std::unique_ptr<V8InspectorSession::CommandLineAPIScope>
+  initializeCommandLineAPIScope(int executionContextId) override;
 
   Response findInjectedScript(int contextId, InjectedScript*&);
   Response findInjectedScript(RemoteObjectIdBase*, InjectedScript*&);
@@ -93,11 +99,18 @@ class V8InspectorSessionImpl : public V8InspectorSession,
   V8InspectorSession::Inspectable* inspectedObject(unsigned num);
   static const unsigned kInspectedObjectBufferSize = 5;
 
-  void triggerPreciseCoverageDeltaUpdate(StringView occassion) override;
+  void triggerPreciseCoverageDeltaUpdate(StringView occasion) override;
+  void stop() override;
+
+  V8Inspector::ClientTrustLevel clientTrustLevel() {
+    return m_clientTrustLevel;
+  }
 
  private:
   V8InspectorSessionImpl(V8InspectorImpl*, int contextGroupId, int sessionId,
-                         V8Inspector::Channel*, StringView state);
+                         V8Inspector::Channel*, StringView state,
+                         V8Inspector::ClientTrustLevel,
+                         std::shared_ptr<V8DebuggerBarrier>);
   protocol::DictionaryValue* agentState(const String16& name);
 
   // protocol::FrontendChannel implementation.
@@ -129,8 +142,7 @@ class V8InspectorSessionImpl : public V8InspectorSession,
   std::vector<std::unique_ptr<V8InspectorSession::Inspectable>>
       m_inspectedObjects;
   bool use_binary_protocol_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(V8InspectorSessionImpl);
+  V8Inspector::ClientTrustLevel m_clientTrustLevel = V8Inspector::kUntrusted;
 };
 
 }  // namespace v8_inspector

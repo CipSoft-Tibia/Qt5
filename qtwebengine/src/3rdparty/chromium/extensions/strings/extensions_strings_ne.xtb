@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">प्याकेज अवैध छ: '<ph name="ERROR_CODE" />'।</translation>
 <translation id="1140871961407805696">वातावरणतिर फार्काइएको</translation>
 <translation id="1196338895211115272">निजी कुञ्जी निर्यात गर्न असफल भयो।</translation>
+<translation id="132960226125594336">सामग्रीको स्क्रिप्टसम्बन्धी फाइल '<ph name="RELATIVE_PATH" />' को आकार स्क्रिप्टको अधिकतम आकार वा एक्स्टेन्सनको सामग्रीको स्क्रिप्टको अधिकतम कुल आकारभन्दा बढी हुने भएकाले उक्त फाइल लोड गर्न मिल्दैन।</translation>
 <translation id="1420684932347524586">ओह! अनियमित RSA निजी कुञ्जी उत्पन्न गर्न असफल भयो।</translation>
 <translation id="1445572445564823378">यस एक्स्टेन्शनले <ph name="PRODUCT_NAME" /> लाई सुस्त बनाइरहेको छ। तपाईंले <ph name="PRODUCT_NAME" /> को कार्यसम्पादन पुन: स्थापना गर्न यसलाई असक्षम पार्नुपर्छ।</translation>
 <translation id="1468038450257740950">WebGL समर्थित छैन।</translation>
@@ -59,8 +60,9 @@
 <translation id="8284835137979141223"><ph name="VENDOR_NAME" />बाट<ph name="PRODUCT_NAME" /></translation>
 <translation id="8517576857589387417">म्यानिफेस्ट फाइल हराइरहेको छ वा पढ्न नमिल्ने छ</translation>
 <translation id="8636666366616799973">प्याकेज अवैध छ। विवरणहरू: '<ph name="ERROR_MESSAGE" />'।</translation>
-<translation id="8761756413268424715">"<ph name="APP_NAME" />" ले तपाईंका यन्त्रहरू मध्ये एक माथिको पहुँचका लागि अनुरोध गरिरहेको छ:</translation>
+<translation id="8761756413268424715">"<ph name="APP_NAME" />" ले तपाईंका डिभाइसहरू मध्ये एक माथिको पहुँचका लागि अनुरोध गरिरहेको छ:</translation>
 <translation id="8885905466771744233">तोकिएकै विस्तार लागि एक निजी कुञ्जी पहिले नै अवस्थित छ। त्यो कुञ्जी पुनः प्रयोग गर्नुहोस् वा त्यसलाई पहिले मेटाउनुहोस् ।</translation>
+<translation id="9039223174332979184">यो मेसिनका एड्मिनले तोकेको नीतिअनुसार <ph name="EXTENSION_NAME" /> को म्यानिफेस्टको न्यूनतम संस्करण ३ हुनु पर्छ।</translation>
 <translation id="907841381057066561">प्याकेजिङ्ग समयमा अस्थायी जिप फाइल सिर्जना गर्न असफल भयो ।</translation>
 <translation id="941543339607623937">अमान्य नीजि कुँजी ।</translation>
 </translationbundle>

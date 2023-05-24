@@ -1,15 +1,14 @@
 %modules = ( # path to module name map
-    "QtWebEngine" => "$basedir/src/webengine",
+    "QtWebEngineQuick" => "$basedir/src/webenginequick",
     "QtWebEngineWidgets" => "$basedir/src/webenginewidgets",
-    "QtWebEngineCore" => "$basedir/src/core",
+    "QtWebEngineCore" => "$basedir/src/core/api",
     "QtPdf" => "$basedir/src/pdf",
+    "QtPdfQuick" => "$basedir/src/pdfquick",
     "QtPdfWidgets" => "$basedir/src/pdfwidgets",
 );
 %moduleheaders = ( # restrict the module headers to those found in relative path
-    "QtWebEngine" => "api",
-    "QtWebEngineWidgets" => "api",
-    "QtWebEngineCore" => "api",
-    "QtPdf" => "api"
+    "QtWebEngineQuick" => "api",
+    "QtWebEngineWidgets" => "api"
 );
 %classnames = (
 );

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -36,29 +36,26 @@ class SecurePaymentConfirmationController
   void ShowErrorMessage() override;
   void ShowProcessingSpinner() override;
   bool IsInteractive() const override;
-  void ShowCvcUnmaskPrompt(
-      const autofill::CreditCard& credit_card,
-      base::WeakPtr<autofill::payments::FullCardRequest::ResultDelegate>
-          result_delegate,
-      content::WebContents* web_contents) override;
   void ShowPaymentHandlerScreen(
       const GURL& url,
       PaymentHandlerOpenWindowCallback callback) override;
   void ConfirmPaymentForTesting() override;
+  bool ClickOptOutForTesting() override;
 
   // InitializationTask::Observer:
   void OnInitialized(InitializationTask* initialization_task) override;
 
   // Callbacks for user interaction.
-  void OnDismiss();
   void OnCancel();
   void OnConfirm();
+  void OnOptOut();
 
   base::WeakPtr<SecurePaymentConfirmationController> GetWeakPtr();
 
  private:
   void SetupModelAndShowDialogIfApplicable();
 
+  // Can be null when the webpage closes or the iframe refreshes or navigates.
   base::WeakPtr<PaymentRequest> request_;
 
   SecurePaymentConfirmationModel model_;

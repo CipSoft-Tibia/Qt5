@@ -62,8 +62,6 @@ The patch that fixed this server bug in X.org CVS is here:
             <type>glx:WINDOW</type>
         </xidunion>
 
-	<typedef oldname="float" newname="FLOAT32" />
-	<typedef oldname="double" newname="FLOAT64" />
         <typedef oldname="CARD32" newname="BOOL32" />
         <typedef oldname="CARD32" newname="CONTEXT_TAG" />
 	    
@@ -491,6 +489,7 @@ The patch that fixed this server bug in X.org CVS is here:
 		<list type="char" name="gl_extension_string">
 			<fieldref>gl_str_len</fieldref>
 		</list>
+		<pad align="4" />
 		<list type="char" name="glx_extension_string">
 			<fieldref>glx_str_len</fieldref>
 		</list>
@@ -527,6 +526,7 @@ The patch that fixed this server bug in X.org CVS is here:
 		<list type="char" name="gl_extension_string">
 			<fieldref>gl_str_len</fieldref>
 		</list>
+		<pad align="4" />
 		<list type="char" name="glx_extension_string">
 			<fieldref>glx_str_len</fieldref>
 		</list>
@@ -578,7 +578,7 @@ The patch that fixed this server bug in X.org CVS is here:
 		<field type="CARD32" name="mode" />
 		<!--
 		This reply is only if RM was previously feedback/selection.
-		If it was in feedback mode then data is FLOAT32.
+		If it was in feedback mode then data is float.
 		If previously in render mode there is no reply.
 		-->
 		<reply>
@@ -609,7 +609,7 @@ The patch that fixed this server bug in X.org CVS is here:
 	<request name="PixelStoref" opcode="109">
 		<field type="CONTEXT_TAG" name="context_tag" />
 		<field type="CARD32" name="pname" />
-		<field type="FLOAT32" name="datum" />
+		<field type="float" name="datum" />
 	</request>
 
 	<request name="PixelStorei" opcode="110">
@@ -668,7 +668,7 @@ The patch that fixed this server bug in X.org CVS is here:
 			<required_start_align align="8" />
 			<pad bytes="1" />
 			<pad bytes="24" />
-			<list type="FLOAT64" name="data">
+			<list type="double" name="data">
 				<op op="/">
 					<fieldref>length</fieldref>
 					<value>2</value>
@@ -685,9 +685,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT64" name="datum" />
+			<field type="double" name="datum" />
 			<pad bytes="8" />
-			<list type="FLOAT64" name="data">
+			<list type="double" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -708,9 +708,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -739,9 +739,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -772,9 +772,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT64" name="datum" />
+			<field type="double" name="datum" />
 			<pad bytes="8" />
-			<list type="FLOAT64" name="data">
+			<list type="double" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -788,9 +788,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -820,9 +820,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -851,9 +851,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -927,9 +927,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -960,9 +960,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT64" name="datum" />
+			<field type="double" name="datum" />
 			<pad bytes="8" />
-			<list type="FLOAT64" name="data">
+			<list type="double" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -976,9 +976,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -1032,9 +1032,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -1065,9 +1065,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -1188,9 +1188,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -1242,9 +1242,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -1317,9 +1317,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>
@@ -1368,9 +1368,9 @@ The patch that fixed this server bug in X.org CVS is here:
 			<pad bytes="1" />
 			<pad bytes="4" />
 			<field type="CARD32" name="n" />
-			<field type="FLOAT32" name="datum" />
+			<field type="float" name="datum" />
 			<pad bytes="12" />
-			<list type="FLOAT32" name="data">
+			<list type="float" name="data">
 				<fieldref>n</fieldref>
 			</list>
 		</reply>

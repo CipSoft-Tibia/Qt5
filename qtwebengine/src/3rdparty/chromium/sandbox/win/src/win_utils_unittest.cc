@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,20 @@
 
 #include <windows.h>
 
+#include <ntstatus.h>
 #include <psapi.h>
 
 #include <vector>
 
+#include "base/containers/contains.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/files/scoped_temp_dir.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/path_service.h"
+#include "base/rand_util.h"
+#include "base/strings/string_util_win.h"
+#include "base/strings/stringprintf.h"
 #include "base/win/scoped_handle.h"
 #include "base/win/scoped_process_information.h"
 #include "sandbox/win/src/nt_internals.h"
@@ -57,11 +63,57 @@ bool GetModuleList(HANDLE process, std::vector<HMODULE>* result) {
   return false;
 }
 
+std::wstring GetRandomName() {
+  return base::StringPrintf(L"chrome_%08X%08X", base::RandUint64(),
+                            base::RandUint64());
+}
+
+void CompareHandlePath(const base::win::ScopedHandle& handle,
+                       const std::wstring& expected_path) {
+  auto path = GetPathFromHandle(handle.Get());
+  ASSERT_TRUE(path.has_value());
+  EXPECT_TRUE(base::EqualsCaseInsensitiveASCII(path.value(), expected_path));
+}
+
+void CompareHandleType(const base::win::ScopedHandle& handle,
+                       const std::wstring& expected_type) {
+  auto type_name = GetTypeNameFromHandle(handle.Get());
+  ASSERT_TRUE(type_name);
+  EXPECT_TRUE(
+      base::EqualsCaseInsensitiveASCII(type_name.value(), expected_type));
+}
+
+void FindHandle(const ProcessHandleMap& handle_map,
+                const wchar_t* type_name,
+                const base::win::ScopedHandle& handle) {
+  ProcessHandleMap::const_iterator entry = handle_map.find(type_name);
+  ASSERT_NE(handle_map.end(), entry);
+  EXPECT_TRUE(base::Contains(entry->second, handle.Get()));
+}
+
+void TestCurrentProcessHandles(absl::optional<ProcessHandleMap> (*func)()) {
+  std::wstring random_name = GetRandomName();
+  ASSERT_FALSE(random_name.empty());
+  base::win::ScopedHandle event_handle(
+      ::CreateEvent(nullptr, FALSE, FALSE, random_name.c_str()));
+  ASSERT_TRUE(event_handle.IsValid());
+  std::wstring pipe_name = L"\\\\.\\pipe\\" + random_name;
+  base::win::ScopedHandle pipe_handle(::CreateNamedPipe(
+      pipe_name.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE,
+      PIPE_UNLIMITED_INSTANCES, 0, 0, NMPWAIT_USE_DEFAULT_WAIT, nullptr));
+  ASSERT_TRUE(pipe_handle.IsValid());
+
+  absl::optional<ProcessHandleMap> handle_map = func();
+  ASSERT_TRUE(handle_map);
+  EXPECT_LE(2U, handle_map->size());
+  FindHandle(*handle_map, L"Event", event_handle);
+  FindHandle(*handle_map, L"File", pipe_handle);
+}
+
 }  // namespace
 
 TEST(WinUtils, IsReparsePoint) {
   using sandbox::IsReparsePoint;
-
   // Create a temp file because we need write access to it.
   wchar_t temp_directory[MAX_PATH];
   wchar_t my_folder[MAX_PATH];
@@ -84,7 +136,7 @@ TEST(WinUtils, IsReparsePoint) {
             IsReparsePoint(new_file));
 
   // Replace the directory with a reparse point to %temp%.
-  HANDLE dir = ::CreateFile(my_folder, FILE_ALL_ACCESS,
+  HANDLE dir = ::CreateFile(my_folder, FILE_WRITE_DATA,
                             FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
                             OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
   EXPECT_NE(INVALID_HANDLE_VALUE, dir);
@@ -207,50 +259,72 @@ TEST(WinUtils, ConvertToLongPath) {
   ASSERT_TRUE(base::PathService::Get(base::DIR_SYSTEM, &orig_path));
   orig_path = orig_path.Append(L"calc.exe");
 
-  base::FilePath temp_path;
-  ASSERT_TRUE(base::PathService::Get(base::DIR_PROGRAM_FILES, &temp_path));
-  temp_path = temp_path.Append(L"test_calc.exe");
+  base::ScopedTempDir temp_dir;
+  base::FilePath base_path;
+  ASSERT_TRUE(base::PathService::Get(base::DIR_COMMON_APP_DATA, &base_path));
+  ASSERT_TRUE(temp_dir.CreateUniqueTempDirUnderPath(base_path));
 
+  base::FilePath temp_path = temp_dir.GetPath().Append(L"test_calc.exe");
   ASSERT_TRUE(base::CopyFile(orig_path, temp_path));
-  // No more asserts until cleanup.
 
-  // WIN32 long path: "c:\Program Files\test_calc.exe"
+  // WIN32 long path: "C:\ProgramData\%TEMP%\test_calc.exe"
   wchar_t short_path[MAX_PATH] = {};
   DWORD size =
       ::GetShortPathNameW(temp_path.value().c_str(), short_path, MAX_PATH);
   EXPECT_TRUE(size > 0 && size < MAX_PATH);
-  // WIN32 short path: "C:\PROGRA~1\TEST_C~1.exe"
+  // WIN32 short path: "C:\PROGRA~3\%TEMP%\TEST_C~1.exe"
 
   // Sanity check that we actually got a short path above!  Small chance
   // it was disabled in the filesystem setup.
   EXPECT_NE(temp_path.value().length(), ::wcslen(short_path));
 
-  std::wstring short_form_native_path;
-  EXPECT_TRUE(sandbox::GetNtPathFromWin32Path(std::wstring(short_path),
-                                              &short_form_native_path));
-  // NT short path: "\Device\HarddiskVolume4\PROGRA~1\TEST_C~1.EXE"
+  auto short_form_native_path =
+      sandbox::GetNtPathFromWin32Path(std::wstring(short_path));
+  EXPECT_TRUE(short_form_native_path);
+  // NT short path: "\Device\HarddiskVolume4\PROGRA~3\%TEMP%\TEST_C~1.EXE"
 
   // Test 1: convert win32 short path to long:
   std::wstring test1(short_path);
   EXPECT_TRUE(sandbox::ConvertToLongPath(&test1));
   EXPECT_TRUE(::wcsicmp(temp_path.value().c_str(), test1.c_str()) == 0);
-  // Expected result: "c:\Program Files\test_calc.exe"
+  // Expected result: "C:\ProgramData\%TEMP%\test_calc.exe"
 
   // Test 2: convert native short path to long:
   std::wstring drive_letter = temp_path.value().substr(0, 3);
-  std::wstring test2(short_form_native_path);
+  std::wstring test2(short_form_native_path.value());
   EXPECT_TRUE(sandbox::ConvertToLongPath(&test2, &drive_letter));
 
-  size_t index = short_form_native_path.find_first_of(
+  size_t index = short_form_native_path->find_first_of(
       L'\\', ::wcslen(L"\\Device\\HarddiskVolume"));
   EXPECT_TRUE(index != std::wstring::npos);
-  std::wstring expected_result = short_form_native_path.substr(0, index + 1);
+  std::wstring expected_result = short_form_native_path->substr(0, index + 1);
   expected_result.append(temp_path.value().substr(3));
   EXPECT_TRUE(::wcsicmp(expected_result.c_str(), test2.c_str()) == 0);
-  // Expected result: "\Device\HarddiskVolumeX\Program Files\test_calc.exe"
+  // Expected result: "\Device\HarddiskVolumeX\ProgramData\%TEMP%\test_calc.exe"
+}
 
-  // clean up
-  EXPECT_TRUE(base::DeleteFile(temp_path));
+TEST(WinUtils, GetPathAndTypeFromHandle) {
+  EXPECT_FALSE(GetPathFromHandle(nullptr));
+  EXPECT_FALSE(GetTypeNameFromHandle(nullptr));
+  std::wstring random_name = GetRandomName();
+  ASSERT_FALSE(random_name.empty());
+  std::wstring event_name = L"Global\\" + random_name;
+  base::win::ScopedHandle event_handle(
+      ::CreateEvent(nullptr, FALSE, FALSE, event_name.c_str()));
+  ASSERT_TRUE(event_handle.IsValid());
+  CompareHandlePath(event_handle, L"\\BaseNamedObjects\\" + random_name);
+  CompareHandleType(event_handle, L"Event");
+  std::wstring pipe_name = L"\\\\.\\pipe\\" + random_name;
+  base::win::ScopedHandle pipe_handle(::CreateNamedPipe(
+      pipe_name.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE,
+      PIPE_UNLIMITED_INSTANCES, 0, 0, NMPWAIT_USE_DEFAULT_WAIT, nullptr));
+  ASSERT_TRUE(pipe_handle.IsValid());
+  CompareHandlePath(pipe_handle, L"\\Device\\NamedPipe\\" + random_name);
+  CompareHandleType(pipe_handle, L"File");
+}
+
+TEST(WinUtils, GetCurrentProcessHandles) {
+  TestCurrentProcessHandles(GetCurrentProcessHandles);
 }
 
 }  // namespace sandbox

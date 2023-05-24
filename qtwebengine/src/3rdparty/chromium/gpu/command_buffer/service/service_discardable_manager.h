@@ -1,4 +1,4 @@
-// Copyright (c) 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,10 @@
 
 #include <vector>
 
-#include "base/containers/mru_cache.h"
+#include "base/containers/lru_cache.h"
 #include "base/memory/memory_pressure_listener.h"
+#include "base/memory/raw_ptr.h"
+#include "base/trace_event/memory_dump_provider.h"
 #include "gpu/command_buffer/common/discardable_handle.h"
 #include "gpu/command_buffer/service/context_group.h"
 #include "gpu/gpu_gles2_export.h"
@@ -29,6 +31,11 @@ class GPU_GLES2_EXPORT ServiceDiscardableManager
     : public base::trace_event::MemoryDumpProvider {
  public:
   explicit ServiceDiscardableManager(const GpuPreferences& preferences);
+
+  ServiceDiscardableManager(const ServiceDiscardableManager&) = delete;
+  ServiceDiscardableManager& operator=(const ServiceDiscardableManager&) =
+      delete;
+
   ~ServiceDiscardableManager() override;
 
   // base::trace_event::MemoryDumpProvider implementation.
@@ -106,7 +113,7 @@ class GPU_GLES2_EXPORT ServiceDiscardableManager
   };
   struct GpuDiscardableEntryKey {
     uint32_t texture_id;
-    gles2::TextureManager* texture_manager;
+    raw_ptr<gles2::TextureManager> texture_manager;
   };
   struct GpuDiscardableEntryKeyCompare {
     bool operator()(const GpuDiscardableEntryKey& lhs,
@@ -115,7 +122,7 @@ class GPU_GLES2_EXPORT ServiceDiscardableManager
              std::tie(rhs.texture_manager, rhs.texture_id);
     }
   };
-  using EntryCache = base::MRUCache<GpuDiscardableEntryKey,
+  using EntryCache = base::LRUCache<GpuDiscardableEntryKey,
                                     GpuDiscardableEntry,
                                     GpuDiscardableEntryKeyCompare>;
   EntryCache entries_;
@@ -126,8 +133,6 @@ class GPU_GLES2_EXPORT ServiceDiscardableManager
 
   // The limit above which the cache will start evicting resources.
   size_t cache_size_limit_ = 0;
-
-  DISALLOW_COPY_AND_ASSIGN(ServiceDiscardableManager);
 };
 
 }  // namespace gpu

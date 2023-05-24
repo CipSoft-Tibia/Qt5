@@ -47,9 +47,10 @@
 #include "shared/helpers.h"
 #include "shared/platform.h"
 #include <libweston/zalloc.h>
-#include "xdg-shell-unstable-v6-client-protocol.h"
+#include "xdg-shell-client-protocol.h"
 #include "fullscreen-shell-unstable-v1-client-protocol.h"
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
+#include "weston-direct-display-client-protocol.h"
 #include "linux-explicit-synchronization-unstable-v1-client-protocol.h"
 
 #include <EGL/egl.h>
@@ -67,6 +68,7 @@
 #define OPT_IMMEDIATE     (1 << 0)  /* create wl_buffer immediately */
 #define OPT_IMPLICIT_SYNC (1 << 1)  /* force implicit sync */
 #define OPT_MANDELBROT    (1 << 2)  /* render mandelbrot */
+#define OPT_DIRECT_DISPLAY     (1 << 3)  /* direct-display */
 
 #define BUFFER_FORMAT DRM_FORMAT_XRGB8888
 #define MAX_BUFFER_PLANES 4
@@ -75,9 +77,10 @@ struct display {
 	struct wl_display *display;
 	struct wl_registry *registry;
 	struct wl_compositor *compositor;
-	struct zxdg_shell_v6 *shell;
+	struct xdg_wm_base *wm_base;
 	struct zwp_fullscreen_shell_v1 *fshell;
 	struct zwp_linux_dmabuf_v1 *dmabuf;
+	struct weston_direct_display_v1 *direct_display;
 	struct zwp_linux_explicit_synchronization_v1 *explicit_sync;
 	uint64_t *modifiers;
 	int modifiers_count;
@@ -86,7 +89,9 @@ struct display {
 	struct {
 		EGLDisplay display;
 		EGLContext context;
+		EGLConfig conf;
 		bool has_dma_buf_import_modifiers;
+		bool has_no_config_context;
 		PFNEGLQUERYDMABUFMODIFIERSEXTPROC query_dma_buf_modifiers;
 		PFNEGLCREATEIMAGEKHRPROC create_image;
 		PFNEGLDESTROYIMAGEKHRPROC destroy_image;
@@ -135,8 +140,8 @@ struct window {
 	struct display *display;
 	int width, height;
 	struct wl_surface *surface;
-	struct zxdg_surface_v6 *xdg_surface;
-	struct zxdg_toplevel_v6 *xdg_toplevel;
+	struct xdg_surface *xdg_surface;
+	struct xdg_toplevel *xdg_toplevel;
 	struct zwp_linux_surface_synchronization_v1 *surface_sync;
 	struct buffer buffers[NUM_BUFFERS];
 	struct wl_callback *callback;
@@ -325,11 +330,11 @@ create_fbo_for_buffer(struct display *display, struct buffer *buffer)
 
 static int
 create_dmabuf_buffer(struct display *display, struct buffer *buffer,
-		     int width, int height)
+		     int width, int height, uint32_t opts)
 {
 	/* Y-Invert the buffer image, since we are going to renderer to the
 	 * buffer through a FBO. */
-	static const uint32_t flags = ZWP_LINUX_BUFFER_PARAMS_V1_FLAGS_Y_INVERT;
+	static uint32_t flags = ZWP_LINUX_BUFFER_PARAMS_V1_FLAGS_Y_INVERT;
 	struct zwp_linux_buffer_params_v1 *params;
 	int i;
 
@@ -398,6 +403,17 @@ create_dmabuf_buffer(struct display *display, struct buffer *buffer,
 #endif
 
 	params = zwp_linux_dmabuf_v1_create_params(display->dmabuf);
+
+	if ((opts & OPT_DIRECT_DISPLAY) && display->direct_display) {
+		weston_direct_display_v1_enable(display->direct_display, params);
+		/* turn off Y_INVERT otherwise linux-dmabuf will reject it and
+		 * we need all dmabuf flags turned off */
+		flags &= ~ZWP_LINUX_BUFFER_PARAMS_V1_FLAGS_Y_INVERT;
+
+		fprintf(stdout, "image is y-inverted as direct-display flag was set, "
+				"dmabuf y-inverted attribute flag was removed\n");
+	}
+
 	for (i = 0; i < buffer->plane_count; ++i) {
 		zwp_linux_buffer_params_v1_add(params,
 					       buffer->dmabuf_fds[i],
@@ -444,36 +460,36 @@ error:
 }
 
 static void
-xdg_surface_handle_configure(void *data, struct zxdg_surface_v6 *surface,
+xdg_surface_handle_configure(void *data, struct xdg_surface *surface,
 			     uint32_t serial)
 {
 	struct window *window = data;
 
-	zxdg_surface_v6_ack_configure(surface, serial);
+	xdg_surface_ack_configure(surface, serial);
 
 	if (window->initialized && window->wait_for_configure)
 		redraw(window, NULL, 0);
 	window->wait_for_configure = false;
 }
 
-static const struct zxdg_surface_v6_listener xdg_surface_listener = {
+static const struct xdg_surface_listener xdg_surface_listener = {
 	xdg_surface_handle_configure,
 };
 
 static void
-xdg_toplevel_handle_configure(void *data, struct zxdg_toplevel_v6 *toplevel,
+xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *toplevel,
 			      int32_t width, int32_t height,
 			      struct wl_array *states)
 {
 }
 
 static void
-xdg_toplevel_handle_close(void *data, struct zxdg_toplevel_v6 *xdg_toplevel)
+xdg_toplevel_handle_close(void *data, struct xdg_toplevel *xdg_toplevel)
 {
 	running = 0;
 }
 
-static const struct zxdg_toplevel_v6_listener xdg_toplevel_listener = {
+static const struct xdg_toplevel_listener xdg_toplevel_listener = {
 	xdg_toplevel_handle_configure,
 	xdg_toplevel_handle_close,
 };
@@ -546,7 +562,7 @@ create_shader(const char *source, GLenum shader_type)
 		char log[1000];
 		GLsizei len;
 		glGetShaderInfoLog(shader, 1000, &len, log);
-		fprintf(stderr, "Error: compiling %s: %*s\n",
+		fprintf(stderr, "Error: compiling %s: %.*s\n",
 			shader_type == GL_VERTEX_SHADER ? "vertex" : "fragment",
 			len, log);
 		return 0;
@@ -570,7 +586,7 @@ create_and_link_program(GLuint vert, GLuint frag)
 		char log[1000];
 		GLsizei len;
 		glGetProgramInfoLog(program, 1000, &len, log);
-		fprintf(stderr, "Error: linking:\n%*s\n", len, log);
+		fprintf(stderr, "Error: linking:\n%.*s\n", len, log);
 		return 0;
 	}
 
@@ -622,9 +638,9 @@ destroy_window(struct window *window)
 	}
 
 	if (window->xdg_toplevel)
-		zxdg_toplevel_v6_destroy(window->xdg_toplevel);
+		xdg_toplevel_destroy(window->xdg_toplevel);
 	if (window->xdg_surface)
-		zxdg_surface_v6_destroy(window->xdg_surface);
+		xdg_surface_destroy(window->xdg_surface);
 	if (window->surface_sync)
 		zwp_linux_surface_synchronization_v1_destroy(window->surface_sync);
 	wl_surface_destroy(window->surface);
@@ -648,25 +664,25 @@ create_window(struct display *display, int width, int height, int opts)
 	window->height = height;
 	window->surface = wl_compositor_create_surface(display->compositor);
 
-	if (display->shell) {
+	if (display->wm_base) {
 		window->xdg_surface =
-			zxdg_shell_v6_get_xdg_surface(display->shell,
-						      window->surface);
+			xdg_wm_base_get_xdg_surface(display->wm_base,
+						    window->surface);
 
 		assert(window->xdg_surface);
 
-		zxdg_surface_v6_add_listener(window->xdg_surface,
-					     &xdg_surface_listener, window);
+		xdg_surface_add_listener(window->xdg_surface,
+					 &xdg_surface_listener, window);
 
 		window->xdg_toplevel =
-			zxdg_surface_v6_get_toplevel(window->xdg_surface);
+			xdg_surface_get_toplevel(window->xdg_surface);
 
 		assert(window->xdg_toplevel);
 
-		zxdg_toplevel_v6_add_listener(window->xdg_toplevel,
-					      &xdg_toplevel_listener, window);
+		xdg_toplevel_add_listener(window->xdg_toplevel,
+					  &xdg_toplevel_listener, window);
 
-		zxdg_toplevel_v6_set_title(window->xdg_toplevel, "simple-dmabuf-egl");
+		xdg_toplevel_set_title(window->xdg_toplevel, "simple-dmabuf-egl");
 
 		window->wait_for_configure = true;
 		wl_surface_commit(window->surface);
@@ -695,7 +711,7 @@ create_window(struct display *display, int width, int height, int opts)
 
 	for (i = 0; i < NUM_BUFFERS; ++i) {
 		ret = create_dmabuf_buffer(display, &window->buffers[i],
-		                           width, height);
+		                           width, height, opts);
 
 		if (ret < 0)
 			goto error;
@@ -1011,13 +1027,13 @@ static const struct zwp_linux_dmabuf_v1_listener dmabuf_listener = {
 };
 
 static void
-xdg_shell_ping(void *data, struct zxdg_shell_v6 *shell, uint32_t serial)
+xdg_wm_base_ping(void *data, struct xdg_wm_base *wm_base, uint32_t serial)
 {
-	zxdg_shell_v6_pong(shell, serial);
+	xdg_wm_base_pong(wm_base, serial);
 }
 
-static const struct zxdg_shell_v6_listener xdg_shell_listener = {
-	xdg_shell_ping,
+static const struct xdg_wm_base_listener xdg_wm_base_listener = {
+	xdg_wm_base_ping,
 };
 
 static void
@@ -1030,10 +1046,10 @@ registry_handle_global(void *data, struct wl_registry *registry,
 		d->compositor =
 			wl_registry_bind(registry,
 					 id, &wl_compositor_interface, 1);
-	} else if (strcmp(interface, "zxdg_shell_v6") == 0) {
-		d->shell = wl_registry_bind(registry,
-					    id, &zxdg_shell_v6_interface, 1);
-		zxdg_shell_v6_add_listener(d->shell, &xdg_shell_listener, d);
+	} else if (strcmp(interface, "xdg_wm_base") == 0) {
+		d->wm_base = wl_registry_bind(registry,
+					      id, &xdg_wm_base_interface, 1);
+		xdg_wm_base_add_listener(d->wm_base, &xdg_wm_base_listener, d);
 	} else if (strcmp(interface, "zwp_fullscreen_shell_v1") == 0) {
 		d->fshell = wl_registry_bind(registry,
 					     id, &zwp_fullscreen_shell_v1_interface, 1);
@@ -1047,6 +1063,9 @@ registry_handle_global(void *data, struct wl_registry *registry,
 		d->explicit_sync = wl_registry_bind(
 			registry, id,
 			&zwp_linux_explicit_synchronization_v1_interface, 1);
+	} else if (strcmp(interface, "weston_direct_display_v1") == 0) {
+		d->direct_display = wl_registry_bind(registry,
+						     id, &weston_direct_display_v1_interface, 1);
 	}
 }
 
@@ -1081,8 +1100,8 @@ destroy_display(struct display *display)
 	if (display->dmabuf)
 		zwp_linux_dmabuf_v1_destroy(display->dmabuf);
 
-	if (display->shell)
-		zxdg_shell_v6_destroy(display->shell);
+	if (display->wm_base)
+		xdg_wm_base_destroy(display->wm_base);
 
 	if (display->fshell)
 		zwp_fullscreen_shell_v1_release(display->fshell);
@@ -1108,9 +1127,19 @@ display_set_up_egl(struct display *display)
 		EGL_CONTEXT_CLIENT_VERSION, 2,
 		EGL_NONE
 	};
-	EGLint major, minor;
+	EGLint major, minor, ret, count;
 	const char *egl_extensions = NULL;
 	const char *gl_extensions = NULL;
+
+	EGLint config_attribs[] = {
+		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+		EGL_RED_SIZE, 1,
+		EGL_GREEN_SIZE, 1,
+		EGL_BLUE_SIZE, 1,
+		EGL_ALPHA_SIZE, 1,
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+		EGL_NONE
+	};
 
 	display->egl.display =
 		weston_platform_get_egl_display(EGL_PLATFORM_GBM_KHR,
@@ -1145,14 +1174,23 @@ display_set_up_egl(struct display *display)
 		goto error;
 	}
 
-	if (!weston_check_egl_extension(egl_extensions,
+	if (weston_check_egl_extension(egl_extensions,
 					"EGL_KHR_no_config_context")) {
-		fprintf(stderr, "EGL_KHR_no_config_context not supported\n");
-		goto error;
+		display->egl.has_no_config_context = true;
+	}
+
+	if (display->egl.has_no_config_context) {
+		display->egl.conf = EGL_NO_CONFIG_KHR;
+	} else {
+		fprintf(stderr,
+			"Warning: EGL_KHR_no_config_context not supported\n");
+		ret = eglChooseConfig(display->egl.display, config_attribs,
+			      &display->egl.conf, 1, &count);
+		assert(ret && count >= 1);
 	}
 
 	display->egl.context = eglCreateContext(display->egl.display,
-						EGL_NO_CONFIG_KHR,
+						display->egl.conf,
 						EGL_NO_CONTEXT,
 						context_attribs);
 	if (display->egl.context == EGL_NO_CONTEXT) {
@@ -1232,24 +1270,30 @@ display_update_supported_modifiers_for_egl(struct display *d)
 	int num_egl_modifiers = 0;
 	EGLBoolean ret;
 	int i;
+	bool try_modifiers = d->egl.has_dma_buf_import_modifiers;
+
+	if (try_modifiers) {
+		ret = d->egl.query_dma_buf_modifiers(d->egl.display,
+						     BUFFER_FORMAT,
+						     0,    /* max_modifiers */
+						     NULL, /* modifiers */
+						     NULL, /* external_only */
+						     &num_egl_modifiers);
+		if (ret == EGL_FALSE) {
+			fprintf(stderr, "Failed to query num EGL modifiers for format\n");
+			goto error;
+		}
+	}
+
+	if (!num_egl_modifiers)
+		try_modifiers = false;
 
 	/* If EGL doesn't support modifiers, don't use them at all. */
-	if (!d->egl.has_dma_buf_import_modifiers) {
+	if (!try_modifiers) {
 		d->modifiers_count = 0;
 		free(d->modifiers);
 		d->modifiers = NULL;
 		return true;
-	}
-
-	ret = d->egl.query_dma_buf_modifiers(d->egl.display,
-				             BUFFER_FORMAT,
-				             0,    /* max_modifiers */
-				             NULL, /* modifiers */
-				             NULL, /* external_only */
-				             &num_egl_modifiers);
-	if (ret == EGL_FALSE || num_egl_modifiers == 0) {
-		fprintf(stderr, "Failed to query num EGL modifiers for format\n");
-		goto error;
 	}
 
 	egl_modifiers = zalloc(num_egl_modifiers * sizeof(*egl_modifiers));
@@ -1411,7 +1455,12 @@ print_usage_and_exit(void)
 		"\n\t\t0 to disable explicit sync, "
 		"\n\t\t1 to enable explicit sync (default: 1)\n"
 		"\t'-m,--mandelbrot'"
-		"\n\t\trender a mandelbrot set with multiple draw calls\n");
+		"\n\t\trender a mandelbrot set with multiple draw calls\n"
+		"\t'-g,--direct-display'"
+		"\n\t\tenables weston-direct-display extension to attempt "
+		"direct scan-out;\n\t\tnote this will cause the image to be "
+		"displayed inverted as GL uses a\n\t\tdifferent texture "
+		"coordinate system\n");
 	exit(0);
 }
 
@@ -1445,11 +1494,12 @@ main(int argc, char **argv)
 		{"size",	     required_argument, 0,  's' },
 		{"explicit-sync",    required_argument, 0,  'e' },
 		{"mandelbrot",       no_argument,	0,  'm' },
+		{"direct-display",   no_argument,	0,  'g' },
 		{"help",             no_argument      , 0,  'h' },
 		{0, 0, 0, 0}
 	};
 
-	while ((c = getopt_long(argc, argv, "hi:d:s:e:m",
+	while ((c = getopt_long(argc, argv, "hi:d:s:e:mg",
 				long_options, &option_index)) != -1) {
 		switch (c) {
 		case 'i':
@@ -1468,6 +1518,9 @@ main(int argc, char **argv)
 			break;
 		case 'm':
 			opts |= OPT_MANDELBROT;
+			break;
+		case 'g':
+			opts |= OPT_DIRECT_DISPLAY;
 			break;
 		default:
 			print_usage_and_exit();

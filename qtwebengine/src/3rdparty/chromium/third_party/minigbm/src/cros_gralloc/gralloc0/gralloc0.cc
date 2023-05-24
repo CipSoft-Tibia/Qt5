@@ -8,15 +8,25 @@
 #include "../cros_gralloc_driver.h"
 
 #include <cassert>
+#include <cutils/native_handle.h>
 #include <hardware/gralloc.h>
 #include <memory.h>
 
 struct gralloc0_module {
 	gralloc_module_t base;
 	std::unique_ptr<alloc_device_t> alloc;
-	std::unique_ptr<cros_gralloc_driver> driver;
+	cros_gralloc_driver *driver;
 	bool initialized;
 	std::mutex initialization_mutex;
+};
+
+struct cros_gralloc0_buffer_info {
+	uint32_t drm_fourcc;
+	int num_fds;
+	int fds[4];
+	uint64_t modifier;
+	uint32_t offset[4];
+	uint32_t stride[4];
 };
 
 /* This enumeration must match the one in <gralloc_drm.h>.
@@ -31,134 +41,81 @@ enum {
 	GRALLOC_DRM_GET_FORMAT,
 	GRALLOC_DRM_GET_DIMENSIONS,
 	GRALLOC_DRM_GET_BACKING_STORE,
+	GRALLOC_DRM_GET_BUFFER_INFO,
+	GRALLOC_DRM_GET_USAGE,
+};
+
+/* This enumeration corresponds to the GRALLOC_DRM_GET_USAGE query op, which
+ * defines a set of bit flags used by the client to query vendor usage bits.
+ *
+ * Here is the common flow:
+ * 1) EGL/Vulkan calls GRALLOC_DRM_GET_USAGE to append one or multiple vendor
+ *    usage bits to the existing usage and sets onto the ANativeWindow.
+ * 2) Some implicit GL draw cmd or the explicit vkCreateSwapchainKHR kicks off
+ *    the next dequeueBuffer on the ANativeWindow with the combined usage.
+ * 3) dequeueBuffer then asks gralloc hal for an allocation/re-allocation, and
+ *    calls into the below `gralloc0_alloc(...)` api.
+ */
+enum {
+	GRALLOC_DRM_GET_USAGE_FRONT_RENDERING_BIT = 0x00000001,
 };
 // clang-format on
 
-// Gralloc0 doesn't define a video decoder flag. However, the IAllocator gralloc0
-// passthrough gives the low 32-bits of the BufferUsage flags to gralloc0 in their
-// entirety, so we can detect the video decoder flag passed by IAllocator clients.
-#define BUFFER_USAGE_VIDEO_DECODER (1 << 22)
-
-static uint64_t gralloc0_convert_usage(int usage)
-{
-	uint64_t use_flags = BO_USE_NONE;
-
-	if (usage & GRALLOC_USAGE_CURSOR)
-		use_flags |= BO_USE_NONE;
-	if ((usage & GRALLOC_USAGE_SW_READ_MASK) == GRALLOC_USAGE_SW_READ_RARELY)
-		use_flags |= BO_USE_SW_READ_RARELY;
-	if ((usage & GRALLOC_USAGE_SW_READ_MASK) == GRALLOC_USAGE_SW_READ_OFTEN)
-		use_flags |= BO_USE_SW_READ_OFTEN;
-	if ((usage & GRALLOC_USAGE_SW_WRITE_MASK) == GRALLOC_USAGE_SW_WRITE_RARELY)
-		use_flags |= BO_USE_SW_WRITE_RARELY;
-	if ((usage & GRALLOC_USAGE_SW_WRITE_MASK) == GRALLOC_USAGE_SW_WRITE_OFTEN)
-		use_flags |= BO_USE_SW_WRITE_OFTEN;
-	if (usage & GRALLOC_USAGE_HW_TEXTURE)
-		use_flags |= BO_USE_TEXTURE;
-	if (usage & GRALLOC_USAGE_HW_RENDER)
-		use_flags |= BO_USE_RENDERING;
-	if (usage & GRALLOC_USAGE_HW_2D)
-		use_flags |= BO_USE_RENDERING;
-	if (usage & GRALLOC_USAGE_HW_COMPOSER)
-		/* HWC wants to use display hardware, but can defer to OpenGL. */
-		use_flags |= BO_USE_SCANOUT | BO_USE_TEXTURE;
-	if (usage & GRALLOC_USAGE_HW_FB)
-		use_flags |= BO_USE_NONE;
-	if (usage & GRALLOC_USAGE_EXTERNAL_DISP)
-		/*
-		 * This flag potentially covers external display for the normal drivers (i915,
-		 * rockchip) and usb monitors (evdi/udl). It's complicated so ignore it.
-		 * */
-		use_flags |= BO_USE_NONE;
-	if (usage & GRALLOC_USAGE_PROTECTED)
-		use_flags |= BO_USE_PROTECTED;
-	if (usage & GRALLOC_USAGE_HW_VIDEO_ENCODER) {
-		use_flags |= BO_USE_HW_VIDEO_ENCODER;
-		/*HACK: See b/30054495 */
-		use_flags |= BO_USE_SW_READ_OFTEN;
-	}
-	if (usage & GRALLOC_USAGE_HW_CAMERA_WRITE)
-		use_flags |= BO_USE_CAMERA_WRITE;
-	if (usage & GRALLOC_USAGE_HW_CAMERA_READ)
-		use_flags |= BO_USE_CAMERA_READ;
-	if (usage & GRALLOC_USAGE_RENDERSCRIPT)
-		use_flags |= BO_USE_RENDERSCRIPT;
-	if (usage & BUFFER_USAGE_VIDEO_DECODER)
-		use_flags |= BO_USE_HW_VIDEO_DECODER;
-
-	return use_flags;
-}
-
-static uint32_t gralloc0_convert_map_usage(int map_usage)
-{
-	uint32_t map_flags = BO_MAP_NONE;
-
-	if (map_usage & GRALLOC_USAGE_SW_READ_MASK)
-		map_flags |= BO_MAP_READ;
-	if (map_usage & GRALLOC_USAGE_SW_WRITE_MASK)
-		map_flags |= BO_MAP_WRITE;
-
-	return map_flags;
-}
-
 static int gralloc0_droid_yuv_format(int droid_format)
 {
-
 	return (droid_format == HAL_PIXEL_FORMAT_YCbCr_420_888 ||
 		droid_format == HAL_PIXEL_FORMAT_YV12);
 }
 
 static int gralloc0_alloc(alloc_device_t *dev, int w, int h, int format, int usage,
-			  buffer_handle_t *handle, int *stride)
+			  buffer_handle_t *out_handle, int *out_stride)
 {
 	int32_t ret;
-	bool supported;
+	native_handle_t *handle;
 	struct cros_gralloc_buffer_descriptor descriptor;
 	auto mod = (struct gralloc0_module const *)dev->common.module;
 
 	descriptor.width = w;
 	descriptor.height = h;
 	descriptor.droid_format = format;
-	descriptor.producer_usage = descriptor.consumer_usage = usage;
+	descriptor.droid_usage = usage;
 	descriptor.drm_format = cros_gralloc_convert_format(format);
-	descriptor.use_flags = gralloc0_convert_usage(usage);
+	descriptor.use_flags = cros_gralloc_convert_usage(usage);
+	descriptor.reserved_region_size = 0;
 
-	supported = mod->driver->is_supported(&descriptor);
-	if (!supported && (usage & GRALLOC_USAGE_HW_COMPOSER)) {
-		descriptor.use_flags &= ~BO_USE_SCANOUT;
-		supported = mod->driver->is_supported(&descriptor);
-	}
-	if (!supported && (usage & GRALLOC_USAGE_HW_VIDEO_ENCODER) &&
-	    !gralloc0_droid_yuv_format(format)) {
-		// Unmask BO_USE_HW_VIDEO_ENCODER in the case of non-yuv formats
-		// because they are not input to a hw encoder but used as an
-		// intermediate format (e.g. camera).
-		descriptor.use_flags &= ~BO_USE_HW_VIDEO_ENCODER;
-		supported = mod->driver->is_supported(&descriptor);
-	}
-
-	if (!supported) {
-		drv_log("Unsupported combination -- HAL format: %u, HAL usage: %u, "
-			"drv_format: %4.4s, use_flags: %llu\n",
-			format, usage, reinterpret_cast<char *>(&descriptor.drm_format),
-			static_cast<unsigned long long>(descriptor.use_flags));
+	if (!mod->driver->is_supported(&descriptor)) {
+		ALOGE("Unsupported combination -- HAL format: %u, HAL usage: %u, "
+		      "drv_format: %4.4s, use_flags: %llu",
+		      format, usage, reinterpret_cast<char *>(&descriptor.drm_format),
+		      static_cast<unsigned long long>(descriptor.use_flags));
 		return -EINVAL;
 	}
 
-	ret = mod->driver->allocate(&descriptor, handle);
+	ret = mod->driver->allocate(&descriptor, &handle);
 	if (ret)
 		return ret;
 
-	auto hnd = cros_gralloc_convert_handle(*handle);
-	*stride = hnd->pixel_stride;
+	auto hnd = cros_gralloc_convert_handle(handle);
+	*out_handle = handle;
+	*out_stride = hnd->pixel_stride;
 
 	return 0;
 }
 
 static int gralloc0_free(alloc_device_t *dev, buffer_handle_t handle)
 {
+	int32_t ret;
 	auto mod = (struct gralloc0_module const *)dev->common.module;
-	return mod->driver->release(handle);
+
+	ret = mod->driver->release(handle);
+	if (ret)
+		return ret;
+
+	auto hnd = const_cast<native_handle_t *>(handle);
+	native_handle_close(hnd);
+	native_handle_delete(hnd);
+
+	return 0;
 }
 
 static int gralloc0_close(struct hw_device_t *dev)
@@ -174,11 +131,9 @@ static int gralloc0_init(struct gralloc0_module *mod, bool initialize_alloc)
 	if (mod->initialized)
 		return 0;
 
-	mod->driver = std::make_unique<cros_gralloc_driver>();
-	if (mod->driver->init()) {
-		drv_log("Failed to initialize driver.\n");
+	mod->driver = cros_gralloc_driver::get_instance();
+	if (!mod->driver)
 		return -ENODEV;
-	}
 
 	if (initialize_alloc) {
 		mod->alloc = std::make_unique<alloc_device_t>();
@@ -205,7 +160,7 @@ static int gralloc0_open(const struct hw_module_t *mod, const char *name, struct
 	}
 
 	if (strcmp(name, GRALLOC_HARDWARE_GPU0)) {
-		drv_log("Incorrect device name - %s.\n", name);
+		ALOGE("Incorrect device name - %s.", name);
 		return -EINVAL;
 	}
 
@@ -221,9 +176,10 @@ static int gralloc0_register_buffer(struct gralloc_module_t const *module, buffe
 	auto const_module = reinterpret_cast<const struct gralloc0_module *>(module);
 	auto mod = const_cast<struct gralloc0_module *>(const_module);
 
-	if (!mod->initialized)
+	if (!mod->initialized) {
 		if (gralloc0_init(mod, false))
 			return -ENODEV;
+	}
 
 	return mod->driver->retain(handle);
 }
@@ -248,7 +204,7 @@ static int gralloc0_unlock(struct gralloc_module_t const *module, buffer_handle_
 	if (ret)
 		return ret;
 
-	ret = cros_gralloc_sync_wait(fence_fd);
+	ret = cros_gralloc_sync_wait(fence_fd, /*close_acquire_fence=*/true);
 	if (ret)
 		return ret;
 
@@ -261,35 +217,52 @@ static int gralloc0_perform(struct gralloc_module_t const *module, int op, ...)
 	int32_t *out_format, ret;
 	uint64_t *out_store;
 	buffer_handle_t handle;
+	cros_gralloc_handle_t hnd;
 	uint32_t *out_width, *out_height, *out_stride;
 	uint32_t strides[DRV_MAX_PLANES] = { 0, 0, 0, 0 };
 	uint32_t offsets[DRV_MAX_PLANES] = { 0, 0, 0, 0 };
-	auto mod = (struct gralloc0_module const *)module;
+	uint64_t format_modifier = 0;
+	struct cros_gralloc0_buffer_info *info;
+	auto const_module = reinterpret_cast<const struct gralloc0_module *>(module);
+	auto mod = const_cast<struct gralloc0_module *>(const_module);
+	uint32_t req_usage;
+	uint32_t gralloc_usage = 0;
+	uint32_t *out_gralloc_usage;
+
+	if (!mod->initialized) {
+		if (gralloc0_init(mod, false))
+			return -ENODEV;
+	}
+
+	va_start(args, op);
 
 	switch (op) {
 	case GRALLOC_DRM_GET_STRIDE:
 	case GRALLOC_DRM_GET_FORMAT:
 	case GRALLOC_DRM_GET_DIMENSIONS:
 	case GRALLOC_DRM_GET_BACKING_STORE:
+	case GRALLOC_DRM_GET_BUFFER_INFO:
+		/* retrieve handles for ops with buffer_handle_t */
+		handle = va_arg(args, buffer_handle_t);
+		hnd = cros_gralloc_convert_handle(handle);
+		if (!hnd) {
+			va_end(args);
+			ALOGE("Invalid handle.");
+			return -EINVAL;
+		}
+		break;
+	case GRALLOC_DRM_GET_USAGE:
 		break;
 	default:
+		va_end(args);
 		return -EINVAL;
 	}
-
-	va_start(args, op);
 
 	ret = 0;
-	handle = va_arg(args, buffer_handle_t);
-	auto hnd = cros_gralloc_convert_handle(handle);
-	if (!hnd) {
-		drv_log("Invalid handle.\n");
-		return -EINVAL;
-	}
-
 	switch (op) {
 	case GRALLOC_DRM_GET_STRIDE:
 		out_stride = va_arg(args, uint32_t *);
-		ret = mod->driver->resource_info(handle, strides, offsets);
+		ret = mod->driver->resource_info(handle, strides, offsets, &format_modifier);
 		if (ret)
 			break;
 
@@ -315,6 +288,34 @@ static int gralloc0_perform(struct gralloc_module_t const *module, int op, ...)
 		out_store = va_arg(args, uint64_t *);
 		ret = mod->driver->get_backing_store(handle, out_store);
 		break;
+	case GRALLOC_DRM_GET_BUFFER_INFO:
+		info = va_arg(args, struct cros_gralloc0_buffer_info *);
+		memset(info, 0, sizeof(*info));
+		info->drm_fourcc = drv_get_standard_fourcc(hnd->format);
+		info->num_fds = hnd->num_planes;
+		for (int i = 0; i < info->num_fds; i++)
+			info->fds[i] = hnd->fds[i];
+
+		ret = mod->driver->resource_info(handle, strides, offsets, &format_modifier);
+		if (ret)
+			break;
+
+		info->modifier = format_modifier ? format_modifier : hnd->format_modifier;
+		for (uint32_t i = 0; i < DRV_MAX_PLANES; i++) {
+			if (!strides[i])
+				break;
+
+			info->stride[i] = strides[i];
+			info->offset[i] = offsets[i];
+		}
+		break;
+	case GRALLOC_DRM_GET_USAGE:
+		req_usage = va_arg(args, uint32_t);
+		out_gralloc_usage = va_arg(args, uint32_t *);
+		if (req_usage & GRALLOC_DRM_GET_USAGE_FRONT_RENDERING_BIT)
+			gralloc_usage |= BUFFER_USAGE_FRONT_RENDERING;
+		*out_gralloc_usage = gralloc_usage;
+		break;
 	default:
 		ret = -EINVAL;
 	}
@@ -336,20 +337,26 @@ static int gralloc0_lock_async(struct gralloc_module_t const *module, buffer_han
 	int32_t ret;
 	uint32_t map_flags;
 	uint8_t *addr[DRV_MAX_PLANES];
-	auto mod = (struct gralloc0_module const *)module;
+	auto const_module = reinterpret_cast<const struct gralloc0_module *>(module);
+	auto mod = const_cast<struct gralloc0_module *>(const_module);
 	struct rectangle rect = { .x = static_cast<uint32_t>(l),
 				  .y = static_cast<uint32_t>(t),
 				  .width = static_cast<uint32_t>(w),
 				  .height = static_cast<uint32_t>(h) };
 
+	if (!mod->initialized) {
+		if (gralloc0_init(mod, false))
+			return -ENODEV;
+	}
+
 	auto hnd = cros_gralloc_convert_handle(handle);
 	if (!hnd) {
-		drv_log("Invalid handle.\n");
+		ALOGE("Invalid handle.");
 		return -EINVAL;
 	}
 
 	if (hnd->droid_format == HAL_PIXEL_FORMAT_YCbCr_420_888) {
-		drv_log("HAL_PIXEL_FORMAT_YCbCr_*_888 format not compatible.\n");
+		ALOGE("HAL_PIXEL_FORMAT_YCbCr_*_888 format not compatible.");
 		return -EINVAL;
 	}
 
@@ -358,8 +365,8 @@ static int gralloc0_lock_async(struct gralloc_module_t const *module, buffer_han
 	assert(w >= 0);
 	assert(h >= 0);
 
-	map_flags = gralloc0_convert_map_usage(usage);
-	ret = mod->driver->lock(handle, fence_fd, &rect, map_flags, addr);
+	map_flags = cros_gralloc_convert_map_usage(static_cast<uint64_t>(usage));
+	ret = mod->driver->lock(handle, fence_fd, true, &rect, map_flags, addr);
 	*vaddr = addr[0];
 	return ret;
 }
@@ -379,22 +386,29 @@ static int gralloc0_lock_async_ycbcr(struct gralloc_module_t const *module, buff
 	uint32_t map_flags;
 	uint32_t strides[DRV_MAX_PLANES] = { 0, 0, 0, 0 };
 	uint32_t offsets[DRV_MAX_PLANES] = { 0, 0, 0, 0 };
+	uint64_t format_modifier = 0;
 	uint8_t *addr[DRV_MAX_PLANES] = { nullptr, nullptr, nullptr, nullptr };
-	auto mod = (struct gralloc0_module const *)module;
+	auto const_module = reinterpret_cast<const struct gralloc0_module *>(module);
+	auto mod = const_cast<struct gralloc0_module *>(const_module);
 	struct rectangle rect = { .x = static_cast<uint32_t>(l),
 				  .y = static_cast<uint32_t>(t),
 				  .width = static_cast<uint32_t>(w),
 				  .height = static_cast<uint32_t>(h) };
 
+	if (!mod->initialized) {
+		if (gralloc0_init(mod, false))
+			return -ENODEV;
+	}
+
 	auto hnd = cros_gralloc_convert_handle(handle);
 	if (!hnd) {
-		drv_log("Invalid handle.\n");
+		ALOGE("Invalid handle.");
 		return -EINVAL;
 	}
 
 	if (!gralloc0_droid_yuv_format(hnd->droid_format) &&
 	    hnd->droid_format != HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED) {
-		drv_log("Non-YUV format not compatible.\n");
+		ALOGE("Non-YUV format not compatible.");
 		return -EINVAL;
 	}
 
@@ -403,18 +417,19 @@ static int gralloc0_lock_async_ycbcr(struct gralloc_module_t const *module, buff
 	assert(w >= 0);
 	assert(h >= 0);
 
-	map_flags = gralloc0_convert_map_usage(usage);
-	ret = mod->driver->lock(handle, fence_fd, &rect, map_flags, addr);
+	map_flags = cros_gralloc_convert_map_usage(static_cast<uint64_t>(usage));
+	ret = mod->driver->lock(handle, fence_fd, true, &rect, map_flags, addr);
 	if (ret)
 		return ret;
 
 	if (!map_flags) {
-		ret = mod->driver->resource_info(handle, strides, offsets);
+		ret = mod->driver->resource_info(handle, strides, offsets, &format_modifier);
 		if (ret)
 			return ret;
 
 		for (uint32_t plane = 0; plane < DRV_MAX_PLANES; plane++)
-			addr[plane] = static_cast<uint8_t *>(nullptr) + offsets[plane];
+			addr[plane] =
+			    reinterpret_cast<uint8_t *>(static_cast<uintptr_t>(offsets[plane]));
 	}
 
 	switch (hnd->format) {

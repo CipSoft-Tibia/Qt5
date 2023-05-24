@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QTimer>
 
 #include <qapplication.h>
 #include <private/qguiapplication_p.h>
@@ -41,7 +17,6 @@
 #include <QtWidgets/QColorDialog>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFileDialog>
-#include <QtWidgets/QDesktopWidget>
 
 class tst_languageChange : public QObject
 {
@@ -85,7 +60,7 @@ public:
     TransformTranslator() : QTranslator() {}
     TransformTranslator(QObject *parent) : QTranslator(parent) {}
     QString translate(const char *context, const char *sourceText,
-                              const char *disambiguation = 0, int = -1) const
+                              const char *disambiguation = 0, int = -1) const override
     {
         QByteArray total(context);
         total.append("::");
@@ -109,7 +84,7 @@ public:
         return res;
     }
 
-    virtual bool isEmpty() const { return false; }
+    virtual bool isEmpty() const override { return false; }
 
 public:
     mutable QSet<QByteArray> m_translations;
@@ -197,9 +172,6 @@ void tst_languageChange::retranslatability_data()
                     << "QFileDialog::Back"
                     << "QFileDialog::Create New Folder"
                     << "QFileDialog::Detail View"
-#if !defined(Q_OS_MAC) && !defined(Q_OS_WINRT)
-                    << "QFileDialog::File"
-#endif
                     << "QFileDialog::Files of type:"
                     << "QFileDialog::Forward"
                     << "QFileDialog::List View"
@@ -260,9 +232,6 @@ void tst_languageChange::retranslatability()
 #endif
         break;
     case FileDialog: {
-#ifdef Q_OS_MAC
-        QSKIP("The native file dialog is used on Mac OS");
-#endif
         QFileDialog dlg;
         dlg.setOption(QFileDialog::DontUseNativeDialog);
         QString tempDirPattern = QDir::tempPath();
@@ -292,7 +261,7 @@ void tst_languageChange::retranslatability()
     // In case we use a Color dialog, we do not want to test for
     // strings non existing in the dialog and which do not get
     // translated.
-    const QSize desktopSize = QApplication::desktop()->size();
+    const QSize desktopSize = QGuiApplication::primaryScreen()->size();
     if (dialogType == ColorDialog && (desktopSize.width() < 480 || desktopSize.height() < 350)) {
         expected.remove("QColorDialog::&Basic colors");
         expected.remove("QColorDialog::&Custom colors");

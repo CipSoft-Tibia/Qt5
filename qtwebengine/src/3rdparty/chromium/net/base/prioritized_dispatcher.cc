@@ -1,8 +1,10 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "net/base/prioritized_dispatcher.h"
+
+#include <ostream>
 
 #include "base/check_op.h"
 
@@ -18,8 +20,7 @@ PrioritizedDispatcher::Limits::~Limits() = default;
 
 PrioritizedDispatcher::PrioritizedDispatcher(const Limits& limits)
     : queue_(limits.reserved_slots.size()),
-      max_running_jobs_(limits.reserved_slots.size()),
-      num_running_jobs_(0) {
+      max_running_jobs_(limits.reserved_slots.size()) {
   SetLimits(limits);
 }
 

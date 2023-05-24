@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 
 #include <vector>
 
-#include "base/optional.h"
 #include "base/unguessable_token.h"
 #include "build/build_config.h"
 #include "media/base/video_types.h"
@@ -58,7 +57,6 @@ enum class PowerLineFrequency {
 
 enum class VideoCaptureBufferType {
   kSharedMemory,
-  kSharedMemoryViaRawFileDescriptor,
   kMailboxHolder,
   kGpuMemoryBuffer
 };
@@ -71,7 +69,7 @@ enum class VideoCaptureError {
       1,
   kVideoCaptureControllerIsAlreadyInErrorState = 2,
   kVideoCaptureManagerDeviceConnectionLost = 3,
-  kFrameSinkVideoCaptureDeviceAleradyEndedOnFatalError = 4,
+  kFrameSinkVideoCaptureDeviceAlreadyEndedOnFatalError = 4,
   kFrameSinkVideoCaptureDeviceEncounteredFatalError = 5,
   kV4L2FailedToOpenV4L2DeviceDriverFile = 6,
   kV4L2ThisIsNotAV4L2VideoCaptureDevice = 7,
@@ -189,7 +187,31 @@ enum class VideoCaptureError {
   kFuchsiaSysmemInvalidBufferSize = 120,
   kFuchsiaUnsupportedPixelFormat = 121,
   kFuchsiaFailedToMapSysmemBuffer = 122,
-  kMaxValue = 122
+  kCrosHalV3DeviceContextDuplicatedClient = 123,
+  kDesktopCaptureDeviceMacFailedStreamCreate = 124,
+  kDesktopCaptureDeviceMacFailedStreamStart = 125,
+  kCrosHalV3BufferManagerFailedToReserveBuffers = 126,
+  kWinMediaFoundationSystemPermissionDenied = 127,
+  kVideoCaptureImplTimedOutOnStart = 128,
+  kLacrosVideoCaptureDeviceProxyAlreadyEndedOnFatalError = 129,
+  kLacrosVideoCaptureDeviceProxyEncounteredFatalError = 130,
+  kScreenCaptureKitFailedGetShareableContent = 131,
+  kScreenCaptureKitFailedAddStreamOutput = 132,
+  kScreenCaptureKitFailedStartCapture = 133,
+  kScreenCaptureKitFailedStopCapture = 134,
+  kScreenCaptureKitStreamError = 135,
+  kScreenCaptureKitFailedToFindSCDisplay = 136,
+  kVideoCaptureControllerUnsupportedPixelFormat = 137,
+  kVideoCaptureControllerInvalid = 138,
+  kVideoCaptureDeviceFactoryChromeOSCreateDeviceFailed = 139,
+  kVideoCaptureDeviceAlreadyReleased = 140,
+  kVideoCaptureSystemDeviceIdNotFound = 141,
+  kVideoCaptureDeviceFactoryWinUnknownError = 142,
+  kWinMediaFoundationDeviceInitializationFailed = 143,
+  kWinMediaFoundationSourceCreationFailed = 144,
+  kWinDirectShowDeviceFilterCreationFailed = 145,
+  kWinDirectShowDeviceInitializationFailed = 146,
+  kMaxValue = 146
 };
 
 // WARNING: Do not change the values assigned to the entries. They are used for
@@ -221,7 +243,9 @@ enum class VideoCaptureFrameDropReason {
   kResolutionAdapterHasNoCallbacks = 24,
   kVideoTrackFrameDelivererNotEnabledReplacingWithBlackFrame = 25,
   kRendererSinkFrameDelivererIsNotStarted = 26,
-  kMaxValue = 26
+  kCropVersionNotCurrent = 27,
+  kGpuMemoryBufferMapFailed = 28,
+  kMaxValue = 28
 };
 
 // Assert that the int:frequency mapping is correct.
@@ -253,10 +277,6 @@ struct CAPTURE_EXPORT VideoCaptureFormat {
   static bool ComparePixelFormatPreference(const VideoPixelFormat& lhs,
                                            const VideoPixelFormat& rhs);
 
-  // Returns the required buffer size to hold an image of a given
-  // VideoCaptureFormat with no padding and tightly packed.
-  size_t ImageAllocationSize() const;
-
   // Checks that all values are in the expected range. All limits are specified
   // in media::Limits.
   bool IsValid() const;
@@ -278,11 +298,19 @@ typedef std::vector<VideoCaptureFormat> VideoCaptureFormats;
 // format of frames in which the client would like to have captured frames
 // returned.
 struct CAPTURE_EXPORT VideoCaptureParams {
-  // Result struct for SuggestContraints() method.
+  // Result struct for SuggestConstraints() method.
   struct SuggestedConstraints {
     gfx::Size min_frame_size;
     gfx::Size max_frame_size;
     bool fixed_aspect_ratio;
+
+    std::string ToString() const;
+
+    bool operator==(const SuggestedConstraints& other) const {
+      return min_frame_size == other.min_frame_size &&
+             max_frame_size == other.max_frame_size &&
+             fixed_aspect_ratio == other.fixed_aspect_ratio;
+    }
   };
 
   VideoCaptureParams();
@@ -299,7 +327,8 @@ struct CAPTURE_EXPORT VideoCaptureParams {
   bool operator==(const VideoCaptureParams& other) const {
     return requested_format == other.requested_format &&
            resolution_change_policy == other.resolution_change_policy &&
-           power_line_frequency == other.power_line_frequency;
+           power_line_frequency == other.power_line_frequency &&
+           is_high_dpi_enabled == other.is_high_dpi_enabled;
   }
 
   // Requests a resolution and format at which the capture will occur.
@@ -317,8 +346,16 @@ struct CAPTURE_EXPORT VideoCaptureParams {
   // allowing the driver to apply appropriate settings for optimal
   // exposures around the face area. Currently only applicable on
   // Android platform with Camera2 driver support.
-  bool enable_face_detection;
+  bool enable_face_detection = false;
+
+  // Flag indicating whether HiDPI mode should be enabled for tab capture
+  // sessions.
+  bool is_high_dpi_enabled = true;
 };
+
+CAPTURE_EXPORT std::ostream& operator<<(
+    std::ostream& os,
+    const VideoCaptureParams::SuggestedConstraints& constraints);
 
 }  // namespace media
 

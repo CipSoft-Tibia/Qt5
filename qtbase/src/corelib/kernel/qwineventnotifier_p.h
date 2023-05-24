@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWINEVENTNOTIFIER_P_H
 #define QWINEVENTNOTIFIER_P_H
@@ -63,19 +27,20 @@ class QWinEventNotifierPrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QWinEventNotifier)
 public:
-    QWinEventNotifierPrivate()
-    : handleToEvent(0), enabled(false) {}
-    QWinEventNotifierPrivate(HANDLE h, bool e)
-    : handleToEvent(h), enabled(e) {}
+    QWinEventNotifierPrivate() : QWinEventNotifierPrivate(0, false) {}
+    QWinEventNotifierPrivate(HANDLE h, bool e);
+    virtual ~QWinEventNotifierPrivate();
 
-    static QWinEventNotifierPrivate *get(QWinEventNotifier *q) { return q->d_func(); }
-    bool registerWaitObject();
-    void unregisterWaitObject();
+    static void CALLBACK waitCallback(PTP_CALLBACK_INSTANCE instance, PVOID context,
+                                      PTP_WAIT wait, TP_WAIT_RESULT waitResult);
 
     HANDLE handleToEvent;
-    HANDLE waitHandle = NULL;
-    QAtomicInt signaledCount;
+    PTP_WAIT waitObject = NULL;
+
+    enum PostingState { NotPosted = 0, Posted, IgnorePosted };
+    QAtomicInt winEventActPosted;
     bool enabled;
+    bool registered;
 };
 
 QT_END_NAMESPACE

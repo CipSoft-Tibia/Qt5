@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,49 +8,51 @@
 
 #include <utility>
 
+#include "constants/ascii.h"
 #include "core/fpdfdoc/cpdf_formcontrol.h"
-#include "fpdfsdk/cpdfsdk_formfillenvironment.h"
 #include "fpdfsdk/cpdfsdk_widget.h"
-#include "fpdfsdk/formfiller/cffl_formfiller.h"
+#include "fpdfsdk/formfiller/cffl_formfield.h"
 #include "fpdfsdk/pwl/cpwl_special_button.h"
 #include "public/fpdf_fwlevent.h"
+#include "third_party/base/check.h"
 
-CFFL_CheckBox::CFFL_CheckBox(CPDFSDK_FormFillEnvironment* pApp,
+CFFL_CheckBox::CFFL_CheckBox(CFFL_InteractiveFormFiller* pFormFiller,
                              CPDFSDK_Widget* pWidget)
-    : CFFL_Button(pApp, pWidget) {}
+    : CFFL_Button(pFormFiller, pWidget) {}
 
 CFFL_CheckBox::~CFFL_CheckBox() = default;
 
 std::unique_ptr<CPWL_Wnd> CFFL_CheckBox::NewPWLWindow(
     const CPWL_Wnd::CreateParams& cp,
-    std::unique_ptr<IPWL_SystemHandler::PerWindowData> pAttachedData) {
+    std::unique_ptr<IPWL_FillerNotify::PerWindowData> pAttachedData) {
   auto pWnd = std::make_unique<CPWL_CheckBox>(cp, std::move(pAttachedData));
   pWnd->Realize();
   pWnd->SetCheck(m_pWidget->IsChecked());
   return std::move(pWnd);
 }
 
-bool CFFL_CheckBox::OnKeyDown(uint32_t nKeyCode, uint32_t nFlags) {
+bool CFFL_CheckBox::OnKeyDown(FWL_VKEYCODE nKeyCode,
+                              Mask<FWL_EVENTFLAG> nFlags) {
   switch (nKeyCode) {
     case FWL_VKEY_Return:
     case FWL_VKEY_Space:
       return true;
     default:
-      return CFFL_FormFiller::OnKeyDown(nKeyCode, nFlags);
+      return CFFL_FormField::OnKeyDown(nKeyCode, nFlags);
   }
 }
-bool CFFL_CheckBox::OnChar(CPDFSDK_Annot* pAnnot,
-                           uint32_t nChar,
-                           uint32_t nFlags) {
-  switch (nChar) {
-    case FWL_VKEY_Return:
-    case FWL_VKEY_Space: {
-      CPDFSDK_PageView* pPageView = pAnnot->GetPageView();
-      ASSERT(pPageView);
 
-      ObservedPtr<CPDFSDK_Annot> pObserved(m_pWidget.Get());
-      if (m_pFormFillEnv->GetInteractiveFormFiller()->OnButtonUp(
-              &pObserved, pPageView, nFlags)) {
+bool CFFL_CheckBox::OnChar(CPDFSDK_Widget* pWidget,
+                           uint32_t nChar,
+                           Mask<FWL_EVENTFLAG> nFlags) {
+  switch (nChar) {
+    case pdfium::ascii::kReturn:
+    case pdfium::ascii::kSpace: {
+      CPDFSDK_PageView* pPageView = pWidget->GetPageView();
+      DCHECK(pPageView);
+
+      ObservedPtr<CPDFSDK_Widget> pObserved(m_pWidget);
+      if (m_pFormFiller->OnButtonUp(pObserved, pPageView, nFlags)) {
         if (!pObserved)
           m_pWidget = nullptr;
         return true;
@@ -60,63 +62,56 @@ bool CFFL_CheckBox::OnChar(CPDFSDK_Annot* pAnnot,
         return true;
       }
 
-      CFFL_FormFiller::OnChar(pAnnot, nChar, nFlags);
+      CFFL_FormField::OnChar(pWidget, nChar, nFlags);
 
-      CPWL_CheckBox* pWnd = GetCheckBox(pPageView, true);
+      CPWL_CheckBox* pWnd = CreateOrUpdatePWLCheckBox(pPageView);
       if (pWnd && !pWnd->IsReadOnly()) {
-        CPDFSDK_Widget* pWidget = ToCPDFSDKWidget(pAnnot);
-        pWnd->SetCheck(!pWidget->IsChecked());
+        ObservedPtr<CPWL_CheckBox> pObservedBox(pWnd);
+        const bool is_checked = pWidget->IsChecked();
+        if (pObservedBox) {
+          pObservedBox->SetCheck(!is_checked);
+        }
       }
-
       return CommitData(pPageView, nFlags);
     }
     default:
-      return CFFL_FormFiller::OnChar(pAnnot, nChar, nFlags);
+      return CFFL_FormField::OnChar(pWidget, nChar, nFlags);
   }
 }
 
 bool CFFL_CheckBox::OnLButtonUp(CPDFSDK_PageView* pPageView,
-                                CPDFSDK_Annot* pAnnot,
-                                uint32_t nFlags,
+                                CPDFSDK_Widget* pWidget,
+                                Mask<FWL_EVENTFLAG> nFlags,
                                 const CFX_PointF& point) {
-  CFFL_Button::OnLButtonUp(pPageView, pAnnot, nFlags, point);
-
-  if (!IsValid())
+  CFFL_Button::OnLButtonUp(pPageView, pWidget, nFlags, point);
+  if (!IsValid()) {
     return true;
-
-  CPWL_CheckBox* pWnd = GetCheckBox(pPageView, true);
-  if (pWnd) {
-    CPDFSDK_Widget* pWidget = ToCPDFSDKWidget(pAnnot);
-    pWnd->SetCheck(!pWidget->IsChecked());
   }
-
+  CPWL_CheckBox* pWnd = CreateOrUpdatePWLCheckBox(pPageView);
+  if (pWnd) {
+    ObservedPtr<CPWL_CheckBox> pObservedBox(pWnd);
+    const bool is_checked = pWidget->IsChecked();
+    if (pObservedBox) {
+      pObservedBox->SetCheck(!is_checked);
+    }
+  }
   return CommitData(pPageView, nFlags);
 }
 
-bool CFFL_CheckBox::IsDataChanged(CPDFSDK_PageView* pPageView) {
-  CPWL_CheckBox* pWnd = GetCheckBox(pPageView, false);
+bool CFFL_CheckBox::IsDataChanged(const CPDFSDK_PageView* pPageView) {
+  CPWL_CheckBox* pWnd = GetPWLCheckBox(pPageView);
   return pWnd && pWnd->IsChecked() != m_pWidget->IsChecked();
 }
 
-void CFFL_CheckBox::SaveData(CPDFSDK_PageView* pPageView) {
-  CPWL_CheckBox* pWnd = GetCheckBox(pPageView, false);
+void CFFL_CheckBox::SaveData(const CPDFSDK_PageView* pPageView) {
+  CPWL_CheckBox* pWnd = GetPWLCheckBox(pPageView);
   if (!pWnd)
     return;
 
   bool bNewChecked = pWnd->IsChecked();
-  if (bNewChecked) {
-    CPDF_FormField* pField = m_pWidget->GetFormField();
-    for (int32_t i = 0, sz = pField->CountControls(); i < sz; i++) {
-      if (CPDF_FormControl* pCtrl = pField->GetControl(i)) {
-        if (pCtrl->IsChecked()) {
-          break;
-        }
-      }
-    }
-  }
-  ObservedPtr<CPDFSDK_Widget> observed_widget(m_pWidget.Get());
+  ObservedPtr<CPDFSDK_Widget> observed_widget(m_pWidget);
   ObservedPtr<CFFL_CheckBox> observed_this(this);
-  m_pWidget->SetCheck(bNewChecked, NotificationOption::kDoNotNotify);
+  m_pWidget->SetCheck(bNewChecked);
   if (!observed_widget)
     return;
 
@@ -127,7 +122,12 @@ void CFFL_CheckBox::SaveData(CPDFSDK_PageView* pPageView) {
   SetChangeMark();
 }
 
-CPWL_CheckBox* CFFL_CheckBox::GetCheckBox(CPDFSDK_PageView* pPageView,
-                                          bool bNew) {
-  return static_cast<CPWL_CheckBox*>(GetPWLWindow(pPageView, bNew));
+CPWL_CheckBox* CFFL_CheckBox::GetPWLCheckBox(
+    const CPDFSDK_PageView* pPageView) const {
+  return static_cast<CPWL_CheckBox*>(GetPWLWindow(pPageView));
+}
+
+CPWL_CheckBox* CFFL_CheckBox::CreateOrUpdatePWLCheckBox(
+    const CPDFSDK_PageView* pPageView) {
+  return static_cast<CPWL_CheckBox*>(CreateOrUpdatePWLWindow(pPageView));
 }

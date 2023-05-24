@@ -1,60 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef _USE_MATH_DEFINES
 # define _USE_MATH_DEFINES // For MSVC
 #endif
 
 #include "qcylindermesh.h"
+#include "qcylindergeometryview.h"
 
-#include <Qt3DExtras/qcylindergeometry.h>
-#include <Qt3DRender/qbuffer.h>
-#include <Qt3DRender/qbufferdatagenerator.h>
-#include <Qt3DRender/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
+#include <Qt3DCore/qattribute.h>
 #include <QtGui/QVector3D>
 
 #include <qmath.h>
 
 QT_BEGIN_NAMESPACE
 
-using namespace Qt3DRender;
+using namespace Qt3DCore;
 
 namespace Qt3DExtras {
 
@@ -63,6 +26,9 @@ namespace Qt3DExtras {
  * \instantiates Qt3DExtras::QCylinderMesh
  * \inqmlmodule Qt3D.Extras
  * \brief A cylindrical mesh.
+ *
+ * This component can be used to render a cylinder when combined with a
+ * material component.
  */
 
 /*!
@@ -91,28 +57,31 @@ namespace Qt3DExtras {
 
 /*!
  * \class Qt3DExtras::QCylinderMesh
-   \ingroup qt3d-extras-geometries
+ * \ingroup qt3d-extras-geometries
  * \inheaderfile Qt3DExtras/QCylinderMesh
  * \inmodule Qt3DExtras
  *
  * \inherits Qt3DRender::QGeometryRenderer
  *
  * \brief A cylindrical mesh.
+ *
+ * This component can be used to render a cylinder when combined with a
+ * material component.
  */
 
 /*!
  * Constructs a new QCylinderMesh with \a parent.
  */
 QCylinderMesh::QCylinderMesh(QNode *parent)
-    : QGeometryRenderer(parent)
+    : Qt3DRender::QGeometryRenderer(parent)
 {
-    QCylinderGeometry *geometry = new QCylinderGeometry(this);
-    QObject::connect(geometry, &QCylinderGeometry::radiusChanged, this, &QCylinderMesh::radiusChanged);
-    QObject::connect(geometry, &QCylinderGeometry::ringsChanged, this, &QCylinderMesh::ringsChanged);
-    QObject::connect(geometry, &QCylinderGeometry::slicesChanged, this, &QCylinderMesh::slicesChanged);
-    QObject::connect(geometry, &QCylinderGeometry::lengthChanged, this, &QCylinderMesh::lengthChanged);
+    QCylinderGeometryView *geometry = new QCylinderGeometryView(this);
+    QObject::connect(geometry, &QCylinderGeometryView::radiusChanged, this, &QCylinderMesh::radiusChanged);
+    QObject::connect(geometry, &QCylinderGeometryView::ringsChanged, this, &QCylinderMesh::ringsChanged);
+    QObject::connect(geometry, &QCylinderGeometryView::slicesChanged, this, &QCylinderMesh::slicesChanged);
+    QObject::connect(geometry, &QCylinderGeometryView::lengthChanged, this, &QCylinderMesh::lengthChanged);
 
-    QGeometryRenderer::setGeometry(geometry);
+    setView(geometry);
 }
 
 /*! \internal */
@@ -122,22 +91,22 @@ QCylinderMesh::~QCylinderMesh()
 
 void QCylinderMesh::setRings(int rings)
 {
-    static_cast<QCylinderGeometry *>(geometry())->setRings(rings);
+    static_cast<QCylinderGeometryView *>(view())->setRings(rings);
 }
 
 void QCylinderMesh::setSlices(int slices)
 {
-    static_cast<QCylinderGeometry *>(geometry())->setSlices(slices);
+    static_cast<QCylinderGeometryView *>(view())->setSlices(slices);
 }
 
 void QCylinderMesh::setRadius(float radius)
 {
-    static_cast<QCylinderGeometry *>(geometry())->setRadius(radius);
+    static_cast<QCylinderGeometryView *>(view())->setRadius(radius);
 }
 
 void QCylinderMesh::setLength(float length)
 {
-    static_cast<QCylinderGeometry *>(geometry())->setLength(length);
+    static_cast<QCylinderGeometryView *>(view())->setLength(length);
 }
 
 /*!
@@ -147,7 +116,7 @@ void QCylinderMesh::setLength(float length)
  */
 int QCylinderMesh::rings() const
 {
-    return static_cast<QCylinderGeometry *>(geometry())->rings();
+    return static_cast<QCylinderGeometryView *>(view())->rings();
 }
 
 /*!
@@ -157,7 +126,7 @@ int QCylinderMesh::rings() const
  */
 int QCylinderMesh::slices() const
 {
-    return static_cast<QCylinderGeometry *>(geometry())->slices();
+    return static_cast<QCylinderGeometryView *>(view())->slices();
 }
 
 /*!
@@ -167,7 +136,7 @@ int QCylinderMesh::slices() const
  */
 float QCylinderMesh::radius() const
 {
-    return static_cast<QCylinderGeometry *>(geometry())->radius();
+    return static_cast<QCylinderGeometryView *>(view())->radius();
 }
 
 /*!
@@ -177,9 +146,11 @@ float QCylinderMesh::radius() const
  */
 float QCylinderMesh::length() const
 {
-    return static_cast<QCylinderGeometry *>(geometry())->length();
+    return static_cast<QCylinderGeometryView *>(view())->length();
 }
 
 } // namespace Qt3DExtras
 
 QT_END_NAMESPACE
+
+#include "moc_qcylindermesh.cpp"

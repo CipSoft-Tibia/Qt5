@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QApplication>
 #include <QMainWindow>
@@ -44,7 +19,7 @@
 class GraphicsView : public QGraphicsView
 {
 public:
-    GraphicsView(QGraphicsScene *scene, QWidget *parent = 0)
+    GraphicsView(QGraphicsScene *scene, QWidget *parent = nullptr)
         : QGraphicsView(scene, parent)
     {
     }
@@ -78,7 +53,7 @@ protected:
 class StandardGestures : public QWidget
 {
 public:
-    StandardGestures(QWidget *parent = 0)
+    StandardGestures(QWidget *parent = nullptr)
             : QWidget(parent)
     {
         scene = new QGraphicsScene(this);
@@ -96,7 +71,7 @@ class GlobalViewGestures : public QWidget
 {
     Q_OBJECT
 public:
-    GlobalViewGestures(QWidget *parent = 0)
+    GlobalViewGestures(QWidget *parent = nullptr)
             : QWidget(parent)
     {
         scene = new QGraphicsScene(this);
@@ -116,7 +91,7 @@ class GraphicsItemGestures : public QWidget
 {
     Q_OBJECT
 public:
-    GraphicsItemGestures(QWidget *parent = 0)
+    GraphicsItemGestures(QWidget *parent = nullptr)
             : QWidget(parent)
     {
         scene = new QGraphicsScene(this);
@@ -168,8 +143,8 @@ MainWindow::MainWindow()
 void MainWindow::setDirectory(const QString &path)
 {
     QDir dir(path);
-    QStringList files = dir.entryList(QDir::Files | QDir::Readable | QDir::NoDotAndDotDot);
-    foreach(const QString &file, files) {
+    const QStringList files = dir.entryList(QDir::Files | QDir::Readable | QDir::NoDotAndDotDot);
+    for (const QString &file : files) {
         QImageReader img(path + QLatin1Char('/') +file);
         QImage image = img.read();
         if (!image.isNull()) {

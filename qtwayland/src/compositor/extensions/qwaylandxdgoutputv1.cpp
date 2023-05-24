@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QWaylandCompositor>
 
@@ -38,8 +12,8 @@ QT_BEGIN_NAMESPACE
 
 /*!
  * \qmltype XdgOutputManagerV1
- * \inqmlmodule QtWayland.Compositor
  * \instantiates QWaylandXdgOutputManagerV1
+ * \inqmlmodule QtWayland.Compositor.XdgShell
  * \since 5.14
  * \brief Provides an extension for describing outputs in a desktop oriented fashion.
  *
@@ -57,8 +31,8 @@ QT_BEGIN_NAMESPACE
  * XdgOutputManagerV1 component and add it to the list of extensions supported by the compositor,
  * and associated each XdgOutputV1 with its WaylandOutput:
  *
- * \qml \QtMinorVersion
- * import QtWayland.Compositor 1.\1
+ * \qml
+ * import QtWayland.Compositor
  *
  * WaylandCompositor {
  *     XdgOutputManagerV1 {
@@ -232,7 +206,7 @@ QWaylandXdgOutputV1::~QWaylandXdgOutputV1()
 }
 
 /*!
- * \qmlproperty XdgOutputManagerV1 QtWaylandCompositor::XdgOutputV1::manager
+ * \qmlproperty XdgOutputManagerV1 XdgOutputV1::manager
  * \readonly
  *
  * This property holds the object that manages this XdgOutputV1.
@@ -250,7 +224,7 @@ QWaylandXdgOutputManagerV1 *QWaylandXdgOutputV1::manager() const
 }
 
 /*!
- * \qmlproperty WaylandOutput QtWaylandCompositor::XdgOutputV1::output
+ * \qmlproperty WaylandOutput XdgOutputV1::output
  * \readonly
  *
  * This property holds the WaylandOutput associated with this XdgOutputV1.
@@ -268,7 +242,7 @@ QWaylandOutput *QWaylandXdgOutputV1::output() const
 }
 
 /*!
- * \qmlproperty string QtWaylandCompositor::XdgOutputV1::name
+ * \qmlproperty string XdgOutputV1::name
  *
  * This property holds the name of this output.
  *
@@ -319,7 +293,7 @@ void QWaylandXdgOutputV1::setName(const QString &name)
 }
 
 /*!
- *  \qmlproperty string QtWaylandCompositor::XdgOutputV1::description
+ *  \qmlproperty string XdgOutputV1::description
  *
  *  This property holds the description of this output.
  *
@@ -360,7 +334,7 @@ void QWaylandXdgOutputV1::setDescription(const QString &description)
 }
 
 /*!
- * \qmlproperty point QtWaylandCompositor::XdgOutputV1::logicalPosition
+ * \qmlproperty point XdgOutputV1::logicalPosition
  *
  * This property holds the coordinates of the output within the global compositor space.
  *
@@ -396,7 +370,7 @@ void QWaylandXdgOutputV1::setLogicalPosition(const QPoint &position)
 }
 
 /*!
- * \qmlproperty size QtWaylandCompositor::XdgOutputV1::logicalSize
+ * \qmlproperty size XdgOutputV1::logicalSize
  *
  * This property holds the size of the output in the global compositor space.
  *
@@ -448,7 +422,7 @@ void QWaylandXdgOutputV1::setLogicalSize(const QSize &size)
 }
 
 /*!
- * \qmlproperty rect QtWaylandCompositor::XdgOutputV1::logicalGeometry
+ * \qmlproperty rect XdgOutputV1::logicalGeometry
  * \readonly
  *
  * This property holds the position and size of the output in the global compositor space.
@@ -587,3 +561,5 @@ void QWaylandXdgOutputV1Private::zxdg_output_v1_destroy(Resource *resource)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandxdgoutputv1.cpp"

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <QtTest/QSignalSpy>
@@ -34,8 +9,8 @@
 #include <QtQuick/private/qquickrectangle_p.h>
 #include <QtQuick/qquickview.h>
 #include <QtQml/qqmlcontext.h>
-#include "../../../shared/util.h"
-#include "../../shared/viewtestutil.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/viewtestutils_p.h>
 
 Q_LOGGING_CATEGORY(lcPointerTests, "qt.quick.pointer.tests")
 
@@ -43,13 +18,15 @@ class tst_QQuickWheelHandler: public QQmlDataTest
 {
     Q_OBJECT
 public:
-    tst_QQuickWheelHandler() { }
+    tst_QQuickWheelHandler() : QQmlDataTest(QT_QMLTEST_DATADIR) { }
 
 private slots:
     void singleHandler_data();
     void singleHandler();
     void nestedHandler_data();
     void nestedHandler();
+    void blocking_data();
+    void blocking();
 
 private:
     void sendWheelEvent(QQuickView &window, QPoint pos, QPoint angleDelta,
@@ -188,13 +165,13 @@ void tst_QQuickWheelHandler::singleHandler()
         sendWheelEvent(window, eventPos, eventAngleDelta, eventPixelDelta, eventModifiers, Qt::NoScrollPhase, eventInverted);
     }
     QCOMPARE(rect->position().toPoint(), expectedPosition);
-    QCOMPARE(activeChangedSpy.count(), 1);
+    QCOMPARE(activeChangedSpy.size(), 1);
     QCOMPARE(handler->active(), true);
     QCOMPARE(rect->scale(), expectedScale);
     QCOMPARE(rect->rotation(), expectedRotation);
     if (!eventPhases) {
         QTRY_COMPARE(handler->active(), false);
-        QCOMPARE(activeChangedSpy.count(), 2);
+        QCOMPARE(activeChangedSpy.size(), 2);
     }
 
     // restore by rotating backwards
@@ -204,7 +181,7 @@ void tst_QQuickWheelHandler::singleHandler()
     } else {
         sendWheelEvent(window, eventPos, eventAngleDelta * -1, eventPixelDelta * -1, eventModifiers, Qt::NoScrollPhase, eventInverted);
     }
-    QCOMPARE(activeChangedSpy.count(), eventPhases ? 2 : 3);
+    QCOMPARE(activeChangedSpy.size(), eventPhases ? 2 : 3);
     QCOMPARE(handler->active(), !eventPhases);
     QCOMPARE(rect->position().toPoint(), QPoint(0, 0));
     QCOMPARE(rect->scale(), 1);
@@ -329,14 +306,59 @@ void tst_QQuickWheelHandler::nestedHandler()
     QCOMPARE(innerRect->scale(), innerScale);
     QCOMPARE(innerRect->rotation(), innerRotation);
     QCOMPARE(outerRect->position().toPoint(), outerPosition);
-    QCOMPARE(outerActiveChangedSpy.count(), 1);
+    QCOMPARE(outerActiveChangedSpy.size(), 1);
     QCOMPARE(outerHandler->active(), true);
     QCOMPARE(outerRect->scale(), outerScale);
     QCOMPARE(outerRect->rotation(), outerRotation);
     if (!eventPhases) {
         QTRY_COMPARE(outerHandler->active(), false);
-        QCOMPARE(outerActiveChangedSpy.count(), 2);
+        QCOMPARE(outerActiveChangedSpy.size(), 2);
     }
+}
+
+void tst_QQuickWheelHandler::blocking_data()
+{
+    // handler properties
+    QTest::addColumn<bool>("blocking");
+
+    // move the item
+    QTest::newRow("default: blocking") << true;
+    QTest::newRow("nonblocking") << false;
+}
+
+void tst_QQuickWheelHandler::blocking()
+{
+    QFETCH(bool, blocking);
+
+    QQuickView window;
+    QByteArray errorMessage;
+    QVERIFY2(QQuickTest::initView(window, testFileUrl("nested.qml"), true, &errorMessage), errorMessage.constData());
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QQuickItem *outerRect = window.rootObject();
+    QVERIFY(outerRect != nullptr);
+    QQuickWheelHandler *outerHandler = outerRect->findChild<QQuickWheelHandler*>("outerWheelHandler");
+    QVERIFY(outerHandler != nullptr);
+    QQuickWheelHandler *innerHandler = outerRect->findChild<QQuickWheelHandler*>("innerWheelHandler");
+    QVERIFY(innerHandler != nullptr);
+    QQuickItem *innerRect = innerHandler->parentItem();
+    QVERIFY(innerRect != nullptr);
+    QPoint eventPos = innerRect->mapToScene(innerRect->boundingRect().center()).toPoint();
+
+    QCOMPARE(innerHandler->isBlocking(), true); // default property value
+    innerHandler->setBlocking(blocking);
+    QSignalSpy innerActiveChangedSpy(innerHandler, SIGNAL(activeChanged()));
+    QSignalSpy outerActiveChangedSpy(outerHandler, SIGNAL(activeChanged()));
+
+    qreal innerPosWas = innerRect->position().x();
+    qreal outerPosWas = outerRect->position().x();
+
+    sendWheelEvent(window, eventPos, {0, 120}, {0, 0}, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QTRY_COMPARE(innerActiveChangedSpy.size(), 2);
+    QCOMPARE(innerRect->position().x(), innerPosWas + 15);
+    QCOMPARE(outerActiveChangedSpy.size(), blocking ? 0 : 2);
+    QCOMPARE(outerRect->position().x(), outerPosWas + (blocking ? 0 : 15));
 }
 
 QTEST_MAIN(tst_QQuickWheelHandler)

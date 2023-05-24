@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/xychart_p.h>
 #include <QtCharts/QXYSeries>
@@ -40,7 +14,7 @@
 #include <QtCore/QAbstractItemModel>
 
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 XYChart::XYChart(QXYSeries *series, QGraphicsItem *item):
       ChartItem(series->d_func(),item),
@@ -48,21 +22,22 @@ XYChart::XYChart(QXYSeries *series, QGraphicsItem *item):
       m_animation(0),
       m_dirty(true)
 {
-    QObject::connect(series, SIGNAL(pointReplaced(int)), this, SLOT(handlePointReplaced(int)));
-    QObject::connect(series, SIGNAL(pointsReplaced()), this, SLOT(handlePointsReplaced()));
-    QObject::connect(series, SIGNAL(pointAdded(int)), this, SLOT(handlePointAdded(int)));
-    QObject::connect(series, SIGNAL(pointRemoved(int)), this, SLOT(handlePointRemoved(int)));
-    QObject::connect(series, SIGNAL(pointsRemoved(int, int)), this, SLOT(handlePointsRemoved(int, int)));
-    QObject::connect(this, SIGNAL(clicked(QPointF)), series, SIGNAL(clicked(QPointF)));
-    QObject::connect(this, SIGNAL(hovered(QPointF,bool)), series, SIGNAL(hovered(QPointF,bool)));
-    QObject::connect(this, SIGNAL(pressed(QPointF)), series, SIGNAL(pressed(QPointF)));
-    QObject::connect(this, SIGNAL(released(QPointF)), series, SIGNAL(released(QPointF)));
-    QObject::connect(this, SIGNAL(doubleClicked(QPointF)), series, SIGNAL(doubleClicked(QPointF)));
-    QObject::connect(series, &QAbstractSeries::useOpenGLChanged,
-                     this, &XYChart::handleDomainUpdated);
+    connect(series->d_func(), &QXYSeriesPrivate::seriesUpdated,
+            this, &XYChart::handleSeriesUpdated);
+    connect(series, &QXYSeries::pointReplaced, this, &XYChart::handlePointReplaced);
+    connect(series, &QXYSeries::pointsReplaced, this, &XYChart::handlePointsReplaced);
+    connect(series, &QXYSeries::pointAdded, this, &XYChart::handlePointAdded);
+    connect(series, &QXYSeries::pointRemoved, this, &XYChart::handlePointRemoved);
+    connect(series, &QXYSeries::pointsRemoved, this, &XYChart::handlePointsRemoved);
+    connect(this, &XYChart::clicked, series, &QXYSeries::clicked);
+    connect(this, &XYChart::hovered, series, &QXYSeries::hovered);
+    connect(this, &XYChart::pressed, series, &QXYSeries::pressed);
+    connect(this, &XYChart::released, series, &QXYSeries::released);
+    connect(this, &XYChart::doubleClicked, series, &QXYSeries::doubleClicked);
+    connect(series, &QAbstractSeries::useOpenGLChanged, this, &XYChart::handleDomainUpdated);
 }
 
-void XYChart::setGeometryPoints(const QVector<QPointF> &points)
+void XYChart::setGeometryPoints(const QList<QPointF> &points)
 {
     m_points = points;
 }
@@ -77,16 +52,16 @@ void XYChart::setDirty(bool dirty)
     m_dirty = dirty;
 }
 
-// Returns a vector with same size as geometryPoints vector, indicating
+// Returns a list with same size as geometryPoints list, indicating
 // the off grid status of points.
-QVector<bool> XYChart::offGridStatusVector()
+QList<bool> XYChart::offGridStatusVector()
 {
     qreal minX = domain()->minX();
     qreal maxX = domain()->maxX();
     qreal minY = domain()->minY();
     qreal maxY = domain()->maxY();
 
-    QVector<bool> returnVector;
+    QList<bool> returnVector;
     returnVector.resize(m_points.size());
     // During remove animation series may have different number of points,
     // so ensure we don't go over the index. No need to check for zero points, this
@@ -107,7 +82,8 @@ QVector<bool> XYChart::offGridStatusVector()
     return returnVector;
 }
 
-void XYChart::updateChart(QVector<QPointF> &oldPoints, QVector<QPointF> &newPoints, int index)
+void XYChart::updateChart(const QList<QPointF> &oldPoints, const QList<QPointF> &newPoints,
+                          int index)
 {
 
     if (m_animation) {
@@ -145,13 +121,13 @@ void XYChart::handlePointAdded(int index)
     if (m_series->useOpenGL()) {
         updateGlChart();
     } else {
-        QVector<QPointF> points;
+        QList<QPointF> points;
         if (m_dirty || m_points.isEmpty()) {
-            points = domain()->calculateGeometryPoints(m_series->pointsVector());
+            points = domain()->calculateGeometryPoints(m_series->points());
         } else {
             points = m_points;
-            QPointF point = domain()->calculateGeometryPoint(m_series->pointsVector().at(index),
-                                                             m_validData);
+            QPointF point =
+                    domain()->calculateGeometryPoint(m_series->points().at(index), m_validData);
             if (!m_validData)
                 m_points.clear();
             else
@@ -169,9 +145,9 @@ void XYChart::handlePointRemoved(int index)
     if (m_series->useOpenGL()) {
         updateGlChart();
     } else {
-        QVector<QPointF> points;
+        QList<QPointF> points;
         if (m_dirty || m_points.isEmpty()) {
-            points = domain()->calculateGeometryPoints(m_series->pointsVector());
+            points = domain()->calculateGeometryPoints(m_series->points());
         } else {
             points = m_points;
             points.remove(index);
@@ -188,9 +164,9 @@ void XYChart::handlePointsRemoved(int index, int count)
     if (m_series->useOpenGL()) {
         updateGlChart();
     } else {
-        QVector<QPointF> points;
+        QList<QPointF> points;
         if (m_dirty || m_points.isEmpty()) {
-            points = domain()->calculateGeometryPoints(m_series->pointsVector());
+            points = domain()->calculateGeometryPoints(m_series->points());
         } else {
             points = m_points;
             points.remove(index, count);
@@ -207,12 +183,12 @@ void XYChart::handlePointReplaced(int index)
     if (m_series->useOpenGL()) {
         updateGlChart();
     } else {
-        QVector<QPointF> points;
+        QList<QPointF> points;
         if (m_dirty || m_points.isEmpty()) {
-            points = domain()->calculateGeometryPoints(m_series->pointsVector());
+            points = domain()->calculateGeometryPoints(m_series->points());
         } else {
-            QPointF point = domain()->calculateGeometryPoint(m_series->pointsVector().at(index),
-                                                             m_validData);
+            QPointF point =
+                    domain()->calculateGeometryPoint(m_series->points().at(index), m_validData);
             if (!m_validData)
                 m_points.clear();
             points = m_points;
@@ -229,7 +205,7 @@ void XYChart::handlePointsReplaced()
         updateGlChart();
     } else {
         // All the points were replaced -> recalculate
-        QVector<QPointF> points = domain()->calculateGeometryPoints(m_series->pointsVector());
+        QList<QPointF> points = domain()->calculateGeometryPoints(m_series->points());
         updateChart(m_points, points, -1);
     }
 }
@@ -240,9 +216,13 @@ void XYChart::handleDomainUpdated()
         updateGlChart();
     } else {
         if (isEmpty()) return;
-        QVector<QPointF> points = domain()->calculateGeometryPoints(m_series->pointsVector());
+        QList<QPointF> points = domain()->calculateGeometryPoints(m_series->points());
         updateChart(m_points, points);
     }
+}
+
+void XYChart::handleSeriesUpdated()
+{
 }
 
 bool XYChart::isEmpty()
@@ -250,6 +230,45 @@ bool XYChart::isEmpty()
     return domain()->isEmpty() || m_series->points().isEmpty();
 }
 
-QT_CHARTS_END_NAMESPACE
+QPointF XYChart::matchForLightMarker(const QPointF &eventPos)
+{
+    if (m_series->lightMarker().isNull()
+            && (m_series->selectedLightMarker().isNull()
+                || m_series->selectedPoints().isEmpty()))
+        return QPointF(qQNaN(), qQNaN()); // 0,0 could actually be in points()
+
+    const bool useSelectedMarker = m_series->lightMarker().isNull();
+
+    QList<QPointF> points;
+    if (useSelectedMarker) {
+        const auto selectedPoints = m_series->selectedPoints();
+        for (const int &selectedPointIndex : selectedPoints)
+            points << m_series->at(selectedPointIndex);
+    } else {
+        points = m_series->points();
+    }
+
+    for (const QPointF &dp : points) {
+        bool ok;
+        const QPointF gp = domain()->calculateGeometryPoint(dp, ok);
+        if (ok) {
+            // '+2' and '+4': There is an addRect for the (mouse-)shape
+            // in LineChartItem::updateGeometry()
+            // This has a margin of 1 to make sure a press in the icon will always be detected,
+            // but as there is a bunch of 'translations' and therefore inaccuracies,
+            // so it is necessary to increase that margin to 2
+            // (otherwise you can click next to an icon, get a click event but not match it)
+            QRectF r(gp.x() - (m_series->markerSize() / 2 + 2),
+                     gp.y() - (m_series->markerSize() / 2 + 2),
+                     m_series->markerSize() + 4, m_series->markerSize() + 4);
+
+            if (r.contains(eventPos))
+                return dp;
+        }
+    }
+    return QPointF(qQNaN(), qQNaN()); // 0,0 could actually be in points()
+}
+
+QT_END_NAMESPACE
 
 #include "moc_xychart_p.cpp"

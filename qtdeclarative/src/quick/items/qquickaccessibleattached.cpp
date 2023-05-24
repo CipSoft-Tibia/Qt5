@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickaccessibleattached_p.h"
 
@@ -109,7 +73,7 @@ QT_BEGIN_NAMESPACE
     This property sets an accessible description.
     Similar to the name it describes the item. The description
     can be a little more verbose and tell what the item does,
-    for example the functionallity of the button it describes.
+    for example the functionality of the button it describes.
 */
 
 /*!
@@ -348,11 +312,33 @@ QQuickAccessibleAttached::QQuickAccessibleAttached(QObject *parent)
     QAccessibleEvent ev(item(), QAccessible::ObjectCreated);
     QAccessible::updateAccessibility(&ev);
 
-    if (!parent->property("value").isNull()) {
-        connect(parent, SIGNAL(valueChanged()), this, SLOT(valueChanged()));
-    }
-    if (!parent->property("cursorPosition").isNull()) {
-        connect(parent, SIGNAL(cursorPositionChanged()), this, SLOT(cursorPositionChanged()));
+    if (const QMetaObject *pmo = parent->metaObject()) {
+        auto connectPropertyChangeSignal = [parent, pmo, this](
+                const char *propertyName, const char *signalName, int slotIndex)
+        {
+            // basically does this:
+            // if the parent has the property \a propertyName with the associated \a signalName:
+            //     connect(parent, signalName, this, slotIndex)
+
+            // Note that we explicitly want to only connect to standard property/signal naming
+            // convention: "value" & "valueChanged"
+            // (e.g. avoid a compound property with e.g. a signal notifier named "updated()")
+            int idxProperty = pmo->indexOfProperty(propertyName);
+            if (idxProperty != -1) {
+                const QMetaProperty property = pmo->property(idxProperty);
+                const QMetaMethod signal = property.notifySignal();
+                if (signal.name() == signalName)
+                    QMetaObject::connect(parent, signal.methodIndex(), this, slotIndex);
+            }
+            return;
+        };
+        const QMetaObject &smo = staticMetaObject;
+        static const int valueChangedIndex = smo.indexOfSlot("valueChanged()");
+        connectPropertyChangeSignal("value", "valueChanged", valueChangedIndex);
+
+        static const int cursorPositionChangedIndex = smo.indexOfSlot("cursorPositionChanged()");
+        connectPropertyChangeSignal("cursorPosition", "cursorPositionChanged",
+                                    cursorPositionChangedIndex);
     }
 
     if (!sigPress.isValid()) {
@@ -406,9 +392,10 @@ void QQuickAccessibleAttached::setRole(QAccessible::Role role)
                 m_state.focusable = true;
             break;
         case QAccessible::StaticText:
-            if (!m_stateExplicitlySet.readOnly) {
+            if (!m_stateExplicitlySet.readOnly)
                 m_state.readOnly = true;
-            }
+            if (!m_stateExplicitlySet.focusable)
+                m_state.focusable = true;
             break;
         default:
             break;
@@ -497,6 +484,17 @@ void QQuickAccessibleAttached::availableActions(QStringList *actions) const
         actions->append(QAccessibleActionInterface::previousPageAction());
     if (isSignalConnected(sigNextPage))
         actions->append(QAccessibleActionInterface::nextPageAction());
+}
+
+QString QQuickAccessibleAttached::stripHtml(const QString &html)
+{
+#ifndef QT_NO_TEXTHTMLPARSER
+    QTextDocument doc;
+    doc.setHtml(html);
+    return doc.toPlainText();
+#else
+    return html;
+#endif
 }
 
 QT_END_NAMESPACE

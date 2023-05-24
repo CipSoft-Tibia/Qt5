@@ -1,59 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QXCBSCREEN_H
 #define QXCBSCREEN_H
 
 #include <qpa/qplatformscreen.h>
+#include <qpa/qplatformscreen_p.h>
 #include <QtCore/QString>
 
 #include <xcb/xcb.h>
 #include <xcb/randr.h>
 #include <xcb/xfixes.h>
-#include <xcb/xinerama.h>
 
 #include "qxcbobject.h"
-#include "qxcbscreen.h"
 
 #include <private/qfontengine_p.h>
 
-#include <QtEdidSupport/private/qedidparser_p.h>
+#include <QtGui/private/qedidparser_p.h>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -139,17 +104,22 @@ private:
     QMap<xcb_visualid_t, quint8> m_visualDepths;
     mutable QMap<xcb_visualid_t, xcb_colormap_t> m_visualColormaps;
     uint16_t m_rotation = 0;
+
+    friend class QXcbConnection;
 };
 
 class Q_XCB_EXPORT QXcbScreen : public QXcbObject, public QPlatformScreen
+                              , public QNativeInterface::Private::QXcbScreen
 {
 public:
     QXcbScreen(QXcbConnection *connection, QXcbVirtualDesktop *virtualDesktop,
-               xcb_randr_output_t outputId, xcb_randr_get_output_info_reply_t *outputInfo,
-               const xcb_xinerama_screen_info_t *xineramaScreenInfo = nullptr, int xineramaScreenIdx = -1);
+               xcb_randr_output_t outputId, xcb_randr_get_output_info_reply_t *outputInfo);
+    QXcbScreen(QXcbConnection *connection, QXcbVirtualDesktop *virtualDesktop,
+               xcb_randr_monitor_info_t *monitorInfo, xcb_timestamp_t timestamp = XCB_NONE);
     ~QXcbScreen();
 
     QString getOutputName(xcb_randr_get_output_info_reply_t *outputInfo);
+    QString getName(xcb_randr_monitor_info_t *monitorInfo);
 
     QPixmap grabWindow(WId window, int x, int y, int width, int height) const override;
 
@@ -163,9 +133,10 @@ public:
     QRect availableGeometry() const override;
     int depth() const override { return screen()->root_depth; }
     QImage::Format format() const override;
+    QColorSpace colorSpace() const override { return m_colorSpace; }
     QSizeF physicalSize() const override { return m_sizeMillimeters; }
     QDpi logicalDpi() const override;
-    QDpi logicalBaseDpi() const override { return QDpi(96, 96); };
+    QDpi logicalBaseDpi() const override { return QDpi(96, 96); }
     QPlatformCursor *cursor() const override;
     qreal refreshRate() const override { return m_refreshRate; }
     Qt::ScreenOrientation orientation() const override { return m_orientation; }
@@ -176,7 +147,7 @@ public:
     bool isPrimary() const { return m_primary; }
 
     int screenNumber() const { return m_virtualDesktop->number(); }
-    static int virtualDesktopNumberStatic(const QScreen *screen);
+    int virtualDesktopNumber() const override { return screenNumber(); }
 
     xcb_screen_t *screen() const { return m_virtualDesktop->screen(); }
     xcb_window_t root() const { return screen()->root; }
@@ -184,9 +155,15 @@ public:
     xcb_randr_crtc_t crtc() const { return m_crtc; }
     xcb_randr_mode_t mode() const { return m_mode; }
 
+    QList<xcb_randr_output_t> outputs() const { return m_outputs; }
+    QList<xcb_randr_crtc_t> crtcs() const { return m_crtcs; }
+
     void setOutput(xcb_randr_output_t outputId,
                    xcb_randr_get_output_info_reply_t *outputInfo);
     void setCrtc(xcb_randr_crtc_t crtc) { m_crtc = crtc; }
+    void setMonitor(xcb_randr_monitor_info_t *monitorInfo, xcb_timestamp_t timestamp = XCB_NONE);
+    QString defaultName();
+    bool isPrimaryInXScreen();
 
     void windowShown(QXcbWindow *window);
     QString windowManagerName() const { return m_virtualDesktop->windowManagerName(); }
@@ -215,24 +192,35 @@ private:
     void sendStartupMessage(const QByteArray &message) const;
     int forcedDpi() const;
 
+    void updateColorSpaceAndEdid();
     QByteArray getOutputProperty(xcb_atom_t atom) const;
     QByteArray getEdid() const;
 
     QXcbVirtualDesktop *m_virtualDesktop;
+    xcb_randr_monitor_info_t *m_monitor;
     xcb_randr_output_t m_output;
     xcb_randr_crtc_t m_crtc;
     xcb_randr_mode_t m_mode = XCB_NONE;
     bool m_primary = false;
+
+    bool m_singlescreen = false;
+
+    QList<xcb_randr_output_t> m_outputs;
+    QList<xcb_randr_crtc_t> m_crtcs;
 
     QString m_outputName;
     QSizeF m_outputSizeMillimeters;
     QSizeF m_sizeMillimeters;
     QRect m_geometry;
     QRect m_availableGeometry;
+    QColorSpace m_colorSpace;
     Qt::ScreenOrientation m_orientation = Qt::PrimaryOrientation;
-    QXcbCursor *m_cursor;
+    std::unique_ptr<QXcbCursor> m_cursor;
     qreal m_refreshRate = 60.0;
     QEdidParser m_edid;
+
+    friend class QXcbConnection;
+    friend class QXcbVirtualDesktop;
 };
 
 #ifndef QT_NO_DEBUG_STREAM

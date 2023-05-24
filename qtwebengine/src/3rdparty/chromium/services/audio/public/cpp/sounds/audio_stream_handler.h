@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,12 +9,14 @@
 #include <memory>
 
 #include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/component_export.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/sequence_checker.h"
 #include "base/strings/string_piece.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "media/audio/audio_io.h"
+#include "media/base/audio_codecs.h"
 #include "media/base/audio_parameters.h"
 #include "media/base/audio_renderer_sink.h"
 #include "media/base/media_export.h"
@@ -23,7 +25,7 @@
 namespace audio {
 
 // This class sends a sound to the audio output device.
-class AudioStreamHandler {
+class COMPONENT_EXPORT(AUDIO_PUBLIC_CPP) AudioStreamHandler {
  public:
   class TestObserver {
    public:
@@ -39,14 +41,18 @@ class AudioStreamHandler {
     virtual void OnPlay() = 0;
 
     // Called when AudioOutputStreamProxy::Stop() was successfully called.
-    virtual void OnStop(size_t cursor) = 0;
+    virtual void OnStop() = 0;
   };
 
   // C-tor for AudioStreamHandler. |wav_data| should be a raw
   // uncompressed WAVE data which will be sent to the audio output device.
-  explicit AudioStreamHandler(
-      SoundsManager::StreamFactoryBinder stream_factory_binder,
-      const base::StringPiece& wav_data);
+  AudioStreamHandler(SoundsManager::StreamFactoryBinder stream_factory_binder,
+                     const base::StringPiece& audio_data,
+                     media::AudioCodec codec);
+
+  AudioStreamHandler(const AudioStreamHandler&) = delete;
+  AudioStreamHandler& operator=(const AudioStreamHandler&) = delete;
+
   virtual ~AudioStreamHandler();
 
   // Returns true iff AudioStreamHandler is correctly initialized;
@@ -77,8 +83,6 @@ class AudioStreamHandler {
   base::TimeDelta duration_;
   std::unique_ptr<AudioStreamContainer> stream_;
   scoped_refptr<base::SequencedTaskRunner> task_runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(AudioStreamHandler);
 };
 
 }  // namespace audio

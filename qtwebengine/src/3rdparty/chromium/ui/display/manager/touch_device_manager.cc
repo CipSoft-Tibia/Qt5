@@ -1,26 +1,28 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/display/manager/touch_device_manager.h"
 
-#include <algorithm>
 #include <set>
 #include <string>
 #include <tuple>
 
+#include "base/containers/contains.h"
 #include "base/files/file_util.h"
 #include "base/hash/hash.h"
 #include "base/logging.h"
-#include "base/stl_util.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "ui/display/manager/managed_display_info.h"
+#include "ui/display/util/display_util.h"
 #include "ui/events/devices/device_data_manager.h"
 #include "ui/events/devices/input_device.h"
 #include "ui/events/devices/touchscreen_device.h"
 
 namespace display {
+
 namespace {
 
 using ManagedDisplayInfoList = std::vector<ManagedDisplayInfo*>;
@@ -31,10 +33,7 @@ constexpr char kFallbackTouchDevicePhys[] = "fallback_touch_device_phys";
 
 // Returns true if |path| is likely a USB device.
 bool IsDeviceConnectedViaUsb(const base::FilePath& path) {
-  std::vector<base::FilePath::StringType> components;
-  path.GetComponents(&components);
-
-  for (const auto& component : components) {
+  for (const auto& component : path.GetComponents()) {
     if (base::StartsWith(component, "usb",
                          base::CompareCase::INSENSITIVE_ASCII)) {
       return true;
@@ -50,11 +49,11 @@ bool IsDeviceConnectedViaUsb(const base::FilePath& path) {
   return false;
 }
 
-// Returns the UDL association score between |display| and |device|. A score <=
+// Returns the USB association score between |display| and |device|. A score <=
 // 0 means that there is no association.
-int GetUdlAssociationScore(const ManagedDisplayInfo* display,
+int GetUsbAssociationScore(const ManagedDisplayInfo* display,
                            const ui::TouchscreenDevice& device) {
-  // If the devices are not both connected via USB, then there cannot be a UDL
+  // If the devices are not both connected via USB, then there cannot be a USB
   // association score.
   if (!IsDeviceConnectedViaUsb(display->sys_path()) ||
       !IsDeviceConnectedViaUsb(device.sys_path))
@@ -62,10 +61,10 @@ int GetUdlAssociationScore(const ManagedDisplayInfo* display,
 
   // The association score is simply the number of prefix path components that
   // sysfs paths have in common.
-  std::vector<base::FilePath::StringType> display_components;
-  std::vector<base::FilePath::StringType> device_components;
-  display->sys_path().GetComponents(&display_components);
-  device.sys_path.GetComponents(&device_components);
+  std::vector<base::FilePath::StringType> display_components =
+      display->sys_path().GetComponents();
+  std::vector<base::FilePath::StringType> device_components =
+      device.sys_path.GetComponents();
 
   std::size_t largest_idx = 0;
   while (largest_idx < display_components.size() &&
@@ -76,16 +75,16 @@ int GetUdlAssociationScore(const ManagedDisplayInfo* display,
   return largest_idx;
 }
 
-// Tries to find a UDL device that best matches |display|. Returns
+// Tries to find a USB device that best matches |display|. Returns
 // |devices.end()| if one is not found.
-DeviceList::const_iterator GuessBestUdlDevice(const ManagedDisplayInfo* display,
+DeviceList::const_iterator GuessBestUsbDevice(const ManagedDisplayInfo* display,
                                               const DeviceList& devices) {
   int best_score = 0;
   DeviceList::const_iterator best_device_it = devices.end();
 
   // TODO(malaykeshav): Migrate to std::max_element in the future.
   for (auto it = devices.begin(); it != devices.end(); it++) {
-    int score = GetUdlAssociationScore(display, *it);
+    int score = GetUsbAssociationScore(display, *it);
     if (score > best_score) {
       best_score = score;
       best_device_it = it;
@@ -96,7 +95,7 @@ DeviceList::const_iterator GuessBestUdlDevice(const ManagedDisplayInfo* display,
 
 // Returns true if |display| is internal.
 bool IsInternalDisplay(const ManagedDisplayInfo* display) {
-  return Display::IsInternalDisplayId(display->id());
+  return IsInternalDisplayId(display->id());
 }
 
 // Returns true if |device| is internal.
@@ -107,8 +106,7 @@ bool IsInternalDevice(const ui::TouchscreenDevice& device) {
 // Returns a pointer to the internal display from the list of |displays|. Will
 // return null if there is no internal display in the list.
 ManagedDisplayInfo* GetInternalDisplay(ManagedDisplayInfoList* displays) {
-  auto it =
-      std::find_if(displays->begin(), displays->end(), &IsInternalDisplay);
+  auto it = base::ranges::find_if(*displays, &IsInternalDisplay);
   return it == displays->end() ? nullptr : *it;
 }
 
@@ -142,7 +140,7 @@ ManagedDisplayInfo* GetBestMatchForDevice(
   // associated with the touch device identified by |identifier|.
   for (auto* display : *displays) {
     // We do not want to match anything to the internal display.
-    if (Display::IsInternalDisplayId(display->id()))
+    if (IsInternalDisplayId(display->id()))
       continue;
     if (!base::Contains(info_map, display->id()))
       continue;
@@ -255,7 +253,7 @@ bool TouchCalibrationData::CalibrationPointPairCompare(
   return pair_1.first < pair_2.first;
 }
 
-TouchCalibrationData::TouchCalibrationData() {}
+TouchCalibrationData::TouchCalibrationData() = default;
 
 TouchCalibrationData::TouchCalibrationData(
     const TouchCalibrationData::CalibrationPointPairQuad& point_pairs,
@@ -263,9 +261,10 @@ TouchCalibrationData::TouchCalibrationData(
     : point_pairs(point_pairs), bounds(bounds) {}
 
 TouchCalibrationData::TouchCalibrationData(
-    const TouchCalibrationData& calibration_data)
-    : point_pairs(calibration_data.point_pairs),
-      bounds(calibration_data.bounds) {}
+    const TouchCalibrationData& calibration_data) = default;
+
+TouchCalibrationData& TouchCalibrationData::operator=(
+    const TouchCalibrationData& calibration_data) = default;
 
 bool TouchCalibrationData::operator==(const TouchCalibrationData& other) const {
   if (bounds != other.bounds)
@@ -330,7 +329,7 @@ void TouchDeviceManager::AssociateTouchscreens(
   AssociateInternalDevices(&displays, &devices);
   AssociateDevicesWithCollision(&displays, &devices);
   AssociateFromHistoricalData(&displays, &devices);
-  AssociateUdlDevices(&displays, &devices);
+  AssociateUsbDevices(&displays, &devices);
   AssociateSameSizeDevices(&displays, &devices);
   AssociateToSingleDisplay(&displays, &devices);
   AssociateAnyRemainingDevices(&displays, &devices);
@@ -345,7 +344,7 @@ void TouchDeviceManager::AssociateInternalDevices(
   VLOG(2) << "Trying to match internal devices (" << displays->size()
           << " displays and " << devices->size() << " devices to match)";
 
-  // Internal device assocation has a couple of gotchas:
+  // Internal device association has a couple of gotchas:
   // - There can be internal devices but no internal display, or visa-versa.
   // - There can be multiple internal devices matching one internal display. We
   //   assume there is at most one internal display.
@@ -416,10 +415,7 @@ void TouchDeviceManager::AssociateDevicesWithCollision(
 
     // Find the display associated with |display_id| from |displays|.
     ManagedDisplayInfoList::iterator display_it =
-        std::find_if(displays->begin(), displays->end(),
-                     [&display_id](ManagedDisplayInfo* info) {
-                       return info->id() == display_id;
-                     });
+        base::ranges::find(*displays, display_id, &ManagedDisplayInfo::id);
 
     if (display_it != displays->end()) {
       VLOG(2) << "=> Matched device " << (*device_it).name << " to display "
@@ -457,21 +453,21 @@ void TouchDeviceManager::AssociateFromHistoricalData(
   }
 }
 
-void TouchDeviceManager::AssociateUdlDevices(ManagedDisplayInfoList* displays,
+void TouchDeviceManager::AssociateUsbDevices(ManagedDisplayInfoList* displays,
                                              DeviceList* devices) {
-  VLOG(2) << "Trying to match udl devices (" << displays->size()
+  VLOG(2) << "Trying to match usb devices (" << displays->size()
           << " displays and " << devices->size() << " devices to match)";
 
   for (auto display_it = displays->begin(); display_it != displays->end();
        display_it++) {
     ManagedDisplayInfo* display = *display_it;
-    auto device_it = GuessBestUdlDevice(display, *devices);
+    auto device_it = GuessBestUsbDevice(display, *devices);
 
     if (device_it != devices->end()) {
       const ui::TouchscreenDevice& device = *device_it;
       VLOG(2) << "=> Matched device " << device.name << " to display "
               << display->name()
-              << " (score=" << GetUdlAssociationScore(display, device) << ")";
+              << " (score=" << GetUsbAssociationScore(display, device) << ")";
       Associate(display, device);
       devices->erase(device_it);
     }
@@ -495,9 +491,8 @@ void TouchDeviceManager::AssociateSameSizeDevices(
     const gfx::Size native_size = display->GetNativeModeSize();
 
     // Try to find an input device with roughly the same size as the display.
-    DeviceList::iterator device_it = std::find_if(
-        devices->begin(), devices->end(),
-        [&native_size](const ui::TouchscreenDevice& device) {
+    DeviceList::iterator device_it = base::ranges::find_if(
+        *devices, [&native_size](const ui::TouchscreenDevice& device) {
           // Allow 1 pixel difference between screen and touchscreen
           // resolutions. Because in some cases for monitor resolution
           // 1024x768 touchscreen's resolution would be 1024x768, but for

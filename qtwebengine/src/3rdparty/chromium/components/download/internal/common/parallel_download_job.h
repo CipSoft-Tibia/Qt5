@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,7 @@
 
 #include <memory>
 #include <unordered_map>
-#include <vector>
 
-#include "base/macros.h"
-#include "base/memory/weak_ptr.h"
 #include "base/timer/timer.h"
 #include "components/download/internal/common/download_job_impl.h"
 #include "components/download/internal/common/download_worker.h"
@@ -36,6 +33,10 @@ class COMPONENTS_DOWNLOAD_EXPORT ParallelDownloadJob
       URLLoaderFactoryProvider::URLLoaderFactoryProviderPtr
           url_loader_factory_provider,
       DownloadJobFactory::WakeLockProviderBinder wake_lock_provider_binder);
+
+  ParallelDownloadJob(const ParallelDownloadJob&) = delete;
+  ParallelDownloadJob& operator=(const ParallelDownloadJob&) = delete;
+
   ~ParallelDownloadJob() override;
 
   // DownloadJobImpl implementation.
@@ -110,9 +111,6 @@ class COMPONENTS_DOWNLOAD_EXPORT ParallelDownloadJob
   // If the download progress is canceled.
   bool is_canceled_;
 
-  // Whether the server accepts range requests.
-  RangeRequestSupportType range_support_;
-
   // URLLoaderFactoryProvider to retrieve the URLLoaderFactory and issue
   // parallel requests.
   URLLoaderFactoryProvider::URLLoaderFactoryProviderPtr
@@ -121,8 +119,6 @@ class COMPONENTS_DOWNLOAD_EXPORT ParallelDownloadJob
   // Callbac used for binding WakeLockProvider receivers as needed by each
   // subrequest.
   const DownloadJobFactory::WakeLockProviderBinder wake_lock_provider_binder_;
-
-  DISALLOW_COPY_AND_ASSIGN(ParallelDownloadJob);
 };
 
 }  //  namespace download

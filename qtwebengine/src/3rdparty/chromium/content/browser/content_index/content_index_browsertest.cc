@@ -1,12 +1,14 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <memory>
 #include <string>
 
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
+#include "base/test/scoped_feature_list.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/content_index_context.h"
 #include "content/public/browser/storage_partition.h"
@@ -42,9 +44,9 @@ class ContentIndexTest : public ContentBrowserTest {
         shell_->web_contents()->GetBrowserContext()->GetContentIndexProvider());
     ASSERT_TRUE(provider_);
 
-    auto* storage_partition = BrowserContext::GetStoragePartition(
-        shell_->web_contents()->GetBrowserContext(),
-        shell_->web_contents()->GetSiteInstance());
+    auto* storage_partition =
+        shell_->web_contents()->GetBrowserContext()->GetStoragePartition(
+            shell_->web_contents()->GetSiteInstance());
     context_ = storage_partition->GetContentIndexContext();
     ASSERT_TRUE(context_);
   }
@@ -54,12 +56,15 @@ class ContentIndexTest : public ContentBrowserTest {
         switches::kEnableExperimentalWebPlatformFeatures);
   }
 
+  std::string RunScriptWithResult(const std::string& script) {
+    return EvalJs(shell_->web_contents(), script,
+                  EXECUTE_SCRIPT_USE_MANUAL_REPLY)
+        .ExtractString();
+  }
+
   // Runs |script| and expects it to complete successfully.
   void RunScript(const std::string& script) {
-    std::string result;
-    ASSERT_TRUE(
-        ExecuteScriptAndExtractString(shell_->web_contents(), script, &result));
-    ASSERT_EQ(result, "ok");
+    ASSERT_EQ(RunScriptWithResult(script), "ok");
   }
 
   std::vector<SkBitmap> GetIcons(int64_t service_worker_registration_id,
@@ -80,9 +85,9 @@ class ContentIndexTest : public ContentBrowserTest {
 
  private:
   std::unique_ptr<net::EmbeddedTestServer> https_server_;
-  ShellContentIndexProvider* provider_;
-  ContentIndexContext* context_;
-  Shell* shell_;
+  raw_ptr<ShellContentIndexProvider, DanglingUntriaged> provider_;
+  raw_ptr<ContentIndexContext, DanglingUntriaged> context_;
+  raw_ptr<Shell, DanglingUntriaged> shell_;
 };
 
 IN_PROC_BROWSER_TEST_F(ContentIndexTest, GetIcons) {
@@ -161,6 +166,28 @@ IN_PROC_BROWSER_TEST_F(ContentIndexTest, BestIconIsChosen) {
         type: 'image/jpg',
       },
     ]))");
+}
+
+class ContentIndexOfflineCapabilityTest : public ContentIndexTest {
+  void SetUp() override {
+    feature_list_.InitFromCommandLine("ContentIndexCheckOffline", "");
+    ContentIndexTest::SetUp();
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(ContentIndexOfflineCapabilityTest,
+                       CheckOfflineCapability) {
+  // Registering content should still work if the url is offline-capable.
+  RunScript("addContent('id1', [{src: '/single_face.jpg'}], 'forcesuccess')");
+
+  // Registering content should fail if the url is not offline-capable.
+  std::string result = RunScriptWithResult(
+      "addContent('id2', [{src: '/single_face.jpg'}], 'forcefail')");
+  EXPECT_EQ(result,
+            "TypeError - The provided launch URL is not offline-capable.");
 }
 
 }  // namespace

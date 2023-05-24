@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "complexwidgets_p.h"
 
@@ -57,7 +21,9 @@
 #endif
 #include <qstyle.h>
 #include <qstyleoption.h>
+#if QT_CONFIG(tooltip)
 #include <qtooltip.h>
+#endif
 #if QT_CONFIG(whatsthis)
 #include <qwhatsthis.h>
 #endif
@@ -70,9 +36,11 @@
 #endif
 #include <QDebug>
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 QString qt_accStripAmp(const QString &text);
 QString qt_accHotKey(const QString &text);
@@ -209,7 +177,7 @@ QAccessibleTabBar::QAccessibleTabBar(QWidget *w)
 
 QAccessibleTabBar::~QAccessibleTabBar()
 {
-    for (QAccessible::Id id : qAsConst(m_childInterfaces))
+    for (QAccessible::Id id : std::as_const(m_childInterfaces))
         QAccessible::deleteAccessibleInterface(id);
 }
 
@@ -315,17 +283,19 @@ QAccessibleComboBox::QAccessibleComboBox(QWidget *w)
 */
 QComboBox *QAccessibleComboBox::comboBox() const
 {
-    return qobject_cast<QComboBox*>(object());
+    return qobject_cast<QComboBox *>(object());
 }
 
 QAccessibleInterface *QAccessibleComboBox::child(int index) const
 {
-    if (index == 0) {
-        QAbstractItemView *view = comboBox()->view();
-        //QWidget *parent = view ? view->parentWidget() : 0;
-        return QAccessible::queryAccessibleInterface(view);
-    } else if (index == 1 && comboBox()->isEditable()) {
-        return QAccessible::queryAccessibleInterface(comboBox()->lineEdit());
+    if (QComboBox *cBox = comboBox()) {
+        if (index == 0) {
+            QAbstractItemView *view = cBox->view();
+            //QWidget *parent = view ? view->parentWidget() : 0;
+            return QAccessible::queryAccessibleInterface(view);
+        } else if (index == 1 && cBox->isEditable()) {
+            return QAccessible::queryAccessibleInterface(cBox->lineEdit());
+        }
     }
     return nullptr;
 }
@@ -333,53 +303,84 @@ QAccessibleInterface *QAccessibleComboBox::child(int index) const
 int QAccessibleComboBox::childCount() const
 {
     // list and text edit
-    return comboBox()->isEditable() ? 2 : 1;
+    if (QComboBox *cBox = comboBox())
+        return (cBox->isEditable()) ? 2 : 1;
+    return 0;
 }
 
 QAccessibleInterface *QAccessibleComboBox::childAt(int x, int y) const
 {
-    if (comboBox()->isEditable() && comboBox()->lineEdit()->rect().contains(x, y))
-        return child(1);
+    if (QComboBox *cBox = comboBox()) {
+        if (cBox->isEditable() && cBox->lineEdit()->rect().contains(x, y))
+            return child(1);
+    }
     return nullptr;
 }
 
 int QAccessibleComboBox::indexOfChild(const QAccessibleInterface *child) const
 {
-    if (comboBox()->view() == child->object())
-        return 0;
-    if (comboBox()->isEditable() && comboBox()->lineEdit() == child->object())
-        return 1;
+    if (QComboBox *cBox = comboBox()) {
+        if (cBox->view() == child->object())
+            return 0;
+        if (cBox->isEditable() && cBox->lineEdit() == child->object())
+            return 1;
+    }
     return -1;
+}
+
+QAccessibleInterface *QAccessibleComboBox::focusChild() const
+{
+    // The editable combobox is the focus proxy of its lineedit, so the
+    // lineedit itself never gets focus. But it is the accessible focus
+    // child of an editable combobox.
+    if (QComboBox *cBox = comboBox()) {
+        if (cBox->isEditable())
+            return child(1);
+    }
+    return nullptr;
 }
 
 /*! \reimp */
 QString QAccessibleComboBox::text(QAccessible::Text t) const
 {
     QString str;
-
-    switch (t) {
-    case QAccessible::Name:
+    if (QComboBox *cBox = comboBox()) {
+        switch (t) {
+        case QAccessible::Name:
 #ifndef Q_OS_UNIX // on Linux we use relations for this, name is text (fall through to Value)
         str = QAccessibleWidget::text(t);
         break;
 #endif
-    case QAccessible::Value:
-        if (comboBox()->isEditable())
-            str = comboBox()->lineEdit()->text();
-        else
-            str = comboBox()->currentText();
-        break;
+        case QAccessible::Value:
+            if (cBox->isEditable())
+                str = cBox->lineEdit()->text();
+            else
+                str = cBox->currentText();
+            break;
 #ifndef QT_NO_SHORTCUT
-    case QAccessible::Accelerator:
-        str = QKeySequence(Qt::Key_Down).toString(QKeySequence::NativeText);
-        break;
+        case QAccessible::Accelerator:
+            str = QKeySequence(Qt::Key_Down).toString(QKeySequence::NativeText);
+            break;
 #endif
-    default:
-        break;
+        default:
+            break;
+        }
+        if (str.isEmpty())
+            str = QAccessibleWidget::text(t);
     }
-    if (str.isEmpty())
-        str = QAccessibleWidget::text(t);
     return str;
+}
+
+QAccessible::State QAccessibleComboBox::state() const
+{
+    QAccessible::State s = QAccessibleWidget::state();
+
+    if (QComboBox *cBox = comboBox()) {
+        s.expandable = true;
+        s.expanded = isValid() && cBox->view()->isVisible();
+        s.editable = cBox->isEditable();
+    }
+    return s;
 }
 
 QStringList QAccessibleComboBox::actionNames() const
@@ -396,26 +397,28 @@ QString QAccessibleComboBox::localizedActionDescription(const QString &actionNam
 
 void QAccessibleComboBox::doAction(const QString &actionName)
 {
-    if (actionName == showMenuAction() || actionName == pressAction()) {
-        if (comboBox()->view()->isVisible()) {
+    if (QComboBox *cBox = comboBox()) {
+        if (actionName == showMenuAction() || actionName == pressAction()) {
+            if (cBox->view()->isVisible()) {
 #if defined(Q_OS_ANDROID)
-            const auto list = child(0)->tableInterface();
-            if (list && list->selectedRowCount() > 0) {
-                comboBox()->setCurrentIndex(list->selectedRows().at(0));
-            }
-            comboBox()->setFocus();
+                const auto list = child(0)->tableInterface();
+                if (list && list->selectedRowCount() > 0) {
+                    cBox->setCurrentIndex(list->selectedRows().at(0));
+                }
+                cBox->setFocus();
 #endif
-            comboBox()->hidePopup();
-        } else {
-            comboBox()->showPopup();
+                cBox->hidePopup();
+            } else {
+                cBox->showPopup();
 #if defined(Q_OS_ANDROID)
-            const auto list = child(0)->tableInterface();
-            if (list && list->selectedRowCount() > 0) {
-                auto selectedCells = list->selectedCells();
-                QAccessibleEvent ev(selectedCells.at(0),QAccessible::Focus);
-                QAccessible::updateAccessibility(&ev);
-            }
+                const auto list = child(0)->tableInterface();
+                if (list && list->selectedRowCount() > 0) {
+                    auto selectedCells = list->selectedCells();
+                    QAccessibleEvent ev(selectedCells.at(0),QAccessible::Focus);
+                    QAccessible::updateAccessibility(&ev);
+                }
 #endif
+            }
         }
     }
 }
@@ -442,7 +445,7 @@ QAccessibleInterface *QAccessibleAbstractScrollArea::child(int index) const
 
 int QAccessibleAbstractScrollArea::childCount() const
 {
-    return accessibleChildren().count();
+    return accessibleChildren().size();
 }
 
 int QAccessibleAbstractScrollArea::indexOfChild(const QAccessibleInterface *child) const
@@ -488,13 +491,19 @@ QWidgetList QAccessibleAbstractScrollArea::accessibleChildren() const
     // Horizontal scrollBar container.
     QScrollBar *horizontalScrollBar = abstractScrollArea()->horizontalScrollBar();
     if (horizontalScrollBar && horizontalScrollBar->isVisible()) {
-        children.append(horizontalScrollBar->parentWidget());
+        QWidget *scrollBarParent = horizontalScrollBar->parentWidget();
+        // Add container only if scroll bar is in the container
+        if (elementType(scrollBarParent) == HorizontalContainer)
+            children.append(scrollBarParent);
     }
 
     // Vertical scrollBar container.
     QScrollBar *verticalScrollBar = abstractScrollArea()->verticalScrollBar();
     if (verticalScrollBar && verticalScrollBar->isVisible()) {
-        children.append(verticalScrollBar->parentWidget());
+        QWidget *scrollBarParent = verticalScrollBar->parentWidget();
+        // Add container only if scroll bar is in the container
+        if (elementType(scrollBarParent) == VerticalContainer)
+            children.append(scrollBarParent);
     }
 
     // CornerWidget.
@@ -515,9 +524,9 @@ QAccessibleAbstractScrollArea::elementType(QWidget *widget) const
         return Self;
     if (widget == abstractScrollArea()->viewport())
         return Viewport;
-    if (widget->objectName() == QLatin1String("qt_scrollarea_hcontainer"))
+    if (widget->objectName() == "qt_scrollarea_hcontainer"_L1)
         return HorizontalContainer;
-    if (widget->objectName() == QLatin1String("qt_scrollarea_vcontainer"))
+    if (widget->objectName() == "qt_scrollarea_vcontainer"_L1)
         return VerticalContainer;
     if (widget == abstractScrollArea()->cornerWidget())
         return CornerWidget;
@@ -540,4 +549,4 @@ QAccessibleScrollArea::QAccessibleScrollArea(QWidget *widget)
 
 QT_END_NAMESPACE
 
-#endif // QT_NO_ACCESSIBILITY
+#endif // QT_CONFIG(accessibility)

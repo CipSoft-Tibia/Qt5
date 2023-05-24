@@ -37,6 +37,10 @@ enum {
 };  // anonymous enum
 
 enum {
+  // Documentation variables.
+  kBitdepth8 = 8,
+  kBitdepth10 = 10,
+  kBitdepth12 = 12,
   kInvalidMvValue = -32768,
   kCdfMaxProbability = 32768,
   kBlockWidthCount = 5,
@@ -44,6 +48,8 @@ enum {
   kMinQuantizer = 0,
   kMinLossyQuantizer = 1,
   kMaxQuantizer = 255,
+  // Quantizer matrix is used only when level < 15.
+  kNumQuantizerLevelsForQuantizerMatrix = 15,
   kFrameLfCount = 4,
   kMaxLoopFilterValue = 63,
   kNum4x4In64x64 = 256,
@@ -57,6 +63,13 @@ enum {
   kRestorationTypeSymbolCount = 3,
   kSgrProjParamsBits = 4,
   kSgrProjPrecisionBits = 7,
+  // Precision of a division table (mtable)
+  kSgrProjScaleBits = 20,
+  kSgrProjReciprocalBits = 12,
+  // Core self-guided restoration precision bits.
+  kSgrProjSgrBits = 8,
+  // Precision bits of generated values higher than source before projection.
+  kSgrProjRestoreBits = 4,
   // Padding on left and right side of a restoration block.
   // 3 is enough, but padding to 4 is more efficient, and makes the temporary
   // source buffer 8-pixel aligned.
@@ -69,6 +82,7 @@ enum {
   // but was increased to simplify the SIMD loads in
   // ConvolveCompoundScale2D_NEON() and ConvolveScale2D_NEON().
   kConvolveBorderRight = 8,
+  kConvolveScaleBorderRight = 15,
   kConvolveBorderBottom = 4,
   kSubPixelTaps = 8,
   kWienerFilterBits = 7,
@@ -174,6 +188,15 @@ enum {
   // On Linux, the cache line size can be looked up with the command:
   //   getconf LEVEL1_DCACHE_LINESIZE
   kCacheLineSize = 64,
+  // InterRound0, Section 7.11.3.2.
+  kInterRoundBitsHorizontal = 3,  // 8 & 10-bit.
+  kInterRoundBitsHorizontal12bpp = 5,
+  kInterRoundBitsCompoundVertical = 7,  // 8, 10 & 12-bit compound prediction.
+  kInterRoundBitsVertical = 11,         // 8 & 10-bit, single prediction.
+  kInterRoundBitsVertical12bpp = 9,
+  // Offset applied to 10bpp and 12bpp predictors to allow storing them in
+  // uint16_t. Removed before blending.
+  kCompoundOffset = (1 << 14) + (1 << 13),
 };  // anonymous enum
 
 enum FrameType : uint8_t {
@@ -521,6 +544,10 @@ enum ObuType : int8_t {
   kObuPadding = 15,
 };
 
+constexpr BitMaskSet kPredictionModeSmoothMask(kPredictionModeSmooth,
+                                               kPredictionModeSmoothHorizontal,
+                                               kPredictionModeSmoothVertical);
+
 //------------------------------------------------------------------------------
 // ToString()
 //
@@ -623,6 +650,52 @@ inline const char* ToString(const LoopRestorationType type) {
       return "kLoopRestorationTypeSgrProj";
     case kNumLoopRestorationTypes:
       return "kNumLoopRestorationTypes";
+  }
+  abort();
+}
+
+inline const char* ToString(const TransformSize size) {
+  switch (size) {
+    case kTransformSize4x4:
+      return "kTransformSize4x4";
+    case kTransformSize4x8:
+      return "kTransformSize4x8";
+    case kTransformSize4x16:
+      return "kTransformSize4x16";
+    case kTransformSize8x4:
+      return "kTransformSize8x4";
+    case kTransformSize8x8:
+      return "kTransformSize8x8";
+    case kTransformSize8x16:
+      return "kTransformSize8x16";
+    case kTransformSize8x32:
+      return "kTransformSize8x32";
+    case kTransformSize16x4:
+      return "kTransformSize16x4";
+    case kTransformSize16x8:
+      return "kTransformSize16x8";
+    case kTransformSize16x16:
+      return "kTransformSize16x16";
+    case kTransformSize16x32:
+      return "kTransformSize16x32";
+    case kTransformSize16x64:
+      return "kTransformSize16x64";
+    case kTransformSize32x8:
+      return "kTransformSize32x8";
+    case kTransformSize32x16:
+      return "kTransformSize32x16";
+    case kTransformSize32x32:
+      return "kTransformSize32x32";
+    case kTransformSize32x64:
+      return "kTransformSize32x64";
+    case kTransformSize64x16:
+      return "kTransformSize64x16";
+    case kTransformSize64x32:
+      return "kTransformSize64x32";
+    case kTransformSize64x64:
+      return "kTransformSize64x64";
+    case kNumTransformSizes:
+      return "kNumTransformSizes";
   }
   abort();
 }
@@ -736,14 +809,6 @@ extern const uint8_t kAbsHalfSubPixelFilters[6][16][8];
 extern const int16_t kDirectionalIntraPredictorDerivative[44];
 
 extern const uint8_t kDeblockFilterLevelIndex[kMaxPlanes][kNumLoopFilterTypes];
-
-extern const int8_t kMaskIdLookup[4][kMaxBlockSizes];
-
-extern const int8_t kVerticalBorderMaskIdLookup[kMaxBlockSizes];
-
-extern const uint64_t kTopMaskLookup[67][4];
-
-extern const uint64_t kLeftMaskLookup[67][4];
 
 }  // namespace libgav1
 

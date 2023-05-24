@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qinputaspect.h"
 #include "qinputaspect_p.h"
@@ -69,7 +33,6 @@
 #include <Qt3DInput/private/axisaccumulatorjob_p.h>
 #include <Qt3DInput/private/axissetting_p.h>
 #include <Qt3DInput/private/buttonaxisinput_p.h>
-#include <Qt3DInput/private/eventsourcesetterhelper_p.h>
 #include <Qt3DInput/private/genericdevicebackendnode_p.h>
 #include <Qt3DInput/private/inputbackendnodefunctor_p.h>
 #include <Qt3DInput/private/inputchord_p.h>
@@ -91,6 +54,8 @@
 #include <Qt3DInput/private/updateaxisactionjob_p.h>
 #include <Qt3DCore/private/qeventfilterservice_p.h>
 #include <Qt3DCore/private/qservicelocator_p.h>
+#include <Qt3DCore/private/qaspectmanager_p.h>
+#include <Qt3DCore/private/vector_helper_p.h>
 
 #ifdef HAVE_QGAMEPAD
 # include <Qt3DInput/private/qgamepadinput_p.h>
@@ -109,13 +74,6 @@ QInputAspectPrivate::QInputAspectPrivate()
     , m_time(0)
 {
 }
-
-void QInputAspectPrivate::syncDirtyFrontEndNode(QNode *node, QBackendNode *backend, bool firstTime) const
-{
-    Input::BackendNode *renderBackend = static_cast<Input::BackendNode *>(backend);
-    renderBackend->syncFromFrontEnd(node, firstTime);
-}
-
 
 /*!
     \class Qt3DInput::QInputAspect
@@ -145,26 +103,26 @@ QInputAspect::QInputAspect(QInputAspectPrivate &dd, QObject *parent)
 
     qRegisterMetaType<Qt3DInput::QAbstractPhysicalDevice*>();
 
-    registerBackendType<QKeyboardDevice, true>(QBackendNodeMapperPtr(new Input::KeyboardDeviceFunctor(this, d_func()->m_inputHandler.data())));
-    registerBackendType<QKeyboardHandler, true>(QBackendNodeMapperPtr(new Input::KeyboardHandlerFunctor(d_func()->m_inputHandler.data())));
-    registerBackendType<QMouseDevice, true>(QBackendNodeMapperPtr(new Input::MouseDeviceFunctor(this, d_func()->m_inputHandler.data())));
-    registerBackendType<QMouseHandler, true>(QBackendNodeMapperPtr(new Input::MouseHandlerFunctor(d_func()->m_inputHandler.data())));
-    registerBackendType<QAxis, true>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::Axis, Input::AxisManager>(d_func()->m_inputHandler->axisManager())));
-    registerBackendType<QAxisAccumulator, true>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::AxisAccumulator, Input::AxisAccumulatorManager>(d_func()->m_inputHandler->axisAccumulatorManager())));
-    registerBackendType<QAnalogAxisInput, true>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::AnalogAxisInput, Input::AnalogAxisInputManager>(d_func()->m_inputHandler->analogAxisInputManager())));
-    registerBackendType<QButtonAxisInput, true>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::ButtonAxisInput, Input::ButtonAxisInputManager>(d_func()->m_inputHandler->buttonAxisInputManager())));
-    registerBackendType<QAxisSetting, true>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::AxisSetting, Input::AxisSettingManager>(d_func()->m_inputHandler->axisSettingManager())));
-    registerBackendType<Qt3DInput::QAction, true>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::Action, Input::ActionManager>(d_func()->m_inputHandler->actionManager())));
-    registerBackendType<QActionInput,  true>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::ActionInput, Input::ActionInputManager>(d_func()->m_inputHandler->actionInputManager())));
-    registerBackendType<QInputChord, true>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::InputChord, Input::InputChordManager>(d_func()->m_inputHandler->inputChordManager())));
-    registerBackendType<QInputSequence, true>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::InputSequence, Input::InputSequenceManager>(d_func()->m_inputHandler->inputSequenceManager())));
-    registerBackendType<QLogicalDevice, true>(QBackendNodeMapperPtr(new Input::LogicalDeviceNodeFunctor(d_func()->m_inputHandler->logicalDeviceManager())));
-    registerBackendType<QGenericInputDevice, true>(QBackendNodeMapperPtr(new Input::GenericDeviceBackendFunctor(this, d_func()->m_inputHandler.data())));
-    registerBackendType<QInputSettings, true>(QBackendNodeMapperPtr(new Input::InputSettingsFunctor(d_func()->m_inputHandler.data())));
-    registerBackendType<QAbstractPhysicalDeviceProxy, true>(QBackendNodeMapperPtr(new Input::PhysicalDeviceProxyNodeFunctor(d_func()->m_inputHandler->physicalDeviceProxyManager())));
+    registerBackendType<QKeyboardDevice>(QBackendNodeMapperPtr(new Input::KeyboardDeviceFunctor(this, d_func()->m_inputHandler.data())));
+    registerBackendType<QKeyboardHandler>(QBackendNodeMapperPtr(new Input::KeyboardHandlerFunctor(d_func()->m_inputHandler.data())));
+    registerBackendType<QMouseDevice>(QBackendNodeMapperPtr(new Input::MouseDeviceFunctor(this, d_func()->m_inputHandler.data())));
+    registerBackendType<QMouseHandler>(QBackendNodeMapperPtr(new Input::MouseHandlerFunctor(d_func()->m_inputHandler.data())));
+    registerBackendType<QAxis>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::Axis, Input::AxisManager>(d_func()->m_inputHandler->axisManager())));
+    registerBackendType<QAxisAccumulator>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::AxisAccumulator, Input::AxisAccumulatorManager>(d_func()->m_inputHandler->axisAccumulatorManager())));
+    registerBackendType<QAnalogAxisInput>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::AnalogAxisInput, Input::AnalogAxisInputManager>(d_func()->m_inputHandler->analogAxisInputManager())));
+    registerBackendType<QButtonAxisInput>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::ButtonAxisInput, Input::ButtonAxisInputManager>(d_func()->m_inputHandler->buttonAxisInputManager())));
+    registerBackendType<QAxisSetting>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::AxisSetting, Input::AxisSettingManager>(d_func()->m_inputHandler->axisSettingManager())));
+    registerBackendType<Qt3DInput::QAction>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::Action, Input::ActionManager>(d_func()->m_inputHandler->actionManager())));
+    registerBackendType<QActionInput>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::ActionInput, Input::ActionInputManager>(d_func()->m_inputHandler->actionInputManager())));
+    registerBackendType<QInputChord>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::InputChord, Input::InputChordManager>(d_func()->m_inputHandler->inputChordManager())));
+    registerBackendType<QInputSequence>(QBackendNodeMapperPtr(new Input::InputNodeFunctor<Input::InputSequence, Input::InputSequenceManager>(d_func()->m_inputHandler->inputSequenceManager())));
+    registerBackendType<QLogicalDevice>(QBackendNodeMapperPtr(new Input::LogicalDeviceNodeFunctor(d_func()->m_inputHandler->logicalDeviceManager())));
+    registerBackendType<QGenericInputDevice>(QBackendNodeMapperPtr(new Input::GenericDeviceBackendFunctor(this, d_func()->m_inputHandler.data())));
+    registerBackendType<QInputSettings>(QBackendNodeMapperPtr(new Input::InputSettingsFunctor(d_func()->m_inputHandler.data())));
+    registerBackendType<QAbstractPhysicalDeviceProxy>(QBackendNodeMapperPtr(new Input::PhysicalDeviceProxyNodeFunctor(d_func()->m_inputHandler->physicalDeviceProxyManager())));
 
 #ifdef HAVE_QGAMEPAD
-    registerBackendType<QGamepadInput, true>(QBackendNodeMapperPtr(new Input::GenericDeviceBackendFunctor(this, d_func()->m_inputHandler.data())));
+    registerBackendType<QGamepadInput>(QBackendNodeMapperPtr(new Input::GenericDeviceBackendFunctor(this, d_func()->m_inputHandler.data())));
 #endif
 
     Q_D(QInputAspect);
@@ -227,25 +185,28 @@ QStringList QInputAspect::availablePhysicalDevices() const
 /*!
     \internal
  */
-QVector<QAspectJobPtr> QInputAspect::jobsToExecute(qint64 time)
+std::vector<QAspectJobPtr> QInputAspect::jobsToExecute(qint64 time)
 {
     Q_D(QInputAspect);
     const qint64 deltaTime = time - d->m_time;
-    const float dt = static_cast<float>(deltaTime) / 1.0e9;
+    const float dt = static_cast<float>(deltaTime) / 1.0e9f;
     d->m_time = time;
 
-    QVector<QAspectJobPtr> jobs;
+    std::vector<QAspectJobPtr> jobs;
 
     d->m_inputHandler->updateEventSource();
 
-    jobs.append(d->m_inputHandler->keyboardJobs());
-    jobs.append(d->m_inputHandler->mouseJobs());
+    // Mouse and keyboard handlers will have seen the events already.
+    // All we need now is to update the axis and the accumulators since
+    // they depend on time, and other bookkeeping.
 
     const auto integrations = d->m_inputHandler->inputDeviceIntegrations();
-    for (QInputDeviceIntegration *integration : integrations)
-        jobs += integration->jobsToExecute(time);
+    for (QInputDeviceIntegration *integration : integrations) {
+        std::vector<QAspectJobPtr> integrationJobs = integration->jobsToExecute(time);
+        Qt3DCore::moveAtEnd(jobs, std::move(integrationJobs));
+    }
 
-    const QVector<Qt3DCore::QNodeId> proxiesToLoad = d->m_inputHandler->physicalDeviceProxyManager()->takePendingProxiesToLoad();
+    const QList<Qt3DCore::QNodeId> proxiesToLoad = d->m_inputHandler->physicalDeviceProxyManager()->takePendingProxiesToLoad();
     if (!proxiesToLoad.isEmpty()) {
         // Since loading wrappers occurs quite rarely, no point in keeping the job in a
         // member variable
@@ -257,11 +218,11 @@ QVector<QAspectJobPtr> QInputAspect::jobsToExecute(qint64 time)
 
     // All the jobs added up until this point are independents
     // but the axis action jobs will be dependent on these
-    const QVector<QAspectJobPtr> dependsOnJobs = jobs;
+    const std::vector<QAspectJobPtr> dependsOnJobs = jobs;
 
     // Jobs that update Axis/Action (store combined axis/action value)
     const auto devHandles = d->m_inputHandler->logicalDeviceManager()->activeDevices();
-    QVector<QAspectJobPtr> axisActionJobs;
+    std::vector<QAspectJobPtr> axisActionJobs;
     axisActionJobs.reserve(devHandles.size());
     for (const Input::HLogicalDevice &devHandle : devHandles) {
         const auto device = d->m_inputHandler->logicalDeviceManager()->data(devHandle);
@@ -269,7 +230,7 @@ QVector<QAspectJobPtr> QInputAspect::jobsToExecute(qint64 time)
             continue;
 
         QAspectJobPtr updateAxisActionJob(new Input::UpdateAxisActionJob(time, d->m_inputHandler.data(), devHandle));
-        jobs += updateAxisActionJob;
+        jobs.push_back(updateAxisActionJob);
         axisActionJobs.push_back(updateAxisActionJob);
         for (const QAspectJobPtr &job : dependsOnJobs)
             updateAxisActionJob->addDependency(job);
@@ -280,7 +241,7 @@ QVector<QAspectJobPtr> QInputAspect::jobsToExecute(qint64 time)
     auto accumulateJob = Input::AxisAccumulatorJobPtr::create(d->m_inputHandler->axisAccumulatorManager(),
                                                               d->m_inputHandler->axisManager());
     accumulateJob->setDeltaTime(dt);
-    for (const QAspectJobPtr &job : qAsConst(axisActionJobs))
+    for (const QAspectJobPtr &job : std::as_const(axisActionJobs))
         accumulateJob->addDependency(job);
     jobs.push_back(accumulateJob);
 
@@ -297,7 +258,7 @@ void QInputAspect::onRegistered()
     Q_ASSERT(eventService);
 
     // Set it on the input handler which will also handle its lifetime
-    d->m_inputHandler->eventSourceHelper()->setEventFilterService(eventService);
+    d->m_inputHandler->setEventFilterService(eventService);
 }
 
 /*!
@@ -311,8 +272,22 @@ void QInputAspect::onUnregistered()
     d->m_inputHandler.reset(nullptr);
 }
 
+void QInputAspect::onEngineStartup()
+{
+    Q_D(QInputAspect);
+    d->m_inputHandler->setScene(d->m_aspectManager->scene());
+}
+
+void QInputAspect::jobsDone()
+{
+    Q_D(QInputAspect);
+    d->m_inputHandler->resetMouseAxisState();
+}
+
 } // namespace Qt3DInput
 
 QT_END_NAMESPACE
 
 QT3D_REGISTER_NAMESPACED_ASPECT("input", QT_PREPEND_NAMESPACE(Qt3DInput), QInputAspect)
+
+#include "moc_qinputaspect.cpp"

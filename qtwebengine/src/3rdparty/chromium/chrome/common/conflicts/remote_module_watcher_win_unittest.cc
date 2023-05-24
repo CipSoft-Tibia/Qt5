@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,8 @@
 #include <vector>
 
 #include "base/memory/scoped_refptr.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "chrome/common/conflicts/module_event_sink_win.mojom.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
@@ -25,6 +25,10 @@ class RemoteModuleWatcherTest : public testing::Test,
                                 public mojom::ModuleEventSink {
  public:
   RemoteModuleWatcherTest() = default;
+
+  RemoteModuleWatcherTest(const RemoteModuleWatcherTest&) = delete;
+  RemoteModuleWatcherTest& operator=(const RemoteModuleWatcherTest&) = delete;
+
   ~RemoteModuleWatcherTest() override = default;
 
   mojo::PendingRemote<mojom::ModuleEventSink> Bind() {
@@ -82,15 +86,13 @@ class RemoteModuleWatcherTest : public testing::Test,
 
   // Total number of module events seen.
   int module_event_count_ = 0;
-
-  DISALLOW_COPY_AND_ASSIGN(RemoteModuleWatcherTest);
 };
 
 }  // namespace
 
 TEST_F(RemoteModuleWatcherTest, ModuleEvents) {
-  auto remote_module_watcher =
-      RemoteModuleWatcher::Create(base::ThreadTaskRunnerHandle::Get(), Bind());
+  auto remote_module_watcher = RemoteModuleWatcher::Create(
+      base::SingleThreadTaskRunner::GetCurrentDefault(), Bind());
 
   // Wait until the watcher is initialized and events for already loaded modules
   // are received.

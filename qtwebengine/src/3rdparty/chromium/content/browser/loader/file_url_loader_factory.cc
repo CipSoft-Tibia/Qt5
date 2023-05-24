@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,34 +9,26 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/callback_forward.h"
 #include "base/command_line.h"
-#include "base/feature_list.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/strings/string16.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/task/post_task.h"
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "content/browser/web_package/web_bundle_utils.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/file_url_loader.h"
 #include "content/public/browser/shared_cors_origin_access_list.h"
 #include "content/public/common/content_client.h"
-#include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -51,6 +43,7 @@
 #include "net/base/mime_util.h"
 #include "net/base/net_errors.h"
 #include "net/http/http_byte_range.h"
+#include "net/http/http_response_headers.h"
 #include "net/http/http_util.h"
 #include "net/url_request/redirect_info.h"
 #include "services/network/public/cpp/cors/cors.h"
@@ -65,20 +58,16 @@
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "storage/common/file_system/file_system_util.h"
 #include "url/gurl.h"
+#include "url/url_util_qt.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "base/win/shortcut.h"
 #endif
 
 namespace content {
 namespace {
 
-constexpr size_t kDefaultFileUrlPipeSize = 65536;
-
-// Because this makes things simpler.
-static_assert(kDefaultFileUrlPipeSize >= net::kMaxBytesToSniff,
-              "Default file data pipe size must be at least as large as a MIME-"
-              "type sniffing buffer.");
+constexpr size_t kDefaultFileDirectoryLoaderPipeSize = 65536;
 
 // Policy to control how a FileURLLoader will handle directory URLs.
 enum class DirectoryLoadingPolicy {
@@ -173,12 +162,15 @@ class FileURLDirectoryLoader
                            std::move(observer), std::move(response_headers));
   }
 
+  FileURLDirectoryLoader(const FileURLDirectoryLoader&) = delete;
+  FileURLDirectoryLoader& operator=(const FileURLDirectoryLoader&) = delete;
+
   // network::mojom::URLLoader:
   void FollowRedirect(
       const std::vector<std::string>& removed_headers,
       const net::HttpRequestHeaders& modified_headers,
       const net::HttpRequestHeaders& modified_cors_exempt_headers,
-      const base::Optional<GURL>& new_url) override {}
+      const absl::optional<GURL>& new_url) override {}
   void SetPriority(net::RequestPriority priority,
                    int32_t intra_priority_value) override {}
   void PauseReadingBodyFromNet() override {}
@@ -197,7 +189,7 @@ class FileURLDirectoryLoader
              scoped_refptr<net::HttpResponseHeaders> response_headers) {
     receiver_.Bind(std::move(loader));
     receiver_.set_disconnect_handler(base::BindOnce(
-        &FileURLDirectoryLoader::OnMojoDisconnct, base::Unretained(this)));
+        &FileURLDirectoryLoader::OnMojoDisconnect, base::Unretained(this)));
 
     mojo::Remote<network::mojom::URLLoaderClient> client(
         std::move(client_remote));
@@ -221,8 +213,11 @@ class FileURLDirectoryLoader
       return;
     }
 
-    mojo::DataPipe pipe(kDefaultFileUrlPipeSize);
-    if (!pipe.consumer_handle.is_valid()) {
+    mojo::ScopedDataPipeProducerHandle producer_handle;
+    mojo::ScopedDataPipeConsumerHandle consumer_handle;
+    if (mojo::CreateDataPipe(kDefaultFileDirectoryLoaderPipeSize,
+                             producer_handle,
+                             consumer_handle) != MOJO_RESULT_OK) {
       client->OnComplete(network::URLLoaderCompletionStatus(net::ERR_FAILED));
       return;
     }
@@ -231,18 +226,18 @@ class FileURLDirectoryLoader
     head->mime_type = "text/html";
     head->charset = "utf-8";
     head->response_type = response_type;
-    client->OnReceiveResponse(std::move(head));
-    client->OnStartLoadingResponseBody(std::move(pipe.consumer_handle));
+    client->OnReceiveResponse(std::move(head), std::move(consumer_handle),
+                              absl::nullopt);
     client_ = std::move(client);
 
     lister_ = std::make_unique<net::DirectoryLister>(path_, this);
     lister_->Start();
 
-    data_producer_ = std::make_unique<mojo::DataPipeProducer>(
-        std::move(pipe.producer_handle));
+    data_producer_ =
+        std::make_unique<mojo::DataPipeProducer>(std::move(producer_handle));
   }
 
-  void OnMojoDisconnct() {
+  void OnMojoDisconnect() {
     lister_.reset();
     data_producer_.reset();
     receiver_.reset();
@@ -261,12 +256,7 @@ class FileURLDirectoryLoader
     if (!wrote_header_) {
       wrote_header_ = true;
 
-#if defined(OS_WIN)
-      const base::string16& title = path_.value();
-#elif defined(OS_POSIX) || defined(OS_FUCHSIA)
-      const base::string16& title =
-          base::WideToUTF16(base::SysNativeMBToWide(path_.value()));
-#endif
+      const std::u16string& title = path_.AsUTF16Unsafe();
       pending_data_.append(net::GetDirectoryListingHeader(title));
 
       // If not a top-level directory, add a link to the parent directory. To
@@ -283,9 +273,9 @@ class FileURLDirectoryLoader
     base::FilePath filename = data.info.GetName();
     if (filename.value() != base::FilePath::kCurrentDirectory &&
         filename.value() != base::FilePath::kParentDirectory) {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
       std::string raw_bytes;  // Empty on Windows means UTF-8 encoded name.
-#elif defined(OS_POSIX) || defined(OS_FUCHSIA)
+#elif BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
       const std::string& raw_bytes = filename.value();
 #endif
       pending_data_.append(net::GetDirectoryListingEntry(
@@ -364,8 +354,6 @@ class FileURLDirectoryLoader
   std::unique_ptr<mojo::DataPipeProducer> data_producer_;
   std::string pending_data_;
   bool transfer_in_progress_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(FileURLDirectoryLoader);
 };
 
 class FileURLLoader : public network::mojom::URLLoader {
@@ -392,12 +380,15 @@ class FileURLLoader : public network::mojom::URLLoader {
                            std::move(extra_response_headers));
   }
 
+  FileURLLoader(const FileURLLoader&) = delete;
+  FileURLLoader& operator=(const FileURLLoader&) = delete;
+
   // network::mojom::URLLoader:
   void FollowRedirect(
       const std::vector<std::string>& removed_headers,
       const net::HttpRequestHeaders& modified_headers,
       const net::HttpRequestHeaders& modified_cors_exempt_headers,
-      const base::Optional<GURL>& new_url) override {
+      const absl::optional<GURL>& new_url) override {
     // |removed_headers| and |modified_headers| are unused. It doesn't make
     // sense for files. The FileURLLoader can redirect only to another file.
     std::unique_ptr<RedirectData> redirect_data = std::move(redirect_data_);
@@ -467,7 +458,7 @@ class FileURLLoader : public network::mojom::URLLoader {
     head->headers = extra_response_headers;
     receiver_.Bind(std::move(loader));
     receiver_.set_disconnect_handler(base::BindOnce(
-        &FileURLLoader::OnMojoDisconnct, base::Unretained(this)));
+        &FileURLLoader::OnMojoDisconnect, base::Unretained(this)));
 
     client_.Bind(std::move(client_remote));
 
@@ -525,10 +516,10 @@ class FileURLLoader : public network::mojom::URLLoader {
       return;
     }
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
     base::FilePath shortcut_target;
     if (link_following_policy == LinkFollowingPolicy::kFollow &&
-        base::LowerCaseEqualsASCII(path.Extension(), ".lnk") &&
+        base::EqualsCaseInsensitiveASCII(path.Extension(), ".lnk") &&
         base::win::ResolveShortcut(path, &shortcut_target, nullptr)) {
       // Follow Windows shortcuts
       redirect_data_ = std::make_unique<RedirectData>();
@@ -562,10 +553,23 @@ class FileURLLoader : public network::mojom::URLLoader {
       client_->OnReceiveRedirect(redirect_info, std::move(head));
       return;
     }
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
-    mojo::DataPipe pipe(kDefaultFileUrlPipeSize);
-    if (!pipe.consumer_handle.is_valid()) {
+    mojo::ScopedDataPipeProducerHandle producer_handle;
+    mojo::ScopedDataPipeConsumerHandle consumer_handle;
+
+    // Request the larger size data pipe for file:// URL loading.
+    uint32_t data_pipe_size =
+        network::features::GetDataPipeDefaultAllocationSize(
+            network::features::DataPipeAllocationSize::kLargerSizeIfPossible);
+    // This should already be static_asserted in network::features, but good
+    // to double-check.
+    DCHECK(data_pipe_size >= net::kMaxBytesToSniff)
+        << "Default file data pipe size must be at least as large as a "
+           "MIME-type sniffing buffer.";
+
+    if (mojo::CreateDataPipe(data_pipe_size, producer_handle,
+                             consumer_handle) != MOJO_RESULT_OK) {
       OnClientComplete(net::ERR_FAILED, std::move(observer));
       return;
     }
@@ -643,15 +647,15 @@ class FileURLLoader : public network::mojom::URLLoader {
 
     if (first_byte_to_send < initial_read_size) {
       // Write any data we read for MIME sniffing, constraining by range where
-      // applicable. This will always fit in the pipe (see assertion near
-      // |kDefaultFileUrlPipeSize| definition).
+      // applicable. This will always fit in the pipe (see DCHECK above, and
+      // assertions near network::features::GetDataPipeDefaultAllocationSize()).
       uint32_t write_size = std::min(
           static_cast<uint32_t>(initial_read_size - first_byte_to_send),
           static_cast<uint32_t>(total_bytes_to_send));
       const uint32_t expected_write_size = write_size;
-      MojoResult result = pipe.producer_handle->WriteData(
-          &initial_read_buffer[first_byte_to_send], &write_size,
-          MOJO_WRITE_DATA_FLAG_NONE);
+      MojoResult result =
+          producer_handle->WriteData(&initial_read_buffer[first_byte_to_send],
+                                     &write_size, MOJO_WRITE_DATA_FLAG_NONE);
       if (result != MOJO_RESULT_OK || write_size != expected_write_size) {
         OnFileWritten(std::move(observer), result);
         return;
@@ -662,11 +666,7 @@ class FileURLLoader : public network::mojom::URLLoader {
       total_bytes_to_send -= write_size;
     }
 
-    // TODO(crbug.com/995177): Update mime_util.cc when WebBundles feature is
-    // launched and stop using GetWebBundleFileMimeTypeFromFile().
-    if (!web_bundle_utils::GetWebBundleFileMimeTypeFromFile(full_path,
-                                                            &head->mime_type) &&
-        !net::GetMimeTypeFromFile(full_path, &head->mime_type)) {
+    if (!net::GetMimeTypeFromFile(full_path, &head->mime_type)) {
       std::string new_type;
       net::SniffMimeType(
           base::StringPiece(initial_read_buffer.data(), read_result.bytes_read),
@@ -678,12 +678,18 @@ class FileURLLoader : public network::mojom::URLLoader {
       head->mime_type.assign(new_type);
       head->did_mime_sniff = true;
     }
-    if (head->headers) {
-      head->headers->AddHeader(net::HttpRequestHeaders::kContentType,
-                               head->mime_type);
+    if (!head->headers) {
+      head->headers =
+          base::MakeRefCounted<net::HttpResponseHeaders>("HTTP/1.1 200 OK");
     }
-    client_->OnReceiveResponse(std::move(head));
-    client_->OnStartLoadingResponseBody(std::move(pipe.consumer_handle));
+    head->headers->AddHeader(net::HttpRequestHeaders::kContentType,
+                             head->mime_type);
+    // We add a Last-Modified header to file responses so that our
+    // implementation of document.lastModified can access it (crbug.com/875299).
+    head->headers->AddHeader(net::HttpResponseHeaders::kLastModified,
+                             base::TimeFormatHTTP(info.last_modified));
+    client_->OnReceiveResponse(std::move(head), std::move(consumer_handle),
+                               absl::nullopt);
 
     if (total_bytes_to_send == 0) {
       // There's definitely no more data, so we're already done.
@@ -699,15 +705,15 @@ class FileURLLoader : public network::mojom::URLLoader {
     if (observer)
       observer->OnSeekComplete(first_byte_to_send);
 
-    data_producer_ = std::make_unique<mojo::DataPipeProducer>(
-        std::move(pipe.producer_handle));
+    data_producer_ =
+        std::make_unique<mojo::DataPipeProducer>(std::move(producer_handle));
     data_producer_->Write(std::make_unique<mojo::FilteredDataSource>(
                               std::move(file_data_source), std::move(observer)),
                           base::BindOnce(&FileURLLoader::OnFileWritten,
                                          base::Unretained(this), nullptr));
   }
 
-  void OnMojoDisconnct() {
+  void OnMojoDisconnect() {
     data_producer_.reset();
     receiver_.reset();
     client_.reset();
@@ -766,22 +772,7 @@ class FileURLLoader : public network::mojom::URLLoader {
   // It is used to set some of the URLLoaderCompletionStatus data passed back
   // to the URLLoaderClients (eg SimpleURLLoader).
   uint64_t total_bytes_written_ = 0;
-
-  DISALLOW_COPY_AND_ASSIGN(FileURLLoader);
 };
-
-const url::Origin& GetCorsOrigin(const network::ResourceRequest& request) {
-  // Presence of |request_initiator| needs to be verified/ensured by the caller.
-  DCHECK(request.request_initiator.has_value());
-
-  if (request.isolated_world_origin.has_value() &&
-      base::FeatureList::IsEnabled(
-          features::kRelaxIsolatedWorldCorsInFileUrlLoaderFactory)) {
-    return request.isolated_world_origin.value();
-  }
-
-  return request.request_initiator.value();
-}
 
 }  // namespace
 
@@ -790,7 +781,7 @@ FileURLLoaderFactory::FileURLLoaderFactory(
     scoped_refptr<SharedCorsOriginAccessList> shared_cors_origin_access_list,
     base::TaskPriority task_priority,
     mojo::PendingReceiver<network::mojom::URLLoaderFactory> factory_receiver)
-    : NonNetworkURLLoaderFactoryBase(std::move(factory_receiver)),
+    : network::SelfDeletingURLLoaderFactory(std::move(factory_receiver)),
       profile_path_(profile_path),
       shared_cors_origin_access_list_(
           std::move(shared_cors_origin_access_list)),
@@ -802,7 +793,6 @@ FileURLLoaderFactory::~FileURLLoaderFactory() = default;
 
 void FileURLLoaderFactory::CreateLoaderAndStart(
     mojo::PendingReceiver<network::mojom::URLLoader> loader,
-    int32_t routing_id,
     int32_t request_id,
     uint32_t options,
     const network::ResourceRequest& request,
@@ -810,7 +800,7 @@ void FileURLLoaderFactory::CreateLoaderAndStart(
     const net::MutableNetworkTrafficAnnotationTag& traffic_annotation) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
-  // CORS mode requires a valid |request_inisiator|.
+  // CORS mode requires a valid |request_initiator|.
   if (network::cors::IsCorsEnabledRequestMode(request.mode) &&
       !request.request_initiator) {
     mojo::Remote<network::mojom::URLLoaderClient>(std::move(client))
@@ -834,13 +824,15 @@ void FileURLLoaderFactory::CreateLoaderAndStart(
       base::CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kDisableWebSecurity) ||
       (request.request_initiator &&
-       (request.request_initiator->IsSameOriginWith(
-            url::Origin::Create(request.url)) ||
+       (request.request_initiator->IsSameOriginWith(request.url) ||
         (shared_cors_origin_access_list_ &&
          shared_cors_origin_access_list_->GetOriginAccessList()
-                 .CheckAccessState(GetCorsOrigin(request), request.url) ==
+                 .CheckAccessState(*request.request_initiator, request.url) ==
              network::cors::OriginAccessList::AccessState::kAllowed)));
 
+  // TODO(toyoshim, lukasza): https://crbug.com/1105256: Extract CORS checks
+  // into a separate base class (i.e. to reuse similar checks in
+  // FileURLLoaderFactory and ExtensionURLLoaderFactory.
   network::mojom::FetchResponseType response_type =
       network::cors::CalculateResponseType(request.mode,
                                            is_request_considered_same_origin);
@@ -857,13 +849,17 @@ void FileURLLoaderFactory::CreateLoaderAndStartInternal(
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   if (response_type == network::mojom::FetchResponseType::kCors) {
-    // FileURLLoader doesn't support CORS and it's not covered by CorsURLLoader,
-    // so we need to reject requests that need CORS manually.
-    mojo::Remote<network::mojom::URLLoaderClient>(std::move(client))
-        ->OnComplete(
-            network::URLLoaderCompletionStatus(network::CorsErrorStatus(
-                network::mojom::CorsError::kCorsDisabledScheme)));
-    return;
+    std::string fromScheme = request.request_initiator->GetTupleOrPrecursorTupleIfOpaque().scheme();
+    bool hasLocalAccess = false;
+    if (const url::CustomScheme *cs = url::CustomScheme::FindScheme(fromScheme))
+      hasLocalAccess = cs->flags & (url::CustomScheme::LocalAccessAllowed | url::CustomScheme::Local);
+    if (!hasLocalAccess) {
+      mojo::Remote<network::mojom::URLLoaderClient>(std::move(client))
+          ->OnComplete(
+             network::URLLoaderCompletionStatus(network::CorsErrorStatus(
+                  network::mojom::CorsError::kCorsDisabledScheme)));
+      return;
+    }
   }
 
   // Check file path just after all CORS flag checks are handled.
@@ -903,7 +899,8 @@ FileURLLoaderFactory::Create(
   mojo::PendingRemote<network::mojom::URLLoaderFactory> pending_remote;
 
   // The FileURLLoaderFactory will delete itself when there are no more
-  // receivers - see the NonNetworkURLLoaderFactoryBase::OnDisconnect method.
+  // receivers - see the network::SelfDeletingURLLoaderFactory::OnDisconnect
+  // method.
   new FileURLLoaderFactory(
       profile_path, std::move(shared_cors_origin_access_list), task_priority,
       pending_remote.InitWithNewPipeAndPassReceiver());

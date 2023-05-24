@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwidgetlinecontrol_p.h"
 
@@ -49,7 +13,7 @@
 #endif
 #include <qpa/qplatformtheme.h>
 #include <qstylehints.h>
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 #include "qaccessible.h"
 #endif
 
@@ -98,7 +62,7 @@ void QWidgetLineControl::updateDisplayText(bool forceUpdate)
 
     if (m_echoMode == QLineEdit::Password) {
         str.fill(m_passwordCharacter);
-        if (m_passwordEchoTimer != 0 && m_cursor > 0 && m_cursor <= m_text.length()) {
+        if (m_passwordEchoTimer != 0 && m_cursor > 0 && m_cursor <= m_text.size()) {
             int cursor = m_cursor - 1;
             QChar uc = m_text.at(cursor);
             str[cursor] = uc;
@@ -118,11 +82,10 @@ void QWidgetLineControl::updateDisplayText(bool forceUpdate)
     // drawing boxes when using fonts that don't have glyphs for such
     // characters)
     QChar* uc = str.data();
-    for (int i = 0; i < (int)str.length(); ++i) {
+    for (int i = 0; i < (int)str.size(); ++i) {
         if ((uc[i].unicode() < 0x20 && uc[i].unicode() != 0x09)
             || uc[i] == QChar::LineSeparator
-            || uc[i] == QChar::ParagraphSeparator
-            || uc[i] == QChar::ObjectReplacementCharacter)
+            || uc[i] == QChar::ParagraphSeparator)
             uc[i] = QChar(0x0020);
     }
 
@@ -278,7 +241,7 @@ void QWidgetLineControl::clear()
 {
     int priorState = m_undoState;
     m_selstart = 0;
-    m_selend = m_text.length();
+    m_selend = m_text.size();
     removeSelectedText();
     separate();
     finishChange(priorState, /*update*/false, /*edited*/false);
@@ -322,7 +285,7 @@ void QWidgetLineControl::setSelection(int start, int length)
         if (start == m_selstart && start + length == m_selend && m_cursor == m_selend)
             return;
         m_selstart = start;
-        m_selend = qMin(start + length, (int)m_text.length());
+        m_selend = qMin(start + length, (int)m_text.size());
         m_cursor = m_selend;
     } else if (length < 0){
         if (start == m_selend && start + length == m_selstart && m_cursor == m_selstart)
@@ -365,7 +328,7 @@ void QWidgetLineControl::init(const QString &txt)
     m_textLayout.setCacheEnabled(true);
     m_text = txt;
     updateDisplayText();
-    m_cursor = m_text.length();
+    m_cursor = m_text.size();
     if (const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme()) {
         m_keyboardScheme = theme->themeHint(QPlatformTheme::KeyboardScheme).toInt();
         m_passwordMaskDelay = theme->themeHint(QPlatformTheme::PasswordMaskDelay).toInt();
@@ -419,7 +382,7 @@ QRect QWidgetLineControl::rectForPos(int pos) const
     int w = m_cursorWidth;
     int ch = l.height() + 1;
 
-    return QRect(cix-5, 0, w+9, ch);
+    return QRect(cix - 5, 0, w + 9, ch);
 }
 
 /*!
@@ -527,14 +490,14 @@ void QWidgetLineControl::processInputMethodEvent(QInputMethodEvent *event)
         if (echoMode() == QLineEdit::PasswordEchoOnEdit && !passwordEchoEditing()) {
             updatePasswordEchoEditing(true);
             m_selstart = 0;
-            m_selend = m_text.length();
+            m_selend = m_text.size();
         }
         removeSelectedText();
     }
 
     int c = m_cursor; // cursor position after insertion of commit string
     if (event->replacementStart() <= 0)
-        c += event->commitString().length() - qMin(-event->replacementStart(), event->replacementLength());
+        c += event->commitString().size() - qMin(-event->replacementStart(), event->replacementLength());
 
     m_cursor += event->replacementStart();
     if (m_cursor < 0)
@@ -550,15 +513,15 @@ void QWidgetLineControl::processInputMethodEvent(QInputMethodEvent *event)
         internalInsert(event->commitString());
         cursorPositionChanged = true;
     } else {
-        m_cursor = qBound(0, c, m_text.length());
+        m_cursor = qBound(0, c, m_text.size());
     }
 
     for (int i = 0; i < event->attributes().size(); ++i) {
         const QInputMethodEvent::Attribute &a = event->attributes().at(i);
         if (a.type == QInputMethodEvent::Selection) {
-            m_cursor = qBound(0, a.start + a.length, m_text.length());
+            m_cursor = qBound(0, a.start + a.length, m_text.size());
             if (a.length) {
-                m_selstart = qMax(0, qMin(a.start, m_text.length()));
+                m_selstart = qMax(0, qMin(a.start, m_text.size()));
                 m_selend = m_cursor;
                 if (m_selend < m_selstart) {
                     qSwap(m_selstart, m_selend);
@@ -573,12 +536,26 @@ void QWidgetLineControl::processInputMethodEvent(QInputMethodEvent *event)
         }
     }
 #ifndef QT_NO_IM
-    setPreeditArea(m_cursor, event->preeditString());
+    // in NoEcho mode, the cursor is always at the beginning of the lineedit
+    switch (m_echoMode) {
+    case QLineEdit::NoEcho:
+        setPreeditArea(0, QString());
+        break;
+    case QLineEdit::Password: {
+        QString preeditString = event->preeditString();
+        preeditString.fill(m_passwordCharacter);
+        setPreeditArea(m_cursor, preeditString);
+        break;
+    }
+    default:
+        setPreeditArea(m_cursor, event->preeditString());
+        break;
+    }
 #endif //QT_NO_IM
     const int oldPreeditCursor = m_preeditCursor;
-    m_preeditCursor = event->preeditString().length();
+    m_preeditCursor = event->preeditString().size();
     m_hideCursor = false;
-    QVector<QTextLayout::FormatRange> formats;
+    QList<QTextLayout::FormatRange> formats;
     formats.reserve(event->attributes().size());
     for (int i = 0; i < event->attributes().size(); ++i) {
         const QInputMethodEvent::Attribute &a = event->attributes().at(i);
@@ -627,7 +604,7 @@ void QWidgetLineControl::processInputMethodEvent(QInputMethodEvent *event)
 */
 void QWidgetLineControl::draw(QPainter *painter, const QPoint &offset, const QRect &clip, int flags)
 {
-    QVector<QTextLayout::FormatRange> selections;
+    QList<QTextLayout::FormatRange> selections;
     if (flags & DrawSelections) {
         QTextLayout::FormatRange o;
         if (m_selstart < m_selend) {
@@ -669,7 +646,7 @@ void QWidgetLineControl::draw(QPainter *painter, const QPoint &offset, const QRe
 void QWidgetLineControl::selectWordAtPos(int cursor)
 {
     int next = cursor + 1;
-    if(next > end())
+    if (next > end())
         --next;
     int c = textLayout()->previousCursorPosition(next, QTextLayout::SkipWords);
     moveCursor(c, false);
@@ -694,7 +671,7 @@ void QWidgetLineControl::selectWordAtPos(int cursor)
 */
 bool QWidgetLineControl::finishChange(int validateFromState, bool update, bool edited)
 {
-    Q_UNUSED(update)
+    Q_UNUSED(update);
 
     if (m_textDirty) {
         // do validation
@@ -717,7 +694,7 @@ bool QWidgetLineControl::finishChange(int validateFromState, bool update, bool e
         }
 #endif
         if (validateFromState >= 0 && wasValidInput && !m_validInput) {
-            if (m_transactions.count())
+            if (m_transactions.size())
                 return false;
             internalUndo(validateFromState);
             m_history.erase(m_history.begin() + m_undoState, m_history.end());
@@ -741,7 +718,7 @@ bool QWidgetLineControl::finishChange(int validateFromState, bool update, bool e
         emit selectionChanged();
     }
     if (m_cursor == m_lastCursorPos)
-        updateMicroFocus();
+        emit updateMicroFocus();
     emitCursorPositionChanged();
     return true;
 }
@@ -759,7 +736,7 @@ void QWidgetLineControl::internalSetText(const QString &txt, int pos, bool edite
     QString oldText = m_text;
     if (m_maskData) {
         m_text = maskString(0, txt, true);
-        m_text += clearString(m_text.length(), m_maxLength - m_text.length());
+        m_text += clearString(m_text.size(), m_maxLength - m_text.size());
         if (edited && oldText == m_text)
             emit inputRejected();
     } else {
@@ -767,11 +744,11 @@ void QWidgetLineControl::internalSetText(const QString &txt, int pos, bool edite
     }
     m_history.clear();
     m_modifiedState =  m_undoState = 0;
-    m_cursor = (pos < 0 || pos > m_text.length()) ? m_text.length() : pos;
+    m_cursor = (pos < 0 || pos > m_text.size()) ? m_text.size() : pos;
     m_textDirty = (oldText != m_text);
     const bool changed = finishChange(-1, true, edited);
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     if (changed) {
         if (oldText.isEmpty()) {
             QAccessibleTextInsertEvent event(accessibleObject(), 0, txt);
@@ -788,7 +765,7 @@ void QWidgetLineControl::internalSetText(const QString &txt, int pos, bool edite
         }
     }
 #else
-    Q_UNUSED(changed)
+    Q_UNUSED(changed);
 #endif
 }
 
@@ -804,7 +781,7 @@ void QWidgetLineControl::addCommand(const Command &cmd)
     m_history.erase(m_history.begin() + m_undoState, m_history.end());
 
     if (m_separator && m_undoState && m_history[m_undoState - 1].type != Separator)
-        m_history.push_back(Command(Separator, m_cursor, 0, m_selstart, m_selend));
+        m_history.push_back(Command(Separator, m_cursor, u'\0', m_selstart, m_selend));
 
     m_separator = false;
     m_history.push_back(cmd);
@@ -836,40 +813,40 @@ void QWidgetLineControl::internalInsert(const QString &s)
             m_passwordEchoTimer = startTimer(delay);
     }
     if (hasSelectedText())
-        addCommand(Command(SetSelection, m_cursor, 0, m_selstart, m_selend));
+        addCommand(Command(SetSelection, m_cursor, u'\0', m_selstart, m_selend));
     if (m_maskData) {
         QString ms = maskString(m_cursor, s);
         if (ms.isEmpty() && !s.isEmpty())
             emit inputRejected();
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
         QAccessibleTextInsertEvent insertEvent(accessibleObject(), m_cursor, ms);
         QAccessible::updateAccessibility(&insertEvent);
 #endif
-        for (int i = 0; i < (int) ms.length(); ++i) {
+        for (int i = 0; i < (int) ms.size(); ++i) {
             addCommand (Command(DeleteSelection, m_cursor + i, m_text.at(m_cursor + i), -1, -1));
             addCommand(Command(Insert, m_cursor + i, ms.at(i), -1, -1));
         }
-        m_text.replace(m_cursor, ms.length(), ms);
-        m_cursor += ms.length();
+        m_text.replace(m_cursor, ms.size(), ms);
+        m_cursor += ms.size();
         m_cursor = nextMaskBlank(m_cursor);
         m_textDirty = true;
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
         QAccessibleTextCursorEvent event(accessibleObject(), m_cursor);
         QAccessible::updateAccessibility(&event);
 #endif
     } else {
-        int remaining = m_maxLength - m_text.length();
+        int remaining = m_maxLength - m_text.size();
         if (remaining != 0) {
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
             QAccessibleTextInsertEvent insertEvent(accessibleObject(), m_cursor, s);
             QAccessible::updateAccessibility(&insertEvent);
 #endif
             m_text.insert(m_cursor, s.left(remaining));
-            for (int i = 0; i < (int) s.left(remaining).length(); ++i)
+            for (int i = 0; i < (int) s.left(remaining).size(); ++i)
                addCommand(Command(Insert, m_cursor++, s.at(i), -1, -1));
             m_textDirty = true;
         }
-        if (s.length() > remaining)
+        if (s.size() > remaining)
             emit inputRejected();
     }
 }
@@ -887,13 +864,13 @@ void QWidgetLineControl::internalInsert(const QString &s)
 */
 void QWidgetLineControl::internalDelete(bool wasBackspace)
 {
-    if (m_cursor < (int) m_text.length()) {
+    if (m_cursor < (int) m_text.size()) {
         cancelPasswordEchoTimer();
         if (hasSelectedText())
-            addCommand(Command(SetSelection, m_cursor, 0, m_selstart, m_selend));
+            addCommand(Command(SetSelection, m_cursor, u'\0', m_selstart, m_selend));
         addCommand(Command((CommandType)((m_maskData ? 2 : 0) + (wasBackspace ? Remove : Delete)),
                    m_cursor, m_text.at(m_cursor), -1, -1));
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
         QAccessibleTextRemoveEvent event(accessibleObject(), m_cursor, m_text.at(m_cursor));
         QAccessible::updateAccessibility(&event);
 #endif
@@ -918,11 +895,11 @@ void QWidgetLineControl::internalDelete(bool wasBackspace)
 */
 void QWidgetLineControl::removeSelectedText()
 {
-    if (m_selstart < m_selend && m_selend <= (int) m_text.length()) {
+    if (m_selstart < m_selend && m_selend <= (int) m_text.size()) {
         cancelPasswordEchoTimer();
         separate();
         int i ;
-        addCommand(Command(SetSelection, m_cursor, 0, m_selstart, m_selend));
+        addCommand(Command(SetSelection, m_cursor, u'\0', m_selstart, m_selend));
         if (m_selstart <= m_cursor && m_cursor < m_selend) {
             // cursor is within the selection. Split up the commands
             // to be able to restore the correct cursor position
@@ -934,7 +911,7 @@ void QWidgetLineControl::removeSelectedText()
             for (i = m_selend-1; i >= m_selstart; --i)
                 addCommand (Command(RemoveSelection, i, m_text.at(i), -1, -1));
         }
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
         QAccessibleTextRemoveEvent event(accessibleObject(), m_selstart, m_text.mid(m_selstart, m_selend - m_selstart));
         QAccessible::updateAccessibility(&event);
 #endif
@@ -960,11 +937,10 @@ void QWidgetLineControl::removeSelectedText()
 */
 void QWidgetLineControl::parseInputMask(const QString &maskFields)
 {
-    int delimiter = maskFields.indexOf(QLatin1Char(';'));
+    qsizetype delimiter = maskFields.indexOf(u';');
     if (maskFields.isEmpty() || delimiter == 0) {
         if (m_maskData) {
-            delete [] m_maskData;
-            m_maskData = nullptr;
+            m_maskData.reset();
             m_maxLength = 32767;
             internalSetText(QString(), -1, false);
         }
@@ -972,47 +948,42 @@ void QWidgetLineControl::parseInputMask(const QString &maskFields)
     }
 
     if (delimiter == -1) {
-        m_blank = QLatin1Char(' ');
+        m_blank = u' ';
         m_inputMask = maskFields;
     } else {
         m_inputMask = maskFields.left(delimiter);
-        m_blank = (delimiter + 1 < maskFields.length()) ? maskFields[delimiter + 1] : QLatin1Char(' ');
+        m_blank = (delimiter + 1 < maskFields.size()) ? maskFields[delimiter + 1] : u' ';
     }
 
     // calculate m_maxLength / m_maskData length
     m_maxLength = 0;
-    QChar c = 0;
     bool escaped = false;
-    for (int i=0; i<m_inputMask.length(); i++) {
-        c = m_inputMask.at(i);
+    for (int i=0; i<m_inputMask.size(); i++) {
+        const auto c = m_inputMask.at(i);
         if (escaped) {
            ++m_maxLength;
            escaped = false;
            continue;
         }
 
-        if (c == '\\') {
+        if (c == u'\\') {
            escaped = true;
            continue;
         }
 
-        if (c != QLatin1Char('\\') && c != QLatin1Char('!') &&
-             c != QLatin1Char('<') && c != QLatin1Char('>') &&
-             c != QLatin1Char('{') && c != QLatin1Char('}') &&
-             c != QLatin1Char('[') && c != QLatin1Char(']'))
+        if (c != u'\\' && c != u'!' && c != u'<' && c != u'>' &&
+             c != u'{' && c != u'}' && c != u'[' && c != u']')
             m_maxLength++;
     }
 
-    delete [] m_maskData;
-    m_maskData = new MaskInputData[m_maxLength];
+    m_maskData = std::make_unique<MaskInputData[]>(m_maxLength);
 
     MaskInputData::Casemode m = MaskInputData::NoCaseMode;
-    c = 0;
     bool s;
     bool escape = false;
     int index = 0;
-    for (int i = 0; i < m_inputMask.length(); i++) {
-        c = m_inputMask.at(i);
+    for (int i = 0; i < m_inputMask.size(); i++) {
+        const auto c = m_inputMask.at(i);
         if (escape) {
             s = true;
             m_maskData[index].maskChar = c;
@@ -1020,13 +991,13 @@ void QWidgetLineControl::parseInputMask(const QString &maskFields)
             m_maskData[index].caseMode = m;
             index++;
             escape = false;
-        } else if (c == QLatin1Char('<')) {
-                m = MaskInputData::Lower;
-        } else if (c == QLatin1Char('>')) {
+        } else if (c == u'<') {
+            m = MaskInputData::Lower;
+        } else if (c == u'>') {
             m = MaskInputData::Upper;
-        } else if (c == QLatin1Char('!')) {
+        } else if (c == u'!') {
             m = MaskInputData::NoCaseMode;
-        } else if (c != QLatin1Char('{') && c != QLatin1Char('}') && c != QLatin1Char('[') && c != QLatin1Char(']')) {
+        } else if (c != u'{' && c != u'}' && c != u'[' && c != u']') {
             switch (c.unicode()) {
             case 'A':
             case 'a':
@@ -1114,23 +1085,23 @@ bool QWidgetLineControl::isValidInput(QChar key, QChar mask) const
             return true;
         break;
     case '#':
-        if (key.isNumber() || key == QLatin1Char('+') || key == QLatin1Char('-') || key == m_blank)
+        if (key.isNumber() || key == u'+' || key == u'-' || key == m_blank)
             return true;
         break;
     case 'B':
-        if (key == QLatin1Char('0') || key == QLatin1Char('1'))
+        if (key == u'0' || key == u'1')
             return true;
         break;
     case 'b':
-        if (key == QLatin1Char('0') || key == QLatin1Char('1') || key == m_blank)
+        if (key == u'0' || key == u'1' || key == m_blank)
             return true;
         break;
     case 'H':
-        if (key.isNumber() || (key >= QLatin1Char('a') && key <= QLatin1Char('f')) || (key >= QLatin1Char('A') && key <= QLatin1Char('F')))
+        if (key.isNumber() || (key >= u'a' && key <= u'f') || (key >= u'A' && key <= u'F'))
             return true;
         break;
     case 'h':
-        if (key.isNumber() || (key >= QLatin1Char('a') && key <= QLatin1Char('f')) || (key >= QLatin1Char('A') && key <= QLatin1Char('F')) || key == m_blank)
+        if (key.isNumber() || (key >= u'a' && key <= u'f') || (key >= u'A' && key <= u'F') || key == m_blank)
             return true;
         break;
     default:
@@ -1160,7 +1131,7 @@ bool QWidgetLineControl::hasAcceptableInput(const QString &str) const
     if (!m_maskData)
         return true;
 
-    if (str.length() != m_maxLength)
+    if (str.size() != m_maxLength)
         return false;
 
     for (int i=0; i < m_maxLength; ++i) {
@@ -1195,47 +1166,47 @@ QString QWidgetLineControl::maskString(int pos, const QString &str, bool clear) 
     QString s = QString::fromLatin1("");
     int i = pos;
     while (i < m_maxLength) {
-        if (strIndex < str.length()) {
+        if (strIndex < str.size()) {
             if (m_maskData[i].separator) {
                 s += m_maskData[i].maskChar;
-                if (str[(int)strIndex] == m_maskData[i].maskChar)
+                if (str[strIndex] == m_maskData[i].maskChar)
                     strIndex++;
                 ++i;
             } else {
-                if (isValidInput(str[(int)strIndex], m_maskData[i].maskChar)) {
+                if (isValidInput(str[strIndex], m_maskData[i].maskChar)) {
                     switch (m_maskData[i].caseMode) {
                     case MaskInputData::Upper:
-                        s += str[(int)strIndex].toUpper();
+                        s += str[strIndex].toUpper();
                         break;
                     case MaskInputData::Lower:
-                        s += str[(int)strIndex].toLower();
+                        s += str[strIndex].toLower();
                         break;
                     default:
-                        s += str[(int)strIndex];
+                        s += str[strIndex];
                     }
                     ++i;
                 } else {
                     // search for separator first
-                    int n = findInMask(i, true, true, str[(int)strIndex]);
+                    int n = findInMask(i, true, true, str[strIndex]);
                     if (n != -1) {
-                        if (str.length() != 1 || i == 0 || (i > 0 && (!m_maskData[i-1].separator || m_maskData[i-1].maskChar != str[(int)strIndex]))) {
-                            s += fill.midRef(i, n - i + 1);
+                        if (str.size() != 1 || i == 0 || (i > 0 && (!m_maskData[i-1].separator || m_maskData[i-1].maskChar != str[strIndex]))) {
+                            s += QStringView{fill}.mid(i, n - i + 1);
                             i = n + 1; // update i to find + 1
                         }
                     } else {
                         // search for valid m_blank if not
-                        n = findInMask(i, true, false, str[(int)strIndex]);
+                        n = findInMask(i, true, false, str[strIndex]);
                         if (n != -1) {
-                            s += fill.midRef(i, n - i);
+                            s += QStringView{fill}.mid(i, n - i);
                             switch (m_maskData[n].caseMode) {
                             case MaskInputData::Upper:
-                                s += str[(int)strIndex].toUpper();
+                                s += str[strIndex].toUpper();
                                 break;
                             case MaskInputData::Lower:
-                                s += str[(int)strIndex].toLower();
+                                s += str[strIndex].toLower();
                                 break;
                             default:
-                                s += str[(int)strIndex];
+                                s += str[strIndex];
                             }
                             i = n + 1; // updates i to find + 1
                         }
@@ -1286,7 +1257,7 @@ QString QWidgetLineControl::stripString(const QString &str) const
         return str;
 
     QString s;
-    int end = qMin(m_maxLength, (int)str.length());
+    int end = qMin(m_maxLength, (int)str.size());
     for (int i = 0; i < end; ++i)
         if (m_maskData[i].separator)
             s += m_maskData[i].maskChar;
@@ -1424,8 +1395,8 @@ void QWidgetLineControl::emitCursorPositionChanged()
     if (m_cursor != m_lastCursorPos) {
         const int oldLast = m_lastCursorPos;
         m_lastCursorPos = m_cursor;
-        cursorPositionChanged(oldLast, m_cursor);
-#ifndef QT_NO_ACCESSIBILITY
+        emit cursorPositionChanged(oldLast, m_cursor);
+#if QT_CONFIG(accessibility)
         // otherwise we send a selection update which includes the cursor
         if (!hasSelectedText()) {
             QAccessibleTextCursorEvent event(accessibleObject(), m_cursor);
@@ -1473,7 +1444,7 @@ void QWidgetLineControl::complete(int key)
             return;
         int n = 0;
         if (key == Qt::Key_Up || key == Qt::Key_Down) {
-            if (textAfterSelection().length())
+            if (textAfterSelection().size())
                 return;
             QString prefix = hasSelectedText() ? textBeforeSelection()
                 : text;
@@ -1662,6 +1633,7 @@ void QWidgetLineControl::processKeyEvent(QKeyEvent* event)
                     break;
 #endif
                 if (!m_completer->currentCompletion().isEmpty() && hasSelectedText()
+                    && !m_completer->completionPrefix().isEmpty()
                     && textAfterSelection().isEmpty()) {
                     setText(m_completer->currentCompletion());
                     inlineCompletionAccepted = true;
@@ -1837,13 +1809,18 @@ void QWidgetLineControl::processKeyEvent(QKeyEvent* event)
     }
     else if (event == QKeySequence::DeleteEndOfWord) {
         if (!isReadOnly()) {
-            cursorWordForward(true);
-            del();
+            if (!hasSelectedText())
+                cursorWordForward(true);
+
+            if (hasSelectedText())
+                del();
         }
     }
     else if (event == QKeySequence::DeleteStartOfWord) {
         if (!isReadOnly()) {
-            cursorWordBackward(true);
+            if (!hasSelectedText())
+                cursorWordBackward(true);
+
             if (hasSelectedText())
                 del();
         }

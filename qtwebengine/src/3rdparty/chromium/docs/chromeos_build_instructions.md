@@ -10,13 +10,15 @@ build configurations:
   workstation.
 - Otherwise, Chrome's full integration can be covered by building for a real
   Chrome OS device or VM using [Simple Chrome](#Chromium-OS-Device-Simple-Chrome).
+- Use `is_chromeos_device` in GN and `BUILDFLAG(IS_CHROMEOS_DEVICE)` in C++ code
+  to differentiate between these two modes.
 
 [TOC]
 
 ## Common setup
 
 First, follow the [normal Linux build
-instructions](https://chromium.googlesource.com/chromium/src/+/master/docs/linux/build_instructions.md)
+instructions](https://chromium.googlesource.com/chromium/src/+/main/docs/linux/build_instructions.md)
 as usual to get a Chromium checkout.
 
 You'll also need to add `'chromeos'` to the `target_os` list in your `.gclient`
@@ -49,6 +51,9 @@ configuration most system services (like the power manager, bluetooth daemon,
 etc.) are stubbed out. The entire system UI runs in a single X11 window on your
 desktop.
 
+You can test sign-in/sync in this mode by adding the --login-manager flag, see
+the [Login notes](#Login-notes) section.
+
 ### Building and running Chromium with Chromium OS UI on your local machine
 
 Run the following in your chromium checkout:
@@ -68,12 +73,14 @@ or running `gn args out/Default`:
     is_debug = false           # Release build, runs faster.
     dcheck_always_on = true    # Enables DCHECK despite release build.
     enable_nacl = false        # Skips native client build, compiles faster.
-    use_sysroot = false        # Build for local machine instead of sysroot.
 
-    # Set the following true to create a Chrome (instead of Chromium) build.
-    # This requires a src-internal checkout.
-    is_chrome_branded = false  # Adds internal features and branded art assets.
-    is_official_build = false  # Turns on many optimizations, slower build.
+    # Builds Chrome instead of Chromium. This requires a src-internal
+    # checkout. Adds internal features and branded art assets.
+    is_chrome_branded = true
+
+    # Enables many optimizations, leading to much slower compiles, links,
+    # and no runtime stack traces.
+    is_official_build = true
 
 NOTE: You may wish to replace 'Default' with something like 'Cros' if
 you switch back and forth between Linux and Chromium OS builds, or 'Debug'
@@ -94,8 +101,8 @@ Some useful flags:
      virtual screens, by display position and size.
 *    `--enable-features=Feature1,OtherFeature2`: Enable specified features.
      Features are often listed in chrome://flags, or in source files such as
-     [chrome_features.cc](https://source.chromium.org/chromium/chromium/src/+/master:chrome/common/chrome_features.cc)
-     or [chromeos_features.cc](https://source.chromium.org/chromium/chromium/src/+/master:chromeos/constants/chromeos_features.cc).
+     [chrome_features.cc](https://source.chromium.org/chromium/chromium/src/+/main:chrome/common/chrome_features.cc)
+     or [ash_features.cc](https://source.chromium.org/chromium/chromium/src/+/main:ash/constants/ash_features.cc).
      Note that changing values in chrome://flags does not work for
      linux-chromeos, and this flag must be used.
 *    `--enable-ui-devtools[=9223]`: Allow debugging of the system UI through
@@ -113,9 +120,10 @@ By default this build signs in with a stub user. To specify a real user:
 *   For first run, add the following options to chrome's command line:
     `--user-data-dir=/tmp/chrome --login-manager`
 *   Go through the out-of-the-box UX and sign in with a real Gmail account.
-*   For subsequent runs, add:
+*   For subsequent runs, if you want to skip the login manager page, add:
     `--user-data-dir=/tmp/chrome --login-user=username@gmail.com
-    --login-profile=username@gmail.com-hash`
+    --login-profile=username@gmail.com-hash`. It's also fine to just keep
+    --login-manager instead.
 *   To run in guest mode instantly, add:
     `--user-data-dir=/tmp/chrome --bwsi --incognito --login-user='$guest'
     --login-profile=user`
@@ -130,7 +138,7 @@ testing it through Chromium Remote Desktop you might face drawing
 problems (e.g. Aura window not painting anything). Possible remedies:
 
 *   `--ui-enable-software-compositing --ui-disable-threaded-compositing`
-*   `--use-gl=swiftshader`, but it's slow.
+*   `--use-gl=angle --use-angle=swiftshader`, but it's slow.
 
 To more closely match the UI used on devices, you can install fonts used
 by Chrome OS, such as Roboto, on your Linux distro.
@@ -196,4 +204,4 @@ supplied in the imported .gni file after the `import()` line.
 
 For more information (like copying the locally-built Chrome to a device, or
 running Tast tests), consult Simple Chrome's
-[full documentation](https://chromium.googlesource.com/chromiumos/docs/+/master/simple_chrome_workflow.md).
+[full documentation](https://chromium.googlesource.com/chromiumos/docs/+/main/simple_chrome_workflow.md).

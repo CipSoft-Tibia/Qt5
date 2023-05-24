@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,8 @@
 #include <ostream>
 #include <vector>
 
+#include "base/check_op.h"
 #include "base/component_export.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
 #include "media/learning/common/value.h"
 
 namespace media {
@@ -32,7 +31,7 @@ struct COMPONENT_EXPORT(LEARNING_COMMON) LabelledExample {
   LabelledExample(std::initializer_list<FeatureValue> init_list,
                   TargetValue target);
   LabelledExample(const LabelledExample& rhs);
-  LabelledExample(LabelledExample&& rhs);
+  LabelledExample(LabelledExample&& rhs) noexcept;
   ~LabelledExample();
 
   // Comparisons ignore weight, because it's convenient.

@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,10 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
 #include "base/notreached.h"
+#include "base/task/sequenced_task_runner.h"
 #include "content/browser/renderer_host/pepper/browser_ppapi_host_impl.h"
 #include "content/browser/renderer_host/pepper/pepper_socket_utils.h"
 #include "content/public/browser/browser_context.h"
@@ -152,14 +153,18 @@ int32_t PepperHostResolverMessageFilter::OnMsgResolve(
       network::mojom::ResolveHostParameters::New();
   PrepareRequestInfo(hint, parameters.get());
 
+  // Intentionally using a HostPortPair because scheme isn't specified.
   storage_partition->GetNetworkContext()->ResolveHost(
-      net::HostPortPair(host_port.host, host_port.port),
-      render_frame_host->GetNetworkIsolationKey(), std::move(parameters),
-      receiver_.BindNewPipeAndPassRemote());
-  receiver_.set_disconnect_handler(
-      base::BindOnce(&PepperHostResolverMessageFilter::OnComplete,
-                     base::Unretained(this), net::ERR_NAME_NOT_RESOLVED,
-                     net::ResolveErrorInfo(net::ERR_FAILED), base::nullopt));
+      network::mojom::HostResolverHost::NewHostPortPair(
+          net::HostPortPair(host_port.host, host_port.port)),
+      render_frame_host->GetIsolationInfoForSubresources()
+          .network_anonymization_key(),
+      std::move(parameters), receiver_.BindNewPipeAndPassRemote());
+  receiver_.set_disconnect_handler(base::BindOnce(
+      &PepperHostResolverMessageFilter::OnComplete, base::Unretained(this),
+      net::ERR_NAME_NOT_RESOLVED, net::ResolveErrorInfo(net::ERR_FAILED),
+      /*resolved_addresses=*/absl::nullopt,
+      /*endpoint_results_with_metadata=*/absl::nullopt));
   host_resolve_context_ = context->MakeReplyMessageContext();
 
   return PP_OK_COMPLETIONPENDING;
@@ -168,7 +173,9 @@ int32_t PepperHostResolverMessageFilter::OnMsgResolve(
 void PepperHostResolverMessageFilter::OnComplete(
     int result,
     const net::ResolveErrorInfo& resolve_error_info,
-    const base::Optional<net::AddressList>& resolved_addresses) {
+    const absl::optional<net::AddressList>& resolved_addresses,
+    const absl::optional<net::HostResolverEndpointResults>&
+        endpoint_results_with_metadata) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   receiver_.reset();
 
@@ -184,12 +191,19 @@ void PepperHostResolverMessageFilter::OnComplete(
 
 void PepperHostResolverMessageFilter::OnLookupFinished(
     int net_result,
-    const base::Optional<net::AddressList>& addresses,
+    const absl::optional<net::AddressList>& addresses,
     const ReplyMessageContext& context) {
   if (net_result != net::OK) {
     SendResolveError(NetErrorToPepperError(net_result), context);
   } else {
-    const std::string& canonical_name = addresses.value().canonical_name();
+    // Ignore DNS aliases unless only one is received. Otherwise unknown which
+    // is the "canonical name" desired here. There is always expected to be at
+    // most 1 alias when the request is made with `include_canonical_name` (see
+    // `PrepareRequestInfo()`).
+    const std::string& canonical_name =
+        addresses.value().dns_aliases().size() == 1
+            ? addresses.value().dns_aliases().front()
+            : "";
     NetAddressList net_address_list;
     CreateNetAddressListFromAddressList(addresses.value(), &net_address_list);
     if (net_address_list.empty())

@@ -43,11 +43,11 @@
     </message>
     <message>
         <source>Unsupported WebSocket scheme: %1</source>
-        <translation>Schème WebSocket non supporté : %1</translation>
+        <translation>Schème WebSocket non supporté&#xa0;: %1</translation>
     </message>
     <message>
         <source>Error writing bytes to socket: %1.</source>
-        <translation>Erreur à l&apos;écriture de données sur le socket : %1.</translation>
+        <translation>Erreur à l&apos;écriture de données sur le socket&#xa0;: %1.</translation>
     </message>
     <message>
         <source>Bytes written %1 != %2.</source>
@@ -55,11 +55,11 @@
     </message>
     <message>
         <source>Invalid statusline in response: %1.</source>
-        <translation>Ligne de status invalide dans la réponse : %1.</translation>
+        <translation>Ligne de status invalide dans la réponse&#xa0;: %1.</translation>
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Connection closed while reading header.</source>
-        <translation>QWebSocketPrivate::processHandshake : connexion fermée lors de la lecture de l&apos;en-tête.</translation>
+        <translation>QWebSocketPrivate::processHandshake&#xa0;: connexion fermée lors de la lecture de l&apos;en-tête.</translation>
     </message>
     <message>
         <source>Accept-Key received from server %1 does not match the client key %2.</source>
@@ -67,19 +67,19 @@
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Invalid statusline in response: %1.</source>
-        <translation>QWebSocketPrivate::processHandshake: ligne de status invalide dans la réponse : %1.</translation>
+        <translation>QWebSocketPrivate::processHandshake: ligne de status invalide dans la réponse&#xa0;: %1.</translation>
     </message>
     <message>
         <source>Handshake: Server requests a version that we don&apos;t support: %1.</source>
-        <translation>Handshake: le serveur requiert une version qui n&apos;est pas supportés : %1.</translation>
+        <translation>Handshake: le serveur requiert une version qui n&apos;est pas supportés&#xa0;: %1.</translation>
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Unknown error condition encountered. Aborting connection.</source>
-        <translation>QWebSocketPrivate::processHandshake : erreur inconnue rencontrée. Abandon de la connexion.</translation>
+        <translation>QWebSocketPrivate::processHandshake&#xa0;: erreur inconnue rencontrée. Abandon de la connexion.</translation>
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Unhandled http status code: %1 (%2).</source>
-        <translation>QWebSocketPrivate::processHandshake : status http non géré : %1 (%2).</translation>
+        <translation>QWebSocketPrivate::processHandshake&#xa0;: status http non géré&#xa0;: %1 (%2).</translation>
     </message>
     <message>
         <source>The resource name contains newlines. Possible attack detected.</source>
@@ -130,7 +130,7 @@
     </message>
     <message>
         <source>Invalid opcode detected: %1</source>
-        <translation>Opcode invalide détecté : %1</translation>
+        <translation>Opcode invalide détecté&#xa0;: %1</translation>
     </message>
 </context>
 <context>
@@ -141,7 +141,7 @@
     </message>
     <message>
         <source>Error occurred while reading from the network: %1</source>
-        <translation>Une erreur est survenue lors de la lecture réseau : %1</translation>
+        <translation>Une erreur est survenue lors de la lecture réseau&#xa0;: %1</translation>
     </message>
     <message>
         <source>Lengths smaller than 126 must be expressed as one byte.</source>
@@ -161,7 +161,7 @@
     </message>
     <message>
         <source>Error while reading from the network: %1.</source>
-        <translation>Erreur lors de la lecture réseau : %1.</translation>
+        <translation>Erreur lors de la lecture réseau&#xa0;: %1.</translation>
     </message>
     <message>
         <source>Maximum framesize exceeded.</source>

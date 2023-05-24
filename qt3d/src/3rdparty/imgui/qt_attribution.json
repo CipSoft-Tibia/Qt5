@@ -33,10 +33,11 @@
         "QDocModule": "qt3d",
         "Description": "Single-file public domain (or MIT licensed) libraries for C/C++",
         "QtUsage": "Used in tests to demonstrate and verify the integration of an external GUI library.",
-        "Files": "imstb_rectpack.h,imstb_textedit.h,imstb_truetype.h",
+        "Files": "imstb_rectpack.h imstb_textedit.h imstb_truetype.h",
 
         "Homepage": "https://github.com/nothings/stb/",
         "License": "MIT License or Public Domain",
+        "LicenseId": "MIT OR CC0-1.0",
         "LicenseFile": "LICENSE_imstb.txt",
         "Copyright": "Copyright (c) 2017 Sean Barrett"
     }

@@ -17,6 +17,7 @@
 
 #include <stdlib.h>
 
+#include <cstddef>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -28,6 +29,7 @@
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/internal/parse.h"
+#include "absl/flags/internal/usage.h"
 #include "absl/flags/reflection.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -38,6 +40,36 @@
 #include <windows.h>
 #endif
 
+// Define 125 similar flags to test kMaxHints for flag suggestions.
+#define FLAG_MULT(x) F3(x)
+#define TEST_FLAG_HEADER FLAG_HEADER_
+
+#define F(name) ABSL_FLAG(int, name, 0, "");
+
+#define F1(name) \
+  F(name##1);    \
+  F(name##2);    \
+  F(name##3);    \
+  F(name##4);    \
+  F(name##5);
+/**/
+#define F2(name) \
+  F1(name##1);   \
+  F1(name##2);   \
+  F1(name##3);   \
+  F1(name##4);   \
+  F1(name##5);
+/**/
+#define F3(name) \
+  F2(name##1);   \
+  F2(name##2);   \
+  F2(name##3);   \
+  F2(name##4);   \
+  F2(name##5);
+/**/
+
+FLAG_MULT(TEST_FLAG_HEADER)
+
 namespace {
 
 using absl::base_internal::ScopedSetEnv;
@@ -45,6 +77,7 @@ using absl::base_internal::ScopedSetEnv;
 struct UDT {
   UDT() = default;
   UDT(const UDT&) = default;
+  UDT& operator=(const UDT&) = default;
   UDT(int v) : value(v) {}  // NOLINT
 
   int value;
@@ -207,6 +240,9 @@ namespace flags = absl::flags_internal;
 using testing::ElementsAreArray;
 
 class ParseTest : public testing::Test {
+ public:
+  ~ParseTest() override { flags::SetFlagsHelpMode(flags::HelpMode::kNone); }
+
  private:
   absl::FlagSaver flag_saver_;
 };
@@ -560,6 +596,49 @@ TEST_F(ParseDeathTest, TestInvalidUDTFlagFormat) {
 
 // --------------------------------------------------------------------
 
+TEST_F(ParseDeathTest, TestFlagSuggestions) {
+  const char* in_args1[] = {
+      "testbin",
+      "--legacy_boo",
+  };
+  EXPECT_DEATH_IF_SUPPORTED(
+      InvokeParse(in_args1),
+      "Unknown command line flag 'legacy_boo'. Did you mean: legacy_bool ?");
+
+  const char* in_args2[] = {"testbin", "--foo", "--undefok=foo1"};
+  EXPECT_DEATH_IF_SUPPORTED(
+      InvokeParse(in_args2),
+      "Unknown command line flag 'foo'. Did you mean: foo1 \\(undefok\\)?");
+
+  const char* in_args3[] = {
+      "testbin",
+      "--nolegacy_ino",
+  };
+  EXPECT_DEATH_IF_SUPPORTED(InvokeParse(in_args3),
+                            "Unknown command line flag 'nolegacy_ino'. Did "
+                            "you mean: nolegacy_bool, legacy_int ?");
+}
+
+// --------------------------------------------------------------------
+
+TEST_F(ParseTest, GetHints) {
+  EXPECT_THAT(absl::flags_internal::GetMisspellingHints("legacy_boo"),
+              testing::ContainerEq(std::vector<std::string>{"legacy_bool"}));
+  EXPECT_THAT(absl::flags_internal::GetMisspellingHints("nolegacy_itn"),
+              testing::ContainerEq(std::vector<std::string>{"legacy_int"}));
+  EXPECT_THAT(absl::flags_internal::GetMisspellingHints("nolegacy_int1"),
+              testing::ContainerEq(std::vector<std::string>{"legacy_int"}));
+  EXPECT_THAT(absl::flags_internal::GetMisspellingHints("nolegacy_int"),
+              testing::ContainerEq(std::vector<std::string>{"legacy_int"}));
+  EXPECT_THAT(absl::flags_internal::GetMisspellingHints("nolegacy_ino"),
+              testing::ContainerEq(
+                  std::vector<std::string>{"nolegacy_bool", "legacy_int"}));
+  EXPECT_THAT(
+      absl::flags_internal::GetMisspellingHints("FLAG_HEADER_000").size(), 100);
+}
+
+// --------------------------------------------------------------------
+
 TEST_F(ParseTest, TestLegacyFlags) {
   const char* in_args1[] = {
       "testbin",
@@ -851,7 +930,7 @@ TEST_F(ParseTest, TestIgnoreUndefinedFlags) {
 
 // --------------------------------------------------------------------
 
-TEST_F(ParseDeathTest, TestHelpFlagHandling) {
+TEST_F(ParseDeathTest, TestSimpleHelpFlagHandling) {
   const char* in_args1[] = {
       "testbin",
       "--help",
@@ -870,7 +949,34 @@ TEST_F(ParseDeathTest, TestHelpFlagHandling) {
       flags::UsageFlagsAction::kIgnoreUsage,
       flags::OnUndefinedFlag::kAbortIfUndefined);
 
+  EXPECT_EQ(flags::GetFlagsHelpMode(), flags::HelpMode::kImportant);
   EXPECT_EQ(absl::GetFlag(FLAGS_int_flag), 3);
+}
+
+// --------------------------------------------------------------------
+
+TEST_F(ParseDeathTest, TestSubstringHelpFlagHandling) {
+  const char* in_args1[] = {
+      "testbin",
+      "--help=abcd",
+  };
+
+  auto out_args1 = flags::ParseCommandLineImpl(
+      2, const_cast<char**>(in_args1), flags::ArgvListAction::kRemoveParsedArgs,
+      flags::UsageFlagsAction::kIgnoreUsage,
+      flags::OnUndefinedFlag::kAbortIfUndefined);
+
+  EXPECT_EQ(flags::GetFlagsHelpMode(), flags::HelpMode::kMatch);
+  EXPECT_EQ(flags::GetFlagsHelpMatchSubstr(), "abcd");
+
+  const char* in_args2[] = {"testbin", "--help", "some_positional_arg"};
+
+  auto out_args2 = flags::ParseCommandLineImpl(
+      3, const_cast<char**>(in_args2), flags::ArgvListAction::kRemoveParsedArgs,
+      flags::UsageFlagsAction::kIgnoreUsage,
+      flags::OnUndefinedFlag::kAbortIfUndefined);
+
+  EXPECT_EQ(flags::GetFlagsHelpMode(), flags::HelpMode::kImportant);
 }
 
 // --------------------------------------------------------------------

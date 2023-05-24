@@ -1,23 +1,28 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_BROWSER_BROWSER_INTERFACE_BINDERS_H_
 #define CONTENT_BROWSER_BROWSER_INTERFACE_BINDERS_H_
 
-#include "content/browser/service_worker/service_worker_info.h"
+#include "base/functional/callback.h"
 #include "content/common/content_export.h"
 #include "mojo/public/cpp/bindings/binder_map.h"
+#include "services/device/public/mojom/battery_monitor.mojom-forward.h"
+#include "services/device/public/mojom/device_posture_provider.mojom.h"
 #include "services/device/public/mojom/vibration_manager.mojom-forward.h"
 #include "url/origin.h"
 
 namespace content {
 
+class AgentSchedulingGroupHost;
 class RenderFrameHost;
 class RenderFrameHostImpl;
 class DedicatedWorkerHost;
 class SharedWorkerHost;
 class ServiceWorkerHost;
+struct ServiceWorkerVersionInfo;
+struct ServiceWorkerVersionBaseInfo;
 
 namespace internal {
 
@@ -55,10 +60,30 @@ url::Origin GetContextForHost(SharedWorkerHost* host);
 void PopulateBinderMap(ServiceWorkerHost* host, mojo::BinderMap* map);
 void PopulateBinderMapWithContext(
     ServiceWorkerHost* host,
-    mojo::BinderMapWithContext<const ServiceWorkerVersionInfo&>* map);
+    mojo::BinderMapWithContext<const ServiceWorkerVersionBaseInfo&>* map);
 ServiceWorkerVersionInfo GetContextForHost(ServiceWorkerHost* host);
 
+// Registers the handlers for interfaces requested by `AgentSchedulingGroup`s.
+void PopulateBinderMap(AgentSchedulingGroupHost* host, mojo::BinderMap* map);
+void PopulateBinderMapWithContext(
+    AgentSchedulingGroupHost* host,
+    mojo::BinderMapWithContext<AgentSchedulingGroupHost*>* map);
+AgentSchedulingGroupHost* GetContextForHost(AgentSchedulingGroupHost* host);
+
 }  // namespace internal
+
+// Allows tests to override how frame hosts bind BatteryMonitor receivers.
+using BatteryMonitorBinder = base::RepeatingCallback<void(
+    mojo::PendingReceiver<device::mojom::BatteryMonitor>)>;
+CONTENT_EXPORT void OverrideBatteryMonitorBinderForTesting(
+    BatteryMonitorBinder binder);
+
+// Allows tests to override how frame hosts binds DevicePostureProvider
+// receivers.
+using DevicePostureProviderBinder = base::RepeatingCallback<void(
+    mojo::PendingReceiver<device::mojom::DevicePostureProvider>)>;
+CONTENT_EXPORT void OverrideDevicePostureProviderBinderForTesting(
+    DevicePostureProviderBinder binder);
 
 // Allows tests to override how frame hosts bind VibrationManager receivers.
 using VibrationManagerBinder = base::RepeatingCallback<void(

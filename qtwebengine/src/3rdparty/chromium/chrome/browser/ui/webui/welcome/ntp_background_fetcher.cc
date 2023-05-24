@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,6 +12,7 @@
 #include "chrome/browser/search/background/ntp_backgrounds.h"
 #include "net/base/load_flags.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
+#include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/simple_url_loader.h"
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
 #include "url/gurl.h"
@@ -73,8 +74,8 @@ NtpBackgroundFetcher::~NtpBackgroundFetcher() = default;
 void NtpBackgroundFetcher::OnFetchCompleted(
     std::unique_ptr<std::string> response_body) {
   if (response_body) {
-    std::move(callback_).Run(
-        base::RefCountedString::TakeString(response_body.release()));
+    std::move(callback_).Run(base::MakeRefCounted<base::RefCountedString>(
+        std::move(*response_body)));
   } else {
     std::move(callback_).Run(base::MakeRefCounted<base::RefCountedBytes>());
   }

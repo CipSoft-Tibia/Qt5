@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "deviceskin.h"
 
@@ -55,13 +19,15 @@
 #include <QtCore/QDebug>
 
 #ifdef TEST_SKIN
-#  include <QtGui/QMainWindow>
-#  include <QtGui/QDialog>
-#  include <QtGui/QDialogButtonBox>
-#  include <QtGui/QHBoxLayout>
+#  include <QtWidgets/QMainWindow>
+#  include <QtWidgets/QDialog>
+#  include <QtWidgets/QDialogButtonBox>
+#  include <QtWidgets/QHBoxLayout>
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace {
     enum { joydistance = 10, key_repeat_period = 50, key_repeat_delay = 500 };
@@ -69,7 +35,7 @@ namespace {
 }
 
 static void parseRect(const QString &value, QRect *rect) {
-    const auto l = value.splitRef(QLatin1Char(' '));
+    const auto l = QStringView{value}.split(QLatin1Char(' '));
     rect->setRect(l[0].toInt(), l[1].toInt(), l[2].toInt(), l[3].toInt());
 }
 
@@ -117,7 +83,7 @@ bool DeviceSkinParameters::read(const QString &skinDirectory,  ReadMode rm,  QSt
     // Figure out the name. remove ending '/' if present
     QString skinFile = skinDirectory;
     if (skinFile.endsWith(QLatin1Char('/')))
-        skinFile.truncate(skinFile.length() - 1);
+        skinFile.truncate(skinFile.size() - 1);
 
     QFileInfo fi(skinFile);
     QString fn;
@@ -126,7 +92,7 @@ bool DeviceSkinParameters::read(const QString &skinDirectory,  ReadMode rm,  QSt
         prefix += QLatin1Char('/');
         fn = prefix;
         fn += fi.baseName();
-        fn += QLatin1String(".skin");
+        fn += ".skin"_L1;
     } else if (fi.isFile()){
         fn = skinFile;
         prefix = fi.path();
@@ -143,7 +109,8 @@ bool DeviceSkinParameters::read(const QString &skinDirectory,  ReadMode rm,  QSt
     QTextStream ts(&f);
     const bool rc = read(ts, rm, errorMessage);
     if (!rc)
-        *errorMessage =  DeviceSkin::tr("The skin configuration file '%1' could not be read: %2").arg(fn).arg(*errorMessage);
+        *errorMessage =  DeviceSkin::tr("The skin configuration file '%1' could not be read: %2")
+                         .arg(fn, *errorMessage);
     return rc;
 }
 bool DeviceSkinParameters::read(QTextStream &ts, ReadMode rm, QString *errorMessage)
@@ -156,31 +123,31 @@ bool DeviceSkinParameters::read(QTextStream &ts, ReadMode rm, QString *errorMess
     QString mark;
     ts >> mark;
     hasMouseHover = true; // historical default
-    if ( mark == QLatin1String("[SkinFile]") ) {
-        const QString UpKey = QLatin1String("Up");
-        const QString DownKey = QLatin1String("Down");
-        const QString ClosedKey = QLatin1String("Closed");
-        const QString ClosedAreasKey = QLatin1String("ClosedAreas");
-        const QString ScreenKey = QLatin1String("Screen");
-        const QString ScreenDepthKey = QLatin1String("ScreenDepth");
-        const QString BackScreenKey = QLatin1String("BackScreen");
-        const QString ClosedScreenKey = QLatin1String("ClosedScreen");
-        const QString CursorKey = QLatin1String("Cursor");
-        const QString AreasKey = QLatin1String("Areas");
-        const QString ToggleAreasKey = QLatin1String("ToggleAreas");
-        const QString ToggleActiveAreasKey = QLatin1String("ToggleActiveAreas");
-        const QString HasMouseHoverKey = QLatin1String("HasMouseHover");
+    if (mark == "[SkinFile]"_L1) {
+        const QString UpKey = "Up"_L1;
+        const QString DownKey = "Down"_L1;
+        const QString ClosedKey = "Closed"_L1;
+        const QString ClosedAreasKey = "ClosedAreas"_L1;
+        const QString ScreenKey = "Screen"_L1;
+        const QString ScreenDepthKey = "ScreenDepth"_L1;
+        const QString BackScreenKey = "BackScreen"_L1;
+        const QString ClosedScreenKey = "ClosedScreen"_L1;
+        const QString CursorKey = "Cursor"_L1;
+        const QString AreasKey = "Areas"_L1;
+        const QString ToggleAreasKey = "ToggleAreas"_L1;
+        const QString ToggleActiveAreasKey = "ToggleActiveAreas"_L1;
+        const QString HasMouseHoverKey = "HasMouseHover"_L1;
         // New
         while (!nareas) {
             QString line = ts.readLine();
             if ( line.isNull() )
                 break;
-            if ( line[0] != QLatin1Char('#') && !line.isEmpty() ) {
+            if (!line.isEmpty() && line.at(0) != u'#') {
                 int eq = line.indexOf(QLatin1Char('='));
                 if ( eq >= 0 ) {
                     const QString key = line.left(eq);
                     eq++;
-                    while (eq<line.length()-1 && line[eq].isSpace())
+                    while (eq<line.size()-1 && line[eq].isSpace())
                         eq++;
                     const QString value = line.mid(eq);
                     if ( key == UpKey ) {
@@ -210,7 +177,7 @@ bool DeviceSkinParameters::read(QTextStream &ts, ReadMode rm, QString *errorMess
                     } else if ( key == ToggleActiveAreasKey ) {
                         toggleActiveAreas = value.split(QLatin1Char(' '));
                     } else if ( key == HasMouseHoverKey ) {
-                        hasMouseHover = value == QLatin1String("true") || value == QLatin1String("1");
+                        hasMouseHover = value == "true"_L1 || value == "1"_L1;
                     }
                 } else {
                     *errorMessage =  DeviceSkin::tr("Syntax error: %1").arg(line);
@@ -284,8 +251,8 @@ bool DeviceSkinParameters::read(QTextStream &ts, ReadMode rm, QString *errorMess
     int i = 0;
     ts.readLine(); // eol
     joystick = -1;
-    const QString Joystick = QLatin1String("Joystick");
-    const QRegularExpression splitRe(QLatin1String("[ \t][ \t]*"));
+    const QString Joystick = "Joystick"_L1;
+    const QRegularExpression splitRe("[ \t][ \t]*"_L1);
     Q_ASSERT(splitRe.isValid());
     while (i < nareas && !ts.atEnd() ) {
         buttonAreas.push_back(DeviceSkinButtonArea());
@@ -293,20 +260,20 @@ bool DeviceSkinParameters::read(QTextStream &ts, ReadMode rm, QString *errorMess
         const QString line = ts.readLine();
         if ( !line.isEmpty() && line[0] != QLatin1Char('#') ) {
             const QStringList tok = line.split(splitRe);
-            if ( tok.count()<6 ) {
+            if ( tok.size()<6 ) {
                 *errorMessage =  DeviceSkin::tr("Syntax error in area definition: %1").arg(line);
                 return false;
             } else {
                 area.name = tok[0];
                 QString k = tok[1];
-                if ( k.left(2).toLower() == QLatin1String("0x")) {
+                if ( k.left(2).toLower() == "0x"_L1) {
                     area.keyCode = k.mid(2).toInt(0,16);
                 } else {
                     area.keyCode = k.toInt();
                 }
 
                 int p=0;
-                for (int j=2; j < tok.count() - 1; ) {
+                for (int j=2; j < tok.size() - 1; ) {
                     const int x = tok[j++].toInt();
                     const int y = tok[j++].toInt();
                     area.area.putPoints(p++,1,x,y);
@@ -317,7 +284,7 @@ bool DeviceSkinParameters::read(QTextStream &ts, ReadMode rm, QString *errorMess
                     area.name.truncate(area.name.size() - 1);
                     area.name.remove(0, 1);
                 }
-                if ( area.name.length() == 1 )
+                if ( area.name.size() == 1 )
                     area.text = area.name;
                 if ( area.name == Joystick)
                     joystick = i;
@@ -354,8 +321,8 @@ public:
     bool handleMouseEvent(QEvent *ev);
 
 protected:
-    bool event( QEvent *);
-    bool eventFilter( QObject*, QEvent *);
+    bool event(QEvent *) override;
+    bool eventFilter(QObject*, QEvent *) override;
 
 private:
     QWidget *mouseRecipient;
@@ -406,8 +373,8 @@ void DeviceSkin::calcRegions()
 {
     const int numAreas = m_parameters.buttonAreas.size();
     for (int i=0; i<numAreas; i++) {
-        QPolygon xa(m_parameters.buttonAreas[i].area.count());
-        int n = m_parameters.buttonAreas[i].area.count();
+        QPolygon xa(m_parameters.buttonAreas[i].area.size());
+        int n = m_parameters.buttonAreas[i].area.size();
         for (int p = 0; p < n; p++) {
             xa.setPoint(p,transform.map(m_parameters.buttonAreas[i].area[p]));
         }
@@ -535,21 +502,21 @@ void DeviceSkin::paintEvent( QPaintEvent *)
     } else {
         p.drawPixmap(0, 0, skinImageClosed);
     }
-    QVector<int> toDraw;
+    QList<int> toDraw;
     if ( buttonPressed == true ) {
         toDraw += buttonIndex;
     }
-    for (int toggle : qAsConst(m_parameters.toggleAreaList)) {
+    for (int toggle : std::as_const(m_parameters.toggleAreaList)) {
         const DeviceSkinButtonArea &ba = m_parameters.buttonAreas[toggle];
         if (flipped_open || ba.activeWhenClosed) {
             if (ba.toggleArea && ba.toggleActiveArea)
                 toDraw += toggle;
         }
     }
-    for (int button : qAsConst(toDraw)) {
+    for (int button : std::as_const(toDraw)) {
         const DeviceSkinButtonArea &ba = m_parameters.buttonAreas[button];
         const QRect r = buttonRegions[button].boundingRect();
-        if ( ba.area.count() > 2 )
+        if ( ba.area.size() > 2 )
             p.setClipRegion(buttonRegions[button]);
         p.drawPixmap( r.topLeft(), skinImageDown, r);
     }
@@ -566,7 +533,7 @@ void DeviceSkin::mousePressEvent( QMouseEvent *e )
         const int numAreas = m_parameters.buttonAreas.size();
         for (int i = 0; i < numAreas ; i++) {
             const DeviceSkinButtonArea &ba = m_parameters.buttonAreas[i];
-            if (  buttonRegions[i].contains( e->pos() ) ) {
+            if (  buttonRegions[i].contains( e->position().toPoint() ) ) {
                 if ( flipped_open || ba.activeWhenClosed ) {
                     if ( m_parameters.joystick == i ) {
                         joydown = true;
@@ -582,11 +549,11 @@ void DeviceSkin::mousePressEvent( QMouseEvent *e )
                 }
             }
         }
-        clickPos = e->pos();
+        clickPos = e->position().toPoint();
 //      This is handy for finding the areas to define rectangles for new skins
         if (debugDeviceSkin)
-            qDebug()<< "Clicked in " <<  e->pos().x() << ',' <<  e->pos().y();
-        clickPos = e->pos();
+            qDebug()<< "Clicked in " <<  e->position().toPoint().x() << ',' <<  e->position().toPoint().y();
+        clickPos = e->position().toPoint();
     }
 }
 
@@ -643,7 +610,7 @@ void DeviceSkin::mouseMoveEvent( QMouseEvent *e )
 {
     if ( e->buttons() & Qt::LeftButton ) {
         const int joystick = m_parameters.joystick;
-        QPoint newpos =  e->globalPos() - clickPos;
+        QPoint newpos =  e->globalPosition().toPoint() - clickPos;
         if (joydown) {
             int k1=0, k2=0;
             if (newpos.x() < -joydistance) {
@@ -675,7 +642,7 @@ void DeviceSkin::mouseMoveEvent( QMouseEvent *e )
         }
     }
     if ( cursorw )
-        cursorw->setPos(e->globalPos());
+        cursorw->setPos(e->globalPosition().toPoint());
 }
 
 void DeviceSkin::moveParent()
@@ -727,7 +694,7 @@ bool CursorWindow::handleMouseEvent(QEvent *ev)
         if (m_view) {
             if (ev->type() >= QEvent::MouseButtonPress && ev->type() <= QEvent::MouseMove) {
                 QMouseEvent *e = (QMouseEvent*)ev;
-                QPoint gp = e->globalPos();
+                QPoint gp = e->globalPosition().toPoint();
                 QPoint vp = m_view->mapFromGlobal(gp);
                 QPoint sp = skin->mapFromGlobal(gp);
                 if (e->type() == QEvent::MouseButtonPress || e->type() == QEvent::MouseButtonDblClick) {
@@ -784,15 +751,9 @@ CursorWindow::CursorWindow(const QImage &img, QPoint hot, QWidget* sk)
     QPixmap p;
     p = QPixmap::fromImage(img);
     if (!p.mask()) {
-        if (img.hasAlphaChannel()) {
-            QBitmap bm;
-            bm = QPixmap::fromImage(img.createAlphaMask());
-            p.setMask(bm);
-        } else {
-            QBitmap bm;
-            bm = QPixmap::fromImage(img.createHeuristicMask());
-            p.setMask(bm);
-        }
+        QBitmap bm = img.hasAlphaChannel() ? QBitmap::fromImage(img.createAlphaMask())
+                                           : QBitmap::fromImage(img.createHeuristicMask());
+        p.setMask(bm);
     }
     QPalette palette;
     palette.setBrush(backgroundRole(), QBrush(p));
@@ -832,16 +793,16 @@ int main(int argc,char *argv[])
     QHBoxLayout *dialogLayout = new QHBoxLayout();
     dialog->setLayout(dialogLayout);
     QDialogButtonBox *dialogButtonBox = new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel);
-    QObject::connect(dialogButtonBox, SIGNAL(rejected()), dialog, SLOT(reject()));
-    QObject::connect(dialogButtonBox, SIGNAL(accepted()), dialog, SLOT(accept()));
+    QObject::connect(dialogButtonBox, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
+    QObject::connect(dialogButtonBox, &QDialogButtonBox::accepted, dialog, &QDialog::accept);
     dialogLayout->addWidget(dialogButtonBox);
     dialog->setFixedSize(params.screenSize());
     dialog->setParent(&ds, Qt::SubWindow);
     dialog->setAutoFillBackground(true);
     ds.setView(dialog);
 
-    QObject::connect(&ds, SIGNAL(popupMenu()), &mw, SLOT(close()));
-    QObject::connect(&ds, SIGNAL(skinKeyPressEvent(int,QString,bool)), &mw, SLOT(close()));
+    QObject::connect(&ds, &DeviceSkin::popupMenu, &mw, &QWidget::close);
+    QObject::connect(&ds, &DeviceSkin::skinKeyPressEvent, &mw, &QWidget::close);
     mw.show();
     return app.exec();
 }

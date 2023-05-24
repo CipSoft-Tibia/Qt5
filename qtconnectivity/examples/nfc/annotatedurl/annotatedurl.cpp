@@ -1,103 +1,58 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNfc module.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 #include "annotatedurl.h"
 
-#include <QtNfc/qnearfieldmanager.h>
-#include <QtNfc/qnearfieldtarget.h>
+#include <QtCore/qdebug.h>
+#include <QtCore/qlocale.h>
+#include <QtCore/qurl.h>
+
+#include <QtGui/qdesktopservices.h>
+#include <QtGui/qevent.h>
+
 #include <QtNfc/qndefmessage.h>
-#include <QtNfc/qndefrecord.h>
 #include <QtNfc/qndefnfctextrecord.h>
 #include <QtNfc/qndefnfcurirecord.h>
+#include <QtNfc/qndefrecord.h>
+#include <QtNfc/qnearfieldmanager.h>
+#include <QtNfc/qnearfieldtarget.h>
 
-#include <QtWidgets/QGridLayout>
-#include <QtWidgets/QLabel>
-#include <QtGui/QMouseEvent>
-#include <QtGui/QDesktopServices>
-#include <QtCore/QDebug>
-#include <QtCore/QLocale>
-#include <QtCore/QUrl>
+#include <QtWidgets/qgridlayout.h>
+#include <QtWidgets/qlabel.h>
 
 AnnotatedUrl::AnnotatedUrl(QObject *parent)
-:   QObject(parent)
+    : QObject(parent),
+      manager(new QNearFieldManager(this))
 {
-    //! [QNearFieldManager register handler]
-    manager = new QNearFieldManager(this);
-    if (!manager->isAvailable()) {
-        qWarning() << "NFC not available";
-        return;
-    }
-
-    QNdefFilter filter;
-    filter.setOrderMatch(false);
-    filter.appendRecord<QNdefNfcTextRecord>(1, UINT_MAX);
-    filter.appendRecord<QNdefNfcUriRecord>();
-    // type parameter cannot specify substring so filter for "image/" below
-    filter.appendRecord(QNdefRecord::Mime, QByteArray(), 0, 1);
-
-    int result = manager->registerNdefMessageHandler(filter, this,
-                                       SLOT(handleMessage(QNdefMessage,QNearFieldTarget*)));
-    //! [QNearFieldManager register handler]
-
-    if (result < 0)
-        qWarning() << "Platform does not support NDEF message handler registration";
-
-    manager->startTargetDetection();
     connect(manager, &QNearFieldManager::targetDetected,
             this, &AnnotatedUrl::targetDetected);
     connect(manager, &QNearFieldManager::targetLost,
             this, &AnnotatedUrl::targetLost);
+    connect(manager, &QNearFieldManager::adapterStateChanged,
+            this, &AnnotatedUrl::handleAdapterStateChange);
+
+//! [populateFilter]
+    messageFilter.setOrderMatch(false);
+    messageFilter.appendRecord<QNdefNfcTextRecord>(1, 100);
+    messageFilter.appendRecord<QNdefNfcUriRecord>(1, 1);
+    messageFilter.appendRecord(QNdefRecord::Mime, "", 0, 1);
+//! [populateFilter]
 }
 
 AnnotatedUrl::~AnnotatedUrl()
 {
 
+}
+
+void AnnotatedUrl::startDetection()
+{
+    if (!manager->isEnabled()) {
+        qWarning() << "NFC not enabled";
+        emit nfcStateChanged(false);
+        return;
+    }
+
+    if (manager->startTargetDetection(QNearFieldTarget::NdefAccess))
+        emit nfcStateChanged(true);
 }
 
 void AnnotatedUrl::targetDetected(QNearFieldTarget *target)
@@ -107,6 +62,8 @@ void AnnotatedUrl::targetDetected(QNearFieldTarget *target)
 
     connect(target, &QNearFieldTarget::ndefMessageRead,
             this, &AnnotatedUrl::handlePolledNdefMessage);
+    connect(target, &QNearFieldTarget::error, this,
+            [this]() { emit tagError("Tag read error"); });
     target->readNdefMessages();
 }
 
@@ -122,11 +79,30 @@ void AnnotatedUrl::handlePolledNdefMessage(QNdefMessage message)
     handleMessage(message, target);
 }
 
+//! [handleAdapterState]
+void AnnotatedUrl::handleAdapterStateChange(QNearFieldManager::AdapterState state)
+{
+    if (state == QNearFieldManager::AdapterState::Online) {
+        startDetection();
+    } else if (state == QNearFieldManager::AdapterState::Offline) {
+        manager->stopTargetDetection();
+        emit nfcStateChanged(false);
+    }
+}
+//! [handleAdapterState]
+
 //! [handleMessage 1]
 void AnnotatedUrl::handleMessage(const QNdefMessage &message, QNearFieldTarget *target)
 {
 //! [handleMessage 1]
     Q_UNUSED(target);
+
+//! [handleMessage 2]
+    if (!messageFilter.match(message)) {
+        emit tagError("Invalid message format");
+        return;
+    }
+//! [handleMessage 2]
 
     enum {
         MatchedNone,
@@ -142,14 +118,14 @@ void AnnotatedUrl::handleMessage(const QNdefMessage &message, QNearFieldTarget *
     QUrl url;
     QPixmap pixmap;
 
-//! [handleMessage 2]
+//! [handleMessage 3]
     for (const QNdefRecord &record : message) {
         if (record.isRecordType<QNdefNfcTextRecord>()) {
             QNdefNfcTextRecord textRecord(record);
 
             title = textRecord.text();
             QLocale locale(textRecord.locale());
-//! [handleMessage 2]
+//! [handleMessage 3]
             // already found best match
             if (bestMatch == MatchedLanguageAndCountry) {
                 // do nothing
@@ -163,7 +139,7 @@ void AnnotatedUrl::handleMessage(const QNdefMessage &message, QNearFieldTarget *
             } else if (bestMatch == MatchedNone) {
                 bestMatch = MatchedFirst;
             }
-//! [handleMessage 3]
+//! [handleMessage 4]
         } else if (record.isRecordType<QNdefNfcUriRecord>()) {
             QNdefNfcUriRecord uriRecord(record);
 
@@ -172,10 +148,10 @@ void AnnotatedUrl::handleMessage(const QNdefMessage &message, QNearFieldTarget *
                    record.type().startsWith("image/")) {
             pixmap = QPixmap::fromImage(QImage::fromData(record.payload()));
         }
-//! [handleMessage 3]
 //! [handleMessage 4]
+//! [handleMessage 5]
     }
 
     emit annotatedUrl(url, title, pixmap);
 }
-//! [handleMessage 4]
+//! [handleMessage 5]

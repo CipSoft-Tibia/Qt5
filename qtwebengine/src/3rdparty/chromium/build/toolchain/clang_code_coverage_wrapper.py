@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright 2018 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Removes code coverage flags from invocations of the Clang C/C++ compiler.
@@ -46,7 +46,6 @@ Example usage:
       --files-to-instrument=coverage_instrumentation_input.txt
 """
 
-from __future__ import print_function
 
 import argparse
 import os
@@ -84,14 +83,22 @@ _COVERAGE_EXCLUSION_LIST_MAP = {
         # This file caused webview native library failed on arm64.
         '../../device/gamepad/dualshock4_controller.cc',
     ],
+    'fuchsia': [
+        # TODO(crbug.com/1174725): These files caused clang to crash while
+        # compiling them.
+        '../../base/allocator/partition_allocator/pcscan.cc',
+        '../../third_party/skia/src/core/SkOpts.cpp',
+        '../../third_party/skia/src/opts/SkOpts_hsw.cpp',
+        '../../third_party/skia/third_party/skcms/skcms.cc',
+    ],
     'linux': [
         # These files caused a static initializer to be generated, which
         # shouldn't.
         # TODO(crbug.com/990948): Remove when the bug is fixed.
         '../../chrome/browser/media/router/providers/cast/cast_internal_message_util.cc',  #pylint: disable=line-too-long
-        '../../components/cast_channel/cast_channel_enum.cc',
-        '../../components/cast_channel/cast_message_util.cc',
-        '../../components/media_router/common/providers/cast/cast_media_source.cc',
+        '../../components/media_router/common/providers/cast/channel/cast_channel_enum.cc',  #pylint: disable=line-too-long
+        '../../components/media_router/common/providers/cast/channel/cast_message_util.cc',  #pylint: disable=line-too-long
+        '../../components/media_router/common/providers/cast/cast_media_source.cc',  #pylint: disable=line-too-long
         '../../ui/events/keycodes/dom/keycode_converter.cc',
         # TODO(crbug.com/1051561): angle_unittests affected by coverage.
         '../../base/message_loop/message_pump_default.cc',
@@ -130,6 +137,13 @@ _COVERAGE_FORCE_LIST_MAP = {
     # be linked in. Therefore we force coverage for this file to ensure that
     # any target that includes it will also get the profiling runtime.
     'win': [r'..\..\base\test\clang_profiling.cc'],
+    # TODO(crbug.com/1141727) We're seeing runtime LLVM errors in mac-rel when
+    # no files are changed, so we suspect that this is similar to the other
+    # problem with clang_profiling.cc on Windows. The TODO here is to force
+    # coverage for this specific file on ALL platforms, if it turns out to fix
+    # this issue on Mac as well. It's the only file that directly calls
+    # `__llvm_profile_dump` so it warrants some special treatment.
+    'mac': ['../../base/test/clang_profiling.cc'],
 }
 
 
@@ -145,16 +159,18 @@ def _remove_flags_from_command(command):
   try:
     while True:
       idx = command.index(start_flag, start_idx)
-      start_idx = idx + 1
       if command[idx:idx + num_flags] == _COVERAGE_FLAGS:
         del command[idx:idx + num_flags]
-        break
+        # There can be multiple sets of _COVERAGE_FLAGS. All of these need to be
+        # removed.
+        start_idx = idx
+      else:
+        start_idx = idx + 1
   except ValueError:
     pass
 
 
 def main():
-  # TODO(crbug.com/898695): Make this wrapper work on Windows platform.
   arg_parser = argparse.ArgumentParser()
   arg_parser.usage = __doc__
   arg_parser.add_argument(
@@ -198,6 +214,9 @@ def main():
   # correct separator for the current platform (i.e. '\' on Windows and '/'
   # otherwise).
   compile_source_file = os.path.normpath(compile_command[source_flag_index + 1])
+  extension = os.path.splitext(compile_source_file)[1]
+  if not extension in ['.c', '.cc', '.cpp', '.cxx', '.m', '.mm', '.S']:
+    raise Exception('Invalid source file %s found' % compile_source_file)
   exclusion_list = _COVERAGE_EXCLUSION_LIST_MAP.get(
       target_os, _DEFAULT_COVERAGE_EXCLUSION_LIST)
   force_list = _COVERAGE_FORCE_LIST_MAP.get(target_os, [])

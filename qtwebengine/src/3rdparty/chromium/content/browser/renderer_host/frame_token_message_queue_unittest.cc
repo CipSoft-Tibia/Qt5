@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <vector>
 
-#include "base/bind.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/time/time.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace content {
@@ -19,6 +19,12 @@ namespace {
 class TestFrameTokenMessageQueueClient : public FrameTokenMessageQueue::Client {
  public:
   TestFrameTokenMessageQueueClient() {}
+
+  TestFrameTokenMessageQueueClient(const TestFrameTokenMessageQueueClient&) =
+      delete;
+  TestFrameTokenMessageQueueClient& operator=(
+      const TestFrameTokenMessageQueueClient&) = delete;
+
   ~TestFrameTokenMessageQueueClient() {}
 
   // Resets all method counters.
@@ -35,7 +41,6 @@ class TestFrameTokenMessageQueueClient : public FrameTokenMessageQueue::Client {
  private:
   bool invalid_frame_token_called_ = false;
   uint32_t invalid_frame_token_ = 0u;
-  DISALLOW_COPY_AND_ASSIGN(TestFrameTokenMessageQueueClient);
 };
 
 void TestFrameTokenMessageQueueClient::Reset() {
@@ -54,9 +59,14 @@ void TestFrameTokenMessageQueueClient::OnInvalidFrameToken(
 class TestNonIPCMessageEnqueuer {
  public:
   TestNonIPCMessageEnqueuer() {}
+
+  TestNonIPCMessageEnqueuer(const TestNonIPCMessageEnqueuer&) = delete;
+  TestNonIPCMessageEnqueuer& operator=(const TestNonIPCMessageEnqueuer&) =
+      delete;
+
   ~TestNonIPCMessageEnqueuer() {}
 
-  void FrameTokenCallback();
+  void FrameTokenCallback(base::TimeTicks activation_time);
 
   bool frame_token_callback_called() const {
     return frame_token_callback_called_;
@@ -64,10 +74,10 @@ class TestNonIPCMessageEnqueuer {
 
  private:
   bool frame_token_callback_called_ = false;
-  DISALLOW_COPY_AND_ASSIGN(TestNonIPCMessageEnqueuer);
 };
 
-void TestNonIPCMessageEnqueuer::FrameTokenCallback() {
+void TestNonIPCMessageEnqueuer::FrameTokenCallback(
+    base::TimeTicks activation_time) {
   frame_token_callback_called_ = true;
 }
 
@@ -76,6 +86,11 @@ void TestNonIPCMessageEnqueuer::FrameTokenCallback() {
 class FrameTokenMessageQueueTest : public testing::Test {
  public:
   FrameTokenMessageQueueTest();
+
+  FrameTokenMessageQueueTest(const FrameTokenMessageQueueTest&) = delete;
+  FrameTokenMessageQueueTest& operator=(const FrameTokenMessageQueueTest&) =
+      delete;
+
   ~FrameTokenMessageQueueTest() override {}
 
   TestFrameTokenMessageQueueClient* test_client() { return &test_client_; }
@@ -90,7 +105,6 @@ class FrameTokenMessageQueueTest : public testing::Test {
   TestFrameTokenMessageQueueClient test_client_;
   TestNonIPCMessageEnqueuer test_non_ipc_enqueuer_;
   FrameTokenMessageQueue frame_token_message_queue_;
-  DISALLOW_COPY_AND_ASSIGN(FrameTokenMessageQueueTest);
 };
 
 FrameTokenMessageQueueTest::FrameTokenMessageQueueTest() {
@@ -114,7 +128,7 @@ TEST_F(FrameTokenMessageQueueTest, EnqueueOnlyNonIPC) {
   EXPECT_FALSE(enqueuer->frame_token_callback_called());
   EXPECT_FALSE(client->invalid_frame_token_called());
 
-  queue->DidProcessFrame(frame_token);
+  queue->DidProcessFrame(frame_token, base::TimeTicks::Now());
   EXPECT_EQ(0u, queue->size());
   EXPECT_FALSE(client->invalid_frame_token_called());
   EXPECT_TRUE(enqueuer->frame_token_callback_called());
@@ -145,7 +159,7 @@ TEST_F(FrameTokenMessageQueueTest, MultipleNonIPCMessages) {
   EXPECT_FALSE(second_enqueuer.frame_token_callback_called());
   EXPECT_EQ(2u, queue->size());
 
-  queue->DidProcessFrame(frame_token);
+  queue->DidProcessFrame(frame_token, base::TimeTicks::Now());
   EXPECT_EQ(0u, queue->size());
   EXPECT_FALSE(client->invalid_frame_token_called());
   EXPECT_TRUE(enqueuer->frame_token_callback_called());
@@ -161,7 +175,7 @@ TEST_F(FrameTokenMessageQueueTest, EnqueuedAfterFrameTokenImmediatelyRuns) {
   ASSERT_EQ(0u, queue->size());
 
   const uint32_t frame_token = 42;
-  queue->DidProcessFrame(frame_token);
+  queue->DidProcessFrame(frame_token, base::TimeTicks::Now());
   EXPECT_EQ(0u, queue->size());
   EXPECT_FALSE(client->invalid_frame_token_called());
   EXPECT_FALSE(enqueuer->frame_token_callback_called());
@@ -202,13 +216,13 @@ TEST_F(FrameTokenMessageQueueTest, DifferentFrameTokensEnqueuedNonIPC) {
   EXPECT_FALSE(second_enqueuer.frame_token_callback_called());
   EXPECT_EQ(2u, queue->size());
 
-  queue->DidProcessFrame(frame_token_1);
+  queue->DidProcessFrame(frame_token_1, base::TimeTicks::Now());
   EXPECT_EQ(1u, queue->size());
   EXPECT_FALSE(client->invalid_frame_token_called());
   EXPECT_TRUE(enqueuer->frame_token_callback_called());
   EXPECT_FALSE(second_enqueuer.frame_token_callback_called());
 
-  queue->DidProcessFrame(frame_token_2);
+  queue->DidProcessFrame(frame_token_2, base::TimeTicks::Now());
   EXPECT_TRUE(second_enqueuer.frame_token_callback_called());
 }
 
@@ -230,7 +244,7 @@ TEST_F(FrameTokenMessageQueueTest, InvalidDidProcessFrameTokenNotProcessed) {
 
   // Empty token should be invalid even with no process frames processed.
   const uint32_t invalid_frame_token = 0;
-  queue->DidProcessFrame(invalid_frame_token);
+  queue->DidProcessFrame(invalid_frame_token, base::TimeTicks::Now());
   EXPECT_EQ(1u, queue->size());
   EXPECT_TRUE(client->invalid_frame_token_called());
   EXPECT_EQ(invalid_frame_token, client->invalid_frame_token());
@@ -247,7 +261,7 @@ TEST_F(FrameTokenMessageQueueTest, EarlierTokenForDidProcessFrameRejected) {
 
   // Settings a low value frame token will not block enqueueing.
   const uint32_t earlier_frame_token = 42;
-  queue->DidProcessFrame(earlier_frame_token);
+  queue->DidProcessFrame(earlier_frame_token, base::TimeTicks::Now());
 
   const uint32_t frame_token = 1337;
   queue->EnqueueOrRunFrameTokenCallback(
@@ -261,7 +275,7 @@ TEST_F(FrameTokenMessageQueueTest, EarlierTokenForDidProcessFrameRejected) {
   // Using a frame token that is earlier than the last received should be
   // rejected.
   const uint32_t invalid_frame_token = earlier_frame_token - 1;
-  queue->DidProcessFrame(invalid_frame_token);
+  queue->DidProcessFrame(invalid_frame_token, base::TimeTicks::Now());
   EXPECT_EQ(1u, queue->size());
   EXPECT_TRUE(client->invalid_frame_token_called());
   EXPECT_EQ(invalid_frame_token, client->invalid_frame_token());
@@ -287,7 +301,7 @@ TEST_F(FrameTokenMessageQueueTest, OutOfOrderFrameTokensEnqueue) {
   EXPECT_FALSE(client->invalid_frame_token_called());
 
   // Process both with the larger frame token arriving.
-  queue->DidProcessFrame(larger_frame_token);
+  queue->DidProcessFrame(larger_frame_token, base::TimeTicks::Now());
   EXPECT_EQ(0u, queue->size());
   EXPECT_FALSE(client->invalid_frame_token_called());
   EXPECT_TRUE(enqueuer->frame_token_callback_called());

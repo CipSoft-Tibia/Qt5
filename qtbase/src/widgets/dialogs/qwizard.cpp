@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwizard.h"
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
@@ -47,8 +11,6 @@
 #include "qapplication.h"
 #include "qboxlayout.h"
 #include "qlayoutitem.h"
-#include "qdesktopwidget.h"
-#include <private/qdesktopwidget_p.h>
 #include "qevent.h"
 #include "qframe.h"
 #include "qlabel.h"
@@ -56,7 +18,7 @@
 #include "qlineedit.h"
 #endif
 #include <qpointer.h>
-#include "qpainter.h"
+#include "qstylepainter.h"
 #include "qwindow.h"
 #include "qpushbutton.h"
 #include "qset.h"
@@ -66,10 +28,9 @@
 #include "qstyle.h"
 #include "qstyleoption.h"
 #include "qvarlengtharray.h"
-#if defined(Q_OS_MACX)
-#include <QtCore/QMetaMethod>
-#include <QtGui/QGuiApplication>
-#include <qpa/qplatformnativeinterface.h>
+#if defined(Q_OS_MACOS)
+#include <AppKit/AppKit.h>
+#include <QtGui/private/qcoregraphics_p.h>
 #elif QT_CONFIG(style_windowsvista)
 #include "qwizard_win_p.h"
 #include "qtimer.h"
@@ -82,6 +43,8 @@
 #include <algorithm>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 // These fudge terms were needed a few places to obtain pixel-perfect results
 const int GapBetweenLogoAndRightEdge = 5;
@@ -164,9 +127,8 @@ static const char *changed_signal(int which)
     case 5: return SIGNAL(currentRowChanged(int));
     case 6: return SIGNAL(valueChanged(int));
     };
-    Q_STATIC_ASSERT(7 == NFallbackDefaultProperties);
-    Q_UNREACHABLE();
-    return nullptr;
+    static_assert(7 == NFallbackDefaultProperties);
+    Q_UNREACHABLE_RETURN(nullptr);
 }
 
 class QWizardDefaultProperty
@@ -181,7 +143,7 @@ public:
                                    const char *changedSignal)
         : className(className), property(property), changedSignal(changedSignal) {}
 };
-Q_DECLARE_TYPEINFO(QWizardDefaultProperty, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QWizardDefaultProperty, Q_RELOCATABLE_TYPE);
 
 class QWizardField
 {
@@ -190,7 +152,7 @@ public:
     QWizardField(QWizardPage *page, const QString &spec, QObject *object, const char *property,
                   const char *changedSignal);
 
-    void resolve(const QVector<QWizardDefaultProperty> &defaultPropertyTable);
+    void resolve(const QList<QWizardDefaultProperty> &defaultPropertyTable);
     void findProperty(const QWizardDefaultProperty *properties, int propertyCount);
 
     QWizardPage *page;
@@ -201,23 +163,23 @@ public:
     QByteArray changedSignal;
     QVariant initialValue;
 };
-Q_DECLARE_TYPEINFO(QWizardField, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QWizardField, Q_RELOCATABLE_TYPE);
 
 QWizardField::QWizardField(QWizardPage *page, const QString &spec, QObject *object,
                            const char *property, const char *changedSignal)
     : page(page), name(spec), mandatory(false), object(object), property(property),
       changedSignal(changedSignal)
 {
-    if (name.endsWith(QLatin1Char('*'))) {
+    if (name.endsWith(u'*')) {
         name.chop(1);
         mandatory = true;
     }
 }
 
-void QWizardField::resolve(const QVector<QWizardDefaultProperty> &defaultPropertyTable)
+void QWizardField::resolve(const QList<QWizardDefaultProperty> &defaultPropertyTable)
 {
     if (property.isEmpty())
-        findProperty(defaultPropertyTable.constData(), defaultPropertyTable.count());
+        findProperty(defaultPropertyTable.constData(), defaultPropertyTable.size());
     initialValue = object->property(property);
 }
 
@@ -256,11 +218,11 @@ public:
     bool extension = false;
     bool sideWidget = false;
 
-    bool operator==(const QWizardLayoutInfo &other);
-    inline bool operator!=(const QWizardLayoutInfo &other) { return !operator==(other); }
+    bool operator==(const QWizardLayoutInfo &other) const;
+    inline bool operator!=(const QWizardLayoutInfo &other) const { return !operator==(other); }
 };
 
-bool QWizardLayoutInfo::operator==(const QWizardLayoutInfo &other)
+bool QWizardLayoutInfo::operator==(const QWizardLayoutInfo &other) const
 {
     return topLevelMarginLeft == other.topLevelMarginLeft
            && topLevelMarginRight == other.topLevelMarginRight
@@ -350,7 +312,7 @@ bool QWizardHeader::vistaDisabled() const
     bool styleDisabled = false;
     QWizard *wiz = parentWidget() ? qobject_cast <QWizard *>(parentWidget()->parentWidget()) : 0;
     if (wiz) {
-        // Designer dosen't support the Vista style for Wizards. This property is used to turn
+        // Designer doesn't support the Vista style for Wizards. This property is used to turn
         // off the Vista style.
         const QVariant v = wiz->property("_q_wizard_vista_off");
         styleDisabled = v.isValid() && v.toBool();
@@ -365,8 +327,7 @@ void QWizardHeader::setup(const QWizardLayoutInfo &info, const QString &title,
 {
     bool modern = ((info.wizStyle == QWizard::ModernStyle)
 #if QT_CONFIG(style_windowsvista)
-        || ((info.wizStyle == QWizard::AeroStyle
-            && QVistaHelper::vistaState() == QVistaHelper::Classic) || vistaDisabled())
+        || vistaDisabled()
 #endif
     );
 
@@ -385,7 +346,7 @@ void QWizardHeader::setup(const QWizardLayoutInfo &info, const QString &title,
     logoLabel->setPixmap(logo);
 
     subTitleLabel->setTextFormat(subTitleFormat);
-    subTitleLabel->setText(QLatin1String("Pq\nPq"));
+    subTitleLabel->setText("Pq\nPq"_L1);
     int desiredSubTitleHeight = subTitleLabel->sizeHint().height();
     subTitleLabel->setText(subTitle);
 
@@ -399,7 +360,7 @@ void QWizardHeader::setup(const QWizardLayoutInfo &info, const QString &title,
         /*
             There is no widthForHeight() function, so we simulate it with a loop.
         */
-        int candidateSubTitleWidth = qMin(512, 2 * QDesktopWidgetPrivate::width() / 3);
+        int candidateSubTitleWidth = qMin(512, 2 * QGuiApplication::primaryScreen()->virtualGeometry().width() / 3);
         int delta = candidateSubTitleWidth >> 1;
         while (delta > 0) {
             if (subTitleLabel->heightForWidth(candidateSubTitleWidth - delta)
@@ -422,7 +383,7 @@ void QWizardHeader::setup(const QWizardLayoutInfo &info, const QString &title,
 
 void QWizardHeader::paintEvent(QPaintEvent * /* event */)
 {
-    QPainter painter(this);
+    QStylePainter painter(this);
     painter.drawPixmap(0, 0, bannerPixmap);
 
     int x = width() - 2;
@@ -453,8 +414,8 @@ public:
     }
 
     QSize minimumSizeHint() const override {
-        if (!pixmap(Qt::ReturnByValue).isNull())
-            return pixmap(Qt::ReturnByValue).size() / pixmap(Qt::ReturnByValue).devicePixelRatio();
+        if (!pixmap().isNull())
+            return pixmap().deviceIndependentSize().toSize();
         return QFrame::minimumSizeHint();
     }
 
@@ -492,7 +453,7 @@ public:
     QString title;
     QString subTitle;
     QPixmap pixmaps[QWizard::NPixmaps];
-    QVector<QWizardField> pendingFields;
+    QList<QWizardField> pendingFields;
     mutable TriState completeState = Tri_Unknown;
     bool explicitlyFinal = false;
     bool commit = false;
@@ -531,7 +492,7 @@ public:
         : QWidget(wizard)
         , wizardPrivate(wizardPrivate) {}
 protected:
-    void paintEvent(QPaintEvent *);
+    void paintEvent(QPaintEvent *) override;
 #else
     QWizardAntiFlickerWidget(QWizard *wizard, QWizardPrivate *)
         : QWidget(wizard)
@@ -572,7 +533,6 @@ public:
     void updatePixmap(QWizard::WizardPixmap which);
 #if QT_CONFIG(style_windowsvista)
     bool vistaDisabled() const;
-    bool isVistaThemeEnabled(QVistaHelper::VistaState state) const;
     bool handleAeroStyleChange();
 #endif
     bool isVistaThemeEnabled() const;
@@ -582,14 +542,14 @@ public:
     void _q_updateButtonStates();
     void _q_handleFieldObjectDestroyed(QObject *);
     void setStyle(QStyle *style);
-#ifdef Q_OS_MACX
+#ifdef Q_OS_MACOS
     static QPixmap findDefaultBackgroundPixmap();
 #endif
 
     PageMap pageMap;
-    QVector<QWizardField> fields;
+    QList<QWizardField> fields;
     QMap<QString, int> fieldIndexMap;
-    QVector<QWizardDefaultProperty> defaultPropertyTable;
+    QList<QWizardDefaultProperty> defaultPropertyTable;
     QList<int> history;
     int start = -1;
     bool startSetByUser = false;
@@ -641,7 +601,7 @@ public:
     QPointer<QShortcut> vistaNextShortcut;
 #  endif
     bool vistaInitPending = true;
-    QVistaHelper::VistaState vistaState = QVistaHelper::Dirty;
+    bool vistaDirty = true;
     bool vistaStateChanged = false;
     bool inHandleAeroStyleChange = false;
 #endif
@@ -731,10 +691,11 @@ void QWizardPrivate::reset()
     if (current != -1) {
         q->currentPage()->hide();
         cleanupPagesNotInHistory();
-        for (int i = history.count() - 1; i >= 0; --i)
-            q->cleanupPage(history.at(i));
+        const auto end = history.crend();
+        for (auto it = history.crbegin(); it != end; ++it)
+            q->cleanupPage(*it);
         history.clear();
-        for (QWizardPage *page : qAsConst(pageMap))
+        for (QWizardPage *page : std::as_const(pageMap))
             page->d_func()->initialized = false;
 
         current = -1;
@@ -768,7 +729,7 @@ void QWizardPrivate::addField(const QWizardField &field)
         return;
     }
 
-    fieldIndexMap.insert(myField.name, fields.count());
+    fieldIndexMap.insert(myField.name, fields.size());
     fields += myField;
     if (myField.mandatory && !myField.changedSignal.isEmpty())
         QObject::connect(myField.object, myField.changedSignal,
@@ -902,7 +863,7 @@ QWizardLayoutInfo QWizardPrivate::layoutInfoForCurrentPage()
 
     QStyleOption option;
     option.initFrom(q);
-    const int layoutHorizontalSpacing = style->pixelMetric(QStyle::PM_LayoutHorizontalSpacing, &option);
+    const int layoutHorizontalSpacing = style->pixelMetric(QStyle::PM_LayoutHorizontalSpacing, &option, q);
     info.topLevelMarginLeft = style->pixelMetric(QStyle::PM_LayoutLeftMargin, nullptr, q);
     info.topLevelMarginRight = style->pixelMetric(QStyle::PM_LayoutRightMargin, nullptr, q);
     info.topLevelMarginTop = style->pixelMetric(QStyle::PM_LayoutTopMargin, nullptr, q);
@@ -914,7 +875,7 @@ QWizardLayoutInfo QWizardPrivate::layoutInfoForCurrentPage()
     info.hspacing = (layoutHorizontalSpacing == -1)
         ? style->layoutSpacing(QSizePolicy::DefaultType, QSizePolicy::DefaultType, Qt::Horizontal)
         : layoutHorizontalSpacing;
-    info.vspacing = style->pixelMetric(QStyle::PM_LayoutVerticalSpacing, &option);
+    info.vspacing = style->pixelMetric(QStyle::PM_LayoutVerticalSpacing, &option, q);
     info.buttonSpacing = (layoutHorizontalSpacing == -1)
         ? style->layoutSpacing(QSizePolicy::PushButton, QSizePolicy::PushButton, Qt::Horizontal)
         : layoutHorizontalSpacing;
@@ -925,7 +886,7 @@ QWizardLayoutInfo QWizardPrivate::layoutInfoForCurrentPage()
     info.wizStyle = wizStyle;
     if (info.wizStyle == QWizard::AeroStyle
 #if QT_CONFIG(style_windowsvista)
-        && (QVistaHelper::vistaState() == QVistaHelper::Classic || vistaDisabled())
+        && vistaDisabled()
 #endif
         )
         info.wizStyle = QWizard::ModernStyle;
@@ -1051,7 +1012,7 @@ void QWizardPrivate::recreateLayout(const QWizardLayoutInfo &info)
 
         if (aero) {
             // ### hardcoded for now:
-            titleFont = QFont(QLatin1String("Segoe UI"), 12);
+            titleFont = QFont("Segoe UI"_L1, 12);
             QPalette pal(titleLabel->palette());
             pal.setColor(QPalette::Text, QColor(0x00, 0x33, 0x99));
             titleLabel->setPalette(pal);
@@ -1367,11 +1328,11 @@ static QString object_name_for_button(QWizard::WizardButton which)
 {
     switch (which) {
     case QWizard::CommitButton:
-        return QLatin1String("qt_wizard_") + QLatin1String("commit");
+        return u"qt_wizard_commit"_s;
     case QWizard::FinishButton:
-        return QLatin1String("qt_wizard_") + QLatin1String("finish");
+        return u"qt_wizard_finish"_s;
     case QWizard::CancelButton:
-        return QLatin1String("qt_wizard_") + QLatin1String("cancel");
+        return u"qt_wizard_cancel"_s;
     case QWizard::BackButton:
     case QWizard::NextButton:
     case QWizard::HelpButton:
@@ -1379,15 +1340,14 @@ static QString object_name_for_button(QWizard::WizardButton which)
     case QWizard::CustomButton2:
     case QWizard::CustomButton3:
         // Make navigation buttons detectable as passive interactor in designer
-        return QLatin1String("__qt__passive_wizardbutton") + QString::number(which);
+        return "__qt__passive_wizardbutton"_L1 + QString::number(which);
     case QWizard::Stretch:
     case QWizard::NoButton:
     //case QWizard::NStandardButtons:
     //case QWizard::NButtons:
         ;
     }
-    Q_UNREACHABLE();
-    return QString();
+    Q_UNREACHABLE_RETURN(QString());
 }
 
 bool QWizardPrivate::ensureButton(QWizard::WizardButton which) const
@@ -1402,7 +1362,7 @@ bool QWizardPrivate::ensureButton(QWizard::WizardButton which) const
         if (style != QApplication::style()) // Propagate style
             pushButton->setStyle(style);
         pushButton->setObjectName(object_name_for_button(which));
-#ifdef Q_OS_MACX
+#ifdef Q_OS_MACOS
         pushButton->setAutoDefault(false);
 #endif
         pushButton->hide();
@@ -1461,10 +1421,9 @@ void QWizardPrivate::updateButtonTexts()
 void QWizardPrivate::updateButtonLayout()
 {
     if (buttonsHaveCustomLayout) {
-        QVarLengthArray<QWizard::WizardButton, QWizard::NButtons> array(buttonsCustomLayout.count());
-        for (int i = 0; i < buttonsCustomLayout.count(); ++i)
-            array[i] = buttonsCustomLayout.at(i);
-        setButtonLayout(array.constData(), array.count());
+        QVarLengthArray<QWizard::WizardButton, QWizard::NButtons> array{
+                buttonsCustomLayout.cbegin(), buttonsCustomLayout.cend()};
+        setButtonLayout(array.constData(), int(array.size()));
     } else {
         // Positions:
         //     Help Stretch Custom1 Custom2 Custom3 Cancel Back Next Commit Finish Cancel Help
@@ -1558,13 +1517,6 @@ bool QWizardPrivate::vistaDisabled() const
     return v.isValid() && v.toBool();
 }
 
-bool QWizardPrivate::isVistaThemeEnabled(QVistaHelper::VistaState state) const
-{
-    return wizStyle == QWizard::AeroStyle
-        && QVistaHelper::vistaState() == state
-        && !vistaDisabled();
-}
-
 bool QWizardPrivate::handleAeroStyleChange()
 {
     Q_Q(QWizard);
@@ -1588,25 +1540,17 @@ bool QWizardPrivate::handleAeroStyleChange()
     if (isVistaThemeEnabled()) {
         const int topOffset = vistaHelper->topOffset(q);
         const int topPadding = vistaHelper->topPadding(q);
-        if (isVistaThemeEnabled(QVistaHelper::VistaAero)) {
-            if (isWindow) {
-                vistaHelper->setDWMTitleBar(QVistaHelper::ExtendedTitleBar);
-                q->installEventFilter(vistaHelper);
-            }
-            q->setMouseTracking(true);
-            antiFlickerWidget->move(0, vistaHelper->titleBarSize() + topOffset);
-            vistaHelper->backButton()->move(
-                0, topOffset // ### should ideally work without the '+ 1'
-                - qMin(topOffset, topPadding + 1));
-            vistaMargins = true;
-            vistaHelper->backButton()->show();
-        } else {
-            if (isWindow)
-                vistaHelper->setDWMTitleBar(QVistaHelper::NormalTitleBar);
-            q->setMouseTracking(true);
-            antiFlickerWidget->move(0, topOffset);
-            vistaHelper->backButton()->move(0, -1); // ### should ideally work with (0, 0)
+        if (isWindow) {
+            vistaHelper->setDWMTitleBar(QVistaHelper::ExtendedTitleBar);
+            q->installEventFilter(vistaHelper);
         }
+        q->setMouseTracking(true);
+        antiFlickerWidget->move(0, vistaHelper->titleBarSize() + topOffset);
+        vistaHelper->backButton()->move(
+            0, topOffset // ### should ideally work without the '+ 1'
+            - qMin(topOffset, topPadding + 1));
+        vistaMargins = true;
+        vistaHelper->backButton()->show();
         if (isWindow)
             vistaHelper->setTitleBarIconAndCaptionVisible(false);
         QObject::connect(
@@ -1635,8 +1579,7 @@ bool QWizardPrivate::handleAeroStyleChange()
 bool QWizardPrivate::isVistaThemeEnabled() const
 {
 #if QT_CONFIG(style_windowsvista)
-    return isVistaThemeEnabled(QVistaHelper::VistaAero)
-        || isVistaThemeEnabled(QVistaHelper::VistaBasic);
+    return wizStyle == QWizard::AeroStyle && !vistaDisabled();
 #else
     return false;
 #endif
@@ -1681,15 +1624,15 @@ void QWizardPrivate::_q_updateButtonStates()
     const QWizardPage *page = q->currentPage();
     bool complete = page && page->isComplete();
 
-    btn.back->setEnabled(history.count() > 1
-                         && !q->page(history.at(history.count() - 2))->isCommitPage()
+    btn.back->setEnabled(history.size() > 1
+                         && !q->page(history.at(history.size() - 2))->isCommitPage()
                          && (!canFinish || !(opts & QWizard::DisabledBackButtonOnLastPage)));
     btn.next->setEnabled(canContinue && complete);
     btn.commit->setEnabled(canContinue && complete);
     btn.finish->setEnabled(canFinish && complete);
 
     const bool backButtonVisible = buttonLayoutContains(QWizard::BackButton)
-        && (history.count() > 1 || !(opts & QWizard::NoBackButtonOnStartPage))
+        && (history.size() > 1 || !(opts & QWizard::NoBackButtonOnStartPage))
         && (canContinue || !(opts & QWizard::NoBackButtonOnLastPage));
     bool commitPage = page && page->isCommitPage();
     btn.back->setVisible(backButtonVisible);
@@ -1726,7 +1669,7 @@ void QWizardPrivate::_q_updateButtonStates()
 void QWizardPrivate::_q_handleFieldObjectDestroyed(QObject *object)
 {
     int destroyed_index = -1;
-    QVector<QWizardField>::iterator it = fields.begin();
+    QList<QWizardField>::iterator it = fields.begin();
     while (it != fields.end()) {
         const QWizardField &field = *it;
         if (field.object == object) {
@@ -1760,24 +1703,20 @@ void QWizardPrivate::setStyle(QStyle *style)
         it.value()->setStyle(style);
 }
 
-#ifdef Q_OS_MACX
-
+#ifdef Q_OS_MACOS
 QPixmap QWizardPrivate::findDefaultBackgroundPixmap()
 {
-    QGuiApplication *app = qobject_cast<QGuiApplication *>(QCoreApplication::instance());
-    if (!app)
-        return QPixmap();
-    QPlatformNativeInterface *platformNativeInterface = app->platformNativeInterface();
-    int at = platformNativeInterface->metaObject()->indexOfMethod("defaultBackgroundPixmapForQWizard()");
-    if (at == -1)
-        return QPixmap();
-    QMetaMethod defaultBackgroundPixmapForQWizard = platformNativeInterface->metaObject()->method(at);
-    QPixmap result;
-    if (!defaultBackgroundPixmapForQWizard.invoke(platformNativeInterface, Q_RETURN_ARG(QPixmap, result)))
-        return QPixmap();
-    return result;
-}
+    auto *keyboardAssistantURL = [NSWorkspace.sharedWorkspace
+        URLForApplicationWithBundleIdentifier:@"com.apple.KeyboardSetupAssistant"];
+    auto *keyboardAssistantBundle = [NSBundle bundleWithURL:keyboardAssistantURL];
+    auto *assistantBackground = [keyboardAssistantBundle imageForResource:@"Background"];
+    auto size = QSizeF::fromCGSize(assistantBackground.size);
+    static const QSizeF expectedSize(242, 414);
+    if (size == expectedSize)
+        return qt_mac_toQPixmap(assistantBackground, size);
 
+    return QPixmap();
+}
 #endif
 
 #if QT_CONFIG(style_windowsvista)
@@ -1793,13 +1732,6 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
         painter.fillRect(0, buttonLayoutTop, width(), height() - buttonLayoutTop, brush);
         painter.setPen(QPen(QBrush(QColor(223, 223, 223)), 0)); // ### hardcoded for now
         painter.drawLine(0, buttonLayoutTop, width(), buttonLayoutTop);
-        if (wizardPrivate->isVistaThemeEnabled(QVistaHelper::VistaBasic)) {
-            if (window()->isActiveWindow())
-                painter.setPen(QPen(QBrush(QColor(169, 191, 214)), 0)); // ### hardcoded for now
-            else
-                painter.setPen(QPen(QBrush(QColor(182, 193, 204)), 0)); // ### hardcoded for now
-            painter.drawLine(0, 0, width(), 0);
-        }
     }
 }
 #endif
@@ -1829,9 +1761,8 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
     \section1 A Trivial Example
 
     The following example illustrates how to create wizard pages and
-    add them to a wizard. For more advanced examples, see
-    \l{dialogs/classwizard}{Class Wizard} and \l{dialogs/licensewizard}{License
-    Wizard}.
+    add them to a wizard. For more advanced examples, see the
+    \l{dialogs/licensewizard}{License Wizard}.
 
     \snippet dialogs/trivialwizard/trivialwizard.cpp 1
     \snippet dialogs/trivialwizard/trivialwizard.cpp 3
@@ -1960,12 +1891,7 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
     To register a field, call QWizardPage::registerField() field.
     For example:
 
-    \snippet dialogs/classwizard/classwizard.cpp 8
-    \dots
-    \snippet dialogs/classwizard/classwizard.cpp 10
-    \snippet dialogs/classwizard/classwizard.cpp 11
-    \dots
-    \snippet dialogs/classwizard/classwizard.cpp 13
+    \snippet dialogs/licensewizard/licensewizard.cpp 21
 
     The above code registers three fields, \c className, \c
     baseClass, and \c qobjectMacro, which are associated with three
@@ -1976,11 +1902,11 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
     The fields of any page are accessible from any other page. For
     example:
 
-    \snippet dialogs/classwizard/classwizard.cpp 17
+    \snippet dialogs/licensewizard/licensewizard.cpp 27
 
     Here, we call QWizardPage::field() to access the contents of the
-    \c className field (which was defined in the \c ClassInfoPage)
-    and use it to initialize the \c OutputFilePage. The field's
+    \c details.email field (which was defined in the \c DetailsPage)
+    and use it to initialize the \c ConclusionPage. The field's
     contents is returned as a QVariant.
 
     When we create a field using QWizardPage::registerField(), we
@@ -2023,15 +1949,13 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
     \section1 Creating Linear Wizards
 
     Most wizards have a linear structure, with page 1 followed by
-    page 2 and so on until the last page. The \l{dialogs/classwizard}{Class
-    Wizard} example is such a wizard. With QWizard, linear wizards
+    page 2 and so on until the last page. The \l{dialogs/trivialwizard}
+    {Trivial Wizard} example is such a wizard. With QWizard, linear wizards
     are created by instantiating the \l{QWizardPage}s and inserting
     them using addPage(). By default, the pages are shown in the
     order in which they were added. For example:
 
-    \snippet dialogs/classwizard/classwizard.cpp 0
-    \dots
-    \snippet dialogs/classwizard/classwizard.cpp 2
+    \snippet dialogs/trivialwizard/trivialwizard.cpp linearAddPage
 
     When a page is about to be shown, QWizard calls initializePage()
     (which in turn calls QWizardPage::initializePage()) to fill the
@@ -2101,7 +2025,7 @@ void QWizardAntiFlickerWidget::paintEvent(QPaintEvent *)
 
     \snippet dialogs/licensewizard/licensewizard.cpp 27
 
-    \sa QWizardPage, {Class Wizard Example}, {License Wizard Example}
+    \sa QWizardPage, {Trivial Wizard Example}, {License Wizard Example}
 */
 
 /*!
@@ -2227,7 +2151,7 @@ int QWizard::addPage(QWizardPage *page)
     Q_D(QWizard);
     int theid = 0;
     if (!d->pageMap.isEmpty())
-        theid = (d->pageMap.constEnd() - 1).key() + 1;
+        theid = d->pageMap.lastKey() + 1;
     setPage(theid, page);
     return theid;
 }
@@ -2263,9 +2187,9 @@ void QWizard::setPage(int theid, QWizardPage *page)
 
     page->setParent(d->pageFrame);
 
-    QVector<QWizardField> &pendingFields = page->d_func()->pendingFields;
-    for (int i = 0; i < pendingFields.count(); ++i)
-        d->addField(pendingFields.at(i));
+    QList<QWizardField> &pendingFields = page->d_func()->pendingFields;
+    for (const auto &field : std::as_const(pendingFields))
+        d->addField(field);
     pendingFields.clear();
 
     connect(page, SIGNAL(completeChanged()), this, SLOT(_q_updateButtonStates()));
@@ -2305,11 +2229,11 @@ void QWizard::removePage(int id)
     QWizardPage *removedPage = nullptr;
 
     // update startItem accordingly
-    if (d->pageMap.count() > 0) { // only if we have any pages
+    if (d->pageMap.size() > 0) { // only if we have any pages
         if (d->start == id) {
             const int firstId = d->pageMap.constBegin().key();
             if (firstId == id) {
-                if (d->pageMap.count() > 1)
+                if (d->pageMap.size() > 1)
                     d->start = (++d->pageMap.constBegin()).key(); // secondId
                 else
                     d->start = -1; // removing the last page
@@ -2332,7 +2256,7 @@ void QWizard::removePage(int id)
         removedPage = d->pageMap.take(id);
         d->history.removeOne(id);
         d->_q_updateButtonStates();
-    } else if (d->history.count() == 1) {
+    } else if (d->history.size() == 1) {
         // Case 3: removing the current page which is the first (and only) one in the history
         d->reset();
         removedPage = d->pageMap.take(id);
@@ -2355,7 +2279,7 @@ void QWizard::removePage(int id)
 
         d->pageVBoxLayout->removeWidget(removedPage);
 
-        for (int i = d->fields.count() - 1; i >= 0; --i) {
+        for (int i = d->fields.size() - 1; i >= 0; --i) {
             if (d->fields.at(i).page == removedPage) {
                 removedPage->d_func()->pendingFields += d->fields.at(i);
                 d->removeFieldAt(i);
@@ -2386,7 +2310,7 @@ QWizardPage *QWizard::page(int theid) const
 
     Pressing \uicontrol Back marks the current page as "unvisited" again.
 
-    \sa visitedPages()
+    \sa visitedIds()
 */
 bool QWizard::hasVisitedPage(int theid) const
 {
@@ -2407,16 +2331,6 @@ QList<int> QWizard::visitedIds() const
     Q_D(const QWizard);
     return d->history;
 }
-
-/*!
-    \obsolete Use visitedIds() instead
-*/
-#if QT_DEPRECATED_SINCE(5, 15)
-QList<int> QWizard::visitedPages() const
-{
-    return visitedIds();
-}
-#endif
 
 /*!
     Returns the list of page IDs.
@@ -2443,7 +2357,7 @@ void QWizard::setStartId(int theid)
     Q_D(QWizard);
     int newStart = theid;
     if (theid == -1)
-        newStart = d->pageMap.count() ? d->pageMap.constBegin().key() : -1;
+        newStart = d->pageMap.size() ? d->pageMap.constBegin().key() : -1;
 
     if (d->start == newStart) {
         d->startSetByUser = theid != -1;
@@ -2724,7 +2638,7 @@ QString QWizard::buttonText(WizardButton which) const
         return d->buttonCustomTexts.value(which);
 
     const QString defText = buttonDefaultText(d->wizStyle, which, d);
-    if(!defText.isNull())
+    if (!defText.isNull())
         return defText;
 
     return d->btns[which]->text();
@@ -2752,7 +2666,7 @@ void QWizard::setButtonLayout(const QList<WizardButton> &layout)
 {
     Q_D(QWizard);
 
-    for (int i = 0; i < layout.count(); ++i) {
+    for (int i = 0; i < layout.size(); ++i) {
         WizardButton button1 = layout.at(i);
 
         if (button1 == NoButton || button1 == Stretch)
@@ -2893,7 +2807,7 @@ void QWizard::setPixmap(WizardPixmap which, const QPixmap &pixmap)
     Returns the pixmap set for role \a which.
 
     By default, the only pixmap that is set is the BackgroundPixmap on
-    \macos version 10.13 and earlier.
+    \macos.
 
     \sa QWizardPage::pixmap(), {Elements of a Wizard Page}
 */
@@ -2901,7 +2815,7 @@ QPixmap QWizard::pixmap(WizardPixmap which) const
 {
     Q_D(const QWizard);
     Q_ASSERT(uint(which) < NPixmaps);
-#ifdef Q_OS_MACX
+#ifdef Q_OS_MACOS
     if (which == BackgroundPixmap && d->defaultPixmaps[BackgroundPixmap].isNull())
         d->defaultPixmaps[BackgroundPixmap] = d->findDefaultBackgroundPixmap();
 #endif
@@ -2937,7 +2851,7 @@ void QWizard::setDefaultProperty(const char *className, const char *property,
                                  const char *changedSignal)
 {
     Q_D(QWizard);
-    for (int i = d->defaultPropertyTable.count() - 1; i >= 0; --i) {
+    for (int i = d->defaultPropertyTable.size() - 1; i >= 0; --i) {
         if (qstrcmp(d->defaultPropertyTable.at(i).className, className) == 0) {
             d->defaultPropertyTable.remove(i);
             break;
@@ -3117,7 +3031,7 @@ QSize QWizard::sizeHint() const
 void QWizard::back()
 {
     Q_D(QWizard);
-    int n = d->history.count() - 2;
+    int n = d->history.size() - 2;
     if (n < 0)
         return;
     d->switchToPage(d->history.at(n), QWizardPrivate::Backward);
@@ -3154,6 +3068,42 @@ void QWizard::next()
 }
 
 /*!
+    Sets currentId to \a id, without visiting the pages between currentId and \a id.
+
+    Returns without page change, if
+    \list
+    \li wizard holds no pages
+    \li current page is invalid
+    \li given page equals currentId()
+    \li given page is out of range
+    \endlist
+
+    Note: If pages have been forward skipped and \a id is 0, page visiting history
+    will be deleted
+*/
+
+void QWizard::setCurrentId(int id)
+{
+    Q_D(QWizard);
+
+    if (d->current == -1)
+        return;
+
+    if (currentId() == id)
+        return;
+
+    if (!validateCurrentPage())
+        return;
+
+    if (id < 0 || Q_UNLIKELY(!d->pageMap.contains(id))) {
+        qWarning("QWizard::setCurrentId: No such page: %d", id);
+        return;
+    }
+
+    d->switchToPage(id, (id < currentId()) ? QWizardPrivate::Backward : QWizardPrivate::Forward);
+}
+
+/*!
     Restarts the wizard at the start page. This function is called automatically when the
     wizard is shown.
 
@@ -3183,12 +3133,7 @@ bool QWizard::event(QEvent *event)
 #if QT_CONFIG(style_windowsvista)
     else if (event->type() == QEvent::Show && d->vistaInitPending) {
         d->vistaInitPending = false;
-        // Do not force AeroStyle when in Classic theme.
-        // Note that d->handleAeroStyleChange() needs to be called in any case as it does some
-        // necessary initialization, like ensures that the Aero specific back button is hidden if
-        // Aero theme isn't active.
-        if (QVistaHelper::vistaState() != QVistaHelper::Classic)
-            d->wizStyle = AeroStyle;
+        d->wizStyle = AeroStyle;
         d->handleAeroStyleChange();
     }
     else if (d->isVistaThemeEnabled()) {
@@ -3218,8 +3163,7 @@ void QWizard::resizeEvent(QResizeEvent *event)
 #if QT_CONFIG(style_windowsvista)
     if (d->isVistaThemeEnabled()) {
         heightOffset = d->vistaHelper->topOffset(this);
-        if (d->isVistaThemeEnabled(QVistaHelper::VistaAero))
-            heightOffset += d->vistaHelper->titleBarSize();
+        heightOffset += d->vistaHelper->titleBarSize();
     }
 #endif
     d->antiFlickerWidget->resize(event->size().width(), event->size().height() - heightOffset);
@@ -3241,16 +3185,11 @@ void QWizard::paintEvent(QPaintEvent * event)
         if (backgroundPixmap.isNull())
             return;
 
-        QPainter painter(this);
+        QStylePainter painter(this);
         painter.drawPixmap(0, (height() - backgroundPixmap.height()) / 2, backgroundPixmap);
     }
 #if QT_CONFIG(style_windowsvista)
     else if (d->isVistaThemeEnabled()) {
-        if (d->isVistaThemeEnabled(QVistaHelper::VistaBasic)) {
-            QPainter painter(this);
-            QColor color = d->vistaHelper->basicWindowFrameColor();
-            painter.fillRect(0, 0, width(), QVistaHelper::topOffset(this), color);
-        }
         d->vistaHelper->paintEvent(event);
     }
 #else
@@ -3258,27 +3197,23 @@ void QWizard::paintEvent(QPaintEvent * event)
 #endif
 }
 
-#if defined(Q_OS_WIN) || defined(Q_CLANG_QDOC)
+#if defined(Q_OS_WIN) || defined(Q_QDOC)
 /*!
     \reimp
 */
-#  if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 bool QWizard::nativeEvent(const QByteArray &eventType, void *message, qintptr *result)
-#  else
-bool QWizard::nativeEvent(const QByteArray &eventType, void *message, long *result)
-#  endif
 {
 #if QT_CONFIG(style_windowsvista)
     Q_D(QWizard);
     if (d->isVistaThemeEnabled() && eventType == "windows_generic_MSG") {
         MSG *windowsMessage = static_cast<MSG *>(message);
         const bool winEventResult = d->vistaHelper->handleWinEvent(windowsMessage, result);
-        if (QVistaHelper::vistaState() != d->vistaState) {
+        if (d->vistaDirty) {
             // QTBUG-78300: When Qt::AA_NativeWindows is set, delay further
             // window creation until after the platform window creation events.
             if (windowsMessage->message == WM_GETICON) {
                 d->vistaStateChanged = true;
-                d->vistaState = QVistaHelper::vistaState();
+                d->vistaDirty = false;
                 setWizardStyle(AeroStyle);
             }
         }
@@ -3464,7 +3399,7 @@ int QWizard::nextId() const
     using registerField() and can be accessed at any time using
     field() and setField().
 
-    \sa QWizard, {Class Wizard Example}, {License Wizard Example}
+    \sa QWizard, {Trivial Wizard Example}, {License Wizard Example}
 */
 
 /*!
@@ -3607,7 +3542,7 @@ QPixmap QWizardPage::pixmap(QWizard::WizardPixmap which) const
     fields are properly initialized based on fields from previous
     pages. For example:
 
-    \snippet dialogs/classwizard/classwizard.cpp 17
+    \snippet dialogs/licensewizard/licensewizard.cpp 27
 
     The default implementation does nothing.
 
@@ -3632,7 +3567,7 @@ void QWizardPage::cleanupPage()
 {
     Q_D(QWizardPage);
     if (d->wizard) {
-        const QVector<QWizardField> &fields = d->wizard->d_func()->fields;
+        const QList<QWizardField> &fields = d->wizard->d_func()->fields;
         for (const auto &field : fields) {
             if (field.page == this)
                 field.object->setProperty(field.property, field.initialValue);
@@ -3683,9 +3618,10 @@ bool QWizardPage::isComplete() const
     if (!d->wizard)
         return true;
 
-    const QVector<QWizardField> &wizardFields = d->wizard->d_func()->fields;
-    for (int i = wizardFields.count() - 1; i >= 0; --i) {
-        const QWizardField &field = wizardFields.at(i);
+    const QList<QWizardField> &wizardFields = d->wizard->d_func()->fields;
+    const auto end = wizardFields.crend();
+    for (auto it = wizardFields.crbegin(); it != end; ++it) {
+        const QWizardField &field = *it;
         if (field.page == this && field.mandatory) {
             QVariant value = field.object->property(field.property);
             if (value == field.initialValue)
@@ -3911,7 +3847,7 @@ void QWizardPage::setField(const QString &name, const QVariant &value)
 
     Example:
 
-    \snippet dialogs/classwizard/classwizard.cpp 17
+    \snippet dialogs/licensewizard/licensewizard.cpp accessField
 
     \sa QWizard::field(), setField(), registerField()
 */

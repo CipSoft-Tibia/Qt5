@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,9 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/time/time.h"
@@ -32,6 +33,8 @@
 #include "net/websockets/websocket_handshake_stream_base.h"
 #include "net/websockets/websocket_handshake_stream_create_helper.h"
 #include "net/websockets/websocket_http2_handshake_stream.h"
+#include "net/websockets/websocket_http3_handshake_stream.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -75,7 +78,7 @@ class Delegate : public URLRequest::Delegate {
   void OnAuthRequiredComplete(URLRequest* request,
                               const AuthCredentials* auth_credentials);
 
-  WebSocketStreamRequestImpl* owner_;
+  raw_ptr<WebSocketStreamRequestImpl> owner_;
 };
 
 class WebSocketStreamRequestImpl : public WebSocketStreamRequestAPI {
@@ -95,11 +98,12 @@ class WebSocketStreamRequestImpl : public WebSocketStreamRequestAPI {
         url_request_(context->CreateRequest(url,
                                             DEFAULT_PRIORITY,
                                             &delegate_,
-                                            traffic_annotation)),
+                                            traffic_annotation,
+                                            /*is_for_websockets=*/true)),
         connect_delegate_(std::move(connect_delegate)),
         api_delegate_(std::move(api_delegate)) {
-    DCHECK_EQ(IsolationInfo::RedirectMode::kUpdateNothing,
-              isolation_info.redirect_mode());
+    DCHECK_EQ(IsolationInfo::RequestType::kOther,
+              isolation_info.request_type());
 
     HttpRequestHeaders headers = additional_headers;
     headers.SetHeader(websockets::kUpgrade, websockets::kWebSocketLowercase);
@@ -147,16 +151,27 @@ class WebSocketStreamRequestImpl : public WebSocketStreamRequestAPI {
     OnHandshakeStreamCreated(handshake_stream);
   }
 
-  void OnFailure(const std::string& message) override {
+  void OnHttp3HandshakeStreamCreated(
+      WebSocketHttp3HandshakeStream* handshake_stream) override {
+    if (api_delegate_) {
+      api_delegate_->OnHttp3HandshakeStreamCreated(handshake_stream);
+    }
+    OnHandshakeStreamCreated(handshake_stream);
+  }
+
+  void OnFailure(const std::string& message,
+                 int net_error,
+                 absl::optional<int> response_code) override {
     if (api_delegate_)
-      api_delegate_->OnFailure(message);
+      api_delegate_->OnFailure(message, net_error, response_code);
     failure_message_ = message;
+    failure_net_error_ = net_error;
+    failure_response_code_ = response_code;
   }
 
   void Start(std::unique_ptr<base::OneShotTimer> timer) {
     DCHECK(timer);
-    base::TimeDelta timeout(base::TimeDelta::FromSeconds(
-        kHandshakeTimeoutIntervalInSeconds));
+    base::TimeDelta timeout(base::Seconds(kHandshakeTimeoutIntervalInSeconds));
     timer_ = std::move(timer);
     timer_->Start(FROM_HERE, timeout,
                   base::BindOnce(&WebSocketStreamRequestImpl::OnTimeout,
@@ -172,8 +187,9 @@ class WebSocketStreamRequestImpl : public WebSocketStreamRequestAPI {
 
     if (!handshake_stream_) {
       ReportFailureWithMessage(
-          "No handshake stream has been created "
-          "or handshake stream is already destroyed.");
+          "No handshake stream has been created or handshake stream is already "
+          "destroyed.",
+          ERR_FAILED, absl::nullopt);
       return;
     }
 
@@ -205,7 +221,7 @@ class WebSocketStreamRequestImpl : public WebSocketStreamRequestAPI {
     }
   }
 
-  void ReportFailure(int net_error) {
+  void ReportFailure(int net_error, absl::optional<int> response_code) {
     DCHECK(timer_);
     timer_->Stop();
     if (failure_message_.empty()) {
@@ -224,11 +240,16 @@ class WebSocketStreamRequestImpl : public WebSocketStreamRequestAPI {
           break;
       }
     }
-    ReportFailureWithMessage(failure_message_);
+
+    ReportFailureWithMessage(
+        failure_message_, failure_net_error_.value_or(net_error),
+        failure_response_code_ ? failure_response_code_ : response_code);
   }
 
-  void ReportFailureWithMessage(const std::string& failure_message) {
-    connect_delegate_->OnFailure(failure_message);
+  void ReportFailureWithMessage(const std::string& failure_message,
+                                int net_error,
+                                absl::optional<int> response_code) {
+    connect_delegate_->OnFailure(failure_message, net_error, response_code);
   }
 
   WebSocketStream::ConnectDelegate* connect_delegate() const {
@@ -259,14 +280,16 @@ class WebSocketStreamRequestImpl : public WebSocketStreamRequestAPI {
 
   // This is owned by the caller of
   // WebsocketHandshakeStreamCreateHelper::CreateBasicStream() or
-  // CreateHttp2Stream().  Both the stream and this object will be destroyed
-  // during the destruction of the URLRequest object associated with the
-  // handshake. This is only guaranteed to be a valid pointer if the handshake
-  // succeeded.
+  // CreateHttp2Stream() or CreateHttp3Stream().  Both the stream and this
+  // object will be destroyed during the destruction of the URLRequest object
+  // associated with the handshake. This is only guaranteed to be a valid
+  // pointer if the handshake succeeded.
   base::WeakPtr<WebSocketHandshakeStreamBase> handshake_stream_;
 
-  // The failure message supplied by WebSocketBasicHandshakeStream, if any.
+  // The failure information supplied by WebSocketBasicHandshakeStream, if any.
   std::string failure_message_;
+  absl::optional<int> failure_net_error_;
+  absl::optional<int> failure_response_code_;
 
   // A timer for handshake timeout.
   std::unique_ptr<base::OneShotTimer> timer_;
@@ -339,7 +362,7 @@ void Delegate::OnResponseStarted(URLRequest* request, int net_error) {
 
   if (net_error != OK) {
     DVLOG(3) << "OnResponseStarted (request failed)";
-    owner_->ReportFailure(net_error);
+    owner_->ReportFailure(net_error, absl::nullopt);
     return;
   }
   const int response_code = request->GetResponseCode();
@@ -352,7 +375,7 @@ void Delegate::OnResponseStarted(URLRequest* request, int net_error) {
       return;
     }
 
-    owner_->ReportFailure(net_error);
+    owner_->ReportFailure(net_error, absl::nullopt);
     return;
   }
 
@@ -363,21 +386,23 @@ void Delegate::OnResponseStarted(URLRequest* request, int net_error) {
 
     case HTTP_UNAUTHORIZED:
       owner_->ReportFailureWithMessage(
-          "HTTP Authentication failed; no valid credentials available");
+          "HTTP Authentication failed; no valid credentials available",
+          net_error, response_code);
       return;
 
     case HTTP_PROXY_AUTHENTICATION_REQUIRED:
-      owner_->ReportFailureWithMessage("Proxy authentication failed");
+      owner_->ReportFailureWithMessage("Proxy authentication failed", net_error,
+                                       response_code);
       return;
 
     default:
-      owner_->ReportFailure(net_error);
+      owner_->ReportFailure(net_error, response_code);
   }
 }
 
 void Delegate::OnAuthRequired(URLRequest* request,
                               const AuthChallengeInfo& auth_info) {
-  base::Optional<AuthCredentials> credentials;
+  absl::optional<AuthCredentials> credentials;
   // This base::Unretained(this) relies on an assumption that |callback| can
   // be called called during the opening handshake.
   int rv = owner_->connect_delegate()->OnAuthRequired(
@@ -391,7 +416,7 @@ void Delegate::OnAuthRequired(URLRequest* request,
     return;
   if (rv != OK) {
     request->LogUnblocked();
-    owner_->ReportFailure(rv);
+    owner_->ReportFailure(rv, absl::nullopt);
     return;
   }
   OnAuthRequiredComplete(request, nullptr);

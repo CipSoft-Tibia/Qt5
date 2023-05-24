@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,13 @@
 
 #include <stdint.h>
 
-#include "base/bind.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "net/base/net_errors.h"
 #include "net/base/net_export.h"
 #include "net/dns/public/resolve_error_info.h"
-#include "net/socket/connection_attempts.h"
 #include "net/socket/next_proto.h"
 #include "net/socket/socket.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace net {
 
@@ -28,26 +27,7 @@ class NET_EXPORT StreamSocket : public Socket {
  public:
   using BeforeConnectCallback = base::RepeatingCallback<int()>;
 
-  // This is used in DumpMemoryStats() to track the estimate of memory usage of
-  // a socket.
-  struct NET_EXPORT_PRIVATE SocketMemoryStats {
-   public:
-    SocketMemoryStats();
-    ~SocketMemoryStats();
-    // Estimated total memory usage of this socket in bytes.
-    size_t total_size;
-    // Size of all buffers used by this socket in bytes.
-    size_t buffer_size;
-    // Number of certs used by this socket.
-    size_t cert_count;
-    // Total size of certs used by this socket in bytes.
-    size_t cert_size;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(SocketMemoryStats);
-  };
-
-  ~StreamSocket() override {}
+  ~StreamSocket() override = default;
 
   // Sets a callback to be invoked before establishing a connection. This allows
   // setting options, like receive and send buffer size, when they will take
@@ -136,6 +116,11 @@ class NET_EXPORT StreamSocket : public Socket {
   // kProtoUnknown will be returned if ALPN is not applicable.
   virtual NextProto GetNegotiatedProtocol() const = 0;
 
+  // Get data received from peer in ALPS TLS extension.
+  // Returns a (possibly empty) value if a TLS version supporting ALPS was used
+  // and ALPS was negotiated, nullopt otherwise.
+  virtual absl::optional<base::StringPiece> GetPeerApplicationSettings() const;
+
   // Gets the SSL connection information of the socket.  Returns false if
   // SSL was not used by this socket.
   virtual bool GetSSLInfo(SSLInfo* ssl_info) = 0;
@@ -146,26 +131,11 @@ class NET_EXPORT StreamSocket : public Socket {
   virtual void GetSSLCertRequestInfo(
       SSLCertRequestInfo* cert_request_info) const;
 
-  // Overwrites |out| with the connection attempts made in the process of
-  // connecting this socket.
-  virtual void GetConnectionAttempts(ConnectionAttempts* out) const = 0;
-
-  // Clears the socket's list of connection attempts.
-  virtual void ClearConnectionAttempts() = 0;
-
-  // Adds |attempts| to the socket's list of connection attempts.
-  virtual void AddConnectionAttempts(const ConnectionAttempts& attempts) = 0;
-
   // Returns the total number of number bytes read by the socket. This only
   // counts the payload bytes. Transport headers are not counted. Returns
   // 0 if the socket does not implement the function. The count is reset when
   // Disconnect() is called.
   virtual int64_t GetTotalReceivedBytes() const = 0;
-
-  // Dumps memory allocation stats into |stats|. |stats| can be assumed as being
-  // default initialized upon entry. Implementations should override fields in
-  // |stats|. Default implementation does nothing.
-  virtual void DumpMemoryStats(SocketMemoryStats* stats) const {}
 
   // Apply |tag| to this socket. If socket isn't yet connected, tag will be
   // applied when socket is later connected. If Connect() fails or socket

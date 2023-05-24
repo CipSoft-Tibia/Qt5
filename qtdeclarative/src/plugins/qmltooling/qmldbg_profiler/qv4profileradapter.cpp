@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4profileradapter.h"
 #include "qqmlprofilerservice.h"
@@ -74,14 +38,14 @@ qint64 QV4ProfilerAdapter::appendMemoryEvents(qint64 until, QList<QByteArray> &m
     // Make it const, so that we cannot accidentally detach it.
     const QVector<QV4::Profiling::MemoryAllocationProperties> &memoryData = m_memoryData;
 
-    while (memoryData.length() > m_memoryPos && memoryData[m_memoryPos].timestamp <= until) {
+    while (memoryData.size() > m_memoryPos && memoryData[m_memoryPos].timestamp <= until) {
         const QV4::Profiling::MemoryAllocationProperties &props = memoryData[m_memoryPos];
         d << props.timestamp << int(MemoryAllocation) << int(props.type) << props.size;
         ++m_memoryPos;
         messages.append(d.squeezedData());
         d.clear();
     }
-    return memoryData.length() == m_memoryPos ? -1 : memoryData[m_memoryPos].timestamp;
+    return memoryData.size() == m_memoryPos ? -1 : memoryData[m_memoryPos].timestamp;
 }
 
 qint64 QV4ProfilerAdapter::finalizeMessages(qint64 until, QList<QByteArray> &messages,
@@ -116,9 +80,9 @@ qint64 QV4ProfilerAdapter::sendMessages(qint64 until, QList<QByteArray> &message
 
     while (true) {
         while (!m_stack.isEmpty() &&
-               (m_functionCallPos == functionCallData.length() ||
+               (m_functionCallPos == functionCallData.size() ||
                 m_stack.top() <= functionCallData[m_functionCallPos].start)) {
-            if (m_stack.top() > until || messages.length() > s_numMessagesPerBatch)
+            if (m_stack.top() > until || messages.size() > s_numMessagesPerBatch)
                 return finalizeMessages(until, messages, m_stack.top(), d);
 
             appendMemoryEvents(m_stack.top(), messages, d);
@@ -126,11 +90,11 @@ qint64 QV4ProfilerAdapter::sendMessages(qint64 until, QList<QByteArray> &message
             messages.append(d.squeezedData());
             d.clear();
         }
-        while (m_functionCallPos != functionCallData.length() &&
+        while (m_functionCallPos != functionCallData.size() &&
                (m_stack.empty() || functionCallData[m_functionCallPos].start < m_stack.top())) {
             const QV4::Profiling::FunctionCallProperties &props =
                     functionCallData[m_functionCallPos];
-            if (props.start > until || messages.length() > s_numMessagesPerBatch)
+            if (props.start > until || messages.size() > s_numMessagesPerBatch)
                 return finalizeMessages(until, messages, props.start, d);
 
             appendMemoryEvents(props.start, messages, d);
@@ -153,7 +117,7 @@ qint64 QV4ProfilerAdapter::sendMessages(qint64 until, QList<QByteArray> &message
             m_stack.push(props.end);
             ++m_functionCallPos;
         }
-        if (m_stack.empty() && m_functionCallPos == functionCallData.length())
+        if (m_stack.empty() && m_functionCallPos == functionCallData.size())
             return finalizeMessages(until, messages, -1, d);
     }
 }

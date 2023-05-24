@@ -1,17 +1,17 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <utility>
 
+#include "services/network/public/cpp/url_loader_completion_status.h"
 #include "third_party/blink/renderer/modules/service_worker/fetch_event.h"
 
 #include "base/memory/scoped_refptr.h"
 #include "third_party/blink/public/mojom/timing/performance_mark_or_measure.mojom-blink.h"
-#include "third_party/blink/public/mojom/timing/worker_timing_container.mojom-blink.h"
 #include "third_party/blink/public/platform/modules/service_worker/web_service_worker_error.h"
 #include "third_party/blink/public/platform/web_url_response.h"
-#include "third_party/blink/renderer/bindings/core/v8/to_v8_for_core.h"
+#include "third_party/blink/renderer/bindings/core/v8/to_v8_traits.h"
 #include "third_party/blink/renderer/core/dom/abort_signal.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/fetch/request.h"
@@ -19,13 +19,13 @@
 #include "third_party/blink/renderer/core/timing/performance_mark.h"
 #include "third_party/blink/renderer/core/timing/performance_measure.h"
 #include "third_party/blink/renderer/core/timing/worker_global_scope_performance.h"
+#include "third_party/blink/renderer/core/workers/worker_global_scope.h"
 #include "third_party/blink/renderer/modules/service_worker/fetch_respond_with_observer.h"
 #include "third_party/blink/renderer/modules/service_worker/service_worker_error.h"
-#include "third_party/blink/renderer/modules/service_worker/service_worker_global_scope.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_load_timing.h"
-#include "third_party/blink/renderer/platform/loader/fetch/resource_timing_info.h"
+#include "third_party/blink/renderer/platform/loader/fetch/resource_timing_utils.h"
 #include "third_party/blink/renderer/platform/network/http_names.h"
 #include "third_party/blink/renderer/platform/network/network_utils.h"
 
@@ -35,8 +35,7 @@ FetchEvent* FetchEvent::Create(ScriptState* script_state,
                                const AtomicString& type,
                                const FetchEventInit* initializer) {
   return MakeGarbageCollected<FetchEvent>(script_state, type, initializer,
-                                          nullptr, nullptr, mojo::NullRemote(),
-                                          false);
+                                          nullptr, nullptr, false);
 }
 
 Request* FetchEvent::request() const {
@@ -101,8 +100,6 @@ FetchEvent::FetchEvent(ScriptState* script_state,
                        const FetchEventInit* initializer,
                        FetchRespondWithObserver* respond_with_observer,
                        WaitUntilObserver* wait_until_observer,
-                       mojo::PendingRemote<mojom::blink::WorkerTimingContainer>
-                           worker_timing_remote,
                        bool navigation_preload_sent)
     : ExtendableEvent(type, initializer, wait_until_observer),
       ExecutionContextClient(ExecutionContext::From(script_state)),
@@ -112,11 +109,7 @@ FetchEvent::FetchEvent(ScriptState* script_state,
       handled_property_(
           MakeGarbageCollected<ScriptPromiseProperty<ToV8UndefinedGenerator,
                                                      Member<DOMException>>>(
-              ExecutionContext::From(script_state))),
-      worker_timing_remote_(ExecutionContext::From(script_state)) {
-  worker_timing_remote_.Bind(std::move(worker_timing_remote),
-                             ExecutionContext::From(script_state)
-                                 ->GetTaskRunner(TaskType::kNetworking));
+              ExecutionContext::From(script_state))) {
   if (!navigation_preload_sent)
     preload_response_property_->ResolveWithUndefined();
 
@@ -153,7 +146,8 @@ void FetchEvent::OnNavigationPreloadResponse(
           ? FetchResponseData::CreateWithBuffer(BodyStreamBuffer::Create(
                 script_state, bytes_consumer,
                 MakeGarbageCollected<AbortSignal>(
-                    ExecutionContext::From(script_state))))
+                    ExecutionContext::From(script_state)),
+                /*cached_metadata_handler=*/nullptr))
           : FetchResponseData::Create();
   Vector<KURL> url_list(1);
   url_list[0] = preload_response_->CurrentRequestUrl();
@@ -166,7 +160,6 @@ void FetchEvent::OnNavigationPreloadResponse(
   response_data->InitFromResourceResponse(
       ExecutionContext::From(script_state), response_type, url_list,
       http_names::kGET, network::mojom::CredentialsMode::kInclude,
-      FetchRequestData::kBasicTainting,
       preload_response_->ToResourceResponse());
 
   FetchResponseData* tainted_response =
@@ -208,7 +201,12 @@ void FetchEvent::OnNavigationPreloadComplete(
   }
   std::unique_ptr<WebURLResponse> response = std::move(preload_response_);
   ResourceResponse resource_response = response->ToResourceResponse();
-  resource_response.SetEncodedDataLength(encoded_data_length);
+
+  // Navigation preload is always same-origin, so its timing information should
+  // be visible to the service worker. Note that if the preloaded response is
+  // used, the main document doesn't see the preloaded timing, but rather the
+  // timing of the fetch that initiated this FetchEvent.
+  resource_response.SetTimingAllowPassed(true);
   resource_response.SetEncodedBodyLength(encoded_body_length);
   resource_response.SetDecodedBodyLength(decoded_body_length);
 
@@ -218,35 +216,12 @@ void FetchEvent::OnNavigationPreloadComplete(
       timing ? timing->RequestTime() : base::TimeTicks();
   // According to the Resource Timing spec, the initiator type of
   // navigation preload request is "navigation".
-  scoped_refptr<ResourceTimingInfo> info = ResourceTimingInfo::Create(
-      "navigation", request_time, request_->GetRequestContextType(),
-      request_->GetRequestDestination());
-  info->SetNegativeAllowed(true);
-  info->SetLoadResponseEnd(completion_time);
-  info->SetInitialURL(request_->url());
-  info->SetFinalResponse(resource_response);
-  info->AddFinalTransferSize(encoded_data_length == -1 ? 0
-                                                       : encoded_data_length);
+  mojom::blink::ResourceTimingInfoPtr info = CreateResourceTimingInfo(
+      request_time, request_->url(), &resource_response);
+  info->response_end = completion_time;
+  info->allow_negative_values = true;
   WorkerGlobalScopePerformance::performance(*worker_global_scope)
-      ->GenerateAndAddResourceTiming(*info);
-}
-
-void FetchEvent::addPerformanceEntry(PerformanceMark* performance_mark) {
-  if (worker_timing_remote_.is_bound()) {
-    auto mojo_performance_mark =
-        performance_mark->ToMojoPerformanceMarkOrMeasure();
-    worker_timing_remote_->AddPerformanceEntry(
-        std::move(mojo_performance_mark));
-  }
-}
-
-void FetchEvent::addPerformanceEntry(PerformanceMeasure* performance_measure) {
-  if (worker_timing_remote_.is_bound()) {
-    auto mojo_performance_measure =
-        performance_measure->ToMojoPerformanceMarkOrMeasure();
-    worker_timing_remote_->AddPerformanceEntry(
-        std::move(mojo_performance_measure));
-  }
+      ->AddResourceTiming(std::move(info), "navigation");
 }
 
 void FetchEvent::Trace(Visitor* visitor) const {
@@ -255,7 +230,6 @@ void FetchEvent::Trace(Visitor* visitor) const {
   visitor->Trace(preload_response_property_);
   visitor->Trace(body_completion_notifier_);
   visitor->Trace(handled_property_);
-  visitor->Trace(worker_timing_remote_);
   ExtendableEvent::Trace(visitor);
   ExecutionContextClient::Trace(visitor);
 }

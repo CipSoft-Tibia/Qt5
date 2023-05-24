@@ -1,14 +1,8 @@
-# TEAM: payments-dev@chromium.org
-# COMPONENT: Blink>Payments
-
 file://components/payments/OWNERS
 
-jinho.bang@samsung.com
-mek@chromium.org
 rouslan@chromium.org
+zino@chromium.org
 
 per-file *.mojom=set noparent
 per-file *.mojom=file://ipc/SECURITY_OWNERS
 
-# Emeritus
-mathp@chromium.org

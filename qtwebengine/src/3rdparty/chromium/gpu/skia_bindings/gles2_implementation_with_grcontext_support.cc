@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -190,13 +190,6 @@ void GLES2ImplementationWithGrContextSupport::BlendFuncSeparate(
     GLenum dstAlpha) {
   BaseClass::BlendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha);
   ResetGrContextIfNeeded(kBlend_GrGLBackendState);
-}
-
-// Calls that invalidate kMSAAEnable_GrGLBackendState
-void GLES2ImplementationWithGrContextSupport::CoverageModulationCHROMIUM(
-    GLenum components) {
-  BaseClass::CoverageModulationCHROMIUM(components);
-  ResetGrContextIfNeeded(kMSAAEnable_GrGLBackendState);
 }
 
 // Calls that invalidate kVertex_GrGLBackendState

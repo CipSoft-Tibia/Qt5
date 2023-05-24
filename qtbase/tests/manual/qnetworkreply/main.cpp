@@ -1,42 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2014 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// Copyright (C) 2014 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 // This file contains benchmarks for QNetworkReply functions.
 
 #include <QDebug>
 #include <qtest.h>
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtNetwork/qnetworkreply.h>
 #include <QtNetwork/qnetworkrequest.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
 #include <QtNetwork/qsslconfiguration.h>
 #include <QtNetwork/qhttpmultipart.h>
 #include <QtNetwork/qauthenticator.h>
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QJsonDocument>
 #include "../../auto/network-settings.h"
 
@@ -58,9 +34,6 @@ private slots:
     void setSslConfiguration_data();
     void setSslConfiguration();
     void uploadToFacebook();
-    void spdy_data();
-    void spdy();
-    void spdyMultipleRequestsPerHost();
     void proxyAuthentication_data();
     void proxyAuthentication();
     void authentication();
@@ -102,7 +75,7 @@ class HttpReceiver : public QObject
     }
 protected:
     QTimer *timer;
-    QTime stopwatch;
+    QElapsedTimer stopwatch;
 };
 
 void tst_qnetworkreply::initTestCase()
@@ -178,7 +151,7 @@ void tst_qnetworkreply::setSslConfiguration()
 #elif defined(Q_OS_MAC)
     QCOMPARE(rootCertLoadingAllowed, false);
 #else
-    Q_UNUSED(rootCertLoadingAllowed)
+    Q_UNUSED(rootCertLoadingAllowed);
 #endif // other platforms: undecided (Windows: depends on the version)
     if (works) {
         QCOMPARE(reply->error(), QNetworkReply::NoError);
@@ -291,126 +264,6 @@ void tst_qnetworkreply::uploadToFacebook()
     }
 }
 
-void tst_qnetworkreply::spdy_data()
-{
-    QTest::addColumn<QString>("host");
-    QTest::addColumn<bool>("setAttribute");
-    QTest::addColumn<bool>("enabled");
-    QTest::addColumn<QByteArray>("expectedProtocol");
-
-    QList<QString> hosts = QList<QString>()
-            << QStringLiteral("www.google.com") // sends SPDY and 30x redirect
-            << QStringLiteral("www.google.de") // sends SPDY and 200 OK
-            << QStringLiteral("mail.google.com") // sends SPDY and 200 OK
-            << QStringLiteral("www.youtube.com") // sends SPDY and 200 OK
-            << QStringLiteral("www.dropbox.com") // no SPDY, but NPN which selects HTTP
-            << QStringLiteral("www.facebook.com") // sends SPDY and 200 OK
-            << QStringLiteral("graph.facebook.com") // sends SPDY and 200 OK
-            << QStringLiteral("www.twitter.com") // sends SPDY and 30x redirect
-            << QStringLiteral("twitter.com") // sends SPDY and 200 OK
-            << QStringLiteral("api.twitter.com"); // sends SPDY and 200 OK
-
-    foreach (const QString &host, hosts) {
-        QByteArray tag = host.toLocal8Bit();
-        tag.append("-not-used");
-        QTest::newRow(tag)
-                << QStringLiteral("https://") + host
-                << false
-                << false
-                << QByteArray();
-
-        tag = host.toLocal8Bit();
-        tag.append("-disabled");
-        QTest::newRow(tag)
-                << QStringLiteral("https://") + host
-                << true
-                << false
-                << QByteArray();
-
-        if (host != QStringLiteral("api.twitter.com")) { // they don't offer an API over HTTP
-            tag = host.toLocal8Bit();
-            tag.append("-no-https-url");
-            QTest::newRow(tag)
-                    << QStringLiteral("http://") + host
-                    << true
-                    << true
-                    << QByteArray();
-        }
-
-#ifndef QT_NO_OPENSSL
-        tag = host.toLocal8Bit();
-        tag.append("-enabled");
-        QTest::newRow(tag)
-                << QStringLiteral("https://") + host
-                << true
-                << true
-                << (host == QStringLiteral("www.dropbox.com")
-                    ? QByteArray(QSslConfiguration::NextProtocolHttp1_1)
-                    : QByteArray(QSslConfiguration::NextProtocolSpdy3_0));
-#endif // QT_NO_OPENSSL
-    }
-}
-
-void tst_qnetworkreply::spdy()
-{
-#if defined(QT_BUILD_INTERNAL) && !defined(QT_NO_SSL) && OPENSSL_VERSION_NUMBER >= 0x1000100fL && !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_NEXTPROTONEG)
-
-    m_manager.clearAccessCache();
-
-    QFETCH(QString, host);
-    QUrl url(host);
-    QNetworkRequest request(url);
-
-    QFETCH(bool, setAttribute);
-    QFETCH(bool, enabled);
-    if (setAttribute) {
-        request.setAttribute(QNetworkRequest::SpdyAllowedAttribute, QVariant(enabled));
-    }
-
-    QNetworkReply *reply = m_manager.get(request);
-    QObject::connect(reply, SIGNAL(finished()), &QTestEventLoop::instance(), SLOT(exitLoop()));
-
-    QSignalSpy metaDataChangedSpy(reply, SIGNAL(metaDataChanged()));
-    QSignalSpy readyReadSpy(reply, SIGNAL(readyRead()));
-    QSignalSpy finishedSpy(reply, SIGNAL(finished()));
-    QSignalSpy finishedManagerSpy(&m_manager, SIGNAL(finished(QNetworkReply*)));
-
-    QTestEventLoop::instance().enterLoop(15);
-    QVERIFY(!QTestEventLoop::instance().timeout());
-
-    QFETCH(QByteArray, expectedProtocol);
-
-    bool expectedSpdyUsed = (expectedProtocol == QSslConfiguration::NextProtocolSpdy3_0);
-    QCOMPARE(reply->attribute(QNetworkRequest::SpdyWasUsedAttribute).toBool(), expectedSpdyUsed);
-
-    QCOMPARE(metaDataChangedSpy.count(), 1);
-    QCOMPARE(finishedSpy.count(), 1);
-    QCOMPARE(finishedManagerSpy.count(), 1);
-
-    QUrl redirectUrl = reply->header(QNetworkRequest::LocationHeader).toUrl();
-    QByteArray content = reply->readAll();
-
-    int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    QVERIFY(statusCode >= 200 && statusCode < 500);
-    if (statusCode == 200 || statusCode >= 400) {
-        QVERIFY(readyReadSpy.count() > 0);
-        QVERIFY(!content.isEmpty());
-    } else if (statusCode >= 300 && statusCode < 400) {
-        QVERIFY(!redirectUrl.isEmpty());
-    }
-
-    QSslConfiguration::NextProtocolNegotiationStatus expectedStatus =
-            expectedProtocol.isNull() ? QSslConfiguration::NextProtocolNegotiationNone
-            : QSslConfiguration::NextProtocolNegotiationNegotiated;
-    QCOMPARE(reply->sslConfiguration().nextProtocolNegotiationStatus(),
-             expectedStatus);
-
-    QCOMPARE(reply->sslConfiguration().nextNegotiatedProtocol(), expectedProtocol);
-#else
-    QSKIP("Qt built withouth OpenSSL, or the OpenSSL version is too old");
-#endif // defined(QT_BUILD_INTERNAL) && !defined(QT_NO_SSL) ...
-}
-
 void tst_qnetworkreply::spdyReplyFinished()
 {
     static int finishedCount = 0;
@@ -418,85 +271,6 @@ void tst_qnetworkreply::spdyReplyFinished()
 
     if (finishedCount == 12)
         QTestEventLoop::instance().exitLoop();
-}
-
-void tst_qnetworkreply::spdyMultipleRequestsPerHost()
-{
-#if defined(QT_BUILD_INTERNAL) && !defined(QT_NO_SSL) && OPENSSL_VERSION_NUMBER >= 0x1000100fL && !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_NEXTPROTONEG)
-
-    QList<QNetworkRequest> requests;
-    requests
-            << QNetworkRequest(QUrl("https://www.facebook.com"))
-            << QNetworkRequest(QUrl("https://www.facebook.com/images/fb_icon_325x325.png"))
-
-            << QNetworkRequest(QUrl("https://www.google.de"))
-            << QNetworkRequest(QUrl("https://www.google.de/preferences?hl=de"))
-            << QNetworkRequest(QUrl("https://www.google.de/intl/de/policies/?fg=1"))
-            << QNetworkRequest(QUrl("https://www.google.de/intl/de/about.html?fg=1"))
-            << QNetworkRequest(QUrl("https://www.google.de/services/?fg=1"))
-            << QNetworkRequest(QUrl("https://www.google.de/intl/de/ads/?fg=1"))
-
-            << QNetworkRequest(QUrl("https://i1.ytimg.com/li/tnHdj3df7iM/default.jpg"))
-            << QNetworkRequest(QUrl("https://i1.ytimg.com/li/7Dr1BKwqctY/default.jpg"))
-            << QNetworkRequest(QUrl("https://i1.ytimg.com/li/hfZhJdhTqX8/default.jpg"))
-            << QNetworkRequest(QUrl("https://i1.ytimg.com/vi/14Nprh8163I/hqdefault.jpg"))
-               ;
-    QList<QNetworkReply *> replies;
-    QList<QSignalSpy *> metaDataChangedSpies;
-    QList<QSignalSpy *> readyReadSpies;
-    QList<QSignalSpy *> finishedSpies;
-
-    QSignalSpy finishedManagerSpy(&m_manager, SIGNAL(finished(QNetworkReply*)));
-
-    foreach (QNetworkRequest request, requests) {
-        request.setAttribute(QNetworkRequest::SpdyAllowedAttribute, true);
-        QNetworkReply *reply = m_manager.get(request);
-        QObject::connect(reply, SIGNAL(finished()), this, SLOT(spdyReplyFinished()));
-        replies << reply;
-        QSignalSpy *metaDataChangedSpy = new QSignalSpy(reply, SIGNAL(metaDataChanged()));
-        metaDataChangedSpies << metaDataChangedSpy;
-        QSignalSpy *readyReadSpy = new QSignalSpy(reply, SIGNAL(readyRead()));
-        readyReadSpies << readyReadSpy;
-        QSignalSpy *finishedSpy = new QSignalSpy(reply, SIGNAL(finished()));
-        finishedSpies << finishedSpy;
-    }
-
-    QCOMPARE(requests.count(), replies.count());
-
-    QTestEventLoop::instance().enterLoop(15);
-    QVERIFY(!QTestEventLoop::instance().timeout());
-
-    QCOMPARE(finishedManagerSpy.count(), requests.count());
-
-    for (int a = 0; a < replies.count(); ++a) {
-
-        QCOMPARE(replies.at(a)->sslConfiguration().nextProtocolNegotiationStatus(),
-                 QSslConfiguration::NextProtocolNegotiationNegotiated);
-        QCOMPARE(replies.at(a)->sslConfiguration().nextNegotiatedProtocol(),
-                 QByteArray(QSslConfiguration::NextProtocolSpdy3_0));
-
-        QCOMPARE(replies.at(a)->error(), QNetworkReply::NoError);
-        QCOMPARE(replies.at(a)->attribute(QNetworkRequest::SpdyWasUsedAttribute).toBool(), true);
-        QCOMPARE(replies.at(a)->attribute(QNetworkRequest::ConnectionEncryptedAttribute).toBool(), true);
-        QCOMPARE(replies.at(a)->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), 200);
-
-        QByteArray content = replies.at(a)->readAll();
-        QVERIFY(content.count() > 0);
-
-        QCOMPARE(metaDataChangedSpies.at(a)->count(), 1);
-        metaDataChangedSpies.at(a)->deleteLater();
-
-        QCOMPARE(finishedSpies.at(a)->count(), 1);
-        finishedSpies.at(a)->deleteLater();
-
-        QVERIFY(readyReadSpies.at(a)->count() > 0);
-        readyReadSpies.at(a)->deleteLater();
-
-        replies.at(a)->deleteLater();
-    }
-#else
-    QSKIP("Qt built withouth OpenSSL, or the OpenSSL version is too old");
-#endif // defined(QT_BUILD_INTERNAL) && !defined(QT_NO_SSL) ...
 }
 
 void tst_qnetworkreply::proxyAuthentication_data()
@@ -587,7 +361,6 @@ void tst_qnetworkreply::npnWithEmptyList() // QTBUG-40714
 
     QUrl url(QStringLiteral("https://www.ossifrage.net/"));
     QNetworkRequest request(url);
-    request.setAttribute(QNetworkRequest::SpdyAllowedAttribute, QVariant(true));
     QNetworkReply *reply = m_manager.get(request);
     QObject::connect(reply, SIGNAL(finished()), &QTestEventLoop::instance(), SLOT(exitLoop()));
 

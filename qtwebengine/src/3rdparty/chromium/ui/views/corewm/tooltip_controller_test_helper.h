@@ -1,12 +1,18 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_VIEWS_COREWM_TOOLTIP_CONTROLLER_TEST_HELPER_H_
 #define UI_VIEWS_COREWM_TOOLTIP_CONTROLLER_TEST_HELPER_H_
 
-#include "base/macros.h"
-#include "base/strings/string16.h"
+#include <string>
+
+#include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
+#include "build/chromeos_buildflags.h"
+#include "ui/ozone/public/ozone_platform.h"
+#include "ui/views/corewm/tooltip_controller.h"
+#include "ui/views/corewm/tooltip_state_manager.h"
 #include "ui/views/view.h"
 #include "ui/views/views_export.h"
 
@@ -14,58 +20,81 @@ namespace aura {
 class Window;
 }
 
-namespace views {
-namespace corewm {
+namespace base {
+class TimeDelta;
+}
 
-class TooltipController;
+namespace wm {
+class TooltipObserver;
+}
 
-namespace test {
+namespace views::corewm::test {
 
 // TooltipControllerTestHelper provides access to TooltipControllers private
 // state.
 class TooltipControllerTestHelper {
  public:
   explicit TooltipControllerTestHelper(TooltipController* controller);
+
+  TooltipControllerTestHelper(const TooltipControllerTestHelper&) = delete;
+  TooltipControllerTestHelper& operator=(const TooltipControllerTestHelper&) =
+      delete;
+
   ~TooltipControllerTestHelper();
 
   TooltipController* controller() { return controller_; }
 
+  TooltipStateManager* state_manager() {
+    return controller_->state_manager_.get();
+  }
+
+  // Returns true if server side tooltip is enabled. The server side means
+  // tooltip is handled on ash (server) and lacros is the client.
+  // Always returns false except for Lacros.
+  bool UseServerSideTooltip();
+
   // These are mostly cover methods for TooltipController private methods.
-  base::string16 GetTooltipText();
-  aura::Window* GetTooltipWindow();
-  void UpdateIfRequired();
-  void FireTooltipShownTimer();
-  bool IsTooltipShownTimerRunning();
+  const std::u16string& GetTooltipText();
+  aura::Window* GetTooltipParentWindow();
+  const aura::Window* GetObservedWindow();
+  const gfx::Point& GetTooltipPosition();
+  base::TimeDelta GetShowTooltipDelay();
+  void HideAndReset();
+  void UpdateIfRequired(TooltipTrigger trigger);
+  void FireHideTooltipTimer();
+  void AddObserver(wm::TooltipObserver* observer);
+  void RemoveObserver(wm::TooltipObserver* observer);
+  bool IsWillShowTooltipTimerRunning();
+  bool IsWillHideTooltipTimerRunning();
   bool IsTooltipVisible();
-  void SetTooltipShowDelayEnable(bool tooltip_show_delay);
+  void SkipTooltipShowDelay(bool enable);
+  void MockWindowActivated(aura::Window* window, bool active);
 
  private:
-  TooltipController* controller_;
-
-  DISALLOW_COPY_AND_ASSIGN(TooltipControllerTestHelper);
+  raw_ptr<TooltipController, DanglingUntriaged> controller_;
 };
 
 // Trivial View subclass that lets you set the tooltip text.
 class TooltipTestView : public views::View {
  public:
   TooltipTestView();
+
+  TooltipTestView(const TooltipTestView&) = delete;
+  TooltipTestView& operator=(const TooltipTestView&) = delete;
+
   ~TooltipTestView() override;
 
-  void set_tooltip_text(base::string16 tooltip_text) {
+  void set_tooltip_text(std::u16string tooltip_text) {
     tooltip_text_ = tooltip_text;
   }
 
   // Overridden from views::View
-  base::string16 GetTooltipText(const gfx::Point& p) const override;
+  std::u16string GetTooltipText(const gfx::Point& p) const override;
 
  private:
-  base::string16 tooltip_text_;
-
-  DISALLOW_COPY_AND_ASSIGN(TooltipTestView);
+  std::u16string tooltip_text_;
 };
 
-}  // namespace test
-}  // namespace corewm
-}  // namespace views
+}  // namespace views::corewm::test
 
 #endif  // UI_VIEWS_COREWM_TOOLTIP_CONTROLLER_TEST_HELPER_H_

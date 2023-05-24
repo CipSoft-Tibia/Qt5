@@ -127,9 +127,8 @@ void Plot::PrintPythonCode() const {
         // There is a plt.bar function that draws bar plots,
         // but it is *way* too slow to be useful.
         printf(
-            "plt.vlines(x%zu, map(lambda t: min(t,0), y%zu), map(lambda t: "
-            "max(t,0), y%zu), color=colors[%zu], "
-            "label=\'%s\')\n",
+            "plt.vlines(x%zu, [min(t,0) for t in y%zu], [max(t,0) for t in "
+            "y%zu], color=colors[%zu], label=\'%s\')\n",
             i, i, i, i, series_list_[i].label.c_str());
         if (series_list_[i].point_style == PointStyle::kHighlight) {
           printf(
@@ -221,7 +220,7 @@ void Plot::PrintPythonCode() const {
   printf("plt.ylabel(\'%s\')\n", yaxis_label_.c_str());
   printf("plt.title(\'%s\')\n", title_.c_str());
   printf("fig = plt.gcf()\n");
-  printf("fig.canvas.set_window_title(\'%s\')\n", id_.c_str());
+  printf("fig.canvas.manager.set_window_title(\'%s\')\n", id_.c_str());
   if (!yaxis_tick_labels_.empty()) {
     printf("yaxis_tick_labels = [");
     for (const auto& kv : yaxis_tick_labels_) {
@@ -308,12 +307,12 @@ void PlotCollection::PrintPythonCode(bool shared_xaxis) const {
 void PlotCollection::ExportProtobuf(
     webrtc::analytics::ChartCollection* collection) const {
   for (const auto& plot : plots_) {
-    // TODO(terelius): Ensure that there is no way to insert plots other than
-    // ProtobufPlots in a ProtobufPlotCollection. Needed to safely static_cast
-    // here.
     webrtc::analytics::Chart* protobuf_representation =
         collection->add_charts();
     plot->ExportProtobuf(protobuf_representation);
+  }
+  if (calltime_to_utc_ms_) {
+    collection->set_calltime_to_utc_ms(*calltime_to_utc_ms_);
   }
 }
 

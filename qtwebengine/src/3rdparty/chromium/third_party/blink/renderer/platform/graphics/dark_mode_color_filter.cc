@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,9 +10,15 @@
 #include "third_party/skia/include/core/SkColorFilter.h"
 #include "third_party/skia/include/effects/SkHighContrastFilter.h"
 #include "third_party/skia/include/effects/SkTableColorFilter.h"
+#include "ui/gfx/color_utils.h"
 
 namespace blink {
 namespace {
+
+// todo(1399566): Add a IsWithinEpsilon method for SkColor4f.
+bool IsWithinEpsilon(float a, float b) {
+  return std::abs(a - b) < std::numeric_limits<float>::epsilon();
+}
 
 // SkColorFilterWrapper implementation.
 class SkColorFilterWrapper : public DarkModeColorFilter {
@@ -28,15 +34,15 @@ class SkColorFilterWrapper : public DarkModeColorFilter {
       const DarkModeSettings& settings) {
     SkHighContrastConfig config;
     config.fInvertStyle = invert_style;
-    config.fGrayscale = settings.grayscale;
+    config.fGrayscale = false;
     config.fContrast = settings.contrast;
 
     return std::unique_ptr<SkColorFilterWrapper>(
         new SkColorFilterWrapper(SkHighContrastFilter::Make(config)));
   }
 
-  SkColor InvertColor(SkColor color) const override {
-    return filter_->filterColor(color);
+  SkColor4f InvertColor(const SkColor4f& color) const override {
+    return filter_->filterColor4f(color, nullptr, nullptr);
   }
 
   sk_sp<SkColorFilter> ToSkColorFilter() const override { return filter_; }
@@ -59,18 +65,39 @@ class LABColorFilter : public DarkModeColorFilter {
     filter_ = SkHighContrastFilter::Make(config);
   }
 
-  SkColor InvertColor(SkColor color) const override {
-    SkV3 rgb = {SkColorGetR(color) / 255.0f, SkColorGetG(color) / 255.0f,
-                SkColorGetB(color) / 255.0f};
+  SkColor4f InvertColor(const SkColor4f& color) const override {
+    SkV3 rgb = {color.fR, color.fG, color.fB};
     SkV3 lab = transformer_.SRGBToLAB(rgb);
     lab.x = std::min(110.0f - lab.x, 100.0f);
     rgb = transformer_.LABToSRGB(lab);
 
-    SkColor inverted_color = SkColorSetARGB(
-        SkColorGetA(color), static_cast<unsigned int>(rgb.x * 255 + 0.5),
-        static_cast<unsigned int>(rgb.y * 255 + 0.5),
-        static_cast<unsigned int>(rgb.z * 255 + 0.5));
+    SkColor4f inverted_color{rgb.x, rgb.y, rgb.z, color.fA};
     return AdjustGray(inverted_color);
+  }
+
+  SkColor4f AdjustColorForHigherConstrast(
+      const SkColor4f& adjusted_color,
+      const SkColor4f& background,
+      float reference_contrast_ratio) override {
+    if (color_utils::GetContrastRatio(adjusted_color, background) >=
+        reference_contrast_ratio)
+      return adjusted_color;
+
+    SkColor4f best_color = adjusted_color;
+    constexpr int MaxLightness = 100;
+    int min_lightness = GetLabSkV3Data(adjusted_color).x;
+    for (int low = min_lightness, high = MaxLightness + 1; low < high;) {
+      const int lightness = (low + high) / 2;
+      const SkColor4f color = AdjustColorByLightness(adjusted_color, lightness);
+      const float contrast = color_utils::GetContrastRatio(color, background);
+      if (contrast > reference_contrast_ratio) {
+        high = lightness;
+        best_color = color;
+      } else {
+        low = high + 1;
+      }
+    }
+    return best_color;
   }
 
   sk_sp<SkColorFilter> ToSkColorFilter() const override { return filter_; }
@@ -82,21 +109,49 @@ class LABColorFilter : public DarkModeColorFilter {
   //
   // TODO(gilmanmh): Consider adding a more general way to adjust colors after
   // applying the main filter.
-  SkColor AdjustGray(SkColor color) const {
-    static const uint8_t kBrightnessThreshold = 32;
-    static const uint8_t kAdjustedBrightness = 18;
+  SkColor4f AdjustGray(const SkColor4f& color) const {
+    static const float kBrightnessThreshold = 32.0f / 255.0f;
+    static const float kAdjustedBrightness = 18.0f / 255.0f;
 
-    uint8_t r = SkColorGetR(color);
-    uint8_t g = SkColorGetG(color);
-    uint8_t b = SkColorGetB(color);
+    const float r = color.fR;
+    const float g = color.fG;
+    const float b = color.fB;
 
-    if (r == b && r == g && r < kBrightnessThreshold &&
-        r > kAdjustedBrightness) {
-      return SkColorSetRGB(kAdjustedBrightness, kAdjustedBrightness,
-                           kAdjustedBrightness);
+    if (IsWithinEpsilon(r, g) && IsWithinEpsilon(r, b) &&
+        r < kBrightnessThreshold && r > kAdjustedBrightness) {
+      return SkColor4f{kAdjustedBrightness, kAdjustedBrightness,
+                       kAdjustedBrightness, color.fA};
     }
 
     return color;
+  }
+
+  SkColor4f AdjustColorByLightness(const SkColor4f& reference_color,
+                                   int lightness) {
+    // Todo(1399566): SkColorToHSV and SkHSVToColor need SkColor4f versions.
+    SkColor4f new_color = AdjustLightness(reference_color, lightness);
+    SkScalar hsv[3];
+    SkColorToHSV(reference_color.toSkColor(), hsv);
+    const float hue = hsv[0];
+    SkColorToHSV(new_color.toSkColor(), hsv);
+    if (hsv[0] != hue)
+      hsv[0] = hue;
+
+    return SkColor4f::FromColor(SkHSVToColor(reference_color.fA * 255, hsv));
+  }
+
+  SkColor4f AdjustLightness(const SkColor4f& color, int lightness) {
+    SkV3 lab = GetLabSkV3Data(color);
+    if (lab.x != lightness)
+      lab.x = lightness;
+    SkV3 rgb = transformer_.LABToSRGB(lab);
+
+    return {rgb.x, rgb.y, rgb.z, color.fA};
+  }
+
+  SkV3 GetLabSkV3Data(const SkColor4f& color) {
+    SkV3 rgb = {color.fR, color.fG, color.fB};
+    return transformer_.SRGBToLAB(rgb);
   }
 
   const lab::DarkModeSRGBLABTransformer transformer_;

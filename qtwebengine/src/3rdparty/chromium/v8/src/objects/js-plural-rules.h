@@ -26,11 +26,14 @@ namespace U_ICU_NAMESPACE {
 class PluralRules;
 namespace number {
 class LocalizedNumberFormatter;
+class LocalizedNumberRangeFormatter;
 }  // namespace number
 }  // namespace U_ICU_NAMESPACE
 
 namespace v8 {
 namespace internal {
+
+#include "torque-generated/src/objects/js-plural-rules-tq.inc"
 
 class JSPluralRules
     : public TorqueGeneratedJSPluralRules<JSPluralRules, JSObject> {
@@ -44,6 +47,9 @@ class JSPluralRules
 
   V8_WARN_UNUSED_RESULT static MaybeHandle<String> ResolvePlural(
       Isolate* isolate, Handle<JSPluralRules> plural_rules, double number);
+
+  V8_WARN_UNUSED_RESULT static MaybeHandle<String> ResolvePluralRange(
+      Isolate* isolate, Handle<JSPluralRules> plural_rules, double x, double y);
 
   V8_EXPORT_PRIVATE static const std::set<std::string>& GetAvailableLocales();
 
@@ -60,8 +66,8 @@ class JSPluralRules
   // Bit positions in |flags|.
   DEFINE_TORQUE_GENERATED_JS_PLURAL_RULES_FLAGS()
 
-  STATIC_ASSERT(Type::CARDINAL <= TypeBit::kMax);
-  STATIC_ASSERT(Type::ORDINAL <= TypeBit::kMax);
+  static_assert(Type::CARDINAL <= TypeBit::kMax);
+  static_assert(Type::ORDINAL <= TypeBit::kMax);
 
   DECL_ACCESSORS(icu_plural_rules, Managed<icu::PluralRules>)
   DECL_ACCESSORS(icu_number_formatter,

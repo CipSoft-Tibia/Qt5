@@ -1,34 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QtTest/private/qpropertytesthelper_p.h>
+
+#include <QVariantAnimation>
+#include <QProperty>
+#include <QPropertyAnimation>
+#include <QSignalSpy>
+#include <QParallelAnimationGroup>
+
 #include <QtCore/qanimationgroup.h>
 #include <QtCore/qsequentialanimationgroup.h>
+#include <QtCore/qscopeguard.h>
 
 Q_DECLARE_METATYPE(QAbstractAnimation::State)
 
@@ -65,6 +49,7 @@ private slots:
     void insertAnimation();
     void clear();
     void pauseResume();
+    void bindings();
 };
 
 void tst_QSequentialAnimationGroup::initTestCase()
@@ -96,19 +81,19 @@ class TestAnimation : public QVariantAnimation
 {
     Q_OBJECT
 public:
-    virtual void updateCurrentValue(const QVariant &value) { Q_UNUSED(value)};
+    virtual void updateCurrentValue(const QVariant &value) override { Q_UNUSED(value)};
     virtual void updateState(QAbstractAnimation::State newState,
-                             QAbstractAnimation::State oldState)
+                             QAbstractAnimation::State oldState) override
     {
-        Q_UNUSED(oldState)
-        Q_UNUSED(newState)
+        Q_UNUSED(oldState);
+        Q_UNUSED(newState);
     };
 };
 
 class DummyPropertyAnimation : public QPropertyAnimation
 {
 public:
-    DummyPropertyAnimation(QObject *parent = 0) : QPropertyAnimation(parent)
+    DummyPropertyAnimation(QObject *parent = nullptr) : QPropertyAnimation(parent)
     {
         setTargetObject(&o);
         this->setPropertyName("value");
@@ -122,17 +107,17 @@ class UncontrolledAnimation : public QPropertyAnimation
 {
     Q_OBJECT
 public:
-    UncontrolledAnimation(QObject *target, QObject *parent = 0)
+    UncontrolledAnimation(QObject *target, QObject *parent = nullptr)
         : QPropertyAnimation(target, "value", parent)
     {
         setDuration(250);
         setEndValue(0);
     }
 
-    int duration() const { return -1; /* not time driven */ }
+    int duration() const override { return -1; /* not time driven */ }
 
 protected:
-    void updateCurrentTime(int currentTime)
+    void updateCurrentTime(int currentTime) override
     {
         QPropertyAnimation::updateCurrentTime(currentTime);
         if (currentTime >= QPropertyAnimation::duration())
@@ -563,13 +548,13 @@ void tst_QSequentialAnimationGroup::seekingBackwards()
     QCOMPARE(a1_s_o3->state(), QAnimationGroup::Stopped);
 }
 
-typedef QVector<QAbstractAnimation::State> StateList;
+using StateList = QList<QAbstractAnimation::State>;
 
 static bool compareStates(const QSignalSpy& spy, const StateList &expectedStates)
 {
     bool equals = true;
-    for (int i = 0; i < qMax(expectedStates.count(), spy.count()); ++i) {
-        if (i >= spy.count() || i >= expectedStates.count()) {
+    for (int i = 0; i < qMax(expectedStates.size(), spy.size()); ++i) {
+        if (i >= spy.size() || i >= expectedStates.size()) {
             equals = false;
             break;
         }
@@ -584,14 +569,14 @@ static bool compareStates(const QSignalSpy& spy, const StateList &expectedStates
     if (!equals) {
         const char *stateStrings[] = {"Stopped", "Paused", "Running"};
         QString e,a;
-        for (int i = 0; i < qMax(expectedStates.count(), spy.count()); ++i) {
-            if (i < expectedStates.count()) {
+        for (int i = 0; i < qMax(expectedStates.size(), spy.size()); ++i) {
+            if (i < expectedStates.size()) {
                 int exp = int(expectedStates.at(i));
                     if (!e.isEmpty())
                         e += QLatin1String(", ");
                 e += QLatin1String(stateStrings[exp]);
             }
-            if (i < spy.count()) {
+            if (i < spy.size()) {
                 QList<QVariant> args = spy.at(i);
                 QAbstractAnimation::State actual = qvariant_cast<QAbstractAnimation::State>(args.value(1));
                 if (!a.isEmpty())
@@ -605,8 +590,8 @@ static bool compareStates(const QSignalSpy& spy, const StateList &expectedStates
 
         }
         qDebug("\n"
-               "expected (count == %d): %s\n"
-               "actual   (count == %d): %s\n", expectedStates.count(), qPrintable(e), spy.count(), qPrintable(a));
+               "expected (count == %zd): %s\n"
+               "actual   (count == %zd): %s\n", size_t(expectedStates.size()), qPrintable(e), size_t(spy.size()), qPrintable(a));
     }
     return equals;
 }
@@ -653,8 +638,8 @@ void tst_QSequentialAnimationGroup::pauseAndResume()
     QCOMPARE(a2_s_o1->state(), QAnimationGroup::Stopped);
     QCOMPARE(a3_s_o1->state(), QAnimationGroup::Paused);
 
-    QCOMPARE(a1StateChangedSpy.count(), 5);     // Running,Paused,Stopped,Running,Stopped
-    QCOMPARE(seqStateChangedSpy.count(), 2);    // Running,Paused
+    QCOMPARE(a1StateChangedSpy.size(), 5);     // Running,Paused,Stopped,Running,Stopped
+    QCOMPARE(seqStateChangedSpy.size(), 2);    // Running,Paused
 
     QVERIFY(compareStates(a1StateChangedSpy, (StateList() << QAbstractAnimation::Running
                                               << QAbstractAnimation::Paused
@@ -695,7 +680,7 @@ void tst_QSequentialAnimationGroup::pauseAndResume()
     QCOMPARE(a3_s_o1->currentLoop(), 0);
     QVERIFY(a3_s_o1->currentLoopTime() >= 1);
 
-    QCOMPARE(seqStateChangedSpy.count(), 3);    // Running,Paused,Running
+    QCOMPARE(seqStateChangedSpy.size(), 3);    // Running,Paused,Running
     QCOMPARE(qvariant_cast<QAbstractAnimation::State>(seqStateChangedSpy.at(2).first()),
              QAnimationGroup::Running);
 
@@ -716,13 +701,13 @@ void tst_QSequentialAnimationGroup::pauseAndResume()
     QCOMPARE(a3_s_o1->currentLoop(), 0);
     QVERIFY(a3_s_o1->currentLoopTime() >= 1);
 
-    QCOMPARE(seqStateChangedSpy.count(), 4);    // Running,Paused,Running,Paused
+    QCOMPARE(seqStateChangedSpy.size(), 4);    // Running,Paused,Running,Paused
     QCOMPARE(qvariant_cast<QAbstractAnimation::State>(seqStateChangedSpy.at(3).first()),
              QAnimationGroup::Paused);
 
     group.stop();
 
-    QCOMPARE(seqStateChangedSpy.count(), 5);    // Running,Paused,Running,Paused,Stopped
+    QCOMPARE(seqStateChangedSpy.size(), 5);    // Running,Paused,Running,Paused,Stopped
     QCOMPARE(qvariant_cast<QAbstractAnimation::State>(seqStateChangedSpy.at(4).first()),
              QAnimationGroup::Stopped);
 }
@@ -738,12 +723,12 @@ void tst_QSequentialAnimationGroup::restart()
     QVERIFY(seqStateChangedSpy.isValid());
 
     QVariantAnimation *anims[3];
-    QSignalSpy *animsStateChanged[3];
+    QScopedPointer<QSignalSpy> animsStateChanged[3];
 
     for (int i = 0; i < 3; i++) {
         anims[i] = new DummyPropertyAnimation;
         anims[i]->setDuration(100);
-        animsStateChanged[i] = new QSignalSpy(anims[i], &QVariantAnimation::stateChanged);
+        animsStateChanged[i].reset(new QSignalSpy(anims[i], &QVariantAnimation::stateChanged));
         QVERIFY(animsStateChanged[i]->isValid());
     }
 
@@ -766,7 +751,7 @@ void tst_QSequentialAnimationGroup::restart()
     QTRY_COMPARE(group.state(), QAnimationGroup::Stopped);
 
     for (int i = 0; i < 3; i++) {
-        QCOMPARE(animsStateChanged[i]->count(), 4);
+        QCOMPARE(animsStateChanged[i]->size(), 4);
         QCOMPARE(qvariant_cast<QAbstractAnimation::State>(animsStateChanged[i]->at(0).first()),
                  QAnimationGroup::Running);
         QCOMPARE(qvariant_cast<QAbstractAnimation::State>(animsStateChanged[i]->at(1).first()),
@@ -777,22 +762,22 @@ void tst_QSequentialAnimationGroup::restart()
                  QAnimationGroup::Stopped);
     }
 
-    QCOMPARE(seqStateChangedSpy.count(), 2);
+    QCOMPARE(seqStateChangedSpy.size(), 2);
     QCOMPARE(qvariant_cast<QAbstractAnimation::State>(seqStateChangedSpy.at(0).first()),
              QAnimationGroup::Running);
     QCOMPARE(qvariant_cast<QAbstractAnimation::State>(seqStateChangedSpy.at(1).first()),
              QAnimationGroup::Stopped);
 
-    QCOMPARE(seqCurrentAnimChangedSpy.count(), 6);
-    for(int i=0; i<seqCurrentAnimChangedSpy.count(); i++)
+    QCOMPARE(seqCurrentAnimChangedSpy.size(), 6);
+    for(int i=0; i<seqCurrentAnimChangedSpy.size(); i++)
             QCOMPARE(static_cast<QAbstractAnimation*>(anims[i%3]), qvariant_cast<QAbstractAnimation*>(seqCurrentAnimChangedSpy.at(i).at(0)));
 
     group.start();
 
-    QCOMPARE(animsStateChanged[0]->count(), 5);
-    QCOMPARE(animsStateChanged[1]->count(), 4);
-    QCOMPARE(animsStateChanged[2]->count(), 4);
-    QCOMPARE(seqStateChangedSpy.count(), 3);
+    QCOMPARE(animsStateChanged[0]->size(), 5);
+    QCOMPARE(animsStateChanged[1]->size(), 4);
+    QCOMPARE(animsStateChanged[2]->size(), 4);
+    QCOMPARE(seqStateChangedSpy.size(), 3);
 }
 
 void tst_QSequentialAnimationGroup::looping()
@@ -848,21 +833,21 @@ void tst_QSequentialAnimationGroup::looping()
     QCOMPARE(a2_s_o1->state(), QAnimationGroup::Stopped);
     QCOMPARE(a3_s_o1->state(), QAnimationGroup::Paused);
 
-    QCOMPARE(a1Spy.count(), 5);     // Running,Paused,Stopped,Running,Stopped
+    QCOMPARE(a1Spy.size(), 5);     // Running,Paused,Stopped,Running,Stopped
     QVERIFY(compareStates(a1Spy, (StateList() << QAbstractAnimation::Running
                                               << QAbstractAnimation::Paused
                                               << QAbstractAnimation::Stopped
                                               << QAbstractAnimation::Running
                                               << QAbstractAnimation::Stopped)));
 
-    QCOMPARE(a2Spy.count(), 4);     // Running,Stopped,Running,Stopped
+    QCOMPARE(a2Spy.size(), 4);     // Running,Stopped,Running,Stopped
     QVERIFY(compareStates(a3Spy, (StateList() << QAbstractAnimation::Running
                                               << QAbstractAnimation::Stopped
                                               << QAbstractAnimation::Running
                                               << QAbstractAnimation::Paused)));
 
-    QCOMPARE(seqSpy.count(), 2);    // Running,Paused
-    QCOMPARE(groupSpy.count(), 2);  // Running,Paused
+    QCOMPARE(seqSpy.size(), 2);    // Running,Paused
+    QCOMPARE(groupSpy.size(), 2);  // Running,Paused
 
     // Looping, current time = duration + 1
     group.setCurrentTime(group.duration() + 1);
@@ -883,8 +868,8 @@ void tst_QSequentialAnimationGroup::looping()
     QCOMPARE(a2_s_o1->state(), QAnimationGroup::Stopped);
     QCOMPARE(a3_s_o1->state(), QAnimationGroup::Stopped);
 
-    QCOMPARE(a1Spy.count(), 7); // Running,Paused,Stopped,Running,Stopped,Running,Stopped
-    QCOMPARE(a2Spy.count(), 4); // Running, Stopped, Running, Stopped
+    QCOMPARE(a1Spy.size(), 7); // Running,Paused,Stopped,Running,Stopped,Running,Stopped
+    QCOMPARE(a2Spy.size(), 4); // Running, Stopped, Running, Stopped
     QVERIFY(compareStates(a3Spy, (StateList() << QAbstractAnimation::Running
                                               << QAbstractAnimation::Stopped
                                               << QAbstractAnimation::Running
@@ -895,7 +880,7 @@ void tst_QSequentialAnimationGroup::looping()
                                                << QAbstractAnimation::Stopped
                                                << QAbstractAnimation::Running
                                                << QAbstractAnimation::Paused)));
-    QCOMPARE(groupSpy.count(), 2);
+    QCOMPARE(groupSpy.size(), 2);
 }
 
 void tst_QSequentialAnimationGroup::startDelay()
@@ -1094,8 +1079,8 @@ void tst_QSequentialAnimationGroup::updateChildrenWithRunningGroup()
     QVERIFY(groupStateChangedSpy.isValid());
     QVERIFY(childStateChangedSpy.isValid());
 
-    QCOMPARE(groupStateChangedSpy.count(), 0);
-    QCOMPARE(childStateChangedSpy.count(), 0);
+    QCOMPARE(groupStateChangedSpy.size(), 0);
+    QCOMPARE(childStateChangedSpy.size(), 0);
     QCOMPARE(group.state(), QAnimationGroup::Stopped);
     QCOMPARE(anim.state(), QAnimationGroup::Stopped);
 
@@ -1106,8 +1091,8 @@ void tst_QSequentialAnimationGroup::updateChildrenWithRunningGroup()
     QCOMPARE(group.state(), QAnimationGroup::Running);
     QCOMPARE(anim.state(), QAnimationGroup::Running);
 
-    QCOMPARE(groupStateChangedSpy.count(), 1);
-    QCOMPARE(childStateChangedSpy.count(), 1);
+    QCOMPARE(groupStateChangedSpy.size(), 1);
+    QCOMPARE(childStateChangedSpy.size(), 1);
 
     QCOMPARE(qvariant_cast<QAbstractAnimation::State>(groupStateChangedSpy.at(0).first()),
              QAnimationGroup::Running);
@@ -1117,8 +1102,8 @@ void tst_QSequentialAnimationGroup::updateChildrenWithRunningGroup()
     // starting directly a running child will not have any effect
     anim.start();
 
-    QCOMPARE(groupStateChangedSpy.count(), 1);
-    QCOMPARE(childStateChangedSpy.count(), 1);
+    QCOMPARE(groupStateChangedSpy.size(), 1);
+    QCOMPARE(childStateChangedSpy.size(), 1);
 
     anim.pause();
 
@@ -1261,8 +1246,8 @@ void tst_QSequentialAnimationGroup::startGroupWithRunningChild()
     QVERIFY(stateChangedSpy1.isValid());
     QVERIFY(stateChangedSpy2.isValid());
 
-    QCOMPARE(stateChangedSpy1.count(), 0);
-    QCOMPARE(stateChangedSpy2.count(), 0);
+    QCOMPARE(stateChangedSpy1.size(), 0);
+    QCOMPARE(stateChangedSpy2.size(), 0);
     QCOMPARE(group.state(), QAnimationGroup::Stopped);
     QCOMPARE(anim1->state(), QAnimationGroup::Stopped);
     QCOMPARE(anim2->state(), QAnimationGroup::Stopped);
@@ -1300,7 +1285,7 @@ void tst_QSequentialAnimationGroup::startGroupWithRunningChild()
     QCOMPARE(group.state(), QAnimationGroup::Running);
     QCOMPARE(anim2->state(), QAnimationGroup::Running);
 
-    QCOMPARE(stateChangedSpy2.count(), 4);
+    QCOMPARE(stateChangedSpy2.size(), 4);
     QCOMPARE(qvariant_cast<QAbstractAnimation::State>(stateChangedSpy2.at(2).first()),
              QAnimationGroup::Stopped);
     QCOMPARE(qvariant_cast<QAbstractAnimation::State>(stateChangedSpy2.at(3).first()),
@@ -1340,7 +1325,7 @@ void tst_QSequentialAnimationGroup::zeroDurationAnimation()
     group.setLoopCount(2);
     group.start();
 
-    QCOMPARE(stateChangedSpy.count(), 2);
+    QCOMPARE(stateChangedSpy.size(), 2);
     QCOMPARE(qvariant_cast<QAbstractAnimation::State>(stateChangedSpy.at(0).first()),
              QAnimationGroup::Running);
     QCOMPARE(qvariant_cast<QAbstractAnimation::State>(stateChangedSpy.at(1).first()),
@@ -1417,7 +1402,7 @@ void tst_QSequentialAnimationGroup::finishWithUncontrolledAnimation()
     const int actualDuration = notTimeDriven.currentLoopTime();
     QCOMPARE(group.state(), QAnimationGroup::Stopped);
     QCOMPARE(group.currentLoopTime(), actualDuration);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     //2nd case:
     // lets make sure the seeking will work again
@@ -1433,54 +1418,62 @@ void tst_QSequentialAnimationGroup::finishWithUncontrolledAnimation()
 
     //3rd case:
     //now let's add a perfectly defined animation at the end
-    QCOMPARE(animStateChangedSpy.count(), 0);
+    QCOMPARE(animStateChangedSpy.size(), 0);
     group.start();
     QCOMPARE(group.state(), QAnimationGroup::Running);
     QCOMPARE(notTimeDriven.state(), QAnimationGroup::Running);
     QCOMPARE(group.currentLoopTime(), 0);
     QCOMPARE(notTimeDriven.currentLoopTime(), 0);
 
-    QCOMPARE(animStateChangedSpy.count(), 0);
+    QCOMPARE(animStateChangedSpy.size(), 0);
 
     QTest::qWait(300); //wait for the end of notTimeDriven
     QTRY_COMPARE(notTimeDriven.state(), QAnimationGroup::Stopped);
     QCOMPARE(group.state(), QAnimationGroup::Running);
     QCOMPARE(anim.state(), QAnimationGroup::Running);
     QCOMPARE(group.currentAnimation(), static_cast<QAbstractAnimation*>(&anim));
-    QCOMPARE(animStateChangedSpy.count(), 1);
+    QCOMPARE(animStateChangedSpy.size(), 1);
     QTest::qWait(300); //wait for the end of anim
 
     QTRY_COMPARE(anim.state(), QAnimationGroup::Stopped);
     QCOMPARE(anim.currentLoopTime(), anim.duration());
 
     //we should simply be at the end
-    QCOMPARE(spy.count(), 1);
-    QCOMPARE(animStateChangedSpy.count(), 2);
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(animStateChangedSpy.size(), 2);
     QCOMPARE(group.currentLoopTime(), notTimeDriven.currentLoopTime() + anim.currentLoopTime());
 }
 
 void tst_QSequentialAnimationGroup::addRemoveAnimation()
 {
     //this test is specific to the sequential animation group
+    QPointer<QAbstractAnimation> anim0 = new QPropertyAnimation;
+    QPointer<QAbstractAnimation> anim1 = new QPropertyAnimation;
+    QPointer<QAbstractAnimation> anim2 = new QPropertyAnimation;
+
+    const auto guard = qScopeGuard([&]() {
+        // If they don't belong to a group when the function returns, we have to delete.
+        delete anim0.data();
+        delete anim1.data();
+        delete anim2.data();
+    });
+
     QSequentialAnimationGroup group;
 
     QCOMPARE(group.duration(), 0);
     QCOMPARE(group.currentLoopTime(), 0);
-    QAbstractAnimation *anim1 = new QPropertyAnimation;
     group.addAnimation(anim1);
     QCOMPARE(group.duration(), 250);
     QCOMPARE(group.currentLoopTime(), 0);
     QCOMPARE(group.currentAnimation(), anim1);
 
     //let's append an animation
-    QAbstractAnimation *anim2 = new QPropertyAnimation;
     group.addAnimation(anim2);
     QCOMPARE(group.duration(), 500);
     QCOMPARE(group.currentLoopTime(), 0);
     QCOMPARE(group.currentAnimation(), anim1);
 
     //let's prepend an animation
-    QAbstractAnimation *anim0 = new QPropertyAnimation;
     group.insertAnimation(0, anim0);
     QCOMPARE(group.duration(), 750);
     QCOMPARE(group.currentLoopTime(), 0);
@@ -1599,7 +1592,7 @@ void tst_QSequentialAnimationGroup::clear()
 {
     SequentialAnimationGroup group;
     QPointer<QAbstractAnimation> anim1 = new DummyPropertyAnimation(&group);
-    group.connect(anim1, SIGNAL(finished()), SLOT(clear()));
+    connect(anim1, &QAbstractAnimation::finished, &group, &QSequentialAnimationGroup::clear);
     new DummyPropertyAnimation(&group);
     QCOMPARE(group.animationCount(), 2);
 
@@ -1632,7 +1625,7 @@ void tst_QSequentialAnimationGroup::pauseResume()
     QTest::qWait(100);
     QTRY_COMPARE(group.state(), QAnimationGroup::Running);
     QCOMPARE(anim->state(), QAnimationGroup::Running);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     spy.clear();
     const int currentTime = group.currentLoopTime();
     QCOMPARE(anim->currentLoopTime(), currentTime);
@@ -1642,7 +1635,7 @@ void tst_QSequentialAnimationGroup::pauseResume()
     QCOMPARE(group.currentLoopTime(), currentTime);
     QCOMPARE(anim->state(), QAnimationGroup::Paused);
     QCOMPARE(anim->currentLoopTime(), currentTime);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     spy.clear();
 
     group.resume();
@@ -1650,7 +1643,59 @@ void tst_QSequentialAnimationGroup::pauseResume()
     QCOMPARE(group.currentLoopTime(), currentTime);
     QCOMPARE(anim->state(), QAnimationGroup::Running);
     QCOMPARE(anim->currentLoopTime(), currentTime);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
+}
+
+void tst_QSequentialAnimationGroup::bindings()
+{
+    // create a group consisting of three animations
+    QSequentialAnimationGroup group;
+    QPointer<QAbstractAnimation> anim1 = new DummyPropertyAnimation(&group);
+    QCOMPARE(group.animationCount(), 1);
+    QPointer<QAbstractAnimation> anim2 = new DummyPropertyAnimation(&group);
+    QCOMPARE(group.animationCount(), 2);
+    QPointer<QAbstractAnimation> anim3 = new DummyPropertyAnimation(&group);
+    QCOMPARE(group.animationCount(), 3);
+
+    // bind a QProperty to group.currentAnimation
+    QProperty<QAbstractAnimation *> currentAnim;
+    currentAnim.setBinding([&]() { return group.currentAnimation(); });
+
+    // check that everything behaves as expected
+    QSignalSpy spy(&group, &QSequentialAnimationGroup::currentAnimationChanged);
+    QVERIFY(spy.isValid());
+
+    int totalDuration = group.duration();
+
+    group.setCurrentTime(int(totalDuration * 0.5 / 3));
+    QCOMPARE(currentAnim.value(), anim1.get());
+    QCOMPARE(spy.size(), 0);
+
+    group.setCurrentTime(int(totalDuration * 1.5 / 3));
+    QCOMPARE(currentAnim.value(), anim2.get());
+    QCOMPARE(spy.size(), 1);
+
+    // change to other style of formulating a binding to test both
+    currentAnim.setBinding(group.bindableCurrentAnimation().makeBinding());
+
+    group.setCurrentTime(int(totalDuration * 2.5 / 3));
+    QCOMPARE(currentAnim.value(), anim3.get());
+    QCOMPARE(spy.size(), 2);
+
+    // currentAnimation is read-only. Binding it to something should have no effect
+    QProperty<QAbstractAnimation *> leader;
+    group.bindableCurrentAnimation().setBinding([&]() { return leader.value(); });
+
+    QCOMPARE(group.currentAnimation(), anim3.get());
+
+    QTestPrivate::testReadOnlyPropertyBasics(group, anim3.get(), anim2.get(), "currentAnimation",
+                                             [&group, totalDuration]() {
+                                                 group.setCurrentTime(int(totalDuration * 1.5 / 3));
+                                             });
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QSequentialAnimationGroup::currentAnimation");
+        return;
+    }
 }
 
 QTEST_MAIN(tst_QSequentialAnimationGroup)

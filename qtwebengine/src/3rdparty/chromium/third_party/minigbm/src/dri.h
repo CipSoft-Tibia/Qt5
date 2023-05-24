@@ -33,9 +33,12 @@ int dri_bo_create(struct bo *bo, uint32_t width, uint32_t height, uint32_t forma
 int dri_bo_create_with_modifiers(struct bo *bo, uint32_t width, uint32_t height, uint32_t format,
 				 const uint64_t *modifiers, uint32_t modifier_count);
 int dri_bo_import(struct bo *bo, struct drv_import_fd_data *data);
+int dri_bo_release(struct bo *bo);
 int dri_bo_destroy(struct bo *bo);
 void *dri_bo_map(struct bo *bo, struct vma *vma, size_t plane, uint32_t map_flags);
 int dri_bo_unmap(struct bo *bo, struct vma *vma);
 size_t dri_num_planes_from_modifier(struct driver *drv, uint32_t format, uint64_t modifier);
 
+bool dri_query_modifiers(struct driver *drv, uint32_t format, int max, uint64_t *modifiers,
+			 int *count);
 #endif

@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QScatterSeries>
 #include <private/qscatterseries_p.h>
@@ -55,8 +29,8 @@
     chart->addSeries(series);
     \endcode
 
-    For more information, see \l{ScatterChart Example} and
-    \l {Scatter Interactions Example}.
+    For more information, see \l{Charts with Widgets Gallery} and
+    \l {Creating Scatter Charts}.
 */
 /*!
     \qmltype ScatterSeries
@@ -75,9 +49,9 @@
 
     The following QML code shows how to create a chart with two simple scatter
     series:
-    \snippet qmlchart/qml/qmlchart/View5.qml 1
+    \snippet qmlchartsgallery/qml/ScatterSeries.qml 1
 
-    For more information, see \l{Qml Charts Example}.
+    For more information, see \l{Charts with QML Gallery}.
 */
 
 /*!
@@ -89,6 +63,14 @@
            The marker is a circle. This is the default value.
     \value MarkerShapeRectangle
            The marker is a rectangle.
+    \value MarkerShapeRotatedRectangle
+           The marker is a rotated rectangle.
+    \value MarkerShapeTriangle
+           The marker is a triangle.
+    \value MarkerShapeStar
+           The marker is a star.
+    \value MarkerShapePentagon
+           The marker is a pentagon.
 */
 
 /*!
@@ -158,12 +140,11 @@
     \property QScatterSeries::markerSize
     \brief The size of the marker used to render the points in the series.
 
-    The default size is 15.0.
+    \sa QXYSeries::setMarkerSize
 */
 /*!
     \qmlproperty real ScatterSeries::markerSize
     The size of the marker used to render the points in the series.
-    The default size is 15.0.
 */
 
 /*!
@@ -191,7 +172,7 @@
     This signal is emitted when the marker size changes to \a size.
 */
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 /*!
     Constructs a series object that is a child of \a parent.
@@ -199,6 +180,11 @@ QT_CHARTS_BEGIN_NAMESPACE
 QScatterSeries::QScatterSeries(QObject *parent)
     : QXYSeries(*new QScatterSeriesPrivate(this), parent)
 {
+    setPointsVisible(true);
+
+    // Emit QScatterSeries' markerSizeChanged signal as it's not the same as
+    // QXYSeries' markerSizeChanged
+    connect(this, &QXYSeries::markerSizeChanged, this, &QScatterSeries::markerSizeChanged);
 }
 
 /*!
@@ -230,7 +216,7 @@ void QScatterSeries::setPen(const QPen &pen)
     if (d->m_pen != pen) {
         bool emitColorChanged = d->m_pen.color() != pen.color();
         d->m_pen = pen;
-        emit d->updated();
+        emit d->seriesUpdated();
         if (emitColorChanged)
             emit borderColorChanged(pen.color());
     }
@@ -245,7 +231,7 @@ void QScatterSeries::setBrush(const QBrush &brush)
     if (d->m_brush != brush) {
         bool emitColorChanged = d->m_brush.color() != brush.color();
         d->m_brush = brush;
-        emit d->updated();
+        emit d->seriesUpdated();
         if (emitColorChanged)
             emit colorChanged(brush.color());
     }
@@ -301,34 +287,27 @@ void QScatterSeries::setMarkerShape(MarkerShape shape)
     Q_D(QScatterSeries);
     if (d->m_shape != shape) {
         d->m_shape = shape;
-        emit d->updated();
+        emit d->seriesUpdated();
         emit markerShapeChanged(shape);
     }
 }
 
 qreal QScatterSeries::markerSize() const
 {
-    Q_D(const QScatterSeries);
-    return d->m_size;
+    // markerSize has moved to QXYSeries, but this method needs to remain for API compatibility.
+    return QXYSeries::markerSize();
 }
-
 void QScatterSeries::setMarkerSize(qreal size)
 {
-    Q_D(QScatterSeries);
-
-    if (!qFuzzyCompare(d->m_size, size)) {
-        d->m_size = size;
-        emit d->updated();
-        emit markerSizeChanged(size);
-    }
+    // markerSize has moved to QXYSeries, but this method needs to remain for API compatibility.
+    QXYSeries::setMarkerSize(size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 QScatterSeriesPrivate::QScatterSeriesPrivate(QScatterSeries *q)
     : QXYSeriesPrivate(q),
-      m_shape(QScatterSeries::MarkerShapeCircle),
-      m_size(15.0)
+      m_shape(QScatterSeries::MarkerShapeCircle)
 {
 }
 
@@ -367,7 +346,7 @@ void QScatterSeriesPrivate::initializeTheme(int index, ChartTheme* theme, bool f
 void QScatterSeriesPrivate::initializeAnimations(QChart::AnimationOptions options, int duration,
                                                  QEasingCurve &curve)
 {
-    ScatterChartItem *item = static_cast<ScatterChartItem *>(m_item.data());
+    ScatterChartItem *item = static_cast<ScatterChartItem *>(m_item.get());
     Q_ASSERT(item);
 
     if (item->animation())
@@ -381,6 +360,6 @@ void QScatterSeriesPrivate::initializeAnimations(QChart::AnimationOptions option
     QAbstractSeriesPrivate::initializeAnimations(options, duration, curve);
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qscatterseries.cpp"

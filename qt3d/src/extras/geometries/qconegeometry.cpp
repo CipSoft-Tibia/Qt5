@@ -1,51 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
  * \class Qt3DExtras::QConeGeometry
-   \ingroup qt3d-extras-geometries
+ * \ingroup qt3d-extras-geometries
  * \inheaderfile Qt3DExtras/QConeGeometry
  * \inmodule Qt3DExtras
  * \brief The QConeGeometry class allows creation of a cone in 3D space.
  * \since 5.7
  * \ingroup geometries
- * \inherits Qt3DRender::QGeometry
+ * \inherits Qt3DCore::QGeometry
  *
  * The QConeGeometry class is most commonly used internally by the QConeMesh
  * but can also be used in custom Qt3DRender::QGeometryRenderer subclasses. The class
@@ -59,16 +23,15 @@
 #include "qconegeometry.h"
 #include "qconegeometry_p.h"
 
-#include <Qt3DRender/qbuffer.h>
-#include <Qt3DRender/qbufferdatagenerator.h>
-#include <Qt3DRender/qattribute.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
 #include <QtGui/QVector3D>
 
 #include <cmath>
 
 QT_BEGIN_NAMESPACE
 
-using namespace Qt3DRender;
+using namespace Qt3DCore;
 
 namespace Qt3DExtras {
 
@@ -224,125 +187,6 @@ void createDiscIndices(quint16 *&indicesPtr,
 
 } // anonymous
 
-
-class ConeVertexDataFunctor : public QBufferDataGenerator
-{
-public:
-    ConeVertexDataFunctor(bool hasTopEndcap, bool hasBottomEndcap, int rings, int slices,
-                          float topRadius, float bottomRadius, float length)
-        : m_hasTopEndcap(hasTopEndcap)
-        , m_hasBottomEndcap(hasBottomEndcap)
-        , m_rings(rings)
-        , m_slices(slices)
-        , m_topRadius(topRadius)
-        , m_bottomRadius(bottomRadius)
-        , m_length(length)
-    {}
-
-    QByteArray operator ()() override
-    {
-        const int verticesCount =
-                vertexCount(m_slices, m_rings, (m_hasTopEndcap + m_hasBottomEndcap));
-
-        // vec3 pos, vec2 texCoord, vec3 normal
-        const quint32 vertexSize = (3 + 2 + 3) * sizeof(float);
-
-        QByteArray verticesData;
-        verticesData.resize(vertexSize * verticesCount);
-        float *verticesPtr = reinterpret_cast<float*>(verticesData.data());
-
-        createSidesVertices(verticesPtr, m_rings, m_slices, m_topRadius, m_bottomRadius, m_length);
-        if ( m_hasTopEndcap )
-            createDiscVertices(verticesPtr, m_slices, m_topRadius, m_bottomRadius, m_length, m_length * 0.5f);
-        if ( m_hasBottomEndcap )
-            createDiscVertices(verticesPtr, m_slices, m_topRadius, m_bottomRadius, m_length, -m_length * 0.5f);
-
-        return verticesData;
-    }
-
-    bool operator ==(const QBufferDataGenerator &other) const override
-    {
-        const ConeVertexDataFunctor *otherFunctor = functor_cast<ConeVertexDataFunctor>(&other);
-        if (otherFunctor != nullptr)
-            return (otherFunctor->m_hasTopEndcap == m_hasTopEndcap &&
-                    otherFunctor->m_hasBottomEndcap == m_hasBottomEndcap &&
-                    otherFunctor->m_rings == m_rings &&
-                    otherFunctor->m_slices == m_slices &&
-                    otherFunctor->m_topRadius == m_topRadius &&
-                    otherFunctor->m_bottomRadius == m_bottomRadius &&
-                    otherFunctor->m_length == m_length);
-        return false;
-    }
-
-    QT3D_FUNCTOR(ConeVertexDataFunctor)
-
-private:
-    bool m_hasTopEndcap;
-    bool m_hasBottomEndcap;
-    int m_rings;
-    int m_slices;
-    float m_topRadius;
-    float m_bottomRadius;
-    float m_length;
-};
-
-class ConeIndexDataFunctor : public QBufferDataGenerator
-{
-public:
-    ConeIndexDataFunctor(bool hasTopEndcap, bool hasBottomEndcap, int rings, int slices,
-                         float length)
-        : m_hasTopEndcap(hasTopEndcap)
-        , m_hasBottomEndcap(hasBottomEndcap)
-        , m_rings(rings)
-        , m_slices(slices)
-        , m_length(length)
-    {
-    }
-
-    QByteArray operator ()() override
-    {
-        const int facesCount = faceCount(m_slices, m_rings, (m_hasTopEndcap + m_hasBottomEndcap));
-
-        const int indicesCount = facesCount * 3;
-        const int indexSize = sizeof(quint16);
-        Q_ASSERT(indicesCount < 65536);
-
-        QByteArray indicesBytes;
-        indicesBytes.resize(indicesCount * indexSize);
-        quint16 *indicesPtr = reinterpret_cast<quint16*>(indicesBytes.data());
-
-        createSidesIndices(indicesPtr, m_rings, m_slices);
-        if ( m_hasTopEndcap )
-            createDiscIndices(indicesPtr, m_rings * (m_slices + 1) + m_slices + 2, m_slices, true);
-        if ( m_hasBottomEndcap )
-            createDiscIndices(indicesPtr, m_rings * (m_slices + 1), m_slices, false);
-
-        return indicesBytes;
-    }
-
-    bool operator ==(const QBufferDataGenerator &other) const override
-    {
-        const ConeIndexDataFunctor *otherFunctor = functor_cast<ConeIndexDataFunctor>(&other);
-        if (otherFunctor != nullptr)
-            return (otherFunctor->m_hasTopEndcap == m_hasTopEndcap &&
-                    otherFunctor->m_hasBottomEndcap == m_hasBottomEndcap &&
-                    otherFunctor->m_rings == m_rings &&
-                    otherFunctor->m_slices == m_slices &&
-                    otherFunctor->m_length == m_length);
-        return false;
-    }
-
-    QT3D_FUNCTOR(ConeIndexDataFunctor)
-
-private:
-    bool m_hasTopEndcap;
-    bool m_hasBottomEndcap;
-    int m_rings;
-    int m_slices;
-    float m_length;
-};
-
-
 QConeGeometryPrivate::QConeGeometryPrivate()
     : QGeometryPrivate()
     , m_hasTopEndcap(true)
@@ -369,8 +213,8 @@ void QConeGeometryPrivate::init()
     m_normalAttribute = new QAttribute(q);
     m_texCoordAttribute = new QAttribute(q);
     m_indexAttribute = new QAttribute(q);
-    m_vertexBuffer = new Qt3DRender::QBuffer(q);
-    m_indexBuffer = new Qt3DRender::QBuffer(q);
+    m_vertexBuffer = new Qt3DCore::QBuffer(q);
+    m_indexBuffer = new Qt3DCore::QBuffer(q);
 
     // vec3 pos, vec2 tex, vec3 normal
     const quint32 elementSize = 3 + 2 + 3;
@@ -410,15 +254,55 @@ void QConeGeometryPrivate::init()
 
     m_indexAttribute->setCount(faces * 3);
 
-    m_vertexBuffer->setDataGenerator(QSharedPointer<ConeVertexDataFunctor>::create(m_hasTopEndcap, m_hasBottomEndcap, m_rings, m_slices,
-                                                                                   m_topRadius, m_bottomRadius, m_length));
-    m_indexBuffer->setDataGenerator(QSharedPointer<ConeIndexDataFunctor>::create(m_hasTopEndcap, m_hasBottomEndcap, m_rings, m_slices,
-                                                                                 m_length));
+    m_vertexBuffer->setData(generateVertexData());
+    m_indexBuffer->setData(generateIndexData());
 
     q->addAttribute(m_positionAttribute);
     q->addAttribute(m_texCoordAttribute);
     q->addAttribute(m_normalAttribute);
     q->addAttribute(m_indexAttribute);
+}
+
+QByteArray QConeGeometryPrivate::generateVertexData() const
+{
+    const int verticesCount =
+        vertexCount(m_slices, m_rings, (m_hasTopEndcap + m_hasBottomEndcap));
+
+    // vec3 pos, vec2 texCoord, vec3 normal
+    const quint32 vertexSize = (3 + 2 + 3) * sizeof(float);
+
+    QByteArray verticesData;
+    verticesData.resize(vertexSize * verticesCount);
+    float *verticesPtr = reinterpret_cast<float*>(verticesData.data());
+
+    createSidesVertices(verticesPtr, m_rings, m_slices, m_topRadius, m_bottomRadius, m_length);
+    if ( m_hasTopEndcap )
+        createDiscVertices(verticesPtr, m_slices, m_topRadius, m_bottomRadius, m_length, m_length * 0.5f);
+    if ( m_hasBottomEndcap )
+        createDiscVertices(verticesPtr, m_slices, m_topRadius, m_bottomRadius, m_length, -m_length * 0.5f);
+
+    return verticesData;
+}
+
+QByteArray QConeGeometryPrivate::generateIndexData() const
+{
+    const int facesCount = faceCount(m_slices, m_rings, (m_hasTopEndcap + m_hasBottomEndcap));
+
+    const int indicesCount = facesCount * 3;
+    const int indexSize = sizeof(quint16);
+    Q_ASSERT(indicesCount < 65536);
+
+    QByteArray indicesBytes;
+    indicesBytes.resize(indicesCount * indexSize);
+    quint16 *indicesPtr = reinterpret_cast<quint16*>(indicesBytes.data());
+
+    createSidesIndices(indicesPtr, m_rings, m_slices);
+    if ( m_hasTopEndcap )
+        createDiscIndices(indicesPtr, m_rings * (m_slices + 1) + m_slices + 2, m_slices, true);
+    if ( m_hasBottomEndcap )
+        createDiscIndices(indicesPtr, m_rings * (m_slices + 1), m_slices, false);
+
+    return indicesBytes;
 }
 
 /*!
@@ -530,8 +414,7 @@ void QConeGeometry::updateVertices()
     d->m_positionAttribute->setCount(nVerts);
     d->m_texCoordAttribute->setCount(nVerts);
     d->m_normalAttribute->setCount(nVerts);
-    d->m_vertexBuffer->setDataGenerator(QSharedPointer<ConeVertexDataFunctor>::create(d->m_hasTopEndcap, d->m_hasBottomEndcap, d->m_rings, d->m_slices,
-                                                                                      d->m_topRadius, d->m_bottomRadius, d->m_length));
+    d->m_vertexBuffer->setData(d->generateVertexData());
 }
 
 /*!
@@ -544,8 +427,7 @@ void QConeGeometry::updateIndices()
                                 (d->m_hasTopEndcap + d->m_hasBottomEndcap));
 
     d->m_indexAttribute->setCount(faces * 3);
-    d->m_indexBuffer->setDataGenerator(QSharedPointer<ConeIndexDataFunctor>::create(d->m_hasTopEndcap, d->m_hasBottomEndcap, d->m_rings, d->m_slices,
-                                                                                    d->m_length));
+    d->m_indexBuffer->setData(d->generateIndexData());
 }
 
 /*!
@@ -755,3 +637,5 @@ QAttribute *QConeGeometry::indexAttribute() const
 } // namespace Qt3DExtras
 
 QT_END_NAMESPACE
+
+#include "moc_qconegeometry.cpp"

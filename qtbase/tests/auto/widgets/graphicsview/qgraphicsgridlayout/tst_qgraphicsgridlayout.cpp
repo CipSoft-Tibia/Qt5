@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qgraphicsgridlayout.h>
 #include <qgraphicswidget.h>
 #include <qgraphicsscene.h>
@@ -119,9 +94,9 @@ private slots:
 class RectWidget : public QGraphicsWidget
 {
 public:
-    RectWidget(QGraphicsItem *parent = 0) : QGraphicsWidget(parent), m_fnConstraint(0) {}
+    RectWidget(QGraphicsItem *parent = nullptr) : QGraphicsWidget(parent), m_fnConstraint(0) {}
 
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override
     {
         Q_UNUSED(option);
         Q_UNUSED(widget);
@@ -130,7 +105,7 @@ public:
         painter->drawLine(rect().bottomLeft(), rect().topRight());
     }
 
-    QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint = QSizeF()) const
+    QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint = QSizeF()) const override
     {
         if (constraint.width() < 0 && constraint.height() < 0 && m_sizeHints[which].isValid()) {
             return m_sizeHints[which];
@@ -1683,7 +1658,7 @@ void tst_QGraphicsGridLayout::sizeHint()
     widget->setContentsMargins(0, 0, 0, 0);
 
     int i;
-    for (i = 0; i < itemDescriptions.count(); ++i) {
+    for (i = 0; i < itemDescriptions.size(); ++i) {
         ItemDesc desc = itemDescriptions.at(i);
         RectWidget *item = new RectWidget(widget);
         desc.apply(layout, item);
@@ -2184,7 +2159,7 @@ void tst_QGraphicsGridLayout::defaultStretchFactors()
     widget->setContentsMargins(0, 0, 0, 0);
 
     int i;
-    for (i = 0; i < itemDescriptions.count(); ++i) {
+    for (i = 0; i < itemDescriptions.size(); ++i) {
         ItemDesc desc = itemDescriptions.at(i);
         RectWidget *item = new RectWidget(widget);
         desc.apply(layout, item);
@@ -2199,7 +2174,7 @@ void tst_QGraphicsGridLayout::defaultStretchFactors()
         widget->resize(newSize);
 
     QApplication::sendPostedEvents(0, 0);
-    for (i = 0; i < expectedSizes.count(); ++i) {
+    for (i = 0; i < expectedSizes.size(); ++i) {
         QSizeF itemSize = layout->itemAt(i)->geometry().size();
         QCOMPARE(itemSize, expectedSizes.at(i));
     }
@@ -2343,7 +2318,7 @@ void tst_QGraphicsGridLayout::alignment2()
     widget->setContentsMargins(0, 0, 0, 0);
 
     int i;
-    for (i = 0; i < itemDescriptions.count(); ++i) {
+    for (i = 0; i < itemDescriptions.size(); ++i) {
         ItemDesc desc = itemDescriptions.at(i);
         RectWidget *item = new RectWidget(widget);
         desc.apply(layout, item);
@@ -2358,7 +2333,7 @@ void tst_QGraphicsGridLayout::alignment2()
         widget->resize(newSize);
 
     QApplication::sendPostedEvents(0, 0);
-    for (i = 0; i < expectedGeometries.count(); ++i) {
+    for (i = 0; i < expectedGeometries.size(); ++i) {
         QRectF itemRect = layout->itemAt(i)->geometry();
         QCOMPARE(itemRect, expectedGeometries.at(i));
     }
@@ -2921,7 +2896,7 @@ void tst_QGraphicsGridLayout::geometries()
     widget->setContentsMargins(0, 0, 0, 0);
 
     int i;
-    for (i = 0; i < itemDescriptions.count(); ++i) {
+    for (i = 0; i < itemDescriptions.size(); ++i) {
         ItemDesc desc = itemDescriptions.at(i);
         RectWidget *item = new RectWidget(widget);
         desc.apply(layout, item);
@@ -2936,7 +2911,7 @@ void tst_QGraphicsGridLayout::geometries()
         widget->resize(newSize);
 
     QApplication::processEvents();
-    for (i = 0; i < expectedGeometries.count(); ++i) {
+    for (i = 0; i < expectedGeometries.size(); ++i) {
         QRectF itemRect = layout->itemAt(i)->geometry();
         QCOMPARE(itemRect, expectedGeometries.at(i));
     }
@@ -3181,7 +3156,6 @@ void tst_QGraphicsGridLayout::heightForWidthWithSpanning()
     QCOMPARE(layout->effectiveSizeHint(Qt::MaximumSize, QSizeF(200, -1)), QSizeF(200, 100));
 }
 
-Q_DECLARE_METATYPE(QSizePolicy::Policy)
 void tst_QGraphicsGridLayout::spanningItem2x2_data()
 {
     QTest::addColumn<QSizePolicy::Policy>("sizePolicy");

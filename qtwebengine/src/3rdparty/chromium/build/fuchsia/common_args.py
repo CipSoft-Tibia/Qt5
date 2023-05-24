@@ -1,14 +1,17 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import argparse
 import importlib
 import logging
+import multiprocessing
 import os
 import sys
 
 from common import GetHostArchFromPlatform
+
+BUILTIN_TARGET_NAMES = ['qemu', 'device', 'fvdl']
 
 
 def _AddTargetSpecificationArgs(arg_parser):
@@ -25,9 +28,9 @@ def _AddTargetSpecificationArgs(arg_parser):
                            'to the same architecture as host cpu.')
   device_args.add_argument('--device',
                            default=None,
-                           choices=['aemu', 'qemu', 'device', 'custom'],
-                           help='Choose to run on aemu|qemu|device. '
-                           'By default, Fuchsia will run on AEMU on x64 '
+                           choices=BUILTIN_TARGET_NAMES + ['custom'],
+                           help='Choose to run on fvdl|qemu|device. '
+                           'By default, Fuchsia will run on Fvdl on x64 '
                            'hosts and QEMU on arm64 hosts. Alternatively, '
                            'setting to custom will require specifying the '
                            'subclass of Target class used via the '
@@ -41,31 +44,37 @@ def _AddTargetSpecificationArgs(arg_parser):
                            default=None,
                            help='Specify path to file that contains the '
                            'subclass of Target that will be used. Only '
-                           'needed if device specific operations such as '
-                           'paving is required.')
+                           'needed if device specific operations is '
+                           'required.')
 
 
-def _GetTargetClass(args):
-  """Gets the target class to be used for the test run."""
+def _GetPathToBuiltinTarget(target_name):
+  return '%s_target' % target_name
 
-  if args.device == 'custom':
-    if not args.custom_device_target:
-      raise Exception('--custom-device-target flag must be set when device '
-                      'flag set to custom.')
-    target_path = args.custom_device_target
-  else:
-    if not args.device:
-      args.device = 'aemu' if args.target_cpu == 'x64' else 'qemu'
-    target_path = '%s_target' % args.device
 
+def _LoadTargetClass(target_path):
   try:
     loaded_target = importlib.import_module(target_path)
   except ImportError:
-    logging.error('Cannot import from %s. Make sure that --ext-device-path '
-                  'is pointing to a file containing a target '
-                  'module.' % target_path)
+    logging.error(
+        'Cannot import from %s. Make sure that --custom-device-target '
+        'is pointing to a file containing a target '
+        'module.' % target_path)
     raise
   return loaded_target.GetTargetType()
+
+
+def _GetDefaultEmulatedCpuCoreCount():
+  # Revise the processor count on arm64, the trybots on arm64 are in
+  # dockers and cannot use all processors.
+  # For x64, fvdl always assumes hyperthreading is supported by intel
+  # processors, but the cpu_count returns the number regarding if the core
+  # is a physical one or a hyperthreading one, so the number should be
+  # divided by 2 to avoid creating more threads than the processor
+  # supports.
+  if GetHostArchFromPlatform() == 'x64':
+    return max(int(multiprocessing.cpu_count() / 2) - 1, 4)
+  return 4
 
 
 def AddCommonArgs(arg_parser):
@@ -75,14 +84,24 @@ def AddCommonArgs(arg_parser):
   Args:
     arg_parser: an ArgumentParser object."""
 
-  _AddTargetSpecificationArgs(arg_parser)
-
-  # Parse the args used to specify target
-  module_args, _ = arg_parser.parse_known_args()
-
-  # Determine the target class and register target specific args.
-  target_class = _GetTargetClass(module_args)
-  target_class.RegisterArgs(arg_parser)
+  common_args = arg_parser.add_argument_group('common', 'Common arguments')
+  common_args.add_argument('--logs-dir', help='Directory to write logs to.')
+  common_args.add_argument('--verbose',
+                           '-v',
+                           default=False,
+                           action='store_true',
+                           help='Enable debug-level logging.')
+  common_args.add_argument(
+      '--out-dir',
+      type=os.path.realpath,
+      help=('Path to the directory in which build files are located. '
+            'Defaults to current directory.'))
+  common_args.add_argument('--fuchsia-out-dir',
+                           default=None,
+                           help='Path to a Fuchsia build output directory. '
+                           'Setting the GN arg '
+                           '"default_fuchsia_build_dir_for_installation" '
+                           'will cause it to be passed here.')
 
   package_args = arg_parser.add_argument_group('package', 'Fuchsia Packages')
   package_args.add_argument(
@@ -94,24 +113,38 @@ def AddCommonArgs(arg_parser):
       '--package-name',
       help='Name of the package to execute, defined in ' + 'package metadata.')
 
-  common_args = arg_parser.add_argument_group('common', 'Common arguments')
-  common_args.add_argument('--target-staging-path',
-                           help='target path under which to stage packages '
-                           'during deployment.', default='/data')
-  common_args.add_argument('--runner-logs-dir',
-                           help='Directory to write test runner logs to.')
-  common_args.add_argument('--exclude-system-logs',
-                           action='store_false',
-                           dest='include_system_logs',
-                           help='Do not show system log data.')
-  common_args.add_argument('--verbose', '-v', default=False,
-                           action='store_true',
-                           help='Enable debug-level logging.')
-  common_args.add_argument('--fuchsia-out-dir',
-                           nargs='+',
-                           help='Path to a Fuchsia build output directory. '
-                           'If more than one outdir is supplied, the last one '
-                           'in the sequence will be used.')
+  emu_args = arg_parser.add_argument_group('emu', 'General emulator arguments')
+  emu_args.add_argument('--cpu-cores',
+                        type=int,
+                        default=_GetDefaultEmulatedCpuCoreCount(),
+                        help='Sets the number of CPU cores to provide.')
+  emu_args.add_argument('--ram-size-mb',
+                        type=int,
+                        default=8192,
+                        help='Sets the emulated RAM size (MB).'),
+  emu_args.add_argument('--allow-no-kvm',
+                        action='store_false',
+                        dest='require_kvm',
+                        default=True,
+                        help='Do not require KVM acceleration for '
+                        'emulators.')
+
+
+# Register the arguments for all known target types and the optional custom
+# target type (specified on the commandline).
+def AddTargetSpecificArgs(arg_parser):
+  # Parse the minimal set of arguments to determine if custom targets need to
+  # be loaded so that their arguments can be registered.
+  target_spec_parser = argparse.ArgumentParser(add_help=False)
+  _AddTargetSpecificationArgs(target_spec_parser)
+  target_spec_args, _ = target_spec_parser.parse_known_args()
+  _AddTargetSpecificationArgs(arg_parser)
+
+  for target in BUILTIN_TARGET_NAMES:
+    _LoadTargetClass(_GetPathToBuiltinTarget(target)).RegisterArgs(arg_parser)
+  if target_spec_args.custom_device_target:
+    _LoadTargetClass(
+        target_spec_args.custom_device_target).RegisterArgs(arg_parser)
 
 
 def ConfigureLogging(args):
@@ -131,29 +164,26 @@ def ConfigureLogging(args):
       logging.DEBUG if args.verbose else logging.WARN)
 
 
-# TODO(crbug.com/1121763): remove the need for additional_args
-def GetDeploymentTargetForArgs(additional_args=None):
+def InitializeTargetArgs():
+  """Set args for all targets to default values. This is used by test scripts
+     that have their own parser but still uses the target classes."""
+  parser = argparse.ArgumentParser()
+  AddCommonArgs(parser)
+  AddTargetSpecificArgs(parser)
+  return parser.parse_args([])
+
+
+def GetDeploymentTargetForArgs(args):
   """Constructs a deployment target object using command line arguments.
      If needed, an additional_args dict can be used to supplement the
      command line arguments."""
 
-  # Determine target type from command line arguments.
-  device_type_parser = argparse.ArgumentParser()
-  _AddTargetSpecificationArgs(device_type_parser)
-  module_args, _ = device_type_parser.parse_known_args()
-  target_class = _GetTargetClass(module_args)
+  if args.device == 'custom':
+    return _LoadTargetClass(args.custom_device_target).CreateFromArgs(args)
 
-  # Process command line args needed to initialize target in separate arg
-  # parser.
-  target_arg_parser = argparse.ArgumentParser()
-  target_class.RegisterArgs(target_arg_parser)
-  known_args, _ = target_arg_parser.parse_known_args()
-  target_args = vars(known_args)
+  if args.device:
+    device = args.device
+  else:
+    device = 'fvdl' if args.target_cpu == 'x64' else 'qemu'
 
-  # target_cpu is needed to determine target type, so we need to add
-  # it here to the args used to initialize the Target.
-  target_args.update({'target_cpu': module_args.target_cpu})
-
-  if additional_args:
-    target_args.update(additional_args)
-  return target_class(**target_args)
+  return _LoadTargetClass(_GetPathToBuiltinTarget(device)).CreateFromArgs(args)

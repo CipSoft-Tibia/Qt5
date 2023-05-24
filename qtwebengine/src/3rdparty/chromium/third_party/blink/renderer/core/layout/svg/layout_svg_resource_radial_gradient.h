@@ -32,6 +32,7 @@ class LayoutSVGResourceRadialGradient final : public LayoutSVGResourceGradient {
  public:
   explicit LayoutSVGResourceRadialGradient(SVGRadialGradientElement*);
   ~LayoutSVGResourceRadialGradient() override;
+  void Trace(Visitor*) const override;
 
   const char* GetName() const override {
     NOT_DESTROYED();
@@ -45,38 +46,25 @@ class LayoutSVGResourceRadialGradient final : public LayoutSVGResourceGradient {
     return kResourceType;
   }
 
-  SVGUnitTypes::SVGUnitType GradientUnits() const override {
-    NOT_DESTROYED();
-    return Attributes().GradientUnits();
-  }
-  AffineTransform CalculateGradientTransform() const override {
-    NOT_DESTROYED();
-    return Attributes().GradientTransform();
-  }
-  void CollectGradientAttributes() override;
-  scoped_refptr<Gradient> BuildGradient() const override;
-
-  FloatPoint CenterPoint(const RadialGradientAttributes&) const;
-  FloatPoint FocalPoint(const RadialGradientAttributes&) const;
+  gfx::PointF CenterPoint(const RadialGradientAttributes&) const;
+  gfx::PointF FocalPoint(const RadialGradientAttributes&) const;
   float Radius(const RadialGradientAttributes&) const;
   float FocalRadius(const RadialGradientAttributes&) const;
 
  private:
-  Persistent<RadialGradientAttributesWrapper> attributes_wrapper_;
+  const GradientAttributes& EnsureAttributes() const override;
+  scoped_refptr<Gradient> BuildGradient() const override;
 
-  RadialGradientAttributes& MutableAttributes() {
-    NOT_DESTROYED();
-    return attributes_wrapper_->Attributes();
-  }
-  const RadialGradientAttributes& Attributes() const {
-    NOT_DESTROYED();
-    return attributes_wrapper_->Attributes();
+  mutable RadialGradientAttributes attributes_;
+};
+
+template <>
+struct DowncastTraits<LayoutSVGResourceRadialGradient> {
+  static bool AllowFrom(const LayoutSVGResourceContainer& container) {
+    return container.ResourceType() == kRadialGradientResourceType;
   }
 };
 
-DEFINE_LAYOUT_SVG_RESOURCE_TYPE_CASTS(LayoutSVGResourceRadialGradient,
-                                      kRadialGradientResourceType);
-
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_SVG_LAYOUT_SVG_RESOURCE_RADIAL_GRADIENT_H_

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,9 @@
 
 #include "base/auto_reset.h"
 #include "base/check_op.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/signin/internal/identity_manager/profile_oauth2_token_service_delegate.h"
 #include "components/signin/public/base/device_id_helper.h"
@@ -22,14 +23,15 @@
 using signin_metrics::SourceForRefreshTokenOperation;
 
 namespace {
+
+using TokenResponseBuilder = OAuth2AccessTokenConsumer::TokenResponse::Builder;
+
 std::string SourceToString(SourceForRefreshTokenOperation source) {
   switch (source) {
     case SourceForRefreshTokenOperation::kUnknown:
       return "Unknown";
     case SourceForRefreshTokenOperation::kTokenService_LoadCredentials:
       return "TokenService::LoadCredentials";
-    case SourceForRefreshTokenOperation::kDeprecatedSupervisedUser_InitSync:
-      return "DeprecatedSupervisedUser::InitSync";
     case SourceForRefreshTokenOperation::kInlineLoginHandler_Signin:
       return "InlineLoginHandler::Signin";
     case SourceForRefreshTokenOperation::kPrimaryAccountManager_ClearAccount:
@@ -56,17 +58,14 @@ std::string SourceToString(SourceForRefreshTokenOperation source) {
       return "DiceResponseHandler::Signin";
     case SourceForRefreshTokenOperation::kDiceResponseHandler_Signout:
       return "DiceResponseHandler::Signout";
-    case SourceForRefreshTokenOperation::kDiceTurnOnSyncHelper_Abort:
-      return "DiceTurnOnSyncHelper::Abort";
+    case SourceForRefreshTokenOperation::kTurnOnSyncHelper_Abort:
+      return "TurnOnSyncHelper::Abort";
     case SourceForRefreshTokenOperation::kMachineLogon_CredentialProvider:
       return "MachineLogon::CredentialProvider";
     case SourceForRefreshTokenOperation::kTokenService_ExtractCredentials:
       return "TokenService::ExtractCredentials";
-    case SourceForRefreshTokenOperation::
-        kAccountReconcilor_RevokeTokensNotInCookies:
-      return "AccountReconcilor::RevokeTokensNotInCookies";
-    case SourceForRefreshTokenOperation::kLogoutTabHelper_DidFinishNavigation:
-      return "LogoutTabHelper::DidFinishNavigation";
+    case SourceForRefreshTokenOperation::kLogoutTabHelper_PrimaryPageChanged:
+      return "LogoutTabHelper::PrimaryPageChanged";
   }
 }
 }  // namespace
@@ -79,12 +78,17 @@ ProfileOAuth2TokenService::ProfileOAuth2TokenService(
       all_credentials_loaded_(false) {
   DCHECK(user_prefs_);
   DCHECK(delegate_);
-  token_manager_ = std::make_unique<OAuth2AccessTokenManager>(
-      this /* OAuth2AccessTokenManager::Delegate* */);
+  token_manager_ =
+      std::make_unique<OAuth2AccessTokenManager>(/*delegate=*/this);
+  // The `ProfileOAuth2TokenService` must be the first observer of `delegate_`.
+  DCHECK(!delegate_->HasObserver());
   AddObserver(this);
+  DCHECK(delegate_->HasObserver());
 }
 
 ProfileOAuth2TokenService::~ProfileOAuth2TokenService() {
+  token_manager_->CancelAllRequests();
+  GetDelegate()->Shutdown();
   RemoveObserver(this);
 }
 
@@ -131,11 +135,6 @@ bool ProfileOAuth2TokenService::HasRefreshToken(
 // static
 void ProfileOAuth2TokenService::RegisterProfilePrefs(
     PrefRegistrySimple* registry) {
-#if defined(OS_IOS)
-  registry->RegisterBooleanPref(prefs::kTokenServiceExcludeAllSecondaryAccounts,
-                                false);
-  registry->RegisterListPref(prefs::kTokenServiceExcludedSecondaryAccounts);
-#endif
   registry->RegisterStringPref(prefs::kGoogleServicesSigninScopedDeviceId,
                                std::string());
 }
@@ -194,10 +193,11 @@ ProfileOAuth2TokenService::StartRequestForMultilogin(
       new OAuth2AccessTokenManager::RequestImpl(account_id, consumer));
   // Create token response from token. Expiration time and id token do not
   // matter and should not be accessed.
-  OAuth2AccessTokenConsumer::TokenResponse token_response(
-      refresh_token, base::Time(), std::string());
-  // If we can get refresh token from the delegate, inform consumer right away.
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  // TODO(1151018): See bug description for why the refresh token is passed
+  // in the access token field.
+  OAuth2AccessTokenConsumer::TokenResponse token_response =
+      TokenResponseBuilder().WithAccessToken(refresh_token).build();
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       base::BindOnce(&OAuth2AccessTokenManager::RequestImpl::InformConsumer,
                      request.get()->AsWeakPtr(),
@@ -257,18 +257,14 @@ void ProfileOAuth2TokenService::SetRefreshTokenRevokedFromSourceCallback(
   on_refresh_token_revoked_callback_ = callback;
 }
 
-void ProfileOAuth2TokenService::Shutdown() {
-  token_manager_->CancelAllRequests();
-  GetDelegate()->Shutdown();
-}
-
 void ProfileOAuth2TokenService::LoadCredentials(
-    const CoreAccountId& primary_account_id) {
+    const CoreAccountId& primary_account_id,
+    bool is_syncing) {
   DCHECK_EQ(SourceForRefreshTokenOperation::kUnknown,
             update_refresh_token_source_);
   update_refresh_token_source_ =
       SourceForRefreshTokenOperation::kTokenService_LoadCredentials;
-  GetDelegate()->LoadCredentials(primary_account_id);
+  GetDelegate()->LoadCredentials(primary_account_id, is_syncing);
 }
 
 void ProfileOAuth2TokenService::UpdateCredentials(
@@ -447,7 +443,7 @@ bool ProfileOAuth2TokenService::HasLoadCredentialsFinishedWithNoErrors() {
 
 void ProfileOAuth2TokenService::RecreateDeviceIdIfNeeded() {
 // On ChromeOS the device ID is not managed by the token service.
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
   if (AreAllCredentialsLoaded() && HasLoadCredentialsFinishedWithNoErrors() &&
       GetAccounts().empty()) {
     signin::RecreateSigninScopedDeviceId(user_prefs_);

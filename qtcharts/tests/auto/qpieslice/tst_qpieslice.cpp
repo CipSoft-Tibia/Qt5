@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <tst_definitions.h>
@@ -36,7 +10,7 @@
 #include <QtCharts/QPieSlice>
 #include <QtCharts/QPieSeries>
 
-QT_CHARTS_USE_NAMESPACE
+QT_USE_NAMESPACE
 
 class tst_qpieslice : public QObject
 {
@@ -161,16 +135,16 @@ void tst_qpieslice::changedSignals()
     slice.setExplodeDistanceFactor(0.1);
     slice.setExplodeDistanceFactor(0.1);
 
-    TRY_COMPARE(valueSpy.count(), 1);
-    TRY_COMPARE(labelSpy.count(), 1);
-    TRY_COMPARE(penSpy.count(), 2);
-    TRY_COMPARE(brushSpy.count(), 1);
-    TRY_COMPARE(labelBrushSpy.count(), 1);
-    TRY_COMPARE(labelFontSpy.count(), 1);
-    TRY_COMPARE(colorSpy.count(), 1);
-    TRY_COMPARE(borderColorSpy.count(), 1);
-    TRY_COMPARE(borderWidthSpy.count(), 1);
-    TRY_COMPARE(labelColorSpy.count(), 1);
+    TRY_COMPARE(valueSpy.size(), 1);
+    TRY_COMPARE(labelSpy.size(), 1);
+    TRY_COMPARE(penSpy.size(), 2);
+    TRY_COMPARE(brushSpy.size(), 1);
+    TRY_COMPARE(labelBrushSpy.size(), 1);
+    TRY_COMPARE(labelFontSpy.size(), 1);
+    TRY_COMPARE(colorSpy.size(), 1);
+    TRY_COMPARE(borderColorSpy.size(), 1);
+    TRY_COMPARE(borderWidthSpy.size(), 1);
+    TRY_COMPARE(labelColorSpy.size(), 1);
 }
 
 void tst_qpieslice::customize()
@@ -277,10 +251,10 @@ void tst_qpieslice::clickedSignal()
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, points.at(1));
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, points.at(2));
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, points.at(3));
-    QCOMPARE(clickSpy1.count(), 1);
-    QCOMPARE(clickSpy2.count(), 1);
-    QCOMPARE(clickSpy3.count(), 1);
-    QCOMPARE(clickSpy4.count(), 1);
+    QCOMPARE(clickSpy1.size(), 1);
+    QCOMPARE(clickSpy2.size(), 1);
+    QCOMPARE(clickSpy3.size(), 1);
+    QCOMPARE(clickSpy4.size(), 1);
 }
 
 void tst_qpieslice::hoverSignal()
@@ -308,7 +282,8 @@ void tst_qpieslice::hoverSignal()
     QVERIFY(QTest::qWaitForWindowExposed(&view));
 
     // try to ensure focus
-    QApplication::setActiveWindow(&view);
+    view.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&view));
     view.setFocus();
     QApplication::processEvents();
     QVERIFY(view.isActiveWindow());
@@ -332,16 +307,16 @@ void tst_qpieslice::hoverSignal()
     QTest::qWait(100);
 
     // check
-    QCOMPARE(hoverSpy1.count(), 2);
+    QCOMPARE(hoverSpy1.size(), 2);
     QCOMPARE(qvariant_cast<bool>(hoverSpy1.at(0).at(0)), true);
     QCOMPARE(qvariant_cast<bool>(hoverSpy1.at(1).at(0)), false);
-    QCOMPARE(hoverSpy2.count(), 2);
+    QCOMPARE(hoverSpy2.size(), 2);
     QCOMPARE(qvariant_cast<bool>(hoverSpy2.at(0).at(0)), true);
     QCOMPARE(qvariant_cast<bool>(hoverSpy2.at(1).at(0)), false);
-    QCOMPARE(hoverSpy3.count(), 2);
+    QCOMPARE(hoverSpy3.size(), 2);
     QCOMPARE(qvariant_cast<bool>(hoverSpy3.at(0).at(0)), true);
     QCOMPARE(qvariant_cast<bool>(hoverSpy3.at(1).at(0)), false);
-    QCOMPARE(hoverSpy4.count(), 2);
+    QCOMPARE(hoverSpy4.size(), 2);
     QCOMPARE(qvariant_cast<bool>(hoverSpy4.at(0).at(0)), true);
     QCOMPARE(qvariant_cast<bool>(hoverSpy4.at(1).at(0)), false);
 }
@@ -395,10 +370,10 @@ void tst_qpieslice::pressedSignal()
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, points.at(1));
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, points.at(2));
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, points.at(3));
-    QCOMPARE(clickSpy1.count(), 1);
-    QCOMPARE(clickSpy2.count(), 1);
-    QCOMPARE(clickSpy3.count(), 1);
-    QCOMPARE(clickSpy4.count(), 1);
+    QCOMPARE(clickSpy1.size(), 1);
+    QCOMPARE(clickSpy2.size(), 1);
+    QCOMPARE(clickSpy3.size(), 1);
+    QCOMPARE(clickSpy4.size(), 1);
 }
 
 void tst_qpieslice::releasedSignal()
@@ -436,10 +411,10 @@ void tst_qpieslice::releasedSignal()
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, points.at(1));
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, points.at(2));
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, points.at(3));
-    QCOMPARE(clickSpy1.count(), 1);
-    QCOMPARE(clickSpy2.count(), 1);
-    QCOMPARE(clickSpy3.count(), 1);
-    QCOMPARE(clickSpy4.count(), 1);
+    QCOMPARE(clickSpy1.size(), 1);
+    QCOMPARE(clickSpy2.size(), 1);
+    QCOMPARE(clickSpy3.size(), 1);
+    QCOMPARE(clickSpy4.size(), 1);
 }
 
 void tst_qpieslice::doubleClickedSignal()
@@ -468,7 +443,7 @@ void tst_qpieslice::doubleClickedSignal()
     QRectF pieRect = view.chart()->plotArea();
     QList<QPoint> points = slicePoints(pieRect);
     QTest::mouseDClick(view.viewport(), Qt::LeftButton, {}, points.at(0));
-    QCOMPARE(clickSpy1.count(), 1);
+    QCOMPARE(clickSpy1.size(), 1);
 }
 
 QTEST_MAIN(tst_qpieslice)

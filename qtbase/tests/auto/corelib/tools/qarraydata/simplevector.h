@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #ifndef QARRAY_TEST_SIMPLE_VECTOR_H
@@ -32,6 +7,7 @@
 
 #include <QtCore/qarraydata.h>
 #include <QtCore/qarraydatapointer.h>
+#include <QtCore/qvarlengtharray.h>
 
 #include <algorithm>
 
@@ -40,61 +16,69 @@ struct SimpleVector
 {
 private:
     typedef QTypedArrayData<T> Data;
+    typedef QArrayDataPointer<T> DataPointer;
 
 public:
     typedef T value_type;
-    typedef typename Data::iterator iterator;
-    typedef typename Data::const_iterator const_iterator;
+    typedef T *iterator;
+    typedef const T *const_iterator;
 
     SimpleVector()
     {
     }
 
-    explicit SimpleVector(size_t n)
+    explicit SimpleVector(size_t n, bool capacityReserved = false)
         : d(Data::allocate(n))
     {
         if (n)
             d->appendInitialize(n);
+        if (capacityReserved)
+            d.setFlag(QArrayData::CapacityReserved);
     }
 
-    SimpleVector(size_t n, const T &t)
+    SimpleVector(size_t n, const T &t, bool capacityReserved = false)
         : d(Data::allocate(n))
     {
         if (n)
             d->copyAppend(n, t);
+        if (capacityReserved)
+            d.setFlag(QArrayData::CapacityReserved);
     }
 
-    SimpleVector(const T *begin, const T *end)
+    SimpleVector(const T *begin, const T *end, bool capacityReserved = false)
         : d(Data::allocate(end - begin))
     {
         if (end - begin)
             d->copyAppend(begin, end);
+        if (capacityReserved)
+            d.setFlag(QArrayData::CapacityReserved);
     }
 
-    SimpleVector(QArrayDataPointerRef<T> ptr)
-        : d(ptr)
+    SimpleVector(Data *header, T *data, size_t len = 0)
+        : d(header, data, len)
     {
     }
 
-    explicit SimpleVector(Data *ptr)
-        : d(ptr)
+    explicit SimpleVector(QPair<Data*, T*> ptr, size_t len = 0)
+        : d(ptr, len)
     {
     }
 
-    bool empty() const { return d->size == 0; }
+    SimpleVector(const QArrayDataPointer<T> &other)
+        : d(other)
+    {
+    }
+
+    bool empty() const { return d.size == 0; }
     bool isNull() const { return d.isNull(); }
     bool isEmpty() const { return this->empty(); }
 
-    bool isStatic() const { return d->ref.isStatic(); }
-    bool isShared() const { return d->ref.isShared(); }
+    bool isStatic() const { return !d.isMutable(); }
+    bool isShared() const { return d->isShared(); }
     bool isSharedWith(const SimpleVector &other) const { return d == other.d; }
-#if !defined(QT_NO_UNSHARABLE_CONTAINERS)
-    bool isSharable() const { return d->ref.isSharable(); }
-    void setSharable(bool sharable) { d.setSharable(sharable); }
-#endif
 
-    size_t size() const { return d->size; }
-    size_t capacity() const { return d->alloc; }
+    size_t size() const { return d.size; }
+    size_t capacity() const { return d->constAllocatedCapacity(); }
 
     iterator begin() { detach(); return d->begin(); }
     iterator end() { detach(); return d->end(); }
@@ -143,18 +127,19 @@ public:
             return;
 
         if (n <= capacity()) {
-            if (d->capacityReserved)
+            if (d->flags() & Data::CapacityReserved)
                 return;
-            if (!d->ref.isShared()) {
-                d->capacityReserved = 1;
+            if (!d->isShared()) {
+                d.setFlag(Data::CapacityReserved);
                 return;
             }
         }
 
-        SimpleVector detached(Data::allocate(qMax(n, size()),
-                    d->detachFlags() | Data::CapacityReserved));
-        if (size())
+        SimpleVector detached(Data::allocate(qMax(n, size())));
+        if (size()) {
             detached.d->copyAppend(constBegin(), constEnd());
+            detached.d->setFlag(QArrayData::CapacityReserved);
+        }
         detached.swap(*this);
     }
 
@@ -163,9 +148,8 @@ public:
         if (size() == newSize)
             return;
 
-        if (d.needsDetach() || newSize > capacity()) {
-            SimpleVector detached(Data::allocate(
-                        d->detachCapacity(newSize), d->detachFlags()));
+        if (d->needsDetach() || newSize > capacity()) {
+            SimpleVector detached(Data::allocate(d->detachCapacity(newSize)));
             if (newSize) {
                 if (newSize < size()) {
                     const T *const begin = constBegin();
@@ -198,46 +182,10 @@ public:
         if (first == last)
             return;
 
-        T *const begin = d->begin();
-        if (d.needsDetach()
-                || capacity() - size() < size_t(last - first)) {
-            SimpleVector detached(Data::allocate(
-                        d->detachCapacity(size() + (last - first)),
-                        d->detachFlags() | Data::Grow));
-
-            detached.d->copyAppend(first, last);
-            detached.d->copyAppend(begin, begin + d->size);
-            detached.swap(*this);
-
-            return;
-        }
-
-        d->insert(begin, first, last);
+        d->insert(0, first, last - first);
     }
 
-    void append(const_iterator first, const_iterator last)
-    {
-        if (first == last)
-            return;
-
-        if (d.needsDetach()
-                || capacity() - size() < size_t(last - first)) {
-            SimpleVector detached(Data::allocate(
-                        d->detachCapacity(size() + (last - first)),
-                        d->detachFlags() | Data::Grow));
-
-            if (d->size) {
-                const T *const begin = constBegin();
-                detached.d->copyAppend(begin, begin + d->size);
-            }
-            detached.d->copyAppend(first, last);
-            detached.swap(*this);
-
-            return;
-        }
-
-        d->copyAppend(first, last);
-    }
+    void append(const_iterator first, const_iterator last) { d->growAppend(first, last); }
 
     void insert(int position, const_iterator first, const_iterator last)
     {
@@ -257,37 +205,13 @@ public:
         if (first == last)
             return;
 
-        const iterator begin = d->begin();
-        const iterator where = begin + position;
-        const iterator end = begin + d->size;
-        if (d.needsDetach()
-                || capacity() - size() < size_t(last - first)) {
-            SimpleVector detached(Data::allocate(
-                        d->detachCapacity(size() + (last - first)),
-                        d->detachFlags() | Data::Grow));
-
-            if (position)
-                detached.d->copyAppend(begin, where);
-            detached.d->copyAppend(first, last);
-            detached.d->copyAppend(where, end);
-            detached.swap(*this);
-
+        if (first >= d.begin() && first <= d.end()) {
+            QVarLengthArray<T> copy(first, last);
+            insert(position, copy.begin(), copy.end());
             return;
         }
 
-        if ((first >= where && first < end)
-                || (last > where && last <= end)) {
-            // Copy overlapping data first and only then shuffle it into place
-            iterator start = d->begin() + position;
-            iterator middle = d->end();
-
-            d->copyAppend(first, last);
-            std::rotate(start, middle, d->end());
-
-            return;
-        }
-
-        d->insert(where, first, last);
+        d->insert(position, first, last - first);
     }
 
     void erase(iterator first, iterator last)
@@ -298,10 +222,8 @@ public:
         const T *const begin = d->begin();
         const T *const end = begin + d->size;
 
-        if (d.needsDetach()) {
-            SimpleVector detached(Data::allocate(
-                        d->detachCapacity(size() - (last - first)),
-                        d->detachFlags()));
+        if (d->needsDetach()) {
+            SimpleVector detached(Data::allocate(d->detachCapacity(size() - (last - first))));
             if (first != begin)
                 detached.d->copyAppend(begin, first);
             detached.d->copyAppend(last, end);
@@ -313,7 +235,7 @@ public:
         if (last == end)
             d->truncate(end - first);
         else
-            d->erase(first, last);
+            d->erase(first, last - first);
     }
 
     void swap(SimpleVector &other)
@@ -331,10 +253,9 @@ public:
         d.detach();
     }
 
-    static SimpleVector fromRawData(const T *data, size_t size,
-            QArrayData::AllocationOptions options = Data::Default)
+    static SimpleVector fromRawData(const T *data, size_t size)
     {
-        return SimpleVector(Data::fromRawData(data, size, options));
+        return SimpleVector(QArrayDataPointer<T>::fromRawData(data, size));
     }
 
 private:

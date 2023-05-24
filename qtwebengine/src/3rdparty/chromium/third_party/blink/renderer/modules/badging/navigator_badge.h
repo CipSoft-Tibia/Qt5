@@ -1,6 +1,6 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file
+// found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_BADGING_NAVIGATOR_BADGE_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_BADGING_NAVIGATOR_BADGE_H_
@@ -12,6 +12,8 @@
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
+
+class ExceptionState;
 class Navigator;
 class ScriptPromise;
 class WorkerNavigator;
@@ -25,28 +27,38 @@ class NavigatorBadge final : public GarbageCollected<NavigatorBadge>,
   explicit NavigatorBadge(ExecutionContext*);
 
   // Badge IDL interface.
-  static ScriptPromise setAppBadge(ScriptState*, Navigator&);
-  static ScriptPromise setAppBadge(ScriptState*, WorkerNavigator&);
-
-  static ScriptPromise setAppBadge(ScriptState*, Navigator&, uint64_t content);
+  static ScriptPromise setAppBadge(ScriptState*, Navigator&, ExceptionState&);
   static ScriptPromise setAppBadge(ScriptState*,
                                    WorkerNavigator&,
-                                   uint64_t content);
+                                   ExceptionState&);
 
-  static ScriptPromise clearAppBadge(ScriptState*, Navigator&);
-  static ScriptPromise clearAppBadge(ScriptState*, WorkerNavigator&);
+  static ScriptPromise setAppBadge(ScriptState*,
+                                   Navigator&,
+                                   uint64_t content,
+                                   ExceptionState&);
+  static ScriptPromise setAppBadge(ScriptState*,
+                                   WorkerNavigator&,
+                                   uint64_t content,
+                                   ExceptionState&);
+
+  static ScriptPromise clearAppBadge(ScriptState*, Navigator&, ExceptionState&);
+  static ScriptPromise clearAppBadge(ScriptState*,
+                                     WorkerNavigator&,
+                                     ExceptionState&);
 
   void Trace(Visitor*) const override;
 
  private:
   static ScriptPromise SetAppBadgeHelper(
       ScriptState* script_state,
-      mojom::blink::BadgeValuePtr badge_value);
-  static ScriptPromise ClearAppBadgeHelper(ScriptState* script_state);
+      mojom::blink::BadgeValuePtr badge_value,
+      ExceptionState& exception_state);
+  static ScriptPromise ClearAppBadgeHelper(ScriptState* script_state,
+                                           ExceptionState& exception_state);
+  // Returns true if using the Badging API is allowed in this context.
+  static bool IsAllowed(ScriptState* script_state);
 
   mojo::Remote<mojom::blink::BadgeService> badge_service();
-
-  Member<ExecutionContext> context_;
 };
 
 }  // namespace blink

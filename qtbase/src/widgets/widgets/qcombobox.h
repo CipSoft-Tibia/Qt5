@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCOMBOBOX_H
 #define QCOMBOBOX_H
@@ -62,7 +26,8 @@ class Q_WIDGETS_EXPORT QComboBox : public QWidget
 
     Q_PROPERTY(bool editable READ isEditable WRITE setEditable)
     Q_PROPERTY(int count READ count)
-    Q_PROPERTY(QString currentText READ currentText WRITE setCurrentText NOTIFY currentTextChanged USER true)
+    Q_PROPERTY(QString currentText READ currentText WRITE setCurrentText NOTIFY currentTextChanged
+               USER true)
     Q_PROPERTY(int currentIndex READ currentIndex WRITE setCurrentIndex NOTIFY currentIndexChanged)
     Q_PROPERTY(QVariant currentData READ currentData)
     Q_PROPERTY(int maxVisibleItems READ maxVisibleItems WRITE setMaxVisibleItems)
@@ -72,14 +37,6 @@ class Q_WIDGETS_EXPORT QComboBox : public QWidget
     Q_PROPERTY(int minimumContentsLength READ minimumContentsLength WRITE setMinimumContentsLength)
     Q_PROPERTY(QSize iconSize READ iconSize WRITE setIconSize)
     Q_PROPERTY(QString placeholderText READ placeholderText WRITE setPlaceholderText)
-
-#if QT_CONFIG(completer)
-#if QT_DEPRECATED_SINCE(5, 13)
-    Q_PROPERTY(bool autoCompletion READ autoCompletion WRITE setAutoCompletion DESIGNABLE false)
-    Q_PROPERTY(Qt::CaseSensitivity autoCompletionCaseSensitivity READ autoCompletionCaseSensitivity WRITE setAutoCompletionCaseSensitivity DESIGNABLE false)
-#endif
-#endif // QT_CONFIG(completer)
-
     Q_PROPERTY(bool duplicatesEnabled READ duplicatesEnabled WRITE setDuplicatesEnabled)
     Q_PROPERTY(bool frame READ hasFrame WRITE setFrame)
     Q_PROPERTY(int modelColumn READ modelColumn WRITE setModelColumn)
@@ -94,19 +51,6 @@ public:
     int count() const;
     void setMaxCount(int max);
     int maxCount() const;
-
-#if QT_CONFIG(completer)
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X("Use completer() instead.")
-    bool autoCompletion() const;
-    QT_DEPRECATED_X("Use setCompleter() instead.")
-    void setAutoCompletion(bool enable);
-    QT_DEPRECATED_X("Use completer()->caseSensitivity() instead.")
-    Qt::CaseSensitivity autoCompletionCaseSensitivity() const;
-    QT_DEPRECATED_X("Use completer()->setCaseSensitivity() instead.")
-    void setAutoCompletionCaseSensitivity(Qt::CaseSensitivity sensitivity);
-#endif
-#endif
 
     bool duplicatesEnabled() const;
     void setDuplicatesEnabled(bool enable);
@@ -137,11 +81,7 @@ public:
     enum SizeAdjustPolicy {
         AdjustToContents,
         AdjustToContentsOnFirstShow,
-#if QT_DEPRECATED_SINCE(5, 15)
-        AdjustToMinimumContentsLength Q_DECL_ENUMERATOR_DEPRECATED_X(
-            "Use AdjustToContents or AdjustToContentsOnFirstShow"), // ### Qt 6: remove
-#endif
-        AdjustToMinimumContentsLengthWithIcon = AdjustToContentsOnFirstShow + 2
+        AdjustToMinimumContentsLengthWithIcon
     };
     Q_ENUM(SizeAdjustPolicy)
 
@@ -173,7 +113,7 @@ public:
     void setItemDelegate(QAbstractItemDelegate *delegate);
 
     QAbstractItemModel *model() const;
-    void setModel(QAbstractItemModel *model);
+    virtual void setModel(QAbstractItemModel *model);
 
     QModelIndex rootModelIndex() const;
     void setRootModelIndex(const QModelIndex &index);
@@ -234,18 +174,7 @@ Q_SIGNALS:
     void highlighted(int index);
     void textHighlighted(const QString &);
     void currentIndexChanged(int index);
-#if QT_DEPRECATED_SINCE(5, 15)
-    QT_DEPRECATED_VERSION_X_5_15(
-            "Use currentIndexChanged(int) instead, and get the text using itemText(index)")
-    void currentIndexChanged(const QString &);
-#endif
     void currentTextChanged(const QString &);
-#if QT_DEPRECATED_SINCE(5, 15)
-    QT_DEPRECATED_VERSION_X(5, 15, "Use textActivated() instead")
-    void activated(const QString &);
-    QT_DEPRECATED_VERSION_X(5, 15, "Use textHighlighted() instead")
-    void highlighted(const QString &);
-#endif
 
 protected:
     void focusInEvent(QFocusEvent *e) override;
@@ -266,7 +195,7 @@ protected:
     void contextMenuEvent(QContextMenuEvent *e) override;
 #endif // QT_NO_CONTEXTMENU
     void inputMethodEvent(QInputMethodEvent *) override;
-    void initStyleOption(QStyleOptionComboBox *option) const;
+    virtual void initStyleOption(QStyleOptionComboBox *option) const;
 
 
 protected:
@@ -275,21 +204,6 @@ protected:
 private:
     Q_DECLARE_PRIVATE(QComboBox)
     Q_DISABLE_COPY(QComboBox)
-    Q_PRIVATE_SLOT(d_func(), void _q_itemSelected(const QModelIndex &item))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitHighlighted(const QModelIndex &))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitCurrentIndexChanged(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_editingFinished())
-    Q_PRIVATE_SLOT(d_func(), void _q_returnPressed())
-    Q_PRIVATE_SLOT(d_func(), void _q_resetButton())
-    Q_PRIVATE_SLOT(d_func(), void _q_dataChanged(const QModelIndex &, const QModelIndex &))
-    Q_PRIVATE_SLOT(d_func(), void _q_updateIndexBeforeChange())
-    Q_PRIVATE_SLOT(d_func(), void _q_rowsInserted(const QModelIndex & parent, int start, int end))
-    Q_PRIVATE_SLOT(d_func(), void _q_rowsRemoved(const QModelIndex & parent, int start, int end))
-    Q_PRIVATE_SLOT(d_func(), void _q_modelDestroyed())
-    Q_PRIVATE_SLOT(d_func(), void _q_modelReset())
-#if QT_CONFIG(completer)
-    Q_PRIVATE_SLOT(d_func(), void _q_completerActivated(const QModelIndex &index))
-#endif
 };
 
 inline void QComboBox::addItem(const QString &atext, const QVariant &auserData)

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,10 @@
 #include <memory>
 
 #include "base/time/time.h"
+#include "cc/input/actively_scrolling_type.h"
+#include "cc/input/browser_controls_state.h"
 #include "cc/paint/element_id.h"
+#include "ui/gfx/geometry/size.h"
 
 namespace viz {
 struct BeginFrameArgs;
@@ -23,21 +26,23 @@ namespace cc {
 struct CompositorCommitData;
 class LayerTreeHostImpl;
 class LayerTreeSettings;
+class MutatorHost;
 class ScrollTree;
 enum class ScrollbarOrientation;
 
 // This is the interface that LayerTreeHostImpl and the "graphics" side of the
-// compositor uses to talk to the compositor ThreadedInputHandler. This
-// interface is two-way; it's used used both to communicate state changes from
-// the LayerTree to the input handler and also to query and update state in the
-// input handler.
+// compositor uses to talk to the compositor InputHandler. This interface is
+// two-way; it's used used both to communicate state changes from the LayerTree
+// to the input handler and also to query and update state in the input handler.
 class InputDelegateForCompositor {
  public:
   virtual ~InputDelegateForCompositor() = default;
 
   // Called during a commit to fill in the changes that have occurred since the
   // last commit.
-  virtual void ProcessCommitDeltas(CompositorCommitData* commit_data) = 0;
+  virtual void ProcessCommitDeltas(
+      CompositorCommitData* commit_data,
+      const MutatorHost* main_thread_mutator_host) = 0;
 
   // Called to let the input handler perform animations.
   virtual void TickAnimations(base::TimeTicks monotonic_time) = 0;
@@ -55,6 +60,10 @@ class InputDelegateForCompositor {
   virtual void RootLayerStateMayHaveChanged() = 0;
 
   // Called to let the input handler know that a scrollbar for the given
+  // elementId has been added.
+  virtual void DidRegisterScrollbar(ElementId scroll_element_id,
+                                    ScrollbarOrientation orientation) = 0;
+  // Called to let the input handler know that a scrollbar for the given
   // elementId has been removed.
   virtual void DidUnregisterScrollbar(ElementId scroll_element_id,
                                       ScrollbarOrientation orientation) = 0;
@@ -63,6 +72,9 @@ class InputDelegateForCompositor {
   // completed.
   virtual void ScrollOffsetAnimationFinished() = 0;
 
+  // Called to inform the input handler when prefers-reduced-motion changes.
+  virtual void SetPrefersReducedMotion(bool prefers_reduced_motion) = 0;
+
   // Returns true if we're currently in a "gesture" (user-initiated) scroll.
   // That is, between a GestureScrollBegin and a GestureScrollEnd. Note, a
   // GestureScrollEnd is deferred if the gesture ended but we're still
@@ -70,18 +82,20 @@ class InputDelegateForCompositor {
   // finger from the touchscreen but we're scroll snapping).
   virtual bool IsCurrentlyScrolling() const = 0;
 
-  // Returns true if there is an active scroll in progress.  "Active" here
-  // means that it's been latched (i.e. we have a CurrentlyScrollingNode()) but
-  // also that some ScrollUpdates have been received and their delta consumed
-  // for scrolling. These can differ significantly e.g. the page allows the
-  // touchstart but preventDefaults all the touchmoves. In that case, we latch
-  // and have a CurrentlyScrollingNode() but will never receive a ScrollUpdate.
-  //
-  // "Precision" means it's a non-animated scroll like a touchscreen or
-  // high-precision touchpad. The latter distinction is important for things
-  // like scheduling decisions which might schedule a wheel and a touch
-  // scrolling differently due to user perception.
-  virtual bool IsActivelyPrecisionScrolling() const = 0;
+  // Indicates the type (Animated or Precise) of an active scroll, if there is
+  // one, in progress. "Active" here means that it's been latched (i.e. we have
+  // a CurrentlyScrollingNode()) but also that some ScrollUpdates have been
+  // received and their delta consumed for scrolling. These can differ
+  // significantly e.g. the page allows the touchstart but preventDefaults all
+  // the touchmoves. In that case, we latch and have a CurrentlyScrollingNode()
+  // but will never receive a ScrollUpdate.
+  virtual ActivelyScrollingType GetActivelyScrollingType() const = 0;
+
+  // Returns true if we're currently scrolling and the scroll must be realized
+  // on the main thread (see ScrollTree::CanRealizeScrollsOnCompositor).
+  // TODO(skobes): Combine IsCurrentlyScrolling, GetActivelyScrollingType, and
+  // IsCurrentScrollMainRepainted into a single method returning everything.
+  virtual bool IsCurrentScrollMainRepainted() const = 0;
 };
 
 // This is the interface that's exposed by the LayerTreeHostImpl to the input
@@ -97,6 +111,7 @@ class CompositorDelegateForInput {
   virtual bool HasAnimatedScrollbars() const = 0;
   virtual void SetNeedsCommit() = 0;
   virtual void SetNeedsFullViewportRedraw() = 0;
+  virtual void SetDeferBeginMainFrame(bool defer_begin_main_frame) const = 0;
   virtual void DidUpdateScrollAnimationCurve() = 0;
   virtual void AccumulateScrollDeltaForTracing(const gfx::Vector2dF& delta) = 0;
   virtual void DidStartPinchZoom() = 0;
@@ -110,7 +125,11 @@ class CompositorDelegateForInput {
   virtual void DidScrollContent(ElementId element_id, bool animated) = 0;
   virtual float DeviceScaleFactor() const = 0;
   virtual float PageScaleFactor() const = 0;
+  virtual gfx::Size VisualDeviceViewportSize() const = 0;
   virtual const LayerTreeSettings& GetSettings() const = 0;
+  virtual void UpdateBrowserControlsState(BrowserControlsState constraints,
+                                          BrowserControlsState current,
+                                          bool animate) = 0;
 
   // TODO(bokan): Temporary escape hatch for code that hasn't yet been
   // converted to use the input<->compositor interface. This will eventually be

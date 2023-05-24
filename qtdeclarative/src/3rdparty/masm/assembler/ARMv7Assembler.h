@@ -64,6 +64,7 @@ namespace ARMRegisters {
         r13, sp = r13,
         r14, lr = r14,
         r15, pc = r15,
+        none = 0xff,
     } RegisterID;
 
     typedef enum {
@@ -479,6 +480,10 @@ public:
             data.realTypes.m_type = type;
             data.realTypes.m_linkType = LinkInvalid;
             data.realTypes.m_condition = condition;
+        }
+        LinkRecord(const LinkRecord &other)
+        {
+            *this = other;
         }
         void operator=(const LinkRecord& other)
         {

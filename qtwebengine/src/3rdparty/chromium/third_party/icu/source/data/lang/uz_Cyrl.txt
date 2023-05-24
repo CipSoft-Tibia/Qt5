@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 uz_Cyrl{
     %%Parent{"root"}
     Keys{
@@ -111,7 +112,6 @@ uz_Cyrl{
         gl{"галицийча"}
         gn{"гуарани"}
         gor{"горонтало"}
-        gsw{"немисча (Швейцария)"}
         gu{"гужаротча"}
         guz{"гусии"}
         gv{"мэнча"}
@@ -313,6 +313,7 @@ uz_Cyrl{
     }
     Languages%short{
         az{"озар"}
+        en_US{"инглизча (АҚШ)"}
     }
     Scripts{
         Arab{"Араб"}
@@ -402,7 +403,6 @@ uz_Cyrl{
             tibt{"Тибет рақамлари"}
         }
     }
-    Version{"37"}
     codePatterns{
         language{"Тил: {0}"}
         script{"{0}"}

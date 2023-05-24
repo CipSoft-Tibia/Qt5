@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -89,21 +89,6 @@ TEST_F(PluginUMATest, BrowserPlugin) {
                    GURL("some url"));
 }
 
-TEST_F(PluginUMATest, ShockwaveFlash) {
-  ExpectPluginType(PluginUMAReporter::SHOCKWAVE_FLASH,
-                   "application/x-shockwave-flash",
-                   GURL("some url"));
-  ExpectPluginType(PluginUMAReporter::SHOCKWAVE_FLASH,
-                   "application/futuresplash",
-                   GURL("some url"));
-  ExpectPluginType(PluginUMAReporter::UNSUPPORTED_MIMETYPE,
-                   "application/x-futuresplash",
-                   GURL("some url"));
-  ExpectPluginType(PluginUMAReporter::UNSUPPORTED_MIMETYPE,
-                   "application/shockwave-flash",
-                   GURL("some url"));
-}
-
 TEST_F(PluginUMATest, BySrcExtension) {
   ExpectPluginType(
       PluginUMAReporter::QUICKTIME, std::string(), GURL("file://file.mov"));
@@ -124,12 +109,6 @@ TEST_F(PluginUMATest, BySrcExtension) {
   ExpectPluginType(PluginUMAReporter::QUICKTIME,
                    std::string(),
                    GURL("http://file.mov?x=aaaa&y=b#c"));
-  ExpectPluginType(PluginUMAReporter::SHOCKWAVE_FLASH,
-                   std::string(),
-                   GURL("http://file.swf?x=aaaa&y=b#c"));
-  ExpectPluginType(PluginUMAReporter::SHOCKWAVE_FLASH,
-                   std::string(),
-                   GURL("http://file.spl?x=aaaa&y=b#c"));
 
   ExpectPluginType(PluginUMAReporter::UNSUPPORTED_EXTENSION,
                    std::string(),

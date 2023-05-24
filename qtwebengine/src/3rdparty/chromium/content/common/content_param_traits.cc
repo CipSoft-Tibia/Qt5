@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,57 +17,16 @@
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "net/base/ip_endpoint.h"
 #include "services/network/public/cpp/net_ipc_param_traits.h"
-#include "third_party/blink/public/common/feature_policy/feature_policy.h"
 #include "third_party/blink/public/common/messaging/message_port_channel.h"
 #include "third_party/blink/public/common/messaging/message_port_descriptor.h"
 #include "third_party/blink/public/common/messaging/transferable_message.h"
-#include "third_party/blink/public/mojom/feature_policy/policy_value.mojom.h"
+#include "third_party/blink/public/common/permissions_policy/permissions_policy.h"
+#include "third_party/blink/public/mojom/blob/blob.mojom.h"
+#include "third_party/blink/public/mojom/permissions_policy/policy_value.mojom.h"
 #include "ui/accessibility/ax_mode.h"
-#include "ui/base/cursor/cursor.h"
-#include "ui/base/cursor/mojom/cursor_type.mojom-shared.h"
-#include "ui/gfx/ipc/skia/gfx_skia_param_traits.h"
+#include "ui/gfx/ipc/geometry/gfx_param_traits.h"
 
 namespace IPC {
-
-void ParamTraits<content::WebCursor>::Write(base::Pickle* m,
-                                            const param_type& p) {
-  WriteParam(m, p.cursor().type());
-  if (p.cursor().type() == ui::mojom::CursorType::kCustom) {
-    WriteParam(m, p.cursor().custom_hotspot());
-    WriteParam(m, p.cursor().image_scale_factor());
-    WriteParam(m, p.cursor().custom_bitmap());
-  }
-}
-
-bool ParamTraits<content::WebCursor>::Read(const base::Pickle* m,
-                                           base::PickleIterator* iter,
-                                           param_type* r) {
-  ui::mojom::CursorType type;
-  if (!ReadParam(m, iter, &type))
-    return false;
-
-  ui::Cursor cursor(type);
-  if (cursor.type() == ui::mojom::CursorType::kCustom) {
-    gfx::Point hotspot;
-    float image_scale_factor;
-    SkBitmap bitmap;
-    if (!ReadParam(m, iter, &hotspot) ||
-        !ReadParam(m, iter, &image_scale_factor) ||
-        !ReadParam(m, iter, &bitmap)) {
-      return false;
-    }
-
-    cursor.set_custom_hotspot(hotspot);
-    cursor.set_image_scale_factor(image_scale_factor);
-    cursor.set_custom_bitmap(bitmap);
-  }
-
-  return r->SetCursor(cursor);
-}
-
-void ParamTraits<content::WebCursor>::Log(const param_type& p, std::string* l) {
-  l->append("<WebCursor>");
-}
 
 void ParamTraits<blink::MessagePortChannel>::Write(base::Pickle* m,
                                                    const param_type& p) {
@@ -178,7 +137,7 @@ void ParamTraits<blink::PolicyValue>::Log(const param_type& p, std::string* l) {
 }
 
 void ParamTraits<ui::AXMode>::Write(base::Pickle* m, const param_type& p) {
-  WriteParam(m, p.mode());
+  WriteParam(m, p.flags());
 }
 
 bool ParamTraits<ui::AXMode>::Read(const base::Pickle* m,
@@ -221,12 +180,12 @@ struct ParamTraits<blink::mojom::SerializedBlobPtr> {
 
 template <>
 struct ParamTraits<
-    mojo::PendingRemote<blink::mojom::NativeFileSystemTransferToken>> {
+    mojo::PendingRemote<blink::mojom::FileSystemAccessTransferToken>> {
   using param_type =
-      mojo::PendingRemote<blink::mojom::NativeFileSystemTransferToken>;
+      mojo::PendingRemote<blink::mojom::FileSystemAccessTransferToken>;
   static void Write(base::Pickle* m, const param_type& p) {
     // Move the Mojo pipe to serialize the
-    // PendingRemote<NativeFileSystemTransferToken> for a postMessage() target.
+    // PendingRemote<FileSystemAccessTransferToken> for a postMessage() target.
     WriteParam(m, const_cast<param_type&>(p).PassPipe().release());
   }
 
@@ -237,9 +196,9 @@ struct ParamTraits<
     if (!ReadParam(m, iter, &handle)) {
       return false;
     }
-    *r = mojo::PendingRemote<blink::mojom::NativeFileSystemTransferToken>(
+    *r = mojo::PendingRemote<blink::mojom::FileSystemAccessTransferToken>(
         mojo::ScopedMessagePipeHandle(handle),
-        blink::mojom::NativeFileSystemTransferToken::Version_);
+        blink::mojom::FileSystemAccessTransferToken::Version_);
     return true;
   }
 };
@@ -375,33 +334,6 @@ void ParamTraits<viz::SurfaceInfo>::Log(const param_type& p, std::string* l) {
   l->append(", ");
   LogParam(p.size_in_pixels(), l);
   l->append(")");
-}
-
-void ParamTraits<net::SHA256HashValue>::Write(base::Pickle* m,
-                                              const param_type& p) {
-  m->WriteData(reinterpret_cast<const char*>(p.data), sizeof(p.data));
-}
-
-bool ParamTraits<net::SHA256HashValue>::Read(const base::Pickle* m,
-                                             base::PickleIterator* iter,
-                                             param_type* r) {
-  const char* data;
-  int data_length;
-  if (!iter->ReadData(&data, &data_length)) {
-    NOTREACHED();
-    return false;
-  }
-  if (data_length != sizeof(r->data)) {
-    NOTREACHED();
-    return false;
-  }
-  memcpy(r->data, data, sizeof(r->data));
-  return true;
-}
-
-void ParamTraits<net::SHA256HashValue>::Log(const param_type& p,
-                                            std::string* l) {
-  l->append("<SHA256HashValue>");
 }
 
 }  // namespace IPC

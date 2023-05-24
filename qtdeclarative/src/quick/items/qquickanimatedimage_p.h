@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKANIMATEDIMAGE_P_H
 #define QQUICKANIMATEDIMAGE_P_H
@@ -62,19 +26,18 @@ QT_BEGIN_NAMESPACE
 class QMovie;
 class QQuickAnimatedImagePrivate;
 
-class Q_AUTOTEST_EXPORT QQuickAnimatedImage : public QQuickImage
+class Q_QUICK_PRIVATE_EXPORT QQuickAnimatedImage : public QQuickImage
 {
     Q_OBJECT
 
-    Q_PROPERTY(bool playing READ isPlaying WRITE setPlaying NOTIFY playingChanged)
-    Q_PROPERTY(bool paused READ isPaused WRITE setPaused NOTIFY pausedChanged)
-    Q_PROPERTY(int currentFrame READ currentFrame WRITE setCurrentFrame NOTIFY frameChanged)
-    Q_PROPERTY(int frameCount READ frameCount NOTIFY frameCountChanged)
-    Q_PROPERTY(qreal speed READ speed WRITE setSpeed NOTIFY speedChanged REVISION 11)
+    Q_PROPERTY(bool playing READ isPlaying WRITE setPlaying NOTIFY playingChanged FINAL)
+    Q_PROPERTY(bool paused READ isPaused WRITE setPaused NOTIFY pausedChanged FINAL)
+    Q_PROPERTY(int currentFrame READ currentFrame WRITE setCurrentFrame NOTIFY frameChanged FINAL)
+    Q_PROPERTY(int frameCount READ frameCount NOTIFY frameCountChanged FINAL)
+    Q_PROPERTY(qreal speed READ speed WRITE setSpeed NOTIFY speedChanged REVISION(2, 11) FINAL)
 
-    // read-only for AnimatedImage
-    Q_PROPERTY(QSize sourceSize READ sourceSize NOTIFY sourceSizeChanged)
     QML_NAMED_ELEMENT(AnimatedImage)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickAnimatedImage(QQuickItem *parent=nullptr);
@@ -96,7 +59,6 @@ public:
 
     // Extends QQuickImage's src property
     void setSource(const QUrl&) override;
-    virtual QSize sourceSize();
 
 Q_SIGNALS:
     void playingChanged();
@@ -104,7 +66,7 @@ Q_SIGNALS:
     void frameChanged();
     void currentFrameChanged();
     void frameCountChanged();
-    Q_REVISION(11) void speedChanged();
+    Q_REVISION(2, 11) void speedChanged();
 
 private Q_SLOTS:
     void movieUpdate();

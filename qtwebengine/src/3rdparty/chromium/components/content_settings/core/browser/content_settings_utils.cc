@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,11 +9,15 @@
 #include <vector>
 
 #include "base/notreached.h"
-#include "base/stl_util.h"
 #include "base/strings/string_split.h"
 #include "base/values.h"
+#include "build/build_config.h"
+#include "components/content_settings/core/browser/content_settings_registry.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
+#include "components/content_settings/core/common/content_settings.h"
+#include "components/content_settings/core/common/content_settings_types.h"
 #include "components/content_settings/core/common/content_settings_utils.h"
+#include "components/content_settings/core/common/features.h"
 
 namespace {
 
@@ -31,7 +35,7 @@ const ContentSettingsStringMapping kContentSettingsStringMapping[] = {
     {CONTENT_SETTING_SESSION_ONLY, "session_only"},
     {CONTENT_SETTING_DETECT_IMPORTANT_CONTENT, "detect_important_content"},
 };
-static_assert(base::size(kContentSettingsStringMapping) ==
+static_assert(std::size(kContentSettingsStringMapping) ==
                   CONTENT_SETTING_NUM_SETTINGS,
               "kContentSettingsToFromString should have "
               "CONTENT_SETTING_NUM_SETTINGS elements");
@@ -43,14 +47,16 @@ static_assert(base::size(kContentSettingsStringMapping) ==
 // belong between ALLOW and ASK. DEFAULT should never be used and is therefore
 // not part of this array.
 const ContentSetting kContentSettingOrder[] = {
+    // clang-format off
     CONTENT_SETTING_ALLOW,
     CONTENT_SETTING_SESSION_ONLY,
     CONTENT_SETTING_DETECT_IMPORTANT_CONTENT,
     CONTENT_SETTING_ASK,
     CONTENT_SETTING_BLOCK
+    // clang-format on
 };
 
-static_assert(base::size(kContentSettingOrder) ==
+static_assert(std::size(kContentSettingOrder) ==
                   CONTENT_SETTING_NUM_SETTINGS - 1,
               "kContentSettingOrder should have CONTENT_SETTING_NUM_SETTINGS-1"
               "entries");
@@ -69,9 +75,9 @@ std::string ContentSettingToString(ContentSetting setting) {
 
 bool ContentSettingFromString(const std::string& name,
                               ContentSetting* setting) {
-  for (size_t i = 0; i < base::size(kContentSettingsStringMapping); ++i) {
-    if (name == kContentSettingsStringMapping[i].content_setting_str) {
-      *setting = kContentSettingsStringMapping[i].content_setting;
+  for (const auto& string_mapping : kContentSettingsStringMapping) {
+    if (name == string_mapping.content_setting_str) {
+      *setting = string_mapping.content_setting;
       return true;
     }
   }
@@ -82,15 +88,14 @@ bool ContentSettingFromString(const std::string& name,
 std::string CreatePatternString(
     const ContentSettingsPattern& item_pattern,
     const ContentSettingsPattern& top_level_frame_pattern) {
-  return item_pattern.ToString()
-         + std::string(kPatternSeparator)
-         + top_level_frame_pattern.ToString();
+  return item_pattern.ToString() + std::string(kPatternSeparator) +
+         top_level_frame_pattern.ToString();
 }
 
 PatternPair ParsePatternString(const std::string& pattern_str) {
-  std::vector<std::string> pattern_str_list = base::SplitString(
-      pattern_str, std::string(1, kPatternSeparator[0]),
-      base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
+  std::vector<std::string> pattern_str_list =
+      base::SplitString(pattern_str, std::string(1, kPatternSeparator[0]),
+                        base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
 
   // If the |pattern_str| is an empty string then the |pattern_string_list|
   // contains a single empty string. In this case the empty string will be
@@ -105,10 +110,8 @@ PatternPair ParsePatternString(const std::string& pattern_str) {
     }
   }
 
-  if (pattern_str_list.size() > 2 ||
-      pattern_str_list.size() == 0) {
-    return PatternPair(ContentSettingsPattern(),
-                       ContentSettingsPattern());
+  if (pattern_str_list.size() > 2 || pattern_str_list.size() == 0) {
+    return PatternPair(ContentSettingsPattern(), ContentSettingsPattern());
   }
 
   PatternPair pattern_pair;
@@ -119,31 +122,36 @@ PatternPair ParsePatternString(const std::string& pattern_str) {
 
 void GetRendererContentSettingRules(const HostContentSettingsMap* map,
                                     RendererContentSettingRules* rules) {
-#if !defined(OS_ANDROID)
-  map->GetSettingsForOneType(ContentSettingsType::IMAGES, ResourceIdentifier(),
+#if !BUILDFLAG(IS_ANDROID)
+  map->GetSettingsForOneType(ContentSettingsType::IMAGES,
                              &(rules->image_rules));
   map->GetSettingsForOneType(ContentSettingsType::MIXEDSCRIPT,
-                             ResourceIdentifier(),
                              &(rules->mixed_content_rules));
+  // Auto dark web content settings is available only for Android, so ALLOW rule
+  // is added for all origins.
+  rules->auto_dark_content_rules.push_back(ContentSettingPatternSource(
+      ContentSettingsPattern::Wildcard(), ContentSettingsPattern::Wildcard(),
+      ContentSettingToValue(CONTENT_SETTING_ALLOW), std::string(),
+      map->IsOffTheRecord()));
 #else
   // Android doesn't use image content settings, so ALLOW rule is added for
   // all origins.
   rules->image_rules.push_back(ContentSettingPatternSource(
       ContentSettingsPattern::Wildcard(), ContentSettingsPattern::Wildcard(),
-      base::Value::FromUniquePtrValue(
-          ContentSettingToValue(CONTENT_SETTING_ALLOW)),
-      std::string(), map->IsOffTheRecord()));
+      ContentSettingToValue(CONTENT_SETTING_ALLOW), std::string(),
+      map->IsOffTheRecord()));
   // In Android active mixed content is hard blocked, with no option to allow
   // it.
   rules->mixed_content_rules.push_back(ContentSettingPatternSource(
       ContentSettingsPattern::Wildcard(), ContentSettingsPattern::Wildcard(),
-      base::Value::FromUniquePtrValue(
-          ContentSettingToValue(CONTENT_SETTING_BLOCK)),
-      std::string(), map->IsOffTheRecord()));
+      ContentSettingToValue(CONTENT_SETTING_BLOCK), std::string(),
+      map->IsOffTheRecord()));
+  map->GetSettingsForOneType(ContentSettingsType::AUTO_DARK_WEB_CONTENT,
+                             &(rules->auto_dark_content_rules));
 #endif
   map->GetSettingsForOneType(ContentSettingsType::JAVASCRIPT,
-                             ResourceIdentifier(), &(rules->script_rules));
-  map->GetSettingsForOneType(ContentSettingsType::POPUPS, ResourceIdentifier(),
+                             &(rules->script_rules));
+  map->GetSettingsForOneType(ContentSettingsType::POPUPS,
                              &(rules->popup_redirect_rules));
 }
 
@@ -172,6 +180,60 @@ bool IsConstraintPersistent(const ContentSettingConstraints& constraints) {
 base::Time GetConstraintExpiration(const base::TimeDelta duration) {
   DCHECK(!duration.is_zero());
   return base::Time::Now() + duration;
+}
+
+bool CanTrackLastVisit(ContentSettingsType type) {
+  // Last visit is not tracked for notification permission as it shouldn't be
+  // auto-revoked.
+  if (type == ContentSettingsType::NOTIFICATIONS)
+    return false;
+
+  // Protocol handler don't actually use their content setting and don't have
+  // a valid "initial default" value.
+  if (type == ContentSettingsType::PROTOCOL_HANDLERS)
+    return false;
+
+  auto* info =
+      content_settings::ContentSettingsRegistry::GetInstance()->Get(type);
+  return info && info->GetInitialDefaultSetting() == CONTENT_SETTING_ASK;
+}
+
+base::Time GetCoarseVisitedTime(base::Time time) {
+  return base::Time::FromDeltaSinceWindowsEpoch(
+      time.ToDeltaSinceWindowsEpoch().FloorToMultiple(
+          GetCoarseVisitedTimePrecision()));
+}
+
+base::TimeDelta GetCoarseVisitedTimePrecision() {
+  if (features::kSafetyCheckUnusedSitePermissionsNoDelay.Get() ||
+      features::kSafetyCheckUnusedSitePermissionsWithDelay.Get()) {
+    return base::Days(0);
+  }
+  return base::Days(7);
+}
+
+bool CanBeAutoRevoked(ContentSettingsType type,
+                      ContentSetting setting,
+                      bool is_one_time) {
+  // The Permissions module in Safety check will revoke permissions after
+  // a finite amount of time.
+  // We're only interested in expiring permissions that:
+  // 1. Are ALLOWed.
+  // 2. Fall back to ASK.
+  // 3. Are not already a one-time grant.
+  if (setting != CONTENT_SETTING_ALLOW) {
+    return false;
+  }
+
+  if (!CanTrackLastVisit(type)) {
+    return false;
+  }
+
+  if (is_one_time) {
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace content_settings

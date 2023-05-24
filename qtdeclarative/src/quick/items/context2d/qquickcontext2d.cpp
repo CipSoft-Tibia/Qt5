@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickcontext2d_p.h"
 #include "qquickcontext2dcommandbuffer_p.h"
@@ -68,19 +32,17 @@
 #include <private/qv4functionobject_p.h>
 #include <private/qv4objectproto_p.h>
 #include <private/qv4scopedvalue_p.h>
+#include <private/qlocale_tools_p.h>
 
 #include <QtCore/qmath.h>
 #include <QtCore/qvector.h>
 #include <QtCore/private/qnumeric_p.h>
 #include <QtCore/QRunnable>
 #include <QtGui/qguiapplication.h>
-#include <QtGui/qopenglframebufferobject.h>
 #include <private/qguiapplication_p.h>
 #include <qpa/qplatformintegration.h>
 
-#if QT_CONFIG(opengl)
-# include <private/qsgdefaultrendercontext_p.h>
-#endif
+#include <private/qsgdefaultrendercontext_p.h>
 
 #include <cmath>
 #if defined(Q_OS_QNX) || defined(Q_OS_ANDROID)
@@ -127,8 +89,6 @@ QT_BEGIN_NAMESPACE
 
 
 
-Q_CORE_EXPORT double qstrtod(const char *s00, char const **se, bool *ok);
-
 #define CHECK_CONTEXT(r)     if (!r || !r->d()->context() || !r->d()->context()->bufferValid()) \
                                 THROW_GENERIC_ERROR("Not a Context2D object");
 
@@ -141,13 +101,13 @@ Q_QUICK_PRIVATE_EXPORT QColor qt_color_from_string(const QV4::Value &name)
     QByteArray str = name.toQString().toUtf8();
 
     char *p = str.data();
-    int len = str.length();
+    int len = str.size();
     //rgb/hsl color string has at least 7 characters
     if (!p || len > 255 || len <= 7)
-        return QColor(p);
+        return QColor::fromString(p);
     else {
         bool isRgb(false), isHsl(false), hasAlpha(false);
-        Q_UNUSED(isHsl)
+        Q_UNUSED(isHsl);
 
         while (isspace(*p)) p++;
         if (strncmp(p, "rgb", 3) == 0)
@@ -155,7 +115,7 @@ Q_QUICK_PRIVATE_EXPORT QColor qt_color_from_string(const QV4::Value &name)
         else if (strncmp(p, "hsl", 3) == 0)
             isHsl = true;
         else
-            return QColor(p);
+            return QColor::fromString(p);
 
         p+=3; //skip "rgb" or "hsl"
         hasAlpha = (*p == 'a') ? true : false;
@@ -208,7 +168,7 @@ Q_QUICK_PRIVATE_EXPORT QColor qt_color_from_string(const QV4::Value &name)
     return QColor();
 }
 
-static int qParseFontSizeFromToken(const QStringRef &fontSizeToken, bool &ok)
+static int qParseFontSizeFromToken(QStringView fontSizeToken, bool &ok)
 {
     ok = false;
     float size = fontSizeToken.trimmed().toFloat(&ok);
@@ -224,11 +184,11 @@ static int qParseFontSizeFromToken(const QStringRef &fontSizeToken, bool &ok)
     \c true if successful. If the font size is invalid, \c false is returned
     and a warning is printed.
 */
-static bool qSetFontSizeFromToken(QFont &font, const QStringRef &fontSizeToken)
+static bool qSetFontSizeFromToken(QFont &font, QStringView fontSizeToken)
 {
-    const QStringRef trimmedToken = fontSizeToken.trimmed();
-    const QStringRef unitStr = trimmedToken.right(2);
-    const QStringRef value = trimmedToken.left(trimmedToken.size() - 2);
+    const QStringView trimmedToken = fontSizeToken.trimmed();
+    const QStringView unitStr = trimmedToken.right(2);
+    const QStringView value = trimmedToken.left(trimmedToken.size() - 2);
     bool ok = false;
     int size = 0;
     if (unitStr == QLatin1String("px")) {
@@ -254,14 +214,14 @@ static bool qSetFontSizeFromToken(QFont &font, const QStringRef &fontSizeToken)
     each family is separated by spaces. Families with spaces in their name
     must be quoted.
 */
-static QStringList qExtractFontFamiliesFromString(const QStringRef &fontFamiliesString)
+static QStringList qExtractFontFamiliesFromString(QStringView fontFamiliesString)
 {
     QStringList extractedFamilies;
     int quoteIndex = -1;
     QString currentFamily;
     for (int index = 0; index < fontFamiliesString.size(); ++index) {
         const QChar ch = fontFamiliesString.at(index);
-        if (ch == '"' || ch == '\'') {
+        if (ch == u'"' || ch == u'\'') {
             if (quoteIndex == -1) {
                 quoteIndex = index;
             } else {
@@ -276,7 +236,7 @@ static QStringList qExtractFontFamiliesFromString(const QStringRef &fontFamilies
                     return QStringList();
                 }
             }
-        } else if (ch == ' ' && quoteIndex == -1) {
+        } else if (ch == u' ' && quoteIndex == -1) {
             // This is a space that's not within quotes...
             if (!currentFamily.isEmpty()) {
                 // and there is a current family; consider it the end of the current family.
@@ -315,8 +275,7 @@ static QStringList qExtractFontFamiliesFromString(const QStringRef &fontFamilies
 static bool qSetFontFamilyFromTokens(QFont &font, const QStringList &fontFamilyTokens)
 {
     for (const QString &fontFamilyToken : fontFamilyTokens) {
-        QFontDatabase fontDatabase;
-        if (fontDatabase.hasFamily(fontFamilyToken)) {
+        if (QFontDatabase::hasFamily(fontFamilyToken)) {
             font.setFamily(fontFamilyToken);
             return true;
         } else {
@@ -384,7 +343,7 @@ static QFont qt_font_from_string(const QString& fontString, const QFont &current
         return currentFont;
     }
 
-    int fontSizeStart = fontString.lastIndexOf(' ', fontSizeEnd);
+    int fontSizeStart = fontString.lastIndexOf(u' ', fontSizeEnd);
     if (fontSizeStart == -1) {
         // The font size might be the first token in the font string, which is OK.
         // Regardless, we'll find out if the font is invalid with qSetFontSizeFromToken().
@@ -398,16 +357,16 @@ static QFont qt_font_from_string(const QString& fontString, const QFont &current
     fontSizeEnd += 3;
 
     QFont newFont;
-    if (!qSetFontSizeFromToken(newFont, fontString.midRef(fontSizeStart, fontSizeEnd - fontSizeStart)))
+    if (!qSetFontSizeFromToken(newFont, QStringView{fontString}.mid(fontSizeStart, fontSizeEnd - fontSizeStart)))
         return currentFont;
 
     // We don't want to parse the size twice, so remove it now.
     QString remainingFontString = fontString;
     remainingFontString.remove(fontSizeStart, fontSizeEnd - fontSizeStart);
-    QStringRef remainingFontStringRef(&remainingFontString);
+    QStringView remainingFontStringRef(remainingFontString);
 
     // Next, we have to take any font families out, as QString::split() will ruin quoted family names.
-    const QStringRef fontFamiliesString = remainingFontStringRef.mid(fontSizeStart);
+    const QStringView fontFamiliesString = remainingFontStringRef.mid(fontSizeStart);
     remainingFontStringRef.truncate(fontSizeStart);
     QStringList fontFamilies = qExtractFontFamiliesFromString(fontFamiliesString);
     if (fontFamilies.isEmpty()) {
@@ -417,7 +376,7 @@ static QFont qt_font_from_string(const QString& fontString, const QFont &current
         return currentFont;
 
     // Now that we've removed the messy parts, we can split the font string on spaces.
-    const QStringRef trimmedTokensStr = remainingFontStringRef.trimmed();
+    const QStringView trimmedTokensStr = remainingFontStringRef.trimmed();
     if (trimmedTokensStr.isEmpty()) {
         // No optional properties.
         return newFont;
@@ -426,7 +385,7 @@ static QFont qt_font_from_string(const QString& fontString, const QFont &current
 
     int usedTokens = NoTokens;
     // Optional properties can be in any order, but font-size and font-family must be last.
-    for (const QStringRef &token : tokens) {
+    for (const QStringView &token : tokens) {
         if (token.compare(QLatin1String("normal")) == 0) {
             if (!(usedTokens & FontStyle) || !(usedTokens & FontVariant) || !(usedTokens & FontWeight)) {
                 // Could be font-style, font-variant or font-weight.
@@ -456,18 +415,14 @@ static QFont qt_font_from_string(const QString& fontString, const QFont &current
             bool conversionOk = false;
             int weight = token.toInt(&conversionOk);
             if (conversionOk) {
-                if (weight >= 0 && weight <= 99) {
-                    Q_TRY_SET_TOKEN(FontWeight, "<font-weight>", newFont.setWeight(weight))
-                    continue;
-                } else {
-                    qWarning().nospace() << "Context2D: Invalid font weight " << weight << " found in font string; "
-                        << "must be between 0 and 99, inclusive.";
-                    return currentFont;
-                }
+                Q_TRY_SET_TOKEN(FontWeight, "<font-weight>",
+                                newFont.setWeight(QFont::Weight(weight)))
+            } else {
+                // The token is invalid or in the wrong place/order in the font string.
+                qWarning().nospace() << "Context2D: Invalid or misplaced token " << token
+                                     << " found in font string.";
+                return currentFont;
             }
-            // The token is invalid or in the wrong place/order in the font string.
-            qWarning().nospace() << "Context2D: Invalid or misplaced token " << token << " found in font string.";
-            return currentFont;
         }
     }
     return newFont;
@@ -990,7 +945,7 @@ static QV4::ReturnedValue qt_create_image_data(qreal w, qreal h, QV4::ExecutionE
         pixelData->d()->image->fill(0x00000000);
     } else {
         // After qtbase 88e56d0932a3615231adf40d5ae033e742d72c33, the image size can be off by one.
-        Q_ASSERT(qAbs(image.width() - qRound(w * image.devicePixelRatioF())) <= 1 && qAbs(image.height() - qRound(h * image.devicePixelRatioF())) <= 1);
+        Q_ASSERT(qAbs(image.width() - qRound(w * image.devicePixelRatio())) <= 1 && qAbs(image.height() - qRound(h * image.devicePixelRatio())) <= 1);
         *pixelData->d()->image = image.format() == QImage::Format_ARGB32 ? image : image.convertToFormat(QImage::Format_ARGB32);
     }
 
@@ -1334,29 +1289,81 @@ QV4::ReturnedValue QQuickJSContext2D::method_set_globalAlpha(const QV4::Function
 
 /*!
     \qmlproperty string QtQuick::Context2D::globalCompositeOperation
-     Holds the current the current composition operation, from the list below:
-     \list
-     \li source-atop      - A atop B. Display the source image wherever both images are opaque.
-                           Display the destination image wherever the destination image is opaque but the source image is transparent.
-                           Display transparency elsewhere.
-     \li source-in        - A in B. Display the source image wherever both the source image and destination image are opaque.
-                           Display transparency elsewhere.
-     \li source-out       - A out B. Display the source image wherever the source image is opaque and the destination image is transparent.
-                           Display transparency elsewhere.
-     \li source-over      - (default) A over B. Display the source image wherever the source image is opaque.
-                           Display the destination image elsewhere.
-     \li destination-atop - B atop A. Same as source-atop but using the destination image instead of the source image and vice versa.
-     \li destination-in   - B in A. Same as source-in but using the destination image instead of the source image and vice versa.
-     \li destination-out  - B out A. Same as source-out but using the destination image instead of the source image and vice versa.
-     \li destination-over - B over A. Same as source-over but using the destination image instead of the source image and vice versa.
-     \li lighter          - A plus B. Display the sum of the source image and destination image, with color values approaching 255 (100%) as a limit.
-     \li copy             - A (B is ignored). Display the source image instead of the destination image.
-     \li xor              - A xor B. Exclusive OR of the source image and destination image.
-     \endlist
+    Holds the current the current composition operation. Allowed operations are:
 
-     Additionally, this property also accepts the compositon modes listed in QPainter::CompositionMode. According to the W3C standard, these
-     extension composition modes are provided as "vendorName-operationName" syntax, for example: QPainter::CompositionMode_Exclusion is provided as
-     "qt-exclusion".
+    \value "source-atop"
+        QPainter::CompositionMode_SourceAtop
+        A atop B. Display the source image wherever both images are opaque.
+        Display the destination image wherever the destination image is opaque
+        but the source image is transparent. Display transparency elsewhere.
+    \value "source-in"
+        QPainter::CompositionMode_SourceIn
+        A in B. Display the source image wherever both the source image and
+        destination image are opaque. Display transparency elsewhere.
+    \value "source-out"
+        QPainter::CompositionMode_SourceOut
+        A out B. Display the source image wherever the source image is opaque
+        and the destination image is transparent. Display transparency elsewhere.
+    \value "source-over"
+        QPainter::CompositionMode_SourceOver (default)
+        A over B. Display the source image wherever the source image is opaque.
+        Display the destination image elsewhere.
+    \value "destination-atop"
+        QPainter::CompositionMode_DestinationAtop
+        B atop A. Same as \c source-atop but using the destination image instead
+        of the source image and vice versa.
+    \value "destination-in"
+        QPainter::CompositionMode_DestinationIn
+        B in A. Same as \c source-in but using the destination image instead of
+        the source image and vice versa.
+    \value "destination-out"
+        QPainter::CompositionMode_DestinationOut
+        B out A. Same as \c source-out but using the destination image instead
+        of the source image and vice versa.
+    \value "destination-over"
+        QPainter::CompositionMode_DestinationOver
+        B over A. Same as \c source-over but using the destination image
+        instead of the source image and vice versa.
+    \value "lighter"
+        QPainter::CompositionMode_Plus
+        A plus B. Display the sum of the source image and destination image,
+        with color values approaching \c 255 (100%) as a limit.
+    \value "copy"
+        QPainter::CompositionMode_Source
+        A (B is ignored). Display the source image instead of the destination image.
+    \value "xor"
+        QPainter::CompositionMode_Xor
+        A xor B. Exclusive OR of the source image and destination image.
+    \value "qt-clear"
+        QPainter::CompositionMode_Clear
+    \value "qt-destination"
+        QPainter::CompositionMode_Destination
+    \value "qt-multiply"
+        QPainter::CompositionMode_Multiply
+    \value "qt-screen"
+        QPainter::CompositionMode_Screen
+    \value "qt-overlay"
+        QPainter::CompositionMode_Overlay
+    \value "qt-darken"
+        QPainter::CompositionMode_Darken
+    \value "qt-lighten"
+        QPainter::CompositionMode_Lighten
+    \value "qt-color-dodge"
+        QPainter::CompositionMode_ColorDodge
+    \value "qt-color-burn"
+        QPainter::CompositionMode_ColorBurn
+    \value "qt-hard-light"
+        QPainter::CompositionMode_HardLight
+    \value "qt-soft-light"
+        QPainter::CompositionMode_SoftLight
+    \value "qt-difference"
+        QPainter::CompositionMode_Difference
+    \value "qt-exclusion"
+        QPainter::CompositionMode_Exclusion
+
+    In compliance with the W3C standard, the extended composition modes beyond
+    the required modes are provided as "vendorName-operationName" syntax, for
+    example: QPainter::CompositionMode_Exclusion is provided as "qt-exclusion".
 */
 QV4::ReturnedValue QQuickJSContext2D::method_get_globalCompositeOperation(const QV4::FunctionObject *b, const QV4::Value *thisObject, const QV4::Value *, int)
 {
@@ -1418,7 +1425,7 @@ QV4::ReturnedValue QQuickJSContext2D::method_get_fillStyle(const QV4::FunctionOb
     QV4::Scoped<QQuickJSContext2D> r(scope, thisObject->as<QQuickJSContext2D>());
     CHECK_CONTEXT(r)
 
-    QColor color = r->d()->context()->state.fillStyle.color();
+    const QColor color = r->d()->context()->state.fillStyle.color().toRgb();
     if (color.isValid()) {
         if (color.alpha() == 255)
             RETURN_RESULT(scope.engine->newString(color.name()));
@@ -1442,7 +1449,7 @@ QV4::ReturnedValue QQuickJSContext2D::method_set_fillStyle(const QV4::FunctionOb
     QV4::ScopedValue value(scope, argc ? argv[0] : QV4::Value::undefinedValue());
 
    if (value->as<Object>()) {
-       QColor color = scope.engine->toVariant(value, qMetaTypeId<QColor>()).value<QColor>();
+       QColor color = QV4::ExecutionEngine::toVariant(value, QMetaType::fromType<QColor>()).value<QColor>();
        if (color.isValid()) {
            r->d()->context()->state.fillStyle = color;
            r->d()->context()->buffer()->setFillStyle(color);
@@ -1467,18 +1474,19 @@ QV4::ReturnedValue QQuickJSContext2D::method_set_fillStyle(const QV4::FunctionOb
    }
    RETURN_UNDEFINED();
 }
+
 /*!
     \qmlproperty enumeration QtQuick::Context2D::fillRule
-     Holds the current fill rule used for filling shapes. The following fill rules supported:
-     \list
-     \li Qt.OddEvenFill
-     \li Qt.WindingFill
-     \endlist
-     Note: Unlike the QPainterPath, the Canvas API uses the winding fill as the default fill rule.
-     The fillRule property is part of the context rendering state.
+    Holds the current fill rule used for filling shapes. The following fill rules are supported:
 
-     \sa fillStyle
- */
+    \value Qt.OddEvenFill  Qt::OddEvenFill
+    \value Qt.WindingFill  (default) Qt::WindingFill
+
+    \note Unlike QPainterPath, the Canvas API uses the winding fill as the default fill rule.
+    The fillRule property is part of the context rendering state.
+
+    \sa fillStyle
+*/
 QV4::ReturnedValue QQuickJSContext2D::method_get_fillRule(const QV4::FunctionObject *b, const QV4::Value *thisObject, const QV4::Value *, int)
 {
     QV4::Scope scope(b);
@@ -1527,7 +1535,7 @@ QV4::ReturnedValue QQuickJSContext2D::method_get_strokeStyle(const QV4::Function
     QV4::Scoped<QQuickJSContext2D> r(scope, thisObject->as<QQuickJSContext2D>());
     CHECK_CONTEXT(r)
 
-    QColor color = r->d()->context()->state.strokeStyle.color();
+    const QColor color = r->d()->context()->state.strokeStyle.color().toRgb();
     if (color.isValid()) {
         if (color.alpha() == 255)
             RETURN_RESULT(scope.engine->newString(color.name()));
@@ -1551,7 +1559,7 @@ QV4::ReturnedValue QQuickJSContext2D::method_set_strokeStyle(const QV4::Function
     QV4::ScopedValue value(scope, argc ? argv[0] : QV4::Value::undefinedValue());
 
     if (value->as<Object>()) {
-        QColor color = scope.engine->toVariant(value, qMetaTypeId<QColor>()).value<QColor>();
+        QColor color = QV4::ExecutionEngine::toVariant(value, QMetaType::fromType<QColor>()).value<QColor>();
         if (color.isValid()) {
             r->d()->context()->state.strokeStyle = color;
             r->d()->context()->buffer()->setStrokeStyle(color);
@@ -1732,48 +1740,49 @@ QV4::ReturnedValue QQuickJSContext2DPrototype::method_createConicalGradient(cons
 
 }
 /*!
-  \qmlmethod variant QtQuick::Context2D::createPattern(color color, enumeration patternMode)
-  This is a overload function.
-  Returns a CanvasPattern object that uses the given \a color and \a patternMode.
-  The valid pattern modes are:
-    \list
-    \li Qt.SolidPattern
-    \li Qt.Dense1Pattern
-    \li Qt.Dense2Pattern
-    \li Qt.Dense3Pattern
-    \li Qt.Dense4Pattern
-    \li Qt.Dense5Pattern
-    \li Qt.Dense6Pattern
-    \li Qt.Dense7Pattern
-    \li Qt.HorPattern
-    \li Qt.VerPattern
-    \li Qt.CrossPattern
-    \li Qt.BDiagPattern
-    \li Qt.FDiagPattern
-    \li Qt.DiagCrossPattern
-\endlist
+    \qmlmethod variant QtQuick::Context2D::createPattern(color color, enumeration patternMode)
+    This is an overloaded function.
+    Returns a CanvasPattern object that uses the given \a color and \a patternMode.
+    The valid pattern modes are:
+
+    \value Qt.SolidPattern      Qt::SolidPattern
+    \value Qt.Dense1Pattern     Qt::Dense1Pattern
+    \value Qt.Dense2Pattern     Qt::Dense2Pattern
+    \value Qt.Dense3Pattern     Qt::Dense3Pattern
+    \value Qt.Dense4Pattern     Qt::Dense4Pattern
+    \value Qt.Dense5Pattern     Qt::Dense5Pattern
+    \value Qt.Dense6Pattern     Qt::Dense6Pattern
+    \value Qt.Dense7Pattern     Qt::Dense7Pattern
+    \value Qt.HorPattern        Qt::HorPattern
+    \value Qt.VerPattern        Qt::VerPattern
+    \value Qt.CrossPattern      Qt::CrossPattern
+    \value Qt.BDiagPattern      Qt::BDiagPattern
+    \value Qt.FDiagPattern      Qt::FDiagPattern
+    \value Qt.DiagCrossPattern  Qt::DiagCrossPattern
+
     \sa Qt::BrushStyle
- */
+*/
 /*!
-  \qmlmethod variant QtQuick::Context2D::createPattern(Image image, string repetition)
-  Returns a CanvasPattern object that uses the given image and repeats in the direction(s) given by the repetition argument.
+    \qmlmethod variant QtQuick::Context2D::createPattern(Image image, string repetition)
+    Returns a CanvasPattern object that uses the given image and repeats in the
+    direction(s) given by the repetition argument.
 
-  The \a image parameter must be a valid Image item, a valid CanvasImageData object or loaded image url, if there is no image data, throws an INVALID_STATE_ERR exception.
+    The \a image parameter must be a valid Image item, a valid CanvasImageData
+    object or loaded image url. If there is no image data, thus function throws an
+    INVALID_STATE_ERR exception.
 
-  The allowed values for \a repetition are:
+    The allowed values for \a repetition are:
 
-  \list
-  \li "repeat"    - both directions
-  \li "repeat-x   - horizontal only
-  \li "repeat-y"  - vertical only
-  \li "no-repeat" - neither
-  \endlist
+    \value "repeat"    both directions
+    \value "repeat-x   horizontal only
+    \value "repeat-y"  vertical only
+    \value "no-repeat" neither
 
-  If the repetition argument is empty or null, the value "repeat" is used.
+    If the repetition argument is empty or null, the value "repeat" is used.
 
-  \sa strokeStyle
-  \sa fillStyle
-  */
+    \sa strokeStyle
+    \sa fillStyle
+*/
 QV4::ReturnedValue QQuickJSContext2DPrototype::method_createPattern(const QV4::FunctionObject *b, const QV4::Value *thisObject, const QV4::Value *argv, int argc)
 {
     QV4::Scope scope(b);
@@ -1783,7 +1792,8 @@ QV4::ReturnedValue QQuickJSContext2DPrototype::method_createPattern(const QV4::F
     if (argc >= 2) {
         QV4::Scoped<QQuickContext2DStyle> pattern(scope, scope.engine->memoryManager->allocate<QQuickContext2DStyle>());
 
-        QColor color = scope.engine->toVariant(argv[0], qMetaTypeId<QColor>()).value<QColor>();
+        QColor color = QV4::ExecutionEngine::toVariant(
+                    argv[0], QMetaType::fromType<QColor>()).value<QColor>();
         if (color.isValid()) {
             int patternMode = argv[1].toInt32();
             Qt::BrushStyle style = Qt::SolidPattern;
@@ -1836,13 +1846,20 @@ QV4::ReturnedValue QQuickJSContext2DPrototype::method_createPattern(const QV4::F
 // line styles
 /*!
     \qmlproperty string QtQuick::Context2D::lineCap
-     Holds the current line cap style.
-     The possible line cap styles are:
-    \list
-    \li butt - the end of each line has a flat edge perpendicular to the direction of the line, this is the default line cap value.
-    \li round - a semi-circle with the diameter equal to the width of the line must then be added on to the end of the line.
-    \li square - a rectangle with the length of the line width and the width of half the line width, placed flat against the edge perpendicular to the direction of the line.
-    \endlist
+    Holds the current line cap style.
+    The possible line cap styles are:
+
+    \value "butt"
+        (default) Qt::FlatCap the end of each line has a flat edge
+        perpendicular to the direction of the line.
+    \value "round"
+        Qt::RoundCap a semi-circle with the diameter equal to the width of the
+        line is added on to the end of the line.
+    \value "square"
+        Qt::SquareCap a rectangle with the length of the line width and the
+        width of half the line width, placed flat against the edge
+        perpendicular to the direction of the line.
+
     Other values are ignored.
 */
 QV4::ReturnedValue QQuickJSContext2D::method_get_lineCap(const QV4::FunctionObject *b, const QV4::Value *thisObject, const QV4::Value *, int)
@@ -1892,16 +1909,18 @@ QV4::ReturnedValue QQuickJSContext2D::method_set_lineCap(const QV4::FunctionObje
 
 /*!
     \qmlproperty string QtQuick::Context2D::lineJoin
-     Holds the current line join style. A join exists at any point in a subpath
-     shared by two consecutive lines. When a subpath is closed, then a join also exists
-     at its first point (equivalent to its last point) connecting the first and last lines in the subpath.
+    Holds the current line join style. A join exists at any point in a subpath
+    shared by two consecutive lines. When a subpath is closed, then a join also
+    exists at its first point (equivalent to its last point) connecting the
+    first and last lines in the subpath.
 
     The possible line join styles are:
-    \list
-    \li bevel - this is all that is rendered at joins.
-    \li round - a filled arc connecting the two aforementioned corners of the join, abutting (and not overlapping) the aforementioned triangle, with the diameter equal to the line width and the origin at the point of the join, must be rendered at joins.
-    \li miter - a second filled triangle must (if it can given the miter length) be rendered at the join, this is the default line join style.
-    \endlist
+
+    \value "bevel"  Qt::BevelJoin The triangular notch between the two lines is filled.
+    \value "round"  Qt::RoundJoin A circular arc between the two lines is filled.
+    \value "miter"  (default) Qt::MiterJoin The outer edges of the lines are extended to
+                    meet at an angle, and this area is filled.
+
     Other values are ignored.
 */
 QV4::ReturnedValue QQuickJSContext2D::method_get_lineJoin(const QV4::FunctionObject *b, const QV4::Value *thisObject, const QV4::Value *, int)
@@ -2350,8 +2369,8 @@ QV4::ReturnedValue QQuickJSContext2DPrototype::method_strokeRect(const QV4::Func
 
     \image qml-item-canvas-startAngle.png
 
-    The \a anticlockwise parameter is \c true for each arc in the figure above
-    because they are all drawn in the anticlockwise direction.
+    The \a anticlockwise parameter is \c false for each arc in the figure above
+    because they are all drawn in the clockwise direction.
 
     \sa arcTo, {http://www.w3.org/TR/2dcontext/#dom-context-2d-arc}{W3C's 2D
     Context Standard for arc()}
@@ -2468,7 +2487,7 @@ QV4::ReturnedValue QQuickJSContext2DPrototype::method_beginPath(const QV4::Funct
    \image qml-item-canvas-bezierCurveTo.png
 
   \sa {http://www.w3.org/TR/2dcontext/#dom-context-2d-beziercurveto}{W3C 2d context standard for bezierCurveTo}
-  \sa {http://www.openrise.com/lab/FlowerPower/}{The beautiful flower demo by using bezierCurveTo}
+  \sa {https://web.archive.org/web/20130505222636if_/http://www.openrise.com/lab/FlowerPower/}{The beautiful flower demo by using bezierCurveTo}
   */
 QV4::ReturnedValue QQuickJSContext2DPrototype::method_bezierCurveTo(const QV4::FunctionObject *b, const QV4::Value *thisObject, const QV4::Value *argv, int argc)
 {
@@ -2797,7 +2816,7 @@ QV4::ReturnedValue QQuickJSContext2DPrototype::method_caretBlinkRate(const QV4::
         \li font-style (optional):
         normal | italic | oblique
         \li font-variant (optional): normal | small-caps
-        \li font-weight (optional): normal | bold | 0 ... 99
+        \li font-weight (optional): normal | bold | 1 ... 1000
         \li font-size: Npx | Npt (where N is a positive number)
         \li font-family: See \l {http://www.w3.org/TR/CSS2/fonts.html#propdef-font-family}
     \endlist
@@ -2824,7 +2843,7 @@ QV4::ReturnedValue QQuickJSContext2D::method_set_font(const QV4::FunctionObject 
     CHECK_CONTEXT_SETTER(r)
 
     QV4::ScopedString s(scope, argc ? argv[0] : QV4::Value::undefinedValue(), QV4::ScopedString::Convert);
-    if (scope.engine->hasException)
+    if (scope.hasException())
         RETURN_UNDEFINED();
     QFont font = qt_font_from_string(s->toQString(), r->d()->context()->state.font);
     if (font != r->d()->context()->state.font) {
@@ -2834,19 +2853,20 @@ QV4::ReturnedValue QQuickJSContext2D::method_set_font(const QV4::FunctionObject 
 }
 
 /*!
-  \qmlproperty string QtQuick::Context2D::textAlign
+    \qmlproperty string QtQuick::Context2D::textAlign
 
-  Holds the current text alignment settings.
-  The possible values are:
-  \list
-    \li start
-    \li end
-    \li left
-    \li right
-    \li center
-  \endlist
-  Other values are ignored. The default value is "start".
-  */
+    Holds the current text alignment settings. The possible values are:
+
+    \value "start"  (default) Align to the start edge of the text (left side in
+                    left-to-right text, right side in right-to-left text).
+    \value "end"    Align to the end edge of the text (right side in left-to-right
+                    text, left side in right-to-left text).
+    \value "left"   Qt::AlignLeft
+    \value "right"  Qt::AlignRight
+    \value "center" Qt::AlignHCenter
+
+    Other values are ignored.
+*/
 QV4::ReturnedValue QQuickJSContext2D::method_get_textAlign(const QV4::FunctionObject *b, const QV4::Value *thisObject, const QV4::Value *, int)
 {
     QV4::Scope scope(b);
@@ -2876,7 +2896,7 @@ QV4::ReturnedValue QQuickJSContext2D::method_set_textAlign(const QV4::FunctionOb
     CHECK_CONTEXT_SETTER(r)
 
     QV4::ScopedString s(scope, argc ? argv[0] : QV4::Value::undefinedValue(), QV4::ScopedString::Convert);
-    if (scope.engine->hasException)
+    if (scope.hasException())
         RETURN_UNDEFINED();
     QString textAlign = s->toQString();
 
@@ -2901,20 +2921,19 @@ QV4::ReturnedValue QQuickJSContext2D::method_set_textAlign(const QV4::FunctionOb
 }
 
 /*!
-  \qmlproperty string QtQuick::Context2D::textBaseline
+    \qmlproperty string QtQuick::Context2D::textBaseline
 
-  Holds the current baseline alignment settings.
-  The possible values are:
-  \list
-    \li top
-    \li hanging
-    \li middle
-    \li alphabetic
-    \li ideographic
-    \li bottom
-  \endlist
-  Other values are ignored. The default value is "alphabetic".
-  */
+    Holds the current baseline alignment settings. The possible values are:
+
+    \value "top"            The top of the em square
+    \value "hanging"        The hanging baseline
+    \value "middle"         The middle of the em square
+    \value "alphabetic"     (default) The alphabetic baseline
+    \value "ideographic"    The ideographic-under baseline
+    \value "bottom"         The bottom of the em square
+
+    Other values are ignored. The default value is "alphabetic".
+*/
 QV4::ReturnedValue QQuickJSContext2D::method_get_textBaseline(const QV4::FunctionObject *b, const QV4::Value *thisObject, const QV4::Value *, int)
 {
     QV4::Scope scope(b);
@@ -2943,7 +2962,7 @@ QV4::ReturnedValue QQuickJSContext2D::method_set_textBaseline(const QV4::Functio
     QV4::Scoped<QQuickJSContext2D> r(scope, *thisObject);
     CHECK_CONTEXT_SETTER(r)
     QV4::ScopedString s(scope, argc ? argv[0] : QV4::Value::undefinedValue(), QV4::ScopedString::Convert);
-    if (scope.engine->hasException)
+    if (scope.hasException())
         RETURN_UNDEFINED();
     QString textBaseline = s->toQString();
 
@@ -3020,7 +3039,8 @@ QV4::ReturnedValue QQuickJSContext2DPrototype::method_strokeText(const QV4::Func
   \qmlmethod object QtQuick::Context2D::measureText(text)
 
   Returns an object with a \c width property, whose value is equivalent to
-  calling \l {QFontMetrics::width()} with the given \a text in the current font.
+  calling QFontMetrics::horizontalAdvance() with the given \a text in the
+  current font.
   */
 QV4::ReturnedValue QQuickJSContext2DPrototype::method_measureText(const QV4::FunctionObject *b, const QV4::Value *thisObject, const QV4::Value *argv, int argc)
 {
@@ -3577,7 +3597,7 @@ QV4::ReturnedValue QQuickJSContext2DPrototype::method_putImageData(const QV4::Fu
     \code
     var gradient = ctx.createLinearGradient(0, 0, 100, 100);
     gradient.addColorStop(0.3, Qt.rgba(1, 0, 0, 1));
-    gradient.addColorStop(0.7, 'rgba(0, 255, 255, 1');
+    gradient.addColorStop(0.7, 'rgba(0, 255, 255, 1)');
     \endcode
   */
 QV4::ReturnedValue QQuickContext2DStyle::gradient_proto_addColorStop(const QV4::FunctionObject *b, const QV4::Value *thisObject, const QV4::Value *argv, int argc)
@@ -3596,7 +3616,8 @@ QV4::ReturnedValue QQuickContext2DStyle::gradient_proto_addColorStop(const QV4::
         QColor color;
 
         if (argv[1].as<Object>()) {
-            color = scope.engine->toVariant(argv[1], qMetaTypeId<QColor>()).value<QColor>();
+            color = QV4::ExecutionEngine::toVariant(
+                        argv[1], QMetaType::fromType<QColor>()).value<QColor>();
         } else {
             color = qt_color_from_string(argv[1]);
         }
@@ -3892,16 +3913,16 @@ void QQuickContext2D::bezierCurveTo(qreal cp1x, qreal cp1y,
         m_path.cubicTo(QPointF(cp1x, cp1y), QPointF(cp2x, cp2y),  pt);
 }
 
-void QQuickContext2D::addArcTo(const QPointF& p1, const QPointF& p2, float radius)
+void QQuickContext2D::addArcTo(const QPointF& p1, const QPointF& p2, qreal radius)
 {
     QPointF p0(m_path.currentPosition());
 
     QPointF p1p0((p0.x() - p1.x()), (p0.y() - p1.y()));
     QPointF p1p2((p2.x() - p1.x()), (p2.y() - p1.y()));
-    float p1p0_length = std::sqrt(p1p0.x() * p1p0.x() + p1p0.y() * p1p0.y());
-    float p1p2_length = std::sqrt(p1p2.x() * p1p2.x() + p1p2.y() * p1p2.y());
+    qreal p1p0_length = std::hypot(p1p0.x(), p1p0.y());
+    qreal p1p2_length = std::hypot(p1p2.x(), p1p2.y());
 
-    double cos_phi = (p1p0.x() * p1p2.x() + p1p0.y() * p1p2.y()) / (p1p0_length * p1p2_length);
+    qreal cos_phi = QPointF::dotProduct(p1p0, p1p2) / (p1p0_length * p1p2_length);
 
     // The points p0, p1, and p2 are on the same straight line (HTML5, 4.8.11.1.8)
     // We could have used areCollinear() here, but since we're reusing
@@ -3911,16 +3932,16 @@ void QQuickContext2D::addArcTo(const QPointF& p1, const QPointF& p2, float radiu
         return;
     }
 
-    float tangent = radius / std::tan(std::acos(cos_phi) / 2);
-    float factor_p1p0 = tangent / p1p0_length;
+    qreal tangent = radius / std::tan(std::acos(cos_phi) / 2);
+    qreal factor_p1p0 = tangent / p1p0_length;
     QPointF t_p1p0((p1.x() + factor_p1p0 * p1p0.x()), (p1.y() + factor_p1p0 * p1p0.y()));
 
     QPointF orth_p1p0(p1p0.y(), -p1p0.x());
-    float orth_p1p0_length = std::sqrt(orth_p1p0.x() * orth_p1p0.x() + orth_p1p0.y() * orth_p1p0.y());
-    float factor_ra = radius / orth_p1p0_length;
+    qreal orth_p1p0_length = std::hypot(orth_p1p0.x(), orth_p1p0.y());
+    qreal factor_ra = radius / orth_p1p0_length;
 
     // angle between orth_p1p0 and p1p2 to get the right vector orthographic to p1p0
-    double cos_alpha = (orth_p1p0.x() * p1p2.x() + orth_p1p0.y() * p1p2.y()) / (orth_p1p0_length * p1p2_length);
+    qreal cos_alpha = QPointF::dotProduct(orth_p1p0, p1p2) / (orth_p1p0_length * p1p2_length);
     if (cos_alpha < 0.f)
         orth_p1p0 = QPointF(-orth_p1p0.x(), -orth_p1p0.y());
 
@@ -3928,20 +3949,15 @@ void QQuickContext2D::addArcTo(const QPointF& p1, const QPointF& p2, float radiu
 
     // calculate angles for addArc
     orth_p1p0 = QPointF(-orth_p1p0.x(), -orth_p1p0.y());
-    float sa = std::acos(orth_p1p0.x() / orth_p1p0_length);
-    if (orth_p1p0.y() < 0.f)
-        sa = 2 * M_PI - sa;
+    qreal sa = std::atan2(orth_p1p0.y(), orth_p1p0.x());
 
     // anticlockwise logic
     bool anticlockwise = false;
 
-    float factor_p1p2 = tangent / p1p2_length;
+    qreal factor_p1p2 = tangent / p1p2_length;
     QPointF t_p1p2((p1.x() + factor_p1p2 * p1p2.x()), (p1.y() + factor_p1p2 * p1p2.y()));
     QPointF orth_p1p2((t_p1p2.x() - p.x()), (t_p1p2.y() - p.y()));
-    float orth_p1p2_length = std::sqrt(orth_p1p2.x() * orth_p1p2.x() + orth_p1p2.y() * orth_p1p2.y());
-    float ea = std::acos(orth_p1p2.x() / orth_p1p2_length);
-    if (orth_p1p2.y() < 0)
-        ea = 2 * M_PI - ea;
+    qreal ea = std::atan2(orth_p1p2.y(), orth_p1p2.x());
     if ((sa > ea) && ((sa - ea) < M_PI))
         anticlockwise = true;
     if ((sa < ea) && ((ea - sa) > M_PI))
@@ -4209,36 +4225,6 @@ bool QQuickContext2D::isPointInPath(qreal x, qreal y) const
     return contains;
 }
 
-class QQuickContext2DThreadCleanup : public QObject
-{
-public:
-    QQuickContext2DThreadCleanup(QOpenGLContext *gl, QQuickContext2DTexture *t, QOffscreenSurface *s)
-        : context(gl), texture(t), surface(s)
-    { }
-
-    ~QQuickContext2DThreadCleanup()
-    {
-#if QT_CONFIG(opengl)
-        context->makeCurrent(surface);
-        delete texture;
-        context->doneCurrent();
-        delete context;
-#endif
-        surface->deleteLater();
-    }
-
-    QOpenGLContext *context;
-    QQuickContext2DTexture *texture;
-    QOffscreenSurface *surface;
-};
-
-class QQuickContext2DTextureCleanup : public QRunnable
-{
-public:
-    QQuickContext2DTexture *texture;
-    void run() override { delete texture; }
-};
-
 QMutex QQuickContext2D::mutex;
 
 QQuickContext2D::QQuickContext2D(QObject *parent)
@@ -4246,7 +4232,6 @@ QQuickContext2D::QQuickContext2D(QObject *parent)
     , m_buffer(new QQuickContext2DCommandBuffer)
     , m_v4engine(nullptr)
     , m_surface(nullptr)
-    , m_glContext(nullptr)
     , m_thread(nullptr)
     , m_grabbed(false)
 {
@@ -4257,36 +4242,8 @@ QQuickContext2D::~QQuickContext2D()
     mutex.lock();
     m_texture->setItem(nullptr);
     delete m_buffer;
+    m_texture->deleteLater();
 
-    if (m_renderTarget == QQuickCanvasItem::FramebufferObject) {
-#if QT_CONFIG(opengl)
-        if (m_renderStrategy == QQuickCanvasItem::Immediate && m_glContext) {
-            Q_ASSERT(QThread::currentThread() == m_glContext->thread());
-            m_glContext->makeCurrent(m_surface.data());
-            delete m_texture;
-            m_glContext->doneCurrent();
-            delete m_glContext;
-        } else if (m_texture->isOnCustomThread()) {
-            Q_ASSERT(m_glContext);
-            QQuickContext2DThreadCleanup *cleaner = new QQuickContext2DThreadCleanup(m_glContext, m_texture, m_surface.take());
-            cleaner->moveToThread(m_texture->thread());
-            cleaner->deleteLater();
-        } else {
-            if (m_canvas->window()) {
-                QQuickContext2DTextureCleanup *c = new QQuickContext2DTextureCleanup;
-                c->texture = m_texture;
-                m_canvas->window()->scheduleRenderJob(c, QQuickWindow::AfterSynchronizingStage);
-            } else {
-                m_texture->deleteLater();
-            }
-        }
-#endif
-    } else {
-        // Image based does not have GL resources, but must still be deleted
-        // on its designated thread after it has completed whatever it might
-        // currently be doing.
-        m_texture->deleteLater();
-    }
     mutex.unlock();
 }
 
@@ -4308,15 +4265,6 @@ void QQuickContext2D::init(QQuickCanvasItem *canvasItem, const QVariantMap &args
     m_renderTarget = canvasItem->renderTarget();
     m_renderStrategy = canvasItem->renderStrategy();
 
-#ifdef Q_OS_WIN
-    if (m_renderTarget == QQuickCanvasItem::FramebufferObject
-            && (m_renderStrategy != QQuickCanvasItem::Cooperative)) {
-        // On windows a context needs to be unbound set up sharing, so
-        // for simplicity we disallow FBO + !coop here.
-        m_renderTarget = QQuickCanvasItem::Image;
-    }
-#endif
-
     // Disable threaded background rendering if the platform has issues with it
     if (m_renderTarget == QQuickCanvasItem::FramebufferObject
             && m_renderStrategy == QQuickCanvasItem::Threaded
@@ -4324,27 +4272,13 @@ void QQuickContext2D::init(QQuickCanvasItem *canvasItem, const QVariantMap &args
         m_renderTarget = QQuickCanvasItem::Image;
     }
 
-    // Disable Framebuffer Object based rendering when not running with OpenGL.
-    // Same goes for the RHI based code path (regardless of the backend in use).
-    if (m_renderTarget == QQuickCanvasItem::FramebufferObject) {
-        QSGRendererInterface *rif = canvasItem->window()->rendererInterface();
-        if (rif && rif->graphicsApi() != QSGRendererInterface::OpenGL)
-            m_renderTarget = QQuickCanvasItem::Image;
-    }
+    // Disable framebuffer object based rendering always in Qt 6. It
+    // is not implemented in the new RHI-based graphics stack, but the
+    // enum value is still present. Switch to Image instead.
+    if (m_renderTarget == QQuickCanvasItem::FramebufferObject)
+        m_renderTarget = QQuickCanvasItem::Image;
 
-    switch (m_renderTarget) {
-    case QQuickCanvasItem::Image:
-        m_texture = new QQuickContext2DImageTexture;
-        break;
-    case QQuickCanvasItem::FramebufferObject:
-#if QT_CONFIG(opengl)
-        m_texture = new QQuickContext2DFBOTexture;
-#else
-        // It shouldn't be possible to use a FramebufferObject without OpenGL
-        m_texture = nullptr;
-#endif
-        break;
-    }
+    m_texture = new QQuickContext2DImageTexture;
 
     m_texture->setItem(canvasItem);
     m_texture->setCanvasWindow(canvasItem->canvasWindow().toRect());
@@ -4356,38 +4290,10 @@ void QQuickContext2D::init(QQuickCanvasItem *canvasItem, const QVariantMap &args
     m_thread = QThread::currentThread();
 
     QThread *renderThread = m_thread;
-#if QT_CONFIG(opengl)
-    QQuickWindow *window = canvasItem->window();
-    QQuickWindowPrivate *wd = QQuickWindowPrivate::get(window);
-    QThread *sceneGraphThread = wd->context->thread();
-
     if (m_renderStrategy == QQuickCanvasItem::Threaded)
         renderThread = QQuickContext2DRenderThread::instance(qmlEngine(canvasItem));
-    else if (m_renderStrategy == QQuickCanvasItem::Cooperative)
-        renderThread = sceneGraphThread;
-#else
-    if (m_renderStrategy == QQuickCanvasItem::Threaded)
-        renderThread = QQuickContext2DRenderThread::instance(qmlEngine(canvasItem));
-#endif
-
-
     if (renderThread && renderThread != QThread::currentThread())
         m_texture->moveToThread(renderThread);
-#if QT_CONFIG(opengl)
-    if (m_renderTarget == QQuickCanvasItem::FramebufferObject && renderThread != sceneGraphThread) {
-         auto openglRenderContext = static_cast<const QSGDefaultRenderContext *>(QQuickWindowPrivate::get(window)->context);
-         QOpenGLContext *cc = openglRenderContext->openglContext();
-         m_surface.reset(new QOffscreenSurface);
-         m_surface->setFormat(window->format());
-         m_surface->create();
-         m_glContext = new QOpenGLContext;
-         m_glContext->setFormat(cc->format());
-         m_glContext->setShareContext(cc);
-         if (renderThread != QThread::currentThread())
-             m_glContext->moveToThread(renderThread);
-         m_texture->initializeOpenGL(m_glContext, m_surface.data());
-    }
-#endif
     connect(m_texture, SIGNAL(textureChanged()), SIGNAL(textureChanged()));
 
     reset();
@@ -4427,34 +4333,8 @@ QQuickContext2DTexture *QQuickContext2D::texture() const
 QImage QQuickContext2D::toImage(const QRectF& bounds)
 {
     if (m_texture->thread() == QThread::currentThread()) {
-        // if we're either not rendering to an fbo or we have a separate opengl context we can just
-        // flush. Otherwise we have to make sure the shared opengl context is current before we do
-        // so. It may or may not be current already, depending on how this method is called.
-        if (m_renderTarget != QQuickCanvasItem::FramebufferObject || m_glContext) {
             flush();
             m_texture->grabImage(bounds);
-        } else {
-#if QT_CONFIG(opengl)
-            QQuickWindow *window = m_canvas->window();
-            QOpenGLContext *ctx =  window ? window->openglContext() : nullptr;
-            if (ctx && ctx->isValid()) {
-                if (ctx == QOpenGLContext::currentContext()) {
-                    flush();
-                } else {
-                    ctx->makeCurrent(window);
-                    flush();
-                    ctx->doneCurrent();
-                }
-                m_texture->grabImage(bounds);
-            } else {
-                qWarning() << "Cannot read pixels from canvas before opengl context is valid";
-                return QImage();
-            }
-#else
-            flush();
-            m_texture->grabImage(bounds);
-#endif
-        }
     } else if (m_renderStrategy == QQuickCanvasItem::Cooperative) {
         qWarning() << "Pixel readback is not supported in Cooperative mode, please try Threaded or Immediate mode";
         return QImage();

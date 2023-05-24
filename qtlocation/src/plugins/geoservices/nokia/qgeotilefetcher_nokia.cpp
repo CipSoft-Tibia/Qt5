@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeotilefetcher_nokia.h"
 #include "qgeomapreply_nokia.h"
@@ -76,7 +43,7 @@ QGeoTileFetcherNokia::QGeoTileFetcherNokia(const QVariantMap &parameters,
                                            QGeoTiledMappingManagerEngineNokia *engine,
                                            const QSize &tileSize,
                                            int ppi)
-:   QGeoTileFetcher(engine), m_engineNokia(engine), m_networkManager(networkManager), m_ppi(ppi), m_copyrightsReply(0),
+:   QGeoTileFetcher(engine), m_engineNokia(engine), m_networkManager(networkManager), m_ppi(ppi), m_copyrightsReply(nullptr),
     m_baseUriProvider(new QGeoUriProvider(this, parameters, QStringLiteral("here.mapping.host"), MAP_TILES_HOST)),
     m_aerialUriProvider(new QGeoUriProvider(this, parameters, QStringLiteral("here.mapping.host.aerial"), MAP_TILES_HOST_AERIAL))
 {
@@ -84,8 +51,7 @@ QGeoTileFetcherNokia::QGeoTileFetcherNokia(const QVariantMap &parameters,
     m_tileSize = qMax(tileSize.width(), tileSize.height());
     m_networkManager->setParent(this);
 
-    m_applicationId = parameters.value(QStringLiteral("here.app_id")).toString();
-    m_token = parameters.value(QStringLiteral("here.token")).toString();
+    m_apiKey = parameters.value(QStringLiteral("here.apiKey")).toString();
 }
 
 QGeoTileFetcherNokia::~QGeoTileFetcherNokia()
@@ -122,12 +88,12 @@ QGeoTiledMapReply *QGeoTileFetcherNokia::getTileImage(const QGeoTileSpec &spec)
     return mapReply;
 }
 
-QString QGeoTileFetcherNokia::getRequestString(const QGeoTileSpec &spec, int ppi)
+QString QGeoTileFetcherNokia::getRequestString(const QGeoTileSpec &spec, int ppi) const
 {
     if (!m_engineNokia)
         return QString();
 
-    static const QString http("http://");
+    static const QString http("https://");
     static const QString path("/maptile/2.1/maptile/newest/");
     static const QChar slash('/');
 
@@ -152,12 +118,9 @@ QString QGeoTileFetcherNokia::getRequestString(const QGeoTileSpec &spec, int ppi
     static const QString slashpng("/png8");
     requestString += slashpng;
 
-    if (!m_token.isEmpty() && !m_applicationId.isEmpty()) { // TODO: remove the if
-        requestString += "?token=";
-        requestString += m_token;
-
-        requestString += "&app_id=";
-        requestString += m_applicationId;
+    if (!m_apiKey.isEmpty()) { // TODO: remove the if
+        requestString += "?apiKey=";
+        requestString += m_apiKey;
     }
 
     requestString += "&ppi=" + QString::number(ppi);
@@ -235,14 +198,9 @@ QString QGeoTileFetcherNokia::getLanguageString() const
     // No "lg" param means that we want English.
 }
 
-QString QGeoTileFetcherNokia::token() const
+QString QGeoTileFetcherNokia::apiKey() const
 {
-    return m_token;
-}
-
-QString QGeoTileFetcherNokia::applicationId() const
-{
-    return m_applicationId;
+    return m_apiKey;
 }
 
 void QGeoTileFetcherNokia::copyrightsFetched()
@@ -271,19 +229,14 @@ void QGeoTileFetcherNokia::versionFetched()
 
 void QGeoTileFetcherNokia::fetchCopyrightsData()
 {
-    QString copyrightUrl = QStringLiteral("http://");
+    QString copyrightUrl = QStringLiteral("https://");
 
     copyrightUrl += m_baseUriProvider->getCurrentHost();
     copyrightUrl += QStringLiteral("/maptile/2.1/copyright/newest?output=json");
 
-    if (!token().isEmpty()) {
-        copyrightUrl += QStringLiteral("&token=");
-        copyrightUrl += token();
-    }
-
-    if (!applicationId().isEmpty()) {
-        copyrightUrl += QStringLiteral("&app_id=");
-        copyrightUrl += applicationId();
+    if (!apiKey().isEmpty()) {
+        copyrightUrl += QStringLiteral("&apiKey=");
+        copyrightUrl += apiKey();
     }
 
     QNetworkRequest netRequest((QUrl(copyrightUrl)));
@@ -297,25 +250,21 @@ void QGeoTileFetcherNokia::fetchCopyrightsData()
     if (m_copyrightsReply->isFinished()) {
         copyrightsFetched();
     } else {
-        connect(m_copyrightsReply, SIGNAL(finished()), this, SLOT(copyrightsFetched()));
+        connect(m_copyrightsReply, &QNetworkReply::finished,
+                this, &QGeoTileFetcherNokia::copyrightsFetched);
     }
 }
 
 void QGeoTileFetcherNokia::fetchVersionData()
 {
-    QString versionUrl = QStringLiteral("http://");
+    QString versionUrl = QStringLiteral("https://");
 
     versionUrl += m_baseUriProvider->getCurrentHost();
     versionUrl += QStringLiteral("/maptile/2.1/version");
 
-    if (!token().isEmpty()) {
-        versionUrl += QStringLiteral("?token=");
-        versionUrl += token();
-    }
-
-    if (!applicationId().isEmpty()) {
-        versionUrl += QStringLiteral("&app_id=");
-        versionUrl += applicationId();
+    if (!apiKey().isEmpty()) {
+        versionUrl += QStringLiteral("?apiKey=");
+        versionUrl += apiKey();
     }
 
     QNetworkRequest netRequest((QUrl(versionUrl)));
@@ -330,7 +279,8 @@ void QGeoTileFetcherNokia::fetchVersionData()
     if (m_versionReply->isFinished())
         versionFetched();
     else
-        connect(m_versionReply, SIGNAL(finished()), this, SLOT(versionFetched()));
+        connect(m_versionReply, &QNetworkReply::finished,
+                this, &QGeoTileFetcherNokia::versionFetched);
 }
 
 QT_END_NAMESPACE

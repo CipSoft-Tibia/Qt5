@@ -1,4 +1,4 @@
-#!/usr/bin/env/python
+#!/usr/bin/env vpython3
 
 # Copyright (c) 2018 The WebRTC project authors. All Rights Reserved.
 #
@@ -24,7 +24,7 @@ following executable in your out folder:
 You will be able to compile the same executable targeting your host machine
 by running:
 
-  $ python tools_webrtc/executable_host_build.py --executable_name random_exec
+  $ vpython3 tools_webrtc/executable_host_build.py --executable_name random_exec
 
 The generated executable will have the same name as the input executable with
 suffix '_host'.
@@ -54,7 +54,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, os.pardir))

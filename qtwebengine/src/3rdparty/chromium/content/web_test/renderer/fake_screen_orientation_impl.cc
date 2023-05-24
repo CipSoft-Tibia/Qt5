@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,10 @@
 
 #include <memory>
 
-#include "base/bind.h"
 #include "base/check.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
 #include "content/public/renderer/render_frame.h"
-#include "content/web_test/renderer/web_view_test_proxy.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/web/web_local_frame.h"
@@ -24,18 +22,18 @@ FakeScreenOrientationImpl::FakeScreenOrientationImpl() = default;
 FakeScreenOrientationImpl::~FakeScreenOrientationImpl() = default;
 
 void FakeScreenOrientationImpl::ResetData() {
-  web_view_test_proxy_ = nullptr;
+  web_view_ = nullptr;
   current_lock_ = device::mojom::ScreenOrientationLockType::DEFAULT;
-  device_orientation_ = blink::mojom::ScreenOrientation::kPortraitPrimary;
-  current_orientation_ = blink::mojom::ScreenOrientation::kPortraitPrimary;
+  device_orientation_ = display::mojom::ScreenOrientation::kPortraitPrimary;
+  current_orientation_ = display::mojom::ScreenOrientation::kPortraitPrimary;
   is_disabled_ = false;
   receivers_.Clear();
 }
 
 bool FakeScreenOrientationImpl::UpdateDeviceOrientation(
-    WebViewTestProxy* web_view_test_proxy,
-    blink::mojom::ScreenOrientation orientation) {
-  web_view_test_proxy_ = web_view_test_proxy;
+    blink::WebView* web_view,
+    display::mojom::ScreenOrientation orientation) {
+  web_view_ = web_view;
 
   if (device_orientation_ == orientation)
     return false;
@@ -46,62 +44,59 @@ bool FakeScreenOrientationImpl::UpdateDeviceOrientation(
 }
 
 bool FakeScreenOrientationImpl::UpdateScreenOrientation(
-    blink::mojom::ScreenOrientation orientation) {
+    display::mojom::ScreenOrientation orientation) {
   if (current_orientation_ == orientation)
     return false;
   current_orientation_ = orientation;
-  if (web_view_test_proxy_) {
-    web_view_test_proxy_->GetWebView()->SetScreenOrientationOverrideForTesting(
-        CurrentOrientationType());
+  if (web_view_) {
+    web_view_->SetScreenOrientationOverrideForTesting(CurrentOrientationType());
     return true;
   }
   return false;
 }
 
-base::Optional<blink::mojom::ScreenOrientation>
+absl::optional<display::mojom::ScreenOrientation>
 FakeScreenOrientationImpl::CurrentOrientationType() const {
   if (is_disabled_)
-    return base::nullopt;
+    return absl::nullopt;
   return current_orientation_;
 }
 
-void FakeScreenOrientationImpl::SetDisabled(
-    WebViewTestProxy* web_view_test_proxy,
-    bool disabled) {
+void FakeScreenOrientationImpl::SetDisabled(blink::WebView* web_view,
+                                            bool disabled) {
   if (is_disabled_ == disabled)
     return;
   is_disabled_ = disabled;
-  web_view_test_proxy_ = web_view_test_proxy;
-  if (web_view_test_proxy_) {
-    web_view_test_proxy_->GetWebView()->SetScreenOrientationOverrideForTesting(
-        CurrentOrientationType());
+  web_view_ = web_view;
+  if (web_view_) {
+    web_view_->SetScreenOrientationOverrideForTesting(CurrentOrientationType());
   }
 }
 
 bool FakeScreenOrientationImpl::IsOrientationAllowedByCurrentLock(
-    blink::mojom::ScreenOrientation orientation) {
+    display::mojom::ScreenOrientation orientation) {
   if (current_lock_ == device::mojom::ScreenOrientationLockType::DEFAULT ||
       current_lock_ == device::mojom::ScreenOrientationLockType::ANY) {
     return true;
   }
 
   switch (orientation) {
-    case blink::mojom::ScreenOrientation::kPortraitPrimary:
+    case display::mojom::ScreenOrientation::kPortraitPrimary:
       return current_lock_ ==
                  device::mojom::ScreenOrientationLockType::PORTRAIT_PRIMARY ||
              current_lock_ ==
                  device::mojom::ScreenOrientationLockType::PORTRAIT;
-    case blink::mojom::ScreenOrientation::kPortraitSecondary:
+    case display::mojom::ScreenOrientation::kPortraitSecondary:
       return current_lock_ ==
                  device::mojom::ScreenOrientationLockType::PORTRAIT_SECONDARY ||
              current_lock_ ==
                  device::mojom::ScreenOrientationLockType::PORTRAIT;
-    case blink::mojom::ScreenOrientation::kLandscapePrimary:
+    case display::mojom::ScreenOrientation::kLandscapePrimary:
       return current_lock_ ==
                  device::mojom::ScreenOrientationLockType::LANDSCAPE_PRIMARY ||
              current_lock_ ==
                  device::mojom::ScreenOrientationLockType::LANDSCAPE;
-    case blink::mojom::ScreenOrientation::kLandscapeSecondary:
+    case display::mojom::ScreenOrientation::kLandscapeSecondary:
       return current_lock_ == device::mojom::ScreenOrientationLockType::
                                   LANDSCAPE_SECONDARY ||
              current_lock_ ==
@@ -137,14 +132,14 @@ void FakeScreenOrientationImpl::OverrideAssociatedInterfaceProviderForFrame(
 void FakeScreenOrientationImpl::LockOrientation(
     device::mojom::ScreenOrientationLockType orientation,
     LockOrientationCallback callback) {
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       base::BindOnce(&FakeScreenOrientationImpl::UpdateLockSync,
                      base::Unretained(this), orientation, std::move(callback)));
 }
 
 void FakeScreenOrientationImpl::UnlockOrientation() {
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&FakeScreenOrientationImpl::ResetLockSync,
                                 base::Unretained(this)));
 }
@@ -168,18 +163,18 @@ void FakeScreenOrientationImpl::ResetLockSync() {
     UpdateScreenOrientation(device_orientation_);
 }
 
-blink::mojom::ScreenOrientation
+display::mojom::ScreenOrientation
 FakeScreenOrientationImpl::SuitableOrientationForCurrentLock() {
   switch (current_lock_) {
     case device::mojom::ScreenOrientationLockType::PORTRAIT_PRIMARY:
-      return blink::mojom::ScreenOrientation::kPortraitSecondary;
+      return display::mojom::ScreenOrientation::kPortraitSecondary;
     case device::mojom::ScreenOrientationLockType::LANDSCAPE_PRIMARY:
     case device::mojom::ScreenOrientationLockType::LANDSCAPE:
-      return blink::mojom::ScreenOrientation::kLandscapePrimary;
+      return display::mojom::ScreenOrientation::kLandscapePrimary;
     case device::mojom::ScreenOrientationLockType::LANDSCAPE_SECONDARY:
-      return blink::mojom::ScreenOrientation::kLandscapePrimary;
+      return display::mojom::ScreenOrientation::kLandscapePrimary;
     default:
-      return blink::mojom::ScreenOrientation::kPortraitPrimary;
+      return display::mojom::ScreenOrientation::kPortraitPrimary;
   }
 }
 

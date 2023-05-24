@@ -33,9 +33,8 @@
 
 #include <algorithm>
 
+#include "third_party/blink/public/platform/web_common.h"
 #include "third_party/blink/public/platform/web_vector.h"
-
-#include <algorithm>
 
 namespace blink {
 
@@ -91,4 +90,4 @@ class BLINK_PLATFORM_EXPORT WebTimeRanges : public WebVector<WebTimeRange> {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_TIME_RANGE_H_

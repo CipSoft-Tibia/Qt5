@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include <memory>
+#include <vector>
 
 #include "base/logging.h"
 #include "crypto/nss_util.h"
@@ -103,7 +104,7 @@ bool GenerateECKeyPairNSS(PK11SlotInfo* slot,
 
 ScopedSECKEYPrivateKey ImportNSSKeyFromPrivateKeyInfo(
     PK11SlotInfo* slot,
-    const std::vector<uint8_t>& input,
+    base::span<const uint8_t> input,
     bool permanent) {
   DCHECK(slot);
 

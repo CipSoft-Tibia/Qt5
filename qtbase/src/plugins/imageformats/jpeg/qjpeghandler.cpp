@@ -1,52 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qjpeghandler_p.h"
 
-#include <qimage.h>
+#include <qbuffer.h>
 #include <qcolorspace.h>
 #include <qcolortransform.h>
 #include <qdebug.h>
-#include <qvariant.h>
-#include <qvector.h>
-#include <qbuffer.h>
+#include <qimage.h>
+#include <qlist.h>
+#include <qloggingcategory.h>
 #include <qmath.h>
+#include <qvariant.h>
 #include <private/qicc_p.h>
 #include <private/qsimd_p.h>
 #include <private/qimage_p.h>   // for qt_getImageText
@@ -60,13 +25,6 @@
 
 // including jpeglib.h seems to be a little messy
 extern "C" {
-// jpeglib.h->jmorecfg.h tries to typedef int boolean; but this conflicts with
-// some Windows headers that may or may not have been included
-#ifdef HAVE_BOOLEAN
-#  undef HAVE_BOOLEAN
-#endif
-#define boolean jboolean
-
 #define XMD_H           // shut JPEGlib up
 #include <jpeglib.h>
 #ifdef const
@@ -75,6 +33,9 @@ extern "C" {
 }
 
 QT_BEGIN_NAMESPACE
+
+Q_LOGGING_CATEGORY(lcJpeg, "qt.gui.imageio.jpeg")
+
 QT_WARNING_DISABLE_GCC("-Wclobbered")
 
 Q_GUI_EXPORT void QT_FASTCALL qt_convert_rgb888_to_rgb32(quint32 *dst, const uchar *src, int len);
@@ -88,10 +49,8 @@ extern "C" {
 
 static void my_error_exit (j_common_ptr cinfo)
 {
+    (*cinfo->err->output_message)(cinfo);
     my_error_mgr* myerr = (my_error_mgr*) cinfo->err;
-    char buffer[JMSG_LENGTH_MAX];
-    (*cinfo->err->format_message)(cinfo, buffer);
-    qWarning("%s", buffer);
     longjmp(myerr->setjmp_buffer, 1);
 }
 
@@ -99,7 +58,7 @@ static void my_output_message(j_common_ptr cinfo)
 {
     char buffer[JMSG_LENGTH_MAX];
     (*cinfo->err->format_message)(cinfo, buffer);
-    qWarning("%s", buffer);
+    qCWarning(lcJpeg,"%s", buffer);
 }
 
 }
@@ -240,10 +199,7 @@ static bool ensureValidImage(QImage *dest, struct jpeg_decompress_struct *info,
         return false; // unsupported format
     }
 
-    if (dest->size() != size || dest->format() != format)
-        *dest = QImage(size, format);
-
-    return !dest->isNull();
+    return QImageIOHandler::allocateImage(size, format, dest);
 }
 
 static bool read_jpeg_image(QImage *outImage,
@@ -333,7 +289,7 @@ static bool read_jpeg_image(QImage *outImage,
         }
 
         // If high quality not required, use fast decompression
-        if( quality < HIGH_QUALITY_THRESHOLD ) {
+        if ( quality < HIGH_QUALITY_THRESHOLD ) {
             info->dct_method = JDCT_IFAST;
             info->do_fancy_upsampling = FALSE;
         }
@@ -359,7 +315,7 @@ static bool read_jpeg_image(QImage *outImage,
 
         // Allocate memory for the clipped QImage.
         if (!ensureValidImage(outImage, info, clip.size()))
-            longjmp(err->setjmp_buffer, 1);
+            return false;
 
         // Avoid memcpy() overhead if grayscale with no clipping.
         bool quickGray = (info->output_components == 1 &&
@@ -435,8 +391,10 @@ static bool read_jpeg_image(QImage *outImage,
             *outImage = outImage->copy(scaledClipRect);
         return !outImage->isNull();
     }
-    else
+    else {
+        my_output_message(j_common_ptr(info));
         return false;
+    }
 }
 
 struct my_jpeg_destination_mgr : public jpeg_destination_mgr {
@@ -501,7 +459,7 @@ static inline void set_text(const QImage &image, j_compress_ptr cinfo, const QSt
         if (!comment.isEmpty())
             comment += ": ";
         comment += it.value().toUtf8();
-        if (comment.length() > maxMarkerSize)
+        if (comment.size() > maxMarkerSize)
             comment.truncate(maxMarkerSize);
         jpeg_write_marker(cinfo, JPEG_COM, (const JOCTET *)comment.constData(), comment.size());
     }
@@ -519,7 +477,7 @@ static inline void write_icc_profile(const QImage &image, j_compress_ptr cinfo)
     const int markers = (iccProfile.size() + (maxIccMarkerSize - 1)) / maxIccMarkerSize;
     Q_ASSERT(markers < 256);
     for (int marker = 1; marker <= markers; ++marker) {
-        const int len = std::min(iccProfile.size() - index, maxIccMarkerSize);
+        const int len = qMin(iccProfile.size() - index, maxIccMarkerSize);
         const QByteArray block = iccSignature
                                + QByteArray(1, char(marker)) + QByteArray(1, char(markers))
                                + iccProfile.mid(index, len);
@@ -538,7 +496,7 @@ static bool do_write_jpeg_image(struct jpeg_compress_struct &cinfo,
                                 bool progressive)
 {
     bool success = false;
-    const QVector<QRgb> cmap = image.colorTable();
+    const QList<QRgb> cmap = image.colorTable();
 
     if (image.format() == QImage::Format_Invalid || image.format() == QImage::Format_Alpha8)
         return false;
@@ -575,6 +533,7 @@ static bool do_write_jpeg_image(struct jpeg_compress_struct &cinfo,
             cinfo.in_color_space = gray ? JCS_GRAYSCALE : JCS_RGB;
             break;
         case QImage::Format_Grayscale8:
+        case QImage::Format_Grayscale16:
             gray = true;
             cinfo.input_components = 1;
             cinfo.in_color_space = JCS_GRAYSCALE;
@@ -673,6 +632,12 @@ static bool do_write_jpeg_image(struct jpeg_compress_struct &cinfo,
             case QImage::Format_Grayscale8:
                 memcpy(row, image.constScanLine(cinfo.next_scanline), w);
                 break;
+            case QImage::Format_Grayscale16:
+                {
+                    QImage rowImg = image.copy(0, cinfo.next_scanline, w, 1).convertToFormat(QImage::Format_Grayscale8);
+                    memcpy(row, rowImg.constScanLine(0), w);
+                }
+                break;
             case QImage::Format_RGB888:
                 memcpy(row, image.constScanLine(cinfo.next_scanline), w * 3);
                 break;
@@ -710,6 +675,7 @@ static bool do_write_jpeg_image(struct jpeg_compress_struct &cinfo,
         jpeg_destroy_compress(&cinfo);
         success = true;
     } else {
+        my_output_message(j_common_ptr(&cinfo));
         jpeg_destroy_compress(&cinfo);
         success = false;
     }
@@ -757,7 +723,7 @@ public:
 
     ~QJpegHandlerPrivate()
     {
-        if(iod_src)
+        if (iod_src)
         {
             jpeg_destroy_decompress(&info);
             delete iod_src;
@@ -916,7 +882,7 @@ static QImageIOHandler::Transformations exif2Qt(int exifOrientation)
     case 8: // rotate 270 CW
         return QImageIOHandler::TransformationRotate270;
     }
-    qWarning("Invalid EXIF orientation");
+    qCWarning(lcJpeg, "Invalid EXIF orientation");
     return QImageIOHandler::TransformationNone;
 }
 
@@ -925,7 +891,7 @@ static QImageIOHandler::Transformations exif2Qt(int exifOrientation)
 */
 bool QJpegHandlerPrivate::readJpegHeader(QIODevice *device)
 {
-    if(state == Ready)
+    if (state == Ready)
     {
         state = Error;
         iod_src = new my_jpeg_source_mgr(device);
@@ -992,22 +958,22 @@ bool QJpegHandlerPrivate::readJpegHeader(QIODevice *device)
             state = ReadHeader;
             return true;
         }
-        else
-        {
+        else {
+            my_output_message(j_common_ptr(&info));
             return false;
         }
     }
-    else if(state == Error)
+    else if (state == Error)
         return false;
     return true;
 }
 
 bool QJpegHandlerPrivate::read(QImage *image)
 {
-    if(state == Ready)
+    if (state == Ready)
         readJpegHeader(q->device());
 
-    if(state == ReadHeader)
+    if (state == ReadHeader)
     {
         bool success = read_jpeg_image(image, scaledSize, scaledClipRect, clipRect, quality, rgb888ToRgb32ConverterPtr, &info, &err);
         if (success) {
@@ -1060,7 +1026,7 @@ QJpegHandler::~QJpegHandler()
 
 bool QJpegHandler::canRead() const
 {
-    if(d->state == QJpegHandlerPrivate::Ready && !canRead(device()))
+    if (d->state == QJpegHandlerPrivate::Ready && !canRead(device()))
         return false;
 
     if (d->state != QJpegHandlerPrivate::Error && d->state != QJpegHandlerPrivate::ReadingEnd) {
@@ -1074,7 +1040,7 @@ bool QJpegHandler::canRead() const
 bool QJpegHandler::canRead(QIODevice *device)
 {
     if (!device) {
-        qWarning("QJpegHandler::canRead() called with no device");
+        qCWarning(lcJpeg, "QJpegHandler::canRead() called with no device");
         return false;
     }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,14 +18,13 @@
 #include "net/cert/x509_certificate.h"
 #include "net/quic/address_utils.h"
 #include "net/quic/quic_address_mismatch.h"
-#include "net/third_party/quiche/src/common/platform/api/quiche_string_piece.h"
-#include "net/third_party/quiche/src/quic/core/crypto/crypto_handshake_message.h"
-#include "net/third_party/quiche/src/quic/core/crypto/crypto_protocol.h"
-#include "net/third_party/quiche/src/quic/core/quic_connection_id.h"
-#include "net/third_party/quiche/src/quic/core/quic_packets.h"
-#include "net/third_party/quiche/src/quic/core/quic_socket_address_coder.h"
-#include "net/third_party/quiche/src/quic/core/quic_time.h"
-#include "net/third_party/quiche/src/quic/core/quic_utils.h"
+#include "net/third_party/quiche/src/quiche/quic/core/crypto/crypto_handshake_message.h"
+#include "net/third_party/quiche/src/quiche/quic/core/crypto/crypto_protocol.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_connection_id.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_packets.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_socket_address_coder.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_time.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_utils.h"
 
 using quic::kMaxOutgoingPacketSize;
 using std::string;
@@ -63,19 +62,6 @@ QuicConnectionLogger::QuicConnectionLogger(
     std::unique_ptr<SocketPerformanceWatcher> socket_performance_watcher,
     const NetLogWithSource& net_log)
     : session_(session),
-      last_received_packet_size_(0),
-      no_packet_received_after_ping_(false),
-      previous_received_packet_size_(0),
-      num_out_of_order_received_packets_(0),
-      num_out_of_order_large_received_packets_(0),
-      num_packets_received_(0),
-      num_frames_received_(0),
-      num_duplicate_frames_received_(0),
-      num_incorrect_connection_ids_(0),
-      num_undecryptable_packets_(0),
-      num_duplicate_packets_(0),
-      num_blocked_frames_received_(0),
-      num_blocked_frames_sent_(0),
       connection_description_(connection_description),
       socket_performance_watcher_(std::move(socket_performance_watcher)),
       event_logger_(session, net_log) {}
@@ -98,9 +84,9 @@ QuicConnectionLogger::~QuicConnectionLogger() {
 
   const quic::QuicConnectionStats& stats = session_->connection()->GetStats();
   UMA_HISTOGRAM_TIMES("Net.QuicSession.MinRTT",
-                      base::TimeDelta::FromMicroseconds(stats.min_rtt_us));
+                      base::Microseconds(stats.min_rtt_us));
   UMA_HISTOGRAM_TIMES("Net.QuicSession.SmoothedRTT",
-                      base::TimeDelta::FromMicroseconds(stats.srtt_us));
+                      base::Microseconds(stats.srtt_us));
 
   if (num_frames_received_ > 0) {
     int duplicate_stream_frame_per_thousand =
@@ -162,6 +148,8 @@ void QuicConnectionLogger::OnFrameAddedToPacket(const quic::QuicFrame& frame) {
     case quic::PATH_CHALLENGE_FRAME:
       break;
     case quic::STOP_SENDING_FRAME:
+      base::UmaHistogramSparse("Net.QuicSession.StopSendingErrorCodeClient",
+                               frame.stop_sending_frame.error_code);
       break;
     case quic::MESSAGE_FRAME:
       break;
@@ -183,40 +171,40 @@ void QuicConnectionLogger::OnStreamFrameCoalesced(
 }
 
 void QuicConnectionLogger::OnPacketSent(
-    const quic::SerializedPacket& serialized_packet,
+    quic::QuicPacketNumber packet_number,
+    quic::QuicPacketLength packet_length,
+    bool has_crypto_handshake,
     quic::TransmissionType transmission_type,
+    quic::EncryptionLevel encryption_level,
+    const quic::QuicFrames& retransmittable_frames,
+    const quic::QuicFrames& nonretransmittable_frames,
     quic::QuicTime sent_time) {
   // 4.4.1.4.  Minimum Packet Size
   // The payload of a UDP datagram carrying the Initial packet MUST be
   // expanded to at least 1200 octets
   const quic::QuicPacketLength kMinClientInitialPacketLength = 1200;
-  const quic::QuicPacketLength encrypted_length =
-      serialized_packet.encrypted_length;
-  switch (serialized_packet.encryption_level) {
+  switch (encryption_level) {
     case quic::ENCRYPTION_INITIAL:
       UMA_HISTOGRAM_CUSTOM_COUNTS("Net.QuicSession.SendPacketSize.Initial",
-                                  encrypted_length, 1, kMaxOutgoingPacketSize,
-                                  50);
-      if (encrypted_length < kMinClientInitialPacketLength) {
+                                  packet_length, 1, kMaxOutgoingPacketSize, 50);
+      if (packet_length < kMinClientInitialPacketLength) {
         UMA_HISTOGRAM_CUSTOM_COUNTS(
             "Net.QuicSession.TooSmallInitialSentPacket",
-            kMinClientInitialPacketLength - encrypted_length, 1,
+            kMinClientInitialPacketLength - packet_length, 1,
             kMinClientInitialPacketLength, 50);
       }
       break;
     case quic::ENCRYPTION_HANDSHAKE:
       UMA_HISTOGRAM_CUSTOM_COUNTS("Net.QuicSession.SendPacketSize.Hanshake",
-                                  encrypted_length, 1, kMaxOutgoingPacketSize,
-                                  50);
+                                  packet_length, 1, kMaxOutgoingPacketSize, 50);
       break;
     case quic::ENCRYPTION_ZERO_RTT:
       UMA_HISTOGRAM_CUSTOM_COUNTS("Net.QuicSession.SendPacketSize.0RTT",
-                                  encrypted_length, 1, kMaxOutgoingPacketSize,
-                                  50);
+                                  packet_length, 1, kMaxOutgoingPacketSize, 50);
       break;
     case quic::ENCRYPTION_FORWARD_SECURE:
       UMA_HISTOGRAM_CUSTOM_COUNTS(
-          "Net.QuicSession.SendPacketSize.ForwardSecure", encrypted_length, 1,
+          "Net.QuicSession.SendPacketSize.ForwardSecure", packet_length, 1,
           kMaxOutgoingPacketSize, 50);
       break;
     case quic::NUM_ENCRYPTION_LEVELS:
@@ -224,7 +212,10 @@ void QuicConnectionLogger::OnPacketSent(
       break;
   }
 
-  event_logger_.OnPacketSent(serialized_packet, transmission_type, sent_time);
+  event_logger_.OnPacketSent(packet_number, packet_length, has_crypto_handshake,
+                             transmission_type, encryption_level,
+                             retransmittable_frames, nonretransmittable_frames,
+                             sent_time);
 }
 
 void QuicConnectionLogger::OnPacketLoss(
@@ -234,6 +225,12 @@ void QuicConnectionLogger::OnPacketLoss(
     quic::QuicTime detection_time) {
   event_logger_.OnPacketLoss(lost_packet_number, encryption_level,
                              transmission_type, detection_time);
+}
+
+void QuicConnectionLogger::OnConfigProcessed(
+    const quic::QuicSentPacketManager::DebugDelegate::SendParameters&
+        parameters) {
+  event_logger_.OnConfigProcessed(parameters);
 }
 
 void QuicConnectionLogger::OnPingSent() {
@@ -290,8 +287,9 @@ void QuicConnectionLogger::OnProtocolVersionMismatch(
   // TODO(rtenneti): Add logging.
 }
 
-void QuicConnectionLogger::OnPacketHeader(
-    const quic::QuicPacketHeader& header) {
+void QuicConnectionLogger::OnPacketHeader(const quic::QuicPacketHeader& header,
+                                          quic::QuicTime receive_time,
+                                          quic::EncryptionLevel level) {
   if (!first_received_packet_number_.IsInitialized()) {
     first_received_packet_number_ = header.packet_number;
   } else if (header.packet_number < first_received_packet_number_) {
@@ -338,7 +336,7 @@ void QuicConnectionLogger::OnPacketHeader(
     no_packet_received_after_ping_ = false;
   }
   last_received_packet_number_ = header.packet_number;
-  event_logger_.OnPacketHeader(header);
+  event_logger_.OnPacketHeader(header, receive_time, level);
 }
 
 void QuicConnectionLogger::OnStreamFrame(const quic::QuicStreamFrame& frame) {
@@ -361,6 +359,8 @@ void QuicConnectionLogger::OnCryptoFrame(const quic::QuicCryptoFrame& frame) {
 
 void QuicConnectionLogger::OnStopSendingFrame(
     const quic::QuicStopSendingFrame& frame) {
+  base::UmaHistogramSparse("Net.QuicSession.StopSendingErrorCodeServer",
+                           frame.error_code);
   event_logger_.OnStopSendingFrame(frame);
 }
 
@@ -485,7 +485,7 @@ void QuicConnectionLogger::OnVersionNegotiationPacket(
 void QuicConnectionLogger::OnCryptoHandshakeMessageReceived(
     const quic::CryptoHandshakeMessage& message) {
   if (message.tag() == quic::kSHLO) {
-    quiche::QuicheStringPiece address;
+    absl::string_view address;
     quic::QuicSocketAddressCoder decoder;
     if (message.GetStringPiece(quic::kCADR, &address) &&
         decoder.Decode(address.data(), address.size())) {
@@ -570,7 +570,7 @@ void QuicConnectionLogger::OnRttChanged(quic::QuicTime::Delta rtt) const {
   if (microseconds != 0 &&
       socket_performance_watcher_->ShouldNotifyUpdatedRTT()) {
     socket_performance_watcher_->OnUpdatedRTTAvailable(
-        base::TimeDelta::FromMicroseconds(rtt.ToMicroseconds()));
+        base::Microseconds(rtt.ToMicroseconds()));
   }
 }
 

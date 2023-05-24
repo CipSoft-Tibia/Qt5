@@ -1,10 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/metrics/metrics_provider.h"
 
 #include "base/notreached.h"
+#include "components/metrics/metrics_features.h"
 #include "third_party/metrics_proto/chrome_user_metrics_extension.pb.h"
 
 namespace metrics {
@@ -22,7 +23,14 @@ void MetricsProvider::AsyncInit(base::OnceClosure done_callback) {
   std::move(done_callback).Run();
 }
 
+bool MetricsProvider::ProvideHistograms() {
+  return true;
+}
+
 void MetricsProvider::OnDidCreateMetricsLog() {
+  if (base::FeatureList::IsEnabled(features::kEmitHistogramsEarlier)) {
+    emitted_ = ProvideHistograms();
+  }
 }
 
 void MetricsProvider::OnRecordingEnabled() {
@@ -30,6 +38,8 @@ void MetricsProvider::OnRecordingEnabled() {
 
 void MetricsProvider::OnRecordingDisabled() {
 }
+
+void MetricsProvider::OnClientStateCleared() {}
 
 void MetricsProvider::OnAppEnterBackground() {
 }
@@ -69,7 +79,14 @@ void MetricsProvider::ProvidePreviousSessionData(
 void MetricsProvider::ProvideCurrentSessionData(
     ChromeUserMetricsExtension* uma_proto) {
   ProvideStabilityMetrics(uma_proto->mutable_system_profile());
+
+  if (!base::FeatureList::IsEnabled(features::kEmitHistogramsEarlier) ||
+      !emitted_) {
+    ProvideHistograms();
+  }
 }
+
+void MetricsProvider::ProvideCurrentSessionUKMData() {}
 
 void MetricsProvider::ProvideStabilityMetrics(
     SystemProfileProto* system_profile_proto) {

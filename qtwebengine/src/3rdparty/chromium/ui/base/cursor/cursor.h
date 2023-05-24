@@ -1,48 +1,53 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_BASE_CURSOR_CURSOR_H_
 #define UI_BASE_CURSOR_CURSOR_H_
 
+#include <vector>
+
 #include "base/component_export.h"
-#include "build/build_config.h"
+#include "base/memory/scoped_refptr.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/cursor/mojom/cursor_type.mojom-shared.h"
+#include "ui/base/cursor/platform_cursor.h"
 #include "ui/gfx/geometry/point.h"
-
-#if defined(OS_WIN)
-#include "base/win/windows_types.h"
-#endif
 
 namespace ui {
 
-#if defined(OS_WIN)
-typedef ::HCURSOR PlatformCursor;
-#else
-typedef void* PlatformCursor;
-#endif
+struct COMPONENT_EXPORT(UI_BASE_CURSOR) CursorData {
+ public:
+  CursorData();
+  CursorData(std::vector<SkBitmap> bitmaps, gfx::Point hotspot);
+  CursorData(const CursorData&);
+  ~CursorData();
+
+  // `bitmaps` contains at least 1 element. Animated cursors (e.g.
+  // `CursorType::kWait`, `CursorType::kProgress`) are represented as a list
+  // of images, so a bigger number is expected.
+  std::vector<SkBitmap> bitmaps;
+  gfx::Point hotspot;
+};
 
 // Ref-counted cursor that supports both default and custom cursors.
-class COMPONENT_EXPORT(UI_BASE_CURSOR_BASE) Cursor {
+class COMPONENT_EXPORT(UI_BASE_CURSOR) Cursor {
  public:
+  // Creates a custom cursor with the provided parameters. `bitmap` dimensions
+  // and `image_scale_factor` are DCHECKed to avoid integer overflow when
+  // calculating the final cursor image size.
+  static Cursor NewCustom(SkBitmap bitmap,
+                          gfx::Point hotspot,
+                          float image_scale_factor = 1.0f);
   Cursor();
-
-  // Implicit constructor.
   Cursor(mojom::CursorType type);
-
-  // Allow copy.
   Cursor(const Cursor& cursor);
-
   ~Cursor();
 
-  void SetPlatformCursor(const PlatformCursor& platform);
-
-  void RefCustomCursor();
-  void UnrefCustomCursor();
+  void SetPlatformCursor(scoped_refptr<PlatformCursor> platform_cursor);
 
   mojom::CursorType type() const { return type_; }
-  PlatformCursor platform() const { return platform_cursor_; }
+  scoped_refptr<PlatformCursor> platform() const { return platform_cursor_; }
   float image_scale_factor() const { return image_scale_factor_; }
   void set_image_scale_factor(float scale) { image_scale_factor_ = scale; }
 
@@ -61,23 +66,20 @@ class COMPONENT_EXPORT(UI_BASE_CURSOR_BASE) Cursor {
   bool operator==(mojom::CursorType type) const { return type_ == type; }
   bool operator!=(mojom::CursorType type) const { return type_ != type; }
 
-  void operator=(const Cursor& cursor);
-
  private:
-  // The basic cursor type.
+  // Custom cursor constructor.
+  Cursor(SkBitmap bitmap, gfx::Point hotspot, float image_scale_factor);
+
   mojom::CursorType type_ = mojom::CursorType::kNull;
 
-  // The native platform cursor.
-  PlatformCursor platform_cursor_ = 0;
+  scoped_refptr<PlatformCursor> platform_cursor_;
+
+  // Only used for custom cursors:
+  SkBitmap custom_bitmap_;
+  gfx::Point custom_hotspot_;
 
   // The scale factor for the cursor bitmap.
   float image_scale_factor_ = 1.0f;
-
-  // The hotspot for the cursor. This is only used for the custom cursor type.
-  gfx::Point custom_hotspot_;
-
-  // The bitmap for the cursor. This is only used for the custom cursor type.
-  SkBitmap custom_bitmap_;
 };
 
 }  // namespace ui

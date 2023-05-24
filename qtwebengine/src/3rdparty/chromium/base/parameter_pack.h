@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,29 +11,18 @@
 #include <tuple>
 #include <type_traits>
 
-#include "base/template_util.h"
-#include "build/build_config.h"
+#include "base/containers/contains.h"
 
 namespace base {
 
 // Checks if any of the elements in |ilist| is true.
-// Similar to std::any_of for the case of constexpr initializer_list.
 inline constexpr bool any_of(std::initializer_list<bool> ilist) {
-  for (auto c : ilist) {
-    if (c)
-      return true;
-  }
-  return false;
+  return base::Contains(ilist, true);
 }
 
 // Checks if all of the elements in |ilist| are true.
-// Similar to std::all_of for the case of constexpr initializer_list.
 inline constexpr bool all_of(std::initializer_list<bool> ilist) {
-  for (auto c : ilist) {
-    if (!c)
-      return false;
-  }
-  return true;
+  return !base::Contains(ilist, false);
 }
 
 // Counts the elements in |ilist| that are equal to |value|.
@@ -47,48 +36,24 @@ inline constexpr size_t count(std::initializer_list<T> ilist, T value) {
   return c;
 }
 
-template <class... Ts >
-struct if_all;
-
-template <>
-struct if_all<>
-    : std::integral_constant<bool, true> {};
-
-template <class T, class... Ts >
-struct if_all<T, Ts...>
-    : std::conditional<T::value, if_all<Ts...>, std::integral_constant<bool, false>>::type {};
-
-
-template <class... Ts >
-struct if_any;
-
-template <>
-struct if_any<>
-    : std::integral_constant<bool, false> {};
-
-template <class T, class... Ts >
-struct if_any<T, Ts...>
-    : std::conditional<T::value, std::integral_constant<bool, true>, if_any<Ts...>>::type {};
-
-constexpr size_t pack_npos = -1;
+constexpr size_t pack_npos = static_cast<size_t>(-1);
 
 template <typename... Ts>
 struct ParameterPack {
   // Checks if |Type| occurs in the parameter pack.
   template <typename Type>
-  using HasType = bool_constant<if_any<std::is_same<Type, Ts>...>::value>;
+  using HasType =
+      std::bool_constant<any_of({std::is_same<Type, Ts>::value...})>;
 
   // Checks if the parameter pack only contains |Type|.
   template <typename Type>
-  using OnlyHasType = bool_constant<if_all<std::is_same<Type, Ts>...>::value>;
+  using OnlyHasType =
+      std::bool_constant<all_of({std::is_same<Type, Ts>::value...})>;
 
-  // Breaks build with MSVC 2017 but it is not used.
-#if !defined(COMPILER_MSVC)
   // Checks if |Type| occurs only once in the parameter pack.
   template <typename Type>
   using IsUniqueInPack =
-      bool_constant<count({std::is_same<Type, Ts>::value...}, true) == 1>;
-#endif
+      std::bool_constant<count({std::is_same<Type, Ts>::value...}, true) == 1>;
 
   // Returns the zero-based index of |Type| within |Pack...| or |pack_npos| if
   // it's not within the pack.
@@ -109,37 +74,32 @@ struct ParameterPack {
 
   // Checks if every type in the parameter pack is the same.
   using IsAllSameType =
-      bool_constant<if_all<std::is_same<NthType<0>, Ts>...>::value>;
+      std::bool_constant<all_of({std::is_same<NthType<0>, Ts>::value...})>;
 };
 
 template <>
 struct ParameterPack<> {
   // Checks if |Type| occurs in the parameter pack.
   template <typename Type>
-  using HasType = bool_constant<false>;
-
+  using HasType = std::bool_constant<false>;
   // Checks if the parameter pack only contains |Type|.
   template <typename Type>
-  using OnlyHasType = bool_constant<true>;
-
+  using OnlyHasType = std::bool_constant<true>;
   // Checks if |Type| occurs only once in the parameter pack.
   template <typename Type>
-  using IsUniqueInPack = bool_constant<false>;
-
+  using IsUniqueInPack = std::bool_constant<false>;
   // Returns the zero-based index of |Type| within |Pack...| or |pack_npos| if
   // it's not within the pack.
   template <typename Type>
   static constexpr size_t IndexInPack() {
     return pack_npos;
   }
-
   // Helper for extracting the Nth type from a parameter pack.
   template <size_t N>
   using NthType = void;
-
   // Checks if every type in the parameter pack is the same.
   using IsAllSameType =
-      bool_constant<true>;
+      std::bool_constant<true>;
 };
 
 }  // namespace base

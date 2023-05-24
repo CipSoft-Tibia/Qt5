@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,8 @@
 
 #include <vector>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
@@ -20,18 +21,20 @@ namespace signin {
 // the potential results and/or errors returned after such events have occurred.
 class TestIdentityManagerObserver : IdentityManager::Observer {
  public:
+  using PrimaryAccountChangedCallback =
+      base::OnceCallback<void(PrimaryAccountChangeEvent)>;
+
   explicit TestIdentityManagerObserver(IdentityManager* identity_manager);
+
+  TestIdentityManagerObserver(const TestIdentityManagerObserver&) = delete;
+  TestIdentityManagerObserver& operator=(const TestIdentityManagerObserver&) =
+      delete;
+
   ~TestIdentityManagerObserver() override;
 
-  void SetOnPrimaryAccountSetCallback(base::OnceClosure callback);
-  const CoreAccountInfo& PrimaryAccountFromSetCallback();
-
-  void SetOnPrimaryAccountClearedCallback(base::OnceClosure callback);
-  const CoreAccountInfo& PrimaryAccountFromClearedCallback();
-
-  void SetOnUnconsentedPrimaryAccountChangedCallback(
-      base::OnceClosure callback);
-  const CoreAccountInfo& UnconsentedPrimaryAccountFromCallback();
+  void SetOnPrimaryAccountChangedCallback(
+      PrimaryAccountChangedCallback callback);
+  const PrimaryAccountChangeEvent& GetPrimaryAccountChangedEvent();
 
   void SetOnRefreshTokenUpdatedCallback(base::OnceClosure callback);
   const CoreAccountInfo& AccountFromRefreshTokenUpdatedCallback();
@@ -64,12 +67,8 @@ class TestIdentityManagerObserver : IdentityManager::Observer {
 
  private:
   // IdentityManager::Observer:
-  void OnPrimaryAccountSet(
-      const CoreAccountInfo& primary_account_info) override;
-  void OnPrimaryAccountCleared(
-      const CoreAccountInfo& previous_primary_account_info) override;
-  void OnUnconsentedPrimaryAccountChanged(
-      const CoreAccountInfo& unconsented_primary_account_info) override;
+  void OnPrimaryAccountChanged(
+      const PrimaryAccountChangeEvent& event_details) override;
   void OnRefreshTokenUpdatedForAccount(
       const CoreAccountInfo& account_info) override;
   void OnRefreshTokenRemovedForAccount(
@@ -90,16 +89,10 @@ class TestIdentityManagerObserver : IdentityManager::Observer {
   void StartBatchOfRefreshTokenStateChanges();
   void OnEndBatchOfRefreshTokenStateChanges() override;
 
-  IdentityManager* identity_manager_;
+  raw_ptr<IdentityManager> identity_manager_;
 
-  base::OnceClosure on_primary_account_set_callback_;
-  CoreAccountInfo primary_account_from_set_callback_;
-
-  base::OnceClosure on_primary_account_cleared_callback_;
-  CoreAccountInfo primary_account_from_cleared_callback_;
-
-  base::OnceClosure on_unconsented_primary_account_callback_;
-  CoreAccountInfo unconsented_primary_account_from_callback_;
+  PrimaryAccountChangedCallback on_primary_account_changed_callback_;
+  PrimaryAccountChangeEvent on_primary_account_changed_event_;
 
   base::OnceClosure on_refresh_token_updated_callback_;
   CoreAccountInfo account_from_refresh_token_updated_callback_;
@@ -126,8 +119,6 @@ class TestIdentityManagerObserver : IdentityManager::Observer {
   bool is_inside_batch_ = false;
   bool was_called_account_removed_with_info_callback_ = false;
   std::vector<std::vector<CoreAccountId>> batch_change_records_;
-
-  DISALLOW_COPY_AND_ASSIGN(TestIdentityManagerObserver);
 };
 
 }  // namespace signin

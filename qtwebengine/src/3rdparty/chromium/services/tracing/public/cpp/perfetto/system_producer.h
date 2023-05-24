@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,7 @@ namespace tracing {
 class COMPONENT_EXPORT(TRACING_CPP) SystemProducer : public PerfettoProducer,
                                                      public perfetto::Producer {
  public:
-  SystemProducer(PerfettoTaskRunner* task_runner);
+  explicit SystemProducer(base::tracing::PerfettoTaskRunner*);
   ~SystemProducer() override;
 
   // Initiate connection to the system service. Should only be called once on

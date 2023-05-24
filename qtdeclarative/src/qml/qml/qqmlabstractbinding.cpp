@@ -1,47 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlabstractbinding_p.h"
 
 #include <QtQml/qqmlinfo.h>
 #include <private/qqmlbinding_p.h>
 #include <private/qqmlvaluetypeproxybinding_p.h>
+#include <private/qqmlvmemetaobject_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -89,7 +54,7 @@ void QQmlAbstractBinding::addToObject()
             while (b && (b->targetPropertyIndex().coreIndex() != coreIndex ||
                          b->targetPropertyIndex().hasValueTypeIndex()))
                 b = b->nextBinding();
-            Q_ASSERT(b && b->isValueTypeProxy());
+            Q_ASSERT(b && b->kind() == QQmlAbstractBinding::ValueTypeProxy);
             proxy = static_cast<QQmlValueTypeProxyBinding *>(b);
         }
 
@@ -144,12 +109,13 @@ void QQmlAbstractBinding::removeFromObject()
 
         // Find the value type binding
         QQmlAbstractBinding *vtbinding = data->bindings;
-        while (vtbinding && (vtbinding->targetPropertyIndex().coreIndex() != coreIndex ||
-                             vtbinding->targetPropertyIndex().hasValueTypeIndex())) {
+        Q_ASSERT(vtbinding);
+        while (vtbinding->targetPropertyIndex().coreIndex() != coreIndex
+               || vtbinding->targetPropertyIndex().hasValueTypeIndex()) {
             vtbinding = vtbinding->nextBinding();
             Q_ASSERT(vtbinding);
         }
-        Q_ASSERT(vtbinding->isValueTypeProxy());
+        Q_ASSERT(vtbinding->kind() == QQmlAbstractBinding::ValueTypeProxy);
 
         QQmlValueTypeProxyBinding *vtproxybinding =
             static_cast<QQmlValueTypeProxyBinding *>(vtbinding);
@@ -189,19 +155,133 @@ void QQmlAbstractBinding::removeFromObject()
     data->clearBindingBit(coreIndex);
 }
 
-void QQmlAbstractBinding::printBindingLoopError(QQmlProperty &prop)
+void QQmlAbstractBinding::printBindingLoopError(const QQmlProperty &prop)
 {
     qmlWarning(prop.object()) << QString(QLatin1String("Binding loop detected for property \"%1\"")).arg(prop.name());
 }
 
+void QQmlAbstractBinding::getPropertyData(
+        const QQmlPropertyData **propertyData, QQmlPropertyData *valueTypeData) const
+{
+    Q_ASSERT(propertyData);
+
+    QQmlData *data = QQmlData::get(m_target.data(), false);
+    Q_ASSERT(data);
+
+    if (Q_UNLIKELY(!data->propertyCache))
+        data->propertyCache = QQmlMetaType::propertyCache(m_target->metaObject());
+
+    *propertyData = data->propertyCache->property(m_targetIndex.coreIndex());
+    Q_ASSERT(*propertyData);
+
+    if (Q_UNLIKELY(m_targetIndex.hasValueTypeIndex() && valueTypeData)) {
+        const QMetaObject *valueTypeMetaObject
+                = QQmlMetaType::metaObjectForValueType((*propertyData)->propType());
+        Q_ASSERT(valueTypeMetaObject);
+        QMetaProperty vtProp = valueTypeMetaObject->property(m_targetIndex.valueTypeIndex());
+        valueTypeData->setFlags(QQmlPropertyData::flagsForProperty(vtProp));
+        valueTypeData->setPropType(vtProp.metaType());
+        valueTypeData->setCoreIndex(m_targetIndex.valueTypeIndex());
+    }
+}
+
+void QQmlAbstractBinding::updateCanUseAccessor()
+{
+    setCanUseAccessor(true); // Always use accessors, except when:
+    if (auto interceptorMetaObject = QQmlInterceptorMetaObject::get(targetObject())) {
+        if (!m_targetIndex.isValid() || interceptorMetaObject->intercepts(m_targetIndex))
+            setCanUseAccessor(false);
+    }
+}
+
+void QQmlAbstractBinding::setTarget(const QQmlProperty &prop)
+{
+    auto pd = QQmlPropertyPrivate::get(prop);
+    setTarget(prop.object(), pd->core, &pd->valueTypeData);
+}
+
+bool QQmlAbstractBinding::setTarget(
+        QObject *object, const QQmlPropertyData &core, const QQmlPropertyData *valueType)
+{
+    return setTarget(object, core.coreIndex(), core.isAlias(),
+                     valueType ? valueType->coreIndex() : -1);
+}
+
+static const QQmlPropertyData *getObjectPropertyData(QObject *object, int coreIndex)
+{
+    QQmlData *data = QQmlData::get(object, true);
+    if (!data)
+        return nullptr;
+
+    if (!data->propertyCache) {
+        data->propertyCache = QQmlMetaType::propertyCache(object);
+        if (!data->propertyCache)
+            return nullptr;
+    }
+
+    const QQmlPropertyData *propertyData = data->propertyCache->property(coreIndex);
+    Q_ASSERT(propertyData);
+    return propertyData;
+}
+
+bool QQmlAbstractBinding::setTarget(
+        QObject *object, int coreIndex, bool coreIsAlias, int valueTypeIndex)
+{
+    auto invalidate = [this]() {
+        m_target = nullptr;
+        m_targetIndex = QQmlPropertyIndex();
+        return false;
+    };
+
+    if (!object)
+        return invalidate();
+
+    m_target = object;
+
+    for (bool isAlias = coreIsAlias; isAlias;) {
+        QQmlVMEMetaObject *vme = QQmlVMEMetaObject::getForProperty(object, coreIndex);
+
+        int aValueTypeIndex;
+        if (!vme->aliasTarget(coreIndex, &object, &coreIndex, &aValueTypeIndex)) {
+            // can't resolve id (yet)
+            return invalidate();
+        }
+
+        const QQmlPropertyData *propertyData = getObjectPropertyData(object, coreIndex);
+        if (!propertyData)
+            return invalidate();
+
+        if (aValueTypeIndex != -1) {
+            if (propertyData->propType().flags().testFlag(QMetaType::PointerToQObject)) {
+                // deep alias
+                propertyData->readProperty(object, &object);
+                coreIndex = aValueTypeIndex;
+                valueTypeIndex = -1;
+                propertyData = getObjectPropertyData(object, coreIndex);
+                if (!propertyData)
+                    return invalidate();
+            } else {
+                valueTypeIndex = aValueTypeIndex;
+            }
+        }
+
+        m_target = object;
+        isAlias = propertyData->isAlias();
+        coreIndex = propertyData->coreIndex();
+    }
+    m_targetIndex = QQmlPropertyIndex(coreIndex, valueTypeIndex);
+
+    QQmlData *data = QQmlData::get(m_target.data(), true);
+    if (!data->propertyCache)
+        data->propertyCache = QQmlMetaType::propertyCache(m_target->metaObject());
+
+    return true;
+}
+
+
 QString QQmlAbstractBinding::expression() const
 {
     return QLatin1String("<Unknown>");
-}
-
-bool QQmlAbstractBinding::isValueTypeProxy() const
-{
-    return false;
 }
 
 QT_END_NAMESPACE

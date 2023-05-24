@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,10 @@
 
 #include "base/android/jni_string.h"
 #include "base/android/scoped_java_ref.h"
-#include "base/bind.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "net/base/auth.h"
 #include "net/base/net_errors.h"
 #include "net/http/http_auth.h"
@@ -26,8 +25,7 @@ using base::android::ConvertJavaStringToUTF8;
 using base::android::JavaParamRef;
 using base::android::ScopedJavaLocalRef;
 
-namespace net {
-namespace android {
+namespace net::android {
 
 JavaNegotiateResultWrapper::JavaNegotiateResultWrapper(
     const scoped_refptr<base::TaskRunner>& callback_task_runner,
@@ -35,8 +33,7 @@ JavaNegotiateResultWrapper::JavaNegotiateResultWrapper(
     : callback_task_runner_(callback_task_runner),
       thread_safe_callback_(std::move(thread_safe_callback)) {}
 
-JavaNegotiateResultWrapper::~JavaNegotiateResultWrapper() {
-}
+JavaNegotiateResultWrapper::~JavaNegotiateResultWrapper() = default;
 
 void JavaNegotiateResultWrapper::SetResult(JNIEnv* env,
                                            const JavaParamRef<jobject>& obj,
@@ -68,8 +65,7 @@ HttpAuthNegotiateAndroid::HttpAuthNegotiateAndroid(
       env, ConvertUTF8ToJavaString(env, GetAuthAndroidNegotiateAccountType())));
 }
 
-HttpAuthNegotiateAndroid::~HttpAuthNegotiateAndroid() {
-}
+HttpAuthNegotiateAndroid::~HttpAuthNegotiateAndroid() = default;
 
 bool HttpAuthNegotiateAndroid::Init(const NetLogWithSource& net_log) {
   return true;
@@ -124,7 +120,7 @@ int HttpAuthNegotiateAndroid::GenerateAuthToken(
   auth_token_ = auth_token;
   completion_callback_ = std::move(callback);
   scoped_refptr<base::SingleThreadTaskRunner> callback_task_runner =
-      base::ThreadTaskRunnerHandle::Get();
+      base::SingleThreadTaskRunner::GetCurrentDefault();
   base::OnceCallback<void(int, const std::string&)> thread_safe_callback =
       base::BindOnce(&HttpAuthNegotiateAndroid::SetResultInternal,
                      weak_factory_.GetWeakPtr());
@@ -170,5 +166,4 @@ void HttpAuthNegotiateAndroid::SetResultInternal(int result,
   std::move(completion_callback_).Run(result);
 }
 
-}  // namespace android
-}  // namespace net
+}  // namespace net::android

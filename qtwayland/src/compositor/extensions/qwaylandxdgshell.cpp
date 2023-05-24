@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwaylandxdgshell.h"
 #include "qwaylandxdgshell_p.h"
@@ -71,7 +45,7 @@ void QWaylandXdgShellPrivate::unregisterXdgSurface(QWaylandXdgSurface *xdgSurfac
 
 QWaylandXdgSurface *QWaylandXdgShellPrivate::xdgSurfaceFromSurface(QWaylandSurface *surface)
 {
-    for (QWaylandXdgSurface *xdgSurface : qAsConst(m_xdgSurfaces)) {
+    for (QWaylandXdgSurface *xdgSurface : std::as_const(m_xdgSurfaces)) {
         if (surface == xdgSurface->surface())
             return xdgSurface;
     }
@@ -134,8 +108,8 @@ void QWaylandXdgShellPrivate::xdg_wm_base_pong(Resource *resource, uint32_t seri
 
 /*!
  * \qmltype XdgShell
- * \inqmlmodule QtWayland.Compositor
  * \instantiates QWaylandXdgShell
+ * \inqmlmodule QtWayland.Compositor.XdgShell
  * \since 5.12
  * \brief Provides an extension for desktop-style user interfaces.
  *
@@ -149,8 +123,8 @@ void QWaylandXdgShellPrivate::xdg_wm_base_pong(Resource *resource, uint32_t seri
  * an instance of the XdgShell component and add it to the list of extensions
  * supported by the compositor:
  *
- * \qml \QtMinorVersion
- * import QtWayland.Compositor 1.\1
+ * \qml
+ * import QtWayland.Compositor.XdgShell
  *
  * WaylandCompositor {
  *     XdgShell {
@@ -223,7 +197,7 @@ QByteArray QWaylandXdgShell::interfaceName()
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::XdgShell::ping(WaylandClient client)
+ * \qmlmethod void XdgShell::ping(WaylandClient client)
  *
  * Sends a ping event to \a client. If the client replies to the event the
  * \l pong signal will be emitted.
@@ -455,8 +429,8 @@ void QWaylandXdgSurfacePrivate::xdg_surface_set_window_geometry(QtWaylandServer:
 
 /*!
  * \qmltype XdgSurface
- * \inqmlmodule QtWayland.Compositor
  * \instantiates QWaylandXdgSurface
+ * \inqmlmodule QtWayland.Compositor.XdgShell
  * \since 5.12
  * \brief XdgSurface provides desktop-style compositor-specific features to an xdg surface.
  *
@@ -501,7 +475,7 @@ QWaylandXdgSurface::QWaylandXdgSurface(QWaylandXdgShell *xdgShell, QWaylandSurfa
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::XdgSurface::initialize(object xdgShell, object surface, object client, int id)
+ * \qmlmethod void XdgSurface::initialize(object xdgShell, object surface, object client, int id)
  *
  * Initializes the XdgSurface, associating it with the given \a xdgShell, \a surface,
  * \a client, and \a id.
@@ -527,7 +501,7 @@ void QWaylandXdgSurface::initialize(QWaylandXdgShell *xdgShell, QWaylandSurface 
 }
 
 /*!
- * \qmlproperty enum QtWaylandCompositor::XdgSurface::windowType
+ * \qmlproperty enum XdgSurface::windowType
  *
  * This property holds the window type of the XdgSurface.
  */
@@ -538,7 +512,7 @@ Qt::WindowType QWaylandXdgSurface::windowType() const
 }
 
 /*!
- * \qmlproperty rect QtWaylandCompositor::XdgSurface::windowGeometry
+ * \qmlproperty rect XdgSurface::windowGeometry
  *
  * This property holds the window geometry of the QWaylandXdgSurface. The window
  * geometry describes the window's visible bounds from the user's perspective.
@@ -583,7 +557,7 @@ void QWaylandXdgSurface::handleBufferScaleChanged()
 }
 
 /*!
- * \qmlproperty XdgShell QtWaylandCompositor::XdgSurface::shell
+ * \qmlproperty XdgShell XdgSurface::shell
  *
  * This property holds the shell associated with this XdgSurface.
  */
@@ -600,7 +574,7 @@ QWaylandXdgShell *QWaylandXdgSurface::shell() const
 }
 
 /*!
- * \qmlproperty WaylandSurface QtWaylandCompositor::XdgSurface::surface
+ * \qmlproperty WaylandSurface XdgSurface::surface
  *
  * This property holds the surface associated with this XdgSurface.
  */
@@ -617,7 +591,7 @@ QWaylandSurface *QWaylandXdgSurface::surface() const
 }
 
 /*!
- * \qmlproperty XdgToplevel QtWaylandCompositor::XdgSurface::toplevel
+ * \qmlproperty XdgToplevel XdgSurface::toplevel
  *
  * This property holds the properties and methods that are specific to the
  * toplevel XdgSurface.
@@ -640,7 +614,7 @@ QWaylandXdgToplevel *QWaylandXdgSurface::toplevel() const
 }
 
 /*!
- * \qmlproperty XdgPopup QtWaylandCompositor::XdgSurface::popup
+ * \qmlproperty XdgPopup XdgSurface::popup
  *
  * This property holds the properties and methods that are specific to the
  * popup XdgSurface.
@@ -705,8 +679,8 @@ QWaylandQuickShellIntegration *QWaylandXdgSurface::createIntegration(QWaylandQui
 
 /*!
  * \qmltype XdgToplevel
- * \inqmlmodule QtWayland.Compositor
  * \instantiates QWaylandXdgToplevel
+ * \inqmlmodule QtWayland.Compositor.XdgShell
  * \since 5.12
  * \brief XdgToplevel represents the toplevel window specific parts of an xdg surface.
  *
@@ -736,7 +710,7 @@ QWaylandQuickShellIntegration *QWaylandXdgSurface::createIntegration(QWaylandQui
 QWaylandXdgToplevel::QWaylandXdgToplevel(QWaylandXdgSurface *xdgSurface, QWaylandResource &resource)
     : QObject(*new QWaylandXdgToplevelPrivate(xdgSurface, resource))
 {
-    QVector<QWaylandXdgToplevel::State> states;
+    QList<QWaylandXdgToplevel::State> states;
     sendConfigure({0, 0}, states);
 }
 
@@ -751,7 +725,7 @@ QWaylandXdgToplevel::~QWaylandXdgToplevel()
 }
 
 /*!
- * \qmlproperty XdgSurface QtWaylandCompositor::XdgToplevel::xdgSurface
+ * \qmlproperty XdgSurface XdgToplevel::xdgSurface
  *
  * This property holds the XdgSurface for this XdgToplevel.
  */
@@ -768,7 +742,7 @@ QWaylandXdgSurface *QWaylandXdgToplevel::xdgSurface() const
 }
 
 /*!
- * \qmlproperty XdgToplevel QtWaylandCompositor::XdgToplevel::parentToplevel
+ * \qmlproperty XdgToplevel XdgToplevel::parentToplevel
  *
  * This property holds the XdgToplevel parent of this XdgToplevel.
  */
@@ -786,7 +760,7 @@ QWaylandXdgToplevel *QWaylandXdgToplevel::parentToplevel() const
 }
 
 /*!
- * \qmlproperty string QtWaylandCompositor::XdgToplevel::title
+ * \qmlproperty string XdgToplevel::title
  *
  * This property holds the title of the XdgToplevel.
  */
@@ -803,7 +777,7 @@ QString QWaylandXdgToplevel::title() const
 }
 
 /*!
- * \qmlproperty string QtWaylandCompositor::XdgToplevel::appId
+ * \qmlproperty string XdgToplevel::appId
  *
  * This property holds the app id of the XdgToplevel.
  */
@@ -820,7 +794,7 @@ QString QWaylandXdgToplevel::appId() const
 }
 
 /*!
- * \qmlproperty size QtWaylandCompositor::XdgToplevel::maxSize
+ * \qmlproperty size XdgToplevel::maxSize
  *
  * This property holds the maximum size of the XdgToplevel as requested by the client.
  *
@@ -841,7 +815,7 @@ QSize QWaylandXdgToplevel::maxSize() const
 }
 
 /*!
- * \qmlproperty size QtWaylandCompositor::XdgToplevel::minSize
+ * \qmlproperty size XdgToplevel::minSize
  *
  * This property holds the minimum size of the XdgToplevel as requested by the client.
  *
@@ -866,14 +840,14 @@ QSize QWaylandXdgToplevel::minSize() const
  *
  * This property holds the last states the client acknowledged for this QWaylandToplevel.
  */
-QVector<QWaylandXdgToplevel::State> QWaylandXdgToplevel::states() const
+QList<QWaylandXdgToplevel::State> QWaylandXdgToplevel::states() const
 {
     Q_D(const QWaylandXdgToplevel);
     return d->m_lastAckedConfigure.states;
 }
 
 /*!
- * \qmlproperty bool QtWaylandCompositor::XdgToplevel::maximized
+ * \qmlproperty bool XdgToplevel::maximized
  *
  * This property holds whether the client has acknowledged that it should be maximized.
  */
@@ -890,7 +864,7 @@ bool QWaylandXdgToplevel::maximized() const
 }
 
 /*!
- * \qmlproperty bool QtWaylandCompositor::XdgToplevel::fullscreen
+ * \qmlproperty bool XdgToplevel::fullscreen
  *
  * This property holds whether the client has acknowledged that it should be fullscreen.
  */
@@ -907,7 +881,7 @@ bool QWaylandXdgToplevel::fullscreen() const
 }
 
 /*!
- * \qmlproperty bool QtWaylandCompositor::XdgToplevel::resizing
+ * \qmlproperty bool XdgToplevel::resizing
  *
  * This property holds whether the client has acknowledged that it is being resized.
  */
@@ -924,7 +898,7 @@ bool QWaylandXdgToplevel::resizing() const
 }
 
 /*!
- * \qmlproperty bool QtWaylandCompositor::XdgToplevel::activated
+ * \qmlproperty bool XdgToplevel::activated
  *
  * This property holds whether toplevel is drawing itself as having input focus.
  */
@@ -950,7 +924,7 @@ bool QWaylandXdgToplevel::activated() const
  */
 
 /*!
- * \qmlproperty enumeration QtWaylandCompositor::XdgToplevel::decorationMode
+ * \qmlproperty enumeration XdgToplevel::decorationMode
  *
  * This property holds the current window decoration mode for this toplevel.
  *
@@ -975,7 +949,7 @@ QWaylandXdgToplevel::DecorationMode QWaylandXdgToplevel::decorationMode() const
 }
 
 /*!
- * \qmlmethod size QtWaylandCompositor::XdgToplevel::sizeForResize(size size, point delta, uint edges)
+ * \qmlmethod size XdgToplevel::sizeForResize(size size, point delta, uint edges)
  *
  * Convenience for computing the new size given the current \a size, a \a delta, and
  * the \a edges active in the drag.
@@ -1014,7 +988,7 @@ QSize QWaylandXdgToplevel::sizeForResize(const QSizeF &size, const QPointF &delt
  * of the surface. A size of zero means the client is free to decide the size.
  * Known \a states are enumerated in QWaylandXdgToplevel::State.
  */
-uint QWaylandXdgToplevel::sendConfigure(const QSize &size, const QVector<QWaylandXdgToplevel::State> &states)
+uint QWaylandXdgToplevel::sendConfigure(const QSize &size, const QList<QWaylandXdgToplevel::State> &states)
 {
     if (!size.isValid()) {
         qWarning() << "Can't configure xdg_toplevel with an invalid size" << size;
@@ -1031,22 +1005,22 @@ uint QWaylandXdgToplevel::sendConfigure(const QSize &size, const QVector<QWaylan
 }
 
 /*!
- * \qmlmethod int QtWaylandCompositor::XdgToplevel::sendConfigure(size size, list<int> states)
+ * \qmlmethod int XdgToplevel::sendConfigure(size size, list<int> states)
  *
  * Sends a configure event to the client. \a size contains the pixel size of the surface.
  * A size of zero means the client is free to decide the size.
  * Known \a states are enumerated in XdgToplevel::State.
  */
-uint QWaylandXdgToplevel::sendConfigure(const QSize &size, const QVector<int> &states)
+uint QWaylandXdgToplevel::sendConfigure(const QSize &size, const QList<int> &states)
 {
-    QVector<State> s;
+    QList<State> s;
     for (auto state : states)
         s << State(state);
     return sendConfigure(size, s);
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::XdgToplevel::sendClose()
+ * \qmlmethod void XdgToplevel::sendClose()
  *
  * Sends a close event to the client. The client may choose to ignore the event.
  */
@@ -1061,7 +1035,7 @@ void QWaylandXdgToplevel::sendClose()
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::XdgToplevel::sendMaximized(size size)
+ * \qmlmethod void XdgToplevel::sendMaximized(size size)
  *
  * Convenience for sending a configure event with the maximized state set, and
  * fullscreen and resizing removed. The activated state is left in its current state.
@@ -1089,7 +1063,7 @@ uint QWaylandXdgToplevel::sendMaximized(const QSize &size)
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::XdgToplevel::sendUnmaximized(size size)
+ * \qmlmethod void XdgToplevel::sendUnmaximized(size size)
  *
  * Convenience for sending a configure event with the maximized, fullscreen and
  * resizing states removed, and fullscreen and resizing removed. The activated
@@ -1119,7 +1093,7 @@ uint QWaylandXdgToplevel::sendUnmaximized(const QSize &size)
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::XdgToplevel::sendFullscreen(size size)
+ * \qmlmethod void XdgToplevel::sendFullscreen(size size)
  *
  * Convenience for sending a configure event with the fullscreen state set, and
  * maximized and resizing removed. The activated state is left in its current state.
@@ -1151,7 +1125,7 @@ uint QWaylandXdgToplevel::sendFullscreen(const QSize &size)
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::XdgToplevel::sendResizing(size maxSize)
+ * \qmlmethod void XdgToplevel::sendResizing(size maxSize)
  *
  * Convenience for sending a configure event with the resizing state set, and
  * maximized and fullscreen removed. The activated state is left in its current state.
@@ -1197,7 +1171,7 @@ QWaylandXdgToplevel *QWaylandXdgToplevel::fromResource(wl_resource *resource)
 }
 
 /*!
- * \qmlsignal QtWaylandCompositor::XdgShell::xdgSurfaceCreated(XdgSurface xdgSurface)
+ * \qmlsignal XdgShell::xdgSurfaceCreated(XdgSurface xdgSurface)
  *
  * This signal is emitted when the client has created a \c xdg_surface.
  * Note that \a xdgSurface is not mapped, i.e. according to the \c xdg-shell
@@ -1217,7 +1191,7 @@ QWaylandXdgToplevel *QWaylandXdgToplevel::fromResource(wl_resource *resource)
  */
 
 /*!
- * \qmlsignal QtWaylandCompositor::XdgShell::toplevelCreated(XdgToplevel toplevel, XdgSurface xdgSurface)
+ * \qmlsignal XdgShell::toplevelCreated(XdgToplevel toplevel, XdgSurface xdgSurface)
  *
  * This signal is emitted when the client has created a \c xdg_toplevel.
  * A common use case is to let the handler of this signal instantiate a ShellSurfaceItem or
@@ -1237,7 +1211,7 @@ QWaylandXdgToplevel *QWaylandXdgToplevel::fromResource(wl_resource *resource)
  */
 
 /*!
- * \qmlsignal QtWaylandCompositor::XdgShell::popupCreated(XdgPopup popup, XdgSurface xdgSurface)
+ * \qmlsignal XdgShell::popupCreated(XdgPopup popup, XdgSurface xdgSurface)
  *
  * This signal is emitted when the client has created a \c xdg_popup.
  * A common use case is to let the handler of this signal instantiate a ShellSurfaceItem or
@@ -1257,7 +1231,7 @@ QWaylandXdgToplevel *QWaylandXdgToplevel::fromResource(wl_resource *resource)
  */
 
 /*!
- * \qmlsignal QtWaylandCompositor::XdgShell::pong(int serial)
+ * \qmlsignal XdgShell::pong(int serial)
  *
  * This signal is emitted when the client has responded to a ping event with serial, \a serial.
  *
@@ -1308,7 +1282,7 @@ void QWaylandXdgToplevelPrivate::handleAckConfigure(uint serial)
             break;
     }
 
-    QVector<uint> changedStates;
+    QList<uint> changedStates;
     std::set_symmetric_difference(
                 m_lastAckedConfigure.states.begin(), m_lastAckedConfigure.states.end(),
                 config.states.begin(), config.states.end(),
@@ -1543,8 +1517,8 @@ void QWaylandXdgToplevelPrivate::xdg_toplevel_set_minimized(QtWaylandServer::xdg
 
 /*!
  * \qmltype XdgPopup
- * \inqmlmodule QtWayland.Compositor
  * \instantiates QWaylandXdgPopup
+ * \inqmlmodule QtWayland.Compositor.XdgShell
  * \since 5.12
  * \brief XdgPopup represents the popup specific parts of and xdg surface.
  *
@@ -1578,7 +1552,7 @@ QWaylandXdgPopup::QWaylandXdgPopup(QWaylandXdgSurface *xdgSurface, QWaylandXdgSu
 }
 
 /*!
- * \qmlproperty XdgSurface QtWaylandCompositor::XdgPopup::xdgSurface
+ * \qmlproperty XdgSurface XdgPopup::xdgSurface
  *
  * This property holds the XdgSurface associated with this XdgPopup.
  */
@@ -1595,7 +1569,7 @@ QWaylandXdgSurface *QWaylandXdgPopup::xdgSurface() const
 }
 
 /*!
- * \qmlproperty XdgSurface QtWaylandCompositor::XdgPopup::parentXdgSurface
+ * \qmlproperty XdgSurface XdgPopup::parentXdgSurface
  *
  * This property holds the XdgSurface associated with the parent of this XdgPopup.
  */
@@ -1613,7 +1587,7 @@ QWaylandXdgSurface *QWaylandXdgPopup::parentXdgSurface() const
 }
 
 /*!
- * \qmlproperty rect QtWaylandCompositor::XdgPopup::configuredGeometry
+ * \qmlproperty rect XdgPopup::configuredGeometry
  *
  * The window geometry the popup received in the configure event. Relative to the
  * upper left corner of the parent surface.
@@ -1632,7 +1606,7 @@ QRect QWaylandXdgPopup::configuredGeometry() const
 }
 
 /*!
- * \qmlproperty rect QtWaylandCompositor::XdgPopup::anchorRect
+ * \qmlproperty rect XdgPopup::anchorRect
  *
  * The anchor rectangle relative to the parent window geometry that the child
  * surface should be placed relative to.
@@ -1651,7 +1625,7 @@ QRect QWaylandXdgPopup::anchorRect() const
 }
 
 /*!
- * \qmlproperty enumeration QtWaylandCompositor::XdgPopup::anchorEdges
+ * \qmlproperty enumeration XdgPopup::anchorEdges
  *
  * This property holds the set of edges on the anchor rect that the child surface should be placed
  * relative to. If no edges are specified in a direction, the anchor point should be
@@ -1678,7 +1652,7 @@ Qt::Edges QWaylandXdgPopup::anchorEdges() const
 }
 
 /*!
- * \qmlproperty rect QtWaylandCompositor::XdgPopup::gravityEdges
+ * \qmlproperty rect XdgPopup::gravityEdges
  *
  * Specifies in what direction the surface should be positioned, relative to the anchor
  * point.
@@ -1703,7 +1677,7 @@ Qt::Edges QWaylandXdgPopup::gravityEdges() const
 }
 
 /*!
- * \qmlproperty enumeration QtWaylandCompositor::XdgPopup::slideConstraints
+ * \qmlproperty enumeration XdgPopup::slideConstraints
  *
  * This property holds the orientations in which the child should slide to fit within the screen.
  *
@@ -1733,7 +1707,7 @@ Qt::Orientations QWaylandXdgPopup::slideConstraints() const
 }
 
 /*!
- * \qmlproperty enumeration QtWaylandCompositor::XdgPopup::flipConstraints
+ * \qmlproperty enumeration XdgPopup::flipConstraints
  *
  * This property holds the orientations in which the child should flip to fit within the screen.
  *
@@ -1763,7 +1737,7 @@ Qt::Orientations QWaylandXdgPopup::flipConstraints() const
 }
 
 /*!
- * \qmlproperty enumeration QtWaylandCompositor::XdgPopup::resizeConstraints
+ * \qmlproperty enumeration XdgPopup::resizeConstraints
  *
  * This property holds the orientations in which the child should resize to fit within the screen.
  *
@@ -1793,7 +1767,7 @@ Qt::Orientations QWaylandXdgPopup::resizeConstraints() const
 }
 
 /*!
- * \qmlproperty point QtWaylandCompositor::XdgPopup::offset
+ * \qmlproperty point XdgPopup::offset
  *
  * The position relative to the position of the anchor on the anchor rectangle and
  * the anchor on the surface.
@@ -1812,7 +1786,7 @@ QPoint QWaylandXdgPopup::offset() const
 }
 
 /*!
- * \qmlproperty size QtWaylandCompositor::XdgPopup::positionerSize
+ * \qmlproperty size XdgPopup::positionerSize
  *
  * The size requested for the window geometry by the positioner object.
  */
@@ -1829,7 +1803,7 @@ QSize QWaylandXdgPopup::positionerSize() const
 }
 
 /*!
- * \qmlproperty point QtWaylandCompositor::XdgPopup::unconstrainedPosition
+ * \qmlproperty point XdgPopup::unconstrainedPosition
  *
  * The position of the surface relative to the parent window geometry if the surface
  * is not constrained. I.e. when not moved to fit inside the screen or similar.
@@ -1848,7 +1822,7 @@ QPoint QWaylandXdgPopup::unconstrainedPosition() const
 }
 
 /*!
- * \qmlmethod int QtWaylandCompositor::XdgPopup::sendConfigure(rect geometry)
+ * \qmlmethod int XdgPopup::sendConfigure(rect geometry)
  *
  * Sends a configure event to the client. \a geometry contains the window geometry
  * relative to the upper left corner of the window geometry of the parent surface.
@@ -1870,7 +1844,7 @@ uint QWaylandXdgPopup::sendConfigure(const QRect &geometry)
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::XdgPopup::sendPopupDone()
+ * \qmlmethod void XdgPopup::sendPopupDone()
  * \since 5.14
  *
  * Dismiss the popup. According to the \c xdg-shell protocol this should make the
@@ -2130,3 +2104,5 @@ Qt::Edges QWaylandXdgPositioner::convertToEdges(QWaylandXdgPositioner::gravity g
 
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandxdgshell.cpp"

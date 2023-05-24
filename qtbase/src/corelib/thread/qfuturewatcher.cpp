@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qfuturewatcher.h"
 #include "qfuturewatcher_p.h"
@@ -64,13 +28,13 @@ QT_BEGIN_NAMESPACE
     For convenience, several of QFuture's functions are also available in
     QFutureWatcher: progressValue(), progressMinimum(), progressMaximum(),
     progressText(), isStarted(), isFinished(), isRunning(), isCanceled(),
-    isPaused(), waitForFinished(), result(), and resultAt(). The cancel(),
-    setPaused(), pause(), resume(), and togglePaused() functions are slots in
-    QFutureWatcher.
+    isSuspending(), isSuspended(), waitForFinished(), result(), and resultAt().
+    The cancel(), setSuspended(), suspend(), resume(), and toggleSuspended() functions
+    are slots in QFutureWatcher.
 
     Status changes are reported via the started(), finished(), canceled(),
-    paused(), resumed(), resultReadyAt(), and resultsReadyAt() signals.
-    Progress information is provided from the progressRangeChanged(),
+    suspending(), suspended(), resumed(), resultReadyAt(), and resultsReadyAt()
+    signals. Progress information is provided from the progressRangeChanged(),
     void progressValueChanged(), and progressTextChanged() signals.
 
     Throttling control is provided by the setPendingResultsLimit() function.
@@ -85,7 +49,7 @@ QT_BEGIN_NAMESPACE
     \snippet code/src_corelib_thread_qfuturewatcher.cpp 0
 
     Be aware that not all running asynchronous computations can be canceled or
-    paused. For example, the future returned by QtConcurrent::run() cannot be
+    suspended. For example, the future returned by QtConcurrent::run() cannot be
     canceled; but the future returned by QtConcurrent::mappedReduced() can.
 
     QFutureWatcher<void> is specialized to not contain any of the result
@@ -114,8 +78,8 @@ QFutureWatcherBase::QFutureWatcherBase(QObject *parent)
 /*! \fn template <typename T> void QFutureWatcher<T>::cancel()
 
     Cancels the asynchronous computation represented by the future(). Note that
-    the cancelation is asynchronous. Use waitForFinished() after calling
-    cancel() when you need synchronous cancelation.
+    the cancellation is asynchronous. Use waitForFinished() after calling
+    cancel() when you need synchronous cancellation.
 
     Currently available results may still be accessed on a canceled QFuture,
     but new results will \e not become available after calling this function.
@@ -133,13 +97,18 @@ void QFutureWatcherBase::cancel()
     futureInterface().cancel();
 }
 
+#if QT_DEPRECATED_SINCE(6, 0)
 /*! \fn template <typename T> void QFutureWatcher<T>::setPaused(bool paused)
+
+    \deprecated [6.6] Use setSuspended() instead.
 
     If \a paused is true, this function pauses the asynchronous computation
     represented by the future(). If the computation is already paused, this
-    function does nothing. This QFutureWatcher will stop delivering progress
-    and result ready signals while the future is paused. Signal delivery will
-    continue once the computation is resumed.
+    function does nothing. QFutureWatcher will not immediately stop delivering
+    progress and result ready signals when the future is paused. At the moment
+    of pausing there may still be computations that are in progress and cannot
+    be stopped. Signals for such computations will still be delivered after
+    pause.
 
     If \a paused is false, this function resumes the asynchronous computation.
     If the computation was not previously paused, this function does nothing.
@@ -148,14 +117,17 @@ void QFutureWatcherBase::cancel()
     QFuture returned by QtConcurrent::run() cannot be paused; but the QFuture
     returned by QtConcurrent::mappedReduced() can.
 
-    \sa pause(), resume(), togglePaused()
+    \sa suspend(), resume(), toggleSuspended()
 */
 void QFutureWatcherBase::setPaused(bool paused)
 {
-    futureInterface().setPaused(paused);
+    futureInterface().setSuspended(paused);
 }
 
 /*! \fn template <typename T> void QFutureWatcher<T>::pause()
+
+    \deprecated
+    Use suspend() instead.
 
     Pauses the asynchronous computation represented by the future(). This is a
     convenience method that simply calls setPaused(true).
@@ -164,33 +136,95 @@ void QFutureWatcherBase::setPaused(bool paused)
 */
 void QFutureWatcherBase::pause()
 {
-    futureInterface().setPaused(true);
+    futureInterface().setSuspended(true);
+}
+
+#endif // QT_DEPRECATED_SINCE(6, 0)
+
+/*! \fn template <typename T> void QFutureWatcher<T>::setSuspended(bool suspend)
+
+    \since 6.0
+
+    If \a suspend is true, this function suspends the asynchronous computation
+    represented by the future(). If the computation is already suspended, this
+    function does nothing. QFutureWatcher will not immediately stop delivering
+    progress and result ready signals when the future is suspended. At the moment
+    of suspending there may still be computations that are in progress and cannot
+    be stopped. Signals for such computations will still be delivered.
+
+    If \a suspend is false, this function resumes the asynchronous computation.
+    If the computation was not previously suspended, this function does nothing.
+
+    Be aware that not all computations can be suspended. For example, the
+    QFuture returned by QtConcurrent::run() cannot be suspended; but the QFuture
+    returned by QtConcurrent::mappedReduced() can.
+
+    \sa suspend(), resume(), toggleSuspended()
+*/
+void QFutureWatcherBase::setSuspended(bool suspend)
+{
+    futureInterface().setSuspended(suspend);
+}
+
+/*! \fn template <typename T> void QFutureWatcher<T>::suspend()
+
+    \since 6.0
+
+    Suspends the asynchronous computation represented by this future. This is a
+    convenience method that simply calls setSuspended(true).
+
+    \sa resume()
+*/
+void QFutureWatcherBase::suspend()
+{
+    futureInterface().setSuspended(true);
 }
 
 /*! \fn template <typename T> void QFutureWatcher<T>::resume()
 
     Resumes the asynchronous computation represented by the future(). This is
-    a convenience method that simply calls setPaused(false).
+    a convenience method that simply calls setSuspended(false).
 
-    \sa pause()
+    \sa suspend()
 */
+
 void QFutureWatcherBase::resume()
 {
-    futureInterface().setPaused(false);
+    futureInterface().setSuspended(false);
 }
 
+#if QT_DEPRECATED_SINCE(6, 0)
 /*! \fn template <typename T> void QFutureWatcher<T>::togglePaused()
+
+    \deprecated [6.0] Use toggleSuspended() instead.
 
     Toggles the paused state of the asynchronous computation. In other words,
     if the computation is currently paused, calling this function resumes it;
-    if the computation is running, it becomes paused. This is a convenience
-    method for calling setPaused(!isPaused()).
+    if the computation is running, it is paused. This is a convenience method
+    for calling setPaused(!isPaused()).
 
-    \sa setPaused(), pause(), resume()
+    \sa setSuspended(), suspend(), resume()
 */
 void QFutureWatcherBase::togglePaused()
 {
-    futureInterface().togglePaused();
+    futureInterface().toggleSuspended();
+}
+#endif // QT_DEPRECATED_SINCE(6, 0)
+
+/*! \fn template <typename T> void QFutureWatcher<T>::toggleSuspended()
+
+    \since 6.0
+
+    Toggles the suspended state of the asynchronous computation. In other words,
+    if the computation is currently suspending or suspended, calling this
+    function resumes it; if the computation is running, it is suspended. This is a
+    convenience method for calling setSuspended(!(isSuspending() || isSuspended())).
+
+    \sa setSuspended(), suspend(), resume()
+*/
+void QFutureWatcherBase::toggleSuspended()
+{
+    futureInterface().toggleSuspended();
 }
 
 /*! \fn template <typename T> int QFutureWatcher<T>::progressValue() const
@@ -257,8 +291,7 @@ bool QFutureWatcherBase::isStarted() const
 */
 bool QFutureWatcherBase::isFinished() const
 {
-    Q_D(const QFutureWatcherBase);
-    return d->finished;
+    return futureInterface().isFinished();
 }
 
 /*! \fn template <typename T> bool QFutureWatcher<T>::isRunning() const
@@ -284,25 +317,67 @@ bool QFutureWatcherBase::isCanceled() const
     return futureInterface().queryState(QFutureInterfaceBase::Canceled);
 }
 
+#if QT_DEPRECATED_SINCE(6, 0)
+
 /*! \fn template <typename T> bool QFutureWatcher<T>::isPaused() const
+
+    \deprecated [6.0] Use isSuspending() or isSuspended() instead.
 
     Returns \c true if the asynchronous computation has been paused with the
     pause() function; otherwise returns \c false.
 
     Be aware that the computation may still be running even though this
-    function returns \c true. See setPaused() for more details.
+    function returns \c true. See setPaused() for more details. To check
+    if pause actually took effect, use isSuspended() instead.
 
-    \sa setPaused(), togglePaused()
+    \sa setSuspended(), toggleSuspended(), isSuspended()
 */
+
 bool QFutureWatcherBase::isPaused() const
 {
-    return futureInterface().queryState(QFutureInterfaceBase::Paused);
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
+    return futureInterface().isPaused();
+QT_WARNING_POP
+}
+#endif // QT_DEPRECATED_SINCE(6, 0)
+
+/*! \fn template <typename T> bool QFutureWatcher<T>::isSuspending() const
+
+    \since 6.0
+
+    Returns \c true if the asynchronous computation has been suspended with the
+    suspend() function, but the work is not yet suspended, and computation is still
+    running. Returns \c false otherwise.
+
+    To check if suspension is actually in effect, use isSuspended() instead.
+
+    \sa setSuspended(), toggleSuspended(), isSuspended()
+*/
+bool QFutureWatcherBase::isSuspending() const
+{
+    return futureInterface().isSuspending();
+}
+
+/*! \fn template <typename T> bool QFutureWatcher<T>::isSuspended() const
+
+    \since 6.0
+
+    Returns \c true if a suspension of the asynchronous computation has been
+    requested, and it is in effect, meaning that no more results or progress
+    changes are expected.
+
+    \sa suspended(), setSuspended(), isSuspending()
+*/
+bool QFutureWatcherBase::isSuspended() const
+{
+    return futureInterface().isSuspended();
 }
 
 /*! \fn template <typename T> void QFutureWatcher<T>::waitForFinished()
 
     Waits for the asynchronous computation to finish (including cancel()ed
-    computations).
+    computations), i.e. until isFinished() returns \c true.
 */
 void QFutureWatcherBase::waitForFinished()
 {
@@ -314,25 +389,7 @@ bool QFutureWatcherBase::event(QEvent *event)
     Q_D(QFutureWatcherBase);
     if (event->type() == QEvent::FutureCallOut) {
         QFutureCallOutEvent *callOutEvent = static_cast<QFutureCallOutEvent *>(event);
-
-        if (futureInterface().isPaused()) {
-            d->pendingCallOutEvents.append(callOutEvent->clone());
-            return true;
-        }
-
-        if (callOutEvent->callOutType == QFutureCallOutEvent::Resumed
-            && !d->pendingCallOutEvents.isEmpty()) {
-            // send the resume
-            d->sendCallOutEvent(callOutEvent);
-
-            // next send all pending call outs
-            for (int i = 0; i < d->pendingCallOutEvents.count(); ++i)
-                d->sendCallOutEvent(d->pendingCallOutEvents.at(i));
-            qDeleteAll(d->pendingCallOutEvents);
-            d->pendingCallOutEvents.clear();
-        } else {
-            d->sendCallOutEvent(callOutEvent);
-        }
+        d->sendCallOutEvent(callOutEvent);
         return true;
     }
     return QObject::event(event);
@@ -383,8 +440,7 @@ void QFutureWatcherBase::disconnectNotify(const QMetaMethod &signal)
 */
 QFutureWatcherBasePrivate::QFutureWatcherBasePrivate()
     : maximumPendingResultsReady(QThread::idealThreadCount() * 2),
-      resultAtConnected(0),
-      finished(true) /* the initial m_future is a canceledResult(), with Finished set */
+      resultAtConnected(0)
 { }
 
 /*!
@@ -403,9 +459,6 @@ void QFutureWatcherBase::disconnectOutputInterface(bool pendingAssignment)
     if (pendingAssignment) {
         Q_D(QFutureWatcherBase);
         d->pendingResultsReady.storeRelaxed(0);
-        qDeleteAll(d->pendingCallOutEvents);
-        d->pendingCallOutEvents.clear();
-        d->finished = false; /* May soon be amended, during connectOutputInterface() */
     }
 
     futureInterface().d->disconnectOutputInterface(d_func());
@@ -437,17 +490,27 @@ void QFutureWatcherBasePrivate::sendCallOutEvent(QFutureCallOutEvent *event)
             emit q->started();
         break;
         case QFutureCallOutEvent::Finished:
-            finished = true;
             emit q->finished();
         break;
         case QFutureCallOutEvent::Canceled:
             pendingResultsReady.storeRelaxed(0);
             emit q->canceled();
         break;
-        case QFutureCallOutEvent::Paused:
+        case QFutureCallOutEvent::Suspending:
             if (q->futureInterface().isCanceled())
                 break;
+            emit q->suspending();
+#if QT_DEPRECATED_SINCE(6, 0)
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
             emit q->paused();
+QT_WARNING_POP
+#endif
+        break;
+        case QFutureCallOutEvent::Suspended:
+            if (q->futureInterface().isCanceled())
+                break;
+            emit q->suspended();
         break;
         case QFutureCallOutEvent::Resumed:
             if (q->futureInterface().isCanceled())
@@ -511,9 +574,15 @@ void QFutureWatcherBasePrivate::sendCallOutEvent(QFutureCallOutEvent *event)
 
     Starts watching the given \a future.
 
-    One of the signals might be emitted for the current state of the
-    \a future. For example, if the future is already stopped, the
-    finished signal will be emitted.
+    If \a future has already started, the watcher will initially emit signals
+    that bring their listeners up to date about the future's state. The
+    following signals will, if applicable, be emitted in the given order:
+    started(), progressRangeChanged(), progressValueChanged(),
+    progressTextChanged(), resultsReadyAt(), resultReadyAt(), suspending(),
+    suspended(), canceled(), and finished(). Of these, resultsReadyAt() and
+    resultReadyAt() may be emitted several times to cover all available
+    results. progressValueChanged() and progressTextChanged() will only be
+    emitted once for the latest available progress value and text.
 
     To avoid a race condition, it is important to call this function
     \e after doing the connections.
@@ -540,8 +609,49 @@ void QFutureWatcherBasePrivate::sendCallOutEvent(QFutureCallOutEvent *event)
     This signal is emitted if the watched future is canceled.
 */
 
+/*! \fn template <typename T> void QFutureWatcher<T>::suspending()
+
+    \since 6.0
+
+    This signal is emitted when the state of the watched future is
+    set to suspended.
+
+    \note This signal only informs that suspension has been requested. It
+    doesn't indicate that all background operations are stopped. Signals
+    for computations that were in progress at the moment of suspending will
+    still be delivered. To be informed when suspension actually
+    took effect, use the suspended() signal.
+
+    \sa setSuspended(), suspend(), suspended()
+*/
+
+#if QT_DEPRECATED_SINCE(6, 0)
 /*! \fn template <typename T> void QFutureWatcher<T>::paused()
-    This signal is emitted when the watched future is paused.
+
+    \deprecated [6.0] Use suspending() instead.
+
+    This signal is emitted when the state of the watched future is
+    set to paused.
+
+    \note This signal only informs that pause has been requested. It
+    doesn't indicate that all background operations are stopped. Signals
+    for computations that were in progress at the moment of pausing will
+    still be delivered. To to be informed when pause() actually
+    took effect, use the suspended() signal.
+
+    \sa setSuspended(), suspend(), suspended()
+*/
+#endif // QT_DEPRECATED_SINCE(6, 0)
+
+/*! \fn template <typename T> void QFutureWatcher<T>::suspended()
+
+    \since 6.0
+
+    This signal is emitted when suspend() took effect, meaning that there are
+    no more running computations. After receiving this signal no more result
+    ready or progress reporting signals are expected.
+
+    \sa setSuspended(), suspend(), suspended()
 */
 
 /*! \fn template <typename T> void QFutureWatcher<T>::resumed()

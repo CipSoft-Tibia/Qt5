@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Javier S. Pedro <maemo@javispedro.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Javier S. Pedro <maemo@javispedro.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "hcimanager_p.h"
 
@@ -57,8 +21,8 @@ QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(QT_BT_BLUEZ)
 
-HciManager::HciManager(const QBluetoothAddress& deviceAdapter, QObject *parent) :
-    QObject(parent), hciSocket(-1), hciDev(-1)
+HciManager::HciManager(const QBluetoothAddress& deviceAdapter) :
+    QObject(nullptr), hciSocket(-1), hciDev(-1)
 {
     hciSocket = ::socket(AF_BLUETOOTH, SOCK_RAW | SOCK_CLOEXEC, BTPROTO_HCI);
     if (hciSocket < 0) {
@@ -168,7 +132,7 @@ bool HciManager::monitorEvent(HciManager::HciEvent event)
     }
 
     hci_filter_set_ptype(HCI_EVENT_PKT, &filter);
-    hci_filter_set_event(event, &filter);
+    hci_filter_set_event(static_cast<int>(event), &filter);
     //hci_filter_all_events(&filter);
 
     if (setsockopt(hciSocket, SOL_HCI, HCI_FILTER, &filter, sizeof(hci_filter)) < 0) {
@@ -202,13 +166,13 @@ bool HciManager::monitorAclPackets()
     return true;
 }
 
-bool HciManager::sendCommand(OpCodeGroupField ogf, OpCodeCommandField ocf, const QByteArray &parameters)
+bool HciManager::sendCommand(QBluezConst::OpCodeGroupField ogf, QBluezConst::OpCodeCommandField ocf, const QByteArray &parameters)
 {
     qCDebug(QT_BT_BLUEZ) << "sending command; ogf:" << ogf << "ocf:" << ocf;
     quint8 packetType = HCI_COMMAND_PKT;
     hci_command_hdr command = {
         opCodePack(ogf, ocf),
-        static_cast<uint8_t>(parameters.count())
+        static_cast<uint8_t>(parameters.size())
     };
     static_assert(sizeof command == 3, "unexpected struct size");
     struct iovec iv[3];
@@ -219,7 +183,7 @@ bool HciManager::sendCommand(OpCodeGroupField ogf, OpCodeCommandField ocf, const
     int ivn = 2;
     if (!parameters.isEmpty()) {
         iv[2].iov_base = const_cast<char *>(parameters.constData()); // const_cast is safe, since iov_base will not get modified.
-        iv[2].iov_len  = parameters.count();
+        iv[2].iov_len  = parameters.size();
         ++ivn;
     }
     while (writev(hciSocket, iv, ivn) < 0) {
@@ -284,10 +248,10 @@ QBluetoothAddress HciManager::addressForConnectionHandle(quint16 handle) const
     return QBluetoothAddress();
 }
 
-QVector<quint16> HciManager::activeLowEnergyConnections() const
+QList<quint16> HciManager::activeLowEnergyConnections() const
 {
     if (!isValid())
-        return QVector<quint16>();
+        return QList<quint16>();
 
     hci_conn_info *info;
     hci_conn_list_req *infoList;
@@ -297,7 +261,7 @@ QVector<quint16> HciManager::activeLowEnergyConnections() const
             malloc(sizeof(hci_conn_list_req) + maxNoOfConnections * sizeof(hci_conn_info));
 
     if (!infoList)
-        return QVector<quint16>();
+        return QList<quint16>();
 
     QScopedPointer<hci_conn_list_req, QScopedPointerPodDeleter> p(infoList);
     p->conn_num = maxNoOfConnections;
@@ -306,10 +270,10 @@ QVector<quint16> HciManager::activeLowEnergyConnections() const
 
     if (ioctl(hciSocket, HCIGETCONNLIST, (void *) infoList) < 0) {
         qCWarning(QT_BT_BLUEZ) << "Cannot retrieve connection list";
-        return QVector<quint16>();
+        return QList<quint16>();
     }
 
-    QVector<quint16> activeLowEnergyHandles;
+    QList<quint16> activeLowEnergyHandles;
     for (int i = 0; i < infoList->conn_num; i++) {
         switch (info[i].type) {
         case SCO_LINK:
@@ -320,7 +284,7 @@ QVector<quint16> HciManager::activeLowEnergyConnections() const
             activeLowEnergyHandles.append(info[i].handle);
             break;
         default:
-            qCWarning(QT_BT_BLUEZ) << "Unknown active connection type:" << hex << info[i].type;
+            qCWarning(QT_BT_BLUEZ) << "Unknown active connection type:" << Qt::hex << info[i].type;
             break;
         }
     }
@@ -369,7 +333,7 @@ bool HciManager::sendConnectionUpdateCommand(quint16 handle,
     commandParams.maxCeLength = qToLittleEndian(quint16(0xffff));
     const QByteArray data = QByteArray::fromRawData(reinterpret_cast<char *>(&commandParams),
                                                     sizeof commandParams);
-    return sendCommand(OgfLinkControl, OcfLeConnectionUpdate, data);
+    return sendCommand(QBluezConst::OgfLinkControl, QBluezConst::OcfLeConnectionUpdate, data);
 }
 
 bool HciManager::sendConnectionParameterUpdateRequest(quint16 handle,
@@ -428,9 +392,8 @@ bool HciManager::sendConnectionParameterUpdateRequest(quint16 handle,
 void HciManager::_q_readNotify()
 {
     unsigned char buffer[qMax<int>(HCI_MAX_EVENT_SIZE, sizeof(AclData))];
-    int size;
 
-    size = ::read(hciSocket, buffer, sizeof(buffer));
+    const auto size = ::read(hciSocket, buffer, sizeof(buffer));
     if (size < 0) {
         if (errno != EAGAIN && errno != EINTR)
             qCWarning(QT_BT_BLUEZ) << "Failed reading HCI events:" << qt_error_string(errno);
@@ -467,23 +430,22 @@ void HciManager::handleHciEventPacket(const quint8 *data, int size)
         return;
     }
 
-    qCDebug(QT_BT_BLUEZ) << "HCI event triggered, type:" << hex << header->evt;
+    qCDebug(QT_BT_BLUEZ) << "HCI event triggered, type:" << (HciManager::HciEvent)header->evt
+                         << "type code:" << Qt::hex << header->evt;
 
-    switch (header->evt) {
-    case EVT_ENCRYPT_CHANGE:
-    {
+    switch ((HciManager::HciEvent)header->evt) {
+    case HciEvent::EVT_ENCRYPT_CHANGE: {
         const evt_encrypt_change *event = (evt_encrypt_change *) data;
         qCDebug(QT_BT_BLUEZ) << "HCI Encrypt change, status:"
                              << (event->status == 0 ? "Success" : "Failed")
-                             << "handle:" << hex << event->handle
+                             << "handle:" << Qt::hex << event->handle
                              << "encrypt:" << event->encrypt;
 
         QBluetoothAddress remoteDevice = addressForConnectionHandle(event->handle);
         if (!remoteDevice.isNull())
             emit encryptionChangedEvent(remoteDevice, event->status == 0);
-    }
-        break;
-    case EVT_CMD_COMPLETE: {
+    } break;
+    case HciEvent::EVT_CMD_COMPLETE: {
         auto * const event = reinterpret_cast<const evt_cmd_complete *>(data);
         static_assert(sizeof *event == 3, "unexpected struct size");
 
@@ -493,9 +455,8 @@ void HciManager::handleHciEventPacket(const quint8 *data, int size)
         const auto additionalData = QByteArray(reinterpret_cast<const char *>(data)
                                                + sizeof *event + 1, size - sizeof *event - 1);
         emit commandCompleted(event->opcode, status, additionalData);
-    }
-        break;
-    case LeMetaEvent:
+    } break;
+    case HciEvent::EVT_LE_META_EVENT:
         handleLeMetaEvent(data);
         break;
     default:
@@ -555,7 +516,7 @@ void HciManager::handleHciAclPacket(const quint8 *data, int size)
         qCWarning(QT_BT_BLUEZ) << "Unexpected key size" << size << "in Signing Information packet";
         return;
     }
-    quint128 csrk;
+    BluezUint128 csrk;
     memcpy(&csrk, data + 1, sizeof csrk);
     const bool isRemoteKey = aclData->pbFlag == 2;
     emit signatureResolvingKeyReceived(aclData->handle, isRemoteKey, csrk);
@@ -599,3 +560,5 @@ void HciManager::handleLeMetaEvent(const quint8 *data)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_hcimanager_p.cpp"

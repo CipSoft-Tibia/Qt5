@@ -1,46 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgdefaultspritenode_p.h"
 
 #include <QtQuick/QSGMaterial>
-#include <QtGui/QOpenGLShaderProgram>
 
 QT_BEGIN_NAMESPACE
 
@@ -64,11 +27,7 @@ public:
     QQuickSpriteMaterial();
     ~QQuickSpriteMaterial();
     QSGMaterialType *type() const  override { static QSGMaterialType type; return &type; }
-    QSGMaterialShader *createShader() const override;
-    int compare(const QSGMaterial *other) const override
-    {
-        return this - static_cast<const QQuickSpriteMaterial *>(other);
-    }
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode renderMode) const override;
 
     QSGTexture *texture = nullptr;
 
@@ -84,7 +43,6 @@ public:
 QQuickSpriteMaterial::QQuickSpriteMaterial()
 {
     setFlag(Blending, true);
-    setFlag(SupportsRhiShader, true);
 }
 
 QQuickSpriteMaterial::~QQuickSpriteMaterial()
@@ -92,51 +50,7 @@ QQuickSpriteMaterial::~QQuickSpriteMaterial()
     delete texture;
 }
 
-class SpriteMaterialShader : public QSGMaterialShader
-{
-public:
-    SpriteMaterialShader()
-    {
-        setShaderSourceFile(QOpenGLShader::Vertex, QStringLiteral(":/qt-project.org/scenegraph/shaders/sprite.vert"));
-        setShaderSourceFile(QOpenGLShader::Fragment, QStringLiteral(":/qt-project.org/scenegraph/shaders/sprite.frag"));
-    }
-
-    void updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *) override
-    {
-        QQuickSpriteMaterial *m = static_cast<QQuickSpriteMaterial *>(newEffect);
-        m->texture->bind();
-
-        program()->setUniformValue(m_opacity_id, state.opacity());
-        program()->setUniformValue(m_animData_id, m->animW, m->animH, m->animT);
-        program()->setUniformValue(m_animPos_id, m->animX1, m->animY1, m->animX2, m->animY2);
-
-        if (state.isMatrixDirty())
-            program()->setUniformValue(m_matrix_id, state.combinedMatrix());
-    }
-
-    void initialize() override {
-        m_matrix_id = program()->uniformLocation("qt_Matrix");
-        m_opacity_id = program()->uniformLocation("qt_Opacity");
-        m_animData_id = program()->uniformLocation("animData");
-        m_animPos_id = program()->uniformLocation("animPos");
-    }
-
-    char const *const *attributeNames() const override {
-        static const char *attr[] = {
-           "vPos",
-           "vTex",
-            nullptr
-        };
-        return attr;
-    }
-
-    int m_matrix_id;
-    int m_opacity_id;
-    int m_animData_id;
-    int m_animPos_id;
-};
-
-class SpriteMaterialRhiShader : public QSGMaterialRhiShader
+class SpriteMaterialRhiShader : public QSGMaterialShader
 {
 public:
      SpriteMaterialRhiShader();
@@ -199,16 +113,14 @@ void SpriteMaterialRhiShader::updateSampledImage(RenderState &state, int binding
     QQuickSpriteMaterial *mat = static_cast<QQuickSpriteMaterial *>(newMaterial);
 
     QSGTexture *t = mat->texture;
-    t->updateRhiTexture(state.rhi(), state.resourceUpdateBatch());
+    t->commitTextureOperations(state.rhi(), state.resourceUpdateBatch());
     *texture = t;
 }
 
-QSGMaterialShader *QQuickSpriteMaterial::createShader() const
+QSGMaterialShader *QQuickSpriteMaterial::createShader(QSGRendererInterface::RenderMode renderMode) const
 {
-    if (flags().testFlag(RhiShaderWanted))
-        return new SpriteMaterialRhiShader;
-    else
-        return new SpriteMaterialShader;
+    Q_UNUSED(renderMode);
+    return new SpriteMaterialRhiShader;
 }
 
 static QSGGeometry::Attribute Sprite_Attributes[] = {

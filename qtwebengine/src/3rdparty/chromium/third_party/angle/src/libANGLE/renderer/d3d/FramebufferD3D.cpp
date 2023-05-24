@@ -10,6 +10,7 @@
 
 #include "common/bitset_utils.h"
 #include "libANGLE/Context.h"
+#include "libANGLE/ErrorStrings.h"
 #include "libANGLE/Framebuffer.h"
 #include "libANGLE/FramebufferAttachment.h"
 #include "libANGLE/Surface.h"
@@ -56,7 +57,7 @@ ClearParameters GetClearParameters(const gl::State &state, GLbitfield mask)
     {
         clearParams.scissorEnabled = true;
         clearParams.scissor        = gl::Rectangle(surfaceTextureOffset.x, surfaceTextureOffset.y,
-                                            framebufferSize.width, framebufferSize.height);
+                                                   framebufferSize.width, framebufferSize.height);
     }
 
     const bool clearColor =
@@ -69,7 +70,7 @@ ClearParameters GetClearParameters(const gl::State &state, GLbitfield mask)
     {
         clearParams.clearColor.reset();
     }
-    clearParams.colorMask = state.getBlendStateExt().mColorMask;
+    clearParams.colorMask = state.getBlendStateExt().getColorMaskBits();
 
     if (mask & GL_DEPTH_BUFFER_BIT)
     {
@@ -98,7 +99,7 @@ ClearParameters::ClearParameters() = default;
 ClearParameters::ClearParameters(const ClearParameters &other) = default;
 
 FramebufferD3D::FramebufferD3D(const gl::FramebufferState &data, RendererD3D *renderer)
-    : FramebufferImpl(data), mRenderer(renderer), mDummyAttachment()
+    : FramebufferImpl(data), mRenderer(renderer), mMockAttachment()
 {}
 
 FramebufferD3D::~FramebufferD3D() {}
@@ -249,34 +250,39 @@ angle::Result FramebufferD3D::blit(const gl::Context *context,
     return angle::Result::Continue;
 }
 
-bool FramebufferD3D::checkStatus(const gl::Context *context) const
+gl::FramebufferStatus FramebufferD3D::checkStatus(const gl::Context *context) const
 {
     // if we have both a depth and stencil buffer, they must refer to the same object
     // since we only support packed_depth_stencil and not separate depth and stencil
     if (mState.hasSeparateDepthAndStencilAttachments())
     {
-        return false;
+        return gl::FramebufferStatus::Incomplete(
+            GL_FRAMEBUFFER_UNSUPPORTED,
+            gl::err::kFramebufferIncompleteUnsupportedSeparateDepthStencilBuffers);
     }
 
     // D3D11 does not allow for overlapping RenderTargetViews.
     // If WebGL compatibility is enabled, this has already been checked at a higher level.
-    ASSERT(!context->getExtensions().webglCompatibility ||
-           mState.colorAttachmentsAreUniqueImages());
-    if (!context->getExtensions().webglCompatibility)
+    ASSERT(!context->isWebGL() || mState.colorAttachmentsAreUniqueImages());
+    if (!context->isWebGL())
     {
         if (!mState.colorAttachmentsAreUniqueImages())
         {
-            return false;
+            return gl::FramebufferStatus::Incomplete(
+                GL_FRAMEBUFFER_UNSUPPORTED,
+                gl::err::kFramebufferIncompleteUnsupportedNonUniqueAttachments);
         }
     }
 
     // D3D requires all render targets to have the same dimensions.
     if (!mState.attachmentsHaveSameDimensions())
     {
-        return false;
+        return gl::FramebufferStatus::Incomplete(
+            GL_FRAMEBUFFER_UNSUPPORTED,
+            gl::err::kFramebufferIncompleteUnsupportedMissmatchedDimensions);
     }
 
-    return true;
+    return gl::FramebufferStatus::Complete();
 }
 
 angle::Result FramebufferD3D::syncState(const gl::Context *context,
@@ -305,7 +311,7 @@ angle::Result FramebufferD3D::syncState(const gl::Context *context,
 const gl::AttachmentList &FramebufferD3D::getColorAttachmentsForRender(const gl::Context *context)
 {
     gl::DrawBufferMask activeProgramOutputs =
-        context->getState().getProgram()->getActiveOutputVariables();
+        context->getState().getProgram()->getExecutable().getActiveOutputVariablesMask();
 
     if (mColorAttachmentsForRender.valid() && mCurrentActiveProgramOutputs == activeProgramOutputs)
     {
@@ -342,8 +348,8 @@ const gl::AttachmentList &FramebufferD3D::getColorAttachmentsForRender(const gl:
 
     // When rendering with no render target on D3D, two bugs lead to incorrect behavior on Intel
     // drivers < 4815. The rendering samples always pass neglecting discard statements in pixel
-    // shader. We add a dummy texture as render target in such case.
-    if (mRenderer->getFeatures().addDummyTextureNoRenderTarget.enabled &&
+    // shader. We add a mock texture as render target in such case.
+    if (mRenderer->getFeatures().addMockTextureNoRenderTarget.enabled &&
         colorAttachmentsForRender.empty() && activeProgramOutputs.any())
     {
         static_assert(static_cast<size_t>(activeProgramOutputs.size()) <= 32,
@@ -351,30 +357,30 @@ const gl::AttachmentList &FramebufferD3D::getColorAttachmentsForRender(const gl:
         const GLuint activeProgramLocation = static_cast<GLuint>(
             gl::ScanForward(static_cast<uint32_t>(activeProgramOutputs.bits())));
 
-        if (mDummyAttachment.isAttached() &&
-            (mDummyAttachment.getBinding() - GL_COLOR_ATTACHMENT0) == activeProgramLocation)
+        if (mMockAttachment.isAttached() &&
+            (mMockAttachment.getBinding() - GL_COLOR_ATTACHMENT0) == activeProgramLocation)
         {
-            colorAttachmentsForRender.push_back(&mDummyAttachment);
+            colorAttachmentsForRender.push_back(&mMockAttachment);
         }
         else
         {
-            // Remove dummy attachment to prevents us from leaking it, and the program may require
+            // Remove mock attachment to prevents us from leaking it, and the program may require
             // it to be attached to a new binding point.
-            if (mDummyAttachment.isAttached())
+            if (mMockAttachment.isAttached())
             {
-                mDummyAttachment.detach(context, Serial());
+                mMockAttachment.detach(context, UniqueSerial());
             }
 
-            gl::Texture *dummyTex = nullptr;
-            // TODO(jmadill): Handle error if dummy texture can't be created.
-            (void)mRenderer->getIncompleteTexture(context, gl::TextureType::_2D, &dummyTex);
-            if (dummyTex)
+            gl::Texture *mockTex = nullptr;
+            // TODO(jmadill): Handle error if mock texture can't be created.
+            (void)mRenderer->getIncompleteTexture(context, gl::TextureType::_2D, &mockTex);
+            if (mockTex)
             {
                 gl::ImageIndex index = gl::ImageIndex::Make2D(0);
-                mDummyAttachment     = gl::FramebufferAttachment(
+                mMockAttachment      = gl::FramebufferAttachment(
                     context, GL_TEXTURE, GL_COLOR_ATTACHMENT0_EXT + activeProgramLocation, index,
-                    dummyTex, Serial());
-                colorAttachmentsForRender.push_back(&mDummyAttachment);
+                    mockTex, UniqueSerial());
+                colorAttachmentsForRender.push_back(&mMockAttachment);
             }
         }
     }
@@ -387,9 +393,9 @@ const gl::AttachmentList &FramebufferD3D::getColorAttachmentsForRender(const gl:
 
 void FramebufferD3D::destroy(const gl::Context *context)
 {
-    if (mDummyAttachment.isAttached())
+    if (mMockAttachment.isAttached())
     {
-        mDummyAttachment.detach(context, Serial());
+        mMockAttachment.detach(context, UniqueSerial());
     }
 }
 

@@ -8,6 +8,7 @@
 #ifndef CHROME_BROWSER_PROFILES_PROFILE_H_
 #define CHROME_BROWSER_PROFILES_PROFILE_H_
 
+#include "base/memory/weak_ptr.h"
 #include "content/public/browser/browser_context.h"
 
 class PrefService;
@@ -31,6 +32,30 @@ class Profile : public content::BrowserContext {
 
   Profile *GetOriginalProfile();
   const Profile *GetOriginalProfile() const;
+
+  // Returns whether the profile is new.  A profile is new if the browser has
+  // not been shut down since the profile was created.
+  virtual bool IsNewProfile() const = 0;
+
+  // Returns whether it's a regular profile.
+  bool IsRegularProfile() const;
+
+  // Returns whether it is an Incognito profile. An Incognito profile is an
+  // off-the-record profile that is used for incognito mode.
+  bool IsIncognitoProfile() const;
+
+  // Returns whether it is a system profile.
+  bool IsSystemProfile() const;
+
+  // Returns whether it is a Guest session. This covers both regular and
+  // off-the-record profiles of a Guest session.
+  virtual bool IsGuestSession() const;
+
+  base::WeakPtr<Profile> GetWeakPtr();
+
+ private:
+  base::WeakPtrFactory<Profile> weak_ptr_factory_{this};
+
 };
 
 #endif  // CHROME_BROWSER_PROFILES_PROFILE_H_

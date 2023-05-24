@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qaspectengine.h"
 #include "qaspectengine_p.h"
@@ -49,10 +13,8 @@
 #include <Qt3DCore/private/corelogging_p.h>
 #include <Qt3DCore/private/qaspectmanager_p.h>
 #include <Qt3DCore/private/qchangearbiter_p.h>
-#include <Qt3DCore/private/qeventfilterservice_p.h>
 #include <Qt3DCore/private/qnode_p.h>
 #include <Qt3DCore/private/qnodevisitor_p.h>
-#include <Qt3DCore/private/qpostman_p.h>
 #include <Qt3DCore/private/qscene_p.h>
 #include <Qt3DCore/private/qservicelocator_p.h>
 #include <Qt3DCore/private/qsysteminformationservice_p.h>
@@ -62,11 +24,11 @@ QT_BEGIN_NAMESPACE
 
 namespace{
 
-QVector<Qt3DCore::QNode *> getNodesForCreation(Qt3DCore::QNode *root)
+QList<Qt3DCore::QNode *> getNodesForCreation(Qt3DCore::QNode *root)
 {
     using namespace Qt3DCore;
 
-    QVector<QNode *> nodes;
+    QList<QNode *> nodes;
     QNodeVisitor visitor;
     visitor.traverse(root, [&nodes](QNode *node) {
         nodes.append(node);
@@ -86,11 +48,11 @@ QVector<Qt3DCore::QNode *> getNodesForCreation(Qt3DCore::QNode *root)
     return nodes;
 }
 
-QVector<Qt3DCore::QNode *> getNodesForRemoval(Qt3DCore::QNode *root)
+QList<Qt3DCore::QNode *> getNodesForRemoval(Qt3DCore::QNode *root)
 {
     using namespace Qt3DCore;
 
-    QVector<QNode *> nodes;
+    QList<QNode *> nodes;
     QNodeVisitor visitor;
     visitor.traverse(root, [&nodes](QNode *node) {
         nodes.append(node);
@@ -115,17 +77,14 @@ QAspectEnginePrivate *QAspectEnginePrivate::get(QAspectEngine *q)
 QAspectEnginePrivate::QAspectEnginePrivate()
     : QObjectPrivate()
     , m_aspectManager(nullptr)
-    , m_postman(nullptr)
     , m_scene(nullptr)
     , m_initialized(false)
     , m_runMode(QAspectEngine::Automatic)
 {
     qRegisterMetaType<Qt3DCore::QAbstractAspect *>();
-    qRegisterMetaType<Qt3DCore::QObserverInterface *>();
     qRegisterMetaType<Qt3DCore::QNode *>();
     qRegisterMetaType<Qt3DCore::QEntity *>();
     qRegisterMetaType<Qt3DCore::QScene *>();
-    qRegisterMetaType<Qt3DCore::QAbstractPostman *>();
 }
 
 QAspectEnginePrivate::~QAspectEnginePrivate()
@@ -226,8 +185,6 @@ QAspectEngine::QAspectEngine(QObject *parent)
     qCDebug(Aspects) << Q_FUNC_INFO;
     Q_D(QAspectEngine);
     d->m_scene = new QScene(this);
-    d->m_postman = new QPostman(this);
-    d->m_postman->setScene(d->m_scene);
     d->m_aspectManager = new QAspectManager(this);
 }
 
@@ -248,7 +205,6 @@ QAspectEngine::~QAspectEngine()
     for (auto aspect : aspects)
         unregisterAspect(aspect);
 
-    delete d->m_postman;
     delete d->m_scene;
 }
 
@@ -265,8 +221,6 @@ void QAspectEnginePrivate::initialize()
     m_aspectManager->initialize();
     QChangeArbiter *arbiter = m_aspectManager->changeArbiter();
     m_scene->setArbiter(arbiter);
-    QChangeArbiter::createUnmanagedThreadLocalChangeQueue(arbiter);
-    arbiter->setPostman(m_postman);
     arbiter->setScene(m_scene);
     m_initialized = true;
     m_aspectManager->setPostConstructorInit(m_scene->postConstructorInit());
@@ -283,19 +237,12 @@ void QAspectEnginePrivate::shutdown()
 {
     qCDebug(Aspects) << Q_FUNC_INFO;
 
-    // Flush any change batch waiting in the postman that may contain node
-    // destruction changes that the aspects should process before we exit
-    // the simulation loop
-    m_postman->submitChangeBatch();
-
     // Exit the simulation loop. Waits for this to be completed on the aspect
     // thread before returning
     exitSimulationLoop();
 
     // Cleanup the scene before quitting the backend
     m_scene->setArbiter(nullptr);
-    QChangeArbiter *arbiter = m_aspectManager->changeArbiter();
-    QChangeArbiter::destroyUnmanagedThreadLocalChangeQueue(arbiter);
     m_initialized = false;
 }
 
@@ -303,6 +250,16 @@ void QAspectEnginePrivate::exitSimulationLoop()
 {
     if (m_aspectManager != nullptr)
         m_aspectManager->exitSimulationLoop();
+}
+
+QNode *QAspectEnginePrivate::lookupNode(QNodeId id) const
+{
+    return m_scene ? m_scene->lookupNode(id) : nullptr;
+}
+
+QList<QNode *> QAspectEnginePrivate::lookupNodes(const QList<QNodeId> &ids) const
+{
+    return m_scene ? m_scene->lookupNodes(ids) : QList<QNode *>{};
 }
 
 /*!
@@ -313,10 +270,13 @@ void QAspectEnginePrivate::exitSimulationLoop()
 void QAspectEngine::registerAspect(QAbstractAspect *aspect)
 {
     Q_D(QAspectEngine);
-    // The aspect is moved to the AspectThread
-    // AspectManager::registerAspect is called in the context
-    // of the AspectThread. This is turns call aspect->onInitialize
-    // still in the same AspectThread context
+
+    const QStringList dependencies = aspect->dependencies();
+    for (const auto &name: dependencies) {
+        if (!d->m_namedAspects.contains(name))
+            registerAspect(name);
+    }
+
     d->m_aspects << aspect;
     d->m_aspectManager->registerAspect(aspect);
 }
@@ -388,10 +348,21 @@ void QAspectEngine::unregisterAspect(const QString &name)
 /*!
  * \return the aspects owned by the aspect engine.
  */
-QVector<QAbstractAspect *> QAspectEngine::aspects() const
+QList<QAbstractAspect *> QAspectEngine::aspects() const
 {
     Q_D(const QAspectEngine);
     return d->m_aspects;
+}
+
+/*!
+ * \return the asepect matching the \a name
+ *
+ * \note Required that the aspect was registered by name
+ */
+QAbstractAspect *QAspectEngine::aspect(const QString &name) const
+{
+    Q_D(const QAspectEngine);
+    return d->m_namedAspects.value(name, nullptr);
 }
 
 /*!
@@ -421,7 +392,7 @@ QVariant QAspectEngine::executeCommand(const QString &command)
     QStringList args = command.split(QLatin1Char(' '));
     QString aspectName = args.takeFirst();
 
-    for (QAbstractAspect *aspect : qAsConst(d->m_aspects)) {
+    for (QAbstractAspect *aspect : std::as_const(d->m_aspects)) {
         if (aspectName == d->m_factory.aspectName(aspect))
             return aspect->executeCommand(args);
     }
@@ -440,6 +411,18 @@ void QAspectEngine::processFrame()
     Q_D(QAspectEngine);
     Q_ASSERT(d->m_runMode == QAspectEngine::Manual);
     d->m_aspectManager->processFrame();
+}
+
+QNode *QAspectEngine::lookupNode(QNodeId id) const
+{
+    Q_D(const QAspectEngine);
+    return d->lookupNode(id);
+}
+
+QList<QNode *> QAspectEngine::lookupNodes(const QList<QNodeId> &ids) const
+{
+    Q_D(const QAspectEngine);
+    return d->lookupNodes(ids);
 }
 
 /*!
@@ -479,7 +462,7 @@ void QAspectEngine::setRootEntity(QEntityPtr root)
     // deregister the nodes from the scene
     d->initNodeTree(root.data());
 
-    const QVector<QNode *> nodes = getNodesForCreation(root.data());
+    const QList<QNode *> nodes = getNodesForCreation(root.data());
 
     // Specify if the AspectManager should be driving the simulation loop or not
     d->m_aspectManager->setRunMode(d->m_runMode);
@@ -522,3 +505,5 @@ QAspectEngine::RunMode QAspectEngine::runMode() const
 } // namespace Qt3DCore
 
 QT_END_NAMESPACE
+
+#include "moc_qaspectengine.cpp"

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -41,7 +41,8 @@ NetworkingPrivateGetManagedPropertiesFunction::Run() {
 ////////////////////////////////////////////////////////////////////////////////
 // NetworkingPrivateGetStateFunction
 
-NetworkingPrivateGetStateFunction::~NetworkingPrivateGetStateFunction() {}
+NetworkingPrivateGetStateFunction::~NetworkingPrivateGetStateFunction() =
+    default;
 
 ExtensionFunction::ResponseAction NetworkingPrivateGetStateFunction::Run() {
   return RespondNow(Error(kStubError));
@@ -83,7 +84,8 @@ NetworkingPrivateForgetNetworkFunction::Run() {
 ////////////////////////////////////////////////////////////////////////////////
 // NetworkingPrivateGetNetworksFunction
 
-NetworkingPrivateGetNetworksFunction::~NetworkingPrivateGetNetworksFunction() {}
+NetworkingPrivateGetNetworksFunction::~NetworkingPrivateGetNetworksFunction() =
+    default;
 
 ExtensionFunction::ResponseAction NetworkingPrivateGetNetworksFunction::Run() {
   return RespondNow(Error(kStubError));
@@ -184,50 +186,6 @@ NetworkingPrivateStartActivateFunction::
 
 ExtensionFunction::ResponseAction
 NetworkingPrivateStartActivateFunction::Run() {
-  return RespondNow(Error(kStubError));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// NetworkingPrivateVerifyDestinationFunction
-
-NetworkingPrivateVerifyDestinationFunction::
-    ~NetworkingPrivateVerifyDestinationFunction() {}
-
-ExtensionFunction::ResponseAction
-NetworkingPrivateVerifyDestinationFunction::Run() {
-  return RespondNow(Error(kStubError));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// NetworkingPrivateVerifyAndEncryptDataFunction
-
-NetworkingPrivateVerifyAndEncryptDataFunction::
-    ~NetworkingPrivateVerifyAndEncryptDataFunction() {}
-
-ExtensionFunction::ResponseAction
-NetworkingPrivateVerifyAndEncryptDataFunction::Run() {
-  return RespondNow(Error(kStubError));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// NetworkingPrivateSetWifiTDLSEnabledStateFunction
-
-NetworkingPrivateSetWifiTDLSEnabledStateFunction::
-    ~NetworkingPrivateSetWifiTDLSEnabledStateFunction() {}
-
-ExtensionFunction::ResponseAction
-NetworkingPrivateSetWifiTDLSEnabledStateFunction::Run() {
-  return RespondNow(Error(kStubError));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// NetworkingPrivateGetWifiTDLSStatusFunction
-
-NetworkingPrivateGetWifiTDLSStatusFunction::
-    ~NetworkingPrivateGetWifiTDLSStatusFunction() {}
-
-ExtensionFunction::ResponseAction
-NetworkingPrivateGetWifiTDLSStatusFunction::Run() {
   return RespondNow(Error(kStubError));
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,57 +6,25 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/metrics/histogram.h"
-#include "base/metrics/histogram_base.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/threading/platform_thread.h"
 #include "base/trace_event/trace_event.h"
+#include "build/build_config.h"
 #include "cc/base/histograms.h"
 #include "cc/trees/layer_tree_frame_sink_client.h"
+#include "components/power_scheduler/power_mode.h"
+#include "components/power_scheduler/power_mode_arbiter.h"
+#include "components/power_scheduler/power_mode_voter.h"
 #include "components/viz/common/features.h"
 #include "components/viz/common/frame_sinks/begin_frame_args.h"
 #include "components/viz/common/hit_test/hit_test_region_list.h"
 #include "components/viz/common/quads/compositor_frame.h"
 
-namespace {
-
-base::HistogramBase* GetHistogramNamed(const char* histogram_name_format,
-                                       const char* client_name) {
-  if (!client_name)
-    return nullptr;
-
-  return base::LinearHistogram::FactoryMicrosecondsTimeGet(
-      base::StringPrintf(histogram_name_format, client_name),
-      base::TimeDelta::FromMicroseconds(1),
-      base::TimeDelta::FromMilliseconds(200), 50,
-      base::HistogramBase::kUmaTargetedHistogramFlag);
-}
-}  // namespace
-
 namespace cc {
 namespace mojo_embedder {
-
-AsyncLayerTreeFrameSink::PipelineReporting::PipelineReporting(
-    const viz::BeginFrameArgs args,
-    base::TimeTicks now,
-    base::HistogramBase* submit_begin_frame_histogram)
-    : trace_id_(args.trace_id),
-      frame_time_(now),
-      submit_begin_frame_histogram_(submit_begin_frame_histogram) {}
-
-AsyncLayerTreeFrameSink::PipelineReporting::~PipelineReporting() = default;
-
-void AsyncLayerTreeFrameSink::PipelineReporting::Report() {
-  TRACE_EVENT_WITH_FLOW1("viz,benchmark", "Graphics.Pipeline",
-                         TRACE_ID_GLOBAL(trace_id_),
-                         TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT,
-                         "step", "SubmitCompositorFrame");
-  auto report_time = base::TimeTicks::Now() - frame_time_;
-
-  if (submit_begin_frame_histogram_)
-    submit_begin_frame_histogram_->AddTimeMicrosecondsGranularity(report_time);
-}
 
 AsyncLayerTreeFrameSink::InitParams::InitParams() = default;
 AsyncLayerTreeFrameSink::InitParams::~InitParams() = default;
@@ -75,22 +43,20 @@ AsyncLayerTreeFrameSink::UnboundMessagePipes::UnboundMessagePipes(
 
 AsyncLayerTreeFrameSink::AsyncLayerTreeFrameSink(
     scoped_refptr<viz::ContextProvider> context_provider,
-    scoped_refptr<viz::RasterContextProvider> worker_context_provider,
+    scoped_refptr<RasterContextProviderWrapper> worker_context_provider_wrapper,
     InitParams* params)
     : LayerTreeFrameSink(std::move(context_provider),
-                         std::move(worker_context_provider),
+                         std::move(worker_context_provider_wrapper),
                          std::move(params->compositor_task_runner),
                          params->gpu_memory_buffer_manager),
       synthetic_begin_frame_source_(
           std::move(params->synthetic_begin_frame_source)),
+#if BUILDFLAG(IS_ANDROID)
+      io_thread_id_(params->io_thread_id),
+#endif
       pipes_(std::move(params->pipes)),
       wants_animate_only_begin_frames_(params->wants_animate_only_begin_frames),
-      receive_begin_frame_histogram_(
-          GetHistogramNamed("GraphicsPipeline.%s.ReceivedBeginFrame",
-                            params->client_name)),
-      submit_begin_frame_histogram_(GetHistogramNamed(
-          "GraphicsPipeline.%s.SubmitCompositorFrameAfterBeginFrame",
-          params->client_name)) {
+      power_mode_voter_("PowerModeVoter.Animation") {
   DETACH_FROM_THREAD(thread_checker_);
 }
 
@@ -134,6 +100,14 @@ bool AsyncLayerTreeFrameSink::BindToClient(LayerTreeFrameSinkClient* client) {
   compositor_frame_sink_ptr_->InitializeCompositorFrameSinkType(
       viz::mojom::CompositorFrameSinkType::kLayerTree);
 
+#if BUILDFLAG(IS_ANDROID)
+  std::vector<int32_t> thread_ids;
+  thread_ids.push_back(base::PlatformThread::CurrentId());
+  if (io_thread_id_ != base::kInvalidThreadId)
+    thread_ids.push_back(io_thread_id_);
+  compositor_frame_sink_ptr_->SetThreadIds(thread_ids);
+#endif
+
   return true;
 }
 
@@ -143,9 +117,11 @@ void AsyncLayerTreeFrameSink::DetachFromClient() {
   begin_frame_source_.reset();
   synthetic_begin_frame_source_.reset();
   client_receiver_.reset();
+  // `compositor_frame_sink_ptr_` points to either `compositor_frame_sink_` or
+  // `compositor_frame_sink_associated_`, so it must be set to nullptr first.
+  compositor_frame_sink_ptr_ = nullptr;
   compositor_frame_sink_.reset();
   compositor_frame_sink_associated_.reset();
-  compositor_frame_sink_ptr_ = nullptr;
   LayerTreeFrameSink::DetachFromClient();
 }
 
@@ -158,21 +134,18 @@ void AsyncLayerTreeFrameSink::SetLocalSurfaceId(
 
 void AsyncLayerTreeFrameSink::SubmitCompositorFrame(
     viz::CompositorFrame frame,
-    bool hit_test_data_changed,
-    bool show_hit_test_borders) {
+    bool hit_test_data_changed) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(compositor_frame_sink_ptr_);
   DCHECK(frame.metadata.begin_frame_ack.has_damage);
   DCHECK(frame.metadata.begin_frame_ack.frame_id.IsSequenceValid());
 
-  // It's possible to request an immediate composite from cc which will bypass
-  // BeginFrame. In that case, we cannot collect full graphics pipeline data.
-  auto it = pipeline_reporting_frame_times_.find(
-      frame.metadata.begin_frame_ack.trace_id);
-  if (it != pipeline_reporting_frame_times_.end()) {
-    it->second.Report();
-    pipeline_reporting_frame_times_.erase(it);
-  }
+  TRACE_EVENT_WITH_FLOW2(
+      "viz,benchmark", "Graphics.Pipeline",
+      TRACE_ID_GLOBAL(frame.metadata.begin_frame_ack.trace_id),
+      TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT, "step",
+      "SubmitCompositorFrame", "local_surface_id",
+      local_surface_id_.ToString());
 
   if (local_surface_id_ == last_submitted_local_surface_id_) {
     DCHECK_EQ(last_submitted_device_scale_factor_, frame.device_scale_factor());
@@ -182,11 +155,8 @@ void AsyncLayerTreeFrameSink::SubmitCompositorFrame(
               frame.size_in_pixels().width());
   }
 
-  base::Optional<viz::HitTestRegionList> hit_test_region_list =
+  absl::optional<viz::HitTestRegionList> hit_test_region_list =
       client_->BuildHitTestData();
-
-  if (show_hit_test_borders && hit_test_region_list)
-    hit_test_region_list->flags |= viz::HitTestRegionFlags::kHitTestDebug;
 
   // If |hit_test_data_changed| was set or local_surface_id has been updated,
   // we always send hit-test data; otherwise we check for equality with the
@@ -199,7 +169,7 @@ void AsyncLayerTreeFrameSink::SubmitCompositorFrame(
                                         last_hit_test_data_)) {
       DCHECK(!viz::HitTestRegionList::IsEqual(*hit_test_region_list,
                                               viz::HitTestRegionList()));
-      hit_test_region_list = base::nullopt;
+      hit_test_region_list = absl::nullopt;
     } else {
       last_hit_test_data_ = *hit_test_region_list;
     }
@@ -241,27 +211,26 @@ void AsyncLayerTreeFrameSink::SubmitCompositorFrame(
                          TRACE_EVENT_FLAG_FLOW_OUT, "step",
                          "SubmitHitTestData");
 
+  power_mode_voter_.OnFrameProduced(frame.render_pass_list.back()->damage_rect,
+                                    frame.device_scale_factor());
+
   compositor_frame_sink_ptr_->SubmitCompositorFrame(
       local_surface_id_, std::move(frame), std::move(hit_test_region_list), 0);
 }
 
-void AsyncLayerTreeFrameSink::DidNotProduceFrame(
-    const viz::BeginFrameAck& ack) {
+void AsyncLayerTreeFrameSink::DidNotProduceFrame(const viz::BeginFrameAck& ack,
+                                                 FrameSkippedReason reason) {
   DCHECK(compositor_frame_sink_ptr_);
   DCHECK(!ack.has_damage);
   DCHECK(ack.frame_id.IsSequenceValid());
-
-  // TODO(yiyix): Remove duplicated calls of DidNotProduceFrame from the same
-  // BeginFrames. https://crbug.com/881949
-  auto it = pipeline_reporting_frame_times_.find(ack.trace_id);
-  if (it != pipeline_reporting_frame_times_.end()) {
-    TRACE_EVENT_WITH_FLOW1("viz,benchmark", "Graphics.Pipeline",
-                           TRACE_ID_GLOBAL(ack.trace_id),
-                           TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT,
-                           "step", "DidNotProduceFrame");
-    compositor_frame_sink_ptr_->DidNotProduceFrame(ack);
-    pipeline_reporting_frame_times_.erase(it);
-  }
+  TRACE_EVENT_WITH_FLOW2("viz,benchmark", "Graphics.Pipeline",
+                         TRACE_ID_GLOBAL(ack.trace_id),
+                         TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT,
+                         "step", "DidNotProduceFrame", "reason", reason);
+  bool frame_completed = reason == FrameSkippedReason::kNoDamage;
+  bool waiting_on_main = reason == FrameSkippedReason::kWaitingOnMain;
+  power_mode_voter_.OnFrameSkipped(frame_completed, waiting_on_main);
+  compositor_frame_sink_ptr_->DidNotProduceFrame(ack);
 }
 
 void AsyncLayerTreeFrameSink::DidAllocateSharedBitmap(
@@ -278,36 +247,29 @@ void AsyncLayerTreeFrameSink::DidDeleteSharedBitmap(
 }
 
 void AsyncLayerTreeFrameSink::DidReceiveCompositorFrameAck(
-    const std::vector<viz::ReturnedResource>& resources) {
+    std::vector<viz::ReturnedResource> resources) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  client_->ReclaimResources(resources);
+  client_->ReclaimResources(std::move(resources));
   client_->DidReceiveCompositorFrameAck();
 }
 
 void AsyncLayerTreeFrameSink::OnBeginFrame(
     const viz::BeginFrameArgs& args,
-    const viz::FrameTimingDetailsMap& timing_details) {
+    const viz::FrameTimingDetailsMap& timing_details,
+    bool frame_ack,
+    std::vector<viz::ReturnedResource> resources) {
+  if (features::IsOnBeginFrameAcksEnabled()) {
+    if (frame_ack) {
+      DidReceiveCompositorFrameAck(std::move(resources));
+    } else if (!resources.empty()) {
+      ReclaimResources(std::move(resources));
+    }
+  }
+
   for (const auto& pair : timing_details) {
     client_->DidPresentCompositorFrame(pair.first, pair.second);
   }
 
-  DCHECK_LE(pipeline_reporting_frame_times_.size(), 25u);
-  if (args.trace_id != -1) {
-    base::TimeTicks current_time = base::TimeTicks::Now();
-    PipelineReporting report(args, current_time, submit_begin_frame_histogram_);
-    pipeline_reporting_frame_times_.emplace(args.trace_id, report);
-    // Missed BeginFrames use the frame time of the last received BeginFrame
-    // which is bogus from a reporting perspective if nothing has been updating
-    // on screen for a while.
-    if (args.type != viz::BeginFrameArgs::MISSED) {
-      base::TimeDelta frame_difference = current_time - args.frame_time;
-
-      if (receive_begin_frame_histogram_) {
-        receive_begin_frame_histogram_->AddTimeMicrosecondsGranularity(
-            frame_difference);
-      }
-    }
-  }
   if (!needs_begin_frames_) {
     TRACE_EVENT_WITH_FLOW1("viz,benchmark", "Graphics.Pipeline",
                            TRACE_ID_GLOBAL(args.trace_id),
@@ -316,13 +278,14 @@ void AsyncLayerTreeFrameSink::OnBeginFrame(
     // We had a race with SetNeedsBeginFrame(false) and still need to let the
     // sink know that we didn't use this BeginFrame. OnBeginFrame() can also be
     // called to deliver presentation feedback.
-    DidNotProduceFrame(viz::BeginFrameAck(args, false));
+    DidNotProduceFrame(viz::BeginFrameAck(args, false),
+                       FrameSkippedReason::kNoDamage);
     return;
   }
-  TRACE_EVENT_WITH_FLOW1("viz,benchmark", "Graphics.Pipeline",
-                         TRACE_ID_GLOBAL(args.trace_id),
-                         TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT,
-                         "step", "ReceiveBeginFrame");
+  TRACE_EVENT_WITH_FLOW2(
+      "viz,benchmark", "Graphics.Pipeline", TRACE_ID_GLOBAL(args.trace_id),
+      TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT, "step",
+      "ReceiveBeginFrame", "frame_sequence", args.frame_id.sequence_number);
 
   if (begin_frame_source_)
     begin_frame_source_->OnBeginFrame(args);
@@ -335,19 +298,26 @@ void AsyncLayerTreeFrameSink::OnBeginFramePausedChanged(bool paused) {
 }
 
 void AsyncLayerTreeFrameSink::ReclaimResources(
-    const std::vector<viz::ReturnedResource>& resources) {
+    std::vector<viz::ReturnedResource> resources) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  client_->ReclaimResources(resources);
+  client_->ReclaimResources(std::move(resources));
+}
+
+void AsyncLayerTreeFrameSink::OnCompositorFrameTransitionDirectiveProcessed(
+    uint32_t sequence_id) {
+  client_->OnCompositorFrameTransitionDirectiveProcessed(sequence_id);
 }
 
 void AsyncLayerTreeFrameSink::OnNeedsBeginFrames(bool needs_begin_frames) {
   DCHECK(compositor_frame_sink_ptr_);
   if (needs_begin_frames_ != needs_begin_frames) {
-    if (needs_begin_frames_) {
-      TRACE_EVENT_ASYNC_END0("cc,benchmark", "NeedsBeginFrames", this);
+    if (needs_begin_frames) {
+      TRACE_EVENT_NESTABLE_ASYNC_BEGIN0("cc,benchmark", "NeedsBeginFrames",
+                                        this);
     } else {
-      TRACE_EVENT_ASYNC_BEGIN0("cc,benchmark", "NeedsBeginFrames", this);
+      TRACE_EVENT_NESTABLE_ASYNC_END0("cc,benchmark", "NeedsBeginFrames", this);
     }
+    power_mode_voter_.OnNeedsBeginFramesChanged(needs_begin_frames);
   }
   needs_begin_frames_ = needs_begin_frames;
   compositor_frame_sink_ptr_->SetNeedsBeginFrame(needs_begin_frames);
@@ -356,7 +326,7 @@ void AsyncLayerTreeFrameSink::OnNeedsBeginFrames(bool needs_begin_frames) {
 void AsyncLayerTreeFrameSink::OnMojoConnectionError(
     uint32_t custom_reason,
     const std::string& description) {
-  // TODO(sgilhuly): Use DLOG(FATAL) once crbug.com/1043899 is resolved.
+  // TODO(rivr): Use DLOG(FATAL) once crbug.com/1043899 is resolved.
   if (custom_reason)
     DLOG(ERROR) << description;
   if (client_)

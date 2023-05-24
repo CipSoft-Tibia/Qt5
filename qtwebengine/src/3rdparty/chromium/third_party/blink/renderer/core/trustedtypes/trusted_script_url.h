@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,8 @@
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
+class ScriptValue;
+class ExceptionState;
 
 class CORE_EXPORT TrustedScriptURL final : public ScriptWrappable {
   DEFINE_WRAPPERTYPEINFO();
@@ -19,6 +21,10 @@ class CORE_EXPORT TrustedScriptURL final : public ScriptWrappable {
 
   // TrustedScriptURL.idl
   const String& toString() const;
+  const String& toJSON() const { return toString(); }
+  static TrustedScriptURL* fromLiteral(ScriptState* script_state,
+                                       const ScriptValue& templateString,
+                                       ExceptionState& exception_state);
 
  private:
   const String url_;

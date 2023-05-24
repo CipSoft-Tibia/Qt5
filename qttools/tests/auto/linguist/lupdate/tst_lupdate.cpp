@@ -1,41 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #if CHECK_SIMTEXTH
 #include "../shared/simtexth.h"
 #endif
 
-#include <QtCore/QDir>
-#include <QtCore/QDebug>
-#include <QtCore/QFile>
 #include <QtCore/QByteArray>
+#include <QtCore/QDebug>
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/private/qconfig_p.h>
+#include <QtCore/QSet>
 
 #include <QtTest/QtTest>
+#include <QtTools/private/qttools-config_p.h>
+
+#include <iostream>
+
+using namespace Qt::Literals::StringLiterals;
 
 class tst_lupdate : public QObject
 {
@@ -62,7 +44,7 @@ private:
 
 tst_lupdate::tst_lupdate()
 {
-    QString binPath = QLibraryInfo::location(QLibraryInfo::BinariesPath);
+    QString binPath = QLibraryInfo::path(QLibraryInfo::BinariesPath);
     m_cmdLupdate = binPath + QLatin1String("/lupdate");
     m_basePath = QFINDTESTDATA("testdata/");
 }
@@ -143,7 +125,7 @@ void tst_lupdate::doCompare(QStringList actual, const QString &expectedFn, bool 
             }
             break;
         }
-        if (err ? !QRegExp(tmpl).exactMatch(actual.at(ai)) : (actual.at(ai) != tmpl)) {
+        if (err ? !QRegularExpression(QRegularExpression::anchoredPattern(tmpl)).match(actual.at(ai)).hasMatch() : (actual.at(ai) != tmpl)) {
             if (require <= 0) {
                 accept = 0;
                 continue;
@@ -160,7 +142,7 @@ void tst_lupdate::doCompare(QStringList actual, const QString &expectedFn, bool 
                                          .arg(err ? "output" : "result")
                                          .arg(em + 1).arg(expectedFn)));
                 }
-                if (ai == am || (err ? !QRegExp(tmpl).exactMatch(actual.at(am - 1)) :
+                if (ai == am || (err ? !QRegularExpression(QRegularExpression::anchoredPattern(tmpl)).match(actual.at(am - 1)).hasMatch() :
                                        (actual.at(am - 1) != tmpl))) {
                     if (require <= 0) {
                         accept = 0;
@@ -200,8 +182,9 @@ void tst_lupdate::doCompare(QStringList actual, const QString &expectedFn, bool 
     diff += ">>>>>>> expected\n";
     for (int j = oam; j < qMin(oam + 3, actual.size()); j++)
         diff += actual.at(j) + '\n';
-    QFAIL(qPrintable((err ? "Output for " : "Result for ") + expectedFn + " does not meet expectations:\n" + diff));
-}
+    QFAIL(qPrintable((err ? "Output for " : "Result for ")
+                     + expectedFn + " does not meet expectations:\n" + diff));
+    }
 
 void tst_lupdate::doCompare(const QString &actualFn, const QString &expectedFn, bool err)
 {
@@ -215,6 +198,7 @@ void tst_lupdate::doCompare(const QString &actualFn, const QString &expectedFn, 
 void tst_lupdate::good_data()
 {
     QTest::addColumn<QString>("directory");
+    QTest::addColumn<bool>("useClangCpp");
 
     QDir parsingDir(m_basePath + "good");
     QStringList dirs = parsingDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
@@ -225,19 +209,48 @@ void tst_lupdate::good_data()
 #ifndef Q_OS_MACOS
     dirs.removeAll(QLatin1String("parseobjc"));
 #endif
+    QSet<QString> ignoredTests = {
+        "lacksqobject_clang_parser", "parsecontexts_clang_parser", "parsecpp2_clang_parser",
+        "parsecpp_clang_parser",     "prefix_clang_parser",        "preprocess_clang_parser",
+        "parsecpp_clang_only"};
 
-    for (const QString &dir : qAsConst(dirs))
-        QTest::newRow(dir.toLocal8Bit()) << dir;
+    // Add test rows for the "classic" lupdate
+    for (const QString &dir : dirs) {
+        if (ignoredTests.contains(dir))
+            continue;
+        QTest::newRow(dir.toLocal8Bit()) << dir << false;
+    }
+
+#if QT_CONFIG(clangcpp) && QT_CONFIG(widgets)
+    // Add test rows for the clang-based lupdate
+    ignoredTests = {
+        "lacksqobject",
+        "parsecontexts",
+        "parsecpp",
+        "parsecpp2",
+        "parseqrc_json",
+        "prefix",
+        "preprocess",
+        "proparsing2", // llvm8 cannot handle file name without extension
+        "respfile", //@lst not supported with the new parser yet (include not properly set in the compile_command.json)
+        "cmdline_deeppath", //no project file, new parser does not support (yet) this way of launching lupdate
+        "cmdline_order", // no project, new parser do not pickup on macro defined but not used. Test not needed for new parser.
+        "cmdline_recurse", // recursive scan without project file not supported (yet) with the new parser
+    };
+    for (const QString &dir : dirs) {
+        if (ignoredTests.contains(dir))
+            continue;
+        QTest::newRow("clang-" + dir.toLocal8Bit()) << dir << true;
+    }
+#endif
 }
 
 void tst_lupdate::good()
 {
     QFETCH(QString, directory);
+    QFETCH(bool, useClangCpp);
 
     QString dir = m_basePath + "good/" + directory;
-
-    qDebug() << "Checking...";
-
     QString workDir = dir;
     QStringList generatedtsfiles(QLatin1String("project.ts"));
     QStringList lupdateArguments;
@@ -268,7 +281,7 @@ void tst_lupdate::good()
         file.close();
     }
 
-    for (const QString &ts : qAsConst(generatedtsfiles)) {
+    for (const QString &ts : std::as_const(generatedtsfiles)) {
         QString genTs = workDir + QLatin1Char('/') + ts;
         QFile::remove(genTs);
         QString beforetsfile = dir + QLatin1Char('/') + ts + QLatin1String(".before");
@@ -280,9 +293,18 @@ void tst_lupdate::good()
     QVERIFY(file.open(QIODevice::WriteOnly));
     file.close();
 
-    if (lupdateArguments.isEmpty())
-        lupdateArguments.append(QLatin1String("project.pro"));
+    if (lupdateArguments.isEmpty()) {
+        // Automatically pass "project.pro" or "-project project.json".
+        if (QFile::exists(dir + u"/project.json"_s)) {
+            lupdateArguments << u"-project"_s << u"project.json"_s;
+        } else {
+            lupdateArguments.append(QLatin1String("project.pro"));
+        }
+    }
+
     lupdateArguments.prepend("-silent");
+    if (useClangCpp)
+        lupdateArguments.append("-clang-parser");
 
     QProcess proc;
     proc.setWorkingDirectory(workDir);
@@ -308,9 +330,15 @@ void tst_lupdate::good()
             return;
     }
 
-    for (const QString &ts : qAsConst(generatedtsfiles))
+    for (const QString &ts : std::as_const(generatedtsfiles)) {
+        if (dir.endsWith("preprocess_clang_parser")) {
+            doCompare(workDir + QLatin1Char('/') + ts,
+                      dir + QLatin1Char('/') + ts + QLatin1String(".result"), true);
+        } else {
         doCompare(workDir + QLatin1Char('/') + ts,
                   dir + QLatin1Char('/') + ts + QLatin1String(".result"), false);
+        }
+    }
 }
 
 #if CHECK_SIMTEXTH

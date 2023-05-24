@@ -1,51 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qt3dquick3drenderplugin.h"
 #include <Qt3DRender/qabstractlight.h>
 #include <Qt3DRender/qalphacoverage.h>
 #include <Qt3DRender/qalphatest.h>
-#include <Qt3DRender/qattribute.h>
 #include <Qt3DRender/qblendequation.h>
 #include <Qt3DRender/qblendequationarguments.h>
-#include <Qt3DRender/qbuffer.h>
 #include <Qt3DRender/qbuffercapture.h>
 #include <Qt3DRender/qcamera.h>
 #include <Qt3DRender/qcameralens.h>
@@ -65,7 +27,6 @@
 #include <Qt3DRender/qfilterkey.h>
 #include <Qt3DRender/qfrontface.h>
 #include <Qt3DRender/qfrustumculling.h>
-#include <Qt3DRender/qgeometry.h>
 #include <Qt3DRender/qgeometryrenderer.h>
 #include <Qt3DRender/qgraphicsapifilter.h>
 #include <Qt3DRender/qlayer.h>
@@ -79,6 +40,7 @@
 #include <Qt3DRender/qnodepthmask.h>
 #include <Qt3DRender/qnodraw.h>
 #include <Qt3DRender/qobjectpicker.h>
+#include <Qt3DRender/qpickingproxy.h>
 #include <Qt3DRender/qraycaster.h>
 #include <Qt3DRender/qparameter.h>
 #include <Qt3DRender/qpickevent.h>
@@ -120,14 +82,13 @@
 #include <Qt3DRender/qshaderimage.h>
 #include <Qt3DRender/qsubtreeenabler.h>
 #include <Qt3DRender/qrendercapabilities.h>
+#include <Qt3DRender/qdebugoverlay.h>
 
 #include <QtGui/qwindow.h>
 
 #include <Qt3DQuickRender/private/qt3dquickrender_global_p.h>
 #include <Qt3DQuickRender/private/qt3dquickrender_global_p.h>
-#include <Qt3DQuickRender/private/quick3dbuffer_p.h>
 #include <Qt3DQuickRender/private/quick3deffect_p.h>
-#include <Qt3DQuickRender/private/quick3dgeometry_p.h>
 #include <Qt3DQuickRender/private/quick3dlayerfilter_p.h>
 #include <Qt3DQuickRender/private/quick3dmaterial_p.h>
 #include <Qt3DQuickRender/private/quick3dmemorybarrier_p.h>
@@ -135,7 +96,6 @@
 #include <Qt3DQuickRender/private/quick3drenderpass_p.h>
 #include <Qt3DQuickRender/private/quick3drenderpassfilter_p.h>
 #include <Qt3DQuickRender/private/quick3drendertargetoutput_p.h>
-#include <Qt3DQuickRender/private/quick3drendertargetselector_p.h>
 #include <Qt3DQuickRender/private/quick3dscene_p.h>
 #include <Qt3DQuickRender/private/quick3dshaderdata_p.h>
 #include <Qt3DQuickRender/private/quick3dshaderdataarray_p.h>
@@ -151,7 +111,7 @@ QT_BEGIN_NAMESPACE
 
 QVariantList Quick3DShaderDataArrayToVariantListConverter(Qt3DRender::Render::Quick::Quick3DShaderDataArray *array)
 {
-    const QVector<Qt3DRender::QShaderData *> arrayValues = array->values();
+    const QList<Qt3DRender::QShaderData *> arrayValues = array->values();
     QVariantList values;
     values.reserve(arrayValues.size());
     for (Qt3DRender::QShaderData *data : arrayValues)
@@ -162,8 +122,6 @@ QVariantList Quick3DShaderDataArrayToVariantListConverter(Qt3DRender::Render::Qu
 void Qt3DQuick3DRenderPlugin::registerTypes(const char *uri)
 {
     Qt3DRender::Quick::Quick3DRender_initialize();
-
-    qmlRegisterUncreatableType<QWindow>(uri, 2, 0, "Window", "Only for assigning window surface property");
 
     // Converters
     QMetaType::registerConverter<Qt3DRender::Render::Quick::Quick3DShaderDataArray*, QVariantList>(Quick3DShaderDataArrayToVariantListConverter);
@@ -223,14 +181,8 @@ void Qt3DQuick3DRenderPlugin::registerTypes(const char *uri)
     qmlRegisterType<Qt3DRender::QShaderImage>(uri, 2, 14, "ShaderImage");
 
     // Geometry
-    qmlRegisterType<Qt3DRender::QAttribute>(uri, 2, 0, "Attribute");
-    qmlRegisterType<Qt3DRender::QAttribute, 10>(uri, 2, 10, "Attribute");
-    qmlRegisterType<Qt3DRender::QAttribute, 11>(uri, 2, 11, "Attribute");
-    qmlRegisterUncreatableType<Qt3DRender::QBuffer>(uri, 2, 0, "BufferBase", QStringLiteral("Use Quick3DBuffer in QML"));
-    qmlRegisterUncreatableType<Qt3DRender::QBuffer, 9>(uri, 2, 9, "BufferBase", QStringLiteral("Use Quick3DBuffer in QML"));
-    qmlRegisterType<Qt3DRender::Render::Quick::Quick3DBuffer>(uri, 2, 0, "Buffer");
-    Qt3DRender::Quick::registerExtendedType<Qt3DRender::QGeometry, Qt3DRender::Render::Quick::Quick3DGeometry>("QGeometry", "Qt3D.Render/Geometry", uri, 2, 0, "Geometry");
     qmlRegisterType<Qt3DRender::QGeometryRenderer>(uri, 2, 0, "GeometryRenderer");
+    qmlRegisterType<Qt3DRender::QGeometryRenderer, 16>(uri, 2, 16, "GeometryRenderer");
     qmlRegisterType<Qt3DRender::QLevelOfDetail>(uri, 2, 9, "LevelOfDetail");
     qmlRegisterType<Qt3DRender::QLevelOfDetailSwitch>(uri, 2, 9, "LevelOfDetailSwitch");
     qRegisterMetaType<Qt3DRender::QLevelOfDetailBoundingSphere>("LevelOfDetailBoundingSphere");
@@ -246,6 +198,7 @@ void Qt3DQuick3DRenderPlugin::registerTypes(const char *uri)
     qmlRegisterUncreatableType<Qt3DRender::QPickEvent, 14>(uri, 2, 14, "PickEvent", QStringLiteral("Events cannot be created"));
     qmlRegisterType<Qt3DRender::Render::Quick::Quick3DRayCaster>(uri, 2, 11, "RayCaster");
     qmlRegisterType<Qt3DRender::Render::Quick::Quick3DScreenRayCaster>(uri, 2, 11, "ScreenRayCaster");
+    qmlRegisterType<Qt3DRender::QPickingProxy>(uri, 2, 16, "PickingProxy");
 
         // Compute Job
     qmlRegisterType<Qt3DRender::QComputeCommand>(uri, 2, 0, "ComputeCommand");
@@ -268,7 +221,7 @@ void Qt3DQuick3DRenderPlugin::registerTypes(const char *uri)
     Qt3DRender::Quick::registerExtendedType<Qt3DRender::QTechniqueFilter, Qt3DRender::Render::Quick::Quick3DTechniqueFilter>("QTechniqueFilter", "Qt3D.Render/TechniqueFilter", uri, 2, 0, "TechniqueFilter");
     Qt3DRender::Quick::registerExtendedType<Qt3DRender::QViewport, Qt3DRender::Render::Quick::Quick3DViewport>("QViewport", "Qt3D.Render/Viewport", uri, 2, 0, "Viewport");
     qmlRegisterType<Qt3DRender::QViewport, 9>(uri, 2, 9, "Viewport");
-    Qt3DRender::Quick::registerExtendedType<Qt3DRender::QRenderTargetSelector, Qt3DRender::Render::Quick::Quick3DRenderTargetSelector>("QRenderTargetSelector", "Qt3D.Render/RenderTargetSelector", uri, 2, 0, "RenderTargetSelector");
+    qmlRegisterType<Qt3DRender::QRenderTargetSelector>(uri, 2, 0, "RenderTargetSelector");
     qmlRegisterType<Qt3DRender::QClearBuffers>(uri, 2, 0, "ClearBuffers");
     qmlRegisterType<Qt3DRender::QFrameGraphNode>(uri, 2, 0, "FrameGraphNode");
     Qt3DRender::Quick::registerExtendedType<Qt3DRender::QRenderStateSet, Qt3DRender::Render::Quick::Quick3DStateSet>("QRenderStateSet", "Qt3D.Render/RenderStateSet", uri, 2, 0, "RenderStateSet");
@@ -286,6 +239,7 @@ void Qt3DQuick3DRenderPlugin::registerTypes(const char *uri)
     qmlRegisterType<Qt3DRender::QWaitFence>(uri, 2, 13, "WaitFence");
     qmlRegisterType<Qt3DRender::QNoPicking>(uri, 2, 14, "NoPicking");
     qmlRegisterType<Qt3DRender::QSubtreeEnabler>(uri, 2, 14, "SubtreeEnabler");
+    qmlRegisterType<Qt3DRender::QDebugOverlay>(uri, 2, 16, "DebugOverlay");
 
     // RenderTarget
     qmlRegisterType<Qt3DRender::QRenderTargetOutput>(uri, 2, 0, "RenderTargetOutput");
@@ -324,10 +278,13 @@ void Qt3DQuick3DRenderPlugin::registerTypes(const char *uri)
     qmlRegisterType<Qt3DRender::QLineWidth>(uri, 2, 10, "LineWidth");
     qmlRegisterType<Qt3DRender::QRasterMode>(uri, 2, 13, "RasterMode");
 
-    // Auto-increment the import to stay in sync with ALL future Qt minor versions
-    qmlRegisterModule(uri, 2, QT_VERSION_MINOR);
+    // The minor version used to be the current Qt 5 minor. For compatibility it is the last
+    // Qt 5 release.
+    qmlRegisterModule(uri, 2, 15);
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qt3dquick3drenderplugin.cpp"
 
 

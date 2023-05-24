@@ -16,26 +16,36 @@
 
 #include "src/trace_processor/importers/proto/profiler_util.h"
 
+#include "perfetto/ext/base/optional.h"
+#include "perfetto/ext/base/string_utils.h"
 #include "src/trace_processor/storage/trace_storage.h"
 
 namespace perfetto {
 namespace trace_processor {
 namespace {
 
+// Try to extract the package name from a path like:
+// * /data/app/[packageName]-[randomString]/base.apk
+// * /data/app/~~[randomStringA]/[packageName]-[randomStringB]/base.apk
+// The latter is newer (R+), and was added to avoid leaking package names via
+// mountinfo of incremental apk mounts.
 base::Optional<base::StringView> PackageFromApp(base::StringView location) {
   location = location.substr(base::StringView("/data/app/").size());
-  size_t slash = location.find('/');
-  if (slash == std::string::npos) {
+  size_t start = 0;
+  if (location.at(0) == '~') {
+    size_t slash = location.find('/');
+    if (slash == base::StringView::npos) {
+      return base::nullopt;
+    }
+    start = slash + 1;
+  }
+  size_t end = location.find('/', start + 1);
+  if (end == base::StringView::npos) {
     return base::nullopt;
   }
-  size_t second_slash = location.find('/', slash + 1);
-  if (second_slash == std::string::npos) {
-    location = location.substr(0, slash);
-  } else {
-    location = location.substr(slash + 1, second_slash - slash);
-  }
+  location = location.substr(start, end);
   size_t minus = location.find('-');
-  if (minus == std::string::npos) {
+  if (minus == base::StringView::npos) {
     return base::nullopt;
   }
   return location.substr(0, minus);
@@ -88,10 +98,20 @@ base::Optional<std::string> PackageFromLocation(TraceStorage* storage,
     return "com.google.android.apps.wellbeing";
   }
 
-  base::StringView matchmaker("MatchMaker");
-  if (location.size() >= matchmaker.size() &&
-      location.find(matchmaker) != base::StringView::npos) {
+  if (location.find("DevicePersonalizationPrebuilt") !=
+          base::StringView::npos ||
+      location.find("MatchMaker") != base::StringView::npos) {
     return "com.google.android.as";
+  }
+
+  if (location.find("DeviceIntelligenceNetworkPrebuilt") !=
+      base::StringView::npos) {
+    return "com.google.android.as.oss";
+  }
+
+  if (location.find("SettingsIntelligenceGooglePrebuilt") !=
+      base::StringView::npos) {
+    return "com.google.android.settings.intelligence";
   }
 
   base::StringView gm("/product/app/PrebuiltGmail/PrebuiltGmail.apk");
@@ -99,9 +119,8 @@ base::Optional<std::string> PackageFromLocation(TraceStorage* storage,
     return "com.google.android.gm";
   }
 
-  base::StringView gmscore("/product/priv-app/PrebuiltGmsCore/PrebuiltGmsCore");
-  if (location.size() >= gmscore.size() &&
-      location.substr(0, gmscore.size()) == gmscore) {
+  if (location.find("PrebuiltGmsCore") != base::StringView::npos ||
+      location.find("com.google.android.gms") != base::StringView::npos) {
     return "com.google.android.gms";
   }
 
@@ -124,16 +143,39 @@ base::Optional<std::string> PackageFromLocation(TraceStorage* storage,
     return "com.google.android.apps.messaging";
   }
 
-  base::StringView data_app("/data/app/");
-  if (location.substr(0, data_app.size()) == data_app) {
-    auto package = PackageFromApp(location);
+  // Deal with paths to /data/app/...
+
+  auto extract_package =
+      [storage](base::StringView path) -> base::Optional<std::string> {
+    auto package = PackageFromApp(path);
     if (!package) {
-      PERFETTO_DLOG("Failed to parse %s", location.ToStdString().c_str());
-      storage->IncrementStats(stats::heap_graph_location_parse_error);
+      PERFETTO_DLOG("Failed to parse %s", path.ToStdString().c_str());
+      storage->IncrementStats(stats::deobfuscate_location_parse_error);
       return base::nullopt;
     }
     return package->ToStdString();
+  };
+
+  base::StringView data_app("/data/app/");
+  size_t data_app_sz = data_app.size();
+  if (location.substr(0, data_app.size()) == data_app) {
+    return extract_package(location);
   }
+
+  // Check for in-memory decompressed dexfile, example prefixes:
+  // * "[anon:dalvik-classes.dex extracted in memory from"
+  // * "/dev/ashmem/dalvik-classes.dex extracted in memory from"
+  // The latter form is for older devices (Android P and before).
+  // We cannot hardcode the filename since it could be for example
+  // "classes2.dex" for multidex apks.
+  base::StringView inmem_dex("dex extracted in memory from /data/app/");
+  size_t match_pos = location.find(inmem_dex);
+  if (match_pos != base::StringView::npos) {
+    auto data_app_path =
+        location.substr(match_pos + inmem_dex.size() - data_app_sz);
+    return extract_package(data_app_path);
+  }
+
   return base::nullopt;
 }
 
@@ -142,13 +184,13 @@ std::string FullyQualifiedDeobfuscatedName(
     protos::pbzero::ObfuscatedMember::Decoder& member) {
   std::string member_deobfuscated_name =
       member.deobfuscated_name().ToStdString();
-  if (member_deobfuscated_name.find('.') == std::string::npos) {
+  if (base::Contains(member_deobfuscated_name, '.')) {
+    // Fully qualified name.
+    return member_deobfuscated_name;
+  } else {
     // Name relative to class.
     return cls.deobfuscated_name().ToStdString() + "." +
            member_deobfuscated_name;
-  } else {
-    // Fully qualified name.
-    return member_deobfuscated_name;
   }
 }
 

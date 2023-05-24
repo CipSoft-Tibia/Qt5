@@ -9,8 +9,13 @@ const path = require('path');
 const SRC_PATH = path.resolve(__dirname, '..');
 const NODE_MODULES_PATH = path.resolve(SRC_PATH, 'node_modules');
 const espree = require(path.resolve(NODE_MODULES_PATH, '@typescript-eslint', 'parser'));
+const parseOptions = {
+  ecmaVersion: 11,
+  sourceType: 'module',
+  range: true,
+};
 
-const USER_METRICS_ENUM_ENDPOINT = '__lastValidEnumPosition';
+const USER_METRICS_ENUM_ENDPOINT = 'MaxValue';
 
 /**
  * Determines if a node is a class declaration.
@@ -18,7 +23,22 @@ const USER_METRICS_ENUM_ENDPOINT = '__lastValidEnumPosition';
  */
 function isClassNameDeclaration(node, className) {
   const isClassDeclaration = node.type === 'ExportNamedDeclaration' && node.declaration.type === 'ClassDeclaration';
-  return className ? (isClassDeclaration && node.declaration.id.name === className) : isClassDeclaration;
+  if (className) {
+    return isClassDeclaration && node.declaration.id.name === className;
+  }
+  return isClassDeclaration;
+}
+
+/**
+ * Determines if a node is an typescript enum declaration.
+ * If enumName is provided, node must also match enum name.
+ */
+function isEnumDeclaration(node, enumName) {
+  const isEnumDeclaration = node.type === 'ExportNamedDeclaration' && node.declaration.type === 'TSEnumDeclaration';
+  if (enumName) {
+    return isEnumDeclaration && node.declaration.id.name === enumName;
+  }
+  return isEnumDeclaration;
 }
 
 /**
@@ -42,10 +62,54 @@ function isExperimentRegistrationCall(node) {
 }
 
 /**
+ * Extract the enum Root.Runtime.ExperimentName to a map
+ */
+function getExperimentNameEnum(mainImplFile) {
+  const mainAST = espree.parse(mainImplFile, parseOptions);
+
+  let experimentNameEnum;
+  for (const node of mainAST.body) {
+    if (isEnumDeclaration(node, 'ExperimentName')) {
+      experimentNameEnum = node;
+      break;
+    }
+  }
+
+  const map = new Map();
+  if (!experimentNameEnum) {
+    return map;
+  }
+  for (const member of experimentNameEnum.declaration.members) {
+    map.set(member.id.name, member.initializer.value);
+  }
+  return map;
+}
+
+/**
+ * Determine if node is of the form Root.Runtime.ExperimentName.NAME, and if so
+ * return NAME as string.
+ */
+function isExperimentNameReference(node) {
+  if (node.type !== 'MemberExpression') {
+    return false;
+  }
+  if (node.object.type !== 'MemberExpression' || node.object.property?.name !== 'ExperimentName') {
+    return false;
+  }
+  if (node.object.object.type !== 'MemberExpression' || node.object.object.property?.name !== 'Runtime') {
+    return false;
+  }
+  if (node.object.object.object.type !== 'Identifier' || node.object.object.object.name !== 'Root') {
+    return false;
+  }
+  return node.property.name;
+}
+
+/**
  * Gets list of experiments registered in MainImpl.js.
  */
-function getMainImplExperimentList(mainImplFile) {
-  const mainAST = espree.parse(mainImplFile, {ecmaVersion: 11, sourceType: 'module', range: true});
+function getMainImplExperimentList(mainImplFile, experimentNames) {
+  const mainAST = espree.parse(mainImplFile, parseOptions);
 
   // Find MainImpl Class node
   let mainImplClassNode;
@@ -60,7 +124,7 @@ function getMainImplExperimentList(mainImplFile) {
   }
 
   // Find function in MainImpl Class
-  const initializeExperimentNode = findFunctionInClass(mainImplClassNode, '_initializeExperiments');
+  const initializeExperimentNode = findFunctionInClass(mainImplClassNode, 'initializeExperiments');
   if (!initializeExperimentNode) {
     return null;
   }
@@ -70,7 +134,25 @@ function getMainImplExperimentList(mainImplFile) {
   for (const statement of initializeExperimentNode.value.body.body) {
     if (isExperimentRegistrationCall(statement)) {
       // Experiment name is first argument of registration call
-      experiments.push(statement.expression.arguments[0].value);
+      const experimentNameArg = statement.expression.arguments[0];
+      // The experiment name can either be a literal, e.g. 'fooExperiment'..
+      if (experimentNameArg.type === 'Literal') {
+        experiments.push(experimentNameArg.value);
+      } else {
+        // .. or a member of Root.Runtime.ExperimentName.
+        const experimentName = isExperimentNameReference(experimentNameArg);
+        if (experimentName) {
+          const translatedName = experimentNames.get(experimentName);
+          if (!translatedName) {
+            console.log('Failed to resolve Root.Runtime.ExperimentName.${experimentName} to a string');
+            process.exit(1);
+          }
+          experiments.push(translatedName);
+        } else {
+          console.log('Unexpected argument to Root.Runtime.experiments.register: ', experimentNameArg);
+          process.exit(1);
+        }
+      }
     }
   }
   return experiments.length ? experiments : null;
@@ -80,20 +162,17 @@ function getMainImplExperimentList(mainImplFile) {
  * Determines if AST Node is the DevtoolsExperiments Enum declaration
  */
 function isExperimentEnumDeclaration(node) {
-  return node.type === 'ExportNamedDeclaration' && node.declaration.declarations &&
-      node.declaration.declarations[0].id.name === 'DevtoolsExperiments';
+  return node.type === 'ExportNamedDeclaration' && node?.declaration?.id?.name === 'DevtoolsExperiments';
 }
 
 /**
- * Gets list of experiments registered in UserMetrics.js
+ * Gets list of experiments registered in UserMetrics.ts
  */
 function getUserMetricExperimentList(userMetricsFile) {
   const userMetricsAST = espree.parse(userMetricsFile, {ecmaVersion: 11, sourceType: 'module', range: true});
   for (const node of userMetricsAST.body) {
     if (isExperimentEnumDeclaration(node)) {
-      return node.declaration.declarations[0].init.properties.map(property => {
-        return property.key.value;
-      });
+      return node.declaration.members.map(member => member.id.value);
     }
   }
   return null;
@@ -129,7 +208,7 @@ function compareExperimentLists(mainImplList, userMetricsList) {
     console.log('Devtools Experiments have been added without corresponding histogram update!');
     console.log(missingTelemetry.join('\n'));
     console.log(
-        'Please ensure that the DevtoolsExperiments enum in UserMetrics.js is updated with the new experiment.');
+        'Please ensure that the DevtoolsExperiments enum in UserMetrics.ts is updated with the new experiment.');
     console.log(
         'Please ensure that a corresponding CL is openend against chromium.src/tools/metrics/histograms/enums.xml to update the DevtoolsExperiments enum');
     errorFound = true;
@@ -138,7 +217,7 @@ function compareExperimentLists(mainImplList, userMetricsList) {
     console.log('Devtools Experiments that are no longer registered are still listed in the telemetry enum!');
     console.log(staleTelemetry.join('\n'));
     console.log(
-        'Please ensure that the DevtoolsExperiments enum in UserMetrics.js is updated to remove these stale experiments.');
+        'Please ensure that the DevtoolsExperiments enum in UserMetrics.ts is updated to remove these stale experiments.');
     errorFound = true;
   }
   if (errorFound) {
@@ -148,13 +227,18 @@ function compareExperimentLists(mainImplList, userMetricsList) {
 }
 
 function main() {
-  const mainImplPath = path.resolve(__dirname, '..', 'front_end', 'main', 'MainImpl.js');
+  const mainImplPath = path.resolve(__dirname, '..', 'front_end', 'entrypoints', 'main', 'MainImpl.ts');
   const mainImplFile = fs.readFileSync(mainImplPath, 'utf-8');
 
-  const userMetricsPath = path.resolve(__dirname, '..', 'front_end', 'host', 'UserMetrics.js');
+  const userMetricsPath = path.resolve(__dirname, '..', 'front_end', 'core', 'host', 'UserMetrics.ts');
   const userMetricsFile = fs.readFileSync(userMetricsPath, 'utf-8');
 
-  compareExperimentLists(getMainImplExperimentList(mainImplFile), getUserMetricExperimentList(userMetricsFile));
+  const runtimePath = path.resolve(__dirname, '..', 'front_end', 'core', 'root', 'Runtime.ts');
+  const runtimeFile = fs.readFileSync(runtimePath, 'utf-8');
+  const experimentNames = getExperimentNameEnum(runtimeFile);
+
+  compareExperimentLists(
+      getMainImplExperimentList(mainImplFile, experimentNames), getUserMetricExperimentList(userMetricsFile));
 }
 
 main();

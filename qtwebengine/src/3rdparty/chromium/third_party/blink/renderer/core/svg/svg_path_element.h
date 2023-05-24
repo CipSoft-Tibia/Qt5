@@ -22,7 +22,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_SVG_SVG_PATH_ELEMENT_H_
 
 #include "third_party/blink/renderer/core/svg/svg_geometry_element.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -46,14 +46,14 @@ class SVGPathElement final : public SVGGeometryElement {
   float ComputePathLength() const override;
   const SVGPathByteStream& PathByteStream() const;
 
-  FloatRect GetBBox() override;
+  gfx::RectF GetBBox() override;
 
   void Trace(Visitor*) const override;
 
  private:
   const StylePath* GetStylePath() const;
 
-  void SvgAttributeChanged(const QualifiedName&) override;
+  void SvgAttributeChanged(const SvgAttributeChangedParams&) override;
 
   void CollectStyleForPresentationAttribute(
       const QualifiedName&,

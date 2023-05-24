@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,10 +18,11 @@ TEST(CSSMathNegate, TypeIsSameAsArgumentType) {
   for (unsigned i = 0; i < CSSNumericValueType::kNumBaseTypes; i++) {
     const auto base_type = static_cast<CSSNumericValueType::BaseType>(i);
     EXPECT_FALSE(type.HasPercentHint());
-    if (base_type == CSSNumericValueType::BaseType::kLength)
+    if (base_type == CSSNumericValueType::BaseType::kLength) {
       EXPECT_EQ(type.Exponent(base_type), 1);
-    else
+    } else {
       EXPECT_EQ(type.Exponent(base_type), 0);
+    }
   }
 }
 

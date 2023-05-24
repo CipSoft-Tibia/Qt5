@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,8 @@
 #include "third_party/blink/renderer/core/layout/layout_text_fragment.h"
 #include "third_party/blink/renderer/core/layout/ng/inline/ng_inline_node.h"
 #include "third_party/blink/renderer/core/layout/ng/layout_ng_block_flow.h"
-#include "third_party/blink/renderer/core/layout/ng/ng_layout_test.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
+#include "third_party/blink/renderer/core/testing/core_unit_test_helper.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 
 namespace blink {
@@ -23,9 +23,9 @@ namespace blink {
 #define SEGMENT_BREAK_TRANSFORMATION_FOR_EAST_ASIAN_WIDTH 0
 
 // Helper functions to use |EXPECT_EQ()| for |NGOffsetMappingUnit| and its span.
-Vector<NGOffsetMappingUnit> ToVector(
+HeapVector<NGOffsetMappingUnit> ToVector(
     const base::span<const NGOffsetMappingUnit>& range) {
-  Vector<NGOffsetMappingUnit> units;
+  HeapVector<NGOffsetMappingUnit> units;
   for (const auto& unit : range)
     units.push_back(unit);
   return units;
@@ -54,8 +54,8 @@ void PrintTo(const NGOffsetMappingUnit& unit, std::ostream* ostream) {
            << unit.TextContentEnd() << "}";
 }
 
-bool operator==(const Vector<NGOffsetMappingUnit>& units1,
-                const Vector<NGOffsetMappingUnit>& units2) {
+bool operator==(const HeapVector<NGOffsetMappingUnit>& units1,
+                const HeapVector<NGOffsetMappingUnit>& units2) {
   if (units1.size() != units2.size())
     return false;
   auto* it2 = units2.begin();
@@ -67,12 +67,13 @@ bool operator==(const Vector<NGOffsetMappingUnit>& units1,
   return true;
 }
 
-bool operator==(const Vector<NGOffsetMappingUnit>& units,
+bool operator==(const HeapVector<NGOffsetMappingUnit>& units,
                 const base::span<const NGOffsetMappingUnit>& range) {
   return units == ToVector(range);
 }
 
-void PrintTo(const Vector<NGOffsetMappingUnit>& units, std::ostream* ostream) {
+void PrintTo(const HeapVector<NGOffsetMappingUnit>& units,
+             std::ostream* ostream) {
   *ostream << "[";
   const char* comma = "";
   for (const auto& unit : units) {
@@ -88,22 +89,16 @@ void PrintTo(const base::span<const NGOffsetMappingUnit>& range,
   PrintTo(ToVector(range), ostream);
 }
 
-class NGOffsetMappingTest : public NGLayoutTest {
+class NGOffsetMappingTest : public RenderingTest {
  protected:
   static const auto kCollapsed = NGOffsetMappingUnitType::kCollapsed;
   static const auto kIdentity = NGOffsetMappingUnitType::kIdentity;
 
-  void SetUp() override {
-    NGLayoutTest::SetUp();
-    style_ = ComputedStyle::Create();
-  }
-
   void SetupHtml(const char* id, String html) {
     SetBodyInnerHTML(html);
     layout_block_flow_ = To<LayoutBlockFlow>(GetLayoutObjectByElementId(id));
-    DCHECK(layout_block_flow_->IsLayoutNGMixin());
+    DCHECK(layout_block_flow_->IsLayoutNGObject());
     layout_object_ = layout_block_flow_->FirstChild();
-    style_ = layout_object_->Style();
   }
 
   const NGOffsetMapping& GetOffsetMapping() const {
@@ -145,13 +140,14 @@ class NGOffsetMappingTest : public NGLayoutTest {
     return result.ToString();
   }
 
-  Vector<NGOffsetMappingUnit> GetFirstLast(const std::string& caret_text) {
-    const auto offset = caret_text.find('|');
+  HeapVector<NGOffsetMappingUnit> GetFirstLast(const std::string& caret_text) {
+    const unsigned offset = static_cast<unsigned>(caret_text.find('|'));
     return {*GetOffsetMapping().GetFirstMappingUnit(offset),
             *GetOffsetMapping().GetLastMappingUnit(offset)};
   }
 
-  Vector<NGOffsetMappingUnit> GetUnits(wtf_size_t index1, wtf_size_t index2) {
+  HeapVector<NGOffsetMappingUnit> GetUnits(wtf_size_t index1,
+                                           wtf_size_t index2) {
     const auto& units = GetOffsetMapping().GetUnits();
     return {units[index1], units[index2]};
   }
@@ -193,12 +189,12 @@ class NGOffsetMappingTest : public NGLayoutTest {
   }
 
   bool IsOffsetMappingStored() const {
-    return layout_block_flow_->GetNGInlineNodeData()->offset_mapping.get();
+    return layout_block_flow_->GetNGInlineNodeData()->offset_mapping;
   }
 
   const LayoutText* GetLayoutTextUnder(const char* parent_id) {
     Element* parent = GetDocument().getElementById(parent_id);
-    return ToLayoutText(parent->firstChild()->GetLayoutObject());
+    return To<LayoutText>(parent->firstChild()->GetLayoutObject());
   }
 
   const NGOffsetMappingUnit* GetUnitForPosition(
@@ -206,7 +202,7 @@ class NGOffsetMappingTest : public NGLayoutTest {
     return GetOffsetMapping().GetMappingUnitForPosition(position);
   }
 
-  base::Optional<unsigned> GetTextContentOffset(
+  absl::optional<unsigned> GetTextContentOffset(
       const Position& position) const {
     return GetOffsetMapping().GetTextContentOffset(position);
   }
@@ -235,9 +231,8 @@ class NGOffsetMappingTest : public NGLayoutTest {
     return GetOffsetMapping().GetLastPosition(offset);
   }
 
-  scoped_refptr<const ComputedStyle> style_;
-  LayoutBlockFlow* layout_block_flow_ = nullptr;
-  LayoutObject* layout_object_ = nullptr;
+  Persistent<LayoutBlockFlow> layout_block_flow_;
+  Persistent<LayoutObject> layout_object_;
   FontCachePurgePreventer purge_preventer_;
 };
 
@@ -522,8 +517,8 @@ TEST_F(NGOffsetMappingTest, OneTextNode) {
 
 TEST_F(NGOffsetMappingTest, TwoTextNodes) {
   SetupHtml("t", "<div id=t>foo<span id=s>bar</span></div>");
-  const LayoutText* foo = ToLayoutText(layout_object_);
-  const LayoutText* bar = GetLayoutTextUnder("s");
+  const auto* foo = To<LayoutText>(layout_object_.Get());
+  const auto* bar = GetLayoutTextUnder("s");
   const Node* foo_node = foo->GetNode();
   const Node* bar_node = bar->GetNode();
   const NGOffsetMapping& result = GetOffsetMapping();
@@ -588,9 +583,9 @@ TEST_F(NGOffsetMappingTest, TwoTextNodes) {
 
 TEST_F(NGOffsetMappingTest, BRBetweenTextNodes) {
   SetupHtml("t", u"<div id=t>foo<br>bar</div>");
-  const LayoutText* foo = ToLayoutText(layout_object_);
-  const LayoutText* br = ToLayoutText(foo->NextSibling());
-  const LayoutText* bar = ToLayoutText(br->NextSibling());
+  const auto* foo = To<LayoutText>(layout_object_.Get());
+  const auto* br = To<LayoutText>(foo->NextSibling());
+  const auto* bar = To<LayoutText>(br->NextSibling());
   const Node* foo_node = foo->GetNode();
   const Node* br_node = br->GetNode();
   const Node* bar_node = bar->GetNode();
@@ -721,9 +716,9 @@ TEST_F(NGOffsetMappingTest, FullyCollapsedWhiteSpaceNode) {
             " "
             "<span id=s2>bar</span>"
             "</div>");
-  const LayoutText* foo = GetLayoutTextUnder("s1");
-  const LayoutText* bar = GetLayoutTextUnder("s2");
-  const LayoutText* space = ToLayoutText(layout_object_->NextSibling());
+  const auto* foo = GetLayoutTextUnder("s1");
+  const auto* bar = GetLayoutTextUnder("s2");
+  const auto* space = To<LayoutText>(layout_object_->NextSibling());
   const Node* foo_node = foo->GetNode();
   const Node* bar_node = bar->GetNode();
   const Node* space_node = space->GetNode();
@@ -778,9 +773,9 @@ TEST_F(NGOffsetMappingTest, FullyCollapsedWhiteSpaceNode) {
 
 TEST_F(NGOffsetMappingTest, ReplacedElement) {
   SetupHtml("t", "<div id=t>foo <img> bar</div>");
-  const LayoutText* foo = ToLayoutText(layout_object_);
+  const auto* foo = To<LayoutText>(layout_object_.Get());
   const LayoutObject* img = foo->NextSibling();
-  const LayoutText* bar = ToLayoutText(img->NextSibling());
+  const auto* bar = To<LayoutText>(img->NextSibling());
   const Node* foo_node = foo->GetNode();
   const Node* img_node = img->GetNode();
   const Node* bar_node = bar->GetNode();
@@ -1017,7 +1012,7 @@ TEST_F(NGOffsetMappingTest, ContainerWithGeneratedContent) {
                                    ->SlowFirstChild();
   const NGOffsetMapping& result = GetOffsetMapping();
 
-  EXPECT_EQ((Vector<NGOffsetMappingUnit>{
+  EXPECT_EQ((HeapVector<NGOffsetMappingUnit>{
                 NGOffsetMappingUnit(kIdentity, before, 0u, 3u, 0u, 3u),
                 NGOffsetMappingUnit(kIdentity, *text->GetLayoutObject(), 0u, 3u,
                                     3u, 6u),
@@ -1025,10 +1020,10 @@ TEST_F(NGOffsetMappingTest, ContainerWithGeneratedContent) {
             result.GetUnits());
 
   // Verify |GetMappingUnitsForLayoutObject()| for ::before and ::after
-  EXPECT_EQ((Vector<NGOffsetMappingUnit>{
+  EXPECT_EQ((HeapVector<NGOffsetMappingUnit>{
                 NGOffsetMappingUnit(kIdentity, before, 0u, 3u, 0u, 3u)}),
             result.GetMappingUnitsForLayoutObject(before));
-  EXPECT_EQ((Vector<NGOffsetMappingUnit>{
+  EXPECT_EQ((HeapVector<NGOffsetMappingUnit>{
                 NGOffsetMappingUnit(kIdentity, after, 0u, 3u, 6u, 9u)}),
             result.GetMappingUnitsForLayoutObject(after));
 }
@@ -1041,17 +1036,17 @@ TEST_F(NGOffsetMappingTest,
             "#t::first-letter { font-weight: bold; }"
             "</style><div id=t>def</div>");
   const Element& target = *GetElementById("t");
-  const LayoutText& remaining_part =
-      *ToLayoutText(target.GetPseudoElement(kPseudoIdBefore)
-                        ->GetLayoutObject()
-                        ->SlowLastChild());
+  const auto& remaining_part =
+      *To<LayoutText>(target.GetPseudoElement(kPseudoIdBefore)
+                          ->GetLayoutObject()
+                          ->SlowLastChild());
   const LayoutObject& first_letter_part = *remaining_part.GetFirstLetterPart();
   const NGOffsetMapping& result = GetOffsetMapping();
-  const LayoutText& target_text =
-      ToLayoutText(*target.firstChild()->GetLayoutObject());
+  const auto& target_text =
+      To<LayoutText>(*target.firstChild()->GetLayoutObject());
 
   EXPECT_EQ(
-      (Vector<NGOffsetMappingUnit>{
+      (HeapVector<NGOffsetMappingUnit>{
           NGOffsetMappingUnit(kCollapsed, first_letter_part, 0u, 2u, 0u, 0u),
           NGOffsetMappingUnit(kIdentity, first_letter_part, 2u, 3u, 0u, 1u),
           NGOffsetMappingUnit(kIdentity, remaining_part, 0u, 1u, 1u, 2u),
@@ -1062,12 +1057,12 @@ TEST_F(NGOffsetMappingTest,
 
   // Verify |GetMappingUnitsForLayoutObject()| for ::first-letter
   EXPECT_EQ(
-      (Vector<NGOffsetMappingUnit>{
+      (HeapVector<NGOffsetMappingUnit>{
           NGOffsetMappingUnit(kCollapsed, first_letter_part, 0u, 2u, 0u, 0u),
           NGOffsetMappingUnit(kIdentity, first_letter_part, 2u, 3u, 0u, 1u)}),
       result.GetMappingUnitsForLayoutObject(first_letter_part));
   EXPECT_EQ(
-      (Vector<NGOffsetMappingUnit>{
+      (HeapVector<NGOffsetMappingUnit>{
           NGOffsetMappingUnit(kIdentity, remaining_part, 0u, 1u, 1u, 2u),
           NGOffsetMappingUnit(kCollapsed, remaining_part, 1u, 3u, 2u, 2u),
           NGOffsetMappingUnit(kIdentity, remaining_part, 3u, 5u, 2u, 4u)}),
@@ -1164,7 +1159,7 @@ TEST_F(NGOffsetMappingTest, PreLine) {
 
   EXPECT_EQ("ab\ncd", result.GetText());
 
-  EXPECT_EQ((Vector<NGOffsetMappingUnit>{
+  EXPECT_EQ((HeapVector<NGOffsetMappingUnit>{
                 NGOffsetMappingUnit(kIdentity, text_ab_n_cd, 0u, 2u, 0u, 2u),
                 NGOffsetMappingUnit(kCollapsed, text_ab_n_cd, 2u, 3u, 2u, 2u),
                 NGOffsetMappingUnit(kIdentity, text_ab_n_cd, 3u, 4u, 2u, 3u),
@@ -1286,7 +1281,7 @@ TEST_F(NGOffsetMappingTest, PreWrapAndReusing) {
   const NGOffsetMapping& mapping = GetOffsetMapping();
   EXPECT_EQ(String(u" \u200Bxyz"), mapping.GetText())
       << "We have ZWS after leading preserved space.";
-  EXPECT_EQ((Vector<NGOffsetMappingUnit>{
+  EXPECT_EQ((HeapVector<NGOffsetMappingUnit>{
                 NGOffsetMappingUnit(kIdentity, *text.GetLayoutObject(), 0u, 1u,
                                     0u, 1u),
                 NGOffsetMappingUnit(kIdentity, *text.GetLayoutObject(), 1u, 4u,
@@ -1313,7 +1308,7 @@ TEST_F(NGOffsetMappingTest, RestoreTrailingCollapsibleSpaceReplace) {
   const LayoutObject& newline = *layout_object_b.NextSibling();
   const LayoutObject& layout_object_i = *newline.NextSibling();
   EXPECT_EQ(
-      (Vector<NGOffsetMappingUnit>{
+      (HeapVector<NGOffsetMappingUnit>{
           NGOffsetMappingUnit(kIdentity, *layout_object_a.SlowFirstChild(), 0u,
                               1u, 0u, 1u),
           NGOffsetMappingUnit(kCollapsed, *layout_object_b.SlowFirstChild(), 0u,
@@ -1343,7 +1338,7 @@ TEST_F(NGOffsetMappingTest, RestoreTrailingCollapsibleSpaceReplaceKeep) {
   const LayoutObject& newline = *layout_object_b.NextSibling();
   const LayoutObject& layout_object_i = *newline.NextSibling();
   EXPECT_EQ(
-      (Vector<NGOffsetMappingUnit>{
+      (HeapVector<NGOffsetMappingUnit>{
           NGOffsetMappingUnit(kIdentity, *layout_object_a.SlowFirstChild(), 0u,
                               1u, 0u, 1u),
           NGOffsetMappingUnit(kIdentity, *layout_object_b.SlowFirstChild(), 0u,
@@ -1366,7 +1361,7 @@ TEST_F(NGOffsetMappingTest, RestoreTrailingCollapsibleSpaceNone) {
   const LayoutObject& newline = *layout_object_b.NextSibling();
   const LayoutObject& layout_object_i = *newline.NextSibling();
   EXPECT_EQ(
-      (Vector<NGOffsetMappingUnit>{
+      (HeapVector<NGOffsetMappingUnit>{
           NGOffsetMappingUnit(kIdentity, *layout_object_a.SlowFirstChild(), 0u,
                               1u, 0u, 1u),
           // We take the first space character.
@@ -1399,7 +1394,7 @@ TEST_F(NGOffsetMappingTest, RestoreTrailingCollapsibleSpaceSplit) {
   const LayoutObject& newline = *layout_object_b.NextSibling();
   const LayoutObject& layout_object_i = *newline.NextSibling();
   EXPECT_EQ(
-      (Vector<NGOffsetMappingUnit>{
+      (HeapVector<NGOffsetMappingUnit>{
           NGOffsetMappingUnit(kIdentity, *layout_object_a.SlowFirstChild(), 0u,
                               1u, 0u, 1u),
           NGOffsetMappingUnit(kCollapsed, *layout_object_b.SlowFirstChild(), 0u,
@@ -1429,7 +1424,7 @@ TEST_F(NGOffsetMappingTest, RestoreTrailingCollapsibleSpaceSplitKeep) {
   const LayoutObject& newline = *layout_object_b.NextSibling();
   const LayoutObject& layout_object_i = *newline.NextSibling();
   EXPECT_EQ(
-      (Vector<NGOffsetMappingUnit>{
+      (HeapVector<NGOffsetMappingUnit>{
           NGOffsetMappingUnit(kIdentity, *layout_object_a.SlowFirstChild(), 0u,
                               1u, 0u, 1u),
           NGOffsetMappingUnit(kIdentity, *layout_object_b.SlowFirstChild(), 0u,
@@ -1503,30 +1498,21 @@ TEST_F(NGOffsetMappingTest, WordBreak) {
   const LayoutObject& text_b = *wbr.NextSibling();
   const NGOffsetMapping& result = GetOffsetMapping();
 
-  EXPECT_EQ((Vector<NGOffsetMappingUnit>{
+  EXPECT_EQ((HeapVector<NGOffsetMappingUnit>{
                 NGOffsetMappingUnit(kIdentity, text_a, 0u, 1u, 0u, 1u),
                 NGOffsetMappingUnit(kIdentity, wbr, 0u, 1u, 1u, 2u),
                 NGOffsetMappingUnit(kIdentity, text_b, 0u, 1u, 2u, 3u)}),
             result.GetUnits());
 
-  EXPECT_EQ((Vector<NGOffsetMappingUnit>{
+  EXPECT_EQ((HeapVector<NGOffsetMappingUnit>{
                 NGOffsetMappingUnit(kIdentity, wbr, 0u, 1u, 1u, 2u)}),
             result.GetMappingUnitsForLayoutObject(wbr));
 }
 
 // Test |GetOffsetMapping| which is available both for LayoutNG and for legacy.
-class NGOffsetMappingGetterTest : public RenderingTest,
-                                  public testing::WithParamInterface<bool>,
-                                  private ScopedLayoutNGForTest {
- public:
-  NGOffsetMappingGetterTest() : ScopedLayoutNGForTest(GetParam()) {}
-};
+class NGOffsetMappingGetterTest : public RenderingTest {};
 
-INSTANTIATE_TEST_SUITE_P(NGOffsetMappingTest,
-                         NGOffsetMappingGetterTest,
-                         testing::Bool());
-
-TEST_P(NGOffsetMappingGetterTest, Get) {
+TEST_F(NGOffsetMappingGetterTest, Get) {
   SetBodyInnerHTML(R"HTML(
     <div id=container>
       Whitespaces   in this text   should be   collapsed.
@@ -1535,11 +1521,6 @@ TEST_P(NGOffsetMappingGetterTest, Get) {
   auto* layout_block_flow =
       To<LayoutBlockFlow>(GetLayoutObjectByElementId("container"));
   DCHECK(layout_block_flow->ChildrenInline());
-
-  // For the purpose of this test, ensure this is laid out by each layout
-  // engine.
-  DCHECK_EQ(layout_block_flow->IsLayoutNGMixin(),
-            RuntimeEnabledFeatures::LayoutNGEnabled());
 
   const NGOffsetMapping* mapping =
       NGInlineNode::GetOffsetMapping(layout_block_flow);

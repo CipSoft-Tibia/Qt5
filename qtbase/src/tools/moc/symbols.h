@@ -1,41 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2013 Olivier Goffart <ogoffart@woboq.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2013 Olivier Goffart <ogoffart@woboq.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef SYMBOLS_H
 #define SYMBOLS_H
 
 #include "token.h"
-#include <qstring.h>
-#include <qhash.h>
-#include <qvector.h>
-#include <qstack.h>
 #include <qdebug.h>
+#include <qhashfunctions.h>
+#include <qlist.h>
+#include <qstack.h>
+#include <qstring.h>
+#include <qset.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -43,25 +19,29 @@ QT_BEGIN_NAMESPACE
 
 struct SubArray
 {
-    inline SubArray():from(0),len(-1){}
+    inline SubArray() = default;
     inline SubArray(const QByteArray &a):array(a),from(0), len(a.size()){}
     inline SubArray(const char *s):array(s),from(0) { len = array.size(); }
-    inline SubArray(const QByteArray &a, int from, int len):array(a), from(from), len(len){}
+    SubArray(const QByteArray &a, qsizetype from, qsizetype len)
+        : array(a), from(from), len(len)
+    {
+    }
     QByteArray array;
-    int from, len;
+    qsizetype from = 0;
+    qsizetype len = -1;
     inline bool operator==(const SubArray &other) const {
         if (len != other.len)
             return false;
-        for (int i = 0; i < len; ++i)
-            if (array.at(from + i) != other.array.at(other.from + i))
-                return false;
-        return true;
+        const auto begin = array.cbegin() + from;
+        const auto end = begin + len;
+        const auto other_begin = other.array.cbegin() + other.from;
+        return std::equal(begin, end, other_begin);
     }
 };
 
-inline uint qHash(const SubArray &key)
+inline size_t qHash(const SubArray &key, size_t seed = 0)
 {
-    return qHash(QLatin1String(key.array.constData() + key.from, key.len));
+    return qHash(QLatin1StringView(key.array.constData() + key.from, key.len), seed);
 }
 
 
@@ -97,15 +77,18 @@ struct Symbol
 
 #else
 
-    inline Symbol() : lineNum(-1),token(NOTOKEN), from(0),len(-1) {}
-    inline Symbol(int lineNum, Token token):
-        lineNum(lineNum), token(token), from(0), len(-1) {}
-    inline Symbol(int lineNum, Token token, const QByteArray &lexem):
-        lineNum(lineNum), token(token), lex(lexem), from(0) { len = lex.size(); }
-    inline Symbol(int lineNum, Token token, const QByteArray &lexem, int from, int len):
-        lineNum(lineNum), token(token),lex(lexem),from(from), len(len){}
-    int lineNum;
-    Token token;
+    inline Symbol() = default;
+    inline Symbol(int lineNum, Token token) : lineNum(lineNum), token(token) { }
+    inline Symbol(int lineNum, Token token, const QByteArray &lexem)
+        : lineNum(lineNum), token(token), lex(lexem), len(lex.size())
+    {
+    }
+    Symbol(int lineNum, Token token, const QByteArray &lexem, qsizetype from, qsizetype len)
+        : lineNum(lineNum), token(token), lex(lexem), from(from), len(len)
+    {
+    }
+    int lineNum = -1;
+    Token token = NOTOKEN;
     inline QByteArray lexem() const { return lex.mid(from, len); }
     inline QByteArray unquotedLexem() const { return lex.mid(from+1, len-2); }
     inline operator SubArray() const { return SubArray(lex, from, len); }
@@ -114,21 +97,22 @@ struct Symbol
         return SubArray(lex, from, len) == SubArray(o.lex, o.from, o.len);
     }
     QByteArray lex;
-    int from, len;
+    qsizetype from = 0;
+    qsizetype len = -1;
 
 #endif
 };
-Q_DECLARE_TYPEINFO(Symbol, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(Symbol, Q_RELOCATABLE_TYPE);
 
-typedef QVector<Symbol> Symbols;
+typedef QList<Symbol> Symbols;
 
 struct SafeSymbols {
     Symbols symbols;
     QByteArray expandedMacro;
     QSet<QByteArray> excludedSymbols;
-    int index;
+    qsizetype index;
 };
-Q_DECLARE_TYPEINFO(SafeSymbols, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(SafeSymbols, Q_RELOCATABLE_TYPE);
 
 class SymbolStack : public QStack<SafeSymbols>
 {
@@ -151,13 +135,13 @@ public:
     inline QByteArray lexem() const { return symbol().lexem(); }
     inline QByteArray unquotedLexem() { return symbol().unquotedLexem(); }
 
-    bool dontReplaceSymbol(const QByteArray &name);
-    QSet<QByteArray> excludeSymbols();
+    bool dontReplaceSymbol(const QByteArray &name) const;
+    QSet<QByteArray> excludeSymbols() const;
 };
 
 inline bool SymbolStack::test(Token token)
 {
-    int stackPos = size() - 1;
+    qsizetype stackPos = size() - 1;
     while (stackPos >= 0 && at(stackPos).index >= at(stackPos).symbols.size())
         --stackPos;
     if (stackPos < 0)
@@ -169,21 +153,20 @@ inline bool SymbolStack::test(Token token)
     return false;
 }
 
-inline bool SymbolStack::dontReplaceSymbol(const QByteArray &name)
+inline bool SymbolStack::dontReplaceSymbol(const QByteArray &name) const
 {
-    for (int i = 0; i < size(); ++i) {
-        if (name == at(i).expandedMacro || at(i).excludedSymbols.contains(name))
-            return true;
-    }
-    return false;
+    auto matchesName = [&name](const SafeSymbols &sf) {
+        return name == sf.expandedMacro || sf.excludedSymbols.contains(name);
+    };
+    return std::any_of(cbegin(), cend(), matchesName);
 }
 
-inline QSet<QByteArray> SymbolStack::excludeSymbols()
+inline QSet<QByteArray> SymbolStack::excludeSymbols() const
 {
     QSet<QByteArray> set;
-    for (int i = 0; i < size(); ++i) {
-        set << at(i).expandedMacro;
-        set += at(i).excludedSymbols;
+    for (const SafeSymbols &sf : *this) {
+        set << sf.expandedMacro;
+        set += sf.excludedSymbols;
     }
     return set;
 }

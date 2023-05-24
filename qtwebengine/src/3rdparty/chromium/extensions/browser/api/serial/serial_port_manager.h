@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,8 @@
 #include <string>
 #include <vector>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/threading/thread_checker.h"
 #include "content/public/browser/browser_thread.h"
 #include "extensions/browser/api/api_resource_manager.h"
@@ -32,19 +33,27 @@ namespace api {
 // Per-browser-context dispatcher for events on serial connections.
 class SerialPortManager : public BrowserContextKeyedAPI {
  public:
+  using OpenPortCallback =
+      base::OnceCallback<void(mojo::PendingRemote<device::mojom::SerialPort>)>;
+
   static SerialPortManager* Get(content::BrowserContext* context);
 
   // BrowserContextKeyedAPI implementation.
   static BrowserContextKeyedAPIFactory<SerialPortManager>* GetFactoryInstance();
 
   explicit SerialPortManager(content::BrowserContext* context);
+
+  SerialPortManager(const SerialPortManager&) = delete;
+  SerialPortManager& operator=(const SerialPortManager&) = delete;
+
   ~SerialPortManager() override;
 
   void GetDevices(
       device::mojom::SerialPortManager::GetDevicesCallback callback);
-
-  void GetPort(const std::string& path,
-               mojo::PendingReceiver<device::mojom::SerialPort> receiver);
+  void OpenPort(const std::string& path,
+                device::mojom::SerialConnectionOptionsPtr options,
+                mojo::PendingRemote<device::mojom::SerialPortClient> client,
+                OpenPortCallback callback);
 
   // Start the poilling process for the connection.
   void StartConnectionPolling(const std::string& extension_id,
@@ -69,7 +78,7 @@ class SerialPortManager : public BrowserContextKeyedAPI {
     ReceiveParams(const ReceiveParams& other);
     ~ReceiveParams();
 
-    void* browser_context_id;
+    raw_ptr<void> browser_context_id;
     std::string extension_id;
     scoped_refptr<ConnectionData> connections;
     int connection_id;
@@ -84,19 +93,19 @@ class SerialPortManager : public BrowserContextKeyedAPI {
   void EnsureConnection();
   void OnGotDevicesToGetPort(
       const std::string& path,
-      mojo::PendingReceiver<device::mojom::SerialPort> receiver,
+      device::mojom::SerialConnectionOptionsPtr options,
+      mojo::PendingRemote<device::mojom::SerialPortClient> client,
+      OpenPortCallback callback,
       std::vector<device::mojom::SerialPortInfoPtr> devices);
   void OnPortManagerConnectionError();
 
   mojo::Remote<device::mojom::SerialPortManager> port_manager_;
   content::BrowserThread::ID thread_id_;
   scoped_refptr<ConnectionData> connections_;
-  content::BrowserContext* const context_;
+  const raw_ptr<content::BrowserContext> context_;
 
   THREAD_CHECKER(thread_checker_);
   base::WeakPtrFactory<SerialPortManager> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(SerialPortManager);
 };
 
 }  // namespace api

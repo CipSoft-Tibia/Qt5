@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,11 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -41,13 +41,16 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
+import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowLooper;
 
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.components.media_router.MediaRoute;
 import org.chromium.components.media_router.MediaRouteManager;
+import org.chromium.components.media_router.MediaRouterClient;
 import org.chromium.components.media_router.MediaSink;
 import org.chromium.components.media_router.MediaSource;
+import org.chromium.components.media_router.TestMediaRouterClient;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,7 +60,10 @@ import java.util.List;
  */
 @RunWith(BaseRobolectricTestRunner.class)
 @Config(manifest = Config.NONE,
-        shadows = {ShadowMediaRouter.class, ShadowCastContext.class, ShadowLooper.class})
+        shadows = {ShadowMediaRouter.class, ShadowCastContext.class, ShadowLooper.class},
+        // Required to mock final.
+        instrumentedPackages = {"androidx.mediarouter.media.MediaRouteSelector"})
+@LooperMode(LooperMode.Mode.LEGACY)
 public class CafBaseMediaRouteProviderTest {
     private Context mContext;
     private TestMRP mProvider;
@@ -79,6 +85,7 @@ public class CafBaseMediaRouteProviderTest {
         MockitoAnnotations.initMocks(this);
         mContext = RuntimeEnvironment.application;
         mMediaRouterHelper = new MediaRouterTestHelper();
+        MediaRouterClient.setInstance(new TestMediaRouterClient());
         ShadowCastContext.setInstance(mCastContext);
         mMediaRouter = MediaRouter.getInstance(mContext);
         mProvider = spy(new TestMRP(mMediaRouter, mManager));
@@ -289,7 +296,7 @@ public class CafBaseMediaRouteProviderTest {
         mProvider.createRoute(
                 "source-id", "other-cast-route", "presentation-id-2", "origin-2", 2, true, 2);
 
-        inOrder.verify(mManager).onRouteRequestError(eq("Request replaced"), eq(1));
+        inOrder.verify(mManager).onCreateRouteRequestError(eq("Request replaced"), eq(1));
         inOrder.verify(mSessionManager).addSessionManagerListener(mProvider, CastSession.class);
         inOrder.verify(mSessionController).requestSessionLaunch();
         pendingCreateRouteRequestInfo = mProvider.getPendingCreateRouteRequestInfo();
@@ -320,12 +327,12 @@ public class CafBaseMediaRouteProviderTest {
         // Invalid sink.
         mProvider.createRoute(
                 "source-id", "invalid-route", "presentation-id", "origin", 1, false, 1);
-        inOrder.verify(mManager).onRouteRequestError("No sink", 1);
+        inOrder.verify(mManager).onCreateRouteRequestError("No sink", 1);
 
         // Invalid source.
         doReturn(null).when(mProvider).getSourceFromId(anyString());
         mProvider.createRoute("source-id", "cast-route", "presentation-id", "origin", 1, false, 1);
-        inOrder.verify(mManager).onRouteRequestError("Unsupported source URL", 1);
+        inOrder.verify(mManager).onCreateRouteRequestError("Unsupported source URL", 1);
     }
 
     @Test
@@ -370,13 +377,13 @@ public class CafBaseMediaRouteProviderTest {
 
         // Request to create a session.
         mProvider.createRoute("source-id", "cast-route", "presentation-id", "origin", 1, false, 1);
-        inOrder.verify(mManager, never()).onRouteRequestError(anyString(), anyInt());
+        inOrder.verify(mManager, never()).onCreateRouteRequestError(anyString(), anyInt());
 
         // Session start failed.
         mProvider.onSessionStartFailed(mCastSession, 1);
 
         inOrder.verify(mProvider).removeAllRoutes("Launch error");
-        inOrder.verify(mManager).onRouteRequestError("Launch error", 1);
+        inOrder.verify(mManager).onCreateRouteRequestError("Launch error", 1);
     }
 
     @Test

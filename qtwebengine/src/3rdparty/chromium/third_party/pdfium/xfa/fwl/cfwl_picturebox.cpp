@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,16 +22,16 @@ void CFWL_PictureBox::Update() {
   m_ClientRect = GetClientRect();
 }
 
-void CFWL_PictureBox::DrawWidget(CXFA_Graphics* pGraphics,
+void CFWL_PictureBox::DrawWidget(CFGAS_GEGraphics* pGraphics,
                                  const CFX_Matrix& matrix) {
   if (!pGraphics)
     return;
 
   if (HasBorder())
-    DrawBorder(pGraphics, CFWL_Part::Border, matrix);
+    DrawBorder(pGraphics, CFWL_ThemePart::Part::kBorder, matrix);
 }
 
-void CFWL_PictureBox::OnDrawWidget(CXFA_Graphics* pGraphics,
+void CFWL_PictureBox::OnDrawWidget(CFGAS_GEGraphics* pGraphics,
                                    const CFX_Matrix& matrix) {
   DrawWidget(pGraphics, matrix);
 }

@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,19 +7,20 @@
 
 #include <map>
 #include <string>
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/scoped_observer.h"
+#include "base/scoped_observation.h"
 #include "chrome/browser/extensions/api/image_writer_private/image_writer_private_api.h"
 #include "chrome/browser/extensions/api/image_writer_private/operation.h"
 #include "chrome/common/extensions/api/image_writer_private.h"
 #include "content/public/browser/notification_observer.h"
-#include "content/public/browser/notification_registrar.h"
 #include "extensions/browser/browser_context_keyed_api_factory.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_registry_observer.h"
+#include "extensions/browser/process_manager.h"
+#include "extensions/browser/process_manager_observer.h"
 #include "extensions/common/extension_id.h"
 #include "url/gurl.h"
 
@@ -38,11 +39,14 @@ class Operation;
 // Manages image writer operations for the current profile.  Including clean-up
 // and message routing.
 class OperationManager : public BrowserContextKeyedAPI,
-                         public content::NotificationObserver,
-                         public extensions::ExtensionRegistryObserver,
-                         public base::SupportsWeakPtr<OperationManager> {
+                         public ExtensionRegistryObserver,
+                         public ProcessManagerObserver {
  public:
   explicit OperationManager(content::BrowserContext* context);
+
+  OperationManager(const OperationManager&) = delete;
+  OperationManager& operator=(const OperationManager&) = delete;
+
   ~OperationManager() override;
 
   void Shutdown() override;
@@ -86,20 +90,25 @@ class OperationManager : public BrowserContextKeyedAPI,
   static BrowserContextKeyedAPIFactory<OperationManager>* GetFactoryInstance();
   static OperationManager* Get(content::BrowserContext* context);
 
+  base::WeakPtr<OperationManager> AsWeakPtr() {
+    return weak_factory_.GetWeakPtr();
+  }
+
  private:
   static const char* service_name() {
     return "OperationManager";
   }
 
-  // NotificationObserver implementation.
-  void Observe(int type,
-               const content::NotificationSource& source,
-               const content::NotificationDetails& details) override;
-
-  // ExtensionRegistryObserver implementation.
+  // ExtensionRegistryObserver:
   void OnExtensionUnloaded(content::BrowserContext* browser_context,
                            const Extension* extension,
                            UnloadedExtensionReason reason) override;
+  void OnShutdown(ExtensionRegistry* registry) override;
+
+  // ProcessManagerObserver:
+  void OnBackgroundHostClose(const std::string& extension_id) override;
+  void OnProcessManagerShutdown(ProcessManager* manager) override;
+  void OnExtensionProcessTerminated(const Extension* extension) override;
 
   Operation* GetOperation(const ExtensionId& extension_id);
   void DeleteOperation(const ExtensionId& extension_id);
@@ -110,17 +119,18 @@ class OperationManager : public BrowserContextKeyedAPI,
   friend class BrowserContextKeyedAPIFactory<OperationManager>;
   typedef std::map<ExtensionId, scoped_refptr<Operation> > OperationMap;
 
-  content::BrowserContext* browser_context_;
+  raw_ptr<content::BrowserContext> browser_context_;
   OperationMap operations_;
-  content::NotificationRegistrar registrar_;
 
   // Listen to extension unloaded notification.
-  ScopedObserver<ExtensionRegistry, ExtensionRegistryObserver>
-      extension_registry_observer_{this};
+  base::ScopedObservation<ExtensionRegistry, ExtensionRegistryObserver>
+      extension_registry_observation_{this};
+
+  // Listen to ProcessManagerObserver for ExtensionHost.
+  base::ScopedObservation<ProcessManager, ProcessManagerObserver>
+      process_manager_observation_{this};
 
   base::WeakPtrFactory<OperationManager> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(OperationManager);
 };
 
 }  // namespace image_writer

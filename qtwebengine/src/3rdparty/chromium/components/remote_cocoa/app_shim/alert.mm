@@ -1,10 +1,10 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/remote_cocoa/app_shim/alert.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/i18n/rtl.h"
 #import "base/mac/foundation_util.h"
 #include "base/strings/sys_string_conversions.h"
@@ -72,7 +72,7 @@ const int kMessageTextMaxSlots = 2000;
     else
       slots_count++;
     if (slots_count > kMessageTextMaxSlots) {
-      base::string16 info_text = base::SysNSStringToUTF16(informative_text);
+      std::u16string info_text = base::SysNSStringToUTF16(informative_text);
       informative_text = base::SysUTF16ToNSString(
           gfx::TruncateString(info_text, index, gfx::WORD_BREAK));
       break;
@@ -146,7 +146,7 @@ const int kMessageTextMaxSlots = 2000;
   if (message_has_rtl && message_text_field) {
     base::scoped_nsobject<NSMutableParagraphStyle> alignment(
         [[NSParagraphStyle defaultParagraphStyle] mutableCopy]);
-    [alignment setAlignment:NSRightTextAlignment];
+    [alignment setAlignment:NSTextAlignmentRight];
 
     NSDictionary* alignment_attributes =
         @{NSParagraphStyleAttributeName : alignment};
@@ -164,8 +164,8 @@ const int kMessageTextMaxSlots = 2000;
     base::scoped_nsobject<NSMutableParagraphStyle> alignment(
         [[NSParagraphStyle defaultParagraphStyle] mutableCopy]);
     [alignment setAlignment:(direction == base::i18n::RIGHT_TO_LEFT)
-                                ? NSRightTextAlignment
-                                : NSLeftTextAlignment];
+                                ? NSTextAlignmentRight
+                                : NSTextAlignmentLeft];
 
     NSDictionary* alignment_attributes =
         @{NSParagraphStyleAttributeName : alignment};
@@ -240,15 +240,15 @@ const int kMessageTextMaxSlots = 2000;
   [NSApp endSheet:[[self alert] window]];
 }
 
-- (base::string16)input {
+- (std::u16string)input {
   if (_textField)
     return base::SysNSStringToUTF16([_textField stringValue]);
-  return base::string16();
+  return std::u16string();
 }
 
 - (bool)shouldSuppress {
   if ([[self alert] showsSuppressionButton])
-    return [[[self alert] suppressionButton] state] == NSOnState;
+    return [[[self alert] suppressionButton] state] == NSControlStateValueOn;
   return false;
 }
 
@@ -262,10 +262,12 @@ namespace remote_cocoa {
 AlertBridge::AlertBridge(
     mojo::PendingReceiver<mojom::AlertBridge> bridge_receiver)
     : weak_factory_(this) {
-  mojo_receiver_.Bind(std::move(bridge_receiver),
-                      ui::WindowResizeHelperMac::Get()->task_runner());
-  mojo_receiver_.set_disconnect_handler(base::BindOnce(
-      &AlertBridge::OnMojoDisconnect, weak_factory_.GetWeakPtr()));
+  if (bridge_receiver.is_valid()) {
+    mojo_receiver_.Bind(std::move(bridge_receiver),
+                        ui::WindowResizeHelperMac::Get()->task_runner());
+    mojo_receiver_.set_disconnect_handler(base::BindOnce(
+        &AlertBridge::OnMojoDisconnect, weak_factory_.GetWeakPtr()));
+  }
 }
 
 AlertBridge::~AlertBridge() {

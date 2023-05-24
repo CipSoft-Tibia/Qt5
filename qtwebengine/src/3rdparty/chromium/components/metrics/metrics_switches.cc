@@ -1,11 +1,25 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/metrics/metrics_switches.h"
 
+#include "base/check.h"
+
 namespace metrics {
 namespace switches {
+
+// Enables the observing of all UMA logs created during the session and
+// automatically exports them to the passed file path on shutdown (the file is
+// created if it does not already exist). This also enables viewing all UMA logs
+// in the chrome://metrics-internals debug page. The format of the exported file
+// is outlined in MetricsServiceObserver::ExportLogsAsJson().
+// Example usage: --export-uma-logs-to-file=/tmp/logs.json
+const char kExportUmaLogsToFile[] = "export-uma-logs-to-file";
+
+// Forces metrics reporting to be enabled. Should not be used for tests as it
+// will send data to servers.
+const char kForceEnableMetricsReporting[] = "force-enable-metrics-reporting";
 
 // Enables the recording of metrics reports but disables reporting. In contrast
 // to kForceEnableMetricsReporting, this executes all the code that a normal
@@ -23,8 +37,41 @@ const char kMetricsUploadIntervalSec[] = "metrics-upload-interval";
 // known as the Chrome Variations state.
 const char kResetVariationState[] = "reset-variation-state";
 
-// Forces metrics reporting to be enabled.
-const char kForceEnableMetricsReporting[] = "force-enable-metrics-reporting";
+// Overrides the URL of the server that UKM reports are uploaded to. This can
+// only be used in debug builds.
+const char kUkmServerUrl[] = "ukm-server-url";
+
+// Overrides the URL of the server that UMA reports are uploaded to. This can
+// only be used in debug builds.
+const char kUmaServerUrl[] = "uma-server-url";
+
+// Overrides the URL of the server that UMA reports are uploaded to when the
+// connection to the default secure URL fails (see |kUmaServerUrl|). This can
+// only be used in debug builds.
+const char kUmaInsecureServerUrl[] = "uma-insecure-server-url";
 
 }  // namespace switches
+
+bool IsMetricsRecordingOnlyEnabled() {
+  return base::CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kMetricsRecordingOnly);
+}
+
+bool IsMetricsReportingForceEnabled() {
+  return base::CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kForceEnableMetricsReporting);
+}
+
+void EnableMetricsRecordingOnlyForTesting(base::CommandLine* command_line) {
+  DCHECK(command_line != nullptr);
+  if (!command_line->HasSwitch(switches::kMetricsRecordingOnly))
+    command_line->AppendSwitch(switches::kMetricsRecordingOnly);
+}
+
+void ForceEnableMetricsReportingForTesting(base::CommandLine* command_line) {
+  DCHECK(command_line != nullptr);
+  if (!command_line->HasSwitch(switches::kForceEnableMetricsReporting))
+    command_line->AppendSwitch(switches::kForceEnableMetricsReporting);
+}
+
 }  // namespace metrics

@@ -1,49 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QT_NO_OPENGL
 
 #include "private/glwidget_p.h"
 #include "private/glxyseriesdata_p.h"
 #include "private/qabstractseries_p.h"
-#include <QtGui/QOpenGLShaderProgram>
+#include <QtOpenGL/QOpenGLShaderProgram>
 #include <QtGui/QOpenGLContext>
-#include <QtGui/QOpenGLBuffer>
+#include <QtOpenGL/QOpenGLBuffer>
 
 //#define QDEBUG_TRACE_GL_FPS
 #ifdef QDEBUG_TRACE_GL_FPS
 #  include <QElapsedTimer>
 #endif
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
-GLWidget::GLWidget(GLXYSeriesDataManager *xyDataManager, QtCharts::QChart *chart,
+GLWidget::GLWidget(GLXYSeriesDataManager *xyDataManager, QChart *chart,
                    QGraphicsView *parent)
     : QOpenGLWidget(parent->viewport()),
       m_program(nullptr),
@@ -101,6 +75,8 @@ void GLWidget::cleanup()
     m_seriesBufferMap.clear();
 
     doneCurrent();
+
+    context()->disconnect(this);
 }
 
 void GLWidget::cleanXYSeriesResources(const QXYSeries *series)
@@ -167,7 +143,7 @@ void GLWidget::initializeGL()
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_STENCIL_TEST);
 
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
     if (!QOpenGLContext::currentContext()->isOpenGLES()) {
         // Make it possible to change point primitive size and use textures with them in
         // the shaders. These are implicitly enabled in ES2.
@@ -288,7 +264,7 @@ QXYSeries *GLWidget::findSeriesAtEvent(QMouseEvent *event)
         m_selectionFbo->bind();
 
         if (m_selectionRenderNeeded) {
-            m_selectionVector.resize(m_xyDataManager->dataMap().size());
+            m_selectionList.resize(m_xyDataManager->dataMap().size());
             render(true);
             m_selectionRenderNeeded = false;
         }
@@ -307,8 +283,8 @@ QXYSeries *GLWidget::findSeriesAtEvent(QMouseEvent *event)
 
     if (index >= 0) {
         const QXYSeries *cSeries = nullptr;
-        if (index < m_selectionVector.size())
-            cSeries = m_selectionVector.at(index);
+        if (index < m_selectionList.size())
+            cSeries = m_selectionList.at(index);
 
         series = chartSeries(cSeries);
     }
@@ -335,7 +311,7 @@ void GLWidget::render(bool selection)
 
         if (data->visible) {
             if (selection) {
-                m_selectionVector[counter] = i.key();
+                m_selectionList[counter] = i.key();
                 m_program->setUniformValue(m_colorUniformLoc, QVector3D((counter & 0xff) / 255.0f,
                                                                         ((counter & 0xff00) >> 8) / 255.0f,
                                                                         ((counter & 0xff0000) >> 16) / 255.0f));
@@ -355,7 +331,7 @@ void GLWidget::render(bool selection)
             }
             vbo->bind();
             if (dirty) {
-                vbo->allocate(data->array.constData(), data->array.count() * sizeof(GLfloat));
+                vbo->allocate(data->array.constData(), int(data->array.size() * sizeof(GLfloat)));
                 dirty = false;
                 m_selectionRenderNeeded = true;
             }
@@ -381,7 +357,7 @@ void GLWidget::recreateSelectionFbo()
 
     delete m_selectionFbo;
 
-    const QSize deviceSize = m_fboSize * devicePixelRatioF();
+    const QSize deviceSize = m_fboSize * devicePixelRatio();
     m_selectionFbo = new QOpenGLFramebufferObject(deviceSize, fboFormat);
     m_recreateSelectionFbo = false;
     m_selectionRenderNeeded = true;
@@ -408,6 +384,6 @@ bool GLWidget::needsReset() const
     return m_view->renderHints().testFlag(QPainter::Antialiasing) != m_antiAlias;
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif

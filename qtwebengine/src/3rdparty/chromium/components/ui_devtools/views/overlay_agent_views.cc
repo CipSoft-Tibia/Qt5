@@ -1,8 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/ui_devtools/views/overlay_agent_views.h"
+
+#include <memory>
 
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
@@ -28,7 +30,7 @@ namespace ui_devtools {
 
 namespace {
 
-void DrawRulerText(const base::string16& utf16_text,
+void DrawRulerText(const std::u16string& utf16_text,
                    const gfx::Point& p,
                    gfx::Canvas* canvas,
                    gfx::RenderText* render_text_) {
@@ -65,7 +67,7 @@ void DrawRulers(const gfx::Rect& screen_bounds,
       canvas->Draw1pxLine(gfx::PointF(x, 0.0f), gfx::PointF(x, long_stroke),
                           SK_ColorMAGENTA);
       // Draw ruler marks.
-      base::string16 utf16_text = base::UTF8ToUTF16(std::to_string(x));
+      std::u16string utf16_text = base::UTF8ToUTF16(std::to_string(x));
       DrawRulerText(utf16_text, gfx::Point(x + 2, long_stroke), canvas,
                     render_text_);
 
@@ -81,7 +83,7 @@ void DrawRulers(const gfx::Rect& screen_bounds,
       canvas->Draw1pxLine(gfx::PointF(0.0f, y), gfx::PointF(long_stroke, y),
                           SK_ColorMAGENTA);
       // Draw ruler marks.
-      base::string16 utf16_text = base::UTF8ToUTF16(std::to_string(y));
+      std::u16string utf16_text = base::UTF8ToUTF16(std::to_string(y));
       DrawRulerText(utf16_text, gfx::Point(short_stroke + 1, y + 2), canvas,
                     render_text_);
     } else {
@@ -97,7 +99,7 @@ void DrawSizeOfRectangle(const gfx::Rect& hovered_rect,
                          const RectSide drawing_side,
                          gfx::Canvas* canvas,
                          gfx::RenderText* render_text_) {
-  base::string16 utf16_text;
+  std::u16string utf16_text;
   const std::string unit = "dp";
 
   if (!hovered_rect.IsEmpty()) {
@@ -417,7 +419,7 @@ void OverlayAgentViews::ShowDistancesInHighlightOverlay(int pinned_id,
       element_r2->GetNodeWindowAndScreenBounds());
   const std::pair<gfx::NativeWindow, gfx::Rect> pair_r1(
       element_r1->GetNodeWindowAndScreenBounds());
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
   // TODO(lgrey): Explain this
   if (pair_r1.first != pair_r2.first) {
     pinned_id_ = 0;
@@ -475,7 +477,8 @@ protocol::Response OverlayAgentViews::HighlightNode(int node_id,
     return protocol::Response::ServerError("Cannot highlight root node.");
 
   if (!layer_for_highlighting_) {
-    layer_for_highlighting_.reset(new ui::Layer(ui::LayerType::LAYER_TEXTURED));
+    layer_for_highlighting_ =
+        std::make_unique<ui::Layer>(ui::LayerType::LAYER_TEXTURED);
     layer_for_highlighting_->SetName("HighlightingLayer");
     layer_for_highlighting_->set_delegate(this);
     layer_for_highlighting_->SetFillsBoundsOpaquely(false);
@@ -711,7 +714,7 @@ bool OverlayAgentViews::UpdateHighlight(
     return false;
   }
   ui::Layer* root_layer = nullptr;
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
   views::Widget* widget =
       views::Widget::GetWidgetForNativeWindow(window_and_bounds.first);
   root_layer = widget->GetLayer();
@@ -722,7 +725,7 @@ bool OverlayAgentViews::UpdateHighlight(
   root_layer = root->layer();
   layer_for_highlighting_screen_offset_ =
       root->GetBoundsInScreen().OffsetFromOrigin();
-#endif  // defined(OS_APPLE)
+#endif  // BUILDFLAG(IS_APPLE)
   DCHECK(root_layer);
 
   layer_for_highlighting_->SetBounds(root_layer->bounds());

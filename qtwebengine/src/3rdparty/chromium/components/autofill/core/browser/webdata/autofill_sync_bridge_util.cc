@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,43 +6,26 @@
 
 #include "base/base64.h"
 #include "base/pickle.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "build/build_config.h"
 #include "components/autofill/core/browser/autofill_data_util.h"
 #include "components/autofill/core/browser/data_model/autofill_offer_data.h"
 #include "components/autofill/core/browser/data_model/autofill_profile.h"
+#include "components/autofill/core/browser/data_model/autofill_wallet_usage_data.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
 #include "components/autofill/core/browser/data_model/credit_card_cloud_token_data.h"
 #include "components/autofill/core/browser/payments/payments_customer_data.h"
 #include "components/autofill/core/browser/webdata/autofill_table.h"
 #include "components/autofill/core/common/autofill_util.h"
-#include "components/sync/model/entity_data.h"
+#include "components/sync/protocol/entity_data.h"
 
 using autofill::data_util::TruncateUTF8;
 using sync_pb::AutofillWalletSpecifics;
-using syncer::EntityData;
 
 namespace autofill {
 namespace {
-sync_pb::WalletMaskedCreditCard::WalletCardStatus LocalToServerStatus(
-    const CreditCard& card) {
-  switch (card.GetServerStatus()) {
-    case CreditCard::OK:
-      return sync_pb::WalletMaskedCreditCard::VALID;
-    case CreditCard::EXPIRED:
-      return sync_pb::WalletMaskedCreditCard::EXPIRED;
-  }
-}
-
-CreditCard::ServerStatus ServerToLocalStatus(
-    sync_pb::WalletMaskedCreditCard::WalletCardStatus status) {
-  switch (status) {
-    case sync_pb::WalletMaskedCreditCard::VALID:
-      return CreditCard::OK;
-    case sync_pb::WalletMaskedCreditCard::EXPIRED:
-      return CreditCard::EXPIRED;
-  }
-}
 
 sync_pb::WalletMaskedCreditCard::WalletCardType WalletCardTypeFromCardNetwork(
     const std::string& network) {
@@ -58,6 +41,8 @@ sync_pb::WalletMaskedCreditCard::WalletCardType WalletCardTypeFromCardNetwork(
     return sync_pb::WalletMaskedCreditCard::UNIONPAY;
   if (network == kVisaCard)
     return sync_pb::WalletMaskedCreditCard::VISA;
+  if (network == kEloCard)
+    return sync_pb::WalletMaskedCreditCard::ELO;
 
   // Some cards aren't supported by the client, so just return unknown.
   return sync_pb::WalletMaskedCreditCard::UNKNOWN;
@@ -78,6 +63,8 @@ const char* CardNetworkFromWalletCardType(
       return kUnionPay;
     case sync_pb::WalletMaskedCreditCard::VISA:
       return kVisaCard;
+    case sync_pb::WalletMaskedCreditCard::ELO:
+      return kEloCard;
 
     // These aren't supported by the client, so just declare a generic card.
     case sync_pb::WalletMaskedCreditCard::MAESTRO:
@@ -88,22 +75,79 @@ const char* CardNetworkFromWalletCardType(
   }
 }
 
-// Creates an AutofillProfile from the specified |card| specifics.
+// Creates a CreditCard from the specified `card` specifics.
 CreditCard CardFromSpecifics(const sync_pb::WalletMaskedCreditCard& card) {
   CreditCard result(CreditCard::MASKED_SERVER_CARD, card.id());
   result.SetNumber(base::UTF8ToUTF16(card.last_four()));
-  result.SetServerStatus(ServerToLocalStatus(card.status()));
   result.SetNetworkForMaskedCard(CardNetworkFromWalletCardType(card.type()));
   result.SetRawInfo(CREDIT_CARD_NAME_FULL,
                     base::UTF8ToUTF16(card.name_on_card()));
   result.SetExpirationMonth(card.exp_month());
   result.SetExpirationYear(card.exp_year());
   result.set_billing_address_id(card.billing_address_id());
-  result.set_card_issuer(
-      static_cast<CreditCard::Issuer>(card.card_issuer().issuer()));
+
+  CreditCard::Issuer issuer = CreditCard::ISSUER_UNKNOWN;
+  switch (card.card_issuer().issuer()) {
+    case sync_pb::CardIssuer::ISSUER_UNKNOWN:
+      issuer = CreditCard::ISSUER_UNKNOWN;
+      break;
+    case sync_pb::CardIssuer::GOOGLE:
+      issuer = CreditCard::GOOGLE;
+      break;
+    case sync_pb::CardIssuer::EXTERNAL_ISSUER:
+      issuer = CreditCard::EXTERNAL_ISSUER;
+      break;
+  }
+  result.set_card_issuer(issuer);
+  result.set_issuer_id(card.card_issuer().issuer_id());
+
   if (!card.nickname().empty())
     result.SetNickname(base::UTF8ToUTF16(card.nickname()));
   result.set_instrument_id(card.instrument_id());
+
+  CreditCard::VirtualCardEnrollmentState state;
+  switch (card.virtual_card_enrollment_state()) {
+    case sync_pb::WalletMaskedCreditCard::UNENROLLED:
+      state = CreditCard::UNENROLLED;
+      break;
+    case sync_pb::WalletMaskedCreditCard::ENROLLED:
+      state = CreditCard::ENROLLED;
+      break;
+    case sync_pb::WalletMaskedCreditCard::UNENROLLED_AND_NOT_ELIGIBLE:
+      state = CreditCard::UNENROLLED_AND_NOT_ELIGIBLE;
+      break;
+    case sync_pb::WalletMaskedCreditCard::UNENROLLED_AND_ELIGIBLE:
+      state = CreditCard::UNENROLLED_AND_ELIGIBLE;
+      break;
+    case sync_pb::WalletMaskedCreditCard::UNSPECIFIED:
+      state = CreditCard::UNSPECIFIED;
+      break;
+  }
+  result.set_virtual_card_enrollment_state(state);
+
+  // We should only have a virtual card enrollment type for enrolled cards.
+  if (card.virtual_card_enrollment_state() ==
+      sync_pb::WalletMaskedCreditCard::ENROLLED) {
+    CreditCard::VirtualCardEnrollmentType virtual_card_enrollment_type;
+    switch (card.virtual_card_enrollment_type()) {
+      case sync_pb::WalletMaskedCreditCard::TYPE_UNSPECIFIED:
+        virtual_card_enrollment_type = CreditCard::TYPE_UNSPECIFIED;
+        break;
+      case sync_pb::WalletMaskedCreditCard::ISSUER:
+        virtual_card_enrollment_type = CreditCard::ISSUER;
+        break;
+      case sync_pb::WalletMaskedCreditCard::NETWORK:
+        virtual_card_enrollment_type = CreditCard::NETWORK;
+        break;
+    }
+    result.set_virtual_card_enrollment_type(virtual_card_enrollment_type);
+  }
+
+  if (!card.card_art_url().empty())
+    result.set_card_art_url(GURL(card.card_art_url()));
+
+  result.set_product_description(base::UTF8ToUTF16(card.product_description()));
+
   return result;
 }
 
@@ -235,7 +279,6 @@ void SetAutofillWalletSpecificsFromServerCard(
     wallet_card->set_billing_address_id(card.billing_address_id());
   }
 
-  wallet_card->set_status(LocalToServerStatus(card));
   if (card.HasRawInfo(CREDIT_CARD_NAME_FULL)) {
     wallet_card->set_name_on_card(TruncateUTF8(
         base::UTF16ToUTF8(card.GetRawInfo(CREDIT_CARD_NAME_FULL))));
@@ -246,9 +289,68 @@ void SetAutofillWalletSpecificsFromServerCard(
   wallet_card->set_exp_year(card.expiration_year());
   if (!card.nickname().empty())
     wallet_card->set_nickname(base::UTF16ToUTF8(card.nickname()));
-  wallet_card->mutable_card_issuer()->set_issuer(
-      static_cast<sync_pb::CardIssuer::Issuer>(card.card_issuer()));
+
+  sync_pb::CardIssuer::Issuer issuer = sync_pb::CardIssuer::ISSUER_UNKNOWN;
+  switch (card.card_issuer()) {
+    case CreditCard::ISSUER_UNKNOWN:
+      issuer = sync_pb::CardIssuer::ISSUER_UNKNOWN;
+      break;
+    case CreditCard::GOOGLE:
+      issuer = sync_pb::CardIssuer::GOOGLE;
+      break;
+    case CreditCard::EXTERNAL_ISSUER:
+      issuer = sync_pb::CardIssuer::EXTERNAL_ISSUER;
+      break;
+  }
+  wallet_card->mutable_card_issuer()->set_issuer(issuer);
+  wallet_card->mutable_card_issuer()->set_issuer_id(card.issuer_id());
+
   wallet_card->set_instrument_id(card.instrument_id());
+
+  sync_pb::WalletMaskedCreditCard::VirtualCardEnrollmentState state;
+  switch (card.virtual_card_enrollment_state()) {
+    case CreditCard::UNENROLLED:
+      state = sync_pb::WalletMaskedCreditCard::UNENROLLED;
+      break;
+    case CreditCard::ENROLLED:
+      state = sync_pb::WalletMaskedCreditCard::ENROLLED;
+      break;
+    case CreditCard::UNENROLLED_AND_NOT_ELIGIBLE:
+      state = sync_pb::WalletMaskedCreditCard::UNENROLLED_AND_NOT_ELIGIBLE;
+      break;
+    case CreditCard::UNENROLLED_AND_ELIGIBLE:
+      state = sync_pb::WalletMaskedCreditCard::UNENROLLED_AND_ELIGIBLE;
+      break;
+    case CreditCard::UNSPECIFIED:
+      state = sync_pb::WalletMaskedCreditCard::UNSPECIFIED;
+      break;
+  }
+  wallet_card->set_virtual_card_enrollment_state(state);
+
+  // We should only have a virtual card enrollment type for enrolled cards.
+  if (card.virtual_card_enrollment_state() == CreditCard::ENROLLED) {
+    sync_pb::WalletMaskedCreditCard::VirtualCardEnrollmentType
+        virtual_card_enrollment_type;
+    switch (card.virtual_card_enrollment_type()) {
+      case CreditCard::TYPE_UNSPECIFIED:
+        virtual_card_enrollment_type =
+            sync_pb::WalletMaskedCreditCard::TYPE_UNSPECIFIED;
+        break;
+      case CreditCard::ISSUER:
+        virtual_card_enrollment_type = sync_pb::WalletMaskedCreditCard::ISSUER;
+        break;
+      case CreditCard::NETWORK:
+        virtual_card_enrollment_type = sync_pb::WalletMaskedCreditCard::NETWORK;
+        break;
+    }
+    wallet_card->set_virtual_card_enrollment_type(virtual_card_enrollment_type);
+  }
+
+  if (!card.card_art_url().is_empty())
+    wallet_card->set_card_art_url(card.card_art_url().spec());
+
+  wallet_card->set_product_description(
+      base::UTF16ToUTF8(card.product_description()));
 }
 
 void SetAutofillWalletSpecificsFromPaymentsCustomerData(
@@ -288,54 +390,156 @@ void SetAutofillWalletSpecificsFromCreditCardCloudTokenData(
       cloud_token_data.instrument_token);
 }
 
+void SetAutofillWalletUsageSpecificsFromAutofillWalletUsageData(
+    const AutofillWalletUsageData& wallet_usage_data,
+    sync_pb::AutofillWalletUsageSpecifics* wallet_usage_specifics) {
+  if (wallet_usage_data.usage_data_type() ==
+      AutofillWalletUsageData::UsageDataType::kVirtualCard) {
+    // Ensure the Virtual Card Usage Data fields are set before transferring to
+    // `wallet_usage_specifics`.
+    DCHECK(
+        IsVirtualCardUsageDataSet(wallet_usage_data.virtual_card_usage_data()));
+
+    wallet_usage_specifics->set_guid(
+        *wallet_usage_data.virtual_card_usage_data().usage_data_id());
+
+    wallet_usage_specifics->mutable_virtual_card_usage_data()
+        ->set_instrument_id(
+            *wallet_usage_data.virtual_card_usage_data().instrument_id());
+
+    wallet_usage_specifics->mutable_virtual_card_usage_data()
+        ->set_virtual_card_last_four(
+            base::UTF16ToUTF8(*wallet_usage_data.virtual_card_usage_data()
+                                   .virtual_card_last_four()));
+
+    wallet_usage_specifics->mutable_virtual_card_usage_data()->set_merchant_url(
+        wallet_usage_data.virtual_card_usage_data()
+            .merchant_origin()
+            .Serialize());
+  }
+}
+
 void SetAutofillOfferSpecificsFromOfferData(
     const AutofillOfferData& offer_data,
     sync_pb::AutofillOfferSpecifics* offer_specifics) {
-  offer_specifics->set_id(offer_data.offer_id);
-  offer_specifics->set_offer_details_url(offer_data.offer_details_url.spec());
-  for (const GURL& domain : offer_data.merchant_domain) {
-    offer_specifics->add_merchant_domain(domain.GetOrigin().spec());
+  // General offer data:
+  offer_specifics->set_id(offer_data.GetOfferId());
+  offer_specifics->set_offer_details_url(
+      offer_data.GetOfferDetailsUrl().spec());
+  for (const GURL& merchant_origin : offer_data.GetMerchantOrigins()) {
+    offer_specifics->add_merchant_domain(merchant_origin.spec());
   }
   offer_specifics->set_offer_expiry_date(
-      (offer_data.expiry - base::Time::UnixEpoch()).InSeconds());
-  for (int64_t instrument_id : offer_data.eligible_instrument_id) {
-    offer_specifics->mutable_card_linked_offer_data()->add_instrument_id(
-        instrument_id);
-  }
-  if (offer_data.offer_reward_amount.find("%") != std::string::npos) {
-    offer_specifics->mutable_percentage_reward()->set_percentage(
-        offer_data.offer_reward_amount);
+      (offer_data.GetExpiry() - base::Time::UnixEpoch()).InSeconds());
+  offer_specifics->mutable_display_strings()->set_value_prop_text(
+      offer_data.GetDisplayStrings().value_prop_text);
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+  offer_specifics->mutable_display_strings()->set_see_details_text_mobile(
+      offer_data.GetDisplayStrings().see_details_text);
+  offer_specifics->mutable_display_strings()
+      ->set_usage_instructions_text_mobile(
+          offer_data.GetDisplayStrings().usage_instructions_text);
+#else
+  offer_specifics->mutable_display_strings()->set_see_details_text_desktop(
+      offer_data.GetDisplayStrings().see_details_text);
+  offer_specifics->mutable_display_strings()
+      ->set_usage_instructions_text_desktop(
+          offer_data.GetDisplayStrings().usage_instructions_text);
+#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+
+  // Because card_linked_offer_data and promo_code_offer_data are a oneof,
+  // setting one will clear the other. We should figure out which one we care
+  // about.
+  if (offer_data.GetPromoCode().empty()) {
+    // Card-linked offer fields (promo code is empty):
+    for (int64_t instrument_id : offer_data.GetEligibleInstrumentIds()) {
+      offer_specifics->mutable_card_linked_offer_data()->add_instrument_id(
+          instrument_id);
+    }
+    if (offer_data.GetOfferRewardAmount().find("%") != std::string::npos) {
+      offer_specifics->mutable_percentage_reward()->set_percentage(
+          offer_data.GetOfferRewardAmount());
+    } else {
+      offer_specifics->mutable_fixed_amount_reward()->set_amount(
+          offer_data.GetOfferRewardAmount());
+    }
   } else {
-    offer_specifics->mutable_fixed_amount_reward()->set_amount(
-        offer_data.offer_reward_amount);
+    // Promo code offer fields:
+    offer_specifics->mutable_promo_code_offer_data()->set_promo_code(
+        offer_data.GetPromoCode());
   }
 }
 
 AutofillOfferData AutofillOfferDataFromOfferSpecifics(
     const sync_pb::AutofillOfferSpecifics& offer_specifics) {
   DCHECK(IsOfferSpecificsValid(offer_specifics));
-  AutofillOfferData offer_data;
-  offer_data.offer_id = offer_specifics.id();
-  if (offer_specifics.has_percentage_reward()) {
-    offer_data.offer_reward_amount =
-        offer_specifics.percentage_reward().percentage();
-  } else {
-    offer_data.offer_reward_amount =
-        offer_specifics.fixed_amount_reward().amount();
-  }
-  offer_data.expiry =
-      base::Time::UnixEpoch() +
-      base::TimeDelta::FromSeconds(offer_specifics.offer_expiry_date());
-  offer_data.offer_details_url = GURL(offer_specifics.offer_details_url());
+
+  // General offer data:
+  int64_t offer_id = offer_specifics.id();
+  base::Time expiry = base::Time::UnixEpoch() +
+                      base::Seconds(offer_specifics.offer_expiry_date());
+  GURL offer_details_url = GURL(offer_specifics.offer_details_url());
+  std::vector<GURL> merchant_origins;
   for (const std::string& domain : offer_specifics.merchant_domain()) {
-    if (GURL(domain).is_valid())
-      offer_data.merchant_domain.emplace_back(domain);
+    const GURL gurl_domain = GURL(domain);
+    if (gurl_domain.is_valid())
+      merchant_origins.emplace_back(gurl_domain.DeprecatedGetOriginAsURL());
   }
-  for (int64_t instrument_id :
-       offer_specifics.card_linked_offer_data().instrument_id()) {
-    offer_data.eligible_instrument_id.push_back(instrument_id);
+  DisplayStrings display_strings;
+  display_strings.value_prop_text =
+      offer_specifics.display_strings().value_prop_text();
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+  display_strings.see_details_text =
+      offer_specifics.display_strings().see_details_text_mobile();
+  display_strings.usage_instructions_text =
+      offer_specifics.display_strings().usage_instructions_text_mobile();
+#else
+  display_strings.see_details_text =
+      offer_specifics.display_strings().see_details_text_desktop();
+  display_strings.usage_instructions_text =
+      offer_specifics.display_strings().usage_instructions_text_desktop();
+#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+
+  if (offer_specifics.promo_code_offer_data().promo_code().empty()) {
+    // Card-linked offer fields:
+    std::string offer_reward_amount =
+        offer_specifics.has_percentage_reward()
+            ? offer_specifics.percentage_reward().percentage()
+            : offer_specifics.fixed_amount_reward().amount();
+    std::vector<int64_t> eligible_instrument_id;
+    for (int64_t instrument_id :
+         offer_specifics.card_linked_offer_data().instrument_id()) {
+      eligible_instrument_id.push_back(instrument_id);
+    }
+
+    AutofillOfferData offer_data = AutofillOfferData::GPayCardLinkedOffer(
+        offer_id, expiry, merchant_origins, offer_details_url, display_strings,
+        eligible_instrument_id, offer_reward_amount);
+    return offer_data;
+  } else {
+    AutofillOfferData offer_data = AutofillOfferData::GPayPromoCodeOffer(
+        offer_id, expiry, merchant_origins, offer_details_url, display_strings,
+        offer_specifics.promo_code_offer_data().promo_code());
+    return offer_data;
   }
-  return offer_data;
+}
+
+VirtualCardUsageData VirtualCardUsageDataFromUsageSpecifics(
+    const sync_pb::AutofillWalletUsageSpecifics& usage_specifics) {
+  const sync_pb::AutofillWalletUsageSpecifics::VirtualCardUsageData
+      virtual_card_usage_data_specifics =
+          usage_specifics.virtual_card_usage_data();
+  DCHECK(usage_specifics.has_guid() && IsVirtualCardUsageDataSpecificsValid(
+                                           virtual_card_usage_data_specifics));
+
+  return VirtualCardUsageData(
+      VirtualCardUsageData::UsageDataId(usage_specifics.guid()),
+      VirtualCardUsageData::InstrumentId(
+          virtual_card_usage_data_specifics.instrument_id()),
+      VirtualCardUsageData::VirtualCardLastFour(base::UTF8ToUTF16(
+          virtual_card_usage_data_specifics.virtual_card_last_four())),
+      url::Origin::Create(
+          GURL(virtual_card_usage_data_specifics.merchant_url())));
 }
 
 AutofillProfile ProfileFromSpecifics(
@@ -373,6 +577,9 @@ AutofillProfile ProfileFromSpecifics(
 
   profile.GenerateServerProfileIdentifier();
 
+  // Call the finalization routine to parse the structure of the name and the
+  // address into their components.
+  profile.FinalizeAfterImport();
   return profile;
 }
 
@@ -483,8 +690,7 @@ bool AreAnyItemsDifferent(const std::vector<std::unique_ptr<Item>>& old_data,
   auto compare_equal = [](const Item* lhs, const Item* rhs) {
     return lhs->Compare(*rhs) == 0;
   };
-  return !std::equal(old_ptrs.begin(), old_ptrs.end(), new_ptrs.begin(),
-                     compare_equal);
+  return !base::ranges::equal(old_ptrs, new_ptrs, compare_equal);
 }
 
 template bool AreAnyItemsDifferent<>(
@@ -515,24 +721,42 @@ bool IsOfferSpecificsValid(const sync_pb::AutofillOfferSpecifics specifics) {
     return false;
   }
 
-  // A valid offer has at least one linked card instrument id.
-  if (!specifics.has_card_linked_offer_data() ||
-      specifics.card_linked_offer_data().instrument_id().size() == 0) {
-    return false;
-  }
+  // Card-linked offers must have at least one linked card instrument ID, and
+  // fixed_amount_reward or percentage_reward. Promo code offers must have a
+  // promo code.
+  bool has_instrument_id =
+      specifics.has_card_linked_offer_data() &&
+      specifics.card_linked_offer_data().instrument_id().size() != 0;
+  bool has_fixed_or_percentage_reward =
+      (specifics.has_fixed_amount_reward() &&
+       specifics.fixed_amount_reward().has_amount()) ||
+      (specifics.has_percentage_reward() &&
+       specifics.percentage_reward().has_percentage() &&
+       specifics.percentage_reward().percentage().find('%') !=
+           std::string::npos);
+  bool has_promo_code = specifics.has_promo_code_offer_data() &&
+                        specifics.promo_code_offer_data().promo_code() != "";
 
-  // A valid offer must have either a percentage reward or a fixed amount
-  // reward.
-  if (!specifics.has_percentage_reward() ||
-      !specifics.percentage_reward().has_percentage()) {
-    return specifics.has_fixed_amount_reward() &&
-           specifics.fixed_amount_reward().has_amount();
-  } else if (specifics.percentage_reward().percentage().find('%') ==
-             std::string::npos) {
-    return false;
-  }
+  return (has_instrument_id && has_fixed_or_percentage_reward) ||
+         has_promo_code;
+}
 
-  return true;
+bool IsVirtualCardUsageDataSpecificsValid(
+    const sync_pb::AutofillWalletUsageSpecifics::VirtualCardUsageData&
+        specifics) {
+  // Ensure fields are present and in correct format.
+  return specifics.has_instrument_id() &&
+         specifics.has_virtual_card_last_four() &&
+         specifics.virtual_card_last_four().length() == 4 &&
+         specifics.has_merchant_url() &&
+         !url::Origin::Create(GURL(specifics.merchant_url())).opaque();
+}
+
+bool IsVirtualCardUsageDataSet(
+    const VirtualCardUsageData& virtual_card_usage_data) {
+  return *virtual_card_usage_data.instrument_id() != 0 &&
+         !virtual_card_usage_data.usage_data_id()->empty() &&
+         !virtual_card_usage_data.virtual_card_last_four()->empty();
 }
 
 }  // namespace autofill

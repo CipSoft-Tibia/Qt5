@@ -1,6 +1,6 @@
-#!/usr/bin/env vpython
+#!/usr/bin/env vpython3
 #
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 #
@@ -10,7 +10,7 @@
 # Example usage, testing M80 tests and client against master implementation:
 #   autoninja -C out/Release weblayer_instrumentation_test_versions_apk
 #   cipd install --root /tmp/M80 chromium/testing/weblayer-x86 m80
-#   out/Release/bin/run_weblayer_instrumentation_tests_versions_apk \
+#   out/Release/bin/run_weblayer_instrumentation_test_versions_apk \
 #       --test-runner-outdir out/Release
 #       --client-outdir /tmp/M80/out/Release
 #       --implementation-outdir out/Release
@@ -59,6 +59,9 @@ def tag_matches(tag, impl_version='trunk', client_version='trunk'):
   Raises:
     AssertionError if the tag is invalid.
   """
+  # 'All' is special cased to match anything.
+  if tag == 'all':
+    return True
   # Extract the three components from the tag.
   match = re.match(r'(client|impl)_([gl]te)_([0-9]+)', tag)
   assert match is not None, (
@@ -110,7 +113,7 @@ def tests_to_skip(expectation_contents, impl_version='trunk',
             'Only "Skip" is supported in the skew test expectations.')
 
     # Iterate over the first (and only) item since can't index over a frozenset.
-    tag = iter(expectation.tags).next()
+    tag = next(iter(expectation.tags))
     if tag_matches(tag, impl_version, client_version):
       tests.append(expectation.test)
   return tests
@@ -140,6 +143,15 @@ def main():
       help=('Test expectations file describing which tests are failing at '
             'different versions.'))
 
+  # There are two Webview apks that are available for WebLayer skew tests.
+  # crbug.com/1163652.
+  parser.add_argument(
+      '--webview-apk-path',
+      required=True,
+      help=('Relative path for the WebLayer implementation library apk. '
+            'The path is relative to the WebLayer implementation '
+            'output directory.'))
+
   version_group = parser.add_mutually_exclusive_group(required=True)
   version_group.add_argument(
       '--client-version',
@@ -165,20 +177,18 @@ def main():
   executable_args = [
       'instrumentation',
       '--output-directory',
-      args.test_runner_outdir,
+      args.client_outdir,
       '--runtime-deps-path',
       os.path.join(args.client_outdir,
                    ('gen.runtime/weblayer/browser/android/javatests/' +
                     'weblayer_instrumentation_test_apk.runtime_deps')),
       '--test-apk',
-      os.path.join(args.client_outdir, 'apks/WebLayerInstrumentationTest.apk'),
-      '--test-jar',
       os.path.join(args.client_outdir,
-                   'test.lib.java/WebLayerInstrumentationTest.jar'),
+                   'apks/WebLayerInstrumentationTest.apk'),
       '--apk-under-test',
       os.path.join(args.client_outdir, 'apks/WebLayerShellSystemWebView.apk'),
       '--use-webview-provider',
-      os.path.join(args.implementation_outdir, 'apks/SystemWebView.apk'),
+      os.path.join(args.implementation_outdir, args.webview_apk_path),
       '--additional-apk',
       os.path.join(args.client_outdir, 'apks/ChromiumNetTestSupport.apk')]
 

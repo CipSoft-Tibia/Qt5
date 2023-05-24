@@ -1,47 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the TGA plugin in the Qt ImageFormats module.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtgafile.h"
 
 #include <QtCore/QIODevice>
 #include <QtCore/QDebug>
 #include <QtCore/QDateTime>
+#include <QtGui/QImageIOHandler>
 
 struct TgaReader
 {
@@ -220,9 +185,18 @@ QImage QTgaFile::readImage()
 
     int offset = mHeader[IdLength];  // Mostly always zero
 
-    // Even in TrueColor files a color pallette may be present
-    if (mHeader[ColorMapType] == 1)
-        offset += littleEndianInt(&mHeader[CMapLength]) * littleEndianInt(&mHeader[CMapDepth]);
+    // Even in TrueColor files a color palette may be present so we have to check it here
+    // even we only support image type 2 (= uncompressed true-color image)
+    if (mHeader[ColorMapType] == 1) {
+        int cmapDepth = mHeader[CMapDepth];
+        if (cmapDepth == 15)    // 15 bit is stored as 16 bit + ignoring the highest bit (no alpha)
+            cmapDepth = 16;
+        if (cmapDepth != 16 && cmapDepth != 24 && cmapDepth != 32) {
+            mErrorMessage = tr("Invalid color map depth (%1)").arg(cmapDepth);
+            return {};
+        }
+        offset += littleEndianInt(&mHeader[CMapLength]) * cmapDepth / 8;
+    }
 
     mDevice->seek(HeaderSize + offset);
 
@@ -238,8 +212,8 @@ QImage QTgaFile::readImage()
     //unsigned char xCorner = desc & 0x10; // 0 = left, 1 = right
     unsigned char yCorner = desc & 0x20; // 0 = lower, 1 = upper
 
-    QImage im(imageWidth, imageHeight, QImage::Format_ARGB32);
-    if (im.isNull())
+    QImage im;
+    if (!QImageIOHandler::allocateImage(QSize(imageWidth, imageHeight), QImage::Format_ARGB32, &im))
         return QImage();
     TgaReader *reader = 0;
     if (bitsPerPixel == 16)
@@ -248,6 +222,8 @@ QImage QTgaFile::readImage()
         reader = new Tga24Reader();
     else if (bitsPerPixel == 32)
         reader = new Tga32Reader();
+    else
+        return QImage();
     TgaReader &read = *reader;
 
     // For now only deal with yCorner, since no one uses xCorner == 1

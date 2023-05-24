@@ -1,20 +1,20 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "media/filters/fake_video_decoder.h"
 
 #include "base/location.h"
-#include "media/base/bind_to_current_loop.h"
+#include "base/task/bind_post_task.h"
 #include "media/base/test_helpers.h"
 
 namespace media {
 
-FakeVideoDecoder::FakeVideoDecoder(const std::string& decoder_name,
+FakeVideoDecoder::FakeVideoDecoder(int decoder_id,
                                    int decoding_delay,
                                    int max_parallel_decoding_requests,
                                    const BytesDecodedCB& bytes_decoded_cb)
-    : decoder_name_(decoder_name),
+    : decoder_id_(decoder_id),
       decoding_delay_(decoding_delay),
       max_parallel_decoding_requests_(max_parallel_decoding_requests),
       bytes_decoded_cb_(bytes_decoded_cb),
@@ -22,13 +22,14 @@ FakeVideoDecoder::FakeVideoDecoder(const std::string& decoder_name,
       hold_decode_(false),
       total_bytes_decoded_(0),
       fail_to_initialize_(false) {
-  DVLOG(1) << decoder_name_ << ": " << __func__;
+  DETACH_FROM_SEQUENCE(sequence_checker_);
+  DVLOG(1) << decoder_id_ << ": " << __func__;
   DCHECK_GE(decoding_delay, 0);
 }
 
 FakeVideoDecoder::~FakeVideoDecoder() {
-  DVLOG(1) << decoder_name_ << ": " << __func__;
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DVLOG(1) << decoder_id_ << ": " << __func__;
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   if (state_ == STATE_UNINITIALIZED)
     return;
@@ -63,8 +64,8 @@ bool FakeVideoDecoder::IsPlatformDecoder() const {
   return is_platform_decoder_;
 }
 
-std::string FakeVideoDecoder::GetDisplayName() const {
-  return decoder_name_;
+VideoDecoderType FakeVideoDecoder::GetDecoderType() const {
+  return VideoDecoderType::kTesting;
 }
 
 void FakeVideoDecoder::Initialize(const VideoDecoderConfig& config,
@@ -73,18 +74,18 @@ void FakeVideoDecoder::Initialize(const VideoDecoderConfig& config,
                                   InitCB init_cb,
                                   const OutputCB& output_cb,
                                   const WaitingCB& waiting_cb) {
-  DVLOG(1) << decoder_name_ << ": " << __func__;
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DVLOG(1) << decoder_id_ << ": " << __func__;
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(config.IsValidConfig());
   DCHECK(held_decode_callbacks_.empty())
       << "No reinitialization during pending decode.";
   DCHECK(reset_cb_.IsNull()) << "No reinitialization during pending reset.";
 
   current_config_ = config;
-  init_cb_.SetCallback(BindToCurrentLoop(std::move(init_cb)));
+  init_cb_.SetCallback(base::BindPostTaskToCurrentDefault(std::move(init_cb)));
 
-  // Don't need BindToCurrentLoop() because |output_cb_| is only called from
-  // RunDecodeCallback() which is posted from Decode().
+  // Don't need base::BindPostTaskToCurrentDefault() because |output_cb_| is
+  // only called from RunDecodeCallback() which is posted from Decode().
   output_cb_ = output_cb;
 
   if (!decoded_frames_.empty()) {
@@ -95,24 +96,24 @@ void FakeVideoDecoder::Initialize(const VideoDecoderConfig& config,
   if (config.is_encrypted() && (!supports_encrypted_config_ || !cdm_context)) {
     DVLOG(1) << "Encrypted config not supported.";
     state_ = STATE_NORMAL;
-    init_cb_.RunOrHold(StatusCode::kEncryptedContentUnsupported);
+    init_cb_.RunOrHold(DecoderStatus::Codes::kUnsupportedEncryptionMode);
     return;
   }
 
   if (fail_to_initialize_) {
-    DVLOG(1) << decoder_name_ << ": Initialization failed.";
+    DVLOG(1) << decoder_id_ << ": Initialization failed.";
     state_ = STATE_ERROR;
-    init_cb_.RunOrHold(StatusCode::kDecoderInitializeNeverCompleted);
+    init_cb_.RunOrHold(DecoderStatus::Codes::kFailed);
   } else {
-    DVLOG(1) << decoder_name_ << ": Initialization succeeded.";
+    DVLOG(1) << decoder_id_ << ": Initialization succeeded.";
     state_ = STATE_NORMAL;
-    init_cb_.RunOrHold(OkStatus());
+    init_cb_.RunOrHold(DecoderStatus::Codes::kOk);
   }
 }
 
 void FakeVideoDecoder::Decode(scoped_refptr<DecoderBuffer> buffer,
                               DecodeCB decode_cb) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(reset_cb_.IsNull());
   DCHECK_LE(decoded_frames_.size(),
             decoding_delay_ + held_decode_callbacks_.size());
@@ -123,10 +124,10 @@ void FakeVideoDecoder::Decode(scoped_refptr<DecoderBuffer> buffer,
   int buffer_size = buffer->end_of_stream() ? 0 : buffer->data_size();
   DecodeCB wrapped_decode_cb = base::BindOnce(
       &FakeVideoDecoder::OnFrameDecoded, weak_factory_.GetWeakPtr(),
-      buffer_size, BindToCurrentLoop(std::move(decode_cb)));
+      buffer_size, base::BindPostTaskToCurrentDefault(std::move(decode_cb)));
 
   if (state_ == STATE_ERROR) {
-    std::move(wrapped_decode_cb).Run(DecodeStatus::DECODE_ERROR);
+    std::move(wrapped_decode_cb).Run(DecoderStatus::Codes::kFailed);
     return;
   }
 
@@ -147,10 +148,10 @@ scoped_refptr<VideoFrame> FakeVideoDecoder::MakeVideoFrame(
 }
 
 void FakeVideoDecoder::Reset(base::OnceClosure closure) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(reset_cb_.IsNull());
 
-  reset_cb_.SetCallback(BindToCurrentLoop(std::move(closure)));
+  reset_cb_.SetCallback(base::BindPostTaskToCurrentDefault(std::move(closure)));
   decoded_frames_.clear();
 
   // Defer the reset if a decode is pending.
@@ -161,22 +162,22 @@ void FakeVideoDecoder::Reset(base::OnceClosure closure) {
 }
 
 void FakeVideoDecoder::HoldNextInit() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   init_cb_.HoldCallback();
 }
 
 void FakeVideoDecoder::HoldDecode() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   hold_decode_ = true;
 }
 
 void FakeVideoDecoder::HoldNextReset() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   reset_cb_.HoldCallback();
 }
 
 void FakeVideoDecoder::SatisfyInit() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(held_decode_callbacks_.empty());
   DCHECK(reset_cb_.IsNull());
 
@@ -184,7 +185,7 @@ void FakeVideoDecoder::SatisfyInit() {
 }
 
 void FakeVideoDecoder::SatisfyDecode() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(hold_decode_);
 
   hold_decode_ = false;
@@ -195,7 +196,7 @@ void FakeVideoDecoder::SatisfyDecode() {
 }
 
 void FakeVideoDecoder::SatisfySingleDecode() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(!held_decode_callbacks_.empty());
 
   DecodeCB decode_cb = std::move(held_decode_callbacks_.front());
@@ -207,17 +208,18 @@ void FakeVideoDecoder::SatisfySingleDecode() {
 }
 
 void FakeVideoDecoder::SatisfyReset() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(held_decode_callbacks_.empty());
   reset_cb_.RunHeldCallback();
 }
 
 void FakeVideoDecoder::SimulateError() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   state_ = STATE_ERROR;
   while (!held_decode_callbacks_.empty()) {
-    std::move(held_decode_callbacks_.front()).Run(DecodeStatus::DECODE_ERROR);
+    std::move(held_decode_callbacks_.front())
+        .Run(DecoderStatus::Codes::kFailed);
     held_decode_callbacks_.pop_front();
   }
   decoded_frames_.clear();
@@ -233,8 +235,8 @@ int FakeVideoDecoder::GetMaxDecodeRequests() const {
 
 void FakeVideoDecoder::OnFrameDecoded(int buffer_size,
                                       DecodeCB decode_cb,
-                                      Status status) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+                                      DecoderStatus status) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   if (status.is_ok()) {
     total_bytes_decoded_ += buffer_size;
@@ -245,7 +247,7 @@ void FakeVideoDecoder::OnFrameDecoded(int buffer_size,
 }
 
 void FakeVideoDecoder::RunOrHoldDecode(DecodeCB decode_cb) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   if (hold_decode_) {
     held_decode_callbacks_.push_back(std::move(decode_cb));
@@ -256,11 +258,11 @@ void FakeVideoDecoder::RunOrHoldDecode(DecodeCB decode_cb) {
 }
 
 void FakeVideoDecoder::RunDecodeCallback(DecodeCB decode_cb) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   if (!reset_cb_.IsNull()) {
     DCHECK(decoded_frames_.empty());
-    std::move(decode_cb).Run(DecodeStatus::ABORTED);
+    std::move(decode_cb).Run(DecoderStatus::Codes::kAborted);
     return;
   }
 
@@ -285,11 +287,11 @@ void FakeVideoDecoder::RunDecodeCallback(DecodeCB decode_cb) {
     }
   }
 
-  std::move(decode_cb).Run(DecodeStatus::OK);
+  std::move(decode_cb).Run(DecoderStatus::Codes::kOk);
 }
 
 void FakeVideoDecoder::DoReset() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(held_decode_callbacks_.empty());
   DCHECK(!reset_cb_.IsNull());
 

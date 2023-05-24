@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2013-2018 Esri <contracts@esri.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013-2018 Esri <contracts@esri.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "placesearchreply_esri.h"
 #include "placemanagerengine_esri.h"
@@ -44,8 +8,14 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonObject>
 #include <QtNetwork/QNetworkReply>
+#include <QtPositioning/QGeoAddress>
 #include <QtPositioning/QGeoCircle>
+#include <QtPositioning/QGeoLocation>
 #include <QtPositioning/QGeoRectangle>
+#include <QtLocation/QPlace>
+#include <QtLocation/QPlaceAttribute>
+#include <QtLocation/QPlaceContactDetail>
+#include <QtLocation/QPlaceRatings>
 #include <QtLocation/QPlaceResult>
 #include <QtLocation/QPlaceSearchRequest>
 #include <QtLocation/private/qplacesearchrequest_p.h>
@@ -86,8 +56,8 @@ PlaceSearchReplyEsri::PlaceSearchReplyEsri(const QPlaceSearchRequest &request, Q
     }
     setRequest(request);
 
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(errorOccurred(QNetworkReply::NetworkError)), this, SLOT(networkError(QNetworkReply::NetworkError)));
+    connect(reply, &QNetworkReply::finished, this, &PlaceSearchReplyEsri::replyFinished);
+    connect(reply, &QNetworkReply::errorOccurred, this, &PlaceSearchReplyEsri::networkError);
     connect(this, &QPlaceReply::aborted, reply, &QNetworkReply::abort);
     connect(this, &QObject::destroyed, reply, &QObject::deleteLater);
 }
@@ -99,7 +69,7 @@ PlaceSearchReplyEsri::~PlaceSearchReplyEsri()
 void PlaceSearchReplyEsri::setError(QPlaceReply::Error errorCode, const QString &errorString)
 {
     QPlaceReply::setError(errorCode, errorString);
-    emit error(errorCode, errorString);
+    emit errorOccurred(errorCode, errorString);
     setFinished(true);
     emit finished();
 }
@@ -113,28 +83,22 @@ void PlaceSearchReplyEsri::replyFinished()
         return;
 
     QJsonDocument document = QJsonDocument::fromJson(reply->readAll());
-    if (!document.isObject())
-    {
+    if (!document.isObject()) {
         setError(ParseError, tr("Response parse error"));
         return;
     }
 
     QJsonValue suggestions = document.object().value(kCandidatesKey);
-    if (!suggestions.isArray())
-    {
+    if (!suggestions.isArray()) {
         setError(ParseError, tr("Response parse error"));
         return;
     }
 
-    QJsonArray resultsArray = suggestions.toArray();
+    const QJsonArray resultsArray = suggestions.toArray();
 
     QList<QPlaceSearchResult> results;
-    for (int i = 0; i < resultsArray.count(); ++i)
-    {
-        QJsonObject item = resultsArray.at(i).toObject();
-        QPlaceResult placeResult = parsePlaceResult(item);
-        results.append(placeResult);
-    }
+    for (const auto result : resultsArray)
+        results.append(parsePlaceResult(result.toObject()));
 
     setResults(results);
     setFinished(true);
@@ -143,7 +107,7 @@ void PlaceSearchReplyEsri::replyFinished()
 
 void PlaceSearchReplyEsri::networkError(QNetworkReply::NetworkError error)
 {
-    Q_UNUSED(error)
+    Q_UNUSED(error);
     QNetworkReply *reply = static_cast<QNetworkReply *>(sender());
     reply->deleteLater();
     setError(QPlaceReply::CommunicationError, reply->errorString());
@@ -204,7 +168,7 @@ QPlaceResult PlaceSearchReplyEsri::parsePlaceResult(const QJsonObject &item) con
     QGeoLocation geoLocation;
     geoLocation.setCoordinate(coordinate);
     geoLocation.setAddress(geoAddress);
-    geoLocation.setBoundingBox(boundingBox);
+    geoLocation.setBoundingShape(boundingBox);
 
     // set place
     place.setName(keys.value(kLongLabelKey));

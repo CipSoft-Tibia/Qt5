@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Javier S. Pedro <maemo@javispedro.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Javier S. Pedro <maemo@javispedro.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QLOWENERGYSERVICE_H
 #define QLOWENERGYSERVICE_H
 
@@ -71,13 +35,34 @@ public:
 
     enum ServiceState {
         InvalidService = 0,
-        DiscoveryRequired,  // we know start/end handle but nothing more
-        //TODO Rename DiscoveringServices -> DiscoveringDetails or DiscoveringService
-        DiscoveringServices,// discoverDetails() called and running
-        ServiceDiscovered,  // all details have been synchronized
+        RemoteService,
+        RemoteServiceDiscovering, // discoverDetails() called and running
+        RemoteServiceDiscovered,  // all details have been synchronized
         LocalService,
+
+#if QT_DEPRECATED_SINCE(6, 2)
+// for source compatibility:
+        DiscoveryRequired
+            Q_DECL_ENUMERATOR_DEPRECATED_X(
+                "DiscoveryRequired was renamed to RemoteService.")
+                = RemoteService,
+        DiscoveringService
+            Q_DECL_ENUMERATOR_DEPRECATED_X(
+                "DiscoveringService was renamed to RemoteServiceDiscovering.")
+                = RemoteServiceDiscovering,
+        ServiceDiscovered
+            Q_DECL_ENUMERATOR_DEPRECATED_X(
+                "ServiceDiscovered was renamed to RemoteServiceDiscovered.")
+                = RemoteServiceDiscovered,
+#endif
     };
     Q_ENUM(ServiceState)
+
+    enum DiscoveryMode {
+        FullDiscovery,      // standard, reads all attributes
+        SkipValueDiscovery  // does not read characteristic values and descriptors
+    };
+    Q_ENUM(DiscoveryMode)
 
     enum WriteMode {
         WriteWithResponse = 0,
@@ -98,7 +83,7 @@ public:
     QBluetoothUuid serviceUuid() const;
     QString serviceName() const;
 
-    void discoverDetails();
+    void discoverDetails(DiscoveryMode mode = FullDiscovery);
 
     ServiceError error() const;
 
@@ -125,7 +110,7 @@ Q_SIGNALS:
                         const QByteArray &value);
     void descriptorWritten(const QLowEnergyDescriptor &info,
                            const QByteArray &value);
-    void error(QLowEnergyService::ServiceError error);
+    void errorOccurred(QLowEnergyService::ServiceError error);
 
 private:
     Q_DECLARE_PRIVATE(QLowEnergyService)
@@ -145,9 +130,13 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(QLowEnergyService::ServiceTypes)
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE(QLowEnergyService::ServiceError)
-Q_DECLARE_METATYPE(QLowEnergyService::ServiceState)
-Q_DECLARE_METATYPE(QLowEnergyService::ServiceType)
-Q_DECLARE_METATYPE(QLowEnergyService::WriteMode)
+QT_DECL_METATYPE_EXTERN_TAGGED(QLowEnergyService::ServiceError, QLowEnergyService__ServiceError,
+                               Q_BLUETOOTH_EXPORT)
+QT_DECL_METATYPE_EXTERN_TAGGED(QLowEnergyService::ServiceState, QLowEnergyService__ServiceState,
+                               Q_BLUETOOTH_EXPORT)
+QT_DECL_METATYPE_EXTERN_TAGGED(QLowEnergyService::ServiceType, QLowEnergyService__ServiceType,
+                               Q_BLUETOOTH_EXPORT)
+QT_DECL_METATYPE_EXTERN_TAGGED(QLowEnergyService::WriteMode, QLowEnergyService__WriteMode,
+                               Q_BLUETOOTH_EXPORT)
 
 #endif // QLOWENERGYSERVICE_H

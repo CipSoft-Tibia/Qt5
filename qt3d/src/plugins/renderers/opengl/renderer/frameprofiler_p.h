@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DRENDER_RENDER_FRAMEPROFILER_P_H
 #define QT3DRENDER_RENDER_FRAMEPROFILER_P_H
@@ -40,14 +15,14 @@
 // We mean it.
 //
 
-#include <QOpenGLTimerQuery>
+#include <QOpenGLTimeMonitor>
 #include <Qt3DCore/private/qthreadpooler_p.h>
 #include <Qt3DCore/private/qt3dcore_global_p.h>
 #include <memory>
 
 QT_BEGIN_NAMESPACE
 
-#if !defined(QT_NO_OPENGL) && !defined(QT_OPENGL_ES_2)
+#if !defined(QT_NO_OPENGL) && !QT_CONFIG(opengles2)
 #define QT3D_SUPPORTS_GL_MONITOR
 #endif
 
@@ -141,13 +116,13 @@ public:
     {
 #ifdef QT3D_SUPPORTS_GL_MONITOR
         if (m_monitor.isResultAvailable()) {
-            const QVector<GLuint64> samples = m_monitor.waitForSamples();
-            Q_ASSERT(samples.count() >= 2 * m_recordings.count());
+            const auto &samples = m_monitor.waitForSamples();
+            Q_ASSERT(samples.size() >= 2 * m_recordings.size());
 
             Qt3DCore::QSystemInformationServicePrivate *dservice = Qt3DCore::QSystemInformationServicePrivate::get(m_service);
 
-            int j = 0;
-            for (int i = 0, m = m_recordings.size(); i < m; ++i) {
+            qsizetype j = 0;
+            for (qsizetype i = 0, m = m_recordings.size(); i < m; ++i) {
                 const GLRecording rec = m_recordings.at(i);
                 Qt3DCore::QSystemInformationServicePrivate::JobRunStats glRecordingStat;
 
@@ -179,7 +154,7 @@ private:
 #ifdef QT3D_SUPPORTS_GL_MONITOR
     QOpenGLTimeMonitor m_monitor;
 #endif
-    QVector<GLRecording> m_recordings;
+    QList<GLRecording> m_recordings;
     int m_remainingEvents = 0;
 };
 
@@ -232,9 +207,9 @@ public:
 
 private:
     Qt3DCore::QSystemInformationService *m_service;
-    QVector<FrameTimeRecorder *> m_recorders;
-    QVector<FrameTimeRecorder *> m_availableRecorders;
-    QVector<FrameTimeRecorder *> m_busyRecorders;
+    QList<FrameTimeRecorder *> m_recorders;
+    QList<FrameTimeRecorder *> m_availableRecorders;
+    QList<FrameTimeRecorder *> m_busyRecorders;
     FrameTimeRecorder *m_currentRecorder;
 };
 

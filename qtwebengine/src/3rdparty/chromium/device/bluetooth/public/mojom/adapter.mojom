@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,6 +20,12 @@ enum ConnectResult {
   UNKNOWN,
   UNSUPPORTED_DEVICE,
   DEVICE_NO_LONGER_IN_RANGE,
+  NOT_READY,
+  ALREADY_CONNECTED,
+  ALREADY_EXISTS,
+  NOT_CONNECTED,
+  DOES_NOT_EXIST,
+  INVALID_ARGS,
 };
 
 // The results of a successful connection via ConnectToServiceInsecurely().
@@ -42,6 +48,9 @@ struct AdapterInfo {
   string address;
   string name;
   string system_name;
+  // Whether the new CrOS Bluetooth stack (aka floss) is in use. See
+  // go/project-floss for more info.
+  bool floss;
   bool initialized;
   bool present;
   bool powered;
@@ -92,8 +101,9 @@ interface DiscoverySession {
 };
 
 // Represents an open connection to a remote device. Releasing it will destroy
-// the underlying connection, but callers should prefer to let a call to
-// Disconnect() to finish first.
+// the underlying connection, but if callers want to try again soon, they should
+// call Disconnect() first and wait for completion to ensure that the resource
+// has been completely released.
 // Note: Methods which are declared [Sync] are for use by
 // //chrome/services/sharing/nearby; all other usage of their synchronous
 // signatures is strongly discouraged.
@@ -107,7 +117,9 @@ interface Socket {
 };
 
 // Represents a pending connecting from a remote device. Releasing it will
-// stop listening for an incoming connection.
+// stop listening for an incoming connection, but if callers want to start
+// listening again soon, they should call Disconnect() first and wait for
+// completion to ensure that the resource has been completely released.
 // Note: Methods which are declared [Sync] are for use by
 // //chrome/services/sharing/nearby; all other usage of their synchronous
 // signatures is strongly discouraged.
@@ -116,6 +128,13 @@ interface ServerSocket {
   // goes wrong, the returned |result| will be null.
   [Sync]
   Accept() => (AcceptConnectionResult? result);
+
+  // Use to gracefully close the underlying resource before destroying. The
+  // reply callback can be used to synchronize an attempt to re-initialize
+  // a server socket; attempting to listen on the same server socket on this
+  // device may fail with a busy error until the reply callback is invoked.
+  [Sync]
+  Disconnect() => ();
 };
 
 // Handles requests to either query Bluetooth adapter capabilities or state, or
@@ -147,6 +166,16 @@ interface Adapter {
   // Requests the adapter to broadcast a BLE advertisement on |service_id| with
   // the associated packet |service_data|. Returns null if advertisement is not
   // registered successfully.
+  //
+  // When |use_scan_response| is true, the |service_data| is added to the scan
+  // response instead of the initial advertisement. A few assumptions are made:
+  //
+  // 1) The |service_id| provided is a valid 16-bit UUID in 128-bit format.
+  //    The identifying 16-bits will be extracted for the short service id used
+  //    in the scan response.
+  // 2) The Ad Type is assumed to be 0x16 as that is all that is supported by
+  //    the Platform right now.
+  //
   // Important notes:
   // * This method registers a "non-connectable" advertisement. Any future
   //   effort to allow this API to support "connectable" advertisements would
@@ -157,8 +186,8 @@ interface Adapter {
   //   as Chrome OS does. Non-Chrome OS clients of this API are responsible for
   //   understanding their host OS's and/or hardware's limitations.
   [Sync]
-  RegisterAdvertisement(UUID service_id, array<uint8> service_data) =>
-      (pending_remote<Advertisement>? advertisement);
+  RegisterAdvertisement(UUID service_id, array<uint8> service_data,
+      bool use_scan_response) => (pending_remote<Advertisement>? advertisement);
 
   // Requests the local device to make itself discoverable to nearby remote
   // devices.
@@ -174,7 +203,7 @@ interface Adapter {
   // Requests the adapter to start a new discovery session. Returns null if
   // session not created successfully.
   [Sync]
-  StartDiscoverySession() => (pending_remote<DiscoverySession>? session);
+  StartDiscoverySession(string client_name) => (pending_remote<DiscoverySession>? session);
 
   // Attempts to initiate an insecure outgoing L2CAP or RFCOMM connection to the
   // advertised service on this device matching |service_uuid|. This method is
@@ -182,17 +211,23 @@ interface Adapter {
   // bonding (pairing) to the remote device. If the connection attempt fails,
   // the returned |result| will be null. See Socket for details on how to close
   // the connection.
+  //
+  // If the local device is already bonded and the connection attempt fails,
+  // when |should_unbond_on_error| is true the local device will forget the
+  // remote device. (see b/204274786)
   // TODO(crbug.com/1112886): Use fixed-size array, not string, for address.
   [Sync]
-  ConnectToServiceInsecurely(string address, UUID service_uuid)
-      => (ConnectToServiceResult? result);
+  ConnectToServiceInsecurely(string address, UUID service_uuid,
+      bool should_unbond_on_error) => (ConnectToServiceResult? result);
 
   // Creates an RFCOMM service on this adapter advertised with |service_name|
-  // and |service_uuid|. If the service creation attempt fails, the returned
-  // |server_socket| will be null. See ServerSocket for details on how to stop
-  // listening.
+  // and |service_uuid|. This method is marked as "Insecurely" because the local
+  // device will not request bonding (pairing) with the remote device: clients
+  // are responsible for securing the connection at the application-level. If
+  // the service creation attempt fails, the returned |server_socket| will be
+  // null. See ServerSocket for details on how to stop listening.
   [Sync]
-  CreateRfcommService(string service_name, UUID service_uuid)
+  CreateRfcommServiceInsecurely(string service_name, UUID service_uuid)
       => (pending_remote<ServerSocket>? server_socket);
 };
 

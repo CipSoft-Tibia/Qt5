@@ -12,9 +12,19 @@
 
 #include "config/aom_dsp_rtcd.h"
 #include "aom/aom_integer.h"
+#include "aom_dsp/arm/mem_neon.h"
 #include "aom_dsp/arm/sum_neon.h"
-#include "av1/common/arm/mem_neon.h"
-#include "av1/common/arm/transpose_neon.h"
+#include "aom_dsp/arm/transpose_neon.h"
+#include "aom_ports/mem.h"
+
+#if !defined(__aarch64__)
+static INLINE uint32x2_t horizontal_add_u16x8_v(const uint16x8_t a) {
+  const uint32x4_t b = vpaddlq_u16(a);
+  const uint64x2_t c = vpaddlq_u32(b);
+  return vadd_u32(vreinterpret_u32_u64(vget_low_u64(c)),
+                  vreinterpret_u32_u64(vget_high_u64(c)));
+}
+#endif
 
 unsigned int aom_avg_4x4_neon(const uint8_t *a, int a_stride) {
   const uint8x16_t b = load_unaligned_u8q(a, a_stride);
@@ -23,14 +33,13 @@ unsigned int aom_avg_4x4_neon(const uint8_t *a, int a_stride) {
   const uint32_t d = vaddlvq_u16(c);
   return (d + 8) >> 4;
 #else
-  const uint32x2_t d = horizontal_add_u16x8(c);
+  const uint32x2_t d = horizontal_add_u16x8_v(c);
   return vget_lane_u32(vrshr_n_u32(d, 4), 0);
 #endif
 }
 
 unsigned int aom_avg_8x8_neon(const uint8_t *a, int a_stride) {
   uint16x8_t sum;
-  uint32x2_t d;
   uint8x8_t b = vld1_u8(a);
   a += a_stride;
   uint8x8_t c = vld1_u8(a);
@@ -43,9 +52,23 @@ unsigned int aom_avg_8x8_neon(const uint8_t *a, int a_stride) {
     sum = vaddw_u8(sum, e);
   }
 
-  d = horizontal_add_u16x8(sum);
-
+#if defined(__aarch64__)
+  const uint32_t d = vaddlvq_u16(sum);
+  return (d + 32) >> 6;
+#else
+  const uint32x2_t d = horizontal_add_u16x8_v(sum);
   return vget_lane_u32(vrshr_n_u32(d, 6), 0);
+#endif
+}
+
+void aom_avg_8x8_quad_neon(const uint8_t *s, int p, int x16_idx, int y16_idx,
+                           int *avg) {
+  for (int k = 0; k < 4; k++) {
+    const int x8_idx = x16_idx + ((k & 1) << 3);
+    const int y8_idx = y16_idx + ((k >> 1) << 3);
+    const uint8_t *s_tmp = s + y8_idx * p + x8_idx;
+    avg[k] = aom_avg_8x8_neon(s_tmp, p);
+  }
 }
 
 int aom_satd_lp_neon(const int16_t *coeff, int length) {
@@ -63,68 +86,58 @@ int aom_satd_lp_neon(const int16_t *coeff, int length) {
     coeff += 16;
   } while (length != 0);
 
-  {
-    // satd: 26 bits, dynamic range [-32640 * 1024, 32640 * 1024]
-    const int64x2_t s0 = vpaddlq_s32(accum);  // cascading summation of 'accum'.
-    const int32x2_t s1 = vadd_s32(vreinterpret_s32_s64(vget_low_s64(s0)),
-                                  vreinterpret_s32_s64(vget_high_s64(s0)));
-    const int satd = vget_lane_s32(s1, 0);
-    return satd;
-  }
+  return horizontal_add_s32x4(accum);
 }
 
-void aom_int_pro_row_neon(int16_t hbuf[16], const uint8_t *ref,
-                          const int ref_stride, const int height) {
-  int i;
+void aom_int_pro_row_neon(int16_t *hbuf, const uint8_t *ref,
+                          const int ref_stride, const int width,
+                          const int height, int norm_factor) {
   const uint8_t *idx = ref;
-  uint16x8_t vec0 = vdupq_n_u16(0);
-  uint16x8_t vec1 = vec0;
-  uint8x16_t tmp;
+  const uint16x8_t zero = vdupq_n_u16(0);
+  const int16x8_t neg_norm_factor = vdupq_n_s16(-norm_factor);
 
-  for (i = 0; i < height; ++i) {
-    tmp = vld1q_u8(idx);
-    idx += ref_stride;
-    vec0 = vaddw_u8(vec0, vget_low_u8(tmp));
-    vec1 = vaddw_u8(vec1, vget_high_u8(tmp));
+  for (int wd = 0; wd < width; wd += 16) {
+    uint16x8_t vec0 = zero;
+    uint16x8_t vec1 = zero;
+    idx = ref + wd;
+    for (int ht = 0; ht < height; ++ht) {
+      const uint8x16_t tmp = vld1q_u8(idx);
+      idx += ref_stride;
+      vec0 = vaddw_u8(vec0, vget_low_u8(tmp));
+      vec1 = vaddw_u8(vec1, vget_high_u8(tmp));
+    }
+
+    const int16x8_t result0 =
+        vshlq_s16(vreinterpretq_s16_u16(vec0), neg_norm_factor);
+    const int16x8_t result1 =
+        vshlq_s16(vreinterpretq_s16_u16(vec1), neg_norm_factor);
+
+    vst1q_s16(hbuf + wd, result0);
+    vst1q_s16(hbuf + wd + 8, result1);
   }
-
-  if (128 == height) {
-    vec0 = vshrq_n_u16(vec0, 6);
-    vec1 = vshrq_n_u16(vec1, 6);
-  } else if (64 == height) {
-    vec0 = vshrq_n_u16(vec0, 5);
-    vec1 = vshrq_n_u16(vec1, 5);
-  } else if (32 == height) {
-    vec0 = vshrq_n_u16(vec0, 4);
-    vec1 = vshrq_n_u16(vec1, 4);
-  } else if (16 == height) {
-    vec0 = vshrq_n_u16(vec0, 3);
-    vec1 = vshrq_n_u16(vec1, 3);
-  }
-
-  vst1q_s16(hbuf, vreinterpretq_s16_u16(vec0));
-  hbuf += 8;
-  vst1q_s16(hbuf, vreinterpretq_s16_u16(vec1));
 }
 
-int16_t aom_int_pro_col_neon(const uint8_t *ref, const int width) {
-  const uint8_t *idx;
-  uint16x8_t sum = vdupq_n_u16(0);
-
-  for (idx = ref; idx < (ref + width); idx += 16) {
-    uint8x16_t vec = vld1q_u8(idx);
-    sum = vaddq_u16(sum, vpaddlq_u8(vec));
-  }
+void aom_int_pro_col_neon(int16_t *vbuf, const uint8_t *ref,
+                          const int ref_stride, const int width,
+                          const int height, int norm_factor) {
+  for (int ht = 0; ht < height; ++ht) {
+    uint16x8_t sum = vdupq_n_u16(0);
+    for (int wd = 0; wd < width; wd += 16) {
+      const uint8x16_t vec = vld1q_u8(ref + wd);
+      sum = vaddq_u16(sum, vpaddlq_u8(vec));
+    }
 
 #if defined(__aarch64__)
-  return (int16_t)vaddvq_u16(sum);
+    vbuf[ht] = ((int16_t)vaddvq_u16(sum)) >> norm_factor;
 #else
-  const uint32x4_t a = vpaddlq_u16(sum);
-  const uint64x2_t b = vpaddlq_u32(a);
-  const uint32x2_t c = vadd_u32(vreinterpret_u32_u64(vget_low_u64(b)),
-                                vreinterpret_u32_u64(vget_high_u64(b)));
-  return (int16_t)vget_lane_u32(c, 0);
+    const uint32x4_t a = vpaddlq_u16(sum);
+    const uint64x2_t b = vpaddlq_u32(a);
+    const uint32x2_t c = vadd_u32(vreinterpret_u32_u64(vget_low_u64(b)),
+                                  vreinterpret_u32_u64(vget_high_u64(b)));
+    vbuf[ht] = ((int16_t)vget_lane_u32(c, 0)) >> norm_factor;
 #endif
+    ref += ref_stride;
+  }
 }
 
 // coeff: 16 bits, dynamic range [-32640, 32640].
@@ -146,14 +159,10 @@ int aom_satd_neon(const tran_low_t *coeff, int length) {
   } while (length != 0);
 
   // satd: 26 bits, dynamic range [-32640 * 1024, 32640 * 1024]
-#ifdef __aarch64__
-  return vaddvq_s32(accum);
-#else
   return horizontal_add_s32x4(accum);
-#endif  // __aarch64__
 }
 
-int aom_vector_var_neon(const int16_t *ref, const int16_t *src, const int bwl) {
+int aom_vector_var_neon(const int16_t *ref, const int16_t *src, int bwl) {
   int32x4_t v_mean = vdupq_n_s32(0);
   int32x4_t v_sse = v_mean;
   int16x8_t v_ref, v_src;
@@ -175,14 +184,35 @@ int aom_vector_var_neon(const int16_t *ref, const int16_t *src, const int bwl) {
     v_sse = vmlal_s16(v_sse, v_high, v_high);
 #endif
   }
-#if defined(__aarch64__)
-  int mean = vaddvq_s32(v_mean);
-  int sse = (int)vaddvq_s32(v_sse);
-#else
-  int mean = horizontal_add_s32x4(v_mean);
-  int sse = horizontal_add_s32x4(v_sse);
-#endif
+  const int mean = horizontal_add_s32x4(v_mean);
+  const int sse = horizontal_add_s32x4(v_sse);
+  const unsigned int mean_abs = mean >= 0 ? mean : -mean;
   // (mean * mean): dynamic range 31 bits.
-  int var = sse - ((mean * mean) >> (bwl + 2));
+  const int var = sse - ((mean_abs * mean_abs) >> (bwl + 2));
   return var;
 }
+
+#if CONFIG_AV1_HIGHBITDEPTH
+unsigned int aom_highbd_avg_4x4_neon(const uint8_t *s, int p) {
+  const uint16_t *src = CONVERT_TO_SHORTPTR(s);
+  const uint16x4_t r0 = vld1_u16(src);
+  src += p;
+  uint16x4_t r1, r2, r3;
+  r1 = vld1_u16(src);
+  src += p;
+  r2 = vld1_u16(src);
+  src += p;
+  r3 = vld1_u16(src);
+  const uint16x4_t s1 = vadd_u16(r0, r1);
+  const uint16x4_t s2 = vadd_u16(r2, r3);
+  const uint16x4_t s3 = vadd_u16(s1, s2);
+#if defined(__aarch64__)
+  return (vaddv_u16(s3) + 8) >> 4;
+#else
+  const uint16x4_t h1 = vpadd_u16(s3, s3);
+  const uint16x4_t h2 = vpadd_u16(h1, h1);
+  const uint16x4_t res = vrshr_n_u16(h2, 4);
+  return vget_lane_u16(res, 0);
+#endif
+}
+#endif  // CONFIG_AV1_HIGHBITDEPTH

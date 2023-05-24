@@ -69,11 +69,17 @@ class CORE_EXPORT LayoutMultiColumnSet final : public LayoutBlockFlow {
       LayoutFlowThread&,
       const ComputedStyle& parent_style);
 
+  void Trace(Visitor*) const override;
+
   const MultiColumnFragmentainerGroup& FirstFragmentainerGroup() const {
     NOT_DESTROYED();
     return fragmentainer_groups_.First();
   }
   const MultiColumnFragmentainerGroup& LastFragmentainerGroup() const {
+    NOT_DESTROYED();
+    return fragmentainer_groups_.Last();
+  }
+  MultiColumnFragmentainerGroup& LastFragmentainerGroup() {
     NOT_DESTROYED();
     return fragmentainer_groups_.Last();
   }
@@ -102,7 +108,7 @@ class CORE_EXPORT LayoutMultiColumnSet final : public LayoutBlockFlow {
 
   bool IsOfType(LayoutObjectType type) const override {
     NOT_DESTROYED();
-    return type == kLayoutObjectLayoutMultiColumnSet ||
+    return type == kLayoutObjectMultiColumnSet ||
            LayoutBlockFlow::IsOfType(type);
   }
   bool CanHaveChildren() const final {
@@ -149,7 +155,7 @@ class CORE_EXPORT LayoutMultiColumnSet final : public LayoutBlockFlow {
   }
   LayoutMultiColumnFlowThread* MultiColumnFlowThread() const {
     NOT_DESTROYED();
-    return ToLayoutMultiColumnFlowThread(FlowThread());
+    return To<LayoutMultiColumnFlowThread>(FlowThread());
   }
 
   LayoutMultiColumnSet* NextSiblingMultiColumnSet() const;
@@ -264,9 +270,13 @@ class CORE_EXPORT LayoutMultiColumnSet final : public LayoutBlockFlow {
   bool ComputeColumnRuleBounds(const LayoutPoint& paint_offset,
                                Vector<LayoutRect>& column_rule_bounds) const;
 
-  void UpdateFromNG();
+  void FinishLayoutFromNG();
 
- protected:
+  // Tell the column set that it shouldn't really exist. This happens when
+  // there's a leftover column set after DOM / style changes, that NG doesn't
+  // care about.
+  void SetIsIgnoredByNG();
+
   LayoutMultiColumnSet(LayoutFlowThread*);
 
  private:
@@ -274,6 +284,7 @@ class CORE_EXPORT LayoutMultiColumnSet final : public LayoutBlockFlow {
 
   void InsertedIntoTree() final;
   void WillBeRemovedFromTree() final;
+  LayoutSize Size() const override;
 
   bool IsSelfCollapsingBlock() const override {
     NOT_DESTROYED();
@@ -294,7 +305,7 @@ class CORE_EXPORT LayoutMultiColumnSet final : public LayoutBlockFlow {
   void AddLayoutOverflowFromChildren() override;
 
   MultiColumnFragmentainerGroupList fragmentainer_groups_;
-  LayoutFlowThread* flow_thread_;
+  Member<LayoutFlowThread> flow_thread_;
 
   // Height of the tallest piece of unbreakable content. This is the minimum
   // column logical height required to avoid fragmentation where it shouldn't
@@ -313,7 +324,12 @@ class CORE_EXPORT LayoutMultiColumnSet final : public LayoutBlockFlow {
   unsigned last_actual_column_count_;
 };
 
-DEFINE_LAYOUT_OBJECT_TYPE_CASTS(LayoutMultiColumnSet, IsLayoutMultiColumnSet());
+template <>
+struct DowncastTraits<LayoutMultiColumnSet> {
+  static bool AllowFrom(const LayoutObject& object) {
+    return object.IsLayoutMultiColumnSet();
+  }
+};
 
 }  // namespace blink
 

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include <iterator>
 #include <vector>
 
-#include "base/macros.h"
+#include "base/memory/raw_ref.h"
 #include "components/zucchini/image_index.h"
 #include "components/zucchini/image_utils.h"
 
@@ -53,6 +53,10 @@ class EncodedView {
     Iterator(const EncodedView* encoded_view, difference_type pos)
         : encoded_view_(encoded_view), pos_(pos) {}
 
+    Iterator(const Iterator&) = default;
+
+    Iterator& operator=(const Iterator&) = default;
+
     value_type operator*() const {
       return encoded_view_->Projection(static_cast<offset_t>(pos_));
     }
@@ -90,12 +94,6 @@ class EncodedView {
 
     Iterator& operator-=(difference_type n) {
       pos_ -= n;
-      return *this;
-    }
-
-    Iterator& operator=(const Iterator& it) {
-      encoded_view_ = it.encoded_view_;
-      pos_ = it.pos_;
       return *this;
     }
 
@@ -138,6 +136,8 @@ class EncodedView {
   // |image_index| is the annotated image being adapted, and is required to
   // remain valid for the lifetime of the object.
   explicit EncodedView(const ImageIndex& image_index);
+  EncodedView(const EncodedView&) = delete;
+  const EncodedView& operator=(const EncodedView&) = delete;
   ~EncodedView();
 
   // Projects |location| to a scalar value that describes the content at a
@@ -145,7 +145,7 @@ class EncodedView {
   value_type Projection(offset_t location) const;
 
   bool IsToken(offset_t location) const {
-    return image_index_.IsToken(location);
+    return image_index_->IsToken(location);
   }
 
   // Returns the cardinality of the projection, i.e., the upper bound on
@@ -155,10 +155,10 @@ class EncodedView {
   // Associates |labels| to targets for a given |pool|, replacing previous
   // association. Values in |labels| must be smaller than |bound|.
   void SetLabels(PoolTag pool, std::vector<uint32_t>&& labels, size_t bound);
-  const ImageIndex& image_index() const { return image_index_; }
+  const ImageIndex& image_index() const { return *image_index_; }
 
   // Range functions.
-  size_type size() const { return size_type(image_index_.size()); }
+  size_type size() const { return size_type(image_index_->size()); }
   const_iterator begin() const {
     return const_iterator{this, difference_type(0)};
   }
@@ -177,10 +177,8 @@ class EncodedView {
     size_t bound = 0;
   };
 
-  const ImageIndex& image_index_;
+  const raw_ref<const ImageIndex> image_index_;
   std::vector<PoolInfo> pool_infos_;
-
-  DISALLOW_COPY_AND_ASSIGN(EncodedView);
 };
 
 }  // namespace zucchini

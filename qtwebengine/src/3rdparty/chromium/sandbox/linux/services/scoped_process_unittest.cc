@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,12 +11,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/callback.h"
 #include "base/check.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_file.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/posix/eintr_wrapper.h"
 #include "base/threading/platform_thread.h"
 #include "base/time/time.h"
@@ -102,7 +102,7 @@ TEST(ScopedProcess, SynchronizationBasic) {
 }
 
 void SleepInMsAndWriteOneByte(int time_to_sleep, int fd) {
-  base::PlatformThread::Sleep(base::TimeDelta::FromMilliseconds(time_to_sleep));
+  base::PlatformThread::Sleep(base::Milliseconds(time_to_sleep));
   CHECK(1 == write(fd, "1", 1));
 }
 

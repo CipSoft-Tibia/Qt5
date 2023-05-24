@@ -9,6 +9,7 @@
 #include "src/json/json-stringifier.h"
 #include "src/logging/counters.h"
 #include "src/objects/objects-inl.h"
+#include "src/tracing/traced-value.h"
 
 #if defined(V8_USE_PERFETTO)
 #include "protos/perfetto/trace/track_event/debug_annotation.pbzero.h"
@@ -39,7 +40,7 @@ class MaybeUtf8 {
         // Why copy? Well, the trace event mechanism requires null-terminated
         // strings, the bytes we get from SeqOneByteString are not. buf_ is
         // guaranteed to be null terminated.
-        DisallowHeapAllocation no_gc;
+        DisallowGarbageCollection no_gc;
         memcpy(buf_, Handle<SeqOneByteString>::cast(string)->GetChars(no_gc),
                len);
       }
@@ -59,7 +60,7 @@ class MaybeUtf8 {
  private:
   void AllocateSufficientSpace(int len) {
     if (len + 1 > MAX_STACK_LENGTH) {
-      allocated_.reset(new uint8_t[len + 1]);
+      allocated_ = std::make_unique<uint8_t[]>(len + 1);
       buf_ = allocated_.get();
     }
   }
@@ -70,7 +71,7 @@ class MaybeUtf8 {
   // the MAX_STACK_LENGTH should be more than enough.
   uint8_t* buf_;
   uint8_t data_[MAX_STACK_LENGTH];
-  std::unique_ptr<uint8_t> allocated_;
+  std::unique_ptr<uint8_t[]> allocated_;
 };
 
 #if !defined(V8_USE_PERFETTO)
@@ -121,7 +122,7 @@ BUILTIN(IsTraceCategoryEnabled) {
   return isolate->heap()->ToBoolean(enabled);
 }
 
-// Builtins::kTrace(phase, category, name, id, data) : bool
+// Builtin::kTrace(phase, category, name, id, data) : bool
 BUILTIN(Trace) {
   HandleScope handle_scope(isolate);
 
@@ -194,11 +195,8 @@ BUILTIN(Trace) {
   }
 
 #if defined(V8_USE_PERFETTO)
+  // TODO(skyostil): Use interned names to reduce trace size.
   auto trace_args = [&](perfetto::EventContext ctx) {
-    // TODO(skyostil): Use interned names to reduce trace size.
-    if (phase != TRACE_EVENT_PHASE_END) {
-      ctx.event()->set_name(*name);
-    }
     if (num_args) {
       MaybeUtf8 arg_contents(isolate, Handle<String>::cast(arg_json));
       auto annotation = ctx.event()->add_debug_annotations();
@@ -213,13 +211,15 @@ BUILTIN(Trace) {
 
   switch (phase) {
     case TRACE_EVENT_PHASE_BEGIN:
-      TRACE_EVENT_BEGIN(dynamic_category, nullptr, trace_args);
+      TRACE_EVENT_BEGIN(dynamic_category, perfetto::DynamicString(*name),
+                        trace_args);
       break;
     case TRACE_EVENT_PHASE_END:
       TRACE_EVENT_END(dynamic_category, trace_args);
       break;
     case TRACE_EVENT_PHASE_INSTANT:
-      TRACE_EVENT_INSTANT(dynamic_category, nullptr, trace_args);
+      TRACE_EVENT_INSTANT(dynamic_category, perfetto::DynamicString(*name),
+                          trace_args);
       break;
     default:
       THROW_NEW_ERROR_RETURN_FAILURE(

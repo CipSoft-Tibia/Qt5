@@ -1,48 +1,55 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/component_updater/component_installer.h"
 
+#include <cstdint>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
-#include "base/bind.h"
 #include "base/files/file_enumerator.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
 #include "base/logging.h"
-#include "base/macros.h"
 #include "base/path_service.h"
-#include "base/sequenced_task_runner.h"
-#include "base/single_thread_task_runner.h"
-#include "base/task/post_task.h"
+#include "base/ranges/algorithm.h"
+#include "base/sequence_checker.h"
+#include "base/strings/string_util.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "base/values.h"
 #include "base/version.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "components/component_updater/component_updater_paths.h"
 #include "components/component_updater/component_updater_service.h"
 #include "components/crx_file/crx_verifier.h"
 #include "components/update_client/component_unpacker.h"
 #include "components/update_client/update_client.h"
 #include "components/update_client/update_client_errors.h"
+#include "components/update_client/update_query_params.h"
 #include "components/update_client/utils.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+
+#if BUILDFLAG(IS_APPLE)
+#include "base/mac/backup_util.h"
+#endif
 
 namespace component_updater {
 
-namespace {
-
-// Version "0" corresponds to no installed version. By the server's conventions,
-// we represent it as a dotted quad.
 const char kNullVersion[] = "0.0.0.0";
 
+namespace {
 using Result = update_client::CrxInstaller::Result;
 using InstallError = update_client::InstallError;
-
 }  // namespace
 
 ComponentInstallerPolicy::~ComponentInstallerPolicy() = default;
@@ -58,17 +65,33 @@ ComponentInstaller::ComponentInstaller(
     : current_version_(kNullVersion),
       installer_policy_(std::move(installer_policy)),
       action_handler_(action_handler),
-      main_task_runner_(base::ThreadTaskRunnerHandle::Get()) {}
+      main_task_runner_(base::SequencedTaskRunner::GetCurrentDefault()) {}
 
 ComponentInstaller::~ComponentInstaller() = default;
 
 void ComponentInstaller::Register(ComponentUpdateService* cus,
-                                  base::OnceClosure callback) {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+                                  base::OnceClosure callback,
+                                  base::TaskPriority task_priority) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK(cus);
 
-  // Some components may affect user visible features, hence USER_VISIBLE.
+  std::vector<uint8_t> public_key_hash;
+  installer_policy_->GetHash(&public_key_hash);
+  Register(base::BindOnce(&ComponentUpdateService::RegisterComponent,
+                          base::Unretained(cus)),
+           std::move(callback), task_priority,
+           cus->GetRegisteredVersion(
+               update_client::GetCrxIdFromPublicKeyHash(public_key_hash)));
+}
+
+void ComponentInstaller::Register(RegisterCallback register_callback,
+                                  base::OnceClosure callback,
+                                  base::TaskPriority task_priority,
+                                  const base::Version& registered_version) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
   task_runner_ = base::ThreadPool::CreateSequencedTaskRunner(
-      {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
+      {base::MayBlock(), task_priority,
        base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN});
 
   if (!installer_policy_) {
@@ -81,35 +104,37 @@ void ComponentInstaller::Register(ComponentUpdateService* cus,
   task_runner_->PostTaskAndReply(
       FROM_HERE,
       base::BindOnce(&ComponentInstaller::StartRegistration, this,
-                     registration_info),
+                     registered_version, registration_info),
       base::BindOnce(&ComponentInstaller::FinishRegistration, this,
-                     registration_info, cus, std::move(callback)));
+                     registration_info, std::move(register_callback),
+                     std::move(callback)));
 }
 
 void ComponentInstaller::OnUpdateError(int error) {
   LOG(ERROR) << "Component update error: " << error;
 }
 
-Result ComponentInstaller::InstallHelper(
-    const base::FilePath& unpack_path,
-    std::unique_ptr<base::DictionaryValue>* manifest,
-    base::Version* version,
-    base::FilePath* install_path) {
-  auto local_manifest = update_client::ReadManifest(unpack_path);
-  if (!local_manifest)
+Result ComponentInstaller::InstallHelper(const base::FilePath& unpack_path,
+                                         base::Value::Dict* manifest,
+                                         base::Version* version,
+                                         base::FilePath* install_path) {
+  absl::optional<base::Value::Dict> local_manifest =
+      update_client::ReadManifest(unpack_path);
+  if (!local_manifest) {
     return Result(InstallError::BAD_MANIFEST);
+  }
 
-  std::string version_ascii;
-  local_manifest->GetStringASCII("version", &version_ascii);
-  const base::Version manifest_version(version_ascii);
+  const std::string* version_ascii = local_manifest->FindString("version");
+  if (!version_ascii || !base::IsStringASCII(*version_ascii))
+    return Result(InstallError::INVALID_VERSION);
+
+  const base::Version manifest_version(*version_ascii);
 
   VLOG(1) << "Install: version=" << manifest_version.GetString()
           << " current version=" << current_version_.GetString();
 
   if (!manifest_version.IsValid())
     return Result(InstallError::INVALID_VERSION);
-  if (current_version_.CompareTo(manifest_version) > 0)
-    return Result(InstallError::VERSION_NOT_UPGRADED);
   base::FilePath local_install_path;
   if (!base::PathService::Get(DIR_COMPONENT_USER, &local_install_path))
     return Result(InstallError::NO_DIR_COMPONENT_USER);
@@ -132,18 +157,24 @@ Result ComponentInstaller::InstallHelper(
 
   // Acquire the ownership of the |local_install_path|.
   base::ScopedTempDir install_path_owner;
-  ignore_result(install_path_owner.Set(local_install_path));
+  std::ignore = install_path_owner.Set(local_install_path);
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   if (!base::SetPosixFilePermissions(local_install_path, 0755)) {
     PLOG(ERROR) << "SetPosixFilePermissions failed: "
                 << local_install_path.value();
     return Result(InstallError::SET_PERMISSIONS_FAILED);
   }
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
   DCHECK(!base::PathExists(unpack_path));
   DCHECK(base::PathExists(local_install_path));
+
+#if BUILDFLAG(IS_APPLE)
+  // Since components can be large and can be re-downloaded when needed, they
+  // are excluded from backups.
+  base::mac::SetBackupExclusion(local_install_path);
+#endif
 
   const Result result =
       installer_policy_->OnCustomInstall(*local_manifest, local_install_path);
@@ -151,10 +182,11 @@ Result ComponentInstaller::InstallHelper(
     return result;
 
   if (!installer_policy_->VerifyInstallation(*local_manifest,
-                                             local_install_path))
+                                             local_install_path)) {
     return Result(InstallError::INSTALL_VERIFICATION_FAILED);
+  }
 
-  *manifest = std::move(local_manifest);
+  *manifest = std::move(local_manifest.value());
   *version = manifest_version;
   *install_path = install_path_owner.Take();
 
@@ -167,7 +199,7 @@ void ComponentInstaller::Install(
     std::unique_ptr<InstallParams> /*install_params*/,
     ProgressCallback /*progress_callback*/,
     Callback callback) {
-  std::unique_ptr<base::DictionaryValue> manifest;
+  base::Value::Dict manifest;
   base::Version version;
   base::FilePath install_path;
   const Result result =
@@ -198,7 +230,7 @@ bool ComponentInstaller::GetInstalledFile(const std::string& file,
 }
 
 bool ComponentInstaller::Uninstall() {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce(&ComponentInstaller::UninstallOnTaskRunner, this));
@@ -214,7 +246,7 @@ bool ComponentInstaller::FindPreinstallation(
     return false;
   }
 
-  std::unique_ptr<base::DictionaryValue> manifest =
+  absl::optional<base::Value::Dict> manifest =
       update_client::ReadManifest(path);
   if (!manifest) {
     DVLOG(1) << "Manifest does not exist: " << path.MaybeAsASCII();
@@ -226,15 +258,15 @@ bool ComponentInstaller::FindPreinstallation(
     return false;
   }
 
-  std::string version_lexical;
-  if (!manifest->GetStringASCII("version", &version_lexical)) {
+  std::string* version_lexical = manifest->FindString("version");
+  if (!version_lexical || !base::IsStringASCII(*version_lexical)) {
     DVLOG(1) << "Failed to get component version from the manifest.";
     return false;
   }
 
-  const base::Version version(version_lexical);
+  const base::Version version(*version_lexical);
   if (!version.IsValid()) {
-    DVLOG(1) << "Version in the manifest is invalid:" << version_lexical;
+    DVLOG(1) << "Version in the manifest is invalid:" << *version_lexical;
     return false;
   }
 
@@ -249,19 +281,159 @@ bool ComponentInstaller::FindPreinstallation(
   return true;
 }
 
+// Checks to see if the installation found in |path| is valid, and returns
+// its manifest if it is.
+absl::optional<base::Value::Dict>
+ComponentInstaller::GetValidInstallationManifest(const base::FilePath& path) {
+  absl::optional<base::Value::Dict> manifest =
+      update_client::ReadManifest(path);
+  if (!manifest) {
+    PLOG(ERROR) << "Failed to read manifest for "
+                << installer_policy_->GetName() << " (" << path.MaybeAsASCII()
+                << ").";
+    return absl::nullopt;
+  }
+
+  if (!installer_policy_->VerifyInstallation(*manifest, path)) {
+    PLOG(ERROR) << "Failed to verify installation for "
+                << installer_policy_->GetName() << " (" << path.MaybeAsASCII()
+                << ").";
+    return absl::nullopt;
+  }
+
+  const base::Value::List* accept_archs = manifest->FindList("accept_arch");
+  if (accept_archs != nullptr &&
+      base::ranges::none_of(*accept_archs, [](const base::Value& v) {
+        static const char* current_arch =
+            update_client::UpdateQueryParams::GetArch();
+        return v.is_string() && v.GetString() == current_arch;
+      })) {
+    return absl::nullopt;
+  }
+
+  return manifest;
+}
+
+// Processes the user component directory to select an appropriate component
+// version, and saves its data to |registration_info|.
+absl::optional<base::Version> ComponentInstaller::SelectComponentVersion(
+    const base::Version& registered_version,
+    const base::FilePath& base_dir,
+    scoped_refptr<RegistrationInfo> registration_info) {
+  base::FileEnumerator file_enumerator(base_dir, false,
+                                       base::FileEnumerator::DIRECTORIES);
+
+  absl::optional<base::Version> selected_version;
+  base::FilePath selected_path;
+  absl::optional<base::Value::Dict> selected_manifest;
+
+  const base::Version bundled_version = registration_info->version.IsValid()
+                                            ? registration_info->version
+                                            : base::Version(kNullVersion);
+
+  // Only look for a previously registered version if it is higher than the
+  // bundled version, else default to the highest version.
+  const absl::optional<base::Version> target_version =
+      (registered_version > bundled_version)
+          ? absl::optional<base::Version>(registered_version)
+          : absl::nullopt;
+
+  for (base::FilePath path = file_enumerator.Next(); !path.value().empty();
+       path = file_enumerator.Next()) {
+    // Ignore folders that don't have valid version names. These
+    // are not managed by component installer.
+    base::Version version(path.BaseName().MaybeAsASCII());
+    if (!version.IsValid()) {
+      continue;
+    }
+
+    if (!selected_version || version > *selected_version ||
+        (target_version && version == *target_version)) {
+      absl::optional<base::Value::Dict> candidate_manifest =
+          GetValidInstallationManifest(path);
+      if (candidate_manifest) {
+        selected_version = version;
+        selected_path = path;
+        selected_manifest = std::move(*candidate_manifest);
+      }
+    }
+    // Stop searching if |target_version| is located.
+    if (selected_version && target_version &&
+        *selected_version == *target_version) {
+      break;
+    }
+  }
+
+  // No suitable version was found.
+  if (!selected_version || bundled_version >= *selected_version) {
+    return absl::nullopt;
+  }
+
+  registration_info->version = selected_version.value();
+  registration_info->manifest = std::move(*selected_manifest);
+  registration_info->install_dir = selected_path;
+  base::ReadFileToString(selected_path.AppendASCII("manifest.fingerprint"),
+                         &registration_info->fingerprint);
+
+  return selected_version;
+}
+
+void ComponentInstaller::DeleteUnselectedComponentVersions(
+    const base::FilePath& base_dir,
+    const absl::optional<base::Version>& selected_version) {
+  base::FileEnumerator file_enumerator(base_dir, false,
+                                       base::FileEnumerator::DIRECTORIES);
+
+  for (base::FilePath path = file_enumerator.Next(); !path.value().empty();
+       path = file_enumerator.Next()) {
+    base::Version version(path.BaseName().MaybeAsASCII());
+    // Delete any component version directory that was not selected.
+    if (version.IsValid() &&
+        !(selected_version && version == *selected_version)) {
+      base::DeletePathRecursively(path);
+    }
+  }
+}
+
+absl::optional<base::FilePath> ComponentInstaller::GetComponentDirectory() {
+  base::FilePath base_component_dir;
+  if (!base::PathService::Get(DIR_COMPONENT_USER, &base_component_dir))
+    return absl::nullopt;
+  base::FilePath base_dir =
+      base_component_dir.Append(installer_policy_->GetRelativeInstallDir());
+  if (!base::CreateDirectory(base_dir)) {
+    PLOG(ERROR) << "Could not create the base directory for "
+                << installer_policy_->GetName() << " ("
+                << base_dir.MaybeAsASCII() << ").";
+    return absl::nullopt;
+  }
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  base::FilePath base_dir_ = base_component_dir;
+  for (const base::FilePath::StringType& component :
+       installer_policy_->GetRelativeInstallDir().GetComponents()) {
+    base_dir_ = base_dir_.Append(component);
+    if (!base::SetPosixFilePermissions(base_dir_, 0755)) {
+      PLOG(ERROR) << "SetPosixFilePermissions failed: " << base_dir.value();
+      return absl::nullopt;
+    }
+  }
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+
+  return base_dir;
+}
+
 void ComponentInstaller::StartRegistration(
+    const base::Version& registered_version,
     scoped_refptr<RegistrationInfo> registration_info) {
   VLOG(1) << __func__ << " for " << installer_policy_->GetName();
   DCHECK(task_runner_);
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
 
-  base::Version latest_version(kNullVersion);
-
   // First check for an installation set up alongside Chrome itself.
   base::FilePath root;
   if (base::PathService::Get(DIR_COMPONENT_PREINSTALLED, &root) &&
       FindPreinstallation(root, registration_info)) {
-    latest_version = registration_info->version;
   }
 
   // If there is a distinct alternate root, check there as well, and override
@@ -270,88 +442,18 @@ void ComponentInstaller::StartRegistration(
   if (base::PathService::Get(DIR_COMPONENT_PREINSTALLED_ALT, &root_alternate) &&
       root != root_alternate &&
       FindPreinstallation(root_alternate, registration_info)) {
-    latest_version = registration_info->version;
   }
 
-  // Then check for a higher-versioned user-wide installation.
-  base::FilePath latest_path;
-  std::unique_ptr<base::DictionaryValue> latest_manifest;
-  base::FilePath base_component_dir;
-  if (!base::PathService::Get(DIR_COMPONENT_USER, &base_component_dir))
-    return;
-  base::FilePath base_dir =
-      base_component_dir.Append(installer_policy_->GetRelativeInstallDir());
-  if (!base::PathExists(base_dir) && !base::CreateDirectory(base_dir)) {
-    PLOG(ERROR) << "Could not create the base directory for "
-                << installer_policy_->GetName() << " ("
-                << base_dir.MaybeAsASCII() << ").";
+  absl::optional<base::FilePath> base_dir = GetComponentDirectory();
+
+  if (!base_dir) {
     return;
   }
 
-#if defined(OS_CHROMEOS)
-  base::FilePath base_dir_ = base_component_dir;
-  std::vector<base::FilePath::StringType> components;
-  installer_policy_->GetRelativeInstallDir().GetComponents(&components);
-  for (const base::FilePath::StringType& component : components) {
-    base_dir_ = base_dir_.Append(component);
-    if (!base::SetPosixFilePermissions(base_dir_, 0755)) {
-      PLOG(ERROR) << "SetPosixFilePermissions failed: " << base_dir.value();
-      return;
-    }
-  }
-#endif  // defined(OS_CHROMEOS)
-
-  std::vector<base::FilePath> older_paths;
-  base::FileEnumerator file_enumerator(base_dir, false,
-                                       base::FileEnumerator::DIRECTORIES);
-  for (base::FilePath path = file_enumerator.Next(); !path.value().empty();
-       path = file_enumerator.Next()) {
-    base::Version version(path.BaseName().MaybeAsASCII());
-
-    // Ignore folders that don't have valid version names. These folders are not
-    // managed by component installer so do not try to remove them.
-    if (!version.IsValid())
-      continue;
-
-    // |version| not newer than the latest found version (kNullVersion if no
-    // version has been found yet) is marked for removal.
-    if (version.CompareTo(latest_version) <= 0) {
-      older_paths.push_back(path);
-      continue;
-    }
-
-    std::unique_ptr<base::DictionaryValue> manifest =
-        update_client::ReadManifest(path);
-    if (!manifest || !installer_policy_->VerifyInstallation(*manifest, path)) {
-      PLOG(ERROR) << "Failed to read manifest or verify installation for "
-                  << installer_policy_->GetName() << " (" << path.MaybeAsASCII()
-                  << ").";
-      older_paths.push_back(path);
-      continue;
-    }
-
-    // New valid |version| folder found!
-
-    if (!latest_path.empty())
-      older_paths.push_back(latest_path);
-
-    latest_path = path;
-    latest_version = version;
-    latest_manifest = std::move(manifest);
-  }
-
-  if (latest_manifest) {
-    registration_info->version = latest_version;
-    registration_info->manifest = std::move(latest_manifest);
-    registration_info->install_dir = latest_path;
-    base::ReadFileToString(latest_path.AppendASCII("manifest.fingerprint"),
-                           &registration_info->fingerprint);
-  }
-
-  // Remove older versions of the component. None should be in use during
-  // browser startup.
-  for (const auto& older_path : older_paths)
-    base::DeletePathRecursively(older_path);
+  DeleteUnselectedComponentVersions(
+      base_dir.value(),
+      SelectComponentVersion(registered_version, base_dir.value(),
+                             registration_info));
 }
 
 void ComponentInstaller::UninstallOnTaskRunner() {
@@ -393,33 +495,27 @@ void ComponentInstaller::UninstallOnTaskRunner() {
 
 void ComponentInstaller::FinishRegistration(
     scoped_refptr<RegistrationInfo> registration_info,
-    ComponentUpdateService* cus,
+    RegisterCallback register_callback,
     base::OnceClosure callback) {
   VLOG(1) << __func__ << " for " << installer_policy_->GetName();
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   current_install_dir_ = registration_info->install_dir;
   current_version_ = registration_info->version;
   current_fingerprint_ = registration_info->fingerprint;
 
-  update_client::CrxComponent crx;
-  installer_policy_->GetHash(&crx.pk_hash);
-  crx.app_id = update_client::GetCrxIdFromPublicKeyHash(crx.pk_hash);
-  crx.installer = this;
-  crx.action_handler = action_handler_;
-  crx.version = current_version_;
-  crx.fingerprint = current_fingerprint_;
-  crx.name = installer_policy_->GetName();
-  crx.installer_attributes = installer_policy_->GetInstallerAttributes();
-  crx.requires_network_encryption =
-      installer_policy_->RequiresNetworkEncryption();
-  crx.crx_format_requirement =
-      crx_file::VerifierFormat::CRX3_WITH_PUBLISHER_PROOF;
-  crx.handled_mime_types = installer_policy_->GetMimeTypes();
-  crx.supports_group_policy_enable_component_updates =
-      installer_policy_->SupportsGroupPolicyEnabledComponentUpdates();
+  std::vector<uint8_t> public_key_hash;
+  installer_policy_->GetHash(&public_key_hash);
 
-  if (!cus->RegisterComponent(crx)) {
+  if (!std::move(register_callback)
+           .Run(ComponentRegistration(
+               update_client::GetCrxIdFromPublicKeyHash(public_key_hash),
+               installer_policy_->GetName(), public_key_hash, current_version_,
+               current_fingerprint_,
+               installer_policy_->GetInstallerAttributes(), action_handler_,
+               this, installer_policy_->RequiresNetworkEncryption(),
+               installer_policy_
+                   ->SupportsGroupPolicyEnabledComponentUpdates()))) {
     LOG(ERROR) << "Component registration failed for "
                << installer_policy_->GetName();
     if (!callback.is_null())
@@ -428,7 +524,7 @@ void ComponentInstaller::FinishRegistration(
   }
 
   if (registration_info->manifest) {
-    ComponentReady(std::move(registration_info->manifest));
+    ComponentReady(std::move(*registration_info->manifest));
   } else {
     DVLOG(1) << "No component found for " << installer_policy_->GetName();
   }
@@ -437,8 +533,7 @@ void ComponentInstaller::FinishRegistration(
     std::move(callback).Run();
 }
 
-void ComponentInstaller::ComponentReady(
-    std::unique_ptr<base::DictionaryValue> manifest) {
+void ComponentInstaller::ComponentReady(base::Value::Dict manifest) {
   VLOG(1) << "Component ready, version " << current_version_.GetString()
           << " in " << current_install_dir_.value();
   installer_policy_->ComponentReady(current_version_, current_install_dir_,

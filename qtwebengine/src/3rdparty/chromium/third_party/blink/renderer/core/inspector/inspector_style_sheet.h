@@ -28,10 +28,13 @@
 
 #include <memory>
 #include "base/memory/scoped_refptr.h"
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/css_property_source_data.h"
+#include "third_party/blink/renderer/core/css/css_scope_rule.h"
 #include "third_party/blink/renderer/core/css/css_style_declaration.h"
-#include "third_party/blink/renderer/core/inspector/protocol/CSS.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/core/inspector/inspector_diff.h"
+#include "third_party/blink/renderer/core/inspector/protocol/css.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
@@ -40,9 +43,11 @@ namespace blink {
 
 class CSSKeyframeRule;
 class CSSMediaRule;
+class CSSContainerRule;
 class CSSStyleDeclaration;
 class CSSStyleRule;
 class CSSStyleSheet;
+class CSSSupportsRule;
 class Document;
 class Element;
 class ExceptionState;
@@ -73,6 +78,8 @@ class InspectorStyle final : public GarbageCollected<InspectorStyle> {
   void PopulateAllProperties(Vector<CSSPropertySourceData>& result);
   std::unique_ptr<protocol::CSS::CSSStyle> StyleWithProperties();
   String ShorthandValue(const String& shorthand_property);
+  std::unique_ptr<protocol::Array<protocol::CSS::CSSProperty>>
+  LonghandProperties(const CSSPropertySourceData& property_entry);
 
   Member<CSSStyleDeclaration> style_;
   Member<CSSRuleSourceData> source_data_;
@@ -162,6 +169,21 @@ class InspectorStyleSheet : public InspectorStyleSheetBase {
                                  SourceRange* new_range,
                                  String* old_selector,
                                  ExceptionState&);
+  CSSContainerRule* SetContainerRuleText(const SourceRange&,
+                                         const String& selector,
+                                         SourceRange* new_range,
+                                         String* old_selector,
+                                         ExceptionState&);
+  CSSScopeRule* SetScopeRuleText(const SourceRange&,
+                                 const String& selector,
+                                 SourceRange* new_range,
+                                 String* old_selector,
+                                 ExceptionState&);
+  CSSSupportsRule* SetSupportsRuleText(const SourceRange&,
+                                       const String& selector,
+                                       SourceRange* new_range,
+                                       String* old_selector,
+                                       ExceptionState&);
   CSSStyleRule* AddRule(const String& rule_text,
                         const SourceRange& location,
                         SourceRange* added_range,
@@ -172,7 +194,7 @@ class InspectorStyleSheet : public InspectorStyleSheetBase {
 
   std::unique_ptr<protocol::CSS::CSSStyleSheetHeader>
   BuildObjectForStyleSheetInfo();
-  std::unique_ptr<protocol::CSS::CSSRule> BuildObjectForRuleWithoutMedia(
+  std::unique_ptr<protocol::CSS::CSSRule> BuildObjectForRuleWithoutAncestorData(
       CSSStyleRule*);
   std::unique_ptr<protocol::CSS::RuleUsage> BuildObjectForRuleUsage(CSSRule*,
                                                                     bool);
@@ -247,13 +269,8 @@ class InspectorStyleSheet : public InspectorStyleSheetBase {
   String text_;
   CSSRuleVector cssom_flat_rules_;
   CSSRuleVector parsed_flat_rules_;
-  typedef HashMap<unsigned,
-                  unsigned,
-                  WTF::IntHash<unsigned>,
-                  WTF::UnsignedWithZeroKeyHashTraits<unsigned>>
-      IndexMap;
-  IndexMap rule_to_source_data_;
-  IndexMap source_data_to_rule_;
+  InspectorIndexMap rule_to_source_data_;
+  InspectorIndexMap source_data_to_rule_;
   String source_url_;
   // True means that CSSOM rules are to be synced with the original source text.
   bool marked_for_sync_;
@@ -287,4 +304,4 @@ class InspectorStyleSheetForInlineStyle final : public InspectorStyleSheetBase {
 
 }  // namespace blink
 
-#endif  // !defined(InspectorStyleSheet_h)
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_INSPECTOR_INSPECTOR_STYLE_SHEET_H_

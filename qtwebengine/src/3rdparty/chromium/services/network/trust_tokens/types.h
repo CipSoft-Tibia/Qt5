@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,8 @@
 #include "base/strings/string_piece_forward.h"
 #include "base/time/time.h"
 #include "services/network/public/mojom/trust_tokens.mojom-shared.h"
+#include "services/network/trust_tokens/proto/public.pb.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/origin.h"
 
 namespace network {
@@ -17,17 +19,18 @@ namespace internal {
 
 // types.h provides utility functions for Trust TrustTokens type conversion.
 
-// Deserializes a base::Time. Returns nullopt on failure (for instance,
-// deserialization can fail if |my_string| is malformed due to data
-// corruption) and the deserialized Time on success.
-base::Optional<base::Time> StringToTime(base::StringPiece my_string);
+// Converts a Timstamp into a base:Time.
+base::Time TimestampToTime(Timestamp timestamp);
 
-// Serializes a base::Time.
-std::string TimeToString(base::Time my_time);
+// Converts a base:Time into a Timestamp.
+Timestamp TimeToTimestamp(base::Time time);
 
 // Serializes a TrustTokenOperationType.
 base::StringPiece TrustTokenOperationTypeToString(
     mojom::TrustTokenOperationType type);
+
+// Serializes a mojom::TrustTokenProtocolVersion.
+std::string ProtocolVersionToString(mojom::TrustTokenProtocolVersion);
 
 }  // namespace internal
 }  // namespace network

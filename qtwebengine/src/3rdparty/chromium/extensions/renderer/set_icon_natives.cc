@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,15 +10,19 @@
 #include <limits>
 #include <memory>
 
-#include "base/bind.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "base/strings/string_number_conversions.h"
-#include "content/public/common/common_param_traits.h"
 #include "extensions/renderer/script_context.h"
 #include "gin/data_object_builder.h"
-#include "ipc/ipc_message_utils.h"
+#include "skia/public/mojom/bitmap.mojom.h"
 #include "third_party/blink/public/web/web_array_buffer_converter.h"
 #include "third_party/skia/include/core/SkBitmap.h"
+#include "v8/include/v8-context.h"
+#include "v8/include/v8-exception.h"
+#include "v8/include/v8-function-callback.h"
+#include "v8/include/v8-isolate.h"
+#include "v8/include/v8-object.h"
+#include "v8/include/v8-primitive.h"
 
 // TODO(devlin): Looks like there are lots of opportunities to use gin helpers
 // like gin::Dictionary and gin::DataObjectBuilder here.
@@ -71,9 +75,6 @@ SetIconNatives::SetIconNatives(ScriptContext* context)
     : ObjectBackedNativeHandler(context) {}
 
 void SetIconNatives::AddRoutes() {
-  RouteHandlerFunction("IsInServiceWorker",
-                       base::BindRepeating(&SetIconNatives::IsInServiceWorker,
-                                           base::Unretained(this)));
   RouteHandlerFunction("SetIconCommon",
                        base::BindRepeating(&SetIconNatives::SetIconCommon,
                                            base::Unretained(this)));
@@ -144,11 +145,9 @@ bool SetIconNatives::ConvertImageDataToBitmapValue(
   }
 
   // Construct the Value object.
-  IPC::Message bitmap_pickle;
-  IPC::WriteParam(&bitmap_pickle, bitmap);
-  blink::WebArrayBuffer buffer =
-      blink::WebArrayBuffer::Create(bitmap_pickle.size(), 1);
-  memcpy(buffer.Data(), bitmap_pickle.data(), bitmap_pickle.size());
+  std::vector<uint8_t> s = skia::mojom::InlineBitmap::Serialize(&bitmap);
+  blink::WebArrayBuffer buffer = blink::WebArrayBuffer::Create(s.size(), 1);
+  memcpy(buffer.Data(), s.data(), s.size());
   *image_data_bitmap = blink::WebArrayBufferConverter::ToV8Value(
       &buffer, context()->v8_context()->Global(), isolate);
 
@@ -202,14 +201,6 @@ bool SetIconNatives::ConvertImageDataSetToBitmapValueSet(
         .FromMaybe(false);
   }
   return true;
-}
-
-void SetIconNatives::IsInServiceWorker(
-    const v8::FunctionCallbackInfo<v8::Value>& args) {
-  CHECK_EQ(0, args.Length());
-  const bool is_in_service_worker = context()->IsForServiceWorker();
-  args.GetReturnValue().Set(
-      v8::Boolean::New(args.GetIsolate(), is_in_service_worker));
 }
 
 void SetIconNatives::SetIconCommon(

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,13 @@
 #include <cmath>
 #include <limits>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/task_environment.h"
 #include "services/image_annotation/image_annotation_metrics.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/skia/src/core/SkEndian.h"
+#include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/codec/jpeg_codec.h"
 
 namespace image_annotation {
@@ -42,9 +42,8 @@ SkBitmap GenCheckerboardBitmap(const int dim) {
       uint8_t* const byte_pos =
           pixels + row * out.rowBytes() + col * out.bytesPerPixel();
 
-      // RGBA refers to big endian ordering.
       *reinterpret_cast<uint32_t*>(byte_pos) =
-          black ? SkEndian_SwapBE32(0x000000FF) : 0xFFFFFFFF;
+          black ? SK_ColorBLACK : SK_ColorWHITE;
     }
   }
 

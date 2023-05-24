@@ -13,10 +13,6 @@ qhp.QtSerialPort.virtualFolder       = qtserialport
 qhp.QtSerialPort.indexTitle          = Qt Serial Port
 qhp.QtSerialPort.indexRoot           =
 
-qhp.QtSerialPort.filterAttributes    = qtserialport $QT_VERSION qtrefdoc
-qhp.QtSerialPort.customFilters.Qt.name = QtSerialPort $QT_VERSION
-qhp.QtSerialPort.customFilters.Qt.filterAttributes = qtserialport $QT_VERSION
-
 qhp.QtSerialPort.subprojects         = classes examples
 
 qhp.QtSerialPort.subprojects.classes.title = C++ Classes
@@ -31,13 +27,16 @@ qhp.QtSerialPort.subprojects.examples.sortPages = true
 
 headerdirs  += ..
 sourcedirs  += ..
-exampledirs += ../../../examples/serialport
+exampledirs += \
+    ../../../examples/serialport \
+    snippets
+
+excludedirs += snippets
 imagedirs   += images
-excludedirs += ../qt4support
 
 examplesinstallpath = serialport
 
-depends += qtcore qtdoc qtnetwork qmake
+depends += qtcore qtdoc qtnetwork qmake qtcmake
 
 navigation.landingpage = "Qt Serial Port"
 navigation.cppclassespage = "Qt Serial Port C++ Classes"

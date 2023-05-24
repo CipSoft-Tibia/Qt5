@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/geometry/logical_size.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_break_token.h"
+#include "third_party/blink/renderer/core/layout/ng/ng_physical_fragment.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_style_variant.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/platform/text/writing_direction_mode.h"
@@ -45,11 +46,22 @@ class CORE_EXPORT NGFragmentBuilder {
   TextDirection Direction() const { return writing_direction_.Direction(); }
 
   LayoutUnit InlineSize() const { return size_.inline_size; }
-  LayoutUnit BlockSize() const { return size_.block_size; }
-  const LogicalSize& Size() const { return size_; }
+  LayoutUnit BlockSize() const {
+    DCHECK(size_.block_size != kIndefiniteSize);
+    return size_.block_size;
+  }
+  const LogicalSize& Size() const {
+    DCHECK(size_.block_size != kIndefiniteSize);
+    return size_;
+  }
   void SetBlockSize(LayoutUnit block_size) { size_.block_size = block_size; }
 
+  bool HasBlockSize() const { return size_.block_size != kIndefiniteSize; }
+
   void SetIsHiddenForPaint(bool value) { is_hidden_for_paint_ = value; }
+  void SetIsOpaque() { is_opaque_ = true; }
+
+  void SetHasCollapsedBorders(bool value) { has_collapsed_borders_ = value; }
 
   const LayoutObject* GetLayoutObject() const { return layout_object_; }
 
@@ -78,9 +90,10 @@ class CORE_EXPORT NGFragmentBuilder {
   NGStyleVariant style_variant_;
   LogicalSize size_;
   LayoutObject* layout_object_ = nullptr;
-  scoped_refptr<NGBreakToken> break_token_;
+  const NGBreakToken* break_token_ = nullptr;
   bool is_hidden_for_paint_ = false;
-
+  bool is_opaque_ = false;
+  bool has_collapsed_borders_ = false;
   friend class NGPhysicalFragment;
 };
 

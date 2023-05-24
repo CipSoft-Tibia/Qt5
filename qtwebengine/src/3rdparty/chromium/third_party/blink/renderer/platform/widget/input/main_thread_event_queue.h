@@ -1,23 +1,32 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_WIDGET_INPUT_MAIN_THREAD_EVENT_QUEUE_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_WIDGET_INPUT_MAIN_THREAD_EVENT_QUEUE_H_
 
+#include <memory>
+
 #include "base/feature_list.h"
 #include "base/memory/weak_ptr.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "cc/input/touch_action.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
+#include "third_party/blink/public/common/input/web_input_event_attribution.h"
 #include "third_party/blink/public/mojom/input/input_event_result.mojom-shared.h"
 #include "third_party/blink/public/mojom/input/input_handler.mojom-blink.h"
-#include "third_party/blink/public/platform/scheduler/web_thread_scheduler.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
+#include "third_party/blink/renderer/platform/scheduler/public/widget_scheduler.h"
 #include "third_party/blink/renderer/platform/widget/input/input_event_prediction.h"
 #include "third_party/blink/renderer/platform/widget/input/main_thread_event_queue_task_list.h"
 #include "ui/latency/latency_info.h"
+
+namespace cc {
+class EventMetrics;
+}
 
 namespace blink {
 
@@ -25,17 +34,26 @@ using HandledEventCallback =
     base::OnceCallback<void(mojom::blink::InputEventResultState ack_state,
                             const ui::LatencyInfo& latency_info,
                             mojom::blink::DidOverscrollParamsPtr,
-                            base::Optional<cc::TouchAction>)>;
+                            absl::optional<cc::TouchAction>)>;
 
 // All interaction with the MainThreadEventQueueClient will occur
 // on the main thread.
 class PLATFORM_EXPORT MainThreadEventQueueClient {
  public:
-  // Handle an |event| that was previously queued (possibly coalesced with
-  // another event). Returns false if the event will not be handled, and the
-  // |handled_callback| will not be run.
+  // Handle an `event` that was previously queued (possibly coalesced with
+  // another event). `metrics` contains information that would be useful in
+  // reporting latency metrics in case the event causes an update. Returns false
+  // if the event will not be handled in which case the `handled_callback` will
+  // not be run.
   virtual bool HandleInputEvent(const WebCoalescedInputEvent& event,
+                                std::unique_ptr<cc::EventMetrics> metrics,
                                 HandledEventCallback handled_callback) = 0;
+
+  // Notify clients that the queued events have been dispatched. `raf_aligned`
+  // determines whether the events were rAF-aligned events or non-rAF-aligned
+  // ones.
+  virtual void InputEventsDispatched(bool raf_aligned) = 0;
+
   // Requests a BeginMainFrame callback from the compositor.
   virtual void SetNeedsMainFrame() = 0;
 };
@@ -82,8 +100,10 @@ class PLATFORM_EXPORT MainThreadEventQueue
   MainThreadEventQueue(
       MainThreadEventQueueClient* client,
       const scoped_refptr<base::SingleThreadTaskRunner>& main_task_runner,
-      scheduler::WebThreadScheduler* main_thread_scheduler,
+      scoped_refptr<scheduler::WidgetScheduler> widget_scheduler,
       bool allow_raf_aligned_input);
+  MainThreadEventQueue(const MainThreadEventQueue&) = delete;
+  MainThreadEventQueue& operator=(const MainThreadEventQueue&) = delete;
 
   // Type of dispatching of the event.
   enum class DispatchType { kBlocking, kNonBlocking };
@@ -94,7 +114,9 @@ class PLATFORM_EXPORT MainThreadEventQueue
                    DispatchType dispatch_type,
                    mojom::blink::InputEventResultState ack_result,
                    const WebInputEventAttribution& attribution,
-                   HandledEventCallback handled_callback);
+                   std::unique_ptr<cc::EventMetrics> metrics,
+                   HandledEventCallback handled_callback,
+                   bool allow_main_gesture_scroll = false);
   void DispatchRafAlignedInput(base::TimeTicks frame_time);
   void QueueClosure(base::OnceClosure closure);
 
@@ -131,6 +153,7 @@ class PLATFORM_EXPORT MainThreadEventQueue
   // will not be run.
   bool HandleEventOnMainThread(const WebCoalescedInputEvent& event,
                                const WebInputEventAttribution& attribution,
+                               std::unique_ptr<cc::EventMetrics> metrics,
                                HandledEventCallback handled_callback);
 
   bool IsRawUpdateEvent(
@@ -172,7 +195,7 @@ class PLATFORM_EXPORT MainThreadEventQueue
   SharedState shared_state_;
 
   scoped_refptr<base::SingleThreadTaskRunner> main_task_runner_;
-  scheduler::WebThreadScheduler* main_thread_scheduler_;
+  scoped_refptr<scheduler::WidgetScheduler> widget_scheduler_;
 
   // A safe guard timer to ensure input is always processed. A BeginMainFrame
   // signal might not always occur if our visibility changed.
@@ -180,7 +203,15 @@ class PLATFORM_EXPORT MainThreadEventQueue
 
   std::unique_ptr<InputEventPrediction> event_predictor_;
 
-  DISALLOW_COPY_AND_ASSIGN(MainThreadEventQueue);
+ private:
+  // Returns false if we are trying to send a gesture scroll event to the main
+  // thread when we shouldn't be.  Used for DCHECK in HandleEvent.
+  bool AllowedForUnification(const WebInputEvent& event, bool force_allow);
+
+  // Tracked here for DCHECK purposes only.  For cursor control we allow gesture
+  // scroll events to go to main.  See CursorControlHandler (impl-side filter)
+  // and WebFrameWidgetImpl::WillHandleGestureEvent (main thread consumer).
+  bool cursor_control_in_progress_ = false;
 };
 
 }  // namespace blink

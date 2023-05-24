@@ -1,32 +1,36 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_PUBLIC_BROWSER_BROWSER_PLUGIN_GUEST_DELEGATE_H_
 #define CONTENT_PUBLIC_BROWSER_BROWSER_PLUGIN_GUEST_DELEGATE_H_
 
+#include "base/memory/weak_ptr.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/web_contents.h"
 
 namespace content {
-
-class GuestHost;
+class RenderFrameHost;
 
 // Objects implement this interface to get notified about changes in the guest
 // WebContents and to provide necessary functionality.
 class CONTENT_EXPORT BrowserPluginGuestDelegate {
  public:
-  virtual ~BrowserPluginGuestDelegate() {}
+  virtual ~BrowserPluginGuestDelegate() = default;
 
-  virtual WebContents* CreateNewGuestWindow(
+  virtual std::unique_ptr<WebContents> CreateNewGuestWindow(
       const WebContents::CreateParams& create_params);
 
   // Returns the WebContents that currently owns this guest.
   virtual WebContents* GetOwnerWebContents();
 
-  // Provides the delegate with an interface with which to communicate with the
-  // content module.
-  virtual void SetGuestHost(GuestHost* guest_host) {}
+  // Returns the RenderFrameHost that owns this guest, but has not yet attached
+  // it.
+  // TODO(crbug.com/769461): Have all guest types return the specific owner
+  // RenderFrameHost and not assume it's the owner's main frame.
+  virtual RenderFrameHost* GetProspectiveOuterDocument();
+
+  virtual base::WeakPtr<BrowserPluginGuestDelegate> GetGuestDelegateWeakPtr();
 };
 
 }  // namespace content

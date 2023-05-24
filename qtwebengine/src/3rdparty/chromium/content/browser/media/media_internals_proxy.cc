@@ -1,10 +1,10 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/media/media_internals_proxy.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "build/build_config.h"
 #include "content/browser/media/media_internals.h"
@@ -40,9 +40,10 @@ void MediaInternalsProxy::GetEverything() {
 
   MediaInternals::GetInstance()->SendHistoricalMediaEvents();
   MediaInternals::GetInstance()->SendGeneralAudioInformation();
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
   MediaInternals::GetInstance()->SendAudioFocusState();
 #endif
+  MediaInternals::GetInstance()->GetRegisteredCdms();
 
   // Ask MediaInternals for its data on IO thread.
   GetIOThreadTaskRunner({})->PostTask(
@@ -60,7 +61,7 @@ void MediaInternalsProxy::GetEverythingOnIOThread() {
 // static
 void MediaInternalsProxy::UpdateUIOnUIThread(
     MediaInternalsMessageHandler* handler,
-    const base::string16& update) {
+    const std::u16string& update) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   handler->OnUpdate(update);
 }

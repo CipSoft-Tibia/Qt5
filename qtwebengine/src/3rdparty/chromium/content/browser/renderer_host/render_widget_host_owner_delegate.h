@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 #define CONTENT_BROWSER_RENDERER_HOST_RENDER_WIDGET_HOST_OWNER_DELEGATE_H_
 
 #include "build/build_config.h"
-#include "content/common/content_export.h"
 #include "third_party/blink/public/common/widget/visual_properties.h"
 
 namespace blink {
@@ -14,10 +13,6 @@ namespace web_pref {
 struct WebPreferences;
 }
 class WebMouseEvent;
-}
-
-namespace gfx {
-class Rect;
 }
 
 namespace content {
@@ -30,17 +25,8 @@ struct NativeWebKeyboardEvent;
 //  intended to be temporary until the RenderViewHostImpl and
 //  RenderWidgetHostImpl classes are disentangled; see http://crbug.com/542477
 //  and http://crbug.com/478281.
-class CONTENT_EXPORT RenderWidgetHostOwnerDelegate {
+class RenderWidgetHostOwnerDelegate {
  public:
-  // The RenderWidgetHost has been initialized.
-  virtual void RenderWidgetDidInit() = 0;
-
-  // The RenderWidget was closed. Only swapped-in RenderWidgets receive this.
-  virtual void RenderWidgetDidClose() = 0;
-
-  // The RenderWidget finished the first visually non-empty paint.
-  virtual void RenderWidgetDidFirstVisuallyNonEmptyPaint() = 0;
-
   // The RenderWidgetHost got the focus.
   virtual void RenderWidgetGotFocus() = 0;
 
@@ -59,10 +45,6 @@ class CONTENT_EXPORT RenderWidgetHostOwnerDelegate {
   // Allow OwnerDelegate to control whether its RenderWidgetHost contributes
   // priority to the RenderProcessHost.
   virtual bool ShouldContributePriorityToProcess() = 0;
-
-  // Notify the OwnerDelegate that the renderer has requested a change in
-  // the bounds of the content area.
-  virtual void RequestSetBounds(const gfx::Rect& bounds) = 0;
 
   // When false, this allows the renderer's output to be transparent. By default
   // the renderer's background is forced to be opaque.

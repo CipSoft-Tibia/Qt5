@@ -1,53 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPAINTERPATH_H
 #define QPAINTERPATH_H
 
 #include <QtGui/qtguiglobal.h>
-#include <QtGui/qmatrix.h>
 #include <QtGui/qtransform.h>
 #include <QtCore/qglobal.h>
-#include <QtCore/qrect.h>
 #include <QtCore/qline.h>
-#include <QtCore/qvector.h>
-#include <QtCore/qscopedpointer.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qrect.h>
+#include <QtCore/qshareddata.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -55,11 +18,11 @@ QT_BEGIN_NAMESPACE
 class QFont;
 class QPainterPathPrivate;
 struct QPainterPathPrivateDeleter;
-class QPainterPathData;
 class QPainterPathStrokerPrivate;
 class QPen;
 class QPolygonF;
 class QRegion;
+class QTransform;
 class QVectorPath;
 
 class Q_GUI_EXPORT QPainterPath
@@ -93,8 +56,7 @@ public:
     explicit QPainterPath(const QPointF &startPoint);
     QPainterPath(const QPainterPath &other);
     QPainterPath &operator=(const QPainterPath &other);
-    inline QPainterPath &operator=(QPainterPath &&other) noexcept
-    { qSwap(d_ptr, other.d_ptr); return *this; }
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QPainterPath)
     ~QPainterPath();
 
     inline void swap(QPainterPath &other) noexcept { d_ptr.swap(other.d_ptr); }
@@ -142,19 +104,6 @@ public:
                                qreal xRadius, qreal yRadius,
                                Qt::SizeMode mode = Qt::AbsoluteSize);
 
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X("Use addRoundedRect(..., Qt::RelativeSize) instead")
-    void addRoundRect(const QRectF &rect, int xRnd, int yRnd);
-    QT_DEPRECATED_X("Use addRoundedRect(..., Qt::RelativeSize) instead")
-    void addRoundRect(qreal x, qreal y, qreal w, qreal h,
-                      int xRnd, int yRnd);
-    QT_DEPRECATED_X("Use addRoundedRect(..., Qt::RelativeSize) instead")
-    void addRoundRect(const QRectF &rect, int roundness);
-    QT_DEPRECATED_X("Use addRoundedRect(..., Qt::RelativeSize) instead")
-    void addRoundRect(qreal x, qreal y, qreal w, qreal h,
-                      int roundness);
-#endif
-
     void connectPath(const QPainterPath &path);
 
     bool contains(const QPointF &pt) const;
@@ -164,8 +113,8 @@ public:
     void translate(qreal dx, qreal dy);
     inline void translate(const QPointF &offset);
 
-    Q_REQUIRED_RESULT QPainterPath translated(qreal dx, qreal dy) const;
-    Q_REQUIRED_RESULT inline QPainterPath translated(const QPointF &offset) const;
+    [[nodiscard]] QPainterPath translated(qreal dx, qreal dy) const;
+    [[nodiscard]] inline QPainterPath translated(const QPointF &offset) const;
 
     QRectF boundingRect() const;
     QRectF controlPointRect() const;
@@ -175,16 +124,8 @@ public:
 
     bool isEmpty() const;
 
-    Q_REQUIRED_RESULT QPainterPath toReversed() const;
+    [[nodiscard]] QPainterPath toReversed() const;
 
-#if QT_DEPRECATED_SINCE(5, 15)
-    QT_DEPRECATED_X("Use toSubpathPolygons(const QTransform &)")
-    QList<QPolygonF> toSubpathPolygons(const QMatrix &matrix) const;
-    QT_DEPRECATED_X("Use toFillPolygons(const QTransform &")
-    QList<QPolygonF> toFillPolygons(const QMatrix &matrix) const;
-    QT_DEPRECATED_X("Use toFillPolygon(const QTransform &)")
-    QPolygonF toFillPolygon(const QMatrix &matrix) const;
-#endif // QT_DEPRECATED_SINCE(5, 15)
     QList<QPolygonF> toSubpathPolygons(const QTransform &matrix = QTransform()) const;
     QList<QPolygonF> toFillPolygons(const QTransform &matrix = QTransform()) const;
     QPolygonF toFillPolygon(const QTransform &matrix = QTransform()) const;
@@ -201,15 +142,11 @@ public:
 
     bool intersects(const QPainterPath &p) const;
     bool contains(const QPainterPath &p) const;
-    Q_REQUIRED_RESULT QPainterPath united(const QPainterPath &r) const;
-    Q_REQUIRED_RESULT QPainterPath intersected(const QPainterPath &r) const;
-    Q_REQUIRED_RESULT QPainterPath subtracted(const QPainterPath &r) const;
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X("Use r.subtracted() instead")
-    Q_REQUIRED_RESULT QPainterPath subtractedInverted(const QPainterPath &r) const;
-#endif
+    [[nodiscard]] QPainterPath united(const QPainterPath &r) const;
+    [[nodiscard]] QPainterPath intersected(const QPainterPath &r) const;
+    [[nodiscard]] QPainterPath subtracted(const QPainterPath &r) const;
 
-    Q_REQUIRED_RESULT QPainterPath simplified() const;
+    [[nodiscard]] QPainterPath simplified() const;
 
     bool operator==(const QPainterPath &other) const;
     bool operator!=(const QPainterPath &other) const;
@@ -224,22 +161,19 @@ public:
     QPainterPath &operator-=(const QPainterPath &other);
 
 private:
-    QScopedPointer<QPainterPathPrivate, QPainterPathPrivateDeleter> d_ptr;
+    QExplicitlySharedDataPointer<QPainterPathPrivate> d_ptr;
 
     inline void ensureData() { if (!d_ptr) ensureData_helper(); }
     void ensureData_helper();
     void detach();
-    void detach_helper();
     void setDirty(bool);
     void computeBoundingRect() const;
     void computeControlPointRect() const;
 
-    QPainterPathData *d_func() const { return reinterpret_cast<QPainterPathData *>(d_ptr.data()); }
+    QPainterPathPrivate *d_func() const { return d_ptr.data(); }
 
-    friend class QPainterPathData;
     friend class QPainterPathStroker;
     friend class QPainterPathStrokerPrivate;
-    friend class QMatrix;
     friend class QTransform;
     friend class QVectorPath;
     friend Q_GUI_EXPORT const QVectorPath &qtVectorPathForPath(const QPainterPath &);
@@ -250,7 +184,7 @@ private:
 #endif
 };
 
-Q_DECLARE_SHARED_NOT_MOVABLE_UNTIL_QT6(QPainterPath)
+Q_DECLARE_SHARED(QPainterPath)
 Q_DECLARE_TYPEINFO(QPainterPath::Element, Q_PRIMITIVE_TYPE);
 
 #ifndef QT_NO_DATASTREAM
@@ -282,8 +216,8 @@ public:
     qreal curveThreshold() const;
 
     void setDashPattern(Qt::PenStyle);
-    void setDashPattern(const QVector<qreal> &dashPattern);
-    QVector<qreal> dashPattern() const;
+    void setDashPattern(const QList<qreal> &dashPattern);
+    QList<qreal> dashPattern() const;
 
     void setDashOffset(qreal offset);
     qreal dashOffset() const;

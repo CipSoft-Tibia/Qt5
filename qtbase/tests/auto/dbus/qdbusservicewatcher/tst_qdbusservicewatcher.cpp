@@ -1,35 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtDBus/QDBusServiceWatcher>
-#include <QtDBus>
-#include <QtTest>
+#include <QTest>
+#include <QtTest/private/qpropertytesthelper_p.h>
+#include <QSignalSpy>
+#include <QTestEventLoop>
+#include <QDBusConnection>
+#include <QDBusServiceWatcher>
 
 class tst_QDBusServiceWatcher: public QObject
 {
@@ -52,6 +30,8 @@ private slots:
     void disconnectedConnection();
     void setConnection_data();
     void setConnection();
+    void bindings();
+    void bindingsAutomated();
 
 private:
     QString generateServiceName();
@@ -119,12 +99,12 @@ void tst_QDBusServiceWatcher::watchForCreation()
     QTestEventLoop::instance().enterLoop(1);
     QVERIFY(!QTestEventLoop::instance().timeout());
 
-    QCOMPARE(spyR.count(), 1);
+    QCOMPARE(spyR.size(), 1);
     QCOMPARE(spyR.at(0).at(0).toString(), registeredName);
 
-    QCOMPARE(spyU.count(), 0);
+    QCOMPARE(spyU.size(), 0);
 
-    QCOMPARE(spyO.count(), 1);
+    QCOMPARE(spyO.size(), 1);
     QCOMPARE(spyO.at(0).at(0).toString(), registeredName);
     QVERIFY(spyO.at(0).at(1).toString().isEmpty());
     QCOMPARE(spyO.at(0).at(2).toString(), con.baseService());
@@ -142,12 +122,12 @@ void tst_QDBusServiceWatcher::watchForCreation()
     QTestEventLoop::instance().enterLoop(1);
     QVERIFY(!QTestEventLoop::instance().timeout());
 
-    QCOMPARE(spyR.count(), 1);
+    QCOMPARE(spyR.size(), 1);
     QCOMPARE(spyR.at(0).at(0).toString(), registeredName);
 
-    QCOMPARE(spyU.count(), 0);
+    QCOMPARE(spyU.size(), 0);
 
-    QCOMPARE(spyO.count(), 1);
+    QCOMPARE(spyO.size(), 1);
     QCOMPARE(spyO.at(0).at(0).toString(), registeredName);
     QVERIFY(spyO.at(0).at(1).toString().isEmpty());
     QCOMPARE(spyO.at(0).at(2).toString(), con.baseService());
@@ -183,12 +163,12 @@ void tst_QDBusServiceWatcher::watchForDisappearance()
     QTestEventLoop::instance().enterLoop(1);
     QVERIFY(!QTestEventLoop::instance().timeout());
 
-    QCOMPARE(spyR.count(), 0);
+    QCOMPARE(spyR.size(), 0);
 
-    QCOMPARE(spyU.count(), 1);
+    QCOMPARE(spyU.size(), 1);
     QCOMPARE(spyU.at(0).at(0).toString(), registeredName);
 
-    QCOMPARE(spyO.count(), 1);
+    QCOMPARE(spyO.size(), 1);
     QCOMPARE(spyO.at(0).at(0).toString(), registeredName);
     QCOMPARE(spyO.at(0).at(1).toString(), con.baseService());
     QVERIFY(spyO.at(0).at(2).toString().isEmpty());
@@ -217,12 +197,12 @@ void tst_QDBusServiceWatcher::watchForDisappearanceUniqueConnection()
     QTestEventLoop::instance().enterLoop(1);
     QVERIFY(!QTestEventLoop::instance().timeout());
 
-    QCOMPARE(spyR.count(), 0);
+    QCOMPARE(spyR.size(), 0);
 
-    QCOMPARE(spyU.count(), 1);
+    QCOMPARE(spyU.size(), 1);
     QCOMPARE(spyU.at(0).at(0).toString(), watchedName);
 
-    QCOMPARE(spyO.count(), 1);
+    QCOMPARE(spyO.size(), 1);
     QCOMPARE(spyO.at(0).at(0).toString(), watchedName);
     QCOMPARE(spyO.at(0).at(1).toString(), watchedName);
     QVERIFY(spyO.at(0).at(2).toString().isEmpty());
@@ -254,12 +234,12 @@ void tst_QDBusServiceWatcher::watchForOwnerChange()
     QTestEventLoop::instance().enterLoop(1);
     QVERIFY(!QTestEventLoop::instance().timeout());
 
-    QCOMPARE(spyR.count(), 1);
+    QCOMPARE(spyR.size(), 1);
     QCOMPARE(spyR.at(0).at(0).toString(), registeredName);
 
-    QCOMPARE(spyU.count(), 0);
+    QCOMPARE(spyU.size(), 0);
 
-    QCOMPARE(spyO.count(), 1);
+    QCOMPARE(spyO.size(), 1);
     QCOMPARE(spyO.at(0).at(0).toString(), registeredName);
     QVERIFY(spyO.at(0).at(1).toString().isEmpty());
     QCOMPARE(spyO.at(0).at(2).toString(), con.baseService());
@@ -277,13 +257,13 @@ void tst_QDBusServiceWatcher::watchForOwnerChange()
     QTestEventLoop::instance().enterLoop(1);
     QVERIFY(!QTestEventLoop::instance().timeout());
 
-    QCOMPARE(spyR.count(), 1);
+    QCOMPARE(spyR.size(), 1);
     QCOMPARE(spyR.at(0).at(0).toString(), registeredName);
 
-    QCOMPARE(spyU.count(), 1);
+    QCOMPARE(spyU.size(), 1);
     QCOMPARE(spyU.at(0).at(0).toString(), registeredName);
 
-    QCOMPARE(spyO.count(), 2);
+    QCOMPARE(spyO.size(), 2);
     QCOMPARE(spyO.at(0).at(0).toString(), registeredName);
     QCOMPARE(spyO.at(0).at(1).toString(), con.baseService());
     QVERIFY(spyO.at(0).at(2).toString().isEmpty());
@@ -318,12 +298,12 @@ void tst_QDBusServiceWatcher::modeChange()
     QTestEventLoop::instance().enterLoop(1);
     QVERIFY(!QTestEventLoop::instance().timeout());
 
-    QCOMPARE(spyR.count(), 1);
+    QCOMPARE(spyR.size(), 1);
     QCOMPARE(spyR.at(0).at(0).toString(), registeredName);
 
-    QCOMPARE(spyU.count(), 0);
+    QCOMPARE(spyU.size(), 0);
 
-    QCOMPARE(spyO.count(), 1);
+    QCOMPARE(spyO.size(), 1);
     QCOMPARE(spyO.at(0).at(0).toString(), registeredName);
     QVERIFY(spyO.at(0).at(1).toString().isEmpty());
     QCOMPARE(spyO.at(0).at(2).toString(), con.baseService());
@@ -341,12 +321,12 @@ void tst_QDBusServiceWatcher::modeChange()
     QTestEventLoop::instance().enterLoop(1);
     QVERIFY(!QTestEventLoop::instance().timeout());
 
-    QCOMPARE(spyR.count(), 0);
+    QCOMPARE(spyR.size(), 0);
 
-    QCOMPARE(spyU.count(), 1);
+    QCOMPARE(spyU.size(), 1);
     QCOMPARE(spyU.at(0).at(0).toString(), registeredName);
 
-    QCOMPARE(spyO.count(), 1);
+    QCOMPARE(spyO.size(), 1);
     QCOMPARE(spyO.at(0).at(0).toString(), registeredName);
     QCOMPARE(spyO.at(0).at(1).toString(), con.baseService());
     QVERIFY(spyO.at(0).at(2).toString().isEmpty());
@@ -397,9 +377,9 @@ void tst_QDBusServiceWatcher::setConnection()
     QTestEventLoop::instance().enterLoop(1);
     QVERIFY(!QTestEventLoop::instance().timeout());
 
-    QCOMPARE(spyR.count(), 1);
+    QCOMPARE(spyR.size(), 1);
     QCOMPARE(spyR.at(0).at(0).toString(), serviceName);
-    QCOMPARE(spyU.count(), 0);
+    QCOMPARE(spyU.size(), 0);
 
     // is the system bus available?
     if (!QDBusConnection::systemBus().isConnected())
@@ -420,11 +400,79 @@ void tst_QDBusServiceWatcher::setConnection()
     QTestEventLoop::instance().enterLoop(1);
     QVERIFY(!QTestEventLoop::instance().timeout());
 
-    QCOMPARE(spyR.count(), 0);
+    QCOMPARE(spyR.size(), 0);
 
-    QCOMPARE(spyU.count(), 1);
+    QCOMPARE(spyU.size(), 1);
     QCOMPARE(spyU.at(0).at(0).toString(), watchedName);
 }
 
+void tst_QDBusServiceWatcher::bindings()
+{
+    QString serviceName("normal");
+
+    QDBusConnection con("");
+    QVERIFY(!con.isConnected());
+
+    QDBusServiceWatcher watcher(serviceName, con, QDBusServiceWatcher::WatchForRegistration);
+    QProperty<QDBusServiceWatcher::WatchMode> follower;
+    int notificationCounter = 0;
+    auto connection = follower.subscribe([&]() { notificationCounter++; });
+    QCOMPARE(notificationCounter, 1);
+    follower.setBinding([&]() { return watcher.watchMode(); });
+    QCOMPARE(follower.value(), QDBusServiceWatcher::WatchForRegistration);
+    QCOMPARE(notificationCounter, 2);
+
+    watcher.setWatchMode(QDBusServiceWatcher::WatchForUnregistration);
+    QCOMPARE(follower.value(), QDBusServiceWatcher::WatchForUnregistration);
+    QCOMPARE(notificationCounter, 3);
+
+    QProperty<QDBusServiceWatcher::WatchMode> leader(QDBusServiceWatcher::WatchForRegistration);
+    watcher.bindableWatchMode().setBinding([&]() { return leader.value(); });
+    QCOMPARE(follower.value(), QDBusServiceWatcher::WatchForRegistration);
+    QCOMPARE(notificationCounter, 4);
+
+    leader = QDBusServiceWatcher::WatchForUnregistration;
+    QCOMPARE(follower.value(), QDBusServiceWatcher::WatchForUnregistration);
+    QCOMPARE(notificationCounter, 5);
+
+    // check that setting a value breaks the binding
+    watcher.setWatchMode(QDBusServiceWatcher::WatchForUnregistration);
+    QCOMPARE(notificationCounter, 5);
+    leader = QDBusServiceWatcher::WatchForRegistration;
+    QCOMPARE(follower.value(), QDBusServiceWatcher::WatchForUnregistration);
+
+    // check that setting the same value again does not trigger notification
+    watcher.setWatchMode(QDBusServiceWatcher::WatchForUnregistration);
+    QCOMPARE(notificationCounter, 5);
+}
+
+void tst_QDBusServiceWatcher::bindingsAutomated()
+{
+    QString serviceName("normal");
+
+    QDBusConnection con("");
+    QVERIFY(!con.isConnected());
+
+    QDBusServiceWatcher watcher(serviceName, con, QDBusServiceWatcher::WatchForRegistration);
+
+    QTestPrivate::testReadWritePropertyBasics<QDBusServiceWatcher, QStringList>(
+            watcher,
+            QStringList() << "foo" << "bar",
+            QStringList() << "bar" << "foo",
+            "watchedServices");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QDBusServiceWatcher::watchedServices");
+        return;
+    }
+
+    QTestPrivate::testReadWritePropertyBasics<QDBusServiceWatcher,
+                                              QFlags<QDBusServiceWatcher::WatchModeFlag>>(
+            watcher, QDBusServiceWatcher::WatchForUnregistration,
+            QDBusServiceWatcher::WatchForRegistration, "watchMode");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QDBusServiceWatcher::watchMode");
+        return;
+    }
+}
 QTEST_MAIN(tst_QDBusServiceWatcher)
 #include "tst_qdbusservicewatcher.moc"

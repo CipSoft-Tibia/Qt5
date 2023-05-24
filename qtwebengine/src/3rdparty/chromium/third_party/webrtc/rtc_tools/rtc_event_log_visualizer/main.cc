@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <cstdio>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -33,10 +35,9 @@
 #include "rtc_tools/rtc_event_log_visualizer/alerts.h"
 #include "rtc_tools/rtc_event_log_visualizer/analyze_audio.h"
 #include "rtc_tools/rtc_event_log_visualizer/analyzer.h"
+#include "rtc_tools/rtc_event_log_visualizer/conversational_speech_en.h"
 #include "rtc_tools/rtc_event_log_visualizer/plot_base.h"
 #include "system_wrappers/include/field_trial.h"
-#include "test/field_trial.h"
-#include "test/testsupport/file_utils.h"
 
 ABSL_FLAG(std::string,
           plot,
@@ -67,6 +68,12 @@ ABSL_FLAG(bool,
           show_alr_state,
           false,
           "Show the state ALR state on the total bitrate graph");
+
+ABSL_FLAG(bool,
+          show_link_capacity,
+          true,
+          "Show the lower and upper link capacity on the outgoing bitrate "
+          "graph");
 
 ABSL_FLAG(bool,
           parse_unconfigured_header_extensions,
@@ -229,8 +236,7 @@ int main(int argc, char* argv[]) {
       {"simulated_neteq_stats",
        {"simulated_neteq_jitter_buffer_delay",
         "simulated_neteq_preferred_buffer_size",
-        "simulated_neteq_concealment_events",
-        "simulated_neteq_packet_loss_rate", "simulated_neteq_preemptive_rate",
+        "simulated_neteq_concealment_events", "simulated_neteq_preemptive_rate",
         "simulated_neteq_accelerate_rate", "simulated_neteq_speech_expand_rate",
         "simulated_neteq_expand_rate"}}};
 
@@ -262,8 +268,12 @@ int main(int argc, char* argv[]) {
   }
 
   webrtc::AnalyzerConfig config;
-  config.window_duration_ = 250000;
-  config.step_ = 10000;
+  config.window_duration_ = webrtc::TimeDelta::Millis(250);
+  config.step_ = webrtc::TimeDelta::Millis(10);
+  if (!parsed_log.start_log_events().empty()) {
+    config.rtc_to_utc_offset_ = parsed_log.start_log_events()[0].utc_time() -
+                                parsed_log.start_log_events()[0].log_time();
+  }
   config.normalize_time_ = absl::GetFlag(FLAGS_normalize_time);
   config.begin_time_ = parsed_log.first_timestamp();
   config.end_time_ = parsed_log.last_timestamp();
@@ -276,6 +286,7 @@ int main(int argc, char* argv[]) {
 
   webrtc::EventLogAnalyzer analyzer(parsed_log, config);
   webrtc::PlotCollection collection;
+  collection.SetCallTimeToUtcOffsetMs(config.CallTimeToUtcOffsetMs());
 
   PlotMap plots;
   plots.RegisterPlot("incoming_packet_sizes", [&](Plot* plot) {
@@ -311,6 +322,11 @@ int main(int argc, char* argv[]) {
   });
   plots.RegisterPlot("audio_playout",
                      [&](Plot* plot) { analyzer.CreatePlayoutGraph(plot); });
+
+  plots.RegisterPlot("neteq_set_minimum_delay", [&](Plot* plot) {
+    analyzer.CreateNetEqSetMinimumDelay(plot);
+  });
+
   plots.RegisterPlot("incoming_audio_level", [&](Plot* plot) {
     analyzer.CreateAudioLevelGraph(webrtc::kIncomingPacket, plot);
   });
@@ -332,7 +348,8 @@ int main(int argc, char* argv[]) {
   plots.RegisterPlot("outgoing_bitrate", [&](Plot* plot) {
     analyzer.CreateTotalOutgoingBitrateGraph(
         plot, absl::GetFlag(FLAGS_show_detector_state),
-        absl::GetFlag(FLAGS_show_alr_state));
+        absl::GetFlag(FLAGS_show_alr_state),
+        absl::GetFlag(FLAGS_show_link_capacity));
   });
   plots.RegisterPlot("incoming_stream_bitrate", [&](Plot* plot) {
     analyzer.CreateStreamBitrateGraph(webrtc::kIncomingPacket, plot);
@@ -461,11 +478,18 @@ int main(int argc, char* argv[]) {
   });
 
   std::string wav_path;
+  bool has_generated_wav_file = false;
   if (!absl::GetFlag(FLAGS_wav_filename).empty()) {
     wav_path = absl::GetFlag(FLAGS_wav_filename);
   } else {
-    wav_path = webrtc::test::ResourcePath(
-        "audio_processing/conversational_speech/EN_script2_F_sp2_B1", "wav");
+    // TODO(bugs.webrtc.org/14248): Remove the need to generate a file
+    // and read the file directly from memory.
+    wav_path = std::tmpnam(nullptr);
+    std::ofstream out_wav_file(wav_path);
+    out_wav_file.write(
+        reinterpret_cast<char*>(&webrtc::conversational_speech_en_wav[0]),
+        webrtc::conversational_speech_en_wav_len);
+    has_generated_wav_file = true;
   }
   absl::optional<webrtc::NetEqStatsGetterMap> neteq_stats;
 
@@ -619,5 +643,11 @@ int main(int argc, char* argv[]) {
     triage_alerts.Print(stderr);
   }
 
+  // TODO(bugs.webrtc.org/14248): Remove the need to generate a file
+  // and read the file directly from memory.
+  if (has_generated_wav_file) {
+    RTC_CHECK_EQ(std::remove(wav_path.c_str()), 0)
+        << "Failed to remove " << wav_path;
+  }
   return 0;
 }

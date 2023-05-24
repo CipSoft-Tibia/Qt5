@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,8 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/strings/string_util.h"
 #include "dbus/bus.h"
@@ -88,15 +88,16 @@ void BluetoothAdapterProfileBlueZ::RemoveDelegate(
   DVLOG(1) << device_path.value() << " No delegates left, unregistering.";
 
   // No users left, release the profile.
-  auto copyable_callback =
-      base::AdaptCallbackForRepeating(std::move(unregistered_callback));
+  auto split_callback =
+      base::SplitOnceCallback(std::move(unregistered_callback));
   bluez::BluezDBusManager::Get()
       ->GetBluetoothProfileManagerClient()
       ->UnregisterProfile(
-          object_path_, copyable_callback,
+          object_path_, std::move(split_callback.first),
           base::BindOnce(
               &BluetoothAdapterProfileBlueZ::OnUnregisterProfileError,
-              weak_ptr_factory_.GetWeakPtr(), copyable_callback));
+              weak_ptr_factory_.GetWeakPtr(),
+              std::move(split_callback.second)));
 }
 
 void BluetoothAdapterProfileBlueZ::OnUnregisterProfileError(

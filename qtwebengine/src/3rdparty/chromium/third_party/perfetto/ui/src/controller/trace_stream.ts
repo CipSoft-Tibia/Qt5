@@ -44,14 +44,14 @@ export class TraceFileStream implements TraceStream {
     this.reader.onloadend = () => this.onLoad();
   }
 
-  onLoad() {
-    const res = assertExists(this.reader.result) as ArrayBuffer;
+  private onLoad() {
     const pendingRead = assertExists(this.pendingRead);
     this.pendingRead = undefined;
     if (this.reader.error) {
       pendingRead.reject(this.reader.error);
       return;
     }
+    const res = assertExists(this.reader.result) as ArrayBuffer;
     this.bytesRead += res.byteLength;
     pendingRead.resolve({
       data: new Uint8Array(res),
@@ -100,7 +100,7 @@ export class TraceHttpStream implements TraceStream {
   private bytesRead = 0;
   private bytesTotal = 0;
   private uri: string;
-  private httpStream?: ReadableStreamReader;
+  private httpStream?: ReadableStreamReader<Uint8Array>;
 
   constructor(uri: string) {
     assertTrue(uri.startsWith('http://') || uri.startsWith('https://'));
@@ -116,17 +116,43 @@ export class TraceHttpStream implements TraceStream {
       }
       const len = response.headers.get('Content-Length');
       this.bytesTotal = len ? Number.parseInt(len, 10) : 0;
-      // tslint:disable-next-line no-any
-      this.httpStream = (response.body as any).getReader();
+      this.httpStream = response.body!.getReader();
     }
 
-    const res =
-        (await this.httpStream!.read()) as {value?: Uint8Array, done: boolean};
-    const data = res.value ? res.value : new Uint8Array();
+    let eof = false;
+    let bytesRead = 0;
+    const chunks = [];
+
+    // httpStream can return very small chunks which can slow down
+    // TraceProcessor. Here we accumulate chunks until we get at least 32mb
+    // or hit EOF.
+    while (!eof && bytesRead < 32 * 1024 * 1024) {
+      const res = await this.httpStream.read();
+      if (res.value) {
+        chunks.push(res.value);
+        bytesRead += res.value.length;
+      }
+      eof = res.done;
+    }
+
+    let data;
+    if (chunks.length === 1) {
+      data = chunks[0];
+    } else {
+      // Stitch all the chunks into one big array:
+      data = new Uint8Array(bytesRead);
+      let offset = 0;
+      for (const chunk of chunks) {
+        data.set(chunk, offset);
+        offset += chunk.length;
+      }
+    }
+
     this.bytesRead += data.length;
+
     return {
       data,
-      eof: res.done,
+      eof,
       bytesRead: this.bytesRead,
       bytesTotal: this.bytesTotal,
     };

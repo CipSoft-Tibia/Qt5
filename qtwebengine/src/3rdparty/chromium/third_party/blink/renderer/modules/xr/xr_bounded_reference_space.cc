@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include "third_party/blink/renderer/modules/xr/xr_rigid_transform.h"
 #include "third_party/blink/renderer/modules/xr/xr_session.h"
 #include "third_party/blink/renderer/modules/xr/xr_utils.h"
-#include "third_party/blink/renderer/platform/geometry/float_point_3d.h"
+#include "ui/gfx/geometry/point3_f.h"
 
 namespace blink {
 namespace {
@@ -26,9 +26,9 @@ float RoundCm(float val) {
   return std::round(val * 100) / 100;
 }
 
-Member<DOMPointReadOnly> RoundedDOMPoint(const FloatPoint3D& val) {
-  return DOMPointReadOnly::Create(RoundCm(val.X()), RoundCm(val.Y()),
-                                  RoundCm(val.Z()), 1.0);
+Member<DOMPointReadOnly> RoundedDOMPoint(const gfx::Point3F& val) {
+  return DOMPointReadOnly::Create(RoundCm(val.x()), RoundCm(val.y()),
+                                  RoundCm(val.z()), 1.0);
 }
 }  // anonymous namespace
 
@@ -47,7 +47,7 @@ XRBoundedReferenceSpace::XRBoundedReferenceSpace(
 
 XRBoundedReferenceSpace::~XRBoundedReferenceSpace() = default;
 
-void XRBoundedReferenceSpace::EnsureUpdated() {
+void XRBoundedReferenceSpace::EnsureUpdated() const {
   // Check first to see if the stage parameters have updated since the last
   // call. We only need to update the transform and bounds if it has.
   if (stage_parameters_id_ == session()->StageParametersId())
@@ -55,13 +55,13 @@ void XRBoundedReferenceSpace::EnsureUpdated() {
 
   stage_parameters_id_ = session()->StageParametersId();
 
-  const device::mojom::blink::VRDisplayInfoPtr& display_info =
-      session()->GetVRDisplayInfo();
+  const device::mojom::blink::VRStageParametersPtr& stage_parameters =
+      session()->GetStageParameters();
 
-  if (display_info && display_info->stage_parameters) {
-    // Use the transform given by xrDisplayInfo's stage_parameters if available.
-    mojo_from_bounded_native_ = std::make_unique<TransformationMatrix>(
-        display_info->stage_parameters->mojo_from_floor.matrix());
+  if (stage_parameters) {
+    // Use the transform given by stage_parameters if available.
+    mojo_from_bounded_native_ =
+        std::make_unique<gfx::Transform>(stage_parameters->mojo_from_floor);
 
     // In order to ensure that the bounds continue to line up with the user's
     // physical environment we need to transform them from native to offset.
@@ -69,17 +69,16 @@ void XRBoundedReferenceSpace::EnsureUpdated() {
     // TODO(https://crbug.com/1008466): move originOffset to separate class? If
     // yes, that class would need to apply a transform in the boundsGeometry
     // accessor.
-    TransformationMatrix offset_from_native = OffsetFromNativeMatrix();
+    gfx::Transform offset_from_native = OffsetFromNativeMatrix();
 
     // We may not have bounds if we've lost tracking after being created.
     // Whether we have them or not, we need to clear the existing bounds.
     offset_bounds_geometry_.clear();
-    if (display_info->stage_parameters->bounds &&
-        display_info->stage_parameters->bounds->size() >=
-            kMinimumNumberOfBoundVertices) {
-      for (const auto& bound : *(display_info->stage_parameters->bounds)) {
-        FloatPoint3D p = offset_from_native.MapPoint(
-            FloatPoint3D(bound.x(), 0.0, bound.z()));
+    if (stage_parameters->bounds &&
+        stage_parameters->bounds->size() >= kMinimumNumberOfBoundVertices) {
+      for (const auto& bound : *(stage_parameters->bounds)) {
+        gfx::Point3F p = offset_from_native.MapPoint(
+            gfx::Point3F(bound.x(), 0.0, bound.z()));
         offset_bounds_geometry_.push_back(RoundedDOMPoint(p));
       }
     }
@@ -90,14 +89,18 @@ void XRBoundedReferenceSpace::EnsureUpdated() {
     offset_bounds_geometry_.clear();
   }
 
-  DispatchEvent(*XRReferenceSpaceEvent::Create(event_type_names::kReset, this));
+  // DispatchEvent inherited from core/dom/events/event_target.h isn't const.
+  XRBoundedReferenceSpace* mutable_this =
+      const_cast<XRBoundedReferenceSpace*>(this);
+  mutable_this->DispatchEvent(
+      *XRReferenceSpaceEvent::Create(event_type_names::kReset, mutable_this));
 }
 
-base::Optional<TransformationMatrix> XRBoundedReferenceSpace::MojoFromNative() {
+absl::optional<gfx::Transform> XRBoundedReferenceSpace::MojoFromNative() const {
   EnsureUpdated();
 
   if (!mojo_from_bounded_native_)
-    return base::nullopt;
+    return absl::nullopt;
 
   return *mojo_from_bounded_native_;
 }
@@ -119,7 +122,7 @@ void XRBoundedReferenceSpace::OnReset() {
 }
 
 XRBoundedReferenceSpace* XRBoundedReferenceSpace::cloneWithOriginOffset(
-    XRRigidTransform* origin_offset) {
+    XRRigidTransform* origin_offset) const {
   return MakeGarbageCollected<XRBoundedReferenceSpace>(this->session(),
                                                        origin_offset);
 }

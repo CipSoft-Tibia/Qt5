@@ -1,4 +1,4 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -7,6 +7,10 @@
 See http://dev.chromium.org/developers/how-tos/depottools/presubmit-scripts
 for more details about the presubmit API built into depot_tools.
 """
+
+PRESUBMIT_VERSION = '2.0.0'
+
+USE_PYTHON3 = True
 
 LINT_FILTERS = [
   # Rvalue ref checks are unreliable.
@@ -37,6 +41,110 @@ _INCLUDE_ORDER_WARNING = (
 # Bypass the AUTHORS check for these accounts.
 _KNOWN_ROBOTS = set() | set(
     '%s@skia-public.iam.gserviceaccount.com' % s for s in ('pdfium-autoroll',))
+
+_THIRD_PARTY = 'third_party/'
+
+# Format: Sequence of tuples containing:
+# * String pattern or, if starting with a slash, a regular expression.
+# * Sequence of strings to show when the pattern matches.
+# * Error flag. True if a match is a presubmit error, otherwise it's a warning.
+# * Sequence of paths to *not* check (regexps).
+_BANNED_CPP_FUNCTIONS = (
+    (
+        r'/\busing namespace ',
+        (
+            'Using directives ("using namespace x") are banned by the Google',
+            'Style Guide (',
+            'https://google.github.io/styleguide/cppguide.html#Namespaces ).',
+            'Explicitly qualify symbols or use using declarations ("using',
+            'x::foo").',
+        ),
+        True,
+        [_THIRD_PARTY],
+    ),
+    (
+        r'/v8::Isolate::(?:|Try)GetCurrent()',
+        (
+            'v8::Isolate::GetCurrent() and v8::Isolate::TryGetCurrent() are',
+            'banned. Hold a pointer to the v8::Isolate that was entered. Use',
+            'v8::Isolate::IsCurrent() to check whether a given v8::Isolate is',
+            'entered.',
+        ),
+        True,
+        (),
+    ),
+)
+
+
+def _CheckNoBannedFunctions(input_api, output_api):
+  """Makes sure that banned functions are not used."""
+  warnings = []
+  errors = []
+
+  def _GetMessageForMatchingType(input_api, affected_file, line_number, line,
+                                 type_name, message):
+    """Returns an string composed of the name of the file, the line number where
+    the match has been found and the additional text passed as `message` in case
+    the target type name matches the text inside the line passed as parameter.
+    """
+    result = []
+
+    if input_api.re.search(r"^ *//",
+                           line):  # Ignore comments about banned types.
+      return result
+    if line.endswith(
+        " nocheck"):  # A // nocheck comment will bypass this error.
+      return result
+
+    matched = False
+    if type_name[0:1] == '/':
+      regex = type_name[1:]
+      if input_api.re.search(regex, line):
+        matched = True
+    elif type_name in line:
+      matched = True
+
+    if matched:
+      result.append('    %s:%d:' % (affected_file.LocalPath(), line_number))
+      for message_line in message:
+        result.append('      %s' % message_line)
+
+    return result
+
+  def IsExcludedFile(affected_file, excluded_paths):
+    local_path = affected_file.LocalPath()
+    for item in excluded_paths:
+      if input_api.re.match(item, local_path):
+        return True
+    return False
+
+  def CheckForMatch(affected_file, line_num, line, func_name, message, error):
+    problems = _GetMessageForMatchingType(input_api, f, line_num, line,
+                                          func_name, message)
+    if problems:
+      if error:
+        errors.extend(problems)
+      else:
+        warnings.extend(problems)
+
+  file_filter = lambda f: f.LocalPath().endswith(('.cc', '.cpp', '.h'))
+  for f in input_api.AffectedFiles(file_filter=file_filter):
+    for line_num, line in f.ChangedContents():
+      for func_name, message, error, excluded_paths in _BANNED_CPP_FUNCTIONS:
+        if IsExcludedFile(f, excluded_paths):
+          continue
+        CheckForMatch(f, line_num, line, func_name, message, error)
+
+  result = []
+  if (warnings):
+    result.append(
+        output_api.PresubmitPromptWarning('Banned functions were used.\n' +
+                                          '\n'.join(warnings)))
+  if (errors):
+    result.append(
+        output_api.PresubmitError('Banned functions were used.\n' +
+                                  '\n'.join(errors)))
+  return result
 
 
 def _CheckUnwantedDependencies(input_api, output_api):
@@ -264,6 +372,28 @@ def _CheckIncludeOrder(input_api, output_api):
   return results
 
 
+def _CheckLibcxxRevision(input_api, output_api):
+  """Makes sure that libcxx_revision is set correctly."""
+  if 'DEPS' not in [f.LocalPath() for f in input_api.AffectedFiles()]:
+    return []
+
+  script_path = input_api.os_path.join('testing', 'tools', 'libcxx_check.py')
+  buildtools_deps_path = input_api.os_path.join('buildtools',
+                                                'deps_revisions.gni')
+
+  try:
+    errors = input_api.subprocess.check_output(
+        [script_path, 'DEPS', buildtools_deps_path])
+  except input_api.subprocess.CalledProcessError as error:
+    msg = 'libcxx_check.py failed:'
+    long_text = error.output.decode('utf-8', 'ignore')
+    return [output_api.PresubmitError(msg, long_text=long_text)]
+
+  if errors:
+    return [output_api.PresubmitError(errors)]
+  return []
+
+
 def _CheckTestDuplicates(input_api, output_api):
   """Checks that pixel and javascript tests don't contain duplicates.
   We use .in and .pdf files, having both can cause race conditions on the bots,
@@ -293,37 +423,113 @@ def _CheckTestDuplicates(input_api, output_api):
       tests_added.append(path)
   return results
 
-def _CheckPNGFormat(input_api, output_api):
-  """Checks that .png files have a format that will be considered valid by our
-  test runners. If a file ends with .png, then it must be of the form
-  NAME_expected(_(skia|skiapaths))?(_(win|mac|linux))?.pdf.#.png"""
+
+def _CheckPngNames(input_api, output_api):
+  """Checks that .png files have the right file name format, which must be in
+  the form:
+
+  NAME_expected(_(agg|skia))?(_(linux|mac|win))?.pdf.\d+.png
+
+  This must be the same format as the one in testing/corpus's PRESUBMIT.py.
+  """
   expected_pattern = input_api.re.compile(
-      r'.+_expected(_(skia|skiapaths))?(_(win|mac|linux))?\.pdf\.\d+.png')
+      r'.+_expected(_(agg|skia))?(_(linux|mac|win))?\.pdf\.\d+.png')
   results = []
   for f in input_api.AffectedFiles(include_deletes=False):
     if not f.LocalPath().endswith('.png'):
       continue
     if expected_pattern.match(f.LocalPath()):
       continue
-    results.append(output_api.PresubmitError(
-        'PNG file %s does not have the correct format' % f.LocalPath()))
+    results.append(
+        output_api.PresubmitError(
+            'PNG file %s does not have the correct format' % f.LocalPath()))
   return results
 
-def CheckChangeOnUpload(input_api, output_api):
-  cpp_source_filter = lambda x: input_api.FilterSourceFile(
-      x, files_to_check=(r'\.(?:c|cc|cpp|h)$',))
 
+def _CheckUselessForwardDeclarations(input_api, output_api):
+  """Checks that added or removed lines in non third party affected
+     header files do not lead to new useless class or struct forward
+     declaration.
+  """
   results = []
+  class_pattern = input_api.re.compile(r'^class\s+(\w+);$',
+                                       input_api.re.MULTILINE)
+  struct_pattern = input_api.re.compile(r'^struct\s+(\w+);$',
+                                        input_api.re.MULTILINE)
+  for f in input_api.AffectedFiles(include_deletes=False):
+    if f.LocalPath().startswith('third_party'):
+      continue
+
+    if not f.LocalPath().endswith('.h'):
+      continue
+
+    contents = input_api.ReadFile(f)
+    fwd_decls = input_api.re.findall(class_pattern, contents)
+    fwd_decls.extend(input_api.re.findall(struct_pattern, contents))
+
+    useless_fwd_decls = []
+    for decl in fwd_decls:
+      count = sum(
+          1
+          for _ in input_api.re.finditer(r'\b%s\b' %
+                                         input_api.re.escape(decl), contents))
+      if count == 1:
+        useless_fwd_decls.append(decl)
+
+    if not useless_fwd_decls:
+      continue
+
+    for line in f.GenerateScmDiff().splitlines():
+      if (line.startswith('-') and not line.startswith('--') or
+          line.startswith('+') and not line.startswith('++')):
+        for decl in useless_fwd_decls:
+          if input_api.re.search(r'\b%s\b' % decl, line[1:]):
+            results.append(
+                output_api.PresubmitPromptWarning(
+                    '%s: %s forward declaration is no longer needed' %
+                    (f.LocalPath(), decl)))
+            useless_fwd_decls.remove(decl)
+
+  return results
+
+
+def ChecksCommon(input_api, output_api):
+  results = []
+
+  results.extend(
+      input_api.canned_checks.PanProjectChecks(
+          input_api, output_api, project_name='PDFium'))
+
+  # PanProjectChecks() doesn't consider .gn/.gni files, so check those, too.
+  files_to_check = (
+      r'.*\.gn$',
+      r'.*\.gni$',
+  )
+  results.extend(
+      input_api.canned_checks.CheckLicense(
+          input_api,
+          output_api,
+          project_name='PDFium',
+          source_file_filter=lambda x: input_api.FilterSourceFile(
+              x, files_to_check=files_to_check)))
+
+  return results
+
+
+def CheckChangeOnUpload(input_api, output_api):
+  results = []
+  results.extend(_CheckNoBannedFunctions(input_api, output_api))
   results.extend(_CheckUnwantedDependencies(input_api, output_api))
   results.extend(
       input_api.canned_checks.CheckPatchFormatted(input_api, output_api))
   results.extend(
-      input_api.canned_checks.CheckChangeLintsClean(input_api, output_api,
-                                                    cpp_source_filter,
-                                                    LINT_FILTERS))
+      input_api.canned_checks.CheckChangeLintsClean(
+          input_api, output_api, lint_filters=LINT_FILTERS))
   results.extend(_CheckIncludeOrder(input_api, output_api))
+  results.extend(_CheckLibcxxRevision(input_api, output_api))
   results.extend(_CheckTestDuplicates(input_api, output_api))
-  results.extend(_CheckPNGFormat(input_api, output_api))
+  results.extend(_CheckPngNames(input_api, output_api))
+  results.extend(_CheckUselessForwardDeclarations(input_api, output_api))
 
   author = input_api.change.author_email
   if author and author not in _KNOWN_ROBOTS:
@@ -344,6 +550,9 @@ def CheckChangeOnUpload(input_api, output_api):
                 input_api,
                 output_api,
                 full_path,
-                files_to_check=[r'^PRESUBMIT_test\.py$']))
+                files_to_check=[r'^PRESUBMIT_test\.py$'],
+                run_on_python2=not USE_PYTHON3,
+                run_on_python3=USE_PYTHON3,
+                skip_shebang_check=True))
 
   return results

@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qcalendar.h"
 #include "qcalendarbackend_p.h"
 #include "qgregoriancalendar_p.h"
@@ -40,154 +14,244 @@
 #include "qislamiccivilcalendar_p.h"
 #endif
 
+#include <private/qflatmap_p.h>
 #include "qatomic.h"
 #include "qdatetime.h"
 #include "qcalendarmath_p.h"
 #include <qhash.h>
-#include <qmutex.h>
-#include <private/qlocking_p.h>
-#include <qdebug.h>
+#include <qreadwritelock.h>
 
 #include <vector>
 
 QT_BEGIN_NAMESPACE
 
-static const QCalendarBackend *backendFromEnum(QCalendar::System system);
-
-namespace {
-
-struct CalendarName : public QString
+struct QCalendarRegistryCaseInsensitiveAnyStringViewLessThan
 {
-    CalendarName(const QString &name) : QString(name) {}
+    struct is_transparent {};
+    bool operator()(QAnyStringView lhs, QAnyStringView rhs) const
+    {
+        return QAnyStringView::compare(lhs, rhs, Qt::CaseInsensitive) < 0;
+    }
 };
 
-inline bool operator==(const CalendarName &u, const CalendarName &v)
+namespace QtPrivate {
+
+/*
+    \internal
+    Handles calendar backend registration.
+*/
+class QCalendarRegistry
 {
-    return u.compare(v, Qt::CaseInsensitive) == 0;
-}
+    Q_DISABLE_COPY_MOVE(QCalendarRegistry); // This is a singleton.
 
-inline uint qHash(const CalendarName &key, uint seed = 0) noexcept
-{
-    return qHash(key.toLower(), seed);
-}
+    static constexpr qsizetype ExpectedNumberOfBackends = qsizetype(QCalendar::System::Last) + 1;
 
-static QBasicMutex registryMutex; // Protects registry from concurrent access
-struct Registry
-{
-    std::vector<QCalendarBackend *> byId;
-    QHash<CalendarName, QCalendarBackend *> byName;
-    QAtomicPointer<const QCalendarBackend> gregorianCalendar = nullptr;
-    QAtomicInteger<int> status = 0; // 1: populated, 2: destructing
-
-    Registry()
-    {
-        byId.resize(int(QCalendar::System::Last) + 1);
-    }
-
-    ~Registry()
-    {
-        status.storeRelaxed(2);
-        const auto lock = qt_scoped_lock(registryMutex);
-        qDeleteAll(byId);
-    }
-
-    bool registerName(QCalendarBackend *calendar, const QString &name)
-    {
-        Q_ASSERT(!name.isEmpty());
-        if (status.loadRelaxed() > 1 || name.isEmpty())
-            return false;
-        const auto lock = qt_scoped_lock(registryMutex);
-
-        const auto found = byName.find(name);
-        if (found != byName.end()) {
-            // Re-registering a calendar with a name it has already is OK (and
-            // can be used to test whether its constructor successfully
-            // registered its primary name).
-            return found.value() == calendar;
-        }
-        byName.insert(name, calendar);
-        return true;
-    }
-    void addCalendar(QCalendarBackend *calendar, const QString &name, QCalendar::System id)
-    {
-        if (status.loadRelaxed() > 1 || name.isEmpty() || !registerName(calendar, name))
-            return;
-        const auto lock = qt_scoped_lock(registryMutex);
-        if (id == QCalendar::System::User) {
-            byId.push_back(calendar);
-        } else {
-            Q_ASSERT(byId.size() > size_t(id));
-            Q_ASSERT(byId[size_t(id)] == nullptr);
-            byId[size_t(id)] = calendar;
-        }
-        if (id == QCalendar::System::Gregorian) {
-            // We succeeded in registering the name, so must be the first
-            // instantiator of QGregorianCalendar to get here.
-            const bool ok = gregorianCalendar.testAndSetRelease(nullptr, calendar);
-#if defined(QT_FORCE_ASSERTS) || !defined(QT_NO_DEBUG)
-            Q_ASSERT(ok);
-#else
-            Q_UNUSED(ok);
-#endif
-        }
-    }
     /*
-        \internal
-        Ensures each \c{enum}-available calendar has been instantiated.
-
-        This arranges for each to register itself by name; it only does anything on
-        its first call, which ensures that name-based lookups can always find all
-        the calendars available via the \c enum.
+        Lock protecting the registry from concurrent modification.
     */
-    void populate()
+    QReadWriteLock lock;
+
+    /*
+        Vector containing all registered backends.
+
+        The indices 0 to \c QCalendar::System::Last inclusive are allocated
+        for system backends and always present (but may be null).
+    */
+    std::vector<QCalendarBackend *> byId;
+
+    /*
+        Backends registered by name.
+
+        Each backend may be registered with several names associated with it.
+        The names are case-insensitive.
+    */
+    QFlatMap<
+        QString, QCalendarBackend *,
+        QCalendarRegistryCaseInsensitiveAnyStringViewLessThan,
+        QStringList,
+        std::vector<QCalendarBackend *>
+    > byName;
+
+    /*
+        Pointer to the Gregorian backend for faster lockless access to it.
+
+        This pointer may be null if the Gregorian backend is not yet registered.
+        This pointer may only be set once and only when write lock is held on
+        the registry.
+    */
+    QAtomicPointer<const QCalendarBackend> gregorianCalendar = nullptr;
+
+    enum : int {
+        Unpopulated, // The standard backends may not yet be created
+        Populated, // All standard backends were created
+        IsBeingDestroyed, // The registry and the backends are being destroyed
+    };
+
+    /*
+        Fast way to check whether the standard calendars were populated.
+
+        The status should only be changed while the write lock is held.
+    */
+    QAtomicInt status = Unpopulated;
+
+    void ensurePopulated();
+    QCalendarBackend *registerSystemBackendLockHeld(QCalendar::System system);
+    void registerBackendLockHeld(QCalendarBackend *backend, const QStringList &names,
+                                 QCalendar::System system);
+
+public:
+    QCalendarRegistry()
     {
-        if (status.loadRelaxed())
-            return;
-
-        for (int i = 0; i <= int(QCalendar::System::Last); ++i) {
-            {
-                const auto lock = qt_scoped_lock(registryMutex); // so we can check byId[i]
-                if (status.loadRelaxed()) // Might as well check while we're locked
-                    return;
-                if (byId[i])
-                    continue;
-            }
-            (void)backendFromEnum(QCalendar::System(i));
-        }
-
-        status.testAndSetRelease(0, 1);
+        byId.resize(ExpectedNumberOfBackends);
+        byName.reserve(ExpectedNumberOfBackends * 2); // assume one alias on average
     }
+
+    ~QCalendarRegistry();
+
+    bool isBeingDestroyed() const { return status.loadRelaxed() == IsBeingDestroyed; }
+
+    void registerCustomBackend(QCalendarBackend *backend, const QStringList &names);
+
+    QStringList availableCalendars();
+
+    /*
+        Returns backend for Gregorian calendar.
+
+        The backend is returned without locking the registry if possible.
+    */
+    const QCalendarBackend *gregorian()
+    {
+        const QCalendarBackend *backend = gregorianCalendar.loadAcquire();
+        if (Q_LIKELY(backend != nullptr))
+            return backend;
+        return fromEnum(QCalendar::System::Gregorian);
+    }
+
+    /*
+        Returns \a true if the argument matches the registered Gregorian backend.
+
+        \a backend should not be \nullptr.
+    */
+    bool isGregorian(const QCalendarBackend *backend) const
+    {
+        return backend == gregorianCalendar.loadRelaxed();
+    }
+
+    const QCalendarBackend *fromName(QAnyStringView name);
+    const QCalendarBackend *fromIndex(size_t index);
+    const QCalendarBackend *fromEnum(QCalendar::System system);
+
+    QStringList backendNames(const QCalendarBackend *backend);
 };
 
+/*
+    Destroy the registry.
+
+    This destroys all registered backends. This destructor should only be called
+    in a single-threaded context at program exit.
+*/
+QCalendarRegistry::~QCalendarRegistry()
+{
+    QWriteLocker locker(&lock);
+
+    status.storeRelaxed(IsBeingDestroyed);
+
+    qDeleteAll(byId);
 }
 
-Q_GLOBAL_STATIC(Registry, calendarRegistry);
+/*
+    Registers a custom backend.
 
-// Must not be called in a thread that's holding registryMutex locked,
-// since it calls constructors, which need to register.
-static const QCalendarBackend *backendFromEnum(QCalendar::System system)
+    A new unique ID is allocated for the \a backend. The registry takes
+    ownership of the \a backend.
+
+    The \a names of the backend are also registered. Already registered
+    names are not updated.
+
+    The \a backend should not be already registered.
+
+    The \a backend should be fully initialized. It becomes available
+    to other threads before this function returns.
+*/
+void QCalendarRegistry::registerCustomBackend(QCalendarBackend *backend, const QStringList &names)
 {
+    Q_ASSERT(!backend->calendarId().isValid());
+
+    ensurePopulated();
+
+    QWriteLocker locker(&lock);
+    registerBackendLockHeld(backend, names, QCalendar::System::User);
+}
+
+/*
+    Ensures all system calendars have been instantiated.
+
+    This arranges for each system backend to be registered. The method only
+    does anything on its first call, which ensures that name-based lookups can
+    always find all the calendars available via the \c QCalendar::System other
+    than \c QCalendar::System::User.
+*/
+void QCalendarRegistry::ensurePopulated()
+{
+    if (Q_LIKELY(status.loadAcquire() != Unpopulated))
+        return;
+
+    QWriteLocker locker(&lock);
+    if (status.loadAcquire() != Unpopulated)
+        return;
+
+    for (int i = 0; i <= int(QCalendar::System::Last); ++i) {
+        if (byId[i] == nullptr)
+            registerSystemBackendLockHeld(QCalendar::System(i));
+    }
+
+#if defined(QT_FORCE_ASSERTS) || !defined(QT_NO_DEBUG)
+    auto oldValue = status.fetchAndStoreRelease(Populated);
+    Q_ASSERT(oldValue == Unpopulated);
+#else
+    status.storeRelease(Populated);
+#endif
+}
+
+/*
+    Helper functions for system backend registration.
+
+    This function must be called with write lock held on the registry.
+
+    \sa registerSystemBackend
+*/
+QCalendarBackend *QCalendarRegistry::registerSystemBackendLockHeld(QCalendar::System system)
+{
+    Q_ASSERT(system != QCalendar::System::User);
+
     QCalendarBackend *backend = nullptr;
+    QStringList names;
+
     switch (system) {
     case QCalendar::System::Gregorian:
         backend = new QGregorianCalendar;
+        names = QGregorianCalendar::nameList();
         break;
 #ifndef QT_BOOTSTRAPPED
     case QCalendar::System::Julian:
         backend = new QJulianCalendar;
+        names = QJulianCalendar::nameList();
         break;
     case QCalendar::System::Milankovic:
         backend = new QMilankovicCalendar;
+        names = QMilankovicCalendar::nameList();
         break;
 #endif
 #if QT_CONFIG(jalalicalendar)
     case QCalendar::System::Jalali:
         backend = new QJalaliCalendar;
+        names = QJalaliCalendar::nameList();
         break;
 #endif
 #if QT_CONFIG(islamiccivilcalendar)
     case QCalendar::System::IslamicCivil:
         backend = new QIslamicCivilCalendar;
+        names = QIslamicCivilCalendar::nameList();
         break;
 #else // When highest-numbered system isn't enabled, ensure we have a case for Last:
     case QCalendar::System::Last:
@@ -196,21 +260,177 @@ static const QCalendarBackend *backendFromEnum(QCalendar::System system)
         Q_UNREACHABLE();
     }
     if (!backend)
-        return backend;
-    const QString name = backend->name();
-    // Check for successful registration:
-    if (calendarRegistry->registerName(backend, name)) {
+        return nullptr;
+
+    registerBackendLockHeld(backend, names, system);
+    Q_ASSERT(backend == byId[size_t(system)]);
+
+    return backend;
+}
+
+/*
+    Helper function for backend registration.
+
+    This function must be called with write lock held on the registry.
+
+    \sa registerBackend
+*/
+void QCalendarRegistry::registerBackendLockHeld(QCalendarBackend *backend, const QStringList &names,
+                                                QCalendar::System system)
+{
+    Q_ASSERT(!backend->calendarId().isValid());
+
+    auto index = size_t(system);
+
+    // Note: it is important to update the calendar ID before making
+    // the calendar available for queries.
+    if (system == QCalendar::System::User) {
+        backend->setIndex(byId.size());
+        byId.push_back(backend);
+    } else if (byId[index] == nullptr) {
+        backend->setIndex(index);
+        if (system == QCalendar::System::Gregorian) {
 #if defined(QT_FORCE_ASSERTS) || !defined(QT_NO_DEBUG)
-        const auto lock = qt_scoped_lock(registryMutex);
-        Q_ASSERT(backend == calendarRegistry->byId[size_t(system)]);
-#endif // else Q_ASSERT() is a no-op and we don't need the lock
-        return backend;
+            auto oldValue = gregorianCalendar.fetchAndStoreRelease(backend);
+            Q_ASSERT(oldValue == nullptr);
+#else
+            gregorianCalendar.storeRelease(backend);
+#endif
+        }
+
+        Q_ASSERT(byId.size() > index);
+        Q_ASSERT(byId[index] == nullptr);
+        byId[index] = backend;
     }
-    // Duplicate registration: caller can be sure that byId[system] is correctly
-    // set, provided system <= Last.
-    delete backend;
+
+    // Register any names.
+    for (const auto &name : names) {
+        auto [it, inserted] = byName.try_emplace(name, backend);
+        if (!inserted) {
+            Q_ASSERT(system == QCalendar::System::User);
+            qWarning("Cannot register name %ls (already in use) for %ls",
+                     qUtf16Printable(name), qUtf16Printable(backend->name()));
+        }
+    }
+}
+
+/*
+    Returns a list of names of the available calendar systems.
+
+    Any QCalendarBackend sub-class must be registered before being exposed to Date
+    and Time APIs.
+
+    \sa fromName()
+*/
+QStringList QCalendarRegistry::availableCalendars()
+{
+    ensurePopulated();
+
+    QReadLocker locker(&lock);
+    return byName.keys();
+}
+
+/*
+    Returns a pointer to a named calendar backend.
+
+    If the given \a name is present in availableCalendars(), the backend
+    matching it is returned. Otherwise, \nullptr is returned. Matching of
+    names ignores case.
+
+    \sa availableCalendars(), fromEnum(), fromIndex()
+*/
+const QCalendarBackend *QCalendarRegistry::fromName(QAnyStringView name)
+{
+    ensurePopulated();
+
+    QReadLocker locker(&lock);
+    return byName.value(name, nullptr);
+}
+
+/*
+    Returns a pointer to a calendar backend, specified by index.
+
+    If a calendar with ID \a index is known to the calendar registry, the backend
+    with this ID is returned. Otherwise, \nullptr is returned.
+
+    \sa fromEnum(), calendarId()
+*/
+const QCalendarBackend *QCalendarRegistry::fromIndex(size_t index)
+{
+    {
+        QReadLocker locker(&lock);
+
+        if (index >= byId.size())
+            return nullptr;
+
+        if (auto backend = byId[index])
+            return backend;
+    }
+
+    if (index <= size_t(QCalendar::System::Last))
+        return fromEnum(QCalendar::System(index));
+
     return nullptr;
 }
+
+/*
+    Returns a pointer to a calendar backend, specified by \a system.
+
+    This will instantiate the indicated calendar (which will enable fromName()
+    to return it subsequently), but only for the Qt-supported calendars for
+    which (where relevant) the appropriate feature has been enabled.
+
+    \a system should be a member of \a QCalendar::System other than
+    \a QCalendar::System::User.
+
+    \sa fromName(), fromId()
+*/
+const QCalendarBackend *QCalendarRegistry::fromEnum(QCalendar::System system)
+{
+    Q_ASSERT(system <= QCalendar::System::Last);
+    auto index = size_t(system);
+
+    {
+        QReadLocker locker(&lock);
+        Q_ASSERT(byId.size() > index);
+        if (auto backend = byId[index])
+            return backend;
+    }
+
+    QWriteLocker locker(&lock);
+
+    // Check if the backend was registered after releasing the read lock above.
+    if (auto backend = byId[index])
+        return backend;
+
+    return registerSystemBackendLockHeld(system);
+}
+
+/*
+    Returns a list of names \a backend was registered with.
+*/
+QStringList QCalendarRegistry::backendNames(const QCalendarBackend *backend)
+{
+    QStringList l;
+    l.reserve(byName.size()); // too large, but never really large, so ok
+
+    QT_WARNING_PUSH
+    // Clang complains about the reference still causing a copy. The reference is idiomatic, but
+    // runs afoul of QFlatMap's iterators which return a pair of references instead of a reference
+    // to pair. Suppress the warning, because `const auto [key, value]` would look wrong.
+    QT_WARNING_DISABLE_CLANG("-Wrange-loop-analysis")
+    for (const auto &[key, value] : byName) {
+        if (value == backend)
+            l.push_back(key);
+    }
+    QT_WARNING_POP
+
+    return l;
+}
+
+} // namespace QtPrivate
+
+Q_GLOBAL_STATIC(QtPrivate::QCalendarRegistry, calendarRegistry);
 
 /*!
     \since 5.14
@@ -222,15 +442,16 @@ static const QCalendarBackend *backendFromEnum(QCalendar::System system)
     \brief The QCalendarBackend class provides basic calendaring functions.
 
     QCalendarBackend provides the base class on which all calendar types are
-    implemented. On construction, the backend is registered with its primary
-    name.
+    implemented. The backend must be registered before it is available via
+    QCalendar API. The registration for system backends is arranged by
+    the calendar registry. Custom backends may be registered using the
+    \c registerCustomBackend() method.
 
-    A backend, once successfully registered with its primary name, may also be
-    registered with aliases, where the calendar is known by several
-    names. Registering with the name used by CLDR (the Unicode consortium's
-    Common Locale Data Repository) is recommended, particularly when interacting
-    with third-party software. Once a backend is registered for a name,
-    QCalendar can be constructed using that name to select the backend.
+    A backend may also be registered by one or more names. Registering with the
+    name used by CLDR (the Unicode consortium's Common Locale Data Repository)
+    is recommended, particularly when interacting with third-party software.
+    Once a backend is registered for a name, QCalendar can be constructed using
+    that name to select the backend.
 
     Each built-in backend has a distinct primary name and all built-in backends
     are instantiated before any custom backend is registered, to prevent custom
@@ -240,147 +461,179 @@ static const QCalendarBackend *backendFromEnum(QCalendar::System system)
     pure virtual methods. It may also override some other virtual methods, as
     needed.
 
-    Most backends are pure code, with no data elements. Such backends should
-    normally be implemented as singletons. For a backend to be added to the
-    QCalendar::System \c enum, it must be such a singleton, with a case in
-    backendFromEnum()'s switch statement (above) to instantiate it.
+    Most backends are pure code, with only one data element (this base-classe's
+    \c m_id). Such backends should normally be implemented as singletons.
+
+    The backends may be used by multiple threads simultaneously. The virtual
+    methods must be implemented in a \l {thread-safe} way.
 
     \section1 Instantiating backends
 
     Backends may be defined by third-party, plugin or user code. When such
-    custom backends are instantiated, in their calls to the QCalendarBackend
-    base-class constructor, each instance should pass a distinct primary name to
-    the base-class constructor and omit the \c system parameter.
+    custom backends are registered they shall be allocated a unique ID, by
+    which client code may access it. A custom backend instance can have no names
+    if access by name is not needed, or impractical (e.g. because the backend
+    is not a singleton and constructing names for each instance would not make
+    sense). If a custom backend has names that are already registered for
+    another backend, those names are ignored.
 
     A backend class that has instance variables as well as code may be
-    instantiated many times, each with a distinct primary name, to implement
+    instantiated many times, each with a distinct set of names, to implement
     distinct backends - presumably variants on some parameterized calendar.
     Each instance is then a distinct backend. A pure code backend class shall
     typically only be instantiated once, as it is only capable of representing
     one backend.
 
     Each backend should be instantiated exactly once, on the heap (using the C++
-    \c new operator); this will register it with the QCalendar implementation
-    code and ensure it is available, by its primary name, to all code that may
-    subsequently need it.  It will be deleted on program termination along with
-    the registry in which QCalendar records backends.
+    \c new operator), so that the registry can take ownership of it after
+    registration.
 
-    The single exception to this is that each backend's instantiator should
-    verify that it was registered successfully with its primary name. It can do
-    this by calling registerAlias() with that name; this will return true if it
-    is already registered with the name. If it returns false, the instantiation
-    has used a name that was already in use so the new backend has not been
-    registered and the instantiator retains ownership of the backend instance;
-    it will not be accessible to QCalendar. (Since registerAlias() is protected,
-    a custom backend's class shall typically need to provide a method to perform
-    this check for its instantiator.)
-
-    Built-in backends, identified by QCalendar::System values other than User,
-    should only be instantiated by code in the implementation of QCalendar; no
-    other code should ever instantiate one. As noted above, such a backend must
-    be a singleton. Its constructor passes down the \c enum member that
-    identifies it as \c system to the base-class constructor.
+    Built-in backends, identified by \c QCalendar::System values other than
+    \c{User}, should only be registered by \c{QCalendarRegistry::fromEnum()};
+    no other code should ever register one, this guarantees that such a backend
+    will be a singleton.
 
     The shareable base-classes for backends, QRomanCalendar and QHijriCalendar,
     are not themselves identified by QCalendar::System and may be used as
     base-classes for custom calendar backends, but cannot be instantiated
     themselves.
 
-    \sa registerAlias(), QDate, QDateTime, QDateEdit, QDateTimeEdit,
-        QCalendarWidget
+    \sa calendarId(), QDate, QDateTime, QDateEdit,
+        QDateTimeEdit, QCalendarWidget
 */
 
 /*!
-    Constructs the calendar and registers it under \a name using \a system.
+    Destroys the calendar backend.
 
-    On successful registration, the calendar backend registry takes over
-    ownership of the instance and shall delete it on program exit in the course
-    of the registry's own destruction. The instance can determine whether it was
-    successfully registered by calling registerAlias() with the same \a name it
-    passed to this base-class constructor. If that returns \c false, the
-    instance has not been registered, QCalendar cannot use it, it should not
-    attempt to register any other aliases and the code that instantiated the
-    backend is responsible for deleting it.
+    Each calendar backend, once instantiated and successfully registered by ID,
+    shall exist until it is destroyed by the registry. Destroying a
+    successfully-registered backend otherwise may leave existing QCalendar
+    instances referencing the destroyed calendar, with undefined results.
 
-    The \a system is optional and should only be passed by built-in
-    implementations of the standard calendars documented in \l
-    QCalendar::System. Custom backends should not pass \a system.
+    If a backend has not been registered it may safely be deleted.
 
-    Only one backend instance should ever be registered for any given \a system:
-    in the event of a backend being created when one with the same \a system
-    already exists, the new backend is not registered. The \a name passed with a
-    \a system (other than \l{QCalendar::System}{User}) must be the \c{name()} of
-    the backend constructed.
-
-    The \a name must be non-empty and unique; after one backend has been
-    registered for a name or alias, no other backend can be registered with that
-    name. The presence of another backend registered with the same name may mean
-    the backend is redundant, as the system already has a backend to handle the
-    given calendar type.
-
-    \note \c{QCalendar(name).isValid()} will return true precisely when the
-    given \c name is in use already. This can be used as a test before
-    instantiating a backend with the given \c name.
-
-    \sa calendarSystem(), registerAlias()
-*/
-QCalendarBackend::QCalendarBackend(const QString &name, QCalendar::System system)
-{
-    Q_ASSERT(!name.isEmpty());
-    // Will lock the registry mutex on its own, so no need to do it here:
-    calendarRegistry->addCalendar(this, name, system);
-}
-
-/*!
-    Destroys the calendar.
-
-    Client code should only call this if instantiation failed to register the
-    backend, as revealed by the instanee failing to registerAlias() with the
-    name it passed to this base-class's constructor. Only a backend that fails
-    to register can safely be deleted; and the client code that instantiated it
-    is indeed responsible for deleting it.
-
-    Once a backend has been successfully registered, there may be QCalendar
-    instances using it; deleting it while they still reference it would lead to
-    undefined behavior. Such a backend shall be deleted when the calendar
-    backend registry is deleted on program exit; the registry takes over
-    ownership of the instance on successful registration.
-
-    \sa registerAlias()
+    \sa calendarId()
 */
 QCalendarBackend::~QCalendarBackend()
 {
-    // Either the registry is destroying itself, in which case it takes care of
-    // dropping any references to this, or this never got registered, so there
-    // is no need to tell the registry to forget it.
+    Q_ASSERT(!m_id.isValid() || calendarRegistry.isDestroyed()
+             || calendarRegistry->isBeingDestroyed());
 }
+
+/*!
+    \fn QString QCalendarBackend::name() const
+    Returns the primary name of the calendar.
+ */
+
+/*!
+    Returns list of names this backend was registered with.
+
+    The list is a subset of the names passed to \c registerCustomBackend().
+    Some names passed during the registration may not be associated
+    with a backend if they were claimed by another backend first.
+
+    \sa registerCustomBackend()
+*/
+QStringList QCalendarBackend::names() const
+{
+    if (Q_UNLIKELY(calendarRegistry.isDestroyed()))
+        return {};
+
+    return calendarRegistry->backendNames(this);
+}
+
+/*!
+    Set the internal index of the backed to the specified value.
+
+    This method exists to allow QCalendarRegistry to update the backend ID
+    after registration without exposing it in public API for QCalendar.
+ */
+void QCalendarBackend::setIndex(size_t index)
+{
+    Q_ASSERT(!m_id.isValid());
+    m_id.id = index;
+}
+
+/*!
+    Register this backend as a custom backend.
+
+    The backend should not already be registered. This method should only be
+    called on objects that are completely initialized because they become
+    available to other threads immediately. In particular, this function should
+    not be called from backend constructors.
+
+    The backend is also registered by names passed in \a names. Only the names
+    that are not already registered are associated with the backend. The name
+    matching is case-insensitive. The list of names associated with the backend
+    can be queried using \c names() method after successful registration.
+
+    Returns the new ID assigned to this backend. If its isValid() is \c true,
+    the calendar registry has taken ownership of the object; this ID can then
+    be used to create \c QCalendar instances. Otherwise, registration failed
+    and the caller is responsible for destruction of the backend, which shall
+    not be available for use by \c QCalendar. Failure should normally only
+    happen if registration is attempted during program termination.
+
+    \sa names()
+*/
+QCalendar::SystemId QCalendarBackend::registerCustomBackend(const QStringList &names)
+{
+    Q_ASSERT(!m_id.isValid());
+
+    if (Q_LIKELY(!calendarRegistry.isDestroyed()))
+        calendarRegistry->registerCustomBackend(this, names);
+
+    return m_id;
+}
+
+bool QCalendarBackend::isGregorian() const
+{
+    if (Q_UNLIKELY(calendarRegistry.isDestroyed()))
+        return false;
+
+    return calendarRegistry->isGregorian(this);
+}
+
+/*!
+    \since 6.2
+    \fn QCalendar::SystemId QCalendarBackend::calendarId() const
+
+    Each backend is allocated an ID when successfully registered. A backend whose
+    calendarId() has isValid() \c{false} has not been registered; it also cannot
+    be used, as it is not known to any of the available ways to create a QCalendar.
+
+    \sa calendarSystem(), fromId()
+*/
 
 /*!
     The calendar system of this calendar.
 
-    Each calendar backend constructible from the QCalendar::System \c enum
-    should return the member of that \c enum that produces it. Other calendars
-    should return User.
-
-    \sa QCalendarBackend::fromEnum()
+    \sa fromEnum(), calendarId()
 */
 QCalendar::System QCalendarBackend::calendarSystem() const
 {
-    return QCalendar::System::User;
+    return m_id.isInEnum() ? QCalendar::System(m_id.index()) : QCalendar::System::User;
 }
 
-/*!
-    \fn QString QCalendarBackend::name() const;
+/*
+    Create local variable d containing the backend associated with a QCalendar
+    instance unless the calendar registry is destroyed together with all backends,
+    then return nullptr.
 
-    This pure virtual method should be overloaded by each backend implementation
-    to return the name that the backend passes to the base-class as its name.
+    This assumes that the registry is only destroyed in single threaded context.
 */
+#define SAFE_D() const auto d = Q_UNLIKELY(calendarRegistry.isDestroyed()) ? nullptr : d_ptr
 
 /*!
     The primary name of this calendar.
+
+    The calendar may also be known by some aliases. A calendar instantiated by
+    name may use such an alias, in which case its name() need not match the
+    alias by which it was instantiated.
 */
 QString QCalendar::name() const
 {
+    SAFE_D();
     return d ? d->name() : QString();
 }
 
@@ -611,7 +864,7 @@ int QCalendarBackend::maximumMonthsInYear() const
  */
 int QCalendarBackend::dayOfWeek(qint64 jd) const
 {
-    return QRoundingDown::qMod(jd, 7) + 1;
+    return QRoundingDown::qMod<7>(jd) + 1;
 }
 
 // Month and week-day name look-ups (implemented in qlocale.cpp):
@@ -694,7 +947,7 @@ int QCalendarBackend::dayOfWeek(qint64 jd) const
 
 /*!
     \fn QString QCalendarBackend::dateTimeToString(QStringView format, const QDateTime &datetime,
-                                                   const QDate &dateOnly, const QTime &timeOnly,
+                                                   QDate dateOnly, QTime timeOnly,
                                                    const QLocale &locale) const
 
     Returns a string representing a given date, time or date-time.
@@ -722,40 +975,14 @@ int QCalendarBackend::dayOfWeek(qint64 jd) const
     QCalendarBackend sub-class must be registered before being exposed to Date
     and Time APIs.
 
-    \sa registerAlias(), fromName()
+    \sa fromName()
 */
 QStringList QCalendarBackend::availableCalendars()
 {
-    if (calendarRegistry.isDestroyed())
+    if (Q_UNLIKELY(calendarRegistry.isDestroyed()))
         return {};
-    calendarRegistry->populate();
-    const auto registryLock = qt_scoped_lock(registryMutex);
-    return QStringList(calendarRegistry->byName.keyBegin(), calendarRegistry->byName.keyEnd());
-}
 
-/*!
-    Registers an alias for this calendar backend. Once a backend is registered,
-    its name will be included in the list of available calendars and the
-    calendar can be instantiated by name.
-
-    Returns \c false if the given \a name is already in use by a different
-    backend or \c true if this calendar is already registered with this
-    name. (This can be used, with its primary name, to test whether a backend's
-    construction successfully registered it.) Otherwise it registers this
-    calendar backend for this name and returns \c true.
-
-    \sa availableCalendars(), fromName()
-*/
-bool QCalendarBackend::registerAlias(const QString &name)
-{
-    if (calendarRegistry.isDestroyed() || name.isEmpty())
-        return false;
-    // Constructing this accessed the registry, so ensured it exists:
-    Q_ASSERT(calendarRegistry.exists());
-
-    // Not taking the lock on the registry here because it's just one call
-    // (which internally locks anyway).
-    return calendarRegistry->registerName(this, name);
+    return calendarRegistry->availableCalendars();
 }
 
 /*!
@@ -763,36 +990,34 @@ bool QCalendarBackend::registerAlias(const QString &name)
     Returns a pointer to a named calendar backend.
 
     If the given \a name is present in availableCalendars(), the backend
-    matching it is returned; otherwise, \c nullptr is returned. Matching of
-    names ignores case. Note that this won't provoke construction of a calendar
-    backend, it will only return ones that have been instantiated (and not yet
-    destroyed) by some other means. However, calendars available via the
-    QCalendar::System \c enum are always registered when this is called.
+    matching it is returned; otherwise, \nullptr is returned. Matching of
+    names ignores case.
 
-    \sa availableCalendars(), registerAlias(), fromEnum()
+    \sa availableCalendars(), fromEnum(), fromId()
 */
-const QCalendarBackend *QCalendarBackend::fromName(QStringView name)
+const QCalendarBackend *QCalendarBackend::fromName(QAnyStringView name)
 {
-    if (calendarRegistry.isDestroyed())
+    if (Q_UNLIKELY(calendarRegistry.isDestroyed()))
         return nullptr;
-    calendarRegistry->populate();
-    const auto registryLock = qt_scoped_lock(registryMutex);
-    auto it = calendarRegistry->byName.find(name.toString());
-    return it == calendarRegistry->byName.end() ? nullptr : *it;
+
+    return calendarRegistry->fromName(name);
 }
 
 /*!
     \internal
-    \overload
- */
-const QCalendarBackend *QCalendarBackend::fromName(QLatin1String name)
+    Returns a pointer to a calendar backend, specified by ID.
+
+    If a calendar with ID \a id is known to the calendar registry, the backend
+    with this ID is returned; otherwise, \nullptr is returned.
+
+    \sa fromEnum(), calendarId()
+*/
+const QCalendarBackend *QCalendarBackend::fromId(QCalendar::SystemId id)
 {
-    if (calendarRegistry.isDestroyed())
+    if (Q_UNLIKELY(calendarRegistry.isDestroyed() || !id.isValid()))
         return nullptr;
-    calendarRegistry->populate();
-    const auto registryLock = qt_scoped_lock(registryMutex);
-    auto it = calendarRegistry->byName.find(QString(name));
-    return it == calendarRegistry->byName.end() ? nullptr : *it;
+
+    return calendarRegistry->fromIndex(id.index());
 }
 
 /*!
@@ -802,21 +1027,29 @@ const QCalendarBackend *QCalendarBackend::fromName(QLatin1String name)
     This will instantiate the indicated calendar (which will enable fromName()
     to return it subsequently), but only for the Qt-supported calendars for
     which (where relevant) the appropriate feature has been enabled.
+
+    \sa fromName(), fromId()
 */
 const QCalendarBackend *QCalendarBackend::fromEnum(QCalendar::System system)
 {
-    if (calendarRegistry.isDestroyed() || system == QCalendar::System::User)
+    if (Q_UNLIKELY(calendarRegistry.isDestroyed() || system == QCalendar::System::User))
         return nullptr;
-    {
-        const auto registryLock = qt_scoped_lock(registryMutex);
-        Q_ASSERT(calendarRegistry->byId.size() >= size_t(system));
-        if (auto *c = calendarRegistry->byId[size_t(system)])
-            return c;
-    }
-    if (auto *result = backendFromEnum(system))
-        return result;
-    const auto registryLock = qt_scoped_lock(registryMutex);
-    return calendarRegistry->byId[size_t(system)];
+
+    return calendarRegistry->fromEnum(system);
+}
+
+/*!
+    \internal
+    Returns backend for Gregorian calendar.
+
+    The backend is returned without locking the registry if possible.
+*/
+const QCalendarBackend *QCalendarBackend::gregorian()
+{
+    if (Q_UNLIKELY(calendarRegistry.isDestroyed()))
+        return nullptr;
+
+    return calendarRegistry->gregorian();
 }
 
 /*!
@@ -838,7 +1071,8 @@ const QCalendarBackend *QCalendarBackend::fromEnum(QCalendar::System system)
     calendars may be constructed by name, once they have been constructed. (Thus
     plugins instantiate their calendar backend to register it.) Built-in
     backends, accessible via QCalendar::System, are also always available by
-    name.
+    name. Calendars using custom backends may also be constructed using a unique
+    ID allocated to the backend on construction.
 
     A QCalendar value is immutable.
 
@@ -858,52 +1092,101 @@ const QCalendarBackend *QCalendarBackend::fromEnum(QCalendar::System system)
     \omitvalue Last
     \omitvalue User
 
+    \sa QCalendar, QCalendar::SystemId
+*/
+
+/*!
+    \class QCalendar::SystemId
+    \inmodule QtCore
+    \since 6.2
+
+    This is an opaque type used to identify custom calendar implementations. The
+    only supported source for values of this type is the backend's \c
+    calendarId() method. A value of this type whose isValid() is false does not
+    identify a successfully-registered backend. The only valid consumer of
+    values of this type is a QCalendar constructor, which will only produce a
+    valid QCalendar instance if the ID passed to it is valid.
+
+    \sa QCalendar, QCalendar::System
+*/
+
+/*!
+    \fn QCalendar::SystemId::isValid() const
+
+    Returns \c true if this is a valid calendar implementation identifier,
+    \c false otherwise.
+
     \sa QCalendar
+*/
+
+/*!
+    \internal
+    \fn QCalendar::SystemId::SystemId()
+
+    Constructs an invalid calendar system identifier.
+*/
+
+/*!
+    \internal
+    \fn QCalendar::SystemId::index()
+
+    Returns the internal representation of the identifier.
 */
 
 /*!
     \fn QCalendar::QCalendar()
     \fn QCalendar::QCalendar(QCalendar::System system)
-    \fn QCalendar::QCalendar(QLatin1String name)
-    \fn QCalendar::QCalendar(QStringView name)
+    \fn QCalendar::QCalendar(QAnyStringView name)
 
     Constructs a calendar object.
 
-    The choice of calendar to use may be indicated as \a system, using the
+    The choice of calendar to use may be indicated by \a system, using the
     enumeration QCalendar::System, or by \a name, using a string (either Unicode
     or Latin 1). Construction by name may depend on an instance of the given
     calendar being constructed by other means first. With no argument, the
     default constructor returns the Gregorian calendar.
 
+    \note In Qt versions before 6.4, the constructor by \a name accepted only
+    QStringView and QLatin1String, not QAnyStringView.
+
     \sa QCalendar, System, isValid()
 */
 
 QCalendar::QCalendar()
-    : d(nullptr)
+    : d_ptr(QCalendarBackend::gregorian())
 {
-    if (calendarRegistry.isDestroyed())
-        return;
-    d = calendarRegistry->gregorianCalendar.loadAcquire();
-    if (!d) {
-        auto fresh = new QGregorianCalendar;
-        if (!calendarRegistry->gregorianCalendar.testAndSetOrdered(fresh, fresh, d))
-            delete fresh;
-        Q_ASSERT(d);
-    }
+    Q_ASSERT(!d_ptr || d_ptr->calendarId().isValid());
 }
 
-QCalendar::QCalendar(QCalendar::System system)
-    : d(QCalendarBackend::fromEnum(system))
+QCalendar::QCalendar(QCalendar::System system) : d_ptr(QCalendarBackend::fromEnum(system))
 {
     // If system is valid, we should get a valid d for that system.
-    Q_ASSERT(uint(system) > uint(QCalendar::System::Last) || (d && d->calendarSystem() == system));
+    Q_ASSERT(!d_ptr || (uint(system) > uint(QCalendar::System::Last))
+             || (d_ptr->calendarId().index() == size_t(system)));
 }
 
-QCalendar::QCalendar(QLatin1String name)
-    : d(QCalendarBackend::fromName(name)) {}
+/*!
+  \overload
+  \since 6.2
 
-QCalendar::QCalendar(QStringView name)
-    : d(QCalendarBackend::fromName(name)) {}
+  Constructs a calendar object.
+
+  When using a custom calendar implementation, its backend is allocated a unique
+  ID when created; passing that as \a id to this constructor will get a
+  QCalendar using that backend. This can be useful when the backend is not
+  registered by name.
+*/
+QCalendar::QCalendar(QCalendar::SystemId id)
+    : d_ptr(QCalendarBackend::fromId(id))
+{
+    Q_ASSERT(!d_ptr || d_ptr->calendarId().index() == id.index());
+}
+
+QCalendar::QCalendar(QAnyStringView name)
+    : d_ptr(QCalendarBackend::fromName(name))
+{
+    Q_ASSERT(!d_ptr || d_ptr->calendarId().isValid());
+}
 
 /*!
     \fn bool QCalendar::isValid() const
@@ -927,6 +1210,7 @@ QCalendar::QCalendar(QStringView name)
 */
 int QCalendar::daysInMonth(int month, int year) const
 {
+    SAFE_D();
     return d ? d->daysInMonth(month, year) : 0;
 }
 
@@ -937,6 +1221,7 @@ int QCalendar::daysInMonth(int month, int year) const
 */
 int QCalendar::daysInYear(int year) const
 {
+    SAFE_D();
     return d ? d->daysInYear(year) : 0;
 }
 
@@ -950,6 +1235,7 @@ int QCalendar::daysInYear(int year) const
 */
 int QCalendar::monthsInYear(int year) const
 {
+    SAFE_D();
     return d ? year == Unspecified ? d->maximumMonthsInYear() : d->monthsInYear(year) : 0;
 }
 
@@ -963,6 +1249,7 @@ int QCalendar::monthsInYear(int year) const
 */
 bool QCalendar::isDateValid(int year, int month, int day) const
 {
+    SAFE_D();
     return d && d->isDateValid(year, month, day);
 }
 
@@ -974,8 +1261,8 @@ bool QCalendar::isDateValid(int year, int month, int day) const
 */
 bool QCalendar::isGregorian() const
 {
-    Q_ASSERT(calendarRegistry.exists());
-    return d == calendarRegistry->gregorianCalendar.loadRelaxed();
+    SAFE_D();
+    return d && d->isGregorian();
 }
 
 /*!
@@ -989,6 +1276,7 @@ bool QCalendar::isGregorian() const
 */
 bool QCalendar::isLeapYear(int year) const
 {
+    SAFE_D();
     return d && d->isLeapYear(year);
 }
 
@@ -999,6 +1287,7 @@ bool QCalendar::isLeapYear(int year) const
 */
 bool QCalendar::isLunar() const
 {
+    SAFE_D();
     return d && d->isLunar();
 }
 
@@ -1011,6 +1300,7 @@ bool QCalendar::isLunar() const
 */
 bool QCalendar::isLuniSolar() const
 {
+    SAFE_D();
     return d && d->isLuniSolar();
 }
 
@@ -1022,6 +1312,7 @@ bool QCalendar::isLuniSolar() const
 */
 bool QCalendar::isSolar() const
 {
+    SAFE_D();
     return d && d->isSolar();
 }
 
@@ -1036,6 +1327,7 @@ bool QCalendar::isSolar() const
 */
 bool QCalendar::isProleptic() const
 {
+    SAFE_D();
     return d && d->isProleptic();
 }
 
@@ -1066,6 +1358,7 @@ bool QCalendar::isProleptic() const
 */
 bool QCalendar::hasYearZero() const
 {
+    SAFE_D();
     return d && d->hasYearZero();
 }
 
@@ -1076,6 +1369,7 @@ bool QCalendar::hasYearZero() const
 */
 int QCalendar::maximumDaysInMonth() const
 {
+    SAFE_D();
     return d ? d->maximumDaysInMonth() : 0;
 }
 
@@ -1086,6 +1380,7 @@ int QCalendar::maximumDaysInMonth() const
 */
 int QCalendar::minimumDaysInMonth() const
 {
+    SAFE_D();
     return d ? d->minimumDaysInMonth() : 0;
 }
 
@@ -1096,6 +1391,7 @@ int QCalendar::minimumDaysInMonth() const
 */
 int QCalendar::maximumMonthsInYear() const
 {
+    SAFE_D();
     return d ? d->maximumMonthsInYear() : 0;
 }
 
@@ -1117,6 +1413,7 @@ int QCalendar::maximumMonthsInYear() const
 */
 QDate QCalendar::dateFromParts(int year, int month, int day) const
 {
+    SAFE_D();
     qint64 jd;
     return d && d->dateToJulianDay(year, month, day, &jd)
         ? QDate::fromJulianDay(jd) : QDate();
@@ -1138,6 +1435,7 @@ QDate QCalendar::dateFromParts(const QCalendar::YearMonthDay &parts) const
 */
 QCalendar::YearMonthDay QCalendar::partsFromDate(QDate date) const
 {
+    SAFE_D();
     return d && date.isValid() ? d->julianDayToDate(date.toJulianDay()) : YearMonthDay();
 }
 
@@ -1152,6 +1450,7 @@ QCalendar::YearMonthDay QCalendar::partsFromDate(QDate date) const
 */
 int QCalendar::dayOfWeek(QDate date) const
 {
+    SAFE_D();
     return d && date.isValid() ? d->dayOfWeek(date.toJulianDay()) : 0;
 }
 
@@ -1179,6 +1478,7 @@ int QCalendar::dayOfWeek(QDate date) const
 QString QCalendar::monthName(const QLocale &locale, int month, int year,
                              QLocale::FormatType format) const
 {
+    SAFE_D();
     const int maxMonth = year == Unspecified ? maximumMonthsInYear() : monthsInYear(year);
     if (!d || month < 1 || month > maxMonth)
         return QString();
@@ -1208,6 +1508,7 @@ QString QCalendar::monthName(const QLocale &locale, int month, int year,
 QString QCalendar::standaloneMonthName(const QLocale &locale, int month, int year,
                                        QLocale::FormatType format) const
 {
+    SAFE_D();
     const int maxMonth = year == Unspecified ? maximumMonthsInYear() : monthsInYear(year);
     if (!d || month < 1 || month > maxMonth)
         return QString();
@@ -1232,6 +1533,7 @@ QString QCalendar::standaloneMonthName(const QLocale &locale, int month, int yea
 QString QCalendar::weekDayName(const QLocale &locale, int day,
                                QLocale::FormatType format) const
 {
+    SAFE_D();
     return d ? d->weekDayName(locale, day, format) : QString();
 }
 
@@ -1254,6 +1556,7 @@ QString QCalendar::weekDayName(const QLocale &locale, int day,
 QString QCalendar::standaloneWeekDayName(const QLocale &locale, int day,
                                          QLocale::FormatType format) const
 {
+    SAFE_D();
     return d ? d->standaloneWeekDayName(locale, day, format) : QString();
 }
 
@@ -1277,9 +1580,10 @@ QString QCalendar::standaloneWeekDayName(const QLocale &locale, int day,
     \sa monthName(), weekDayName(), QDate::toString(), QTime::toString()
 */
 QString QCalendar::dateTimeToString(QStringView format, const QDateTime &datetime,
-                                    const QDate &dateOnly, const QTime &timeOnly,
+                                    QDate dateOnly, QTime timeOnly,
                                     const QLocale &locale) const
 {
+    SAFE_D();
     return d ? d->dateTimeToString(format, datetime, dateOnly, timeOnly, locale) : QString();
 }
 
@@ -1296,3 +1600,7 @@ QStringList QCalendar::availableCalendars()
 }
 
 QT_END_NAMESPACE
+
+#ifndef QT_BOOTSTRAPPED
+#include "moc_qcalendar.cpp"
+#endif

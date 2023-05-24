@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <stdlib.h>
+
 #include <limits>
 #include <map>
 #include <memory>
@@ -53,13 +55,8 @@ using perfetto::base::Uppercase;
 constexpr int kMaxDecoderFieldId = 999;
 
 void Assert(bool condition) {
-#ifdef _MSC_VER
   if (!condition)
-    __debugbreak();
-#else
-  if (!condition)
-    __builtin_trap();
-#endif
+    abort();
 }
 
 struct FileDescriptorComp {
@@ -160,20 +157,6 @@ class GeneratorJob {
     return name;
   }
 
-  // Small enums can be written faster without involving VarInt encoder.
-  inline bool IsTinyEnumField(const FieldDescriptor* field) {
-    if (field->type() != FieldDescriptor::TYPE_ENUM)
-      return false;
-    const EnumDescriptor* enumeration = field->enum_type();
-
-    for (int i = 0; i < enumeration->value_count(); ++i) {
-      int32_t value = enumeration->value(i)->number();
-      if (value < 0 || value > 0x7F)
-        return false;
-    }
-    return true;
-  }
-
   // Note: intentionally avoiding depending on protozero sources, as well as
   // protobuf-internal WireFormat/WireFormatLite classes.
   const char* FieldTypeToProtozeroWireType(FieldDescriptor::Type proto_type) {
@@ -246,9 +229,106 @@ class GeneratorJob {
     return "";
   }
 
+  const char* FieldToProtoSchemaType(const FieldDescriptor* field) {
+    switch (field->type()) {
+      case FieldDescriptor::TYPE_BOOL:
+        return "kBool";
+      case FieldDescriptor::TYPE_INT32:
+        return "kInt32";
+      case FieldDescriptor::TYPE_INT64:
+        return "kInt64";
+      case FieldDescriptor::TYPE_UINT32:
+        return "kUint32";
+      case FieldDescriptor::TYPE_UINT64:
+        return "kUint64";
+      case FieldDescriptor::TYPE_SINT32:
+        return "kSint32";
+      case FieldDescriptor::TYPE_SINT64:
+        return "kSint64";
+      case FieldDescriptor::TYPE_FIXED32:
+        return "kFixed32";
+      case FieldDescriptor::TYPE_FIXED64:
+        return "kFixed64";
+      case FieldDescriptor::TYPE_SFIXED32:
+        return "kSfixed32";
+      case FieldDescriptor::TYPE_SFIXED64:
+        return "kSfixed64";
+      case FieldDescriptor::TYPE_FLOAT:
+        return "kFloat";
+      case FieldDescriptor::TYPE_DOUBLE:
+        return "kDouble";
+      case FieldDescriptor::TYPE_ENUM:
+        return "kEnum";
+      case FieldDescriptor::TYPE_STRING:
+        return "kString";
+      case FieldDescriptor::TYPE_MESSAGE:
+        return "kMessage";
+      case FieldDescriptor::TYPE_BYTES:
+        return "kBytes";
+
+      case FieldDescriptor::TYPE_GROUP:
+        Abort("Groups not supported.");
+        return "";
+    }
+    Abort("Unrecognized FieldDescriptor::Type.");
+    return "";
+  }
+
+  std::string FieldToCppTypeName(const FieldDescriptor* field) {
+    switch (field->type()) {
+      case FieldDescriptor::TYPE_BOOL:
+        return "bool";
+      case FieldDescriptor::TYPE_INT32:
+        return "int32_t";
+      case FieldDescriptor::TYPE_INT64:
+        return "int64_t";
+      case FieldDescriptor::TYPE_UINT32:
+        return "uint32_t";
+      case FieldDescriptor::TYPE_UINT64:
+        return "uint64_t";
+      case FieldDescriptor::TYPE_SINT32:
+        return "int32_t";
+      case FieldDescriptor::TYPE_SINT64:
+        return "int64_t";
+      case FieldDescriptor::TYPE_FIXED32:
+        return "uint32_t";
+      case FieldDescriptor::TYPE_FIXED64:
+        return "uint64_t";
+      case FieldDescriptor::TYPE_SFIXED32:
+        return "int32_t";
+      case FieldDescriptor::TYPE_SFIXED64:
+        return "int64_t";
+      case FieldDescriptor::TYPE_FLOAT:
+        return "float";
+      case FieldDescriptor::TYPE_DOUBLE:
+        return "double";
+      case FieldDescriptor::TYPE_ENUM:
+        return GetCppClassName(field->enum_type(), true);
+      case FieldDescriptor::TYPE_STRING:
+      case FieldDescriptor::TYPE_BYTES:
+        return "std::string";
+      case FieldDescriptor::TYPE_MESSAGE:
+        return GetCppClassName(field->message_type());
+      case FieldDescriptor::TYPE_GROUP:
+        Abort("Groups not supported.");
+        return "";
+    }
+    Abort("Unrecognized FieldDescriptor::Type.");
+    return "";
+  }
+
+  const char* FieldToRepetitionType(const FieldDescriptor* field) {
+    if (!field->is_repeated())
+      return "kNotRepeated";
+    if (field->is_packed())
+      return "kRepeatedPacked";
+    return "kRepeatedNotPacked";
+  }
+
   void CollectDescriptors() {
     // Collect message descriptors in DFS order.
     std::vector<const Descriptor*> stack;
+    stack.reserve(static_cast<size_t>(source_->message_type_count()));
     for (int i = 0; i < source_->message_type_count(); ++i)
       stack.push_back(source_->message_type(i));
 
@@ -277,6 +357,9 @@ class GeneratorJob {
         messages_.push_back(message);
         for (int i = 0; i < message->nested_type_count(); ++i) {
           stack.push_back(message->nested_type(i));
+          // Emit a forward declaration of nested message types, as the outer
+          // class will refer to them when creating type aliases.
+          referenced_messages_.insert(message->nested_type(i));
         }
       }
     }
@@ -367,6 +450,11 @@ class GeneratorJob {
     CollectDependencies();
   }
 
+  std::string GetNamespaceNameForInnerEnum(const EnumDescriptor* enumeration) {
+    return "perfetto_pbzero_enum_" +
+           GetCppClassName(enumeration->containing_type());
+  }
+
   // Print top header, namespaces and forward declarations.
   void GeneratePrologue() {
     std::string greeting =
@@ -381,6 +469,7 @@ class GeneratorJob {
         "#define $guard$\n\n"
         "#include <stddef.h>\n"
         "#include <stdint.h>\n\n"
+        "#include \"perfetto/protozero/field_writer.h\"\n"
         "#include \"perfetto/protozero/message.h\"\n"
         "#include \"perfetto/protozero/packed_repeated_fields.h\"\n"
         "#include \"perfetto/protozero/proto_decoder.h\"\n"
@@ -414,59 +503,113 @@ class GeneratorJob {
       stub_h_->Print("class $class$;\n", "class", GetCppClassName(message));
     }
     for (const EnumDescriptor* enumeration : referenced_enums_) {
-      stub_h_->Print("enum $class$ : int32_t;\n", "class",
-                     GetCppClassName(enumeration));
+      if (enumeration->containing_type()) {
+        stub_h_->Print("namespace $namespace_name$ {\n", "namespace_name",
+                       GetNamespaceNameForInnerEnum(enumeration));
+      }
+      stub_h_->Print("enum $class$ : int32_t;\n", "class", enumeration->name());
+
+      if (enumeration->containing_type()) {
+        stub_h_->Print("}  // namespace $namespace_name$\n", "namespace_name",
+                       GetNamespaceNameForInnerEnum(enumeration));
+        stub_h_->Print("using $alias$ = $namespace_name$::$short_name$;\n",
+                       "alias", GetCppClassName(enumeration), "namespace_name",
+                       GetNamespaceNameForInnerEnum(enumeration), "short_name",
+                       enumeration->name());
+      }
     }
     stub_h_->Print("\n");
   }
 
   void GenerateEnumDescriptor(const EnumDescriptor* enumeration) {
-    stub_h_->Print("enum $class$ : int32_t {\n", "class",
-                   GetCppClassName(enumeration));
-    stub_h_->Indent();
+    bool is_inner_enum = !!enumeration->containing_type();
+    if (is_inner_enum) {
+      stub_h_->Print("namespace $namespace_name$ {\n", "namespace_name",
+                     GetNamespaceNameForInnerEnum(enumeration));
+    }
 
-    std::string value_name_prefix;
-    if (enumeration->containing_type() != nullptr)
-      value_name_prefix = GetCppClassName(enumeration) + "_";
+    stub_h_->Print("enum $class$ : int32_t {\n", "class", enumeration->name());
+    stub_h_->Indent();
 
     std::string min_name, max_name;
     int min_val = std::numeric_limits<int>::max();
     int max_val = -1;
     for (int i = 0; i < enumeration->value_count(); ++i) {
       const EnumValueDescriptor* value = enumeration->value(i);
-      stub_h_->Print("$name$ = $number$,\n", "name",
-                     value_name_prefix + value->name(), "number",
+      const std::string value_name = value->name();
+      stub_h_->Print("$name$ = $number$,\n", "name", value_name, "number",
                      std::to_string(value->number()));
       if (value->number() < min_val) {
         min_val = value->number();
-        min_name = value_name_prefix + value->name();
+        min_name = value_name;
       }
       if (value->number() > max_val) {
         max_val = value->number();
-        max_name = value_name_prefix + value->name();
+        max_name = value_name;
       }
     }
     stub_h_->Outdent();
-    stub_h_->Print("};\n\n");
-    stub_h_->Print("const $class$ $class$_MIN = $min$;\n", "class",
+    stub_h_->Print("};\n");
+    if (is_inner_enum) {
+      const std::string namespace_name =
+          GetNamespaceNameForInnerEnum(enumeration);
+      stub_h_->Print("} // namespace $namespace_name$\n", "namespace_name",
+                     namespace_name);
+      stub_h_->Print(
+          "using $full_enum_name$ = $namespace_name$::$enum_name$;\n\n",
+          "full_enum_name", GetCppClassName(enumeration), "enum_name",
+          enumeration->name(), "namespace_name", namespace_name);
+    }
+    stub_h_->Print("\n");
+    stub_h_->Print("constexpr $class$ $class$_MIN = $class$::$min$;\n", "class",
                    GetCppClassName(enumeration), "min", min_name);
-    stub_h_->Print("const $class$ $class$_MAX = $max$;\n", "class",
+    stub_h_->Print("constexpr $class$ $class$_MAX = $class$::$max$;\n", "class",
                    GetCppClassName(enumeration), "max", max_name);
     stub_h_->Print("\n");
+
+    GenerateEnumToStringConversion(enumeration);
+  }
+
+  void GenerateEnumToStringConversion(const EnumDescriptor* enumeration) {
+    std::string fullClassName =
+        full_namespace_prefix_ + GetCppClassName(enumeration);
+    const char* function_header_stub = R"(
+PERFETTO_PROTOZERO_CONSTEXPR14_OR_INLINE
+const char* $class_name$_Name($full_class$ value) {
+)";
+    stub_h_->Print(function_header_stub, "full_class", fullClassName,
+                   "class_name", GetCppClassName(enumeration));
+    stub_h_->Indent();
+    stub_h_->Print("switch (value) {");
+    for (int index = 0; index < enumeration->value_count(); ++index) {
+      const EnumValueDescriptor* value = enumeration->value(index);
+      const char* switch_stub = R"(
+case $full_class$::$value_name$:
+  return "$value_name$";
+)";
+      stub_h_->Print(switch_stub, "full_class", fullClassName, "value_name",
+                     value->name());
+    }
+    stub_h_->Print("}\n");
+    stub_h_->Print(R"(return "PBZERO_UNKNOWN_ENUM_VALUE";)");
+    stub_h_->Print("\n");
+    stub_h_->Outdent();
+    stub_h_->Print("}\n\n");
   }
 
   // Packed repeated fields are encoded as a length-delimited field on the wire,
   // where the payload is the concatenation of invidually encoded elements.
   void GeneratePackedRepeatedFieldDescriptor(const FieldDescriptor* field) {
     std::map<std::string, std::string> setter;
-    setter["id"] = std::to_string(field->number());
     setter["name"] = field->lowercase_name();
+    setter["field_metadata"] = GetFieldMetadataTypeName(field);
     setter["action"] = "set";
     setter["buffer_type"] = FieldTypeToPackedBufferType(field->type());
     stub_h_->Print(
         setter,
         "void $action$_$name$(const $buffer_type$& packed_buffer) {\n"
-        "  AppendBytes($id$, packed_buffer.data(), packed_buffer.size());\n"
+        "  AppendBytes($field_metadata$::kFieldId, packed_buffer.data(),\n"
+        "              packed_buffer.size());\n"
         "}\n");
   }
 
@@ -474,110 +617,47 @@ class GeneratorJob {
     std::map<std::string, std::string> setter;
     setter["id"] = std::to_string(field->number());
     setter["name"] = field->lowercase_name();
+    setter["field_metadata"] = GetFieldMetadataTypeName(field);
     setter["action"] = field->is_repeated() ? "add" : "set";
+    setter["cpp_type"] = FieldToCppTypeName(field);
+    setter["proto_field_type"] = FieldToProtoSchemaType(field);
 
-    std::string appender;
-    std::string cpp_type;
     const char* code_stub =
         "void $action$_$name$($cpp_type$ value) {\n"
-        "  $appender$($id$, value);\n"
+        "  static constexpr uint32_t field_id = $field_metadata$::kFieldId;\n"
+        "  // Call the appropriate protozero::Message::Append(field_id, ...)\n"
+        "  // method based on the type of the field.\n"
+        "  ::protozero::internal::FieldWriter<\n"
+        "    ::protozero::proto_utils::ProtoSchemaType::$proto_field_type$>\n"
+        "      ::Append(*this, field_id, value);\n"
         "}\n";
 
-    switch (field->type()) {
-      case FieldDescriptor::TYPE_BOOL: {
-        appender = "AppendTinyVarInt";
-        cpp_type = "bool";
-        break;
-      }
-      case FieldDescriptor::TYPE_INT32: {
-        appender = "AppendVarInt";
-        cpp_type = "int32_t";
-        break;
-      }
-      case FieldDescriptor::TYPE_INT64: {
-        appender = "AppendVarInt";
-        cpp_type = "int64_t";
-        break;
-      }
-      case FieldDescriptor::TYPE_UINT32: {
-        appender = "AppendVarInt";
-        cpp_type = "uint32_t";
-        break;
-      }
-      case FieldDescriptor::TYPE_UINT64: {
-        appender = "AppendVarInt";
-        cpp_type = "uint64_t";
-        break;
-      }
-      case FieldDescriptor::TYPE_SINT32: {
-        appender = "AppendSignedVarInt";
-        cpp_type = "int32_t";
-        break;
-      }
-      case FieldDescriptor::TYPE_SINT64: {
-        appender = "AppendSignedVarInt";
-        cpp_type = "int64_t";
-        break;
-      }
-      case FieldDescriptor::TYPE_FIXED32: {
-        appender = "AppendFixed";
-        cpp_type = "uint32_t";
-        break;
-      }
-      case FieldDescriptor::TYPE_FIXED64: {
-        appender = "AppendFixed";
-        cpp_type = "uint64_t";
-        break;
-      }
-      case FieldDescriptor::TYPE_SFIXED32: {
-        appender = "AppendFixed";
-        cpp_type = "int32_t";
-        break;
-      }
-      case FieldDescriptor::TYPE_SFIXED64: {
-        appender = "AppendFixed";
-        cpp_type = "int64_t";
-        break;
-      }
-      case FieldDescriptor::TYPE_FLOAT: {
-        appender = "AppendFixed";
-        cpp_type = "float";
-        break;
-      }
-      case FieldDescriptor::TYPE_DOUBLE: {
-        appender = "AppendFixed";
-        cpp_type = "double";
-        break;
-      }
-      case FieldDescriptor::TYPE_ENUM: {
-        appender = IsTinyEnumField(field) ? "AppendTinyVarInt" : "AppendVarInt";
-        cpp_type = GetCppClassName(field->enum_type(), true);
-        break;
-      }
-      case FieldDescriptor::TYPE_STRING:
-      case FieldDescriptor::TYPE_BYTES: {
-        if (field->type() == FieldDescriptor::TYPE_STRING) {
-          cpp_type = "const char*";
-        } else {
-          cpp_type = "const uint8_t*";
-        }
-        code_stub =
-            "void $action$_$name$(const std::string& value) {\n"
-            "  AppendBytes($id$, value.data(), value.size());\n"
-            "}\n"
-            "void $action$_$name$($cpp_type$ data, size_t size) {\n"
-            "  AppendBytes($id$, data, size);\n"
-            "}\n";
-        break;
-      }
-      case FieldDescriptor::TYPE_GROUP:
-      case FieldDescriptor::TYPE_MESSAGE: {
-        Abort("Unsupported field type.");
-        return;
-      }
+    if (field->type() == FieldDescriptor::TYPE_STRING) {
+      // Strings and bytes should have an additional accessor which specifies
+      // the length explicitly.
+      const char* additional_method =
+          "void $action$_$name$(const char* data, size_t size) {\n"
+          "  AppendBytes($field_metadata$::kFieldId, data, size);\n"
+          "}\n"
+          "void $action$_$name$(::protozero::ConstChars chars) {\n"
+          "  AppendBytes($field_metadata$::kFieldId, chars.data, chars.size);\n"
+          "}\n";
+      stub_h_->Print(setter, additional_method);
+    } else if (field->type() == FieldDescriptor::TYPE_BYTES) {
+      const char* additional_method =
+          "void $action$_$name$(const uint8_t* data, size_t size) {\n"
+          "  AppendBytes($field_metadata$::kFieldId, data, size);\n"
+          "}\n"
+          "void $action$_$name$(::protozero::ConstBytes bytes) {\n"
+          "  AppendBytes($field_metadata$::kFieldId, bytes.data, bytes.size);\n"
+          "}\n";
+      stub_h_->Print(setter, additional_method);
+    } else if (field->type() == FieldDescriptor::TYPE_GROUP ||
+               field->type() == FieldDescriptor::TYPE_MESSAGE) {
+      Abort("Unsupported field type.");
+      return;
     }
-    setter["appender"] = appender;
-    setter["cpp_type"] = cpp_type;
+
     stub_h_->Print(setter, code_stub);
   }
 
@@ -763,6 +843,10 @@ class GeneratorJob {
 
     GenerateConstantsForMessageFields(message);
 
+    stub_h_->Print(
+        "static constexpr const char* GetName() { return \".$name$\"; }\n\n",
+        "name", message->full_name());
+
     // Using statements for nested messages.
     for (int i = 0; i < message->nested_type_count(); ++i) {
       const Descriptor* nested_message = message->nested_type(i);
@@ -774,34 +858,83 @@ class GeneratorJob {
     // Using statements for nested enums.
     for (int i = 0; i < message->enum_type_count(); ++i) {
       const EnumDescriptor* nested_enum = message->enum_type(i);
-      stub_h_->Print("using $local_name$ = $global_name$;\n", "local_name",
-                     nested_enum->name(), "global_name",
+      const char* stub = R"(
+using $local_name$ = $global_name$;
+static inline const char* $local_name$_Name($local_name$ value) {
+  return $global_name$_Name(value);
+}
+)";
+      stub_h_->Print(stub, "local_name", nested_enum->name(), "global_name",
                      GetCppClassName(nested_enum, true));
     }
 
     // Values of nested enums.
     for (int i = 0; i < message->enum_type_count(); ++i) {
       const EnumDescriptor* nested_enum = message->enum_type(i);
-      std::string value_name_prefix = GetCppClassName(nested_enum) + "_";
 
       for (int j = 0; j < nested_enum->value_count(); ++j) {
         const EnumValueDescriptor* value = nested_enum->value(j);
-        stub_h_->Print("static const $class$ $name$ = $full_name$;\n", "class",
-                       nested_enum->name(), "name", value->name(), "full_name",
-                       value_name_prefix + value->name());
+        stub_h_->Print("static const $class$ $name$ = $class$::$name$;\n",
+                       "class", nested_enum->name(), "name", value->name());
       }
     }
 
     // Field descriptors.
     for (int i = 0; i < message->field_count(); ++i) {
-      GenerateFieldDescriptor(message->field(i));
+      GenerateFieldDescriptor(GetCppClassName(message), message->field(i));
     }
 
     stub_h_->Outdent();
     stub_h_->Print("};\n\n");
   }
 
-  void GenerateFieldDescriptor(const FieldDescriptor* field) {
+  std::string GetFieldMetadataTypeName(const FieldDescriptor* field) {
+    std::string name = field->camelcase_name();
+    if (isalpha(name[0]))
+      name[0] = static_cast<char>(toupper(name[0]));
+    return "FieldMetadata_" + name;
+  }
+
+  std::string GetFieldMetadataVariableName(const FieldDescriptor* field) {
+    std::string name = field->camelcase_name();
+    if (isalpha(name[0]))
+      name[0] = static_cast<char>(toupper(name[0]));
+    return "k" + name;
+  }
+
+  void GenerateFieldMetadata(const std::string& message_cpp_type,
+                             const FieldDescriptor* field) {
+    const char* code_stub = R"(
+using $field_metadata_type$ =
+  ::protozero::proto_utils::FieldMetadata<
+    $field_id$,
+    ::protozero::proto_utils::RepetitionType::$repetition_type$,
+    ::protozero::proto_utils::ProtoSchemaType::$proto_field_type$,
+    $cpp_type$,
+    $message_cpp_type$>;
+
+// Ceci n'est pas une pipe.
+// This is actually a variable of FieldMetadataHelper<FieldMetadata<...>>
+// type (and users are expected to use it as such, hence kCamelCase name).
+// It is declared as a function to keep protozero bindings header-only as
+// inline constexpr variables are not available until C++17 (while inline
+// functions are).
+// TODO(altimin): Use inline variable instead after adopting C++17.
+static constexpr $field_metadata_type$ $field_metadata_var$() { return {}; }
+)";
+
+    stub_h_->Print(code_stub, "field_id", std::to_string(field->number()),
+                   "repetition_type", FieldToRepetitionType(field),
+                   "proto_field_type", FieldToProtoSchemaType(field),
+                   "cpp_type", FieldToCppTypeName(field), "message_cpp_type",
+                   message_cpp_type, "field_metadata_type",
+                   GetFieldMetadataTypeName(field), "field_metadata_var",
+                   GetFieldMetadataVariableName(field));
+  }
+
+  void GenerateFieldDescriptor(const std::string& message_cpp_type,
+                               const FieldDescriptor* field) {
+    GenerateFieldMetadata(message_cpp_type, field);
     if (field->is_packed()) {
       GeneratePackedRepeatedFieldDescriptor(field);
     } else if (field->type() != FieldDescriptor::TYPE_MESSAGE) {
@@ -842,7 +975,8 @@ class GeneratorJob {
     // TODO(ddrone): ensure that this code works when containing_type located in
     // other file or namespace.
     stub_h_->Print("class $name$ : public $extendee$ {\n", "name",
-                   extension_name, "extendee", GetCppClassName(base_message));
+                   extension_name, "extendee",
+                   GetCppClassName(base_message, /*full=*/true));
     stub_h_->Print(" public:\n");
     stub_h_->Indent();
     for (const FieldDescriptor* field : descriptors) {
@@ -850,7 +984,7 @@ class GeneratorJob {
         Abort("one wrapper should extend only one message");
         return;
       }
-      GenerateFieldDescriptor(field);
+      GenerateFieldDescriptor(extension_name, field);
     }
     stub_h_->Outdent();
     stub_h_->Print("};\n");

@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -21,7 +21,6 @@ jumbo_component("service") {
     "command_buffer_stub.h",
     "context_url.cc",
     "context_url.h",
-    "display_context.h",
     "gles2_command_buffer_stub.cc",
     "gles2_command_buffer_stub.h",
     "gpu_channel.cc",
@@ -38,8 +37,6 @@ jumbo_component("service") {
     "gpu_memory_buffer_factory.h",
     "gpu_watchdog_thread.cc",
     "gpu_watchdog_thread.h",
-    "gpu_watchdog_thread_v2.cc",
-    "gpu_watchdog_thread_v2.h",
     "image_decode_accelerator_stub.cc",
     "image_decode_accelerator_stub.h",
     "image_decode_accelerator_worker.h",
@@ -63,6 +60,7 @@ jumbo_component("service") {
     "//build:chromecast_buildflags",
     "//components/viz/common",
     "//gpu/config",
+    "//gpu/ipc/common",
     "//ipc",
     "//ui/base",
     "//ui/display",
@@ -75,6 +73,7 @@ jumbo_component("service") {
   ]
   deps = [
     "//base/third_party/dynamic_annotations",
+    "//build:chromeos_buildflags",
 
     # crbug.com/799267: crash_key needs to be added explicitly for Windows and
     # Mac even though it's not directly referenced, because it's being
@@ -85,22 +84,24 @@ jumbo_component("service") {
     "//gpu/command_buffer/service",
     "//gpu/command_buffer/service:gles2",
     "//gpu/config",
-    "//gpu/ipc/common",
     "//gpu/vulkan:buildflags",
+    "//mojo/public/cpp/bindings",
   ]
   libs = []
   ldflags = []
   if (is_win) {
     sources += [
+      "dcomp_texture_win.cc",
+      "dcomp_texture_win.h",
       "gpu_memory_buffer_factory_dxgi.cc",
       "gpu_memory_buffer_factory_dxgi.h",
       "image_transport_surface_win.cc",
     ]
-    if (use_qt) {
-      sources -= [
-        "image_transport_surface_win.cc",
-      ]
-    }
+    libs += [
+      "d3d11.lib",
+      "dcomp.lib",
+      "dxguid.lib",
+    ]
   }
   if (is_mac) {
     sources += [
@@ -118,6 +119,17 @@ jumbo_component("service") {
       "OpenGL.framework",
       "QuartzCore.framework",
     ]
+    defines += [ "GL_SILENCE_DEPRECATION" ]
+  }
+  if (is_ios) {
+    sources += [
+      "gpu_memory_buffer_factory_io_surface.cc",
+      "gpu_memory_buffer_factory_io_surface.h",
+      "image_transport_surface_ios.mm",
+      "image_transport_surface_overlay_mac.h",
+      "image_transport_surface_overlay_mac.mm",
+    ]
+    deps += [ "//ui/accelerated_widget_mac" ]
   }
   if (is_android) {
     sources += [
@@ -132,18 +144,12 @@ jumbo_component("service") {
   if (is_linux || is_chromeos) {
     sources += [ "image_transport_surface_linux.cc" ]
   }
-  if (is_linux || is_chromeos || use_ozone) {
+  if (use_ozone) {
     sources += [
       "gpu_memory_buffer_factory_native_pixmap.cc",
       "gpu_memory_buffer_factory_native_pixmap.h",
     ]
-  }
-  if (use_x11) {
-    sources += [ "x_util.h" ]
-    libs += [ "X11" ]
-    deps += [ "//ui/gfx/linux:gpu_memory_buffer_support_x11" ]
-  }
-  if (use_ozone) {
+
     deps += [ "//ui/ozone" ]
   }
   if (is_fuchsia) {

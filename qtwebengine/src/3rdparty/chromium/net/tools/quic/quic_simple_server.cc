@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,22 +6,23 @@
 
 #include <string.h>
 
-#include "base/bind.h"
+#include <memory>
+
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "net/base/ip_endpoint.h"
 #include "net/base/net_errors.h"
 #include "net/log/net_log_source.h"
 #include "net/quic/address_utils.h"
 #include "net/socket/udp_server_socket.h"
-#include "net/third_party/quiche/src/quic/core/crypto/crypto_handshake.h"
-#include "net/third_party/quiche/src/quic/core/crypto/quic_random.h"
-#include "net/third_party/quiche/src/quic/core/quic_crypto_stream.h"
-#include "net/third_party/quiche/src/quic/core/quic_data_reader.h"
-#include "net/third_party/quiche/src/quic/core/quic_packets.h"
-#include "net/third_party/quiche/src/quic/tools/quic_simple_dispatcher.h"
+#include "net/third_party/quiche/src/quiche/quic/core/crypto/crypto_handshake.h"
+#include "net/third_party/quiche/src/quiche/quic/core/crypto/quic_random.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_crypto_stream.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_data_reader.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_packets.h"
+#include "net/third_party/quiche/src/quiche/quic/tools/quic_simple_dispatcher.h"
 #include "net/tools/quic/quic_simple_server_packet_writer.h"
 #include "net/tools/quic/quic_simple_server_session_helper.h"
 #include "net/tools/quic/quic_simple_server_socket.h"
@@ -50,7 +51,7 @@ QuicSimpleServer::QuicSimpleServer(
           new QuicChromiumConnectionHelper(&clock_,
                                            quic::QuicRandom::GetInstance())),
       alarm_factory_(new QuicChromiumAlarmFactory(
-          base::ThreadTaskRunnerHandle::Get().get(),
+          base::SingleThreadTaskRunner::GetCurrentDefault().get(),
           &clock_)),
       config_(config),
       crypto_config_options_(crypto_config_options),
@@ -58,10 +59,9 @@ QuicSimpleServer::QuicSimpleServer(
                      quic::QuicRandom::GetInstance(),
                      std::move(proof_source),
                      quic::KeyExchangeSource::Default()),
-      read_pending_(false),
-      synchronous_read_count_(0),
       read_buffer_(base::MakeRefCounted<IOBufferWithSize>(kReadBufferSize)),
-      quic_simple_server_backend_(quic_simple_server_backend) {
+      quic_simple_server_backend_(quic_simple_server_backend),
+      connection_id_generator_(quic::kQuicDefaultConnectionIdLength) {
   DCHECK(quic_simple_server_backend);
   Initialize();
 }
@@ -108,13 +108,14 @@ bool QuicSimpleServer::Listen(const IPEndPoint& address) {
   if (socket_ == nullptr)
     return false;
 
-  dispatcher_.reset(new quic::QuicSimpleDispatcher(
+  dispatcher_ = std::make_unique<quic::QuicSimpleDispatcher>(
       &config_, &crypto_config_, &version_manager_,
       std::unique_ptr<quic::QuicConnectionHelperInterface>(helper_),
-      std::unique_ptr<quic::QuicCryptoServerStreamBase::Helper>(
-          new QuicSimpleServerSessionHelper(quic::QuicRandom::GetInstance())),
+      std::make_unique<QuicSimpleServerSessionHelper>(
+          quic::QuicRandom::GetInstance()),
       std::unique_ptr<quic::QuicAlarmFactory>(alarm_factory_),
-      quic_simple_server_backend_, quic::kQuicDefaultConnectionIdLength));
+      quic_simple_server_backend_, quic::kQuicDefaultConnectionIdLength,
+      connection_id_generator_);
   QuicSimpleServerPacketWriter* writer =
       new QuicSimpleServerPacketWriter(socket_.get(), dispatcher_.get());
   dispatcher_->InitializeWithWriter(writer);
@@ -157,7 +158,7 @@ void QuicSimpleServer::StartReading() {
     synchronous_read_count_ = 0;
     if (dispatcher_->HasChlosBuffered()) {
       // No more packets to read, so yield before processing buffered packets.
-      base::ThreadTaskRunnerHandle::Get()->PostTask(
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
           FROM_HERE, base::BindOnce(&QuicSimpleServer::StartReading,
                                     weak_factory_.GetWeakPtr()));
     }
@@ -168,7 +169,7 @@ void QuicSimpleServer::StartReading() {
     synchronous_read_count_ = 0;
     // Schedule the processing through the message loop to 1) prevent infinite
     // recursion and 2) avoid blocking the thread for too long.
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&QuicSimpleServer::OnReadComplete,
                                   weak_factory_.GetWeakPtr(), result));
   } else {
@@ -190,7 +191,10 @@ void QuicSimpleServer::OnReadComplete(int result) {
     // packet whose payload is larger than our receive buffer. Do not act on 0
     // as that indicates that we received a UDP packet with an empty payload.
     // In both cases, the socket should still be usable.
-    if (result != ERR_MSG_TOO_BIG && result != 0) {
+    // Also do not act on ERR_CONNECTION_RESET as this is happening when the
+    // network service restarts on Windows.
+    if (result != ERR_MSG_TOO_BIG && result != ERR_CONNECTION_RESET &&
+        result != 0) {
       Shutdown();
       return;
     }

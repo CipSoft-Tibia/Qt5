@@ -1,5 +1,5 @@
 diff --git a/source/common/ucmndata.h b/source/common/ucmndata.h
-index c3eba9f4..15c1a6c4 100644
+index 486b4fd7..1e63833f 100644
 --- a/source/common/ucmndata.h
 +++ b/source/common/ucmndata.h
 @@ -45,6 +45,20 @@ typedef struct  {
@@ -24,7 +24,7 @@ index c3eba9f4..15c1a6c4 100644
      uint32_t nameOffset;
      uint32_t dataOffset;
 diff --git a/source/common/udata.cpp b/source/common/udata.cpp
-index ec9c999c..07156da5 100644
+index 2bc74c97..432a511e 100644
 --- a/source/common/udata.cpp
 +++ b/source/common/udata.cpp
 @@ -643,7 +643,7 @@ U_NAMESPACE_END
@@ -49,38 +49,22 @@ index ec9c999c..07156da5 100644
          */
  #if !defined(ICU_DATA_DIR_WINDOWS)
  // When using the Windows system data, we expect only a single data file.
--        setCommonICUDataPointer(&U_ICUDATA_ENTRY_POINT, FALSE, pErrorCode);
-+        setCommonICUDataPointer(&U_ICUDATA_ENTRY_POINT.hdr, FALSE, pErrorCode);
+-        setCommonICUDataPointer(&U_ICUDATA_ENTRY_POINT, false, pErrorCode);
++        setCommonICUDataPointer(&U_ICUDATA_ENTRY_POINT.hdr, false, pErrorCode);
          {
              Mutex lock;
              return gCommonICUDataArray[commonDataIndex];
 diff --git a/source/stubdata/stubdata.cpp b/source/stubdata/stubdata.cpp
-index 0fcab4fa..f2efd3c3 100644
+index 3f336612..88449b57 100644
 --- a/source/stubdata/stubdata.cpp
 +++ b/source/stubdata/stubdata.cpp
-@@ -22,45 +22,34 @@
- #include "unicode/utypes.h"
- #include "unicode/udata.h"
- #include "unicode/uversion.h"
+@@ -20,29 +20,33 @@
+ *
+ */
+ 
+-#include "stubdata.h"
 +#include "ucmndata.h"
  
- 
--typedef struct {
--    uint16_t headerSize;
--    uint8_t magic1, magic2;
--    UDataInfo info;
--    char padding[8];
--    uint32_t count, reserved;
--    /*
--    const struct {
--    const char *const name; 
--    const void *const data;
--    } toc[1];
--    */
--   int   fakeNameAndData[4];       /* TODO:  Change this header type from */
--                                   /*        pointerTOC to OffsetTOC.     */
--} ICU_Data_Header;
--
  extern "C" U_EXPORT const ICU_Data_Header U_ICUDATA_ENTRY_POINT = {
 -    32,          /* headerSize */
 -    0xda,        /* magic1,  (see struct MappedData in udata.c)  */

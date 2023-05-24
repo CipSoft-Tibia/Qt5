@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <QtCore/QFile>
@@ -36,7 +11,7 @@ class tst_lconvert : public QObject
 public:
     tst_lconvert()
       : dataDir(QFINDTESTDATA("data/"))
-      , lconvert(QLibraryInfo::location(QLibraryInfo::BinariesPath) + "/lconvert") {}
+      , lconvert(QLibraryInfo::path(QLibraryInfo::BinariesPath) + "/lconvert") {}
 
 private slots:
     void initTestCase();
@@ -170,10 +145,10 @@ void tst_lconvert::convertChain(const QString &_inFileName, const QString &_outF
         args << "-if" << stations[i] << "-i" << "-" << "-of" << stations[i + 1];
         cvts.at(i)->start(lconvert, args, QIODevice::ReadWrite | QIODevice::Text);
     }
-    for (QProcess *cvt : qAsConst(cvts))
+    for (QProcess *cvt : std::as_const(cvts))
         QVERIFY2(cvt->waitForStarted(), qPrintable(cvt->errorString()));
     int st = 0;
-    for (QProcess *cvt : qAsConst(cvts))
+    for (QProcess *cvt : std::as_const(cvts))
         doWait(cvt, ++st);
 
     if (!QTest::currentTestFailed())
@@ -225,6 +200,7 @@ void tst_lconvert::converts_data()
     QTest::newRow("broken utf8") << "test-broken-utf8.po" << "test-broken-utf8.po.out" << "po";
     QTest::newRow("line joins") << "test-slurp.po" << "test-slurp.po.out" << "po";
     QTest::newRow("escapes") << "test-escapes.po" << "test-escapes.po.out" << "po";
+    QTest::newRow("xlf seg") << "test-trans_seg.xlf" << "test-trans_seg.ts.out" << "ts";
 }
 
 void tst_lconvert::converts()

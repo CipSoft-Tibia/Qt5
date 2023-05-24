@@ -37,6 +37,12 @@
 #include "common/tools_common.h"
 #include "common/video_reader.h"
 
+enum {
+  YUV1D,  // 1D tile output for conformance test.
+  YUV,    // Tile output in YUV format.
+  NV12,   // Tile output in NV12 format.
+} UENUM1BYTE(OUTPUT_FORMAT);
+
 static const char *exec_name;
 
 void usage_exit(void) {
@@ -178,7 +184,7 @@ int main(int argc, char **argv) {
     while ((img = aom_codec_get_frame(&codec, &iter)) != NULL) {
       char name[1024];
       snprintf(name, sizeof(name), "ref_%d.yuv", i);
-      printf("writing ref image to %s, %d, %d\n", name, img->d_w, img->d_h);
+      printf("writing ref image to %s, %u, %u\n", name, img->d_w, img->d_h);
       FILE *ref_file = fopen(name, "wb");
       aom_img_write(img, ref_file);
       fclose(ref_file);

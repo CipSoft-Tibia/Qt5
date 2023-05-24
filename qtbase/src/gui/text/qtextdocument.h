@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTEXTDOCUMENT_H
 #define QTEXTDOCUMENT_H
@@ -47,6 +11,8 @@
 #include <QtCore/qvariant.h>
 #include <QtGui/qfont.h>
 #include <QtCore/qurl.h>
+#include <QtCore/qcontainerfwd.h>
+Q_MOC_INCLUDE(<QtGui/qtextcursor.h>)
 
 QT_BEGIN_NAMESPACE
 
@@ -62,22 +28,15 @@ class QTextObject;
 class QTextFormat;
 class QTextFrame;
 class QTextBlock;
-class QTextCodec;
 class QVariant;
 class QRectF;
 class QTextOption;
 class QTextCursor;
 
-template<typename T> class QVector;
-
 namespace Qt
 {
     Q_GUI_EXPORT bool mightBeRichText(const QString&);
     Q_GUI_EXPORT QString convertFromPlainText(const QString &plain, WhiteSpaceMode mode = WhiteSpacePre);
-
-#if QT_CONFIG(textcodec) || defined(Q_CLANG_QDOC)
-    Q_GUI_EXPORT QTextCodec *codecForHtml(const QByteArray &ba);
-#endif
 }
 
 class Q_GUI_EXPORT QAbstractUndoItem
@@ -103,6 +62,7 @@ class Q_GUI_EXPORT QTextDocument : public QObject
     Q_PROPERTY(QSizeF pageSize READ pageSize WRITE setPageSize)
     Q_PROPERTY(QFont defaultFont READ defaultFont WRITE setDefaultFont)
     Q_PROPERTY(bool useDesignMetrics READ useDesignMetrics WRITE setUseDesignMetrics)
+    Q_PROPERTY(bool layoutEnabled READ isLayoutEnabled WRITE setLayoutEnabled)
     Q_PROPERTY(QSizeF size READ size)
     Q_PROPERTY(qreal textWidth READ textWidth WRITE setTextWidth)
     Q_PROPERTY(int blockCount READ blockCount)
@@ -141,13 +101,14 @@ public:
 
     enum MetaInformation {
         DocumentTitle,
-        DocumentUrl
+        DocumentUrl,
+        CssMedia
     };
     void setMetaInformation(MetaInformation info, const QString &);
     QString metaInformation(MetaInformation info) const;
 
 #ifndef QT_NO_TEXTHTMLPARSER
-    QString toHtml(const QByteArray &encoding = QByteArray()) const;
+    QString toHtml() const;
     void setHtml(const QString &html);
 #endif
 
@@ -155,7 +116,7 @@ public:
     enum MarkdownFeature {
         MarkdownNoHTML = 0x0020 | 0x0040,
         MarkdownDialectCommonMark = 0,
-        MarkdownDialectGitHub = 0x0004 | 0x0008 | 0x0400 | 0x0100 | 0x0200 | 0x0800
+        MarkdownDialectGitHub = 0x0004 | 0x0008 | 0x0400 | 0x0100 | 0x0200 | 0x0800 | 0x4000
     };
     Q_DECLARE_FLAGS(MarkdownFeatures, MarkdownFeature)
     Q_FLAG(MarkdownFeatures)
@@ -186,11 +147,6 @@ public:
     QTextCursor find(const QString &subString, int from = 0, FindFlags options = FindFlags()) const;
     QTextCursor find(const QString &subString, const QTextCursor &cursor, FindFlags options = FindFlags()) const;
 
-#ifndef QT_NO_REGEXP
-    QTextCursor find(const QRegExp &expr, int from = 0, FindFlags options = FindFlags()) const;
-    QTextCursor find(const QRegExp &expr, const QTextCursor &cursor, FindFlags options = FindFlags()) const;
-#endif
-
 #if QT_CONFIG(regularexpression)
     QTextCursor find(const QRegularExpression &expr, int from = 0, FindFlags options = FindFlags()) const;
     QTextCursor find(const QRegularExpression &expr, const QTextCursor &cursor, FindFlags options = FindFlags()) const;
@@ -217,6 +173,15 @@ public:
     void setDefaultFont(const QFont &font);
     QFont defaultFont() const;
 
+    void setSuperScriptBaseline(qreal baseline);
+    qreal superScriptBaseline() const;
+
+    void setSubScriptBaseline(qreal baseline);
+    qreal subScriptBaseline() const;
+
+    void setBaselineOffset(qreal baseline);
+    qreal baselineOffset() const;
+
     int pageCount() const;
 
     bool isModified() const;
@@ -239,12 +204,23 @@ public:
     QVariant resource(int type, const QUrl &name) const;
     void addResource(int type, const QUrl &name, const QVariant &resource);
 
-    QVector<QTextFormat> allFormats() const;
+    using ResourceProvider = std::function<QVariant(const QUrl&)>;
+
+    QTextDocument::ResourceProvider resourceProvider() const;
+    void setResourceProvider(const ResourceProvider &provider);
+
+    static QTextDocument::ResourceProvider defaultResourceProvider();
+    static void setDefaultResourceProvider(const ResourceProvider &provider);
+
+    QList<QTextFormat> allFormats() const;
 
     void markContentsDirty(int from, int length);
 
     void setUseDesignMetrics(bool b);
     bool useDesignMetrics() const;
+
+    void setLayoutEnabled(bool b);
+    bool isLayoutEnabled() const;
 
     void drawContents(QPainter *painter, const QRectF &rect = QRectF());
 
@@ -316,8 +292,6 @@ protected:
     Q_INVOKABLE virtual QVariant loadResource(int type, const QUrl &name);
 
     QTextDocument(QTextDocumentPrivate &dd, QObject *parent);
-public:
-    QTextDocumentPrivate *docHandle() const;
 private:
     Q_DISABLE_COPY(QTextDocument)
     Q_DECLARE_PRIVATE(QTextDocument)

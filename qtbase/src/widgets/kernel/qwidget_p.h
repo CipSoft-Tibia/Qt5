@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWIDGET_P_H
 #define QWIDGET_P_H
@@ -51,6 +15,8 @@
 // We mean it.
 //
 
+
+
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "QtWidgets/qwidget.h"
 #include "private/qobject_p.h"
@@ -59,8 +25,8 @@
 #include "QtCore/qset.h"
 #include "QtGui/qregion.h"
 #include "QtGui/qinputmethod.h"
-#include "QtGui/qopengl.h"
 #include "QtGui/qsurfaceformat.h"
+#include "QtGui/qscreen.h"
 #include "QtWidgets/qsizepolicy.h"
 #include "QtWidgets/qstyle.h"
 #include "QtWidgets/qapplication.h"
@@ -74,6 +40,7 @@
 #endif
 #include <private/qgesture_p.h>
 #include <qpa/qplatformbackingstore.h>
+#include <QtGui/private/qbackingstorerhisupport_p.h>
 
 #include <vector>
 #include <memory>
@@ -91,7 +58,6 @@ class QPixmap;
 class QWidgetRepaintManager;
 class QGraphicsProxyWidget;
 class QWidgetItemV2;
-class QOpenGLContext;
 
 class QStyle;
 
@@ -99,6 +65,7 @@ class QUnifiedToolbarSurface;
 
 // implemented in qshortcut.cpp
 bool qWidgetShortcutContextMatcher(QObject *object, Qt::ShortcutContext context);
+void qSendWindowChangeToTextureChildrenRecursively(QWidget *widget, QEvent::Type eventType);
 
 class QUpdateLaterEvent : public QEvent
 {
@@ -115,6 +82,7 @@ public:
     inline const QRegion &region() const { return m_region; }
 
 protected:
+    friend class QApplication;
     QRegion m_region;
 };
 
@@ -127,9 +95,6 @@ struct QTLWExtra {
     QBackingStore *backingStore;
     QPainter *sharedPainter;
     QWidgetWindow *window;
-#ifndef QT_NO_OPENGL
-    mutable std::unique_ptr<QOpenGLContext> shareContext;
-#endif
 
     // Implicit pointers (shared_null).
     QString caption; // widget caption
@@ -144,12 +109,9 @@ struct QTLWExtra {
     QRect frameStrut;
     QRect normalGeometry; // used by showMin/maximized/FullScreen
     Qt::WindowFlags savedFlags; // Save widget flags while showing fullscreen
-    // ### TODO replace initialScreenIndex with QScreen *, in case the screens change at runtime
-    int initialScreenIndex; // Screen number when passing a QDesktop[Screen]Widget as parent.
+    QScreen *initialScreen; // Screen when passing a QDesktop[Screen]Widget as parent.
 
-#ifndef QT_NO_OPENGL
     std::vector<std::unique_ptr<QPlatformTextureList>> widgetTextures;
-#endif
 
     // *************************** Cross-platform bit fields ****************************
     uint opacity : 8;
@@ -235,13 +197,6 @@ public:
     Q_DECLARE_FLAGS(DrawWidgetFlags, DrawWidgetFlag)
     Q_FLAG(DrawWidgetFlags)
 
-    enum CloseMode {
-        CloseNoEvent,
-        CloseWithEvent,
-        CloseWithSpontaneousEvent
-    };
-    Q_ENUM(CloseMode)
-
     enum Direction {
         DirectionNorth = 0x01,
         DirectionEast = 0x10,
@@ -257,6 +212,9 @@ public:
     static QWidgetPrivate *get(QWidget *w) { return w->d_func(); }
     static const QWidgetPrivate *get(const QWidget *w) { return w->d_func(); }
 
+    static void checkRestoredGeometry(const QRect &availableGeometry, QRect *restoredGeometry,
+                                      int frameHeight);
+
     QWExtra *extraData() const;
     QTLWExtra *topData() const;
     QTLWExtra *maybeTopData() const;
@@ -264,12 +222,15 @@ public:
     void setSharedPainter(QPainter *painter);
     QWidgetRepaintManager *maybeRepaintManager() const;
 
+    QRhi *rhi() const;
+
     enum class WindowHandleMode {
         Direct,
         Closest,
         TopLevel
     };
     QWindow *windowHandle(WindowHandleMode mode = WindowHandleMode::Direct) const;
+    QWindow *_q_closestWindowHandle() const; // Private slot in QWidget
 
     QScreen *associatedScreen() const;
 
@@ -299,7 +260,7 @@ public:
 
     void setPalette_helper(const QPalette &);
     void resolvePalette();
-    QPalette naturalWidgetPalette(uint inheritedMask) const;
+    QPalette naturalWidgetPalette(QPalette::ResolveMask inheritedMask) const;
 
     void setMask_sys(const QRegion &);
 
@@ -313,7 +274,7 @@ public:
 
     void updateFont(const QFont &);
     inline void setFont_helper(const QFont &font) {
-        if (directFontResolveMask == font.resolve() && data.fnt == font)
+        if (directFontResolveMask == font.resolveMask() && data.fnt == font)
             return;
         updateFont(font);
     }
@@ -372,7 +333,14 @@ public:
     const QRegion &getOpaqueChildren() const;
     void setDirtyOpaqueRegion();
 
-    bool close_helper(CloseMode mode);
+    bool close();
+    enum CloseMode {
+        CloseNoEvent,
+        CloseWithEvent,
+        CloseWithSpontaneousEvent
+    };
+    Q_ENUM(CloseMode)
+    bool handleClose(CloseMode mode);
 
     void setWindowIcon_helper();
     void setWindowIcon_sys();
@@ -388,6 +356,7 @@ public:
     void invalidateBackingStore(const T &);
 
     QRegion overlappedRegion(const QRect &rect, bool breakAfterFirst = false) const;
+    bool isOverlapped(const QRect &rect) const { return !overlappedRegion(rect, true).isEmpty(); }
     void syncBackingStore();
     void syncBackingStore(const QRegion &region);
 
@@ -397,8 +366,6 @@ public:
     void updateWidgetTransform(QEvent *event);
 
     void reparentFocusWidgets(QWidget *oldtlw);
-
-    static int pointToRect(const QPoint &p, const QRect &r);
 
     void setWinId(WId);
     void showChildren(bool spontaneous);
@@ -465,7 +432,7 @@ public:
     // aboutToDestroy() is called just before the contents of
     // QWidget::destroy() is executed. It's used to signal QWidget
     // sub-classes that their internals are about to be released.
-    virtual void aboutToDestroy(bool destroyWindow) { Q_UNUSED(destroyWindow); }
+    virtual void aboutToDestroy() {}
 
     inline QWidget *effectiveFocusWidget() {
         QWidget *w = q_func();
@@ -476,31 +443,58 @@ public:
 
     void setModal_sys();
 
-    // This is an helper function that return the available geometry for
-    // a widget and takes care is this one is in QGraphicsView.
-    // If the widget is not embed in a scene then the geometry available is
-    // null, we let QDesktopWidget decide for us.
-    static QRect screenGeometry(const QWidget *widget)
+    // These helper functions return the (available) geometry for the screen
+    // the widget is on, and takes care if this one is embedded in a QGraphicsView.
+    static QWidget *parentGraphicsView(const QWidget *widget)
     {
-        QRect screen;
 #if QT_CONFIG(graphicsview)
         QGraphicsProxyWidget *ancestorProxy = widget->d_func()->nearestGraphicsProxyWidget(widget);
         //It's embedded if it has an ancestor
         if (ancestorProxy) {
             if (!bypassGraphicsProxyWidget(widget) && ancestorProxy->scene() != nullptr) {
-                // One view, let be smart and return the viewport rect then the popup is aligned
-                if (ancestorProxy->scene()->views().size() == 1) {
-                    QGraphicsView *view = ancestorProxy->scene()->views().at(0);
-                    screen = view->mapToScene(view->viewport()->rect()).boundingRect().toRect();
-                } else {
-                    screen = ancestorProxy->scene()->sceneRect().toRect();
+                if (!ancestorProxy->scene()->views().empty()) {
+                    return ancestorProxy->scene()->views().at(0);
                 }
             }
         }
 #else
         Q_UNUSED(widget);
 #endif
+        return nullptr;
+    }
+
+    static QRect screenGeometry(const QWidget *widget)
+    {
+        return screenGeometry(widget, QPoint(), false);
+    }
+
+    static QRect availableScreenGeometry(const QWidget *widget)
+    {
+        return availableScreenGeometry(widget, QPoint(), false);
+    }
+
+    static QScreen *screen(const QWidget *widget, const QPoint &globalPosition, bool hasPosition = true)
+    {
+        while (QWidget *view = parentGraphicsView(widget))
+            widget = view;
+
+        QScreen *screen = nullptr;
+        if (hasPosition)
+            screen = widget->screen()->virtualSiblingAt(globalPosition);
+        if (!screen)
+            screen = widget->screen();
+
         return screen;
+    }
+
+    static QRect screenGeometry(const QWidget *widget, const QPoint &globalPosition, bool hasPosition = true)
+    {
+        return screen(widget, globalPosition, hasPosition)->geometry();
+    }
+
+    static QRect availableScreenGeometry(const QWidget *widget, const QPoint &globalPosition, bool hasPosition = true)
+    {
+        return screen(widget, globalPosition, hasPosition)->availableGeometry();
     }
 
     inline void setRedirected(QPaintDevice *replacement, const QPoint &offset)
@@ -558,8 +552,14 @@ public:
 
     inline void handleSoftwareInputPanel(Qt::MouseButton button, bool clickCausedFocus)
     {
+        if (button == Qt::LeftButton)
+            handleSoftwareInputPanel(clickCausedFocus);
+    }
+
+    inline void handleSoftwareInputPanel(bool clickCausedFocus = false)
+    {
         Q_Q(QWidget);
-        if (button == Qt::LeftButton && qApp->autoSipEnabled()) {
+        if (qApp->autoSipEnabled()) {
             QStyle::RequestSoftwareInputPanel behavior = QStyle::RequestSoftwareInputPanel(
                     q->style()->styleHint(QStyle::SH_RequestSoftwareInputPanel));
             if (!clickCausedFocus || behavior == QStyle::RSIP_OnMouseClick) {
@@ -582,12 +582,17 @@ public:
     inline QRect mapFromWS(const QRect &r) const
     { return r.translated(data.wrect.topLeft()); }
 
-    QOpenGLContext *shareContext() const;
+    virtual QObject *focusObject();
 
-    virtual QObject *focusObject() { return nullptr; }
+    virtual QPlatformBackingStoreRhiConfig rhiConfig() const { return {}; }
 
-#ifndef QT_NO_OPENGL
-    virtual GLuint textureId() const { return 0; }
+    // Note that textureRight may be null, as it's only used in stereoscopic rendering
+    struct TextureData {
+        QRhiTexture *textureLeft = nullptr;
+        QRhiTexture *textureRight = nullptr;
+    };
+
+    virtual TextureData texture() const { return {}; }
     virtual QPlatformTextureList::Flags textureListFlags() {
         Q_Q(QWidget);
         return q->testAttribute(Qt::WA_AlwaysStackOnTop)
@@ -622,9 +627,17 @@ public:
     virtual void resizeViewportFramebuffer() { }
     // Called after each paint event.
     virtual void resolveSamples() { }
-#endif
+
+    // These two are used in QGraphicsView for supporting stereoscopic rendering with a
+    // QOpenGLWidget viewport.
+    virtual bool isStereoEnabled() { return false; } // Called in QGraphicsView::setupViewport
+    virtual bool toggleStereoTargetBuffer() { return false; } // Called in QGraphicsView::paintEvent
 
     static void setWidgetParentHelper(QObject *widgetAsObject, QObject *newParent);
+
+    std::string flagsForDumping() const override;
+
+    QWidget *closestParentWidgetWithWindowHandle() const;
 
     // Variables.
     // Regular pointers (keep them together to avoid gaps on 64 bit architectures).
@@ -654,7 +667,7 @@ public:
     // Implicit pointers (shared_null/shared_empty).
     QRegion opaqueChildren;
     QRegion dirty;
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
     QString toolTip;
     int toolTipDuration;
 #endif
@@ -664,7 +677,7 @@ public:
 #if QT_CONFIG(whatsthis)
     QString whatsThis;
 #endif
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     QString accessibleName;
     QString accessibleDescription;
 #endif
@@ -672,8 +685,8 @@ public:
     // Other variables.
     uint directFontResolveMask;
     uint inheritedFontResolveMask;
-    decltype(std::declval<QPalette>().resolve()) directPaletteResolveMask;
-    uint inheritedPaletteResolveMask;
+    decltype(std::declval<QPalette>().resolveMask()) directPaletteResolveMask;
+    QPalette::ResolveMask inheritedPaletteResolveMask;
     short leftmargin;
     short topmargin;
     short rightmargin;
@@ -713,10 +726,8 @@ public:
 #ifndef QT_NO_IM
     uint inheritsInputMethodHints : 1;
 #endif
-#ifndef QT_NO_OPENGL
     uint renderToTextureReallyDirty : 1;
-    uint renderToTextureComposeActive : 1;
-#endif
+    uint usesRhiFlush : 1;
     uint childrenHiddenByWState : 1;
     uint childrenShownByExpose : 1;
 

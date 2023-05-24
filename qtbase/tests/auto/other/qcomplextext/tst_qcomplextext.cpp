@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtGui/QtGui>
 #include <private/qtextengine_p.h>
 
@@ -109,7 +84,7 @@ void tst_QComplexText::bidiReorderString()
         if (si.analysis.bidiLevel % 2) {
             // reverse sub
             QChar *a = sub.data();
-            QChar *b = a + sub.length() - 1;
+            QChar *b = a + sub.size() - 1;
             while (a < b) {
                 QChar tmp = *a;
                 *a = *b;
@@ -118,7 +93,7 @@ void tst_QComplexText::bidiReorderString()
                 --b;
             }
             a = (QChar *)sub.unicode();
-            b = a + sub.length();
+            b = a + sub.size();
             while (a<b) {
                 *a = a->mirroredChar();
                 ++a;
@@ -288,7 +263,8 @@ void tst_QComplexText::bidiCursor_PDF()
     QVERIFY(line.cursorToX(size) == line.cursorToX(size - 1));
 }
 
-static void testBidiString(const QString &data, int paragraphDirection, const QVector<int> &resolvedLevels, const QVector<int> &visualOrder)
+static void testBidiString(const QString &data, int paragraphDirection,
+                           const QList<int> &resolvedLevels, const QList<int> &visualOrder)
 {
     Q_UNUSED(resolvedLevels);
 
@@ -339,7 +315,7 @@ static void testBidiString(const QString &data, int paragraphDirection, const QV
         if (si.analysis.bidiLevel % 2) {
             // reverse sub
             QChar *a = sub.data();
-            QChar *b = a + sub.length() - 1;
+            QChar *b = a + sub.size() - 1;
             while (a < b) {
                 QChar tmp = *a;
                 *a = *b;
@@ -348,7 +324,7 @@ static void testBidiString(const QString &data, int paragraphDirection, const QV
                 --b;
             }
             a = (QChar *)sub.unicode();
-            b = a + sub.length();
+            b = a + sub.size();
 //            while (a<b) {
 //                *a = a->mirroredChar();
 //                ++a;
@@ -398,7 +374,7 @@ void tst_QComplexText::bidiCharacterTest()
         int paragraphDirection = parts.at(1).toInt();
 //        int resolvedParagraphLevel = parts.at(2).toInt();
 
-        QVector<int> resolvedLevels;
+        QList<int> resolvedLevels;
         QList<QByteArray> levelParts = parts.at(3).split(' ');
         for (const auto &p : levelParts) {
             if (p == "x") {
@@ -410,7 +386,7 @@ void tst_QComplexText::bidiCharacterTest()
             }
         }
 
-        QVector<int> visualOrder;
+        QList<int> visualOrder;
         QList<QByteArray> orderParts = parts.at(4).split(' ');
         for (const auto &p : orderParts) {
             bool ok;
@@ -470,8 +446,8 @@ void tst_QComplexText::bidiTest()
     f.open(QIODevice::ReadOnly);
 
     int linenum = 0;
-    QVector<int> resolvedLevels;
-    QVector<int> visualOrder;
+    QList<int> resolvedLevels;
+    QList<int> visualOrder;
     while (!f.atEnd()) {
         linenum++;
 

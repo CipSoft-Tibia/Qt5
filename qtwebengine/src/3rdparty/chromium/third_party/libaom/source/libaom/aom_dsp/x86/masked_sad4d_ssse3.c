@@ -37,11 +37,11 @@
   res##idx = _mm_add_epi32(res##idx, _mm_sad_epu8(pred, src));
 
 static INLINE void masked_sadx4d_ssse3(const uint8_t *src_ptr, int src_stride,
-                                       const uint8_t *a_ptr[], int a_stride,
+                                       const uint8_t *a_ptr[4], int a_stride,
                                        const uint8_t *b_ptr, int b_stride,
                                        const uint8_t *m_ptr, int m_stride,
                                        int width, int height, int inv_mask,
-                                       unsigned sad_array[]) {
+                                       unsigned sad_array[4]) {
   int x, y;
   __m128i a;
   __m128i data_l, data_r, mask_l, mask_r, pred_l, pred_r, pred;
@@ -104,10 +104,10 @@ static INLINE void masked_sadx4d_ssse3(const uint8_t *src_ptr, int src_stride,
   res##idx = _mm_add_epi32(res##idx, _mm_sad_epu8(pred, src));
 
 void aom_masked_sad8xhx4d_ssse3(const uint8_t *src_ptr, int src_stride,
-                                const uint8_t *ref_array[], int a_stride,
+                                const uint8_t *ref_array[4], int a_stride,
                                 const uint8_t *b_ptr, int b_stride,
                                 const uint8_t *m_ptr, int m_stride, int height,
-                                int inv_mask, unsigned sad_array[]) {
+                                int inv_mask, unsigned sad_array[4]) {
   const uint8_t *ref0 = ref_array[0];
   const uint8_t *ref1 = ref_array[1];
   const uint8_t *ref2 = ref_array[2];
@@ -153,22 +153,22 @@ void aom_masked_sad8xhx4d_ssse3(const uint8_t *src_ptr, int src_stride,
   _mm_storeu_si128((__m128i *)sad_array, res0);
 }
 
-#define MASK_SAD4XH_ONE_REF(idx)                                               \
-  a = _mm_unpacklo_epi32(_mm_cvtsi32_si128(*(uint32_t *)ref##idx),             \
-                         _mm_cvtsi32_si128(*(uint32_t *)&ref##idx[a_stride])); \
-  data = _mm_unpacklo_epi8(a, b);                                              \
-  mask = _mm_unpacklo_epi8(m, m_inv);                                          \
-  pred = _mm_maddubs_epi16(data, mask);                                        \
-  pred = xx_roundn_epu16(pred, AOM_BLEND_A64_ROUND_BITS);                      \
-                                                                               \
-  pred = _mm_packus_epi16(pred, _mm_setzero_si128());                          \
+#define MASK_SAD4XH_ONE_REF(idx)                                          \
+  a = _mm_unpacklo_epi32(_mm_cvtsi32_si128(*(int *)ref##idx),             \
+                         _mm_cvtsi32_si128(*(int *)&ref##idx[a_stride])); \
+  data = _mm_unpacklo_epi8(a, b);                                         \
+  mask = _mm_unpacklo_epi8(m, m_inv);                                     \
+  pred = _mm_maddubs_epi16(data, mask);                                   \
+  pred = xx_roundn_epu16(pred, AOM_BLEND_A64_ROUND_BITS);                 \
+                                                                          \
+  pred = _mm_packus_epi16(pred, _mm_setzero_si128());                     \
   res##idx = _mm_add_epi32(res##idx, _mm_sad_epu8(pred, src));
 
 void aom_masked_sad4xhx4d_ssse3(const uint8_t *src_ptr, int src_stride,
-                                const uint8_t *ref_array[], int a_stride,
+                                const uint8_t *ref_array[4], int a_stride,
                                 const uint8_t *b_ptr, int b_stride,
                                 const uint8_t *m_ptr, int m_stride, int height,
-                                int inv_mask, unsigned sad_array[]) {
+                                int inv_mask, unsigned sad_array[4]) {
   const uint8_t *ref0 = ref_array[0];
   const uint8_t *ref1 = ref_array[1];
   const uint8_t *ref2 = ref_array[2];
@@ -182,15 +182,15 @@ void aom_masked_sad4xhx4d_ssse3(const uint8_t *src_ptr, int src_stride,
   const __m128i mask_max = _mm_set1_epi8((1 << AOM_BLEND_A64_ROUND_BITS));
 
   for (int y = 0; y < height; y += 2) {
-    const __m128i src = _mm_unpacklo_epi32(
-        _mm_cvtsi32_si128(*(uint32_t *)src_ptr),
-        _mm_cvtsi32_si128(*(uint32_t *)&src_ptr[src_stride]));
+    const __m128i src =
+        _mm_unpacklo_epi32(_mm_cvtsi32_si128(*(int *)src_ptr),
+                           _mm_cvtsi32_si128(*(int *)&src_ptr[src_stride]));
     const __m128i b =
-        _mm_unpacklo_epi32(_mm_cvtsi32_si128(*(uint32_t *)b_ptr),
-                           _mm_cvtsi32_si128(*(uint32_t *)&b_ptr[b_stride]));
+        _mm_unpacklo_epi32(_mm_cvtsi32_si128(*(int *)b_ptr),
+                           _mm_cvtsi32_si128(*(int *)&b_ptr[b_stride]));
     const __m128i m_copy =
-        _mm_unpacklo_epi32(_mm_cvtsi32_si128(*(uint32_t *)m_ptr),
-                           _mm_cvtsi32_si128(*(uint32_t *)&m_ptr[m_stride]));
+        _mm_unpacklo_epi32(_mm_cvtsi32_si128(*(int *)m_ptr),
+                           _mm_cvtsi32_si128(*(int *)&m_ptr[m_stride]));
 
     __m128i m_inv = _mm_sub_epi8(mask_max, m_copy);
     __m128i m = inv_mask ? m_inv : m_copy;
@@ -217,27 +217,27 @@ void aom_masked_sad4xhx4d_ssse3(const uint8_t *src_ptr, int src_stride,
 
 #define MASKSADMXN_SSSE3(m, n)                                                 \
   void aom_masked_sad##m##x##n##x4d_ssse3(                                     \
-      const uint8_t *src, int src_stride, const uint8_t *ref[],                \
+      const uint8_t *src, int src_stride, const uint8_t *ref[4],               \
       int ref_stride, const uint8_t *second_pred, const uint8_t *msk,          \
-      int msk_stride, int inv_mask, unsigned sad_array[]) {                    \
+      int msk_stride, int inv_mask, unsigned sad_array[4]) {                   \
     masked_sadx4d_ssse3(src, src_stride, ref, ref_stride, second_pred, m, msk, \
                         msk_stride, m, n, inv_mask, sad_array);                \
   }
 
 #define MASKSAD8XN_SSSE3(n)                                                   \
   void aom_masked_sad8x##n##x4d_ssse3(                                        \
-      const uint8_t *src, int src_stride, const uint8_t *ref[],               \
+      const uint8_t *src, int src_stride, const uint8_t *ref[4],              \
       int ref_stride, const uint8_t *second_pred, const uint8_t *msk,         \
-      int msk_stride, int inv_mask, unsigned sad_array[]) {                   \
+      int msk_stride, int inv_mask, unsigned sad_array[4]) {                  \
     aom_masked_sad8xhx4d_ssse3(src, src_stride, ref, ref_stride, second_pred, \
                                8, msk, msk_stride, n, inv_mask, sad_array);   \
   }
 
 #define MASKSAD4XN_SSSE3(n)                                                   \
   void aom_masked_sad4x##n##x4d_ssse3(                                        \
-      const uint8_t *src, int src_stride, const uint8_t *ref[],               \
+      const uint8_t *src, int src_stride, const uint8_t *ref[4],              \
       int ref_stride, const uint8_t *second_pred, const uint8_t *msk,         \
-      int msk_stride, int inv_mask, unsigned sad_array[]) {                   \
+      int msk_stride, int inv_mask, unsigned sad_array[4]) {                  \
     aom_masked_sad4xhx4d_ssse3(src, src_stride, ref, ref_stride, second_pred, \
                                4, msk, msk_stride, n, inv_mask, sad_array);   \
   }

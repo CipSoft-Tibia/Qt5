@@ -1,37 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <qbackendnodetester.h>
 #include <Qt3DRender/private/texture_p.h>
 
-#include "testpostmanarbiter.h"
 #include "testrenderer.h"
+#include <testarbiter.h>
 
 class DummyTexture : public Qt3DRender::QAbstractTexture
 {
@@ -111,116 +86,104 @@ void tst_RenderTexture::checkFrontendPropertyNotifications()
     QCoreApplication::processEvents();
 
     // THEN
-    QCOMPARE(arbiter.events.size(), 0);
-    QCOMPARE(arbiter.dirtyNodes.size(), 1);
-    QCOMPARE(arbiter.dirtyNodes.front(), &texture);
+    QCOMPARE(arbiter.dirtyNodes().size(), 1);
+    QCOMPARE(arbiter.dirtyNodes().front(), &texture);
 
-    arbiter.dirtyNodes.clear();
+    arbiter.clear();
 
     // WHEN
     texture.setWidth(512);
     QCoreApplication::processEvents();
 
     // THEN
-    QCOMPARE(arbiter.events.size(), 0);
-    QCOMPARE(arbiter.dirtyNodes.size(), 0);
+    QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
     // WHEN
     texture.setHeight(256);
     QCoreApplication::processEvents();
 
     // THEN
-    QCOMPARE(arbiter.events.size(), 0);
-    QCOMPARE(arbiter.dirtyNodes.size(), 1);
-    QCOMPARE(arbiter.dirtyNodes.front(), &texture);
+    QCOMPARE(arbiter.dirtyNodes().size(), 1);
+    QCOMPARE(arbiter.dirtyNodes().front(), &texture);
 
-    arbiter.dirtyNodes.clear();
+    arbiter.clear();
 
     // WHEN
     texture.setHeight(256);
     QCoreApplication::processEvents();
 
     // THEN
-    QCOMPARE(arbiter.events.size(), 0);
-    QCOMPARE(arbiter.dirtyNodes.size(), 0);
+    QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
     // WHEN
     texture.setDepth(128);
     QCoreApplication::processEvents();
 
     // THEN
-    QCOMPARE(arbiter.events.size(), 0);
-    QCOMPARE(arbiter.dirtyNodes.size(), 1);
-    QCOMPARE(arbiter.dirtyNodes.front(), &texture);
+    QCOMPARE(arbiter.dirtyNodes().size(), 1);
+    QCOMPARE(arbiter.dirtyNodes().front(), &texture);
 
-    arbiter.dirtyNodes.clear();
+    arbiter.clear();
 
     // WHEN
     texture.setDepth(128);
     QCoreApplication::processEvents();
 
     // THEN
-    QCOMPARE(arbiter.events.size(), 0);
-    QCOMPARE(arbiter.events.size(), 0);
+    QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
     // WHEN
     texture.setLayers(16);
     QCoreApplication::processEvents();
 
     // THEN
-    QCOMPARE(arbiter.events.size(), 0);
-    QCOMPARE(arbiter.dirtyNodes.size(), 1);
-    QCOMPARE(arbiter.dirtyNodes.front(), &texture);
+    QCOMPARE(arbiter.dirtyNodes().size(), 1);
+    QCOMPARE(arbiter.dirtyNodes().front(), &texture);
 
-    arbiter.dirtyNodes.clear();
+    arbiter.clear();
 
     // WHEN
     texture.setLayers(16);
     QCoreApplication::processEvents();
 
     // THEN
-    QCOMPARE(arbiter.events.size(), 0);
-    QCOMPARE(arbiter.dirtyNodes.size(), 0);
+    QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
     // WHEN
     texture.setSamples(32);
     QCoreApplication::processEvents();
 
     // THEN
-    QCOMPARE(arbiter.events.size(), 0);
-    QCOMPARE(arbiter.dirtyNodes.size(), 1);
-    QCOMPARE(arbiter.dirtyNodes.front(), &texture);
+    QCOMPARE(arbiter.dirtyNodes().size(), 1);
+    QCOMPARE(arbiter.dirtyNodes().front(), &texture);
 
-    arbiter.dirtyNodes.clear();
+    arbiter.clear();
 
     // WHEN
     texture.setSamples(32);
     QCoreApplication::processEvents();
 
     // THEN
-    QCOMPARE(arbiter.events.size(), 0);
-    QCOMPARE(arbiter.dirtyNodes.size(), 0);
+    QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
     // WHEN
     Qt3DRender::QTextureImage img;
     texture.addTextureImage(&img);
 
     // THEN
-    QCOMPARE(arbiter.events.size(), 0);
-    QCOMPARE(arbiter.dirtyNodes.size(), 1);
-    QCOMPARE(arbiter.dirtyNodes.front(), &texture);
+    QCOMPARE(arbiter.dirtyNodes().size(), 1);
+    QCOMPARE(arbiter.dirtyNodes().front(), &texture);
 
-    arbiter.dirtyNodes.clear();
+    arbiter.clear();
 
     // WHEN
     texture.removeTextureImage(&img);
 
     // THEN
-    QCOMPARE(arbiter.events.size(), 0);
-    QCOMPARE(arbiter.dirtyNodes.size(), 1);
-    QCOMPARE(arbiter.dirtyNodes.front(), &texture);
+    QCOMPARE(arbiter.dirtyNodes().size(), 1);
+    QCOMPARE(arbiter.dirtyNodes().front(), &texture);
 
-    arbiter.dirtyNodes.clear();
+    arbiter.clear();
 }
 
 template <typename FrontendTextureType, Qt3DRender::QAbstractTexture::Target Target>
@@ -235,6 +198,7 @@ void tst_RenderTexture::checkPropertyMirroring()
     frontend.setDepth(16);
     frontend.setLayers(8);
     frontend.setSamples(32);
+    frontend.setMipLevels(8);
 
     // WHEN
     simulateInitializationSync(&frontend, &backend);
@@ -471,9 +435,9 @@ void tst_RenderTexture::checkPropertyChanges()
     backend.syncFromFrontEnd(&frontend, false);
 
     // THEN
-    const QVector<Qt3DRender::QTextureDataUpdate> pendingUpdates = backend.takePendingTextureDataUpdates();
-    QCOMPARE(pendingUpdates.size(), 1);
-    QCOMPARE(pendingUpdates.first(), updateData);
+    const std::vector<Qt3DRender::QTextureDataUpdate> pendingUpdates = backend.takePendingTextureDataUpdates();
+    QCOMPARE(pendingUpdates.size(), 1U);
+    QCOMPARE(pendingUpdates.front(), updateData);
     QVERIFY(renderer.dirtyBits() & Qt3DRender::Render::AbstractRenderer::TexturesDirty);
     QVERIFY(backend.dirtyFlags() == Qt3DRender::Render::Texture::DirtyPendingDataUpdates);
     renderer.clearDirtyBits(Qt3DRender::Render::AbstractRenderer::AllDirty);
@@ -524,9 +488,9 @@ void tst_RenderTexture::checkInitialUpdateData()
     simulateInitializationSync(&frontend, &backend);
 
     // THEN -> should have received the update as part of the initial data
-    const QVector<Qt3DRender::QTextureDataUpdate> pendingUpdates = backend.takePendingTextureDataUpdates();
-    QCOMPARE(pendingUpdates.size(), 1);
-    QCOMPARE(pendingUpdates.first(), updateData);
+    const std::vector<Qt3DRender::QTextureDataUpdate> pendingUpdates = backend.takePendingTextureDataUpdates();
+    QCOMPARE(pendingUpdates.size(), 1U);
+    QCOMPARE(pendingUpdates.front(), updateData);
     QVERIFY(backend.dirtyFlags() & Qt3DRender::Render::Texture::DirtyPendingDataUpdates);
 }
 

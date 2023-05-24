@@ -1,59 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DRENDER_QABSTRACTTEXTURE_H
 #define QT3DRENDER_QABSTRACTTEXTURE_H
 
 #include <Qt3DRender/qtextureimagedata.h>
+#include <Qt3DRender/qtexturewrapmode.h>
 #include <Qt3DRender/qt3drender_global.h>
 #include <Qt3DCore/qnode.h>
+#include <QtCore/QVariant>
 
 QT_BEGIN_NAMESPACE
 
 namespace Qt3DRender {
 
 class QAbstractTexturePrivate;
-class QTextureWrapMode;
 class QAbstractTextureImage;
-class QTextureGenerator;
 class QTextureDataUpdate;
-typedef QSharedPointer<QTextureGenerator> QTextureGeneratorPtr;
 
 class Q_3DRENDERSHARED_EXPORT QAbstractTexture : public Qt3DCore::QNode
 {
@@ -66,6 +29,7 @@ class Q_3DRENDERSHARED_EXPORT QAbstractTexture : public Qt3DCore::QNode
     Q_PROPERTY(int width READ width WRITE setWidth NOTIFY widthChanged)
     Q_PROPERTY(int height READ height WRITE setHeight NOTIFY heightChanged)
     Q_PROPERTY(int depth READ depth WRITE setDepth NOTIFY depthChanged)
+    Q_PROPERTY(int mipLevels READ mipLevels WRITE setMipLevels NOTIFY mipLevelsChanged)
     Q_PROPERTY(Filter magnificationFilter READ magnificationFilter WRITE setMagnificationFilter NOTIFY magnificationFilterChanged)
     Q_PROPERTY(Filter minificationFilter READ minificationFilter WRITE setMinificationFilter NOTIFY minificationFilterChanged)
     Q_PROPERTY(float maximumAnisotropy READ maximumAnisotropy WRITE setMaximumAnisotropy NOTIFY maximumAnisotropyChanged)
@@ -273,7 +237,8 @@ public:
 
     enum HandleType {
         NoHandle,
-        OpenGLTextureId
+        OpenGLTextureId,
+        RHITextureId
     };
     Q_ENUM(HandleType) // LCOV_EXCL_LINE
 
@@ -288,7 +253,7 @@ public:
 
     void addTextureImage(QAbstractTextureImage *textureImage);
     void removeTextureImage(QAbstractTextureImage *textureImage);
-    QVector<QAbstractTextureImage *> textureImages() const;
+    QList<QAbstractTextureImage *> textureImages() const;
 
     // sampler data - in the future proxy to a Sampler helper
     void setWrapMode(const QTextureWrapMode &wrapMode);
@@ -306,7 +271,7 @@ public:
     int depth() const;
     int layers() const;
     int samples() const;
-    Q3D_DECL_DEPRECATED QTextureGeneratorPtr dataGenerator() const;
+    int mipLevels() const;
     HandleType handleType() const;
     QVariant handle() const;
 
@@ -326,6 +291,7 @@ public Q_SLOTS:
     void setComparisonMode(ComparisonMode mode);
     void setLayers(int layers);
     void setSamples(int samples);
+    void setMipLevels(int mipLevels);
 
 Q_SIGNALS:
     void formatChanged(TextureFormat format);
@@ -343,12 +309,12 @@ Q_SIGNALS:
     void samplesChanged(int samples);
     Q_REVISION(13) void handleTypeChanged(HandleType handleType);
     Q_REVISION(13) void handleChanged(QVariant handle);
+    void mipLevelsChanged(int mipLevels);
 
 protected:
     explicit QAbstractTexture(Qt3DCore::QNode *parent = nullptr);
     explicit QAbstractTexture(Target target, Qt3DCore::QNode *parent = nullptr);
     explicit QAbstractTexture(QAbstractTexturePrivate &dd, Qt3DCore::QNode *parent = nullptr);
-    void sceneChangeEvent(const Qt3DCore::QSceneChangePtr &change) override;
 
     // TO DO Qt6, should be on private class
     void setStatus(Status status);
@@ -357,7 +323,6 @@ protected:
 
 private:
     Q_DECLARE_PRIVATE(QAbstractTexture)
-    Qt3DCore::QNodeCreatedChangeBasePtr createNodeCreationChange() const override;
 };
 
 } // namespace Qt3DRender

@@ -30,6 +30,7 @@
 #include "third_party/blink/renderer/core/html/forms/select_type.h"
 
 #include "build/build_config.h"
+#include "third_party/blink/public/mojom/scroll/scroll_into_view_params.mojom-blink.h"
 #include "third_party/blink/public/strings/grit/blink_strings.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_mutation_observer_init.h"
 #include "third_party/blink/renderer/core/accessibility/ax_object_cache.h"
@@ -43,6 +44,7 @@
 #include "third_party/blink/renderer/core/events/mouse_event.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
+#include "third_party/blink/renderer/core/frame/visual_viewport.h"
 #include "third_party/blink/renderer/core/html/forms/html_form_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_select_element.h"
 #include "third_party/blink/renderer/core/html/forms/menu_list_inner_element.h"
@@ -97,7 +99,7 @@ class MenuListSelectType final : public SelectType {
 
   void CreateShadowSubtree(ShadowRoot& root) override;
   Element& InnerElement() const override;
-  void ShowPopup() override;
+  void ShowPopup(PopupMenu::ShowEventType type) override;
   void HidePopup() override;
   void PopupDidHide() override;
   bool PopupIsVisible() const override;
@@ -231,8 +233,8 @@ bool MenuListSelectType::DefaultEventHandler(const Event& event) {
             .domWindow()
             ->GetInputDeviceCapabilities()
             ->FiresTouchEvents(mouse_event->FromTouch());
-    select_->focus(FocusParams(SelectionBehaviorOnFocus::kRestore,
-                               mojom::blink::FocusType::kNone,
+    select_->Focus(FocusParams(SelectionBehaviorOnFocus::kRestore,
+                               mojom::blink::FocusType::kMouse,
                                source_capabilities));
     if (select_->GetLayoutObject() && !will_be_destroyed_ &&
         !select_->IsDisabledFormControl()) {
@@ -247,7 +249,8 @@ bool MenuListSelectType::DefaultEventHandler(const Event& event) {
         // TODO(lanwei): Will check if we need to add
         // InputDeviceCapabilities here when select menu list gets
         // focus, see https://crbug.com/476530.
-        ShowPopup();
+        ShowPopup(mouse_event->FromTouch() ? PopupMenu::kTouch
+                                           : PopupMenu::kOther);
       }
     }
     return true;
@@ -279,7 +282,7 @@ bool MenuListSelectType::ShouldOpenPopupForKeyPressEvent(
 }
 
 bool MenuListSelectType::HandlePopupOpenKeyboardEvent() {
-  select_->focus();
+  select_->Focus();
   // Calling focus() may cause us to lose our LayoutObject. Return true so
   // that our caller doesn't process the event further, but don't set
   // the event as handled.
@@ -291,7 +294,7 @@ bool MenuListSelectType::HandlePopupOpenKeyboardEvent() {
   // SelectOptionByPopup, which gets called after the user makes a selection
   // from the menu.
   SaveLastSelection();
-  ShowPopup();
+  ShowPopup(PopupMenu::kOther);
   return true;
 }
 
@@ -311,7 +314,7 @@ Element& MenuListSelectType::InnerElement() const {
   return *inner_element;
 }
 
-void MenuListSelectType::ShowPopup() {
+void MenuListSelectType::ShowPopup(PopupMenu::ShowEventType type) {
   if (PopupIsVisible())
     return;
   Document& document = select_->GetDocument();
@@ -319,8 +322,25 @@ void MenuListSelectType::ShowPopup() {
     return;
   if (!select_->GetLayoutObject())
     return;
-  if (select_->VisibleBoundsInVisualViewport().IsEmpty())
-    return;
+
+  gfx::Rect local_root_rect = select_->VisibleBoundsInLocalRoot();
+
+  if (document.GetFrame()->LocalFrameRoot().IsOutermostMainFrame()) {
+    gfx::Rect visual_viewport_rect =
+        document.GetPage()->GetVisualViewport().RootFrameToViewport(
+            local_root_rect);
+    visual_viewport_rect.Intersect(
+        gfx::Rect(document.GetPage()->GetVisualViewport().Size()));
+    if (visual_viewport_rect.IsEmpty())
+      return;
+  } else {
+    // TODO(bokan): If we're in a remote frame, we cannot access the active
+    // visual viewport. VisibleBoundsInLocalRoot will clip to the outermost
+    // main frame but if the user is pinch-zoomed this won't be accurate.
+    // https://crbug.com/840944.
+    if (local_root_rect.IsEmpty())
+      return;
+  }
 
   if (!popup_) {
     popup_ = document.GetPage()->GetChromeClient().OpenPopupMenu(
@@ -332,7 +352,7 @@ void MenuListSelectType::ShowPopup() {
   SetPopupIsVisible(true);
   ObserveTreeMutation();
 
-  popup_->Show();
+  popup_->Show(type);
   if (AXObjectCache* cache = document.ExistingAXObjectCache())
     cache->DidShowMenuListPopup(select_->GetLayoutObject());
 }
@@ -357,8 +377,6 @@ bool MenuListSelectType::PopupIsVisible() const {
 
 void MenuListSelectType::SetPopupIsVisible(bool popup_is_visible) {
   popup_is_visible_ = popup_is_visible;
-  if (!::features::IsFormControlsRefreshEnabled())
-    return;
   if (auto* layout_object = select_->GetLayoutObject()) {
     // Invalidate paint to ensure that the focus ring is updated.
     layout_object->SetShouldDoFullPaintInvalidation();
@@ -444,12 +462,16 @@ void MenuListSelectType::DidRecalcStyle(const StyleRecalcChange change) {
   if (change.ReattachLayoutTree())
     return;
   UpdateTextStyle();
+  if (auto* layout_object = select_->GetLayoutObject()) {
+    // Invalidate paint to ensure that the focus ring is updated.
+    layout_object->SetShouldDoFullPaintInvalidation();
+  }
   if (PopupIsVisible())
     popup_->UpdateFromElement(PopupMenu::kByStyleChange);
 }
 
 String MenuListSelectType::UpdateTextStyleInternal() {
-  HTMLOptionElement* option = OptionToBeShown();
+  HTMLOptionElement* option_to_be_shown = OptionToBeShown();
   String text = g_empty_string;
   const ComputedStyle* option_style = nullptr;
 
@@ -475,9 +497,9 @@ String MenuListSelectType::UpdateTextStyleInternal() {
       DCHECK(!option_style);
     }
   } else {
-    if (option) {
-      text = option->TextIndentedToRespectGroupLabel();
-      option_style = option->GetComputedStyle();
+    if (option_to_be_shown) {
+      text = option_to_be_shown->TextIndentedToRespectGroupLabel();
+      option_style = option_to_be_shown->GetComputedStyle();
     }
   }
   option_style_ = option_style;
@@ -486,20 +508,22 @@ String MenuListSelectType::UpdateTextStyleInternal() {
   const ComputedStyle* inner_style = inner_element.GetComputedStyle();
   if (inner_style && option_style &&
       ((option_style->Direction() != inner_style->Direction() ||
-        option_style->GetUnicodeBidi() != inner_style->GetUnicodeBidi()))) {
-    scoped_refptr<ComputedStyle> cloned_style =
-        ComputedStyle::Clone(*inner_style);
-    cloned_style->SetDirection(option_style->Direction());
-    cloned_style->SetUnicodeBidi(option_style->GetUnicodeBidi());
+        option_style->GetUnicodeBidi() != inner_style->GetUnicodeBidi() ||
+        option_style->GetTextAlign(true) != inner_style->GetTextAlign(true)))) {
+    ComputedStyleBuilder builder(*inner_style);
+    builder.SetDirection(option_style->Direction());
+    builder.SetUnicodeBidi(option_style->GetUnicodeBidi());
+    builder.SetTextAlign(option_style->GetTextAlign(true));
+    scoped_refptr<const ComputedStyle> new_style = builder.TakeStyle();
     if (auto* inner_layout = inner_element.GetLayoutObject()) {
       inner_layout->SetModifiedStyleOutsideStyleRecalc(
-          std::move(cloned_style), LayoutObject::ApplyStyleChanges::kYes);
+          std::move(new_style), LayoutObject::ApplyStyleChanges::kYes);
     } else {
-      inner_element.SetComputedStyle(std::move(cloned_style));
+      inner_element.SetComputedStyle(std::move(new_style));
     }
   }
   if (select_->GetLayoutObject())
-    DidUpdateActiveOption(option);
+    DidUpdateActiveOption(option_to_be_shown);
 
   return text.StripWhiteSpace();
 }
@@ -529,8 +553,7 @@ void MenuListSelectType::DidUpdateActiveOption(HTMLOptionElement* option) {
     return;
   }
 
-  document.ExistingAXObjectCache()->HandleUpdateActiveMenuOption(
-      select_->GetLayoutObject(), option_index);
+  document.ExistingAXObjectCache()->HandleUpdateActiveMenuOption(select_);
 }
 
 HTMLOptionElement* MenuListSelectType::OptionToBeShown() const {
@@ -694,7 +717,7 @@ bool ListBoxSelectType::DefaultEventHandler(const Event& event) {
   const auto* mouse_event = DynamicTo<MouseEvent>(event);
   const auto* gesture_event = DynamicTo<GestureEvent>(event);
   if (event.type() == event_type_names::kGesturetap && gesture_event) {
-    select_->focus();
+    select_->Focus();
     // Calling focus() may cause us to lose our layoutObject or change the
     // layoutObject type, in which case do not want to handle the event.
     if (!select_->GetLayoutObject() || will_be_destroyed_)
@@ -716,7 +739,7 @@ bool ListBoxSelectType::DefaultEventHandler(const Event& event) {
   if (event.type() == event_type_names::kMousedown && mouse_event &&
       mouse_event->button() ==
           static_cast<int16_t>(WebPointerProperties::Button::kLeft)) {
-    select_->focus();
+    select_->Focus();
     // Calling focus() may cause us to lose our layoutObject, in which case
     // do not want to handle the event.
     if (!select_->GetLayoutObject() || will_be_destroyed_ ||
@@ -726,7 +749,7 @@ bool ListBoxSelectType::DefaultEventHandler(const Event& event) {
     // Convert to coords relative to the list box if needed.
     if (HTMLOptionElement* option = EventTargetOption(*mouse_event)) {
       if (!option->IsDisabledFormControl()) {
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
         const bool meta_or_ctrl = mouse_event->metaKey();
 #else
         const bool meta_or_ctrl = mouse_event->ctrlKey();
@@ -754,14 +777,16 @@ bool ListBoxSelectType::DefaultEventHandler(const Event& event) {
     if (auto* layout_object = select_->GetLayoutObject()) {
       layout_object->GetFrameView()->UpdateAllLifecyclePhasesExceptPaint(
           DocumentUpdateReason::kScroll);
-
+    }
+    // Lifecycle update could have detached the layout object.
+    if (auto* layout_object = select_->GetLayoutObject()) {
       if (Page* page = select_->GetDocument().GetPage()) {
         page->GetAutoscrollController().StartAutoscrollForSelection(
-            select_->GetLayoutObject());
+            layout_object);
       }
     }
     // Mousedown didn't happen in this element.
-    if (last_on_change_selection_.IsEmpty())
+    if (last_on_change_selection_.empty())
       return false;
 
     if (HTMLOptionElement* option = EventTargetOption(*mouse_event)) {
@@ -860,7 +885,7 @@ bool ListBoxSelectType::DefaultEventHandler(const Event& event) {
     }
 
     bool is_control_key = false;
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
     is_control_key = keyboard_event->metaKey();
 #else
     is_control_key = keyboard_event->ctrlKey();
@@ -1055,8 +1080,9 @@ void ListBoxSelectType::ScrollToOption(HTMLOptionElement* option) {
   if (!has_pending_task) {
     select_->GetDocument()
         .GetTaskRunner(TaskType::kUserInteraction)
-        ->PostTask(FROM_HERE, WTF::Bind(&ListBoxSelectType::ScrollToOptionTask,
-                                        WrapPersistent(this)));
+        ->PostTask(FROM_HERE,
+                   WTF::BindOnce(&ListBoxSelectType::ScrollToOptionTask,
+                                 WrapPersistent(this)));
   }
 }
 
@@ -1067,7 +1093,8 @@ void ListBoxSelectType::ScrollToOptionTask() {
   // OptionRemoved() makes sure option_to_scroll_to_ doesn't have an option
   // with another owner.
   DCHECK_EQ(option->OwnerSelectElement(), select_);
-  select_->GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kScroll);
+  select_->GetDocument().UpdateStyleAndLayoutForNode(
+      select_, DocumentUpdateReason::kScroll);
   if (!select_->GetLayoutObject())
     return;
   PhysicalRect bounds = option->BoundingBoxForScrollIntoView();
@@ -1235,7 +1262,7 @@ void ListBoxSelectType::SaveListboxActiveSelection() {
 
 void ListBoxSelectType::HandleMouseRelease() {
   // We didn't start this click/drag on any options.
-  if (last_on_change_selection_.IsEmpty())
+  if (last_on_change_selection_.empty())
     return;
   ListBoxOnChange();
 }
@@ -1246,7 +1273,7 @@ void ListBoxSelectType::ListBoxOnChange() {
   // If the cached selection list is empty, or the size has changed, then fire
   // 'change' event, and return early.
   // FIXME: Why? This looks unreasonable.
-  if (last_on_change_selection_.IsEmpty() ||
+  if (last_on_change_selection_.empty() ||
       last_on_change_selection_.size() != items.size()) {
     select_->DispatchChangeEvent();
     return;
@@ -1348,7 +1375,7 @@ Element& SelectType::InnerElement() const {
   return *select_;
 }
 
-void SelectType::ShowPopup() {
+void SelectType::ShowPopup(PopupMenu::ShowEventType) {
   NOTREACHED();
 }
 

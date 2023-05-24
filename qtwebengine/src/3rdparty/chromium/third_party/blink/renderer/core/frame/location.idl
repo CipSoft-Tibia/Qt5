@@ -46,7 +46,7 @@
     // TODO(foolip): |ancestorOrigins| should have [LegacyUnforgeable, SameObject].
     [LegacyUnforgeable] readonly attribute DOMStringList ancestorOrigins;
 
-    [Affects=Nothing, SetterCallWith=Isolate, CrossOrigin=Setter, RaisesException=Setter, LegacyUnforgeable] attribute USVString href;
+    [SetterCallWith=Isolate, CrossOrigin=Setter, RaisesException=Setter, LegacyUnforgeable] attribute USVString href;
     // TODO(yukishiino): Use [LegacyUnforgeable] stringifier instead of toString.
     [LegacyUnforgeable] DOMString toString();
     [MeasureAs=LocationOrigin, LegacyUnforgeable] readonly attribute USVString origin;
@@ -58,8 +58,4 @@
     [SetterCallWith=Isolate, RaisesException=Setter, LegacyUnforgeable] attribute USVString pathname;
     [SetterCallWith=Isolate, RaisesException=Setter, LegacyUnforgeable] attribute USVString search;
     [SetterCallWith=Isolate, RaisesException=Setter, LegacyUnforgeable] attribute USVString hash;
-
-    // TODO(foolip): Location does not have a valueOf() override in the spec.
-    // See the comment in Location.h for the purpose of this.
-    [DisableInNewIDLCompiler, NotEnumerable, CallWith=ThisValue, LegacyUnforgeable] any valueOf();
 };

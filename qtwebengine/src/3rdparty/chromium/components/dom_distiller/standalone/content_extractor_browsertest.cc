@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,20 +8,20 @@
 #include <unordered_map>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/command_line.h"
 #include "base/containers/id_map.h"
+#include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/path_service.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
-#include "base/task/post_task.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_restrictions.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "components/dom_distiller/content/browser/distiller_javascript_utils.h"
 #include "components/dom_distiller/content/browser/distiller_page_web_contents.h"
 #include "components/dom_distiller/core/article_entry.h"
@@ -135,7 +135,7 @@ std::unique_ptr<DomDistillerService> CreateDomDistillerService(
       std::make_unique<DistillerPageWebContentsFactory>(context);
   auto distiller_url_fetcher_factory =
       std::make_unique<DistillerURLFetcherFactory>(
-          content::BrowserContext::GetDefaultStoragePartition(context)
+          context->GetDefaultStoragePartition()
               ->GetURLLoaderFactoryForBrowserProcess());
 
   dom_distiller::proto::DomDistillerOptions options;
@@ -172,11 +172,11 @@ std::unique_ptr<DomDistillerService> CreateDomDistillerService(
 void AddComponentsTestResources() {
   base::FilePath pak_file;
   base::FilePath pak_dir;
-  base::PathService::Get(base::DIR_MODULE, &pak_dir);
+  base::PathService::Get(base::DIR_ASSETS, &pak_dir);
   pak_file =
       pak_dir.Append(FILE_PATH_LITERAL("components_tests_resources.pak"));
   ui::ResourceBundle::GetSharedInstance().AddDataPackFromPath(
-      pak_file, ui::SCALE_FACTOR_NONE);
+      pak_file, ui::kScaleFactorNone);
 }
 
 bool WriteProtobufWithSize(
@@ -296,11 +296,11 @@ class ContentExtractionRequest : public ViewRequestDelegate {
   void OnArticleReady(const DistilledArticleProto* article_proto) override {
     article_proto_ = article_proto;
     CHECK(article_proto->pages_size()) << "Failed extracting " << url_;
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, std::move(finished_callback_));
   }
 
-  const DistilledArticleProto* article_proto_;
+  raw_ptr<const DistilledArticleProto> article_proto_;
   std::unique_ptr<ViewerHandle> viewer_handle_;
   GURL url_;
   base::OnceClosure finished_callback_;
@@ -411,7 +411,7 @@ class ContentExtractor : public ContentBrowserTest {
     DoArticleOutput();
     requests_.clear();
     service_.reset();
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::RunLoop::QuitCurrentWhenIdleClosureDeprecated());
   }
 

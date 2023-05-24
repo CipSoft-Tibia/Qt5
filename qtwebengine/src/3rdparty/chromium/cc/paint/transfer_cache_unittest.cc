@@ -1,15 +1,15 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <vector>
 
 #include "base/command_line.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
 #include "cc/paint/image_transfer_cache_entry.h"
 #include "cc/paint/raw_memory_transfer_cache_entry.h"
 #include "cc/paint/transfer_cache_entry.h"
+#include "components/viz/test/test_gpu_memory_buffer_manager.h"
 #include "components/viz/test/test_gpu_service_holder.h"
 #include "components/viz/test/test_in_process_context_provider.h"
 #include "gpu/command_buffer/client/client_transfer_cache.h"
@@ -49,8 +49,7 @@ class TransferCacheTest : public testing::Test {
     context_ = std::make_unique<gpu::RasterInProcessContext>();
     auto result = context_->Initialize(
         viz::TestGpuServiceHolder::GetInstance()->task_executor(), attribs,
-        gpu::SharedMemoryLimits(), &gpu_memory_buffer_manager_, &image_factory_,
-        /*gpu_channel_manager_delegate=*/nullptr, nullptr, nullptr);
+        gpu::SharedMemoryLimits(), nullptr, nullptr);
 
     ASSERT_EQ(result, gpu::ContextResult::kSuccess);
     ASSERT_TRUE(context_->GetCapabilities().supports_oop_raster);
@@ -85,7 +84,6 @@ class TransferCacheTest : public testing::Test {
 
  private:
   viz::TestGpuMemoryBufferManager gpu_memory_buffer_manager_;
-  viz::TestImageFactory image_factory_;
   std::unique_ptr<gpu::RasterInProcessContext> context_;
   gl::DisableNullDrawGLBindings enable_pixel_output_;
   ClientRawMemoryTransferCacheEntry test_client_entry_;

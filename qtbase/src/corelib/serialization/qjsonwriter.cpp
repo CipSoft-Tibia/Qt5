@@ -1,48 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <cmath>
 #include <qlocale.h>
 #include "qjsonwriter_p.h"
 #include "qjson_p.h"
-#include "private/qutfcodec_p.h"
+#include "private/qstringconverter_p.h"
 #include <private/qnumeric_p.h>
 #include <private/qcborvalue_p.h>
 
@@ -58,25 +22,27 @@ static inline uchar hexdig(uint u)
     return (u < 0xa ? '0' + u : 'a' + u - 0xa);
 }
 
-static QByteArray escapedString(const QString &s)
+static QByteArray escapedString(QStringView s)
 {
-    QByteArray ba(s.length(), Qt::Uninitialized);
+    // give it a minimum size to ensure the resize() below always adds enough space
+    QByteArray ba(qMax(s.size(), 16), Qt::Uninitialized);
 
+    auto ba_const_start = [&]() { return reinterpret_cast<const uchar *>(ba.constData()); };
     uchar *cursor = reinterpret_cast<uchar *>(const_cast<char *>(ba.constData()));
-    const uchar *ba_end = cursor + ba.length();
-    const ushort *src = reinterpret_cast<const ushort *>(s.constBegin());
-    const ushort *const end = reinterpret_cast<const ushort *>(s.constEnd());
+    const uchar *ba_end = cursor + ba.size();
+    const char16_t *src = s.utf16();
+    const char16_t *const end = s.utf16() + s.size();
 
     while (src != end) {
         if (cursor >= ba_end - 6) {
             // ensure we have enough space
-            int pos = cursor - (const uchar *)ba.constData();
+            qptrdiff pos = cursor - ba_const_start();
             ba.resize(ba.size()*2);
-            cursor = (uchar *)ba.data() + pos;
-            ba_end = (const uchar *)ba.constData() + ba.length();
+            cursor = reinterpret_cast<uchar *>(ba.data()) + pos;
+            ba_end = ba_const_start() + ba.size();
         }
 
-        uint u = *src++;
+        char16_t u = *src++;
         if (u < 0x80) {
             if (u < 0x20 || u == 0x22 || u == 0x5c) {
                 *cursor++ = '\\';
@@ -123,7 +89,7 @@ static QByteArray escapedString(const QString &s)
         }
     }
 
-    ba.resize(cursor - (const uchar *)ba.constData());
+    ba.resize(cursor - ba_const_start());
     return ba;
 }
 
@@ -138,15 +104,14 @@ static void valueToJson(const QCborValue &v, QByteArray &json, int indent, bool 
         json += "false";
         break;
     case QCborValue::Integer:
+        json += QByteArray::number(v.toInteger());
+        break;
     case QCborValue::Double: {
         const double d = v.toDouble();
-        if (qIsFinite(d)) {
-            quint64 absInt;
-            json += QByteArray::number(d, convertDoubleTo(std::abs(d), &absInt) ? 'f' : 'g',
-                                       QLocale::FloatingPointShortest);
-        } else {
+        if (qIsFinite(d))
+            json += QByteArray::number(d, 'g', QLocale::FloatingPointShortest);
+        else
             json += "null"; // +INF || -INF || NaN (see RFC4627#section2.4)
-        }
         break;
     }
     case QCborValue::String:

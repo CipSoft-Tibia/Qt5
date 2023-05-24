@@ -1,15 +1,17 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/webgl/webgl2_rendering_context.h"
 
 #include <memory>
+
 #include "gpu/command_buffer/client/gles2_interface.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_graphics_context_3d_provider.h"
-#include "third_party/blink/renderer/bindings/modules/v8/offscreen_rendering_context.h"
-#include "third_party/blink/renderer/bindings/modules/v8/rendering_context.h"
+#include "third_party/blink/renderer/modules/shorter_includes.h"
+#include SHORT_INCLUDE_FILE(third_party/blink/renderer/bindings/modules/v8/v8_union,canvasrenderingcontext2d_gpucanvascontext_imagebitmaprenderingcontext_webgl2renderingcontext_webglrenderingcontext)
+#include SHORT_INCLUDE_FILE(third_party/blink/renderer/bindings/modules/v8/v8_union,gpucanvascontext_imagebitmaprenderingcontext_offscreencanvasrenderingcontext2d_webgl2renderingcontext_webglrenderingcontext)
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_client.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
@@ -26,6 +28,7 @@
 #include "third_party/blink/renderer/modules/webgl/oes_draw_buffers_indexed.h"
 #include "third_party/blink/renderer/modules/webgl/oes_texture_float_linear.h"
 #include "third_party/blink/renderer/modules/webgl/ovr_multiview_2.h"
+#include "third_party/blink/renderer/modules/webgl/webgl_clip_cull_distance.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_compressed_texture_astc.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_compressed_texture_etc.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_compressed_texture_etc1.h"
@@ -40,7 +43,9 @@
 #include "third_party/blink/renderer/modules/webgl/webgl_lose_context.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_multi_draw.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_multi_draw_instanced_base_vertex_base_instance.h"
+#include "third_party/blink/renderer/modules/webgl/webgl_provoking_vertex.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_video_texture.h"
+#include "third_party/blink/renderer/modules/webgl/webgl_webcodecs_video_frame.h"
 #include "third_party/blink/renderer/platform/graphics/gpu/drawing_buffer.h"
 
 namespace blink {
@@ -88,26 +93,29 @@ CanvasRenderingContext* WebGL2RenderingContext::Factory::Create(
     attribs.xr_compatible = false;
   }
 
-  bool using_gpu_compositing;
+  Platform::GraphicsInfo graphics_info;
   std::unique_ptr<WebGraphicsContext3DProvider> context_provider(
       CreateWebGraphicsContext3DProvider(
-          host, attribs, Platform::kWebGL2ContextType, &using_gpu_compositing));
+          host, attribs, Platform::kWebGL2ContextType, &graphics_info));
   if (!ShouldCreateContext(context_provider.get(), host))
     return nullptr;
   WebGL2RenderingContext* rendering_context =
       MakeGarbageCollected<WebGL2RenderingContext>(
-          host, std::move(context_provider), using_gpu_compositing, attribs);
+          host, std::move(context_provider), graphics_info, attribs);
 
   if (!rendering_context->GetDrawingBuffer()) {
     host->HostDispatchEvent(
         WebGLContextEvent::Create(event_type_names::kWebglcontextcreationerror,
                                   "Could not create a WebGL2 context."));
+    // We must dispose immediately so that when rendering_context is
+    // garbage-collected, it will not interfere with a subsequently created
+    // rendering context.
+    rendering_context->Dispose();
     return nullptr;
   }
 
   rendering_context->InitializeNewContext();
   rendering_context->RegisterContextExtensions();
-
   return rendering_context;
 }
 
@@ -120,22 +128,21 @@ void WebGL2RenderingContext::Factory::OnError(HTMLCanvasElement* canvas,
 WebGL2RenderingContext::WebGL2RenderingContext(
     CanvasRenderingContextHost* host,
     std::unique_ptr<WebGraphicsContext3DProvider> context_provider,
-    bool using_gpu_compositing,
+    const Platform::GraphicsInfo& graphics_info,
     const CanvasContextCreationAttributesCore& requested_attributes)
     : WebGL2RenderingContextBase(host,
                                  std::move(context_provider),
-                                 using_gpu_compositing,
+                                 graphics_info,
                                  requested_attributes,
                                  Platform::kWebGL2ContextType) {}
 
-void WebGL2RenderingContext::SetCanvasGetContextResult(
-    RenderingContext& result) {
-  result.SetWebGL2RenderingContext(this);
+V8RenderingContext* WebGL2RenderingContext::AsV8RenderingContext() {
+  return MakeGarbageCollected<V8RenderingContext>(this);
 }
 
-void WebGL2RenderingContext::SetOffscreenCanvasGetContextResult(
-    OffscreenRenderingContext& result) {
-  result.SetWebGL2RenderingContext(this);
+V8OffscreenRenderingContext*
+WebGL2RenderingContext::AsV8OffscreenRenderingContext() {
+  return MakeGarbageCollected<V8OffscreenRenderingContext>(this);
 }
 
 ImageBitmap* WebGL2RenderingContext::TransferToImageBitmap(
@@ -147,15 +154,19 @@ void WebGL2RenderingContext::RegisterContextExtensions() {
   // Register extensions.
   RegisterExtension(ext_color_buffer_float_);
   RegisterExtension(ext_color_buffer_half_float_);
-  RegisterExtension(ext_disjoint_timer_query_web_gl2_);
+  RegisterExtension(
+      ext_disjoint_timer_query_web_gl2_,
+      TimerQueryExtensionsEnabled() ? kApprovedExtension : kDeveloperExtension);
   RegisterExtension(ext_float_blend_);
   RegisterExtension(ext_texture_compression_bptc_);
   RegisterExtension(ext_texture_compression_rgtc_);
   RegisterExtension(ext_texture_filter_anisotropic_);
   RegisterExtension(ext_texture_norm16_);
   RegisterExtension(khr_parallel_shader_compile_);
-  RegisterExtension(oes_draw_buffers_indexed_, kDraftExtension);
+  RegisterExtension(oes_draw_buffers_indexed_);
   RegisterExtension(oes_texture_float_linear_);
+  RegisterExtension(ovr_multiview2_);
+  RegisterExtension(webgl_clip_cull_distance_, kDraftExtension);
   RegisterExtension(webgl_compressed_texture_astc_);
   RegisterExtension(webgl_compressed_texture_etc_);
   RegisterExtension(webgl_compressed_texture_etc1_);
@@ -170,8 +181,9 @@ void WebGL2RenderingContext::RegisterContextExtensions() {
   RegisterExtension(webgl_multi_draw_);
   RegisterExtension(webgl_multi_draw_instanced_base_vertex_base_instance_,
                     kDraftExtension);
+  RegisterExtension(webgl_provoking_vertex_);
   RegisterExtension(webgl_video_texture_, kDraftExtension);
-  RegisterExtension(ovr_multiview2_);
+  RegisterExtension(webgl_webcodecs_video_frame_, kDraftExtension);
 }
 
 void WebGL2RenderingContext::Trace(Visitor* visitor) const {
@@ -187,6 +199,7 @@ void WebGL2RenderingContext::Trace(Visitor* visitor) const {
   visitor->Trace(oes_draw_buffers_indexed_);
   visitor->Trace(oes_texture_float_linear_);
   visitor->Trace(ovr_multiview2_);
+  visitor->Trace(webgl_clip_cull_distance_);
   visitor->Trace(webgl_compressed_texture_astc_);
   visitor->Trace(webgl_compressed_texture_etc_);
   visitor->Trace(webgl_compressed_texture_etc1_);
@@ -199,7 +212,9 @@ void WebGL2RenderingContext::Trace(Visitor* visitor) const {
   visitor->Trace(webgl_lose_context_);
   visitor->Trace(webgl_multi_draw_);
   visitor->Trace(webgl_multi_draw_instanced_base_vertex_base_instance_);
+  visitor->Trace(webgl_provoking_vertex_);
   visitor->Trace(webgl_video_texture_);
+  visitor->Trace(webgl_webcodecs_video_frame_);
   WebGL2RenderingContextBase::Trace(visitor);
 }
 

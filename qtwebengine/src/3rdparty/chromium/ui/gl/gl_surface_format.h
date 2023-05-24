@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,8 +33,10 @@ class GL_EXPORT GLSurfaceFormat {
   bool IsCompatible(GLSurfaceFormat other_format) const;
 
   // Default pixel format is RGBA8888. Use this method to select
-  // a preference of RGB565. TODO(klausw): use individual setter
-  // methods if there's a use case for them.
+  // a preference of RGB565. This could be refactored to use individual
+  // setter methods for more fine-grained control, but so far there hasn't
+  // been a use case for that. See also GLES2CommandBufferStub::Initialize
+  // which distinguishes between RGBA8888 and RGB565 modes.
   void SetRGB565();
 
   // Other properties for future use.

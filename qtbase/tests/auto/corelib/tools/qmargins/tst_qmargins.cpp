@@ -1,33 +1,39 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QMargins>
+#ifdef QVARIANT_H
+# error "This test requires qmargins.h to not include qvariant.h"
+#endif
+
+// don't assume <type_traits>
+template <typename T, typename U>
+constexpr inline bool my_is_same_v = false;
+template <typename T>
+constexpr inline bool my_is_same_v<T, T> = true;
+
+#define CHECK(cvref) \
+    static_assert(my_is_same_v<decltype(get<0>(std::declval<QMargins cvref >())), int cvref >); \
+    static_assert(my_is_same_v<decltype(get<1>(std::declval<QMargins cvref >())), int cvref >); \
+    static_assert(my_is_same_v<decltype(get<2>(std::declval<QMargins cvref >())), int cvref >); \
+    static_assert(my_is_same_v<decltype(get<3>(std::declval<QMargins cvref >())), int cvref >); \
+    \
+    static_assert(my_is_same_v<decltype(get<0>(std::declval<QMarginsF cvref >())), qreal cvref >); \
+    static_assert(my_is_same_v<decltype(get<1>(std::declval<QMarginsF cvref >())), qreal cvref >); \
+    static_assert(my_is_same_v<decltype(get<2>(std::declval<QMarginsF cvref >())), qreal cvref >); \
+    static_assert(my_is_same_v<decltype(get<3>(std::declval<QMarginsF cvref >())), qreal cvref >)
+
+CHECK(&);
+CHECK(const &);
+CHECK(&&);
+CHECK(const &&);
+
+#undef CHECK
+
+#include <QTest>
 #include <qmargins.h>
+
+#include <array>
 
 Q_DECLARE_METATYPE(QMargins)
 
@@ -36,12 +42,27 @@ class tst_QMargins : public QObject
     Q_OBJECT
 private slots:
     void getSetCheck();
+#ifndef QT_NO_DATASTREAM
     void dataStreamCheck();
+#endif
     void operators();
+#ifndef QT_NO_DEBUG_STREAM
+    void debugStreamCheck();
+#endif
 
     void getSetCheckF();
+#ifndef QT_NO_DATASTREAM
     void dataStreamCheckF();
+#endif
     void operatorsF();
+#ifndef QT_NO_DEBUG_STREAM
+    void debugStreamCheckF();
+#endif
+
+    void structuredBinding();
+
+    void toMarginsF_data();
+    void toMarginsF();
 };
 
 // Testing get/set functions
@@ -123,6 +144,19 @@ void tst_QMargins::operators()
     QCOMPARE(-m3, QMargins(-10, -11, -12, -13));
 }
 
+#ifndef QT_NO_DEBUG_STREAM
+// Testing QDebug operators
+void tst_QMargins::debugStreamCheck()
+{
+    QMargins m(10, 11, 12, 13);
+    const QString expected = "QMargins(10, 11, 12, 13)";
+    QString result;
+    QDebug(&result).nospace() << m;
+    QCOMPARE(result, expected);
+}
+#endif
+
+#ifndef QT_NO_DATASTREAM
 // Testing QDataStream operators
 void tst_QMargins::dataStreamCheck()
 {
@@ -147,6 +181,7 @@ void tst_QMargins::dataStreamCheck()
         QCOMPARE(marginsIn.bottom(), 6852);
     }
 }
+#endif
 
 // Testing get/set functions
 void tst_QMargins::getSetCheckF()
@@ -220,6 +255,7 @@ void tst_QMargins::operatorsF()
     QCOMPARE(-m3, QMarginsF(-10.3, -11.4, -12.5, -13.6));
 }
 
+#ifndef QT_NO_DATASTREAM
 // Testing QDataStream operators
 void tst_QMargins::dataStreamCheckF()
 {
@@ -243,6 +279,102 @@ void tst_QMargins::dataStreamCheckF()
         QCOMPARE(marginsIn.right(), 3.3);
         QCOMPARE(marginsIn.bottom(), 4.4);
     }
+}
+#endif
+
+#ifndef QT_NO_DEBUG_STREAM
+// Testing QDebug operators
+void tst_QMargins::debugStreamCheckF()
+{
+    QMarginsF m(10.1, 11.2, 12.3, 13.4);
+    const QString expected = "QMarginsF(10.1, 11.2, 12.3, 13.4)";
+    QString result;
+    QDebug(&result).nospace() << m;
+    QCOMPARE(result, expected);
+}
+#endif
+
+void tst_QMargins::structuredBinding()
+{
+    {
+        QMargins m(1, 2, 3, 4);
+        auto [left, top, right, bottom] = m;
+        QCOMPARE(left, 1);
+        QCOMPARE(top, 2);
+        QCOMPARE(right, 3);
+        QCOMPARE(bottom, 4);
+    }
+    {
+        QMargins m(1, 2, 3, 4);
+        auto &[left, top, right, bottom] = m;
+        QCOMPARE(left, 1);
+        QCOMPARE(top, 2);
+        QCOMPARE(right, 3);
+        QCOMPARE(bottom, 4);
+
+        left = 10;
+        top = 20;
+        right = 30;
+        bottom = 40;
+        QCOMPARE(m.left(), 10);
+        QCOMPARE(m.top(), 20);
+        QCOMPARE(m.right(), 30);
+        QCOMPARE(m.bottom(), 40);
+    }
+    {
+        QMarginsF m(1.0, 2.0, 3.0, 4.0);
+        auto [left, top, right, bottom] = m;
+        QCOMPARE(left, 1.0);
+        QCOMPARE(top, 2.0);
+        QCOMPARE(right, 3.0);
+        QCOMPARE(bottom, 4.0);
+    }
+    {
+        QMarginsF m(1.0, 2.0, 3.0, 4.0);
+        auto &[left, top, right, bottom] = m;
+        QCOMPARE(left, 1.0);
+        QCOMPARE(top, 2.0);
+        QCOMPARE(right, 3.0);
+        QCOMPARE(bottom, 4.0);
+
+        left = 10.0;
+        top = 20.0;
+        right = 30.0;
+        bottom = 40.0;
+        QCOMPARE(m.left(), 10.0);
+        QCOMPARE(m.top(), 20.0);
+        QCOMPARE(m.right(), 30.0);
+        QCOMPARE(m.bottom(), 40.0);
+    }
+}
+
+void tst_QMargins::toMarginsF_data()
+{
+    QTest::addColumn<QMargins>("input");
+    QTest::addColumn<QMarginsF>("result");
+
+    auto row = [](int x1, int y1, int x2, int y2) {
+        QTest::addRow("(%d, %d, %d, %d)", x1, y1, x2, y2)
+                << QMargins(x1, y1, x2, y2) << QMarginsF(x1, y1, x2, y2);
+    };
+    constexpr std::array samples = {-1, 0, 1};
+    for (int x1 : samples) {
+        for (int y1 : samples) {
+            for (int x2 : samples) {
+                for (int y2 : samples) {
+                    row(x1, y1, x2, y2);
+                }
+            }
+        }
+    }
+}
+
+void tst_QMargins::toMarginsF()
+{
+    QFETCH(const QMargins, input);
+    QFETCH(const QMarginsF, result);
+
+    QCOMPARE(input.toMarginsF(), result);
 }
 
 QTEST_APPLESS_MAIN(tst_QMargins)

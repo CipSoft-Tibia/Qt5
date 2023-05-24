@@ -1,109 +1,104 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #import "ui/base/clipboard/clipboard_util_mac.h"
 
+#include "base/mac/mac_util.h"
 #include "base/mac/scoped_nsobject.h"
 #include "base/memory/ref_counted.h"
+#include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/gtest_mac.h"
 #include "testing/platform_test.h"
-#include "third_party/mozilla/NSPasteboard+Utils.h"
+#include "ui/base/clipboard/clipboard_constants.h"
 
 namespace ui {
 namespace {
 
-class ClipboardUtilMacTest : public PlatformTest {
- public:
-  ClipboardUtilMacTest() { }
+using ClipboardUtilMacTest = PlatformTest;
 
-  NSDictionary* DictionaryFromPasteboard(NSPasteboard* pboard) {
-    NSArray* types = [pboard types];
-    NSMutableDictionary* data = [NSMutableDictionary dictionary];
-    for (NSString* type in types) {
-      data[type] = [pboard dataForType:type];
-    }
-    return data;
-  }
-};
-
-TEST_F(ClipboardUtilMacTest, PasteboardItemFromUrl) {
-  NSString* urlString =
+TEST_F(ClipboardUtilMacTest, PasteboardItemsFromUrlsRoundtrip) {
+  NSString* url_string_1 =
       @"https://www.google.com/"
       @"search?q=test&oq=test&aqs=chrome..69i57l2j69i60l4.278j0j7&"
       @"sourceid=chrome&ie=UTF-8";
 
-  base::scoped_nsobject<NSPasteboardItem> item(
-      ClipboardUtil::PasteboardItemFromUrl(urlString, nil));
+  NSString* url_string_2 = @"https://www.google.com/";
+  NSString* title_2 = @"Burrowing Yams";
+
+  NSArray<NSPasteboardItem*>* items = ClipboardUtil::PasteboardItemsFromUrls(
+      @[ url_string_1, url_string_2 ], @[ @"", title_2 ]);
+
   scoped_refptr<UniquePasteboard> pasteboard = new UniquePasteboard;
-  [pasteboard->get() writeObjects:@[ item ]];
+  [pasteboard->get() writeObjects:items];
 
   NSArray* urls = nil;
   NSArray* titles = nil;
-  [pasteboard->get() getURLs:&urls
-                   andTitles:&titles
-         convertingFilenames:NO
-         convertingTextToURL:NO];
+  ClipboardUtil::URLsAndTitlesFromPasteboard(
+      pasteboard->get(), /*include_files=*/false, &urls, &titles);
 
-  ASSERT_EQ(1u, [urls count]);
-  EXPECT_NSEQ(urlString, urls[0]);
-  ASSERT_EQ(1u, [titles count]);
-  EXPECT_NSEQ(urlString, titles[0]);
+  ASSERT_EQ(2u, urls.count);
+  EXPECT_NSEQ(url_string_1, urls[0]);
+  EXPECT_NSEQ(url_string_2, urls[1]);
+  ASSERT_EQ(2u, titles.count);
+  EXPECT_NSEQ(@"", titles[0]);
+  EXPECT_NSEQ(title_2, titles[1]);
 
   NSURL* url = [NSURL URLFromPasteboard:pasteboard->get()];
-  EXPECT_NSEQ([url absoluteString], urlString);
+  EXPECT_NSEQ(url.absoluteString, url_string_1);
+
+  // Only the first item should have the "web urls and titles" data.
+  EXPECT_TRUE([items[0].types containsObject:kUTTypeWebKitWebURLsWithTitles]);
+  EXPECT_FALSE([items[1].types containsObject:kUTTypeWebKitWebURLsWithTitles]);
 }
 
-TEST_F(ClipboardUtilMacTest, PasteboardItemWithTitle) {
-  NSString* urlString = @"https://www.google.com/";
-  NSString* title = @"Burrowing Yams";
+TEST_F(ClipboardUtilMacTest, PasteboardItemsFromString) {
+  NSString* url_string = @"    https://www.google.com/   ";
 
-  base::scoped_nsobject<NSPasteboardItem> item(
-      ClipboardUtil::PasteboardItemFromUrl(urlString, title));
   scoped_refptr<UniquePasteboard> pasteboard = new UniquePasteboard;
-  [pasteboard->get() writeObjects:@[ item ]];
+  [pasteboard->get() writeObjects:@[ url_string ]];
 
   NSArray* urls = nil;
   NSArray* titles = nil;
-  [pasteboard->get() getURLs:&urls
-                   andTitles:&titles
-         convertingFilenames:NO
-         convertingTextToURL:NO];
+  ClipboardUtil::URLsAndTitlesFromPasteboard(
+      pasteboard->get(), /*include_files=*/false, &urls, &titles);
 
-  ASSERT_EQ(1u, [urls count]);
-  EXPECT_NSEQ(urlString, urls[0]);
-  ASSERT_EQ(1u, [titles count]);
-  EXPECT_NSEQ(title, titles[0]);
-
-  NSURL* url = [NSURL URLFromPasteboard:pasteboard->get()];
-  EXPECT_NSEQ([url absoluteString], urlString);
+  ASSERT_EQ(1u, urls.count);
+  EXPECT_NSEQ(@"https://www.google.com/", urls[0]);
+  ASSERT_EQ(1u, titles.count);
+  EXPECT_NSEQ(@"www.google.com", titles[0]);
 }
 
 TEST_F(ClipboardUtilMacTest, PasteboardItemWithFilePath) {
   NSURL* url = [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
   ASSERT_TRUE(url);
-  NSString* urlString = [url absoluteString];
+  NSString* url_string = url.absoluteString;
 
-  base::scoped_nsobject<NSPasteboardItem> item(
-      ClipboardUtil::PasteboardItemFromUrl(urlString, nil));
+  NSPasteboardItem* item = [[[NSPasteboardItem alloc] init] autorelease];
+  [item setString:url_string forType:NSPasteboardTypeFileURL];
+
   scoped_refptr<UniquePasteboard> pasteboard = new UniquePasteboard;
   [pasteboard->get() writeObjects:@[ item ]];
 
+  // Read without translating file URLs, expect to not find it.
+
   NSArray* urls = nil;
   NSArray* titles = nil;
-  [pasteboard->get() getURLs:&urls
-                   andTitles:&titles
-         convertingFilenames:NO
-         convertingTextToURL:NO];
+  ClipboardUtil::URLsAndTitlesFromPasteboard(
+      pasteboard->get(), /*include_files=*/false, &urls, &titles);
 
-  ASSERT_EQ(1u, [urls count]);
-  EXPECT_NSEQ(urlString, urls[0]);
-  ASSERT_EQ(1u, [titles count]);
-  EXPECT_NSEQ(urlString, titles[0]);
+  ASSERT_EQ(0u, urls.count);
+  ASSERT_EQ(0u, titles.count);
 
-  NSURL* urlFromPasteboard = [NSURL URLFromPasteboard:pasteboard->get()];
-  EXPECT_NSEQ(urlFromPasteboard, url);
+  // Read with translating file URLs, expect to find it.
+
+  ClipboardUtil::URLsAndTitlesFromPasteboard(
+      pasteboard->get(), /*include_files=*/true, &urls, &titles);
+
+  ASSERT_EQ(1u, urls.count);
+  EXPECT_NSEQ(url_string, urls[0]);
+  ASSERT_EQ(1u, titles.count);
 }
 
 TEST_F(ClipboardUtilMacTest, CheckForLeak) {
@@ -113,22 +108,6 @@ TEST_F(ClipboardUtilMacTest, CheckForLeak) {
       EXPECT_TRUE(pboard->get());
     }
   }
-}
-
-TEST_F(ClipboardUtilMacTest, CompareToWriteToPasteboard) {
-  NSString* urlString = @"https://www.cnn.com/";
-
-  base::scoped_nsobject<NSPasteboardItem> item(
-      ClipboardUtil::PasteboardItemFromUrl(urlString, nil));
-  scoped_refptr<UniquePasteboard> pasteboard = new UniquePasteboard;
-  [pasteboard->get() writeObjects:@[ item ]];
-
-  scoped_refptr<UniquePasteboard> pboard = new UniquePasteboard;
-  [pboard->get() setDataForURL:urlString title:urlString];
-
-  NSDictionary* data1 = DictionaryFromPasteboard(pasteboard->get());
-  NSDictionary* data2 = DictionaryFromPasteboard(pboard->get());
-  EXPECT_NSEQ(data1, data2);
 }
 
 }  // namespace

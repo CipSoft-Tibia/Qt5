@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusconnection.h"
 #include "qdbusconnection_p.h"
@@ -44,7 +8,6 @@
 #include <qdebug.h>
 #include <qcoreapplication.h>
 #include <qstringlist.h>
-#include <qvector.h>
 #include <qtimer.h>
 #include <qthread.h>
 #include <QtCore/private/qlocking_p.h>
@@ -59,6 +22,7 @@
 #include "qdbuspendingcall_p.h"
 
 #include "qdbusthreaddebug_p.h"
+#include "qdbusmetatype_p.h"
 
 #include <algorithm>
 
@@ -76,28 +40,9 @@ static void preventDllUnload();
 
 Q_GLOBAL_STATIC(QDBusConnectionManager, _q_manager)
 
-struct QDBusConnectionManager::ConnectionRequestData
-{
-    enum RequestType {
-        ConnectToStandardBus,
-        ConnectToBusByAddress,
-        ConnectToPeerByAddress
-    } type;
-
-    union {
-        QDBusConnection::BusType busType;
-        const QString *busAddress;
-    };
-    const QString *name;
-
-    QDBusConnectionPrivate *result;
-
-    bool suspendedDelivery;
-};
-
 QDBusConnectionPrivate *QDBusConnectionManager::busConnection(QDBusConnection::BusType type)
 {
-    Q_STATIC_ASSERT(int(QDBusConnection::SessionBus) + int(QDBusConnection::SystemBus) == 1);
+    static_assert(int(QDBusConnection::SessionBus) + int(QDBusConnection::SystemBus) == 1);
     Q_ASSERT(type == QDBusConnection::SessionBus || type == QDBusConnection::SystemBus);
 
     if (!qdbus_loadLibDBus())
@@ -119,7 +64,7 @@ QDBusConnectionPrivate *QDBusConnectionManager::busConnection(QDBusConnection::B
 
 QDBusConnectionPrivate *QDBusConnectionManager::connection(const QString &name) const
 {
-    return connectionHash.value(name, 0);
+    return connectionHash.value(name, nullptr);
 }
 
 void QDBusConnectionManager::removeConnection(const QString &name)
@@ -138,6 +83,13 @@ void QDBusConnectionManager::removeConnection(const QString &name)
 
 QDBusConnectionManager::QDBusConnectionManager()
 {
+    // Ensure that the custom metatype registry is created before the instance
+    // of this class. This will ensure that the registry is not destroyed before
+    // the connection manager at application exit (see also QTBUG-58732). This
+    // works with compilers that use mechanism similar to atexit() to call
+    // destructurs for global statics.
+    QDBusMetaTypeId::init();
+
     connect(this, &QDBusConnectionManager::connectionRequested,
             this, &QDBusConnectionManager::executeConnectionRequest, Qt::BlockingQueuedConnection);
     connect(this, &QDBusConnectionManager::serverRequested,
@@ -180,9 +132,7 @@ void QDBusConnectionManager::run()
 
     // cleanup:
     const auto locker = qt_scoped_lock(mutex);
-    for (QHash<QString, QDBusConnectionPrivate *>::const_iterator it = connectionHash.constBegin();
-         it != connectionHash.constEnd(); ++it) {
-        QDBusConnectionPrivate *d = it.value();
+    for (QDBusConnectionPrivate *d : std::as_const(connectionHash)) {
         if (!d->ref.deref()) {
             delete d;
         } else {
@@ -206,12 +156,9 @@ QDBusConnectionPrivate *QDBusConnectionManager::connectToBus(QDBusConnection::Bu
     data.suspendedDelivery = suspendedDelivery;
 
     emit connectionRequested(&data);
-    if (suspendedDelivery && data.result->connection) {
-        data.result->ref.ref();
-        QDBusConnectionDispatchEnabler *o = new QDBusConnectionDispatchEnabler(data.result);
-        QTimer::singleShot(0, o, SLOT(execute()));
-        o->moveToThread(qApp->thread());    // qApp was checked in the caller
-    }
+    if (suspendedDelivery && data.result->connection)
+        data.result->enableDispatchDelayed(qApp); // qApp was checked in the caller
+
     return data.result;
 }
 
@@ -485,7 +432,7 @@ QDBusConnection &QDBusConnection::operator=(const QDBusConnection &other)
 }
 
 /*!
-    Opens a connection of type \a type to one of the known busses and
+    Opens a connection of type \a type to one of the known buses and
     associate with it the connection name \a name. Returns a
     QDBusConnection object associated with that connection.
 */
@@ -909,16 +856,16 @@ bool QDBusConnection::registerObject(const QString &path, const QString &interfa
     if (!d || !d->connection || !object || !options || !QDBusUtil::isValidObjectPath(path))
         return false;
 
-    auto pathComponents = path.splitRef(QLatin1Char('/'));
+    auto pathComponents = QStringView{path}.split(u'/');
     if (pathComponents.constLast().isEmpty())
         pathComponents.removeLast();
     QDBusWriteLocker locker(RegisterObjectAction, d);
 
     // lower-bound search for where this object should enter in the tree
-    QDBusConnectionPrivate::ObjectTreeNode::DataList::Iterator node = &d->rootNode;
+    QDBusConnectionPrivate::ObjectTreeNode *node = &d->rootNode;
     int i = 1;
     while (node) {
-        if (pathComponents.count() == i) {
+        if (pathComponents.size() == i) {
             // this node exists
             // consider it free if there's no object here and the user is not trying to
             // replace the object sub-tree
@@ -954,7 +901,7 @@ bool QDBusConnection::registerObject(const QString &path, const QString &interfa
             std::lower_bound(node->children.begin(), node->children.end(), pathComponents.at(i));
         if (it != node->children.end() && it->name == pathComponents.at(i)) {
             // match: this node exists
-            node = it;
+            node = &(*it);
 
             // are we allowed to go deeper?
             if (node->flags & ExportChildObjects) {
@@ -965,7 +912,8 @@ bool QDBusConnection::registerObject(const QString &path, const QString &interfa
             }
         } else {
             // add entry
-            node = node->children.insert(it, pathComponents.at(i).toString());
+            it = node->children.insert(it, pathComponents.at(i).toString());
+            node = &(*it);
         }
 
         // iterate
@@ -1017,7 +965,7 @@ QObject *QDBusConnection::objectRegisteredAt(const QString &path) const
     if (!d || !d->connection || !QDBusUtil::isValidObjectPath(path))
         return nullptr;
 
-    auto pathComponents = path.splitRef(QLatin1Char('/'));
+    auto pathComponents = QStringView{path}.split(u'/');
     if (pathComponents.constLast().isEmpty())
         pathComponents.removeLast();
 
@@ -1027,7 +975,7 @@ QObject *QDBusConnection::objectRegisteredAt(const QString &path) const
 
     int i = 1;
     while (node) {
-        if (pathComponents.count() == i)
+        if (pathComponents.size() == i)
             return node->obj;
         if ((node->flags & QDBusConnectionPrivate::VirtualObject) && (node->flags & QDBusConnection::SubPath))
             return node->obj;
@@ -1037,7 +985,7 @@ QObject *QDBusConnection::objectRegisteredAt(const QString &path) const
         if (it == node->children.constEnd() || it->name != pathComponents.at(i))
             break;              // node not found
 
-        node = it;
+        node = &(*it);
         ++i;
     }
     return nullptr;
@@ -1202,21 +1150,6 @@ QDBusConnection QDBusConnection::systemBus()
     return QDBusConnection(_q_manager()->busConnection(SystemBus));
 }
 
-#if QT_DEPRECATED_SINCE(5,5)
-/*!
-  \deprecated
-
-  Always returns a disconnected, invalid QDBusConnection object. For the old
-  functionality of determining the sender connection, please use QDBusContext.
-
-  \sa QDBusContext
-*/
-QDBusConnection QDBusConnection::sender()
-{
-    return QDBusConnection(QString());
-}
-#endif
-
 /*!
   \internal
 */
@@ -1288,6 +1221,10 @@ QByteArray QDBusConnection::localMachineId()
 */
 
 QT_END_NAMESPACE
+
+#include "moc_qdbusconnection_p.cpp"
+#include "moc_qdbusconnection.cpp"
+#include "moc_qdbusconnectionmanager_p.cpp"
 
 #ifdef Q_OS_WIN
 #  include <qt_windows.h>

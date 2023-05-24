@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,10 @@
 #include <zircon/syscalls.h>
 
 #include "base/clang_profiling_buildflags.h"
-#include "base/debug/activity_tracker.h"
 #include "base/fuchsia/default_job.h"
 #include "base/fuchsia/fuchsia_logging.h"
-#include "base/strings/stringprintf.h"
+#include "base/threading/thread_restrictions.h"
+#include "base/trace_event/base_tracing.h"
 
 #if BUILDFLAG(CLANG_PROFILING)
 #include "base/test/clang_profiling.h"
@@ -117,20 +117,6 @@ Process Process::OpenWithExtraPrivileges(ProcessId pid) {
 }
 
 // static
-Process Process::DeprecatedGetProcessFromHandle(ProcessHandle handle) {
-  DCHECK_NE(handle, GetCurrentProcessHandle());
-  zx::process out;
-  zx_status_t result =
-      zx::unowned_process(handle)->duplicate(ZX_RIGHT_SAME_RIGHTS, &out);
-  if (result != ZX_OK) {
-    ZX_DLOG(ERROR, result) << "zx_handle_duplicate(from_handle)";
-    return Process();
-  }
-
-  return Process(out.release());
-}
-
-// static
 bool Process::CanBackgroundProcesses() {
   return false;
 }
@@ -168,15 +154,43 @@ Process Process::Duplicate() const {
   return Process(out.release());
 }
 
+ProcessHandle Process::Release() {
+  if (is_current()) {
+    // Caller expects to own the reference, so duplicate the self handle.
+    zx::process handle;
+    zx_status_t result =
+        zx::process::self()->duplicate(ZX_RIGHT_SAME_RIGHTS, &handle);
+    if (result != ZX_OK) {
+      return kNullProcessHandle;
+    }
+    is_current_process_ = false;
+    return handle.release();
+  }
+  return process_.release();
+}
+
 ProcessId Process::Pid() const {
   DCHECK(IsValid());
   return GetProcId(Handle());
 }
 
 Time Process::CreationTime() const {
-  // TODO(https://crbug.com/726484): There is no syscall providing this data.
-  NOTIMPLEMENTED();
-  return Time();
+  zx_info_process_t proc_info;
+  zx_status_t status =
+      zx_object_get_info(Handle(), ZX_INFO_PROCESS, &proc_info,
+                         sizeof(proc_info), nullptr, nullptr);
+  if (status != ZX_OK) {
+    ZX_DLOG(ERROR, status) << "zx_process_get_info";
+    return Time();
+  }
+  if ((proc_info.flags & ZX_INFO_PROCESS_FLAG_STARTED) == 0) {
+    DLOG(WARNING) << "zx_process_get_info: Not started.";
+    return Time();
+  }
+  // Process creation times are expressed in ticks since system boot, so
+  // perform a best-effort translation from that to UTC "wall-clock" time.
+  return Time::Now() +
+         (TimeTicks::FromZxTime(proc_info.start_time) - TimeTicks::Now());
 }
 
 bool Process::is_current() const {
@@ -215,23 +229,31 @@ bool Process::WaitForExitWithTimeout(TimeDelta timeout, int* exit_code) const {
   if (is_current_process_)
     return false;
 
-  // Record the event that this thread is blocking upon (for hang diagnosis).
-  base::debug::ScopedProcessWaitActivity process_activity(this);
+  TRACE_EVENT0("base", "Process::WaitForExitWithTimeout");
 
-  zx_time_t deadline = timeout == TimeDelta::Max()
-                           ? ZX_TIME_INFINITE
-                           : (TimeTicks::Now() + timeout).ToZxTime();
+  if (!timeout.is_zero()) {
+    // Assert that this thread is allowed to wait below. This intentionally
+    // doesn't use ScopedBlockingCallWithBaseSyncPrimitives because the process
+    // being waited upon tends to itself be using the CPU and considering this
+    // thread non-busy causes more issue than it fixes: http://crbug.com/905788
+    internal::AssertBaseSyncPrimitivesAllowed();
+  }
+
+  zx::time deadline = timeout == TimeDelta::Max()
+                          ? zx::time::infinite()
+                          : zx::time((TimeTicks::Now() + timeout).ToZxTime());
   zx_signals_t signals_observed = 0;
-  zx_status_t status = zx_object_wait_one(process_.get(), ZX_TASK_TERMINATED,
-                                          deadline, &signals_observed);
+  zx_status_t status =
+      process_.wait_one(ZX_TASK_TERMINATED, deadline, &signals_observed);
   if (status != ZX_OK) {
-    ZX_DLOG(ERROR, status) << "zx_object_wait_one";
+    ZX_DLOG_IF(ERROR, status != ZX_ERR_TIMED_OUT, status)
+        << "zx_object_wait_one";
     return false;
   }
 
   zx_info_process_t proc_info;
-  status = zx_object_get_info(process_.get(), ZX_INFO_PROCESS, &proc_info,
-                              sizeof(proc_info), nullptr, nullptr);
+  status = process_.get_info(ZX_INFO_PROCESS, &proc_info, sizeof(proc_info),
+                             nullptr, nullptr);
   if (status != ZX_OK) {
     ZX_DLOG(ERROR, status) << "zx_object_get_info";
     if (exit_code)
@@ -240,7 +262,7 @@ bool Process::WaitForExitWithTimeout(TimeDelta timeout, int* exit_code) const {
   }
 
   if (exit_code)
-    *exit_code = proc_info.return_code;
+    *exit_code = static_cast<int>(proc_info.return_code);
 
   return true;
 }

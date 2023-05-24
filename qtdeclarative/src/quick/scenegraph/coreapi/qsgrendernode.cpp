@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgrendernode.h"
 #include "qsgrendernode_p.h"
@@ -48,6 +12,23 @@ QT_BEGIN_NAMESPACE
     targeting the graphics API that is in use by the scenegraph.
     \inmodule QtQuick
     \since 5.8
+
+    QSGRenderNode allows creating scene graph nodes that perform their own
+    custom rendering via QRhi (the common approach from Qt 6.6 on), directly
+    via a 3D graphics API such as OpenGL, Vulkan, or Metal, or, when the \c
+    software backend is in use, via QPainter.
+
+    QSGRenderNode is the enabler for one of the three ways to integrate custom
+    2D/3D rendering into a Qt Quick scene. The other two options are to perform
+    the rendering \c before or \c after the Qt Quick scene's own rendering,
+    or to generate a whole separate render pass targeting a dedicated render
+    target (a texture) and then have an item in the scene display the texture.
+    The QSGRenderNode-based approach is similar to the former, in the sense
+    that no additional render passes or render targets are involved, and allows
+    injecting custom rendering commands "inline" with the Qt Quick scene's
+    own rendering.
+
+    \sa {Scene Graph - Custom QSGRenderNode}
  */
 
 QSGRenderNode::QSGRenderNode()
@@ -66,6 +47,13 @@ QSGRenderNode::QSGRenderNode()
     deleted. Therefore there is no need to issue additional waits here, unless
     the render() implementation is using additional command queues.
 
+    With QRhi and resources such as QRhiBuffer, QRhiTexture,
+    QRhiGraphicsPipeline, etc., it is often good practice to use smart
+    pointers, such as std::unique_ptr, which can often avoid the need to
+    implement a destructor, and lead to more compact source code. Keep in mind
+    however that implementing releaseResources(), most likely issuing a number
+    of reset() calls on the unique_ptrs, is still important.
+
     \sa releaseResources()
  */
 QSGRenderNode::~QSGRenderNode()
@@ -77,8 +65,6 @@ QSGRenderNodePrivate::QSGRenderNodePrivate()
     : m_matrix(nullptr)
     , m_clip_list(nullptr)
     , m_opacity(1)
-    , m_needsExternalRendering(true)
-    , m_prepareCallback(nullptr)
 {
 }
 
@@ -87,22 +73,20 @@ QSGRenderNodePrivate::QSGRenderNodePrivate()
     mask where each bit represents graphics states changed by the \l render()
     function:
 
-    \list
-    \li DepthState - depth write mask, depth test enabled, depth comparison function
-    \li StencilState - stencil write masks, stencil test enabled, stencil operations,
-                      stencil comparison functions
-    \li ScissorState - scissor enabled, scissor test enabled
-    \li ColorState - clear color, color write mask
-    \li BlendState - blend enabled, blend function
-    \li CullState - front face, cull face enabled
-    \li ViewportState - viewport
-    \li RenderTargetState - render target
-    \endlist
+    \value DepthState   depth write mask, depth test enabled, depth comparison function
+    \value StencilState stencil write masks, stencil test enabled, stencil operations,
+                        stencil comparison functions
+    \value ScissorState scissor enabled, scissor test enabled
+    \value ColorState   clear color, color write mask
+    \value BlendState   blend enabled, blend function
+    \value CullState    front face, cull face enabled
+    \value ViewportState viewport
+    \value RenderTargetState render target
 
     With APIs other than OpenGL, the only relevant values are the ones that
     correspond to dynamic state changes recorded on the command list/buffer.
-    For example, RSSetViewports, RSSetScissorRects, OMSetBlendFactor,
-    OMSetStencilRef in case of D3D12, or vkCmdSetViewport, vkCmdSetScissor,
+    For example, RSSetViewports, RSSetScissorRects, OMSetBlendState,
+    OMSetDepthStencilState in case of D3D11, or vkCmdSetViewport, vkCmdSetScissor,
     vkCmdSetBlendConstants, vkCmdSetStencilRef in case of Vulkan, and only when
     such commands were added to the scenegraph's command list queried via the
     QSGRendererInterface::CommandList resource enum. States set in pipeline
@@ -111,16 +95,16 @@ QSGRenderNodePrivate::QSGRenderNodePrivate()
     bindings, root signature, descriptor heaps, etc.) are always set again by
     the scenegraph so render() can freely change them.
 
-    \note RenderTargetState is no longer supported with APIs like Vulkan. This
+    RenderTargetState is no longer supported with APIs like Vulkan. This
     is by nature. render() is invoked while the Qt Quick scenegraph's main
     command buffer is recording a renderpass, so there is no possibility of
     changing the target and starting another renderpass (on that command buffer
     at least). Therefore returning a value with RenderTargetState set is not
     sensible.
 
-    The software backend exposes its QPainter and saves and restores before and
-    after invoking render(). Therefore reporting any changed states from here
-    is not necessary.
+    \note The \c software backend exposes its QPainter and saves and restores
+    before and after invoking render(). Therefore reporting any changed states
+    from here is not necessary.
 
     The function is called by the renderer so it can reset the states after
     rendering this node. This makes the implementation of render() simpler
@@ -130,10 +114,38 @@ QSGRenderNodePrivate::QSGRenderNodePrivate()
     in render().
 
     \note This function may be called before render().
+
+    \note With Qt 6 and QRhi-based rendering the only relevant values are
+    ViewportState and ScissorState. Other values can be returned but are
+    ignored in practice.
   */
 QSGRenderNode::StateFlags QSGRenderNode::changedStates() const
 {
     return {};
+}
+
+/*!
+    Called from the frame preparation phase. There is a call to this function
+    before each invocation of render().
+
+    Unlike render(), this function is called before the scenegraph starts
+    recording the render pass for the current frame on the underlying command
+    buffer. This is useful when doing rendering with graphics APIs, such as
+    Vulkan, where copy type of operations will need to be recorded before the
+    render pass.
+
+    The default implementation is empty.
+
+    When implementing a QSGRenderNode that uses QRhi to render, query the QRhi
+    object from the QQuickWindow via \l{QQuickWindow::rhi()}. To get a
+    QRhiCommandBuffer for submitting work to, call commandBuffer(). To query
+    information about the active render target, call renderTarget(). See the
+    \l{{Scene Graph - Custom QSGRenderNode}} example for details.
+
+    \since 6.0
+ */
+void QSGRenderNode::prepare()
+{
 }
 
 /*!
@@ -180,56 +192,33 @@ QSGRenderNode::StateFlags QSGRenderNode::changedStates() const
     Some scenegraph backends, software in particular, use no scissor or
     stencil. There the clip region is provided as an ordinary QRegion.
 
-    With the legacy, direct OpenGL based renderer, the following states are set
-    on the render thread's context before this function is called:
+    When implementing a QSGRenderNode that uses QRhi to render, query the QRhi
+    object from the QQuickWindow via \l{QQuickWindow::rhi()}. To get a
+    QRhiCommandBuffer for submitting work to, call commandBuffer(). To query
+    information about the active render target, call renderTarget(). See the
+    \l{{Scene Graph - Custom QSGRenderNode}} example for details.
 
-    \list
-    \li glColorMask(true, true, true, true)
-    \li glDepthMask(false)
-    \li glDisable(GL_DEPTH_TEST)
-    \li glStencilFunc(GL_EQUAL, state.stencilValue, 0xff); glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP) depending on clip
-    \li glScissor(state.scissorRect.x(), state.scissorRect.y(),
-                 state.scissorRect.width(), state.scissorRect.height()) depending on clip
-    \li glEnable(GL_BLEND)
-    \li glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
-    \li glDisable(GL_CULL_FACE)
-    \endlist
+    With Qt 6 and its QRhi-based scene graph renderer, no assumptions should be
+    made about the active (OpenGL) state when this function is called, even
+    when OpenGL is in use. Assume nothing about the pipelines and dynamic
+    states bound on the command list/buffer when this function is called.
 
-    States that are not listed above, but are covered by \l StateFlags, can
-    have arbitrary values.
+    \note Depth writes are expected to be disabled. Enabling depth writes can
+    lead to unexpected results, depending on the scenegraph backend in use and
+    the content in the scene, so exercise caution with this.
 
-    \note There is no state set with other graphics APIs, considering that many
-    of them do not have a concept of the traditional OpenGL state machine.
-    Rather, it is up to the implementation to create pipeline state objects
-    with the desired blending, scissor, and stencil tests enabled. Note that
-    this also includes OpenGL via the RHI. New QSGRenderNode implementations
-    are recommended to set all scissor, stencil and blend state explicitly (as
-    shown in the above list), even if they are targeting OpenGL.
+    \note In Qt 6, \l changedStates() has limited use. See the documentation
+    for changedStates() for more information.
 
-    \l changedStates() should return which states this function changes. If a
-    state is not covered by \l StateFlags, the state should be set to the
-    default value according to the OpenGL specification. For other APIs, see
-    the documentation for changedStates() for more information.
-
-    \note Depth writes are disabled when this function is called
-    (glDepthMask(false) with OpenGL). Enabling depth writes can lead to
-    unexpected results, depending on the scenegraph backend in use and the
-    content in the scene, so exercise caution with this.
-
-    For APIs other than OpenGL, it will likely be necessary to query certain
-    API-specific resources (for example, the graphics device or the command
-    list/buffer to add the commands to). This is done via QSGRendererInterface.
-
-    Assume nothing about the pipelines and dynamic states bound on the command
-    list/buffer when this function is called.
-
-    With some graphics APIs it can be necessary to also connect to the
-    QQuickWindow::beforeRendering() signal, because that is emitted before
+    With some graphics APIs, including when using QRhi directly, it can be
+    necessary to reimplement prepare() in addition, or alternatively connect to
+    the QQuickWindow::beforeRendering() signal. These are called/emitted before
     recording the beginning of a renderpass on the command buffer
     (vkCmdBeginRenderPass with Vulkan, or starting to encode via
-    MTLRenderCommandEncoder in case of Metal). Recording copy operations cannot
-    be done inside render() with such APIs. Rather, do it in the slot connected
-    (with DirectConnection) to the beforeRendering signal.
+    MTLRenderCommandEncoder in case of Metal. Recording copy operations cannot
+    be done inside render() with such APIs. Rather, do such operations either
+    in prepare() or the slot connected to beforeRendering (with
+    DirectConnection).
 
     \sa QSGRendererInterface, QQuickWindow::rendererInterface()
   */
@@ -282,7 +271,7 @@ void QSGRenderNode::releaseResources()
     \value BoundedRectRendering Indicates that the implementation of render()
     does not render outside the area reported from rect() in item
     coordinates. Such node implementations can lead to more efficient rendering,
-    depending on the scenegraph backend. For example, the software backend can
+    depending on the scenegraph backend. For example, the \c software backend can
     continue to use the more optimal partial update path when all render nodes
     in the scene have this flag set.
 
@@ -301,7 +290,11 @@ void QSGRenderNode::releaseResources()
     transparent pixels. Setting this flag can improve performance in some
     cases.
 
-    \sa render(), rect()
+    \value NoExternalRendering Indicates that the implementation of prepare()
+    and render() use the QRhi family of APIs, instead of directly calling a 3D
+    API such as OpenGL, Vulkan, or Metal.
+
+    \sa render(), prepare(), rect(), QRhi
  */
 
 /*!
@@ -341,6 +334,27 @@ QRectF QSGRenderNode::rect() const
 }
 
 /*!
+    \return pointer to the current projection matrix.
+
+    In render() this is the same matrix that is returned from
+    RenderState::projectionMatrix(). This getter exists so that prepare() also
+    has a way to query the projection matrix.
+
+    When working with a modern graphics API, or Qt's own graphics abstraction
+    layer, it is more than likely that one will want to load
+    \c{*projectionMatrix() * *matrix()} into a uniform buffer. That is however
+    something that needs to be done in prepare(), so outside the recording of a
+    render pass. That is why both matrices are queriable directly from the
+    QSGRenderNode, both in prepare() and render().
+
+    \since 6.5
+ */
+const QMatrix4x4 *QSGRenderNode::projectionMatrix() const
+{
+    return &d->m_projectionMatrix;
+}
+
+/*!
     \return pointer to the current model-view matrix.
  */
 const QMatrix4x4 *QSGRenderNode::matrix() const
@@ -364,6 +378,59 @@ qreal QSGRenderNode::inheritedOpacity() const
     return d->m_opacity;
 }
 
+/*!
+    \return the current render target.
+
+    This is provided mainly to enable prepare() and render() implementations
+    that use QRhi accessing the QRhiRenderTarget's
+    \l{QRhiRenderPassDescriptor}{renderPassDescriptor} or
+    \l{QRhiRenderTarget::pixelSize()}{pixel size}.
+
+    To build a QRhiGraphicsPipeline, which implies having to provide a
+    QRhiRenderPassDescriptor, query the renderPassDescriptor from the render
+    target. Be aware however that the render target may change over the
+    lifetime of the custom QQuickItem and the QSGRenderNode. For example,
+    consider what happens when dynamically setting \c{layer.enabled: true} on
+    the item or an ancestor of it: this triggers rendering into a texture, not
+    directly to the window, which means the QSGRenderNode is going to work with
+    a different render target from then on. The new render target may then have
+    a different pixel format, which can make already built graphics pipelines
+    incompatible. This can be handled with logic such as the following:
+
+    \code
+      if (m_pipeline && renderTarget()->renderPassDescriptor()->serializedFormat() != m_renderPassFormat) {
+          delete m_pipeline;
+          m_pipeline = nullptr;
+      }
+      if (!m_pipeline) {
+          // Build a new QRhiGraphicsPipeline.
+          // ...
+          // Store the serialized format for fast and simple comparisons later on.
+          m_renderPassFormat = renderTarget()->renderPassDescriptor()->serializedFormat();
+      }
+    \endcode
+
+    \since 6.6
+
+    \sa commandBuffer()
+ */
+QRhiRenderTarget *QSGRenderNode::renderTarget() const
+{
+    return d->m_rt.rt;
+}
+
+/*!
+    \return the current command buffer.
+
+    \since 6.6
+
+    \sa renderTarget()
+ */
+QRhiCommandBuffer *QSGRenderNode::commandBuffer() const
+{
+    return d->m_rt.cb;
+}
+
 QSGRenderNode::RenderState::~RenderState()
 {
 }
@@ -383,11 +450,6 @@ QSGRenderNode::RenderState::~RenderState()
 
     \return the current scissor rectangle when clipping is active. x and y are
     the bottom left coordinates.
-
-    \note Be aware of the differences between graphics APIs: for some the
-    scissor rect is only active when scissoring is enabled (for example,
-    OpenGL), while for others the scissor rect is equal to the viewport rect
-    when there is no need to scissor away anything (for example, Direct3D 12).
  */
 
 /*!
@@ -422,7 +484,7 @@ QSGRenderNode::RenderState::~RenderState()
     \return the current clip region or null for backends where clipping is
     implemented via stencil or scissoring.
 
-    The software backend uses no projection, scissor or stencil, meaning most
+    The \c software backend uses no projection, scissor or stencil, meaning most
     of the render state is not in use. However, the clip region that can be set
     on the QPainter still has to be communicated since reconstructing this
     manually in render() is not reasonable. It can therefore be queried via

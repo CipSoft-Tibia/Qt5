@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 Klaralvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "renderview_p.h"
 #include <Qt3DRender/qmaterial.h>
@@ -67,6 +31,22 @@
 #include <Qt3DRender/private/stringtoint_p.h>
 #include <Qt3DRender/private/renderlogging_p.h>
 #include <Qt3DRender/private/renderstateset_p.h>
+#include <Qt3DRender/private/uniformblockbuilder_p.h>
+#include <Qt3DRender/private/clearbuffers_p.h>
+#include <Qt3DRender/private/rendertargetselectornode_p.h>
+#include <Qt3DRender/private/sortpolicy_p.h>
+#include <Qt3DRender/private/techniquefilternode_p.h>
+#include <Qt3DRender/private/managers_p.h>
+#include <Qt3DRender/private/shaderdata_p.h>
+#include <Qt3DRender/private/statesetnode_p.h>
+#include <Qt3DRender/private/dispatchcompute_p.h>
+#include <Qt3DRender/private/rendersurfaceselector_p.h>
+#include <Qt3DRender/private/rendercapture_p.h>
+#include <Qt3DRender/private/buffercapture_p.h>
+#include <Qt3DRender/private/techniquemanager_p.h>
+#include <Qt3DRender/private/blitframebuffer_p.h>
+#include <Qt3DRender/private/rendercapture_p.h>
+
 #include <rendercommand_p.h>
 #include <renderer_p.h>
 #include <submissioncontext_p.h>
@@ -90,7 +70,7 @@ namespace Rhi {
 namespace {
 
 // register our QNodeId's as a metatype during program loading
-const int Q_DECL_UNUSED qNodeIdTypeId = qMetaTypeId<Qt3DCore::QNodeId>();
+Q_DECL_UNUSED const int qNodeIdTypeId = qMetaTypeId<Qt3DCore::QNodeId>();
 
 const int MAX_LIGHTS = 8;
 
@@ -106,6 +86,12 @@ int LIGHT_COLOR_NAMES[MAX_LIGHTS];
 int LIGHT_INTENSITY_NAMES[MAX_LIGHTS];
 QString LIGHT_STRUCT_NAMES[MAX_LIGHTS];
 
+int LIGHT_POSITION_UNROLL_NAMES[MAX_LIGHTS];
+int LIGHT_TYPE_UNROLL_NAMES[MAX_LIGHTS];
+int LIGHT_COLOR_UNROLL_NAMES[MAX_LIGHTS];
+int LIGHT_INTENSITY_UNROLL_NAMES[MAX_LIGHTS];
+QString LIGHT_STRUCT_UNROLL_NAMES[MAX_LIGHTS];
+
 std::atomic_bool wasInitialized {};
 
 } // anonymous namespace
@@ -120,48 +106,242 @@ static QRectF resolveViewport(const QRectF &fractionalViewport, const QSize &sur
                   fractionalViewport.height() * surfaceSize.height());
 }
 
-static Matrix4x4 getProjectionMatrix(const CameraLens *lens, bool yIsUp)
+static Matrix4x4 getProjectionMatrix(const CameraLens *lens)
 {
-    if (lens) {
-        if (yIsUp) {
-            // OpenGL
-            return lens->projection();
-        } else {
-            // Others. Note : this could likely be optimized...
-            auto p = lens->projection();
-            Matrix4x4 rev { 0, 0, 0, 0, 0, -2 * p.m22(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-            p += rev;
-            return p;
-        }
-    } else {
-        qWarning() << "[Qt3D Renderer] No Camera Lens found. Add a CameraSelector to your Frame "
-                      "Graph or make sure that no entities will be rendered.";
-        return Matrix4x4();
+    Matrix4x4 m;
+    if (lens)
+        m = lens->projection();
+    return m;
+}
+
+/*!
+    \internal
+    Walks up the framegraph tree from \a fgLeaf and builds up as much state
+    as possible and populates \a rv. For cases where we can't get the specific state
+    (e.g. because it depends upon more than just the framegraph) we store the data from
+    the framegraph that will be needed to later when the rest of the data becomes available
+*/
+void RenderView::setRenderViewConfigFromFrameGraphLeafNode(RenderView *rv, const FrameGraphNode *fgLeaf)
+{
+    // The specific RenderPass to be used is also dependent upon the Effect and TechniqueFilter
+    // which is referenced by the Material which is referenced by the RenderMesh. So we can
+    // only store the filter info in the RenderView structure and use it to do the resolving
+    // when we build the RenderCommand list.
+    const NodeManagers *manager = rv->nodeManagers();
+    const FrameGraphNode *node = fgLeaf;
+
+    while (node) {
+        FrameGraphNode::FrameGraphNodeType type = node->nodeType();
+        if (node->isEnabled())
+            switch (type) {
+            case FrameGraphNode::InvalidNodeType:
+                // A base FrameGraphNode, can be used for grouping purposes
+                break;
+            case FrameGraphNode::CameraSelector:
+                // Can be set only once and we take camera nearest to the leaf node
+                if (!rv->renderCameraLens()) {
+                    const CameraSelector *cameraSelector =
+                            static_cast<const CameraSelector *>(node);
+                    Entity *camNode = manager->renderNodesManager()->lookupResource(
+                            cameraSelector->cameraUuid());
+                    if (camNode) {
+                        CameraLens *lens = camNode->renderComponent<CameraLens>();
+                        rv->setRenderCameraEntity(camNode);
+                        if (lens && lens->isEnabled()) {
+                            rv->setRenderCameraLens(lens);
+                            // ViewMatrix and ProjectionMatrix are computed
+                            // later in updateMatrices()
+                            // since at this point the transformation matrices
+                            // may not yet have been updated
+                        }
+                    }
+                }
+                break;
+
+            case FrameGraphNode::LayerFilter: // Can be set multiple times in the tree
+                rv->appendLayerFilter(static_cast<const LayerFilterNode *>(node)->peerId());
+                break;
+
+            case FrameGraphNode::ProximityFilter: // Can be set multiple times in the tree
+                rv->appendProximityFilterId(node->peerId());
+                break;
+
+            case FrameGraphNode::RenderPassFilter:
+                // Can be set once
+                // TODO: Amalgamate all render pass filters from leaf to root
+                if (!rv->renderPassFilter())
+                    rv->setRenderPassFilter(static_cast<const RenderPassFilter *>(node));
+                break;
+
+            case FrameGraphNode::RenderTarget: {
+                // Can be set once and we take render target nearest to the leaf node
+                const RenderTargetSelector *targetSelector =
+                        static_cast<const RenderTargetSelector *>(node);
+                Qt3DCore::QNodeId renderTargetUid = targetSelector->renderTargetUuid();
+
+                // Note: we ignore the render target outputs the RenderTargetSelector
+                // might specify as we can't handle that with RHI
+
+                // Add renderTarget Handle
+                if (!rv->renderTargetId()) {
+                    rv->setRenderTargetId(renderTargetUid);
+                }
+                break;
+            }
+
+            case FrameGraphNode::ClearBuffers: {
+                const ClearBuffers *cbNode = static_cast<const ClearBuffers *>(node);
+                rv->addClearBuffers(cbNode);
+                break;
+            }
+
+            case FrameGraphNode::TechniqueFilter:
+                // Can be set once
+                // TODO Amalgamate all technique filters from leaf to root
+                if (!rv->techniqueFilter())
+                    rv->setTechniqueFilter(static_cast<const TechniqueFilter *>(node));
+                break;
+
+            case FrameGraphNode::Viewport: {
+                // If the Viewport has already been set in a lower node
+                // Make it so that the new viewport is actually
+                // a subregion relative to that of the parent viewport
+                const ViewportNode *vpNode = static_cast<const ViewportNode *>(node);
+                rv->setViewport(ViewportNode::computeViewport(rv->viewport(), vpNode));
+                rv->setGamma(vpNode->gamma());
+                break;
+            }
+
+            case FrameGraphNode::SortMethod: {
+                const Render::SortPolicy *sortPolicy =
+                        static_cast<const Render::SortPolicy *>(node);
+                rv->addSortType(sortPolicy->sortTypes());
+                break;
+            }
+
+            case FrameGraphNode::SubtreeEnabler:
+                // Has no meaning here. SubtreeEnabler was used
+                // in a prior step to filter the list of RenderViewJobs
+                break;
+
+            case FrameGraphNode::StateSet: {
+                const Render::StateSetNode *rStateSet = static_cast<const Render::StateSetNode *>(node);
+                // Add states from new stateSet we might be missing
+                // but don' t override existing states (lower StateSetNode always has priority)
+                if (rStateSet->hasRenderStates()) {
+                    // Create global RenderStateSet for renderView if no stateSet was set before
+                    RenderStateSet *stateSet = rv->getOrCreateStateSet();
+                    addStatesToRenderStateSet(stateSet, rStateSet->renderStates(), manager->renderStateManager());
+                }
+                break;
+            }
+
+            case FrameGraphNode::NoDraw: {
+                rv->setNoDraw(true);
+                break;
+            }
+
+            case FrameGraphNode::FrustumCulling: {
+                rv->setFrustumCulling(true);
+                break;
+            }
+
+            case FrameGraphNode::ComputeDispatch: {
+                const Render::DispatchCompute *dispatchCompute =
+                        static_cast<const Render::DispatchCompute *>(node);
+                rv->setCompute(true);
+                rv->setComputeWorkgroups(dispatchCompute->x(), dispatchCompute->y(),
+                                         dispatchCompute->z());
+                break;
+            }
+
+            case FrameGraphNode::Lighting: {
+                // TODO
+                break;
+            }
+
+            case FrameGraphNode::Surface: {
+                // Use the surface closest to leaf node
+                if (rv->surface() == nullptr) {
+                    const Render::RenderSurfaceSelector *surfaceSelector =
+                            static_cast<const Render::RenderSurfaceSelector *>(node);
+                    rv->setSurface(surfaceSelector->surface());
+                    rv->setSurfaceSize(surfaceSelector->renderTargetSize()
+                                       * surfaceSelector->devicePixelRatio());
+                    rv->setDevicePixelRatio(surfaceSelector->devicePixelRatio());
+                }
+                break;
+            }
+            case FrameGraphNode::RenderCapture: {
+                auto *renderCapture = const_cast<Render::RenderCapture *>(
+                        static_cast<const Render::RenderCapture *>(node));
+                if (rv->renderCaptureNodeId().isNull() && renderCapture->wasCaptureRequested()) {
+                    rv->setRenderCaptureNodeId(renderCapture->peerId());
+                    rv->setRenderCaptureRequest(renderCapture->takeCaptureRequest());
+                }
+                break;
+            }
+
+            case FrameGraphNode::MemoryBarrier: {
+                // Not available in rhi
+                break;
+            }
+
+            case FrameGraphNode::BufferCapture: {
+                auto *bufferCapture = const_cast<Render::BufferCapture *>(
+                        static_cast<const Render::BufferCapture *>(node));
+                if (bufferCapture != nullptr)
+                    rv->setIsDownloadBuffersEnable(bufferCapture->isEnabled());
+                break;
+            }
+
+            case FrameGraphNode::BlitFramebuffer: {
+                const Render::BlitFramebuffer *blitFramebufferNode =
+                        static_cast<const Render::BlitFramebuffer *>(node);
+                rv->setHasBlitFramebufferInfo(true);
+                BlitFramebufferInfo bfbInfo;
+                bfbInfo.sourceRenderTargetId = blitFramebufferNode->sourceRenderTargetId();
+                bfbInfo.destinationRenderTargetId =
+                        blitFramebufferNode->destinationRenderTargetId();
+                bfbInfo.sourceRect = blitFramebufferNode->sourceRect();
+                bfbInfo.destinationRect = blitFramebufferNode->destinationRect();
+                bfbInfo.sourceAttachmentPoint = blitFramebufferNode->sourceAttachmentPoint();
+                bfbInfo.destinationAttachmentPoint =
+                        blitFramebufferNode->destinationAttachmentPoint();
+                bfbInfo.interpolationMethod = blitFramebufferNode->interpolationMethod();
+                rv->setBlitFrameBufferInfo(bfbInfo);
+                break;
+            }
+
+            case FrameGraphNode::WaitFence: {
+                // Not available in rhi
+                break;
+            }
+
+            case FrameGraphNode::SetFence: {
+                // Not available in rhi
+                break;
+            }
+
+            case FrameGraphNode::NoPicking:
+                // Nothing to do RenderView wise for NoPicking
+                break;
+
+            case FrameGraphNode::DebugOverlay:
+                // Not supported yet with RHI
+                break;
+
+            default:
+                // Should never get here
+                qCWarning(Backend) << "Unhandled FrameGraphNode type";
+            }
+
+        node = node->parent();
     }
 }
 
 RenderView::RenderView()
-    : m_isDownloadBuffersEnable(false),
-      m_hasBlitFramebufferInfo(false),
-      m_renderer(nullptr),
-      m_manager(nullptr),
-      m_devicePixelRatio(1.),
-      m_viewport(QRectF(0., 0., 1., 1.)),
-      m_gamma(2.2f),
-      m_surface(nullptr),
-      m_clearBuffer(QClearBuffers::None),
-      m_clearDepthValue(1.f),
-      m_clearStencilValue(0),
-      m_stateSet(nullptr),
-      m_noDraw(false),
-      m_compute(false),
-      m_frustumCulling(false),
-      m_environmentLight(nullptr)
 {
-    m_workGroups[0] = 1;
-    m_workGroups[1] = 1;
-    m_workGroups[2] = 1;
-
     if (Q_UNLIKELY(!wasInitialized.exchange(true))) {
         // Needed as we can control the init order of static/global variables across compile units
         // and this hash relies on the static StringToInt class
@@ -177,13 +357,21 @@ RenderView::RenderView()
             LIGHT_COLOR_NAMES[i] = StringToInt::lookupId(LIGHT_STRUCT_NAMES[i] + LIGHT_COLOR_NAME);
             LIGHT_INTENSITY_NAMES[i] =
                     StringToInt::lookupId(LIGHT_STRUCT_NAMES[i] + LIGHT_INTENSITY_NAME);
+
+            LIGHT_STRUCT_UNROLL_NAMES[i] =
+                    QLatin1String("light_") + QLatin1Char(char('0' + i));
+            LIGHT_POSITION_UNROLL_NAMES[i] =
+                    StringToInt::lookupId(LIGHT_STRUCT_UNROLL_NAMES[i] + LIGHT_POSITION_NAME);
+            LIGHT_TYPE_UNROLL_NAMES[i] = StringToInt::lookupId(LIGHT_STRUCT_UNROLL_NAMES[i] + LIGHT_TYPE_NAME);
+            LIGHT_COLOR_UNROLL_NAMES[i] = StringToInt::lookupId(LIGHT_STRUCT_UNROLL_NAMES[i] + LIGHT_COLOR_NAME);
+            LIGHT_INTENSITY_UNROLL_NAMES[i] =
+                    StringToInt::lookupId(LIGHT_STRUCT_UNROLL_NAMES[i] + LIGHT_INTENSITY_NAME);
         }
     }
 }
 
 RenderView::~RenderView()
 {
-    delete m_stateSet;
 }
 
 namespace {
@@ -193,8 +381,7 @@ struct AdjacentSubRangeFinder
 {
     static bool adjacentSubRange(const RenderCommand &, const RenderCommand &)
     {
-        Q_UNREACHABLE();
-        return false;
+        Q_UNREACHABLE_RETURN(false);
     }
 };
 
@@ -212,7 +399,7 @@ struct AdjacentSubRangeFinder<QSortPolicy::BackToFront>
 {
     static bool adjacentSubRange(const RenderCommand &a, const RenderCommand &b)
     {
-        return a.m_depth == b.m_depth;
+        return qFuzzyCompare(a.m_depth, b.m_depth);
     }
 };
 
@@ -230,7 +417,7 @@ struct AdjacentSubRangeFinder<QSortPolicy::FrontToBack>
 {
     static bool adjacentSubRange(const RenderCommand &a, const RenderCommand &b)
     {
-        return a.m_depth == b.m_depth;
+        return qFuzzyCompare(a.m_depth, b.m_depth);
     }
 };
 
@@ -240,41 +427,49 @@ struct AdjacentSubRangeFinder<QSortPolicy::Texture>
     static bool adjacentSubRange(const RenderCommand &a, const RenderCommand &b)
     {
         // Two renderCommands are adjacent if one contains all the other command's textures
-        QVector<ShaderParameterPack::NamedResource> texturesA = a.m_parameterPack.textures();
-        QVector<ShaderParameterPack::NamedResource> texturesB = b.m_parameterPack.textures();
+        const std::vector<ShaderParameterPack::NamedResource> &texturesA = a.m_parameterPack.textures();
+        const std::vector<ShaderParameterPack::NamedResource> &texturesB = b.m_parameterPack.textures();
 
-        if (texturesB.size() > texturesA.size())
-            qSwap(texturesA, texturesB);
+        const bool bBigger = texturesB.size() > texturesA.size();
+        const std::vector<ShaderParameterPack::NamedResource> &smallestVector = bBigger ? texturesA : texturesB;
+        const std::vector<ShaderParameterPack::NamedResource> &biggestVector = bBigger ? texturesB : texturesA;
 
-        // textureB.size() is always <= textureA.size()
-        for (const ShaderParameterPack::NamedResource &texB : qAsConst(texturesB)) {
-            if (!texturesA.contains(texB))
+        const auto e = biggestVector.cend();
+        for (const ShaderParameterPack::NamedResource &tex : smallestVector) {
+            if (std::find(biggestVector.begin(), e, tex) == e)
                 return false;
         }
+
         return true;
     }
 };
 
 template<typename Predicate>
-int advanceUntilNonAdjacent(const QVector<RenderCommand> &commands, const int beg, const int end,
-                            Predicate pred)
+int advanceUntilNonAdjacent(const EntityRenderCommandDataView *view,
+                            const size_t beg, const size_t end, Predicate pred)
 {
-    int i = beg + 1;
-    while (i < end) {
-        if (!pred(*(commands.begin() + beg), *(commands.begin() + i)))
-            break;
-        ++i;
+    const std::vector<size_t> &commandIndices = view->indices;
+    const std::vector<RenderCommand> &commands = view->data.commands;
+    size_t i = beg + 1;
+    if (i < end) {
+        const size_t startIdx = commandIndices[beg];
+        while (i < end) {
+            const size_t targetIdx = commandIndices[i];
+            if (!pred(commands[startIdx], commands[targetIdx]))
+                break;
+            ++i;
+        }
     }
-    return i;
+    return int(i);
 }
 
-using CommandIt = QVector<RenderCommand>::iterator;
 
 template<int SortType>
 struct SubRangeSorter
 {
-    static void sortSubRange(CommandIt begin, const CommandIt end)
+    static void sortSubRange(EntityRenderCommandDataView *view, size_t begin, const size_t end)
     {
+        Q_UNUSED(view);
         Q_UNUSED(begin);
         Q_UNUSED(end);
         Q_UNREACHABLE();
@@ -284,9 +479,14 @@ struct SubRangeSorter
 template<>
 struct SubRangeSorter<QSortPolicy::StateChangeCost>
 {
-    static void sortSubRange(CommandIt begin, const CommandIt end)
+    static void sortSubRange(EntityRenderCommandDataView *view, size_t begin, const size_t end)
     {
-        std::stable_sort(begin, end, [](const RenderCommand &a, const RenderCommand &b) {
+        std::vector<size_t> &commandIndices = view->indices;
+        const std::vector<RenderCommand> &commands = view->data.commands;
+        std::stable_sort(commandIndices.begin() + begin, commandIndices.begin() + end,
+                         [&commands] (const size_t &iA, const size_t &iB) {
+            const RenderCommand &a = commands[iA];
+            const RenderCommand &b = commands[iB];
             return a.m_changeCost > b.m_changeCost;
         });
     }
@@ -295,9 +495,14 @@ struct SubRangeSorter<QSortPolicy::StateChangeCost>
 template<>
 struct SubRangeSorter<QSortPolicy::BackToFront>
 {
-    static void sortSubRange(CommandIt begin, const CommandIt end)
+    static void sortSubRange(EntityRenderCommandDataView *view, size_t begin, const size_t end)
     {
-        std::stable_sort(begin, end, [](const RenderCommand &a, const RenderCommand &b) {
+        std::vector<size_t> &commandIndices = view->indices;
+        const std::vector<RenderCommand> &commands = view->data.commands;
+        std::stable_sort(commandIndices.begin() + begin, commandIndices.begin() + end,
+                         [&commands] (const size_t &iA, const size_t &iB) {
+            const RenderCommand &a = commands[iA];
+            const RenderCommand &b = commands[iB];
             return a.m_depth > b.m_depth;
         });
     }
@@ -306,10 +511,14 @@ struct SubRangeSorter<QSortPolicy::BackToFront>
 template<>
 struct SubRangeSorter<QSortPolicy::Material>
 {
-    static void sortSubRange(CommandIt begin, const CommandIt end)
+    static void sortSubRange(EntityRenderCommandDataView *view, size_t begin, const size_t end)
     {
-        // First we sort by shader
-        std::stable_sort(begin, end, [](const RenderCommand &a, const RenderCommand &b) {
+        std::vector<size_t> &commandIndices = view->indices;
+        const std::vector<RenderCommand> &commands = view->data.commands;
+        std::stable_sort(commandIndices.begin() + begin, commandIndices.begin() + end,
+                         [&commands] (const size_t &iA, const size_t &iB) {
+            const RenderCommand &a = commands[iA];
+            const RenderCommand &b = commands[iB];
             return a.m_rhiShader > b.m_rhiShader;
         });
     }
@@ -318,9 +527,14 @@ struct SubRangeSorter<QSortPolicy::Material>
 template<>
 struct SubRangeSorter<QSortPolicy::FrontToBack>
 {
-    static void sortSubRange(CommandIt begin, const CommandIt end)
+    static void sortSubRange(EntityRenderCommandDataView *view, size_t begin, const size_t end)
     {
-        std::stable_sort(begin, end, [](const RenderCommand &a, const RenderCommand &b) {
+        std::vector<size_t> &commandIndices = view->indices;
+        const std::vector<RenderCommand> &commands = view->data.commands;
+        std::stable_sort(commandIndices.begin() + begin, commandIndices.begin() + end,
+                         [&commands] (const size_t &iA, const size_t &iB) {
+            const RenderCommand &a = commands[iA];
+            const RenderCommand &b = commands[iB];
             return a.m_depth < b.m_depth;
         });
     }
@@ -329,109 +543,107 @@ struct SubRangeSorter<QSortPolicy::FrontToBack>
 template<>
 struct SubRangeSorter<QSortPolicy::Texture>
 {
-    static void sortSubRange(CommandIt begin, const CommandIt end)
+    static void sortSubRange(EntityRenderCommandDataView *view, size_t begin, const size_t end)
     {
 #ifndef Q_OS_WIN
-        std::stable_sort(begin, end, [] (const RenderCommand &a, const RenderCommand &b) {
-            QVector<ShaderParameterPack::NamedResource> texturesA = a.m_parameterPack.textures();
-            QVector<ShaderParameterPack::NamedResource> texturesB = b.m_parameterPack.textures();
+        std::vector<size_t> &commandIndices = view->indices;
+        const std::vector<RenderCommand> &commands = view->data.commands;
+        std::stable_sort(commandIndices.begin() + begin, commandIndices.begin() + end,
+                         [&commands] (const int &iA, const int &iB) {
+            const RenderCommand &a = commands[iA];
+            const RenderCommand &b = commands[iB];
+            const std::vector<ShaderParameterPack::NamedResource> &texturesA = a.m_parameterPack.textures();
+            const std::vector<ShaderParameterPack::NamedResource> &texturesB = b.m_parameterPack.textures();
 
-            const int originalTextureASize = texturesA.size();
+            const bool bBigger = texturesB.size() > texturesA.size();
+            const std::vector<ShaderParameterPack::NamedResource> &smallestVector = bBigger ? texturesA : texturesB;
+            const std::vector<ShaderParameterPack::NamedResource> &biggestVector = bBigger ? texturesB : texturesA;
 
-            if (texturesB.size() > texturesA.size())
-                qSwap(texturesA, texturesB);
-
-            int identicalTextureCount = 0;
-
-            for (const ShaderParameterPack::NamedResource &texB : qAsConst(texturesB)) {
-                if (texturesA.contains(texB))
+            size_t identicalTextureCount = 0;
+            const auto e = biggestVector.cend();
+            for (const ShaderParameterPack::NamedResource &tex : smallestVector) {
+                if (std::find(biggestVector.begin(), e, tex) != e)
                     ++identicalTextureCount;
             }
 
-            return identicalTextureCount < originalTextureASize;
+            return identicalTextureCount < smallestVector.size();
         });
+#else
+        Q_UNUSED(view);
+        Q_UNUSED(begin);
+        Q_UNUSED(end);
 #endif
     }
 };
 
-int findSubRange(const QVector<RenderCommand> &commands, const int begin, const int end,
+int findSubRange(const EntityRenderCommandDataView *view,
+                 const int begin, const int end,
                  const QSortPolicy::SortType sortType)
 {
     switch (sortType) {
     case QSortPolicy::StateChangeCost:
-        return advanceUntilNonAdjacent(
-                commands, begin, end,
-                AdjacentSubRangeFinder<QSortPolicy::StateChangeCost>::adjacentSubRange);
+        return advanceUntilNonAdjacent(view, begin, end, AdjacentSubRangeFinder<QSortPolicy::StateChangeCost>::adjacentSubRange);
     case QSortPolicy::BackToFront:
-        return advanceUntilNonAdjacent(
-                commands, begin, end,
-                AdjacentSubRangeFinder<QSortPolicy::BackToFront>::adjacentSubRange);
+        return advanceUntilNonAdjacent(view, begin, end, AdjacentSubRangeFinder<QSortPolicy::BackToFront>::adjacentSubRange);
     case QSortPolicy::Material:
-        return advanceUntilNonAdjacent(
-                commands, begin, end,
-                AdjacentSubRangeFinder<QSortPolicy::Material>::adjacentSubRange);
+        return advanceUntilNonAdjacent(view, begin, end, AdjacentSubRangeFinder<QSortPolicy::Material>::adjacentSubRange);
     case QSortPolicy::FrontToBack:
-        return advanceUntilNonAdjacent(
-                commands, begin, end,
-                AdjacentSubRangeFinder<QSortPolicy::FrontToBack>::adjacentSubRange);
+        return advanceUntilNonAdjacent(view, begin, end, AdjacentSubRangeFinder<QSortPolicy::FrontToBack>::adjacentSubRange);
     case QSortPolicy::Texture:
-        return advanceUntilNonAdjacent(
-                commands, begin, end,
-                AdjacentSubRangeFinder<QSortPolicy::Texture>::adjacentSubRange);
-    default:
-        Q_UNREACHABLE();
+        return advanceUntilNonAdjacent(view, begin, end, AdjacentSubRangeFinder<QSortPolicy::Texture>::adjacentSubRange);
+    case QSortPolicy::Uniform:
         return end;
+    default:
+        Q_UNREACHABLE_RETURN(end);
     }
 }
 
-void sortByMaterial(QVector<RenderCommand> &commands, int begin, const int end)
+void sortByMaterial(EntityRenderCommandDataView *view, int begin, const int end)
 {
     // We try to arrange elements so that their rendering cost is minimized for a given shader
-    int rangeEnd = advanceUntilNonAdjacent(
-            commands, begin, end, AdjacentSubRangeFinder<QSortPolicy::Material>::adjacentSubRange);
+    std::vector<size_t> &commandIndices = view->indices;
+    const std::vector<RenderCommand> &commands = view->data.commands;
+    int rangeEnd = advanceUntilNonAdjacent(view, begin, end, AdjacentSubRangeFinder<QSortPolicy::Material>::adjacentSubRange);
     while (begin != end) {
         if (begin + 1 < rangeEnd) {
-            std::stable_sort(commands.begin() + begin + 1, commands.begin() + rangeEnd,
-                             [](const RenderCommand &a, const RenderCommand &b) {
-                                 return a.m_material.handle() < b.m_material.handle();
-                             });
+            std::stable_sort(commandIndices.begin() + begin + 1, commandIndices.begin() + rangeEnd,
+                             [&commands] (const size_t &iA, const size_t &iB) {
+                const RenderCommand &a = commands[iA];
+                const RenderCommand &b = commands[iB];
+                return a.m_material.handle() < b.m_material.handle();
+            });
         }
         begin = rangeEnd;
-        rangeEnd = advanceUntilNonAdjacent(
-                commands, begin, end,
-                AdjacentSubRangeFinder<QSortPolicy::Material>::adjacentSubRange);
+        rangeEnd = advanceUntilNonAdjacent(view, begin, end, AdjacentSubRangeFinder<QSortPolicy::Material>::adjacentSubRange);
     }
 }
 
-void sortCommandRange(QVector<RenderCommand> &commands, int begin, const int end, const int level,
-                      const QVector<Qt3DRender::QSortPolicy::SortType> &sortingTypes)
+void sortCommandRange(EntityRenderCommandDataView *view, int begin, int end, const size_t level,
+                      const std::vector<Qt3DRender::QSortPolicy::SortType> &sortingTypes)
 {
     if (level >= sortingTypes.size())
         return;
 
     switch (sortingTypes.at(level)) {
     case QSortPolicy::StateChangeCost:
-        SubRangeSorter<QSortPolicy::StateChangeCost>::sortSubRange(commands.begin() + begin,
-                                                                   commands.begin() + end);
+        SubRangeSorter<QSortPolicy::StateChangeCost>::sortSubRange(view, begin, end);
         break;
     case QSortPolicy::BackToFront:
-        SubRangeSorter<QSortPolicy::BackToFront>::sortSubRange(commands.begin() + begin,
-                                                               commands.begin() + end);
+        SubRangeSorter<QSortPolicy::BackToFront>::sortSubRange(view, begin, end);
         break;
     case QSortPolicy::Material:
         // Groups all same shader DNA together
-        SubRangeSorter<QSortPolicy::Material>::sortSubRange(commands.begin() + begin,
-                                                            commands.begin() + end);
+        SubRangeSorter<QSortPolicy::Material>::sortSubRange(view, begin, end);
         // Group all same material together (same parameters most likely)
-        sortByMaterial(commands, begin, end);
+        sortByMaterial(view, begin, end);
         break;
     case QSortPolicy::FrontToBack:
-        SubRangeSorter<QSortPolicy::FrontToBack>::sortSubRange(commands.begin() + begin,
-                                                               commands.begin() + end);
+        SubRangeSorter<QSortPolicy::FrontToBack>::sortSubRange(view, begin, end);
         break;
     case QSortPolicy::Texture:
-        SubRangeSorter<QSortPolicy::Texture>::sortSubRange(commands.begin() + begin,
-                                                           commands.begin() + end);
+        SubRangeSorter<QSortPolicy::Texture>::sortSubRange(view, begin, end);
+        break;
+    case QSortPolicy::Uniform:
         break;
     default:
         Q_UNREACHABLE();
@@ -439,11 +651,11 @@ void sortCommandRange(QVector<RenderCommand> &commands, int begin, const int end
 
     // For all sub ranges of adjacent item for sortType[i]
     // Perform filtering with sortType[i + 1]
-    int rangeEnd = findSubRange(commands, begin, end, sortingTypes.at(level));
+    int rangeEnd = findSubRange(view, begin, end, sortingTypes.at(level));
     while (begin != end) {
-        sortCommandRange(commands, begin, rangeEnd, level + 1, sortingTypes);
+        sortCommandRange(view, begin, rangeEnd, level + 1, sortingTypes);
         begin = rangeEnd;
-        rangeEnd = findSubRange(commands, begin, end, sortingTypes.at(level));
+        rangeEnd = findSubRange(view, begin, end, sortingTypes.at(level));
     }
 }
 
@@ -451,34 +663,41 @@ void sortCommandRange(QVector<RenderCommand> &commands, int begin, const int end
 
 void RenderView::sort()
 {
+    assert(m_renderCommandDataView);
     // Compares the bitsetKey of the RenderCommands
     // Key[Depth | StateCost | Shader]
-    sortCommandRange(m_commands, 0, m_commands.size(), 0, m_data.m_sortingTypes);
+    sortCommandRange(m_renderCommandDataView.data(), 0, int(m_renderCommandDataView->size()), 0, m_sortingTypes);
 
     // For RenderCommand with the same shader
     // We compute the adjacent change cost
 
-    /*
+     // Only perform uniform minimization if we explicitly asked for it
+     if (!Qt3DCore::contains(m_sortingTypes, QSortPolicy::Uniform))
+        return;
+
     // Minimize uniform changes
-    int i = 0;
-    const int commandSize = m_commands.size();
+    size_t i = 0;
+    std::vector<RenderCommand> &commands = m_renderCommandDataView->data.commands;
+    const std::vector<size_t> &indices = m_renderCommandDataView->indices;
+    const size_t commandSize = indices.size();
+
     while (i < commandSize) {
-        int j = i;
+        size_t j = i;
 
         // Advance while commands share the same shader
         while (i < commandSize &&
-               m_commands[j].m_rhiShader == m_commands[i].m_rhiShader)
+               commands[indices[j]].m_rhiShader == commands[indices[i]].m_rhiShader)
             ++i;
 
         if (i - j > 0) { // Several commands have the same shader, so we minimize uniform changes
-            PackUniformHash cachedUniforms = m_commands[j++].m_parameterPack.uniforms();
+            PackUniformHash cachedUniforms = commands[indices[j++]].m_parameterPack.uniforms();
 
             while (j < i) {
                 // We need the reference here as we are modifying the original container
                 // not the copy
-                PackUniformHash &uniforms = m_commands[j].m_parameterPack.m_uniforms;
+                PackUniformHash &uniforms = commands[indices[j]].m_parameterPack.m_uniforms;
 
-                for (int u = 0; u < uniforms.keys.size();) {
+                for (size_t u = 0; u < uniforms.keys.size();) {
                     // We are comparing the values:
                     // - raw uniform values
                     // - the texture Node id if the uniform represents a texture
@@ -490,7 +709,7 @@ void RenderView::sort()
                     const UniformValue &refValue = cachedUniforms.value(uniformNameId);
                     const UniformValue &newValue = uniforms.values.at(u);
                     if (newValue == refValue) {
-                        uniforms.erase(u);
+                        uniforms.erase(int(u));
                     } else {
                         // Record updated value so that subsequent comparison
                         // for the next command will be made againts latest
@@ -503,13 +722,19 @@ void RenderView::sort()
             }
         }
     }
-    */
 }
 
 void RenderView::setRenderer(Renderer *renderer)
 {
     m_renderer = renderer;
     m_manager = renderer->nodeManagers();
+}
+
+RenderStateSet *RenderView::getOrCreateStateSet()
+{
+    if (!m_stateSet)
+        m_stateSet.reset(new RenderStateSet());
+    return m_stateSet.data();
 }
 
 void RenderView::addClearBuffers(const ClearBuffers *cb)
@@ -549,17 +774,16 @@ void RenderView::addClearBuffers(const ClearBuffers *cb)
 }
 
 // If we are there, we know that entity had a GeometryRenderer + Material
-EntityRenderCommandData RenderView::buildDrawRenderCommands(const QVector<Entity *> &entities,
+EntityRenderCommandData RenderView::buildDrawRenderCommands(const Entity **entities,
                                                             int offset, int count) const
 {
     EntityRenderCommandData commands;
-    RHIShaderManager *rhiShaderManager = m_renderer->rhiResourceManagers()->rhiShaderManager();
 
     commands.reserve(count);
 
     for (int i = 0; i < count; ++i) {
         const int idx = offset + i;
-        Entity *entity = entities.at(idx);
+        const Entity *entity = entities[idx];
         GeometryRenderer *geometryRenderer = nullptr;
         HGeometryRenderer geometryRendererHandle = entity->componentHandle<GeometryRenderer>();
 
@@ -570,7 +794,7 @@ EntityRenderCommandData RenderView::buildDrawRenderCommands(const QVector<Entity
 
             const Qt3DCore::QNodeId materialComponentId = entity->componentUuid<Material>();
             const HMaterial materialHandle = entity->componentHandle<Material>();
-            const QVector<RenderPassParameterData> renderPassData =
+            const std::vector<RenderPassParameterData> renderPassData =
                     m_parameters.value(materialComponentId);
 
             HGeometry geometryHandle =
@@ -598,20 +822,33 @@ EntityRenderCommandData RenderView::buildDrawRenderCommands(const QVector<Entity
                     addStatesToRenderStateSet(command.m_stateSet.data(), pass->renderStates(),
                                               m_manager->renderStateManager());
                     if (m_stateSet != nullptr)
-                        command.m_stateSet->merge(m_stateSet);
+                        command.m_stateSet->merge(m_stateSet.get());
                     command.m_changeCost =
                             m_renderer->defaultRenderState()->changeCost(command.m_stateSet.data());
                 }
                 command.m_shaderId = pass->shaderProgram();
-                command.m_rhiShader = rhiShaderManager->lookupResource(command.m_shaderId);
 
-                // It takes two frames to have a valid command as we can only
-                // reference a glShader at frame n if it has been loaded at frame n - 1
-
+                // At submission time, shaderId is used to retrieve a RHIShader
+                // No point in continuing if shaderId is null
                 if (!command.m_shaderId)
                     continue;
 
+                // We try to resolve the m_rhiShader here. If the shader exist,
+                // it won't be null and will allow us to full process the
+                // command over a single frame. Otherwise, the shader will be
+                // loaded at the next submission time and the command will only
+                // be fully valid on the next frame. Additionally, that way, if
+                // a commands keeps being rebuilt, frame after frame, it will
+                // still be visible on screen as long as the shader exists
+                RHIShaderManager *rhiShaderManager = m_renderer->rhiResourceManagers()->rhiShaderManager();
+                command.m_rhiShader = rhiShaderManager->lookupResource(command.m_shaderId);
+
                 { // Scoped to show extent
+
+                    // Build of list of Attribute Layout information which
+                    // allows use to compare the layout of geometries against
+                    // one another.
+                    // { name, classification, stride, offset, divisor }
 
                     // Update the draw command with what's going to be needed for the drawing
                     int primitiveCount = geometryRenderer->vertexCount();
@@ -619,8 +856,12 @@ EntityRenderCommandData RenderView::buildDrawRenderCommands(const QVector<Entity
                     Attribute *indexAttribute = nullptr;
                     Attribute *indirectAttribute = nullptr;
 
-                    const QVector<Qt3DCore::QNodeId> attributeIds = geometry->attributes();
+                    const QList<Qt3DCore::QNodeId> attributeIds = geometry->attributes();
+                    command.m_attributeInfo.clear();
+                    command.m_attributeInfo.reserve(attributeIds.size());
                     for (Qt3DCore::QNodeId attributeId : attributeIds) {
+                        using namespace Qt3DCore;
+
                         Attribute *attribute =
                                 m_manager->attributeManager()->lookupResource(attributeId);
                         switch (attribute->attributeType()) {
@@ -637,10 +878,29 @@ EntityRenderCommandData RenderView::buildDrawRenderCommands(const QVector<Entity
                             Q_UNREACHABLE();
                             break;
                         }
+
+                        if (attribute->attributeType() == QAttribute::VertexAttribute) {
+                            command.m_attributeInfo.push_back({ attribute->nameId(),
+                                                                attribute->divisor() == 0 ? QRhiVertexInputBinding::PerVertex : QRhiVertexInputBinding::PerInstance,
+                                                                size_t(attribute->byteStride()),
+                                                                size_t(attribute->byteOffset()),
+                                                                size_t(attribute->divisor()) });
+                        }
                     }
+
+                    // Sort attributes by name so that same attributes added
+                    // in different order would still result in the same geometeyLayout key
+                    std::sort(command.m_attributeInfo.begin(),
+                              command.m_attributeInfo.end(),
+                              [] (const AttributeInfo &a, const AttributeInfo &b) {
+                        return a.nameId < b.nameId;
+                    });
 
                     command.m_drawIndexed = (indexAttribute != nullptr);
                     command.m_drawIndirect = (indirectAttribute != nullptr);
+                    command.indexAttribute = nullptr;
+                    command.indexBuffer = nullptr;
+                    command.pipeline = std::monostate{};
 
                     // Update the draw command with all the information required for the drawing
                     if (command.m_drawIndexed) {
@@ -687,7 +947,7 @@ EntityRenderCommandData RenderView::buildDrawRenderCommands(const QVector<Entity
     return commands;
 }
 
-EntityRenderCommandData RenderView::buildComputeRenderCommands(const QVector<Entity *> &entities,
+EntityRenderCommandData RenderView::buildComputeRenderCommands(const Entity **entities,
                                                                int offset, int count) const
 {
     // If the RenderView contains only a ComputeDispatch then it cares about
@@ -696,13 +956,12 @@ EntityRenderCommandData RenderView::buildComputeRenderCommands(const QVector<Ent
     // layer component
     // material/effect/technique/parameters/filters/
     EntityRenderCommandData commands;
-    RHIShaderManager *rhiShaderManager = m_renderer->rhiResourceManagers()->rhiShaderManager();
 
     commands.reserve(count);
 
     for (int i = 0; i < count; ++i) {
         const int idx = offset + i;
-        Entity *entity = entities.at(idx);
+        const Entity *entity = entities[idx];
         ComputeCommand *computeJob = nullptr;
         HComputeCommand computeCommandHandle = entity->componentHandle<ComputeCommand>();
         if ((computeJob = nodeManagers()->computeJobManager()->data(computeCommandHandle))
@@ -710,7 +969,7 @@ EntityRenderCommandData RenderView::buildComputeRenderCommands(const QVector<Ent
             && computeJob->isEnabled()) {
 
             const Qt3DCore::QNodeId materialComponentId = entity->componentUuid<Material>();
-            const QVector<RenderPassParameterData> &renderPassData =
+            const std::vector<RenderPassParameterData> &renderPassData =
                     m_parameters.value(materialComponentId);
 
             // 1 RenderCommand per RenderPass pass on an Entity with a Mesh
@@ -727,18 +986,26 @@ EntityRenderCommandData RenderView::buildComputeRenderCommands(const QVector<Ent
                     // Merge per pass stateset with global stateset
                     // so that the local stateset only overrides
                     if (m_stateSet != nullptr)
-                        command.m_stateSet->merge(m_stateSet);
+                        command.m_stateSet->merge(m_stateSet.get());
                     command.m_changeCost =
                             m_renderer->defaultRenderState()->changeCost(command.m_stateSet.data());
                 }
                 command.m_shaderId = pass->shaderProgram();
-                command.m_rhiShader = rhiShaderManager->lookupResource(command.m_shaderId);
 
-                // It takes two frames to have a valid command as we can only
-                // reference a glShader at frame n if it has been loaded at frame n - 1
-                assert(command.m_rhiShader);
-                if (!command.m_rhiShader)
+                // At submission time, shaderId is used to retrieve a RHIShader
+                // No point in continuing if shaderId is null
+                if (!command.m_shaderId)
                     continue;
+
+                // We try to resolve the m_rhiShader here. If the shader exist,
+                // it won't be null and will allow us to full process the
+                // command over a single frame. Otherwise, the shader will be
+                // loaded at the next submission time and the command will only
+                // be fully valid on the next frame. Additionally, that way, if
+                // a commands keeps being rebuilt, frame after frame, it will
+                // still be visible on screen as long as the shader exists
+                RHIShaderManager *rhiShaderManager = m_renderer->rhiResourceManagers()->rhiShaderManager();
+                command.m_rhiShader = rhiShaderManager->lookupResource(command.m_shaderId);
 
                 command.m_computeCommand = computeCommandHandle;
                 command.m_type = RenderCommand::Compute;
@@ -754,27 +1021,40 @@ EntityRenderCommandData RenderView::buildComputeRenderCommands(const QVector<Ent
     return commands;
 }
 
-void RenderView::updateRenderCommand(EntityRenderCommandData *renderCommandData, int offset,
-                                     int count)
+namespace
 {
-    // Note: since many threads can be building render commands
-    // we need to ensure that the UniformBlockValueBuilder they are using
-    // is only accessed from the same thread
-    UniformBlockValueBuilder *builder = new UniformBlockValueBuilder();
-    builder->shaderDataManager = m_manager->shaderDataManager();
-    builder->textureManager = m_manager->textureManager();
-    m_localData.setLocalData(builder);
+void copyNormalMatrix(float(&destination)[12], const float* src) noexcept {
+    destination[0] = src[0 * 3 + 0];
+    destination[1] = src[0 * 3 + 1];
+    destination[2] = src[0 * 3 + 2];
 
+    destination[4] = src[1 * 3 + 0];
+    destination[5] = src[1 * 3 + 1];
+    destination[6] = src[1 * 3 + 2];
+
+    destination[8] = src[2 * 3 + 0];
+    destination[9] = src[2 * 3 + 1];
+    destination[10] = src[2 * 3 + 2];
+}
+}
+
+void RenderView::updateRenderCommand(const EntityRenderCommandDataSubView &subView)
+{
     // Update RenderViewUBO (Qt3D standard uniforms)
-    const bool yIsUp = m_renderer->submissionContext()->rhi()->isYUpInFramebuffer();
-    const Matrix4x4 projectionMatrix = getProjectionMatrix(m_data.m_renderCameraLens, yIsUp);
-    const Matrix4x4 inverseViewMatrix = m_data.m_viewMatrix.inverted();
+    const bool yIsUp = m_renderer->submissionContext()->rhi()->isYUpInNDC();
+
+    const Matrix4x4 clipCorrectionMatrix = Matrix4x4(m_renderer->submissionContext()->rhi()->clipSpaceCorrMatrix());
+    const Matrix4x4 unCorrectedProjectionMatrix = getProjectionMatrix(m_renderCameraLens);
+    const Matrix4x4 projectionMatrix = clipCorrectionMatrix * unCorrectedProjectionMatrix;
+    const Matrix4x4 inverseViewMatrix = m_viewMatrix.inverted();
     const Matrix4x4 inversedProjectionMatrix = projectionMatrix.inverted();
-    const Matrix4x4 viewProjectionMatrix = (projectionMatrix * m_data.m_viewMatrix);
+    const Matrix4x4 viewProjectionMatrix = (projectionMatrix * m_viewMatrix);
     const Matrix4x4 inversedViewProjectionMatrix = viewProjectionMatrix.inverted();
     {
-        memcpy(&m_renderViewUBO.viewMatrix, &m_data.m_viewMatrix, sizeof(Matrix4x4));
+        memcpy(&m_renderViewUBO.viewMatrix, &m_viewMatrix, sizeof(Matrix4x4));
         memcpy(&m_renderViewUBO.projectionMatrix, &projectionMatrix, sizeof(Matrix4x4));
+        memcpy(&m_renderViewUBO.clipCorrectionMatrix, &clipCorrectionMatrix, sizeof(Matrix4x4));
+        memcpy(&m_renderViewUBO.uncorrectedProjectionMatrix, &unCorrectedProjectionMatrix, sizeof(Matrix4x4));
         memcpy(&m_renderViewUBO.viewProjectionMatrix, &viewProjectionMatrix, sizeof(Matrix4x4));
         memcpy(&m_renderViewUBO.inverseViewMatrix, &inverseViewMatrix, sizeof(Matrix4x4));
         memcpy(&m_renderViewUBO.inverseProjectionMatrix, &inversedProjectionMatrix,
@@ -793,30 +1073,33 @@ void RenderView::updateRenderCommand(EntityRenderCommandData *renderCommandData,
         memcpy(&m_renderViewUBO.textureTransformMatrix, m_renderer->textureTransform(),
                sizeof(float) * 4);
 
-        memcpy(&m_renderViewUBO.eyePosition, &m_data.m_eyePos, sizeof(float) * 3);
+        memcpy(&m_renderViewUBO.eyePosition, &m_eyePos, sizeof(float) * 3);
         const float ratio =
                 float(m_surfaceSize.width()) / std::max(1.f, float(m_surfaceSize.height()));
         memcpy(&m_renderViewUBO.aspectRatio, &ratio, sizeof(float));
         memcpy(&m_renderViewUBO.gamma, &m_gamma, sizeof(float));
         const float exposure =
-                m_data.m_renderCameraLens ? m_data.m_renderCameraLens->exposure() : 0.0f;
+                m_renderCameraLens ? m_renderCameraLens->exposure() : 0.0f;
         memcpy(&m_renderViewUBO.exposure, &exposure, sizeof(float));
         const float timeValue = float(m_renderer->time() / 1000000000.0f);
         memcpy(&m_renderViewUBO.time, &timeValue, sizeof(float));
+
+        const float yUpNDC = yIsUp ? 1.0f : 0.0f;
+        const float yUpFBO = m_renderer->submissionContext()->rhi()->isYUpInFramebuffer() ? 1.0f : 0.0f;
+        memcpy(&m_renderViewUBO.yUpInNDC, &yUpNDC, sizeof(float));
+        memcpy(&m_renderViewUBO.yUpInFBO, &yUpFBO, sizeof(float));
     }
 
-    for (int i = 0, m = count; i < m; ++i) {
-        const int idx = offset + i;
-        Entity *entity = renderCommandData->entities.at(idx);
-        const RenderPassParameterData passData = renderCommandData->passesData.at(idx);
-        RenderCommand &command = renderCommandData->commands[idx];
+    subView.forEach([&] (const Entity *entity,
+                         const RenderPassParameterData &passData,
+                         RenderCommand &command) {
 
         // Pick which lights to take in to account.
         // For now decide based on the distance by taking the MAX_LIGHTS closest lights.
         // Replace with more sophisticated mechanisms later.
         // Copy vector so that we can sort it concurrently and we only want to sort the one for the
         // current command
-        QVector<LightSource> lightSources;
+        std::vector<LightSource> lightSources;
         EnvironmentLight *environmentLight = nullptr;
 
         if (command.m_type == RenderCommand::Draw) {
@@ -824,7 +1107,7 @@ void RenderView::updateRenderCommand(EntityRenderCommandData *renderCommandData,
             // view vector. This gives a depth value suitable as the key
             // for BackToFront sorting.
             command.m_depth = Vector3D::dotProduct(
-                    entity->worldBoundingVolume()->center() - m_data.m_eyePos, m_data.m_eyeViewDir);
+                    entity->worldBoundingVolume()->center() - m_eyePos, m_eyeViewDir);
 
             auto geometryRenderer = m_manager->geometryRendererManager()->data(command.m_geometryRenderer);
             if (geometryRenderer && !qFuzzyCompare(geometryRenderer->sortIndex(), -1.f))
@@ -843,8 +1126,8 @@ void RenderView::updateRenderCommand(EntityRenderCommandData *renderCommandData,
                                       b.entity->worldBoundingVolume()->center());
                               return distA < distB;
                           });
+                m_lightSources = {lightSources.begin(), lightSources.begin() + std::min(lightSources.size(), size_t(MAX_LIGHTS)) };
             }
-            lightSources = lightSources.mid(0, std::max(lightSources.size(), MAX_LIGHTS));
         } else { // Compute
             // Note: if frameCount has reached 0 in the previous frame, isEnabled
             // would be false
@@ -864,7 +1147,8 @@ void RenderView::updateRenderCommand(EntityRenderCommandData *renderCommandData,
         const Matrix4x4 worldTransform = *(entity->worldTransform());
         const Matrix4x4 inverseWorldTransform = worldTransform.inverted();
         const QMatrix3x3 modelNormalMatrix = convertToQMatrix4x4(worldTransform).normalMatrix();
-        const Matrix4x4 modelViewMatrix = m_data.m_viewMatrix * worldTransform;
+        const Matrix4x4 modelViewMatrix = m_viewMatrix * worldTransform;
+        const QMatrix3x3 modelViewNormalMatrix = convertToQMatrix4x4(modelViewMatrix).normalMatrix();
         const Matrix4x4 inverseModelViewMatrix = modelViewMatrix.inverted();
         const Matrix4x4 mvp = projectionMatrix * modelViewMatrix;
         const Matrix4x4 inverseModelViewProjection = mvp.inverted();
@@ -873,40 +1157,33 @@ void RenderView::updateRenderCommand(EntityRenderCommandData *renderCommandData,
             memcpy(&command.m_commandUBO.inverseModelMatrix, &inverseWorldTransform,
                    sizeof(Matrix4x4));
             memcpy(&command.m_commandUBO.modelViewMatrix, &modelViewMatrix, sizeof(Matrix4x4));
-            {
-                float(&normal)[12] = command.m_commandUBO.modelNormalMatrix;
-                normal[0] = modelNormalMatrix.constData()[0 * 3 + 0];
-                normal[1] = modelNormalMatrix.constData()[0 * 3 + 1];
-                normal[2] = modelNormalMatrix.constData()[0 * 3 + 2];
-
-                normal[4] = modelNormalMatrix.constData()[1 * 3 + 0];
-                normal[5] = modelNormalMatrix.constData()[1 * 3 + 1];
-                normal[6] = modelNormalMatrix.constData()[1 * 3 + 2];
-
-                normal[8] = modelNormalMatrix.constData()[2 * 3 + 0];
-                normal[9] = modelNormalMatrix.constData()[2 * 3 + 1];
-                normal[10] = modelNormalMatrix.constData()[2 * 3 + 2];
-            }
+            copyNormalMatrix(command.m_commandUBO.modelNormalMatrix, modelNormalMatrix.constData());
             memcpy(&command.m_commandUBO.inverseModelViewMatrix, &inverseModelViewMatrix,
                    sizeof(Matrix4x4));
             memcpy(&command.m_commandUBO.mvp, &mvp, sizeof(Matrix4x4));
             memcpy(&command.m_commandUBO.inverseModelViewProjectionMatrix,
                    &inverseModelViewProjection, sizeof(Matrix4x4));
+            copyNormalMatrix(command.m_commandUBO.modelViewNormalMatrix, modelViewNormalMatrix.constData());
         }
-    }
-
-    // We reset the local data once we are done with it
-    m_localData.setLocalData(nullptr);
+    });
 }
 
 void RenderView::updateMatrices()
 {
-    if (m_data.m_renderCameraNode && m_data.m_renderCameraLens
-        && m_data.m_renderCameraLens->isEnabled()) {
-        const Matrix4x4 cameraWorld = *(m_data.m_renderCameraNode->worldTransform());
-        setViewMatrix(m_data.m_renderCameraLens->viewMatrix(cameraWorld));
+    if (m_renderCameraNode && m_renderCameraLens
+        && m_renderCameraLens->isEnabled()) {
+        auto transform = m_renderCameraNode->renderComponent<Transform>();
+        if (m_renderCameraNode->isParentLessTransform() && transform && transform->hasViewMatrix()) {
+            // optimization: if the entity is a QCamera and it doesn't have a parent with a transform component,
+            // then we use the frontend version of the viewMatrix to avoid extra calculations that may introduce
+            // rounding errors
+            setViewMatrix(transform->viewMatrix());
+        } else {
+            const Matrix4x4 cameraWorld = *(m_renderCameraNode->worldTransform());
+            setViewMatrix(m_renderCameraLens->viewMatrix(cameraWorld));
+        }
 
-        setViewProjectionMatrix(m_data.m_renderCameraLens->projection() * viewMatrix());
+        setViewProjectionMatrix(m_renderCameraLens->projection() * viewMatrix());
         // To get the eyePosition of the camera, we need to use the inverse of the
         // camera's worldTransform matrix.
         const Matrix4x4 inverseWorldTransform = viewMatrix().inverted();
@@ -915,7 +1192,7 @@ void RenderView::updateMatrices()
 
         // Get the viewing direction of the camera. Use the normal matrix to
         // ensure non-uniform scale works too.
-        const QMatrix3x3 normalMat = convertToQMatrix4x4(m_data.m_viewMatrix).normalMatrix();
+        const QMatrix3x3 normalMat = convertToQMatrix4x4(m_viewMatrix).normalMatrix();
         // dir = normalize(QVector3D(0, 0, -1) * normalMat)
         setEyeViewDirection(
                 Vector3D(-normalMat(2, 0), -normalMat(2, 1), -normalMat(2, 2)).normalized());
@@ -965,7 +1242,7 @@ void RenderView::setUniformBlockValue(ShaderParameterPack &uniformPack, const RH
                                       const ShaderUniformBlock &block,
                                       const UniformValue &value) const
 {
-    Q_UNUSED(shader)
+    Q_UNUSED(shader);
 
     if (value.valueType() == UniformValue::NodeId) {
 
@@ -975,6 +1252,7 @@ void RenderView::setUniformBlockValue(ShaderParameterPack &uniformPack, const RH
             != nullptr) {
             BlockToUBO uniformBlockUBO;
             uniformBlockUBO.m_blockIndex = block.m_index;
+            uniformBlockUBO.m_bindingIndex = block.m_binding;
             uniformBlockUBO.m_bufferID = buffer->peerId();
             uniformBlockUBO.m_needsUpdate = false;
             uniformPack.setUniformBuffer(std::move(uniformBlockUBO));
@@ -987,7 +1265,7 @@ void RenderView::setShaderStorageValue(ShaderParameterPack &uniformPack, const R
                                        const ShaderStorageBlock &block,
                                        const UniformValue &value) const
 {
-    Q_UNUSED(shader)
+    Q_UNUSED(shader);
     if (value.valueType() == UniformValue::NodeId) {
         Buffer *buffer = nullptr;
         if ((buffer = m_manager->bufferManager()->lookupResource(
@@ -998,32 +1276,40 @@ void RenderView::setShaderStorageValue(ShaderParameterPack &uniformPack, const R
             shaderStorageBlock.m_bufferID = buffer->peerId();
             shaderStorageBlock.m_bindingIndex = block.m_binding;
             uniformPack.setShaderStorageBuffer(shaderStorageBlock);
-            // Buffer update to GL buffer will be done at render time
+            // Buffer update to RHI buffer will be done at render time
         }
+    }
+}
+
+void RenderView::setShaderDataValue(ShaderParameterPack &uniformPack,
+                                    const ShaderUniformBlock &block,
+                                    const Qt3DCore::QNodeId &shaderDataId) const
+{
+    if (block.m_binding >= 0) {
+        ShaderDataForUBO shaderDataForUBO;
+        shaderDataForUBO.m_shaderDataID = shaderDataId;
+        shaderDataForUBO.m_bindingIndex = block.m_binding;
+        uniformPack.setShaderDataForUBO(shaderDataForUBO);
     }
 }
 
 void RenderView::setDefaultUniformBlockShaderDataValue(ShaderParameterPack &uniformPack,
                                                        const RHIShader *shader,
-                                                       const ShaderData *shaderData,
+                                                       ShaderData *shaderData,
                                                        const QString &structName) const
 {
-    UniformBlockValueBuilder *builder = m_localData.localData();
-    builder->activeUniformNamesToValue.clear();
+    UniformBlockValueBuilder builder(shader->uniformsNamesIds(),
+                                     m_manager->shaderDataManager(),
+                                     m_manager->textureManager(),
+                                     m_viewMatrix);
 
-    // Set the view matrix to be used to transform "Transformed" properties in the ShaderData
-    builder->viewMatrix = m_data.m_viewMatrix;
-    // Force to update the whole block
-    builder->updatedPropertiesOnly = false;
-    // Retrieve names and description of each active uniforms in the uniform block
-    builder->uniforms = shader->unqualifiedUniformNames();
     // Build name-value map for the block
-    builder->buildActiveUniformNameValueMapStructHelper(shaderData, structName);
+    builder.buildActiveUniformNameValueMapStructHelper(shaderData, structName);
     // Set uniform values for each entrie of the block name-value map
     QHash<int, QVariant>::const_iterator activeValuesIt =
-            builder->activeUniformNamesToValue.constBegin();
+            builder.activeUniformNamesToValue.constBegin();
     const QHash<int, QVariant>::const_iterator activeValuesEnd =
-            builder->activeUniformNamesToValue.constEnd();
+            builder.activeUniformNamesToValue.constEnd();
 
     // TO DO: Make the ShaderData store UniformValue
     while (activeValuesIt != activeValuesEnd) {
@@ -1038,7 +1324,9 @@ void RenderView::applyParameter(const Parameter *param, RenderCommand *command,
 {
     const int nameId = param->nameId();
     const UniformValue &uniformValue = param->uniformValue();
-    switch (shader->categorizeVariable(nameId)) {
+    const RHIShader::ParameterKind parameterKind = shader->categorizeVariable(nameId);
+
+    switch (parameterKind) {
     case RHIShader::Uniform: {
         setUniformValue(command->m_parameterPack, nameId, uniformValue);
         break;
@@ -1054,14 +1342,16 @@ void RenderView::applyParameter(const Parameter *param, RenderCommand *command,
         break;
     }
     case RHIShader::Struct: {
+        // Structs will have to be converted to UBOs later on
         ShaderData *shaderData = nullptr;
+
         if (uniformValue.valueType() == UniformValue::NodeId
             && (shaderData = m_manager->shaderDataManager()->lookupResource(
                         *uniformValue.constData<Qt3DCore::QNodeId>()))
                     != nullptr) {
-            // Try to check if we have a struct or array matching a QShaderData parameter
-            setDefaultUniformBlockShaderDataValue(command->m_parameterPack, shader, shaderData,
-                                                  StringToInt::lookupString(nameId));
+            // We need to find the Block associated with the uniform name
+            setShaderDataValue(command->m_parameterPack,
+                               shader->uniformBlockForInstanceNameId(nameId), shaderData->peerId());
         }
         break;
     }
@@ -1069,10 +1359,12 @@ void RenderView::applyParameter(const Parameter *param, RenderCommand *command,
 }
 
 void RenderView::setShaderAndUniforms(RenderCommand *command, ParameterInfoList &parameters,
-                                      Entity *entity,
-                                      const QVector<LightSource> &activeLightSources,
+                                      const Entity *entity,
+                                      const std::vector<LightSource> &activeLightSources,
                                       EnvironmentLight *environmentLight) const
 {
+    Q_UNUSED(entity);
+
     // The VAO Handle is set directly in the renderer thread so as to avoid having to use a mutex
     // here Set shader, technique, and effect by basically doing :
     // ShaderProgramManager[MaterialManager[frontentEntity->id()]->Effect->Techniques[TechniqueFilter->name]->RenderPasses[RenderPassFilter->name]];
@@ -1085,8 +1377,16 @@ void RenderView::setShaderAndUniforms(RenderCommand *command, ParameterInfoList 
     // Once that works, improve that to try and minimize QUniformPack updates
 
     RHIShader *shader = command->m_rhiShader;
-    if (shader != nullptr && shader->isLoaded()) {
+    if (shader == nullptr || !shader->isLoaded())
+        return;
 
+    // If we have already build the uniforms previously, we should
+    // only update values of uniforms that have changed
+    // If parameters add been added/removed, the command would have been rebuild
+    // and the parameter pack would be empty
+    const bool updateUniformsOnly = command->m_parameterPack.submissionUniformIndices().size() > 0;
+
+    if (!updateUniformsOnly) {
         // Builds the QUniformPack, sets shader standard uniforms and store attributes name / glname
         // bindings If a parameter is defined and not found in the bindings it is assumed to be a
         // binding of Uniform type with the glsl name equals to the parameter name
@@ -1105,118 +1405,138 @@ void RenderView::setShaderAndUniforms(RenderCommand *command, ParameterInfoList 
             if (!fragOutputs.isEmpty())
                 shader->setFragOutputs(fragOutputs);
         }
+        // Set default attributes
+        command->m_activeAttributes = shader->attributeNamesIds();
 
-        if (shader->hasActiveVariables()) {
+        // At this point we know whether the command is a valid draw command or not
+        // We still need to process the uniforms as the command could be a compute command
+        command->m_isValid = (!command->m_activeAttributes.empty()) || (command->m_type == RenderCommand::CommandType::Compute);
+    }
 
-            // Unlike the GL engine, the standard uniforms are set a bit before this function,
-            // in RenderView::updateRenderCommand
+    if (shader->hasActiveVariables()) {
+        // Unlike the GL engine, the standard uniforms are set a bit before this function,
+        // in RenderView::updateRenderCommand
 
-            // Set default attributes
-            command->m_activeAttributes = shader->attributeNamesIds();
+        // Parameters remaining could be
+        // -> uniform scalar / vector
+        // -> uniform struct / arrays
+        // -> uniform block / array (4.3)
+        // -> ssbo block / array (4.3)
 
-            // At this point we know whether the command is a valid draw command or not
-            // We still need to process the uniforms as the command could be a compute command
-            command->m_isValid = !command->m_activeAttributes.empty();
+        ParameterInfoList::const_iterator it = parameters.cbegin();
+        const ParameterInfoList::const_iterator parametersEnd = parameters.cend();
 
-            // Parameters remaining could be
-            // -> uniform scalar / vector
-            // -> uniform struct / arrays
-            // -> uniform block / array (4.3)
-            // -> ssbo block / array (4.3)
+        while (it != parametersEnd) {
+            const Parameter *param = m_manager->data<Parameter, ParameterManager>(it->handle);
+            applyParameter(param, command, shader);
+            ++it;
+        }
 
-            ParameterInfoList::const_iterator it = parameters.cbegin();
-            const ParameterInfoList::const_iterator parametersEnd = parameters.cend();
+        // Lights
+        int lightIdx = 0;
+        for (const LightSource &lightSource : activeLightSources) {
+            if (lightIdx == MAX_LIGHTS)
+                break;
+            const Entity *lightEntity = lightSource.entity;
+            const Matrix4x4 lightWorldTransform = *(lightEntity->worldTransform());
+            const Vector3D worldPos = lightWorldTransform.map(Vector3D(0.0f, 0.0f, 0.0f));
+            for (Light *light : lightSource.lights) {
+                if (!light->isEnabled())
+                    continue;
 
-            while (it != parametersEnd) {
-                const Parameter *param = m_manager->data<Parameter, ParameterManager>(it->handle);
-                applyParameter(param, command, shader);
-                ++it;
-            }
+                ShaderData *shaderData =
+                        m_manager->shaderDataManager()->lookupResource(light->shaderData());
+                if (!shaderData)
+                    continue;
 
-            // Lights
-            int lightIdx = 0;
-            for (const LightSource &lightSource : activeLightSources) {
                 if (lightIdx == MAX_LIGHTS)
                     break;
-                Entity *lightEntity = lightSource.entity;
-                const Matrix4x4 lightWorldTransform = *(lightEntity->worldTransform());
-                const Vector3D worldPos = lightWorldTransform * Vector3D(0.0f, 0.0f, 0.0f);
-                for (Light *light : lightSource.lights) {
-                    if (!light->isEnabled())
-                        continue;
 
-                    ShaderData *shaderData =
-                            m_manager->shaderDataManager()->lookupResource(light->shaderData());
-                    if (!shaderData)
-                        continue;
-
-                    if (lightIdx == MAX_LIGHTS)
-                        break;
-
-                    // Note: implicit conversion of values to UniformValue
-                    setUniformValue(command->m_parameterPack, LIGHT_POSITION_NAMES[lightIdx],
-                                    worldPos);
-                    setUniformValue(command->m_parameterPack, LIGHT_TYPE_NAMES[lightIdx],
-                                    int(QAbstractLight::PointLight));
-                    setUniformValue(command->m_parameterPack, LIGHT_COLOR_NAMES[lightIdx],
-                                    Vector3D(1.0f, 1.0f, 1.0f));
-                    setUniformValue(command->m_parameterPack, LIGHT_INTENSITY_NAMES[lightIdx],
-                                    0.5f);
-
-                    // There is no risk in doing that even if multithreaded
-                    // since we are sure that a shaderData is unique for a given light
-                    // and won't ever be referenced as a Component either
-                    Matrix4x4 *worldTransform = lightEntity->worldTransform();
-                    if (worldTransform)
-                        shaderData->updateWorldTransform(*worldTransform);
-
-                    setDefaultUniformBlockShaderDataValue(command->m_parameterPack, shader,
-                                                          shaderData, LIGHT_STRUCT_NAMES[lightIdx]);
-                    ++lightIdx;
-                }
-            }
-
-            if (shader->hasUniform(LIGHT_COUNT_NAME_ID))
-                setUniformValue(command->m_parameterPack, LIGHT_COUNT_NAME_ID,
-                                UniformValue(qMax((environmentLight ? 0 : 1), lightIdx)));
-
-            // If no active light sources and no environment light, add a default light
-            if (activeLightSources.isEmpty() && !environmentLight) {
                 // Note: implicit conversion of values to UniformValue
-                setUniformValue(command->m_parameterPack, LIGHT_POSITION_NAMES[0],
-                                Vector3D(10.0f, 10.0f, 0.0f));
-                setUniformValue(command->m_parameterPack, LIGHT_TYPE_NAMES[0],
+                setUniformValue(command->m_parameterPack, LIGHT_POSITION_NAMES[lightIdx],
+                                worldPos);
+                setUniformValue(command->m_parameterPack, LIGHT_TYPE_NAMES[lightIdx],
                                 int(QAbstractLight::PointLight));
-                setUniformValue(command->m_parameterPack, LIGHT_COLOR_NAMES[0],
+                setUniformValue(command->m_parameterPack, LIGHT_COLOR_NAMES[lightIdx],
                                 Vector3D(1.0f, 1.0f, 1.0f));
-                setUniformValue(command->m_parameterPack, LIGHT_INTENSITY_NAMES[0], 0.5f);
+                setUniformValue(command->m_parameterPack, LIGHT_INTENSITY_NAMES[lightIdx],
+                                0.5f);
+                // Unrolled
+                setUniformValue(command->m_parameterPack, LIGHT_POSITION_UNROLL_NAMES[lightIdx],
+                                worldPos);
+                setUniformValue(command->m_parameterPack, LIGHT_TYPE_UNROLL_NAMES[lightIdx],
+                                int(QAbstractLight::PointLight));
+                setUniformValue(command->m_parameterPack, LIGHT_COLOR_UNROLL_NAMES[lightIdx],
+                                Vector3D(1.0f, 1.0f, 1.0f));
+                setUniformValue(command->m_parameterPack, LIGHT_INTENSITY_UNROLL_NAMES[lightIdx], 0.5f);
+
+                // There is no risk in doing that even if multithreaded
+                // since we are sure that a shaderData is unique for a given light
+                // and won't ever be referenced as a Component either
+                const Matrix4x4 *worldTransform = lightEntity->worldTransform();
+                if (worldTransform)
+                    shaderData->updateWorldTransform(*worldTransform);
+
+                setDefaultUniformBlockShaderDataValue(command->m_parameterPack, shader,
+                                                      shaderData, LIGHT_STRUCT_NAMES[lightIdx]);
+                ++lightIdx;
             }
-
-            // Environment Light
-            int envLightCount = 0;
-            if (environmentLight && environmentLight->isEnabled()) {
-                static const int irradianceId =
-                        StringToInt::lookupId(QLatin1String("envLight_irradiance"));
-                static const int specularId =
-                        StringToInt::lookupId(QLatin1String("envLight_specular"));
-                ShaderData *shaderData = m_manager->shaderDataManager()->lookupResource(
-                        environmentLight->shaderData());
-                if (shaderData) {
-                    envLightCount = 1;
-
-                    // ("specularSize", "irradiance", "irradianceSize", "specular")
-                    auto irr =
-                            shaderData->properties()["irradiance"].value.value<Qt3DCore::QNodeId>();
-                    auto spec =
-                            shaderData->properties()["specular"].value.value<Qt3DCore::QNodeId>();
-
-                    setUniformValue(command->m_parameterPack, irradianceId, irr);
-                    setUniformValue(command->m_parameterPack, specularId, spec);
-                }
-            }
-            setUniformValue(command->m_parameterPack,
-                            StringToInt::lookupId(QStringLiteral("envLightCount")), envLightCount);
         }
+
+        if (shader->hasUniform(LIGHT_COUNT_NAME_ID))
+            setUniformValue(command->m_parameterPack, LIGHT_COUNT_NAME_ID,
+                            UniformValue(qMax((environmentLight ? 0 : 1), lightIdx)));
+
+        // If no active light sources and no environment light, add a default light
+        if (activeLightSources.empty() && !environmentLight) {
+            // Note: implicit conversion of values to UniformValue
+            setUniformValue(command->m_parameterPack, LIGHT_POSITION_NAMES[0],
+                    Vector3D(10.0f, 10.0f, 0.0f));
+            setUniformValue(command->m_parameterPack, LIGHT_TYPE_NAMES[0],
+                    int(QAbstractLight::PointLight));
+            setUniformValue(command->m_parameterPack, LIGHT_COLOR_NAMES[0],
+                    Vector3D(1.0f, 1.0f, 1.0f));
+            setUniformValue(command->m_parameterPack, LIGHT_INTENSITY_NAMES[0], 0.5f);
+            // Unrolled
+            setUniformValue(command->m_parameterPack, LIGHT_POSITION_UNROLL_NAMES[0],
+                    Vector3D(10.0f, 10.0f, 0.0f));
+            setUniformValue(command->m_parameterPack, LIGHT_TYPE_UNROLL_NAMES[0],
+                    int(QAbstractLight::PointLight));
+            setUniformValue(command->m_parameterPack, LIGHT_COLOR_UNROLL_NAMES[0],
+                    Vector3D(1.0f, 1.0f, 1.0f));
+            setUniformValue(command->m_parameterPack, LIGHT_INTENSITY_UNROLL_NAMES[0], 0.5f);
+        }
+
+        // Environment Light
+        int envLightCount = 0;
+        if (environmentLight && environmentLight->isEnabled()) {
+            static const int irradianceStructId =
+                    StringToInt::lookupId(QLatin1String("envLight_irradiance"));
+            static const int specularStructId =
+                    StringToInt::lookupId(QLatin1String("envLight_specular"));
+            static const int irradianceId =
+                    StringToInt::lookupId(QLatin1String("envLightIrradiance"));
+            static const int specularId =
+                    StringToInt::lookupId(QLatin1String("envLightSpecular"));
+            ShaderData *shaderData = m_manager->shaderDataManager()->lookupResource(
+                        environmentLight->shaderData());
+            if (shaderData) {
+                envLightCount = 1;
+
+                // ("specularSize", "irradiance", "irradianceSize", "specular")
+                auto irr =
+                        shaderData->properties()["irradiance"].value.value<Qt3DCore::QNodeId>();
+                auto spec =
+                        shaderData->properties()["specular"].value.value<Qt3DCore::QNodeId>();
+
+                setUniformValue(command->m_parameterPack, irradianceId, irr);
+                setUniformValue(command->m_parameterPack, irradianceStructId, irr);
+                setUniformValue(command->m_parameterPack, specularId, spec);
+                setUniformValue(command->m_parameterPack, specularStructId, spec);
+            }
+        }
+        setUniformValue(command->m_parameterPack,
+                        StringToInt::lookupId(QStringLiteral("envLightCount")), envLightCount);
     }
 }
 

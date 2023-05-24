@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include <map>
 
 #include "base/no_destructor.h"
+#include "base/task/single_thread_task_runner.h"
 #include "mojo/public/cpp/bindings/associated_receiver.h"
 
 namespace blink {
@@ -23,12 +24,16 @@ class AssociatedInterfaceProvider::LocalProvider
         remote_.BindNewEndpointAndPassDedicatedReceiver(),
         std::move(task_runner));
   }
+  LocalProvider(const LocalProvider&) = delete;
+  LocalProvider& operator=(const LocalProvider&) = delete;
 
-  ~LocalProvider() override {}
+  ~LocalProvider() override = default;
 
   void SetBinderForName(const std::string& name, const Binder& binder) {
     binders_[name] = binder;
   }
+
+  void ResetBinderForName(const std::string& name) { binders_.erase(name); }
 
   bool HasInterface(const std::string& name) const {
     return binders_.find(name) != binders_.end();
@@ -56,14 +61,13 @@ class AssociatedInterfaceProvider::LocalProvider
   mojo::AssociatedReceiver<mojom::AssociatedInterfaceProvider>
       associated_interface_provider_receiver_{this};
   mojo::AssociatedRemote<mojom::AssociatedInterfaceProvider> remote_;
-
-  DISALLOW_COPY_AND_ASSIGN(LocalProvider);
 };
 
 AssociatedInterfaceProvider::AssociatedInterfaceProvider(
     mojo::PendingAssociatedRemote<mojom::AssociatedInterfaceProvider> proxy,
     scoped_refptr<base::SingleThreadTaskRunner> task_runner)
-    : proxy_(std::move(proxy)), task_runner_(std::move(task_runner)) {
+    : proxy_(std::move(proxy), task_runner),
+      task_runner_(std::move(task_runner)) {
   DCHECK(proxy_.is_bound());
 }
 
@@ -91,15 +95,21 @@ void AssociatedInterfaceProvider::OverrideBinderForTesting(
     const std::string& name,
     const base::RepeatingCallback<void(mojo::ScopedInterfaceEndpointHandle)>&
         binder) {
-  if (!local_provider_)
-    local_provider_ = std::make_unique<LocalProvider>(task_runner_);
-  local_provider_->SetBinderForName(name, binder);
+  if (binder) {
+    if (!local_provider_) {
+      local_provider_ = std::make_unique<LocalProvider>(task_runner_);
+    }
+    local_provider_->SetBinderForName(name, binder);
+  } else if (local_provider_) {
+    local_provider_->ResetBinderForName(name);
+  }
 }
 
 AssociatedInterfaceProvider*
 AssociatedInterfaceProvider::GetEmptyAssociatedInterfaceProvider() {
   static base::NoDestructor<AssociatedInterfaceProvider>
-      associated_interface_provider(base::ThreadTaskRunnerHandle::Get());
+      associated_interface_provider(
+          base::SingleThreadTaskRunner::GetCurrentDefault());
   return associated_interface_provider.get();
 }
 

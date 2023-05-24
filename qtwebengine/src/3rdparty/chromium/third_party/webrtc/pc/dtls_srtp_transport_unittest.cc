@@ -14,7 +14,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <set>
 
 #include "call/rtp_demuxer.h"
 #include "media/base/fake_rtp.h"
@@ -26,10 +25,13 @@
 #include "pc/test/rtp_transport_test_util.h"
 #include "rtc_base/async_packet_socket.h"
 #include "rtc_base/byte_order.h"
+#include "rtc_base/containers/flat_set.h"
 #include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/rtc_certificate.h"
 #include "rtc_base/ssl_identity.h"
+#include "rtc_base/third_party/sigslot/sigslot.h"
 #include "test/gtest.h"
+#include "test/scoped_key_value_config.h"
 
 using cricket::FakeDtlsTransport;
 using cricket::FakeIceTransport;
@@ -58,7 +60,7 @@ class DtlsSrtpTransportTest : public ::testing::Test,
       FakeDtlsTransport* rtcp_dtls,
       bool rtcp_mux_enabled) {
     auto dtls_srtp_transport =
-        std::make_unique<DtlsSrtpTransport>(rtcp_mux_enabled);
+        std::make_unique<DtlsSrtpTransport>(rtcp_mux_enabled, field_trials_);
 
     dtls_srtp_transport->SetDtlsTransports(rtp_dtls, rtcp_dtls);
 
@@ -88,7 +90,7 @@ class DtlsSrtpTransportTest : public ::testing::Test,
         &transport_observer2_, &webrtc::TransportObserver::OnReadyToSend);
     webrtc::RtpDemuxerCriteria demuxer_criteria;
     // 0x00 is the payload type used in kPcmuFrame.
-    demuxer_criteria.payload_types = {0x00};
+    demuxer_criteria.payload_types() = {0x00};
     dtls_srtp_transport1_->RegisterRtpDemuxerSink(demuxer_criteria,
                                                   &transport_observer1_);
     dtls_srtp_transport2_->RegisterRtpDemuxerSink(demuxer_criteria,
@@ -127,7 +129,7 @@ class DtlsSrtpTransportTest : public ::testing::Test,
                                           packet_size);
 
     rtc::PacketOptions options;
-    // Send a packet from |srtp_transport1_| to |srtp_transport2_| and verify
+    // Send a packet from `srtp_transport1_` to `srtp_transport2_` and verify
     // that the packet can be successfully received and decrypted.
     int prev_received_packets = transport_observer2_.rtp_count();
     ASSERT_TRUE(dtls_srtp_transport1_->SendRtpPacket(&rtp_packet1to2, options,
@@ -157,7 +159,7 @@ class DtlsSrtpTransportTest : public ::testing::Test,
     rtc::CopyOnWriteBuffer rtcp_packet2to1(kRtcpReport, rtcp_len, packet_size);
 
     rtc::PacketOptions options;
-    // Send a packet from |srtp_transport1_| to |srtp_transport2_| and verify
+    // Send a packet from `srtp_transport1_` to `srtp_transport2_` and verify
     // that the packet can be successfully received and decrypted.
     int prev_received_packets = transport_observer2_.rtcp_count();
     ASSERT_TRUE(dtls_srtp_transport1_->SendRtcpPacket(&rtcp_packet1to2, options,
@@ -202,7 +204,7 @@ class DtlsSrtpTransportTest : public ::testing::Test,
     memcpy(original_rtp_data, rtp_packet_data, rtp_len);
 
     rtc::PacketOptions options;
-    // Send a packet from |srtp_transport1_| to |srtp_transport2_| and verify
+    // Send a packet from `srtp_transport1_` to `srtp_transport2_` and verify
     // that the packet can be successfully received and decrypted.
     ASSERT_TRUE(dtls_srtp_transport1_->SendRtpPacket(&rtp_packet1to2, options,
                                                      cricket::PF_SRTP_BYPASS));
@@ -249,12 +251,14 @@ class DtlsSrtpTransportTest : public ::testing::Test,
     SendRecvRtcpPackets();
   }
 
+  rtc::AutoThread main_thread_;
   std::unique_ptr<DtlsSrtpTransport> dtls_srtp_transport1_;
   std::unique_ptr<DtlsSrtpTransport> dtls_srtp_transport2_;
   webrtc::TransportObserver transport_observer1_;
   webrtc::TransportObserver transport_observer2_;
 
   int sequence_number_ = 0;
+  webrtc::test::ScopedKeyValueConfig field_trials_;
 };
 
 // Tests that if RTCP muxing is enabled and transports are set after RTP
@@ -518,7 +522,7 @@ TEST_F(DtlsSrtpTransportTest, SrtpSessionNotResetWhenRtcpTransportRemoved) {
 }
 
 // Tests that RTCP packets can be sent and received if both sides actively reset
-// the SRTP parameters with the |active_reset_srtp_params_| flag.
+// the SRTP parameters with the `active_reset_srtp_params_` flag.
 TEST_F(DtlsSrtpTransportTest, ActivelyResetSrtpParams) {
   auto rtp_dtls1 = std::make_unique<FakeDtlsTransport>(
       "audio", cricket::ICE_CANDIDATE_COMPONENT_RTP);
@@ -537,7 +541,7 @@ TEST_F(DtlsSrtpTransportTest, ActivelyResetSrtpParams) {
   // Send some RTCP packets, causing the SRTCP index to be incremented.
   SendRecvRtcpPackets();
 
-  // Only set the |active_reset_srtp_params_| flag to be true one side.
+  // Only set the `active_reset_srtp_params_` flag to be true one side.
   dtls_srtp_transport1_->SetActiveResetSrtpParams(true);
   // Set RTCP transport to null to trigger the SRTP parameters update.
   dtls_srtp_transport1_->SetDtlsTransports(rtp_dtls1.get(), nullptr);

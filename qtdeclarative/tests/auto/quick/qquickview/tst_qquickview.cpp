@@ -1,42 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <qtest.h>
 #include <QtTest/QSignalSpy>
 #include <QtQml/qqmlcomponent.h>
 #include <QtQml/qqmlcontext.h>
 #include <QtQuick/qquickview.h>
 #include <QtQuick/qquickitem.h>
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtGui/QWindow>
 #include <QtCore/QDebug>
 #include <QtQml/qqmlengine.h>
 
-#include "../shared/geometrytestutil.h"
+#include <QtQuickTestUtils/private/geometrytestutils_p.h>
 
 class tst_QQuickView : public QQmlDataTest
 {
@@ -50,10 +25,12 @@ private slots:
     void engine();
     void findChild();
     void setInitialProperties();
+    void overlay();
 };
 
 
 tst_QQuickView::tst_QQuickView()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
 {
 }
 
@@ -147,7 +124,7 @@ void tst_QQuickView::resizemodeitem()
     view->resize(QSize(200,300));
     QTRY_COMPARE(item->width(), 200.0);
 
-    for (int i = 0; i < sizeListener.count(); ++i) {
+    for (int i = 0; i < sizeListener.size(); ++i) {
         // Check that we have the correct geometry on all signals
         QCOMPARE(sizeListener.at(i), view->size());
     }
@@ -195,7 +172,7 @@ void tst_QQuickView::errors()
         QQmlTestMessageHandler messageHandler;
         view.setSource(testFileUrl("error1.qml"));
         QCOMPARE(view.status(), QQuickView::Error);
-        QCOMPARE(view.errors().count(), 1);
+        QCOMPARE(view.errors().size(), 1);
     }
 
     {
@@ -203,38 +180,38 @@ void tst_QQuickView::errors()
         QQmlTestMessageHandler messageHandler;
         view.setSource(testFileUrl("error2.qml"));
         QCOMPARE(view.status(), QQuickView::Error);
-        QCOMPARE(view.errors().count(), 1);
+        QCOMPARE(view.errors().size(), 1);
         view.show();
     }
 }
 
 void tst_QQuickView::engine()
 {
-    QQmlEngine *engine = new QQmlEngine;
+    QScopedPointer<QQmlEngine> engine(new QQmlEngine);
     QVERIFY(!engine->incubationController());
 
-    QQuickView *view = new QQuickView(engine, nullptr);
+    QScopedPointer<QQuickView> view(new QQuickView(engine.get(), nullptr));
     QVERIFY(view);
     QCOMPARE(engine->incubationController(), view->incubationController());
 
-    QQuickView *view2 = new QQuickView(engine, nullptr);
+    QScopedPointer<QQuickView> view2(new QQuickView(engine.get(), nullptr));
     QVERIFY(view);
     QCOMPARE(engine->incubationController(), view->incubationController());
-    delete view;
+    view.reset();
     QVERIFY(!engine->incubationController());
 
     engine->setIncubationController(view2->incubationController());
     QCOMPARE(engine->incubationController(), view2->incubationController());
-    delete view2;
+    view2.reset();
     QVERIFY(!engine->incubationController());
 
-    QQuickView *view3 = new QQuickView;
-    QQuickView *view4 = new QQuickView(view3->engine(), nullptr);
+    QScopedPointer<QQuickView> view3(new QQuickView);
+    QScopedPointer<QQuickView> view4(new QQuickView(view3->engine(), nullptr));
 
     QVERIFY(view3->engine());
     QVERIFY(view4->engine());
     QCOMPARE(view3->engine(), view4->engine());
-    delete view3;
+    view3.reset();
     QVERIFY(!view4->engine());
     QTest::ignoreMessage(QtWarningMsg, "QQuickView: invalid qml engine.");
     view4->setSource(QUrl());
@@ -242,7 +219,6 @@ void tst_QQuickView::engine()
     QCOMPARE(view4->status(), QQuickView::Error);
     QVERIFY(!view4->errors().isEmpty());
     QCOMPARE(view4->errors().back().description(), QLatin1String("QQuickView: invalid qml engine."));
-    delete view4;
 }
 
 void tst_QQuickView::findChild()
@@ -293,6 +269,16 @@ void tst_QQuickView::setInitialProperties()
     QVERIFY(rootObject);
     QCOMPARE(rootObject->property("z").toInt(), 4);
     QCOMPARE(rootObject->property("width").toInt(), 100);
+}
+
+void tst_QQuickView::overlay()
+{
+    QTest::ignoreMessage(QtWarningMsg,
+                         QRegularExpression(".*: Cannot set properties on overlay as it is null"));
+    QQuickView view;
+    view.setSource(testFileUrl("overlay.qml"));
+    QObject *rootObject = view.rootObject();
+    QVERIFY(!rootObject);
 }
 
 QTEST_MAIN(tst_QQuickView)

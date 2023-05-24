@@ -30,7 +30,12 @@
 
 #include "third_party/blink/renderer/core/clipboard/data_object.h"
 
+#include <utility>
+
+#include "base/functional/overloaded.h"
 #include "base/notreached.h"
+#include "third_party/abseil-cpp/absl/types/variant.h"
+#include "third_party/blink/public/platform/file_path_conversion.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_drag_data.h"
 #include "third_party/blink/renderer/core/clipboard/clipboard_mime_types.h"
@@ -38,6 +43,7 @@
 #include "third_party/blink/renderer/core/clipboard/dragged_isolated_file_system.h"
 #include "third_party/blink/renderer/core/clipboard/paste_mode.h"
 #include "third_party/blink/renderer/core/clipboard/system_clipboard.h"
+#include "third_party/blink/renderer/platform/blob/blob_data.h"
 #include "third_party/blink/renderer/platform/file_metadata.h"
 #include "third_party/blink/renderer/platform/wtf/hash_set.h"
 
@@ -50,12 +56,32 @@ DataObject* DataObject::CreateFromClipboard(SystemClipboard* system_clipboard,
 #if DCHECK_IS_ON()
   HashSet<String> types_seen;
 #endif
-  uint64_t sequence_number = system_clipboard->SequenceNumber();
+  ClipboardSequenceNumberToken sequence_number =
+      system_clipboard->SequenceNumber();
   for (const String& type : system_clipboard->ReadAvailableTypes()) {
     if (paste_mode == PasteMode::kPlainTextOnly && type != kMimeTypeTextPlain)
       continue;
-    data_object->item_list_.push_back(DataObjectItem::CreateFromClipboard(
-        system_clipboard, type, sequence_number));
+    mojom::blink::ClipboardFilesPtr files;
+    if (type == kMimeTypeTextURIList) {
+      files = system_clipboard->ReadFiles();
+      // Ignore ReadFiles() result if clipboard sequence number has changed.
+      if (system_clipboard->SequenceNumber() != sequence_number) {
+        files->files.clear();
+      }
+      for (const mojom::blink::DataTransferFilePtr& file : files->files) {
+        data_object->AddFilename(
+            FilePathToString(file->path), FilePathToString(file->display_name),
+            files->file_system_id,
+            base::MakeRefCounted<FileSystemAccessDropData>(
+                std::move(file->file_system_access_token)));
+      }
+    }
+    if (files && !files->files.empty()) {
+      DraggedIsolatedFileSystem::PrepareForDataObject(data_object);
+    } else {
+      data_object->item_list_.push_back(DataObjectItem::CreateFromClipboard(
+          system_clipboard, type, sequence_number));
+    }
 #if DCHECK_IS_ON()
     DCHECK(types_seen.insert(type).is_new_entry);
 #endif
@@ -95,7 +121,7 @@ void DataObject::DeleteItem(uint32_t index) {
 }
 
 void DataObject::ClearAll() {
-  if (item_list_.IsEmpty())
+  if (item_list_.empty())
     return;
   item_list_.clear();
   NotifyItemListChanged();
@@ -230,18 +256,20 @@ void DataObject::AddFilename(
     const String& filename,
     const String& display_name,
     const String& file_system_id,
-    scoped_refptr<NativeFileSystemDropData> native_file_system_entry) {
+    scoped_refptr<FileSystemAccessDropData> file_system_access_entry) {
   InternalAddFileItem(DataObjectItem::CreateFromFileWithFileSystemId(
       File::CreateForUserProvidedFile(filename, display_name), file_system_id,
-      std::move(native_file_system_entry)));
+      std::move(file_system_access_entry)));
 }
 
-void DataObject::AddSharedBuffer(scoped_refptr<SharedBuffer> buffer,
-                                 const KURL& source_url,
-                                 const String& filename_extension,
-                                 const AtomicString& content_disposition) {
-  InternalAddFileItem(DataObjectItem::CreateFromSharedBuffer(
-      std::move(buffer), source_url, filename_extension, content_disposition));
+void DataObject::AddFileSharedBuffer(scoped_refptr<SharedBuffer> buffer,
+                                     bool is_image_accessible,
+                                     const KURL& source_url,
+                                     const String& filename_extension,
+                                     const AtomicString& content_disposition) {
+  InternalAddFileItem(DataObjectItem::CreateFromFileSharedBuffer(
+      std::move(buffer), is_image_accessible, source_url, filename_extension,
+      content_disposition));
 }
 
 DataObject::DataObject() : modifiers_(0) {}
@@ -290,42 +318,64 @@ void DataObject::Trace(Visitor* visitor) const {
 }
 
 // static
-DataObject* DataObject::Create(WebDragData data) {
+DataObject* DataObject::Create(const WebDragData& data) {
   DataObject* data_object = Create();
   bool has_file_system = false;
 
   for (const WebDragData::Item& item : data.Items()) {
-    switch (item.storage_type) {
-      case WebDragData::Item::kStorageTypeString:
-        if (String(item.string_type) == kMimeTypeTextURIList)
-          data_object->SetURLAndTitle(item.string_data, item.title);
-        else if (String(item.string_type) == kMimeTypeTextHTML)
-          data_object->SetHTMLAndBaseURL(item.string_data, item.base_url);
-        else
-          data_object->SetData(item.string_type, item.string_data);
-        break;
-      case WebDragData::Item::kStorageTypeFilename:
-        has_file_system = true;
-        data_object->AddFilename(item.filename_data, item.display_name_data,
-                                 data.FilesystemId(),
-                                 item.native_file_system_entry);
-        break;
-      case WebDragData::Item::kStorageTypeBinaryData:
-        // This should never happen when dragging in.
-        break;
-      case WebDragData::Item::kStorageTypeFileSystemFile: {
-        // TODO(http://crbug.com/429077): The file system URL may refer a user
-        // visible file.
-        has_file_system = true;
-        FileMetadata file_metadata;
-        file_metadata.length = item.file_system_file_size;
+    absl::visit(
+        base::Overloaded{
+            [&](const WebDragData::StringItem& item) {
+              if (String(item.type) == kMimeTypeTextURIList) {
+                data_object->SetURLAndTitle(item.data, item.title);
+              } else if (String(item.type) == kMimeTypeTextHTML) {
+                data_object->SetHTMLAndBaseURL(item.data, item.base_url);
+              } else {
+                data_object->SetData(item.type, item.data);
+              }
+            },
+            [&](const WebDragData::FilenameItem& item) {
+              has_file_system = true;
+              data_object->AddFilename(item.filename, item.display_name,
+                                       data.FilesystemId(),
+                                       item.file_system_access_entry);
+            },
+            [&](const WebDragData::BinaryDataItem& item) {
+              data_object->AddFileSharedBuffer(
+                  item.data, item.image_accessible, item.source_url,
+                  item.filename_extension, item.content_disposition);
+            },
+            [&](const WebDragData::FileSystemFileItem& item) {
+              // TODO(http://crbug.com/429077): The file system URL may refer a
+              // user visible file.
+              scoped_refptr<BlobDataHandle> blob_data_handle =
+                  item.blob_info.GetBlobHandle();
 
-        data_object->Add(
-            File::CreateForFileSystemFile(item.file_system_url, file_metadata,
-                                          File::kIsNotUserVisible),
-            item.file_system_id);
-      } break;
-    }
+              // If the browser process has provided a BlobDataHandle to use for
+              // building the File object (as a result of a drop operation being
+              // performed) then use it to create the file here (instead of
+              // creating a File object without one and requiring a call to
+              // BlobRegistry::Register in the browser process to hook up the
+              // Blob remote/receiver pair). If no BlobDataHandle was provided,
+              // create a BlobDataHandle to an empty blob since the File object
+              // contents won't be needed (for example, because this DataObject
+              // will be used for the DragEnter case where the spec only
+              // indicates that basic file metadata should be retrievable via
+              // the corresponding DataTransferItem).
+              if (!blob_data_handle) {
+                blob_data_handle = BlobDataHandle::Create();
+              }
+              has_file_system = true;
+              FileMetadata file_metadata;
+              file_metadata.length = item.size;
+              data_object->Add(
+                  File::CreateForFileSystemFile(item.url, file_metadata,
+                                                File::kIsNotUserVisible,
+                                                std::move(blob_data_handle)),
+                  item.file_system_id);
+            },
+        },
+        item);
   }
 
   data_object->SetFilesystemId(data.FilesystemId());
@@ -342,52 +392,55 @@ WebDragData DataObject::ToWebDragData() {
 
   for (wtf_size_t i = 0; i < length(); ++i) {
     DataObjectItem* original_item = Item(i);
-    WebDragData::Item item;
-    if (original_item->Kind() == DataObjectItem::kStringKind) {
-      item.storage_type = WebDragData::Item::kStorageTypeString;
-      item.string_type = original_item->GetType();
-      item.string_data = original_item->GetAsString();
-      item.title = original_item->Title();
-      item.base_url = original_item->BaseURL();
-    } else if (original_item->Kind() == DataObjectItem::kFileKind) {
-      if (original_item->GetSharedBuffer()) {
-        item.storage_type = WebDragData::Item::kStorageTypeBinaryData;
-        item.binary_data = original_item->GetSharedBuffer();
-        item.binary_data_source_url = original_item->BaseURL();
-        item.binary_data_filename_extension =
-            original_item->FilenameExtension();
-        item.binary_data_content_disposition = original_item->Title();
-      } else if (original_item->IsFilename()) {
-        Blob* blob = original_item->GetAsFile();
-        if (auto* file = DynamicTo<File>(blob)) {
+    WebDragData::Item& item = item_list[i];
+    switch (original_item->Kind()) {
+      case DataObjectItem::kStringKind: {
+        auto& string_item = item.emplace<WebDragData::StringItem>();
+        string_item.type = original_item->GetType();
+        string_item.data = original_item->GetAsString();
+        string_item.title = original_item->Title();
+        string_item.base_url = original_item->BaseURL();
+        break;
+      }
+      case DataObjectItem::kFileKind: {
+        if (original_item->GetSharedBuffer()) {
+          auto& binary_data_item = item.emplace<WebDragData::BinaryDataItem>();
+          binary_data_item.data = original_item->GetSharedBuffer();
+          binary_data_item.image_accessible =
+              original_item->IsImageAccessible();
+          binary_data_item.source_url = original_item->BaseURL();
+          binary_data_item.filename_extension =
+              original_item->FilenameExtension();
+          binary_data_item.content_disposition = original_item->Title();
+        } else if (original_item->IsFilename()) {
+          auto* file = original_item->GetAsFile();
           if (file->HasBackingFile()) {
-            item.storage_type = WebDragData::Item::kStorageTypeFilename;
-            item.filename_data = file->GetPath();
-            item.display_name_data = file->name();
+            auto& filename_item =
+                item_list[i].emplace<WebDragData::FilenameItem>();
+            filename_item.filename = file->GetPath();
+            filename_item.display_name = file->name();
           } else if (!file->FileSystemURL().IsEmpty()) {
-            item.storage_type = WebDragData::Item::kStorageTypeFileSystemFile;
-            item.file_system_url = file->FileSystemURL();
-            item.file_system_file_size = file->size();
-            item.file_system_id = original_item->FileSystemId();
+            auto& file_system_file_item =
+                item_list[i].emplace<WebDragData::FileSystemFileItem>();
+            file_system_file_item.url = file->FileSystemURL();
+            file_system_file_item.size = file->size();
+            file_system_file_item.file_system_id =
+                original_item->FileSystemId();
           } else {
-            // TODO(http://crbug.com/394955): support dragging constructed Files
-            // across renderers.
-            item.storage_type = WebDragData::Item::kStorageTypeString;
-            item.string_type = "text/plain";
-            item.string_data = file->name();
+            // TODO(http://crbug.com/394955): support dragging constructed
+            // Files across renderers.
+            auto& string_item = item_list[i].emplace<WebDragData::StringItem>();
+            string_item.type = "text/plain";
+            string_item.data = file->name();
           }
         } else {
           NOTREACHED();
         }
-      } else {
-        NOTREACHED();
+        break;
       }
-    } else {
-      NOTREACHED();
     }
-    item_list[i] = item;
   }
-  data.SwapItems(item_list);
+  data.SetItems(std::move(item_list));
   return data;
 }
 

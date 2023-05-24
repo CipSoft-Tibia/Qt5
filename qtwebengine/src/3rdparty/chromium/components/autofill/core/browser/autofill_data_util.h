@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 #include <string>
 #include <vector>
 
-#include "base/strings/string16.h"
 #include "base/strings/string_piece_forward.h"
 #include "components/autofill/core/browser/field_types.h"
 
@@ -20,23 +19,23 @@ class FormStructure;
 namespace data_util {
 
 struct NameParts {
-  base::string16 given;
-  base::string16 middle;
-  base::string16 family;
+  std::u16string given;
+  std::u16string middle;
+  std::u16string family;
 };
 
 namespace bit_field_type_groups {
 
 // Bits for FieldTypeGroup options.
-// The form has a field associated with the NAME_HOME or NAME_BILLING
+// The form has a field associated with the kName or kNameBilling
 // FieldTypeGroups.
 constexpr uint32_t kName = 1 << 0;
-// The form has a field associated with the ADDRESS_HOME or ADDRESS_BILLING
+// The form has a field associated with the :kAddressHome or kAddressBilling
 // FieldTypeGroups.
 constexpr uint32_t kAddress = 1 << 1;
-// The form has a field associated with the EMAIL FieldTypeGroup.
+// The form has a field associated with the kEmail FieldTypeGroup.
 constexpr uint32_t kEmail = 1 << 2;
-// The form has a field associated with the PHONE_HOME or PHONE_BILLING
+// The form has a field associated with the kPhoneHome or kPhoneBilling
 // FieldTypeGroups.
 constexpr uint32_t kPhone = 1 << 3;
 
@@ -95,7 +94,7 @@ NameParts SplitName(base::StringPiece16 name);
 
 // Concatenates the name parts together in the correct order (based on script),
 // and returns the result.
-base::string16 JoinNameParts(base::StringPiece16 given,
+std::u16string JoinNameParts(base::StringPiece16 given,
                              base::StringPiece16 middle,
                              base::StringPiece16 family);
 
@@ -117,12 +116,12 @@ bool IsValidBasicCardIssuerNetwork(
 
 // Returns whether the specified |country_code| is a valid country code.
 bool IsValidCountryCode(const std::string& country_code);
-bool IsValidCountryCode(const base::string16& country_code);
+bool IsValidCountryCode(const std::u16string& country_code);
 
 // Returns a country code to be used when validating this profile. If the
 // profile has a valid country code set, it is returned. If not, a country code
 // associated with |app_locale| is used as a fallback.
-std::string GetCountryCodeWithFallback(const autofill::AutofillProfile& profile,
+std::string GetCountryCodeWithFallback(const AutofillProfile& profile,
                                        const std::string& app_locale);
 
 }  // namespace data_util

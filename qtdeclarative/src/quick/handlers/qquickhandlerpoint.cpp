@@ -1,55 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickhandlerpoint_p.h"
 #include "private/qquickevents_p_p.h"
+#include "private/qquickdeliveryagent_p_p.h"
 
 QT_BEGIN_NAMESPACE
-Q_DECLARE_LOGGING_CATEGORY(DBG_TOUCH_TARGET)
+Q_DECLARE_LOGGING_CATEGORY(lcTouchTarget)
 
 /*!
-    \qmltype HandlerPoint
+    \qmltype handlerPoint
     \instantiates QQuickHandlerPoint
     \inqmlmodule QtQuick
     \brief An event point.
 
-    A QML representation of a QQuickEventPoint.
+    A handler-owned QML representation of a QEventPoint.
 
     It's possible to make bindings to properties of a handler's current
     \l {SinglePointHandler::point}{point} or
@@ -58,15 +23,15 @@ Q_DECLARE_LOGGING_CATEGORY(DBG_TOUCH_TARGET)
     \snippet pointerHandlers/dragHandlerNullTarget.qml 0
 
     The point is kept up-to-date when the DragHandler is actively responding to
-    an EventPoint; but after the point is released, or when the current point is
+    an \l eventPoint; but after the point is released, or when the current point is
     being handled by a different handler, \c position.x and \c position.y are 0.
 
-    \note This is practically identical to QtQuick::EventPoint; however an
-    EventPoint is a long-lived QObject which is invalidated between gestures
-    and reused for subsequent event deliveries. Continuous bindings to its
+    \note This is practically identical to \l eventPoint; however an eventPoint
+    is a short-lived copy of a long-lived Q_GADGET which is invalidated between
+    gestures and reused for subsequent event deliveries. Continuous bindings to its
     properties are not possible, and an individual handler cannot rely on it
     outside the period when that point is part of an active gesture which that
-    handler is handling. HandlerPoint is a Q_GADGET that the handler owns.
+    handler is handling. handlerPoint is a Q_GADGET that the handler owns.
     This allows you to make lifetime bindings to its properties.
 
     \sa SinglePointHandler::point, MultiPointHandler::centroid
@@ -82,7 +47,8 @@ void QQuickHandlerPoint::localize(QQuickItem *item)
 
 void QQuickHandlerPoint::reset()
 {
-    m_id = 0;
+    m_id = -1;
+    m_device = QPointingDevice::primaryPointingDevice();
     m_uniqueId = QPointingDeviceUniqueId();
     m_position = QPointF();
     m_scenePosition = QPointF();
@@ -97,45 +63,41 @@ void QQuickHandlerPoint::reset()
     m_pressedModifiers = Qt::NoModifier;
 }
 
-void QQuickHandlerPoint::reset(const QQuickEventPoint *point)
+void QQuickHandlerPoint::reset(const QPointerEvent *event, const QEventPoint &point)
 {
-    m_id = point->pointId();
-    const QQuickPointerEvent *event = point->pointerEvent();
-    switch (point->state()) {
-    case QQuickEventPoint::Pressed:
-        m_pressPosition = point->position();
-        m_scenePressPosition = point->scenePosition();
-        m_pressedButtons = event->buttons();
-        break;
-    default:
-        break;
+    const bool isTouch = QQuickDeliveryAgentPrivate::isTouchEvent(event);
+    m_id = point.id();
+    m_device = event->pointingDevice();
+    const auto state = (isTouch ? static_cast<const QTouchEvent *>(event)->touchPointStates() : point.state());
+    if (state.testFlag(QEventPoint::Pressed)) {
+        m_pressPosition = point.position();
+        m_scenePressPosition = point.scenePosition();
     }
-    m_scenePressPosition = point->scenePressPosition();
-    m_pressedButtons = event->buttons();
+    if (!isTouch)
+        m_pressedButtons = static_cast<const QSinglePointEvent *>(event)->buttons();
     m_pressedModifiers = event->modifiers();
-    if (event->asPointerTouchEvent()) {
-        const QQuickEventTouchPoint *tp = static_cast<const QQuickEventTouchPoint *>(point);
-        m_uniqueId = tp->uniqueId();
-        m_rotation = tp->rotation();
-        m_pressure = tp->pressure();
-        m_ellipseDiameters = tp->ellipseDiameters();
+    if (isTouch) {
+        m_uniqueId = point.uniqueId();
+        m_rotation = point.rotation();
+        m_pressure = point.pressure();
+        m_ellipseDiameters = point.ellipseDiameters();
 #if QT_CONFIG(tabletevent)
-    } else if (event->asPointerTabletEvent()) {
-        m_uniqueId = event->device()->uniqueId();
-        m_rotation = static_cast<const QQuickEventTabletPoint *>(point)->rotation();
-        m_pressure = static_cast<const QQuickEventTabletPoint *>(point)->pressure();
+    } else if (QQuickDeliveryAgentPrivate::isTabletEvent(event)) {
+        m_uniqueId = event->pointingDevice()->uniqueId();
+        m_rotation = point.rotation();
+        m_pressure = point.pressure();
         m_ellipseDiameters = QSizeF();
 #endif
     } else {
-        m_uniqueId = event->device()->uniqueId();
+        m_uniqueId = event->pointingDevice()->uniqueId();
         m_rotation = 0;
-        m_pressure = event->buttons() ? 1 : 0;
+        m_pressure = m_pressedButtons ? 1 : 0;
         m_ellipseDiameters = QSizeF();
     }
-    m_position = point->position();
-    m_scenePosition = point->scenePosition();
-    if (point->state() == QQuickEventPoint::Updated)
-        m_velocity = point->velocity();
+    m_position = point.position();
+    m_scenePosition = point.scenePosition();
+    if (point.state() == QEventPoint::Updated)
+        m_velocity = point.velocity();
 }
 
 void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
@@ -144,7 +106,7 @@ void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
         qWarning("reset: no points");
         return;
     }
-    if (points.count() == 1) {
+    if (points.size() == 1) {
         *this = points.first(); // copy all values
         return;
     }
@@ -165,7 +127,8 @@ void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
         pressureSum += point.pressure();
         ellipseDiameterSum += point.ellipseDiameters();
     }
-    m_id = 0;
+    m_id = -1;
+    m_device = nullptr;
     m_uniqueId = QPointingDeviceUniqueId();
     // all points are required to be from the same event, so pressed buttons and modifiers should be the same
     m_pressedButtons = points.first().pressedButtons();
@@ -182,25 +145,25 @@ void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
 
 /*!
     \readonly
-    \qmlproperty int QtQuick::HandlerPoint::id
+    \qmlproperty int QtQuick::handlerPoint::id
     \brief The ID number of the point
 
     During a touch gesture, from the time that the first finger is pressed
     until the last finger is released, each touchpoint will have a unique ID
     number. Likewise, if input from multiple devices occurs (for example
-    simultaneous mouse and touch presses), all the current event points from
+    simultaneous mouse and touch presses), all the current \l{eventPoint}{eventPoints} from
     all the devices will have unique IDs.
 
     \note Do not assume that id numbers start at zero or that they are
     sequential. Such an assumption is often false due to the way the underlying
     drivers work.
 
-    \sa QTouchEvent::TouchPoint::id
+    \sa QEventPoint::id
 */
 
 /*!
     \readonly
-    \qmlproperty PointingDeviceUniqueId QtQuick::HandlerPoint::uniqueId
+    \qmlproperty pointingDeviceUniqueId QtQuick::handlerPoint::uniqueId
     \brief The unique ID of the point, if any
 
     This is normally empty, because touchscreens cannot uniquely identify fingers.
@@ -217,30 +180,30 @@ void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
     Interpreting the contents of this ID requires knowledge of the hardware and
     drivers in use.
 
-    \sa QTabletEvent::uniqueId, QtQuick::TouchPoint::uniqueId, QtQuick::EventTouchPoint::uniqueId
+    \sa QTabletEvent::uniqueId, QtQuick::TouchPoint::uniqueId
 */
 
 /*!
     \readonly
-    \qmlproperty QPointF QtQuick::HandlerPoint::position
+    \qmlproperty QPointF QtQuick::handlerPoint::position
     \brief The position within the \c parent Item
 
-    This is the position of the event point relative to the bounds of
+    This is the position of the \l eventPoint relative to the bounds of
     the \l {PointerHandler::parent} {parent}.
 */
 
 /*!
     \readonly
-    \qmlproperty QPointF QtQuick::HandlerPoint::scenePosition
+    \qmlproperty QPointF QtQuick::handlerPoint::scenePosition
     \brief The position within the scene
 
-    This is the position of the event point relative to the bounds of the Qt
+    This is the position of the \l eventPoint relative to the bounds of the Qt
     Quick scene (typically the whole window).
 */
 
 /*!
     \readonly
-    \qmlproperty QPointF QtQuick::HandlerPoint::pressPosition
+    \qmlproperty QPointF QtQuick::handlerPoint::pressPosition
     \brief The pressed position within the \c parent Item
 
     This is the position at which this point was pressed, relative to the
@@ -249,7 +212,7 @@ void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
 
 /*!
     \readonly
-    \qmlproperty QPointF QtQuick::HandlerPoint::scenePressPosition
+    \qmlproperty QPointF QtQuick::handlerPoint::scenePressPosition
     \brief The pressed position within the scene
 
     This is the position at which this point was pressed, in the coordinate
@@ -258,7 +221,7 @@ void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
 
 /*!
     \readonly
-    \qmlproperty QPointF QtQuick::HandlerPoint::sceneGrabPosition
+    \qmlproperty QPointF QtQuick::handlerPoint::sceneGrabPosition
     \brief The grabbed position within the scene
 
     If this point has been grabbed by a Pointer Handler or an Item, it means
@@ -269,7 +232,7 @@ void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
 
 /*!
     \readonly
-    \qmlproperty enumeration QtQuick::HandlerPoint::pressedButtons
+    \qmlproperty enumeration QtQuick::handlerPoint::pressedButtons
     \brief Which mouse or stylus buttons are currently pressed
 
     \sa MouseArea::pressedButtons
@@ -277,7 +240,7 @@ void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
 
 /*!
     \readonly
-    \qmlproperty enumeration QtQuick::HandlerPoint::modifiers
+    \qmlproperty enumeration QtQuick::handlerPoint::modifiers
     \brief Which modifier keys are currently pressed
 
     This property holds the keyboard modifiers that were pressed at the time
@@ -286,20 +249,20 @@ void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
 
 /*!
     \readonly
-    \qmlproperty QVector2D QtQuick::HandlerPoint::velocity
+    \qmlproperty QVector2D QtQuick::handlerPoint::velocity
     \brief A vector representing the average speed and direction of movement
 
     This is a velocity vector pointing in the direction of movement, in logical
     pixels per second. It has x and y components, at least one of which will be
     nonzero when this point is in motion. It holds the average recent velocity:
-    how fast and in which direction the event point has been moving recently.
+    how fast and in which direction the \l eventPoint has been moving recently.
 
-    \sa QtQuick::EventPoint::velocity, QtQuick::TouchPoint::velocity, QTouchEvent::TouchPoint::velocity
+    \sa QtQuick::TouchPoint::velocity, QEventPoint::velocity
 */
 
 /*!
     \readonly
-    \qmlproperty qreal QtQuick::HandlerPoint::rotation
+    \qmlproperty qreal QtQuick::handlerPoint::rotation
 
     This property holds the rotation angle of the stylus on a graphics tablet
     or the contact patch of a touchpoint on a touchscreen.
@@ -310,7 +273,7 @@ void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
 
 /*!
     \readonly
-    \qmlproperty qreal QtQuick::HandlerPoint::pressure
+    \qmlproperty qreal QtQuick::handlerPoint::pressure
 
     This property tells how hard the user is pressing the stylus on a graphics
     tablet or the finger against a touchscreen, in the range from \c 0 (no
@@ -323,7 +286,7 @@ void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
 
 /*!
     \readonly
-    \qmlproperty size QtQuick::HandlerPoint::ellipseDiameters
+    \qmlproperty size QtQuick::handlerPoint::ellipseDiameters
 
     This property holds the diameters of the contact patch, if the event
     comes from a touchpoint and the device provides this information.
@@ -344,7 +307,16 @@ void QQuickHandlerPoint::reset(const QVector<QQuickHandlerPoint> &points)
     If the contact patch is unknown, or the device is not a touchscreen,
     these values will be zero.
 
-    \sa QtQuick::EventTouchPoint::ellipseDiameters, QtQuick::TouchPoint::ellipseDiameters, QTouchEvent::TouchPoint::ellipseDiameters
+    \sa QtQuick::TouchPoint::ellipseDiameters, QEventPoint::ellipseDiameters
+*/
+
+/*!
+    \readonly
+    \qmlproperty PointerDevice QtQuick::handlerPoint::device
+
+    This property holds the device that the point (and its event) came from.
 */
 
 QT_END_NAMESPACE
+
+#include "moc_qquickhandlerpoint_p.cpp"

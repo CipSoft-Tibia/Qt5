@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 #define CONTENT_BROWSER_ANDROID_RENDER_WIDGET_HOST_CONNECTOR_H_
 
 #include "base/gtest_prod_util.h"
-#include "base/memory/weak_ptr.h"
 #include "content/browser/renderer_host/render_widget_host_view_android.h"
 #include "content/public/browser/web_contents_observer.h"
 
@@ -23,6 +22,11 @@ namespace content {
 class RenderWidgetHostConnector {
  public:
   explicit RenderWidgetHostConnector(WebContents* web_contents);
+
+  RenderWidgetHostConnector(const RenderWidgetHostConnector&) = delete;
+  RenderWidgetHostConnector& operator=(const RenderWidgetHostConnector&) =
+      delete;
+
   virtual ~RenderWidgetHostConnector();
 
   // Establish initial connection to rwhva if it is present.
@@ -53,8 +57,6 @@ class RenderWidgetHostConnector {
  private:
   class Observer;
   std::unique_ptr<Observer> render_widget_observer_;
-
-  DISALLOW_COPY_AND_ASSIGN(RenderWidgetHostConnector);
 };
 
 }  // namespace content

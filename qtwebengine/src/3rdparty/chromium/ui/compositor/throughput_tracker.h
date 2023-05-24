@@ -1,11 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_COMPOSITOR_THROUGHPUT_TRACKER_H_
 #define UI_COMPOSITOR_THROUGHPUT_TRACKER_H_
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/weak_ptr.h"
 #include "ui/compositor/compositor_export.h"
 #include "ui/compositor/throughput_tracker_host.h"
@@ -35,10 +35,11 @@ class COMPOSITOR_EXPORT ThroughputTracker {
   // throughput data collection starts after the next commit.
   void Start(ThroughputTrackerHost::ReportCallback callback);
 
-  // Stops tracking. The supplied callback will be invoked when the data
-  // collection finishes after the next frame presentation. Note that no data
-  // will be reported if Stop() is not called,
-  void Stop();
+  // Stops tracking. Returns true when the supplied callback will be invoked
+  // when the data collection finishes. Returns false when the data collection
+  // is finished before Stop() is called, e.g. when gpu process crashes.
+  // Note that no data will be reported if Stop() is not called,
+  bool Stop();
 
   // Cancels tracking. The supplied callback will not be invoked.
   void Cancel();

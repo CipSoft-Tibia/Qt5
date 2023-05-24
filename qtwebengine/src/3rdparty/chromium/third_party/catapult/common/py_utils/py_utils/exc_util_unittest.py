@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+from __future__ import absolute_import
 import re
 import sys
 import unittest
@@ -25,7 +26,7 @@ class FakeCleanupError(Exception):
   pass
 
 
-class FaultyClient(object):
+class FaultyClient():
   def __init__(self, *args):
     self.failures = set(args)
     self.called = set()
@@ -54,12 +55,13 @@ class FaultyClient(object):
 
 
 class ReraiseTests(unittest.TestCase):
+
   def assertLogMatches(self, pattern):
-    self.assertRegexpMatches(
+    self.assertRegex(
         sys.stderr.getvalue(), pattern)  # pylint: disable=no-member
 
   def assertLogNotMatches(self, pattern):
-    self.assertNotRegexpMatches(
+    self.assertNotRegex(
         sys.stderr.getvalue(), pattern)  # pylint: disable=no-member
 
   def testTryRaisesExceptRaises(self):
@@ -76,10 +78,9 @@ class ReraiseTests(unittest.TestCase):
 
     self.assertLogMatches(re.compile(
         r'While handling a FakeConnectionError, .* was also raised:\n'
-        r'Traceback \(most recent call last\):\n'
-        r'.*\n'
+        r'.*'
         r'FakeDisconnectionError: Oops!\n', re.DOTALL))
-    self.assertItemsEqual(client.called, ['Connect', 'Disconnect'])
+    self.assertCountEqual(client.called, ['Connect', 'Disconnect'])
 
   def testTryRaisesExceptDoesnt(self):
     client = FaultyClient(FakeConnectionError)
@@ -94,7 +95,7 @@ class ReraiseTests(unittest.TestCase):
         raise
 
     self.assertLogNotMatches('FakeDisconnectionError')
-    self.assertItemsEqual(client.called, ['Connect', 'Disconnect'])
+    self.assertCountEqual(client.called, ['Connect', 'Disconnect'])
 
   def testTryPassesNoException(self):
     client = FaultyClient(FakeDisconnectionError)
@@ -109,7 +110,7 @@ class ReraiseTests(unittest.TestCase):
 
     self.assertLogNotMatches('FakeConnectionError')
     self.assertLogNotMatches('FakeDisconnectionError')
-    self.assertItemsEqual(client.called, ['Connect'])
+    self.assertCountEqual(client.called, ['Connect'])
 
   def testTryRaisesFinallyRaises(self):
     worker = FaultyClient(FakeProcessingError, FakeCleanupError)
@@ -118,17 +119,14 @@ class ReraiseTests(unittest.TestCase):
     with self.assertRaises(FakeProcessingError):
       try:
         worker.Process()
-      except:
-        raise  # Needed for Cleanup to know if an exception is handled.
       finally:
         worker.Cleanup()
 
     self.assertLogMatches(re.compile(
         r'While handling a FakeProcessingError, .* was also raised:\n'
-        r'Traceback \(most recent call last\):\n'
-        r'.*\n'
+        r'.*'
         r'FakeCleanupError: Oops!\n', re.DOTALL))
-    self.assertItemsEqual(worker.called, ['Process', 'Cleanup'])
+    self.assertCountEqual(worker.called, ['Process', 'Cleanup'])
 
   def testTryRaisesFinallyDoesnt(self):
     worker = FaultyClient(FakeProcessingError)
@@ -137,14 +135,12 @@ class ReraiseTests(unittest.TestCase):
     with self.assertRaises(FakeProcessingError):
       try:
         worker.Process()
-      except:
-        raise  # Needed for Cleanup to know if an exception is handled.
       finally:
         worker.Cleanup()
 
     self.assertLogNotMatches('FakeProcessingError')
     self.assertLogNotMatches('FakeCleanupError')
-    self.assertItemsEqual(worker.called, ['Process', 'Cleanup'])
+    self.assertCountEqual(worker.called, ['Process', 'Cleanup'])
 
   def testTryPassesFinallyRaises(self):
     worker = FaultyClient(FakeCleanupError)
@@ -154,14 +150,12 @@ class ReraiseTests(unittest.TestCase):
     with self.assertRaises(FakeCleanupError):
       try:
         worker.Process()
-      except:
-        raise  # Needed for Cleanup to know if an exception is handled.
       finally:
         worker.Cleanup()
 
     self.assertLogNotMatches('FakeProcessingError')
     self.assertLogNotMatches('FakeCleanupError')
-    self.assertItemsEqual(worker.called, ['Process', 'Cleanup'])
+    self.assertCountEqual(worker.called, ['Process', 'Cleanup'])
 
   def testTryRaisesExceptRaisesFinallyRaises(self):
     worker = FaultyClient(
@@ -180,4 +174,5 @@ class ReraiseTests(unittest.TestCase):
 
     self.assertLogMatches('FakeDisconnectionError')
     self.assertLogMatches('FakeCleanupError')
-    self.assertItemsEqual(worker.called, ['Process', 'Disconnect', 'Cleanup'])
+    self.assertCountEqual(worker.called,
+                          ['Process', 'Disconnect', 'Cleanup'])

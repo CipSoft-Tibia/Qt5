@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,6 @@
 #include <vector>
 
 #include "base/i18n/rtl.h"
-#include "base/stl_util.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
@@ -40,74 +39,82 @@ class MessageBundleTest : public testing::Test {
 
   void CreateContentTree(const std::string& name,
                          const std::string& content,
-                         base::DictionaryValue* dict) {
-    auto content_tree = std::make_unique<base::DictionaryValue>();
-    content_tree->SetString(MessageBundle::kContentKey, content);
-    dict->Set(name, std::move(content_tree));
+                         base::Value::Dict& dict) {
+    base::Value::Dict content_tree;
+    content_tree.Set(MessageBundle::kContentKey, content);
+    dict.Set(name, std::move(content_tree));
   }
 
-  void CreatePlaceholdersTree(base::DictionaryValue* dict) {
-    auto placeholders_tree = std::make_unique<base::DictionaryValue>();
-    CreateContentTree("a", "A", placeholders_tree.get());
-    CreateContentTree("b", "B", placeholders_tree.get());
-    CreateContentTree("c", "C", placeholders_tree.get());
-    dict->Set(MessageBundle::kPlaceholdersKey, std::move(placeholders_tree));
+  void CreatePlaceholdersTree(base::Value::Dict& dict) {
+    base::Value::Dict placeholders_tree;
+    CreateContentTree("a", "A", placeholders_tree);
+    CreateContentTree("b", "B", placeholders_tree);
+    CreateContentTree("c", "C", placeholders_tree);
+    dict.Set(MessageBundle::kPlaceholdersKey, std::move(placeholders_tree));
   }
 
   void CreateMessageTree(const std::string& name,
                          const std::string& message,
                          bool create_placeholder_subtree,
-                         base::DictionaryValue* dict) {
-    auto message_tree = std::make_unique<base::DictionaryValue>();
+                         base::Value::Dict& dict) {
+    base::Value::Dict message_tree;
     if (create_placeholder_subtree)
-      CreatePlaceholdersTree(message_tree.get());
-    message_tree->SetString(MessageBundle::kMessageKey, message);
-    dict->Set(name, std::move(message_tree));
+      CreatePlaceholdersTree(message_tree);
+    message_tree.Set(MessageBundle::kMessageKey, message);
+    dict.Set(name, std::move(message_tree));
   }
 
-  std::unique_ptr<base::DictionaryValue> CreateGoodDictionary() {
-    auto dict = std::make_unique<base::DictionaryValue>();
-    CreateMessageTree("n1", "message1 $a$ $b$", true, dict.get());
-    CreateMessageTree("n2", "message2 $c$", true, dict.get());
-    CreateMessageTree("n3", "message3", false, dict.get());
+  base::Value::Dict CreateGoodDictionary() {
+    base::Value::Dict dict;
+    CreateMessageTree("n1", "message1 $a$ $b$", true, dict);
+    CreateMessageTree("n2", "message2 $c$", true, dict);
+    CreateMessageTree("n3", "message3", false, dict);
     return dict;
   }
 
-  std::unique_ptr<base::DictionaryValue> CreateBadDictionary(
-      enum BadDictionary what_is_bad) {
-    std::unique_ptr<base::DictionaryValue> dict = CreateGoodDictionary();
+  base::Value::Dict CreateBadDictionary(enum BadDictionary what_is_bad) {
+    base::Value::Dict dict = CreateGoodDictionary();
     // Now remove/break things.
     switch (what_is_bad) {
       case INVALID_NAME:
-        CreateMessageTree("n 5", "nevermind", false, dict.get());
+        CreateMessageTree("n 5", "nevermind", false, dict);
         break;
       case NAME_NOT_A_TREE:
-        dict->SetString("n4", "whatever");
+        dict.Set("n4", "whatever");
         break;
       case EMPTY_NAME_TREE:
-        dict->Set("n4", std::make_unique<base::DictionaryValue>());
+        dict.Set("n4", base::Value::Dict());
         break;
       case MISSING_MESSAGE:
-        dict->Remove("n1.message", NULL);
+        RemoveDictionaryPath(dict, /*path=*/"n1", /*key*/ "message");
         break;
       case PLACEHOLDER_NOT_A_TREE:
-        dict->SetString("n1.placeholders", "whatever");
+        dict.SetByDottedPath("n1.placeholders", "whatever");
         break;
       case EMPTY_PLACEHOLDER_TREE:
-        dict->Set("n1.placeholders", std::make_unique<base::DictionaryValue>());
+        dict.SetByDottedPath("n1.placeholders", base::Value::Dict());
         break;
       case CONTENT_MISSING:
-         dict->Remove("n1.placeholders.a.content", NULL);
+        RemoveDictionaryPath(dict, /*path=*/"n1.placeholders.a",
+                             /*key=*/"content");
         break;
       case MESSAGE_PLACEHOLDER_DOESNT_MATCH:
-        base::DictionaryValue* value;
-        dict->Remove("n1.placeholders.a", NULL);
-        dict->GetDictionary("n1.placeholders", &value);
-        CreateContentTree("x", "X", value);
+        RemoveDictionaryPath(dict, /*path=*/"n1.placeholders", /*key=*/"a");
+        base::Value::Dict* value = dict.FindDictByDottedPath("n1.placeholders");
+        EXPECT_TRUE(value);
+        CreateContentTree("x", "X", *value);
         break;
     }
 
     return dict;
+  }
+
+  void RemoveDictionaryPath(base::Value::Dict& dict,
+                            base::StringPiece path,
+                            base::StringPiece key) {
+    base::Value::Dict* value = dict.FindDictByDottedPath(path);
+    ASSERT_TRUE(value);
+    value->Remove(key);
   }
 
   unsigned int ReservedMessagesCount() {
@@ -147,7 +154,7 @@ class MessageBundleTest : public testing::Test {
   }
 
   std::unique_ptr<MessageBundle> handler_;
-  std::vector<std::unique_ptr<base::DictionaryValue>> catalogs_;
+  MessageBundle::CatalogVector catalogs_;
 };
 
 TEST_F(MessageBundleTest, ReservedMessagesCount) {
@@ -156,7 +163,7 @@ TEST_F(MessageBundleTest, ReservedMessagesCount) {
 
 TEST_F(MessageBundleTest, InitEmptyDictionaries) {
   CreateMessageBundle();
-  EXPECT_TRUE(handler_.get() != NULL);
+  EXPECT_TRUE(handler_.get() != nullptr);
   EXPECT_EQ(0U + ReservedMessagesCount(), handler_->size());
   CheckReservedMessages(handler_.get());
 }
@@ -165,7 +172,7 @@ TEST_F(MessageBundleTest, InitGoodDefaultDict) {
   catalogs_.push_back(CreateGoodDictionary());
   CreateMessageBundle();
 
-  EXPECT_TRUE(handler_.get() != NULL);
+  EXPECT_TRUE(handler_.get() != nullptr);
   EXPECT_EQ(3U + ReservedMessagesCount(), handler_->size());
 
   EXPECT_EQ("message1 A B", handler_->GetL10nMessage("n1"));
@@ -178,18 +185,18 @@ TEST_F(MessageBundleTest, InitAppDictConsultedFirst) {
   catalogs_.push_back(CreateGoodDictionary());
   catalogs_.push_back(CreateGoodDictionary());
 
-  base::DictionaryValue* app_dict = catalogs_[0].get();
+  base::Value::Dict& app_dict = catalogs_[0];
   // Flip placeholders in message of n1 tree.
-  app_dict->SetString("n1.message", "message1 $b$ $a$");
+  app_dict.SetByDottedPath("n1.message", "message1 $b$ $a$");
   // Remove one message from app dict.
-  app_dict->Remove("n2", NULL);
+  app_dict.Remove("n2");
   // Replace n3 with N3.
-  app_dict->Remove("n3", NULL);
+  app_dict.Remove("n3");
   CreateMessageTree("N3", "message3_app_dict", false, app_dict);
 
   CreateMessageBundle();
 
-  EXPECT_TRUE(handler_.get() != NULL);
+  EXPECT_TRUE(handler_.get() != nullptr);
   EXPECT_EQ(3U + ReservedMessagesCount(), handler_->size());
 
   EXPECT_EQ("message1 B A", handler_->GetL10nMessage("n1"));
@@ -204,55 +211,55 @@ TEST_F(MessageBundleTest, InitBadAppDict) {
 
   std::string error = CreateMessageBundle();
 
-  EXPECT_TRUE(handler_.get() == NULL);
+  EXPECT_TRUE(handler_.get() == nullptr);
   EXPECT_EQ("Name of a key \"n 5\" is invalid. Only ASCII [a-z], "
             "[A-Z], [0-9] and \"_\" are allowed.", error);
 
   catalogs_[0] = CreateBadDictionary(NAME_NOT_A_TREE);
   handler_.reset(MessageBundle::Create(catalogs_, &error));
-  EXPECT_TRUE(handler_.get() == NULL);
+  EXPECT_TRUE(handler_.get() == nullptr);
   EXPECT_EQ("Not a valid tree for key n4.", error);
 
   catalogs_[0] = CreateBadDictionary(EMPTY_NAME_TREE);
   handler_.reset(MessageBundle::Create(catalogs_, &error));
-  EXPECT_TRUE(handler_.get() == NULL);
+  EXPECT_TRUE(handler_.get() == nullptr);
   EXPECT_EQ("There is no \"message\" element for key n4.", error);
 
   catalogs_[0] = CreateBadDictionary(MISSING_MESSAGE);
   handler_.reset(MessageBundle::Create(catalogs_, &error));
-  EXPECT_TRUE(handler_.get() == NULL);
+  EXPECT_TRUE(handler_.get() == nullptr);
   EXPECT_EQ("There is no \"message\" element for key n1.", error);
 
   catalogs_[0] = CreateBadDictionary(PLACEHOLDER_NOT_A_TREE);
   handler_.reset(MessageBundle::Create(catalogs_, &error));
-  EXPECT_TRUE(handler_.get() == NULL);
+  EXPECT_TRUE(handler_.get() == nullptr);
   EXPECT_EQ("Not a valid \"placeholders\" element for key n1.", error);
 
   catalogs_[0] = CreateBadDictionary(EMPTY_PLACEHOLDER_TREE);
   handler_.reset(MessageBundle::Create(catalogs_, &error));
-  EXPECT_TRUE(handler_.get() == NULL);
+  EXPECT_TRUE(handler_.get() == nullptr);
   EXPECT_EQ("Variable $a$ used but not defined.", error);
 
   catalogs_[0] = CreateBadDictionary(CONTENT_MISSING);
   handler_.reset(MessageBundle::Create(catalogs_, &error));
-  EXPECT_TRUE(handler_.get() == NULL);
+  EXPECT_TRUE(handler_.get() == nullptr);
   EXPECT_EQ("Invalid \"content\" element for key n1.", error);
 
   catalogs_[0] = CreateBadDictionary(MESSAGE_PLACEHOLDER_DOESNT_MATCH);
   handler_.reset(MessageBundle::Create(catalogs_, &error));
-  EXPECT_TRUE(handler_.get() == NULL);
+  EXPECT_TRUE(handler_.get() == nullptr);
   EXPECT_EQ("Variable $a$ used but not defined.", error);
 }
 
 TEST_F(MessageBundleTest, ReservedMessagesOverrideDeveloperMessages) {
   catalogs_.push_back(CreateGoodDictionary());
 
-  base::DictionaryValue* dict = catalogs_[0].get();
+  base::Value::Dict& dict = catalogs_[0];
   CreateMessageTree(MessageBundle::kUILocaleKey, "x", false, dict);
 
   std::string error = CreateMessageBundle();
 
-  EXPECT_TRUE(handler_.get() == NULL);
+  EXPECT_TRUE(handler_.get() == nullptr);
   std::string expected_error = ErrorUtils::FormatErrorMessage(
       errors::kReservedMessageFound, MessageBundle::kUILocaleKey);
   EXPECT_EQ(expected_error, error);
@@ -261,7 +268,7 @@ TEST_F(MessageBundleTest, ReservedMessagesOverrideDeveloperMessages) {
 TEST_F(MessageBundleTest, AppendReservedMessagesForLTR) {
   CreateMessageBundle();
 
-  ASSERT_TRUE(handler_.get() != NULL);
+  ASSERT_TRUE(handler_.get() != nullptr);
   ClearDictionary();
   ASSERT_TRUE(AppendReservedMessages("en_US"));
 
@@ -280,7 +287,7 @@ TEST_F(MessageBundleTest, AppendReservedMessagesForLTR) {
 TEST_F(MessageBundleTest, AppendReservedMessagesForRTL) {
   CreateMessageBundle();
 
-  ASSERT_TRUE(handler_.get() != NULL);
+  ASSERT_TRUE(handler_.get() != nullptr);
   ClearDictionary();
   ASSERT_TRUE(AppendReservedMessages("he"));
 
@@ -368,7 +375,7 @@ TEST(MessageBundle, ReplaceMessagesInText) {
   messages.insert(std::make_pair("bad name", "Doesn't matter"));
   messages.insert(std::make_pair("d1g1ts_are_ok", "I are d1g1t"));
 
-  for (size_t i = 0; i < base::size(test_cases); ++i) {
+  for (size_t i = 0; i < std::size(test_cases); ++i) {
     std::string text = test_cases[i].original;
     std::string error;
     EXPECT_EQ(test_cases[i].pass,
@@ -379,39 +386,6 @@ TEST(MessageBundle, ReplaceMessagesInText) {
                                               &error));
     EXPECT_EQ(test_cases[i].result, text);
   }
-}
-
-///////////////////////////////////////////////////////////////////////////////
-//
-// Renderer helper functions test.
-//
-///////////////////////////////////////////////////////////////////////////////
-
-TEST(GetExtensionToL10nMessagesMapTest, ReturnsTheSameObject) {
-  ExtensionToL10nMessagesMap* map1 = GetExtensionToL10nMessagesMap();
-  ASSERT_TRUE(NULL != map1);
-
-  ExtensionToL10nMessagesMap* map2 = GetExtensionToL10nMessagesMap();
-  ASSERT_EQ(map1, map2);
-}
-
-TEST(GetExtensionToL10nMessagesMapTest, ReturnsNullForUnknownExtensionId) {
-  const std::string extension_id("some_unique_12334212314234_id");
-  L10nMessagesMap* map = GetL10nMessagesMap(extension_id);
-  EXPECT_TRUE(NULL == map);
-}
-
-TEST(GetExtensionToL10nMessagesMapTest, ReturnsMapForKnownExtensionId) {
-  const std::string extension_id("some_unique_121212121212121_id");
-  // Store a map for given id.
-  L10nMessagesMap messages;
-  messages.insert(std::make_pair("message_name", "message_value"));
-  (*GetExtensionToL10nMessagesMap())[extension_id] = messages;
-
-  L10nMessagesMap* map = GetL10nMessagesMap(extension_id);
-  ASSERT_TRUE(NULL != map);
-  EXPECT_EQ(1U, map->size());
-  EXPECT_EQ("message_value", (*map)["message_name"]);
 }
 
 }  // namespace extensions

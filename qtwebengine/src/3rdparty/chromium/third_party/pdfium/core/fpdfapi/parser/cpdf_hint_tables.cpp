@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,12 +13,14 @@
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_document.h"
 #include "core/fpdfapi/parser/cpdf_linearized_header.h"
+#include "core/fpdfapi/parser/cpdf_parser.h"
 #include "core/fpdfapi/parser/cpdf_read_validator.h"
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fpdfapi/parser/cpdf_stream_acc.h"
 #include "core/fpdfapi/parser/cpdf_syntax_parser.h"
 #include "core/fxcrt/cfx_bitstream.h"
 #include "core/fxcrt/fx_safe_types.h"
+#include "third_party/base/check.h"
 #include "third_party/base/numerics/safe_conversions.h"
 #include "third_party/base/span.h"
 
@@ -44,8 +46,8 @@ CPDF_HintTables::PageInfo::~PageInfo() = default;
 //  static
 std::unique_ptr<CPDF_HintTables> CPDF_HintTables::Parse(
     CPDF_SyntaxParser* parser,
-    CPDF_LinearizedHeader* pLinearized) {
-  ASSERT(parser);
+    const CPDF_LinearizedHeader* pLinearized) {
+  DCHECK(parser);
   if (!pLinearized || pLinearized->GetPageCount() <= 1 ||
       !pLinearized->HasHintTable()) {
     return nullptr;
@@ -75,12 +77,9 @@ std::unique_ptr<CPDF_HintTables> CPDF_HintTables::Parse(
 }
 
 CPDF_HintTables::CPDF_HintTables(CPDF_ReadValidator* pValidator,
-                                 CPDF_LinearizedHeader* pLinearized)
-    : m_pValidator(pValidator),
-      m_pLinearized(pLinearized),
-      m_nFirstPageSharedObjs(0),
-      m_szFirstPageObjOffset(0) {
-  ASSERT(m_pLinearized);
+                                 const CPDF_LinearizedHeader* pLinearized)
+    : m_pValidator(pValidator), m_pLinearized(pLinearized) {
+  DCHECK(m_pLinearized);
 }
 
 CPDF_HintTables::~CPDF_HintTables() = default;
@@ -103,7 +102,7 @@ bool CPDF_HintTables::ReadPageHintTable(CFX_BitStream* hStream) {
 
   // Item 1: The least number of objects in a page.
   const uint32_t dwObjLeastNum = hStream->GetBits(32);
-  if (!dwObjLeastNum)
+  if (!dwObjLeastNum || dwObjLeastNum >= CPDF_Parser::kMaxObjectNumber)
     return false;
 
   // Item 2: The location of the first page's page object.
@@ -166,7 +165,7 @@ bool CPDF_HintTables::ReadPageHintTable(CFX_BitStream* hStream) {
   m_PageInfos[nFirstPageNum].set_start_obj_num(
       m_pLinearized->GetFirstPageObjNum());
   // The object number of remaining pages starts from 1.
-  uint32_t dwStartObjNum = 1;
+  FX_SAFE_UINT32 dwStartObjNum = 1;
   for (uint32_t i = 0; i < nPages; ++i) {
     FX_SAFE_UINT32 safeDeltaObj = hStream->GetBits(dwDeltaObjectsBits);
     safeDeltaObj += dwObjLeastNum;
@@ -175,8 +174,12 @@ bool CPDF_HintTables::ReadPageHintTable(CFX_BitStream* hStream) {
     m_PageInfos[i].set_objects_count(safeDeltaObj.ValueOrDie());
     if (i == nFirstPageNum)
       continue;
-    m_PageInfos[i].set_start_obj_num(dwStartObjNum);
+    m_PageInfos[i].set_start_obj_num(dwStartObjNum.ValueOrDie());
     dwStartObjNum += m_PageInfos[i].objects_count();
+    if (!dwStartObjNum.IsValid() ||
+        dwStartObjNum.ValueOrDie() >= CPDF_Parser::kMaxObjectNumber) {
+      return false;
+    }
   }
   hStream->ByteAlign();
 
@@ -193,7 +196,7 @@ bool CPDF_HintTables::ReadPageHintTable(CFX_BitStream* hStream) {
     m_PageInfos[i].set_page_length(safePageLen.ValueOrDie());
   }
 
-  ASSERT(m_szFirstPageObjOffset);
+  DCHECK(m_szFirstPageObjOffset);
   m_PageInfos[nFirstPageNum].set_page_offset(m_szFirstPageObjOffset);
   FX_FILESIZE prev_page_end = m_pLinearized->GetFirstPageEndOffset();
   for (uint32_t i = 0; i < nPages; ++i) {
@@ -406,18 +409,18 @@ bool CPDF_HintTables::GetPagePos(uint32_t index,
 
 CPDF_DataAvail::DocAvailStatus CPDF_HintTables::CheckPage(uint32_t index) {
   if (index == m_pLinearized->GetFirstPageNo())
-    return CPDF_DataAvail::DataAvailable;
+    return CPDF_DataAvail::kDataAvailable;
 
   if (index >= m_pLinearized->GetPageCount())
-    return CPDF_DataAvail::DataError;
+    return CPDF_DataAvail::kDataError;
 
   const uint32_t dwLength = m_PageInfos[index].page_length();
   if (!dwLength)
-    return CPDF_DataAvail::DataError;
+    return CPDF_DataAvail::kDataError;
 
   if (!m_pValidator->CheckDataRangeAndRequestIfUnavailable(
           m_PageInfos[index].page_offset(), dwLength)) {
-    return CPDF_DataAvail::DataNotAvailable;
+    return CPDF_DataAvail::kDataNotAvailable;
   }
 
   // Download data of shared objects in the page.
@@ -428,22 +431,25 @@ CPDF_DataAvail::DocAvailStatus CPDF_HintTables::CheckPage(uint32_t index) {
         m_SharedObjGroupInfos[dwIndex];
 
     if (!shared_group_info.m_szOffset || !shared_group_info.m_dwLength)
-      return CPDF_DataAvail::DataError;
+      return CPDF_DataAvail::kDataError;
 
     if (!m_pValidator->CheckDataRangeAndRequestIfUnavailable(
             shared_group_info.m_szOffset, shared_group_info.m_dwLength)) {
-      return CPDF_DataAvail::DataNotAvailable;
+      return CPDF_DataAvail::kDataNotAvailable;
     }
   }
-  return CPDF_DataAvail::DataAvailable;
+  return CPDF_DataAvail::kDataAvailable;
 }
 
 bool CPDF_HintTables::LoadHintStream(CPDF_Stream* pHintStream) {
   if (!pHintStream || !m_pLinearized->HasHintTable())
     return false;
 
-  CPDF_Dictionary* pDict = pHintStream->GetDict();
-  CPDF_Object* pOffset = pDict ? pDict->GetObjectFor("S") : nullptr;
+  RetainPtr<const CPDF_Dictionary> pDict = pHintStream->GetDict();
+  if (!pDict)
+    return false;
+
+  RetainPtr<const CPDF_Object> pOffset = pDict->GetObjectFor("S");
   if (!pOffset || !pOffset->IsNumber())
     return false;
 
@@ -451,7 +457,8 @@ bool CPDF_HintTables::LoadHintStream(CPDF_Stream* pHintStream) {
   if (shared_hint_table_offset <= 0)
     return false;
 
-  auto pAcc = pdfium::MakeRetain<CPDF_StreamAcc>(pHintStream);
+  auto pAcc =
+      pdfium::MakeRetain<CPDF_StreamAcc>(pdfium::WrapRetain(pHintStream));
   pAcc->LoadAllDataFiltered();
 
   uint32_t size = pAcc->GetSize();
@@ -483,7 +490,7 @@ FX_FILESIZE CPDF_HintTables::HintsOffsetToFileOffset(
   // itself were not present. That is, a position greater than the hint stream
   // offset shall have the hint stream length added to it to determine the
   // actual offset relative to the beginning of the file.
-  // See specification PDF 32000-1:2008 Annex F.4 (Hint tables).
+  // See ISO 32000-1:2008 spec, annex F.4 (Hint tables).
   // Note: The PDF spec does not mention this, but positions equal to the hint
   // stream offset also need to have the hint stream length added to it. e.g.
   // There exists linearized PDFs generated by Adobe software that have this

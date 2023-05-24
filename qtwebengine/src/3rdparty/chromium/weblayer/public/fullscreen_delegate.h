@@ -1,11 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef WEBLAYER_PUBLIC_FULLSCREEN_DELEGATE_H_
 #define WEBLAYER_PUBLIC_FULLSCREEN_DELEGATE_H_
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
 
 namespace weblayer {
 

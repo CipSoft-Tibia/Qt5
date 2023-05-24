@@ -1,10 +1,15 @@
-// Copyright (c) 2009 The Chromium Authors. All rights reserved.
+// Copyright 2009 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
 // Implementation of a Windows event trace controller class.
+
 #include "base/win/event_trace_controller.h"
+
 #include "base/check.h"
+#include "base/numerics/checked_math.h"
+
+constexpr size_t kDefaultRealtimeBufferSizeKb = 16;
 
 namespace base {
 namespace win {
@@ -81,11 +86,13 @@ HRESULT EtwTraceController::StartFileSession(const wchar_t* session_name,
 HRESULT EtwTraceController::StartRealtimeSession(const wchar_t* session_name,
                                                  size_t buffer_size) {
   DCHECK(NULL == session_ && session_name_.empty());
+
   EtwTraceProperties prop;
   EVENT_TRACE_PROPERTIES& p = *prop.get();
   p.LogFileMode = EVENT_TRACE_REAL_TIME_MODE | EVENT_TRACE_USE_PAGED_MEMORY;
   p.FlushTimer = 1;   // flush every second.
-  p.BufferSize = 16;  // 16 K buffers.
+  p.BufferSize = checked_cast<ULONG>(
+      buffer_size ? buffer_size : kDefaultRealtimeBufferSizeKb);
   p.LogFileNameOffset = 0;
   return Start(session_name, &prop);
 }

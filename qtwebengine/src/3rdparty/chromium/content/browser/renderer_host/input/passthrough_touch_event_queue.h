@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 
 #include "base/feature_list.h"
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/time/time.h"
 #include "content/browser/renderer_host/event_with_latency_info.h"
@@ -60,36 +60,32 @@ class CONTENT_EXPORT PassthroughTouchEventQueueClient {
 class CONTENT_EXPORT PassthroughTouchEventQueue {
  public:
   struct CONTENT_EXPORT Config {
-    Config()
-        : desktop_touch_ack_timeout_delay(
-              base::TimeDelta::FromMilliseconds(200)),
-          mobile_touch_ack_timeout_delay(
-              base::TimeDelta::FromMilliseconds(1000)),
-          touch_ack_timeout_supported(false),
-          skip_touch_filter(base::FeatureList::IsEnabled(
-              blink::features::kSkipTouchEventFilter)),
-          events_to_always_forward(kSkipTouchEventFilterType.Get()) {}
-
     // Touch ack timeout delay for desktop sites. If zero, timeout behavior
     // is disabled for such sites. Defaults to 200ms.
-    base::TimeDelta desktop_touch_ack_timeout_delay;
+    base::TimeDelta desktop_touch_ack_timeout_delay = base::Milliseconds(200);
 
     // Touch ack timeout delay for mobile sites. If zero, timeout behavior
     // is disabled for such sites. Defaults to 1000ms.
-    base::TimeDelta mobile_touch_ack_timeout_delay;
+    base::TimeDelta mobile_touch_ack_timeout_delay = base::Milliseconds(1000);
 
     // Whether the platform supports touch ack timeout behavior.
     // Defaults to false (disabled).
-    bool touch_ack_timeout_supported;
+    bool touch_ack_timeout_supported = false;
 
     // Whether we should allow events to bypass normal queue filter rules.
-    bool skip_touch_filter;
+    bool skip_touch_filter =
+        base::FeatureList::IsEnabled(blink::features::kSkipTouchEventFilter);
+
     // What events types are allowed to bypass the filter.
-    std::string events_to_always_forward;
+    std::string events_to_always_forward = kSkipTouchEventFilterType.Get();
   };
 
   PassthroughTouchEventQueue(PassthroughTouchEventQueueClient* client,
                              const Config& config);
+
+  PassthroughTouchEventQueue(const PassthroughTouchEventQueue&) = delete;
+  PassthroughTouchEventQueue& operator=(const PassthroughTouchEventQueue&) =
+      delete;
 
   ~PassthroughTouchEventQueue();
 
@@ -233,7 +229,7 @@ class CONTENT_EXPORT PassthroughTouchEventQueue {
   size_t SizeForTesting() const;
 
   // Handles touch event forwarding and ack'ed event dispatch.
-  PassthroughTouchEventQueueClient* client_;
+  raw_ptr<PassthroughTouchEventQueueClient> client_;
 
   // Whether the renderer has at least one consumer of touch events, e.g. a JS
   // event handler or hit-testable scrollbars
@@ -272,8 +268,6 @@ class CONTENT_EXPORT PassthroughTouchEventQueue {
   // What events types are allowed to bypass the filter.
   const std::string events_to_always_forward_;
   static const base::FeatureParam<std::string> kSkipTouchEventFilterType;
-
-  DISALLOW_COPY_AND_ASSIGN(PassthroughTouchEventQueue);
 };
 
 }  // namespace content

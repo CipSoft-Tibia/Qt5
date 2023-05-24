@@ -83,7 +83,9 @@ one object of this type or its variants as an argument of all functions that
 create a network request.
 
 ### Content of Annotation Tag
-Each network traffic annotation should specify the following items:
+Each network traffic annotation should specify the following items, as defined
+in the `NetworkTrafficAnnotation` message of
+`chrome/browser/privacy/traffic_annotation.proto`:
 * `uniqueـid`: A globally unique identifier that must stay unchanged while the
   network request carries the same semantic meaning. If the network request gets
   a new meaning, this ID needs to be changed. The purpose of this ID is to give
@@ -92,10 +94,10 @@ Each network traffic annotation should specify the following items:
   with a network request). IDs of one component should have a shared prefix so
   that sorting all NetworkTrafficAnnotations by unique_id groups those that
   belong to the same component together.
-* `TrafficSource`: These set of fields specify the location of annotation in
+* `source`: These set of fields specify the location of annotation in
   the source code. These fields are automatically set and do not need
   specification.
-* `TrafficSemantics`: These set of fields specify meta information about the
+* `semantics`: These set of fields specify meta information about the
   network request’s content and reason.
    * `sender`: What component triggers the request. The components should be
      human readable and don’t need to reflect the components/ directory. Avoid
@@ -106,8 +108,14 @@ Each network traffic annotation should specify the following items:
      well.
    * `trigger`: What user action triggered the network request. Use a textual
      description. This should be a human readable string.
-   * `data`: What nature of data is being sent. This should be a human readable
-     string. Any user data and/or PII should be pointed out.
+   * `user_data`: What nature of data is being sent, as enums. 
+      Any personally identifiable (PII) data, provided by user or generated 
+      by Google, should be pointed out. You can include multiple 
+      values, and you may want to supplement this with the data field. 
+      All available User data enums can be found [here](https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/privacy/traffic_annotation.proto?q=UserDataType).
+   * `data`: Textual description of data being sent, for things that aren't 
+      covered by user_data enum values. You can also use this field if 
+      more context needs to be provided to describe user_data.
    * `destination`: Target of the network request. It can be either the website
      that user visits and interacts with, a Google service, a request that does
      not go to network and just fetches a local resource, or other endpoints
@@ -123,7 +131,13 @@ Each network traffic annotation should specify the following items:
      field.
    * `destination_other`: Human readable description in case the destination
      points to `OTHER`.
-* `TrafficPolicy`: These set of fields specify the controls that a user may have
+   * `internal`: Data that is meant to be visible internally, example point of contacts, 
+      should be placed inside internal field. This field should not be used in any
+      external reports.
+     * `contacts`: A person's or team's email address who are point-of-contact 
+        for questions, issues, or bugs related to this network request.
+   * `last_reviewed`: Date when this annotation was last reviewed in YYYY-MM-DD format.
+* `policy`: These set of fields specify the controls that a user may have
   on disabling or limiting the network request and its trace.
    * `cookies_allowed`: Specifies if this request stores and uses cookies or
      not. Use values `YES` or `NO`.
@@ -145,10 +159,24 @@ Each network traffic annotation should specify the following items:
      Note that settings look different on different platforms, make sure your
      description works everywhere!
    * `chrome_policy`: Policy configuration that disables or limits this network
-     request. This would be a text serialized protobuf of any enterprise policy.
-     See policy list or  chrome_settings.proto for the full list of policies.
+     request. This would be a text serialized protobuf of any **non-device**
+     enterprise policy. See policy list or
+     `out/Debug/gen/components/policy/proto/chrome_settings.proto` for the full
+     list of policies.
+     * Note: Use `chrome_device_policy` instead for device policies.
+   * `chrome_device_policy`: Policy configuration that disables or limits this
+     network request. This would be a text serialized protobuf of any
+     **device** enterprise policy. See
+     `components/policy/proto/chrome_device_policy.proto` for the full list of
+     policies.
+     * Note: Use `chrome_policy` instead for non-device policies (e.g. user
+     policies).
    * `policy_exception_justification`: If there is no policy to disable or limit
      this request, a justification can be presented here.
+   * `deprecated_policies`: Policy names disabling or limiting this network request
+      which are currently deprecated. These should be a subset of the policies in the
+      `chrome_policy` field. If a policy is removed from the `chrome_policy` field, 
+      then it should be removed from this field also.
 * `comments`: If required, any human readable extra comments.
 
 ### Format and Examples
@@ -173,9 +201,18 @@ all other fields bundled together as a serialized protobuf string.
             "suggested spellings, which will be displayed in the context menu."
           trigger: "User types text into a text field or asks to correct a "
                    "misspelled word."
+          internal {
+            contacts {
+                email: "chrome-spellcheck@google.com"
+            }
+          }
+          user_data {
+            type: USER_CONTENT
+          }
           data: "Text a user has typed into a text field. No user identifier "
                 "is sent along with the text."
           destination: GOOGLE_OWNED_SERVICE
+          last_reviewed: "2022-10-17"
         }
         policy {
           cookies_allowed: NO
@@ -208,6 +245,15 @@ all other fields bundled together as a serialized protobuf string.
             "The state of the local DB is sent so the server can send just the "
             "changes. This doesn't include any user data."
           destination: GOOGLE_OWNED_SERVICE
+          internal {
+            contacts {
+                email: "chrome-safebrowsing@google.com"
+            }
+          }
+          user_data {
+            type: NONE
+          }
+          last_reviewed: "2023-01-01"
         }
         policy {
           cookies_allowed: YES
@@ -283,8 +329,6 @@ change list. These checks include:
 * Annotations are not incorrectly defined.
    * e.g., traffic_annotation = NetworkTrafficAnnotation({1}).
 * All usages from Chrome have annotation.
-* Unique ids are unique, through history (even if an annotation gets deprecated,
-  its unique id cannot be reused to keep the stats sound).
 * That the annotation appears in
   `tools/traffic_annotation/summary/grouping.xml`. When adding a new annotation,
   it must also be included in `grouping.xml` for reporting purposes (please
@@ -292,16 +336,14 @@ change list. These checks include:
 
 
 ### Presubmit tests
-To perform tests prior to submit, one can use the `traffic_annotation_auditor`
-binary. It runs over the whole repository and using a python script, extracts
-all the annotations and then checks if all above items are correct. The latest
-executable for supported platforms can be found in
-`tools/traffic_annotation/bin/[platform]`.
+To perform tests prior to submit, one can use the `auditor.py`
+script. It runs over the whole repository, extracts
+all the annotations from C++ code, and then checks them for correctness.
 
-Running the `traffic_annotation_auditor` requires having a build directory and
-can be done with the following syntax:
-`tools/traffic_annotation/bin/[linux64/win32]/traffic_annotation_auditor
- --build-path=[out/Default]`
+Running the `auditor.py` script requires a build directory in which you just
+built the `chrome` target. You can invoke it like this:
+`vpython3 tools/traffic_annotation/scripts/auditor/auditor.py
+ --build-path=out/Default`
 
 ### Waterfall tests
 Two commit queue trybots test traffic annotations on changed files using the
@@ -320,7 +362,7 @@ Network traffic annotations require review before landing in code and this is
 enforced through keeping a summary of annotations in
 `tools/traffic_annotation/summary/annotations.xml`. Once a new annotation is added,
 one is updated, or deleted, this file should also be updated. To update the
-`annotations.xml` file automatically, one can run `traffic_annotation_auditor`
+`annotations.xml` file automatically, one can run `auditor.py`
 as specified in presubmit tests. But if it is not possible to do so (e.g., if
 you are changing the code from an unsupported platform or you don’t have a
 compiled build directory), the code can be submitted to the trybot and the test
@@ -434,11 +476,12 @@ where after serialization, the annotation object is first created, then receives
 value. In these cases, `net::MutableNetworkTrafficAnnotationTag` and
 `net::MutablePartialNetworkTrafficAnnotationTag` can be used which do not have
 this limitation.
+
 Mutable annotations have a run time check before being converted into normal
 annotations to ensure their content is valid. Therefore it is suggested that
 they would be used only if there is no other way around it. Use cases are
-checked with the `traffic_annotation_auditor` to ensure proper initialization
-values for the mutable annotations.
+checked with `auditor.py` to ensure proper initialization values for the
+mutable annotations.
 
 
 ## Mojo Interfaces (Advanced)

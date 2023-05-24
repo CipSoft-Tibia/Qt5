@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,9 +12,8 @@
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
-#include "base/lazy_instance.h"
+#include "base/no_destructor.h"
 #include "base/notreached.h"
-#include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_split.h"
@@ -24,6 +23,9 @@
 #include "base/threading/thread_restrictions.h"
 
 namespace base {
+
+const char kLsbReleaseKey[] = "LSB_RELEASE";
+const char kLsbReleaseTimeKey[] = "LSB_RELEASE_TIME";  // Seconds since epoch
 
 namespace {
 
@@ -39,24 +41,15 @@ const char* const kChromeOsReleaseNames[] = {
 
 const char kLinuxStandardBaseReleaseFile[] = "/etc/lsb-release";
 
-const char kLsbReleaseKey[] = "LSB_RELEASE";
-const char kLsbReleaseTimeKey[] = "LSB_RELEASE_TIME";  // Seconds since epoch
-
 const char kLsbReleaseSourceKey[] = "lsb-release";
 const char kLsbReleaseSourceEnv[] = "env";
 const char kLsbReleaseSourceFile[] = "file";
 
+}  // namespace
+
 class ChromeOSVersionInfo {
  public:
-  ChromeOSVersionInfo() { Parse(); }
-
-  void Parse() {
-    lsb_release_map_.clear();
-    major_version_ = 0;
-    minor_version_ = 0;
-    bugfix_version_ = 0;
-    is_running_on_chromeos_ = false;
-
+  ChromeOSVersionInfo() {
     std::string lsb_release, lsb_release_time_str;
     std::unique_ptr<Environment> env(Environment::Create());
     bool parsed_from_env =
@@ -70,7 +63,7 @@ class ChromeOSVersionInfo {
       // If the LSB_RELEASE and LSB_RELEASE_TIME environment variables are not
       // set, fall back to a blocking read of the lsb_release file. This should
       // only happen in non Chrome OS environments.
-      ThreadRestrictions::ScopedAllowIO allow_io;
+      ScopedAllowBlocking allow_blocking;
       FilePath path(kLinuxStandardBaseReleaseFile);
       ReadFileToString(path, &lsb_release);
       File::Info fileinfo;
@@ -82,6 +75,11 @@ class ChromeOSVersionInfo {
     lsb_release_map_[kLsbReleaseSourceKey] =
         parsed_from_env ? kLsbReleaseSourceEnv : kLsbReleaseSourceFile;
   }
+
+  // The test-only instance should not parse the lsb-release file, because that
+  // file exists on the linux test bots, but contains irrelevant values.
+  enum ForTest { FOR_TEST };
+  explicit ChromeOSVersionInfo(ForTest for_test) {}
 
   bool GetLsbReleaseValue(const std::string& key, std::string* value) {
     LsbReleaseMap::const_iterator iter = lsb_release_map_.find(key);
@@ -100,9 +98,10 @@ class ChromeOSVersionInfo {
   }
 
   const Time& lsb_release_time() const { return lsb_release_time_; }
+  void set_lsb_release_time(const Time& time) { lsb_release_time_ = time; }
+
   bool is_running_on_chromeos() const { return is_running_on_chromeos_; }
 
- private:
   void ParseLsbRelease(const std::string& lsb_release) {
     // Parse and cache lsb_release key pairs. There should only be a handful
     // of entries so the overhead for this will be small, and it can be
@@ -119,7 +118,7 @@ class ChromeOSVersionInfo {
     }
     // Parse the version from the first matching recognized version key.
     std::string version;
-    for (size_t i = 0; i < base::size(kLinuxStandardBaseVersionKeys); ++i) {
+    for (size_t i = 0; i < std::size(kLinuxStandardBaseVersionKeys); ++i) {
       std::string key = kLinuxStandardBaseVersionKeys[i];
       if (GetLsbReleaseValue(key, &version) && !version.empty())
         break;
@@ -138,7 +137,7 @@ class ChromeOSVersionInfo {
     // Check release name for Chrome OS.
     std::string release_name;
     if (GetLsbReleaseValue(kChromeOsReleaseNameKey, &release_name)) {
-      for (size_t i = 0; i < base::size(kChromeOsReleaseNames); ++i) {
+      for (size_t i = 0; i < std::size(kChromeOsReleaseNames); ++i) {
         if (release_name == kChromeOsReleaseNames[i]) {
           is_running_on_chromeos_ = true;
           break;
@@ -147,23 +146,28 @@ class ChromeOSVersionInfo {
     }
   }
 
+ private:
   using LsbReleaseMap = std::map<std::string, std::string>;
   Time lsb_release_time_;
   LsbReleaseMap lsb_release_map_;
-  int32_t major_version_;
-  int32_t minor_version_;
-  int32_t bugfix_version_;
-  bool is_running_on_chromeos_;
+  int32_t major_version_ = 0;
+  int32_t minor_version_ = 0;
+  int32_t bugfix_version_ = 0;
+  bool is_running_on_chromeos_ = false;
 };
 
-static LazyInstance<ChromeOSVersionInfo>::Leaky g_chrome_os_version_info =
-    LAZY_INSTANCE_INITIALIZER;
+ChromeOSVersionInfo* g_chromeos_version_info_for_test = nullptr;
 
 ChromeOSVersionInfo& GetChromeOSVersionInfo() {
-  return g_chrome_os_version_info.Get();
-}
+  // ChromeOSVersionInfo only stores the parsed lsb-release values, not the full
+  // contents of the lsb-release file. Therefore, use a second instance for
+  // overrides in tests so we can cleanly restore the original lsb-release.
+  if (g_chromeos_version_info_for_test)
+    return *g_chromeos_version_info_for_test;
 
-}  // namespace
+  static base::NoDestructor<ChromeOSVersionInfo> version_info;
+  return *version_info;
+}
 
 // static
 std::string SysInfo::HardwareModelName() {
@@ -229,10 +233,18 @@ bool SysInfo::IsRunningOnChromeOS() {
 // static
 void SysInfo::SetChromeOSVersionInfoForTest(const std::string& lsb_release,
                                             const Time& lsb_release_time) {
-  std::unique_ptr<Environment> env(Environment::Create());
-  env->SetVar(kLsbReleaseKey, lsb_release);
-  env->SetVar(kLsbReleaseTimeKey, NumberToString(lsb_release_time.ToDoubleT()));
-  g_chrome_os_version_info.Get().Parse();
+  DCHECK(!g_chromeos_version_info_for_test) << "Nesting is not allowed";
+  g_chromeos_version_info_for_test =
+      new ChromeOSVersionInfo(ChromeOSVersionInfo::FOR_TEST);
+  g_chromeos_version_info_for_test->ParseLsbRelease(lsb_release);
+  g_chromeos_version_info_for_test->set_lsb_release_time(lsb_release_time);
+}
+
+// static
+void SysInfo::ResetChromeOSVersionInfoForTest() {
+  DCHECK(g_chromeos_version_info_for_test);
+  delete g_chromeos_version_info_for_test;
+  g_chromeos_version_info_for_test = nullptr;
 }
 
 // static
@@ -250,6 +262,27 @@ void SysInfo::CrashIfChromeOSNonTestImage() {
 
   // Crash if can't find test-image marker in the release track.
   CHECK_NE(track.find(kTestImageRelease), std::string::npos);
+}
+
+SysInfo::HardwareInfo SysInfo::GetHardwareInfoSync() {
+  HardwareInfo info;
+  // Manufacturer of ChromeOS device is always Google so hardcode it.
+  info.manufacturer = "Google";
+  if (IsRunningOnChromeOS()) {
+    // Read the model name from cros-configfs.
+    constexpr char kModelNamePath[] = "/run/chromeos-config/v1/name";
+    constexpr size_t kMaxStringSize = 100u;
+    std::string data;
+    if (ReadFileToStringWithMaxSize(FilePath(kModelNamePath), &data,
+                                    kMaxStringSize)) {
+      TrimWhitespaceASCII(data, TrimPositions::TRIM_ALL, &info.model);
+    }
+    DCHECK(IsStringUTF8(info.model));
+  } else {
+    // Fake model name on chromeos linux-emulator (for both linux/ash).
+    info.model = "linux-emulator";
+  }
+  return info;
 }
 
 }  // namespace base

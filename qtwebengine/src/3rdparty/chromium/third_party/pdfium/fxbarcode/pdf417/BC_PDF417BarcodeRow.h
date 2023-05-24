@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,21 +9,20 @@
 
 #include <stdint.h>
 
-#include <vector>
-
-#include "core/fxcrt/fx_memory_wrappers.h"
+#include "core/fxcrt/fixed_zeroed_data_vector.h"
+#include "third_party/base/span.h"
 
 class CBC_BarcodeRow final {
  public:
   explicit CBC_BarcodeRow(size_t width);
   ~CBC_BarcodeRow();
 
-  void addBar(bool black, int32_t width);
-  std::vector<uint8_t, FxAllocAllocator<uint8_t>>& getRow();
+  void AddBar(bool black, size_t width);
+  pdfium::span<const uint8_t> GetRow() const { return row_; }
 
  private:
-  std::vector<uint8_t, FxAllocAllocator<uint8_t>> m_row;
-  int32_t m_currentLocation;
+  FixedZeroedDataVector<uint8_t> row_;
+  size_t offset_ = 0;
 };
 
 #endif  // FXBARCODE_PDF417_BC_PDF417BARCODEROW_H_

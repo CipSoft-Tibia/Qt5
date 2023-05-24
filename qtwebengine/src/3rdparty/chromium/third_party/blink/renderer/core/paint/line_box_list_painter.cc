@@ -1,9 +1,10 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/paint/line_box_list_painter.h"
 
+#include "third_party/blink/renderer/core/css/style_engine.h"
 #include "third_party/blink/renderer/core/layout/api/line_layout_box_model.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
 #include "third_party/blink/renderer/core/layout/layout_box_model_object.h"
@@ -12,8 +13,9 @@
 #include "third_party/blink/renderer/core/layout/line/line_box_list.h"
 #include "third_party/blink/renderer/core/layout/line/root_inline_box.h"
 #include "third_party/blink/renderer/core/paint/object_painter.h"
+#include "third_party/blink/renderer/core/paint/paint_auto_dark_mode.h"
 #include "third_party/blink/renderer/core/paint/paint_info.h"
-#include "third_party/blink/renderer/core/paint/paint_timing_detector.h"
+#include "third_party/blink/renderer/core/paint/timing/paint_timing_detector.h"
 #include "third_party/blink/renderer/core/paint/url_metadata_utils.h"
 #include "third_party/blink/renderer/platform/graphics/color.h"
 #include "third_party/blink/renderer/platform/graphics/paint/drawing_recorder.h"
@@ -45,8 +47,8 @@ void BuildBackplate(const InlineFlowBox* box,
     if (layout_item.IsText() || layout_item.IsListMarker()) {
       if (layout_item.IsText()) {
         String child_text =
-            ToInlineTextBox(child)->GetLineLayoutItem().GetText();
-        if (ToInlineTextBox(child)->IsLineBreak() ||
+            To<InlineTextBox>(child)->GetLineLayoutItem().GetText();
+        if (To<InlineTextBox>(child)->IsLineBreak() ||
             child_text.StartsWith('\n'))
           (*consecutive_line_breaks)++;
       }
@@ -69,7 +71,7 @@ void BuildBackplate(const InlineFlowBox* box,
     } else if (child->IsInlineFlowBox()) {
       // If an inline flow box was reached, continue to recursively build up the
       // backplate.
-      BuildBackplate(ToInlineFlowBox(child), paint_offset, current_backplate,
+      BuildBackplate(To<InlineFlowBox>(child), paint_offset, current_backplate,
                      consecutive_line_breaks, paragraph_backplates);
     }
   }
@@ -153,7 +155,7 @@ void LineBoxListPainter::PaintBackplate(
   // element is visible.
   const ComputedStyle& style =
       line_box_list_.First()->GetLineLayoutItem().StyleRef();
-  if (style.ForcedColorAdjust() == EForcedColorAdjust::kNone ||
+  if (style.ForcedColorAdjust() != EForcedColorAdjust::kAuto ||
       style.Visibility() != EVisibility::kVisible)
     return;
 
@@ -163,14 +165,17 @@ void LineBoxListPainter::PaintBackplate(
     return;
 
   const auto& backplates = GetBackplates(paint_offset);
-  IntRect visual_rect = EnclosingIntRect(UnionRect(backplates));
+  gfx::Rect visual_rect = ToEnclosingRect(UnionRect(backplates));
   DrawingRecorder recorder(paint_info.context, layout_object,
                            DisplayItem::kForcedColorsModeBackplate,
                            visual_rect);
   Color backplate_color =
       layout_object.GetDocument().GetStyleEngine().ForcedBackgroundColor();
-  for (const auto backplate : backplates)
-    paint_info.context.FillRect(FloatRect(backplate), backplate_color);
+  for (const auto backplate : backplates) {
+    paint_info.context.FillRect(
+        gfx::RectF(backplate), backplate_color,
+        PaintAutoDarkMode(style, DarkModeFilter::ElementRole::kBackground));
+  }
 }
 
 Vector<PhysicalRect> LineBoxListPainter::GetBackplates(

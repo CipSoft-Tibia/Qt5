@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/chartdatetimeaxisx_p.h>
 #include <private/chartpresenter_p.h>
@@ -35,7 +9,7 @@
 #include <QtCore/QDateTime>
 #include <QtCore/QtMath>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 ChartDateTimeAxisX::ChartDateTimeAxisX(QDateTimeAxis *axis, QGraphicsItem *item)
     : HorizontalAxis(axis, item),
@@ -49,13 +23,13 @@ ChartDateTimeAxisX::~ChartDateTimeAxisX()
 {
 }
 
-QVector<qreal> ChartDateTimeAxisX::calculateLayout() const
+QList<qreal> ChartDateTimeAxisX::calculateLayout() const
 {
     int tickCount = m_axis->tickCount();
 
     Q_ASSERT(tickCount >= 2);
 
-    QVector<qreal> points;
+    QList<qreal> points;
     points.resize(tickCount);
     const QRectF &gridRect = gridGeometry();
     const qreal deltaX = gridRect.width() / (qreal(tickCount) - 1.0);
@@ -66,7 +40,7 @@ QVector<qreal> ChartDateTimeAxisX::calculateLayout() const
 
 void ChartDateTimeAxisX::updateGeometry()
 {
-    const QVector<qreal>& layout = ChartAxisElement::layout();
+    const QList<qreal> &layout = ChartAxisElement::layout();
     if (layout.isEmpty())
         return;
     setLabels(createDateTimeLabels(min(), max(), layout.size(), m_axis->format()));
@@ -76,7 +50,7 @@ void ChartDateTimeAxisX::updateGeometry()
 
 void ChartDateTimeAxisX::handleTickCountChanged(int tick)
 {
-    Q_UNUSED(tick)
+    Q_UNUSED(tick);
     QGraphicsLayoutItem::updateGeometry();
     if (presenter())
         presenter()->layout()->invalidate();
@@ -92,7 +66,7 @@ void ChartDateTimeAxisX::handleFormatChanged(const QString &format)
 
 QSizeF ChartDateTimeAxisX::sizeHint(Qt::SizeHint which, const QSizeF &constraint) const
 {
-    Q_UNUSED(constraint)
+    Q_UNUSED(constraint);
 
     QSizeF sh;
 
@@ -108,26 +82,36 @@ QSizeF ChartDateTimeAxisX::sizeHint(Qt::SizeHint which, const QSizeF &constraint
 
     switch (which) {
     case Qt::MinimumSize: {
-        QRectF boundingRect = ChartPresenter::textBoundingRect(axis()->labelsFont(),
-                                                               QStringLiteral("..."),
-                                                               axis()->labelsAngle());
-        width = boundingRect.width() / 2.0;
-        height = boundingRect.height() + labelPadding() + base.height() + 1.0;
+        if (labelsVisible()) {
+            QRectF boundingRect = ChartPresenter::textBoundingRect(axis()->labelsFont(),
+                                                                   QStringLiteral("..."),
+                                                                   axis()->labelsAngle());
+            width = boundingRect.width() / 2.0;
+            height = boundingRect.height() + labelPadding() + base.height() + 1.0;
+        } else {
+            width = 0;
+            height = base.height() + 1.0;
+        }
         sh = QSizeF(width, height);
         break;
     }
     case Qt::PreferredSize: {
-        qreal labelHeight = 0.0;
-        qreal firstWidth = -1.0;
-        foreach (const QString& s, ticksList) {
-            QRectF rect = ChartPresenter::textBoundingRect(axis()->labelsFont(), s, axis()->labelsAngle());
-            labelHeight = qMax(rect.height(), labelHeight);
-            width = rect.width();
-            if (firstWidth < 0.0)
-                firstWidth = width;
+        if (labelsVisible()) {
+            qreal labelHeight = 0.0;
+            qreal firstWidth = -1.0;
+            foreach (const QString& s, ticksList) {
+                QRectF rect = ChartPresenter::textBoundingRect(axis()->labelsFont(), s, axis()->labelsAngle());
+                labelHeight = qMax(rect.height(), labelHeight);
+                width = rect.width();
+                if (firstWidth < 0.0)
+                    firstWidth = width;
+            }
+            height = labelHeight + labelPadding() + base.height() + 1.0;
+            width = qMax(width, firstWidth) / 2.0;
+        } else {
+            height = base.height() + 1.0;
+            width = 0;
         }
-        height = labelHeight + labelPadding() + base.height() + 1.0;
-        width = qMax(width, firstWidth) / 2.0;
         sh = QSizeF(width, height);
         break;
     }
@@ -138,6 +122,6 @@ QSizeF ChartDateTimeAxisX::sizeHint(Qt::SizeHint which, const QSizeF &constraint
     return sh;
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_chartdatetimeaxisx_p.cpp"

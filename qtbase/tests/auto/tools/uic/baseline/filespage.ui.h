@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'filespage.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -34,24 +34,24 @@ public:
     void setupUi(QWidget *FilesPage)
     {
         if (FilesPage->objectName().isEmpty())
-            FilesPage->setObjectName(QString::fromUtf8("FilesPage"));
+            FilesPage->setObjectName("FilesPage");
         FilesPage->resize(417, 242);
         gridLayout = new QGridLayout(FilesPage);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
+        gridLayout->setObjectName("gridLayout");
         fileLabel = new QLabel(FilesPage);
-        fileLabel->setObjectName(QString::fromUtf8("fileLabel"));
+        fileLabel->setObjectName("fileLabel");
         fileLabel->setWordWrap(true);
 
         gridLayout->addWidget(fileLabel, 0, 0, 1, 2);
 
         fileListWidget = new QListWidget(FilesPage);
-        fileListWidget->setObjectName(QString::fromUtf8("fileListWidget"));
+        fileListWidget->setObjectName("fileListWidget");
 
         gridLayout->addWidget(fileListWidget, 1, 0, 3, 1);
 
         removeButton = new QPushButton(FilesPage);
-        removeButton->setObjectName(QString::fromUtf8("removeButton"));
-        QSizePolicy sizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+        removeButton->setObjectName("removeButton");
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Maximum, QSizePolicy::Policy::Fixed);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(removeButton->sizePolicy().hasHeightForWidth());
@@ -60,15 +60,15 @@ public:
         gridLayout->addWidget(removeButton, 1, 1, 1, 1);
 
         removeAllButton = new QPushButton(FilesPage);
-        removeAllButton->setObjectName(QString::fromUtf8("removeAllButton"));
+        removeAllButton->setObjectName("removeAllButton");
 
         gridLayout->addWidget(removeAllButton, 2, 1, 1, 1);
 
-        spacerItem = new QSpacerItem(75, 16, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem = new QSpacerItem(75, 16, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout->addItem(spacerItem, 3, 1, 1, 1);
 
-        spacerItem1 = new QSpacerItem(20, 31, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem1 = new QSpacerItem(20, 31, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout->addItem(spacerItem1, 4, 0, 1, 1);
 

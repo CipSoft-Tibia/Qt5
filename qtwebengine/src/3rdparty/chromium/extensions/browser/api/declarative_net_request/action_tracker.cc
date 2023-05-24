@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include <tuple>
 #include <utility>
 
-#include "base/stl_util.h"
+#include "base/containers/cxx20_erase.h"
 #include "base/time/clock.h"
 #include "base/timer/timer.h"
 #include "base/values.h"
@@ -20,11 +20,13 @@
 #include "extensions/browser/event_router.h"
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_registry.h"
+#include "extensions/browser/extensions_browser_client.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/manifest.h"
 #include "extensions/common/permissions/api_permission.h"
 #include "extensions/common/permissions/permissions_data.h"
+#include "services/network/public/mojom/fetch_api.mojom-shared.h"
 
 namespace extensions {
 namespace declarative_net_request {
@@ -35,7 +37,7 @@ namespace dnr_api = api::declarative_net_request;
 
 bool IsMainFrameNavigationRequest(const WebRequestInfo& request_info) {
   return request_info.is_navigation_request &&
-         request_info.type == blink::mojom::ResourceType::kMainFrame;
+         request_info.web_request_type == WebRequestResourceType::MAIN_FRAME;
 }
 
 // Returns whether a TrackedRule should be recorded on a rule match for the
@@ -51,10 +53,10 @@ bool ShouldRecordMatchedRule(content::BrowserContext* browser_context,
   const PermissionsData* permissions_data = extension->permissions_data();
 
   const bool has_feedback_permission = permissions_data->HasAPIPermission(
-      APIPermission::kDeclarativeNetRequestFeedback);
+      mojom::APIPermissionID::kDeclarativeNetRequestFeedback);
 
   const bool has_active_tab_permission =
-      permissions_data->HasAPIPermission(APIPermission::kActiveTab);
+      permissions_data->HasAPIPermission(mojom::APIPermissionID::kActiveTab);
 
   // Always record a matched rule if |extension| has the feedback permission or
   // the request is associated with a tab and |extension| has the activeTab
@@ -67,6 +69,24 @@ const base::Clock* g_test_clock = nullptr;
 
 base::Time GetNow() {
   return g_test_clock ? g_test_clock->Now() : base::Time::Now();
+}
+
+bool g_check_tab_id_on_rule_match = true;
+
+// Returns the tab ID to use for tracking a matched rule. Any ID corresponding
+// to a tab that no longer exists will be mapped to the unknown tab ID. This is
+// similar to when a tab is destroyed, its matched rules are re-mapped to the
+// unknown tab ID.
+int GetTabIdForMatchedRule(content::BrowserContext* browser_context,
+                           int request_tab_id) {
+  if (!g_check_tab_id_on_rule_match)
+    return request_tab_id;
+
+  DCHECK(ExtensionsBrowserClient::Get());
+  return ExtensionsBrowserClient::Get()->IsValidTabId(browser_context,
+                                                      request_tab_id)
+             ? request_tab_id
+             : extension_misc::kUnknownTabId;
 }
 
 }  // namespace
@@ -96,13 +116,22 @@ void ActionTracker::SetTimerForTest(
   StartTrimRulesTask();
 }
 
+void ActionTracker::SetCheckTabIdOnRuleMatchForTest(bool check_tab_id) {
+  g_check_tab_id_on_rule_match = check_tab_id;
+}
+
 void ActionTracker::OnRuleMatched(const RequestAction& request_action,
                                   const WebRequestInfo& request_info) {
+  const int tab_id =
+      GetTabIdForMatchedRule(browser_context_, request_info.frame_data.tab_id);
+
+  dnr_api::RequestDetails request_details = CreateRequestDetails(request_info);
+  request_details.tab_id = tab_id;
+
   DispatchOnRuleMatchedDebugIfNeeded(request_action,
-                                     CreateRequestDetails(request_info));
+                                     std::move(request_details));
 
   const ExtensionId& extension_id = request_action.extension_id;
-  const int tab_id = request_info.frame_data.tab_id;
   const bool should_record_rule =
       ShouldRecordMatchedRule(browser_context_, extension_id, tab_id);
 
@@ -153,7 +182,8 @@ void ActionTracker::OnRuleMatched(const RequestAction& request_action,
                                                 false /* clear_badge_text */);
 }
 
-void ActionTracker::OnPreferenceEnabled(const ExtensionId& extension_id) const {
+void ActionTracker::OnActionCountAsBadgeTextPreferenceEnabled(
+    const ExtensionId& extension_id) const {
   DCHECK(extension_prefs_->GetDNRUseActionCountAsBadgeText(extension_id));
 
   for (auto it = rules_tracked_.begin(); it != rules_tracked_.end(); ++it) {
@@ -258,7 +288,7 @@ void ActionTracker::ResetTrackedInfoForTab(int tab_id, int64_t navigation_id) {
 
 std::vector<dnr_api::MatchedRuleInfo> ActionTracker::GetMatchedRules(
     const Extension& extension,
-    const base::Optional<int>& tab_id,
+    const absl::optional<int>& tab_id,
     const base::Time& min_time_stamp) {
   TrimRulesFromNonActiveTabs();
 
@@ -319,6 +349,23 @@ int ActionTracker::GetPendingRuleCountForTest(const ExtensionId& extension_id,
   return tracked_info == pending_navigation_actions_.end()
              ? 0
              : tracked_info->second.matched_rules.size();
+}
+
+void ActionTracker::IncrementActionCountForTab(const ExtensionId& extension_id,
+                                               int tab_id,
+                                               int increment) {
+  TrackedInfo& tracked_info = rules_tracked_[{extension_id, tab_id}];
+  size_t new_action_count =
+      std::max<int>(tracked_info.action_count + increment, 0);
+
+  if (tracked_info.action_count == new_action_count)
+    return;
+
+  DCHECK(ExtensionsAPIClient::Get());
+  ExtensionsAPIClient::Get()->UpdateActionCount(browser_context_, extension_id,
+                                                tab_id, new_action_count,
+                                                false /* clear_badge_text */);
+  tracked_info.action_count = new_action_count;
 }
 
 template <typename T>
@@ -384,8 +431,8 @@ void ActionTracker::DispatchOnRuleMatchedDebugIfNeeded(
   matched_rule_info_debug.rule = std::move(matched_rule);
   matched_rule_info_debug.request = std::move(request_details);
 
-  auto args = std::make_unique<base::ListValue>();
-  args->Append(matched_rule_info_debug.ToValue());
+  base::Value::List args;
+  args.Append(matched_rule_info_debug.ToValue());
 
   auto event = std::make_unique<Event>(
       events::DECLARATIVE_NET_REQUEST_ON_RULE_MATCHED_DEBUG,

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,15 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/task/sequenced_task_runner.h"
 
 namespace content {
 
 FlingingRendererClient::FlingingRendererClient(
     ClientExtentionPendingReceiver client_extension_receiver,
-    scoped_refptr<base::SingleThreadTaskRunner> media_task_runner,
+    scoped_refptr<base::SequencedTaskRunner> media_task_runner,
     std::unique_ptr<media::MojoRenderer> mojo_renderer,
     media::RemotePlayStateChangeCB remote_play_state_change_cb)
     : MojoRendererWrapper(std::move(mojo_renderer)),
@@ -27,7 +28,7 @@ FlingingRendererClient::~FlingingRendererClient() = default;
 void FlingingRendererClient::Initialize(media::MediaResource* media_resource,
                                         media::RendererClient* client,
                                         media::PipelineStatusCallback init_cb) {
-  DCHECK(media_task_runner_->BelongsToCurrentThread());
+  DCHECK(media_task_runner_->RunsTasksInCurrentSequence());
 
   client_ = client;
 
@@ -37,9 +38,13 @@ void FlingingRendererClient::Initialize(media::MediaResource* media_resource,
   MojoRendererWrapper::Initialize(media_resource, client, std::move(init_cb));
 }
 
+media::RendererType FlingingRendererClient::GetRendererType() {
+  return media::RendererType::kFlinging;
+}
+
 void FlingingRendererClient::OnRemotePlayStateChange(
     media::MediaStatus::State state) {
-  DCHECK(media_task_runner_->BelongsToCurrentThread());
+  DCHECK(media_task_runner_->RunsTasksInCurrentSequence());
   remote_play_state_change_cb_.Run(state);
 }
 

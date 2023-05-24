@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef DEVTOOLS_FRONTEND_QT_H
 #define DEVTOOLS_FRONTEND_QT_H
@@ -45,35 +9,26 @@
 
 #include "web_contents_delegate_qt.h"
 
-#include "base/compiler_specific.h"
 #include "base/containers/unique_ptr_adapters.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
-#include "base/values.h"
-#include "content/public/browser/devtools_agent_host.h"
-#include "content/public/browser/devtools_frontend_host.h"
+#include "chrome/browser/devtools/devtools_ui_bindings.h"
 #include "content/public/browser/web_contents_observer.h"
 
-namespace base {
-class Value;
-}
+class DevToolsEyeDropper;
 
 namespace content {
-class NavigationHandle;
-class RenderViewHost;
+class DevToolsAgentHost;
 class WebContents;
-}  // namespace content
-
-class DevToolsEyeDropper;
-class PersistentPrefStore;
+} // namespace content
 
 namespace QtWebEngineCore {
+class WebContentsAdapter;
 
-class DevToolsFrontendQt : public content::WebContentsObserver
-                         , public content::DevToolsAgentHostClient {
+class DevToolsFrontendQt : public DevToolsUIBindings::Delegate, public content::WebContentsObserver
+{
 public:
-    static DevToolsFrontendQt *Show(QSharedPointer<WebContentsAdapter> frontendAdapter, content::WebContents *inspectedContents);
+    static DevToolsFrontendQt *Show(QSharedPointer<WebContentsAdapter> frontendAdapter,
+                                    content::WebContents *inspectedContents);
 
     void Activate();
     void Focus();
@@ -82,62 +37,50 @@ public:
 
     void DisconnectFromTarget();
 
-    void CallClientFunction(const std::string& function_name,
-                            const base::Value* arg1,
-                            const base::Value* arg2,
-                            const base::Value* arg3);
+    WebContentsDelegateQt *frontendDelegate() const;
 
-    WebContentsDelegateQt *frontendDelegate() const
-    {
-        return m_frontendDelegate;
-    }
+    static bool IsValidFrontendURL(const GURL &url);
+    static std::string GetId(content::WebContents *inspectedContents);
 
 protected:
-    DevToolsFrontendQt(QSharedPointer<WebContentsAdapter> webContentsAdapter, content::WebContents *inspectedContents);
+    DevToolsFrontendQt(QSharedPointer<WebContentsAdapter> webContentsAdapter,
+                       content::WebContents *inspectedContents);
     ~DevToolsFrontendQt() override;
 
-    // content::DevToolsAgentHostClient implementation.
-    void AgentHostClosed(content::DevToolsAgentHost* agent_host) override;
-    void DispatchProtocolMessage(content::DevToolsAgentHost* agent_host, base::span<const uint8_t> message) override;
-
-    void SetPreferences(const std::string& json);
-    virtual void HandleMessageFromDevToolsFrontend(const std::string& message);
-
 private:
-    // WebContentsObserver overrides
-    void ReadyToCommitNavigation(content::NavigationHandle* navigation_handle) override;
-    void DocumentAvailableInMainFrame() override;
+    void ColorPickedInEyeDropper(int r, int g, int b, int a);
+
+    // content::WebContentsObserver overrides
     void WebContentsDestroyed() override;
 
-    void SendMessageAck(int request_id, const base::Value* arg1);
-    void SetPreference(const std::string &name, const std::string &value);
-    void RemovePreference(const std::string &name);
-    void ClearPreferences();
-    void CreateJsonPreferences(bool clear);
-    void SetEyeDropperActive(bool active);
-    void ColorPickedInEyeDropper(int r, int g, int b, int a);
+    // DevToolsUIBindings::Delegate overrides
+    void ActivateWindow() override;
+    void SetEyeDropperActive(bool active) override;
+    void OpenInNewTab(const std::string &url) override;
+    void InspectedContentsClosing() override;
+    void OnLoadCompleted() override;
+
+    void InspectElementCompleted() override{};
+    void CloseWindow() override;
+    void Inspect(scoped_refptr<content::DevToolsAgentHost>) override{};
+    void SetInspectedPageBounds(const gfx::Rect &) override{};
+    void SetIsDocked(bool) override{};
+    void SetWhitelistedShortcuts(const std::string &) override{};
+    void OpenNodeFrontend() override{};
+    void ReadyForTest() override{};
+    void ConnectionReady() override{};
+    void SetOpenNewWindowForPopups(bool) override{};
+    void RenderProcessGone(bool) override{};
+    void ShowCertificateViewer(const std::string &) override{};
 
     // We shouldn't be keeping it alive
     QWeakPointer<WebContentsAdapter> m_frontendAdapter;
-    WebContentsAdapter *m_inspectedAdapter;
-    WebContentsDelegateQt *m_frontendDelegate;
     content::WebContents *m_inspectedContents;
-    scoped_refptr<content::DevToolsAgentHost> m_agentHost;
-    int m_inspect_element_at_x;
-    int m_inspect_element_at_y;
-    std::unique_ptr<content::DevToolsFrontendHost> m_frontendHost;
+    content::WebContents *m_outermostContents;
     std::unique_ptr<DevToolsEyeDropper> m_eyeDropper;
-
-    class NetworkResourceLoader;
-    std::set<std::unique_ptr<NetworkResourceLoader>, base::UniquePtrComparator> m_loaders;
-
-    base::DictionaryValue m_preferences;
-    scoped_refptr<PersistentPrefStore> m_prefStore;
-    base::WeakPtrFactory<DevToolsFrontendQt> m_weakFactory;
-
-    DISALLOW_COPY_AND_ASSIGN(DevToolsFrontendQt);
+    DevToolsUIBindings *m_bindings;
 };
 
 } // namespace QtWebEngineCore
 
-#endif  // DEVTOOLS_FRONTEND_QT_H
+#endif // DEVTOOLS_FRONTEND_QT_H

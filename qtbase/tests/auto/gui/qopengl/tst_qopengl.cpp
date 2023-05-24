@@ -1,40 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-
+#include <QtOpenGL/QOpenGLFramebufferObject>
+#include <QtOpenGL/QOpenGLPaintDevice>
+#include <QtOpenGL/QOpenGLTexture>
+#include <QtOpenGL/qopengltextureblitter.h>
+#include <QtOpenGL/QOpenGLVertexArrayObject>
+#include <QtOpenGL/QOpenGLBuffer>
+#if !QT_CONFIG(opengles2)
+#  include <QtOpenGL/QOpenGLFunctions_4_2_Core>
+#endif
+#include <QtOpenGL/QOpenGLVersionFunctionsFactory>
 #include <QtGui/private/qopenglcontext_p.h>
-#include <QtGui/QOpenGLFramebufferObject>
 #include <QtGui/QOpenGLFunctions>
-#include <QtGui/QOpenGLFunctions_4_2_Core>
-#include <QtGui/QOpenGLVertexArrayObject>
-#include <QtGui/QOpenGLBuffer>
-#include <QtGui/QOpenGLPaintDevice>
-#include <QtGui/QOpenGLTexture>
 #include <QtGui/QPainter>
 #include <QtGui/QPainterPath>
 #include <QtGui/QScreen>
@@ -42,24 +20,14 @@
 #include <QtGui/QOffscreenSurface>
 #include <QtGui/QGenericMatrix>
 #include <QtGui/QMatrix4x4>
-#include <QtGui/qopengltextureblitter.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qopenglextensions_p.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformnativeinterface.h>
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <QSignalSpy>
-
-#ifdef USE_GLX
-// Must be included last due to the X11 types
-#include <QtPlatformHeaders/QGLXNativeContext>
-#endif
-
-#if defined(Q_OS_WIN32) && !defined(QT_OPENGL_ES_2)
-#include <QtPlatformHeaders/QWGLNativeContext>
-#endif
 
 Q_DECLARE_METATYPE(QImage::Format)
 
@@ -108,7 +76,7 @@ private slots:
     void glxContextWrap();
 #endif
 
-#if defined(Q_OS_WIN32) && !defined(QT_OPENGL_ES_2)
+#if defined(Q_OS_WIN32) && !QT_CONFIG(opengles2)
     void wglContextWrap();
 #endif
 
@@ -159,17 +127,17 @@ struct SharedResource : public QOpenGLSharedResource
             tracker->destructorCalls++;
     }
 
-    void invalidateResource()
+    void invalidateResource() override
     {
         resource = 0;
         if (tracker)
             tracker->invalidateResourceCalls++;
     }
 
-    void freeResource(QOpenGLContext *context)
+    void freeResource(QOpenGLContext *context) override
     {
         Q_ASSERT(context == QOpenGLContext::currentContext());
-        Q_UNUSED(context)
+        Q_UNUSED(context);
         resource = 0;
         if (tracker)
             tracker->freeResourceCalls++;
@@ -634,10 +602,10 @@ static bool supportsInternalFboFormat(QOpenGLContext *ctx, int glFormat)
 {
     if (ctx->format().majorVersion() < 3)
         return false;
-#ifndef QT_OPENGL_ES_2
+#if !QT_CONFIG(opengles2)
     if (!ctx->isOpenGLES() && ctx->format().majorVersion() >= 4) {
         GLint value = -1;
-        QOpenGLFunctions_4_2_Core* vFuncs = ctx->versionFunctions<QOpenGLFunctions_4_2_Core>();
+        auto *vFuncs = QOpenGLVersionFunctionsFactory::get<QOpenGLFunctions_4_2_Core>(ctx);
         if (vFuncs && vFuncs->initializeOpenGLFunctions()) {
             vFuncs->glGetInternalformativ(GL_TEXTURE_2D, glFormat, GL_FRAMEBUFFER_RENDERABLE, 1, &value);
             if (value != GL_FULL_SUPPORT)
@@ -652,6 +620,10 @@ static bool supportsInternalFboFormat(QOpenGLContext *ctx, int glFormat)
 
 void tst_QOpenGL::fboRenderingRGB30()
 {
+#ifdef Q_OS_ANDROID
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 31)
+        QSKIP("Fails on Android 12 (QTBUG-105738)");
+#endif
 #if defined(Q_OS_LINUX) && defined(Q_CC_GNU) && !defined(__x86_64__)
     QSKIP("QTBUG-22617");
 #endif
@@ -835,7 +807,7 @@ void tst_QOpenGL::fboMRT()
 
     {
         // 3 color attachments, different sizes, same internal format, no depth/stencil.
-        QVector<QSize> sizes;
+        QList<QSize> sizes;
         sizes << QSize(128, 128) << QSize(192, 128) << QSize(432, 123);
         QOpenGLFramebufferObject fbo(sizes[0]);
         fbo.addColorAttachment(sizes[1]);
@@ -883,7 +855,7 @@ void tst_QOpenGL::fboMRT()
 
     {
         // 2 color attachments, same size, same internal format, depth/stencil.
-        QVector<QSize> sizes;
+        QList<QSize> sizes;
         sizes.fill(QSize(128, 128), 2);
         QOpenGLFramebufferObject fbo(sizes[0], QOpenGLFramebufferObject::CombinedDepthStencil);
         fbo.addColorAttachment(sizes[1]);
@@ -923,11 +895,11 @@ void tst_QOpenGL::fboMRT_differentFormats()
         QSKIP("RGB10_A2 not supported on this platform");
 
     // 3 color attachments, same size, different internal format, depth/stencil.
-    QVector<QSize> sizes;
+    QList<QSize> sizes;
     sizes.fill(QSize(128, 128), 3);
     QOpenGLFramebufferObjectFormat format;
     format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
-    QVector<GLenum> internalFormats;
+    QList<GLenum> internalFormats;
     internalFormats << GL_RGBA8 << GL_RGB10_A2 << GL_RGB5_A1;
     format.setInternalTextureFormat(internalFormats[0]);
     QOpenGLFramebufferObject fbo(sizes[0], format);
@@ -1191,6 +1163,7 @@ void tst_QOpenGL::sizeLessWindow()
     // child window
     {
         QWindow parent;
+        parent.setSurfaceType(QWindow::OpenGLSurface);
         QWindow window(&parent);
         window.setSurfaceType(QWindow::OpenGLSurface);
 
@@ -1481,9 +1454,17 @@ void tst_QOpenGL::defaultSurfaceFormat()
     QCOMPARE(context->format(), fmt);
 }
 
+using namespace QNativeInterface;
+
 #ifdef USE_GLX
 void tst_QOpenGL::glxContextWrap()
 {
+    if (QGuiApplication::platformName().startsWith(QLatin1String("offscreen"), Qt::CaseInsensitive))
+        QSKIP("Offscreen: This fails.");
+
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
+        QSKIP("Fails on Wayland.");
+
     QWindow *window = new QWindow;
     window->setSurfaceType(QWindow::OpenGLSurface);
     window->setGeometry(0, 0, 10, 10);
@@ -1497,17 +1478,14 @@ void tst_QOpenGL::glxContextWrap()
     QOpenGLContext *ctx0 = new QOpenGLContext;
     ctx0->setFormat(window->format());
     QVERIFY(ctx0->create());
-    QVariant v = ctx0->nativeHandle();
-    QVERIFY(!v.isNull());
-    QVERIFY(v.canConvert<QGLXNativeContext>());
-    GLXContext context = v.value<QGLXNativeContext>().context();
+    auto *glxContextIf = ctx0->nativeInterface<QGLXContext>();
+    QVERIFY(glxContextIf);
+    GLXContext context = glxContextIf->nativeContext();
     QVERIFY(context);
 
     // Then create another QOpenGLContext wrapping it.
-    QOpenGLContext *ctx = new QOpenGLContext;
-    ctx->setNativeHandle(QVariant::fromValue<QGLXNativeContext>(QGLXNativeContext(context)));
-    QVERIFY(ctx->create());
-    QCOMPARE(ctx->nativeHandle().value<QGLXNativeContext>().context(), context);
+    QOpenGLContext *ctx = QGLXContext::fromNative(context);
+    QVERIFY(ctx);
     QVERIFY(nativeIf->nativeResourceForContext(QByteArrayLiteral("glxcontext"), ctx) == (void *) context);
 
     QVERIFY(ctx->makeCurrent(window));
@@ -1520,7 +1498,7 @@ void tst_QOpenGL::glxContextWrap()
 }
 #endif // USE_GLX
 
-#if defined(Q_OS_WIN32) && !defined(QT_OPENGL_ES_2)
+#if defined(Q_OS_WIN32) && !QT_CONFIG(opengles2)
 void tst_QOpenGL::wglContextWrap()
 {
     QScopedPointer<QOpenGLContext> ctx(new QOpenGLContext);
@@ -1534,11 +1512,9 @@ void tst_QOpenGL::wglContextWrap()
     window->show();
     QVERIFY(QTest::qWaitForWindowExposed(window.data()));
 
-    QVariant v = ctx->nativeHandle();
-    QVERIFY(!v.isNull());
-    QVERIFY(v.canConvert<QWGLNativeContext>());
-    QWGLNativeContext nativeContext = v.value<QWGLNativeContext>();
-    QVERIFY(nativeContext.context());
+    auto *wglContext = ctx->nativeInterface<QWGLContext>();
+    QVERIFY(wglContext);
+    QVERIFY(wglContext->nativeContext());
 
     // Now do a makeCurrent() do make sure the pixel format on the native
     // window (the HWND we are going to retrieve below) is set.
@@ -1548,9 +1524,9 @@ void tst_QOpenGL::wglContextWrap()
     HWND wnd = (HWND) qGuiApp->platformNativeInterface()->nativeResourceForWindow(QByteArrayLiteral("handle"), window.data());
     QVERIFY(wnd);
 
-    QScopedPointer<QOpenGLContext> adopted(new QOpenGLContext);
-    adopted->setNativeHandle(QVariant::fromValue<QWGLNativeContext>(QWGLNativeContext(nativeContext.context(), wnd)));
-    QVERIFY(adopted->create());
+    QScopedPointer<QOpenGLContext> adopted(QWGLContext::fromNative(wglContext->nativeContext(), wnd));
+    QVERIFY(!adopted.isNull());
+    QVERIFY(adopted->isValid());
 
     // This tests two things: that a regular, non-adopted QOpenGLContext is
     // able to return a QSurfaceFormat containing the real values after
@@ -1573,7 +1549,7 @@ void tst_QOpenGL::wglContextWrap()
     QVERIFY(adopted->makeCurrent(window.data()));
     adopted->doneCurrent();
 }
-#endif // Q_OS_WIN32 && !QT_OPENGL_ES_2
+#endif // Q_OS_WIN32 && !QT_CONFIG(opengles2)
 
 void tst_QOpenGL::vaoCreate()
 {
@@ -1615,6 +1591,13 @@ void tst_QOpenGL::bufferCreate()
     buf.bind();
     buf.allocate(128);
     QCOMPARE(buf.size(), 128);
+
+    {
+        QOpenGLBuffer moved = std::move(buf);
+        QCOMPARE_EQ(moved.isCreated(), true);
+        QCOMPARE_EQ(moved.size(), 128);
+        buf = std::move(moved);
+    }
 
     buf.release();
 
@@ -1701,10 +1684,11 @@ void tst_QOpenGL::nullTextureInitializtion()
 
 /*
     Verify that the clipping works correctly.
-    The red outline should be covered by the blue rect on top and left,
-    while it should be clipped on the right and bottom and thus the red outline be visible
+    Just like fillRect, cliprect should snap rightwards and downwards in case of .5 coordinates.
+    The red outline should be covered by the blue rect on top,
+    while it should be clipped on the other edges and thus the red outline be visible
 
-    See: QTBUG-83229
+    See: QTBUG-83229, modified by QTBUG-100329
 */
 void tst_QOpenGL::clipRect()
 {
@@ -1760,7 +1744,7 @@ void tst_QOpenGL::clipRect()
     QCOMPARE(fb.size(), size);
 
     QCOMPARE(fb.pixelColor(clipRect.left() + 1, clipRect.top()), QColor(Qt::blue));
-    QCOMPARE(fb.pixelColor(clipRect.left(), clipRect.top() + 1), QColor(Qt::blue));
+    QCOMPARE(fb.pixelColor(clipRect.left(), clipRect.top() + 1), QColor(Qt::red));
     QCOMPARE(fb.pixelColor(clipRect.left() + 1, clipRect.bottom()), QColor(Qt::red));
 
     // Enable this once QTBUG-85286 is fixed

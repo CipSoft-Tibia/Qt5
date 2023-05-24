@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,25 +6,25 @@
 
 #include <stddef.h>
 
-#include <algorithm>
-
 #include "base/check_op.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/i18n/char_iterator.h"
+#include "base/ranges/algorithm.h"
+#include "base/strings/escape.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "components/url_formatter/url_formatter.h"
-#include "net/base/escape.h"
 #include "net/base/filename_util.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "url/third_party/mozilla/url_parse.h"
 #include "url/url_file.h"
 #include "url/url_util.h"
 
-#if defined(OS_POSIX) || defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
 #include "base/path_service.h"
 #endif
 
@@ -55,9 +55,9 @@ url::Component UTF8ComponentToUTF16Component(
       text_utf8.substr(0, component_utf8.begin);
   std::string component_string =
       text_utf8.substr(component_utf8.begin, component_utf8.len);
-  base::string16 before_component_string_16 =
+  std::u16string before_component_string_16 =
       base::UTF8ToUTF16(before_component_string);
-  base::string16 component_string_16 = base::UTF8ToUTF16(component_string);
+  std::u16string component_string_16 = base::UTF8ToUTF16(component_string);
   url::Component component_16(before_component_string_16.length(),
                               component_string_16.length());
   return component_16;
@@ -83,40 +83,40 @@ void UTF8PartsToUTF16Parts(const std::string& text_utf8,
   parts->ref = UTF8ComponentToUTF16Component(text_utf8, parts_utf8.ref);
 }
 
+base::TrimPositions TrimWhitespace(const std::u16string& input,
+                                   base::TrimPositions positions,
+                                   std::string* output) {
+  std::u16string output16;
+  base::TrimPositions result =
+      base::TrimWhitespace(input, positions, &output16);
+  *output = base::UTF16ToUTF8(output16);
+  return result;
+}
+
 base::TrimPositions TrimWhitespaceUTF8(const std::string& input,
                                        base::TrimPositions positions,
                                        std::string* output) {
   // This implementation is not so fast since it converts the text encoding
   // twice. Please feel free to file a bug if this function hurts the
   // performance of Chrome.
-  DCHECK(base::IsStringUTF8(input));
-  base::string16 input16 = base::UTF8ToUTF16(input);
-  base::string16 output16;
-  base::TrimPositions result =
-      base::TrimWhitespace(input16, positions, &output16);
-  *output = base::UTF16ToUTF8(output16);
-  return result;
+  DCHECK(base::IsStringUTF8AllowingNoncharacters(input)) << input;
+  return TrimWhitespace(base::UTF8ToUTF16(input), positions, output);
 }
 
 // does some basic fixes for input that we want to test for file-ness
-void PrepareStringForFileOps(const base::FilePath& text,
-                             base::FilePath::StringType* output) {
-#if defined(OS_WIN)
-  base::TrimWhitespace(text.value(), base::TRIM_ALL, output);
-  replace(output->begin(), output->end(), '/', '\\');
-#elif defined(OS_POSIX) || defined(OS_FUCHSIA)
-  TrimWhitespaceUTF8(text.value(), base::TRIM_ALL, output);
-#else
-#error Unsupported platform
+void PrepareStringForFileOps(const base::FilePath& text, std::string* output) {
+  TrimWhitespace(text.AsUTF16Unsafe(), base::TRIM_ALL, output);
+#if BUILDFLAG(IS_WIN)
+  base::ranges::replace(*output, '/', '\\');
 #endif
 }
 
 // Tries to create a full path from |text|.  If the result is valid and the
 // file exists, returns true and sets |full_path| to the result.  Otherwise,
 // returns false and leaves |full_path| unchanged.
-bool ValidPathForFile(const base::FilePath::StringType& text,
-                      base::FilePath* full_path) {
-  base::FilePath file_path = base::MakeAbsoluteFilePath(base::FilePath(text));
+bool ValidPathForFile(const std::string& text, base::FilePath* full_path) {
+  base::FilePath file_path =
+      base::MakeAbsoluteFilePath(base::FilePath::FromUTF8Unsafe(text));
   if (file_path.empty())
     return false;
 
@@ -127,7 +127,7 @@ bool ValidPathForFile(const base::FilePath::StringType& text,
   return true;
 }
 
-#if defined(OS_POSIX) || defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
 // Given a path that starts with ~, return a path that starts with an
 // expanded-out /user/foobar directory.
 std::string FixupHomedir(const std::string& text) {
@@ -156,7 +156,7 @@ std::string FixupHomedir(const std::string& text) {
 // user foobar's home directory.  Officially, we should use getpwent(),
 // but that is a nasty blocking call.
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
   static const char kHome[] = "/Users/";
 #else
   static const char kHome[] = "/home/";
@@ -173,15 +173,15 @@ std::string FixupHomedir(const std::string& text) {
 std::string FixupPath(const std::string& text) {
   DCHECK(!text.empty());
 
-  base::FilePath::StringType filename;
-#if defined(OS_WIN)
+  std::string filename;
+#if BUILDFLAG(IS_WIN)
   base::FilePath input_path(base::UTF8ToWide(text));
   PrepareStringForFileOps(input_path, &filename);
 
   // Fixup Windows-style drive letters, where "C:" gets rewritten to "C|".
   if (filename.length() > 1 && filename[1] == '|')
     filename[1] = ':';
-#elif defined(OS_POSIX) || defined(OS_FUCHSIA)
+#elif BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
   base::FilePath input_path(text);
   PrepareStringForFileOps(input_path, &filename);
   if (filename.length() > 0 && filename[0] == '~')
@@ -189,11 +189,12 @@ std::string FixupPath(const std::string& text) {
 #endif
 
   // Here, we know the input looks like a file.
-  GURL file_url = net::FilePathToFileURL(base::FilePath(filename));
+  GURL file_url =
+      net::FilePathToFileURL(base::FilePath::FromUTF8Unsafe(filename));
   if (file_url.is_valid()) {
     return base::UTF16ToUTF8(url_formatter::FormatUrl(
         file_url, url_formatter::kFormatUrlOmitUsernamePassword,
-        net::UnescapeRule::NORMAL, nullptr, nullptr, nullptr));
+        base::UnescapeRule::NORMAL, nullptr, nullptr, nullptr));
   }
 
   // Invalid file URL, just return the input.
@@ -288,7 +289,7 @@ void FixupHost(const std::string& text,
 void FixupPort(const std::string& text,
                const url::Component& part,
                std::string* url) {
-  if (!part.is_nonempty())
+  if (part.is_empty())
     return;
 
   // We don't fix up the port at the moment.
@@ -299,7 +300,7 @@ void FixupPort(const std::string& text,
 inline void FixupPath(const std::string& text,
                       const url::Component& part,
                       std::string* url) {
-  if (!part.is_nonempty()) {
+  if (part.is_empty()) {
     // We should always have a path.
     url->append("/");
     return;
@@ -350,8 +351,7 @@ bool HasPort(const std::string& original_text,
   //
   // https://url.spec.whatwg.org/#url-port-string says that "A URL-port string
   // must be zero or more ASCII digits".
-  if (!std::all_of(port_piece.begin(), port_piece.end(),
-                   base::IsAsciiDigit<char>)) {
+  if (!base::ranges::all_of(port_piece, base::IsAsciiDigit<char>)) {
     return false;
   }
 
@@ -423,12 +423,12 @@ std::string SegmentURLInternal(std::string* text, url::Parsed* parts) {
     return std::string();  // Nothing to segment.
 
   std::string scheme;
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   int trimmed_length = static_cast<int>(trimmed.length());
   if (url::DoesBeginWindowsDriveSpec(trimmed.data(), 0, trimmed_length) ||
       url::DoesBeginUNCPath(trimmed.data(), 0, trimmed_length, true))
     scheme = url::kFileScheme;
-#elif defined(OS_POSIX) || defined(OS_FUCHSIA)
+#elif BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
   if (base::FilePath::IsSeparator(trimmed.data()[0]) ||
       trimmed.data()[0] == '~')
     scheme = url::kFileScheme;
@@ -489,10 +489,13 @@ std::string SegmentURLInternal(std::string* text, url::Parsed* parts) {
 
   // We need to add a scheme in order for ParseStandardURL to be happy.
   // Find the first non-whitespace character.
-  std::string::iterator first_nonwhite = text->begin();
-  while ((first_nonwhite != text->end()) &&
-         base::IsUnicodeWhitespace(*first_nonwhite))
-    ++first_nonwhite;
+  std::string::iterator first_nonwhite = text->end();
+  for (base::i18n::UTF8CharIterator iter(*text); !iter.end(); iter.Advance()) {
+    if (!base::IsUnicodeWhitespace(iter.get())) {
+      first_nonwhite = text->begin() + iter.array_pos();
+      break;
+    }
+  }
 
   // Construct the text to parse by inserting the scheme.
   std::string inserted_text(scheme);
@@ -529,7 +532,7 @@ std::string SegmentURL(const std::string& text, url::Parsed* parts) {
   return SegmentURLInternal(&mutable_text, parts);
 }
 
-base::string16 SegmentURL(const base::string16& text, url::Parsed* parts) {
+std::u16string SegmentURL(const std::u16string& text, url::Parsed* parts) {
   std::string text_utf8 = base::UTF16ToUTF8(text);
   url::Parsed parts_utf8;
   std::string scheme_utf8 = SegmentURL(text_utf8, &parts_utf8);
@@ -573,7 +576,7 @@ GURL FixupURL(const std::string& text, const std::string& desired_tld) {
 
   // 'about:blank' and 'about:srcdoc' are special-cased in various places in the
   // code and shouldn't use the chrome: scheme.
-  if (base::LowerCaseEqualsASCII(scheme, url::kAboutScheme)) {
+  if (base::EqualsCaseInsensitiveASCII(scheme, url::kAboutScheme)) {
     GURL about_url(base::ToLowerASCII(trimmed));
     if (about_url.IsAboutBlank() || about_url.IsAboutSrcdoc())
       return about_url;
@@ -635,7 +638,7 @@ GURL FixupRelativeFile(const base::FilePath& base_dir,
   }
 
   // Allow funny input with extra whitespace and the wrong kind of slashes.
-  base::FilePath::StringType trimmed;
+  std::string trimmed;
   PrepareStringForFileOps(text, &trimmed);
 
   bool is_file = true;
@@ -648,20 +651,12 @@ GURL FixupRelativeFile(const base::FilePath& base_dir,
 // Not a path as entered, try unescaping it in case the user has
 // escaped things. We need to go through 8-bit since the escaped values
 // only represent 8-bit values.
-#if defined(OS_WIN)
-    std::wstring unescaped = base::UTF8ToWide(net::UnescapeURLComponent(
-        base::WideToUTF8(trimmed),
-        net::UnescapeRule::SPACES | net::UnescapeRule::PATH_SEPARATORS |
-            net::UnescapeRule::URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS));
-#elif defined(OS_POSIX) || defined(OS_FUCHSIA)
-    std::string unescaped = net::UnescapeURLComponent(
-        trimmed,
-        net::UnescapeRule::SPACES | net::UnescapeRule::PATH_SEPARATORS |
-            net::UnescapeRule::URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS);
-#endif
+std::string unescaped = base::UnescapeURLComponent(
+    trimmed, base::UnescapeRule::SPACES | base::UnescapeRule::PATH_SEPARATORS |
+                 base::UnescapeRule::URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS);
 
-    if (!ValidPathForFile(unescaped, &full_path))
-      is_file = false;
+if (!ValidPathForFile(unescaped, &full_path))
+  is_file = false;
   }
 
   // Put back the current directory if we saved it.
@@ -673,14 +668,14 @@ GURL FixupRelativeFile(const base::FilePath& base_dir,
     if (file_url.is_valid())
       return GURL(base::UTF16ToUTF8(url_formatter::FormatUrl(
           file_url, url_formatter::kFormatUrlOmitUsernamePassword,
-          net::UnescapeRule::NORMAL, nullptr, nullptr, nullptr)));
+          base::UnescapeRule::NORMAL, nullptr, nullptr, nullptr)));
     // Invalid files fall through to regular processing.
   }
 
 // Fall back on regular fixup for this input.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   std::string text_utf8 = base::WideToUTF8(text.value());
-#elif defined(OS_POSIX) || defined(OS_FUCHSIA)
+#elif BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
   std::string text_utf8 = text.value();
 #endif
   return FixupURL(text_utf8, std::string());

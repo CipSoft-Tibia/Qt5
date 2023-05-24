@@ -4,6 +4,7 @@
 
 #include "discovery/mdns/mdns_probe_manager.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -68,8 +69,7 @@ Error MdnsProbeManagerImpl::StartProbe(MdnsDomainConfirmedProvider* callback,
     return Error::Code::kItemAlreadyExists;
   }
 
-  OSP_DVLOG << "Starting new mDNS Probe for domain '"
-            << requested_name.ToString() << "'";
+  OSP_DVLOG << "Starting new mDNS Probe for domain '" << requested_name << "'";
 
   // Begin a new probe.
   auto probe = CreateProbe(requested_name, std::move(address));
@@ -197,7 +197,6 @@ void MdnsProbeManagerImpl::OnProbeFailure(MdnsProbe* probe) {
   OSP_DVLOG << "Probe for domain '"
             << CreateRetryDomainName(ongoing_it->requested_name,
                                      ongoing_it->num_probes_failed)
-                   .ToString()
             << "' failed. Trying new domain...";
 
   // Create a new probe with a modified domain name.

@@ -1,29 +1,51 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/accessibility/accessibility_state_utils.h"
 
-#if defined(OS_CHROMEOS)
-#include "chrome/browser/chromeos/accessibility/accessibility_manager.h"
+#include "build/chromeos_buildflags.h"
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "chrome/browser/ash/accessibility/accessibility_manager.h"
 #else
 #include <stdint.h>
 #include "content/public/browser/browser_accessibility_state.h"
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 namespace accessibility_state_utils {
 
+enum class OverrideStatus { kNotSet = 0, kEnabled = 1, kDisabled = 2 };
+
+static OverrideStatus screen_reader_enabled_override_for_testing =
+    OverrideStatus::kNotSet;
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+using ::ash::AccessibilityManager;
+#endif
+
 bool IsScreenReaderEnabled() {
-#if defined(OS_CHROMEOS)
-  return chromeos::AccessibilityManager::Get() &&
-         chromeos::AccessibilityManager::Get()->IsSpokenFeedbackEnabled();
+  if (screen_reader_enabled_override_for_testing != OverrideStatus::kNotSet) {
+    return (screen_reader_enabled_override_for_testing ==
+            OverrideStatus::kEnabled)
+               ? true
+               : false;
+  }
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  return AccessibilityManager::Get() &&
+         AccessibilityManager::Get()->IsSpokenFeedbackEnabled();
 #else
   // TODO(katie): Can we use AXMode in Chrome OS as well? May need to stop
   // Switch Access and Select-to-Speak from setting kScreenReader.
   ui::AXMode mode =
       content::BrowserAccessibilityState::GetInstance()->GetAccessibilityMode();
   return mode.has_mode(ui::AXMode::kScreenReader);
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+}
+
+void OverrideIsScreenReaderEnabledForTesting(bool enabled) {
+  screen_reader_enabled_override_for_testing =
+      enabled ? OverrideStatus::kEnabled : OverrideStatus::kDisabled;
 }
 
 }  // namespace accessibility_state_utils

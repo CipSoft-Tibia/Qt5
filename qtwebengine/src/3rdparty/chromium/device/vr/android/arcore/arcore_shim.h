@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 
 #include "base/component_export.h"
 
-namespace vr {
+namespace device {
 
 // TODO(https://crbug.com/917526): add support for unloading the SDK.
 COMPONENT_EXPORT(VR_ARCORE) bool LoadArCoreSdk(const std::string& libraryPath);
@@ -22,6 +22,6 @@ COMPONENT_EXPORT(VR_ARCORE) bool LoadArCoreSdk(const std::string& libraryPath);
 // Returns true if the AR Core usage is supported, false otherwise.
 COMPONENT_EXPORT(VR_ARCORE) bool IsArCoreSupported();
 
-}  // namespace vr
+}  // namespace device
 
 #endif  // DEVICE_VR_ANDROID_ARCORE_ARCORE_SHIM_H_

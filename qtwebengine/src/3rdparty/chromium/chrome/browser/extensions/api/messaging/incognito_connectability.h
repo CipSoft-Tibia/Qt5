@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,10 @@
 
 #include <set>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "extensions/browser/browser_context_keyed_api_factory.h"
 #include "url/gurl.h"
-
-class InfoBarService;
 
 namespace content {
 class BrowserContext;
@@ -19,6 +18,7 @@ class WebContents;
 }
 
 namespace infobars {
+class ContentInfoBarManager;
 class InfoBar;
 }
 
@@ -66,20 +66,26 @@ class IncognitoConnectability : public BrowserContextKeyedAPI {
   void Query(const Extension* extension,
              content::WebContents* web_contents,
              const GURL& url,
-             const base::Callback<void(bool)>& callback);
+             base::OnceCallback<void(bool)> callback);
+
+  static void EnsureFactoryBuilt();
 
  private:
   struct TabContext {
     TabContext();
-    TabContext(const TabContext& other);
     ~TabContext();
 
-    // The infobar being shown in a given tab. The InfoBarService maintains
-    // ownership of this object. This struct must always be destroyed before the
-    // infobar it tracks.
-    infobars::InfoBar* infobar;
+    // TabContext can't be copied since the callbacks are OnceCallback (and
+    // hence, move-only).
+    TabContext(const TabContext& other) = delete;
+    TabContext& operator=(const TabContext&) = delete;
+
+    // The infobar being shown in a given tab. The
+    // infobars::ContentInfoBarManager maintains ownership of this object. This
+    // struct must always be destroyed before the infobar it tracks.
+    raw_ptr<infobars::InfoBar> infobar;
     // Connectability queries outstanding on this infobar.
-    std::vector<base::Callback<void(bool)>> callbacks;
+    std::vector<base::OnceCallback<void(bool)>> callbacks;
   };
 
   friend class BrowserContextKeyedAPIFactory<IncognitoConnectability>;
@@ -87,17 +93,17 @@ class IncognitoConnectability : public BrowserContextKeyedAPI {
   explicit IncognitoConnectability(content::BrowserContext* context);
   ~IncognitoConnectability() override;
 
-  typedef std::map<std::string, std::set<GURL> > ExtensionToOriginsMap;
-  typedef std::pair<std::string, GURL> ExtensionOriginPair;
-  typedef std::map<InfoBarService*, TabContext> PendingOrigin;
-  typedef std::map<ExtensionOriginPair, PendingOrigin> PendingOriginMap;
+  using ExtensionToOriginsMap = std::map<std::string, std::set<GURL>>;
+  using ExtensionOriginPair = std::pair<std::string, GURL>;
+  using PendingOrigin = std::map<infobars::ContentInfoBarManager*, TabContext>;
+  using PendingOriginMap = std::map<ExtensionOriginPair, PendingOrigin>;
 
   // Called with the user's selection from the infobar.
   // |response == INTERACTIVE| indicates that the user closed the infobar
   // without selecting allow or deny.
   void OnInteractiveResponse(const std::string& extension_id,
                              const GURL& origin,
-                             InfoBarService* infobar_service,
+                             infobars::ContentInfoBarManager* infobar_manager,
                              ScopedAlertTracker::Mode response);
 
   // Returns true if the (|extension|, |origin|) pair appears in the map.

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qglobal.h>
 
@@ -54,17 +18,20 @@
 #include "qtexttable.h"
 #include "qtextcursor.h"
 #include "qtextimagehandler_p.h"
-#include "qzipwriter_p.h"
 
 #include <QDebug>
+#include <QtCore/private/qzipwriter_p.h>
+
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /// Convert pixels to postscript point units
 static QString pixelToPoint(qreal pixels)
 {
     // we hardcode 96 DPI, we do the same in the ODF importer to have a perfect roundtrip.
-    return QString::number(pixels * 72 / 96) + QLatin1String("pt");
+    return QString::number(pixels * 72 / 96) + "pt"_L1;
 }
 
 // strategies
@@ -159,29 +126,32 @@ private:
     QString manifestNS;
 };
 
+static QStringView bullet_char(QTextListFormat::Style style)
+{
+    static_assert(int(QTextListFormat::ListDisc) == -1);
+    static_assert(int(QTextListFormat::ListUpperRoman) == -8);
+    static const char16_t chars[] = {
+        u'\x25cf', // bullet character
+        u'\x25cb', // white circle
+        u'\x25a1', // white square
+        u'1',
+        u'a',
+        u'A',
+        u'i',
+        u'I',
+    };
+    const auto map = [](QTextListFormat::Style s) { return -int(s) - 1; };
+    static_assert(uint(map(QTextListFormat::ListUpperRoman)) == std::size(chars) - 1);
+    const auto idx = map(style);
+    if (idx < 0)
+        return nullptr;
+    else
+        return {chars + idx, 1};
+}
+
 static QString bulletChar(QTextListFormat::Style style)
 {
-    switch(style) {
-    case QTextListFormat::ListDisc:
-        return QChar(0x25cf); // bullet character
-    case QTextListFormat::ListCircle:
-        return QChar(0x25cb); // white circle
-    case QTextListFormat::ListSquare:
-        return QChar(0x25a1); // white square
-    case QTextListFormat::ListDecimal:
-        return QString::fromLatin1("1");
-    case QTextListFormat::ListLowerAlpha:
-        return QString::fromLatin1("a");
-    case QTextListFormat::ListUpperAlpha:
-        return QString::fromLatin1("A");
-    case QTextListFormat::ListLowerRoman:
-        return QString::fromLatin1("i");
-    case QTextListFormat::ListUpperRoman:
-        return QString::fromLatin1("I");
-    default:
-    case QTextListFormat::ListStyleUndefined:
-        return QString();
-    }
+    return bullet_char(style).toString();
 }
 
 static QString borderStyleName(QTextFrameFormat::BorderStyle style)
@@ -293,23 +263,23 @@ void QTextOdfWriter::writeBlock(QXmlStreamWriter &writer, const QTextBlock &bloc
         const int listLevel = block.textList()->format().indent();
         if (m_listStack.isEmpty() || m_listStack.top() != block.textList()) {
             // not the same list we were in.
-            while (m_listStack.count() >= listLevel && !m_listStack.isEmpty() && m_listStack.top() != block.textList() ) { // we need to close tags
+            while (m_listStack.size() >= listLevel && !m_listStack.isEmpty() && m_listStack.top() != block.textList() ) { // we need to close tags
                 m_listStack.pop();
                 writer.writeEndElement(); // list
-                if (m_listStack.count())
+                if (m_listStack.size())
                     writer.writeEndElement(); // list-item
             }
-            while (m_listStack.count() < listLevel) {
-                if (m_listStack.count())
+            while (m_listStack.size() < listLevel) {
+                if (m_listStack.size())
                     writer.writeStartElement(textNS, QString::fromLatin1("list-item"));
                 writer.writeStartElement(textNS, QString::fromLatin1("list"));
-                if (m_listStack.count() == listLevel - 1) {
+                if (m_listStack.size() == listLevel - 1) {
                     m_listStack.push(block.textList());
                     writer.writeAttribute(textNS, QString::fromLatin1("style-name"), QString::fromLatin1("L%1")
                             .arg(block.textList()->formatIndex()));
                 }
                 else {
-                    m_listStack.push(0);
+                    m_listStack.push(nullptr);
                 }
             }
         }
@@ -319,7 +289,7 @@ void QTextOdfWriter::writeBlock(QXmlStreamWriter &writer, const QTextBlock &bloc
         while (! m_listStack.isEmpty()) {
             m_listStack.pop();
             writer.writeEndElement(); // list
-            if (m_listStack.count())
+            if (m_listStack.size())
                 writer.writeEndElement(); // list-item
         }
     }
@@ -346,7 +316,7 @@ void QTextOdfWriter::writeBlock(QXmlStreamWriter &writer, const QTextBlock &bloc
         writer.writeStartElement(textNS, QString::fromLatin1("span"));
 
         QString fragmentText = frag.fragment().text();
-        if (fragmentText.length() == 1 && fragmentText[0] == QChar(0xFFFC)) { // its an inline character.
+        if (fragmentText.size() == 1 && fragmentText[0] == u'\xFFFC') { // its an inline character.
             writeInlineCharacter(writer, frag.fragment());
             writer.writeEndElement(); // span
             continue;
@@ -357,8 +327,8 @@ void QTextOdfWriter::writeBlock(QXmlStreamWriter &writer, const QTextBlock &bloc
         bool escapeNextSpace = true;
         int precedingSpaces = 0;
         int exportedIndex = 0;
-        for (int i=0; i <= fragmentText.count(); ++i) {
-            QChar character = (i == fragmentText.count() ? QChar() : fragmentText.at(i));
+        for (int i=0; i <= fragmentText.size(); ++i) {
+            QChar character = (i == fragmentText.size() ? QChar() : fragmentText.at(i));
             bool isSpace = character.unicode() == ' ';
 
             // find more than one space. -> <text:s text:c="2" />
@@ -374,7 +344,7 @@ void QTextOdfWriter::writeBlock(QXmlStreamWriter &writer, const QTextBlock &bloc
                 exportedIndex = i;
             }
 
-            if (i < fragmentText.count()) {
+            if (i < fragmentText.size()) {
                 if (character.unicode() == 0x2028) { // soft-return
                     //if (exportedIndex < i)
                     writer.writeCharacters(fragmentText.mid(exportedIndex, i - exportedIndex));
@@ -451,8 +421,8 @@ void QTextOdfWriter::writeInlineCharacter(QXmlStreamWriter &writer, const QTextF
 
         QImage image;
         QString name = imageFormat.name();
-        if (name.startsWith(QLatin1String(":/"))) // auto-detect resources
-            name.prepend(QLatin1String("qrc"));
+        if (name.startsWith(":/"_L1)) // auto-detect resources
+            name.prepend("qrc"_L1);
         QUrl url = QUrl(name);
         const QVariant variant = m_document->resource(QTextDocument::ImageResource, url);
         if (variant.userType() == QMetaType::QPixmap || variant.userType() == QMetaType::QImage) {
@@ -522,7 +492,7 @@ void QTextOdfWriter::writeInlineCharacter(QXmlStreamWriter &writer, const QTextF
 void QTextOdfWriter::writeFormats(QXmlStreamWriter &writer, const QSet<int> &formats) const
 {
     writer.writeStartElement(officeNS, QString::fromLatin1("automatic-styles"));
-    QVector<QTextFormat> allStyles = m_document->allFormats();
+    QList<QTextFormat> allStyles = m_document->allFormats();
     for (int formatIndex : formats) {
         QTextFormat textFormat = allStyles.at(formatIndex);
         switch (textFormat.type()) {
@@ -544,12 +514,6 @@ void QTextOdfWriter::writeFormats(QXmlStreamWriter &writer, const QSet<int> &for
             else
                 writeFrameFormat(writer, textFormat.toFrameFormat(), formatIndex);
             break;
-#if QT_DEPRECATED_SINCE(5, 3)
-        case QTextFormat::TableFormat:
-            // this case never happens, because TableFormat is a FrameFormat
-            Q_UNREACHABLE();
-            break;
-#endif
         }
     }
 
@@ -678,11 +642,11 @@ void QTextOdfWriter::writeCharacterFormat(QXmlStreamWriter &writer, QTextCharFor
         if (format.fontWeight() == QFont::Bold)
             value = QString::fromLatin1("bold");
         else
-            value = QString::number(format.fontWeight() * 10);
+            value = QString::number(format.fontWeight());
         writer.writeAttribute(foNS, QString::fromLatin1("font-weight"), value);
     }
-    if (format.hasProperty(QTextFormat::FontFamily))
-        writer.writeAttribute(foNS, QString::fromLatin1("font-family"), format.fontFamily());
+    if (format.hasProperty(QTextFormat::OldFontFamily))
+        writer.writeAttribute(foNS, QString::fromLatin1("font-family"), format.fontFamilies().toStringList().value(0, QString()));
     else
         writer.writeAttribute(foNS, QString::fromLatin1("font-family"), QString::fromLatin1("Sans")); // Qt default
     if (format.hasProperty(QTextFormat::FontPointSize))
@@ -870,7 +834,7 @@ void QTextOdfWriter::writeTableFormat(QXmlStreamWriter &writer, QTextTableFormat
        writer.writeAttribute(tableNS, QString::fromLatin1("align"), QString::fromLatin1(align));
     if (format.width().rawValue()) {
         writer.writeAttribute(styleNS, QString::fromLatin1("width"),
-                              QString::number(format.width().rawValue()) + QLatin1String("pt"));
+                              QString::number(format.width().rawValue()) + "pt"_L1);
     }
     writer.writeEndElement();
     // start writing table-column style element
@@ -886,14 +850,14 @@ void QTextOdfWriter::writeTableFormat(QXmlStreamWriter &writer, QTextTableFormat
             QString columnWidth;
             if (format.columnWidthConstraints().at(colit).type() == QTextLength::PercentageLength) {
                 columnWidth = QString::number(format.columnWidthConstraints().at(colit).rawValue())
-                        + QLatin1String("%");
+                        + "%"_L1;
             } else if (format.columnWidthConstraints().at(colit).type() == QTextLength::FixedLength) {
                 columnWidth = QString::number(format.columnWidthConstraints().at(colit).rawValue())
-                        + QLatin1String("pt");
+                        + "pt"_L1;
             } else {
                 //!! HARD-CODING variableWidth Constraints to 100% / nr constraints
                 columnWidth = QString::number(100 / format.columnWidthConstraints().size())
-                                      + QLatin1String("%");
+                                      + "%"_L1;
             }
             writer.writeAttribute(styleNS, QString::fromLatin1("column-width"), columnWidth);
             writer.writeEndElement();
@@ -902,11 +866,11 @@ void QTextOdfWriter::writeTableFormat(QXmlStreamWriter &writer, QTextTableFormat
 }
 
 void QTextOdfWriter::writeTableCellFormat(QXmlStreamWriter &writer, QTextTableCellFormat format,
-                                          int formatIndex, QVector<QTextFormat> &styles) const
+                                          int formatIndex, QList<QTextFormat> &styles) const
 {
     // check for all table cells here if they are in a table with border
     if (m_cellFormatsInTablesWithBorders.contains(formatIndex)) {
-        const QVector<int> tableIdVector = m_cellFormatsInTablesWithBorders.value(formatIndex);
+        const QList<int> tableIdVector = m_cellFormatsInTablesWithBorders.value(formatIndex);
         for (const auto &tableId : tableIdVector) {
             const auto &tmpStyle = styles.at(tableId);
             if (tmpStyle.isTableFormat()) {
@@ -935,8 +899,8 @@ void QTextOdfWriter::tableCellStyleElement(QXmlStreamWriter &writer, const int &
     writer.writeEmptyElement(styleNS, QString::fromLatin1("table-cell-properties"));
     if (hasBorder) {
         writer.writeAttribute(foNS, QString::fromLatin1("border"),
-                              pixelToPoint(tableFormatTmp.border()) + QLatin1String(" ")
-                              + borderStyleName(tableFormatTmp.borderStyle()) + QLatin1String(" ")
+                              pixelToPoint(tableFormatTmp.border()) + " "_L1
+                              + borderStyleName(tableFormatTmp.borderStyle()) + " "_L1
                               + tableFormatTmp.borderBrush().color().name(QColor::HexRgb));
     }
     qreal topPadding = format.topPadding();
@@ -987,18 +951,17 @@ void QTextOdfWriter::tableCellStyleElement(QXmlStreamWriter &writer, const int &
 ///////////////////////
 
 QTextOdfWriter::QTextOdfWriter(const QTextDocument &document, QIODevice *device)
-    : officeNS (QLatin1String("urn:oasis:names:tc:opendocument:xmlns:office:1.0")),
-    textNS (QLatin1String("urn:oasis:names:tc:opendocument:xmlns:text:1.0")),
-    styleNS (QLatin1String("urn:oasis:names:tc:opendocument:xmlns:style:1.0")),
-    foNS (QLatin1String("urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0")),
-    tableNS (QLatin1String("urn:oasis:names:tc:opendocument:xmlns:table:1.0")),
-    drawNS (QLatin1String("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0")),
-    xlinkNS (QLatin1String("http://www.w3.org/1999/xlink")),
-    svgNS (QLatin1String("urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0")),
+    : officeNS ("urn:oasis:names:tc:opendocument:xmlns:office:1.0"_L1),
+    textNS ("urn:oasis:names:tc:opendocument:xmlns:text:1.0"_L1),
+    styleNS ("urn:oasis:names:tc:opendocument:xmlns:style:1.0"_L1),
+    foNS ("urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"_L1),
+    tableNS ("urn:oasis:names:tc:opendocument:xmlns:table:1.0"_L1),
+    drawNS ("urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"_L1),
+    xlinkNS ("http://www.w3.org/1999/xlink"_L1),
+    svgNS ("urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"_L1),
     m_document(&document),
     m_device(device),
     m_strategy(nullptr),
-    m_codec(nullptr),
     m_createArchive(true)
 {
 }
@@ -1015,10 +978,6 @@ bool QTextOdfWriter::writeAll()
         return false;
     }
     QXmlStreamWriter writer(m_strategy->contentStream);
-#if QT_CONFIG(textcodec)
-    if (m_codec)
-        writer.setCodec(m_codec);
-#endif
     // prettyfy
     writer.setAutoFormatting(true);
     writer.setAutoFormattingIndent(2);
@@ -1036,16 +995,16 @@ bool QTextOdfWriter::writeAll()
     writer.writeAttribute(officeNS, QString::fromLatin1("version"), QString::fromLatin1("1.2"));
 
     // add fragments. (for character formats)
-    QTextDocumentPrivate::FragmentIterator fragIt = m_document->docHandle()->begin();
+    QTextDocumentPrivate::FragmentIterator fragIt = QTextDocumentPrivate::get(m_document)->begin();
     QSet<int> formats;
-    while (fragIt != m_document->docHandle()->end()) {
+    while (fragIt != QTextDocumentPrivate::get(m_document)->end()) {
         const QTextFragmentData * const frag = fragIt.value();
         formats << frag->format;
         ++fragIt;
     }
 
     // add blocks (for blockFormats)
-    QTextDocumentPrivate::BlockMap &blocks = m_document->docHandle()->blockMap();
+    QTextDocumentPrivate::BlockMap &blocks = const_cast<QTextDocumentPrivate *>(QTextDocumentPrivate::get(m_document))->blockMap();
     QTextDocumentPrivate::BlockMap::Iterator blockIt = blocks.begin();
     while (blockIt != blocks.end()) {
         const QTextBlockData * const block = blockIt.value();
@@ -1054,7 +1013,7 @@ bool QTextOdfWriter::writeAll()
     }
 
     // add objects for lists, frames and tables
-    const QVector<QTextFormat> allFormats = m_document->allFormats();
+    const QList<QTextFormat> allFormats = m_document->allFormats();
     const QList<int> copy = formats.values();
     for (auto index : copy) {
         QTextObject *object = m_document->objectForFormat(allFormats[index]);
@@ -1069,7 +1028,7 @@ bool QTextOdfWriter::writeAll()
                     for (int rowindex = 0; rowindex < tableobject->rows(); ++rowindex) {
                         for (int colindex = 0; colindex < tableobject->columns(); ++colindex) {
                             const int cellFormatID = tableobject->cellAt(rowindex, colindex).tableCellFormatIndex();
-                            QVector<int> tableIdsTmp;
+                            QList<int> tableIdsTmp;
                             if (m_cellFormatsInTablesWithBorders.contains(cellFormatID))
                                 tableIdsTmp = m_cellFormatsInTablesWithBorders.value(cellFormatID);
                             if (!tableIdsTmp.contains(tableID))

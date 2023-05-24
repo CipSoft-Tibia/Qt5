@@ -1,9 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/webui/print_preview/policy_settings.h"
 
+#include "build/chromeos_buildflags.h"
 #include "chrome/common/pref_names.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 
@@ -18,7 +19,7 @@ void PolicySettings::RegisterProfilePrefs(
                                 0);
   registry->RegisterIntegerPref(prefs::kPrintingBackgroundGraphicsDefault, 0);
   registry->RegisterDictionaryPref(prefs::kPrintingPaperSizeDefault);
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   registry->RegisterIntegerPref(prefs::kPrintingAllowedColorModes, 0);
   registry->RegisterIntegerPref(prefs::kPrintingAllowedDuplexModes, 0);
   registry->RegisterIntegerPref(prefs::kPrintingAllowedPinModes, 0);

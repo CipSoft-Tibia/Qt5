@@ -61,9 +61,9 @@ class VisitedLinkState final : public GarbageCollected<VisitedLinkState> {
   EInsideLink DetermineLinkStateSlowCase(const Element&);
 
   Member<const Document> document_;
-  HashSet<LinkHash, LinkHashHash> links_checked_for_visited_state_;
+  HashSet<LinkHash, LinkHashHashTraits> links_checked_for_visited_state_;
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_DOM_VISITED_LINK_STATE_H_

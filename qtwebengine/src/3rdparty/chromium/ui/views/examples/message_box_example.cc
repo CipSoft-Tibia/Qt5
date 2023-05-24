@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,8 +20,7 @@
 using l10n_util::GetStringUTF16;
 using l10n_util::GetStringUTF8;
 
-namespace views {
-namespace examples {
+namespace views::examples {
 
 MessageBoxExample::MessageBoxExample()
     : ExampleBase(GetStringUTF8(IDS_MESSAGE_SELECT_LABEL).c_str()) {}
@@ -42,27 +41,27 @@ void MessageBoxExample::CreateExampleView(View* container) {
       ->SetOrientation(LayoutOrientation::kHorizontal)
       .SetMainAxisAlignment(LayoutAlignment::kStart);
 
-  status_ = button_panel->AddChildView(std::make_unique<LabelButton>(
-      this, GetStringUTF16(IDS_MESSAGE_STATUS_LABEL)));
-  toggle_ = button_panel->AddChildView(std::make_unique<LabelButton>(
-      this, GetStringUTF16(IDS_MESSAGE_TOGGLE_LABEL)));
+  button_panel->AddChildView(std::make_unique<LabelButton>(
+      base::BindRepeating(&MessageBoxExample::StatusButtonPressed,
+                          base::Unretained(this)),
+      GetStringUTF16(IDS_MESSAGE_STATUS_LABEL)));
+  button_panel->AddChildView(std::make_unique<LabelButton>(
+      base::BindRepeating(
+          [](MessageBoxView* message_box) {
+            message_box->SetCheckBoxSelected(
+                !message_box->IsCheckBoxSelected());
+          },
+          base::Unretained(message_box_view_)),
+      GetStringUTF16(IDS_MESSAGE_TOGGLE_LABEL)));
 }
 
-void MessageBoxExample::ButtonPressed(Button* sender, const ui::Event& event) {
-  if (sender == status_) {
-    message_box_view_->SetCheckBoxLabel(
-        message_box_view_->IsCheckBoxSelected()
-            ? GetStringUTF16(IDS_MESSAGE_ON_LABEL)
-            : GetStringUTF16(IDS_MESSAGE_OFF_LABEL));
-    LogStatus(
-        message_box_view_->IsCheckBoxSelected()
-            ? GetStringUTF8(IDS_MESSAGE_CHECK_SELECTED_LABEL).c_str()
-            : GetStringUTF8(IDS_MESSAGE_CHECK_NOT_SELECTED_LABEL).c_str());
-  } else if (sender == toggle_) {
-    message_box_view_->SetCheckBoxSelected(
-        !message_box_view_->IsCheckBoxSelected());
-  }
+void MessageBoxExample::StatusButtonPressed() {
+  const bool selected = message_box_view_->IsCheckBoxSelected();
+  message_box_view_->SetCheckBoxLabel(
+      GetStringUTF16(selected ? IDS_MESSAGE_ON_LABEL : IDS_MESSAGE_OFF_LABEL));
+  LogStatus(GetStringUTF8(selected ? IDS_MESSAGE_CHECK_SELECTED_LABEL
+                                   : IDS_MESSAGE_CHECK_NOT_SELECTED_LABEL)
+                .c_str());
 }
 
-}  // namespace examples
-}  // namespace views
+}  // namespace views::examples

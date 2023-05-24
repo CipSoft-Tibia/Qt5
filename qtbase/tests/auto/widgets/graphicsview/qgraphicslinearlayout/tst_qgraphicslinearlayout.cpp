@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qgraphicslinearlayout.h>
 #include <qgraphicsproxywidget.h>
 #include <qgraphicswidget.h>
@@ -107,7 +82,7 @@ public:
         layoutDirectionChange(0)
         { }
 
-    void widgetEvent(QEvent *e)
+    void widgetEvent(QEvent *e) override
     {
         switch (e->type()) {
         case QEvent::GraphicsSceneResize:
@@ -143,9 +118,9 @@ void tst_QGraphicsLinearLayout::initTestCase()
 class RectWidget : public QGraphicsWidget
 {
 public:
-    RectWidget(QGraphicsItem *parent = 0, const QBrush &brush = QBrush()) : QGraphicsWidget(parent){ m_brush = brush;}
+    RectWidget(QGraphicsItem *parent = nullptr, const QBrush &brush = QBrush()) : QGraphicsWidget(parent){ m_brush = brush;}
 
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override
     {
         Q_UNUSED(option);
         Q_UNUSED(widget);
@@ -158,7 +133,8 @@ public:
         updateGeometry();
     }
 
-    virtual QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint = QSizeF()) const {
+    virtual QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint = QSizeF()) const override
+    {
         if (m_sizeHints[which].isValid()) {
             return m_sizeHints[which];
         }
@@ -513,7 +489,7 @@ void tst_QGraphicsLinearLayout::insertItem()
     for (int i = 0; i < layoutCount; ++i)
         layout.addItem(new SubQGraphicsLinearLayout);
 
-    QGraphicsLayoutItem *item = 0;
+    QGraphicsLayoutItem *item = nullptr;
     if (isWidget)
         item = new QGraphicsWidget;
     else
@@ -570,7 +546,7 @@ void tst_QGraphicsLinearLayout::insertStretch()
     scene.addItem(widget);
 
     QList<QGraphicsWidget *>items;
-    QGraphicsWidget *item = 0;
+    QGraphicsWidget *item = nullptr;
     for (int i = 0; i < itemCount; ++i) {
         item = new RectWidget;
         item->setMinimumSize(10, 10);
@@ -747,7 +723,7 @@ void tst_QGraphicsLinearLayout::orientation()
     // important to resize to preferredsize when orientation is switched
     widget->resize(widget->effectiveSizeHint(Qt::PreferredSize));
     qApp->processEvents();
-    for (i = 0; i < positions.count(); ++i) {
+    for (i = 0; i < positions.size(); ++i) {
         QGraphicsWidget *item = static_cast<QGraphicsWidget*>(layout.itemAt(i));
         if (initialOrientation == Qt::Horizontal)
             QCOMPARE(item->pos().y(), positions.at(i));
@@ -791,7 +767,7 @@ void tst_QGraphicsLinearLayout::removeAt()
         layout.addItem(new SubQGraphicsLinearLayout);
     QSizeF oldSizeHint = layout.sizeHint(Qt::PreferredSize, QSizeF());
 
-    QGraphicsLayoutItem *w = 0;
+    QGraphicsLayoutItem *w = nullptr;
     if (removeItemAt >= 0 && removeItemAt < layout.count())
         w = layout.itemAt(removeItemAt);
     if (w) {
@@ -841,7 +817,7 @@ void tst_QGraphicsLinearLayout::removeItem()
     for (int i = 0; i < layoutCount; ++i)
         layout.addItem(new SubQGraphicsLinearLayout);
 
-    QGraphicsLayoutItem *w = 0;
+    QGraphicsLayoutItem *w = nullptr;
     if (removeItemAt >= 0 && removeItemAt < layout.count())
         w = layout.itemAt(removeItemAt);
     QSizeF oldSizeHint = layout.sizeHint(Qt::PreferredSize, QSizeF());
@@ -1145,7 +1121,7 @@ void tst_QGraphicsLinearLayout::setStretchFactor()
 
 
     int i;
-    for (i = 0; i < stretches.count(); ++i) {
+    for (i = 0; i < stretches.size(); ++i) {
         QGraphicsWidget *item = new RectWidget(widget);
         item->setMinimumSize(5,5);
         item->setPreferredSize(10,5);
@@ -1163,7 +1139,7 @@ void tst_QGraphicsLinearLayout::setStretchFactor()
     qreal firstStretch = -1;
     qreal firstExtent = -1.;
     qreal sumExtent = 0;
-    for (i = 0; i < stretches.count(); ++i) {
+    for (i = 0; i < stretches.size(); ++i) {
         QGraphicsWidget *item = static_cast<QGraphicsWidget*>(layout.itemAt(i));
         qreal extent = item->size().width();
         qreal stretch = (qreal)stretches.at(i);
@@ -1321,7 +1297,7 @@ void tst_QGraphicsLinearLayout::defaultStretchFactors()
         QSizeF itemSize = layout->itemAt(i)->geometry().size();
         if (orientation == Qt::Vertical)
             itemSize.transpose();
-        if (i < expectedSizes.count())
+        if (i < expectedSizes.size())
             QCOMPARE(itemSize.width(), qreal(expectedSizes.at(i)));
     }
 

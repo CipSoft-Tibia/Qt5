@@ -20,7 +20,7 @@
 #include "include/core/SkScalar.h"
 #include "include/core/SkTypeface.h"
 #include "include/effects/SkImageFilters.h"
-#include "include/utils/SkRandom.h"
+#include "src/base/SkRandom.h"
 #include "tools/ToolUtils.h"
 
 #include <utility>
@@ -73,7 +73,7 @@ static sk_sp<SkImage> make_img() {
     result.setInfo(SkImageInfo::MakeS32(WIDTH_HEIGHT, WIDTH_HEIGHT, kPremul_SkAlphaType));
     result.setPixelRef(sk_ref_sp(bitmap.pixelRef()), 0, 0);
 
-    return SkImage::MakeFromBitmap(result);
+    return result.asImage();
 }
 
 DEF_SIMPLE_GM_BG(imagemagnifier_cropped, canvas, WIDTH_HEIGHT, WIDTH_HEIGHT, SK_ColorBLACK) {

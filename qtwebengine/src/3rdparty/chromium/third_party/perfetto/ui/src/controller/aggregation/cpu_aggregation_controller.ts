@@ -16,7 +16,7 @@ import {ColumnDef} from '../../common/aggregation_data';
 import {Engine} from '../../common/engine';
 import {Area, Sorting} from '../../common/state';
 import {toNs} from '../../common/time';
-import {Config, CPU_SLICE_TRACK_KIND} from '../../tracks/cpu_slices/common';
+import {Config, CPU_SLICE_TRACK_KIND} from '../../tracks/cpu_slices';
 import {globals} from '../globals';
 
 import {AggregationController} from './aggregation_controller';
@@ -54,7 +54,7 @@ export class CpuAggregationController extends AggregationController {
   }
 
   getTabName() {
-    return 'CPU Slices';
+    return 'CPU by thread';
   }
 
   async getExtra() {}
@@ -75,40 +75,40 @@ export class CpuAggregationController extends AggregationController {
         title: 'PID',
         kind: 'NUMBER',
         columnConstructor: Uint16Array,
-        columnId: 'pid'
+        columnId: 'pid',
       },
       {
         title: 'Thread',
         kind: 'STRING',
         columnConstructor: Uint16Array,
-        columnId: 'thread_name'
+        columnId: 'thread_name',
       },
       {
         title: 'TID',
         kind: 'NUMBER',
         columnConstructor: Uint16Array,
-        columnId: 'tid'
+        columnId: 'tid',
       },
       {
         title: 'Wall duration (ms)',
         kind: 'TIMESTAMP_NS',
         columnConstructor: Float64Array,
         columnId: 'total_dur',
-        sum: true
+        sum: true,
       },
       {
         title: 'Avg Wall duration (ms)',
         kind: 'TIMESTAMP_NS',
         columnConstructor: Float64Array,
-        columnId: 'avg_dur'
+        columnId: 'avg_dur',
       },
       {
         title: 'Occurrences',
         kind: 'NUMBER',
         columnConstructor: Uint16Array,
         columnId: 'occurrences',
-        sum: true
-      }
+        sum: true,
+      },
     ];
   }
 }

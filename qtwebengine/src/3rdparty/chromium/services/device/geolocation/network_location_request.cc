@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,23 +11,28 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/strings/escape.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
-#include "net/base/escape.h"
+#include "components/device_event_log/device_event_log.h"
 #include "net/base/load_flags.h"
+#include "net/base/net_errors.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "services/device/geolocation/location_arbitrator.h"
 #include "services/device/public/cpp/geolocation/geoposition.h"
+#include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace device {
 namespace {
@@ -66,6 +71,11 @@ void RecordUmaResponseCode(int code) {
                            code);
 }
 
+void RecordUmaNetError(int net_error) {
+  base::UmaHistogramSparse("Geolocation.NetworkLocationRequest.NetError",
+                           -net_error);
+}
+
 void RecordUmaAccessPoints(int count) {
   const int min = 1;
   const int max = 20;
@@ -102,7 +112,7 @@ bool ParseServerResponse(const std::string& response_body,
                          mojom::Geoposition* position);
 void AddWifiData(const WifiData& wifi_data,
                  int age_milliseconds,
-                 base::DictionaryValue* request);
+                 base::Value::Dict& request);
 }  // namespace
 
 NetworkLocationRequest::NetworkLocationRequest(
@@ -119,9 +129,13 @@ bool NetworkLocationRequest::MakeRequest(
     const WifiData& wifi_data,
     const base::Time& wifi_timestamp,
     const net::PartialNetworkTrafficAnnotationTag& partial_traffic_annotation) {
+  GEOLOCATION_LOG(DEBUG)
+      << "Sending a network location request: Number of Wi-Fi APs="
+      << wifi_data.access_point_data.size();
   RecordUmaEvent(NETWORK_LOCATION_REQUEST_EVENT_REQUEST_START);
   RecordUmaAccessPoints(wifi_data.access_point_data.size());
   if (url_loader_) {
+    GEOLOCATION_LOG(DEBUG) << "Cancelling pending network location request";
     DVLOG(1) << "NetworkLocationRequest : Cancelling pending request";
     RecordUmaEvent(NETWORK_LOCATION_REQUEST_EVENT_REQUEST_CANCEL);
     url_loader_.reset();
@@ -158,6 +172,7 @@ bool NetworkLocationRequest::MakeRequest(
 
   url_loader_ = network::SimpleURLLoader::Create(std::move(resource_request),
                                                  traffic_annotation);
+  url_loader_->SetAllowHttpErrorResults(true);
 
   std::string upload_data;
   FormUploadData(wifi_data, wifi_timestamp, &upload_data);
@@ -179,6 +194,8 @@ void NetworkLocationRequest::OnRequestComplete(
   if (url_loader_->ResponseInfo())
     response_code = url_loader_->ResponseInfo()->headers->response_code();
   RecordUmaResponseCode(response_code);
+  GEOLOCATION_LOG(DEBUG) << "Got network location response: response_code="
+                         << response_code;
 
   mojom::Geoposition position;
   GetLocationFromResponse(net_error, response_code, std::move(data),
@@ -210,7 +227,7 @@ GURL FormRequestURL(const std::string& api_key) {
     std::string query(url.query());
     if (!query.empty())
       query += "&";
-    query += "key=" + net::EscapeQueryParamValue(api_key, true);
+    query += "key=" + base::EscapeQueryParamValue(api_key, true);
     GURL::Replacements replacements;
     replacements.SetQueryStr(query);
     return url.ReplaceComponents(replacements);
@@ -230,32 +247,28 @@ void FormUploadData(const WifiData& wifi_data,
       age = static_cast<int>(delta_ms);
   }
 
-  base::DictionaryValue request;
-  AddWifiData(wifi_data, age, &request);
+  base::Value::Dict request;
+  AddWifiData(wifi_data, age, request);
   base::JSONWriter::Write(request, upload_data);
 }
 
 void AddString(const std::string& property_name,
                const std::string& value,
-               base::DictionaryValue* dict) {
-  DCHECK(dict);
+               base::Value::Dict& dict) {
   if (!value.empty())
-    dict->SetString(property_name, value);
+    dict.Set(property_name, value);
 }
 
 void AddInteger(const std::string& property_name,
                 int value,
-                base::DictionaryValue* dict) {
-  DCHECK(dict);
+                base::Value::Dict& dict) {
   if (value != std::numeric_limits<int32_t>::min())
-    dict->SetInteger(property_name, value);
+    dict.Set(property_name, value);
 }
 
 void AddWifiData(const WifiData& wifi_data,
                  int age_milliseconds,
-                 base::DictionaryValue* request) {
-  DCHECK(request);
-
+                 base::Value::Dict& request) {
   if (wifi_data.access_point_data.empty())
     return;
 
@@ -265,35 +278,40 @@ void AddWifiData(const WifiData& wifi_data,
   for (const auto& ap_data : wifi_data.access_point_data)
     access_points_by_signal_strength.insert(&ap_data);
 
-  auto wifi_access_point_list = std::make_unique<base::ListValue>();
+  base::Value::List wifi_access_point_list;
   for (auto* ap_data : access_points_by_signal_strength) {
-    auto wifi_dict = std::make_unique<base::DictionaryValue>();
+    base::Value::Dict wifi_dict;
     auto macAddress = base::UTF16ToUTF8(ap_data->mac_address);
     if (macAddress.empty())
       continue;
-    AddString("macAddress", macAddress, wifi_dict.get());
-    AddInteger("signalStrength", ap_data->radio_signal_strength,
-               wifi_dict.get());
-    AddInteger("age", age_milliseconds, wifi_dict.get());
-    AddInteger("channel", ap_data->channel, wifi_dict.get());
-    AddInteger("signalToNoiseRatio", ap_data->signal_to_noise, wifi_dict.get());
-    wifi_access_point_list->Append(std::move(wifi_dict));
+    AddString("macAddress", macAddress, wifi_dict);
+    AddInteger("signalStrength", ap_data->radio_signal_strength, wifi_dict);
+    AddInteger("age", age_milliseconds, wifi_dict);
+    AddInteger("channel", ap_data->channel, wifi_dict);
+    AddInteger("signalToNoiseRatio", ap_data->signal_to_noise, wifi_dict);
+    wifi_access_point_list.Append(std::move(wifi_dict));
   }
-  if (!wifi_access_point_list->empty())
-    request->Set("wifiAccessPoints", std::move(wifi_access_point_list));
+  if (!wifi_access_point_list.empty())
+    request.Set("wifiAccessPoints", std::move(wifi_access_point_list));
 }
 
 void FormatPositionError(const GURL& server_url,
-                         const std::string& message,
+                         const std::string& error_message,
+                         const std::string& error_technical,
                          mojom::Geoposition* position) {
   position->error_code = mojom::Geoposition::ErrorCode::POSITION_UNAVAILABLE;
-  position->error_message = "Network location provider at '";
-  position->error_message += server_url.GetOrigin().spec();
-  position->error_message += "' : ";
-  position->error_message += message;
-  position->error_message += ".";
+  position->error_message = error_message;
   VLOG(1) << "NetworkLocationRequest::GetLocationFromResponse() : "
           << position->error_message;
+  if (!error_technical.empty()) {
+    position->error_technical = "Network location provider at '";
+    position->error_technical += server_url.DeprecatedGetOriginAsURL().spec();
+    position->error_technical += "' : ";
+    position->error_technical += error_technical;
+    position->error_technical += ".";
+    VLOG(1) << "NetworkLocationRequest::GetLocationFromResponse() : "
+            << position->error_technical;
+  }
 }
 
 void GetLocationFromResponse(int net_error,
@@ -303,19 +321,25 @@ void GetLocationFromResponse(int net_error,
                              const GURL& server_url,
                              mojom::Geoposition* position) {
   DCHECK(position);
-
   // HttpPost can fail for a number of reasons. Most likely this is because
   // we're offline, or there was no response.
   if (net_error != net::OK) {
-    FormatPositionError(server_url, "No response received", position);
+    FormatPositionError(server_url,
+                        "Network error. Check "
+                        "DevTools console for more information.",
+                        net::ErrorToShortString(net_error), position);
     RecordUmaEvent(NETWORK_LOCATION_REQUEST_EVENT_RESPONSE_EMPTY);
+    RecordUmaNetError(net_error);
     return;
   }
 
   if (status_code != 200) {  // HTTP OK.
     std::string message = "Returned error code ";
     message += base::NumberToString(status_code);
-    FormatPositionError(server_url, message, position);
+    FormatPositionError(server_url,
+                        "Failed to query location from network service. Check "
+                        "the DevTools console for more information.",
+                        message, position);
     RecordUmaEvent(NETWORK_LOCATION_REQUEST_EVENT_RESPONSE_NOT_OK);
     return;
   }
@@ -324,8 +348,8 @@ void GetLocationFromResponse(int net_error,
   // this position fix.
   DCHECK(response_body);
   if (!ParseServerResponse(*response_body, wifi_timestamp, position)) {
-    // We failed to parse the repsonse.
-    FormatPositionError(server_url, "Response was malformed", position);
+    // We failed to parse the response.
+    FormatPositionError(server_url, "Response was malformed", "", position);
     RecordUmaEvent(NETWORK_LOCATION_REQUEST_EVENT_RESPONSE_MALFORMED);
     return;
   }
@@ -333,33 +357,13 @@ void GetLocationFromResponse(int net_error,
   // The response was successfully parsed, but it may not be a valid
   // position fix.
   if (!ValidateGeoposition(*position)) {
-    FormatPositionError(server_url, "Did not provide a good position fix",
+    FormatPositionError(server_url, "Did not provide a good position fix", "",
                         position);
     RecordUmaEvent(NETWORK_LOCATION_REQUEST_EVENT_RESPONSE_INVALID_FIX);
     return;
   }
 
   RecordUmaEvent(NETWORK_LOCATION_REQUEST_EVENT_RESPONSE_SUCCESS);
-}
-
-// Numeric values without a decimal point have type integer and IsDouble() will
-// return false. This is convenience function for detecting integer or floating
-// point numeric values. Note that isIntegral() includes boolean values, which
-// is not what we want.
-bool GetAsDouble(const base::DictionaryValue& object,
-                 const std::string& property_name,
-                 double* out) {
-  DCHECK(out);
-  const base::Value* value = NULL;
-  if (!object.Get(property_name, &value))
-    return false;
-  int value_as_int;
-  DCHECK(value);
-  if (value->GetAsInteger(&value_as_int)) {
-    *out = value_as_int;
-    return true;
-  }
-  return value->GetAsDouble(out);
 }
 
 bool ParseServerResponse(const std::string& response_body,
@@ -379,32 +383,31 @@ bool ParseServerResponse(const std::string& response_body,
   // Parse the response, ignoring comments.
   auto response_result =
       base::JSONReader::ReadAndReturnValueWithError(response_body);
-  if (!response_result.value) {
+  if (!response_result.has_value()) {
     LOG(WARNING) << "ParseServerResponse() : JSONReader failed : "
-                 << response_result.error_message;
+                 << response_result.error().message;
     return false;
   }
-  base::Value response_value = std::move(*response_result.value);
+  base::Value response_value = std::move(*response_result);
 
-  if (!response_value.is_dict()) {
+  const base::Value::Dict* response_object = response_value.GetIfDict();
+  if (!response_object) {
     VLOG(1) << "ParseServerResponse() : Unexpected response type "
             << response_value.type();
     return false;
   }
-  const base::DictionaryValue* response_object =
-      static_cast<base::DictionaryValue*>(&response_value);
 
   // Get the location
-  const base::Value* location_value = NULL;
-  if (!response_object->Get(kLocationString, &location_value)) {
+  const base::Value* location_value = response_object->Find(kLocationString);
+  if (!location_value) {
     VLOG(1) << "ParseServerResponse() : Missing location attribute.";
     // GLS returns a response with no location property to represent
     // no fix available; return true to indicate successful parse.
     return true;
   }
-  DCHECK(location_value);
 
-  if (!location_value->is_dict()) {
+  const base::Value::Dict* location_object = location_value->GetIfDict();
+  if (!location_object) {
     if (!location_value->is_none()) {
       VLOG(1) << "ParseServerResponse() : Unexpected location type "
               << location_value->type();
@@ -414,24 +417,27 @@ bool ParseServerResponse(const std::string& response_body,
     }
     return true;  // Successfully parsed response containing no fix.
   }
-  const base::DictionaryValue* location_object =
-      static_cast<const base::DictionaryValue*>(location_value);
 
   // latitude and longitude fields are always required.
-  double latitude = 0;
-  double longitude = 0;
-  if (!GetAsDouble(*location_object, kLatitudeString, &latitude) ||
-      !GetAsDouble(*location_object, kLongitudeString, &longitude)) {
+  absl::optional<double> latitude =
+      location_object->FindDouble(kLatitudeString);
+  absl::optional<double> longitude =
+      location_object->FindDouble(kLongitudeString);
+  if (!latitude || !longitude) {
     VLOG(1) << "ParseServerResponse() : location lacks lat and/or long.";
     return false;
   }
   // All error paths covered: now start actually modifying postion.
-  position->latitude = latitude;
-  position->longitude = longitude;
+  position->latitude = *latitude;
+  position->longitude = *longitude;
   position->timestamp = wifi_timestamp;
 
   // Other fields are optional.
-  GetAsDouble(*response_object, kAccuracyString, &position->accuracy);
+  absl::optional<double> accuracy =
+      response_object->FindDouble(kAccuracyString);
+  if (accuracy) {
+    position->accuracy = *accuracy;
+  }
 
   return true;
 }

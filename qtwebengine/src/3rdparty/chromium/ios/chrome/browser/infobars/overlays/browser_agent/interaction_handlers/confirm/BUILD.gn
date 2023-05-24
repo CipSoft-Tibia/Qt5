@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -7,8 +7,6 @@ source_set("confirm") {
   sources = [
     "confirm_infobar_banner_interaction_handler.h",
     "confirm_infobar_banner_interaction_handler.mm",
-    "confirm_infobar_interaction_handler.h",
-    "confirm_infobar_interaction_handler.mm",
   ]
   deps = [
     "//base",
@@ -33,14 +31,11 @@ source_set("unit_tests") {
   deps = [
     ":confirm",
     "//base/test:test_support",
-    "//components/infobars/core:feature_flags",
     "//ios/chrome/browser/infobars",
     "//ios/chrome/browser/infobars:public",
     "//ios/chrome/browser/infobars/overlays",
     "//ios/chrome/browser/infobars/test",
-    "//ios/chrome/browser/infobars/test",
     "//ios/chrome/browser/overlays",
-    "//ios/chrome/browser/ui/infobars:feature_flags",
     "//ios/web/public/test/fakes",
     "//testing/gtest",
   ]

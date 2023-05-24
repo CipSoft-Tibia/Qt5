@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,8 @@
 
 #include <memory>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "chrome/browser/ui/webui/feed_internals/feed_internals.mojom-forward.h"
-#include "chrome/browser/ui/webui/feed_internals/feed_internals_page_handler.h"
 #include "components/feed/buildflags.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "ui/webui/mojo_web_ui_controller.h"
@@ -27,6 +26,10 @@ class FeedV2InternalsPageHandler;
 class FeedInternalsUI : public ui::MojoWebUIController {
  public:
   explicit FeedInternalsUI(content::WebUI* web_ui);
+
+  FeedInternalsUI(const FeedInternalsUI&) = delete;
+  FeedInternalsUI& operator=(const FeedInternalsUI&) = delete;
+
   ~FeedInternalsUI() override;
 
   // Instantiates the implementor of the feed_internals::mojom::PageHandler mojo
@@ -35,16 +38,9 @@ class FeedInternalsUI : public ui::MojoWebUIController {
       mojo::PendingReceiver<feed_internals::mojom::PageHandler> receiver);
 
  private:
-  Profile* profile_;
-#if BUILDFLAG(ENABLE_FEED_V1)
-  std::unique_ptr<FeedInternalsPageHandler> page_handler_;
-#endif
-#if BUILDFLAG(ENABLE_FEED_V2)
+  raw_ptr<Profile> profile_;
   std::unique_ptr<FeedV2InternalsPageHandler> v2_page_handler_;
-#endif
   WEB_UI_CONTROLLER_TYPE_DECL();
-
-  DISALLOW_COPY_AND_ASSIGN(FeedInternalsUI);
 };
 
 #endif  // CHROME_BROWSER_UI_WEBUI_FEED_INTERNALS_FEED_INTERNALS_UI_H_

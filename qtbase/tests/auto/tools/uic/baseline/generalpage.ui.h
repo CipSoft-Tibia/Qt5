@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'generalpage.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -33,35 +33,35 @@ public:
     void setupUi(QWidget *GeneralPage)
     {
         if (GeneralPage->objectName().isEmpty())
-            GeneralPage->setObjectName(QString::fromUtf8("GeneralPage"));
+            GeneralPage->setObjectName("GeneralPage");
         GeneralPage->resize(417, 243);
         gridLayout = new QGridLayout(GeneralPage);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
+        gridLayout->setObjectName("gridLayout");
         label = new QLabel(GeneralPage);
-        label->setObjectName(QString::fromUtf8("label"));
+        label->setObjectName("label");
 
         gridLayout->addWidget(label, 1, 0, 1, 1);
 
         namespaceLineEdit = new QLineEdit(GeneralPage);
-        namespaceLineEdit->setObjectName(QString::fromUtf8("namespaceLineEdit"));
+        namespaceLineEdit->setObjectName("namespaceLineEdit");
 
         gridLayout->addWidget(namespaceLineEdit, 1, 1, 1, 1);
 
         label_2 = new QLabel(GeneralPage);
-        label_2->setObjectName(QString::fromUtf8("label_2"));
+        label_2->setObjectName("label_2");
 
         gridLayout->addWidget(label_2, 2, 0, 1, 1);
 
         folderLineEdit = new QLineEdit(GeneralPage);
-        folderLineEdit->setObjectName(QString::fromUtf8("folderLineEdit"));
+        folderLineEdit->setObjectName("folderLineEdit");
 
         gridLayout->addWidget(folderLineEdit, 2, 1, 1, 1);
 
-        spacerItem = new QSpacerItem(20, 20, QSizePolicy::Minimum, QSizePolicy::Fixed);
+        spacerItem = new QSpacerItem(20, 20, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
 
         gridLayout->addItem(spacerItem, 0, 1, 1, 1);
 
-        spacerItem1 = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem1 = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout->addItem(spacerItem1, 3, 1, 1, 1);
 

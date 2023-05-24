@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,10 +17,6 @@
 #include "fpdfsdk/cpdfsdk_pauseadapter.h"
 #include "fpdfsdk/cpdfsdk_renderpage.h"
 #include "public/fpdfview.h"
-
-#if defined(_SKIA_SUPPORT_PATHS_)
-#include "core/fxge/cfx_renderdevice.h"
-#endif
 
 // These checks are here because core/ and public/ cannot depend on each other.
 static_assert(CPDF_ProgressiveRenderer::kReady == FPDF_RENDER_READY,
@@ -67,17 +63,19 @@ FPDF_RenderPageBitmapWithColorScheme_Start(FPDF_BITMAP bitmap,
   auto pOwnedDevice = std::make_unique<CFX_DefaultRenderDevice>();
   CFX_DefaultRenderDevice* pDevice = pOwnedDevice.get();
   pContext->m_pDevice = std::move(pOwnedDevice);
-  pDevice->Attach(pBitmap, !!(flags & FPDF_REVERSE_BYTE_ORDER), nullptr, false);
+  pDevice->AttachWithRgbByteOrder(pBitmap, !!(flags & FPDF_REVERSE_BYTE_ORDER));
 
   CPDFSDK_PauseAdapter pause_adapter(pause);
   CPDFSDK_RenderPageWithContext(pContext, pPage, start_x, start_y, size_x,
                                 size_y, rotate, flags, color_scheme,
                                 /*need_to_restore=*/false, &pause_adapter);
 
-#if defined(_SKIA_SUPPORT_PATHS_)
-  pDevice->Flush(false);
-  pBitmap->UnPreMultiply();
-#endif
+#ifdef _SKIA_SUPPORT_
+  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+    pDevice->Flush(false);
+    pBitmap->UnPreMultiply();
+  }
+#endif  // _SKIA_SUPPORT_
 
   if (!pContext->m_pRenderer)
     return FPDF_RENDER_FAILED;
@@ -115,26 +113,19 @@ FPDF_EXPORT int FPDF_CALLCONV FPDF_RenderPage_Continue(FPDF_PAGE page,
 
   CPDFSDK_PauseAdapter pause_adapter(pause);
   pContext->m_pRenderer->Continue(&pause_adapter);
-#if defined(_SKIA_SUPPORT_PATHS_)
-  CFX_RenderDevice* pDevice = pContext->m_pDevice.get();
-  pDevice->Flush(false);
-  pDevice->GetBitmap()->UnPreMultiply();
-#endif
+
+#ifdef _SKIA_SUPPORT_
+  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+    CFX_RenderDevice* pDevice = pContext->m_pDevice.get();
+    pDevice->Flush(false);
+    pDevice->GetBitmap()->UnPreMultiply();
+  }
+#endif  // _SKIA_SUPPORT_
   return ToFPDFStatus(pContext->m_pRenderer->GetStatus());
 }
 
 FPDF_EXPORT void FPDF_CALLCONV FPDF_RenderPage_Close(FPDF_PAGE page) {
   CPDF_Page* pPage = CPDFPageFromFPDFPage(page);
-  if (pPage) {
-#if defined(_SKIA_SUPPORT_PATHS_)
-    auto* pContext =
-        static_cast<CPDF_PageRenderContext*>(pPage->GetRenderContext());
-    if (pContext && pContext->m_pRenderer) {
-      CFX_RenderDevice* pDevice = pContext->m_pDevice.get();
-      pDevice->Flush(true);
-      pDevice->GetBitmap()->UnPreMultiply();
-    }
-#endif
-    pPage->SetRenderContext(nullptr);
-  }
+  if (pPage)
+    pPage->ClearRenderContext();
 }

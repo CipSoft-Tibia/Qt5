@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QBLUETOOTHSERVICEDISCOVERYAGENT_P_H
 #define QBLUETOOTHSERVICEDISCOVERYAGENT_P_H
@@ -72,27 +36,18 @@ class QXmlStreamReader;
 QT_END_NAMESPACE
 #endif
 
-#ifdef QT_WIN_BLUETOOTH
-#include <QtCore/QVariant>
-
-QT_BEGIN_NAMESPACE
-class QThread;
-
-class ThreadWorkerFind : public QObject
-{
-    Q_OBJECT
-signals:
-    void findFinished(QVariant result);
-};
-QT_END_NAMESPACE
-
-#elif defined(QT_WINRT_BLUETOOTH)
+#ifdef QT_WINRT_BLUETOOTH
 #include <QtCore/QPointer>
 #endif
 
 #ifdef QT_OSX_BLUETOOTH
-#include "osx/btdelegates_p.h"
-#include "osx/btraii_p.h"
+#include "darwin/btdelegates_p.h"
+#include "darwin/btraii_p.h"
+#endif
+
+#ifdef QT_ANDROID_BLUETOOTH
+#include <QtCore/QJniObject>
+#include <QtBluetooth/QBluetoothLocalDevice>
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -101,8 +56,6 @@ class QBluetoothDeviceDiscoveryAgent;
 #ifdef QT_ANDROID_BLUETOOTH
 class ServiceDiscoveryBroadcastReceiver;
 class LocalDeviceBroadcastReceiver;
-#include <QtAndroidExtras/QAndroidJniObject>
-#include <QtBluetooth/QBluetoothLocalDevice>
 #endif
 
 #ifdef QT_WINRT_BLUETOOTH
@@ -110,7 +63,7 @@ class QWinRTBluetoothServiceDiscoveryWorker;
 #endif
 
 class QBluetoothServiceDiscoveryAgentPrivate
-#if defined QT_WINRT_BLUETOOTH || defined QT_WIN_BLUETOOTH
+#if defined(QT_WINRT_BLUETOOTH)
         : public QObject
 {
     Q_OBJECT
@@ -149,15 +102,6 @@ public:
     void _q_serviceDiscoveryFinished();
     void _q_deviceDiscoveryError(QBluetoothDeviceDiscoveryAgent::Error);
 #if QT_CONFIG(bluez)
-    void _q_discoveredServices(QDBusPendingCallWatcher *watcher);
-    void _q_createdDevice(QDBusPendingCallWatcher *watcher);
-    void _q_foundDevice(QDBusPendingCallWatcher *watcher);
-    //Slots below are used for discovering Bluetooth Low Energy devices. It will be used with Bluez 5.x version.
-    /*
-    void _g_discoveredGattService();
-    void _q_discoverGattCharacteristics(QDBusPendingCallWatcher *watcher);
-    void _q_discoveredGattCharacteristic(QDBusPendingCallWatcher *watcher);
-    */
     void _q_sdpScannerDone(int exitCode, QProcess::ExitStatus status);
     void _q_finishSdpScan(QBluetoothServiceDiscoveryAgent::Error errorCode,
                           const QString &errorDescription,
@@ -170,10 +114,6 @@ public:
                                     const QList<QBluetoothUuid> &uuids);
     void _q_fetchUuidsTimeout();
     void _q_hostModeStateChanged(QBluetoothLocalDevice::HostMode state);
-#endif
-#ifdef QT_WIN_BLUETOOTH
-    void _q_nextSdpScan(const QVariant &input);
-    bool serviceMatches(const QBluetoothServiceInfo &info);
 #endif
 
 private:
@@ -189,7 +129,6 @@ private:
     QVariant readAttributeValue(QXmlStreamReader &xml);
     QBluetoothServiceInfo parseServiceXml(const QString& xml);
     void performMinimalServiceDiscovery(const QBluetoothAddress &deviceAddress);
-    void discoverServices(const QString &deviceObjectPath);
 #endif
 
 public:
@@ -211,10 +150,7 @@ private:
     bool singleDevice;
 #if QT_CONFIG(bluez)
     QString foundHostAdapterPath;
-    OrgBluezManagerInterface *manager = nullptr;
-    OrgFreedesktopDBusObjectManagerInterface *managerBluez5 = nullptr;
-    OrgBluezAdapterInterface *adapter = nullptr;
-    OrgBluezDeviceInterface *device = nullptr;
+    OrgFreedesktopDBusObjectManagerInterface *manager = nullptr;
     QProcess *sdpScannerProcess = nullptr;
 #endif
 
@@ -222,27 +158,24 @@ private:
     ServiceDiscoveryBroadcastReceiver *receiver = nullptr;
     LocalDeviceBroadcastReceiver *localDeviceReceiver = nullptr;
 
-    QAndroidJniObject btAdapter;
+    QJniObject btAdapter;
+    // The sdpCache caches service discovery results while it is running, and is
+    // cleared once finished. The cache is used as we may (or may not) get more accurate
+    // results after the first result. This temporary caching allows to send the
+    // serviceDiscovered() signal once per service and with the most accurate information.
+    // Partial cache clearing may occur already during the scan if the second (more accurate)
+    // scan result is received.
     QMap<QBluetoothAddress,QPair<QBluetoothDeviceInfo,QList<QBluetoothUuid> > > sdpCache;
-#endif
-
-#ifdef QT_WIN_BLUETOOTH
-private:
-    bool pendingStop;
-    bool pendingFinish;
-
-    QThread *threadFind = nullptr;
-    ThreadWorkerFind *threadWorkerFind = nullptr;
 #endif
 
 #ifdef QT_WINRT_BLUETOOTH
 private slots:
     void processFoundService(quint64 deviceAddress, const QBluetoothServiceInfo &info);
     void onScanFinished(quint64 deviceAddress);
-    void onScanCanceled();
     void onError();
 
 private:
+    void releaseWorker();
     QPointer<QWinRTBluetoothServiceDiscoveryWorker> worker;
 #endif
 

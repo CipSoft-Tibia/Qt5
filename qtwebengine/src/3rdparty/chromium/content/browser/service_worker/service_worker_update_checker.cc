@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,16 +6,14 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/task/post_task.h"
+#include "base/functional/bind.h"
 #include "base/trace_event/trace_event.h"
 #include "content/browser/loader/browser_initiated_resource_request.h"
 #include "content/browser/service_worker/service_worker_consts.h"
 #include "content/browser/service_worker/service_worker_context_core.h"
 #include "content/browser/service_worker/service_worker_context_wrapper.h"
-#include "content/browser/service_worker/service_worker_storage.h"
+#include "content/browser/service_worker/service_worker_single_script_update_checker.h"
 #include "content/browser/service_worker/service_worker_version.h"
-#include "content/browser/storage_partition_impl.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/content_browser_client.h"
@@ -25,79 +23,32 @@
 #include "net/http/http_request_headers.h"
 #include "services/network/public/cpp/constants.h"
 #include "services/network/public/cpp/features.h"
+#include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
 
 namespace content {
-
-namespace {
-
-void SetUpOnUI(
-    base::WeakPtr<ServiceWorkerProcessManager> process_manager,
-    void* trace_id,
-    base::OnceCallback<void(
-        net::HttpRequestHeaders,
-        ServiceWorkerUpdatedScriptLoader::BrowserContextGetter)> callback) {
-  TRACE_EVENT_WITH_FLOW0(
-      "ServiceWorker", "ServiceWorkerUpdateChecker::anonymous::SetUpOnUI",
-      trace_id, TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT);
-
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  if (!process_manager || process_manager->IsShutdown()) {
-    // If it's being shut down, ServiceWorkerUpdateChecker is going to be
-    // destroyed after this task. We do nothing here.
-    return;
-  }
-
-  net::HttpRequestHeaders headers;
-
-  // Set the accept header to '*/*'.
-  // https://fetch.spec.whatwg.org/#concept-fetch
-  headers.SetHeader(net::HttpRequestHeaders::kAccept,
-                    network::kDefaultAcceptHeaderValue);
-
-  BrowserContext* browser_context = process_manager->browser_context();
-  blink::mojom::RendererPreferences renderer_preferences;
-  GetContentClient()->browser()->UpdateRendererPreferencesForWorker(
-      browser_context, &renderer_preferences);
-  UpdateAdditionalHeadersForBrowserInitiatedRequest(
-      &headers, browser_context, /*should_update_existing_headers=*/false,
-      renderer_preferences);
-
-  ServiceWorkerUpdatedScriptLoader::BrowserContextGetter
-      browser_context_getter = base::BindRepeating(
-          [](base::WeakPtr<ServiceWorkerProcessManager> process_manager)
-              -> BrowserContext* {
-            DCHECK_CURRENTLY_ON(BrowserThread::UI);
-            if (process_manager)
-              return process_manager->browser_context();
-            return nullptr;
-          },
-          process_manager);
-
-  RunOrPostTaskOnThread(FROM_HERE, ServiceWorkerContext::GetCoreThreadId(),
-                        base::BindOnce(std::move(callback), std::move(headers),
-                                       browser_context_getter));
-}
-
-}  // namespace
 
 ServiceWorkerUpdateChecker::ServiceWorkerUpdateChecker(
     std::vector<storage::mojom::ServiceWorkerResourceRecordPtr>
         scripts_to_compare,
     const GURL& main_script_url,
     int64_t main_script_resource_id,
+    const absl::optional<std::string>& main_script_sha256_checksum,
     scoped_refptr<ServiceWorkerVersion> version_to_update,
     scoped_refptr<network::SharedURLLoaderFactory> loader_factory,
     bool force_bypass_cache,
+    blink::mojom::ScriptType worker_script_type,
     blink::mojom::ServiceWorkerUpdateViaCache update_via_cache,
     base::TimeDelta time_since_last_check,
     ServiceWorkerContextCore* context,
     blink::mojom::FetchClientSettingsObjectPtr fetch_client_settings_object)
     : main_script_url_(main_script_url),
       main_script_resource_id_(main_script_resource_id),
+      main_script_sha256_checksum_(main_script_sha256_checksum),
       scripts_to_compare_(std::move(scripts_to_compare)),
       version_to_update_(std::move(version_to_update)),
       loader_factory_(std::move(loader_factory)),
       force_bypass_cache_(force_bypass_cache),
+      worker_script_type_(worker_script_type),
       update_via_cache_(update_via_cache),
       time_since_last_check_(time_since_last_check),
       context_(context),
@@ -117,20 +68,12 @@ void ServiceWorkerUpdateChecker::Start(UpdateStatusCallback callback) {
   DCHECK(!scripts_to_compare_.empty());
   callback_ = std::move(callback);
 
-  RunOrPostTaskOnThread(
-      FROM_HERE, BrowserThread::UI,
-      base::BindOnce(&SetUpOnUI, context_->process_manager()->AsWeakPtr(),
-                     base::Unretained(this),
-                     base::BindOnce(&ServiceWorkerUpdateChecker::DidSetUpOnUI,
-                                    weak_factory_.GetWeakPtr())));
-}
+  if (context_->process_manager()->IsShutdown()) {
+    // If it's being shut down, ServiceWorkerUpdateChecker is going to be
+    // destroyed after this task. We do nothing here.
+    return;
+  }
 
-void ServiceWorkerUpdateChecker::DidSetUpOnUI(
-    net::HttpRequestHeaders header,
-    ServiceWorkerUpdatedScriptLoader::BrowserContextGetter
-        browser_context_getter) {
-  default_headers_ = std::move(header);
-  browser_context_getter_ = std::move(browser_context_getter);
   CheckOneScript(main_script_url_, main_script_resource_id_);
 }
 
@@ -141,12 +84,25 @@ void ServiceWorkerUpdateChecker::OnOneUpdateCheckFinished(
     std::unique_ptr<ServiceWorkerSingleScriptUpdateChecker::FailureInfo>
         failure_info,
     std::unique_ptr<ServiceWorkerSingleScriptUpdateChecker::PausedState>
-        paused_state) {
+        paused_state,
+    const absl::optional<std::string>& sha256_checksum) {
   TRACE_EVENT_WITH_FLOW2(
       "ServiceWorker", "ServiceWorkerUpdateChecker::OnOneUpdateCheckFinished",
       this, TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT, "script_url",
       script_url.spec(), "result",
       ServiceWorkerSingleScriptUpdateChecker::ResultToString(result));
+
+  // If calculated checksum exists, add it to the set.
+  // |sha256_checksum| will be set only when cached scripts don't have sha256
+  // checksum fields and the update check results in kIdentical.
+  // When the result is kDifferent, the update check process doesn't scan all
+  // the data so the hash update is not completed yet. In this case, the
+  // finalized checksum is still not available here, and that will be handled in
+  // ServiceWorkerUpdatedScriptLoader.
+  if (sha256_checksum &&
+      result == ServiceWorkerSingleScriptUpdateChecker::Result::kIdentical) {
+    updated_sha256_script_checksums_[script_url] = *sha256_checksum;
+  }
 
   bool is_main_script = script_url == main_script_url_;
   // We only cares about the failures on the main script because an imported
@@ -162,7 +118,7 @@ void ServiceWorkerUpdateChecker::OnOneUpdateCheckFinished(
 
     std::move(callback_).Run(
         ServiceWorkerSingleScriptUpdateChecker::Result::kFailed,
-        std::move(failure_info));
+        std::move(failure_info), std::map<GURL, std::string>());
     return;
   }
 
@@ -174,8 +130,7 @@ void ServiceWorkerUpdateChecker::OnOneUpdateCheckFinished(
     network_accessed_ = true;
 
   if (is_main_script) {
-    cross_origin_embedder_policy_ =
-        running_checker_->cross_origin_embedder_policy();
+    policy_container_host_ = running_checker_->policy_container_host();
   }
 
   if (ServiceWorkerSingleScriptUpdateChecker::Result::kDifferent == result) {
@@ -191,7 +146,7 @@ void ServiceWorkerUpdateChecker::OnOneUpdateCheckFinished(
     // Note that running |callback_| will delete |this|.
     std::move(callback_).Run(
         ServiceWorkerSingleScriptUpdateChecker::Result::kDifferent,
-        nullptr /* failure_info */);
+        nullptr /* failure_info */, std::map<GURL, std::string>());
     return;
   }
 
@@ -205,7 +160,7 @@ void ServiceWorkerUpdateChecker::OnOneUpdateCheckFinished(
     // Running |callback_| will delete |this|.
     std::move(callback_).Run(
         ServiceWorkerSingleScriptUpdateChecker::Result::kIdentical,
-        nullptr /* failure_info */);
+        nullptr /* failure_info */, updated_sha256_script_checksums_);
     return;
   }
 
@@ -223,7 +178,7 @@ void ServiceWorkerUpdateChecker::OnOneUpdateCheckFinished(
       // Running |callback_| will delete |this|.
       std::move(callback_).Run(
           ServiceWorkerSingleScriptUpdateChecker::Result::kIdentical,
-          nullptr /* failure_info */);
+          nullptr /* failure_info */, updated_sha256_script_checksums_);
       return;
     }
   }
@@ -260,6 +215,12 @@ void ServiceWorkerUpdateChecker::OnResourceIdAssignedForOneScriptCheck(
     const GURL& url,
     const int64_t resource_id,
     const int64_t new_resource_id) {
+  if (context_->process_manager()->IsShutdown()) {
+    // If it's being shut down, ServiceWorkerUpdateChecker is going to be
+    // destroyed after this task. We do nothing here.
+    return;
+  }
+
   // When the url matches with the main script url, we can always think that
   // it's the main script even if a main script imports itself because the
   // second load (network load for imported script) should hit the script
@@ -283,10 +244,18 @@ void ServiceWorkerUpdateChecker::OnResourceIdAssignedForOneScriptCheck(
 
   running_checker_ = std::make_unique<ServiceWorkerSingleScriptUpdateChecker>(
       url, is_main_script, main_script_url_, version_to_update_->scope(),
-      force_bypass_cache_, update_via_cache_, fetch_client_settings_object_,
-      time_since_last_check_, default_headers_, browser_context_getter_,
-      loader_factory_, std::move(compare_reader), std::move(copy_reader),
-      std::move(writer), new_resource_id,
+      force_bypass_cache_, worker_script_type_, update_via_cache_,
+      fetch_client_settings_object_, time_since_last_check_,
+      context_->process_manager()->browser_context(), loader_factory_,
+      std::move(compare_reader), std::move(copy_reader), std::move(writer),
+      new_resource_id,
+      // If the main script checksum is empty, then calculate each script
+      // checksum even if the check result is kIdentical.
+      main_script_sha256_checksum_
+          ? ServiceWorkerSingleScriptUpdateChecker::ScriptChecksumUpdateOption::
+                kDefault
+          : ServiceWorkerSingleScriptUpdateChecker::ScriptChecksumUpdateOption::
+                kForceUpdate,
       base::BindOnce(&ServiceWorkerUpdateChecker::OnOneUpdateCheckFinished,
                      weak_factory_.GetWeakPtr(), resource_id));
 }

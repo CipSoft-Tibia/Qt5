@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <jni.h>
 
 #include "base/android/scoped_java_ref.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "weblayer/public/tab_observer.h"
 
 namespace weblayer {
@@ -20,18 +20,20 @@ class Tab;
 class TabCallbackProxy : public TabObserver {
  public:
   TabCallbackProxy(JNIEnv* env, jobject obj, Tab* tab);
+
+  TabCallbackProxy(const TabCallbackProxy&) = delete;
+  TabCallbackProxy& operator=(const TabCallbackProxy&) = delete;
+
   ~TabCallbackProxy() override;
 
   // TabObserver:
   void DisplayedUrlChanged(const GURL& url) override;
   void OnRenderProcessGone() override;
-  void OnTitleUpdated(const base::string16& title) override;
+  void OnTitleUpdated(const std::u16string& title) override;
 
  private:
-  Tab* tab_;
+  raw_ptr<Tab> tab_;
   base::android::ScopedJavaGlobalRef<jobject> java_observer_;
-
-  DISALLOW_COPY_AND_ASSIGN(TabCallbackProxy);
 };
 
 }  // namespace weblayer

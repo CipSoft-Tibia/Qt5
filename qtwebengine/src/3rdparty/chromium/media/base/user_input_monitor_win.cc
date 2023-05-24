@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,18 +8,19 @@
 #include <stdint.h>
 #include <memory>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
-#include "base/macros.h"
-#include "base/single_thread_task_runner.h"
-#include "base/strings/stringprintf.h"
+#include "base/memory/raw_ptr.h"
 #include "base/synchronization/lock.h"
 #include "base/task/current_thread.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/win/message_window.h"
-#include "media/base/keyboard_event_counter.h"
 #include "third_party/skia/include/core/SkPoint.h"
+#include "ui/events/keyboard_event_counter.h"
 #include "ui/events/keycodes/keyboard_code_conversion_win.h"
+#include "ui/events/win/keyboard_hook_monitor.h"
+#include "ui/events/win/keyboard_hook_observer.h"
 
 namespace media {
 namespace {
@@ -41,7 +42,8 @@ std::unique_ptr<RAWINPUTDEVICE> GetRawInputDevices(HWND hwnd, DWORD flags) {
 // UserInputMonitorWin since it needs to be deleted on the UI thread.
 class UserInputMonitorWinCore
     : public base::SupportsWeakPtr<UserInputMonitorWinCore>,
-      public base::CurrentThread::DestructionObserver {
+      public base::CurrentThread::DestructionObserver,
+      public ui::KeyboardHookObserver {
  public:
   enum EventBitMask {
     MOUSE_EVENT_MASK = 1,
@@ -50,10 +52,18 @@ class UserInputMonitorWinCore
 
   explicit UserInputMonitorWinCore(
       scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner);
+
+  UserInputMonitorWinCore(const UserInputMonitorWinCore&) = delete;
+  UserInputMonitorWinCore& operator=(const UserInputMonitorWinCore&) = delete;
+
   ~UserInputMonitorWinCore() override;
 
   // DestructionObserver overrides.
   void WillDestroyCurrentMessageLoop() override;
+
+  // KeyboardHookObserver implementation.
+  void OnHookRegistered() override;
+  void OnHookUnregistered() override;
 
   uint32_t GetKeyPressCount() const;
   void StartMonitor();
@@ -69,6 +79,9 @@ class UserInputMonitorWinCore
                      LPARAM lparam,
                      LRESULT* result);
 
+  void CreateRawInputWindow();
+  void DestroyRawInputWindow();
+
   // Task runner on which |window_| is created.
   scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner_;
 
@@ -77,15 +90,20 @@ class UserInputMonitorWinCore
 
   // These members are only accessed on the UI thread.
   std::unique_ptr<base::win::MessageWindow> window_;
-  KeyboardEventCounter counter_;
+  ui::KeyboardEventCounter counter_;
 
-  DISALLOW_COPY_AND_ASSIGN(UserInputMonitorWinCore);
+  bool pause_monitoring_ = false;
+  bool start_monitoring_after_hook_removed_ = false;
 };
 
 class UserInputMonitorWin : public UserInputMonitorBase {
  public:
   explicit UserInputMonitorWin(
       const scoped_refptr<base::SingleThreadTaskRunner>& ui_task_runner);
+
+  UserInputMonitorWin(const UserInputMonitorWin&) = delete;
+  UserInputMonitorWin& operator=(const UserInputMonitorWin&) = delete;
+
   ~UserInputMonitorWin() override;
 
   // Public UserInputMonitor overrides.
@@ -99,17 +117,22 @@ class UserInputMonitorWin : public UserInputMonitorBase {
   void StopKeyboardMonitoring() override;
 
   scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner_;
-  UserInputMonitorWinCore* core_;
-
-  DISALLOW_COPY_AND_ASSIGN(UserInputMonitorWin);
+  raw_ptr<UserInputMonitorWinCore> core_;
 };
 
 UserInputMonitorWinCore::UserInputMonitorWinCore(
     scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner)
-    : ui_task_runner_(ui_task_runner) {}
+    : ui_task_runner_(ui_task_runner) {
+  // Register this instance with the KeyboardHookMonitor to listen for changes
+  // in the KeyboardHook registration state.  Since this instance may have been
+  // constructed after a hook was registered, check the current state as well.
+  ui::KeyboardHookMonitor::GetInstance()->AddObserver(this);
+  pause_monitoring_ = ui::KeyboardHookMonitor::GetInstance()->IsActive();
+}
 
 UserInputMonitorWinCore::~UserInputMonitorWinCore() {
   DCHECK(!window_);
+  ui::KeyboardHookMonitor::GetInstance()->RemoveObserver(this);
 }
 
 void UserInputMonitorWinCore::WillDestroyCurrentMessageLoop() {
@@ -124,6 +147,54 @@ uint32_t UserInputMonitorWinCore::GetKeyPressCount() const {
 void UserInputMonitorWinCore::StartMonitor() {
   DCHECK(ui_task_runner_->BelongsToCurrentThread());
 
+  if (pause_monitoring_) {
+    start_monitoring_after_hook_removed_ = true;
+    return;
+  }
+
+  CreateRawInputWindow();
+}
+
+void UserInputMonitorWinCore::StartMonitorWithMapping(
+    base::WritableSharedMemoryMapping mapping) {
+  StartMonitor();
+  key_press_count_mapping_ =
+      std::make_unique<base::WritableSharedMemoryMapping>(std::move(mapping));
+}
+
+void UserInputMonitorWinCore::StopMonitor() {
+  DCHECK(ui_task_runner_->BelongsToCurrentThread());
+
+  DestroyRawInputWindow();
+  start_monitoring_after_hook_removed_ = false;
+
+  key_press_count_mapping_.reset();
+}
+
+void UserInputMonitorWinCore::OnHookRegistered() {
+  DCHECK(ui_task_runner_->BelongsToCurrentThread());
+  DCHECK(!pause_monitoring_);
+  pause_monitoring_ = true;
+
+  // Don't destroy |key_press_count_mapping_| as this is a temporary block and
+  // we want to allow monitoring to continue using the same shared memory once
+  // monitoring is unblocked.
+  DestroyRawInputWindow();
+}
+
+void UserInputMonitorWinCore::OnHookUnregistered() {
+  DCHECK(ui_task_runner_->BelongsToCurrentThread());
+  DCHECK(pause_monitoring_);
+  pause_monitoring_ = false;
+
+  if (start_monitoring_after_hook_removed_) {
+    start_monitoring_after_hook_removed_ = false;
+    StartMonitor();
+  }
+}
+
+void UserInputMonitorWinCore::CreateRawInputWindow() {
+  DCHECK(ui_task_runner_->BelongsToCurrentThread());
   if (window_)
     return;
 
@@ -149,30 +220,18 @@ void UserInputMonitorWinCore::StartMonitor() {
   base::CurrentThread::Get()->AddDestructionObserver(this);
 }
 
-void UserInputMonitorWinCore::StartMonitorWithMapping(
-    base::WritableSharedMemoryMapping mapping) {
-  StartMonitor();
-  key_press_count_mapping_ =
-      std::make_unique<base::WritableSharedMemoryMapping>(std::move(mapping));
-}
-
-void UserInputMonitorWinCore::StopMonitor() {
+void UserInputMonitorWinCore::DestroyRawInputWindow() {
   DCHECK(ui_task_runner_->BelongsToCurrentThread());
-
   if (!window_)
     return;
 
   // Stop receiving raw input.
   std::unique_ptr<RAWINPUTDEVICE> device(
-      GetRawInputDevices(window_->hwnd(), RIDEV_REMOVE));
-
+      GetRawInputDevices(nullptr, RIDEV_REMOVE));
   if (!RegisterRawInputDevices(device.get(), 1, sizeof(*device))) {
     PLOG(INFO) << "RegisterRawInputDevices() failed for RIDEV_REMOVE";
   }
-
   window_ = nullptr;
-
-  key_press_count_mapping_.reset();
 
   // Stop observing message loop destruction if no event is being monitored.
   base::CurrentThread::Get()->RemoveDestructionObserver(this);
@@ -246,7 +305,7 @@ UserInputMonitorWin::UserInputMonitorWin(
       core_(new UserInputMonitorWinCore(ui_task_runner)) {}
 
 UserInputMonitorWin::~UserInputMonitorWin() {
-  if (!ui_task_runner_->DeleteSoon(FROM_HERE, core_))
+  if (!ui_task_runner_->DeleteSoon(FROM_HERE, core_.get()))
     delete core_;
 }
 

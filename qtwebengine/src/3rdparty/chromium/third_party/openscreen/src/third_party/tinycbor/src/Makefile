@@ -26,7 +26,9 @@ TINYCBOR_FREESTANDING_SOURCES = \
 	src/cborerrorstrings.c \
 	src/cborencoder.c \
 	src/cborencoder_close_container_checked.c \
+	src/cborencoder_float.c \
 	src/cborparser.c \
+	src/cborparser_float.c \
 	src/cborpretty.c \
 #
 CBORDUMP_SOURCES = tools/cbordump/cbordump.c
@@ -43,8 +45,6 @@ endif
 INSTALL_TARGETS += $(bindir)/cbordump
 ifeq ($(BUILD_SHARED),1)
 BINLIBRARY=lib/libtinycbor.so
-INSTALL_TARGETS += $(libdir)/libtinycbor.so
-INSTALL_TARGETS += $(libdir)/libtinycbor.so.$(SOVERSION)
 INSTALL_TARGETS += $(libdir)/libtinycbor.so.$(VERSION)
 endif
 ifeq ($(BUILD_STATIC),1)
@@ -190,8 +190,15 @@ install-strip:
 	$(MAKE) -f $(MAKEFILE) INSTALL_PROGRAM='$(INSTALL_PROGRAM) -s' install
 
 install: $(INSTALL_TARGETS:%=$(DESTDIR)%)
+ifeq ($(BUILD_SHARED),1)
+	ln -sf libtinycbor.so.$(VERSION) $(DESTDIR)$(libdir)/libtinycbor.so
+	ln -sf libtinycbor.so.$(VERSION) $(DESTDIR)$(libdir)/libtinycbor.so.$(SOVERSION)
+endif
+
 uninstall:
 	$(RM) $(INSTALL_TARGETS:%=$(DESTDIR)%)
+	$(RM) $(DESTDIR)$(libdir)/libtinycbor.so
+	$(RM) $(DESTDIR)$(libdir)/libtinycbor.so.$(SOVERSION)
 
 mostlyclean:
 	$(RM) $(TINYCBOR_SOURCES:.c=.o)
@@ -229,7 +236,10 @@ tag: distcheck
 .SECONDARY:
 
 cflags := $(CPPFLAGS) -I$(SRCDIR)src
-cflags += -std=gnu99 $(CFLAGS)
+cflags += -std=gnu99 $(CFLAGS) \
+	-Werror=incompatible-pointer-types \
+	-Werror=implicit-function-declaration \
+	-Werror=int-conversion
 %.o: %.c
 	@test -d $(@D) || $(MKDIR) $(@D)
 	$(CC) $(cflags) $($(basename $(notdir $@))_CCFLAGS) -c -o $@ $<

@@ -1,16 +1,16 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/renderer_context_menu/context_menu_content_type.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/url_constants.h"
 #include "printing/buildflags/buildflags.h"
-#include "third_party/blink/public/common/context_menu_data/input_field_type.h"
+#include "third_party/blink/public/mojom/context_menu/context_menu.mojom.h"
 
-using blink::ContextMenuDataMediaType;
+using blink::mojom::ContextMenuDataMediaType;
 using content::WebContents;
 
 namespace {
@@ -22,12 +22,9 @@ bool IsDevToolsURL(const GURL& url) {
 }  // namespace
 
 ContextMenuContentType::ContextMenuContentType(
-    content::WebContents* web_contents,
     const content::ContextMenuParams& params,
     bool supports_custom_items)
-    : params_(params),
-      source_web_contents_(web_contents),
-      supports_custom_items_(supports_custom_items) {}
+    : params_(params), supports_custom_items_(supports_custom_items) {}
 
 ContextMenuContentType::~ContextMenuContentType() {
 }
@@ -43,10 +40,7 @@ bool ContextMenuContentType::SupportsGroup(int group) {
       // For menus with custom items, if there is no selection, we do not
       // add items other than developer items. And for Pepper menu, don't even
       // add developer items.
-      if (!params_.custom_context.is_pepper_menu)
-        return group == ITEM_GROUP_DEVELOPER;
-
-      return false;
+      return group == ITEM_GROUP_DEVELOPER;
     }
 
     // If there's a selection when there are custom items, fall through to
@@ -69,8 +63,10 @@ bool ContextMenuContentType::SupportsGroup(int group) {
 bool ContextMenuContentType::SupportsGroupInternal(int group) {
   const bool has_link = !params_.unfiltered_link_url.is_empty();
   const bool has_selection = !params_.selection_text.empty();
-  const bool is_password = params_.input_field_type ==
-                           blink::ContextMenuDataInputFieldType::kPassword;
+  const bool is_password =
+      params_.input_field_type ==
+      blink::mojom::ContextMenuDataInputFieldType::kPassword;
+  const bool existing_highlight = params_.opened_from_highlight;
 
   switch (group) {
     case ITEM_GROUP_CUSTOM:
@@ -79,7 +75,7 @@ bool ContextMenuContentType::SupportsGroupInternal(int group) {
     case ITEM_GROUP_PAGE: {
       bool is_candidate =
           params_.media_type == ContextMenuDataMediaType::kNone && !has_link &&
-          !params_.is_editable && !has_selection;
+          !params_.is_editable && !has_selection && !existing_highlight;
 
       if (!is_candidate && params_.page_url.is_empty())
         DCHECK(params_.frame_url.is_empty());
@@ -126,6 +122,12 @@ bool ContextMenuContentType::SupportsGroupInternal(int group) {
     case ITEM_GROUP_COPY:
       return !params_.is_editable && has_selection;
 
+    case ITEM_GROUP_PARTIAL_TRANSLATE:
+      return has_selection;
+
+    case ITEM_GROUP_EXISTING_LINK_TO_TEXT:
+      return params_.opened_from_highlight;
+
     case ITEM_GROUP_SEARCH_PROVIDER:
       return has_selection && !is_password;
 
@@ -155,7 +157,11 @@ bool ContextMenuContentType::SupportsGroupInternal(int group) {
 
     case ITEM_GROUP_PASSWORD:
       return params_.input_field_type ==
-             blink::ContextMenuDataInputFieldType::kPassword;
+             blink::mojom::ContextMenuDataInputFieldType::kPassword;
+
+    case ITEM_GROUP_AUTOFILL:
+      return params_.input_field_type !=
+             blink::mojom::ContextMenuDataInputFieldType::kNone;
 
     default:
       NOTREACHED();

@@ -82,6 +82,7 @@ typedef void *EGLContext;
 #include "shared/string-helpers.h"
 
 #include "window.h"
+#include "viewporter-client-protocol.h"
 
 #define ZWP_RELATIVE_POINTER_MANAGER_V1_VERSION 1
 #define ZWP_POINTER_CONSTRAINTS_V1_VERSION 1
@@ -145,8 +146,8 @@ struct display {
 	cairo_surface_t *dummy_surface;
 	void *dummy_surface_data;
 
-	int has_rgb565;
 	int data_device_manager_version;
+	struct wp_viewporter *viewporter;
 };
 
 struct window_output {
@@ -222,6 +223,7 @@ struct surface {
 	cairo_surface_t *cairo_surface;
 
 	struct wl_list link;
+	struct wp_viewport *viewport;
 };
 
 struct window {
@@ -245,8 +247,6 @@ struct window {
 
 	int fullscreen;
 	int maximized;
-
-	enum preferred_format preferred_format;
 
 	window_key_handler_t key_handler;
 	window_keyboard_focus_handler_t keyboard_focus_handler;
@@ -320,6 +320,8 @@ struct widget {
 	 * redraw handler is going to do completely custom rendering
 	 * such as using EGL directly */
 	int use_cairo;
+	int viewport_dest_width;
+	int viewport_dest_height;
 };
 
 struct touch_point {
@@ -825,7 +827,6 @@ display_create_shm_surface_from_pool(struct display *display,
 	struct shm_surface_data *data;
 	uint32_t format;
 	cairo_surface_t *surface;
-	cairo_format_t cairo_format;
 	int stride, length, offset;
 	void *map;
 
@@ -833,12 +834,8 @@ display_create_shm_surface_from_pool(struct display *display,
 	if (data == NULL)
 		return NULL;
 
-	if (flags & SURFACE_HINT_RGB565 && display->has_rgb565)
-		cairo_format = CAIRO_FORMAT_RGB16_565;
-	else
-		cairo_format = CAIRO_FORMAT_ARGB32;
-
-	stride = cairo_format_stride_for_width (cairo_format, rectangle->width);
+	stride = cairo_format_stride_for_width (CAIRO_FORMAT_ARGB32,
+						rectangle->width);
 	length = stride * rectangle->height;
 	data->pool = NULL;
 	map = shm_pool_allocate(pool, length, &offset);
@@ -849,7 +846,7 @@ display_create_shm_surface_from_pool(struct display *display,
 	}
 
 	surface = cairo_image_surface_create_for_data (map,
-						       cairo_format,
+						       CAIRO_FORMAT_ARGB32,
 						       rectangle->width,
 						       rectangle->height,
 						       stride);
@@ -857,14 +854,10 @@ display_create_shm_surface_from_pool(struct display *display,
 	cairo_surface_set_user_data(surface, &shm_surface_data_key,
 				    data, shm_surface_data_destroy);
 
-	if (flags & SURFACE_HINT_RGB565 && display->has_rgb565)
-		format = WL_SHM_FORMAT_RGB565;
-	else {
-		if (flags & SURFACE_OPAQUE)
-			format = WL_SHM_FORMAT_XRGB8888;
-		else
-			format = WL_SHM_FORMAT_ARGB8888;
-	}
+	if (flags & SURFACE_OPAQUE)
+		format = WL_SHM_FORMAT_XRGB8888;
+	else
+		format = WL_SHM_FORMAT_ARGB8888;
 
 	data->buffer = wl_shm_pool_create_buffer(pool->pool, offset,
 						 rectangle->width,
@@ -897,8 +890,7 @@ display_create_shm_surface(struct display *display,
 		}
 	}
 
-	pool = shm_pool_create(display,
-			       data_length_for_shm_surface(rectangle));
+	pool = shm_pool_create(display, data_length_for_shm_surface(rectangle));
 	if (!pool)
 		return NULL;
 
@@ -1398,6 +1390,7 @@ display_get_pointer_image(struct display *display, int pointer)
 static void
 surface_flush(struct surface *surface)
 {
+	struct widget *widget = surface->widget;
 	if (!surface->cairo_surface)
 		return;
 
@@ -1413,6 +1406,12 @@ surface_flush(struct surface *surface)
 					    surface->input_region);
 		wl_region_destroy(surface->input_region);
 		surface->input_region = NULL;
+	}
+
+	if (surface->viewport) {
+		wp_viewport_set_destination(surface->viewport,
+					    widget->viewport_dest_width,
+					    widget->viewport_dest_height);
 	}
 
 	surface->toysurface->swap(surface->toysurface,
@@ -1478,9 +1477,6 @@ window_create_main_surface(struct window *window)
 
 	if (window->resizing)
 		flags |= SURFACE_HINT_RESIZE;
-
-	if (window->preferred_format == WINDOW_PREFERRED_FORMAT_RGB565)
-		flags |= SURFACE_HINT_RGB565;
 
 	surface_create_surface(surface, flags);
 }
@@ -1568,8 +1564,18 @@ window_destroy(struct window *window)
 	wl_list_remove(&window->redraw_task.link);
 
 	wl_list_for_each(input, &display->input_list, link) {
-		if (input->touch_focus == window)
+		if (input->touch_focus == window) {
+			struct touch_point *tp, *tmp;
+
+			wl_list_for_each_safe(tp, tmp,
+					      &input->touch_point_list,
+					      link) {
+				wl_list_remove(&tp->link);
+				free(tp);
+			}
+
 			input->touch_focus = NULL;
+		}
 		if (input->pointer_focus == window)
 			input->pointer_focus = NULL;
 		if (input->keyboard_focus == window)
@@ -1610,6 +1616,8 @@ static struct widget *
 widget_find_widget(struct widget *widget, int32_t x, int32_t y)
 {
 	struct widget *child, *target;
+	int alloc_x, alloc_y, width, height;
+	double scale;
 
 	wl_list_for_each(child, &widget->child_list, link) {
 		target = widget_find_widget(child, x, y);
@@ -1617,10 +1625,24 @@ widget_find_widget(struct widget *widget, int32_t x, int32_t y)
 			return target;
 	}
 
-	if (widget->allocation.x <= x &&
-	    x < widget->allocation.x + widget->allocation.width &&
-	    widget->allocation.y <= y &&
-	    y < widget->allocation.y + widget->allocation.height) {
+	alloc_x = widget->allocation.x;
+	alloc_y = widget->allocation.y;
+	width = widget->allocation.width;
+	height = widget->allocation.height;
+
+	if (widget->viewport_dest_width != -1 &&
+	    widget->viewport_dest_height != -1) {
+		scale = widget->viewport_dest_width / (double) width;
+		alloc_x = alloc_x * scale;
+		width = widget->viewport_dest_width;
+
+		scale = widget->viewport_dest_height / (double) height;
+		alloc_y = alloc_y * scale;
+		height = widget->viewport_dest_height;
+	}
+
+	if (alloc_x <= x && x < alloc_x + width &&
+	    alloc_y <= y && y < alloc_y + height) {
 		return widget;
 	}
 
@@ -1658,6 +1680,8 @@ widget_create(struct window *window, struct surface *surface, void *data)
 	widget->tooltip_count = 0;
 	widget->default_cursor = CURSOR_LEFT_PTR;
 	widget->use_cairo = 1;
+	widget->viewport_dest_width = -1;
+	widget->viewport_dest_height = -1;
 
 	return widget;
 }
@@ -1808,14 +1832,14 @@ widget_cairo_update_transform(struct widget *widget, cairo_t *cr)
 		translate_y = 0;
 		break;
 	case WL_OUTPUT_TRANSFORM_90:
-		angle = M_PI_2;
-		translate_x = surface_height;
-		translate_y = 0;
+		angle = M_PI + M_PI_2;
+		translate_x = 0;
+		translate_y = surface_width;
 		break;
 	case WL_OUTPUT_TRANSFORM_FLIPPED_90:
-		angle = M_PI_2;
-		translate_x = surface_height;
-		translate_y = surface_width;
+		angle = M_PI + M_PI_2;
+		translate_x = 0;
+		translate_y = 0;
 		break;
 	case WL_OUTPUT_TRANSFORM_180:
 		angle = M_PI;
@@ -1828,14 +1852,14 @@ widget_cairo_update_transform(struct widget *widget, cairo_t *cr)
 		translate_y = surface_height;
 		break;
 	case WL_OUTPUT_TRANSFORM_270:
-		angle = M_PI + M_PI_2;
-		translate_x = 0;
-		translate_y = surface_width;
+		angle = M_PI_2;
+		translate_x = surface_height;
+		translate_y = 0;
 		break;
 	case WL_OUTPUT_TRANSFORM_FLIPPED_270:
-		angle = M_PI + M_PI_2;
-		translate_x = 0;
-		translate_y = 0;
+		angle = M_PI_2;
+		translate_x = surface_height;
+		translate_y = surface_width;
 		break;
 	}
 
@@ -2013,6 +2037,39 @@ widget_set_use_cairo(struct widget *widget,
 		     int use_cairo)
 {
 	widget->use_cairo = use_cairo;
+}
+
+int
+widget_set_viewport_destination(struct widget *widget, int width, int height)
+{
+	struct window *window = widget->window;
+	struct display *display = window->display;
+	struct surface *surface = widget->surface;
+	if (!display->viewporter)
+		return -1;
+
+	if (width == -1 && height == -1) {
+		if (surface->viewport) {
+			wp_viewport_destroy(surface->viewport);
+			surface->viewport = NULL;
+		}
+
+		widget->viewport_dest_width = -1;
+		widget->viewport_dest_height = -1;
+		return 0;
+	}
+
+	if (!surface->viewport) {
+		surface->viewport = wp_viewporter_get_viewport(display->viewporter,
+				surface->surface);
+		if (!surface->viewport)
+			return -1;
+	}
+
+	widget->viewport_dest_width = width;
+	widget->viewport_dest_height = height;
+
+	return 0;
 }
 
 cairo_surface_t *
@@ -2520,6 +2577,10 @@ window_frame_create(struct window *window, void *data)
 	frame = xzalloc(sizeof *frame);
 	frame->frame = frame_create(window->display->theme, 0, 0,
 	                            buttons, window->title, NULL);
+	if (!frame->frame) {
+		free(frame);
+		return NULL;
+	}
 
 	frame->widget = window_add_widget(window, frame);
 	frame->child = widget_add_widget(frame->widget, data);
@@ -2956,7 +3017,7 @@ keyboard_handle_keymap(void *data, struct wl_keyboard *keyboard,
 		return;
 	}
 
-	map_str = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+	map_str = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (map_str == MAP_FAILED) {
 		close(fd);
 		return;
@@ -3236,6 +3297,11 @@ touch_handle_down(void *data, struct wl_touch *wl_touch,
 	float sx = wl_fixed_to_double(x_w);
 	float sy = wl_fixed_to_double(y_w);
 
+	if (!surface) {
+		/* down event for a window we've just destroyed */
+		return;
+	}
+
 	input->display->serial = serial;
 	input->touch_focus = wl_surface_get_user_data(surface);
 	if (!input->touch_focus) {
@@ -3374,12 +3440,26 @@ touch_handle_cancel(void *data, struct wl_touch *wl_touch)
 	}
 }
 
+static void
+touch_handle_shape(void *data, struct wl_touch *wl_touch, int32_t id,
+			wl_fixed_t major, wl_fixed_t minor)
+{
+}
+
+static void
+touch_handle_orientation(void *data, struct wl_touch *wl_touch, int32_t id,
+			wl_fixed_t orientation)
+{
+}
+
 static const struct wl_touch_listener touch_listener = {
 	touch_handle_down,
 	touch_handle_up,
 	touch_handle_motion,
 	touch_handle_frame,
 	touch_handle_cancel,
+	touch_handle_shape,
+	touch_handle_orientation,
 };
 
 static void
@@ -3578,6 +3658,11 @@ data_device_enter(void *data, struct wl_data_device *data_device,
 	float x = wl_fixed_to_double(x_w);
 	float y = wl_fixed_to_double(y_w);
 	char **p;
+
+	if (!surface) {
+		/* enter event for a window we've just destroyed */
+		return;
+	}
 
 	window = wl_surface_get_user_data(surface);
 	input->drag_enter_serial = serial;
@@ -5133,6 +5218,7 @@ surface_create(struct window *window)
 	wl_surface_add_listener(surface->surface, &surface_listener, window);
 
 	wl_list_insert(&window->subsurface_list, &surface->link);
+	surface->viewport = NULL;
 
 	return surface;
 }
@@ -5164,7 +5250,6 @@ window_create_internal(struct display *display, int custom)
 	assert(custom || display->xdg_shell);
 
 	window->custom = custom;
-	window->preferred_format = WINDOW_PREFERRED_FORMAT_NONE;
 
 	surface->buffer_type = get_preferred_buffer_type(display);
 
@@ -5516,13 +5601,6 @@ window_get_buffer_type(struct window *window)
 	return window->main_surface->buffer_type;
 }
 
-void
-window_set_preferred_format(struct window *window,
-			    enum preferred_format format)
-{
-	window->preferred_format = format;
-}
-
 struct widget *
 window_add_subsurface(struct window *window, void *data,
 		      enum subsurface_mode default_mode)
@@ -5795,7 +5873,7 @@ static void
 display_add_input(struct display *d, uint32_t id, int display_seat_version)
 {
 	struct input *input;
-	int seat_version = MIN(display_seat_version, 5);
+	int seat_version = MIN(display_seat_version, 7);
 
 	input = xzalloc(sizeof *input);
 	input->display = d;
@@ -5900,19 +5978,6 @@ input_destroy(struct input *input)
 }
 
 static void
-shm_format(void *data, struct wl_shm *wl_shm, uint32_t format)
-{
-	struct display *d = data;
-
-	if (format == WL_SHM_FORMAT_RGB565)
-		d->has_rgb565 = 1;
-}
-
-struct wl_shm_listener shm_listener = {
-	shm_format
-};
-
-static void
 xdg_wm_base_ping(void *data, struct xdg_wm_base *shell, uint32_t serial)
 {
 	xdg_wm_base_pong(shell, serial);
@@ -5956,7 +6021,6 @@ registry_handle_global(void *data, struct wl_registry *registry, uint32_t id,
 					 1);
 	} else if (strcmp(interface, "wl_shm") == 0) {
 		d->shm = wl_registry_bind(registry, id, &wl_shm_interface, 1);
-		wl_shm_add_listener(d->shm, &shm_listener, d);
 	} else if (strcmp(interface, "wl_data_device_manager") == 0) {
 		display_add_data_device(d, id, version);
 	} else if (strcmp(interface, "xdg_wm_base") == 0) {
@@ -5971,6 +6035,10 @@ registry_handle_global(void *data, struct wl_registry *registry, uint32_t id,
 		d->subcompositor =
 			wl_registry_bind(registry, id,
 					 &wl_subcompositor_interface, 1);
+	} else if (!strcmp(interface, "wp_viewporter")) {
+		d->viewporter =
+			wl_registry_bind(registry, id,
+					&wp_viewporter_interface, 1);
 	}
 
 	if (d->global_handler)
@@ -6176,7 +6244,7 @@ display_create(int *argc, char *argv[])
 		return NULL;
 	}
 
-	d->xkb_context = xkb_context_new(0);
+	d->xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 	if (d->xkb_context == NULL) {
 		fprintf(stderr, "Failed to create XKB context\n");
 		free(d);

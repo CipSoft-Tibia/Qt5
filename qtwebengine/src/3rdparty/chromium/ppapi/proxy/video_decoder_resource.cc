@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "gpu/command_buffer/client/gles2_cmd_helper.h"
 #include "gpu/command_buffer/client/gles2_implementation.h"
 #include "gpu/command_buffer/common/mailbox.h"
@@ -164,9 +164,10 @@ int32_t VideoDecoderResource::Initialize(
 
   Call<PpapiPluginMsg_VideoDecoder_InitializeReply>(
       RENDERER,
-      PpapiHostMsg_VideoDecoder_Initialize(
-          host_resource, profile, acceleration, min_picture_count),
-      base::Bind(&VideoDecoderResource::OnPluginMsgInitializeComplete, this));
+      PpapiHostMsg_VideoDecoder_Initialize(host_resource, profile, acceleration,
+                                           min_picture_count),
+      base::BindOnce(&VideoDecoderResource::OnPluginMsgInitializeComplete,
+                     this));
 
   return PP_OK_COMPLETIONPENDING;
 }
@@ -252,9 +253,8 @@ int32_t VideoDecoderResource::Decode(uint32_t decode_id,
   memcpy(shm_buffer->addr, buffer, size);
 
   Call<PpapiPluginMsg_VideoDecoder_DecodeReply>(
-      RENDERER,
-      PpapiHostMsg_VideoDecoder_Decode(shm_buffer->shm_id, size, uid),
-      base::Bind(&VideoDecoderResource::OnPluginMsgDecodeComplete, this));
+      RENDERER, PpapiHostMsg_VideoDecoder_Decode(shm_buffer->shm_id, size, uid),
+      base::BindOnce(&VideoDecoderResource::OnPluginMsgDecodeComplete, this));
 
   // If we have another free buffer, or we can still create new buffers, let
   // the plugin call Decode again.
@@ -315,9 +315,8 @@ int32_t VideoDecoderResource::Flush(scoped_refptr<TrackedCallback> callback) {
   flush_callback_ = callback;
 
   Call<PpapiPluginMsg_VideoDecoder_FlushReply>(
-      RENDERER,
-      PpapiHostMsg_VideoDecoder_Flush(),
-      base::Bind(&VideoDecoderResource::OnPluginMsgFlushComplete, this));
+      RENDERER, PpapiHostMsg_VideoDecoder_Flush(),
+      base::BindOnce(&VideoDecoderResource::OnPluginMsgFlushComplete, this));
 
   return PP_OK_COMPLETIONPENDING;
 }
@@ -340,9 +339,8 @@ int32_t VideoDecoderResource::Reset(scoped_refptr<TrackedCallback> callback) {
     get_picture_callback_->PostAbort();
   get_picture_callback_.reset();
   Call<PpapiPluginMsg_VideoDecoder_ResetReply>(
-      RENDERER,
-      PpapiHostMsg_VideoDecoder_Reset(),
-      base::Bind(&VideoDecoderResource::OnPluginMsgResetComplete, this));
+      RENDERER, PpapiHostMsg_VideoDecoder_Reset(),
+      base::BindOnce(&VideoDecoderResource::OnPluginMsgResetComplete, this));
 
   return PP_OK_COMPLETIONPENDING;
 }

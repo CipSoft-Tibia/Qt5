@@ -1,41 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplace.h"
 #include "qplace_p.h"
+
+#include <QtPositioning/QGeoLocation>
 
 #ifdef QPLACE_DEBUG
 #include <QDebug>
@@ -50,6 +19,8 @@ QPlacePrivate *QSharedDataPointer<QPlacePrivate>::clone()
 {
     return d->clone();
 }
+
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QPlacePrivate)
 
 /*!
     \class QPlace
@@ -122,7 +93,7 @@ QPlacePrivate *QSharedDataPointer<QPlacePrivate>::clone()
     Constructs an empty place object.
 */
 QPlace::QPlace()
-        : d_ptr(new QPlacePrivateDefault())
+    : d_ptr(new QPlacePrivateDefault())
 {
 }
 
@@ -133,34 +104,22 @@ QPlace::QPlace(const QSharedDataPointer<QPlacePrivate> &dd): d_ptr(dd)
 {
 }
 
-/*!
-    Returns the d-pointer.
-*/
-QSharedDataPointer<QPlacePrivate> &QPlace::d()
-{
-    return d_ptr;
-}
 
 /*!
     Constructs a copy of \a other.
 */
-QPlace::QPlace(const QPlace &other)
-        : d_ptr(other.d_ptr)
-{
-}
+QPlace::QPlace(const QPlace &other) noexcept = default;
 
 /*!
     Destroys this place.
 */
-QPlace::~QPlace()
-{
-}
+QPlace::~QPlace() = default;
 
 /*!
     Assigns \a other to this place and returns a reference
     to this place.
 */
-QPlace &QPlace::operator= (const QPlace & other)
+QPlace &QPlace::operator= (const QPlace & other) noexcept
 {
     if (this == &other)
         return *this;
@@ -180,22 +139,23 @@ inline const QPlacePrivate *QPlace::d_func() const
 }
 
 /*!
-    Returns true if \a other is equal to this place,
+    \fn bool QPlace::operator==(const QPlace &lhs, const QPlace &rhs) noexcept
+
+    Returns true if \a lhs is equal to \a rhs,
     otherwise returns false.
 */
-bool QPlace::operator== (const QPlace &other) const
+
+/*!
+    \fn bool QPlace::operator!=(const QPlace &lhs, const QPlace &rhs) noexcept
+
+    Returns true if \a lhs is not equal to \a rhs,
+    otherwise returns false.
+*/
+
+bool QPlace::isEqual(const QPlace &other) const noexcept
 {
     return ( (d_ptr.constData() == other.d_ptr.constData())
              || (*d_ptr) == (*other.d_ptr));
-}
-
-/*!
-    Returns true if \a other is not equal to this place,
-    otherwise returns false.
-*/
-bool QPlace::operator!= (const QPlace &other) const
-{
-    return !(operator==(other));
 }
 
 /*!

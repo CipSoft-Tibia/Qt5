@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtGui>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QLabel>
@@ -80,7 +55,7 @@ class tst_QAccessibilityLinux : public QObject
 public:
     tst_QAccessibilityLinux() : m_window(0), root(0), rootApplication(0), mainWindow(0)
     {
-        qputenv("QT_LINUX_ACCESSIBILITY_ALWAYS_ON", QByteArrayLiteral("1"));
+        qputenv("QT_LINUX_ACCESSIBILITY_ALWAYS_ON", "1");
         dbus = new DBusConnection();
     }
     ~tst_QAccessibilityLinux()
@@ -128,7 +103,7 @@ QStringList tst_QAccessibilityLinux::getChildren(QDBusInterface *interface)
 
     Q_ASSERT(interface->property("ChildCount").toInt() == list.count());
     QStringList children;
-    Q_FOREACH (const QSpiObjectReference &ref, list)
+    for (const QSpiObjectReference &ref : std::as_const(list))
         children << ref.path.path();
 
     return children;
@@ -254,7 +229,7 @@ void tst_QAccessibilityLinux::testLabel()
     QCOMPARE(labelInterface->call(QDBus::Block, "GetRoleName").arguments().first().toString(), QLatin1String("label"));
     QCOMPARE(labelInterface->call(QDBus::Block, "GetRole").arguments().first().toUInt(), 29u);
     QCOMPARE(labelInterface->call(QDBus::Block, "GetAccessibleId").arguments().first().toString(),
-             QLatin1String("mainWindow.theObjectName"));
+             "mainWindow.theObjectName"_L1);
     QCOMPARE(getParent(labelInterface), mainWindow->path());
     QVERIFY(!hasState(labelInterface, ATSPI_STATE_EDITABLE));
     QVERIFY(hasState(labelInterface, ATSPI_STATE_READ_ONLY));
@@ -264,7 +239,7 @@ void tst_QAccessibilityLinux::testLabel()
 
     auto *a11yEmptyInterface = getInterface(children.at(1), "org.a11y.atspi.Accessible");
     QCOMPARE(a11yEmptyInterface->call(QDBus::Block, "GetAccessibleId").arguments().first().toString(),
-             QLatin1String("mainWindow.QLabel"));
+             "mainWindow.QLabel"_L1);
 
     m_window->clearChildren();
     delete a11yEmptyInterface;

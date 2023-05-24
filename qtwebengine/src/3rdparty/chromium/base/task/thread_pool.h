@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,35 +8,19 @@
 #include <memory>
 #include <utility>
 
-namespace base {
-// TODO(gab): thread_pool.h should include task_traits.h but it can't during the
-// migration because task_traits.h has to include thread_pool.h to get the old
-// base::ThreadPool() trait constructor and that would create a circular
-// dependency. Some of the includes below result in an extended version of this
-// circular dependency. These forward-declarations are temporarily required for
-// the duration of the migration.
-enum class TaskPriority : uint8_t;
-enum class TaskShutdownBehavior : uint8_t;
-enum class ThreadPolicy : uint8_t;
-struct MayBlock;
-struct WithBaseSyncPrimitives;
-class TaskTraits;
-// UpdateableSequencedTaskRunner is part of this dance too because
-// updateable_sequenced_task_runner.h includes task_traits.h
-class UpdateableSequencedTaskRunner;
-}  // namespace base
-
 #include "base/base_export.h"
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/post_task_and_reply_with_result_internal.h"
-#include "base/sequenced_task_runner.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/post_task_and_reply_with_result_internal.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/task/single_thread_task_runner_thread_mode.h"
-#include "base/task_runner.h"
+#include "base/task/task_runner.h"
+#include "base/task/task_traits.h"
+#include "base/task/updateable_sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
 
@@ -83,13 +67,9 @@ namespace base {
 // violated. For tests, use base::test::TaskEnvironment.
 class BASE_EXPORT ThreadPool {
  public:
-  // base::ThreadPool is meant to be a static API. Do not use this constructor
-  // in new code! It is a temporary hack to support the old base::ThreadPool()
-  // trait during the migration to static base::ThreadPool:: APIs.
-  // Tasks and task runners with this trait will run in the thread pool,
-  // concurrently with tasks on other task runners. If you need mutual exclusion
-  // between tasks, see base::ThreadPool::CreateSequencedTaskRunner.
-  ThreadPool() = default;
+  // base::ThreadPool is a static API. See base::ThreadPoolInstance for the
+  // actual instance.
+  ThreadPool() = delete;
 
   // Equivalent to calling PostTask with default TaskTraits.
   static bool PostTask(const Location& from_here, OnceClosure task);
@@ -151,7 +131,7 @@ class BASE_EXPORT ThreadPool {
   // execution context (i.e. same sequence or thread and same TaskTraits if
   // applicable) when |task| completes. Returns false if the task definitely
   // won't run because of current shutdown state. Can only be called when
-  // SequencedTaskRunnerHandle::IsSet().
+  // SequencedTaskRunner::HasCurrentDefault().
   static bool PostTaskAndReply(const Location& from_here,
                                const TaskTraits& traits,
                                OnceClosure task,
@@ -161,7 +141,7 @@ class BASE_EXPORT ThreadPool {
   // of |task| as argument on the caller's execution context (i.e. same sequence
   // or thread and same TaskTraits if applicable) when |task| completes. Returns
   // false if the task definitely won't run because of current shutdown state.
-  // Can only be called when SequencedTaskRunnerHandle::IsSet().
+  // Can only be called when SequencedTaskRunner::HasCurrentDefault().
   //
   // Though RepeatingCallback is convertible to OnceCallback, we need a
   // CallbackType template since we can not use template deduction and object
@@ -225,7 +205,7 @@ class BASE_EXPORT ThreadPool {
       SingleThreadTaskRunnerThreadMode thread_mode =
           SingleThreadTaskRunnerThreadMode::SHARED);
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // Returns a SingleThreadTaskRunner whose PostTask invocations result in
   // scheduling tasks using |traits| in a COM Single-Threaded Apartment on a
   // thread determined by |thread_mode|. See
@@ -242,7 +222,7 @@ class BASE_EXPORT ThreadPool {
       const TaskTraits& traits,
       SingleThreadTaskRunnerThreadMode thread_mode =
           SingleThreadTaskRunnerThreadMode::SHARED);
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 };
 
 }  // namespace base

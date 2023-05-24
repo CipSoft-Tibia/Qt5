@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">O paquete non é válido: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Cámara traseira</translation>
 <translation id="1196338895211115272">Erro ao exportar a clave privada.</translation>
+<translation id="132960226125594336">Non se puido cargar o ficheiro "<ph name="RELATIVE_PATH" />" para o script de contido porque superaría o tamaño máximo do script ou o tamaño máximo total do script de contido da extensión.</translation>
 <translation id="1420684932347524586">Non se puido xerar a clave privada RSA aleatoria.</translation>
 <translation id="1445572445564823378">Esta extensión está reducindo a velocidade de <ph name="PRODUCT_NAME" />. Debes desactivala para restablecer o rendemento de <ph name="PRODUCT_NAME" />.</translation>
 <translation id="1468038450257740950">WebGL non é compatible.</translation>
@@ -61,6 +62,7 @@
 <translation id="8636666366616799973">O paquete non é válido. Detalles: "<ph name="ERROR_MESSAGE" />".</translation>
 <translation id="8761756413268424715">"<ph name="APP_NAME" />" solicita acceso a un dos teus dispositivos:</translation>
 <translation id="8885905466771744233">Xa existe unha clave privada para a extensión especificada. Volve utilizar esa clave ou elimínaa primeiro.</translation>
+<translation id="9039223174332979184">O administrador deste equipo require que <ph name="EXTENSION_NAME" /> teña, como mínimo, a versión 3 do manifesto.</translation>
 <translation id="907841381057066561">Produciuse un erro ao crear un ficheiro .zip temporal durante a creación de paquetes.</translation>
 <translation id="941543339607623937">Clave privada non válida.</translation>
 </translationbundle>

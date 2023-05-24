@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,13 +12,15 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
-#include "base/pickle.h"
+#include "base/base_export.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/strings/string_piece.h"
-#include "base/trace_event/trace_event_impl.h"
+#include "base/trace_event/trace_arguments.h"
 
 namespace base {
 
+class TraceEventMemoryOverhead;
 class Value;
 
 namespace trace_event {
@@ -28,6 +30,8 @@ class BASE_EXPORT TracedValue : public ConvertableToTraceFormat {
   // TODO(oysteine): |capacity| is not used in any production code. Consider
   // removing it.
   explicit TracedValue(size_t capacity = 0);
+  TracedValue(const TracedValue&) = delete;
+  TracedValue& operator=(const TracedValue&) = delete;
   ~TracedValue() override;
 
   void EndDictionary();
@@ -63,7 +67,7 @@ class BASE_EXPORT TracedValue : public ConvertableToTraceFormat {
 
   // ConvertableToTraceFormat implementation.
   void AppendAsTraceFormat(std::string* out) const override;
-  bool AppendToProto(ProtoAppender* appender) override;
+  bool AppendToProto(ProtoAppender* appender) const override;
 
   void EstimateTraceMemoryOverhead(TraceEventMemoryOverhead* overhead) override;
 
@@ -98,17 +102,17 @@ class BASE_EXPORT TracedValue : public ConvertableToTraceFormat {
    private:
     explicit ArrayScope(TracedValue* value);
 
-    TracedValue* value_;
+    raw_ptr<TracedValue> value_;
 
     friend class TracedValue;
   };
 
   // Call |BeginArray| or |BeginArrayWithCopiedName| with no / the same
   // parameter and return an |ArrayScope| holding |this|.
-  ArrayScope AppendArrayScoped() WARN_UNUSED_RESULT;
-  ArrayScope BeginArrayScoped(const char* name) WARN_UNUSED_RESULT;
-  ArrayScope BeginArrayScopedWithCopiedName(base::StringPiece name)
-      WARN_UNUSED_RESULT;
+  [[nodiscard]] ArrayScope AppendArrayScoped();
+  [[nodiscard]] ArrayScope BeginArrayScoped(const char* name);
+  [[nodiscard]] ArrayScope BeginArrayScopedWithCopiedName(
+      base::StringPiece name);
 
   // Helper to auto-close a dictionary. The call to
   // |DictionaryScope::~DictionaryScope| closes the dictionary.
@@ -141,17 +145,17 @@ class BASE_EXPORT TracedValue : public ConvertableToTraceFormat {
    private:
     explicit DictionaryScope(TracedValue* value);
 
-    TracedValue* value_;
+    raw_ptr<TracedValue> value_;
 
     friend class TracedValue;
   };
 
   // Call |BeginDictionary| or |BeginDictionaryWithCopiedName| with no / the
   // same parameter and return a |DictionaryScope| holding |this|.
-  DictionaryScope AppendDictionaryScoped() WARN_UNUSED_RESULT;
-  DictionaryScope BeginDictionaryScoped(const char* name) WARN_UNUSED_RESULT;
-  DictionaryScope BeginDictionaryScopedWithCopiedName(base::StringPiece name)
-      WARN_UNUSED_RESULT;
+  [[nodiscard]] DictionaryScope AppendDictionaryScoped();
+  [[nodiscard]] DictionaryScope BeginDictionaryScoped(const char* name);
+  [[nodiscard]] DictionaryScope BeginDictionaryScopedWithCopiedName(
+      base::StringPiece name);
 
   class BASE_EXPORT Array;
   class BASE_EXPORT Dictionary;
@@ -270,7 +274,9 @@ class BASE_EXPORT TracedValue : public ConvertableToTraceFormat {
       bool bool_value;
       base::StringPiece string_piece_value;
       std::string std_string_value;
-      void* void_ptr_value;
+      // This field is not a raw_ptr<> because it was filtered by the rewriter
+      // for: #union
+      RAW_PTR_EXCLUSION void* void_ptr_value;
       Array array_value;
       Dictionary dictionary_value;
 
@@ -387,14 +393,12 @@ class BASE_EXPORT TracedValue : public ConvertableToTraceFormat {
   std::unique_ptr<base::Value> ToBaseValue() const;
 
  private:
-  std::unique_ptr<Writer> writer_;
+  mutable std::unique_ptr<Writer> writer_;
 
 #ifndef NDEBUG
   // In debug builds checks the pairings of {Start,End}{Dictionary,Array}
   std::vector<bool> nesting_stack_;
 #endif
-
-  DISALLOW_COPY_AND_ASSIGN(TracedValue);
 };
 
 // TracedValue that is convertable to JSON format. This has lower performance

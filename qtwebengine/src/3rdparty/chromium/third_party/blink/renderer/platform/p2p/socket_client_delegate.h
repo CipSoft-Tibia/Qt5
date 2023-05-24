@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,6 @@
 #include "services/network/public/cpp/p2p_socket_type.h"
 
 namespace blink {
-
-class P2PSocketClient;
 
 // TODO(crbug.com/787254): Consider eliminating this pure virtual class now
 // that it has moved to blink/renderer.
@@ -24,12 +22,6 @@ class P2PSocketClientDelegate {
   virtual void OnOpen(const net::IPEndPoint& local_address,
                       const net::IPEndPoint& remote_address) = 0;
 
-  // For a socket that is listening on incoming TCP connectsion, this
-  // function is called when a new client connects.
-  virtual void OnIncomingTcpConnection(
-      const net::IPEndPoint& address,
-      std::unique_ptr<P2PSocketClient> client) = 0;
-
   // Called once for each Send() call after the send is complete.
   virtual void OnSendComplete(
       const network::P2PSendPacketMetrics& send_metrics) = 0;
@@ -39,7 +31,7 @@ class P2PSocketClientDelegate {
 
   // Called when data is received on the socket.
   virtual void OnDataReceived(const net::IPEndPoint& address,
-                              const Vector<int8_t>& data,
+                              base::span<const uint8_t> data,
                               const base::TimeTicks& timestamp) = 0;
 };
 

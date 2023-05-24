@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include <utility>
 
+#include "base/containers/contains.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
@@ -36,7 +37,7 @@ LocalPresentationManager::GetOrCreateLocalPresentation(
 
 void LocalPresentationManager::RegisterLocalPresentationController(
     const PresentationInfo& presentation_info,
-    const content::GlobalFrameRoutingId& render_frame_host_id,
+    const content::GlobalRenderFrameHostId& render_frame_host_id,
     mojo::PendingRemote<blink::mojom::PresentationConnection>
         controller_connection_remote,
     mojo::PendingReceiver<blink::mojom::PresentationConnection>
@@ -51,7 +52,7 @@ void LocalPresentationManager::RegisterLocalPresentationController(
 
 void LocalPresentationManager::UnregisterLocalPresentationController(
     const std::string& presentation_id,
-    const content::GlobalFrameRoutingId& render_frame_host_id) {
+    const content::GlobalRenderFrameHostId& render_frame_host_id) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   auto it = local_presentations_.find(presentation_id);
   if (it == local_presentations_.end())
@@ -66,10 +67,11 @@ void LocalPresentationManager::UnregisterLocalPresentationController(
 
 void LocalPresentationManager::OnLocalPresentationReceiverCreated(
     const PresentationInfo& presentation_info,
-    const content::ReceiverConnectionAvailableCallback& receiver_callback) {
+    const content::ReceiverConnectionAvailableCallback& receiver_callback,
+    content::WebContents* receiver_web_contents) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   auto* presentation = GetOrCreateLocalPresentation(presentation_info);
-  presentation->RegisterReceiver(receiver_callback);
+  presentation->RegisterReceiver(receiver_callback, receiver_web_contents);
 }
 
 void LocalPresentationManager::OnLocalPresentationReceiverTerminated(
@@ -81,6 +83,15 @@ void LocalPresentationManager::OnLocalPresentationReceiverTerminated(
 bool LocalPresentationManager::IsLocalPresentation(
     const std::string& presentation_id) {
   return base::Contains(local_presentations_, presentation_id);
+}
+
+bool LocalPresentationManager::IsLocalPresentation(
+    content::WebContents* web_contents) {
+  for (auto& local_presentation : local_presentations_) {
+    if (local_presentation.second->receiver_web_contents_ == web_contents)
+      return true;
+  }
+  return false;
 }
 
 const MediaRoute* LocalPresentationManager::GetRoute(
@@ -99,7 +110,7 @@ LocalPresentationManager::LocalPresentation::LocalPresentation(
 LocalPresentationManager::LocalPresentation::~LocalPresentation() {}
 
 void LocalPresentationManager::LocalPresentation::RegisterController(
-    const content::GlobalFrameRoutingId& render_frame_host_id,
+    const content::GlobalRenderFrameHostId& render_frame_host_id,
     mojo::PendingRemote<blink::mojom::PresentationConnection>
         controller_connection_remote,
     mojo::PendingReceiver<blink::mojom::PresentationConnection>
@@ -119,13 +130,15 @@ void LocalPresentationManager::LocalPresentation::RegisterController(
 }
 
 void LocalPresentationManager::LocalPresentation::UnregisterController(
-    const content::GlobalFrameRoutingId& render_frame_host_id) {
+    const content::GlobalRenderFrameHostId& render_frame_host_id) {
   pending_controllers_.erase(render_frame_host_id);
 }
 
 void LocalPresentationManager::LocalPresentation::RegisterReceiver(
-    const content::ReceiverConnectionAvailableCallback& receiver_callback) {
+    const content::ReceiverConnectionAvailableCallback& receiver_callback,
+    content::WebContents* receiver_web_contents) {
   DCHECK(receiver_callback_.is_null());
+  DCHECK(receiver_web_contents);
   for (auto& controller : pending_controllers_) {
     receiver_callback.Run(
         PresentationInfo::New(presentation_info_),
@@ -133,6 +146,7 @@ void LocalPresentationManager::LocalPresentation::RegisterReceiver(
         std::move(controller.second->receiver_connection_receiver));
   }
   receiver_callback_ = receiver_callback;
+  receiver_web_contents_ = receiver_web_contents;
   pending_controllers_.clear();
 }
 

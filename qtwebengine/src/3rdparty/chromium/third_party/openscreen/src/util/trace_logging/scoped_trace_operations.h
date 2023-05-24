@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "platform/api/time.h"
+#include "platform/api/trace_logging_platform.h"
 #include "platform/base/error.h"
 #include "platform/base/trace_logging_types.h"
 #include "util/osp_logging.h"
@@ -110,41 +111,27 @@ class ScopedTraceOperation {
 // The class which does actual trace logging.
 class TraceLoggerBase : public ScopedTraceOperation {
  public:
-  TraceLoggerBase(TraceCategory::Value category,
+  TraceLoggerBase(TraceCategory category,
                   const char* name,
                   const char* file,
                   uint32_t line,
+                  std::vector<TraceEvent::Argument> arguments = {},
                   TraceId current = kUnsetTraceId,
                   TraceId parent = kUnsetTraceId,
                   TraceId root = kUnsetTraceId);
 
-  TraceLoggerBase(TraceCategory::Value category,
+  TraceLoggerBase(TraceCategory category,
                   const char* name,
                   const char* file,
                   uint32_t line,
+                  std::vector<TraceEvent::Argument> arguments,
                   TraceIdHierarchy ids);
 
  protected:
   // Set the result.
-  void SetTraceResult(Error::Code error) override { result_ = error; }
+  void SetTraceResult(Error::Code error) override { event_.result = error; }
 
-  // Timestamp for when the object was created.
-  Clock::time_point start_time_;
-
-  // Result of this operation.
-  Error::Code result_;
-
-  // Name of this operation.
-  const char* name_;
-
-  // Name of the file.
-  const char* file_name_;
-
-  // Line number the log was generated from.
-  uint32_t line_number_;
-
-  // Category of this trace log.
-  TraceCategory::Value category_;
+  TraceEvent event_;
 
  private:
   OSP_DISALLOW_COPY_AND_ASSIGN(TraceLoggerBase);

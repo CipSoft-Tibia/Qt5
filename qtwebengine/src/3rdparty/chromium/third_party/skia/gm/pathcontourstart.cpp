@@ -17,14 +17,16 @@
 #include "include/core/SkSize.h"
 #include "include/core/SkString.h"
 #include "include/effects/SkDashPathEffect.h"
-#include "include/private/SkTArray.h"
-#include "include/private/SkTemplates.h"
+#include "include/private/base/SkTArray.h"
+#include "include/private/base/SkTemplates.h"
+
+using namespace skia_private;
 
 namespace skiagm {
 
 class ContourStartGM : public GM {
-public:
-    ContourStartGM() {
+protected:
+    void onOnceBeforeDraw() override {
         const SkScalar kMaxDashLen = 100;
         const SkScalar kDashGrowth = 1.2f;
 
@@ -38,7 +40,7 @@ public:
         fDashPaint.setStyle(SkPaint::kStroke_Style);
         fDashPaint.setStrokeWidth(6);
         fDashPaint.setColor(0xff008000);
-        fDashPaint.setPathEffect(SkDashPathEffect::Make(intervals.begin(), intervals.count(), 0));
+        fDashPaint.setPathEffect(SkDashPathEffect::Make(intervals.begin(), intervals.size(), 0));
 
         fPointsPaint.setColor(0xff800000);
         fPointsPaint.setStrokeWidth(3);
@@ -46,7 +48,6 @@ public:
         fRect = SkRect::MakeLTRB(10, 10, 100, 70);
     }
 
-protected:
     SkString onShortName() override {
         return SkString("contour_start");
     }
@@ -85,8 +86,8 @@ protected:
     }
 
 private:
-    static constexpr int kImageWidth = 1200;
-    static constexpr int kImageHeight = 600;
+    inline static constexpr int kImageWidth = 1200;
+    inline static constexpr int kImageHeight = 600;
 
     SkPaint fDashPaint, fPointsPaint;
     SkRect  fRect;
@@ -108,7 +109,7 @@ private:
             canvas->drawPath(path, fDashPaint);
 
             const int n = path.countPoints();
-            SkAutoTArray<SkPoint> points(n);
+            AutoTArray<SkPoint> points(n);
             path.getPoints(points.get(), n);
             canvas->drawPoints(SkCanvas::kPoints_PointMode, n, points.get(), fPointsPaint);
 

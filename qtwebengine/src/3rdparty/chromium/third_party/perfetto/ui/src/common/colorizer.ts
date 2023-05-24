@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import {hsl} from 'color-convert';
+import {cachedHsluvToHex} from '../frontend/hsluv_cache';
 
 export interface Color {
   c: string;
@@ -43,11 +44,11 @@ const MD_PALETTE: Color[] = [
   {c: 'yellow', h: 54, s: 100, l: 62},
 ];
 
-const GREY_COLOR: Color = {
+export const GRAY_COLOR: Color = {
   c: 'grey',
   h: 0,
   s: 0,
-  l: 62
+  l: 62,
 };
 
 function hash(s: string, max: number): number {
@@ -67,19 +68,19 @@ const DESAT_RED: Color = {
   c: 'desat red',
   h: 3,
   s: 30,
-  l: 49
+  l: 49,
 };
 const DARK_GREEN: Color = {
   c: 'dark green',
   h: 120,
   s: 44,
-  l: 34
+  l: 34,
 };
 const LIME_GREEN: Color = {
   c: 'lime green',
   h: 75,
   s: 55,
-  l: 47
+  l: 47,
 };
 const TRANSPARENT_WHITE: Color = {
   c: 'white',
@@ -92,13 +93,13 @@ const ORANGE: Color = {
   c: 'orange',
   h: 36,
   s: 100,
-  l: 50
+  l: 50,
 };
 const INDIGO: Color = {
   c: 'indigo',
   h: 231,
   s: 48,
-  l: 48
+  l: 48,
 };
 
 export function colorForState(state: string): Readonly<Color> {
@@ -111,7 +112,7 @@ export function colorForState(state: string): Readonly<Color> {
       return DESAT_RED;
     }
     return ORANGE;
-  } else if (state.includes('Sleeping')) {
+  } else if (state.includes('Sleeping') || state.includes('Idle')) {
     return TRANSPARENT_WHITE;
   }
   return INDIGO;
@@ -127,13 +128,9 @@ export function colorForTid(tid: number): Color {
   return Object.assign({}, MD_PALETTE[colorIdx]);
 }
 
-export function hueForSlice(sliceName: string): number {
-  return hash(sliceName, 360);
-}
-
 export function colorForThread(thread?: {pid?: number, tid: number}): Color {
   if (thread === undefined) {
-    return Object.assign({}, GREY_COLOR);
+    return Object.assign({}, GRAY_COLOR);
   }
   const tid = thread.pid ? thread.pid : thread.tid;
   return colorForTid(tid);
@@ -143,4 +140,47 @@ export function colorForThread(thread?: {pid?: number, tid: number}): Color {
 export function randomColor(): string {
   const hue = Math.floor(Math.random() * 40) * 9;
   return '#' + hsl.hex([hue, 90, 30]);
+}
+
+// Chooses a color uniform at random based on hash(sliceName).  Returns [hue,
+// saturation, lightness].
+//
+// Prefer converting this to an RGB color using hsluv, not the browser's
+// built-in vanilla HSL handling.  This is because this function chooses
+// hue/lightness uniform at random, but HSL is not perceptually uniform.  See
+// https://www.boronine.com/2012/03/26/Color-Spaces-for-Human-Beings/.
+//
+// If isSelected, the color will be particularly dark, making it stand out.
+export function hslForSlice(
+    sliceName: string, isSelected: boolean|null): [number, number, number] {
+  const hue = hash(sliceName, 360);
+  // Saturation 100 would give the most differentiation between colors, but it's
+  // garish.
+  const saturation = 80;
+  const lightness = isSelected ? 30 : hash(sliceName + 'x', 40) + 40;
+  return [hue, saturation, lightness];
+}
+
+// Lightens the color for thread slices to represent wall time.
+export function colorForThreadIdleSlice(
+    hue: number,
+    saturation: number,
+    lightness: number,
+    isSelected: boolean|null): string {
+  // Increase lightness by 80% when selected and 40% otherwise,
+  // without exceeding 88.
+  let newLightness = isSelected ? lightness * 1.8 : lightness * 1.4;
+  newLightness = Math.min(newLightness, 88);
+  return cachedHsluvToHex(hue, saturation, newLightness);
+}
+
+export function colorToStr(color: Color) {
+  if (color.a !== undefined) {
+    return `hsla(${color.h}, ${color.s}%, ${color.l}%, ${color.a})`;
+  }
+  return `hsl(${color.h}, ${color.s}%, ${color.l}%)`;
+}
+
+export function colorCompare(x: Color, y: Color) {
+  return (x.h - y.h) || (x.s - y.s) || (x.l - y.l);
 }

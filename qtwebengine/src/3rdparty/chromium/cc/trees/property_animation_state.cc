@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -59,7 +59,7 @@ PropertyAnimationState operator^(const PropertyAnimationState& lhs,
 bool PropertyAnimationState::IsValid() const {
   // currently_running must be a subset for potentially_animating.
   // currently <= potentially i.e. potentially || !currently.
-  TargetProperties result = potentially_animating | ~currently_running;
+  gfx::TargetProperties result = potentially_animating | ~currently_running;
   return result.all();
 }
 

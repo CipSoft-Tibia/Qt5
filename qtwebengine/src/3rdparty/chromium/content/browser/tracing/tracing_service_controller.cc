@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <utility>
 
+#include "base/no_destructor.h"
 #include "base/task/thread_pool.h"
-#include "base/time/time.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/service_process_host.h"
@@ -17,6 +17,7 @@
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "services/tracing/public/cpp/traced_process.h"
 #include "services/tracing/public/cpp/tracing_features.h"
+#include "services/tracing/public/mojom/tracing_service.mojom.h"
 #include "services/tracing/tracing_service.h"
 
 namespace content {
@@ -32,7 +33,7 @@ void BindNewInProcessInstance(
 }  // namespace
 
 TracingServiceController::ClientRegistration::ClientRegistration(
-    util::PassKey<TracingServiceController>,
+    base::PassKey<TracingServiceController>,
     base::OnceClosure unregister)
     : unregister_(std::move(unregister)) {}
 
@@ -57,7 +58,7 @@ TracingServiceController::RegisterClient(base::ProcessId pid,
       base::BindOnce(&TracingServiceController::RemoveClient,
                      base::Unretained(&TracingServiceController::Get()), pid);
   auto registration = std::make_unique<ClientRegistration>(
-      util::PassKey<TracingServiceController>(), std::move(unregister));
+      base::PassKey<TracingServiceController>(), std::move(unregister));
 
   if (!BrowserThread::CurrentlyOn(BrowserThread::UI)) {
     // Force registration to happen on the UI thread.

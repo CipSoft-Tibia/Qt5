@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt local connectivty modules.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \ingroup technology-apis
@@ -81,18 +57,6 @@
     start an automated search for visible Bluetooth devices within the connectable range.
 
     \snippet doc_src_qtbluetooth.cpp device_discovery
-
-    \section1 Pushing Files to Remote Devices
-
-    Once the desired device was found, there are two main use cases provided by Qt Bluetooth. The
-    simpler one is to send files via the Obex Object Push Profile (OPP). As the name describes, this
-    profile can push files from one device to another. Currently it is not possible to pull files
-    or browse the remote file system. The profile does not require the two devices to be
-    paired before exchanging data. To push files to remote devices, create a
-    QBluetoothTransferRequest and ask the QBluetoothTransferManager to push the file contained in
-    the request by calling its \l {QBluetoothTransferManager::put()}{put()} function.
-
-    \snippet doc_src_qtbluetooth.cpp sendfile
 
     \section1 Exchanging Data Between Devices
 

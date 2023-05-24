@@ -56,7 +56,16 @@ __pragma(warning(push))
 
 	std::pair<llvm::StringRef, llvm::StringRef> splitPath(const char *path)
 	{
-		return llvm::StringRef(path).rsplit('/');
+#	ifdef _WIN32
+		auto dirAndFile = llvm::StringRef(path).rsplit('\\');
+#	else
+	auto dirAndFile = llvm::StringRef(path).rsplit('/');
+#	endif
+		if(dirAndFile.second == "")
+		{
+			dirAndFile.second = "<unknown>";
+		}
+		return dirAndFile;
 	}
 
 	// Note: createGDBRegistrationListener() returns a pointer to a singleton.
@@ -82,11 +91,11 @@ DebugInfo::DebugInfo(
 
 	auto location = getCallerLocation();
 
-	auto fileAndDir = splitPath(location.function.file.c_str());
+	auto dirAndFile = splitPath(location.function.file.c_str());
 	diBuilder.reset(new llvm::DIBuilder(*module));
 	diCU = diBuilder->createCompileUnit(
 	    llvm::dwarf::DW_LANG_C,
-	    diBuilder->createFile(fileAndDir.first, fileAndDir.second),
+	    diBuilder->createFile(dirAndFile.second, dirAndFile.first),
 	    "Reactor",
 	    0, "", 0);
 
@@ -127,7 +136,7 @@ void DebugInfo::Finalize()
 
 void DebugInfo::EmitLocation()
 {
-	auto const &backtrace = getCallerBacktrace();
+	const auto &backtrace = getCallerBacktrace();
 	syncScope(backtrace);
 	builder->SetCurrentDebugLocation(getLocation(backtrace, backtrace.size() - 1));
 	emitPrintLocation(backtrace);
@@ -135,10 +144,13 @@ void DebugInfo::EmitLocation()
 
 void DebugInfo::Flush()
 {
-	emitPending(diScope.back(), builder);
+	if(!diScope.empty())
+	{
+		emitPending(diScope.back(), builder);
+	}
 }
 
-void DebugInfo::syncScope(Backtrace const &backtrace)
+void DebugInfo::syncScope(const Backtrace &backtrace)
 {
 	using namespace ::llvm;
 
@@ -163,8 +175,8 @@ void DebugInfo::syncScope(Backtrace const &backtrace)
 	for(size_t i = 0; i < diScope.size(); i++)
 	{
 		auto &scope = diScope[i];
-		auto const &oldLocation = scope.location;
-		auto const &newLocation = backtrace[i];
+		const auto &oldLocation = scope.location;
+		const auto &newLocation = backtrace[i];
 
 		if(oldLocation.function != newLocation.function)
 		{
@@ -182,7 +194,7 @@ void DebugInfo::syncScope(Backtrace const &backtrace)
 			LOG("  STACK(%d): Jumped backwards %d -> %d. di: %p -> %p", int(i),
 			    oldLocation.line, newLocation.line, scope.di, di);
 			emitPending(scope, builder);
-			scope = { newLocation, di };
+			scope = { newLocation, di, {}, {} };
 			shrink(i + 1);
 			break;
 		}
@@ -214,7 +226,7 @@ void DebugInfo::syncScope(Backtrace const &backtrace)
 		    DINode::FlagPrototyped,         // flags
 		    DISubprogram::SPFlagDefinition  // subprogram flags
 		);
-		diScope.push_back({ location, func });
+		diScope.push_back({ location, func, {}, {} });
 		LOG("+ STACK(%d): di: %p, location: %s:%d", int(i), di,
 		    location.function.file.c_str(), int(location.line));
 	}
@@ -234,12 +246,12 @@ llvm::DILocation *DebugInfo::getLocation(const Backtrace &backtrace, size_t i)
 
 void DebugInfo::EmitVariable(Value *variable)
 {
-	auto const &backtrace = getCallerBacktrace();
+	const auto &backtrace = getCallerBacktrace();
 	syncScope(backtrace);
 
 	for(int i = backtrace.size() - 1; i >= 0; i--)
 	{
-		auto const &location = backtrace[i];
+		const auto &location = backtrace[i];
 		auto tokens = getOrParseFileTokens(location.function.file.c_str());
 		auto tokIt = tokens->find(location.line);
 		if(tokIt == tokens->end())
@@ -305,7 +317,7 @@ void DebugInfo::EmitVariable(Value *variable)
 
 void DebugInfo::emitPending(Scope &scope, IRBuilder *builder)
 {
-	auto const &pending = scope.pending;
+	const auto &pending = scope.pending;
 	if(pending.value == nullptr)
 	{
 		return;
@@ -347,8 +359,15 @@ void DebugInfo::emitPending(Scope &scope, IRBuilder *builder)
 		// To handle this, always promote named RValues to an alloca.
 
 		llvm::BasicBlock &entryBlock = function->getEntryBlock();
-		auto alloca = new llvm::AllocaInst(value->getType(), 0, pending.name);
-		entryBlock.getInstList().push_front(alloca);
+		llvm::AllocaInst *alloca = nullptr;
+		if(entryBlock.getInstList().size() > 0)
+		{
+			alloca = new llvm::AllocaInst(value->getType(), 0, pending.name, &entryBlock.getInstList().front());
+		}
+		else
+		{
+			alloca = new llvm::AllocaInst(value->getType(), 0, pending.name, &entryBlock);
+		}
 		builder->CreateStore(value, alloca);
 		value = alloca;
 	}
@@ -376,17 +395,15 @@ void DebugInfo::emitPending(Scope &scope, IRBuilder *builder)
 	scope.pending = Pending{};
 }
 
-void DebugInfo::NotifyObjectEmitted(const llvm::object::ObjectFile &Obj, const llvm::LoadedObjectInfo &L)
+void DebugInfo::NotifyObjectEmitted(uint64_t key, const llvm::object::ObjectFile &obj, const llvm::LoadedObjectInfo &l)
 {
 	std::unique_lock<std::mutex> lock(jitEventListenerMutex);
-	auto key = reinterpret_cast<llvm::JITEventListener::ObjectKey>(&Obj);
-	jitEventListener->notifyObjectLoaded(key, Obj, static_cast<const llvm::RuntimeDyld::LoadedObjectInfo &>(L));
+	jitEventListener->notifyObjectLoaded(key, obj, static_cast<const llvm::RuntimeDyld::LoadedObjectInfo &>(l));
 }
 
-void DebugInfo::NotifyFreeingObject(const llvm::object::ObjectFile &Obj)
+void DebugInfo::NotifyFreeingObject(uint64_t key)
 {
 	std::unique_lock<std::mutex> lock(jitEventListenerMutex);
-	auto key = reinterpret_cast<llvm::JITEventListener::ObjectKey>(&Obj);
 	jitEventListener->notifyFreeingObject(key);
 }
 
@@ -432,7 +449,8 @@ void DebugInfo::registerBasicTypes()
 
 Location DebugInfo::getCallerLocation() const
 {
-	return getCallerBacktrace(1)[0];
+	auto backtrace = getCallerBacktrace(1);
+	return backtrace.empty() ? Location{} : backtrace[0];
 }
 
 Backtrace DebugInfo::getCallerBacktrace(size_t limit /* = 0 */) const
@@ -468,7 +486,7 @@ llvm::DIFile *DebugInfo::getOrCreateFile(const char *path)
 	return file;
 }
 
-DebugInfo::LineTokens const *DebugInfo::getOrParseFileTokens(const char *path)
+const DebugInfo::LineTokens *DebugInfo::getOrParseFileTokens(const char *path)
 {
 	static std::regex reLocalDecl(
 	    "^"                                              // line start
@@ -502,7 +520,7 @@ DebugInfo::LineTokens const *DebugInfo::getOrParseFileTokens(const char *path)
 			{
 				if(match.str(1) == "return")
 				{
-					(*tokens)[lineCount] = Token{ Token::Return };
+					(*tokens)[lineCount] = Token{ Token::Return, "" };
 				}
 				else
 				{

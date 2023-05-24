@@ -1,4 +1,0 @@
-*_crlf.*        eol=crlf
-.tag            export-subst
-.gitignore      export-ignore
-.gitattributes  export-ignore

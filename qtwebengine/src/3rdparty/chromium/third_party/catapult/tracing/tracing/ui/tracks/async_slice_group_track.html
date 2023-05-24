@@ -30,6 +30,9 @@ tr.exportTo('tr.ui.tracks', function() {
       tr.ui.tracks.MultiRowTrack.prototype.decorate.call(this, viewport);
       Polymer.dom(this).classList.add('async-slice-group-track');
       this.group_ = undefined;
+      // Set the collapse threshold so we don't collapse by default, but the
+      // user can explicitly collapse if they want it.
+      this.defaultToCollapsedWhenSubRowCountMoreThan = 30;
     },
 
     addSubTrack_(slices) {
@@ -94,7 +97,8 @@ tr.exportTo('tr.ui.tracks', function() {
    * a single track but provide no information themselves.
    */
   function stripSlice_(slice) {
-    if (slice.subSlices !== undefined && slice.subSlices.length === 1) {
+    if (slice.subSlices !== undefined && slice.subSlices.length === 1
+        && !slice.args) {
       const subSlice = slice.subSlices[0];
       if (tr.b.math.approximately(subSlice.start, slice.start, 1) &&
           tr.b.math.approximately(subSlice.duration, slice.duration, 1)) {
@@ -112,6 +116,9 @@ tr.exportTo('tr.ui.tracks', function() {
   function makeLevelSubRows_(slices) {
     const rows = [];
     const putSlice = (slice, level) => {
+      if (slice.hidden) {
+        return;
+      }
       while (rows.length <= level) {
         rows.push([]);
       }

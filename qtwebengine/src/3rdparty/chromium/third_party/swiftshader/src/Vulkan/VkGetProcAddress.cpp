@@ -27,11 +27,15 @@
 
 namespace vk {
 
+// Functions that can be obtained through GetInstanceProcAddr without an instance
 #define MAKE_VULKAN_GLOBAL_ENTRY(aFunction)                           \
 	{                                                                 \
 #		aFunction, reinterpret_cast < PFN_vkVoidFunction>(aFunction) \
 	}
+
+// TODO(b/208256248): Avoid exit-time destructor.
 static const std::unordered_map<std::string, PFN_vkVoidFunction> globalFunctionPointers = {
+	MAKE_VULKAN_GLOBAL_ENTRY(vkGetInstanceProcAddr),
 	MAKE_VULKAN_GLOBAL_ENTRY(vkCreateInstance),
 	MAKE_VULKAN_GLOBAL_ENTRY(vkEnumerateInstanceExtensionProperties),
 	MAKE_VULKAN_GLOBAL_ENTRY(vkEnumerateInstanceLayerProperties),
@@ -39,11 +43,15 @@ static const std::unordered_map<std::string, PFN_vkVoidFunction> globalFunctionP
 };
 #undef MAKE_VULKAN_GLOBAL_ENTRY
 
+// Functions that can be obtained through GetInstanceProcAddr with an instance object
 #define MAKE_VULKAN_INSTANCE_ENTRY(aFunction)                         \
 	{                                                                 \
 #		aFunction, reinterpret_cast < PFN_vkVoidFunction>(aFunction) \
 	}
+
+// TODO(b/208256248): Avoid exit-time destructor.
 static const std::unordered_map<std::string, PFN_vkVoidFunction> instanceFunctionPointers = {
+
 	MAKE_VULKAN_INSTANCE_ENTRY(vkDestroyInstance),
 	MAKE_VULKAN_INSTANCE_ENTRY(vkEnumeratePhysicalDevices),
 	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceFeatures),
@@ -95,6 +103,8 @@ static const std::unordered_map<std::string, PFN_vkVoidFunction> instanceFunctio
 	MAKE_VULKAN_INSTANCE_ENTRY(vkSetDebugUtilsObjectNameEXT),
 	MAKE_VULKAN_INSTANCE_ENTRY(vkSetDebugUtilsObjectTagEXT),
 	MAKE_VULKAN_INSTANCE_ENTRY(vkSubmitDebugUtilsMessageEXT),
+	// VK_EXT_tooling_info
+	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceToolProperties),
 #ifndef __ANDROID__
 	// VK_KHR_surface
 	MAKE_VULKAN_INSTANCE_ENTRY(vkDestroySurfaceKHR),
@@ -103,16 +113,14 @@ static const std::unordered_map<std::string, PFN_vkVoidFunction> instanceFunctio
 	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceSurfaceFormatsKHR),
 	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceSurfacePresentModesKHR),
 	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDevicePresentRectanglesKHR),
+	// VK_KHR_get_surface_capabilities2
+	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceSurfaceCapabilities2KHR),
+	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceSurfaceFormats2KHR),
 #endif
 #ifdef VK_USE_PLATFORM_XCB_KHR
 	// VK_KHR_Xcb_surface
 	MAKE_VULKAN_INSTANCE_ENTRY(vkCreateXcbSurfaceKHR),
 	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceXcbPresentationSupportKHR),
-#endif
-#ifdef VK_USE_PLATFORM_XLIB_KHR
-	// VK_KHR_xlib_surface
-	MAKE_VULKAN_INSTANCE_ENTRY(vkCreateXlibSurfaceKHR),
-	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceXlibPresentationSupportKHR),
 #endif
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
 	// VK_KHR_wayland_surface
@@ -123,6 +131,16 @@ static const std::unordered_map<std::string, PFN_vkVoidFunction> instanceFunctio
 	// VK_EXT_directfb_surface
 	MAKE_VULKAN_INSTANCE_ENTRY(vkCreateDirectFBSurfaceEXT),
 	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceDirectFBPresentationSupportEXT),
+#endif
+#ifdef VK_USE_PLATFORM_DISPLAY_KHR
+	// VK_KHR_display
+	MAKE_VULKAN_INSTANCE_ENTRY(vkCreateDisplayModeKHR),
+	MAKE_VULKAN_INSTANCE_ENTRY(vkCreateDisplayPlaneSurfaceKHR),
+	MAKE_VULKAN_INSTANCE_ENTRY(vkGetDisplayModePropertiesKHR),
+	MAKE_VULKAN_INSTANCE_ENTRY(vkGetDisplayPlaneCapabilitiesKHR),
+	MAKE_VULKAN_INSTANCE_ENTRY(vkGetDisplayPlaneSupportedDisplaysKHR),
+	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceDisplayPlanePropertiesKHR),
+	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceDisplayPropertiesKHR),
 #endif
 #ifdef VK_USE_PLATFORM_MACOS_MVK
 	// VK_MVK_macos_surface
@@ -137,15 +155,18 @@ static const std::unordered_map<std::string, PFN_vkVoidFunction> instanceFunctio
 	MAKE_VULKAN_INSTANCE_ENTRY(vkCreateWin32SurfaceKHR),
 	MAKE_VULKAN_INSTANCE_ENTRY(vkGetPhysicalDeviceWin32PresentationSupportKHR),
 #endif
+	MAKE_VULKAN_INSTANCE_ENTRY(vkCreateHeadlessSurfaceEXT),
 };
 #undef MAKE_VULKAN_INSTANCE_ENTRY
 
+// Functions that can be obtained through GetDeviceProcAddr with a device object
 #define MAKE_VULKAN_DEVICE_ENTRY(aFunction)                           \
 	{                                                                 \
 #		aFunction, reinterpret_cast < PFN_vkVoidFunction>(aFunction) \
 	}
+
+// TODO(b/208256248): Avoid exit-time destructor.
 static const std::unordered_map<std::string, PFN_vkVoidFunction> deviceFunctionPointers = {
-	MAKE_VULKAN_DEVICE_ENTRY(vkGetInstanceProcAddr),
 	MAKE_VULKAN_DEVICE_ENTRY(vkGetDeviceProcAddr),
 	MAKE_VULKAN_DEVICE_ENTRY(vkDestroyDevice),
 	MAKE_VULKAN_DEVICE_ENTRY(vkGetDeviceQueue),
@@ -298,8 +319,70 @@ static const std::unordered_map<std::string, PFN_vkVoidFunction> deviceFunctionP
 	MAKE_VULKAN_DEVICE_ENTRY(vkAcquireImageANDROID),
 	MAKE_VULKAN_DEVICE_ENTRY(vkQueueSignalReleaseImageANDROID),
 #endif
+	// Vulkan 1.2 Entry point functions
+	MAKE_VULKAN_DEVICE_ENTRY(vkCreateRenderPass2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdBeginRenderPass2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdEndRenderPass2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdNextSubpass2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkResetQueryPool),
+	// VK_KHR_timeline_semaphore
+	MAKE_VULKAN_DEVICE_ENTRY(vkGetSemaphoreCounterValue),
+	MAKE_VULKAN_DEVICE_ENTRY(vkSignalSemaphore),
+	MAKE_VULKAN_DEVICE_ENTRY(vkWaitSemaphores),
+	// VK_KHR_buffer_device_address
+	MAKE_VULKAN_DEVICE_ENTRY(vkGetBufferDeviceAddress),
+	MAKE_VULKAN_DEVICE_ENTRY(vkGetBufferOpaqueCaptureAddress),
+	MAKE_VULKAN_DEVICE_ENTRY(vkGetDeviceMemoryOpaqueCaptureAddress),
+	// VK_KHR_draw_indirect_count
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdDrawIndirectCount),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdDrawIndexedIndirectCount),
+	// Vulkan 1.3 Entry point functions
+	// VK_KHR_copy_commands2
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdCopyBuffer2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdCopyImage2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdCopyBufferToImage2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdCopyImageToBuffer2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdBlitImage2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdResolveImage2),
+	// VK_KHR_dynamic_rendering
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdBeginRendering),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdEndRendering),
+	// VK_KHR_maintenance4
+	MAKE_VULKAN_DEVICE_ENTRY(vkGetDeviceBufferMemoryRequirements),
+	MAKE_VULKAN_DEVICE_ENTRY(vkGetDeviceImageMemoryRequirements),
+	MAKE_VULKAN_DEVICE_ENTRY(vkGetDeviceImageSparseMemoryRequirements),
+	// VK_KHR_synchronization2
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetEvent2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdResetEvent2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdWaitEvents2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdPipelineBarrier2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdWriteTimestamp2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkQueueSubmit2),
+	// VK_EXT_extended_dynamic_state
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetCullMode),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetFrontFace),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetPrimitiveTopology),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetViewportWithCount),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetScissorWithCount),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdBindVertexBuffers2),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetDepthTestEnable),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetDepthWriteEnable),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetDepthCompareOp),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetDepthBoundsTestEnable),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetStencilTestEnable),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetStencilOp),
+	// VK_EXT_extended_dynamic_state2 (partial promotion, VKCmdSetLogicOpEXT and VKCmdSetPatchControlPointsEXT are not promoted)
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetRasterizerDiscardEnable),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetDepthBiasEnable),
+	MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetPrimitiveRestartEnable),
+	// VK_EXT_private_data
+	MAKE_VULKAN_DEVICE_ENTRY(vkCreatePrivateDataSlot),
+	MAKE_VULKAN_DEVICE_ENTRY(vkDestroyPrivateDataSlot),
+	MAKE_VULKAN_DEVICE_ENTRY(vkSetPrivateData),
+	MAKE_VULKAN_DEVICE_ENTRY(vkGetPrivateData),
 };
 
+// TODO(b/208256248): Avoid exit-time destructor.
 static const std::vector<std::pair<const char *, std::unordered_map<std::string, PFN_vkVoidFunction>>> deviceExtensionFunctionPointers = {
 	// VK_KHR_descriptor_update_template
 	{
@@ -337,6 +420,17 @@ static const std::vector<std::pair<const char *, std::unordered_map<std::string,
 	        MAKE_VULKAN_DEVICE_ENTRY(vkBindBufferMemory2KHR),
 	        MAKE_VULKAN_DEVICE_ENTRY(vkBindImageMemory2KHR),
 	    } },
+	// VK_KHR_copy_commands2
+	{
+	    VK_KHR_COPY_COMMANDS_2_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdBlitImage2KHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdCopyBuffer2KHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdCopyBufferToImage2KHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdCopyImage2KHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdCopyImageToBuffer2KHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdResolveImage2KHR),
+	    } },
 	// VK_KHR_get_memory_requirements2
 	{
 	    VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
@@ -351,6 +445,14 @@ static const std::vector<std::pair<const char *, std::unordered_map<std::string,
 	    {
 	        MAKE_VULKAN_DEVICE_ENTRY(vkGetDescriptorSetLayoutSupportKHR),
 	    } },
+	// VK_KHR_maintenance4
+	{
+	    VK_KHR_MAINTENANCE_4_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkGetDeviceBufferMemoryRequirementsKHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkGetDeviceImageMemoryRequirementsKHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkGetDeviceImageSparseMemoryRequirementsKHR),
+	    } },
 	// VK_KHR_create_renderpass2
 	{
 	    VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
@@ -360,11 +462,81 @@ static const std::vector<std::pair<const char *, std::unordered_map<std::string,
 	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdNextSubpass2KHR),
 	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdEndRenderPass2KHR),
 	    } },
+	// VK_KHR_timeline_semaphore
+	{
+	    VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkGetSemaphoreCounterValueKHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkSignalSemaphoreKHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkWaitSemaphoresKHR),
+	    } },
+	// VK_KHR_buffer_device_address
+	{
+	    VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkGetBufferDeviceAddressKHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkGetBufferOpaqueCaptureAddressKHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkGetDeviceMemoryOpaqueCaptureAddressKHR),
+	    } },
+	// VK_KHR_draw_indirect_count
+	{
+	    VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdDrawIndirectCountKHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdDrawIndexedIndirectCountKHR),
+	    } },
+	// VK_KHR_dynamic_rendering
+	{
+	    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdBeginRenderingKHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdEndRenderingKHR),
+	    } },
+	// VK_EXT_extended_dynamic_state
+	{
+	    VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdBindVertexBuffers2EXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetCullModeEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetDepthBoundsTestEnableEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetDepthCompareOpEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetDepthTestEnableEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetDepthWriteEnableEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetFrontFaceEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetPrimitiveTopologyEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetScissorWithCountEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetStencilOpEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetStencilTestEnableEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetViewportWithCountEXT),
+	    } },
 	// VK_EXT_line_rasterization
 	{
 	    VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME,
 	    {
 	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetLineStippleEXT),
+	    } },
+	// VK_EXT_host_query_reset
+	{
+	    VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkResetQueryPoolEXT),
+	    } },
+	// VK_EXT_tooling_info
+	{
+	    VK_EXT_TOOLING_INFO_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkGetPhysicalDeviceToolPropertiesEXT),
+	    } },
+	// VK_KHR_synchronization2
+	{
+	    VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdPipelineBarrier2KHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdResetEvent2KHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetEvent2KHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdWaitEvents2KHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdWriteTimestamp2KHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkQueueSubmit2KHR),
 	    } },
 #ifndef __ANDROID__
 	// VK_KHR_swapchain
@@ -379,6 +551,12 @@ static const std::vector<std::pair<const char *, std::unordered_map<std::string,
 	        MAKE_VULKAN_DEVICE_ENTRY(vkQueuePresentKHR),
 	        MAKE_VULKAN_DEVICE_ENTRY(vkGetDeviceGroupPresentCapabilitiesKHR),
 	        MAKE_VULKAN_DEVICE_ENTRY(vkGetDeviceGroupSurfacePresentModesKHR),
+	    } },
+	// VK_EXT_swapchain_maintenance1
+	{
+	    VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkReleaseSwapchainImagesEXT),
 	    } },
 #endif
 
@@ -419,6 +597,15 @@ static const std::vector<std::pair<const char *, std::unordered_map<std::string,
 	        MAKE_VULKAN_DEVICE_ENTRY(vkGetMemoryHostPointerPropertiesEXT),
 	    } },
 
+	// VK_EXT_private_data
+	{
+	    VK_EXT_PRIVATE_DATA_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCreatePrivateDataSlotEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkDestroyPrivateDataSlotEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkGetPrivateDataEXT),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkSetPrivateDataEXT),
+	    } },
 #if SWIFTSHADER_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER
 	// VK_ANDROID_external_memory_android_hardware_buffer
 	{

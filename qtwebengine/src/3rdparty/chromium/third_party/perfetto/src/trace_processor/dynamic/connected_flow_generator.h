@@ -17,45 +17,60 @@
 #ifndef SRC_TRACE_PROCESSOR_DYNAMIC_CONNECTED_FLOW_GENERATOR_H_
 #define SRC_TRACE_PROCESSOR_DYNAMIC_CONNECTED_FLOW_GENERATOR_H_
 
-#include "src/trace_processor/sqlite/db_sqlite_table.h"
-
+#include "src/trace_processor/dynamic/dynamic_table_generator.h"
 #include "src/trace_processor/storage/trace_storage.h"
+
+#include <queue>
+#include <set>
 
 namespace perfetto {
 namespace trace_processor {
+namespace tables {
+
+#define PERFETTO_TP_CONNECTED_FLOW_TABLE_DEF(NAME, PARENT, C) \
+  NAME(ConnectedFlowTable, "not_exposed_to_sql")              \
+  PARENT(PERFETTO_TP_FLOW_TABLE_DEF, C)                       \
+  C(uint32_t, start_id, Column::Flag::kHidden)
+
+PERFETTO_TP_TABLE(PERFETTO_TP_CONNECTED_FLOW_TABLE_DEF);
+
+}  // namespace tables
 
 class TraceProcessorContext;
 
-// Implementation of tables: CONNECTED_FLOW, FOLLOWING_FLOW, PERCEEDING_FLOW
-// Searches for all entries of flow events table that are dirrectly or
-// indirectly connected to the given slice (slice id). It is possible to
-// restrict the direction of search.
-class ConnectedFlowGenerator : public DbSqliteTable::DynamicTableGenerator {
+// Implementation of tables:
+// - DIRECTLY_CONNECTED_FLOW
+// - PRECEDING_FLOW
+// - FOLLOWING_FLOW
+class ConnectedFlowGenerator : public DynamicTableGenerator {
  public:
-  enum class Direction { BOTH = 0, FOLLOWING = 1, PRECEDING = 2 };
+  enum class Mode {
+    // Directly connected slices through the same flow ID given by the trace
+    // writer.
+    kDirectlyConnectedFlow,
+    // Flow events which can be reached from the given slice by going over
+    // incoming flow events or to parent slices.
+    kPrecedingFlow,
+    // Flow events which can be reached from the given slice by going over
+    // outgoing flow events or to child slices.
+    kFollowingFlow,
+  };
 
-  explicit ConnectedFlowGenerator(Direction type,
-                                  TraceProcessorContext* context);
+  ConnectedFlowGenerator(Mode mode, const TraceStorage*);
   ~ConnectedFlowGenerator() override;
 
   Table::Schema CreateSchema() override;
   std::string TableName() override;
   uint32_t EstimateRowCount() override;
-  util::Status ValidateConstraints(const QueryConstraints&) override;
-  std::unique_ptr<Table> ComputeTable(const std::vector<Constraint>& cs,
-                                      const std::vector<Order>& ob) override;
+  base::Status ValidateConstraints(const QueryConstraints&) override;
+  base::Status ComputeTable(const std::vector<Constraint>& cs,
+                            const std::vector<Order>& ob,
+                            const BitVector& cols_used,
+                            std::unique_ptr<Table>& table_return) override;
 
  private:
-  // This function runs BFS on the flow events table as on directed graph
-  // It starts from start_id slice and returns all flow rows that are
-  // directly or indirectly connected to the starting slice.
-  // If dir is FOLLOWING BFS will move in direction (slice_out -> slice_in)
-  // If dir is PRECEDING BFS will move in direction (slice_in -> slice_out)
-  // IMPORTANT: dir must not be set to BOTH for this method
-  std::vector<uint32_t> GetConnectedFlowRows(SliceId start_id, Direction dir);
-
-  TraceProcessorContext* context_ = nullptr;
-  Direction direction_;
+  Mode mode_;
+  const TraceStorage* storage_ = nullptr;
 };
 
 }  // namespace trace_processor

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,12 @@
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
-#include "base/scoped_observer.h"
+#include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
+#include "base/values.h"
+#include "content/public/browser/notification_registrar.h"
 #include "extensions/browser/api/runtime/runtime_api_delegate.h"
 #include "extensions/browser/browser_context_keyed_api_factory.h"
 #include "extensions/browser/events/lazy_event_dispatch_util.h"
@@ -36,10 +38,8 @@ class PrefRegistrySimple;
 
 namespace extensions {
 
-namespace api {
-namespace runtime {
+namespace api::runtime {
 struct PlatformInfo;
-}
 }
 
 class Extension;
@@ -85,11 +85,15 @@ class RuntimeAPI : public BrowserContextKeyedAPI,
   static void RegisterPrefs(PrefRegistrySimple* registry);
 
   explicit RuntimeAPI(content::BrowserContext* context);
+
+  RuntimeAPI(const RuntimeAPI&) = delete;
+  RuntimeAPI& operator=(const RuntimeAPI&) = delete;
+
   ~RuntimeAPI() override;
 
   void ReloadExtension(const std::string& extension_id);
   bool CheckForUpdates(const std::string& extension_id,
-                       const RuntimeAPIDelegate::UpdateCheckCallback& callback);
+                       RuntimeAPIDelegate::UpdateCheckCallback callback);
   void OpenURL(const GURL& uninstall_url);
   bool GetPlatformInfo(api::runtime::PlatformInfo* info);
   bool RestartDevice(std::string* error_message);
@@ -152,15 +156,15 @@ class RuntimeAPI : public BrowserContextKeyedAPI,
 
   std::unique_ptr<RuntimeAPIDelegate> delegate_;
 
-  content::BrowserContext* browser_context_;
+  raw_ptr<content::BrowserContext> browser_context_;
 
   content::NotificationRegistrar registrar_;
 
   // Listen to extension notifications.
-  ScopedObserver<ExtensionRegistry, ExtensionRegistryObserver>
-      extension_registry_observer_{this};
-  ScopedObserver<ProcessManager, ProcessManagerObserver>
-      process_manager_observer_{this};
+  base::ScopedObservation<ExtensionRegistry, ExtensionRegistryObserver>
+      extension_registry_observation_{this};
+  base::ScopedObservation<ProcessManager, ProcessManagerObserver>
+      process_manager_observation_{this};
 
   // The ID of the first extension to call the restartAfterDelay API. Any other
   // extensions to call this API after that will fail.
@@ -185,8 +189,6 @@ class RuntimeAPI : public BrowserContextKeyedAPI,
   bool was_last_restart_due_to_delayed_restart_api_;
 
   base::WeakPtrFactory<RuntimeAPI> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(RuntimeAPI);
 };
 
 template <>
@@ -205,10 +207,9 @@ class RuntimeEventRouter {
                                        bool chrome_updated);
 
   // Dispatches the onUpdateAvailable event to the given extension.
-  static void DispatchOnUpdateAvailableEvent(
-      content::BrowserContext* context,
-      const std::string& extension_id,
-      const base::DictionaryValue* manifest);
+  static void DispatchOnUpdateAvailableEvent(content::BrowserContext* context,
+                                             const std::string& extension_id,
+                                             const base::Value::Dict* manifest);
 
   // Dispatches the onBrowserUpdateAvailable event to all extensions.
   static void DispatchOnBrowserUpdateAvailableEvent(
@@ -232,7 +233,7 @@ class RuntimeGetBackgroundPageFunction : public ExtensionFunction {
                              RUNTIME_GETBACKGROUNDPAGE)
 
  protected:
-  ~RuntimeGetBackgroundPageFunction() override {}
+  ~RuntimeGetBackgroundPageFunction() override = default;
   ResponseAction Run() override;
 
  private:
@@ -245,7 +246,7 @@ class RuntimeOpenOptionsPageFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("runtime.openOptionsPage", RUNTIME_OPENOPTIONSPAGE)
 
  protected:
-  ~RuntimeOpenOptionsPageFunction() override {}
+  ~RuntimeOpenOptionsPageFunction() override = default;
   ResponseAction Run() override;
 };
 
@@ -254,7 +255,7 @@ class RuntimeSetUninstallURLFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("runtime.setUninstallURL", RUNTIME_SETUNINSTALLURL)
 
  protected:
-  ~RuntimeSetUninstallURLFunction() override {}
+  ~RuntimeSetUninstallURLFunction() override = default;
   ResponseAction Run() override;
 };
 
@@ -263,7 +264,7 @@ class RuntimeReloadFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("runtime.reload", RUNTIME_RELOAD)
 
  protected:
-  ~RuntimeReloadFunction() override {}
+  ~RuntimeReloadFunction() override = default;
   ResponseAction Run() override;
 };
 
@@ -273,7 +274,7 @@ class RuntimeRequestUpdateCheckFunction : public ExtensionFunction {
                              RUNTIME_REQUESTUPDATECHECK)
 
  protected:
-  ~RuntimeRequestUpdateCheckFunction() override {}
+  ~RuntimeRequestUpdateCheckFunction() override = default;
   ResponseAction Run() override;
 
  private:
@@ -285,7 +286,7 @@ class RuntimeRestartFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("runtime.restart", RUNTIME_RESTART)
 
  protected:
-  ~RuntimeRestartFunction() override {}
+  ~RuntimeRestartFunction() override = default;
   ResponseAction Run() override;
 };
 
@@ -295,7 +296,7 @@ class RuntimeRestartAfterDelayFunction : public ExtensionFunction {
                              RUNTIME_RESTARTAFTERDELAY)
 
  protected:
-  ~RuntimeRestartAfterDelayFunction() override {}
+  ~RuntimeRestartAfterDelayFunction() override = default;
   ResponseAction Run() override;
 };
 
@@ -304,7 +305,7 @@ class RuntimeGetPlatformInfoFunction : public ExtensionFunction {
   DECLARE_EXTENSION_FUNCTION("runtime.getPlatformInfo", RUNTIME_GETPLATFORMINFO)
 
  protected:
-  ~RuntimeGetPlatformInfoFunction() override {}
+  ~RuntimeGetPlatformInfoFunction() override = default;
   ResponseAction Run() override;
 };
 
@@ -314,7 +315,7 @@ class RuntimeGetPackageDirectoryEntryFunction : public ExtensionFunction {
                              RUNTIME_GETPACKAGEDIRECTORYENTRY)
 
  protected:
-  ~RuntimeGetPackageDirectoryEntryFunction() override {}
+  ~RuntimeGetPackageDirectoryEntryFunction() override = default;
   ResponseAction Run() override;
 };
 

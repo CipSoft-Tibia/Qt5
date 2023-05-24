@@ -10,6 +10,7 @@
 
 #include "cast/streaming/frame_id.h"
 #include "cast/streaming/rtp_defines.h"
+#include "platform/base/span.h"
 #include "util/osp_logging.h"
 
 namespace openscreen {
@@ -74,11 +75,11 @@ bool FrameCollector::CollectRtpPacket(const RtpPacketParser::ParseResult& part,
   // contain a complete set of values.
   if (part.packet_id == FramePacketId{0}) {
     if (part.is_key_frame) {
-      frame_.dependency = EncodedFrame::KEY_FRAME;
+      frame_.dependency = EncodedFrame::Dependency::kKeyFrame;
     } else if (part.frame_id == part.referenced_frame_id) {
-      frame_.dependency = EncodedFrame::INDEPENDENTLY_DECODABLE;
+      frame_.dependency = EncodedFrame::Dependency::kIndependent;
     } else {
-      frame_.dependency = EncodedFrame::DEPENDS_ON_ANOTHER;
+      frame_.dependency = EncodedFrame::Dependency::kDependent;
     }
     frame_.referenced_frame_id = part.referenced_frame_id;
     frame_.rtp_timestamp = part.rtp_timestamp;
@@ -138,7 +139,7 @@ const EncryptedFrame& FrameCollector::PeekAtAssembledFrame() {
       frame_.owned_data_.insert(frame_.owned_data_.end(), chunk.payload.begin(),
                                 chunk.payload.end());
     }
-    frame_.data = absl::Span<uint8_t>(frame_.owned_data_);
+    frame_.data = frame_.owned_data_;
   }
 
   return frame_;
@@ -149,7 +150,7 @@ void FrameCollector::Reset() {
   frame_.frame_id = FrameId();
   frame_.owned_data_.clear();
   frame_.owned_data_.shrink_to_fit();
-  frame_.data = absl::Span<uint8_t>();
+  frame_.data = ByteView();
   chunks_.clear();
 }
 

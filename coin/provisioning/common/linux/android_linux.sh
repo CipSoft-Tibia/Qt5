@@ -1,37 +1,6 @@
 #!/usr/bin/env bash
-
-#############################################################################
-##
-## Copyright (C) 2017 The Qt Company Ltd.
-## Contact: http://www.qt.io/licensing/
-##
-## This file is part of the provisioning scripts of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:LGPL21$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see http://www.qt.io/terms-conditions. For further
-## information use the contact form at http://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 2.1 or version 3 as published by the Free
-## Software Foundation and appearing in the file LICENSE.LGPLv21 and
-## LICENSE.LGPLv3 included in the packaging of this file. Please review the
-## following information to ensure the GNU Lesser General Public License
-## requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-## http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-##
-## As a special exception, The Qt Company gives you certain additional
-## rights. These rights are described in The Qt Company LGPL Exception
-## version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 # This script install Android sdk and ndk.
 
@@ -49,31 +18,58 @@ source "${BASH_SOURCE%/*}/../unix/SetEnvVar.sh"
 targetFolder="/opt/android"
 sdkTargetFolder="$targetFolder/sdk"
 
+sudo mkdir -p $sdkTargetFolder
+
 basePath="http://ci-files01-hki.intra.qt.io/input/android"
 
-toolsVersion="r26.1.1"
-toolsFile="sdk-tools-linux-4333796.zip"
-ndkVersion="r20"
-ndkFile="android-ndk-$ndkVersion-linux-x86_64.zip"
-sdkBuildToolsVersion="29.0.3"
-sdkApiLevel="android-29"
+toolsVersion="2.1"
+toolsFile="commandlinetools-linux-6609375_latest.zip"
+ndkVersionLatest="r25b"
+ndkVersionDefault=$ndkVersionLatest
+sdkBuildToolsVersion="33.0.1"
+sdkApiLevel="android-33"
 
-toolsSha1="8c7c28554a32318461802c1291d76fccfafde054"
-ndkSha1="8665fc84a1b1f0d6ab3b5fdd1e30200cc7b9adff"
+toolsSha1="9172381ff070ee2a416723c1989770cf4b0d1076"
+ndkSha1Latest="e27dcb9c8bcaa77b78ff68c3f23abcf6867959eb"
+ndkSha1Default=$ndkSha1Latest
+# Android automotive
+sdkApiLevelAutomotive="android-31"
+androidAutomotive12Url="$basePath/${sdkApiLevelAutomotive}_automotive.tar.gz"
+androidAutomotive="android-automotive"
+androidAutomotive12Sha="0b6498e0c0022c40b8bb2b275f704e6a298c04a3"
 
 toolsTargetFile="/tmp/$toolsFile"
 toolsSourceFile="$basePath/$toolsFile"
-ndkTargetFile="/tmp/$ndkFile"
-ndkSourceFile="$basePath/$ndkFile"
 
+echo "Download and unzip Android SDK"
 DownloadURL "$toolsSourceFile" "$toolsSourceFile" "$toolsSha1" "$toolsTargetFile"
-DownloadURL "$ndkSourceFile" "$ndkSourceFile" "$ndkSha1" "$ndkTargetFile"
-echo "Unzipping Android NDK to '$targetFolder'"
-sudo unzip -q "$ndkTargetFile" -d "$targetFolder"
 echo "Unzipping Android Tools to '$sdkTargetFolder'"
 sudo unzip -q "$toolsTargetFile" -d "$sdkTargetFolder"
-rm "$ndkTargetFile"
 rm "$toolsTargetFile"
+
+function InstallNdk() {
+
+    ndkVersion=$1
+    ndkSha1=$2
+
+    if [[ ! -d $targetFolder/android-ndk-$ndkVersion ]]; then
+
+        ndkFile="android-ndk-$ndkVersion-linux.zip"
+        ndkTargetFile="/tmp/$ndkFile"
+        ndkSourceFile="$basePath/$ndkFile"
+
+        DownloadURL "$ndkSourceFile" "$ndkSourceFile" "$ndkSha1" "$ndkTargetFile"
+        echo "Unzipping Android NDK to '$targetFolder'"
+        sudo unzip -q "$ndkTargetFile" -d "$targetFolder"
+        rm "$ndkTargetFile"
+    fi
+
+}
+
+InstallNdk $ndkVersionDefault $ndkSha1Default
+SetEnvVar "ANDROID_NDK_ROOT_DEFAULT" "$targetFolder/android-ndk-$ndkVersionDefault"
+InstallNdk $ndkVersionLatest $ndkSha1Latest
+SetEnvVar "ANDROID_NDK_ROOT_LATEST" "$targetFolder/android-ndk-$ndkVersionLatest"
 
 echo "Changing ownership of Android files."
 if uname -a |grep -q "el7"; then
@@ -88,17 +84,20 @@ sdkmanager_no_progress_bar_cmd="tr '\r' '\n'  |  grep -v '^\[[ =]*\]'"
 # But don't let the pipeline hide sdkmanager failures.
 set -o pipefail
 
+sudo mkdir "$sdkTargetFolder/cmdline-tools"
+sudo mv "$sdkTargetFolder/tools" "$sdkTargetFolder/cmdline-tools"
+
 echo "Running SDK manager for platforms;$sdkApiLevel, platform-tools and build-tools;$sdkBuildToolsVersion."
 # shellcheck disable=SC2031
 if [ "$http_proxy" != "" ]; then
     proxy_host=$(echo "$proxy" | cut -d'/' -f3 | cut -d':' -f1)
     proxy_port=$(echo "$proxy" | cut -d':' -f3)
-    echo "y" | "$sdkTargetFolder/tools/bin/sdkmanager"  \
+    echo "y" | "$sdkTargetFolder/cmdline-tools/tools/bin/sdkmanager" --sdk_root=$sdkTargetFolder  \
                    --no_https --proxy=http --proxy_host="$proxy_host" --proxy_port="$proxy_port"  \
                    "platforms;$sdkApiLevel" "platform-tools" "build-tools;$sdkBuildToolsVersion"  \
         | eval $sdkmanager_no_progress_bar_cmd
 else
-    echo "y" | "$sdkTargetFolder/tools/bin/sdkmanager"  \
+    echo "y" | "$sdkTargetFolder/cmdline-tools/tools/bin/sdkmanager" --sdk_root=$sdkTargetFolder  \
                    "platforms;$sdkApiLevel" "platform-tools" "build-tools;$sdkBuildToolsVersion"  \
         | eval $sdkmanager_no_progress_bar_cmd
 fi
@@ -106,9 +105,7 @@ fi
 echo "Checking the contents of Android SDK..."
 ls -l "$sdkTargetFolder"
 
-SetEnvVar "ANDROID_SDK_HOME" "$sdkTargetFolder"
-SetEnvVar "ANDROID_NDK_HOME" "$targetFolder/android-ndk-$ndkVersion"
-SetEnvVar "ANDROID_NDK_ROOT" "$targetFolder/android-ndk-$ndkVersion"
+SetEnvVar "ANDROID_SDK_ROOT" "$sdkTargetFolder"
 SetEnvVar "ANDROID_NDK_HOST" "linux-x86_64"
 SetEnvVar "ANDROID_API_VERSION" "$sdkApiLevel"
 
@@ -118,16 +115,41 @@ echo "Android SDK Build Tools = $sdkBuildToolsVersion" >> ~/versions.txt
 echo "Android SDK API level = $sdkApiLevel" >> ~/versions.txt
 echo "Android NDK = $ndkVersion" >> ~/versions.txt
 
-cd "$sdkTargetFolder/tools/bin"
-./sdkmanager --install "emulator"  \
+cd "$sdkTargetFolder/cmdline-tools/tools/bin"
+./sdkmanager --install "emulator" --sdk_root=$sdkTargetFolder \
     | eval $sdkmanager_no_progress_bar_cmd
-echo "y" | ./sdkmanager --install "system-images;android-21;google_apis;x86"  \
-    | eval $sdkmanager_no_progress_bar_cmd
+
+echo "Download and unzip Android Emulator version 32.1.15"
+emulatorFileName="emulator-linux_x64-10696886.zip"
+emulatorCiUrl="https://ci-files01-hki.ci.qt.io/input/android/$emulatorFileName"
+emulatorUrl="http://dl.google.com/android/repository/$emulatorFileName"
+emulatorTargetFile="$sdkTargetFolder/$emulatorFileName"
+emulatorSha1="b78f4d2c22d6aa5ca83d26ccb68cbf885a273888"
+DownloadURL "$emulatorCiUrl" "$emulatorUrl" "$emulatorSha1" "$emulatorTargetFile"
+echo "Unzipping the Android Emulator to '$sdkTargetFolder'"
+sudo unzip -o -q "$emulatorTargetFile" -d "$sdkTargetFolder"
+rm "$emulatorTargetFile"
+
+echo "y" | ./sdkmanager --install "system-images;android-23;google_apis;x86" | eval $sdkmanager_no_progress_bar_cmd
+
+echo "y" | ./sdkmanager --install "system-images;android-33;google_apis;x86_64" | eval $sdkmanager_no_progress_bar_cmd
 
 
 echo "Checking the contents of Android SDK again..."
 ls -l "$sdkTargetFolder"
 
-echo "no" | ./avdmanager create avd -n x86emulator -k "system-images;android-21;google_apis;x86" -c 2048M -f
+echo "no" | ./avdmanager create avd -n emulator_x86_api_23 -c 2048M -f \
+    -k "system-images;android-23;google_apis;x86"
+
+echo "no" | ./avdmanager create avd -n emulator_x86_64_api_33 -c 2048M -f \
+    -k "system-images;android-33;google_apis;x86_64"
+
+echo "Install $sdkApiLevelAutomotive $androidAutomotive"
+DownloadURL "$androidAutomotive12Url" "$androidAutomotive12Url" "$androidAutomotive12Sha" \
+    "/tmp/${sdkApiLevelAutomotive}_automotive.tar.gz"
+sudo tar -xzf "/tmp/${sdkApiLevelAutomotive}_automotive.tar.gz" -C $sdkTargetFolder/system-images
+echo "no" | ./avdmanager create avd -n automotive_emulator_x86_64_api_31 -c 2048M -f \
+    -k "system-images;${sdkApiLevelAutomotive};${androidAutomotive};x86_64"
+
 # Purely informative, show the list of avd devices
 ./avdmanager list avd

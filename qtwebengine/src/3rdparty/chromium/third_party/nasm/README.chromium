@@ -50,6 +50,7 @@ build/Release+Asserts/bin) then do the following:
 
   # Copy config/config.h to config-(mac|linux).h
   # Revert config/config.h to the checked in version
+  ./generate_nasm_configs.py
 
   git commit -a
 

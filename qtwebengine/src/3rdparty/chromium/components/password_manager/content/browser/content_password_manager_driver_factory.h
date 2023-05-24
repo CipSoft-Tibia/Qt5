@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,14 +8,14 @@
 #include <map>
 
 #include "base/compiler_specific.h"
-#include "base/macros.h"
-#include "base/supports_user_data.h"
+#include "base/memory/raw_ptr.h"
 #include "components/autofill/content/common/mojom/autofill_driver.mojom.h"
 #include "components/password_manager/core/browser/password_autofill_manager.h"
 #include "components/password_manager/core/browser/password_generation_frame_helper.h"
 #include "components/password_manager/core/browser/password_manager.h"
 #include "components/password_manager/core/browser/password_manager_driver.h"
 #include "content/public/browser/web_contents_observer.h"
+#include "content/public/browser/web_contents_user_data.h"
 #include "mojo/public/cpp/bindings/pending_associated_receiver.h"
 #include "services/service_manager/public/cpp/bind_source_info.h"
 
@@ -28,24 +28,25 @@ namespace password_manager {
 class ContentPasswordManagerDriver;
 
 // Creates and owns ContentPasswordManagerDrivers. There is one
-// factory per WebContents, and one driver per render frame.
+// factory per WebContents, and one driver per RenderFrameHost.
 class ContentPasswordManagerDriverFactory
     : public content::WebContentsObserver,
-      public base::SupportsUserData::Data {
+      public content::WebContentsUserData<ContentPasswordManagerDriverFactory> {
  public:
-  static void CreateForWebContents(content::WebContents* web_contents,
-                                   PasswordManagerClient* client,
-                                   autofill::AutofillClient* autofill_client);
-  ~ContentPasswordManagerDriverFactory() override;
+  ContentPasswordManagerDriverFactory(
+      const ContentPasswordManagerDriverFactory&) = delete;
+  ContentPasswordManagerDriverFactory& operator=(
+      const ContentPasswordManagerDriverFactory&) = delete;
 
-  static ContentPasswordManagerDriverFactory* FromWebContents(
-      content::WebContents* web_contents);
+  ~ContentPasswordManagerDriverFactory() override;
 
   static void BindPasswordManagerDriver(
       mojo::PendingAssociatedReceiver<autofill::mojom::PasswordManagerDriver>
           pending_receiver,
       content::RenderFrameHost* render_frame_host);
 
+  // Note that this may return null if the RenderFrameHost does not have a
+  // live RenderFrame (e.g. it represents a crashed RenderFrameHost).
   ContentPasswordManagerDriver* GetDriverForFrame(
       content::RenderFrameHost* render_frame_host);
 
@@ -54,6 +55,10 @@ class ContentPasswordManagerDriverFactory
   void RequestSendLoggingAvailability();
 
  private:
+  friend class content::WebContentsUserData<
+      ContentPasswordManagerDriverFactory>;
+  friend class ContentPasswordManagerDriverFactoryTestApi;
+
   ContentPasswordManagerDriverFactory(
       content::WebContents* web_contents,
       PasswordManagerClient* client,
@@ -67,10 +72,10 @@ class ContentPasswordManagerDriverFactory
   std::map<content::RenderFrameHost*, ContentPasswordManagerDriver>
       frame_driver_map_;
 
-  PasswordManagerClient* password_client_;
-  autofill::AutofillClient* autofill_client_;
+  raw_ptr<PasswordManagerClient, DanglingUntriaged> password_client_;
+  raw_ptr<autofill::AutofillClient, DanglingUntriaged> autofill_client_;
 
-  DISALLOW_COPY_AND_ASSIGN(ContentPasswordManagerDriverFactory);
+  WEB_CONTENTS_USER_DATA_KEY_DECL();
 };
 
 }  // namespace password_manager

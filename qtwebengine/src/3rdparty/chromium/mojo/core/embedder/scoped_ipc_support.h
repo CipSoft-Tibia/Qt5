@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 #define MOJO_CORE_EMBEDDER_SCOPED_IPC_SUPPORT_H_
 
 #include "base/component_export.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 
 namespace base {
 class SingleThreadTaskRunner;
@@ -105,12 +105,14 @@ class COMPONENT_EXPORT(MOJO_CORE_EMBEDDER) ScopedIPCSupport {
   ScopedIPCSupport(
       scoped_refptr<base::SingleThreadTaskRunner> io_thread_task_runner,
       ShutdownPolicy shutdown_policy);
+
+  ScopedIPCSupport(const ScopedIPCSupport&) = delete;
+  ScopedIPCSupport& operator=(const ScopedIPCSupport&) = delete;
+
   ~ScopedIPCSupport();
 
  private:
   const ShutdownPolicy shutdown_policy_;
-
-  DISALLOW_COPY_AND_ASSIGN(ScopedIPCSupport);
 };
 
 }  // namespace core

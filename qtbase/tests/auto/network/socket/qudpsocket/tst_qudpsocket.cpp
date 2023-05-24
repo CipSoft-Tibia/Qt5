@@ -1,34 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2017 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2017 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QSignalSpy>
+#include <QtEndian>
+#if QT_CONFIG(process)
+#include <QProcess>
+#endif
+#include <QScopeGuard>
+#include <QVersionNumber>
+#include <QSemaphore>
 
 #include <qcoreapplication.h>
 #include <qfileinfo.h>
@@ -46,8 +29,9 @@
 #include <QNetworkInterface>
 
 #include <qstringlist.h>
+#include <QSet>
 #include "../../../network-settings.h"
-#include "emulationdetector.h"
+#include <QtTest/private/qemulationdetector_p.h>
 
 #if defined(Q_OS_LINUX)
 #define SHOULD_CHECK_SYSCALL_SUPPORT
@@ -120,6 +104,8 @@ private slots:
     void asyncReadDatagram();
     void writeInHostLookupState();
 
+    void readyReadConnectionThrottling();
+
 protected slots:
     void empty_readyReadSlot();
     void empty_connectedSlot();
@@ -137,7 +123,8 @@ private:
     bool m_workaroundLinuxKernelBug;
     QList<QHostAddress> allAddresses;
     QHostAddress multicastGroup4, multicastGroup6;
-    QVector<QHostAddress> linklocalMulticastGroups;
+    QList<QHostAddress> linklocalMulticastGroups;
+    QNetworkInterface ifaceWithIPv6;
     QUdpSocket *m_asyncSender;
     QUdpSocket *m_asyncReceiver;
 };
@@ -188,26 +175,7 @@ QNetworkInterface tst_QUdpSocket::interfaceForGroup(const QHostAddress &multicas
     if (!scope.isEmpty())
         return QNetworkInterface::interfaceFromName(scope);
 
-    static QNetworkInterface ipv6if = [=]() {
-        // find any link local address in the allAddress list
-        for (const QHostAddress &addr: qAsConst(allAddresses)) {
-            if (addr.isLoopback())
-                continue;
-
-            QString scope = addr.scopeId();
-            if (!scope.isEmpty()) {
-                QNetworkInterface iface = QNetworkInterface::interfaceFromName(scope);
-                qDebug() << "Will bind IPv6 sockets to" << iface;
-                return iface;
-            }
-        }
-
-        qWarning("interfaceForGroup(%s) could not find any link-local IPv6 address! "
-                 "Make sure this test is behind a check of QtNetworkSettings::hasIPv6().",
-                 qUtf8Printable(multicastGroup.toString()));
-        return QNetworkInterface();
-    }();
-    return ipv6if;
+    return ifaceWithIPv6;
 }
 
 bool tst_QUdpSocket::shouldWorkaroundLinuxKernelBug()
@@ -286,18 +254,25 @@ void tst_QUdpSocket::initTestCase()
     // ff12:: is temporary, not prefix-based, link-local
     r[0] = qToBigEndian(Q_UINT64_C(0xff12) << 48);
     QHostAddress llbase(*reinterpret_cast<Q_IPV6ADDR *>(&r));
-    for (const QHostAddress &a : qAsConst(allAddresses)) {
+    for (const QHostAddress &a : std::as_const(allAddresses)) {
         QString scope = a.scopeId();
         if (scope.isEmpty())
             continue;
         llbase.setScopeId(scope);
         linklocalMulticastGroups << llbase;
+        if (!ifaceWithIPv6.isValid()) {
+            // Remember the first interface we've found that has IPv6 so we can
+            // bind non-link-local sockets to it (the first is least likely to
+            // be some weird virtual interface).
+            ifaceWithIPv6 = QNetworkInterface::interfaceFromName(scope);
+        }
     }
 
     qDebug() << "Will use multicast groups" << multicastGroup4 << multicastGroup6 << linklocalMulticastGroups;
+    qDebug() << "Will bind IPv6 sockets to" << ifaceWithIPv6;
 
     m_workaroundLinuxKernelBug = shouldWorkaroundLinuxKernelBug();
-    if (EmulationDetector::isRunningArmOnX86())
+    if (QTestPrivate::isRunningArmOnX86())
         QSKIP("This test is unreliable due to QEMU emulation shortcomings.");
 }
 
@@ -351,7 +326,7 @@ void tst_QUdpSocket::unconnectedServerAndClientTest()
 
     QSignalSpy stateChangedSpy(&serverSocket, SIGNAL(stateChanged(QAbstractSocket::SocketState)));
     QVERIFY2(serverSocket.bind(), serverSocket.errorString().toLatin1().constData());
-    QCOMPARE(stateChangedSpy.count(), 1);
+    QCOMPARE(stateChangedSpy.size(), 1);
 
     const char *message[] = {"Yo mista", "Yo", "Wassap"};
 
@@ -403,7 +378,7 @@ void tst_QUdpSocket::broadcasting()
     foreach (QNetworkInterface iface, QNetworkInterface::allInterfaces()) {
         if ((iface.flags() & QNetworkInterface::CanBroadcast)
             && iface.flags() & QNetworkInterface::IsUp) {
-            for (int i=0;i<iface.addressEntries().count();i++) {
+            for (int i=0;i<iface.addressEntries().size();i++) {
                 QHostAddress broadcast = iface.addressEntries().at(i).broadcast();
                 if (broadcast.protocol() == QAbstractSocket::IPv4Protocol)
                     broadcastAddresses.append(broadcast);
@@ -437,7 +412,6 @@ void tst_QUdpSocket::broadcasting()
                 QEXPECT_FAIL("",
                              "Broadcasting to 255.255.255.255 does not work on FreeBSD",
                              Abort);
-                QVERIFY(false); // seems that QFAIL() doesn't respect the QEXPECT_FAIL() :/
 #endif
                 QFAIL("Network operation timed out");
             }
@@ -449,7 +423,7 @@ void tst_QUdpSocket::broadcasting()
                 QVERIFY(dgram.isValid());
                 QByteArray arr = dgram.data();
 
-                QCOMPARE(arr.length(), messageLength);
+                QCOMPARE(arr.size(), messageLength);
                 arr.resize(messageLength);
                 QCOMPARE(arr, QByteArray(message[i]));
 
@@ -509,27 +483,27 @@ void tst_QUdpSocket::loop()
     QHostAddress peterAddress = makeNonAny(peter.localAddress());
     QHostAddress paulAddress = makeNonAny(paul.localAddress());
 
-    QCOMPARE(peter.writeDatagram(peterMessage.data(), peterMessage.length(),
-                                paulAddress, paul.localPort()), qint64(peterMessage.length()));
-    QCOMPARE(paul.writeDatagram(paulMessage.data(), paulMessage.length(),
-                               peterAddress, peter.localPort()), qint64(paulMessage.length()));
+    QCOMPARE(peter.writeDatagram(peterMessage.data(), peterMessage.size(),
+                                paulAddress, paul.localPort()), qint64(peterMessage.size()));
+    QCOMPARE(paul.writeDatagram(paulMessage.data(), paulMessage.size(),
+                               peterAddress, peter.localPort()), qint64(paulMessage.size()));
 
     QVERIFY2(peter.waitForReadyRead(9000), QtNetworkSettings::msgSocketError(peter).constData());
     QVERIFY2(paul.waitForReadyRead(9000), QtNetworkSettings::msgSocketError(paul).constData());
 
-    QNetworkDatagram peterDatagram = peter.receiveDatagram(paulMessage.length() * 2);
-    QNetworkDatagram paulDatagram = paul.receiveDatagram(peterMessage.length() * 2);
+    QNetworkDatagram peterDatagram = peter.receiveDatagram(paulMessage.size() * 2);
+    QNetworkDatagram paulDatagram = paul.receiveDatagram(peterMessage.size() * 2);
     if (success) {
-        QCOMPARE(peterDatagram.data().length(), qint64(paulMessage.length()));
-        QCOMPARE(paulDatagram.data().length(), qint64(peterMessage.length()));
+        QCOMPARE(peterDatagram.data().size(), qint64(paulMessage.size()));
+        QCOMPARE(paulDatagram.data().size(), qint64(peterMessage.size()));
     } else {
         // this code path seems to never be executed
-        QVERIFY(peterDatagram.data().length() != paulMessage.length());
-        QVERIFY(paulDatagram.data().length() != peterMessage.length());
+        QVERIFY(peterDatagram.data().size() != paulMessage.size());
+        QVERIFY(paulDatagram.data().size() != peterMessage.size());
     }
 
-    QCOMPARE(peterDatagram.data().left(paulMessage.length()), paulMessage);
-    QCOMPARE(paulDatagram.data().left(peterMessage.length()), peterMessage);
+    QCOMPARE(peterDatagram.data().left(paulMessage.size()), paulMessage);
+    QCOMPARE(paulDatagram.data().left(peterMessage.size()), peterMessage);
 
     QCOMPARE(peterDatagram.senderAddress(), paulAddress);
     QCOMPARE(paulDatagram.senderAddress(), peterAddress);
@@ -586,27 +560,27 @@ void tst_QUdpSocket::ipv6Loop()
     peterPort = peter.localPort();
     paulPort = paul.localPort();
 
-    QCOMPARE(peter.writeDatagram(peterMessage.data(), peterMessage.length(), QHostAddress("::1"),
-                                    paulPort), qint64(peterMessage.length()));
-    QCOMPARE(paul.writeDatagram(paulMessage.data(), paulMessage.length(),
-                                   QHostAddress("::1"), peterPort), qint64(paulMessage.length()));
+    QCOMPARE(peter.writeDatagram(peterMessage.data(), peterMessage.size(), QHostAddress("::1"),
+                                    paulPort), qint64(peterMessage.size()));
+    QCOMPARE(paul.writeDatagram(paulMessage.data(), paulMessage.size(),
+                                   QHostAddress("::1"), peterPort), qint64(paulMessage.size()));
 
     QVERIFY(peter.waitForReadyRead(5000));
     QVERIFY(paul.waitForReadyRead(5000));
-    QNetworkDatagram peterDatagram = peter.receiveDatagram(paulMessage.length() * 2);
-    QNetworkDatagram paulDatagram = paul.receiveDatagram(peterMessage.length() * 2);
+    QNetworkDatagram peterDatagram = peter.receiveDatagram(paulMessage.size() * 2);
+    QNetworkDatagram paulDatagram = paul.receiveDatagram(peterMessage.size() * 2);
 
     if (success) {
-        QCOMPARE(peterDatagram.data().length(), qint64(paulMessage.length()));
-        QCOMPARE(paulDatagram.data().length(), qint64(peterMessage.length()));
+        QCOMPARE(peterDatagram.data().size(), qint64(paulMessage.size()));
+        QCOMPARE(paulDatagram.data().size(), qint64(peterMessage.size()));
     } else {
         // this code path seems to never be executed
-        QVERIFY(peterDatagram.data().length() != paulMessage.length());
-        QVERIFY(paulDatagram.data().length() != peterMessage.length());
+        QVERIFY(peterDatagram.data().size() != paulMessage.size());
+        QVERIFY(paulDatagram.data().size() != peterMessage.size());
     }
 
-    QCOMPARE(peterDatagram.data().left(paulMessage.length()), paulMessage);
-    QCOMPARE(paulDatagram.data().left(peterMessage.length()), peterMessage);
+    QCOMPARE(peterDatagram.data().left(paulMessage.size()), paulMessage);
+    QCOMPARE(paulDatagram.data().left(peterMessage.size()), peterMessage);
 
     QCOMPARE(peterDatagram.senderAddress(), paulAddress);
     QCOMPARE(paulDatagram.senderAddress(), peterAddress);
@@ -634,7 +608,7 @@ void tst_QUdpSocket::dualStack()
     QVERIFY(v4Sock.bind(QHostAddress(QHostAddress::AnyIPv4), 0));
 
     //test v4 -> dual
-    QCOMPARE((int)v4Sock.writeDatagram(v4Data.constData(), v4Data.length(), QHostAddress(QHostAddress::LocalHost), dualSock.localPort()), v4Data.length());
+    QCOMPARE((int)v4Sock.writeDatagram(v4Data.constData(), v4Data.size(), QHostAddress(QHostAddress::LocalHost), dualSock.localPort()), v4Data.size());
     QVERIFY2(dualSock.waitForReadyRead(5000), QtNetworkSettings::msgSocketError(dualSock).constData());
     QNetworkDatagram dgram = dualSock.receiveDatagram(100);
     QVERIFY(dgram.isValid());
@@ -646,7 +620,7 @@ void tst_QUdpSocket::dualStack()
         QCOMPARE(dgram.senderAddress(), makeNonAny(v4Sock.localAddress(), QHostAddress::Null));
     if (dgram.destinationPort() != -1) {
         QCOMPARE(dgram.destinationPort(), int(dualSock.localPort()));
-        QVERIFY(dgram.destinationAddress().isEqual(dualSock.localAddress()));
+        QVERIFY(dgram.destinationAddress().isEqual(makeNonAny(dualSock.localAddress(), QHostAddress::LocalHost)));
     } else {
         qInfo("Getting IPv4 destination address failed.");
     }
@@ -657,7 +631,7 @@ void tst_QUdpSocket::dualStack()
         QVERIFY(v6Sock.bind(QHostAddress(QHostAddress::AnyIPv6), 0));
 
         //test v6 -> dual
-        QCOMPARE((int)v6Sock.writeDatagram(v6Data.constData(), v6Data.length(), QHostAddress(QHostAddress::LocalHostIPv6), dualSock.localPort()), v6Data.length());
+        QCOMPARE((int)v6Sock.writeDatagram(v6Data.constData(), v6Data.size(), QHostAddress(QHostAddress::LocalHostIPv6), dualSock.localPort()), v6Data.size());
         QVERIFY2(dualSock.waitForReadyRead(5000), QtNetworkSettings::msgSocketError(dualSock).constData());
         dgram = dualSock.receiveDatagram(100);
         QVERIFY(dgram.isValid());
@@ -668,7 +642,7 @@ void tst_QUdpSocket::dualStack()
         QCOMPARE(dgram.destinationAddress(), makeNonAny(dualSock.localAddress(), QHostAddress::LocalHostIPv6));
 
         //test dual -> v6
-        QCOMPARE((int)dualSock.writeDatagram(dualData.constData(), dualData.length(), QHostAddress(QHostAddress::LocalHostIPv6), v6Sock.localPort()), dualData.length());
+        QCOMPARE((int)dualSock.writeDatagram(dualData.constData(), dualData.size(), QHostAddress(QHostAddress::LocalHostIPv6), v6Sock.localPort()), dualData.size());
         QVERIFY2(v6Sock.waitForReadyRead(5000), QtNetworkSettings::msgSocketError(v6Sock).constData());
         dgram = v6Sock.receiveDatagram(100);
         QVERIFY(dgram.isValid());
@@ -680,7 +654,7 @@ void tst_QUdpSocket::dualStack()
     }
 
     //test dual -> v4
-    QCOMPARE((int)dualSock.writeDatagram(dualData.constData(), dualData.length(), QHostAddress(QHostAddress::LocalHost), v4Sock.localPort()), dualData.length());
+    QCOMPARE((int)dualSock.writeDatagram(dualData.constData(), dualData.size(), QHostAddress(QHostAddress::LocalHost), v4Sock.localPort()), dualData.size());
     QVERIFY2(v4Sock.waitForReadyRead(5000), QtNetworkSettings::msgSocketError(v4Sock).constData());
     dgram = v4Sock.receiveDatagram(100);
     QVERIFY(dgram.isValid());
@@ -719,19 +693,19 @@ void tst_QUdpSocket::dualStackAutoBinding()
         //test an autobound socket can send to both v4 and v6 addresses (v4 first)
         QUdpSocket dualSock;
 
-        QCOMPARE((int)dualSock.writeDatagram(dualData.constData(), dualData.length(), QHostAddress(QHostAddress::LocalHost), v4Sock.localPort()), dualData.length());
+        QCOMPARE((int)dualSock.writeDatagram(dualData.constData(), dualData.size(), QHostAddress(QHostAddress::LocalHost), v4Sock.localPort()), dualData.size());
         QVERIFY2(v4Sock.waitForReadyRead(5000), QtNetworkSettings::msgSocketError(v4Sock).constData());
         buffer.reserve(100);
         size = v4Sock.readDatagram(buffer.data(), 100, &from, &port);
-        QCOMPARE((int)size, dualData.length());
+        QCOMPARE((int)size, dualData.size());
         buffer.resize(size);
         QCOMPARE(buffer, dualData);
 
-        QCOMPARE((int)dualSock.writeDatagram(dualData.constData(), dualData.length(), QHostAddress(QHostAddress::LocalHostIPv6), v6Sock.localPort()), dualData.length());
+        QCOMPARE((int)dualSock.writeDatagram(dualData.constData(), dualData.size(), QHostAddress(QHostAddress::LocalHostIPv6), v6Sock.localPort()), dualData.size());
         QVERIFY2(v6Sock.waitForReadyRead(5000), QtNetworkSettings::msgSocketError(v6Sock).constData());
         buffer.reserve(100);
         size = v6Sock.readDatagram(buffer.data(), 100, &from, &port);
-        QCOMPARE((int)size, dualData.length());
+        QCOMPARE((int)size, dualData.size());
         buffer.resize(size);
         QCOMPARE(buffer, dualData);
     }
@@ -740,19 +714,19 @@ void tst_QUdpSocket::dualStackAutoBinding()
         //test an autobound socket can send to both v4 and v6 addresses (v6 first)
         QUdpSocket dualSock;
 
-        QCOMPARE((int)dualSock.writeDatagram(dualData.constData(), dualData.length(), QHostAddress(QHostAddress::LocalHostIPv6), v6Sock.localPort()), dualData.length());
+        QCOMPARE((int)dualSock.writeDatagram(dualData.constData(), dualData.size(), QHostAddress(QHostAddress::LocalHostIPv6), v6Sock.localPort()), dualData.size());
         QVERIFY2(v6Sock.waitForReadyRead(5000), QtNetworkSettings::msgSocketError(v6Sock).constData());
         buffer.reserve(100);
         size = v6Sock.readDatagram(buffer.data(), 100, &from, &port);
-        QCOMPARE((int)size, dualData.length());
+        QCOMPARE((int)size, dualData.size());
         buffer.resize(size);
         QCOMPARE(buffer, dualData);
 
-        QCOMPARE((int)dualSock.writeDatagram(dualData.constData(), dualData.length(), QHostAddress(QHostAddress::LocalHost), v4Sock.localPort()), dualData.length());
+        QCOMPARE((int)dualSock.writeDatagram(dualData.constData(), dualData.size(), QHostAddress(QHostAddress::LocalHost), v4Sock.localPort()), dualData.size());
         QVERIFY2(v4Sock.waitForReadyRead(5000), QtNetworkSettings::msgSocketError(v4Sock).constData());
         buffer.reserve(100);
         size = v4Sock.readDatagram(buffer.data(), 100, &from, &port);
-        QCOMPARE((int)size, dualData.length());
+        QCOMPARE((int)size, dualData.size());
         buffer.resize(size);
         QCOMPARE(buffer, dualData);
     }
@@ -773,7 +747,7 @@ void tst_QUdpSocket::dualStackNoIPv4onV6only()
     QVERIFY(v6Sock.bind(QHostAddress(QHostAddress::AnyIPv6), 0));
 
     //test v4 -> v6 (should not be received as this is a v6 only socket)
-    QCOMPARE((int)v4Sock.writeDatagram(v4Data.constData(), v4Data.length(), QHostAddress(QHostAddress::LocalHost), v6Sock.localPort()), v4Data.length());
+    QCOMPARE((int)v4Sock.writeDatagram(v4Data.constData(), v4Data.size(), QHostAddress(QHostAddress::LocalHost), v6Sock.localPort()), v4Data.size());
     QVERIFY(!v6Sock.waitForReadyRead(1000));
 }
 
@@ -893,17 +867,17 @@ void tst_QUdpSocket::writeDatagram()
 #if defined (Q_OS_HPUX)
             QSKIP("HP-UX 11.11 on hai (PA-RISC 64) truncates too long datagrams.");
 #endif
-            QCOMPARE(bytesspy.count(), 0);
-            QCOMPARE(errorspy.count(), 1);
+            QCOMPARE(bytesspy.size(), 0);
+            QCOMPARE(errorspy.size(), 1);
             QCOMPARE(*static_cast<const int *>(errorspy.at(0).at(0).constData()),
                     int(QUdpSocket::DatagramTooLargeError));
             QCOMPARE(client.error(), QUdpSocket::DatagramTooLargeError);
             break;
         }
-        QCOMPARE(bytesspy.count(), 1);
+        QCOMPARE(bytesspy.size(), 1);
         QCOMPARE(*static_cast<const qint64 *>(bytesspy.at(0).at(0).constData()),
                 qint64(i * 1024));
-        QCOMPARE(errorspy.count(), 0);
+        QCOMPARE(errorspy.size(), 0);
         if (!server.waitForReadyRead(5000))
             QSKIP(QString("UDP packet lost at size %1, unable to complete the test.").arg(i * 1024).toLatin1().data());
         QCOMPARE(server.pendingDatagramSize(), qint64(i * 1024));
@@ -1016,7 +990,7 @@ void tst_QUdpSocket::writeDatagramToNonExistingPeer()
         QVERIFY(sUdp.bind());
     QCOMPARE(sUdp.writeDatagram("", 1, peerAddress, peerPort), qint64(1));
     QTestEventLoop::instance().enterLoop(1);
-    QCOMPARE(sReadyReadSpy.count(), 0);
+    QCOMPARE(sReadyReadSpy.size(), 0);
 }
 
 void tst_QUdpSocket::writeToNonExistingPeer_data()
@@ -1059,8 +1033,8 @@ void tst_QUdpSocket::writeToNonExistingPeer()
     // the third one will succeed...
     QCOMPARE(sConnected.write("", 1), qint64(1));
     QTestEventLoop::instance().enterLoop(1);
-    QCOMPARE(sConnectedReadyReadSpy.count(), 0);
-    QCOMPARE(sConnectedErrorSpy.count(), 1);
+    QCOMPARE(sConnectedReadyReadSpy.size(), 0);
+    QCOMPARE(sConnectedErrorSpy.size(), 1);
     QCOMPARE(int(sConnected.error()), int(QUdpSocket::ConnectionRefusedError));
 
     // we should now get a read error
@@ -1088,7 +1062,7 @@ void tst_QUdpSocket::outOfProcessConnectedClientServerTest()
     QSKIP("No qprocess support", SkipAll);
 #else
     QProcess serverProcess;
-    serverProcess.start(QLatin1String("clientserver/clientserver server 1 1"),
+    serverProcess.start(QLatin1String("clientserver/clientserver server 1 1"), {},
                         QIODevice::ReadWrite | QIODevice::Text);
 
     const auto serverProcessCleaner = qScopeGuard([&serverProcess] {
@@ -1112,7 +1086,7 @@ void tst_QUdpSocket::outOfProcessConnectedClientServerTest()
 
     QProcess clientProcess;
     clientProcess.start(QString::fromLatin1("clientserver/clientserver connectedclient %1 %2")
-                        .arg(QLatin1String("127.0.0.1")).arg(serverPort),
+                        .arg(QLatin1String("127.0.0.1")).arg(serverPort), {},
                         QIODevice::ReadWrite | QIODevice::Text);
 
     const auto clientProcessCleaner = qScopeGuard([&clientProcess] {
@@ -1162,7 +1136,7 @@ void tst_QUdpSocket::outOfProcessUnconnectedClientServerTest()
     QSKIP("No qprocess support", SkipAll);
 #else
     QProcess serverProcess;
-    serverProcess.start(QLatin1String("clientserver/clientserver server 1 1"),
+    serverProcess.start(QLatin1String("clientserver/clientserver server 1 1"), {},
                         QIODevice::ReadWrite | QIODevice::Text);
 
     const auto serverProcessCleaner = qScopeGuard([&serverProcess] {
@@ -1186,7 +1160,7 @@ void tst_QUdpSocket::outOfProcessUnconnectedClientServerTest()
 
     QProcess clientProcess;
     clientProcess.start(QString::fromLatin1("clientserver/clientserver unconnectedclient %1 %2")
-                        .arg(QLatin1String("127.0.0.1")).arg(serverPort),
+                        .arg(QLatin1String("127.0.0.1")).arg(serverPort), {},
                         QIODevice::ReadWrite | QIODevice::Text);
 
     const auto clientProcessCleaner = qScopeGuard([&clientProcess] {
@@ -1276,9 +1250,6 @@ void tst_QUdpSocket::multicastTtlOption_data()
 
 void tst_QUdpSocket::multicastTtlOption()
 {
-#ifdef Q_OS_WINRT
-    QSKIP("WinRT does not support multicast.");
-#endif
     QFETCH_GLOBAL(bool, setProxy);
     QFETCH(QHostAddress, bindAddress);
     QFETCH(int, ttl);
@@ -1326,9 +1297,6 @@ void tst_QUdpSocket::multicastLoopbackOption_data()
 
 void tst_QUdpSocket::multicastLoopbackOption()
 {
-#ifdef Q_OS_WINRT
-    QSKIP("WinRT does not support multicast.");
-#endif
     QFETCH_GLOBAL(bool, setProxy);
     QFETCH(QHostAddress, bindAddress);
     QFETCH(int, loopback);
@@ -1358,16 +1326,13 @@ void tst_QUdpSocket::multicastJoinBeforeBind_data()
     QTest::newRow("valid ipv4 group address") << multicastGroup4;
     QTest::newRow("invalid ipv4 group address") << QHostAddress(QHostAddress::Broadcast);
     QTest::newRow("valid ipv6 group address") << multicastGroup6;
-    for (const QHostAddress &a : qAsConst(linklocalMulticastGroups))
+    for (const QHostAddress &a : std::as_const(linklocalMulticastGroups))
         QTest::addRow("valid ipv6 %s-link group address", a.scopeId().toLatin1().constData()) << a;
     QTest::newRow("invalid ipv6 group address") << QHostAddress(QHostAddress::AnyIPv6);
 }
 
 void tst_QUdpSocket::multicastJoinBeforeBind()
 {
-#ifdef Q_OS_WINRT
-    QSKIP("WinRT does not support multicast.");
-#endif
     QFETCH(QHostAddress, groupAddress);
 
     QUdpSocket udpSocket;
@@ -1381,15 +1346,12 @@ void tst_QUdpSocket::multicastLeaveAfterClose_data()
     QTest::addColumn<QHostAddress>("groupAddress");
     QTest::newRow("ipv4") << multicastGroup4;
     QTest::newRow("ipv6") << multicastGroup6;
-    for (const QHostAddress &a : qAsConst(linklocalMulticastGroups))
+    for (const QHostAddress &a : std::as_const(linklocalMulticastGroups))
         QTest::addRow("ipv6-link-%s", a.scopeId().toLatin1().constData()) << a;
 }
 
 void tst_QUdpSocket::multicastLeaveAfterClose()
 {
-#ifdef Q_OS_WINRT
-    QSKIP("WinRT does not support multicast.");
-#endif
     QFETCH_GLOBAL(bool, setProxy);
     QFETCH(QHostAddress, groupAddress);
     if (setProxy)
@@ -1434,9 +1396,6 @@ void tst_QUdpSocket::setMulticastInterface_data()
 
 void tst_QUdpSocket::setMulticastInterface()
 {
-#ifdef Q_OS_WINRT
-    QSKIP("WinRT does not support multicast.");
-#endif
     QFETCH_GLOBAL(bool, setProxy);
     QFETCH(QNetworkInterface, iface);
     QFETCH(QHostAddress, address);
@@ -1481,22 +1440,19 @@ void tst_QUdpSocket::multicast_data()
     QTest::newRow("valid bind, group ipv4 address") << anyAddress << true << groupAddress << true;
     QTest::newRow("valid bind, invalid group ipv4 address") << anyAddress << true << anyAddress << false;
     QTest::newRow("valid bind, group ipv6 address") << any6Address << true << group6Address << true;
-    for (const QHostAddress &a : qAsConst(linklocalMulticastGroups))
+    for (const QHostAddress &a : std::as_const(linklocalMulticastGroups))
         QTest::addRow("valid bind, %s-link group ipv6 address", a.scopeId().toLatin1().constData())
                 << any6Address << true << a << true;
     QTest::newRow("valid bind, invalid group ipv6 address") << any6Address << true << any6Address << false;
     QTest::newRow("dual bind, group ipv4 address") << dualAddress << true << groupAddress << false;
     QTest::newRow("dual bind, group ipv6 address") << dualAddress << true << group6Address << true;
-    for (const QHostAddress &a : qAsConst(linklocalMulticastGroups))
+    for (const QHostAddress &a : std::as_const(linklocalMulticastGroups))
         QTest::addRow("dual bind, %s-link group ipv6 address", a.scopeId().toLatin1().constData())
                 << dualAddress << true << a << true;
 }
 
 void tst_QUdpSocket::multicast()
 {
-#ifdef Q_OS_WINRT
-    QSKIP("WinRT does not support multicast.");
-#endif
     QFETCH_GLOBAL(bool, setProxy);
     QFETCH(QHostAddress, bindAddress);
     QFETCH(bool, bindResult);
@@ -1586,7 +1542,7 @@ void tst_QUdpSocket::echo()
 {
     QFETCH(bool, connect);
     QHostInfo info = QHostInfo::fromName(QtNetworkSettings::echoServerName());
-    QVERIFY(info.addresses().count());
+    QVERIFY(info.addresses().size());
     QHostAddress remote = info.addresses().first();
 
     QUdpSocket sock;
@@ -1613,7 +1569,7 @@ void tst_QUdpSocket::echo()
                     in = sock.read(sock.pendingDatagramSize());
                 } else {
                     in.resize(sock.pendingDatagramSize());
-                    sock.readDatagram(in.data(), in.length(), &from, &port);
+                    sock.readDatagram(in.data(), in.size(), &from, &port);
                 }
                 if (in==out)
                     successes++;
@@ -1683,21 +1639,21 @@ void tst_QUdpSocket::linkLocalIPv6()
         QSignalSpy spy(s, SIGNAL(readyRead()));
 
         QVERIFY(s->writeDatagram(testData, s->localAddress(), neutral.localPort()));
-        QTRY_VERIFY(neutralReadSpy.count() > 0); //note may need to accept a firewall prompt
+        QTRY_VERIFY(neutralReadSpy.size() > 0); //note may need to accept a firewall prompt
 
-        QNetworkDatagram dgram = neutral.receiveDatagram(testData.length() * 2);
+        QNetworkDatagram dgram = neutral.receiveDatagram(testData.size() * 2);
         QVERIFY(dgram.isValid());
         QCOMPARE(dgram.senderAddress(), s->localAddress());
         QCOMPARE(dgram.senderPort(), int(s->localPort()));
         QCOMPARE(dgram.destinationAddress(), s->localAddress());
         QCOMPARE(dgram.destinationPort(), int(neutral.localPort()));
-        QCOMPARE(dgram.data().length(), testData.length());
+        QCOMPARE(dgram.data().size(), testData.size());
         QCOMPARE(dgram.data(), testData);
 
         QVERIFY(neutral.writeDatagram(dgram.makeReply(testData)));
-        QTRY_VERIFY(spy.count() > 0); //note may need to accept a firewall prompt
+        QTRY_VERIFY(spy.size() > 0); //note may need to accept a firewall prompt
 
-        dgram = s->receiveDatagram(testData.length() * 2);
+        dgram = s->receiveDatagram(testData.size() * 2);
         QCOMPARE(dgram.data(), testData);
 
         //sockets bound to other interfaces shouldn't have received anything
@@ -1764,11 +1720,11 @@ void tst_QUdpSocket::linkLocalIPv4()
         QVERIFY(s->writeDatagram(testData, s->localAddress(), neutral.localPort()));
         QVERIFY2(neutral.waitForReadyRead(10000), QtNetworkSettings::msgSocketError(neutral).constData());
 
-        QNetworkDatagram dgram = neutral.receiveDatagram(testData.length() * 2);
+        QNetworkDatagram dgram = neutral.receiveDatagram(testData.size() * 2);
         QVERIFY(dgram.isValid());
         QCOMPARE(dgram.senderAddress(), s->localAddress());
         QCOMPARE(dgram.senderPort(), int(s->localPort()));
-        QCOMPARE(dgram.data().length(), testData.length());
+        QCOMPARE(dgram.data().size(), testData.size());
         QCOMPARE(dgram.data(), testData);
 
         // Unlike for IPv6 with IPV6_PKTINFO, IPv4 has no standardized way of
@@ -1787,7 +1743,7 @@ void tst_QUdpSocket::linkLocalIPv4()
 
         QVERIFY(neutral.writeDatagram(dgram.makeReply(testData)));
         QVERIFY2(s->waitForReadyRead(10000), QtNetworkSettings::msgSocketError(*s).constData());
-        dgram = s->receiveDatagram(testData.length() * 2);
+        dgram = s->receiveDatagram(testData.size() * 2);
         QVERIFY(dgram.isValid());
         QCOMPARE(dgram.data(), testData);
 
@@ -1822,7 +1778,7 @@ void tst_QUdpSocket::readyRead()
     QTest::qWait(100);
 
     // make sure only one signal was emitted
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QVERIFY(receiver.hasPendingDatagrams());
 #ifdef RELIABLE_BYTES_AVAILABLE
     QCOMPARE(receiver.bytesAvailable(), qint64(2));
@@ -1834,7 +1790,7 @@ void tst_QUdpSocket::readyRead()
 
     // no new signal should be emitted because we haven't read the first datagram yet
     QTest::qWait(100);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QVERIFY(receiver.hasPendingDatagrams());
     QVERIFY(receiver.bytesAvailable() >= 1);    // most likely is 1, but it could be 1 + 2 in the future
     QCOMPARE(receiver.pendingDatagramSize(), qint64(2));
@@ -1846,7 +1802,7 @@ void tst_QUdpSocket::readyRead()
     // write a new datagram and ensure the signal is emitted now
     sender.writeDatagram("abc", makeNonAny(receiver.localAddress()), port);
     QTest::qWait(100);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
     QVERIFY(receiver.hasPendingDatagrams());
 #ifdef RELIABLE_BYTES_AVAILABLE
     QCOMPARE(receiver.bytesAvailable(), qint64(3));
@@ -1926,7 +1882,7 @@ void tst_QUdpSocket::asyncReadDatagram()
     QTestEventLoop::instance().enterLoop(1);
 
     QVERIFY(!QTestEventLoop::instance().timeout());
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     delete m_asyncSender;
     delete m_asyncReceiver;
@@ -1942,6 +1898,79 @@ void tst_QUdpSocket::writeInHostLookupState()
     socket.connectToHost("nosuchserver.qt-project.org", 80);
     QCOMPARE(socket.state(), QUdpSocket::HostLookupState);
     QVERIFY(!socket.putChar('0'));
+}
+
+void tst_QUdpSocket::readyReadConnectionThrottling()
+{
+    QFETCH_GLOBAL(bool, setProxy);
+    if (setProxy)
+        return;
+    using namespace std::chrono_literals;
+
+    // QTBUG-105871:
+    // We have some signal/slot connection throttling in QAbstractSocket, but it
+    // was caring about the bytes, not about the datagrams.
+    // Test that we don't disable read notifications until we have at least one
+    // datagram available. Otherwise our good users who use the datagram APIs
+    // can get into scenarios where they no longer get the readyRead signal
+    // unless they call a read function once in a while.
+
+    QUdpSocket receiver;
+    QVERIFY(receiver.bind(QHostAddress(QHostAddress::LocalHost), 0));
+
+    QSemaphore semaphore;
+
+    // Repro-ing deterministically eludes me, so we are bruteforcing it:
+    // The thread acts as a remote sender, flooding the receiver with datagrams,
+    // and at some point the receiver would get into the broken state mentioned
+    // earlier.
+    std::unique_ptr<QThread> thread(QThread::create([&semaphore, port = receiver.localPort()]() {
+        QUdpSocket sender;
+        sender.connectToHost(QHostAddress(QHostAddress::LocalHost), port);
+        QCOMPARE(sender.state(), QUdpSocket::ConnectedState);
+
+        constexpr qsizetype PayloadSize = 242;
+        const QByteArray payload(PayloadSize, 'a');
+
+        semaphore.acquire(); // Wait for main thread to be ready
+        while (true) {
+            // We send 100 datagrams at a time, then sleep.
+            // This is mostly to let the main thread catch up between bursts so
+            // it doesn't get stuck in the loop.
+            for (int i = 0; i < 100; ++i) {
+                [[maybe_unused]]
+                qsizetype sent = sender.write(payload);
+                Q_ASSERT(sent > 0);
+            }
+            if (QThread::currentThread()->isInterruptionRequested())
+                break;
+            QThread::sleep(20ms);
+        }
+    }));
+    thread->start();
+    auto threadStopAndWaitGuard = qScopeGuard([&thread] {
+        thread->requestInterruption();
+        thread->quit();
+        thread->wait();
+    });
+
+    qsizetype count = 0;
+    QObject::connect(&receiver, &QUdpSocket::readyRead, &receiver,
+            [&] {
+                while (receiver.hasPendingDatagrams()) {
+                    receiver.readDatagram(nullptr, 0);
+                    ++count;
+                }
+                // If this prints `false, xxxx` we were pretty much guaranteed
+                // that we would not get called again:
+                // qDebug() << receiver.hasPendingDatagrams() << receiver.bytesAvailable();
+            },
+            Qt::QueuedConnection);
+
+    semaphore.release();
+    constexpr qsizetype MaxCount = 500;
+    QVERIFY2(QTest::qWaitFor([&] { return count >= MaxCount; }, 10'000),
+             QByteArray::number(count).constData());
 }
 
 QTEST_MAIN(tst_QUdpSocket)

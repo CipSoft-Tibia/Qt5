@@ -6,7 +6,6 @@
 # tree. An additional intellectual property rights grant can be found
 # in the file PATENTS.  All contributing project authors may
 # be found in the AUTHORS file in the root of the source tree.
-
 """Builds the AppRTC collider using the golang toolchain.
 
 The golang toolchain is downloaded by download_apprtc.py. We use that here
@@ -24,7 +23,6 @@ import sys
 
 import utils
 
-
 USAGE_STR = "Usage: {} <apprtc_dir> <go_dir> <output_dir>"
 
 
@@ -38,7 +36,7 @@ def _ConfigureApprtcServerToDeveloperMode(app_yaml_path):
 
 def main(argv):
   if len(argv) != 4:
-    return USAGE_STR.format(argv[0])
+    print(USAGE_STR.format(argv[0]))
 
   apprtc_dir = os.path.abspath(argv[1])
   go_root_dir = os.path.abspath(argv[2])
@@ -57,10 +55,12 @@ def main(argv):
   golang_env = os.environ.copy()
   golang_env['GOROOT'] = go_root_dir
   golang_env['GOPATH'] = golang_workspace
+  golang_env['GO111MODULE'] = 'off'
   collider_out = os.path.join(golang_workspace,
                               'collidermain' + utils.GetExecutableExtension())
-  subprocess.check_call([golang_path, 'build', '-o', collider_out,
-                         'collidermain'], env=golang_env)
+  subprocess.check_call(
+      [golang_path, 'build', '-o', collider_out, 'collidermain'],
+      env=golang_env)
 
 
 if __name__ == '__main__':

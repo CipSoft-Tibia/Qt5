@@ -1,12 +1,14 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/gwp_asan/client/guarded_page_allocator.h"
 
 #include <sys/mman.h>
+#include <ostream>
 
 #include "base/check.h"
+#include "base/posix/eintr_wrapper.h"
 
 namespace gwp_asan {
 namespace internal {
@@ -18,14 +20,14 @@ void* GuardedPageAllocator::MapRegion() {
 
 void GuardedPageAllocator::UnmapRegion() {
   CHECK(state_.pages_base_addr);
-  int err =
+  [[maybe_unused]] int err =
       munmap(reinterpret_cast<void*>(state_.pages_base_addr), RegionSize());
   DPCHECK(err == 0) << "munmap";
-  (void)err;
 }
 
 void GuardedPageAllocator::MarkPageReadWrite(void* ptr) {
-  int err = mprotect(ptr, state_.page_size, PROT_READ | PROT_WRITE);
+  int err =
+      HANDLE_EINTR(mprotect(ptr, state_.page_size, PROT_READ | PROT_WRITE));
   PCHECK(err == 0) << "mprotect";
 }
 

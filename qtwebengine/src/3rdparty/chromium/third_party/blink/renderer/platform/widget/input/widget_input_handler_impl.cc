@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,10 @@
 
 #include <utility>
 
-#include "base/bind.h"
 #include "base/check.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
+#include "build/build_config.h"
 #include "mojo/public/cpp/bindings/self_owned_associated_receiver.h"
 #include "third_party/blink/public/common/input/web_coalesced_input_event.h"
 #include "third_party/blink/public/common/input/web_keyboard_event.h"
@@ -36,15 +38,16 @@ void RunClosureIfNotSwappedOut(base::WeakPtr<WidgetBase> widget,
 
 WidgetInputHandlerImpl::WidgetInputHandlerImpl(
     scoped_refptr<WidgetInputHandlerManager> manager,
-    scoped_refptr<base::SingleThreadTaskRunner> main_thread_task_runner,
     scoped_refptr<MainThreadEventQueue> input_event_queue,
-    base::WeakPtr<WidgetBase> widget)
-    : main_thread_task_runner_(main_thread_task_runner),
-      input_handler_manager_(manager),
+    base::WeakPtr<WidgetBase> widget,
+    base::WeakPtr<mojom::blink::FrameWidgetInputHandler>
+        frame_widget_input_handler)
+    : input_handler_manager_(manager),
       input_event_queue_(input_event_queue),
-      widget_(widget) {}
+      widget_(std::move(widget)),
+      frame_widget_input_handler_(std::move(frame_widget_input_handler)) {}
 
-WidgetInputHandlerImpl::~WidgetInputHandlerImpl() {}
+WidgetInputHandlerImpl::~WidgetInputHandlerImpl() = default;
 
 void WidgetInputHandlerImpl::SetReceiver(
     mojo::PendingReceiver<mojom::blink::WidgetInputHandler>
@@ -54,8 +57,8 @@ void WidgetInputHandlerImpl::SetReceiver(
       base::BindOnce(&WidgetInputHandlerImpl::Release, base::Unretained(this)));
 }
 
-void WidgetInputHandlerImpl::SetFocus(bool focused) {
-  RunOnMainThread(base::BindOnce(&WidgetBase::SetFocus, widget_, focused));
+void WidgetInputHandlerImpl::SetFocus(mojom::blink::FocusState focus_state) {
+  RunOnMainThread(base::BindOnce(&WidgetBase::SetFocus, widget_, focus_state));
 }
 
 void WidgetInputHandlerImpl::MouseCaptureLost() {
@@ -73,15 +76,30 @@ void WidgetInputHandlerImpl::CursorVisibilityChanged(bool visible) {
       base::BindOnce(&WidgetBase::CursorVisibilityChange, widget_, visible));
 }
 
+static void ImeSetCompositionOnMainThread(
+    base::WeakPtr<WidgetBase> widget,
+    scoped_refptr<base::SingleThreadTaskRunner> callback_task_runner,
+    const String& text,
+    const Vector<ui::ImeTextSpan>& ime_text_spans,
+    const gfx::Range& range,
+    int32_t start,
+    int32_t end,
+    WidgetInputHandlerImpl::ImeSetCompositionCallback callback) {
+  widget->ImeSetComposition(text, ime_text_spans, range, start, end);
+  callback_task_runner->PostTask(FROM_HERE, std::move(callback));
+}
+
 void WidgetInputHandlerImpl::ImeSetComposition(
     const String& text,
     const Vector<ui::ImeTextSpan>& ime_text_spans,
     const gfx::Range& range,
     int32_t start,
-    int32_t end) {
-  RunOnMainThread(base::BindOnce(&WidgetBase::ImeSetComposition, widget_,
-                                 text.IsolatedCopy(), ime_text_spans, range,
-                                 start, end));
+    int32_t end,
+    WidgetInputHandlerImpl::ImeSetCompositionCallback callback) {
+  RunOnMainThread(
+      base::BindOnce(&ImeSetCompositionOnMainThread, widget_,
+                     base::SingleThreadTaskRunner::GetCurrentDefault(), text,
+                     ime_text_spans, range, start, end, std::move(callback)));
 }
 
 static void ImeCommitTextOnMainThread(
@@ -103,9 +121,9 @@ void WidgetInputHandlerImpl::ImeCommitText(
     int32_t relative_cursor_position,
     ImeCommitTextCallback callback) {
   RunOnMainThread(base::BindOnce(
-      &ImeCommitTextOnMainThread, widget_, base::ThreadTaskRunnerHandle::Get(),
-      text.IsolatedCopy(), ime_text_spans, range, relative_cursor_position,
-      std::move(callback)));
+      &ImeCommitTextOnMainThread, widget_,
+      base::SingleThreadTaskRunner::GetCurrentDefault(), text, ime_text_spans,
+      range, relative_cursor_position, std::move(callback)));
 }
 
 void WidgetInputHandlerImpl::ImeFinishComposingText(bool keep_selection) {
@@ -158,6 +176,7 @@ void WidgetInputHandlerImpl::InputWasProcessed() {
     std::move(input_processed_ack_).Run();
 }
 
+#if BUILDFLAG(IS_ANDROID)
 void WidgetInputHandlerImpl::AttachSynchronousCompositor(
     mojo::PendingRemote<mojom::blink::SynchronousCompositorControlHost>
         control_host,
@@ -167,18 +186,27 @@ void WidgetInputHandlerImpl::AttachSynchronousCompositor(
   input_handler_manager_->AttachSynchronousCompositor(
       std::move(control_host), std::move(host), std::move(compositor_receiver));
 }
+#endif
 
 void WidgetInputHandlerImpl::GetFrameWidgetInputHandler(
     mojo::PendingAssociatedReceiver<mojom::blink::FrameWidgetInputHandler>
         frame_receiver) {
   mojo::MakeSelfOwnedAssociatedReceiver(
       std::make_unique<FrameWidgetInputHandlerImpl>(
-          widget_, main_thread_task_runner_, input_event_queue_),
+          widget_, frame_widget_input_handler_, input_event_queue_),
       std::move(frame_receiver));
 }
 
+void WidgetInputHandlerImpl::UpdateBrowserControlsState(
+    cc::BrowserControlsState constraints,
+    cc::BrowserControlsState current,
+    bool animate) {
+  input_handler_manager_->UpdateBrowserControlsState(constraints, current,
+                                                     animate);
+}
+
 void WidgetInputHandlerImpl::RunOnMainThread(base::OnceClosure closure) {
-  if (input_event_queue_) {
+  if (ThreadedCompositingEnabled()) {
     input_event_queue_->QueueClosure(base::BindOnce(
         &RunClosureIfNotSwappedOut, widget_, std::move(closure)));
   } else {
@@ -196,15 +224,6 @@ void WidgetInputHandlerImpl::Release() {
   if (input_processed_ack_)
     std::move(input_processed_ack_).Run();
 
-  if (!main_thread_task_runner_->BelongsToCurrentThread()) {
-    // Close the binding on the compositor thread first before telling the main
-    // thread to delete this object.
-    receiver_.reset();
-    main_thread_task_runner_->PostTask(
-        FROM_HERE, base::BindOnce(&WidgetInputHandlerImpl::Release,
-                                  base::Unretained(this)));
-    return;
-  }
   delete this;
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,40 @@
 #include "base/memory/scoped_refptr.h"
 #include "third_party/blink/renderer/platform/bindings/dom_data_store.h"
 #include "third_party/blink/renderer/platform/bindings/dom_wrapper_world.h"
+#include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/bindings/v8_binding.h"
 #include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
-#include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
+
+// Construction of WrapperTypeInfo may require non-trivial initialization due
+// to cross-component address resolution in order to load the pointer to the
+// parent interface's WrapperTypeInfo.  We ignore this issue because the issue
+// happens only on component builds and the official release builds
+// (statically-linked builds) are never affected by this issue.
+#if defined(COMPONENT_BUILD) && defined(WIN32) && defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wglobal-constructors"
+#endif
+
+const WrapperTypeInfo DOMArrayBuffer::wrapper_type_info_body_{
+    gin::kEmbedderBlink,
+    nullptr,
+    nullptr,
+    "ArrayBuffer",
+    nullptr,
+    WrapperTypeInfo::kWrapperTypeObjectPrototype,
+    WrapperTypeInfo::kObjectClassId,
+    WrapperTypeInfo::kNotInheritFromActiveScriptWrappable,
+    WrapperTypeInfo::kIdlBufferSourceType,
+};
+
+const WrapperTypeInfo& DOMArrayBuffer::wrapper_type_info_ =
+    DOMArrayBuffer::wrapper_type_info_body_;
+
+#if defined(COMPONENT_BUILD) && defined(WIN32) && defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 static void AccumulateArrayBuffersForAllWorlds(
     v8::Isolate* isolate,
@@ -39,24 +69,62 @@ bool DOMArrayBuffer::IsDetachable(v8::Isolate* isolate) {
   return is_detachable;
 }
 
-bool DOMArrayBuffer::Transfer(v8::Isolate* isolate,
-                              ArrayBufferContents& result) {
-  DOMArrayBuffer* to_transfer = this;
-  if (!IsDetachable(isolate)) {
-    to_transfer =
-        DOMArrayBuffer::Create(Content()->Data(), ByteLengthAsSizeT());
-  }
+void DOMArrayBuffer::SetDetachKey(v8::Isolate* isolate,
+                                  const StringView& detach_key) {
+  // It's easy to support setting a detach key multiple times, but it's very
+  // likely to be a program error to set a detach key multiple times.
+  DCHECK(detach_key_.IsEmpty());
 
-  return to_transfer->TransferDetachable(isolate, result);
+  Vector<v8::Local<v8::ArrayBuffer>, 4> buffer_handles;
+  v8::HandleScope handle_scope(isolate);
+  AccumulateArrayBuffersForAllWorlds(isolate, this, buffer_handles);
+
+  v8::Local<v8::String> v8_detach_key = V8AtomicString(isolate, detach_key);
+  detach_key_.Reset(isolate, v8_detach_key);
+
+  for (const auto& buffer_handle : buffer_handles)
+    buffer_handle->SetDetachKey(v8_detach_key);
 }
 
-bool DOMArrayBuffer::TransferDetachable(v8::Isolate* isolate,
-                                        ArrayBufferContents& result) {
+bool DOMArrayBuffer::Transfer(v8::Isolate* isolate,
+                              ArrayBufferContents& result,
+                              ExceptionState& exception_state) {
+  return Transfer(isolate, v8::Local<v8::Value>(), result, exception_state);
+}
+
+bool DOMArrayBuffer::Transfer(v8::Isolate* isolate,
+                              v8::Local<v8::Value> detach_key,
+                              ArrayBufferContents& result,
+                              ExceptionState& exception_state) {
+  DOMArrayBuffer* to_transfer = this;
+  if (!IsDetachable(isolate)) {
+    to_transfer = DOMArrayBuffer::Create(Content()->Data(), ByteLength());
+  }
+
+  v8::TryCatch try_catch(isolate);
+  bool detach_result = false;
+  if (!to_transfer->TransferDetachable(isolate, detach_key, result)
+           .To(&detach_result)) {
+    // There was an exception. Rethrow it.
+    exception_state.RethrowV8Exception(try_catch.Exception());
+    return false;
+  }
+  if (!detach_result) {
+    exception_state.ThrowTypeError("Could not transfer ArrayBuffer.");
+    return false;
+  }
+  return true;
+}
+
+v8::Maybe<bool> DOMArrayBuffer::TransferDetachable(
+    v8::Isolate* isolate,
+    v8::Local<v8::Value> detach_key,
+    ArrayBufferContents& result) {
   DCHECK(IsDetachable(isolate));
 
   if (IsDetached()) {
     result.Detach();
-    return false;
+    return v8::Just(false);
   }
 
   if (!Content()->Data()) {
@@ -64,58 +132,28 @@ bool DOMArrayBuffer::TransferDetachable(v8::Isolate* isolate,
     result = ArrayBufferContents(Content()->BackingStore());
   } else {
     Content()->Transfer(result);
-    Detach();
   }
 
   Vector<v8::Local<v8::ArrayBuffer>, 4> buffer_handles;
   v8::HandleScope handle_scope(isolate);
   AccumulateArrayBuffersForAllWorlds(isolate, this, buffer_handles);
 
-  for (const auto& buffer_handle : buffer_handles)
-    buffer_handle->Detach();
-
-  return true;
-}
-
-DOMArrayBuffer* DOMArrayBuffer::CreateOrNull(size_t num_elements,
-                                             size_t element_byte_size) {
-  ArrayBufferContents contents(num_elements, element_byte_size,
-                               ArrayBufferContents::kNotShared,
-                               ArrayBufferContents::kZeroInitialize);
-  if (!contents.Data()) {
-    return nullptr;
+  for (wtf_size_t i = 0; i < buffer_handles.size(); ++i) {
+    // Loop to detach all buffer handles. This may throw an exception
+    // if the |detach_key| is incorrect. It should either fail for all handles
+    // or succeed for all handles. It should never be the case that the handles
+    // have different detach keys. CHECK to catch when this invariant is broken.
+    bool detach_result = false;
+    if (!buffer_handles[i]->Detach(detach_key).To(&detach_result)) {
+      CHECK_EQ(i, 0u);
+      // Propagate an exception to the caller.
+      return v8::Nothing<bool>();
+    }
+    // On success, Detach must always return true.
+    DCHECK(detach_result);
   }
-  return Create(std::move(contents));
-}
-
-DOMArrayBuffer* DOMArrayBuffer::CreateUninitializedOrNull(
-    size_t num_elements,
-    size_t element_byte_size) {
-  ArrayBufferContents contents(num_elements, element_byte_size,
-                               ArrayBufferContents::kNotShared,
-                               ArrayBufferContents::kDontInitialize);
-  if (!contents.Data()) {
-    return nullptr;
-  }
-  return Create(std::move(contents));
-}
-
-v8::Local<v8::Value> DOMArrayBuffer::Wrap(
-    v8::Isolate* isolate,
-    v8::Local<v8::Object> creation_context) {
-  DCHECK(!DOMDataStore::ContainsWrapper(this, isolate));
-
-  const WrapperTypeInfo* wrapper_type_info = this->GetWrapperTypeInfo();
-
-  v8::Local<v8::ArrayBuffer> wrapper;
-  {
-    v8::Context::Scope context_scope(creation_context->CreationContext());
-    wrapper = v8::ArrayBuffer::New(isolate, Content()->BackingStore());
-
-    wrapper->Externalize(Content()->BackingStore());
-  }
-
-  return AssociateWithWrapper(isolate, wrapper_type_info, wrapper);
+  Detach();
+  return v8::Just(true);
 }
 
 DOMArrayBuffer* DOMArrayBuffer::Create(
@@ -155,10 +193,70 @@ DOMArrayBuffer* DOMArrayBuffer::Create(
   return Create(std::move(contents));
 }
 
+DOMArrayBuffer* DOMArrayBuffer::CreateOrNull(size_t num_elements,
+                                             size_t element_byte_size) {
+  ArrayBufferContents contents(num_elements, element_byte_size,
+                               ArrayBufferContents::kNotShared,
+                               ArrayBufferContents::kZeroInitialize);
+  if (!contents.Data()) {
+    return nullptr;
+  }
+  return Create(std::move(contents));
+}
+
+DOMArrayBuffer* DOMArrayBuffer::CreateOrNull(const void* source,
+                                             size_t byte_length) {
+  DOMArrayBuffer* buffer = CreateUninitializedOrNull(byte_length, 1);
+  if (!buffer) {
+    return nullptr;
+  }
+
+  memcpy(buffer->Data(), source, byte_length);
+  return buffer;
+}
+
+DOMArrayBuffer* DOMArrayBuffer::CreateUninitializedOrNull(
+    size_t num_elements,
+    size_t element_byte_size) {
+  ArrayBufferContents contents(num_elements, element_byte_size,
+                               ArrayBufferContents::kNotShared,
+                               ArrayBufferContents::kDontInitialize);
+  if (!contents.Data()) {
+    return nullptr;
+  }
+  return Create(std::move(contents));
+}
+
+v8::MaybeLocal<v8::Value> DOMArrayBuffer::Wrap(ScriptState* script_state) {
+  DCHECK(!DOMDataStore::ContainsWrapper(this, script_state->GetIsolate()));
+
+  const WrapperTypeInfo* wrapper_type_info = GetWrapperTypeInfo();
+
+  v8::Local<v8::ArrayBuffer> wrapper;
+  {
+    v8::Context::Scope context_scope(script_state->GetContext());
+    wrapper = v8::ArrayBuffer::New(script_state->GetIsolate(),
+                                   Content()->BackingStore());
+
+    if (!detach_key_.IsEmpty()) {
+      wrapper->SetDetachKey(detach_key_.Get(script_state->GetIsolate()));
+    }
+  }
+
+  return AssociateWithWrapper(script_state->GetIsolate(), wrapper_type_info,
+                              wrapper);
+}
+
 DOMArrayBuffer* DOMArrayBuffer::Slice(size_t begin, size_t end) const {
-  begin = std::min(begin, ByteLengthAsSizeT());
-  end = std::min(end, ByteLengthAsSizeT());
+  begin = std::min(begin, ByteLength());
+  end = std::min(end, ByteLength());
   size_t size = begin <= end ? end - begin : 0;
   return Create(static_cast<const char*>(Data()) + begin, size);
 }
+
+void DOMArrayBuffer::Trace(Visitor* visitor) const {
+  visitor->Trace(detach_key_);
+  DOMArrayBufferBase::Trace(visitor);
+}
+
 }  // namespace blink

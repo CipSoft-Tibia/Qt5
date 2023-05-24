@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "third_party/cld_3/src/src/nnet_language_identifier.h"
 #include "ui/accessibility/ax_enums.mojom-forward.h"
 #include "ui/accessibility/ax_export.h"
@@ -220,7 +220,7 @@ class AX_EXPORT AXLanguageInfoStats {
 class AX_EXPORT AXLanguageDetectionObserver : public ui::AXTreeObserver {
  public:
   // Observer constructor will register itself with the provided AXTree.
-  AXLanguageDetectionObserver(AXTree* tree);
+  explicit AXLanguageDetectionObserver(AXTree* tree);
 
   // Observer destructor will remove itself as an observer from the AXTree.
   ~AXLanguageDetectionObserver() override;
@@ -236,7 +236,7 @@ class AX_EXPORT AXLanguageDetectionObserver : public ui::AXTreeObserver {
                               const std::vector<Change>& changes) override;
 
   // Non-owning pointer to AXTree, used to de-register observer on destruction.
-  AXTree* const tree_;
+  const raw_ptr<AXTree> tree_;
 };
 
 // AXLanguageDetectionManager manages all of the context needed for language
@@ -308,7 +308,7 @@ class AX_EXPORT AXLanguageDetectionManager {
   std::unique_ptr<AXLanguageDetectionObserver> language_detection_observer_;
 
   // Non-owning back pointer to the tree which owns this manager.
-  AXTree* tree_;
+  raw_ptr<AXTree> tree_;
 
   AXLanguageInfoStats lang_info_stats_;
 };

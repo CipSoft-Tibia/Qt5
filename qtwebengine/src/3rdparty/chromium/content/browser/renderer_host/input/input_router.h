@@ -1,17 +1,20 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_BROWSER_RENDERER_HOST_INPUT_INPUT_ROUTER_H_
 #define CONTENT_BROWSER_RENDERER_HOST_INPUT_INPUT_ROUTER_H_
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
+#include "base/task/sequenced_task_runner.h"
 #include "cc/input/touch_action.h"
 #include "content/browser/renderer_host/event_with_latency_info.h"
 #include "content/browser/renderer_host/input/gesture_event_queue.h"
 #include "content/browser/renderer_host/input/passthrough_touch_event_queue.h"
+#include "content/common/content_export.h"
 #include "content/public/browser/native_web_keyboard_event.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
 #include "third_party/blink/public/mojom/input/input_event_result.mojom-shared.h"
 #include "third_party/blink/public/mojom/input/input_handler.mojom.h"
@@ -71,24 +74,17 @@ class InputRouter {
   // to viewport.
   virtual void SetDeviceScaleFactor(float device_scale_factor) = 0;
 
-  // Sets the frame tree node id of associated frame, used when tracing
-  // input event latencies to relate events to their target frames. Since
-  // input always flows to Local Frame Roots, the |frameTreeNodeId| is
-  // relative to the Frame associated with the Local Frame Root for the
-  // widget owning this InputRouter.
-  virtual void SetFrameTreeNodeId(int frameTreeNodeId) = 0;
-
   // Return the currently allowed touch-action.
-  virtual base::Optional<cc::TouchAction> AllowedTouchAction() = 0;
+  virtual absl::optional<cc::TouchAction> AllowedTouchAction() = 0;
 
   // Return the currently active touch-action.
-  virtual base::Optional<cc::TouchAction> ActiveTouchAction() = 0;
+  virtual absl::optional<cc::TouchAction> ActiveTouchAction() = 0;
 
   virtual void SetForceEnableZoom(bool enabled) = 0;
 
   // Create and bind a new host channel.
-  virtual mojo::PendingRemote<blink::mojom::WidgetInputHandlerHost>
-  BindNewHost() = 0;
+  virtual mojo::PendingRemote<blink::mojom::WidgetInputHandlerHost> BindNewHost(
+      scoped_refptr<base::SequencedTaskRunner> task_runner) = 0;
 
   // Used to stop an active fling if such exists.
   virtual void StopFling() = 0;

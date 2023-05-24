@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,11 +18,6 @@
 - (BOOL)hasKeyAppearance;
 @end
 
-@interface CommandDispatcher ()
-// The parent to bubble events to, or nil.
-- (NSWindow<CommandDispatchingWindow>*)bubbleParent;
-@end
-
 namespace {
 
 // Duplicate the given key event, but changing the associated window.
@@ -39,7 +34,7 @@ NSEvent* KeyEventForWindow(NSWindow* window, NSEvent* event) {
   bool is_a_repeat = false;
   NSString* characters = nil;
   NSString* charactors_ignoring_modifiers = nil;
-  if (event_type == NSKeyDown || event_type == NSKeyUp) {
+  if (event_type == NSEventTypeKeyDown || event_type == NSEventTypeKeyUp) {
     is_a_repeat = [event isARepeat];
     characters = [event characters];
     charactors_ignoring_modifiers = [event charactersIgnoringModifiers];
@@ -99,7 +94,7 @@ NSEvent* KeyEventForWindow(NSWindow* window, NSEvent* event) {
   // TODO(bokan): Tracing added temporarily to diagnose crbug.com/1039833.
   TRACE_EVENT2("ui", "CommandDispatcher::performKeyEquivalent", "window num",
                [_owner windowNumber], "is keyWin", [NSApp keyWindow] == _owner);
-  DCHECK_EQ(NSKeyDown, [event type]);
+  DCHECK_EQ(NSEventTypeKeyDown, [event type]);
 
   // If the event is being redispatched, then this is the second time
   // performKeyEquivalent: is being called on the event. The first time, a
@@ -175,19 +170,22 @@ NSEvent* KeyEventForWindow(NSWindow* window, NSEvent* event) {
 
     id appController = [NSApp delegate];
     DCHECK([appController
-        conformsToProtocol:@protocol(NSUserInterfaceValidations)]);
+        respondsToSelector:@selector(validateUserInterfaceItem:)]);
     if ([appController validateUserInterfaceItem:item])
       return YES;
   }
 
-  // Note this may validate an action bubbled up from a child window. However,
-  // if the child window also -respondsToSelector: (but validated it `NO`), the
-  // action will be dispatched to the child only, which may NSBeep().
-  // TODO(tapted): Fix this. E.g. bubble up validation via the bubbleParent's
-  // CommandDispatcher rather than the NSUserInterfaceValidations protocol, so
-  // that this step can be skipped.
-  if ([_owner defaultValidateUserInterfaceItem:item])
-    return YES;
+  // -defaultValidateUserInterfaceItem: in most cases will return YES. If
+  // there is a bubble parent give it a chance to validate the item.
+  if (![self bubbleParent]) {
+    // Note this may validate an action bubbled up from a child window. However,
+    // if the child window also -respondsToSelector: (but validated it `NO`),
+    // the action will be dispatched to the child only, which may NSBeep().
+    // TODO(tapted): Fix this. E.g. bubble up validation via the bubbleParent's
+    // CommandDispatcher rather than the NSUserInterfaceValidations protocol, so
+    // that this step can be skipped.
+    return [_owner defaultValidateUserInterfaceItem:item];
+  }
 
   return [[self bubbleParent] validateUserInterfaceItem:item];
 }
@@ -202,8 +200,8 @@ NSEvent* KeyEventForWindow(NSWindow* window, NSEvent* event) {
 
   DCHECK(event);
   NSEventType eventType = [event type];
-  if (eventType != NSKeyDown && eventType != NSKeyUp &&
-      eventType != NSFlagsChanged) {
+  if (eventType != NSEventTypeKeyDown && eventType != NSEventTypeKeyUp &&
+      eventType != NSEventTypeFlagsChanged) {
     NOTREACHED();
     return YES;  // Pretend it's been handled in an effort to limit damage.
   }
@@ -235,7 +233,7 @@ NSEvent* KeyEventForWindow(NSWindow* window, NSEvent* event) {
   // AppKit does not call performKeyEquivalent: if the event only has the
   // NSEventModifierFlagOption modifier. However, Chrome wants to treat these
   // events just like keyEquivalents, since they can be consumed by extensions.
-  if ([event type] == NSKeyDown &&
+  if ([event type] == NSEventTypeKeyDown &&
       ([event modifierFlags] & NSEventModifierFlagOption)) {
     BOOL handled = [self performKeyEquivalent:event];
     if (handled)

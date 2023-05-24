@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DRENDER_QRENDERASPECT_P_H
 #define QT3DRENDER_QRENDERASPECT_P_H
@@ -71,7 +35,7 @@ QT_BEGIN_NAMESPACE
 
 class QSurface;
 class QScreen;
-
+class QRhi;
 namespace Qt3DRender {
 
 class QSceneImporter;
@@ -95,7 +59,7 @@ typedef QSharedPointer<UpdateLevelOfDetailJob> UpdateLevelOfDetailJobPtr;
 class Q_3DRENDERSHARED_PRIVATE_EXPORT QRenderAspectPrivate : public Qt3DCore::QAbstractAspectPrivate
 {
 public:
-    QRenderAspectPrivate(QRenderAspect::RenderType type);
+    QRenderAspectPrivate(QRenderAspect::SubmissionType submissionType);
     ~QRenderAspectPrivate();
 
     Q_DECLARE_PUBLIC(QRenderAspect)
@@ -103,35 +67,35 @@ public:
     static QRenderAspectPrivate* findPrivate(Qt3DCore::QAspectEngine *engine);
     static QRenderAspectPrivate *get(QRenderAspect *q);
 
-    void syncDirtyFrontEndNode(Qt3DCore::QNode *node, Qt3DCore::QBackendNode *backend, bool firstTime) const override;
     void jobsDone() override;
     void frameDone() override;
 
     void createNodeManagers();
     void onEngineStartup();
+    void onEngineAboutToShutdown() override;
 
     void registerBackendTypes();
     void unregisterBackendTypes();
-    void loadSceneParsers();
+    void loadSceneImporters();
     void loadRenderPlugin(const QString &pluginName);
-    void renderInitialize(QOpenGLContext *context);
-    void renderSynchronous(bool swapBuffers = true);
-    void renderShutdown();
     void registerBackendType(const QMetaObject &, const Qt3DCore::QBackendNodeMapperPtr &functor);
-    QVector<Qt3DCore::QAspectJobPtr> createGeometryRendererJobs() const;
-    QVector<Qt3DCore::QAspectJobPtr> createPreRendererJobs() const;
-    QVector<Qt3DCore::QAspectJobPtr> createRenderBufferJobs() const;
+    std::vector<Qt3DCore::QAspectJobPtr> createGeometryRendererJobs() const;
+    std::vector<Qt3DCore::QAspectJobPtr> createPreRendererJobs() const;
+    std::vector<Qt3DCore::QAspectJobPtr> createRenderBufferJobs() const;
     Render::AbstractRenderer *loadRendererPlugin();
+
+    bool processMouseEvent(QObject *obj, QMouseEvent *event);
+    bool processKeyEvent(QObject *obj, QKeyEvent *event);
 
     Render::NodeManagers *m_nodeManagers;
     Render::AbstractRenderer *m_renderer;
 
     bool m_initialized;
-    bool m_renderAfterJobs;
-    QList<QSceneImporter *> m_sceneImporter;
-    QVector<QString> m_loadedPlugins;
-    QVector<Render::QRenderPlugin *> m_renderPlugins;
-    QRenderAspect::RenderType m_renderType;
+    const bool m_renderAfterJobs;
+    bool m_sceneImportersLoaded;
+    QList<QSceneImporter *> m_sceneImporters;
+    QList<QString> m_loadedPlugins;
+    QList<Render::QRenderPlugin *> m_renderPlugins;
     Render::OffscreenSurfaceHelper *m_offscreenHelper;
     QScreen *m_screen = nullptr;
 
@@ -148,10 +112,11 @@ public:
     Render::RayCastingJobPtr m_rayCastingJob;
 
     QScopedPointer<Render::PickEventFilter> m_pickEventFilter;
+    QRenderAspect::SubmissionType m_submissionType;
 
     static QMutex m_pluginLock;
-    static QVector<QString> m_pluginConfig;
-    static QVector<QRenderAspectPrivate *> m_instances;
+    static QList<QString> m_pluginConfig;
+    static QList<QRenderAspectPrivate *> m_instances;
     static void configurePlugin(const QString &plugin);
 };
 

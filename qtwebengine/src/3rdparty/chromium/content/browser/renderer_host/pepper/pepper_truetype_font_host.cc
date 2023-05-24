@@ -1,13 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/renderer_host/pepper/pepper_truetype_font_host.h"
 
-#include "base/bind.h"
-#include "base/task/post_task.h"
+#include "base/functional/bind.h"
 #include "base/task/thread_pool.h"
-#include "base/task_runner_util.h"
 #include "content/browser/renderer_host/pepper/pepper_truetype_font.h"
 #include "content/public/browser/browser_ppapi_host.h"
 #include "ppapi/c/pp_errors.h"
@@ -35,8 +33,8 @@ PepperTrueTypeFontHost::PepperTrueTypeFontHost(
       {base::MayBlock(), base::TaskPriority::BEST_EFFORT});
   SerializedTrueTypeFontDesc* actual_desc =
       new SerializedTrueTypeFontDesc(desc);
-  base::PostTaskAndReplyWithResult(
-      task_runner_.get(), FROM_HERE,
+  task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(&PepperTrueTypeFont::Initialize, font_, actual_desc),
       base::BindOnce(&PepperTrueTypeFontHost::OnInitializeComplete,
                      weak_factory_.GetWeakPtr(), base::Owned(actual_desc)));
@@ -70,9 +68,8 @@ int32_t PepperTrueTypeFontHost::OnHostMsgGetTableTags(
 
   // Get font data on a thread that allows slow blocking operations.
   std::vector<uint32_t>* tags = new std::vector<uint32_t>();
-  base::PostTaskAndReplyWithResult(
-      task_runner_.get(), FROM_HERE,
-      base::BindOnce(&PepperTrueTypeFont::GetTableTags, font_, tags),
+  task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE, base::BindOnce(&PepperTrueTypeFont::GetTableTags, font_, tags),
       base::BindOnce(&PepperTrueTypeFontHost::OnGetTableTagsComplete,
                      weak_factory_.GetWeakPtr(), base::Owned(tags),
                      context->MakeReplyMessageContext()));
@@ -91,8 +88,8 @@ int32_t PepperTrueTypeFontHost::OnHostMsgGetTable(HostMessageContext* context,
 
   // Get font data on a thread that allows slow blocking operations.
   std::string* data = new std::string();
-  base::PostTaskAndReplyWithResult(
-      task_runner_.get(), FROM_HERE,
+  task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(&PepperTrueTypeFont::GetTable, font_, table, offset,
                      max_data_length, data),
       base::BindOnce(&PepperTrueTypeFontHost::OnGetTableComplete,

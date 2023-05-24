@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -157,5 +157,32 @@ public class ListModelBaseTest {
         assertThat("Wrong value found at index.", mIntegerList.get(2), is(6));
         assertThat("Wrong value found at index.", mIntegerList.get(3), is(7));
         assertThat("Wrong value found at index.", mIntegerList.get(4), is(3));
+    }
+
+    @Test
+    public void testSwap() {
+        // Initialize the lists.
+        mIntegerList.set(new Integer[] {1, 2, 3, 4, 5});
+
+        mIntegerList.swap(3, 4);
+        assertThat("Wrong value found at index.", mIntegerList.get(3), is(5));
+        assertThat("Wrong value found at index.", mIntegerList.get(4), is(4));
+        verify(mObserver).onItemMoved(mIntegerList, 3, 4);
+        verify(mObserver).onItemMoved(mIntegerList, 4, 3);
+        verify(mObserver).onItemSwapped(mIntegerList, 3, 4);
+
+        mIntegerList.swap(0, 1);
+        assertThat("Wrong value found at index.", mIntegerList.get(0), is(2));
+        assertThat("Wrong value found at index.", mIntegerList.get(1), is(1));
+        verify(mObserver).onItemMoved(mIntegerList, 0, 1);
+        verify(mObserver).onItemMoved(mIntegerList, 1, 0);
+        verify(mObserver).onItemSwapped(mIntegerList, 0, 1);
+
+        mIntegerList.swap(1, 2);
+        assertThat("Wrong value found at index.", mIntegerList.get(1), is(3));
+        assertThat("Wrong value found at index.", mIntegerList.get(2), is(1));
+        verify(mObserver).onItemMoved(mIntegerList, 1, 2);
+        verify(mObserver).onItemMoved(mIntegerList, 2, 1);
+        verify(mObserver).onItemSwapped(mIntegerList, 1, 2);
     }
 }

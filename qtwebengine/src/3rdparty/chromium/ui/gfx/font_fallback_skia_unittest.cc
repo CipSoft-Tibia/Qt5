@@ -1,9 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/gfx/font_fallback.h"
 
+#include "base/logging.h"
+#include "base/strings/string_piece.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -35,7 +37,7 @@ TEST(FontFallbackSkiaTest, FontFallback) {
   for (const auto* test : kFallbackFontTests) {
     Font base_font;
     Font fallback_font;
-    base::string16 text = base::WideToUTF16(test);
+    std::u16string text = base::WideToUTF16(test);
 
     if (!GetFallbackFont(base_font, kDefaultApplicationLocale, text,
                          &fallback_font)) {
@@ -44,7 +46,7 @@ TEST(FontFallbackSkiaTest, FontFallback) {
   }
 }
 
-#if !defined(OS_ANDROID) && !defined(OS_FUCHSIA)
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_FUCHSIA)
 // TODO(sergeyu): Fuchsia doesn't not support locale for font fallbacks.
 // TODO(etienneb): Android doesn't allow locale override, unless the language
 //                 is added in the system UI.
@@ -54,7 +56,7 @@ TEST(FontFallbackSkiaTest, CJKLocaleFallback) {
   // common feature of written Chinese (hanzi), Japanese (kanji), and Korean
   // (hanja). The same text will be rendered using a different font based on
   // locale.
-  const base::string16 kCJKTest = base::WideToUTF16(L"\u8AA4\u904E\u9AA8");
+  const std::u16string kCJKTest = u"\u8AA4\u904E\u9AA8";
   Font base_font;
 
   Font fallback_font_zh_cn;
@@ -90,6 +92,6 @@ TEST(FontFallbackSkiaTest, CJKLocaleFallback) {
   EXPECT_NE(fallback_font_zh_cn.GetFontName(), fallback_font_ko.GetFontName());
   EXPECT_NE(fallback_font_ja.GetFontName(), fallback_font_ko.GetFontName());
 }
-#endif  // !defined(OS_ANDROID) && !defined(OS_FUCHSIA)
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_FUCHSIA)
 
 }  // namespace gfx

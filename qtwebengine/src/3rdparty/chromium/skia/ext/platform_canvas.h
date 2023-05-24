@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 
 #include "build/build_config.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include <windows.h>
 #endif
 
@@ -69,9 +69,9 @@ SK_API std::unique_ptr<SkCanvas> CreatePlatformCanvasWithPixels(
     OnFailureType failure_type);
 #endif
 
-static inline std::unique_ptr<SkCanvas> CreatePlatformCanvas(int width,
-                                                             int height,
-                                                             bool is_opaque) {
+inline std::unique_ptr<SkCanvas> CreatePlatformCanvas(int width,
+                                                      int height,
+                                                      bool is_opaque) {
 #if defined(WIN32)
   return CreatePlatformCanvasWithSharedSection(width, height, is_opaque, 0,
                                                CRASH_ON_FAILURE);
@@ -81,9 +81,9 @@ static inline std::unique_ptr<SkCanvas> CreatePlatformCanvas(int width,
 #endif
 }
 
-static inline std::unique_ptr<SkCanvas> TryCreateBitmapCanvas(int width,
-                                                              int height,
-                                                              bool is_opaque) {
+inline std::unique_ptr<SkCanvas> TryCreateBitmapCanvas(int width,
+                                                       int height,
+                                                       bool is_opaque) {
 #if defined(WIN32)
   return CreatePlatformCanvasWithSharedSection(width, height, is_opaque, 0,
                                                RETURN_NULL_ON_FAILURE);

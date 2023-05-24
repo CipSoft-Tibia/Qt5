@@ -1,36 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qhostaddress.h>
 #include <private/qhostaddress_p.h>
 #include <qcoreapplication.h>
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qplatformdefs.h>
 #include <qdebug.h>
 #include <qhash.h>
@@ -38,12 +13,9 @@
 #include <qdatastream.h>
 #ifdef Q_OS_WIN
 #  include <qt_windows.h>
-#  if defined(Q_OS_WINRT)
-#    include <winsock2.h>
-#  endif
 #endif
 
-#ifdef Q_OS_ANDROID
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WASM)
 #  include <netinet/in.h>
 #endif
 
@@ -113,14 +85,14 @@ void tst_QHostAddress::constructor_QString()
         QTEST(hostAddr.toString(), "resAddr");
 
     if ( protocol == 4 ) {
-        QVERIFY( hostAddr.protocol() == QAbstractSocket::IPv4Protocol || hostAddr.protocol() == QAbstractSocket::UnknownNetworkLayerProtocol );
-        QVERIFY( hostAddr.protocol() != QAbstractSocket::IPv6Protocol );
+        QVERIFY( hostAddr.protocol() == QHostAddress::IPv4Protocol || hostAddr.protocol() == QHostAddress::UnknownNetworkLayerProtocol );
+        QVERIFY( hostAddr.protocol() != QHostAddress::IPv6Protocol );
     } else if ( protocol == 6 ) {
-        QVERIFY( hostAddr.protocol() != QAbstractSocket::IPv4Protocol && hostAddr.protocol() != QAbstractSocket::UnknownNetworkLayerProtocol );
-        QVERIFY( hostAddr.protocol() == QAbstractSocket::IPv6Protocol );
+        QVERIFY( hostAddr.protocol() != QHostAddress::IPv4Protocol && hostAddr.protocol() != QHostAddress::UnknownNetworkLayerProtocol );
+        QVERIFY( hostAddr.protocol() == QHostAddress::IPv6Protocol );
     } else {
         QVERIFY( hostAddr.isNull() );
-        QVERIFY( hostAddr.protocol() == QAbstractSocket::UnknownNetworkLayerProtocol );
+        QVERIFY( hostAddr.protocol() == QHostAddress::UnknownNetworkLayerProtocol );
     }
 }
 
@@ -220,14 +192,14 @@ void tst_QHostAddress::setAddress_QString()
         QTEST(hostAddr.toString(), "resAddr");
 
     if ( protocol == 4 ) {
-        QVERIFY( hostAddr.protocol() == QAbstractSocket::IPv4Protocol || hostAddr.protocol() == QAbstractSocket::UnknownNetworkLayerProtocol );
-        QVERIFY( hostAddr.protocol() != QAbstractSocket::IPv6Protocol );
+        QVERIFY( hostAddr.protocol() == QHostAddress::IPv4Protocol || hostAddr.protocol() == QHostAddress::UnknownNetworkLayerProtocol );
+        QVERIFY( hostAddr.protocol() != QHostAddress::IPv6Protocol );
     } else if ( protocol == 6 ) {
-        QVERIFY( hostAddr.protocol() != QAbstractSocket::IPv4Protocol && hostAddr.protocol() != QAbstractSocket::UnknownNetworkLayerProtocol );
-        QVERIFY( hostAddr.protocol() == QAbstractSocket::IPv6Protocol );
+        QVERIFY( hostAddr.protocol() != QHostAddress::IPv4Protocol && hostAddr.protocol() != QHostAddress::UnknownNetworkLayerProtocol );
+        QVERIFY( hostAddr.protocol() == QHostAddress::IPv6Protocol );
     } else {
         QVERIFY( hostAddr.isNull() );
-        QVERIFY( hostAddr.protocol() == QAbstractSocket::UnknownNetworkLayerProtocol );
+        QVERIFY( hostAddr.protocol() == QHostAddress::UnknownNetworkLayerProtocol );
     }
 }
 
@@ -354,6 +326,12 @@ void tst_QHostAddress::isEqual_data()
     QTest::newRow("anyv6-anyv4-local") << QHostAddress(QHostAddress::AnyIPv6) << QHostAddress(QHostAddress::AnyIPv4) << (int)QHostAddress::ConvertLocalHost << false;
     QTest::newRow("any-anyv4-local") << QHostAddress(QHostAddress::Any) << QHostAddress(QHostAddress::AnyIPv4) << (int)QHostAddress::ConvertLocalHost << false;
     QTest::newRow("any-anyv6-local") << QHostAddress(QHostAddress::Any) << QHostAddress(QHostAddress::AnyIPv6) << (int)QHostAddress::ConvertLocalHost << false;
+    QTest::newRow("localhostv6-any-tolerant") << QHostAddress(QHostAddress::LocalHostIPv6) << QHostAddress(QHostAddress::Any) << (int)QHostAddress::TolerantConversion << false;
+    QTest::newRow("localhostv4-any-tolerant") << QHostAddress(QHostAddress::LocalHost) << QHostAddress(QHostAddress::Any) << (int)QHostAddress::TolerantConversion << false;
+    QTest::newRow("localhostv6-anyv6-tolerant") << QHostAddress(QHostAddress::LocalHostIPv6) << QHostAddress(QHostAddress::AnyIPv6) << (int)QHostAddress::TolerantConversion << false;
+    QTest::newRow("localhostv4-anyv6-tolerant") << QHostAddress(QHostAddress::LocalHost) << QHostAddress(QHostAddress::AnyIPv6) << (int)QHostAddress::TolerantConversion << false;
+    QTest::newRow("localhostv6-anyv4-tolerant") << QHostAddress(QHostAddress::LocalHostIPv6) << QHostAddress(QHostAddress::AnyIPv4) << (int)QHostAddress::TolerantConversion << false;
+    QTest::newRow("localhostv4-anyv4-tolerant") << QHostAddress(QHostAddress::LocalHost) << QHostAddress(QHostAddress::AnyIPv4) << (int)QHostAddress::TolerantConversion << false;
 }
 
 void tst_QHostAddress::isEqual()
@@ -367,35 +345,16 @@ void tst_QHostAddress::isEqual()
     QCOMPARE(second.isEqual(first, QHostAddress::ConversionModeFlag(flags)), result);
 }
 
-QT_WARNING_PUSH
-#ifdef QT_WARNING_DISABLE_DEPRECATED
-QT_WARNING_DISABLE_DEPRECATED
-#endif
-
 void tst_QHostAddress::assignment()
 {
     QHostAddress address;
-
-#if QT_DEPRECATED_SINCE(5, 8)
-    address = "127.0.0.1";
-    QCOMPARE(address, QHostAddress("127.0.0.1"));
-
-    address = "::1";
-    QCOMPARE(address, QHostAddress("::1"));
-#endif
-
-    // WinRT does not support sockaddr_in
-#ifndef Q_OS_WINRT
     QHostAddress addr("4.2.2.1");
     sockaddr_in sockAddr;
     sockAddr.sin_family = AF_INET;
     sockAddr.sin_addr.s_addr = htonl(addr.toIPv4Address());
     address.setAddress((sockaddr *)&sockAddr);
     QCOMPARE(address, addr);
-#endif // !Q_OS_WINRT
 }
-
-QT_WARNING_POP
 
 void tst_QHostAddress::scopeId()
 {
@@ -744,6 +703,7 @@ void tst_QHostAddress::classification()
     bool isUniqueLocalAddress = (result == UniqueLocalAddress);
     bool isMulticast = (result == MulticastAddress);
     bool isBroadcast = (result == BroadcastAddress);
+    bool isPrivateUse = (result == PrivateNetworkAddress || result == UniqueLocalAddress);
 
     QCOMPARE(address.isLoopback(), isLoopback);
     QCOMPARE(address.isGlobal(), isGlobal);
@@ -752,6 +712,7 @@ void tst_QHostAddress::classification()
     QCOMPARE(address.isUniqueLocalUnicast(), isUniqueLocalAddress);
     QCOMPARE(address.isMulticast(), isMulticast);
     QCOMPARE(address.isBroadcast(), isBroadcast);
+    QCOMPARE(address.isPrivateUse(), isPrivateUse);
 }
 
 void tst_QHostAddress::convertv4v6_data()
@@ -792,7 +753,7 @@ void tst_QHostAddress::convertv4v6()
     if (protocol == 4) {
         bool ok;
         quint32 v4 = source.toIPv4Address(&ok);
-        QCOMPARE(ok, result.protocol() == QAbstractSocket::IPv4Protocol);
+        QCOMPARE(ok, result.protocol() == QHostAddress::IPv4Protocol);
         if (ok)
             QCOMPARE(QHostAddress(v4), result);
     } else if (protocol == 6) {

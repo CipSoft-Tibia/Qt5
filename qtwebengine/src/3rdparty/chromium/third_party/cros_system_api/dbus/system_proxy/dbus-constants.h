@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium OS Authors. All rights reserved.
+// Copyright 2020 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 #ifndef SYSTEM_API_DBUS_SYSTEM_PROXY_DBUS_CONSTANTS_H_
@@ -21,8 +21,6 @@ const char kSetAuthenticationDetailsMethod[] = "SetAuthenticationDetails";
 // TODO(acostinas, crbug.com/1076377) Remove deprecated
 // SetSystemTrafficCredentials call. Please use SetAuthenticationDetails.
 const char kSetSystemTrafficCredentialsMethod[] = "SetSystemTrafficCredentials";
-// Shuts down the System-proxy service.
-const char kShutDownMethod[] = "ShutDown";
 // Shuts down the System-proxy service or just one of the worker processes,
 // depending on the argument.
 const char kShutDownProcessMethod[] = "ShutDownProcess";

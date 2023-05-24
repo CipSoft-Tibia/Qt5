@@ -103,7 +103,7 @@ class CanvasKitRenderer {
     constructor(svgData, offscreenCanvas, CanvasKit) {
         this.CanvasKit = CanvasKit;
         this.data = svgData.map(([pathString, fillColor]) => [
-            CanvasKit.MakePathFromSVGString(pathString),
+            CanvasKit.Path.MakeFromSVGString(pathString),
             CanvasKit.parseColorString(fillColor)
         ]);
 
@@ -113,7 +113,7 @@ class CanvasKitRenderer {
         }
         this.canvas = this.surface.getCanvas();
 
-        this.paint = new CanvasKit.SkPaint();
+        this.paint = new CanvasKit.Paint();
         this.paint.setAntiAlias(true);
         this.paint.setStyle(CanvasKit.PaintStyle.Fill);
     }

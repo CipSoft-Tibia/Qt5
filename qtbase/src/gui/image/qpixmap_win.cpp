@@ -1,44 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qbitmap.h"
 #include "qpixmap.h"
+#include <private/qpixmap_win_p.h>
 #include <qpa/qplatformpixmap.h>
 #include "qpixmap_raster_p.h"
 
@@ -121,7 +86,7 @@ static inline void copyImageDataCreateAlpha(const uchar *data, QImage *target)
     const uint mask = target->format() == QImage::Format_RGB32 ? 0xff000000 : 0;
     const int height = target->height();
     const int width = target->width();
-    const int bytesPerLine = width * int(sizeof(QRgb));
+    const qsizetype bytesPerLine = width * sizeof(QRgb);
     for (int y = 0; y < height; ++y) {
         QRgb *dest = reinterpret_cast<QRgb *>(target->scanLine(y));
         const QRgb *src = reinterpret_cast<const QRgb *>(data + y * bytesPerLine);
@@ -181,7 +146,7 @@ static QImage copyImageData(const BITMAPINFOHEADER &header, const RGBQUAD *color
     }
     if (colorTableSize) {
         Q_ASSERT(colorTableIn);
-        QVector<QRgb> colorTable;
+        QList<QRgb> colorTable;
         colorTable.reserve(colorTableSize);
         std::transform(colorTableIn, colorTableIn + colorTableSize,
                        std::back_inserter(colorTable), rgbQuadToQRgb);
@@ -228,9 +193,9 @@ enum HBitmapFormat
     HBitmapAlpha
 };
 
-Q_GUI_EXPORT HBITMAP qt_createIconMask(const QBitmap &bitmap)
+static HBITMAP qt_createIconMask(QImage bm)
 {
-    QImage bm = bitmap.toImage().convertToFormat(QImage::Format_Mono);
+    Q_ASSERT(bm.format() == QImage::Format_Mono);
     const int w = bm.width();
     const int h = bm.height();
     const int bpl = ((w+15)/16)*2; // bpl, 16 bit alignment
@@ -240,6 +205,11 @@ Q_GUI_EXPORT HBITMAP qt_createIconMask(const QBitmap &bitmap)
         memcpy(bits.data() + y * bpl, bm.constScanLine(y), size_t(bpl));
     HBITMAP hbm = CreateBitmap(w, h, 1, 1, bits.data());
     return hbm;
+}
+
+HBITMAP qt_createIconMask(const QBitmap &bitmap)
+{
+    return qt_createIconMask(bitmap.toImage().convertToFormat(QImage::Format_Mono));
 }
 
 static inline QImage::Format format32(int hbitmapFormat)
@@ -255,7 +225,7 @@ static inline QImage::Format format32(int hbitmapFormat)
     return QImage::Format_ARGB32_Premultiplied;
 }
 
-Q_GUI_EXPORT HBITMAP qt_imageToWinHBITMAP(const QImage &imageIn, int hbitmapFormat = 0)
+HBITMAP qt_imageToWinHBITMAP(const QImage &imageIn, int hbitmapFormat)
 {
     if (imageIn.isNull())
         return nullptr;
@@ -335,6 +305,7 @@ Q_GUI_EXPORT HBITMAP qt_imageToWinHBITMAP(const QImage &imageIn, int hbitmapForm
         return nullptr;
     }
     if (!pixels) {
+        DeleteObject(bitmap);
         qErrnoWarning("%s, did not allocate pixel data", __FUNCTION__);
         return nullptr;
     }
@@ -344,7 +315,44 @@ Q_GUI_EXPORT HBITMAP qt_imageToWinHBITMAP(const QImage &imageIn, int hbitmapForm
     return bitmap;
 }
 
-Q_GUI_EXPORT HBITMAP qt_pixmapToWinHBITMAP(const QPixmap &p, int hbitmapFormat = 0)
+/*!
+    \since 6.0
+
+    \brief Creates a \c HBITMAP equivalent of the QImage.
+
+    Returns the \c HBITMAP handle.
+
+    It is the caller's responsibility to free the \c HBITMAP data
+    after use.
+
+    For usage with standard GDI calls, such as \c BitBlt(), the image
+    should have the format QImage::Format_RGB32.
+
+    When using the resulting HBITMAP for the \c AlphaBlend() GDI function,
+    the image should have the format QImage::Format_ARGB32_Premultiplied
+    (use convertToFormat()).
+
+    When using the resulting HBITMAP as application icon or a systray icon,
+    the image should have the format QImage::Format_ARGB32.
+
+    \ingroup platform-type-conversions
+
+    \sa fromHBITMAP(), convertToFormat()
+*/
+HBITMAP QImage::toHBITMAP() const
+{
+    switch (format()) {
+    case QImage::Format_ARGB32:
+        return qt_imageToWinHBITMAP(*this, HBitmapAlpha);
+    case QImage::Format_ARGB32_Premultiplied:
+        return qt_imageToWinHBITMAP(*this, HBitmapPremultipliedAlpha);
+    default:
+        break;
+    }
+    return qt_imageToWinHBITMAP(*this);
+}
+
+HBITMAP qt_pixmapToWinHBITMAP(const QPixmap &p, int hbitmapFormat)
 {
     if (p.isNull())
         return nullptr;
@@ -443,7 +451,7 @@ static QImage imageFromWinHBITMAP_GetDiBits(HBITMAP bitmap, bool forceQuads, int
     return copyImageData(info.bmiHeader, bmiColorTable256.bmiColors, data.data(), imageFormat);
 }
 
-Q_GUI_EXPORT QImage qt_imageFromWinHBITMAP(HBITMAP bitmap, int hbitmapFormat = 0)
+QImage qt_imageFromWinHBITMAP(HBITMAP bitmap, int hbitmapFormat)
 {
     QImage result = imageFromWinHBITMAP_DibSection(bitmap, hbitmapFormat);
     if (result.isNull())
@@ -451,26 +459,70 @@ Q_GUI_EXPORT QImage qt_imageFromWinHBITMAP(HBITMAP bitmap, int hbitmapFormat = 0
     return result;
 }
 
-Q_GUI_EXPORT QPixmap qt_pixmapFromWinHBITMAP(HBITMAP bitmap, int hbitmapFormat = 0)
+/*!
+    \since 6.0
+
+    \brief Returns a QImage that is equivalent to the given \a hbitmap.
+
+    HBITMAP does not store information about the alpha channel.
+
+    In the standard case, the alpha channel is ignored and a fully
+    opaque image is created (typically of format QImage::Format_RGB32).
+
+    There are cases where the alpha channel is used, though, for example
+    for application icon or systray icons. In that case,
+    \c reinterpretAsFormat(QImage::Format_ARGB32) should be called
+    on the returned image to ensure the format is correct.
+
+    \ingroup platform-type-conversions
+
+    \sa toHBITMAP(), reinterpretAsFormat()
+*/
+QImage QImage::fromHBITMAP(HBITMAP hbitmap)
+{
+    return qt_imageFromWinHBITMAP(hbitmap);
+}
+
+QPixmap qt_pixmapFromWinHBITMAP(HBITMAP bitmap, int hbitmapFormat)
 {
     return QPixmap::fromImage(imageFromWinHBITMAP_GetDiBits(bitmap, /* forceQuads */ true, hbitmapFormat));
 }
 
-Q_GUI_EXPORT HICON qt_pixmapToWinHICON(const QPixmap &p)
+/*!
+    \since 6.0
+
+    \brief Creates a \c HICON equivalent of the QPixmap, applying the mask
+    \a mask.
+
+    If \a mask is not null, it needs to be of format QImage::Format_Mono.
+    Returns the \c HICON handle.
+
+    It is the caller's responsibility to free the \c HICON data after use.
+
+    \ingroup platform-type-conversions
+
+    \sa fromHICON()
+*/
+HICON QImage::toHICON(const QImage &mask) const
 {
-    if (p.isNull())
+    if (!mask.isNull() && mask.format() != QImage::Format_Mono) {
+        qWarning("QImage::toHICON(): Mask must be empty or have format Format_Mono");
+        return nullptr;
+    }
+
+    if (isNull())
         return nullptr;
 
-    QBitmap maskBitmap = p.mask();
-    if (maskBitmap.isNull()) {
-        maskBitmap = QBitmap(p.size());
-        maskBitmap.fill(Qt::color1);
+    auto effectiveMask = mask;
+    if (effectiveMask.isNull()) {
+        effectiveMask = QImage(size(), QImage::Format_Mono);
+        effectiveMask.fill(Qt::color1);
     }
 
     ICONINFO ii;
     ii.fIcon    = true;
-    ii.hbmMask  = qt_createIconMask(maskBitmap);
-    ii.hbmColor = qt_pixmapToWinHBITMAP(p, HBitmapAlpha);
+    ii.hbmMask  = qt_createIconMask(effectiveMask);
+    ii.hbmColor = qt_imageToWinHBITMAP(*this, HBitmapAlpha);
     ii.xHotspot = 0;
     ii.yHotspot = 0;
 
@@ -482,7 +534,16 @@ Q_GUI_EXPORT HICON qt_pixmapToWinHICON(const QPixmap &p)
     return hIcon;
 }
 
-Q_GUI_EXPORT QImage qt_imageFromWinHBITMAP(HDC hdc, HBITMAP bitmap, int w, int h)
+HICON qt_pixmapToWinHICON(const QPixmap &p)
+{
+    QImage mask;
+    QBitmap maskBitmap = p.mask();
+    if (!maskBitmap.isNull())
+        mask = maskBitmap.toImage().convertToFormat(QImage::Format_Mono);
+    return p.toImage().toHICON(mask);
+}
+
+QImage qt_imageFromWinHBITMAP(HDC hdc, HBITMAP bitmap, int w, int h)
 {
     QImage image(w, h, QImage::Format_ARGB32_Premultiplied);
     if (image.isNull())
@@ -520,7 +581,16 @@ static inline bool hasAlpha(const QImage &image)
     return false;
 }
 
-Q_GUI_EXPORT QPixmap qt_pixmapFromWinHICON(HICON icon)
+/*!
+    \since 6.0
+
+    \brief Returns a QImage that is equivalent to the given \a icon.
+
+    \ingroup platform-type-conversions
+
+    \sa toHICON()
+*/
+QImage QImage::fromHICON(HICON icon)
 {
     HDC screenDevice = GetDC(nullptr);
     HDC hdc = CreateCompatibleDC(screenDevice);
@@ -531,7 +601,7 @@ Q_GUI_EXPORT QPixmap qt_pixmapFromWinHICON(HICON icon)
     if (!result) {
         qErrnoWarning("QPixmap::fromWinHICON(), failed to GetIconInfo()");
         DeleteDC(hdc);
-        return QPixmap();
+        return {};
     }
 
     const int w = int(iconinfo.xHotspot) * 2;
@@ -570,7 +640,12 @@ Q_GUI_EXPORT QPixmap qt_pixmapFromWinHICON(HICON icon)
     SelectObject(hdc, oldhdc); //restore state
     DeleteObject(winBitmap);
     DeleteDC(hdc);
-    return QPixmap::fromImage(std::move(image));
+    return image;
+}
+
+QPixmap qt_pixmapFromWinHICON(HICON icon)
+{
+    return QPixmap::fromImage(QImage::fromHICON(icon));
 }
 
 QT_END_NAMESPACE

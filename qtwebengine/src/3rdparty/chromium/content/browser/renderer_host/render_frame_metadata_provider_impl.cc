@@ -1,10 +1,13 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/renderer_host/render_frame_metadata_provider_impl.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/observer_list.h"
+#include "base/task/single_thread_task_runner.h"
+#include "build/build_config.h"
 #include "content/browser/renderer_host/frame_token_message_queue.h"
 
 namespace content {
@@ -35,10 +38,14 @@ void RenderFrameMetadataProviderImpl::Bind(
   render_frame_metadata_observer_client_receiver_.Bind(
       std::move(client_receiver), task_runner_);
 
-#if defined(OS_ANDROID)
-  if (pending_report_all_root_scrolls_.has_value()) {
-    ReportAllRootScrolls(*pending_report_all_root_scrolls_);
-    pending_report_all_root_scrolls_.reset();
+  // Reset on disconnect so that pending state will be correctly stored and
+  // later forwarded in the case of a renderer crash.
+  render_frame_metadata_observer_remote_.reset_on_disconnect();
+#if BUILDFLAG(IS_ANDROID)
+  if (pending_root_scroll_offset_update_frequency_.has_value()) {
+    UpdateRootScrollOffsetUpdateFrequency(
+        *pending_root_scroll_offset_update_frequency_);
+    pending_root_scroll_offset_update_frequency_.reset();
   }
 #endif
   if (pending_report_all_frame_submission_for_testing_.has_value()) {
@@ -48,14 +55,16 @@ void RenderFrameMetadataProviderImpl::Bind(
   }
 }
 
-#if defined(OS_ANDROID)
-void RenderFrameMetadataProviderImpl::ReportAllRootScrolls(bool enabled) {
+#if BUILDFLAG(IS_ANDROID)
+void RenderFrameMetadataProviderImpl::UpdateRootScrollOffsetUpdateFrequency(
+    cc::mojom::RootScrollOffsetUpdateFrequency frequency) {
   if (!render_frame_metadata_observer_remote_) {
-    pending_report_all_root_scrolls_ = enabled;
+    pending_root_scroll_offset_update_frequency_ = frequency;
     return;
   }
 
-  render_frame_metadata_observer_remote_->ReportAllRootScrolls(enabled);
+  render_frame_metadata_observer_remote_->UpdateRootScrollOffsetUpdateFrequency(
+      frequency);
 }
 #endif
 
@@ -77,13 +86,15 @@ RenderFrameMetadataProviderImpl::LastRenderFrameMetadata() {
 
 void RenderFrameMetadataProviderImpl::
     OnRenderFrameMetadataChangedAfterActivation(
-        cc::RenderFrameMetadata metadata) {
+        cc::RenderFrameMetadata metadata,
+        base::TimeTicks activation_time) {
   last_render_frame_metadata_ = std::move(metadata);
   for (Observer& observer : observers_)
-    observer.OnRenderFrameMetadataChangedAfterActivation();
+    observer.OnRenderFrameMetadataChangedAfterActivation(activation_time);
 }
 
-void RenderFrameMetadataProviderImpl::OnFrameTokenFrameSubmissionForTesting() {
+void RenderFrameMetadataProviderImpl::OnFrameTokenFrameSubmissionForTesting(
+    base::TimeTicks activation_time) {
   for (Observer& observer : observers_)
     observer.OnRenderFrameSubmission();
 }
@@ -126,9 +137,9 @@ void RenderFrameMetadataProviderImpl::OnFrameSubmissionForTesting(
                                   weak_factory_.GetWeakPtr()));
 }
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 void RenderFrameMetadataProviderImpl::OnRootScrollOffsetChanged(
-    const gfx::Vector2dF& root_scroll_offset) {
+    const gfx::PointF& root_scroll_offset) {
   for (Observer& observer : observers_)
     observer.OnRootScrollOffsetChanged(root_scroll_offset);
 }

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qbenchmarkperfevents_p.h"
 #include "qbenchmarkmetric.h"
@@ -53,8 +17,9 @@
 #include <string.h>
 #include <stdio.h>
 
-#include <sys/syscall.h>
 #include <sys/ioctl.h>
+#include <sys/prctl.h>
+#include <sys/syscall.h>
 
 #include "3rdparty/linux_perf_event_p.h"
 
@@ -83,7 +48,13 @@
 
 QT_BEGIN_NAMESPACE
 
+struct PerfEvent
+{
+    quint32 type;
+    quint64 config;
+};
 static perf_event_attr attr;
+Q_GLOBAL_STATIC(QList<PerfEvent>, eventTypes);
 
 static void initPerf()
 {
@@ -98,12 +69,18 @@ static void initPerf()
         attr.inherit_stat = true; // aggregate all the info from child processes
         attr.task = true; // trace fork/exits
 
-        // set a default performance counter: CPU cycles
-        attr.type = PERF_TYPE_HARDWARE;
-        attr.config = PERF_COUNT_HW_CPU_CYCLES; // default
-
         done = true;
     }
+}
+
+static QList<PerfEvent> defaultCounters()
+{
+    return {
+        { .type = PERF_TYPE_SOFTWARE, .config = PERF_COUNT_SW_TASK_CLOCK },
+        { .type = PERF_TYPE_HARDWARE, .config = PERF_COUNT_HW_CPU_CYCLES },
+        { .type = PERF_TYPE_HARDWARE, .config = PERF_COUNT_HW_INSTRUCTIONS },
+        { .type = PERF_TYPE_HARDWARE, .config = PERF_COUNT_HW_BRANCH_INSTRUCTIONS },
+    };
 }
 
 // This class does not exist in the API so it's qdoc comment marker was removed.
@@ -131,7 +108,8 @@ static void initPerf()
 static int perf_event_open(perf_event_attr *attr, pid_t pid, int cpu, int group_fd, unsigned long flags)
 {
 #ifdef SYS_perf_event_open
-    return syscall(SYS_perf_event_open, attr, pid, cpu, group_fd, flags);
+    // syscall() returns long, but perf_event_open() is used to get a file descriptor
+    return int(syscall(SYS_perf_event_open, attr, pid, cpu, group_fd, flags));
 #else
     Q_UNUSED(attr);
     Q_UNUSED(pid);
@@ -164,8 +142,8 @@ bool QBenchmarkPerfEventsMeasurer::isAvailable()
    HARDWARE     BUS_CYCLES              BusCycles       bus-cycles
    HARDWARE     STALLED_CYCLES_FRONTEND StalledCycles   stalled-cycles-frontend idle-cycles-frontend
    HARDWARE     STALLED_CYCLES_BACKEND  StalledCycles   stalled-cycles-backend idle-cycles-backend
-   SOFTWARE     CPU_CLOCK               WalltimeMilliseconds cpu-clock
-   SOFTWARE     TASK_CLOCK              WalltimeMilliseconds task-clock
+   SOFTWARE     CPU_CLOCK               WalltimeNanoseconds cpu-clock
+   SOFTWARE     TASK_CLOCK              WalltimeNanoseconds task-clock
    SOFTWARE     PAGE_FAULTS             PageFaults      page-faults faults
    SOFTWARE     PAGE_FAULTS_MAJ         MajorPageFaults major-faults
    SOFTWARE     PAGE_FAULTS_MIN         MinorPageFaults minor-faults
@@ -231,7 +209,7 @@ for $entry (sort @strings) {
         $map{$entry}[2],
         $map{$entry}[3];
 }
-print "    {   0, PERF_TYPE_MAX, 0, QTest::Events }\n};\n";
+print "};\n";
 === cut perl ===
 */
 
@@ -345,7 +323,7 @@ static const Events eventlist[] = {
     { 170, PERF_TYPE_HARDWARE, PERF_COUNT_HW_CACHE_MISSES, QTest::CacheMisses },
     { 183, PERF_TYPE_HARDWARE, PERF_COUNT_HW_CACHE_REFERENCES, QTest::CacheReferences },
     { 200, PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CONTEXT_SWITCHES, QTest::ContextSwitches },
-    { 217, PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CPU_CLOCK, QTest::WalltimeMilliseconds },
+    { 217, PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CPU_CLOCK, QTest::WalltimeNanoseconds },
     { 227, PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES, QTest::CPUCycles },
     { 238, PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CPU_MIGRATIONS, QTest::CPUMigrations },
     { 253, PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CONTEXT_SWITCHES, QTest::ContextSwitches },
@@ -414,17 +392,15 @@ static const Events eventlist[] = {
     { 1292, PERF_TYPE_HARDWARE, PERF_COUNT_HW_REF_CPU_CYCLES, QTest::RefCPUCycles },
     { 1303, PERF_TYPE_HARDWARE, PERF_COUNT_HW_STALLED_CYCLES_BACKEND, QTest::StalledCycles },
     { 1326, PERF_TYPE_HARDWARE, PERF_COUNT_HW_STALLED_CYCLES_FRONTEND, QTest::StalledCycles },
-    { 1350, PERF_TYPE_SOFTWARE, PERF_COUNT_SW_TASK_CLOCK, QTest::WalltimeMilliseconds },
-    {   0, PERF_TYPE_MAX, 0, QTest::Events }
+    { 1350, PERF_TYPE_SOFTWARE, PERF_COUNT_SW_TASK_CLOCK, QTest::WalltimeNanoseconds },
 };
 /* -- END GENERATED CODE -- */
 
-QTest::QBenchmarkMetric QBenchmarkPerfEventsMeasurer::metricForEvent(quint32 type, quint64 event_id)
+static QTest::QBenchmarkMetric metricForEvent(PerfEvent counter)
 {
-    const Events *ptr = eventlist;
-    for ( ; ptr->type != PERF_TYPE_MAX; ++ptr) {
-        if (ptr->type == type && ptr->event_id == event_id)
-            return ptr->metric;
+    for (const Events &ev : eventlist) {
+        if (ev.type == counter.type && ev.event_id == counter.config)
+            return ev.metric;
     }
     return QTest::Events;
 }
@@ -432,47 +408,39 @@ QTest::QBenchmarkMetric QBenchmarkPerfEventsMeasurer::metricForEvent(quint32 typ
 void QBenchmarkPerfEventsMeasurer::setCounter(const char *name)
 {
     initPerf();
-    const char *colon = strchr(name, ':');
-    int n = colon ? colon - name : strlen(name);
-    const Events *ptr = eventlist;
-    for ( ; ptr->type != PERF_TYPE_MAX; ++ptr) {
-        int c = strncmp(name, eventlist_strings + ptr->offset, n);
-        if (c == 0)
+    eventTypes->clear();
+    std::string_view input = name;
+    if (qsizetype idx = input.find(':'); idx >= 0)
+        input = input.substr(0, idx);
+
+    while (!input.empty()) {
+        std::string_view countername = input;
+        if (qsizetype idx = countername.find(','); idx >= 0)
+            countername = countername.substr(0, idx);
+
+        for (const Events &ev : eventlist) {
+            int c = countername.compare(eventlist_strings + ev.offset);
+            if (c > 0)
+                continue;
+            if (c < 0) {
+                fprintf(stderr, "ERROR: Performance counter type '%.*s' is unknown\n",
+                        int(countername.size()), countername.data());
+                exit(1);
+            }
+            eventTypes->append({ ev.type, ev.event_id });
             break;
-        if (c < 0) {
-            fprintf(stderr, "ERROR: Performance counter type '%s' is unknown\n", name);
-            exit(1);
         }
+
+        if (countername.size() == input.size())
+            input = {};
+        else
+            input.remove_prefix(countername.size() + 1);
     }
 
-    attr.type = ptr->type;
-    attr.config = ptr->event_id;
-
-    // now parse the attributes
-    if (!colon)
-        return;
-    while (*++colon) {
-        switch (*colon) {
-        case 'u':
-            attr.exclude_user = true;
-            break;
-        case 'k':
-            attr.exclude_kernel = true;
-            break;
-        case 'h':
-            attr.exclude_hv = true;
-            break;
-        case 'G':
-            attr.exclude_guest = true;
-            break;
-        case 'H':
-            attr.exclude_host = true;
-            break;
-        default:
-            fprintf(stderr, "ERROR: Unknown attribute '%c'\n", *colon);
-            exit(1);
-        }
-    }
+    // We used to support attributes, but our code was the opposite of what
+    // perf(1) does, plus QBenchlib isn't exactly expected to be used to
+    // profile Linux kernel code or launch guest VMs as part of the workload.
+    // So we keep accepting the colon as a delimiter but ignore it.
 }
 
 void QBenchmarkPerfEventsMeasurer::listCounters()
@@ -483,28 +451,20 @@ void QBenchmarkPerfEventsMeasurer::listCounters()
     }
 
     printf("The following performance counters are available:\n");
-    const Events *ptr = eventlist;
-    for ( ; ptr->type != PERF_TYPE_MAX; ++ptr) {
-        printf("  %-30s [%s]\n", eventlist_strings + ptr->offset,
-               ptr->type == PERF_TYPE_HARDWARE ? "hardware" :
-               ptr->type == PERF_TYPE_SOFTWARE ? "software" :
-               ptr->type == PERF_TYPE_HW_CACHE ? "cache" : "other");
+    for (const Events &ev : eventlist) {
+        printf("  %-30s [%s]\n", eventlist_strings + ev.offset,
+               ev.type == PERF_TYPE_HARDWARE ? "hardware" :
+               ev.type == PERF_TYPE_SOFTWARE ? "software" :
+               ev.type == PERF_TYPE_HW_CACHE ? "cache" : "other");
     }
-
-    printf("\nAttributes can be specified by adding a colon and the following:\n"
-           "  u - exclude measuring in the userspace\n"
-           "  k - exclude measuring in kernel mode\n"
-           "  h - exclude measuring in the hypervisor\n"
-           "  G - exclude measuring when running virtualized (guest VM)\n"
-           "  H - exclude measuring when running non-virtualized (host system)\n"
-           "Attributes can be combined, for example: -perfcounter branch-mispredicts:kh\n");
 }
 
 QBenchmarkPerfEventsMeasurer::QBenchmarkPerfEventsMeasurer() = default;
 
 QBenchmarkPerfEventsMeasurer::~QBenchmarkPerfEventsMeasurer()
 {
-    qt_safe_close(fd);
+    for (int fd : std::as_const(fds))
+        qt_safe_close(fd);
 }
 
 void QBenchmarkPerfEventsMeasurer::init()
@@ -513,43 +473,56 @@ void QBenchmarkPerfEventsMeasurer::init()
 
 void QBenchmarkPerfEventsMeasurer::start()
 {
-
     initPerf();
-    if (fd == -1) {
-        // pid == 0 -> attach to the current process
-        // cpu == -1 -> monitor on all CPUs
-        // group_fd == -1 -> this is the group leader
-        // flags == 0 -> reserved, must be zero
-        fd = perf_event_open(&attr, 0, -1, -1, 0);
-        if (fd == -1) {
-            perror("QBenchmarkPerfEventsMeasurer::start: perf_event_open");
-            exit(1);
-        } else {
-            ::fcntl(fd, F_SETFD, FD_CLOEXEC);
+    QList<PerfEvent> &counters = *eventTypes;
+    if (counters.isEmpty())
+        counters = defaultCounters();
+    if (fds.isEmpty()) {
+        pid_t pid = 0;      // attach to the current process only
+        int cpu = -1;       // on any CPU
+        int group_fd = -1;
+        int flags = PERF_FLAG_FD_CLOEXEC;
+
+        fds.reserve(counters.size());
+        for (PerfEvent counter : std::as_const(counters)) {
+            attr.type = counter.type;
+            attr.config = counter.config;
+            int fd = perf_event_open(&attr, pid, cpu, group_fd, flags);
+            if (fd == -1) {
+                // probably a paranoid kernel (/proc/sys/kernel/perf_event_paranoid)
+                attr.exclude_kernel = true;
+                attr.exclude_hv = true;
+                fd = perf_event_open(&attr, pid, cpu, group_fd, flags);
+            }
+            if (fd == -1) {
+                perror("QBenchmarkPerfEventsMeasurer::start: perf_event_open");
+                exit(1);
+            }
+
+            fds.append(fd);
         }
     }
 
-    // enable the counter
-    ::ioctl(fd, PERF_EVENT_IOC_RESET);
-    ::ioctl(fd, PERF_EVENT_IOC_ENABLE);
+    // enable the counters
+    for (int fd : std::as_const(fds))
+        ::ioctl(fd, PERF_EVENT_IOC_RESET);
+    prctl(PR_TASK_PERF_EVENTS_ENABLE);
 }
 
-qint64 QBenchmarkPerfEventsMeasurer::checkpoint()
+QList<QBenchmarkMeasurerBase::Measurement> QBenchmarkPerfEventsMeasurer::stop()
 {
-    ::ioctl(fd, PERF_EVENT_IOC_DISABLE);
-    qint64 value = readValue();
-    ::ioctl(fd, PERF_EVENT_IOC_ENABLE);
-    return value;
+    // disable the counters
+    prctl(PR_TASK_PERF_EVENTS_DISABLE);
+
+    const QList<PerfEvent> &counters = *eventTypes;
+    QList<Measurement> result(counters.size(), {});
+    for (qsizetype i = 0; i < counters.size(); ++i) {
+        result[i] = readValue(i);
+    }
+    return result;
 }
 
-qint64 QBenchmarkPerfEventsMeasurer::stop()
-{
-    // disable the counter
-    ::ioctl(fd, PERF_EVENT_IOC_DISABLE);
-    return readValue();
-}
-
-bool QBenchmarkPerfEventsMeasurer::isMeasurementAccepted(qint64)
+bool QBenchmarkPerfEventsMeasurer::isMeasurementAccepted(Measurement)
 {
     return true;
 }
@@ -562,11 +535,6 @@ int QBenchmarkPerfEventsMeasurer::adjustIterationCount(int)
 int QBenchmarkPerfEventsMeasurer::adjustMedianCount(int)
 {
     return 1;
-}
-
-QTest::QBenchmarkMetric QBenchmarkPerfEventsMeasurer::metricType()
-{
-    return metricForEvent(attr.type, attr.config);
 }
 
 static quint64 rawReadValue(int fd)
@@ -604,14 +572,10 @@ static quint64 rawReadValue(int fd)
     return results.value * (double(results.time_running) / double(results.time_enabled));
 }
 
-qint64 QBenchmarkPerfEventsMeasurer::readValue()
+QBenchmarkMeasurerBase::Measurement QBenchmarkPerfEventsMeasurer::readValue(qsizetype idx)
 {
-    quint64 raw = rawReadValue(fd);
-    if (metricType() == QTest::WalltimeMilliseconds) {
-        // perf returns nanoseconds
-        return raw / 1000000;
-    }
-    return raw;
+    quint64 raw = rawReadValue(fds.at(idx));
+    return { qreal(qint64(raw)), metricForEvent(eventTypes->at(idx)) };
 }
 
 QT_END_NAMESPACE

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qthreadstorage.h"
 
@@ -65,11 +29,11 @@ void qtsDebug(const char *fmt, ...)
     va_end(va);
 }
 #else
-#  define DEBUG_MSG if(false)qDebug
+#  define DEBUG_MSG if (false)qDebug
 #endif
 
-static QBasicMutex destructorsMutex;
-typedef QVector<void (*)(void *)> DestructorMap;
+Q_CONSTINIT static QBasicMutex destructorsMutex;
+typedef QList<void (*)(void *)> DestructorMap;
 Q_GLOBAL_STATIC(DestructorMap, destructors)
 
 QThreadStorageData::QThreadStorageData(void (*func)(void *))
@@ -87,15 +51,15 @@ QThreadStorageData::QThreadStorageData(void (*func)(void *))
          no where to store it, and no way to actually call it.
          */
         QThreadData *data = QThreadData::current();
-        id = data->tls.count();
+        id = data->tls.size();
         DEBUG_MSG("QThreadStorageData: Allocated id %d, destructor %p cannot be stored", id, func);
         return;
     }
-    for (id = 0; id < destr->count(); id++) {
-        if (destr->at(id) == 0)
+    for (id = 0; id < destr->size(); id++) {
+        if (destr->at(id) == nullptr)
             break;
     }
-    if (id == destr->count()) {
+    if (id == destr->size()) {
         destr->append(func);
     } else {
         (*destr)[id] = func;
@@ -108,7 +72,7 @@ QThreadStorageData::~QThreadStorageData()
     DEBUG_MSG("QThreadStorageData: Released id %d", id);
     QMutexLocker locker(&destructorsMutex);
     if (destructors())
-        (*destructors())[id] = 0;
+        (*destructors())[id] = nullptr;
 }
 
 void **QThreadStorageData::get() const
@@ -118,7 +82,7 @@ void **QThreadStorageData::get() const
         qWarning("QThreadStorage::get: QThreadStorage can only be used with threads started with QThread");
         return nullptr;
     }
-    QVector<void *> &tls = data->tls;
+    QList<void *> &tls = data->tls;
     if (tls.size() <= id)
         tls.resize(id + 1);
     void **v = &tls[id];
@@ -138,7 +102,7 @@ void **QThreadStorageData::set(void *p)
         qWarning("QThreadStorage::set: QThreadStorage can only be used with threads started with QThread");
         return nullptr;
     }
-    QVector<void *> &tls = data->tls;
+    QList<void *> &tls = data->tls;
     if (tls.size() <= id)
         tls.resize(id + 1);
 
@@ -152,7 +116,7 @@ void **QThreadStorageData::set(void *p)
 
         QMutexLocker locker(&destructorsMutex);
         DestructorMap *destr = destructors();
-        void (*destructor)(void *) = destr ? destr->value(id) : 0;
+        void (*destructor)(void *) = destr ? destr->value(id) : nullptr;
         locker.unlock();
 
         void *q = value;
@@ -170,7 +134,7 @@ void **QThreadStorageData::set(void *p)
 
 void QThreadStorageData::finish(void **p)
 {
-    QVector<void *> *tls = reinterpret_cast<QVector<void *> *>(p);
+    QList<void *> *tls = reinterpret_cast<QList<void *> *>(p);
     if (!tls || tls->isEmpty() || !destructors())
         return; // nothing to do
 
@@ -201,7 +165,7 @@ void QThreadStorageData::finish(void **p)
 
         if (tls->size() > i) {
             //re reset the tls in case it has been recreated by its own destructor.
-            (*tls)[i] = 0;
+            (*tls)[i] = nullptr;
         }
     }
     tls->clear();
@@ -225,7 +189,7 @@ void QThreadStorageData::finish(void **p)
 
     The hasLocalData() function allows the programmer to determine if
     data has previously been set using the setLocalData() function.
-    This is also useful for lazy initializiation.
+    This is also useful for lazy initialization.
 
     If T is a pointer type, QThreadStorage takes ownership of the data
     (which must be created on the heap with \c new) and deletes it when

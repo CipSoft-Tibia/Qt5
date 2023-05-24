@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QWAYLANDSERVERBUFFERINTEGRATION_H
 #define QWAYLANDSERVERBUFFERINTEGRATION_H
@@ -41,7 +15,7 @@
 // We mean it.
 //
 
-#include <QtCore/qglobal.h>
+#include <QtCore/private/qglobal_p.h>
 #include <QtCore/QSize>
 #include <QtGui/qopengl.h>
 
@@ -60,7 +34,7 @@ class QImage;
 namespace QtWayland {
 class Display;
 
-class Q_WAYLAND_COMPOSITOR_EXPORT ServerBuffer
+class Q_WAYLANDCOMPOSITOR_EXPORT ServerBuffer
 {
 public:
     enum Format {
@@ -87,7 +61,7 @@ protected:
     Format m_format;
 };
 
-class Q_WAYLAND_COMPOSITOR_EXPORT ServerBufferIntegration
+class Q_WAYLANDCOMPOSITOR_EXPORT ServerBufferIntegration
 {
 public:
     ServerBufferIntegration();
@@ -97,9 +71,10 @@ public:
 
     virtual bool supportsFormat(ServerBuffer::Format format) const = 0;
     virtual ServerBuffer *createServerBufferFromImage(const QImage &qimage, ServerBuffer::Format format) = 0;
-    virtual ServerBuffer *createServerBufferFromData(const QByteArray &data, const QSize &size, uint glInternalFormat)
+    virtual ServerBuffer *createServerBufferFromData(QByteArrayView view, const QSize &size,
+                                                     uint glInternalFormat)
     {
-        Q_UNUSED(data);
+        Q_UNUSED(view);
         Q_UNUSED(size);
         Q_UNUSED(glInternalFormat);
         return nullptr;

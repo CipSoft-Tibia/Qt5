@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,6 +17,7 @@
 #include "base/numerics/safe_math.h"
 #include "base/process/process_metrics.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 
 namespace memory_instrumentation {
 
@@ -205,8 +206,11 @@ bool GetAllRegions(std::vector<VMRegion>* regions) {
 
     char buffer[MAXPATHLEN];
     int length = proc_regionfilename(pid, address, buffer, MAXPATHLEN);
-    if (length != 0)
+    if (length > 0) {
       region.mapped_file.assign(buffer, length);
+      if (!base::IsStringUTF8AllowingNoncharacters(region.mapped_file))
+        region.mapped_file = "region file name is not UTF-8";
+    }
 
     // There's no way to get swapped or clean bytes without doing a
     // very expensive syscalls that crawls every single page in the memory
@@ -247,6 +251,8 @@ bool OSMetrics::FillOSMemoryDump(base::ProcessId pid,
 
   dump->platform_private_footprint->internal_bytes = info.internal;
   dump->platform_private_footprint->compressed_bytes = info.compressed;
+  dump->resident_set_kb = info.resident_size / 1024;
+  dump->peak_resident_set_kb = info.resident_size_peak / 1024;
 
   // The |phys_footprint| field was introduced in 10.11.
   if (count == ChromeTaskVMInfoCount) {

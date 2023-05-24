@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the lottie-qt module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "bmbase_p.h"
 
@@ -75,7 +49,7 @@ void BMBase::setName(const QString &name)
 
 bool BMBase::setProperty(BMLiteral::PropertyType propertyName, QVariant value)
 {
-    for (BMBase *child : qAsConst(m_children)) {
+    for (BMBase *child : std::as_const(m_children)) {
         bool changed = child->setProperty(propertyName, value);
         if (changed)
             return true;
@@ -109,7 +83,7 @@ BMBase *BMBase::findChild(const QString &childName)
         return this;
 
     BMBase *found = nullptr;
-    for (BMBase *child : qAsConst(m_children)) {
+    for (BMBase *child : std::as_const(m_children)) {
         found = child->findChild(childName);
         if (found)
             break;
@@ -122,7 +96,7 @@ void BMBase::updateProperties(int frame)
     if (m_hidden)
         return;
 
-    for (BMBase *child : qAsConst(m_children))
+    for (BMBase *child : std::as_const(m_children))
         child->updateProperties(frame);
 }
 
@@ -132,7 +106,7 @@ void BMBase::render(LottieRenderer &renderer) const
         return;
 
     renderer.saveState();
-    for (BMBase *child : qAsConst(m_children)) {
+    for (BMBase *child : std::as_const(m_children)) {
         if (child->m_hidden)
             continue;
         child->render(renderer);
@@ -217,11 +191,11 @@ const QJsonObject BMBase::resolveExpression(const QJsonObject &definition)
     QJsonObject retVal = definition;
 
     if (BMBase *source = m_topRoot->findChild(effect)) {
-        if (source->children().length())
+        if (source->children().size())
             retVal = source->children().at(0)->definition().value(QLatin1String("v")).toObject();
         else
             retVal = source->definition().value(QLatin1String("v")).toObject();
-        if (source->children().length() > 1)
+        if (source->children().size() > 1)
             qCWarning(lcLottieQtBodymovinParser) << "Effect source points"
                                                 "to a group that has"
                                                 "many children. The"

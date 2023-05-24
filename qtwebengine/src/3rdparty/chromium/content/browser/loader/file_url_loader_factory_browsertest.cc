@@ -1,13 +1,17 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/memory/raw_ptr.h"
+
 // This must be before Windows headers
-#include "base/bind_helpers.h"
+#include "base/functional/callback_helpers.h"
+#include "base/strings/stringprintf.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "content/public/test/browser_test.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include <objbase.h>
 #include <shlobj.h>
 #include <windows.h>
@@ -19,7 +23,6 @@
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
-#include "base/macros.h"
 #include "base/path_service.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -29,11 +32,12 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_paths.h"
+#include "content/public/common/content_switches.h"
 #include "content/public/test/content_browser_test.h"
+#include "content/public/test/content_browser_test_content_browser_client.h"
 #include "content/public/test/content_browser_test_utils.h"
 #include "content/public/test/test_navigation_observer.h"
 #include "content/shell/browser/shell.h"
-#include "content/test/test_content_browser_client.h"
 #include "net/base/filename_util.h"
 #include "net/base/net_errors.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
@@ -43,8 +47,8 @@
 namespace content {
 namespace {
 
-const char kSuccessTitle[] = "Title Of Awesomeness";
-const char kErrorTitle[] = "Error";
+const char16_t kSuccessTitle[] = u"Title Of Awesomeness";
+const char16_t kErrorTitle[] = u"Error";
 
 base::FilePath TestFilePath() {
   base::ScopedAllowBlockingForTesting allow_blocking;
@@ -56,7 +60,8 @@ base::FilePath AbsoluteFilePath(const base::FilePath& file_path) {
   return base::MakeAbsoluteFilePath(file_path);
 }
 
-class TestFileAccessContentBrowserClient : public TestContentBrowserClient {
+class TestFileAccessContentBrowserClient
+    : public ContentBrowserTestContentBrowserClient {
  public:
   struct FileAccessAllowedArgs {
     base::FilePath path;
@@ -64,17 +69,18 @@ class TestFileAccessContentBrowserClient : public TestContentBrowserClient {
     base::FilePath profile_path;
   };
 
-  TestFileAccessContentBrowserClient() {
-    old_content_browser_client_ = SetBrowserClientForTesting(this);
-  }
+  TestFileAccessContentBrowserClient() = default;
 
   void set_blocked_path(const base::FilePath& blocked_path) {
     blocked_path_ = AbsoluteFilePath(blocked_path);
   }
 
-  ~TestFileAccessContentBrowserClient() override {
-    EXPECT_EQ(this, SetBrowserClientForTesting(old_content_browser_client_));
-  }
+  TestFileAccessContentBrowserClient(
+      const TestFileAccessContentBrowserClient&) = delete;
+  TestFileAccessContentBrowserClient& operator=(
+      const TestFileAccessContentBrowserClient&) = delete;
+
+  ~TestFileAccessContentBrowserClient() override = default;
 
   bool IsFileAccessAllowed(const base::FilePath& path,
                            const base::FilePath& absolute_path,
@@ -93,13 +99,9 @@ class TestFileAccessContentBrowserClient : public TestContentBrowserClient {
   void ClearAccessAllowedArgs() { access_allowed_args_.clear(); }
 
  private:
-  ContentBrowserClient* old_content_browser_client_;
-
   base::FilePath blocked_path_;
 
   std::vector<FileAccessAllowedArgs> access_allowed_args_;
-
-  DISALLOW_COPY_AND_ASSIGN(TestFileAccessContentBrowserClient);
 };
 
 // This class contains integration tests for file URLs.
@@ -132,8 +134,7 @@ class FileURLLoaderFactoryBrowserTest : public ContentBrowserTest {
 IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest, Basic) {
   TestFileAccessContentBrowserClient test_browser_client;
   EXPECT_TRUE(NavigateToURL(shell(), net::FilePathToFileURL(TestFilePath())));
-  EXPECT_EQ(base::ASCIIToUTF16(kSuccessTitle),
-            shell()->web_contents()->GetTitle());
+  EXPECT_EQ(kSuccessTitle, shell()->web_contents()->GetTitle());
 
   ASSERT_EQ(1u, test_browser_client.access_allowed_args().size());
   EXPECT_EQ(TestFilePath(), test_browser_client.access_allowed_args()[0].path);
@@ -154,8 +155,7 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest, FileAccessNotAllowed) {
               net::test::IsError(net::ERR_ACCESS_DENIED));
   EXPECT_EQ(net::FilePathToFileURL(TestFilePath()),
             shell()->web_contents()->GetURL());
-  EXPECT_EQ(base::ASCIIToUTF16(kErrorTitle),
-            shell()->web_contents()->GetTitle());
+  EXPECT_EQ(kErrorTitle, shell()->web_contents()->GetTitle());
 
   ASSERT_EQ(1u, test_browser_client.access_allowed_args().size());
   EXPECT_EQ(TestFilePath(), test_browser_client.access_allowed_args()[0].path);
@@ -165,7 +165,7 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest, FileAccessNotAllowed) {
             test_browser_client.access_allowed_args()[0].profile_path);
 }
 
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
 
 // Test symbolic links on POSIX platforms. These act like the contents of
 // the symbolic link are the same as the contents of the file it links to.
@@ -186,8 +186,7 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest, SymlinksToFiles) {
       base::CreateSymbolicLink(AbsoluteFilePath(TestFilePath()), sym_link));
 
   EXPECT_TRUE(NavigateToURL(shell(), net::FilePathToFileURL(sym_link)));
-  EXPECT_EQ(base::ASCIIToUTF16(kSuccessTitle),
-            shell()->web_contents()->GetTitle());
+  EXPECT_EQ(kSuccessTitle, shell()->web_contents()->GetTitle());
 
   ASSERT_EQ(1u, test_browser_client.access_allowed_args().size());
   EXPECT_EQ(sym_link, test_browser_client.access_allowed_args()[0].path);
@@ -211,8 +210,7 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest, SymlinksToFiles) {
               net::test::IsError(net::ERR_ACCESS_DENIED));
   EXPECT_EQ(net::FilePathToFileURL(sym_link),
             shell()->web_contents()->GetURL());
-  EXPECT_EQ(base::ASCIIToUTF16(kErrorTitle),
-            shell()->web_contents()->GetTitle());
+  EXPECT_EQ(kErrorTitle, shell()->web_contents()->GetTitle());
 
   ASSERT_EQ(1u, test_browser_client.access_allowed_args().size());
   EXPECT_EQ(sym_link, test_browser_client.access_allowed_args()[0].path);
@@ -222,7 +220,7 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest, SymlinksToFiles) {
             test_browser_client.access_allowed_args()[0].profile_path);
 }
 
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
 
 // Test shortcuts on Windows. These are treated as redirects.
 IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest, ResolveShortcutTest) {
@@ -245,18 +243,16 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest, ResolveShortcutTest) {
         CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&shell))));
     Microsoft::WRL::ComPtr<IPersistFile> persist;
     ASSERT_TRUE(SUCCEEDED(shell.As<IPersistFile>(&persist)));
-    EXPECT_TRUE(
-        SUCCEEDED(shell->SetPath(base::as_wcstr(TestFilePath().value()))));
+    EXPECT_TRUE(SUCCEEDED(shell->SetPath(TestFilePath().value().c_str())));
     EXPECT_TRUE(SUCCEEDED(shell->SetDescription(L"ResolveShortcutTest")));
-    base::string16 lnk_string = lnk_path.value();
-    EXPECT_TRUE(SUCCEEDED(persist->Save(base::as_wcstr(lnk_string), TRUE)));
+    std::wstring lnk_string = lnk_path.value();
+    EXPECT_TRUE(SUCCEEDED(persist->Save(lnk_string.c_str(), TRUE)));
   }
 
   EXPECT_TRUE(NavigateToURL(
       shell(), net::FilePathToFileURL(lnk_path),
       net::FilePathToFileURL(TestFilePath()) /* expect_commit_url */));
-  EXPECT_EQ(base::ASCIIToUTF16(kSuccessTitle),
-            shell()->web_contents()->GetTitle());
+  EXPECT_EQ(kSuccessTitle, shell()->web_contents()->GetTitle());
 
   ASSERT_EQ(2u, test_browser_client.access_allowed_args().size());
   EXPECT_EQ(lnk_path, test_browser_client.access_allowed_args()[0].path);
@@ -284,8 +280,7 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest, ResolveShortcutTest) {
               net::test::IsError(net::ERR_ACCESS_DENIED));
   EXPECT_EQ(net::FilePathToFileURL(lnk_path),
             shell()->web_contents()->GetURL());
-  EXPECT_EQ(base::ASCIIToUTF16(kErrorTitle),
-            shell()->web_contents()->GetTitle());
+  EXPECT_EQ(kErrorTitle, shell()->web_contents()->GetTitle());
 
   ASSERT_EQ(1u, test_browser_client.access_allowed_args().size());
   EXPECT_EQ(lnk_path, test_browser_client.access_allowed_args()[0].path);
@@ -308,8 +303,7 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest, ResolveShortcutTest) {
               net::test::IsError(net::ERR_ACCESS_DENIED));
   EXPECT_EQ(net::FilePathToFileURL(TestFilePath()),
             shell()->web_contents()->GetURL());
-  EXPECT_EQ(base::ASCIIToUTF16(kErrorTitle),
-            shell()->web_contents()->GetTitle());
+  EXPECT_EQ(kErrorTitle, shell()->web_contents()->GetTitle());
 
   ASSERT_EQ(2u, test_browser_client.access_allowed_args().size());
   EXPECT_EQ(lnk_path, test_browser_client.access_allowed_args()[0].path);
@@ -325,7 +319,7 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest, ResolveShortcutTest) {
             test_browser_client.access_allowed_args()[1].profile_path);
 }
 
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
 IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest,
                        RedirectToFileUrlMainFrame) {
@@ -339,8 +333,7 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest,
   // The redirect should not have been followed. This is important so that a
   // reload will show the same error.
   EXPECT_EQ(RedirectToFileURL(), shell()->web_contents()->GetURL());
-  EXPECT_EQ(base::ASCIIToUTF16(kErrorTitle),
-            shell()->web_contents()->GetTitle());
+  EXPECT_EQ(kErrorTitle, shell()->web_contents()->GetTitle());
   // There should never have been a request for the file URL.
   EXPECT_TRUE(test_browser_client.access_allowed_args().empty());
 
@@ -352,8 +345,7 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest,
   EXPECT_THAT(navigation_observer2.last_net_error_code(),
               net::test::IsError(net::ERR_UNSAFE_REDIRECT));
   EXPECT_EQ(RedirectToFileURL(), shell()->web_contents()->GetURL());
-  EXPECT_EQ(base::ASCIIToUTF16(kErrorTitle),
-            shell()->web_contents()->GetTitle());
+  EXPECT_EQ(kErrorTitle, shell()->web_contents()->GetTitle());
   // There should never have been a request for the file URL.
   EXPECT_TRUE(test_browser_client.access_allowed_args().empty());
 }
@@ -376,7 +368,7 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest,
       RedirectToFileURL().spec().c_str());
   // Unfortunately, fetch doesn't provide a way to unambiguously know if the
   // request failed due to the redirect being unsafe.
-  EXPECT_EQ("error", EvalJs(shell()->web_contents()->GetMainFrame(),
+  EXPECT_EQ("error", EvalJs(shell()->web_contents()->GetPrimaryMainFrame(),
                             fetch_redirect_to_file));
   // There should never have been a request for the file URL.
   EXPECT_TRUE(test_browser_client.access_allowed_args().empty());
@@ -463,6 +455,94 @@ IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest,
   EXPECT_EQ("OK",
             EvalJs(popup, JsReplace(kScriptTemplateToTriggerSubresourceFetch,
                                     img_url)));
+}
+
+class FileURLLoaderFactoryDisabledSecurityBrowserTest
+    : public FileURLLoaderFactoryBrowserTest {
+ public:
+  FileURLLoaderFactoryDisabledSecurityBrowserTest() = default;
+
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    command_line->AppendSwitch(switches::kDisableWebSecurity);
+    FileURLLoaderFactoryBrowserTest::SetUpCommandLine(command_line);
+  }
+};
+
+// Test whether sandboxed file: frames still can access file: subresources.
+IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryDisabledSecurityBrowserTest,
+                       SubresourcesInSandboxedFileFrame) {
+  GURL main_url(GetTestUrl("", "title1.html"));
+  EXPECT_TRUE(NavigateToURL(shell(), main_url));
+
+  // Append a sandboxed file: subframe.
+  {
+    GURL sandboxed_url(GetTestUrl("", "title2.html"));
+    TestNavigationObserver nav_observer(shell()->web_contents());
+    const char kScriptTemplateToAddSubframe[] = R"(
+        f = document.createElement('iframe');
+        f.sandbox = 'allow-scripts';
+        f.src = $1;
+        document.body.appendChild(f);
+    )";
+    ASSERT_TRUE(ExecJs(shell(),
+                       JsReplace(kScriptTemplateToAddSubframe, sandboxed_url)));
+    nav_observer.Wait();
+  }
+
+  // Trigger a subresource fetch in the subframe.  This is the main test step -
+  // it verifies that at this point the subframe has access to a functional
+  // FileURLLoaderFactory.
+  //
+  // Access to a file: (local-scheme) subresource is normally forbidden by
+  // blink::SecurityOrigin::CanDisplay if the requesting origin is opaque.
+  // Example error message:
+  //     Not allowed to load local resource:
+  //     file:///.../src/content/test/data/site_isolation/png-corp.png,
+  //     source: file:///...src/content/test/data/title2.html
+  //
+  // OTOH, this restriction can be relaxed by 1) the --disable-web-security
+  // switch (this is what this test suite is doing) or 2) the following Android
+  // WebView API: android.webkit.WebSettings.setAllowFileAccess.  This is why
+  // the test asserts below that the access is successful.
+  RenderFrameHost* main_frame = shell()->web_contents()->GetPrimaryMainFrame();
+  RenderFrameHost* child_frame = ChildFrameAt(main_frame, 0);
+  const char kScriptTemplateToTriggerSubresourceFetch[] = R"(
+      new Promise(function (resolve, reject) {
+          var img = document.createElement('img');
+          img.src = $1;
+          img.onload = _ => resolve('OK');
+          img.onerror = e => resolve('ERR: ' + e);
+      });
+  )";
+  GURL img_url = GetTestUrl("site_isolation", "png-corp.png");
+  EXPECT_EQ("OK", EvalJs(child_frame,
+                         JsReplace(kScriptTemplateToTriggerSubresourceFetch,
+                                   img_url)));
+}
+
+IN_PROC_BROWSER_TEST_F(FileURLLoaderFactoryBrowserTest, LastModified) {
+  // Create a temporary file with an arbitrary last-modified timestamp.
+  const char kLastModified[] = "1994-11-15T12:45:26.000Z";
+  base::FilePath path;
+  {
+    base::ScopedAllowBlockingForTesting allow_blocking;
+    ASSERT_TRUE(base::CreateTemporaryFile(&path));
+    base::Time last_modified_time;
+    ASSERT_TRUE(base::Time::FromString(kLastModified, &last_modified_time));
+    ASSERT_TRUE(base::TouchFile(path, /*last_accessed=*/base::Time::Now(),
+                                last_modified_time));
+  }
+  EXPECT_TRUE(NavigateToURL(shell(), net::FilePathToFileURL(path)));
+
+  // Verify the syntax
+  EXPECT_THAT(content::EvalJs(shell()->web_contents(), "document.lastModified")
+                  .ExtractString(),
+              testing::MatchesRegex(R"(\d\d/\d\d/\d\d\d\d \d\d:\d\d:\d\d)"));
+  // Verify the value (it's in local time, so we parse it and convert it in JS
+  // to get a representation in UTC).
+  EXPECT_EQ(kLastModified,
+            content::EvalJs(shell()->web_contents(),
+                            "new Date(document.lastModified).toISOString()"));
 }
 
 }  // namespace

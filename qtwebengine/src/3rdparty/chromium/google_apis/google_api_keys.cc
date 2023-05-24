@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,10 +18,12 @@
 #include "base/logging.h"
 #include "base/strings/stringize_macros.h"
 #include "build/branding_buildflags.h"
+#include "build/chromeos_buildflags.h"
+#include "google_apis/buildflags.h"
 #include "google_apis/gaia/gaia_config.h"
 #include "google_apis/gaia/gaia_switches.h"
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
 #include "google_apis/google_api_keys_mac.h"
 #endif
 
@@ -50,14 +52,6 @@
 #define GOOGLE_CLIENT_SECRET_MAIN DUMMY_API_TOKEN
 #endif
 
-#if !defined(GOOGLE_CLIENT_ID_CLOUD_PRINT)
-#define GOOGLE_CLIENT_ID_CLOUD_PRINT DUMMY_API_TOKEN
-#endif
-
-#if !defined(GOOGLE_CLIENT_SECRET_CLOUD_PRINT)
-#define GOOGLE_CLIENT_SECRET_CLOUD_PRINT DUMMY_API_TOKEN
-#endif
-
 #if !defined(GOOGLE_CLIENT_ID_REMOTING)
 #define GOOGLE_CLIENT_ID_REMOTING DUMMY_API_TOKEN
 #endif
@@ -74,20 +68,14 @@
 #define GOOGLE_CLIENT_SECRET_REMOTING_HOST DUMMY_API_TOKEN
 #endif
 
-// This is really the API key for non-stable channels on Android. It's
-// named after the first feature that used it.
-// TODO(jkrcal,rogerta): Rename this to GOOGLE_API_KEY_ANDROID_NON_STABLE.
-#if !defined(GOOGLE_API_KEY_PHYSICAL_WEB_TEST)
-#define GOOGLE_API_KEY_PHYSICAL_WEB_TEST DUMMY_API_TOKEN
+#if BUILDFLAG(IS_ANDROID)
+#if !defined(GOOGLE_API_KEY_ANDROID_NON_STABLE)
+#define GOOGLE_API_KEY_ANDROID_NON_STABLE DUMMY_API_TOKEN
+#endif
 #endif
 
 #if !defined(GOOGLE_API_KEY_REMOTING)
 #define GOOGLE_API_KEY_REMOTING DUMMY_API_TOKEN
-#endif
-
-// API key for SharingService.
-#if !defined(GOOGLE_API_KEY_SHARING)
-#define GOOGLE_API_KEY_SHARING DUMMY_API_TOKEN
 #endif
 
 // API key for the Speech On-Device API (SODA).
@@ -95,11 +83,22 @@
 #define GOOGLE_API_KEY_SODA DUMMY_API_TOKEN
 #endif
 
-// API key for the DevTools frontend to use for surveys. Note there is no
-// public API to replace this functionality.
-#if !defined(GOOGLE_API_KEY_DEVTOOLS_SURVEYS)
-#define GOOGLE_API_KEY_DEVTOOLS_SURVEYS DUMMY_API_TOKEN
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+// API key for the Nearby Sharing Service.
+#if !defined(GOOGLE_API_KEY_SHARING)
+#define GOOGLE_API_KEY_SHARING DUMMY_API_TOKEN
 #endif
+
+// API key for the ReadAloud API.
+#if !defined(GOOGLE_API_KEY_READ_ALOUD)
+#define GOOGLE_API_KEY_READ_ALOUD DUMMY_API_TOKEN
+#endif
+
+// API key for the Fresnel API.
+#if !defined(GOOGLE_API_KEY_FRESNEL)
+#define GOOGLE_API_KEY_FRESNEL DUMMY_API_TOKEN
+#endif
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 // These are used as shortcuts for developers and users providing
 // OAuth credentials via preprocessor defines or environment
@@ -131,10 +130,10 @@ class APIKeyCache {
         std::string(), environment.get(), command_line, gaia_config);
 
 // A special non-stable key is at the moment defined only for Android Chrome.
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
     api_key_non_stable_ = CalculateKeyValue(
-        GOOGLE_API_KEY_PHYSICAL_WEB_TEST,
-        STRINGIZE_NO_EXPANSION(GOOGLE_API_KEY_PHYSICAL_WEB_TEST), nullptr,
+        GOOGLE_API_KEY_ANDROID_NON_STABLE,
+        STRINGIZE_NO_EXPANSION(GOOGLE_API_KEY_ANDROID_NON_STABLE), nullptr,
         std::string(), environment.get(), command_line, gaia_config);
 #else
     api_key_non_stable_ = api_key_;
@@ -145,18 +144,24 @@ class APIKeyCache {
         STRINGIZE_NO_EXPANSION(GOOGLE_API_KEY_REMOTING), nullptr, std::string(),
         environment.get(), command_line, gaia_config);
 
-    api_key_sharing_ = CalculateKeyValue(
-        GOOGLE_API_KEY_SHARING, STRINGIZE_NO_EXPANSION(GOOGLE_API_KEY_SHARING),
-        nullptr, std::string(), environment.get(), command_line, gaia_config);
-
     api_key_soda_ = CalculateKeyValue(
         GOOGLE_API_KEY_SODA, STRINGIZE_NO_EXPANSION(GOOGLE_API_KEY_SODA),
         nullptr, std::string(), environment.get(), command_line, gaia_config);
 
-    api_key_devtools_surveys_ = CalculateKeyValue(
-        GOOGLE_API_KEY_DEVTOOLS_SURVEYS,
-        STRINGIZE_NO_EXPANSION(GOOGLE_API_KEY_DEVTOOLS_SURVEYS), nullptr,
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+    api_key_sharing_ = CalculateKeyValue(
+        GOOGLE_API_KEY_SHARING, STRINGIZE_NO_EXPANSION(GOOGLE_API_KEY_SHARING),
+        nullptr, std::string(), environment.get(), command_line, gaia_config);
+
+    api_key_read_aloud_ = CalculateKeyValue(
+        GOOGLE_API_KEY_READ_ALOUD,
+        STRINGIZE_NO_EXPANSION(GOOGLE_API_KEY_READ_ALOUD), nullptr,
         std::string(), environment.get(), command_line, gaia_config);
+
+    api_key_fresnel_ = CalculateKeyValue(
+        GOOGLE_API_KEY_FRESNEL, STRINGIZE_NO_EXPANSION(GOOGLE_API_KEY_FRESNEL),
+        nullptr, std::string(), environment.get(), command_line, gaia_config);
+#endif
 
     metrics_key_ = CalculateKeyValue(
         GOOGLE_METRICS_SIGNING_KEY,
@@ -180,22 +185,13 @@ class APIKeyCache {
     // written.
     client_ids_[CLIENT_MAIN] = CalculateKeyValue(
         GOOGLE_CLIENT_ID_MAIN, STRINGIZE_NO_EXPANSION(GOOGLE_CLIENT_ID_MAIN),
-        switches::kOAuth2ClientID, default_client_id, environment.get(),
+        ::switches::kOAuth2ClientID, default_client_id, environment.get(),
         command_line, gaia_config);
-    client_secrets_[CLIENT_MAIN] =
-        CalculateKeyValue(GOOGLE_CLIENT_SECRET_MAIN,
-                          STRINGIZE_NO_EXPANSION(GOOGLE_CLIENT_SECRET_MAIN),
-                          switches::kOAuth2ClientSecret, default_client_secret,
-                          environment.get(), command_line, gaia_config);
-
-    client_ids_[CLIENT_CLOUD_PRINT] = CalculateKeyValue(
-        GOOGLE_CLIENT_ID_CLOUD_PRINT,
-        STRINGIZE_NO_EXPANSION(GOOGLE_CLIENT_ID_CLOUD_PRINT), nullptr,
-        default_client_id, environment.get(), command_line, gaia_config);
-    client_secrets_[CLIENT_CLOUD_PRINT] = CalculateKeyValue(
-        GOOGLE_CLIENT_SECRET_CLOUD_PRINT,
-        STRINGIZE_NO_EXPANSION(GOOGLE_CLIENT_SECRET_CLOUD_PRINT), nullptr,
-        default_client_secret, environment.get(), command_line, gaia_config);
+    client_secrets_[CLIENT_MAIN] = CalculateKeyValue(
+        GOOGLE_CLIENT_SECRET_MAIN,
+        STRINGIZE_NO_EXPANSION(GOOGLE_CLIENT_SECRET_MAIN),
+        ::switches::kOAuth2ClientSecret, default_client_secret,
+        environment.get(), command_line, gaia_config);
 
     client_ids_[CLIENT_REMOTING] = CalculateKeyValue(
         GOOGLE_CLIENT_ID_REMOTING,
@@ -217,16 +213,17 @@ class APIKeyCache {
   }
 
   std::string api_key() const { return api_key_; }
-#if defined(OS_IOS)
+#if BUILDFLAG(SUPPORT_EXTERNAL_GOOGLE_API_KEY)
   void set_api_key(const std::string& api_key) { api_key_ = api_key; }
 #endif
   std::string api_key_non_stable() const { return api_key_non_stable_; }
   std::string api_key_remoting() const { return api_key_remoting_; }
-  std::string api_key_sharing() const { return api_key_sharing_; }
   std::string api_key_soda() const { return api_key_soda_; }
-  std::string api_key_devtools_surveys() const {
-    return api_key_devtools_surveys_;
-  }
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  std::string api_key_sharing() const { return api_key_sharing_; }
+  std::string api_key_read_aloud() const { return api_key_read_aloud_; }
+  std::string api_key_fresnel() const { return api_key_fresnel_; }
+#endif
 
   std::string metrics_key() const { return metrics_key_; }
 
@@ -235,7 +232,7 @@ class APIKeyCache {
     return client_ids_[client];
   }
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
   void SetClientID(OAuth2Client client, const std::string& client_id) {
     client_ids_[client] = client_id;
   }
@@ -246,19 +243,11 @@ class APIKeyCache {
     return client_secrets_[client];
   }
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
   void SetClientSecret(OAuth2Client client, const std::string& client_secret) {
     client_secrets_[client] = client_secret;
   }
 #endif
-
-  std::string GetSpdyProxyAuthValue() {
-#if defined(SPDY_PROXY_AUTH_VALUE)
-    return SPDY_PROXY_AUTH_VALUE;
-#else
-    return std::string();
-#endif
-  }
 
  private:
   // Gets a value for a key.  In priority order, this will be the value
@@ -278,7 +267,7 @@ class APIKeyCache {
                                        GaiaConfig* gaia_config) {
     std::string key_value = baked_in_value;
     std::string temp;
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
     // macOS and iOS can also override the API key with a value from the
     // Info.plist.
     temp = ::google_apis::GetAPIKeyFromInfoPlist(environment_variable_name);
@@ -314,7 +303,9 @@ class APIKeyCache {
     }
 
     if (key_value == DUMMY_API_TOKEN) {
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+// TODO(crbug.com/1294915): Rewrite this condition using
+// BUILDFLAG(SUPPORT_EXTERNAL_GOOGLE_API_KEY).
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING) && !BUILDFLAG(IS_FUCHSIA)
       // No key should be unset in an official build except the
       // GOOGLE_DEFAULT_* keys.  The default keys don't trigger this
       // check as their "unset" value is not DUMMY_API_TOKEN.
@@ -336,9 +327,12 @@ class APIKeyCache {
   std::string api_key_;
   std::string api_key_non_stable_;
   std::string api_key_remoting_;
-  std::string api_key_sharing_;
   std::string api_key_soda_;
-  std::string api_key_devtools_surveys_;
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  std::string api_key_sharing_;
+  std::string api_key_read_aloud_;
+  std::string api_key_fresnel_;
+#endif
   std::string metrics_key_;
   std::string client_ids_[CLIENT_NUM_ITEMS];
   std::string client_secrets_[CLIENT_NUM_ITEMS];
@@ -363,19 +357,25 @@ std::string GetRemotingAPIKey() {
   return g_api_key_cache.Get().api_key_remoting();
 }
 
-std::string GetSharingAPIKey() {
-  return g_api_key_cache.Get().api_key_sharing();
-}
-
 std::string GetSodaAPIKey() {
   return g_api_key_cache.Get().api_key_soda();
 }
 
-std::string GetDevtoolsSurveysAPIKey() {
-  return g_api_key_cache.Get().api_key_devtools_surveys();
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+std::string GetSharingAPIKey() {
+  return g_api_key_cache.Get().api_key_sharing();
 }
 
-#if defined(OS_IOS)
+std::string GetReadAloudAPIKey() {
+  return g_api_key_cache.Get().api_key_read_aloud();
+}
+
+std::string GetFresnelAPIKey() {
+  return g_api_key_cache.Get().api_key_fresnel();
+}
+#endif
+
+#if BUILDFLAG(SUPPORT_EXTERNAL_GOOGLE_API_KEY)
 void SetAPIKey(const std::string& api_key) {
   g_api_key_cache.Get().set_api_key(api_key);
 }
@@ -405,7 +405,7 @@ std::string GetOAuth2ClientSecret(OAuth2Client client) {
   return g_api_key_cache.Get().GetClientSecret(client);
 }
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
 void SetOAuth2ClientID(OAuth2Client client, const std::string& client_id) {
   g_api_key_cache.Get().SetClientID(client, client_id);
 }
@@ -415,10 +415,6 @@ void SetOAuth2ClientSecret(OAuth2Client client,
   g_api_key_cache.Get().SetClientSecret(client, client_secret);
 }
 #endif
-
-std::string GetSpdyProxyAuthValue() {
-  return g_api_key_cache.Get().GetSpdyProxyAuthValue();
-}
 
 bool IsGoogleChromeAPIKeyUsed() {
 #if defined(USE_OFFICIAL_GOOGLE_API_KEYS)

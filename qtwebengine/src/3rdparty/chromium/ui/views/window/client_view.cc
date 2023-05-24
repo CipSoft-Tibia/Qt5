@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@
 #include "ui/accessibility/ax_enums.mojom.h"
 #include "ui/accessibility/ax_node_data.h"
 #include "ui/base/hit_test.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/views/layout/fill_layout.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
@@ -40,7 +41,18 @@ void ClientView::WidgetClosing() {}
 gfx::Size ClientView::CalculatePreferredSize() const {
   // |contents_view_| is allowed to be NULL up until the point where this view
   // is attached to a Container.
-  return contents_view_ ? contents_view_->GetPreferredSize() : gfx::Size();
+  if (!contents_view_)
+    return gfx::Size();
+
+  return contents_view_->GetPreferredSize();
+}
+
+int ClientView::GetHeightForWidth(int width) const {
+  // |contents_view_| is allowed to be NULL up until the point where this view
+  // is attached to a Container.
+  if (!contents_view_)
+    return 0;
+  return contents_view_->GetHeightForWidth(width);
 }
 
 gfx::Size ClientView::GetMaximumSize() const {
@@ -74,9 +86,7 @@ void ClientView::ViewHierarchyChanged(
     // (the OK/Cancel buttons are inserted before contents_view_)
     // TODO(weili): This seems fragile and can be refactored.
     // Tracked at https://crbug.com/1012466.
-    AddChildViewAt(contents_view_, 0);
-  } else if (!details.is_add && details.child == contents_view_) {
-    contents_view_ = nullptr;
+    AddChildViewAt(contents_view_.get(), 0);
   }
 }
 

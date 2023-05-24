@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSensors module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSENSOR_H
 #define QSENSOR_H
@@ -56,33 +20,29 @@ class QSensorReading;
 class QSensorReadingPrivate;
 class QSensorFilter;
 
-// This type is no longer used in the API but third party apps may be using it
-typedef quint64 qtimestamp;
+using qrange = QPair<int,int>;
+using qrangelist = QList<qrange>;
 
-typedef QPair<int,int> qrange;
-typedef QList<qrange> qrangelist;
 struct qoutputrange
 {
     qreal minimum;
     qreal maximum;
     qreal accuracy;
 };
-typedef QList<qoutputrange> qoutputrangelist;
+
+using qoutputrangelist = QList<qoutputrange>;
 
 class Q_SENSORS_EXPORT QSensor : public QObject
 {
     friend class QSensorBackend;
-
     Q_OBJECT
-    Q_ENUMS(Feature)
-    Q_ENUMS(AxesOrientationMode)
-    Q_PROPERTY(QByteArray identifier READ identifier WRITE setIdentifier)
-    Q_PROPERTY(QByteArray type READ type)
+    Q_PROPERTY(QByteArray identifier READ identifier WRITE setIdentifier NOTIFY identifierChanged)
+    Q_PROPERTY(QByteArray type READ type CONSTANT)
     Q_PROPERTY(bool connectedToBackend READ isConnectedToBackend)
     Q_PROPERTY(qrangelist availableDataRates READ availableDataRates)
     Q_PROPERTY(int dataRate READ dataRate WRITE setDataRate NOTIFY dataRateChanged)
     Q_PROPERTY(QSensorReading* reading READ reading NOTIFY readingChanged)
-    Q_PROPERTY(bool busy READ isBusy)
+    Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
     Q_PROPERTY(bool active READ isActive WRITE setActive NOTIFY activeChanged)
     Q_PROPERTY(qoutputrangelist outputRanges READ outputRanges)
     Q_PROPERTY(int outputRange READ outputRange WRITE setOutputRange)
@@ -108,6 +68,7 @@ public:
         PressureSensorTemperature,
         Reserved = 257 // Make sure at least 2 bytes are used for the enum to avoid breaking BC later
     };
+    Q_ENUM(Feature)
 
     // Keep in sync with QmlSensor::AxesOrientationMode
     enum AxesOrientationMode {
@@ -115,8 +76,9 @@ public:
         AutomaticOrientation,
         UserOrientation
     };
+    Q_ENUM(AxesOrientationMode)
 
-    explicit QSensor(const QByteArray &type, QObject *parent = Q_NULLPTR);
+    explicit QSensor(const QByteArray &type, QObject *parent = nullptr);
     virtual ~QSensor();
 
     QByteArray identifier() const;
@@ -205,9 +167,10 @@ Q_SIGNALS:
     void maxBufferSizeChanged(int maxBufferSize);
     void efficientBufferSizeChanged(int efficientBufferSize);
     void bufferSizeChanged(int bufferSize);
+    void identifierChanged();
 
 protected:
-    explicit QSensor(const QByteArray &type, QSensorPrivate &dd, QObject* parent = Q_NULLPTR);
+    explicit QSensor(const QByteArray &type, QSensorPrivate &dd, QObject* parent = nullptr);
     QSensorBackend *backend() const;
 
 private:
@@ -261,7 +224,7 @@ private:
 
 #define DECLARE_READING_D(classname, pclassname)\
     public:\
-        classname(QObject *parent = Q_NULLPTR);\
+        classname(QObject *parent = nullptr);\
         virtual ~classname();\
         void copyValuesFrom(QSensorReading *other) override;\
     private:\
@@ -272,7 +235,7 @@ private:
 
 #define IMPLEMENT_READING_D(classname, pclassname)\
     classname::classname(QObject *parent)\
-        : QSensorReading(parent, Q_NULLPTR)\
+        : QSensorReading(parent, nullptr)\
         , d(new pclassname)\
         {}\
     classname::~classname() {}\
@@ -296,4 +259,3 @@ Q_DECLARE_METATYPE(qrangelist)
 Q_DECLARE_METATYPE(qoutputrangelist)
 
 #endif
-

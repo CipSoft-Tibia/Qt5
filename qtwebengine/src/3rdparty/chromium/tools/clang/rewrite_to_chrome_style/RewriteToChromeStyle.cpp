@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -215,7 +215,7 @@ class MethodBlocklist {
     }
   }
 
-  // Stores methods to blacklist in a map:
+  // Stores methods to blocklist in a map:
   // method name -> class name -> set of all allowed numbers of arguments.
   llvm::StringMap<llvm::StringSet<>> method_to_classes_;
 };
@@ -299,7 +299,7 @@ bool MatchAllOverriddenMethods(
   // other it will break what this class overrides, disconnecting it from the
   // one we did not rename which creates a behaviour change. So assert and
   // demand the user to fix the code first (or add the method to our
-  // blacklist T_T).
+  // blocklist T_T).
   if (override_matches && override_not_matches) {
     // blink::InternalSettings::trace method overrides
     // 1) blink::InternalSettingsGenerated::trace

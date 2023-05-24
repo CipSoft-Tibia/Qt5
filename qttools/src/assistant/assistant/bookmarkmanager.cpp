@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "tracer.h"
 
 #include "bookmarkmanager.h"
@@ -302,6 +277,8 @@ void BookmarkManager::buildBookmarksMenu(const QModelIndex &index, QMenu* menu)
     } else {
         QAction *action = menu->addAction(icon, text);
         action->setData(index.data(UserRoleUrl).toString());
+        connect(action, &QAction::triggered,
+                this, &BookmarkManager::setSourceFromAction);
     }
 }
 
@@ -383,8 +360,8 @@ void BookmarkManager::refreshBookmarkMenu()
     bookmarkMenu->addAction(tr("Manage Bookmarks..."), this,
                             &BookmarkManager::manageBookmarks);
     bookmarkMenu->addAction(QIcon::fromTheme("bookmark-new"), tr("Add Bookmark..."),
-                            this, &BookmarkManager::addBookmarkActivated,
-                            QKeySequence(tr("Ctrl+D")));
+                            QKeySequence(tr("Ctrl+D")),
+                            this, &BookmarkManager::addBookmarkActivated);
 
     bookmarkMenu->addSeparator();
 
@@ -396,9 +373,6 @@ void BookmarkManager::refreshBookmarkMenu()
     root = bookmarkModel->index(1, 0, QModelIndex());
     for (int i = 0; i < bookmarkModel->rowCount(root); ++i)
         buildBookmarksMenu(bookmarkModel->index(i, 0, root), bookmarkMenu);
-
-    connect(bookmarkMenu, &QMenu::triggered,
-            this, &BookmarkManager::setSourceFromAction);
 }
 
 void BookmarkManager::refreshBookmarkToolBar()
@@ -420,8 +394,6 @@ void BookmarkManager::refreshBookmarkToolBar()
             QMenu *menu = new QMenu(button);
             for (int j = 0; j < bookmarkModel->rowCount(index); ++j)
                 buildBookmarksMenu(bookmarkModel->index(j, 0, index), menu);
-            connect(menu, &QMenu::triggered,
-                    this, &BookmarkManager::setSourceFromAction);
             button->setMenu(menu);
             button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
             button->setIcon(qvariant_cast<QIcon>(index.data(Qt::DecorationRole)));
@@ -543,7 +515,7 @@ void BookmarkManager::textChanged(const QString &text)
             bookmarkTreeView->setRootIsDecorated(false);
             bookmarkTreeView->setModel(typeAndSearchModel);
         }
-        typeAndSearchModel->setFilterRegExp(QRegExp(text));
+        typeAndSearchModel->setFilterRegularExpression(text);
     } else {
         typeAndSearch = false;
         bookmarkTreeView->setModel(bookmarkModel);

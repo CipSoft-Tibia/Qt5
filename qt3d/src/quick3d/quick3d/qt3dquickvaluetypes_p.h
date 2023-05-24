@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DQUICKVALUETYPES_P_H
 #define QT3DQUICKVALUETYPES_P_H
@@ -66,13 +30,8 @@ QT_BEGIN_NAMESPACE
 
 namespace Qt3DCore {
 namespace Quick {
-namespace Quick3DValueTypes {
 
-Q_3DQUICKSHARED_PRIVATE_EXPORT void registerValueTypes();
-
-}
-
-class Q_3DQUICKSHARED_PRIVATE_EXPORT Quick3DColorValueType
+class Q_3DQUICKSHARED_PRIVATE_EXPORT QQuick3DColorValueType
 {
     QColor v;
     Q_PROPERTY(qreal r READ r WRITE setR FINAL)
@@ -85,9 +44,22 @@ class Q_3DQUICKSHARED_PRIVATE_EXPORT Quick3DColorValueType
     Q_PROPERTY(qreal hslHue READ hslHue WRITE setHslHue FINAL)
     Q_PROPERTY(qreal hslSaturation READ hslSaturation WRITE setHslSaturation FINAL)
     Q_PROPERTY(qreal hslLightness READ hslLightness WRITE setHslLightness FINAL)
+    Q_PROPERTY(bool valid READ isValid)
     Q_GADGET
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_FOREIGN(QColor)
+    QML_VALUE_TYPE(color)
+    QML_EXTENDED(QQuick3DColorValueType)
+
 public:
+    static QVariant create(const QJSValue &params);
+
     Q_INVOKABLE QString toString() const;
+
+    Q_INVOKABLE QVariant alpha(qreal value) const;
+    Q_INVOKABLE QVariant lighter(qreal factor = 1.5) const;
+    Q_INVOKABLE QVariant darker(qreal factor = 2.0) const;
+    Q_INVOKABLE QVariant tint(QVariant factor) const;
 
     qreal r() const;
     qreal g() const;
@@ -99,6 +71,7 @@ public:
     qreal hslHue() const;
     qreal hslSaturation() const;
     qreal hslLightness() const;
+    bool isValid() const;
     void setR(qreal);
     void setG(qreal);
     void setB(qreal);
@@ -111,121 +84,7 @@ public:
     void setHslLightness(qreal);
 };
 
-class Q_3DQUICKSHARED_PRIVATE_EXPORT Quick3DVector2DValueType
-{
-    QVector2D v;
-    Q_PROPERTY(qreal x READ x WRITE setX FINAL)
-    Q_PROPERTY(qreal y READ y WRITE setY FINAL)
-    Q_GADGET
-public:
-    Q_INVOKABLE QString toString() const;
-
-    qreal x() const;
-    qreal y() const;
-    void setX(qreal);
-    void setY(qreal);
-
-    Q_INVOKABLE qreal dotProduct(const QVector2D &vec) const;
-    Q_INVOKABLE QVector2D times(const QVector2D &vec) const;
-    Q_INVOKABLE QVector2D times(qreal scalar) const;
-    Q_INVOKABLE QVector2D plus(const QVector2D &vec) const;
-    Q_INVOKABLE QVector2D minus(const QVector2D &vec) const;
-    Q_INVOKABLE QVector2D normalized() const;
-    Q_INVOKABLE qreal length() const;
-    Q_INVOKABLE QVector3D toVector3d() const;
-    Q_INVOKABLE QVector4D toVector4d() const;
-    Q_INVOKABLE bool fuzzyEquals(const QVector2D &vec, qreal epsilon) const;
-    Q_INVOKABLE bool fuzzyEquals(const QVector2D &vec) const;
-};
-
-class Q_3DQUICKSHARED_PRIVATE_EXPORT Quick3DVector3DValueType
-{
-    QVector3D v;
-    Q_PROPERTY(qreal x READ x WRITE setX FINAL)
-    Q_PROPERTY(qreal y READ y WRITE setY FINAL)
-    Q_PROPERTY(qreal z READ z WRITE setZ FINAL)
-    Q_GADGET
-public:
-    Q_INVOKABLE QString toString() const;
-
-    qreal x() const;
-    qreal y() const;
-    qreal z() const;
-    void setX(qreal);
-    void setY(qreal);
-    void setZ(qreal);
-
-    Q_INVOKABLE QVector3D crossProduct(const QVector3D &vec) const;
-    Q_INVOKABLE qreal dotProduct(const QVector3D &vec) const;
-    Q_INVOKABLE QVector3D times(const QMatrix4x4 &m) const;
-    Q_INVOKABLE QVector3D times(const QVector3D &vec) const;
-    Q_INVOKABLE QVector3D times(qreal scalar) const;
-    Q_INVOKABLE QVector3D plus(const QVector3D &vec) const;
-    Q_INVOKABLE QVector3D minus(const QVector3D &vec) const;
-    Q_INVOKABLE QVector3D normalized() const;
-    Q_INVOKABLE qreal length() const;
-    Q_INVOKABLE QVector2D toVector2d() const;
-    Q_INVOKABLE QVector4D toVector4d() const;
-    Q_INVOKABLE bool fuzzyEquals(const QVector3D &vec, qreal epsilon) const;
-    Q_INVOKABLE bool fuzzyEquals(const QVector3D &vec) const;
-};
-
-class Q_3DQUICKSHARED_PRIVATE_EXPORT Quick3DVector4DValueType
-{
-    QVector4D v;
-    Q_PROPERTY(qreal x READ x WRITE setX FINAL)
-    Q_PROPERTY(qreal y READ y WRITE setY FINAL)
-    Q_PROPERTY(qreal z READ z WRITE setZ FINAL)
-    Q_PROPERTY(qreal w READ w WRITE setW FINAL)
-    Q_GADGET
-public:
-    Q_INVOKABLE QString toString() const;
-
-    qreal x() const;
-    qreal y() const;
-    qreal z() const;
-    qreal w() const;
-    void setX(qreal);
-    void setY(qreal);
-    void setZ(qreal);
-    void setW(qreal);
-
-    Q_INVOKABLE qreal dotProduct(const QVector4D &vec) const;
-    Q_INVOKABLE QVector4D times(const QVector4D &vec) const;
-    Q_INVOKABLE QVector4D times(const QMatrix4x4 &m) const;
-    Q_INVOKABLE QVector4D times(qreal scalar) const;
-    Q_INVOKABLE QVector4D plus(const QVector4D &vec) const;
-    Q_INVOKABLE QVector4D minus(const QVector4D &vec) const;
-    Q_INVOKABLE QVector4D normalized() const;
-    Q_INVOKABLE qreal length() const;
-    Q_INVOKABLE QVector2D toVector2d() const;
-    Q_INVOKABLE QVector3D toVector3d() const;
-    Q_INVOKABLE bool fuzzyEquals(const QVector4D &vec, qreal epsilon) const;
-    Q_INVOKABLE bool fuzzyEquals(const QVector4D &vec) const;
-};
-
-class Q_3DQUICKSHARED_PRIVATE_EXPORT Quick3DQuaternionValueType
-{
-    QQuaternion v;
-    Q_PROPERTY(qreal scalar READ scalar WRITE setScalar)
-    Q_PROPERTY(qreal x READ x WRITE setX)
-    Q_PROPERTY(qreal y READ y WRITE setY)
-    Q_PROPERTY(qreal z READ z WRITE setZ)
-    Q_GADGET
-public:
-    Q_INVOKABLE QString toString() const;
-
-    qreal scalar() const;
-    qreal x() const;
-    qreal y() const;
-    qreal z() const;
-    void setScalar(qreal);
-    void setX(qreal);
-    void setY(qreal);
-    void setZ(qreal);
-};
-
-class Q_3DQUICKSHARED_PRIVATE_EXPORT Quick3DMatrix4x4ValueType
+class Q_3DQUICKSHARED_PRIVATE_EXPORT QQuick3DMatrix4x4ValueType
 {
     QMatrix4x4 v;
     Q_PROPERTY(qreal m11 READ m11 WRITE setM11 FINAL)
@@ -245,8 +104,13 @@ class Q_3DQUICKSHARED_PRIVATE_EXPORT Quick3DMatrix4x4ValueType
     Q_PROPERTY(qreal m43 READ m43 WRITE setM43 FINAL)
     Q_PROPERTY(qreal m44 READ m44 WRITE setM44 FINAL)
     Q_GADGET
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_FOREIGN(QMatrix4x4)
+    QML_VALUE_TYPE(matrix4x4)
+    QML_EXTENDED(QQuick3DMatrix4x4ValueType)
+
 public:
-    Q_INVOKABLE QString toString() const;
+    static QVariant create(const QJSValue &params);
 
     qreal m11() const { return v(0, 0); }
     qreal m12() const { return v(0, 1); }
@@ -282,7 +146,6 @@ public:
     void setM43(qreal value) { v(3, 2) = value; }
     void setM44(qreal value) { v(3, 3) = value; }
 
-    Q_INVOKABLE void translate(float x, float y, float z) { v.translate(x, y, z); }
     Q_INVOKABLE void translate(const QVector3D &t) { v.translate(t); }
     Q_INVOKABLE void rotate(float angle, const QVector3D &axis) { v.rotate(angle, axis); }
     Q_INVOKABLE void scale(float s) { v.scale(s); }
@@ -306,6 +169,148 @@ public:
 
     Q_INVOKABLE bool fuzzyEquals(const QMatrix4x4 &m, qreal epsilon) const;
     Q_INVOKABLE bool fuzzyEquals(const QMatrix4x4 &m) const;
+};
+
+class Q_3DQUICKSHARED_PRIVATE_EXPORT QQuick3DVector2DValueType
+{
+    QVector2D v;
+    Q_PROPERTY(qreal x READ x WRITE setX FINAL)
+    Q_PROPERTY(qreal y READ y WRITE setY FINAL)
+    Q_GADGET
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_FOREIGN(QVector2D)
+    QML_VALUE_TYPE(vector2d)
+    QML_EXTENDED(QQuick3DVector2DValueType)
+
+public:
+    static QVariant create(const QJSValue &params);
+
+    Q_INVOKABLE QString toString() const;
+
+    qreal x() const;
+    qreal y() const;
+    void setX(qreal);
+    void setY(qreal);
+
+    Q_INVOKABLE qreal dotProduct(const QVector2D &vec) const;
+    Q_INVOKABLE QVector2D times(const QVector2D &vec) const;
+    Q_INVOKABLE QVector2D times(qreal scalar) const;
+    Q_INVOKABLE QVector2D plus(const QVector2D &vec) const;
+    Q_INVOKABLE QVector2D minus(const QVector2D &vec) const;
+    Q_INVOKABLE QVector2D normalized() const;
+    Q_INVOKABLE qreal length() const;
+    Q_INVOKABLE QVector3D toVector3d() const;
+    Q_INVOKABLE QVector4D toVector4d() const;
+    Q_INVOKABLE bool fuzzyEquals(const QVector2D &vec, qreal epsilon) const;
+    Q_INVOKABLE bool fuzzyEquals(const QVector2D &vec) const;
+};
+
+class Q_3DQUICKSHARED_PRIVATE_EXPORT QQuick3DVector3DValueType
+{
+    QVector3D v;
+    Q_PROPERTY(qreal x READ x WRITE setX FINAL)
+    Q_PROPERTY(qreal y READ y WRITE setY FINAL)
+    Q_PROPERTY(qreal z READ z WRITE setZ FINAL)
+    Q_GADGET
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_FOREIGN(QVector3D)
+    QML_VALUE_TYPE(vector3d)
+    QML_EXTENDED(QQuick3DVector3DValueType)
+
+public:
+    static QVariant create(const QJSValue &params);
+
+    Q_INVOKABLE QString toString() const;
+
+    qreal x() const;
+    qreal y() const;
+    qreal z() const;
+    void setX(qreal);
+    void setY(qreal);
+    void setZ(qreal);
+
+    Q_INVOKABLE QVector3D crossProduct(const QVector3D &vec) const;
+    Q_INVOKABLE qreal dotProduct(const QVector3D &vec) const;
+    Q_INVOKABLE QVector3D times(const QMatrix4x4 &m) const;
+    Q_INVOKABLE QVector3D times(const QVector3D &vec) const;
+    Q_INVOKABLE QVector3D times(qreal scalar) const;
+    Q_INVOKABLE QVector3D plus(const QVector3D &vec) const;
+    Q_INVOKABLE QVector3D minus(const QVector3D &vec) const;
+    Q_INVOKABLE QVector3D normalized() const;
+    Q_INVOKABLE qreal length() const;
+    Q_INVOKABLE QVector2D toVector2d() const;
+    Q_INVOKABLE QVector4D toVector4d() const;
+    Q_INVOKABLE bool fuzzyEquals(const QVector3D &vec, qreal epsilon) const;
+    Q_INVOKABLE bool fuzzyEquals(const QVector3D &vec) const;
+};
+
+class Q_3DQUICKSHARED_PRIVATE_EXPORT QQuick3DVector4DValueType
+{
+    QVector4D v;
+    Q_PROPERTY(qreal x READ x WRITE setX FINAL)
+    Q_PROPERTY(qreal y READ y WRITE setY FINAL)
+    Q_PROPERTY(qreal z READ z WRITE setZ FINAL)
+    Q_PROPERTY(qreal w READ w WRITE setW FINAL)
+    Q_GADGET
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_FOREIGN(QVector4D)
+    QML_VALUE_TYPE(vector4d)
+    QML_EXTENDED(QQuick3DVector4DValueType)
+
+public:
+    static QVariant create(const QJSValue &params);
+
+    Q_INVOKABLE QString toString() const;
+
+    qreal x() const;
+    qreal y() const;
+    qreal z() const;
+    qreal w() const;
+    void setX(qreal);
+    void setY(qreal);
+    void setZ(qreal);
+    void setW(qreal);
+
+    Q_INVOKABLE qreal dotProduct(const QVector4D &vec) const;
+    Q_INVOKABLE QVector4D times(const QVector4D &vec) const;
+    Q_INVOKABLE QVector4D times(const QMatrix4x4 &m) const;
+    Q_INVOKABLE QVector4D times(qreal scalar) const;
+    Q_INVOKABLE QVector4D plus(const QVector4D &vec) const;
+    Q_INVOKABLE QVector4D minus(const QVector4D &vec) const;
+    Q_INVOKABLE QVector4D normalized() const;
+    Q_INVOKABLE qreal length() const;
+    Q_INVOKABLE QVector2D toVector2d() const;
+    Q_INVOKABLE QVector3D toVector3d() const;
+    Q_INVOKABLE bool fuzzyEquals(const QVector4D &vec, qreal epsilon) const;
+    Q_INVOKABLE bool fuzzyEquals(const QVector4D &vec) const;
+};
+
+class Q_3DQUICKSHARED_PRIVATE_EXPORT QQuick3DQuaternionValueType
+{
+    QQuaternion v;
+    Q_PROPERTY(qreal scalar READ scalar WRITE setScalar)
+    Q_PROPERTY(qreal x READ x WRITE setX)
+    Q_PROPERTY(qreal y READ y WRITE setY)
+    Q_PROPERTY(qreal z READ z WRITE setZ)
+    Q_GADGET
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_FOREIGN(QQuaternion)
+    QML_VALUE_TYPE(quaternion)
+    QML_EXTENDED(QQuick3DQuaternionValueType)
+
+public:
+    static QVariant create(const QJSValue &params);
+
+    Q_INVOKABLE QString toString() const;
+
+    qreal scalar() const;
+    qreal x() const;
+    qreal y() const;
+    qreal z() const;
+    void setScalar(qreal);
+    void setX(qreal);
+    void setY(qreal);
+    void setZ(qreal);
 };
 
 } // namespace Quick

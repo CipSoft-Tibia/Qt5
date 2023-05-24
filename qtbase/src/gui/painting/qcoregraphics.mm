@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcoregraphics_p.h"
 
@@ -58,22 +22,22 @@ CGBitmapInfo qt_mac_bitmapInfoForImage(const QImage &image)
     CGBitmapInfo bitmapInfo = kCGImageAlphaNone;
     switch (image.format()) {
     case QImage::Format_ARGB32:
-        bitmapInfo = kCGImageAlphaFirst | kCGBitmapByteOrder32Host;
+        bitmapInfo = CGBitmapInfo(kCGImageAlphaFirst) | kCGBitmapByteOrder32Host;
         break;
     case QImage::Format_RGB32:
-        bitmapInfo = kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Host;
+        bitmapInfo = CGBitmapInfo(kCGImageAlphaNoneSkipFirst) | kCGBitmapByteOrder32Host;
         break;
     case QImage::Format_RGBA8888_Premultiplied:
-        bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
+        bitmapInfo = CGBitmapInfo(kCGImageAlphaPremultipliedLast) | kCGBitmapByteOrder32Big;
         break;
     case QImage::Format_RGBA8888:
-        bitmapInfo = kCGImageAlphaLast | kCGBitmapByteOrder32Big;
+        bitmapInfo = CGBitmapInfo(kCGImageAlphaLast) | kCGBitmapByteOrder32Big;
         break;
     case QImage::Format_RGBX8888:
-        bitmapInfo = kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big;
+        bitmapInfo = CGBitmapInfo(kCGImageAlphaNoneSkipLast) | kCGBitmapByteOrder32Big;
         break;
     case QImage::Format_ARGB32_Premultiplied:
-        bitmapInfo = kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host;
+        bitmapInfo = CGBitmapInfo(kCGImageAlphaPremultipliedFirst) | kCGBitmapByteOrder32Host;
         break;
     default: break;
     }
@@ -145,7 +109,7 @@ QT_END_NAMESPACE
     // NSImage.
     auto nsImage = [[NSImage alloc] initWithSize:NSZeroSize];
     auto *imageRep = [[NSBitmapImageRep alloc] initWithCGImage:cgImage];
-    imageRep.size = (image.size() / image.devicePixelRatioF()).toCGSize();
+    imageRep.size = image.deviceIndependentSize().toCGSize();
     [nsImage addRepresentation:[imageRep autorelease]];
     Q_ASSERT(CGSizeEqualToSize(nsImage.size, imageRep.size));
 
@@ -168,7 +132,7 @@ QT_END_NAMESPACE
 
     auto nsImage = [[[NSImage alloc] initWithSize:NSZeroSize] autorelease];
 
-    for (QSize size : qAsConst(availableSizes)) {
+    for (QSize size : std::as_const(availableSizes)) {
         QImage image = icon.pixmap(size).toImage();
         if (image.isNull())
             continue;
@@ -178,7 +142,7 @@ QT_END_NAMESPACE
             continue;
 
         auto *imageRep = [[NSBitmapImageRep alloc] initWithCGImage:cgImage];
-        imageRep.size = (image.size() / image.devicePixelRatioF()).toCGSize();
+        imageRep.size = image.deviceIndependentSize().toCGSize();
         [nsImage addRepresentation:[imageRep autorelease]];
     }
 
@@ -243,18 +207,33 @@ QColor qt_mac_toQColor(CGColorRef color)
 QColor qt_mac_toQColor(const NSColor *color)
 {
     QColor qtColor;
-    NSString *colorSpace = [color colorSpaceName];
-    if (colorSpace == NSDeviceCMYKColorSpace) {
-        CGFloat cyan, magenta, yellow, black, alpha;
-        [color getCyan:&cyan magenta:&magenta yellow:&yellow black:&black alpha:&alpha];
-        qtColor.setCmykF(cyan, magenta, yellow, black, alpha);
-    } else {
-        NSColor *tmpColor;
-        tmpColor = [color colorUsingColorSpaceName:NSDeviceRGBColorSpace];
-        CGFloat red, green, blue, alpha;
+    switch (color.type) {
+    case NSColorTypeComponentBased: {
+        const NSColorSpace *colorSpace = [color colorSpace];
+        if (colorSpace == NSColorSpace.genericRGBColorSpace
+            && color.numberOfComponents == 4) { // rbga
+            CGFloat components[4];
+            [color getComponents:components];
+            qtColor.setRgbF(components[0], components[1], components[2], components[3]);
+            break;
+        } else if (colorSpace == NSColorSpace.genericCMYKColorSpace
+                   && color.numberOfComponents == 5) { // cmyk + alpha
+            CGFloat components[5];
+            [color getComponents:components];
+            qtColor.setCmykF(components[0], components[1], components[2], components[3], components[4]);
+            break;
+        }
+    }
+        Q_FALLTHROUGH();
+    default: {
+        const NSColor *tmpColor = [color colorUsingColorSpace:NSColorSpace.genericRGBColorSpace];
+        CGFloat red = 0, green = 0, blue = 0, alpha = 0;
         [tmpColor getRed:&red green:&green blue:&blue alpha:&alpha];
         qtColor.setRgbF(red, green, blue, alpha);
+        break;
     }
+    }
+
     return qtColor;
 }
 #endif
@@ -280,9 +259,9 @@ static bool qt_mac_isSystemColorOrInstance(const NSColor *color, NSString *color
     // We specifically do not want isKindOfClass: here
     if ([color.className isEqualToString:className]) // NSPatternColorSpace
         return true;
-    if ([color.catalogNameComponent isEqualToString:@"System"] &&
-        [color.colorNameComponent isEqualToString:colorNameComponent] &&
-        [color.colorSpaceName isEqualToString:NSNamedColorSpace])
+    if (color.type == NSColorTypeCatalog &&
+        [color.catalogNameComponent isEqualToString:@"System"] &&
+        [color.colorNameComponent isEqualToString:colorNameComponent])
         return true;
     return false;
 }
@@ -338,8 +317,8 @@ QBrush qt_mac_toQBrush(const NSColor *color, QPalette::ColorGroup colorGroup)
         return qtBrush;
     }
 
-    if (NSColor *patternColor = [color colorUsingColorSpaceName:NSPatternColorSpace]) {
-        NSImage *patternImage = patternColor.patternImage;
+    if (color.type == NSColorTypePattern) {
+        NSImage *patternImage = color.patternImage;
         const QSizeF sz(patternImage.size.width, patternImage.size.height);
         // FIXME: QBrush is not resolution independent (QTBUG-49774)
         qtBrush.setTexture(qt_mac_toQPixmap(patternImage, sz));
@@ -407,11 +386,14 @@ void QMacCGContext::initialize(QPaintDevice *paintDevice)
     // Find the underlying QImage of the paint device
     switch (int deviceType = paintDevice->devType()) {
     case QInternal::Pixmap: {
-        auto *platformPixmap = static_cast<QPixmap*>(paintDevice)->handle();
-        if (platformPixmap && platformPixmap->classId() == QPlatformPixmap::RasterClass)
-            initialize(platformPixmap->buffer());
-        else
-            qWarning() << "QMacCGContext: Unsupported pixmap class" << platformPixmap->classId();
+        if (auto *platformPixmap = static_cast<QPixmap*>(paintDevice)->handle()) {
+            if (platformPixmap->classId() == QPlatformPixmap::RasterClass)
+                initialize(platformPixmap->buffer());
+            else
+                qWarning() << "QMacCGContext: Unsupported pixmap class" << platformPixmap->classId();
+        } else {
+            qWarning() << "QMacCGContext: Empty platformPixmap";
+        }
         break;
     }
     case QInternal::Image:
@@ -495,7 +477,7 @@ void QMacCGContext::initialize(const QImage *image, QPainter *painter)
                 clip &= painterClip;
         }
 
-        qt_mac_clip_cg(context, clip, 0);
+        qt_mac_clip_cg(context, clip, nullptr);
 
         CGContextTranslateCTM(context, deviceTransform.dx(), deviceTransform.dy());
     }

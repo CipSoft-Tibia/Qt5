@@ -16,7 +16,7 @@
 
 #include "src/tracing/ipc/service/consumer_ipc_service.h"
 
-#include <inttypes.h>
+#include <cinttypes>
 
 #include "perfetto/base/logging.h"
 #include "perfetto/base/task_runner.h"
@@ -308,6 +308,44 @@ void ConsumerIPCService::OnQueryCapabilitiesCallback(
   response.Resolve(std::move(resp));
 }
 
+void ConsumerIPCService::SaveTraceForBugreport(
+    const protos::gen::SaveTraceForBugreportRequest&,
+    DeferredSaveTraceForBugreportResponse resp) {
+  RemoteConsumer* remote_consumer = GetConsumerForCurrentRequest();
+  auto it = pending_bugreport_responses_.insert(
+      pending_bugreport_responses_.end(), std::move(resp));
+  auto weak_this = weak_ptr_factory_.GetWeakPtr();
+  auto callback = [weak_this, it](bool success, const std::string& msg) {
+    if (weak_this)
+      weak_this->OnSaveTraceForBugreportCallback(success, msg, std::move(it));
+  };
+  remote_consumer->service_endpoint->SaveTraceForBugreport(callback);
+}
+
+void ConsumerIPCService::CloneSession(
+    const protos::gen::CloneSessionRequest& req,
+    DeferredCloneSessionResponse resp) {
+  RemoteConsumer* remote_consumer = GetConsumerForCurrentRequest();
+  remote_consumer->clone_session_response = std::move(resp);
+  remote_consumer->service_endpoint->CloneSession(req.session_id());
+}
+
+// Called by the service in response to
+// service_endpoint->SaveTraceForBugreport().
+void ConsumerIPCService::OnSaveTraceForBugreportCallback(
+    bool success,
+    const std::string& msg,
+    PendingSaveTraceForBugreportResponses::iterator pending_response_it) {
+  DeferredSaveTraceForBugreportResponse response(
+      std::move(*pending_response_it));
+  pending_bugreport_responses_.erase(pending_response_it);
+  auto resp =
+      ipc::AsyncResult<protos::gen::SaveTraceForBugreportResponse>::Create();
+  resp->set_success(success);
+  resp->set_msg(msg);
+  response.Resolve(std::move(resp));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // RemoteConsumer methods
 ////////////////////////////////////////////////////////////////////////////////
@@ -324,11 +362,14 @@ void ConsumerIPCService::RemoteConsumer::OnConnect() {}
 // |service_endpoint| (in the RemoteConsumer dtor).
 void ConsumerIPCService::RemoteConsumer::OnDisconnect() {}
 
-void ConsumerIPCService::RemoteConsumer::OnTracingDisabled() {
+void ConsumerIPCService::RemoteConsumer::OnTracingDisabled(
+    const std::string& error) {
   if (enable_tracing_response.IsBound()) {
     auto result =
         ipc::AsyncResult<protos::gen::EnableTracingResponse>::Create();
     result->set_disabled(true);
+    if (!error.empty())
+      result->set_error(error);
     enable_tracing_response.Resolve(std::move(result));
   }
 }
@@ -436,6 +477,18 @@ void ConsumerIPCService::RemoteConsumer::CloseObserveEventsResponseStream() {
   auto result = ipc::AsyncResult<protos::gen::ObserveEventsResponse>::Create();
   result.set_has_more(false);
   observe_events_response.Resolve(std::move(result));
+}
+
+void ConsumerIPCService::RemoteConsumer::OnSessionCloned(
+    bool success,
+    const std::string& error) {
+  if (!clone_session_response.IsBound())
+    return;
+
+  auto resp = ipc::AsyncResult<protos::gen::CloneSessionResponse>::Create();
+  resp->set_success(success);
+  resp->set_error(error);
+  std::move(clone_session_response).Resolve(std::move(resp));
 }
 
 }  // namespace perfetto

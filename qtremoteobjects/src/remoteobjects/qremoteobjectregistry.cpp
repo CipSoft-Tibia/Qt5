@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qremoteobjectregistry.h"
 #include "qremoteobjectreplica_p.h"
@@ -50,6 +14,13 @@ class QRemoteObjectRegistryPrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QRemoteObjectRegistry)
 
+    QRemoteObjectSourceLocations sourceLocationsActualCalculation() const
+    {
+        return q_func()->propAsVariant(0).value<QRemoteObjectSourceLocations>();
+    }
+    Q_OBJECT_COMPUTED_PROPERTY(QRemoteObjectRegistryPrivate, QRemoteObjectSourceLocations,
+                               sourceLocations,
+                               &QRemoteObjectRegistryPrivate::sourceLocationsActualCalculation)
     QRemoteObjectSourceLocations hostedSources;
 };
 
@@ -81,7 +52,8 @@ QRemoteObjectRegistry::QRemoteObjectRegistry(QRemoteObjectNode *node, const QStr
 
     This signal is emitted whenever a new source location is added to the registry.
 
-    \a entry is a QRemoteObjectSourceLocation, a typedef for QPair<QString, QUrl>.
+    \a entry is a QRemoteObjectSourceLocation, a typedef for
+    QPair<QString, QRemoteObjectSourceLocationInfo>.
 
     \sa remoteObjectRemoved()
 */
@@ -91,7 +63,8 @@ QRemoteObjectRegistry::QRemoteObjectRegistry(QRemoteObjectNode *node, const QStr
 
     This signal is emitted whenever a Source location is removed from the Registry.
 
-    \a entry is a QRemoteObjectSourceLocation, a typedef for QPair<QString, QUrl>.
+    \a entry is a QRemoteObjectSourceLocation, a typedef for
+    QPair<QString, QRemoteObjectSourceLocationInfo>.
 
     \sa remoteObjectAdded()
 */
@@ -100,7 +73,10 @@ QRemoteObjectRegistry::QRemoteObjectRegistry(QRemoteObjectNode *node, const QStr
     \property QRemoteObjectRegistry::sourceLocations
     \brief The set of sources known to the registry.
 
-    This property is a QRemoteObjectSourceLocations, which is a typedef for QHash<QString, QUrl>.  Each known \l Source is the QString key, while the url for the host node is the corresponding value for that key in the hash.
+    This property is a QRemoteObjectSourceLocations, which is a typedef for
+    QHash<QString, QRemoteObjectSourceLocationInfo>. Each known \l Source is
+    contained as a QString key in the hash, and the corresponding value for
+    that key is the QRemoteObjectSourceLocationInfo for the host node.
 */
 
 /*!
@@ -116,9 +92,7 @@ void QRemoteObjectRegistry::registerMetatypes()
         return;
     initialized = true;
     qRegisterMetaType<QRemoteObjectSourceLocation>();
-    qRegisterMetaTypeStreamOperators<QRemoteObjectSourceLocation>();
     qRegisterMetaType<QRemoteObjectSourceLocations>();
-    qRegisterMetaTypeStreamOperators<QRemoteObjectSourceLocations>();
 }
 
 void QRemoteObjectRegistry::initialize()
@@ -129,7 +103,12 @@ void QRemoteObjectRegistry::initialize()
     properties << QVariant::fromValue(QRemoteObjectSourceLocations());
     properties << QVariant::fromValue(QRemoteObjectSourceLocation());
     properties << QVariant::fromValue(QRemoteObjectSourceLocation());
-    setProperties(properties);
+    setProperties(std::move(properties));
+}
+
+void QRemoteObjectRegistry::notifySourceLocationsChanged()
+{
+    d_func()->sourceLocations.notify();
 }
 
 /*!
@@ -138,7 +117,12 @@ void QRemoteObjectRegistry::initialize()
 */
 QRemoteObjectSourceLocations QRemoteObjectRegistry::sourceLocations() const
 {
-    return propAsVariant(0).value<QRemoteObjectSourceLocations>();
+    return d_func()->sourceLocations.value();
+}
+
+QBindable<QRemoteObjectSourceLocations> QRemoteObjectRegistry::bindableSourceLocations() const
+{
+    return &d_func()->sourceLocations;
 }
 
 /*!

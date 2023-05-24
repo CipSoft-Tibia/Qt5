@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qglobal.h>
 
@@ -68,7 +32,19 @@
 
 #include <qtgui_tracepoints_p.h>
 
+#include <memory>
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+Q_TRACE_PARAM_REPLACE(Qt::AspectRatioMode, int);
+Q_TRACE_PARAM_REPLACE(Qt::TransformationMode, int);
+
+// MSVC 19.28 does show spurious warning "C4723: potential divide by 0" for code that divides
+// by height() in release builds. Anyhow, all the code paths in this file are only executed
+// for valid QPixmap's, where height() cannot be 0. Therefore disable the warning.
+QT_WARNING_DISABLE_MSVC(4723)
 
 static bool qt_pixmap_thread_test()
 {
@@ -76,17 +52,11 @@ static bool qt_pixmap_thread_test()
         qFatal("QPixmap: Must construct a QGuiApplication before a QPixmap");
         return false;
     }
-
-    if (qApp->thread() != QThread::currentThread()) {
-        bool fail = false;
-        if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::ThreadedPixmaps)) {
-            printf("Platform plugin does not support threaded pixmaps!\n");
-            fail = true;
-        }
-        if (fail) {
-            qWarning("QPixmap: It is not safe to use pixmaps outside the GUI thread");
-            return false;
-        }
+    if (QGuiApplicationPrivate::instance()
+        && qApp->thread() != QThread::currentThread()
+        && !QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::ThreadedPixmaps)) {
+        qWarning("QPixmap: It is not safe to use pixmaps outside the GUI thread on this platform");
+        return false;
     }
     return true;
 }
@@ -224,6 +194,14 @@ QPixmap::QPixmap(const QPixmap &pixmap)
     }
 }
 
+/*! \fn QPixmap::QPixmap(QPixmap &&other)
+    Move-constructs a QPixmap instance from \a other.
+
+    \sa swap() operator=(QPixmap&&)
+*/
+
+QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QPlatformPixmap)
+
 /*!
     Constructs a pixmap from the given \a xpm data, which must be a
     valid XPM image.
@@ -233,7 +211,7 @@ QPixmap::QPixmap(const QPixmap &pixmap)
     Note that it's possible to squeeze the XPM variable a little bit
     by using an unusual declaration:
 
-    \snippet code/src_gui_image_qpixmap.cpp 0
+    \snippet code/src_gui_image_qimage.cpp 2
 
     The extra \c const makes the entire definition read-only, which is
     slightly more efficient (for example, when the code is in a shared
@@ -404,7 +382,7 @@ QPixmap &QPixmap::operator=(const QPixmap &pixmap)
 */
 QPixmap::operator QVariant() const
 {
-    return QVariant(QMetaType::QPixmap, this);
+    return QVariant::fromValue(*this);
 }
 
 /*!
@@ -459,24 +437,6 @@ QTransform QPixmap::trueMatrix(const QTransform &m, int w, int h)
 {
     return QImage::trueMatrix(m, w, h);
 }
-
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-  \overload
-  \obsolete
-
-  Use trueMatrix(const QTransform &m, int w, int h) instead.
-
-  This convenience function loads the matrix \a m into a
-  QTransform and calls the overloaded function with the
-  QTransform and the width \a w and the height \a h.
- */
-QMatrix QPixmap::trueMatrix(const QMatrix &m, int w, int h)
-{
-    return trueMatrix(QTransform(m), w, h).toAffine();
-}
-#endif // QT_DEPRECATED_SINCE(5, 15)
-
 
 /*!
     \fn bool QPixmap::isQBitmap() const
@@ -643,7 +603,7 @@ qreal QPixmap::devicePixelRatio() const
     high-DPI pixmap rather than a large pixmap
     (see \l{Drawing High Resolution Versions of Pixmaps and Images}).
 
-    \sa devicePixelRatio()
+    \sa devicePixelRatio(), deviceIndependentSize()
 */
 void QPixmap::setDevicePixelRatio(qreal scaleFactor)
 {
@@ -655,6 +615,23 @@ void QPixmap::setDevicePixelRatio(qreal scaleFactor)
 
     detach();
     data->setDevicePixelRatio(scaleFactor);
+}
+
+/*!
+    Returns the size of the pixmap in device independent pixels.
+
+    This value should be used when using the pixmap size in user interface
+    size calculations.
+
+    The return value is equivalent to pixmap.size() / pixmap.devicePixelRatio().
+
+    \since 6.2
+*/
+QSizeF QPixmap::deviceIndependentSize() const
+{
+    if (!data)
+        return QSizeF(0, 0);
+    return QSizeF(data->width(), data->height()) / data->devicePixelRatio();
 }
 
 #ifndef QT_NO_IMAGE_HEURISTIC_MASK
@@ -738,9 +715,9 @@ bool QPixmap::load(const QString &fileName, const char *format, Qt::ImageConvers
         if (info.completeSuffix().isEmpty() || info.exists()) {
             const bool inGuiThread = qApp->thread() == QThread::currentThread();
 
-            QString key = QLatin1String("qt_pixmap")
+            QString key = "qt_pixmap"_L1
                     % info.absoluteFilePath()
-                    % HexString<uint>(info.lastModified().toSecsSinceEpoch())
+                    % HexString<uint>(info.lastModified(QTimeZone::UTC).toSecsSinceEpoch())
                     % HexString<quint64>(info.size())
                     % HexString<uint>(data ? data->pixelType() : QPlatformPixmap::PixmapType);
 
@@ -865,37 +842,6 @@ bool QPixmap::doImageIO(QImageWriter *writer, int quality) const
 }
 
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \obsolete
-
-    Use QPainter or the fill(QColor) overload instead.
-*/
-
-void QPixmap::fill(const QPaintDevice *device, const QPoint &p)
-{
-    Q_UNUSED(device)
-    Q_UNUSED(p)
-    qWarning("this function is deprecated, ignored");
-}
-
-
-/*!
-    \fn void QPixmap::fill(const QPaintDevice *device, int x, int y)
-    \obsolete
-
-    Use QPainter or the fill(QColor) overload instead.
-*/
-void QPixmap::fill(const QPaintDevice *device, int xofs, int yofs)
-{
-    Q_UNUSED(device)
-    Q_UNUSED(xofs)
-    Q_UNUSED(yofs)
-    qWarning("this function is deprecated, ignored");
-}
-#endif
-
-
 /*!
     Fills the pixmap with the given \a color.
 
@@ -932,21 +878,6 @@ void QPixmap::fill(const QColor &color)
     data->fill(color);
 }
 
-/*! \fn int QPixmap::serialNumber() const
-    \obsolete
-    Returns a number that identifies the contents of this QPixmap
-    object. Distinct QPixmap objects can only have the same serial
-    number if they refer to the same contents (but they don't have
-    to).
-
-    Use cacheKey() instead.
-
-    \warning The serial number doesn't necessarily change when
-    the pixmap is altered. This means that it may be dangerous to use
-    it as a cache key. For caching pixmaps, we recommend using the
-    QPixmapCache class whenever possible.
-*/
-
 /*!
     Returns a number that identifies this QPixmap. Distinct QPixmap
     objects can only have the same cache key if they refer to the same
@@ -978,38 +909,6 @@ static void sendResizeEvents(QWidget *target)
 }
 #endif
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \obsolete
-
-    Use QWidget::grab() instead.
-*/
-QPixmap QPixmap::grabWidget(QObject *widget, const QRect &rectangle)
-{
-    QPixmap pixmap;
-    qWarning("QPixmap::grabWidget is deprecated, use QWidget::grab() instead");
-    if (!widget)
-        return pixmap;
-    QMetaObject::invokeMethod(widget, "grab", Qt::DirectConnection,
-                              Q_RETURN_ARG(QPixmap, pixmap),
-                              Q_ARG(QRect, rectangle));
-    return pixmap;
-}
-
-/*!
-    \fn QPixmap QPixmap::grabWidget(QObject *widget, int x, int y, int w, int h)
-    \obsolete
-
-    Use QWidget::grab() instead.
-*/
-QPixmap QPixmap::grabWidget(QObject *widget, int x, int y, int w, int h)
-{
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-    return grabWidget(widget, QRect(x, y, w, h));
-QT_WARNING_POP
-}
-#endif
 
 /*****************************************************************************
   QPixmap stream functions
@@ -1136,7 +1035,7 @@ bool QPixmap::convertFromImage(const QImage &image, Qt::ImageConversionFlags fla
     Transformations}
 
 */
-QPixmap QPixmap::scaled(const QSize& s, Qt::AspectRatioMode aspectMode, Qt::TransformationMode mode) const
+QPixmap Q_TRACE_INSTRUMENT(qtgui) QPixmap::scaled(const QSize& s, Qt::AspectRatioMode aspectMode, Qt::TransformationMode mode) const
 {
     if (isNull()) {
         qWarning("QPixmap::scaled: Pixmap is a null pixmap");
@@ -1174,7 +1073,7 @@ QPixmap QPixmap::scaled(const QSize& s, Qt::AspectRatioMode aspectMode, Qt::Tran
     \sa isNull(), {QPixmap#Pixmap Transformations}{Pixmap
     Transformations}
 */
-QPixmap QPixmap::scaledToWidth(int w, Qt::TransformationMode mode) const
+QPixmap Q_TRACE_INSTRUMENT(qtgui) QPixmap::scaledToWidth(int w, Qt::TransformationMode mode) const
 {
     if (isNull()) {
         qWarning("QPixmap::scaleWidth: Pixmap is a null pixmap");
@@ -1204,7 +1103,7 @@ QPixmap QPixmap::scaledToWidth(int w, Qt::TransformationMode mode) const
     \sa isNull(), {QPixmap#Pixmap Transformations}{Pixmap
     Transformations}
 */
-QPixmap QPixmap::scaledToHeight(int h, Qt::TransformationMode mode) const
+QPixmap Q_TRACE_INSTRUMENT(qtgui) QPixmap::scaledToHeight(int h, Qt::TransformationMode mode) const
 {
     if (isNull()) {
         qWarning("QPixmap::scaleHeight: Pixmap is a null pixmap");
@@ -1246,29 +1145,6 @@ QPixmap QPixmap::transformed(const QTransform &transform,
 
     return data->transformed(transform, mode);
 }
-
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-  \overload
-  \obsolete
-
-  Use transformed(const QTransform &transform, Qt::TransformationMode mode)() instead.
-
-  This convenience function loads the \a matrix into a
-  QTransform and calls the overloaded function.
- */
-QPixmap QPixmap::transformed(const QMatrix &matrix, Qt::TransformationMode mode) const
-{
-    return transformed(QTransform(matrix), mode);
-}
-#endif // QT_DEPRECATED_SINCE(5, 15)
-
-
-
-
-
-
-
 
 /*!
     \class QPixmap
@@ -1404,8 +1280,9 @@ QPixmap QPixmap::transformed(const QMatrix &matrix, Qt::TransformationMode mode)
     QPixmap using the fromImage(). If this is too expensive an
     operation, you can use QBitmap::fromImage() instead.
 
-    To convert a QPixmap to and from HICON you can use the QtWinExtras
-    functions QtWin::toHICON() and QtWin::fromHICON() respectively.
+    To convert a QPixmap to and from HICON you can use the
+    QImage::toHICON() and QImage::fromHICON() functions respectively
+    (after converting the QPixmap to a QImage, as explained above).
 
     \section1 Pixmap Transformations
 
@@ -1534,7 +1411,7 @@ void QPixmap::detach()
         return;
 
     // QPixmap.data member may be QRuntimePlatformPixmap so use handle() function to get
-    // the actual underlaying runtime pixmap data.
+    // the actual underlying runtime pixmap data.
     QPlatformPixmap *pd = handle();
     QPlatformPixmap::ClassId id = pd->classId();
     if (id == QPlatformPixmap::RasterClass) {
@@ -1576,9 +1453,9 @@ QPixmap QPixmap::fromImage(const QImage &image, Qt::ImageConversionFlags flags)
         return QPixmap();
     }
 
-    QScopedPointer<QPlatformPixmap> data(QGuiApplicationPrivate::platformIntegration()->createPlatformPixmap(QPlatformPixmap::PixmapType));
+    std::unique_ptr<QPlatformPixmap> data(QGuiApplicationPrivate::platformIntegration()->createPlatformPixmap(QPlatformPixmap::PixmapType));
     data->fromImage(image, flags);
-    return QPixmap(data.take());
+    return QPixmap(data.release());
 }
 
 /*!
@@ -1603,9 +1480,9 @@ QPixmap QPixmap::fromImageInPlace(QImage &image, Qt::ImageConversionFlags flags)
         return QPixmap();
     }
 
-    QScopedPointer<QPlatformPixmap> data(QGuiApplicationPrivate::platformIntegration()->createPlatformPixmap(QPlatformPixmap::PixmapType));
+    std::unique_ptr<QPlatformPixmap> data(QGuiApplicationPrivate::platformIntegration()->createPlatformPixmap(QPlatformPixmap::PixmapType));
     data->fromImageInPlace(image, flags);
-    return QPixmap(data.take());
+    return QPixmap(data.release());
 }
 
 /*!
@@ -1627,66 +1504,10 @@ QPixmap QPixmap::fromImageReader(QImageReader *imageReader, Qt::ImageConversionF
         return QPixmap();
     }
 
-    QScopedPointer<QPlatformPixmap> data(QGuiApplicationPrivate::platformIntegration()->createPlatformPixmap(QPlatformPixmap::PixmapType));
+    std::unique_ptr<QPlatformPixmap> data(QGuiApplicationPrivate::platformIntegration()->createPlatformPixmap(QPlatformPixmap::PixmapType));
     data->fromImageReader(imageReader, flags);
-    return QPixmap(data.take());
+    return QPixmap(data.release());
 }
-
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \fn QPixmap QPixmap::grabWindow(WId window, int x, int y, int
-    width, int height)
-
-    Creates and returns a pixmap constructed by grabbing the contents
-    of the given \a window restricted by QRect(\a x, \a y, \a width,
-    \a height).
-
-    The arguments (\a{x}, \a{y}) specify the offset in the window,
-    whereas (\a{width}, \a{height}) specify the area to be copied.  If
-    \a width is negative, the function copies everything to the right
-    border of the window. If \a height is negative, the function
-    copies everything to the bottom of the window.
-
-    The window system identifier (\c WId) can be retrieved using the
-    QWidget::winId() function. The rationale for using a window
-    identifier and not a QWidget, is to enable grabbing of windows
-    that are not part of the application, window system frames, and so
-    on.
-
-    The grabWindow() function grabs pixels from the screen, not from
-    the window, i.e. if there is another window partially or entirely
-    over the one you grab, you get pixels from the overlying window,
-    too. The mouse cursor is generally not grabbed.
-
-    Note on X11 that if the given \a window doesn't have the same depth
-    as the root window, and another window partially or entirely
-    obscures the one you grab, you will \e not get pixels from the
-    overlying window.  The contents of the obscured areas in the
-    pixmap will be undefined and uninitialized.
-
-    On Windows Vista and above grabbing a layered window, which is
-    created by setting the Qt::WA_TranslucentBackground attribute, will
-    not work. Instead grabbing the desktop widget should work.
-
-    \warning In general, grabbing an area outside the screen is not
-    safe. This depends on the underlying window system.
-
-    \warning The function is deprecated in Qt 5.0 since there might be
-    platform plugins in which window system identifiers (\c WId)
-    are local to a screen. Use QScreen::grabWindow() instead.
-
-    \sa grabWidget(), {Screenshot Example}
-    \sa QScreen
-    \deprecated
-*/
-
-QPixmap QPixmap::grabWindow(WId window, int x, int y, int w, int h)
-{
-    qWarning("this function is deprecated, use QScreen::grabWindow() instead."
-             " Defaulting to primary screen.");
-    return QGuiApplication::primaryScreen()->grabWindow(window, x, y, w, h);
-}
-#endif
 
 /*!
   \internal
@@ -1714,17 +1535,5 @@ QDebug operator<<(QDebug dbg, const QPixmap &r)
     return dbg;
 }
 #endif
-
-/*!
-    \fn QPixmap QPixmap::alphaChannel() const
-
-    Most use cases for this can be achieved using a QPainter and QPainter::CompositionMode instead.
-*/
-
-/*!
-    \fn void QPixmap::setAlphaChannel(const QPixmap &p)
-
-    Most use cases for this can be achieved using \a p with QPainter and QPainter::CompositionMode instead.
-*/
 
 QT_END_NAMESPACE

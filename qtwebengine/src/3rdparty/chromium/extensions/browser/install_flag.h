@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,6 +27,11 @@ enum InstallFlag {
 
   // Do not sync the installed extension.
   kInstallFlagDoNotSync = 1 << 4,
+
+  // The user clicked through the install friction dialog when the extension is
+  // not included in the Enhanced Safe Browsing CRX allowlist and the user has
+  // enabled Enhanced Protection.
+  kInstallFlagBypassedSafeBrowsingFriction = 1 << 5,
 };
 
 }  // namespace extensions

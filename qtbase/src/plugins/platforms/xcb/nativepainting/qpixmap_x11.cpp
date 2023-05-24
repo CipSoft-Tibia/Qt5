@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QGuiApplication>
 
@@ -282,9 +246,9 @@ static uint n_bits(uint v)
     return i;
 }
 
-static uint *red_scale_table   = 0;
-static uint *green_scale_table = 0;
-static uint *blue_scale_table  = 0;
+static uint *red_scale_table   = nullptr;
+static uint *green_scale_table = nullptr;
+static uint *blue_scale_table  = nullptr;
 
 static void cleanup_scale_tables()
 {
@@ -546,10 +510,10 @@ void QX11PlatformPixmap::fromImage(const QImage &img, Qt::ImageConversionFlags f
 
     Display *dpy   = xinfo.display();
     Visual *visual = (Visual *)xinfo.visual();
-    XImage *xi = 0;
+    XImage *xi = nullptr;
     bool    trucol = (visual->c_class >= TrueColor);
     size_t  nbytes = image.sizeInBytes();
-    uchar  *newbits= 0;
+    uchar  *newbits= nullptr;
 
 #if QT_CONFIG(xrender)
     if (alphaCheck.hasXRenderAndAlpha()) {
@@ -573,7 +537,7 @@ void QX11PlatformPixmap::fromImage(const QImage &img, Qt::ImageConversionFlags f
 
         switch (cimage.format()) {
         case QImage::Format_Indexed8: {
-            QVector<QRgb> colorTable = cimage.colorTable();
+            QList<QRgb> colorTable = cimage.colorTable();
             uint *xidata = (uint *)xi->data;
             for (int y = 0; y < h; ++y) {
                 const uchar *p = cimage.scanLine(y);
@@ -676,7 +640,7 @@ void QX11PlatformPixmap::fromImage(const QImage &img, Qt::ImageConversionFlags f
         const uint  bbits = highest_bit(blue_mask) - lowest_bit(blue_mask) + 1;
 
         if (d8) {                                // setup pixel translation
-            QVector<QRgb> ctable = cimage.colorTable();
+            QList<QRgb> ctable = cimage.colorTable();
             for (int i=0; i < cimage.colorCount(); i++) {
                 int r = qRed  (ctable[i]);
                 int g = qGreen(ctable[i]);
@@ -1061,7 +1025,7 @@ void QX11PlatformPixmap::fromImage(const QImage &img, Qt::ImageConversionFlags f
         int  maxpop = 0;
         int  maxpix = 0;
         uint j = 0;
-        QVector<QRgb> ctable = cimage.colorTable();
+        QList<QRgb> ctable = cimage.colorTable();
         for (int i = 0; i < 256; i++) {                // init pixel array
             if (pop[i] > 0) {
                 px->r = qRed  (ctable[i]);
@@ -1350,7 +1314,7 @@ QBitmap QX11PlatformPixmap::mask() const
 #endif
     if (d == 1) {
         QX11PlatformPixmap *that = const_cast<QX11PlatformPixmap*>(this);
-        mask = QPixmap(that);
+        mask = QBitmap::fromPixmap(QPixmap(that));
     } else {
         mask = mask_to_bitmap(xinfo.screen());
     }
@@ -1473,22 +1437,16 @@ QPixmap QX11PlatformPixmap::transformed(const QTransform &transform, Qt::Transfo
                    transform.m21(), transform.m22(), transform.m23(),
                    0., 0., 1);
     bool complex_xform = false;
-    qreal scaledWidth;
-    qreal scaledHeight;
 
     if (mat.type() <= QTransform::TxScale) {
-        scaledHeight = qAbs(mat.m22()) * hs + 0.9999;
-        scaledWidth = qAbs(mat.m11()) * ws + 0.9999;
-        h = qAbs(int(scaledHeight));
-        w = qAbs(int(scaledWidth));
+        h = qRound(qAbs(mat.m22()) * hs);
+        w = qRound(qAbs(mat.m11()) * ws);
     } else {                                        // rotation or shearing
         QPolygonF a(QRectF(0, 0, ws, hs));
         a = mat.map(a);
         QRect r = a.boundingRect().toAlignedRect();
         w = r.width();
         h = r.height();
-        scaledWidth = w;
-        scaledHeight = h;
         complex_xform = true;
     }
     mat = QPixmap::trueMatrix(mat, ws, hs); // true matrix
@@ -1497,7 +1455,7 @@ QPixmap QX11PlatformPixmap::transformed(const QTransform &transform, Qt::Transfo
     mat = mat.inverted(&invertible);  // invert matrix
 
     if (h == 0 || w == 0 || !invertible
-        || qAbs(scaledWidth) >= 32768 || qAbs(scaledHeight) >= 32768 )
+        || qAbs(h) >= 32768 || qAbs(w) >= 32768 )
     // error, return null pixmap
         return QPixmap();
 
@@ -1747,7 +1705,7 @@ XID QX11PlatformPixmap::createBitmapFromImage(const QImage &image)
     int w = img.width();
     int h = img.height();
     int bpl = (w + 7) / 8;
-    int ibpl = img.bytesPerLine();
+    qsizetype ibpl = img.bytesPerLine();
     if (bpl != ibpl) {
         tmp_bits = new uchar[bpl*h];
         bits = (char *)tmp_bits;
@@ -2017,7 +1975,7 @@ QImage QX11PlatformPixmap::toImage(const QXImageWrapper &xiWrapper, const QRect 
         }
     } else if (xi->bits_per_pixel == d) {        // compatible depth
         char *xidata = xi->data;                // copy each scanline
-        int bpl = qMin(int(image.bytesPerLine()),xi->bytes_per_line);
+        qsizetype bpl = qMin(image.bytesPerLine(),xi->bytes_per_line);
         for (int y=0; y<xi->height; y++) {
             memcpy(image.scanLine(y), xidata, bpl);
             xidata += xi->bytes_per_line;
@@ -2038,10 +1996,10 @@ QImage QX11PlatformPixmap::toImage(const QXImageWrapper &xiWrapper, const QRect 
         uchar *end;
         uchar  use[256];                        // pixel-in-use table
         uchar  pix[256];                        // pixel translation table
-        int    ncols, bpl;
+        int    ncols;
         memset(use, 0, 256);
         memset(pix, 0, 256);
-        bpl = image.bytesPerLine();
+        qsizetype bpl = image.bytesPerLine();
 
         if (x11_mask) {                         // which pixels are used?
             for (int i = 0; i < xi->height; i++) {
@@ -2114,7 +2072,7 @@ QImage QX11PlatformPixmap::toImage(const QXImageWrapper &xiWrapper, const QRect 
         } else {
             image.setColorCount(ncols);        // create color table
         }
-        QVector<QColor> colors = QXcbColormap::instance(xinfo.screen()).colormap();
+        QList<QColor> colors = QXcbColormap::instance(xinfo.screen()).colormap();
         int j = 0;
         for (int i=0; i<colors.size(); i++) {                // translate pixels
             if (use[i])

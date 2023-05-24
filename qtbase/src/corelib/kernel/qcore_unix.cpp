@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/private/qglobal_p.h>
 #include "qcore_unix_p.h"
@@ -50,7 +14,7 @@
 #  include <unistd.h>
 #endif
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
 #include <mach/mach_time.h>
 #endif
 
@@ -101,6 +65,34 @@ int qt_open64(const char *pathname, int flags, mode_t mode)
 
 #ifndef QT_BOOTSTRAPPED
 
+static inline void do_gettime(qint64 *sec, qint64 *frac)
+{
+    timespec ts;
+    clockid_t clk = CLOCK_REALTIME;
+#if defined(CLOCK_MONOTONIC_RAW)
+    clk = CLOCK_MONOTONIC_RAW;
+#elif defined(CLOCK_MONOTONIC)
+    clk = CLOCK_MONOTONIC;
+#endif
+
+    clock_gettime(clk, &ts);
+    *sec = ts.tv_sec;
+    *frac = ts.tv_nsec;
+}
+
+// also used in qeventdispatcher_unix.cpp
+struct timespec qt_gettime() noexcept
+{
+    qint64 sec, frac;
+    do_gettime(&sec, &frac);
+
+    timespec tv;
+    tv.tv_sec = sec;
+    tv.tv_nsec = frac;
+
+    return tv;
+}
+
 #if QT_CONFIG(poll_pollts)
 #  define ppoll pollts
 #endif
@@ -115,13 +107,15 @@ static inline bool time_update(struct timespec *tv, const struct timespec &start
     return tv->tv_sec >= 0;
 }
 
-#if QT_CONFIG(poll_poll)
+[[maybe_unused]]
 static inline int timespecToMillisecs(const struct timespec *ts)
 {
-    return (ts == NULL) ? -1 :
-           (ts->tv_sec * 1000) + (ts->tv_nsec / 1000000);
+    using namespace std::chrono;
+    if (!ts)
+        return -1;
+    auto ms = ceil<milliseconds>(timespecToChrono<nanoseconds>(*ts));
+    return int(ms.count());
 }
-#endif
 
 // defined in qpoll.cpp
 int qt_poll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts);
@@ -152,7 +146,7 @@ int qt_safe_poll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout
     if (!timeout_ts) {
         // no timeout -> block forever
         int ret;
-        EINTR_LOOP(ret, qt_ppoll(fds, nfds, nullptr));
+        QT_EINTR_LOOP(ret, qt_ppoll(fds, nfds, nullptr));
         return ret;
     }
 

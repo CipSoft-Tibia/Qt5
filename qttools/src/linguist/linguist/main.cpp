@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mainwindow.h"
 #include "globals.h"
@@ -65,7 +40,7 @@ public:
     }
 
 protected:
-    bool eventFilter(QObject *object, QEvent *event)
+    bool eventFilter(QObject *object, QEvent *event) override
     {
         if (object == qApp && event->type() == QEvent::FileOpen) {
             QFileOpenEvent *e = static_cast<QFileOpenEvent*>(event);
@@ -87,11 +62,6 @@ private:
 
 int main(int argc, char **argv)
 {
-    Q_INIT_RESOURCE(linguist);
-
-    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-    QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
-
     QApplication app(argc, argv);
     QApplication::setOverrideCursor(Qt::WaitCursor);
 
@@ -101,13 +71,13 @@ int main(int argc, char **argv)
 #endif // Q_OS_MAC
 
     QStringList files;
-    QString resourceDir = QLibraryInfo::location(QLibraryInfo::TranslationsPath);
+    QString resourceDir = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
     QStringList args = app.arguments();
 
-    for (int i = 1; i < args.count(); ++i) {
+    for (int i = 1; i < args.size(); ++i) {
         QString argument = args.at(i);
         if (argument == QLatin1String("-resourcedir")) {
-            if (i + 1 < args.count()) {
+            if (i + 1 < args.size()) {
                 resourceDir = QFile::decodeName(args.at(++i).toLocal8Bit());
             } else {
                 // issue a warning
@@ -119,10 +89,9 @@ int main(int argc, char **argv)
 
     QTranslator translator;
     QTranslator qtTranslator;
-    QString sysLocale = QLocale::system().name();
-    if (translator.load(QLatin1String("linguist_") + sysLocale, resourceDir)) {
+    if (translator.load(QLocale(), QLatin1String("linguist"), QLatin1String("_"), resourceDir)) {
         app.installTranslator(&translator);
-        if (qtTranslator.load(QLatin1String("qt_") + sysLocale, resourceDir))
+        if (qtTranslator.load(QLocale(), QLatin1String("qt"), QLatin1String("_"), resourceDir))
             app.installTranslator(&qtTranslator);
         else
             app.removeTranslator(&translator);

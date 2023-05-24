@@ -85,7 +85,6 @@ EVP_PKEY *EVP_PKEY_new(void) {
 
   ret = OPENSSL_malloc(sizeof(EVP_PKEY));
   if (ret == NULL) {
-    OPENSSL_PUT_ERROR(EVP, ERR_R_MALLOC_FAILURE);
     return NULL;
   }
 
@@ -153,21 +152,35 @@ int EVP_PKEY_cmp(const EVP_PKEY *a, const EVP_PKEY *b) {
 }
 
 int EVP_PKEY_copy_parameters(EVP_PKEY *to, const EVP_PKEY *from) {
-  if (to->type != from->type) {
+  if (to->type == EVP_PKEY_NONE) {
+    if (!EVP_PKEY_set_type(to, from->type)) {
+      return 0;
+    }
+  } else if (to->type != from->type) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_DIFFERENT_KEY_TYPES);
-    goto err;
+    return 0;
   }
 
   if (EVP_PKEY_missing_parameters(from)) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_MISSING_PARAMETERS);
-    goto err;
+    return 0;
+  }
+
+  // Once set, parameters may not change.
+  if (!EVP_PKEY_missing_parameters(to)) {
+    if (EVP_PKEY_cmp_parameters(to, from) == 1) {
+      return 1;
+    }
+    OPENSSL_PUT_ERROR(EVP, EVP_R_DIFFERENT_PARAMETERS);
+    return 0;
   }
 
   if (from->ameth && from->ameth->param_copy) {
     return from->ameth->param_copy(to, from);
   }
 
-err:
+  // TODO(https://crbug.com/boringssl/536): If the algorithm takes no
+  // parameters, copying them should vacuously succeed.
   return 0;
 }
 
@@ -416,6 +429,8 @@ int EVP_PKEY_cmp_parameters(const EVP_PKEY *a, const EVP_PKEY *b) {
   if (a->ameth && a->ameth->param_cmp) {
     return a->ameth->param_cmp(a, b);
   }
+  // TODO(https://crbug.com/boringssl/536): If the algorithm doesn't use
+  // parameters, they should compare as vacuously equal.
   return -2;
 }
 
@@ -429,6 +444,15 @@ int EVP_PKEY_CTX_get_signature_md(EVP_PKEY_CTX *ctx, const EVP_MD **out_md) {
                            0, (void *)out_md);
 }
 
+void *EVP_PKEY_get0(const EVP_PKEY *pkey) {
+  // Node references, but never calls this function, so for now we return NULL.
+  // If other projects require complete support, call |EVP_PKEY_get0_RSA|, etc.,
+  // rather than reading |pkey->pkey.ptr| directly. This avoids problems if our
+  // internal representation does not match the type the caller expects from
+  // OpenSSL.
+  return NULL;
+}
+
 void OpenSSL_add_all_algorithms(void) {}
 
 void OPENSSL_add_all_algorithms_conf(void) {}
@@ -438,6 +462,25 @@ void OpenSSL_add_all_ciphers(void) {}
 void OpenSSL_add_all_digests(void) {}
 
 void EVP_cleanup(void) {}
+
+int EVP_PKEY_set1_tls_encodedpoint(EVP_PKEY *pkey, const uint8_t *in,
+                                   size_t len) {
+  if (pkey->ameth->set1_tls_encodedpoint == NULL) {
+    OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+    return 0;
+  }
+
+  return pkey->ameth->set1_tls_encodedpoint(pkey, in, len);
+}
+
+size_t EVP_PKEY_get1_tls_encodedpoint(const EVP_PKEY *pkey, uint8_t **out_ptr) {
+  if (pkey->ameth->get1_tls_encodedpoint == NULL) {
+    OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+    return 0;
+  }
+
+  return pkey->ameth->get1_tls_encodedpoint(pkey, out_ptr);
+}
 
 int EVP_PKEY_base_id(const EVP_PKEY *pkey) {
   // OpenSSL has two notions of key type because it supports multiple OIDs for

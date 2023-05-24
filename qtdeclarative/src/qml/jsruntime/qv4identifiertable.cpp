@@ -1,43 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qv4identifiertable_p.h"
 #include "qv4symbol_p.h"
+#include <private/qv4identifierhashdata_p.h>
 #include <private/qprimefornumbits_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -60,7 +25,7 @@ IdentifierTable::~IdentifierTable()
 {
     free(entriesByHash);
     free(entriesById);
-    for (const auto &h : qAsConst(idHashes))
+    for (const auto &h : std::as_const(idHashes))
         h->identifierTable = nullptr;
 }
 
@@ -135,13 +100,19 @@ void IdentifierTable::addEntry(Heap::StringOrSymbol *str)
 Heap::String *IdentifierTable::insertString(const QString &s)
 {
     uint subtype;
-    uint hash = String::createHashValue(s.constData(), s.length(), &subtype);
+    uint hash = String::createHashValue(s.constData(), s.size(), &subtype);
     if (subtype == Heap::String::StringType_ArrayIndex) {
         Heap::String *str = engine->newString(s);
         str->stringHash = hash;
         str->subtype = subtype;
+        str->identifier = PropertyKey::fromArrayIndex(hash);
         return str;
     }
+    return resolveStringEntry(s, hash, subtype);
+}
+
+Heap::String *IdentifierTable::resolveStringEntry(const QString &s, uint hash, uint subtype)
+{
     uint idx = hash % alloc;
     while (Heap::StringOrSymbol *e = entriesByHash[idx]) {
         if (e->stringHash == hash && e->toQString() == s)
@@ -162,7 +133,7 @@ Heap::Symbol *IdentifierTable::insertSymbol(const QString &s)
     Q_ASSERT(s.at(0) == QLatin1Char('@'));
 
     uint subtype;
-    uint hash = String::createHashValue(s.constData(), s.length(), &subtype);
+    uint hash = String::createHashValue(s.constData(), s.size(), &subtype);
     uint idx = hash % alloc;
     while (Heap::StringOrSymbol *e = entriesByHash[idx]) {
         if (e->stringHash == hash && e->toQString() == s)
@@ -278,32 +249,27 @@ void IdentifierTable::sweep()
     size -= freed;
 }
 
-PropertyKey IdentifierTable::asPropertyKey(const QString &s)
+PropertyKey IdentifierTable::asPropertyKey(const QString &s,
+                                           IdentifierTable::KeyConversionBehavior conversionBehvior)
 {
-    return insertString(s)->identifier;
+    uint subtype;
+    uint hash = String::createHashValue(s.constData(), s.size(), &subtype);
+    if (subtype == Heap::String::StringType_ArrayIndex) {
+        if (Q_UNLIKELY(conversionBehvior == ForceConversionToId))
+            hash = String::createHashValueDisallowingArrayIndex(s.constData(), s.size(), &subtype);
+        else
+            return PropertyKey::fromArrayIndex(hash);
+    }
+    return resolveStringEntry(s, hash, subtype)->identifier;
 }
 
 PropertyKey IdentifierTable::asPropertyKey(const char *s, int len)
 {
     uint subtype;
     uint hash = String::createHashValue(s, len, &subtype);
-    if (hash == UINT_MAX)
-        return asPropertyKey(QString::fromUtf8(s, len));
-
-    QLatin1String latin(s, len);
-    uint idx = hash % alloc;
-    while (Heap::StringOrSymbol *e = entriesByHash[idx]) {
-        if (e->stringHash == hash && e->toQString() == latin)
-            return e->identifier;
-        ++idx;
-        idx %= alloc;
-    }
-
-    Heap::String *str = engine->newString(QString::fromLatin1(s, len));
-    str->stringHash = hash;
-    str->subtype = subtype;
-    addEntry(str);
-    return str->identifier;
+    if (subtype == Heap::String::StringType_ArrayIndex)
+        return PropertyKey::fromArrayIndex(hash);
+    return resolveStringEntry(QString::fromLatin1(s, len), hash, subtype)->identifier;
 }
 
 }

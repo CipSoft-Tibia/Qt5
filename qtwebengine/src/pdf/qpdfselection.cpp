@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtPDF module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpdfselection.h"
 #include "qpdfselection_p.h"
@@ -67,7 +34,7 @@ QPdfSelection::QPdfSelection()
     \a text string, and which take up space on the page within the polygon
     regions given in \a bounds.
 */
-QPdfSelection::QPdfSelection(const QString &text, QVector<QPolygonF> bounds, QRectF boundingRect, int startIndex, int endIndex)
+QPdfSelection::QPdfSelection(const QString &text, QList<QPolygonF> bounds, QRectF boundingRect, int startIndex, int endIndex)
   : d(new QPdfSelectionPrivate(text, bounds, boundingRect, startIndex, endIndex))
 {
 }
@@ -77,25 +44,10 @@ QPdfSelection::QPdfSelection(QPdfSelectionPrivate *d)
 {
 }
 
-QPdfSelection::QPdfSelection(const QPdfSelection &other)
-  : d(other.d)
-{
-}
-
-QPdfSelection::QPdfSelection(QPdfSelection &&other) noexcept
-  : d(std::move(other.d))
-{
-}
-
-QPdfSelection::~QPdfSelection()
-{
-}
-
-QPdfSelection &QPdfSelection::operator=(const QPdfSelection &other)
-{
-    d = other.d;
-    return *this;
-}
+QPdfSelection::~QPdfSelection() = default;
+QPdfSelection::QPdfSelection(const QPdfSelection &other) = default;
+QPdfSelection::QPdfSelection(QPdfSelection &&other) noexcept = default;
+QPdfSelection &QPdfSelection::operator=(const QPdfSelection &other) = default;
 
 /*!
     \property QPdfSelection::valid
@@ -119,7 +71,7 @@ bool QPdfSelection::isValid() const
     are always rectangles; but in the future it may be possible to represent
     more complex regions.
 */
-QVector<QPolygonF> QPdfSelection::bounds() const
+QList<QPolygonF> QPdfSelection::bounds() const
 {
     return d->bounds;
 }
@@ -135,7 +87,7 @@ QString QPdfSelection::text() const
 }
 
 /*!
-    \property rect QPdfSelection::boundingRectangle
+    \property QPdfSelection::boundingRectangle
 
     This property holds the overall bounding rectangle (convex hull) around \l bounds.
 */
@@ -145,7 +97,7 @@ QRectF QPdfSelection::boundingRectangle() const
 }
 
 /*!
-    \property int QPdfSelection::startIndex
+    \property QPdfSelection::startIndex
 
     This property holds the index at the beginning of \l text within the full text on the page.
 */
@@ -155,7 +107,7 @@ int QPdfSelection::startIndex() const
 }
 
 /*!
-    \property int QPdfSelection::endIndex
+    \property QPdfSelection::endIndex
 
     This property holds the index at the end of \l text within the full text on the page.
 */
@@ -166,7 +118,8 @@ int QPdfSelection::endIndex() const
 
 #if QT_CONFIG(clipboard)
 /*!
-    Copies \l text to the \l {QGuiApplication::clipboard()}{system clipboard}.
+    Copies \l text to the \l {QGuiApplication::clipboard()}{system clipboard}
+    depending on the \a mode selected.
 */
 void QPdfSelection::copyToClipboard(QClipboard::Mode mode) const
 {

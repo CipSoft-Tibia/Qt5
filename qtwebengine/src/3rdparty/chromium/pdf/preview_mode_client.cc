@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,14 +10,19 @@
 #include <string>
 #include <utility>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/notreached.h"
+#include "base/time/time.h"
 #include "pdf/document_layout.h"
-#include "pdf/ppapi_migration/url_loader.h"
+#include "pdf/loader/url_loader.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/cursor/mojom/cursor_type.mojom-shared.h"
 
 namespace chrome_pdf {
 
 PreviewModeClient::PreviewModeClient(Client* client) : client_(client) {}
+
+PreviewModeClient::~PreviewModeClient() = default;
 
 void PreviewModeClient::ProposeDocumentLayout(const DocumentLayout& layout) {
   // This will be invoked if the PreviewModeClient is used, which currently
@@ -36,8 +41,7 @@ void PreviewModeClient::ScrollToX(int x_in_screen_coords) {
   NOTREACHED();
 }
 
-void PreviewModeClient::ScrollToY(int y_in_screen_coords,
-                                  bool compensate_for_toolbar) {
+void PreviewModeClient::ScrollToY(int y_in_screen_coords) {
   NOTREACHED();
 }
 
@@ -54,7 +58,7 @@ void PreviewModeClient::NavigateTo(const std::string& url,
   NOTREACHED();
 }
 
-void PreviewModeClient::UpdateCursor(PP_CursorType_Dev cursor) {
+void PreviewModeClient::UpdateCursor(ui::mojom::CursorType cursor_type) {
   NOTREACHED();
 }
 
@@ -68,8 +72,8 @@ void PreviewModeClient::NotifyNumberOfFindResultsChanged(int total,
   NOTREACHED();
 }
 
-void PreviewModeClient::NotifySelectedFindResultChanged(
-    int current_find_index) {
+void PreviewModeClient::NotifySelectedFindResultChanged(int current_find_index,
+                                                        bool final_result) {
   NOTREACHED();
 }
 
@@ -122,15 +126,14 @@ std::unique_ptr<UrlLoader> PreviewModeClient::CreateUrlLoader() {
 }
 
 std::vector<PDFEngine::Client::SearchStringResult>
-PreviewModeClient::SearchString(const base::char16* string,
-                                const base::char16* term,
+PreviewModeClient::SearchString(const char16_t* string,
+                                const char16_t* term,
                                 bool case_sensitive) {
   NOTREACHED();
   return std::vector<SearchStringResult>();
 }
 
-void PreviewModeClient::DocumentLoadComplete(
-    const PDFEngine::DocumentFeatures& document_features) {
+void PreviewModeClient::DocumentLoadComplete() {
   client_->PreviewDocumentLoadComplete();
 }
 
@@ -138,30 +141,36 @@ void PreviewModeClient::DocumentLoadFailed() {
   client_->PreviewDocumentLoadFailed();
 }
 
-pp::Instance* PreviewModeClient::GetPluginInstance() {
-  return nullptr;
-}
-
 void PreviewModeClient::DocumentHasUnsupportedFeature(
     const std::string& feature) {
   NOTREACHED();
 }
 
-void PreviewModeClient::FormTextFieldFocusChange(bool in_focus) {
+void PreviewModeClient::FormFieldFocusChange(PDFEngine::FocusFieldType type) {
   NOTREACHED();
 }
 
-bool PreviewModeClient::IsPrintPreview() {
+bool PreviewModeClient::IsPrintPreview() const {
   return true;
 }
 
-float PreviewModeClient::GetToolbarHeightInScreenCoords() {
-  return 0.0f;
+SkColor PreviewModeClient::GetBackgroundColor() const {
+  NOTREACHED();
+  return SK_ColorTRANSPARENT;
 }
 
-uint32_t PreviewModeClient::GetBackgroundColor() {
+void PreviewModeClient::SetSelectedText(const std::string& selected_text) {
   NOTREACHED();
-  return 0;
+}
+
+void PreviewModeClient::SetLinkUnderCursor(
+    const std::string& link_under_cursor) {
+  NOTREACHED();
+}
+
+bool PreviewModeClient::IsValidLink(const std::string& url) {
+  NOTREACHED();
+  return false;
 }
 
 }  // namespace chrome_pdf

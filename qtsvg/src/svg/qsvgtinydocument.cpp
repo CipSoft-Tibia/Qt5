@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt SVG module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsvgtinydocument_p.h"
 
@@ -202,7 +166,7 @@ QSvgTinyDocument * QSvgTinyDocument::load(const QString &fileName)
         return load(qt_inflateSvgzDataFrom(&file));
     }
 
-    QSvgTinyDocument *doc = 0;
+    QSvgTinyDocument *doc = nullptr;
     QSvgHandler handler(&file);
     if (handler.ok()) {
         doc = handler.document();
@@ -248,7 +212,7 @@ QSvgTinyDocument * QSvgTinyDocument::load(QXmlStreamReader *contents)
 {
     QSvgHandler handler(contents);
 
-    QSvgTinyDocument *doc = 0;
+    QSvgTinyDocument *doc = nullptr;
     if (handler.ok()) {
         doc = handler.document();
         doc->m_animationDuration = handler.animationDuration();
@@ -428,9 +392,10 @@ void QSvgTinyDocument::draw(QPainter *p)
     draw(p, QRectF());
 }
 
-void QSvgTinyDocument::draw(QPainter *p, QSvgExtraStates &)
+void QSvgTinyDocument::draw(QPainter *, QSvgExtraStates &)
 {
-    draw(p);
+    qCDebug(lcSvgHandler) << "SVG Tiny does not support nested <svg> elements: ignored.";
+    return;
 }
 
 static bool isValidMatrix(const QTransform &transform)
@@ -462,10 +427,8 @@ void QSvgTinyDocument::mapSourceToTarget(QPainter *p, const QRectF &targetRect, 
         source = viewBox();
 
     if (source != target && !qFuzzyIsNull(source.width()) && !qFuzzyIsNull(source.height())) {
-#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
         if (m_implicitViewBox || !preserveAspectRatio()) {
             // Code path used when no view box is set, or IgnoreAspectRatio requested
-#endif
             QTransform transform;
             transform.scale(target.width() / source.width(),
                             target.height() / source.height());
@@ -474,7 +437,6 @@ void QSvgTinyDocument::mapSourceToTarget(QPainter *p, const QRectF &targetRect, 
                          target.y() - c2.y());
             p->scale(target.width() / source.width(),
                      target.height() / source.height());
-#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
         } else {
             // Code path used when KeepAspectRatio is requested. This attempts to emulate the default values
             // of the <preserveAspectRatio tag that's implicitly defined when <viewbox> is used.
@@ -493,7 +455,6 @@ void QSvgTinyDocument::mapSourceToTarget(QPainter *p, const QRectF &targetRect, 
             // Apply the view box translation if specified.
             p->translate(-source.x(), -source.y());
         }
-#endif
     }
 
     if (!isValidMatrix(p->worldTransform()))

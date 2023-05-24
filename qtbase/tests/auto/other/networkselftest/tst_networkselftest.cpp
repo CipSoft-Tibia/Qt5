@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtNetwork/QtNetwork>
 #include <QtCore/QDateTime>
 #include <QtCore/QElapsedTimer>
@@ -36,6 +11,12 @@
 #include <QtCore/private/qiodevice_p.h>
 
 #include "../../network-settings.h"
+
+#ifndef QT_NO_OPENSSL
+QT_BEGIN_NAMESPACE
+void qt_ForceTlsSecurityLevel();
+QT_END_NAMESPACE
+#endif
 
 class tst_NetworkSelfTest: public QObject
 {
@@ -124,8 +105,8 @@ static QString prettyByteArray(const QByteArray &array)
 {
     // any control chars?
     QString result;
-    result.reserve(array.length() + array.length() / 3);
-    for (int i = 0; i < array.length(); ++i) {
+    result.reserve(array.size() + array.size() / 3);
+    for (int i = 0; i < array.size(); ++i) {
         char c = array.at(i);
         switch (c) {
         case '\n':
@@ -227,11 +208,11 @@ static void netChat(int port, const QList<Chat> &chat)
         switch (it->type) {
             case Chat::Expect: {
                     qDebug() << i << "Expecting" << prettyByteArray(it->data);
-                    if (!doSocketRead(&socket, it->data.length(), 3 * defaultReadTimeoutMS))
-                        QFAIL(msgDoSocketReadFailed(serverName, port, i, it->data.length()));
+                    if (!doSocketRead(&socket, it->data.size(), 3 * defaultReadTimeoutMS))
+                        QFAIL(msgDoSocketReadFailed(serverName, port, i, it->data.size()));
 
                     // pop that many bytes off the socket
-                    QByteArray received = socket.read(it->data.length());
+                    QByteArray received = socket.read(it->data.size());
 
                     // is it what we expected?
                     QVERIFY2(received == it->data,
@@ -245,8 +226,8 @@ static void netChat(int port, const QList<Chat> &chat)
                 qDebug() << i << "Discarding until" << prettyByteArray(it->data);
                 while (true) {
                     // scan the buffer until we have our string
-                    if (!doSocketRead(&socket, it->data.length()))
-                        QFAIL(msgDoSocketReadFailed(serverName, port, i, it->data.length()));
+                    if (!doSocketRead(&socket, it->data.size()))
+                        QFAIL(msgDoSocketReadFailed(serverName, port, i, it->data.size()));
 
                     QByteArray buffer;
                     buffer.resize(socket.bytesAvailable());
@@ -258,7 +239,7 @@ static void netChat(int port, const QList<Chat> &chat)
                         continue;
                     }
 
-                    buffer = socket.read(pos + it->data.length());
+                    buffer = socket.read(pos + it->data.size());
                     qDebug() << i << "Discarded" << prettyByteArray(buffer);
                     break;
                 }
@@ -339,6 +320,9 @@ static void netChat(int port, const QList<Chat> &chat)
 
 tst_NetworkSelfTest::tst_NetworkSelfTest()
 {
+#ifndef QT_NO_OPENSSL
+    qt_ForceTlsSecurityLevel();
+#endif
 }
 
 tst_NetworkSelfTest::~tst_NetworkSelfTest()
@@ -370,7 +354,7 @@ void tst_NetworkSelfTest::initTestCase()
     if (resolved.error() == QHostInfo::NoError && !resolved.addresses().isEmpty())
         ftpServerIpAddress = resolved.addresses().first();
     // TODO: 'ssh', port 22.
-    QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::ftpProxyServerName(), 2121));
+    // QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::ftpProxyServerName(), 2121));
     QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::httpServerName(), 80));
     // TODO: 'smb', port 139.
     QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::imapServerName(), 143));
@@ -527,6 +511,7 @@ void tst_NetworkSelfTest::ftpServer()
 
 void tst_NetworkSelfTest::ftpProxyServer()
 {
+    QSKIP("FTP not currently supported.");
     netChat(2121, ftpChat("@" + QtNetworkSettings::ftpServerName().toLatin1()));
 }
 

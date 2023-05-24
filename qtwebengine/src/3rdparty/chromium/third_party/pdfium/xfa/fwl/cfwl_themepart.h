@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,87 +7,100 @@
 #ifndef XFA_FWL_CFWL_THEMEPART_H_
 #define XFA_FWL_CFWL_THEMEPART_H_
 
+#include <stdint.h>
+
 #include "core/fxcrt/fx_coordinates.h"
-#include "core/fxcrt/fx_system.h"
-
-enum class CFWL_Part : uint8_t {
-  None = 0,
-
-  BackArrow,
-  Background,
-  Border,
-  Caption,
-  Check,
-  CheckBox,
-  CloseBox,
-  CombTextLine,
-  DateInBK,
-  DateInCircle,
-  DatesIn,
-  DatesOut,
-  DownButton,
-  DropDownButton,
-  ForeArrow,
-  HSeparator,
-  HeadText,
-  Header,
-  Icon,
-  Image,
-  LBtn,
-  ListItem,
-  LowerTrack,
-  MinimizeBox,
-  MaximizeBox,
-  NarrowCaption,
-  RBtn,
-  Thumb,
-  ThumbBackArrow,
-  ThumbForeArrow,
-  ThumbLowerTrack,
-  ThumbThumb,
-  ThumbUpperTrack,
-  Today,
-  TodayCircle,
-  UpButton,
-  UpperTrack,
-  VSeparator,
-  Week,
-  WeekNum,
-  WeekNumSep
-};
-
-enum CFWL_PartState {
-  CFWL_PartState_Normal = 0,
-
-  CFWL_PartState_Checked = 1 << 1,
-  CFWL_PartState_Default = 1 << 2,
-  CFWL_PartState_Disabled = 1 << 3,
-  CFWL_PartState_Flagged = 1 << 4,
-  CFWL_PartState_Focused = 1 << 5,
-  CFWL_PartState_HightLight = 1 << 6,
-  CFWL_PartState_Hovered = 1 << 7,
-  CFWL_PartState_Neutral = 1 << 9,
-  CFWL_PartState_Pressed = 1 << 10,
-  CFWL_PartState_ReadOnly = 1 << 11,
-  CFWL_PartState_LSelected = 1 << 12,
-  CFWL_PartState_RSelected = 1 << 13,
-  CFWL_PartState_Selected = 1 << 14
-};
+#include "core/fxcrt/fx_memory.h"
+#include "core/fxcrt/mask.h"
+#include "core/fxcrt/unowned_ptr.h"
+#include "xfa/fwl/theme/cfwl_utils.h"
 
 class CFWL_Widget;
 
+enum class CFWL_PartState : uint16_t {
+  kNormal = 0,
+  kChecked = 1 << 1,
+  kDefault = 1 << 2,
+  kDisabled = 1 << 3,
+  kFlagged = 1 << 4,
+  kFocused = 1 << 5,
+  kHightLight = 1 << 6,
+  kHovered = 1 << 7,
+  kNeutral = 1 << 9,
+  kPressed = 1 << 10,
+  kReadOnly = 1 << 11,
+  kLSelected = 1 << 12,
+  kRSelected = 1 << 13,
+  kSelected = 1 << 14
+};
+
 class CFWL_ThemePart {
  public:
-  CFWL_ThemePart();
+  enum class Part : uint8_t {
+    kNone = 0,
+
+    kBackArrow,
+    kBackground,
+    kBorder,
+    kCaption,
+    kCheck,
+    kCheckBox,
+    kCloseBox,
+    kCombTextLine,
+    kDateInBK,
+    kDateInCircle,
+    kDatesIn,
+    kDatesOut,
+    kDownButton,
+    kDropDownButton,
+    kForeArrow,
+    kHSeparator,
+    kHeadText,
+    kHeader,
+    kIcon,
+    kImage,
+    kLBtn,
+    kListItem,
+    kLowerTrack,
+    kMinimizeBox,
+    kMaximizeBox,
+    kNarrowCaption,
+    kRBtn,
+    kThumb,
+    kThumbBackArrow,
+    kThumbForeArrow,
+    kThumbLowerTrack,
+    kThumbThumb,
+    kThumbUpperTrack,
+    kToday,
+    kTodayCircle,
+    kUpButton,
+    kUpperTrack,
+    kVSeparator,
+    kWeek,
+    kWeekNum,
+    kWeekNumSep
+  };
+
+  FX_STACK_ALLOCATED();
+
+  CFWL_ThemePart(Part iPart, CFWL_Widget* pWidget);
+  ~CFWL_ThemePart();
+
+  Part GetPart() const { return m_iPart; }
+  CFWL_Widget* GetWidget() const { return m_pWidget; }
+  FWLTHEME_STATE GetThemeState() const;
 
   CFX_Matrix m_matrix;
   CFX_RectF m_PartRect;
-  CFWL_Widget* m_pWidget = nullptr;
-  CFX_RectF* m_pRtData = nullptr;
-  uint32_t m_dwStates = CFWL_PartState_Normal;
-  CFWL_Part m_iPart = CFWL_Part::None;
+  UnownedPtr<const CFX_RectF> m_pRtData;
+  Mask<CFWL_PartState> m_dwStates = CFWL_PartState::kNormal;
   bool m_bMaximize = false;
   bool m_bStaticBackground = false;
+
+ private:
+  const Part m_iPart;
+  UnownedPtr<CFWL_Widget> const m_pWidget;
 };
 
 #endif  // XFA_FWL_CFWL_THEMEPART_H_

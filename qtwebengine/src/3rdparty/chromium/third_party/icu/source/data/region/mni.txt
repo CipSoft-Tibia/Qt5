@@ -1,7 +1,12 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 mni{
     Countries{
+        001{"মালেম"}
+        002{"অফ্রিকা"}
+        019{"অমেরিকাশিং"}
+        150{"য়ুরোপ"}
         BR{"ব্রাজিল"}
         CN{"চিনা"}
         DE{"জর্মনি"}
@@ -14,5 +19,4 @@ mni{
         US{"য়ুনাইটেদ ষ্টেটস"}
         ZZ{"মশকখংদবা লমদম"}
     }
-    Version{"37"}
 }

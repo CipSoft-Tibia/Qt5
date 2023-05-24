@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -32,6 +32,8 @@ class MockPushSubcription
                     SetPhotoOptionsCallback& callback));
   MOCK_METHOD1(DoTakePhoto, void(TakePhotoCallback& callback));
   MOCK_METHOD1(DoClose, void(CloseCallback& callback));
+  MOCK_METHOD1(ProcessFeedback,
+               void(const media::VideoCaptureFeedback& feedback));
 };
 
 }  // namespace video_capture

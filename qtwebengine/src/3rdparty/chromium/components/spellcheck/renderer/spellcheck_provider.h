@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "base/containers/id_map.h"
-#include "base/macros.h"
 #include "build/build_config.h"
 #include "components/spellcheck/common/spellcheck.mojom.h"
 #include "components/spellcheck/spellcheck_buildflags.h"
@@ -18,9 +17,9 @@
 #include "mojo/public/cpp/bindings/remote.h"
 #include "third_party/blink/public/web/web_text_check_client.h"
 
-#if defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#if BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
 #include <unordered_map>
-#endif  // defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#endif  // BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
 
 class SpellCheck;
 struct SpellCheckResult;
@@ -46,19 +45,23 @@ class SpellCheckProvider : public content::RenderFrameObserver,
   using WebTextCheckCompletions =
       base::IDMap<std::unique_ptr<blink::WebTextCheckingCompletion>>;
 
-#if defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#if BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
   // A struct to hold information related to hybrid spell check requests.
   struct HybridSpellCheckRequestInfo {
     bool used_hunspell;
     bool used_native;
     base::TimeTicks request_start_ticks;
   };
-#endif  // defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#endif  // BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
 
   SpellCheckProvider(
       content::RenderFrame* render_frame,
       SpellCheck* spellcheck,
       service_manager::LocalInterfaceProvider* embedder_provider);
+
+  SpellCheckProvider(const SpellCheckProvider&) = delete;
+  SpellCheckProvider& operator=(const SpellCheckProvider&) = delete;
+
   ~SpellCheckProvider() override;
 
   // Requests async spell and grammar checks from the platform text checker
@@ -66,7 +69,7 @@ class SpellCheckProvider : public content::RenderFrameObserver,
   // handling for partial words, as Blink guarantees that no request is made
   // when typing in the middle of a word.
   void RequestTextChecking(
-      const base::string16& text,
+      const std::u16string& text,
       std::unique_ptr<blink::WebTextCheckingCompletion> completion);
 
   // The number of ongoing spell check host requests.
@@ -99,7 +102,7 @@ class SpellCheckProvider : public content::RenderFrameObserver,
   // Tries to satisfy a spellcheck request from the cache in |last_request_|.
   // Returns true (and cancels/finishes the completion) if it can, false
   // if the provider should forward the query on.
-  bool SatisfyRequestFromCache(const base::string16& text,
+  bool SatisfyRequestFromCache(const std::u16string& text,
                                blink::WebTextCheckingCompletion* completion);
 
   // content::RenderFrameObserver:
@@ -118,28 +121,27 @@ class SpellCheckProvider : public content::RenderFrameObserver,
 
 #if BUILDFLAG(USE_RENDERER_SPELLCHECKER)
   void OnRespondSpellingService(int identifier,
-                                const base::string16& text,
+                                const std::u16string& text,
                                 bool success,
                                 const std::vector<SpellCheckResult>& results);
 #endif
 
   // Returns whether |text| has word characters, i.e. whether a spellchecker
   // needs to check this text.
-  bool HasWordCharacters(const base::string16& text, size_t index) const;
+  bool HasWordCharacters(const std::u16string& text, size_t index) const;
 
 #if BUILDFLAG(USE_BROWSER_SPELLCHECKER)
-  void OnRespondTextCheck(
-      int identifier,
-      const base::string16& line,
-      const std::vector<SpellCheckResult>& results);
+  void OnRespondTextCheck(int identifier,
+                          const std::u16string& line,
+                          const std::vector<SpellCheckResult>& results);
 
   // Makes mojo calls to the browser process to perform platform spellchecking.
-  void RequestTextCheckingFromBrowser(const base::string16& text);
+  void RequestTextCheckingFromBrowser(const std::u16string& text);
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // Callback for when spellcheck service has been initialized on demand.
   void OnRespondInitializeDictionaries(
-      const base::string16& text,
+      const std::u16string& text,
       std::vector<spellcheck::mojom::SpellCheckBDictLanguagePtr> dictionaries,
       const std::vector<std::string>& custom_words,
       bool enable);
@@ -148,7 +150,7 @@ class SpellCheckProvider : public content::RenderFrameObserver,
   // the dictionaries have been loaded initially. Used to avoid an unnecessary
   // mojo call to determine this in every text check request.
   bool dictionaries_loaded_ = false;
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 #endif  // BUILDFLAG(USE_BROWSER_SPELLCHECKER)
 
   // Holds ongoing spellchecking operations.
@@ -156,7 +158,7 @@ class SpellCheckProvider : public content::RenderFrameObserver,
 
   // The last text sent to the browser process for spellchecking, and its
   // spellcheck results and WebTextCheckCompletions identifier.
-  base::string16 last_request_;
+  std::u16string last_request_;
   blink::WebVector<blink::WebTextCheckingResult> last_results_;
   int last_identifier_;
 
@@ -172,13 +174,11 @@ class SpellCheckProvider : public content::RenderFrameObserver,
   // Dictionary updated observer.
   std::unique_ptr<DictionaryUpdateObserverImpl> dictionary_update_observer_;
 
-#if defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#if BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
   std::unordered_map<int, HybridSpellCheckRequestInfo> hybrid_requests_info_;
-#endif  // defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#endif  // BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
 
   base::WeakPtrFactory<SpellCheckProvider> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(SpellCheckProvider);
 };
 
 #endif  // COMPONENTS_SPELLCHECK_RENDERER_SPELLCHECK_PROVIDER_H_

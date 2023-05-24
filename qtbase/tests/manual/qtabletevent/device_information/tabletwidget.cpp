@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "tabletwidget.h"
 #include <QPainter>
@@ -54,13 +29,12 @@ bool TabletWidget::eventFilter(QObject *, QEvent *ev)
     case QEvent::TabletRelease:
         {
             QTabletEvent *event = static_cast<QTabletEvent*>(ev);
+            mDev = event->pointingDevice();
+            if (!mDev)
+                qWarning() << "missing device in tablet event";
             mType = event->type();
-            mPos = event->pos();
-            mGPos = event->globalPos();
-            mHiResGlobalPos = event->posF();
-            mDev = event->deviceType();
-            mPointerType = event->pointerType();
-            mUnique = event->uniqueId();
+            mPos = event->position();
+            mGPos = event->globalPosition();
             mXT = event->xTilt();
             mYT = event->yTilt();
             mZ = event->z();
@@ -81,7 +55,7 @@ bool TabletWidget::eventFilter(QObject *, QEvent *ev)
             QMouseEvent *event = static_cast<QMouseEvent*>(ev);
             mType = event->type();
             mPos = event->pos();
-            mGPos = event->globalPos();
+            mGPos = event->globalPosition();
             mTimestamp = event->timestamp();
         }
         break;
@@ -129,49 +103,16 @@ void TabletWidget::paintEvent(QPaintEvent *)
     if (mType == QEvent::TabletEnterProximity || mType == QEvent::TabletLeaveProximity
         || mType == QEvent::TabletMove || mType == QEvent::TabletPress
         || mType == QEvent::TabletRelease) {
-
-        eventInfo << QString("High res global position: %1 %2").arg(QString::number(mHiResGlobalPos.x()), QString::number(mHiResGlobalPos.y()));
-
-        QString pointerType("Pointer type: ");
-        switch (mPointerType) {
-        case QTabletEvent::UnknownPointer:
-            pointerType += "QTabletEvent::UnknownPointer";
-            break;
-        case QTabletEvent::Pen:
-            pointerType += "QTabletEvent::Pen";
-            break;
-        case QTabletEvent::Cursor:
-            pointerType += "QTabletEvent::Cursor";
-            break;
-        case QTabletEvent::Eraser:
-            pointerType += "QTabletEvent::Eraser";
-            break;
+        if (mDev.isNull()) {
+            eventInfo << QString("Device info missing");
+        } else {
+            eventInfo << QString("Seat: %1").arg(mDev->seatName());
+            eventInfo << QString("Name: %1").arg(mDev->name());
+            eventInfo << QString("Device type: %1").arg(deviceTypeToString(mDev->type()));
+            eventInfo << QString("Pointer type: %1").arg(pointerTypeToString(mDev->pointerType()));
+            eventInfo << QString("Capabilities: %1").arg(pointerCapabilitiesToString(mDev->capabilities()));
+            eventInfo << QString("Unique Id: %1").arg(QString::number(mDev->uniqueId().numericId(), 16));
         }
-        eventInfo << pointerType;
-
-        QString deviceString = "Device type: ";
-        switch (mDev) {
-        case QTabletEvent::NoDevice:
-            deviceString += "QTabletEvent::NoDevice";
-            break;
-        case QTabletEvent::Puck:
-            deviceString += "QTabletEvent::Puck";
-            break;
-        case QTabletEvent::Stylus:
-            deviceString += "QTabletEvent::Stylus";
-            break;
-        case QTabletEvent::Airbrush:
-            deviceString += "QTabletEvent::Airbrush";
-            break;
-        case QTabletEvent::FourDMouse:
-            deviceString += "QTabletEvent::FourDMouse";
-            break;
-        case QTabletEvent::RotationStylus:
-            deviceString += "QTabletEvent::RotationStylus";
-            break;
-        }
-        eventInfo << deviceString;
-
         eventInfo << QString("Button: %1 (0x%2)").arg(buttonToString(mButton)).arg(mButton, 0, 16);
         eventInfo << QString("Buttons currently pressed: %1 (0x%2)").arg(buttonsToString(mButtons)).arg(mButtons, 0, 16);
         eventInfo << QString("Keyboard modifiers: %1 (0x%2)").arg(modifiersToString(mModifiers)).arg(mModifiers, 0, 16);
@@ -182,7 +123,6 @@ void TabletWidget::paintEvent(QPaintEvent *)
         eventInfo << QString("yTilt: %1").arg(QString::number(mYT));
         eventInfo << QString("z: %1").arg(QString::number(mZ));
 
-        eventInfo << QString("Unique Id: %1").arg(QString::number(mUnique));
 
         eventInfo << QString("Total wheel events: %1").arg(QString::number(mWheelEventCount));
     }
@@ -191,10 +131,28 @@ void TabletWidget::paintEvent(QPaintEvent *)
     painter.drawText(rect(), text);
 }
 
+const char *TabletWidget::deviceTypeToString(QInputDevice::DeviceType t)
+{
+    static int enumIdx = QInputDevice::staticMetaObject.indexOfEnumerator("DeviceType");
+    return QPointingDevice::staticMetaObject.enumerator(enumIdx).valueToKey(int(t));
+}
+
+const char *TabletWidget::pointerTypeToString(QPointingDevice::PointerType t)
+{
+    static int enumIdx = QPointingDevice::staticMetaObject.indexOfEnumerator("PointerType");
+    return QPointingDevice::staticMetaObject.enumerator(enumIdx).valueToKey(int(t));
+}
+
+QString TabletWidget::pointerCapabilitiesToString(QPointingDevice::Capabilities c)
+{
+    static int enumIdx = QPointingDevice::staticMetaObject.indexOfEnumerator("Capabilities");
+    return QString::fromLatin1(QPointingDevice::staticMetaObject.enumerator(enumIdx).valueToKeys(c));
+}
+
 const char *TabletWidget::buttonToString(Qt::MouseButton b)
 {
-    static int enumIdx = QObject::staticQtMetaObject.indexOfEnumerator("MouseButtons");
-    return QObject::staticQtMetaObject.enumerator(enumIdx).valueToKey(b);
+    static int enumIdx = QObject::staticMetaObject.indexOfEnumerator("MouseButtons");
+    return QObject::staticMetaObject.enumerator(enumIdx).valueToKey(b);
 }
 
 QString TabletWidget::buttonsToString(Qt::MouseButtons bs)

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium OS Authors. All rights reserved.
+// Copyright 2014 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,13 @@ constexpr char kAttestationInterface[] = "org.chromium.Attestation";
 constexpr char kAttestationServicePath[] = "/org/chromium/Attestation";
 constexpr char kAttestationServiceName[] = "org.chromium.Attestation";
 
+// 5 minutes timeout for all attestation calls.
+// This is a bit on the long side, but we want to be cautious.
+constexpr int kAttestationServiceTimeoutInMs = 5 * 60 * 1000;
+
 // Methods exported by attestation.
 constexpr char kCreateGoogleAttestedKey[] = "CreateGoogleAttestedKey";
+constexpr char kGetFeatures[] = "GetFeatures";
 constexpr char kGetKeyInfo[] = "GetKeyInfo";
 constexpr char kGetEndorsementInfo[] = "GetEndorsementInfo";
 constexpr char kGetAttestationKeyInfo[] = "GetAttestationKeyInfo";

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #include <memory>
 #include <utility>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "services/network/trust_tokens/proto/public.pb.h"
 #include "services/network/trust_tokens/proto/storage.pb.h"
 #include "services/network/trust_tokens/suitable_trust_token_origin.h"
@@ -45,8 +45,13 @@ class InMemoryTrustTokenPersister : public TrustTokenPersister {
       const SuitableTrustTokenOrigin& toplevel,
       std::unique_ptr<TrustTokenIssuerToplevelPairConfig> config) override;
 
-  bool DeleteForOrigins(
-      base::RepeatingCallback<bool(const SuitableTrustTokenOrigin&)> matcher)
+  bool DeleteIssuerConfig(PSTKeyMatcher key_matcher,
+                          PSTTimeMatcher time_matcher) override;
+  bool DeleteToplevelConfig(PSTKeyMatcher key_matcher) override;
+  bool DeleteIssuerToplevelPairConfig(PSTKeyMatcher key_matcher,
+                                      PSTTimeMatcher time_matcher) override;
+
+  base::flat_map<SuitableTrustTokenOrigin, int> GetStoredTrustTokenCounts()
       override;
 
  private:

@@ -1,4 +1,4 @@
-# Copyright 2013 The Chromium Authors. All rights reserved.
+# Copyright 2013 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -75,9 +75,8 @@ def PrecompileTemplates(generator_modules, output_dir):
                 os.path.dirname(module.__file__), generator.GetTemplatePrefix())
         ]))
     jinja_env.filters.update(generator.GetFilters())
-    jinja_env.compile_templates(
-        os.path.join(output_dir, "%s.zip" % generator.GetTemplatePrefix()),
-        extensions=["tmpl"],
-        zip="stored",
-        py_compile=True,
-        ignore_errors=False)
+    jinja_env.compile_templates(os.path.join(
+        output_dir, "%s.zip" % generator.GetTemplatePrefix()),
+                                extensions=["tmpl"],
+                                zip="stored",
+                                ignore_errors=False)

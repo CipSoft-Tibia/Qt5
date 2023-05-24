@@ -9,13 +9,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import {Protocol} from './protocol_schema.js';
+import {type Protocol} from './protocol_schema.js';
 
 const PROTOCOL_JSON_PATH = path.resolve(
     __dirname, path.join('..', '..', 'third_party', 'blink', 'public', 'devtools_protocol', 'browser_protocol.json'));
 
 const protocolJson = require(PROTOCOL_JSON_PATH);
-const protocolDomains: Protocol.Domain[] = protocolJson.domains;
+const removedDomains = new Set(['Console']);
+const protocolDomains: Protocol.Domain[] = protocolJson.domains.filter(({domain}) => !removedDomains.has(domain));
 
 let numIndents = 0;
 let emitStr = '';
@@ -61,33 +62,25 @@ const emitHeaderComments = () => {
   emitLine();
 };
 
-const emitModule = (moduleName: string, domains: Protocol.Domain[]) => {
-  moduleName = toTitleCase(moduleName);
+const emitModule = (domains: Protocol.Domain[]) => {
   emitHeaderComments();
-  emitOpenBlock(`declare namespace ${moduleName}`);
   emitGlobalTypeDefs();
   domains.forEach(emitDomain);
-  emitCloseBlock();
-  emitLine();
 };
 
 const emitGlobalTypeDefs = () => {
   emitLine();
-  emitLine('export type integer = number');
-  emitLine('export type binary = string');
+  emitLine('export type integer = number;');
+  emitLine('export type binary = string;');
+  emitLine('export type EnumerableEnum<T> = {[K in keyof T]: T[K]};');
   emitLine('export interface ProtocolResponseWithError {');
   numIndents++;
   emitLine('/** Returns an error message if the request failed. */');
   emitLine('getError(): string|undefined;');
   numIndents--;
   emitLine('}');
-  emitLine('export type UsesObjectNotation = true;');
-  emitLine('export interface Dispatcher {');
-  numIndents++;
-  emitLine('/** This dispatcher requires objects as parameters, rather than multiple arguments */');
-  emitLine('usesObjectNotation(): UsesObjectNotation;');
-  numIndents--;
-  emitLine('}');
+  emitLine('type OpaqueType<Tag extends string> = {protocolOpaqueTypeTag: Tag};');
+  emitLine('type OpaqueIdentifier<RepresentationType, Tag extends string> = RepresentationType&OpaqueType<Tag>;');
 };
 
 const emitDomain = (domain: Protocol.Domain) => {
@@ -96,7 +89,7 @@ const emitDomain = (domain: Protocol.Domain) => {
   emitDescription(domain.description);
   emitOpenBlock(`export namespace ${domainName}`);
   if (domain.types) {
-    domain.types.forEach(emitDomainType);
+    domain.types.forEach(emitDomainType.bind(null, domain));
   }
   if (domain.commands) {
     domain.commands.forEach(emitCommand);
@@ -172,7 +165,7 @@ const emitInterface = (interfaceName: string, props?: Protocol.PropertyType[], o
 };
 
 const emitEnum = (enumName: string, enumValues: string[]) => {
-  emitOpenBlock(`export enum ${enumName}`);
+  emitOpenBlock(`export const enum ${enumName}`);
   enumValues.forEach(value => {
     emitLine(`${fixCamelCase(value)} = '${value}',`);
   });
@@ -219,7 +212,19 @@ const emitInlineEnums = (prefix: string, propertyTypes?: Protocol.PropertyType[]
   }
 };
 
-const emitDomainType = (type: Protocol.DomainType) => {
+// Please keep the keys sorted.
+const identifierTypesOverride = new Map([
+  ['IO.StreamHandle', true],
+  ['Page.ScriptIdentifier', true],
+]);
+
+function isIdentifierTypeName(identifierName: string): boolean {
+  const looksLikeIdentifierName = identifierName.endsWith('Id') || identifierName.endsWith('ID');
+  const override = identifierTypesOverride.get(identifierName);
+  return looksLikeIdentifierName && override !== false || override;
+}
+
+const emitDomainType = (domain: Protocol.Domain, type: Protocol.DomainType) => {
   // Check if this type is an object that declares inline enum types for some of its properties.
   // These inline enums must be emitted first.
   emitInlineEnumForDomainType(type);
@@ -232,6 +237,11 @@ const emitDomainType = (type: Protocol.DomainType) => {
   } else if (type.type === 'string' && type.enum) {
     // Explicit enums declared as separate types that inherit from 'string'.
     emitEnum(type.id, type.enum);
+  } else if (isIdentifierTypeName(`${domain.domain}.${type.id}`)) {
+    const representationType = getPropertyType(type.id, type);
+    const tag = `Protocol.${domain.domain}.${type.id}`;
+    const opaqueType = `OpaqueIdentifier<${representationType}, '${tag}'>`;
+    emitLine(`export type ${type.id} = ${opaqueType};`);
   } else {
     emitLine(`export type ${type.id} = ${getPropertyType(type.id, type)};`);
   }
@@ -286,7 +296,7 @@ const getEventMapping =
     };
 
 const isWeakInterface = (params: Protocol.PropertyType[]): boolean => {
-  return params.every(p => !!p.optional);
+  return params.every(p => Boolean(p.optional));
 };
 
 const getCommandMapping = (command: Protocol.Command, domainName: string,
@@ -375,7 +385,7 @@ const emitDomainApi = (domain: Protocol.Domain, modulePrefix: string) => {
     domain.commands.forEach(c => emitApiCommand(c, domainName, modulePrefix));
   }
   emitCloseBlock();
-  emitOpenBlock(`export interface ${domainName}Dispatcher extends Protocol.Dispatcher`);
+  emitOpenBlock(`export interface ${domainName}Dispatcher`);
   if (domain.events) {
     domain.events.forEach(e => emitApiEvent(e, domainName, modulePrefix));
   }
@@ -386,8 +396,13 @@ const emitApi = (moduleName: string, protocolModuleName: string, domains: Protoc
   moduleName = toTitleCase(moduleName);
   emitHeaderComments();
   emitLine();
+  emitLine('import type * as Protocol from \'./protocol.js\'');
+  emitLine();
   emitDescription('API generated from Protocol commands and events.');
   emitOpenBlock(`declare namespace ${moduleName}`);
+
+  emitLine();
+  emitLine('export type ProtocolDomainName = keyof ProtocolApi;');
 
   emitLine();
   emitOpenBlock('export interface ProtocolApi');
@@ -396,12 +411,21 @@ const emitApi = (moduleName: string, protocolModuleName: string, domains: Protoc
     emitLine();
   });
   emitCloseBlock();
-  emitLine();
 
+  emitLine();
+  emitOpenBlock('export interface ProtocolDispatchers');
+  domains.forEach(d => {
+    emitLine(`${d.domain}: ${d.domain}Dispatcher;`);
+    emitLine();
+  });
+  emitCloseBlock();
+
+  emitLine();
   const protocolModulePrefix = toTitleCase(protocolModuleName);
   domains.forEach(d => emitDomainApi(d, protocolModulePrefix));
   emitCloseBlock();
   emitLine();
+  emitLine('export = ProtocolProxyApi;');
 };
 
 const flushEmitToFile = (path: string) => {
@@ -414,9 +438,9 @@ const flushEmitToFile = (path: string) => {
 const main = () => {
   const FRONTEND_GENERATED_DIR = path.resolve(__dirname, path.join('../../front_end/generated'));
 
-  const destProtocolFilePath = path.join(FRONTEND_GENERATED_DIR, 'protocol.d.ts');
-  const protocolModuleName = path.basename(destProtocolFilePath, '.d.ts');
-  emitModule(protocolModuleName, protocolDomains);
+  const destProtocolFilePath = path.join(FRONTEND_GENERATED_DIR, 'protocol.ts');
+  const protocolModuleName = path.basename(destProtocolFilePath, '.ts');
+  emitModule(protocolDomains);
   flushEmitToFile(destProtocolFilePath);
 
   const destMappingFilePath = path.join(FRONTEND_GENERATED_DIR, 'protocol-mapping.d.ts');

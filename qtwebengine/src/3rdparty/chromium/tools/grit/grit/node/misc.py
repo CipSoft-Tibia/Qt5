@@ -1,17 +1,13 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 """Miscellaneous node types.
 """
 
-from __future__ import print_function
-
 import os.path
 import re
 import sys
-
-import six
 
 from grit import constants
 from grit import exception
@@ -45,6 +41,17 @@ _RTL_LANGS = (
 )
 
 
+def _GetIdMapKeyFromFilename(filename, src_root_dir):
+  new_grd_filename = filename
+  abs_grd_filename = os.path.abspath(filename)
+  if abs_grd_filename[:len(src_root_dir)] == src_root_dir:
+    new_grd_filename = abs_grd_filename[len(src_root_dir) + 1:]
+  else:
+    new_grd_filename = abs_grd_filename
+
+  return new_grd_filename.replace('\\', '/')
+
+
 def _ReadFirstIdsFromFile(filename, defines):
   """Read the starting resource id values from |filename|.  We also
   expand variables of the form <(FOO) based on defines passed in on
@@ -56,28 +63,36 @@ def _ReadFirstIdsFromFile(filename, defines):
   first_ids_dict = eval(util.ReadFile(filename, 'utf-8'))
   src_root_dir = os.path.abspath(os.path.join(os.path.dirname(filename),
                                               first_ids_dict['SRCDIR']))
+  EMPTY_REPLACEMENT = 'EMPTY'
 
   def ReplaceVariable(matchobj):
     for key, value in defines.items():
       if matchobj.group(1) == key:
-        value = os.path.abspath(value)
-        return value
-    return ''
+        return value if len(value) > 0 else EMPTY_REPLACEMENT
+    return EMPTY_REPLACEMENT
 
   renames = []
   for grd_filename in first_ids_dict:
     new_grd_filename = re.sub(r'<\(([A-Za-z_]+)\)', ReplaceVariable,
                               grd_filename)
+    new_grd_filename = new_grd_filename.replace('\\', '/')
+
     if new_grd_filename != grd_filename:
-      abs_grd_filename = os.path.abspath(new_grd_filename)
-      if abs_grd_filename[:len(src_root_dir)] != src_root_dir:
-        new_grd_filename = os.path.basename(abs_grd_filename)
-      else:
-        new_grd_filename = abs_grd_filename[len(src_root_dir) + 1:]
-        new_grd_filename = new_grd_filename.replace('\\', '/')
+      # Empty or failed replacements at the start of the path can cause the path
+      # to appear to be absolute, when it in fact represents the path from the
+      # current (output) directory. Replace these with '.' instead.
+      if (new_grd_filename.startswith(EMPTY_REPLACEMENT + '/')):
+        new_grd_filename = '.' + new_grd_filename[len(EMPTY_REPLACEMENT):]
+
+      # Any other empty replacements in the middle of the path can be left
+      # as-is.
+      new_grd_filename = new_grd_filename.replace(EMPTY_REPLACEMENT, '')
+      new_grd_filename = _GetIdMapKeyFromFilename(new_grd_filename,
+                                                  src_root_dir)
       renames.append((grd_filename, new_grd_filename))
 
   for grd_filename, new_grd_filename in renames:
+    assert new_grd_filename not in first_ids_dict
     first_ids_dict[new_grd_filename] = first_ids_dict[grd_filename]
     del(first_ids_dict[grd_filename])
 
@@ -107,8 +122,26 @@ def _ComputeIds(root, predetermined_tids):
   predetermined_ids = {value: key
                        for key, value in predetermined_tids.items()}
 
+  # For entries that set in their first_ids_file (generated .grd files):
+  # "META": {"sizes": {"includes": [50]}}
+  # Check that "sizes" was big enough.
+  def check_group_count():
+    if root.skip_validation_checks or group is None or last_id is None:
+      return
+    max_ids = group.attrs.get('max_ids')
+    if max_ids is not None:
+      first_id = int(group.attrs['first_id'])
+      num_ids = last_id - first_id + 1
+      if num_ids > int(max_ids):
+        msg = ('Generated .grd file used more IDs (%d) than were allocated '
+               'for it (%s) for type %s. You need to update %s '
+               'for this .grd.') % (num_ids, max_ids, group.name,
+                                    root.attrs['first_ids_file'])
+        raise exception.IdRangeOverflow(msg)
+
   for item in root:
     if isinstance(item, empty.GroupingNode):
+      check_group_count()
       # Note: this won't work if any GroupingNode can be contained inside
       # another.
       group = item
@@ -214,6 +247,8 @@ def _ComputeIds(root, predetermined_tids):
       tids[tid] = id
       id_reasons[id] = reason
 
+  check_group_count()
+
   return tids
 
 class SplicingNode(base.Node):
@@ -237,7 +272,7 @@ class IfNode(SplicingNode):
 
   def _IsValidChild(self, child):
     return (isinstance(child, (ThenNode, ElseNode)) or
-            super(IfNode, self)._IsValidChild(child))
+            super()._IsValidChild(child))
 
   def EndParsing(self):
     children = self.children
@@ -255,7 +290,7 @@ class IfNode(SplicingNode):
       return self.children[0 if cond else 1].ActiveChildren()
     else:
       # Equivalent to having all children inside <then> with an empty <else>
-      return super(IfNode, self).ActiveChildren() if cond else []
+      return super().ActiveChildren() if cond else []
 
 
 class ThenNode(SplicingNode):
@@ -273,14 +308,14 @@ class PartNode(SplicingNode):
   """
 
   def __init__(self):
-    super(PartNode, self).__init__()
+    super().__init__()
     self.started_inclusion = False
 
   def MandatoryAttributes(self):
     return ['file']
 
   def _IsValidChild(self, child):
-    return self.started_inclusion and super(PartNode, self)._IsValidChild(child)
+    return self.started_inclusion and super()._IsValidChild(child)
 
 
 class ReleaseNode(base.Node):
@@ -308,7 +343,7 @@ class GritNode(base.Node):
   """The <grit> root element."""
 
   def __init__(self):
-    super(GritNode, self).__init__()
+    super().__init__()
     self.output_language = ''
     self.defines = {}
     self.substituter = None
@@ -316,6 +351,10 @@ class GritNode(base.Node):
     self.allowlist_support = False
     self._predetermined_ids_file = None
     self._id_map = None  # Dict of textual_id -> numeric_id.
+
+    # Option to skip any post-parsing validation, useful when only interested
+    # in getting a reference to the parse tree.
+    self.skip_validation_checks = False
 
   def _IsValidChild(self, child):
     from grit.node import empty
@@ -347,11 +386,14 @@ class GritNode(base.Node):
     }
 
   def EndParsing(self):
-    super(GritNode, self).EndParsing()
+    super().EndParsing()
     if (int(self.attrs['latest_public_release'])
         > int(self.attrs['current_release'])):
       raise exception.Parsing('latest_public_release cannot have a greater '
                               'value than current_release')
+
+    if self.skip_validation_checks:
+      return
 
     self.ValidateUniqueIds()
 
@@ -514,8 +556,8 @@ class GritNode(base.Node):
     """Returns the distinct (language, context, fallback_to_default_layout)
     triples from the output nodes.
     """
-    return set((n.GetLanguage(), n.GetContext(), n.GetFallbackToDefaultLayout())
-               for n in self.GetOutputFiles())
+    return {(n.GetLanguage(), n.GetContext(), n.GetFallbackToDefaultLayout())
+               for n in self.GetOutputFiles()}
 
   def GetSubstitutionMessages(self):
     """Returns the list of <message sub_variable="true"> nodes."""
@@ -581,7 +623,7 @@ class GritNode(base.Node):
     assert self._id_map is None, 'AssignFirstIds() after InitializeIds()'
     # If the input is a stream, then we're probably in a unit test and
     # should skip this step.
-    if not isinstance(filename_or_stream, six.string_types):
+    if not isinstance(filename_or_stream, str):
       return
 
     # Nothing to do if the first_ids_filename attribute isn't set.
@@ -592,42 +634,33 @@ class GritNode(base.Node):
     src_root_dir, first_ids = _ReadFirstIdsFromFile(first_ids_filename,
                                                     defines)
     from grit.node import empty
-    for node in self.Preorder():
-      if isinstance(node, empty.GroupingNode):
-        abs_filename = os.path.abspath(filename_or_stream)
-        if abs_filename[:len(src_root_dir)] != src_root_dir:
-          filename = os.path.basename(filename_or_stream)
-          # If the file is not within src_root_dir and the basename is not
-          # found as a key, fall back to using the absolute file name.
-          if not filename in first_ids:
-            filename = abs_filename
-            filename = filename.replace('\\', '/')
-        else:
-          filename = abs_filename[len(src_root_dir) + 1:]
-          filename = filename.replace('\\', '/')
+    grouping_nodes = [
+        n for n in self.Preorder() if isinstance(n, empty.GroupingNode)
+    ]
+    if not grouping_nodes:
+      return
 
-        if node.attrs['first_id'] != '':
-          raise Exception(
-              "Don't set the first_id attribute when using the first_ids_file "
-              "attribute on the <grit> node, update %s instead." %
-              first_ids_filename)
+    grd_filename = _GetIdMapKeyFromFilename(filename_or_stream, src_root_dir)
+    first_ids_dict = first_ids.get(grd_filename, {})
 
-        try:
-          id_list = first_ids[filename][node.name]
-        except KeyError as e:
-          print('-' * 78)
-          print('Resource id not set for %s (%s)!' % (filename, node.name))
-          print('Please update %s to include an entry for %s.  See the '
-                'comments in resource_ids for information on why you need to '
-                'update that file.' % (first_ids_filename, filename))
-          print('-' * 78)
-          raise e
+    for node in grouping_nodes:
+      if node.attrs['first_id'] != '':
+        raise Exception(
+            "Don't set the first_id attribute when using the first_ids_file "
+            "attribute on the <grit> node. Update %s instead." %
+            first_ids_filename)
 
-        try:
-          node.attrs['first_id'] = str(id_list.pop(0))
-        except IndexError as e:
-          raise Exception('Please update %s and add a first id for %s (%s).'
-                          % (first_ids_filename, filename, node.name))
+      try:
+        id_list = first_ids_dict[node.name]
+        node.attrs['first_id'] = str(id_list.pop(0))
+      except (KeyError, IndexError) as e:
+        raise Exception('Please update %s and add a first id for %s (%s).' %
+                        (first_ids_filename, grd_filename, node.name))
+
+      # E.g.: "META": {"sizes": {"includes": [50]}}
+      sizes = first_ids_dict.get('META', {}).get('sizes', {}).get(node.name)
+      if sizes:
+        node.attrs['max_ids'] = str(sizes.pop(0))
 
   def GetIdMap(self):
     '''Return a dictionary mapping textual ids to numeric ids.'''
@@ -694,7 +727,7 @@ class IdentifierNode(base.Node):
 
   def EndParsing(self):
     """Handles system identifiers."""
-    super(IdentifierNode, self).EndParsing()
+    super().EndParsing()
     if self.attrs['systemid'] == 'true':
       util.SetupSystemIdentifiers((self.attrs['name'],))
 

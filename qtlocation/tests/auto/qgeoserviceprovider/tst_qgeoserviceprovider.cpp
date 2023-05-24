@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QObject>
 #include <QDebug>
@@ -44,6 +19,9 @@ private slots:
     void tst_features();
     void tst_misc();
     void tst_nokiaRename();
+
+private:
+    QStringList providerList;
 };
 
 void tst_QGeoServiceProvider::initTestCase()
@@ -60,26 +38,21 @@ void tst_QGeoServiceProvider::initTestCase()
                                      + QStringLiteral("/../../../plugins"));
 #endif
 #endif
+    providerList = QGeoServiceProvider::availableServiceProviders();
+    qInfo() << "Supported geoservice providers:" << providerList;
 }
 
 void tst_QGeoServiceProvider::tst_availableServiceProvider()
 {
-    const QStringList provider = QGeoServiceProvider::availableServiceProviders();
-
     // Currently provided plugins
-    if (provider.count() != 8)
-        qWarning() << provider;
-    QVERIFY(provider.count() >= 8);
+    QVERIFY(providerList.count() >= 5);
     // these providers are deployed
-    QVERIFY(provider.contains(QStringLiteral("mapbox")));
-    QVERIFY(provider.contains(QStringLiteral("here")));
-    QVERIFY(provider.contains(QStringLiteral("osm")));
-    QVERIFY(provider.contains(QStringLiteral("esri")));
+    QVERIFY(providerList.contains(QStringLiteral("osm")));
     // these providers exist for unit tests only
-    QVERIFY(provider.contains(QStringLiteral("geocode.test.plugin")));
-    QVERIFY(provider.contains(QStringLiteral("georoute.test.plugin")));
-    QVERIFY(provider.contains(QStringLiteral("qmlgeo.test.plugin")));
-    QVERIFY(provider.contains(QStringLiteral("test.places.unsupported")));
+    QVERIFY(providerList.contains(QStringLiteral("geocode.test.plugin")));
+    QVERIFY(providerList.contains(QStringLiteral("georoute.test.plugin")));
+    QVERIFY(providerList.contains(QStringLiteral("qmlgeo.test.plugin")));
+    QVERIFY(providerList.contains(QStringLiteral("test.places.unsupported")));
 
 }
 
@@ -102,43 +75,51 @@ void tst_QGeoServiceProvider::tst_features_data()
                              << QGeoServiceProvider::RoutingFeatures(QGeoServiceProvider::NoRoutingFeatures)
                              << QGeoServiceProvider::PlacesFeatures(QGeoServiceProvider::NoPlacesFeatures);
 
-    QTest::newRow("mapbox") << QString("mapbox")
-                            << QGeoServiceProvider::MappingFeatures(QGeoServiceProvider::OnlineMappingFeature)
-                            << QGeoServiceProvider::GeocodingFeatures(QGeoServiceProvider::OnlineGeocodingFeature
-                                                                      | QGeoServiceProvider::ReverseGeocodingFeature
-                                                                      | QGeoServiceProvider::LocalizedGeocodingFeature)
-                            << QGeoServiceProvider::RoutingFeatures(QGeoServiceProvider::OnlineRoutingFeature)
-                            << QGeoServiceProvider::PlacesFeatures(QGeoServiceProvider::OnlinePlacesFeature
-                                                                   | QGeoServiceProvider::PlaceRecommendationsFeature
-                                                                   | QGeoServiceProvider::SearchSuggestionsFeature
-                                                                   | QGeoServiceProvider::LocalizedPlacesFeature);
+    if (providerList.contains("mapbox")) {
+        QTest::newRow("mapbox") << QString("mapbox")
+                                << QGeoServiceProvider::MappingFeatures(QGeoServiceProvider::OnlineMappingFeature)
+                                << QGeoServiceProvider::GeocodingFeatures(QGeoServiceProvider::OnlineGeocodingFeature
+                                                                        | QGeoServiceProvider::ReverseGeocodingFeature
+                                                                        | QGeoServiceProvider::LocalizedGeocodingFeature)
+                                << QGeoServiceProvider::RoutingFeatures(QGeoServiceProvider::OnlineRoutingFeature)
+                                << QGeoServiceProvider::PlacesFeatures(QGeoServiceProvider::OnlinePlacesFeature
+                                                                    | QGeoServiceProvider::PlaceRecommendationsFeature
+                                                                    | QGeoServiceProvider::SearchSuggestionsFeature
+                                                                    | QGeoServiceProvider::LocalizedPlacesFeature);
+    }
 
-    QTest::newRow("here")   << QString("here")
-                            << QGeoServiceProvider::MappingFeatures(QGeoServiceProvider::OnlineMappingFeature)
-                            << QGeoServiceProvider::GeocodingFeatures(QGeoServiceProvider::OnlineGeocodingFeature
-                                                                      | QGeoServiceProvider::ReverseGeocodingFeature)
-                            << QGeoServiceProvider::RoutingFeatures(QGeoServiceProvider::OnlineRoutingFeature
-                                                                    | QGeoServiceProvider::RouteUpdatesFeature
-                                                                    | QGeoServiceProvider::AlternativeRoutesFeature
-                                                                    | QGeoServiceProvider::ExcludeAreasRoutingFeature)
-                            << QGeoServiceProvider::PlacesFeatures(QGeoServiceProvider::OnlinePlacesFeature
-                                                                   | QGeoServiceProvider::PlaceRecommendationsFeature
-                                                                   | QGeoServiceProvider::SearchSuggestionsFeature
-                                                                   | QGeoServiceProvider::LocalizedPlacesFeature);
+    if (providerList.contains("here")) {
+        QTest::newRow("here")   << QString("here")
+                                << QGeoServiceProvider::MappingFeatures(QGeoServiceProvider::OnlineMappingFeature)
+                                << QGeoServiceProvider::GeocodingFeatures(QGeoServiceProvider::OnlineGeocodingFeature
+                                                                        | QGeoServiceProvider::ReverseGeocodingFeature)
+                                << QGeoServiceProvider::RoutingFeatures(QGeoServiceProvider::OnlineRoutingFeature
+                                                                        | QGeoServiceProvider::RouteUpdatesFeature
+                                                                        | QGeoServiceProvider::AlternativeRoutesFeature
+                                                                        | QGeoServiceProvider::ExcludeAreasRoutingFeature)
+                                << QGeoServiceProvider::PlacesFeatures(QGeoServiceProvider::OnlinePlacesFeature
+                                                                    | QGeoServiceProvider::PlaceRecommendationsFeature
+                                                                    | QGeoServiceProvider::SearchSuggestionsFeature
+                                                                    | QGeoServiceProvider::LocalizedPlacesFeature);
+    }
 
-    QTest::newRow("osm")    << QString("osm")
-                            << QGeoServiceProvider::MappingFeatures(QGeoServiceProvider::OnlineMappingFeature)
-                            << QGeoServiceProvider::GeocodingFeatures(QGeoServiceProvider::OnlineGeocodingFeature
-                                                                      | QGeoServiceProvider::ReverseGeocodingFeature)
-                            << QGeoServiceProvider::RoutingFeatures(QGeoServiceProvider::OnlineRoutingFeature)
-                            << QGeoServiceProvider::PlacesFeatures(QGeoServiceProvider::OnlinePlacesFeature);
+    if (providerList.contains("osm")) {
+        QTest::newRow("osm")    << QString("osm")
+                                << QGeoServiceProvider::MappingFeatures(QGeoServiceProvider::OnlineMappingFeature)
+                                << QGeoServiceProvider::GeocodingFeatures(QGeoServiceProvider::OnlineGeocodingFeature
+                                                                        | QGeoServiceProvider::ReverseGeocodingFeature)
+                                << QGeoServiceProvider::RoutingFeatures(QGeoServiceProvider::OnlineRoutingFeature)
+                                << QGeoServiceProvider::PlacesFeatures(QGeoServiceProvider::OnlinePlacesFeature);
+    }
 
-    QTest::newRow("esri")   << QString("esri")
-                            << QGeoServiceProvider::MappingFeatures(QGeoServiceProvider::OnlineMappingFeature)
-                            << QGeoServiceProvider::GeocodingFeatures(QGeoServiceProvider::OnlineGeocodingFeature
-                                                                      | QGeoServiceProvider::ReverseGeocodingFeature)
-                            << QGeoServiceProvider::RoutingFeatures(QGeoServiceProvider::OnlineRoutingFeature)
-                            << QGeoServiceProvider::PlacesFeatures(QGeoServiceProvider::OnlinePlacesFeature);
+    if (providerList.contains("esri")) {
+        QTest::newRow("esri")   << QString("esri")
+                                << QGeoServiceProvider::MappingFeatures(QGeoServiceProvider::OnlineMappingFeature)
+                                << QGeoServiceProvider::GeocodingFeatures(QGeoServiceProvider::OnlineGeocodingFeature
+                                                                        | QGeoServiceProvider::ReverseGeocodingFeature)
+                                << QGeoServiceProvider::RoutingFeatures(QGeoServiceProvider::OnlineRoutingFeature)
+                                << QGeoServiceProvider::PlacesFeatures(QGeoServiceProvider::OnlinePlacesFeature);
+    }
 }
 
 void tst_QGeoServiceProvider::tst_features()
@@ -221,10 +202,11 @@ void tst_QGeoServiceProvider::tst_nokiaRename()
     // It remains available under the name "nokia" for now
     // but is not advertised via QGeoServiceProvider::availableServiceProviders()
 
-    QVERIFY(!QGeoServiceProvider::availableServiceProviders().contains("nokia"));
-    QGeoServiceProvider provider(QStringLiteral("nokia"));
-    QCOMPARE(provider.error(), QGeoServiceProvider::NoError);
-
+    if (providerList.contains("here")) {
+        QVERIFY(!QGeoServiceProvider::availableServiceProviders().contains("nokia"));
+        QGeoServiceProvider provider(QStringLiteral("nokia"));
+        QCOMPARE(provider.error(), QGeoServiceProvider::NoError);
+    }
 }
 
 QTEST_GUILESS_MAIN(tst_QGeoServiceProvider)

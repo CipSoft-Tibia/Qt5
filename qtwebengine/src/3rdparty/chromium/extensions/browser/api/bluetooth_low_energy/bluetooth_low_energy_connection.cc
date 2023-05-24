@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,7 +26,7 @@ BluetoothLowEnergyConnection::BluetoothLowEnergyConnection(
       persistent_(persistent),
       connection_(connection.release()) {}
 
-BluetoothLowEnergyConnection::~BluetoothLowEnergyConnection() {}
+BluetoothLowEnergyConnection::~BluetoothLowEnergyConnection() = default;
 
 device::BluetoothGattConnection* BluetoothLowEnergyConnection::GetConnection()
     const {

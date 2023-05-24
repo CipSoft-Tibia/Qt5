@@ -1,42 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdeclarativesearchresultmodel_p.h"
 #include "qdeclarativeplace_p.h"
-#include "qdeclarativeplaceicon_p.h"
 
 #include <QtQml/QQmlEngine>
 #include <QtQml/QQmlInfo>
@@ -353,7 +319,7 @@ QT_BEGIN_NAMESPACE
 */
 
 QDeclarativeSearchResultModel::QDeclarativeSearchResultModel(QObject *parent)
-    :   QDeclarativeSearchModelBase(parent), m_favoritesPlugin(0)
+    : QDeclarativeSearchModelBase(parent)
 {
 }
 
@@ -412,7 +378,7 @@ void QDeclarativeSearchResultModel::categories_append(QQmlListProperty<QDeclarat
     }
 }
 
-int QDeclarativeSearchResultModel::categories_count(QQmlListProperty<QDeclarativeCategory> *list)
+qsizetype QDeclarativeSearchResultModel::categories_count(QQmlListProperty<QDeclarativeCategory> *list)
 {
     QDeclarativeSearchResultModel *searchModel = qobject_cast<QDeclarativeSearchResultModel *>(list->object);
     if (searchModel)
@@ -422,13 +388,12 @@ int QDeclarativeSearchResultModel::categories_count(QQmlListProperty<QDeclarativ
 }
 
 QDeclarativeCategory *QDeclarativeSearchResultModel::category_at(QQmlListProperty<QDeclarativeCategory> *list,
-                                                                          int index)
+                                                                 qsizetype index)
 {
     QDeclarativeSearchResultModel *searchModel = qobject_cast<QDeclarativeSearchResultModel *>(list->object);
     if (searchModel && (searchModel->m_categories.count() > index) && (index > -1))
         return searchModel->m_categories.at(index);
-    else
-        return 0;
+    return nullptr;
 }
 
 void QDeclarativeSearchResultModel::categories_clear(QQmlListProperty<QDeclarativeCategory> *list)
@@ -565,7 +530,7 @@ void QDeclarativeSearchResultModel::setFavoritesPlugin(QDeclarativeGeoServicePro
             if (placeManager) {
                 if (placeManager->childCategoryIds().isEmpty()) {
                     QPlaceReply *reply = placeManager->initializeCategories();
-                    connect(reply, SIGNAL(finished()), reply, SLOT(deleteLater()));
+                    connect(reply, &QPlaceReply::finished, reply, &QObject::deleteLater);
                 }
             }
         }
@@ -610,7 +575,6 @@ void QDeclarativeSearchResultModel::clearData(bool suppressSignal)
 
     qDeleteAll(m_places);
     m_places.clear();
-    qDeleteAll(m_icons);
     m_icons.clear();
     if (!m_results.isEmpty()) {
         m_results.clear();
@@ -634,7 +598,7 @@ QVariant QDeclarativeSearchResultModel::data(const QModelIndex &index, int role)
     case TitleRole:
         return result.title();
     case IconRole:
-        return QVariant::fromValue(static_cast<QObject *>(m_icons.at(index.row())));
+        return QVariant::fromValue(m_icons.at(index.row()));
     case DistanceRole:
         if (result.type() == QPlaceSearchResult::PlaceResult) {
             QPlaceResult placeResult = result;
@@ -715,9 +679,12 @@ void QDeclarativeSearchResultModel::initializePlugin(QDeclarativeGeoServiceProvi
         if (serviceProvider) {
             QPlaceManager *placeManager = serviceProvider->placeManager();
             if (placeManager) {
-                disconnect(placeManager, SIGNAL(placeUpdated(QString)), this, SLOT(placeUpdated(QString)));
-                disconnect(placeManager, SIGNAL(placeRemoved(QString)), this, SLOT(placeRemoved(QString)));
-                connect(placeManager, SIGNAL(dataChanged()), this, SIGNAL(dataChanged()));
+                disconnect(placeManager, &QPlaceManager::placeUpdated,
+                           this, &QDeclarativeSearchResultModel::placeUpdated);
+                disconnect(placeManager, &QPlaceManager::placeRemoved,
+                           this, &QDeclarativeSearchResultModel::placeRemoved);
+                connect(placeManager, &QPlaceManager::dataChanged,
+                        this, &QDeclarativeSearchResultModel::dataChanged);
             }
         }
     }
@@ -728,9 +695,12 @@ void QDeclarativeSearchResultModel::initializePlugin(QDeclarativeGeoServiceProvi
         if (serviceProvider) {
             QPlaceManager *placeManager = serviceProvider->placeManager();
             if (placeManager) {
-                connect(placeManager, SIGNAL(placeUpdated(QString)), this, SLOT(placeUpdated(QString)));
-                connect(placeManager, SIGNAL(placeRemoved(QString)), this, SLOT(placeRemoved(QString)));
-                disconnect(placeManager, SIGNAL(dataChanged()), this, SIGNAL(dataChanged()));
+                connect(placeManager, &QPlaceManager::placeUpdated,
+                        this, &QDeclarativeSearchResultModel::placeUpdated);
+                connect(placeManager, &QPlaceManager::placeRemoved,
+                        this, &QDeclarativeSearchResultModel::placeRemoved);
+                disconnect(placeManager, &QPlaceManager::dataChanged,
+                           this, &QDeclarativeSearchResultModel::dataChanged);
             }
         }
     }
@@ -745,7 +715,7 @@ void QDeclarativeSearchResultModel::queryFinished()
     if (!m_reply)
         return;
     QPlaceReply *reply = m_reply;
-    m_reply = 0;
+    m_reply = nullptr;
     reply->deleteLater();
 
     if (!m_incremental)
@@ -810,8 +780,10 @@ void QDeclarativeSearchResultModel::queryFinished()
             if (alreadyLoaded)
                 m_resultsBuffer.clear();
             m_reply = favoritesManager->matchingPlaces(request);
-            connect(m_reply, SIGNAL(finished()), this, SLOT(queryFinished()));
-            connect(m_reply, SIGNAL(contentUpdated()), this, SLOT(onContentUpdated()));
+            connect(m_reply, &QPlaceReply::finished,
+                    this, &QDeclarativeSearchResultModel::queryFinished);
+            connect(m_reply, &QPlaceReply::contentUpdated,
+                    this, &QDeclarativeSearchResultModel::onContentUpdated);
         }
     } else if (reply->type() == QPlaceReply::MatchReply) {
         QPlaceMatchReply *matchReply = qobject_cast<QPlaceMatchReply *>(reply);
@@ -899,7 +871,7 @@ void QDeclarativeSearchResultModel::updateLayout(const QList<QPlace> &favoritePl
     }
 
     m_resultsBuffer.clear();
-    for (int i = start; i < m_results.count(); ++i) {
+    for (qsizetype i = start; i < m_results.count(); ++i) {
         const QPlaceSearchResult &result = m_results.at(i);
 
         if (result.type() == QPlaceSearchResult::PlaceResult) {
@@ -914,10 +886,8 @@ void QDeclarativeSearchResultModel::updateLayout(const QList<QPlace> &favoritePl
             m_places.append(0);
         }
 
-        QDeclarativePlaceIcon *icon = 0;
         if (!result.icon().isEmpty())
-            icon = new QDeclarativePlaceIcon(result.icon(), plugin(), this);
-        m_icons.append(icon);
+            m_icons.append(result.icon());
     }
 
     if (m_incremental)
@@ -986,7 +956,7 @@ void QDeclarativeSearchResultModel::removePageRow(int row)
 */
 int QDeclarativeSearchResultModel::getRow(const QString &placeId) const
 {
-    for (int i = 0; i < m_places.count(); ++i) {
+    for (qsizetype i = 0; i < m_places.count(); ++i) {
         if (!m_places.at(i))
             continue;
         else if (m_places.at(i)->placeId() == placeId)

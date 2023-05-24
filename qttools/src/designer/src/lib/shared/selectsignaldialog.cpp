@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "selectsignaldialog_p.h"
 
@@ -38,12 +13,14 @@
 #include "widgetdatabase_p.h"
 
 #include <QtWidgets/qapplication.h>
-#include <QtWidgets/qdesktopwidget.h>
 #include <QtWidgets/qpushbutton.h>
+
+#include <QtGui/qscreen.h>
 #include <QtGui/qstandarditemmodel.h>
+
 #include <QtCore/qitemselectionmodel.h>
+#include <QtCore/qlist.h>
 #include <QtCore/qvariant.h>
-#include <QtCore/qvector.h>
 
 #include <algorithm>
 
@@ -53,14 +30,13 @@ namespace qdesigner_internal {
 
 enum { MethodRole = Qt::UserRole + 1 };
 
-using Methods = QVector<SelectSignalDialog::Method>;
+using Methods = QList<SelectSignalDialog::Method>;
 
 SelectSignalDialog::SelectSignalDialog(QWidget *parent)
     : QDialog(parent)
-    , m_ui(new Ui::SelectSignalDialog)
+    , m_ui(new QT_PREPEND_NAMESPACE(Ui)::SelectSignalDialog)
     , m_model(new QStandardItemModel(0, 1, this))
 {
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     m_ui->setupUi(this);
     m_okButton = m_ui->buttonBox->button(QDialogButtonBox::Ok);
 
@@ -69,7 +45,7 @@ SelectSignalDialog::SelectSignalDialog(QWidget *parent)
             this, &SelectSignalDialog::currentChanged);
     connect(m_ui->signalList, &QTreeView::activated,
             this, &SelectSignalDialog::activated);
-    const QRect availableGeometry = QApplication::desktop()->availableGeometry(this);
+    const QRect availableGeometry = screen()->geometry();
     resize(availableGeometry.width() / 5, availableGeometry.height() / 2);
 }
 
@@ -114,7 +90,7 @@ static void appendClass(const QString &className, Methods methods, QStandardItem
     std::sort(methods.begin(), methods.end(), signatureLessThan);
     QStandardItem *topLevelItem = createTopLevelItem(className);
     model->appendRow(topLevelItem);
-    for (const SelectSignalDialog::Method &m : qAsConst(methods)) {
+    for (const SelectSignalDialog::Method &m : std::as_const(methods)) {
         QStandardItem *item = new QStandardItem(m.signature);
         item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
         item->setData(QVariant::fromValue(m), MethodRole);
@@ -240,3 +216,5 @@ void SelectSignalDialog::currentChanged(const QModelIndex &current, const QModel
 } // namespace qdesigner_internal
 
 QT_END_NAMESPACE
+
+#include "moc_selectsignaldialog_p.cpp"

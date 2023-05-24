@@ -1,51 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qframegraphnode.h"
 #include "qframegraphnode_p.h"
-#include <Qt3DRender/qframegraphnodecreatedchange.h>
 #include <Qt3DRender/qfilterkey.h>
 #include <Qt3DRender/qtechniquefilter.h>
 #include <Qt3DRender/qrenderpassfilter.h>
 
 #include <Qt3DCore/QNode>
-#include <QVector>
+#include <QList>
 #include <QQueue>
 
 using namespace Qt3DCore;
@@ -63,7 +26,7 @@ QString dumpNode(const Qt3DRender::QFrameGraphNode *n) {
     return res;
 }
 
-QString dumpNodeFilters(const Qt3DRender::QFrameGraphNode *n, const QVector<Qt3DRender::QFilterKey*> &filters) {
+QString dumpNodeFilters(const Qt3DRender::QFrameGraphNode *n, const QList<Qt3DRender::QFilterKey *> &filters) {
     QString res = QLatin1String(n->metaObject()->className());
     if (!n->objectName().isEmpty())
         res += QString(QLatin1String(" (%1)")).arg(n->objectName());
@@ -84,7 +47,7 @@ QStringList dumpFG(const Qt3DCore::QNode *n, int level = 0)
     const Qt3DRender::QFrameGraphNode *fgNode = qobject_cast<const Qt3DRender::QFrameGraphNode *>(n);
     if (fgNode) {
         QString res = dumpNode(fgNode);
-        reply += res.rightJustified(res.length() + level * 2, ' ');
+        reply += res.rightJustified(res.size() + level * 2, QLatin1Char(' '));
     }
 
     const auto children = n->childNodes();
@@ -101,7 +64,7 @@ QStringList dumpFG(const Qt3DCore::QNode *n, int level = 0)
 struct HierarchyFGNode
 {
     const Qt3DRender::QFrameGraphNode *root;
-    QVector<QSharedPointer<HierarchyFGNode>> children;
+    QList<QSharedPointer<HierarchyFGNode>> children;
 };
 using HierarchyFGNodePtr = QSharedPointer<HierarchyFGNode>;
 
@@ -130,7 +93,7 @@ HierarchyFGNodePtr buildFGHierarchy(const Qt3DCore::QNode *n, HierarchyFGNodePtr
     return lastFGParent;
 }
 
-void findFGLeaves(const HierarchyFGNodePtr root, QVector<const Qt3DRender::QFrameGraphNode *> &fgLeaves)
+void findFGLeaves(const HierarchyFGNodePtr root, QList<const Qt3DRender::QFrameGraphNode *> &fgLeaves)
 {
     const auto children = root->children;
     for (const auto &child : children)
@@ -146,7 +109,7 @@ void dumpFGPaths(const Qt3DRender::QFrameGraphNode *n, QStringList &result)
     const HierarchyFGNodePtr rootHFg = buildFGHierarchy(n);
 
     // Gather FG leaves
-    QVector<const Qt3DRender::QFrameGraphNode *> fgLeaves;
+    QList<const Qt3DRender::QFrameGraphNode *> fgLeaves;
     findFGLeaves(rootHFg, fgLeaves);
 
     // Traverse back to root
@@ -170,7 +133,7 @@ void dumpFGFilterState(const Qt3DRender::QFrameGraphNode *n, QStringList &result
     const HierarchyFGNodePtr rootHFg = buildFGHierarchy(n);
 
     // Gather FG leaves
-    QVector<const Qt3DRender::QFrameGraphNode *> fgLeaves;
+    QList<const Qt3DRender::QFrameGraphNode *> fgLeaves;
     findFGLeaves(rootHFg, fgLeaves);
 
     // Traverse back to root
@@ -375,20 +338,25 @@ QFrameGraphNode *QFrameGraphNode::parentFrameGraphNode() const
  * If any of these are not frame graph nodes, they will be further searched as
  * if they were direct children of this node.
  */
-QVector<QFrameGraphNode *> QFrameGraphNodePrivate::childFrameGraphNodes() const
+QList<QFrameGraphNode *> QFrameGraphNodePrivate::childFrameGraphNodes() const
 {
     Q_Q(const QFrameGraphNode);
-    QVector<QFrameGraphNode *> result;
+    QList<QFrameGraphNode *> result;
     QQueue<QNode *> queue;
-    queue.append(q->childNodes().toList());
+    const auto childNodes = q->childNodes();
+    for (auto c: childNodes)
+        queue.append(c);
     result.reserve(queue.size());
     while (!queue.isEmpty()) {
         auto *child = queue.dequeue();
         auto *childFGNode = qobject_cast<QFrameGraphNode *>(child);
         if (childFGNode != nullptr)
             result.push_back(childFGNode);
-        else
-            queue.append(child->childNodes().toList());
+        else {
+            const auto childNodes = child->childNodes();
+            for (auto c: childNodes)
+                queue.append(c);
+        }
     }
     return result;
 }
@@ -396,7 +364,7 @@ QVector<QFrameGraphNode *> QFrameGraphNodePrivate::childFrameGraphNodes() const
 QString QFrameGraphNodePrivate::dumpFrameGraph() const
 {
     Q_Q(const QFrameGraphNode);
-    return dumpFG(q).join('\n');
+    return dumpFG(q).join(QLatin1Char('\n'));
 }
 
 QStringList QFrameGraphNodePrivate::dumpFrameGraphPaths() const
@@ -421,15 +389,6 @@ QFrameGraphNode::QFrameGraphNode(QFrameGraphNodePrivate &dd, QNode *parent)
 {
 }
 
-Qt3DCore::QNodeCreatedChangeBasePtr QFrameGraphNode::createNodeCreationChange() const
-{
-    // connect to the parentChanged signal here rather than constructor because
-    // until now there's no backend node to notify when parent changes
-    connect(this, &QNode::parentChanged, this, &QFrameGraphNode::onParentChanged);
-
-    return QFrameGraphNodeCreatedChangeBasePtr::create(this);
-}
-
 void QFrameGraphNode::onParentChanged(QObject *)
 {
     // Direct sync update request
@@ -440,3 +399,5 @@ void QFrameGraphNode::onParentChanged(QObject *)
 } // namespace Qt3DRender
 
 QT_END_NAMESPACE
+
+#include "moc_qframegraphnode.cpp"

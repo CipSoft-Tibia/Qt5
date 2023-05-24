@@ -699,8 +699,8 @@ static INLINE void store_vertical_filter_output_avx2(
       const __m256i res_8_lo = _mm256_packus_epi16(res_lo_16, res_lo_16);
       const __m128i res_8_lo_0 = _mm256_castsi256_si128(res_8_lo);
       const __m128i res_8_lo_1 = _mm256_extracti128_si256(res_8_lo, 1);
-      *(uint32_t *)dst8_0 = _mm_cvtsi128_si32(res_8_lo_0);
-      *(uint32_t *)dst8_1 = _mm_cvtsi128_si32(res_8_lo_1);
+      *(int *)dst8_0 = _mm_cvtsi128_si32(res_8_lo_0);
+      *(int *)dst8_1 = _mm_cvtsi128_si32(res_8_lo_1);
     } else {
       const __m128i temp_lo_16_0 = _mm256_castsi256_si128(temp_lo_16);
       const __m128i temp_lo_16_1 = _mm256_extracti128_si256(temp_lo_16, 1);
@@ -742,8 +742,8 @@ static INLINE void store_vertical_filter_output_avx2(
         __m256i res_8_hi = _mm256_packus_epi16(res_hi_16, res_hi_16);
         const __m128i res_8_hi_0 = _mm256_castsi256_si128(res_8_hi);
         const __m128i res_8_hi_1 = _mm256_extracti128_si256(res_8_hi, 1);
-        *(uint32_t *)dst8_4_0 = _mm_cvtsi128_si32(res_8_hi_0);
-        *(uint32_t *)dst8_4_1 = _mm_cvtsi128_si32(res_8_hi_1);
+        *(int *)dst8_4_0 = _mm_cvtsi128_si32(res_8_hi_0);
+        *(int *)dst8_4_1 = _mm_cvtsi128_si32(res_8_hi_1);
       } else {
         const __m128i temp_hi_16_0 = _mm256_castsi256_si128(temp_hi_16);
         const __m128i temp_hi_16_1 = _mm256_extracti128_si256(temp_hi_16, 1);
@@ -767,8 +767,8 @@ static INLINE void store_vertical_filter_output_avx2(
     __m128i *const p1 = (__m128i *)&pred[(i + (k + 1) + 4) * p_stride + j];
 
     if (p_width == 4) {
-      *(uint32_t *)p = _mm_cvtsi128_si32(res_8bit0);
-      *(uint32_t *)p1 = _mm_cvtsi128_si32(res_8bit1);
+      *(int *)p = _mm_cvtsi128_si32(res_8bit0);
+      *(int *)p1 = _mm_cvtsi128_si32(res_8bit1);
     } else {
       _mm_storel_epi64(p, res_8bit0);
       _mm_storel_epi64(p1, res_8bit1);
@@ -1028,12 +1028,12 @@ int64_t av1_calc_frame_error_avx2(const uint8_t *const ref, int ref_stride,
   int64_t sum_error = 0;
   int i, j;
   __m256i row_error, col_error;
-  __m256i zero = _mm256_set1_epi16(0);
+  __m256i zero = _mm256_setzero_si256();
   __m256i dup_255 = _mm256_set1_epi16(255);
   col_error = zero;
 
   for (i = 0; i < (p_height / 4); i++) {
-    row_error = _mm256_set1_epi16(0);
+    row_error = _mm256_setzero_si256();
     for (j = 0; j < (p_width / 16); j++) {
       __m256i ref_1_16 = _mm256_cvtepu8_epi16(_mm_load_si128(
           (__m128i *)(ref + (j * 16) + (((i * 4) + 0) * ref_stride))));
@@ -1193,14 +1193,16 @@ void av1_warp_affine_avx2(const int32_t *mat, const uint8_t *ref, int width,
     for (j = 0; j < p_width; j += 8) {
       const int32_t src_x = (p_col + j + 4) << subsampling_x;
       const int32_t src_y = (p_row + i + 4) << subsampling_y;
-      const int32_t dst_x = mat[2] * src_x + mat[3] * src_y + mat[0];
-      const int32_t dst_y = mat[4] * src_x + mat[5] * src_y + mat[1];
-      const int32_t x4 = dst_x >> subsampling_x;
-      const int32_t y4 = dst_y >> subsampling_y;
+      const int64_t dst_x =
+          (int64_t)mat[2] * src_x + (int64_t)mat[3] * src_y + (int64_t)mat[0];
+      const int64_t dst_y =
+          (int64_t)mat[4] * src_x + (int64_t)mat[5] * src_y + (int64_t)mat[1];
+      const int64_t x4 = dst_x >> subsampling_x;
+      const int64_t y4 = dst_y >> subsampling_y;
 
-      int32_t ix4 = x4 >> WARPEDMODEL_PREC_BITS;
+      int32_t ix4 = (int32_t)(x4 >> WARPEDMODEL_PREC_BITS);
       int32_t sx4 = x4 & ((1 << WARPEDMODEL_PREC_BITS) - 1);
-      int32_t iy4 = y4 >> WARPEDMODEL_PREC_BITS;
+      int32_t iy4 = (int32_t)(y4 >> WARPEDMODEL_PREC_BITS);
       int32_t sy4 = y4 & ((1 << WARPEDMODEL_PREC_BITS) - 1);
 
       // Add in all the constant terms, including rounding and offset

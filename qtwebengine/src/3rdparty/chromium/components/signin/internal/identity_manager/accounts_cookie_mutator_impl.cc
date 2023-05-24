@@ -1,10 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/signin/internal/identity_manager/accounts_cookie_mutator_impl.h"
 
 #include <utility>
+#include <vector>
 
 #include "build/build_config.h"
 #include "components/signin/internal/identity_manager/account_tracker_service.h"
@@ -76,6 +77,7 @@ std::unique_ptr<AccountsCookieMutator::SetAccountsInCookieTask>
 AccountsCookieMutatorImpl::SetAccountsInCookieForPartition(
     PartitionDelegate* partition_delegate,
     const MultiloginParameters& parameters,
+    gaia::GaiaSource source,
     base::OnceCallback<void(SetAccountsInCookieResult)>
         set_accounts_in_cookies_completed_callback) {
   // The default partition must go through the GaiaCookieManagerService.
@@ -94,7 +96,7 @@ AccountsCookieMutatorImpl::SetAccountsInCookieForPartition(
   return std::make_unique<MultiloginHelperWrapper>(
       std::make_unique<OAuthMultiloginHelper>(
           signin_client_, partition_delegate, token_service_, parameters.mode,
-          accounts, /*external_cc_result=*/std::string(),
+          accounts, /*external_cc_result=*/std::string(), source,
           std::move(set_accounts_in_cookies_completed_callback)));
 }
 
@@ -102,7 +104,7 @@ void AccountsCookieMutatorImpl::TriggerCookieJarUpdate() {
   gaia_cookie_manager_service_->TriggerListAccounts();
 }
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
 void AccountsCookieMutatorImpl::ForceTriggerOnCookieChange() {
   gaia_cookie_manager_service_->ForceOnCookieChangeProcessing();
 }
@@ -113,6 +115,15 @@ void AccountsCookieMutatorImpl::LogOutAllAccounts(
     LogOutFromCookieCompletedCallback completion_callback) {
   gaia_cookie_manager_service_->LogOutAllAccounts(
       source, std::move(completion_callback));
+}
+
+void AccountsCookieMutatorImpl::RemoveLoggedOutAccountByGaiaId(
+    const std::string& gaia_id) {
+  // Note that RemoveLoggedOutAccountByGaiaId() does NOT internally trigger a
+  // ListAccounts fetch. It could make sense to force a request here, e.g. via
+  // ForceOnCookieChangeProcessing(), but this isn't considered important enough
+  // to justify the risk for overloading the server.
+  gaia_cookie_manager_service_->RemoveLoggedOutAccountByGaiaId(gaia_id);
 }
 
 }  // namespace signin

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,10 @@
 #include <string>
 
 #include "base/containers/flat_set.h"
-#include "base/macros.h"
-#include "base/util/type_safety/token_type.h"
+#include "base/functional/callback_forward.h"
+#include "base/functional/function_ref.h"
+#include "base/types/token_type.h"
+#include "components/performance_manager/public/execution_context_priority/execution_context_priority.h"
 #include "components/performance_manager/public/graph/node.h"
 #include "third_party/blink/public/common/tokens/tokens.h"
 
@@ -20,6 +22,8 @@ namespace performance_manager {
 class WorkerNodeObserver;
 class FrameNode;
 class ProcessNode;
+
+using execution_context_priority::PriorityAndReason;
 
 // Represents a running instance of a WorkerGlobalScope.
 // See https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope.
@@ -45,6 +49,8 @@ class ProcessNode;
 // or a service worker is registered to handle their network requests.
 class WorkerNode : public Node {
  public:
+  using WorkerNodeVisitor = base::FunctionRef<bool(const WorkerNode*)>;
+
   // The different possible worker types.
   enum class WorkerType {
     kDedicated,
@@ -56,6 +62,10 @@ class WorkerNode : public Node {
   class ObserverDefaultImpl;
 
   WorkerNode();
+
+  WorkerNode(const WorkerNode&) = delete;
+  WorkerNode& operator=(const WorkerNode&) = delete;
+
   ~WorkerNode() override;
 
   // Returns the worker type. Note that this is different from the NodeTypeEnum.
@@ -94,8 +104,29 @@ class WorkerNode : public Node {
   //   it handles network requests.
   virtual const base::flat_set<const WorkerNode*> GetChildWorkers() const = 0;
 
- private:
-  DISALLOW_COPY_AND_ASSIGN(WorkerNode);
+  // Visits the child dedicated workers of this frame. The iteration is halted
+  // if the visitor returns false. Returns true if every call to the visitor
+  // returned true, false otherwise.
+  //
+  // The reason why we don't have a generic VisitChildWorkers method is that
+  // a service/shared worker may appear as a child of multiple other nodes
+  // and thus may be visited multiple times.
+  virtual bool VisitChildDedicatedWorkers(
+      const WorkerNodeVisitor& visitor) const = 0;
+
+  // Returns the current priority of the worker, and the reason for the worker
+  // having that particular priority.
+  virtual const PriorityAndReason& GetPriorityAndReason() const = 0;
+
+  // Returns the most recently estimated resident set of the worker, in
+  // kilobytes. This is an estimate because RSS is computed by process, and a
+  // process can host multiple workers.
+  virtual uint64_t GetResidentSetKbEstimate() const = 0;
+
+  // Returns the most recently estimated private footprint of the worker, in
+  // kilobytes. This is an estimate because PMF is computed by process, and a
+  // process can host multiple workers.
+  virtual uint64_t GetPrivateFootprintKbEstimate() const = 0;
 };
 
 // Pure virtual observer interface. Derive from this if you want to be forced to
@@ -103,14 +134,22 @@ class WorkerNode : public Node {
 class WorkerNodeObserver {
  public:
   WorkerNodeObserver();
+
+  WorkerNodeObserver(const WorkerNodeObserver&) = delete;
+  WorkerNodeObserver& operator=(const WorkerNodeObserver&) = delete;
+
   virtual ~WorkerNodeObserver();
 
   // Node lifetime notifications.
 
-  // Called when a |worker_node| is added to the graph.
+  // Called when a |worker_node| is added to the graph. Observers must not make
+  // any property changes or cause re-entrant notifications during the scope of
+  // this call. Instead, make property changes via a separate posted task.
   virtual void OnWorkerNodeAdded(const WorkerNode* worker_node) = 0;
 
-  // Called before a |worker_node| is removed from the graph.
+  // Called before a |worker_node| is removed from the graph. Observers must not
+  // make any property changes or cause re-entrant notifications during the
+  // scope of this call.
   virtual void OnBeforeWorkerNodeRemoved(const WorkerNode* worker_node) = 0;
 
   // Notifications of property changes.
@@ -137,8 +176,10 @@ class WorkerNodeObserver {
       const WorkerNode* worker_node,
       const WorkerNode* client_worker_node) = 0;
 
- private:
-  DISALLOW_COPY_AND_ASSIGN(WorkerNodeObserver);
+  // Invoked when the worker priority and reason changes.
+  virtual void OnPriorityAndReasonChanged(
+      const WorkerNode* worker_node,
+      const PriorityAndReason& previous_value) = 0;
 };
 
 // Default implementation of observer that provides dummy versions of each
@@ -147,6 +188,10 @@ class WorkerNodeObserver {
 class WorkerNode::ObserverDefaultImpl : public WorkerNodeObserver {
  public:
   ObserverDefaultImpl();
+
+  ObserverDefaultImpl(const ObserverDefaultImpl&) = delete;
+  ObserverDefaultImpl& operator=(const ObserverDefaultImpl&) = delete;
+
   ~ObserverDefaultImpl() override;
 
   // WorkerNodeObserver implementation:
@@ -165,9 +210,9 @@ class WorkerNode::ObserverDefaultImpl : public WorkerNodeObserver {
   void OnBeforeClientWorkerRemoved(
       const WorkerNode* worker_node,
       const WorkerNode* client_worker_node) override {}
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ObserverDefaultImpl);
+  void OnPriorityAndReasonChanged(
+      const WorkerNode* worker_node,
+      const PriorityAndReason& previous_value) override {}
 };
 
 }  // namespace performance_manager

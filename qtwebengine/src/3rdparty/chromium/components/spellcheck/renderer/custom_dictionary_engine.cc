@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -35,7 +35,7 @@ void CustomDictionaryEngine::OnCustomDictionaryChanged(
     dictionary_.erase(base::UTF8ToUTF16(word));
 }
 
-bool CustomDictionaryEngine::SpellCheckWord(const base::string16& text,
+bool CustomDictionaryEngine::SpellCheckWord(const std::u16string& text,
                                             size_t misspelling_start,
                                             size_t misspelling_len) {
   // The text to be checked is empty on OSX(async) right now.

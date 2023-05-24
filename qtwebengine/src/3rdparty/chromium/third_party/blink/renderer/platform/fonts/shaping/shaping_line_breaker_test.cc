@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,6 +12,7 @@
 #include "third_party/blink/renderer/platform/fonts/font_test_utilities.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_test_info.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_view.h"
+#include "third_party/blink/renderer/platform/testing/font_test_base.h"
 #include "third_party/blink/renderer/platform/text/text_break_iterator.h"
 #include "third_party/blink/renderer/platform/text/text_run.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
@@ -47,10 +48,25 @@ scoped_refptr<const ShapeResultView> ShapeLine(ShapingLineBreaker* breaker,
 
 }  // namespace
 
-class ShapingLineBreakerTest : public testing::Test {
+class ShapingLineBreakerTest : public FontTestBase {
  protected:
   void SetUp() override {
     font_description.SetComputedSize(12.0);
+    font = Font(font_description);
+  }
+
+  void SelectLucidaFont() {
+    FontFamily lucida_family;
+    // Windows 10
+    lucida_family.SetFamily("Lucida Grande", FontFamily::Type::kFamilyName);
+    // Windows 7
+    lucida_family.AppendFamily("Lucida Grande", FontFamily::Type::kFamilyName);
+    // Linux
+    lucida_family.AppendFamily("Lucida Medium", FontFamily::Type::kFamilyName);
+    // Mac
+    lucida_family.AppendFamily("Lucida Medium", FontFamily::Type::kFamilyName);
+
+    font_description.SetFamily(lucida_family);
     font = Font(font_description);
   }
 
@@ -63,7 +79,7 @@ class ShapingLineBreakerTest : public testing::Test {
     for (unsigned i = 0; i <= string.length(); i++) {
       unsigned next =
           breaker.NextBreakOpportunity(i, 0, string.length()).offset;
-      if (break_positions.IsEmpty() || break_positions.back() != next)
+      if (break_positions.empty() || break_positions.back() != next)
         break_positions.push_back(next);
     }
     return break_positions;
@@ -76,7 +92,7 @@ class ShapingLineBreakerTest : public testing::Test {
     for (unsigned i = string.length(); i; i--) {
       unsigned previous = breaker.PreviousBreakOpportunity(i, 0).offset;
       if (previous &&
-          (break_positions.IsEmpty() || break_positions.back() != previous))
+          (break_positions.empty() || break_positions.back() != previous))
         break_positions.push_back(previous);
     }
     break_positions.Reverse();
@@ -322,6 +338,41 @@ TEST_F(ShapingLineBreakerTest, ShapeLineRangeEndMidWord) {
   EXPECT_EQ(result->Width(), line->Width());
 }
 
+TEST_F(ShapingLineBreakerTest, ShapeLineWithLucidaFont) {
+  SelectLucidaFont();
+  FontDescription::VariantLigatures ligatures;
+  ligatures.common = FontDescription::kEnabledLigaturesState;
+
+  //              012345678901234567890123456789012345
+  String string(u"Lorem ipsum, consexx porttitxx. xxx");
+  LazyLineBreakIterator break_iterator(string, "en-US", LineBreakType::kNormal);
+  // In LayoutNG we use kAfterSpaceRun as TextBreakIterator`s default behavior.
+  break_iterator.SetBreakSpace(BreakSpaceType::kAfterSpaceRun);
+  TextDirection direction = TextDirection::kLtr;
+
+  HarfBuzzShaper shaper(string);
+  scoped_refptr<const ShapeResult> result =
+      shaper.Shape(&font, direction, 0, 35);
+  scoped_refptr<const ShapeResult> segment1 =
+      shaper.Shape(&font, direction, 13, 31);
+  scoped_refptr<const ShapeResult> segment2 =
+      shaper.Shape(&font, direction, 13, 32);
+
+  HarfBuzzShaperCallbackContext context{&shaper, &font, result->Direction()};
+  ShapingLineBreaker breaker(result, &break_iterator, nullptr,
+                             HarfBuzzShaperCallback, &context);
+  scoped_refptr<const ShapeResultView> line;
+  unsigned break_offset = 0;
+
+  line = ShapeLine(&breaker, 13, segment1->SnappedWidth(), &break_offset);
+  EXPECT_EQ(31u, break_offset);
+  EXPECT_EQ(segment1->Width(), line->Width());
+
+  line = ShapeLine(&breaker, 13, segment2->SnappedWidth(), &break_offset);
+  EXPECT_EQ(31u, break_offset);
+  EXPECT_EQ(segment1->Width(), line->Width());
+}
+
 struct BreakOpportunityTestData {
   const char16_t* string;
   Vector<unsigned> break_positions;
@@ -356,7 +407,7 @@ TEST_P(BreakOpportunityTest, Next) {
   EXPECT_THAT(BreakPositionsByNext(breaker, string),
               testing::ElementsAreArray(data.break_positions));
 
-  if (!data.break_positions_with_soft_hyphen_disabled.IsEmpty()) {
+  if (!data.break_positions_with_soft_hyphen_disabled.empty()) {
     breaker.DisableSoftHyphen();
     EXPECT_THAT(BreakPositionsByNext(breaker, string),
                 testing::ElementsAreArray(
@@ -378,7 +429,7 @@ TEST_P(BreakOpportunityTest, Previous) {
   EXPECT_THAT(BreakPositionsByPrevious(breaker, string),
               testing::ElementsAreArray(data.break_positions));
 
-  if (!data.break_positions_with_soft_hyphen_disabled.IsEmpty()) {
+  if (!data.break_positions_with_soft_hyphen_disabled.empty()) {
     breaker.DisableSoftHyphen();
     EXPECT_THAT(BreakPositionsByPrevious(breaker, string),
                 testing::ElementsAreArray(

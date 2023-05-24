@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,12 @@
 #include <memory>
 
 #include "base/win/windows_version.h"
-#include "components/viz/common/features.h"
 #include "gpu/command_buffer/service/feature_info.h"
 #include "gpu/config/gpu_preferences.h"
 #include "gpu/ipc/service/pass_through_image_transport_surface.h"
 #include "ui/gfx/native_widget_types.h"
+#include "ui/gl/dcomp_presenter.h"
+#include "ui/gl/direct_composition_support.h"
 #include "ui/gl/direct_composition_surface_win.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_implementation.h"
@@ -23,27 +24,60 @@
 
 namespace gpu {
 namespace {
+// Use a DCompPresenter as the root surface, instead of a
+// DirectCompositionSurfaceWin. DCompPresenter is surface-less and the actual
+// allocation of the root surface will be owned by the
+// SkiaOutputDeviceDCompPresenter.
+BASE_FEATURE(kDCompPresenter,
+             "DCompPresenter",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 gl::DirectCompositionSurfaceWin::Settings
 CreateDirectCompositionSurfaceSettings(
     const GpuDriverBugWorkarounds& workarounds) {
   gl::DirectCompositionSurfaceWin::Settings settings;
+  settings.no_downscaled_overlay_promotion =
+      workarounds.no_downscaled_overlay_promotion;
   settings.disable_nv12_dynamic_textures =
       workarounds.disable_nv12_dynamic_textures;
-  settings.disable_larger_than_screen_overlays =
-      workarounds.disable_larger_than_screen_overlays;
   settings.disable_vp_scaling = workarounds.disable_vp_scaling;
-  settings.use_angle_texture_offset = features::IsUsingSkiaRenderer();
-  settings.reset_vp_when_colorspace_changes =
-      workarounds.reset_vp_when_colorspace_changes;
-  settings.force_root_surface_full_damage =
-      features::IsUsingSkiaRenderer() &&
-      gl::ShouldForceDirectCompositionRootSurfaceFullDamage();
+  settings.disable_vp_super_resolution =
+      workarounds.disable_vp_super_resolution;
+  settings.force_dcomp_triple_buffer_video_swap_chain =
+      workarounds.force_dcomp_triple_buffer_video_swap_chain;
+  settings.use_angle_texture_offset = true;
   return settings;
 }
 }  // namespace
 
 // static
-scoped_refptr<gl::GLSurface> ImageTransportSurface::CreateNativeSurface(
+scoped_refptr<gl::Presenter> ImageTransportSurface::CreatePresenter(
+    gl::GLDisplay* display,
+    base::WeakPtr<ImageTransportSurfaceDelegate> delegate,
+    SurfaceHandle surface_handle,
+    gl::GLSurfaceFormat format) {
+  if (gl::DirectCompositionSupported() &&
+      base::FeatureList::IsEnabled(kDCompPresenter)) {
+    auto vsync_callback = delegate->GetGpuVSyncCallback();
+    auto settings = CreateDirectCompositionSurfaceSettings(
+        delegate->GetFeatureInfo()->workarounds());
+    auto presenter = base::MakeRefCounted<gl::DCompPresenter>(
+        display->GetAs<gl::GLDisplayEGL>(), std::move(vsync_callback),
+        settings);
+    if (!presenter->Initialize(gl::GLSurfaceFormat())) {
+      return nullptr;
+    }
+
+    delegate->AddChildWindowToBrowser(presenter->window());
+    return presenter;
+  }
+
+  return nullptr;
+}
+
+// static
+scoped_refptr<gl::GLSurface> ImageTransportSurface::CreateNativeGLSurface(
+    gl::GLDisplay* display,
     base::WeakPtr<ImageTransportSurfaceDelegate> delegate,
     SurfaceHandle surface_handle,
     gl::GLSurfaceFormat format) {
@@ -51,27 +85,28 @@ scoped_refptr<gl::GLSurface> ImageTransportSurface::CreateNativeSurface(
   scoped_refptr<gl::GLSurface> surface;
 
   if (gl::GetGLImplementation() == gl::kGLImplementationEGLANGLE) {
-    if (gl::DirectCompositionSurfaceWin::IsDirectCompositionSupported()) {
+    if (gl::DirectCompositionSupported()) {
       auto vsync_callback = delegate->GetGpuVSyncCallback();
       auto settings = CreateDirectCompositionSurfaceSettings(
           delegate->GetFeatureInfo()->workarounds());
       auto dc_surface = base::MakeRefCounted<gl::DirectCompositionSurfaceWin>(
-          surface_handle, std::move(vsync_callback), settings);
+          display->GetAs<gl::GLDisplayEGL>(), std::move(vsync_callback),
+          settings);
       if (!dc_surface->Initialize(gl::GLSurfaceFormat()))
         return nullptr;
-      delegate->DidCreateAcceleratedSurfaceChildWindow(surface_handle,
-                                                       dc_surface->window());
+
+      delegate->AddChildWindowToBrowser(dc_surface->window());
       surface = std::move(dc_surface);
     } else {
       surface = gl::InitializeGLSurface(
           base::MakeRefCounted<gl::NativeViewGLSurfaceEGL>(
-              surface_handle,
+              display->GetAs<gl::GLDisplayEGL>(), surface_handle,
               std::make_unique<gl::VSyncProviderWin>(surface_handle)));
       if (!surface)
         return nullptr;
     }
   } else {
-    surface = gl::init::CreateViewGLSurface(surface_handle);
+    surface = gl::init::CreateViewGLSurface(display, surface_handle);
     if (!surface)
       return nullptr;
   }

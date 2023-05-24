@@ -1,49 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Governikus GmbH & Co. KG.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Governikus GmbH & Co. KG.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsslellipticcurve.h"
+#include "qtlsbackend_p.h"
+#include "qsslsocket_p.h"
 
 #ifndef QT_NO_DEBUG_STREAM
 #include <QDebug>
 #endif
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN(QSslEllipticCurve)
 
 /*!
     \class QSslEllipticCurve
@@ -77,8 +45,6 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn QSslEllipticCurve QSslEllipticCurve::fromShortName(const QString &name)
-
     Returns an QSslEllipticCurve instance representing the
     named curve \a name. The \a name is the conventional short
     name for the curve, as represented by RFC 4492 (for instance \c{secp521r1}),
@@ -91,10 +57,19 @@ QT_BEGIN_NAMESPACE
 
     \sa shortName()
 */
+QSslEllipticCurve QSslEllipticCurve::fromShortName(const QString &name)
+{
+    QSslEllipticCurve result;
+    if (name.isEmpty())
+        return result;
+
+    if (const auto *tlsBackend = QSslSocketPrivate::tlsBackendInUse())
+        result.id = tlsBackend->curveIdFromShortName(name);
+
+    return result;
+}
 
 /*!
-    \fn QSslEllipticCurve QSslEllipticCurve::fromLongName(const QString &name)
-
     Returns an QSslEllipticCurve instance representing the named curve \a name.
     The \a name is a long name for the curve, whose exact spelling depends on the
     SSL implementation.
@@ -105,24 +80,49 @@ QT_BEGIN_NAMESPACE
 
     \sa longName()
 */
+QSslEllipticCurve QSslEllipticCurve::fromLongName(const QString &name)
+{
+    QSslEllipticCurve result;
+    if (name.isEmpty())
+        return result;
+
+    if (const auto *tlsBackend = QSslSocketPrivate::tlsBackendInUse())
+        result.id = tlsBackend->curveIdFromLongName(name);
+
+    return result;
+}
 
 /*!
-    \fn QString QSslEllipticCurve::shortName() const
-
     Returns the conventional short name for this curve. If this
     curve is invalid, returns an empty string.
 
     \sa longName()
 */
+QString QSslEllipticCurve::shortName() const
+{
+    QString name;
+
+    if (const auto *tlsBackend = QSslSocketPrivate::tlsBackendInUse())
+        name = tlsBackend->shortNameForId(id);
+
+    return name;
+}
 
 /*!
-    \fn QString QSslEllipticCurve::longName() const
-
     Returns the conventional long name for this curve. If this
     curve is invalid, returns an empty string.
 
     \sa shortName()
 */
+QString QSslEllipticCurve::longName() const
+{
+    QString name;
+
+    if (const auto *tlsBackend = QSslSocketPrivate::tlsBackendInUse())
+        name = tlsBackend->longNameForId(id);
+
+    return name;
+}
 
 /*!
     \fn bool QSslEllipticCurve::isValid() const
@@ -131,32 +131,36 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn bool QSslEllipticCurve::isTlsNamedCurve() const
-
     Returns true if this elliptic curve is one of the named curves that can be
     used in the key exchange when using an elliptic curve cipher with TLS;
     false otherwise.
 */
+bool QSslEllipticCurve::isTlsNamedCurve() const noexcept
+{
+    if (const auto *tlsBackend = QSslSocketPrivate::tlsBackendInUse())
+        return tlsBackend->isTlsNamedCurve(id);
+
+    return false;
+}
+
 
 /*!
-    \fn bool operator==(QSslEllipticCurve lhs, QSslEllipticCurve rhs)
+    \fn bool QSslEllipticCurve::operator==(QSslEllipticCurve lhs, QSslEllipticCurve rhs)
     \since 5.5
-    \relates QSslEllipticCurve
 
     Returns true if the curve \a lhs represents the same curve of \a rhs;
 */
 
 /*!
-    \fn bool operator!=(QSslEllipticCurve lhs, QSslEllipticCurve rhs)
+    \fn bool QSslEllipticCurve::operator!=(QSslEllipticCurve lhs, QSslEllipticCurve rhs)
     \since 5.5
-    \relates QSslEllipticCurve
 
     Returns true if the curve \a lhs represents a different curve than \a rhs;
     false otherwise.
 */
 
 /*!
-    \fn uint qHash(QSslEllipticCurve curve, uint seed)
+    \fn size_t qHash(QSslEllipticCurve curve, size_t seed = 0)
     \since 5.5
     \relates QHash
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 
 #include <map>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/views/layout/layout_manager.h"
 #include "ui/views/view.h"
@@ -106,31 +105,48 @@ class VIEWS_EXPORT BoxLayout : public LayoutManager {
   // SSSSSSSSSSSSSSSSSSSS
   // --------------------
   //
-  explicit BoxLayout(Orientation orientation,
+  explicit BoxLayout(Orientation orientation = Orientation::kHorizontal,
                      const gfx::Insets& inside_border_insets = gfx::Insets(),
                      int between_child_spacing = 0,
                      bool collapse_margins_spacing = false);
   ~BoxLayout() override;
 
+  void SetOrientation(Orientation orientation);
+  Orientation GetOrientation() const;
+
+  // TODO(tluk): These class member setters should likely be calling
+  // LayoutManager::InvalidateLayout() .
   void set_main_axis_alignment(MainAxisAlignment main_axis_alignment) {
     main_axis_alignment_ = main_axis_alignment;
   }
+  MainAxisAlignment main_axis_alignment() const { return main_axis_alignment_; }
 
   void set_cross_axis_alignment(CrossAxisAlignment cross_axis_alignment) {
     cross_axis_alignment_ = cross_axis_alignment;
+  }
+  CrossAxisAlignment cross_axis_alignment() const {
+    return cross_axis_alignment_;
   }
 
   void set_inside_border_insets(const gfx::Insets& insets) {
     inside_border_insets_ = insets;
   }
+  const gfx::Insets& inside_border_insets() const {
+    return inside_border_insets_;
+  }
 
   void set_minimum_cross_axis_size(int size) {
     minimum_cross_axis_size_ = size;
   }
+  int minimum_cross_axis_size() const { return minimum_cross_axis_size_; }
 
   void set_between_child_spacing(int spacing) {
     between_child_spacing_ = spacing;
   }
+  int between_child_spacing() const { return between_child_spacing_; }
+
+  void SetCollapseMarginsSpacing(bool collapse_margins_spacing);
+  bool GetCollapseMarginsSpacing() const;
 
   // Sets the flex weight for the given |view|. Using the preferred size as
   // the basis, free space along the main axis is distributed to views in the
@@ -152,6 +168,7 @@ class VIEWS_EXPORT BoxLayout : public LayoutManager {
 
   // Sets the flex for views to use when none is specified.
   void SetDefaultFlex(int default_flex);
+  int GetDefaultFlex() const;
 
   // Overridden from views::LayoutManager:
   void Installed(View* host) override;
@@ -179,6 +196,10 @@ class VIEWS_EXPORT BoxLayout : public LayoutManager {
    public:
     ViewWrapper();
     ViewWrapper(const BoxLayout* layout, View* view);
+
+    ViewWrapper(const ViewWrapper&) = delete;
+    ViewWrapper& operator=(const ViewWrapper&) = delete;
+
     ~ViewWrapper();
 
     int GetHeightForWidth(int width) const;
@@ -186,14 +207,12 @@ class VIEWS_EXPORT BoxLayout : public LayoutManager {
     gfx::Size GetPreferredSize() const;
     void SetBoundsRect(const gfx::Rect& bounds);
     View* view() const { return view_; }
-    bool visible() const;
+    bool VisibleToLayout() const;
 
    private:
-    View* view_ = nullptr;
-    const BoxLayout* layout_ = nullptr;
+    raw_ptr<View, DanglingUntriaged> view_ = nullptr;
+    raw_ptr<const BoxLayout> layout_ = nullptr;
     gfx::Insets margins_;
-
-    DISALLOW_COPY_AND_ASSIGN(ViewWrapper);
   };
 
   struct Flex {
@@ -304,7 +323,7 @@ class VIEWS_EXPORT BoxLayout : public LayoutManager {
   // Return the last visible view in the host or nullptr if none are visible.
   View* LastVisibleView() const;
 
-  const Orientation orientation_;
+  Orientation orientation_;
 
   // Spacing between child views and host view border.
   gfx::Insets inside_border_insets_;
@@ -330,12 +349,10 @@ class VIEWS_EXPORT BoxLayout : public LayoutManager {
   int minimum_cross_axis_size_ = 0;
 
   // Adjacent view margins and spacing should be collapsed.
-  const bool collapse_margins_spacing_;
+  bool collapse_margins_spacing_;
 
   // The view that this BoxLayout is managing the layout for.
-  views::View* host_ = nullptr;
-
-  DISALLOW_IMPLICIT_CONSTRUCTORS(BoxLayout);
+  raw_ptr<views::View> host_ = nullptr;
 };
 
 }  // namespace views

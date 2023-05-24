@@ -11,18 +11,22 @@ target.path = $$[QT_INSTALL_EXAMPLES]/corelib/serialization/convert
 INSTALLS += target
 
 SOURCES += main.cpp \
+    converter.cpp \
     cborconverter.cpp \
-    jsonconverter.cpp \
     datastreamconverter.cpp \
+    debugtextdumper.cpp \
+    jsonconverter.cpp \
+    nullconverter.cpp \
     textconverter.cpp \
-    xmlconverter.cpp \
-    nullconverter.cpp
+    xmlconverter.cpp
 
 HEADERS += \
     converter.h \
     cborconverter.h \
-    jsonconverter.h \
     datastreamconverter.h \
+    debugtextdumper.h \
+    jsonconverter.h \
+    nullconverter.h \
     textconverter.h \
-    xmlconverter.h \
-    nullconverter.h
+    variantorderedmap.h \
+    xmlconverter.h

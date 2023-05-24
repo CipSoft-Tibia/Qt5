@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -23,12 +23,15 @@
 #include "chrome/browser/profiles/profile_window.h"
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/ui/browser_finder.h"
+#include "chrome/browser/ui/signin/profile_colors_util.h"
+#include "chrome/browser/ui/webui/theme_source.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_ui.h"
 #include "google_apis/gaia/gaia_auth_util.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -81,77 +84,63 @@ void ManageProfileHandler::RegisterMessages() {
       "removeProfileShortcut",
       base::BindRepeating(&ManageProfileHandler::HandleRemoveProfileShortcut,
                           base::Unretained(this)));
+  content::URLDataSource::Add(profile_,
+                              std::make_unique<ThemeSource>(profile_));
 }
 
 void ManageProfileHandler::OnJavascriptAllowed() {
-  observer_.Add(
+  observation_.Observe(
       &g_browser_process->profile_manager()->GetProfileAttributesStorage());
 }
 
 void ManageProfileHandler::OnJavascriptDisallowed() {
-  observer_.RemoveAll();
+  observation_.Reset();
 }
 
 void ManageProfileHandler::OnProfileHighResAvatarLoaded(
     const base::FilePath& profile_path) {
+  if (profile_path != profile_->GetPath())
+    return;
+
   // GAIA image is loaded asynchronously.
-  FireWebUIListener("available-icons-changed", *GetAvailableIcons());
+  FireWebUIListener(
+      "available-icons-changed",
+      profiles::GetIconsAndLabelsForProfileAvatarSelector(profile_->GetPath()));
 }
 
 void ManageProfileHandler::OnProfileAvatarChanged(
     const base::FilePath& profile_path) {
+  if (profile_path != profile_->GetPath())
+    return;
+
   // This is necessary to send the potentially updated GAIA photo.
-  FireWebUIListener("available-icons-changed", *GetAvailableIcons());
+  FireWebUIListener(
+      "available-icons-changed",
+      profiles::GetIconsAndLabelsForProfileAvatarSelector(profile_->GetPath()));
+}
+
+void ManageProfileHandler::OnProfileThemeColorsChanged(
+    const base::FilePath& profile_path) {
+  // This is necessary to send the potentially updated Generic colored avatar.
+  OnProfileAvatarChanged(profile_path);
 }
 
 void ManageProfileHandler::HandleGetAvailableIcons(
-    const base::ListValue* args) {
+    const base::Value::List& args) {
   AllowJavascript();
 
   profiles::UpdateGaiaProfileInfoIfNeeded(profile_);
 
-  CHECK_EQ(1U, args->GetSize());
-  const base::Value* callback_id;
-  CHECK(args->Get(0, &callback_id));
-  ResolveJavascriptCallback(*callback_id, *GetAvailableIcons());
-}
+  CHECK_EQ(1U, args.size());
+  const base::Value& callback_id = args[0];
 
-std::unique_ptr<base::ListValue> ManageProfileHandler::GetAvailableIcons() {
-  PrefService* pref_service = profile_->GetPrefs();
-  bool using_gaia = pref_service->GetBoolean(prefs::kProfileUsingGAIAAvatar);
-  size_t selected_avatar_idx =
-      using_gaia ? SIZE_MAX
-                 : pref_service->GetInteger(prefs::kProfileAvatarIndex);
-
-  // Obtain a list of the default avatar icons.
-  std::unique_ptr<base::ListValue> avatars(
-      profiles::GetDefaultProfileAvatarIconsAndLabels(selected_avatar_idx));
-
-  // Add the GAIA picture to the beginning of the list if it is available.
-  ProfileAttributesEntry* entry;
-  if (g_browser_process->profile_manager()->GetProfileAttributesStorage().
-          GetProfileAttributesWithPath(profile_->GetPath(), &entry)) {
-    const gfx::Image* icon = entry->GetGAIAPicture();
-    if (icon) {
-      auto gaia_picture_info = std::make_unique<base::DictionaryValue>();
-      gfx::Image avatar_icon = profiles::GetAvatarIconForWebUI(*icon, true);
-      gaia_picture_info->SetString(
-          "url", webui::GetBitmapDataUrl(avatar_icon.AsBitmap()));
-      gaia_picture_info->SetString(
-          "label",
-          l10n_util::GetStringUTF16(IDS_SETTINGS_CHANGE_PICTURE_PROFILE_PHOTO));
-      gaia_picture_info->SetBoolean("isGaiaAvatar", true);
-      if (using_gaia)
-        gaia_picture_info->SetBoolean("selected", true);
-      avatars->Insert(0, std::move(gaia_picture_info));
-    }
-  }
-
-  return avatars;
+  ResolveJavascriptCallback(
+      callback_id,
+      profiles::GetIconsAndLabelsForProfileAvatarSelector(profile_->GetPath()));
 }
 
 void ManageProfileHandler::HandleSetProfileIconToGaiaAvatar(
-    const base::ListValue* /* args */) {
+    const base::Value::List& args) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
   PrefService* pref_service = profile_->GetPrefs();
@@ -171,36 +160,20 @@ void ManageProfileHandler::HandleSetProfileIconToGaiaAvatar(
 }
 
 void ManageProfileHandler::HandleSetProfileIconToDefaultAvatar(
-    const base::ListValue* args) {
+    const base::Value::List& args) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(args);
-  DCHECK_EQ(1u, args->GetSize());
+  CHECK_EQ(1u, args.size());
+  CHECK(args[0].is_int());
 
-  std::string icon_url;
-  CHECK(args->GetString(0, &icon_url));
-
-  size_t new_icon_index = 0;
-  CHECK(profiles::IsDefaultAvatarIconUrl(icon_url, &new_icon_index));
-
-  PrefService* pref_service = profile_->GetPrefs();
-  pref_service->SetInteger(prefs::kProfileAvatarIndex, new_icon_index);
-  pref_service->SetBoolean(prefs::kProfileUsingDefaultAvatar, false);
-  pref_service->SetBoolean(prefs::kProfileUsingGAIAAvatar, false);
-
-  ProfileMetrics::LogProfileAvatarSelection(new_icon_index);
-  ProfileMetrics::LogProfileUpdate(profile_->GetPath());
+  size_t avatar_icon_index = args[0].GetInt();
+  profiles::SetDefaultProfileAvatarIndex(profile_, avatar_icon_index);
 }
 
-void ManageProfileHandler::HandleSetProfileName(const base::ListValue* args) {
+void ManageProfileHandler::HandleSetProfileName(const base::Value::List& args) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  DCHECK(args);
-  DCHECK_EQ(1u, args->GetSize());
+  CHECK_EQ(1u, args.size());
 
-  if (profile_->IsLegacySupervised())
-    return;
-
-  base::string16 new_profile_name;
-  CHECK(args->GetString(0, &new_profile_name));
+  std::u16string new_profile_name = base::UTF8ToUTF16(args[0].GetString());
 
   base::TrimWhitespace(new_profile_name, base::TRIM_ALL, &new_profile_name);
   CHECK(!new_profile_name.empty());
@@ -210,14 +183,13 @@ void ManageProfileHandler::HandleSetProfileName(const base::ListValue* args) {
 }
 
 void ManageProfileHandler::HandleRequestProfileShortcutStatus(
-    const base::ListValue* args) {
+    const base::Value::List& args) {
   AllowJavascript();
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   DCHECK(ProfileShortcutManager::IsFeatureEnabled());
 
-  CHECK_EQ(1U, args->GetSize());
-  std::string callback_id;
-  CHECK(args->GetString(0, &callback_id));
+  CHECK_EQ(1U, args.size());
+  const std::string& callback_id = args[0].GetString();
 
   // Don't show the add/remove desktop shortcut button in the single user case.
   ProfileAttributesStorage& storage =
@@ -233,8 +205,8 @@ void ManageProfileHandler::HandleRequestProfileShortcutStatus(
   DCHECK(shortcut_manager);
   shortcut_manager->HasProfileShortcuts(
       profile_->GetPath(),
-      base::Bind(&ManageProfileHandler::OnHasProfileShortcuts,
-                 weak_factory_.GetWeakPtr(), callback_id));
+      base::BindOnce(&ManageProfileHandler::OnHasProfileShortcuts,
+                     weak_factory_.GetWeakPtr(), callback_id));
 }
 
 void ManageProfileHandler::OnHasProfileShortcuts(
@@ -247,7 +219,7 @@ void ManageProfileHandler::OnHasProfileShortcuts(
 }
 
 void ManageProfileHandler::HandleAddProfileShortcut(
-    const base::ListValue* args) {
+    const base::Value::List& args) {
   DCHECK(ProfileShortcutManager::IsFeatureEnabled());
   ProfileShortcutManager* shortcut_manager =
       g_browser_process->profile_manager()->profile_shortcut_manager();
@@ -257,7 +229,7 @@ void ManageProfileHandler::HandleAddProfileShortcut(
 }
 
 void ManageProfileHandler::HandleRemoveProfileShortcut(
-    const base::ListValue* args) {
+    const base::Value::List& args) {
   DCHECK(ProfileShortcutManager::IsFeatureEnabled());
   ProfileShortcutManager* shortcut_manager =
     g_browser_process->profile_manager()->profile_shortcut_manager();

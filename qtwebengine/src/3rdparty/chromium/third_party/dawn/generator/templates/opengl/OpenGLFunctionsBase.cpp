@@ -12,9 +12,9 @@
 //* See the License for the specific language governing permissions and
 //* limitations under the License.
 
-#include "dawn_native/opengl/OpenGLFunctionsBase_autogen.h"
+#include "dawn/native/opengl/OpenGLFunctionsBase_autogen.h"
 
-namespace dawn_native { namespace opengl {
+namespace dawn::native::opengl {
 
 template<typename T>
 MaybeError OpenGLFunctionsBase::LoadProc(GetProcAddress getProc, T* memberProc, const char* name) {
@@ -35,6 +35,14 @@ MaybeError OpenGLFunctionsBase::LoadOpenGLESProcs(GetProcAddress getProc, int ma
         }
 
     {% endfor %}
+
+    {% for block in extension_gles_blocks %}
+        // {{block.extension}}
+        {% for proc in block.procs %}
+            DAWN_TRY(LoadProc(getProc, &{{proc.ProcName()}}, "{{proc.glProcName()}}"));
+        {% endfor %}
+    {% endfor %}
+
     return {};
 }
 
@@ -48,7 +56,15 @@ MaybeError OpenGLFunctionsBase::LoadDesktopGLProcs(GetProcAddress getProc, int m
         }
 
     {% endfor %}
+
+    {% for block in extension_desktop_gl_blocks %}
+        // {{block.extension}}
+        {% for proc in block.procs %}
+            DAWN_TRY(LoadProc(getProc, &{{proc.ProcName()}}, "{{proc.glProcName()}}"));
+        {% endfor %}
+    {% endfor %}
+
     return {};
 }
 
-}}  // namespace dawn_native::opengl
+}  // namespace dawn::native::opengl

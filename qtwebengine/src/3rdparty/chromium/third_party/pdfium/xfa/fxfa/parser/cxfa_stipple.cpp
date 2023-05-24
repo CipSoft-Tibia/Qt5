@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,15 @@
 #include "xfa/fxfa/parser/cxfa_stipple.h"
 
 #include "fxjs/xfa/cjx_node.h"
+#include "xfa/fgas/graphics/cfgas_gegraphics.h"
 #include "xfa/fxfa/parser/cxfa_color.h"
 #include "xfa/fxfa/parser/cxfa_document.h"
 
 namespace {
 
 const CXFA_Node::PropertyData kStipplePropertyData[] = {
-    {XFA_Element::Color, 1, 0},
-    {XFA_Element::Extras, 1, 0},
+    {XFA_Element::Color, 1, {}},
+    {XFA_Element::Extras, 1, {}},
 };
 
 const CXFA_Node::AttributeData kStippleAttributeData[] = {
@@ -29,7 +30,7 @@ const CXFA_Node::AttributeData kStippleAttributeData[] = {
 CXFA_Stipple::CXFA_Stipple(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                (XFA_XDPPACKET_Template | XFA_XDPPACKET_Form),
+                {XFA_XDPPACKET::kTemplate, XFA_XDPPACKET::kForm},
                 XFA_ObjectType::Node,
                 XFA_Element::Stipple,
                 kStipplePropertyData,
@@ -50,8 +51,8 @@ int32_t CXFA_Stipple::GetRate() {
       .value_or(GetDefaultRate());
 }
 
-void CXFA_Stipple::Draw(CXFA_Graphics* pGS,
-                        CXFA_GEPath* fillPath,
+void CXFA_Stipple::Draw(CFGAS_GEGraphics* pGS,
+                        const CFGAS_GEPath& fillPath,
                         const CFX_RectF& rtFill,
                         const CFX_Matrix& matrix) {
   int32_t iRate = GetRate();
@@ -66,8 +67,7 @@ void CXFA_Stipple::Draw(CXFA_Graphics* pGS,
   std::tie(alpha, colorref) = ArgbToAlphaAndColorRef(crColor);
   FX_ARGB cr = AlphaAndColorRefToArgb(iRate * alpha / 100, colorref);
 
-  pGS->SaveGraphState();
-  pGS->SetFillColor(CXFA_GEColor(cr));
-  pGS->FillPath(fillPath, CFX_FillRenderOptions::FillType::kWinding, &matrix);
-  pGS->RestoreGraphState();
+  CFGAS_GEGraphics::StateRestorer restorer(pGS);
+  pGS->SetFillColor(CFGAS_GEColor(cr));
+  pGS->FillPath(fillPath, CFX_FillRenderOptions::FillType::kWinding, matrix);
 }

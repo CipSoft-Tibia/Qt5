@@ -1,35 +1,36 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_VIZ_SERVICE_DISPLAY_EMBEDDER_SKIA_OUTPUT_SURFACE_DEPENDENCY_H_
 #define COMPONENTS_VIZ_SERVICE_DISPLAY_EMBEDDER_SKIA_OUTPUT_SURFACE_DEPENDENCY_H_
 
-#include <vector>
+#include <memory>
+#include <utility>
 
-#include "base/callback.h"
-#include "base/callback_helpers.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
-#include "build/build_config.h"
+#include "components/viz/service/display/display_compositor_memory_and_task_controller.h"
 #include "components/viz/service/viz_service_export.h"
 #include "gpu/command_buffer/common/constants.h"
 #include "gpu/command_buffer/service/sequence_id.h"
 #include "gpu/config/gpu_preferences.h"
 #include "gpu/ipc/common/surface_handle.h"
+#include "third_party/skia/include/core/SkSurfaceCharacterization.h"
 #include "ui/gl/gl_surface_format.h"
 
 class GURL;
 
 namespace gl {
 class GLSurface;
+class Presenter;
 }
 
 namespace gpu {
 
-class DisplayContext;
 class GpuDriverBugWorkarounds;
-class ImageFactory;
 class ImageTransportSurfaceDelegate;
 class MailboxManager;
 class SharedContextState;
@@ -76,38 +77,39 @@ class VIZ_SERVICE_EXPORT SkiaOutputSurfaceDependency {
   virtual const gpu::GpuPreferences& GetGpuPreferences() const = 0;
   virtual const gpu::GpuFeatureInfo& GetGpuFeatureInfo() = 0;
   virtual gpu::MailboxManager* GetMailboxManager() = 0;
-  // May return null.
-  virtual gpu::ImageFactory* GetGpuImageFactory() = 0;
   // Note it is possible for IsOffscreen to be false and GetSurfaceHandle to
   // return kNullSurfaceHandle.
   virtual bool IsOffscreen() = 0;
   virtual gpu::SurfaceHandle GetSurfaceHandle() = 0;
+  virtual scoped_refptr<gl::Presenter> CreatePresenter(
+      base::WeakPtr<gpu::ImageTransportSurfaceDelegate> stub,
+      gl::GLSurfaceFormat format) = 0;
   virtual scoped_refptr<gl::GLSurface> CreateGLSurface(
       base::WeakPtr<gpu::ImageTransportSurfaceDelegate> stub,
       gl::GLSurfaceFormat format) = 0;
   // Hold a ref of the given surface until the returned closure is fired.
   virtual base::ScopedClosureRunner CacheGLSurface(gl::GLSurface* surface) = 0;
-  virtual void PostTaskToClientThread(base::OnceClosure closure) = 0;
+  virtual base::ScopedClosureRunner CachePresenter(
+      gl::Presenter* presenter) = 0;
   virtual void ScheduleGrContextCleanup() = 0;
+
+  void PostTaskToClientThread(base::OnceClosure closure) {
+    GetClientTaskRunner()->PostTask(FROM_HERE, std::move(closure));
+  }
+  virtual scoped_refptr<base::TaskRunner> GetClientTaskRunner() = 0;
 
   // This function schedules delayed task to be run on GPUThread. It can be
   // called only from GPU Thread.
   virtual void ScheduleDelayedGPUTaskFromGPUThread(base::OnceClosure task) = 0;
 
-#if defined(OS_WIN)
-  virtual void DidCreateAcceleratedSurfaceChildWindow(
-      gpu::SurfaceHandle parent_window,
-      gpu::SurfaceHandle child_window) = 0;
-#endif
-
-  virtual void RegisterDisplayContext(gpu::DisplayContext* display_context) = 0;
-  virtual void UnregisterDisplayContext(
-      gpu::DisplayContext* display_context) = 0;
   virtual void DidLoseContext(gpu::error::ContextLostReason reason,
                               const GURL& active_url) = 0;
 
   virtual base::TimeDelta GetGpuBlockedTimeSinceLastSwap() = 0;
   virtual bool NeedsSupportForExternalStencil() = 0;
+
+  // This returns true if CompositorGpuThread(aka DrDc thread) is enabled.
+  virtual bool IsUsingCompositorGpuThread() = 0;
 
   gpu::GrContextType gr_context_type() const {
     return GetGpuPreferences().gr_context_type;

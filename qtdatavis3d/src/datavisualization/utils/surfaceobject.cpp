@@ -1,38 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "surfaceobject_p.h"
 #include "surface3drenderer_p.h"
 
 #include <QtGui/QVector2D>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 SurfaceObject::SurfaceObject(Surface3DRenderer *renderer)
     : m_axisCacheX(renderer->m_axisCacheX),
@@ -77,7 +51,7 @@ void SurfaceObject::setUpSmoothData(const QSurfaceDataArray &dataArray, const QR
     if (changeGeometry)
         m_vertices.resize(totalSize);
 
-    QVector<QVector2D> uvs;
+    QList<QVector2D> uvs;
     if (changeGeometry)
         uvs.resize(totalSize);
     int totalIndex = 0;
@@ -315,7 +289,7 @@ void SurfaceObject::smoothUVs(const QSurfaceDataArray &dataArray,
     const bool zDescending = m_dataDimension.testFlag(SurfaceObject::ZDescending);
     const bool xDescending = m_dataDimension.testFlag(SurfaceObject::XDescending);
 
-    QVector<QVector2D> uvs;
+    QList<QVector2D> uvs;
     uvs.resize(m_rows * m_columns);
     int index = 0;
     for (int i = 0; i < m_rows; i++) {
@@ -534,7 +508,7 @@ void SurfaceObject::setUpData(const QSurfaceDataArray &dataArray, const QRect &s
     if (changeGeometry)
         m_vertices.resize(totalSize);
 
-    QVector<QVector2D> uvs;
+    QList<QVector2D> uvs;
     if (changeGeometry)
         uvs.resize(totalSize);
 
@@ -620,7 +594,7 @@ void SurfaceObject::coarseUVs(const QSurfaceDataArray &dataArray,
     const bool zDescending = m_dataDimension.testFlag(SurfaceObject::ZDescending);
     const bool xDescending = m_dataDimension.testFlag(SurfaceObject::XDescending);
 
-    QVector<QVector2D> uvs;
+    QList<QVector2D> uvs;
     uvs.resize(m_rows * m_columns * 2);
     int index = 0;
     int colLimit = m_columns - 1;
@@ -802,12 +776,12 @@ void SurfaceObject::createCoarseGridlineIndices(int x, int y, int endX, int endY
 
 void SurfaceObject::uploadBuffers()
 {
-    QVector<QVector2D> uvs; // Empty dummy
+    QList<QVector2D> uvs; // Empty dummy
     createBuffers(m_vertices, uvs, m_normals, 0);
 }
 
-void SurfaceObject::createBuffers(const QVector<QVector3D> &vertices, const QVector<QVector2D> &uvs,
-                                  const QVector<QVector3D> &normals, const GLint *indices)
+void SurfaceObject::createBuffers(const QList<QVector3D> &vertices, const QList<QVector2D> &uvs,
+                                  const QList<QVector3D> &normals, const GLint *indices)
 {
     // Move to buffers
     glBindBuffer(GL_ARRAY_BUFFER, m_vertexbuffer);
@@ -870,7 +844,8 @@ void SurfaceObject::getNormalizedVertex(const QSurfaceDataItem &data, QVector3D 
     }
     float normalizedY = m_axisCacheY.positionAt(data.y());
     m_minY = qMin(normalizedY, m_minY);
-    m_maxY = qMax(normalizedY, m_maxY);
+    if (!qIsNaN(normalizedY) && !qIsInf(normalizedY))
+        m_maxY = qMax(normalizedY, m_maxY);
     vertex.setX(normalizedX);
     vertex.setY(normalizedY);
     vertex.setZ(normalizedZ);
@@ -992,4 +967,4 @@ QVector3D SurfaceObject::normal(const QVector3D &a, const QVector3D &b, const QV
     return normal;
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

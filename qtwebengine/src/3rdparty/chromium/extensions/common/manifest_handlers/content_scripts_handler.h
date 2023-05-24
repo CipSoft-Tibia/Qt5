@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 
 #include <string>
 
-#include "base/macros.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/manifest_handler.h"
 #include "extensions/common/user_script.h"
@@ -39,17 +38,19 @@ struct ContentScriptsInfo : public Extension::ManifestData {
 class ContentScriptsHandler : public ManifestHandler {
  public:
   ContentScriptsHandler();
+
+  ContentScriptsHandler(const ContentScriptsHandler&) = delete;
+  ContentScriptsHandler& operator=(const ContentScriptsHandler&) = delete;
+
   ~ContentScriptsHandler() override;
 
-  bool Parse(Extension* extension, base::string16* error) override;
+  bool Parse(Extension* extension, std::u16string* error) override;
   bool Validate(const Extension* extension,
                 std::string* error,
                 std::vector<InstallWarning>* warnings) const override;
 
  private:
   base::span<const char* const> Keys() const override;
-
-  DISALLOW_COPY_AND_ASSIGN(ContentScriptsHandler);
 };
 
 }  // namespace extensions

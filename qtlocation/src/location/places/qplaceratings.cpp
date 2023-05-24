@@ -1,57 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplaceratings.h"
 #include "qplaceratings_p.h"
 
 QT_USE_NAMESPACE
 
-QPlaceRatingsPrivate::QPlaceRatingsPrivate()
-    :   QSharedData(), average(0), maximum(0), count(0)
-{
-}
-
-QPlaceRatingsPrivate::QPlaceRatingsPrivate(const QPlaceRatingsPrivate &other)
-:   QSharedData(), average(0), maximum(other.maximum), count(other.count)
-{
-}
-
-QPlaceRatingsPrivate::~QPlaceRatingsPrivate()
-{
-}
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QPlaceRatingsPrivate)
 
 bool QPlaceRatingsPrivate::operator==(const QPlaceRatingsPrivate &other) const
 {
@@ -81,6 +36,20 @@ bool QPlaceRatingsPrivate::isEmpty() const
 */
 
 /*!
+    \qmlvaluetype ratings
+    \inqmlmodule QtLocation
+    \ingroup qml-QtLocation5-places
+    \ingroup qml-QtLocation5-places-data
+    \since QtLocation 6.5
+
+    \brief The ratings type holds place rating information.
+
+    Rating information is used to describe how \e good a place is conceived to be.  Typically this
+    information is visualized as a number of stars.  The \l {ratings::}{average} property gives an aggregated
+    ratings value out of a possible maximum as given by the \l {ratings::maximum} property.
+*/
+
+/*!
     Constructs a new ratings object.
 */
 QPlaceRatings::QPlaceRatings()
@@ -91,23 +60,18 @@ QPlaceRatings::QPlaceRatings()
 /*!
     Constructs a copy of \a other.
 */
-QPlaceRatings::QPlaceRatings(const QPlaceRatings &other)
-    :d(other.d)
-{
-}
+QPlaceRatings::QPlaceRatings(const QPlaceRatings &other) noexcept = default;
 
 /*!
     Destroys the ratings object.
 */
-QPlaceRatings::~QPlaceRatings()
-{
-}
+QPlaceRatings::~QPlaceRatings() = default;
 
 /*!
     Assigns \a other to this ratings object and returns
     a reference to this ratings object.
 */
-QPlaceRatings &QPlaceRatings::operator=(const QPlaceRatings &other)
+QPlaceRatings &QPlaceRatings::operator=(const QPlaceRatings &other) noexcept
 {
     if (this == &other)
         return *this;
@@ -117,64 +81,80 @@ QPlaceRatings &QPlaceRatings::operator=(const QPlaceRatings &other)
 }
 
 /*!
-    Returns true if \a other is equal to this ratings object,
-    otherwise returns false.
+    \fn bool QPlaceRatings::operator==(const QPlaceRatings &lhs, const QPlaceRatings &rhs) noexcept
+
+    Returns true if \a lhs is equal to \a rhs, otherwise returns false.
 */
-bool QPlaceRatings::operator==(const QPlaceRatings &other) const
+
+/*!
+    \fn bool QPlaceRatings::operator!=(const QPlaceRatings &lhs, const QPlaceRatings &rhs) noexcept
+
+    Returns true if \a lhs is not equal to \a rhs, otherwise returns false.
+*/
+
+bool QPlaceRatings::isEqual(const QPlaceRatings &other) const noexcept
 {
     return (*(d.constData()) == *(other.d.constData()));
 }
 
 /*!
-    \fn bool QPlaceRatings::operator!=(const QPlaceRatings &other) const
+    \qmlproperty real ratings::average
 
-    Returns true if \a other is not equal to this ratings object,
-    otherwise returns false.
+    This property holds the average of the individual ratings.
+
+    \sa maximum
 */
 
 /*!
-    Returns the average value of individual ratings.
+    \property QPlaceRatings::average
+    \brief the average value of individual ratings.
 */
 qreal QPlaceRatings::average() const
 {
     return d->average;
 }
 
-/*!
-    Sets the \a average value of the ratings.
-*/
 void QPlaceRatings::setAverage(qreal average)
 {
     d->average = average;
 }
 
 /*!
-    Returns the maximum possible rating value.
+    \qmlproperty real ratings::maximum
+
+    This property holds the maximum rating value.
+*/
+
+/*!
+    \property QPlaceRatings::maximum
+    \brief the maximum possible rating value.
 */
 qreal QPlaceRatings::maximum() const
 {
     return d->maximum;
 }
 
-/*!
-    Sets the maximum possible rating value to \a max.
-*/
 void QPlaceRatings::setMaximum(qreal max)
 {
     d->maximum = max;
 }
 
 /*!
-    Returns the total number of individual ratings.
+    \qmlproperty int ratings::count
+
+    This property holds the total number of individual user ratings
+    used in determining the overall ratings \l average.
+*/
+
+/*!
+    \property QPlaceRatings::count
+    \brief the total number of individual ratings.
 */
 int QPlaceRatings::count() const
 {
     return d->count;
 }
 
-/*!
-    Sets the total number of individual ratings to \a count.
-*/
 void QPlaceRatings::setCount(int count)
 {
     d->count = count;
@@ -187,3 +167,5 @@ bool QPlaceRatings::isEmpty() const
 {
     return d->isEmpty();
 }
+
+#include "moc_qplaceratings.cpp"

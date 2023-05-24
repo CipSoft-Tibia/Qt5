@@ -1,39 +1,15 @@
-/****************************************************************************
- **
- ** Copyright (C) 2018 The Qt Company Ltd.
- ** Contact: https://www.qt.io/licensing/
- **
- ** This file is part of the test suite of the Qt Toolkit.
- **
- ** $QT_BEGIN_LICENSE:GPL-EXCEPT$
- ** Commercial License Usage
- ** Licensees holding valid commercial Qt licenses may use this file in
- ** accordance with the commercial license agreement provided with the
- ** Software or, alternatively, in accordance with the terms contained in
- ** a written agreement between you and The Qt Company. For licensing terms
- ** and conditions see https://www.qt.io/terms-conditions. For further
- ** information use the contact form at https://www.qt.io/contact-us.
- **
- ** GNU General Public License Usage
- ** Alternatively, this file may be used under the terms of the GNU
- ** General Public License version 3 as published by the Free Software
- ** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
- ** included in the packaging of this file. Please review the following
- ** information to ensure the GNU General Public License requirements will
- ** be met: https://www.gnu.org/licenses/gpl-3.0.html.
- **
- ** $QT_END_LICENSE$
- **
- ****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QTestEventLoop>
 
 #include <QtNetwork/private/qtnetworkglobal_p.h>
 
-#include <QtNetwork/private/qsslsocket_openssl_symbols_p.h>
-#include <QtNetwork/private/qsslsocket_openssl_p.h>
+#include "../shared/qopenssl_symbols.h"
 
 #include <QtNetwork/qsslcertificate.h>
+#include <QtNetwork/qocspresponse.h>
 #include <QtNetwork/qtcpserver.h>
 #include <QtNetwork/qsslerror.h>
 #include <QtNetwork/qsslkey.h>
@@ -52,15 +28,16 @@
 #include <algorithm>
 #include <utility>
 
+using namespace std::chrono_literals;
+
 // NOTE: the word 'subject' in the code below means the subject of a status request,
 // so in general it's our peer's certificate we are asking about.
 
 using SslError = QT_PREPEND_NAMESPACE(QSslError);
-using VectorOfErrors = QT_PREPEND_NAMESPACE(QVector<SslError>);
+using VectorOfErrors = QT_PREPEND_NAMESPACE(QList<SslError>);
 using Latin1String = QT_PREPEND_NAMESPACE(QLatin1String);
 
 Q_DECLARE_METATYPE(SslError)
-Q_DECLARE_METATYPE(VectorOfErrors)
 Q_DECLARE_METATYPE(Latin1String)
 
 QT_BEGIN_NAMESPACE
@@ -74,7 +51,6 @@ using CertId = QSharedPointer<OCSP_CERTID>;
 using EvpKey = QSharedPointer<EVP_PKEY>;
 using Asn1Time = QSharedPointer<ASN1_TIME>;
 using CertificateChain = QList<QSslCertificate>;
-
 using NativeX509Ptr = X509 *;
 
 class X509Stack {
@@ -378,7 +354,6 @@ void OcspServer::incomingConnection(qintptr socketDescriptor)
 class tst_QOcsp : public QObject
 {
     Q_OBJECT
-
 public slots:
     void initTestCase();
 
@@ -413,7 +388,7 @@ private:
     void (QSslSocket::*tlsErrorsSignal)(const QList<QSslError> &) = &QSslSocket::sslErrors;
     void (QTestEventLoop::*exitLoopSlot)() = &QTestEventLoop::exitLoop;
 
-    const int handshakeTimeoutMS = 500;
+    static constexpr auto HandshakeTimeout = 500ms;
     QTestEventLoop loop;
 
     std::vector<QSslError::SslError> ocspErrorCodes = {QSslError::OcspNoResponseFound,
@@ -451,7 +426,13 @@ QString tst_QOcsp::certDirPath;
 
 void tst_QOcsp::initTestCase()
 {
-    QVERIFY(QSslSocket::supportsSsl());
+    // I'm not testing feature here, I need 'openssl', since the test
+    // is very OpenSSL-oriented:
+    if (QSslSocket::activeBackend() != QStringLiteral("openssl"))
+        QSKIP("This test requires the OpenSSL backend");
+
+    if (!qt_auto_test_resolve_OpenSSL_symbols())
+        QSKIP("Failed to resolve OpenSSL symbols required by this test");
 
     certDirPath = QFileInfo(QFINDTESTDATA("certs")).absolutePath();
     QVERIFY(certDirPath.size() > 0);
@@ -483,7 +464,7 @@ void tst_QOcsp::connectSelfSigned()
         auto roots = clientConfig.caCertificates();
         setupOcspClient(clientSocket, issuerToChain(subjectChain), server.peerVerifyName());
         clientSocket.connectToHostEncrypted(server.hostName(), server.serverPort());
-        loop.enterLoopMSecs(handshakeTimeoutMS);
+        loop.enterLoop(HandshakeTimeout);
 
         QVERIFY(!clientSocket.isEncrypted());
         QCOMPARE_SINGLE_ERROR(clientSocket, expectedError);
@@ -499,7 +480,7 @@ void tst_QOcsp::connectSelfSigned()
         QSslSocket clientSocket;
         setupOcspClient(clientSocket, issuerToChain(subjectChain), server.peerVerifyName());
         clientSocket.connectToHostEncrypted(server.hostName(), server.serverPort());
-        loop.enterLoopMSecs(handshakeTimeoutMS);
+        loop.enterLoop(HandshakeTimeout);
 
         QVERIFY_HANDSHAKE_WITHOUT_ERRORS(clientSocket);
 
@@ -564,7 +545,7 @@ void tst_QOcsp::badStatus()
     QSslSocket clientSocket;
     setupOcspClient(clientSocket, issuerToChain(subjectChain), server.peerVerifyName());
     clientSocket.connectToHostEncrypted(server.hostName(), server.serverPort());
-    loop.enterLoopMSecs(handshakeTimeoutMS);
+    loop.enterLoop(HandshakeTimeout);
 
     QVERIFY(!clientSocket.isEncrypted());
     QCOMPARE_SINGLE_ERROR(clientSocket, expectedError.error());
@@ -595,7 +576,7 @@ void tst_QOcsp::multipleSingleResponses()
     QSslSocket clientSocket;
     setupOcspClient(clientSocket, issuerToChain(responderChain), server.peerVerifyName());
     clientSocket.connectToHostEncrypted(server.hostName(), server.serverPort());
-    loop.enterLoopMSecs(handshakeTimeoutMS);
+    loop.enterLoop(HandshakeTimeout);
 
     QVERIFY(!clientSocket.isEncrypted());
     QCOMPARE_SINGLE_ERROR(clientSocket, expectedError);
@@ -615,7 +596,7 @@ void tst_QOcsp::malformedResponse()
     QSslSocket clientSocket;
     setupOcspClient(clientSocket, issuerToChain(serverChain), server.peerVerifyName());
     clientSocket.connectToHostEncrypted(server.hostName(), server.serverPort());
-    loop.enterLoopMSecs(handshakeTimeoutMS);
+    loop.enterLoop(HandshakeTimeout);
 
     QVERIFY(!clientSocket.isEncrypted());
     QCOMPARE(clientSocket.error(), QAbstractSocket::SslHandshakeFailedError);
@@ -654,7 +635,7 @@ void tst_QOcsp::expiredResponse()
     QSslSocket clientSocket;
     setupOcspClient(clientSocket, issuerToChain(subjectChain), server.peerVerifyName());
     clientSocket.connectToHostEncrypted(server.hostName(), server.serverPort());
-    loop.enterLoopMSecs(handshakeTimeoutMS);
+    loop.enterLoop(HandshakeTimeout);
 
     QVERIFY(!clientSocket.isEncrypted());
     QCOMPARE_SINGLE_ERROR(clientSocket, expectedError);
@@ -685,7 +666,7 @@ void tst_QOcsp::noNextUpdate()
     QSslSocket clientSocket;
     setupOcspClient(clientSocket, issuerToChain(subjectChain), server.peerVerifyName());
     clientSocket.connectToHostEncrypted(server.hostName(), server.serverPort());
-    loop.enterLoopMSecs(handshakeTimeoutMS);
+    loop.enterLoop(HandshakeTimeout);
 
     QVERIFY_HANDSHAKE_WITHOUT_ERRORS(clientSocket);
 }
@@ -731,7 +712,7 @@ void tst_QOcsp::wrongCertificateInResponse()
     QSslSocket clientSocket;
     setupOcspClient(clientSocket, issuerToChain(subjectChain), server.peerVerifyName());
     clientSocket.connectToHostEncrypted(server.hostName(), server.serverPort());
-    loop.enterLoopMSecs(handshakeTimeoutMS);
+    loop.enterLoop(HandshakeTimeout);
 
     QVERIFY(!clientSocket.isEncrypted());
     QVERIFY(containsError(clientSocket.sslHandshakeErrors(), expectedError));
@@ -756,7 +737,7 @@ void tst_QOcsp::untrustedResponder()
     QSslSocket clientSocket;
     setupOcspClient(clientSocket, {}, server.peerVerifyName());
     clientSocket.connectToHostEncrypted(server.hostName(), server.serverPort());
-    loop.enterLoopMSecs(handshakeTimeoutMS);
+    loop.enterLoop(HandshakeTimeout);
 
     QVERIFY(!clientSocket.isEncrypted());
     QVERIFY(containsError(clientSocket.sslHandshakeErrors(), expectedError));

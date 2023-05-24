@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "debugproxystyle.h"
 #include "eventfilter.h"
@@ -34,48 +9,30 @@
 #include <QStyleOption>
 #include <QApplication>
 
-#if QT_VERSION < 0x050000
-QDebug operator<<(QDebug d, const QPixmap &p)
-{
-    d << "QPixmap(" << p.size() << ')';
-    return d;
-}
-#endif // QT_VERSION < 0x050000
-
 QDebug operator<<(QDebug debug, const QStyleOption *option)
 {
-#if QT_VERSION >= 0x050000
     QDebugStateSaver saver(debug);
-#  if QT_VERSION >= 0x050400
     debug.noquote();
-#  endif
     debug.nospace();
-#endif
     if (!option) {
         debug << "QStyleOption(0)";
         return debug;
     }
     if (const QStyleOptionViewItem *ivo = qstyleoption_cast<const QStyleOptionViewItem *>(option)) {
         debug << "QStyleOptionViewItem(";
-#if QT_VERSION >= 0x050000
         debug << ivo->index;
         if (const int textSize = ivo->text.size())
             debug << ", \"" << (textSize < 20 ? ivo->text : ivo->text.left(20) + QLatin1String("...")) << '"';
         debug << ", ";
-#else // Qt 5
-        Q_UNUSED(ivo)
-#endif
     } else {
         debug << "QStyleOption(";
     }
-    debug << "rect=" << option->rect.width() << 'x' << option->rect.height()
-          << Qt::forcesign << option->rect.x() << option->rect.y() << Qt::noforcesign;
+    debug << "rect=" << option->rect.width() << 'x' << option->rect.height() << Qt::forcesign
+          << option->rect.x() << option->rect.y() << Qt::noforcesign;
     if (option->state != QStyle::State_None)
         debug << ", state=" << option->state;
-#if QT_VERSION >= 0x050000
     if (option->styleObject && !option->styleObject->isWidgetType())
         debug << ", styleObject=" << QtDiag::formatQObject(option->styleObject);
-#endif
     debug << ')';
     return debug;
 }
@@ -84,15 +41,9 @@ namespace QtDiag {
 
 DebugProxyStyle::DebugProxyStyle(QStyle *style) : QProxyStyle(style)
 {
-#if QT_VERSION >= 0x050000
     const qreal devicePixelRatio = qApp->devicePixelRatio();
-#else
-    const qreal devicePixelRatio = 1;
-#endif
     qDebug() << __FUNCTION__ << QT_VERSION_STR
-#if QT_VERSION >= 0x050000
         << QGuiApplication::platformName()
-#endif
         << style->objectName() << "devicePixelRatio=" << devicePixelRatio;
 }
 

@@ -1,0 +1,58 @@
+include($QT_INSTALL_DOCS/global/qt-module-defaults.qdocconf)
+include($QT_INSTALL_DOCS/config/exampleurl-qtscxml.qdocconf)
+
+project                 = QtStateMachine
+description             = Qt State Machine Reference Documentation
+version                 = $QT_VERSION
+
+imagedirs               = images src/images
+
+# Install path for the examples
+examplesinstallpath     = statemachine
+exampledirs             = ../../../examples/statemachine \
+                          snippets
+
+qhp.QtStateMachine.subprojects = classes qmltypes examples
+qhp.QtStateMachine.subprojects.classes.title      = C++ Classes
+qhp.QtStateMachine.subprojects.classes.indexTitle = Qt State Machine C++ Classes
+qhp.QtStateMachine.subprojects.classes.selectors  = class headerfile
+qhp.QtStateMachine.subprojects.classes.sortPages  = true
+qhp.QtStateMachine.subprojects.qmltypes.title      = QML Types
+qhp.QtStateMachine.subprojects.qmltypes.indexTitle = Qt State Machine QML Types
+qhp.QtStateMachine.subprojects.qmltypes.selectors  = qmltype
+qhp.QtStateMachine.subprojects.qmltypes.sortPages  = true
+qhp.QtStateMachine.subprojects.examples.title = Examples
+qhp.QtStateMachine.subprojects.examples.indexTitle = Qt State Machine Examples
+qhp.QtStateMachine.subprojects.examples.selectors = doc:example
+
+qhp.projects            = QtStateMachine
+
+qhp.QtStateMachine.file                = qtstatemachine.qhp
+qhp.QtStateMachine.namespace           = org.qt-project.qtstatemachine.$QT_VERSION_TAG
+qhp.QtStateMachine.virtualFolder       = qtstatemachine
+qhp.QtStateMachine.indexTitle          = Qt StateMachine
+qhp.QtStateMachine.indexRoot           =
+
+depends += qtcore qtdoc qmake qtquick qtwidgets qtgui qtqml qtscxml qtcmake
+
+headerdirs = .. \
+             ../gui \
+             ../../statemachineqml \
+             ../../../examples/statemachine
+
+sourcedirs += .. \
+              ../gui \
+              ../../statemachineqml \
+              ../../../examples/statemachine
+
+tagfile = qtstatemachine.tags
+
+navigation.landingpage = "Qt State Machine"
+navigation.cppclassespage = "Qt State Machine C++ Classes"
+navigation.qmltypespage = "Qt State Machine QML Types"
+
+# Highlighted examples in Data Processing & IO category
+manifestmeta.highlighted.names = "QtStateMachine/Traffic Light"
+
+# Fail the documentation build if there are more warnings than the limit
+warninglimit = 0

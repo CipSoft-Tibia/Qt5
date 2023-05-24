@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,13 @@
 
 #include <memory>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/memory/ref_counted.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace base {
@@ -80,8 +79,8 @@ TEST(CancelableCallbackTest, MultipleCancel) {
   EXPECT_TRUE(callback3.is_null());
 }
 
-// CancelableCallback destroyed before callback is run.
-//  - Destruction of CancelableCallback cancels outstanding callbacks.
+// CancelableRepeatingCallback destroyed before callback is run.
+//  - Destruction of CancelableRepeatingCallback cancels outstanding callbacks.
 TEST(CancelableCallbackTest, CallbackCanceledOnDestruction) {
   int count = 0;
   base::RepeatingClosure callback;
@@ -152,7 +151,7 @@ TEST(CancelableCallbackTest, Reset) {
 }
 
 // IsCanceled().
-//  - Cancel() transforms the CancelableCallback into a cancelled state.
+//  - Cancel() transforms the CancelableOnceCallback into a cancelled state.
 TEST(CancelableCallbackTest, IsNull) {
   CancelableOnceClosure cancelable;
   EXPECT_TRUE(cancelable.IsCancelled());
@@ -165,7 +164,7 @@ TEST(CancelableCallbackTest, IsNull) {
   EXPECT_TRUE(cancelable.IsCancelled());
 }
 
-// CancelableCallback posted to a task environment with PostTask.
+// CancelableRepeatingCallback posted to a task environment with PostTask.
 //  - Posted callbacks can be cancelled.
 TEST(CancelableCallbackTest, PostTask) {
   test::TaskEnvironment task_environment;
@@ -174,12 +173,14 @@ TEST(CancelableCallbackTest, PostTask) {
   CancelableRepeatingClosure cancelable(
       base::BindRepeating(&Increment, base::Unretained(&count)));
 
-  ThreadTaskRunnerHandle::Get()->PostTask(FROM_HERE, cancelable.callback());
+  SingleThreadTaskRunner::GetCurrentDefault()->PostTask(FROM_HERE,
+                                                        cancelable.callback());
   RunLoop().RunUntilIdle();
 
   EXPECT_EQ(1, count);
 
-  ThreadTaskRunnerHandle::Get()->PostTask(FROM_HERE, cancelable.callback());
+  SingleThreadTaskRunner::GetCurrentDefault()->PostTask(FROM_HERE,
+                                                        cancelable.callback());
 
   // Cancel before running the tasks.
   cancelable.Cancel();
@@ -189,7 +190,7 @@ TEST(CancelableCallbackTest, PostTask) {
   EXPECT_EQ(1, count);
 }
 
-// CancelableCallback can be used with move-only types.
+// CancelableRepeatingCallback can be used with move-only types.
 TEST(CancelableCallbackTest, MoveOnlyType) {
   const int kExpectedResult = 42;
 

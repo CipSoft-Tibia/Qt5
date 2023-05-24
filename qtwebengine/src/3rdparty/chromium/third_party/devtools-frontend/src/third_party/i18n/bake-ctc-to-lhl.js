@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const SRC_ROOT = path.join(__dirname, '../../');
+const {writeIfChanged} = require('../../scripts/build/ninja/write-if-changed.js');
 
 /**
  * @typedef CtcMessage
@@ -63,13 +63,19 @@ const SRC_ROOT = path.join(__dirname, '../../');
  * value in the placeholders object, or vice versa.
  *
  * @param {Record<string, CtcMessage>} messages
+ * @param {Set<string>=} allowedKeys Only include messages where keys are present in this set.
  * @return {Record<string, LhlMessage>}
  */
-function bakePlaceholders(messages) {
+function bakePlaceholders(messages, allowedKeys) {
   /** @type {Record<string, LhlMessage>} */
   const bakedMessages = {};
 
   for (const [key, defn] of Object.entries(messages)) {
+    if (allowedKeys && !allowedKeys.has(key)) {
+      // Only filter keys if `allowedKeys` is present.
+      continue;
+    }
+
     let message = defn.message;
     const placeholders = defn.placeholders;
 
@@ -114,24 +120,24 @@ function loadCtcStrings(file) {
  * @param {Record<string, LhlMessage>} localeStrings
  */
 function saveLhlStrings(path, localeStrings) {
-  fs.writeFileSync(path, JSON.stringify(localeStrings, null, 2) + '\n');
+  writeIfChanged(path, JSON.stringify(localeStrings, null, 2) + '\n');
 }
 
 /**
  * @param {string} dir
  * @param {string} outputDir
+ * @param {Set<string>=} allowedKeys Only include messages where keys are present in this set.
  * @return {Array<string>}
  */
-function collectAndBakeCtcStrings(dir, outputDir) {
+function collectAndBakeCtcStrings(dir, outputDir, allowedKeys) {
   const lhlFilenames = [];
   for (const filename of fs.readdirSync(dir)) {
     const fullPath = path.join(dir, filename);
-    const relativePath = path.relative(SRC_ROOT, fullPath);
 
     if (filename.endsWith('.ctc.json')) {
       const ctcStrings = loadCtcStrings(fullPath);
-      const strings = bakePlaceholders(ctcStrings);
-      const outputFile = outputDir + path.basename(filename).replace('.ctc', '');
+      const strings = bakePlaceholders(ctcStrings, allowedKeys);
+      const outputFile = path.join(outputDir, path.basename(filename).replace('.ctc', ''));
       saveLhlStrings(outputFile, strings);
       lhlFilenames.push(path.basename(filename));
     }

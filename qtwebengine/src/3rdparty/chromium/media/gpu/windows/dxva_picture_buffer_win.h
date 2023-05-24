@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -34,6 +34,10 @@ class DXVAPictureBuffer {
       const DXVAVideoDecodeAccelerator& decoder,
       const PictureBuffer& buffer,
       EGLConfig egl_config);
+
+  DXVAPictureBuffer(const DXVAPictureBuffer&) = delete;
+  DXVAPictureBuffer& operator=(const DXVAPictureBuffer&) = delete;
+
   virtual ~DXVAPictureBuffer();
 
   virtual bool ReusePictureBuffer() = 0;
@@ -68,6 +72,31 @@ class DXVAPictureBuffer {
     color_space_ = color_space;
   }
 
+  const std::vector<scoped_refptr<Picture::ScopedSharedImage>>& shared_images()
+      const {
+    return shared_images_;
+  }
+
+  void set_shared_image(
+      size_t plane,
+      scoped_refptr<Picture::ScopedSharedImage> shared_image) {
+    DCHECK(plane < shared_images_.size());
+    shared_images_[plane] = std::move(shared_image);
+  }
+
+  // Picture buffer data used to create a shared image backing.
+  const PictureBuffer::TextureIds& service_texture_ids() const {
+    return picture_buffer_.service_texture_ids();
+  }
+
+  gfx::Size texture_size(size_t plane) {
+    return picture_buffer_.texture_size(plane);
+  }
+
+  VideoPixelFormat pixel_format() const {
+    return picture_buffer_.pixel_format();
+  }
+
   // Returns true if these could in theory be used as an overlay. May
   // still be drawn using GL depending on the scene and precise hardware
   // support.
@@ -96,7 +125,7 @@ class DXVAPictureBuffer {
   gfx::ColorSpace color_space_;
   scoped_refptr<gl::GLImage> gl_image_;
 
-  DISALLOW_COPY_AND_ASSIGN(DXVAPictureBuffer);
+  std::vector<scoped_refptr<Picture::ScopedSharedImage>> shared_images_;
 };
 
 // Copies the video result into an RGBA EGL pbuffer.
@@ -162,26 +191,6 @@ class EGLStreamPictureBuffer : public DXVAPictureBuffer {
   ~EGLStreamPictureBuffer() override;
 
   bool Initialize();
-  bool ReusePictureBuffer() override;
-  bool BindSampleToTexture(DXVAVideoDecodeAccelerator* decoder,
-                           Microsoft::WRL::ComPtr<IMFSample> sample) override;
-  bool AllowOverlay() const override;
-  bool CanBindSamples() const override;
-
- private:
-  EGLStreamKHR stream_;
-
-  Microsoft::WRL::ComPtr<IMFSample> current_d3d_sample_;
-  ComD3D11Texture2D dx11_decoding_texture_;
-};
-
-// Shares the decoded texture with ANGLE without copying by using an EGL stream.
-class EGLStreamDelayedCopyPictureBuffer : public DXVAPictureBuffer {
- public:
-  explicit EGLStreamDelayedCopyPictureBuffer(const PictureBuffer& buffer);
-  ~EGLStreamDelayedCopyPictureBuffer() override;
-
-  bool Initialize(const DXVAVideoDecodeAccelerator& decoder);
   bool ReusePictureBuffer() override;
   bool BindSampleToTexture(DXVAVideoDecodeAccelerator* decoder,
                            Microsoft::WRL::ComPtr<IMFSample> sample) override;

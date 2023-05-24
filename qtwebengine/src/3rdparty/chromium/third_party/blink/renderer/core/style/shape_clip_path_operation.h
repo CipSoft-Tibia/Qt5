@@ -44,21 +44,21 @@ class ShapeClipPathOperation final : public ClipPathOperation {
   }
 
   const BasicShape* GetBasicShape() const { return shape_.get(); }
-  bool IsValid() const { return shape_.get(); }
-  Path GetPath(const FloatRect& bounding_rect) const {
-    DCHECK(shape_);
+  Path GetPath(const gfx::RectF& bounding_rect, float zoom) const {
     Path path;
-    shape_->GetPath(path, bounding_rect);
+    shape_->GetPath(path, bounding_rect, zoom);
     path.SetWindRule(shape_->GetWindRule());
     return path;
   }
 
  private:
   bool operator==(const ClipPathOperation&) const override;
-  OperationType GetType() const override { return SHAPE; }
+  OperationType GetType() const override { return kShape; }
 
-  ShapeClipPathOperation(scoped_refptr<BasicShape> shape)
-      : shape_(std::move(shape)) {}
+  explicit ShapeClipPathOperation(scoped_refptr<BasicShape> shape)
+      : shape_(std::move(shape)) {
+    DCHECK(shape_);
+  }
 
   scoped_refptr<BasicShape> shape_;
 };
@@ -66,17 +66,19 @@ class ShapeClipPathOperation final : public ClipPathOperation {
 template <>
 struct DowncastTraits<ShapeClipPathOperation> {
   static bool AllowFrom(const ClipPathOperation& op) {
-    return op.GetType() == ClipPathOperation::SHAPE;
+    return op.GetType() == ClipPathOperation::kShape;
   }
 };
 
 inline bool ShapeClipPathOperation::operator==(
     const ClipPathOperation& o) const {
-  if (!IsSameType(o))
+  if (!IsSameType(o)) {
     return false;
+  }
   BasicShape* other_shape = To<ShapeClipPathOperation>(o).shape_.get();
-  if (!shape_.get() || !other_shape)
+  if (!shape_.get() || !other_shape) {
     return static_cast<bool>(shape_.get()) == static_cast<bool>(other_shape);
+  }
   return *shape_ == *other_shape;
 }
 

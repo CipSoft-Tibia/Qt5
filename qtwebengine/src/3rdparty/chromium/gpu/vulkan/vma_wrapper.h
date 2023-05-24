@@ -1,20 +1,21 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef GPU_VULKAN_VMA_WRAPPER_H_
 #define GPU_VULKAN_VMA_WRAPPER_H_
 
-#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
 
 #include "base/component_export.h"
+#include "ui/gfx/extension_set.h"
 
 VK_DEFINE_HANDLE(VmaAllocator)
 VK_DEFINE_HANDLE(VmaAllocation)
 
 struct VmaAllocationCreateInfo;
 struct VmaAllocationInfo;
-struct VmaStats;
+struct VmaBudget;
 
 namespace gpu {
 namespace vma {
@@ -23,6 +24,9 @@ COMPONENT_EXPORT(VULKAN)
 VkResult CreateAllocator(VkPhysicalDevice physical_device,
                          VkDevice device,
                          VkInstance instance,
+                         const gfx::ExtensionSet& enabled_extensions,
+                         const VkDeviceSize* heap_size_limit,
+                         const bool is_thread_safe,
                          VmaAllocator* allocator);
 
 COMPONENT_EXPORT(VULKAN) void DestroyAllocator(VmaAllocator allocator);
@@ -93,7 +97,10 @@ void GetPhysicalDeviceProperties(
     const VkPhysicalDeviceProperties** physical_device_properties);
 
 COMPONENT_EXPORT(VULKAN)
-void CalculateStats(VmaAllocator allocator, VmaStats* stats);
+void GetBudget(VmaAllocator allocator, VmaBudget* budget);
+
+COMPONENT_EXPORT(VULKAN)
+uint64_t GetTotalAllocatedMemory(VmaAllocator allocator);
 
 }  // namespace vma
 }  // namespace gpu

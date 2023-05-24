@@ -1,4 +1,4 @@
-// Copyright 2019 PDFium Authors. All rights reserved.
+// Copyright 2019 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #ifndef XFA_FGAS_CRT_LOCALE_MGR_IFACE_H_
 #define XFA_FGAS_CRT_LOCALE_MGR_IFACE_H_
 
-#include "core/fxcrt/fx_string.h"
+#include "core/fxcrt/widestring.h"
 
 class LocaleIface;
 

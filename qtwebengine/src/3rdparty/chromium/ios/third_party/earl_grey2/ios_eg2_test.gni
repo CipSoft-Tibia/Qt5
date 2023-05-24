@@ -1,10 +1,9 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//build/config/ios/ios_test_runner_wrapper.gni")
 import("//build/config/ios/rules.gni")
-import("//ios/build/chrome_build.gni")
 import("//ios/public/provider/chrome/browser/build_config.gni")
 
 template("ios_eg2_test_app_host") {
@@ -37,18 +36,23 @@ template("ios_eg2_test_app_host") {
       "$ios_sdk_platform_path/Developer/Library/PrivateFrameworks/XCTAutomationSupport.framework",
     ]
 
+    # Xcode 13 now depends on XCTestCore. To keep things future proof, copy over
+    # everything that Xcode copies.
+    if (xcode_version_int >= 1300) {
+      extra_system_frameworks += [
+        "$ios_sdk_platform_path/Developer/Library/PrivateFrameworks/XCTestCore.framework",
+        "$ios_sdk_platform_path/Developer/Library/PrivateFrameworks/XCUIAutomation.framework",
+        "$ios_sdk_platform_path/Developer/Library/PrivateFrameworks/XCUnit.framework",
+        "$ios_sdk_platform_path/Developer/usr/lib/libXCTestSwiftSupport.dylib",
+      ]
+    }
+
     if (!defined(ldflags)) {
       ldflags = []
     }
     ldflags += [
-      "-Xlinker",
-      "-rpath",
-      "-Xlinker",
-      "@executable_path/Frameworks",
-      "-Xlinker",
-      "-rpath",
-      "-Xlinker",
-      "@loader_path/Frameworks",
+      "-Wl,-rpath,@executable_path/Frameworks",
+      "-Wl,-rpath,@loader_path/Frameworks",
     ]
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -38,7 +38,7 @@ CaptivePortalMetricsRecorder::CaptivePortalMetricsRecorder(
       captive_portal_no_response_(false),
       captive_portal_detected_(false) {
   captive_portal_detection_enabled_ = captive_portal_service->enabled();
-  subscription_ = captive_portal_service->RegisterCallback(base::Bind(
+  subscription_ = captive_portal_service->RegisterCallback(base::BindRepeating(
       &CaptivePortalMetricsRecorder::Observe, base::Unretained(this)));
 }
 

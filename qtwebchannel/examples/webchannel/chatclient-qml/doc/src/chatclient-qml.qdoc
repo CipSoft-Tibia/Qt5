@@ -1,84 +1,45 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 basysKom GmbH, author Bernd Lamecker <bernd.lamecker@basyskom.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebChannel module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 basysKom GmbH, author Bernd Lamecker <bernd.lamecker@basyskom.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 /*!
     \example chatclient-qml
-    \title Qt WebChannel ChatClient QML Example
+    \title Qt WebChannel ChatClient QML Application
     \ingroup qtwebchannel-examples
     \brief A QML client that communicates over a WebSocket with a QWebChannel server.
+    \examplecategory {Web Technologies}
+    \meta tag {rpc,network}
 
     \image chatclient-qml.png
 
     \e{ChatClient QML} provides a simple QWebChannel client implemented using JavaScript and QML.
 
-    \section1 Running the Example
+    \section1 Implementing a Web Channel Client in QML
 
-    To run the example, enter the following command in the client source
-    directory:
+    This example shows how you can use the basic elements with the client JavaScript
+    implementation of QWebChannel, like connecting to signals (\c newMessage),
+    calling slots (\c sendMessage), and handling property changes (\c userList).
 
-    \c {path/to/qmlscene qmlchatclient.qml}
+    The client initializes a \l [QML] WebSocket connection to the chat server at port
+    12345 on localhost. When the WebSocket opens, a WebChannel object is created, taking
+    the WebSocket as first argument and a callback function as the second argument. When
+    the callback is called, the client receives an object named \c chatserver,
+    containing all the necessary signals, slots, and properties for implementing a chat
+    client. The callback function connects \c userListChanged, \c newMessage, and
+    \c keepAlive on the \c chatserver object with separate functions handling those
+    signals, and then it calls \c show on \c loginWindow.
 
-    \section1 Implementing a Web Channel Client
+    The \c Window with \c loginWindow as id handles the login procedure. It contains a
+    \c LoginForm defined in LoginForm.ui.qml. When you press the button, it calls
+    the \c login function on the \c chatserver object with the login name and and a
+    callback function as arguments. This callback function handles both if the login
+    succeeds or fails.
 
-    The client initializes a \l [QML] WebSocket connection to the chat server and receives an object
-    containing all the necessary signals, slots, and properties for implementing a chat client.
-
-    After login, the client can invoke the method \c sendMessage and receive the signal \c newMessage
-    to send and receive messages. Furthermore, a \c userList property provides the
-    names of all other connected clients. It is automatically updated when its contents change.
-    Also, the client responds to the server's keep alive signal which is needed to detect disconnected
-    clients and remove them from the \c userList property.
-
-    The example shows how basic elements can be used with the client JavaScript implementation of
-    QWebChannel, like connecting to signals (\c newMessage), calling slots (\c sendMessage), and handling
-    property changes (\c userList).
+    After login, the client uses a \c MainForm, defined in MainForm.ui.qml, with
+    \c mainUi as id, to post messages using the \c sendMessage slot, read messages
+    using the \c newMessage signal, and to view the names of all connected users
+    using the \c userList property. Also, the client responds to the server's
+    \c keepAlive signal in order for the server to detect disconnected clients
+    and remove them from the \c userList property.
 
     The client is able to work with the \l{Qt WebChannel ChatServer Example}.
 

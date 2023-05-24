@@ -1,71 +1,167 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef MEDIAFILESELECTOR_H
 #define MEDIAFILESELECTOR_H
 
-#include <QMediaContent>
-#include <QMediaPlayer>
+#include <QUrl>
+#include <qmediaplayer.h>
+#include <qaudiooutput.h>
+#include <qvideosink.h>
+#include <qsignalspy.h>
+#include <qfileinfo.h>
+#include <qtest.h>
+#include <private/qmultimediautils_p.h>
+
+#include <unordered_map>
 
 QT_BEGIN_NAMESPACE
 
-namespace MediaFileSelector {
+using MaybeUrl = QMaybe<QUrl, QString>;
 
-static QMediaContent selectMediaFile(const QStringList& mediaCandidates)
+#define CHECK_SELECTED_URL(maybeUrl)                                                             \
+  if (!maybeUrl)                                                                                 \
+  QSKIP((QLatin1String("\nUnable to select none of the media candidates:\n") + maybeUrl.error()) \
+                .toLocal8Bit()                                                                   \
+                .data())
+
+class MediaFileSelector
 {
-    QMediaPlayer player;
+public:
+    quint32 failedSelectionsCount() const { return m_failedSelectionsCount; }
 
-    QSignalSpy errorSpy(&player, SIGNAL(error(QMediaPlayer::Error)));
+    QString dumpErrors() const
+    {
+        QStringList failedMedias;
+        for (const auto &mediaToError : m_mediaToErrors)
+            if (!mediaToError.second.isEmpty())
+                failedMedias.emplace_back(mediaToError.first);
 
-    for (const QString &s : mediaCandidates) {
-        QFileInfo mediaFile(s);
-        if (!mediaFile.exists())
-            continue;
-        QMediaContent media = QMediaContent(QUrl::fromLocalFile(mediaFile.absoluteFilePath()));
-        player.setMedia(media);
-        player.play();
-
-        for (int i = 0; i < 2000 && player.mediaStatus() != QMediaPlayer::BufferedMedia && errorSpy.isEmpty(); i+=50) {
-            QTest::qWait(50);
-        }
-
-        if (player.mediaStatus() == QMediaPlayer::BufferedMedia && errorSpy.isEmpty()) {
-            return media;
-        }
-        errorSpy.clear();
+        failedMedias.sort();
+        return dumpErrors(failedMedias);
     }
 
-    return QMediaContent();
-}
+    template <typename... Media>
+    MaybeUrl select(Media... media)
+    {
+        return select({ std::move(nativeFileName(media))... });
+    }
 
-} // MediaFileSelector namespace
+    MaybeUrl select(const QStringList &candidates)
+    {
+        QUrl foundUrl;
+        for (const auto &media : candidates) {
+            auto emplaceRes = m_mediaToErrors.try_emplace(media, QString());
+            if (emplaceRes.second) {
+                auto maybeUrl = selectMediaFile(media);
+                if (!maybeUrl) {
+                    Q_ASSERT(!maybeUrl.error().isEmpty());
+                    emplaceRes.first->second = maybeUrl.error();
+                }
+            }
+
+            if (foundUrl.isEmpty() && emplaceRes.first->second.isEmpty())
+                foundUrl = media;
+        }
+
+        if (!foundUrl.isEmpty())
+            return foundUrl;
+
+        ++m_failedSelectionsCount;
+        return { QUnexpect{}, dumpErrors(candidates) };
+    }
+
+private:
+    QString dumpErrors(const QStringList &medias) const
+    {
+        using namespace Qt::StringLiterals;
+        QString result;
+
+        for (const auto &media : medias) {
+            auto it = m_mediaToErrors.find(media);
+            if (it != m_mediaToErrors.end() && !it->second.isEmpty())
+                result.append("\t"_L1)
+                        .append(it->first)
+                        .append(": "_L1)
+                        .append(it->second)
+                        .append("\n"_L1);
+        }
+
+        return result;
+    }
+
+    static MaybeUrl selectMediaFile(QString media)
+    {
+        using namespace Qt::StringLiterals;
+
+        QAudioOutput audioOutput;
+        QVideoSink videoOutput;
+        QMediaPlayer player;
+        player.setAudioOutput(&audioOutput);
+        player.setVideoOutput(&videoOutput);
+
+        player.setSource(media);
+        player.play();
+
+        const auto waitingFinished = QTest::qWaitFor([&]() {
+            const auto status = player.mediaStatus();
+            return status == QMediaPlayer::BufferedMedia || status == QMediaPlayer::EndOfMedia
+                    || status == QMediaPlayer::InvalidMedia
+                    || player.error() != QMediaPlayer::NoError;
+        });
+
+        auto enumValueToString = [](auto enumValue) {
+            return QString(QMetaEnum::fromType<decltype(enumValue)>().valueToKey(enumValue));
+        };
+
+        if (!waitingFinished)
+            return { QUnexpect{},
+                     "The media got stuck in the status "_L1
+                             + enumValueToString(player.mediaStatus()) };
+
+        if (player.mediaStatus() == QMediaPlayer::InvalidMedia)
+            return { QUnexpect{},
+                     "Unable to load the media. Error ["_L1 + enumValueToString(player.error())
+                             + " "_L1 + player.errorString() + "]"_L1 };
+
+        if (player.error() != QMediaPlayer::NoError)
+            return { QUnexpect{},
+                     "Unable to start playing the media, codecs issues. Error ["_L1
+                             + enumValueToString(player.error()) + " "_L1 + player.errorString()
+                             + "]"_L1 };
+
+        return QUrl(media);
+    }
+
+    QString nativeFileName(const QString &media)
+    {
+#ifdef Q_OS_ANDROID
+        auto it = m_nativeFiles.find(media);
+        if (it != m_nativeFiles.end())
+            return it->second->fileName();
+
+        QFile file(media);
+        if (file.open(QIODevice::ReadOnly)) {
+            m_nativeFiles.insert({ media,  std::unique_ptr<QTemporaryFile>(QTemporaryFile::createNativeFile(file))});
+            return m_nativeFiles[media]->fileName();
+        }
+        qWarning() << "Failed to create temporary file";
+#endif // Q_OS_ANDROID
+
+        return media;
+    }
+
+private:
+#ifdef Q_OS_ANDROID
+    std::unordered_map<QString, std::unique_ptr<QTemporaryFile>> m_nativeFiles;
+#endif
+    std::unordered_map<QString, QString> m_mediaToErrors;
+    quint32 m_failedSelectionsCount = 0;
+};
 
 QT_END_NAMESPACE
+
+Q_DECLARE_METATYPE(MaybeUrl)
 
 #endif
 

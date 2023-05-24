@@ -1,10 +1,7 @@
 QT_FOR_CONFIG += widgets
 
 TEMPLATE      = subdirs
-SUBDIRS       = classwizard \
-                extension \
-                findfiles \
-                licensewizard \
+SUBDIRS       = licensewizard \
                 standarddialogs \
                 tabdialog \
                 trivialwizard

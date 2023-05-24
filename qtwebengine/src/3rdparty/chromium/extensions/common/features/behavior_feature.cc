@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,14 +17,15 @@ const char kAllowUsbDevicesPermissionInterfaceClass[] =
 
 const char kSigninScreen[] = "signin_screen";
 
-const char kAllowDeprecatedAudioApi[] = "allow_deprecated_audio_api";
-
 const char kAllowSecondaryKioskAppEnabledOnLaunch[] =
     "allow_secondary_kiosk_app_enabled_on_launch";
 
 const char kKeyPermissionsInLoginScreen[] = "key_permissions_in_login_screen";
 
-const char kKeyImprivataInSessionExtension[] = "imprivata_in_session_extension";
+const char kImprivataInSessionExtension[] = "imprivata_in_session_extension";
+
+const char kImprivataLoginScreenExtension[] =
+    "imprivata_login_screen_extension";
 
 }  // namespace behavior_feature
 

@@ -17,7 +17,7 @@
 #ifndef LIBGAV1_SRC_DSP_DSP_H_
 #define LIBGAV1_SRC_DSP_DSP_H_
 
-#include <cstddef>  // ptrdiff_t
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 
@@ -50,23 +50,23 @@ enum IntraPredictor : uint8_t {
 };
 
 // List of valid 1D transforms.
-enum Transform1D : uint8_t {
-  k1DTransformDct,   // Discrete Cosine Transform.
-  k1DTransformAdst,  // Asymmetric Discrete Sine Transform.
-  k1DTransformIdentity,
-  k1DTransformWht,  // Walsh Hadamard Transform.
-  kNum1DTransforms
+enum Transform1d : uint8_t {
+  kTransform1dDct,   // Discrete Cosine Transform.
+  kTransform1dAdst,  // Asymmetric Discrete Sine Transform.
+  kTransform1dIdentity,
+  kTransform1dWht,  // Walsh Hadamard Transform.
+  kNumTransform1ds
 };
 
 // List of valid 1D transform sizes. Not all transforms may be available for all
 // the sizes.
-enum TransformSize1D : uint8_t {
-  k1DTransformSize4,
-  k1DTransformSize8,
-  k1DTransformSize16,
-  k1DTransformSize32,
-  k1DTransformSize64,
-  kNum1DTransformSizes
+enum Transform1dSize : uint8_t {
+  kTransform1dSize4,
+  kTransform1dSize8,
+  kTransform1dSize16,
+  kTransform1dSize32,
+  kTransform1dSize64,
+  kNumTransform1dSizes
 };
 
 // The maximum width of the loop filter, fewer pixels may be filtered depending
@@ -77,6 +77,11 @@ enum LoopFilterSize : uint8_t {
   kLoopFilterSize8,
   kLoopFilterSize14,
   kNumLoopFilterSizes
+};
+
+enum : uint8_t {
+  kRow = 0,
+  kColumn = 1,
 };
 
 //------------------------------------------------------------------------------
@@ -115,36 +120,36 @@ inline const char* ToString(const IntraPredictor predictor) {
   abort();
 }
 
-inline const char* ToString(const Transform1D transform) {
+inline const char* ToString(const Transform1d transform) {
   switch (transform) {
-    case k1DTransformDct:
-      return "k1DTransformDct";
-    case k1DTransformAdst:
-      return "k1DTransformAdst";
-    case k1DTransformIdentity:
-      return "k1DTransformIdentity";
-    case k1DTransformWht:
-      return "k1DTransformWht";
-    case kNum1DTransforms:
-      return "kNum1DTransforms";
+    case kTransform1dDct:
+      return "kTransform1dDct";
+    case kTransform1dAdst:
+      return "kTransform1dAdst";
+    case kTransform1dIdentity:
+      return "kTransform1dIdentity";
+    case kTransform1dWht:
+      return "kTransform1dWht";
+    case kNumTransform1ds:
+      return "kNumTransform1ds";
   }
   abort();
 }
 
-inline const char* ToString(const TransformSize1D transform_size) {
+inline const char* ToString(const Transform1dSize transform_size) {
   switch (transform_size) {
-    case k1DTransformSize4:
-      return "k1DTransformSize4";
-    case k1DTransformSize8:
-      return "k1DTransformSize8";
-    case k1DTransformSize16:
-      return "k1DTransformSize16";
-    case k1DTransformSize32:
-      return "k1DTransformSize32";
-    case k1DTransformSize64:
-      return "k1DTransformSize64";
-    case kNum1DTransformSizes:
-      return "kNum1DTransformSizes";
+    case kTransform1dSize4:
+      return "kTransform1dSize4";
+    case kTransform1dSize8:
+      return "kTransform1dSize8";
+    case kTransform1dSize16:
+      return "kTransform1dSize16";
+    case kTransform1dSize32:
+      return "kTransform1dSize32";
+    case kTransform1dSize64:
+      return "kTransform1dSize64";
+    case kNumTransform1dSizes:
+      return "kNumTransform1dSizes";
   }
   abort();
 }
@@ -189,6 +194,7 @@ inline const char* ToString(const LoopFilterType filter_type) {
 // by bitdepth with |stride| given in bytes. |top| is an unaligned pointer to
 // the row above |dst|. |left| is an aligned vector of the column to the left
 // of |dst|. top-left and bottom-left may be accessed.
+// The pointer arguments do not alias one another.
 using IntraPredictorFunc = void (*)(void* dst, ptrdiff_t stride,
                                     const void* top, const void* left);
 using IntraPredictorFuncs =
@@ -204,6 +210,7 @@ using IntraPredictorFuncs =
 // |top| has been upsampled as described in '7.11.2.11. Intra edge upsample
 // process'. This can occur in cases with |width| + |height| <= 16. top-right
 // is accessed.
+// The pointer arguments do not alias one another.
 using DirectionalIntraPredictorZone1Func = void (*)(void* dst, ptrdiff_t stride,
                                                     const void* top, int width,
                                                     int height, int xstep,
@@ -221,6 +228,7 @@ using DirectionalIntraPredictorZone1Func = void (*)(void* dst, ptrdiff_t stride,
 // described in '7.11.2.11. Intra edge upsample process'. This can occur in
 // cases with |width| + |height| <= 16. top-left and upper-left are accessed,
 // up to [-2] in each if |upsampled_top/left| are set.
+// The pointer arguments do not alias one another.
 using DirectionalIntraPredictorZone2Func = void (*)(
     void* dst, ptrdiff_t stride, const void* top, const void* left, int width,
     int height, int xstep, int ystep, bool upsampled_top, bool upsampled_left);
@@ -235,6 +243,7 @@ using DirectionalIntraPredictorZone2Func = void (*)(
 // |left| has been upsampled as described in '7.11.2.11. Intra edge upsample
 // process'. This can occur in cases with |width| + |height| <= 16. bottom-left
 // is accessed.
+// The pointer arguments do not alias one another.
 using DirectionalIntraPredictorZone3Func = void (*)(void* dst, ptrdiff_t stride,
                                                     const void* left, int width,
                                                     int height, int ystep,
@@ -245,6 +254,7 @@ using DirectionalIntraPredictorZone3Func = void (*)(void* dst, ptrdiff_t stride,
 // by bitdepth with |stride| given in bytes. |top| is an unaligned pointer to
 // the row above |dst|. |left| is an aligned vector of the column to the left
 // of |dst|. |width| and |height| are the size of the block in pixels.
+// The pointer arguments do not alias one another.
 using FilterIntraPredictorFunc = void (*)(void* dst, ptrdiff_t stride,
                                           const void* top, const void* left,
                                           FilterIntraPredictor pred, int width,
@@ -298,16 +308,23 @@ using IntraEdgeUpsamplerFunc = void (*)(void* buffer, int size);
 // 7.13.3).
 // Apply the inverse transforms and add the residual to the destination frame
 // for the transform type and block size |tx_size| starting at position
-// |start_x| and |start_y|.  |dst_frame| is a pointer to an Array2D. |is_row|
-// signals the direction of the transform loop. |non_zero_coeff_count| is the
-// number of non zero coefficients in the block.
+// |start_x| and |start_y|. |dst_frame| is a pointer to an Array2D of Pixel
+// values. |adjusted_tx_height| is the number of rows to process based on the
+// non-zero coefficient count in the block. It will be 1 (non-zero coefficient
+// count == 1), 4 or a multiple of 8 up to 32 or the original transform height,
+// whichever is less. |src_buffer| is a pointer to an Array2D of Residual
+// values. On input |src_buffer| contains the dequantized values, on output it
+// contains the residual.
+// The pointer arguments do not alias one another.
 using InverseTransformAddFunc = void (*)(TransformType tx_type,
                                          TransformSize tx_size,
+                                         int adjusted_tx_height,
                                          void* src_buffer, int start_x,
-                                         int start_y, void* dst_frame,
-                                         bool is_row, int non_zero_coeff_count);
+                                         int start_y, void* dst_frame);
+// The final dimension holds row and column transforms indexed with kRow and
+// kColumn.
 using InverseTransformAddFuncs =
-    InverseTransformAddFunc[kNum1DTransformSizes][kNum1DTransforms];
+    InverseTransformAddFunc[kNumTransform1ds][kNumTransform1dSizes][2];
 
 //------------------------------------------------------------------------------
 // Post processing.
@@ -315,6 +332,13 @@ using InverseTransformAddFuncs =
 // Loop filter function signature. Section 7.14.
 // |dst| is an unaligned pointer to the output block. Pixel size is determined
 // by bitdepth with |stride| given in bytes.
+// <threshold param> <spec name> <range>
+// |outer_thresh|    blimit      [7, 193]
+// |inner_thresh|    limit       [1, 63]
+// |hev_thresh|      thresh      [0, 63]
+// These are scaled by the implementation by 'bitdepth - 8' to produce
+// the spec variables blimitBd, limitBd and threshBd.
+// Note these functions are not called when the loop filter level is 0.
 using LoopFilterFunc = void (*)(void* dst, ptrdiff_t stride, int outer_thresh,
                                 int inner_thresh, int hev_thresh);
 using LoopFilterFuncs =
@@ -324,8 +348,9 @@ using LoopFilterFuncs =
 // |src| is a pointer to the source block. Pixel size is determined by bitdepth
 // with |stride| given in bytes. |direction| and |variance| are output
 // parameters and must not be nullptr.
+// The pointer arguments do not alias one another.
 using CdefDirectionFunc = void (*)(const void* src, ptrdiff_t stride,
-                                   int* direction, int* variance);
+                                   uint8_t* direction, int* variance);
 
 // Cdef filtering function signature. Section 7.15.3.
 // |source| is a pointer to the input block padded with kCdefLargeValue if at a
@@ -335,6 +360,7 @@ using CdefDirectionFunc = void (*)(const void* src, ptrdiff_t stride,
 // parameters.
 // |direction| is the filtering direction.
 // |dest| is the output buffer. |dest_stride| is given in bytes.
+// The pointer arguments do not alias one another.
 using CdefFilteringFunc = void (*)(const uint16_t* source,
                                    ptrdiff_t source_stride, int block_height,
                                    int primary_strength, int secondary_strength,
@@ -363,18 +389,21 @@ using SuperResCoefficientsFunc = void (*)(int upscaled_width,
 // |coefficients| is the upscale filter used by each pixel in a row. It is not
 // used by the C function.
 // |source| is the input frame buffer. It will be line extended.
+// |source_stride| is given in pixels.
 // |dest| is the output buffer.
-// |stride| is given in pixels, and shared by |source| and |dest|.
+// |dest_stride| is given in pixels.
 // |height| is the height of the block to be processed.
 // |downscaled_width| is the width of the input frame.
 // |upscaled_width| is the width of the output frame.
 // |step| is the number of subpixels to move the kernel for the next destination
 // pixel.
 // |initial_subpixel_x| is a base offset from which |step| increments.
+// The pointer arguments do not alias one another.
 using SuperResFunc = void (*)(const void* coefficients, void* source,
-                              ptrdiff_t stride, int height,
+                              ptrdiff_t source_stride, int height,
                               int downscaled_width, int upscaled_width,
-                              int initial_subpixel_x, int step, void* dest);
+                              int initial_subpixel_x, int step, void* dest,
+                              ptrdiff_t dest_stride);
 
 // Loop restoration function signature. Sections 7.16, 7.17.
 // |restoration_info| contains loop restoration information, such as filter
@@ -382,14 +411,16 @@ using SuperResFunc = void (*)(const void* coefficients, void* source,
 // |source| is the input frame buffer, which is deblocked and cdef filtered.
 // |top_border| and |bottom_border| are the top and bottom borders.
 // |dest| is the output.
-// |stride| is given in pixels, and shared by |source|, |top_border|,
-// |bottom_border| and |dest|.
+// |stride| is given in pixels, and shared by |source| and |dest|.
+// |top_border_stride| and |bottom_border_stride| are given in pixels.
 // |restoration_buffer| contains buffers required for self guided filter and
 // wiener filter. They must be initialized before calling.
+// The pointer arguments do not alias one another.
 using LoopRestorationFunc = void (*)(
     const RestorationUnitInfo& restoration_info, const void* source,
-    const void* top_border, const void* bottom_border, ptrdiff_t stride,
-    int width, int height, RestorationBuffer* restoration_buffer, void* dest);
+    ptrdiff_t stride, const void* top_border, ptrdiff_t top_border_stride,
+    const void* bottom_border, ptrdiff_t bottom_border_stride, int width,
+    int height, RestorationBuffer* restoration_buffer, void* dest);
 
 // Index 0 is Wiener Filter.
 // Index 1 is Self Guided Restoration Filter.
@@ -413,6 +444,7 @@ using LoopRestorationFuncs = LoopRestorationFunc[2];
 // used. For compound vertical filtering kInterRoundBitsCompoundVertical will be
 // used. Otherwise kInterRoundBitsVertical & kInterRoundBitsVertical12bpp will
 // be used.
+// The pointer arguments do not alias one another.
 using ConvolveFunc = void (*)(const void* reference, ptrdiff_t reference_stride,
                               int horizontal_filter_index,
                               int vertical_filter_index,
@@ -450,6 +482,7 @@ using ConvolveFuncs = ConvolveFunc[2][2][2][2];
 // used. For compound vertical filtering kInterRoundBitsCompoundVertical will be
 // used. Otherwise kInterRoundBitsVertical & kInterRoundBitsVertical12bpp will
 // be used.
+// The pointer arguments do not alias one another.
 using ConvolveScaleFunc = void (*)(const void* reference,
                                    ptrdiff_t reference_stride,
                                    int horizontal_filter_index,
@@ -470,6 +503,7 @@ using ConvolveScaleFuncs = ConvolveScaleFunc[2];
 // The stride for the input buffers is equal to |width|.
 // The valid range of block size is [8x8, 128x128] for the luma plane.
 // |mask| is the output buffer. |mask_stride| is the output buffer stride.
+// The pointer arguments do not alias one another.
 using WeightMaskFunc = void (*)(const void* prediction_0,
                                 const void* prediction_1, uint8_t* mask,
                                 ptrdiff_t mask_stride);
@@ -492,6 +526,7 @@ using WeightMaskFuncs = WeightMaskFunc[6][6][2];
 // The stride for the input buffers is equal to |width|.
 // The valid range of block size is [8x8, 128x128] for the luma plane.
 // |dest| is the output buffer. |dest_stride| is the output buffer stride.
+// The pointer arguments do not alias one another.
 using AverageBlendFunc = void (*)(const void* prediction_0,
                                   const void* prediction_1, int width,
                                   int height, void* dest,
@@ -513,6 +548,7 @@ using AverageBlendFunc = void (*)(const void* prediction_0,
 // The stride for the input buffers is equal to |width|.
 // The valid range of block size is [8x8, 128x128] for the luma plane.
 // |dest| is the output buffer. |dest_stride| is the output buffer stride.
+// The pointer arguments do not alias one another.
 using DistanceWeightedBlendFunc = void (*)(const void* prediction_0,
                                            const void* prediction_1,
                                            uint8_t weight_0, uint8_t weight_1,
@@ -538,17 +574,18 @@ using DistanceWeightedBlendFunc = void (*)(const void* prediction_0,
 // |mask_stride| is corresponding stride.
 // |width|, |height| are the same for both input blocks.
 // If it's inter_intra (or wedge_inter_intra), the valid range of block size is
-// [8x8, 32x32]. Otherwise (including difference weighted prediction and
-// compound average prediction), the valid range is [8x8, 128x128].
+// [8x8, 32x32], no 4:1/1:4 blocks (Section 5.11.28). Otherwise (including
+// difference weighted prediction and compound average prediction), the valid
+// range is [8x8, 128x128].
 // If there's subsampling, the corresponding width and height are halved for
 // chroma planes.
-// |subsampling_x|, |subsampling_y| are the subsampling factors.
 // |is_inter_intra| stands for the prediction mode. If it is true, one of the
 // prediction blocks is from intra prediction of current frame. Otherwise, two
 // prediction blocks are both inter frame predictions.
 // |is_wedge_inter_intra| indicates if the mask is for the wedge prediction.
 // |dest| is the output block.
 // |dest_stride| is the corresponding stride for dest.
+// The pointer arguments do not alias one another.
 using MaskBlendFunc = void (*)(const void* prediction_0,
                                const void* prediction_1,
                                ptrdiff_t prediction_stride_1,
@@ -565,6 +602,7 @@ using MaskBlendFuncs = MaskBlendFunc[3][2];
 // |is_inter_intra| is true and |bitdepth| == 8.
 // |prediction_[01]| are Pixel values (uint8_t).
 // |prediction_1| is also the output buffer.
+// The pointer arguments do not alias one another.
 using InterIntraMaskBlendFunc8bpp = void (*)(const uint8_t* prediction_0,
                                              uint8_t* prediction_1,
                                              ptrdiff_t prediction_stride_1,
@@ -588,9 +626,12 @@ using InterIntraMaskBlendFuncs8bpp = InterIntraMaskBlendFunc8bpp[3];
 // clipped. Therefore obmc blending process doesn't need to clip the output.
 // |prediction| is the first input block, which will be overwritten.
 // |prediction_stride| is the stride, given in bytes.
-// |width|, |height| are the same for both input blocks.
+// |width|, |height| are the same for both input blocks. The range is [4x2,
+// 32x32] for kObmcDirectionVertical and [2x4, 32x32] for
+// kObmcDirectionHorizontal, see Section 7.11.3.9.
 // |obmc_prediction| is the second input block.
 // |obmc_prediction_stride| is its stride, given in bytes.
+// The pointer arguments do not alias one another.
 using ObmcBlendFunc = void (*)(void* prediction, ptrdiff_t prediction_stride,
                                int width, int height,
                                const void* obmc_prediction,
@@ -633,6 +674,7 @@ using ObmcBlendFuncs = ObmcBlendFunc[kNumObmcDirections];
 //   Therefore, there must be at least one extra padding byte after the right
 //   border of the last row in the source buffer.
 // * The top and bottom borders must be at least 13 pixels high.
+// The pointer arguments do not alias one another.
 using WarpFunc = void (*)(const void* source, ptrdiff_t source_stride,
                           int source_width, int source_height,
                           const int* warp_params, int subsampling_x,
@@ -674,6 +716,7 @@ using LumaAutoRegressionFuncs =
 // from frame header, mainly providing auto_regression_coeff_u and
 // auto_regression_coeff_v for each chroma plane's filter, and
 // auto_regression_shift to right shift the filter sums by.
+// The pointer arguments do not alias one another.
 using ChromaAutoRegressionFunc = void (*)(const FilmGrainParams& params,
                                           const void* luma_grain_buffer,
                                           int subsampling_x, int subsampling_y,
@@ -692,6 +735,7 @@ using ChromaAutoRegressionFuncs =
 // Because this function treats all planes identically and independently, it is
 // simplified to take one grain buffer at a time. This means duplicating some
 // random number generations, but that work can be reduced in other ways.
+// The pointer arguments do not alias one another.
 using ConstructNoiseStripesFunc = void (*)(const void* grain_buffer,
                                            int grain_seed, int width,
                                            int height, int subsampling_x,
@@ -708,6 +752,7 @@ using ConstructNoiseStripesFuncs =
 // Array2D containing the allocated plane for this frame. Because this function
 // treats all planes identically and independently, it is simplified to take one
 // grain buffer at a time.
+// The pointer arguments do not alias one another.
 using ConstructNoiseImageOverlapFunc =
     void (*)(const void* noise_stripes_buffer, int width, int height,
              int subsampling_x, int subsampling_y, void* noise_image_buffer);
@@ -718,9 +763,12 @@ using ConstructNoiseImageOverlapFunc =
 // |num_points| can be between 0 and 15. When 0, the lookup table is set to
 // zero.
 // |point_value| and |point_scaling| have |num_points| valid elements.
-using InitializeScalingLutFunc = void (*)(
-    int num_points, const uint8_t point_value[], const uint8_t point_scaling[],
-    uint8_t scaling_lut[kScalingLookupTableSize]);
+// The pointer arguments do not alias one another.
+using InitializeScalingLutFunc = void (*)(int num_points,
+                                          const uint8_t point_value[],
+                                          const uint8_t point_scaling[],
+                                          int16_t* scaling_lut,
+                                          const int scaling_lut_length);
 
 // Blend noise with image. Section 7.18.3.5, third code block.
 // |width| is the width of each row, while |height| is how many rows to compute.
@@ -737,18 +785,19 @@ using InitializeScalingLutFunc = void (*)(
 // |scaling_shift| is applied as a right shift after scaling, so that scaling
 // down is possible. It is found in FilmGrainParams, but supplied directly to
 // BlendNoiseWithImageLumaFunc because it's the only member used.
-using BlendNoiseWithImageLumaFunc =
-    void (*)(const void* noise_image_ptr, int min_value, int max_value,
-             int scaling_shift, int width, int height, int start_height,
-             const uint8_t scaling_lut_y[kScalingLookupTableSize],
-             const void* source_plane_y, ptrdiff_t source_stride_y,
-             void* dest_plane_y, ptrdiff_t dest_stride_y);
+// The dest plane may point to the source plane, depending on the value of
+// frame_header.show_existing_frame. |noise_image_ptr| and scaling_lut.* do not
+// alias other arguments.
+using BlendNoiseWithImageLumaFunc = void (*)(
+    const void* noise_image_ptr, int min_value, int max_value,
+    int scaling_shift, int width, int height, int start_height,
+    const int16_t* scaling_lut_y, const void* source_plane_y,
+    ptrdiff_t source_stride_y, void* dest_plane_y, ptrdiff_t dest_stride_y);
 
 using BlendNoiseWithImageChromaFunc = void (*)(
     Plane plane, const FilmGrainParams& params, const void* noise_image_ptr,
     int min_value, int max_value, int width, int height, int start_height,
-    int subsampling_x, int subsampling_y,
-    const uint8_t scaling_lut[kScalingLookupTableSize],
+    int subsampling_x, int subsampling_y, const int16_t* scaling_lut,
     const void* source_plane_y, ptrdiff_t source_stride_y,
     const void* source_plane_uv, ptrdiff_t source_stride_uv,
     void* dest_plane_uv, ptrdiff_t dest_stride_uv);
@@ -778,6 +827,8 @@ struct FilmGrainFuncs {
 // tile.
 // |motion_field| is the output which saves the projected motion field
 // information.
+// Note: Only the entry from the 8-bit Dsp table is used as this function is
+// bitdepth agnostic.
 using MotionFieldProjectionKernelFunc = void (*)(
     const ReferenceInfo& reference_info, int reference_to_current_with_sign,
     int dst_sign, int y8_start, int y8_end, int x8_start, int x8_end,
@@ -785,13 +836,16 @@ using MotionFieldProjectionKernelFunc = void (*)(
 
 // Compound temporal motion vector projection function signature.
 // Section 7.9.3 and 7.10.2.10.
-// |temporal_mvs| is the set of temporal reference motion vectors.
+// |temporal_mvs| is the aligned set of temporal reference motion vectors.
 // |temporal_reference_offsets| specifies the number of frames covered by the
 // original motion vector.
 // |reference_offsets| specifies the number of frames to be covered by the
 // projected motion vector.
 // |count| is the number of the temporal motion vectors.
-// |candidate_mvs| is the set of projected motion vectors.
+// |candidate_mvs| is the aligned set of projected motion vectors.
+// The pointer arguments do not alias one another.
+// Note: Only the entry from the 8-bit Dsp table is used as this function is
+// bitdepth agnostic.
 using MvProjectionCompoundFunc = void (*)(
     const MotionVector* temporal_mvs, const int8_t* temporal_reference_offsets,
     const int reference_offsets[2], int count,
@@ -799,13 +853,16 @@ using MvProjectionCompoundFunc = void (*)(
 
 // Single temporal motion vector projection function signature.
 // Section 7.9.3 and 7.10.2.10.
-// |temporal_mvs| is the set of temporal reference motion vectors.
+// |temporal_mvs| is the aligned set of temporal reference motion vectors.
 // |temporal_reference_offsets| specifies the number of frames covered by the
 // original motion vector.
 // |reference_offset| specifies the number of frames to be covered by the
 // projected motion vector.
 // |count| is the number of the temporal motion vectors.
-// |candidate_mvs| is the set of projected motion vectors.
+// |candidate_mvs| is the aligned set of projected motion vectors.
+// The pointer arguments do not alias one another.
+// Note: Only the entry from the 8-bit Dsp table is used as this function is
+// bitdepth agnostic.
 using MvProjectionSingleFunc = void (*)(
     const MotionVector* temporal_mvs, const int8_t* temporal_reference_offsets,
     int reference_offset, int count, MotionVector* candidate_mvs);
@@ -856,6 +913,14 @@ const Dsp* GetDspTable(int bitdepth);
 
 namespace dsp_internal {
 
+// Visual Studio builds don't have a way to detect SSE4_1. Only exclude the C
+// functions if /arch:AVX2 is used across all sources.
+#if !LIBGAV1_TARGETING_AVX2 && \
+    (defined(_MSC_VER) || (defined(_M_IX86) || defined(_M_X64)))
+#undef LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+#define LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS 1
+#endif
+
 // Returns true if a more highly optimized version of |func| is not defined for
 // the associated bitdepth or if it is forcibly enabled with
 // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS. The define checked for |func| corresponds
@@ -870,12 +935,23 @@ namespace dsp_internal {
 //  NEON support is the only extension available for ARM and it is always
 //  required. Because of this restriction DSP_ENABLED_8BPP_NEON(func) is always
 //  true and can be omitted.
+#define DSP_ENABLED_8BPP_AVX2(func)    \
+  (LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS || \
+   LIBGAV1_Dsp8bpp_##func == LIBGAV1_CPU_AVX2)
+#define DSP_ENABLED_10BPP_AVX2(func)   \
+  (LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS || \
+   LIBGAV1_Dsp10bpp_##func == LIBGAV1_CPU_AVX2)
 #define DSP_ENABLED_8BPP_SSE4_1(func)  \
   (LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS || \
    LIBGAV1_Dsp8bpp_##func == LIBGAV1_CPU_SSE4_1)
 #define DSP_ENABLED_10BPP_SSE4_1(func) \
   (LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS || \
    LIBGAV1_Dsp10bpp_##func == LIBGAV1_CPU_SSE4_1)
+
+// Initializes C-only function pointers. Note some entries may be set to
+// nullptr if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS is not defined. This is meant
+// for use in tests only, it is not thread-safe.
+void DspInit_C();
 
 // Returns the appropriate Dsp table for |bitdepth| or nullptr if one doesn't
 // exist. This version is meant for use by test or dsp/*Init() functions only.

@@ -1,13 +1,13 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_GFX_MOJOM_BUFFER_TYPES_MOJOM_TRAITS_H_
 #define UI_GFX_MOJOM_BUFFER_TYPES_MOJOM_TRAITS_H_
 
-#include <vector>
 
 #include "base/component_export.h"
+#include "base/notreached.h"
 #include "build/build_config.h"
 #include "mojo/public/cpp/bindings/enum_traits.h"
 #include "mojo/public/cpp/bindings/struct_traits.h"
@@ -29,6 +29,8 @@ struct COMPONENT_EXPORT(GFX_SHARED_MOJOM_TRAITS)
         return gfx::mojom::BufferFormat::R_16;
       case gfx::BufferFormat::RG_88:
         return gfx::mojom::BufferFormat::RG_88;
+      case gfx::BufferFormat::RG_1616:
+        return gfx::mojom::BufferFormat::RG_1616;
       case gfx::BufferFormat::BGR_565:
         return gfx::mojom::BufferFormat::BGR_565;
       case gfx::BufferFormat::RGBA_4444:
@@ -51,6 +53,8 @@ struct COMPONENT_EXPORT(GFX_SHARED_MOJOM_TRAITS)
         return gfx::mojom::BufferFormat::YVU_420;
       case gfx::BufferFormat::YUV_420_BIPLANAR:
         return gfx::mojom::BufferFormat::YUV_420_BIPLANAR;
+      case gfx::BufferFormat::YUVA_420_TRIPLANAR:
+        return gfx::mojom::BufferFormat::YUVA_420_TRIPLANAR;
       case gfx::BufferFormat::P010:
         return gfx::mojom::BufferFormat::P010;
     }
@@ -69,6 +73,9 @@ struct COMPONENT_EXPORT(GFX_SHARED_MOJOM_TRAITS)
         return true;
       case gfx::mojom::BufferFormat::RG_88:
         *out = gfx::BufferFormat::RG_88;
+        return true;
+      case gfx::mojom::BufferFormat::RG_1616:
+        *out = gfx::BufferFormat::RG_1616;
         return true;
       case gfx::mojom::BufferFormat::BGR_565:
         *out = gfx::BufferFormat::BGR_565;
@@ -103,6 +110,9 @@ struct COMPONENT_EXPORT(GFX_SHARED_MOJOM_TRAITS)
       case gfx::mojom::BufferFormat::YUV_420_BIPLANAR:
         *out = gfx::BufferFormat::YUV_420_BIPLANAR;
         return true;
+      case gfx::mojom::BufferFormat::YUVA_420_TRIPLANAR:
+        *out = gfx::BufferFormat::YUVA_420_TRIPLANAR;
+        return true;
       case gfx::mojom::BufferFormat::P010:
         *out = gfx::BufferFormat::P010;
         return true;
@@ -129,11 +139,16 @@ struct COMPONENT_EXPORT(GFX_SHARED_MOJOM_TRAITS)
         return gfx::mojom::BufferUsage::SCANOUT_CPU_READ_WRITE;
       case gfx::BufferUsage::SCANOUT_VDA_WRITE:
         return gfx::mojom::BufferUsage::SCANOUT_VDA_WRITE;
+      case gfx::BufferUsage::PROTECTED_SCANOUT_VDA_WRITE:
+        return gfx::mojom::BufferUsage::PROTECTED_SCANOUT_VDA_WRITE;
       case gfx::BufferUsage::GPU_READ_CPU_READ_WRITE:
         return gfx::mojom::BufferUsage::GPU_READ_CPU_READ_WRITE;
-      case gfx::BufferUsage::SCANOUT_VEA_READ_CAMERA_AND_CPU_READ_WRITE:
-        return gfx::mojom::BufferUsage::
-            SCANOUT_VEA_READ_CAMERA_AND_CPU_READ_WRITE;
+      case gfx::BufferUsage::SCANOUT_VEA_CPU_READ:
+        return gfx::mojom::BufferUsage::SCANOUT_VEA_CPU_READ;
+      case gfx::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE:
+        return gfx::mojom::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE;
+      case gfx::BufferUsage::SCANOUT_FRONT_RENDERING:
+        return gfx::mojom::BufferUsage::SCANOUT_FRONT_RENDERING;
     }
     NOTREACHED();
     return gfx::mojom::BufferUsage::kMinValue;
@@ -159,11 +174,20 @@ struct COMPONENT_EXPORT(GFX_SHARED_MOJOM_TRAITS)
       case gfx::mojom::BufferUsage::SCANOUT_VDA_WRITE:
         *out = gfx::BufferUsage::SCANOUT_VDA_WRITE;
         return true;
+      case gfx::mojom::BufferUsage::PROTECTED_SCANOUT_VDA_WRITE:
+        *out = gfx::BufferUsage::PROTECTED_SCANOUT_VDA_WRITE;
+        return true;
       case gfx::mojom::BufferUsage::GPU_READ_CPU_READ_WRITE:
         *out = gfx::BufferUsage::GPU_READ_CPU_READ_WRITE;
         return true;
-      case gfx::mojom::BufferUsage::SCANOUT_VEA_READ_CAMERA_AND_CPU_READ_WRITE:
-        *out = gfx::BufferUsage::SCANOUT_VEA_READ_CAMERA_AND_CPU_READ_WRITE;
+      case gfx::mojom::BufferUsage::SCANOUT_VEA_CPU_READ:
+        *out = gfx::BufferUsage::SCANOUT_VEA_CPU_READ;
+        return true;
+      case gfx::mojom::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE:
+        *out = gfx::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE;
+        return true;
+      case gfx::mojom::BufferUsage::SCANOUT_FRONT_RENDERING:
+        *out = gfx::BufferUsage::SCANOUT_FRONT_RENDERING;
         return true;
     }
     NOTREACHED();
@@ -219,6 +243,54 @@ struct COMPONENT_EXPORT(GFX_SHARED_MOJOM_TRAITS)
 
   static bool Read(gfx::mojom::GpuMemoryBufferHandleDataView data,
                    gfx::GpuMemoryBufferHandle* handle);
+};
+
+template <>
+struct COMPONENT_EXPORT(GFX_SHARED_MOJOM_TRAITS)
+    EnumTraits<gfx::mojom::BufferPlane, gfx::BufferPlane> {
+  static gfx::mojom::BufferPlane ToMojom(gfx::BufferPlane format) {
+    switch (format) {
+      case gfx::BufferPlane::DEFAULT:
+        return gfx::mojom::BufferPlane::DEFAULT;
+      case gfx::BufferPlane::Y:
+        return gfx::mojom::BufferPlane::Y;
+      case gfx::BufferPlane::UV:
+        return gfx::mojom::BufferPlane::UV;
+      case gfx::BufferPlane::U:
+        return gfx::mojom::BufferPlane::U;
+      case gfx::BufferPlane::V:
+        return gfx::mojom::BufferPlane::V;
+      case gfx::BufferPlane::A:
+        return gfx::mojom::BufferPlane::A;
+    }
+    NOTREACHED();
+    return gfx::mojom::BufferPlane::kMinValue;
+  }
+
+  static bool FromMojom(gfx::mojom::BufferPlane input, gfx::BufferPlane* out) {
+    switch (input) {
+      case gfx::mojom::BufferPlane::DEFAULT:
+        *out = gfx::BufferPlane::DEFAULT;
+        return true;
+      case gfx::mojom::BufferPlane::Y:
+        *out = gfx::BufferPlane::Y;
+        return true;
+      case gfx::mojom::BufferPlane::UV:
+        *out = gfx::BufferPlane::UV;
+        return true;
+      case gfx::mojom::BufferPlane::U:
+        *out = gfx::BufferPlane::U;
+        return true;
+      case gfx::mojom::BufferPlane::V:
+        *out = gfx::BufferPlane::V;
+        return true;
+      case gfx::mojom::BufferPlane::A:
+        *out = gfx::BufferPlane::A;
+        return true;
+    }
+    NOTREACHED();
+    return false;
+  }
 };
 
 }  // namespace mojo

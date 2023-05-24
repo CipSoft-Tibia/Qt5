@@ -1,4 +1,4 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -10,24 +10,13 @@ if (is_android) {
   import("//build/config/android/rules.gni")
 }
 
-# This file depends on the legacy global sources assignment filter. It should
-# be converted to check target platform before assigning source files to the
-# sources variable. Remove this import and set_sources_assignment_filter call
-# when the file has been converted. See https://crbug.com/1018739 for details.
-import("//build/config/deprecated_default_sources_assignment_filter.gni")
-set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
-
 declare_args() {
   # Denotes the type of Cast product. This is #defined as CAST_PRODUCT_TYPE in
   # version.h. See //third_party/metrics_proto/cast_logs.proto for valid values.
   if (is_android_arc) {
     cast_product_type = 7  # CAST_PRODUCT_TYPE_CHROME_OS
   } else if (is_android) {
-    if (is_android_things) {
-      cast_product_type = 6  # CAST_PRODUCT_TYPE_ANDROID_THINGS
-    } else {
-      cast_product_type = 4  # CAST_PRODUCT_TYPE_ANDROID_TV
-    }
+    cast_product_type = 4  # CAST_PRODUCT_TYPE_ANDROID_TV
   } else if (is_fuchsia) {
     cast_product_type = 8  # CAST_PRODUCT_TYPE_FUCHSIA_OS
   } else {
@@ -49,12 +38,6 @@ cast_source_set("base") {
   sources = [
     "alarm_manager.cc",
     "alarm_manager.h",
-    "android/cast_settings_manager.cc",
-    "android/cast_settings_manager.h",
-    "android/dumpstate_writer.cc",
-    "android/dumpstate_writer.h",
-    "android/system_time_change_notifier_android.cc",
-    "android/system_time_change_notifier_android.h",
     "bind_to_task_runner.h",
     "bitstream_audio_codecs.cc",
     "bitstream_audio_codecs.h",
@@ -71,15 +54,17 @@ cast_source_set("base") {
     "device_capabilities_impl.h",
     "error_codes.cc",
     "error_codes.h",
+    "hash_util.cc",
+    "hash_util.h",
+    "legacy_app_id_mapper.h",
     "observer.h",
     "path_utils.cc",
     "path_utils.h",
     "pref_names.cc",
     "pref_names.h",
+    "process_types.h",
     "process_utils.cc",
     "process_utils.h",
-    "serializers.cc",
-    "serializers.h",
     "statistics/weighted_mean.cc",
     "statistics/weighted_mean.h",
     "statistics/weighted_moving_average.cc",
@@ -95,35 +80,35 @@ cast_source_set("base") {
   public_deps = [
     ":chromecast_switches",
     ":init_shlib",
+    "//base",
     "//chromecast/base/metrics",
     "//chromecast/public",
   ]
 
   deps = [
-    "//base",
+    ":cast_version",
     "//chromecast:chromecast_buildflags",
+    "//third_party/widevine/cdm:buildflags",
   ]
 
-  if (is_android) {
-    deps += [ ":jni_headers" ]
-  }
-
   if (chromecast_branding == "public") {
-    sources += [ "cast_features_internal.cc" ]
+    sources += [
+      "cast_features_internal.cc",
+      "legacy_app_id_mapper_dummy.cc",
+    ]
   } else {
+    sources += [ "//chromecast/internal/base/legacy_app_id_mapper_impl.cc" ]
     deps += [ "//chromecast/internal/base:cast_internal_features" ]
   }
 
   if (is_android) {
-    sources += [ "chromecast_config_android.h" ]
-    if (chromecast_branding == "public") {
-      sources += [ "chromecast_config_android_dummy.cc" ]
-    } else {
-      sources +=
-          [ "//chromecast/internal/base/chromecast_config_android_internal.cc" ]
-      deps +=
-          [ "//chromecast/internal/base:chromecast_config_android_jni_headers" ]
-    }
+    sources += [
+      "android/dumpstate_writer.cc",
+      "android/dumpstate_writer.h",
+      "android/system_time_change_notifier_android.cc",
+      "android/system_time_change_notifier_android.h",
+    ]
+    deps += [ ":jni_headers" ]
   }
 }
 
@@ -170,15 +155,14 @@ cast_source_set("test_support") {
 test("cast_base_unittests") {
   sources = [
     "alarm_manager_unittest.cc",
-    "bind_to_task_runner_unittest.cc",
     "cast_features_unittest.cc",
     "device_capabilities_impl_unittest.cc",
     "error_codes_unittest.cc",
+    "hash_util_test.cc",
     "metrics/cast_metrics_helper_unittest.cc",
     "observer_unittest.cc",
     "path_utils_unittest.cc",
     "process_utils_unittest.cc",
-    "serializers_unittest.cc",
     "statistics/weighted_moving_average_unittest.cc",
     "statistics/weighted_moving_linear_regression_unittest.cc",
     "system_time_change_notifier_unittest.cc",
@@ -190,7 +174,6 @@ test("cast_base_unittests") {
     ":thread_health_checker",
     "//base/test:run_all_unittests",
     "//base/test:test_support",
-    "//chromecast/base/static_sequence:tests",
     "//testing/gmock",
     "//testing/gtest",
   ]
@@ -225,8 +208,8 @@ if (is_android) {
   cast_source_set("android_create_sys_info") {
     deps = [
       ":cast_version",
+      ":jni_headers",
       "//base",
-      "//chromecast:chromecast_buildflags",
       "//chromecast/browser:jni_headers",
       "//chromecast/public",
     ]
@@ -236,12 +219,6 @@ if (is_android) {
       "cast_sys_info_android.h",
       "cast_sys_info_android_factory.cc",
     ]
-    if (is_android_things) {
-      sources += [
-        "cast_sys_info_android_things.cc",
-        "cast_sys_info_android_things.h",
-      ]
-    }
   }
 } else {  # !is_android
   # Target for OEM partners to override sys_info shared library, i.e.
@@ -327,7 +304,7 @@ process_version("cast_version") {
 if (is_android) {
   generate_jni("jni_headers") {
     sources = [
-      "java/src/org/chromium/chromecast/base/CastSettingsManager.java",
+      "java/src/org/chromium/chromecast/base/CastSysInfoAndroid.java",
       "java/src/org/chromium/chromecast/base/DumpstateWriter.java",
       "java/src/org/chromium/chromecast/base/SystemTimeChangeNotifierAndroid.java",
     ]
@@ -336,25 +313,23 @@ if (is_android) {
   android_library("base_java") {
     java_src_dir = "//chromecast/base/java/src"
     sources = [
-      "$java_src_dir/org/chromium/chromecast/base/BiConsumer.java",
-      "$java_src_dir/org/chromium/chromecast/base/BiFunction.java",
-      "$java_src_dir/org/chromium/chromecast/base/BiPredicate.java",
       "$java_src_dir/org/chromium/chromecast/base/Both.java",
+      "$java_src_dir/org/chromium/chromecast/base/Box.java",
+      "$java_src_dir/org/chromium/chromecast/base/Cell.java",
       "$java_src_dir/org/chromium/chromecast/base/Controller.java",
-      "$java_src_dir/org/chromium/chromecast/base/Itertools.java",
       "$java_src_dir/org/chromium/chromecast/base/Observable.java",
       "$java_src_dir/org/chromium/chromecast/base/Observer.java",
-      "$java_src_dir/org/chromium/chromecast/base/Observers.java",
-      "$java_src_dir/org/chromium/chromecast/base/Predicate.java",
+      "$java_src_dir/org/chromium/chromecast/base/OwnedScope.java",
       "$java_src_dir/org/chromium/chromecast/base/Scope.java",
-      "$java_src_dir/org/chromium/chromecast/base/Scopes.java",
       "$java_src_dir/org/chromium/chromecast/base/Sequencer.java",
       "$java_src_dir/org/chromium/chromecast/base/Subscription.java",
       "$java_src_dir/org/chromium/chromecast/base/Unit.java",
 
       # TODO(sanfin): Move these files to another target.
+      "$java_src_dir/org/chromium/chromecast/base/CastSerialGenerator.java",
       "$java_src_dir/org/chromium/chromecast/base/CastSettingsManager.java",
       "$java_src_dir/org/chromium/chromecast/base/CastSwitches.java",
+      "$java_src_dir/org/chromium/chromecast/base/CastSysInfoAndroid.java",
       "$java_src_dir/org/chromium/chromecast/base/DumpstateWriter.java",
       "$java_src_dir/org/chromium/chromecast/base/SystemTimeChangeNotifierAndroid.java",
     ]
@@ -362,7 +337,9 @@ if (is_android) {
     deps = [
       "//base:base_java",
       "//base:jni_java",
-      "//third_party/android_deps:androidx_annotation_annotation_java",
+      "//build/android:build_java",
+      "//third_party/androidx:androidx_annotation_annotation_java",
+      "//third_party/androidx:androidx_core_core_java",
     ]
     annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
   }
@@ -381,21 +358,32 @@ if (is_android) {
     ]
   }
 
-  junit_binary("cast_base_junit_tests") {
+  robolectric_binary("cast_base_junit_tests") {
     java_test_dir = "//chromecast/base/java/test"
     sources = [
       "$java_test_dir/org/chromium/chromecast/base/BothTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/BoxTest.java",
       "$java_test_dir/org/chromium/chromecast/base/CastSettingsManagerTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/CellTest.java",
       "$java_test_dir/org/chromium/chromecast/base/ControllerTest.java",
-      "$java_test_dir/org/chromium/chromecast/base/ItertoolsTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/ObservableAfterTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/ObservableAlarmTest.java",
       "$java_test_dir/org/chromium/chromecast/base/ObservableAndTest.java",
       "$java_test_dir/org/chromium/chromecast/base/ObservableAndThenTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/ObservableDebugTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/ObservableDelayTest.java",
       "$java_test_dir/org/chromium/chromecast/base/ObservableFilterTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/ObservableFlatMapTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/ObservableFoldTest.java",
       "$java_test_dir/org/chromium/chromecast/base/ObservableMapTest.java",
       "$java_test_dir/org/chromium/chromecast/base/ObservableMiscellaneousTest.java",
       "$java_test_dir/org/chromium/chromecast/base/ObservableNotTest.java",
-      "$java_test_dir/org/chromium/chromecast/base/ObserversTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/ObservableOpaqueTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/ObservableOrTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/ObserverTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/OwnedScopeTest.java",
       "$java_test_dir/org/chromium/chromecast/base/ReactiveRecorderTest.java",
+      "$java_test_dir/org/chromium/chromecast/base/ScopeTest.java",
       "$java_test_dir/org/chromium/chromecast/base/SequencerTest.java",
       "$java_test_dir/org/chromium/chromecast/base/UnitTest.java",
     ]
@@ -403,8 +391,12 @@ if (is_android) {
       ":base_java",
       ":cast_base_test_utils_java",
       "//base:base_java",
+      "//base:base_java_test_support",
       "//base:base_junit_test_support",
+      "//base:jni_java",
+      "//build/android:build_java",
       "//third_party/hamcrest:hamcrest_java",
+      "//third_party/mockito:mockito_java",
     ]
   }
 }

@@ -23,7 +23,7 @@
 #include "uassert.h"
 
 #ifndef U_IO_IMPLEMENTATION
-#error U_IO_IMPLEMENTATION not set - must be set for all ICU source files in io/ - see http://userguide.icu-project.org/howtouseicu
+#error U_IO_IMPLEMENTATION not set - must be set for all ICU source files in io/ - see https://unicode-org.github.io/icu/userguide/howtouseicu
 #endif
 
 
@@ -51,7 +51,7 @@ static UBool U_CALLCONV io_cleanup(void)
 #if !UCLN_NO_AUTO_CLEANUP && (defined(UCLN_AUTO_ATEXIT) || defined(UCLN_AUTO_LOCAL))
     ucln_unRegisterAutomaticCleanup();
 #endif
-    return TRUE;
+    return true;
 }
 
 void ucln_io_registerCleanup(ECleanupIOType type,
@@ -69,4 +69,3 @@ void ucln_io_registerCleanup(ECleanupIOType type,
     ucln_registerAutomaticCleanup();
 #endif
 }
-

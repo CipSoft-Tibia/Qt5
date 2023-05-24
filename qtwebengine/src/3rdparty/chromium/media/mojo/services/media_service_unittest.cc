@@ -1,22 +1,23 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <stdint.h>
 
 #include <memory>
+#include <tuple>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
 #include "media/base/cdm_config.h"
 #include "media/base/mock_filters.h"
 #include "media/base/test_helpers.h"
+#include "media/cdm/clear_key_cdm_common.h"
 #include "media/media_buildflags.h"
 #include "media/mojo/buildflags.h"
 #include "media/mojo/clients/mojo_decryptor.h"
@@ -53,14 +54,17 @@ MATCHER_P(MatchesResult, success, "") {
   return arg->success == success;
 }
 
-#if BUILDFLAG(ENABLE_MOJO_CDM) && !defined(OS_ANDROID)
-const char kClearKeyKeySystem[] = "org.w3.clearkey";
+#if BUILDFLAG(ENABLE_MOJO_CDM) && !BUILDFLAG(IS_ANDROID)
 const char kInvalidKeySystem[] = "invalid.key.system";
 #endif
 
 class MockRendererClient : public mojom::RendererClient {
  public:
   MockRendererClient() = default;
+
+  MockRendererClient(const MockRendererClient&) = delete;
+  MockRendererClient& operator=(const MockRendererClient&) = delete;
+
   ~MockRendererClient() override = default;
 
   // mojom::RendererClient implementation.
@@ -71,39 +75,39 @@ class MockRendererClient : public mojom::RendererClient {
   MOCK_METHOD2(OnBufferingStateChange,
                void(BufferingState state, BufferingStateChangeReason reason));
   MOCK_METHOD0(OnEnded, void());
-  MOCK_METHOD0(OnError, void());
+  MOCK_METHOD1(OnError, void(const PipelineStatus& status));
   MOCK_METHOD1(OnVideoOpacityChange, void(bool opaque));
   MOCK_METHOD1(OnAudioConfigChange, void(const AudioDecoderConfig&));
   MOCK_METHOD1(OnVideoConfigChange, void(const VideoDecoderConfig&));
   MOCK_METHOD1(OnVideoNaturalSizeChange, void(const gfx::Size& size));
-  MOCK_METHOD1(OnStatisticsUpdate,
-               void(const media::PipelineStatistics& stats));
+  MOCK_METHOD1(OnStatisticsUpdate, void(const PipelineStatistics& stats));
   MOCK_METHOD1(OnWaiting, void(WaitingReason));
   MOCK_METHOD1(OnDurationChange, void(base::TimeDelta duration));
   MOCK_METHOD1(OnRemotePlayStateChange, void(MediaStatus::State state));
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MockRendererClient);
 };
 
 ACTION_P(QuitLoop, run_loop) {
-  base::ThreadTaskRunnerHandle::Get()->PostTask(FROM_HERE,
-                                                run_loop->QuitClosure());
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, run_loop->QuitClosure());
 }
 
 // Tests MediaService using TestMojoMediaClient, which supports CDM creation
 // using DefaultCdmFactory (only supports Clear Key key system), and Renderer
-// creation using DefaultRendererFactory that always create media::RendererImpl.
+// creation using RendererImplFactory that always create RendererImpl.
 class MediaServiceTest : public testing::Test {
  public:
   MediaServiceTest()
       : renderer_client_receiver_(&renderer_client_),
         video_stream_(DemuxerStream::VIDEO) {}
+
+  MediaServiceTest(const MediaServiceTest&) = delete;
+  MediaServiceTest& operator=(const MediaServiceTest&) = delete;
+
   ~MediaServiceTest() override = default;
 
   void SetUp() override {
     mojo::PendingRemote<mojom::FrameInterfaceFactory> frame_interfaces;
-    ignore_result(frame_interfaces.InitWithNewPipeAndPassReceiver());
+    std::ignore = frame_interfaces.InitWithNewPipeAndPassReceiver();
 
     media_service_impl_ = CreateMediaServiceForTesting(
         media_service_.BindNewPipeAndPassReceiver());
@@ -120,7 +124,7 @@ class MediaServiceTest : public testing::Test {
 
   void InitializeCdm(const std::string& key_system, bool expected_result) {
     interface_factory_->CreateCdm(
-        key_system, CdmConfig(),
+        {key_system, false, false, false},
         base::BindOnce(&MediaServiceTest::OnCdmCreated, base::Unretained(this),
                        expected_result));
     // Run this to idle to complete the CreateCdm call.
@@ -138,8 +142,8 @@ class MediaServiceTest : public testing::Test {
     video_stream_.set_video_decoder_config(video_config);
 
     mojo::PendingRemote<mojom::DemuxerStream> video_stream_proxy;
-    mojo_video_stream_.reset(new MojoDemuxerStreamImpl(
-        &video_stream_, video_stream_proxy.InitWithNewPipeAndPassReceiver()));
+    mojo_video_stream_ = std::make_unique<MojoDemuxerStreamImpl>(
+        &video_stream_, video_stream_proxy.InitWithNewPipeAndPassReceiver());
 
     mojo::PendingAssociatedRemote<mojom::RendererClient> client_remote;
     renderer_client_receiver_.Bind(
@@ -162,14 +166,12 @@ class MediaServiceTest : public testing::Test {
  protected:
   void OnCdmCreated(bool expected_result,
                     mojo::PendingRemote<mojom::ContentDecryptionModule> remote,
-                    const base::Optional<base::UnguessableToken>& cdm_id,
-                    mojo::PendingRemote<mojom::Decryptor> decryptor,
+                    mojom::CdmContextPtr cdm_context,
                     const std::string& error_message) {
     if (!expected_result) {
       EXPECT_FALSE(remote);
-      EXPECT_FALSE(decryptor);
+      EXPECT_FALSE(cdm_context);
       EXPECT_TRUE(!error_message.empty());
-      EXPECT_FALSE(cdm_id);
       return;
     }
     EXPECT_TRUE(remote);
@@ -192,9 +194,6 @@ class MediaServiceTest : public testing::Test {
 
   StrictMock<MockDemuxerStream> video_stream_;
   std::unique_ptr<MojoDemuxerStreamImpl> mojo_video_stream_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MediaServiceTest);
 };
 
 }  // namespace
@@ -208,7 +207,7 @@ class MediaServiceTest : public testing::Test {
 //   base::RunLoop::Run() and QuitLoop().
 
 // TODO(crbug.com/829233): Enable these tests on Android.
-#if BUILDFLAG(ENABLE_MOJO_CDM) && !defined(OS_ANDROID)
+#if BUILDFLAG(ENABLE_MOJO_CDM) && !BUILDFLAG(IS_ANDROID)
 TEST_F(MediaServiceTest, InitializeCdm_Success) {
   InitializeCdm(kClearKeyKeySystem, true);
 }
@@ -216,7 +215,7 @@ TEST_F(MediaServiceTest, InitializeCdm_Success) {
 TEST_F(MediaServiceTest, InitializeCdm_InvalidKeySystem) {
   InitializeCdm(kInvalidKeySystem, false);
 }
-#endif  // BUILDFLAG(ENABLE_MOJO_CDM) && !defined(OS_ANDROID)
+#endif  // BUILDFLAG(ENABLE_MOJO_CDM) && !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(ENABLE_MOJO_RENDERER)
 TEST_F(MediaServiceTest, InitializeRenderer) {
@@ -237,13 +236,13 @@ TEST_F(MediaServiceTest, InterfaceFactoryPreventsIdling) {
   run_loop.Run();
 }
 
-#if (BUILDFLAG(ENABLE_MOJO_CDM) && !defined(OS_ANDROID)) || \
+#if (BUILDFLAG(ENABLE_MOJO_CDM) && !BUILDFLAG(IS_ANDROID)) || \
     BUILDFLAG(ENABLE_MOJO_RENDERER)
 // MediaService stays alive as long as there are InterfaceFactory impls, which
 // are then deferred destroyed until no media components (e.g. CDM or Renderer)
 // are hosted.
 TEST_F(MediaServiceTest, Idling) {
-#if BUILDFLAG(ENABLE_MOJO_CDM) && !defined(OS_ANDROID)
+#if BUILDFLAG(ENABLE_MOJO_CDM) && !BUILDFLAG(IS_ANDROID)
   InitializeCdm(kClearKeyKeySystem, true);
 #endif
 
@@ -266,7 +265,7 @@ TEST_F(MediaServiceTest, Idling) {
 }
 
 TEST_F(MediaServiceTest, MoreIdling) {
-#if BUILDFLAG(ENABLE_MOJO_CDM) && !defined(OS_ANDROID)
+#if BUILDFLAG(ENABLE_MOJO_CDM) && !BUILDFLAG(IS_ANDROID)
   InitializeCdm(kClearKeyKeySystem, true);
 #endif
 
@@ -294,7 +293,7 @@ TEST_F(MediaServiceTest, MoreIdling) {
   renderer_.reset();
   run_loop.Run();
 }
-#endif  // (BUILDFLAG(ENABLE_MOJO_CDM) && !defined(OS_ANDROID)) ||
+#endif  // (BUILDFLAG(ENABLE_MOJO_CDM) && !BUILDFLAG(IS_ANDROID)) ||
         //  BUILDFLAG(ENABLE_MOJO_RENDERER)
 
 }  // namespace media

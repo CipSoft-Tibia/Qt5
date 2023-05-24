@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,44 +8,13 @@
 #include <string>
 #include <vector>
 
-#include "base/optional.h"
-#include "base/strings/string16.h"
 #include "base/time/time.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/common_export.h"
-#include "third_party/blink/public/mojom/notifications/notification.mojom-shared.h"
+#include "third_party/blink/public/mojom/notifications/notification.mojom-forward.h"
 #include "url/gurl.h"
 
 namespace blink {
-
-enum PlatformNotificationActionType {
-  PLATFORM_NOTIFICATION_ACTION_TYPE_BUTTON = 0,
-  PLATFORM_NOTIFICATION_ACTION_TYPE_TEXT,
-};
-
-// A notification action (button or text input); corresponds to Blink
-// WebNotificationAction.
-struct BLINK_COMMON_EXPORT PlatformNotificationAction {
-  PlatformNotificationAction();
-  PlatformNotificationAction(const PlatformNotificationAction& other);
-  ~PlatformNotificationAction();
-
-  // Type of the action (button or text input).
-  PlatformNotificationActionType type =
-      PLATFORM_NOTIFICATION_ACTION_TYPE_BUTTON;
-
-  // Action name that the author can use to distinguish them.
-  std::string action;
-
-  // Title of the button.
-  base::string16 title;
-
-  // URL of the icon for the button. May be empty if no url was specified.
-  GURL icon;
-
-  // Optional text to use as placeholder for text inputs. May be null if it was
-  // not specified.
-  base::Optional<base::string16> placeholder;
-};
 
 // Structure representing the information associated with a Web Notification.
 // This struct should include the developer-visible information, kept
@@ -53,10 +22,11 @@ struct BLINK_COMMON_EXPORT PlatformNotificationAction {
 struct BLINK_COMMON_EXPORT PlatformNotificationData {
   PlatformNotificationData();
   PlatformNotificationData(const PlatformNotificationData& other);
+  PlatformNotificationData& operator=(const PlatformNotificationData& other);
   ~PlatformNotificationData();
 
   // Title to be displayed with the Web Notification.
-  base::string16 title;
+  std::u16string title;
 
   // Hint to determine the directionality of the displayed notification.
   mojom::NotificationDirection direction;
@@ -65,7 +35,7 @@ struct BLINK_COMMON_EXPORT PlatformNotificationData {
   std::string lang;
 
   // Contents of the notification.
-  base::string16 body;
+  std::u16string body;
 
   // Tag of the notification. Notifications sharing both their origin and their
   // tag will replace the first displayed notification.
@@ -106,10 +76,12 @@ struct BLINK_COMMON_EXPORT PlatformNotificationData {
   std::vector<char> data;
 
   // Actions that should be shown as buttons on the notification.
-  std::vector<PlatformNotificationAction> actions;
+  std::vector<blink::mojom::NotificationActionPtr> actions;
 
   // The time at which the notification should be shown.
-  base::Optional<base::Time> show_trigger_timestamp;
+  absl::optional<base::Time> show_trigger_timestamp;
+
+  mojom::NotificationScenario scenario;
 };
 
 }  // namespace blink

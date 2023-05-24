@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,9 +27,10 @@ void Manager::UnregisterPortHandler(base::StringPiece port_name) {
   DCHECK_EQ(deleted, 1u);
 }
 
-bool Manager::OnPortConnected(base::StringPiece port_name,
-                              blink::WebMessagePort port) {
-  if (!port.IsValid())
+bool Manager::OnPortConnected(
+    base::StringPiece port_name,
+    std::unique_ptr<cast_api_bindings::MessagePort> port) {
+  if (!port)
     return false;
 
   auto handler = port_handlers_.find(port_name);

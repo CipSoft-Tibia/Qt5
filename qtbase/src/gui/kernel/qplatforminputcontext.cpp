@@ -1,46 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatforminputcontext.h"
 #include <qguiapplication.h>
 #include <QRect>
 #include "private/qkeymapper_p.h"
+#include "private/qhighdpiscaling_p.h"
 #include <qpa/qplatforminputcontext_p.h>
 
 #include <QtGui/qtransform.h>
@@ -106,7 +71,7 @@ bool QPlatformInputContext::isValid() const
  */
 bool QPlatformInputContext::hasCapability(Capability capability) const
 {
-    Q_UNUSED(capability)
+    Q_UNUSED(capability);
     return true;
 }
 
@@ -130,13 +95,13 @@ void QPlatformInputContext::update(Qt::InputMethodQueries)
 }
 
 /*!
-    Called when when the word currently being composed in input item is tapped by
+    Called when the word currently being composed in the input item is tapped by
     the user. Input methods often use this information to offer more word
     suggestions to the user.
  */
 void QPlatformInputContext::invokeAction(QInputMethod::Action action, int cursorPosition)
 {
-    Q_UNUSED(cursorPosition)
+    Q_UNUSED(cursorPosition);
     // Default behavior for simple ephemeral input contexts. Some
     // complex input contexts should not be reset here.
     if (action == QInputMethod::Click)
@@ -151,7 +116,7 @@ void QPlatformInputContext::invokeAction(QInputMethod::Action action, int cursor
 */
 bool QPlatformInputContext::filterEvent(const QEvent *event)
 {
-    Q_UNUSED(event)
+    Q_UNUSED(event);
     return false;
 }
 
@@ -251,7 +216,7 @@ void QPlatformInputContext::emitInputDirectionChanged(Qt::LayoutDirection newDir
  */
 void QPlatformInputContext::setFocusObject(QObject *object)
 {
-    Q_UNUSED(object)
+    Q_UNUSED(object);
 }
 
 /*!
@@ -270,15 +235,19 @@ void QPlatformInputContextPrivate::setInputMethodAccepted(bool accepted)
 }
 
 /*!
- * \brief QPlatformInputContext::setSelectionOnFocusObject
- * \param anchorPos Beginning of selection in currently active window coordinates
- * \param cursorPos End of selection in currently active window coordinates
- */
-void QPlatformInputContext::setSelectionOnFocusObject(const QPointF &anchorPos, const QPointF &cursorPos)
+   \brief QPlatformInputContext::setSelectionOnFocusObject
+   \param anchorPos Beginning of selection in currently active window native coordinates
+   \param cursorPos End of selection in currently active window native coordinates
+*/
+void QPlatformInputContext::setSelectionOnFocusObject(const QPointF &nativeAnchorPos, const QPointF &nativeCursorPos)
 {
     QObject *focus = qApp->focusObject();
     if (!focus)
         return;
+
+    QWindow *window = qApp->focusWindow();
+    const QPointF &anchorPos = QHighDpi::fromNativePixels(nativeAnchorPos, window);
+    const QPointF &cursorPos = QHighDpi::fromNativePixels(nativeCursorPos, window);
 
     QInputMethod *im = QGuiApplication::inputMethod();
     const QTransform mapToLocal = im->inputItemTransform().inverted();
@@ -297,4 +266,80 @@ void QPlatformInputContext::setSelectionOnFocusObject(const QPointF &anchorPos, 
     }
 }
 
+/*!
+   \brief QPlatformInputContext::queryFocusObject
+
+    Queries the current foucus object with a window position in native pixels.
+*/
+QVariant QPlatformInputContext::queryFocusObject(Qt::InputMethodQuery query, QPointF nativePosition)
+{
+    const QPointF position = QHighDpi::fromNativePixels(nativePosition, QGuiApplication::focusWindow());
+    const QInputMethod *im = QGuiApplication::inputMethod();
+    const QTransform mapToLocal = im->inputItemTransform().inverted();
+    return im->queryFocusObject(query, mapToLocal.map(position));
+}
+
+/*!
+   \brief QPlatformInputContext::inputItemRectangle
+
+    Returns the input item rectangle for the currently active window
+    and input methiod in native window coordinates.
+*/
+QRectF QPlatformInputContext::inputItemRectangle()
+{
+    QInputMethod *im = QGuiApplication::inputMethod();
+    const QRectF deviceIndependentRectangle = im->inputItemTransform().mapRect(im->inputItemRectangle());
+    return QHighDpi::toNativePixels(deviceIndependentRectangle, QGuiApplication::focusWindow());
+}
+
+/*!
+   \brief QPlatformInputContext::inputItemClipRectangle
+
+    Returns the input item clip rectangle for the currently active window
+    and input methiod in native window coordinates.
+*/
+QRectF QPlatformInputContext::inputItemClipRectangle()
+{
+    return QHighDpi::toNativePixels(
+        QGuiApplication::inputMethod()->inputItemClipRectangle(), QGuiApplication::focusWindow());
+}
+
+/*!
+   \brief QPlatformInputContext::cursorRectangle
+
+    Returns the cursor rectangle for the currently active window
+    and input methiod in native window coordinates.
+*/
+QRectF QPlatformInputContext::cursorRectangle()
+{
+    return QHighDpi::toNativePixels(
+        QGuiApplication::inputMethod()->cursorRectangle(), QGuiApplication::focusWindow());
+}
+
+/*!
+   \brief QPlatformInputContext::anchorRectangle
+
+    Returns the anchor rectangle for the currently active window
+    and input methiod in native window coordinates.
+*/
+QRectF QPlatformInputContext::anchorRectangle()
+{
+    return QHighDpi::toNativePixels(
+        QGuiApplication::inputMethod()->anchorRectangle(), QGuiApplication::focusWindow());
+}
+
+/*!
+   \brief QPlatformInputContext::keyboardRectangle
+
+    Returns the keyboard rectangle for the currently active window
+    and input methiod in native window coordinates.
+*/
+QRectF QPlatformInputContext::keyboardRectangle()
+{
+    return QHighDpi::toNativePixels(
+        QGuiApplication::inputMethod()->keyboardRectangle(), QGuiApplication::focusWindow());
+}
+
 QT_END_NAMESPACE
+
+#include "moc_qplatforminputcontext.cpp"

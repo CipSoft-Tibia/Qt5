@@ -1,10 +1,9 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 module network.mojom;
 
-import "mojo/public/mojom/base/read_only_buffer.mojom";
 import "url/mojom/url.mojom";
 import "services/network/public/mojom/network_param.mojom";
 import "services/network/public/mojom/ip_endpoint.mojom";
@@ -45,7 +44,7 @@ struct WebSocketHandshakeResponse {
 };
 
 // This interface is for HTTP Authentication.
-interface AuthenticationHandler {
+interface WebSocketAuthenticationHandler {
   // Returns null credentials when it wants to cancel authentication, and
   // returns a non-null credentials when it wants to use the credentials for
   // authentication.
@@ -59,6 +58,15 @@ interface AuthenticationHandler {
 interface WebSocketHandshakeClient {
   // Notify the renderer that the browser has started an opening handshake.
   OnOpeningHandshakeStarted(WebSocketHandshakeRequest request);
+
+  // Called when the WebSocket connection has failed.
+  // |message| may contain a human-readable explanation of the error, but may be
+  // empty.
+  // |net_error| contains a network error code, which will be |ERR_FAILED| for
+  // WebSocket-level protocol errors that do not have their own error code.
+  // |response_code| contains the HTTP status code that caused the failure, if
+  // it was caused by an unexpected status code, or else is -1.
+  OnFailure(string message, int32 net_error, int32 response_code);
 
   // Called when the connection is established.
   // |response| may contain cookie-related headers when the client has
@@ -118,11 +126,6 @@ interface WebSocketClient {
 // The interface for the server side of WebSocket. Implemented by the network
 // service. Used to send out data to the network service.
 interface WebSocket {
-  // The client side may observe the following disconnection reason from the
-  // service side:
-  const uint32 kInsufficientResources = 1;
-  const uint32 kInternalFailure = 2;
-
   // Sends a message via mojo datapipe to the remote server.
   // - |type| is the type of the message. It must be set to either
   //   WebSocketMessageType.TEXT or WebSocketMessageType.BINARY.

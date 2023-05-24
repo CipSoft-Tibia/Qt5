@@ -1,55 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplaceattribute_p.h"
 #include "qplaceattribute.h"
 
 QT_USE_NAMESPACE
 
-template<> QPlaceAttributePrivate *QSharedDataPointer<QPlaceAttributePrivate>::clone()
-{
-    return d->clone();
-}
-
-QPlaceAttributePrivate::QPlaceAttributePrivate(const QPlaceAttributePrivate &other)
-    : QSharedData(other),
-      label(other.label),
-      text(other.text)
-{
-}
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QPlaceAttributePrivate)
 
 bool QPlaceAttributePrivate::operator== (const QPlaceAttributePrivate &other) const
 {
@@ -116,6 +73,113 @@ bool QPlaceAttributePrivate::isEmpty() const
 */
 
 /*!
+    \qmltype ExtendedAttributes
+    \instantiates QQmlPropertyMap
+    \inqmlmodule QtLocation
+    \ingroup qml-QtLocation5-places
+    \ingroup qml-QtLocation5-places-data
+    \since QtLocation 5.5
+
+    \brief The ExtendedAttributes type holds additional data about a \l Place.
+
+    The ExtendedAttributes type is a map of \l {placeAttribute}{placeAttributes}.  To access
+    attributes in the map use the \l keys() method to get the list of keys stored in the map and
+    use the \c {[]} operator to access the \l placeAttribute items.
+
+    The following are standard keys that are defined by the API.  \l Plugin
+    implementations are free to define additional keys.  Custom keys should
+    be qualified by a unique prefix to avoid clashes.
+    \table
+        \header
+            \li key
+            \li description
+        \row
+            \li openingHours
+            \li The trading hours of the place
+        \row
+            \li payment
+            \li The types of payment the place accepts, for example visa, mastercard.
+        \row
+            \li x_provider
+            \li The name of the provider that a place is sourced from
+        \row
+            \li x_id_<provider> (for example x_id_here)
+            \li An alternative identifier which identifies the place from the
+               perspective of the specified provider.
+    \endtable
+
+    Some plugins may not support attributes at all, others may only support a
+    certain set, others still may support a dynamically changing set of attributes
+    over time or even allow attributes to be arbitrarily defined by the client
+    application.  The attributes could also vary on a place by place basis,
+    for example one place may have opening hours while another does not.
+    Consult the \l {Plugin References and Parameters}{plugin
+    references} for details.
+
+    Some attributes may not be intended to be readable by end users, the label field
+    of such attributes is empty to indicate this fact.
+
+    \note ExtendedAttributes instances are only ever used in the context of \l {Place}s.  It is not
+    possible to create an ExtendedAttributes instance directly or re-assign a \l {Place}'s
+    ExtendedAttributes property.  Modification of ExtendedAttributes can only be accomplished
+    via Javascript.
+
+    The following example shows how to access all \l {placeAttribute}{placeAttributes} and print
+    them to the console:
+
+    \snippet declarative/maps.qml QtLocation import
+    \codeline
+    \snippet declarative/places.qml ExtendedAttributes read
+
+    The following example shows how to assign and modify an attribute:
+    \snippet declarative/places.qml ExtendedAttributes write
+
+    \sa placeAttribute, QQmlPropertyMap
+*/
+
+/*!
+    \qmlmethod variant ExtendedAttributes::keys()
+
+    Returns an array of place attribute keys currently stored in the map.
+*/
+
+/*!
+    \qmlsignal void ExtendedAttributes::valueChanged(string key, variant value)
+
+    This signal is emitted when the set of attributes changes. \a key is the key
+    corresponding to the \a value that was changed.
+
+    The corresponding handler is \c onValueChanged.
+*/
+
+/*!
+    \qmlvaluetype placeAttribute
+    \inqmlmodule QtLocation
+    \ingroup qml-QtLocation5-places
+    \ingroup qml-QtLocation5-places-data
+    \since QtLocation 5.5
+
+    \brief The placeAttribute type holds generic place attribute information.
+
+    A place attribute stores an additional piece of information about a \l Place that is not
+    otherwise exposed through the \l Place type.  A placeAttribute is a textual piece of data,
+    accessible through the \l {placeAttribute::}{text} property, and a \l {placeAttribute::}{label}.
+    Both the l {placeAttribute::}{text} and \l {placeAttribute::}{label} properties are intended
+    to be displayed to the user. placeAttributes are stored in an \l ExtendedAttributes map with
+    a unique key.
+
+    The following example shows how to display all attributes in a list:
+
+    \snippet declarative/places.qml QtQuick import
+    \snippet declarative/maps.qml QtLocation import
+    \codeline
+    \snippet declarative/places.qml ExtendedAttributes
+
+    The following example shows how to assign and modify an attribute:
+    \snippet declarative/places.qml ExtendedAttributes write
+*/
+
+/*!
    \variable QPlaceAttribute::OpeningHours
    Specifies the opening hours.
 */
@@ -145,23 +209,18 @@ QPlaceAttribute::QPlaceAttribute()
 /*!
     Destroys the attribute.
 */
-QPlaceAttribute::~QPlaceAttribute()
-{
-}
+QPlaceAttribute::~QPlaceAttribute() = default;
 
 /*!
     Creates a copy of \a other.
 */
-QPlaceAttribute::QPlaceAttribute(const QPlaceAttribute &other)
-    :d_ptr(other.d_ptr)
-{
-}
+QPlaceAttribute::QPlaceAttribute(const QPlaceAttribute &other) noexcept = default;
 
 /*!
     Assigns \a other to this attribute and returns a reference to this
     attribute.
 */
-QPlaceAttribute &QPlaceAttribute::operator=(const QPlaceAttribute &other)
+QPlaceAttribute &QPlaceAttribute::operator=(const QPlaceAttribute &other) noexcept
 {
     if (this == &other)
         return *this;
@@ -171,10 +230,20 @@ QPlaceAttribute &QPlaceAttribute::operator=(const QPlaceAttribute &other)
 }
 
 /*!
-    Returns true if \a other is equal to this attribute, otherwise
+    \fn bool QPlaceAttribute::operator==(const QPlaceAttribute &lhs, const QPlaceAttribute &rhs) noexcept
+
+    Returns true if \a lhs is equal to \a rhs, otherwise
     returns false.
 */
-bool QPlaceAttribute::operator== (const QPlaceAttribute &other) const
+
+/*!
+    \fn bool QPlaceAttribute::operator!=(const QPlaceAttribute &lhs, const QPlaceAttribute &rhs) noexcept
+
+    Returns true if \a lhs is not equal to \a rhs,
+    otherwise returns false.
+*/
+
+bool QPlaceAttribute::isEqual(const QPlaceAttribute &other) const noexcept
 {
     if (d_ptr == other.d_ptr)
         return true;
@@ -182,50 +251,53 @@ bool QPlaceAttribute::operator== (const QPlaceAttribute &other) const
 }
 
 /*!
-    Returns true if \a other is not equal to this attribute,
-    otherwise returns false.
+    \qmlproperty string placeAttribute::label
+
+    This property holds the attribute label which is a user visible string
+    describing the attribute.
 */
-bool QPlaceAttribute::operator!= (const QPlaceAttribute &other) const
-{
-    return (!this->operator ==(other));
-}
 
 /*!
-    Returns a localized label describing the attribute.
+    \property QPlaceAttribute::label
+    \brief a localized label describing the attribute.
 */
 QString QPlaceAttribute::label() const
 {
     return d_ptr->label;
 }
 
-/*!
-    Sets the \a label of the attribute.
-*/
 void QPlaceAttribute::setLabel(const QString &label)
 {
     d_ptr->label = label;
 }
 
 /*!
-    Returns a piece of rich text representing the attribute value.
+    \qmlproperty string placeAttribute::text
+
+    This property holds the attribute text which can be used to show additional information about the place.
+*/
+
+/*!
+    \property QPlaceAttribute::text
+    \brief a piece of rich text representing the attribute value.
 */
 QString QPlaceAttribute::text() const
 {
     return d_ptr->text;
 }
 
-/*!
-    Sets the \a text of the attribute.
-*/
 void QPlaceAttribute::setText(const QString &text)
 {
     d_ptr->text = text;
 }
 
 /*!
-    Returns a boolean indicating whether the all the fields of the place attribute are empty or not.
+    Returns a boolean indicating whether the all the fields of the place attribute
+    are empty or not.
 */
 bool QPlaceAttribute::isEmpty() const
 {
     return d_ptr->isEmpty();
 }
+
+#include "moc_qplaceattribute.cpp"

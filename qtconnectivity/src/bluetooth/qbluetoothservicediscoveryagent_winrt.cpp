@@ -1,51 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qbluetoothservicediscoveryagent.h"
 #include "qbluetoothservicediscoveryagent_p.h"
+#include "qbluetoothutils_winrt_p.h"
 
-#ifdef CLASSIC_APP_BUILD
-#define Q_OS_WINRT
-#endif
-#include <qfunctions_winrt.h>
 #include <QtCore/QLoggingCategory>
-#include <QtCore/private/qeventdispatcher_winrt_p.h>
+#include <QtCore/private/qfunctions_winrt_p.h>
 
 #include <functional>
 #include <robuffer.h>
@@ -72,7 +33,7 @@ typedef Collections::IIterator<ValueItem *> ValueIterator;
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(QT_BT_WINRT)
+Q_DECLARE_LOGGING_CATEGORY(QT_BT_WINDOWS)
 
 #define TYPE_UINT8 8
 #define TYPE_UINT16 9
@@ -81,6 +42,13 @@ Q_DECLARE_LOGGING_CATEGORY(QT_BT_WINRT)
 #define TYPE_LONG_UUID 28
 #define TYPE_STRING 37
 #define TYPE_SEQUENCE 53
+
+// Helper to reverse given uchar array
+static void reverseArray(uchar data[], size_t length)
+{
+    for (size_t i = length; i > length/2; i--)
+        std::swap(data[length - i], data[i - 1]);
+}
 
 class QWinRTBluetoothServiceDiscoveryWorker : public QObject
 {
@@ -94,7 +62,6 @@ public:
 Q_SIGNALS:
     void serviceFound(quint64 deviceAddress, const QBluetoothServiceInfo &info);
     void scanFinished(quint64 deviceAddress);
-    void scanCanceled();
     void errorOccured();
 
 private:
@@ -121,26 +88,21 @@ QWinRTBluetoothServiceDiscoveryWorker::~QWinRTBluetoothServiceDiscoveryWorker()
 
 void QWinRTBluetoothServiceDiscoveryWorker::start()
 {
-    HRESULT hr;
-    hr = QEventDispatcherWinRT::runOnXamlThread([this]() {
-        ComPtr<IBluetoothDeviceStatics> deviceStatics;
-        HRESULT hr = GetActivationFactory(HString::MakeReference(RuntimeClass_Windows_Devices_Bluetooth_BluetoothDevice).Get(), &deviceStatics);
-        Q_ASSERT_SUCCEEDED(hr);
-        ComPtr<IAsyncOperation<BluetoothDevice *>> deviceFromAddressOperation;
-        hr = deviceStatics->FromBluetoothAddressAsync(m_targetAddress, &deviceFromAddressOperation);
-        Q_ASSERT_SUCCEEDED(hr);
-        hr = deviceFromAddressOperation->put_Completed(Callback<IAsyncOperationCompletedHandler<BluetoothDevice *>>
-                                                  (this, &QWinRTBluetoothServiceDiscoveryWorker::onBluetoothDeviceFoundAsync).Get());
-        Q_ASSERT_SUCCEEDED(hr);
-        return S_OK;
-    });
+    ComPtr<IBluetoothDeviceStatics> deviceStatics;
+    HRESULT hr = GetActivationFactory(HString::MakeReference(RuntimeClass_Windows_Devices_Bluetooth_BluetoothDevice).Get(), &deviceStatics);
+    Q_ASSERT_SUCCEEDED(hr);
+    ComPtr<IAsyncOperation<BluetoothDevice *>> deviceFromAddressOperation;
+    hr = deviceStatics->FromBluetoothAddressAsync(m_targetAddress, &deviceFromAddressOperation);
+    Q_ASSERT_SUCCEEDED(hr);
+    hr = deviceFromAddressOperation->put_Completed(Callback<IAsyncOperationCompletedHandler<BluetoothDevice *>>
+                                              (this, &QWinRTBluetoothServiceDiscoveryWorker::onBluetoothDeviceFoundAsync).Get());
     Q_ASSERT_SUCCEEDED(hr);
 }
 
 HRESULT QWinRTBluetoothServiceDiscoveryWorker::onBluetoothDeviceFoundAsync(IAsyncOperation<BluetoothDevice *> *op, AsyncStatus status)
 {
     if (status != Completed) {
-        qCDebug(QT_BT_WINRT) << "Could not find device";
+        qCDebug(QT_BT_WINDOWS) << "Could not find device";
         emit errorOccured();
         return S_OK;
     }
@@ -152,17 +114,6 @@ HRESULT QWinRTBluetoothServiceDiscoveryWorker::onBluetoothDeviceFoundAsync(IAsyn
     quint64 address;
     device->get_BluetoothAddress(&address);
 
-#ifdef QT_WINRT_LIMITED_SERVICEDISCOVERY
-    if (m_mode != QBluetoothServiceDiscoveryAgent::MinimalDiscovery) {
-        qWarning() << "Used Windows SDK version (" << QString::number(QT_UCRTVERSION) << ") does not "
-                      "support full service discovery. Consider updating to a more recent Windows 10 "
-                      "SDK (14393 or above).";
-    }
-    ComPtr<IVectorView<RfcommDeviceService*>> commServices;
-    hr = device->get_RfcommServices(&commServices);
-    Q_ASSERT_SUCCEEDED(hr);
-    processServiceSearchResult(address, commServices);
-#else // !QT_WINRT_LIMITED_SERVICEDISOVERY
     ComPtr<IBluetoothDevice3> device3;
     hr = device.As(&device3);
     Q_ASSERT_SUCCEEDED(hr);
@@ -175,7 +126,7 @@ HRESULT QWinRTBluetoothServiceDiscoveryWorker::onBluetoothDeviceFoundAsync(IAsyn
         ([address, this](IAsyncOperation<RfcommDeviceServicesResult *> *op, AsyncStatus status)
     {
         if (status != Completed) {
-            qCDebug(QT_BT_WINRT) << "Could not obtain service list";
+            qCDebug(QT_BT_WINDOWS) << "Could not obtain service list";
             emit errorOccured();
             return S_OK;
         }
@@ -190,7 +141,6 @@ HRESULT QWinRTBluetoothServiceDiscoveryWorker::onBluetoothDeviceFoundAsync(IAsyn
         return S_OK;
     }).Get());
     Q_ASSERT_SUCCEEDED(hr);
-#endif // !QT_WINRT_LIMITED_SERVICEDISOVERY
 
     return S_OK;
 }
@@ -234,7 +184,7 @@ void QWinRTBluetoothServiceDiscoveryWorker::processServiceSearchResult(quint64 a
         hr = service->GetSdpRawAttributesAsync(op.GetAddressOf());
         if (FAILED(hr)) {
             emit errorOccured();
-            qDebug() << "Check manifest capabilities";
+            qCDebug(QT_BT_WINDOWS) << "Check manifest capabilities";
             continue;
         }
         ComPtr<IMapView<UINT32, IBuffer *>> mapView;
@@ -285,33 +235,35 @@ void QWinRTBluetoothServiceDiscoveryWorker::processServiceSearchResult(quint64 a
                 hr = dataReader->ReadByte(&value);
                 Q_ASSERT_SUCCEEDED(hr);
                 info.setAttribute(key, value);
-                qCDebug(QT_BT_WINRT) << "UUID" << uuid << "KEY" << hex << key << "TYPE" << dec << type << "UINT8" << hex << value;
+                qCDebug(QT_BT_WINDOWS) << "UUID" << uuid << "KEY" << Qt::hex << key << "TYPE" << Qt::dec << type << "UINT8" << Qt::hex << value;
             } else if (type == TYPE_UINT16) {
                 quint16 value;
                 hr = dataReader->ReadUInt16(&value);
                 Q_ASSERT_SUCCEEDED(hr);
                 info.setAttribute(key, value);
-                qCDebug(QT_BT_WINRT) << "UUID" << uuid << "KEY" << hex << key << "TYPE" << dec << type << "UINT16" << hex << value;
+                qCDebug(QT_BT_WINDOWS) << "UUID" << uuid << "KEY" << Qt::hex << key << "TYPE" << Qt::dec << type << "UINT16" << Qt::hex << value;
             } else if (type == TYPE_UINT32) {
                 quint32 value;
                 hr = dataReader->ReadUInt32(&value);
                 Q_ASSERT_SUCCEEDED(hr);
                 info.setAttribute(key, value);
-                qCDebug(QT_BT_WINRT) << "UUID" << uuid << "KEY" << hex << key << "TYPE" << dec << type << "UINT32" << hex << value;
+                qCDebug(QT_BT_WINDOWS) << "UUID" << uuid << "KEY" << Qt::hex << key << "TYPE" << Qt::dec << type << "UINT32" << Qt::hex << value;
             } else if (type == TYPE_SHORT_UUID) {
                 quint16 value;
                 hr = dataReader->ReadUInt16(&value);
                 Q_ASSERT_SUCCEEDED(hr);
                 const QBluetoothUuid uuid(value);
                 info.setAttribute(key, uuid);
-                qCDebug(QT_BT_WINRT) << "UUID" << uuid << "KEY" << hex << key << "TYPE" << dec << type << "UUID" << hex << uuid;
+                qCDebug(QT_BT_WINDOWS) << "UUID" << uuid << "KEY" << Qt::hex << key << "TYPE" << Qt::dec << type << "UUID" << Qt::hex << uuid;
             } else if (type == TYPE_LONG_UUID) {
                 GUID value;
                 hr = dataReader->ReadGuid(&value);
                 Q_ASSERT_SUCCEEDED(hr);
+                // The latter 8 bytes are in reverse order
+                reverseArray(value.Data4, sizeof(value.Data4)/sizeof(value.Data4[0]));
                 const QBluetoothUuid uuid(value);
                 info.setAttribute(key, uuid);
-                qCDebug(QT_BT_WINRT) << "UUID" << uuid << "KEY" << hex << key << "TYPE" << dec << type << "UUID" << hex << uuid;
+                qCDebug(QT_BT_WINDOWS) << "UUID" << uuid << "KEY" << Qt::hex << key << "TYPE" << Qt::dec << type << "UUID" << Qt::hex << uuid;
             } else if (type == TYPE_STRING) {
                 BYTE length;
                 hr = dataReader->ReadByte(&length);
@@ -321,28 +273,28 @@ void QWinRTBluetoothServiceDiscoveryWorker::processServiceSearchResult(quint64 a
                 Q_ASSERT_SUCCEEDED(hr);
                 const QString str = QString::fromWCharArray(WindowsGetStringRawBuffer(value.Get(), nullptr));
                 info.setAttribute(key, str);
-                qCDebug(QT_BT_WINRT) << "UUID" << uuid << "KEY" << hex << key << "TYPE" << dec << type << "STRING" << str;
+                qCDebug(QT_BT_WINDOWS) << "UUID" << uuid << "KEY" << Qt::hex << key << "TYPE" << Qt::dec << type << "STRING" << str;
             } else if (type == TYPE_SEQUENCE) {
                 bool ok;
                 QBluetoothServiceInfo::Sequence sequence = readSequence(dataReader, &ok, nullptr);
                 if (ok) {
                     info.setAttribute(key, sequence);
-                    qCDebug(QT_BT_WINRT) << "UUID" << uuid << "KEY" << hex << key << "TYPE" << dec << type << "SEQUENCE" << sequence;
+                    qCDebug(QT_BT_WINDOWS) << "UUID" << uuid << "KEY" << Qt::hex << key << "TYPE" << Qt::dec << type << "SEQUENCE" << sequence;
                 } else {
-                    qCDebug(QT_BT_WINRT) << "UUID" << uuid << "KEY" << hex << key << "TYPE" << dec << type << "SEQUENCE ERROR";
+                    qCDebug(QT_BT_WINDOWS) << "UUID" << uuid << "KEY" << Qt::hex << key << "TYPE" << Qt::dec << type << "SEQUENCE ERROR";
                 }
             } else {
-                qCDebug(QT_BT_WINRT) << "UUID" << uuid << "KEY" << hex << key << "TYPE" << dec << type;
+                qCDebug(QT_BT_WINDOWS) << "UUID" << uuid << "KEY" << Qt::hex << key << "TYPE" << Qt::dec << type;
             }
             hr = iterator->MoveNext(&current);
         }
         // Windows is only able to discover Rfcomm services but the according protocolDescriptor is
         // not always set in the raw attribute map. If we encounter a service like that we should
         // fill the protocol descriptor ourselves.
-        if (info.protocolDescriptor(QBluetoothUuid::Rfcomm).isEmpty()) {
+        if (info.protocolDescriptor(QBluetoothUuid::ProtocolUuid::Rfcomm).isEmpty()) {
             QBluetoothServiceInfo::Sequence protocolDescriptorList;
             QBluetoothServiceInfo::Sequence protocol;
-            protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::Rfcomm))
+            protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ProtocolUuid::Rfcomm))
                      << QVariant::fromValue(0);
             protocolDescriptorList.append(QVariant::fromValue(protocol));
             info.setAttribute(QBluetoothServiceInfo::ProtocolDescriptorList, protocolDescriptorList);
@@ -422,7 +374,8 @@ QBluetoothServiceInfo::Sequence QWinRTBluetoothServiceDiscoveryWorker::readSeque
             GUID b;
             hr = dataReader->ReadGuid(&b);
             Q_ASSERT_SUCCEEDED(hr);
-
+            // The latter 8 bytes are in reverse order
+            reverseArray(b.Data4, sizeof(b.Data4)/sizeof(b.Data4[0]));
             const QBluetoothUuid uuid(b);
             result.append(QVariant::fromValue(uuid));
             remainingLength -= sizeof(GUID);
@@ -461,7 +414,7 @@ QBluetoothServiceInfo::Sequence QWinRTBluetoothServiceDiscoveryWorker::readSeque
             break;
         }
         default:
-            qCDebug(QT_BT_WINRT) << "SEQUENCE ERROR" << type;
+            qCDebug(QT_BT_WINDOWS) << "SEQUENCE ERROR" << type;
             result.clear();
             return result;
         }
@@ -488,13 +441,15 @@ QBluetoothServiceDiscoveryAgentPrivate::QBluetoothServiceDiscoveryAgentPrivate(
       singleDevice(false),
       q_ptr(qp)
 {
+    mainThreadCoInit(this);
     // TODO: use local adapter for discovery. Possible?
     Q_UNUSED(deviceAdapter);
 }
 
 QBluetoothServiceDiscoveryAgentPrivate::~QBluetoothServiceDiscoveryAgentPrivate()
 {
-    stop();
+    releaseWorker();
+    mainThreadCoUninit(this);
 }
 
 void QBluetoothServiceDiscoveryAgentPrivate::start(const QBluetoothAddress &address)
@@ -508,8 +463,6 @@ void QBluetoothServiceDiscoveryAgentPrivate::start(const QBluetoothAddress &addr
         this, &QBluetoothServiceDiscoveryAgentPrivate::processFoundService, Qt::QueuedConnection);
     connect(worker, &QWinRTBluetoothServiceDiscoveryWorker::scanFinished,
         this, &QBluetoothServiceDiscoveryAgentPrivate::onScanFinished, Qt::QueuedConnection);
-    connect(worker, &QWinRTBluetoothServiceDiscoveryWorker::scanCanceled,
-        this, &QBluetoothServiceDiscoveryAgentPrivate::onScanCanceled, Qt::QueuedConnection);
     connect(worker, &QWinRTBluetoothServiceDiscoveryWorker::errorOccured,
         this, &QBluetoothServiceDiscoveryAgentPrivate::onError, Qt::QueuedConnection);
     worker->start();
@@ -517,20 +470,9 @@ void QBluetoothServiceDiscoveryAgentPrivate::start(const QBluetoothAddress &addr
 
 void QBluetoothServiceDiscoveryAgentPrivate::stop()
 {
-    if (!worker)
-        return;
-
-    disconnect(worker, &QWinRTBluetoothServiceDiscoveryWorker::serviceFound,
-        this, &QBluetoothServiceDiscoveryAgentPrivate::processFoundService);
-    disconnect(worker, &QWinRTBluetoothServiceDiscoveryWorker::scanFinished,
-        this, &QBluetoothServiceDiscoveryAgentPrivate::onScanFinished);
-    disconnect(worker, &QWinRTBluetoothServiceDiscoveryWorker::scanCanceled,
-        this, &QBluetoothServiceDiscoveryAgentPrivate::onScanCanceled);
-    disconnect(worker, &QWinRTBluetoothServiceDiscoveryWorker::errorOccured,
-        this, &QBluetoothServiceDiscoveryAgentPrivate::onError);
-    // mWorker will delete itself as soon as it is done with its discovery
-    worker = nullptr;
-    setDiscoveryState(Inactive);
+    releaseWorker();
+    Q_Q(QBluetoothServiceDiscoveryAgent);
+    emit q->canceled();
 }
 
 void QBluetoothServiceDiscoveryAgentPrivate::processFoundService(quint64 deviceAddress, const QBluetoothServiceInfo &info)
@@ -558,7 +500,7 @@ void QBluetoothServiceDiscoveryAgentPrivate::processFoundService(quint64 deviceA
 
     QBluetoothServiceInfo returnInfo(info);
     bool deviceFound;
-    for (const QBluetoothDeviceInfo &deviceInfo : qAsConst(discoveredDevices)) {
+    for (const QBluetoothDeviceInfo &deviceInfo : std::as_const(discoveredDevices)) {
         if (deviceInfo.address().toUInt64() == deviceAddress) {
             deviceFound = true;
             returnInfo.setDevice(deviceInfo);
@@ -569,7 +511,7 @@ void QBluetoothServiceDiscoveryAgentPrivate::processFoundService(quint64 deviceA
 
     if (!isDuplicatedService(returnInfo)) {
         discoveredServices.append(returnInfo);
-        qCDebug(QT_BT_WINRT) << "Discovered services" << discoveredDevices.at(0).address().toString()
+        qCDebug(QT_BT_WINDOWS) << "Discovered services" << discoveredDevices.at(0).address().toString()
                              << returnInfo.serviceName() << returnInfo.serviceUuid()
                              << ">>>" << returnInfo.serviceClassUuids();
 
@@ -579,26 +521,12 @@ void QBluetoothServiceDiscoveryAgentPrivate::processFoundService(quint64 deviceA
 
 void QBluetoothServiceDiscoveryAgentPrivate::onScanFinished(quint64 deviceAddress)
 {
-    Q_Q(QBluetoothServiceDiscoveryAgent);
-    bool deviceFound;
-    for (const QBluetoothDeviceInfo &deviceInfo : qAsConst(discoveredDevices)) {
-        if (deviceInfo.address().toUInt64() == deviceAddress) {
-            deviceFound = true;
-            discoveredDevices.removeOne(deviceInfo);
-            if (discoveredDevices.isEmpty())
-                setDiscoveryState(Inactive);
-            break;
-        }
-    }
-    Q_ASSERT(deviceFound);
-    stop();
-    emit q->finished();
-}
-
-void QBluetoothServiceDiscoveryAgentPrivate::onScanCanceled()
-{
-    Q_Q(QBluetoothServiceDiscoveryAgent);
-    emit q->canceled();
+    // The scan for a device's services has finished. Disconnect the
+    // worker and call the baseclass function which starts the scan for
+    // the next device if there are any unscanned devices left (or finishes
+    // the scan if none left)
+    releaseWorker();
+    _q_serviceDiscoveryFinished();
 }
 
 void QBluetoothServiceDiscoveryAgentPrivate::onError()
@@ -606,8 +534,23 @@ void QBluetoothServiceDiscoveryAgentPrivate::onError()
     Q_Q(QBluetoothServiceDiscoveryAgent);
     discoveredDevices.clear();
     error = QBluetoothServiceDiscoveryAgent::InputOutputError;
-    errorString = "errorDescription";
-    emit q->error(error);
+    errorString = QStringLiteral("errorDescription");
+    emit q->errorOccurred(error);
+}
+
+void QBluetoothServiceDiscoveryAgentPrivate::releaseWorker()
+{
+    if (!worker)
+        return;
+
+    disconnect(worker, &QWinRTBluetoothServiceDiscoveryWorker::serviceFound,
+        this, &QBluetoothServiceDiscoveryAgentPrivate::processFoundService);
+    disconnect(worker, &QWinRTBluetoothServiceDiscoveryWorker::scanFinished,
+        this, &QBluetoothServiceDiscoveryAgentPrivate::onScanFinished);
+    disconnect(worker, &QWinRTBluetoothServiceDiscoveryWorker::errorOccured,
+        this, &QBluetoothServiceDiscoveryAgentPrivate::onError);
+    // mWorker will delete itself as soon as it is done with its discovery
+    worker = nullptr;
 }
 
 QT_END_NAMESPACE

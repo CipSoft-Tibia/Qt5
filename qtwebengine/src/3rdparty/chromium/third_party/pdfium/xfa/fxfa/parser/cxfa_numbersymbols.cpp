@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 namespace {
 
 const CXFA_Node::PropertyData kNumberSymbolsPropertyData[] = {
-    {XFA_Element::NumberSymbol, 5, 0},
+    {XFA_Element::NumberSymbol, 5, {}},
 };
 
 }  // namespace
@@ -21,7 +21,7 @@ CXFA_NumberSymbols::CXFA_NumberSymbols(CXFA_Document* doc,
                                        XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                XFA_XDPPACKET_LocaleSet,
+                XFA_XDPPACKET::kLocaleSet,
                 XFA_ObjectType::Node,
                 XFA_Element::NumberSymbols,
                 kNumberSymbolsPropertyData,

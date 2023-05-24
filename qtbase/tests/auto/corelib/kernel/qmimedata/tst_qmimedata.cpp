@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <QMimeData>
 
@@ -96,13 +71,20 @@ void tst_QMimeData::data() const
     // set text, verify
     mimeData.setData("text/plain", "pirates");
     QCOMPARE(mimeData.data("text/plain"), QByteArray("pirates"));
-    QCOMPARE(mimeData.data("text/html").length(), 0);
+    QCOMPARE(mimeData.data("text/html").size(), 0);
+    QCOMPARE(mimeData.data("text/markdown").size(), 0);
 
     // html time
     mimeData.setData("text/html", "ninjas");
     QCOMPARE(mimeData.data("text/html"), QByteArray("ninjas"));
     QCOMPARE(mimeData.data("text/plain"), QByteArray("pirates")); // make sure text not damaged
     QCOMPARE(mimeData.data("text/html"), mimeData.html().toLatin1());
+
+    // markdown time
+    mimeData.setData("text/markdown", "vikings");
+    QCOMPARE(mimeData.data("text/markdown"), QByteArray("vikings"));
+    QCOMPARE(mimeData.data("text/html"), QByteArray("ninjas"));
+    QCOMPARE(mimeData.data("text/plain"), QByteArray("pirates"));
 }
 
 void tst_QMimeData::formats() const
@@ -116,6 +98,10 @@ void tst_QMimeData::formats() const
     // set html, verify
     mimeData.setData("text/html", "ninjas");
     QCOMPARE(mimeData.formats(), QStringList() << "text/plain" << "text/html");
+
+    // set markdown, verify
+    mimeData.setData("text/markdown", "vikings");
+    QCOMPARE(mimeData.formats(), QStringList() << "text/plain" << "text/html" << "text/markdown");
 
     // clear, verify
     mimeData.clear();
@@ -325,9 +311,9 @@ void tst_QMimeData::setUrls() const
 
     // test and verify that setData doesn't corrupt url content
     foreach (const QString &format, mimeData.formats()) {
-         QVariant before = mimeData.retrieveData(format, QVariant::ByteArray);
+         QVariant before = mimeData.retrieveData(format, QMetaType(QMetaType::QByteArray));
          mimeData.setData(format, mimeData.data(format));
-         QVariant after = mimeData.retrieveData(format, QVariant::ByteArray);
+         QVariant after = mimeData.retrieveData(format, QMetaType(QMetaType::QByteArray));
          QCOMPARE(after, before);
      }
 

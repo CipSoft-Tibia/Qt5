@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtopengl-index.html
@@ -31,49 +7,79 @@
     \brief The Qt OpenGL module offers classes that make it easy to
     use OpenGL in Qt applications.
 
-    \warning This module should not be used anymore for new code. Please
-    use the corresponding OpenGL classes in \l{Qt GUI}.
 
-    OpenGL is a standard API for rendering 3D graphics. OpenGL only
-    deals with 3D rendering and provides little or no support for GUI
-    programming issues. The user interface for an OpenGL application
-    must be created with another toolkit, such as Cocoa on the \macos
-    platform, Microsoft Foundation Classes (MFC) under Windows, or Qt
-    on both platforms.
+    Qt has two main approaches to UI development: \l[QtQuick]{Qt Quick} and
+    \l{Qt Widgets}. They exist to support different types of user
+    interfaces, and build on separate graphics engines that have been
+    optimized for each of these types.
 
-    The Qt OpenGL module makes it easy to use OpenGL in Qt applications.
-    It provides an OpenGL widget class that can be used just like any
-    other Qt widget, except that it opens an OpenGL display buffer where
-    you can use the OpenGL API to render the contents.
+    It is possible to combine code written in the OpenGL graphics API
+    with both of these user interface types in Qt. This can be useful
+    when the application has its own OpenGL-dependent code, or when it
+    is integrating with a third-party OpenGL-based renderer.
 
-    To include the definitions of the module's classes, use the
-    following directive:
+    The Qt OpenGL module contains convenience classes to make this type of
+    integration easier and faster.
 
-    \snippet code/doc_src_qtopengl.cpp 0
+    \section1 Qt OpenGL and Qt Widgets
 
-    \if !defined(qtforpython)
-    To link against the module, add this line to your \l qmake \c
-    .pro file:
+    \l{Qt Widgets} is typically rendered by a highly optimized and accurate
+    software rasterizer, and the final content reproduced on screen using a
+    method appropriate for the platform where the application is running.
 
-    \snippet code/doc_src_qtopengl.pro 1
-    \endif
+    But it is also possible to combine \l{Qt Widgets} with OpenGL. The main entry
+    point for this is the \l{QOpenGLWidget} class. This class can be used to
+    enable OpenGL rendering for a certain part of the widget tree, and the
+    classes in the Qt OpenGL module can be used to facilitate any application-side
+    OpenGL code.
 
-    The Qt OpenGL module is implemented as a platform-independent Qt/C++
-    wrapper around the platform-dependent GLX (version 1.3 or later),
-    WGL, or AGL C APIs. Although the basic functionality provided is very
-    similar to Mark Kilgard's GLUT library, applications using the Qt
-    OpenGL module can take advantage of the whole Qt API for
-    non-OpenGL-specific GUI functionality.
+    \section1 Qt OpenGL and Qt Quick
 
-    The \l{Qt OpenGL C++ Classes} page gives an overview over the available classes
-    in this module.
+    \l[QtQuick]{Qt Quick} is optimized for hardware-accelerated rendering. By default,
+    it will be built on the low-level graphics API most appropriate for the
+    target platform.
+
+    For instance, it will default to \c Direct3D on Windows, whereas on macOS,
+    it will default to \c Metal. But it is also possible to manually
+    select OpenGL as the active graphics API on platforms where this is supported.
+
+    For more details on enabling OpenGL with \l[QtQuick]{Qt Quick}, see
+    \l{Rendering via the Qt Rendering Hardware Interface}{scenegraph renderer documentation}.
+
+    \section1 Using the Module
+
+    \include {module-use.qdocinc} {using the c++ api}
+
+    \section2 Building with CMake
+
+    \include {module-use.qdocinc} {building with cmake} {OpenGL}
+
+    \section2 Building with qmake
+
+    \include {module-use.qdocinc} {building_with_qmake} {opengl}
+
+    \section1 Examples
+
+    \list
+        \li \l {Qt OpenGL Examples}
+    \endlist
+
+    \section1 Reference
+
+    \list
+        \li \l {Qt OpenGL C++ Classes} {C++ Classes}
+    \endlist
+
+    \section1 Module Evolution
+    \l{Changes to Qt OpenGL} lists important changes in the module API
+    and functionality that were done for the Qt 6 series of Qt.
 
     \section1 Licenses and Trademarks
 
-    The Qt OpenGL module is available under commercial licenses from \l{The Qt Company}.
-    In addition, it is available under free software licenses. Since Qt 5.4,
-    these free software licenses are
-    \l{GNU Lesser General Public License, version 3}, or
+    The Qt OpenGL module is available under commercial licenses from
+    \l{The Qt Company}. In addition, it is available under free software
+    licenses:
+    The \l{GNU Lesser General Public License, version 3}, or
     the \l{GNU General Public License, version 2}.
     See \l{Qt Licensing} for further details.
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \class QSequentialAnimationGroup
@@ -208,7 +172,7 @@ void QSequentialAnimationGroupPrivate::rewindForwards(const AnimationIndex &newA
             // we need to force activation because setCurrentAnimation will have no effect
             activateCurrentAnimation();
         else
-            setCurrentAnimation(animations.count() - 1, true);
+            setCurrentAnimation(animations.size() - 1, true);
     }
 
     // and now we need to fast rewind from the current position to
@@ -293,12 +257,17 @@ QPauseAnimation *QSequentialAnimationGroup::insertPause(int index, int msecs)
 
 /*!
     \property QSequentialAnimationGroup::currentAnimation
-    Returns the animation in the current time.
+    \brief the animation in the current time.
 */
 QAbstractAnimation *QSequentialAnimationGroup::currentAnimation() const
 {
     Q_D(const QSequentialAnimationGroup);
     return d->currentAnimation;
+}
+
+QBindable<QAbstractAnimation *> QSequentialAnimationGroup::bindableCurrentAnimation() const
+{
+    return &d_func()->currentAnimation;
 }
 
 /*!
@@ -424,8 +393,10 @@ bool QSequentialAnimationGroup::event(QEvent *event)
 void QSequentialAnimationGroupPrivate::setCurrentAnimation(int index, bool intermediate)
 {
     Q_Q(QSequentialAnimationGroup);
+    // currentAnimation.removeBindingUnlessInWrapper()
+    // is not necessary here, since it is read only
 
-    index = qMin(index, animations.count() - 1);
+    index = qMin(index, animations.size() - 1);
 
     if (index == -1) {
         Q_ASSERT(animations.isEmpty());
@@ -443,8 +414,8 @@ void QSequentialAnimationGroupPrivate::setCurrentAnimation(int index, bool inter
     if (currentAnimation)
         currentAnimation->stop();
 
-    currentAnimation = animations.at(index);
     currentAnimationIndex = index;
+    currentAnimation = animations.at(index);
 
     emit q->currentAnimationChanged(currentAnimation);
 
@@ -501,10 +472,12 @@ void QSequentialAnimationGroupPrivate::_q_uncontrolledAnimationFinished()
     the group at index \a index.
     Note: We only support insertion after the current animation
 */
-void QSequentialAnimationGroupPrivate::animationInsertedAt(int index)
+void QSequentialAnimationGroupPrivate::animationInsertedAt(qsizetype index)
 {
-    if (currentAnimation == nullptr)
+    if (currentAnimation == nullptr) {
         setCurrentAnimation(0); // initialize the current animation
+        Q_ASSERT(currentAnimation);
+    }
 
     if (currentAnimationIndex == index
         && currentAnimation->currentTime() == 0 && currentAnimation->currentLoop() == 0) {
@@ -527,7 +500,7 @@ void QSequentialAnimationGroupPrivate::animationInsertedAt(int index)
     the group at index \a index. The animation is no more listed when this
     method is called.
 */
-void QSequentialAnimationGroupPrivate::animationRemoved(int index, QAbstractAnimation *anim)
+void QSequentialAnimationGroupPrivate::animationRemoved(qsizetype index, QAbstractAnimation *anim)
 {
     Q_Q(QSequentialAnimationGroup);
     QAnimationGroupPrivate::animationRemoved(index, anim);
@@ -538,13 +511,13 @@ void QSequentialAnimationGroupPrivate::animationRemoved(int index, QAbstractAnim
     if (actualDuration.size() > index)
         actualDuration.removeAt(index);
 
-    const int currentIndex = animations.indexOf(currentAnimation);
+    const qsizetype currentIndex = animations.indexOf(currentAnimation);
     if (currentIndex == -1) {
         //we're removing the current animation
 
         disconnectUncontrolledAnimation(currentAnimation);
 
-        if (index < animations.count())
+        if (index < animations.size())
             setCurrentAnimation(index); //let's try to take the next one
         else if (index > 0)
             setCurrentAnimation(index - 1);
@@ -556,7 +529,7 @@ void QSequentialAnimationGroupPrivate::animationRemoved(int index, QAbstractAnim
 
     // duration of the previous animations up to the current animation
     currentTime = 0;
-    for (int i = 0; i < currentAnimationIndex; ++i) {
+    for (qsizetype i = 0; i < currentAnimationIndex; ++i) {
         const int current = animationActualTotalDuration(i);
         currentTime += current;
     }

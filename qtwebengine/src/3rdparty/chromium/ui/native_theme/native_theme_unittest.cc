@@ -1,116 +1,70 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/native_theme/native_theme.h"
 
-#include <ostream>
-#include <tuple>
-
-#include "base/strings/stringprintf.h"
-#include "base/test/scoped_feature_list.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "ui/base/ui_base_features.h"
-#include "ui/native_theme/native_theme_color_id.h"
 
 namespace ui {
-
 namespace {
 
-constexpr const char* kColorIdStringName[] = {
-#define OP(enum_name) #enum_name
-    NATIVE_THEME_COLOR_IDS
-#undef OP
-};
-
-struct PrintableSkColor {
-  bool operator==(const PrintableSkColor& other) const {
-    return color == other.color;
-  }
-
-  bool operator!=(const PrintableSkColor& other) const {
-    return !operator==(other);
-  }
-
-  const SkColor color;
-};
-
-std::ostream& operator<<(std::ostream& os, PrintableSkColor printable_color) {
-  SkColor color = printable_color.color;
-  return os << base::StringPrintf("SkColorARGB(0x%02x, 0x%02x, 0x%02x, 0x%02x)",
-                                  SkColorGetA(color), SkColorGetR(color),
-                                  SkColorGetG(color), SkColorGetB(color));
-}
-
-class NativeThemeRedirectedEquivalenceTest
-    : public testing::TestWithParam<
-          std::tuple<NativeTheme::ColorScheme, NativeTheme::ColorId>> {
+class TestNativeTheme : public NativeTheme {
  public:
-  NativeThemeRedirectedEquivalenceTest() = default;
+  TestNativeTheme() : NativeTheme(false) {}
+  TestNativeTheme(const TestNativeTheme&) = delete;
+  TestNativeTheme& operator=(const TestNativeTheme&) = delete;
+  ~TestNativeTheme() override = default;
 
-  static std::string ParamInfoToString(
-      ::testing::TestParamInfo<std::tuple<NativeTheme::ColorScheme,
-                                          NativeTheme::ColorId>> param_info) {
-    auto param_tuple = param_info.param;
-    return ColorSchemeToString(std::get<0>(param_tuple)) + "_With_" +
-           ColorIdToString(std::get<1>(param_tuple));
+  // NativeTheme:
+  gfx::Size GetPartSize(Part part,
+                        State state,
+                        const ExtraParams& extra) const override {
+    return gfx::Size();
   }
-
- private:
-  static std::string ColorSchemeToString(NativeTheme::ColorScheme scheme) {
-    switch (scheme) {
-      case NativeTheme::ColorScheme::kDefault:
-        NOTREACHED()
-            << "Cannot unit test kDefault as it depends on machine state.";
-        return "InvalidColorScheme";
-      case NativeTheme::ColorScheme::kLight:
-        return "kLight";
-      case NativeTheme::ColorScheme::kDark:
-        return "kDark";
-      case NativeTheme::ColorScheme::kPlatformHighContrast:
-        return "kPlatformHighContrast";
-    }
+  void Paint(cc::PaintCanvas* canvas,
+             const ui::ColorProvider* color_provider,
+             Part part,
+             State state,
+             const gfx::Rect& rect,
+             const ExtraParams& extra,
+             ColorScheme color_scheme = ColorScheme::kDefault,
+             const absl::optional<SkColor>& accent_color =
+                 absl::nullopt) const override {}
+  bool SupportsNinePatch(Part part) const override { return false; }
+  gfx::Size GetNinePatchCanvasSize(Part part) const override {
+    return gfx::Size();
   }
-
-  static std::string ColorIdToString(NativeTheme::ColorId id) {
-    if (id >= NativeTheme::ColorId::kColorId_NumColors) {
-      NOTREACHED() << "Invalid color value " << id;
-      return "InvalidColorId";
-    }
-    return kColorIdStringName[id];
+  gfx::Rect GetNinePatchAperture(Part part) const override {
+    return gfx::Rect();
   }
 };
 
 }  // namespace
 
-TEST_P(NativeThemeRedirectedEquivalenceTest, NativeUiGetSystemColor) {
-  // Verifies that colors with and without the Color Provider are the same.
-  NativeTheme* native_theme = NativeTheme::GetInstanceForNativeUi();
-  auto param_tuple = GetParam();
-  auto color_scheme = std::get<0>(param_tuple);
-  auto color_id = std::get<1>(param_tuple);
+TEST(NativeThemeTest, TestOnNativeThemeUpdatedMetricsEmitted) {
+  base::HistogramTester histogram_tester;
+  TestNativeTheme theme;
+  histogram_tester.ExpectTotalCount(
+      "Views.Browser.TimeSpentProcessingOnNativeThemeUpdatedEvent", 0);
+  histogram_tester.ExpectUniqueSample(
+      "Views.Browser.NumColorProvidersInitializedDuringOnNativeThemeUpdated", 0,
+      0);
 
-  PrintableSkColor original{
-      native_theme->GetSystemColor(color_id, color_scheme)};
+  theme.NotifyOnNativeThemeUpdated();
+  histogram_tester.ExpectTotalCount(
+      "Views.Browser.TimeSpentProcessingOnNativeThemeUpdatedEvent", 1);
+  histogram_tester.ExpectUniqueSample(
+      "Views.Browser.NumColorProvidersInitializedDuringOnNativeThemeUpdated", 0,
+      1);
 
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(features::kColorProviderRedirection);
-  PrintableSkColor redirected{
-      native_theme->GetSystemColor(color_id, color_scheme)};
-
-  EXPECT_EQ(original, redirected);
+  theme.NotifyOnNativeThemeUpdated();
+  histogram_tester.ExpectTotalCount(
+      "Views.Browser.TimeSpentProcessingOnNativeThemeUpdatedEvent", 2);
+  histogram_tester.ExpectUniqueSample(
+      "Views.Browser.NumColorProvidersInitializedDuringOnNativeThemeUpdated", 0,
+      2);
 }
-
-#define OP(enum_name) NativeTheme::ColorId::enum_name
-INSTANTIATE_TEST_SUITE_P(
-    ,
-    NativeThemeRedirectedEquivalenceTest,
-    ::testing::Combine(
-        ::testing::Values(NativeTheme::ColorScheme::kLight,
-                          NativeTheme::ColorScheme::kDark,
-                          NativeTheme::ColorScheme::kPlatformHighContrast),
-        ::testing::Values(NATIVE_THEME_COLOR_IDS)),
-    NativeThemeRedirectedEquivalenceTest::ParamInfoToString);
-#undef OP
 
 }  // namespace ui

@@ -1,41 +1,5 @@
-/***************************************************************************
-**
-** Copyright (C) 2013 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqnxinputcontext_imf.h"
 #include "qqnxabstractvirtualkeyboard.h"
@@ -76,8 +40,8 @@
 static QQnxInputContext *sInputContextInstance;
 static QColor sSelectedColor(0,0xb8,0,85);
 
-static const input_session_t *sSpellCheckSession = 0;
-static const input_session_t *sInputSession = 0;
+static const input_session_t *sSpellCheckSession = nullptr;
+static const input_session_t *sInputSession = nullptr;
 static bool isSessionOkay(input_session_t *ic)
 {
     return ic !=0 && sInputSession != 0 && ic->component_id == sInputSession->component_id;
@@ -515,13 +479,13 @@ static spannable_string_t *toSpannableString(const QString &text)
 }
 
 
-static const input_session_t *(*p_ictrl_open_session)(connection_interface_t *) = 0;
-static void (*p_ictrl_close_session)(input_session_t *) = 0;
-static int32_t (*p_ictrl_dispatch_event)(event_t*) = 0;
-static int32_t (*p_imf_client_init)() = 0;
-static void (*p_imf_client_disconnect)() = 0;
-static int32_t (*p_vkb_init_selection_service)() = 0;
-static int32_t (*p_ictrl_get_num_active_sessions)() = 0;
+static const input_session_t *(*p_ictrl_open_session)(connection_interface_t *) = nullptr;
+static void (*p_ictrl_close_session)(input_session_t *) = nullptr;
+static int32_t (*p_ictrl_dispatch_event)(event_t*) = nullptr;
+static int32_t (*p_imf_client_init)() = nullptr;
+static void (*p_imf_client_disconnect)() = nullptr;
+static int32_t (*p_vkb_init_selection_service)() = nullptr;
+static int32_t (*p_ictrl_get_num_active_sessions)() = nullptr;
 static bool s_imfInitFailed = false;
 
 static bool imfAvailable()
@@ -602,7 +566,7 @@ QQnxInputContext::~QQnxInputContext()
     qInputContextDebug();
 
     Q_ASSERT(sInputContextInstance == this);
-    sInputContextInstance = 0;
+    sInputContextInstance = nullptr;
 
     if (!imfAvailable())
         return;
@@ -735,7 +699,7 @@ void QQnxInputContext::closeSession()
 
     if (sInputSession) {
         p_ictrl_close_session((input_session_t *)sInputSession);
-        sInputSession = 0;
+        sInputSession = nullptr;
     }
     // These are likely already in the right state but this depends on the text control
     // having called reset or commit.  So, just in case, set them to proper values.

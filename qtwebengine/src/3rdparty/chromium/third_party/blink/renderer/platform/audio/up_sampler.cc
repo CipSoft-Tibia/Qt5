@@ -33,6 +33,7 @@
 #include <memory>
 
 #include "third_party/blink/renderer/platform/wtf/math_extras.h"
+#include "third_party/fdlibm/ieee754.h"
 
 namespace blink {
 
@@ -58,12 +59,12 @@ std::unique_ptr<AudioFloatArray> MakeKernel(size_t size) {
   for (int i = 0; i < n; ++i) {
     // Compute the sinc() with offset.
     double s = kPiDouble * (i - half_size - subsample_offset);
-    double sinc = !s ? 1.0 : sin(s) / s;
+    double sinc = !s ? 1.0 : fdlibm::sin(s) / s;
 
     // Compute Blackman window, matching the offset of the sinc().
     double x = (i - subsample_offset) / n;
-    double window =
-        a0 - a1 * cos(kTwoPiDouble * x) + a2 * cos(kTwoPiDouble * 2.0 * x);
+    double window = a0 - a1 * fdlibm::cos(kTwoPiDouble * x) +
+                    a2 * fdlibm::cos(kTwoPiDouble * 2.0 * x);
 
     // Window the sinc() function.
     (*kernel)[i] = sinc * window;
@@ -74,7 +75,7 @@ std::unique_ptr<AudioFloatArray> MakeKernel(size_t size) {
 
 }  // namespace
 
-UpSampler::UpSampler(size_t input_block_size)
+UpSampler::UpSampler(unsigned input_block_size)
     : input_block_size_(input_block_size),
       temp_buffer_(input_block_size),
       input_buffer_(input_block_size * 2) {
@@ -95,7 +96,7 @@ UpSampler::UpSampler(size_t input_block_size)
 
 void UpSampler::Process(const float* source_p,
                         float* dest_p,
-                        size_t source_frames_to_process) {
+                        uint32_t source_frames_to_process) {
   const size_t convolution_kernel_size =
       direct_convolver_ ? direct_convolver_->ConvolutionKernelSize()
                         : simple_fft_convolver_->ConvolutionKernelSize();
@@ -115,8 +116,9 @@ void UpSampler::Process(const float* source_p,
 
   // Copy even sample-frames 0,2,4,6... (delayed by the linear phase delay)
   // directly into destP.
-  for (unsigned i = 0; i < source_frames_to_process; ++i)
+  for (unsigned i = 0; i < source_frames_to_process; ++i) {
     dest_p[i * 2] = *((input_p - half_size) + i);
+  }
 
   // Compute odd sample-frames 1,3,5,7...
   float* odd_samples_p = temp_buffer_.Data();
@@ -128,8 +130,9 @@ void UpSampler::Process(const float* source_p,
                                    source_frames_to_process);
   }
 
-  for (unsigned i = 0; i < source_frames_to_process; ++i)
+  for (unsigned i = 0; i < source_frames_to_process; ++i) {
     dest_p[i * 2 + 1] = odd_samples_p[i];
+  }
 
   // Copy 2nd half of input buffer to 1st half.
   memcpy(input_buffer_.Data(), input_p,

@@ -34,9 +34,13 @@ AXMockObject::AXMockObject(AXObjectCacheImpl& ax_object_cache)
 
 AXMockObject::~AXMockObject() = default;
 
-bool AXMockObject::ComputeAccessibilityIsIgnored(
-    IgnoredReasons* ignored_reasons) const {
-  return AccessibilityIsIgnoredByDefault(ignored_reasons);
+Document* AXMockObject::GetDocument() const {
+  return ParentObject() ? ParentObject()->GetDocument() : nullptr;
+}
+
+ax::mojom::blink::Role AXMockObject::NativeRoleIgnoringAria() const {
+  NOTREACHED();
+  return ax::mojom::blink::Role::kUnknown;
 }
 
 }  // namespace blink

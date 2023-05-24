@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSHAREDPOINTER_H
 #define QSHAREDPOINTER_H
@@ -66,7 +30,7 @@ public:
     operator bool() const;
     bool operator!() const;
     T &operator*() const;
-    T *operator ->() const;
+    T *operator->() const;
 
     // constructors
     QSharedPointer();
@@ -76,13 +40,20 @@ public:
     template <typename Deleter> QSharedPointer(std::nullptr_t, Deleter d);
     QSharedPointer(const QSharedPointer<T> &other);
     QSharedPointer(const QWeakPointer<T> &other);
+    QSharedPointer(QSharedPointer<T> &&other) noexcept;
 
     ~QSharedPointer() { }
 
     QSharedPointer<T> &operator=(const QSharedPointer<T> &other);
+    QSharedPointer<T> &operator=(QSharedPointer<T> &&other) noexcept;
     QSharedPointer<T> &operator=(const QWeakPointer<T> &other);
 
-    void swap(QSharedPointer<T> &other);
+    template <class X>
+    QSharedPointer(QSharedPointer<X> && other) noexcept;
+    template <class X>
+    QSharedPointer &operator=(QSharedPointer<X> && other) noexcept;
+
+    void swap(QSharedPointer<T> &other) noexcept;
 
     QWeakPointer<T> toWeakRef() const;
 
@@ -104,6 +75,9 @@ public:
 };
 
 template <class T>
+size_t qHash(const QSharedPointer<T> &key, size_t seed = 0) noexcept;
+
+template <class T>
 class QWeakPointer
 {
 public:
@@ -114,18 +88,20 @@ public:
 
     // constructors:
     QWeakPointer();
-    QWeakPointer(const QWeakPointer<T> &other);
+    QWeakPointer(const QWeakPointer<T> &other) noexcept;
+    QWeakPointer(QWeakPointer<T> &&other) noexcept;
     QWeakPointer(const QSharedPointer<T> &other);
 
     ~QWeakPointer();
 
-    QWeakPointer<T> &operator=(const QWeakPointer<T> &other);
+    QWeakPointer<T> &operator=(const QWeakPointer<T> &other) noexcept;
+    QWeakPointer<T> &operator=(QWeakPointer<T> &&other) noexcept;
     QWeakPointer<T> &operator=(const QSharedPointer<T> &other);
 
     QWeakPointer(const QObject *other);
     QWeakPointer<T> &operator=(const QObject *other);
 
-    void swap(QWeakPointer<T> &other);
+    void swap(QWeakPointer<T> &other) noexcept;
 
     T *data() const;
     void clear();

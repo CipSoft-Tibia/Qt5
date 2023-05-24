@@ -3,36 +3,47 @@
 // found in the LICENSE file.
 
 #include "src/execution/arguments-inl.h"
-#include "src/logging/counters.h"
 #include "src/objects/js-promise.h"
-#include "src/objects/objects-inl.h"
 #include "src/objects/source-text-module.h"
-#include "src/runtime/runtime-utils.h"
 
 namespace v8 {
 namespace internal {
 
+namespace {
+Handle<Script> GetEvalOrigin(Isolate* isolate, Script origin_script) {
+  DisallowGarbageCollection no_gc;
+  while (origin_script.has_eval_from_shared()) {
+    HeapObject maybe_script = origin_script.eval_from_shared().script();
+    CHECK(maybe_script.IsScript());
+    origin_script = Script::cast(maybe_script);
+  }
+  return handle(origin_script, isolate);
+}
+}  // namespace
+
 RUNTIME_FUNCTION(Runtime_DynamicImportCall) {
   HandleScope scope(isolate);
-  DCHECK_EQ(2, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(JSFunction, function, 0);
-  CONVERT_ARG_HANDLE_CHECKED(Object, specifier, 1);
+  DCHECK_LE(2, args.length());
+  DCHECK_GE(3, args.length());
+  Handle<JSFunction> function = args.at<JSFunction>(0);
+  Handle<Object> specifier = args.at(1);
 
-  Handle<Script> script(Script::cast(function->shared().script()), isolate);
-
-  while (script->has_eval_from_shared()) {
-    script = handle(Script::cast(script->eval_from_shared().script()), isolate);
+  MaybeHandle<Object> import_assertions;
+  if (args.length() == 3) {
+    import_assertions = args.at<Object>(2);
   }
 
-  RETURN_RESULT_OR_FAILURE(
-      isolate,
-      isolate->RunHostImportModuleDynamicallyCallback(script, specifier));
+  Handle<Script> referrer_script =
+      GetEvalOrigin(isolate, Script::cast(function->shared().script()));
+  RETURN_RESULT_OR_FAILURE(isolate,
+                           isolate->RunHostImportModuleDynamicallyCallback(
+                               referrer_script, specifier, import_assertions));
 }
 
 RUNTIME_FUNCTION(Runtime_GetModuleNamespace) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_SMI_ARG_CHECKED(module_request, 0);
+  int module_request = args.smi_value_at(0);
   Handle<SourceTextModule> module(isolate->context().module(), isolate);
   return *SourceTextModule::GetModuleNamespace(isolate, module, module_request);
 }
@@ -43,6 +54,18 @@ RUNTIME_FUNCTION(Runtime_GetImportMetaObject) {
   Handle<SourceTextModule> module(isolate->context().module(), isolate);
   RETURN_RESULT_OR_FAILURE(isolate,
                            SourceTextModule::GetImportMeta(isolate, module));
+}
+
+RUNTIME_FUNCTION(Runtime_GetModuleNamespaceExport) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(2, args.length());
+  Handle<JSModuleNamespace> module_namespace = args.at<JSModuleNamespace>(0);
+  Handle<String> name = args.at<String>(1);
+  if (!module_namespace->HasExport(isolate, name)) {
+    THROW_NEW_ERROR_RETURN_FAILURE(
+        isolate, NewReferenceError(MessageTemplate::kNotDefined, name));
+  }
+  RETURN_RESULT_OR_FAILURE(isolate, module_namespace->GetExport(isolate, name));
 }
 
 }  // namespace internal

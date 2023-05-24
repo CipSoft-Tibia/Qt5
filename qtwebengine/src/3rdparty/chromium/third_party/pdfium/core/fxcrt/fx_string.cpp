@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,14 @@
 
 #include "core/fxcrt/fx_string.h"
 
+#include <iterator>
+
 #include "core/fxcrt/cfx_utf8decoder.h"
 #include "core/fxcrt/cfx_utf8encoder.h"
 #include "core/fxcrt/fx_extension.h"
+#include "core/fxcrt/span_util.h"
 #include "third_party/base/compiler_specific.h"
-#include "third_party/base/stl_util.h"
+#include "third_party/base/span.h"
 
 ByteString FX_UTF8Encode(WideStringView wsStr) {
   CFX_UTF8Encoder encoder;
@@ -21,14 +24,8 @@ ByteString FX_UTF8Encode(WideStringView wsStr) {
 }
 
 WideString FX_UTF8Decode(ByteStringView bsStr) {
-  if (bsStr.IsEmpty())
-    return WideString();
-
-  CFX_UTF8Decoder decoder;
-  for (size_t i = 0; i < bsStr.GetLength(); i++)
-    decoder.Input(bsStr[i]);
-
-  return WideString(decoder.GetResult());
+  CFX_UTF8Decoder decoder(bsStr);
+  return decoder.TakeResult();
 }
 
 namespace {
@@ -43,15 +40,13 @@ const double kFractionScalesDouble[] = {
     0.0000001, 0.00000001, 0.000000001, 0.0000000001, 0.00000000001};
 
 template <class T>
-T StringTo(ByteStringView strc,
-           const T fractional_scales[],
-           size_t fractional_scales_size) {
+T StringTo(ByteStringView strc, pdfium::span<const T> fractional_scales) {
   if (strc.IsEmpty())
     return 0;
 
-  int cc = 0;
   bool bNegative = false;
-  int len = strc.GetLength();
+  size_t cc = 0;
+  size_t len = strc.GetLength();
   if (strc[0] == '+') {
     cc++;
   } else if (strc[0] == '-') {
@@ -71,13 +66,13 @@ T StringTo(ByteStringView strc,
     cc++;
   }
   size_t scale = 0;
-  if (cc < len) {
+  if (cc < len && strc[cc] == '.') {
     cc++;
     while (cc < len) {
       value +=
           fractional_scales[scale] * FXSYS_DecimalCharToInt(strc.CharAt(cc));
       scale++;
-      if (scale == fractional_scales_size)
+      if (scale == fractional_scales.size())
         break;
       cc++;
     }
@@ -86,7 +81,7 @@ T StringTo(ByteStringView strc,
 }
 
 template <class T>
-size_t ToString(T value, int (*round_func)(T), char* buf) {
+size_t ToString(T value, int (*round_func)(T), pdfium::span<char> buf) {
   buf[0] = '0';
   buf[1] = '\0';
   if (value == 0) {
@@ -117,7 +112,7 @@ size_t ToString(T value, int (*round_func)(T), char* buf) {
   int i = scaled / scale;
   FXSYS_itoa(i, buf2, 10);
   size_t len = strlen(buf2);
-  memcpy(buf + buf_size, buf2, len);
+  fxcrt::spancpy(buf.subspan(buf_size), pdfium::make_span(buf2).first(len));
   buf_size += len;
   int fraction = scaled % scale;
   if (fraction == 0) {
@@ -136,27 +131,34 @@ size_t ToString(T value, int (*round_func)(T), char* buf) {
 }  // namespace
 
 float StringToFloat(ByteStringView strc) {
-  return StringTo<float>(strc, kFractionScalesFloat,
-                         pdfium::size(kFractionScalesFloat));
+  return StringTo<float>(strc, kFractionScalesFloat);
 }
 
 float StringToFloat(WideStringView wsStr) {
-  return StringToFloat(FX_UTF8Encode(wsStr).c_str());
+  return StringToFloat(FX_UTF8Encode(wsStr).AsStringView());
 }
 
-size_t FloatToString(float f, char* buf) {
+size_t FloatToString(float f, pdfium::span<char> buf) {
   return ToString<float>(f, FXSYS_roundf, buf);
 }
 
 double StringToDouble(ByteStringView strc) {
-  return StringTo<double>(strc, kFractionScalesDouble,
-                          pdfium::size(kFractionScalesDouble));
+  return StringTo<double>(strc, kFractionScalesDouble);
 }
 
 double StringToDouble(WideStringView wsStr) {
-  return StringToDouble(FX_UTF8Encode(wsStr).c_str());
+  return StringToDouble(FX_UTF8Encode(wsStr).AsStringView());
 }
 
-size_t DoubleToString(double d, char* buf) {
+size_t DoubleToString(double d, pdfium::span<char> buf) {
   return ToString<double>(d, FXSYS_round, buf);
 }
+
+namespace fxcrt {
+
+template std::vector<ByteString> Split<ByteString>(const ByteString& that,
+                                                   ByteString::CharType ch);
+template std::vector<WideString> Split<WideString>(const WideString& that,
+                                                   WideString::CharType ch);
+
+}  // namespace fxcrt

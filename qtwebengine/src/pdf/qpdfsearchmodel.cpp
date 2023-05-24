@@ -1,44 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtPDF module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qpdfdestination.h"
 #include "qpdfdocument_p.h"
+#include "qpdflink.h"
+#include "qpdflink_p.h"
 #include "qpdfsearchmodel.h"
 #include "qpdfsearchmodel_p.h"
-#include "qpdfsearchresult_p.h"
 
 #include "third_party/pdfium/public/fpdf_doc.h"
 #include "third_party/pdfium/public/fpdf_text.h"
@@ -53,13 +20,45 @@ Q_LOGGING_CATEGORY(qLcS, "qt.pdf.search")
 
 static const int UpdateTimerInterval = 100;
 static const int ContextChars = 64;
-static const double CharacterHitTolerance = 6.0;
 
+/*!
+    \class QPdfSearchModel
+    \since 5.15
+    \inmodule QtPdf
+    \inherits QAbstractListModel
+
+    \brief The QPdfSearchModel class searches for a string in a PDF document
+    and holds the results.
+
+    This is used in the \l {Model/View Programming} paradigm to display
+    a list of search results, to highlight them on the rendered PDF pages,
+    and to iterate through them using the "search forward" / "search backward"
+    buttons and shortcuts that would be found in a typical document-viewing UI:
+
+    \image search-results.png
+*/
+
+/*!
+    \enum QPdfSearchModel::Role
+
+    \value Page The page number where the search result is found (int).
+    \value IndexOnPage The index of the search result on the page (int).
+    \value Location The position of the search result on the page (QPointF).
+    \value ContextBefore The adjacent text on the page, before the search string (QString).
+    \value ContextAfter The adjacent text on the page, after the search string (QString).
+    \omitvalue NRoles
+
+    \sa QPdfLink
+*/
+
+/*!
+    Constructs a new search model with parent object \a parent.
+*/
 QPdfSearchModel::QPdfSearchModel(QObject *parent)
     : QAbstractListModel(*(new QPdfSearchModelPrivate()), parent)
 {
     QMetaEnum rolesMetaEnum = metaObject()->enumerator(metaObject()->indexOfEnumerator("Role"));
-    for (int r = Qt::UserRole; r < int(Role::_Count); ++r) {
+    for (int r = Qt::UserRole; r < int(Role::NRoles); ++r) {
         QByteArray roleName = QByteArray(rolesMetaEnum.valueToKey(r));
         if (roleName.isEmpty())
             continue;
@@ -68,20 +67,34 @@ QPdfSearchModel::QPdfSearchModel(QObject *parent)
     }
 }
 
+/*!
+    Destroys the model.
+*/
 QPdfSearchModel::~QPdfSearchModel() {}
 
+/*!
+    \reimp
+*/
 QHash<int, QByteArray> QPdfSearchModel::roleNames() const
 {
     return m_roleNames;
 }
 
+/*!
+    \reimp
+
+    The number of rows in the model is equal to the number of search results found.
+*/
 int QPdfSearchModel::rowCount(const QModelIndex &parent) const
 {
     Q_D(const QPdfSearchModel);
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
     return d->rowCountSoFar;
 }
 
+/*!
+    \reimp
+*/
 QVariant QPdfSearchModel::data(const QModelIndex &index, int role) const
 {
     Q_D(const QPdfSearchModel);
@@ -99,7 +112,7 @@ QVariant QPdfSearchModel::data(const QModelIndex &index, int role) const
         return d->searchResults[pi.page][pi.index].contextBefore();
     case Role::ContextAfter:
         return d->searchResults[pi.page][pi.index].contextAfter();
-    case Role::_Count:
+    case Role::NRoles:
         break;
     }
     if (role == Qt::DisplayRole) {
@@ -117,13 +130,17 @@ void QPdfSearchModel::updatePage(int page)
     d->doSearch(page);
 }
 
+/*!
+    \property QPdfSearchModel::searchString
+    \brief the string to search for
+*/
 QString QPdfSearchModel::searchString() const
 {
     Q_D(const QPdfSearchModel);
     return d->searchString;
 }
 
-void QPdfSearchModel::setSearchString(QString searchString)
+void QPdfSearchModel::setSearchString(const QString &searchString)
 {
     Q_D(QPdfSearchModel);
     if (d->searchString == searchString)
@@ -136,24 +153,35 @@ void QPdfSearchModel::setSearchString(QString searchString)
     endResetModel();
 }
 
-QVector<QPdfSearchResult> QPdfSearchModel::resultsOnPage(int page) const
+/*!
+    Returns the list of all results found on the given \a page.
+*/
+QList<QPdfLink> QPdfSearchModel::resultsOnPage(int page) const
 {
     Q_D(const QPdfSearchModel);
     const_cast<QPdfSearchModelPrivate *>(d)->doSearch(page);
-    if (d->searchResults.count() <= page)
+    if (d->searchResults.size() <= page)
         return {};
     return d->searchResults[page];
 }
 
-QPdfSearchResult QPdfSearchModel::resultAtIndex(int index) const
+/*!
+    Returns a result found by \a index in the \l document, regardless of the
+    page on which it was found.  \a index must be less than \l rowCount.
+*/
+QPdfLink QPdfSearchModel::resultAtIndex(int index) const
 {
     Q_D(const QPdfSearchModel);
     const auto pi = const_cast<QPdfSearchModelPrivate*>(d)->pageAndIndexForResult(index);
-    if (pi.page < 0)
-        return QPdfSearchResult();
+    if (pi.page < 0 || index < 0)
+        return {};
     return d->searchResults[pi.page][pi.index];
 }
 
+/*!
+    \property QPdfSearchModel::document
+    \brief the document to search
+*/
 QPdfDocument *QPdfSearchModel::document() const
 {
     Q_D(const QPdfSearchModel);
@@ -165,6 +193,10 @@ void QPdfSearchModel::setDocument(QPdfDocument *document)
     Q_D(QPdfSearchModel);
     if (d->document == document)
         return;
+
+    disconnect(d->documentConnection);
+    d->documentConnection = connect(document, &QPdfDocument::pageCountChanged, this,
+                                    [this]() { d_func()->clearResults(); });
 
     d->document = document;
     d->clearResults();
@@ -178,7 +210,7 @@ void QPdfSearchModel::timerEvent(QTimerEvent *event)
         return;
     if (!d->document || d->nextPageToUpdate >= d->document->pageCount()) {
         if (d->document)
-            qCDebug(qLcS, "done updating search results on %d pages", d->searchResults.count());
+            qCDebug(qLcS) << "done updating search results on" << d->searchResults.size() << "pages";
         killTimer(d->updateTimerId);
         d->updateTimerId = -1;
     }
@@ -198,9 +230,6 @@ void QPdfSearchModelPrivate::clearResults()
     if (document) {
         searchResults.resize(document->pageCount());
         pagesSearched.resize(document->pageCount());
-    } else {
-        searchResults.resize(0);
-        pagesSearched.resize(0);
     }
     nextPageToUpdate = 0;
     updateTimerId = q->startTimer(UpdateTimerInterval);
@@ -208,7 +237,7 @@ void QPdfSearchModelPrivate::clearResults()
 
 bool QPdfSearchModelPrivate::doSearch(int page)
 {
-    if (page < 0 || page >= pagesSearched.count() || searchString.isEmpty())
+    if (page < 0 || page >= pagesSearched.size() || searchString.isEmpty())
         return false;
     if (pagesSearched[page])
         return true;
@@ -230,12 +259,13 @@ bool QPdfSearchModelPrivate::doSearch(int page)
         return false;
     }
     FPDF_SCHHANDLE sh = FPDFText_FindStart(textPage, searchString.utf16(), 0, 0);
-    QVector<QPdfSearchResult> newSearchResults;
+    QList<QPdfLink> newSearchResults;
+    constexpr double CharacterHitTolerance = 6.0;
     while (FPDFText_FindNext(sh)) {
         int idx = FPDFText_GetSchResultIndex(sh);
         int count = FPDFText_GetSchCount(sh);
         int rectCount = FPDFText_CountRects(textPage, idx, count);
-        QVector<QRectF> rects;
+        QList<QRectF> rects;
         int startIndex = -1;
         int endIndex = -1;
         for (int r = 0; r < rectCount; ++r) {
@@ -258,10 +288,11 @@ bool QPdfSearchModelPrivate::doSearch(int page)
             endIndex += ContextChars;
             int count = endIndex - startIndex + 1;
             if (count > 0) {
-                QVector<ushort> buf(count + 1);
+                QList<ushort> buf(count + 1);
                 int len = FPDFText_GetText(textPage, startIndex, count, buf.data());
                 Q_ASSERT(len - 1 <= count); // len is number of characters written, including the terminator
-                QString context = QString::fromUtf16(buf.constData(), len - 1);
+                QString context = QString::fromUtf16(
+                        reinterpret_cast<const char16_t *>(buf.constData()), len - 1);
                 context = context.replace(QLatin1Char('\n'), QStringLiteral("\u23CE"));
                 context = context.remove(QLatin1Char('\r'));
                 // try to find the search string near the middle of the context if possible
@@ -271,25 +302,25 @@ bool QPdfSearchModelPrivate::doSearch(int page)
                 if (si < 0)
                     qWarning() << "search string" << searchString << "not found in context" << context;
                 contextBefore = context.mid(0, si);
-                contextAfter = context.mid(si + searchString.length());
+                contextAfter = context.mid(si + searchString.size());
             }
         }
         if (!rects.isEmpty())
-            newSearchResults << QPdfSearchResult(page, rects, contextBefore, contextAfter);
+            newSearchResults << QPdfLink(page, rects, contextBefore, contextAfter);
     }
     FPDFText_FindClose(sh);
     FPDFText_ClosePage(textPage);
     FPDF_ClosePage(pdfPage);
     qCDebug(qLcS) << searchString << "took" << timer.elapsed() << "ms to find"
-                  << newSearchResults.count() << "results on page" << page;
+                  << newSearchResults.size() << "results on page" << page;
 
     pagesSearched[page] = true;
     searchResults[page] = newSearchResults;
-    if (newSearchResults.count() > 0) {
+    if (newSearchResults.size() > 0) {
         int rowsBefore = rowsBeforePage(page);
-        qCDebug(qLcS) << "from row" << rowsBefore << "rowCount" << rowCountSoFar << "increasing by" << newSearchResults.count();
-        rowCountSoFar += newSearchResults.count();
-        q->beginInsertRows(QModelIndex(), rowsBefore, rowsBefore + newSearchResults.count() - 1);
+        qCDebug(qLcS) << "from row" << rowsBefore << "rowCount" << rowCountSoFar << "increasing by" << newSearchResults.size();
+        rowCountSoFar += newSearchResults.size();
+        q->beginInsertRows(QModelIndex(), rowsBefore, rowsBefore + newSearchResults.size() - 1);
         q->endInsertRows();
     }
     return true;
@@ -297,13 +328,15 @@ bool QPdfSearchModelPrivate::doSearch(int page)
 
 QPdfSearchModelPrivate::PageAndIndex QPdfSearchModelPrivate::pageAndIndexForResult(int resultIndex)
 {
+    if (pagesSearched.isEmpty())
+        return {-1, -1};
     const int pageCount = document->pageCount();
     int totalSoFar = 0;
     int previousTotalSoFar = 0;
     for (int page = 0; page < pageCount; ++page) {
         if (!pagesSearched[page])
             doSearch(page);
-        totalSoFar += searchResults[page].count();
+        totalSoFar += searchResults[page].size();
         if (totalSoFar > resultIndex)
             return {page, resultIndex - previousTotalSoFar};
         previousTotalSoFar = totalSoFar;
@@ -315,7 +348,7 @@ int QPdfSearchModelPrivate::rowsBeforePage(int page)
 {
     int ret = 0;
     for (int i = 0; i < page; ++i)
-        ret += searchResults[i].count();
+        ret += searchResults[i].size();
     return ret;
 }
 

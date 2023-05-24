@@ -1,4 +1,4 @@
-// Copyright (c) 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,8 +15,9 @@ EGLAPI void EGLAPIENTRY
 CommandBufferGLESSetNextCreateWindowSurfaceCreatesPBuffer(EGLDisplay dpy,
                                                           EGLint width,
                                                           EGLint height) {
-  egl::ThreadState* ts = egl::ThreadState::Get();
-  egl::Display* display = ts->GetDisplay(dpy);
+  gles2_conform_support::egl::ThreadState* ts =
+      gles2_conform_support::egl::ThreadState::Get();
+  gles2_conform_support::egl::Display* display = ts->GetDisplay(dpy);
   if (!display)
     return;
   display->SetNextCreateWindowSurfaceCreatesPBuffer(width, height);

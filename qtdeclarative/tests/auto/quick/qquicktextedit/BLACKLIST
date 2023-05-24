@@ -5,10 +5,27 @@ opensuse-leap
 [mouseSelectionMode]
 opensuse-leap
 
-[hAlignVisual]
-sles
-
 # QTBUG-82052
 [linkHover]
 macos ci
 
+[hAlignVisual]
+sles
+
+# QTBUG-103098
+[hAlignVisual]
+android
+[linkHover]
+android
+[cursorVisible]
+android
+[transparentSelectionColor]
+android
+
+# QTBUG-100991
+[selectionOnFocusOut]
+android
+
+# QTBUG-108346
+[pasteHtmlIntoMarkdown]
+ubuntu-20.04

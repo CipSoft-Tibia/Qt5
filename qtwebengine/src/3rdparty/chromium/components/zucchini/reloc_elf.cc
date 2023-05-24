@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,8 +31,8 @@ RelocReaderElf::RelocReaderElf(
 
   // Find the relocation section at or right before |lo|.
   cur_section_dimensions_ = std::upper_bound(
-      reloc_section_dimensions_.begin(), reloc_section_dimensions_.end(), lo);
-  if (cur_section_dimensions_ != reloc_section_dimensions_.begin())
+      reloc_section_dimensions_->begin(), reloc_section_dimensions_->end(), lo);
+  if (cur_section_dimensions_ != reloc_section_dimensions_->begin())
     --cur_section_dimensions_;
 
   // |lo| and |hi_| do not cut across a reloc reference (e.g.,
@@ -51,9 +51,9 @@ RelocReaderElf::RelocReaderElf(
     cursor_ +=
         AlignCeil<offset_t>(lo - cursor_, cur_section_dimensions_->entry_size);
 
-  auto end_section = std::upper_bound(reloc_section_dimensions_.begin(),
-                                      reloc_section_dimensions_.end(), hi_);
-  if (end_section != reloc_section_dimensions_.begin()) {
+  auto end_section = std::upper_bound(reloc_section_dimensions_->begin(),
+                                      reloc_section_dimensions_->end(), hi_);
+  if (end_section != reloc_section_dimensions_->begin()) {
     --end_section;
     if (hi_ - end_section->region.offset < end_section->region.size) {
       offset_t end_region_offset =
@@ -89,7 +89,7 @@ rva_t RelocReaderElf::GetRelocationTarget(elf::Elf64_Rel rel) const {
   return kInvalidRva;
 }
 
-base::Optional<Reference> RelocReaderElf::GetNext() {
+absl::optional<Reference> RelocReaderElf::GetNext() {
   offset_t cur_entry_size = cur_section_dimensions_->entry_size;
   offset_t cur_section_dimensions_end =
       base::checked_cast<offset_t>(cur_section_dimensions_->region.hi());
@@ -97,13 +97,13 @@ base::Optional<Reference> RelocReaderElf::GetNext() {
   for (; cursor_ + cur_entry_size <= hi_; cursor_ += cur_entry_size) {
     while (cursor_ >= cur_section_dimensions_end) {
       ++cur_section_dimensions_;
-      if (cur_section_dimensions_ == reloc_section_dimensions_.end())
-        return base::nullopt;
+      if (cur_section_dimensions_ == reloc_section_dimensions_->end())
+        return absl::nullopt;
       cur_entry_size = cur_section_dimensions_->entry_size;
       cursor_ =
           base::checked_cast<offset_t>(cur_section_dimensions_->region.offset);
       if (cursor_ + cur_entry_size > hi_)
-        return base::nullopt;
+        return absl::nullopt;
       cur_section_dimensions_end =
           base::checked_cast<offset_t>(cur_section_dimensions_->region.hi());
     }
@@ -132,7 +132,7 @@ base::Optional<Reference> RelocReaderElf::GetNext() {
     cursor_ += cur_entry_size;
     return Reference{location, target};
   }
-  return base::nullopt;
+  return absl::nullopt;
 }
 
 /******** RelocWriterElf ********/

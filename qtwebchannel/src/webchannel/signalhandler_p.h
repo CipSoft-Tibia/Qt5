@@ -1,44 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebChannel module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#ifndef SIGNALHANDLER_H
-#define SIGNALHANDLER_H
+#ifndef QTWEBCHANNEL_SIGNALHANDLER_P_H
+#define QTWEBCHANNEL_SIGNALHANDLER_P_H
 
 //
 //  W A R N I N G
@@ -53,7 +17,7 @@
 
 #include <QObject>
 #include <QHash>
-#include <QVector>
+#include <QList>
 #include <QMetaMethod>
 #include <QDebug>
 #include <QThread>
@@ -123,7 +87,7 @@ private:
 
     // maps meta object -> signalIndex -> list of arguments
     // NOTE: This data is "leaked" on disconnect until deletion of the handler, is this a problem?
-    typedef QVector<int> ArgumentTypeList;
+    typedef QList<int> ArgumentTypeList;
     typedef QHash<int, ArgumentTypeList> SignalArgumentHash;
     QHash<const QMetaObject *, SignalArgumentHash > m_signalArgumentTypes;
 
@@ -204,7 +168,7 @@ void SignalHandler<Receiver>::setupSignalArgumentTypes(const QMetaObject *metaOb
         return;
     }
     // find the type ids of the signal parameters, see also QSignalSpy::initArgs
-    QVector<int> args;
+    QList<int> args;
     args.reserve(signal.parameterCount());
     for (int i = 0; i < signal.parameterCount(); ++i) {
         int tp = signal.parameterType(i);
@@ -222,23 +186,23 @@ template<class Receiver>
 void SignalHandler<Receiver>::dispatch(const QObject *object, const int signalIdx, void **argumentData)
 {
     Q_ASSERT(m_signalArgumentTypes.contains(object->metaObject()));
-    const QHash<int, QVector<int> > &objectSignalArgumentTypes = m_signalArgumentTypes.value(object->metaObject());
-    QHash<int, QVector<int> >::const_iterator signalIt = objectSignalArgumentTypes.constFind(signalIdx);
+    const QHash<int, QList<int>> &objectSignalArgumentTypes = m_signalArgumentTypes.value(object->metaObject());
+    QHash<int, QList<int>>::const_iterator signalIt = objectSignalArgumentTypes.constFind(signalIdx);
     if (signalIt == objectSignalArgumentTypes.constEnd()) {
         // not connected to this signal, skip
         return;
     }
-    const QVector<int> &argumentTypes = *signalIt;
+    const QList<int> &argumentTypes = *signalIt;
     QVariantList arguments;
-    arguments.reserve(argumentTypes.count());
+    arguments.reserve(argumentTypes.size());
     // TODO: basic overload resolution based on number of arguments?
-    for (int i = 0; i < argumentTypes.count(); ++i) {
+    for (int i = 0; i < argumentTypes.size(); ++i) {
         const QMetaType::Type type = static_cast<QMetaType::Type>(argumentTypes.at(i));
         QVariant arg;
         if (type == QMetaType::QVariant) {
             arg = *reinterpret_cast<QVariant *>(argumentData[i + 1]);
         } else {
-            arg = QVariant(type, argumentData[i + 1]);
+            arg = QVariant(QMetaType(type), argumentData[i + 1]);
         }
         arguments.append(arg);
     }
@@ -299,14 +263,14 @@ void SignalHandler<Receiver>::clear()
 template<class Receiver>
 void SignalHandler<Receiver>::remove(const QObject *object)
 {
-    Q_ASSERT(m_connectionsCounter.contains(object));
-    const SignalConnectionHash &connections = m_connectionsCounter.value(object);
-    foreach (const ConnectionPair &connection, connections) {
+    auto it = m_connectionsCounter.find(object);
+    Q_ASSERT(it != m_connectionsCounter.cend());
+    const SignalConnectionHash connections = std::move(it.value());
+    m_connectionsCounter.erase(it);
+    for (const ConnectionPair &connection : connections)
         QObject::disconnect(connection.first);
-    }
-    m_connectionsCounter.remove(object);
 }
 
 QT_END_NAMESPACE
 
-#endif // SIGNALHANDLER_H
+#endif // QTWEBCHANNEL_SIGNALHANDLER_P_H

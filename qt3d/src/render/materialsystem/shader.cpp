@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "shader_p.h"
 #include "renderlogging_p.h"
@@ -48,7 +12,6 @@
 #include <Qt3DRender/private/attachmentpack_p.h>
 #include <Qt3DRender/private/qshaderprogram_p.h>
 #include <Qt3DRender/private/stringtoint_p.h>
-#include <Qt3DCore/qpropertyupdatedchange.h>
 #include <Qt3DRender/private/managers_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -81,6 +44,8 @@ const int Shader::gammaNameId = StringToInt::lookupId(QLatin1String("gamma"));
 const int Shader::timeNameId = StringToInt::lookupId(QLatin1String("time"));
 const int Shader::eyePositionNameId = StringToInt::lookupId(QLatin1String("eyePosition"));
 const int Shader::skinningPaletteNameId = StringToInt::lookupId(QLatin1String("skinningPalette[0]"));
+const int Shader::yUpInFBOId = StringToInt::lookupId(QLatin1String("yUpInFBO"));
+const int Shader::yUpInNDCId = StringToInt::lookupId(QLatin1String("yUpInNDC"));
 
 Shader::Shader()
     : BackendNode(ReadWrite)
@@ -121,7 +86,7 @@ void Shader::syncFromFrontEnd(const QNode *frontEnd, bool firstTime)
     for (int i = QShaderProgram::Vertex; i <= QShaderProgram::Compute; ++i) {
         const QShaderProgram::ShaderType shaderType = static_cast<QShaderProgram::ShaderType>(i);
         const QByteArray code = node->shaderCode(shaderType);
-        if (code != m_shaderCode.value(shaderType))
+        if (code != m_shaderCode[shaderType])
             setShaderCode(shaderType, code);
     }
     setFormat(node->format());
@@ -149,7 +114,7 @@ void Shader::setFormat(QShaderProgram::Format format)
     markDirty(AbstractRenderer::ShadersDirty);
 }
 
-QVector<QByteArray> Shader::shaderCode() const
+const std::vector<QByteArray> &Shader::shaderCode() const
 {
     return m_shaderCode;
 }
@@ -192,11 +157,11 @@ ShaderFunctor::ShaderFunctor(AbstractRenderer *renderer, ShaderManager *manager)
 {
 }
 
-QBackendNode *ShaderFunctor::create(const QNodeCreatedChangeBasePtr &change) const
+QBackendNode *ShaderFunctor::create(QNodeId id) const
 {
-    Shader *backend = m_shaderManager->getOrCreateResource(change->subjectId());
+    Shader *backend = m_shaderManager->getOrCreateResource(id);
     // Remove from the list of ids to destroy in case we were added to it
-    m_shaderManager->removeShaderIdFromIdsToCleanup(change->subjectId());
+    m_shaderManager->removeShaderIdFromIdsToCleanup(id);
     backend->setRenderer(m_renderer);
     return backend;
 }
@@ -212,10 +177,11 @@ QBackendNode *ShaderFunctor::get(QNodeId id) const
 
 void ShaderFunctor::destroy(QNodeId id) const
 {
-    m_shaderManager->addShaderIdToCleanup(id);
     // We only add ourselves to the dirty list
     // The actual removal needs to be performed after we have
     // destroyed the associated APIShader in the RenderThread
+    if (m_shaderManager->lookupResource(id))
+        m_shaderManager->addShaderIdToCleanup(id);
 }
 
 } // namespace Render

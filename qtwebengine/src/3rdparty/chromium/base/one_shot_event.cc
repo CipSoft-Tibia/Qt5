@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,10 @@
 #include <stddef.h>
 #include <utility>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
-#include "base/single_thread_task_runner.h"
-#include "base/task_runner.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/task/task_runner.h"
 #include "base/time/time.h"
 
 namespace base {
@@ -55,7 +55,8 @@ void OneShotEvent::Post(const Location& from_here,
 void OneShotEvent::PostDelayed(const Location& from_here,
                                OnceClosure task,
                                const TimeDelta& delay) const {
-  PostImpl(from_here, std::move(task), ThreadTaskRunnerHandle::Get(), delay);
+  PostImpl(from_here, std::move(task),
+           SingleThreadTaskRunner::GetCurrentDefault(), delay);
 }
 
 void OneShotEvent::Signal() {

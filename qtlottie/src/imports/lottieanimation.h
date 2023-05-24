@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the lottie-qt module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef BMANIMATION_H
 #define BMANIMATION_H
@@ -59,6 +33,9 @@ class LottieAnimation : public QQuickPaintedItem
     Q_PROPERTY(bool autoPlay MEMBER m_autoPlay NOTIFY autoPlayChanged)
     Q_PROPERTY(int loops MEMBER m_loops NOTIFY loopsChanged)
     Q_PROPERTY(Direction direction READ direction WRITE setDirection NOTIFY directionChanged)
+
+    QML_ELEMENT
+    QML_ADDED_IN_VERSION(1, 0)
 
 public:
     enum Status{Null, Loading, Ready, Error};
@@ -96,6 +73,8 @@ public:
     int startFrame() const;
     int endFrame() const;
     int currentFrame() const;
+
+    QVersionNumber version() const;
 
     Q_INVOKABLE void start();
 
@@ -145,6 +124,7 @@ protected:
     QMetaObject::Connection m_waitForFrameConn;
 
     Status m_status = Null;
+    QVersionNumber m_version = QVersionNumber();
     int m_startFrame = 0;
     int m_endFrame = 0;
     int m_currentFrame = 0;
@@ -161,7 +141,7 @@ protected:
     void reset();
 
 private:
-    Quality m_quality = MediumQuality;
+    Quality m_quality = HighQuality;
     bool m_autoPlay = true;
     int m_loops = 1;
     int m_currentLoop = 0;

@@ -3,16 +3,30 @@
 # found in the LICENSE file.
 
 import("//build/config/gclient_args.gni")
+import("../../gni/v8.gni")
 
-if (checkout_google_benchmark) {
+if (v8_enable_google_benchmark) {
   config("benchmark_config") {
     include_dirs = [ "src/include" ]
+    defines = [
+      # We always build google_benchmark statically.
+      "BENCHMARK_STATIC_DEFINE=1",
+    ]
+  }
+
+  # TODO(crbug.com/1344570): Remove once third_party/google_benchmark no longer
+  # uses std::wstring_convert.
+  config("benchmark_suppress_warnings") {
+    cflags = [ "-Wno-deprecated-declarations" ]
   }
 
   source_set("google_benchmark") {
     testonly = true
 
-    public = [ "src/include/benchmark/benchmark.h" ]
+    public = [
+      "src/include/benchmark/benchmark.h",
+      "src/include/benchmark/export.h",
+    ]
 
     sources = [
       "src/src/arraysize.h",
@@ -24,6 +38,7 @@ if (checkout_google_benchmark) {
       "src/src/benchmark_register.h",
       "src/src/benchmark_runner.cc",
       "src/src/benchmark_runner.h",
+      "src/src/check.cc",
       "src/src/check.h",
       "src/src/colorprint.cc",
       "src/src/colorprint.h",
@@ -35,11 +50,13 @@ if (checkout_google_benchmark) {
       "src/src/counter.cc",
       "src/src/counter.h",
       "src/src/csv_reporter.cc",
-      "src/src/cycle_clock.h",
+      "src/src/cycleclock.h",
       "src/src/internal_macros.h",
       "src/src/json_reporter.cc",
       "src/src/log.h",
       "src/src/mutex.h",
+      "src/src/perf_counters.cc",
+      "src/src/perf_counters.h",
       "src/src/re.h",
       "src/src/reporter.cc",
       "src/src/sleep.cc",
@@ -57,6 +74,8 @@ if (checkout_google_benchmark) {
 
     all_dependent_configs = [ ":benchmark_config" ]
 
+    configs += [ ":benchmark_suppress_warnings" ]
+
     defines = [
       # Tell google_benchmark to always use standard regular expressions.
       "HAVE_GNU_POSIX_REGEX=0",
@@ -68,6 +87,6 @@ if (checkout_google_benchmark) {
   source_set("benchmark_main") {
     testonly = true
     sources = [ "src/src/benchmark_main.cc" ]
-    deps = [ ":google_benchmark" ]
+    public_deps = [ ":google_benchmark" ]
   }
 }

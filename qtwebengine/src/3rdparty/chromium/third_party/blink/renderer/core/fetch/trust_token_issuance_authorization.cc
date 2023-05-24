@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,8 @@ namespace blink {
 
 bool IsTrustTokenIssuanceAvailableInExecutionContext(
     const ExecutionContext& context) {
-  return context.FeatureEnabled(OriginTrialFeature::kTrustTokens) ||
-         RuntimeEnabledFeatures::TrustTokensAlwaysAllowIssuanceEnabled();
+  return context.FeatureEnabled(OriginTrialFeature::kPrivateStateTokens) ||
+         RuntimeEnabledFeatures::PrivateStateTokensAlwaysAllowIssuanceEnabled();
 }
 
 }  // namespace blink

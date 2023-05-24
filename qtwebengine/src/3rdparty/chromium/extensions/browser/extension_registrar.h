@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,12 @@
 
 #include <memory>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/raw_ptr_exclusion.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/scoped_observation.h"
+#include "extensions/browser/process_manager.h"
+#include "extensions/browser/process_manager_observer.h"
 #include "extensions/browser/unloaded_extension_reason.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_id.h"
@@ -36,7 +39,7 @@ class RendererStartupHelper;
 // extensions for a BrowserContext. It uses the ExtensionRegistry to track
 // extension states. Other classes may query the ExtensionRegistry directly,
 // but eventually only ExtensionRegistrar will be able to make changes to it.
-class ExtensionRegistrar {
+class ExtensionRegistrar : public ProcessManagerObserver {
  public:
   // How to surface an extension load error, e.g. showing an error dialog. The
   // actual behavior is up to the embedder.
@@ -49,6 +52,10 @@ class ExtensionRegistrar {
   class Delegate {
    public:
     Delegate() = default;
+
+    Delegate(const Delegate&) = delete;
+    Delegate& operator=(const Delegate&) = delete;
+
     virtual ~Delegate() = default;
 
     // Called before |extension| is added. |old_extension| is the extension
@@ -79,28 +86,31 @@ class ExtensionRegistrar {
 
     // Returns true if the extension should be blocked.
     virtual bool ShouldBlockExtension(const Extension* extension) = 0;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(Delegate);
   };
 
   // The provided Delegate should outlive this object.
   ExtensionRegistrar(content::BrowserContext* browser_context,
                      Delegate* delegate);
-  virtual ~ExtensionRegistrar();
 
+  ExtensionRegistrar(const ExtensionRegistrar&) = delete;
+  ExtensionRegistrar& operator=(const ExtensionRegistrar&) = delete;
+
+  ~ExtensionRegistrar() override;
+
+#if !defined(TOOLKIT_QT)
   // Adds the extension to the ExtensionRegistry. The extension will be added to
   // the enabled, disabled, blocklisted or blocked set. If the extension is
   // added as enabled, it will be activated.
   void AddExtension(scoped_refptr<const Extension> extension);
+#endif
 
   // Removes |extension| from the extension system by deactivating it if it is
   // enabled and removing references to it from the ExtensionRegistry's
-  // enabled or disabled sets.
-  // Note: Extensions will not be removed from other sets (terminated,
-  // blocklisted or blocked). ExtensionService handles that, since it also adds
-  // it to those sets. TODO(michaelpg): Make ExtensionRegistrar the sole mutator
-  // of ExtensionRegsitry to simplify this usage.
+  // enabled, disabled or terminated sets.
+  // Note: Extensions will not be removed from other sets (blocklisted or
+  // blocked). ExtensionService handles that, since it also adds it to those
+  // sets. TODO(michaelpg): Make ExtensionRegistrar the sole mutator of
+  // ExtensionRegsitry to simplify this usage.
   void RemoveExtension(const ExtensionId& extension_id,
                        UnloadedExtensionReason reason);
 
@@ -135,17 +145,19 @@ class ExtensionRegistrar {
   // is not loaded but isn't explicitly disabled in preferences.
   bool IsExtensionEnabled(const ExtensionId& extension_id) const;
 
-  // Called after the render view for the background page with the associated
-  // host is created.
-  void DidCreateRenderViewForBackgroundPage(ExtensionHost* host);
+  // Called after the renderer main frame for the background page with the
+  // associated host is created.
+  void DidCreateMainFrameForBackgroundPage(ExtensionHost* host);
 
   void OnUnpackedExtensionReloadFailed(const base::FilePath& path);
 
  private:
+#if !defined(TOOLKIT_QT)
   // Adds the extension to the appropriate registry set, based on ExtensionPrefs
   // and our |delegate_|. Activates the extension if it's added to the enabled
   // set.
   void AddNewExtension(scoped_refptr<const Extension> extension);
+#endif
 
   // Activates |extension| by marking it enabled and notifying other components
   // about it.
@@ -154,6 +166,12 @@ class ExtensionRegistrar {
   // Triggers the unloaded notifications to deactivate an extension.
   void DeactivateExtension(const Extension* extension,
                            UnloadedExtensionReason reason);
+
+  // Unregister the service worker that is not from manifest and has extension
+  // root scope.
+  void UnregisterServiceWorkerWithRootScope(const Extension* extension);
+  void NotifyServiceWorkerUnregistered(const ExtensionId& extension_id,
+                                       bool success);
 
   // Given an extension that was disabled for reloading, completes the reload
   // by replacing the old extension with the new version and enabling it.
@@ -165,25 +183,40 @@ class ExtensionRegistrar {
   void OnExtensionRegisteredWithRequestContexts(
       scoped_refptr<const Extension> extension);
 
-  // Upon reloading an extension, spins up its lazy background page if
-  // necessary.
-  void MaybeSpinUpLazyBackgroundPage(const Extension* extension);
+  // Upon reloading an extension, spins up its context if necessary.
+  void MaybeSpinUpLazyContext(const Extension* extension, bool is_newly_added);
 
-  content::BrowserContext* const browser_context_;
+  // ProcessManagerObserver overrides
+  void OnServiceWorkerRegistered(const WorkerId& worker_id) override;
+
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION content::BrowserContext* const browser_context_;
 
   // Delegate provided in the constructor. Should outlive this object.
-  Delegate* const delegate_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION Delegate* const delegate_;
 
   // Keyed services we depend on. Cached here for repeated access.
-  ExtensionSystem* const extension_system_;
-  ExtensionPrefs* const extension_prefs_;
-  ExtensionRegistry* const registry_;
-  RendererStartupHelper* const renderer_helper_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION ExtensionSystem* const extension_system_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION ExtensionPrefs* const extension_prefs_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION ExtensionRegistry* const registry_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION RendererStartupHelper* const renderer_helper_;
 
   // Map of DevToolsAgentHost instances that are detached,
   // waiting for an extension to be reloaded.
   using OrphanedDevTools =
-      std::map<std::string, scoped_refptr<content::DevToolsAgentHost>>;
+      std::map<std::string,
+               std::vector<scoped_refptr<content::DevToolsAgentHost>>>;
   OrphanedDevTools orphaned_dev_tools_;
 
   // Map unloaded extensions' ids to their paths. When a temporarily loaded
@@ -200,9 +233,9 @@ class ExtensionRegistrar {
   // reload.
   std::set<base::FilePath> failed_to_reload_unpacked_extensions_;
 
+  base::ScopedObservation<ProcessManager, ProcessManagerObserver>
+      process_manager_observation_{this};
   base::WeakPtrFactory<ExtensionRegistrar> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(ExtensionRegistrar);
 };
 
 }  // namespace extensions

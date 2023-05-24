@@ -1,12 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/device/geolocation/position_cache_impl.h"
 
-#include <algorithm>
-
+#include "base/ranges/algorithm.h"
 #include "base/strings/utf_string_conversions.h"
+#include "components/device_event_log/device_event_log.h"
 #include "services/device/geolocation/wifi_data.h"
 #include "services/device/public/mojom/geoposition.mojom.h"
 
@@ -15,8 +15,7 @@ namespace device {
 // static
 const size_t PositionCacheImpl::kMaximumSize = 10;
 // static
-const base::TimeDelta PositionCacheImpl::kMaximumLifetime =
-    base::TimeDelta::FromDays(1);
+const base::TimeDelta PositionCacheImpl::kMaximumLifetime = base::Days(1);
 
 PositionCacheImpl::CacheEntry::CacheEntry(
     const Hash& hash,
@@ -33,10 +32,10 @@ PositionCacheImpl::CacheEntry& PositionCacheImpl::CacheEntry::operator=(
 // static
 PositionCacheImpl::Hash PositionCacheImpl::MakeKey(const WifiData& wifi_data) {
   // Currently we use only WiFi data and base the key only on the MAC addresses.
-  base::string16 key;
+  std::u16string key;
   const size_t kCharsPerMacAddress = 6 * 3 + 1;  // e.g. "11:22:33:44:55:66|"
   key.reserve(wifi_data.access_point_data.size() * kCharsPerMacAddress);
-  const base::string16 separator(base::ASCIIToUTF16("|"));
+  const std::u16string separator(u"|");
   for (const auto& access_point_data : wifi_data.access_point_data) {
     key += separator;
     key += access_point_data.mac_address;
@@ -77,7 +76,7 @@ void PositionCacheImpl::CachePosition(const WifiData& wifi_data,
 const mojom::Geoposition* PositionCacheImpl::FindPosition(
     const WifiData& wifi_data) const {
   const Hash key = MakeKey(wifi_data);
-  auto it = std::find(data_.begin(), data_.end(), key);
+  auto it = base::ranges::find(data_, key);
   return it == data_.end() ? nullptr : (it->position());
 }
 
@@ -87,6 +86,7 @@ size_t PositionCacheImpl::GetPositionCacheSize() const {
 
 const mojom::Geoposition& PositionCacheImpl::GetLastUsedNetworkPosition()
     const {
+  GEOLOCATION_LOG(DEBUG) << "Get last used network position";
   return last_used_position_;
 }
 
@@ -97,6 +97,7 @@ void PositionCacheImpl::SetLastUsedNetworkPosition(
 
 void PositionCacheImpl::OnNetworkChanged(
     net::NetworkChangeNotifier::ConnectionType) {
+  GEOLOCATION_LOG(DEBUG) << "Network changed";
   // OnNetworkChanged is called " when a change occurs to the host
   // computer's hardware or software that affects the route network packets
   // take to any network server.". This means that whatever position we had

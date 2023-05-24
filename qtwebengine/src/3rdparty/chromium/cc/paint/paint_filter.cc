@@ -1,43 +1,50 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cc/paint/paint_filter.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "base/memory/values_equivalent.h"
+#include "base/no_destructor.h"
+#include "base/notreached.h"
+#include "base/ranges/algorithm.h"
+#include "base/types/optional_util.h"
+#include "build/build_config.h"
+#include "cc/paint/draw_image.h"
 #include "cc/paint/filter_operations.h"
+#include "cc/paint/image_provider.h"
 #include "cc/paint/paint_image_builder.h"
 #include "cc/paint/paint_op_writer.h"
 #include "cc/paint/paint_record.h"
+#include "cc/paint/scoped_raster_flags.h"
 #include "third_party/skia/include/core/SkColorFilter.h"
-#include "third_party/skia/include/core/SkMath.h"
-#include "third_party/skia/include/effects/SkAlphaThresholdFilter.h"
-#include "third_party/skia/include/effects/SkArithmeticImageFilter.h"
-#include "third_party/skia/include/effects/SkColorFilterImageFilter.h"
-#include "third_party/skia/include/effects/SkComposeImageFilter.h"
-#include "third_party/skia/include/effects/SkImageSource.h"
-#include "third_party/skia/include/effects/SkLightingImageFilter.h"
-#include "third_party/skia/include/effects/SkMagnifierImageFilter.h"
-#include "third_party/skia/include/effects/SkMergeImageFilter.h"
-#include "third_party/skia/include/effects/SkMorphologyImageFilter.h"
-#include "third_party/skia/include/effects/SkOffsetImageFilter.h"
-#include "third_party/skia/include/effects/SkPaintImageFilter.h"
+#include "third_party/skia/include/core/SkColorSpace.h"
+#include "third_party/skia/include/core/SkScalar.h"
+#include "third_party/skia/include/core/SkString.h"
+#include "third_party/skia/include/core/SkTileMode.h"
+#include "third_party/skia/include/effects/SkImageFilters.h"
 #include "third_party/skia/include/effects/SkPerlinNoiseShader.h"
-#include "third_party/skia/include/effects/SkPictureImageFilter.h"
-#include "third_party/skia/include/effects/SkTileImageFilter.h"
-#include "third_party/skia/include/effects/SkXfermodeImageFilter.h"
+#include "third_party/skia/include/effects/SkRuntimeEffect.h"
 
 namespace cc {
 namespace {
 const bool kHasNoDiscardableImages = false;
 
-bool AreFiltersEqual(const PaintFilter* one, const PaintFilter* two) {
-  if (!one || !two)
-    return !one && !two;
-  return *one == *two;
+template <typename T>
+bool AreValuesEqualForTesting(const sk_sp<T>& a, const sk_sp<T>& b) {
+  return base::ValuesEquivalent(a, b, [](const T& x, const T& y) {
+    return x.EqualsForTesting(y);  // IN-TEST
+  });
 }
 
-bool AreScalarsEqual(SkScalar one, SkScalar two) {
-  return PaintOp::AreEqualEvenIfNaN(one, two);
+template <typename T>
+bool AreEqualForTesting(const PaintFilter& a, const PaintFilter& b) {
+  return static_cast<const T&>(a).EqualsForTesting(  // IN-TEST
+      static_cast<const T&>(b));
 }
 
 bool HasDiscardableImages(const sk_sp<PaintFilter>& filter) {
@@ -110,8 +117,8 @@ std::string PaintFilter::TypeToString(Type type) {
       return "kTile";
     case Type::kTurbulence:
       return "kTurbulence";
-    case Type::kPaintFlags:
-      return "kPaintFlags";
+    case Type::kShader:
+      return "kShader";
     case Type::kMatrix:
       return "kMatrix";
     case Type::kLightingDistant:
@@ -125,23 +132,17 @@ std::string PaintFilter::TypeToString(Type type) {
   return "Unknown";
 }
 
-size_t PaintFilter::GetFilterSize(const PaintFilter* filter) {
-  // A null type is used to indicate no filter.
-  if (!filter)
-    return sizeof(uint32_t);
-  return filter->SerializedSize() + PaintOpWriter::Alignment();
+const PaintFilter::CropRect* PaintFilter::GetCropRect() const {
+  return base::OptionalToPtr(crop_rect_);
 }
 
 size_t PaintFilter::BaseSerializedSize() const {
   size_t total_size = 0u;
-  // Filter type.
-  total_size += sizeof(uint32_t);
+  total_size += PaintOpWriter::SerializedSize(type_);
   // Bool to indicate whether crop exists.
-  total_size += sizeof(uint32_t);
+  total_size += PaintOpWriter::SerializedSize<bool>();
   if (crop_rect_) {
-    // CropRect.
-    total_size += sizeof(crop_rect_->flags());
-    total_size += sizeof(crop_rect_->rect());
+    total_size += PaintOpWriter::SerializedSize(*crop_rect_);
   }
   return total_size;
 }
@@ -153,88 +154,61 @@ sk_sp<PaintFilter> PaintFilter::SnapshotWithImages(
   return SnapshotWithImagesInternal(image_provider);
 }
 
-bool PaintFilter::operator==(const PaintFilter& other) const {
-  if (type_ != other.type_)
+bool PaintFilter::EqualsForTesting(const PaintFilter& other) const {
+  if (type_ != other.type_) {
     return false;
-  if (!!crop_rect_ != !!other.crop_rect_)
+  }
+  if (crop_rect_ != other.crop_rect_) {
     return false;
-  if (crop_rect_) {
-    if (crop_rect_->flags() != other.crop_rect_->flags() ||
-        !PaintOp::AreSkRectsEqual(crop_rect_->rect(),
-                                  other.crop_rect_->rect())) {
-      return false;
-    }
   }
 
   switch (type_) {
     case Type::kNullFilter:
       return true;
     case Type::kColorFilter:
-      return *static_cast<const ColorFilterPaintFilter*>(this) ==
-             static_cast<const ColorFilterPaintFilter&>(other);
+      return AreEqualForTesting<ColorFilterPaintFilter>(*this, other);
     case Type::kBlur:
-      return *static_cast<const BlurPaintFilter*>(this) ==
-             static_cast<const BlurPaintFilter&>(other);
+      return AreEqualForTesting<BlurPaintFilter>(*this, other);
     case Type::kDropShadow:
-      return *static_cast<const DropShadowPaintFilter*>(this) ==
-             static_cast<const DropShadowPaintFilter&>(other);
+      return AreEqualForTesting<DropShadowPaintFilter>(*this, other);
     case Type::kMagnifier:
-      return *static_cast<const MagnifierPaintFilter*>(this) ==
-             static_cast<const MagnifierPaintFilter&>(other);
+      return AreEqualForTesting<MagnifierPaintFilter>(*this, other);
     case Type::kCompose:
-      return *static_cast<const ComposePaintFilter*>(this) ==
-             static_cast<const ComposePaintFilter&>(other);
+      return AreEqualForTesting<ComposePaintFilter>(*this, other);
     case Type::kAlphaThreshold:
-      return *static_cast<const AlphaThresholdPaintFilter*>(this) ==
-             static_cast<const AlphaThresholdPaintFilter&>(other);
+      return AreEqualForTesting<AlphaThresholdPaintFilter>(*this, other);
     case Type::kXfermode:
-      return *static_cast<const XfermodePaintFilter*>(this) ==
-             static_cast<const XfermodePaintFilter&>(other);
+      return AreEqualForTesting<XfermodePaintFilter>(*this, other);
     case Type::kArithmetic:
-      return *static_cast<const ArithmeticPaintFilter*>(this) ==
-             static_cast<const ArithmeticPaintFilter&>(other);
+      return AreEqualForTesting<ArithmeticPaintFilter>(*this, other);
     case Type::kMatrixConvolution:
-      return *static_cast<const MatrixConvolutionPaintFilter*>(this) ==
-             static_cast<const MatrixConvolutionPaintFilter&>(other);
+      return AreEqualForTesting<MatrixConvolutionPaintFilter>(*this, other);
     case Type::kDisplacementMapEffect:
-      return *static_cast<const DisplacementMapEffectPaintFilter*>(this) ==
-             static_cast<const DisplacementMapEffectPaintFilter&>(other);
+      return AreEqualForTesting<DisplacementMapEffectPaintFilter>(*this, other);
     case Type::kImage:
-      return *static_cast<const ImagePaintFilter*>(this) ==
-             static_cast<const ImagePaintFilter&>(other);
+      return AreEqualForTesting<ImagePaintFilter>(*this, other);
     case Type::kPaintRecord:
-      return *static_cast<const RecordPaintFilter*>(this) ==
-             static_cast<const RecordPaintFilter&>(other);
+      return AreEqualForTesting<RecordPaintFilter>(*this, other);
     case Type::kMerge:
-      return *static_cast<const MergePaintFilter*>(this) ==
-             static_cast<const MergePaintFilter&>(other);
+      return AreEqualForTesting<MergePaintFilter>(*this, other);
     case Type::kMorphology:
-      return *static_cast<const MorphologyPaintFilter*>(this) ==
-             static_cast<const MorphologyPaintFilter&>(other);
+      return AreEqualForTesting<MorphologyPaintFilter>(*this, other);
     case Type::kOffset:
-      return *static_cast<const OffsetPaintFilter*>(this) ==
-             static_cast<const OffsetPaintFilter&>(other);
+      return AreEqualForTesting<OffsetPaintFilter>(*this, other);
     case Type::kTile:
-      return *static_cast<const TilePaintFilter*>(this) ==
-             static_cast<const TilePaintFilter&>(other);
+      return AreEqualForTesting<TilePaintFilter>(*this, other);
     case Type::kTurbulence:
-      return *static_cast<const TurbulencePaintFilter*>(this) ==
-             static_cast<const TurbulencePaintFilter&>(other);
-    case Type::kPaintFlags:
-      return *static_cast<const PaintFlagsPaintFilter*>(this) ==
-             static_cast<const PaintFlagsPaintFilter&>(other);
+      return AreEqualForTesting<TurbulencePaintFilter>(*this, other);
+    case Type::kShader:
+      return AreEqualForTesting<ShaderPaintFilter>(*this, other);
     case Type::kMatrix:
-      return *static_cast<const MatrixPaintFilter*>(this) ==
-             static_cast<const MatrixPaintFilter&>(other);
+      return AreEqualForTesting<MatrixPaintFilter>(*this, other);
     case Type::kLightingDistant:
-      return *static_cast<const LightingDistantPaintFilter*>(this) ==
-             static_cast<const LightingDistantPaintFilter&>(other);
+      return AreEqualForTesting<LightingDistantPaintFilter>(*this, other);
     case Type::kLightingPoint:
-      return *static_cast<const LightingPointPaintFilter*>(this) ==
-             static_cast<const LightingPointPaintFilter&>(other);
+      return AreEqualForTesting<LightingPointPaintFilter>(*this, other);
     case Type::kLightingSpot:
-      return *static_cast<const LightingSpotPaintFilter*>(this) ==
-             static_cast<const LightingSpotPaintFilter&>(other);
+      return AreEqualForTesting<LightingSpotPaintFilter>(*this, other);
   }
   NOTREACHED();
   return true;
@@ -248,7 +222,7 @@ ColorFilterPaintFilter::ColorFilterPaintFilter(
       color_filter_(std::move(color_filter)),
       input_(std::move(input)) {
   DCHECK(color_filter_);
-  cached_sk_filter_ = SkColorFilterImageFilter::Make(
+  cached_sk_filter_ = SkImageFilters::ColorFilter(
       color_filter_, GetSkFilter(input_.get()), crop_rect);
 }
 
@@ -257,27 +231,31 @@ ColorFilterPaintFilter::~ColorFilterPaintFilter() = default;
 size_t ColorFilterPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size = 0u;
   total_size += BaseSerializedSize();
-  total_size += PaintOpWriter::GetFlattenableSize(color_filter_.get());
-  total_size += GetFilterSize(input_.get());
+  total_size += PaintOpWriter::SerializedSize(
+      static_cast<const SkFlattenable*>(color_filter_.get()));
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
 sk_sp<PaintFilter> ColorFilterPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<ColorFilterPaintFilter>(
-      color_filter_, Snapshot(input_, image_provider), crop_rect());
+      color_filter_, Snapshot(input_, image_provider), GetCropRect());
 }
 
-bool ColorFilterPaintFilter::operator==(
+bool ColorFilterPaintFilter::EqualsForTesting(
     const ColorFilterPaintFilter& other) const {
-  return PaintOp::AreSkFlattenablesEqual(color_filter_.get(),
-                                         other.color_filter_.get()) &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+  return base::ValuesEquivalent(
+             color_filter_, other.color_filter_,
+             [](const auto& a, const auto& b) {
+               return a.serialize()->equals(b.serialize().get());
+             }) &&
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 BlurPaintFilter::BlurPaintFilter(SkScalar sigma_x,
                                  SkScalar sigma_y,
-                                 TileMode tile_mode,
+                                 SkTileMode tile_mode,
                                  sk_sp<PaintFilter> input,
                                  const CropRect* crop_rect)
     : PaintFilter(kType, crop_rect, HasDiscardableImages(input)),
@@ -285,17 +263,18 @@ BlurPaintFilter::BlurPaintFilter(SkScalar sigma_x,
       sigma_y_(sigma_y),
       tile_mode_(tile_mode),
       input_(std::move(input)) {
-  cached_sk_filter_ = SkBlurImageFilter::Make(
-      sigma_x_, sigma_y_, GetSkFilter(input_.get()), crop_rect, tile_mode_);
+  cached_sk_filter_ = SkImageFilters::Blur(
+      sigma_x, sigma_y, tile_mode_, GetSkFilter(input_.get()), crop_rect);
 }
 
 BlurPaintFilter::~BlurPaintFilter() = default;
 
 size_t BlurPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(sigma_x_) + sizeof(sigma_y_) +
-      sizeof(tile_mode_);
-  total_size += GetFilterSize(input_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(sigma_x_) +
+      PaintOpWriter::SerializedSize(sigma_y_) +
+      PaintOpWriter::SerializedSize(tile_mode_);
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -303,21 +282,20 @@ sk_sp<PaintFilter> BlurPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<BlurPaintFilter>(sigma_x_, sigma_y_, tile_mode_,
                                      Snapshot(input_, image_provider),
-                                     crop_rect());
+                                     GetCropRect());
 }
 
-bool BlurPaintFilter::operator==(const BlurPaintFilter& other) const {
-  return PaintOp::AreEqualEvenIfNaN(sigma_x_, other.sigma_x_) &&
-         PaintOp::AreEqualEvenIfNaN(sigma_y_, other.sigma_y_) &&
+bool BlurPaintFilter::EqualsForTesting(const BlurPaintFilter& other) const {
+  return sigma_x_ == other.sigma_x_ && sigma_y_ == other.sigma_y_ &&
          tile_mode_ == other.tile_mode_ &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 DropShadowPaintFilter::DropShadowPaintFilter(SkScalar dx,
                                              SkScalar dy,
                                              SkScalar sigma_x,
                                              SkScalar sigma_y,
-                                             SkColor color,
+                                             SkColor4f color,
                                              ShadowMode shadow_mode,
                                              sk_sp<PaintFilter> input,
                                              const CropRect* crop_rect)
@@ -329,18 +307,30 @@ DropShadowPaintFilter::DropShadowPaintFilter(SkScalar dx,
       color_(color),
       shadow_mode_(shadow_mode),
       input_(std::move(input)) {
-  cached_sk_filter_ = SkDropShadowImageFilter::Make(
-      dx_, dy_, sigma_x_, sigma_y_, color_, shadow_mode_,
-      GetSkFilter(input_.get()), crop_rect);
+  if (shadow_mode == ShadowMode::kDrawShadowOnly) {
+    // TODO(crbug/1308932): Remove toSkColor and make all SkColor4f.
+    cached_sk_filter_ = SkImageFilters::DropShadowOnly(
+        dx_, dy_, sigma_x_, sigma_y_, color_.toSkColor(),
+        GetSkFilter(input_.get()), crop_rect);
+  } else {
+    // TODO(crbug/1308932): Remove toSkColor and make all SkColor4f.
+    cached_sk_filter_ = SkImageFilters::DropShadow(
+        dx_, dy_, sigma_x_, sigma_y_, color_.toSkColor(),
+        GetSkFilter(input_.get()), crop_rect);
+  }
 }
 
 DropShadowPaintFilter::~DropShadowPaintFilter() = default;
 
 size_t DropShadowPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(dx_) + sizeof(dy_) + sizeof(sigma_x_) +
-      sizeof(sigma_y_) + sizeof(color_) + sizeof(shadow_mode_);
-  total_size += GetFilterSize(input_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(dx_) +
+      PaintOpWriter::SerializedSize(dy_) +
+      PaintOpWriter::SerializedSize(sigma_x_) +
+      PaintOpWriter::SerializedSize(sigma_y_) +
+      PaintOpWriter::SerializedSize(color_) +
+      PaintOpWriter::SerializedSize(shadow_mode_);
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -348,17 +338,15 @@ sk_sp<PaintFilter> DropShadowPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<DropShadowPaintFilter>(
       dx_, dy_, sigma_x_, sigma_y_, color_, shadow_mode_,
-      Snapshot(input_, image_provider), crop_rect());
+      Snapshot(input_, image_provider), GetCropRect());
 }
 
-bool DropShadowPaintFilter::operator==(
+bool DropShadowPaintFilter::EqualsForTesting(
     const DropShadowPaintFilter& other) const {
-  return PaintOp::AreEqualEvenIfNaN(dx_, other.dx_) &&
-         PaintOp::AreEqualEvenIfNaN(dy_, other.dy_) &&
-         PaintOp::AreEqualEvenIfNaN(sigma_x_, other.sigma_x_) &&
-         PaintOp::AreEqualEvenIfNaN(sigma_y_, other.sigma_y_) &&
-         color_ == other.color_ && shadow_mode_ == other.shadow_mode_ &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+  return dx_ == other.dx_ && dy_ == other.dy_ && sigma_x_ == other.sigma_x_ &&
+         sigma_y_ == other.sigma_y_ && color_ == other.color_ &&
+         shadow_mode_ == other.shadow_mode_ &&
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 MagnifierPaintFilter::MagnifierPaintFilter(const SkRect& src_rect,
@@ -369,7 +357,7 @@ MagnifierPaintFilter::MagnifierPaintFilter(const SkRect& src_rect,
       src_rect_(src_rect),
       inset_(inset),
       input_(std::move(input)) {
-  cached_sk_filter_ = SkMagnifierImageFilter::Make(
+  cached_sk_filter_ = SkImageFilters::Magnifier(
       src_rect_, inset_, GetSkFilter(input_.get()), crop_rect);
 }
 
@@ -377,21 +365,22 @@ MagnifierPaintFilter::~MagnifierPaintFilter() = default;
 
 size_t MagnifierPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(src_rect_) + sizeof(inset_);
-  total_size += GetFilterSize(input_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(src_rect_) +
+      PaintOpWriter::SerializedSize(inset_);
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
 sk_sp<PaintFilter> MagnifierPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<MagnifierPaintFilter>(
-      src_rect_, inset_, Snapshot(input_, image_provider), crop_rect());
+      src_rect_, inset_, Snapshot(input_, image_provider), GetCropRect());
 }
 
-bool MagnifierPaintFilter::operator==(const MagnifierPaintFilter& other) const {
-  return PaintOp::AreSkRectsEqual(src_rect_, other.src_rect_) &&
-         PaintOp::AreEqualEvenIfNaN(inset_, other.inset_) &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+bool MagnifierPaintFilter::EqualsForTesting(
+    const MagnifierPaintFilter& other) const {
+  return src_rect_ == other.src_rect_ && inset_ == other.inset_ &&
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 ComposePaintFilter::ComposePaintFilter(sk_sp<PaintFilter> outer,
@@ -401,16 +390,16 @@ ComposePaintFilter::ComposePaintFilter(sk_sp<PaintFilter> outer,
                   HasDiscardableImages(outer) || HasDiscardableImages(inner)),
       outer_(std::move(outer)),
       inner_(std::move(inner)) {
-  cached_sk_filter_ = SkComposeImageFilter::Make(GetSkFilter(outer_.get()),
-                                                 GetSkFilter(inner_.get()));
+  cached_sk_filter_ = SkImageFilters::Compose(GetSkFilter(outer_.get()),
+                                              GetSkFilter(inner_.get()));
 }
 
 ComposePaintFilter::~ComposePaintFilter() = default;
 
 size_t ComposePaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size = BaseSerializedSize();
-  total_size += GetFilterSize(outer_.get());
-  total_size += GetFilterSize(inner_.get());
+  total_size += PaintOpWriter::SerializedSize(outer_.get());
+  total_size += PaintOpWriter::SerializedSize(inner_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -420,9 +409,10 @@ sk_sp<PaintFilter> ComposePaintFilter::SnapshotWithImagesInternal(
                                         Snapshot(inner_, image_provider));
 }
 
-bool ComposePaintFilter::operator==(const ComposePaintFilter& other) const {
-  return AreFiltersEqual(outer_.get(), other.outer_.get()) &&
-         AreFiltersEqual(inner_.get(), other.inner_.get());
+bool ComposePaintFilter::EqualsForTesting(
+    const ComposePaintFilter& other) const {
+  return AreValuesEqualForTesting(outer_, other.outer_) &&  // IN-TEST
+         AreValuesEqualForTesting(inner_, other.inner_);    // IN-TEST
 }
 
 AlphaThresholdPaintFilter::AlphaThresholdPaintFilter(const SkRegion& region,
@@ -435,7 +425,7 @@ AlphaThresholdPaintFilter::AlphaThresholdPaintFilter(const SkRegion& region,
       inner_min_(inner_min),
       outer_max_(outer_max),
       input_(std::move(input)) {
-  cached_sk_filter_ = SkAlphaThresholdFilter::Make(
+  cached_sk_filter_ = SkImageFilters::AlphaThreshold(
       region_, inner_min_, outer_max_, GetSkFilter(input_.get()), crop_rect);
 }
 
@@ -444,9 +434,11 @@ AlphaThresholdPaintFilter::~AlphaThresholdPaintFilter() = default;
 size_t AlphaThresholdPaintFilter::SerializedSize() const {
   size_t region_size = region_.writeToMemory(nullptr);
   base::CheckedNumeric<size_t> total_size;
-  total_size = BaseSerializedSize() + sizeof(uint64_t) + region_size +
-               sizeof(inner_min_) + sizeof(outer_max_);
-  total_size += GetFilterSize(input_.get());
+  total_size = BaseSerializedSize() +
+               PaintOpWriter::SerializedSizeOfBytes(region_size) +
+               PaintOpWriter::SerializedSize(inner_min_) +
+               PaintOpWriter::SerializedSize(outer_max_);
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -454,15 +446,14 @@ sk_sp<PaintFilter> AlphaThresholdPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<AlphaThresholdPaintFilter>(region_, inner_min_, outer_max_,
                                                Snapshot(input_, image_provider),
-                                               crop_rect());
+                                               GetCropRect());
 }
 
-bool AlphaThresholdPaintFilter::operator==(
+bool AlphaThresholdPaintFilter::EqualsForTesting(
     const AlphaThresholdPaintFilter& other) const {
-  return region_ == other.region_ &&
-         PaintOp::AreEqualEvenIfNaN(inner_min_, other.inner_min_) &&
-         PaintOp::AreEqualEvenIfNaN(outer_max_, other.outer_max_) &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+  return region_ == other.region_ && inner_min_ == other.inner_min_ &&
+         outer_max_ == other.outer_max_ &&
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 XfermodePaintFilter::XfermodePaintFilter(SkBlendMode blend_mode,
@@ -477,17 +468,17 @@ XfermodePaintFilter::XfermodePaintFilter(SkBlendMode blend_mode,
       background_(std::move(background)),
       foreground_(std::move(foreground)) {
   cached_sk_filter_ =
-      SkXfermodeImageFilter::Make(blend_mode_, GetSkFilter(background_.get()),
-                                  GetSkFilter(foreground_.get()), crop_rect);
+      SkImageFilters::Blend(blend_mode_, GetSkFilter(background_.get()),
+                            GetSkFilter(foreground_.get()), crop_rect);
 }
 
 XfermodePaintFilter::~XfermodePaintFilter() = default;
 
 size_t XfermodePaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(blend_mode_);
-  total_size += GetFilterSize(background_.get());
-  total_size += GetFilterSize(foreground_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(blend_mode_);
+  total_size += PaintOpWriter::SerializedSize(background_.get());
+  total_size += PaintOpWriter::SerializedSize(foreground_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -495,13 +486,14 @@ sk_sp<PaintFilter> XfermodePaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<XfermodePaintFilter>(
       blend_mode_, Snapshot(background_, image_provider),
-      Snapshot(foreground_, image_provider), crop_rect());
+      Snapshot(foreground_, image_provider), GetCropRect());
 }
 
-bool XfermodePaintFilter::operator==(const XfermodePaintFilter& other) const {
+bool XfermodePaintFilter::EqualsForTesting(
+    const XfermodePaintFilter& other) const {
   return blend_mode_ == other.blend_mode_ &&
-         AreFiltersEqual(background_.get(), other.background_.get()) &&
-         AreFiltersEqual(foreground_.get(), other.foreground_.get());
+         AreValuesEqualForTesting(background_, other.background_) &&  // IN-TEST
+         AreValuesEqualForTesting(foreground_, other.foreground_);    // IN-TEST
 }
 
 ArithmeticPaintFilter::ArithmeticPaintFilter(float k1,
@@ -523,7 +515,7 @@ ArithmeticPaintFilter::ArithmeticPaintFilter(float k1,
       enforce_pm_color_(enforce_pm_color),
       background_(std::move(background)),
       foreground_(std::move(foreground)) {
-  cached_sk_filter_ = SkArithmeticImageFilter::Make(
+  cached_sk_filter_ = SkImageFilters::Arithmetic(
       k1_, k2_, k3_, k4_, enforce_pm_color_, GetSkFilter(background_.get()),
       GetSkFilter(foreground_.get()), crop_rect);
 }
@@ -532,10 +524,12 @@ ArithmeticPaintFilter::~ArithmeticPaintFilter() = default;
 
 size_t ArithmeticPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(k1_) + sizeof(k2_) + sizeof(k3_) +
-      sizeof(k4_) + sizeof(enforce_pm_color_);
-  total_size += GetFilterSize(background_.get());
-  total_size += GetFilterSize(foreground_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(k1_) +
+      PaintOpWriter::SerializedSize(k2_) + PaintOpWriter::SerializedSize(k3_) +
+      PaintOpWriter::SerializedSize(k4_) +
+      PaintOpWriter::SerializedSize(enforce_pm_color_);
+  total_size += PaintOpWriter::SerializedSize(background_.get());
+  total_size += PaintOpWriter::SerializedSize(foreground_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -544,18 +538,15 @@ sk_sp<PaintFilter> ArithmeticPaintFilter::SnapshotWithImagesInternal(
   return sk_make_sp<ArithmeticPaintFilter>(
       k1_, k2_, k3_, k4_, enforce_pm_color_,
       Snapshot(background_, image_provider),
-      Snapshot(foreground_, image_provider), crop_rect());
+      Snapshot(foreground_, image_provider), GetCropRect());
 }
 
-bool ArithmeticPaintFilter::operator==(
+bool ArithmeticPaintFilter::EqualsForTesting(
     const ArithmeticPaintFilter& other) const {
-  return PaintOp::AreEqualEvenIfNaN(k1_, other.k1_) &&
-         PaintOp::AreEqualEvenIfNaN(k2_, other.k2_) &&
-         PaintOp::AreEqualEvenIfNaN(k3_, other.k3_) &&
-         PaintOp::AreEqualEvenIfNaN(k4_, other.k4_) &&
-         enforce_pm_color_ == other.enforce_pm_color_ &&
-         AreFiltersEqual(background_.get(), other.background_.get()) &&
-         AreFiltersEqual(foreground_.get(), other.foreground_.get());
+  return k1_ == other.k1_ && k2_ == other.k2_ && k3_ == other.k3_ &&
+         k4_ == other.k4_ && enforce_pm_color_ == other.enforce_pm_color_ &&
+         AreValuesEqualForTesting(background_, other.background_) &&  // IN-TEST
+         AreValuesEqualForTesting(foreground_, other.foreground_);    // IN-TEST
 }
 
 MatrixConvolutionPaintFilter::MatrixConvolutionPaintFilter(
@@ -564,7 +555,7 @@ MatrixConvolutionPaintFilter::MatrixConvolutionPaintFilter(
     SkScalar gain,
     SkScalar bias,
     const SkIPoint& kernel_offset,
-    TileMode tile_mode,
+    SkTileMode tile_mode,
     bool convolve_alpha,
     sk_sp<PaintFilter> input,
     const CropRect* crop_rect)
@@ -576,13 +567,14 @@ MatrixConvolutionPaintFilter::MatrixConvolutionPaintFilter(
       tile_mode_(tile_mode),
       convolve_alpha_(convolve_alpha),
       input_(std::move(input)) {
-  auto len = static_cast<size_t>(
-      sk_64_mul(kernel_size_.width(), kernel_size_.height()));
+  DCHECK(kernel_size_.width() >= 0 && kernel_size_.height() >= 0);
+  auto len = static_cast<size_t>(kernel_size_.width()) *
+             static_cast<size_t>(kernel_size_.height());
   kernel_->reserve(len);
   for (size_t i = 0; i < len; ++i)
     kernel_->push_back(kernel[i]);
 
-  cached_sk_filter_ = SkMatrixConvolutionImageFilter::Make(
+  cached_sk_filter_ = SkImageFilters::MatrixConvolution(
       kernel_size_, kernel, gain_, bias_, kernel_offset_, tile_mode_,
       convolve_alpha_, GetSkFilter(input_.get()), crop_rect);
 }
@@ -591,10 +583,16 @@ MatrixConvolutionPaintFilter::~MatrixConvolutionPaintFilter() = default;
 
 size_t MatrixConvolutionPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(kernel_size_) + sizeof(size_t) +
-      kernel_->size() * sizeof(SkScalar) + sizeof(gain_) + sizeof(bias_) +
-      sizeof(kernel_offset_) + sizeof(tile_mode_) + sizeof(convolve_alpha_);
-  total_size += GetFilterSize(input_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(kernel_size_) +
+      PaintOpWriter::SerializedSize<size_t>() +
+      PaintOpWriter::SerializedSizeOfElements(kernel_->data(),
+                                              kernel_->size()) +
+      PaintOpWriter::SerializedSize(gain_) +
+      PaintOpWriter::SerializedSize(bias_) +
+      PaintOpWriter::SerializedSize(kernel_offset_) +
+      PaintOpWriter::SerializedSize(tile_mode_) +
+      PaintOpWriter::SerializedSize(convolve_alpha_);
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -602,25 +600,23 @@ sk_sp<PaintFilter> MatrixConvolutionPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<MatrixConvolutionPaintFilter>(
       kernel_size_, &kernel_[0], gain_, bias_, kernel_offset_, tile_mode_,
-      convolve_alpha_, Snapshot(input_, image_provider), crop_rect());
+      convolve_alpha_, Snapshot(input_, image_provider), GetCropRect());
 }
 
-bool MatrixConvolutionPaintFilter::operator==(
+bool MatrixConvolutionPaintFilter::EqualsForTesting(
     const MatrixConvolutionPaintFilter& other) const {
   return kernel_size_ == other.kernel_size_ &&
-         std::equal(kernel_.container().begin(), kernel_.container().end(),
-                    other.kernel_.container().begin(), AreScalarsEqual) &&
-         PaintOp::AreEqualEvenIfNaN(gain_, other.gain_) &&
-         PaintOp::AreEqualEvenIfNaN(bias_, other.bias_) &&
+         base::ranges::equal(kernel_.container(), other.kernel_.container()) &&
+         gain_ == other.gain_ && bias_ == other.bias_ &&
          kernel_offset_ == other.kernel_offset_ &&
          tile_mode_ == other.tile_mode_ &&
          convolve_alpha_ == other.convolve_alpha_ &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 DisplacementMapEffectPaintFilter::DisplacementMapEffectPaintFilter(
-    ChannelSelectorType channel_x,
-    ChannelSelectorType channel_y,
+    SkColorChannel channel_x,
+    SkColorChannel channel_y,
     SkScalar scale,
     sk_sp<PaintFilter> displacement,
     sk_sp<PaintFilter> color,
@@ -634,7 +630,7 @@ DisplacementMapEffectPaintFilter::DisplacementMapEffectPaintFilter(
       scale_(scale),
       displacement_(std::move(displacement)),
       color_(std::move(color)) {
-  cached_sk_filter_ = SkDisplacementMapEffect::Make(
+  cached_sk_filter_ = SkImageFilters::DisplacementMap(
       channel_x_, channel_y_, scale_, GetSkFilter(displacement_.get()),
       GetSkFilter(color_.get()), crop_rect);
 }
@@ -642,11 +638,12 @@ DisplacementMapEffectPaintFilter::DisplacementMapEffectPaintFilter(
 DisplacementMapEffectPaintFilter::~DisplacementMapEffectPaintFilter() = default;
 
 size_t DisplacementMapEffectPaintFilter::SerializedSize() const {
-  base::CheckedNumeric<size_t> total_size = BaseSerializedSize() +
-                                            sizeof(uint32_t) +
-                                            sizeof(uint32_t) + sizeof(scale_);
-  total_size += GetFilterSize(displacement_.get());
-  total_size += GetFilterSize(color_.get());
+  base::CheckedNumeric<size_t> total_size =
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(channel_x_) +
+      PaintOpWriter::SerializedSize(channel_y_) +
+      PaintOpWriter::SerializedSize(scale_);
+  total_size += PaintOpWriter::SerializedSize(displacement_.get());
+  total_size += PaintOpWriter::SerializedSize(color_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -654,44 +651,49 @@ sk_sp<PaintFilter> DisplacementMapEffectPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<DisplacementMapEffectPaintFilter>(
       channel_x_, channel_y_, scale_, Snapshot(displacement_, image_provider),
-      Snapshot(color_, image_provider), crop_rect());
+      Snapshot(color_, image_provider), GetCropRect());
 }
 
-bool DisplacementMapEffectPaintFilter::operator==(
+bool DisplacementMapEffectPaintFilter::EqualsForTesting(
     const DisplacementMapEffectPaintFilter& other) const {
   return channel_x_ == other.channel_x_ && channel_y_ == other.channel_y_ &&
-         PaintOp::AreEqualEvenIfNaN(scale_, other.scale_) &&
-         AreFiltersEqual(displacement_.get(), other.displacement_.get()) &&
-         AreFiltersEqual(color_.get(), other.color_.get());
+         scale_ == other.scale_ &&
+         AreValuesEqualForTesting(displacement_,  // IN-TEST
+                                  other.displacement_) &&
+         AreValuesEqualForTesting(color_, other.color_);  // IN-TEST
 }
 
 ImagePaintFilter::ImagePaintFilter(PaintImage image,
                                    const SkRect& src_rect,
                                    const SkRect& dst_rect,
-                                   SkFilterQuality filter_quality)
+                                   PaintFlags::FilterQuality filter_quality)
     : PaintFilter(kType, nullptr, !image.IsTextureBacked()),
       image_(std::move(image)),
       src_rect_(src_rect),
       dst_rect_(dst_rect),
       filter_quality_(filter_quality) {
-  cached_sk_filter_ = SkImageSource::Make(image_.GetSkImage(), src_rect_,
-                                          dst_rect_, filter_quality_);
+  SkSamplingOptions sampling(
+      PaintFlags::FilterQualityToSkSamplingOptions(filter_quality));
+  cached_sk_filter_ = SkImageFilters::Image(image_.GetSkImage(), src_rect_,
+                                            dst_rect_, sampling);
 }
 
 ImagePaintFilter::~ImagePaintFilter() = default;
 
 size_t ImagePaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(src_rect_) + sizeof(dst_rect_) +
-      sizeof(filter_quality_);
-  total_size += PaintOpWriter::GetImageSize(image_);
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(src_rect_) +
+      PaintOpWriter::SerializedSize(dst_rect_) +
+      PaintOpWriter::SerializedSize(filter_quality_);
+  total_size += PaintOpWriter::SerializedSize(image_);
   return total_size.ValueOrDefault(0u);
 }
 
 sk_sp<PaintFilter> ImagePaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
-  DrawImage draw_image(image_, SkIRect::MakeWH(image_.width(), image_.height()),
-                       filter_quality_, SkMatrix::I());
+  DrawImage draw_image(image_, false,
+                       SkIRect::MakeWH(image_.width(), image_.height()),
+                       filter_quality_, SkM44());
   auto scoped_result = image_provider->GetRasterContent(draw_image);
   if (!scoped_result)
     return nullptr;
@@ -708,45 +710,119 @@ sk_sp<PaintFilter> ImagePaintFilter::SnapshotWithImagesInternal(
                                       dst_rect_, filter_quality_);
 }
 
-bool ImagePaintFilter::operator==(const ImagePaintFilter& other) const {
-  return !!image_ == !!other.image_ &&
-         PaintOp::AreSkRectsEqual(src_rect_, other.src_rect_) &&
-         PaintOp::AreSkRectsEqual(dst_rect_, other.dst_rect_) &&
+bool ImagePaintFilter::EqualsForTesting(const ImagePaintFilter& other) const {
+  return !!image_ == !!other.image_ && src_rect_ == other.src_rect_ &&
+         dst_rect_ == other.dst_rect_ &&
          filter_quality_ == other.filter_quality_;
 }
 
-RecordPaintFilter::RecordPaintFilter(sk_sp<PaintRecord> record,
-                                     const SkRect& record_bounds)
-    : RecordPaintFilter(std::move(record), record_bounds, nullptr) {}
-
-RecordPaintFilter::RecordPaintFilter(sk_sp<PaintRecord> record,
+RecordPaintFilter::RecordPaintFilter(PaintRecord record,
                                      const SkRect& record_bounds,
+                                     const gfx::SizeF& raster_scale,
+                                     ScalingBehavior scaling_behavior)
+    : RecordPaintFilter(std::move(record),
+                        record_bounds,
+                        raster_scale,
+                        scaling_behavior,
+                        nullptr) {}
+
+RecordPaintFilter::RecordPaintFilter(PaintRecord record,
+                                     const SkRect& record_bounds,
+                                     const gfx::SizeF& raster_scale,
+                                     ScalingBehavior scaling_behavior,
                                      ImageProvider* image_provider)
-    : PaintFilter(kType, nullptr, record->HasDiscardableImages()),
+    : PaintFilter(kType, nullptr, record.HasDiscardableImages()),
       record_(std::move(record)),
-      record_bounds_(record_bounds) {
-  cached_sk_filter_ = SkPictureImageFilter::Make(
-      ToSkPicture(record_, record_bounds_, image_provider));
+      record_bounds_(record_bounds),
+      raster_scale_(raster_scale),
+      scaling_behavior_(scaling_behavior) {
+  DCHECK(raster_scale_.width() > 0.f && raster_scale_.height() > 0.f);
+  DCHECK(scaling_behavior == ScalingBehavior::kFixedScale ||
+         (raster_scale_.width() == 1.f && raster_scale_.height() == 1.f));
+
+  sk_sp<SkPicture> picture =
+      record_.ToSkPicture(record_bounds_, image_provider);
+
+  if (scaling_behavior == ScalingBehavior::kRasterAtScale ||
+      record_bounds_.isEmpty()) {
+    cached_sk_filter_ = SkImageFilters::Picture(std::move(picture));
+  } else {
+    DCHECK(scaling_behavior == ScalingBehavior::kFixedScale);
+
+    // Convert the record to an image at the scaled resolution, but draw it in
+    // the filter DAG at the original record bounds.
+    int width = SkScalarCeilToInt(record_bounds.width());
+    int height = SkScalarCeilToInt(record_bounds.height());
+    SkMatrix originAdjust =
+        SkMatrix::Translate(-record_bounds.fLeft, -record_bounds.fTop);
+    auto image = SkImage::MakeFromPicture(
+        std::move(picture), SkISize::Make(width, height), &originAdjust,
+        nullptr, SkImage::BitDepth::kU8, SkColorSpace::MakeSRGB());
+
+    // Must account for the raster scale when drawing the picture image,
+    SkRect src = SkRect::MakeWH(record_bounds.width(), record_bounds.height());
+    SkScalar inv_x = 1.f / raster_scale_.width();
+    SkScalar inv_y = 1.f / raster_scale_.height();
+    SkRect dst = {inv_x * record_bounds.fLeft, inv_y * record_bounds.fTop,
+                  inv_x * record_bounds.fRight, inv_y * record_bounds.fBottom};
+
+    // Use Mitchell cubic filter, matching historic
+    // PaintFlags::FilterQuality::kHigh
+    SkSamplingOptions sampling(SkCubicResampler::Mitchell());
+    cached_sk_filter_ =
+        SkImageFilters::Image(std::move(image), src, dst, sampling);
+  }
 }
 
 RecordPaintFilter::~RecordPaintFilter() = default;
 
+sk_sp<RecordPaintFilter> RecordPaintFilter::CreateScaledPaintRecord(
+    const SkMatrix& ctm,
+    int max_texture_size) const {
+  // If this is already fixed scale, then this is already good to go, and if
+  // the bounds are empty the filter produces no output so keep it as-is.
+  if (scaling_behavior_ == ScalingBehavior::kFixedScale ||
+      record_bounds_.isEmpty()) {
+    return sk_ref_sp<RecordPaintFilter>(this);
+  }
+
+  // For creating a deserialized RecordPaintFilter, extract the scale factor at
+  // which it would have been rasterized at for the given ctm. This is modeled
+  // after PaintShader::CreateScaledPaintRecord.
+  SkRect scaled_record_bounds =
+      PaintRecord::GetFixedScaleBounds(ctm, record_bounds_, max_texture_size);
+  gfx::SizeF raster_scale = {
+      scaled_record_bounds.width() / record_bounds_.width(),
+      scaled_record_bounds.height() / record_bounds_.height()};
+  if (raster_scale.IsEmpty())
+    return nullptr;
+
+  return sk_make_sp<RecordPaintFilter>(record_, scaled_record_bounds,
+                                       raster_scale,
+                                       ScalingBehavior::kFixedScale);
+}
+
 size_t RecordPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(record_bounds_);
-  total_size += PaintOpWriter::GetRecordSize(record_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(record_bounds_) +
+      PaintOpWriter::SerializedSize(raster_scale_) +
+      PaintOpWriter::SerializedSize(scaling_behavior_);
+  total_size += PaintOpWriter::SerializedSize(record_);
   return total_size.ValueOrDefault(0u);
 }
 
 sk_sp<PaintFilter> RecordPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_sp<RecordPaintFilter>(
-      new RecordPaintFilter(record_, record_bounds_, image_provider));
+      new RecordPaintFilter(record_, record_bounds_, raster_scale_,
+                            scaling_behavior_, image_provider));
 }
 
-bool RecordPaintFilter::operator==(const RecordPaintFilter& other) const {
-  return !!record_ == !!other.record_ &&
-         PaintOp::AreSkRectsEqual(record_bounds_, other.record_bounds_);
+bool RecordPaintFilter::EqualsForTesting(const RecordPaintFilter& other) const {
+  return record_.EqualsForTesting(other.record_) &&  // IN-TEST
+         scaling_behavior_ == other.scaling_behavior_ &&
+         raster_scale_ == other.raster_scale_ &&
+         record_bounds_ == other.record_bounds_;
 }
 
 MergePaintFilter::MergePaintFilter(const sk_sp<PaintFilter>* const filters,
@@ -769,35 +845,32 @@ MergePaintFilter::MergePaintFilter(const sk_sp<PaintFilter>* const filters,
     sk_filters.push_back(GetSkFilter(inputs_->back().get()));
   }
 
-  cached_sk_filter_ = SkMergeImageFilter::Make(
+  cached_sk_filter_ = SkImageFilters::Merge(
       static_cast<sk_sp<SkImageFilter>*>(sk_filters.data()), count, crop_rect);
 }
 
 MergePaintFilter::~MergePaintFilter() = default;
 
 size_t MergePaintFilter::SerializedSize() const {
-  base::CheckedNumeric<size_t> total_size = 0u;
-  for (size_t i = 0; i < input_count(); ++i)
-    total_size += GetFilterSize(input_at(i));
-  total_size += BaseSerializedSize();
-  total_size += sizeof(input_count());
+  base::CheckedNumeric<size_t> total_size = BaseSerializedSize();
+  total_size += PaintOpWriter::SerializedSize(input_count());
+  for (size_t i = 0; i < input_count(); ++i) {
+    total_size += PaintOpWriter::SerializedSize(input_at(i));
+  }
   return total_size.ValueOrDefault(0u);
 }
 
 sk_sp<PaintFilter> MergePaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_sp<MergePaintFilter>(new MergePaintFilter(
-      &inputs_[0], inputs_->size(), crop_rect(), image_provider));
+      &inputs_[0], inputs_->size(), GetCropRect(), image_provider));
 }
 
-bool MergePaintFilter::operator==(const MergePaintFilter& other) const {
-  if (inputs_->size() != other.inputs_->size())
-    return false;
-  for (size_t i = 0; i < inputs_->size(); ++i) {
-    if (!AreFiltersEqual(inputs_[i].get(), other.inputs_[i].get()))
-      return false;
-  }
-  return true;
+bool MergePaintFilter::EqualsForTesting(const MergePaintFilter& other) const {
+  return base::ranges::equal(
+      inputs_, other.inputs_, [](const auto& a, const auto& b) {
+        return AreValuesEqualForTesting(a, b);  // IN-TEST
+      });
 }
 
 MorphologyPaintFilter::MorphologyPaintFilter(MorphType morph_type,
@@ -812,11 +885,11 @@ MorphologyPaintFilter::MorphologyPaintFilter(MorphType morph_type,
       input_(std::move(input)) {
   switch (morph_type_) {
     case MorphType::kDilate:
-      cached_sk_filter_ = SkDilateImageFilter::Make(
+      cached_sk_filter_ = SkImageFilters::Dilate(
           radius_x_, radius_y_, GetSkFilter(input_.get()), crop_rect);
       break;
     case MorphType::kErode:
-      cached_sk_filter_ = SkErodeImageFilter::Make(
+      cached_sk_filter_ = SkImageFilters::Erode(
           radius_x_, radius_y_, GetSkFilter(input_.get()), crop_rect);
       break;
   }
@@ -826,9 +899,10 @@ MorphologyPaintFilter::~MorphologyPaintFilter() = default;
 
 size_t MorphologyPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(morph_type_) + sizeof(radius_x_) +
-      sizeof(radius_y_);
-  total_size += GetFilterSize(input_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(morph_type_) +
+      PaintOpWriter::SerializedSize(radius_x_) +
+      PaintOpWriter::SerializedSize(radius_y_);
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -836,14 +910,14 @@ sk_sp<PaintFilter> MorphologyPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<MorphologyPaintFilter>(morph_type_, radius_x_, radius_y_,
                                            Snapshot(input_, image_provider),
-                                           crop_rect());
+                                           GetCropRect());
 }
 
-bool MorphologyPaintFilter::operator==(
+bool MorphologyPaintFilter::EqualsForTesting(
     const MorphologyPaintFilter& other) const {
   return morph_type_ == other.morph_type_ && radius_x_ == other.radius_x_ &&
          radius_y_ == other.radius_y_ &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 OffsetPaintFilter::OffsetPaintFilter(SkScalar dx,
@@ -855,28 +929,28 @@ OffsetPaintFilter::OffsetPaintFilter(SkScalar dx,
       dy_(dy),
       input_(std::move(input)) {
   cached_sk_filter_ =
-      SkOffsetImageFilter::Make(dx_, dy_, GetSkFilter(input_.get()), crop_rect);
+      SkImageFilters::Offset(dx_, dy_, GetSkFilter(input_.get()), crop_rect);
 }
 
 OffsetPaintFilter::~OffsetPaintFilter() = default;
 
 size_t OffsetPaintFilter::SerializedSize() const {
-  base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(dx_) + sizeof(dy_);
-  total_size += GetFilterSize(input_.get());
+  base::CheckedNumeric<size_t> total_size = BaseSerializedSize() +
+                                            PaintOpWriter::SerializedSize(dx_) +
+                                            PaintOpWriter::SerializedSize(dy_);
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
 sk_sp<PaintFilter> OffsetPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<OffsetPaintFilter>(
-      dx_, dy_, Snapshot(input_, image_provider), crop_rect());
+      dx_, dy_, Snapshot(input_, image_provider), GetCropRect());
 }
 
-bool OffsetPaintFilter::operator==(const OffsetPaintFilter& other) const {
-  return PaintOp::AreEqualEvenIfNaN(dx_, other.dx_) &&
-         PaintOp::AreEqualEvenIfNaN(dy_, other.dy_) &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+bool OffsetPaintFilter::EqualsForTesting(const OffsetPaintFilter& other) const {
+  return dx_ == other.dx_ && dy_ == other.dy_ &&
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 TilePaintFilter::TilePaintFilter(const SkRect& src,
@@ -887,15 +961,16 @@ TilePaintFilter::TilePaintFilter(const SkRect& src,
       dst_(dst),
       input_(std::move(input)) {
   cached_sk_filter_ =
-      SkTileImageFilter::Make(src_, dst_, GetSkFilter(input_.get()));
+      SkImageFilters::Tile(src_, dst_, GetSkFilter(input_.get()));
 }
 
 TilePaintFilter::~TilePaintFilter() = default;
 
 size_t TilePaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(src_) + sizeof(dst_);
-  total_size += GetFilterSize(input_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(src_) +
+      PaintOpWriter::SerializedSize(dst_);
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -905,10 +980,9 @@ sk_sp<PaintFilter> TilePaintFilter::SnapshotWithImagesInternal(
                                      Snapshot(input_, image_provider));
 }
 
-bool TilePaintFilter::operator==(const TilePaintFilter& other) const {
-  return PaintOp::AreSkRectsEqual(src_, other.src_) &&
-         PaintOp::AreSkRectsEqual(dst_, other.dst_) &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+bool TilePaintFilter::EqualsForTesting(const TilePaintFilter& other) const {
+  return src_ == other.src_ && dst_ == other.dst_ &&
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 TurbulencePaintFilter::TurbulencePaintFilter(TurbulenceType turbulence_type,
@@ -939,91 +1013,124 @@ TurbulencePaintFilter::TurbulencePaintFilter(TurbulenceType turbulence_type,
       break;
   }
 
-  SkPaint paint;
-  paint.setShader(std::move(shader));
-  cached_sk_filter_ = SkPaintImageFilter::Make(paint, crop_rect);
+  cached_sk_filter_ = SkImageFilters::Shader(std::move(shader), crop_rect);
 }
 
 TurbulencePaintFilter::~TurbulencePaintFilter() = default;
 
 size_t TurbulencePaintFilter::SerializedSize() const {
-  return BaseSerializedSize() + sizeof(turbulence_type_) +
-         sizeof(base_frequency_x_) + sizeof(base_frequency_y_) +
-         sizeof(num_octaves_) + sizeof(seed_) + sizeof(tile_size_);
+  return BaseSerializedSize() +
+         PaintOpWriter::SerializedSize(turbulence_type_) +
+         PaintOpWriter::SerializedSize(base_frequency_x_) +
+         PaintOpWriter::SerializedSize(base_frequency_y_) +
+         PaintOpWriter::SerializedSize(num_octaves_) +
+         PaintOpWriter::SerializedSize(seed_) +
+         PaintOpWriter::SerializedSize(tile_size_);
 }
 
 sk_sp<PaintFilter> TurbulencePaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<TurbulencePaintFilter>(turbulence_type_, base_frequency_x_,
                                            base_frequency_y_, num_octaves_,
-                                           seed_, &tile_size_, crop_rect());
+                                           seed_, &tile_size_, GetCropRect());
 }
 
-bool TurbulencePaintFilter::operator==(
+bool TurbulencePaintFilter::EqualsForTesting(
     const TurbulencePaintFilter& other) const {
   return turbulence_type_ == other.turbulence_type_ &&
-         PaintOp::AreEqualEvenIfNaN(base_frequency_x_,
-                                    other.base_frequency_x_) &&
-         PaintOp::AreEqualEvenIfNaN(base_frequency_y_,
-                                    other.base_frequency_y_) &&
-         num_octaves_ == other.num_octaves_ &&
-         PaintOp::AreEqualEvenIfNaN(seed_, other.seed_) &&
+         base_frequency_x_ == other.base_frequency_x_ &&
+         base_frequency_y_ == other.base_frequency_y_ &&
+         num_octaves_ == other.num_octaves_ && seed_ == other.seed_ &&
          tile_size_ == other.tile_size_;
 }
 
-PaintFlagsPaintFilter::PaintFlagsPaintFilter(PaintFlags flags,
-                                             const CropRect* crop_rect)
-    : PaintFlagsPaintFilter(std::move(flags), nullptr, crop_rect) {}
-
-PaintFlagsPaintFilter::PaintFlagsPaintFilter(PaintFlags flags,
-                                             ImageProvider* image_provider,
-                                             const CropRect* crop_rect)
-    : PaintFilter(kType, crop_rect, flags.HasDiscardableImages()),
-      flags_(std::move(flags)) {
-  if (image_provider) {
-    raster_flags_.emplace(&flags_, image_provider, SkMatrix::I(), 0, 255u);
+ShaderPaintFilter::ShaderPaintFilter(sk_sp<PaintShader> shader,
+                                     float alpha,
+                                     PaintFlags::FilterQuality filter_quality,
+                                     SkImageFilters::Dither dither,
+                                     const CropRect* crop_rect)
+    : PaintFilter(kType, crop_rect, shader->has_discardable_images()),
+      shader_(std::move(shader)),
+      alpha_(alpha),
+      filter_quality_(filter_quality),
+      dither_(dither) {
+  sk_sp<SkShader> sk_shader = shader_->GetSkShader(filter_quality_);
+  // Combine the alpha multiply into the SkShader if it's not opaque
+  if (alpha < 1.0f) {
+    // The blend effectively produces (shader * alpha), the rgb of the secondary
+    // color are ignored.
+    SkColor4f color{1.0f, 1.0f, 1.0f, alpha};
+    // TODO(crbug/1308932): Remove toSkColor and make all SkColor4f.
+    sk_shader = SkShaders::Blend(SkBlendMode::kDstIn, std::move(sk_shader),
+                                 SkShaders::Color(color.toSkColor()));
   }
-  cached_sk_filter_ = SkPaintImageFilter::Make(
-      raster_flags_ ? raster_flags_->flags()->ToSkPaint() : flags_.ToSkPaint(),
-      crop_rect);
+
+  cached_sk_filter_ =
+      SkImageFilters::Shader(std::move(sk_shader), dither, crop_rect);
 }
 
-PaintFlagsPaintFilter::~PaintFlagsPaintFilter() = default;
+ShaderPaintFilter::~ShaderPaintFilter() = default;
 
-size_t PaintFlagsPaintFilter::SerializedSize() const {
+size_t ShaderPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size = BaseSerializedSize();
-  total_size += flags_.GetSerializedSize();
+  total_size += PaintShader::GetSerializedSize(shader_.get());
+  total_size += PaintOpWriter::SerializedSize(alpha_);
+  total_size +=
+      PaintOpWriter::SerializedSize(filter_quality_);  // filter quality
+  total_size += PaintOpWriter::SerializedSize(dither_);
   return total_size.ValueOrDefault(0u);
 }
 
-sk_sp<PaintFilter> PaintFlagsPaintFilter::SnapshotWithImagesInternal(
+sk_sp<PaintFilter> ShaderPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
-  return sk_sp<PaintFilter>(
-      new PaintFlagsPaintFilter(flags_, image_provider, crop_rect()));
+  PaintFlags orig_flags;
+  orig_flags.setShader(shader_);
+  orig_flags.setAlphaf(alpha_);
+  orig_flags.setFilterQuality(filter_quality_);
+  orig_flags.setDither(dither_ == SkImageFilters::Dither::kYes);
+
+  ScopedRasterFlags raster_flags(&orig_flags, image_provider, SkMatrix::I(), 0,
+                                 1.0f);
+  const PaintFlags* snapshot = raster_flags.flags();
+  if (snapshot) {
+    // Ref the updated paint shader so that it can outlive ScopedRasterFlags
+    return sk_make_sp<ShaderPaintFilter>(
+        sk_ref_sp(snapshot->getShader()), snapshot->getAlphaf(),
+        snapshot->getFilterQuality(),
+        snapshot->isDither() ? Dither::kYes : Dither::kNo, GetCropRect());
+  } else {
+    // If decode failed, then just fallback to the solid color
+    return sk_make_sp<ShaderPaintFilter>(nullptr, alpha_, filter_quality_,
+                                         dither_, GetCropRect());
+  }
 }
 
-bool PaintFlagsPaintFilter::operator==(
-    const PaintFlagsPaintFilter& other) const {
-  return flags_ == other.flags_;
+bool ShaderPaintFilter::EqualsForTesting(const ShaderPaintFilter& other) const {
+  DCHECK(shader_ && other.shader_);
+  return alpha_ == other.alpha_ && filter_quality_ == other.filter_quality_ &&
+         dither_ == other.dither_ &&
+         shader_->EqualsForTesting(*other.shader_);  // IN-TEST
 }
 
 MatrixPaintFilter::MatrixPaintFilter(const SkMatrix& matrix,
-                                     SkFilterQuality filter_quality,
+                                     PaintFlags::FilterQuality filter_quality,
                                      sk_sp<PaintFilter> input)
     : PaintFilter(Type::kMatrix, nullptr, HasDiscardableImages(input)),
       matrix_(matrix),
       filter_quality_(filter_quality),
       input_(std::move(input)) {
-  cached_sk_filter_ = SkImageFilter::MakeMatrixFilter(
-      matrix_, filter_quality_, GetSkFilter(input_.get()));
+  cached_sk_filter_ = SkImageFilters::MatrixTransform(
+      matrix_, PaintFlags::FilterQualityToSkSamplingOptions(filter_quality_),
+      GetSkFilter(input_.get()));
 }
 
 MatrixPaintFilter::~MatrixPaintFilter() = default;
 
 size_t MatrixPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(matrix_) + sizeof(filter_quality_);
-  total_size += GetFilterSize(input_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(matrix_) +
+      PaintOpWriter::SerializedSize(filter_quality_);
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -1033,16 +1140,15 @@ sk_sp<PaintFilter> MatrixPaintFilter::SnapshotWithImagesInternal(
                                        Snapshot(input_, image_provider));
 }
 
-bool MatrixPaintFilter::operator==(const MatrixPaintFilter& other) const {
-  return PaintOp::AreSkMatricesEqual(matrix_, other.matrix_) &&
-         filter_quality_ == other.filter_quality_ &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+bool MatrixPaintFilter::EqualsForTesting(const MatrixPaintFilter& other) const {
+  return matrix_ == other.matrix_ && filter_quality_ == other.filter_quality_ &&
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 LightingDistantPaintFilter::LightingDistantPaintFilter(
     LightingType lighting_type,
     const SkPoint3& direction,
-    SkColor light_color,
+    SkColor4f light_color,
     SkScalar surface_scale,
     SkScalar kconstant,
     SkScalar shininess,
@@ -1058,14 +1164,16 @@ LightingDistantPaintFilter::LightingDistantPaintFilter(
       input_(std::move(input)) {
   switch (lighting_type_) {
     case LightingType::kDiffuse:
-      cached_sk_filter_ = SkLightingImageFilter::MakeDistantLitDiffuse(
-          direction_, light_color_, surface_scale_, kconstant_,
+      // TODO(crbug/1308932): Remove toSkColor and make all SkColor4f.
+      cached_sk_filter_ = SkImageFilters::DistantLitDiffuse(
+          direction_, light_color_.toSkColor(), surface_scale_, kconstant_,
           GetSkFilter(input_.get()), crop_rect);
       break;
     case LightingType::kSpecular:
-      cached_sk_filter_ = SkLightingImageFilter::MakeDistantLitSpecular(
-          direction_, light_color_, surface_scale_, kconstant_, shininess_,
-          GetSkFilter(input_.get()), crop_rect);
+      // TODO(crbug/1308932): Remove toSkColor and make all SkColor4f.
+      cached_sk_filter_ = SkImageFilters::DistantLitSpecular(
+          direction_, light_color_.toSkColor(), surface_scale_, kconstant_,
+          shininess_, GetSkFilter(input_.get()), crop_rect);
       break;
   }
 }
@@ -1074,10 +1182,13 @@ LightingDistantPaintFilter::~LightingDistantPaintFilter() = default;
 
 size_t LightingDistantPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(lighting_type_) + sizeof(direction_) +
-      sizeof(light_color_) + sizeof(surface_scale_) + sizeof(kconstant_) +
-      sizeof(shininess_);
-  total_size += GetFilterSize(input_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(lighting_type_) +
+      PaintOpWriter::SerializedSize(direction_) +
+      PaintOpWriter::SerializedSize(light_color_) +
+      PaintOpWriter::SerializedSize(surface_scale_) +
+      PaintOpWriter::SerializedSize(kconstant_) +
+      PaintOpWriter::SerializedSize(shininess_);
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -1085,23 +1196,21 @@ sk_sp<PaintFilter> LightingDistantPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<LightingDistantPaintFilter>(
       lighting_type_, direction_, light_color_, surface_scale_, kconstant_,
-      shininess_, Snapshot(input_, image_provider), crop_rect());
+      shininess_, Snapshot(input_, image_provider), GetCropRect());
 }
 
-bool LightingDistantPaintFilter::operator==(
+bool LightingDistantPaintFilter::EqualsForTesting(
     const LightingDistantPaintFilter& other) const {
   return lighting_type_ == other.lighting_type_ &&
-         PaintOp::AreSkPoint3sEqual(direction_, other.direction_) &&
-         light_color_ == other.light_color_ &&
-         PaintOp::AreEqualEvenIfNaN(surface_scale_, other.surface_scale_) &&
-         PaintOp::AreEqualEvenIfNaN(kconstant_, other.kconstant_) &&
-         PaintOp::AreEqualEvenIfNaN(shininess_, other.shininess_) &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+         direction_ == other.direction_ && light_color_ == other.light_color_ &&
+         surface_scale_ == other.surface_scale_ &&
+         kconstant_ == other.kconstant_ && shininess_ == other.shininess_ &&
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 LightingPointPaintFilter::LightingPointPaintFilter(LightingType lighting_type,
                                                    const SkPoint3& location,
-                                                   SkColor light_color,
+                                                   SkColor4f light_color,
                                                    SkScalar surface_scale,
                                                    SkScalar kconstant,
                                                    SkScalar shininess,
@@ -1117,14 +1226,16 @@ LightingPointPaintFilter::LightingPointPaintFilter(LightingType lighting_type,
       input_(std::move(input)) {
   switch (lighting_type_) {
     case LightingType::kDiffuse:
-      cached_sk_filter_ = SkLightingImageFilter::MakePointLitDiffuse(
-          location_, light_color_, surface_scale_, kconstant_,
+      // TODO(crbug/1308932): Remove toSkColor and make all SkColor4f.
+      cached_sk_filter_ = SkImageFilters::PointLitDiffuse(
+          location_, light_color_.toSkColor(), surface_scale_, kconstant_,
           GetSkFilter(input_.get()), crop_rect);
       break;
     case LightingType::kSpecular:
-      cached_sk_filter_ = SkLightingImageFilter::MakePointLitSpecular(
-          location_, light_color_, surface_scale_, kconstant_, shininess_,
-          GetSkFilter(input_.get()), crop_rect);
+      // TODO(crbug/1308932): Remove toSkColor and make all SkColor4f.
+      cached_sk_filter_ = SkImageFilters::PointLitSpecular(
+          location_, light_color_.toSkColor(), surface_scale_, kconstant_,
+          shininess_, GetSkFilter(input_.get()), crop_rect);
       break;
   }
 }
@@ -1133,10 +1244,13 @@ LightingPointPaintFilter::~LightingPointPaintFilter() = default;
 
 size_t LightingPointPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(lighting_type_) + sizeof(location_) +
-      sizeof(light_color_) + sizeof(surface_scale_) + sizeof(kconstant_) +
-      sizeof(shininess_);
-  total_size += GetFilterSize(input_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(lighting_type_) +
+      PaintOpWriter::SerializedSize(location_) +
+      PaintOpWriter::SerializedSize(light_color_) +
+      PaintOpWriter::SerializedSize(surface_scale_) +
+      PaintOpWriter::SerializedSize(kconstant_) +
+      PaintOpWriter::SerializedSize(shininess_);
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -1144,18 +1258,16 @@ sk_sp<PaintFilter> LightingPointPaintFilter::SnapshotWithImagesInternal(
     ImageProvider* image_provider) const {
   return sk_make_sp<LightingPointPaintFilter>(
       lighting_type_, location_, light_color_, surface_scale_, kconstant_,
-      shininess_, Snapshot(input_, image_provider), crop_rect());
+      shininess_, Snapshot(input_, image_provider), GetCropRect());
 }
 
-bool LightingPointPaintFilter::operator==(
+bool LightingPointPaintFilter::EqualsForTesting(
     const LightingPointPaintFilter& other) const {
   return lighting_type_ == other.lighting_type_ &&
-         PaintOp::AreSkPoint3sEqual(location_, other.location_) &&
-         light_color_ == other.light_color_ &&
-         PaintOp::AreEqualEvenIfNaN(surface_scale_, other.surface_scale_) &&
-         PaintOp::AreEqualEvenIfNaN(kconstant_, other.kconstant_) &&
-         PaintOp::AreEqualEvenIfNaN(shininess_, other.shininess_) &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+         location_ == other.location_ && light_color_ == other.light_color_ &&
+         surface_scale_ == other.surface_scale_ &&
+         kconstant_ == other.kconstant_ && shininess_ == other.shininess_ &&
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 LightingSpotPaintFilter::LightingSpotPaintFilter(LightingType lighting_type,
@@ -1163,7 +1275,7 @@ LightingSpotPaintFilter::LightingSpotPaintFilter(LightingType lighting_type,
                                                  const SkPoint3& target,
                                                  SkScalar specular_exponent,
                                                  SkScalar cutoff_angle,
-                                                 SkColor light_color,
+                                                 SkColor4f light_color,
                                                  SkScalar surface_scale,
                                                  SkScalar kconstant,
                                                  SkScalar shininess,
@@ -1182,15 +1294,18 @@ LightingSpotPaintFilter::LightingSpotPaintFilter(LightingType lighting_type,
       input_(std::move(input)) {
   switch (lighting_type_) {
     case LightingType::kDiffuse:
-      cached_sk_filter_ = SkLightingImageFilter::MakeSpotLitDiffuse(
-          location_, target_, specular_exponent_, cutoff_angle_, light_color_,
-          surface_scale_, kconstant_, GetSkFilter(input_.get()), crop_rect);
+      // TODO(crbug/1308932): Remove toSkColor and make all SkColor4f.
+      cached_sk_filter_ = SkImageFilters::SpotLitDiffuse(
+          location_, target_, specular_exponent_, cutoff_angle_,
+          light_color_.toSkColor(), surface_scale_, kconstant_,
+          GetSkFilter(input_.get()), crop_rect);
       break;
     case LightingType::kSpecular:
-      cached_sk_filter_ = SkLightingImageFilter::MakeSpotLitSpecular(
-          location_, target_, specular_exponent_, cutoff_angle_, light_color_,
-          surface_scale_, kconstant_, shininess_, GetSkFilter(input_.get()),
-          crop_rect);
+      // TODO(crbug/1308932): Remove toSkColor and make all SkColor4f.
+      cached_sk_filter_ = SkImageFilters::SpotLitSpecular(
+          location_, target_, specular_exponent_, cutoff_angle_,
+          light_color_.toSkColor(), surface_scale_, kconstant_, shininess_,
+          GetSkFilter(input_.get()), crop_rect);
       break;
   }
 }
@@ -1199,11 +1314,16 @@ LightingSpotPaintFilter::~LightingSpotPaintFilter() = default;
 
 size_t LightingSpotPaintFilter::SerializedSize() const {
   base::CheckedNumeric<size_t> total_size =
-      BaseSerializedSize() + sizeof(lighting_type_) + sizeof(location_) +
-      sizeof(target_) + sizeof(specular_exponent_) + sizeof(cutoff_angle_) +
-      sizeof(light_color_) + sizeof(surface_scale_) + sizeof(kconstant_) +
-      sizeof(shininess_);
-  total_size += GetFilterSize(input_.get());
+      BaseSerializedSize() + PaintOpWriter::SerializedSize(lighting_type_) +
+      PaintOpWriter::SerializedSize(location_) +
+      PaintOpWriter::SerializedSize(target_) +
+      PaintOpWriter::SerializedSize(specular_exponent_) +
+      PaintOpWriter::SerializedSize(cutoff_angle_) +
+      PaintOpWriter::SerializedSize(light_color_) +
+      PaintOpWriter::SerializedSize(surface_scale_) +
+      PaintOpWriter::SerializedSize(kconstant_) +
+      PaintOpWriter::SerializedSize(shininess_);
+  total_size += PaintOpWriter::SerializedSize(input_.get());
   return total_size.ValueOrDefault(0u);
 }
 
@@ -1212,22 +1332,19 @@ sk_sp<PaintFilter> LightingSpotPaintFilter::SnapshotWithImagesInternal(
   return sk_make_sp<LightingSpotPaintFilter>(
       lighting_type_, location_, target_, specular_exponent_, cutoff_angle_,
       light_color_, surface_scale_, kconstant_, shininess_,
-      Snapshot(input_, image_provider), crop_rect());
+      Snapshot(input_, image_provider), GetCropRect());
 }
 
-bool LightingSpotPaintFilter::operator==(
+bool LightingSpotPaintFilter::EqualsForTesting(
     const LightingSpotPaintFilter& other) const {
   return lighting_type_ == other.lighting_type_ &&
-         PaintOp::AreSkPoint3sEqual(location_, other.location_) &&
-         PaintOp::AreSkPoint3sEqual(target_, other.target_) &&
-         PaintOp::AreEqualEvenIfNaN(specular_exponent_,
-                                    other.specular_exponent_) &&
-         PaintOp::AreEqualEvenIfNaN(cutoff_angle_, other.cutoff_angle_) &&
+         location_ == other.location_ && target_ == other.target_ &&
+         specular_exponent_ == other.specular_exponent_ &&
+         cutoff_angle_ == other.cutoff_angle_ &&
          light_color_ == other.light_color_ &&
-         PaintOp::AreEqualEvenIfNaN(surface_scale_, other.surface_scale_) &&
-         PaintOp::AreEqualEvenIfNaN(kconstant_, other.kconstant_) &&
-         PaintOp::AreEqualEvenIfNaN(shininess_, other.shininess_) &&
-         AreFiltersEqual(input_.get(), other.input_.get());
+         surface_scale_ == other.surface_scale_ &&
+         kconstant_ == other.kconstant_ && shininess_ == other.shininess_ &&
+         AreValuesEqualForTesting(input_, other.input_);  // IN-TEST
 }
 
 }  // namespace cc

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/qtest.h>
 #include <QtCore/qdir.h>
@@ -43,36 +18,35 @@ class tst_QFactoryLoader : public QObject
 {
     Q_OBJECT
 
-#ifdef Q_OS_ANDROID
-    QSharedPointer<QTemporaryDir> directory;
-#endif
-
+    QString binFolder;
 public slots:
     void initTestCase();
 
 private slots:
     void usingTwoFactoriesFromSameDir();
+    void extraSearchPath();
+    void staticPlugin_data();
+    void staticPlugin();
 };
 
 static const char binFolderC[] = "bin";
 
 void tst_QFactoryLoader::initTestCase()
 {
-#ifdef Q_OS_ANDROID
-    directory = QEXTRACTTESTDATA("android_test_data");
-    QVERIFY(directory);
-    QVERIFY(directory->isValid());
-    QVERIFY2(QDir::setCurrent(directory->path()), qPrintable("Could not chdir to " + directory->path()));
-#endif
-    const QString binFolder = QFINDTESTDATA(binFolderC);
+    // On Android the plugins are bundled into APK's libs subdir
+#ifndef Q_OS_ANDROID
+    binFolder = QFINDTESTDATA(binFolderC);
     QVERIFY2(!binFolder.isEmpty(), "Unable to locate 'bin' folder");
-#if QT_CONFIG(library)
-    QCoreApplication::setLibraryPaths(QStringList(QFileInfo(binFolder).absolutePath()));
 #endif
 }
 
 void tst_QFactoryLoader::usingTwoFactoriesFromSameDir()
 {
+#if QT_CONFIG(library) && !defined(Q_OS_ANDROID)
+    // set the library path to contain the directory where the 'bin' dir is located
+    QCoreApplication::setLibraryPaths( { QFileInfo(binFolder).absolutePath() });
+#endif
+
     const QString suffix = QLatin1Char('/') + QLatin1String(binFolderC);
     QFactoryLoader loader1(PluginInterface1_iid, suffix);
 
@@ -90,6 +64,90 @@ void tst_QFactoryLoader::usingTwoFactoriesFromSameDir()
 
     QCOMPARE(plugin1->pluginName(), QLatin1String("Plugin1 ok"));
     QCOMPARE(plugin2->pluginName(), QLatin1String("Plugin2 ok"));
+}
+
+void tst_QFactoryLoader::extraSearchPath()
+{
+#if defined(Q_OS_ANDROID) && !QT_CONFIG(library)
+    QSKIP("Test not applicable in this configuration.");
+#else
+#ifdef Q_OS_ANDROID
+    // On Android the libs are not stored in binFolder, but bundled into
+    // APK's libs subdir
+    const QStringList androidLibsPaths = QCoreApplication::libraryPaths();
+    QCOMPARE(androidLibsPaths.size(), 1);
+#endif
+    QCoreApplication::setLibraryPaths(QStringList());
+
+#ifndef Q_OS_ANDROID
+    QString pluginsPath = QFileInfo(binFolder).absoluteFilePath();
+    QFactoryLoader loader1(PluginInterface1_iid, "/nonexistent");
+#else
+    QString pluginsPath = androidLibsPaths.first();
+    // On Android we still need to specify a valid suffix, because it's a part
+    // of a file name, not directory structure
+    const QString suffix = QLatin1Char('/') + QLatin1String(binFolderC);
+    QFactoryLoader loader1(PluginInterface1_iid, suffix);
+#endif
+
+    // it shouldn't have scanned anything because we haven't given it a path yet
+    QVERIFY(loader1.metaData().isEmpty());
+
+    loader1.setExtraSearchPath(pluginsPath);
+    PluginInterface1 *plugin1 = qobject_cast<PluginInterface1 *>(loader1.instance(0));
+    QVERIFY2(plugin1,
+             qPrintable(QString::fromLatin1("Cannot load plugin '%1'")
+                        .arg(QLatin1String(PluginInterface1_iid))));
+
+    QCOMPARE(plugin1->pluginName(), QLatin1String("Plugin1 ok"));
+
+    // check that it forgets that plugin
+    loader1.setExtraSearchPath(QString());
+    QVERIFY(loader1.metaData().isEmpty());
+#endif
+}
+
+Q_IMPORT_PLUGIN(StaticPlugin1)
+Q_IMPORT_PLUGIN(StaticPlugin2)
+constexpr bool IsDebug =
+#ifdef QT_NO_DEBUG
+        false &&
+#endif
+        true;
+
+void tst_QFactoryLoader::staticPlugin_data()
+{
+    QTest::addColumn<QString>("iid");
+    auto addRow = [](const char *iid) {
+        QTest::addRow("%s", iid) << QString(iid);
+    };
+    addRow("StaticPlugin1");
+    addRow("StaticPlugin2");
+}
+
+void tst_QFactoryLoader::staticPlugin()
+{
+    QFETCH(QString, iid);
+    QFactoryLoader loader(iid.toLatin1(), "/irrelevant");
+    QFactoryLoader::MetaDataList list = loader.metaData();
+    QCOMPARE(list.size(), 1);
+
+    QCborMap map = list.at(0).toCbor();
+    QCOMPARE(map[int(QtPluginMetaDataKeys::QtVersion)],
+            QT_VERSION_CHECK(QT_VERSION_MAJOR, QT_VERSION_MINOR, 0));
+    QCOMPARE(map[int(QtPluginMetaDataKeys::IID)], iid);
+    QCOMPARE(map[int(QtPluginMetaDataKeys::ClassName)], iid);
+    QCOMPARE(map[int(QtPluginMetaDataKeys::IsDebug)], IsDebug);
+
+    QCborValue metaData = map[int(QtPluginMetaDataKeys::MetaData)];
+    QVERIFY(metaData.isMap());
+    QCOMPARE(metaData["Keys"], QCborArray{ "Value" });
+    QCOMPARE(loader.indexOf("Value"), 0);
+
+    // instantiate
+    QObject *instance = loader.instance(0);
+    QVERIFY(instance);
+    QCOMPARE(instance->metaObject()->className(), iid);
 }
 
 QTEST_MAIN(tst_QFactoryLoader)

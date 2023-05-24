@@ -35,14 +35,15 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "include/v8-exception.h"
+#include "include/v8-local-handle.h"
+#include "include/v8-persistent-handle.h"
 #include "src/base/macros.h"
 #include "src/inspector/inspected-context.h"
 #include "src/inspector/protocol/Forward.h"
 #include "src/inspector/protocol/Runtime.h"
 #include "src/inspector/v8-console.h"
 #include "src/inspector/v8-debugger.h"
-
-#include "include/v8.h"
 
 namespace v8_inspector {
 
@@ -57,30 +58,44 @@ using protocol::Response;
 
 class EvaluateCallback {
  public:
+  static void sendSuccess(
+      std::weak_ptr<EvaluateCallback> callback, InjectedScript* injectedScript,
+      std::unique_ptr<protocol::Runtime::RemoteObject> result,
+      protocol::Maybe<protocol::Runtime::ExceptionDetails> exceptionDetails);
+  static void sendFailure(std::weak_ptr<EvaluateCallback> callback,
+                          InjectedScript* injectedScript,
+                          const protocol::DispatchResponse& response);
+
+  virtual ~EvaluateCallback() = default;
+
+ private:
   virtual void sendSuccess(
       std::unique_ptr<protocol::Runtime::RemoteObject> result,
       protocol::Maybe<protocol::Runtime::ExceptionDetails>
           exceptionDetails) = 0;
   virtual void sendFailure(const protocol::DispatchResponse& response) = 0;
-  virtual ~EvaluateCallback() = default;
 };
 
 class InjectedScript final {
  public:
   InjectedScript(InspectedContext*, int sessionId);
   ~InjectedScript();
+  InjectedScript(const InjectedScript&) = delete;
+  InjectedScript& operator=(const InjectedScript&) = delete;
 
   InspectedContext* context() const { return m_context; }
 
   Response getProperties(
       v8::Local<v8::Object>, const String16& groupName, bool ownProperties,
-      bool accessorPropertiesOnly, WrapMode wrapMode,
+      bool accessorPropertiesOnly, bool nonIndexedPropertiesOnly,
+      WrapMode wrapMode,
       std::unique_ptr<protocol::Array<protocol::Runtime::PropertyDescriptor>>*
           result,
       Maybe<protocol::Runtime::ExceptionDetails>*);
 
   Response getInternalAndPrivateProperties(
       v8::Local<v8::Value>, const String16& groupName,
+      bool accessorPropertiesOnly,
       std::unique_ptr<
           protocol::Array<protocol::Runtime::InternalPropertyDescriptor>>*
           internalProperties,
@@ -108,8 +123,8 @@ class InjectedScript final {
   void addPromiseCallback(V8InspectorSessionImpl* session,
                           v8::MaybeLocal<v8::Value> value,
                           const String16& objectGroup, WrapMode wrapMode,
-                          bool replMode,
-                          std::unique_ptr<EvaluateCallback> callback);
+                          bool replMode, bool throwOnSideEffect,
+                          std::shared_ptr<EvaluateCallback> callback);
 
   Response findObject(const RemoteObjectId&, v8::Local<v8::Value>*) const;
   String16 objectGroupName(const RemoteObjectId&) const;
@@ -128,7 +143,7 @@ class InjectedScript final {
 
   Response wrapEvaluateResult(
       v8::MaybeLocal<v8::Value> maybeResultValue, const v8::TryCatch&,
-      const String16& objectGroup, WrapMode wrapMode,
+      const String16& objectGroup, WrapMode wrapMode, bool throwOnSideEffect,
       std::unique_ptr<protocol::Runtime::RemoteObject>* result,
       Maybe<protocol::Runtime::ExceptionDetails>*);
   v8::Local<v8::Value> lastEvaluationResult() const;
@@ -171,22 +186,25 @@ class InjectedScript final {
     int m_sessionId;
   };
 
-  class ContextScope : public Scope {
+  class ContextScope : public Scope,
+                       public V8InspectorSession::CommandLineAPIScope {
    public:
     ContextScope(V8InspectorSessionImpl*, int executionContextId);
     ~ContextScope() override;
+    ContextScope(const ContextScope&) = delete;
+    ContextScope& operator=(const ContextScope&) = delete;
 
    private:
     Response findInjectedScript(V8InspectorSessionImpl*) override;
     int m_executionContextId;
-
-    DISALLOW_COPY_AND_ASSIGN(ContextScope);
   };
 
   class ObjectScope : public Scope {
    public:
     ObjectScope(V8InspectorSessionImpl*, const String16& remoteObjectId);
     ~ObjectScope() override;
+    ObjectScope(const ObjectScope&) = delete;
+    ObjectScope& operator=(const ObjectScope&) = delete;
     const String16& objectGroupName() const { return m_objectGroupName; }
     v8::Local<v8::Value> object() const { return m_object; }
 
@@ -195,26 +213,26 @@ class InjectedScript final {
     String16 m_remoteObjectId;
     String16 m_objectGroupName;
     v8::Local<v8::Value> m_object;
-
-    DISALLOW_COPY_AND_ASSIGN(ObjectScope);
   };
 
   class CallFrameScope : public Scope {
    public:
     CallFrameScope(V8InspectorSessionImpl*, const String16& remoteCallFrameId);
     ~CallFrameScope() override;
+    CallFrameScope(const CallFrameScope&) = delete;
+    CallFrameScope& operator=(const CallFrameScope&) = delete;
     size_t frameOrdinal() const { return m_frameOrdinal; }
 
    private:
     Response findInjectedScript(V8InspectorSessionImpl*) override;
     String16 m_remoteCallFrameId;
     size_t m_frameOrdinal;
-
-    DISALLOW_COPY_AND_ASSIGN(CallFrameScope);
   };
   String16 bindObject(v8::Local<v8::Value>, const String16& groupName);
 
  private:
+  friend class EvaluateCallback;
+
   v8::Local<v8::Object> commandLineAPI();
   void unbindObject(int id);
 
@@ -224,8 +242,7 @@ class InjectedScript final {
 
   class ProtocolPromiseHandler;
   void discardEvaluateCallbacks();
-  std::unique_ptr<EvaluateCallback> takeEvaluateCallback(
-      EvaluateCallback* callback);
+  void deleteEvaluateCallback(std::shared_ptr<EvaluateCallback> callback);
   Response addExceptionToDetails(
       v8::Local<v8::Value> exception,
       protocol::Runtime::ExceptionDetails* exceptionDetails,
@@ -239,10 +256,8 @@ class InjectedScript final {
   std::unordered_map<int, v8::Global<v8::Value>> m_idToWrappedObject;
   std::unordered_map<int, String16> m_idToObjectGroupName;
   std::unordered_map<String16, std::vector<int>> m_nameToObjectGroup;
-  std::unordered_set<EvaluateCallback*> m_evaluateCallbacks;
+  std::unordered_set<std::shared_ptr<EvaluateCallback>> m_evaluateCallbacks;
   bool m_customPreviewEnabled = false;
-
-  DISALLOW_COPY_AND_ASSIGN(InjectedScript);
 };
 
 }  // namespace v8_inspector

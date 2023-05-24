@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,6 +12,7 @@
 #include "components/viz/common/quads/surface_draw_quad.h"
 #include "components/viz/common/surfaces/parent_local_surface_id_allocator.h"
 #include "components/viz/service/display/aggregated_frame.h"
+#include "components/viz/service/display/delegated_ink_point_pixel_test_helper.h"
 #include "components/viz/service/display/surface_aggregator.h"
 #include "components/viz/service/display/viz_pixel_test.h"
 #include "components/viz/service/display_embedder/server_shared_bitmap_manager.h"
@@ -22,7 +23,7 @@
 #include "components/viz/test/compositor_frame_helpers.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
 
 namespace viz {
 namespace {
@@ -37,7 +38,7 @@ constexpr bool kIsChildRoot = false;
 class SurfaceAggregatorPixelTest : public VizPixelTestWithParam {
  public:
   SurfaceAggregatorPixelTest()
-      : manager_(&shared_bitmap_manager_),
+      : manager_(FrameSinkManagerImpl::InitParams(&shared_bitmap_manager_)),
         support_(std::make_unique<CompositorFrameSinkSupport>(
             nullptr,
             &manager_,
@@ -56,8 +57,7 @@ class SurfaceAggregatorPixelTest : public VizPixelTestWithParam {
   FrameSinkManagerImpl manager_;
   ParentLocalSurfaceIdAllocator root_allocator_;
   std::unique_ptr<CompositorFrameSinkSupport> support_;
-  base::TimeTicks next_display_time_ =
-      base::TimeTicks() + base::TimeDelta::FromSeconds(1);
+  base::TimeTicks next_display_time_ = base::TimeTicks() + base::Seconds(1);
 };
 
 INSTANTIATE_TEST_SUITE_P(,
@@ -65,22 +65,23 @@ INSTANTIATE_TEST_SUITE_P(,
                          testing::ValuesIn(GetGpuRendererTypes()),
                          testing::PrintToStringParamName());
 
+// GetGpuRendererTypes() can return an empty list, e.g. on Fuchsia ARM64.
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(SurfaceAggregatorPixelTest);
+
 SharedQuadState* CreateAndAppendTestSharedQuadState(
     CompositorRenderPass* render_pass,
     const gfx::Transform& transform,
     const gfx::Size& size) {
   const gfx::Rect layer_rect = gfx::Rect(size);
   const gfx::Rect visible_layer_rect = gfx::Rect(size);
-  const gfx::RRectF rounded_corner_bounds = gfx::RRectF();
-  const gfx::Rect clip_rect = gfx::Rect(size);
-  bool is_clipped = false;
+  const gfx::MaskFilterInfo mask_filter_info;
   bool are_contents_opaque = false;
   float opacity = 1.f;
   const SkBlendMode blend_mode = SkBlendMode::kSrcOver;
   auto* shared_state = render_pass->CreateAndAppendSharedQuadState();
   shared_state->SetAll(transform, layer_rect, visible_layer_rect,
-                       rounded_corner_bounds, clip_rect, is_clipped,
-                       are_contents_opaque, opacity, blend_mode, 0);
+                       mask_filter_info, absl::nullopt, are_contents_opaque,
+                       opacity, blend_mode, 0);
   return shared_state;
 }
 
@@ -97,7 +98,7 @@ TEST_P(SurfaceAggregatorPixelTest, DrawSimpleFrame) {
   auto* color_quad = pass->CreateAndAppendDrawQuad<SolidColorDrawQuad>();
   bool force_anti_aliasing_off = false;
   color_quad->SetNew(pass->shared_quad_state_list.back(), rect, rect,
-                     SK_ColorGREEN, force_anti_aliasing_off);
+                     SkColors::kGreen, force_anti_aliasing_off);
 
   auto root_frame =
       CompositorFrameBuilder().AddRenderPass(std::move(pass)).Build();
@@ -113,8 +114,7 @@ TEST_P(SurfaceAggregatorPixelTest, DrawSimpleFrame) {
   auto aggregated_frame = aggregator.Aggregate(
       root_surface_id, this->GetNextDisplayTime(), gfx::OVERLAY_TRANSFORM_NONE);
 
-  bool discard_alpha = false;
-  cc::ExactPixelComparator pixel_comparator(discard_alpha);
+  cc::ExactPixelComparator pixel_comparator;
   auto* pass_list = &aggregated_frame.render_pass_list;
   EXPECT_TRUE(this->RunPixelTest(pass_list,
                                  base::FilePath(FILE_PATH_LITERAL("green.png")),
@@ -151,13 +151,13 @@ TEST_P(SurfaceAggregatorPixelTest, DrawSimpleAggregatedFrame) {
     auto* surface_quad = pass->CreateAndAppendDrawQuad<SurfaceDrawQuad>();
     surface_quad->SetNew(
         pass->shared_quad_state_list.back(), gfx::Rect(child_size),
-        gfx::Rect(child_size), SurfaceRange(base::nullopt, child_surface_id),
-        SK_ColorWHITE, /*stretch_content_to_fill_bounds=*/false);
+        gfx::Rect(child_size), SurfaceRange(absl::nullopt, child_surface_id),
+        SkColors::kWhite, /*stretch_content_to_fill_bounds=*/false);
 
     auto* color_quad = pass->CreateAndAppendDrawQuad<SolidColorDrawQuad>();
     bool force_anti_aliasing_off = false;
     color_quad->SetNew(pass->shared_quad_state_list.back(), rect, rect,
-                       SK_ColorYELLOW, force_anti_aliasing_off);
+                       SkColors::kYellow, force_anti_aliasing_off);
 
     auto root_frame =
         CompositorFrameBuilder().AddRenderPass(std::move(pass)).Build();
@@ -178,7 +178,7 @@ TEST_P(SurfaceAggregatorPixelTest, DrawSimpleAggregatedFrame) {
     auto* color_quad = pass->CreateAndAppendDrawQuad<SolidColorDrawQuad>();
     bool force_anti_aliasing_off = false;
     color_quad->SetNew(pass->shared_quad_state_list.back(), rect, rect,
-                       SK_ColorBLUE, force_anti_aliasing_off);
+                       SkColors::kBlue, force_anti_aliasing_off);
 
     auto child_frame =
         CompositorFrameBuilder().AddRenderPass(std::move(pass)).Build();
@@ -192,8 +192,7 @@ TEST_P(SurfaceAggregatorPixelTest, DrawSimpleAggregatedFrame) {
   auto aggregated_frame = aggregator.Aggregate(
       root_surface_id, this->GetNextDisplayTime(), gfx::OVERLAY_TRANSFORM_NONE);
 
-  bool discard_alpha = false;
-  cc::ExactPixelComparator pixel_comparator(discard_alpha);
+  cc::ExactPixelComparator pixel_comparator;
   auto* pass_list = &aggregated_frame.render_pass_list;
   EXPECT_TRUE(this->RunPixelTest(
       pass_list, base::FilePath(FILE_PATH_LITERAL("blue_yellow.png")),
@@ -245,8 +244,8 @@ TEST_P(SurfaceAggregatorPixelTest, DrawAggregatedFrameWithSurfaceTransforms) {
     auto* left_surface_quad = pass->CreateAndAppendDrawQuad<SurfaceDrawQuad>();
     left_surface_quad->SetNew(
         pass->shared_quad_state_list.back(), gfx::Rect(child_size),
-        gfx::Rect(child_size), SurfaceRange(base::nullopt, left_child_id),
-        SK_ColorWHITE, /*stretch_content_to_fill_bounds=*/false);
+        gfx::Rect(child_size), SurfaceRange(absl::nullopt, left_child_id),
+        SkColors::kWhite, /*stretch_content_to_fill_bounds=*/false);
 
     surface_transform.Translate(100, 0);
     CreateAndAppendTestSharedQuadState(pass.get(), surface_transform,
@@ -255,8 +254,8 @@ TEST_P(SurfaceAggregatorPixelTest, DrawAggregatedFrameWithSurfaceTransforms) {
     auto* right_surface_quad = pass->CreateAndAppendDrawQuad<SurfaceDrawQuad>();
     right_surface_quad->SetNew(
         pass->shared_quad_state_list.back(), gfx::Rect(child_size),
-        gfx::Rect(child_size), SurfaceRange(base::nullopt, right_child_id),
-        SK_ColorWHITE, /*stretch_content_to_fill_bounds=*/false);
+        gfx::Rect(child_size), SurfaceRange(absl::nullopt, right_child_id),
+        SkColors::kWhite, /*stretch_content_to_fill_bounds=*/false);
 
     auto root_frame =
         CompositorFrameBuilder().AddRenderPass(std::move(pass)).Build();
@@ -278,13 +277,13 @@ TEST_P(SurfaceAggregatorPixelTest, DrawAggregatedFrameWithSurfaceTransforms) {
     bool force_anti_aliasing_off = false;
     top_color_quad->SetNew(pass->shared_quad_state_list.back(),
                            gfx::Rect(quad_size), gfx::Rect(quad_size),
-                           SK_ColorGREEN, force_anti_aliasing_off);
+                           SkColors::kGreen, force_anti_aliasing_off);
 
     auto* bottom_color_quad =
         pass->CreateAndAppendDrawQuad<SolidColorDrawQuad>();
     bottom_color_quad->SetNew(
         pass->shared_quad_state_list.back(), gfx::Rect(0, 100, 100, 100),
-        gfx::Rect(0, 100, 100, 100), SK_ColorBLUE, force_anti_aliasing_off);
+        gfx::Rect(0, 100, 100, 100), SkColors::kBlue, force_anti_aliasing_off);
 
     auto child_frame =
         CompositorFrameBuilder().AddRenderPass(std::move(pass)).Build();
@@ -306,13 +305,13 @@ TEST_P(SurfaceAggregatorPixelTest, DrawAggregatedFrameWithSurfaceTransforms) {
     bool force_anti_aliasing_off = false;
     top_color_quad->SetNew(pass->shared_quad_state_list.back(),
                            gfx::Rect(quad_size), gfx::Rect(quad_size),
-                           SK_ColorBLUE, force_anti_aliasing_off);
+                           SkColors::kBlue, force_anti_aliasing_off);
 
     auto* bottom_color_quad =
         pass->CreateAndAppendDrawQuad<SolidColorDrawQuad>();
     bottom_color_quad->SetNew(
         pass->shared_quad_state_list.back(), gfx::Rect(0, 100, 100, 100),
-        gfx::Rect(0, 100, 100, 100), SK_ColorGREEN, force_anti_aliasing_off);
+        gfx::Rect(0, 100, 100, 100), SkColors::kGreen, force_anti_aliasing_off);
 
     auto child_frame =
         CompositorFrameBuilder().AddRenderPass(std::move(pass)).Build();
@@ -326,8 +325,7 @@ TEST_P(SurfaceAggregatorPixelTest, DrawAggregatedFrameWithSurfaceTransforms) {
   auto aggregated_frame = aggregator.Aggregate(
       root_surface_id, this->GetNextDisplayTime(), gfx::OVERLAY_TRANSFORM_NONE);
 
-  bool discard_alpha = false;
-  cc::ExactPixelComparator pixel_comparator(discard_alpha);
+  cc::ExactPixelComparator pixel_comparator;
   auto* pass_list = &aggregated_frame.render_pass_list;
   EXPECT_TRUE(this->RunPixelTest(
       pass_list,
@@ -335,7 +333,71 @@ TEST_P(SurfaceAggregatorPixelTest, DrawAggregatedFrameWithSurfaceTransforms) {
       pixel_comparator));
 }
 
+// Draw a simple frame with a delegated ink trail on top of it, then confirm
+// that it is erased by the next aggregation.
+TEST_P(SurfaceAggregatorPixelTest, DrawAndEraseDelegatedInkTrail) {
+  DelegatedInkPointPixelTestHelper delegated_ink_helper(renderer_.get());
+
+  // Create and send metadata and points to the renderer that will be drawn.
+  // Points and timestamps are chosen arbitrarily.
+  const gfx::PointF kFirstPoint(10, 10);
+  const base::TimeTicks kFirstTimestamp = base::TimeTicks::Now();
+  delegated_ink_helper.CreateAndSendPoint(kFirstPoint, kFirstTimestamp);
+  delegated_ink_helper.CreateAndSendPointFromLastPoint(gfx::PointF(26, 37));
+  delegated_ink_helper.CreateAndSendPointFromLastPoint(gfx::PointF(45, 87));
+
+  delegated_ink_helper.CreateAndSendMetadata(kFirstPoint, 7.7f,
+                                             SkColors::kWhite, kFirstTimestamp,
+                                             gfx::RectF(0, 0, 200, 200));
+
+  gfx::Rect rect(this->device_viewport_size_);
+  CompositorRenderPassId id{1};
+  auto pass = CompositorRenderPass::Create();
+  pass->SetNew(id, rect, rect, gfx::Transform());
+
+  CreateAndAppendTestSharedQuadState(pass.get(), gfx::Transform(),
+                                     this->device_viewport_size_);
+
+  auto* color_quad = pass->CreateAndAppendDrawQuad<SolidColorDrawQuad>();
+  bool force_anti_aliasing_off = false;
+  color_quad->SetNew(pass->shared_quad_state_list.back(), rect, rect,
+                     SkColors::kGreen, force_anti_aliasing_off);
+
+  auto root_frame =
+      CompositorFrameBuilder().AddRenderPass(std::move(pass)).Build();
+
+  this->root_allocator_.GenerateId();
+  SurfaceId root_surface_id(this->support_->frame_sink_id(),
+                            this->root_allocator_.GetCurrentLocalSurfaceId());
+  this->support_->SubmitCompositorFrame(
+      this->root_allocator_.GetCurrentLocalSurfaceId(), std::move(root_frame));
+
+  SurfaceAggregator aggregator(this->manager_.surface_manager(),
+                               this->resource_provider_.get(), true, false);
+  auto aggregated_frame = aggregator.Aggregate(
+      root_surface_id, this->GetNextDisplayTime(), gfx::OVERLAY_TRANSFORM_NONE);
+
+  cc::FuzzyPixelOffByOneComparator pixel_comparator;
+  auto* pass_list = &aggregated_frame.render_pass_list;
+  EXPECT_TRUE(this->RunPixelTest(
+      pass_list, base::FilePath(FILE_PATH_LITERAL("delegated_ink_trail.png")),
+      pixel_comparator));
+
+  // Providing the damage rect as the target damage ensures that aggregation
+  // occurs and DrawFrame() has something new to draw. If this doesn't cause
+  // anything to be aggregated, a black square is drawn. If it does, the result
+  // should just erase the previously drawn trail completely.
+  aggregated_frame = aggregator.Aggregate(
+      root_surface_id, this->GetNextDisplayTime(), gfx::OVERLAY_TRANSFORM_NONE,
+      delegated_ink_helper.GetDelegatedInkDamageRect());
+  pass_list = &aggregated_frame.render_pass_list;
+
+  EXPECT_TRUE(this->RunPixelTest(pass_list,
+                                 base::FilePath(FILE_PATH_LITERAL("green.png")),
+                                 pixel_comparator));
+}
+
 }  // namespace
 }  // namespace viz
 
-#endif  // !defined(OS_ANDROID)
+#endif  // !BUILDFLAG(IS_ANDROID)

@@ -28,7 +28,7 @@
 
 #include "third_party/blink/public/platform/web_media_player.h"
 #include "third_party/blink/renderer/core/core_export.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/supplementable.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 
@@ -69,10 +69,6 @@ class CORE_EXPORT TrackBase : public Supplementable<TrackBase> {
   String id_;
   Member<HTMLMediaElement> media_element_;
 };
-
-#define DEFINE_TRACK_TYPE_CASTS(thisType, predicate)                           \
-  DEFINE_TYPE_CASTS(thisType, TrackBase, track, track->GetType() == predicate, \
-                    track.GetType() == predicate)
 
 }  // namespace blink
 

@@ -1,39 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "ioutils.h"
 
 #include <qdir.h>
 #include <qfile.h>
-#include <qregexp.h>
+#include <qregularexpression.h>
 
 #ifdef Q_OS_WIN
-#  include <windows.h>
+#  include <qt_windows.h>
 #else
 #  include <sys/types.h>
 #  include <sys/stat.h>
@@ -48,6 +23,40 @@
 QT_BEGIN_NAMESPACE
 
 using namespace QMakeInternal;
+
+QString IoUtils::binaryAbsLocation(const QString &argv0)
+{
+    QString ret;
+    if (!argv0.isEmpty() && isAbsolutePath(argv0)) {
+        ret = argv0;
+    } else if (argv0.contains(QLatin1Char('/'))
+#ifdef Q_OS_WIN
+               || argv0.contains(QLatin1Char('\\'))
+#endif
+    ) { // relative PWD
+        ret = QDir::current().absoluteFilePath(argv0);
+    } else { // in the PATH
+        QByteArray pEnv = qgetenv("PATH");
+        QDir currentDir = QDir::current();
+#ifdef Q_OS_WIN
+        QStringList paths = QString::fromLocal8Bit(pEnv).split(QLatin1String(";"));
+        paths.prepend(QLatin1String("."));
+#else
+        QStringList paths = QString::fromLocal8Bit(pEnv).split(QLatin1String(":"));
+#endif
+        for (QStringList::const_iterator p = paths.constBegin(); p != paths.constEnd(); ++p) {
+            if ((*p).isEmpty())
+                continue;
+            QString candidate = currentDir.absoluteFilePath(*p + QLatin1Char('/') + argv0);
+            if (QFile::exists(candidate)) {
+                ret = candidate;
+                break;
+            }
+        }
+    }
+
+    return QDir::cleanPath(ret);
+}
 
 IoUtils::FileType IoUtils::fileType(const QString &fileName)
 {
@@ -78,7 +87,12 @@ bool IoUtils::isRelativePath(const QString &path)
         && (path.at(2) == QLatin1Char('/') || path.at(2) == QLatin1Char('\\'))) {
         return false;
     }
-    // (... unless, of course, they're UNC, which qmake fails on anyway)
+    // ... unless, of course, they're UNC:
+    if (path.length() >= 2
+        && (path.at(0).unicode() == '\\' || path.at(0).unicode() == '/')
+        && path.at(1) == path.at(0)) {
+        return false;
+    }
 #else
     if (path.startsWith(QLatin1Char('/')))
         return false;
@@ -86,14 +100,14 @@ bool IoUtils::isRelativePath(const QString &path)
     return true;
 }
 
-QStringRef IoUtils::pathName(const QString &fileName)
+QStringView IoUtils::pathName(const QString &fileName)
 {
-    return fileName.leftRef(fileName.lastIndexOf(QLatin1Char('/')) + 1);
+    return QStringView{fileName}.left(fileName.lastIndexOf(QLatin1Char('/')) + 1);
 }
 
-QStringRef IoUtils::fileName(const QString &fileName)
+QStringView IoUtils::fileName(const QString &fileName)
 {
-    return fileName.midRef(fileName.lastIndexOf(QLatin1Char('/')) + 1);
+    return QStringView(fileName).mid(fileName.lastIndexOf(QLatin1Char('/')) + 1);
 }
 
 QString IoUtils::resolvePath(const QString &baseDir, const QString &fileName)
@@ -122,7 +136,7 @@ bool isSpecialChar(ushort c, const uchar (&iqm)[16])
 inline static
 bool hasSpecialChars(const QString &arg, const uchar (&iqm)[16])
 {
-    for (int x = arg.length() - 1; x >= 0; --x) {
+    for (int x = arg.size() - 1; x >= 0; --x) {
         if (isSpecialChar(arg.unicode()[x].unicode(), iqm))
             return true;
     }
@@ -137,7 +151,7 @@ QString IoUtils::shellQuoteUnix(const QString &arg)
         0x00, 0x00, 0x00, 0x38, 0x01, 0x00, 0x00, 0x78
     }; // 0-32 \'"$`<>|;&(){}*?#!~[]
 
-    if (!arg.length())
+    if (!arg.size())
         return QString::fromLatin1("''");
 
     QString ret(arg);
@@ -165,7 +179,7 @@ QString IoUtils::shellQuoteWin(const QString &arg)
         0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x10
     }; // &()<>^|
 
-    if (!arg.length())
+    if (!arg.size())
         return QString::fromLatin1("\"\"");
 
     QString ret(arg);
@@ -173,15 +187,15 @@ QString IoUtils::shellQuoteWin(const QString &arg)
         // The process-level standard quoting allows escaping quotes with backslashes (note
         // that backslashes don't escape themselves, unless they are followed by a quote).
         // Consequently, quotes are escaped and their preceding backslashes are doubled.
-        ret.replace(QRegExp(QLatin1String("(\\\\*)\"")), QLatin1String("\\1\\1\\\""));
+        ret.replace(QRegularExpression(QLatin1String("(\\\\*)\"")), QLatin1String("\\1\\1\\\""));
         // Trailing backslashes must be doubled as well, as they are followed by a quote.
-        ret.replace(QRegExp(QLatin1String("(\\\\+)$")), QLatin1String("\\1\\1"));
+        ret.replace(QRegularExpression(QLatin1String("(\\\\+)$")), QLatin1String("\\1\\1"));
         // However, the shell also interprets the command, and no backslash-escaping exists
         // there - a quote always toggles the quoting state, but is nonetheless passed down
         // to the called process verbatim. In the unquoted state, the circumflex escapes
         // meta chars (including itself and quotes), and is removed from the command.
         bool quoted = true;
-        for (int i = 0; i < ret.length(); i++) {
+        for (int i = 0; i < ret.size(); i++) {
             QChar c = ret.unicode()[i];
             if (c.unicode() == '"')
                 quoted = !quoted;

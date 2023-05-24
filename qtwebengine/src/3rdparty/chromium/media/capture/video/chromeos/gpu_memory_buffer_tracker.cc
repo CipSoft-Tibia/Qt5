@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,7 +19,7 @@ GpuMemoryBufferTracker::~GpuMemoryBufferTracker() = default;
 bool GpuMemoryBufferTracker::Init(const gfx::Size& dimensions,
                                   VideoPixelFormat format,
                                   const mojom::PlaneStridesPtr& strides) {
-  base::Optional<gfx::BufferFormat> gfx_format = PixFormatVideoToGfx(format);
+  absl::optional<gfx::BufferFormat> gfx_format = PixFormatVideoToGfx(format);
   if (!gfx_format) {
     NOTREACHED() << "Unsupported VideoPixelFormat "
                  << VideoPixelFormatToString(format);
@@ -31,7 +31,8 @@ bool GpuMemoryBufferTracker::Init(const gfx::Size& dimensions,
   const gfx::BufferUsage usage =
       *gfx_format == gfx::BufferFormat::R_8
           ? gfx::BufferUsage::CAMERA_AND_CPU_READ_WRITE
-          : gfx::BufferUsage::SCANOUT_VEA_READ_CAMERA_AND_CPU_READ_WRITE;
+          : gfx::BufferUsage::VEA_READ_CAMERA_AND_CPU_READ_WRITE;
+
   buffer_ =
       buffer_factory_.CreateGpuMemoryBuffer(dimensions, *gfx_format, usage);
   if (!buffer_) {
@@ -45,7 +46,7 @@ bool GpuMemoryBufferTracker::IsReusableForFormat(
     const gfx::Size& dimensions,
     VideoPixelFormat format,
     const mojom::PlaneStridesPtr& strides) {
-  base::Optional<gfx::BufferFormat> gfx_format = PixFormatVideoToGfx(format);
+  absl::optional<gfx::BufferFormat> gfx_format = PixFormatVideoToGfx(format);
   if (!gfx_format) {
     return false;
   }
@@ -81,9 +82,8 @@ gfx::GpuMemoryBufferHandle GpuMemoryBufferTracker::GetGpuMemoryBufferHandle() {
   // re-using a wrong pixmap handle in the cache.
   //
   // [1]: https://tinyurl.com/yymtv22y
-  constexpr int kInvalidId = -1;
   gfx::GpuMemoryBufferHandle handle = buffer_->CloneHandle();
-  handle.id = gfx::GpuMemoryBufferId(kInvalidId);
+  handle.id = gfx::GpuMemoryBufferHandle::kInvalidId;
   return handle;
 }
 

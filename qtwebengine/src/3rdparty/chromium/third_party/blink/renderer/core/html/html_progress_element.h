@@ -23,7 +23,7 @@
 
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -37,6 +37,7 @@ class CORE_EXPORT HTMLProgressElement final : public HTMLElement {
   static const double kInvalidPosition;
 
   explicit HTMLProgressElement(Document&);
+  ~HTMLProgressElement() override;
 
   double value() const;
   void setValue(double);
@@ -48,11 +49,11 @@ class CORE_EXPORT HTMLProgressElement final : public HTMLElement {
 
   bool CanContainRangeEndPoint() const override { return false; }
 
+  bool IsRichlyEditableForAccessibility() const override { return false; }
+
   void Trace(Visitor*) const override;
 
  private:
-  ~HTMLProgressElement() override;
-
   bool AreAuthorShadowsAllowed() const override { return false; }
   bool ShouldAppearIndeterminate() const override;
   bool IsLabelable() const override { return true; }
@@ -67,7 +68,7 @@ class CORE_EXPORT HTMLProgressElement final : public HTMLElement {
   void DidElementStateChange();
   void DidAddUserAgentShadowRoot(ShadowRoot&) override;
   bool IsDeterminate() const;
-  void SetValueWidthPercentage(double) const;
+  void SetInlineSizePercentage(double) const;
 
   Member<Element> value_;
 };

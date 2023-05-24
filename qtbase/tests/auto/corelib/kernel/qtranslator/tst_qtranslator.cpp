@@ -1,35 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QWaitCondition>
+#include <QMutex>
+#include <QStandardPaths>
 #include <qtranslator.h>
 #include <qfile.h>
 #include <qtemporarydir.h>
+
+#ifdef Q_OS_ANDROID
+#include <QDirIterator>
+#endif
 
 class tst_QTranslator : public QObject
 {
@@ -38,7 +20,7 @@ class tst_QTranslator : public QObject
 public:
     tst_QTranslator();
 protected:
-    bool eventFilter(QObject *obj, QEvent *event);
+    bool eventFilter(QObject *obj, QEvent *event) override;
 private slots:
     void initTestCase();
     void init();
@@ -203,9 +185,9 @@ void tst_QTranslator::loadLocale()
 
 class TranslatorThread : public QThread
 {
-    void run() {
+    void run() override {
         QTranslator tor( 0 );
-        tor.load("hellotr_la");
+        (void)tor.load("hellotr_la");
 
         if (tor.isEmpty())
             qFatal("Could not load translation");
@@ -227,17 +209,17 @@ void tst_QTranslator::testLanguageChange()
     languageChangeEventCounter = 0;
 
     QTranslator *tor = new QTranslator;
-    tor->load("hellotr_la.qm");
+    QVERIFY(tor->load("hellotr_la.qm"));
     qApp->sendPostedEvents();
     qApp->sendPostedEvents();
     QCOMPARE(languageChangeEventCounter, 0);
 
-    tor->load("doesn't exist, same as clearing");
+    QVERIFY(!tor->load("doesn't exist, same as clearing"));
     qApp->sendPostedEvents();
     qApp->sendPostedEvents();
     QCOMPARE(languageChangeEventCounter, 0);
 
-    tor->load("hellotr_la.qm");
+    QVERIFY(tor->load("hellotr_la.qm"));
     qApp->sendPostedEvents();
     qApp->sendPostedEvents();
     QCOMPARE(languageChangeEventCounter, 0);
@@ -247,12 +229,12 @@ void tst_QTranslator::testLanguageChange()
     qApp->sendPostedEvents();
     QCOMPARE(languageChangeEventCounter, 1);
 
-    tor->load("doesn't exist, same as clearing");
+    QVERIFY(!tor->load("doesn't exist, same as clearing"));
     qApp->sendPostedEvents();
     qApp->sendPostedEvents();
     QCOMPARE(languageChangeEventCounter, 2);
 
-    tor->load("hellotr_la.qm");
+    QVERIFY(tor->load("hellotr_la.qm"));
     qApp->sendPostedEvents();
     qApp->sendPostedEvents();
     QCOMPARE(languageChangeEventCounter, 3);
@@ -262,7 +244,7 @@ void tst_QTranslator::testLanguageChange()
     qApp->sendPostedEvents();
     QCOMPARE(languageChangeEventCounter, 4);
 
-    tor->load("doesn't exist, same as clearing");
+    QVERIFY(!tor->load("doesn't exist, same as clearing"));
     qApp->sendPostedEvents();
     qApp->sendPostedEvents();
     QCOMPARE(languageChangeEventCounter, 4);
@@ -272,7 +254,7 @@ void tst_QTranslator::testLanguageChange()
     qApp->sendPostedEvents();
     QCOMPARE(languageChangeEventCounter, 4);
 
-    tor->load("hellotr_la.qm");
+    QVERIFY(tor->load("hellotr_la.qm"));
     qApp->sendPostedEvents();
     qApp->sendPostedEvents();
     QCOMPARE(languageChangeEventCounter, 5);
@@ -289,7 +271,7 @@ void tst_QTranslator::plural()
 {
 
     QTranslator tor( 0 );
-    tor.load("hellotr_la");
+    QVERIFY(tor.load("hellotr_la"));
     QVERIFY(!tor.isEmpty());
     QCoreApplication::installTranslator(&tor);
     QCOMPARE(QCoreApplication::translate("QPushButton", "Hello %n world(s)!", 0, 0), QLatin1String("Hallo 0 Welten!"));
@@ -300,7 +282,7 @@ void tst_QTranslator::plural()
 void tst_QTranslator::translate_qm_file_generated_with_msgfmt()
 {
     QTranslator translator;
-    translator.load("msgfmt_from_po");
+    QVERIFY(translator.load("msgfmt_from_po"));
     qApp->installTranslator(&translator);
 
     QCOMPARE(QCoreApplication::translate("", "Intro"), QLatin1String("Einleitung"));
@@ -321,7 +303,7 @@ void tst_QTranslator::loadDirectory()
     QVERIFY(QFileInfo("../" + current_base).isDir());
 
     QTranslator tor;
-    tor.load(current_base, "..");
+    QVERIFY(!tor.load(current_base, ".."));
     QVERIFY(tor.isEmpty());
 }
 
@@ -330,7 +312,7 @@ void tst_QTranslator::dependencies()
     {
         // load
         QTranslator tor;
-        tor.load("dependencies_la");
+        QVERIFY(tor.load("dependencies_la"));
         QVERIFY(!tor.isEmpty());
         QCOMPARE(tor.translate("QPushButton", "Hello world!"), QLatin1String("Hallo Welt!"));
 
@@ -349,7 +331,7 @@ void tst_QTranslator::dependencies()
         QFile file("dependencies_la.qm");
         file.open(QFile::ReadOnly);
         QByteArray data = file.readAll();
-        tor.load((const uchar *)data.constData(), data.length());
+        QVERIFY(tor.load((const uchar *)data.constData(), data.length()));
         QVERIFY(!tor.isEmpty());
         QCOMPARE(tor.translate("QPushButton", "Hello world!"), QLatin1String("Hallo Welt!"));
     }
@@ -371,7 +353,7 @@ struct TranslateThread : public QThread
     QMutex startupLock;
     QWaitCondition runningCondition;
 
-    void run() {
+    void run() override {
         bool startSignalled = false;
 
         while (terminate.loadRelaxed() == 0) {
@@ -401,9 +383,9 @@ void tst_QTranslator::translationInThreadWhileInstallingTranslator()
 
     thread.runningCondition.wait(&thread.startupLock);
 
-    QTranslator *tor = new QTranslator;
-    tor->load("hellotr_la");
-    QCoreApplication::installTranslator(tor);
+    QTranslator tor;
+    QVERIFY(tor.load("hellotr_la"));
+    QVERIFY(QCoreApplication::installTranslator(&tor));
 
     ++thread.terminate;
 

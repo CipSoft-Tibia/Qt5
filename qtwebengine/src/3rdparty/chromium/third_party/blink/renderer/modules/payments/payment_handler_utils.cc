@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include "third_party/blink/public/mojom/service_worker/service_worker_error_type.mojom-blink.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 using blink::mojom::ServiceWorkerResponseError;
 
@@ -48,6 +48,7 @@ void PaymentHandlerUtils::ReportResponseError(
     case ServiceWorkerResponseError::kResponseTypeCorsForRequestModeSameOrigin:
     case ServiceWorkerResponseError::kResponseBodyBroken:
     case ServiceWorkerResponseError::kDisallowedByCorp:
+    case ServiceWorkerResponseError::kRequestBodyUnusable:
       NOTREACHED();
       error_message = error_message + "an unexpected error occurred.";
       break;

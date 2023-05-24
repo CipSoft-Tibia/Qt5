@@ -1,42 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-QT_FORWARD_DECLARE_CLASS(QIODevice)
-QT_FORWARD_DECLARE_CLASS(QString)
-
+#include <QtCore/QDebug>
 #include <QtCore/QFlags>
+#include <QtCore/QXmlStreamReader>
+
+#include <algorithm>
 
 class QC14N
 {
 public:
     static bool isEqual(QIODevice *const firstDocument,
                         QIODevice *const secondDocument,
-                        QString *const message = 0);
+                        QString *const message = nullptr);
 
 private:
     static bool isDifferent(const QXmlStreamReader &r1,
@@ -118,18 +94,11 @@ bool QC14N::isAttributesEqual(const QXmlStreamReader &r1,
 
     const QXmlStreamAttributes &attrs1 = r1.attributes();
     const QXmlStreamAttributes &attrs2 = r2.attributes();
-    const int len = attrs1.size();
-
-    if(len != attrs2.size())
+    if (attrs1.size() != attrs2.size())
         return false;
 
-    for(int i = 0; i < len; ++i)
-    {
-        if(!attrs2.contains(attrs1.at(i)))
-            return false;
-    }
-
-    return true;
+    auto existsInOtherList = [&attrs2](const auto &attr) { return attrs2.contains(attr); };
+    return std::all_of(attrs1.cbegin(), attrs1.cend(), existsInOtherList);
 }
 
 bool QC14N::isDifferent(const QXmlStreamReader &r1,

@@ -1,13 +1,15 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_PEERCONNECTION_TRANSCEIVER_STATE_SURFACER_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_PEERCONNECTION_TRANSCEIVER_STATE_SURFACER_H_
 
+#include "base/task/single_thread_task_runner.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/modules/peerconnection/rtc_rtp_transceiver_impl.h"
 #include "third_party/blink/renderer/modules/peerconnection/webrtc_media_stream_track_adapter_map.h"
+#include "third_party/blink/renderer/platform/allow_discouraged_type.h"
 #include "third_party/blink/renderer/platform/peerconnection/rtc_peer_connection_handler_client.h"
 #include "third_party/webrtc/api/rtp_transceiver_interface.h"
 #include "third_party/webrtc/api/sctp_transport_interface.h"
@@ -51,62 +53,15 @@ class MODULES_EXPORT TransceiverStateSurfacer {
   blink::WebRTCSctpTransportSnapshot SctpTransportSnapshot();
   std::vector<blink::RtpTransceiverState> ObtainStates();
 
- protected:
+ private:
   scoped_refptr<base::SingleThreadTaskRunner> main_task_runner_;
   scoped_refptr<base::SingleThreadTaskRunner> signaling_task_runner_;
   bool is_initialized_;
   bool states_obtained_;
   blink::WebRTCSctpTransportSnapshot sctp_transport_snapshot_;
-  std::vector<blink::RtpTransceiverState> transceiver_states_;
-};
-
-// A dummy implementation of a transceiver used to surface sender state
-// information only. It is not thread safe, only designed to be passed on to
-// TransceiverStateSurfacer::Initialize().
-class MODULES_EXPORT SurfaceSenderStateOnly
-    : public rtc::RefCountedObject<webrtc::RtpTransceiverInterface> {
- public:
-  SurfaceSenderStateOnly(rtc::scoped_refptr<webrtc::RtpSenderInterface> sender);
-  ~SurfaceSenderStateOnly() override;
-
-  cricket::MediaType media_type() const override;
-  absl::optional<std::string> mid() const override;
-  rtc::scoped_refptr<webrtc::RtpSenderInterface> sender() const override;
-  rtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver() const override;
-  bool stopped() const override;
-  webrtc::RtpTransceiverDirection direction() const override;
-  void SetDirection(webrtc::RtpTransceiverDirection new_direction) override;
-  absl::optional<webrtc::RtpTransceiverDirection> current_direction()
-      const override;
-  void Stop() override;
-
- private:
-  rtc::scoped_refptr<webrtc::RtpSenderInterface> sender_;
-};
-
-// A dummy implementation of a transceiver used to surface receiver state
-// information only. It is not thread safe, only designed to be passed on to
-// TransceiverStateSurfacer::Initialize().
-class MODULES_EXPORT SurfaceReceiverStateOnly
-    : public rtc::RefCountedObject<webrtc::RtpTransceiverInterface> {
- public:
-  SurfaceReceiverStateOnly(
-      rtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver);
-  ~SurfaceReceiverStateOnly() override;
-
-  cricket::MediaType media_type() const override;
-  absl::optional<std::string> mid() const override;
-  rtc::scoped_refptr<webrtc::RtpSenderInterface> sender() const override;
-  rtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver() const override;
-  bool stopped() const override;
-  webrtc::RtpTransceiverDirection direction() const override;
-  void SetDirection(webrtc::RtpTransceiverDirection new_direction) override;
-  absl::optional<webrtc::RtpTransceiverDirection> current_direction()
-      const override;
-  void Stop() override;
-
- private:
-  rtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver_;
+  std::vector<blink::RtpTransceiverState> transceiver_states_
+      ALLOW_DISCOURAGED_TYPE(
+          "Avoids conversions when passed from/to webrtc API");
 };
 
 }  // namespace blink

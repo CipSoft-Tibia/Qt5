@@ -120,7 +120,13 @@ found in the LICENSE file.
     <div id="control">
       <div id="bar">
         <div id="left_controls"></div>
-        <div id="title">^_^</div>
+        <div id="title">
+          ^_^
+          <div style="padding-left: 3em">
+            Try the new <a href="https://ui.perfetto.dev">Perfetto UI</a>!
+            <a href="https://chromium.googlesource.com/catapult/+/refs/heads/main/tracing/docs/perfetto.md">Learn more</a>
+          </div>
+        </div>
         <div id="right_controls">
           <tr-ui-b-dropdown id="flow_event_filter_dropdown" label="Flow events"></tr-ui-b-dropdown>
           <tr-ui-b-dropdown id="process_filter_dropdown" label="Processes"></tr-ui-b-dropdown>
@@ -139,8 +145,6 @@ found in the LICENSE file.
       </div>
       <div id="collapsing_controls"></div>
       <tr-ui-b-info-bar-group id="import-warnings">
-      </tr-ui-b-info-bar-group>
-      <tr-ui-b-info-bar-group id="polyfill-warning">
       </tr-ui-b-info-bar-group>
     </div>
     <middle-container>
@@ -161,9 +165,7 @@ found in the LICENSE file.
 
 const POLYFILL_WARNING_MESSAGE =
     'Trace Viewer is running with WebComponentsV0 polyfill, and some ' +
-    'features may be broken. As a workaround, you may try running chrome ' +
-    'with "--enable-blink-features=ShadowDOMV0,CustomElementsV0,HTMLImports" ' +
-    'flag. See crbug.com/1036492.';
+    'features may be broken. See crbug.com/1036492.';
 
 Polymer({
   is: 'tr-ui-timeline-view',
@@ -278,19 +280,6 @@ Polymer({
     if (this.polyfillWarnedOnce_) return;
     console.warn(POLYFILL_WARNING_MESSAGE); // eslint-disable-line no-console
     this.polyfillWarnedOnce_ = true;
-
-    // You can set window.__hideTraceViewerPolyfillWarning = true somewhere
-    // in your setup code if you embed trace viewer and want to hide the
-    // UI polyfill warning.
-    if (!window.__hideTraceViewerPolyfillWarning) {
-      const polyfillWarningsEl =
-            Polymer.dom(this.root).querySelector('#polyfill-warning');
-      polyfillWarningsEl.addMessage(
-          POLYFILL_WARNING_MESSAGE, [{
-            buttonText: 'Hide',
-            onClick: () => polyfillWarningsEl.clearMessages()
-          }]);
-    }
   },
 
   updateDocumentFavicon() {

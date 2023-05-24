@@ -1,4 +1,4 @@
-// Copyright 2020 PDFium Authors. All rights reserved.
+// Copyright 2020 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,12 +12,11 @@
 #include "core/fxcodec/fx_codec.h"
 #include "core/fxcodec/jpeg/jpeg_common.h"
 #include "core/fxcodec/scanlinedecoder.h"
-#include "core/fxcrt/fx_memory_wrappers.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxge/dib/cfx_dibbase.h"
-#include "core/fxge/fx_dib.h"
-#include "third_party/base/logging.h"
-#include "third_party/base/optional.h"
+#include "core/fxge/dib/fx_dib.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/base/check.h"
 #include "third_party/base/ptr_util.h"
 
 class CJpegContext final : public ProgressiveDecoderIface::Context {
@@ -58,7 +57,8 @@ static void JpegLoadAttribute(const jpeg_decompress_struct& info,
                               CFX_DIBAttribute* pAttribute) {
   pAttribute->m_nXDPI = info.X_density;
   pAttribute->m_nYDPI = info.Y_density;
-  pAttribute->m_wDPIUnit = info.density_unit;
+  pAttribute->m_wDPIUnit =
+      static_cast<CFX_DIBAttribute::ResUnit>(info.density_unit);
 }
 
 CJpegContext::CJpegContext() {
@@ -117,7 +117,7 @@ int JpegProgressiveDecoder::ReadHeader(Context* pContext,
                                        int* height,
                                        int* nComps,
                                        CFX_DIBAttribute* pAttribute) {
-  ASSERT(pAttribute);
+  DCHECK(pAttribute);
 
   auto* ctx = static_cast<CJpegContext*>(pContext);
   int ret = jpeg_read_header(&ctx->m_Info, TRUE);
@@ -154,9 +154,8 @@ FX_FILESIZE JpegProgressiveDecoder::GetAvailInput(Context* pContext) const {
 }
 
 bool JpegProgressiveDecoder::Input(Context* pContext,
-                                   RetainPtr<CFX_CodecMemory> codec_memory,
-                                   CFX_DIBAttribute*) {
-  pdfium::span<uint8_t> src_buf = codec_memory->GetSpan();
+                                   RetainPtr<CFX_CodecMemory> codec_memory) {
+  pdfium::span<uint8_t> src_buf = codec_memory->GetUnconsumedSpan();
   auto* ctx = static_cast<CJpegContext*>(pContext);
   if (ctx->m_SkipSize) {
     if (ctx->m_SkipSize > src_buf.size()) {

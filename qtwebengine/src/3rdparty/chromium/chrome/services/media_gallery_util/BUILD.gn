@@ -1,8 +1,9 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//media/media_options.gni")
+import("//testing/libfuzzer/fuzzer_test.gni")
 
 source_set("lib") {
   sources = [
@@ -18,8 +19,10 @@ source_set("lib") {
 
   deps = [
     "//base",
+    "//chrome/common",
     "//media",
     "//mojo/public/cpp/bindings",
+    "//third_party/libyuv",
   ]
 
   if (is_android) {
@@ -55,7 +58,18 @@ if (is_android) {
 
     deps = [
       ":lib",
+      "//base/test:test_support",
+      "//media:test_support",
       "//testing/gtest",
     ]
   }
+}
+
+fuzzer_test("media_metadata_parser_fuzzer") {
+  sources = [ "media_metadata_parser_fuzzer.cc" ]
+  deps = [
+    ":lib",
+    "//base",
+    "//content/test:test_support",
+  ]
 }

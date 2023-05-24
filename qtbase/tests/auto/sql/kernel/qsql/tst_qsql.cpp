@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qcoreapplication.h>
 #include <qsqldatabase.h>
 #include <qsqlerror.h>
@@ -43,11 +18,6 @@
 class tst_QSql : public QObject
 {
     Q_OBJECT
-
-public:
-    tst_QSql();
-    virtual ~tst_QSql();
-
 
 public slots:
     void initTestCase();
@@ -66,15 +36,6 @@ private slots:
 };
 
 /****************** General Qt SQL Module tests *****************/
-
-tst_QSql::tst_QSql()
-{
-}
-
-tst_QSql::~tst_QSql()
-{
-}
-
 void tst_QSql::initTestCase()
 {
 }
@@ -105,7 +66,7 @@ void tst_QSql::basicDriverTest()
     tst_Databases dbs;
     QVERIFY(dbs.open());
 
-    foreach (const QString& dbName, dbs.dbNames) {
+    for (const QString &dbName : std::as_const(dbs.dbNames)) {
         QSqlDatabase db = QSqlDatabase::database(dbName);
         QVERIFY_SQL(db, isValid());
 
@@ -150,16 +111,20 @@ void tst_QSql::open()
         QVERIFY(dbs.open());
         if (count == -1)
             // first iteration: see how many dbs are open
-            count = (int) dbs.dbNames.count();
+            count = (int) dbs.dbNames.size();
         else
             // next iterations: make sure all are opened again
-            QCOMPARE(count, (int)dbs.dbNames.count());
+            QCOMPARE(count, (int)dbs.dbNames.size());
         dbs.close();
     }
 }
 
 void tst_QSql::openInvalid()
 {
+    int argc = 1;
+    char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
+    QCoreApplication app(argc, argv, false);
+
     QSqlDatabase db;
     QVERIFY(!db.open());
 
@@ -175,7 +140,7 @@ void tst_QSql::concurrentAccess()
     tst_Databases dbs;
 
     QVERIFY(dbs.open());
-    foreach (const QString& dbName, dbs.dbNames) {
+    for (const QString &dbName : std::as_const(dbs.dbNames)) {
         QSqlDatabase db = QSqlDatabase::database(dbName);
         QVERIFY(db.isValid());
         if (tst_Databases::isMSAccess(db))
@@ -207,7 +172,7 @@ void tst_QSql::openErrorRecovery()
     QVERIFY(dbs.addDbs());
     if (dbs.dbNames.isEmpty())
         QSKIP("No database drivers installed");
-    foreach (const QString& dbName, dbs.dbNames) {
+    for (const QString &dbName : std::as_const(dbs.dbNames)) {
         QSqlDatabase db = QSqlDatabase::database(dbName, false);
         CHECK_DATABASE(db);
 

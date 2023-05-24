@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,6 @@
 #include "base/files/file.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
-#include "base/macros.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "storage/browser/test/sandbox_database_test_helper.h"
@@ -40,13 +39,17 @@ class SandboxDirectoryDatabaseTest : public testing::Test {
     InitDatabase();
   }
 
+  SandboxDirectoryDatabaseTest(const SandboxDirectoryDatabaseTest&) = delete;
+  SandboxDirectoryDatabaseTest& operator=(const SandboxDirectoryDatabaseTest&) =
+      delete;
+
   SandboxDirectoryDatabase* db() { return db_.get(); }
 
   void InitDatabase() {
     // Call CloseDatabase() to avoid having multiple database instances for
     // single directory at once.
     CloseDatabase();
-    db_.reset(new SandboxDirectoryDatabase(path(), nullptr));
+    db_ = std::make_unique<SandboxDirectoryDatabase>(path(), nullptr);
   }
 
   void CloseDatabase() { db_.reset(); }
@@ -98,7 +101,7 @@ class SandboxDirectoryDatabaseTest : public testing::Test {
     db_.reset();
     ASSERT_TRUE(base::DeletePathRecursively(path()));
     ASSERT_TRUE(base::CreateDirectory(path()));
-    db_.reset(new SandboxDirectoryDatabase(path(), nullptr));
+    db_ = std::make_unique<SandboxDirectoryDatabase>(path(), nullptr);
   }
 
   bool RepairDatabase() {
@@ -136,9 +139,6 @@ class SandboxDirectoryDatabaseTest : public testing::Test {
   // Common temp base for nondestructive uses.
   base::ScopedTempDir base_;
   std::unique_ptr<SandboxDirectoryDatabase> db_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(SandboxDirectoryDatabaseTest);
 };
 
 TEST_F(SandboxDirectoryDatabaseTest, TestMissingFileGetInfo) {

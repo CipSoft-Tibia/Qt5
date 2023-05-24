@@ -1,0 +1,92 @@
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+/*!
+    \page qthttpserver-index.html
+    \since 6.4
+    \title Qt HTTP Server
+    \brief Provides a lightweight server implementing the HTTP protocol.
+
+    Qt HTTP Server supports building HTTP server functionality into an application.
+    Common use cases are exposing the application's functionality through
+    REST APIs, or making devices in a trusted environment configurable also via HTTP.
+    The limitations are described in \l{Limitations & Security}.
+
+    \section1 Overview
+
+    Qt HTTP Server provides building blocks for embedding a lightweight HTTP server
+    based on \l{RFC 2616} in an application. There are classes for the messages
+    sent and received, and for the various parts of an HTTP server.
+
+    An HTTP server can be created by subclassing the QAbstractHttpServer class and
+    overriding the \l{QAbstractHttpServer::}{handleRequest()} function.
+    The QAbstractHttpServer class
+    provides functions for listening to incoming ports or binding to an existing
+    QTcpServer. Dispatching to callables based on incoming URLs can be simplified
+    by using the QHttpServerRouter class.
+
+    This can be simplified even further by using the QHttpServer class.
+    The QHttpServer class is a subclass of QAbstractHttpServer and defines an
+    overloaded route function to bind callables to different incoming URLs,
+    and an \l{QHttpServer::}{afterRequest()} function to process the response further.
+
+    Runtime logging can be configured as described \l{qthttpserver-logging.html}{here}.
+
+    \section1 Limitations & Security
+
+    Qt HTTP Server does not have many of the more advanced features and optimizations
+    that general-purpose HTTP servers have. It also has not seen
+    the same scrutiny regarding various attack vectors over the network.
+    Use Qt HTTP Server, therefore, only for local connections
+    or in a trusted network, and do not expose the ports to the internet.
+
+    You can add HTTPS support as a basic security measure, though. If Qt is compiled
+    with support for TLS, you can bind QAbstractHttpServer and its subclasses to a
+    QSslServer object, providing Transport Layer Security handling.
+    This can also be achieved by calling the QAbstractHttpServer::sslSetup()
+    function before calling \l{QAbstractHttpServer::}{listen()}.
+
+    \section1 Using the Module
+
+    Using a Qt module requires linking against the module library, either
+    directly or through other dependencies. Several build tools have dedicated
+    support for this, including CMake and qmake.
+
+    \section2 Building with CMake
+
+    Use the \c find_package() command to locate the needed module components in
+    the Qt6 package:
+
+    \badcode
+    find_package(Qt6 REQUIRED COMPONENTS HttpServer)
+    target_link_libraries(mytarget PRIVATE Qt6::HttpServer)
+    \endcode
+
+    See also the \l{Build with CMake} overview.
+
+    \section2 Building with qmake
+
+    To configure the module for building with qmake, add the module as a value
+    of the QT variable in the project's .pro file:
+
+    \badcode
+    QT += httpserver
+    \endcode
+
+    \section1 Licenses
+
+    Qt HTTP Server is available under commercial licenses from \l{The Qt Company}.
+    In addition, it is available under the \l {GNU General Public License, version 3}.
+    See \l{Qt Licensing} for further details.
+
+    \section1 Reference
+    \list
+    \li \l{Qt HTTP Server Logging}
+    \li \l{Qt HTTP Server C++ Classes}{C++ Classes}
+    \endlist
+
+    \section1 Examples
+
+    The module provides the following \l{Qt HTTP Server Examples}{Examples} as a guide to using
+    the API.
+*/

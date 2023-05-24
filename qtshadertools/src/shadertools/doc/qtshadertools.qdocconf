@@ -1,0 +1,30 @@
+include($QT_INSTALL_DOCS/global/qt-module-defaults.qdocconf)
+
+project                 = QtShaderTools
+description             = Qt Shader Tools Reference Documentation
+version                 = $QT_VERSION
+
+qhp.projects            = QtShaderTools
+
+qhp.QtShaderTools.file                = qtshadertools.qhp
+qhp.QtShaderTools.namespace           = org.qt-project.qtshadertools.$QT_VERSION_TAG
+qhp.QtShaderTools.virtualFolder       = qtshadertools
+qhp.QtShaderTools.indexTitle          = Qt Shader Tools
+qhp.QtShaderTools.indexRoot           =
+
+tagfile                 = ../../../doc/qtshadertools/qtshadertools.tags
+
+depends += qtdoc qtcmake qmake qtcore qtgui qtquick
+
+headerdirs  += ..
+
+sourcedirs  += ..
+
+exampledirs += snippets
+
+imagedirs   += images
+
+navigation.landingpage = "Qt Shader Tools"
+navigation.landingtitle = "Shader Tools"
+
+macro.cmakeoptionsince = "\n\nThis option was introduced in Qt \1.\n\n"

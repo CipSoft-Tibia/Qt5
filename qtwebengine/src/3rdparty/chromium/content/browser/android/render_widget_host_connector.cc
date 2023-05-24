@@ -1,9 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/android/render_widget_host_connector.h"
 
+#include "base/memory/raw_ptr.h"
 #include "content/browser/renderer_host/render_widget_host_view_android.h"
 #include "content/browser/web_contents/web_contents_android.h"
 #include "content/browser/web_contents/web_contents_impl.h"
@@ -17,12 +18,16 @@ class RenderWidgetHostConnector::Observer
       public RenderWidgetHostViewAndroid::DestructionObserver {
  public:
   Observer(WebContents* web_contents, RenderWidgetHostConnector* connector);
+
+  Observer(const Observer&) = delete;
+  Observer& operator=(const Observer&) = delete;
+
   ~Observer() override;
 
   // WebContentsObserver implementation.
   void RenderViewReady() override;
-  void RenderViewHostChanged(RenderViewHost* old_host,
-                             RenderViewHost* new_host) override;
+  void RenderFrameHostChanged(RenderFrameHost* old_host,
+                              RenderFrameHost* new_host) override;
 
   // WebContentsAndroid::DestructionObserver implementation.
   void WebContentsAndroidDestroyed(
@@ -40,12 +45,10 @@ class RenderWidgetHostConnector::Observer
  private:
   void DoDestroy(WebContentsAndroid* web_contents_android);
 
-  RenderWidgetHostConnector* const connector_;
+  const raw_ptr<RenderWidgetHostConnector> connector_;
 
   // Active RenderWidgetHostView connected to this instance.
-  RenderWidgetHostViewAndroid* active_rwhva_;
-
-  DISALLOW_COPY_AND_ASSIGN(Observer);
+  raw_ptr<RenderWidgetHostViewAndroid> active_rwhva_;
 };
 
 RenderWidgetHostConnector::Observer::Observer(
@@ -67,12 +70,15 @@ void RenderWidgetHostConnector::Observer::RenderViewReady() {
   UpdateRenderWidgetHostView(GetRenderWidgetHostViewAndroid());
 }
 
-void RenderWidgetHostConnector::Observer::RenderViewHostChanged(
-    RenderViewHost* old_host,
-    RenderViewHost* new_host) {
-  // |RenderViewHostChanged| is called only for main rwhva change.
+void RenderWidgetHostConnector::Observer::RenderFrameHostChanged(
+    RenderFrameHost* old_host,
+    RenderFrameHost* new_host) {
+  if (!new_host->IsInPrimaryMainFrame()) {
+    return;
+  }
+
   auto* new_view = new_host ? static_cast<RenderWidgetHostViewBase*>(
-                                  new_host->GetWidget()->GetView())
+                                  new_host->GetRenderWidgetHost()->GetView())
                             : nullptr;
   DCHECK(!new_view || !new_view->IsRenderWidgetHostViewChildFrame());
   auto* new_view_android = static_cast<RenderWidgetHostViewAndroid*>(new_view);
@@ -92,7 +98,7 @@ void RenderWidgetHostConnector::Observer::DestroyEarly() {
 void RenderWidgetHostConnector::Observer::DoDestroy(
     WebContentsAndroid* web_contents_android) {
   web_contents_android->RemoveDestructionObserver(this);
-  DCHECK_EQ(active_rwhva_, GetRenderWidgetHostViewAndroid());
+  DCHECK(!active_rwhva_ || active_rwhva_ == GetRenderWidgetHostViewAndroid());
   UpdateRenderWidgetHostView(nullptr);
   delete connector_;
 }

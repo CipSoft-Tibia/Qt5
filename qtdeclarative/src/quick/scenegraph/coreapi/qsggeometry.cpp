@@ -1,49 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt scene graph research project.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsggeometry.h"
 #include "qsggeometry_p.h"
-#if QT_CONFIG(opengl)
-# include <qopenglcontext.h>
-# include <qopenglfunctions.h>
-# include <private/qopenglextensions_p.h>
-#endif
 
 #ifdef Q_OS_QNX
 #include <malloc.h>
@@ -142,10 +101,6 @@ const QSGGeometry::AttributeSet &QSGGeometry::defaultAttributes_ColoredPoint2D()
     hint should be set to \c true. The scene graph renderer may use this
     information to perform optimizations.
 
-    \note Scene graph backends for APIs other than OpenGL may require an
-    accurate description of attributes' usage, and therefore it is recommended
-    to use createWithAttributeType() instead.
-
     Use the create function to construct the attribute, rather than an
     initialization list, to ensure that all fields are initialized.
  */
@@ -234,12 +189,10 @@ const QSGGeometry::AttributeSet &QSGGeometry::defaultAttributes_ColoredPoint2D()
 
     \inmodule QtQuick
 
-    The QSGGeometry class stores the geometry of the primitives
-    rendered with the scene graph. It contains vertex data and
-    optionally index data. The mode used to draw the geometry is
-    specified with setDrawingMode(), which maps directly to the graphics API's
-    drawing mode, such as \c GL_TRIANGLE_STRIP, \c GL_TRIANGLES, or
-    \c GL_POINTS in case of OpenGL.
+    The QSGGeometry class stores the geometry of the primitives rendered
+    with the scene graph. It contains vertex data and optionally index
+    data. The mode used to draw the geometry, also called primitive
+    topology, is specified with setDrawingMode().
 
     Vertices can be as simple as points defined by x and y values or
     can be more complex where each vertex contains a normal, texture
@@ -284,8 +237,8 @@ const QSGGeometry::AttributeSet &QSGGeometry::defaultAttributes_ColoredPoint2D()
     };
 
     QSGGeometry::Attribute MyPoint2D_Attributes[] = {
-        QSGGeometry::Attribute::create(0, 2, GL_FLOAT, true),
-        QSGGeometry::Attribute::create(1, 4, GL_FLOAT, false)
+        QSGGeometry::Attribute::create(0, 2, FloatType, true),
+        QSGGeometry::Attribute::create(1, 4, FloatType, false)
     };
 
     QSGGeometry::AttributeSet MyPoint2D_AttributeSet = {
@@ -297,7 +250,7 @@ const QSGGeometry::AttributeSet &QSGGeometry::defaultAttributes_ColoredPoint2D()
     ...
 
     geometry = new QSGGeometry(MyPoint2D_AttributeSet, 2);
-    geometry->setDrawingMode(GL_LINES);
+    geometry->setDrawingMode(DrawLines);
 
     MyPoint2D *vertices = static_cast<MyPoint2D *>(geometry->vertexData());
     vertices[0].set(0, 0, 1, 0, 0, 1);
@@ -305,7 +258,7 @@ const QSGGeometry::AttributeSet &QSGGeometry::defaultAttributes_ColoredPoint2D()
     \endcode
 
     The QSGGeometry is a software buffer and client-side in terms of
-    OpenGL rendering, as the buffers used in 2D graphics typically consist of
+    accelerated rendering, as the buffers used in 2D graphics typically consist of
     many small buffers that change every frame and do not benefit from
     being uploaded to graphics memory. However, the QSGGeometry
     supports hinting to the renderer that a buffer should be
@@ -410,15 +363,17 @@ const QSGGeometry::AttributeSet &QSGGeometry::defaultAttributes_ColoredPoint2D()
     The object allocate space for \a vertexCount vertices based on the
     accumulated size in \a attributes and for \a indexCount.
 
-    The \a indexType maps to the OpenGL index type and can be
-    \c GL_UNSIGNED_SHORT and \c GL_UNSIGNED_BYTE. On OpenGL implementations that
-    support it, such as desktop OpenGL, \c GL_UNSIGNED_INT can also be used.
+    The \a indexType can be UnsignedShortType or \c
+    UnsignedIntType. Support for the latter depends on the graphics API
+    implementation used at run time, and may not always be available.
 
-    Geometry objects are constructed with \c GL_TRIANGLE_STRIP as default
-    drawing mode.
+    Geometry objects are constructed by default with DrawTriangleStrip as
+    the drawing mode.
 
-    The attribute structure is assumed to be POD and the geometry object
-    assumes this will not go away. There is no memory management involved.
+    \note \a attributes and the \l Attribute objects referenced by it must
+          stay valid for the entire lifetime of the QSGGeometry.
+          QSGGeometry stores a reference to \a attributes and does not delete
+          the \l Attribute objects.
  */
 
 QSGGeometry::QSGGeometry(const QSGGeometry::AttributeSet &attributes,
@@ -441,15 +396,6 @@ QSGGeometry::QSGGeometry(const QSGGeometry::AttributeSet &attributes,
     Q_UNUSED(m_reserved_bits);
     Q_ASSERT(m_attributes.count > 0);
     Q_ASSERT(m_attributes.stride > 0);
-#if QT_CONFIG(opengl)
-    Q_ASSERT_X(indexType != GL_UNSIGNED_INT
-               || !QOpenGLContext::currentContext() // rhi, support for uint cannot be checked here
-               || static_cast<QOpenGLExtensions *>(QOpenGLContext::currentContext()->functions())
-                  ->hasOpenGLExtension(QOpenGLExtensions::ElementIndexUint),
-               "QSGGeometry::QSGGeometry",
-               "GL_UNSIGNED_INT is not supported, geometry will not render"
-               );
-#endif
     if (indexType != UnsignedByteType
         && indexType != UnsignedShortType
         && indexType != UnsignedIntType) {
@@ -474,9 +420,8 @@ QSGGeometry::QSGGeometry(const QSGGeometry::AttributeSet &attributes,
 
     Returns the byte size of the index type.
 
-    This value is either \c 1 when index type is \c GL_UNSIGNED_BYTE or \c 2
-    when index type is \c GL_UNSIGNED_SHORT. For Desktop OpenGL,
-    \c GL_UNSIGNED_INT with the value \c 4 is also supported.
+    This value is either \c 2 when the index type is UnsignedShortType, or
+    \c 4 when the index type is UnsignedIntType.
  */
 
 /*!
@@ -549,25 +494,26 @@ const void *QSGGeometry::indexData() const
 /*!
     \enum QSGGeometry::DrawingMode
 
-    The values correspond to OpenGL enum values like \c GL_POINTS, \c GL_LINES,
-    etc. QSGGeometry provies its own type in order to be able to provide the
-    same API with non-OpenGL backends as well.
+    Specifies the drawing mode, also called primitive topology.
+
+    \note Starting with Qt 6 the scene graph only exposes topologies that are
+    supported across all the supported 3D graphics APIs. As a result, the
+    values \c DrawLineLoop and \c DrawTriangleFan are no longer supported at
+    run time in Qt 6, even though the enum values themselves are still present.
 
     \value DrawPoints
     \value DrawLines
-    \value DrawLineLoop
+    \omitvalue DrawLineLoop
     \value DrawLineStrip
     \value DrawTriangles
     \value DrawTriangleStrip
-    \value DrawTriangleFan
+    \omitvalue DrawTriangleFan
  */
 
 /*!
     \enum QSGGeometry::Type
 
-    The values correspond to OpenGL type constants like \c GL_BYTE, \c
-    GL_UNSIGNED_BYTE, etc. QSGGeometry provies its own type in order to be able
-    to provide the same API with non-OpenGL backends as well.
+    Specifies the component type in the vertex data.
 
     \value ByteType
     \value UnsignedByteType
@@ -596,17 +542,18 @@ void QSGGeometry::setDrawingMode(unsigned int mode)
 
 /*!
     Gets the current line or point width or to be used for this geometry. This
-    property only applies to line width when the drawingMode is DrawLines,
-    DarwLineStrip, or DrawLineLoop. For desktop OpenGL, it also applies to
-    point size when the drawingMode is DrawPoints.
+    property only applies to line width when the drawingMode is DrawLines or
+    DrawLineStrip. When supported, it also applies to point size when the
+    drawingMode is DrawPoints.
 
     The default value is \c 1.0
 
-    \note When not using OpenGL, support for point and line drawing may be
-    limited. For example, some APIs do not support point sprites and so setting
-    a size other than 1 is not possible. Some backends may be able implement
-    support via geometry shaders, but this is not guaranteed to be always
-    available.
+    \note Support for point and line drawing may be limited at run time,
+    depending on the platform and graphics API. For example, some APIs do
+    not support point sprites and so setting a size other than 1 is not
+    possible.
+
+    \note The width of \c 1.0 is always supported.
 
     \sa setLineWidth(), drawingMode()
 */
@@ -617,14 +564,16 @@ float QSGGeometry::lineWidth() const
 
 /*!
     Sets the line or point width to be used for this geometry to \a width. This
-    property only applies to line width when the drawingMode is DrawLines,
-    DrawLineStrip, or DrawLineLoop. For Desktop OpenGL, it also applies to
-    point size when the drawingMode is DrawPoints.
+    property only applies to line width when the drawingMode is DrawLines or
+    DrawLineStrip. When supported, it also applies to point size when the
+    drawingMode is DrawPoints.
 
-    \note How line width and point size are treated is implementation
-    dependent: The application should not rely on these, but rather create
-    triangles or similar to draw areas. On OpenGL ES, line width support is
-    limited and point size is unsupported.
+    \note Support for point and line drawing may be limited at run time,
+    depending on the platform and graphics API. For example, some APIs do
+    not support point sprites and so setting a size other than 1 is not
+    possible.
+
+    \note The width of \c 1.0 is always supported.
 
     \sa lineWidth(), drawingMode()
 */
@@ -638,7 +587,7 @@ void QSGGeometry::setLineWidth(float width)
 
     Returns the drawing mode of this geometry.
 
-    The default value is \c GL_TRIANGLE_STRIP.
+    The default value is DrawTriangleStrip.
  */
 
 /*!

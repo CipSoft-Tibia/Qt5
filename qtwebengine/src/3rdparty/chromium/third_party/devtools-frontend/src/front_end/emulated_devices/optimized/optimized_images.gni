@@ -4,6 +4,8 @@
 import("../../../scripts/build/ninja/vars.gni")
 
 devtools_emulated_devices_images = [
+  "google-nest-hub-max-horizontal.avif",
+  "google-nest-hub-horizontal.avif",
   "google-nexus-5-horizontal-default-1x.avif",
   "google-nexus-5-horizontal-default-2x.avif",
   "google-nexus-5-horizontal-keyboard-1x.avif",
@@ -44,9 +46,8 @@ devtools_emulated_devices_images = [
   "Nexus6P-portrait.avif",
 ]
 
-generated_emulated_device_images = []
+optimized_emulated_device_images = []
 
 foreach(image, devtools_emulated_devices_images) {
-  generated_emulated_device_images +=
-      [ "$resources_out_dir/emulated_devices/optimized/$image" ]
+  optimized_emulated_device_images += [ "emulated_devices/optimized/$image" ]
 }

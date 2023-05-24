@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@
 
 #include "cc/layers/layer.h"
 #include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_client.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
@@ -19,7 +20,6 @@
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/layout/ng/layout_ng_block_flow.h"
 #include "third_party/blink/renderer/core/loader/empty_clients.h"
-#include "third_party/blink/renderer/core/paint/ng/ng_paint_fragment.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
 #include "third_party/blink/renderer/platform/testing/layer_tree_host_embedder.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
@@ -64,8 +64,8 @@ class RenderingTestChromeClient : public EmptyChromeClient {
   void SetUp() {
     // Runtime flags can affect LayerTreeHost's settings so this needs to be
     // recreated for each test.
-    layer_tree_.reset(new LayerTreeHostEmbedder());
-    device_emulation_transform_ = TransformationMatrix();
+    layer_tree_ = std::make_unique<LayerTreeHostEmbedder>();
+    device_emulation_transform_ = gfx::Transform();
   }
 
   bool HasLayer(const cc::Layer& layer) {
@@ -81,23 +81,30 @@ class RenderingTestChromeClient : public EmptyChromeClient {
     return layer_tree_->layer_tree_host();
   }
 
-  void SetDeviceEmulationTransform(const TransformationMatrix& t) {
+  void SetDeviceEmulationTransform(const gfx::Transform& t) {
     device_emulation_transform_ = t;
   }
-  TransformationMatrix GetDeviceEmulationTransform() const override {
+  gfx::Transform GetDeviceEmulationTransform() const override {
     return device_emulation_transform_;
   }
 
   void InjectGestureScrollEvent(LocalFrame& local_frame,
                                 WebGestureDevice device,
                                 const gfx::Vector2dF& delta,
-                                ScrollGranularity granularity,
+                                ui::ScrollGranularity granularity,
                                 CompositorElementId scrollable_area_element_id,
                                 WebInputEvent::Type injected_type) override;
 
+  void ScheduleAnimation(const LocalFrameView*, base::TimeDelta) override {
+    animation_scheduled_ = true;
+  }
+  bool AnimationScheduled() const { return animation_scheduled_; }
+  void UnsetAnimationScheduled() { animation_scheduled_ = false; }
+
  private:
   std::unique_ptr<LayerTreeHostEmbedder> layer_tree_;
-  TransformationMatrix device_emulation_transform_;
+  gfx::Transform device_emulation_transform_;
+  bool animation_scheduled_ = false;
 };
 
 class RenderingTest : public PageTestBase {
@@ -140,15 +147,16 @@ class RenderingTest : public PageTestBase {
     return element ? element->GetLayoutObject() : nullptr;
   }
 
+  LayoutBox* GetLayoutBoxByElementId(const char* id) const {
+    return To<LayoutBox>(GetLayoutObjectByElementId(id));
+  }
+
   PaintLayer* GetPaintLayerByElementId(const char* id) {
-    return ToLayoutBoxModelObject(GetLayoutObjectByElementId(id))->Layer();
+    return To<LayoutBoxModelObject>(GetLayoutObjectByElementId(id))->Layer();
   }
 
   const DisplayItemClient* GetDisplayItemClientFromLayoutObject(
       LayoutObject* obj) const {
-    LayoutNGBlockFlow* block_flow = ToLayoutNGBlockFlowOrNull(obj);
-    if (block_flow && block_flow->PaintFragment())
-      return block_flow->PaintFragment();
     return obj;
   }
 
@@ -163,20 +171,20 @@ class RenderingTest : public PageTestBase {
 
 // These constructors are for convenience of tests to construct these geometries
 // from integers.
-inline LogicalOffset::LogicalOffset(int inline_offset, int block_offset)
+constexpr LogicalOffset::LogicalOffset(int inline_offset, int block_offset)
     : inline_offset(inline_offset), block_offset(block_offset) {}
-inline LogicalSize::LogicalSize(int inline_size, int block_size)
+constexpr LogicalSize::LogicalSize(int inline_size, int block_size)
     : inline_size(inline_size), block_size(block_size) {}
-inline LogicalRect::LogicalRect(int inline_offset,
-                                int block_offset,
-                                int inline_size,
-                                int block_size)
+constexpr LogicalRect::LogicalRect(int inline_offset,
+                                   int block_offset,
+                                   int inline_size,
+                                   int block_size)
     : offset(inline_offset, block_offset), size(inline_size, block_size) {}
-inline PhysicalOffset::PhysicalOffset(int left, int top)
+constexpr PhysicalOffset::PhysicalOffset(int left, int top)
     : left(left), top(top) {}
-inline PhysicalSize::PhysicalSize(int width, int height)
+constexpr PhysicalSize::PhysicalSize(int width, int height)
     : width(width), height(height) {}
-inline PhysicalRect::PhysicalRect(int left, int top, int width, int height)
+constexpr PhysicalRect::PhysicalRect(int left, int top, int width, int height)
     : offset(left, top), size(width, height) {}
 
 }  // namespace blink

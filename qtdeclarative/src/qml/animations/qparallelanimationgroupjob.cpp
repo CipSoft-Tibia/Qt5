@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "private/qparallelanimationgroupjob_p.h"
 #include "private/qanimationjobutil_p.h"
@@ -57,7 +21,7 @@ int QParallelAnimationGroupJob::duration() const
 {
     int ret = 0;
 
-    for (QAbstractAnimationJob *animation = firstChild(); animation; animation = animation->nextSibling()) {
+    for (const QAbstractAnimationJob *animation : m_children) {
         int currentDuration = animation->totalDuration();
         if (currentDuration == -1)
             return -1; // Undetermined length
@@ -69,7 +33,7 @@ int QParallelAnimationGroupJob::duration() const
 
 void QParallelAnimationGroupJob::updateCurrentTime(int /*currentTime*/)
 {
-    if (!firstChild())
+    if (m_children.isEmpty())
         return;
 
     if (m_currentLoop > m_previousLoop) {
@@ -79,21 +43,21 @@ void QParallelAnimationGroupJob::updateCurrentTime(int /*currentTime*/)
             // For an uncontrolled parallel group, we need to simulate the end of running animations.
             // As uncontrolled animation finish time is already reset for this next loop, we pick the
             // longest of the known stop times.
-            for (QAbstractAnimationJob *animation = firstChild(); animation; animation = animation->nextSibling()) {
+            for (QAbstractAnimationJob *animation : m_children) {
                 int currentDuration = animation->totalDuration();
                 if (currentDuration >= 0)
                     dura = qMax(dura, currentDuration);
             }
         }
         if (dura > 0) {
-            for (QAbstractAnimationJob *animation = firstChild(); animation; animation = animation->nextSibling()) {
+            for (QAbstractAnimationJob *animation : m_children) {
                 if (!animation->isStopped())
                     RETURN_IF_DELETED(animation->setCurrentTime(dura));   // will stop
             }
         }
     } else if (m_currentLoop < m_previousLoop) {
         // simulate completion of the loop seeking backwards
-        for (QAbstractAnimationJob *animation = firstChild(); animation; animation = animation->nextSibling()) {
+        for (QAbstractAnimationJob *animation : m_children) {
             //we need to make sure the animation is in the right state
             //and then rewind it
             applyGroupState(animation);
@@ -103,7 +67,7 @@ void QParallelAnimationGroupJob::updateCurrentTime(int /*currentTime*/)
     }
 
     // finally move into the actual time of the current loop
-    for (QAbstractAnimationJob *animation = firstChild(); animation; animation = animation->nextSibling()) {
+    for (QAbstractAnimationJob *animation : m_children) {
         const int dura = animation->totalDuration();
         //if the loopcount is bigger we should always start all animations
         if (m_currentLoop > m_previousLoop
@@ -130,24 +94,24 @@ void QParallelAnimationGroupJob::updateState(QAbstractAnimationJob::State newSta
 
     switch (newState) {
     case Stopped:
-        for (QAbstractAnimationJob *animation = firstChild(); animation; animation = animation->nextSibling())
+        for (QAbstractAnimationJob *animation : m_children)
             animation->stop();
         break;
     case Paused:
-        for (QAbstractAnimationJob *animation = firstChild(); animation; animation = animation->nextSibling())
+        for (QAbstractAnimationJob *animation : m_children)
             if (animation->isRunning())
                 animation->pause();
         break;
     case Running:
-        for (QAbstractAnimationJob *animation = firstChild(); animation; animation = animation->nextSibling()) {
+        for (QAbstractAnimationJob *animation : m_children) {
             if (oldState == Stopped) {
                 animation->stop();
                 m_previousLoop = m_direction == Forward ? 0 : m_loopCount - 1;
             }
-            resetUncontrolledAnimationFinishTime(animation);
+            RETURN_IF_DELETED(resetUncontrolledAnimationFinishTime(animation));
             animation->setDirection(m_direction);
             if (shouldAnimationStart(animation, oldState == Stopped))
-                animation->start();
+                RETURN_IF_DELETED(animation->start());
         }
         break;
     }
@@ -188,7 +152,7 @@ void QParallelAnimationGroupJob::updateDirection(QAbstractAnimationJob::Directio
 {
     //we need to update the direction of the current animation
     if (!isStopped()) {
-        for (QAbstractAnimationJob *animation = firstChild(); animation; animation = animation->nextSibling()) {
+        for (QAbstractAnimationJob *animation : m_children) {
             animation->setDirection(direction);
         }
     } else {
@@ -208,7 +172,7 @@ void QParallelAnimationGroupJob::uncontrolledAnimationFinished(QAbstractAnimatio
     Q_ASSERT(animation && (animation->duration() == -1 || animation->loopCount() < 0));
     int uncontrolledRunningCount = 0;
 
-    for (QAbstractAnimationJob *child = firstChild(); child; child = child->nextSibling()) {
+    for (QAbstractAnimationJob *child : m_children) {
         if (child == animation) {
             setUncontrolledAnimationFinishTime(animation, animation->currentTime());
         } else if (child->duration() == -1 || child->loopCount() < 0) {
@@ -222,7 +186,7 @@ void QParallelAnimationGroupJob::uncontrolledAnimationFinished(QAbstractAnimatio
 
     int maxDuration = 0;
     bool running = false;
-    for (QAbstractAnimationJob *job = firstChild(); job; job = job->nextSibling()) {
+    for (QAbstractAnimationJob *job : m_children) {
         if (job->state() == Running)
             running = true;
         maxDuration = qMax(maxDuration, job->totalDuration());

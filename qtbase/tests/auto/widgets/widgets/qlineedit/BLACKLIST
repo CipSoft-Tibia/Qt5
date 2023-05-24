@@ -1,43 +1,9 @@
-# QTBUG-69111
-[undo_keypressevents:Inserts,moving,selection, delete and undo]
+# QTBUG-87417
+[undo_keypressevents]
 android
-
-# QTBUG-69112
-[inlineCompletion]
-android
-
-# QTBUG-69116
 [leftKeyOnSelectedText]
 android
-
-# QTBUG-69113
 [textMargin]
 android
-
-# QTBUG-69119
-[task174640_editingFinished]
-android
-
-# QTBUG-69118
-[task210502_caseInsensitiveInlineCompletion]
-android
-
-# QTBUG-69114
-[QTBUG697_paletteCurrentColorGroup]
-android
-
-# QTBUG-69115
 [testQuickSelectionWithMouse]
 android
-
-[inputRejected]
-winrt
-
-[QTBUG5786_undoPaste]
-winrt
-
-[cut]
-winrt
-
-[cutWithoutSelection]
-winrt

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,7 +21,7 @@ namespace blink {
 
 namespace {
 
-constexpr base::TimeDelta kIconFetchTimeout = base::TimeDelta::FromSeconds(30);
+constexpr base::TimeDelta kIconFetchTimeout = base::Seconds(30);
 
 void FetchIcon(ExecutionContext* execution_context,
                const KURL& icon_url,
@@ -29,7 +29,7 @@ void FetchIcon(ExecutionContext* execution_context,
                ThreadedIconLoader* threaded_icon_loader,
                ThreadedIconLoader::IconCallback callback) {
   ResourceRequest resource_request(icon_url);
-  resource_request.SetRequestContext(mojom::RequestContextType::IMAGE);
+  resource_request.SetRequestContext(mojom::blink::RequestContextType::IMAGE);
   resource_request.SetRequestDestination(
       network::mojom::RequestDestination::kImage);
   resource_request.SetPriority(ResourceLoadPriority::kMedium);
@@ -45,7 +45,8 @@ WebVector<Manifest::ImageResource> ToImageResource(
   WebVector<Manifest::ImageResource> image_resources;
   for (const auto& icon_definition : icon_definitions) {
     Manifest::ImageResource image_resource;
-    image_resource.src = execution_context->CompleteURL(icon_definition->src);
+    image_resource.src =
+        GURL(execution_context->CompleteURL(icon_definition->src));
     image_resource.type = WebString(icon_definition->type).Utf16();
     for (const auto& size :
          WebIconSizesParser::ParseIconSizes(icon_definition->sizes)) {
@@ -53,7 +54,7 @@ WebVector<Manifest::ImageResource> ToImageResource(
     }
     if (image_resource.sizes.empty())
       image_resource.sizes.emplace_back(0, 0);
-    image_resource.purpose.push_back(Manifest::ImageResource::Purpose::ANY);
+    image_resource.purpose.push_back(mojom::ManifestImageResource_Purpose::ANY);
     image_resources.emplace_back(std::move(image_resource));
   }
   return image_resources;
@@ -67,7 +68,7 @@ KURL FindBestIcon(WebVector<Manifest::ImageResource> image_resources,
       /* minimum_icon_size_in_px= */ 0,
       /* max_width_to_height_ratio= */ icon_size.width() * 1.0f /
           icon_size.height(),
-      Manifest::ImageResource::Purpose::ANY));
+      mojom::ManifestImageResource_Purpose::ANY));
 }
 
 }  // namespace
@@ -79,18 +80,19 @@ void ContentIndexIconLoader::Start(
     mojom::blink::ContentDescriptionPtr description,
     const Vector<gfx::Size>& icon_sizes,
     IconsCallback callback) {
-  DCHECK(!description->icons.IsEmpty());
-  DCHECK(!icon_sizes.IsEmpty());
+  DCHECK(!description->icons.empty());
+  DCHECK(!icon_sizes.empty());
 
   auto image_resources = ToImageResource(execution_context, description->icons);
 
   auto icons = std::make_unique<Vector<SkBitmap>>();
-  icons->ReserveCapacity(icon_sizes.size());
+  icons->reserve(icon_sizes.size());
   Vector<SkBitmap>* icons_ptr = icons.get();
   auto barrier_closure = base::BarrierClosure(
       icon_sizes.size(),
-      WTF::Bind(&ContentIndexIconLoader::DidGetIcons, WrapPersistent(this),
-                std::move(description), std::move(icons), std::move(callback)));
+      WTF::BindOnce(&ContentIndexIconLoader::DidGetIcons, WrapPersistent(this),
+                    std::move(description), std::move(icons),
+                    std::move(callback)));
 
   for (const auto& icon_size : icon_sizes) {
     // TODO(crbug.com/973844): The same `src` may be chosen more than once.
@@ -104,7 +106,7 @@ void ContentIndexIconLoader::Start(
     // |icons_ptr| is safe to use since it is owned by |barrier_closure|.
     FetchIcon(
         execution_context, icon_url, icon_size, threaded_icon_loader,
-        WTF::Bind(
+        WTF::BindOnce(
             [](base::OnceClosure done_closure, Vector<SkBitmap>* icons_ptr,
                ThreadedIconLoader* icon_loader, SkBitmap icon,
                double resize_scale) {

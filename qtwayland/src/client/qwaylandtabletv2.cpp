@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwaylandtabletv2_p.h"
 #include "qwaylandinputdevice_p.h"
@@ -63,6 +27,7 @@ QWaylandTabletSeatV2 *QWaylandTabletManagerV2::createTabletSeat(QWaylandInputDev
 
 QWaylandTabletSeatV2::QWaylandTabletSeatV2(QWaylandTabletManagerV2 *manager, QWaylandInputDevice *seat)
     : QtWayland::zwp_tablet_seat_v2(manager->get_tablet_seat(seat->wl_seat()))
+    , m_seat(seat)
 {
 }
 
@@ -74,6 +39,9 @@ QWaylandTabletSeatV2::~QWaylandTabletSeatV2()
         tool->destroy();
     for (auto *pad : m_pads)
         pad->destroy();
+    qDeleteAll(m_tablets);
+    qDeleteAll(m_tools);
+    qDeleteAll(m_pads);
     destroy();
 }
 
@@ -86,7 +54,7 @@ void QWaylandTabletSeatV2::zwp_tablet_seat_v2_tablet_added(zwp_tablet_v2 *id)
 
 void QWaylandTabletSeatV2::zwp_tablet_seat_v2_tool_added(zwp_tablet_tool_v2 *id)
 {
-    auto *tool = new QWaylandTabletToolV2(id);
+    auto *tool = new QWaylandTabletToolV2(this, id);
     m_tools.push_back(tool);
     connect(tool, &QWaylandTabletToolV2::destroyed, this, [this, tool] { m_tools.removeOne(tool); });
 }
@@ -109,8 +77,9 @@ void QWaylandTabletV2::zwp_tablet_v2_removed()
     delete this;
 }
 
-QWaylandTabletToolV2::QWaylandTabletToolV2(::zwp_tablet_tool_v2 *tool)
+QWaylandTabletToolV2::QWaylandTabletToolV2(QWaylandTabletSeatV2 *tabletSeat, ::zwp_tablet_tool_v2 *tool)
     : QtWayland::zwp_tablet_tool_v2(tool)
+    , m_tabletSeat(tabletSeat)
 {
 }
 
@@ -137,35 +106,35 @@ void QWaylandTabletToolV2::zwp_tablet_tool_v2_done()
     case type::type_brush:
     case type::type_pencil:
     case type::type_pen:
-        m_pointerType = QTabletEvent::PointerType::Pen;
+        m_pointerType = QPointingDevice::PointerType::Pen;
         break;
     case type::type_eraser:
-        m_pointerType = QTabletEvent::PointerType::Eraser;
+        m_pointerType = QPointingDevice::PointerType::Eraser;
         break;
     case type::type_mouse:
     case type::type_lens:
-        m_pointerType = QTabletEvent::PointerType::Cursor;
+        m_pointerType = QPointingDevice::PointerType::Cursor;
         break;
     case type::type_finger:
-        m_pointerType = QTabletEvent::PointerType::UnknownPointer;
+        m_pointerType = QPointingDevice::PointerType::Unknown;
         break;
     }
     switch (m_toolType) {
     case type::type_airbrush:
-        m_tabletDevice = QTabletEvent::TabletDevice::Airbrush;
+        m_tabletDevice = QInputDevice::DeviceType::Airbrush;
         break;
     case type::type_brush:
     case type::type_pencil:
     case type::type_pen:
     case type::type_eraser:
-        m_tabletDevice = m_hasRotation ? QTabletEvent::TabletDevice::RotationStylus : QTabletEvent::TabletDevice::Stylus;
+        m_tabletDevice = QInputDevice::DeviceType::Stylus;
         break;
     case type::type_lens:
-        m_tabletDevice = QTabletEvent::TabletDevice::Puck;
+        m_tabletDevice = QInputDevice::DeviceType::Puck;
         break;
     case type::type_mouse:
     case type::type_finger:
-        m_tabletDevice = QTabletEvent::TabletDevice::NoDevice;
+        m_tabletDevice = QInputDevice::DeviceType::Unknown;
         break;
     }
 }
@@ -196,8 +165,14 @@ void QWaylandTabletToolV2::zwp_tablet_tool_v2_proximity_out()
 
 void QWaylandTabletToolV2::zwp_tablet_tool_v2_down(uint32_t serial)
 {
-    Q_UNUSED(serial);
     m_pending.down = true;
+
+    if (m_pending.proximitySurface) {
+        if (QWaylandWindow *window = m_pending.proximitySurface->waylandWindow()) {
+            QWaylandInputDevice *seat = m_tabletSeat->seat();
+            seat->display()->setLastInputDevice(seat, serial, window);
+        }
+    }
 }
 
 void QWaylandTabletToolV2::zwp_tablet_tool_v2_up()
@@ -261,7 +236,7 @@ void QWaylandTabletToolV2::zwp_tablet_tool_v2_button(uint32_t serial, uint32_t b
 void QWaylandTabletToolV2::zwp_tablet_tool_v2_frame(uint32_t time)
 {
     if (m_pending.proximitySurface && !m_applied.proximitySurface) {
-        QWindowSystemInterface::handleTabletEnterProximityEvent(m_tabletDevice, m_pointerType, m_uid);
+        QWindowSystemInterface::handleTabletEnterProximityEvent(int(m_tabletDevice), int(m_pointerType), m_uid);
         m_applied.proximitySurface = m_pending.proximitySurface;
     }
 
@@ -288,12 +263,12 @@ void QWaylandTabletToolV2::zwp_tablet_tool_v2_frame(uint32_t time)
         qreal rotation = m_pending.rotation;
         int z = int(m_pending.distance);
         QWindowSystemInterface::handleTabletEvent(window, timestamp, localPosition, globalPosition,
-                                                  m_tabletDevice, m_pointerType, buttons, pressure,
+                                                  int(m_tabletDevice), int(m_pointerType), buttons, pressure,
                                                   xTilt, yTilt, tangentialPressure, rotation, z, m_uid);
     }
 
     if (!m_pending.proximitySurface && m_applied.enteredSurface) {
-        QWindowSystemInterface::handleTabletLeaveProximityEvent(m_tabletDevice, m_pointerType, m_uid);
+        QWindowSystemInterface::handleTabletLeaveProximityEvent(int(m_tabletDevice), int(m_pointerType), m_uid);
         m_pending = State(); // Don't leave pressure etc. lying around when we enter the next surface
     }
 
@@ -330,3 +305,5 @@ void QWaylandTabletPadV2::zwp_tablet_pad_v2_removed()
 } // namespace QtWaylandClient
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandtabletv2_p.cpp"

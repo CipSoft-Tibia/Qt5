@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,12 +21,27 @@ namespace {
 // This is experimentally determined and corresponds to the UA decided
 // parameter as mentioned in spec.
 constexpr float kProximityRatio = 1.0 / 3.0;
+
+cc::SnapAlignment AdjustForRtlWritingMode(cc::SnapAlignment align) {
+  if (align == cc::SnapAlignment::kStart)
+    return cc::SnapAlignment::kEnd;
+
+  if (align == cc::SnapAlignment::kEnd)
+    return cc::SnapAlignment::kStart;
+
+  return align;
+}
+
 }  // namespace
 // TODO(sunyunjia): Move the static functions to an anonymous namespace.
 
 SnapCoordinator::SnapCoordinator() : snap_containers_() {}
 
 SnapCoordinator::~SnapCoordinator() = default;
+
+void SnapCoordinator::Trace(Visitor* visitor) const {
+  visitor->Trace(snap_containers_);
+}
 
 // Returns the layout box's next ancestor that can be a snap container.
 // The origin may be either a snap area or a snap container.
@@ -98,12 +113,12 @@ void SnapCoordinator::AddSnapContainer(LayoutBox& snap_container) {
   SnapAreaSet* snap_areas = ancestor_snap_container->SnapAreas();
   if (!snap_areas)
     return;
-  Vector<LayoutBox*> snap_areas_to_reassign;
-  for (auto* snap_area : *snap_areas) {
+  HeapVector<Member<LayoutBox>> snap_areas_to_reassign;
+  for (const auto& snap_area : *snap_areas) {
     if (FindSnapContainer(*snap_area) == &snap_container)
       snap_areas_to_reassign.push_back(snap_area);
   }
-  for (auto* snap_area : snap_areas_to_reassign)
+  for (const auto& snap_area : snap_areas_to_reassign)
     snap_area->SetSnapContainer(&snap_container);
 
   // The new snap container will not have attached its ScrollableArea yet, so we
@@ -142,8 +157,8 @@ void SnapCoordinator::RemoveSnapContainer(LayoutBox& snap_container) {
 
 void SnapCoordinator::SnapContainerDidChange(LayoutBox& snap_container) {
   // Scroll snap properties have no effect on the document element instead they
-  // are propagated to (See Document::PropagateStyleToViewport) and handled by
-  // the LayoutView.
+  // are propagated to (See StyleResolver::PropagateStyleToViewport) and handled
+  // by the LayoutView.
   if (snap_container.GetNode() ==
       snap_container.GetDocument().documentElement())
     return;
@@ -195,7 +210,7 @@ void SnapCoordinator::SnapAreaDidChange(LayoutBox& snap_area,
 }
 
 void SnapCoordinator::ResnapAllContainersIfNeeded() {
-  for (const auto* container : snap_containers_) {
+  for (const auto& container : snap_containers_) {
     if (!container->GetScrollableArea()->NeedsResnap())
       continue;
 
@@ -220,7 +235,7 @@ void SnapCoordinator::ResnapAllContainersIfNeeded() {
 }
 
 void SnapCoordinator::UpdateAllSnapContainerDataIfNeeded() {
-  for (auto* container : snap_containers_) {
+  for (const auto& container : snap_containers_) {
     if (container->GetScrollableArea()->SnapContainerDataNeedsUpdate())
       UpdateSnapContainerData(*container);
   }
@@ -248,10 +263,9 @@ void SnapCoordinator::UpdateSnapContainerData(LayoutBox& snap_container) {
   // to keep the area data up to date. So just update the type and skip updating
   // areas as an optimization.
   if (!snap_container_data.scroll_snap_type().is_none) {
-    FloatPoint max_position = scrollable_area->ScrollOffsetToPosition(
+    gfx::PointF max_position = scrollable_area->ScrollOffsetToPosition(
         scrollable_area->MaximumScrollOffset());
-    snap_container_data.set_max_position(
-        gfx::ScrollOffset(max_position.X(), max_position.Y()));
+    snap_container_data.set_max_position(max_position);
 
     // Scroll-padding represents inward offsets from the corresponding edge of
     // the scrollport.
@@ -287,13 +301,13 @@ void SnapCoordinator::UpdateSnapContainerData(LayoutBox& snap_container) {
         MinimumValueForLength(container_style->ScrollPaddingLeft(),
                               container_rect.Width()));
     container_rect.Contract(container_padding);
-    snap_container_data.set_rect(FloatRect(container_rect));
+    snap_container_data.set_rect(gfx::RectF(container_rect));
 
     if (snap_container_data.scroll_snap_type().strictness ==
         cc::SnapStrictness::kProximity) {
       PhysicalSize size = container_rect.size;
       size.Scale(kProximityRatio);
-      gfx::ScrollOffset range(size.width.ToFloat(), size.height.ToFloat());
+      gfx::PointF range(size.width.ToFloat(), size.height.ToFloat());
       snap_container_data.set_proximity_range(range);
     }
 
@@ -328,25 +342,54 @@ void SnapCoordinator::UpdateSnapContainerData(LayoutBox& snap_container) {
   }
 }
 
+// https://drafts.csswg.org/css-scroll-snap-1/#scroll-snap-align
+// After normalization:
+//   * inline corresponds to x, and block corresponds to y
+//   * start corresponds to left or top
+//   * end corresponds to right or bottom
+// In other words, the adjusted logical properties map to a physical layout
+// as if the writing mode were horizontal left to right and top to bottom.
 static cc::ScrollSnapAlign GetPhysicalAlignment(
     const ComputedStyle& area_style,
-    const ComputedStyle& container_style) {
+    const ComputedStyle& container_style,
+    const PhysicalRect& area_rect,
+    const PhysicalRect& container_rect) {
   cc::ScrollSnapAlign align = area_style.GetScrollSnapAlign();
-  if (container_style.IsHorizontalWritingMode())
-    return align;
-
-  cc::SnapAlignment tmp = align.alignment_inline;
-  align.alignment_inline = align.alignment_block;
-  align.alignment_block = tmp;
-
-  if (container_style.IsFlippedBlocksWritingMode()) {
-    if (align.alignment_inline == cc::SnapAlignment::kStart) {
-      align.alignment_inline = cc::SnapAlignment::kEnd;
-    } else if (align.alignment_inline == cc::SnapAlignment::kEnd) {
-      align.alignment_inline = cc::SnapAlignment::kStart;
-    }
+  cc::ScrollSnapAlign adjusted_alignment;
+  // Start and end alignments are resolved with respect to the writing mode of
+  // the snap container unless the scroll snap area is larger than the snapport,
+  // in which case they are resolved with respect to the writing mode of the box
+  // itself. (This allows items in a container to have consistent snap alignment
+  // in general, while ensuring that start always aligns the item to allow
+  // reading its contents from the beginning.)
+  WritingDirectionMode writing_direction =
+      container_style.GetWritingDirection();
+  WritingDirectionMode area_writing_direction =
+      area_style.GetWritingDirection();
+  if (area_writing_direction.IsHorizontal()) {
+    if (area_rect.Width() > container_rect.Width())
+      writing_direction = area_writing_direction;
+  } else {
+    if (area_rect.Height() > container_rect.Height())
+      writing_direction = area_writing_direction;
   }
-  return align;
+
+  bool rtl = (writing_direction.IsRtl());
+  if (writing_direction.IsHorizontal()) {
+    adjusted_alignment.alignment_inline =
+        rtl ? AdjustForRtlWritingMode(align.alignment_inline)
+            : align.alignment_inline;
+    adjusted_alignment.alignment_block = align.alignment_block;
+  } else {
+    bool flipped = writing_direction.IsFlippedBlocks();
+    adjusted_alignment.alignment_inline =
+        flipped ? AdjustForRtlWritingMode(align.alignment_block)
+                : align.alignment_block;
+    adjusted_alignment.alignment_block =
+        rtl ? AdjustForRtlWritingMode(align.alignment_inline)
+            : align.alignment_inline;
+  }
+  return adjusted_alignment;
 }
 
 cc::SnapAreaData SnapCoordinator::CalculateSnapAreaData(
@@ -370,11 +413,12 @@ cc::SnapAreaData SnapCoordinator::CalculateSnapAreaData(
       area_style->ScrollMarginTop(), area_style->ScrollMarginRight(),
       area_style->ScrollMarginBottom(), area_style->ScrollMarginLeft());
   area_rect.Expand(area_margin);
-  snap_area_data.rect = FloatRect(area_rect);
+  snap_area_data.rect = gfx::RectF(area_rect);
 
-  cc::ScrollSnapAlign align =
-      GetPhysicalAlignment(*area_style, *container_style);
-  snap_area_data.scroll_snap_align = align;
+  PhysicalRect container_rect = snap_container.PhysicalBorderBoxRect();
+
+  snap_area_data.scroll_snap_align = GetPhysicalAlignment(
+      *area_style, *container_style, area_rect, container_rect);
 
   snap_area_data.must_snap =
       (area_style->ScrollSnapStop() == EScrollSnapStop::kAlways);
@@ -388,14 +432,14 @@ cc::SnapAreaData SnapCoordinator::CalculateSnapAreaData(
 #ifndef NDEBUG
 
 void SnapCoordinator::ShowSnapAreaMap() {
-  for (auto* const container : snap_containers_)
+  for (const auto& container : snap_containers_)
     ShowSnapAreasFor(container);
 }
 
 void SnapCoordinator::ShowSnapAreasFor(const LayoutBox* container) {
   LOG(INFO) << *container->GetNode();
   if (SnapAreaSet* snap_areas = container->SnapAreas()) {
-    for (auto* const snap_area : *snap_areas) {
+    for (const auto& snap_area : *snap_areas) {
       LOG(INFO) << "    " << *snap_area->GetNode();
     }
   }

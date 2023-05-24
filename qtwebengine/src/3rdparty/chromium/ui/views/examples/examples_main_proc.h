@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,12 +7,10 @@
 
 #include "ui/views/examples/examples_exit_code.h"
 
-namespace views {
-namespace examples {
+namespace views::examples {
 
 ExamplesExitCode ExamplesMainProc(bool under_test = false);
 
-}  // namespace examples
-}  // namespace views
+}  // namespace views::examples
 
 #endif  // UI_VIEWS_EXAMPLES_EXAMPLES_MAIN_PROC_H_

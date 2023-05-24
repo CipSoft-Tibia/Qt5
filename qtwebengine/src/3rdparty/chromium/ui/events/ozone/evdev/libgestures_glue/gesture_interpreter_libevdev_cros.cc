@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,8 @@
 #include <linux/input.h>
 
 #include "base/logging.h"
-#include "base/stl_util.h"
 #include "base/strings/stringprintf.h"
+#include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "ui/events/base_event_utils.h"
 #include "ui/events/event.h"
@@ -20,7 +20,6 @@
 #include "ui/events/ozone/evdev/device_event_dispatcher_evdev.h"
 #include "ui/events/ozone/evdev/event_device_info.h"
 #include "ui/events/ozone/evdev/event_device_util.h"
-#include "ui/events/ozone/evdev/keyboard_util_evdev.h"
 #include "ui/events/ozone/evdev/libgestures_glue/gesture_property_provider.h"
 #include "ui/events/ozone/evdev/libgestures_glue/gesture_timer_provider.h"
 #include "ui/gfx/geometry/point_f.h"
@@ -28,6 +27,10 @@
 
 #ifndef REL_WHEEL_HI_RES
 #define REL_WHEEL_HI_RES 0x0b
+#endif
+
+#ifndef INPUT_PROP_HAPTICPAD
+#define INPUT_PROP_HAPTICPAD 0x07
 #endif
 
 namespace ui {
@@ -39,6 +42,8 @@ GestureInterpreterDeviceClass GestureDeviceClass(Evdev* evdev) {
   switch (evdev->info.evdev_class) {
     case EvdevClassMouse:
       return GESTURES_DEVCLASS_MOUSE;
+    case EvdevClassPointingStick:
+      return GESTURES_DEVCLASS_POINTING_STICK;
     case EvdevClassMultitouchMouse:
       return GESTURES_DEVCLASS_MULTITOUCH_MOUSE;
     case EvdevClassTouchpad:
@@ -71,6 +76,8 @@ HardwareProperties GestureHardwareProperties(
   hwprops.support_semi_mt = Event_Get_Semi_MT(evdev);
   /* buttonpad means a physical button under the touch surface */
   hwprops.is_button_pad = Event_Get_Button_Pad(evdev);
+  hwprops.is_haptic_pad =
+      EvdevBitIsSet(evdev->info.prop_bitmask, INPUT_PROP_HAPTICPAD);
   hwprops.has_wheel = EvdevBitIsSet(evdev->info.rel_bitmask, REL_WHEEL) ||
                       EvdevBitIsSet(evdev->info.rel_bitmask, REL_HWHEEL);
   hwprops.wheel_is_hi_res =
@@ -145,6 +152,8 @@ void GestureInterpreterLibevdevCros::OnLibEvdevCrosOpen(
       GestureHardwareProperties(evdev, device_properties_.get());
   GestureInterpreterDeviceClass devclass = GestureDeviceClass(evdev);
   is_mouse_ = property_provider_->IsDeviceIdOfType(id_, DT_MOUSE);
+  is_pointing_stick_ =
+      property_provider_->IsDeviceIdOfType(id_, DT_POINTING_STICK);
 
   // Create & initialize GestureInterpreter.
   DCHECK(!interpreter_);
@@ -238,6 +247,15 @@ void GestureInterpreterLibevdevCros::OnLibEvdevCrosStopped(
 
   ReleaseKeys(timestamp);
   ReleaseMouseButtons(timestamp);
+}
+
+void GestureInterpreterLibevdevCros::SetupHapticButtonGeneration(
+    const base::RepeatingCallback<void(bool)>& callback) {
+  click_callback_ = callback;
+
+  GesturesProp* property =
+      property_provider_->GetProperty(id_, "Enable Haptic Button Generation");
+  property->SetBoolValue(std::vector<bool>(1, true));
 }
 
 void GestureInterpreterLibevdevCros::OnGestureReady(const Gesture* gesture) {
@@ -355,6 +373,10 @@ void GestureInterpreterLibevdevCros::OnGestureButtonsChange(
 
   if (!cursor_)
     return;  // No cursor!
+
+  if (!buttons->is_tap && click_callback_) {
+    click_callback_.Run(buttons->down);
+  }
 
   DispatchChangedMouseButtons(buttons->down, true, gesture->end_time);
   DispatchChangedMouseButtons(buttons->up, false, gesture->end_time);
@@ -520,9 +542,14 @@ void GestureInterpreterLibevdevCros::DispatchMouseButton(unsigned int button,
   if (!SetMouseButtonState(button, down))
     return;  // No change.
 
-  bool allow_remap = is_mouse_;
+  MouseButtonMapType map_type = MouseButtonMapType::kNone;
+  if (is_mouse_)
+    map_type = MouseButtonMapType::kMouse;
+  else if (is_pointing_stick_)
+    map_type = MouseButtonMapType::kPointingStick;
+
   dispatcher_->DispatchMouseButtonEvent(MouseButtonEventParams(
-      id_, EF_NONE, cursor_->GetLocation(), button, down, allow_remap,
+      id_, EF_NONE, cursor_->GetLocation(), button, down, map_type,
       PointerDetails(EventPointerType::kMouse), StimeToTimeTicks(time)));
 }
 
@@ -532,7 +559,7 @@ void GestureInterpreterLibevdevCros::DispatchChangedKeys(
   unsigned long key_state_diff[EVDEV_BITS_TO_LONGS(KEY_CNT)];
 
   // Find changed keys.
-  for (unsigned long i = 0; i < base::size(key_state_diff); ++i)
+  for (unsigned long i = 0; i < std::size(key_state_diff); ++i)
     key_state_diff[i] = new_key_state[i] ^ prev_key_state_[i];
 
   // Dispatch events for changed keys.

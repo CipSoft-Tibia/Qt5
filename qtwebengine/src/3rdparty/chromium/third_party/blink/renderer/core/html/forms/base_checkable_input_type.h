@@ -31,6 +31,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_HTML_FORMS_BASE_CHECKABLE_INPUT_TYPE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_HTML_FORMS_BASE_CHECKABLE_INPUT_TYPE_H_
 
+#include "third_party/blink/renderer/core/dom/events/simulated_click_options.h"
 #include "third_party/blink/renderer/core/html/forms/input_type.h"
 #include "third_party/blink/renderer/core/html/forms/input_type_view.h"
 
@@ -42,9 +43,12 @@ class BaseCheckableInputType : public InputType, public InputTypeView {
   void Trace(Visitor*) const override;
   using InputType::GetElement;
 
+  void HandleBlurEvent() override;
+  bool CanSetStringValue() const;
+
  protected:
-  BaseCheckableInputType(HTMLInputElement& element)
-      : InputType(element),
+  BaseCheckableInputType(Type type, HTMLInputElement& element)
+      : InputType(type, element),
         InputTypeView(element),
         is_in_click_handler_(false) {}
   void HandleKeydownEvent(KeyboardEvent&) override;
@@ -58,8 +62,7 @@ class BaseCheckableInputType : public InputType, public InputTypeView {
   void RestoreFormControlState(const FormControlState&) final;
   void AppendToFormData(FormData&) const final;
   void HandleKeypressEvent(KeyboardEvent&) final;
-  bool CanSetStringValue() const final;
-  void AccessKeyAction(bool send_mouse_events) final;
+  void AccessKeyAction(SimulatedClickCreationScope creation_scope) final;
   bool MatchesDefaultPseudoClass() override;
   ValueMode GetValueMode() const override;
   void SetValue(const String&,
@@ -68,6 +71,13 @@ class BaseCheckableInputType : public InputType, public InputTypeView {
                 TextControlSetValueSelection) final;
   void ReadingChecked() const final;
   bool IsCheckable() final;
+};
+
+template <>
+struct DowncastTraits<BaseCheckableInputType> {
+  static bool AllowFrom(const InputType& type) {
+    return type.IsBaseCheckableInputType();
+  }
 };
 
 }  // namespace blink

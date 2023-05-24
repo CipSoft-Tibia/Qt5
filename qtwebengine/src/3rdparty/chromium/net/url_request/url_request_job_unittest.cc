@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "base/run_loop.h"
+#include "base/test/bind.h"
 #include "base/test/scoped_feature_list.h"
 #include "net/base/features.h"
 #include "net/base/request_priority.h"
@@ -18,9 +19,12 @@
 #include "net/traffic_annotation/network_traffic_annotation_test_helper.h"
 #include "net/url_request/referrer_policy.h"
 #include "net/url_request/url_request.h"
+#include "net/url_request/url_request_context.h"
+#include "net/url_request/url_request_context_builder.h"
 #include "net/url_request/url_request_test_util.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/url_util.h"
 
 using net::test::IsError;
@@ -87,6 +91,7 @@ void MakeMockReferrerPolicyTransaction(const char* original_url,
   transaction->response_headers = response_headers;
   transaction->response_time = base::Time();
   transaction->data = "hello";
+  transaction->dns_aliases = {};
   transaction->test_mode = TEST_MODE_NORMAL;
   transaction->handler = nullptr;
   transaction->read_handler = nullptr;
@@ -113,6 +118,9 @@ const MockTransaction kNoFilterTransaction = {
     "Content-Length: 30\n",  // Intentionally wrong.
     base::Time(),
     "hello",
+    {},
+    absl::nullopt,
+    absl::nullopt,
     TEST_MODE_NORMAL,
     nullptr,
     nullptr,
@@ -134,6 +142,9 @@ const MockTransaction kNoFilterTransactionWithInvalidLength = {
     "Content-Length: +30\n",  // Invalid
     base::Time(),
     "hello",
+    {},
+    absl::nullopt,
+    absl::nullopt,
     TEST_MODE_NORMAL,
     nullptr,
     nullptr,
@@ -156,6 +167,9 @@ const MockTransaction kGZipTransaction = {
     "Content-Length: 30\n",  // Intentionally wrong.
     base::Time(),
     "",
+    {},
+    absl::nullopt,
+    absl::nullopt,
     TEST_MODE_NORMAL,
     &GZipServer,
     nullptr,
@@ -178,6 +192,9 @@ const MockTransaction kGzipSlowTransaction = {
     "Content-Encoding: gzip\n",
     base::Time(),
     "",
+    {},
+    absl::nullopt,
+    absl::nullopt,
     TEST_MODE_SLOW_READ,
     &GZipHelloServer,
     nullptr,
@@ -201,6 +218,9 @@ const MockTransaction kRedirectTransaction = {
     "Content-Length: 5\n",
     base::Time(),
     "hello",
+    {},
+    absl::nullopt,
+    absl::nullopt,
     TEST_MODE_NORMAL,
     nullptr,
     nullptr,
@@ -222,6 +242,9 @@ const MockTransaction kEmptyBodyGzipTransaction = {
     "Content-Encoding: gzip\n",
     base::Time(),
     "",
+    {},
+    absl::nullopt,
+    absl::nullopt,
     TEST_MODE_NORMAL,
     nullptr,
     nullptr,
@@ -244,6 +267,9 @@ const MockTransaction kInvalidContentGZipTransaction = {
     "Content-Length: 21\n",
     base::Time(),
     "not a valid gzip body",
+    {},
+    absl::nullopt,
+    absl::nullopt,
     TEST_MODE_NORMAL,
     nullptr,
     nullptr,
@@ -267,6 +293,9 @@ const MockTransaction kBrotliSlowTransaction = {
     "Content-Length: 230\n",  // Intentionally wrong.
     base::Time(),
     "",
+    {},
+    absl::nullopt,
+    absl::nullopt,
     TEST_MODE_SLOW_READ,
     &BrotliHelloServer,
     nullptr,
@@ -282,14 +311,16 @@ const MockTransaction kBrotliSlowTransaction = {
 using URLRequestJobTest = TestWithTaskEnvironment;
 
 TEST_F(URLRequestJobTest, TransactionNoFilter) {
-  MockNetworkLayer network_layer;
-  TestURLRequestContext context;
-  context.set_http_transaction_factory(&network_layer);
+  auto context_builder = CreateTestURLRequestContextBuilder();
+  auto* network_layer = context_builder->SetHttpTransactionFactoryForTesting(
+      std::make_unique<MockNetworkLayer>());
+  context_builder->DisableHttpCache();
+  auto context = context_builder->Build();
 
   TestDelegate d;
   std::unique_ptr<URLRequest> req(
-      context.CreateRequest(GURL(kNoFilterTransaction.url), DEFAULT_PRIORITY,
-                            &d, TRAFFIC_ANNOTATION_FOR_TESTS));
+      context->CreateRequest(GURL(kNoFilterTransaction.url), DEFAULT_PRIORITY,
+                             &d, TRAFFIC_ANNOTATION_FOR_TESTS));
   AddMockTransaction(&kNoFilterTransaction);
 
   req->set_method("GET");
@@ -300,7 +331,7 @@ TEST_F(URLRequestJobTest, TransactionNoFilter) {
   EXPECT_FALSE(d.request_failed());
   EXPECT_EQ(200, req->GetResponseCode());
   EXPECT_EQ("hello", d.data_received());
-  EXPECT_TRUE(network_layer.done_reading_called());
+  EXPECT_TRUE(network_layer->done_reading_called());
   // When there's no filter and a Content-Length, expected content size should
   // be available.
   EXPECT_EQ(30, req->GetExpectedContentSize());
@@ -309,12 +340,14 @@ TEST_F(URLRequestJobTest, TransactionNoFilter) {
 }
 
 TEST_F(URLRequestJobTest, TransactionNoFilterWithInvalidLength) {
-  MockNetworkLayer network_layer;
-  TestURLRequestContext context;
-  context.set_http_transaction_factory(&network_layer);
+  auto context_builder = CreateTestURLRequestContextBuilder();
+  auto* network_layer = context_builder->SetHttpTransactionFactoryForTesting(
+      std::make_unique<MockNetworkLayer>());
+  context_builder->DisableHttpCache();
+  auto context = context_builder->Build();
 
   TestDelegate d;
-  std::unique_ptr<URLRequest> req(context.CreateRequest(
+  std::unique_ptr<URLRequest> req(context->CreateRequest(
       GURL(kNoFilterTransactionWithInvalidLength.url), DEFAULT_PRIORITY, &d,
       TRAFFIC_ANNOTATION_FOR_TESTS));
   AddMockTransaction(&kNoFilterTransactionWithInvalidLength);
@@ -327,7 +360,7 @@ TEST_F(URLRequestJobTest, TransactionNoFilterWithInvalidLength) {
   EXPECT_FALSE(d.request_failed());
   EXPECT_EQ(200, req->GetResponseCode());
   EXPECT_EQ("hello", d.data_received());
-  EXPECT_TRUE(network_layer.done_reading_called());
+  EXPECT_TRUE(network_layer->done_reading_called());
   // Invalid Content-Lengths that start with a + should not be reported.
   EXPECT_EQ(-1, req->GetExpectedContentSize());
 
@@ -335,14 +368,16 @@ TEST_F(URLRequestJobTest, TransactionNoFilterWithInvalidLength) {
 }
 
 TEST_F(URLRequestJobTest, TransactionNotifiedWhenDone) {
-  MockNetworkLayer network_layer;
-  TestURLRequestContext context;
-  context.set_http_transaction_factory(&network_layer);
+  auto context_builder = CreateTestURLRequestContextBuilder();
+  auto* network_layer = context_builder->SetHttpTransactionFactoryForTesting(
+      std::make_unique<MockNetworkLayer>());
+  context_builder->DisableHttpCache();
+  auto context = context_builder->Build();
 
   TestDelegate d;
   std::unique_ptr<URLRequest> req(
-      context.CreateRequest(GURL(kGZipTransaction.url), DEFAULT_PRIORITY, &d,
-                            TRAFFIC_ANNOTATION_FOR_TESTS));
+      context->CreateRequest(GURL(kGZipTransaction.url), DEFAULT_PRIORITY, &d,
+                             TRAFFIC_ANNOTATION_FOR_TESTS));
   AddMockTransaction(&kGZipTransaction);
 
   req->set_method("GET");
@@ -354,7 +389,7 @@ TEST_F(URLRequestJobTest, TransactionNotifiedWhenDone) {
   EXPECT_EQ(OK, d.request_status());
   EXPECT_EQ(200, req->GetResponseCode());
   EXPECT_EQ("", d.data_received());
-  EXPECT_TRUE(network_layer.done_reading_called());
+  EXPECT_TRUE(network_layer->done_reading_called());
   // When there's a filter and a Content-Length, expected content size should
   // not be available.
   EXPECT_EQ(-1, req->GetExpectedContentSize());
@@ -363,14 +398,16 @@ TEST_F(URLRequestJobTest, TransactionNotifiedWhenDone) {
 }
 
 TEST_F(URLRequestJobTest, SyncTransactionNotifiedWhenDone) {
-  MockNetworkLayer network_layer;
-  TestURLRequestContext context;
-  context.set_http_transaction_factory(&network_layer);
+  auto context_builder = CreateTestURLRequestContextBuilder();
+  auto* network_layer = context_builder->SetHttpTransactionFactoryForTesting(
+      std::make_unique<MockNetworkLayer>());
+  context_builder->DisableHttpCache();
+  auto context = context_builder->Build();
 
   TestDelegate d;
   std::unique_ptr<URLRequest> req(
-      context.CreateRequest(GURL(kGZipTransaction.url), DEFAULT_PRIORITY, &d,
-                            TRAFFIC_ANNOTATION_FOR_TESTS));
+      context->CreateRequest(GURL(kGZipTransaction.url), DEFAULT_PRIORITY, &d,
+                             TRAFFIC_ANNOTATION_FOR_TESTS));
   MockTransaction transaction(kGZipTransaction);
   transaction.test_mode = TEST_MODE_SYNC_ALL;
   AddMockTransaction(&transaction);
@@ -384,7 +421,7 @@ TEST_F(URLRequestJobTest, SyncTransactionNotifiedWhenDone) {
   EXPECT_EQ(OK, d.request_status());
   EXPECT_EQ(200, req->GetResponseCode());
   EXPECT_EQ("", d.data_received());
-  EXPECT_TRUE(network_layer.done_reading_called());
+  EXPECT_TRUE(network_layer->done_reading_called());
   // When there's a filter and a Content-Length, expected content size should
   // not be available.
   EXPECT_EQ(-1, req->GetExpectedContentSize());
@@ -394,14 +431,16 @@ TEST_F(URLRequestJobTest, SyncTransactionNotifiedWhenDone) {
 
 // Tests processing a large gzip header one byte at a time.
 TEST_F(URLRequestJobTest, SyncSlowTransaction) {
-  MockNetworkLayer network_layer;
-  TestURLRequestContext context;
-  context.set_http_transaction_factory(&network_layer);
+  auto context_builder = CreateTestURLRequestContextBuilder();
+  auto* network_layer = context_builder->SetHttpTransactionFactoryForTesting(
+      std::make_unique<MockNetworkLayer>());
+  context_builder->DisableHttpCache();
+  auto context = context_builder->Build();
 
   TestDelegate d;
   std::unique_ptr<URLRequest> req(
-      context.CreateRequest(GURL(kGZipTransaction.url), DEFAULT_PRIORITY, &d,
-                            TRAFFIC_ANNOTATION_FOR_TESTS));
+      context->CreateRequest(GURL(kGZipTransaction.url), DEFAULT_PRIORITY, &d,
+                             TRAFFIC_ANNOTATION_FOR_TESTS));
   MockTransaction transaction(kGZipTransaction);
   transaction.test_mode = TEST_MODE_SYNC_ALL | TEST_MODE_SLOW_READ;
   transaction.handler = &BigGZipServer;
@@ -416,21 +455,23 @@ TEST_F(URLRequestJobTest, SyncSlowTransaction) {
   EXPECT_EQ(OK, d.request_status());
   EXPECT_EQ(200, req->GetResponseCode());
   EXPECT_EQ("", d.data_received());
-  EXPECT_TRUE(network_layer.done_reading_called());
+  EXPECT_TRUE(network_layer->done_reading_called());
   EXPECT_EQ(-1, req->GetExpectedContentSize());
 
   RemoveMockTransaction(&transaction);
 }
 
 TEST_F(URLRequestJobTest, RedirectTransactionNotifiedWhenDone) {
-  MockNetworkLayer network_layer;
-  TestURLRequestContext context;
-  context.set_http_transaction_factory(&network_layer);
+  auto context_builder = CreateTestURLRequestContextBuilder();
+  auto* network_layer = context_builder->SetHttpTransactionFactoryForTesting(
+      std::make_unique<MockNetworkLayer>());
+  context_builder->DisableHttpCache();
+  auto context = context_builder->Build();
 
   TestDelegate d;
   std::unique_ptr<URLRequest> req(
-      context.CreateRequest(GURL(kRedirectTransaction.url), DEFAULT_PRIORITY,
-                            &d, TRAFFIC_ANNOTATION_FOR_TESTS));
+      context->CreateRequest(GURL(kRedirectTransaction.url), DEFAULT_PRIORITY,
+                             &d, TRAFFIC_ANNOTATION_FOR_TESTS));
   AddMockTransaction(&kRedirectTransaction);
 
   req->set_method("GET");
@@ -438,7 +479,7 @@ TEST_F(URLRequestJobTest, RedirectTransactionNotifiedWhenDone) {
 
   d.RunUntilComplete();
 
-  EXPECT_TRUE(network_layer.done_reading_called());
+  EXPECT_TRUE(network_layer->done_reading_called());
 
   RemoveMockTransaction(&kRedirectTransaction);
 }
@@ -486,14 +527,16 @@ TEST_F(URLRequestJobTest, RedirectTransactionWithReferrerPolicyHeader) {
                                       request_headers.c_str(),
                                       test.response_headers, &transaction);
 
-    MockNetworkLayer network_layer;
-    TestURLRequestContext context;
-    context.set_http_transaction_factory(&network_layer);
+    auto context_builder = CreateTestURLRequestContextBuilder();
+    auto* network_layer = context_builder->SetHttpTransactionFactoryForTesting(
+        std::make_unique<MockNetworkLayer>());
+    context_builder->DisableHttpCache();
+    auto context = context_builder->Build();
 
     TestDelegate d;
     std::unique_ptr<URLRequest> req(
-        context.CreateRequest(GURL(transaction.url), DEFAULT_PRIORITY, &d,
-                              TRAFFIC_ANNOTATION_FOR_TESTS));
+        context->CreateRequest(GURL(transaction.url), DEFAULT_PRIORITY, &d,
+                               TRAFFIC_ANNOTATION_FOR_TESTS));
     AddMockTransaction(&transaction);
 
     req->set_referrer_policy(test.original_referrer_policy);
@@ -504,7 +547,7 @@ TEST_F(URLRequestJobTest, RedirectTransactionWithReferrerPolicyHeader) {
 
     d.RunUntilComplete();
 
-    EXPECT_TRUE(network_layer.done_reading_called());
+    EXPECT_TRUE(network_layer->done_reading_called());
 
     RemoveMockTransaction(&transaction);
 
@@ -516,17 +559,19 @@ TEST_F(URLRequestJobTest, RedirectTransactionWithReferrerPolicyHeader) {
 }
 
 TEST_F(URLRequestJobTest, TransactionNotCachedWhenNetworkDelegateRedirects) {
-  MockNetworkLayer network_layer;
-  TestNetworkDelegate network_delegate;
-  network_delegate.set_redirect_on_headers_received_url(GURL("http://foo"));
-  TestURLRequestContext context;
-  context.set_http_transaction_factory(&network_layer);
-  context.set_network_delegate(&network_delegate);
+  auto context_builder = CreateTestURLRequestContextBuilder();
+  auto* network_layer = context_builder->SetHttpTransactionFactoryForTesting(
+      std::make_unique<MockNetworkLayer>());
+  auto network_delegate = std::make_unique<TestNetworkDelegate>();
+  network_delegate->set_redirect_on_headers_received_url(GURL("http://foo"));
+  context_builder->DisableHttpCache();
+  context_builder->set_network_delegate(std::move(network_delegate));
+  auto context = context_builder->Build();
 
   TestDelegate d;
   std::unique_ptr<URLRequest> req(
-      context.CreateRequest(GURL(kGZipTransaction.url), DEFAULT_PRIORITY, &d,
-                            TRAFFIC_ANNOTATION_FOR_TESTS));
+      context->CreateRequest(GURL(kGZipTransaction.url), DEFAULT_PRIORITY, &d,
+                             TRAFFIC_ANNOTATION_FOR_TESTS));
   AddMockTransaction(&kGZipTransaction);
 
   req->set_method("GET");
@@ -534,7 +579,7 @@ TEST_F(URLRequestJobTest, TransactionNotCachedWhenNetworkDelegateRedirects) {
 
   d.RunUntilComplete();
 
-  EXPECT_TRUE(network_layer.stop_caching_called());
+  EXPECT_TRUE(network_layer->stop_caching_called());
 
   RemoveMockTransaction(&kGZipTransaction);
 }
@@ -543,12 +588,14 @@ TEST_F(URLRequestJobTest, TransactionNotCachedWhenNetworkDelegateRedirects) {
 // calling ReadFilteredData.
 // Regression test for crbug.com/553300.
 TEST_F(URLRequestJobTest, EmptyBodySkipFilter) {
-  MockNetworkLayer network_layer;
-  TestURLRequestContext context;
-  context.set_http_transaction_factory(&network_layer);
+  auto context_builder = CreateTestURLRequestContextBuilder();
+  auto* network_layer = context_builder->SetHttpTransactionFactoryForTesting(
+      std::make_unique<MockNetworkLayer>());
+  context_builder->DisableHttpCache();
+  auto context = context_builder->Build();
 
   TestDelegate d;
-  std::unique_ptr<URLRequest> req(context.CreateRequest(
+  std::unique_ptr<URLRequest> req(context->CreateRequest(
       GURL(kEmptyBodyGzipTransaction.url), DEFAULT_PRIORITY, &d,
       TRAFFIC_ANNOTATION_FOR_TESTS));
   AddMockTransaction(&kEmptyBodyGzipTransaction);
@@ -561,19 +608,21 @@ TEST_F(URLRequestJobTest, EmptyBodySkipFilter) {
   EXPECT_FALSE(d.request_failed());
   EXPECT_EQ(200, req->GetResponseCode());
   EXPECT_TRUE(d.data_received().empty());
-  EXPECT_TRUE(network_layer.done_reading_called());
+  EXPECT_TRUE(network_layer->done_reading_called());
 
   RemoveMockTransaction(&kEmptyBodyGzipTransaction);
 }
 
 // Regression test for crbug.com/575213.
 TEST_F(URLRequestJobTest, InvalidContentGZipTransaction) {
-  MockNetworkLayer network_layer;
-  TestURLRequestContext context;
-  context.set_http_transaction_factory(&network_layer);
+  auto context_builder = CreateTestURLRequestContextBuilder();
+  auto* network_layer = context_builder->SetHttpTransactionFactoryForTesting(
+      std::make_unique<MockNetworkLayer>());
+  context_builder->DisableHttpCache();
+  auto context = context_builder->Build();
 
   TestDelegate d;
-  std::unique_ptr<URLRequest> req(context.CreateRequest(
+  std::unique_ptr<URLRequest> req(context->CreateRequest(
       GURL(kInvalidContentGZipTransaction.url), DEFAULT_PRIORITY, &d,
       TRAFFIC_ANNOTATION_FOR_TESTS));
   AddMockTransaction(&kInvalidContentGZipTransaction);
@@ -589,21 +638,23 @@ TEST_F(URLRequestJobTest, InvalidContentGZipTransaction) {
   EXPECT_EQ(200, req->GetResponseCode());
   EXPECT_EQ(ERR_CONTENT_DECODING_FAILED, d.request_status());
   EXPECT_TRUE(d.data_received().empty());
-  EXPECT_FALSE(network_layer.done_reading_called());
+  EXPECT_FALSE(network_layer->done_reading_called());
 
   RemoveMockTransaction(&kInvalidContentGZipTransaction);
 }
 
 // Regression test for crbug.com/553300.
 TEST_F(URLRequestJobTest, SlowFilterRead) {
-  MockNetworkLayer network_layer;
-  TestURLRequestContext context;
-  context.set_http_transaction_factory(&network_layer);
+  auto context_builder = CreateTestURLRequestContextBuilder();
+  auto* network_layer = context_builder->SetHttpTransactionFactoryForTesting(
+      std::make_unique<MockNetworkLayer>());
+  context_builder->DisableHttpCache();
+  auto context = context_builder->Build();
 
   TestDelegate d;
   std::unique_ptr<URLRequest> req(
-      context.CreateRequest(GURL(kGzipSlowTransaction.url), DEFAULT_PRIORITY,
-                            &d, TRAFFIC_ANNOTATION_FOR_TESTS));
+      context->CreateRequest(GURL(kGzipSlowTransaction.url), DEFAULT_PRIORITY,
+                             &d, TRAFFIC_ANNOTATION_FOR_TESTS));
   AddMockTransaction(&kGzipSlowTransaction);
 
   req->set_method("GET");
@@ -614,20 +665,22 @@ TEST_F(URLRequestJobTest, SlowFilterRead) {
   EXPECT_FALSE(d.request_failed());
   EXPECT_EQ(200, req->GetResponseCode());
   EXPECT_EQ("hello\n", d.data_received());
-  EXPECT_TRUE(network_layer.done_reading_called());
+  EXPECT_TRUE(network_layer->done_reading_called());
 
   RemoveMockTransaction(&kGzipSlowTransaction);
 }
 
 TEST_F(URLRequestJobTest, SlowBrotliRead) {
-  MockNetworkLayer network_layer;
-  TestURLRequestContext context;
-  context.set_http_transaction_factory(&network_layer);
+  auto context_builder = CreateTestURLRequestContextBuilder();
+  auto* network_layer = context_builder->SetHttpTransactionFactoryForTesting(
+      std::make_unique<MockNetworkLayer>());
+  context_builder->DisableHttpCache();
+  auto context = context_builder->Build();
 
   TestDelegate d;
   std::unique_ptr<URLRequest> req(
-      context.CreateRequest(GURL(kBrotliSlowTransaction.url), DEFAULT_PRIORITY,
-                            &d, TRAFFIC_ANNOTATION_FOR_TESTS));
+      context->CreateRequest(GURL(kBrotliSlowTransaction.url), DEFAULT_PRIORITY,
+                             &d, TRAFFIC_ANNOTATION_FOR_TESTS));
   AddMockTransaction(&kBrotliSlowTransaction);
 
   req->set_method("GET");
@@ -638,7 +691,7 @@ TEST_F(URLRequestJobTest, SlowBrotliRead) {
   EXPECT_FALSE(d.request_failed());
   EXPECT_EQ(200, req->GetResponseCode());
   EXPECT_EQ(kHelloData, d.data_received());
-  EXPECT_TRUE(network_layer.done_reading_called());
+  EXPECT_TRUE(network_layer->done_reading_called());
   // When there's a filter and a Content-Length, expected content size should
   // not be available.
   EXPECT_EQ(-1, req->GetExpectedContentSize());

@@ -12,10 +12,13 @@
 //* See the License for the specific language governing permissions and
 //* limitations under the License.
 
-#include "dawn_native/Error.h"
-#include "dawn_native/opengl/opengl_platform.h"
+#ifndef DAWNNATIVE_OPENGL_OPENGLFUNCTIONSBASE_H_
+#define DAWNNATIVE_OPENGL_OPENGLFUNCTIONSBASE_H_
 
-namespace dawn_native { namespace opengl {
+#include "dawn/native/Error.h"
+#include "dawn/native/opengl/opengl_platform.h"
+
+namespace dawn::native::opengl {
     using GetProcAddress = void* (*) (const char*);
 
     struct OpenGLFunctionsBase {
@@ -37,4 +40,6 @@ namespace dawn_native { namespace opengl {
         MaybeError LoadProc(GetProcAddress getProc, T* memberProc, const char* name);
     };
 
-}}  // namespace dawn_native::opengl
+}  // namespace dawn::native::opengl
+
+#endif // DAWNNATIVE_OPENGL_OPENGLFUNCTIONSBASE_H_

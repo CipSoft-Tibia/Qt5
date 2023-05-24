@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKMULTIPOINTTOUCHAREA_H
 #define QQUICKMULTIPOINTTOUCHAREA_H
@@ -51,39 +15,43 @@
 // We mean it.
 //
 
-#include "qquickitem.h"
-#include "qevent.h"
+#include <private/qtquickglobal_p.h>
 
-#include <QPointer>
-#include <QMap>
-#include <QList>
+#include <QtQuick/qquickitem.h>
+
+#include <QtGui/qevent.h>
 #include <QtGui/qguiapplication.h>
 #include <QtGui/qstylehints.h>
+
+#include <QtCore/qlist.h>
+#include <QtCore/qmap.h>
+#include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
 
 class QQuickMultiPointTouchArea;
-class Q_AUTOTEST_EXPORT QQuickTouchPoint : public QObject
+class Q_QUICK_PRIVATE_EXPORT QQuickTouchPoint : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(int pointId READ pointId NOTIFY pointIdChanged)
-    Q_PROPERTY(QPointingDeviceUniqueId uniqueId READ uniqueId NOTIFY uniqueIdChanged REVISION 9)
-    Q_PROPERTY(bool pressed READ pressed NOTIFY pressedChanged)
-    Q_PROPERTY(qreal x READ x NOTIFY xChanged)
-    Q_PROPERTY(qreal y READ y NOTIFY yChanged)
-    Q_PROPERTY(QSizeF ellipseDiameters READ ellipseDiameters NOTIFY ellipseDiametersChanged REVISION 9)
-    Q_PROPERTY(qreal pressure READ pressure NOTIFY pressureChanged)
-    Q_PROPERTY(qreal rotation READ rotation NOTIFY rotationChanged REVISION 9)
-    Q_PROPERTY(QVector2D velocity READ velocity NOTIFY velocityChanged)
-    Q_PROPERTY(QRectF area READ area NOTIFY areaChanged)
+    Q_PROPERTY(int pointId READ pointId NOTIFY pointIdChanged FINAL)
+    Q_PROPERTY(QPointingDeviceUniqueId uniqueId READ uniqueId NOTIFY uniqueIdChanged REVISION(2, 9) FINAL)
+    Q_PROPERTY(bool pressed READ pressed NOTIFY pressedChanged FINAL)
+    Q_PROPERTY(qreal x READ x NOTIFY xChanged FINAL)
+    Q_PROPERTY(qreal y READ y NOTIFY yChanged FINAL)
+    Q_PROPERTY(QSizeF ellipseDiameters READ ellipseDiameters NOTIFY ellipseDiametersChanged REVISION(2, 9) FINAL)
+    Q_PROPERTY(qreal pressure READ pressure NOTIFY pressureChanged FINAL)
+    Q_PROPERTY(qreal rotation READ rotation NOTIFY rotationChanged REVISION(2, 9) FINAL)
+    Q_PROPERTY(QVector2D velocity READ velocity NOTIFY velocityChanged FINAL)
+    Q_PROPERTY(QRectF area READ area NOTIFY areaChanged FINAL)
 
-    Q_PROPERTY(qreal startX READ startX NOTIFY startXChanged)
-    Q_PROPERTY(qreal startY READ startY NOTIFY startYChanged)
-    Q_PROPERTY(qreal previousX READ previousX NOTIFY previousXChanged)
-    Q_PROPERTY(qreal previousY READ previousY NOTIFY previousYChanged)
-    Q_PROPERTY(qreal sceneX READ sceneX NOTIFY sceneXChanged)
-    Q_PROPERTY(qreal sceneY READ sceneY NOTIFY sceneYChanged)
+    Q_PROPERTY(qreal startX READ startX NOTIFY startXChanged FINAL)
+    Q_PROPERTY(qreal startY READ startY NOTIFY startYChanged FINAL)
+    Q_PROPERTY(qreal previousX READ previousX NOTIFY previousXChanged FINAL)
+    Q_PROPERTY(qreal previousY READ previousY NOTIFY previousYChanged FINAL)
+    Q_PROPERTY(qreal sceneX READ sceneX NOTIFY sceneXChanged FINAL)
+    Q_PROPERTY(qreal sceneY READ sceneY NOTIFY sceneYChanged FINAL)
     QML_NAMED_ELEMENT(TouchPoint)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickTouchPoint(bool qmlDefined = true)
@@ -144,12 +112,12 @@ public:
 Q_SIGNALS:
     void pressedChanged();
     void pointIdChanged();
-    Q_REVISION(9) void uniqueIdChanged();
+    Q_REVISION(2, 9) void uniqueIdChanged();
     void xChanged();
     void yChanged();
-    Q_REVISION(9) void ellipseDiametersChanged();
+    Q_REVISION(2, 9) void ellipseDiametersChanged();
     void pressureChanged();
-    Q_REVISION(9) void rotationChanged();
+    Q_REVISION(2, 9) void rotationChanged();
     void velocityChanged();
     void areaChanged();
     void startXChanged();
@@ -184,9 +152,10 @@ private:
 class QQuickGrabGestureEvent : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(QQmlListProperty<QObject> touchPoints READ touchPoints CONSTANT)
-    Q_PROPERTY(qreal dragThreshold READ dragThreshold CONSTANT)
+    Q_PROPERTY(QQmlListProperty<QObject> touchPoints READ touchPoints CONSTANT FINAL)
+    Q_PROPERTY(qreal dragThreshold READ dragThreshold CONSTANT FINAL)
     QML_NAMED_ELEMENT(GestureEvent)
+    QML_ADDED_IN_VERSION(2, 0)
     QML_UNCREATABLE("GestureEvent is only available in the context of handling the gestureStarted signal from MultiPointTouchArea.")
 
 public:
@@ -207,15 +176,17 @@ private:
     QList<QObject*> _touchPoints;
 };
 
-class Q_AUTOTEST_EXPORT QQuickMultiPointTouchArea : public QQuickItem
+class Q_QUICK_PRIVATE_EXPORT QQuickMultiPointTouchArea : public QQuickItem
 {
     Q_OBJECT
+    Q_DISABLE_COPY_MOVE(QQuickMultiPointTouchArea)
 
-    Q_PROPERTY(QQmlListProperty<QQuickTouchPoint> touchPoints READ touchPoints)
-    Q_PROPERTY(int minimumTouchPoints READ minimumTouchPoints WRITE setMinimumTouchPoints NOTIFY minimumTouchPointsChanged)
-    Q_PROPERTY(int maximumTouchPoints READ maximumTouchPoints WRITE setMaximumTouchPoints NOTIFY maximumTouchPointsChanged)
-    Q_PROPERTY(bool mouseEnabled READ mouseEnabled WRITE setMouseEnabled NOTIFY mouseEnabledChanged)
+    Q_PROPERTY(QQmlListProperty<QQuickTouchPoint> touchPoints READ touchPoints CONSTANT FINAL)
+    Q_PROPERTY(int minimumTouchPoints READ minimumTouchPoints WRITE setMinimumTouchPoints NOTIFY minimumTouchPointsChanged FINAL)
+    Q_PROPERTY(int maximumTouchPoints READ maximumTouchPoints WRITE setMaximumTouchPoints NOTIFY maximumTouchPointsChanged FINAL)
+    Q_PROPERTY(bool mouseEnabled READ mouseEnabled WRITE setMouseEnabled NOTIFY mouseEnabledChanged FINAL)
     QML_NAMED_ELEMENT(MultiPointTouchArea)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickMultiPointTouchArea(QQuickItem *parent=nullptr);
@@ -237,23 +208,34 @@ public:
         q->addTouchPrototype(touch);
     }
 
-    static int touchPoint_count(QQmlListProperty<QQuickTouchPoint> *list) {
+    static qsizetype touchPoint_count(QQmlListProperty<QQuickTouchPoint> *list) {
         QQuickMultiPointTouchArea *q = static_cast<QQuickMultiPointTouchArea*>(list->object);
-        return q->_touchPrototypes.count();
+        return q->_touchPrototypes.size();
     }
 
-    static QQuickTouchPoint* touchPoint_at(QQmlListProperty<QQuickTouchPoint> *list, int index) {
+    static QQuickTouchPoint* touchPoint_at(QQmlListProperty<QQuickTouchPoint> *list, qsizetype index) {
         QQuickMultiPointTouchArea *q = static_cast<QQuickMultiPointTouchArea*>(list->object);
         return q->_touchPrototypes.value(index);
     }
 
 Q_SIGNALS:
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     void pressed(const QList<QObject*> &touchPoints);
     void updated(const QList<QObject*> &touchPoints);
     void released(const QList<QObject*> &touchPoints);
     void canceled(const QList<QObject*> &touchPoints);
+#else
+    void pressed(const QList<QObject*> &points);
+    void updated(const QList<QObject*> &points);
+    void released(const QList<QObject*> &points);
+    void canceled(const QList<QObject*> &points);
+#endif
     void gestureStarted(QQuickGrabGestureEvent *gesture);
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     void touchUpdated(const QList<QObject*> &touchPoints);
+#else
+    void touchUpdated(const QList<QObject*> &points);
+#endif
     void minimumTouchPointsChanged();
     void maximumTouchPointsChanged();
     void mouseEnabledChanged();
@@ -268,22 +250,24 @@ protected:
     void touchUngrabEvent() override;
 
     void addTouchPrototype(QQuickTouchPoint* prototype);
-    void addTouchPoint(const QTouchEvent::TouchPoint *p);
+    void addTouchPoint(const QEventPoint *p);
     void addTouchPoint(const QMouseEvent *e);
     void clearTouchLists();
 
-    void updateTouchPoint(QQuickTouchPoint*, const QTouchEvent::TouchPoint*);
+    void updateTouchPoint(QQuickTouchPoint*, const QEventPoint*);
     void updateTouchPoint(QQuickTouchPoint *dtp, const QMouseEvent *e);
-    void updateTouchData(QEvent*);
+    enum class RemapEventPoints { No, ToLocal };
+    void updateTouchData(QEvent*, RemapEventPoints remap = RemapEventPoints::No);
 
     bool sendMouseEvent(QMouseEvent *event);
     bool shouldFilter(QEvent *event);
-    void grabGesture();
+    void grabGesture(QPointingDevice *dev);
     QSGNode *updatePaintNode(QSGNode *, UpdatePaintNodeData *) override;
-#ifdef Q_OS_OSX
+#ifdef Q_OS_MACOS
     void hoverEnterEvent(QHoverEvent *event) override;
     void hoverLeaveEvent(QHoverEvent *event) override;
     void setTouchEventsEnabled(bool enable);
+    void itemChange(ItemChange change, const ItemChangeData &data) override;
 #endif
 
 private:
@@ -297,8 +281,8 @@ private:
     int _maximumTouchPoints;
     QVector<int> _lastFilterableTouchPointIds;
     QPointer<QQuickTouchPoint> _mouseTouchPoint; // exists when mouse button is down and _mouseEnabled is true; null otherwise
-    QTouchEvent::TouchPoint _mouseQpaTouchPoint; // synthetic QPA touch point to hold state and position of the mouse
-    const QTouchDevice *_touchMouseDevice;
+    QEventPoint _mouseQpaTouchPoint; // synthetic QPA touch point to hold state and position of the mouse
+    const QPointingDevice *_touchMouseDevice;
     QPointF _mousePos;
     bool _stealMouse;
     bool _mouseEnabled;

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,7 +15,7 @@ TEST(MemoryAllocatorDumpCrossProcessUidTest, SerializeFailsOnZeroValue) {
   base::trace_event::MemoryAllocatorDumpGuid out;
 
   ASSERT_FALSE(mojo::test::SerializeAndDeserialize<
-               mojom::MemoryAllocatorDumpCrossProcessUid>(&in, &out));
+               mojom::MemoryAllocatorDumpCrossProcessUid>(in, out));
   EXPECT_EQ(in, out);
 }
 
@@ -24,7 +24,7 @@ TEST(MemoryAllocatorDumpCrossProcessUidTest, SerializeSucceedsOnValidIntValue) {
   base::trace_event::MemoryAllocatorDumpGuid out;
 
   ASSERT_TRUE(mojo::test::SerializeAndDeserialize<
-              mojom::MemoryAllocatorDumpCrossProcessUid>(&in, &out));
+              mojom::MemoryAllocatorDumpCrossProcessUid>(in, out));
   EXPECT_EQ(in, out);
 }
 
@@ -34,7 +34,7 @@ TEST(MemoryAllocatorDumpCrossProcessUidTest,
   base::trace_event::MemoryAllocatorDumpGuid out;
 
   ASSERT_TRUE(mojo::test::SerializeAndDeserialize<
-              mojom::MemoryAllocatorDumpCrossProcessUid>(&in, &out));
+              mojom::MemoryAllocatorDumpCrossProcessUid>(in, out));
   EXPECT_EQ(in, out);
 }
 

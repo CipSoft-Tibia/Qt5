@@ -22,6 +22,7 @@
 #include <sys/types.h>
 #include <unwindstack/RegsGetLocal.h>
 
+#include "perfetto/ext/base/file_utils.h"
 #include "perfetto/ext/base/scoped_file.h"
 #include "src/profiling/common/unwind_support.h"
 #include "src/profiling/memory/client.h"
@@ -59,14 +60,19 @@ TEST(UnwindingTest, StackOverlayMemoryNonOverlay) {
 }
 
 TEST(UnwindingTest, FDMapsParse) {
+#if defined(ADDRESS_SANITIZER)
+  PERFETTO_LOG("Skipping /proc/self/maps as ASAN distorts what is where");
+  GTEST_SKIP();
+#else
   base::ScopedFile proc_maps(base::OpenFile("/proc/self/maps", O_RDONLY));
   ASSERT_TRUE(proc_maps);
   FDMaps maps(std::move(proc_maps));
   ASSERT_TRUE(maps.Parse());
   unwindstack::MapInfo* map_info =
-      maps.Find(reinterpret_cast<uint64_t>(&proc_maps));
+      maps.Find(reinterpret_cast<uint64_t>(&proc_maps)).get();
   ASSERT_NE(map_info, nullptr);
-  ASSERT_EQ(map_info->name, "[stack]");
+  ASSERT_EQ(map_info->name(), "[stack]");
+#endif
 }
 
 void __attribute__((noinline)) AssertFunctionOffset() {
@@ -146,7 +152,7 @@ TEST(UnwindingTest, DoUnwind) {
   ASSERT_GT(out.frames.size(), 0u);
   int st;
   std::unique_ptr<char, base::FreeDeleter> demangled(abi::__cxa_demangle(
-      out.frames[0].frame.function_name.c_str(), nullptr, nullptr, &st));
+      out.frames[0].function_name.c_str(), nullptr, nullptr, &st));
   ASSERT_EQ(st, 0) << "mangled: " << demangled.get()
                    << ", frames: " << out.frames.size();
   ASSERT_STREQ(demangled.get(),
@@ -168,12 +174,19 @@ TEST(UnwindingTest, DoUnwindReparse) {
   ASSERT_GT(out.frames.size(), 0u);
   int st;
   std::unique_ptr<char, base::FreeDeleter> demangled(abi::__cxa_demangle(
-      out.frames[0].frame.function_name.c_str(), nullptr, nullptr, &st));
+      out.frames[0].function_name.c_str(), nullptr, nullptr, &st));
   ASSERT_EQ(st, 0) << "mangled: " << demangled.get()
                    << ", frames: " << out.frames.size();
   ASSERT_STREQ(demangled.get(),
                "perfetto::profiling::(anonymous "
                "namespace)::GetRecord(perfetto::profiling::WireMessage*)");
+}
+
+TEST(AllocRecordArenaTest, Smoke) {
+  AllocRecordArena a;
+  auto borrowed = a.BorrowAllocRecord();
+  EXPECT_NE(borrowed, nullptr);
+  a.ReturnAllocRecord(std::move(borrowed));
 }
 
 }  // namespace

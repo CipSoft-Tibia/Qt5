@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -34,7 +34,7 @@ TEST(CertVerifierMojomTraitsTest, RequestParams) {
   net::CertVerifier::RequestParams out_params;
 
   ASSERT_TRUE(mojo::test::SerializeAndDeserialize<mojom::RequestParams>(
-      &params, &out_params));
+      params, out_params));
 
   ASSERT_EQ(params, out_params);
 }
@@ -114,7 +114,7 @@ TEST(CertVerifierMojomTraitsTest, ConfigBasic) {
   net::CertVerifier::Config out_config;
 
   ASSERT_TRUE(mojo::test::SerializeAndDeserialize<mojom::CertVerifierConfig>(
-      &config, &out_config));
+      config, out_config));
   ASSERT_TRUE(ConfigsEqual(config, out_config));
 }
 
@@ -128,19 +128,16 @@ TEST(CertVerifierMojomTraitsTest, ConfigTrue) {
   net::CertVerifier::Config out_config;
 
   ASSERT_TRUE(mojo::test::SerializeAndDeserialize<mojom::CertVerifierConfig>(
-      &config, &out_config));
+      config, out_config));
   ASSERT_TRUE(ConfigsEqual(config, out_config));
 }
 
 TEST(CertVerifierMojomTraitsTest, ConfigCRLAndAdditionalCerts) {
   std::string crl_set;
 
-  {
-    base::ScopedAllowBlockingForTesting allow_blocking;
-    base::ReadFileToString(
-        net::GetTestCertsDirectory().AppendASCII("crlset_by_leaf_spki.raw"),
-        &crl_set);
-  }
+  base::ReadFileToString(
+      net::GetTestCertsDirectory().AppendASCII("crlset_by_leaf_spki.raw"),
+      &crl_set);
 
   const base::FilePath certs_dir = net::GetTestCertsDirectory();
 
@@ -149,15 +146,15 @@ TEST(CertVerifierMojomTraitsTest, ConfigCRLAndAdditionalCerts) {
   config.additional_trust_anchors.push_back(
       net::ImportCertFromFile(certs_dir, "root_ca_cert.pem"));
   config.additional_trust_anchors.push_back(
-      net::ImportCertFromFile(certs_dir, "aia-root.pem"));
+      net::ImportCertFromFile(certs_dir, "2048-rsa-root.pem"));
 
   config.additional_untrusted_authorities.push_back(
-      net::ImportCertFromFile(certs_dir, "aia-intermediate.der"));
+      net::ImportCertFromFile(certs_dir, "intermediate_ca_cert.pem"));
 
   net::CertVerifier::Config out_config;
 
   ASSERT_TRUE(mojo::test::SerializeAndDeserialize<mojom::CertVerifierConfig>(
-      &config, &out_config));
+      config, out_config));
   ASSERT_TRUE(ConfigsEqual(config, out_config));
 }
 

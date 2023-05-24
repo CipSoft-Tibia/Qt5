@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,24 +6,25 @@
 
 #include "xfa/fwl/theme/cfwl_carettp.h"
 
+#include "xfa/fgas/graphics/cfgas_gecolor.h"
+#include "xfa/fgas/graphics/cfgas_gegraphics.h"
+#include "xfa/fgas/graphics/cfgas_gepath.h"
 #include "xfa/fwl/cfwl_caret.h"
 #include "xfa/fwl/cfwl_themebackground.h"
 #include "xfa/fwl/cfwl_widget.h"
-#include "xfa/fxgraphics/cxfa_gecolor.h"
-#include "xfa/fxgraphics/cxfa_gepath.h"
 
 CFWL_CaretTP::CFWL_CaretTP() = default;
 
 CFWL_CaretTP::~CFWL_CaretTP() = default;
 
 void CFWL_CaretTP::DrawBackground(const CFWL_ThemeBackground& pParams) {
-  switch (pParams.m_iPart) {
-    case CFWL_Part::Background: {
-      if (!(pParams.m_dwStates & CFWL_PartState_HightLight))
+  switch (pParams.GetPart()) {
+    case CFWL_ThemePart::Part::kBackground: {
+      if (!(pParams.m_dwStates & CFWL_PartState::kHightLight))
         return;
 
-      DrawCaretBK(pParams.m_pGraphics.Get(), pParams.m_dwStates,
-                  pParams.m_PartRect, pParams.m_matrix);
+      DrawCaretBK(pParams.GetGraphics(), pParams.m_dwStates, pParams.m_PartRect,
+                  pParams.m_matrix);
       break;
     }
     default:
@@ -31,13 +32,12 @@ void CFWL_CaretTP::DrawBackground(const CFWL_ThemeBackground& pParams) {
   }
 }
 
-void CFWL_CaretTP::DrawCaretBK(CXFA_Graphics* pGraphics,
-                               uint32_t dwStates,
+void CFWL_CaretTP::DrawCaretBK(CFGAS_GEGraphics* pGraphics,
+                               Mask<CFWL_PartState> dwStates,
                                const CFX_RectF& rect,
                                const CFX_Matrix& matrix) {
-  CXFA_GEPath path;
+  CFGAS_GEPath path;
   path.AddRectangle(rect.left, rect.top, rect.width, rect.height);
-  pGraphics->SetFillColor(CXFA_GEColor(ArgbEncode(255, 0, 0, 0)));
-  pGraphics->FillPath(&path, CFX_FillRenderOptions::FillType::kWinding,
-                      &matrix);
+  pGraphics->SetFillColor(CFGAS_GEColor(ArgbEncode(255, 0, 0, 0)));
+  pGraphics->FillPath(path, CFX_FillRenderOptions::FillType::kWinding, matrix);
 }

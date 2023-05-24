@@ -11,6 +11,8 @@
 #include "base/trace_event/trace_event.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_context.h"
+#include "ui/gl/gl_display.h"
+#include "ui/gl/gl_display_manager.h"
 #include "ui/gl/gl_gl_api_implementation.h"
 #include "ui/gl/gl_wgl_api_implementation.h"
 #include "ui/gl/init/gl_initializer.h"
@@ -37,147 +39,21 @@ const PIXELFORMATDESCRIPTOR kPixelFormatDescriptor = {
   0,                       // Reserved.
   0, 0, 0,                 // Layer masks ignored.
 };
-
-LRESULT CALLBACK IntermediateWindowProc(HWND window,
-                                        UINT message,
-                                        WPARAM w_param,
-                                        LPARAM l_param) {
-  switch (message) {
-    case WM_ERASEBKGND:
-      // Prevent windows from erasing the background.
-      return 1;
-    case WM_PAINT:
-      // Do not paint anything.
-      PAINTSTRUCT paint;
-      if (BeginPaint(window, &paint))
-        EndPaint(window, &paint);
-      return 0;
-    default:
-      return DefWindowProc(window, message, w_param, l_param);
-  }
-}
-
-class DisplayWGL {
- public:
-  DisplayWGL()
-      : module_handle_(0),
-        window_class_(0),
-        window_handle_(0),
-        device_context_(0),
-        pixel_format_(0) {
-  }
-
-  ~DisplayWGL() {
-    if (window_handle_)
-      DestroyWindow(window_handle_);
-    if (window_class_)
-      UnregisterClass(reinterpret_cast<wchar_t*>(window_class_),
-                      module_handle_);
-  }
-
-  bool Init(bool software_rendering) {
-    // We must initialize a GL context before we can bind to extension entry
-    // points. This requires the device context for a window.
-    if (!GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT |
-                           GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
-                           reinterpret_cast<wchar_t*>(IntermediateWindowProc),
-                           &module_handle_)) {
-      LOG(ERROR) << "GetModuleHandleEx failed.";
-      return false;
-    }
-
-    WNDCLASS intermediate_class;
-    intermediate_class.style = CS_OWNDC;
-    intermediate_class.lpfnWndProc = IntermediateWindowProc;
-    intermediate_class.cbClsExtra = 0;
-    intermediate_class.cbWndExtra = 0;
-    intermediate_class.hInstance = module_handle_;
-    intermediate_class.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-    intermediate_class.hCursor = LoadCursor(NULL, IDC_ARROW);
-    intermediate_class.hbrBackground = NULL;
-    intermediate_class.lpszMenuName = NULL;
-    intermediate_class.lpszClassName = L"Intermediate GL Window";
-    window_class_ = RegisterClass(&intermediate_class);
-    if (!window_class_) {
-      LOG(ERROR) << "RegisterClass failed.";
-      return false;
-    }
-
-    window_handle_ = CreateWindowEx(WS_EX_NOPARENTNOTIFY,
-                                    reinterpret_cast<wchar_t*>(window_class_),
-                                    L"",
-                                    WS_OVERLAPPEDWINDOW,
-                                    0,
-                                    0,
-                                    100,
-                                    100,
-                                    NULL,
-                                    NULL,
-                                    NULL,
-                                    NULL);
-    if (!window_handle_) {
-      LOG(ERROR) << "CreateWindow failed.";
-      return false;
-    }
-
-    device_context_ = GetDC(window_handle_);
-    pixel_format_ = ChoosePixelFormat(device_context_,
-                                      &kPixelFormatDescriptor);
-    if (pixel_format_ == 0) {
-      LOG(ERROR) << "Unable to get the pixel format for GL context.";
-      return false;
-    }
-
-    bool result = false;
-    if (software_rendering) {
-      // wglSetPixelFormat needs to be called instead of SetPixelFormat to allow
-      // a differently named software GL implementation library to set up its
-      // internal data. The windows gdi.dll SetPixelFormat call directly calls
-      // into the stock opengl32.dll, instead of opengl32sw.dll for example.
-      typedef BOOL(WINAPI * wglSetPixelFormatProc)(
-          HDC, int, const PIXELFORMATDESCRIPTOR*);
-      wglSetPixelFormatProc wglSetPixelFormatFn =
-          reinterpret_cast<wglSetPixelFormatProc>(
-              GetGLProcAddress("wglSetPixelFormat"));
-
-      result = wglSetPixelFormatFn(device_context_, pixel_format_,
-                                   &kPixelFormatDescriptor);
-    } else {
-      result = SetPixelFormat(device_context_, pixel_format_,
-                              &kPixelFormatDescriptor);
-    }
-    if (!result) {
-      LOG(ERROR) << "Unable to set the pixel format for temporary GL context.";
-      return false;
-    }
-    return true;
-  }
-
-  ATOM window_class() const { return window_class_; }
-  HDC device_context() const { return device_context_; }
-  int pixel_format() const { return pixel_format_; }
-
- private:
-  HINSTANCE module_handle_;
-  ATOM window_class_;
-  HWND window_handle_;
-  HDC device_context_;
-  int pixel_format_;
-};
-DisplayWGL* g_wgl_display;
 }  // namespace
 
 // static
 bool GLSurfaceWGL::initialized_ = false;
 
 GLSurfaceWGL::GLSurfaceWGL() {
+  display_ =
+      GLDisplayManagerWGL::GetInstance()->GetDisplay(GpuPreference::kDefault);
 }
 
 GLSurfaceWGL::~GLSurfaceWGL() {
 }
 
-void* GLSurfaceWGL::GetDisplay() {
-  return GetDisplayDC();
+GLDisplay* GLSurfaceWGL::GetGLDisplay() {
+  return display_;
 }
 
 // static
@@ -185,12 +61,10 @@ bool GLSurfaceWGL::InitializeOneOff() {
   if (initialized_)
     return true;
 
-  DCHECK(g_wgl_display == NULL);
-  std::unique_ptr<DisplayWGL> wgl_display(new DisplayWGL);
-  if (!wgl_display->Init(init::usingSoftwareDynamicGL()))
-    return false;
+   auto wgl_display = GLDisplayManagerWGL::GetInstance()->GetDisplay(GpuPreference::kDefault);
+   if (!wgl_display->Init(init::usingSoftwareDynamicGL()))
+     return false;
 
-  g_wgl_display = wgl_display.release();
   initialized_ = true;
   return true;
 }
@@ -204,13 +78,11 @@ bool GLSurfaceWGL::InitializeExtensionSettingsOneOff() {
 }
 
 void GLSurfaceWGL::InitializeOneOffForTesting() {
-  if (g_wgl_display == NULL) {
-    g_wgl_display = new DisplayWGL;
-  }
+  NOTREACHED();
 }
 
 HDC GLSurfaceWGL::GetDisplayDC() {
-  return g_wgl_display->device_context();
+  return GLDisplayManagerWGL::GetInstance()->GetDisplay(GpuPreference::kDefault)->device_context();
 }
 
 NativeViewGLSurfaceWGL::NativeViewGLSurfaceWGL(gfx::AcceleratedWidget window)
@@ -236,7 +108,7 @@ bool NativeViewGLSurfaceWGL::Initialize(GLSurfaceFormat format) {
   // another process.
   child_window_ = CreateWindowEx(
       WS_EX_NOPARENTNOTIFY,
-      reinterpret_cast<wchar_t*>(g_wgl_display->window_class()), L"",
+      reinterpret_cast<wchar_t*>(display_->window_class()), L"",
       WS_CHILDWINDOW | WS_DISABLED | WS_VISIBLE, 0, 0, rect.right - rect.left,
       rect.bottom - rect.top, window_, NULL, NULL, NULL);
   if (!child_window_) {
@@ -253,7 +125,7 @@ bool NativeViewGLSurfaceWGL::Initialize(GLSurfaceFormat format) {
     return false;
   }
 
-  if (!SetPixelFormat(device_context_, g_wgl_display->pixel_format(),
+  if (!SetPixelFormat(device_context_, display_->pixel_format(),
                       &kPixelFormatDescriptor)) {
     LOG(ERROR) << "Unable to set the pixel format for GL context.";
     Destroy();
@@ -308,7 +180,7 @@ bool NativeViewGLSurfaceWGL::IsOffscreen() {
 }
 
 gfx::SwapResult NativeViewGLSurfaceWGL::SwapBuffers(
-    PresentationCallback callback) {
+    PresentationCallback callback, gfx::FrameData data) {
   // TODO(penghuang): Provide presentation feedback. https://crbug.com/776877
   TRACE_EVENT2("gpu", "NativeViewGLSurfaceWGL:RealSwapBuffers",
       "width", GetSize().width(),
@@ -335,7 +207,7 @@ gfx::SwapResult NativeViewGLSurfaceWGL::SwapBuffers(
         base::Time::kMicrosecondsPerSecond / 60;
     std::move(callback).Run(gfx::PresentationFeedback(
         base::TimeTicks::Now(),
-        base::TimeDelta::FromMicroseconds(kRefreshIntervalInMicroseconds),
+        base::Microseconds(kRefreshIntervalInMicroseconds),
         0 /* flags */));
     return gfx::SwapResult::SWAP_ACK;
   } else {
@@ -393,8 +265,8 @@ bool PbufferGLSurfaceWGL::Initialize(GLSurfaceFormat format) {
   }
 
   const int kNoAttributes[] = { 0 };
-  pbuffer_ = wglCreatePbufferARB(g_wgl_display->device_context(),
-                                 g_wgl_display->pixel_format(), size_.width(),
+  pbuffer_ = wglCreatePbufferARB(display_->device_context(),
+                                 display_->pixel_format(), size_.width(),
                                  size_.height(), kNoAttributes);
 
   if (!pbuffer_) {
@@ -430,7 +302,7 @@ bool PbufferGLSurfaceWGL::IsOffscreen() {
 }
 
 gfx::SwapResult PbufferGLSurfaceWGL::SwapBuffers(
-    PresentationCallback callback) {
+    PresentationCallback callback, gfx::FrameData data) {
   NOTREACHED() << "Attempted to call SwapBuffers on a pbuffer.";
   return gfx::SwapResult::SWAP_FAILED;
 }

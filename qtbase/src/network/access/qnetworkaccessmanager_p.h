@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QNETWORKACCESSMANAGER_P_H
 #define QNETWORKACCESSMANAGER_P_H
@@ -60,11 +24,7 @@
 #include "qhsts_p.h"
 #include "private/qobject_p.h"
 #include "QtNetwork/qnetworkproxy.h"
-#include "QtNetwork/qnetworksession.h"
 #include "qnetworkaccessauthenticationmanager_p.h"
-#ifndef QT_NO_BEARERMANAGEMENT // ### Qt6: Remove section
-#include "QtNetwork/qnetworkconfigmanager.h"
-#endif
 
 #if QT_CONFIG(settings)
 #include "qhstsstore_p.h"
@@ -87,33 +47,11 @@ public:
 #ifndef QT_NO_NETWORKPROXY
           proxyFactory(nullptr),
 #endif
-#ifndef QT_NO_BEARERMANAGEMENT // ### Qt6: Remove section
-          lastSessionState(QNetworkSession::Invalid),
-          networkConfiguration(networkConfigurationManager.defaultConfiguration()),
-          customNetworkConfiguration(false),
-          networkSessionRequired(networkConfigurationManager.capabilities()
-                                 & QNetworkConfigurationManager::NetworkSessionRequired),
-          activeReplyCount(0),
-          online(false),
-          initializeSession(true),
-#endif
           cookieJarCreated(false),
           defaultAccessControl(true),
-          redirectPolicy(QNetworkRequest::ManualRedirectPolicy),
-          authenticationManager(QSharedPointer<QNetworkAccessAuthenticationManager>::create())
+          redirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy),
+          authenticationManager(std::make_shared<QNetworkAccessAuthenticationManager>())
     {
-#ifndef QT_NO_BEARERMANAGEMENT // ### Qt6: Remove section
-        // we would need all active configurations to check for
-        // d->networkConfigurationManager.isOnline(), which is asynchronous
-        // and potentially expensive. We can just check the configuration here
-        online = (networkConfiguration.state().testFlag(QNetworkConfiguration::Active));
-        if (online)
-            networkAccessible = QNetworkAccessManager::Accessible;
-        else if (networkConfiguration.state().testFlag(QNetworkConfiguration::Undefined))
-            networkAccessible = QNetworkAccessManager::UnknownAccessibility;
-        else
-            networkAccessible = QNetworkAccessManager::NotAccessible;
-#endif
     }
     ~QNetworkAccessManagerPrivate();
 
@@ -152,26 +90,11 @@ public:
     QNetworkAccessBackend *findBackend(QNetworkAccessManager::Operation op, const QNetworkRequest &request);
     QStringList backendSupportedSchemes() const;
 
-    void _q_onlineStateChanged(bool isOnline);
-#ifndef QT_NO_BEARERMANAGEMENT // ### Qt6: Remove section
-    void createSession(const QNetworkConfiguration &config);
-    QSharedPointer<QNetworkSession> getNetworkSession() const;
-
-    void _q_networkSessionClosed();
-    void _q_networkSessionNewConfigurationActivated();
-    void _q_networkSessionPreferredConfigurationChanged(const QNetworkConfiguration &config,
-                                                        bool isSeamless);
-    void _q_networkSessionStateChanged(QNetworkSession::State state);
-
-    void _q_configurationChanged(const QNetworkConfiguration &configuration);
-    void _q_networkSessionFailed(QNetworkSession::SessionError error);
-
-    QSet<QString> onlineConfigurations;
-#endif
-
-#if QT_CONFIG(http)
+#if QT_CONFIG(http) || defined(Q_OS_WASM)
     QNetworkRequest prepareMultipart(const QNetworkRequest &request, QHttpMultiPart *multiPart);
 #endif
+
+    void ensureBackendPluginsLoaded();
 
     // this is the cache for storing downloaded files
     QAbstractNetworkCache *networkCache;
@@ -186,36 +109,16 @@ public:
     QNetworkProxyFactory *proxyFactory;
 #endif
 
-#ifndef QT_NO_BEARERMANAGEMENT // ### Qt6: Remove section
-    QSharedPointer<QNetworkSession> networkSessionStrongRef;
-    QWeakPointer<QNetworkSession> networkSessionWeakRef;
-    QNetworkSession::State lastSessionState;
-    QNetworkConfigurationManager networkConfigurationManager;
-    QNetworkConfiguration networkConfiguration;
-    // we need to track whether the user set a config or not,
-    // because the default config might change
-    bool customNetworkConfiguration;
-    bool networkSessionRequired;
-    QNetworkAccessManager::NetworkAccessibility networkAccessible;
-    int activeReplyCount;
-    bool online;
-    bool initializeSession;
-#else
-    bool networkAccessible = true;
-#endif
-
     bool cookieJarCreated;
     bool defaultAccessControl;
-    QNetworkRequest::RedirectPolicy redirectPolicy;
+    QNetworkRequest::RedirectPolicy redirectPolicy = QNetworkRequest::NoLessSafeRedirectPolicy;
 
     // The cache with authorization data:
-    QSharedPointer<QNetworkAccessAuthenticationManager> authenticationManager;
+    std::shared_ptr<QNetworkAccessAuthenticationManager> authenticationManager;
 
     // this cache can be used by individual backends to cache e.g. their TCP connections to a server
     // and use the connections for multiple requests.
     QNetworkAccessCache objectCache;
-    static inline QNetworkAccessCache *getObjectCache(QNetworkAccessBackend *backend)
-    { return &backend->manager->objectCache; }
 
     Q_AUTOTEST_EXPORT static void clearAuthenticationCache(QNetworkAccessManager *manager);
     Q_AUTOTEST_EXPORT static void clearConnectionCache(QNetworkAccessManager *manager);
@@ -225,15 +128,11 @@ public:
     QScopedPointer<QHstsStore> stsStore;
 #endif // QT_CONFIG(settings)
     bool stsEnabled = false;
-    QNetworkStatusMonitor *statusMonitor = nullptr;
 
     bool autoDeleteReplies = false;
 
     int transferTimeout = 0;
 
-#ifndef QT_NO_BEARERMANAGEMENT // ### Qt6: Remove section
-    Q_AUTOTEST_EXPORT static const QWeakPointer<const QNetworkSession> getNetworkSession(const QNetworkAccessManager *manager);
-#endif
     Q_DECLARE_PUBLIC(QNetworkAccessManager)
 };
 

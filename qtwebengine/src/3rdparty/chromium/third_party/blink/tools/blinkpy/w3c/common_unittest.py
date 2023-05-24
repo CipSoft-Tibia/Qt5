@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,10 +6,10 @@ import json
 import unittest
 
 from blinkpy.common.host_mock import MockHost
-from blinkpy.common.path_finder import RELATIVE_WEB_TESTS
+from blinkpy.common.path_finder import RELATIVE_WPT_TESTS
 from blinkpy.w3c.common import (read_credentials, is_testharness_baseline,
                                 is_disallowed_ini, is_basename_skipped,
-                                is_file_exportable, CHROMIUM_WPT_DIR)
+                                is_file_exportable)
 
 
 class CommonTest(unittest.TestCase):
@@ -95,8 +95,6 @@ class CommonTest(unittest.TestCase):
         self.assertFalse(is_basename_skipped('something.json'))
 
     def test_is_disallowed_ini(self):
-        self.assertFalse(is_disallowed_ini('tox.ini'))
-        self.assertFalse(is_disallowed_ini("wptrunner.default.ini"))
         self.assertTrue(is_disallowed_ini('test.html.ini'))
         self.assertTrue(is_disallowed_ini('__dir__.ini'))
 
@@ -106,25 +104,22 @@ class CommonTest(unittest.TestCase):
 
     def test_is_file_exportable(self):
         self.assertTrue(
-            is_file_exportable(CHROMIUM_WPT_DIR + 'html/fake-test.html'))
+            is_file_exportable(RELATIVE_WPT_TESTS + 'html/fake-test.html'))
         self.assertFalse(
-            is_file_exportable(CHROMIUM_WPT_DIR +
+            is_file_exportable(RELATIVE_WPT_TESTS +
                                'html/fake-test-expected.txt'))
         self.assertFalse(
-            is_file_exportable(CHROMIUM_WPT_DIR + 'MANIFEST.json'))
-        self.assertFalse(is_file_exportable(CHROMIUM_WPT_DIR + 'dom/OWNERS'))
+            is_file_exportable(RELATIVE_WPT_TESTS + 'MANIFEST.json'))
+        self.assertFalse(is_file_exportable(RELATIVE_WPT_TESTS + 'dom/OWNERS'))
         self.assertFalse(
-            is_file_exportable(CHROMIUM_WPT_DIR + 'dom/DIR_METADATA'))
-        self.assertTrue(
-            is_file_exportable(CHROMIUM_WPT_DIR +
-                               'tools/wptrunner/wptrunner.default.ini'))
+            is_file_exportable(RELATIVE_WPT_TESTS + 'dom/DIR_METADATA'))
         self.assertFalse(
             is_file_exportable(
-                CHROMIUM_WPT_DIR +
+                RELATIVE_WPT_TESTS +
                 'infrastructure/metadata/infrastructure/expected-fail/timeout.html.ini'
             ))
         self.assertFalse(
-            is_file_exportable(CHROMIUM_WPT_DIR + 'dom/historical.html.ini'))
+            is_file_exportable(RELATIVE_WPT_TESTS + 'dom/historical.html.ini'))
 
     def test_is_file_exportable_asserts_path(self):
         # Rejects basenames.
@@ -135,5 +130,5 @@ class CommonTest(unittest.TestCase):
             is_file_exportable('third_party/fake/OWNERS')
         # Rejects absolute paths.
         with self.assertRaises(AssertionError):
-            is_file_exportable('/mock-checkout/' + RELATIVE_WEB_TESTS +
-                               'external/wpt/OWNERS')
+            is_file_exportable('/mock-checkout/' + RELATIVE_WPT_TESTS +
+                               'OWNERS')

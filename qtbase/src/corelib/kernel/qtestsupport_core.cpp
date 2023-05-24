@@ -1,62 +1,35 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtestsupport_core.h"
 
-#ifdef Q_OS_WIN
-#include <qt_windows.h>
-#endif
+#include <thread>
 
 QT_BEGIN_NAMESPACE
 
-Q_CORE_EXPORT void QTestPrivate::qSleep(int ms)
+/*!
+    Sleeps for \a ms milliseconds, blocking execution of the
+    test. qSleep() will not do any event processing and leave your test
+    unresponsive. Network communication might time out while
+    sleeping. Use \l {QTest::qWait()} to do non-blocking sleeping.
+
+    \a ms must be greater than 0.
+
+    \note Starting from Qt 6.7, this function is implemented using
+    \c {std::this_thread::sleep_for}, so the accuracy of time spent depends
+    on the Standard Library implementation. Before Qt 6.7 this function called
+    either \c nanosleep() on Unix or \c Sleep() on Windows, so the accuracy of
+    time spent in this function depended on the operating system.
+
+    Example:
+    \snippet code/src_qtestlib_qtestcase.cpp 23
+
+    \sa {QTest::qWait()}
+*/
+Q_CORE_EXPORT void QTest::qSleep(int ms)
 {
     Q_ASSERT(ms > 0);
-
-#if defined(Q_OS_WINRT)
-    WaitForSingleObjectEx(GetCurrentThread(), ms, true);
-#elif defined(Q_OS_WIN)
-    Sleep(uint(ms));
-#else
-    struct timespec ts = { time_t(ms / 1000), (ms % 1000) * 1000 * 1000 };
-    nanosleep(&ts, nullptr);
-#endif
+    std::this_thread::sleep_for(std::chrono::milliseconds{ms});
 }
 
 /*! \fn template <typename Functor> bool QTest::qWaitFor(Functor predicate, int timeout)
@@ -92,9 +65,11 @@ Q_CORE_EXPORT void QTestPrivate::qSleep(int ms)
 */
 Q_CORE_EXPORT void QTest::qWait(int ms)
 {
-    // Ideally this method would be implemented in terms of qWaitFor, with
-    // a predicate that always returns false, but due to a compiler bug in
-    // GCC 6 we can't do that.
+    // Ideally this method would be implemented in terms of qWaitFor(), with a
+    // predicate that always returns false, but qWaitFor() uses the 1-arg overload
+    // of processEvents(), which doesn't handle events posted in this round of event
+    // processing, which, together with the 10ms qSleep() after every processEvents(),
+    // lead to a 10x slow-down in some webengine tests.
 
     Q_ASSERT(QCoreApplication::instance());
 
@@ -106,7 +81,7 @@ Q_CORE_EXPORT void QTest::qWait(int ms)
         remaining = timer.remainingTime();
         if (remaining <= 0)
             break;
-        QTestPrivate::qSleep(qMin(10, remaining));
+        QTest::qSleep(qMin(10, remaining));
         remaining = timer.remainingTime();
     } while (remaining > 0);
 }

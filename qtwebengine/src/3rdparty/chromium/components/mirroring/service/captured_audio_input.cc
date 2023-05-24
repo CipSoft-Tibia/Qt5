@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "base/check_op.h"
 #include "base/notreached.h"
+#include "media/mojo/common/input_error_code_converter.h"
 #include "media/mojo/mojom/audio_data_pipe.mojom.h"
 #include "mojo/public/cpp/system/platform_handle.h"
 
@@ -50,6 +51,7 @@ void CapturedAudioInput::CloseStream() {
   delegate_ = nullptr;
   stream_client_receiver_.reset();
   stream_.reset();
+  stream_creator_client_receiver_.reset();
 }
 
 void CapturedAudioInput::SetOutputDeviceForAec(
@@ -81,10 +83,11 @@ void CapturedAudioInput::StreamCreated(
                              /* initally_muted */ false);
 }
 
-void CapturedAudioInput::OnError() {
+void CapturedAudioInput::OnError(media::mojom::InputStreamErrorCode code) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(delegate_);
-  delegate_->OnError();
+
+  delegate_->OnError(media::ConvertToCaptureCallbackCode(code));
 }
 
 void CapturedAudioInput::OnMutedStateChanged(bool is_muted) {

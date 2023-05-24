@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //
 //  W A R N I N G
@@ -40,7 +14,8 @@
 #ifndef ABSTRACT3DCONTROLLER_P_H
 #define ABSTRACT3DCONTROLLER_P_H
 
-#include "datavisualizationglobal_p.h"
+#include <private/datavisualizationglobal_p.h>
+
 #include "qabstract3daxis.h"
 #include "drawer_p.h"
 #include "qabstract3dinputhandler.h"
@@ -54,8 +29,10 @@
 
 QT_FORWARD_DECLARE_CLASS(QOpenGLFramebufferObject)
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
+class AbstractDeclarativeInterface;
+class AbstractDeclarative;
 class Abstract3DRenderer;
 class QAbstract3DSeries;
 class ThemeManager;
@@ -163,7 +140,7 @@ struct Abstract3DChangeBitField {
     }
 };
 
-class QT_DATAVISUALIZATION_EXPORT Abstract3DController : public QObject
+class Q_DATAVISUALIZATION_EXPORT Abstract3DController : public QObject
 {
     Q_OBJECT
 
@@ -215,7 +192,7 @@ protected:
     int m_numFrames;
     qreal m_currentFps;
 
-    QVector<QAbstract3DSeries *> m_changedSeriesList;
+    QList<QAbstract3DSeries *> m_changedSeriesList;
 
     QList<QCustom3DItem *> m_customItems;
 
@@ -225,6 +202,7 @@ protected:
     qreal m_margin;
 
     QMutex m_renderMutex;
+    AbstractDeclarativeInterface *m_qml = nullptr;
 
     explicit Abstract3DController(QRect initialViewport, Q3DScene *scene, QObject *parent = 0);
 
@@ -240,6 +218,7 @@ public:
     virtual void addSeries(QAbstract3DSeries *series);
     virtual void insertSeries(int index, QAbstract3DSeries *series);
     virtual void removeSeries(QAbstract3DSeries *series);
+    virtual bool hasSeries(QAbstract3DSeries *series);
     QList<QAbstract3DSeries *> seriesList();
 
     virtual void setAxisX(QAbstract3DAxis *axis);
@@ -435,6 +414,6 @@ private:
     friend class QAbstract3DGraphPrivate;
 };
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE
 
 #endif

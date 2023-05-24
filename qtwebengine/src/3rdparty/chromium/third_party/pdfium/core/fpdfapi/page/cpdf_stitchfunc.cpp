@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,6 +12,7 @@
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/fpdf_parser_utility.h"
 #include "core/fxcrt/fx_safe_types.h"
+#include "core/fxcrt/stl_util.h"
 
 namespace {
 
@@ -23,28 +24,27 @@ CPDF_StitchFunc::CPDF_StitchFunc() : CPDF_Function(Type::kType3Stitching) {}
 
 CPDF_StitchFunc::~CPDF_StitchFunc() = default;
 
-bool CPDF_StitchFunc::v_Init(const CPDF_Object* pObj,
-                             std::set<const CPDF_Object*>* pVisited) {
+bool CPDF_StitchFunc::v_Init(const CPDF_Object* pObj, VisitedSet* pVisited) {
   if (m_nInputs != kRequiredNumInputs)
     return false;
 
-  const CPDF_Dictionary* pDict = pObj->GetDict();
+  RetainPtr<const CPDF_Dictionary> pDict = pObj->GetDict();
   if (!pDict)
     return false;
 
-  const CPDF_Array* pFunctionsArray = pDict->GetArrayFor("Functions");
+  RetainPtr<const CPDF_Array> pFunctionsArray = pDict->GetArrayFor("Functions");
   if (!pFunctionsArray)
     return false;
 
-  const CPDF_Array* pBoundsArray = pDict->GetArrayFor("Bounds");
+  RetainPtr<const CPDF_Array> pBoundsArray = pDict->GetArrayFor("Bounds");
   if (!pBoundsArray)
     return false;
 
-  const CPDF_Array* pEncodeArray = pDict->GetArrayFor("Encode");
+  RetainPtr<const CPDF_Array> pEncodeArray = pDict->GetArrayFor("Encode");
   if (!pEncodeArray)
     return false;
 
-  const uint32_t nSubs = pFunctionsArray->size();
+  const uint32_t nSubs = fxcrt::CollectionSize<uint32_t>(*pFunctionsArray);
   if (nSubs == 0)
     return false;
 
@@ -65,13 +65,14 @@ bool CPDF_StitchFunc::v_Init(const CPDF_Object* pObj,
 
   // Check sub-functions.
   {
-    Optional<uint32_t> nOutputs;
+    absl::optional<uint32_t> nOutputs;
     for (uint32_t i = 0; i < nSubs; ++i) {
-      const CPDF_Object* pSub = pFunctionsArray->GetDirectObjectAt(i);
+      RetainPtr<const CPDF_Object> pSub = pFunctionsArray->GetDirectObjectAt(i);
       if (pSub == pObj)
         return false;
 
-      std::unique_ptr<CPDF_Function> pFunc(CPDF_Function::Load(pSub, pVisited));
+      std::unique_ptr<CPDF_Function> pFunc =
+          CPDF_Function::Load(std::move(pSub), pVisited);
       if (!pFunc)
         return false;
 
@@ -84,29 +85,29 @@ bool CPDF_StitchFunc::v_Init(const CPDF_Object* pObj,
       if (nFuncOutputs == 0)
         return false;
 
-      if (nOutputs) {
-        if (nFuncOutputs != *nOutputs)
+      if (nOutputs.has_value()) {
+        if (nOutputs != nFuncOutputs)
           return false;
       } else {
         nOutputs = nFuncOutputs;
       }
-
       m_pSubFunctions.push_back(std::move(pFunc));
     }
-    m_nOutputs = *nOutputs;
+    m_nOutputs = nOutputs.value();
   }
 
   m_bounds.reserve(nSubs + 1);
   m_bounds.push_back(m_Domains[0]);
   for (uint32_t i = 0; i < nSubs - 1; i++)
-    m_bounds.push_back(pBoundsArray->GetNumberAt(i));
+    m_bounds.push_back(pBoundsArray->GetFloatAt(i));
   m_bounds.push_back(m_Domains[1]);
 
-  m_encode = ReadArrayElementsToVector(pEncodeArray, nSubs * 2);
+  m_encode = ReadArrayElementsToVector(pEncodeArray.Get(), nSubs * 2);
   return true;
 }
 
-bool CPDF_StitchFunc::v_Call(const float* inputs, float* results) const {
+bool CPDF_StitchFunc::v_Call(pdfium::span<const float> inputs,
+                             pdfium::span<float> results) const {
   float input = inputs[0];
   size_t i;
   for (i = 0; i < m_pSubFunctions.size() - 1; i++) {
@@ -115,7 +116,7 @@ bool CPDF_StitchFunc::v_Call(const float* inputs, float* results) const {
   }
   input = Interpolate(input, m_bounds[i], m_bounds[i + 1], m_encode[i * 2],
                       m_encode[i * 2 + 1]);
-  int nresults;
-  return m_pSubFunctions[i]->Call(&input, kRequiredNumInputs, results,
-                                  &nresults);
+  return m_pSubFunctions[i]
+      ->Call(pdfium::make_span(&input, 1), results)
+      .has_value();
 }

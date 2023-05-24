@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusreply.h"
 #include "qdbusmetatype.h"
@@ -45,6 +9,8 @@
 #ifndef QT_NO_DBUS
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \class QDBusReply
@@ -203,29 +169,29 @@ void qDBusReplyFill(const QDBusMessage &reply, QDBusError &error, QVariant &data
         return;
     }
 
-    if (reply.arguments().count() >= 1 && reply.arguments().at(0).userType() == data.userType()) {
+    if (reply.arguments().size() >= 1 && reply.arguments().at(0).metaType() == data.metaType()) {
         data = reply.arguments().at(0);
         return;
     }
 
-    const char *expectedSignature = QDBusMetaType::typeToSignature(data.userType());
+    const char *expectedSignature = QDBusMetaType::typeToSignature(data.metaType());
     const char *receivedType = nullptr;
     QByteArray receivedSignature;
 
-    if (reply.arguments().count() >= 1) {
-        if (reply.arguments().at(0).userType() == QDBusMetaTypeId::argument()) {
+    if (reply.arguments().size() >= 1) {
+        if (reply.arguments().at(0).metaType() == QDBusMetaTypeId::argument()) {
             // compare signatures instead
             QDBusArgument arg = qvariant_cast<QDBusArgument>(reply.arguments().at(0));
             receivedSignature = arg.currentSignature().toLatin1();
             if (receivedSignature == expectedSignature) {
                 // matched. Demarshall it
-                QDBusMetaType::demarshall(arg, data.userType(), data.data());
+                QDBusMetaType::demarshall(arg, data.metaType(), data.data());
                 return;
             }
         } else {
             // not an argument and doesn't match?
-            int type = reply.arguments().at(0).userType();
-            receivedType = QMetaType::typeName(type);
+            QMetaType type = reply.arguments().at(0).metaType();
+            receivedType = type.name();
             receivedSignature = QDBusMetaType::typeToSignature(type);
         }
     }
@@ -235,18 +201,16 @@ void qDBusReplyFill(const QDBusMessage &reply, QDBusError &error, QVariant &data
         receivedSignature = "<empty signature>";
     QString errorMsg;
     if (receivedType) {
-        errorMsg = QLatin1String("Unexpected reply signature: got \"%1\" (%4), "
-                                         "expected \"%2\" (%3)")
-                   .arg(QLatin1String(receivedSignature),
-                        QLatin1String(expectedSignature),
-                        QLatin1String(data.typeName()),
-                        QLatin1String(receivedType));
+        errorMsg = "Unexpected reply signature: got \"%1\" (%4), expected \"%2\" (%3)"_L1
+                   .arg(QLatin1StringView(receivedSignature),
+                        QLatin1StringView(expectedSignature),
+                        QLatin1StringView(data.typeName()),
+                        QLatin1StringView(receivedType));
     } else {
-        errorMsg = QLatin1String("Unexpected reply signature: got \"%1\", "
-                                         "expected \"%2\" (%3)")
-                   .arg(QLatin1String(receivedSignature),
-                        QLatin1String(expectedSignature),
-                        QLatin1String(data.typeName()));
+        errorMsg = "Unexpected reply signature: got \"%1\", expected \"%2\" (%3)"_L1
+                   .arg(QLatin1StringView(receivedSignature),
+                        QLatin1StringView(expectedSignature),
+                        QLatin1StringView(data.typeName()));
     }
 
     error = QDBusError(QDBusError::InvalidSignature, errorMsg);

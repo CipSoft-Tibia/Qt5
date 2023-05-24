@@ -10,6 +10,7 @@
 
 #import <Foundation/Foundation.h>
 #import <OCMock/OCMock.h>
+#import <XCTest/XCTest.h>
 
 #include "sdk/objc/native/src/objc_video_decoder_factory.h"
 
@@ -55,21 +56,26 @@ std::unique_ptr<webrtc::VideoDecoder> GetObjCDecoder(
 
 #pragma mark -
 
-TEST(ObjCVideoDecoderFactoryTest, InitDecodeReturnsOKOnSuccess) {
+@interface ObjCVideoDecoderFactoryTests : XCTestCase
+@end
+
+@implementation ObjCVideoDecoderFactoryTests
+
+- (void)testConfigureReturnsTrueOnSuccess {
   std::unique_ptr<webrtc::VideoDecoder> decoder = GetObjCDecoder(CreateOKDecoderFactory());
 
-  auto* settings = new webrtc::VideoCodec();
-  EXPECT_EQ(decoder->InitDecode(settings, 1), WEBRTC_VIDEO_CODEC_OK);
+  webrtc::VideoDecoder::Settings settings;
+  EXPECT_TRUE(decoder->Configure(settings));
 }
 
-TEST(ObjCVideoDecoderFactoryTest, InitDecodeReturnsErrorOnFail) {
+- (void)testConfigureReturnsFalseOnFail {
   std::unique_ptr<webrtc::VideoDecoder> decoder = GetObjCDecoder(CreateErrorDecoderFactory());
 
-  auto* settings = new webrtc::VideoCodec();
-  EXPECT_EQ(decoder->InitDecode(settings, 1), WEBRTC_VIDEO_CODEC_ERROR);
+  webrtc::VideoDecoder::Settings settings;
+  EXPECT_FALSE(decoder->Configure(settings));
 }
 
-TEST(ObjCVideoDecoderFactoryTest, DecodeReturnsOKOnSuccess) {
+- (void)testDecodeReturnsOKOnSuccess {
   std::unique_ptr<webrtc::VideoDecoder> decoder = GetObjCDecoder(CreateOKDecoderFactory());
 
   webrtc::EncodedImage encoded_image;
@@ -78,7 +84,7 @@ TEST(ObjCVideoDecoderFactoryTest, DecodeReturnsOKOnSuccess) {
   EXPECT_EQ(decoder->Decode(encoded_image, false, 0), WEBRTC_VIDEO_CODEC_OK);
 }
 
-TEST(ObjCVideoDecoderFactoryTest, DecodeReturnsErrorOnFail) {
+- (void)testDecodeReturnsErrorOnFail {
   std::unique_ptr<webrtc::VideoDecoder> decoder = GetObjCDecoder(CreateErrorDecoderFactory());
 
   webrtc::EncodedImage encoded_image;
@@ -87,14 +93,15 @@ TEST(ObjCVideoDecoderFactoryTest, DecodeReturnsErrorOnFail) {
   EXPECT_EQ(decoder->Decode(encoded_image, false, 0), WEBRTC_VIDEO_CODEC_ERROR);
 }
 
-TEST(ObjCVideoDecoderFactoryTest, ReleaseDecodeReturnsOKOnSuccess) {
+- (void)testReleaseDecodeReturnsOKOnSuccess {
   std::unique_ptr<webrtc::VideoDecoder> decoder = GetObjCDecoder(CreateOKDecoderFactory());
 
   EXPECT_EQ(decoder->Release(), WEBRTC_VIDEO_CODEC_OK);
 }
 
-TEST(ObjCVideoDecoderFactoryTest, ReleaseDecodeReturnsErrorOnFail) {
+- (void)testReleaseDecodeReturnsErrorOnFail {
   std::unique_ptr<webrtc::VideoDecoder> decoder = GetObjCDecoder(CreateErrorDecoderFactory());
 
   EXPECT_EQ(decoder->Release(), WEBRTC_VIDEO_CODEC_ERROR);
 }
+@end

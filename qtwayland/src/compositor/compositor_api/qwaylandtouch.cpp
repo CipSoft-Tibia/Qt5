@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwaylandtouch.h"
 #include "qwaylandtouch_p.h"
@@ -99,7 +73,7 @@ int QWaylandTouchPrivate::toSequentialWaylandId(int touchId)
         return availableId;
     }
     ids.append(touchId);
-    return ids.length() - 1;
+    return ids.size() - 1;
 }
 
 /*!
@@ -162,6 +136,9 @@ uint QWaylandTouch::sendTouchPointEvent(QWaylandSurface *surface, int id, const 
     case Qt::TouchPointStationary:
         // stationary points are not sent through wayland, the client must cache them
         break;
+    case Qt::TouchPointUnknownState:
+        // Ignored
+        break;
     }
 
     return serial;
@@ -208,17 +185,17 @@ void QWaylandTouch::sendFullTouchEvent(QWaylandSurface *surface, QTouchEvent *ev
     if (ext && ext->postTouchEvent(event, surface))
         return;
 
-    const QList<QTouchEvent::TouchPoint> points = event->touchPoints();
+    const QList<QTouchEvent::TouchPoint> points = event->points();
     if (points.isEmpty())
         return;
 
-    const int pointCount = points.count();
+    const int pointCount = points.size();
     for (int i = 0; i < pointCount; ++i) {
         const QTouchEvent::TouchPoint &tp(points.at(i));
         // Convert the local pos in the compositor window to surface-relative.
         const int id = d->toSequentialWaylandId(tp.id());
-        sendTouchPointEvent(surface, id, tp.pos(), tp.state());
-        if (tp.state() == Qt::TouchPointReleased)
+        sendTouchPointEvent(surface, id, tp.position(), Qt::TouchPointState(tp.state()));
+        if (tp.state() == QEventPoint::Released)
             d->ids[id] = -1;
     }
     sendFrameEvent(surface->client());
@@ -234,3 +211,5 @@ void QWaylandTouch::addClient(QWaylandClient *client, uint32_t id, uint32_t vers
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandtouch.cpp"

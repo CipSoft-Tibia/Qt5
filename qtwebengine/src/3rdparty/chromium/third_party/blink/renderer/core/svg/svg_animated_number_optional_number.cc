@@ -18,7 +18,7 @@
  */
 
 #include "third_party/blink/renderer/core/svg/svg_animated_number_optional_number.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -56,12 +56,6 @@ void SVGAnimatedNumberOptionalNumber::SetAnimatedValue(SVGPropertyBase* value) {
   SVGAnimatedPropertyCommon<SVGNumberOptionalNumber>::SetAnimatedValue(value);
   first_number_->SetAnimatedValue(CurrentValue()->FirstNumber());
   second_number_->SetAnimatedValue(CurrentValue()->SecondNumber());
-}
-
-void SVGAnimatedNumberOptionalNumber::AnimationEnded() {
-  SVGAnimatedPropertyCommon<SVGNumberOptionalNumber>::AnimationEnded();
-  first_number_->AnimationEnded();
-  second_number_->AnimationEnded();
 }
 
 bool SVGAnimatedNumberOptionalNumber::NeedsSynchronizeAttribute() const {

@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,8 @@ namespace views {
 class FocusManager;
 class Widget;
 
-// A factory to create FocusManager. This is used in unit tests
-// to inject a custom factory.
+// A factory to create FocusManager. This can be used to inject a custom
+// factory.
 class VIEWS_EXPORT FocusManagerFactory {
  public:
   // Create a FocusManager for the given |widget| using the installed Factory.
@@ -25,11 +25,11 @@ class VIEWS_EXPORT FocusManagerFactory {
   // to the default factory which creates plain FocusManager.
   static void Install(FocusManagerFactory* factory);
 
- protected:
-  FocusManagerFactory();
-
   FocusManagerFactory(const FocusManagerFactory&) = delete;
   FocusManagerFactory& operator=(const FocusManagerFactory&) = delete;
+
+ protected:
+  FocusManagerFactory();
   virtual ~FocusManagerFactory();
 
   // Create a FocusManager for the given |widget|.

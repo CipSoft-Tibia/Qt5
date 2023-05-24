@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "translator.h"
 
@@ -39,20 +14,16 @@
 
 QT_USE_NAMESPACE
 
-class LC {
-    Q_DECLARE_TR_FUNCTIONS(LConvert)
-};
-
 static int usage(const QStringList &args)
 {
     Q_UNUSED(args);
 
     QString loaders;
     QString line(QLatin1String("    %1 - %2\n"));
-    foreach (Translator::FileFormat format, Translator::registeredFileFormats())
+    for (const Translator::FileFormat &format : std::as_const(Translator::registeredFileFormats()))
         loaders += line.arg(format.extension, -5).arg(format.description());
 
-    std::cout << qPrintable(LC::tr("\nUsage:\n"
+    std::cout << qPrintable(QStringLiteral("\nUsage:\n"
         "    lconvert [options] <infile> [<infile>...]\n\n"
         "lconvert is part of Qt's Linguist tool chain. It can be used as a\n"
         "stand-alone tool to convert and filter translation data files.\n"
@@ -103,6 +74,8 @@ static int usage(const QStringList &args)
         "           Default is absolute.\n\n"
         "    -no-ui-lines\n"
         "           Drop line numbers from references to UI files.\n\n"
+        "    -pluralonly\n"
+        "           Drop non-plural form messages.\n\n"
         "    -verbose\n"
         "           be a bit more verbose\n\n"
         "Long options can be specified with only one leading dash, too.\n\n"
@@ -128,7 +101,7 @@ int main(int argc, char *argv[])
     QTranslator translator;
     QTranslator qtTranslator;
     QString sysLocale = QLocale::system().name();
-    QString resourceDir = QLibraryInfo::location(QLibraryInfo::TranslationsPath);
+    QString resourceDir = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
     if (translator.load(QLatin1String("linguist_") + sysLocale, resourceDir)
         && qtTranslator.load(QLatin1String("qt_") + sysLocale, resourceDir)) {
         app.installTranslator(&translator);
@@ -150,6 +123,7 @@ int main(int argc, char *argv[])
     bool noUntranslated = false;
     bool verbose = false;
     bool noUiLines = false;
+    bool pluralOnly = false;
     Translator::LocationsType locations = Translator::DefaultLocations;
 
     ConversionData cd;
@@ -219,6 +193,8 @@ int main(int argc, char *argv[])
                 return usage(args);
         } else if (args[i] == QLatin1String("-no-ui-lines")) {
             noUiLines = true;
+        } else if (args[i] == QLatin1String("-pluralonly")) {
+            pluralOnly = true;
         } else if (args[i] == QLatin1String("-verbose")) {
             verbose = true;
         } else if (args[i].startsWith(QLatin1Char('-'))) {
@@ -267,6 +243,8 @@ int main(int argc, char *argv[])
         tr.dropTranslations();
     if (noUiLines)
         tr.dropUiLines();
+    if (pluralOnly)
+        tr.stripNonPluralForms();
     if (locations != Translator::DefaultLocations)
         tr.setLocationsType(locations);
 

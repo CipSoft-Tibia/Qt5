@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -74,6 +74,11 @@ int SyscallDispatcher::DispatchSyscall(const arch_seccomp_data& args) {
 #endif
 #if defined(__NR_faccessat)
     case __NR_faccessat:
+#endif
+#if defined(__NR_faccessat2)
+    case __NR_faccessat2:
+#endif
+#if defined(__NR_faccessat) || defined(__NR_faccessat2)
       if (static_cast<int>(args.args[0]) != AT_FDCWD)
         return -EPERM;
       return Access(reinterpret_cast<const char*>(args.args[1]),
@@ -109,6 +114,8 @@ int SyscallDispatcher::DispatchSyscall(const arch_seccomp_data& args) {
 #endif
 #if defined(__NR_readlink)
     case __NR_readlink:
+      // http://crbug.com/372840
+      BROKER_UNPOISON_STRING(reinterpret_cast<const char*>(args.args[0]));
       return Readlink(reinterpret_cast<const char*>(args.args[0]),
                       reinterpret_cast<char*>(args.args[1]),
                       static_cast<size_t>(args.args[2]));
@@ -117,6 +124,8 @@ int SyscallDispatcher::DispatchSyscall(const arch_seccomp_data& args) {
     case __NR_readlinkat:
       if (static_cast<int>(args.args[0]) != AT_FDCWD)
         return -EPERM;
+      // http://crbug.com/372840
+      BROKER_UNPOISON_STRING(reinterpret_cast<const char*>(args.args[1]));
       return Readlink(reinterpret_cast<const char*>(args.args[1]),
                       reinterpret_cast<char*>(args.args[2]),
                       static_cast<size_t>(args.args[3]));
@@ -190,6 +199,12 @@ int SyscallDispatcher::DispatchSyscall(const arch_seccomp_data& args) {
     case __NR_unlinkat:
       return PerformUnlinkat(args);
 #endif  // defined(__NR_unlinkat)
+#if defined(__NR_inotify_add_watch)
+    case __NR_inotify_add_watch:
+      return InotifyAddWatch(static_cast<int>(args.args[0]),
+                             reinterpret_cast<const char*>(args.args[1]),
+                             static_cast<uint32_t>(args.args[2]));
+#endif
     default:
       RAW_CHECK(false);
       return -ENOSYS;

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 
 #include <memory>
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
 #include "content/public/browser/web_ui_message_handler.h"
 
 class ProfileInfoWatcher;
@@ -16,7 +15,11 @@ class ProfileInfoWatcher;
 // The handler for login-related messages from chrome://history.
 class HistoryLoginHandler : public content::WebUIMessageHandler {
  public:
-  explicit HistoryLoginHandler(const base::Closure& signin_callback);
+  explicit HistoryLoginHandler(base::RepeatingClosure signin_callback);
+
+  HistoryLoginHandler(const HistoryLoginHandler&) = delete;
+  HistoryLoginHandler& operator=(const HistoryLoginHandler&) = delete;
+
   ~HistoryLoginHandler() override;
 
   // WebUIMessageHandler implementation.
@@ -26,10 +29,10 @@ class HistoryLoginHandler : public content::WebUIMessageHandler {
 
  private:
   // Handler for the "otherDevicesInitialized" message. No args.
-  void HandleOtherDevicesInitialized(const base::ListValue* args);
+  void HandleOtherDevicesInitialized(const base::Value::List& args);
 
-  // Handler for the "startSignInFlow" message. No args.
-  void HandleStartSignInFlow(const base::ListValue* args);
+  // Handler for the "startTurnOnSyncFlow" message. No args.
+  void HandleTurnOnSyncFlow(const base::Value::List& args);
 
   // Called by |profile_info_watcher_| on desktop if profile info changes.
   void ProfileInfoChanged();
@@ -38,9 +41,7 @@ class HistoryLoginHandler : public content::WebUIMessageHandler {
   // changes).
   std::unique_ptr<ProfileInfoWatcher> profile_info_watcher_;
 
-  base::Closure signin_callback_;
-
-  DISALLOW_COPY_AND_ASSIGN(HistoryLoginHandler);
+  base::RepeatingClosure signin_callback_;
 };
 
 #endif  // CHROME_BROWSER_UI_WEBUI_HISTORY_HISTORY_LOGIN_HANDLER_H_

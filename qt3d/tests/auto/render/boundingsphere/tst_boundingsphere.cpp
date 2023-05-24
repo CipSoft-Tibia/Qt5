@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlscenereader.h"
-#include "testpostmanarbiter.h"
+#include "testarbiter.h"
 
 #include <QUrl>
 
@@ -36,6 +11,7 @@
 #include <Qt3DCore/qtransform.h>
 #include <Qt3DCore/private/qaspectjobmanager_p.h>
 #include <Qt3DCore/private/qnodevisitor_p.h>
+#include <Qt3DCore/private/calcboundingvolumejob_p.h>
 #include <QtQuick/qquickwindow.h>
 
 #include <Qt3DRender/QCamera>
@@ -48,22 +24,13 @@
 #include <Qt3DRender/qrenderaspect.h>
 #include <Qt3DRender/private/qrenderaspect_p.h>
 #include <Qt3DRender/private/pickboundingvolumejob_p.h>
-#include <Qt3DRender/private/updatemeshtrianglelistjob_p.h>
 #include <Qt3DRender/private/updateworldboundingvolumejob_p.h>
 #include <Qt3DRender/private/updateworldtransformjob_p.h>
 #include <Qt3DRender/private/expandboundingvolumejob_p.h>
 #include <Qt3DRender/private/calcboundingvolumejob_p.h>
-#include <Qt3DRender/private/calcgeometrytrianglevolumes_p.h>
-#include <Qt3DRender/private/loadbufferjob_p.h>
 #include <Qt3DRender/private/buffermanager_p.h>
 #include <Qt3DRender/private/geometryrenderermanager_p.h>
 #include <Qt3DRender/private/sphere_p.h>
-
-#include <Qt3DExtras/qspheremesh.h>
-#include <Qt3DExtras/qcylindermesh.h>
-#include <Qt3DExtras/qtorusmesh.h>
-#include <Qt3DExtras/qcuboidmesh.h>
-#include <Qt3DExtras/qplanemesh.h>
 
 #include <qbackendnodetester.h>
 
@@ -71,11 +38,11 @@ QT_BEGIN_NAMESPACE
 
 namespace Qt3DRender {
 
-QVector<Qt3DCore::QNode *> getNodesForCreation(Qt3DCore::QNode *root)
+QList<Qt3DCore::QNode *> getNodesForCreation(Qt3DCore::QNode *root)
 {
     using namespace Qt3DCore;
 
-    QVector<QNode *> nodes;
+    QList<QNode *> nodes;
     Qt3DCore::QNodeVisitor visitor;
     visitor.traverse(root, [&nodes](QNode *node) {
         nodes.append(node);
@@ -95,9 +62,9 @@ QVector<Qt3DCore::QNode *> getNodesForCreation(Qt3DCore::QNode *root)
     return nodes;
 }
 
-QVector<Qt3DCore::NodeTreeChange> nodeTreeChangesForNodes(const QVector<Qt3DCore::QNode *> nodes)
+QList<Qt3DCore::NodeTreeChange> nodeTreeChangesForNodes(const QList<Qt3DCore::QNode *> nodes)
 {
-    QVector<Qt3DCore::NodeTreeChange> nodeTreeChanges;
+    QList<Qt3DCore::NodeTreeChange> nodeTreeChanges;
     nodeTreeChanges.reserve(nodes.size());
 
     for (Qt3DCore::QNode *n : nodes) {
@@ -112,18 +79,19 @@ QVector<Qt3DCore::NodeTreeChange> nodeTreeChangesForNodes(const QVector<Qt3DCore
     return nodeTreeChanges;
 }
 
-class TestAspect : public Qt3DRender::QRenderAspect
+class TestAspect : public Qt3DRender::QRenderAspect, public Qt3DCore::QAbstractFrontEndNodeManager
 {
 public:
     TestAspect(Qt3DCore::QNode *root)
-        : Qt3DRender::QRenderAspect(Qt3DRender::QRenderAspect::Synchronous)
+        : Qt3DRender::QRenderAspect()
         , m_sceneRoot(nullptr)
     {
         QRenderAspect::onRegistered();
+        m_root = qobject_cast<Qt3DCore::QEntity *>(root);
 
-        const QVector<Qt3DCore::QNode *> nodes = getNodesForCreation(root);
-        const QVector<Qt3DCore::NodeTreeChange> nodeTreeChanges = nodeTreeChangesForNodes(nodes);
-        d_func()->setRootAndCreateNodes(qobject_cast<Qt3DCore::QEntity *>(root), nodeTreeChanges);
+        const QList<Qt3DCore::QNode *> nodes = getNodesForCreation(root);
+        const QList<Qt3DCore::NodeTreeChange> nodeTreeChanges = nodeTreeChangesForNodes(nodes);
+        d_func()->setRootAndCreateNodes(m_root, nodeTreeChanges);
 
         Render::Entity *rootEntity = nodeManagers()->lookupResource<Render::Entity, Render::EntityManager>(rootEntityId());
         Q_ASSERT(rootEntity);
@@ -135,17 +103,42 @@ public:
         QRenderAspect::onUnregistered();
     }
 
-    void onRegistered() { QRenderAspect::onRegistered(); }
-    void onUnregistered() { QRenderAspect::onUnregistered(); }
+    void onRegistered() override { QRenderAspect::onRegistered(); }
+    void onUnregistered() override { QRenderAspect::onUnregistered(); }
 
     Qt3DRender::Render::NodeManagers *nodeManagers() const { return d_func()->m_renderer->nodeManagers(); }
     Qt3DRender::Render::FrameGraphNode *frameGraphRoot() const { return d_func()->m_renderer->frameGraphRoot(); }
     Qt3DRender::Render::RenderSettings *renderSettings() const { return d_func()->m_renderer->settings(); }
+    Qt3DCore::QEntity *root() const { return m_root; }
     Qt3DRender::Render::Entity *sceneRoot() const { return m_sceneRoot; }
     Qt3DRender::Render::AbstractRenderer *renderer() const { return d_func()->m_renderer; }
 
+    void registerNode(Qt3DCore::QNode *node) { m_frontEndNodes.insert(node->id(), node); }
+    void registerTree(Qt3DCore::QEntity *root) {
+        using namespace Qt3DCore;
+        QNodeVisitor visitor;
+        visitor.traverse(root, [](QNode *) {}, [this](QEntity *entity) {
+                registerNode(entity);
+                const auto &components = entity->components();
+                for (const auto &c : components)
+                    registerNode(c);
+            });
+    }
+    Qt3DCore::QNode *lookupNode(Qt3DCore::QNodeId id) const override { return  m_frontEndNodes.value(id, nullptr); }
+    QList<Qt3DCore::QNode *> lookupNodes(const QList<Qt3DCore::QNodeId> &ids) const override {
+        QList<Qt3DCore::QNode *> res;
+        for (const auto &id: ids) {
+            auto node = m_frontEndNodes.value(id, nullptr);
+            if (node)
+                res.push_back(node);
+        }
+        return  res;
+    }
+
 private:
+    Qt3DCore::QEntity *m_root;
     Render::Entity *m_sceneRoot;
+    QHash<Qt3DCore::QNodeId, Qt3DCore::QNode *> m_frontEndNodes;
 };
 
 } // namespace Qt3DRender
@@ -161,18 +154,19 @@ void runRequiredJobs(Qt3DRender::TestAspect *test)
     updateWorldTransform.setManagers(test->nodeManagers());
     updateWorldTransform.run();
 
-    // For each buffer
-    const std::vector<Qt3DRender::Render::HBuffer> &bufferHandles = test->nodeManagers()->bufferManager()->activeHandles();
-    for (auto bufferHandle : bufferHandles) {
-        Qt3DRender::Render::LoadBufferJob loadBuffer(bufferHandle);
-        loadBuffer.setNodeManager(test->nodeManagers());
-        loadBuffer.run();
-    }
+    Qt3DCore::CalculateBoundingVolumeJob calcCBVolume(nullptr);
+    calcCBVolume.setRoot(test->root());
 
-    Qt3DRender::Render::CalculateBoundingVolumeJob calcBVolume;
-    calcBVolume.setManagers(test->nodeManagers());
-    calcBVolume.setRoot(test->sceneRoot());
-    calcBVolume.run();
+    Qt3DRender::Render::CalculateBoundingVolumeJobPtr calcRBVolume = Qt3DRender::Render::CalculateBoundingVolumeJobPtr::create();
+    calcRBVolume->setManagers(test->nodeManagers());
+    calcRBVolume->setFrontEndNodeManager(test);
+    calcRBVolume->setRoot(test->sceneRoot());
+
+    calcCBVolume.addWatcher(calcRBVolume);
+
+    calcCBVolume.run();
+    calcCBVolume.postFrame(nullptr);
+    calcRBVolume->run();
 
     Qt3DRender::Render::UpdateWorldBoundingVolumeJob updateWorldBVolume;
     updateWorldBVolume.setManager(test->nodeManagers()->renderNodesManager());
@@ -182,18 +176,6 @@ void runRequiredJobs(Qt3DRender::TestAspect *test)
     expandBVolume.setRoot(test->sceneRoot());
     expandBVolume.setManagers(test->nodeManagers());
     expandBVolume.run();
-
-    Qt3DRender::Render::UpdateMeshTriangleListJob updateTriangleList;
-    updateTriangleList.setManagers(test->nodeManagers());
-    updateTriangleList.run();
-
-    // For each geometry id
-    const std::vector<Qt3DRender::Render::HGeometryRenderer> &geometryRenderHandles = test->nodeManagers()->geometryRendererManager()->activeHandles();
-    for (auto geometryRenderHandle : geometryRenderHandles) {
-        Qt3DCore::QNodeId geometryRendererId = test->nodeManagers()->geometryRendererManager()->data(geometryRenderHandle)->peerId();
-        Qt3DRender::Render::CalcGeometryTriangleVolumes calcGeometryTriangles(geometryRendererId, test->nodeManagers());
-        calcGeometryTriangles.run();
-    }
 }
 
 } // anonymous
@@ -244,7 +226,7 @@ private Q_SLOTS:
         auto copiedSphere = firstValidSphere;
         firstValidSphere.expandToContain(defaultSphere);
         QVERIFY(firstValidSphere.center() == copiedSphere.center());
-        QVERIFY(firstValidSphere.radius() == copiedSphere.radius());
+        QCOMPARE(firstValidSphere.radius(), copiedSphere.radius());
         QVERIFY(!firstValidSphere.isNull());
     }
 
@@ -253,7 +235,7 @@ private Q_SLOTS:
         auto defaultSphere = Qt3DRender::Render::Sphere();
         defaultSphere.expandToContain(firstValidSphere);
         QVERIFY(defaultSphere.center() == firstValidSphere.center());
-        QVERIFY(defaultSphere.radius() == firstValidSphere.radius());
+        QCOMPARE(defaultSphere.radius(), firstValidSphere.radius());
         QVERIFY(!defaultSphere.isNull());
     }
 
@@ -289,7 +271,7 @@ private Q_SLOTS:
     }
 
     void ritterSphereCubePoints() {
-        QVector<Vector3D> cubePts={
+        QList<Vector3D> cubePts={
             Vector3D(-0.5, -0.5,  0.5),
             Vector3D( 0.5, -0.5, -0.5),
             Vector3D(-0.5,  0.5, -0.5),
@@ -308,7 +290,7 @@ private Q_SLOTS:
     }
 
     void ritterSphereRandomPoints() {
-        QVector<Vector3D> randomPts={
+        QList<Vector3D> randomPts={
             Vector3D(-81, 55, 46),
             Vector3D(-91, -73, -42),
             Vector3D(-50, -76, -77),
@@ -330,7 +312,7 @@ private Q_SLOTS:
     }
 
     void ritterSphereOnePoint() {
-        QVector<Vector3D> singlePt={
+        QList<Vector3D> singlePt={
             Vector3D(-0.5, -0.5, -0.5),
         };
         auto ritterSphere = Qt3DRender::Render::Sphere::fromPoints(singlePt);
@@ -365,6 +347,7 @@ private Q_SLOTS:
         QScopedPointer<Qt3DRender::TestAspect> test(new Qt3DRender::TestAspect(root.data()));
 
         // Runs Required jobs
+        test->registerTree(qobject_cast<Qt3DCore::QEntity *>(root.data()));
         runRequiredJobs(test.data());
 
         // THEN
@@ -440,8 +423,8 @@ private Q_SLOTS:
 
         QScopedPointer<Qt3DCore::QEntity> entity(new Qt3DCore::QEntity);
         QScopedPointer<Qt3DRender::TestAspect> test(new Qt3DRender::TestAspect(entity.data()));
-        Qt3DRender::QBuffer *vbuffer = new Qt3DRender::QBuffer;
-        Qt3DRender::QBuffer *ibuffer = new Qt3DRender::QBuffer;
+        Qt3DCore::QBuffer *vbuffer = new Qt3DCore::QBuffer;
+        Qt3DCore::QBuffer *ibuffer = new Qt3DCore::QBuffer;
 
         vbuffer->setData(vdata);
         Qt3DRender::Render::Buffer *vbufferBackend = test->nodeManagers()->bufferManager()->getOrCreateResource(vbuffer->id());
@@ -455,15 +438,15 @@ private Q_SLOTS:
         ibufferBackend->setManager(test->nodeManagers()->bufferManager());
         simulateInitializationSync(ibuffer, ibufferBackend);
 
-        Qt3DRender::QGeometry *g = new Qt3DRender::QGeometry;
+        Qt3DCore::QGeometry *g = new Qt3DCore::QGeometry;
         for (int i = 0; i < 2; ++i)
-            g->addAttribute(new Qt3DRender::QAttribute);
+            g->addAttribute(new Qt3DCore::QAttribute);
 
-        const QVector<Qt3DRender::QAttribute *> attrs = g->attributes();
-        Qt3DRender::QAttribute *attr = attrs[0];
+        const QList<Qt3DCore::QAttribute *> attrs = g->attributes();
+        Qt3DCore::QAttribute *attr = attrs[0];
         attr->setBuffer(vbuffer);
-        attr->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-        attr->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        attr->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+        attr->setVertexBaseType(Qt3DCore::QAttribute::Float);
         attr->setVertexSize(3);
         attr->setCount(6);
         attr->setByteOffset(0);
@@ -471,8 +454,8 @@ private Q_SLOTS:
 
         attr = attrs[1];
         attr->setBuffer(ibuffer);
-        attr->setAttributeType(Qt3DRender::QAttribute::IndexAttribute);
-        attr->setVertexBaseType(Qt3DRender::QAttribute::UnsignedShort);
+        attr->setAttributeType(Qt3DCore::QAttribute::IndexAttribute);
+        attr->setVertexBaseType(Qt3DCore::QAttribute::UnsignedShort);
         attr->setVertexSize(1);
         attr->setCount(indexCount);
         attr->setByteOffset(indexByteOffset);
@@ -505,10 +488,18 @@ private Q_SLOTS:
         entityBackend->setRenderer(test->renderer());
         simulateInitializationSync(entity.data(), entityBackend);
 
-        Qt3DRender::Render::CalculateBoundingVolumeJob calcBVolume;
-        calcBVolume.setManagers(test->nodeManagers());
-        calcBVolume.setRoot(test->sceneRoot());
-        calcBVolume.run();
+        test->registerTree(entity.data());
+
+        Qt3DCore::CalculateBoundingVolumeJob calcCBVolume(nullptr);
+        calcCBVolume.setRoot(test->root());
+        calcCBVolume.run();
+        calcCBVolume.postFrame(nullptr);
+
+        Qt3DRender::Render::CalculateBoundingVolumeJob calcRBVolume;
+        calcRBVolume.setManagers(test->nodeManagers());
+        calcRBVolume.setRoot(test->sceneRoot());
+        calcRBVolume.setFrontEndNodeManager(test.data());
+        calcRBVolume.run();
 
         Vector3D center = entityBackend->localBoundingVolume()->center();
         float radius = entityBackend->localBoundingVolume()->radius();
@@ -552,7 +543,7 @@ private Q_SLOTS:
 
         QScopedPointer<Qt3DCore::QEntity> entity(new Qt3DCore::QEntity);
         QScopedPointer<Qt3DRender::TestAspect> test(new Qt3DRender::TestAspect(entity.data()));
-        Qt3DRender::QBuffer *vbuffer = new Qt3DRender::QBuffer;
+        Qt3DCore::QBuffer *vbuffer = new Qt3DCore::QBuffer;
 
         vbuffer->setData(vdata);
         Qt3DRender::Render::Buffer *vbufferBackend = test->nodeManagers()->bufferManager()->getOrCreateResource(vbuffer->id());
@@ -560,14 +551,14 @@ private Q_SLOTS:
         vbufferBackend->setManager(test->nodeManagers()->bufferManager());
         simulateInitializationSync(vbuffer, vbufferBackend);
 
-        Qt3DRender::QGeometry *g = new Qt3DRender::QGeometry;
-        g->addAttribute(new Qt3DRender::QAttribute);
+        Qt3DCore::QGeometry *g = new Qt3DCore::QGeometry;
+        g->addAttribute(new Qt3DCore::QAttribute);
 
-        const QVector<Qt3DRender::QAttribute *> attrs = g->attributes();
-        Qt3DRender::QAttribute *attr = attrs[0];
+        const QList<Qt3DCore::QAttribute *> attrs = g->attributes();
+        Qt3DCore::QAttribute *attr = attrs[0];
         attr->setBuffer(vbuffer);
-        attr->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-        attr->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        attr->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+        attr->setVertexBaseType(Qt3DCore::QAttribute::Float);
         attr->setVertexSize(3);
         attr->setCount(6);
         attr->setByteOffset(0);
@@ -595,7 +586,10 @@ private Q_SLOTS:
         entityBackend->setRenderer(test->renderer());
         simulateInitializationSync(entity.data(), entityBackend);
 
+        test->registerTree(entity.data());
+
         Qt3DRender::Render::CalculateBoundingVolumeJob calcBVolume;
+        calcBVolume.setFrontEndNodeManager(test.data());
         calcBVolume.setManagers(test->nodeManagers());
         calcBVolume.setRoot(test->sceneRoot());
         calcBVolume.run();

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,9 @@
 
 #include "base/notreached.h"
 #include "base/values.h"
+#include "build/chromeos_buildflags.h"
+#include "components/feedback/content/feedback_uploader_factory.h"
 #include "components/feedback/feedback_uploader.h"
-#include "components/feedback/feedback_uploader_factory.h"
 #include "components/feedback/system_logs/system_logs_fetcher.h"
 #include "components/feedback/system_logs/system_logs_source.h"
 #include "content/public/browser/browser_context.h"
@@ -20,20 +21,22 @@ namespace extensions {
 ShellFeedbackPrivateDelegate::ShellFeedbackPrivateDelegate() = default;
 ShellFeedbackPrivateDelegate::~ShellFeedbackPrivateDelegate() = default;
 
-std::unique_ptr<base::DictionaryValue> ShellFeedbackPrivateDelegate::GetStrings(
+base::Value::Dict ShellFeedbackPrivateDelegate::GetStrings(
     content::BrowserContext* browser_context,
     bool from_crash) const {
   NOTIMPLEMENTED();
-  return nullptr;
+  return {};
 }
 
-system_logs::SystemLogsFetcher*
-ShellFeedbackPrivateDelegate::CreateSystemLogsFetcher(
-    content::BrowserContext* context) const {
-  return system_logs::BuildShellSystemLogsFetcher(context);
+void ShellFeedbackPrivateDelegate::FetchSystemInformation(
+    content::BrowserContext* context,
+    system_logs::SysLogsFetcherCallback callback) const {
+  // self-deleting object
+  auto* fetcher = system_logs::BuildShellSystemLogsFetcher(context);
+  fetcher->Fetch(std::move(callback));
 }
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 std::unique_ptr<system_logs::SystemLogsSource>
 ShellFeedbackPrivateDelegate::CreateSingleLogSource(
     api::feedback_private::LogSource source_type) const {
@@ -48,15 +51,16 @@ void ShellFeedbackPrivateDelegate::FetchExtraLogs(
   std::move(callback).Run(feedback_data);
 }
 
-void ShellFeedbackPrivateDelegate::UnloadFeedbackExtension(
-    content::BrowserContext* context) const {
-  NOTIMPLEMENTED();
-}
-
 api::feedback_private::LandingPageType
 ShellFeedbackPrivateDelegate::GetLandingPageType(
     const feedback::FeedbackData& feedback_data) const {
   return api::feedback_private::LANDING_PAGE_TYPE_NOLANDINGPAGE;
+}
+
+void ShellFeedbackPrivateDelegate::GetLacrosHistograms(
+    GetHistogramsCallback callback) {
+  NOTIMPLEMENTED();
+  std::move(callback).Run(std::string());
 }
 #endif
 
@@ -71,6 +75,12 @@ feedback::FeedbackUploader*
 ShellFeedbackPrivateDelegate::GetFeedbackUploaderForContext(
     content::BrowserContext* context) const {
   return feedback::FeedbackUploaderFactory::GetForBrowserContext(context);
+}
+
+void ShellFeedbackPrivateDelegate::OpenFeedback(
+    content::BrowserContext* context,
+    api::feedback_private::FeedbackSource source) const {
+  NOTIMPLEMENTED();
 }
 
 }  // namespace extensions

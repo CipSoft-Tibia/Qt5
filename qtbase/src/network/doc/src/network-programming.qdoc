@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \group network
@@ -43,9 +19,6 @@
     QTcpServer and QUdpSocket that represent low level network concepts,
     and high level classes such as QNetworkRequest, QNetworkReply and
     QNetworkAccessManager to perform network operations using common protocols.
-    It also offers classes such as QNetworkConfiguration,
-    QNetworkConfigurationManager and QNetworkSession that implement bearer
-    management.
 
     \tableofcontents
 
@@ -54,7 +27,7 @@
     The \l{Qt Network C++ Classes} page contains a list of the C++ classes
     in Qt Network.
 
-    \section1 High Level Network Operations for HTTP and FTP
+    \section1 High Level Network Operations for HTTP
 
     The Network Access API is a collection of classes for performing
     common network operations. The API provides an abstraction layer
@@ -67,7 +40,7 @@
     with a request, such as any header information and the encryption
     used. The URL specified when a request object is constructed
     determines the protocol used for a request.
-    Currently HTTP, FTP and local file URLs are supported for uploading
+    Currently HTTP and local file URLs are supported for uploading
     and downloading.
 
     The coordination of network operations is performed by the

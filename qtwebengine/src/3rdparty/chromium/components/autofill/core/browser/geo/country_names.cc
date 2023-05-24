@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,6 +13,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/lock.h"
+#include "build/build_config.h"
 #include "components/autofill/core/browser/geo/country_data.h"
 
 namespace autofill {
@@ -46,7 +47,9 @@ std::map<std::string, std::string> GetCommonNames() {
   common_names.insert(std::make_pair("UK", "GB"));
   common_names.insert(std::make_pair("BRASIL", "BR"));
   common_names.insert(std::make_pair("DEUTSCHLAND", "DE"));
-#if defined(OS_IOS)
+  // For some reason this is not provided by ICU:
+  common_names.insert(std::make_pair("CZECH REPUBLIC", "CZ"));
+#if BUILDFLAG(IS_IOS)
   // iOS uses the Foundation API to get the localized display name, in which
   // "China" is named "Chine mainland".
   common_names.insert(std::make_pair("CHINA", "CN"));
@@ -89,7 +92,7 @@ CountryNames::CountryNames() : CountryNames(g_application_locale.Get()) {
 CountryNames::~CountryNames() = default;
 
 const std::string CountryNames::GetCountryCode(
-    const base::string16& country) const {
+    const std::u16string& country) const {
   // First, check common country names, including 2- and 3-letter country codes.
   std::string country_utf8 = base::UTF16ToUTF8(base::ToUpperASCII(country));
   const auto result = common_names_.find(country_utf8);
@@ -107,7 +110,7 @@ const std::string CountryNames::GetCountryCode(
 }
 
 const std::string CountryNames::GetCountryCodeForLocalizedCountryName(
-    const base::string16& country,
+    const std::u16string& country,
     const std::string& locale_name) {
   // Do an unconditional lookup using the default and app_locale.
   // Chances are that the name of the country matches the localized one.

@@ -1,71 +1,26 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "trafficlight.h"
 
-#include <QPainter>
-#include <QVBoxLayout>
+#include <QtWidgets/qboxlayout.h>
+#include <QtGui/qpainter.h>
+
+using namespace Qt::Literals::StringLiterals;
 
 class TrafficLightWidget : public QWidget
 {
 public:
     TrafficLightWidget(QWidget *parent = nullptr)
-        : QWidget(parent), m_background(QLatin1String(":/background.png"))
+        : QWidget(parent), m_background(":/background.png"_L1)
     {
         QVBoxLayout *vbox = new QVBoxLayout(this);
         vbox->setContentsMargins(0, 40, 0, 80);
-        m_red = new LightWidget(QLatin1String(":/red.png"));
+        m_red = new LightWidget(":/red.png"_L1);
         vbox->addWidget(m_red, 0, Qt::AlignHCenter);
-        m_yellow = new LightWidget(QLatin1String(":/yellow.png"));
+        m_yellow = new LightWidget(":/yellow.png"_L1);
         vbox->addWidget(m_yellow, 0, Qt::AlignHCenter);
-        m_green = new LightWidget(QLatin1String(":/green.png"));
+        m_green = new LightWidget(":/green.png"_L1);
         vbox->addWidget(m_green, 0, Qt::AlignHCenter);
         setLayout(vbox);
     }
@@ -103,16 +58,11 @@ TrafficLight::TrafficLight(QScxmlStateMachine *machine, QWidget *parent)
     TrafficLightWidget *widget = new TrafficLightWidget(this);
     setFixedSize(widget->sizeHint());
 
-    machine->connectToState(QStringLiteral("red"),
-                            widget->redLight(), &LightWidget::switchLight);
-    machine->connectToState(QStringLiteral("redGoingGreen"),
-                            widget->redLight(), &LightWidget::switchLight);
-    machine->connectToState(QStringLiteral("yellow"),
-                            widget->yellowLight(), &LightWidget::switchLight);
-    machine->connectToState(QStringLiteral("blinking"),
-                            widget->yellowLight(), &LightWidget::switchLight);
-    machine->connectToState(QStringLiteral("green"),
-                            widget->greenLight(), &LightWidget::switchLight);
+    machine->connectToState(u"red"_s, widget->redLight(), &LightWidget::switchLight);
+    machine->connectToState(u"redGoingGreen"_s, widget->redLight(), &LightWidget::switchLight);
+    machine->connectToState(u"yellow"_s, widget->yellowLight(), &LightWidget::switchLight);
+    machine->connectToState(u"blinking"_s, widget->yellowLight(), &LightWidget::switchLight);
+    machine->connectToState(u"green"_s, widget->greenLight(), &LightWidget::switchLight);
 
     QAbstractButton *button = new ButtonWidget(this);
     auto setButtonGeometry = [this, button](){
@@ -124,8 +74,7 @@ TrafficLight::TrafficLight(QScxmlStateMachine *machine, QWidget *parent)
     connect(button, &QAbstractButton::toggled, this, setButtonGeometry);
     setButtonGeometry();
 
-    connect(button, &QAbstractButton::toggled,
-            this, &TrafficLight::toggleWorking);
+    connect(button, &QAbstractButton::toggled, this, &TrafficLight::toggleWorking);
 }
 
 void TrafficLight::toggleWorking(bool pause)
@@ -150,7 +99,9 @@ void LightWidget::setOn(bool on)
 }
 
 void LightWidget::switchLight(bool onoff)
-{ setOn(onoff); }
+{
+    setOn(onoff);
+}
 
 void LightWidget::paintEvent(QPaintEvent *)
 {
@@ -167,8 +118,8 @@ QSize LightWidget::sizeHint() const
 }
 
 ButtonWidget::ButtonWidget(QWidget *parent) :
-    QAbstractButton(parent), m_playIcon(QLatin1String(":/play.png")),
-    m_pauseIcon(QLatin1String(":/pause.png"))
+    QAbstractButton(parent), m_playIcon(":/play.png"_L1),
+    m_pauseIcon(":/pause.png"_L1)
 {
     setCheckable(true);
 }

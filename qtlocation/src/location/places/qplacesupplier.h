@@ -1,64 +1,49 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLACESUPPLIER_H
 #define QPLACESUPPLIER_H
 
+#include <QtLocation/qlocationglobal.h>
 #include <QtCore/QMetaType>
 #include <QtCore/QSharedDataPointer>
-#include <QtLocation/QPlaceIcon>
+#include <QtQml/qqml.h>
 
 QT_BEGIN_NAMESPACE
 
 class QUrl;
+class QPlaceIcon;
 class QPlaceSupplierPrivate;
+QT_DECLARE_QSDP_SPECIALIZATION_DTOR_WITH_EXPORT(QPlaceSupplierPrivate, Q_LOCATION_EXPORT)
 
 class Q_LOCATION_EXPORT QPlaceSupplier
 {
+    Q_GADGET
+    QML_VALUE_TYPE(supplier)
+    QML_STRUCTURED_VALUE
+
+    Q_PROPERTY(QString name READ name WRITE setName)
+    Q_PROPERTY(QString supplierId READ supplierId WRITE setSupplierId)
+    Q_PROPERTY(QUrl url READ url WRITE setUrl)
+    Q_PROPERTY(QPlaceIcon icon READ icon WRITE setIcon)
+
 public:
     QPlaceSupplier();
-    QPlaceSupplier(const QPlaceSupplier &other);
+    QPlaceSupplier(const QPlaceSupplier &other) noexcept;
+    QPlaceSupplier(QPlaceSupplier &&other) noexcept = default;
     ~QPlaceSupplier();
 
-    QPlaceSupplier &operator=(const QPlaceSupplier &other);
+    QPlaceSupplier &operator=(const QPlaceSupplier &other) noexcept;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QPlaceSupplier)
 
-    bool operator==(const QPlaceSupplier &other) const;
-    bool operator!=(const QPlaceSupplier &other) const {
-        return !(other == *this);
-    }
+    void swap(QPlaceSupplier &other) noexcept { d.swap(other.d); }
+
+    friend inline bool operator==(const QPlaceSupplier &lhs,
+                                  const QPlaceSupplier &rhs) noexcept
+    { return lhs.isEqual(rhs); }
+    friend inline bool operator!=(const QPlaceSupplier &lhs,
+                                  const QPlaceSupplier &rhs) noexcept
+    { return !lhs.isEqual(rhs); }
 
     QString name() const;
     void setName(const QString &data);
@@ -76,6 +61,8 @@ public:
 
 private:
     QSharedDataPointer<QPlaceSupplierPrivate> d;
+
+    bool isEqual(const QPlaceSupplier &other) const noexcept;
 };
 
 QT_END_NAMESPACE

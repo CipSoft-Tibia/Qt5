@@ -1,10 +1,11 @@
 PATCH /qqmlxmlhttprequest.cpp HTTP/1.1
-Accept-Language: en-US
+Accept-Language: {{Ignore}}
 If-Match: "ETagNumber"
 Content-Type: application/example
 Content-Length: 247
-Connection: Keep-Alive
-Accept-Encoding: gzip, deflate
+Connection: Keep-Alive{{Ignore}}
+HTTP2-Settings: {{Ignore}}
+Accept-Encoding: {{Ignore}}
 User-Agent: Mozilla/5.0
 Host: {{ServerHostUrl}}
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsysteminformationservice_p.h"
 #include "qsysteminformationservice_p_p.h"
@@ -118,7 +82,7 @@ void QSystemInformationServicePrivate::addJobLogStatsEntry(QSystemInformationSer
         return;
 
     if (!m_jobStatsCached.hasLocalData()) {
-        auto jobVector = new QVector<JobRunStats>;
+        auto jobVector = new QList<JobRunStats>;
         m_jobStatsCached.setLocalData(jobVector);
         QMutexLocker lock(&m_localStoragesMutex);
         m_localStorages.push_back(jobVector);
@@ -134,13 +98,13 @@ void QSystemInformationServicePrivate::addSubmissionLogStatsEntry(QSystemInforma
 
     QMutexLocker lock(&m_localStoragesMutex);
     if (!m_jobStatsCached.hasLocalData()) {
-        m_submissionStorage = new QVector<JobRunStats>;
+        m_submissionStorage = new QList<JobRunStats>;
         m_jobStatsCached.setLocalData(m_submissionStorage);
     }
 
     // Handle the case where submission thread is also the main thread (Scene/Manual drive modes with no RenderThread)
     if (m_submissionStorage == nullptr && m_jobStatsCached.hasLocalData())
-        m_submissionStorage = new QVector<JobRunStats>;
+        m_submissionStorage = new QList<JobRunStats>;
 
     // When having no submission thread this can be null
     m_submissionStorage->push_back(stats);
@@ -174,12 +138,12 @@ void QSystemInformationServicePrivate::writeFrameJobLogStats()
         header.frameId = m_frameId;
         header.jobCount = 0;
 
-        for (const QVector<JobRunStats> *storage : qAsConst(m_localStorages))
+        for (const QList<JobRunStats> *storage : std::as_const(m_localStorages))
             header.jobCount += storage->size();
 
         m_traceFile->write(reinterpret_cast<char *>(&header), sizeof(FrameHeader));
 
-        for (QVector<JobRunStats> *storage : qAsConst(m_localStorages)) {
+        for (QList<JobRunStats> *storage : std::as_const(m_localStorages)) {
             for (const JobRunStats &stat : *storage)
                 m_traceFile->write(reinterpret_cast<const char *>(&stat), sizeof(JobRunStats));
             storage->clear();
@@ -189,7 +153,7 @@ void QSystemInformationServicePrivate::writeFrameJobLogStats()
     // Write submission thread
     {
         QMutexLocker lock(&m_localStoragesMutex);
-        const int submissionJobSize = m_submissionStorage != nullptr ? m_submissionStorage->size() : 0;
+        const qsizetype submissionJobSize = m_submissionStorage != nullptr ? m_submissionStorage->size() : 0;
         if (submissionJobSize > 0) {
             FrameHeader header;
             header.frameId = m_frameId;
@@ -436,3 +400,5 @@ void QSystemInformationService::dumpCommand(const QString &command)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qsysteminformationservice_p.cpp"

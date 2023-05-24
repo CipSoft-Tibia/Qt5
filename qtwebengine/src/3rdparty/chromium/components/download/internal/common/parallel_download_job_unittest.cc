@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/test/mock_callback.h"
 #include "base/test/task_environment.h"
@@ -67,6 +67,10 @@ class ParallelDownloadJobForTest : public ParallelDownloadJob {
         min_slice_size_(min_slice_size),
         min_remaining_time_(min_remaining_time) {}
 
+  ParallelDownloadJobForTest(const ParallelDownloadJobForTest&) = delete;
+  ParallelDownloadJobForTest& operator=(const ParallelDownloadJobForTest&) =
+      delete;
+
   void CreateRequest(int64_t offset) override {
     auto worker = std::make_unique<DownloadWorker>(this, offset);
 
@@ -101,7 +105,6 @@ class ParallelDownloadJobForTest : public ParallelDownloadJob {
   int request_count_;
   int min_slice_size_;
   int min_remaining_time_;
-  DISALLOW_COPY_AND_ASSIGN(ParallelDownloadJobForTest);
 };
 
 class ParallelDownloadJobTest : public testing::Test {
@@ -454,6 +457,26 @@ TEST_F(ParallelDownloadJobTest, InterruptOnStartup) {
 
   // Because of the error, no parallel requests are built.
   task_environment_.RunUntilIdle();
+  EXPECT_EQ(0u, job_->workers().size());
+
+  DestroyParallelJob();
+}
+
+// Test that if all slices are completed before forking the parallel requests,
+// no parallel requests should be created.
+TEST_F(ParallelDownloadJobTest,
+       AllSlicesFinishedBeforeForkingParallelRequests) {
+  DownloadItem::ReceivedSlices slices = {
+      DownloadItem::ReceivedSlice(0, 20),
+      DownloadItem::ReceivedSlice(50, 50, true)};
+  CreateParallelJob(10, 90, slices, 2, 1, 10);
+  DownloadItem::ReceivedSlices new_slices = {
+      DownloadItem::ReceivedSlice(0, 50),
+      DownloadItem::ReceivedSlice(50, 50, true)};
+  EXPECT_CALL(*download_item_, GetReceivedSlices())
+      .WillRepeatedly(ReturnRef(new_slices));
+
+  BuildParallelRequests();
   EXPECT_EQ(0u, job_->workers().size());
 
   DestroyParallelJob();

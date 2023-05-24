@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 pa{
     Countries{
         001{"ਸੰਸਾਰ"}
@@ -307,8 +308,8 @@ pa{
         CG{"ਕਾਂਗੋ ਗਣਰਾਜ"}
         CI{"ਆਇਵਰੀ ਕੋਸਟ"}
         CZ{"ਚੈੱਕ ਗਣਰਾਜ"}
+        NZ{"ਐਓਟੇਰੋਆ ਨਿਊਜ਼ੀਲੈਂਡ"}
         SZ{"ਸਵਾਜ਼ੀਲੈਂਡ"}
         TL{"ਪੂਰਬ ਤਿਮੋਰ"}
     }
-    Version{"37"}
 }

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,11 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/system/sys_info.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/trace_event/trace_event.h"
 #include "components/viz/common/gpu/context_provider.h"
 #include "content/public/browser/android/compositor.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -28,9 +29,8 @@
 #include "gpu/ipc/common/gpu_surface_tracker.h"
 #include "services/viz/public/cpp/gpu/context_provider_command_buffer.h"
 #include "ui/gfx/color_space.h"
+#include "ui/gfx/geometry/transform.h"
 #include "ui/gl/android/surface_texture.h"
-
-#include <android/native_window_jni.h>
 
 #define VOID_OFFSET(x) reinterpret_cast<void*>(x)
 #define SHADER(Src) #Src
@@ -43,8 +43,10 @@ const char kQuadCopyVertex[] = SHADER(
     attribute vec4 a_Position;
     attribute vec2 a_TexCoordinate;
     varying highp vec2 v_TexCoordinate;
+    uniform mat4 u_UvTransform;
     void main() {
-      v_TexCoordinate = a_TexCoordinate;
+      highp vec4 uv_in = vec4(a_TexCoordinate.x, a_TexCoordinate.y, 0, 1);
+      v_TexCoordinate = (u_UvTransform * uv_in).xy;
       gl_Position = a_Position;
     }
 );
@@ -185,7 +187,7 @@ void MailboxToSurfaceBridgeImpl::OnContextAvailableOnUiThread(
 }
 
 void MailboxToSurfaceBridgeImpl::BindContextProviderToCurrentThread() {
-  auto result = context_provider_->BindToCurrentThread();
+  auto result = context_provider_->BindToCurrentSequence();
   if (result != gpu::ContextResult::kSuccess) {
     DLOG(ERROR) << "Failed to init viz::ContextProvider";
     return;
@@ -212,22 +214,17 @@ void MailboxToSurfaceBridgeImpl::BindContextProviderToCurrentThread() {
 
 void MailboxToSurfaceBridgeImpl::CreateSurface(
     gl::SurfaceTexture* surface_texture) {
-  ANativeWindow* window = surface_texture->CreateSurface();
   gpu::GpuSurfaceTracker* tracker = gpu::GpuSurfaceTracker::Get();
-  ANativeWindow_acquire(window);
-  // Skip ANativeWindow_setBuffersGeometry, the default size appears to work.
-  surface_ = std::make_unique<gl::ScopedJavaSurface>(surface_texture);
   surface_handle_ =
       tracker->AddSurfaceForNativeWidget(gpu::GpuSurfaceTracker::SurfaceRecord(
-          window, surface_->j_surface().obj(),
+          gl::ScopedJavaSurface(surface_texture),
           false /* can_be_used_with_surface_control */));
   // Unregistering happens in the destructor.
-  ANativeWindow_release(window);
 }
 
 void MailboxToSurfaceBridgeImpl::CreateAndBindContextProvider(
     base::OnceClosure on_bound_callback) {
-  gl_thread_task_runner_ = base::ThreadTaskRunnerHandle::Get();
+  gl_thread_task_runner_ = base::SingleThreadTaskRunner::GetCurrentDefault();
   on_context_bound_ = std::move(on_bound_callback);
 
   // The callback to run in this thread. It is necessary to keep |surface| alive
@@ -291,10 +288,19 @@ void MailboxToSurfaceBridgeImpl::ResizeSurface(int width, int height) {
 
 bool MailboxToSurfaceBridgeImpl::CopyMailboxToSurfaceAndSwap(
     const gpu::MailboxHolder& mailbox) {
+  return CopyMailboxToSurfaceAndSwap(mailbox, gfx::Transform());
+}
+
+bool MailboxToSurfaceBridgeImpl::CopyMailboxToSurfaceAndSwap(
+    const gpu::MailboxHolder& mailbox,
+    const gfx::Transform& uv_transform) {
   if (!IsConnected()) {
     // We may not have a context yet, i.e. due to surface initialization
     // being incomplete. This is not an error, but we obviously can't draw
-    // yet. TODO(klausw): change the caller to defer this until we are ready.
+    // yet. This affects the non-shared-buffer path on Android N (or
+    // if UseSharedBuffer was forced to false due to GPU bug workarounds),
+    // and may result in a couple of discarded images while waiting for
+    // initialization which is generally harmless.
     return false;
   }
 
@@ -316,7 +322,7 @@ bool MailboxToSurfaceBridgeImpl::CopyMailboxToSurfaceAndSwap(
   GLuint sourceTexture = ConsumeTexture(gl_, mailbox);
   gl_->BeginSharedImageAccessDirectCHROMIUM(
       sourceTexture, GL_SHARED_IMAGE_ACCESS_MODE_READ_CHROMIUM);
-  DrawQuad(sourceTexture);
+  DrawQuad(sourceTexture, uv_transform);
   gl_->EndSharedImageAccessDirectCHROMIUM(sourceTexture);
   gl_->DeleteTextures(1, &sourceTexture);
   gl_->SwapBuffers(swap_id_++);
@@ -337,10 +343,10 @@ void MailboxToSurfaceBridgeImpl::WaitSyncToken(
 }
 
 void MailboxToSurfaceBridgeImpl::WaitForClientGpuFence(
-    gfx::GpuFence* gpu_fence) {
+    gfx::GpuFence& gpu_fence) {
   TRACE_EVENT0("gpu", __FUNCTION__);
   DCHECK(IsConnected());
-  GLuint id = gl_->CreateClientGpuFenceCHROMIUM(gpu_fence->AsClientGpuFence());
+  GLuint id = gl_->CreateClientGpuFenceCHROMIUM(gpu_fence.AsClientGpuFence());
   gl_->WaitGpuFenceCHROMIUM(id);
   gl_->DestroyGpuFenceCHROMIUM(id);
 }
@@ -423,6 +429,8 @@ void MailboxToSurfaceBridgeImpl::InitializeRenderer() {
       gl_->GetAttribLocation(program_handle, "a_TexCoordinate");
   GLuint texUniform_handle =
       gl_->GetUniformLocation(program_handle, "u_Texture");
+  uniform_uv_transform_handle_ =
+      gl_->GetUniformLocation(program_handle, "u_UvTransform");
 
   GLuint vertexBuffer = 0;
   gl_->GenBuffers(1, &vertexBuffer);
@@ -466,16 +474,19 @@ void MailboxToSurfaceBridgeImpl::InitializeRenderer() {
   gl_->Uniform1i(texUniform_handle, 0);
 }
 
-void MailboxToSurfaceBridgeImpl::DrawQuad(unsigned int texture_handle) {
+void MailboxToSurfaceBridgeImpl::DrawQuad(unsigned int texture_handle,
+                                          const gfx::Transform& uv_transform) {
   DCHECK(IsConnected());
 
   // We're redrawing over the entire viewport, but it's generally more
   // efficient on mobile tiling GPUs to clear anyway as a hint that
-  // we're done with the old content. TODO(klausw, https://crbug.com/700389):
-  // investigate using gl_->DiscardFramebufferEXT here since that's more
-  // efficient on desktop, but it would need a capability check since
-  // it's not supported on older devices such as Nexus 5X.
+  // we're done with the old content.
   gl_->Clear(GL_COLOR_BUFFER_BIT);
+
+  float uv_transform_floats[16];
+  uv_transform.GetColMajorF(uv_transform_floats);
+  gl_->UniformMatrix4fv(uniform_uv_transform_handle_, 1, GL_FALSE,
+                        &uv_transform_floats[0]);
 
   // Configure texture. This is a 1:1 pixel copy since the surface
   // size is resized to match the source canvas, so we can use
@@ -484,7 +495,11 @@ void MailboxToSurfaceBridgeImpl::DrawQuad(unsigned int texture_handle) {
   gl_->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   gl_->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   gl_->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  gl_->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  if (uv_transform.IsIdentity()) {
+    gl_->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  } else {
+    gl_->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  }
   gl_->DrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 

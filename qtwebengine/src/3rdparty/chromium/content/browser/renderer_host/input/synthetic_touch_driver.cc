@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,8 +19,15 @@ SyntheticTouchDriver::~SyntheticTouchDriver() {}
 void SyntheticTouchDriver::DispatchEvent(SyntheticGestureTarget* target,
                                          const base::TimeTicks& timestamp) {
   touch_event_.SetTimeStamp(timestamp);
-  if (touch_event_.GetType() != blink::WebInputEvent::Type::kUndefined)
+  if (touch_event_.GetType() != blink::WebInputEvent::Type::kUndefined) {
+    base::WeakPtr<SyntheticPointerDriver> weak_this = AsWeakPtr();
     target->DispatchInputEventToPlatform(touch_event_);
+    // Dispatching a touch event can cause the containing WebContents to be
+    // synchronously deleted.
+    if (!weak_this) {
+      return;
+    }
+  }
   touch_event_.ResetPoints();
   ResetPointerIdIndexMap();
 }
@@ -34,13 +41,19 @@ void SyntheticTouchDriver::Press(float x,
                                  float height,
                                  float rotation_angle,
                                  float force,
+                                 float tangential_pressure,
+                                 int tilt_x,
+                                 int tilt_y,
                                  const base::TimeTicks& timestamp) {
   DCHECK_GE(index, 0);
   DCHECK(pointer_id_map_.find(index) == pointer_id_map_.end());
-  int touch_index = touch_event_.PressPoint(x, y, width / 2.f, height / 2.f,
-                                            rotation_angle, force);
+  int touch_index =
+      touch_event_.PressPoint(x, y, width / 2.f, height / 2.f, rotation_angle,
+                              force, tangential_pressure, tilt_x, tilt_y);
   touch_event_.touches[touch_index].id = index;
   pointer_id_map_[index] = touch_index;
+  if (from_devtools_debugger_)
+    key_modifiers |= blink::WebInputEvent::kFromDebugger;
   touch_event_.SetModifiers(key_modifiers);
 }
 
@@ -51,11 +64,18 @@ void SyntheticTouchDriver::Move(float x,
                                 float width,
                                 float height,
                                 float rotation_angle,
-                                float force) {
+                                float force,
+                                float tangential_pressure,
+                                int tilt_x,
+                                int tilt_y,
+                                SyntheticPointerActionParams::Button button) {
   DCHECK_GE(index, 0);
   DCHECK(pointer_id_map_.find(index) != pointer_id_map_.end());
   touch_event_.MovePoint(pointer_id_map_[index], x, y, width / 2.f,
-                         height / 2.f, rotation_angle, force);
+                         height / 2.f, rotation_angle, force,
+                         tangential_pressure, tilt_x, tilt_y);
+  if (from_devtools_debugger_)
+    key_modifiers |= blink::WebInputEvent::kFromDebugger;
   touch_event_.SetModifiers(key_modifiers);
 }
 
@@ -65,6 +85,8 @@ void SyntheticTouchDriver::Release(int index,
   DCHECK_GE(index, 0);
   DCHECK(pointer_id_map_.find(index) != pointer_id_map_.end());
   touch_event_.ReleasePoint(pointer_id_map_[index]);
+  if (from_devtools_debugger_)
+    key_modifiers |= blink::WebInputEvent::kFromDebugger;
   touch_event_.SetModifiers(key_modifiers);
   pointer_id_map_.erase(index);
 }
@@ -75,6 +97,8 @@ void SyntheticTouchDriver::Cancel(int index,
   DCHECK_GE(index, 0);
   DCHECK(pointer_id_map_.find(index) != pointer_id_map_.end());
   touch_event_.CancelPoint(pointer_id_map_[index]);
+  if (from_devtools_debugger_)
+    key_modifiers |= blink::WebInputEvent::kFromDebugger;
   touch_event_.SetModifiers(key_modifiers);
   touch_event_.dispatch_type =
       blink::WebInputEvent::DispatchType::kEventNonBlocking;

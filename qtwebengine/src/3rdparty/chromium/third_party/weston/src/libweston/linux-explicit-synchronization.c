@@ -245,11 +245,9 @@ bind_linux_explicit_synchronization(struct wl_client *client,
 WL_EXPORT int
 linux_explicit_synchronization_setup(struct weston_compositor *compositor)
 {
-	/* TODO: Update to minor version 2 when the next version of
-	 * wayland-protocols that contains it is released. */
 	if (!wl_global_create(compositor->wl_display,
 			      &zwp_linux_explicit_synchronization_v1_interface,
-			      1, compositor,
+			      2, compositor,
 			      bind_linux_explicit_synchronization))
 		return -1;
 

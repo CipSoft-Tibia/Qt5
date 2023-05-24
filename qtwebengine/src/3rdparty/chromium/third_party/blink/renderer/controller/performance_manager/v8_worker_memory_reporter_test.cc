@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -68,6 +68,7 @@ class MemoryUsageChecker {
     EXPECT_THAT(expected_counts, testing::Contains(worker_count_));
     if (worker_count_ == 1) {
       EXPECT_LE(bytes_per_worker_lower_bound_, result.workers[0].bytes);
+      EXPECT_EQ(KURL("http://fake.url/"), result.workers[0].url);
     }
     called_ = true;
     if (callback_action_ == CallbackAction::kExitRunLoop) {
@@ -86,7 +87,7 @@ class MemoryUsageChecker {
 TEST_F(V8WorkerMemoryReporterTest, OnMeasurementSuccess) {
   MockCallback mock_callback;
   V8WorkerMemoryReporter reporter(
-      WTF::Bind(&MockCallback::Callback, WTF::Unretained(&mock_callback)));
+      WTF::BindOnce(&MockCallback::Callback, WTF::Unretained(&mock_callback)));
   reporter.SetWorkerCount(6);
   Result result = {Vector<WorkerMemoryUsage>(
       {WorkerMemoryUsage{WorkerToken(DedicatedWorkerToken()), 1},
@@ -98,29 +99,31 @@ TEST_F(V8WorkerMemoryReporterTest, OnMeasurementSuccess) {
 
   EXPECT_CALL(mock_callback, Callback(result)).Times(1);
   for (auto& worker : result.workers) {
-    reporter.OnMeasurementSuccess(worker);
+    reporter.OnMeasurementSuccess(std::make_unique<WorkerMemoryUsage>(worker));
   }
 }
 
 TEST_F(V8WorkerMemoryReporterTest, OnMeasurementFailure) {
   MockCallback mock_callback;
   V8WorkerMemoryReporter reporter(
-      WTF::Bind(&MockCallback::Callback, WTF::Unretained(&mock_callback)));
+      WTF::BindOnce(&MockCallback::Callback, WTF::Unretained(&mock_callback)));
   reporter.SetWorkerCount(3);
   Result result = {Vector<WorkerMemoryUsage>(
       {WorkerMemoryUsage{WorkerToken(DedicatedWorkerToken()), 1},
        WorkerMemoryUsage{WorkerToken(DedicatedWorkerToken()), 2}})};
 
   EXPECT_CALL(mock_callback, Callback(result)).Times(1);
-  reporter.OnMeasurementSuccess(result.workers[0]);
+  reporter.OnMeasurementSuccess(
+      std::make_unique<WorkerMemoryUsage>(result.workers[0]));
   reporter.OnMeasurementFailure();
-  reporter.OnMeasurementSuccess(result.workers[1]);
+  reporter.OnMeasurementSuccess(
+      std::make_unique<WorkerMemoryUsage>(result.workers[1]));
 }
 
 TEST_F(V8WorkerMemoryReporterTest, OnTimeout) {
   MockCallback mock_callback;
   V8WorkerMemoryReporter reporter(
-      WTF::Bind(&MockCallback::Callback, WTF::Unretained(&mock_callback)));
+      WTF::BindOnce(&MockCallback::Callback, WTF::Unretained(&mock_callback)));
   reporter.SetWorkerCount(4);
   Result result = {Vector<WorkerMemoryUsage>(
       {WorkerMemoryUsage{WorkerToken(DedicatedWorkerToken()), 1},
@@ -128,39 +131,44 @@ TEST_F(V8WorkerMemoryReporterTest, OnTimeout) {
 
   EXPECT_CALL(mock_callback, Callback(result)).Times(1);
 
-  reporter.OnMeasurementSuccess(result.workers[0]);
-  reporter.OnMeasurementSuccess(result.workers[1]);
-  reporter.OnTimeout();
   reporter.OnMeasurementSuccess(
-      WorkerMemoryUsage{WorkerToken(SharedWorkerToken()), 2});
+      std::make_unique<WorkerMemoryUsage>(result.workers[0]));
+  reporter.OnMeasurementSuccess(
+      std::make_unique<WorkerMemoryUsage>(result.workers[1]));
+  reporter.OnTimeout();
+  reporter.OnMeasurementSuccess(std::make_unique<WorkerMemoryUsage>(
+      WorkerMemoryUsage{WorkerToken(SharedWorkerToken()), 2}));
   reporter.OnMeasurementFailure();
 }
 
 TEST_F(V8WorkerMemoryReporterTest, OnTimeoutNoop) {
   MockCallback mock_callback;
   V8WorkerMemoryReporter reporter(
-      WTF::Bind(&MockCallback::Callback, WTF::Unretained(&mock_callback)));
+      WTF::BindOnce(&MockCallback::Callback, WTF::Unretained(&mock_callback)));
   reporter.SetWorkerCount(2);
   Result result = {Vector<WorkerMemoryUsage>(
       {WorkerMemoryUsage{WorkerToken(DedicatedWorkerToken()), 1},
        WorkerMemoryUsage{WorkerToken(DedicatedWorkerToken()), 2}})};
 
   EXPECT_CALL(mock_callback, Callback(result)).Times(1);
-  reporter.OnMeasurementSuccess(result.workers[0]);
-  reporter.OnMeasurementSuccess(result.workers[1]);
+  reporter.OnMeasurementSuccess(
+      std::make_unique<WorkerMemoryUsage>(result.workers[0]));
+  reporter.OnMeasurementSuccess(
+      std::make_unique<WorkerMemoryUsage>(result.workers[1]));
   reporter.OnTimeout();
 }
 
 TEST_F(V8WorkerMemoryReporterTestWithDedicatedWorker, GetMemoryUsage) {
   const String source_code = "globalThis.array = new Array(1000000).fill(0);";
-  StartWorker(source_code);
+  StartWorker();
+  EvaluateClassicScript(source_code);
   WaitUntilWorkerIsRunning();
   constexpr size_t kBytesPerArrayElement = 4;
   constexpr size_t kArrayLength = 1000000;
   MemoryUsageChecker checker(1, kBytesPerArrayElement * kArrayLength,
                              MemoryUsageChecker::CallbackAction::kExitRunLoop);
   V8WorkerMemoryReporter::GetMemoryUsage(
-      WTF::Bind(&MemoryUsageChecker::Callback, WTF::Unretained(&checker)),
+      WTF::BindOnce(&MemoryUsageChecker::Callback, WTF::Unretained(&checker)),
       v8::MeasureMemoryExecution::kEager);
   test::EnterRunLoop();
   EXPECT_TRUE(checker.IsCalled());
@@ -168,12 +176,13 @@ TEST_F(V8WorkerMemoryReporterTestWithDedicatedWorker, GetMemoryUsage) {
 
 TEST_F(V8WorkerMemoryReporterTestWithMockPlatform, GetMemoryUsageTimeout) {
   const String source_code = "while(true);";
-  StartWorker(source_code);
+  StartWorker();
+  EvaluateClassicScript(source_code);
   // Since the worker is in infinite loop and does not process tasks,
   // we cannot call WaitUntilWorkerIsRunning here as that would block.
   MemoryUsageChecker checker(0, 0, MemoryUsageChecker::CallbackAction::kNone);
   V8WorkerMemoryReporter::GetMemoryUsage(
-      WTF::Bind(&MemoryUsageChecker::Callback, WTF::Unretained(&checker)),
+      WTF::BindOnce(&MemoryUsageChecker::Callback, WTF::Unretained(&checker)),
       v8::MeasureMemoryExecution::kEager);
   platform()->RunForPeriodSeconds(V8WorkerMemoryReporter::kTimeout.InSeconds() +
                                   1);

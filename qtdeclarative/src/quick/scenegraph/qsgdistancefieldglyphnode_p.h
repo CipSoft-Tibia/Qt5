@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSGDISTANCEFIELDGLYPHNODE_P_H
 #define QSGDISTANCEFIELDGLYPHNODE_P_H
@@ -72,6 +36,7 @@ public:
     void setColor(const QColor &color) override;
 
     void setPreferredAntialiasingMode(AntialiasingMode mode) override;
+    void setRenderTypeQuality(int renderTypeQuality) override;
 
     void setStyle(QQuickText::TextStyle style) override;
     void setStyleColor(const QColor &color) override;
@@ -107,15 +72,20 @@ private:
     AntialiasingMode m_antialiasingMode;
     QRectF m_boundingRect;
     const QSGDistanceFieldGlyphCache::Texture *m_texture;
+    int m_renderTypeQuality;
 
     struct GlyphInfo {
         QVector<quint32> indexes;
         QVector<QPointF> positions;
     };
     QSet<quint32> m_allGlyphIndexesLookup;
+    // m_glyphs holds pointers to the GlyphInfo.indexes and positions arrays, so we need to hold on to them
+    QHash<const QSGDistanceFieldGlyphCache::Texture *, GlyphInfo> m_glyphsInOtherTextures;
 
     uint m_dirtyGeometry: 1;
     uint m_dirtyMaterial: 1;
+
+    static qint64 m_totalAllocation; // all SG glyph vertices and indices; only for qCDebug metrics
 };
 
 QT_END_NAMESPACE

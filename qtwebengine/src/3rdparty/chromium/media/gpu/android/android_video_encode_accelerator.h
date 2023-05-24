@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,18 +8,18 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <list>
 #include <map>
 #include <memory>
 #include <tuple>
 #include <vector>
 
 #include "base/containers/queue.h"
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
-#include "base/threading/thread_checker.h"
+#include "base/sequence_checker.h"
+#include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "media/base/android/media_codec_bridge_impl.h"
+#include "media/base/bitrate.h"
 #include "media/gpu/media_gpu_export.h"
 #include "media/video/video_encode_accelerator.h"
 
@@ -36,14 +36,21 @@ class MEDIA_GPU_EXPORT AndroidVideoEncodeAccelerator
     : public VideoEncodeAccelerator {
  public:
   AndroidVideoEncodeAccelerator();
+
+  AndroidVideoEncodeAccelerator(const AndroidVideoEncodeAccelerator&) = delete;
+  AndroidVideoEncodeAccelerator& operator=(
+      const AndroidVideoEncodeAccelerator&) = delete;
+
   ~AndroidVideoEncodeAccelerator() override;
 
   // VideoEncodeAccelerator implementation.
   VideoEncodeAccelerator::SupportedProfiles GetSupportedProfiles() override;
-  bool Initialize(const Config& config, Client* client) override;
+  bool Initialize(const Config& config,
+                  Client* client,
+                  std::unique_ptr<MediaLog> media_log) override;
   void Encode(scoped_refptr<VideoFrame> frame, bool force_keyframe) override;
   void UseOutputBitstreamBuffer(BitstreamBuffer buffer) override;
-  void RequestEncodingParametersChange(uint32_t bitrate,
+  void RequestEncodingParametersChange(const Bitrate& bitrate,
                                        uint32_t framerate) override;
   void Destroy() override;
 
@@ -67,12 +74,20 @@ class MEDIA_GPU_EXPORT AndroidVideoEncodeAccelerator
   void MaybeStartIOTimer();
   void MaybeStopIOTimer();
 
-  // Used to DCHECK that we are called on the correct thread.
-  base::ThreadChecker thread_checker_;
+  // Ask MediaCodec what input buffer layout it prefers and set values of
+  // |input_buffer_stride_| and |input_buffer_yplane_height_|. If the codec
+  // does not provide these values, sets up |aligned_size_| such that encoded
+  // frames are cropped to the nearest 16x16 alignment.
+  bool SetInputBufferLayout();
+
+  // Used to DCHECK that we are called on the correct sequence.
+  SEQUENCE_CHECKER(sequence_checker_);
 
   // VideoDecodeAccelerator::Client callbacks go here.  Invalidated once any
   // error triggers.
   std::unique_ptr<base::WeakPtrFactory<Client>> client_ptr_factory_;
+
+  std::unique_ptr<MediaLog> log_;
 
   std::unique_ptr<MediaCodecBridge> media_codec_;
 
@@ -89,7 +104,7 @@ class MEDIA_GPU_EXPORT AndroidVideoEncodeAccelerator
   base::RepeatingTimer io_timer_;
 
   // The difference between number of buffers queued & dequeued at the codec.
-  int32_t num_buffers_at_codec_;
+  int32_t num_buffers_at_codec_ = 0;
 
   // A monotonically-growing value.
   base::TimeDelta presentation_timestamp_;
@@ -102,12 +117,19 @@ class MEDIA_GPU_EXPORT AndroidVideoEncodeAccelerator
   // change after.
   gfx::Size frame_size_;
 
-  uint32_t last_set_bitrate_;  // In bps.
+  // Y and UV plane strides in the encoder's input buffer
+  int input_buffer_stride_ = 0;
+
+  // Y-plane height in the encoder's input
+  int input_buffer_yplane_height_ = 0;
+
+  uint32_t last_set_bitrate_ = 0;  // In bps.
 
   // True if there is encoder error.
-  bool error_occurred_;
+  bool error_occurred_ = false;
 
-  DISALLOW_COPY_AND_ASSIGN(AndroidVideoEncodeAccelerator);
+  // Required for encoders which are missing stride information.
+  absl::optional<gfx::Size> aligned_size_;
 };
 
 }  // namespace media

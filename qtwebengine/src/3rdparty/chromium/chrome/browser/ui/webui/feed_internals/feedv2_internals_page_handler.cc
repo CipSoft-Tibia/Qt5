@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,15 +7,19 @@
 #include <utility>
 
 #include "base/feature_list.h"
+#include "base/functional/callback_helpers.h"
 #include "base/metrics/statistics_recorder.h"
 #include "base/time/time.h"
 #include "chrome/browser/ui/webui/feed_internals/feed_internals.mojom.h"
 #include "components/feed/core/common/pref_names.h"
-#include "components/feed/core/common/user_classifier.h"
+#include "components/feed/core/proto/v2/ui.pb.h"
 #include "components/feed/core/shared_prefs/pref_names.h"
+#include "components/feed/core/v2/config.h"
+#include "components/feed/core/v2/public/feed_api.h"
 #include "components/feed/core/v2/public/feed_service.h"
-#include "components/feed/core/v2/public/feed_stream_api.h"
+#include "components/feed/core/v2/public/stream_type.h"
 #include "components/feed/core/v2/public/types.h"
+#include "components/feed/core/v2/public/web_feed_subscriptions.h"
 #include "components/feed/feed_feature_list.h"
 #include "components/offline_pages/core/prefetch/prefetch_prefs.h"
 #include "components/offline_pages/core/prefetch/suggestions_provider.h"
@@ -58,6 +62,9 @@ void FeedV2InternalsPageHandler::GetGeneralProperties(
   properties->is_feed_allowed = IsFeedAllowed();
   properties->is_prefetching_enabled =
       offline_pages::prefetch_prefs::IsEnabled(pref_service_);
+  properties->is_web_feed_follow_intro_debug_enabled =
+      IsWebFeedFollowIntroDebugEnabled();
+  properties->use_feed_query_requests = ShouldUseFeedQueryRequests();
   if (debug_data.fetch_info)
     properties->feed_fetch_url = debug_data.fetch_info->base_request_url;
   if (debug_data.upload_info)
@@ -65,14 +72,9 @@ void FeedV2InternalsPageHandler::GetGeneralProperties(
 
   properties->load_stream_status = debug_data.load_stream_status;
 
+  properties->following_feed_order = GetFollowingFeedOrder();
+
   std::move(callback).Run(std::move(properties));
-}
-
-void FeedV2InternalsPageHandler::GetUserClassifierProperties(
-    GetUserClassifierPropertiesCallback callback) {
-  // TODO(crbug.com/1066230): Either implement this or remove it.
-
-  std::move(callback).Run(feed_internals::mojom::UserClassifier::New());
 }
 
 void FeedV2InternalsPageHandler::GetLastFetchProperties(
@@ -95,30 +97,18 @@ void FeedV2InternalsPageHandler::GetLastFetchProperties(
   std::move(callback).Run(std::move(properties));
 }
 
-void FeedV2InternalsPageHandler::ClearUserClassifierProperties() {
-  // TODO(crbug.com/1066230): Remove or implement this.
+void FeedV2InternalsPageHandler::RefreshForYouFeed() {
+  feed_stream_->ForceRefreshForDebugging(
+      feed::StreamType(feed::StreamKind::kForYou));
 }
 
-void FeedV2InternalsPageHandler::ClearCachedDataAndRefreshFeed() {
-  // TODO(crbug.com/1066230): Not sure we need to clear cache since we don't
-  // retain data on refresh.
-  feed_stream_->ForceRefreshForDebugging();
+void FeedV2InternalsPageHandler::RefreshFollowingFeed() {
+  feed_stream_->ForceRefreshForDebugging(
+      feed::StreamType(feed::StreamKind::kFollowing));
 }
 
-void FeedV2InternalsPageHandler::RefreshFeed() {
-  feed_stream_->ForceRefreshForDebugging();
-}
-
-void FeedV2InternalsPageHandler::GetCurrentContent(
-    GetCurrentContentCallback callback) {
-  if (!IsFeedAllowed()) {
-    std::move(callback).Run({});
-    return;
-  }
-  // TODO(crbug.com/1066230): Content metadata is (yet?) available. I wasn't
-  // able to get this to work for v1 either, so maybe it's not that important
-  // to implement. We should remove |GetCurrentContent| if it's not needed.
-  std::move(callback).Run({});
+void FeedV2InternalsPageHandler::RefreshWebFeedSuggestions() {
+  feed_stream_->subscriptions().RefreshRecommendedFeeds(base::DoNothing());
 }
 
 void FeedV2InternalsPageHandler::GetFeedProcessScopeDump(
@@ -127,7 +117,7 @@ void FeedV2InternalsPageHandler::GetFeedProcessScopeDump(
 }
 
 bool FeedV2InternalsPageHandler::IsFeedAllowed() {
-  return pref_service_->GetBoolean(feed::prefs::kEnableSnippets);
+  return feed::FeedService::IsEnabled(*pref_service_);
 }
 
 void FeedV2InternalsPageHandler::GetFeedHistograms(
@@ -142,9 +132,69 @@ void FeedV2InternalsPageHandler::OverrideFeedHost(const GURL& host) {
       feed::prefs::kHostOverrideHost,
       host.is_valid() ? host.spec() : std::string());
 }
-void FeedV2InternalsPageHandler::OverrideActionUploadEndpoint(
+void FeedV2InternalsPageHandler::OverrideDiscoverApiEndpoint(
     const GURL& endpoint_url) {
   return pref_service_->SetString(
-      feed::prefs::kActionsEndpointOverride,
+      feed::prefs::kDiscoverAPIEndpointOverride,
       endpoint_url.is_valid() ? endpoint_url.spec() : std::string());
+}
+
+void FeedV2InternalsPageHandler::OverrideFeedStreamData(
+    const std::vector<uint8_t>& data) {
+  feedui::StreamUpdate stream_update;
+  feedui::Slice* slice = stream_update.add_updated_slices()->mutable_slice();
+  slice->set_slice_id("SetByInternalsPage");
+  slice->mutable_xsurface_slice()->set_xsurface_frame(data.data(), data.size());
+  feed_stream_->SetForcedStreamUpdateForDebugging(stream_update);
+}
+
+bool FeedV2InternalsPageHandler::IsWebFeedFollowIntroDebugEnabled() {
+  return pref_service_->GetBoolean(feed::prefs::kEnableWebFeedFollowIntroDebug);
+}
+
+void FeedV2InternalsPageHandler::SetWebFeedFollowIntroDebugEnabled(
+    const bool enabled) {
+  pref_service_->SetBoolean(feed::prefs::kEnableWebFeedFollowIntroDebug,
+                            enabled);
+}
+
+bool FeedV2InternalsPageHandler::ShouldUseFeedQueryRequests() {
+  return feed::GetFeedConfig().use_feed_query_requests;
+}
+
+void FeedV2InternalsPageHandler::SetUseFeedQueryRequests(
+    const bool use_legacy) {
+  feed::SetUseFeedQueryRequests(use_legacy);
+}
+
+feed_internals::mojom::FeedOrder
+FeedV2InternalsPageHandler::GetFollowingFeedOrder() {
+  feed::ContentOrder order = feed_stream_->GetContentOrderFromPrefs(
+      feed::StreamType(feed::StreamKind::kFollowing));
+  switch (order) {
+    case feed::ContentOrder::kUnspecified:
+      return feed_internals::mojom::FeedOrder::kUnspecified;
+    case feed::ContentOrder::kGrouped:
+      return feed_internals::mojom::FeedOrder::kGrouped;
+    case feed::ContentOrder::kReverseChron:
+      return feed_internals::mojom::FeedOrder::kReverseChron;
+  }
+}
+
+void FeedV2InternalsPageHandler::SetFollowingFeedOrder(
+    const feed_internals::mojom::FeedOrder new_order) {
+  feed::ContentOrder order_to_set;
+  switch (new_order) {
+    case feed_internals::mojom::FeedOrder::kUnspecified:
+      order_to_set = feed::ContentOrder::kUnspecified;
+      break;
+    case feed_internals::mojom::FeedOrder::kGrouped:
+      order_to_set = feed::ContentOrder::kGrouped;
+      break;
+    case feed_internals::mojom::FeedOrder::kReverseChron:
+      order_to_set = feed::ContentOrder::kReverseChron;
+      break;
+  }
+  feed_stream_->SetContentOrder(feed::StreamType(feed::StreamKind::kFollowing),
+                                order_to_set);
 }

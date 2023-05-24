@@ -1,14 +1,13 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ppapi/host/resource_message_filter.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/sequenced_task_runner.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "ipc/ipc_message.h"
 #include "ppapi/c/pp_errors.h"
 #include "ppapi/host/ppapi_host.h"
@@ -34,13 +33,14 @@ void ResourceMessageFilterDeleteTraits::Destruct(
 }  // namespace internal
 
 ResourceMessageFilter::ResourceMessageFilter()
-    : deletion_task_runner_(base::ThreadTaskRunnerHandle::Get()),
-      reply_thread_task_runner_(base::ThreadTaskRunnerHandle::Get()),
+    : deletion_task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
+      reply_thread_task_runner_(
+          base::SingleThreadTaskRunner::GetCurrentDefault()),
       resource_host_(nullptr) {}
 
 ResourceMessageFilter::ResourceMessageFilter(
     scoped_refptr<base::SingleThreadTaskRunner> reply_thread_task_runner)
-    : deletion_task_runner_(base::ThreadTaskRunnerHandle::Get()),
+    : deletion_task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
       reply_thread_task_runner_(reply_thread_task_runner),
       resource_host_(nullptr) {}
 

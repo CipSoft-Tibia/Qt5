@@ -1,80 +1,31 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSql module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsqlresult.h"
 
-#include "qvariant.h"
-#include "qhash.h"
+#include "qlist.h"
+#include "qsqldriver.h"
 #include "qsqlerror.h"
 #include "qsqlfield.h"
 #include "qsqlrecord.h"
-#include "qvector.h"
-#include "qsqldriver.h"
-#include "qpointer.h"
 #include "qsqlresult_p.h"
+#include "quuid.h"
+#include "qvariant.h"
+#include "qdatetime.h"
 #include "private/qsqldriver_p.h"
-#include <QDebug>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 QString QSqlResultPrivate::holderAt(int index) const
 {
     return holders.size() > index ? holders.at(index).holderName : fieldSerial(index);
 }
 
-// return a unique id for bound names
-QString QSqlResultPrivate::fieldSerial(int i) const
+QString QSqlResultPrivate::fieldSerial(qsizetype i) const
 {
-    ushort arr[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    ushort *end = &arr[(sizeof(arr)/sizeof(*arr))];
-    ushort *ptr = end;
-
-    while (i > 0) {
-        *(--ptr) = 'a' + i % 16;
-        i >>= 4;
-    }
-
-    const int nb = end - ptr;
-    *(--ptr) = 'a' + nb;
-    *(--ptr) = ':';
-
-    return QString::fromUtf16(ptr, int(end - ptr));
+    return QString(":%1"_L1).arg(i);
 }
 
 static bool qIsAlnum(QChar ch)
@@ -86,19 +37,19 @@ static bool qIsAlnum(QChar ch)
 
 QString QSqlResultPrivate::positionalToNamedBinding(const QString &query) const
 {
-    int n = query.size();
+    const qsizetype n = query.size();
 
     QString result;
     result.reserve(n * 5 / 4);
     QChar closingQuote;
-    int count = 0;
+    qsizetype count = 0;
     bool ignoreBraces = (sqldriver->dbmsType() == QSqlDriver::PostgreSQL);
 
-    for (int i = 0; i < n; ++i) {
+    for (qsizetype i = 0; i < n; ++i) {
         QChar ch = query.at(i);
         if (!closingQuote.isNull()) {
             if (ch == closingQuote) {
-                if (closingQuote == QLatin1Char(']')
+                if (closingQuote == u']'
                     && i + 1 < n && query.at(i + 1) == closingQuote) {
                     // consume the extra character. don't close.
                     ++i;
@@ -109,13 +60,13 @@ QString QSqlResultPrivate::positionalToNamedBinding(const QString &query) const
             }
             result += ch;
         } else {
-            if (ch == QLatin1Char('?')) {
+            if (ch == u'?') {
                 result += fieldSerial(count++);
             } else {
-                if (ch == QLatin1Char('\'') || ch == QLatin1Char('"') || ch == QLatin1Char('`'))
+                if (ch == u'\'' || ch == u'"' || ch == u'`')
                     closingQuote = ch;
-                else if (!ignoreBraces && ch == QLatin1Char('['))
-                    closingQuote = QLatin1Char(']');
+                else if (!ignoreBraces && ch == u'[')
+                    closingQuote = u']';
                 result += ch;
             }
         }
@@ -130,23 +81,23 @@ QString QSqlResultPrivate::namedToPositionalBinding(const QString &query)
     // caller to make sure that it is not using named bindings for the wrong
     // parts of the query since Interbase uses them literally
     if (sqldriver->dbmsType() == QSqlDriver::Interbase &&
-        query.trimmed().startsWith(QLatin1String("EXECUTE BLOCK"), Qt::CaseInsensitive))
+        query.trimmed().startsWith("EXECUTE BLOCK"_L1, Qt::CaseInsensitive))
         return query;
 
-    int n = query.size();
+    const qsizetype n = query.size();
 
     QString result;
     result.reserve(n);
     QChar closingQuote;
     int count = 0;
-    int i = 0;
+    qsizetype i = 0;
     bool ignoreBraces = (sqldriver->dbmsType() == QSqlDriver::PostgreSQL);
 
     while (i < n) {
         QChar ch = query.at(i);
         if (!closingQuote.isNull()) {
             if (ch == closingQuote) {
-                if (closingQuote == QLatin1Char(']')
+                if (closingQuote == u']'
                         && i + 1 < n && query.at(i + 1) == closingQuote) {
                     // consume the extra character. don't close.
                     ++i;
@@ -158,8 +109,8 @@ QString QSqlResultPrivate::namedToPositionalBinding(const QString &query)
             result += ch;
             ++i;
         } else {
-            if (ch == QLatin1Char(':')
-                    && (i == 0 || query.at(i - 1) != QLatin1Char(':'))
+            if (ch == u':'
+                    && (i == 0 || query.at(i - 1) != u':')
                     && (i + 1 < n && qIsAlnum(query.at(i + 1)))) {
                 int pos = i + 2;
                 while (pos < n && qIsAlnum(query.at(pos)))
@@ -167,13 +118,13 @@ QString QSqlResultPrivate::namedToPositionalBinding(const QString &query)
                 QString holder(query.mid(i, pos - i));
                 indexes[holder].append(count++);
                 holders.append(QHolder(holder, i));
-                result += QLatin1Char('?');
+                result += u'?';
                 i = pos;
             } else {
-                if (ch == QLatin1Char('\'') || ch == QLatin1Char('"') || ch == QLatin1Char('`'))
+                if (ch == u'\'' || ch == u'"' || ch == u'`')
                     closingQuote = ch;
-                else if (!ignoreBraces && ch == QLatin1Char('['))
-                    closingQuote = QLatin1Char(']');
+                else if (!ignoreBraces && ch == u'[')
+                    closingQuote = u']';
                 result += ch;
                 ++i;
             }
@@ -633,6 +584,33 @@ bool QSqlResult::prepare(const QString& query)
     return true; // fake prepares should always succeed
 }
 
+bool QSqlResultPrivate::isVariantNull(const QVariant &variant)
+{
+    if (variant.isNull())
+        return true;
+
+    switch (variant.typeId()) {
+    case qMetaTypeId<QString>():
+        return static_cast<const QString*>(variant.constData())->isNull();
+    case qMetaTypeId<QByteArray>():
+        return static_cast<const QByteArray*>(variant.constData())->isNull();
+    case qMetaTypeId<QDateTime>():
+        // We treat invalid date-time as null, since its ISODate would be empty.
+        return !static_cast<const QDateTime*>(variant.constData())->isValid();
+    case qMetaTypeId<QDate>():
+        return static_cast<const QDate*>(variant.constData())->isNull();
+    case qMetaTypeId<QTime>():
+        // As for QDateTime, QTime can be invalid without being null.
+        return !static_cast<const QTime*>(variant.constData())->isValid();
+    case qMetaTypeId<QUuid>():
+        return static_cast<const QUuid*>(variant.constData())->isNull();
+    default:
+        break;
+    }
+
+    return false;
+}
+
 /*!
     Executes the query, returning true if successful; otherwise returns
     false.
@@ -646,34 +624,31 @@ bool QSqlResult::exec()
     // fake preparation - just replace the placeholders..
     QString query = lastQuery();
     if (d->binds == NamedBinding) {
-        int i;
-        QVariant val;
-        QString holder;
-        for (i = d->holders.count() - 1; i >= 0; --i) {
-            holder = d->holders.at(i).holderName;
-            val = d->values.value(d->indexes.value(holder).value(0,-1));
-            QSqlField f(QLatin1String(""), QVariant::Type(val.userType()));
-            f.setValue(val);
+        for (qsizetype i = d->holders.size() - 1; i >= 0; --i) {
+            const QString &holder = d->holders.at(i).holderName;
+            const QVariant val = d->values.value(d->indexes.value(holder).value(0,-1));
+            QSqlField f(""_L1, val.metaType());
+            if (QSqlResultPrivate::isVariantNull(val))
+                f.setValue(QVariant());
+            else
+                f.setValue(val);
             query = query.replace(d->holders.at(i).holderPos,
-                                   holder.length(), driver()->formatValue(f));
+                                   holder.size(), driver()->formatValue(f));
         }
     } else {
-        QString val;
-        int i = 0;
-        int idx = 0;
-        for (idx = 0; idx < d->values.count(); ++idx) {
-            i = query.indexOf(QLatin1Char('?'), i);
+        qsizetype i = 0;
+        for (const QVariant &var : std::as_const(d->values)) {
+            i = query.indexOf(u'?', i);
             if (i == -1)
                 continue;
-            QVariant var = d->values.value(idx);
-            QSqlField f(QLatin1String(""), QVariant::Type(var.userType()));
-            if (var.isNull())
+            QSqlField f(""_L1, var.metaType());
+            if (QSqlResultPrivate::isVariantNull(var))
                 f.clear();
             else
                 f.setValue(var);
-            val = driver()->formatValue(f);
-            query = query.replace(i, 1, driver()->formatValue(f));
-            i += val.length();
+            const QString val = driver()->formatValue(f);
+            query = query.replace(i, 1, val);
+            i += val.size();
         }
     }
 
@@ -696,10 +671,10 @@ void QSqlResult::bindValue(int index, const QVariant& val, QSql::ParamType param
 {
     Q_D(QSqlResult);
     d->binds = PositionalBinding;
-    QVector<int> &indexes = d->indexes[d->fieldSerial(index)];
+    QList<int> &indexes = d->indexes[d->fieldSerial(index)];
     if (!indexes.contains(index))
         indexes.append(index);
-    if (d->values.count() <= index)
+    if (d->values.size() <= index)
         d->values.resize(index + 1);
     d->values[index] = val;
     if (paramType != QSql::In || !d->types.isEmpty())
@@ -723,9 +698,9 @@ void QSqlResult::bindValue(const QString& placeholder, const QVariant& val,
     d->binds = NamedBinding;
     // if the index has already been set when doing emulated named
     // bindings - don't reset it
-    const QVector<int> indexes = d->indexes.value(placeholder);
+    const QList<int> indexes = d->indexes.value(placeholder);
     for (int idx : indexes) {
-        if (d->values.count() <= idx)
+        if (d->values.size() <= idx)
             d->values.resize(idx + 1);
         d->values[idx] = val;
         if (paramType != QSql::In || !d->types.isEmpty())
@@ -770,7 +745,7 @@ QVariant QSqlResult::boundValue(int index) const
 QVariant QSqlResult::boundValue(const QString& placeholder) const
 {
     Q_D(const QSqlResult);
-    const QVector<int> indexes = d->indexes.value(placeholder);
+    const QList<int> indexes = d->indexes.value(placeholder);
     return d->values.value(indexes.value(0,-1));
 }
 
@@ -805,20 +780,35 @@ QSql::ParamType QSqlResult::bindValueType(const QString& placeholder) const
 int QSqlResult::boundValueCount() const
 {
     Q_D(const QSqlResult);
-    return d->values.count();
+    return d->values.size();
 }
 
 /*!
-    Returns a vector of the result's bound values for the current
+    Returns a list of the result's bound values for the current
     record (row).
 
     \sa boundValueCount()
 */
-QVector<QVariant>& QSqlResult::boundValues() const
+QVariantList QSqlResult::boundValues(QT6_IMPL_NEW_OVERLOAD) const
 {
     Q_D(const QSqlResult);
-    return const_cast<QSqlResultPrivate *>(d)->values;
+    return d->values;
 }
+
+/*!
+    \overload
+
+    Returns a mutable reference to the list of the result's bound values
+    for the current record (row).
+
+    \sa boundValueCount()
+*/
+QVariantList &QSqlResult::boundValues(QT6_IMPL_NEW_OVERLOAD)
+{
+    Q_D(QSqlResult);
+    return d->values;
+}
+
 
 /*!
     Returns the binding syntax used by prepared queries.
@@ -863,10 +853,24 @@ void QSqlResult::resetBindCount()
 }
 
 /*!
+    Returns the names of all bound values.
+
+    \sa boundValue(), boundValueName()
+ */
+QStringList QSqlResult::boundValueNames() const
+{
+    Q_D(const QSqlResult);
+    QList<QString> ret;
+    for (const QHolder &holder : std::as_const(d->holders))
+        ret.push_back(holder.holderName);
+    return ret;
+}
+
+/*!
     Returns the name of the bound value at position \a index in the
     current record (row).
 
-    \sa boundValue()
+    \sa boundValue(), boundValueNames()
 */
 QString QSqlResult::boundValueName(int index) const
 {
@@ -949,7 +953,7 @@ void QSqlResult::virtual_hook(int, void *)
     contain equal amount of values (rows).
 
     NULL values are passed in as typed QVariants, for example
-    \c {QVariant(QVariant::Int)} for an integer NULL value.
+    \c {QVariant(QMetaType::fromType<int>())} for an integer NULL value.
 
     Example:
 
@@ -964,11 +968,13 @@ bool QSqlResult::execBatch(bool arrayBind)
     Q_UNUSED(arrayBind);
     Q_D(QSqlResult);
 
-    QVector<QVariant> values = d->values;
-    if (values.count() == 0)
+    const QList<QVariant> values = d->values;
+    if (values.size() == 0)
         return false;
-    for (int i = 0; i < values.at(0).toList().count(); ++i) {
-        for (int j = 0; j < values.count(); ++j)
+    const qsizetype batchCount = values.at(0).toList().size();
+    const qsizetype valueCount = values.size();
+    for (qsizetype i = 0; i < batchCount; ++i) {
+        for (qsizetype j = 0; j < valueCount; ++j)
             bindValue(j, values.at(j).toList().at(i), QSql::In);
         if (!exec())
             return false;

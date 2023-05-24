@@ -1,14 +1,14 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+#include "url/scheme_host_port.h"
 
 #include <stddef.h>
 #include <stdint.h>
 
-#include "base/stl_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/gurl.h"
-#include "url/scheme_host_port.h"
 #include "url/url_util.h"
 
 namespace {
@@ -16,12 +16,14 @@ namespace {
 class SchemeHostPortTest : public testing::Test {
  public:
   SchemeHostPortTest() = default;
+
+  SchemeHostPortTest(const SchemeHostPortTest&) = delete;
+  SchemeHostPortTest& operator=(const SchemeHostPortTest&) = delete;
+
   ~SchemeHostPortTest() override = default;
 
  private:
   url::ScopedSchemeRegistryForTests scoped_registry_;
-
-  DISALLOW_COPY_AND_ASSIGN(SchemeHostPortTest);
 };
 
 void ExpectParsedUrlsEqual(const GURL& a, const GURL& b) {
@@ -55,8 +57,15 @@ TEST_F(SchemeHostPortTest, Invalid) {
   EXPECT_EQ(invalid, invalid);
 
   const char* urls[] = {
-      "data:text/html,Hello!", "javascript:alert(1)",
-      "file://example.com:443/etc/passwd",
+      // about:, data:, javascript: and other no-access schemes translate into
+      // an invalid SchemeHostPort
+      "about:blank", "about:blank#ref", "about:blank?query=123", "about:srcdoc",
+      "about:srcdoc#ref", "about:srcdoc?query=123", "data:text/html,Hello!",
+      "javascript:alert(1)",
+
+      // GURLs where GURL::is_valid returns false translate into an invalid
+      // SchemeHostPort.
+      "file://example.com:443/etc/passwd", "#!^%!$!&*",
 
       // These schemes do not follow the generic URL syntax, so make sure we
       // treat them as invalid (scheme, host, port) tuples (even though such
@@ -224,6 +233,7 @@ TEST_F(SchemeHostPortTest, Serialization) {
       {"https://example.com:123/", "https://example.com:123"},
       {"file:///etc/passwd", "file://"},
       {"file://example.com/etc/passwd", "file://example.com"},
+      {"https://example.com:0/", "https://example.com:0"},
   };
 
   for (const auto& test : cases) {
@@ -252,10 +262,10 @@ TEST_F(SchemeHostPortTest, Comparison) {
       {"https", "b", 81},
   };
 
-  for (size_t i = 0; i < base::size(tuples); i++) {
+  for (size_t i = 0; i < std::size(tuples); i++) {
     url::SchemeHostPort current(tuples[i].scheme, tuples[i].host,
                                 tuples[i].port);
-    for (size_t j = i; j < base::size(tuples); j++) {
+    for (size_t j = i; j < std::size(tuples); j++) {
       url::SchemeHostPort to_compare(tuples[j].scheme, tuples[j].host,
                                      tuples[j].port);
       EXPECT_EQ(i < j, current < to_compare) << i << " < " << j;

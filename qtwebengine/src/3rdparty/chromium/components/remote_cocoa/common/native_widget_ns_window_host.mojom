@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -89,6 +89,11 @@ interface NativeWidgetNSWindowHost {
   DispatchKeyEventToMenuControllerRemote(ui.mojom.Event event) =>
       (bool event_swallowed, bool event_handled);
 
+  // Called when the NSEvent monitor observes an event. If `event_handled` is
+  // true, then do not continue dispatching the event.
+  [Sync]
+  DispatchMonitorEvent(ui.mojom.Event event) => (bool event_handled);
+
   // Synchronously return in  |has_menu_controller| whether or not a menu
   // controller exists for this widget.
   [Sync]
@@ -132,6 +137,9 @@ interface NativeWidgetNSWindowHost {
   // Called when the window is miniaturized or deminiaturized.
   OnWindowMiniaturizedChanged(bool miniaturized);
 
+  // Called when the window's zoomed state changes.
+  OnWindowZoomedChanged(bool zoomed);
+
   // Called when the current display or the properties of the current display
   // change.
   OnWindowDisplayChanged(display.mojom.Display display);
@@ -154,6 +162,9 @@ interface NativeWidgetNSWindowHost {
   // Called when the blob of data that represents the NSWindow's restorable
   // state has changed.
   OnWindowStateRestorationDataChanged(array<uint8> data);
+
+  // Called when this widget is reparented to another window.
+  OnWindowParentChanged(uint64 new_parent_id);
 
   // Accept or cancel the current dialog window (depending on the value of
   // |button|), if a current dialog exists.
@@ -218,6 +229,14 @@ interface NativeWidgetNSWindowHost {
   ValidateUserInterfaceItem(int32 command) =>
       (ValidateUserInterfaceItemResult result);
 
+  // Returns in |will_execute| whether or not ExecuteCommand() will execute
+  // the chrome command |command| with |window_open_disposition| and
+  // |is_before_first_responder|.
+  [Sync]
+  WillExecuteCommand(int32 command,
+                     ui.mojom.WindowOpenDisposition window_open_disposition,
+                     bool is_before_first_responder) => (bool will_execute);
+
   // Execute the chrome command |command| with |window_open_disposition|. If
   // |is_before_first_responder| then only call ExecuteCommand if the command
   // is reserved and extension shortcut handling is not suspended. Returns in
@@ -236,4 +255,10 @@ interface NativeWidgetNSWindowHost {
   HandleAccelerator(ui.mojom.Accelerator accelerator,
                     bool require_priority_handler) =>
       (bool was_handled);
+
+  // Check if the receiving widget's bubble anchor view is contained within the
+  // target widget represented by |widget_id|. If the receiving widget is not a
+  // bubble or if an anchor view is not set, false will be returned.
+  [Sync]
+  BubbleAnchorViewContainedInWidget(uint64 widget_id) => (bool contained);
 };

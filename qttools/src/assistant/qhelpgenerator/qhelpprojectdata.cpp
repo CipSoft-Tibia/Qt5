@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpprojectdata_p.h"
 
@@ -44,7 +8,7 @@
 #include <QtCore/QFileInfo>
 #include <QtCore/QStack>
 #include <QtCore/QMap>
-#include <QtCore/QRegExp>
+#include <QtCore/QRegularExpression>
 #include <QtCore/QTextStream>
 #include <QtCore/QUrl>
 #include <QtCore/QVariant>
@@ -318,13 +282,14 @@ void QHelpProjectDataPrivate::addMatchingFiles(const QString &pattern)
 
     bool matchFound = false;
 #ifdef Q_OS_WIN
-    Qt::CaseSensitivity cs = Qt::CaseInsensitive;
+    auto cs = QRegularExpression::CaseInsensitiveOption;
 #else
-    Qt::CaseSensitivity cs = Qt::CaseSensitive;
+    auto cs = QRegularExpression::NoPatternOption;
 #endif
-    const QRegExp regExp(fileInfo.fileName(), cs, QRegExp::Wildcard);
+    const QRegularExpression regExp(QRegularExpression::wildcardToRegularExpression(fileInfo.fileName()), cs);
     for (const QString &file : entries) {
-        if (regExp.exactMatch(file)) {
+        auto match = regExp.match(file);
+        if (match.hasMatch()) {
             matchFound = true;
             filterSectionList.last().
                 addFile(QFileInfo(pattern).dir().path() + QLatin1Char('/') + file);

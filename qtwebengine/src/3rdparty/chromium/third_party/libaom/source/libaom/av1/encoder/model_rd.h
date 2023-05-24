@@ -17,7 +17,6 @@
 #include "av1/encoder/encoder.h"
 #include "av1/encoder/pustats.h"
 #include "av1/encoder/rdopt_utils.h"
-#include "aom_ports/system_state.h"
 #include "config/aom_dsp_rtcd.h"
 
 #ifdef __cplusplus
@@ -36,13 +35,11 @@ extern "C" {
 #define MODELRD_TYPE_INTRA 1
 #define MODELRD_TYPE_MOTION_MODE_RD 1
 
-typedef void (*model_rd_for_sb_type)(const AV1_COMP *const cpi,
-                                     BLOCK_SIZE bsize, MACROBLOCK *x,
-                                     MACROBLOCKD *xd, int plane_from,
-                                     int plane_to, int *out_rate_sum,
-                                     int64_t *out_dist_sum, int *skip_txfm_sb,
-                                     int64_t *skip_sse_sb, int *plane_rate,
-                                     int64_t *plane_sse, int64_t *plane_dist);
+typedef void (*model_rd_for_sb_type)(
+    const AV1_COMP *const cpi, BLOCK_SIZE bsize, MACROBLOCK *x, MACROBLOCKD *xd,
+    int plane_from, int plane_to, int *out_rate_sum, int64_t *out_dist_sum,
+    uint8_t *skip_txfm_sb, int64_t *skip_sse_sb, int *plane_rate,
+    int64_t *plane_sse, int64_t *plane_dist);
 typedef void (*model_rd_from_sse_type)(const AV1_COMP *const cpi,
                                        const MACROBLOCK *const x,
                                        BLOCK_SIZE plane_bsize, int plane,
@@ -134,7 +131,6 @@ static AOM_INLINE void model_rd_with_curvfit(const AV1_COMP *const cpi,
     if (dist) *dist = 0;
     return;
   }
-  aom_clear_system_state();
   const double sse_norm = (double)sse / num_samples;
   const double qstepsqr = (double)qstep * qstep;
   const double xqr = log2(sse_norm / qstepsqr);
@@ -145,7 +141,6 @@ static AOM_INLINE void model_rd_with_curvfit(const AV1_COMP *const cpi,
   const double dist_f = dist_by_sse_norm_f * sse_norm;
   int rate_i = (int)(AOMMAX(0.0, rate_f * num_samples) + 0.5);
   int64_t dist_i = (int64_t)(AOMMAX(0.0, dist_f * num_samples) + 0.5);
-  aom_clear_system_state();
 
   // Check if skip is better
   if (rate_i == 0) {
@@ -163,7 +158,7 @@ static AOM_INLINE void model_rd_with_curvfit(const AV1_COMP *const cpi,
 static AOM_INLINE void model_rd_for_sb(
     const AV1_COMP *const cpi, BLOCK_SIZE bsize, MACROBLOCK *x, MACROBLOCKD *xd,
     int plane_from, int plane_to, int *out_rate_sum, int64_t *out_dist_sum,
-    int *skip_txfm_sb, int64_t *skip_sse_sb, int *plane_rate,
+    uint8_t *skip_txfm_sb, int64_t *skip_sse_sb, int *plane_rate,
     int64_t *plane_sse, int64_t *plane_dist) {
   // Note our transform coeffs are 8 times an orthogonal transform.
   // Hence quantizer step is also 8 times. To get effective quantizer
@@ -215,7 +210,7 @@ static AOM_INLINE void model_rd_for_sb(
 static AOM_INLINE void model_rd_for_sb_with_curvfit(
     const AV1_COMP *const cpi, BLOCK_SIZE bsize, MACROBLOCK *x, MACROBLOCKD *xd,
     int plane_from, int plane_to, int *out_rate_sum, int64_t *out_dist_sum,
-    int *skip_txfm_sb, int64_t *skip_sse_sb, int *plane_rate,
+    uint8_t *skip_txfm_sb, int64_t *skip_sse_sb, int *plane_rate,
     int64_t *plane_sse, int64_t *plane_dist) {
   // Note our transform coeffs are 8 times an orthogonal transform.
   // Hence quantizer step is also 8 times. To get effective quantizer

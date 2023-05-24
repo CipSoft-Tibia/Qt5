@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 Giuseppe D'Angelo <dangelog@gmail.com>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 Giuseppe D'Angelo <dangelog@gmail.com>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QLibraryInfo>
 #include <QtCore/QString>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QByteArray>
@@ -103,10 +79,7 @@ private:
 
 void tst_rcc::initTestCase()
 {
-    // rcc uses a QHash to store files in the resource system.
-    // we must force a certain hash order when testing or tst_rcc will fail, see QTBUG-25078
-    QVERIFY(qputenv("QT_RCC_TEST", "1"));
-    m_rcc = QLibraryInfo::location(QLibraryInfo::BinariesPath) + QLatin1String("/rcc");
+    m_rcc = QLibraryInfo::path(QLibraryInfo::LibraryExecutablesPath) + QLatin1String("/rcc");
 
     m_dataPath = QFINDTESTDATA("data");
     QVERIFY(!m_dataPath.isEmpty());
@@ -141,7 +114,7 @@ static QString doCompare(const QStringList &actual, const QStringList &expected,
                 ba.append("File " + fi.absoluteFilePath().toUtf8() + " does not exist!");
                 break;
             }
-            const quint64 timeStamp = quint64(fi.lastModified().toMSecsSinceEpoch());
+            const quint64 timeStamp = quint64(fi.lastModified(QTimeZone::UTC).toMSecsSinceEpoch());
             expectedLine.clear();
             for (int shift = 56; shift >= 0; shift -= 8) {
                 expectedLine.append(QLatin1String("0x"));
@@ -167,12 +140,14 @@ void tst_rcc::rcc_data()
     QTest::addColumn<QString>("expected");
 
     const QString imagesPath = m_dataPath + QLatin1String("/images");
-    QTest::newRow("images") << imagesPath << "images.qrc" << "images.expected";
+    QTest::newRow("images") << imagesPath << "images.qrc" <<
+                               (sizeof(size_t) == 8 ? "images.expected" : "images.expected32");
 
     const QString sizesPath = m_dataPath + QLatin1String("/sizes");
     QTest::newRow("size-0") << sizesPath << "size-0.qrc" << "size-0.expected";
     QTest::newRow("size-1") << sizesPath << "size-1.qrc" << "size-1.expected";
-    QTest::newRow("size-2-0-35-1") << sizesPath << "size-2-0-35-1.qrc" << "size-2-0-35-1.expected";
+    QTest::newRow("size-2-0-35-1") << sizesPath << "size-2-0-35-1.qrc" <<
+                                      (sizeof(size_t) == 8 ? "size-2-0-35-1.expected" : "size-2-0-35-1.expected32");
 }
 
 static QStringList readLinesFromFile(const QString &fileName,
@@ -181,10 +156,8 @@ static QStringList readLinesFromFile(const QString &fileName,
     QFile file(fileName);
 
     bool ok = file.open(QIODevice::ReadOnly | QIODevice::Text);
-    if (!ok) {
-        QWARN(qPrintable(QString::fromLatin1("Could not open testdata file %1: %2")
-                         .arg(fileName, file.errorString())));
-    }
+    if (!ok)
+        qWarning() << "Could not open testdata file" << fileName << ":" << file.errorString();
 
     return QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), splitBehavior);
 }
@@ -238,8 +211,8 @@ static QStringMap readExpectedFiles(const QString &fileName)
 {
     QStringMap expectedFiles;
 
-    QStringList lines = readLinesFromFile(fileName, Qt::SkipEmptyParts);
-    foreach (const QString &line, lines) {
+    const QStringList lines = readLinesFromFile(fileName, Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
         QString resourceFileName = line.section(QLatin1Char(' '), 0, 0, QString::SectionSkipEmpty);
         QString actualFileName = line.section(QLatin1Char(' '), 1, 1, QString::SectionSkipEmpty);
         expectedFiles[resourceFileName] = actualFileName;
@@ -274,8 +247,7 @@ void tst_rcc::binary_data()
     QDirIterator iter(dataPath, QStringList() << QLatin1String("*.qrc"));
     while (iter.hasNext())
     {
-        iter.next();
-        QFileInfo qrcFileInfo = iter.fileInfo();
+        QFileInfo qrcFileInfo = iter.nextFileInfo();
         QString absoluteBaseName = QFileInfo(qrcFileInfo.absolutePath(), qrcFileInfo.baseName()).absoluteFilePath();
         QString rccFileName = absoluteBaseName + QLatin1String(".rcc");
 
@@ -304,8 +276,8 @@ void tst_rcc::binary_data()
         QString localeFileName = absoluteBaseName + QLatin1String(".locale");
         QFile localeFile(localeFileName);
         if (localeFile.exists()) {
-            QStringList locales = readLinesFromFile(localeFileName, Qt::SkipEmptyParts);
-            foreach (const QString &locale, locales) {
+            const QStringList locales = readLinesFromFile(localeFileName, Qt::SkipEmptyParts);
+            for (const QString &locale : locales) {
                 QString expectedFileName = QString::fromLatin1("%1.%2.%3").arg(absoluteBaseName, locale, QLatin1String("expected"));
                 QStringMap expectedFiles = readExpectedFiles(expectedFileName);
                 QTest::newRow(qPrintable(qrcFileInfo.baseName() + QLatin1Char('_') + locale)) << rccFileName
@@ -425,7 +397,8 @@ void tst_rcc::depFileGeneration_data()
     QTest::addColumn<QString>("depfile");
     QTest::addColumn<QString>("expected");
 
-    QTest::newRow("simple") << "simple.qrc" << "simple.d" << "simple.d.expected";
+    QTest::newRow("simple") << "simple.qrc" << "simple.d"
+                            << (sizeof(size_t) == 8 ? "simple.d.expected" : "simple.d.expected32");
     QTest::newRow("specialchar") << "specialchar.qrc" << "specialchar.d" << "specialchar.d.expected";
 }
 
@@ -467,7 +440,9 @@ void tst_rcc::python()
     const QString path = m_dataPath + QLatin1String("/sizes");
     const QString testFileRoot = path + QLatin1String("/size-2-0-35-1");
     const QString qrcFile = testFileRoot + QLatin1String(".qrc");
-    const QString expectedFile = testFileRoot + QLatin1String("_python.expected");
+    QString expectedFile = testFileRoot + QLatin1String("_python.expected");
+    if (sizeof(size_t) == 4)
+        expectedFile += QLatin1String("32");
     const QString actualFile = testFileRoot + QLatin1String(".rcc");
 
     QProcess process;
@@ -498,7 +473,7 @@ void tst_rcc::cleanupTestCase()
     QFileInfoList entries = dataDir.entryInfoList(QStringList() << QLatin1String("*.rcc"));
     QDir dataDepDir(m_dataPath + QLatin1String("/depfile"));
     entries += dataDepDir.entryInfoList({QLatin1String("*.d"), QLatin1String("*.qrc.cpp")});
-    foreach (const QFileInfo &entry, entries)
+    for (const QFileInfo &entry : std::as_const(entries))
         QFile::remove(entry.absoluteFilePath());
 }
 

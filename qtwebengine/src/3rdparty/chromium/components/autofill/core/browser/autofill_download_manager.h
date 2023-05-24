@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,14 +16,18 @@
 
 #include "base/compiler_specific.h"
 #include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_piece.h"
 #include "base/time/time.h"
+#include "base/types/strong_alias.h"
 #include "components/autofill/core/browser/autofill_type.h"
 #include "components/autofill/core/browser/form_structure.h"
 #include "components/autofill/core/common/signatures.h"
 #include "components/variations/variations_ids_provider.h"
+#include "components/version_info/channel.h"
 #include "net/base/backoff_entry.h"
+#include "net/base/isolation_info.h"
 #include "services/network/public/cpp/simple_url_loader.h"
 #include "url/gurl.h"
 
@@ -31,10 +35,10 @@ class PrefService;
 
 namespace autofill {
 
-class AutofillDriver;
+class AutofillClient;
 class LogManager;
 
-const size_t kMaxAPIQueryGetSize = 10240;  // 10 KiB
+constexpr size_t kMaxQueryGetSize = 10240;  // 10 KiB
 
 // A helper to make sure that tests which modify the set of active autofill
 // experiments do not interfere with one another.
@@ -65,6 +69,7 @@ class AutofillDownloadManager {
     // Called when heuristic either successfully considered for upload and
     // not send or uploaded.
     virtual void OnUploadedPossibleFieldTypes() {}
+
     // Called when there was an error during the request.
     // |form_signature| - the signature of the requesting form.
     // |request_type| - type of request that failed.
@@ -74,27 +79,24 @@ class AutofillDownloadManager {
                                       int http_error) {}
 
    protected:
-    virtual ~Observer() {}
+    virtual ~Observer() = default;
   };
 
-  // |driver| must outlive this instance.
-  // |observer| - observer to notify on successful completion or error.
-  // Uses an API callback function that gives an empty string.
-  AutofillDownloadManager(AutofillDriver* driver, Observer* observer);
-  // |driver| must outlive this instance.
-  // |observer| - observer to notify on successful completion or error.
-  // |api_key| - API key to add to API request query parameters. Will only take
-  //   effect if using API.
-  AutofillDownloadManager(AutofillDriver* driver,
-                          Observer* observer,
-                          const std::string& api_key,
+  // `client` owns (and hence survives) this AutofillDownloadManager.
+  // `channel` determines the value for the the Google-API-key HTTP header and
+  // whether raw metadata uploading is enabled.
+  AutofillDownloadManager(AutofillClient* client,
+                          version_info::Channel channel,
                           LogManager* log_manager);
+
   virtual ~AutofillDownloadManager();
 
   // Starts a query request to Autofill servers. The observer is called with the
   // list of the fields of all requested forms.
   // |forms| - array of forms aggregated in this request.
-  virtual bool StartQueryRequest(const std::vector<FormStructure*>& forms);
+  virtual bool StartQueryRequest(const std::vector<FormStructure*>& forms,
+                                 net::IsolationInfo isolation_info,
+                                 base::WeakPtr<Observer> observer);
 
   // Starts an upload request for the given |form|.
   // |available_field_types| should contain the types for which we have data
@@ -113,10 +115,11 @@ class AutofillDownloadManager {
       const ServerFieldTypeSet& available_field_types,
       const std::string& login_form_signature,
       bool observed_submission,
-      PrefService* pref_service);
+      PrefService* pref_service,
+      base::WeakPtr<Observer> observer);
 
   // Returns true if the autofill server communication is enabled.
-  bool IsEnabled() const { return autofill_server_url_.is_valid(); }
+  bool IsEnabled() const;
 
   // Reset the upload history. This reduced space history prevents the autofill
   // download manager from uploading a multiple votes for a given form/event
@@ -124,6 +127,11 @@ class AutofillDownloadManager {
   static void ClearUploadHistory(PrefService* pref_service);
 
  protected:
+  AutofillDownloadManager(AutofillClient* client,
+                          const std::string& api_key,
+                          bool is_raw_metadata_uploading_enabled,
+                          LogManager* log_manager);
+
   // Gets the length of the payload from request data. Used to simulate
   // different payload sizes when testing without the need for data. Do not use
   // this when the length is needed to read/write a buffer.
@@ -147,10 +155,6 @@ class AutofillDownloadManager {
   // fully encompasses the request, do not include request_data.payload when
   // transmitting the request.
   std::tuple<GURL, std::string> GetRequestURLAndMethod(
-      const FormRequestData& request_data) const;
-
-  // Same as GetRequestURLAndMethod, but for the API.
-  std::tuple<GURL, std::string> GetRequestURLAndMethodForApi(
       const FormRequestData& request_data) const;
 
   // Initiates request to Autofill servers to download/upload type predictions.
@@ -191,19 +195,15 @@ class AutofillDownloadManager {
   static void InitActiveExperiments();
   static void ResetActiveExperiments();
 
-  // The AutofillDriver that this instance will use. Must not be null, and must
+  // The AutofillClient that this instance will use. Must not be null, and must
   // outlive this instance.
-  AutofillDriver* const driver_;  // WEAK
-
-  // The observer to notify when server predictions are successfully received.
-  // Must not be null.
-  AutofillDownloadManager::Observer* const observer_;  // WEAK
+  const raw_ptr<AutofillClient> client_;
 
   // Callback function to retrieve API key.
   const std::string api_key_;
 
   // Access to leave log messages for chrome://autofill-internals, may be null.
-  LogManager* const log_manager_;  // WEAK
+  const raw_ptr<LogManager> log_manager_;  // WEAK
 
   // The autofill server URL root: scheme://host[:port]/path excluding the
   // final path component for the request and the query params.
@@ -224,6 +224,10 @@ class AutofillDownloadManager {
 
   // Used for exponential backoff of requests.
   net::BackoffEntry loader_backoff_;
+
+  // Whether form data (e.g. form and field names) can be uploaded in clear
+  // text.
+  bool is_raw_metadata_uploading_enabled_ = false;
 
   base::WeakPtrFactory<AutofillDownloadManager> weak_factory_{this};
 };

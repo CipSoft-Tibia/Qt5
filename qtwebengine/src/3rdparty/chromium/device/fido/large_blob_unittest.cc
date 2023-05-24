@@ -1,12 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "device/fido/large_blob.h"
 
-#include "base/optional.h"
 #include "device/fido/fido_parsing_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace device {
 
@@ -78,8 +78,8 @@ TEST_F(FidoLargeBlobTest, LargeBlobArrayReader_MaterializeValid) {
   LargeBlobArrayReader large_blob_array_reader;
   large_blob_array_reader.Append(
       fido_parsing_utils::Materialize(kValidLargeBlobArray));
-  std::vector<LargeBlobData> vector = *large_blob_array_reader.Materialize();
-  EXPECT_EQ(1u, vector.size());
+  cbor::Value::ArrayValue vector = *large_blob_array_reader.Materialize();
+  EXPECT_EQ(2u, vector.size());
 }
 
 // Test popping the large blob array in a fragment size that does not evenly

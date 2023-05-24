@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcups_p.h"
 
@@ -43,6 +7,18 @@
 #include "qprintengine.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+QT_IMPL_METATYPE_EXTERN_TAGGED(QCUPSSupport::JobHoldUntil,
+                               QCUPSSupport__JobHoldUntil)
+QT_IMPL_METATYPE_EXTERN_TAGGED(QCUPSSupport::BannerPage,
+                               QCUPSSupport__BannerPage)
+QT_IMPL_METATYPE_EXTERN_TAGGED(QCUPSSupport::PageSet, QCUPSSupport__PageSet)
+QT_IMPL_METATYPE_EXTERN_TAGGED(QCUPSSupport::PagesPerSheetLayout,
+                               QCUPSSupport__PagesPerSheetLayout)
+QT_IMPL_METATYPE_EXTERN_TAGGED(QCUPSSupport::PagesPerSheet,
+                               QCUPSSupport__PagesPerSheet)
 
 static QStringList cupsOptionsList(QPrinter *printer) noexcept
 {
@@ -83,7 +59,7 @@ void QCUPSSupport::clearCupsOptions(QPrinter *printer)
     setCupsOptions(printer, QStringList());
 }
 
-static inline QString jobHoldToString(const QCUPSSupport::JobHoldUntil jobHold, const QTime holdUntilTime)
+static inline QString jobHoldToString(const QCUPSSupport::JobHoldUntil jobHold, QTime holdUntilTime)
 {
     switch (jobHold) {
     case QCUPSSupport::Indefinite:
@@ -113,23 +89,22 @@ static inline QString jobHoldToString(const QCUPSSupport::JobHoldUntil jobHold, 
     case QCUPSSupport::NoHold:
         return QString();
     }
-    Q_UNREACHABLE();
-    return QString();
+    Q_UNREACHABLE_RETURN(QString());
 }
 
 QCUPSSupport::JobHoldUntilWithTime QCUPSSupport::parseJobHoldUntil(const QString &jobHoldUntil)
 {
-    if (jobHoldUntil == QLatin1String("indefinite")) {
+    if (jobHoldUntil == "indefinite"_L1) {
         return { QCUPSSupport::Indefinite, QTime() };
-    } else if (jobHoldUntil == QLatin1String("day-time")) {
+    } else if (jobHoldUntil == "day-time"_L1) {
         return { QCUPSSupport::DayTime, QTime() };
-    } else if (jobHoldUntil == QLatin1String("night")) {
+    } else if (jobHoldUntil == "night"_L1) {
         return { QCUPSSupport::Night, QTime() };
-    } else if (jobHoldUntil == QLatin1String("second-shift")) {
+    } else if (jobHoldUntil == "second-shift"_L1) {
         return { QCUPSSupport::SecondShift, QTime() };
-    } else if (jobHoldUntil == QLatin1String("third-shift")) {
+    } else if (jobHoldUntil == "third-shift"_L1) {
         return { QCUPSSupport::ThirdShift, QTime() };
-    } else if (jobHoldUntil == QLatin1String("weekend")) {
+    } else if (jobHoldUntil == "weekend"_L1) {
         return { QCUPSSupport::Weekend, QTime() };
     }
 
@@ -167,7 +142,7 @@ ppd_option_t *QCUPSSupport::findPpdOption(const char *optionName, QPrintDevice *
     return nullptr;
 }
 
-void QCUPSSupport::setJobHold(QPrinter *printer, const JobHoldUntil jobHold, const QTime &holdUntilTime)
+void QCUPSSupport::setJobHold(QPrinter *printer, const JobHoldUntil jobHold, QTime holdUntilTime)
 {
     const QString jobHoldUntilArgument = jobHoldToString(jobHold, holdUntilTime);
     if (!jobHoldUntilArgument.isEmpty()) {
@@ -200,19 +175,18 @@ static inline QString bannerPageToString(const QCUPSSupport::BannerPage bannerPa
     case QCUPSSupport::Secret:       return QStringLiteral("secret");
     case QCUPSSupport::TopSecret:    return QStringLiteral("topsecret");
     }
-    Q_UNREACHABLE();
-    return QString();
+    Q_UNREACHABLE_RETURN(QString());
 }
 
 static inline QCUPSSupport::BannerPage stringToBannerPage(const QString &bannerPage)
 {
-    if (bannerPage == QLatin1String("none")) return QCUPSSupport::NoBanner;
-    else if (bannerPage == QLatin1String("standard")) return QCUPSSupport::Standard;
-    else if (bannerPage == QLatin1String("unclassified")) return QCUPSSupport::Unclassified;
-    else if (bannerPage == QLatin1String("confidential")) return QCUPSSupport::Confidential;
-    else if (bannerPage == QLatin1String("classified")) return QCUPSSupport::Classified;
-    else if (bannerPage == QLatin1String("secret")) return QCUPSSupport::Secret;
-    else if (bannerPage == QLatin1String("topsecret")) return QCUPSSupport::TopSecret;
+    if (bannerPage == "none"_L1) return QCUPSSupport::NoBanner;
+    else if (bannerPage == "standard"_L1) return QCUPSSupport::Standard;
+    else if (bannerPage == "unclassified"_L1) return QCUPSSupport::Unclassified;
+    else if (bannerPage == "confidential"_L1) return QCUPSSupport::Confidential;
+    else if (bannerPage == "classified"_L1) return QCUPSSupport::Classified;
+    else if (bannerPage == "secret"_L1) return QCUPSSupport::Secret;
+    else if (bannerPage == "topsecret"_L1) return QCUPSSupport::TopSecret;
 
     return QCUPSSupport::NoBanner;
 }
@@ -221,8 +195,8 @@ QCUPSSupport::JobSheets QCUPSSupport::parseJobSheets(const QString &jobSheets)
 {
     JobSheets result;
 
-    const QStringList parts = jobSheets.split(QLatin1Char(','));
-    if (parts.count() == 2) {
+    const QStringList parts = jobSheets.split(u',');
+    if (parts.size() == 2) {
         result.startBannerPage = stringToBannerPage(parts[0]);
         result.endBannerPage = stringToBannerPage(parts[1]);
     }
@@ -235,7 +209,7 @@ void QCUPSSupport::setBannerPages(QPrinter *printer, const BannerPage startBanne
     const QString startBanner = bannerPageToString(startBannerPage);
     const QString endBanner   = bannerPageToString(endBannerPage);
 
-    setCupsOption(printer, QStringLiteral("job-sheets"), startBanner + QLatin1Char(',') + endBanner);
+    setCupsOption(printer, QStringLiteral("job-sheets"), startBanner + u',' + endBanner);
 }
 
 void QCUPSSupport::setPageSet(QPrinter *printer, const PageSet pageSet)
@@ -265,8 +239,8 @@ void QCUPSSupport::setPagesPerSheetLayout(QPrinter *printer,  const PagesPerShee
     // WARNING: and it is the last one (before the "\0")!
     static const char pagesPerSheetData[][2] = { "1", "2", "4", "6", "9", {'1', '6'}, "\0" };
     static const char pageLayoutData[][5] = {"lrtb", "lrbt", "rlbt", "rltb", "btlr", "btrl", "tblr", "tbrl"};
-    setCupsOption(printer, QStringLiteral("number-up"), QLatin1String(pagesPerSheetData[pagesPerSheet]));
-    setCupsOption(printer, QStringLiteral("number-up-layout"), QLatin1String(pageLayoutData[pagesPerSheetLayout]));
+    setCupsOption(printer, QStringLiteral("number-up"), QLatin1StringView(pagesPerSheetData[pagesPerSheet]));
+    setCupsOption(printer, QStringLiteral("number-up-layout"), QLatin1StringView(pageLayoutData[pagesPerSheetLayout]));
 }
 
 void QCUPSSupport::setPageRange(QPrinter *printer, int pageFrom, int pageTo)

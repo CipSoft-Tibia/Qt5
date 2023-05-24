@@ -24,10 +24,6 @@ SkFontStyleSet* TypefaceFontProvider::onMatchFamily(const char familyName[]) con
     return nullptr;
 }
 
-sk_sp<SkTypeface> TypefaceFontProvider::onMakeFromFontData(std::unique_ptr<SkFontData>) const {
-    return nullptr;
-}
-
 size_t TypefaceFontProvider::registerTypeface(sk_sp<SkTypeface> typeface) {
     if (typeface == nullptr) {
         return 0;
@@ -61,7 +57,7 @@ TypefaceFontStyleSet::TypefaceFontStyleSet(const SkString& familyName)
 int TypefaceFontStyleSet::count() { return fStyles.size(); }
 
 void TypefaceFontStyleSet::getStyle(int index, SkFontStyle* style, SkString* name) {
-    SkASSERT(index < fStyles.count());
+    SkASSERT(index < fStyles.size());
     if (style) {
         *style = fStyles[index]->fontStyle();
     }
@@ -71,7 +67,7 @@ void TypefaceFontStyleSet::getStyle(int index, SkFontStyle* style, SkString* nam
 }
 
 SkTypeface* TypefaceFontStyleSet::createTypeface(int index) {
-    SkASSERT(index < fStyles.count());
+    SkASSERT(index < fStyles.size());
     return SkRef(fStyles[index].get());
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,6 @@
 #include <memory>
 
 #include "base/base_export.h"
-#include "base/macros.h"
 #include "base/strings/string_piece.h"
 #include "base/trace_event/trace_event_impl.h"
 #include "base/trace_event/trace_logging_minimal_win.h"
@@ -27,6 +26,8 @@ namespace trace_event {
 
 class BASE_EXPORT TraceEventETWExport {
  public:
+  TraceEventETWExport(const TraceEventETWExport&) = delete;
+  TraceEventETWExport& operator=(const TraceEventETWExport&) = delete;
   ~TraceEventETWExport();
 
   // Retrieves the singleton.
@@ -90,8 +91,6 @@ class BASE_EXPORT TraceEventETWExport {
 
   // Maps category names to their keyword.
   std::map<StringPiece, uint64_t> categories_keyword_;
-
-  DISALLOW_COPY_AND_ASSIGN(TraceEventETWExport);
 };
 
 }  // namespace trace_event

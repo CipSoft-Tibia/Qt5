@@ -1,10 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/task/thread_pool/pooled_sequenced_task_runner.h"
 
 #include "base/sequence_token.h"
+#include "base/task/default_delayed_task_handle_delegate.h"
+#include "base/task/task_features.h"
 
 namespace base {
 namespace internal {
@@ -23,10 +25,32 @@ PooledSequencedTaskRunner::~PooledSequencedTaskRunner() = default;
 bool PooledSequencedTaskRunner::PostDelayedTask(const Location& from_here,
                                                 OnceClosure closure,
                                                 TimeDelta delay) {
-  if (!PooledTaskRunnerDelegate::Exists())
+  if (!PooledTaskRunnerDelegate::MatchesCurrentDelegate(
+          pooled_task_runner_delegate_)) {
     return false;
+  }
 
-  Task task(from_here, std::move(closure), delay);
+  Task task(from_here, std::move(closure), TimeTicks::Now(), delay,
+            GetDefaultTaskLeeway());
+
+  // Post the task as part of |sequence_|.
+  return pooled_task_runner_delegate_->PostTaskWithSequence(std::move(task),
+                                                            sequence_);
+}
+
+bool PooledSequencedTaskRunner::PostDelayedTaskAt(
+    subtle::PostDelayedTaskPassKey,
+    const Location& from_here,
+    OnceClosure closure,
+    TimeTicks delayed_run_time,
+    subtle::DelayPolicy delay_policy) {
+  if (!PooledTaskRunnerDelegate::MatchesCurrentDelegate(
+          pooled_task_runner_delegate_)) {
+    return false;
+  }
+
+  Task task(from_here, std::move(closure), TimeTicks::Now(), delayed_run_time,
+            GetDefaultTaskLeeway(), delay_policy);
 
   // Post the task as part of |sequence_|.
   return pooled_task_runner_delegate_->PostTaskWithSequence(std::move(task),

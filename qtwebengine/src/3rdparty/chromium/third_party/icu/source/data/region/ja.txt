@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 ja{
     Countries{
         001{"世界"}
@@ -307,8 +308,9 @@ ja{
         CG{"コンゴ共和国"}
         CI{"象牙海岸"}
         CZ{"チェコ共和国"}
+        NZ{"アオテアロア・ニュージーランド"}
         SZ{"スワジランド"}
         TL{"東チモール"}
+        TR{"テュルキエ"}
     }
-    Version{"37"}
 }

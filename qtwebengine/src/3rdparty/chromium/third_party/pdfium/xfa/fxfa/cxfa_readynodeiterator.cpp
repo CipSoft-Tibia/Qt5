@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,7 +19,7 @@ CXFA_Node* CXFA_ReadyNodeIterator::MoveToNext() {
   while (pItem) {
     m_pCurNode = pItem->IsWidgetReady() ? pItem : nullptr;
     if (m_pCurNode)
-      return m_pCurNode.Get();
+      return m_pCurNode;
     pItem = m_ContentIterator.MoveToNext();
   }
   return nullptr;

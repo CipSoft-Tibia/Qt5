@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,6 @@
 
 #include <memory>
 #include <string>
-// TODO(crbug.com/904390): Remove when the investigation is over.
-#include <vector>
 
 namespace syncer {
 struct EntityData;
@@ -22,9 +20,10 @@ namespace autofill {
 
 class AutofillProfile;
 
-// Converts the given |entry| into a syncer EntityData with equivalent
-// autofill profile specifics. Returns nullptr if |entry| is invalid.
+// Converts the given `entry` into a syncer EntityData with equivalent
+// autofill profile specifics. Returns nullptr if `entry` is invalid.
 // Shortens all string fields to AutofillTable::kMaxDataLength.
+// Only applicable for profiles with source `kLocalOrSyncable`.
 std::unique_ptr<syncer::EntityData> CreateEntityDataFromAutofillProfile(
     const AutofillProfile& entry);
 

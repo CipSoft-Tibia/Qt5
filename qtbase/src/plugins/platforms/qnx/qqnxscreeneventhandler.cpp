@@ -1,41 +1,5 @@
-/***************************************************************************
-**
-** Copyright (C) 2013 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqnxglobal.h"
 
@@ -76,8 +40,7 @@ static QString keyString(int sym, QChar::Category category)
     } else if (category == QChar::Other_PrivateUse) {
         return keyStringForPrivateUseQnxKey(sym);
     } else {
-        uint ucs4_sym = sym;
-        return QString::fromUcs4(&ucs4_sym, 1);
+        return QStringView{QChar::fromUcs4(sym)}.toString();
     }
 }
 
@@ -137,19 +100,31 @@ static void finishCloseEvent(screen_event_t event)
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 QQnxScreenEventHandler::QQnxScreenEventHandler(QQnxIntegration *integration)
     : m_qnxIntegration(integration)
     , m_lastButtonState(Qt::NoButton)
     , m_lastMouseWindow(0)
     , m_touchDevice(0)
+    , m_mouseDevice(0)
     , m_eventThread(0)
     , m_focusLostTimer(-1)
 {
     // Create a touch device
-    m_touchDevice = new QTouchDevice;
-    m_touchDevice->setType(QTouchDevice::TouchScreen);
-    m_touchDevice->setCapabilities(QTouchDevice::Position | QTouchDevice::Area | QTouchDevice::Pressure | QTouchDevice::NormalizedPosition);
-    QWindowSystemInterface::registerTouchDevice(m_touchDevice);
+    m_touchDevice = new QPointingDevice(
+            "touchscreen"_L1, 1, QInputDevice::DeviceType::TouchScreen,
+            QPointingDevice::PointerType::Finger,
+            QPointingDevice::Capability::Position | QPointingDevice::Capability::Area
+                    | QPointingDevice::Capability::Pressure
+                    | QPointingDevice::Capability::NormalizedPosition,
+            MaximumTouchPoints, 8);
+    QWindowSystemInterface::registerInputDevice(m_touchDevice);
+
+    m_mouseDevice = new QPointingDevice("mouse"_L1, 2, QInputDevice::DeviceType::Mouse,
+                                        QPointingDevice::PointerType::Generic,
+                                        QPointingDevice::Capability::Position, 1, 8);
+    QWindowSystemInterface::registerInputDevice(m_mouseDevice);
 
     // initialize array of touch points
     for (int i = 0; i < MaximumTouchPoints; i++) {
@@ -161,7 +136,7 @@ QQnxScreenEventHandler::QQnxScreenEventHandler(QQnxIntegration *integration)
         m_touchPoints[i].pressure = 1.0;
 
         // nothing touching
-        m_touchPoints[i].state = Qt::TouchPointReleased;
+        m_touchPoints[i].state = QEventPoint::State::Released;
     }
 }
 
@@ -288,11 +263,7 @@ void QQnxScreenEventHandler::processEvents()
             break;
 
         ++count;
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         qintptr result = 0;
-#else
-        long result = 0;
-#endif
         QAbstractEventDispatcher* dispatcher = QAbstractEventDispatcher::instance();
         bool handled = dispatcher && dispatcher->filterNativeEvent(QByteArrayLiteral("screen_event_t"), event, &result);
         if (!handled)
@@ -378,6 +349,10 @@ void QQnxScreenEventHandler::handlePointerEvent(screen_event_t event)
             screen_get_event_property_iv(event, SCREEN_PROPERTY_MOUSE_WHEEL, &wheelDelta),
             "Failed to query event wheel delta");
 
+    long long timestamp;
+    Q_SCREEN_CHECKERROR(screen_get_event_property_llv(event, SCREEN_PROPERTY_TIMESTAMP, &timestamp),
+                        "Failed to get timestamp");
+
     // Map window handle to top-level QWindow
     QWindow *w = QQnxIntegration::instance()->window(qnxWindow);
 
@@ -415,7 +390,7 @@ void QQnxScreenEventHandler::handlePointerEvent(screen_event_t event)
     if (buttonState & 0x01)
         buttons |= Qt::LeftButton;
     if (buttonState & 0x02)
-        buttons |= Qt::MidButton;
+        buttons |= Qt::MiddleButton;
     if (buttonState & 0x04)
         buttons |= Qt::RightButton;
     if (buttonState & 0x08)
@@ -431,20 +406,55 @@ void QQnxScreenEventHandler::handlePointerEvent(screen_event_t event)
 
     if (w) {
         // Inject mouse event into Qt only if something has changed.
-        if (m_lastGlobalMousePoint != globalPoint ||
-            m_lastLocalMousePoint != localPoint ||
-            m_lastButtonState != buttons) {
-            if (m_lastButtonState != 0 && buttons == 0)
+        if (m_lastGlobalMousePoint != globalPoint || m_lastLocalMousePoint != localPoint) {
+            QWindowSystemInterface::handleMouseEvent(w, timestamp, m_mouseDevice, localPoint,
+                                                     globalPoint, buttons, Qt::NoButton,
+                                                     QEvent::MouseMove);
+            qScreenEventDebug() << "Qt mouse move, w=" << w << ", (" << localPoint.x() << ","
+                                << localPoint.y() << "), b=" << static_cast<int>(buttons);
+        }
+
+        if (m_lastButtonState != buttons) {
+            static const auto supportedButtons = { Qt::LeftButton,   Qt::MiddleButton,
+                                                   Qt::RightButton,  Qt::ExtraButton1,
+                                                   Qt::ExtraButton2, Qt::ExtraButton3,
+                                                   Qt::ExtraButton4, Qt::ExtraButton5 };
+
+            int releasedButtons = (m_lastButtonState ^ buttons) & ~buttons;
+            for (auto button : supportedButtons) {
+                if (releasedButtons & button) {
+                    QWindowSystemInterface::handleMouseEvent(w, timestamp, m_mouseDevice,
+                                                             localPoint, globalPoint, buttons,
+                                                             button, QEvent::MouseButtonRelease);
+                    qScreenEventDebug() << "Qt mouse release, w=" << w << ", (" << localPoint.x()
+                                        << "," << localPoint.y() << "), b=" << button;
+                }
+            }
+
+            if (m_lastButtonState != 0 && buttons == 0) {
                 (static_cast<QQnxWindow *>(w->handle()))->handleActivationEvent();
-            QWindowSystemInterface::handleMouseEvent(w, localPoint, globalPoint, buttons);
-            qScreenEventDebug() << "Qt mouse, w=" << w << ", (" << localPoint.x() << "," << localPoint.y() << "), b=" << static_cast<int>(buttons);
+            }
+
+            int pressedButtons = (m_lastButtonState ^ buttons) & buttons;
+            for (auto button : supportedButtons) {
+                if (pressedButtons & button) {
+                    QWindowSystemInterface::handleMouseEvent(w, timestamp, m_mouseDevice,
+                                                             localPoint, globalPoint, buttons,
+                                                             button, QEvent::MouseButtonPress);
+                    qScreenEventDebug() << "Qt mouse press, w=" << w << ", (" << localPoint.x()
+                                        << "," << localPoint.y() << "), b=" << button;
+                }
+            }
         }
 
         if (wheelDelta) {
             // Screen only supports a single wheel, so we will assume Vertical orientation for
             // now since that is pretty much standard.
-            QWindowSystemInterface::handleWheelEvent(w, localPoint, globalPoint, wheelDelta, Qt::Vertical);
-            qScreenEventDebug() << "Qt wheel, w=" << w << ", (" << localPoint.x() << "," << localPoint.y() << "), d=" << static_cast<int>(wheelDelta);
+            QPoint angleDelta(0, wheelDelta);
+            QWindowSystemInterface::handleWheelEvent(w, timestamp, m_mouseDevice, localPoint,
+                                                     globalPoint, QPoint(), angleDelta);
+            qScreenEventDebug() << "Qt wheel, w=" << w << ", (" << localPoint.x() << ","
+                                << localPoint.y() << "), d=" << static_cast<int>(wheelDelta);
         }
     }
 
@@ -533,7 +543,7 @@ void QQnxScreenEventHandler::handleTouchEvent(screen_event_t event, int qnxType)
                 parent = parent->parent();
             }
 
-            //Qt expects the pressure between 0 and 1. There is however no definit upper limit for
+            //Qt expects the pressure between 0 and 1. There is however no definite upper limit for
             //the integer value of touch event pressure. The 200 was determined by experiment, it
             //usually does not get higher than that.
             m_touchPoints[touchId].pressure = static_cast<qreal>(touchPressure)/200.0;
@@ -545,15 +555,15 @@ void QQnxScreenEventHandler::handleTouchEvent(screen_event_t event, int qnxType)
             QEvent::Type type = QEvent::None;
             switch (qnxType) {
             case SCREEN_EVENT_MTOUCH_TOUCH:
-                m_touchPoints[touchId].state = Qt::TouchPointPressed;
+                m_touchPoints[touchId].state = QEventPoint::State::Pressed;
                 type = QEvent::TouchBegin;
                 break;
             case SCREEN_EVENT_MTOUCH_MOVE:
-                m_touchPoints[touchId].state = Qt::TouchPointMoved;
+                m_touchPoints[touchId].state = QEventPoint::State::Updated;
                 type = QEvent::TouchUpdate;
                 break;
             case SCREEN_EVENT_MTOUCH_RELEASE:
-                m_touchPoints[touchId].state = Qt::TouchPointReleased;
+                m_touchPoints[touchId].state = QEventPoint::State::Released;
                 type = QEvent::TouchEnd;
                 break;
             }
@@ -564,9 +574,9 @@ void QQnxScreenEventHandler::handleTouchEvent(screen_event_t event, int qnxType)
                 if (i == touchId) {
                     // current touch point is always active
                     pointList.append(m_touchPoints[i]);
-                } else if (m_touchPoints[i].state != Qt::TouchPointReleased) {
+                } else if (m_touchPoints[i].state != QEventPoint::State::Released) {
                     // finger is down but did not move
-                    m_touchPoints[i].state = Qt::TouchPointStationary;
+                    m_touchPoints[i].state = QEventPoint::State::Stationary;
                     pointList.append(m_touchPoints[i]);
                 }
             }
@@ -698,7 +708,7 @@ void QQnxScreenEventHandler::handleKeyboardFocusPropertyEvent(screen_window_t wi
     }
 
     if (focus && focusWindow != QGuiApplication::focusWindow())
-        QWindowSystemInterface::handleWindowActivated(focusWindow);
+        QWindowSystemInterface::handleWindowActivated(focusWindow, Qt::ActiveWindowFocusReason);
     else if (!focus && focusWindow == QGuiApplication::focusWindow())
         m_focusLostTimer = startTimer(50);
 }
@@ -736,6 +746,6 @@ void QQnxScreenEventHandler::timerEvent(QTimerEvent *event)
     }
 }
 
-#include "moc_qqnxscreeneventhandler.cpp"
-
 QT_END_NAMESPACE
+
+#include "moc_qqnxscreeneventhandler.cpp"

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 
 #include <set>
 
-#include "base/macros.h"
 #include "content/browser/devtools/protocol/devtools_domain_handler.h"
 #include "content/browser/devtools/protocol/system_info.h"
 #include "content/public/browser/browser_thread.h"
@@ -19,20 +18,30 @@ namespace protocol {
 class SystemInfoHandler : public DevToolsDomainHandler,
                           public SystemInfo::Backend {
  public:
+  explicit SystemInfoHandler(bool is_browser_session);
 
-  SystemInfoHandler();
+  SystemInfoHandler(const SystemInfoHandler&) = delete;
+  SystemInfoHandler& operator=(const SystemInfoHandler&) = delete;
+
   ~SystemInfoHandler() override;
 
+  // DevToolsDomainHandler implementation.
   void Wire(UberDispatcher* dispatcher) override;
 
+  // Protocol methods.
+
+  // Only available in browser targets.
   void GetInfo(std::unique_ptr<GetInfoCallback> callback) override;
+  // Only available in browser targets.
   void GetProcessInfo(
       std::unique_ptr<GetProcessInfoCallback> callback) override;
+  Response GetFeatureState(const String& in_featureState,
+                           bool* featureEnabled) override;
 
  private:
-  friend class SystemInfoHandlerGpuObserver;
+  const bool is_browser_session_;
 
-  DISALLOW_COPY_AND_ASSIGN(SystemInfoHandler);
+  friend class SystemInfoHandlerGpuObserver;
 };
 
 }  // namespace protocol

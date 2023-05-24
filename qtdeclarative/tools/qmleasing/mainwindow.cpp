@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mainwindow.h"
 #include "splineeditor.h"
@@ -69,7 +44,7 @@ MainWindow::MainWindow(QWidget *parent) :
     vboxLayout->addWidget(m_placeholder);
 
     ui_properties.plainTextEdit->setPlainText(splineEditor->generateCode());
-    connect(splineEditor, SIGNAL(easingCurveCodeChanged(QString)), ui_properties.plainTextEdit, SLOT(setPlainText(QString)));
+    connect(splineEditor, &SplineEditor::easingCurveCodeChanged, ui_properties.plainTextEdit, &QPlainTextEdit::setPlainText);
 
     quickView.rootContext()->setContextProperty(QLatin1String("spinBox"), ui_properties.spinBox);
 
@@ -77,7 +52,7 @@ MainWindow::MainWindow(QWidget *parent) :
     for (const QString &name : presetNames)
         ui_properties.comboBox->addItem(name);
 
-    connect(ui_properties.comboBox, SIGNAL(currentIndexChanged(QString)), splineEditor, SLOT(setPreset(QString)));
+    connect(ui_properties.comboBox, &QComboBox::currentTextChanged, splineEditor, &SplineEditor::setPreset);
 
     splineEditor->setPreset(ui_properties.comboBox->currentText());
 
@@ -87,7 +62,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
     groupBoxLayout->addWidget(splineEditor->pointListWidget());
     m_splineEditor = splineEditor;
-    connect(ui_properties.plainTextEdit, SIGNAL(textChanged()), this, SLOT(textEditTextChanged()));
+    connect(ui_properties.plainTextEdit, &QPlainTextEdit::textChanged, this, &MainWindow::textEditTextChanged);
 
     QDialog* importDialog = new QDialog(this);
     ui_import.setupUi(importDialog);
@@ -95,8 +70,8 @@ MainWindow::MainWindow(QWidget *parent) :
     ui_import.inSlopeEdit->setValidator(new QDoubleValidator(this));
     ui_import.outInfluenceEdit->setValidator(new QDoubleValidator(this));
     ui_import.outSlopeEdit->setValidator(new QDoubleValidator(this));
-    connect(ui_properties.importButton, SIGNAL(clicked()), importDialog, SLOT(show()));
-    connect(importDialog, SIGNAL(finished(int)), this, SLOT(importData(int)));
+    connect(ui_properties.importButton, &QPushButton::clicked, importDialog, &QDialog::show);
+    connect(importDialog, &QDialog::finished, this, &MainWindow::importData);
 
     initQml();
 }

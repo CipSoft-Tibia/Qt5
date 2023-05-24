@@ -1,0 +1,80 @@
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+/*!
+    \example chat
+    \ingroup qtgrpc-examples
+    \examplecategory {Networking}
+    \meta tag {network,protobuf,grpc,serialization,tcp}
+    \title Chat
+
+    \brief Using the Qt GRPC client API in the user applications.
+
+    \e Chat explains how to authenticate chat users and send and receive short
+    messages between chat clients. The application supports the following
+    message formats:
+    \list
+        \li Text - use message input field to send the message.
+        \li Image - copy the image buffer to the clipboard to send the message
+            using the \c{'Ctrl + V'} shortcut.
+    \endlist
+
+    The chat client uses a simple RPC protocol described in the protobuf scheme:
+    \snippet chat/proto/simplechat.proto 0
+
+    On the login screen, enter user credentials:
+    \image chatlogin.webp
+
+    \note The list of users is predefined on the server side and is constant.
+    The password for all users is \c qwerty.
+
+    The chat client authenticates to the server using \c {user-name} and
+    \c {user-password} HTTP headers. These fields are set by the
+    \l QGrpcMetadata.
+    Each gRPC message includes the user credentials in the message header.
+    \l QGrpcMetadata is passed to the \l QGrpcHttp2Channel inside
+    \l QGrpcChannelOptions once and reused implicitily:
+
+    \snippet chat/client/simplechatengine.cpp 0
+
+    The chat client starts the communication with the server using a
+    subscription to gRPC server streaming:
+
+    \snippet chat/client/simplechatengine.cpp 1
+
+    The \l QGrpcStream handler provides the signals that the client application
+    should connect to.
+
+    The \l QGrpcStream::errorOccurred signal indicates the error that occurred
+    either on the server side or in the communication channel. Typically, an
+    error results in the connection to the server being closed and
+    the \l QGrpcStream::finished signal being emitted.
+
+    When the server sends new messages to the stream, \l QGrpcStream emits the
+    \l QGrpcStream::messageReceived signal. The slot connected to this signal
+    processes the chat message. Messages that are received from the
+    \c {SimpleChat/messageList} server stream are collected in the custom
+    \l QAbstractListModel model and displayed to the user.
+
+    When the \l QGrpcStream::finished signal is emitted, there is nothing more
+    you can do with this stream instance, so you need to initiate a new
+    subscription.
+
+    After a successful subscription, the chat client switches to the
+    conversation screen and allows you to see and send short messages:
+
+    \image chatconversation.webp
+
+    To send the message, use a unary RPC call \c {SimpleChat/sendMessage}.
+    The client application first sets fields of the \c ChatMessage protobuf
+    message and then calls the client method:
+
+    \snippet chat/client/simplechatengine.cpp 2
+
+    Then, the gRPC server processes the client messages and broadcasts them to
+    all the connected clients through the \c {SimpleChat/messageList} stream.
+
+    \note This example uses the reference gRPC C++ API in the server
+    implementation.
+*/
+

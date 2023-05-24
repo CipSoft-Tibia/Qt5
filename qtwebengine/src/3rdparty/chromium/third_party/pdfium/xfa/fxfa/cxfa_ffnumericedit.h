@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #ifndef XFA_FXFA_CXFA_FFNUMERICEDIT_H_
 #define XFA_FXFA_CXFA_FFNUMERICEDIT_H_
 
-#include "core/fxcrt/fx_string.h"
+#include "core/fxcrt/widestring.h"
 #include "xfa/fxfa/cxfa_fftextedit.h"
 
 class CFWL_Event;
@@ -24,7 +24,7 @@ class CXFA_FFNumericEdit final : public CXFA_FFTextEdit {
   void OnProcessEvent(CFWL_Event* pEvent) override;
 
  private:
-  bool OnValidate(CFWL_Widget* pWidget, WideString& wsText);
+  bool OnValidate(CFWL_Widget* pWidget, const WideString& wsText);
 };
 
 #endif  // XFA_FXFA_CXFA_FFNUMERICEDIT_H_

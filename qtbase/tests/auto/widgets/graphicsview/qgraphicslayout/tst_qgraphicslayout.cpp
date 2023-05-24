@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtGui>
 #include <QtWidgets>
 #include <math.h>
@@ -90,10 +65,11 @@ enum FunctionType {
 
 class TestGraphicsWidget : public QGraphicsWidget {
 public:
-    TestGraphicsWidget(QGraphicsWidget *parent = 0) : QGraphicsWidget(parent)
+    TestGraphicsWidget(QGraphicsWidget *parent = nullptr) : QGraphicsWidget(parent)
     { }
 
-    bool event(QEvent *e) {
+    bool event(QEvent *e) override
+    {
         ++(m_eventCount[int(e->type())]);
         return QGraphicsWidget::event(e);
     }
@@ -111,7 +87,7 @@ public:
         functionCount.clear();
     }
 
-    void setGeometry(const QRectF &rect)
+    void setGeometry(const QRectF &rect) override
     {
         QGraphicsWidget::setGeometry(rect);
         ++(functionCount[SetGeometry]);
@@ -228,20 +204,20 @@ void tst_QGraphicsLayout::automaticReparenting()
 class TestLayout : public QGraphicsLinearLayout
 {
     public:
-    TestLayout(QGraphicsLayoutItem *parent = 0)
+    TestLayout(QGraphicsLayoutItem *parent = nullptr)
         : QGraphicsLinearLayout(parent)
     {
         setContentsMargins(0,0,0,0);
         setSpacing(0);
     }
 
-    void setGeometry(const QRectF &rect)
+    void setGeometry(const QRectF &rect) override
     {
         ++(functionCount[SetGeometry]);
         QGraphicsLinearLayout::setGeometry(rect);
     }
 
-    void invalidate()
+    void invalidate() override
     {
         ++(functionCount[Invalidate]);
         QGraphicsLinearLayout::invalidate();
@@ -569,27 +545,29 @@ class Layout : public QGraphicsLayout
 public:
     Layout(QGraphicsLayoutItem *parentItem = 0) : QGraphicsLayout(parentItem) {}
 
-    void setGeometry(const QRectF &rect)
+    void setGeometry(const QRectF &rect) override
     {
         QGraphicsLayout::setGeometry(rect);
     }
 
-    int count() const {
+    int count() const override
+    {
         return 0;
     }
 
-    QGraphicsLayoutItem *itemAt(int index) const {
+    QGraphicsLayoutItem *itemAt(int index) const override
+    {
         Q_UNUSED(index);
         return 0;
     }
 
-    void removeAt(int index)
+    void removeAt(int index) override
     {
         Q_UNUSED(index);
     }
 
 protected:
-    QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint = QSizeF()) const
+    QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint = QSizeF()) const override
     {
         Q_UNUSED(constraint);
         Q_UNUSED(which);
@@ -601,7 +579,7 @@ protected:
 void tst_QGraphicsLayout::constructors()
 {
     // Strange test, but see the fix that was with this submit
-    QVector<Layout*> layouts;
+    QList<Layout *> layouts;
     for (int pass = 0; pass < 5; ++pass) {
         Layout *lay = new Layout();
         layouts << lay;
@@ -634,9 +612,9 @@ public:
         setGraphicsItem(item);
     }
 
-    void setGeometry(const QRectF &geom);
+    void setGeometry(const QRectF &geom) override;
 
-    QSizeF sizeHint(Qt::SizeHint which, const QSizeF & constraint = QSizeF() ) const;
+    QSizeF sizeHint(Qt::SizeHint which, const QSizeF & constraint = QSizeF() ) const override;
 
     inline QGraphicsRectItem *rectItem() {
         return static_cast<QGraphicsRectItem *>(graphicsItem());
@@ -674,7 +652,8 @@ public:
         connect(&m_timeline, SIGNAL(valueChanged(qreal)), this, SLOT(valueChanged(qreal)));
     }
 
-    void setGeometry(const QRectF &geom) {
+    void setGeometry(const QRectF &geom) override
+    {
         fromGeoms.clear();
         toGeoms.clear();
         for (int i = 0; i < count(); ++i) {
@@ -691,7 +670,7 @@ public:
 
 private slots:
     void valueChanged(qreal value) {
-        for (int i = 0; i < fromGeoms.count(); ++i) {
+        for (int i = 0; i < fromGeoms.size(); ++i) {
             QGraphicsLayoutItem *li = itemAt(i);
             QRectF from = fromGeoms.at(i);
             QRectF to = toGeoms.at(i);
@@ -703,8 +682,8 @@ private slots:
     }
 private:
     QTimeLine m_timeline;
-    QVector<QRectF> fromGeoms;
-    QVector<QRectF> toGeoms;
+    QList<QRectF> fromGeoms;
+    QList<QRectF> toGeoms;
 };
 
 
@@ -759,7 +738,7 @@ public:
         setOwnedByLayout(true);
     }
 
-    QSizeF sizeHint(Qt::SizeHint which, const QSizeF & constraint = QSizeF() ) const;
+    QSizeF sizeHint(Qt::SizeHint which, const QSizeF & constraint = QSizeF() ) const override;
 
     ~CustomLayoutItem() {
         m_destructedSet->insert(this);
@@ -790,9 +769,9 @@ public:
         m_destructedSet = destructedSet;
     }
 
-    QSizeF sizeHint(Qt::SizeHint which, const QSizeF & constraint = QSizeF() ) const;
+    QSizeF sizeHint(Qt::SizeHint which, const QSizeF & constraint = QSizeF() ) const override;
 
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget * = 0)
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget * = 0) override
     {
         const QRect r = option->rect.adjusted(0, 0, -1, -1);
         painter->drawLine(r.topLeft(), r.bottomRight());
@@ -844,30 +823,30 @@ CustomLayout(QGraphicsLayoutItem *parent)
 {
 }
 
-int count() const
+int count() const override
 {
-    return items.count();
+    return items.size();
 }
 
-QGraphicsLayoutItem* itemAt(int index) const
+QGraphicsLayoutItem* itemAt(int index) const override
 {
     return items.at(index);
 }
 
 
-void removeAt(int index)
+void removeAt(int index) override
 {
     items.removeAt(index);
 }
 
 void addItem(QGraphicsLayoutItem *item)
 {
-    insertItem(items.count(), item);
+    insertItem(items.size(), item);
 }
 
 void insertItem(int index, QGraphicsLayoutItem *item)
 {
-    index = qBound(0, index, items.count());
+    index = qBound(0, index, items.size());
 
     item->setParentLayoutItem(this);
 
@@ -875,7 +854,7 @@ void insertItem(int index, QGraphicsLayoutItem *item)
     updateParentWidget(widget);
 
 
-    if (index == items.count()) {
+    if (index == items.size()) {
         items.append(item);
     } else {
         items.insert(index, item);
@@ -897,7 +876,7 @@ void updateParentWidget(QGraphicsWidget *item)
     }
 }
 
-QSizeF sizeHint(Qt::SizeHint /* which */, const QSizeF & /* constraint */) const
+QSizeF sizeHint(Qt::SizeHint /* which */, const QSizeF & /* constraint */) const override
 {
     return QSizeF(50,50);
 }
@@ -943,7 +922,7 @@ void tst_QGraphicsLayout::ownership()
 
         destructedSet.clear();
         window->setLayout(0);
-        QCOMPARE(destructedSet.count(), 0);
+        QCOMPARE(destructedSet.size(), 0);
         delete window;
     }
 

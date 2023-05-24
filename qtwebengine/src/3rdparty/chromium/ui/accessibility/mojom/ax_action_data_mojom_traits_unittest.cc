@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -34,8 +34,7 @@ TEST(AXActionDataMojomTraitsTest, RoundTrip) {
   input.hit_test_event_to_fire = ax::mojom::Event::kFocus;
 
   ui::AXActionData output;
-  EXPECT_TRUE(
-      SerializeAndDeserialize<ax::mojom::AXActionData>(&input, &output));
+  EXPECT_TRUE(SerializeAndDeserialize<ax::mojom::AXActionData>(input, output));
 
   EXPECT_EQ(output.action, ax::mojom::Action::kBlur);
   EXPECT_EQ(output.target_tree_id, input.target_tree_id);

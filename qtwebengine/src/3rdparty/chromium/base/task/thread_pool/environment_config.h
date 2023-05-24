@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,6 +19,8 @@ namespace internal {
 enum EnvironmentType {
   FOREGROUND = 0,
   FOREGROUND_BLOCKING,
+  UTILITY,
+  UTILITY_BLOCKING,
   BACKGROUND,
   BACKGROUND_BLOCKING,
   ENVIRONMENT_COUNT  // Always last.
@@ -30,21 +32,27 @@ struct EnvironmentParams {
   // the thread pool name concatenated to this.
   const char* name_suffix;
 
-  // Preferred priority for threads in this environment; the actual thread
-  // priority depends on shutdown state and platform capabilities.
-  ThreadPriority priority_hint;
+  // Preferred type for threads in this environment; the actual thread type
+  // depends on shutdown state and platform capabilities.
+  ThreadType thread_type_hint;
 };
 
 constexpr EnvironmentParams kEnvironmentParams[] = {
-    {"Foreground", base::ThreadPriority::NORMAL},
-    {"ForegroundBlocking", base::ThreadPriority::NORMAL},
-    {"Background", base::ThreadPriority::BACKGROUND},
-    {"BackgroundBlocking", base::ThreadPriority::BACKGROUND},
+    {"Foreground", base::ThreadType::kDefault},
+    {"ForegroundBlocking", base::ThreadType::kDefault},
+    {"Utility", base::ThreadType::kUtility},
+    {"UtilityBlocking", base::ThreadType::kUtility},
+    {"Background", base::ThreadType::kBackground},
+    {"BackgroundBlocking", base::ThreadType::kBackground},
 };
 
 // Returns true if this platform supports having WorkerThreads running with a
-// background priority.
-bool BASE_EXPORT CanUseBackgroundPriorityForWorkerThread();
+// background thread type.
+bool BASE_EXPORT CanUseBackgroundThreadTypeForWorkerThread();
+
+// Returns true if this platform supports having WorkerThreads running with a
+// utility thread type.
+bool BASE_EXPORT CanUseUtilityThreadTypeForWorkerThread();
 
 }  // namespace internal
 }  // namespace base

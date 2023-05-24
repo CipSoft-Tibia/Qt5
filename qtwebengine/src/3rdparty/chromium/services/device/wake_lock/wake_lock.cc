@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,14 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
+#include "build/build_config.h"
+
+#if BUILDFLAG(IS_ANDROID)
 #include "services/device/wake_lock/wake_lock_context.h"
+#include "ui/gfx/native_widget_types.h"
+#endif
 
 namespace device {
 
@@ -23,11 +29,11 @@ WakeLock::WakeLock(mojo::PendingReceiver<mojom::WakeLock> receiver,
       type_(type),
       reason_(reason),
       description_(std::make_unique<std::string>(description)),
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
       context_id_(context_id),
       native_view_getter_(native_view_getter),
 #endif
-      main_task_runner_(base::ThreadTaskRunnerHandle::Get()),
+      main_task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
       file_task_runner_(std::move(file_task_runner)),
       observer_(observer) {
   DCHECK(observer_);
@@ -36,7 +42,7 @@ WakeLock::WakeLock(mojo::PendingReceiver<mojom::WakeLock> receiver,
       &WakeLock::OnConnectionError, base::Unretained(this)));
 }
 
-WakeLock::~WakeLock() {}
+WakeLock::~WakeLock() = default;
 
 void WakeLock::AddClient(mojo::PendingReceiver<mojom::WakeLock> receiver) {
   DCHECK(main_task_runner_->RunsTasksInCurrentSequence());
@@ -79,7 +85,7 @@ void WakeLock::ChangeType(mojom::WakeLockType type,
                           ChangeTypeCallback callback) {
   DCHECK(main_task_runner_->RunsTasksInCurrentSequence());
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   LOG(ERROR) << "WakeLock::ChangeType() has no effect on Android.";
   std::move(callback).Run(false);
 #else
@@ -128,7 +134,7 @@ void WakeLock::CreateWakeLock() {
   if (type_ != mojom::WakeLockType::kPreventDisplaySleep)
     return;
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   if (context_id_ == WakeLockContext::WakeLockInvalidContextId) {
     LOG(ERROR) << "Client must pass a valid context_id when requests wake lock "
                   "on Android.";

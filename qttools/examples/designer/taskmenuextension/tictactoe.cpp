@@ -1,87 +1,41 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "tictactoe.h"
 
 #include <QMouseEvent>
 #include <QPainter>
 
-static inline QString defaultState() { return QStringLiteral("---------"); }
+using namespace Qt::StringLiterals;
+
+static inline QString defaultState() { return u"---------"_s; }
 
 TicTacToe::TicTacToe(QWidget *parent)
-    : QWidget(parent)
+    : QWidget(parent), myState(defaultState())
 {
 }
 
 QSize TicTacToe::minimumSizeHint() const
 {
-    return QSize(200, 200);
+    return {200, 200};
 }
 
 QSize TicTacToe::sizeHint() const
 {
-    return QSize(200, 200);
+    return {200, 200};
 }
 
 void TicTacToe::setState(const QString &newState)
 {
     turnNumber = 0;
     myState = defaultState();
-    int position = 0;
-    while (position < 9 && position < newState.length()) {
-        QChar mark = newState.at(position);
+    const int count = qMin(9, int(newState.length()));
+    for (int position = 0; position < count; ++position) {
+        const QChar mark = newState.at(position);
         if (mark == Cross || mark == Nought) {
             ++turnNumber;
-            myState.replace(position, 1, mark);
+            myState[position] = mark;
         }
-        position++;
     }
     update();
 }
@@ -102,19 +56,16 @@ void TicTacToe::mousePressEvent(QMouseEvent *event)
 {
     if (turnNumber == 9) {
         clearBoard();
-        update();
-    } else {
-        for (int position = 0; position < 9; ++position) {
-            QRect cell = cellRect(position / 3, position % 3);
-            if (cell.contains(event->pos())) {
-                if (myState.at(position) == Empty) {
-                    if (turnNumber % 2 == 0)
-                        myState.replace(position, 1, Cross);
-                    else
-                        myState.replace(position, 1, Nought);
-                    ++turnNumber;
-                    update();
-                }
+        return;
+    }
+    for (int position = 0; position < 9; ++position) {
+        const QRect &cell = cellRect(position);
+        if (cell.contains(event->position().toPoint())) {
+            if (myState.at(position) == Empty) {
+                myState[position] = turnNumber % 2 == 0
+                                    ? Cross : Nought;
+                ++turnNumber;
+                update();
             }
         }
     }
@@ -134,7 +85,7 @@ void TicTacToe::paintEvent(QPaintEvent * /* event */)
     painter.setPen(QPen(Qt::darkBlue, 2));
 
     for (int position = 0; position < 9; ++position) {
-        QRect cell = cellRect(position / 3, position % 3);
+        const QRect &cell = cellRect(position);
 
         if (myState.at(position) == Cross) {
             painter.drawLine(cell.topLeft(), cell.bottomRight());
@@ -150,7 +101,7 @@ void TicTacToe::paintEvent(QPaintEvent * /* event */)
         if (myState.at(position) != Empty
                 && myState.at(position + 1) == myState.at(position)
                 && myState.at(position + 2) == myState.at(position)) {
-            int y = cellRect((position / 3), 0).center().y();
+            const int y = cellRect(position).center().y();
             painter.drawLine(0, y, width(), y);
             turnNumber = 9;
         }
@@ -160,7 +111,7 @@ void TicTacToe::paintEvent(QPaintEvent * /* event */)
         if (myState.at(position) != Empty
                 && myState.at(position + 3) == myState.at(position)
                 && myState.at(position + 6) == myState.at(position)) {
-            int x = cellRect(0, position).center().x();
+            const int x = cellRect(position).center().x();
             painter.drawLine(x, 0, x, height());
             turnNumber = 9;
         }
@@ -177,12 +128,15 @@ void TicTacToe::paintEvent(QPaintEvent * /* event */)
     }
 }
 
-QRect TicTacToe::cellRect(int row, int column) const
+QRect TicTacToe::cellRect(int position) const
 {
     const int HMargin = width() / 30;
     const int VMargin = height() / 30;
-    return QRect(column * cellWidth() + HMargin,
-                 row * cellHeight() + VMargin,
-                 cellWidth() - 2 * HMargin,
-                 cellHeight() - 2 * VMargin);
+    const int row = position / 3;
+    const int column = position % 3;
+    const QPoint pos{column * cellWidth() + HMargin,
+                     row * cellHeight() + VMargin};
+    const QSize size{cellWidth() - 2 * HMargin,
+                     cellHeight() - 2 * VMargin};
+    return {pos, size};
 }

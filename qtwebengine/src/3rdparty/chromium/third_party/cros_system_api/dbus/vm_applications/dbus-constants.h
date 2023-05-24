@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,6 +17,7 @@ const char kVmApplicationsServiceUpdateApplicationListMethod[] =
     "UpdateApplicationList";
 const char kVmApplicationsServiceLaunchTerminalMethod[] = "LaunchTerminal";
 const char kVmApplicationsServiceUpdateMimeTypesMethod[] = "UpdateMimeTypes";
+const char kVmApplicationsServiceSelectFileMethod[] = "SelectFile";
 
 }  // namespace apps
 }  // namespace vm_tools

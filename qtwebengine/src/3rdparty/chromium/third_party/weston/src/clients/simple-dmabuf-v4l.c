@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <getopt.h>
 #include <assert.h>
 #include <unistd.h>
 #include <sys/mman.h>
@@ -50,8 +51,13 @@
 #include "xdg-shell-client-protocol.h"
 #include "fullscreen-shell-unstable-v1-client-protocol.h"
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
+#include "weston-direct-display-client-protocol.h"
+
+#include "shared/helpers.h"
 
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
+#define OPT_FLAG_INVERT (1 << 0)
+#define OPT_FLAG_DIRECT_DISPLAY (1 << 1)
 
 static void
 redraw(void *data, struct wl_callback *callback, uint32_t time);
@@ -103,7 +109,9 @@ struct display {
 	struct xdg_wm_base *wm_base;
 	struct zwp_fullscreen_shell_v1 *fshell;
 	struct zwp_linux_dmabuf_v1 *dmabuf;
+	struct weston_direct_display_v1 *direct_display;
 	bool requested_format_found;
+	uint32_t opts;
 
 	int v4l_fd;
 	struct buffer_format format;
@@ -245,6 +253,8 @@ v4l_connect(struct display *display, const char *dev_name)
 {
 	struct v4l2_capability cap;
 	struct v4l2_requestbuffers req;
+	struct v4l2_input input;
+	int index_input = -1;
 	unsigned int num_planes;
 
 	display->v4l_fd = open(dev_name, O_RDWR);
@@ -260,6 +270,16 @@ v4l_connect(struct display *display, const char *dev_name)
 			perror("VIDIOC_QUERYCAP");
 		}
 		return 0;
+	}
+
+	if (xioctl(display->v4l_fd, VIDIOC_G_INPUT, &index_input) == 0) {
+		input.index = index_input;
+		if (xioctl(display->v4l_fd, VIDIOC_ENUMINPUT, &input) == 0) {
+			if (input.status & V4L2_IN_ST_VFLIP) {
+				fprintf(stdout, "Found camera sensor y-flipped\n");
+				display->opts |= OPT_FLAG_INVERT;
+			}
+		}
 	}
 
 	if (cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)
@@ -365,12 +385,21 @@ create_dmabuf_buffer(struct display *display, struct buffer *buffer)
 	modifier = 0;
 	flags = 0;
 
-	/* XXX: apparently some webcams may actually provide y-inverted images,
-	 * in which case we should set
-	 * flags = ZWP_LINUX_BUFFER_PARAMS_V1_FLAGS_Y_INVERT
-	 */
+	if (display->opts & OPT_FLAG_INVERT)
+		flags |= ZWP_LINUX_BUFFER_PARAMS_V1_FLAGS_Y_INVERT;
 
 	params = zwp_linux_dmabuf_v1_create_params(display->dmabuf);
+
+	if ((display->opts & OPT_FLAG_DIRECT_DISPLAY) && display->direct_display) {
+		weston_direct_display_v1_enable(display->direct_display, params);
+
+		if (display->opts & OPT_FLAG_INVERT) {
+			flags &= ~ZWP_LINUX_BUFFER_PARAMS_V1_FLAGS_Y_INVERT;
+			fprintf(stdout, "dmabuf y-inverted attribute flag was removed"
+					", as display-direct flag was set\n");
+		}
+	}
+
 	for (i = 0; i < display->format.num_planes; ++i)
 		zwp_linux_buffer_params_v1_add(params,
 		                               buffer->dmabuf_fds[i],
@@ -696,17 +725,27 @@ static const struct wl_callback_listener frame_listener = {
 };
 
 static void
-dmabuf_format(void *data, struct zwp_linux_dmabuf_v1 *zwp_linux_dmabuf,
-              uint32_t format)
+dmabuf_modifier(void *data, struct zwp_linux_dmabuf_v1 *zwp_linux_dmabuf,
+		 uint32_t format, uint32_t modifier_hi, uint32_t modifier_lo)
 {
 	struct display *d = data;
+	uint64_t modifier = ((uint64_t) modifier_hi << 32 ) | modifier_lo;
 
-	if (format == d->drm_format)
+	if (format == d->drm_format && modifier == DRM_FORMAT_MOD_LINEAR)
 		d->requested_format_found = true;
 }
 
+
+static void
+dmabuf_format(void *data, struct zwp_linux_dmabuf_v1 *zwp_linux_dmabuf,
+              uint32_t format)
+{
+	/* deprecated */
+}
+
 static const struct zwp_linux_dmabuf_v1_listener dmabuf_listener = {
-	dmabuf_format
+	dmabuf_format,
+	dmabuf_modifier
 };
 
 static void
@@ -813,10 +852,12 @@ registry_handle_global(void *data, struct wl_registry *registry,
 		                             1);
 	} else if (strcmp(interface, "zwp_linux_dmabuf_v1") == 0) {
 		d->dmabuf = wl_registry_bind(registry,
-		                             id, &zwp_linux_dmabuf_v1_interface,
-		                             1);
+		                             id, &zwp_linux_dmabuf_v1_interface, 3);
 		zwp_linux_dmabuf_v1_add_listener(d->dmabuf, &dmabuf_listener,
 		                                 d);
+	} else if (strcmp(interface, "weston_direct_display_v1") == 0) {
+		d->direct_display = wl_registry_bind(registry,
+						     id, &weston_direct_display_v1_interface, 1);
 	}
 }
 
@@ -832,11 +873,11 @@ static const struct wl_registry_listener registry_listener = {
 };
 
 static struct display *
-create_display(uint32_t requested_format)
+create_display(uint32_t requested_format, uint32_t opt_flags)
 {
 	struct display *display;
 
-	display = malloc(sizeof *display);
+	display = zalloc(sizeof *display);
 	if (display == NULL) {
 		fprintf(stderr, "out of memory\n");
 		exit(1);
@@ -857,14 +898,14 @@ create_display(uint32_t requested_format)
 
 	wl_display_roundtrip(display->display);
 
-	/* XXX: fake, because the compositor does not yet advertise anything */
-	display->requested_format_found = true;
-
 	if (!display->requested_format_found) {
-		fprintf(stderr, "DRM_FORMAT_YUYV not available\n");
+		fprintf(stderr, "0x%lx requested DRM format not available\n",
+				(unsigned long) requested_format);
 		exit(1);
 	}
 
+	if (opt_flags)
+		display->opts = opt_flags;
 	return display;
 }
 
@@ -892,7 +933,7 @@ destroy_display(struct display *display)
 static void
 usage(const char *argv0)
 {
-	printf("Usage: %s [V4L2 device] [V4L2 format] [DRM format]\n"
+	printf("Usage: %s [-v v4l2_device] [-f v4l2_format] [-d drm_format] [-i|--y-invert] [-g|--d-display]\n"
 	       "\n"
 	       "The default V4L2 device is /dev/video0\n"
 	       "\n"
@@ -901,7 +942,14 @@ usage(const char *argv0)
 	       "DRM formats are defined in <libdrm/drm_fourcc.h>\n"
 	       "The default for both formats is YUYV.\n"
 	       "If the V4L2 and DRM formats differ, the data is simply "
-	       "reinterpreted rather than converted.\n", argv0);
+	       "reinterpreted rather than converted.\n\n"
+	       "Flags:\n"
+	       "- y-invert force the image to be y-flipped;\n  note will be "
+	       "automatically added if we detect if the camera sensor is "
+	       "y-flipped\n"
+	       "- d-display skip importing dmabuf-based buffer into the GPU\n  "
+	       "and attempt pass the buffer straight to the display controller\n",
+	       argv0);
 
 	printf("\n"
 	       "How to set up Vivid the virtual video driver for testing:\n"
@@ -912,8 +960,11 @@ usage(const char *argv0)
 	       "  here we assume /dev/video0\n"
 	       "- set the pixel format:\n"
 	       "    $ v4l2-ctl -d /dev/video0 --set-fmt-video=width=640,pixelformat=XR24\n"
+	       "- optionally could add 'allocators=0x1' to options as to create"
+	       "  the buffer in a dmabuf-contiguous way\n"
+	       "  (as some display-controllers require it)\n"
 	       "- launch the demo:\n"
-	       "    $ %s /dev/video0 XR24 XR24\n"
+	       "    $ %s -v /dev/video0 -f XR24 -d XR24\n"
 	       "You should see a test pattern with color bars, and some text.\n"
 	       "\n"
 	       "More about vivid: https://www.kernel.org/doc/Documentation/video4linux/vivid.txt\n"
@@ -934,29 +985,57 @@ main(int argc, char **argv)
 	struct sigaction sigint;
 	struct display *display;
 	struct window *window;
-	const char *v4l_device;
-	uint32_t v4l_format, drm_format;
-	int ret = 0;
+	const char *v4l_device = NULL;
+	uint32_t v4l_format = 0x0;
+	uint32_t drm_format = 0x0;
+	uint32_t opts_flags = 0x0;
+	int c, opt_index, ret = 0;
 
-	if (argc < 2) {
-		v4l_device = "/dev/video0";
-	} else if (!strcmp(argv[1], "--help")) {
-		usage(argv[0]);
-	} else {
-		v4l_device = argv[1];
+	static struct option long_options[] = {
+		{ "v4l2-device", required_argument, NULL, 'v' },
+		{ "v4l2-format", required_argument, NULL, 'f' },
+		{ "drm-format",	 required_argument, NULL, 'd' },
+		{ "y-invert",    no_argument, 	    NULL, 'i' },
+		{ "d-display",   no_argument, 	    NULL, 'g' },
+		{ "help",        no_argument,       NULL, 'h' },
+		{ 0,             0,                 NULL,  0  }
+	};
+
+	while ((c = getopt_long(argc, argv, "hiv:d:f:g", long_options,
+				&opt_index)) != -1) {
+		switch (c) {
+		case 'v':
+			v4l_device = optarg;
+			break;
+		case 'f':
+			v4l_format = parse_format(optarg);
+			break;
+		case 'd':
+			drm_format = parse_format(optarg);
+			break;
+		case 'i':
+			opts_flags |= OPT_FLAG_INVERT;
+			break;
+		case 'g':
+			opts_flags |= OPT_FLAG_DIRECT_DISPLAY;
+			break;
+		default:
+		case 'h':
+			usage(argv[0]);
+			break;
+		}
 	}
 
-	if (argc < 3)
+	if (!v4l_device)
+		v4l_device = "/dev/video0";
+
+	if (v4l_format == 0x0)
 		v4l_format = parse_format("YUYV");
-	else
-		v4l_format = parse_format(argv[2]);
 
-	if (argc < 4)
+	if (drm_format == 0x0)
 		drm_format = v4l_format;
-	else
-		drm_format = parse_format(argv[3]);
 
-	display = create_display(drm_format);
+	display = create_display(drm_format, opts_flags);
 	display->format.format = v4l_format;
 
 	window = create_window(display);

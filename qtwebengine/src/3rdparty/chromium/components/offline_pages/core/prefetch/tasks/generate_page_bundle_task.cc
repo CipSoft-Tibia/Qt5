@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,11 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "components/offline_pages/core/client_id.h"
 #include "components/offline_pages/core/offline_clock.h"
-#include "components/offline_pages/core/offline_store_utils.h"
 #include "components/offline_pages/core/prefetch/prefetch_gcm_handler.h"
 #include "components/offline_pages/core/prefetch/prefetch_network_request_factory.h"
 #include "components/offline_pages/core/prefetch/store/prefetch_store.h"
@@ -64,7 +63,7 @@ bool UpdateStateSync(sql::Database* db, const int64_t offline_id) {
   sql::Statement statement(db->GetCachedStatement(SQL_FROM_HERE, kSql));
   statement.BindInt(
       0, static_cast<int>(PrefetchItemState::SENT_GENERATE_PAGE_BUNDLE));
-  statement.BindInt64(1, store_utils::ToDatabaseTime(OfflineTimeNow()));
+  statement.BindTime(1, OfflineTimeNow());
   statement.BindInt64(2, offline_id);
   return statement.Run();
 }

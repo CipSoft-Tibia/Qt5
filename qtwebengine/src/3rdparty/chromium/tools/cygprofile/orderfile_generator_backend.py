@@ -1,5 +1,5 @@
-#!/usr/bin/env vpython
-# Copyright (c) 2013 The Chromium Authors. All rights reserved.
+#!/usr/bin/env vpython3
+# Copyright 2013 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -13,7 +13,6 @@ Example usage:
   tools/cygprofile/orderfile_generator_backend.py --use-goma --target-arch=arm
 """
 
-from __future__ import print_function
 
 import argparse
 import csv
@@ -33,7 +32,6 @@ import cyglog_to_orderfile
 import patch_orderfile
 import process_profiles
 import profile_android_startup
-import symbol_extractor
 
 _SRC_PATH = os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
 sys.path.append(os.path.join(_SRC_PATH, 'third_party', 'catapult', 'devil'))
@@ -55,16 +53,16 @@ constants.SetBuildType('Release')
 # Architecture specific GN args. Trying to build an orderfile for an
 # architecture not listed here will eventually throw.
 _ARCH_GN_ARGS = {
-    'arm': [ 'target_cpu = "arm"' ],
-    'arm64': [ 'target_cpu = "arm64"',
-               'android_64bit_browser = true'],
+    'arm': ['target_cpu = "arm"'],
+    'arm64': ['target_cpu = "arm64"', 'android_64bit_browser = true'],
+    'x86': ['target_cpu = "x86"'],
 }
 
 class CommandError(Exception):
   """Indicates that a dispatched shell command exited with a non-zero status."""
 
   def __init__(self, value):
-    super(CommandError, self).__init__()
+    super().__init__()
     self.value = value
 
   def __str__(self):
@@ -100,8 +98,7 @@ def _GetFileExtension(file_name):
   file_name_parts = os.path.basename(file_name).split('.')
   if len(file_name_parts) > 1:
     return file_name_parts[-1]
-  else:
-    return None
+  return None
 
 
 def _StashOutputDirectory(buildpath):
@@ -157,7 +154,7 @@ def _UnstashOutputDirectory(buildpath):
   shutil.move(stashpath, buildpath)
 
 
-class StepRecorder(object):
+class StepRecorder:
   """Records steps and timings."""
 
   def __init__(self, buildbot):
@@ -237,16 +234,20 @@ class StepRecorder(object):
     return process.returncode
 
 
-class ClankCompiler(object):
+class ClankCompiler:
   """Handles compilation of clank."""
 
   def __init__(self, out_dir, step_recorder, arch, use_goma, goma_dir,
-               system_health_profiling, monochrome, public, orderfile_location):
+               use_remoteexec, ninja_command, system_health_profiling,
+               monochrome, public, orderfile_location):
     self._out_dir = out_dir
     self._step_recorder = step_recorder
     self._arch = arch
+    # TODO(b/236070141): remove goma config.
     self._use_goma = use_goma
     self._goma_dir = goma_dir
+    self._use_remoteexec = use_remoteexec
+    self._ninja_command = ninja_command
     self._system_health_profiling = system_health_profiling
     self._public = public
     self._orderfile_location = orderfile_location
@@ -291,6 +292,7 @@ class ClankCompiler(object):
         'symbol_level=1',  # to fit 30 GiB RAM on the bot when LLD is running
         'target_os="android"',
         'use_goma=' + str(self._use_goma).lower(),
+        'use_remoteexec=' + str(self._use_remoteexec).lower(),
         'use_order_profiling=' + str(instrumented).lower(),
         'use_call_graph=' + str(use_call_graph).lower(),
     ]
@@ -312,8 +314,7 @@ class ClankCompiler(object):
          '--args=' + ' '.join(args)])
 
     self._step_recorder.RunCommand(
-        ['autoninja', '-C',
-         os.path.join(self._out_dir, 'Release'), target])
+        self._ninja_command + [os.path.join(self._out_dir, 'Release'), target])
 
   def ForceRelink(self):
     """Forces libchrome.so or libmonochrome.so to be re-linked.
@@ -353,7 +354,7 @@ class ClankCompiler(object):
     self.Build(instrumented, use_call_graph, self._libchrome_target)
 
 
-class OrderfileUpdater(object):
+class OrderfileUpdater:
   """Handles uploading and committing a new orderfile in the repository.
 
   Only used for testing or on a bot.
@@ -388,7 +389,7 @@ class OrderfileUpdater(object):
       Exception if the hash file does not match the file.
       NotImplementedError when the commit logic hasn't been overridden.
     """
-    files_to_commit = list(filter(None, files))
+    files_to_commit = [_f for _f in files if _f]
     if files_to_commit:
       self._CommitStashedFiles(files_to_commit)
 
@@ -454,7 +455,7 @@ class OrderfileUpdater(object):
     raise NotImplementedError
 
 
-class OrderfileGenerator(object):
+class OrderfileGenerator:
   """A utility for generating a new orderfile for Clank.
 
   Builds an instrumented binary, profiles a run of the application, and
@@ -467,6 +468,8 @@ class OrderfileGenerator(object):
 
   # Previous orderfile_generator debug files would be overwritten.
   _DIRECTORY_FOR_DEBUG_FILES = '/tmp/orderfile_generator_debug_files'
+
+  _CLOUD_STORAGE_BUCKET_FOR_DEBUG = None
 
   def _PrepareOrderfilePaths(self):
     if self._options.public:
@@ -485,7 +488,11 @@ class OrderfileGenerator(object):
 
   def _GetPathToOrderfile(self):
     """Gets the path to the architecture-specific orderfile."""
-    return self._path_to_orderfile % self._options.arch
+    # Build GN files use the ".arm" orderfile irrespective of the actual
+    # architecture. Fake it, otherwise the orderfile we generate here is not
+    # going to be picked up by builds.
+    orderfile_fake_arch = 'arm'
+    return self._path_to_orderfile % orderfile_fake_arch
 
   def _GetUnpatchedOrderfileFilename(self):
     """Gets the path to the architecture-specific unpatched orderfile."""
@@ -515,8 +522,8 @@ class OrderfileGenerator(object):
       self._monochrome = False
       for device in devices:
         device_version = device.build_version_sdk
-        if (device_version >= version_codes.KITKAT
-            and device_version <= version_codes.LOLLIPOP_MR1):
+        if (version_codes.KITKAT <= device_version <=
+            version_codes.LOLLIPOP_MR1):
           return device
 
     assert not self._options.use_legacy_chrome_apk, \
@@ -535,6 +542,12 @@ class OrderfileGenerator(object):
 
   def __init__(self, options, orderfile_updater_class):
     self._options = options
+    self._ninja_command = ['autoninja']
+    if self._options.ninja_path:
+      self._ninja_command = [self._options.ninja_path]
+    if self._options.ninja_j:
+      self._ninja_command += ['-j', self._options.ninja_j]
+    self._ninja_command += ['-C']
     self._instrumented_out_dir = os.path.join(
         self._BUILD_ROOT, self._options.arch + '_instrumented_out')
     if self._options.use_call_graph:
@@ -582,7 +595,6 @@ class OrderfileGenerator(object):
     self._orderfile_updater = orderfile_updater_class(self._clank_dir,
                                                       self._step_recorder)
     assert os.path.isdir(constants.DIR_SOURCE_ROOT), 'No src directory found'
-    symbol_extractor.SetArchitecture(options.arch)
 
   @staticmethod
   def _RemoveBlanks(src_file, dest_file):
@@ -708,12 +720,12 @@ class OrderfileGenerator(object):
 
   def _VerifySymbolOrder(self):
     self._step_recorder.BeginStep('Verify Symbol Order')
-    return_code = self._step_recorder.RunCommand(
-        [self._CHECK_ORDERFILE_SCRIPT, self._compiler.lib_chrome_so,
-         self._GetPathToOrderfile(),
-         '--target-arch=' + self._options.arch],
-        constants.DIR_SOURCE_ROOT,
-        raise_on_error=False)
+    return_code = self._step_recorder.RunCommand([
+        self._CHECK_ORDERFILE_SCRIPT, self._compiler.lib_chrome_so,
+        self._GetPathToOrderfile()
+    ],
+                                                 constants.DIR_SOURCE_ROOT,
+                                                 raise_on_error=False)
     if return_code:
       self._step_recorder.FailStep('Orderfile check returned %d.' % return_code)
 
@@ -895,11 +907,14 @@ class OrderfileGenerator(object):
     Returns:
       benchmark_results: (dict) Results extracted from benchmarks.
     """
+    benchmark_results = {}
     try:
       _UnstashOutputDirectory(out_directory)
       self._compiler = ClankCompiler(out_directory, self._step_recorder,
                                      self._options.arch, self._options.use_goma,
                                      self._options.goma_dir,
+                                     self._options.use_remoteexec,
+                                     self._ninja_command,
                                      self._options.system_health_orderfile,
                                      self._monochrome, self._options.public,
                                      self._GetPathToOrderfile())
@@ -914,7 +929,6 @@ class OrderfileGenerator(object):
       self._compiler.CompileChromeApk(instrumented=False,
                                       use_call_graph=False,
                                       force_relink=True)
-      benchmark_results = dict()
       benchmark_results['Speedometer2.0'] = self._PerformanceBenchmark(
           self._compiler.chrome_apk)
       benchmark_results['orderfile.memory_mobile'] = (
@@ -948,6 +962,7 @@ class OrderfileGenerator(object):
         self._compiler = ClankCompiler(
             self._instrumented_out_dir, self._step_recorder, self._options.arch,
             self._options.use_goma, self._options.goma_dir,
+            self._options.use_remoteexec, self._ninja_command,
             self._options.system_health_orderfile, self._monochrome,
             self._options.public, self._GetPathToOrderfile())
         if not self._options.pregenerated_profiles:
@@ -964,10 +979,10 @@ class OrderfileGenerator(object):
     elif self._options.manual_symbol_offsets:
       assert self._options.manual_libname
       assert self._options.manual_objdir
-      with file(self._options.manual_symbol_offsets) as f:
-        symbol_offsets = [int(x) for x in f.xreadlines()]
+      with open(self._options.manual_symbol_offsets) as f:
+        symbol_offsets = [int(x) for x in f]
       processor = process_profiles.SymbolOffsetProcessor(
-          self._compiler.manual_libname)
+          self._options.manual_libname)
       generator = cyglog_to_orderfile.OffsetOrderfileGenerator(
           processor, cyglog_to_orderfile.ObjectFileProcessor(
               self._options.manual_objdir))
@@ -986,6 +1001,7 @@ class OrderfileGenerator(object):
         self._compiler = ClankCompiler(
             self._uninstrumented_out_dir, self._step_recorder,
             self._options.arch, self._options.use_goma, self._options.goma_dir,
+            self._options.use_remoteexec, self._ninja_command,
             self._options.system_health_orderfile, self._monochrome,
             self._options.public, self._GetPathToOrderfile())
 
@@ -1052,9 +1068,11 @@ def CreateArgumentParser():
   parser.add_argument(
       '--verify', action='store_true',
       help='If true, the script only verifies the current orderfile')
-  parser.add_argument('--target-arch', action='store', dest='arch',
+  parser.add_argument('--target-arch',
+                      action='store',
+                      dest='arch',
                       default='arm',
-                      choices=['arm', 'arm64'],
+                      choices=list(_ARCH_GN_ARGS.keys()),
                       help='The target architecture for which to build.')
   parser.add_argument('--output-json', action='store', dest='json_file',
                       help='Location to save stats in json format')
@@ -1068,6 +1086,17 @@ def CreateArgumentParser():
   parser.add_argument('--goma-dir', help='GOMA directory.')
   parser.add_argument(
       '--use-goma', action='store_true', help='Enable GOMA.', default=False)
+  parser.add_argument('--use-remoteexec',
+                      action='store_true',
+                      help='Enable remoteexec. see //build/toolchain/rbe.gni.',
+                      default=False)
+  parser.add_argument('--ninja-path',
+                      help='Path to the ninja binary. If given, use this'
+                      'instead of autoninja.')
+  parser.add_argument('--ninja-j',
+                      help='-j value passed to ninja.'
+                      'pass -j to ninja. no need to set this when '
+                      '--ninja-path is not specified.')
   parser.add_argument('--adb-path', help='Path to the adb binary.')
 
   parser.add_argument('--public',
@@ -1135,6 +1164,14 @@ def CreateOrderfile(options, orderfile_updater_class=None):
   """
   logging.basicConfig(level=logging.INFO)
   devil_chromium.Initialize(adb_path=options.adb_path)
+
+  # Since we generate a ".arm" orderfile irrespective of the architecture (see
+  # comment in _GetPathToOrderfile()), make sure that we don't commit it.
+  if options.arch != 'arm':
+    assert not options.buildbot, (
+        'ARM is the only supported architecture on bots')
+    assert not options.upload_ready_orderfiles, (
+        'ARM is the only supported architecture on bots')
 
   generator = OrderfileGenerator(options, orderfile_updater_class)
   try:

@@ -34,6 +34,7 @@
 #include "third_party/blink/renderer/core/animation/animation_test_helpers.h"
 #include "third_party/blink/renderer/core/animation/css/compositor_keyframe_color.h"
 #include "third_party/blink/renderer/core/animation/css/compositor_keyframe_double.h"
+#include "third_party/blink/renderer/core/animation/css/compositor_keyframe_transform.h"
 #include "third_party/blink/renderer/core/animation/css/compositor_keyframe_value_factory.h"
 #include "third_party/blink/renderer/core/animation/css_default_interpolation_type.h"
 #include "third_party/blink/renderer/core/animation/interpolable_length.h"
@@ -41,13 +42,15 @@
 #include "third_party/blink/renderer/core/animation/string_keyframe.h"
 #include "third_party/blink/renderer/core/css/css_primitive_value.h"
 #include "third_party/blink/renderer/core/css/css_test_helpers.h"
+#include "third_party/blink/renderer/core/css/properties/longhands.h"
 #include "third_party/blink/renderer/core/css/property_registry.h"
 #include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/dom/element.h"
+#include "third_party/blink/renderer/core/execution_context/security_context.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 #include "third_party/skia/include/core/SkColor.h"
 
@@ -58,7 +61,7 @@ using animation_test_helpers::EnsureInterpolatedValueCached;
 class AnimationKeyframeEffectModel : public PageTestBase {
  protected:
   void SetUp() override {
-    PageTestBase::SetUp(IntSize());
+    PageTestBase::SetUp(gfx::Size());
     GetDocument().UpdateStyleAndLayoutTree();
     element = GetDocument().CreateElementForBinding("foo");
     GetDocument().body()->appendChild(element);
@@ -81,9 +84,10 @@ class AnimationKeyframeEffectModel : public PageTestBase {
         To<InterpolableLength>(typed_value->GetInterpolableValue());
     // Lengths are computed in logical units, which are quantized to 64ths of
     // a pixel.
-    EXPECT_NEAR(expected_value,
-                length.CreateCSSValue(kValueRangeAll)->GetDoubleValue(),
-                /*abs_error=*/0.02);
+    EXPECT_NEAR(
+        expected_value,
+        length.CreateCSSValue(Length::ValueRange::kAll)->GetDoubleValue(),
+        /*abs_error=*/0.02);
   }
 
   void ExpectNonInterpolableValue(const String& expected_value,
@@ -108,7 +112,7 @@ class AnimationKeyframeEffectModel : public PageTestBase {
   Persistent<Element> element;
 };
 
-const AnimationTimeDelta kDuration = AnimationTimeDelta::FromSecondsD(1);
+const AnimationTimeDelta kDuration = ANIMATION_TIME_DELTA_FROM_SECONDS(1);
 
 StringKeyframeVector KeyframesAtZeroAndOne(CSSPropertyID property,
                                            const String& zero_value,
@@ -125,10 +129,9 @@ StringKeyframeVector KeyframesAtZeroAndOne(CSSPropertyID property,
   return keyframes;
 }
 
-StringKeyframeVector KeyframesAtZeroAndOne(
-    AtomicString property_name,
-    const String& zero_value,
-    const String& one_value) {
+StringKeyframeVector KeyframesAtZeroAndOne(AtomicString property_name,
+                                           const String& zero_value,
+                                           const String& one_value) {
   StringKeyframeVector keyframes(2);
   keyframes[0] = MakeGarbageCollected<StringKeyframe>();
   keyframes[0]->SetOffset(0.0);
@@ -160,7 +163,8 @@ const PropertySpecificKeyframeVector& ConstructEffectAndGetKeyframes(
 
   auto* effect = MakeGarbageCollected<StringKeyframeEffectModel>(keyframes);
 
-  auto style = document->GetStyleResolver().StyleForElement(element);
+  auto style =
+      document->GetStyleResolver().ResolveStyle(element, StyleRecalcContext());
 
   // Snapshot should update first time after construction
   EXPECT_TRUE(effect->SnapshotAllCompositorKeyframesIfNecessary(
@@ -304,7 +308,7 @@ TEST_F(AnimationKeyframeEffectModel, ZeroKeyframes) {
       MakeGarbageCollected<StringKeyframeEffectModel>(StringKeyframeVector());
   HeapVector<Member<Interpolation>> values;
   effect->Sample(0, 0.5, kDuration, values);
-  EXPECT_TRUE(values.IsEmpty());
+  EXPECT_TRUE(values.empty());
 }
 
 // FIXME: Re-enable this test once compositing of CompositeAdd is supported.
@@ -511,7 +515,7 @@ TEST_F(AnimationKeyframeEffectModel, MultipleProperties) {
   keyframes[0]->SetCSSPropertyValue(CSSPropertyID::kFontFamily, "serif",
                                     SecureContextMode::kInsecureContext,
                                     nullptr);
-  keyframes[0]->SetCSSPropertyValue(CSSPropertyID::kFontStyle, "normal",
+  keyframes[0]->SetCSSPropertyValue(CSSPropertyID::kFontSynthesisWeight, "auto",
                                     SecureContextMode::kInsecureContext,
                                     nullptr);
   keyframes[1] = MakeGarbageCollected<StringKeyframe>();
@@ -519,7 +523,7 @@ TEST_F(AnimationKeyframeEffectModel, MultipleProperties) {
   keyframes[1]->SetCSSPropertyValue(CSSPropertyID::kFontFamily, "cursive",
                                     SecureContextMode::kInsecureContext,
                                     nullptr);
-  keyframes[1]->SetCSSPropertyValue(CSSPropertyID::kFontStyle, "oblique",
+  keyframes[1]->SetCSSPropertyValue(CSSPropertyID::kFontSynthesisWeight, "none",
                                     SecureContextMode::kInsecureContext,
                                     nullptr);
 
@@ -530,9 +534,10 @@ TEST_F(AnimationKeyframeEffectModel, MultipleProperties) {
   Interpolation* left_value = FindValue(values, CSSPropertyID::kFontFamily);
   ASSERT_TRUE(left_value);
   ExpectNonInterpolableValue("cursive", left_value);
-  Interpolation* right_value = FindValue(values, CSSPropertyID::kFontStyle);
+  Interpolation* right_value =
+      FindValue(values, CSSPropertyID::kFontSynthesisWeight);
   ASSERT_TRUE(right_value);
-  ExpectNonInterpolableValue("oblique", right_value);
+  ExpectNonInterpolableValue("none", right_value);
 }
 
 // FIXME: Re-enable this test once compositing of CompositeAdd is supported.
@@ -634,7 +639,8 @@ TEST_F(AnimationKeyframeEffectModel, CompositorSnapshotUpdateBasic) {
       KeyframesAtZeroAndOne(CSSPropertyID::kOpacity, "0", "1");
   auto* effect = MakeGarbageCollected<StringKeyframeEffectModel>(keyframes);
 
-  auto style = GetDocument().GetStyleResolver().StyleForElement(element);
+  auto style = GetDocument().GetStyleResolver().ResolveStyle(
+      element, StyleRecalcContext());
 
   const CompositorKeyframeValue* value;
 
@@ -670,7 +676,8 @@ TEST_F(AnimationKeyframeEffectModel,
   auto* effect =
       MakeGarbageCollected<StringKeyframeEffectModel>(opacity_keyframes);
 
-  auto style = GetDocument().GetStyleResolver().StyleForElement(element);
+  auto style = GetDocument().GetStyleResolver().ResolveStyle(
+      element, StyleRecalcContext());
 
   EXPECT_TRUE(effect->SnapshotAllCompositorKeyframesIfNecessary(
       *element, *style, nullptr));
@@ -793,6 +800,53 @@ TEST_F(AnimationKeyframeEffectModel, CompositorUpdateColorProperty) {
             SK_ColorGREEN);
 }
 
+TEST_F(AnimationKeyframeEffectModel, CompositorSnapshotContainerRelative) {
+  SetBodyInnerHTML(R"HTML(
+    <style>
+      #container {
+        container-type: size;
+        width: 100px;
+        height: 200px;
+      }
+    </style>
+    <div id=container>
+      <div id="target">
+        Test
+      </div>
+    </div>
+  )HTML");
+  Element* target = GetDocument().getElementById("target");
+  ASSERT_TRUE(target);
+
+  StringKeyframeVector keyframes = KeyframesAtZeroAndOne(
+      CSSPropertyID::kTransform, "translateX(10cqw)", "translateX(10cqh)");
+  auto* effect = MakeGarbageCollected<StringKeyframeEffectModel>(keyframes);
+
+  EXPECT_TRUE(effect->SnapshotAllCompositorKeyframesIfNecessary(
+      *target, target->ComputedStyleRef(), nullptr));
+
+  const auto& property_specific_keyframes =
+      *effect->GetPropertySpecificKeyframes(
+          PropertyHandle(GetCSSPropertyTransform()));
+  ASSERT_EQ(2u, property_specific_keyframes.size());
+  const auto* value0 = DynamicTo<CompositorKeyframeTransform>(
+      property_specific_keyframes[0]->GetCompositorKeyframeValue());
+  const auto* value1 = DynamicTo<CompositorKeyframeTransform>(
+      property_specific_keyframes[1]->GetCompositorKeyframeValue());
+  ASSERT_TRUE(value0);
+  ASSERT_TRUE(value1);
+  const TransformOperations& ops0 = value0->GetTransformOperations();
+  const TransformOperations& ops1 = value1->GetTransformOperations();
+  ASSERT_EQ(1u, ops0.size());
+  ASSERT_EQ(1u, ops1.size());
+  const auto* op0 = DynamicTo<TranslateTransformOperation>(ops0.at(0));
+  const auto* op1 = DynamicTo<TranslateTransformOperation>(ops1.at(0));
+  ASSERT_TRUE(op0);
+  ASSERT_TRUE(op1);
+  EXPECT_FLOAT_EQ(10.0f, op0->X().Pixels());
+  EXPECT_FLOAT_EQ(20.0f, op1->X().Pixels());
+}
+
 }  // namespace blink
 
 namespace blink {
@@ -875,6 +929,20 @@ TEST_F(KeyframeEffectModelTest, EvenlyDistributed3) {
   EXPECT_DOUBLE_EQ(0.9, result[9]);
   EXPECT_DOUBLE_EQ(0.95, result[10]);
   EXPECT_DOUBLE_EQ(1.0, result[11]);
+}
+
+TEST_F(KeyframeEffectModelTest, RejectInvalidPropertyValue) {
+  StringKeyframe* keyframe = MakeGarbageCollected<StringKeyframe>();
+  keyframe->SetCSSPropertyValue(CSSPropertyID::kBackgroundColor,
+                                "not a valid color",
+                                SecureContextMode::kInsecureContext, nullptr);
+  // Verifty that property is quietly rejected.
+  EXPECT_EQ(0U, keyframe->Properties().size());
+
+  // Verify that a valid property value is accepted.
+  keyframe->SetCSSPropertyValue(CSSPropertyID::kBackgroundColor, "blue",
+                                SecureContextMode::kInsecureContext, nullptr);
+  EXPECT_EQ(1U, keyframe->Properties().size());
 }
 
 }  // namespace blink

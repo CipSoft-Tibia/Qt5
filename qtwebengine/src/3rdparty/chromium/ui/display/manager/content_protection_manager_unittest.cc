@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,7 @@
 #include "ui/display/manager/test/test_display_layout_manager.h"
 #include "ui/display/manager/test/test_native_display_delegate.h"
 
-namespace display {
-namespace test {
+namespace display::test {
 
 namespace {
 
@@ -30,6 +29,10 @@ class TestObserver : public ContentProtectionManager::Observer {
   explicit TestObserver(ContentProtectionManager* manager) : manager_(manager) {
     manager_->AddObserver(this);
   }
+
+  TestObserver(const TestObserver&) = delete;
+  TestObserver& operator=(const TestObserver&) = delete;
+
   ~TestObserver() override { manager_->RemoveObserver(this); }
 
   const SecurityChanges& security_changes() const { return security_changes_; }
@@ -43,13 +46,16 @@ class TestObserver : public ContentProtectionManager::Observer {
 
   ContentProtectionManager* const manager_;
   SecurityChanges security_changes_;
-
-  DISALLOW_COPY_AND_ASSIGN(TestObserver);
 };
 
 class ContentProtectionManagerTest : public testing::Test {
  public:
   ContentProtectionManagerTest() = default;
+
+  ContentProtectionManagerTest(const ContentProtectionManagerTest&) = delete;
+  ContentProtectionManagerTest& operator=(const ContentProtectionManagerTest&) =
+      delete;
+
   ~ContentProtectionManagerTest() override = default;
 
   void SetUp() override {
@@ -58,7 +64,7 @@ class ContentProtectionManagerTest : public testing::Test {
     DisplayConnectionType conn_types[] = {
         DISPLAY_CONNECTION_TYPE_INTERNAL, DISPLAY_CONNECTION_TYPE_HDMI,
         DISPLAY_CONNECTION_TYPE_VGA, DISPLAY_CONNECTION_TYPE_HDMI};
-    for (size_t i = 0; i < base::size(kDisplayIds); ++i) {
+    for (size_t i = 0; i < std::size(kDisplayIds); ++i) {
       displays_[i] = FakeDisplaySnapshot::Builder()
                          .SetId(kDisplayIds[i])
                          .SetType(conn_types[i])
@@ -86,7 +92,7 @@ class ContentProtectionManagerTest : public testing::Test {
 
  protected:
   void UpdateDisplays(size_t count) {
-    ASSERT_LE(count, base::size(displays_));
+    ASSERT_LE(count, std::size(displays_));
 
     std::vector<std::unique_ptr<DisplaySnapshot>> displays;
     for (size_t i = 0; i < count; ++i)
@@ -121,9 +127,7 @@ class ContentProtectionManagerTest : public testing::Test {
   uint32_t connection_mask_ = DISPLAY_CONNECTION_TYPE_NONE;
   uint32_t protection_mask_ = CONTENT_PROTECTION_METHOD_NONE;
 
-  std::unique_ptr<DisplaySnapshot> displays_[base::size(kDisplayIds)];
-
-  DISALLOW_COPY_AND_ASSIGN(ContentProtectionManagerTest);
+  std::unique_ptr<DisplaySnapshot> displays_[std::size(kDisplayIds)];
 };
 
 TEST_F(ContentProtectionManagerTest, Basic) {
@@ -761,5 +765,4 @@ TEST_F(ContentProtectionManagerTest, AnalogDisplaySecurity) {
             observer.security_changes());
 }
 
-}  // namespace test
-}  // namespace display
+}  // namespace display::test

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,12 +12,10 @@
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
-#include "base/test/bind_test_util.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/test/bind.h"
 #include "components/services/storage/indexed_db/leveldb/fake_leveldb_factory.h"
-#include "components/services/storage/indexed_db/scopes/disjoint_range_lock_manager.h"
+#include "components/services/storage/indexed_db/locks/partitioned_lock_manager.h"
 #include "components/services/storage/indexed_db/scopes/leveldb_scope.h"
-#include "components/services/storage/indexed_db/scopes/leveldb_scopes.h"
 #include "components/services/storage/indexed_db/scopes/leveldb_scopes_test_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/leveldatabase/src/include/leveldb/slice.h"
@@ -30,17 +28,16 @@ class LevelDBScopeTest : public LevelDBScopesTestBase {
   LevelDBScopeTest() = default;
   ~LevelDBScopeTest() override = default;
 
-  std::vector<ScopeLock> AcquireLocksSync(
-      ScopesLockManager* lock_manager,
-      base::flat_set<ScopesLockManager::ScopeLockRequest> lock_requests) {
+  std::vector<PartitionedLock> AcquireLocksSync(
+      PartitionedLockManager* lock_manager,
+      base::flat_set<PartitionedLockManager::PartitionedLockRequest>
+          lock_requests) {
     base::RunLoop loop;
-    ScopesLocksHolder locks_receiver;
-    bool success = lock_manager->AcquireLocks(
+    PartitionedLockHolder locks_receiver;
+    lock_manager->AcquireLocks(
         lock_requests, locks_receiver.AsWeakPtr(),
         base::BindLambdaForTesting([&loop]() { loop.Quit(); }));
-    EXPECT_TRUE(success);
-    if (success)
-      loop.Run();
+    loop.Run();
     return std::move(locks_receiver.locks);
   }
 
@@ -57,7 +54,7 @@ class LevelDBScopeTest : public LevelDBScopesTestBase {
 
 TEST_F(LevelDBScopeTest, BasicUsage) {
   SetUpRealDatabase();
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
 
   leveldb::Status failure_status = leveldb::Status::OK();
   LevelDBScopes scopes(
@@ -89,7 +86,7 @@ TEST_F(LevelDBScopeTest, BasicUsage) {
 
 TEST_F(LevelDBScopeTest, InMemoryAbort) {
   SetUpRealDatabase();
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
 
   leveldb::Status failure_status = leveldb::Status::OK();
   LevelDBScopes scopes(
@@ -132,7 +129,7 @@ TEST_F(LevelDBScopeTest, InMemoryAbort) {
 
 TEST_F(LevelDBScopeTest, AbortWithRevertTask) {
   SetUpRealDatabase();
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
 
   leveldb::Status failure_status = leveldb::Status::OK();
   LevelDBScopes scopes(
@@ -175,7 +172,7 @@ TEST_F(LevelDBScopeTest, AbortWithRevertTask) {
 
 TEST_F(LevelDBScopeTest, ManyScopes) {
   SetUpRealDatabase();
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
   leveldb::Status failure_status;
   LevelDBScopes scopes(
       metadata_prefix_, kWriteBatchSizeForTesting, leveldb_, &lock_manager,
@@ -217,7 +214,7 @@ TEST_F(LevelDBScopeTest, ManyScopes) {
 
 TEST_F(LevelDBScopeTest, DeleteRangeExclusive) {
   SetUpRealDatabase();
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
   leveldb::Status failure_status;
   LevelDBScopes scopes(
       metadata_prefix_, kWriteBatchSizeForTesting, leveldb_, &lock_manager,
@@ -272,7 +269,7 @@ TEST_F(LevelDBScopeTest, DeleteRangeExclusive) {
 
 TEST_F(LevelDBScopeTest, DeleteRangeInclusive) {
   SetUpRealDatabase();
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
   leveldb::Status failure_status;
   LevelDBScopes scopes(
       metadata_prefix_, kWriteBatchSizeForTesting, leveldb_, &lock_manager,
@@ -321,7 +318,7 @@ TEST_F(LevelDBScopeTest, DeleteRangeInclusive) {
 
 TEST_F(LevelDBScopeTest, DeleteRangeDeferred) {
   SetUpRealDatabase();
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
   leveldb::Status failure_status;
   LevelDBScopes scopes(
       metadata_prefix_, kWriteBatchSizeForTesting, leveldb_, &lock_manager,
@@ -372,7 +369,7 @@ TEST_F(LevelDBScopeTest, DeleteRangeDeferred) {
 
 TEST_F(LevelDBScopeTest, DeleteRangeCompact) {
   SetUpRealDatabase();
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
   leveldb::Status failure_status;
   LevelDBScopes scopes(
       metadata_prefix_, kWriteBatchSizeForTesting, leveldb_, &lock_manager,
@@ -423,7 +420,7 @@ TEST_F(LevelDBScopeTest, DeleteRangeCompact) {
 
 TEST_F(LevelDBScopeTest, RevertWithDeferredDelete) {
   SetUpRealDatabase();
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
   leveldb::Status failure_status;
   LevelDBScopes scopes(
       metadata_prefix_, kWriteBatchSizeForTesting, leveldb_, &lock_manager,
@@ -493,7 +490,7 @@ TEST_F(LevelDBScopeTest, RevertWithDeferredDelete) {
 
 TEST_F(LevelDBScopeTest, EmptyRangeRevert) {
   SetUpRealDatabase();
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
   leveldb::Status failure_status = leveldb::Status::OK();
   LevelDBScopes scopes(
       metadata_prefix_, kWriteBatchSizeForTesting, leveldb_, &lock_manager,
@@ -533,7 +530,7 @@ TEST_F(LevelDBScopeTest, EmptyRangeRevert) {
 TEST_F(LevelDBScopeTest, BrokenDBForInitialize) {
   leveldb::Status error = leveldb::Status::IOError("test");
   leveldb_ = FakeLevelDBFactory::GetBrokenLevelDB(error, base::FilePath());
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
 
   leveldb::Status failure_status = leveldb::Status::OK();
   LevelDBScopes scopes(
@@ -549,7 +546,7 @@ TEST_F(LevelDBScopeTest, BrokenDBForInitialize) {
 TEST_F(LevelDBScopeTest, BrokenDBForCommit) {
   base::OnceCallback<void(leveldb::Status)> break_db;
   SetUpBreakableDB(&break_db);
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
 
   leveldb::Status failure_status = leveldb::Status::OK();
   LevelDBScopes scopes(
@@ -578,7 +575,7 @@ TEST_F(LevelDBScopeTest, BrokenDBForCommit) {
 TEST_F(LevelDBScopeTest, BrokenDBForCleanup) {
   base::OnceCallback<void(leveldb::Status)> break_db;
   SetUpBreakableDB(&break_db);
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
 
   leveldb::Status failure_status = leveldb::Status::OK();
   LevelDBScopes scopes(
@@ -615,7 +612,7 @@ TEST_F(LevelDBScopeTest, BrokenDBForCleanup) {
 TEST_F(LevelDBScopeTest, BrokenDBForRevert) {
   base::OnceCallback<void(leveldb::Status)> break_db;
   SetUpBreakableDB(&break_db);
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
 
   leveldb::Status failure_status = leveldb::Status::OK();
   LevelDBScopes scopes(
@@ -649,7 +646,7 @@ TEST_F(LevelDBScopeTest, BrokenDBForRevert) {
 
 TEST_F(LevelDBScopeTest, DeleteNonExistentRangeDoesNotWrite) {
   SetUpRealDatabase();
-  DisjointRangeLockManager lock_manager(3);
+  PartitionedLockManager lock_manager;
 
   leveldb::Status failure_status = leveldb::Status::OK();
   LevelDBScopes scopes(

@@ -2,6 +2,7 @@
 # Copyright 2014 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+from __future__ import absolute_import
 import contextlib
 import json
 import logging
@@ -17,6 +18,12 @@ from py_trace_event import trace_time
 from py_trace_event.trace_event_impl import log
 from py_trace_event.trace_event_impl import multiprocessing_shim
 from py_utils import tempfile_ext
+
+
+# Moving out for pickle serialization.
+def child(resp):
+  # test tracing is not controllable in the child
+  resp.put(trace_event.is_tracing_controllable())
 
 
 class TraceEventTests(unittest.TestCase):
@@ -396,10 +403,6 @@ class TraceEventTests(unittest.TestCase):
 
   @unittest.skipIf(sys.platform == 'win32', 'crbug.com/945819')
   def testTracingControlDisabledInChildButNotInParent(self):
-    def child(resp):
-      # test tracing is not controllable in the child
-      resp.put(trace_event.is_tracing_controllable())
-
     with self._test_trace():
       q = multiprocessing.Queue()
       p = multiprocessing.Process(target=child, args=[q])
@@ -456,7 +459,7 @@ class TraceEventTests(unittest.TestCase):
   def testFormatProtobuf(self):
     with self._test_trace(format=trace_event.PROTOBUF):
       trace_event.trace_flush()
-      with open(self._log_path, 'r') as f:
+      with open(self._log_path, 'rb') as f:
         self.assertGreater(len(f.read()), 0)
 
   def testAddMetadata(self):
@@ -496,7 +499,7 @@ class TraceEventTests(unittest.TestCase):
           story_run_index=0,
       )
       trace_event.trace_disable()
-      with open(self._log_path, 'r') as f:
+      with open(self._log_path, 'rb') as f:
         self.assertGreater(len(f.read()), 0)
 
   def testAddMetadataInJsonFormatRaises(self):
@@ -519,7 +522,7 @@ class TraceEventTests(unittest.TestCase):
     )
     with self._test_trace(format=trace_event.PROTOBUF):
       trace_event.trace_disable()
-      with open(self._log_path, 'r') as f:
+      with open(self._log_path, 'rb') as f:
         self.assertGreater(len(f.read()), 0)
 
 

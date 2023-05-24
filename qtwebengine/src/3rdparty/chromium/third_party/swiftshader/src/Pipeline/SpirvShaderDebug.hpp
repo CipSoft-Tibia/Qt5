@@ -15,6 +15,8 @@
 #ifndef sw_SpirvShaderDebug_hpp
 #define sw_SpirvShaderDebug_hpp
 
+#include "SpirvShader.hpp"
+
 // Enable this to print verbose debug messages as each SPIR-V instructon is
 // executed. Very handy for performing text diffs when the thread count is
 // reduced to 1 and execution is deterministic.
@@ -48,22 +50,22 @@ std::string spvInstructionBinaryToText(const spv_target_env env,
 #ifdef ENABLE_RR_PRINT
 namespace rr {
 template<>
-struct PrintValue::Ty<sw::SpirvShader::Object::ID>
+struct PrintValue::Ty<sw::Spirv::Object::ID>
 {
-	static inline std::string fmt(sw::SpirvShader::Object::ID v) { return "Object<" + std::to_string(v.value()) + ">"; }
-	static inline std::vector<Value *> val(sw::SpirvShader::Object::ID v) { return {}; }
+	static inline std::string fmt(sw::Spirv::Object::ID v) { return "Object<" + std::to_string(v.value()) + ">"; }
+	static inline std::vector<Value *> val(sw::Spirv::Object::ID v) { return {}; }
 };
 template<>
-struct PrintValue::Ty<sw::SpirvShader::Type::ID>
+struct PrintValue::Ty<sw::Spirv::Type::ID>
 {
-	static inline std::string fmt(sw::SpirvShader::Type::ID v) { return "Type<" + std::to_string(v.value()) + ">"; }
-	static inline std::vector<Value *> val(sw::SpirvShader::Type::ID v) { return {}; }
+	static inline std::string fmt(sw::Spirv::Type::ID v) { return "Type<" + std::to_string(v.value()) + ">"; }
+	static inline std::vector<Value *> val(sw::Spirv::Type::ID v) { return {}; }
 };
 template<>
-struct PrintValue::Ty<sw::SpirvShader::Block::ID>
+struct PrintValue::Ty<sw::Spirv::Block::ID>
 {
-	static inline std::string fmt(sw::SpirvShader::Block::ID v) { return "Block<" + std::to_string(v.value()) + ">"; }
-	static inline std::vector<Value *> val(sw::SpirvShader::Block::ID v) { return {}; }
+	static inline std::string fmt(sw::Spirv::Block::ID v) { return "Block<" + std::to_string(v.value()) + ">"; }
+	static inline std::vector<Value *> val(sw::Spirv::Block::ID v) { return {}; }
 };
 
 template<>
@@ -73,12 +75,12 @@ struct PrintValue::Ty<sw::Intermediate>
 	{
 		switch(v.typeHint)
 		{
-			case sw::Intermediate::TypeHint::Float:
-				return PrintValue::Ty<sw::SIMD::Float>::fmt(v.Float(i));
-			case sw::Intermediate::TypeHint::Int:
-				return PrintValue::Ty<sw::SIMD::Int>::fmt(v.Int(i));
-			case sw::Intermediate::TypeHint::UInt:
-				return PrintValue::Ty<sw::SIMD::UInt>::fmt(v.UInt(i));
+		case sw::Intermediate::TypeHint::Float:
+			return PrintValue::Ty<sw::SIMD::Float>::fmt(v.Float(i));
+		case sw::Intermediate::TypeHint::Int:
+			return PrintValue::Ty<sw::SIMD::Int>::fmt(v.Int(i));
+		case sw::Intermediate::TypeHint::UInt:
+			return PrintValue::Ty<sw::SIMD::UInt>::fmt(v.UInt(i));
 		}
 		return "";
 	}
@@ -87,12 +89,12 @@ struct PrintValue::Ty<sw::Intermediate>
 	{
 		switch(v.typeHint)
 		{
-			case sw::Intermediate::TypeHint::Float:
-				return PrintValue::Ty<sw::SIMD::Float>::val(v.Float(i));
-			case sw::Intermediate::TypeHint::Int:
-				return PrintValue::Ty<sw::SIMD::Int>::val(v.Int(i));
-			case sw::Intermediate::TypeHint::UInt:
-				return PrintValue::Ty<sw::SIMD::UInt>::val(v.UInt(i));
+		case sw::Intermediate::TypeHint::Float:
+			return PrintValue::Ty<sw::SIMD::Float>::val(v.Float(i));
+		case sw::Intermediate::TypeHint::Int:
+			return PrintValue::Ty<sw::SIMD::Int>::val(v.Int(i));
+		case sw::Intermediate::TypeHint::UInt:
+			return PrintValue::Ty<sw::SIMD::UInt>::val(v.UInt(i));
 		}
 		return {};
 	}
@@ -127,14 +129,14 @@ struct PrintValue::Ty<sw::Intermediate>
 };
 
 template<>
-struct PrintValue::Ty<sw::SpirvShader::Operand>
+struct PrintValue::Ty<sw::SpirvEmitter::Operand>
 {
-	static inline std::string fmt(const sw::SpirvShader::Operand &v)
+	static inline std::string fmt(const sw::SpirvEmitter::Operand &v)
 	{
 		return (v.intermediate != nullptr) ? PrintValue::Ty<sw::Intermediate>::fmt(*v.intermediate) : PrintValue::Ty<sw::SIMD::UInt>::fmt(v.UInt(0));
 	}
 
-	static inline std::vector<Value *> val(const sw::SpirvShader::Operand &v)
+	static inline std::vector<Value *> val(const sw::SpirvEmitter::Operand &v)
 	{
 		return (v.intermediate != nullptr) ? PrintValue::Ty<sw::Intermediate>::val(*v.intermediate) : PrintValue::Ty<sw::SIMD::UInt>::val(v.UInt(0));
 	}

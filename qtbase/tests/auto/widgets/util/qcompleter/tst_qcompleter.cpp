@@ -1,44 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtGui>
 #include <QtWidgets>
 #include <QtDebug>
 #include <QPair>
 #include <QList>
 #include <QPointer>
+#include <QSignalSpy>
 
 #include <QtTest/private/qtesthelpers_p.h>
 
 #include "../../../../shared/filesystem.h"
 
 #include <memory>
+
+#include <QtWidgets/private/qapplication_p.h>
 
 Q_DECLARE_METATYPE(QCompleter::CompletionMode)
 
@@ -81,7 +59,7 @@ QString CsvCompleter::pathFromIndex(const QModelIndex &sourceIndex) const
         idx = parent.sibling(parent.row(), sourceIndex.column());
     } while (idx.isValid());
 
-    return list.count() == 1 ? list.constFirst() : list.join(QLatin1Char(','));
+    return list.size() == 1 ? list.constFirst() : list.join(QLatin1Char(','));
 }
 
 class tst_QCompleter : public QObject
@@ -107,10 +85,6 @@ private slots:
     void csMatchingOnCiSortedModel_data();
     void csMatchingOnCiSortedModel();
 
-#if QT_CONFIG(dirmodel) && QT_DEPRECATED_SINCE(5, 15)
-    void directoryModel_data();
-    void directoryModel();
-#endif
     void fileSystemModel_data();
     void fileSystemModel();
     void fileDialog_data();
@@ -148,6 +122,8 @@ private slots:
     void QTBUG_14292_filesystem();
     void QTBUG_52028_tabAutoCompletes();
     void QTBUG_51889_activatedSentTwice();
+    void showPopupInGraphicsView();
+    void inheritedEventFilter();
 
 private:
     void filter(bool assync = false);
@@ -155,7 +131,6 @@ private:
     enum ModelType {
         CASE_SENSITIVELY_SORTED_MODEL,
         CASE_INSENSITIVELY_SORTED_MODEL,
-        DIRECTORY_MODEL,
         HISTORY_MODEL,
         FILESYSTEM_MODEL
     };
@@ -178,6 +153,16 @@ tst_QCompleter::~tst_QCompleter()
     delete treeWidget;
     delete completer;
 }
+
+#ifdef Q_OS_ANDROID
+static QString androidHomePath()
+{
+    const auto homePaths = QStandardPaths::standardLocations(QStandardPaths::HomeLocation);
+    QDir dir = homePaths.isEmpty() ? QDir() : homePaths.first();
+    dir.cdUp();
+    return dir.path();
+}
+#endif
 
 void tst_QCompleter::setSourceModel(ModelType type)
 {
@@ -227,21 +212,17 @@ void tst_QCompleter::setSourceModel(ModelType type)
         parent = new QTreeWidgetItem(treeWidget);
         parent->setText(completionColumn, QLatin1String("p2,c4p2"));
         break;
-    case DIRECTORY_MODEL:
-#if QT_CONFIG(dirmodel) && QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-        completer->setCsvCompletion(false);
-        completer->setModel(new QDirModel(completer));
-        completer->setCompletionColumn(0);
-QT_WARNING_POP
-#endif // QT_CONFIG(dirmodel) && QT_DEPRECATED_SINCE(5, 15)
-        break;
     case FILESYSTEM_MODEL:
         completer->setCsvCompletion(false);
         {
             auto m = new QFileSystemModel(completer);
+#ifdef Q_OS_ANDROID
+            // Android 11 and above doesn't allow accessing root filesystem as before,
+            // so let's opt int for the app's home.
+            m->setRootPath(androidHomePath());
+#else
             m->setRootPath("/");
+#endif
             completer->setModel(m);
         }
         completer->setCompletionColumn(0);
@@ -599,58 +580,6 @@ void tst_QCompleter::csMatchingOnCiSortedModel()
     filter();
 }
 
-#if QT_CONFIG(dirmodel) && QT_DEPRECATED_SINCE(5, 15)
-void tst_QCompleter::directoryModel_data()
-{
-    delete completer;
-
-    completer = new CsvCompleter;
-    completer->setModelSorting(QCompleter::CaseSensitivelySortedModel);
-    setSourceModel(DIRECTORY_MODEL);
-    completer->setCaseSensitivity(Qt::CaseInsensitive);
-
-    QTest::addColumn<QString>("filterText");
-    QTest::addColumn<QString>("step");
-    QTest::addColumn<QString>("completion");
-    QTest::addColumn<QString>("completionText");
-
-    // NOTE: Add tests carefully, ensurely the paths exist on all systems
-    // Output is the sourceText; currentCompletionText()
-
-    for (int i = 0; i < 2; i++) {
-        if (i == 1)
-            QTest::newRow("FILTERING_OFF") << "FILTERING_OFF" << "" << "" << "";
-
-#if defined(Q_OS_WIN)
-        QTest::newRow("()") << "C" << "" << "C:" << "C:";
-        QTest::newRow("()") << "C:\\Program" << "" << "Program Files" << "C:\\Program Files";
-#elif defined (Q_OS_MAC)
-        QTest::newRow("()") << "" << "" << "/" << "/";
-        QTest::newRow("(/a)") << "/a" << "" << "Applications" << "/Applications";
-        QTest::newRow("(/u)") << "/u" << "" << "Users" << "/Users";
-#elif defined(Q_OS_ANDROID)
-        QTest::newRow("()") << "" << "" << "/" << "/";
-        QTest::newRow("(/et)") << "/et" << "" << "etc" << "/etc";
-#else
-        QTest::newRow("()") << "" << "" << "/" << "/";
-#if !defined(Q_OS_AIX) && !defined(Q_OS_HPUX) && !defined(Q_OS_QNX)
-        QTest::newRow("(/h)") << "/h" << "" << "home" << "/home";
-#endif
-        QTest::newRow("(/et)") << "/et" << "" << "etc" << "/etc";
-        QTest::newRow("(/etc/passw)") << "/etc/passw" << "" << "passwd" << "/etc/passwd";
-#endif
-    }
-}
-
-void tst_QCompleter::directoryModel()
-{
-#ifdef Q_OS_WINRT
-    QSKIP("WinRT cannot access directories outside of the application's sandbox");
-#endif
-    filter();
-}
-#endif // QT_CONFIG(dirmodel) && QT_DEPRECATED_SINCE(5, 15)
-
 void tst_QCompleter::fileSystemModel_data()
 {
     delete completer;
@@ -680,7 +609,9 @@ void tst_QCompleter::fileSystemModel_data()
 //        QTest::newRow("(/d)") << "/d" << "" << "Developer" << "/Developer";
 #elif defined(Q_OS_ANDROID)
         QTest::newRow("()") << "" << "" << "/" << "/";
-        QTest::newRow("(/et)") << "/et" << "" << "etc" << "/etc";
+        const QString androidDir = androidHomePath();
+        const QString tag = QStringLiteral("%1/fil").arg(androidDir);
+        QTest::newRow(tag.toUtf8().data()) << tag << "" << "files" << androidDir + "/files";
 #else
         QTest::newRow("()") << "" << "" << "/" << "/";
 #if !defined(Q_OS_AIX) && !defined(Q_OS_HPUX) && !defined(Q_OS_QNX)
@@ -694,9 +625,6 @@ void tst_QCompleter::fileSystemModel_data()
 
 void tst_QCompleter::fileSystemModel()
 {
-#ifdef Q_OS_WINRT
-    QSKIP("WinRT cannot access directories outside of the application's sandbox");
-#endif
     //QFileSystemModel is async.
     filter(true);
 }
@@ -713,9 +641,6 @@ void tst_QCompleter::fileDialog_data()
 
 void tst_QCompleter::fileDialog()
 {
-#ifdef Q_OS_WINRT
-    QSKIP("WinRT cannot access directories outside of the application's sandbox");
-#endif
     //QFileSystemModel is async.
     filter(true);
 }
@@ -1136,7 +1061,7 @@ void tst_QCompleter::multipleWidgets()
     window.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     window.move(200, 200);
     window.show();
-    QApplication::setActiveWindow(&window);
+    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowActive(&window));
 
     QFocusEvent focusIn(QEvent::FocusIn);
@@ -1148,7 +1073,7 @@ void tst_QCompleter::multipleWidgets()
     comboBox->setFocus();
     comboBox->show();
     window.activateWindow();
-    QApplication::setActiveWindow(&window);
+    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowActive(&window));
     QCOMPARE(QApplication::focusWidget(), comboBox);
     comboBox->lineEdit()->setText("it");
@@ -1183,7 +1108,7 @@ void tst_QCompleter::focusIn()
     window.move(200, 200);
     window.show();
     window.activateWindow();
-    QApplication::setActiveWindow(&window);
+    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowActive(&window));
 
     auto comboBox = new QComboBox(&window);
@@ -1254,10 +1179,10 @@ void tst_QCompleter::disabledItems()
     QAbstractItemView *view = lineEdit.completer()->popup();
     QVERIFY(view->isVisible());
     QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, view->visualRect(view->model()->index(0, 0)).center());
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     QVERIFY(view->isVisible());
     QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, view->visualRect(view->model()->index(1, 0)).center());
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QVERIFY(!view->isVisible());
 }
 
@@ -1271,10 +1196,10 @@ void tst_QCompleter::task178797_activatedOnReturn()
     auto completer = new QCompleter({"foobar1", "foobar2"}, &ledit);
     ledit.setCompleter(completer);
     QSignalSpy spy(completer, QOverload<const QString &>::of(&QCompleter::activated));
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     ledit.move(200, 200);
     ledit.show();
-    QApplication::setActiveWindow(&ledit);
+    QApplicationPrivate::setActiveWindow(&ledit);
     QVERIFY(QTest::qWaitForWindowActive(&ledit));
     QTest::keyClick(&ledit, Qt::Key_F);
     QCoreApplication::processEvents();
@@ -1283,7 +1208,7 @@ void tst_QCompleter::task178797_activatedOnReturn()
     QCoreApplication::processEvents();
     QTest::keyClick(QApplication::activePopupWidget(), Qt::Key_Return);
     QCoreApplication::processEvents();
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 }
 
 class task189564_StringListModel : public QStringListModel
@@ -1358,14 +1283,14 @@ void tst_QCompleter::task246056_setCompletionPrefix()
     comboBox.addItem("a2");
     comboBox.move(200, 200);
     comboBox.show();
-    QApplication::setActiveWindow(&comboBox);
+    QApplicationPrivate::setActiveWindow(&comboBox);
     QVERIFY(QTest::qWaitForWindowActive(&comboBox));
     QSignalSpy spy(comboBox.completer(), QOverload<const QModelIndex &>::of(&QCompleter::activated));
     QTest::keyPress(&comboBox, 'a');
     QTest::keyPress(comboBox.completer()->popup(), Qt::Key_Down);
     QTest::keyPress(comboBox.completer()->popup(), Qt::Key_Down);
     QTest::keyPress(comboBox.completer()->popup(), Qt::Key_Enter); // don't crash!
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     const auto index = spy.at(0).constFirst().toModelIndex();
     QVERIFY(!index.isValid());
 }
@@ -1424,7 +1349,7 @@ void tst_QCompleter::task250064_lostFocus()
     task250064_Widget widget;
     widget.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     widget.show();
-    QApplication::setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
     QVERIFY(QTest::qWaitForWindowActive(&widget));
     QTest::keyPress(widget.textEdit(), 'a');
     Qt::FocusPolicy origPolicy = widget.textEdit()->focusPolicy();
@@ -1469,7 +1394,7 @@ void tst_QCompleter::task253125_lineEditCompletion()
     edit.move(200, 200);
     edit.show();
     edit.setFocus();
-    QApplication::setActiveWindow(&edit);
+    QApplicationPrivate::setActiveWindow(&edit);
     QVERIFY(QTest::qWaitForWindowActive(&edit));
 
     QTest::keyClick(&edit, 'i');
@@ -1632,7 +1557,7 @@ void tst_QCompleter::task247560_keyboardNavigation()
     edit.move(200, 200);
     edit.show();
     edit.setFocus();
-    QApplication::setActiveWindow(&edit);
+    QApplicationPrivate::setActiveWindow(&edit);
     QVERIFY(QTest::qWaitForWindowActive(&edit));
 
     QTest::keyClick(&edit, 'r');
@@ -1732,6 +1657,7 @@ void tst_QCompleter::QTBUG_14292_filesystem()
     // to pop up the completion list due to file changed signals.
     FileSystem fs;
     QFileSystemModel model;
+    QSignalSpy filesAddedSpy(&model, &QAbstractItemModel::rowsInserted);
     model.setRootPath(fs.path());
 
     QVERIFY(fs.createDirectory(QLatin1String(testDir1)));
@@ -1745,7 +1671,7 @@ void tst_QCompleter::QTBUG_14292_filesystem()
 
     edit.move(200, 200);
     edit.show();
-    QApplication::setActiveWindow(&edit);
+    QApplicationPrivate::setActiveWindow(&edit);
     QVERIFY(QTest::qWaitForWindowActive(&edit));
     QCOMPARE(QApplication::activeWindow(), &edit);
     edit.setFocus();
@@ -1753,9 +1679,6 @@ void tst_QCompleter::QTBUG_14292_filesystem()
 
     // Wait for all file system model slots/timers to trigger
     // until the model sees the subdirectories.
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Fails on WinRT - QTBUG-68297", Abort);
-#endif
     QTRY_VERIFY(testFileSystemReady(model));
     // But this should not cause the combo to pop up.
     QVERIFY(!comp.popup()->isVisible());
@@ -1764,6 +1687,7 @@ void tst_QCompleter::QTBUG_14292_filesystem()
     QTRY_VERIFY(comp.popup()->isVisible());
     QCOMPARE(comp.popup()->model()->rowCount(), 2);
     QApplication::processEvents();
+    QCOMPARE(qApp->focusObject(), &edit); // for QTBUG_108522
     QTest::keyClick(&edit, 'h');
     QCOMPARE(comp.popup()->model()->rowCount(), 2);
     QTest::keyClick(&edit, 'e');
@@ -1771,13 +1695,16 @@ void tst_QCompleter::QTBUG_14292_filesystem()
     QTest::keyClick(&edit, 'r');
     QTRY_VERIFY(!comp.popup()->isVisible());
     QVERIFY(fs.createDirectory(QStringLiteral("hero")));
+    if (!filesAddedSpy.wait())
+        QSKIP("File system model didn't notify about new directory, skipping tests");
     QTRY_VERIFY(comp.popup()->isVisible());
     QCOMPARE(comp.popup()->model()->rowCount(), 1);
     QTest::keyClick(comp.popup(), Qt::Key_Escape);
     QTRY_VERIFY(!comp.popup()->isVisible());
     QVERIFY(fs.createDirectory(QStringLiteral("nothingThere")));
     //there is no reason creating a file should open a popup, it did in Qt 4.7.0
-    QTest::qWait(60);
+    if (!filesAddedSpy.wait())
+        QSKIP("File system model didn't notify about new file, skipping tests");
     QVERIFY(!comp.popup()->isVisible());
 
     QTest::keyClick(&edit, Qt::Key_Backspace);
@@ -1789,13 +1716,14 @@ void tst_QCompleter::QTBUG_14292_filesystem()
     QWidget w;
     w.move(400, 200);
     w.show();
-    QApplication::setActiveWindow(&w);
+    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
     QVERIFY(!edit.hasFocus() && !comp.popup()->hasFocus());
 
     QVERIFY(fs.createDirectory(QStringLiteral("hemo")));
     //there is no reason creating a file should open a popup, it did in Qt 4.7.0
-    QTest::qWait(60);
+    if (!filesAddedSpy.wait())
+        QSKIP("File system model didn't notify about new file, skipping tests");
     QVERIFY(!comp.popup()->isVisible());
 }
 
@@ -1825,10 +1753,10 @@ void tst_QCompleter::QTBUG_52028_tabAutoCompletes()
     const auto pos = w.screen()->availableGeometry().topLeft() + QPoint(200,200);
     w.move(pos);
     w.show();
-    QApplication::setActiveWindow(&w);
+    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
-    QSignalSpy activatedSpy(&cbox, QOverload<int>::of(&QComboBox::activated));
+    QSignalSpy activatedSpy(&cbox, &QComboBox::activated);
 
     // Tab key will complete but not activate
     cbox.lineEdit()->clear();
@@ -1837,10 +1765,10 @@ void tst_QCompleter::QTBUG_52028_tabAutoCompletes()
     QTRY_VERIFY(cbox.completer()->popup()->isVisible());
     QTest::keyClick(cbox.completer()->popup(), Qt::Key_Tab);
     QCOMPARE(cbox.completer()->currentCompletion(), QLatin1String("hux"));
-    QCOMPARE(activatedSpy.count(), 0);
+    QCOMPARE(activatedSpy.size(), 0);
     QEXPECT_FAIL("", "QTBUG-52028 will not be fixed today.", Abort);
     QCOMPARE(cbox.currentText(), QLatin1String("hux"));
-    QCOMPARE(activatedSpy.count(), 0);
+    QCOMPARE(activatedSpy.size(), 0);
     QVERIFY(!le->hasFocus());
 }
 
@@ -1869,10 +1797,10 @@ void tst_QCompleter::QTBUG_51889_activatedSentTwice()
     const auto pos = w.screen()->availableGeometry().topLeft() + QPoint(200,200);
     w.move(pos);
     w.show();
-    QApplication::setActiveWindow(&w);
+    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
-    QSignalSpy activatedSpy(&cbox, QOverload<int>::of(&QComboBox::activated));
+    QSignalSpy activatedSpy(&cbox, &QComboBox::activated);
 
     // Navigate + enter activates only once (first item)
     cbox.lineEdit()->clear();
@@ -1881,7 +1809,7 @@ void tst_QCompleter::QTBUG_51889_activatedSentTwice()
     QTRY_VERIFY(cbox.completer()->popup()->isVisible());
     QTest::keyClick(cbox.completer()->popup(), Qt::Key_Down);
     QTest::keyClick(cbox.completer()->popup(), Qt::Key_Return);
-    QTRY_COMPARE(activatedSpy.count(), 1);
+    QTRY_COMPARE(activatedSpy.size(), 1);
 
     // Navigate + enter activates only once (non-first item)
     cbox.lineEdit()->clear();
@@ -1891,7 +1819,7 @@ void tst_QCompleter::QTBUG_51889_activatedSentTwice()
     QTRY_VERIFY(cbox.completer()->popup()->isVisible());
     QTest::keyClick(cbox.completer()->popup(), Qt::Key_Down);
     QTest::keyClick(cbox.completer()->popup(), Qt::Key_Return);
-    QTRY_COMPARE(activatedSpy.count(), 1);
+    QTRY_COMPARE(activatedSpy.size(), 1);
 
     // Full text + enter activates only once
     cbox.lineEdit()->clear();
@@ -1900,7 +1828,78 @@ void tst_QCompleter::QTBUG_51889_activatedSentTwice()
     QVERIFY(cbox.completer()->popup());
     QTRY_VERIFY(cbox.completer()->popup()->isVisible());
     QTest::keyClick(&cbox, Qt::Key_Return);
-    QTRY_COMPARE(activatedSpy.count(), 1);
+    QTRY_COMPARE(activatedSpy.size(), 1);
+}
+
+void tst_QCompleter::showPopupInGraphicsView()
+{
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
+        QSKIP("Wayland: Skip this test, see also QTBUG-107186");
+
+    QGraphicsView view;
+    QGraphicsScene scene;
+    view.setScene(&scene);
+
+    QLineEdit lineEdit;
+    lineEdit.setCompleter(new QCompleter({"alpha", "omega", "omicron", "zeta"}));
+    scene.addWidget(&lineEdit);
+
+    view.move(view.screen()->availableGeometry().topLeft() + QPoint(10, 10));
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+
+    // show popup under line edit
+    QTest::keyClick(&lineEdit, Qt::Key_A);
+    QVERIFY(lineEdit.completer()->popup());
+    QVERIFY(lineEdit.completer()->popup()->isVisible());
+    QCOMPARE(lineEdit.completer()->popup()->geometry().x(), lineEdit.mapToGlobal(QPoint(0, 0)).x());
+    QVERIFY(lineEdit.completer()->popup()->geometry().top() >= (lineEdit.mapToGlobal(QPoint(0, lineEdit.height() - 1)).y() - 1));
+
+    // move widget to the bottom of screen
+    lineEdit.clear();
+    int y = view.screen()->availableGeometry().height() - lineEdit.geometry().y();
+    view.move(view.geometry().x(), y);
+
+    // show popup above line edit
+    QTest::keyClick(&lineEdit, Qt::Key_A);
+    QVERIFY(lineEdit.completer()->popup()->geometry().bottom() < lineEdit.mapToGlobal(QPoint(0, 0)).y());
+}
+
+void tst_QCompleter::inheritedEventFilter()
+{
+    class Completer : public QCompleter
+    {
+    public:
+        explicit Completer(QWidget *parent) : QCompleter(parent)
+        {
+            Q_ASSERT(parent);
+            setPopup(new QListView());
+            popup()->installEventFilter(this);
+        }
+
+        bool m_popupChildAdded = false;
+
+    protected:
+        bool eventFilter(QObject *watched, QEvent *event) override
+        {
+            if (watched == popup() && event->type() == QEvent::ChildAdded)
+                m_popupChildAdded = true;
+
+            return QCompleter::eventFilter(watched, event);
+        }
+    };
+
+    QComboBox comboBox;
+    comboBox.setEditable(true);
+    Completer *completer = new Completer(&comboBox);
+    comboBox.setCompleter(completer);
+
+    // comboBox.show() must not crash with an infinite loop in the event filter
+    comboBox.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&comboBox));
+
+    // Since event orders are platform dependent, only the the ChildAdded event is checked.
+    QVERIFY(QTest::qWaitFor([completer](){return completer->m_popupChildAdded; }));
 }
 
 QTEST_MAIN(tst_QCompleter)

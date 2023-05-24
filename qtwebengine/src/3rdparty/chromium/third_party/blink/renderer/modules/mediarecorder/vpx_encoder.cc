@@ -1,22 +1,18 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/mediarecorder/vpx_encoder.h"
 
 #include <algorithm>
+#include <utility>
 
+#include "base/numerics/safe_conversions.h"
 #include "base/system/sys_info.h"
 #include "media/base/video_frame.h"
+#include "media/base/video_util.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
-#include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
-#include "third_party/blink/renderer/platform/scheduler/public/thread.h"
-#include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
-#include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "ui/gfx/geometry/size.h"
-
-using media::VideoFrame;
-using media::VideoFrameMetadata;
 
 namespace blink {
 
@@ -35,138 +31,155 @@ static int GetNumberOfThreadsForEncoding() {
   return std::min(8, (base::SysInfo::NumberOfProcessors() + 1) / 2);
 }
 
-// static
-void VpxEncoder::ShutdownEncoder(std::unique_ptr<Thread> encoding_thread,
-                                 ScopedVpxCodecCtxPtr encoder) {
-  DCHECK(encoding_thread);
-  // Both |encoding_thread| and |encoder| will be destroyed at end-of-scope.
-}
-
 VpxEncoder::VpxEncoder(
     bool use_vp9,
     const VideoTrackRecorder::OnEncodedVideoCB& on_encoded_video_cb,
-    int32_t bits_per_second,
-    scoped_refptr<base::SingleThreadTaskRunner> main_task_runner)
-    : VideoTrackRecorder::Encoder(on_encoded_video_cb,
-                                  bits_per_second,
-                                  std::move(main_task_runner)),
-      use_vp9_(use_vp9) {
+    uint32_t bits_per_second)
+    : Encoder(on_encoded_video_cb, bits_per_second), use_vp9_(use_vp9) {
   codec_config_.g_timebase.den = 0;        // Not initialized.
   alpha_codec_config_.g_timebase.den = 0;  // Not initialized.
-  DCHECK(encoding_thread_);
 }
 
-VpxEncoder::~VpxEncoder() {
-  PostCrossThreadTask(
-      *main_task_runner_.get(), FROM_HERE,
-      CrossThreadBindOnce(&VpxEncoder::ShutdownEncoder,
-                          std::move(encoding_thread_), std::move(encoder_)));
-}
-
-bool VpxEncoder::CanEncodeAlphaChannel() {
+bool VpxEncoder::CanEncodeAlphaChannel() const {
   return true;
 }
 
-void VpxEncoder::EncodeOnEncodingTaskRunner(scoped_refptr<VideoFrame> frame,
-                                            base::TimeTicks capture_timestamp) {
-  TRACE_EVENT0("media", "VpxEncoder::EncodeOnEncodingTaskRunner");
-  DCHECK(encoding_task_runner_->BelongsToCurrentThread());
+void VpxEncoder::EncodeFrame(scoped_refptr<media::VideoFrame> frame,
+                             base::TimeTicks capture_timestamp) {
+  using media::VideoFrame;
+  TRACE_EVENT0("media", "VpxEncoder::EncodeFrame");
 
-  if (frame->storage_type() == media::VideoFrame::STORAGE_GPU_MEMORY_BUFFER)
-    frame = ConvertToI420ForSoftwareEncoder(frame);
+  if (frame->format() == media::PIXEL_FORMAT_NV12 &&
+      frame->storage_type() == media::VideoFrame::STORAGE_GPU_MEMORY_BUFFER)
+    frame = media::ConvertToMemoryMappedFrame(frame);
+  if (!frame) {
+    LOG(WARNING) << "Invalid video frame to encode";
+    return;
+  }
 
   const gfx::Size frame_size = frame->visible_rect().size();
   base::TimeDelta duration = EstimateFrameDuration(*frame);
-  const media::WebmMuxer::VideoParameters video_params(frame);
+  const media::Muxer::VideoParameters video_params(*frame);
 
   if (!IsInitialized(codec_config_) ||
       gfx::Size(codec_config_.g_w, codec_config_.g_h) != frame_size) {
-    ConfigureEncoderOnEncodingTaskRunner(frame_size, &codec_config_, &encoder_);
+    if (!ConfigureEncoder(frame_size, &codec_config_, &encoder_)) {
+      return;
+    }
   }
 
-  const bool frame_has_alpha = frame->format() == media::PIXEL_FORMAT_I420A;
-  // Split the duration between two encoder instances if alpha is encoded.
-  duration = frame_has_alpha ? duration / 2 : duration;
-  if (frame_has_alpha && (!IsInitialized(alpha_codec_config_) ||
-                          gfx::Size(alpha_codec_config_.g_w,
-                                    alpha_codec_config_.g_h) != frame_size)) {
-    ConfigureEncoderOnEncodingTaskRunner(frame_size, &alpha_codec_config_,
-                                         &alpha_encoder_);
-    u_plane_stride_ = media::VideoFrame::RowBytes(
-        VideoFrame::kUPlane, frame->format(), frame_size.width());
-    v_plane_stride_ = media::VideoFrame::RowBytes(
-        VideoFrame::kVPlane, frame->format(), frame_size.width());
-    v_plane_offset_ = media::VideoFrame::PlaneSize(
-                          frame->format(), VideoFrame::kUPlane, frame_size)
-                          .GetArea();
-    alpha_dummy_planes_.resize(SafeCast<wtf_size_t>(
-        v_plane_offset_ + media::VideoFrame::PlaneSize(
-                              frame->format(), VideoFrame::kVPlane, frame_size)
-                              .GetArea()));
-    // It is more expensive to encode 0x00, so use 0x80 instead.
-    std::fill(alpha_dummy_planes_.begin(), alpha_dummy_planes_.end(), 0x80);
-  }
-  // If we introduced a new alpha frame, force keyframe.
-  const bool force_keyframe = frame_has_alpha && !last_frame_had_alpha_;
-  last_frame_had_alpha_ = frame_has_alpha;
-
-  std::string data;
   bool keyframe = false;
-  DoEncode(encoder_.get(), frame_size, frame->data(VideoFrame::kYPlane),
-           frame->visible_data(VideoFrame::kYPlane),
-           frame->stride(VideoFrame::kYPlane),
-           frame->visible_data(VideoFrame::kUPlane),
-           frame->stride(VideoFrame::kUPlane),
-           frame->visible_data(VideoFrame::kVPlane),
-           frame->stride(VideoFrame::kVPlane), duration, force_keyframe, data,
-           &keyframe);
-
+  bool force_keyframe = false;
+  bool alpha_keyframe = false;
+  std::string data;
   std::string alpha_data;
-  if (frame_has_alpha) {
-    bool alpha_keyframe = false;
-    DoEncode(alpha_encoder_.get(), frame_size, frame->data(VideoFrame::kAPlane),
-             frame->visible_data(VideoFrame::kAPlane),
-             frame->stride(VideoFrame::kAPlane), alpha_dummy_planes_.data(),
-             SafeCast<int>(u_plane_stride_),
-             alpha_dummy_planes_.data() + v_plane_offset_,
-             SafeCast<int>(v_plane_stride_), duration, keyframe, alpha_data,
-             &alpha_keyframe);
-    DCHECK_EQ(keyframe, alpha_keyframe);
+  switch (frame->format()) {
+    case media::PIXEL_FORMAT_NV12: {
+      last_frame_had_alpha_ = false;
+      DoEncode(encoder_.get(), frame_size, frame->data(media::VideoFrame::kYPlane),
+               frame->visible_data(media::VideoFrame::kYPlane),
+               frame->stride(media::VideoFrame::kYPlane),
+               frame->visible_data(media::VideoFrame::kUVPlane),
+               frame->stride(media::VideoFrame::kUVPlane),
+               frame->visible_data(media::VideoFrame::kUVPlane) + 1,
+               frame->stride(media::VideoFrame::kUVPlane), duration, force_keyframe,
+               data, &keyframe, VPX_IMG_FMT_NV12);
+      break;
+    }
+    case media::PIXEL_FORMAT_I420: {
+      last_frame_had_alpha_ = false;
+      DoEncode(encoder_.get(), frame_size, frame->data(media::VideoFrame::kYPlane),
+               frame->visible_data(media::VideoFrame::kYPlane),
+               frame->stride(media::VideoFrame::kYPlane),
+               frame->visible_data(media::VideoFrame::kUPlane),
+               frame->stride(media::VideoFrame::kUPlane),
+               frame->visible_data(media::VideoFrame::kVPlane),
+               frame->stride(media::VideoFrame::kVPlane), duration, force_keyframe,
+               data, &keyframe, VPX_IMG_FMT_I420);
+      break;
+    }
+    case media::PIXEL_FORMAT_I420A: {
+      // Split the duration between two encoder instances if alpha is encoded.
+      duration = duration / 2;
+      if ((!IsInitialized(alpha_codec_config_) ||
+           gfx::Size(alpha_codec_config_.g_w, alpha_codec_config_.g_h) !=
+               frame_size)) {
+        if (!ConfigureEncoder(frame_size, &alpha_codec_config_,
+                              &alpha_encoder_)) {
+          return;
+        }
+        u_plane_stride_ = media::VideoFrame::RowBytes(
+            media::VideoFrame::kUPlane, frame->format(), frame_size.width());
+        v_plane_stride_ = media::VideoFrame::RowBytes(
+            media::VideoFrame::kVPlane, frame->format(), frame_size.width());
+        v_plane_offset_ = media::VideoFrame::PlaneSize(
+                              frame->format(), media::VideoFrame::kUPlane, frame_size)
+                              .GetArea();
+        alpha_dummy_planes_.resize(base::checked_cast<wtf_size_t>(
+            v_plane_offset_ + media::VideoFrame::PlaneSize(frame->format(),
+                                                           media::VideoFrame::kVPlane,
+                                                           frame_size)
+                                  .GetArea()));
+        // It is more expensive to encode 0x00, so use 0x80 instead.
+        std::fill(alpha_dummy_planes_.begin(), alpha_dummy_planes_.end(), 0x80);
+      }
+      // If we introduced a new alpha frame, force keyframe.
+      force_keyframe = !last_frame_had_alpha_;
+      last_frame_had_alpha_ = true;
+
+      DoEncode(encoder_.get(), frame_size, frame->data(media::VideoFrame::kYPlane),
+               frame->visible_data(media::VideoFrame::kYPlane),
+               frame->stride(media::VideoFrame::kYPlane),
+               frame->visible_data(media::VideoFrame::kUPlane),
+               frame->stride(media::VideoFrame::kUPlane),
+               frame->visible_data(media::VideoFrame::kVPlane),
+               frame->stride(media::VideoFrame::kVPlane), duration, force_keyframe,
+               data, &keyframe, VPX_IMG_FMT_I420);
+
+      DoEncode(alpha_encoder_.get(), frame_size,
+               frame->data(media::VideoFrame::kAPlane),
+               frame->visible_data(media::VideoFrame::kAPlane),
+               frame->stride(media::VideoFrame::kAPlane), alpha_dummy_planes_.data(),
+               base::checked_cast<int>(u_plane_stride_),
+               alpha_dummy_planes_.data() + v_plane_offset_,
+               base::checked_cast<int>(v_plane_stride_), duration, keyframe,
+               alpha_data, &alpha_keyframe, VPX_IMG_FMT_I420);
+      DCHECK_EQ(keyframe, alpha_keyframe);
+      break;
+    }
+    default:
+      NOTREACHED() << media::VideoPixelFormatToString(frame->format());
   }
   frame = nullptr;
 
-  PostCrossThreadTask(
-      *origin_task_runner_.get(), FROM_HERE,
-      CrossThreadBindOnce(
-          OnFrameEncodeCompleted,
-          WTF::Passed(CrossThreadBindRepeating(on_encoded_video_cb_)),
-          video_params, std::move(data), std::move(alpha_data),
-          capture_timestamp, keyframe));
+  on_encoded_video_cb_.Run(video_params, std::move(data), std::move(alpha_data),
+                           capture_timestamp, keyframe);
 }
 
 void VpxEncoder::DoEncode(vpx_codec_ctx_t* const encoder,
                           const gfx::Size& frame_size,
-                          uint8_t* const data,
-                          uint8_t* const y_plane,
+                          const uint8_t* data,
+                          const uint8_t* y_plane,
                           int y_stride,
-                          uint8_t* const u_plane,
+                          const uint8_t* u_plane,
                           int u_stride,
-                          uint8_t* const v_plane,
+                          const uint8_t* v_plane,
                           int v_stride,
                           const base::TimeDelta& duration,
                           bool force_keyframe,
                           std::string& output_data,
-                          bool* const keyframe) {
-  DCHECK(encoding_task_runner_->BelongsToCurrentThread());
+                          bool* const keyframe,
+                          vpx_img_fmt_t img_fmt) {
+  DCHECK(img_fmt == VPX_IMG_FMT_I420 || img_fmt == VPX_IMG_FMT_NV12);
 
   vpx_image_t vpx_image;
   vpx_image_t* const result =
-      vpx_img_wrap(&vpx_image, VPX_IMG_FMT_I420, frame_size.width(),
-                   frame_size.height(), 1 /* align */, data);
+      vpx_img_wrap(&vpx_image, img_fmt, frame_size.width(), frame_size.height(),
+                   1 /* align */, const_cast<uint8_t*>(data));
   DCHECK_EQ(result, &vpx_image);
-  vpx_image.planes[VPX_PLANE_Y] = y_plane;
-  vpx_image.planes[VPX_PLANE_U] = u_plane;
-  vpx_image.planes[VPX_PLANE_V] = v_plane;
+  vpx_image.planes[VPX_PLANE_Y] = const_cast<uint8_t*>(y_plane);
+  vpx_image.planes[VPX_PLANE_U] = const_cast<uint8_t*>(u_plane);
+  vpx_image.planes[VPX_PLANE_V] = const_cast<uint8_t*>(v_plane);
   vpx_image.stride[VPX_PLANE_Y] = y_stride;
   vpx_image.stride[VPX_PLANE_U] = u_stride;
   vpx_image.stride[VPX_PLANE_V] = v_stride;
@@ -196,11 +209,9 @@ void VpxEncoder::DoEncode(vpx_codec_ctx_t* const encoder,
   }
 }
 
-void VpxEncoder::ConfigureEncoderOnEncodingTaskRunner(
-    const gfx::Size& size,
-    vpx_codec_enc_cfg_t* codec_config,
-    ScopedVpxCodecCtxPtr* encoder) {
-  DCHECK(encoding_task_runner_->BelongsToCurrentThread());
+bool VpxEncoder::ConfigureEncoder(const gfx::Size& size,
+                                  vpx_codec_enc_cfg_t* codec_config,
+                                  ScopedVpxCodecCtxPtr* encoder) {
   if (IsInitialized(*codec_config)) {
     // TODO(mcasas) VP8 quirk/optimisation: If the new |size| is strictly less-
     // than-or-equal than the old size, in terms of area, the existing encoder
@@ -270,10 +281,18 @@ void VpxEncoder::ConfigureEncoderOnEncodingTaskRunner(
   // Number of frames to consume before producing output.
   codec_config->g_lag_in_frames = 0;
 
-  encoder->reset(new vpx_codec_ctx_t);
+  // Can't use ScopedVpxCodecCtxPtr until after vpx_codec_enc_init, since it's
+  // not valid to call vpx_codec_destroy when vpx_codec_enc_init fails.
+  auto tmp_encoder = std::make_unique<vpx_codec_ctx_t>();
   const vpx_codec_err_t ret = vpx_codec_enc_init(
-      encoder->get(), codec_interface, codec_config, 0 /* flags */);
-  DCHECK_EQ(VPX_CODEC_OK, ret);
+      tmp_encoder.get(), codec_interface, codec_config, 0 /* flags */);
+  if (ret != VPX_CODEC_OK) {
+    DLOG(WARNING) << "vpx_codec_enc_init failed: " << ret;
+    // Require the encoder to be reinitialized next frame.
+    codec_config->g_timebase.den = 0;
+    return false;
+  }
+  encoder->reset(tmp_encoder.release());
 
   if (use_vp9_) {
     // Values of VP8E_SET_CPUUSED greater than 0 will increase encoder speed at
@@ -285,18 +304,15 @@ void VpxEncoder::ConfigureEncoderOnEncodingTaskRunner(
     result = vpx_codec_control(encoder->get(), VP8E_SET_CPUUSED, kCpuUsed);
     DLOG_IF(WARNING, VPX_CODEC_OK != result) << "VP8E_SET_CPUUSED failed";
   }
+  return true;
 }
 
 bool VpxEncoder::IsInitialized(const vpx_codec_enc_cfg_t& codec_config) const {
-  DCHECK(encoding_task_runner_->BelongsToCurrentThread());
   return codec_config.g_timebase.den != 0;
 }
 
-base::TimeDelta VpxEncoder::EstimateFrameDuration(const VideoFrame& frame) {
-  DCHECK(encoding_task_runner_->BelongsToCurrentThread());
-
-  using base::TimeDelta;
-
+base::TimeDelta VpxEncoder::EstimateFrameDuration(
+    const media::VideoFrame& frame) {
   // If the source of the video frame did not provide the frame duration, use
   // the actual amount of time between the current and previous frame as a
   // prediction for the next frame's duration.
@@ -306,13 +322,11 @@ base::TimeDelta VpxEncoder::EstimateFrameDuration(const VideoFrame& frame) {
   base::TimeDelta predicted_frame_duration =
       frame.timestamp() - last_frame_timestamp_;
   base::TimeDelta frame_duration =
-      frame.metadata()->frame_duration.value_or(predicted_frame_duration);
+      frame.metadata().frame_duration.value_or(predicted_frame_duration);
   last_frame_timestamp_ = frame.timestamp();
   // Make sure |frame_duration| is in a safe range of values.
-  const base::TimeDelta kMaxFrameDuration =
-      base::TimeDelta::FromSecondsD(1.0 / 8);
-  const base::TimeDelta kMinFrameDuration =
-      base::TimeDelta::FromMilliseconds(1);
+  const base::TimeDelta kMaxFrameDuration = base::Seconds(1.0 / 8);
+  const base::TimeDelta kMinFrameDuration = base::Milliseconds(1);
   return std::min(kMaxFrameDuration,
                   std::max(frame_duration, kMinFrameDuration));
 }

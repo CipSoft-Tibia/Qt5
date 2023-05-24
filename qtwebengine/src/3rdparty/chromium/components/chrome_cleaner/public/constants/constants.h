@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -61,13 +61,13 @@ extern const char kExtendedSafeBrowsingEnabledSwitch[];
 // Specifies the suffix to the registry path where metrics data will be saved.
 extern const char kRegistrySuffixSwitch[];
 
+// Indicates that resetting shortcuts is enabled.
+extern const char kResetShortcutsSwitch[];
+
 // Identifier used to group all reports generated during the same run of the
 // software reporter (which may include multiple invocations of the reporter
 /// binary, each generating a report). An ASCII, base-64 encoded random string.
 extern const char kSessionIdSwitch[];
-
-// Indicates the group name for the SRTPrompt field trial.
-extern const char kSRTPromptFieldTrialGroupNameSwitch[];
 
 // Indicates that metrics reporting is enabled for the current user.
 extern const char kUmaUserSwitch[];

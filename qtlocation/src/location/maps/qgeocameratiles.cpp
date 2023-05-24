@@ -1,54 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qgeocameratiles_p.h"
 #include "qgeocameratiles_p_p.h"
 #include "qgeocameradata_p.h"
 #include "qgeotilespec_p.h"
 #include "qgeomaptype_p.h"
 
-#include <QtPositioning/private/qwebmercator_p.h>
-#include <QtPositioning/private/qdoublevector2d_p.h>
-#include <QtPositioning/private/qdoublevector3d_p.h>
-#include <QtPositioning/private/qlocationutils_p.h>
 #include <QtGui/QMatrix4x4>
-#include <QVector>
+#include <QList>
 #include <QMap>
 #include <QPair>
 #include <QSet>
 #include <QSize>
+
+#include <QtPositioning/private/qwebmercator_p.h>
+#include <QtPositioning/private/qdoublevector2d_p.h>
+#include <QtPositioning/private/qdoublevector3d_p.h>
+#include <QtPositioning/private/qlocationutils_p.h>
+
 #include <cmath>
 #include <limits>
 
@@ -173,18 +142,6 @@ const QSet<QGeoTileSpec>& QGeoCameraTiles::createTiles()
     return d_ptr->m_tiles;
 }
 
-QGeoCameraTilesPrivate::QGeoCameraTilesPrivate()
-:   m_mapVersion(-1),
-    m_tileSize(0),
-    m_intZoomLevel(0),
-    m_sideLength(0),
-    m_dirtyGeometry(false),
-    m_dirtyMetadata(false),
-    m_viewExpansion(1.0)
-{
-}
-
-QGeoCameraTilesPrivate::~QGeoCameraTilesPrivate() {}
 
 void QGeoCameraTilesPrivate::updateMetadata()
 {
@@ -268,13 +225,13 @@ Frustum QGeoCameraTilesPrivate::createFrustum(double viewExpansion) const
     // The rotation direction here is the opposite of QGeoTiledMapScene::setupCamera,
     // as this is basically rotating the map against a fixed view frustum.
     mBearing.rotate(1.0 * m_camera.bearing(), toVector3D(view));
-    up = toDoubleVector3D(mBearing * toVector3D(up));
+    up = toDoubleVector3D(mBearing.map(toVector3D(up)));
 
     // same for tilting
     QDoubleVector3D side2 = QDoubleVector3D::normal(up, view);
     QMatrix4x4 mTilt;
     mTilt.rotate(-1.0 * m_camera.tilt(), toVector3D(side2));
-    eye = toDoubleVector3D((mTilt * toVector3D(view)) + toVector3D(center));
+    eye = toDoubleVector3D((mTilt.map(toVector3D(view))) + toVector3D(center));
 
     view = eye - center;
     side = QDoubleVector3D::normal(view, QDoubleVector3D(0.0, 1.0, 0.0));
@@ -346,10 +303,8 @@ Frustum QGeoCameraTilesPrivate::createFrustum(double viewExpansion) const
     return frustum;
 }
 
-static bool appendZIntersects(const QDoubleVector3D &start,
-                                               const QDoubleVector3D &end,
-                                               double z,
-                                               QVector<QDoubleVector3D> &results)
+static bool appendZIntersects(const QDoubleVector3D &start, const QDoubleVector3D &end, double z,
+                              QList<QDoubleVector3D> &results)
 {
     if (start.z() == end.z()) {
         return false;
@@ -394,16 +349,15 @@ QPair<PolygonVector, PolygonVector> QGeoCameraTilesPrivate::splitPolygonAtAxisVa
     PolygonVector polygonBelow;
     PolygonVector polygonAbove;
 
-    int size = polygon.size();
+    const qsizetype size = polygon.size();
 
-    if (size == 0) {
+    if (size == 0)
         return QPair<PolygonVector, PolygonVector>(polygonBelow, polygonAbove);
-    }
 
-    QVector<int> comparisons = QVector<int>(polygon.size());
+    QList<int> comparisons(polygon.size());
 
-    for (int i = 0; i < size; ++i) {
-        double v = polygon.at(i).get(axis);
+    for (qsizetype i = 0; i < size; ++i) {
+        const double v = polygon.at(i).get(axis);
         if (qFuzzyCompare(v - value + 1.0, 1.0)) {
             comparisons[i] = 0;
         } else {
@@ -415,11 +369,11 @@ QPair<PolygonVector, PolygonVector> QGeoCameraTilesPrivate::splitPolygonAtAxisVa
         }
     }
 
-    for (int index = 0; index < size; ++index) {
-        int prevIndex = index - 1;
+    for (qsizetype index = 0; index < size; ++index) {
+        qsizetype prevIndex = index - 1;
         if (prevIndex < 0)
             prevIndex += size;
-        int nextIndex = (index + 1) % size;
+        const qsizetype nextIndex = (index + 1) % size;
 
         int prevComp = comparisons[prevIndex];
         int comp = comparisons[index];
@@ -505,22 +459,20 @@ QGeoCameraTilesPrivate::ClippedFootprint QGeoCameraTilesPrivate::clipFootprintTo
 
     PolygonVector results = footprint;
 
-    if (clipY0) {
+    if (clipY0)
         results = splitPolygonAtAxisValue(results, 1, 0.0).second;
-    }
 
-    if (clipY1) {
+    if (clipY1)
         results = splitPolygonAtAxisValue(results, 1, side).first;
-    }
 
-    for (const QDoubleVector3D &p: results) {
+    for (const QDoubleVector3D &p : std::as_const(results)) {
         if ((p.x() < 0.0) || (qFuzzyIsNull(p.x())))
             clipX0 = true;
         if ((p.x() > side) || (qFuzzyCompare(side, p.x())))
             clipX1 = true;
     }
 
-    for (const QDoubleVector3D &v : results) {
+    for (const QDoubleVector3D &v : std::as_const(results)) {
         minX = qMin(v.x(), minX);
         maxX = qMax(v.x(), maxX);
     }
@@ -550,9 +502,9 @@ QGeoCameraTilesPrivate::ClippedFootprint QGeoCameraTilesPrivate::clipFootprintTo
             QPair<PolygonVector, PolygonVector> pair = splitPolygonAtAxisValue(results, 0, 0.0);
             if (pair.first.isEmpty()) {
                 // if we touched the line but didn't cross it...
-                for (int i = 0; i < pair.second.size(); ++i) {
-                    if (qFuzzyIsNull(pair.second.at(i).x()))
-                        pair.first.append(pair.second.at(i));
+                for (const auto &v : std::as_const(pair.second)) {
+                    if (qFuzzyIsNull(v.x()))
+                        pair.first.append(v);
                 }
                 if (pair.first.size() == 2) {
                     double y0 = pair.first[0].y();
@@ -586,9 +538,9 @@ QGeoCameraTilesPrivate::ClippedFootprint QGeoCameraTilesPrivate::clipFootprintTo
             QPair<PolygonVector, PolygonVector> pair = splitPolygonAtAxisValue(results, 0, side);
             if (pair.second.isEmpty()) {
                 // if we touched the line but didn't cross it...
-                for (int i = 0; i < pair.first.size(); ++i) {
-                    if (qFuzzyCompare(side, pair.first.at(i).x()))
-                        pair.second.append(pair.first.at(i));
+                for (const auto &v : std::as_const(pair.first)) {
+                    if (qFuzzyCompare(side, v.x()))
+                        pair.second.append(v);
                 }
                 if (pair.second.size() == 2) {
                     double y0 = pair.second[0].y();
@@ -623,32 +575,29 @@ QGeoCameraTilesPrivate::ClippedFootprint QGeoCameraTilesPrivate::clipFootprintTo
 
 }
 
-QList<QPair<double, int> > QGeoCameraTilesPrivate::tileIntersections(double p1, int t1, double p2, int t2) const
+QList<QPair<double, int>> QGeoCameraTilesPrivate::tileIntersections(double p1, int t1, double p2, int t2) const
 {
     if (t1 == t2) {
-        QList<QPair<double, int> > results = QList<QPair<double, int> >();
+        QList<QPair<double, int>> results = QList<QPair<double, int>>();
         results.append(QPair<double, int>(0.0, t1));
         return results;
     }
 
     int step = 1;
-    if (t1 > t2) {
+    if (t1 > t2)
         step = -1;
-    }
 
-    int size = 1 + ((t2 - t1) / step);
+    qsizetype size = 1 + ((t2 - t1) / step);
 
-    QList<QPair<double, int> > results = QList<QPair<double, int> >();
-
-    results.append(QPair<double, int>(0.0, t1));
+    QList<QPair<double, int>> results = { QPair<double, int>(0.0, t1) };
 
     if (step == 1) {
-        for (int i = 1; i < size; ++i) {
+        for (qsizetype i = 1; i < size; ++i) {
             double f = (t1 + i - p1) / (p2 - p1);
             results.append(QPair<double, int>(f, t1 + i));
         }
     } else {
-        for (int i = 1; i < size; ++i) {
+        for (qsizetype i = 1; i < size; ++i) {
             double f = (t1 - i + 1 - p1) / (p2 - p1);
             results.append(QPair<double, int>(f, t1 - i));
         }
@@ -659,18 +608,18 @@ QList<QPair<double, int> > QGeoCameraTilesPrivate::tileIntersections(double p1, 
 
 QSet<QGeoTileSpec> QGeoCameraTilesPrivate::tilesFromPolygon(const PolygonVector &polygon) const
 {
-    int numPoints = polygon.size();
+    const qsizetype numPoints = polygon.size();
 
     if (numPoints == 0)
         return QSet<QGeoTileSpec>();
 
-    QVector<int> tilesX(polygon.size());
-    QVector<int> tilesY(polygon.size());
+    QList<int> tilesX(polygon.size());
+    QList<int> tilesY(polygon.size());
 
     // grab tiles at the corners of the polygon
-    for (int i = 0; i < numPoints; ++i) {
+    for (qsizetype i = 0; i < numPoints; ++i) {
 
-        QDoubleVector2D p = polygon.at(i).toVector2D();
+        const QDoubleVector2D p = polygon.at(i).toVector2D();
 
         int x = 0;
         int y = 0;
@@ -698,14 +647,14 @@ QSet<QGeoTileSpec> QGeoCameraTilesPrivate::tilesFromPolygon(const PolygonVector 
     QGeoCameraTilesPrivate::TileMap map;
 
     // walk along the edges of the polygon and add all tiles covered by them
-    for (int i1 = 0; i1 < numPoints; ++i1) {
-        int i2 = (i1 + 1) % numPoints;
+    for (qsizetype i1 = 0; i1 < numPoints; ++i1) {
+        const qsizetype i2 = (i1 + 1) % numPoints;
 
-        double x1 = polygon.at(i1).get(0);
-        double x2 = polygon.at(i2).get(0);
+        const double x1 = polygon.at(i1).get(0);
+        const double x2 = polygon.at(i2).get(0);
 
-        bool xFixed = qFuzzyCompare(x1, x2);
-        bool xIntegral = qFuzzyCompare(x1, std::floor(x1)) || qFuzzyCompare(x1 + 1.0, std::floor(x1 + 1.0));
+        const bool xFixed = qFuzzyCompare(x1, x2);
+        const bool xIntegral = qFuzzyCompare(x1, std::floor(x1)) || qFuzzyCompare(x1 + 1.0, std::floor(x1 + 1.0));
 
         QList<QPair<double, int> > xIntersects
                 = tileIntersections(x1,
@@ -713,11 +662,11 @@ QSet<QGeoTileSpec> QGeoCameraTilesPrivate::tilesFromPolygon(const PolygonVector 
                                     x2,
                                     tilesX.at(i2));
 
-        double y1 = polygon.at(i1).get(1);
-        double y2 = polygon.at(i2).get(1);
+        const double y1 = polygon.at(i1).get(1);
+        const double y2 = polygon.at(i2).get(1);
 
-        bool yFixed = qFuzzyCompare(y1, y2);
-        bool yIntegral = qFuzzyCompare(y1, std::floor(y1)) || qFuzzyCompare(y1 + 1.0, std::floor(y1 + 1.0));
+        const bool yFixed = qFuzzyCompare(y1, y2);
+        const bool yIntegral = qFuzzyCompare(y1, std::floor(y1)) || qFuzzyCompare(y1 + 1.0, std::floor(y1 + 1.0));
 
         QList<QPair<double, int> > yIntersects
                 = tileIntersections(y1,
@@ -784,10 +733,10 @@ QSet<QGeoTileSpec> QGeoCameraTilesPrivate::tilesFromPolygon(const PolygonVector 
         map.add(x,y);
 
         // top left corner
-        int iPrev =  (i1 + numPoints - 1) % numPoints;
-        double xPrevious = polygon.at(iPrev).get(0);
-        double yPrevious = polygon.at(iPrev).get(1);
-        bool xPreviousFixed = qFuzzyCompare(xPrevious, x1);
+        const qsizetype iPrev =  (i1 + numPoints - 1) % numPoints;
+        const double xPrevious = polygon.at(iPrev).get(0);
+        const double yPrevious = polygon.at(iPrev).get(1);
+        const bool xPreviousFixed = qFuzzyCompare(xPrevious, x1);
         if (xIntegral && xPreviousFixed && yIntegral && yFixed) {
             if ((x2 > x1) && (yPrevious > y1)) {
                 if ((x - 1) > 0 && (y - 1) > 0)
@@ -802,8 +751,8 @@ QSet<QGeoTileSpec> QGeoCameraTilesPrivate::tilesFromPolygon(const PolygonVector 
         // the x and y intersection lists are exhausted
 
         while (!xIntersects.isEmpty() && !yIntersects.isEmpty()) {
-            QPair<double, int> nextX = xIntersects.first();
-            QPair<double, int> nextY = yIntersects.first();
+            const QPair<double, int> nextX = xIntersects.first();
+            const QPair<double, int> nextY = yIntersects.first();
             if (nextX.first < nextY.first) {
                 x = nextX.second;
                 map.add(x, y);
@@ -843,19 +792,13 @@ QSet<QGeoTileSpec> QGeoCameraTilesPrivate::tilesFromPolygon(const PolygonVector 
 
     QSet<QGeoTileSpec> results;
 
-    int z = m_intZoomLevel;
-
-    typedef QMap<int, QPair<int, int> >::const_iterator iter;
-    iter i = map.data.constBegin();
-    iter end = map.data.constEnd();
-
-    for (; i != end; ++i) {
+    const int z = m_intZoomLevel;
+    for (auto i = map.data.constBegin(); i != map.data.constEnd(); ++i) {
         int y = i.key();
         int minX = i->first;
         int maxX = i->second;
-        for (int x = minX; x <= maxX; ++x) {
+        for (int x = minX; x <= maxX; ++x)
             results.insert(QGeoTileSpec(m_pluginString, m_mapType.mapId(), z, x, y, m_mapVersion));
-        }
     }
 
     return results;

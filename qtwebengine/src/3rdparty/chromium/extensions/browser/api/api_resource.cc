@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@ ApiResource::ApiResource(const std::string& owner_extension_id)
   CHECK(!owner_extension_id_.empty());
 }
 
-ApiResource::~ApiResource() {}
+ApiResource::~ApiResource() = default;
 
 bool ApiResource::IsPersistent() const {
   return true;  // backward-compatible behavior.

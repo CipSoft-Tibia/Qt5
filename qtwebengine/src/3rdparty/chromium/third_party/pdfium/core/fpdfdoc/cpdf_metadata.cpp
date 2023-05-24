@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,16 @@
 #include "core/fpdfdoc/cpdf_metadata.h"
 
 #include <memory>
+#include <utility>
 
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fpdfapi/parser/cpdf_stream_acc.h"
-#include "core/fxcrt/cfx_readonlymemorystream.h"
+#include "core/fxcrt/cfx_read_only_span_stream.h"
 #include "core/fxcrt/fx_codepage.h"
 #include "core/fxcrt/xml/cfx_xmldocument.h"
 #include "core/fxcrt/xml/cfx_xmlelement.h"
 #include "core/fxcrt/xml/cfx_xmlparser.h"
+#include "third_party/base/check.h"
 
 namespace {
 
@@ -60,17 +62,18 @@ void CheckForSharedFormInternal(CFX_XMLElement* element,
 
 }  // namespace
 
-CPDF_Metadata::CPDF_Metadata(const CPDF_Stream* pStream) : stream_(pStream) {
-  ASSERT(pStream);
+CPDF_Metadata::CPDF_Metadata(RetainPtr<const CPDF_Stream> pStream)
+    : stream_(std::move(pStream)) {
+  DCHECK(stream_);
 }
 
 CPDF_Metadata::~CPDF_Metadata() = default;
 
 std::vector<UnsupportedFeature> CPDF_Metadata::CheckForSharedForm() const {
-  auto pAcc = pdfium::MakeRetain<CPDF_StreamAcc>(stream_.Get());
+  auto pAcc = pdfium::MakeRetain<CPDF_StreamAcc>(stream_);
   pAcc->LoadAllDataFiltered();
 
-  auto stream = pdfium::MakeRetain<CFX_ReadOnlyMemoryStream>(pAcc->GetSpan());
+  auto stream = pdfium::MakeRetain<CFX_ReadOnlySpanStream>(pAcc->GetSpan());
   CFX_XMLParser parser(stream);
   std::unique_ptr<CFX_XMLDocument> doc = parser.Parse();
   if (!doc)

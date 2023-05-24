@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSGPLAINTEXTURE_P_H
 #define QSGPLAINTEXTURE_P_H
@@ -53,7 +17,7 @@
 
 #include <QtQuick/private/qtquickglobal_p.h>
 #include <QtQuick/private/qsgtexture_p.h>
-#include <QtQuick/qquickwindow.h>
+#include <QtQuick/private/qquickwindow_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -70,8 +34,6 @@ public:
     void setOwnsTexture(bool owns) { m_owns_texture = owns; }
     bool ownsTexture() const { return m_owns_texture; }
 
-    void setTextureId(int id);
-    int textureId() const override;
     void setTextureSize(const QSize &size) { m_texture_size = size; }
     QSize textureSize() const override { return m_texture_size; }
 
@@ -83,12 +45,19 @@ public:
     void setImage(const QImage &image);
     const QImage &image() { return m_image; }
 
-    void bind() override;
+    qint64 comparisonKey() const override;
+
+    QRhiTexture *rhiTexture() const override;
+    void commitTextureOperations(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates) override;
 
     void setTexture(QRhiTexture *texture);
-    void setTextureFromNativeObject(QRhi *rhi, QQuickWindow::NativeObjectType type,
-                                    const void *nativeObjectPtr, int nativeLayout,
-                                    const QSize &size, bool mipmap);
+    void setTextureFromNativeTexture(QRhi *rhi,
+                                     quint64 nativeObjectHandle,
+                                     int nativeLayoutOrState,
+                                     uint nativeFormat,
+                                     const QSize &size,
+                                     QQuickWindow::CreateTextureOptions options,
+                                     QQuickWindowPrivate::TextureFromNativeTextureFlags flags);
 
     static QSGPlainTexture *fromImage(const QImage &image) {
         QSGPlainTexture *t = new QSGPlainTexture();
@@ -101,7 +70,6 @@ protected:
 
     QImage m_image;
 
-    uint m_texture_id;
     QSize m_texture_size;
     QRectF m_texture_rect;
     QRhiTexture *m_texture;
@@ -119,10 +87,7 @@ class QSGPlainTexturePrivate : public QSGTexturePrivate
 {
     Q_DECLARE_PUBLIC(QSGPlainTexture)
 public:
-    int comparisonKey() const override;
-    QRhiTexture *rhiTexture() const override;
-    void updateRhiTexture(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates) override;
-
+    QSGPlainTexturePrivate(QSGTexture *t) : QSGTexturePrivate(t) { }
     QSGTexture::Filtering m_last_mipmap_filter = QSGTexture::None;
 };
 

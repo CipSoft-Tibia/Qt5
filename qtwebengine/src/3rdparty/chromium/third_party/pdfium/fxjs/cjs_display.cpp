@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@ const JSConstSpec CJS_Display::ConstSpecs[] = {
     {"noPrint", JSConstSpec::Number, 2, 0},
     {"noView", JSConstSpec::Number, 3, 0}};
 
-int CJS_Display::ObjDefnID = -1;
+uint32_t CJS_Display::ObjDefnID = 0;
 
 // static
 void CJS_Display::DefineJSObjects(CFXJS_Engine* pEngine) {

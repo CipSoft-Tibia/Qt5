@@ -1,16 +1,16 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef MEDIA_FILTERS_DAV1D_VIDEO_DECODER_H_
 #define MEDIA_FILTERS_DAV1D_VIDEO_DECODER_H_
 
-#include <string>
-
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/memory/ref_counted_memory.h"
-#include "base/threading/thread_checker.h"
+#include "base/sequence_checker.h"
+#include "media/base/supported_video_decoder_config.h"
 #include "media/base/video_decoder.h"
 #include "media/base/video_decoder_config.h"
 #include "media/base/video_frame.h"
@@ -24,12 +24,18 @@ class MediaLog;
 
 class MEDIA_EXPORT Dav1dVideoDecoder : public OffloadableVideoDecoder {
  public:
+  static SupportedVideoDecoderConfigs SupportedConfigs();
+
   Dav1dVideoDecoder(MediaLog* media_log,
                     OffloadState offload_state = OffloadState::kNormal);
+
+  Dav1dVideoDecoder(const Dav1dVideoDecoder&) = delete;
+  Dav1dVideoDecoder& operator=(const Dav1dVideoDecoder&) = delete;
+
   ~Dav1dVideoDecoder() override;
 
   // VideoDecoder implementation.
-  std::string GetDisplayName() const override;
+  VideoDecoderType GetDecoderType() const override;
   void Initialize(const VideoDecoderConfig& config,
                   bool low_delay,
                   CdmContext* cdm_context,
@@ -60,7 +66,7 @@ class MEDIA_EXPORT Dav1dVideoDecoder : public OffloadableVideoDecoder {
   scoped_refptr<VideoFrame> BindImageToVideoFrame(const Dav1dPicture* img);
 
   // Used to report error messages to the client.
-  MediaLog* const media_log_ = nullptr;
+  const raw_ptr<MediaLog> media_log_ = nullptr;
 
   // Indicates if the decoder is being wrapped by OffloadVideoDecoder; controls
   // whether callbacks are bound to the current loop on calls.
@@ -84,9 +90,9 @@ class MEDIA_EXPORT Dav1dVideoDecoder : public OffloadableVideoDecoder {
 
   // The allocated decoder; null before Initialize() and anytime after
   // CloseDecoder().
-  Dav1dContext* dav1d_decoder_ = nullptr;
-
-  DISALLOW_COPY_AND_ASSIGN(Dav1dVideoDecoder);
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #addr-of
+  RAW_PTR_EXCLUSION Dav1dContext* dav1d_decoder_ = nullptr;
 };
 
 // Helper class for creating a Dav1dVideoDecoder which will offload all AV1
@@ -96,7 +102,7 @@ class OffloadingDav1dVideoDecoder : public OffloadingVideoDecoder {
   explicit OffloadingDav1dVideoDecoder(MediaLog* media_log)
       : OffloadingVideoDecoder(
             0,
-            std::vector<VideoCodec>(1, kCodecAV1),
+            std::vector<VideoCodec>(1, VideoCodec::kAV1),
             std::make_unique<Dav1dVideoDecoder>(
                 media_log,
                 OffloadableVideoDecoder::OffloadState::kOffloaded)) {}

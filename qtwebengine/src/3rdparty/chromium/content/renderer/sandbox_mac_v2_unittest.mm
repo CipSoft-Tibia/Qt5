@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,6 +25,7 @@
 #include "sandbox/mac/sandbox_compiler.h"
 #include "sandbox/mac/seatbelt_exec.h"
 #include "sandbox/policy/mac/common.sb.h"
+#include "sandbox/policy/mac/params.h"
 #include "sandbox/policy/mac/renderer.sb.h"
 #include "sandbox/policy/mac/sandbox_mac.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -38,48 +39,40 @@ void SetParametersForTest(sandbox::SandboxCompiler* compiler,
                           const base::FilePath& logging_path,
                           const base::FilePath& executable_path) {
   bool enable_logging = true;
-  CHECK(compiler->InsertBooleanParam(
-      sandbox::policy::SandboxMac::kSandboxEnableLogging, enable_logging));
-  CHECK(compiler->InsertBooleanParam(
-      sandbox::policy::SandboxMac::kSandboxDisableDenialLogging,
-      !enable_logging));
+  CHECK(compiler->SetBooleanParameter(sandbox::policy::kParamEnableLogging,
+                                      enable_logging));
+  CHECK(compiler->SetBooleanParameter(
+      sandbox::policy::kParamDisableSandboxDenialLogging, !enable_logging));
 
   std::string homedir =
-      sandbox::policy::SandboxMac::GetCanonicalPath(base::GetHomeDir()).value();
-  CHECK(compiler->InsertStringParam(
-      sandbox::policy::SandboxMac::kSandboxHomedirAsLiteral, homedir));
+      sandbox::policy::GetCanonicalPath(base::GetHomeDir()).value();
+  CHECK(
+      compiler->SetParameter(sandbox::policy::kParamHomedirAsLiteral, homedir));
 
   int32_t major_version, minor_version, bugfix_version;
   base::SysInfo::OperatingSystemVersionNumbers(&major_version, &minor_version,
                                                &bugfix_version);
   int32_t os_version = (major_version * 100) + minor_version;
-  CHECK(compiler->InsertStringParam(
-      sandbox::policy::SandboxMac::kSandboxOSVersion,
-      std::to_string(os_version)));
+  CHECK(compiler->SetParameter(sandbox::policy::kParamOsVersion,
+                               base::NumberToString(os_version)));
 
   std::string bundle_path =
-      sandbox::policy::SandboxMac::GetCanonicalPath(base::mac::MainBundlePath())
-          .value();
-  CHECK(compiler->InsertStringParam(
-      sandbox::policy::SandboxMac::kSandboxBundlePath, bundle_path));
+      sandbox::policy::GetCanonicalPath(base::mac::MainBundlePath()).value();
+  CHECK(compiler->SetParameter(sandbox::policy::kParamBundlePath, bundle_path));
 
-  CHECK(compiler->InsertStringParam(
-      sandbox::policy::SandboxMac::kSandboxChromeBundleId,
-      "com.google.Chrome.test.sandbox"));
-  CHECK(compiler->InsertStringParam(
-      sandbox::policy::SandboxMac::kSandboxBrowserPID,
-      std::to_string(getpid())));
+  CHECK(compiler->SetParameter(sandbox::policy::kParamBundleId,
+                               "com.google.Chrome.test.sandbox"));
+  CHECK(compiler->SetParameter(sandbox::policy::kParamBrowserPid,
+                               base::NumberToString(getpid())));
 
-  CHECK(compiler->InsertStringParam(
-      sandbox::policy::SandboxMac::kSandboxLoggingPathAsLiteral,
-      logging_path.value()));
+  CHECK(compiler->SetParameter(sandbox::policy::kParamLogFilePath,
+                               logging_path.value()));
 
-  // Parameters normally set by the main executable.
-  CHECK(compiler->InsertStringParam("CURRENT_PID", std::to_string(getpid())));
-  CHECK(
-      compiler->InsertStringParam("EXECUTABLE_PATH", executable_path.value()));
+  CHECK(compiler->SetParameter(sandbox::policy::kParamExecutablePath,
+                               executable_path.value()));
 
-  CHECK(compiler->InsertBooleanParam("FILTER_SYSCALLS", true));
+  CHECK(compiler->SetBooleanParameter(sandbox::policy::kParamFilterSyscalls,
+                                      true));
 }
 
 }  // namespace
@@ -97,21 +90,22 @@ MULTIPROCESS_TEST_MAIN(SandboxProfileProcess) {
   const std::string profile =
       std::string(sandbox::policy::kSeatbeltPolicyString_common) +
       sandbox::policy::kSeatbeltPolicyString_renderer;
-  sandbox::SandboxCompiler compiler(profile);
+  sandbox::SandboxCompiler compiler;
+  compiler.SetProfile(profile);
 
   // Create the logging file and pass /bin/ls as the executable path.
   base::ScopedTempDir temp_dir;
   CHECK(temp_dir.CreateUniqueTempDir());
   CHECK(temp_dir.IsValid());
   base::FilePath temp_path = temp_dir.GetPath();
-  temp_path = sandbox::policy::SandboxMac::GetCanonicalPath(temp_path);
+  temp_path = sandbox::policy::GetCanonicalPath(temp_path);
   const base::FilePath log_file = temp_path.Append("log-file");
   const base::FilePath exec_file("/bin/ls");
 
   SetParametersForTest(&compiler, log_file, exec_file);
 
   std::string error;
-  bool result = compiler.CompileAndApplyProfile(&error);
+  bool result = compiler.CompileAndApplyProfile(error);
   CHECK(result) << error;
 
   // Test the properties of the sandbox profile.
@@ -169,6 +163,8 @@ MULTIPROCESS_TEST_MAIN(SandboxProfileProcess) {
   size_t data_size = sysctl_data.size();
   CHECK_EQ(0,
            sysctlbyname("hw.ncpu", sysctl_data.data(), &data_size, nullptr, 0));
+
+  CHECK(!base::Process::Current().CreationTime().is_null());
 
   return 0;
 }

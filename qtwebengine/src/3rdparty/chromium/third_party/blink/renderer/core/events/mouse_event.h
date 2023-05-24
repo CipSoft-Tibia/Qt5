@@ -24,18 +24,19 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_EVENTS_MOUSE_EVENT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_EVENTS_MOUSE_EVENT_H_
 
+#include <cmath>
+
 #include "third_party/blink/public/common/input/web_menu_source_type.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/events/simulated_click_options.h"
 #include "third_party/blink/renderer/core/events/ui_event_with_key_state.h"
-#include "third_party/blink/renderer/platform/geometry/double_point.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 
 namespace blink {
 
 class DataTransfer;
 class EventDispatcher;
+class LocalDOMWindow;
 class MouseEventInit;
 class WebPointerProperties;
 
@@ -56,6 +57,7 @@ class CORE_EXPORT MouseEvent : public UIEventWithKeyState {
 
   static MouseEvent* Create() { return MakeGarbageCollected<MouseEvent>(); }
 
+  // TODO(mustaq): looks like we don't need so many variations of Create() here
   static MouseEvent* Create(const AtomicString& event_type,
                             const MouseEventInit*,
                             base::TimeTicks platform_time_stamp,
@@ -66,20 +68,13 @@ class CORE_EXPORT MouseEvent : public UIEventWithKeyState {
                             const AtomicString& event_type,
                             const MouseEventInit*);
 
-  static MouseEvent* Create(const AtomicString& event_type,
-                            AbstractView*,
-                            const Event* underlying_event,
-                            SimulatedClickCreationScope);
-
   MouseEvent(const AtomicString& type,
              const MouseEventInit*,
-             base::TimeTicks platform_time_stamp,
+             base::TimeTicks platform_time_stamp = base::TimeTicks::Now(),
              SyntheticEventType = kRealOrIndistinguishable,
-             WebMenuSourceType = kMenuSourceNone);
-  MouseEvent(const AtomicString& type, const MouseEventInit* init)
-      : MouseEvent(type, init, base::TimeTicks::Now()) {}
+             WebMenuSourceType = kMenuSourceNone,
+             LocalDOMWindow* fallback_dom_window = nullptr);
   MouseEvent();
-  ~MouseEvent() override;
 
   static uint16_t WebInputEventModifiersToButtons(unsigned modifiers);
   static void SetCoordinatesFromWebPointerProperties(
@@ -105,9 +100,16 @@ class CORE_EXPORT MouseEvent : public UIEventWithKeyState {
                       EventTarget* related_target,
                       uint16_t buttons = 0);
 
+  void InitCoordinatesForTesting(double screen_x,
+                                 double screen_y,
+                                 double client_x,
+                                 double client_y);
+
   // WinIE uses 1,4,2 for left/middle/right but not for click (just for
   // mousedown/up, maybe others), but we will match the standard DOM.
   virtual int16_t button() const;
+  // Returns true if |button()| is WebPointerProperties::Button::kLeft.
+  bool IsLeftButton() const;
   uint16_t buttons() const { return buttons_; }
   bool ButtonDown() const { return button_ != -1; }
   EventTarget* relatedTarget() const { return related_target_.Get(); }
@@ -117,8 +119,6 @@ class CORE_EXPORT MouseEvent : public UIEventWithKeyState {
   SyntheticEventType GetSyntheticEventType() const {
     return synthetic_event_type_;
   }
-  const String& region() const { return region_; }
-
   virtual Node* toElement() const;
   virtual Node* fromElement() const;
 
@@ -143,24 +143,14 @@ class CORE_EXPORT MouseEvent : public UIEventWithKeyState {
 
   // Note that these values are adjusted to counter the effects of zoom, so that
   // values exposed via DOM APIs are invariant under zooming.
-  virtual double screenX() const {
-    return static_cast<int>(screen_location_.X());
-  }
+  virtual double screenX() const { return std::floor(screen_x_); }
+  virtual double screenY() const { return std::floor(screen_y_); }
 
-  virtual double screenY() const {
-    return static_cast<int>(screen_location_.Y());
-  }
+  virtual double clientX() const { return std::floor(client_x_); }
+  virtual double clientY() const { return std::floor(client_y_); }
 
-  virtual double clientX() const {
-    return static_cast<int>(client_location_.X());
-  }
-
-  virtual double clientY() const {
-    return static_cast<int>(client_location_.Y());
-  }
-
-  int movementX() const { return movement_delta_.X(); }
-  int movementY() const { return movement_delta_.Y(); }
+  int movementX() const { return movement_delta_.x(); }
+  int movementY() const { return movement_delta_.y(); }
 
   int layerX();
   int layerY();
@@ -168,9 +158,8 @@ class CORE_EXPORT MouseEvent : public UIEventWithKeyState {
   virtual double offsetX() const;
   virtual double offsetY() const;
 
-  virtual double pageX() const { return static_cast<int>(page_location_.X()); }
-
-  virtual double pageY() const { return static_cast<int>(page_location_.Y()); }
+  virtual double pageX() const { return std::floor(page_x_); }
+  virtual double pageY() const { return std::floor(page_y_); }
 
   double x() const { return clientX(); }
   double y() const { return clientY(); }
@@ -179,19 +168,18 @@ class CORE_EXPORT MouseEvent : public UIEventWithKeyState {
 
   WebMenuSourceType GetMenuSourceType() const { return menu_source_type_; }
 
-  // Page point in "absolute" coordinates (i.e. post-zoomed, page-relative
+  // Page point in layout coordinates (i.e. post-zoomed, page-relative
   // coords, usable with LayoutObject::absoluteToLocal) relative to view(),
   // i.e. the local frame.
-  const DoublePoint& AbsoluteLocation() const { return absolute_location_; }
+  const gfx::PointF& AbsoluteLocation() const { return absolute_location_; }
 
   DispatchEventResult DispatchEvent(EventDispatcher&) override;
 
-  void Trace(Visitor*) const override;
+  void InitCoordinates(const double client_x,
+                       const double client_y,
+                       const LocalDOMWindow* fallback_dom_window = nullptr);
 
-  DoublePoint screen_location_;
-  DoublePoint client_location_;
-  DoublePoint page_location_;    // zoomed CSS pixels
-  DoublePoint offset_location_;  // zoomed CSS pixels
+  void Trace(Visitor*) const override;
 
  protected:
   int16_t RawButton() const { return button_; }
@@ -199,6 +187,16 @@ class CORE_EXPORT MouseEvent : public UIEventWithKeyState {
   void ReceivedTarget() override;
 
   void ComputeRelativePosition();
+
+  // These values are exposed via DOM APIs and are invariant under zooming.
+  double screen_x_ = 0;
+  double screen_y_ = 0;
+  double client_x_ = 0;
+  double client_y_ = 0;
+  double page_x_ = 0;
+  double page_y_ = 0;
+  double offset_x_ = 0;
+  double offset_y_ = 0;
 
   bool has_cached_relative_position_ = false;
 
@@ -218,20 +216,21 @@ class CORE_EXPORT MouseEvent : public UIEventWithKeyState {
                               InputDeviceCapabilities* source_capabilities,
                               uint16_t buttons = 0);
 
-  void InitCoordinates(const double client_x, const double client_y);
+  // Record metrics for layerX and layerY.
+  void RecordLayerXYMetrics();
 
-  void ComputePageLocation();
+  // These values are exposed via DOM APIs and are invariant under zooming.
+  gfx::Point movement_delta_;
+  gfx::PointF layer_location_;
 
-  DoublePoint movement_delta_;
+  // In zoomed CSS pixels in FrameView content space.
+  gfx::PointF absolute_location_;
 
-  DoublePoint layer_location_;     // zoomed CSS pixels
-  DoublePoint absolute_location_;  // (un-zoomed) FrameView content space
   PositionType position_type_;
   int16_t button_;
   uint16_t buttons_;
   Member<EventTarget> related_target_;
   SyntheticEventType synthetic_event_type_;
-  String region_;
 
   // Only used for contextmenu events.
   WebMenuSourceType menu_source_type_;

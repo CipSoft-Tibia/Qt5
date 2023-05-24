@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 
 #include <string>
 
-#include "base/macros.h"
 #include "base/strings/string_piece_forward.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/manifest_handler.h"
@@ -25,9 +24,6 @@ struct CSPInfo : public Extension::ManifestData {
   // cross-site scripting and other vulnerabilities.
   std::string extension_pages_csp;
 
-  // Content security policy to be used for extension isolated worlds.
-  std::string isolated_world_csp;
-
   // Content Security Policy that should be used to enforce the sandbox used
   // by sandboxed pages (guaranteed to have the "sandbox" directive without the
   // "allow-same-origin" token).
@@ -40,10 +36,14 @@ struct CSPInfo : public Extension::ManifestData {
   // shouldn't be returned for those cases.
   static const std::string& GetExtensionPagesCSP(const Extension* extension);
 
+  // Returns the minimum CSP (if any) to append for the `extension`'s resource
+  // at the given `relative_path`.
+  static const std::string* GetMinimumCSPToAppend(
+      const Extension& extension,
+      const std::string& relative_path);
+
   // Returns the Content Security Policy to be used for extension isolated
-  // worlds or null if there is no defined CSP. Note that for extensions,
-  // platform apps and legacy packaged apps, a default CSP is used even if the
-  // manifest didn't specify one, so null shouldn't be returned for those cases.
+  // worlds or null if there is no defined CSP.
   static const std::string* GetIsolatedWorldCSP(const Extension& extension);
 
   // Returns the extension's Content Security Policy for the sandboxed pages.
@@ -62,43 +62,44 @@ struct CSPInfo : public Extension::ManifestData {
 class CSPHandler : public ManifestHandler {
  public:
   CSPHandler();
+
+  CSPHandler(const CSPHandler&) = delete;
+  CSPHandler& operator=(const CSPHandler&) = delete;
+
   ~CSPHandler() override;
 
   // ManifestHandler override:
-  bool Parse(Extension* extension, base::string16* error) override;
+  bool Parse(Extension* extension, std::u16string* error) override;
+
+  // Returns the minimum CSP to use in MV3 extensions. Only exposed for testing.
+  static const char* GetMinimumMV3CSPForTesting();
+  static const char* GetMinimumUnpackedMV3CSPForTesting();
 
  private:
   // Parses the "content_security_policy" dictionary in the manifest.
-  bool ParseCSPDictionary(Extension* extension, base::string16* error);
+  bool ParseCSPDictionary(Extension* extension, std::u16string* error);
 
   // Parses the content security policy specified in the manifest for extension
   // pages.
   bool ParseExtensionPagesCSP(Extension* extension,
-                              base::string16* error,
+                              std::u16string* error,
                               base::StringPiece manifest_key,
-                              bool secure_only,
                               const base::Value* content_security_policy);
 
-  // Parses the content security policy specified in the manifest for isolated
-  // worlds.
-  bool ParseIsolatedWorldCSP(Extension* extension, base::string16* error);
-
   // Parses the content security policy specified in the manifest for sandboxed
-  // pages. This should be called after ParseExtensionPagesCSP.
+  // pages. This should be called after ParseExtensionPagesCSP. If
+  // `allow_remote_sources` is true, this allows the extension to specify remote
+  // sources in the sandbox CSP.
   bool ParseSandboxCSP(Extension* extension,
-                       base::string16* error,
+                       std::u16string* error,
                        base::StringPiece manifest_key,
-                       const base::Value* sandbox_csp);
+                       const base::Value* sandbox_csp,
+                       bool allow_remote_sources);
 
   // Helper to set the extension pages content security policy manifest data.
   bool SetExtensionPagesCSP(Extension* extension,
                             base::StringPiece manifest_key,
-                            bool secure_only,
                             std::string content_security_policy);
-
-  // Helper to set the isolated world content security policy manifest data.
-  void SetIsolatedWorldCSP(Extension* extension,
-                           std::string isolated_world_csp);
 
   // Helper to set the sandbox content security policy manifest data.
   void SetSandboxCSP(Extension* extension, std::string sandbox_csp);
@@ -106,8 +107,6 @@ class CSPHandler : public ManifestHandler {
   // ManifestHandler overrides:
   bool AlwaysParseForType(Manifest::Type type) const override;
   base::span<const char* const> Keys() const override;
-
-  DISALLOW_COPY_AND_ASSIGN(CSPHandler);
 };
 
 }  // namespace extensions

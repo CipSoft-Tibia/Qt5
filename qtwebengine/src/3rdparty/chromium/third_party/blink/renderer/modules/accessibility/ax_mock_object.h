@@ -26,7 +26,6 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_ACCESSIBILITY_AX_MOCK_OBJECT_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_ACCESSIBILITY_AX_MOCK_OBJECT_H_
 
-#include "base/macros.h"
 #include "third_party/blink/renderer/modules/accessibility/ax_object.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 
@@ -34,22 +33,26 @@ namespace blink {
 
 class AXObjectCacheImpl;
 
+// A mock object is an AXObject defined only by a role, having no backing object
+// such as a node, layout object or AccessibleNode. It must be explicitly added
+// by its parent. The only current type of AXMockObject is an AXMenuListPopup.
+// TODO(accessibility) Remove this class.
+
 class MODULES_EXPORT AXMockObject : public AXObject {
  protected:
   explicit AXMockObject(AXObjectCacheImpl&);
 
  public:
+  AXMockObject(const AXMockObject&) = delete;
+  AXMockObject& operator=(const AXMockObject&) = delete;
+
   ~AXMockObject() override;
 
   // AXObject overrides.
-  AXObject* ComputeParent() const override { return parent_; }
   AXRestriction Restriction() const override { return kRestrictionNone; }
   bool IsMockObject() const final { return true; }
-
- private:
-  bool ComputeAccessibilityIsIgnored(IgnoredReasons* = nullptr) const override;
-
-  DISALLOW_COPY_AND_ASSIGN(AXMockObject);
+  Document* GetDocument() const override;
+  ax::mojom::blink::Role NativeRoleIgnoringAria() const override;
 };
 
 template <>

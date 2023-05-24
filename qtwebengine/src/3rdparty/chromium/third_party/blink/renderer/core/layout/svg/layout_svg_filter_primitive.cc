@@ -55,27 +55,32 @@ static void CheckForColorChange(SVGFilterPrimitiveStandardAttributes& element,
     element.PrimitiveAttributeChanged(attr_name);
 }
 
+void LayoutSVGFilterPrimitive::WillBeDestroyed() {
+  NOT_DESTROYED();
+  auto& element = To<SVGFilterPrimitiveStandardAttributes>(*GetNode());
+  element.Invalidate();
+  LayoutObject::WillBeDestroyed();
+}
+
 void LayoutSVGFilterPrimitive::StyleDidChange(StyleDifference diff,
                                               const ComputedStyle* old_style) {
   NOT_DESTROYED();
   if (!old_style)
     return;
   auto& element = To<SVGFilterPrimitiveStandardAttributes>(*GetNode());
-  const SVGComputedStyle& new_style = StyleRef().SvgStyle();
+  const ComputedStyle& style = StyleRef();
   if (IsA<SVGFEFloodElement>(element) || IsA<SVGFEDropShadowElement>(element)) {
     CheckForColorChange(element, svg_names::kFloodColorAttr, diff,
-                        old_style->SvgStyle().FloodColor(),
-                        new_style.FloodColor());
-    if (new_style.FloodOpacity() != old_style->SvgStyle().FloodOpacity())
+                        old_style->FloodColor(), style.FloodColor());
+    if (style.FloodOpacity() != old_style->FloodOpacity())
       element.PrimitiveAttributeChanged(svg_names::kFloodOpacityAttr);
   } else if (IsA<SVGFEDiffuseLightingElement>(element) ||
              IsA<SVGFESpecularLightingElement>(element)) {
     CheckForColorChange(element, svg_names::kLightingColorAttr, diff,
-                        old_style->SvgStyle().LightingColor(),
-                        new_style.LightingColor());
+                        old_style->LightingColor(), style.LightingColor());
   }
-  if (new_style.ColorInterpolationFilters() !=
-      old_style->SvgStyle().ColorInterpolationFilters()) {
+  if (style.ColorInterpolationFilters() !=
+      old_style->ColorInterpolationFilters()) {
     element.PrimitiveAttributeChanged(
         svg_names::kColorInterpolationFiltersAttr);
   }

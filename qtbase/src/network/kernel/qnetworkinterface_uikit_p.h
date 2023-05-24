@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QNETWORKINTERFACE_UIKIT_P_H
 #define QNETWORKINTERFACE_UIKIT_P_H
@@ -236,27 +200,6 @@ struct in6_ifreq {
 
 #define SIOCGIFAFLAG_IN6 _IOWR('i', 73, struct in6_ifreq)
 #define SIOCGIFALIFETIME_IN6 _IOWR('i', 81, struct in6_ifreq)
-
-// The definition below is ONLY a temporary workaround to unblock
-// integrations on CI. MUST be removed ASAP, as soon as SDK is
-// updated. Currently, we have WatchOS SDK 3.2 and it's missing
-// net/if_types.h (unlike SDK 4.0, which has it). Alas, we have to
-// work this around. We only define constants that we use in code.
-
-#if !QT_DARWIN_PLATFORM_SDK_EQUAL_OR_ABOVE(__MAC_NA, __IPHONE_NA, __TVOS_NA, __WATCHOS_4_0)
-
-#define QT_WATCHOS_OUTDATED_SDK_WORKAROUND
-
-#define IFT_PPP 0x17 /* RFC 1331 */
-#define IFT_LOOP 0x18 /* loopback */
-#define IFT_SLIP 0x1c /* IP over generic TTY */
-
-#define IFT_GIF 0x37 /*0xf0*/
-#define IFT_STF 0x39 /*0xf3*/
-
-#define IFT_IEEE1394 0x90 /* IEEE1394 High Performance SerialBus*/
-
-#endif // WatchOS SDK below 4.0
 
 #endif // QNETWORKINTERFACE_UIKIT_P_H
 

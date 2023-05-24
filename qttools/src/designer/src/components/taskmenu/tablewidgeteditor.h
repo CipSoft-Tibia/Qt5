@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef TABLEWIDGETEDITOR_H
 #define TABLEWIDGETEDITOR_H
@@ -56,24 +31,24 @@ public:
 
 private slots:
 
-    void on_tableWidget_currentCellChanged(int currentRow, int currentCol, int, int);
-    void on_tableWidget_itemChanged(QTableWidgetItem *item);
+    void tableWidgetCurrentCellChanged(int currentRow, int currentCol);
+    void tableWidgetItemChanged(QTableWidgetItem *item);
 
-    void on_columnEditor_indexChanged(int idx);
-    void on_columnEditor_itemChanged(int idx, int role, const QVariant &v);
+    void columnEditorIndexChanged(int idx);
+    void columnEditorItemChanged(int idx, int role, const QVariant &v);
 
-    void on_columnEditor_itemInserted(int idx);
-    void on_columnEditor_itemDeleted(int idx);
-    void on_columnEditor_itemMovedUp(int idx);
-    void on_columnEditor_itemMovedDown(int idx);
+    void columnEditorItemInserted(int idx);
+    void columnEditorItemDeleted(int idx);
+    void columnEditorItemMovedUp(int idx);
+    void columnEditorItemMovedDown(int idx);
 
-    void on_rowEditor_indexChanged(int idx);
-    void on_rowEditor_itemChanged(int idx, int role, const QVariant &v);
+    void rowEditorIndexChanged(int idx);
+    void rowEditorItemChanged(int idx, int role, const QVariant &v);
 
-    void on_rowEditor_itemInserted(int idx);
-    void on_rowEditor_itemDeleted(int idx);
-    void on_rowEditor_itemMovedUp(int idx);
-    void on_rowEditor_itemMovedDown(int idx);
+    void rowEditorItemInserted(int idx);
+    void rowEditorItemDeleted(int idx);
+    void rowEditorItemMovedUp(int idx);
+    void rowEditorItemMovedDown(int idx);
 
     void togglePropertyBrowser();
 

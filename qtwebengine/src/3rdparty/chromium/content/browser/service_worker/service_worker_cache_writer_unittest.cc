@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,10 +10,10 @@
 #include <string>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/containers/queue.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ptr_util.h"
-#include "base/stl_util.h"
 #include "base/test/task_environment.h"
 #include "content/browser/service_worker/service_worker_test_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -22,12 +22,18 @@ namespace content {
 namespace {
 
 // A test implementation of ServiceWorkerCacheWriter::WriteObserver.
-// This observer captures the response info or data sent to the observer
+// This observer captures the response head or data sent to the observer
 // for further checking.
 class MockServiceWorkerCacheWriterObserver
     : public ServiceWorkerCacheWriter::WriteObserver {
  public:
   MockServiceWorkerCacheWriterObserver() : data_length_(0), result_(net::OK) {}
+
+  MockServiceWorkerCacheWriterObserver(
+      const MockServiceWorkerCacheWriterObserver&) = delete;
+  MockServiceWorkerCacheWriterObserver& operator=(
+      const MockServiceWorkerCacheWriterObserver&) = delete;
+
   ~MockServiceWorkerCacheWriterObserver() {}
 
   int WillWriteResponseHead(
@@ -59,8 +65,6 @@ class MockServiceWorkerCacheWriterObserver
   size_t data_length_;
   base::OnceCallback<void(net::Error)> callback_;
   net::Error result_;
-
-  DISALLOW_COPY_AND_ASSIGN(MockServiceWorkerCacheWriterObserver);
 };
 
 class ServiceWorkerCacheWriterTest : public ::testing::Test {
@@ -73,6 +77,11 @@ class ServiceWorkerCacheWriterTest : public ::testing::Test {
   };
 
   ServiceWorkerCacheWriterTest() {}
+
+  ServiceWorkerCacheWriterTest(const ServiceWorkerCacheWriterTest&) = delete;
+  ServiceWorkerCacheWriterTest& operator=(const ServiceWorkerCacheWriterTest&) =
+      delete;
+
   ~ServiceWorkerCacheWriterTest() override {}
 
   MockServiceWorkerResourceReader* ExpectReader() {
@@ -106,7 +115,8 @@ class ServiceWorkerCacheWriterTest : public ::testing::Test {
         auto copy_reader = CreateReader();
         cache_writer_ = ServiceWorkerCacheWriter::CreateForComparison(
             std::move(compare_reader), std::move(copy_reader), CreateWriter(),
-            /*writer_resource_id=*/0, pause_when_not_identical);
+            /*writer_resource_id=*/0, pause_when_not_identical,
+            ServiceWorkerCacheWriter::ChecksumUpdateTiming::kCacheMismatch);
         break;
     };
   }
@@ -117,7 +127,7 @@ class ServiceWorkerCacheWriterTest : public ::testing::Test {
   std::list<std::unique_ptr<MockServiceWorkerResourceWriter>> writers_;
   std::unique_ptr<ServiceWorkerCacheWriter> cache_writer_;
   bool write_complete_ = false;
-  net::Error last_error_;
+  net::Error last_error_ = net::OK;
 
   mojo::Remote<storage::mojom::ServiceWorkerResourceReader> CreateReader() {
     mojo::Remote<storage::mojom::ServiceWorkerResourceReader> remote;
@@ -159,7 +169,7 @@ class ServiceWorkerCacheWriterTest : public ::testing::Test {
     auto response_head = network::mojom::URLResponseHead::New();
     const char data[] = "HTTP/1.1 200 OK\0\0";
     response_head->headers = base::MakeRefCounted<net::HttpResponseHeaders>(
-        std::string(data, base::size(data)));
+        std::string(data, std::size(data)));
     response_head->content_length = len;
     net::Error error = cache_writer_->MaybeWriteHeaders(
         std::move(response_head), CreateWriteCallback());
@@ -174,9 +184,6 @@ class ServiceWorkerCacheWriterTest : public ::testing::Test {
     base::RunLoop().RunUntilIdle();
     return error;
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ServiceWorkerCacheWriterTest);
 };
 
 // Passthrough tests:
@@ -228,6 +235,10 @@ TEST_F(ServiceWorkerCacheWriterTest, PassthroughDataAsync) {
   EXPECT_EQ(net::ERR_IO_PENDING, error);
   writer->CompletePendingWrite();
   EXPECT_TRUE(write_complete_);
+  // SHA256 hash for "abcdefghijklmno"
+  EXPECT_EQ("41C7760C50EFDE99BF574ED8FFFC7A6DD3405D546D3DA929B214C8945ACF8A97",
+            cache_writer_->GetSha256Checksum());
+
   EXPECT_EQ(net::OK, last_error_);
   EXPECT_TRUE(writer->AllExpectedWritesDone());
 }
@@ -1000,6 +1011,551 @@ TEST_F(ServiceWorkerCacheWriterTest, ObserverAsyncFail) {
   EXPECT_EQ(0U, cache_writer_->bytes_written());
 
   cache_writer_->set_write_observer(nullptr);
+}
+
+class ServiceWorkerCacheWriterSha256ChecksumTest
+    : public ServiceWorkerCacheWriterTest,
+      public testing::WithParamInterface<
+          ServiceWorkerCacheWriter::ChecksumUpdateTiming> {
+ public:
+  void Initialize() {
+    auto compare_reader = CreateReader();
+    auto copy_reader = CreateReader();
+    cache_writer_ = ServiceWorkerCacheWriter::CreateForComparison(
+        std::move(compare_reader), std::move(copy_reader), CreateWriter(),
+        /*writer_resource_id=*/0, /*pause_when_not_identical=*/false,
+        GetChecksumUpdateTiming());
+  }
+
+ protected:
+  ServiceWorkerCacheWriter::ChecksumUpdateTiming GetChecksumUpdateTiming() {
+    return GetParam();
+  }
+};
+
+TEST_P(ServiceWorkerCacheWriterSha256ChecksumTest, CompareDataOk) {
+  const std::string data = "abcdef";
+  size_t response_size = data.size();
+
+  MockServiceWorkerResourceReader* reader = ExpectReader();
+
+  // Create a copy reader and writer as they're needed to create cache writer
+  // for comparison though not used in this test.
+  ExpectReader();
+  ExpectWriter();
+
+  reader->ExpectReadResponseHeadOk(response_size);
+  reader->ExpectReadDataOk(data);
+  Initialize();
+
+  net::Error error = WriteHeaders(response_size);
+  EXPECT_EQ(net::ERR_IO_PENDING, error);
+  reader->CompletePendingRead();
+
+  error = WriteData(data);
+  EXPECT_EQ(net::ERR_IO_PENDING, error);
+  reader->CompletePendingRead();
+
+  EXPECT_TRUE(reader->AllExpectedReadsDone());
+
+  std::string expected_checksum;
+  switch (GetChecksumUpdateTiming()) {
+    case ServiceWorkerCacheWriter::ChecksumUpdateTiming::kAlways:
+      // Expected value is calculated from SHA256("abcdef")
+      expected_checksum =
+          "BEF57EC7F53A6D40BEB640A780A639C83BC29AC8A9816F1FC6C5C6DCD93C4721";
+      break;
+    case ServiceWorkerCacheWriter::ChecksumUpdateTiming::kCacheMismatch:
+      // Expected value is calculated from SHA256("")
+      expected_checksum =
+          "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855";
+      break;
+  }
+  EXPECT_EQ(expected_checksum, cache_writer_->GetSha256Checksum());
+}
+
+TEST_P(ServiceWorkerCacheWriterSha256ChecksumTest, CompareFailed) {
+  std::string data1 = "abcdef";
+  std::string cache_data2 = "mnop";
+  std::string net_data2 = "mnopqr";
+  std::string data3 = "stuvwxyz";
+  size_t cache_response_size = data1.size() + cache_data2.size() + data3.size();
+  size_t net_response_size = data1.size() + net_data2.size() + data3.size();
+
+  MockServiceWorkerResourceWriter* writer = ExpectWriter();
+  MockServiceWorkerResourceReader* compare_reader = ExpectReader();
+  MockServiceWorkerResourceReader* copy_reader = ExpectReader();
+
+  compare_reader->ExpectReadResponseHeadOk(cache_response_size);
+  compare_reader->ExpectReadDataOk(data1);
+  compare_reader->ExpectReadDataOk(cache_data2);
+  compare_reader->ExpectReadDataOk("");  // EOF read
+
+  copy_reader->ExpectReadResponseHeadOk(cache_response_size);
+  copy_reader->ExpectReadDataOk(data1);
+
+  writer->ExpectWriteResponseHeadOk(net_response_size);
+  writer->ExpectWriteDataOk(data1.size());
+  writer->ExpectWriteDataOk(net_data2.size());
+  writer->ExpectWriteDataOk(data3.size());
+
+  Initialize();
+
+  net::Error error = WriteHeaders(net_response_size);
+  EXPECT_EQ(net::ERR_IO_PENDING, error);
+  // Read the header from |compare_reader|.
+  compare_reader->CompletePendingRead();
+  EXPECT_EQ(net::OK, last_error_);
+
+  error = WriteData(data1);
+  EXPECT_EQ(net::ERR_IO_PENDING, error);
+  // Read |data1| from |compare_reader| for the comparison.
+  compare_reader->CompletePendingRead();
+  EXPECT_EQ(net::OK, last_error_);
+
+  error = WriteData(net_data2);
+  EXPECT_EQ(net::ERR_IO_PENDING, error);
+  // Read |cache_data2| and |data3| from |compare_reader|.
+  compare_reader->CompletePendingRead();
+  compare_reader->CompletePendingRead();
+  // After that, the cache writer uses |copy_reader| to read the header and
+  // |data1|.
+  copy_reader->CompletePendingRead();
+  writer->CompletePendingWrite();
+  copy_reader->CompletePendingRead();
+  writer->CompletePendingWrite();
+  EXPECT_EQ(net::OK, last_error_);
+
+  // |net_data2| is written to the |writer|.
+  writer->CompletePendingWrite();
+  // |data3| is directly written to the disk.
+  error = WriteData(data3);
+  EXPECT_EQ(net::ERR_IO_PENDING, error);
+  writer->CompletePendingWrite();
+
+  EXPECT_TRUE(writer->AllExpectedWritesDone());
+  EXPECT_TRUE(compare_reader->AllExpectedReadsDone());
+  EXPECT_TRUE(copy_reader->AllExpectedReadsDone());
+
+  // Expected value is calculated from SHA256("abcdefmnopqrstuvwxyz")
+  EXPECT_EQ("50DCEABE70B3474ACF0E608D9E77B1ED2700FB74431FA8D8E0ED62ECDA7DCFEB",
+            cache_writer_->GetSha256Checksum());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    ServiceWorkerCacheWriterSha256ChecksumTest,
+    testing::Values(
+        ServiceWorkerCacheWriter::ChecksumUpdateTiming::kCacheMismatch,
+        ServiceWorkerCacheWriter::ChecksumUpdateTiming::kAlways));
+
+class ServiceWorkerCacheWriterDisconnectionTest
+    : public ServiceWorkerCacheWriterTest {
+ public:
+  ServiceWorkerCacheWriterDisconnectionTest() = default;
+  ~ServiceWorkerCacheWriterDisconnectionTest() override = default;
+
+  void InitializeForWriteBack() {
+    writer_ = std::make_unique<MockServiceWorkerResourceWriter>();
+    mojo::Remote<storage::mojom::ServiceWorkerResourceWriter> remote_writer;
+    remote_writer.Bind(writer_->BindNewPipeAndPassRemote(base::DoNothing()));
+
+    cache_writer_ = ServiceWorkerCacheWriter::CreateForWriteBack(
+        std::move(remote_writer), /*writer_resource_id=*/0);
+  }
+
+  void InitializeForCopy() {
+    writer_ = std::make_unique<MockServiceWorkerResourceWriter>();
+    mojo::Remote<storage::mojom::ServiceWorkerResourceWriter> remote_writer;
+    remote_writer.Bind(writer_->BindNewPipeAndPassRemote(base::DoNothing()));
+
+    copy_reader_ = std::make_unique<MockServiceWorkerResourceReader>();
+    mojo::Remote<storage::mojom::ServiceWorkerResourceReader>
+        remote_copy_reader;
+    remote_copy_reader.Bind(
+        copy_reader_->BindNewPipeAndPassRemote(base::DoNothing()));
+
+    cache_writer_ = ServiceWorkerCacheWriter::CreateForCopy(
+        std::move(remote_copy_reader), std::move(remote_writer),
+        /*writer_resource_id=*/0);
+  }
+
+  void InitializeForComparison(bool pause_when_not_identical) {
+    writer_ = std::make_unique<MockServiceWorkerResourceWriter>();
+    mojo::Remote<storage::mojom::ServiceWorkerResourceWriter> remote_writer;
+    remote_writer.Bind(writer_->BindNewPipeAndPassRemote(base::DoNothing()));
+
+    copy_reader_ = std::make_unique<MockServiceWorkerResourceReader>();
+    mojo::Remote<storage::mojom::ServiceWorkerResourceReader>
+        remote_copy_reader;
+    remote_copy_reader.Bind(
+        copy_reader_->BindNewPipeAndPassRemote(base::DoNothing()));
+
+    compare_reader_ = std::make_unique<MockServiceWorkerResourceReader>();
+    mojo::Remote<storage::mojom::ServiceWorkerResourceReader>
+        remote_compare_reader;
+    remote_compare_reader.Bind(
+        compare_reader_->BindNewPipeAndPassRemote(base::DoNothing()));
+
+    cache_writer_ = ServiceWorkerCacheWriter::CreateForComparison(
+        std::move(remote_compare_reader), std::move(remote_copy_reader),
+        std::move(remote_writer),
+        /*writer_resource_id=*/0, pause_when_not_identical,
+        ServiceWorkerCacheWriter::ChecksumUpdateTiming::kCacheMismatch);
+  }
+
+  void SimulateDisconnection() {
+    // Destroy readers and the writer to disconnect remotes in `cache_writer_`.
+    writer_.reset();
+    copy_reader_.reset();
+    compare_reader_.reset();
+    cache_writer_->FlushRemotesForTesting();
+  }
+
+ protected:
+  std::unique_ptr<MockServiceWorkerResourceWriter> writer_;
+  std::unique_ptr<MockServiceWorkerResourceReader> copy_reader_;
+  std::unique_ptr<MockServiceWorkerResourceReader> compare_reader_;
+};
+
+TEST_F(ServiceWorkerCacheWriterDisconnectionTest, WriteBackBeforeHeader) {
+  size_t kHeaderSize = 16;
+
+  InitializeForWriteBack();
+  writer_->ExpectWriteResponseHeadOk(kHeaderSize);
+
+  SimulateDisconnection();
+
+  net::Error error = WriteHeaders(kHeaderSize);
+  EXPECT_EQ(error, net::ERR_FAILED);
+}
+
+TEST_F(ServiceWorkerCacheWriterDisconnectionTest, WriteBackBeforeData) {
+  const std::string data1 = "abcdef";
+  const size_t response_size = data1.size();
+
+  InitializeForWriteBack();
+  writer_->ExpectWriteResponseHeadOk(response_size);
+  writer_->ExpectWriteDataOk(data1.size());
+
+  net::Error error = WriteHeaders(response_size);
+  EXPECT_EQ(error, net::ERR_IO_PENDING);
+  writer_->CompletePendingWrite();
+  EXPECT_EQ(last_error_, net::OK);
+  EXPECT_TRUE(write_complete_);
+  write_complete_ = false;
+
+  SimulateDisconnection();
+
+  error = WriteData(data1);
+  EXPECT_EQ(error, net::ERR_FAILED);
+}
+
+TEST_F(ServiceWorkerCacheWriterDisconnectionTest, WriteBackDuringData) {
+  const std::string data1 = "abcdef";
+  const std::string data2 = "ghijklmno";
+  const size_t response_size = data1.size() + data2.size();
+
+  InitializeForWriteBack();
+  writer_->ExpectWriteResponseHeadOk(response_size);
+  writer_->ExpectWriteDataOk(data1.size());
+  writer_->ExpectWriteDataOk(data2.size());
+
+  net::Error error = WriteHeaders(response_size);
+  EXPECT_EQ(net::ERR_IO_PENDING, error);
+  writer_->CompletePendingWrite();
+  EXPECT_EQ(last_error_, net::OK);
+  EXPECT_TRUE(write_complete_);
+  write_complete_ = false;
+
+  error = WriteData(data1);
+  EXPECT_EQ(error, net::ERR_IO_PENDING);
+  writer_->CompletePendingWrite();
+  EXPECT_EQ(last_error_, net::OK);
+  EXPECT_TRUE(write_complete_);
+  write_complete_ = false;
+
+  error = WriteData(data2);
+  EXPECT_EQ(error, net::ERR_IO_PENDING);
+
+  SimulateDisconnection();
+
+  EXPECT_TRUE(write_complete_);
+  EXPECT_EQ(last_error_, net::ERR_FAILED);
+}
+
+TEST_F(ServiceWorkerCacheWriterDisconnectionTest, CopyBeforeStart) {
+  const std::string data1 = "abcd";
+  const size_t response_size = data1.size();
+
+  InitializeForCopy();
+  writer_->ExpectWriteResponseHeadOk(response_size);
+  writer_->ExpectWriteDataOk(data1.size());
+
+  SimulateDisconnection();
+
+  net::Error error = cache_writer_->StartCopy(CreateWriteCallback());
+  EXPECT_EQ(error, net::ERR_FAILED);
+}
+
+TEST_F(ServiceWorkerCacheWriterDisconnectionTest, CopyBeforeHeaderRead) {
+  const std::string data1 = "abcd";
+  const size_t response_size = data1.size();
+
+  InitializeForCopy();
+  copy_reader_->ExpectReadResponseHeadOk(response_size);
+  copy_reader_->ExpectReadDataOk(data1);
+  writer_->ExpectWriteResponseHeadOk(response_size);
+  writer_->ExpectWriteDataOk(data1.size());
+
+  net::Error error = cache_writer_->StartCopy(CreateWriteCallback());
+  EXPECT_EQ(error, net::ERR_IO_PENDING);
+  EXPECT_FALSE(write_complete_);
+
+  SimulateDisconnection();
+
+  EXPECT_EQ(last_error_, net::ERR_FAILED);
+  EXPECT_TRUE(write_complete_);
+}
+
+TEST_F(ServiceWorkerCacheWriterDisconnectionTest, CopyBeforeDataRead) {
+  const std::string data1 = "abcd";
+  const size_t response_size = data1.size();
+
+  InitializeForCopy();
+  copy_reader_->ExpectReadResponseHeadOk(response_size);
+  copy_reader_->ExpectReadDataOk(data1);
+  writer_->ExpectWriteResponseHeadOk(response_size);
+  writer_->ExpectWriteDataOk(data1.size());
+
+  net::Error error = cache_writer_->StartCopy(CreateWriteCallback());
+  EXPECT_EQ(error, net::ERR_IO_PENDING);
+  EXPECT_FALSE(write_complete_);
+
+  // Completes the header read.
+  copy_reader_->CompletePendingRead();
+  EXPECT_EQ(last_error_, net::OK);
+  EXPECT_FALSE(write_complete_);
+
+  // Completes the header write.
+  writer_->CompletePendingWrite();
+  EXPECT_EQ(last_error_, net::OK);
+  EXPECT_FALSE(write_complete_);
+
+  SimulateDisconnection();
+
+  EXPECT_EQ(last_error_, net::ERR_FAILED);
+  EXPECT_TRUE(write_complete_);
+}
+
+TEST_F(ServiceWorkerCacheWriterDisconnectionTest, CopyDuringDataRead) {
+  const std::string data1 = "abcd";
+  const std::string data2 = "efgh";
+  const size_t response_size = data1.size() + data2.size();
+
+  InitializeForCopy();
+  copy_reader_->ExpectReadResponseHeadOk(response_size);
+  copy_reader_->ExpectReadDataOk(data1);
+  copy_reader_->ExpectReadDataOk(data2);
+  writer_->ExpectWriteResponseHeadOk(response_size);
+  writer_->ExpectWriteDataOk(data1.size());
+  writer_->ExpectWriteDataOk(data2.size());
+
+  net::Error error = cache_writer_->StartCopy(CreateWriteCallback());
+  EXPECT_EQ(error, net::ERR_IO_PENDING);
+  EXPECT_FALSE(write_complete_);
+
+  // Completes the header read.
+  copy_reader_->CompletePendingRead();
+  EXPECT_EQ(last_error_, net::OK);
+  EXPECT_FALSE(write_complete_);
+
+  // Completes the header write.
+  writer_->CompletePendingWrite();
+  EXPECT_EQ(last_error_, net::OK);
+  EXPECT_FALSE(write_complete_);
+
+  // Completes the read of the first data chunk.
+  copy_reader_->CompletePendingRead();
+  EXPECT_EQ(last_error_, net::OK);
+  EXPECT_FALSE(write_complete_);
+
+  // Completes the write of the first data chunk.
+  writer_->CompletePendingWrite();
+  EXPECT_EQ(last_error_, net::OK);
+  EXPECT_FALSE(write_complete_);
+
+  SimulateDisconnection();
+
+  EXPECT_EQ(last_error_, net::ERR_FAILED);
+  EXPECT_TRUE(write_complete_);
+}
+
+TEST_F(ServiceWorkerCacheWriterDisconnectionTest, ComparisonBeforeHeaderRead) {
+  const std::string data1 = "abcd";
+  const size_t response_size = data1.size();
+
+  InitializeForComparison(/*pause_when_not_identical=*/false);
+  compare_reader_->ExpectReadResponseHeadOk(response_size);
+  compare_reader_->ExpectReadDataOk(data1);
+
+  net::Error error = WriteHeaders(response_size);
+  EXPECT_EQ(net::ERR_IO_PENDING, error);
+  EXPECT_FALSE(write_complete_);
+
+  SimulateDisconnection();
+
+  EXPECT_EQ(last_error_, net::ERR_FAILED);
+  EXPECT_TRUE(write_complete_);
+}
+
+TEST_F(ServiceWorkerCacheWriterDisconnectionTest, ComparisonBeforeDataWrite) {
+  const std::string data1 = "abcd";
+  const size_t response_size = data1.size();
+
+  InitializeForComparison(/*pause_when_not_identical=*/false);
+  compare_reader_->ExpectReadResponseHeadOk(response_size);
+  compare_reader_->ExpectReadDataOk(data1);
+
+  // Completes the header read.
+  net::Error error = WriteHeaders(response_size);
+  EXPECT_EQ(net::ERR_IO_PENDING, error);
+  EXPECT_FALSE(write_complete_);
+  compare_reader_->CompletePendingRead();
+  EXPECT_TRUE(write_complete_);
+  write_complete_ = false;
+
+  SimulateDisconnection();
+
+  error = WriteData(data1);
+  EXPECT_EQ(error, net::ERR_FAILED);
+}
+
+// Tests that a comparison fails gracefully when remotes are disconnected during
+// copy. See also the comment of ServiceWorkerCacheWriterTest.CompareFailedCopy.
+TEST_F(ServiceWorkerCacheWriterDisconnectionTest, ComparisonDuringCopy) {
+  const std::string data1 = "abcdef";
+  const std::string cache_data2 = "ghijkl";
+  const std::string net_data2 = "mnopqr";
+  const std::string data3 = "stuvwxyz";
+  const size_t cache_response_size =
+      data1.size() + cache_data2.size() + data3.size();
+  const size_t net_response_size =
+      data1.size() + net_data2.size() + data3.size();
+
+  InitializeForComparison(/*pause_when_not_identical=*/false);
+  compare_reader_->ExpectReadResponseHeadOk(cache_response_size);
+  compare_reader_->ExpectReadDataOk(data1);
+  compare_reader_->ExpectReadDataOk(cache_data2);
+
+  copy_reader_->ExpectReadResponseHeadOk(cache_response_size);
+  copy_reader_->ExpectReadDataOk(data1);
+
+  writer_->ExpectWriteResponseHeadOk(net_response_size);
+  writer_->ExpectWriteDataOk(data1.size());
+  writer_->ExpectWriteDataOk(net_data2.size());
+  writer_->ExpectWriteDataOk(data3.size());
+
+  // Complete the header comparison.
+  net::Error error = WriteHeaders(net_response_size);
+  EXPECT_EQ(error, net::ERR_IO_PENDING);
+  EXPECT_FALSE(write_complete_);
+  compare_reader_->CompletePendingRead();
+  EXPECT_TRUE(write_complete_);
+  write_complete_ = false;
+
+  // Complete the `data1` comparison.
+  error = WriteData(data1);
+  EXPECT_EQ(error, net::ERR_IO_PENDING);
+  EXPECT_FALSE(write_complete_);
+  compare_reader_->CompletePendingRead();
+  EXPECT_TRUE(write_complete_);
+  write_complete_ = false;
+
+  // Finish the comparison of `cache_data2` and `net_data2`.
+  error = WriteData(net_data2);
+  EXPECT_EQ(error, net::ERR_IO_PENDING);
+  EXPECT_FALSE(write_complete_);
+  compare_reader_->CompletePendingRead();
+  // `pause_when_not_identical` isn't enabled so the write callback should not
+  // be called yet.
+  EXPECT_FALSE(write_complete_);
+
+  // At this point, `copy_reader_` is asked to read the header and `data1`.
+  // Complete the header and `data1` copy.
+  copy_reader_->CompletePendingRead();
+  writer_->CompletePendingWrite();
+  copy_reader_->CompletePendingRead();
+  writer_->CompletePendingWrite();
+  // Complete the `net_data2` write.
+  writer_->CompletePendingWrite();
+  EXPECT_TRUE(write_complete_);
+  write_complete_ = false;
+
+  error = WriteData(data3);
+  EXPECT_EQ(error, net::ERR_IO_PENDING);
+
+  SimulateDisconnection();
+
+  EXPECT_EQ(last_error_, net::ERR_FAILED);
+  EXPECT_TRUE(write_complete_);
+}
+
+// Tests that a comparison fails gracefully when remotes are disconnected before
+// resuming.
+TEST_F(ServiceWorkerCacheWriterDisconnectionTest, ComparisonBeforeResume) {
+  const std::string data1 = "abcdef";
+  const std::string cache_data2 = "ghijkl";
+  const std::string net_data2 = "mnopqr";
+  const std::string data3 = "stuvwxyz";
+  const size_t cache_response_size =
+      data1.size() + cache_data2.size() + data3.size();
+  const size_t net_response_size =
+      data1.size() + net_data2.size() + data3.size();
+
+  InitializeForComparison(/*pause_when_not_identical=*/true);
+  compare_reader_->ExpectReadResponseHeadOk(cache_response_size);
+  compare_reader_->ExpectReadDataOk(data1);
+  compare_reader_->ExpectReadDataOk(cache_data2);
+
+  copy_reader_->ExpectReadResponseHeadOk(cache_response_size);
+  copy_reader_->ExpectReadDataOk(data1);
+
+  writer_->ExpectWriteResponseHeadOk(net_response_size);
+  writer_->ExpectWriteDataOk(data1.size());
+  writer_->ExpectWriteDataOk(net_data2.size());
+  writer_->ExpectWriteDataOk(data3.size());
+
+  // Complete the header comparison.
+  net::Error error = WriteHeaders(net_response_size);
+  EXPECT_EQ(error, net::ERR_IO_PENDING);
+  EXPECT_FALSE(write_complete_);
+  compare_reader_->CompletePendingRead();
+  EXPECT_TRUE(write_complete_);
+  write_complete_ = false;
+
+  // Complete the `data1` comparison.
+  error = WriteData(data1);
+  EXPECT_EQ(error, net::ERR_IO_PENDING);
+  EXPECT_FALSE(write_complete_);
+  compare_reader_->CompletePendingRead();
+  EXPECT_TRUE(write_complete_);
+  write_complete_ = false;
+
+  // Finish the comparison of `cache_data2` and `net_data2`.
+  error = WriteData(net_data2);
+  EXPECT_EQ(net::ERR_IO_PENDING, error);
+  EXPECT_FALSE(write_complete_);
+  compare_reader_->CompletePendingRead();
+  // `pause_when_not_identical` is enabled so the write callback should be
+  // called.
+  EXPECT_TRUE(write_complete_);
+  EXPECT_EQ(last_error_, net::ERR_IO_PENDING);
+
+  SimulateDisconnection();
+
+  error = WriteData(data3);
+  EXPECT_EQ(error, net::ERR_FAILED);
 }
 
 }  // namespace

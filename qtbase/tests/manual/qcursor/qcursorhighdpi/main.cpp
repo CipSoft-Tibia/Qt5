@@ -1,34 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QAction>
 #include <QApplication>
-#include <QDesktopWidget>
 #include <QGridLayout>
 #include <QLabel>
 #include <QMainWindow>
@@ -48,15 +22,10 @@
 #include <QStringList>
 #include <QTextStream>
 
-#if QT_VERSION > 0x050000
-#  include <QScreen>
-#  include <QWindow>
-#  include <private/qhighdpiscaling_p.h>
-#  include <qpa/qplatformwindow.h>
-#else
-#   define Q_NULLPTR 0
-#   define Q_DECL_OVERRIDE
-#endif
+#include <QScreen>
+#include <QWindow>
+#include <private/qhighdpiscaling_p.h>
+#include <qpa/qplatformwindow.h>
 
 #ifdef Q_OS_WIN
 #  include <qt_windows.h>
@@ -64,14 +33,6 @@
 
 #include <algorithm>
 #include <iterator>
-
-#if QT_VERSION < 0x050000
-QDebug operator<<(QDebug d, const QPixmap &p)
-{
-    d.nospace() << "QPixmap(" << p.size() << ')';
-    return d;
-}
-#endif // Qt 4
 
 // High DPI cursor test for testing cursor sizes in multi-screen setups.
 // It creates one widget per screen with a grid of standard cursors,
@@ -83,8 +44,7 @@ static QString screenInfo(const QWidget *w)
 {
     QString result;
     QTextStream str(&result);
-#if QT_VERSION > 0x050000
-    QScreen *screen = Q_NULLPTR;
+    QScreen *screen = nullptr;
     if (const QWindow *window = w->windowHandle())
         screen = window->screen();
     if (screen) {
@@ -98,12 +58,6 @@ static QString screenInfo(const QWidget *w)
     } else {
         str << "<null>";
     }
-#else
-    QDesktopWidget *desktop = QApplication::desktop();
-    int screenNumber = desktop->screenNumber(w);
-    str << "Screen #" <<screenNumber << ' ' << desktop->screenGeometry(screenNumber).width()
-        << 'x' << desktop->screenGeometry(screenNumber).height() << " PD: " << w->logicalDpiX() << "DPI";
-#endif
 #ifdef Q_OS_WIN
     str << ", SM_C_CURSOR: " << GetSystemMetrics(SM_CXCURSOR) << 'x' << GetSystemMetrics(SM_CYCURSOR);
 #endif
@@ -147,7 +101,6 @@ static QCursor bitmapCursor(int size)
     return QCursor(bitmaps.first, bitmaps.second, size / 2, size / 2);
 }
 
-#if QT_VERSION > 0x050000
 static QCursor pixmapCursorDevicePixelRatio(int size, int dpr)
 {
     QPixmap pixmap = paintPixmap(dpr * size, Qt::yellow);
@@ -162,7 +115,6 @@ static QCursor bitmapCursorDevicePixelRatio(int size, int dpr)
     bitmaps.second.setDevicePixelRatio(dpr);
     return QCursor(bitmaps.first, bitmaps.second, size / 2, size / 2);
 }
-#endif // Qt 5
 
 // A label from which a pixmap can be dragged for testing drag with pixmaps/DPR.
 class DraggableLabel : public QLabel {
@@ -199,9 +151,7 @@ void DraggableLabel::mousePressEvent(QMouseEvent *)
     drag->setMimeData(mimeData);
     drag->setPixmap(pixmap);
     QPoint sizeP = QPoint(m_pixmap.width(), m_pixmap.height());
-#if QT_VERSION > 0x050000
     sizeP /= int(m_pixmap.devicePixelRatio());
-#endif // Qt 5
     drag->setHotSpot(sizeP / 2);
     qDebug() << "Dragging:" << m_pixmap;
     drag->exec(Qt::CopyAction | Qt::MoveAction, Qt::CopyAction);
@@ -252,10 +202,8 @@ static QLabel *createCursorLabel(const QCursor &cursor, const QString &additiona
 {
     QString labelText;
     QDebug(&labelText).nospace() << cursor.shape();
-#if QT_VERSION > 0x050000
     labelText.remove(0, labelText.indexOf('(') + 1);
     labelText.chop(1);
-#endif // Qt 5
     if (!additionalText.isEmpty())
         labelText += ' ' + additionalText;
     const QPixmap cursorPixmap = cursor.pixmap();
@@ -287,15 +235,13 @@ MainWindow::MainWindow(QWidget *parent)
     , m_screenInfoLabel(new QLabel)
 {
     QString title = "Cursors ";
-#if QT_VERSION > 0x050000
     title += '(' + QGuiApplication::platformName() + ") ";
-#endif
     title += QT_VERSION_STR;
     setWindowTitle(title);
 
     QMenu *fileMenu = menuBar()->addMenu("File");
     QAction *quitAction = fileMenu->addAction("Quit");
-    quitAction->setShortcut(Qt::CTRL + Qt::Key_Q);
+    quitAction->setShortcut(Qt::CTRL | Qt::Key_Q);
     connect(quitAction, SIGNAL(triggered()), qApp, SLOT(quit()));
 
     QToolBar *fileToolBar = addToolBar("File");
@@ -323,7 +269,6 @@ MainWindow::MainWindow(QWidget *parent)
                                 QLatin1String("Plain BM ") + QString::number(size)),
                                 gridLayout, columnCount, row, col);
 
-#if QT_VERSION > 0x050000
     addToGrid(createCursorLabel(QCursor(pixmapCursorDevicePixelRatio(size, 2)),
                                 "PX with DPR 2 " + QString::number(size)),
                                 gridLayout, columnCount, row, col);
@@ -331,7 +276,6 @@ MainWindow::MainWindow(QWidget *parent)
     addToGrid(createCursorLabel(QCursor(bitmapCursorDevicePixelRatio(size, 2)),
                                 "BM with DPR 2 " + QString::number(size)),
                                 gridLayout, columnCount, row, col);
-#endif // Qt 5
 
     gridLayout->addWidget(m_screenInfoLabel, row + 1, 0, 1, columnCount);
 
@@ -346,13 +290,6 @@ int main(int argc, char *argv[])
     QStringList arguments;
     std::copy(argv + 1, argv + argc, std::back_inserter(arguments));
 
-#if QT_VERSION > 0x050000
-    if (arguments.contains("-s"))
-        QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-    else if (arguments.contains("-n"))
-        QCoreApplication::setAttribute(Qt::AA_DisableHighDpiScaling);
-#endif // Qt 5
-
     QApplication app(argc, argv);
 
     MainWindowPtrList windows;
@@ -366,10 +303,8 @@ int main(int argc, char *argv[])
         windows.append(window);
         window->show();
         window->updateScreenInfo();
-#if QT_VERSION > 0x050000
         QObject::connect(window->windowHandle(), &QWindow::screenChanged,
                          window.data(), &MainWindow::updateScreenInfo);
-#endif
     }
     return app.exec();
 }

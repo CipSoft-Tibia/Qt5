@@ -1,10 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_PUBLIC_COMMON_MEDIASTREAM_MEDIA_STREAM_MOJOM_TRAITS_H_
 #define THIRD_PARTY_BLINK_PUBLIC_COMMON_MEDIASTREAM_MEDIA_STREAM_MOJOM_TRAITS_H_
 
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/common_export.h"
 #include "third_party/blink/public/common/mediastream/media_stream_controls.h"
 #include "third_party/blink/public/common/mediastream/media_stream_request.h"
@@ -24,17 +25,21 @@ struct BLINK_COMMON_EXPORT StructTraits<blink::mojom::MediaStreamDeviceDataView,
     return device.id;
   }
 
+  static int64_t display_id(const blink::MediaStreamDevice& device) {
+    return device.display_id;
+  }
+
   static const media::VideoFacingMode& video_facing(
       const blink::MediaStreamDevice& device) {
     return device.video_facing;
   }
 
-  static const base::Optional<std::string>& group_id(
+  static const absl::optional<std::string>& group_id(
       const blink::MediaStreamDevice& device) {
     return device.group_id;
   }
 
-  static const base::Optional<std::string>& matched_output_device_id(
+  static const absl::optional<std::string>& matched_output_device_id(
       const blink::MediaStreamDevice& device) {
     return device.matched_output_device_id;
   }
@@ -48,13 +53,13 @@ struct BLINK_COMMON_EXPORT StructTraits<blink::mojom::MediaStreamDeviceDataView,
     return device.input;
   }
 
-  static const base::Optional<base::UnguessableToken>& session_id(
+  static const absl::optional<base::UnguessableToken>& session_id(
       const blink::MediaStreamDevice& device) {
     return device.serializable_session_id();
   }
 
-  static const base::Optional<media::mojom::DisplayMediaInformationPtr>&
-  display_media_info(const blink::MediaStreamDevice& device) {
+  static const media::mojom::DisplayMediaInformationPtr& display_media_info(
+      const blink::MediaStreamDevice& device) {
     return device.display_media_info;
   }
 
@@ -65,10 +70,6 @@ struct BLINK_COMMON_EXPORT StructTraits<blink::mojom::MediaStreamDeviceDataView,
 template <>
 struct BLINK_COMMON_EXPORT
     StructTraits<blink::mojom::TrackControlsDataView, blink::TrackControls> {
-  static bool requested(const blink::TrackControls& controls) {
-    return controls.requested;
-  }
-
   static const blink::mojom::MediaStreamType& stream_type(
       const blink::TrackControls& controls) {
     return controls.stream_type;
@@ -103,9 +104,37 @@ struct BLINK_COMMON_EXPORT
     return controls.disable_local_echo;
   }
 
+  static bool suppress_local_audio_playback(
+      const blink::StreamControls& controls) {
+    return controls.suppress_local_audio_playback;
+  }
+
+  static bool exclude_system_audio(const blink::StreamControls& controls) {
+    return controls.exclude_system_audio;
+  }
+
+  static bool exclude_self_browser_surface(
+      const blink::StreamControls& controls) {
+    return controls.exclude_self_browser_surface;
+  }
+
   static bool request_pan_tilt_zoom_permission(
       const blink::StreamControls& controls) {
     return controls.request_pan_tilt_zoom_permission;
+  }
+
+  static bool request_all_screens(const blink::StreamControls& controls) {
+    return controls.request_all_screens;
+  }
+
+  static blink::mojom::PreferredDisplaySurface preferred_display_surface(
+      const blink::StreamControls& controls) {
+    return controls.preferred_display_surface;
+  }
+
+  static bool dynamic_surface_switching_requested(
+      const blink::StreamControls& controls) {
+    return controls.dynamic_surface_switching_requested;
   }
 
   static bool Read(blink::mojom::StreamControlsDataView input,

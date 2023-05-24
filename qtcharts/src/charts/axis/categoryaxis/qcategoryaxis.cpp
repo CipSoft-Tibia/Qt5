@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QCategoryAxis>
 #include <private/qcategoryaxis_p.h>
@@ -37,7 +11,7 @@
 #include <QtCore/QtMath>
 #include <QtCore/QDebug>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 /*!
     \class QCategoryAxis
     \inmodule QtCharts
@@ -78,7 +52,7 @@ QT_CHARTS_BEGIN_NAMESPACE
 
     For example:
     \image examples_qmlaxes3.png
-    \snippet qmlaxes/qml/qmlaxes/View3.qml 1
+    \snippet qmlchartsgallery/qml/CategoryAxis.qml 1
 */
 
 /*!
@@ -257,7 +231,7 @@ void QCategoryAxis::remove(const QString &categoryLabel)
         d->m_categoriesMap.remove(categoryLabel);
 
         // the range of the interval that follows (if exists) needs to be updated
-        if (labelIndex < d->m_categories.count()) {
+        if (labelIndex < d->m_categories.size()) {
             QString label = d->m_categories.at(labelIndex);
             Range range = d->m_categoriesMap.value(label);
 
@@ -313,7 +287,7 @@ QStringList QCategoryAxis::categoriesLabels()
 int QCategoryAxis::count() const
 {
     Q_D(const QCategoryAxis);
-    return d->m_categories.count();
+    return d->m_categories.size();
 }
 
 /*!
@@ -356,7 +330,7 @@ QCategoryAxisPrivate::~QCategoryAxisPrivate()
 
 int QCategoryAxisPrivate::ticksCount() const
 {
-    return m_categories.count() + 1;
+    return m_categories.size() + 1;
 }
 
 void QCategoryAxisPrivate::initializeGraphics(QGraphicsItem *parent)
@@ -381,7 +355,7 @@ void QCategoryAxisPrivate::initializeGraphics(QGraphicsItem *parent)
     QAbstractAxisPrivate::initializeGraphics(parent);
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qcategoryaxis.cpp"
 #include "moc_qcategoryaxis_p.cpp"

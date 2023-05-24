@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2014-2016 Klarälvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014-2016 Klarälvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef GLTFIMPORTER_H
 #define GLTFIMPORTER_H
@@ -52,8 +16,8 @@
 // We mean it.
 //
 
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qbuffer.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
 #include <QtCore/qjsondocument.h>
 #include <QtCore/qjsonobject.h>
 #include <QtCore/qhash.h>
@@ -135,7 +99,7 @@ private:
         explicit AccessorData(const QJsonObject& json, int major, int minor);
 
         QString bufferViewName;
-        QAttribute::VertexBaseType type;
+        Qt3DCore::QAttribute::VertexBaseType type;
         uint dataSize;
         int count;
         int offset;
@@ -178,7 +142,7 @@ private:
     QByteArray resolveLocalData(const QString &path) const;
 
     QVariant parameterValueFromJSON(int type, const QJsonValue &value) const;
-    static QAttribute::VertexBaseType accessorTypeFromJSON(int componentType);
+    static Qt3DCore::QAttribute::VertexBaseType accessorTypeFromJSON(int componentType);
     static uint accessorDataSizeFromJson(const QString &type);
 
     static QRenderState *buildStateEnable(int state);
@@ -212,7 +176,7 @@ private:
     QHash<QString, QMaterial*> m_materialCache;
 
     QHash<QString, BufferData> m_bufferDatas;
-    QHash<QString, Qt3DRender::QBuffer*> m_buffers;
+    QHash<QString, Qt3DCore::QBuffer*> m_buffers;
 
     QHash<QString, QString> m_shaderPaths;
     QHash<QString, QShaderProgram*> m_programs;

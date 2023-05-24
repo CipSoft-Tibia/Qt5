@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,13 @@
 
 #include <utility>
 
-#include "base/bind.h"
 #include "base/check.h"
+#include "base/functional/bind.h"
+#include "base/memory/weak_ptr.h"
+#include "base/task/single_thread_task_runner.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/receiver.h"
+#include "third_party/blink/public/mojom/input/handwriting_gesture_result.mojom-blink.h"
 #include "third_party/blink/public/platform/scheduler/web_thread_scheduler.h"
 #include "third_party/blink/renderer/platform/widget/frame_widget.h"
 #include "third_party/blink/renderer/platform/widget/input/ime_event_guard.h"
@@ -21,16 +24,18 @@ namespace blink {
 
 FrameWidgetInputHandlerImpl::FrameWidgetInputHandlerImpl(
     base::WeakPtr<WidgetBase> widget,
-    scoped_refptr<base::SingleThreadTaskRunner> main_thread_task_runner,
+    base::WeakPtr<mojom::blink::FrameWidgetInputHandler>
+        frame_widget_input_handler,
     scoped_refptr<MainThreadEventQueue> input_event_queue)
-    : widget_(widget),
-      input_event_queue_(input_event_queue),
-      main_thread_task_runner_(main_thread_task_runner) {}
+    : widget_(std::move(widget)),
+      main_thread_frame_widget_input_handler_(
+          std::move(frame_widget_input_handler)),
+      input_event_queue_(input_event_queue) {}
 
 FrameWidgetInputHandlerImpl::~FrameWidgetInputHandlerImpl() = default;
 
 void FrameWidgetInputHandlerImpl::RunOnMainThread(base::OnceClosure closure) {
-  if (input_event_queue_) {
+  if (ThreadedCompositingEnabled()) {
     input_event_queue_->QueueClosure(std::move(closure));
   } else {
     std::move(closure).Run();
@@ -42,16 +47,18 @@ void FrameWidgetInputHandlerImpl::AddImeTextSpansToExistingText(
     uint32_t end,
     const Vector<ui::ImeTextSpan>& ui_ime_text_spans) {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, uint32_t start, uint32_t end,
+      [](base::WeakPtr<WidgetBase> widget,
+         base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         uint32_t start, uint32_t end,
          const Vector<ui::ImeTextSpan>& ui_ime_text_spans) {
+        DCHECK_EQ(!!widget, !!handler);
         if (!widget)
           return;
-
         ImeEventGuard guard(widget);
-        widget->client()->FrameWidget()->AddImeTextSpansToExistingText(
-            start, end, ui_ime_text_spans);
+        handler->AddImeTextSpansToExistingText(start, end, ui_ime_text_spans);
       },
-      widget_, start, end, ui_ime_text_spans));
+      widget_, main_thread_frame_widget_input_handler_, start, end,
+      ui_ime_text_spans));
 }
 
 void FrameWidgetInputHandlerImpl::ClearImeTextSpansByType(
@@ -59,16 +66,16 @@ void FrameWidgetInputHandlerImpl::ClearImeTextSpansByType(
     uint32_t end,
     ui::ImeTextSpan::Type type) {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, uint32_t start, uint32_t end,
-         ui::ImeTextSpan::Type type) {
+      [](base::WeakPtr<WidgetBase> widget,
+         base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         uint32_t start, uint32_t end, ui::ImeTextSpan::Type type) {
+        DCHECK_EQ(!!widget, !!handler);
         if (!widget)
           return;
-
         ImeEventGuard guard(widget);
-        widget->client()->FrameWidget()->ClearImeTextSpansByType(start, end,
-                                                                 type);
+        handler->ClearImeTextSpansByType(start, end, type);
       },
-      widget_, start, end, type));
+      widget_, main_thread_frame_widget_input_handler_, start, end, type));
 }
 
 void FrameWidgetInputHandlerImpl::SetCompositionFromExistingText(
@@ -76,177 +83,204 @@ void FrameWidgetInputHandlerImpl::SetCompositionFromExistingText(
     int32_t end,
     const Vector<ui::ImeTextSpan>& ui_ime_text_spans) {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, int32_t start, int32_t end,
+      [](base::WeakPtr<WidgetBase> widget,
+         base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         int32_t start, int32_t end,
          const Vector<ui::ImeTextSpan>& ui_ime_text_spans) {
+        DCHECK_EQ(!!widget, !!handler);
         if (!widget)
           return;
-
         ImeEventGuard guard(widget);
-
-        widget->client()->FrameWidget()->SetCompositionFromExistingText(
-            start, end, ui_ime_text_spans);
+        handler->SetCompositionFromExistingText(start, end, ui_ime_text_spans);
       },
-      widget_, start, end, ui_ime_text_spans));
+      widget_, main_thread_frame_widget_input_handler_, start, end,
+      ui_ime_text_spans));
 }
 
 void FrameWidgetInputHandlerImpl::ExtendSelectionAndDelete(int32_t before,
                                                            int32_t after) {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, int32_t before, int32_t after) {
-        if (!widget)
-          return;
-        widget->client()->FrameWidget()->ExtendSelectionAndDelete(before,
-                                                                  after);
+      [](base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         int32_t before, int32_t after) {
+        if (handler)
+          handler->ExtendSelectionAndDelete(before, after);
       },
-      widget_, before, after));
+      main_thread_frame_widget_input_handler_, before, after));
 }
 
 void FrameWidgetInputHandlerImpl::DeleteSurroundingText(int32_t before,
                                                         int32_t after) {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, int32_t before, int32_t after) {
-        if (!widget)
-          return;
-
-        if (!widget)
-          return;
-        widget->client()->FrameWidget()->DeleteSurroundingText(before, after);
+      [](base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         int32_t before, int32_t after) {
+        if (handler)
+          handler->DeleteSurroundingText(before, after);
       },
-      widget_, before, after));
+      main_thread_frame_widget_input_handler_, before, after));
 }
 
 void FrameWidgetInputHandlerImpl::DeleteSurroundingTextInCodePoints(
     int32_t before,
     int32_t after) {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, int32_t before, int32_t after) {
-        if (!widget)
-          return;
-
-        widget->client()->FrameWidget()->DeleteSurroundingTextInCodePoints(
-            before, after);
+      [](base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         int32_t before, int32_t after) {
+        if (handler)
+          handler->DeleteSurroundingTextInCodePoints(before, after);
       },
-      widget_, before, after));
+      main_thread_frame_widget_input_handler_, before, after));
 }
 
 void FrameWidgetInputHandlerImpl::SetEditableSelectionOffsets(int32_t start,
                                                               int32_t end) {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, int32_t start, int32_t end) {
+      [](base::WeakPtr<WidgetBase> widget,
+         base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         int32_t start, int32_t end) {
+        DCHECK_EQ(!!widget, !!handler);
         if (!widget)
           return;
-
         HandlingState handling_state(widget, UpdateState::kIsSelectingRange);
-        widget->client()->FrameWidget()->SetEditableSelectionOffsets(start,
-                                                                     end);
+        handler->SetEditableSelectionOffsets(start, end);
       },
-      widget_, start, end));
+      widget_, main_thread_frame_widget_input_handler_, start, end));
+}
+
+void FrameWidgetInputHandlerImpl::HandleStylusWritingGestureAction(
+    mojom::blink::StylusWritingGestureDataPtr gesture_data,
+    HandleStylusWritingGestureActionCallback callback) {
+  if (ThreadedCompositingEnabled()) {
+    callback = base::BindOnce(
+        [](scoped_refptr<base::SingleThreadTaskRunner> callback_task_runner,
+           HandleStylusWritingGestureActionCallback callback,
+           mojom::blink::HandwritingGestureResult result) {
+          callback_task_runner->PostTask(
+              FROM_HERE,
+              base::BindOnce(std::move(callback), std::move(result)));
+        },
+        base::SingleThreadTaskRunner::GetCurrentDefault(), std::move(callback));
+  }
+
+  RunOnMainThread(base::BindOnce(
+      [](base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         mojom::blink::StylusWritingGestureDataPtr gesture_data,
+         HandleStylusWritingGestureActionCallback callback) {
+        if (handler) {
+          handler->HandleStylusWritingGestureAction(std::move(gesture_data),
+                                                    std::move(callback));
+        } else {
+          std::move(callback).Run(
+              mojom::blink::HandwritingGestureResult::kFailed);
+        }
+      },
+      main_thread_frame_widget_input_handler_, std::move(gesture_data),
+      std::move(callback)));
 }
 
 void FrameWidgetInputHandlerImpl::ExecuteEditCommand(const String& command,
                                                      const String& value) {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, const String& command,
-         const String& value) {
-        if (!widget)
-          return;
-
-        widget->client()->FrameWidget()->ExecuteEditCommand(command, value);
+      [](base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         const String& command, const String& value) {
+        if (handler)
+          handler->ExecuteEditCommand(command, value);
       },
-      widget_, command.IsolatedCopy(), value.IsolatedCopy()));
+      main_thread_frame_widget_input_handler_, command, value));
 }
 
 void FrameWidgetInputHandlerImpl::Undo() {
-  RunOnMainThread(
-      base::BindOnce(&FrameWidgetInputHandlerImpl::ExecuteCommandOnMainThread,
-                     widget_, "Undo", UpdateState::kNone));
+  RunOnMainThread(base::BindOnce(
+      &FrameWidgetInputHandlerImpl::ExecuteCommandOnMainThread, widget_,
+      main_thread_frame_widget_input_handler_, "Undo", UpdateState::kNone));
 }
 
 void FrameWidgetInputHandlerImpl::Redo() {
-  RunOnMainThread(
-      base::BindOnce(&FrameWidgetInputHandlerImpl::ExecuteCommandOnMainThread,
-                     widget_, "Redo", UpdateState::kNone));
+  RunOnMainThread(base::BindOnce(
+      &FrameWidgetInputHandlerImpl::ExecuteCommandOnMainThread, widget_,
+      main_thread_frame_widget_input_handler_, "Redo", UpdateState::kNone));
 }
 
 void FrameWidgetInputHandlerImpl::Cut() {
   RunOnMainThread(
       base::BindOnce(&FrameWidgetInputHandlerImpl::ExecuteCommandOnMainThread,
-                     widget_, "Cut", UpdateState::kIsSelectingRange));
+                     widget_, main_thread_frame_widget_input_handler_, "Cut",
+                     UpdateState::kIsSelectingRange));
 }
 
 void FrameWidgetInputHandlerImpl::Copy() {
   RunOnMainThread(
       base::BindOnce(&FrameWidgetInputHandlerImpl::ExecuteCommandOnMainThread,
-                     widget_, "Copy", UpdateState::kIsSelectingRange));
+                     widget_, main_thread_frame_widget_input_handler_, "Copy",
+                     UpdateState::kIsSelectingRange));
 }
 
 void FrameWidgetInputHandlerImpl::CopyToFindPboard() {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget) {
-        if (!widget)
-          return;
-
-        widget->client()->FrameWidget()->CopyToFindPboard();
+      [](base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler) {
+        if (handler)
+          handler->CopyToFindPboard();
       },
-      widget_));
+      main_thread_frame_widget_input_handler_));
 }
 
 void FrameWidgetInputHandlerImpl::Paste() {
   RunOnMainThread(
       base::BindOnce(&FrameWidgetInputHandlerImpl::ExecuteCommandOnMainThread,
-                     widget_, "Paste", UpdateState::kIsPasting));
+                     widget_, main_thread_frame_widget_input_handler_, "Paste",
+                     UpdateState::kIsPasting));
 }
 
 void FrameWidgetInputHandlerImpl::PasteAndMatchStyle() {
   RunOnMainThread(
       base::BindOnce(&FrameWidgetInputHandlerImpl::ExecuteCommandOnMainThread,
-                     widget_, "PasteAndMatchStyle", UpdateState::kIsPasting));
+                     widget_, main_thread_frame_widget_input_handler_,
+                     "PasteAndMatchStyle", UpdateState::kIsPasting));
 }
 
 void FrameWidgetInputHandlerImpl::Replace(const String& word) {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, const String& word) {
-        if (!widget)
-          return;
-
-        widget->client()->FrameWidget()->Replace(word);
+      [](base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         const String& word) {
+        if (handler)
+          handler->Replace(word);
       },
-      widget_, word.IsolatedCopy()));
+      main_thread_frame_widget_input_handler_, word));
 }
 
 void FrameWidgetInputHandlerImpl::ReplaceMisspelling(const String& word) {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, const String& word) {
-        if (!widget)
-          return;
-
-        widget->client()->FrameWidget()->ReplaceMisspelling(word);
+      [](base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         const String& word) {
+        if (handler)
+          handler->ReplaceMisspelling(word);
       },
-      widget_, word.IsolatedCopy()));
+      main_thread_frame_widget_input_handler_, word));
 }
 
 void FrameWidgetInputHandlerImpl::Delete() {
-  RunOnMainThread(
-      base::BindOnce(&FrameWidgetInputHandlerImpl::ExecuteCommandOnMainThread,
-                     widget_, "Delete", UpdateState::kNone));
+  RunOnMainThread(base::BindOnce(
+      &FrameWidgetInputHandlerImpl::ExecuteCommandOnMainThread, widget_,
+      main_thread_frame_widget_input_handler_, "Delete", UpdateState::kNone));
 }
 
 void FrameWidgetInputHandlerImpl::SelectAll() {
   RunOnMainThread(
       base::BindOnce(&FrameWidgetInputHandlerImpl::ExecuteCommandOnMainThread,
-                     widget_, "SelectAll", UpdateState::kIsSelectingRange));
+                     widget_, main_thread_frame_widget_input_handler_,
+                     "SelectAll", UpdateState::kIsSelectingRange));
 }
 
 void FrameWidgetInputHandlerImpl::CollapseSelection() {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget) {
+      [](base::WeakPtr<WidgetBase> widget,
+         base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler) {
+        DCHECK_EQ(!!widget, !!handler);
         if (!widget)
           return;
-
         HandlingState handling_state(widget, UpdateState::kIsSelectingRange);
-        widget->client()->FrameWidget()->CollapseSelection();
+        handler->CollapseSelection();
       },
-      widget_));
+      widget_, main_thread_frame_widget_input_handler_));
 }
 
 void FrameWidgetInputHandlerImpl::SelectRange(const gfx::Point& base,
@@ -255,66 +289,73 @@ void FrameWidgetInputHandlerImpl::SelectRange(const gfx::Point& base,
   // one outstanding event and an ACK to handle coalescing on the browser
   // side. We should be able to clobber them in the main thread event queue.
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, const gfx::Point& base,
-         const gfx::Point& extent) {
+      [](base::WeakPtr<WidgetBase> widget,
+         base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         const gfx::Point& base, const gfx::Point& extent) {
+        DCHECK_EQ(!!widget, !!handler);
         if (!widget)
           return;
-
         HandlingState handling_state(widget, UpdateState::kIsSelectingRange);
-        widget->client()->FrameWidget()->SelectRange(base, extent);
+        handler->SelectRange(base, extent);
       },
-      widget_, base, extent));
+      widget_, main_thread_frame_widget_input_handler_, base, extent));
 }
 
-#if defined(OS_ANDROID)
-
-void FrameWidgetInputHandlerImpl::SelectWordAroundCaret(
-    SelectWordAroundCaretCallback callback) {
+void FrameWidgetInputHandlerImpl::SelectAroundCaret(
+    mojom::blink::SelectionGranularity granularity,
+    bool should_show_handle,
+    bool should_show_context_menu,
+    SelectAroundCaretCallback callback) {
   // If the mojom channel is registered with compositor thread, we have to run
   // the callback on compositor thread. Otherwise run it on main thread. Mojom
   // requires the callback runs on the same thread.
-  if (!main_thread_task_runner_->BelongsToCurrentThread()) {
+  if (ThreadedCompositingEnabled()) {
     callback = base::BindOnce(
         [](scoped_refptr<base::SingleThreadTaskRunner> callback_task_runner,
-           SelectWordAroundCaretCallback callback, bool did_select,
-           int start_adjust, int end_adjust) {
+           SelectAroundCaretCallback callback,
+           mojom::blink::SelectAroundCaretResultPtr result) {
           callback_task_runner->PostTask(
-              FROM_HERE, base::BindOnce(std::move(callback), did_select,
-                                        start_adjust, end_adjust));
+              FROM_HERE,
+              base::BindOnce(std::move(callback), std::move(result)));
         },
-        base::ThreadTaskRunnerHandle::Get(), std::move(callback));
+        base::SingleThreadTaskRunner::GetCurrentDefault(), std::move(callback));
   }
 
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget,
-         SelectWordAroundCaretCallback callback) {
-        if (widget) {
-          FrameWidget* frame_widget = widget->client()->FrameWidget();
-          if (frame_widget)
-            frame_widget->SelectWordAroundCaret(std::move(callback));
+      [](base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         mojom::blink::SelectionGranularity granularity,
+         bool should_show_handle, bool should_show_context_menu,
+         SelectAroundCaretCallback callback) {
+        if (handler) {
+          handler->SelectAroundCaret(granularity, should_show_handle,
+                                     should_show_context_menu,
+                                     std::move(callback));
+        } else {
+          std::move(callback).Run(std::move(nullptr));
         }
-        if (callback)
-          std::move(callback).Run(false, 0, 0);
       },
-      widget_, std::move(callback)));
+      main_thread_frame_widget_input_handler_, granularity, should_show_handle,
+      should_show_context_menu, std::move(callback)));
 }
-#endif  // defined(OS_ANDROID)
 
 void FrameWidgetInputHandlerImpl::AdjustSelectionByCharacterOffset(
     int32_t start,
     int32_t end,
     blink::mojom::SelectionMenuBehavior selection_menu_behavior) {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, int32_t start, int32_t end,
+      [](base::WeakPtr<WidgetBase> widget,
+         base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         int32_t start, int32_t end,
          blink::mojom::SelectionMenuBehavior selection_menu_behavior) {
+        DCHECK_EQ(!!widget, !!handler);
         if (!widget)
           return;
-
         HandlingState handling_state(widget, UpdateState::kIsSelectingRange);
-        widget->client()->FrameWidget()->AdjustSelectionByCharacterOffset(
-            start, end, selection_menu_behavior);
+        handler->AdjustSelectionByCharacterOffset(start, end,
+                                                  selection_menu_behavior);
       },
-      widget_, start, end, selection_menu_behavior));
+      widget_, main_thread_frame_widget_input_handler_, start, end,
+      selection_menu_behavior));
 }
 
 void FrameWidgetInputHandlerImpl::MoveRangeSelectionExtent(
@@ -323,49 +364,72 @@ void FrameWidgetInputHandlerImpl::MoveRangeSelectionExtent(
   // one outstanding event and an ACK to handle coalescing on the browser
   // side. We should be able to clobber them in the main thread event queue.
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, const gfx::Point& extent) {
+      [](base::WeakPtr<WidgetBase> widget,
+         base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         const gfx::Point& extent) {
+        DCHECK_EQ(!!widget, !!handler);
         if (!widget)
           return;
-
         HandlingState handling_state(widget, UpdateState::kIsSelectingRange);
-        widget->client()->FrameWidget()->MoveRangeSelectionExtent(extent);
+        handler->MoveRangeSelectionExtent(extent);
       },
-      widget_, extent));
+      widget_, main_thread_frame_widget_input_handler_, extent));
 }
 
-void FrameWidgetInputHandlerImpl::ScrollFocusedEditableNodeIntoRect(
-    const gfx::Rect& rect) {
+void FrameWidgetInputHandlerImpl::ScrollFocusedEditableNodeIntoView() {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, const gfx::Rect& rect) {
-        if (!widget)
-          return;
-
-        widget->client()->FrameWidget()->ScrollFocusedEditableNodeIntoRect(
-            rect);
+      [](base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler) {
+        if (handler)
+          handler->ScrollFocusedEditableNodeIntoView();
       },
-      widget_, rect));
+      main_thread_frame_widget_input_handler_));
+}
+
+void FrameWidgetInputHandlerImpl::WaitForPageScaleAnimationForTesting(
+    WaitForPageScaleAnimationForTestingCallback callback) {
+  // Ensure the Mojo callback is invoked from the thread on which the message
+  // was received.
+  if (ThreadedCompositingEnabled()) {
+    callback = base::BindOnce(
+        [](scoped_refptr<base::SingleThreadTaskRunner> callback_task_runner,
+           WaitForPageScaleAnimationForTestingCallback callback) {
+          callback_task_runner->PostTask(FROM_HERE,
+                                         base::BindOnce(std::move(callback)));
+        },
+        base::SingleThreadTaskRunner::GetCurrentDefault(), std::move(callback));
+  }
+
+  RunOnMainThread(base::BindOnce(
+      [](base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         WaitForPageScaleAnimationForTestingCallback callback) {
+        if (handler)
+          handler->WaitForPageScaleAnimationForTesting(std::move(callback));
+        else
+          std::move(callback).Run();
+      },
+      main_thread_frame_widget_input_handler_, std::move(callback)));
 }
 
 void FrameWidgetInputHandlerImpl::MoveCaret(const gfx::Point& point) {
   RunOnMainThread(base::BindOnce(
-      [](base::WeakPtr<WidgetBase> widget, const gfx::Point& point) {
-        if (!widget)
-          return;
-
-        widget->client()->FrameWidget()->MoveCaret(point);
+      [](base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+         const gfx::Point& point) {
+        if (handler)
+          handler->MoveCaret(point);
       },
-      widget_, point));
+      main_thread_frame_widget_input_handler_, point));
 }
 
 void FrameWidgetInputHandlerImpl::ExecuteCommandOnMainThread(
     base::WeakPtr<WidgetBase> widget,
+    base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
     const char* command,
     UpdateState update_state) {
+  DCHECK_EQ(!!widget, !!handler);
   if (!widget)
     return;
-
   HandlingState handling_state(widget, update_state);
-  widget->client()->FrameWidget()->ExecuteEditCommand(command, String());
+  handler->ExecuteEditCommand(command, String());
 }
 
 FrameWidgetInputHandlerImpl::HandlingState::HandlingState(
@@ -377,7 +441,7 @@ FrameWidgetInputHandlerImpl::HandlingState::HandlingState(
   switch (state) {
     case UpdateState::kIsPasting:
       widget->set_is_pasting(true);
-      FALLTHROUGH;  // Set both
+      [[fallthrough]];  // Set both
     case UpdateState::kIsSelectingRange:
       widget->set_handling_select_range(true);
       break;

@@ -1,67 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Copyright (C) 2016 basysKom GmbH, author Bernd Lamecker <bernd.lamecker@basyskom.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebChannel module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// Copyright (C) 2016 basysKom GmbH, author Bernd Lamecker <bernd.lamecker@basyskom.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-import QtQuick 2.2
-import QtQuick.Dialogs 1.2
-import QtQuick.Controls 2.0
-import QtQuick.Window 2.0
-import QtQuick.Layouts 1.1
-import Qt.WebSockets 1.0
-import "qwebchannel.js" as WebChannel
+import QtQuick
+import QtQuick.Dialogs
+import QtQuick.Controls
+import QtQuick.Layouts
+import QtWebSockets
+import "../shared/qwebchannel.js" as WebChannel
 
 ApplicationWindow {
     id: root
 
     property var channel
     property string loginName: loginUi.userName.text
+    property bool loggedIn: false
 
     title: "Chat client"
     width: 640
@@ -77,7 +30,7 @@ ApplicationWindow {
             sendTextMessage(arg);
         }
 
-        onTextMessageReceived: {
+        onTextMessageReceived: function(message) {
             onmessage({data: message});
         }
 
@@ -117,7 +70,7 @@ ApplicationWindow {
 
                     //connect to the keep alive signal
                     ch.objects.chatserver.keepAlive.connect(function(args) {
-                        if (loginName !== '')
+                        if (loginName !== '' && root.loggedIn)
                             //and call the keep alive response method as an answer
                             ch.objects.chatserver.keepAliveResponse(loginName);
                     });
@@ -135,7 +88,7 @@ ApplicationWindow {
 
         Connections {
             target: mainUi.message
-            onEditingFinished: {
+            function onEditingFinished() {
                 if (mainUi.message.text.length) {
                     //call the sendMessage method to send the message
                     root.channel.objects.chatserver.sendMessage(loginName,
@@ -146,11 +99,12 @@ ApplicationWindow {
         }
     }
 
-    Window {
+    ApplicationWindow {
         id: loginWindow
 
         title: "Login"
         modality: Qt.ApplicationModal
+        flags: Qt.CustomizeWindowHint | Qt.WindowTitleHint
         width: 300
         height: 200
 
@@ -163,13 +117,16 @@ ApplicationWindow {
             Connections {
                 target: loginUi.loginButton
 
-                onClicked: {
+                function onClicked() {
+                    if (loginName === '')
+                        return;
                     //call the login method
                     root.channel.objects.chatserver.login(loginName, function(arg) {
                         //check the return value for success
                         if (arg === true) {
                             loginUi.nameInUseError.visible = false;
                             loginWindow.close();
+                            root.loggedIn = true;
                         } else {
                             loginUi.nameInUseError.visible = true;
                         }
@@ -179,12 +136,18 @@ ApplicationWindow {
         }
     }
 
-    MessageDialog {
+    Dialog {
         id: errorDialog
+        property alias text: message.text
 
-        icon: StandardIcon.Critical
-        standardButtons: StandardButton.Close
+        anchors.centerIn: parent
+        standardButtons: Dialog.Close
         title: "Chat client"
+        width: parent.width / 2
+
+        Label {
+            id: message
+        }
 
         onAccepted: {
             Qt.quit();

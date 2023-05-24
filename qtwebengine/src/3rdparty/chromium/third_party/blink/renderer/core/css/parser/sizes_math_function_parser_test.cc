@@ -1,16 +1,19 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/css/parser/sizes_math_function_parser.h"
 
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/mojom/webpreferences/web_preferences.mojom-blink.h"
 #include "third_party/blink/renderer/core/css/css_math_function_value.h"
 #include "third_party/blink/renderer/core/css/css_to_length_conversion_data.h"
 #include "third_party/blink/renderer/core/css/media_values_cached.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser.h"
 #include "third_party/blink/renderer/core/css/parser/css_tokenizer.h"
+#include "third_party/blink/renderer/core/execution_context/security_context.h"
 #include "third_party/blink/renderer/core/media_type_names.h"
+#include "third_party/blink/renderer/core/style/computed_style_initial_values.h"
 #include "third_party/blink/renderer/platform/fonts/font.h"
 
 namespace blink {
@@ -54,10 +57,14 @@ static void VerifyCSSCalc(String text,
   Font font;
   CSSToLengthConversionData::FontSizes font_sizes(font_size, font_size, &font,
                                                   1);
+  CSSToLengthConversionData::LineHeightSize line_height_size;
   CSSToLengthConversionData::ViewportSize viewport_size(viewport_width,
                                                         viewport_height);
-  CSSToLengthConversionData conversion_data(nullptr, font_sizes, viewport_size,
-                                            1.0);
+  CSSToLengthConversionData::ContainerSizes container_sizes;
+  CSSToLengthConversionData::Flags ignored_flags = 0;
+  CSSToLengthConversionData conversion_data(
+      WritingMode::kHorizontalTb, font_sizes, line_height_size, viewport_size,
+      container_sizes, 1.0, ignored_flags);
   EXPECT_APPROX_EQ(value, math_value->ComputeLength<float>(conversion_data));
 }
 
@@ -93,13 +100,16 @@ TEST(SizesMathFunctionParserTest, Basic) {
       {"calc(500px/0.5)", 1000, true, false},
       {"calc(500px/.5)", 1000, true, false},
       {"calc(500/0)", 0, false, false},
-      {"calc(500px/0)", 0, false, false},
       {"calc(-500px/10)", 0, true,
        true},  // CSSCalculationValue does not clamp negative values to 0.
       {"calc(((4) * ((10px))))", 40, true, false},
-      {"calc(50px / 0)", 0, false, false},
+      // TODO(crbug.com/1133390): These test cases failed with Infinity and NaN
+      // parsing implementation. Below tests will be reactivated when the
+      // sizes_math function supports the infinity and NaN.
+      //{"calc(500px/0)", 0, false, false},
+      //{"calc(50px / 0)", 0, false, false},
+      //{"calc(50px / (10 - 10))", 0, false, false},
       {"calc(50px / (10 + 10))", 2.5, true, false},
-      {"calc(50px / (10 - 10))", 0, false, false},
       {"calc(50px / (10 * 10))", 0.5, true, false},
       {"calc(50px / (10 / 10))", 50, true, false},
       {"calc(200px*)", 0, false, false},
@@ -175,8 +185,7 @@ TEST(SizesMathFunctionParserTest, Basic) {
   data.device_pixel_ratio = 2.0;
   data.color_bits_per_component = 24;
   data.monochrome_bits_per_component = 0;
-  data.primary_pointer_type = ui::POINTER_TYPE_FINE;
-  data.default_font_size = 16;
+  data.primary_pointer_type = mojom::blink::PointerType::kPointerFineType;
   data.three_d_enabled = true;
   data.media_type = media_type_names::kScreen;
   data.strict_mode = true;
@@ -188,16 +197,18 @@ TEST(SizesMathFunctionParserTest, Basic) {
         CSSParserTokenRange(CSSTokenizer(test_cases[i].input).TokenizeToEOF()),
         media_values);
     ASSERT_EQ(test_cases[i].valid, calc_parser.IsValid());
-    if (calc_parser.IsValid())
+    if (calc_parser.IsValid()) {
       EXPECT_APPROX_EQ(test_cases[i].output, calc_parser.Result());
+    }
   }
 
   for (unsigned i = 0; test_cases[i].input; ++i) {
-    if (test_cases[i].dont_run_in_css_calc)
+    if (test_cases[i].dont_run_in_css_calc) {
       continue;
+    }
     VerifyCSSCalc(test_cases[i].input, test_cases[i].output,
-                  test_cases[i].valid, data.default_font_size,
-                  data.viewport_width, data.viewport_height);
+                  test_cases[i].valid, data.em_size, data.viewport_width,
+                  data.viewport_height);
   }
 }
 

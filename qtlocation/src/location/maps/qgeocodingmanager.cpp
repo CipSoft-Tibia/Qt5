@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeocodingmanager.h"
 #include "qgeocodingmanager_p.h"
@@ -81,19 +48,15 @@ QGeoCodingManager::QGeoCodingManager(QGeoCodingManagerEngine *engine, QObject *p
     : QObject(parent),
       d_ptr(new QGeoCodingManagerPrivate())
 {
-    d_ptr->engine = engine;
+    d_ptr->engine.reset(engine);
     if (d_ptr->engine) {
         d_ptr->engine->setParent(this);
 
-        connect(d_ptr->engine,
-                SIGNAL(finished(QGeoCodeReply*)),
-                this,
-                SIGNAL(finished(QGeoCodeReply*)));
+        connect(d_ptr->engine.get(), &QGeoCodingManagerEngine::finished,
+                this, &QGeoCodingManager::finished);
 
-        connect(d_ptr->engine,
-                SIGNAL(error(QGeoCodeReply*,QGeoCodeReply::Error,QString)),
-                this,
-                SIGNAL(error(QGeoCodeReply*,QGeoCodeReply::Error,QString)));
+        connect(d_ptr->engine.get(), &QGeoCodingManagerEngine::errorOccurred,
+                this, &QGeoCodingManager::errorOccurred);
     } else {
         qFatal("The geocoding manager engine that was set for this geocoding manager was NULL.");
     }
@@ -165,8 +128,8 @@ int QGeoCodingManager::managerVersion() const
 
     The user is responsible for deleting the returned reply object, although
     this can be done in the slot connected to QGeoCodingManager::finished(),
-    QGeoCodingManager::error(), QGeoCodeReply::finished() or
-    QGeoCodeReply::error() with deleteLater().
+    QGeoCodingManager::errorOccurred(), QGeoCodeReply::finished() or
+    QGeoCodeReply::errorOccurred() with deleteLater().
 */
 QGeoCodeReply *QGeoCodingManager::geocode(const QGeoAddress &address, const QGeoShape &bounds)
 {
@@ -207,8 +170,8 @@ QGeoCodeReply *QGeoCodingManager::geocode(const QGeoAddress &address, const QGeo
 
     The user is responsible for deleting the returned reply object, although
     this can be done in the slot connected to QGeoCodingManager::finished(),
-    QGeoCodingManager::error(), QGeoCodeReply::finished() or
-    QGeoCodeReply::error() with deleteLater().
+    QGeoCodingManager::errorOccurred(), QGeoCodeReply::finished() or
+    QGeoCodeReply::errorOccurred() with deleteLater().
 */
 QGeoCodeReply *QGeoCodingManager::reverseGeocode(const QGeoCoordinate &coordinate, const QGeoShape &bounds)
 {
@@ -241,8 +204,8 @@ QGeoCodeReply *QGeoCodingManager::reverseGeocode(const QGeoCoordinate &coordinat
 
     The user is responsible for deleting the returned reply object, although
     this can be done in the slot connected to QGeoCodingManager::finished(),
-    QGeoCodingManager::error(), QGeoCodeReply::finished() or
-    QGeoCodeReply::error() with deleteLater().
+    QGeoCodingManager::errorOccurred(), QGeoCodeReply::finished() or
+    QGeoCodeReply::errorOccurred() with deleteLater().
 */
 QGeoCodeReply *QGeoCodingManager::geocode(const QString &address,
         int limit,
@@ -294,7 +257,7 @@ QLocale QGeoCodingManager::locale() const
 */
 
 /*!
-\fn void QGeoCodingManager::error(QGeoCodeReply *reply, QGeoCodeReply::Error error, QString errorString)
+\fn void QGeoCodingManager::errorOccurred(QGeoCodeReply *reply, QGeoCodeReply::Error error, const QString &errorString)
 
     This signal is emitted when an error has been detected in the processing of
     \a reply. The QGeoCodingManager::finished() signal will probably follow.
@@ -302,22 +265,11 @@ QLocale QGeoCodingManager::locale() const
     The error will be described by the error code \a error. If \a errorString is
     not empty it will contain a textual description of the error.
 
-    This signal and QGeoCodeReply::error() will be emitted at the same time.
+    This signal and QGeoCodeReply::errorOccurred() will be emitted at the same time.
 
     \note Do not delete the \a reply object in the slot connected to this
     signal. Use deleteLater() instead.
 */
-
-/*******************************************************************************
-*******************************************************************************/
-
-QGeoCodingManagerPrivate::QGeoCodingManagerPrivate()
-    : engine(0) {}
-
-QGeoCodingManagerPrivate::~QGeoCodingManagerPrivate()
-{
-    delete engine;
-}
 
 /*******************************************************************************
 *******************************************************************************/

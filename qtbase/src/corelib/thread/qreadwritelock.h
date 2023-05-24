@@ -1,49 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QREADWRITELOCK_H
 #define QREADWRITELOCK_H
 
 #include <QtCore/qglobal.h>
+#include <QtCore/qdeadlinetimer.h>
 
 QT_BEGIN_NAMESPACE
-
 
 #if QT_CONFIG(thread)
 
@@ -54,36 +18,81 @@ class Q_CORE_EXPORT QReadWriteLock
 public:
     enum RecursionMode { NonRecursive, Recursive };
 
+    QT_CORE_INLINE_SINCE(6, 6)
     explicit QReadWriteLock(RecursionMode recursionMode = NonRecursive);
+    QT_CORE_INLINE_SINCE(6, 6)
     ~QReadWriteLock();
 
+    QT_CORE_INLINE_SINCE(6, 6)
     void lockForRead();
+#if QT_CORE_REMOVED_SINCE(6, 6)
     bool tryLockForRead();
+#endif
+    QT_CORE_INLINE_SINCE(6, 6)
     bool tryLockForRead(int timeout);
+    bool tryLockForRead(QDeadlineTimer timeout = {});
 
+    QT_CORE_INLINE_SINCE(6, 6)
     void lockForWrite();
+#if QT_CORE_REMOVED_SINCE(6, 6)
     bool tryLockForWrite();
+#endif
+    QT_CORE_INLINE_SINCE(6, 6)
     bool tryLockForWrite(int timeout);
+    bool tryLockForWrite(QDeadlineTimer timeout = {});
 
     void unlock();
 
 private:
     Q_DISABLE_COPY(QReadWriteLock)
     QAtomicPointer<QReadWriteLockPrivate> d_ptr;
-
-    enum StateForWaitCondition { LockedForRead, LockedForWrite, Unlocked, RecursivelyLocked };
-    StateForWaitCondition stateForWaitCondition() const;
-    friend class QWaitCondition;
+    friend class QReadWriteLockPrivate;
+    static QReadWriteLockPrivate *initRecursive();
+    static void destroyRecursive(QReadWriteLockPrivate *);
 };
+
+#if QT_CORE_INLINE_IMPL_SINCE(6, 6)
+QReadWriteLock::QReadWriteLock(RecursionMode recursionMode)
+    : d_ptr(recursionMode == Recursive ? initRecursive() : nullptr)
+{
+}
+
+QReadWriteLock::~QReadWriteLock()
+{
+    if (auto d = d_ptr.loadAcquire())
+        destroyRecursive(d);
+}
+
+void QReadWriteLock::lockForRead()
+{
+    tryLockForRead(QDeadlineTimer(QDeadlineTimer::Forever));
+}
+
+bool QReadWriteLock::tryLockForRead(int timeout)
+{
+    return tryLockForRead(QDeadlineTimer(timeout));
+}
+
+void QReadWriteLock::lockForWrite()
+{
+    tryLockForWrite(QDeadlineTimer(QDeadlineTimer::Forever));
+}
+
+bool QReadWriteLock::tryLockForWrite(int timeout)
+{
+    return tryLockForWrite(QDeadlineTimer(timeout));
+}
+#endif // inline since 6.6
 
 #if defined(Q_CC_MSVC)
 #pragma warning( push )
 #pragma warning( disable : 4312 ) // ignoring the warning from /Wp64
 #endif
 
-class Q_CORE_EXPORT QReadLocker
+class QT6_ONLY(Q_CORE_EXPORT) QReadLocker
 {
 public:
+    Q_NODISCARD_CTOR
     inline QReadLocker(QReadWriteLock *readWriteLock);
 
     inline ~QReadLocker()
@@ -125,9 +134,10 @@ inline QReadLocker::QReadLocker(QReadWriteLock *areadWriteLock)
     relock();
 }
 
-class Q_CORE_EXPORT QWriteLocker
+class QT6_ONLY(Q_CORE_EXPORT) QWriteLocker
 {
 public:
+    Q_NODISCARD_CTOR
     inline QWriteLocker(QReadWriteLock *readWriteLock);
 
     inline ~QWriteLocker()
@@ -176,7 +186,7 @@ inline QWriteLocker::QWriteLocker(QReadWriteLock *areadWriteLock)
 
 #else // QT_CONFIG(thread)
 
-class Q_CORE_EXPORT QReadWriteLock
+class QT6_ONLY(Q_CORE_EXPORT) QReadWriteLock
 {
 public:
     enum RecursionMode { NonRecursive, Recursive };
@@ -185,10 +195,12 @@ public:
 
     void lockForRead() noexcept { }
     bool tryLockForRead() noexcept { return true; }
+    bool tryLockForRead(QDeadlineTimer) noexcept { return true; }
     bool tryLockForRead(int timeout) noexcept { Q_UNUSED(timeout); return true; }
 
     void lockForWrite() noexcept { }
     bool tryLockForWrite() noexcept { return true; }
+    bool tryLockForWrite(QDeadlineTimer) noexcept { return true; }
     bool tryLockForWrite(int timeout) noexcept { Q_UNUSED(timeout); return true; }
 
     void unlock() noexcept { }
@@ -197,9 +209,10 @@ private:
     Q_DISABLE_COPY(QReadWriteLock)
 };
 
-class Q_CORE_EXPORT QReadLocker
+class QT6_ONLY(Q_CORE_EXPORT) QReadLocker
 {
 public:
+    Q_NODISCARD_CTOR
     inline explicit QReadLocker(QReadWriteLock *) noexcept { }
     inline ~QReadLocker() noexcept { }
 
@@ -211,9 +224,10 @@ private:
     Q_DISABLE_COPY(QReadLocker)
 };
 
-class Q_CORE_EXPORT QWriteLocker
+class QT6_ONLY(Q_CORE_EXPORT) QWriteLocker
 {
 public:
+    Q_NODISCARD_CTOR
     inline explicit QWriteLocker(QReadWriteLock *) noexcept { }
     inline ~QWriteLocker() noexcept { }
 

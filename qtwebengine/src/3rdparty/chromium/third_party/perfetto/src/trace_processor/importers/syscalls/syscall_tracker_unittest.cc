@@ -34,17 +34,17 @@ class MockSliceTracker : public SliceTracker {
   virtual ~MockSliceTracker() = default;
 
   MOCK_METHOD5(Begin,
-               base::Optional<uint32_t>(int64_t timestamp,
-                                        TrackId track_id,
-                                        StringId cat,
-                                        StringId name,
-                                        SetArgsCallback args_callback));
+               base::Optional<SliceId>(int64_t timestamp,
+                                       TrackId track_id,
+                                       StringId cat,
+                                       StringId name,
+                                       SetArgsCallback args_callback));
   MOCK_METHOD5(End,
-               base::Optional<uint32_t>(int64_t timestamp,
-                                        TrackId track_id,
-                                        StringId cat,
-                                        StringId name,
-                                        SetArgsCallback args_callback));
+               base::Optional<SliceId>(int64_t timestamp,
+                                       TrackId track_id,
+                                       StringId cat,
+                                       StringId name,
+                                       SetArgsCallback args_callback));
 };
 
 class SyscallTrackerTest : public ::testing::Test {
@@ -77,16 +77,6 @@ TEST_F(SyscallTrackerTest, ReportUnknownSyscalls) {
   syscall_tracker->Exit(110 /*ts*/, 42 /*utid*/, 57 /*sys_read*/);
   EXPECT_EQ(context.storage->GetString(begin_name), "sys_57");
   EXPECT_EQ(context.storage->GetString(end_name), "sys_57");
-}
-
-TEST_F(SyscallTrackerTest, IgnoreWriteSyscalls) {
-  SyscallTracker* syscall_tracker = SyscallTracker::GetOrCreate(&context);
-  syscall_tracker->SetArchitecture(kAarch64);
-  EXPECT_CALL(*slice_tracker, Begin(_, _, _, _, _)).Times(0);
-  EXPECT_CALL(*slice_tracker, End(_, _, _, _, _)).Times(0);
-
-  syscall_tracker->Enter(100 /*ts*/, 42 /*utid*/, 64 /*sys_write*/);
-  syscall_tracker->Exit(110 /*ts*/, 42 /*utid*/, 64 /*sys_write*/);
 }
 
 TEST_F(SyscallTrackerTest, Aarch64) {

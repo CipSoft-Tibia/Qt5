@@ -1,12 +1,11 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef EXTENSIONS_BROWSER_REQUIREMENTS_CHECKER_H_
 #define EXTENSIONS_BROWSER_REQUIREMENTS_CHECKER_H_
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "extensions/browser/preload_check.h"
 
@@ -24,12 +23,16 @@ class Extension;
 class RequirementsChecker : public PreloadCheck {
  public:
   explicit RequirementsChecker(scoped_refptr<const Extension> extension);
+
+  RequirementsChecker(const RequirementsChecker&) = delete;
+  RequirementsChecker& operator=(const RequirementsChecker&) = delete;
+
   ~RequirementsChecker() override;
 
   // PreloadCheck:
   void Start(ResultCallback callback) override;
   // Joins multiple errors into a space-separated string.
-  base::string16 GetErrorMessage() const override;
+  std::u16string GetErrorMessage() const override;
 
  private:
   // Callback for the GpuFeatureChecker.
@@ -45,8 +48,6 @@ class RequirementsChecker : public PreloadCheck {
   Errors errors_;
 
   base::WeakPtrFactory<RequirementsChecker> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(RequirementsChecker);
 };
 
 }  // namespace extensions

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,9 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
 #include "third_party/blink/public/common/indexeddb/indexeddb_metadata.h"
 #include "third_party/leveldatabase/env_chromium.h"
 
@@ -37,15 +37,15 @@ IndexedDBPreCloseTaskQueue::IndexedDBPreCloseTaskQueue(
       on_done_(std::move(on_complete)),
       timeout_time_(max_run_time),
       timeout_timer_(std::move(timer)),
-      task_runner_(base::SequencedTaskRunnerHandle::Get()) {}
+      task_runner_(base::SequencedTaskRunner::GetCurrentDefault()) {}
 IndexedDBPreCloseTaskQueue::~IndexedDBPreCloseTaskQueue() = default;
 
-void IndexedDBPreCloseTaskQueue::StopForNewConnection() {
+void IndexedDBPreCloseTaskQueue::Stop(StopReason reason) {
   if (!started_ || done_)
     return;
   DCHECK(!tasks_.empty());
   while (!tasks_.empty()) {
-    tasks_.front()->Stop(StopReason::NEW_CONNECTION);
+    tasks_.front()->Stop(reason);
     tasks_.pop_front();
   }
   OnComplete();

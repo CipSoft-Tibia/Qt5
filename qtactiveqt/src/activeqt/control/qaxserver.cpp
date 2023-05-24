@@ -1,55 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the ActiveQt framework of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "qaxbindable.h"
 #include "qaxfactory.h"
+
+#include <QtAxBase/private/qaxutils_p.h>
 
 #include <qapplication.h>
 #include <qdatetime.h>
@@ -102,9 +57,9 @@ QAxFactory *qAxFactory()
 
         // register all types with metatype system as pointers
         QStringList keys(qax_factory->featureList());
-        for (int i = 0; i < keys.count(); ++i) {
+        for (int i = 0; i < keys.size(); ++i) {
             QByteArray pointerType = keys.at(i).toLatin1() + '*';
-            if (!QMetaType::type(pointerType.constData()))
+            if (QMetaType::fromName(pointerType).id() == QMetaType::UnknownType)
                 qRegisterMetaType<void *>(pointerType);
         }
     }
@@ -305,7 +260,7 @@ static void UpdateRegistryKeys(bool bRegister, const QString keyPath, QScopedPoi
                 QString mime = QLatin1String(mo->classInfo(mo->indexOfClassInfo("MIME")).value());
                 if (!mime.isEmpty()) {
                     QStringList mimeTypes = mime.split(QLatin1Char(';'));
-                    for (int m = 0; m < mimeTypes.count(); ++m) {
+                    for (qsizetype m = 0; m < mimeTypes.size(); ++m) {
                         mime = mimeTypes.at(m);
                         if (mime.isEmpty())
                             continue;
@@ -395,7 +350,7 @@ static void UpdateRegistryKeys(bool bRegister, const QString keyPath, QScopedPoi
             QString mime = QLatin1String(mo->classInfo(mo->indexOfClassInfo("MIME")).value());
             if (!mime.isEmpty()) {
                 QStringList mimeTypes = mime.split(QLatin1Char(';'));
-                for (int m = 0; m < mimeTypes.count(); ++m) {
+                for (qsizetype m = 0; m < mimeTypes.size(); ++m) {
                     mime = mimeTypes.at(m);
                     if (mime.isEmpty())
                         continue;
@@ -437,7 +392,7 @@ HRESULT UpdateRegistry(bool bRegister, bool perUser)
     QString file = QString::fromWCharArray(qAxModuleFilename);
     const QString module = QFileInfo(file).baseName();
 
-    const QString libFile = qAxInit();
+    QString libFile = qAxInit();
     auto libFile_cleanup = qScopeGuard([] { qAxCleanup(); });
 
     TLIBATTR *libAttr = nullptr;
@@ -449,7 +404,7 @@ HRESULT UpdateRegistry(bool bRegister, bool perUser)
 
     if (bRegister) {
         if (!perUser) {
-            HRESULT hr = RegisterTypeLib(qAxTypeLibrary, reinterpret_cast<wchar_t *>(const_cast<ushort *>(libFile.utf16())), nullptr);
+            HRESULT hr = RegisterTypeLib(qAxTypeLibrary, qaxQString2MutableOleChars(libFile), nullptr);
             if (FAILED(hr)) {
                 qWarning("Failing to register %s due to insufficient permission.", qPrintable(module));
                 return hr;
@@ -457,7 +412,7 @@ HRESULT UpdateRegistry(bool bRegister, bool perUser)
         } else {
 #ifndef Q_CC_MINGW
             // MinGW does not have RegisterTypeLibForUser() implemented so we cannot fallback in this case
-            RegisterTypeLibForUser(qAxTypeLibrary, reinterpret_cast<wchar_t *>(const_cast<ushort *>(libFile.utf16())), nullptr);
+            RegisterTypeLibForUser(qAxTypeLibrary, qaxQString2MutableOleChars(libFile), nullptr);
 #endif
         }
     } else {
@@ -483,8 +438,7 @@ HRESULT UpdateRegistry(bool bRegister, bool perUser)
     // we try to create the ActiveX widgets later on...
     bool delete_qApp = false;
     if (!qApp) {
-        static int argc = 0; // static lifetime, since it's passed as reference to QApplication, which has a lifetime exceeding the stack frame
-        (void)new QApplication(argc, nullptr);
+        (void)new QApplication(__argc, __argv);
         delete_qApp = true;
     }
 
@@ -762,7 +716,7 @@ static QByteArray prototype(const QByteArrayList &parameterTypes, const QByteArr
 {
     QByteArray prototype;
 
-    for (int p = 0; p < parameterTypes.count() && *ok; ++p) {
+    for (qsizetype p = 0; p < parameterTypes.size() && *ok; ++p) {
         bool out = false;
         QByteArray type(parameterTypes.at(p));
         const QByteArray &name = parameterNames.at(p);
@@ -793,7 +747,7 @@ static QByteArray prototype(const QByteArrayList &parameterTypes, const QByteArr
         else
             prototype += "p_" + replaceKeyword(name);
 
-        if (p < parameterTypes.count() - 1)
+        if (p < parameterTypes.size() - 1)
             prototype += ", ";
     }
 
@@ -817,7 +771,8 @@ static QByteArray addDefaultArguments(const QByteArray &prototype, int numDefArg
             type += ' ' + ptype.mid(in + 5, ptype.indexOf(' ', in + 5) - in - 5);
         if (type == "struct")
             type += ' ' + ptype.mid(in + 7, ptype.indexOf(' ', in + 7) - in - 7);
-        ptype.replace(in, type.length(), QByteArray("VARIANT /*was: ") + type + "*/");
+        const QByteArray replacement = QByteArray("VARIANT /*was: ") + type + "*/";
+        ptype.replace(in, type.length(), replacement);
         --numDefArgs;
     }
 
@@ -960,9 +915,9 @@ static HRESULT classIDL(QObject *o, const QMetaObject *mo, const QString &classN
         out << "\t\t[id(" << id << ')';
         if (!property.isWritable())
             out << ", readonly";
-        if (isBindable && property.isScriptable(o))
+        if (isBindable && property.isScriptable())
             out << ", bindable";
-        if (!property.isDesignable(o))
+        if (!property.isDesignable())
             out << ", nonbrowsable";
         if (isBindable)
             out << ", requestedit";
@@ -1189,8 +1144,7 @@ extern "C" HRESULT __stdcall DumpIDL(const QString &outfile, const QString &ver)
     // dummy application to create widgets
     bool delete_qApp = false;
     if (!qApp) {
-        static int argc = 0; // static lifetime, since it's passed as reference to QApplication, which has a lifetime exceeding the stack frame
-        (void)new QApplication(argc, nullptr);
+        (void)new QApplication(__argc, __argv);
         delete_qApp = true;
     }
 
@@ -1256,11 +1210,11 @@ extern "C" HRESULT __stdcall DumpIDL(const QString &outfile, const QString &ver)
             QByteArray cleanType = qax_clean_type(className, mo).toLatin1();
             out << "\tcoclass " << cleanType << ';' << Qt::endl;
             subtypes.append(cleanType);
-            if (!QMetaType::type(cleanType))
+            if (QMetaType::fromName(cleanType).id() == QMetaType::UnknownType)
                 qRegisterMetaType<void *>(cleanType);
             cleanType += '*';
             subtypes.append(cleanType);
-            if (!QMetaType::type(cleanType))
+            if (QMetaType::fromName(cleanType).id() == QMetaType::UnknownType)
                 qRegisterMetaType<void *>(cleanType);
         }
     }

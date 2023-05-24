@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mockcompositor.h"
 
@@ -44,7 +19,21 @@
 #include <QtWaylandClient/private/qwaylandintegration_p.h>
 #include <QtGui/private/qguiapplication_p.h>
 
-static const QSize screenSize(1600, 1200);
+using namespace MockCompositor;
+
+constexpr int dataDeviceVersion = 1;
+
+class TestCompositor : public WlShellCompositor {
+public:
+    explicit TestCompositor()
+    {
+        exec([this] {
+            m_config.autoConfigure = true;
+            add<DataDeviceManager>(dataDeviceVersion);
+        });
+    }
+    DataDevice *dataDevice() { return get<DataDeviceManager>()->deviceFor(get<Seat>()); }
+};
 
 class TestWindow : public QWindow
 {
@@ -81,7 +70,7 @@ public:
     void mousePressEvent(QMouseEvent *event) override
     {
         ++mousePressEventCount;
-        mousePressPos = event->pos();
+        mousePressPos = event->position().toPoint();
     }
 
     void mouseReleaseEvent(QMouseEvent *) override
@@ -141,36 +130,14 @@ void TestGlWindow::paintGL()
 }
 #endif // QT_CONFIG(opengl)
 
-class tst_WaylandClient : public QObject
+class tst_WaylandClient : public QObject, private TestCompositor
 {
     Q_OBJECT
-public:
-    tst_WaylandClient(MockCompositor *c)
-        : compositor(c)
-    {
-        QSocketNotifier *notifier = new QSocketNotifier(compositor->waylandFileDescriptor(), QSocketNotifier::Read, this);
-        connect(notifier, SIGNAL(activated(QSocketDescriptor)), this, SLOT(processWaylandEvents()));
-        // connect to the event dispatcher to make sure to flush out the outgoing message queue
-        connect(QCoreApplication::eventDispatcher(), &QAbstractEventDispatcher::awake, this, &tst_WaylandClient::processWaylandEvents);
-        connect(QCoreApplication::eventDispatcher(), &QAbstractEventDispatcher::aboutToBlock, this, &tst_WaylandClient::processWaylandEvents);
-    }
-
-public slots:
-    void processWaylandEvents()
-    {
-        compositor->processWaylandEvents();
-    }
-
-    void cleanup()
-    {
-        // make sure the surfaces from the last test are properly cleaned up
-        // and don't show up as false positives in the next test
-        QTRY_VERIFY(!compositor->surface());
-        QTRY_VERIFY(!compositor->iviSurface());
-        QTRY_VERIFY(!compositor->xdgToplevelV6());
-    }
 
 private slots:
+    void cleanup() {
+        QTRY_VERIFY2(isClean(), qPrintable(dirtyMessage()));
+    }
     void createDestroyWindow();
     void activeWindowFollowsKeyboardFocus();
     void events();
@@ -185,9 +152,6 @@ private slots:
 #endif // QT_CONFIG(opengl)
     void longWindowTitle();
     void longWindowTitleWithUtf16Characters();
-
-private:
-    MockCompositor *compositor = nullptr;
 };
 
 void tst_WaylandClient::createDestroyWindow()
@@ -195,10 +159,10 @@ void tst_WaylandClient::createDestroyWindow()
     TestWindow window;
     window.show();
 
-    QTRY_VERIFY(compositor->surface());
+    QCOMPOSITOR_TRY_VERIFY(surface());
 
     window.destroy();
-    QTRY_VERIFY(!compositor->surface());
+    QCOMPOSITOR_TRY_VERIFY(!surface());
 }
 
 void tst_WaylandClient::activeWindowFollowsKeyboardFocus()
@@ -206,24 +170,27 @@ void tst_WaylandClient::activeWindowFollowsKeyboardFocus()
     TestWindow window;
     window.show();
 
-    QSharedPointer<MockSurface> surface;
-    QTRY_VERIFY(surface = compositor->surface());
-    compositor->sendShellSurfaceConfigure(surface);
+    Surface *s = nullptr;
+    QCOMPOSITOR_TRY_VERIFY(s = surface());
+    exec([&] {
+        sendShellSurfaceConfigure(s);
+    });
 
-    QTRY_VERIFY(window.isExposed());
-
-    if (compositor->xdgToplevelV6())
-        QSKIP("On xdg-shell v6 focus is handled by configure events");
+    QCOMPOSITOR_TRY_VERIFY(window.isExposed());
 
     QCOMPARE(window.focusInEventCount, 0);
-    compositor->setKeyboardFocus(surface);
+    exec([&] {
+        keyboard()->sendEnter(s);
+    });
     QTRY_COMPARE(window.focusInEventCount, 1);
-    QTRY_COMPARE(QGuiApplication::focusWindow(), &window);
+    QCOMPARE(QGuiApplication::focusWindow(), &window);
 
     QCOMPARE(window.focusOutEventCount, 0);
-    compositor->setKeyboardFocus(QSharedPointer<MockSurface>(nullptr));
+    exec([&] {
+        keyboard()->sendLeave(s); // or implement setFocus in Keyboard
+    });
     QTRY_COMPARE(window.focusOutEventCount, 1);
-    QTRY_COMPARE(QGuiApplication::focusWindow(), static_cast<QWindow *>(nullptr));
+    QCOMPARE(QGuiApplication::focusWindow(), static_cast<QWindow *>(nullptr));
 }
 
 void tst_WaylandClient::events()
@@ -231,46 +198,78 @@ void tst_WaylandClient::events()
     TestWindow window;
     window.show();
 
-    QSharedPointer<MockSurface> surface;
-    QTRY_VERIFY(surface = compositor->surface());
-    compositor->sendShellSurfaceConfigure(surface);
+    Surface *s = nullptr;
+    QCOMPOSITOR_TRY_VERIFY(s = surface());
+    exec([&] {
+        sendShellSurfaceConfigure(s);
+    });
 
-    QTRY_VERIFY(window.isExposed());
+    QCOMPOSITOR_TRY_VERIFY(window.isExposed());
 
-    compositor->setKeyboardFocus(surface);
+    QCOMPARE(window.focusInEventCount, 0);
+
+    exec([&] {
+        keyboard()->sendEnter(s);
+    });
     QTRY_COMPARE(window.focusInEventCount, 1);
-    QTRY_COMPARE(QGuiApplication::focusWindow(), &window);
+    QCOMPARE(QGuiApplication::focusWindow(), &window);
 
+    // See also https://wayland.app/protocols/wayland#wl_keyboard:enum:keymap_format
+    // wl_keyboard::keymap_format
+    // keymap_format { no_keymap, xkb_v1 }
+    // Argument Value Description
+    // no_keymap 0 no keymap; client must understand how to interpret the raw keycode
+    // xkb_v1 1 libxkbcommon compatible; to determine the xkb keycode, clients must add 8 to the key event keycode
     uint keyCode = 80; // arbitrarily chosen
     QCOMPARE(window.keyPressEventCount, 0);
-    compositor->sendKeyPress(surface, keyCode);
+    exec([&] {
+        keyboard()->sendKey(client(), keyCode - 8, Keyboard::key_state_pressed); // related with native scan code
+    });
     QTRY_COMPARE(window.keyPressEventCount, 1);
-    QTRY_COMPARE(window.keyCode, keyCode);
+    QCOMPARE(window.keyCode, keyCode);
 
     QCOMPARE(window.keyReleaseEventCount, 0);
-    compositor->sendKeyRelease(surface, keyCode);
+    exec([&] {
+        keyboard()->sendKey(client(), keyCode - 8, Keyboard::key_state_released); // related with native scan code
+    });
     QTRY_COMPARE(window.keyReleaseEventCount, 1);
     QCOMPARE(window.keyCode, keyCode);
 
     const int touchId = 0;
-    compositor->sendTouchDown(surface, window.frameOffset() + QPoint(10, 10), touchId);
+    exec([&] {
+        touch()->sendDown(s, window.frameOffset() + QPoint(10, 10), touchId);
+    });
     // Note: wl_touch.frame should not be the last event in a test until QTBUG-66563 is fixed.
     // See also: QTBUG-66537
-    compositor->sendTouchFrame(surface);
+    exec([&] {
+        touch()->sendFrame(client());
+    });
     QTRY_COMPARE(window.touchEventCount, 1);
 
-    compositor->sendTouchUp(surface, touchId);
-    compositor->sendTouchFrame(surface);
+    exec([&] {
+        touch()->sendUp(client(), touchId);
+        touch()->sendFrame(client());
+    });
     QTRY_COMPARE(window.touchEventCount, 2);
 
     QPoint mousePressPos(16, 16);
     QCOMPARE(window.mousePressEventCount, 0);
-    compositor->sendMousePress(surface, window.frameOffset() + mousePressPos);
+    exec([&] {
+        pointer()->sendEnter(s, window.frameOffset() + mousePressPos);
+        pointer()->sendFrame(client());
+        pointer()->sendMotion(client(), window.frameOffset() + mousePressPos);
+        pointer()->sendFrame(client());
+        pointer()->sendButton(client(), BTN_LEFT, Pointer::button_state_pressed);
+        pointer()->sendFrame(client());
+    });
     QTRY_COMPARE(window.mousePressEventCount, 1);
     QTRY_COMPARE(window.mousePressPos, mousePressPos);
 
     QCOMPARE(window.mouseReleaseEventCount, 0);
-    compositor->sendMouseRelease(surface);
+    exec([&] {
+        pointer()->sendButton(client(), BTN_LEFT, Pointer::button_state_released);
+        pointer()->sendFrame(client());
+    });
     QTRY_COMPARE(window.mouseReleaseEventCount, 1);
 }
 
@@ -279,9 +278,11 @@ void tst_WaylandClient::backingStore()
     TestWindow window;
     window.show();
 
-    QSharedPointer<MockSurface> surface;
-    QTRY_VERIFY(surface = compositor->surface());
-    compositor->sendShellSurfaceConfigure(surface);
+    Surface *s = nullptr;
+    QCOMPOSITOR_TRY_VERIFY(s = surface());
+    exec([&] {
+        sendShellSurfaceConfigure(s);
+    });
 
     QRect rect(QPoint(), window.size());
 
@@ -298,17 +299,17 @@ void tst_WaylandClient::backingStore()
 
     backingStore.endPaint();
 
-    QVERIFY(surface->image.isNull());
+    QVERIFY(s->m_image.isNull());
 
     backingStore.flush(rect);
 
-    QTRY_COMPARE(surface->image.size(), window.frameGeometry().size());
-    QTRY_COMPARE(surface->image.pixel(window.frameMargins().left(), window.frameMargins().top()), color.rgba());
+    QTRY_COMPARE(s->m_image.size(), window.frameGeometry().size());
+    QTRY_COMPARE(s->m_image.pixel(window.frameMargins().left(), window.frameMargins().top()), color.rgba());
 
     window.hide();
 
     // hiding the window should destroy the surface
-    QTRY_VERIFY(!compositor->surface());
+    QCOMPOSITOR_TRY_VERIFY(!surface());
 }
 
 class DndWindow : public QWindow
@@ -347,29 +348,76 @@ private:
     QPixmap m_dragIcon;
 };
 
+class DNDTest : public QObject
+{
+    Q_OBJECT
+
+public:
+    DNDTest(QObject *parent = nullptr)
+        : QObject(parent) {}
+
+    Surface *m_surface = nullptr;
+    TestCompositor *m_compositor = nullptr;
+    QPoint m_frameOffset;
+
+public slots:
+    void finishMouseDrag();
+    void touchDrag();
+};
+
+void DNDTest::finishMouseDrag()
+{
+    m_compositor->exec([&] {
+        m_compositor->dataDevice()->sendDrop(m_surface);
+        m_compositor->dataDevice()->sendLeave(m_surface);
+    });
+}
+
+void DNDTest::touchDrag()
+{
+    m_compositor->exec([&] {
+        m_compositor->dataDevice()->sendDataOffer(m_surface->resource()->client());
+        m_compositor->dataDevice()->sendEnter(m_surface, m_frameOffset + QPoint(20, 20));
+        m_compositor->dataDevice()->sendMotion(m_surface, m_frameOffset + QPoint(21, 21));
+        m_compositor->dataDevice()->sendDrop(m_surface);
+        m_compositor->dataDevice()->sendLeave(m_surface);
+    });
+}
+
 void tst_WaylandClient::touchDrag()
 {
     DndWindow window;
     window.show();
 
-    QSharedPointer<MockSurface> surface;
-    QTRY_VERIFY(surface = compositor->surface());
-    compositor->sendShellSurfaceConfigure(surface);
+    Surface *s = nullptr;
+    QCOMPOSITOR_TRY_VERIFY(s = surface());
+    exec([&] {
+        sendShellSurfaceConfigure(s);
+    });
 
-    compositor->setKeyboardFocus(surface);
+    DNDTest test;
+    test.m_surface = s;
+    test.m_compositor = this;
+    test.m_frameOffset = window.frameOffset();
+
+    exec([&] {
+        QObject::connect(dataDevice(), &DataDevice::dragStarted,
+                         &test, &DNDTest::touchDrag);
+    });
+
+    exec([&] {
+        keyboard()->sendEnter(s);
+    });
     QTRY_COMPARE(QGuiApplication::focusWindow(), &window);
 
-    const int id = 0;
-    compositor->sendTouchDown(surface, window.frameOffset() + QPoint(10, 10), id);
-    compositor->sendTouchFrame(surface);
-    compositor->sendTouchMotion(surface, window.frameOffset() + QPoint(20, 20), id);
-    compositor->sendTouchFrame(surface);
-    compositor->waitForStartDrag();
-    compositor->sendDataDeviceDataOffer(surface);
-    compositor->sendDataDeviceEnter(surface, window.frameOffset() + QPoint(20, 20));
-    compositor->sendDataDeviceMotion(window.frameOffset() + QPoint(21, 21));
-    compositor->sendDataDeviceDrop(surface);
-    compositor->sendDataDeviceLeave(surface);
+    const int touchId = 0;
+    exec([&] {
+        touch()->sendDown(s, window.frameOffset() + QPoint(10, 10), touchId);
+        touch()->sendFrame(client());
+        touch()->sendMotion(client(), window.frameOffset() + QPoint(20, 20), touchId);
+        touch()->sendFrame(client());
+    });
+
     QTRY_VERIFY(window.dragStarted);
 }
 
@@ -378,20 +426,40 @@ void tst_WaylandClient::mouseDrag()
     DndWindow window;
     window.show();
 
-    QSharedPointer<MockSurface> surface;
-    QTRY_VERIFY(surface = compositor->surface());
-    compositor->sendShellSurfaceConfigure(surface);
+    Surface *s = nullptr;
+    QCOMPOSITOR_TRY_VERIFY(s = surface());
+    exec([&] {
+        sendShellSurfaceConfigure(s);
+    });
 
-    compositor->setKeyboardFocus(surface);
+    DNDTest test;
+    test.m_surface = s;
+    test.m_compositor = this;
+
+    exec([&] {
+        QObject::connect(dataDevice(), &DataDevice::dragStarted,
+                         &test, &DNDTest::finishMouseDrag);
+    });
+
+    exec([&] {
+        keyboard()->sendEnter(s);
+    });
     QTRY_COMPARE(QGuiApplication::focusWindow(), &window);
 
-    compositor->sendMousePress(surface, window.frameOffset() + QPoint(10, 10));
-    compositor->sendDataDeviceDataOffer(surface);
-    compositor->sendDataDeviceEnter(surface, window.frameOffset() + QPoint(20, 20));
-    compositor->sendDataDeviceMotion(window.frameOffset() + QPoint(21, 21));
-    compositor->waitForStartDrag();
-    compositor->sendDataDeviceDrop(surface);
-    compositor->sendDataDeviceLeave(surface);
+    QPoint mousePressPos(16, 16);
+    exec([&] {
+        pointer()->sendEnter(s, window.frameOffset() + mousePressPos);
+        pointer()->sendFrame(client());
+        pointer()->sendMotion(client(), window.frameOffset() + mousePressPos);
+        pointer()->sendFrame(client());
+        pointer()->sendButton(client(), BTN_LEFT, Pointer::button_state_pressed);
+        pointer()->sendFrame(client());
+
+        dataDevice()->sendDataOffer(s->resource()->client());
+        dataDevice()->sendEnter(s, window.frameOffset() + QPoint(20, 20));
+        dataDevice()->sendMotion(s, window.frameOffset() + QPoint(21, 21));
+    });
+
     QTRY_VERIFY(window.dragStarted);
 }
 
@@ -416,10 +484,11 @@ void tst_WaylandClient::dontCrashOnMultipleCommits()
         backingStore.flush(rect);
         backingStore.flush(rect);
 
-        compositor->processWaylandEvents();
+        QCOMPOSITOR_TRY_VERIFY(surface());
     }
 
     delete window;
+    QCOMPOSITOR_TRY_VERIFY(!surface());
 }
 
 void tst_WaylandClient::hiddenTransientParent()
@@ -430,15 +499,14 @@ void tst_WaylandClient::hiddenTransientParent()
     transient.setTransientParent(&parent);
 
     parent.show();
-    QTRY_VERIFY(compositor->surface());
+    QCOMPOSITOR_TRY_VERIFY(surface());
 
     parent.hide();
-    QTRY_VERIFY(!compositor->surface());
+    QCOMPOSITOR_TRY_VERIFY(!surface());
 
     transient.show();
-    QTRY_VERIFY(compositor->surface());
+    QCOMPOSITOR_TRY_VERIFY(surface());
 }
-
 void tst_WaylandClient::hiddenPopupParent()
 {
     TestWindow toplevel;
@@ -446,12 +514,23 @@ void tst_WaylandClient::hiddenPopupParent()
 
     // wl_shell relies on a mouse event in order to send a serial and seat
     // with the set_popup request.
-    QSharedPointer<MockSurface> surface;
-    QTRY_VERIFY(surface = compositor->surface());
-    compositor->sendShellSurfaceConfigure(surface);
+    Surface *s = nullptr;
+    QCOMPOSITOR_TRY_VERIFY(s = surface());
+    exec([&] {
+        sendShellSurfaceConfigure(s);
+    });
+    QCOMPOSITOR_TRY_VERIFY(toplevel.isExposed());
+
     QPoint mousePressPos(16, 16);
     QCOMPARE(toplevel.mousePressEventCount, 0);
-    compositor->sendMousePress(surface, toplevel.frameOffset() + mousePressPos);
+    exec([&] {
+        pointer()->sendEnter(s, toplevel.frameOffset() + mousePressPos);
+        pointer()->sendFrame(client());
+        pointer()->sendMotion(client(), toplevel.frameOffset() + mousePressPos);
+        pointer()->sendFrame(client());
+        pointer()->sendButton(client(), BTN_LEFT, Pointer::button_state_pressed);
+        pointer()->sendFrame(client());
+    });
     QTRY_COMPARE(toplevel.mousePressEventCount, 1);
 
     QWindow popup;
@@ -459,10 +538,10 @@ void tst_WaylandClient::hiddenPopupParent()
     popup.setFlag(Qt::Popup, true);
 
     toplevel.hide();
-    QTRY_VERIFY(!compositor->surface());
+    QCOMPOSITOR_TRY_VERIFY(!surface());
 
     popup.show();
-    QTRY_VERIFY(compositor->surface());
+    QCOMPOSITOR_TRY_VERIFY(surface());
 }
 
 #if QT_CONFIG(opengl)
@@ -472,9 +551,11 @@ void tst_WaylandClient::glWindow()
 
     QScopedPointer<TestGlWindow> testWindow(new TestGlWindow);
     testWindow->show();
-    QSharedPointer<MockSurface> surface;
-    QTRY_VERIFY(surface = compositor->surface());
-    compositor->sendShellSurfaceConfigure(surface);
+    Surface *s = nullptr;
+    QCOMPOSITOR_TRY_VERIFY(s = surface());
+    exec([&] {
+        sendShellSurfaceConfigure(s);
+    });
 
     QTRY_COMPARE(testWindow->paintGLCalled, 1);
 
@@ -489,7 +570,7 @@ void tst_WaylandClient::glWindow()
     //confirm we don't crash when we delete an already hidden GL window
     //QTBUG-65553
     testWindow->setVisible(false);
-    QTRY_VERIFY(!compositor->surface());
+    QCOMPOSITOR_TRY_VERIFY(!surface());
 }
 #endif // QT_CONFIG(opengl)
 
@@ -500,17 +581,17 @@ void tst_WaylandClient::longWindowTitle()
     QString absurdlyLongTitle(10000, QLatin1Char('z'));
     window.setTitle(absurdlyLongTitle);
     window.show();
-    QTRY_VERIFY(compositor->surface());
+    QCOMPOSITOR_TRY_VERIFY(surface());
 }
 
 void tst_WaylandClient::longWindowTitleWithUtf16Characters()
 {
     QWindow window;
     QString absurdlyLongTitle = QString("三").repeated(10000);
-    Q_ASSERT(absurdlyLongTitle.length() == 10000); // just making sure the test isn't broken
+    Q_ASSERT(absurdlyLongTitle.size() == 10000); // just making sure the test isn't broken
     window.setTitle(absurdlyLongTitle);
     window.show();
-    QTRY_VERIFY(compositor->surface());
+    QCOMPOSITOR_TRY_VERIFY(surface());
 }
 
 int main(int argc, char **argv)
@@ -518,22 +599,15 @@ int main(int argc, char **argv)
     QTemporaryDir tmpRuntimeDir;
     setenv("XDG_RUNTIME_DIR", tmpRuntimeDir.path().toLocal8Bit(), 1);
     setenv("QT_QPA_PLATFORM", "wayland", 1); // force QGuiApplication to use wayland plugin
+    QString shell = QString::fromLocal8Bit(qgetenv("QT_WAYLAND_SHELL_INTEGRATION"));
+    if (shell.isEmpty())
+        setenv("QT_WAYLAND_SHELL_INTEGRATION", "wl-shell", 1);
 
-    MockCompositor compositor;
-    compositor.setOutputMode(screenSize);
-
+    tst_WaylandClient tc;
     QGuiApplication app(argc, argv);
-
-    // Initializing some client buffer integrations (i.e. eglInitialize) may block while waiting
-    // for a wayland sync. So we call clientBufferIntegration prior to applicationInitialized
-    // (while the compositor processes events without waiting) in order to avoid hanging later.
-    auto *waylandIntegration = static_cast<QtWaylandClient::QWaylandIntegration *>(QGuiApplicationPrivate::platformIntegration());
-    waylandIntegration->clientBufferIntegration();
-
-    compositor.applicationInitialized();
-
-    tst_WaylandClient tc(&compositor);
+    QTEST_SET_MAIN_SOURCE_PATH
     return QTest::qExec(&tc, argc, argv);
 }
 
 #include <tst_client.moc>
+

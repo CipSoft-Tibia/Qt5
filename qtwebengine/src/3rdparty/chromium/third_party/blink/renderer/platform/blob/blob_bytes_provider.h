@@ -1,11 +1,13 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_BLOB_BLOB_BYTES_PROVIDER_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_BLOB_BLOB_BYTES_PROVIDER_H_
 
-#include "base/sequenced_task_runner.h"
+#include "base/gtest_prod_util.h"
+#include "base/sequence_checker.h"
+#include "base/task/sequenced_task_runner.h"
 #include "third_party/blink/public/mojom/blob/blob_registry.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/blob/data_element.mojom-blink.h"
 #include "third_party/blink/renderer/platform/blob/blob_data.h"
@@ -16,8 +18,8 @@ namespace blink {
 // making up a blob to the browser process, at the request of the blob service.
 //
 // Typical usage of this class creates and calls AppendData on one thread, and
-// then transfers ownership of the class to a different thread where it will be
-// bound to a mojo pipe, such that the various Request* methods are called on a
+// then transfers ownership of the class to a different thread using the `Bind`
+// method. This ensures that the various Request* methods are called on a
 // thread that is allowed to do File IO.
 class PLATFORM_EXPORT BlobBytesProvider : public mojom::blink::BytesProvider {
  public:
@@ -47,6 +49,9 @@ class PLATFORM_EXPORT BlobBytesProvider : public mojom::blink::BytesProvider {
 
  private:
   FRIEND_TEST_ALL_PREFIXES(BlobBytesProviderTest, Consolidation);
+
+  static void IncreaseChildProcessRefCount();
+  static void DecreaseChildProcessRefCount();
 
   Vector<scoped_refptr<RawData>> data_ GUARDED_BY_CONTEXT(sequence_checker_);
   // |offsets_| always contains exactly one fewer item than |data_| (except when

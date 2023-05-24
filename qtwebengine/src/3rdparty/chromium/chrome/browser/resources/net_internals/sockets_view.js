@@ -1,6 +1,14 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import {$} from 'chrome://resources/js/util_ts.js';
+
+import {BrowserBridge} from './browser_bridge.js';
+import {DivView} from './view.js';
+
+/** @type {?SocketsView} */
+let instance = null;
 
 /**
  * This view displays information on the state of all socket pools.
@@ -8,20 +16,10 @@
  *   - Has a button to close idle sockets.
  *   - Has a button to flush socket pools.
  */
-const SocketsView = (function() {
-  'use strict';
-
-  // We inherit from DivView.
-  const superClass = DivView;
-
-  /**
-   * @constructor
-   */
-  function SocketsView() {
-    assertFirstConstructorCall(SocketsView);
-
+export class SocketsView extends DivView {
+  constructor() {
     // Call superclass's constructor.
-    superClass.call(this, SocketsView.MAIN_BOX_ID);
+    super(SocketsView.MAIN_BOX_ID);
 
     const closeIdleButton = $(SocketsView.CLOSE_IDLE_SOCKETS_BUTTON_ID);
     closeIdleButton.onclick = this.closeIdleSockets.bind(this);
@@ -30,29 +28,24 @@ const SocketsView = (function() {
     flushSocketsButton.onclick = this.flushSocketPools.bind(this);
   }
 
-  SocketsView.TAB_ID = 'tab-handle-sockets';
-  SocketsView.TAB_NAME = 'Sockets';
-  SocketsView.TAB_HASH = '#sockets';
+  closeIdleSockets() {
+    BrowserBridge.getInstance().sendCloseIdleSockets();
+  }
 
-  // IDs for special HTML elements in sockets_view.html
-  SocketsView.MAIN_BOX_ID = 'sockets-view-tab-content';
-  SocketsView.CLOSE_IDLE_SOCKETS_BUTTON_ID = 'sockets-view-close-idle-button';
-  SocketsView.SOCKET_POOL_FLUSH_BUTTON_ID = 'sockets-view-flush-button';
+  flushSocketPools() {
+    BrowserBridge.getInstance().sendFlushSocketPools();
+  }
 
-  cr.addSingletonGetter(SocketsView);
+  static getInstance() {
+    return instance || (instance = new SocketsView());
+  }
+}
 
-  SocketsView.prototype = {
-    // Inherit the superclass's methods.
-    __proto__: superClass.prototype,
+SocketsView.TAB_ID = 'tab-handle-sockets';
+SocketsView.TAB_NAME = 'Sockets';
+SocketsView.TAB_HASH = '#sockets';
 
-    closeIdleSockets() {
-      g_browser.sendCloseIdleSockets();
-    },
-
-    flushSocketPools() {
-      g_browser.sendFlushSocketPools();
-    }
-  };
-
-  return SocketsView;
-})();
+// IDs for special HTML elements in sockets_view.html
+SocketsView.MAIN_BOX_ID = 'sockets-view-tab-content';
+SocketsView.CLOSE_IDLE_SOCKETS_BUTTON_ID = 'sockets-view-close-idle-button';
+SocketsView.SOCKET_POOL_FLUSH_BUTTON_ID = 'sockets-view-flush-button';

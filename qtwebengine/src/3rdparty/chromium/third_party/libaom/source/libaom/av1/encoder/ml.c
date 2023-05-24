@@ -13,10 +13,11 @@
 #include <math.h>
 
 #include "aom_dsp/aom_dsp_common.h"
+#include "aom_dsp/mathutils.h"
 #include "av1/encoder/ml.h"
 
 void av1_nn_output_prec_reduce(float *const output, int num_output) {
-  const int prec_bits = 11;
+  const int prec_bits = 9;
   const int prec = 1 << prec_bits;
   const float inv_prec = (float)(1.0 / prec);
   for (int i = 0; i < num_output; i++) {
@@ -143,14 +144,28 @@ void av1_nn_softmax(const float *input, float *output, int n) {
   // Softmax function is invariant to adding the same constant
   // to all input values, so we subtract the maximum input to avoid
   // possible overflow.
-  float max_inp = input[0];
-  for (int i = 1; i < n; i++) max_inp = AOMMAX(max_inp, input[i]);
+  float max_input = input[0];
+  for (int i = 1; i < n; i++) max_input = AOMMAX(max_input, input[i]);
   float sum_out = 0.0f;
   for (int i = 0; i < n; i++) {
     // Clamp to range [-10.0, 0.0] to prevent FE_UNDERFLOW errors.
-    const float normalized_input = AOMMAX(input[i] - max_inp, -10.0f);
-    output[i] = (float)exp(normalized_input);
+    const float normalized_input = AOMMAX(input[i] - max_input, -10.0f);
+    output[i] = expf(normalized_input);
     sum_out += output[i];
   }
   for (int i = 0; i < n; i++) output[i] /= sum_out;
+}
+
+void av1_nn_fast_softmax_16_c(const float *input, float *output) {
+  const int kNumClasses = 16;
+  float max_input = input[0];
+  for (int i = 1; i < kNumClasses; i++) max_input = AOMMAX(max_input, input[i]);
+  float sum_out = 0.0f;
+  for (int i = 0; i < kNumClasses; i++) {
+    // Clamp to range [-10.0, 0.0] to prevent FE_UNDERFLOW errors.
+    const float normalized_input = AOMMAX(input[i] - max_input, -10.0f);
+    output[i] = approx_exp(normalized_input);
+    sum_out += output[i];
+  }
+  for (int i = 0; i < kNumClasses; i++) output[i] /= sum_out;
 }

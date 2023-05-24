@@ -1,38 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
-// TODO Remove in Qt6
-#include <QtCore/qcompilerdetection.h>
-QT_WARNING_DISABLE_DEPRECATED
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <QtTest/QSignalSpy>
-#include <Qt3DCore/qpropertyupdatedchange.h>
 #include <Qt3DCore/private/qnode_p.h>
 #include <Qt3DCore/private/qscene_p.h>
 #include <Qt3DRender/QRenderCapture>
@@ -40,7 +10,7 @@ QT_WARNING_DISABLE_DEPRECATED
 
 #include <QPointer>
 
-#include "testpostmanarbiter.h"
+#include "testarbiter.h"
 
 class MyRenderCapture : public Qt3DRender::QRenderCapture
 {
@@ -49,11 +19,6 @@ public:
     MyRenderCapture(Qt3DCore::QNode *parent = nullptr)
         : Qt3DRender::QRenderCapture(parent)
     {}
-
-    void sceneChangeEvent(const Qt3DCore::QSceneChangePtr &change) final
-    {
-        Qt3DRender::QRenderCapture::sceneChangeEvent(change);
-    }
 
 private:
     friend class tst_QRenderCapture;
@@ -76,58 +41,10 @@ private Q_SLOTS:
         QScopedPointer<Qt3DRender::QRenderCaptureReply> reply(renderCapture->requestCapture(QRect(10, 15, 20, 50)));
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), renderCapture.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), renderCapture.data());
 
-        arbiter.dirtyNodes.clear();
-    }
-
-    void checkRenderCaptureReply()
-    {
-        // GIVEN
-        QScopedPointer<MyRenderCapture> renderCapture(new MyRenderCapture());
-        QScopedPointer<Qt3DRender::QRenderCaptureReply> reply(renderCapture->requestCapture());
-        QImage img = QImage(20, 20, QImage::Format_ARGB32);
-
-        // WHEN
-        Qt3DRender::RenderCaptureDataPtr data = Qt3DRender::RenderCaptureDataPtr::create();
-        data.data()->captureId = 2;
-        data.data()->image = img;
-
-        auto e = Qt3DCore::QPropertyUpdatedChangePtr::create(renderCapture->id());
-        e->setDeliveryFlags(Qt3DCore::QSceneChange::DeliverToAll);
-        e->setPropertyName("renderCaptureData");
-        e->setValue(QVariant::fromValue(data));
-
-        renderCapture->sceneChangeEvent(e);
-
-        // THEN
-        QCOMPARE(reply->isComplete(), true);
-        QCOMPARE(reply->image().width(), 20);
-        QCOMPARE(reply->image().height(), 20);
-        QCOMPARE(reply->image().format(), QImage::Format_ARGB32);
-    }
-
-    void checkRenderCaptureDestroy()
-    {
-        // GIVEN
-        QScopedPointer<MyRenderCapture> renderCapture(new MyRenderCapture());
-        QScopedPointer<Qt3DRender::QRenderCaptureReply> reply(renderCapture->requestCapture());
-        QImage img = QImage(20, 20, QImage::Format_ARGB32);
-        Qt3DRender::RenderCaptureDataPtr data = Qt3DRender::RenderCaptureDataPtr::create();
-        data.data()->captureId = 2;
-        data.data()->image = img;
-        auto e = Qt3DCore::QPropertyUpdatedChangePtr::create(renderCapture->id());
-        e->setDeliveryFlags(Qt3DCore::QSceneChange::DeliverToAll);
-        e->setPropertyName("renderCaptureData");
-        e->setValue(QVariant::fromValue(data));
-
-        // WHEN
-        reply.reset();
-
-        // THEN
-        renderCapture->sceneChangeEvent(e); // Should not reset
+        arbiter.clear();
     }
 
     void crashOnRenderCaptureDeletion()

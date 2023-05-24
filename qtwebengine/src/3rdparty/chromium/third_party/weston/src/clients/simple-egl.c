@@ -243,7 +243,7 @@ create_shader(struct window *window, const char *source, GLenum shader_type)
 		char log[1000];
 		GLsizei len;
 		glGetShaderInfoLog(shader, 1000, &len, log);
-		fprintf(stderr, "Error: compiling %s: %*s\n",
+		fprintf(stderr, "Error: compiling %s: %.*s\n",
 			shader_type == GL_VERTEX_SHADER ? "vertex" : "fragment",
 			len, log);
 		exit(1);
@@ -272,7 +272,7 @@ init_gl(struct window *window)
 		char log[1000];
 		GLsizei len;
 		glGetProgramInfoLog(program, 1000, &len, log);
-		fprintf(stderr, "Error: linking:\n%*s\n", len, log);
+		fprintf(stderr, "Error: linking:\n%.*s\n", len, log);
 		exit(1);
 	}
 
@@ -866,9 +866,9 @@ main(int argc, char **argv)
 	 * queued up as a side effect. */
 	while (running && ret != -1) {
 		if (window.wait_for_configure) {
-			wl_display_dispatch(display.display);
+			ret = wl_display_dispatch(display.display);
 		} else {
-			wl_display_dispatch_pending(display.display);
+			ret = wl_display_dispatch_pending(display.display);
 			redraw(&window, NULL, 0);
 		}
 	}

@@ -124,7 +124,14 @@ endconst
 .endif
 .endm
 
-.macro load_add_store load, shift, addsrc, adddst, max, min, store, dst, src, shiftbits=4
+.macro smin_4s r0, r1, r2
+        smin            \r0\().4s, \r1\().4s, \r2\().4s
+.endm
+.macro smax_4s r0, r1, r2
+        smax            \r0\().4s, \r1\().4s, \r2\().4s
+.endm
+
+.macro load_add_store load, shift, addsrc, adddst, min, store, dst, src, shiftbits=4
 .ifnb \load
         ld1             {\load},  [\src], x1
 .endif
@@ -132,10 +139,7 @@ endconst
         srshr           \shift,  \shift,  #\shiftbits
 .endif
 .ifnb \addsrc
-        sqadd           \adddst, \adddst, \addsrc
-.endif
-.ifnb \max
-        smax            \max,  \max,  v6.8h
+        usqadd          \adddst, \addsrc
 .endif
 .ifnb \min
         smin            \min,  \min,  v7.8h
@@ -146,63 +150,57 @@ endconst
 .endm
 .macro load_add_store_8x16 dst, src
         mov             \src, \dst
-        movi            v6.8h,   #0
         mvni            v7.8h,   #0xfc, lsl #8 // 0x3ff
-        load_add_store  v2.8h, v16.8h,      ,       ,       ,       ,       , \dst, \src
-        load_add_store  v3.8h, v17.8h,      ,       ,       ,       ,       , \dst, \src
-        load_add_store  v4.8h, v18.8h, v2.8h, v16.8h,       ,       ,       , \dst, \src
-        load_add_store  v5.8h, v19.8h, v3.8h, v17.8h, v16.8h,       ,       , \dst, \src
-        load_add_store  v2.8h, v20.8h, v4.8h, v18.8h, v17.8h, v16.8h,       , \dst, \src
-        load_add_store  v3.8h, v21.8h, v5.8h, v19.8h, v18.8h, v17.8h, v16.8h, \dst, \src
-        load_add_store  v4.8h, v22.8h, v2.8h, v20.8h, v19.8h, v18.8h, v17.8h, \dst, \src
-        load_add_store  v5.8h, v23.8h, v3.8h, v21.8h, v20.8h, v19.8h, v18.8h, \dst, \src
-        load_add_store  v2.8h, v24.8h, v4.8h, v22.8h, v21.8h, v20.8h, v19.8h, \dst, \src
-        load_add_store  v3.8h, v25.8h, v5.8h, v23.8h, v22.8h, v21.8h, v20.8h, \dst, \src
-        load_add_store  v4.8h, v26.8h, v2.8h, v24.8h, v23.8h, v22.8h, v21.8h, \dst, \src
-        load_add_store  v5.8h, v27.8h, v3.8h, v25.8h, v24.8h, v23.8h, v22.8h, \dst, \src
-        load_add_store  v2.8h, v28.8h, v4.8h, v26.8h, v25.8h, v24.8h, v23.8h, \dst, \src
-        load_add_store  v3.8h, v29.8h, v5.8h, v27.8h, v26.8h, v25.8h, v24.8h, \dst, \src
-        load_add_store  v4.8h, v30.8h, v2.8h, v28.8h, v27.8h, v26.8h, v25.8h, \dst, \src
-        load_add_store  v5.8h, v31.8h, v3.8h, v29.8h, v28.8h, v27.8h, v26.8h, \dst, \src
-        load_add_store       ,       , v4.8h, v30.8h, v29.8h, v28.8h, v27.8h, \dst, \src
-        load_add_store       ,       , v5.8h, v31.8h, v30.8h, v29.8h, v28.8h, \dst, \src
-        load_add_store       ,       ,      ,       , v31.8h, v30.8h, v29.8h, \dst, \src
-        load_add_store       ,       ,      ,       ,       , v31.8h, v30.8h, \dst, \src
-        load_add_store       ,       ,      ,       ,       ,       , v31.8h, \dst, \src
+        load_add_store  v2.8h,  v16.8h,       ,      ,       ,       ,  \dst, \src
+        load_add_store  v3.8h,  v17.8h,       ,      ,       ,       ,  \dst, \src
+        load_add_store  v4.8h,  v18.8h, v16.8h, v2.8h,       ,       ,  \dst, \src
+        load_add_store  v5.8h,  v19.8h, v17.8h, v3.8h,  v2.8h,       ,  \dst, \src
+        load_add_store  v16.8h, v20.8h, v18.8h, v4.8h,  v3.8h,  v2.8h,  \dst, \src
+        load_add_store  v17.8h, v21.8h, v19.8h, v5.8h,  v4.8h,  v3.8h,  \dst, \src
+        load_add_store  v18.8h, v22.8h, v20.8h, v16.8h, v5.8h,  v4.8h,  \dst, \src
+        load_add_store  v19.8h, v23.8h, v21.8h, v17.8h, v16.8h, v5.8h,  \dst, \src
+        load_add_store  v20.8h, v24.8h, v22.8h, v18.8h, v17.8h, v16.8h, \dst, \src
+        load_add_store  v21.8h, v25.8h, v23.8h, v19.8h, v18.8h, v17.8h, \dst, \src
+        load_add_store  v22.8h, v26.8h, v24.8h, v20.8h, v19.8h, v18.8h, \dst, \src
+        load_add_store  v23.8h, v27.8h, v25.8h, v21.8h, v20.8h, v19.8h, \dst, \src
+        load_add_store  v24.8h, v28.8h, v26.8h, v22.8h, v21.8h, v20.8h, \dst, \src
+        load_add_store  v25.8h, v29.8h, v27.8h, v23.8h, v22.8h, v21.8h, \dst, \src
+        load_add_store  v26.8h, v30.8h, v28.8h, v24.8h, v23.8h, v22.8h, \dst, \src
+        load_add_store  v27.8h, v31.8h, v29.8h, v25.8h, v24.8h, v23.8h, \dst, \src
+        load_add_store        ,       , v30.8h, v26.8h, v25.8h, v24.8h, \dst, \src
+        load_add_store        ,       , v31.8h, v27.8h, v26.8h, v25.8h, \dst, \src
+        load_add_store        ,       ,       ,       , v27.8h, v26.8h, \dst, \src
+        load_add_store        ,       ,       ,       ,       , v27.8h, \dst, \src
 .endm
 .macro load_add_store_8x8 dst, src, shiftbits=4
         mov             \src, \dst
-        movi            v6.8h,   #0
         mvni            v7.8h,   #0xfc, lsl #8 // 0x3ff
-        load_add_store  v2.8h, v16.8h,      ,       ,       ,       ,       , \dst, \src, \shiftbits
-        load_add_store  v3.8h, v17.8h,      ,       ,       ,       ,       , \dst, \src, \shiftbits
-        load_add_store  v4.8h, v18.8h, v2.8h, v16.8h,       ,       ,       , \dst, \src, \shiftbits
-        load_add_store  v5.8h, v19.8h, v3.8h, v17.8h, v16.8h,       ,       , \dst, \src, \shiftbits
-        load_add_store  v2.8h, v20.8h, v4.8h, v18.8h, v17.8h, v16.8h,       , \dst, \src, \shiftbits
-        load_add_store  v3.8h, v21.8h, v5.8h, v19.8h, v18.8h, v17.8h, v16.8h, \dst, \src, \shiftbits
-        load_add_store  v4.8h, v22.8h, v2.8h, v20.8h, v19.8h, v18.8h, v17.8h, \dst, \src, \shiftbits
-        load_add_store  v5.8h, v23.8h, v3.8h, v21.8h, v20.8h, v19.8h, v18.8h, \dst, \src, \shiftbits
-        load_add_store       ,       , v4.8h, v22.8h, v21.8h, v20.8h, v19.8h, \dst, \src, \shiftbits
-        load_add_store       ,       , v5.8h, v23.8h, v22.8h, v21.8h, v20.8h, \dst, \src, \shiftbits
-        load_add_store       ,       ,      ,       , v23.8h, v22.8h, v21.8h, \dst, \src, \shiftbits
-        load_add_store       ,       ,      ,       ,       , v23.8h, v22.8h, \dst, \src, \shiftbits
-        load_add_store       ,       ,      ,       ,       ,       , v23.8h, \dst, \src, \shiftbits
+        load_add_store  v2.8h,  v16.8h,       ,      ,       ,       ,  \dst, \src, \shiftbits
+        load_add_store  v3.8h,  v17.8h,       ,      ,       ,       ,  \dst, \src, \shiftbits
+        load_add_store  v4.8h,  v18.8h, v16.8h, v2.8h,       ,       ,  \dst, \src, \shiftbits
+        load_add_store  v5.8h,  v19.8h, v17.8h, v3.8h,  v2.8h,       ,  \dst, \src, \shiftbits
+        load_add_store  v16.8h, v20.8h, v18.8h, v4.8h,  v3.8h,  v2.8h,  \dst, \src, \shiftbits
+        load_add_store  v17.8h, v21.8h, v19.8h, v5.8h,  v4.8h,  v3.8h,  \dst, \src, \shiftbits
+        load_add_store  v18.8h, v22.8h, v20.8h, v16.8h, v5.8h,  v4.8h,  \dst, \src, \shiftbits
+        load_add_store  v19.8h, v23.8h, v21.8h, v17.8h, v16.8h, v5.8h,  \dst, \src, \shiftbits
+        load_add_store        ,       , v22.8h, v18.8h, v17.8h, v16.8h, \dst, \src, \shiftbits
+        load_add_store        ,       , v23.8h, v19.8h, v18.8h, v17.8h, \dst, \src, \shiftbits
+        load_add_store        ,       ,       ,       , v19.8h, v18.8h, \dst, \src, \shiftbits
+        load_add_store        ,       ,       ,       ,       , v19.8h, \dst, \src, \shiftbits
 .endm
 .macro load_add_store_8x4 dst, src, shiftbits=4
         mov             \src, \dst
-        movi            v6.8h,   #0
         mvni            v7.8h,   #0xfc, lsl #8 // 0x3ff
-        load_add_store  v2.8h, v16.8h,      ,       ,       ,       ,       , \dst, \src, \shiftbits
-        load_add_store  v3.8h, v17.8h,      ,       ,       ,       ,       , \dst, \src, \shiftbits
-        load_add_store  v4.8h, v18.8h, v2.8h, v16.8h,       ,       ,       , \dst, \src, \shiftbits
-        load_add_store  v5.8h, v19.8h, v3.8h, v17.8h, v16.8h,       ,       , \dst, \src, \shiftbits
-        load_add_store       ,       , v4.8h, v18.8h, v17.8h, v16.8h,       , \dst, \src, \shiftbits
-        load_add_store       ,       , v5.8h, v19.8h, v18.8h, v17.8h, v16.8h, \dst, \src, \shiftbits
-        load_add_store       ,       ,      ,       , v19.8h, v18.8h, v17.8h, \dst, \src, \shiftbits
-        load_add_store       ,       ,      ,       ,       , v19.8h, v18.8h, \dst, \src, \shiftbits
-        load_add_store       ,       ,      ,       ,       ,       , v19.8h, \dst, \src, \shiftbits
+        load_add_store  v2.8h, v16.8h,       ,      ,      ,      , \dst, \src, \shiftbits
+        load_add_store  v3.8h, v17.8h,       ,      ,      ,      , \dst, \src, \shiftbits
+        load_add_store  v4.8h, v18.8h, v16.8h, v2.8h,      ,      , \dst, \src, \shiftbits
+        load_add_store  v5.8h, v19.8h, v17.8h, v3.8h, v2.8h,      , \dst, \src, \shiftbits
+        load_add_store       ,       , v18.8h, v4.8h, v3.8h, v2.8h, \dst, \src, \shiftbits
+        load_add_store       ,       , v19.8h, v5.8h, v4.8h, v3.8h, \dst, \src, \shiftbits
+        load_add_store       ,       ,       ,      , v5.8h, v4.8h, \dst, \src, \shiftbits
+        load_add_store       ,       ,       ,      ,      , v5.8h, \dst, \src, \shiftbits
 .endm
-.macro load_add_store4 load, inssrc, insdst, shift, addsrc, adddst, max, min, store, dst, src
+.macro load_add_store4 load, inssrc, insdst, shift, addsrc, adddst, min, store, dst, src
 .ifnb \load
         ld1             {\load}[0],  [\src], x1
 .endif
@@ -216,13 +214,10 @@ endconst
         ld1             {\load}[1],  [\src], x1
 .endif
 .ifnb \addsrc
-        sqadd           \adddst, \adddst, \addsrc
+        usqadd          \adddst, \addsrc
 .endif
 .ifnb \store
         st1             {\store}[0],  [\dst], x1
-.endif
-.ifnb \max
-        smax            \max,  \max,  v6.8h
 .endif
 .ifnb \min
         smin            \min,  \min,  v7.8h
@@ -233,37 +228,33 @@ endconst
 .endm
 .macro load_add_store_4x16 dst, src
         mov             \src, \dst
-        movi            v6.8h,   #0
         mvni            v7.8h,   #0xfc, lsl #8 // 0x3ff
-        load_add_store4 v0.d, v17, v16,       ,      ,       ,       ,       ,      , \dst, \src
-        load_add_store4 v1.d, v19, v18,       ,      ,       ,       ,       ,      , \dst, \src
-        load_add_store4 v2.d, v21, v20, v16.8h,      ,       ,       ,       ,      , \dst, \src
-        load_add_store4 v3.d, v23, v22, v18.8h, v0.8h, v16.8h,       ,       ,      , \dst, \src
-        load_add_store4 v0.d, v25, v24, v20.8h, v1.8h, v18.8h, v16.8h,       ,      , \dst, \src
-        load_add_store4 v1.d, v27, v26, v22.8h, v2.8h, v20.8h, v18.8h, v16.8h,      , \dst, \src
-        load_add_store4 v2.d, v29, v28, v24.8h, v3.8h, v22.8h, v20.8h, v18.8h, v16.d, \dst, \src
-        load_add_store4 v3.d, v31, v30, v26.8h, v0.8h, v24.8h, v22.8h, v20.8h, v18.d, \dst, \src
-        load_add_store4     ,    ,    , v28.8h, v1.8h, v26.8h, v24.8h, v22.8h, v20.d, \dst, \src
-        load_add_store4     ,    ,    , v30.8h, v2.8h, v28.8h, v26.8h, v24.8h, v22.d, \dst, \src
-        load_add_store4     ,    ,    ,       , v3.8h, v30.8h, v28.8h, v26.8h, v24.d, \dst, \src
-        load_add_store4     ,    ,    ,       ,      ,       , v30.8h, v28.8h, v26.d, \dst, \src
-        load_add_store4     ,    ,    ,       ,      ,       ,       , v30.8h, v28.d, \dst, \src
-        load_add_store4     ,    ,    ,       ,      ,       ,       ,       , v30.d, \dst, \src
+        load_add_store4 v0.d,  v17, v16,       ,       ,      ,       ,      ,  \dst, \src
+        load_add_store4 v1.d,  v19, v18,       ,       ,      ,       ,      ,  \dst, \src
+        load_add_store4 v2.d,  v21, v20, v16.8h,       ,      ,       ,      ,  \dst, \src
+        load_add_store4 v3.d,  v23, v22, v18.8h, v16.8h, v0.8h,       ,      ,  \dst, \src
+        load_add_store4 v17.d, v25, v24, v20.8h, v18.8h, v1.8h,  v0.8h,      ,  \dst, \src
+        load_add_store4 v19.d, v27, v26, v22.8h, v20.8h, v2.8h,  v1.8h,  v0.d,  \dst, \src
+        load_add_store4 v21.d, v29, v28, v24.8h, v22.8h, v3.8h,  v2.8h,  v1.d,  \dst, \src
+        load_add_store4 v23.d, v31, v30, v26.8h, v24.8h, v17.8h, v3.8h,  v2.d,  \dst, \src
+        load_add_store4      ,    ,    , v28.8h, v26.8h, v19.8h, v17.8h, v3.d,  \dst, \src
+        load_add_store4      ,    ,    , v30.8h, v28.8h, v21.8h, v19.8h, v17.d, \dst, \src
+        load_add_store4      ,    ,    ,       , v30.8h, v23.8h, v21.8h, v19.d, \dst, \src
+        load_add_store4      ,    ,    ,       ,      ,        , v23.8h, v21.d, \dst, \src
+        load_add_store4      ,    ,    ,       ,      ,        ,       , v23.d, \dst, \src
 .endm
 .macro load_add_store_4x8 dst, src
         mov             \src, \dst
-        movi            v6.8h,   #0
         mvni            v7.8h,   #0xfc, lsl #8 // 0x3ff
-        load_add_store4 v0.d, v17, v16,       ,      ,       ,       ,       ,      , \dst, \src
-        load_add_store4 v1.d, v19, v18,       ,      ,       ,       ,       ,      , \dst, \src
-        load_add_store4 v2.d, v21, v20, v16.8h,      ,       ,       ,       ,      , \dst, \src
-        load_add_store4 v3.d, v23, v22, v18.8h, v0.8h, v16.8h,       ,       ,      , \dst, \src
-        load_add_store4     ,    ,    , v20.8h, v1.8h, v18.8h, v16.8h,       ,      , \dst, \src
-        load_add_store4     ,    ,    , v22.8h, v2.8h, v20.8h, v18.8h, v16.8h,      , \dst, \src
-        load_add_store4     ,    ,    ,       , v3.8h, v22.8h, v20.8h, v18.8h, v16.d, \dst, \src
-        load_add_store4     ,    ,    ,       ,      ,       , v22.8h, v20.8h, v18.d, \dst, \src
-        load_add_store4     ,    ,    ,       ,      ,       ,       , v22.8h, v20.d, \dst, \src
-        load_add_store4     ,    ,    ,       ,      ,       ,       ,       , v22.d, \dst, \src
+        load_add_store4 v0.d, v17, v16,       ,       ,      ,      ,     , \dst, \src
+        load_add_store4 v1.d, v19, v18,       ,       ,      ,      ,     , \dst, \src
+        load_add_store4 v2.d, v21, v20, v16.8h,       ,      ,      ,     , \dst, \src
+        load_add_store4 v3.d, v23, v22, v18.8h, v16.8h, v0.8h,      ,     , \dst, \src
+        load_add_store4     ,    ,    , v20.8h, v18.8h, v1.8h, v0.8h,     , \dst, \src
+        load_add_store4     ,    ,    , v22.8h, v20.8h, v2.8h, v1.8h, v0.d, \dst, \src
+        load_add_store4     ,    ,    ,       , v22.8h, v3.8h, v2.8h, v1.d, \dst, \src
+        load_add_store4     ,    ,    ,       ,       ,      , v3.8h, v2.d, \dst, \src
+        load_add_store4     ,    ,    ,       ,       ,      ,      , v3.d, \dst, \src
 .endm
 
 .macro idct_dc w, h, shift
@@ -291,7 +282,6 @@ endconst
 .endm
 
 function idct_dc_w4_neon
-        movi            v30.8h,  #0
         mvni            v31.8h,  #0xfc, lsl #8 // 0x3ff
 1:
         ld1             {v0.d}[0], [x0], x1
@@ -299,11 +289,9 @@ function idct_dc_w4_neon
         ld1             {v1.d}[0], [x0], x1
         subs            w4,  w4,  #4
         ld1             {v1.d}[1], [x0], x1
-        sqadd           v0.8h,   v0.8h,   v16.8h
+        usqadd          v0.8h,   v16.8h
         sub             x0,  x0,  x1, lsl #2
-        sqadd           v1.8h,   v1.8h,   v16.8h
-        smax            v0.8h,   v0.8h,   v30.8h
-        smax            v1.8h,   v1.8h,   v30.8h
+        usqadd          v1.8h,   v16.8h
         smin            v0.8h,   v0.8h,   v31.8h
         st1             {v0.d}[0], [x0], x1
         smin            v1.8h,   v1.8h,   v31.8h
@@ -315,23 +303,18 @@ function idct_dc_w4_neon
 endfunc
 
 function idct_dc_w8_neon
-        movi            v30.8h,  #0
         mvni            v31.8h,  #0xfc, lsl #8 // 0x3ff
 1:
         ld1             {v0.8h}, [x0], x1
         subs            w4,  w4,  #4
         ld1             {v1.8h}, [x0], x1
-        sqadd           v0.8h,   v0.8h,   v16.8h
+        usqadd          v0.8h,   v16.8h
         ld1             {v2.8h}, [x0], x1
-        sqadd           v1.8h,   v1.8h,   v16.8h
+        usqadd          v1.8h,   v16.8h
         ld1             {v3.8h}, [x0], x1
-        sqadd           v2.8h,   v2.8h,   v16.8h
-        sqadd           v3.8h,   v3.8h,   v16.8h
+        usqadd          v2.8h,   v16.8h
+        usqadd          v3.8h,   v16.8h
         sub             x0,  x0,  x1, lsl #2
-        smax            v0.8h,   v0.8h,   v30.8h
-        smax            v1.8h,   v1.8h,   v30.8h
-        smax            v2.8h,   v2.8h,   v30.8h
-        smax            v3.8h,   v3.8h,   v30.8h
         smin            v0.8h,   v0.8h,   v31.8h
         smin            v1.8h,   v1.8h,   v31.8h
         st1             {v0.8h}, [x0], x1
@@ -345,21 +328,16 @@ function idct_dc_w8_neon
 endfunc
 
 function idct_dc_w16_neon
-        movi            v30.8h,  #0
         mvni            v31.8h,  #0xfc, lsl #8 // 0x3ff
 1:
         ld1             {v0.8h, v1.8h}, [x0], x1
         subs            w4,  w4,  #2
         ld1             {v2.8h, v3.8h}, [x0], x1
-        sqadd           v0.8h,   v0.8h,   v16.8h
-        sqadd           v1.8h,   v1.8h,   v16.8h
+        usqadd          v0.8h,   v16.8h
+        usqadd          v1.8h,   v16.8h
         sub             x0,  x0,  x1, lsl #1
-        sqadd           v2.8h,   v2.8h,   v16.8h
-        sqadd           v3.8h,   v3.8h,   v16.8h
-        smax            v0.8h,   v0.8h,   v30.8h
-        smax            v1.8h,   v1.8h,   v30.8h
-        smax            v2.8h,   v2.8h,   v30.8h
-        smax            v3.8h,   v3.8h,   v30.8h
+        usqadd          v2.8h,   v16.8h
+        usqadd          v3.8h,   v16.8h
         smin            v0.8h,   v0.8h,   v31.8h
         smin            v1.8h,   v1.8h,   v31.8h
         smin            v2.8h,   v2.8h,   v31.8h
@@ -371,19 +349,14 @@ function idct_dc_w16_neon
 endfunc
 
 function idct_dc_w32_neon
-        movi            v30.8h,  #0
         mvni            v31.8h,  #0xfc, lsl #8 // 0x3ff
 1:
         ld1             {v0.8h, v1.8h, v2.8h, v3.8h}, [x0]
         subs            w4,  w4,  #1
-        sqadd           v0.8h,   v0.8h,   v16.8h
-        sqadd           v1.8h,   v1.8h,   v16.8h
-        sqadd           v2.8h,   v2.8h,   v16.8h
-        sqadd           v3.8h,   v3.8h,   v16.8h
-        smax            v0.8h,   v0.8h,   v30.8h
-        smax            v1.8h,   v1.8h,   v30.8h
-        smax            v2.8h,   v2.8h,   v30.8h
-        smax            v3.8h,   v3.8h,   v30.8h
+        usqadd          v0.8h,   v16.8h
+        usqadd          v1.8h,   v16.8h
+        usqadd          v2.8h,   v16.8h
+        usqadd          v3.8h,   v16.8h
         smin            v0.8h,   v0.8h,   v31.8h
         smin            v1.8h,   v1.8h,   v31.8h
         smin            v2.8h,   v2.8h,   v31.8h
@@ -394,30 +367,21 @@ function idct_dc_w32_neon
 endfunc
 
 function idct_dc_w64_neon
-        movi            v30.8h,  #0
         mvni            v31.8h,  #0xfc, lsl #8 // 0x3ff
         sub             x1,  x1,  #64
 1:
         ld1             {v0.8h, v1.8h, v2.8h, v3.8h}, [x0], #64
         subs            w4,  w4,  #1
-        sqadd           v0.8h,   v0.8h,   v16.8h
+        usqadd          v0.8h,   v16.8h
         ld1             {v4.8h, v5.8h, v6.8h, v7.8h}, [x0]
-        sqadd           v1.8h,   v1.8h,   v16.8h
+        usqadd          v1.8h,   v16.8h
         sub             x0,  x0,  #64
-        sqadd           v2.8h,   v2.8h,   v16.8h
-        sqadd           v3.8h,   v3.8h,   v16.8h
-        sqadd           v4.8h,   v4.8h,   v16.8h
-        sqadd           v5.8h,   v5.8h,   v16.8h
-        sqadd           v6.8h,   v6.8h,   v16.8h
-        sqadd           v7.8h,   v7.8h,   v16.8h
-        smax            v0.8h,   v0.8h,   v30.8h
-        smax            v1.8h,   v1.8h,   v30.8h
-        smax            v2.8h,   v2.8h,   v30.8h
-        smax            v3.8h,   v3.8h,   v30.8h
-        smax            v4.8h,   v4.8h,   v30.8h
-        smax            v5.8h,   v5.8h,   v30.8h
-        smax            v6.8h,   v6.8h,   v30.8h
-        smax            v7.8h,   v7.8h,   v30.8h
+        usqadd          v2.8h,   v16.8h
+        usqadd          v3.8h,   v16.8h
+        usqadd          v4.8h,   v16.8h
+        usqadd          v5.8h,   v16.8h
+        usqadd          v6.8h,   v16.8h
+        usqadd          v7.8h,   v16.8h
         smin            v0.8h,   v0.8h,   v31.8h
         smin            v1.8h,   v1.8h,   v31.8h
         smin            v2.8h,   v2.8h,   v31.8h
@@ -445,12 +409,12 @@ endfunc
 
 .macro idct_4 r0, r1, r2, r3
         mul_mla         v6,  \r1, \r3, v0.s[3], v0.s[2]
-        mul_mls         v4,  \r1, \r3, v0.s[2], v0.s[3]
         mul_mla         v2,  \r0, \r2, v0.s[0], v0.s[0]
+        mul_mls         v4,  \r1, \r3, v0.s[2], v0.s[3]
         mul_mls         v3,  \r0, \r2, v0.s[0], v0.s[0]
         srshr           v6.4s,  v6.4s,  #12
-        srshr           v7.4s,  v4.4s,  #12
         srshr           v2.4s,  v2.4s,  #12
+        srshr           v7.4s,  v4.4s,  #12
         srshr           v3.4s,  v3.4s,  #12
         sqadd           \r0\().4s,  v2.4s,   v6.4s
         sqsub           \r3\().4s,  v2.4s,   v6.4s
@@ -459,6 +423,7 @@ endfunc
 .endm
 
 function inv_dct_4s_x4_neon
+        AARCH64_VALID_CALL_TARGET
         movrel          x16, idct_coeffs
         ld1             {v0.4s}, [x16]
         idct_4          v16, v17, v18, v19
@@ -492,16 +457,19 @@ endfunc
 .endm
 
 function inv_adst_4s_x4_neon
+        AARCH64_VALID_CALL_TARGET
         iadst_4x4       v16, v17, v18, v19
         ret
 endfunc
 
 function inv_flipadst_4s_x4_neon
+        AARCH64_VALID_CALL_TARGET
         iadst_4x4       v19, v18, v17, v16
         ret
 endfunc
 
 function inv_identity_4s_x4_neon
+        AARCH64_VALID_CALL_TARGET
         movz            w16, #(5793-4096)*8, lsl #16
         dup             v0.2s,   w16
         sqrdmulh        v4.4s,   v16.4s,  v0.s[0]
@@ -575,18 +543,16 @@ function inv_txfm_add_4x4_neon
 L(itx_4x4_end):
         mvni            v31.8h,  #0xfc, lsl #8 // 0x3ff
         sub             x0,  x0,  x1, lsl #2
-        sqadd           v16.8h,  v16.8h,  v0.8h
-        sqadd           v18.8h,  v18.8h,  v1.8h
-        smax            v16.8h,  v16.8h,  v30.8h
-        smax            v18.8h,  v18.8h,  v30.8h
-        smin            v16.8h,  v16.8h,  v31.8h
-        st1             {v16.d}[0], [x0], x1
-        smin            v18.8h,  v18.8h,  v31.8h
-        st1             {v16.d}[1], [x0], x1
-        st1             {v18.d}[0], [x0], x1
-        st1             {v18.d}[1], [x0], x1
+        usqadd          v0.8h,   v16.8h
+        usqadd          v1.8h,   v18.8h
+        smin            v0.8h,   v0.8h,   v31.8h
+        st1             {v0.d}[0], [x0], x1
+        smin            v1.8h,   v1.8h,   v31.8h
+        st1             {v0.d}[1], [x0], x1
+        st1             {v1.d}[0], [x0], x1
+        st1             {v1.d}[1], [x0], x1
 
-        br              x15
+        ret             x15
 endfunc
 
 .macro def_fn_4x4 txfm1, txfm2
@@ -640,37 +606,54 @@ def_fn_4x4 identity, flipadst
 .macro idct_8 r0, r1, r2, r3, r4, r5, r6, r7
         idct_4          \r0, \r2, \r4, \r6
 
+        movi            v5.4s,  #1, msl #16 // row_clip_max = ~(~bdmax << 7), 0x1ffff
+        mvni            v4.4s,  #1, msl #16 // row_clip_min = (~bdmax << 7), 0xfffe0000
+.irp r, \r0, \r2, \r4, \r6
+        smin_4s         \r, \r, v5
+.endr
+.irp r, \r0, \r2, \r4, \r6
+        smax_4s         \r, \r, v4
+.endr
+
         mul_mls         v2,  \r1, \r7, v1.s[0], v1.s[1]  // -> t4a
-        mul_mla         v4,  \r1, \r7, v1.s[1], v1.s[0]  // -> t7a
+        mul_mla         v3,  \r1, \r7, v1.s[1], v1.s[0]  // -> t7a
         mul_mls         v6,  \r5, \r3, v1.s[2], v1.s[3]  // -> t5a
         mul_mla         v7,  \r5, \r3, v1.s[3], v1.s[2]  // -> t6a
         srshr           \r1\().4s, v2.4s,  #12           // t4a
-        srshr           \r7\().4s, v4.4s,  #12           // t7a
+        srshr           \r7\().4s, v3.4s,  #12           // t7a
         srshr           \r3\().4s, v6.4s,  #12           // t5a
-        srshr           \r5\().4s, v7.4s,  #12           // taa
+        srshr           \r5\().4s, v7.4s,  #12           // t6a
 
         sqadd           v2.4s,     \r1\().4s,  \r3\().4s // t4
         sqsub           \r1\().4s, \r1\().4s,  \r3\().4s // t5a
         sqadd           v3.4s,     \r7\().4s,  \r5\().4s // t7
         sqsub           \r3\().4s, \r7\().4s,  \r5\().4s // t6a
 
-        mul_mls         v4,  \r3, \r1, v0.s[0], v0.s[0]  // -> t5
+.irp r, v2, \r1, v3, \r3
+        smin_4s         \r, \r, v5
+.endr
+.irp r, v2, \r1, v3, \r3
+        smax_4s         \r, \r, v4
+.endr
+
+        mul_mls         v7,  \r3, \r1, v0.s[0], v0.s[0]  // -> t5
         mul_mla         v6,  \r3, \r1, v0.s[0], v0.s[0]  // -> t6
-        srshr           v4.4s,  v4.4s,  #12              // t5
-        srshr           v5.4s,  v6.4s,  #12              // t6
+        srshr           v7.4s,  v7.4s,  #12              // t5
+        srshr           v6.4s,  v6.4s,  #12              // t6
 
         sqsub           \r7\().4s,  \r0\().4s,  v3.4s    // out7
         sqadd           \r0\().4s,  \r0\().4s,  v3.4s    // out0
-        sqadd           \r1\().4s,  \r2\().4s,  v5.4s    // out1
-        sqsub           v6.4s,      \r2\().4s,  v5.4s    // out6
-        sqadd           \r2\().4s,  \r4\().4s,  v4.4s    // out2
-        sqsub           \r5\().4s,  \r4\().4s,  v4.4s    // out5
+        sqadd           \r1\().4s,  \r2\().4s,  v6.4s    // out1
+        sqsub           v6.4s,      \r2\().4s,  v6.4s    // out6
+        sqadd           \r2\().4s,  \r4\().4s,  v7.4s    // out2
+        sqsub           \r5\().4s,  \r4\().4s,  v7.4s    // out5
         sqadd           \r3\().4s,  \r6\().4s,  v2.4s    // out3
         sqsub           \r4\().4s,  \r6\().4s,  v2.4s    // out4
         mov             \r6\().16b, v6.16b               // out6
 .endm
 
 function inv_dct_4s_x8_neon
+        AARCH64_VALID_CALL_TARGET
         movrel          x16, idct_coeffs
         ld1             {v0.4s, v1.4s}, [x16]
         idct_8          v16, v17, v18, v19, v20, v21, v22, v23
@@ -700,14 +683,24 @@ endfunc
 
         ld1             {v0.4s}, [x16]
 
+        movi            v1.4s,   #1, msl #16     // row_clip_max = ~(~bdmax << 7), 0x1ffff
+
         sqadd           v2.4s,   v16.4s,  v20.4s // t0
         sqsub           v3.4s,   v16.4s,  v20.4s // t4
+        mvni            v20.4s,  #1, msl #16     // row_clip_min = (~bdmax << 7), 0xfffe0000
         sqadd           v4.4s,   v23.4s,  v19.4s // t1
         sqsub           v5.4s,   v23.4s,  v19.4s // t5
         sqadd           v6.4s,   v18.4s,  v22.4s // t2
         sqsub           v7.4s,   v18.4s,  v22.4s // t6
         sqadd           v18.4s,  v21.4s,  v17.4s // t3
         sqsub           v19.4s,  v21.4s,  v17.4s // t7
+
+.irp r, v2, v3, v4, v5, v6, v7, v18, v19
+        smin_4s         \r, \r, v1
+.endr
+.irp r, v2, v3, v4, v5, v6, v7, v18, v19
+        smax_4s         \r, \r, v20
+.endr
 
         mul_mla         v16, v3,  v5,  v0.s[3], v0.s[2]
         mul_mls         v20, v3,  v5,  v0.s[2], v0.s[3]
@@ -725,12 +718,24 @@ endfunc
         sqsub           v2.4s,     v2.4s, v6.4s  // t2
         sqadd           \o7\().4s, v4.4s, v18.4s // out7
         sqsub           v4.4s,     v4.4s, v18.4s // t3
-        sqneg           \o7\().4s, \o7\().4s     // out7
+
+        mvni            v18.4s,  #1, msl #16     // row_clip_min = (~bdmax << 7), 0xfffe0000
 
         sqadd           \o1\().4s, v3.4s, v7.4s  // out1
         sqsub           v3.4s,     v3.4s, v7.4s  // t6
         sqadd           \o6\().4s, v5.4s, v19.4s // out6
         sqsub           v5.4s,     v5.4s, v19.4s // t7
+
+        // Not clipping the output registers, as they will be downshifted and
+        // narrowed afterwards anyway.
+.irp r, v2, v4, v3, v5
+        smin_4s         \r, \r, v1
+.endr
+.irp r, v2, v4, v3, v5
+        smax_4s         \r, \r, v18
+.endr
+
+        sqneg           \o7\().4s, \o7\().4s     // out7
         sqneg           \o1\().4s, \o1\().4s     // out1
 
         mul_mla         v18, v2,  v4,  v0.s[0], v0.s[0] // -> out3 (v19 or v20)
@@ -747,16 +752,19 @@ endfunc
 .endm
 
 function inv_adst_4s_x8_neon
+        AARCH64_VALID_CALL_TARGET
         iadst_8         v16, v17, v18, v19, v20, v21, v22, v23
         ret
 endfunc
 
 function inv_flipadst_4s_x8_neon
+        AARCH64_VALID_CALL_TARGET
         iadst_8         v23, v22, v21, v20, v19, v18, v17, v16
         ret
 endfunc
 
 function inv_identity_4s_x8_neon
+        AARCH64_VALID_CALL_TARGET
         sqshl           v16.4s,  v16.4s,  #1
         sqshl           v17.4s,  v17.4s,  #1
         sqshl           v18.4s,  v18.4s,  #1
@@ -829,7 +837,7 @@ function inv_txfm_add_8x8_neon
         blr             x5
 
         load_add_store_8x8 x0, x7
-        br              x15
+        ret             x15
 endfunc
 
 .macro def_fn_8x8 txfm1, txfm2, eob_half
@@ -898,7 +906,7 @@ function inv_txfm_add_8x4_neon
         blr             x5
 
         load_add_store_8x4 x0, x7
-        br              x15
+        ret             x15
 endfunc
 
 function inv_txfm_add_4x8_neon
@@ -947,7 +955,7 @@ function inv_txfm_add_4x8_neon
         blr             x5
 
         load_add_store_4x8 x0, x7
-        br              x15
+        ret             x15
 endfunc
 
 .macro def_fn_48 w, h, txfm1, txfm2, eob_half
@@ -990,30 +998,39 @@ def_fns_48 8, 4
 
 
 function inv_dct_4s_x16_neon
+        AARCH64_VALID_CALL_TARGET
         movrel          x16, idct_coeffs
         ld1             {v0.4s, v1.4s}, [x16], #32
 
         idct_8          v16, v18, v20, v22, v24, v26, v28, v30
 
+        // idct_8 leaves the row_clip_max/min constants in v5 and v4
+.irp r, v16, v18, v20, v22, v24, v26, v28, v30
+        smin            \r\().4s,  \r\().4s,  v5.4s
+.endr
+.irp r, v16, v18, v20, v22, v24, v26, v28, v30
+        smax            \r\().4s,  \r\().4s,  v4.4s
+.endr
+
         ld1             {v0.4s, v1.4s}, [x16]
         sub             x16, x16, #32
 
         mul_mls         v2,  v17, v31, v0.s[0], v0.s[1] // -> t8a
-        mul_mla         v4,  v17, v31, v0.s[1], v0.s[0] // -> t15a
+        mul_mla         v3,  v17, v31, v0.s[1], v0.s[0] // -> t15a
         mul_mls         v6,  v25, v23, v0.s[2], v0.s[3] // -> t9a
         srshr           v17.4s, v2.4s,  #12             // t8a
-        srshr           v31.4s, v4.4s,  #12             // t15a
+        srshr           v31.4s, v3.4s,  #12             // t15a
         mul_mla         v2,  v25, v23, v0.s[3], v0.s[2] // -> t14a
-        mul_mls         v4,  v21, v27, v1.s[0], v1.s[1] // -> t10a
+        mul_mls         v3,  v21, v27, v1.s[0], v1.s[1] // -> t10a
         srshr           v23.4s, v6.4s,  #12             // t9a
         srshr           v25.4s, v2.4s,  #12             // t14a
         mul_mla         v6,  v21, v27, v1.s[1], v1.s[0] // -> t13a
         mul_mls         v2,  v29, v19, v1.s[2], v1.s[3] // -> t11a
-        srshr           v21.4s, v4.4s,  #12             // t10a
+        srshr           v21.4s, v3.4s,  #12             // t10a
         srshr           v27.4s, v6.4s,  #12             // t13a
-        mul_mla         v4,  v29, v19, v1.s[3], v1.s[2] // -> t12a
+        mul_mla         v3,  v29, v19, v1.s[3], v1.s[2] // -> t12a
         srshr           v19.4s, v2.4s,  #12             // t11a
-        srshr           v29.4s, v4.4s,  #12             // t12a
+        srshr           v29.4s, v3.4s,  #12             // t12a
 
         ld1             {v0.4s}, [x16]
 
@@ -1026,14 +1043,21 @@ function inv_dct_4s_x16_neon
         sqadd           v25.4s,  v29.4s,  v27.4s  // t12
         sqsub           v29.4s,  v29.4s,  v27.4s  // t13
 
-        mul_mls         v4,  v3,  v2,  v0.s[2], v0.s[3] // -> t9a
+.irp r, v2, v17, v3, v31, v23, v19, v25, v29
+        smin            \r\().4s,  \r\().4s,  v5.4s
+.endr
+.irp r, v2, v17, v3, v31, v23, v19, v25, v29
+        smax            \r\().4s,  \r\().4s,  v4.4s
+.endr
+
+        mul_mls         v7,  v3,  v2,  v0.s[2], v0.s[3] // -> t9a
         mul_mla         v6,  v3,  v2,  v0.s[3], v0.s[2] // -> t14a
-        srshr           v21.4s, v4.4s,  #12             // t9a
+        srshr           v21.4s, v7.4s,  #12             // t9a
         srshr           v27.4s, v6.4s,  #12             // t14a
 
-        mul_mls         v4,  v29, v23, v0.s[2], v0.s[3] // -> t13a
+        mul_mls         v7,  v29, v23, v0.s[2], v0.s[3] // -> t13a
         mul_mla         v6,  v29, v23, v0.s[3], v0.s[2] // -> t10a
-        srshr           v29.4s, v4.4s,  #12             // t13a
+        srshr           v29.4s, v7.4s,  #12             // t13a
         neg             v6.4s,   v6.4s
         srshr           v23.4s, v6.4s,  #12             // t10a
 
@@ -1046,34 +1070,41 @@ function inv_dct_4s_x16_neon
         sqsub           v25.4s,  v27.4s,  v29.4s  // t13
         sqadd           v27.4s,  v27.4s,  v29.4s  // t14
 
-        mul_mls         v4,  v3,  v2,  v0.s[0], v0.s[0] // -> t11
+.irp r, v2, v17, v3, v31, v19, v21, v25, v27
+        smin            \r\().4s,  \r\().4s,  v5.4s
+.endr
+.irp r, v2, v17, v3, v31, v19, v21, v25, v27
+        smax            \r\().4s,  \r\().4s,  v4.4s
+.endr
+
+        mul_mls         v7,  v3,  v2,  v0.s[0], v0.s[0] // -> t11
         mul_mla         v6,  v3,  v2,  v0.s[0], v0.s[0] // -> t12
         mul_mls         v2,  v25, v21, v0.s[0], v0.s[0] // -> t10a
 
-        srshr           v4.4s,  v4.4s,  #12   // t11
-        srshr           v5.4s,  v6.4s,  #12   // t12
-        mul_mla         v6,  v25, v21, v0.s[0], v0.s[0] // -> t10a
+        srshr           v7.4s,  v7.4s,  #12   // t11
+        srshr           v6.4s,  v6.4s,  #12   // t12
+        mul_mla         v3,  v25, v21, v0.s[0], v0.s[0] // -> t13a
         srshr           v2.4s,  v2.4s,  #12   // t10a
-        srshr           v3.4s,  v6.4s,  #12   // t13a
+        srshr           v3.4s,  v3.4s,  #12   // t13a
 
-        sqadd           v6.4s,   v16.4s,  v31.4s  // out0
+        sqadd           v1.4s,   v16.4s,  v31.4s  // out0
         sqsub           v31.4s,  v16.4s,  v31.4s  // out15
-        mov             v16.16b, v6.16b
+        mov             v16.16b, v1.16b
         sqadd           v23.4s,  v30.4s,  v17.4s  // out7
-        sqsub           v7.4s,   v30.4s,  v17.4s  // out8
+        sqsub           v1.4s,   v30.4s,  v17.4s  // out8
         sqadd           v17.4s,  v18.4s,  v27.4s  // out1
         sqsub           v30.4s,  v18.4s,  v27.4s  // out14
         sqadd           v18.4s,  v20.4s,  v3.4s   // out2
         sqsub           v29.4s,  v20.4s,  v3.4s   // out13
         sqadd           v3.4s,   v28.4s,  v19.4s  // out6
         sqsub           v25.4s,  v28.4s,  v19.4s  // out9
-        sqadd           v19.4s,  v22.4s,  v5.4s   // out3
-        sqsub           v28.4s,  v22.4s,  v5.4s   // out12
-        sqadd           v20.4s,  v24.4s,  v4.4s   // out4
-        sqsub           v27.4s,  v24.4s,  v4.4s   // out11
+        sqadd           v19.4s,  v22.4s,  v6.4s   // out3
+        sqsub           v28.4s,  v22.4s,  v6.4s   // out12
+        sqadd           v20.4s,  v24.4s,  v7.4s   // out4
+        sqsub           v27.4s,  v24.4s,  v7.4s   // out11
         sqadd           v21.4s,  v26.4s,  v2.4s   // out5
         sqsub           v26.4s,  v26.4s,  v2.4s   // out10
-        mov             v24.16b, v7.16b
+        mov             v24.16b, v1.16b
         mov             v22.16b, v3.16b
 
         ret
@@ -1120,6 +1151,9 @@ endfunc
 
         ld1             {v0.4s, v1.4s}, [x16]
 
+        movi            v5.4s,   #1, msl #16     // row_clip_max = ~(~bdmax << 7), 0x1ffff
+        mvni            v7.4s,   #1, msl #16     // row_clip_min = (~bdmax << 7), 0xfffe0000
+
         sqsub           v2.4s,   v16.4s,  v23.4s // t8a
         sqadd           v16.4s,  v16.4s,  v23.4s // t0a
         sqsub           v3.4s,   v31.4s,  v24.4s // t9a
@@ -1136,6 +1170,13 @@ endfunc
         sqsub           v22.4s,  v22.4s,  v17.4s // t14a
         sqadd           v28.4s,  v25.4s,  v30.4s // t7a
         sqsub           v25.4s,  v25.4s,  v30.4s // t15a
+
+.irp r, v2, v16, v3, v31, v23, v18, v24, v29, v21, v20, v26, v27, v19, v22, v28, v25
+        smin_4s         \r, \r, v5
+.endr
+.irp r, v2, v16, v3, v31, v23, v18, v24, v29, v21, v20, v26, v27, v19, v22, v28, v25
+        smax_4s         \r, \r, v7
+.endr
 
         mul_mla         v4,  v2,  v3,  v1.s[1], v1.s[0] // -> t8
         mul_mls         v6,  v2,  v3,  v1.s[0], v1.s[1] // -> t9
@@ -1171,6 +1212,13 @@ endfunc
         sqadd           v20.4s,  v29.4s,  v22.4s // t11a
         sqsub           v29.4s,  v29.4s,  v22.4s // t15a
 
+.irp r, v2, v16, v3, v31, v21, v23, v26, v24, v19, v17, v28, v30, v27, v18, v20, v29
+        smin_4s         \r, \r, v5
+.endr
+.irp r, v2, v16, v3, v31, v21, v23, v26, v24, v19, v17, v28, v30, v27, v18, v20, v29
+        smax_4s         \r, \r, v7
+.endr
+
         mul_mla         v4,  v2,  v3,  v0.s[3], v0.s[2] // -> t4a
         mul_mls         v6,  v2,  v3,  v0.s[2], v0.s[3] // -> t5a
         mul_mls         v2,  v24, v23, v0.s[3], v0.s[2] // -> t6a
@@ -1199,24 +1247,34 @@ endfunc
         sqadd           \o15\().4s, v31.4s,  v26.4s // out15
         mov             \o0\().16b, v4.16b
 .endif
-        sqneg           \o15\().4s, \o15\().4s      // out15
 
         sqsub           v3.4s,      v29.4s,  v18.4s // t15a
         sqadd           \o13\().4s, v29.4s,  v18.4s // out13
         sqadd           \o2\().4s,  v17.4s,  v30.4s // out2
         sqsub           v26.4s,     v17.4s,  v30.4s // t14a
-        sqneg           \o13\().4s, \o13\().4s      // out13
 
         sqadd           \o1\().4s,  v19.4s,  v27.4s // out1
         sqsub           v27.4s,     v19.4s,  v27.4s // t10
         sqadd           \o14\().4s, v28.4s,  v20.4s // out14
         sqsub           v20.4s,     v28.4s,  v20.4s // t11
-        sqneg           \o1\().4s,  \o1\().4s       // out1
 
         sqadd           \o3\().4s,  v22.4s,  v24.4s // out3
         sqsub           v22.4s,     v22.4s,  v24.4s // t6
         sqadd           \o12\().4s, v25.4s,  v23.4s // out12
         sqsub           v23.4s,     v25.4s,  v23.4s // t7
+
+        // Not clipping the output registers, as they will be downshifted and
+        // narrowed afterwards anyway.
+.irp r, v2, v21, v3, v26, v27, v20, v22, v23
+        smin_4s         \r, \r, v5
+.endr
+.irp r, v2, v21, v3, v26, v27, v20, v22, v23
+        smax_4s         \r, \r, v7
+.endr
+
+        sqneg           \o15\().4s, \o15\().4s      // out15
+        sqneg           \o13\().4s, \o13\().4s      // out13
+        sqneg           \o1\().4s,  \o1\().4s       // out1
         sqneg           \o3\().4s,  \o3\().4s       // out3
 
         mul_mls         v24, v2,  v21, v0.s[0], v0.s[0] // -> out8 (v24 or v23)
@@ -1251,16 +1309,19 @@ endfunc
 .endm
 
 function inv_adst_4s_x16_neon
+        AARCH64_VALID_CALL_TARGET
         iadst_16        v16, v17, v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v31
         ret
 endfunc
 
 function inv_flipadst_4s_x16_neon
+        AARCH64_VALID_CALL_TARGET
         iadst_16        v31, v30, v29, v28, v27, v26, v25, v24, v23, v22, v21, v20, v19, v18, v17, v16
         ret
 endfunc
 
 function inv_identity_4s_x16_neon
+        AARCH64_VALID_CALL_TARGET
         movz            w16, #2*(5793-4096)*8, lsl #16
         dup             v0.2s,   w16
 .irp i, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31
@@ -1327,7 +1388,7 @@ function inv_txfm_horz\suffix\()_16x4_neon
         st1             {\i}, [x6], #16
 .endr
 
-        br              x14
+        ret             x14
 endfunc
 .endm
 
@@ -1341,7 +1402,7 @@ function inv_txfm_add_vert_8x16_neon
 .endr
         blr             x5
         load_add_store_8x16 x6, x7
-        br              x14
+        ret             x14
 endfunc
 
 function inv_txfm_add_16x16_neon
@@ -1383,7 +1444,7 @@ function inv_txfm_add_16x16_neon
 .endr
 
         add             sp,  sp,  #512
-        br              x15
+        ret             x15
 endfunc
 
 const eob_16x16
@@ -1468,7 +1529,7 @@ function inv_txfm_add_16x4_neon
         add             x6,  x0,  #16
         load_add_store_8x4 x6, x7
 
-        br              x15
+        ret             x15
 endfunc
 
 function inv_txfm_add_4x16_neon
@@ -1488,10 +1549,10 @@ function inv_txfm_add_4x16_neon
         st1             {v2.4s}, [x6], x11
 .endr
         blr             x4
-        rshrn           v28.4h,  v16.4s,  #1
-        rshrn           v29.4h,  v17.4s,  #1
-        rshrn           v30.4h,  v18.4s,  #1
-        rshrn           v31.4h,  v19.4s,  #1
+        sqrshrn         v28.4h,  v16.4s,  #1
+        sqrshrn         v29.4h,  v17.4s,  #1
+        sqrshrn         v30.4h,  v18.4s,  #1
+        sqrshrn         v31.4h,  v19.4s,  #1
         transpose_4x4h  v28, v29, v30, v31, v4,  v5,  v6,  v7
 
         b               2f
@@ -1511,10 +1572,10 @@ function inv_txfm_add_4x16_neon
         st1             {v2.4s}, [x6], x11
 .endr
         blr             x4
-        rshrn           v24.4h,  v16.4s,  #1
-        rshrn           v25.4h,  v17.4s,  #1
-        rshrn           v26.4h,  v18.4s,  #1
-        rshrn           v27.4h,  v19.4s,  #1
+        sqrshrn         v24.4h,  v16.4s,  #1
+        sqrshrn         v25.4h,  v17.4s,  #1
+        sqrshrn         v26.4h,  v18.4s,  #1
+        sqrshrn         v27.4h,  v19.4s,  #1
         transpose_4x4h  v24, v25, v26, v27, v4,  v5,  v6,  v7
 
         b               2f
@@ -1533,10 +1594,10 @@ function inv_txfm_add_4x16_neon
         st1             {v2.4s}, [x6], x11
 .endr
         blr             x4
-        rshrn           v20.4h,  v16.4s,  #1
-        rshrn           v21.4h,  v17.4s,  #1
-        rshrn           v22.4h,  v18.4s,  #1
-        rshrn           v23.4h,  v19.4s,  #1
+        sqrshrn         v20.4h,  v16.4s,  #1
+        sqrshrn         v21.4h,  v17.4s,  #1
+        sqrshrn         v22.4h,  v18.4s,  #1
+        sqrshrn         v23.4h,  v19.4s,  #1
         transpose_4x4h  v20, v21, v22, v23, v4,  v5,  v6,  v7
 
         b               2f
@@ -1552,17 +1613,17 @@ function inv_txfm_add_4x16_neon
         st1             {v2.4s}, [x2], x11
 .endr
         blr             x4
-        rshrn           v16.4h,  v16.4s,  #1
-        rshrn           v17.4h,  v17.4s,  #1
-        rshrn           v18.4h,  v18.4s,  #1
-        rshrn           v19.4h,  v19.4s,  #1
+        sqrshrn         v16.4h,  v16.4s,  #1
+        sqrshrn         v17.4h,  v17.4s,  #1
+        sqrshrn         v18.4h,  v18.4s,  #1
+        sqrshrn         v19.4h,  v19.4s,  #1
         transpose_4x8h  v16, v17, v18, v19, v4,  v5,  v6,  v7
 
         blr             x5
 
         load_add_store_4x16 x0, x6
 
-        br              x15
+        ret             x15
 endfunc
 
 const eob_4x16
@@ -1743,7 +1804,7 @@ function inv_txfm_add_16x8_neon
         ldp             d12, d13, [sp, #0x20]
         ldp             d10, d11, [sp, #0x10]
         ldp             d8,  d9,  [sp], 0x40
-        br              x15
+        ret             x15
 endfunc
 
 function inv_txfm_add_8x16_neon
@@ -1884,7 +1945,7 @@ function inv_txfm_add_8x16_neon
         ldp             d10, d11, [sp, #0x10]
         ldp             d8,  d9,  [sp], 0x20
 
-        br              x15
+        ret             x15
 endfunc
 
 const eob_8x16
@@ -1989,6 +2050,9 @@ function inv_dct32_odd_4s_x16_neon
 
         ld1             {v0.4s, v1.4s}, [x16]
 
+        movi            v5.4s,   #1, msl #16     // row_clip_max = ~(~bdmax << 7), 0x1ffff
+        mvni            v4.4s,   #1, msl #16     // row_clip_min = (~bdmax << 7), 0xfffe0000
+
         sqsub           v2.4s,   v16.4s,  v24.4s // t17
         sqadd           v16.4s,  v16.4s,  v24.4s // t16
         sqsub           v3.4s,   v31.4s,  v23.4s // t30
@@ -2006,23 +2070,30 @@ function inv_dct32_odd_4s_x16_neon
         sqadd           v25.4s,  v19.4s,  v27.4s // t28
         sqsub           v19.4s,  v19.4s,  v27.4s // t29
 
-        mul_mls         v4,  v3,  v2,  v1.s[0], v1.s[1] // -> t17a
+.irp r, v2, v16, v3, v31, v24, v28, v23, v18, v20, v30, v26, v17, v22, v29, v25, v19
+        smin            \r\().4s, \r\().4s, v5.4s
+.endr
+.irp r, v2, v16, v3, v31, v24, v28, v23, v18, v20, v30, v26, v17, v22, v29, v25, v19
+        smax            \r\().4s, \r\().4s, v4.4s
+.endr
+
+        mul_mls         v7,  v3,  v2,  v1.s[0], v1.s[1] // -> t17a
         mul_mla         v6,  v3,  v2,  v1.s[1], v1.s[0] // -> t30a
         mul_mla         v2,  v19, v24, v1.s[1], v1.s[0] // -> t18a
-        srshr           v21.4s, v4.4s,  #12             // t17a
+        srshr           v21.4s, v7.4s,  #12             // t17a
         srshr           v27.4s, v6.4s,  #12             // t30a
         neg             v2.4s,   v2.4s                  // -> t18a
-        mul_mls         v4,  v19, v24, v1.s[0], v1.s[1] // -> t29a
+        mul_mls         v7,  v19, v24, v1.s[0], v1.s[1] // -> t29a
         mul_mls         v6,  v22, v18, v1.s[2], v1.s[3] // -> t21a
         srshr           v19.4s, v2.4s,  #12             // t18a
-        srshr           v24.4s, v4.4s,  #12             // t29a
+        srshr           v24.4s, v7.4s,  #12             // t29a
         mul_mla         v2,  v22, v18, v1.s[3], v1.s[2] // -> t26a
-        mul_mla         v4,  v17, v20, v1.s[3], v1.s[2] // -> t22a
+        mul_mla         v7,  v17, v20, v1.s[3], v1.s[2] // -> t22a
         srshr           v22.4s, v6.4s,  #12             // t21a
         srshr           v18.4s, v2.4s,  #12             // t26a
-        neg             v4.4s,   v4.4s                  // -> t22a
+        neg             v7.4s,   v7.4s                  // -> t22a
         mul_mls         v6,  v17, v20, v1.s[2], v1.s[3] // -> t25a
-        srshr           v17.4s, v4.4s,  #12             // t22a
+        srshr           v17.4s, v7.4s,  #12             // t22a
         srshr           v20.4s, v6.4s,  #12             // t25a
 
         sqsub           v2.4s,   v27.4s,  v24.4s // t29
@@ -2042,23 +2113,30 @@ function inv_dct32_odd_4s_x16_neon
         sqsub           v29.4s,  v31.4s,  v25.4s // t28a
         sqadd           v31.4s,  v31.4s,  v25.4s // t31a
 
-        mul_mls         v4,  v2,  v3,  v0.s[2], v0.s[3] // -> t18a
+.irp r, v2, v27, v3, v21, v24, v16, v19, v30, v28, v17, v23, v26, v22, v20, v29, v31
+        smin            \r\().4s, \r\().4s, v5.4s
+.endr
+.irp r, v2, v27, v3, v21, v24, v16, v19, v30, v28, v17, v23, v26, v22, v20, v29, v31
+        smax            \r\().4s, \r\().4s, v4.4s
+.endr
+
+        mul_mls         v7,  v2,  v3,  v0.s[2], v0.s[3] // -> t18a
         mul_mla         v6,  v2,  v3,  v0.s[3], v0.s[2] // -> t29a
         mul_mls         v2,  v29, v24, v0.s[2], v0.s[3] // -> t19
-        srshr           v18.4s, v4.4s,  #12             // t18a
+        srshr           v18.4s, v7.4s,  #12             // t18a
         srshr           v25.4s, v6.4s,  #12             // t29a
-        mul_mla         v4,  v29, v24, v0.s[3], v0.s[2] // -> t28
+        mul_mla         v7,  v29, v24, v0.s[3], v0.s[2] // -> t28
         mul_mla         v6,  v26, v19, v0.s[3], v0.s[2] // -> t20
         srshr           v29.4s, v2.4s,  #12             // t19
-        srshr           v24.4s, v4.4s,  #12             // t28
+        srshr           v24.4s, v7.4s,  #12             // t28
         neg             v6.4s,   v6.4s                  // -> t20
         mul_mls         v2,  v26, v19, v0.s[2], v0.s[3] // -> t27
-        mul_mla         v4,  v20, v28, v0.s[3], v0.s[2] // -> t21a
+        mul_mla         v7,  v20, v28, v0.s[3], v0.s[2] // -> t21a
         srshr           v26.4s, v6.4s,  #12             // t20
         srshr           v19.4s, v2.4s,  #12             // t27
-        neg             v4.4s,   v4.4s                  // -> t21a
+        neg             v7.4s,   v7.4s                  // -> t21a
         mul_mls         v6,  v20, v28, v0.s[2], v0.s[3] // -> t26a
-        srshr           v20.4s, v4.4s,  #12             // t21a
+        srshr           v20.4s, v7.4s,  #12             // t21a
         srshr           v28.4s, v6.4s,  #12             // t26a
 
         sqsub           v2.4s,   v16.4s,  v30.4s // t23
@@ -2071,33 +2149,40 @@ function inv_dct32_odd_4s_x16_neon
         sqsub           v21.4s,  v27.4s,  v22.4s // t25a
         sqsub           v27.4s,  v18.4s,  v20.4s // t21
         sqadd           v18.4s,  v18.4s,  v20.4s // t18 = out18
-        sqadd           v4.4s,   v29.4s,  v26.4s // t19a = out19
+        sqadd           v7.4s,   v29.4s,  v26.4s // t19a = out19
         sqsub           v26.4s,  v29.4s,  v26.4s // t20a
         sqadd           v29.4s,  v25.4s,  v28.4s // t29 = out29
         sqsub           v25.4s,  v25.4s,  v28.4s // t26
         sqadd           v28.4s,  v24.4s,  v19.4s // t28a = out28
         sqsub           v24.4s,  v24.4s,  v19.4s // t27a
-        mov             v19.16b, v4.16b          // out19
+        mov             v19.16b, v7.16b          // out19
 
-        mul_mls         v4,  v24, v26, v0.s[0], v0.s[0] // -> t20
+.irp r, v2, v16, v3, v31, v23, v17, v30, v21, v27, v18, v19, v26, v29, v25, v28, v24
+        smin            \r\().4s, \r\().4s, v5.4s
+.endr
+.irp r, v2, v16, v3, v31, v23, v17, v30, v21, v27, v18, v19, v26, v29, v25, v28, v24
+        smax            \r\().4s, \r\().4s, v4.4s
+.endr
+
+        mul_mls         v7,  v24, v26, v0.s[0], v0.s[0] // -> t20
         mul_mla         v6,  v24, v26, v0.s[0], v0.s[0] // -> t27
-        srshr           v20.4s, v4.4s,  #12             // t20
+        srshr           v20.4s, v7.4s,  #12             // t20
         srshr           v22.4s, v6.4s,  #12             // t27
 
-        mul_mla         v4,  v25, v27, v0.s[0], v0.s[0] // -> t26a
+        mul_mla         v7,  v25, v27, v0.s[0], v0.s[0] // -> t26a
         mul_mls         v6,  v25, v27, v0.s[0], v0.s[0] // -> t21a
         mov             v27.16b,  v22.16b               // t27
-        srshr           v26.4s, v4.4s,  #12             // t26a
+        srshr           v26.4s, v7.4s,  #12             // t26a
 
         mul_mls         v24, v21, v23, v0.s[0], v0.s[0] // -> t22
-        mul_mla         v4,  v21, v23, v0.s[0], v0.s[0] // -> t25
+        mul_mla         v7,  v21, v23, v0.s[0], v0.s[0] // -> t25
         srshr           v21.4s, v6.4s,  #12             // t21a
         srshr           v22.4s, v24.4s, #12             // t22
-        srshr           v25.4s, v4.4s,  #12             // t25
+        srshr           v25.4s, v7.4s,  #12             // t25
 
-        mul_mls         v4,  v3,  v2,  v0.s[0], v0.s[0] // -> t23a
+        mul_mls         v7,  v3,  v2,  v0.s[0], v0.s[0] // -> t23a
         mul_mla         v6,  v3,  v2,  v0.s[0], v0.s[0] // -> t24a
-        srshr           v23.4s, v4.4s,  #12             // t23a
+        srshr           v23.4s, v7.4s,  #12             // t23a
         srshr           v24.4s, v6.4s,  #12             // t24a
 
         ret
@@ -2124,6 +2209,15 @@ function inv_txfm_horz\suffix\()_dct_32x4_neon
         scale_input     .4s, v0.s[0], v24, v25, v26, v27, v28, v29, v30, v31
 .endif
         bl              inv_dct_4s_x16_neon
+
+        // idct_16 leaves the row_clip_max/min constants in v5 and v4
+.irp r, v16, v17, v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v31
+        smin_4s         \r, \r, v5
+.endr
+.irp r, v16, v17, v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v31
+        smax_4s         \r, \r, v4
+.endr
+
         transpose_4x4s  v16, v17, v18, v19, v2,  v3,  v4,  v5
         transpose_4x4s  v20, v21, v22, v23, v2,  v3,  v4,  v5
         transpose_4x4s  v24, v25, v26, v27, v2,  v3,  v4,  v5
@@ -2186,7 +2280,7 @@ function inv_txfm_horz\suffix\()_dct_32x4_neon
         store2          v29.4s,  v25.4s,  v21.4s,  v17.4s,  \shift
         store2          v28.4s,  v24.4s,  v20.4s,  v16.4s,  \shift
 .purgem store2
-        br              x14
+        ret             x14
 endfunc
 .endm
 
@@ -2219,7 +2313,6 @@ function inv_txfm_add_vert_dct_8x32_neon
 
         neg             x9,  x8
         mov             x10, x6
-        movi            v0.8h,   #0
         mvni            v1.8h,   #0xfc, lsl #8 // 0x3ff
 .macro combine r0, r1, r2, r3, op, stride
         ld1             {v5.8h}, [x7],    \stride
@@ -2231,27 +2324,23 @@ function inv_txfm_add_vert_dct_8x32_neon
         ld1             {v4.8h}, [x10],   x1
         srshr           v5.8h,   v5.8h,   #4
         \op             v6.8h,   v6.8h,   \r1
-        sqadd           v5.8h,   v5.8h,   v2.8h
+        usqadd          v2.8h,   v5.8h
         srshr           v6.8h,   v6.8h,   #4
         \op             v7.8h,   v7.8h,   \r2
-        smax            v2.8h,   v5.8h,   v0.8h
         ld1             {v5.8h}, [x7],    \stride
-        sqadd           v6.8h,   v6.8h,   v3.8h
+        usqadd          v3.8h,   v6.8h
         smin            v2.8h,   v2.8h,   v1.8h
         srshr           v7.8h,   v7.8h,   #4
         \op             v5.8h,   v5.8h,   \r3
         st1             {v2.8h}, [x6],    x1
         ld1             {v2.8h}, [x10],   x1
-        smax            v3.8h,   v6.8h,   v0.8h
-        sqadd           v7.8h,   v7.8h,   v4.8h
+        usqadd          v4.8h,   v7.8h
         smin            v3.8h,   v3.8h,   v1.8h
         srshr           v5.8h,   v5.8h,   #4
         st1             {v3.8h}, [x6],    x1
-        smax            v4.8h,   v7.8h,   v0.8h
-        sqadd           v5.8h,   v5.8h,   v2.8h
+        usqadd          v2.8h,   v5.8h
         smin            v4.8h,   v4.8h,   v1.8h
         st1             {v4.8h}, [x6],    x1
-        smax            v2.8h,   v5.8h,   v0.8h
         smin            v2.8h,   v2.8h,   v1.8h
         st1             {v2.8h}, [x6],    x1
 .endm
@@ -2266,7 +2355,7 @@ function inv_txfm_add_vert_dct_8x32_neon
         combine         v28.8h, v29.8h, v30.8h, v31.8h, sqsub, x9
 .purgem combine
 
-        br              x14
+        ret             x14
 endfunc
 
 const eob_32x32
@@ -2583,7 +2672,7 @@ function inv_txfm_add_dct_dct_32x32_16bpc_neon, export=1
 .endr
 
         add             sp,  sp,  #2048
-        br              x15
+        ret             x15
 endfunc
 
 function inv_txfm_add_dct_dct_16x32_16bpc_neon, export=1
@@ -2632,7 +2721,7 @@ function inv_txfm_add_dct_dct_16x32_16bpc_neon, export=1
 .endr
 
         add             sp,  sp,  #1024
-        br              x15
+        ret             x15
 endfunc
 
 function inv_txfm_add_dct_dct_32x16_16bpc_neon, export=1
@@ -2652,7 +2741,9 @@ function inv_txfm_add_dct_dct_32x16_16bpc_neon, export=1
         mov             w8,  #(16 - \i)
         cmp             w3,  w12
         b.lt            1f
+.if \i < 12
         ldrh            w12, [x13], #2
+.endif
 .endif
         mov             x8,  #4*16
         bl              inv_txfm_horz_scale_dct_32x4_neon
@@ -2680,7 +2771,7 @@ function inv_txfm_add_dct_dct_32x16_16bpc_neon, export=1
 .endr
 
         add             sp,  sp,  #1024
-        br              x15
+        ret             x15
 endfunc
 
 function inv_txfm_add_dct_dct_8x32_16bpc_neon, export=1
@@ -2740,7 +2831,7 @@ function inv_txfm_add_dct_dct_8x32_16bpc_neon, export=1
         bl              inv_txfm_add_vert_dct_8x32_neon
 
         add             sp,  sp,  #512
-        br              x15
+        ret             x15
 endfunc
 
 function inv_txfm_add_dct_dct_32x8_16bpc_neon, export=1
@@ -2791,7 +2882,7 @@ function inv_txfm_add_dct_dct_32x8_16bpc_neon, export=1
         b.lt            1b
 
         add             sp,  sp,  #512
-        br              x15
+        ret             x15
 endfunc
 
 function inv_dct64_step1_neon
@@ -2822,13 +2913,20 @@ function inv_dct64_step1_neon
         sqsub           v30.4s,  v23.4s,  v22.4s        // t62
         sqadd           v31.4s,  v23.4s,  v22.4s        // t63
 
+.irp r, v24, v25, v26, v27, v28, v29, v30, v31
+        smin_4s         \r, \r, v5
+.endr
+.irp r, v24, v25, v26, v27, v28, v29, v30, v31
+        smax_4s         \r, \r, v4
+.endr
+
         mul_mla         v2,  v29, v26, v0.s[0], v0.s[1] // -> t34a
-        mul_mls         v4,  v29, v26, v0.s[1], v0.s[0] // -> t61a
+        mul_mls         v7,  v29, v26, v0.s[1], v0.s[0] // -> t61a
         neg             v2.4s,   v2.4s                  // t34a
         mul_mls         v6,  v30, v25, v0.s[1], v0.s[0] // -> t33a
         srshr           v26.4s, v2.4s,  #12             // t34a
         mul_mla         v2,  v30, v25, v0.s[0], v0.s[1] // -> t62a
-        srshr           v29.4s, v4.4s,  #12             // t61a
+        srshr           v29.4s, v7.4s,  #12             // t61a
         srshr           v25.4s, v6.4s,  #12             // t33a
         srshr           v30.4s, v2.4s,  #12             // t62a
 
@@ -2841,11 +2939,18 @@ function inv_dct64_step1_neon
         sqsub           v21.4s,  v30.4s,  v29.4s        // t61
         sqadd           v22.4s,  v30.4s,  v29.4s        // t62
 
+.irp r, v16, v19, v17, v18, v20, v23, v21, v22
+        smin_4s         \r, \r, v5
+.endr
+.irp r, v16, v19, v17, v18, v20, v23, v21, v22
+        smax_4s         \r, \r, v4
+.endr
+
         mul_mla         v2,  v21, v18, v0.s[2], v0.s[3] // -> t61a
-        mul_mls         v4,  v21, v18, v0.s[3], v0.s[2] // -> t34a
+        mul_mls         v7,  v21, v18, v0.s[3], v0.s[2] // -> t34a
         mul_mla         v6,  v20, v19, v0.s[2], v0.s[3] // -> t60
         srshr           v21.4s, v2.4s,  #12             // t61a
-        srshr           v18.4s, v4.4s,  #12             // t34a
+        srshr           v18.4s, v7.4s,  #12             // t34a
         mul_mls         v2,  v20, v19, v0.s[3], v0.s[2] // -> t35
         srshr           v20.4s, v6.4s,  #12             // t60
         srshr           v19.4s, v2.4s,  #12             // t35
@@ -2882,11 +2987,18 @@ function inv_dct64_step2_neon
         sqadd           v30.4s,  v23.4s, v22.4s         // t48
         sqsub           v31.4s,  v23.4s, v22.4s         // t55
 
+.irp r, v24, v25, v26, v27, v28, v29, v30, v31
+        smin_4s         \r, \r, v5
+.endr
+.irp r, v24, v25, v26, v27, v28, v29, v30, v31
+        smax_4s         \r, \r, v4
+.endr
+
         mul_mla         v2,  v27, v25, v0.s[3], v0.s[2] // -> t56a
-        mul_mls         v4,  v27, v25, v0.s[2], v0.s[3] // -> t39a
+        mul_mls         v7,  v27, v25, v0.s[2], v0.s[3] // -> t39a
         mul_mla         v6,  v31, v28, v0.s[3], v0.s[2] // -> t40a
         srshr           v25.4s, v2.4s,  #12             // t56a
-        srshr           v27.4s, v4.4s,  #12             // t39a
+        srshr           v27.4s, v7.4s,  #12             // t39a
         neg             v6.4s,   v6.4s                  // t40a
         mul_mls         v2,  v31, v28, v0.s[2], v0.s[3] // -> t55a
         srshr           v31.4s, v6.4s,  #12             // t40a
@@ -2901,11 +3013,18 @@ function inv_dct64_step2_neon
         sqsub           v21.4s,  v25.4s,  v28.4s        // t55
         sqadd           v22.4s,  v25.4s,  v28.4s        // t56
 
+.irp r, v16, v19, v17, v18, v20, v23, v21, v22
+        smin_4s         \r, \r, v5
+.endr
+.irp r, v16, v19, v17, v18, v20, v23, v21, v22
+        smax_4s         \r, \r, v4
+.endr
+
         mul_mls         v2,  v21, v18, v0.s[0], v0.s[0] // -> t40a
-        mul_mla         v4,  v21, v18, v0.s[0], v0.s[0] // -> t55a
+        mul_mla         v7,  v21, v18, v0.s[0], v0.s[0] // -> t55a
         mul_mls         v6,  v20, v19, v0.s[0], v0.s[0] // -> t47
         srshr           v18.4s, v2.4s,  #12             // t40a
-        srshr           v21.4s, v4.4s,  #12             // t55a
+        srshr           v21.4s, v7.4s,  #12             // t55a
         mul_mla         v2,  v20, v19, v0.s[0], v0.s[0] // -> t48
         srshr           v19.4s, v6.4s,  #12             // t47
         srshr           v20.4s, v2.4s,  #12             // t48
@@ -3002,6 +3121,14 @@ function inv_txfm_dct\suffix\()_4s_x64_neon
 
         bl              inv_dct_4s_x16_neon
 
+        // idct_16 leaves the row_clip_max/min constants in v5 and v4
+.irp r, v16, v17, v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v31
+        smin_4s         \r, \r, v5
+.endr
+.irp r, v16, v17, v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v31
+        smax_4s         \r, \r, v4
+.endr
+
         store16         x6
 
         movz16dup_if    v0.2s, w16, #2896*8, \scale
@@ -3020,6 +3147,9 @@ function inv_txfm_dct\suffix\()_4s_x64_neon
 
         mov             x9,  #-16
 
+        movi            v1.4s,  #1, msl #16 // row_clip_max = ~(~bdmax << 7), 0x1ffff
+        mvni            v0.4s,  #1, msl #16 // row_clip_min = (~bdmax << 7), 0xfffe0000
+
 .macro store_addsub r0, r1, r2, r3
         ld1             {v2.4s}, [x6], #16
         ld1             {v3.4s}, [x6], #16
@@ -3028,16 +3158,32 @@ function inv_txfm_dct\suffix\()_4s_x64_neon
         ld1             {v4.4s}, [x6], #16
         sqadd           v7.4s,  v3.4s,  \r1
         sqsub           \r1,    v3.4s,  \r1
+        smin            v6.4s,  v6.4s,  v1.4s
+        smin            \r0,    \r0,    v1.4s
         ld1             {v5.4s}, [x6], #16
         sqadd           v2.4s,  v4.4s,  \r2
         sub             x6,  x6,  #16*4
+        smax            v6.4s,  v6.4s,  v0.4s
+        smax            \r0,    \r0,    v0.4s
         sqsub           \r2,    v4.4s,  \r2
+        smin            v7.4s,  v7.4s,  v1.4s
+        smin            \r1,    \r1,    v1.4s
         st1             {v6.4s}, [x6], #16
         st1             {\r0},   [x10], x9
+        smin            v2.4s,  v2.4s,  v1.4s
+        smin            \r2,    \r2,    v1.4s
+        smax            v7.4s,  v7.4s,  v0.4s
+        smax            \r1,    \r1,    v0.4s
         sqadd           v3.4s,  v5.4s,  \r3
         sqsub           \r3,    v5.4s,  \r3
+        smax            v2.4s,  v2.4s,  v0.4s
+        smax            \r2,    \r2,    v0.4s
+        smin            v3.4s,  v3.4s,  v1.4s
+        smin            \r3,    \r3,    v1.4s
         st1             {v7.4s}, [x6], #16
         st1             {\r1},   [x10], x9
+        smax            v3.4s,  v3.4s,  v0.4s
+        smax            \r3,    \r3,    v0.4s
         st1             {v2.4s}, [x6], #16
         st1             {\r2},   [x10], x9
         st1             {v3.4s}, [x6], #16
@@ -3052,6 +3198,8 @@ function inv_txfm_dct\suffix\()_4s_x64_neon
         add             x6,  x6,  #4*4*16
 
         movrel          x17, idct64_coeffs
+        movi            v5.4s,  #1, msl #16  // row_clip_max = ~(~bdmax << 7), 0x1ffff
+        mvni            v4.4s,  #1, msl #16  // row_clip_min = (~bdmax << 7), 0xfffe0000
         movz16dup_if    v0.2s, w16, #2896*8, \scale
         movi_if         v7.4s,  #0, \clear
         add             x9,  x7,  x8, lsl #4 // offset 16
@@ -3118,7 +3266,7 @@ function inv_txfm_dct\suffix\()_4s_x64_neon
 
         bl              inv_dct64_step2_neon
 
-        br              x14
+        ret             x14
 endfunc
 .endm
 
@@ -3175,7 +3323,7 @@ function inv_txfm_horz_dct_64x4_neon
 
         cmp             x7,  x8
         b.lt            1b
-        br              x14
+        ret             x14
 endfunc
 
 function inv_txfm_add_vert_dct_8x64_neon
@@ -3195,7 +3343,6 @@ function inv_txfm_add_vert_dct_8x64_neon
         ld1             {v20.8h, v21.8h, v22.8h, v23.8h}, [x7], #64
         ld1             {v24.8h, v25.8h, v26.8h, v27.8h}, [x8], x11
 
-        movi            v6.8h,   #0
         mvni            v7.8h,   #0xfc, lsl #8 // 0x3ff
 .macro add_dest_addsub src0, src1, src2, src3
         ld1             {v0.8h}, [x6], x1
@@ -3211,18 +3358,14 @@ function inv_txfm_add_vert_dct_8x64_neon
         srshr           v4.8h,   v4.8h,   #4
         srshr           v5.8h,   v5.8h,   #4
         srshr           \src0,   \src0,   #4
-        sqadd           v0.8h,   v0.8h,   v4.8h
+        usqadd          v0.8h,   v4.8h
         srshr           \src2,   \src2,   #4
-        sqadd           v1.8h,   v1.8h,   \src0
-        sqadd           v2.8h,   v2.8h,   v5.8h
-        smax            v0.8h,   v0.8h,   v6.8h
-        sqadd           v3.8h,   v3.8h,   \src2
-        smax            v1.8h,   v1.8h,   v6.8h
+        usqadd          v1.8h,   \src0
+        usqadd          v2.8h,   v5.8h
         smin            v0.8h,   v0.8h,   v7.8h
-        smax            v2.8h,   v2.8h,   v6.8h
+        usqadd          v3.8h,   \src2
         smin            v1.8h,   v1.8h,   v7.8h
         st1             {v0.8h}, [x6], x1
-        smax            v3.8h,   v3.8h,   v6.8h
         smin            v2.8h,   v2.8h,   v7.8h
         st1             {v1.8h}, [x9], x10
         smin            v3.8h,   v3.8h,   v7.8h
@@ -3237,31 +3380,8 @@ function inv_txfm_add_vert_dct_8x64_neon
         cmp             x7,  x8
         b.lt            1b
 
-        br              x14
+        ret             x14
 endfunc
-
-.macro sub_sp space
-#ifdef _WIN32
-.if \space > 8192
-        // Here, we'd need to touch two (or more) pages while decrementing
-        // the stack pointer.
-        .error          "sub_sp_align doesn't support values over 8K at the moment"
-.elseif \space > 4096
-        sub             x16, sp,  #4096
-        ldr             xzr, [x16]
-        sub             sp,  x16, #(\space - 4096)
-.else
-        sub             sp,  sp,  #\space
-.endif
-#else
-.if \space >= 4096
-        sub             sp,  sp,  #(\space)/4096*4096
-.endif
-.if (\space % 4096) != 0
-        sub             sp,  sp,  #(\space)%4096
-.endif
-#endif
-.endm
 
 function inv_txfm_add_dct_dct_64x64_16bpc_neon, export=1
         idct_dc         64,  64,  2
@@ -3314,7 +3434,7 @@ function inv_txfm_add_dct_dct_64x64_16bpc_neon, export=1
 .endr
 
         add             sp,  x5,  #64*32*2
-        br              x15
+        ret             x15
 endfunc
 
 function inv_txfm_add_dct_dct_64x32_16bpc_neon, export=1
@@ -3367,7 +3487,7 @@ function inv_txfm_add_dct_dct_64x32_16bpc_neon, export=1
 .endr
 
         add             sp,  x5,  #64*32*2
-        br              x15
+        ret             x15
 endfunc
 
 function inv_txfm_add_dct_dct_32x64_16bpc_neon, export=1
@@ -3417,7 +3537,7 @@ function inv_txfm_add_dct_dct_32x64_16bpc_neon, export=1
 .endr
 
         add             sp,  x5,  #32*32*2
-        br              x15
+        ret             x15
 endfunc
 
 function inv_txfm_add_dct_dct_64x16_16bpc_neon, export=1
@@ -3471,7 +3591,7 @@ function inv_txfm_add_dct_dct_64x16_16bpc_neon, export=1
 .endr
 
         add             sp,  x4,  #64*16*2
-        br              x15
+        ret             x15
 endfunc
 
 function inv_txfm_add_dct_dct_16x64_16bpc_neon, export=1
@@ -3492,7 +3612,9 @@ function inv_txfm_add_dct_dct_16x64_16bpc_neon, export=1
         mov             w8,  #(32 - \i)
         cmp             w3,  w12
         b.lt            1f
+.if \i < 28
         ldrh            w12, [x13], #2
+.endif
 .endif
         add             x7,  x2,  #(\i*4)
         mov             x8,  #32*4
@@ -3522,5 +3644,5 @@ function inv_txfm_add_dct_dct_16x64_16bpc_neon, export=1
 .endr
 
         add             sp,  x5,  #16*32*2
-        br              x15
+        ret             x15
 endfunc

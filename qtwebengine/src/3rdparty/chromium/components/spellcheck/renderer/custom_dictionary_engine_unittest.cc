@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,19 +10,19 @@ TEST(CustomDictionaryTest, HandlesEmptyWordWithInvalidSubstring) {
   CustomDictionaryEngine engine;
   std::set<std::string> custom_words;
   engine.Init(custom_words);
-  EXPECT_FALSE(engine.SpellCheckWord(base::string16(), 15, 23));
+  EXPECT_FALSE(engine.SpellCheckWord(std::u16string(), 15, 23));
 }
 
 TEST(CustomDictionaryTest, Basic) {
   CustomDictionaryEngine engine;
-  EXPECT_FALSE(engine.SpellCheckWord(base::ASCIIToUTF16("helllo"), 0, 6));
+  EXPECT_FALSE(engine.SpellCheckWord(u"helllo", 0, 6));
   std::set<std::string> custom_words;
   custom_words.insert("helllo");
   engine.Init(custom_words);
-  EXPECT_TRUE(engine.SpellCheckWord(base::ASCIIToUTF16("helllo"), 0, 6));
+  EXPECT_TRUE(engine.SpellCheckWord(u"helllo", 0, 6));
 }
 
 TEST(CustomDictionaryTest, HandlesNullCharacters) {
-  base::char16 data[4] = {'a', 0, 'b', 'c'};
+  char16_t data[4] = {'a', 0, 'b', 'c'};
   EXPECT_FALSE(CustomDictionaryEngine().SpellCheckWord(data, 1, 1));
 }

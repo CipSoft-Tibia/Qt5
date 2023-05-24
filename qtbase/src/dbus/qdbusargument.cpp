@@ -1,55 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusargument.h"
 #include "qdbusargument_p.h"
 
 #include <qatomic.h>
 #include <qbytearray.h>
+#include <qdatetime.h>
+#include <qline.h>
 #include <qlist.h>
 #include <qmap.h>
 #include <qstring.h>
 #include <qstringlist.h>
-#include <qvariant.h>
-#include <qdatetime.h>
 #include <qrect.h>
-#include <qline.h>
+#include <qtimezone.h>
+#include <qvariant.h>
 
 #include "qdbusmetatype_p.h"
 #include "qdbusutil_p.h"
@@ -57,6 +22,8 @@
 #ifndef QT_NO_DBUS
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN(QDBusArgument)
 
 QDBusArgumentPrivate::~QDBusArgumentPrivate()
 {
@@ -74,10 +41,9 @@ QByteArray QDBusArgumentPrivate::createSignature(int id)
     marshaller->ba = &signature;
 
     // run it
-    void *null = nullptr;
-    QVariant v(id, null);
+    QVariant v{QMetaType(id)};
     QDBusArgument arg(marshaller);
-    QDBusMetaType::marshall(arg, v.userType(), v.constData());
+    QDBusMetaType::marshall(arg, v.metaType(), v.constData());
     arg.d = nullptr;
 
     // delete it
@@ -85,19 +51,17 @@ QByteArray QDBusArgumentPrivate::createSignature(int id)
     delete marshaller;
 
     if (signature.isEmpty() || !ok || !QDBusUtil::isValidSingleSignature(QString::fromLatin1(signature))) {
-        qWarning("QDBusMarshaller: type `%s' produces invalid D-BUS signature `%s' "
+        qWarning("QDBusMarshaller: type '%s' produces invalid D-BUS signature '%s' "
                  "(Did you forget to call beginStructure() ?)",
-                 QMetaType::typeName(id),
-                 signature.isEmpty() ? "<empty>" : signature.constData());
+                 QMetaType(id).name(), signature.isEmpty() ? "<empty>" : signature.constData());
         return "";
     } else if ((signature.at(0) != DBUS_TYPE_ARRAY && signature.at(0) != DBUS_STRUCT_BEGIN_CHAR) ||
                (signature.at(0) == DBUS_TYPE_ARRAY && (signature.at(1) == DBUS_TYPE_BYTE ||
                                                        signature.at(1) == DBUS_TYPE_STRING))) {
-        qWarning("QDBusMarshaller: type `%s' attempts to redefine basic D-BUS type '%s' (%s) "
+        qWarning("QDBusMarshaller: type '%s' attempts to redefine basic D-BUS type '%s' (%s) "
                  "(Did you forget to call beginStructure() ?)",
-                 QMetaType::typeName(id),
-                 signature.constData(),
-                 QMetaType::typeName(QDBusMetaType::signatureToType(signature)));
+                 QMetaType(id).name(), signature.constData(),
+                 QDBusMetaType::signatureToMetaType(signature).name());
         return "";
     }
     return signature;
@@ -188,7 +152,9 @@ bool QDBusArgumentPrivate::checkReadAndDetach(QDBusArgumentPrivate *&d)
     integer and a string can be constructed using the \l
     {qdbustypesystem.html}{Qt D-Bus type system}:
 
-    \snippet code/src_qdbus_qdbusargument.cpp 0
+    \snippet code/src_qdbus_qdbusargument.cpp 0-0
+    \codeline
+    \snippet code/src_qdbus_qdbusargument.cpp 0-1
 
     The type has to be registered with qDBusRegisterMetaType() before
     it can be used with QDBusArgument. Therefore, somewhere in your
@@ -247,8 +213,8 @@ bool QDBusArgumentPrivate::checkReadAndDetach(QDBusArgumentPrivate *&d)
 
     \value VariantType The variant element (QDBusVariant)
 
-    \value ArrayType An array element, usually represented by QList<T>
-    or QVector<T>. Note: QByteArray and associative maps are not
+    \value ArrayType An array element, usually represented by QList<T>.
+    Note: QByteArray and associative maps are not
     considered arrays, even if the D-Bus protocol transports them as such.
 
     \value StructureType A custom type represented by a structure,
@@ -267,7 +233,7 @@ bool QDBusArgumentPrivate::checkReadAndDetach(QDBusArgumentPrivate *&d)
 */
 
 /*!
-    \fn template<typename T> T qdbus_cast(const QDBusArgument &arg, T*)
+    \fn template<typename T> T qdbus_cast(const QDBusArgument &arg)
     \relates QDBusArgument
     \since 4.2
 
@@ -709,7 +675,7 @@ const QDBusArgument &QDBusArgument::operator>>(qulonglong &arg) const
 /*!
     \overload
     Extracts one D-Bus primitive argument of type \c{DOUBLE}
-    (double-precision floating pount) from the D-Bus stream.
+    (double-precision floating point) from the D-Bus stream.
 */
 const QDBusArgument &QDBusArgument::operator>>(double &arg) const
 {
@@ -869,7 +835,7 @@ void QDBusArgument::endStructure()
 
     \snippet code/src_qdbus_qdbusargument.cpp 6
 
-    If the type you want to marshall is a QList, QVector or any of the
+    If the type you want to marshall is a QList or any of the
     Qt's \l {Container Classes} that take one template parameter,
     you need not declare an \c{operator<<} function for it, since
     Qt D-Bus provides generic templates to do the job of marshalling
@@ -878,7 +844,7 @@ void QDBusArgument::endStructure()
 
     \sa endArray(), beginStructure(), beginMap()
 */
-void QDBusArgument::beginArray(int id)
+void QDBusArgument::beginArray(QMetaType id)
 {
     if (QDBusArgumentPrivate::checkWrite(d))
         d = d->marshaller()->beginArray(id);
@@ -900,24 +866,25 @@ void QDBusArgument::endArray()
     Opens a new D-Bus map suitable for
     appending elements. Maps are containers that associate one entry
     (the key) to another (the value), such as Qt's QMap or QHash. The
-    ids of the map's key and value meta types must be passed in \a kid
-    and \a vid respectively.
+    ids of the map's key and value meta types must be passed in \a keyMetaType
+    and \a valueMetaType respectively.
 
     This function is used usually in \c{operator<<} streaming
     operators, as in the following example:
 
     \snippet code/src_qdbus_qdbusargument.cpp 7
 
-    If the type you want to marshall is a QMap or QHash, you need not
-    declare an \c{operator<<} function for it, since Qt D-Bus provides
-    generic templates to do the job of marshalling the data.
+    You usually don't need to provide an \c{operator<<} or \c{operator>>}
+    function for associative containers such as QHash or std::map,
+    since Qt D-Bus provides generic templates to do the job of marshalling
+    the data.
 
     \sa endMap(), beginStructure(), beginArray(), beginMapEntry()
 */
-void QDBusArgument::beginMap(int kid, int vid)
+void QDBusArgument::beginMap(QMetaType keyMetaType, QMetaType valueMetaType)
 {
     if (QDBusArgumentPrivate::checkWrite(d))
-        d = d->marshaller()->beginMap(kid, vid);
+        d = d->marshaller()->beginMap(keyMetaType, valueMetaType);
 }
 
 /*!
@@ -996,7 +963,7 @@ void QDBusArgument::endStructure() const
 
     \snippet code/src_qdbus_qdbusargument.cpp 9
 
-    If the type you want to demarshall is a QList, QVector or any of the
+    If the type you want to demarshall is a QList or any of the
     Qt's \l {Container Classes} that take one template parameter, you
     need not declare an \c{operator>>} function for it, since Qt D-Bus
     provides generic templates to do the job of demarshalling the data.
@@ -1105,7 +1072,7 @@ bool QDBusArgument::atEnd() const
     argument (for example, by calling asVariant() in it).
 
     For example, if the current argument is an INT32, this function
-    will return a QVariant with an argument of type QVariant::Int. For
+    will return a QVariant with an argument of type QMetaType::Int. For
     an array of INT32, it will return a QVariant containing a
     QDBusArgument.
 
@@ -1203,12 +1170,33 @@ const QDBusArgument &operator>>(const QDBusArgument &a, QDateTime &dt)
     a >> date >> time >> timespec;
     a.endStructure();
 
-    dt = QDateTime(date, time, Qt::TimeSpec(timespec));
+    switch (Qt::TimeSpec(timespec)) {
+    case Qt::TimeZone:
+        qWarning("Restoring zoned date-time without zone info");
+        Q_FALLTHROUGH(); // Treat as local time.
+    case Qt::LocalTime:
+        dt = QDateTime(date, time);
+        break;
+    case Qt::OffsetFromUTC:
+        qWarning("Restoring date-time without its offset");
+        Q_FALLTHROUGH(); // Use zero offset
+    case Qt::UTC:
+        dt = QDateTime(date, time, QTimeZone::UTC);
+        break;
+    }
     return a;
 }
 
 QDBusArgument &operator<<(QDBusArgument &a, const QDateTime &dt)
 {
+    // TODO: Only viable for UTC and LocalTime
+    if (Q_UNLIKELY(dt.timeSpec() != Qt::UTC && dt.timeSpec() != Qt::LocalTime)) {
+        qWarning() << "Serializing a date-time with unsupported time-spec" << dt.timeSpec();
+        // Coerce to a supported timespec. When a time-zone is the current
+        // system zone, local time is suitable; so map all time-zones to local,
+        // plain offsets to UTC.
+        return a << (dt.timeSpec() == Qt::OffsetFromUTC ? dt.toUTC() : dt.toLocalTime());
+    }
     a.beginStructure();
     a << dt.date() << dt.time() << int(dt.timeSpec());
     a.endStructure();

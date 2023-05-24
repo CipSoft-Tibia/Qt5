@@ -33,7 +33,7 @@
 
 #include "third_party/blink/renderer/core/svg/svg_animated_number.h"
 #include "third_party/blink/renderer/core/svg/svg_number_optional_number.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -53,7 +53,6 @@ class SVGAnimatedNumberOptionalNumber
 
   void SetAnimatedValue(SVGPropertyBase*) override;
   bool NeedsSynchronizeAttribute() const override;
-  void AnimationEnded() override;
 
   SVGAnimatedNumber* FirstNumber() { return first_number_.Get(); }
   SVGAnimatedNumber* SecondNumber() { return second_number_.Get(); }

@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,12 +12,12 @@
 namespace {
 
 const CXFA_Node::PropertyData kExclGroupPropertyData[] = {
-    {XFA_Element::Margin, 1, 0},    {XFA_Element::Para, 1, 0},
-    {XFA_Element::Border, 1, 0},    {XFA_Element::Assist, 1, 0},
-    {XFA_Element::Traversal, 1, 0}, {XFA_Element::Validate, 1, 0},
-    {XFA_Element::Caption, 1, 0},   {XFA_Element::Bind, 1, 0},
-    {XFA_Element::Desc, 1, 0},      {XFA_Element::Calculate, 1, 0},
-    {XFA_Element::Extras, 1, 0},
+    {XFA_Element::Margin, 1, {}},    {XFA_Element::Para, 1, {}},
+    {XFA_Element::Border, 1, {}},    {XFA_Element::Assist, 1, {}},
+    {XFA_Element::Traversal, 1, {}}, {XFA_Element::Validate, 1, {}},
+    {XFA_Element::Caption, 1, {}},   {XFA_Element::Bind, 1, {}},
+    {XFA_Element::Desc, 1, {}},      {XFA_Element::Calculate, 1, {}},
+    {XFA_Element::Extras, 1, {}},
 };
 
 const CXFA_Node::AttributeData kExclGroupAttributeData[] = {
@@ -55,7 +55,7 @@ const CXFA_Node::AttributeData kExclGroupAttributeData[] = {
 CXFA_ExclGroup::CXFA_ExclGroup(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                (XFA_XDPPACKET_Template | XFA_XDPPACKET_Form),
+                {XFA_XDPPACKET::kTemplate, XFA_XDPPACKET::kForm},
                 XFA_ObjectType::ContainerNode,
                 XFA_Element::ExclGroup,
                 kExclGroupPropertyData,

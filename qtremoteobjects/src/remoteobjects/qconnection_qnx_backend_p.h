@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017-2016 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017-2016 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCONNECTIONQNXBACKEND_P_H
 #define QCONNECTIONQNXBACKEND_P_H
@@ -58,7 +22,7 @@
 QT_BEGIN_NAMESPACE
 
 /*!
-    QtRO provides ClientIoDevice, ServerIoDevice and QConnectionAbstractServer
+    QtRO provides QtROClientIoDevice, QtROServerIoDevice and QConnectionAbstractServer
     as abstract interfaces to allow different backends to be used by QtRO. The
     concept behind these classes is that there needs to be a Host node, which
     has an address that can be connected to. Then there is a client object,
@@ -78,10 +42,10 @@ QT_BEGIN_NAMESPACE
     logic for the client-side and server-side QIODevice are very different.
     Thus, three additional backend classes are needed as well.
 
-    QnxClientIo implements the QtRO ClientIoDevice wrapper around the QNX
+    QnxClientIo implements the QtRO QtROClientIoDevice wrapper around the QNX
     specific QQnxNativeIo QIODevice (the client-side QIODevice).
 
-    QnxServerIo implements the QtRO ServerIoDevice wrapper around the QNX
+    QnxServerIo implements the QtRO QtROServerIoDevice wrapper around the QNX
     specific QIOQnxSource QIODevice (the server-side QIODevice).
 
     QnxServerImpl implements the QtRO QConnectionAbstractServer wrapper around
@@ -93,7 +57,7 @@ QT_BEGIN_NAMESPACE
     QLocalServer/QLocalSocket QPA for QNX.
 */
 
-class QnxClientIo final : public ClientIoDevice
+class QnxClientIo final : public QtROClientIoDevice
 {
     Q_OBJECT
 
@@ -116,7 +80,7 @@ private:
     QQnxNativeIo *m_socket;
 };
 
-class QnxServerIo final : public ServerIoDevice
+class QnxServerIo final : public QtROServerIoDevice
 {
 public:
     explicit QnxServerIo(QSharedPointer<QIOQnxSource> conn, QObject *parent = nullptr);
@@ -139,7 +103,7 @@ public:
     ~QnxServerImpl() override;
 
     bool hasPendingConnections() const override;
-    ServerIoDevice *configureNewConnection() override;
+    QtROServerIoDevice *configureNewConnection() override;
     QUrl address() const override;
     bool listen(const QUrl &address) override;
     QAbstractSocket::SocketError serverError() const override;

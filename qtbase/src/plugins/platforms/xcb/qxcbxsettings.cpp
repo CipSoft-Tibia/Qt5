@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qxcbxsettings.h"
 
@@ -104,7 +68,7 @@ public:
 
         int offset = 0;
         QByteArray settings;
-        xcb_atom_t _xsettings_atom = screen->connection()->atom(QXcbAtom::_XSETTINGS_SETTINGS);
+        xcb_atom_t _xsettings_atom = screen->connection()->atom(QXcbAtom::Atom_XSETTINGS_SETTINGS);
         while (1) {
             auto reply = Q_XCB_REPLY_UNCHECKED(xcb_get_property,
                                                screen->xcb_connection(),
@@ -140,7 +104,7 @@ public:
 
     void populateSettings(const QByteArray &xSettings)
     {
-        if (xSettings.length() < 12)
+        if (xSettings.size() < 12)
             return;
         char byteOrder = xSettings.at(0);
         if (byteOrder != XCB_IMAGE_ORDER_LSB_FIRST && byteOrder != XCB_IMAGE_ORDER_MSB_FIRST) {
@@ -228,19 +192,18 @@ QXcbXSettings::QXcbXSettings(QXcbVirtualDesktop *screen)
     auto atom_reply = Q_XCB_REPLY(xcb_intern_atom,
                                   screen->xcb_connection(),
                                   true,
-                                  settings_atom_for_screen.length(),
+                                  settings_atom_for_screen.size(),
                                   settings_atom_for_screen.constData());
     if (!atom_reply)
         return;
 
     xcb_atom_t selection_owner_atom = atom_reply->atom;
 
-    auto selection_result = Q_XCB_REPLY(xcb_get_selection_owner,
-                                        screen->xcb_connection(), selection_owner_atom);
-    if (!selection_result)
+    xcb_window_t owner = screen->connection()->selectionOwner(selection_owner_atom);
+    if (owner == XCB_NONE)
         return;
 
-    d_ptr->x_settings_window = selection_result->owner;
+    d_ptr->x_settings_window = owner;
     if (!d_ptr->x_settings_window)
         return;
 

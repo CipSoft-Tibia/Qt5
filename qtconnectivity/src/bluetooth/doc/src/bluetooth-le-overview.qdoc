@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt local connectivty modules.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \ingroup technology-apis
@@ -34,11 +10,9 @@ Low Energy devices.
 
 \tableofcontents
 
-    The Qt Bluetooth Low Energy API for the central role was introduced by Qt 5.4.
-    Since Qt 5.5 that part of the API is final and a compatibility guarantee is given for
-    future releases.
-    Since Qt 5.7, additional API supporting the peripheral role was added as a Technology Preview,
-    with the backend implemented for Linux/BlueZ, iOS and macOS.
+    The Qt Bluetooth Low Energy API supports the peripheral/server and central/client roles.
+    It is supported on all major Qt platforms. The only exception is the missing peripheral role
+    support on Windows.
 
     \section1 What Is Bluetooth Low Energy
 
@@ -146,7 +120,7 @@ Low Energy devices.
     The example above uses the UUIDs \c 0x2A08 (Date Time) and \c 0x2A37 (Heart Rate Measurement).
     Each of the above UUIDs is defined by the \l {https://bluetooth.org}{Bluetooth Special Interest Group}.
     and can be found in the
-    \l{https://developer.bluetooth.org/gatt/Pages/default.aspx}{GATT specification}. While it
+    \l{https://www.bluetooth.com/specifications/assigned-numbers}{GATT specifications}. While it
     is advisable to use pre-defined UUIDs where available it is entirely possible to use new and not
     yet used UUIDs for characteristic and service types.
 
@@ -181,7 +155,10 @@ Low Energy devices.
 
     Since we are only interested in Low Energy devices we filter the device type within the
     receiving slot. The device type can be ascertained using the \l QBluetoothDeviceInfo::coreConfigurations()
-    flag:
+    flag. The \l {QBluetoothDeviceDiscoveryAgent::}{deviceDiscovered()} signal
+    may be emitted multiple times for the same device as more details are
+    discovered. Here we match these device discoveries so that the user only
+    sees the individual devices:
 
     \snippet heartrate-game/devicefinder.cpp devicediscovery-3
     \snippet heartrate-game/devicefinder.cpp devicediscovery-4
@@ -197,13 +174,13 @@ Low Energy devices.
 
     \section2 Service Search
 
-    The above code snippet how the application initiates the service discovery once the connection has
-    been established.
+    The above code snippet shows how the application initiates the service discovery once the
+    connection has been established.
 
     The \c serviceDiscovered() slot below is triggered as a result of the
     \l {QLowEnergyController::serviceDiscovered()} signal and provides an intermittent progress report.
     Since we are talking about the heart listener app which monitors HeartRate devices in the vicinity
-    we ignore any service that is not of type \l QBluetoothUuid::HeartRate.
+    we ignore any service that is not of type \l QBluetoothUuid::ServiceClassUuid::HeartRate.
 
     \snippet heartrate-game/devicehandler.cpp Filter HeartRate service 1
 
@@ -216,21 +193,21 @@ Low Energy devices.
     \snippet heartrate-game/devicehandler.cpp Filter HeartRate service 2
 
     During the detail search the service's \l {QLowEnergyService::state()}{state()} transitions
-    from \l {QLowEnergyService::DiscoveryRequired}{DiscoveryRequired} to
-    \l {QLowEnergyService::DiscoveringServices}{DiscoveringServices} and eventually ends with
-    \l {QLowEnergyService::ServiceDiscovered}{ServiceDiscovered}:
+    from \l {QLowEnergyService::RemoteService}{RemoteService} to
+    \l {QLowEnergyService::RemoteServiceDiscovering}{RemoteServiceDiscovering} and eventually ends with
+    \l {QLowEnergyService::RemoteServiceDiscovered}{RemoteServiceDiscovered}:
 
     \snippet heartrate-game/devicehandler.cpp Find HRM characteristic
 
     \section2 Interaction with the Peripheral Device
 
     In the code example above, the desired characteristic is of type
-    \l {QBluetoothUuid::HeartRateMeasurement}{HeartRateMeasurement}. Since the application measures
+    \l {QBluetoothUuid::CharacteristicType::HeartRateMeasurement}{HeartRateMeasurement}. Since the application measures
     the heart rate changes, it must enable change notifications for the characteristic.
     Note that not all characteristics provide change notifications. Since the HeartRate characteristic
     has been standardized it is possible to assume that notifications can be received. Ultimately
     \l QLowEnergyCharacteristic::properties() must have the \l {QLowEnergyCharacteristic::Notify} flag
-    set and a descriptor of type \l {QBluetoothUuid::ClientCharacteristicConfiguration} must exist to confirm
+    set and a descriptor of type \l {QBluetoothUuid::DescriptorType::ClientCharacteristicConfiguration} must exist to confirm
     the availability of an appropriate notification.
 
     Finally, we process the value of the HeartRate characteristic, as per Bluetooth Low Energy standard:
@@ -287,13 +264,10 @@ Low Energy devices.
     In general characteristic and descriptor value updates on the peripheral device use the same
     methods as connecting Bluetooth Low Energy devices.
 
-    \note To use QtBluetooth (in both central and peripheral roles) on iOS, you have to provide an Info.plist
-    file containing the usage description. According to the CoreBluetooth's documentation:
-
-    "Important
-
-    Your app will crash if its Info.plist doesn’t include usage description keys for the types of data
-    it needs to access. To access Core Bluetooth APIs on apps linked on or after iOS 13, include the
-    NSBluetoothAlwaysUsageDescription key. In iOS 12 and earlier, include NSBluetoothPeripheralUsageDescription
-    to access Bluetooth peripheral data."
+    \note To use QtBluetooth (in both central and peripheral roles) on iOS, you have to provide
+    an Info.plist file containing the usage description. According to the CoreBluetooth's
+    documentation: \e {Your app will crash if its Info.plist doesn’t include usage description
+    keys for the types of data it needs to access. To access Core Bluetooth APIs on apps linked
+    on or after iOS 13, include the NSBluetoothAlwaysUsageDescription key. In iOS 12 and earlier,
+    include NSBluetoothPeripheralUsageDescription to access Bluetooth peripheral data.}
 */

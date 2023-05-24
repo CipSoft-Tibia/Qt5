@@ -5,8 +5,9 @@
 #include "src/compiler/escape-analysis-reducer.h"
 
 #include "src/compiler/all-nodes.h"
+#include "src/compiler/node-matchers.h"
+#include "src/compiler/operation-typer.h"
 #include "src/compiler/simplified-operator.h"
-#include "src/compiler/type-cache.h"
 #include "src/execution/frame-constants.h"
 
 namespace v8 {
@@ -14,19 +15,20 @@ namespace internal {
 namespace compiler {
 
 #ifdef DEBUG
-#define TRACE(...)                                    \
-  do {                                                \
-    if (FLAG_trace_turbo_escape) PrintF(__VA_ARGS__); \
+#define TRACE(...)                                        \
+  do {                                                    \
+    if (v8_flags.trace_turbo_escape) PrintF(__VA_ARGS__); \
   } while (false)
 #else
 #define TRACE(...)
 #endif  // DEBUG
 
 EscapeAnalysisReducer::EscapeAnalysisReducer(
-    Editor* editor, JSGraph* jsgraph, EscapeAnalysisResult analysis_result,
-    Zone* zone)
+    Editor* editor, JSGraph* jsgraph, JSHeapBroker* broker,
+    EscapeAnalysisResult analysis_result, Zone* zone)
     : AdvancedReducer(editor),
       jsgraph_(jsgraph),
+      broker_(broker),
       analysis_result_(analysis_result),
       object_id_cache_(zone),
       node_cache_(jsgraph->graph(), zone),
@@ -67,17 +69,6 @@ Reduction EscapeAnalysisReducer::ReplaceNode(Node* original,
   ReplaceWithValue(original, original, original, control);
   return NoChange();
 }
-
-namespace {
-
-Node* SkipTypeGuards(Node* node) {
-  while (node->opcode() == IrOpcode::kTypeGuard) {
-    node = NodeProperties::GetValueInput(node, 0);
-  }
-  return node;
-}
-
-}  // namespace
 
 Node* EscapeAnalysisReducer::ObjectIdNode(const VirtualObject* vobject) {
   VirtualObject::Id id = vobject->id();
@@ -134,19 +125,21 @@ Reduction EscapeAnalysisReducer::Reduce(Node* node) {
 // occurrences of virtual objects.
 class Deduplicator {
  public:
-  explicit Deduplicator(Zone* zone) : is_duplicate_(zone) {}
+  explicit Deduplicator(Zone* zone) : zone_(zone) {}
   bool SeenBefore(const VirtualObject* vobject) {
-    VirtualObject::Id id = vobject->id();
-    if (id >= is_duplicate_.size()) {
-      is_duplicate_.resize(id + 1);
+    DCHECK_LE(vobject->id(), std::numeric_limits<int>::max());
+    int id = static_cast<int>(vobject->id());
+    if (id >= is_duplicate_.length()) {
+      is_duplicate_.Resize(id + 1, zone_);
     }
-    bool is_duplicate = is_duplicate_[id];
-    is_duplicate_[id] = true;
+    bool is_duplicate = is_duplicate_.Contains(id);
+    is_duplicate_.Add(id);
     return is_duplicate;
   }
 
  private:
-  ZoneVector<bool> is_duplicate_;
+  Zone* zone_;
+  BitVector is_duplicate_;
 };
 
 void EscapeAnalysisReducer::ReduceFrameStateInputs(Node* node) {
@@ -169,9 +162,12 @@ Node* EscapeAnalysisReducer::ReduceDeoptState(Node* node, Node* effect,
     // This input order is important to match the DFS traversal used in the
     // instruction selector. Otherwise, the instruction selector might find a
     // duplicate node before the original one.
-    for (int input_id : {kFrameStateOuterStateInput, kFrameStateFunctionInput,
-                         kFrameStateParametersInput, kFrameStateContextInput,
-                         kFrameStateLocalsInput, kFrameStateStackInput}) {
+    for (int input_id : {FrameState::kFrameStateOuterStateInput,
+                         FrameState::kFrameStateFunctionInput,
+                         FrameState::kFrameStateParametersInput,
+                         FrameState::kFrameStateContextInput,
+                         FrameState::kFrameStateLocalsInput,
+                         FrameState::kFrameStateStackInput}) {
       Node* input = node->InputAt(input_id);
       new_node.ReplaceInput(ReduceDeoptState(input, effect, deduplicator),
                             input_id);
@@ -185,8 +181,8 @@ Node* EscapeAnalysisReducer::ReduceDeoptState(Node* node, Node* effect,
                                  i);
     }
     return new_node.Get();
-  } else if (const VirtualObject* vobject =
-                 analysis_result().GetVirtualObject(SkipTypeGuards(node))) {
+  } else if (const VirtualObject* vobject = analysis_result().GetVirtualObject(
+                 SkipValueIdentities(node))) {
     if (vobject->HasEscaped()) return node;
     if (deduplicator->SeenBefore(vobject)) {
       return ObjectIdNode(vobject);
@@ -228,6 +224,7 @@ void EscapeAnalysisReducer::VerifyReplacement() const {
 }
 
 void EscapeAnalysisReducer::Finalize() {
+  OperationTyper op_typer(broker_, jsgraph()->graph()->zone());
   for (Node* node : arguments_elements_) {
     const NewArgumentsElementsParameters& params =
         NewArgumentsElementsParametersOf(node->op());
@@ -236,9 +233,7 @@ void EscapeAnalysisReducer::Finalize() {
                            ? params.formal_parameter_count()
                            : 0;
 
-    Node* arguments_frame = NodeProperties::GetValueInput(node, 0);
-    if (arguments_frame->opcode() != IrOpcode::kArgumentsFrame) continue;
-    Node* arguments_length = NodeProperties::GetValueInput(node, 1);
+    Node* arguments_length = NodeProperties::GetValueInput(node, 0);
     if (arguments_length->opcode() != IrOpcode::kArgumentsLength) continue;
 
     Node* arguments_length_state = nullptr;
@@ -315,7 +310,6 @@ void EscapeAnalysisReducer::Finalize() {
                 formal_parameter_count,
                 Type::Constant(params.formal_parameter_count(),
                                jsgraph()->graph()->zone()));
-#ifdef V8_REVERSE_JSARGS
             Node* offset_to_first_elem = jsgraph()->Constant(
                 CommonFrameConstants::kFixedSlotCountAboveFp);
             if (!NodeProperties::IsTyped(offset_to_first_elem)) {
@@ -328,34 +322,25 @@ void EscapeAnalysisReducer::Finalize() {
             Node* offset = jsgraph()->graph()->NewNode(
                 jsgraph()->simplified()->NumberAdd(), index,
                 offset_to_first_elem);
+            Type offset_type = op_typer.NumberAdd(
+                NodeProperties::GetType(index),
+                NodeProperties::GetType(offset_to_first_elem));
+            NodeProperties::SetType(offset, offset_type);
             if (type == CreateArgumentsType::kRestParameter) {
               // In the case of rest parameters we should skip the formal
               // parameters.
-              NodeProperties::SetType(offset,
-                                      TypeCache::Get()->kArgumentsLengthType);
               offset = jsgraph()->graph()->NewNode(
                   jsgraph()->simplified()->NumberAdd(), offset,
                   formal_parameter_count);
+              NodeProperties::SetType(
+                  offset, op_typer.NumberAdd(
+                              offset_type,
+                              NodeProperties::GetType(formal_parameter_count)));
             }
-#else
-            // {offset} is a reverted index starting from 1. The base address is
-            // adapted to allow offsets starting from 1.
-            Node* offset = jsgraph()->graph()->NewNode(
-                jsgraph()->simplified()->NumberSubtract(), arguments_length,
-                index);
-            if (type == CreateArgumentsType::kRestParameter) {
-              // In the case of rest parameters we should skip the formal
-              // parameters.
-              NodeProperties::SetType(offset,
-                                      TypeCache::Get()->kArgumentsLengthType);
-              offset = jsgraph()->graph()->NewNode(
-                  jsgraph()->simplified()->NumberSubtract(), offset,
-                  formal_parameter_count);
-            }
-#endif
-            NodeProperties::SetType(offset,
-                                    TypeCache::Get()->kArgumentsLengthType);
-            NodeProperties::ReplaceValueInput(load, arguments_frame, 0);
+            Node* frame = jsgraph()->graph()->NewNode(
+                jsgraph()->machine()->LoadFramePointer());
+            NodeProperties::SetType(frame, Type::ExternalPointer());
+            NodeProperties::ReplaceValueInput(load, frame, 0);
             NodeProperties::ReplaceValueInput(load, offset, 1);
             NodeProperties::ChangeOp(
                 load, jsgraph()->simplified()->LoadStackArgument());
@@ -364,7 +349,7 @@ void EscapeAnalysisReducer::Finalize() {
           case IrOpcode::kLoadField: {
             DCHECK_EQ(FieldAccessOf(load->op()).offset,
                       FixedArray::kLengthOffset);
-            Node* length = NodeProperties::GetValueInput(node, 1);
+            Node* length = NodeProperties::GetValueInput(node, 0);
             ReplaceWithValue(load, length);
             break;
           }

@@ -1,18 +1,14 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import optparse
-import os
-import sys
 import unittest
 
-from blinkpy.common import path_finder
 from blinkpy.common.host_mock import MockHost
+from blinkpy.common.system.filesystem_mock import MockFileSystem
 from blinkpy.web_tests.controllers import web_test_finder
 from blinkpy.web_tests.models import test_expectations
-
-import mock
 
 
 class WebTestFinderTests(unittest.TestCase):
@@ -132,9 +128,6 @@ class WebTestFinderTests(unittest.TestCase):
         expectations = test_expectations.TestExpectations(port)
         tests = finder.skip_tests([], all_tests, expectations)
         self.assertEqual(tests, set())
-        for test in all_tests:
-            self.assertTrue(
-                expectations.get_expectations(test).is_default_pass)
 
         # MSAN/ASAN, with no paths specified explicitly, so should skip both
         # idlharness tests.
@@ -142,12 +135,6 @@ class WebTestFinderTests(unittest.TestCase):
         finder._options.enable_sanitizer = True
         tests = finder.skip_tests([], all_tests, expectations)
         self.assertEqual(tests, set([idlharness_test_1, idlharness_test_2]))
-        self.assertTrue(
-            expectations.get_expectations(non_idlharness_test).is_default_pass)
-        self.assertEquals(
-            expectations.get_expectations(idlharness_test_1).results, {'SKIP'})
-        self.assertEquals(
-            expectations.get_expectations(idlharness_test_2).results, {'SKIP'})
 
         # Disable expectations entirely; we should still skip the idlharness
         # tests but shouldn't touch the expectations parameter.
@@ -160,15 +147,6 @@ class WebTestFinderTests(unittest.TestCase):
         expectations = test_expectations.TestExpectations(port)
         tests = finder.skip_tests([idlharness_test_1], all_tests, expectations)
         self.assertEqual(tests, set([idlharness_test_2]))
-        # Although we will run the test because it was specified explicitly, it
-        # is still *expected* to Skip. This is consistent with how entries in
-        # TestExpectations work.
-        self.assertTrue(
-            expectations.get_expectations(non_idlharness_test).is_default_pass)
-        self.assertEquals(
-            expectations.get_expectations(idlharness_test_1).results, {'SKIP'})
-        self.assertEquals(
-            expectations.get_expectations(idlharness_test_2).results, {'SKIP'})
 
     def test_find_fastest_tests(self):
         host = MockHost()
@@ -257,37 +235,57 @@ class WebTestFinderTests(unittest.TestCase):
     def test_split_chunks(self):
         split = web_test_finder.WebTestFinder._split_into_chunks  # pylint: disable=protected-access
 
-        with mock.patch('__builtin__.hash', int):
+        tests = ['1', '2', '3', '4']
+        self.assertEqual(['1', '2', '3', '4'], split(tests, 0, 1))
 
-            tests = [1, 2, 3, 4]
-            self.assertEqual([1, 2, 3, 4], split(tests, 0, 1))
+        self.assertEqual(['3', '4'], split(tests, 0, 2))
+        self.assertEqual(['1', '2'], split(tests, 1, 2))
 
-            self.assertEqual([2, 4], split(tests, 0, 2))
-            self.assertEqual([1, 3], split(tests, 1, 2))
+        self.assertEqual(['1', '2', '4'], split(tests, 0, 3))
+        self.assertEqual([], split(tests, 1, 3))
+        self.assertEqual(['3'], split(tests, 2, 3))
 
-            self.assertEqual([3], split(tests, 0, 3))
-            self.assertEqual([1, 4], split(tests, 1, 3))
-            self.assertEqual([2], split(tests, 2, 3))
+        tests = ['1', '2', '3', '4', '5']
+        self.assertEqual(['1', '2', '3', '4', '5'], split(tests, 0, 1))
 
-            tests = [1, 2, 3, 4, 5]
-            self.assertEqual([1, 2, 3, 4, 5], split(tests, 0, 1))
+        self.assertEqual(['3', '4'], split(tests, 0, 2))
+        self.assertEqual(['1', '2', '5'], split(tests, 1, 2))
 
-            self.assertEqual([2, 4], split(tests, 0, 2))
-            self.assertEqual([1, 3, 5], split(tests, 1, 2))
+        self.assertEqual(['1', '2', '4'], split(tests, 0, 3))
+        self.assertEqual(['5'], split(tests, 1, 3))
+        self.assertEqual(['3'], split(tests, 2, 3))
 
-            self.assertEqual([3], split(tests, 0, 3))
-            self.assertEqual([1, 4], split(tests, 1, 3))
-            self.assertEqual([2, 5], split(tests, 2, 3))
+        tests = ['1', '2', '3', '4', '5', '6']
+        self.assertEqual(['1', '2', '3', '4', '5', '6'], split(tests, 0, 1))
 
-            tests = [1, 2, 3, 4, 5, 6]
-            self.assertEqual([1, 2, 3, 4, 5, 6], split(tests, 0, 1))
+        self.assertEqual(['3', '4'], split(tests, 0, 2))
+        self.assertEqual(['1', '2', '5', '6'], split(tests, 1, 2))
 
-            self.assertEqual([2, 4, 6], split(tests, 0, 2))
-            self.assertEqual([1, 3, 5], split(tests, 1, 2))
+        self.assertEqual(['1', '2', '4'], split(tests, 0, 3))
+        self.assertEqual(['5', '6'], split(tests, 1, 3))
+        self.assertEqual(['3'], split(tests, 2, 3))
 
-            self.assertEqual([3, 6], split(tests, 0, 3))
-            self.assertEqual([1, 4], split(tests, 1, 3))
-            self.assertEqual([2, 5], split(tests, 2, 3))
+    def test_test_list_find_tests(self):
+        host = MockHost()
+        port = host.port_factory.get('test-win-win7', None)
+        mock_files = {'test-list.txt': \
+            'path/test.html\n'\
+            'virtual/path/test.html'}
+        host.filesystem = MockFileSystem(files=mock_files)
+
+        port_tests = [
+            'path/test.html',
+            'not/in/test/list.html',
+        ]
+
+        port.tests = lambda paths: paths or port_tests
+
+        finder = web_test_finder.WebTestFinder(port, {})
+
+        tests = finder.find_tests(args=[], test_lists=['test-list.txt'])
+        self.assertEqual(
+            set(tests[1]),
+            set(['path/test.html','virtual/path/test.html',]))
 
 
 class FilterTestsTests(unittest.TestCase):
@@ -308,12 +306,22 @@ class FilterTestsTests(unittest.TestCase):
 
     def test_one_all_positive_filter(self):
         self.check(self.simple_test_list, [['a*']], ['a/a1.html', 'a/a2.html'])
+        self.check(self.simple_test_list, [['+a*']],
+                   ['a/a1.html', 'a/a2.html'])
 
         self.check(self.simple_test_list, [['a*', 'b*']],
                    self.simple_test_list)
 
+    def test_one_exact_positive_filter(self):
+        self.check(self.simple_test_list, [['a/a1.html']], ['a/a1.html'])
+        self.check(self.simple_test_list, [['+a/a1.html']], ['a/a1.html'])
+
     def test_one_all_negative_filter(self):
         self.check(self.simple_test_list, [['-c*']], self.simple_test_list)
+
+    def test_one_exact_negative_filter(self):
+        self.check(self.simple_test_list, [['-a/a1.html']],
+                   ['a/a2.html', 'b/b1.html'])
 
     def test_one_mixed_filter(self):
         self.check(self.simple_test_list, [['a*', '-c*']],
@@ -345,12 +353,15 @@ class FilterTestsTests(unittest.TestCase):
         # would be run by every filter individually).
         self.check(self.simple_test_list, [['-a/a*'], ['a/a2*']], [])
 
-    def test_only_trailing_globs_work(self):
+    def test_only_trailing_unescaped_globs_work(self):
         self.check(self.simple_test_list, [['a*']], ['a/a1.html', 'a/a2.html'])
-
         # These test that if you have a glob that contains a "*" that isn't
         # at the end, it is rejected; only globs at the end should work.
         self.assertRaises(ValueError, self.check, self.simple_test_list,
                           [['*1.html']], [])
         self.assertRaises(ValueError, self.check, self.simple_test_list,
                           [['a*.html']], [])
+
+    def test_escaped_globs_allowed(self):
+        self.check(self.simple_test_list + ['a\\*1'], [['-a\\*1']],
+                   self.simple_test_list)

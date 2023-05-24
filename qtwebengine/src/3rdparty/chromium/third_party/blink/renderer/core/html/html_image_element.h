@@ -29,17 +29,17 @@
 #include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/create_element_flags.h"
+#include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/html/canvas/image_element_base.h"
 #include "third_party/blink/renderer/core/html/forms/form_associated.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/core/html/html_image_loader.h"
 #include "third_party/blink/renderer/core/html/lazy_load_image_observer.h"
-#include "third_party/blink/renderer/platform/geometry/int_size.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_types.h"
 #include "third_party/blink/renderer/platform/graphics/image_orientation.h"
-#include "third_party/blink/renderer/platform/heap/heap_allocator.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_parameters.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_response.h"
+#include "ui/gfx/geometry/size.h"
 
 namespace blink {
 
@@ -53,7 +53,8 @@ class CORE_EXPORT HTMLImageElement final
     : public HTMLElement,
       public ImageElementBase,
       public ActiveScriptWrappable<HTMLImageElement>,
-      public FormAssociated {
+      public FormAssociated,
+      public LocalFrameView::LifecycleNotificationObserver {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
@@ -101,8 +102,14 @@ class CORE_EXPORT HTMLImageElement final
   ImageResourceContent* CachedImage() const {
     return GetImageLoader().GetContent();
   }
-  void LoadDeferredImage() {
-    GetImageLoader().LoadDeferredImage(referrer_policy_);
+  void LoadDeferredImageFromMicrotask() {
+    GetImageLoader().LoadDeferredImage(referrer_policy_,
+                                       /*force_blocking*/ false,
+                                       /*update_from_microtask*/ true);
+  }
+  void LoadDeferredImageBlockingLoad() {
+    GetImageLoader().LoadDeferredImage(referrer_policy_,
+                                       /*force_blocking*/ true);
   }
   void SetImageForTest(ImageResourceContent* content) {
     GetImageLoader().SetImageForTest(content);
@@ -139,9 +146,11 @@ class CORE_EXPORT HTMLImageElement final
   virtual void EnsurePrimaryContent();
   bool IsCollapsed() const;
 
+  void SetAutoSizesUsecounter();
+
   // CanvasImageSource interface implementation.
-  FloatSize DefaultDestinationSize(
-      const FloatSize&,
+  gfx::SizeF DefaultDestinationSize(
+      const gfx::SizeF&,
       const RespectImageOrientationEnum) const override;
 
   // public so that HTMLPictureElement can call this as well.
@@ -178,8 +187,23 @@ class CORE_EXPORT HTMLImageElement final
   }
 
   // Keeps track of whether the image comes from an ad.
-  void SetIsAdRelated() { is_ad_related_ = true; }
+  void SetIsAdRelated();
   bool IsAdRelated() const override { return is_ad_related_; }
+
+  // Keeps track whether this image is an LCP element.
+  void SetIsLCPElement() { is_lcp_element_ = true; }
+  bool IsLCPElement() const { return is_lcp_element_; }
+
+  bool IsChangedShortlyAfterMouseover() const {
+    return is_changed_shortly_after_mouseover_;
+  }
+
+  void InvalidateAttributeMapping();
+
+  bool IsRichlyEditableForAccessibility() const override { return false; }
+
+  static bool SupportedImageType(const String& type,
+                                 const HashSet<String>* disabled_image_types);
 
  protected:
   // Controls how an image element appears in the layout. See:
@@ -201,7 +225,7 @@ class CORE_EXPORT HTMLImageElement final
   void DidMoveToNewDocument(Document& old_document) override;
 
   void DidAddUserAgentShadowRoot(ShadowRoot&) override;
-  scoped_refptr<ComputedStyle> CustomStyleForLayoutObject() override;
+  void AdjustStyle(ComputedStyleBuilder&) override;
 
  private:
   bool AreAuthorShadowsAllowed() const override { return false; }
@@ -211,6 +235,12 @@ class CORE_EXPORT HTMLImageElement final
   void CollectStyleForPresentationAttribute(
       const QualifiedName&,
       const AtomicString&,
+      MutableCSSPropertyValueSet*) override;
+  // For mapping attributes from the <source> element, if any.
+  bool HasExtraStyleForPresentationAttribute() const override {
+    return source_;
+  }
+  void CollectExtraStyleForPresentationAttribute(
       MutableCSSPropertyValueSet*) override;
   void SetLayoutDisposition(LayoutDisposition, bool force_reattach = false);
 
@@ -241,6 +271,9 @@ class CORE_EXPORT HTMLImageElement final
   void NotifyViewportChanged();
   void CreateMediaQueryListIfDoesNotExist();
 
+  // LocalFrameView::LifecycleNotificationObserver
+  void DidFinishLifecycleUpdate(const LocalFrameView&) override;
+
   Member<HTMLImageLoader> image_loader_;
   Member<ViewportChangeListener> listener_;
   Member<HTMLFormElement> form_;
@@ -256,13 +289,24 @@ class CORE_EXPORT HTMLImageElement final
   // policies. When any policy is violated, the image should be rendered as a
   // placeholder image.
   bool is_legacy_format_or_unoptimized_image_ : 1;
+  bool is_ad_related_ : 1;
+  bool is_lcp_element_ : 1;
+  bool is_changed_shortly_after_mouseover_ : 1;
+  bool has_sizes_attribute_in_img_or_sibling_ : 1;
+  bool is_lazy_loaded_ : 1;
 
   network::mojom::ReferrerPolicy referrer_policy_;
 
   std::unique_ptr<LazyLoadImageObserver::VisibleLoadTimeMetrics>
       visible_load_time_metrics_;
 
-  bool is_ad_related_ = false;
+  bool image_ad_use_counter_recorded_ = false;
+
+  // The last rectangle reported to the the `PageTimingMetricsSender`.
+  // `last_reported_ad_rect_` is empty if there's no report before, or if the
+  // last report was used to signal the removal of this element (i.e. both cases
+  // will be handled the same way).
+  gfx::Rect last_reported_ad_rect_;
 };
 
 }  // namespace blink

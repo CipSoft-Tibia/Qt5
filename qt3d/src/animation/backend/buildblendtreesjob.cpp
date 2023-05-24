@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "buildblendtreesjob_p.h"
 #include <Qt3DAnimation/private/handler_p.h>
@@ -60,7 +27,7 @@ void BuildBlendTreesJob::setBlendedClipAnimators(const QVector<HBlendedClipAnima
     m_blendedClipAnimatorHandles = blendedClipAnimatorHandles;
     BlendedClipAnimatorManager *blendedClipAnimatorManager = m_handler->blendedClipAnimatorManager();
     BlendedClipAnimator *blendedClipAnimator = nullptr;
-    for (const auto &blendedClipAnimatorHandle : qAsConst(m_blendedClipAnimatorHandles)) {
+    for (const auto &blendedClipAnimatorHandle : std::as_const(m_blendedClipAnimatorHandles)) {
         blendedClipAnimator = blendedClipAnimatorManager->data(blendedClipAnimatorHandle);
         Q_ASSERT(blendedClipAnimator);
     }
@@ -70,7 +37,7 @@ void BuildBlendTreesJob::setBlendedClipAnimators(const QVector<HBlendedClipAnima
 // We assume that the structure of blend node tree does not change once a BlendClipAnimator has been set to running
 void BuildBlendTreesJob::run()
 {
-    for (const HBlendedClipAnimator &blendedClipAnimatorHandle : qAsConst(m_blendedClipAnimatorHandles)) {
+    for (const HBlendedClipAnimator &blendedClipAnimatorHandle : std::as_const(m_blendedClipAnimatorHandles)) {
         // Retrieve BlendTree node
         BlendedClipAnimator *blendClipAnimator = m_handler->blendedClipAnimatorManager()->data(blendedClipAnimatorHandle);
         Q_ASSERT(blendClipAnimator);
@@ -104,10 +71,10 @@ void BuildBlendTreesJob::run()
 
         // Store the clip value nodes to avoid further lookups below.
         // TODO: Refactor this next block into a function in animationutils.cpp that takes
-        // a QVector<QClipBlendValue*> as input.
-        QVector<ClipBlendValue *> valueNodes;
+        // a QList<QClipBlendValue*> as input.
+        QList<ClipBlendValue *> valueNodes;
         valueNodes.reserve(valueNodeIds.size());
-        for (const auto valueNodeId : valueNodeIds) {
+        for (const auto &valueNodeId : valueNodeIds) {
             ClipBlendValue *valueNode
                     = static_cast<ClipBlendValue *>(m_handler->clipBlendNodeManager()->lookupNode(valueNodeId));
             Q_ASSERT(valueNode);
@@ -145,7 +112,7 @@ void BuildBlendTreesJob::run()
                 // data for that channel. Clips without data for a channel will
                 // have default values substituted when evaluating the blend tree.
                 int channelIndex = 0;
-                for (const auto &channelMask : qAsConst(format.sourceClipMask))
+                for (const auto &channelMask : std::as_const(format.sourceClipMask))
                     blendTreeChannelMask[channelIndex++] |= channelMask;
             }
         }
@@ -158,8 +125,8 @@ void BuildBlendTreesJob::run()
         for (const auto valueNode : valueNodes) {
             ClipFormat &f = valueNode->clipFormat(blendClipAnimator->peerId());
 
-            const int channelCount = blendTreeChannelMask.size();
-            for (int i = 0; i < channelCount; ++i) {
+            const qsizetype channelCount = blendTreeChannelMask.size();
+            for (qsizetype i = 0; i < channelCount; ++i) {
                 if (blendTreeChannelMask[i] == f.sourceClipMask[i])
                     continue; // Masks match, nothing to do
 
@@ -173,7 +140,7 @@ void BuildBlendTreesJob::run()
                 // values and store them in the format.
                 const ComponentIndices &componentIndices = f.formattedComponentIndices[i];
                 Q_ASSERT(componentIndices.size() == defaultValue.size());
-                for (int j = 0; j < defaultValue.size(); ++j)
+                for (qsizetype j = 0; j < defaultValue.size(); ++j)
                     f.defaultComponentValues.push_back({componentIndices[j], defaultValue[j]});
             }
         }
@@ -181,20 +148,19 @@ void BuildBlendTreesJob::run()
         // Finally, build the mapping data vector for this blended clip animator. This
         // gets used during the final stage of evaluation when sending the property changes
         // out to the targets of the animation. We do the costly work once up front.
-        const QVector<Qt3DCore::QNodeId> channelMappingIds = mapper->mappingIds();
+        const Qt3DCore::QNodeIdVector channelMappingIds = mapper->mappingIds();
         QVector<ChannelMapping *> channelMappings;
         channelMappings.reserve(channelMappingIds.size());
-        for (const auto mappingId : channelMappingIds) {
+        for (const auto &mappingId : channelMappingIds) {
             ChannelMapping *mapping = m_handler->channelMappingManager()->lookupResource(mappingId);
             Q_ASSERT(mapping);
             channelMappings.push_back(mapping);
         }
 
-        const QVector<MappingData> mappingDataVec
-                = buildPropertyMappings(channelMappings,
-                                        channelNamesAndTypes,
-                                        channelComponentIndices,
-                                        blendTreeChannelMask);
+        const QVector<MappingData> mappingDataVec = buildPropertyMappings(channelMappings,
+                                                                          channelNamesAndTypes,
+                                                                          channelComponentIndices,
+                                                                          blendTreeChannelMask);
         blendClipAnimator->setMappingData(mappingDataVec);
     }
 }

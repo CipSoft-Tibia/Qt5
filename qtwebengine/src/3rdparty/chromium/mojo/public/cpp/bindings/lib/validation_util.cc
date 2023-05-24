@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 
 #include <limits>
 
+#include "base/containers/adapters.h"
 #include "base/strings/stringprintf.h"
 #include "mojo/public/cpp/bindings/lib/message_internal.h"
 #include "mojo/public/cpp/bindings/lib/serialization_util.h"
@@ -51,6 +52,55 @@ bool ValidateStructHeaderAndClaimMemory(const void* data,
   if (!validation_context->ClaimMemory(data, header->num_bytes)) {
     ReportValidationError(validation_context,
                           VALIDATION_ERROR_ILLEGAL_MEMORY_RANGE);
+    return false;
+  }
+
+  return true;
+}
+
+bool ValidateStructHeaderAndVersionSizeAndClaimMemory(
+    const void* data,
+    base::span<const StructVersionSize> version_sizes,
+    ValidationContext* validation_context) {
+  if (!ValidateStructHeaderAndClaimMemory(data, validation_context))
+    return false;
+
+  DCHECK(data);
+  DCHECK(!version_sizes.empty());
+  const auto& header = *static_cast<const StructHeader*>(data);
+  if (header.version <= version_sizes.back().version) {
+    // Scan in reverse order to optimize for more recent versions.
+    for (const auto& version_size : base::Reversed(version_sizes)) {
+      if (header.version >= version_size.version) {
+        if (header.num_bytes == version_size.num_bytes)
+          break;
+        ReportValidationError(validation_context,
+                              VALIDATION_ERROR_UNEXPECTED_STRUCT_HEADER);
+        return false;
+      }
+    }
+  } else if (header.num_bytes < version_sizes.back().num_bytes) {
+    ReportValidationError(validation_context,
+                          VALIDATION_ERROR_UNEXPECTED_STRUCT_HEADER);
+    return false;
+  }
+
+  return true;
+}
+
+bool ValidateUnversionedStructHeaderAndSizeAndClaimMemory(
+    const void* data,
+    size_t v0_size,
+    ValidationContext* validation_context) {
+  if (!ValidateStructHeaderAndClaimMemory(data, validation_context))
+    return false;
+
+  DCHECK(data);
+  const auto& header = *static_cast<const StructHeader*>(data);
+  if ((header.version == 0 && header.num_bytes != v0_size) ||
+      header.num_bytes < v0_size) {
+    ReportValidationError(validation_context,
+                          VALIDATION_ERROR_UNEXPECTED_STRUCT_HEADER);
     return false;
   }
 

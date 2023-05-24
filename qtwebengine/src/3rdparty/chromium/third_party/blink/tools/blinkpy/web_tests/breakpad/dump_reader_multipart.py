@@ -29,7 +29,8 @@
 import cgi
 import logging
 import threading
-import Queue
+
+from six.moves import queue as Queue
 
 from blinkpy.common.path_finder import PathFinder
 from blinkpy.web_tests.breakpad.dump_reader import DumpReader
@@ -66,7 +67,7 @@ class DumpReaderMultipart(DumpReader):
 
         self._generate_breakpad_symbols_if_necessary()
         f, temp_name = self._host.filesystem.open_binary_tempfile('dmp')
-        f.write('\r\n'.join(dump['upload_file_minidump']))
+        f.write(b'\r\n'.join(dump['upload_file_minidump']))
         f.close()
 
         cmd = [

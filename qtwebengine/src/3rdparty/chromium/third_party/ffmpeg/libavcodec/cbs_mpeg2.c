@@ -21,7 +21,7 @@
 #include "cbs.h"
 #include "cbs_internal.h"
 #include "cbs_mpeg2.h"
-#include "internal.h"
+#include "startcode.h"
 
 
 #define HEADER(name) do { \
@@ -140,37 +140,13 @@
 #undef infer
 
 
-static void cbs_mpeg2_free_picture_header(void *opaque, uint8_t *content)
-{
-    MPEG2RawPictureHeader *picture = (MPEG2RawPictureHeader*)content;
-    av_buffer_unref(&picture->extra_information_picture.extra_information_ref);
-    av_freep(&content);
-}
-
-static void cbs_mpeg2_free_user_data(void *opaque, uint8_t *content)
-{
-    MPEG2RawUserData *user = (MPEG2RawUserData*)content;
-    av_buffer_unref(&user->user_data_ref);
-    av_freep(&content);
-}
-
-static void cbs_mpeg2_free_slice(void *opaque, uint8_t *content)
-{
-    MPEG2RawSlice *slice = (MPEG2RawSlice*)content;
-    av_buffer_unref(&slice->header.extra_information_slice.extra_information_ref);
-    av_buffer_unref(&slice->data_ref);
-    av_freep(&content);
-}
-
 static int cbs_mpeg2_split_fragment(CodedBitstreamContext *ctx,
                                     CodedBitstreamFragment *frag,
                                     int header)
 {
-    const uint8_t *start, *end;
-    CodedBitstreamUnitType unit_type;
+    const uint8_t *start;
     uint32_t start_code = -1;
-    size_t unit_size;
-    int err, i, final = 0;
+    int err;
 
     start = avpriv_find_start_code(frag->data, frag->data + frag->data_size,
                                    &start_code);
@@ -179,17 +155,16 @@ static int cbs_mpeg2_split_fragment(CodedBitstreamContext *ctx,
         return AVERROR_INVALIDDATA;
     }
 
-    for (i = 0;; i++) {
-        unit_type = start_code & 0xff;
+    do {
+        CodedBitstreamUnitType unit_type = start_code & 0xff;
+        const uint8_t *end;
+        size_t unit_size;
 
-        if (start == frag->data + frag->data_size) {
-            // The last four bytes form a start code which constitutes
-            // a unit of its own.  In this situation avpriv_find_start_code
-            // won't modify start_code at all so modify start_code so that
-            // the next unit will be treated as the last unit.
-            start_code = 0;
-        }
-
+        // Reset start_code to ensure that avpriv_find_start_code()
+        // really reads a new start code and does not reuse the old
+        // start code in any way (as e.g. happens when there is a
+        // Sequence End unit at the very end of a packet).
+        start_code = UINT32_MAX;
         end = avpriv_find_start_code(start--, frag->data + frag->data_size,
                                      &start_code);
 
@@ -204,19 +179,17 @@ static int cbs_mpeg2_split_fragment(CodedBitstreamContext *ctx,
         } else {
            // We didn't find a start code, so this is the final unit.
            unit_size = end - start;
-           final     = 1;
         }
 
-        err = ff_cbs_insert_unit_data(frag, i, unit_type, (uint8_t*)start,
+        err = ff_cbs_append_unit_data(frag, unit_type, (uint8_t*)start,
                                       unit_size, frag->data_ref);
         if (err < 0)
             return err;
 
-        if (final)
-            break;
-
         start = end;
-    }
+
+        // Do we have a further unit to add to the fragment?
+    } while ((start_code >> 8) == 0x000001);
 
     return 0;
 }
@@ -231,15 +204,13 @@ static int cbs_mpeg2_read_unit(CodedBitstreamContext *ctx,
     if (err < 0)
         return err;
 
-    if (MPEG2_START_IS_SLICE(unit->type)) {
-        MPEG2RawSlice *slice;
-        int pos, len;
+    err = ff_cbs_alloc_unit_content(ctx, unit);
+    if (err < 0)
+        return err;
 
-        err = ff_cbs_alloc_unit_content(unit, sizeof(*slice),
-                                        &cbs_mpeg2_free_slice);
-        if (err < 0)
-            return err;
-        slice = unit->content;
+    if (MPEG2_START_IS_SLICE(unit->type)) {
+        MPEG2RawSlice *slice = unit->content;
+        int pos, len;
 
         err = cbs_mpeg2_read_slice_header(ctx, &gbc, &slice->header);
         if (err < 0)
@@ -264,12 +235,7 @@ static int cbs_mpeg2_read_unit(CodedBitstreamContext *ctx,
 #define START(start_code, type, read_func, free_func) \
         case start_code: \
             { \
-                type *header; \
-                err = ff_cbs_alloc_unit_content(unit, \
-                                                sizeof(*header), free_func); \
-                if (err < 0) \
-                    return err; \
-                header = unit->content; \
+                type *header = unit->content; \
                 err = cbs_mpeg2_read_ ## read_func(ctx, &gbc, header); \
                 if (err < 0) \
                     return err; \
@@ -420,10 +386,39 @@ static int cbs_mpeg2_assemble_fragment(CodedBitstreamContext *ctx,
     return 0;
 }
 
+static const CodedBitstreamUnitTypeDescriptor cbs_mpeg2_unit_types[] = {
+    CBS_UNIT_TYPE_INTERNAL_REF(MPEG2_START_PICTURE, MPEG2RawPictureHeader,
+                               extra_information_picture.extra_information),
+
+    {
+        .nb_unit_types         = CBS_UNIT_TYPE_RANGE,
+        .unit_type.range.start = 0x01,
+        .unit_type.range.end   = 0xaf,
+
+        .content_type   = CBS_CONTENT_TYPE_INTERNAL_REFS,
+        .content_size   = sizeof(MPEG2RawSlice),
+        .type.ref = { .nb_offsets = 2,
+                      .offsets    = { offsetof(MPEG2RawSlice, header.extra_information_slice.extra_information),
+                                      offsetof(MPEG2RawSlice, data) } },
+    },
+
+    CBS_UNIT_TYPE_INTERNAL_REF(MPEG2_START_USER_DATA, MPEG2RawUserData,
+                               user_data),
+
+    CBS_UNIT_TYPE_POD(MPEG2_START_SEQUENCE_HEADER, MPEG2RawSequenceHeader),
+    CBS_UNIT_TYPE_POD(MPEG2_START_EXTENSION,       MPEG2RawExtensionData),
+    CBS_UNIT_TYPE_POD(MPEG2_START_SEQUENCE_END,    MPEG2RawSequenceEnd),
+    CBS_UNIT_TYPE_POD(MPEG2_START_GROUP,           MPEG2RawGroupOfPicturesHeader),
+
+    CBS_UNIT_TYPE_END_OF_LIST
+};
+
 const CodedBitstreamType ff_cbs_type_mpeg2 = {
     .codec_id          = AV_CODEC_ID_MPEG2VIDEO,
 
     .priv_data_size    = sizeof(CodedBitstreamMPEG2Context),
+
+    .unit_types        = cbs_mpeg2_unit_types,
 
     .split_fragment    = &cbs_mpeg2_split_fragment,
     .read_unit         = &cbs_mpeg2_read_unit,

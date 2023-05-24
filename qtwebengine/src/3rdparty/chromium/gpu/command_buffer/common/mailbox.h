@@ -1,9 +1,9 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef GPU_COMMAND_BUFFER_MAILBOX_H_
-#define GPU_COMMAND_BUFFER_MAILBOX_H_
+#ifndef GPU_COMMAND_BUFFER_COMMON_MAILBOX_H_
+#define GPU_COMMAND_BUFFER_COMMON_MAILBOX_H_
 
 #include <stdint.h>
 #include <string.h>
@@ -17,7 +17,19 @@
 #define GL_MAILBOX_SIZE_CHROMIUM 16
 #endif
 
+namespace content {
+class PPB_Graphics3D_Impl;
+}
+
+namespace media {
+class GLES2DecoderHelperImpl;
+}
+
 namespace gpu {
+
+namespace gles2 {
+class GLES2Implementation;
+}
 
 // A mailbox is an unguessable name that references texture image data.
 // This name can be passed across processes permitting one context to share
@@ -43,9 +55,6 @@ struct COMPONENT_EXPORT(GPU_MAILBOX) Mailbox {
   // Indicates whether this mailbox is used with the SharedImage system.
   bool IsSharedImage() const;
 
-  // Generate a unique unguessable mailbox name.
-  static Mailbox Generate();
-
   // Generate a unique unguessable mailbox name for use with the SharedImage
   // system.
   static Mailbox GenerateForSharedImage();
@@ -68,9 +77,27 @@ struct COMPONENT_EXPORT(GPU_MAILBOX) Mailbox {
   bool operator!=(const Mailbox& other) const {
     return !operator==(other);
   }
+
+ private:
+  // Generate a unique unguessable mailbox name for use with the legacy mailbox
+  // system.
+  // NOTE: We are in the process of eliminating this method. DO NOT ADD ANY NEW
+  // USAGES - instead, reach out to shared-image-team@ with your use case. See
+  // crbug.com/1273084.
+  static Mailbox GenerateLegacyMailbox();
+
+  friend class content::PPB_Graphics3D_Impl;
+  friend class gles2::GLES2Implementation;
+  friend class media::GLES2DecoderHelperImpl;
+
+ public:
+  // Generate a legacy mailbox for usage in tests of production code that
+  // still interacts with the legacy mailbox system.
+  static Mailbox GenerateLegacyMailboxForTesting() {
+    return GenerateLegacyMailbox();
+  }
 };
 
 }  // namespace gpu
 
-#endif  // GPU_COMMAND_BUFFER_MAILBOX_H_
-
+#endif  // GPU_COMMAND_BUFFER_COMMON_MAILBOX_H_

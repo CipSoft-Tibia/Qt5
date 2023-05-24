@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qloggingcategory.h"
 #include "qloggingregistry_p.h"
@@ -43,21 +7,7 @@
 QT_BEGIN_NAMESPACE
 
 const char qtDefaultCategoryName[] = "default";
-
-Q_GLOBAL_STATIC_WITH_ARGS(QLoggingCategory, qtDefaultCategory,
-                          (qtDefaultCategoryName))
-
-#ifndef Q_ATOMIC_INT8_IS_SUPPORTED
-static void setBoolLane(QBasicAtomicInt *atomic, bool enable, int shift)
-{
-    const int bit = 1 << shift;
-
-    if (enable)
-        atomic->fetchAndOrRelaxed(bit);
-    else
-        atomic->fetchAndAndRelaxed(~bit);
-}
-#endif
+Q_GLOBAL_STATIC(QLoggingCategory, qtDefaultCategory, qtDefaultCategoryName)
 
 /*!
     \class QLoggingCategory
@@ -70,7 +20,8 @@ static void setBoolLane(QBasicAtomicInt *atomic, bool enable, int shift)
 
     QLoggingCategory represents a certain logging category - identified by a
     string - at runtime. A category can be configured to enable or disable
-    logging of messages per message type.
+    logging of messages per message type. An exception are fatal messages,
+    which are always enabled.
 
     To check whether a message type is enabled or not, use one of these methods:
     \l isDebugEnabled(), \l isInfoEnabled(), \l isWarningEnabled(), and
@@ -88,6 +39,9 @@ static void setBoolLane(QBasicAtomicInt *atomic, bool enable, int shift)
     conveniently declare and create QLoggingCategory objects:
 
     \snippet qloggingcategory/main.cpp 1
+
+    There is also the Q_DECLARE_EXPORTED_LOGGING_CATEGORY() macro in
+    order to use a logging category across library boundaries.
 
     Category names are free text; to configure categories using \l{Logging Rules}, their
     names should follow this convention:
@@ -124,7 +78,14 @@ static void setBoolLane(QBasicAtomicInt *atomic, bool enable, int shift)
     logs messages of type \c QtWarningMsg, \c QtCriticalMsg, \c QtFatalMsg, but
     ignores messages of type \c QtDebugMsg and \c QtInfoMsg.
 
-    If no argument is passed, all messages are logged.
+    If no argument is passed, all messages are logged. Only Qt internal categories
+    which start with \c{qt} are handled differently: For these, only messages of type
+    \c QtInfoMsg, \c QtWarningMsg, \c QtCriticalMsg, and \c QFatalMsg are logged by default.
+
+    \note Logging categories are not affected by your C++ build configuration.
+    That is, whether messages are printed does not change depending on whether
+    the code is compiled with debug symbols ('Debug Build'), optimizations
+    ('Release Build'), or some other combination.
 
     \section1 Configuring Categories
 
@@ -197,27 +158,14 @@ static void setBoolLane(QBasicAtomicInt *atomic, bool enable, int shift)
 */
 
 /*!
-    Constructs a QLoggingCategory object with the provided \a category name.
-    All message types for this category are enabled by default.
-
-    If \a category is \c{0}, the category name is changed to \c "default".
-
-    \note \a category must be kept valid during the lifetime of this object.
-*/
-QLoggingCategory::QLoggingCategory(const char *category)
-    : d(nullptr),
-      name(nullptr)
-{
-    init(category, QtDebugMsg);
-}
-
-/*!
     Constructs a QLoggingCategory object with the provided \a category name,
-    and enables all messages with types more severe or equal than \a enableForLevel.
+    and enables all messages with types at least as verbose as \a enableForLevel,
+    which defaults to QtDebugMsg (which enables all categories).
 
-    If \a category is \c{0}, the category name is changed to \c "default".
+    If \a category is \nullptr, the category name \c "default" is used.
 
     \note \a category must be kept valid during the lifetime of this object.
+    Using a string literal for it is the usual way to achieve this.
 
     \since 5.4
 */
@@ -332,17 +280,10 @@ bool QLoggingCategory::isEnabled(QtMsgType msgtype) const
 void QLoggingCategory::setEnabled(QtMsgType type, bool enable)
 {
     switch (type) {
-#ifdef Q_ATOMIC_INT8_IS_SUPPORTED
     case QtDebugMsg: bools.enabledDebug.storeRelaxed(enable); break;
     case QtInfoMsg: bools.enabledInfo.storeRelaxed(enable); break;
     case QtWarningMsg: bools.enabledWarning.storeRelaxed(enable); break;
     case QtCriticalMsg: bools.enabledCritical.storeRelaxed(enable); break;
-#else
-    case QtDebugMsg: setBoolLane(&enabled, enable, DebugShift); break;
-    case QtInfoMsg: setBoolLane(&enabled, enable, InfoShift); break;
-    case QtWarningMsg: setBoolLane(&enabled, enable, WarningShift); break;
-    case QtCriticalMsg: setBoolLane(&enabled, enable, CriticalShift); break;
-#endif
     case QtFatalMsg: break;
     }
 }
@@ -352,7 +293,7 @@ void QLoggingCategory::setEnabled(QtMsgType type, bool enable)
 
     Returns the object itself. This allows for both: a QLoggingCategory variable, and
     a factory method that returns a QLoggingCategory, to be used in \l qCDebug(),
-    \l qCWarning(), or \l qCCritical() macros.
+    \l qCWarning(), \l qCCritical(), or \l qCFatal() macros.
  */
 
 /*!
@@ -360,7 +301,7 @@ void QLoggingCategory::setEnabled(QtMsgType type, bool enable)
 
     Returns the object itself. This allows for both: a QLoggingCategory variable, and
     a factory method that returns a QLoggingCategory, to be used in \l qCDebug(),
-    \l qCWarning(), or \l qCCritical() macros.
+    \l qCWarning(), \l qCCritical(), or \l qCFatal() macros.
  */
 
 /*!
@@ -387,19 +328,37 @@ QLoggingCategory *QLoggingCategory::defaultCategory()
 */
 
 /*!
-    Installs a function \a filter that is used to determine which categories
-    and message types should be enabled. Returns a pointer to the previous
-    installed filter.
+    \brief Take control of how logging categories are configured.
 
-    Every QLoggingCategory object created is passed to the filter, and the
-    filter is free to change the respective category configuration with
-    \l setEnabled().
+    Installs a function \a filter that is used to determine which categories and
+    message types should be enabled. If \a filter is \nullptr, the default
+    message filter is reinstated. Returns a pointer to the previously-installed
+    filter.
+
+    Every QLoggingCategory object that already exists is passed to the filter
+    before \c installFilter() returns, and the filter is free to change each
+    category's configuration with \l setEnabled(). Any category it doesn't
+    change will retain the configuration it was given by the prior filter, so
+    the new filter does not need to delegate to the prior filter during this
+    initial pass over existing categories.
+
+    Any new categories added later will be passed to the new filter; a filter
+    that only aims to tweak the configuration of a select few categories, rather
+    than completely overriding the logging policy, can first pass the new
+    category to the prior filter, to give it its standard configuration, and
+    then tweak that as desired, if it is one of the categories of specific
+    interest to the filter. The code that installs the new filter can record the
+    return from \c installFilter() for the filter to use in such later calls.
 
     When you define your filter, note that it can be called from different threads; but never
     concurrently. This filter cannot call any static functions from QLoggingCategory.
 
     Example:
     \snippet qloggingcategory/main.cpp 21
+
+    installed (in \c{main()}, for example) by
+
+    \snippet qloggingcategory/main.cpp 22
 
     Alternatively, you can configure the default filter via \l setFilterRules().
  */
@@ -598,9 +557,49 @@ void QLoggingCategory::setFilterRules(const QString &rules)
 
     \sa qCritical()
 */
+
+/*!
+    \macro qCFatal(category)
+    \relates QLoggingCategory
+    \since 6.5
+
+    Returns an output stream for fatal messages in the logging category,
+    \a category.
+
+    If you are using the \b{default message handler}, the returned stream will abort
+    to create a core dump. On Windows, for debug builds, this function will
+    report a \c _CRT_ERROR enabling you to connect a debugger to the application.
+
+    Example:
+
+    \snippet qloggingcategory/main.cpp 16
+
+    \sa qFatal()
+*/
+
+/*!
+    \macro qCFatal(category, const char *message, ...)
+    \relates QLoggingCategory
+    \since 6.5
+
+    Logs a fatal message, \a message, in the logging category, \a category.
+    \a message may contain place holders to be replaced by additional arguments,
+    similar to the C printf() function.
+
+    Example:
+
+    \snippet qloggingcategory/main.cpp 17
+
+    If you are using the \b{default message handler}, this function will abort
+    to create a core dump. On Windows, for debug builds, this function will
+    report a \c _CRT_ERROR enabling you to connect a debugger to the application.
+
+    \sa qFatal()
+*/
+
 /*!
     \macro Q_DECLARE_LOGGING_CATEGORY(name)
-    \sa Q_LOGGING_CATEGORY()
+    \sa Q_LOGGING_CATEGORY(), Q_DECLARE_EXPORTED_LOGGING_CATEGORY()
     \relates QLoggingCategory
     \since 5.2
 
@@ -611,8 +610,31 @@ void QLoggingCategory::setFilterRules(const QString &rules)
 */
 
 /*!
+    \macro Q_DECLARE_EXPORTED_LOGGING_CATEGORY(name, EXPORT_MACRO)
+    \sa Q_LOGGING_CATEGORY(), Q_DECLARE_LOGGING_CATEGORY()
+    \relates QLoggingCategory
+    \since 6.5
+
+    Declares a logging category \a name. The macro can be used to declare
+    a common logging category shared in different parts of the program.
+
+    This works exactly like Q_DECLARE_LOGGING_CATEGORY(). However,
+    the logging category declared by this macro is additionally
+    qualified with \a EXPORT_MACRO. This is useful if the logging
+    category needs to be exported from a dynamic library.
+
+    For example:
+
+    \code
+    Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcCore, LIB_EXPORT_MACRO)
+    \endcode
+
+    This macro must be used outside of a class or function.
+*/
+
+/*!
     \macro Q_LOGGING_CATEGORY(name, string)
-    \sa Q_DECLARE_LOGGING_CATEGORY()
+    \sa Q_DECLARE_LOGGING_CATEGORY(), Q_DECLARE_EXPORTED_LOGGING_CATEGORY()
     \relates QLoggingCategory
     \since 5.2
 
@@ -640,8 +662,7 @@ void QLoggingCategory::setFilterRules(const QString &rules)
     with a specific name. The implicitly-defined QLoggingCategory object is
     created on first use, in a thread-safe manner.
 
-    This macro must be used outside of a class or method. It is only defined
-    if variadic macros are supported.
+    This macro must be used outside of a class or method.
 */
 
 QT_END_NAMESPACE

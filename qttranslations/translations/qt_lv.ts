@@ -3,6 +3,5 @@
 <TS version="2.1" language="lv">
     <dependencies>
         <dependency catalog="qtbase_lv"/>
-        <dependency catalog="qtscript_lv"/>
     </dependencies>
 </TS>

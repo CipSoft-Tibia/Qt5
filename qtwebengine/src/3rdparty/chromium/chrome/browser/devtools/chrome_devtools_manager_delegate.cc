@@ -1,16 +1,19 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/devtools/chrome_devtools_manager_delegate.h"
 
+#include <memory>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/command_line.h"
-#include "base/stl_util.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
+#include "chrome/browser/browser_features.h"
 #include "chrome/browser/devtools/chrome_devtools_session.h"
 #include "chrome/browser/devtools/device/android_device_manager.h"
 #include "chrome/browser/devtools/device/tcp_device_provider.h"
@@ -18,6 +21,7 @@
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/devtools/protocol/target_handler.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
+#include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/policy/developer_tools_policy_handler.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -29,6 +33,7 @@
 #include "components/guest_view/browser/guest_view_base.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/devtools_agent_host_client_channel.h"
 #include "content/public/browser/render_frame_host.h"
@@ -41,9 +46,11 @@
 #include "extensions/common/manifest.h"
 #include "ui/base/resource/resource_bundle.h"
 
-#if defined(OS_CHROMEOS)
-#include "base/command_line.h"
-#include "chromeos/constants/chromeos_switches.h"
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "ash/constants/ash_switches.h"
+#include "chrome/common/channel_info.h"
+#include "components/version_info/version_info.h"
+#include "third_party/cros_system_api/switches/chrome_switches.h"
 #endif
 
 using content::DevToolsAgentHost;
@@ -57,16 +64,17 @@ namespace {
 bool GetExtensionInfo(content::WebContents* wc,
                       std::string* name,
                       std::string* type) {
-  Profile* profile = Profile::FromBrowserContext(wc->GetBrowserContext());
-  if (!profile)
+  auto* process_manager =
+      extensions::ProcessManager::Get(wc->GetBrowserContext());
+  if (!process_manager) {
     return false;
+  }
   const extensions::Extension* extension =
-      extensions::ProcessManager::Get(profile)->GetExtensionForWebContents(wc);
+      process_manager->GetExtensionForWebContents(wc);
   if (!extension)
     return false;
   extensions::ExtensionHost* extension_host =
-      extensions::ProcessManager::Get(profile)->GetBackgroundHostForExtension(
-          extension->id());
+      process_manager->GetBackgroundHostForExtension(extension->id());
   if (extension_host && extension_host->host_contents() == wc) {
     *name = extension->name();
     *type = ChromeDevToolsManagerDelegate::kTypeBackgroundPage;
@@ -94,6 +102,11 @@ ChromeDevToolsManagerDelegate::ChromeDevToolsManagerDelegate() {
   DCHECK(!g_instance);
   g_instance = this;
 
+#if !BUILDFLAG(IS_CHROMEOS)
+  // Only create and hold keep alive for automation test for non ChromeOS.
+  // ChromeOS automation test (aka tast) manages chrome instance via session
+  // manager daemon. The extra keep alive is not needed and makes ChromeOS
+  // not able to shutdown chrome properly. See https://crbug.com/1174627.
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kNoStartupWindow) &&
       (command_line->HasSwitch(switches::kRemoteDebuggingPipe) ||
@@ -102,9 +115,10 @@ ChromeDevToolsManagerDelegate::ChromeDevToolsManagerDelegate() {
     // we are controlled entirely by the automation process.
     // Keep the application running until explicit close through DevTools
     // protocol.
-    keep_alive_.reset(new ScopedKeepAlive(KeepAliveOrigin::REMOTE_DEBUGGING,
-                                          KeepAliveRestartOption::DISABLED));
+    keep_alive_ = std::make_unique<ScopedKeepAlive>(
+        KeepAliveOrigin::REMOTE_DEBUGGING, KeepAliveRestartOption::DISABLED);
   }
+#endif  // !BUILDFLAG(IS_CHROMEOS_ASH)
 }
 
 ChromeDevToolsManagerDelegate::~ChromeDevToolsManagerDelegate() {
@@ -157,8 +171,11 @@ bool ChromeDevToolsManagerDelegate::AllowInspectingRenderFrameHost(
     content::RenderFrameHost* rfh) {
   Profile* profile =
       Profile::FromBrowserContext(rfh->GetProcess()->GetBrowserContext());
-  return AllowInspection(profile, extensions::ProcessManager::Get(profile)
-                                      ->GetExtensionForRenderFrameHost(rfh));
+  auto* process_manager = extensions::ProcessManager::Get(profile);
+  return AllowInspection(
+      profile, process_manager
+                   ? process_manager->GetExtensionForRenderFrameHost(rfh)
+                   : nullptr);
 }
 
 // static
@@ -167,10 +184,23 @@ bool ChromeDevToolsManagerDelegate::AllowInspection(
     content::WebContents* web_contents) {
   const extensions::Extension* extension = nullptr;
   if (web_contents) {
-    extension =
-        extensions::ProcessManager::Get(
-            Profile::FromBrowserContext(web_contents->GetBrowserContext()))
-            ->GetExtensionForWebContents(web_contents);
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+    GURL url = web_contents->GetLastCommittedURL();
+    if ((url.SchemeIs("chrome") && url.host() != "inspect") ||
+        url.SchemeIs("os")) {
+      base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+      if (chrome::GetChannel() != version_info::Channel::CANARY &&
+          !command_line->HasSwitch(chromeos::switches::kSystemInDevMode) &&
+          !command_line->HasSwitch(ash::switches::kForceDevToolsAvailable)) {
+        return false;
+      }
+    }
+#endif
+
+    if (auto* process_manager = extensions::ProcessManager::Get(
+            web_contents->GetBrowserContext())) {
+      extension = process_manager->GetExtensionForWebContents(web_contents);
+    }
   }
   return AllowInspection(profile, extension);
 }
@@ -179,9 +209,9 @@ bool ChromeDevToolsManagerDelegate::AllowInspection(
 bool ChromeDevToolsManagerDelegate::AllowInspection(
     Profile* profile,
     const extensions::Extension* extension) {
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-  if (command_line->HasSwitch(chromeos::switches::kForceDevToolsAvailable))
+  if (command_line->HasSwitch(ash::switches::kForceDevToolsAvailable))
     return true;
 #endif
 
@@ -189,7 +219,7 @@ bool ChromeDevToolsManagerDelegate::AllowInspection(
   Availability availability =
       policy::DeveloperToolsPolicyHandler::GetDevToolsAvailability(
           profile->GetPrefs());
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   // Do not create DevTools if it's disabled for primary profile.
   Profile* primary_profile = ProfileManager::GetPrimaryUserProfile();
   if (primary_profile &&
@@ -228,21 +258,19 @@ void ChromeDevToolsManagerDelegate::ClientDetached(
   sessions_.erase(channel);
 }
 
-scoped_refptr<DevToolsAgentHost>
-ChromeDevToolsManagerDelegate::CreateNewTarget(const GURL& url) {
+scoped_refptr<DevToolsAgentHost> ChromeDevToolsManagerDelegate::CreateNewTarget(
+    const GURL& url,
+    bool for_tab) {
   NavigateParams params(ProfileManager::GetLastUsedProfile(), url,
                         ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
   params.disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
   Navigate(&params);
   if (!params.navigated_or_inserted_contents)
     return nullptr;
-  return DevToolsAgentHost::GetOrCreateFor(
-      params.navigated_or_inserted_contents);
-}
-
-std::string ChromeDevToolsManagerDelegate::GetDiscoveryPageHTML() {
-  return ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(
-      IDR_DEVTOOLS_DISCOVERY_PAGE_HTML);
+  return for_tab ? DevToolsAgentHost::GetOrCreateForTab(
+                       params.navigated_or_inserted_contents)
+                 : DevToolsAgentHost::GetOrCreateFor(
+                       params.navigated_or_inserted_contents);
 }
 
 std::vector<content::BrowserContext*>
@@ -321,9 +349,10 @@ void ChromeDevToolsManagerDelegate::UpdateDeviceDiscovery() {
     providers.push_back(new TCPDeviceProvider(remote_locations));
     device_manager_->SetDeviceProviders(providers);
 
-    device_discovery_.reset(new DevToolsDeviceDiscovery(device_manager_.get(),
-        base::Bind(&ChromeDevToolsManagerDelegate::DevicesAvailable,
-                   base::Unretained(this))));
+    device_discovery_ = std::make_unique<DevToolsDeviceDiscovery>(
+        device_manager_.get(),
+        base::BindRepeating(&ChromeDevToolsManagerDelegate::DevicesAvailable,
+                            base::Unretained(this)));
   }
   remote_locations_.swap(remote_locations);
 }
@@ -336,8 +365,15 @@ void ChromeDevToolsManagerDelegate::ResetAndroidDeviceManagerForTesting() {
   device_discovery_.reset();
 }
 
-void ChromeDevToolsManagerDelegate::BrowserCloseRequested() {
-  // Do not keep the application running anymore, we got an explicit request
-  // to close.
-  keep_alive_.reset();
+// static
+void ChromeDevToolsManagerDelegate::CloseBrowserSoon() {
+  content::GetUIThreadTaskRunner({})->PostTask(
+      FROM_HERE, base::BindOnce([]() {
+        if (GetInstance()) {
+          // Do not keep the application running anymore, we got an explicit
+          // request to close.
+          GetInstance()->keep_alive_.reset();
+        }
+        chrome::ExitIgnoreUnloadHandlers();
+      }));
 }

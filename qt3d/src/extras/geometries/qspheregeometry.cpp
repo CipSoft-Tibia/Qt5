@@ -1,48 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qspheregeometry.h"
 #include "qspheregeometry_p.h"
 
-#include <Qt3DRender/qbufferdatagenerator.h>
-#include <Qt3DRender/qbuffer.h>
-#include <Qt3DRender/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
+#include <Qt3DCore/qattribute.h>
 
 #include <qmath.h>
 
@@ -53,7 +16,7 @@
 
 QT_BEGIN_NAMESPACE
 
-using namespace Qt3DRender;
+using namespace Qt3DCore;
 
 namespace  Qt3DExtras {
 
@@ -117,7 +80,7 @@ QByteArray createSphereMeshIndexData(int rings, int slices)
     faces += 2 * slices; // tri per slice for both top and bottom
 
     QByteArray indexBytes;
-    const int indices = faces * 3;
+    const qsizetype indices = faces * 3;
     Q_ASSERT(indices < 65536);
     indexBytes.resize(indices * sizeof(quint16));
     quint16 *indexPtr = reinterpret_cast<quint16*>(indexBytes.data());
@@ -167,69 +130,6 @@ QByteArray createSphereMeshIndexData(int rings, int slices)
 
 } // anonymous
 
-class SphereVertexDataFunctor : public QBufferDataGenerator
-{
-public:
-    SphereVertexDataFunctor(int rings, int slices, float radius)
-        : m_rings(rings)
-        , m_slices(slices)
-        , m_radius(radius)
-    {
-    }
-
-    QByteArray operator ()() override
-    {
-        return createSphereMeshVertexData(m_radius, m_rings, m_slices);
-    }
-
-    bool operator ==(const QBufferDataGenerator &other) const override
-    {
-        const SphereVertexDataFunctor *otherFunctor = functor_cast<SphereVertexDataFunctor>(&other);
-        if (otherFunctor != nullptr)
-            return (otherFunctor->m_rings == m_rings &&
-                    otherFunctor->m_slices == m_slices &&
-                    otherFunctor->m_radius == m_radius);
-        return false;
-    }
-
-    QT3D_FUNCTOR(SphereVertexDataFunctor)
-
-private:
-    int m_rings;
-    int m_slices;
-    float m_radius;
-};
-
-class SphereIndexDataFunctor : public QBufferDataGenerator
-{
-public:
-    SphereIndexDataFunctor(int rings, int slices)
-        : m_rings(rings)
-        , m_slices(slices)
-    {
-    }
-
-    QByteArray operator ()() override
-    {
-        return createSphereMeshIndexData(m_rings, m_slices);
-    }
-
-    bool operator ==(const QBufferDataGenerator &other) const override
-    {
-        const SphereIndexDataFunctor *otherFunctor = functor_cast<SphereIndexDataFunctor>(&other);
-        if (otherFunctor != nullptr)
-            return (otherFunctor->m_rings == m_rings &&
-                    otherFunctor->m_slices == m_slices);
-        return false;
-    }
-
-    QT3D_FUNCTOR(SphereIndexDataFunctor)
-
-private:
-    int m_rings;
-    int m_slices;
-};
-
 QSphereGeometryPrivate::QSphereGeometryPrivate()
     : QGeometryPrivate()
     , m_generateTangents(false)
@@ -254,8 +154,8 @@ void QSphereGeometryPrivate::init()
     m_texCoordAttribute = new QAttribute(q);
     m_tangentAttribute = new QAttribute(q);
     m_indexAttribute = new QAttribute(q);
-    m_vertexBuffer = new Qt3DRender::QBuffer(q);
-    m_indexBuffer = new Qt3DRender::QBuffer(q);
+    m_vertexBuffer = new Qt3DCore::QBuffer(q);
+    m_indexBuffer = new Qt3DCore::QBuffer(q);
 
     // vec3 pos, vec2 tex, vec3 normal, vec4 tangent
     const quint32 elementSize = 3 + 2 + 3 + 4;
@@ -304,8 +204,8 @@ void QSphereGeometryPrivate::init()
 
     m_indexAttribute->setCount(faces * 3);
 
-    m_vertexBuffer->setDataGenerator(QSharedPointer<SphereVertexDataFunctor>::create(m_rings, m_slices, m_radius));
-    m_indexBuffer->setDataGenerator(QSharedPointer<SphereIndexDataFunctor>::create(m_rings, m_slices));
+    m_vertexBuffer->setData(generateVertexData());
+    m_indexBuffer->setData(generateIndexData());
 
     q->addAttribute(m_positionAttribute);
     q->addAttribute(m_texCoordAttribute);
@@ -313,6 +213,16 @@ void QSphereGeometryPrivate::init()
     if (m_generateTangents)
         q->addAttribute(m_tangentAttribute);
     q->addAttribute(m_indexAttribute);
+}
+
+QByteArray QSphereGeometryPrivate::generateVertexData() const
+{
+    return createSphereMeshVertexData(m_radius, m_rings, m_slices);
+}
+
+QByteArray QSphereGeometryPrivate::generateIndexData() const
+{
+    return createSphereMeshIndexData(m_rings, m_slices);
 }
 
 /*!
@@ -382,13 +292,13 @@ void QSphereGeometryPrivate::init()
 
 /*!
  * \class Qt3DExtras::QSphereGeometry
-   \ingroup qt3d-extras-geometries
+ * \ingroup qt3d-extras-geometries
  * \inheaderfile Qt3DExtras/QSphereGeometry
  * \inmodule Qt3DExtras
  * \brief The QSphereGeometry class allows creation of a sphere in 3D space.
  * \since 5.7
  * \ingroup geometries
- * \inherits Qt3DRender::QGeometry
+ * \inherits Qt3DCore::QGeometry
  *
  * The QSphereGeometry class is most commonly used internally by the QSphereMesh
  * but can also be used in custom Qt3DRender::QGeometryRenderer subclasses.
@@ -432,7 +342,7 @@ void QSphereGeometry::updateVertices()
     d->m_texCoordAttribute->setCount(nVerts);
     d->m_normalAttribute->setCount(nVerts);
     d->m_tangentAttribute->setCount(nVerts);
-    d->m_vertexBuffer->setDataGenerator(QSharedPointer<SphereVertexDataFunctor>::create(d->m_rings, d->m_slices, d->m_radius));
+    d->m_vertexBuffer->setData(d->generateVertexData());
 }
 
 /*!
@@ -443,8 +353,7 @@ void QSphereGeometry::updateIndices()
     Q_D(QSphereGeometry);
     const int faces = (d->m_slices * 2) * (d->m_rings - 2) + (2 * d->m_slices);
     d->m_indexAttribute->setCount(faces * 3);
-    d->m_indexBuffer->setDataGenerator(QSharedPointer<SphereIndexDataFunctor>::create(d->m_rings, d->m_slices));
-
+    d->m_indexBuffer->setData(d->generateIndexData());
 }
 
 void QSphereGeometry::setRings(int rings)
@@ -595,4 +504,6 @@ QAttribute *QSphereGeometry::indexAttribute() const
 } //  Qt3DExtras
 
 QT_END_NAMESPACE
+
+#include "moc_qspheregeometry.cpp"
 

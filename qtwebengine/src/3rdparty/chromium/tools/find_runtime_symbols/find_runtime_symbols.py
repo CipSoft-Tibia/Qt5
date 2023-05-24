@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Find symbols in a binary corresponding to given runtime virtual addresses.
@@ -42,42 +42,39 @@ _MAPS_FILENAME = 'maps'
 _FILES_FILENAME = 'files.json'
 
 
-class RuntimeSymbolsInProcess(object):
+class RuntimeSymbolsInProcess:
   def __init__(self):
-    self._maps = None
+    self.maps = None
     self._static_symbols_in_filse = {}
 
   def find_procedure(self, runtime_address):
-    for vma in self._maps.iter(ProcMaps.executable):
+    for vma in self.maps.iter(ProcMaps.executable):
       if vma.begin <= runtime_address < vma.end:
         static_symbols = self._static_symbols_in_filse.get(vma.name)
         if static_symbols:
           return static_symbols.find_procedure_by_runtime_address(
               runtime_address, vma)
-        else:
-          return None
+        return None
     return None
 
   def find_sourcefile(self, runtime_address):
-    for vma in self._maps.iter(ProcMaps.executable):
+    for vma in self.maps.iter(ProcMaps.executable):
       if vma.begin <= runtime_address < vma.end:
         static_symbols = self._static_symbols_in_filse.get(vma.name)
         if static_symbols:
           return static_symbols.find_sourcefile_by_runtime_address(
               runtime_address, vma)
-        else:
-          return None
+        return None
     return None
 
   def find_typeinfo(self, runtime_address):
-    for vma in self._maps.iter(ProcMaps.constants):
+    for vma in self.maps.iter(ProcMaps.constants):
       if vma.begin <= runtime_address < vma.end:
         static_symbols = self._static_symbols_in_filse.get(vma.name)
         if static_symbols:
           return static_symbols.find_typeinfo_by_runtime_address(
               runtime_address, vma)
-        else:
-          return None
+        return None
     return None
 
   @staticmethod
@@ -85,12 +82,12 @@ class RuntimeSymbolsInProcess(object):
     symbols_in_process = RuntimeSymbolsInProcess()
 
     with open(os.path.join(prepared_data_dir, _MAPS_FILENAME), mode='r') as f:
-      symbols_in_process._maps = ProcMaps.load_file(f)
+      symbols_in_process.maps = ProcMaps.load_file(f)
     with open(os.path.join(prepared_data_dir, _FILES_FILENAME), mode='r') as f:
       files = json.load(f)
 
     # pylint: disable=W0212
-    for vma in symbols_in_process._maps.iter(ProcMaps.executable_and_constants):
+    for vma in symbols_in_process.maps.iter(ProcMaps.executable_and_constants):
       file_entry = files.get(vma.name)
       if not file_entry:
         continue

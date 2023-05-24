@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qlayout.h>
 #include <qapplication.h>
 #include <qwidget.h>
@@ -52,7 +27,7 @@ using namespace QTestPrivate;
 
 // ItemRole has enumerators for numerical values 0..2, thus the only
 // valid numerical values for storing into an ItemRole variable are 0..3:
-Q_CONSTEXPR QFormLayout::ItemRole invalidRole = QFormLayout::ItemRole(3);
+constexpr QFormLayout::ItemRole invalidRole = QFormLayout::ItemRole(3);
 
 struct QFormLayoutTakeRowResultHolder {
     QFormLayoutTakeRowResultHolder(QFormLayout::TakeRowResult result) noexcept
@@ -99,7 +74,9 @@ class tst_QFormLayout : public QObject
 private slots:
     void cleanup();
     void rowCount();
+#if QT_CONFIG(shortcut)
     void buddies();
+#endif
     void getItemPosition();
     void wrapping();
     void spacing();
@@ -133,6 +110,9 @@ private slots:
     void takeRow_QLayout();
     void setWidget();
     void setLayout();
+    void hideShowRow();
+    void showWithHiddenRow();
+    void hiddenRowAndStretch();
 
 /*
     QLayoutItem *itemAt(int row, ItemRole role) const;
@@ -190,6 +170,8 @@ void tst_QFormLayout::rowCount()
     //TODO: remove items
 }
 
+#if QT_CONFIG(shortcut)
+
 void tst_QFormLayout::buddies()
 {
     QWidget w;
@@ -217,6 +199,8 @@ void tst_QFormLayout::buddies()
 
     //TODO: empty label?
 }
+
+#endif // QT_CONFIG(shortcut)
 
 void tst_QFormLayout::getItemPosition()
 {
@@ -268,7 +252,9 @@ void tst_QFormLayout::wrapping()
     fl->setRowWrapPolicy(QFormLayout::WrapLongRows);
 
     QLineEdit *le = new QLineEdit;
-    QLabel *lbl = new QLabel("A long label");
+    QLabel *lbl = new QLabel("A long label which is actually long enough to trigger wrapping,"
+                             " even on Android and even if it is executed on a tiling window"
+                             " manager which forces the window into fullscreen mode.");
     le->setMinimumWidth(200);
     fl->addRow(lbl, le);
 
@@ -276,9 +262,6 @@ void tst_QFormLayout::wrapping()
     w.setWindowTitle(QTest::currentTestFunction());
     w.show();
 
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "setFixedWidth does not work on WinRT", Abort);
-#endif
     QCOMPARE(le->geometry().y() > lbl->geometry().y(), true);
 
     //TODO: additional tests covering different wrapping cases
@@ -294,15 +277,15 @@ public:
         vspacing = 10;
     }
 
-    virtual int pixelMetric(PixelMetric metric, const QStyleOption * option = 0,
-                            const QWidget * widget = 0 ) const;
+    virtual int pixelMetric(PixelMetric metric, const QStyleOption * option = nullptr,
+                            const QWidget * widget = nullptr) const override;
 
     int hspacing;
     int vspacing;
 };
 
-int CustomLayoutStyle::pixelMetric(PixelMetric metric, const QStyleOption * option /*= 0*/,
-                                   const QWidget * widget /*= 0*/ ) const
+int CustomLayoutStyle::pixelMetric(PixelMetric metric, const QStyleOption * option /*= nullptr*/,
+                                   const QWidget * widget /*= nullptr*/ ) const
 {
     switch (metric) {
         case PM_LayoutHorizontalSpacing:
@@ -388,7 +371,7 @@ void tst_QFormLayout::contentsRect()
 class DummyMacStyle : public QCommonStyle
 {
 public:
-    virtual int styleHint ( StyleHint hint, const QStyleOption * option = 0, const QWidget * widget = 0, QStyleHintReturn * returnData = 0 ) const
+    virtual int styleHint ( StyleHint hint, const QStyleOption * option = 0, const QWidget * widget = nullptr, QStyleHintReturn * returnData = 0 ) const override
     {
         switch(hint) {
             case SH_FormLayoutFormAlignment:
@@ -408,7 +391,7 @@ public:
 class DummyQtopiaStyle : public QCommonStyle
 {
 public:
-    virtual int styleHint ( StyleHint hint, const QStyleOption * option = 0, const QWidget * widget = 0, QStyleHintReturn * returnData = 0 ) const
+    virtual int styleHint ( StyleHint hint, const QStyleOption * option = 0, const QWidget * widget = nullptr, QStyleHintReturn * returnData = 0 ) const override
     {
         switch(hint) {
             case SH_FormLayoutFormAlignment:
@@ -687,17 +670,21 @@ void tst_QFormLayout::insertRow_QString_QWidget()
     layout->insertRow(-5, "&Name:", fld1);
     QLabel *label1 = qobject_cast<QLabel *>(layout->itemAt(0, QFormLayout::LabelRole)->widget());
     QVERIFY(label1 != 0);
+#if QT_CONFIG(shortcut)
     QCOMPARE(label1->buddy(), fld1);
-
+#endif
     layout->insertRow(0, "&Email:", fld2);
     QLabel *label2 = qobject_cast<QLabel *>(layout->itemAt(0, QFormLayout::LabelRole)->widget());
     QVERIFY(label2 != 0);
+#if QT_CONFIG(shortcut)
     QCOMPARE(label2->buddy(), fld2);
-
+#endif
     layout->insertRow(5, "&Age:", fld3);
     QLabel *label3 = qobject_cast<QLabel *>(layout->itemAt(2, QFormLayout::LabelRole)->widget());
     QVERIFY(label3 != 0);
+#if QT_CONFIG(shortcut)
     QCOMPARE(label3->buddy(), fld3);
+#endif
 }
 
 void tst_QFormLayout::insertRow_QString_QLayout()
@@ -711,21 +698,27 @@ void tst_QFormLayout::insertRow_QString_QLayout()
     layout->insertRow(-5, "&Name:", fld1);
     QLabel *label1 = qobject_cast<QLabel *>(layout->itemAt(0, QFormLayout::LabelRole)->widget());
     QVERIFY(label1 != 0);
+#if QT_CONFIG(shortcut)
     QVERIFY(!label1->buddy());
+#endif
 
     QCOMPARE(layout->rowCount(), 1);
 
     layout->insertRow(0, "&Email:", fld2);
     QLabel *label2 = qobject_cast<QLabel *>(layout->itemAt(0, QFormLayout::LabelRole)->widget());
     QVERIFY(label2 != 0);
+#if QT_CONFIG(shortcut)
     QVERIFY(!label2->buddy());
+#endif
 
     QCOMPARE(layout->rowCount(), 2);
 
     layout->insertRow(5, "&Age:", fld3);
     QLabel *label3 = qobject_cast<QLabel *>(layout->itemAt(2, QFormLayout::LabelRole)->widget());
     QVERIFY(label3 != 0);
+#if QT_CONFIG(shortcut)
     QVERIFY(!label3->buddy());
+#endif
 
     QCOMPARE(layout->rowCount(), 3);
 }
@@ -801,6 +794,7 @@ void tst_QFormLayout::removeRow_QWidget()
     QCOMPARE(layout->rowCount(), 0);
 
     QWidget *w3 = new QWidget;
+    QTest::ignoreMessage(QtWarningMsg, "QFormLayout::takeRow: Invalid widget");
     layout->removeRow(w3);
     delete w3;
 }
@@ -841,6 +835,7 @@ void tst_QFormLayout::removeRow_QLayout()
     QCOMPARE(layout->rowCount(), 0);
 
     QHBoxLayout *l3 = new QHBoxLayout;
+    QTest::ignoreMessage(QtWarningMsg, "QFormLayout::takeRow: Invalid layout");
     layout->removeRow(l3);
     delete l3;
 }
@@ -880,6 +875,7 @@ void tst_QFormLayout::takeRow()
     QCOMPARE(layout->rowCount(), 0);
     QCOMPARE(result.fieldItem->widget(), w1.data());
 
+    QTest::ignoreMessage(QtWarningMsg, "QFormLayout::takeRow: Invalid row 0");
     result = layout->takeRow(0);
 
     QVERIFY(!result.fieldItem);
@@ -920,6 +916,7 @@ void tst_QFormLayout::takeRow_QWidget()
     QCOMPARE(layout->rowCount(), 0);
 
     QWidget *w3 = new QWidget;
+    QTest::ignoreMessage(QtWarningMsg, "QFormLayout::takeRow: Invalid widget");
     result = layout->takeRow(w3);
     delete w3;
 
@@ -967,6 +964,7 @@ void tst_QFormLayout::takeRow_QLayout()
     QCOMPARE(layout->rowCount(), 0);
 
     QHBoxLayout *l3 = new QHBoxLayout;
+    QTest::ignoreMessage(QtWarningMsg, "QFormLayout::takeRow: Invalid layout");
     result = layout->takeRow(l3);
     delete l3;
 
@@ -996,7 +994,9 @@ void tst_QFormLayout::setWidget()
     QCOMPARE(layout.rowCount(), 6);
 
     // should be ignored and generate warnings
+    QTest::ignoreMessage(QtWarningMsg, "QFormLayoutPrivate::setItem: Cell (3, 1) already occupied");
     layout.setWidget(3, QFormLayout::FieldRole, &w4);
+    QTest::ignoreMessage(QtWarningMsg, "QFormLayoutPrivate::setItem: Invalid cell (-1, 1)");
     layout.setWidget(-1, QFormLayout::FieldRole, &w4);
 
     {
@@ -1064,7 +1064,9 @@ void tst_QFormLayout::setLayout()
     QCOMPARE(layout.rowCount(), 6);
 
     // should be ignored and generate warnings
+    QTest::ignoreMessage(QtWarningMsg, "QFormLayoutPrivate::setItem: Cell (3, 1) already occupied");
     layout.setLayout(3, QFormLayout::FieldRole, &l4);
+    QTest::ignoreMessage(QtWarningMsg, "QLayout::addChildLayout: layout QHBoxLayout \"\" already has a parent");
     layout.setLayout(-1, QFormLayout::FieldRole, &l4);
     QCOMPARE(layout.count(), 3);
     QCOMPARE(layout.rowCount(), 6);
@@ -1108,6 +1110,191 @@ void tst_QFormLayout::setLayout()
         QCOMPARE(row, -1);
         QCOMPARE(int(role), int(invalidRole));
     }
+}
+
+void tst_QFormLayout::hideShowRow()
+{
+    QWidget topLevel;
+    QFormLayout layout;
+
+    const auto makeComplex = []{
+        QHBoxLayout *hboxField = new QHBoxLayout;
+        hboxField->addWidget(new QLineEdit("Left"));
+        hboxField->addWidget(new QLineEdit("Right"));
+        return hboxField;
+    };
+
+    layout.addRow("Label", new QLineEdit("one"));
+    layout.addRow("Label", new QLineEdit("two"));
+    layout.addRow("Label", new QLineEdit("three"));
+    layout.addRow("Label", makeComplex());
+    layout.addRow(new QLineEdit("five")); // spanning widget
+    layout.addRow(makeComplex()); // spanning layout
+
+    topLevel.setLayout(&layout);
+    topLevel.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
+
+    // returns the top-left position of the items in a row
+    const auto rowPosition = [&layout](int row) {
+        QRect rect;
+        if (QLayoutItem *spanningItem = layout.itemAt(row, QFormLayout::SpanningRole)) {
+            rect = spanningItem->geometry();
+        } else {
+            if (QLayoutItem *labelItem = layout.itemAt(row, QFormLayout::LabelRole)) {
+                rect = labelItem->geometry();
+            }
+            if (QLayoutItem *fieldItem = layout.itemAt(row, QFormLayout::FieldRole)) {
+                rect |= fieldItem->geometry();
+            }
+        }
+        return rect.topLeft();
+    };
+
+    // returns the first widget in a row, even if that row is taken by a layout
+    const auto rowInputWidget = [&layout](int row) -> QWidget* {
+        auto fieldItem = layout.itemAt(row, QFormLayout::FieldRole);
+        if (!fieldItem)
+            return nullptr;
+        QWidget *fieldWidget = fieldItem->widget();
+        // we happen to know our layout structure
+        if (!fieldWidget)
+            fieldWidget = fieldItem->layout()->itemAt(0)->widget();
+        return fieldWidget;
+    };
+
+    // record the reference positions for all rows
+    QList<QPoint> rowPositions(layout.rowCount());
+    for (int row = 0; row < layout.rowCount(); ++row)
+        rowPositions[row] = rowPosition(row);
+
+    // hide each row in turn, the next row should take the space of the hidden row
+    for (int row = 0; row < layout.rowCount(); ++ row) {
+        layout.setRowVisible(row, false);
+        QVERIFY(!layout.isRowVisible(row));
+        if (row < layout.rowCount() - 1)
+            QTRY_COMPARE(rowPosition(row + 1), rowPositions[row]);
+        layout.setRowVisible(row, true);
+        QVERIFY(layout.isRowVisible(row));
+    }
+
+    // Hiding only the label or only the field doesn't hide the row.
+    for (int row = 0; row < layout.rowCount() - 1; ++row) {
+        const auto labelItem = layout.itemAt(0, QFormLayout::LabelRole);
+        if (labelItem) {
+            labelItem->widget()->hide();
+            QVERIFY(layout.isRowVisible(row));
+            QCOMPARE(rowPosition(row), rowPositions[row]);
+            layout.itemAt(0, QFormLayout::LabelRole)->widget()->show();
+        }
+        const auto fieldItem = layout.itemAt(0, QFormLayout::FieldRole);
+        if (fieldItem) {
+            fieldItem->widget()->hide();
+            QVERIFY(layout.isRowVisible(row));
+            QCOMPARE(rowPosition(row), rowPositions[row]);
+            layout.itemAt(0, QFormLayout::FieldRole)->widget()->show();
+        }
+    }
+
+    // If we hide both label and field, then the row should be considered hidden and the
+    // following row should move up into the space of the hidden row. We can only test
+    // this if both label and field are widgets, or if there is a spanning widget.
+    for (int row = 0; row < layout.rowCount() - 1; ++row) {
+        QWidget *labelWidget = nullptr;
+        if (auto labelItem = layout.itemAt(row, QFormLayout::LabelRole))
+            labelWidget = labelItem->widget();
+        QWidget *fieldWidget = nullptr;
+        if (auto fieldItem = layout.itemAt(row, QFormLayout::FieldRole))
+            fieldWidget = fieldItem->widget();
+
+        if (!fieldWidget)
+            continue;
+        if (labelWidget)
+            labelWidget->hide();
+        fieldWidget->hide();
+        QVERIFY(!layout.isRowVisible(row));
+        QVERIFY(!layout.isRowVisible(fieldWidget));
+        if (labelWidget)
+            QVERIFY(!layout.isRowVisible(labelWidget));
+        QTRY_COMPARE(rowPosition(row + 1), rowPositions[row]);
+        if (labelWidget)
+            labelWidget->show();
+        fieldWidget->show();
+    }
+
+    // hiding a row where a widget has focus must move focus to a widget in the next row
+    for (int row = 0; row < layout.rowCount(); ++row) {
+        QWidget *inputWidget = rowInputWidget(row);
+        QVERIFY(inputWidget);
+        inputWidget->setFocus();
+        layout.setRowVisible(row, false);
+        QVERIFY(!inputWidget->hasFocus());
+    }
+
+    // Now hide all rows, hide the toplevel widget, and show the toplevel widget again.
+    // None of the widgets inside must be visible.
+    for (int row = 0; row < layout.rowCount(); ++row)
+        layout.setRowVisible(row, false);
+    topLevel.hide();
+    topLevel.show();
+    for (int row = 0; row < layout.rowCount(); ++row)
+        QVERIFY(rowInputWidget(row)->isHidden());
+}
+
+void tst_QFormLayout::showWithHiddenRow()
+{
+    QWidget topLevel;
+    QFormLayout layout;
+
+    for (int row = 0; row < 3; ++row)
+        layout.addRow(QString("Label %1").arg(row), new QLineEdit);
+    layout.setRowVisible(1, false);
+
+    topLevel.setLayout(&layout);
+    topLevel.show();
+}
+
+/*
+    Test that hiding rows does not leave outdated layout data behind
+    in hidden items that results in out-of-bounds array access. See
+    QTBUG-109237.
+*/
+void tst_QFormLayout::hiddenRowAndStretch()
+{
+    QWidget topLevel;
+    QFormLayout layout;
+    layout.setRowWrapPolicy(QFormLayout::WrapAllRows);
+
+    // We need our own stretcher item so that QFormLayout doesn't insert
+    // it's own, as that would grow the size of the layout data array again.
+    QSpacerItem *stretch = new QSpacerItem(100, 100, QSizePolicy::Expanding, QSizePolicy::Expanding);
+    layout.setItem(0, QFormLayout::FieldRole, stretch);
+
+    QLabel *lastLabel = nullptr;
+    QLineEdit *lastField = nullptr;
+    for (int row = 1; row < 4; ++row) {
+        QLabel *label = new QLabel(QString("Label %1").arg(row));
+        label->setWordWrap(true);
+        QLineEdit *field = new QLineEdit;
+        layout.setWidget(row, QFormLayout::LabelRole, label);
+        layout.setWidget(row, QFormLayout::FieldRole, field);
+        if (row == 3) {
+            lastLabel = label;
+            lastField = field;
+        }
+    }
+
+    Q_ASSERT(lastLabel);
+    Q_ASSERT(lastField);
+
+    topLevel.setLayout(&layout);
+    topLevel.sizeHint();
+
+    lastLabel->setVisible(false);
+    lastField->setVisible(false);
+
+    // should not assert here
+    topLevel.show();
 }
 
 void tst_QFormLayout::itemAt()

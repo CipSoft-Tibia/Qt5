@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qtwaylandcompositorglobal_p.h"
 #include "qwaylandcompositor.h"
@@ -67,6 +41,7 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QStringList>
 #include <QtCore/QSocketNotifier>
+#include <QStandardPaths>
 
 #include <QtGui/QDesktopServices>
 #include <QtGui/QScreen>
@@ -88,6 +63,9 @@ QT_BEGIN_NAMESPACE
 Q_LOGGING_CATEGORY(qLcWaylandCompositor, "qt.waylandcompositor")
 Q_LOGGING_CATEGORY(qLcWaylandCompositorHardwareIntegration, "qt.waylandcompositor.hardwareintegration")
 Q_LOGGING_CATEGORY(qLcWaylandCompositorInputMethods, "qt.waylandcompositor.inputmethods")
+#if QT_WAYLAND_TEXT_INPUT_V4_WIP
+Q_LOGGING_CATEGORY(qLcWaylandCompositorTextInput, "qt.waylandcompositor.textinput")
+#endif // QT_WAYLAND_TEXT_INPUT_V4_WIP
 
 namespace QtWayland {
 
@@ -124,13 +102,15 @@ public:
         ke->nativeScanCode += offset;
 #endif
         uint32_t code = ke->nativeScanCode;
+        if (code == 0)
+            code = seat->keyboard()->keyToScanCode(ke->key);
         bool isDown = ke->keyType == QEvent::KeyPress;
 
 #if QT_CONFIG(xkbcommon)
         xkb_state *xkbState = keyb->xkbState();
-        Qt::KeyboardModifiers modifiers = QXkbCommon::modifiers(xkbState);
 
         const xkb_keysym_t sym = xkb_state_key_get_one_sym(xkbState, code);
+        Qt::KeyboardModifiers modifiers = QXkbCommon::modifiers(xkbState, sym);
         int qtkey = QXkbCommon::keysymToQtKey(sym, modifiers, xkbState, code);
         QString text = QXkbCommon::lookupString(xkbState, code);
 
@@ -158,6 +138,9 @@ public:
 
 QWaylandCompositorPrivate::QWaylandCompositorPrivate(QWaylandCompositor *compositor)
 {
+    // Create XDG_RUNTIME_DIR, if it does not already exist
+    QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+
     if (QGuiApplication::platformNativeInterface())
         display = static_cast<wl_display*>(QGuiApplication::platformNativeInterface()->nativeResourceForIntegration("server_wl_display"));
 
@@ -190,7 +173,7 @@ void QWaylandCompositorPrivate::init()
         if (socketArg != -1 && socketArg + 1 < arguments.size())
             socket_name = arguments.at(socketArg + 1).toLocal8Bit();
     }
-    wl_compositor::init(display, 3);
+    wl_compositor::init(display, 4);
     wl_subcompositor::init(display, 1);
 
 #if QT_CONFIG(wayland_datadevice)
@@ -199,9 +182,9 @@ void QWaylandCompositorPrivate::init()
     buffer_manager = new QtWayland::BufferManager(q);
 
     wl_display_init_shm(display);
-    const QVector<wl_shm_format> formats = QWaylandSharedMemoryFormatHelper::supportedWaylandFormats();
-    for (wl_shm_format format : formats)
-        wl_display_add_shm_format(display, format);
+
+    for (QWaylandCompositor::ShmFormat format : shmFormats)
+        wl_display_add_shm_format(display, wl_shm_format(format));
 
     if (!socket_name.isEmpty()) {
         if (wl_display_add_socket(display, socket_name.constData()))
@@ -214,9 +197,7 @@ void QWaylandCompositorPrivate::init()
         emit q->socketNameChanged(socket_name);
     }
 
-#if WAYLAND_VERSION_MAJOR >= 1 && (WAYLAND_VERSION_MAJOR != 1 || WAYLAND_VERSION_MINOR >= 10)
     connectToExternalSockets();
-#endif
 
     loop = wl_display_get_event_loop(display);
 
@@ -228,12 +209,17 @@ void QWaylandCompositorPrivate::init()
     QAbstractEventDispatcher *dispatcher = QGuiApplicationPrivate::eventDispatcher;
     QObject::connect(dispatcher, SIGNAL(aboutToBlock()), q, SLOT(processWaylandEvents()));
 
+    QObject::connect(static_cast<QGuiApplication *>(QGuiApplication::instance()),
+                     &QGuiApplication::applicationStateChanged,
+                     q,
+                     &QWaylandCompositor::applicationStateChanged);
+
     initializeHardwareIntegration();
     initializeSeats();
 
     initialized = true;
 
-    for (const QPointer<QObject> &object : qExchange(polish_objects, {})) {
+    for (const QPointer<QObject> &object : std::exchange(polish_objects, {})) {
         if (object) {
             QEvent polishEvent(QEvent::Polish);
             QCoreApplication::sendEvent(object.data(), &polishEvent);
@@ -256,10 +242,8 @@ QWaylandCompositorPrivate::~QWaylandCompositorPrivate()
     delete data_device_manager;
 #endif
 
-#if QT_CONFIG(opengl)
     // Some client buffer integrations need to clean up before the destroying the wl_display
-    client_buffer_integration.reset();
-#endif
+    qDeleteAll(client_buffer_integrations);
 
     if (ownsDisplay)
         wl_display_destroy(display);
@@ -308,17 +292,15 @@ void QWaylandCompositorPrivate::addPolishObject(QObject *object)
     }
 }
 
-#if WAYLAND_VERSION_MAJOR >= 1 && (WAYLAND_VERSION_MAJOR != 1 || WAYLAND_VERSION_MINOR >= 10)
 void QWaylandCompositorPrivate::connectToExternalSockets()
 {
     // Clear out any backlog of user-supplied external socket descriptors
-    for (int fd : qAsConst(externally_added_socket_fds)) {
+    for (int fd : std::as_const(externally_added_socket_fds)) {
         if (wl_display_add_socket_fd(display, fd) != 0)
             qWarning() << "Failed to integrate user-supplied socket fd into the Wayland event loop";
     }
     externally_added_socket_fds.clear();
 }
-#endif
 
 void QWaylandCompositorPrivate::compositor_create_surface(wl_compositor::Resource *resource, uint32_t id)
 {
@@ -367,9 +349,28 @@ QWaylandSurface *QWaylandCompositorPrivate::createDefaultSurface()
     return new QWaylandSurface();
 }
 
+class SharedMemoryClientBufferIntegration : public QtWayland::ClientBufferIntegration
+{
+public:
+    void initializeHardware(wl_display *display) override;
+    QtWayland::ClientBuffer *createBufferFor(wl_resource *buffer) override;
+};
+
+void SharedMemoryClientBufferIntegration::initializeHardware(wl_display *)
+{
+}
+
+QtWayland::ClientBuffer *SharedMemoryClientBufferIntegration::createBufferFor(wl_resource *buffer)
+{
+    if (wl_shm_buffer_get(buffer))
+        return new QtWayland::SharedMemoryBuffer(buffer);
+    return nullptr;
+}
 
 void QWaylandCompositorPrivate::initializeHardwareIntegration()
 {
+    client_buffer_integrations.prepend(new SharedMemoryClientBufferIntegration); // TODO: clean up the opengl dependency
+
 #if QT_CONFIG(opengl)
     Q_Q(QWaylandCompositor);
     if (use_hw_integration_extension)
@@ -378,14 +379,14 @@ void QWaylandCompositorPrivate::initializeHardwareIntegration()
     loadClientBufferIntegration();
     loadServerBufferIntegration();
 
-    if (client_buffer_integration)
-        client_buffer_integration->initializeHardware(display);
+    for (auto *integration : std::as_const(client_buffer_integrations))
+        integration->initializeHardware(display);
 #endif
 }
 
 void QWaylandCompositorPrivate::initializeSeats()
 {
-    for (QWaylandSeat *seat : qAsConst(seats))
+    for (QWaylandSeat *seat : std::as_const(seats))
         seat->initialize();
 }
 
@@ -394,27 +395,40 @@ void QWaylandCompositorPrivate::loadClientBufferIntegration()
 #if QT_CONFIG(opengl)
     Q_Q(QWaylandCompositor);
     QStringList keys = QtWayland::ClientBufferIntegrationFactory::keys();
-    QString targetKey;
+    QStringList targetKeys;
     QByteArray clientBufferIntegration = qgetenv("QT_WAYLAND_HARDWARE_INTEGRATION");
     if (clientBufferIntegration.isEmpty())
         clientBufferIntegration = qgetenv("QT_WAYLAND_CLIENT_BUFFER_INTEGRATION");
-    if (keys.contains(QString::fromLocal8Bit(clientBufferIntegration.constData()))) {
-        targetKey = QString::fromLocal8Bit(clientBufferIntegration.constData());
-    } else if (keys.contains(QString::fromLatin1("wayland-egl"))) {
-        targetKey = QString::fromLatin1("wayland-egl");
-    } else if (!keys.isEmpty()) {
-        targetKey = keys.first();
+
+    for (auto b : clientBufferIntegration.split(';')) {
+        QString s = QString::fromLocal8Bit(b);
+        if (keys.contains(s))
+            targetKeys.append(s);
     }
 
-    if (!targetKey.isEmpty()) {
-        client_buffer_integration.reset(QtWayland::ClientBufferIntegrationFactory::create(targetKey, QStringList()));
-        if (client_buffer_integration) {
-            client_buffer_integration->setCompositor(q);
-            if (hw_integration)
-                hw_integration->setClientBufferIntegration(targetKey);
+    if (targetKeys.isEmpty()) {
+        if (keys.contains(QString::fromLatin1("wayland-egl"))) {
+            targetKeys.append(QString::fromLatin1("wayland-egl"));
+        } else if (!keys.isEmpty()) {
+            targetKeys.append(keys.first());
         }
     }
-    //BUG: if there is no client buffer integration, bad things will happen when opengl is used
+
+    QString hwIntegrationName;
+
+    for (auto targetKey : std::as_const(targetKeys)) {
+        auto *integration = QtWayland::ClientBufferIntegrationFactory::create(targetKey, QStringList());
+        if (integration) {
+            integration->setCompositor(q);
+            client_buffer_integrations.append(integration);
+            if (hwIntegrationName.isEmpty())
+                hwIntegrationName = targetKey;
+        }
+    }
+
+    if (hw_integration && !hwIntegrationName.isEmpty())
+        hw_integration->setClientBufferIntegrationName(hwIntegrationName);
+
 #endif
 }
 
@@ -445,8 +459,21 @@ void QWaylandCompositorPrivate::loadServerBufferIntegration()
     }
 
     if (server_buffer_integration && hw_integration)
-        hw_integration->setServerBufferIntegration(targetKey);
+        hw_integration->setServerBufferIntegrationName(targetKey);
 #endif
+}
+
+QWaylandSeat *QWaylandCompositorPrivate::seatFor(QInputEvent *inputEvent)
+{
+    QWaylandSeat *dev = nullptr;
+    for (int i = 0; i < seats.size(); i++) {
+        QWaylandSeat *candidate = seats.at(i);
+        if (candidate->isOwner(inputEvent)) {
+            dev = candidate;
+            break;
+        }
+    }
+    return dev;
 }
 
 /*!
@@ -483,7 +510,7 @@ void QWaylandCompositorPrivate::loadServerBufferIntegration()
 */
 
 /*!
-  \qmlsignal void QtWaylandCompositor::WaylandCompositor::surfaceRequested(WaylandClient client, int id, int version)
+  \qmlsignal void QtWayland.Compositor::WaylandCompositor::surfaceRequested(WaylandClient client, int id, int version)
 
   This signal is emitted when a \a client has created a surface with id \a id.
   The interface \a version is also available.
@@ -505,7 +532,7 @@ void QWaylandCompositorPrivate::loadServerBufferIntegration()
 */
 
 /*!
-  \qmlsignal void QtWaylandCompositor::WaylandCompositor::surfaceCreated(WaylandSurface surface)
+  \qmlsignal void QtWayland.Compositor::WaylandCompositor::surfaceCreated(WaylandSurface surface)
 
   This signal is emitted when a new WaylandSurface instance \a surface has been created.
 */
@@ -552,7 +579,7 @@ void QWaylandCompositor::create()
 }
 
 /*!
- * \qmlproperty bool QtWaylandCompositor::WaylandCompositor::created
+ * \qmlproperty bool QtWayland.Compositor::WaylandCompositor::created
  *
  * This property is true if WaylandCompositor has been initialized,
  * otherwise it's false.
@@ -571,7 +598,7 @@ bool QWaylandCompositor::isCreated() const
 }
 
 /*!
- * \qmlproperty string QtWaylandCompositor::WaylandCompositor::socketName
+ * \qmlproperty string QtWayland.Compositor::WaylandCompositor::socketName
  *
  * This property holds the socket name used by WaylandCompositor to communicate with
  * clients. It must be set before the component is completed.
@@ -614,7 +641,7 @@ QByteArray QWaylandCompositor::socketName() const
 }
 
 /*!
- * \qmlmethod QtWaylandCompositor::WaylandCompositor::addSocketDescriptor(fd)
+ * \qmlmethod QtWayland.Compositor::WaylandCompositor::addSocketDescriptor(fd)
  * \since 5.12
  *
  * Listen for client connections on a file descriptor, \a fd, referring to a
@@ -643,15 +670,10 @@ QByteArray QWaylandCompositor::socketName() const
  */
 void QWaylandCompositor::addSocketDescriptor(int fd)
 {
-#if WAYLAND_VERSION_MAJOR >= 1 && (WAYLAND_VERSION_MAJOR != 1 || WAYLAND_VERSION_MINOR >= 10)
     Q_D(QWaylandCompositor);
     d->externally_added_socket_fds.append(fd);
     if (isCreated())
         d->connectToExternalSockets();
-#else
-    Q_UNUSED(fd);
-    qWarning() << "QWaylandCompositor::addSocketDescriptor() does nothing on libwayland versions prior to 1.10.0";
-#endif
 }
 
 /*!
@@ -682,7 +704,7 @@ QList<QWaylandClient *>QWaylandCompositor::clients() const
 }
 
 /*!
- * \qmlmethod QtWaylandCompositor::WaylandCompositor::destroyClientForSurface(surface)
+ * \qmlmethod QtWayland.Compositor::WaylandCompositor::destroyClientForSurface(surface)
  *
  * Destroys the client for the WaylandSurface \a surface.
  */
@@ -696,7 +718,7 @@ void QWaylandCompositor::destroyClientForSurface(QWaylandSurface *surface)
 }
 
 /*!
- * \qmlmethod QtWaylandCompositor::WaylandCompositor::destroyClient(client)
+ * \qmlmethod QtWayland.Compositor::WaylandCompositor::destroyClient(client)
  *
  * Destroys the given WaylandClient \a client.
  */
@@ -754,7 +776,7 @@ QWaylandOutput *QWaylandCompositor::outputFor(QWindow *window) const
 }
 
 /*!
- * \qmlproperty WaylandOutput QtWaylandCompositor::WaylandCompositor::defaultOutput
+ * \qmlproperty WaylandOutput QtWayland.Compositor::WaylandCompositor::defaultOutput
  *
  * This property contains the first in the list of outputs added to the
  * WaylandCompositor, or null if no outputs have been added.
@@ -855,7 +877,7 @@ QWaylandTouch *QWaylandCompositor::createTouchDevice(QWaylandSeat *seat)
 }
 
 /*!
- * \qmlproperty bool QtWaylandCompositor::WaylandCompositor::retainedSelection
+ * \qmlproperty bool QtWayland.Compositor::WaylandCompositor::retainedSelection
  *
  * This property holds whether retained selection is enabled.
  */
@@ -901,7 +923,7 @@ void QWaylandCompositor::overrideSelection(const QMimeData *data)
 }
 
 /*!
- * \qmlproperty WaylandSeat QtWaylandCompositor::WaylandCompositor::defaultSeat
+ * \qmlproperty WaylandSeat QtWayland.Compositor::WaylandCompositor::defaultSeat
  *
  * This property contains the default seat for this
  * WaylandCompositor.
@@ -922,27 +944,17 @@ QWaylandSeat *QWaylandCompositor::defaultSeat() const
 }
 
 /*!
- * \internal
- *
- * Currently, Qt only supports a single seat, so this exists for
- * future proofing the APIs.
+ * Select the seat for a given input event \a inputEvent.
+ * Currently, Qt only supports a single seat.
  */
 QWaylandSeat *QWaylandCompositor::seatFor(QInputEvent *inputEvent)
 {
     Q_D(QWaylandCompositor);
-    QWaylandSeat *dev = nullptr;
-    for (int i = 0; i < d->seats.size(); i++) {
-        QWaylandSeat *candidate = d->seats.at(i);
-        if (candidate->isOwner(inputEvent)) {
-            dev = candidate;
-            break;
-        }
-    }
-    return dev;
+    return d->seatFor(inputEvent);
 }
 
 /*!
- * \qmlproperty bool QtWaylandCompositor::WaylandCompositor::useHardwareIntegrationExtension
+ * \qmlproperty bool QtWayland.Compositor::WaylandCompositor::useHardwareIntegrationExtension
  *
  * This property holds whether the hardware integration extension should be enabled for
  * this WaylandCompositor.
@@ -1027,4 +1039,67 @@ void QWaylandCompositor::grabSurface(QWaylandSurfaceGrabber *grabber, const QWay
     }
 }
 
+/*!
+ * \qmlproperty list<enum> QtWayland.Compositor::WaylandCompositor::additionalShmFormats
+ *
+ * This property holds the list of additional wl_shm formats advertised as supported by the
+ * compositor.
+ *
+ * By default, only the required ShmFormat_ARGB8888 and ShmFormat_XRGB8888 are listed and this
+ * list will empty. Additional formats may require conversion internally and can thus affect
+ * performance.
+ *
+ * This property must be set before the compositor component is completed. Subsequent changes
+ * will have no effect.
+ *
+ * \since 6.0
+ */
+
+/*!
+ * \property QWaylandCompositor::additionalShmFormats
+ *
+ * This property holds the list of additional wl_shm formats advertised as supported by the
+ * compositor.
+ *
+ * By default, only the required ShmFormat_ARGB8888 and ShmFormat_XRGB8888 are listed and this
+ * list will empty.
+ *
+ * This property must be set before the compositor is \l{create()}{created}. Subsequent changes
+ * will have no effect.
+ *
+ * \since 6.0
+ */
+void QWaylandCompositor::setAdditionalShmFormats(const QVector<ShmFormat> &additionalShmFormats)
+{
+    Q_D(QWaylandCompositor);
+    if (d->initialized)
+        qCWarning(qLcWaylandCompositorHardwareIntegration) << "Setting QWaylandCompositor::additionalShmFormats after initialization has no effect";
+
+    d->shmFormats = additionalShmFormats;
+    emit additionalShmFormatsChanged();
+}
+
+QVector<QWaylandCompositor::ShmFormat> QWaylandCompositor::additionalShmFormats() const
+{
+    Q_D(const QWaylandCompositor);
+    return d->shmFormats;
+}
+
+void QWaylandCompositor::applicationStateChanged(Qt::ApplicationState state)
+{
+#if QT_CONFIG(xkbcommon)
+    if (state == Qt::ApplicationInactive) {
+        auto *seat = defaultSeat();
+        if (seat != nullptr) {
+            QWaylandKeyboardPrivate *keyb = QWaylandKeyboardPrivate::get(seat->keyboard());
+            keyb->resetKeyboardState();
+        }
+    }
+#else
+    Q_UNUSED(state);
+#endif
+}
+
 QT_END_NAMESPACE
+
+#include "moc_qwaylandcompositor.cpp"

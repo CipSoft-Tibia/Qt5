@@ -1,29 +1,45 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "storage/browser/quota/quota_features.h"
+#include "base/feature_list.h"
 
 namespace storage {
 
 namespace features {
 
-// IncognitoDynamicQuota enables dynamic assignment of quota to incognito mode
-// based on the physical memory size and removes the fixed upper cap for it.
-const base::Feature kIncognitoDynamicQuota{"IncognitoDynamicQuota",
-                                           base::FEATURE_ENABLED_BY_DEFAULT};
-
-// Dynamic quota for incognito mode would be set by a random fraction of
-// physical memory, between |IncognitoQuotaRatioLowerBound| and
-// |IncognitoQuotaRatioUpperBound|.
-const base::FeatureParam<double> kIncognitoQuotaRatioLowerBound{
-    &kIncognitoDynamicQuota, "IncognitoQuotaRatioLowerBound", 0.15};
-const base::FeatureParam<double> kIncognitoQuotaRatioUpperBound{
-    &kIncognitoDynamicQuota, "IncognitoQuotaRatioUpperBound", 0.2};
+namespace {
+constexpr int64_t kMBytes = 1024 * 1024;
+}  // namespace
 
 // Enables Storage Pressure Event.
-const base::Feature kStoragePressureEvent{"StoragePressureEvent",
-                                          base::FEATURE_DISABLED_BY_DEFAULT};
+BASE_FEATURE(kStoragePressureEvent,
+             "StoragePressureEvent",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enables customized storage quota settings for embedders.
+BASE_FEATURE(kStorageQuotaSettings,
+             "StorageQuotaSettings",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+const base::FeatureParam<double> kMustRemainAvailableBytes{
+    &kStorageQuotaSettings, "MustRemainAvailableBytes", 1024 * kMBytes /* 1GB */
+};
+const base::FeatureParam<double> kMustRemainAvailableRatio{
+    &kStorageQuotaSettings, "MustRemainAvailableRatio", 0.01 /* 1% */
+};
+const base::FeatureParam<double> kPoolSizeBytes{&kStorageQuotaSettings,
+                                                    "PoolSizeBytes", 0};
+const base::FeatureParam<double> kPoolSizeRatio{
+    &kStorageQuotaSettings, "PoolSizeRatio", 0.8 /* 80% */
+};
+const base::FeatureParam<double> kShouldRemainAvailableBytes{
+    &kStorageQuotaSettings, "ShouldRemainAvailableBytes",
+    2048 * kMBytes /* 2GB */
+};
+const base::FeatureParam<double> kShouldRemainAvailableRatio{
+    &kStorageQuotaSettings, "ShouldRemainAvailableRatio", 0.1 /* 10% */
+};
 
 }  // namespace features
 }  // namespace storage

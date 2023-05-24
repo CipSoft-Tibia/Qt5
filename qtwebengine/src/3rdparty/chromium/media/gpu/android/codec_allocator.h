@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,12 @@
 
 #include <memory>
 
-#include "base/callback.h"
 #include "base/containers/circular_deque.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
-#include "base/sequenced_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
 #include "media/base/android/android_util.h"
 #include "media/base/android/media_codec_bridge.h"
 #include "media/base/android/media_codec_bridge_impl.h"
@@ -31,8 +33,15 @@ namespace media {
 // path is hung up.
 class MEDIA_GPU_EXPORT CodecAllocator {
  public:
+  // Minimum coded size that we'll allow to get a hardware instance, since not
+  // all hw implementation support it.  See crbug.com/1166833 .
+  static constexpr gfx::Size kMinHardwareResolution{96, 96};
+
   static CodecAllocator* GetInstance(
       scoped_refptr<base::SequencedTaskRunner> task_runner);
+
+  CodecAllocator(const CodecAllocator&) = delete;
+  CodecAllocator& operator=(const CodecAllocator&) = delete;
 
   using CodecFactoryCB =
       base::RepeatingCallback<std::unique_ptr<MediaCodecBridge>(
@@ -92,7 +101,7 @@ class MEDIA_GPU_EXPORT CodecAllocator {
   const CodecFactoryCB factory_cb_;
 
   // Tick clock which can be replaced for test purposes.
-  const base::TickClock* tick_clock_;
+  raw_ptr<const base::TickClock> tick_clock_;
 
   // The two task runners used for codec operations. The primary is allowed to
   // create CodecType::kAny MediaCodec instances, while the secondary one is
@@ -104,8 +113,6 @@ class MEDIA_GPU_EXPORT CodecAllocator {
 
   // True if only software codec creation is currently allowed due to hangs.
   bool force_sw_codecs_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(CodecAllocator);
 };
 
 }  // namespace media

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -157,6 +157,20 @@ SystemDisplay.prototype = {
    * @see https://developer.chrome.com/extensions/system.display#method-clearTouchCalibration
    */
   clearTouchCalibration: assertNotReached,
+
+  /**
+   * Sets the display mode to the specified mirror mode. Each call resets the
+   * state from previous calls. Calling setDisplayProperties() will fail for the
+   * mirroring destination displays. NOTE: This is only available to Chrome OS
+   * Kiosk apps and Web UI.
+   * @param {!chrome.system.display.MirrorModeInfo} info The information of the
+   *     mirror mode that should be applied to the     display mode.
+   * @param {function(): void=} callback Empty function called when the function
+   *     finishes. To find out     whether the function succeeded,
+   *     $(ref:runtime.lastError) should be     queried.
+   * @see https://developer.chrome.com/extensions/system.display#method-setMirrorMode
+   */
+  setMirrorMode: function(info, callback) {},
 };
 
 /**

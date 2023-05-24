@@ -1,17 +1,18 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/bookmarks/browser/bookmark_node_data.h"
 
 #include <memory>
+#include <string>
 
 #include "base/files/scoped_temp_dir.h"
-#include "base/macros.h"
-#include "base/strings/string16.h"
+#include "base/pickle.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/task_environment.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "components/bookmarks/browser/bookmark_model.h"
 #include "components/bookmarks/test/bookmark_test_helpers.h"
 #include "components/bookmarks/test/test_bookmark_client.h"
@@ -29,6 +30,9 @@ class BookmarkNodeDataTest : public testing::Test {
  public:
   BookmarkNodeDataTest()
       : task_environment_(base::test::TaskEnvironment::MainThreadType::UI) {}
+
+  BookmarkNodeDataTest(const BookmarkNodeDataTest&) = delete;
+  BookmarkNodeDataTest& operator=(const BookmarkNodeDataTest&) = delete;
 
   void SetUp() override {
     model_ = TestBookmarkClient::CreateModel();
@@ -57,8 +61,6 @@ class BookmarkNodeDataTest : public testing::Test {
   base::ScopedTempDir profile_dir_;
   std::unique_ptr<BookmarkModel> model_;
   base::test::TaskEnvironment task_environment_;
-
-  DISALLOW_COPY_AND_ASSIGN(BookmarkNodeDataTest);
 };
 
 namespace {
@@ -86,9 +88,15 @@ TEST_F(BookmarkNodeDataTest, BogusRead) {
 
 // Writes a URL to the clipboard and make sure BookmarkNodeData can correctly
 // read it.
-TEST_F(BookmarkNodeDataTest, JustURL) {
+// Test is flaky on Mac: crbug.com/1236362
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_JustURL DISABLED_JustURL
+#else
+#define MAYBE_JustURL JustURL
+#endif
+TEST_F(BookmarkNodeDataTest, MAYBE_JustURL) {
   const GURL url("http://google.com");
-  const base::string16 title(ASCIIToUTF16("google.com"));
+  const std::u16string title(u"google.com");
 
   ui::OSExchangeData data;
   data.SetURL(url, title);
@@ -105,11 +113,17 @@ TEST_F(BookmarkNodeDataTest, JustURL) {
   EXPECT_EQ(0u, drag_data.elements[0].children.size());
 }
 
-TEST_F(BookmarkNodeDataTest, URL) {
+// Test is flaky on Mac: crbug.com/1236362
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_URL DISABLED_URL
+#else
+#define MAYBE_URL URL
+#endif
+TEST_F(BookmarkNodeDataTest, MAYBE_URL) {
   // Write a single node representing a URL to the clipboard.
   const BookmarkNode* root = model()->bookmark_bar_node();
   GURL url(GURL("http://foo.com"));
-  const base::string16 title(ASCIIToUTF16("foo.com"));
+  const std::u16string title(u"foo.com");
   const BookmarkNode* node = model()->AddURL(root, 0, title, url);
   BookmarkNodeData drag_data(node);
   EXPECT_TRUE(drag_data.is_valid());
@@ -144,7 +158,7 @@ TEST_F(BookmarkNodeDataTest, URL) {
 
   // Writing should also put the URL and title on the clipboard.
   GURL read_url;
-  base::string16 read_title;
+  std::u16string read_title;
   EXPECT_TRUE(data2.GetURLAndTitle(ui::FilenameToURLPolicy::CONVERT_FILENAMES,
                                    &read_url, &read_title));
   EXPECT_EQ(url, read_url);
@@ -152,11 +166,17 @@ TEST_F(BookmarkNodeDataTest, URL) {
 }
 
 // Tests writing a folder to the clipboard.
-TEST_F(BookmarkNodeDataTest, Folder) {
+// Test is flaky on Mac: crbug.com/1236362
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_Folder DISABLED_Folder
+#else
+#define MAYBE_Folder Folder
+#endif
+TEST_F(BookmarkNodeDataTest, MAYBE_Folder) {
   const BookmarkNode* root = model()->bookmark_bar_node();
-  const BookmarkNode* g1 = model()->AddFolder(root, 0, ASCIIToUTF16("g1"));
-  model()->AddFolder(g1, 0, ASCIIToUTF16("g11"));
-  const BookmarkNode* g12 = model()->AddFolder(g1, 0, ASCIIToUTF16("g12"));
+  const BookmarkNode* g1 = model()->AddFolder(root, 0, u"g1");
+  model()->AddFolder(g1, 0, u"g11");
+  const BookmarkNode* g12 = model()->AddFolder(g1, 0, u"g12");
 
   BookmarkNodeData drag_data(g12);
   EXPECT_TRUE(drag_data.is_valid());
@@ -193,12 +213,18 @@ TEST_F(BookmarkNodeDataTest, Folder) {
 }
 
 // Tests reading/writing a folder with children.
-TEST_F(BookmarkNodeDataTest, FolderWithChild) {
+// Test is flaky on Mac: crbug.com/1236362
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_FolderWithChild DISABLED_FolderWithChild
+#else
+#define MAYBE_FolderWithChild FolderWithChild
+#endif
+TEST_F(BookmarkNodeDataTest, MAYBE_FolderWithChild) {
   const BookmarkNode* root = model()->bookmark_bar_node();
-  const BookmarkNode* folder = model()->AddFolder(root, 0, ASCIIToUTF16("g1"));
+  const BookmarkNode* folder = model()->AddFolder(root, 0, u"g1");
 
   GURL url(GURL("http://foo.com"));
-  const base::string16 title(ASCIIToUTF16("blah2"));
+  const std::u16string title(u"blah2");
 
   model()->AddURL(folder, 0, title, url);
 
@@ -230,12 +256,18 @@ TEST_F(BookmarkNodeDataTest, FolderWithChild) {
 }
 
 // Tests reading/writing of multiple nodes.
-TEST_F(BookmarkNodeDataTest, MultipleNodes) {
+// Test is flaky on Mac: crbug.com/1236362
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_MultipleNodes DISABLED_MultipleNodes
+#else
+#define MAYBE_MultipleNodes MultipleNodes
+#endif
+TEST_F(BookmarkNodeDataTest, MAYBE_MultipleNodes) {
   const BookmarkNode* root = model()->bookmark_bar_node();
-  const BookmarkNode* folder = model()->AddFolder(root, 0, ASCIIToUTF16("g1"));
+  const BookmarkNode* folder = model()->AddFolder(root, 0, u"g1");
 
   GURL url(GURL("http://foo.com"));
-  const base::string16 title(ASCIIToUTF16("blah2"));
+  const std::u16string title(u"blah2");
 
   const BookmarkNode* url_node = model()->AddURL(folder, 0, title, url);
 
@@ -259,7 +291,7 @@ TEST_F(BookmarkNodeDataTest, MultipleNodes) {
 
   const BookmarkNodeData::Element& read_folder = read_data.elements[0];
   EXPECT_FALSE(read_folder.is_url);
-  EXPECT_EQ(ASCIIToUTF16("g1"), read_folder.title);
+  EXPECT_EQ(u"g1", read_folder.title);
   EXPECT_EQ(1u, read_folder.children.size());
 
   const BookmarkNodeData::Element& read_url = read_data.elements[1];
@@ -282,19 +314,19 @@ TEST_F(BookmarkNodeDataTest, MultipleNodes) {
 TEST_F(BookmarkNodeDataTest, DISABLED_WriteToClipboardURL) {
   BookmarkNodeData data;
   GURL url(GURL("http://foo.com"));
-  const base::string16 title(ASCIIToUTF16("blah"));
+  const std::u16string title(u"blah");
 
   data.ReadFromTuple(url, title);
   data.WriteToClipboard();
 
   // Now read the data back in.
-  base::string16 clipboard_result;
+  std::u16string clipboard_result;
   clipboard().ReadText(ui::ClipboardBuffer::kCopyPaste,
                        /* data_dst = */ nullptr, &clipboard_result);
   EXPECT_EQ(base::UTF8ToUTF16(url.spec()), clipboard_result);
 }
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
 #define MAYBE_WriteToClipboardMultipleURLs DISABLED_WriteToClipboardMultipleURLs
 #else
 #define MAYBE_WriteToClipboardMultipleURLs WriteToClipboardMultipleURLs
@@ -303,9 +335,9 @@ TEST_F(BookmarkNodeDataTest, MAYBE_WriteToClipboardMultipleURLs) {
   BookmarkNodeData data;
   const BookmarkNode* root = model()->bookmark_bar_node();
   GURL url(GURL("http://foo.com"));
-  const base::string16 title(ASCIIToUTF16("blah"));
+  const std::u16string title(u"blah");
   GURL url2(GURL("http://bar.com"));
-  const base::string16 title2(ASCIIToUTF16("blah2"));
+  const std::u16string title2(u"blah2");
   const BookmarkNode* url_node = model()->AddURL(root, 0, title, url);
   const BookmarkNode* url_node2 = model()->AddURL(root, 1, title2, url2);
   std::vector<const BookmarkNode*> nodes;
@@ -316,21 +348,22 @@ TEST_F(BookmarkNodeDataTest, MAYBE_WriteToClipboardMultipleURLs) {
   data.WriteToClipboard();
 
   // Now read the data back in.
-  base::string16 combined_text;
-#if defined(OS_WIN)
-  base::string16 new_line = base::ASCIIToUTF16("\r\n");
+  std::u16string combined_text;
+#if BUILDFLAG(IS_WIN)
+  std::u16string new_line = u"\r\n";
 #else
-  base::string16 new_line = base::ASCIIToUTF16("\n");
+  std::u16string new_line = u"\n";
 #endif
   combined_text = base::UTF8ToUTF16(url.spec()) + new_line
     + base::UTF8ToUTF16(url2.spec());
-  base::string16 clipboard_result;
+  std::u16string clipboard_result;
   clipboard().ReadText(ui::ClipboardBuffer::kCopyPaste,
                        /* data_dst = */ nullptr, &clipboard_result);
   EXPECT_EQ(combined_text, clipboard_result);
 }
 
-#if defined(OS_APPLE)
+// Test is flaky on LaCrOS: crbug.com/1010185
+#if BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_CHROMEOS_LACROS)
 #define MAYBE_WriteToClipboardEmptyFolder DISABLED_WriteToClipboardEmptyFolder
 #else
 #define MAYBE_WriteToClipboardEmptyFolder WriteToClipboardEmptyFolder
@@ -338,7 +371,7 @@ TEST_F(BookmarkNodeDataTest, MAYBE_WriteToClipboardMultipleURLs) {
 TEST_F(BookmarkNodeDataTest, MAYBE_WriteToClipboardEmptyFolder) {
   BookmarkNodeData data;
   const BookmarkNode* root = model()->bookmark_bar_node();
-  const BookmarkNode* folder = model()->AddFolder(root, 0, ASCIIToUTF16("g1"));
+  const BookmarkNode* folder = model()->AddFolder(root, 0, u"g1");
   std::vector<const BookmarkNode*> nodes;
   nodes.push_back(folder);
 
@@ -346,18 +379,27 @@ TEST_F(BookmarkNodeDataTest, MAYBE_WriteToClipboardEmptyFolder) {
   data.WriteToClipboard();
 
   // Now read the data back in.
-  base::string16 clipboard_result;
+  std::u16string clipboard_result;
   clipboard().ReadText(ui::ClipboardBuffer::kCopyPaste,
                        /* data_dst = */ nullptr, &clipboard_result);
-  EXPECT_EQ(base::ASCIIToUTF16("g1"), clipboard_result);
+  EXPECT_EQ(u"g1", clipboard_result);
 }
 
-TEST_F(BookmarkNodeDataTest, WriteToClipboardFolderWithChildren) {
+// Test is flaky on LaCrOS: crbug.com/1010353
+// Test is flaky on Mac: crbug.com/1236362
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS_LACROS)
+#define MAYBE_WriteToClipboardFolderWithChildren \
+  DISABLED_WriteToClipboardFolderWithChildren
+#else
+#define MAYBE_WriteToClipboardFolderWithChildren \
+  WriteToClipboardFolderWithChildren
+#endif
+TEST_F(BookmarkNodeDataTest, MAYBE_WriteToClipboardFolderWithChildren) {
   BookmarkNodeData data;
   const BookmarkNode* root = model()->bookmark_bar_node();
-  const BookmarkNode* folder = model()->AddFolder(root, 0, ASCIIToUTF16("g1"));
+  const BookmarkNode* folder = model()->AddFolder(root, 0, u"g1");
   GURL url(GURL("http://foo.com"));
-  const base::string16 title(ASCIIToUTF16("blah"));
+  const std::u16string title(u"blah");
   model()->AddURL(folder, 0, title, url);
   std::vector<const BookmarkNode*> nodes;
   nodes.push_back(folder);
@@ -366,10 +408,10 @@ TEST_F(BookmarkNodeDataTest, WriteToClipboardFolderWithChildren) {
   data.WriteToClipboard();
 
   // Now read the data back in.
-  base::string16 clipboard_result;
+  std::u16string clipboard_result;
   clipboard().ReadText(ui::ClipboardBuffer::kCopyPaste,
                        /* data_dst = */ nullptr, &clipboard_result);
-  EXPECT_EQ(base::ASCIIToUTF16("g1"), clipboard_result);
+  EXPECT_EQ(u"g1", clipboard_result);
 }
 
 // TODO(https://crbug.com/1010415): This test is flaky on various platforms, fix
@@ -377,10 +419,10 @@ TEST_F(BookmarkNodeDataTest, WriteToClipboardFolderWithChildren) {
 TEST_F(BookmarkNodeDataTest, DISABLED_WriteToClipboardFolderAndURL) {
   BookmarkNodeData data;
   GURL url(GURL("http://foo.com"));
-  const base::string16 title(ASCIIToUTF16("blah"));
+  const std::u16string title(u"blah");
   const BookmarkNode* root = model()->bookmark_bar_node();
   const BookmarkNode* url_node = model()->AddURL(root, 0, title, url);
-  const BookmarkNode* folder = model()->AddFolder(root, 0, ASCIIToUTF16("g1"));
+  const BookmarkNode* folder = model()->AddFolder(root, 0, u"g1");
   std::vector<const BookmarkNode*> nodes;
   nodes.push_back(url_node);
   nodes.push_back(folder);
@@ -389,27 +431,31 @@ TEST_F(BookmarkNodeDataTest, DISABLED_WriteToClipboardFolderAndURL) {
   data.WriteToClipboard();
 
   // Now read the data back in.
-  base::string16 combined_text;
-#if defined(OS_WIN)
-  base::string16 new_line = base::ASCIIToUTF16("\r\n");
+  std::u16string combined_text;
+#if BUILDFLAG(IS_WIN)
+  std::u16string new_line = u"\r\n";
 #else
-  base::string16 new_line = base::ASCIIToUTF16("\n");
+  std::u16string new_line = u"\n";
 #endif
-  base::string16 folder_title = ASCIIToUTF16("g1");
+  std::u16string folder_title = u"g1";
   combined_text = base::ASCIIToUTF16(url.spec()) + new_line + folder_title;
-  base::string16 clipboard_result;
+  std::u16string clipboard_result;
   clipboard().ReadText(ui::ClipboardBuffer::kCopyPaste,
                        /* data_dst = */ nullptr, &clipboard_result);
   EXPECT_EQ(combined_text, clipboard_result);
 }
 
 // Tests reading/writing of meta info.
-TEST_F(BookmarkNodeDataTest, MetaInfo) {
+// Test is flaky on Mac: crbug.com/1236362
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_MetaInfo DISABLED_MetaInfo
+#else
+#define MAYBE_MetaInfo MetaInfo
+#endif
+TEST_F(BookmarkNodeDataTest, MAYBE_MetaInfo) {
   // Create a node containing meta info.
-  const BookmarkNode* node = model()->AddURL(model()->other_node(),
-                                             0,
-                                             ASCIIToUTF16("foo bar"),
-                                             GURL("http://www.google.com"));
+  const BookmarkNode* node = model()->AddURL(
+      model()->other_node(), 0, u"foo bar", GURL("http://www.google.com"));
   model()->SetNodeMetaInfo(node, "somekey", "somevalue");
   model()->SetNodeMetaInfo(node, "someotherkey", "someothervalue");
 
@@ -431,12 +477,13 @@ TEST_F(BookmarkNodeDataTest, MetaInfo) {
   EXPECT_EQ("someothervalue", meta_info_map["someotherkey"]);
 }
 
-#if !defined(OS_APPLE)
+#if !BUILDFLAG(IS_APPLE)
 TEST_F(BookmarkNodeDataTest, ReadFromPickleTooManyNodes) {
   // Test case determined by a fuzzer. See https://crbug.com/956583.
-  const char pickled_data[] = {0x08, 0x00, 0x00, 0x00, 0x00, 0x00,
-                               0x00, 0x00, 0xff, 0x03, 0x03, 0x41};
-  base::Pickle pickle(pickled_data, sizeof(pickled_data));
+  const uint8_t pickled_data[] = {0x08, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                  0x00, 0x00, 0xff, 0x03, 0x03, 0x41};
+  base::Pickle pickle(reinterpret_cast<const char*>(pickled_data),
+                      sizeof(pickled_data));
   BookmarkNodeData bookmark_node_data;
   EXPECT_FALSE(bookmark_node_data.ReadFromPickle(&pickle));
 }

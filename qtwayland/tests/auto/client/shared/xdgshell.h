@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef MOCKCOMPOSITOR_XDGSHELL_H
 #define MOCKCOMPOSITOR_XDGSHELL_H
@@ -43,12 +18,12 @@ class XdgWmBase : public Global, public QtWaylandServer::xdg_wm_base
 {
     Q_OBJECT
 public:
-    explicit XdgWmBase(CoreCompositor *compositor, int version = 1);
+    explicit XdgWmBase(CoreCompositor *compositor, int version = 4);
     using QtWaylandServer::xdg_wm_base::send_ping;
     void send_ping(uint32_t) = delete; // It's a global, use resource specific instead
     bool isClean() override { return m_xdgSurfaces.empty(); }
     QString dirtyMessage() override { return m_xdgSurfaces.empty() ? "clean" : "remaining xdg surfaces"; }
-    QVector<XdgSurface *> m_xdgSurfaces;
+    QList<XdgSurface *> m_xdgSurfaces;
     XdgToplevel *toplevel(int i = 0);
     XdgPopup *popup(int i = 0);
     XdgPopup *m_topmostGrabbingPopup = nullptr;
@@ -86,13 +61,13 @@ public:
     XdgWmBase *m_xdgWmBase = nullptr;
     Surface *m_surface = nullptr;
     bool m_configureSent = false;
-    QVector<uint> m_pendingConfigureSerials;
+    QList<uint> m_pendingConfigureSerials;
     uint m_ackedConfigureSerial = 0;
     uint m_committedConfigureSerial = 0;
     struct DoubleBufferedState {
         QRect windowGeometry = {0, 0, 0, 0};
     } m_pending, m_committed;
-    QVector<XdgPopup *> m_popups;
+    QList<XdgPopup *> m_popups;
 
 public slots:
     void verifyConfigured() { QVERIFY(m_configureSent); }
@@ -115,8 +90,9 @@ class XdgToplevel : public QObject, public QtWaylandServer::xdg_toplevel
     Q_OBJECT
 public:
     explicit XdgToplevel(XdgSurface *xdgSurface, int id, int version = 1);
-    void sendConfigure(const QSize &size = {0, 0}, const QVector<uint> &states = {});
-    uint sendCompleteConfigure(const QSize &size = {0, 0}, const QVector<uint> &states = {});
+    void sendConfigureBounds(const QSize &size);
+    void sendConfigure(const QSize &size = {0, 0}, const QList<uint> &states = {});
+    uint sendCompleteConfigure(const QSize &size = {0, 0}, const QList<uint> &states = {});
     Surface *surface() { return m_xdgSurface->m_surface; }
 
     XdgSurface *m_xdgSurface = nullptr;

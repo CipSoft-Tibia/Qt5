@@ -40,6 +40,8 @@ class SimulatedCapturer {
     virtual ~Observer();
   };
 
+  void SetPlaybackRate(double rate);
+
  protected:
   SimulatedCapturer(Environment* environment,
                     const char* path,
@@ -103,6 +105,10 @@ class SimulatedCapturer {
   // Used to schedule the next task to execute and when it should execute. There
   // is only ever one task scheduled/running at any time.
   Alarm next_task_;
+
+  // Used to determine playback rate. Currently, we only support "playing"
+  // at 1x speed, or "pausing" at 0x speed.
+  bool playback_rate_is_non_zero_ = true;
 };
 
 // Emits the primary audio stream from a file.
@@ -160,7 +166,12 @@ class SimulatedAudioCapturer final : public SimulatedCapturer {
   // Current resampler input audio parameters.
   AVSampleFormat input_sample_format_ = AV_SAMPLE_FMT_NONE;
   int input_sample_rate_;
-  uint64_t input_channel_layout_;  // Opaque value used by resampler library.
+  // Opaque value used by resampler library.
+#if _LIBAVUTIL_OLD_CHANNEL_LAYOUT
+  uint64_t input_channel_layout_;
+#else
+  AVChannelLayout input_channel_layout_;
+#endif  // _LIBAVUTIL_OLD_CHANNEL_LAYOUT
 
   std::vector<float> resampled_audio_;
 };

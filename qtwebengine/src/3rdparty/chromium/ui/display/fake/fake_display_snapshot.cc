@@ -1,10 +1,11 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/display/fake/fake_display_snapshot.h"
 
 #include <inttypes.h>
+#include <stdint.h>
 
 #include <utility>
 #include <vector>
@@ -12,6 +13,7 @@
 #include "base/logging.h"
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_piece.h"
 #include "base/strings/string_split.h"
 #include "base/strings/stringprintf.h"
 #include "third_party/re2/src/re2/re2.h"
@@ -121,7 +123,7 @@ bool HandleOptions(FakeDisplaySnapshot::Builder* builder, StringPiece options) {
         builder->SetHasColorCorrectionMatrix(true);
         break;
       case 'a':
-        builder->SetIsAspectPerservingScaling(true);
+        builder->SetIsAspectPreservingScaling(true);
         break;
       case 'i':
         builder->SetType(DISPLAY_CONNECTION_TYPE_INTERNAL);
@@ -151,7 +153,9 @@ std::unique_ptr<FakeDisplaySnapshot> Builder::Build() {
 
   // Add a name if none is provided.
   if (name_.empty())
-    name_ = base::StringPrintf("Fake Display %" PRId64, id_);
+    name_ = base::StringPrintf("Fake Display with port_id=%" PRId64
+                               ", edid_id=%" PRId64,
+                               port_display_id_, edid_display_id_);
 
   // If there is no native mode set, use the first display mode.
   if (!native_mode_)
@@ -162,15 +166,34 @@ std::unique_ptr<FakeDisplaySnapshot> Builder::Build() {
       gfx::ScaleToRoundedSize(native_mode_->size(), PixelPitchMmFromDPI(dpi_));
 
   return std::make_unique<FakeDisplaySnapshot>(
-      id_, origin_, physical_size, type_, is_aspect_preserving_scaling_,
-      has_overscan_, privacy_screen_state_, has_color_correction_matrix_,
+      id_, port_display_id_, edid_display_id_, connector_index_, origin_,
+      physical_size, type_, base_connector_id_, path_topology_,
+      is_aspect_preserving_scaling_, has_overscan_, privacy_screen_state_,
+      has_content_protection_key_, has_color_correction_matrix_,
       color_correction_in_linear_space_, name_, std::move(modes_),
       current_mode_, native_mode_, product_code_, maximum_cursor_size_,
-      color_space_, bits_per_channel_);
+      color_space_, bits_per_channel_, hdr_static_metadata_,
+      variable_refresh_rate_state_, vertical_display_range_limits_,
+      DrmFormatsAndModifiers());
 }
 
 Builder& Builder::SetId(int64_t id) {
   id_ = id;
+  return *this;
+}
+
+Builder& Builder::SetPortDisplayId(int64_t id) {
+  port_display_id_ = id;
+  return *this;
+}
+
+Builder& Builder::SetEdidDisplayId(int64_t id) {
+  edid_display_id_ = id;
+  return *this;
+}
+
+Builder& Builder::SetConnectorIndex(uint16_t index) {
+  connector_index_ = index;
   return *this;
 }
 
@@ -214,7 +237,17 @@ Builder& Builder::SetType(DisplayConnectionType type) {
   return *this;
 }
 
-Builder& Builder::SetIsAspectPerservingScaling(bool val) {
+Builder& Builder::SetBaseConnectorId(uint64_t base_connector_id) {
+  base_connector_id_ = base_connector_id;
+  return *this;
+}
+
+Builder& Builder::SetPathTopology(const std::vector<uint64_t>& path_topology) {
+  path_topology_ = path_topology;
+  return *this;
+}
+
+Builder& Builder::SetIsAspectPreservingScaling(bool val) {
   is_aspect_preserving_scaling_ = val;
   return *this;
 }
@@ -267,6 +300,11 @@ Builder& Builder::SetPrivacyScreen(PrivacyScreenState state) {
   return *this;
 }
 
+Builder& Builder::SetHasContentProtectionKey(bool has_content_protection_key) {
+  has_content_protection_key_ = has_content_protection_key;
+  return *this;
+}
+
 Builder& Builder::SetColorSpace(const gfx::ColorSpace& color_space) {
   color_space_ = color_space;
   return *this;
@@ -274,6 +312,24 @@ Builder& Builder::SetColorSpace(const gfx::ColorSpace& color_space) {
 
 Builder& Builder::SetBitsPerChannel(uint32_t bits_per_channel) {
   bits_per_channel_ = bits_per_channel;
+  return *this;
+}
+
+Builder& Builder::SetHDRStaticMetadata(
+    const gfx::HDRStaticMetadata& hdr_static_metadata) {
+  hdr_static_metadata_ = hdr_static_metadata;
+  return *this;
+}
+
+Builder& Builder::SetVariableRefreshRateState(
+    VariableRefreshRateState variable_refresh_rate_state) {
+  variable_refresh_rate_state_ = variable_refresh_rate_state;
+  return *this;
+}
+
+Builder& Builder::SetVerticalDisplayRangeLimits(
+    const absl::optional<gfx::Range>& vertical_display_range_limits) {
+  vertical_display_range_limits_ = vertical_display_range_limits;
   return *this;
 }
 
@@ -305,12 +361,18 @@ const DisplayMode* Builder::AddOrFindDisplayMode(
 
 FakeDisplaySnapshot::FakeDisplaySnapshot(
     int64_t display_id,
+    int64_t port_display_id,
+    int64_t edid_display_id,
+    uint16_t connector_index,
     const gfx::Point& origin,
     const gfx::Size& physical_size,
     DisplayConnectionType type,
+    uint64_t base_connector_id,
+    const std::vector<uint64_t>& path_topology,
     bool is_aspect_preserving_scaling,
     bool has_overscan,
     PrivacyScreenState privacy_screen_state,
+    bool has_content_protection_key,
     bool has_color_correction_matrix,
     bool color_correction_in_linear_space,
     std::string display_name,
@@ -320,18 +382,29 @@ FakeDisplaySnapshot::FakeDisplaySnapshot(
     int64_t product_code,
     const gfx::Size& maximum_cursor_size,
     const gfx::ColorSpace& color_space,
-    uint32_t bits_per_channel)
+    uint32_t bits_per_channel,
+    const gfx::HDRStaticMetadata& hdr_static_metadata,
+    VariableRefreshRateState variable_refresh_rate_state,
+    const absl::optional<gfx::Range>& vertical_display_range_limits,
+    const DrmFormatsAndModifiers& drm_formats_and_modifiers)
     : DisplaySnapshot(display_id,
+                      port_display_id,
+                      edid_display_id,
+                      connector_index,
                       origin,
                       physical_size,
                       type,
+                      base_connector_id,
+                      path_topology,
                       is_aspect_preserving_scaling,
                       has_overscan,
                       privacy_screen_state,
+                      has_content_protection_key,
                       has_color_correction_matrix,
                       color_correction_in_linear_space,
                       color_space,
                       bits_per_channel,
+                      hdr_static_metadata,
                       display_name,
                       base::FilePath(),
                       std::move(modes),
@@ -341,7 +414,10 @@ FakeDisplaySnapshot::FakeDisplaySnapshot(
                       native_mode,
                       product_code,
                       2018 /*year_of_manufacture */,
-                      maximum_cursor_size) {}
+                      maximum_cursor_size,
+                      variable_refresh_rate_state,
+                      vertical_display_range_limits,
+                      drm_formats_and_modifiers) {}
 
 FakeDisplaySnapshot::~FakeDisplaySnapshot() {}
 
@@ -358,7 +434,7 @@ std::unique_ptr<DisplaySnapshot> FakeDisplaySnapshot::CreateFromSpec(
 
   // Leftovers should be just the native mode at this point.
   std::unique_ptr<DisplayMode> native_mode =
-      ParseDisplayMode(leftover.as_string());
+      ParseDisplayMode(std::string(leftover));
 
   // Fail without valid native mode.
   if (!native_mode)

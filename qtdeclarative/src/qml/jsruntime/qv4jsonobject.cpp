@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include <qv4jsonobject_p.h>
 #include <qv4objectproto_p.h>
 #include <qv4numberobject_p.h>
@@ -45,7 +9,6 @@
 #include <qv4scopedvalue_p.h>
 #include <qv4runtime_p.h>
 #include <qv4variantobject_p.h>
-#include "qv4string_p.h"
 #include "qv4jscall_p.h"
 #include <qv4symbol_p.h>
 
@@ -125,12 +88,13 @@ enum {
 bool JsonParser::eatSpace()
 {
     while (json < end) {
-        if (*json > Space)
+        const char16_t ch = json->unicode();
+        if (ch > Space)
             break;
-        if (*json != Space &&
-            *json != Tab &&
-            *json != LineFeed &&
-            *json != Return)
+        if (ch != Space &&
+            ch != Tab &&
+            ch != LineFeed &&
+            ch != Return)
             break;
         ++json;
     }
@@ -140,7 +104,7 @@ bool JsonParser::eatSpace()
 QChar JsonParser::nextToken()
 {
     if (!eatSpace())
-        return 0;
+        return u'\0';
     QChar token = *json++;
     switch (token.unicode()) {
     case BeginArray:
@@ -153,7 +117,7 @@ QChar JsonParser::nextToken()
     case Quote:
         break;
     default:
-        token = 0;
+        token = u'\0';
         break;
     }
     return token;
@@ -216,21 +180,21 @@ ReturnedValue JsonParser::parseObject()
     ScopedObject o(scope, engine->newObject());
 
     QChar token = nextToken();
-    while (token == Quote) {
+    while (token.unicode() == Quote) {
         if (!parseMember(o))
             return Encode::undefined();
         token = nextToken();
-        if (token != ValueSeparator)
+        if (token.unicode() != ValueSeparator)
             break;
         token = nextToken();
-        if (token == EndObject) {
+        if (token.unicode() == EndObject) {
             lastError = QJsonParseError::MissingObject;
             return Encode::undefined();
         }
     }
 
     DEBUG << "end token=" << token;
-    if (token != EndObject) {
+    if (token.unicode() != EndObject) {
         lastError = QJsonParseError::UnterminatedObject;
         return Encode::undefined();
     }
@@ -253,7 +217,7 @@ bool JsonParser::parseMember(Object *o)
     if (!parseString(&key))
         return false;
     QChar token = nextToken();
-    if (token != NameSeparator) {
+    if (token.unicode() != NameSeparator) {
         lastError = QJsonParseError::MissingNameSeparator;
         return false;
     }
@@ -292,7 +256,7 @@ ReturnedValue JsonParser::parseArray()
         lastError = QJsonParseError::UnterminatedArray;
         return Encode::undefined();
     }
-    if (*json == EndArray) {
+    if (json->unicode() == EndArray) {
         nextToken();
     } else {
         uint index = 0;
@@ -302,9 +266,9 @@ ReturnedValue JsonParser::parseArray()
                 return Encode::undefined();
             array->arraySet(index, val);
             QChar token = nextToken();
-            if (token == EndArray)
+            if (token.unicode() == EndArray)
                 break;
-            else if (token != ValueSeparator) {
+            else if (token.unicode() != ValueSeparator) {
                 if (!eatSpace())
                     lastError = QJsonParseError::UnterminatedArray;
                 else
@@ -332,14 +296,14 @@ bool JsonParser::parseValue(Value *val)
     BEGIN << "parse Value" << *json;
 
     switch ((json++)->unicode()) {
-    case 'n':
+    case u'n':
         if (end - json < 3) {
             lastError = QJsonParseError::IllegalValue;
             return false;
         }
-        if (*json++ == 'u' &&
-            *json++ == 'l' &&
-            *json++ == 'l') {
+        if (*json++ == u'u' &&
+            *json++ == u'l' &&
+            *json++ == u'l') {
             *val = Value::nullValue();
             DEBUG << "value: null";
             END;
@@ -347,14 +311,14 @@ bool JsonParser::parseValue(Value *val)
         }
         lastError = QJsonParseError::IllegalValue;
         return false;
-    case 't':
+    case u't':
         if (end - json < 3) {
             lastError = QJsonParseError::IllegalValue;
             return false;
         }
-        if (*json++ == 'r' &&
-            *json++ == 'u' &&
-            *json++ == 'e') {
+        if (*json++ == u'r' &&
+            *json++ == u'u' &&
+            *json++ == u'e') {
             *val = Value::fromBoolean(true);
             DEBUG << "value: true";
             END;
@@ -362,15 +326,15 @@ bool JsonParser::parseValue(Value *val)
         }
         lastError = QJsonParseError::IllegalValue;
         return false;
-    case 'f':
+    case u'f':
         if (end - json < 4) {
             lastError = QJsonParseError::IllegalValue;
             return false;
         }
-        if (*json++ == 'a' &&
-            *json++ == 'l' &&
-            *json++ == 's' &&
-            *json++ == 'e') {
+        if (*json++ == u'a' &&
+            *json++ == u'l' &&
+            *json++ == u's' &&
+            *json++ == u'e') {
             *val = Value::fromBoolean(false);
             DEBUG << "value: false";
             END;
@@ -443,32 +407,32 @@ bool JsonParser::parseNumber(Value *val)
     bool isInt = true;
 
     // minus
-    if (json < end && *json == '-')
+    if (json < end && *json == u'-')
         ++json;
 
     // int = zero / ( digit1-9 *DIGIT )
-    if (json < end && *json == '0') {
+    if (json < end && *json == u'0') {
         ++json;
     } else {
-        while (json < end && *json >= '0' && *json <= '9')
+        while (json < end && *json >= u'0' && *json <= u'9')
             ++json;
     }
 
     // frac = decimal-point 1*DIGIT
-    if (json < end && *json == '.') {
+    if (json < end && *json == u'.') {
         isInt = false;
         ++json;
-        while (json < end && *json >= '0' && *json <= '9')
+        while (json < end && *json >= u'0' && *json <= u'9')
             ++json;
     }
 
     // exp = e [ minus / plus ] 1*DIGIT
-    if (json < end && (*json == 'e' || *json == 'E')) {
+    if (json < end && (*json == u'e' || *json == u'E')) {
         isInt = false;
         ++json;
-        if (json < end && (*json == '-' || *json == '+'))
+        if (json < end && (*json == u'-' || *json == u'+'))
             ++json;
-        while (json < end && *json >= '0' && *json <= '9')
+        while (json < end && *json >= u'0' && *json <= u'9')
             ++json;
     }
 
@@ -526,12 +490,12 @@ static inline bool addHexDigit(QChar digit, uint *result)
 {
     ushort d = digit.unicode();
     *result <<= 4;
-    if (d >= '0' && d <= '9')
-        *result |= (d - '0');
-    else if (d >= 'a' && d <= 'f')
-        *result |= (d - 'a') + 10;
-    else if (d >= 'A' && d <= 'F')
-        *result |= (d - 'A') + 10;
+    if (d >= u'0' && d <= u'9')
+        *result |= (d - u'0');
+    else if (d >= u'a' && d <= u'f')
+        *result |= (d - u'a') + 10;
+    else if (d >= u'A' && d <= u'F')
+        *result |= (d - u'A') + 10;
     else
         return false;
     return true;
@@ -546,23 +510,23 @@ static inline bool scanEscapeSequence(const QChar *&json, const QChar *end, uint
     DEBUG << "scan escape";
     uint escaped = (json++)->unicode();
     switch (escaped) {
-    case '"':
+    case u'"':
         *ch = '"'; break;
-    case '\\':
+    case u'\\':
         *ch = '\\'; break;
-    case '/':
+    case u'/':
         *ch = '/'; break;
-    case 'b':
+    case u'b':
         *ch = 0x8; break;
-    case 'f':
+    case u'f':
         *ch = 0xc; break;
-    case 'n':
+    case u'n':
         *ch = 0xa; break;
-    case 'r':
+    case u'r':
         *ch = 0xd; break;
-    case 't':
+    case u't':
         *ch = 0x9; break;
-    case 'u': {
+    case u'u': {
         *ch = 0;
         if (json > end - 4)
             return false;
@@ -585,9 +549,9 @@ bool JsonParser::parseString(QString *string)
     BEGIN << "parse string stringPos=" << json;
 
     while (json < end) {
-        if (*json == '"')
+        if (*json == u'"')
             break;
-        else if (*json == '\\') {
+        else if (*json == u'\\') {
             uint ch = 0;
             if (!scanEscapeSequence(json, end, &ch)) {
                 lastError = QJsonParseError::IllegalEscapeSequence;
@@ -645,47 +609,69 @@ struct Stringify
     QString makeMember(const QString &key, const Value &v);
 };
 
+class [[nodiscard]] CallDepthAndCycleChecker
+{
+    Q_DISABLE_COPY_MOVE(CallDepthAndCycleChecker);
+
+public:
+    CallDepthAndCycleChecker(Stringify *stringify, Object *o)
+        : m_callDepthRecorder(stringify->v4)
+    {
+        if (stringify->stackContains(o)) {
+            stringify->v4->throwTypeError(
+                        QStringLiteral("Cannot convert circular structure to JSON"));
+        }
+
+        stringify->v4->checkStackLimits();
+    }
+
+    bool foundProblem() const { return m_callDepthRecorder.ee->hasException; }
+
+private:
+    ExecutionEngineCallDepthRecorder<1> m_callDepthRecorder;
+};
+
 static QString quote(const QString &str)
 {
     QString product;
-    const int length = str.length();
+    const int length = str.size();
     product.reserve(length + 2);
-    product += QLatin1Char('"');
+    product += u'"';
     for (int i = 0; i < length; ++i) {
         QChar c = str.at(i);
         switch (c.unicode()) {
-        case '"':
+        case u'"':
             product += QLatin1String("\\\"");
             break;
-        case '\\':
+        case u'\\':
             product += QLatin1String("\\\\");
             break;
-        case '\b':
+        case u'\b':
             product += QLatin1String("\\b");
             break;
-        case '\f':
+        case u'\f':
             product += QLatin1String("\\f");
             break;
-        case '\n':
+        case u'\n':
             product += QLatin1String("\\n");
             break;
-        case '\r':
+        case u'\r':
             product += QLatin1String("\\r");
             break;
-        case '\t':
+        case u'\t':
             product += QLatin1String("\\t");
             break;
         default:
             if (c.unicode() <= 0x1f) {
                 product += QLatin1String("\\u00");
-                product += (c.unicode() > 0xf ? QLatin1Char('1') : QLatin1Char('0')) +
+                product += (c.unicode() > 0xf ? u'1' : u'0') +
                         QLatin1Char("0123456789abcdef"[c.unicode() & 0xf]);
             } else {
                 product += c;
             }
         }
     }
-    product += QLatin1Char('"');
+    product += u'"';
     return product;
 }
 
@@ -699,9 +685,9 @@ QString Stringify::Str(const QString &key, const Value &v)
         ScopedString s(scope, v4->newString(QStringLiteral("toJSON")));
         ScopedFunctionObject toJSON(scope, o->get(s));
         if (!!toJSON) {
-            JSCallData jsCallData(scope, 1);
-            *jsCallData->thisObject = value;
-            jsCallData->args[0] = v4->newString(key);
+            JSCallArguments jsCallData(scope, 1);
+            *jsCallData.thisObject = value;
+            jsCallData.args[0] = v4->newString(key);
             value = toJSON->call(jsCallData);
             if (v4->hasException)
                 return QString();
@@ -709,12 +695,18 @@ QString Stringify::Str(const QString &key, const Value &v)
     }
 
     if (replacerFunction) {
-        ScopedObject holder(scope, v4->newObject());
-        holder->put(scope.engine->id_empty(), value);
-        JSCallData jsCallData(scope, 2);
-        jsCallData->args[0] = v4->newString(key);
-        jsCallData->args[1] = value;
-        *jsCallData->thisObject = holder;
+        JSCallArguments jsCallData(scope, 2);
+        jsCallData.args[0] = v4->newString(key);
+        jsCallData.args[1] = value;
+
+        if (stack.isEmpty()) {
+            ScopedObject holder(scope, v4->newObject());
+            holder->put(scope.engine->id_empty(), v);
+            *jsCallData.thisObject = holder;
+        } else {
+            *jsCallData.thisObject = stack.top();
+        }
+
         value = replacerFunction->call(jsCallData);
         if (v4->hasException)
             return QString();
@@ -764,9 +756,9 @@ QString Stringify::makeMember(const QString &key, const Value &v)
 {
     QString strP = Str(key, v);
     if (!strP.isEmpty()) {
-        QString member = quote(key) + QLatin1Char(':');
+        QString member = quote(key) + u':';
         if (!gap.isEmpty())
-            member += QLatin1Char(' ');
+            member += u' ';
         member += strP;
         return member;
     }
@@ -775,10 +767,9 @@ QString Stringify::makeMember(const QString &key, const Value &v)
 
 QString Stringify::JO(Object *o)
 {
-    if (stackContains(o)) {
-        v4->throwTypeError();
+    CallDepthAndCycleChecker check(this, o);
+    if (check.foundProblem())
         return QString();
-    }
 
     Scope scope(v4);
 
@@ -821,11 +812,11 @@ QString Stringify::JO(Object *o)
     if (partial.isEmpty()) {
         result = QStringLiteral("{}");
     } else if (gap.isEmpty()) {
-        result = QLatin1Char('{') + partial.join(QLatin1Char(',')) + QLatin1Char('}');
+        result = u'{' + partial.join(u',') + u'}';
     } else {
         QString separator = QLatin1String(",\n") + indent;
-        result = QLatin1String("{\n") + indent + partial.join(separator) + QLatin1Char('\n')
-                 + stepback + QLatin1Char('}');
+        result = QLatin1String("{\n") + indent + partial.join(separator) + u'\n'
+                 + stepback + u'}';
     }
 
     indent = stepback;
@@ -835,10 +826,9 @@ QString Stringify::JO(Object *o)
 
 QString Stringify::JA(Object *a)
 {
-    if (stackContains(a)) {
-        v4->throwTypeError();
+    CallDepthAndCycleChecker check(this, a);
+    if (check.foundProblem())
         return QString();
-    }
 
     Scope scope(a->engine());
 
@@ -867,10 +857,10 @@ QString Stringify::JA(Object *a)
     if (partial.isEmpty()) {
         result = QStringLiteral("[]");
     } else if (gap.isEmpty()) {
-        result = QLatin1Char('[') + partial.join(QLatin1Char(',')) + QLatin1Char(']');
+        result = u'[' + partial.join(u',') + u']';
     } else {
         QString separator = QLatin1String(",\n") + indent;
-        result = QLatin1String("[\n") + indent + partial.join(separator) + QLatin1Char('\n') + stepback + QLatin1Char(']');
+        result = QLatin1String("[\n") + indent + partial.join(separator) + u'\n' + stepback + u']';
     }
 
     indent = stepback;
@@ -900,7 +890,7 @@ ReturnedValue JsonObject::method_parse(const FunctionObject *b, const Value *, c
         jtext = argv[0].toQString();
 
     DEBUG << "parsing source = " << jtext;
-    JsonParser parser(v4, jtext.constData(), jtext.length());
+    JsonParser parser(v4, jtext.constData(), jtext.size());
     QJsonParseError error;
     ReturnedValue result = parser.parse(&error);
     if (error.error != QJsonParseError::NoError) {
@@ -920,9 +910,10 @@ ReturnedValue JsonObject::method_stringify(const FunctionObject *b, const Value 
     if (o) {
         stringify.replacerFunction = o->as<FunctionObject>();
         if (o->isArrayObject()) {
-            uint arrayLen = o->getLength();
+            int arrayLen = scope.engine->safeForAllocLength(o->getLength());
+            CHECK_EXCEPTION();
             stringify.propertyList = static_cast<QV4::String *>(scope.alloc(arrayLen));
-            for (uint i = 0; i < arrayLen; ++i) {
+            for (int i = 0; i < arrayLen; ++i) {
                 Value *v = stringify.propertyList + i;
                 *v = o->get(i);
                 if (v->as<NumberObject>() || v->as<StringObject>() || v->isNumber())
@@ -930,7 +921,7 @@ ReturnedValue JsonObject::method_stringify(const FunctionObject *b, const Value 
                 if (!v->isString()) {
                     v->setM(nullptr);
                 } else {
-                    for (uint j = 0; j <i; ++j) {
+                    for (int j = 0; j <i; ++j) {
                         if (stringify.propertyList[j].m() == v->m()) {
                             v->setM(nullptr);
                             break;
@@ -948,7 +939,7 @@ ReturnedValue JsonObject::method_stringify(const FunctionObject *b, const Value 
         s = so->d()->string;
 
     if (s->isNumber()) {
-        stringify.gap = QString(qMin(10, (int)s->toInteger()), ' ');
+        stringify.gap = QString(qMin(10, (int)s->toInteger()), u' ');
     } else if (String *str = s->stringValue()) {
         stringify.gap = str->toQString().left(10);
     }
@@ -956,7 +947,7 @@ ReturnedValue JsonObject::method_stringify(const FunctionObject *b, const Value 
 
     ScopedValue arg0(scope, argc ? argv[0] : Value::undefinedValue());
     QString result = stringify.Str(QString(), arg0);
-    if (result.isEmpty() || scope.engine->hasException)
+    if (result.isEmpty() || scope.hasException())
         RETURN_UNDEFINED();
     return Encode(scope.engine->newString(result));
 }

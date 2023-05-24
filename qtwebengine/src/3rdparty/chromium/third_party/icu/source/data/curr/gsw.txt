@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 gsw{
     Currencies{
         ADP{
@@ -628,7 +629,7 @@ gsw{
         }
         MVR{
             "MVR",
-            "Rufiyaa",
+            "Malediven-Rufiyaa",
         }
         MWK{
             "MWK",
@@ -719,7 +720,7 @@ gsw{
             "Kina",
         }
         PHP{
-            "PHP",
+            "₱",
             "Philippiinische Peso",
         }
         PKR{
@@ -1023,7 +1024,7 @@ gsw{
             "Französische UIC-Franc",
         }
         XOF{
-            "CFA",
+            "F CFA",
             "CFA-Franc (Wescht)",
         }
         XPD{
@@ -1693,8 +1694,8 @@ gsw{
             other{"Maurizius-Rupie"}
         }
         MVR{
-            one{"Rufiyaa"}
-            other{"Rufiyaa"}
+            one{"Malediven-Rufiyaa"}
+            other{"Malediven-Rupien"}
         }
         MWK{
             one{"Malawi-Kwacha"}
@@ -2161,5 +2162,4 @@ gsw{
         one{"{0} {1}"}
         other{"{0} {1}"}
     }
-    Version{"37"}
 }

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "media/base/bind_to_current_loop.h"
+#include "base/task/bind_post_task.h"
 
 namespace media {
 
@@ -32,14 +32,14 @@ void CameraAppDeviceProviderImpl::GetCameraAppDevice(
     GetCameraAppDeviceCallback callback) {
   mapping_callback_.Run(
       source_id,
-      media::BindToCurrentLoop(base::BindOnce(
+      base::BindPostTaskToCurrentDefault(base::BindOnce(
           &CameraAppDeviceProviderImpl::GetCameraAppDeviceWithDeviceId,
           weak_ptr_factory_.GetWeakPtr(), std::move(callback))));
 }
 
 void CameraAppDeviceProviderImpl::GetCameraAppDeviceWithDeviceId(
     GetCameraAppDeviceCallback callback,
-    const base::Optional<std::string>& device_id) {
+    const absl::optional<std::string>& device_id) {
   if (!device_id.has_value()) {
     std::move(callback).Run(
         cros::mojom::GetCameraAppDeviceStatus::ERROR_INVALID_ID,
@@ -52,6 +52,29 @@ void CameraAppDeviceProviderImpl::GetCameraAppDeviceWithDeviceId(
 
 void CameraAppDeviceProviderImpl::IsSupported(IsSupportedCallback callback) {
   bridge_->IsSupported(std::move(callback));
+}
+
+void CameraAppDeviceProviderImpl::SetVirtualDeviceEnabled(
+    const std::string& source_id,
+    bool enabled,
+    SetVirtualDeviceEnabledCallback callback) {
+  mapping_callback_.Run(
+      source_id,
+      base::BindPostTaskToCurrentDefault(base::BindOnce(
+          &CameraAppDeviceProviderImpl::SetVirtualDeviceEnabledWithDeviceId,
+          weak_ptr_factory_.GetWeakPtr(), enabled, std::move(callback))));
+}
+
+void CameraAppDeviceProviderImpl::SetVirtualDeviceEnabledWithDeviceId(
+    bool enabled,
+    SetVirtualDeviceEnabledCallback callback,
+    const absl::optional<std::string>& device_id) {
+  if (!device_id.has_value()) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  bridge_->SetVirtualDeviceEnabled(*device_id, enabled, std::move(callback));
 }
 
 }  // namespace media

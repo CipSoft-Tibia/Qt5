@@ -1,13 +1,14 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
 // TODO(dcheng): For efficiency reasons, consider passing custom data around
 // as a vector instead. It allows us to append a
-// std::pair<base::string16, base::string16> and swap the deserialized values.
+// std::pair<std::u16string, std::u16string> and swap the deserialized values.
 
 #include "ui/base/clipboard/custom_data_helper.h"
 
+#include <tuple>
 #include <utility>
 
 #include "base/pickle.h"
@@ -19,17 +20,17 @@ namespace {
 bool SkipString16(base::PickleIterator* iter) {
   DCHECK(iter);
 
-  int len;
+  size_t len;
   if (!iter->ReadLength(&len))
     return false;
-  return iter->SkipBytes(len * sizeof(base::char16));
+  return iter->SkipBytes(len * sizeof(char16_t));
 }
 
 }  // namespace
 
 void ReadCustomDataTypes(const void* data,
                          size_t data_length,
-                         std::vector<base::string16>* types) {
+                         std::vector<std::u16string>* types) {
   base::Pickle pickle(reinterpret_cast<const char*>(data), data_length);
   base::PickleIterator iter(pickle);
 
@@ -43,7 +44,7 @@ void ReadCustomDataTypes(const void* data,
   size_t original_size = types->size();
 
   for (uint32_t i = 0; i < size; ++i) {
-    types->push_back(base::string16());
+    types->push_back(std::u16string());
     if (!iter.ReadString16(&types->back()) || !SkipString16(&iter)) {
       types->resize(original_size);
       return;
@@ -53,8 +54,8 @@ void ReadCustomDataTypes(const void* data,
 
 void ReadCustomDataForType(const void* data,
                            size_t data_length,
-                           const base::string16& type,
-                           base::string16* result) {
+                           const std::u16string& type,
+                           std::u16string* result) {
   base::Pickle pickle(reinterpret_cast<const char*>(data), data_length);
   base::PickleIterator iter(pickle);
 
@@ -63,11 +64,11 @@ void ReadCustomDataForType(const void* data,
     return;
 
   for (uint32_t i = 0; i < size; ++i) {
-    base::string16 deserialized_type;
+    std::u16string deserialized_type;
     if (!iter.ReadString16(&deserialized_type))
       return;
     if (deserialized_type == type) {
-      ignore_result(iter.ReadString16(result));
+      std::ignore = iter.ReadString16(result);
       return;
     }
     if (!SkipString16(&iter))
@@ -78,7 +79,7 @@ void ReadCustomDataForType(const void* data,
 void ReadCustomDataIntoMap(
     const void* data,
     size_t data_length,
-    std::unordered_map<base::string16, base::string16>* result) {
+    std::unordered_map<std::u16string, std::u16string>* result) {
   base::Pickle pickle(reinterpret_cast<const char*>(data), data_length);
   base::PickleIterator iter(pickle);
 
@@ -87,13 +88,13 @@ void ReadCustomDataIntoMap(
     return;
 
   for (uint32_t i = 0; i < size; ++i) {
-    base::string16 type;
+    std::u16string type;
     if (!iter.ReadString16(&type)) {
       // Data is corrupt, return an empty map.
       result->clear();
       return;
     }
-    auto insert_result = result->insert({type, base::string16()});
+    auto insert_result = result->insert({type, std::u16string()});
     if (!iter.ReadString16(&insert_result.first->second)) {
       // Data is corrupt, return an empty map.
       result->clear();
@@ -103,7 +104,7 @@ void ReadCustomDataIntoMap(
 }
 
 void WriteCustomDataToPickle(
-    const std::unordered_map<base::string16, base::string16>& data,
+    const std::unordered_map<std::u16string, std::u16string>& data,
     base::Pickle* pickle) {
   pickle->WriteUInt32(data.size());
   for (const auto& it : data) {
@@ -113,7 +114,7 @@ void WriteCustomDataToPickle(
 }
 
 void WriteCustomDataToPickle(
-    const base::flat_map<base::string16, base::string16>& data,
+    const base::flat_map<std::u16string, std::u16string>& data,
     base::Pickle* pickle) {
   pickle->WriteUInt32(data.size());
   for (const auto& it : data) {

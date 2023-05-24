@@ -28,13 +28,20 @@
 #include <memory>
 
 #include "base/memory/scoped_refptr.h"
+#include "media/base/content_decryption_module.h"
+#include "media/base/key_systems.h"
+#include "services/metrics/public/cpp/ukm_builders.h"
+#include "services/metrics/public/cpp/ukm_recorder.h"
 #include "third_party/blink/public/platform/task_type.h"
 #include "third_party/blink/public/platform/web_content_decryption_module.h"
 #include "third_party/blink/public/platform/web_encrypted_media_key_information.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_media_keys_policy.h"
+#include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/html/media/html_media_element.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_array_buffer.h"
 #include "third_party/blink/renderer/modules/encryptedmedia/content_decryption_module_result_promise.h"
@@ -44,12 +51,50 @@
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/bindings/v8_throw_exception.h"
 #include "third_party/blink/renderer/platform/instrumentation/instance_counters.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/timer.h"
+#include "third_party/blink/renderer/platform/wtf/casting.h"
 
 #define MEDIA_KEYS_LOG_LEVEL 3
 
 namespace blink {
+namespace {
+
+// TODO(crbug/1347553): Remove duplicate function and merge it with the one
+// used in platform/media.
+media::HdcpVersion ConvertEncryptedMediaHdcpVersion(
+    const WebString& hdcp_version_string) {
+  if (!hdcp_version_string.ContainsOnlyASCII())
+    return media::HdcpVersion::kHdcpVersionNone;
+
+  std::string hdcp_version_ascii = hdcp_version_string.Ascii();
+
+  // The strings are specified in the explainer doc:
+  // https://github.com/WICG/hdcp-detection/blob/master/explainer.md
+  if (hdcp_version_ascii.empty())
+    return media::HdcpVersion::kHdcpVersionNone;
+  else if (hdcp_version_ascii == "1.0")
+    return media::HdcpVersion::kHdcpVersion1_0;
+  else if (hdcp_version_ascii == "1.1")
+    return media::HdcpVersion::kHdcpVersion1_1;
+  else if (hdcp_version_ascii == "1.2")
+    return media::HdcpVersion::kHdcpVersion1_2;
+  else if (hdcp_version_ascii == "1.3")
+    return media::HdcpVersion::kHdcpVersion1_3;
+  else if (hdcp_version_ascii == "1.4")
+    return media::HdcpVersion::kHdcpVersion1_4;
+  else if (hdcp_version_ascii == "2.0")
+    return media::HdcpVersion::kHdcpVersion2_0;
+  else if (hdcp_version_ascii == "2.1")
+    return media::HdcpVersion::kHdcpVersion2_1;
+  else if (hdcp_version_ascii == "2.2")
+    return media::HdcpVersion::kHdcpVersion2_2;
+  else if (hdcp_version_ascii == "2.3")
+    return media::HdcpVersion::kHdcpVersion2_3;
+
+  return media::HdcpVersion::kHdcpVersionNone;
+}
+
+}  // namespace
 
 // A class holding a pending action.
 class MediaKeys::PendingAction final
@@ -116,8 +161,11 @@ class MediaKeys::PendingAction final
 class SetCertificateResultPromise
     : public ContentDecryptionModuleResultPromise {
  public:
-  SetCertificateResultPromise(ScriptState* script_state, MediaKeys* media_keys)
+  SetCertificateResultPromise(ScriptState* script_state,
+                              const MediaKeysConfig& config,
+                              MediaKeys* media_keys)
       : ContentDecryptionModuleResultPromise(script_state,
+                                             config,
                                              EmeApiType::kSetServerCertificate),
         media_keys_(media_keys) {}
 
@@ -167,10 +215,14 @@ class GetStatusForPolicyResultPromise
     : public ContentDecryptionModuleResultPromise {
  public:
   GetStatusForPolicyResultPromise(ScriptState* script_state,
+                                  const MediaKeysConfig& config,
+                                  WebString min_hdcp_version,
                                   MediaKeys* media_keys)
       : ContentDecryptionModuleResultPromise(script_state,
+                                             config,
                                              EmeApiType::kGetStatusForPolicy),
-        media_keys_(media_keys) {}
+        media_keys_(media_keys),
+        min_hdcp_version_(min_hdcp_version) {}
 
   ~GetStatusForPolicyResultPromise() override = default;
 
@@ -179,6 +231,27 @@ class GetStatusForPolicyResultPromise
       WebEncryptedMediaKeyInformation::KeyStatus key_status) override {
     if (!IsValidToFulfillPromise())
       return;
+
+    // Report Media.EME.GetStatusForPolicy UKM.
+    auto* execution_context = GetExecutionContext();
+    if (auto* local_dom_window = DynamicTo<LocalDOMWindow>(execution_context)) {
+      Document* document = local_dom_window->document();
+      if (document) {
+        ukm::builders::Media_EME_GetStatusForPolicy builder(
+            document->UkmSourceID());
+        builder.SetKeySystem(media::GetKeySystemIntForUKM(
+            GetMediaKeysConfig().key_system.Ascii()));
+        builder.SetUseHardwareSecureCodecs(
+            static_cast<int>(GetMediaKeysConfig().use_hardware_secure_codecs));
+        builder.SetMinHdcpVersion(static_cast<int>(
+            ConvertEncryptedMediaHdcpVersion(min_hdcp_version_)));
+        LocalFrame* frame = document->GetFrame();
+        if (frame) {
+          builder.SetIsAdFrame(static_cast<int>(frame->IsAdFrame()));
+        }
+        builder.Record(document->UkmRecorder());
+      }
+    }
 
     Resolve(EncryptedMediaUtils::ConvertKeyStatusToString(key_status));
   }
@@ -192,15 +265,19 @@ class GetStatusForPolicyResultPromise
   // Keeping a reference to MediaKeys to prevent GC from collecting it while
   // the promise is pending.
   Member<MediaKeys> media_keys_;
+
+  WebString min_hdcp_version_;
 };
 
 MediaKeys::MediaKeys(
     ExecutionContext* context,
     const WebVector<WebEncryptedMediaSessionType>& supported_session_types,
-    std::unique_ptr<WebContentDecryptionModule> cdm)
+    std::unique_ptr<WebContentDecryptionModule> cdm,
+    const MediaKeysConfig& config)
     : ExecutionContextLifecycleObserver(context),
       supported_session_types_(supported_session_types),
       cdm_(std::move(cdm)),
+      config_(config),
       media_element_(nullptr),
       reserved_for_media_element_(false),
       timer_(context->GetTaskRunner(TaskType::kMiscPlatformAPI),
@@ -228,21 +305,6 @@ MediaKeySession* MediaKeys::createSession(ScriptState* script_state,
     return nullptr;
   }
 
-  // [RuntimeEnabled] does not work with enum values. So we have to check it
-  // here. See https://crbug.com/871867 for details.
-  if (!RuntimeEnabledFeatures::
-          EncryptedMediaPersistentUsageRecordSessionEnabled() &&
-      session_type_string == "persistent-usage-record") {
-    DVLOG(MEDIA_KEYS_LOG_LEVEL)
-        << __func__ << ": 'persistent-usage-record' support not enabled.";
-    // The message here is carefully chosen to be exactly the same as what the
-    // generated bindings would generate for invalid enum values.
-    exception_state.ThrowTypeError(
-        "The provided value 'persistent-usage-record' is not a valid enum "
-        "value of type MediaKeySessionType.");
-    return nullptr;
-  }
-
   // From http://w3c.github.io/encrypted-media/#createSession
 
   // When this method is invoked, the user agent must run the following steps:
@@ -266,8 +328,8 @@ MediaKeySession* MediaKeys::createSession(ScriptState* script_state,
   //    follows:
   //    (Initialization is performed in the constructor.)
   // 4. Return session.
-  return MakeGarbageCollected<MediaKeySession>(script_state, this,
-                                               session_type);
+  return MakeGarbageCollected<MediaKeySession>(script_state, this, session_type,
+                                               config_);
 }
 
 ScriptPromise MediaKeys::setServerCertificate(
@@ -293,7 +355,7 @@ ScriptPromise MediaKeys::setServerCertificate(
   //
   // 2. If serverCertificate is an empty array, return a promise rejected
   //    with a new a newly created TypeError.
-  if (!server_certificate.ByteLengthAsSizeT()) {
+  if (!server_certificate.ByteLength()) {
     exception_state.ThrowTypeError("The serverCertificate parameter is empty.");
     return ScriptPromise();
   }
@@ -301,11 +363,12 @@ ScriptPromise MediaKeys::setServerCertificate(
   // 3. Let certificate be a copy of the contents of the serverCertificate
   //    parameter.
   DOMArrayBuffer* server_certificate_buffer = DOMArrayBuffer::Create(
-      server_certificate.Data(), server_certificate.ByteLengthAsSizeT());
+      server_certificate.Data(), server_certificate.ByteLength());
 
   // 4. Let promise be a new promise.
   SetCertificateResultPromise* result =
-      MakeGarbageCollected<SetCertificateResultPromise>(script_state, this);
+      MakeGarbageCollected<SetCertificateResultPromise>(script_state, config_,
+                                                        this);
   ScriptPromise promise = result->Promise();
 
   // 5. Run the following steps asynchronously. See SetServerCertificateTask().
@@ -338,7 +401,7 @@ void MediaKeys::SetServerCertificateTask(
   // 5.2 Use the cdm to process certificate.
   cdm->SetServerCertificate(
       static_cast<unsigned char*>(server_certificate->Data()),
-      server_certificate->ByteLengthAsSizeT(), result->Result());
+      server_certificate->ByteLength(), result->Result());
 
   // 5.3 If any of the preceding steps failed, reject promise with a
   //     new DOMException whose name is the appropriate error name.
@@ -363,7 +426,8 @@ ScriptPromise MediaKeys::getStatusForPolicy(
 
   // Let promise be a new promise.
   GetStatusForPolicyResultPromise* result =
-      MakeGarbageCollected<GetStatusForPolicyResultPromise>(script_state, this);
+      MakeGarbageCollected<GetStatusForPolicyResultPromise>(
+          script_state, config_, min_hdcp_version, this);
   ScriptPromise promise = result->Promise();
 
   // Run the following steps asynchronously. See GetStatusForPolicyTask().
@@ -435,7 +499,7 @@ void MediaKeys::TimerFired(TimerBase*) {
   HeapDeque<Member<PendingAction>> pending_actions;
   pending_actions.Swap(pending_actions_);
 
-  while (!pending_actions.IsEmpty()) {
+  while (!pending_actions.empty()) {
     PendingAction* action = pending_actions.TakeFirst();
 
     switch (action->GetType()) {
@@ -460,6 +524,7 @@ WebContentDecryptionModule* MediaKeys::ContentDecryptionModule() {
 void MediaKeys::Trace(Visitor* visitor) const {
   visitor->Trace(pending_actions_);
   visitor->Trace(media_element_);
+  visitor->Trace(timer_);
   ScriptWrappable::Trace(visitor);
   ExecutionContextLifecycleObserver::Trace(visitor);
 }
@@ -477,10 +542,10 @@ bool MediaKeys::HasPendingActivity() const {
   // Remain around if there are pending events.
   DVLOG(MEDIA_KEYS_LOG_LEVEL)
       << __func__ << "(" << this << ")"
-      << (!pending_actions_.IsEmpty() ? " !pending_actions_.isEmpty()" : "")
+      << (!pending_actions_.empty() ? " !pending_actions_.isEmpty()" : "")
       << (reserved_for_media_element_ ? " reserved_for_media_element_" : "");
 
-  return !pending_actions_.IsEmpty() || reserved_for_media_element_;
+  return !pending_actions_.empty() || reserved_for_media_element_;
 }
 
 }  // namespace blink

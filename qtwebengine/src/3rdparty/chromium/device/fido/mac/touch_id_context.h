@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,15 +6,16 @@
 #define DEVICE_FIDO_MAC_TOUCH_ID_CONTEXT_H_
 
 #import <LocalAuthentication/LocalAuthentication.h>
-#import <Security/Security.h>
+#include <Security/Security.h>
 
-#include "base/callback.h"
+#include <string>
+
 #include "base/component_export.h"
+#include "base/functional/callback.h"
 #include "base/mac/scoped_cftyperef.h"
 #include "base/mac/scoped_nsobject.h"
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
-#include "base/strings/string16.h"
+#include "device/fido/mac/credential_store.h"
 
 namespace device {
 namespace fido {
@@ -32,8 +33,7 @@ struct AuthenticatorConfig;
 // cancel any other pending evaluations with an error. Deleting an instance
 // will invalidate any pending evaluation prompts (i.e. the dialog will
 // disappear and evaluation will fail with an error).
-class COMPONENT_EXPORT(DEVICE_FIDO)
-    API_AVAILABLE(macosx(10.12.2)) TouchIdContext {
+class COMPONENT_EXPORT(DEVICE_FIDO) TouchIdContext {
  public:
   // The callback is invoked when the local user authentication prompt
   // completes. It receives a boolean indicating whether obtaining the
@@ -44,9 +44,13 @@ class COMPONENT_EXPORT(DEVICE_FIDO)
   static std::unique_ptr<TouchIdContext> Create();
 
   // Returns whether the device has a secure enclave and can authenticate the
-  // local user, and whether the current binary carries a
+  // local user, and whether the main executable carries a
   // keychain-access-groups entitlement that matches the one set in |config|.
-  static bool TouchIdAvailable(const AuthenticatorConfig& config);
+  static void TouchIdAvailable(AuthenticatorConfig config,
+                               base::OnceCallback<void(bool is_available)>);
+
+  TouchIdContext(const TouchIdContext&) = delete;
+  TouchIdContext& operator=(const TouchIdContext&) = delete;
 
   virtual ~TouchIdContext();
 
@@ -54,7 +58,7 @@ class COMPONENT_EXPORT(DEVICE_FIDO)
   // reason string to the user. On completion or error, the provided callback is
   // invoked, unless the TouchIdContext instance has been destroyed in the
   // meantime (in which case nothing happens).
-  virtual void PromptTouchId(const base::string16& reason, Callback callback);
+  virtual void PromptTouchId(const std::u16string& reason, Callback callback);
 
   // authentication_context returns the LAContext used for the local user
   // authentication prompt.
@@ -69,23 +73,23 @@ class COMPONENT_EXPORT(DEVICE_FIDO)
 
  private:
   using CreateFuncPtr = decltype(&Create);
-  using TouchIdAvailableFuncPtr = decltype(&TouchIdAvailable);
-
   static CreateFuncPtr g_create_;
+
+  static bool TouchIdAvailableImpl(AuthenticatorConfig config);
+  using TouchIdAvailableFuncPtr = decltype(&TouchIdAvailableImpl);
   static TouchIdAvailableFuncPtr g_touch_id_available_;
 
   static std::unique_ptr<TouchIdContext> CreateImpl();
-  static bool TouchIdAvailableImpl(const AuthenticatorConfig& config);
 
   void RunCallback(bool success);
 
   base::scoped_nsobject<LAContext> context_;
-  base::ScopedCFTypeRef<SecAccessControlRef> access_control_;
+  base::ScopedCFTypeRef<SecAccessControlRef> access_control_{
+      TouchIdCredentialStore::DefaultAccessControl()};
   Callback callback_;
-  base::WeakPtrFactory<TouchIdContext> weak_ptr_factory_;
+  base::WeakPtrFactory<TouchIdContext> weak_ptr_factory_{this};
 
   friend class ScopedTouchIdTestEnvironment;
-  DISALLOW_COPY_AND_ASSIGN(TouchIdContext);
 };
 
 }  // namespace mac

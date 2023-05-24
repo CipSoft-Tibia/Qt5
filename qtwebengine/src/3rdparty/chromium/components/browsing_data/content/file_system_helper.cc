@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,22 +7,21 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
-#include "base/sequenced_task_runner.h"
-#include "base/stl_util.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/task/sequenced_task_runner.h"
 #include "components/browsing_data/content/browsing_data_helper.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "storage/browser/file_system/file_system_context.h"
 #include "storage/browser/file_system/file_system_quota_util.h"
 #include "storage/common/file_system/file_system_types.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
+#include "url/origin.h"
 
 using content::BrowserThread;
-
-namespace storage {
-class FileSystemContext;
-}
 
 namespace browsing_data {
 
@@ -44,6 +43,7 @@ base::SequencedTaskRunner* FileSystemHelper::file_task_runner() {
 void FileSystemHelper::StartFetching(FetchCallback callback) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   DCHECK(!callback.is_null());
+
   file_task_runner()->PostTask(
       FROM_HERE,
       base::BindOnce(&FileSystemHelper::FetchFileSystemInfoInFileThread, this,
@@ -54,8 +54,9 @@ void FileSystemHelper::DeleteFileSystemOrigin(const url::Origin& origin) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   file_task_runner()->PostTask(
       FROM_HERE,
-      base::BindOnce(&FileSystemHelper::DeleteFileSystemOriginInFileThread,
-                     this, origin));
+      base::BindOnce(
+          &FileSystemHelper::DeleteFileSystemForStorageKeyInFileThread, this,
+          blink::StorageKey::CreateFirstParty(origin)));
 }
 
 void FileSystemHelper::FetchFileSystemInfoInFileThread(FetchCallback callback) {
@@ -68,16 +69,17 @@ void FileSystemHelper::FetchFileSystemInfoInFileThread(FetchCallback callback) {
     storage::FileSystemQuotaUtil* quota_util =
         filesystem_context_->GetQuotaUtil(type);
     DCHECK(quota_util);
-    std::vector<url::Origin> origins =
-        quota_util->GetOriginsForTypeOnFileTaskRunner(type);
-    for (const auto& current : origins) {
-      if (!HasWebScheme(current.GetURL()))
+    std::vector<blink::StorageKey> storage_keys =
+        quota_util->GetStorageKeysForTypeOnFileTaskRunner(type);
+    for (const auto& current : storage_keys) {
+      if (!HasWebScheme(current.origin().GetURL()))
         continue;  // Non-websafe state is not considered browsing data.
-      int64_t usage = quota_util->GetOriginUsageOnFileTaskRunner(
+      int64_t usage = quota_util->GetStorageKeyUsageOnFileTaskRunner(
           filesystem_context_.get(), current, type);
       auto inserted =
           file_system_info_map
-              .insert(std::make_pair(current.GetURL(), FileSystemInfo(current)))
+              .insert(std::make_pair(current.origin().GetURL(),
+                                     FileSystemInfo(current.origin())))
               .first;
       inserted->second.usage_map[type] = usage;
     }
@@ -90,10 +92,10 @@ void FileSystemHelper::FetchFileSystemInfoInFileThread(FetchCallback callback) {
       FROM_HERE, base::BindOnce(std::move(callback), result));
 }
 
-void FileSystemHelper::DeleteFileSystemOriginInFileThread(
-    const url::Origin& origin) {
+void FileSystemHelper::DeleteFileSystemForStorageKeyInFileThread(
+    const blink::StorageKey& storage_key) {
   DCHECK(file_task_runner()->RunsTasksInCurrentSequence());
-  filesystem_context_->DeleteDataForOriginOnFileTaskRunner(origin);
+  filesystem_context_->DeleteDataForStorageKeyOnFileTaskRunner(storage_key);
 }
 
 FileSystemHelper::FileSystemInfo::FileSystemInfo(const url::Origin& origin)
@@ -103,13 +105,6 @@ FileSystemHelper::FileSystemInfo::FileSystemInfo(const FileSystemInfo& other) =
     default;
 
 FileSystemHelper::FileSystemInfo::~FileSystemInfo() {}
-
-// static
-FileSystemHelper* FileSystemHelper::Create(
-    storage::FileSystemContext* filesystem_context,
-    const std::vector<storage::FileSystemType>& additional_types) {
-  return new FileSystemHelper(filesystem_context, additional_types);
-}
 
 CannedFileSystemHelper::CannedFileSystemHelper(
     storage::FileSystemContext* filesystem_context,
@@ -146,8 +141,7 @@ void CannedFileSystemHelper::StartFetching(FetchCallback callback) {
   for (const auto& origin : pending_origins_)
     result.emplace_back(origin);
 
-  content::GetUIThreadTaskRunner({})->PostTask(
-      FROM_HERE, base::BindOnce(std::move(callback), result));
+  std::move(callback).Run(result);
 }
 
 void CannedFileSystemHelper::DeleteFileSystemOrigin(const url::Origin& origin) {

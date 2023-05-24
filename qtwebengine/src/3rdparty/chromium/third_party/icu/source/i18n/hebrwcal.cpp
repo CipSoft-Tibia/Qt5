@@ -140,7 +140,7 @@ U_CDECL_BEGIN
 static UBool calendar_hebrew_cleanup(void) {
     delete gCache;
     gCache = NULL;
-    return TRUE;
+    return true;
 }
 U_CDECL_END
 
@@ -155,7 +155,7 @@ U_NAMESPACE_BEGIN
 * @internal
 */
 HebrewCalendar::HebrewCalendar(const Locale& aLocale, UErrorCode& success)
-:   Calendar(TimeZone::createDefault(), aLocale, success)
+:   Calendar(TimeZone::forLocaleOrDefault(aLocale), aLocale, success)
 
 {
     setTimeInMillis(getNow(), success); // Call this again now that the vtable is set up properly.
@@ -239,7 +239,7 @@ void HebrewCalendar::add(UCalendarDateFields field, int32_t amount, UErrorCode& 
                   }
                   month -= ELUL+1;
                   ++year;
-                  acrossAdar1 = TRUE;
+                  acrossAdar1 = true;
               }
           } else {
               acrossAdar1 = (month > ADAR_1); // started after ADAR_1?
@@ -253,7 +253,7 @@ void HebrewCalendar::add(UCalendarDateFields field, int32_t amount, UErrorCode& 
                   }
                   month += ELUL+1;
                   --year;
-                  acrossAdar1 = TRUE;
+                  acrossAdar1 = true;
               }
           }
           set(UCAL_MONTH, month);
@@ -393,7 +393,8 @@ int32_t HebrewCalendar::startOfYear(int32_t year, UErrorCode &status)
     int32_t day = CalendarCache::get(&gCache, year, status);
 
     if (day == 0) {
-        int32_t months = (235 * year - 234) / 19;           // # of months before year
+        // # of months before year
+        int32_t months = (int32_t)ClockMath::floorDivide((235 * (int64_t)year - 234), (int64_t)19);
 
         int64_t frac = (int64_t)months * MONTH_FRACT + BAHARAD;  // Fractional part of day #
         day  = months * 29 + (int32_t)(frac / DAY_PARTS);        // Whole # part of calculation
@@ -566,8 +567,8 @@ void HebrewCalendar::validateField(UCalendarDateFields field, UErrorCode &status
 */
 void HebrewCalendar::handleComputeFields(int32_t julianDay, UErrorCode &status) {
     int32_t d = julianDay - 347997;
-    double m = ((d * (double)DAY_PARTS)/ (double) MONTH_PARTS);         // Months (approx)
-    int32_t year = (int32_t)( ((19. * m + 234.) / 235.) + 1.);     // Years (approx)
+    double m = ClockMath::floorDivide((d * (double)DAY_PARTS), (double) MONTH_PARTS);  // Months (approx)
+    int32_t year = (int32_t)(ClockMath::floorDivide((19. * m + 234.), 235.) + 1.);     // Years (approx)
     int32_t ys  = startOfYear(year, status);                   // 1st day of year
     int32_t dayOfYear = (d - ys);
 
@@ -670,12 +671,12 @@ HebrewCalendar::inDaylightTime(UErrorCode& status) const
 {
     // copied from GregorianCalendar
     if (U_FAILURE(status) || !getTimeZone().useDaylightTime()) 
-        return FALSE;
+        return false;
 
     // Force an update of the state of the Calendar.
     ((HebrewCalendar*)this)->complete(status); // cast away const
 
-    return (UBool)(U_SUCCESS(status) ? (internalGet(UCAL_DST_OFFSET) != 0) : FALSE);
+    return (UBool)(U_SUCCESS(status) ? (internalGet(UCAL_DST_OFFSET) != 0) : false);
 }
 
 /**
@@ -685,11 +686,11 @@ HebrewCalendar::inDaylightTime(UErrorCode& status) const
  */
 static UDate           gSystemDefaultCenturyStart       = DBL_MIN;
 static int32_t         gSystemDefaultCenturyStartYear   = -1;
-static icu::UInitOnce  gSystemDefaultCenturyInit        = U_INITONCE_INITIALIZER;
+static icu::UInitOnce  gSystemDefaultCenturyInit        {};
 
 UBool HebrewCalendar::haveDefaultCentury() const
 {
-    return TRUE;
+    return true;
 }
 
 static void U_CALLCONV initializeSystemDefaultCentury()

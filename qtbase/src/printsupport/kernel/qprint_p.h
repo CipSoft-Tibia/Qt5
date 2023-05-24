@@ -1,41 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 John Layt <jlayt@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtPrintSupport module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// Copyright (C) 2014 John Layt <jlayt@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPRINT_P_H
 #define QPRINT_P_H
@@ -59,6 +24,7 @@
 
 #if (defined Q_OS_MACOS) || (defined Q_OS_UNIX && QT_CONFIG(cups))
 #include <cups/ppd.h>  // Use for type defs only, don't want to actually link in main module
+// ### QT_DECL_METATYPE_EXTERN_TAGGED once there's a qprint.cpp TU
 Q_DECLARE_METATYPE(ppd_file_t *)
 #endif
 
@@ -159,142 +125,32 @@ struct InputSlotMap {
     const char *key;
 };
 
-// Note: PPD standard does not define a standard set of InputSlot keywords,
-// it is a free form text field left to the PPD writer to decide,
-// but it does suggest some names for consistency with the Windows enum.
-static const InputSlotMap inputSlotMap[] = {
-    { QPrint::Upper,           DMBIN_UPPER,          "Upper"          },
-    { QPrint::Lower,           DMBIN_LOWER,          "Lower"          },
-    { QPrint::Middle,          DMBIN_MIDDLE,         "Middle"         },
-    { QPrint::Manual,          DMBIN_MANUAL,         "Manual"         },
-    { QPrint::Envelope,        DMBIN_ENVELOPE,       "Envelope"       },
-    { QPrint::EnvelopeManual,  DMBIN_ENVMANUAL,      "EnvelopeManual" },
-    { QPrint::Auto,            DMBIN_AUTO,           "Auto"           },
-    { QPrint::Tractor,         DMBIN_TRACTOR,        "Tractor"        },
-    { QPrint::SmallFormat,     DMBIN_SMALLFMT,       "AnySmallFormat" },
-    { QPrint::LargeFormat,     DMBIN_LARGEFMT,       "AnyLargeFormat" },
-    { QPrint::LargeCapacity,   DMBIN_LARGECAPACITY,  "LargeCapacity"  },
-    { QPrint::Cassette,        DMBIN_CASSETTE,       "Cassette"       },
-    { QPrint::FormSource,      DMBIN_FORMSOURCE,     "FormSource"     },
-    { QPrint::Manual,          DMBIN_MANUAL,         "ManualFeed"     },
-    { QPrint::OnlyOne,         DMBIN_ONLYONE,        "OnlyOne"        }, // = QPrint::Upper
-    { QPrint::CustomInputSlot, DMBIN_USER,           ""               }  // Must always be last row
-};
-
 struct OutputBinMap {
     QPrint::OutputBinId id;
     const char *key;
 };
 
-static const OutputBinMap outputBinMap[] = {
-    { QPrint::AutoOutputBin,   ""      }, // Not a PPD defined value, internal use only
-    { QPrint::UpperBin,        "Upper" },
-    { QPrint::LowerBin,        "Lower" },
-    { QPrint::RearBin,         "Rear"  },
-    { QPrint::CustomOutputBin, ""      }  // Must always be last row
-};
-
 // Print utilities shared by print plugins
 
-class QPrintUtils
-{
+namespace QPrintUtils {
 
-public:
+Q_PRINTSUPPORT_EXPORT QPrint::InputSlotId inputSlotKeyToInputSlotId(const QByteArray &key);
+Q_PRINTSUPPORT_EXPORT QByteArray inputSlotIdToInputSlotKey(QPrint::InputSlotId id);
+Q_PRINTSUPPORT_EXPORT int inputSlotIdToWindowsId(QPrint::InputSlotId id);
+Q_PRINTSUPPORT_EXPORT QPrint::OutputBinId outputBinKeyToOutputBinId(const QByteArray &key);
+Q_PRINTSUPPORT_EXPORT QByteArray outputBinIdToOutputBinKey(QPrint::OutputBinId id);
+Q_PRINTSUPPORT_EXPORT QPrint::InputSlot paperBinToInputSlot(int windowsId, const QString &name);
 
-    static QPrint::InputSlotId inputSlotKeyToInputSlotId(const QByteArray &key)
-    {
-        for (int i = 0; inputSlotMap[i].id != QPrint::CustomInputSlot; ++i) {
-            if (inputSlotMap[i].key == key)
-                return inputSlotMap[i].id;
-        }
-        return QPrint::CustomInputSlot;
-    }
-
-    static QByteArray inputSlotIdToInputSlotKey(QPrint::InputSlotId id)
-    {
-        for (int i = 0; inputSlotMap[i].id != QPrint::CustomInputSlot; ++i) {
-            if (inputSlotMap[i].id == id)
-                return QByteArray(inputSlotMap[i].key);
-        }
-        return QByteArray();
-    }
-
-    static int inputSlotIdToWindowsId(QPrint::InputSlotId id)
-    {
-        for (int i = 0; inputSlotMap[i].id != QPrint::CustomInputSlot; ++i) {
-            if (inputSlotMap[i].id == id)
-                return inputSlotMap[i].windowsId;
-        }
-        return 0;
-    }
-
-    static QPrint::OutputBinId outputBinKeyToOutputBinId(const QByteArray &key)
-    {
-        for (int i = 0; outputBinMap[i].id != QPrint::CustomOutputBin; ++i) {
-            if (outputBinMap[i].key == key)
-                return outputBinMap[i].id;
-        }
-        return QPrint::CustomOutputBin;
-    }
-
-    static QByteArray outputBinIdToOutputBinKey(QPrint::OutputBinId id)
-    {
-        for (int i = 0; outputBinMap[i].id != QPrint::CustomOutputBin; ++i) {
-            if (outputBinMap[i].id == id)
-                return QByteArray(outputBinMap[i].key);
-        }
-        return QByteArray();
-    }
-
-#if (defined Q_OS_MACOS) || (defined Q_OS_UNIX && QT_CONFIG(cups))
-
-    // PPD utilities shared by CUPS and Mac plugins requiring CUPS headers
-    // May turn into a proper internal QPpd class if enough shared between Mac and CUPS,
-    // but where would it live?  Not in base module as don't want to link to CUPS.
-    // May have to have two copies in plugins to keep in sync.
-
-    static QPrint::InputSlot ppdChoiceToInputSlot(const ppd_choice_t &choice)
-    {
-        QPrint::InputSlot input;
-        input.key = choice.choice;
-        input.name = QString::fromUtf8(choice.text);
-        input.id = inputSlotKeyToInputSlotId(input.key);
-        input.windowsId = inputSlotMap[input.id].windowsId;
-        return input;
-    }
-
-    static QPrint::OutputBin ppdChoiceToOutputBin(const ppd_choice_t &choice)
-    {
-        QPrint::OutputBin output;
-        output.key = choice.choice;
-        output.name = QString::fromUtf8(choice.text);
-        output.id = outputBinKeyToOutputBinId(output.key);
-        return output;
-    }
-
-    static int parsePpdResolution(const QByteArray &value)
-    {
-        if (value.isEmpty())
-            return -1;
-        // value can be in form 600dpi or 600x600dpi
-        QByteArray result = value.split('x').at(0);
-        if (result.endsWith("dpi"))
-            result.chop(3);
-        return result.toInt();
-    }
-
-    static QPrint::DuplexMode ppdChoiceToDuplexMode(const QByteArray &choice)
-    {
-        if (choice == "DuplexTumble")
-            return QPrint::DuplexShortSide;
-        else if (choice == "DuplexNoTumble")
-            return QPrint::DuplexLongSide;
-        else // None or SimplexTumble or SimplexNoTumble
-            return QPrint::DuplexNone;
-    }
-
-#endif // Mac and CUPS PPD Utilities
-
+#    if (defined Q_OS_MACOS) || (defined Q_OS_UNIX && QT_CONFIG(cups))
+// PPD utilities shared by CUPS and Mac plugins requiring CUPS headers
+// May turn into a proper internal QPpd class if enough shared between Mac and CUPS,
+// but where would it live?  Not in base module as don't want to link to CUPS.
+// May have to have two copies in plugins to keep in sync.
+Q_PRINTSUPPORT_EXPORT QPrint::InputSlot ppdChoiceToInputSlot(const ppd_choice_t &choice);
+Q_PRINTSUPPORT_EXPORT QPrint::OutputBin ppdChoiceToOutputBin(const ppd_choice_t &choice);
+Q_PRINTSUPPORT_EXPORT int parsePpdResolution(const QByteArray &value);
+Q_PRINTSUPPORT_EXPORT QPrint::DuplexMode ppdChoiceToDuplexMode(const QByteArray &choice);
+#    endif // Mac and CUPS PPD Utilities
 };
 
 #endif // QT_NO_PRINTER

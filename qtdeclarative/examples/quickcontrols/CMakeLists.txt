@@ -1,0 +1,21 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
+qt_internal_add_example(attachedstyleproperties)
+qt_internal_add_example(gallery)
+if (TARGET Qt6::Sql)
+    add_subdirectory(chattutorial)
+endif()
+if (QT_FEATURE_quicktemplates2_calendar AND TARGET Qt6::Sql)
+    qt_internal_add_example(eventcalendar)
+endif()
+qt_internal_add_example(texteditor)
+qt_internal_add_example(contactlist)
+qt_internal_add_example(wearable)
+qt_internal_add_example(imagine/automotive)
+if (TARGET Qt6::Svg AND NOT ANDROID AND NOT IOS)
+    qt_internal_add_example(filesystemexplorer)
+endif()
+if(TARGET Qt6::Widgets)
+    qt_internal_add_example(flatstyle)
+endif()

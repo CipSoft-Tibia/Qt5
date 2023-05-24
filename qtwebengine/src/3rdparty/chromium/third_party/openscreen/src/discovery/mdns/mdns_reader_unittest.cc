@@ -5,6 +5,7 @@
 #include "discovery/mdns/mdns_reader.h"
 
 #include <memory>
+#include <sstream>
 
 #include "discovery/common/config.h"
 #include "discovery/mdns/testing/mdns_test_util.h"
@@ -86,14 +87,23 @@ TEST(MdnsReaderTest, ReadDomainName) {
   EXPECT_EQ(reader.length(), sizeof(kMessage));
   EXPECT_EQ(reader.offset(), 0u);
   DomainName name;
+  std::stringstream name_stream;
   EXPECT_TRUE(reader.Read(&name));
-  EXPECT_EQ(name.ToString(), "testing.local");
+  name_stream.str("");
+  name_stream << name;
+  EXPECT_EQ(name_stream.str(), "testing.local");
   EXPECT_TRUE(reader.Read(&name));
-  EXPECT_EQ(name.ToString(), "service.testing.local");
+  name_stream.str("");
+  name_stream << name;
+  EXPECT_EQ(name_stream.str(), "service.testing.local");
   EXPECT_TRUE(reader.Read(&name));
-  EXPECT_EQ(name.ToString(), "device.service.testing.local");
+  name_stream.str("");
+  name_stream << name;
+  EXPECT_EQ(name_stream.str(), "device.service.testing.local");
   EXPECT_TRUE(reader.Read(&name));
-  EXPECT_EQ(name.ToString(), "service.testing.local");
+  name_stream.str("");
+  name_stream << name;
+  EXPECT_EQ(name_stream.str(), "service.testing.local");
   EXPECT_EQ(reader.offset(), sizeof(kMessage));
   EXPECT_EQ(0UL, reader.remaining());
   EXPECT_FALSE(reader.Read(&name));

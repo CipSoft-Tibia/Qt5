@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusabstractadaptor.h"
 #include "qdbusabstractadaptor_p.h"
@@ -58,13 +22,13 @@
 
 QT_BEGIN_NAMESPACE
 
-static int cachedRelaySlotMethodIndex = -1;
+static int cachedRelaySlotMethodIndex = 0;
 
 int QDBusAdaptorConnector::relaySlotMethodIndex()
 {
-    if (cachedRelaySlotMethodIndex == -1) {
+    if (cachedRelaySlotMethodIndex == 0) {
         cachedRelaySlotMethodIndex = staticMetaObject.indexOfMethod("relaySlot()");
-        Q_ASSERT(cachedRelaySlotMethodIndex != -1);
+        Q_ASSERT(cachedRelaySlotMethodIndex != 0); // 0 should be deleteLater() or destroyed()
     }
     return cachedRelaySlotMethodIndex;
 }
@@ -73,11 +37,9 @@ QDBusAdaptorConnector *qDBusFindAdaptorConnector(QObject *obj)
 {
     if (!obj)
         return nullptr;
-    const QObjectList &children = obj->children();
-    QObjectList::ConstIterator it = children.constBegin();
-    QObjectList::ConstIterator end = children.constEnd();
-    for ( ; it != end; ++it) {
-        QDBusAdaptorConnector *connector = qobject_cast<QDBusAdaptorConnector *>(*it);
+
+    for (QObject *child : std::as_const(obj->children())) {
+        QDBusAdaptorConnector *connector = qobject_cast<QDBusAdaptorConnector *>(child);
         if (connector) {
             connector->polish();
             return connector;
@@ -149,7 +111,7 @@ QDBusAbstractAdaptor::QDBusAbstractAdaptor(QObject* obj)
     QDBusAdaptorConnector *connector = qDBusCreateAdaptorConnector(obj);
 
     connector->waitingForPolish = true;
-    QMetaObject::invokeMethod(connector, "polish", Qt::QueuedConnection);
+    QMetaObject::invokeMethod(connector, &QDBusAdaptorConnector::polish, Qt::QueuedConnection);
 }
 
 /*!
@@ -166,7 +128,7 @@ QDBusAbstractAdaptor::~QDBusAbstractAdaptor()
     Toggles automatic signal relaying from the real object (see object()).
 
     Automatic signal relaying consists of signal-to-signal connection of the signals on the parent
-    that have the exact same method signatue in both classes.
+    that have the exact same method signature in both classes.
 
     If \a enable is set to true, connect the signals; if set to false, disconnect all signals.
 */
@@ -263,11 +225,8 @@ void QDBusAdaptorConnector::polish()
         return;                 // avoid working multiple times if multiple adaptors were added
 
     waitingForPolish = false;
-    const QObjectList &objs = parent()->children();
-    QObjectList::ConstIterator it = objs.constBegin();
-    QObjectList::ConstIterator end = objs.constEnd();
-    for ( ; it != end; ++it) {
-        QDBusAbstractAdaptor *adaptor = qobject_cast<QDBusAbstractAdaptor *>(*it);
+    for (QObject *child : std::as_const(parent()->children())) {
+        QDBusAbstractAdaptor *adaptor = qobject_cast<QDBusAbstractAdaptor *>(child);
         if (adaptor)
             addAdaptor(adaptor);
     }
@@ -276,11 +235,11 @@ void QDBusAdaptorConnector::polish()
     std::sort(adaptors.begin(), adaptors.end());
 }
 
-void QDBusAdaptorConnector::relaySlot(void **argv)
+void QDBusAdaptorConnector::relaySlot(QMethodRawArguments argv)
 {
     QObject *sndr = sender();
     if (Q_LIKELY(sndr)) {
-        relay(sndr, senderSignalIndex(), argv);
+        relay(sndr, senderSignalIndex(), argv.arguments);
     } else {
         qWarning("QtDBus: cannot relay signals from parent %s(%p \"%s\") unless they are emitted in the object's thread %s(%p \"%s\"). "
                  "Current thread is %s(%p \"%s\").",
@@ -296,8 +255,8 @@ void QDBusAdaptorConnector::relay(QObject *senderObj, int lastSignalIdx, void **
         // QObject signal (destroyed(QObject *)) -- ignore
         return;
 
-    const QMetaObject *senderMetaObject = senderObj->metaObject();
-    QMetaMethod mm = senderMetaObject->method(lastSignalIdx);
+    QMetaMethod mm = senderObj->metaObject()->method(lastSignalIdx);
+    const QMetaObject *senderMetaObject = mm.enclosingMetaObject();
 
     QObject *realObject = senderObj;
     if (qobject_cast<QDBusAbstractAdaptor *>(senderObj))
@@ -305,7 +264,7 @@ void QDBusAdaptorConnector::relay(QObject *senderObj, int lastSignalIdx, void **
         realObject = realObject->parent();
 
     // break down the parameter list
-    QVector<int> types;
+    QList<QMetaType> types;
     QString errorMsg;
     int inputCount = qDBusParametersForMethod(mm, types, errorMsg);
     if (inputCount == -1) {
@@ -315,7 +274,7 @@ void QDBusAdaptorConnector::relay(QObject *senderObj, int lastSignalIdx, void **
                  qPrintable(errorMsg));
         return;
     }
-    if (inputCount + 1 != types.count() ||
+    if (inputCount + 1 != types.size() ||
         types.at(inputCount) == QDBusMetaTypeId::message()) {
         // invalid signal signature
         qWarning("QDBusAbstractAdaptor: Cannot relay signal %s::%s",
@@ -324,129 +283,18 @@ void QDBusAdaptorConnector::relay(QObject *senderObj, int lastSignalIdx, void **
     }
 
     QVariantList args;
-    const int numTypes = types.count();
+    const int numTypes = types.size();
     args.reserve(numTypes - 1);
     for (int i = 1; i < numTypes; ++i)
-        args << QVariant(types.at(i), argv[i]);
+        args << QVariant(QMetaType(types.at(i)), argv[i]);
 
     // now emit the signal with all the information
     emit relaySignal(realObject, senderMetaObject, lastSignalIdx, args);
 }
 
-// our Meta Object
-// modify carefully: this has been hand-edited!
-// the relaySlot slot gets called with the void** array
-
-struct qt_meta_stringdata_QDBusAdaptorConnector_t {
-    QByteArrayData data[10];
-    char stringdata[96];
-};
-#define QT_MOC_LITERAL(idx, ofs, len) \
-    Q_STATIC_BYTE_ARRAY_DATA_HEADER_INITIALIZER_WITH_OFFSET(len, \
-        offsetof(qt_meta_stringdata_QDBusAdaptorConnector_t, stringdata) + ofs \
-        - idx * sizeof(QByteArrayData) \
-    )
-static const qt_meta_stringdata_QDBusAdaptorConnector_t qt_meta_stringdata_QDBusAdaptorConnector = {
-    {
-QT_MOC_LITERAL(0, 0, 21),
-QT_MOC_LITERAL(1, 22, 11),
-QT_MOC_LITERAL(2, 34, 0),
-QT_MOC_LITERAL(3, 35, 3),
-QT_MOC_LITERAL(4, 39, 18),
-QT_MOC_LITERAL(5, 58, 10),
-QT_MOC_LITERAL(6, 69, 3),
-QT_MOC_LITERAL(7, 73, 4),
-QT_MOC_LITERAL(8, 78, 9),
-QT_MOC_LITERAL(9, 88, 6)
-    },
-    "QDBusAdaptorConnector\0relaySignal\0\0"
-    "obj\0const QMetaObject*\0metaObject\0sid\0"
-    "args\0relaySlot\0polish\0"
-};
-#undef QT_MOC_LITERAL
-
-static const uint qt_meta_data_QDBusAdaptorConnector[] = {
-
- // content:
-       7,       // revision
-       0,       // classname
-       0,    0, // classinfo
-       3,   14, // methods
-       0,    0, // properties
-       0,    0, // enums/sets
-       0,    0, // constructors
-       0,       // flags
-       1,       // signalCount
-
- // signals: name, argc, parameters, tag, flags
-       1,    4,   29,    2, 0x05,
-
- // slots: name, argc, parameters, tag, flags
-       8,    0,   38,    2, 0x0a,
-       9,    0,   39,    2, 0x0a,
-
- // signals: parameters
-    QMetaType::Void, QMetaType::QObjectStar, 0x80000000 | 4, QMetaType::Int, QMetaType::QVariantList,    3,    5,    6,    7,
-
- // slots: parameters
-    QMetaType::Void,
-    QMetaType::Void,
-
-       0        // eod
-};
-
-void QDBusAdaptorConnector::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
-{
-    if (_c == QMetaObject::InvokeMetaMethod) {
-        Q_ASSERT(staticMetaObject.cast(_o));
-        QDBusAdaptorConnector *_t = static_cast<QDBusAdaptorConnector *>(_o);
-        switch (_id) {
-        case 0: _t->relaySignal((*reinterpret_cast< QObject*(*)>(_a[1])),(*reinterpret_cast< const QMetaObject*(*)>(_a[2])),(*reinterpret_cast< int(*)>(_a[3])),(*reinterpret_cast< const QVariantList(*)>(_a[4]))); break;
-        case 1: _t->relaySlot(_a); break; // HAND EDIT: add the _a parameter
-        case 2: _t->polish(); break;
-        default: ;
-        }
-    }
-}
-
-const QMetaObject QDBusAdaptorConnector::staticMetaObject = {
-    { &QObject::staticMetaObject, qt_meta_stringdata_QDBusAdaptorConnector.data,
-      qt_meta_data_QDBusAdaptorConnector, qt_static_metacall, nullptr, nullptr }
-};
-
-const QMetaObject *QDBusAdaptorConnector::metaObject() const
-{
-    return &staticMetaObject;
-}
-
-void *QDBusAdaptorConnector::qt_metacast(const char *_clname)
-{
-    if (!_clname) return nullptr;
-    if (!strcmp(_clname, qt_meta_stringdata_QDBusAdaptorConnector.stringdata))
-        return static_cast<void*>(const_cast< QDBusAdaptorConnector*>(this));
-    return QObject::qt_metacast(_clname);
-}
-
-int QDBusAdaptorConnector::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
-{
-    _id = QObject::qt_metacall(_c, _id, _a);
-    if (_id < 0)
-        return _id;
-    if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 3)
-            qt_static_metacall(this, _c, _id, _a);
-        _id -= 3;
-    }
-    return _id;
-}
-
-// SIGNAL 0
-void QDBusAdaptorConnector::relaySignal(QObject * _t1, const QMetaObject * _t2, int _t3, const QVariantList & _t4)
-{
-    void *_a[] = { nullptr, const_cast<void*>(reinterpret_cast<const void*>(&_t1)), const_cast<void*>(reinterpret_cast<const void*>(&_t2)), const_cast<void*>(reinterpret_cast<const void*>(&_t3)), const_cast<void*>(reinterpret_cast<const void*>(&_t4)) };
-    QMetaObject::activate(this, &staticMetaObject, 0, _a);
-}
-
 QT_END_NAMESPACE
+
+#include "moc_qdbusabstractadaptor_p.cpp"
+#include "moc_qdbusabstractadaptor.cpp"
 
 #endif // QT_NO_DBUS

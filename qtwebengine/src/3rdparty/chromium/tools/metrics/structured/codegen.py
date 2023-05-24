@@ -1,132 +1,344 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# -*- coding: utf-8 -*-
+# Copyright 2021 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-
 """Objects for describing template code to be generated from structured.xml."""
 
 import hashlib
 import os
 import re
 import struct
-from model import _EVENT_TYPE, _EVENTS_TYPE
-from model import _PROJECT_TYPE, _PROJECTS_TYPE
-from model import _METRIC_TYPE
+
+import templates_validator as validator_tmpl
 
 
-def sanitize_name(name):
-  s = re.sub('[^0-9a-zA-Z_]', '_', name)
-  return s
+class Util:
+  """Helpers for generating C++."""
+
+  @staticmethod
+  def sanitize_name(name):
+    return re.sub('[^0-9a-zA-Z_]', '_', name)
+
+  @staticmethod
+  def camel_to_snake(name):
+    pat = '((?<=[a-z0-9])[A-Z]|(?!^)[A-Z](?=[a-z]))'
+    return re.sub(pat, r'_\1', name).lower()
+
+  @staticmethod
+  def hash_name(name):
+    # This must match the hash function in chromium's
+    # //base/metrics/metric_hashes.cc. >Q means 8 bytes, big endian.
+    name = name.encode('utf-8')
+    md5 = hashlib.md5(name)
+    return struct.unpack('>Q', md5.digest()[:8])[0]
+
+  @staticmethod
+  def event_name_hash(project_name, event_name):
+    """Make the name hash for an event.
+
+    This gets uploaded in the StructuredEventProto.event_name_hash field. It is
+    the sole means of recording which event from structured.xml a
+    StructuredEventProto instance represents.
+
+    To avoid naming collisions, it must contain three pieces of information:
+     - the name of the event itself
+     - the name of the event's project, to avoid collisions with events of the
+       same name in other projects
+     - an identifier that this comes from chromium, to avoid collisions with
+       events and projects of the same name defined in cros's structured.xml
+
+    This must use sanitized names for the project and event.
+    """
+    event_name = Util.sanitize_name(event_name)
+    project_name = Util.sanitize_name(project_name)
+    # TODO(crbug.com/1148168): Once the minimum python version is 3.6+, rewrite
+    # this .format and others using f-strings.
+    return Util.hash_name('chrome::{}::{}'.format(project_name, event_name))
 
 
-def HashName(name):
-  # This must match the hash function in base/metrics/metric_hashes.cc
-  # >Q: 8 bytes, big endian.
-  return struct.unpack('>Q', hashlib.md5(name).digest()[:8])[0]
+class FileInfo:
+  """Codegen-related info about a file."""
+
+  def __init__(self, dirname, basename):
+    self.dirname = dirname
+    self.basename = basename
+    self.rootname = os.path.splitext(self.basename)[0]
+    self.filepath = os.path.join(dirname, basename)
 
 
-class FileInfo(object):
-  def __init__(self, relpath, basename):
-    self.dir_path = relpath
-    self.guard_path = sanitize_name(os.path.join(relpath, basename)).upper()
+    # This takes the last three components of the filepath for use in the
+    # header guard, ie. METRICS_STRUCTURED_STRUCTURED_EVENTS_H_
+    relative_path = os.sep.join(self.filepath.split(os.sep)[-3:])
+    self.guard_path = Util.sanitize_name(relative_path).upper()
 
 
-class EventInfo(object):
-  def __init__(self, event_obj, project_obj):
-    self.raw_name = event_obj['name']
-    self.name = sanitize_name(event_obj['name'])
-    self.name_hash = HashName(event_obj['name'])
+class ProjectInfo:
+  """Codegen-related info about a project."""
 
-    # If a project is associated with this event, project_obj will be non-None
-    # and we should use the project's name as the key name hash. Otherwise, use
-    # the event's name as the key name hash.
-    if project_obj:
-      project_name = sanitize_name(project_obj['name'])
+  def __init__(self, project):
+    self.name = Util.sanitize_name(project.name)
+    self.namespace = Util.camel_to_snake(self.name)
+    self.name_hash = Util.hash_name(self.name)
+    self.validator = '{}ProjectValidator'.format(self.name)
+    self.validator_snake_name = Util.camel_to_snake(self.validator)
+    self.events = project.events
+
+    # Set ID type.
+    if project.id == 'uma':
+      self.id_type = 'kUmaId'
+    elif project.id == 'per-project':
+      self.id_type = 'kProjectId'
+    elif project.id == 'none':
+      self.id_type = 'kUnidentified'
     else:
-      project_name = sanitize_name(event_obj['name'])
-    self.project_name_hash = HashName(project_name)
+      raise ValueError('Invalid id type.')
+
+    # Set ID scope
+    if project.scope == 'profile':
+      self.id_scope = 'kPerProfile'
+    elif project.scope == 'device':
+      self.id_scope = 'kPerDevice'
+    else:
+      raise ValueError('Invalid id scope.')
+
+    # Set event type. This is inferred by checking all metrics within the
+    # project. If any of a project's metrics is a raw string, then its events
+    # are considered raw string events, even if they also contain non-strings.
+    self.event_type = 'REGULAR'
+    for event in project.events:
+      for metric in event.metrics:
+        if metric.type == 'raw-string':
+          self.event_type = 'RAW_STRING'
+          break
+
+    # Check if event is part of an event sequence. Note that this goes after the
+    # raw string check since the type has higher priority.
+    if project.is_event_sequence_project:
+      self.is_event_sequence = 'true'
+      self.event_type = 'SEQUENCE'
+    else:
+      self.is_event_sequence = 'false'
+
+    self.key_rotation_period = project.key_rotation_period
+
+  def build_event_map(self) -> str:
+    event_infos = (EventInfo(event, self) for event in self.events)
+
+    # Generate map entries.
+    validator_map_str = ',\n  '.join(
+        '{{"{}", &{}}}'.format(event_info.name, event_info.validator_snake_name)
+        for event_info in event_infos)
+    return validator_tmpl.IMPL_PROJECT_EVENT_MAP_TEMPLATE.format(
+        project=self, event_validator_map=validator_map_str)
+
+  def build_event_validators(self) -> str:
+    event_infos = (EventInfo(event, self) for event in self.events)
+    return '\n'.join(event.build_validator_init() for event in event_infos)
+
+  def build_project_init(self) -> str:
+    return 'static {} {};'.format(self.validator, self.validator_snake_name)
+
+  def build_validator_code(self) -> str:
+    return validator_tmpl.IMPL_PROJECT_VALIDATOR_TEMPLATE.format(project=self)
 
 
-class MetricInfo(object):
-  def __init__(self, json_obj):
-    self.raw_name = json_obj['name']
-    self.name = sanitize_name(json_obj['name'])
-    self.hash = HashName(json_obj['name'])
-    if json_obj['kind'] == 'hashed-string':
+class EventInfo:
+  """Codegen-related info about an event."""
+
+  def __init__(self, event, project_info):
+    self.name = Util.sanitize_name(event.name)
+    self.name_hash = Util.event_name_hash(project_info.name, self.name)
+    self.validator_name = '{}EventValidator'.format(self.name)
+    self.validator_snake_name = Util.camel_to_snake(self.validator_name)
+    self.project_name = project_info.name
+    self.is_event_sequence = project_info.is_event_sequence
+    self.metrics = event.metrics
+
+  def build_metric_hash_map(self) -> str:
+    metric_infos = (MetricInfo(metric) for metric in self.metrics)
+    return ',\n  '.join(
+        '{{\"{}\", {{ Event::MetricType::{}, UINT64_C({})}}}}'.format(
+            metric_info.name, metric_info.type_enum, metric_info.hash)
+        for metric_info in metric_infos)
+
+  def build_validator_init(self) -> str:
+    return ('static {} {};').format(self.validator_name,
+                                    self.validator_snake_name)
+
+  def build_validator_code(self) -> str:
+    if len(self.metrics) > 0:
+      metadata_impl = validator_tmpl.IMPL_GET_METRICS_METADATA.format(
+          metric_hash_map=self.build_metric_hash_map())
+    else:
+      metadata_impl = "  return absl::nullopt;"
+    return validator_tmpl.IMPL_EVENT_VALIDATOR_TEMPLATE.format(
+        event=self, get_metrics_metadata_impl=metadata_impl)
+
+
+class MetricInfo:
+  """Codegen-related info about a metric."""
+
+  def __init__(self, metric):
+    self.name = Util.sanitize_name(metric.name)
+    self.hash = Util.hash_name(metric.name)
+
+    if metric.type == 'hmac-string':
       self.type = 'std::string&'
-      self.setter = 'AddStringMetric'
-    elif json_obj['kind'] == 'int':
-      self.type = 'int'
+      self.setter = 'AddHmacMetric'
+      self.type_enum = 'kHmac'
+      self.base_value = 'base::Value(value)'
+    elif metric.type == 'int':
+      self.type = 'int64_t'
       self.setter = 'AddIntMetric'
+      self.type_enum = 'kLong'
+      self.base_value = 'base::Value(base::NumberToString(value))'
+    elif metric.type == 'raw-string':
+      self.type = 'std::string&'
+      self.setter = 'AddRawStringMetric'
+      self.type_enum = 'kRawString'
+      self.base_value = 'base::Value(value)'
+    elif metric.type == 'double':
+      self.type = 'double'
+      self.setter = 'AddDoubleMetric'
+      self.type_enum = 'kDouble'
+      self.base_value = 'base::Value(value)'
     else:
-      raise Exception("Unexpected metric kind: " + json_obj['kind'])
+      raise ValueError('Invalid metric type.')
 
-class Template(object):
+
+class Template:
   """Template for producing code from structured.xml."""
 
-  def __init__(self, basename, file_template, event_template, metric_template):
+  def __init__(self, model, dirname, basename, file_template, project_template,
+               event_template, metric_template):
+    self.model = model
+    self.dirname = dirname
     self.basename = basename
     self.file_template = file_template
+    self.project_template = project_template
     self.event_template = event_template
     self.metric_template = metric_template
 
-  def _StampMetricCode(self, file_info, event_info, metric):
-    """Stamp a metric by creating name hash constant based on the metric name,
-    and a setter method."""
-    return self.metric_template.format(
-        file=file_info,
-        event=event_info,
-        metric=MetricInfo(metric))
+  def write_file(self):
+    file_info = FileInfo(self.dirname, self.basename)
+    with open(file_info.filepath, 'w') as f:
+      f.write(self._stamp_file(file_info))
 
-  def _StampEventCode(self, file_info, event, project):
-    """Stamp an event class by creating a skeleton of the class based on the
-    event name, and then stamping code for each metric within it."""
-    event_info = EventInfo(event, project)
+  def _stamp_file(self, file_info):
+    project_code = ''.join(
+        self._stamp_project(file_info, p) for p in self.model.projects)
+
+    return self.file_template.format(file=file_info, project_code=project_code)
+
+  def _stamp_project(self, file_info, project):
+    project_info = ProjectInfo(project)
+    event_code = ''.join(
+        self._stamp_event(file_info, project_info, event)
+        for event in project.events)
+    return self.project_template.format(file=file_info,
+                                        project=project_info,
+                                        event_code=event_code)
+
+  def _stamp_event(self, file_info, project_info, event):
+    event_info = EventInfo(event, project_info)
     metric_code = ''.join(
-        self._StampMetricCode(file_info, event_info, metric)
-        for metric in event[_METRIC_TYPE.tag])
-    return self.event_template.format(
-        file=file_info,
-        event=event_info,
-        metric_code=metric_code)
+        self._stamp_metric(file_info, event_info, metric)
+        for metric in event.metrics)
+    return self.event_template.format(file=file_info,
+                                      project=project_info,
+                                      event=event_info,
+                                      metric_code=metric_code)
 
-  def _StampFileCode(self, relpath, data):
-    """Stamp a file by creating a class for each event, and a list of all event
-    name hashes."""
-    file_info = FileInfo(relpath, self.basename)
+  def _stamp_metric(self, file_info, event_info, metric):
+    return self.metric_template.format(file=file_info,
+                                       event=event_info,
+                                       metric=MetricInfo(metric))
+
+
+class ValidatorHeaderTemplate:
+  """Template for generating header validator code from structured.xml."""
+
+  def __init__(self, dirname, basename):
+    self.dirname = dirname
+    self.basename = basename
+
+  def write_file(self) -> None:
+    file_info = FileInfo(self.dirname, self.basename)
+    with open(file_info.filepath, 'w') as f:
+      f.write(self._stamp_file(file_info))
+
+  def _stamp_file(self, file_info) -> str:
+    return validator_tmpl.HEADER_FILE_TEMPLATE.format(file=file_info)
+
+
+class ValidatorImplTemplate:
+  """Template for generating implementation validator code from structured.xml.
+
+  The generated file will store a static map containing all the validators
+  mapped by event name. All validators are initialized statically.
+
+  Almost everything is generated in an anonymous namespace as the generated map
+  should not be exposed. The generated code will be in the following order:
+
+    1) EventValidator class implementation.
+    2) EventValidator static initialization.
+    3) Project map initialization mapping event name to corresponding
+    EventValidator.
+    4) Project class implementation.
+    5) Project validator static initialization.
+    6) Map initialization mapping project name to ProjectValidator.
+  """
+
+  def __init__(self, structured_model, dirname, basename):
+    self.structured_model = structured_model
+    self.dirname = dirname
+    self.basename = basename
+    self.projects = self.structured_model.projects
+
+  def write_file(self) -> None:
+    file_info = FileInfo(self.dirname, self.basename)
+    with open(file_info.filepath, 'w') as f:
+      f.write(self._stamp_file(file_info))
+
+  def _stamp_file(self, file_info) -> str:
     event_code = []
+    event_validators = []
+    project_event_maps = []
+    project_code = []
+    project_validators = []
 
-    project_name_hashes = set()
-    defined_projects = {
-        project['name']: project
-        for project in data[_PROJECTS_TYPE.tag][_PROJECT_TYPE.tag]
-    }
-    for event in data[_EVENTS_TYPE.tag][_EVENT_TYPE.tag]:
-      defined_project = defined_projects.get(event.get('project'))
-      event_code.append(self._StampEventCode(file_info, event, defined_project))
-      project_name_hashes.add(
-          defined_project['name'] if defined_project else event['name'])
+    for project in self.projects:
+      project_info = ProjectInfo(project)
+      event_infos = (EventInfo(event, project_info) for event in project.events)
+      project_event_code = '\n'.join(event_info.build_validator_code()
+                                     for event_info in event_infos)
 
-    event_code = ''.join(event_code)
+      event_code.append(project_event_code)
+      event_validators.append(project_info.build_event_validators())
+      project_event_maps.append(project_info.build_event_map())
+      project_code.append(project_info.build_validator_code())
+      project_validators.append(project_info.build_project_init())
 
-    project_name_hashes = [
-        'UINT64_C(%s)' % HashName(name)
-        for name in sorted(list(project_name_hashes))
-    ]
-    project_name_hashes = '{' + ', '.join(project_name_hashes) + '}'
+    # Turn all lists into strings.
+    events_code_str = ''.join(event_code)
+    event_validators_str = '\n'.join(event_validators)
+    project_event_maps_str = '\n'.join(project_event_maps)
+    project_code_str = ''.join(project_code)
+    project_validators_str = '\n'.join(project_validators)
 
-    return self.file_template.format(
+    return validator_tmpl.IMPL_FILE_TEMPLATE.format(
         file=file_info,
-        event_code=event_code,
-        project_name_hashes=project_name_hashes)
+        projects_code=project_code_str,
+        event_code=events_code_str,
+        event_validators=event_validators_str,
+        project_event_maps=project_event_maps_str,
+        project_validators=project_validators_str,
+        project_map=self._build_project_map())
 
-  def WriteFile(self, outdir, relpath, data):
-    """Generates code and writes it to a file.
-
-    Args:
-      relpath: The path to the file in the source tree.
-      rootdir: The root of the path the file should be written to.
-      data: The parsed structured.xml data.
-    """
-    output = open(os.path.join(outdir, self.basename), 'w')
-    output.write(self._StampFileCode(relpath, data))
-    output.close()
+  def _build_project_map(self) -> str:
+    project_infos = (ProjectInfo(project) for project in self.projects)
+    project_map = ',\n  '.join(
+        '{{"{}", &{}}}'.format(project.name, project.validator_snake_name)
+        for project in project_infos)
+    return validator_tmpl.IMPL_PROJECT_MAP_TEMPLATE.format(
+        project_map=project_map)

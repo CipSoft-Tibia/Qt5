@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "tst_qmakelib.h"
 
@@ -56,7 +31,7 @@ void tst_qmakelib::cleanupTestCase()
 
 void tst_qmakelib::proString()
 {
-    QString qs1(QStringLiteral("this is a string"));
+    QString qs1(QString::fromUtf8("this is a string"));
 
     ProString s1(qs1);
     QCOMPARE(s1.toQString(), QStringLiteral("this is a string"));
@@ -76,13 +51,12 @@ void tst_qmakelib::proString()
     QCOMPARE(ProString(qs2, 3, 13).trimmed().toQString(), QStringLiteral("spacy  string"));
     QCOMPARE(ProString(qs2, 1, 17).trimmed().toQString(), QStringLiteral("spacy  string"));
 
-    QVERIFY(s2.toQStringRef().string()->isSharedWith(qs1));
     s2.prepend(ProString("there "));
     QCOMPARE(s2.toQString(), QStringLiteral("there is a str"));
-    QVERIFY(!s2.toQStringRef().string()->isSharedWith(qs1));
 
     ProString s3("this is a longish string with bells and whistles");
     s3 = s3.mid(18, 17);
+    QCOMPARE(s3.toQString(), QStringLiteral("string with bells"));
     // Prepend to detached string with lots of spare space in it.
     s3.prepend(ProString("another "));
     QCOMPARE(s3.toQString(), QStringLiteral("another string with bells"));
@@ -129,7 +103,6 @@ void tst_qmakelib::proString()
     ProString s5;
     s5.append(sl2);
     QCOMPARE(s5.toQString(), QStringLiteral("foo"));
-    QVERIFY(s5.toQStringRef().string()->isSharedWith(*sl2.first().toQStringRef().string()));
 
     QCOMPARE(ProString("one") + ProString(" more"), QStringLiteral("one more"));
 }

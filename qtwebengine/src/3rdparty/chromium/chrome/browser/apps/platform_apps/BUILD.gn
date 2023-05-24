@@ -1,15 +1,8 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//extensions/buildflags/buildflags.gni")
-
-# This file depends on the legacy global sources assignment filter. It should
-# be converted to check target platform before assigning source files to the
-# sources variable. Remove this import and set_sources_assignment_filter call
-# when the file has been converted. See https://crbug.com/1018739 for details.
-import("//build/config/deprecated_default_sources_assignment_filter.gni")
-set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
 
 assert(enable_extensions)
 
@@ -29,8 +22,6 @@ source_set("platform_apps") {
     "browser_context_keyed_service_factories.h",
     "chrome_apps_browser_api_provider.cc",
     "chrome_apps_browser_api_provider.h",
-    "extension_app_shim_manager_delegate_mac.cc",
-    "extension_app_shim_manager_delegate_mac.h",
     "install_chrome_app.cc",
     "install_chrome_app.h",
     "platform_app_launch.cc",
@@ -43,6 +34,13 @@ source_set("platform_apps") {
     "shortcut_manager_factory.h",
   ]
 
+  if (is_mac) {
+    sources += [
+      "extension_app_shim_manager_delegate_mac.cc",
+      "extension_app_shim_manager_delegate_mac.h",
+    ]
+  }
+
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   public_deps = [
@@ -52,18 +50,23 @@ source_set("platform_apps") {
   ]
 
   deps = [
+    "//build:chromeos_buildflags",
     "//chrome/app:command_ids",
+    "//chrome/browser:browser_process",
+    "//chrome/browser/apps/app_service",
     "//chrome/browser/extensions",
     "//chrome/browser/media/router/discovery",
+    "//chrome/browser/profiles:profile",
     "//chrome/browser/sharing/proto:proto",
-    "//chrome/browser/web_applications/components:components",
+    "//chrome/browser/web_applications",
     "//chrome/browser/web_applications/extensions",
     "//chrome/common",
     "//components/crx_file",
     "//components/keyed_service/content",
     "//components/navigation_interception",
+    "//components/no_state_prefetch/browser",
     "//components/pref_registry",
-    "//components/prerender/browser",
+    "//components/services/app_service/public/cpp:app_types",
     "//content/public/browser",
     "//content/public/common",
     "//extensions/browser",

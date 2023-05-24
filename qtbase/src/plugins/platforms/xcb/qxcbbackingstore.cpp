@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qxcbbackingstore.h"
 
@@ -479,23 +443,27 @@ bool QXcbBackingStoreImage::scroll(const QRegion &area, int dx, int dy)
     const QRect bounds(QPoint(), size());
     const QRegion scrollArea(area & bounds);
     const QPoint delta(dx, dy);
+    const QRegion destinationRegion = scrollArea.translated(delta).intersected(bounds);
 
     if (m_clientSideScroll) {
         if (m_qimage.isNull())
             return false;
 
         if (hasShm())
-            preparePaint(scrollArea);
+            preparePaint(destinationRegion);
 
-        for (const QRect &rect : scrollArea)
-            qt_scrollRectInImage(m_qimage, rect, delta);
+        const QRect rect = scrollArea.boundingRect();
+        qt_scrollRectInImage(m_qimage, rect, delta);
     } else {
-        if (hasShm())
-            shmPutImage(m_xcb_pixmap, m_pendingFlush.intersected(scrollArea));
-        else
-            flushPixmap(scrollArea);
-
         ensureGC(m_xcb_pixmap);
+
+        if (hasShm()) {
+            QRegion partialFlushRegion = m_pendingFlush.intersected(scrollArea);
+            shmPutImage(m_xcb_pixmap, partialFlushRegion);
+            m_pendingFlush -= partialFlushRegion;
+        } else {
+            flushPixmap(scrollArea);
+        }
 
         for (const QRect &src : scrollArea) {
             const QRect dst = src.translated(delta).intersected(bounds);
@@ -507,13 +475,12 @@ bool QXcbBackingStoreImage::scroll(const QRegion &area, int dx, int dy)
                           dst.x(), dst.y(),
                           dst.width(), dst.height());
         }
+
+        if (hasShm())
+            m_pendingFlush -= destinationRegion;
     }
 
-    m_scrolledRegion |= scrollArea.translated(delta).intersected(bounds);
-    if (hasShm()) {
-        m_pendingFlush -= scrollArea;
-        m_pendingFlush -= m_scrolledRegion;
-    }
+    m_scrolledRegion |= destinationRegion;
 
     return true;
 }
@@ -537,7 +504,7 @@ void QXcbBackingStoreImage::ensureGC(xcb_drawable_t dst)
 static inline void copy_unswapped(char *dst, int dstBytesPerLine, const QImage &img, const QRect &rect)
 {
     const uchar *srcData = img.constBits();
-    const int srcBytesPerLine = img.bytesPerLine();
+    const qsizetype srcBytesPerLine = img.bytesPerLine();
 
     const int leftOffset = rect.left() * img.depth() >> 3;
     const int bottom = rect.bottom() + 1;
@@ -553,7 +520,7 @@ template <class Pixel>
 static inline void copy_swapped(char *dst, const int dstStride, const QImage &img, const QRect &rect)
 {
     const uchar *srcData = img.constBits();
-    const int srcBytesPerLine = img.bytesPerLine();
+    const qsizetype srcBytesPerLine = img.bytesPerLine();
 
     const int left = rect.left();
     const int width = rect.width();
@@ -842,7 +809,18 @@ QImage QXcbBackingStore::toImage() const
     // If the backingstore is rgbSwapped, return the internal image type here.
     if (!m_rgbImage.isNull())
         return m_rgbImage;
-    return m_image && m_image->image() ? *m_image->image() : QImage();
+
+    if (!m_image || !m_image->image())
+        return QImage();
+
+    m_image->flushScrolledRegion(true);
+
+    QImage image = *m_image->image();
+
+    // Return an image that does not share QImageData with the original image,
+    // even if they both point to the same data of the m_xcb_image, otherwise
+    // painting to m_qimage would detach it from the m_xcb_image data.
+    return QImage(image.constBits(), image.width(), image.height(), image.format());
 }
 
 QPlatformGraphicsBuffer *QXcbBackingStore::graphicsBuffer() const
@@ -887,26 +865,31 @@ void QXcbBackingStore::render(xcb_window_t window, const QRegion &region, const 
     m_image->put(window, region, offset);
 }
 
-#ifndef QT_NO_OPENGL
-void QXcbBackingStore::composeAndFlush(QWindow *window, const QRegion &region, const QPoint &offset,
-                                       QPlatformTextureList *textures,
-                                       bool translucentBackground)
+QPlatformBackingStore::FlushResult QXcbBackingStore::rhiFlush(QWindow *window,
+                                                              qreal sourceDevicePixelRatio,
+                                                              const QRegion &region,
+                                                              const QPoint &offset,
+                                                              QPlatformTextureList *textures,
+                                                              bool translucentBackground)
 {
     if (!m_image || m_image->size().isEmpty())
-        return;
+        return FlushFailed;
 
     m_image->flushScrolledRegion(true);
 
-    QPlatformBackingStore::composeAndFlush(window, region, offset, textures, translucentBackground);
-
+    auto result = QPlatformBackingStore::rhiFlush(window, sourceDevicePixelRatio, region, offset,
+                                                  textures, translucentBackground);
+    if (result != FlushSuccess)
+        return result;
     QXcbWindow *platformWindow = static_cast<QXcbWindow *>(window->handle());
     if (platformWindow->needsSync()) {
         platformWindow->updateSyncRequestCounter();
     } else {
         xcb_flush(xcb_connection());
     }
+
+    return FlushSuccess;
 }
-#endif // QT_NO_OPENGL
 
 void QXcbBackingStore::resize(const QSize &size, const QRegion &)
 {

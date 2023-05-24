@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@
 
 #include "base/json/json_writer.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/strings/escape.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
@@ -24,7 +25,6 @@
 #include "components/dom_distiller/core/url_utils.h"
 #include "components/grit/components_resources.h"
 #include "components/strings/grit/components_strings.h"
-#include "net/base/escape.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/template_expressions.h"
@@ -56,7 +56,7 @@ const char kSansSerifCssClass[] = "sans-serif";
 const char kMonospaceCssClass[] = "monospace";
 
 std::string GetPlatformSpecificCss() {
-#if defined(OS_ANDROID) || defined(OS_IOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   return "";
 #else  // Desktop
   return ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(
@@ -109,7 +109,8 @@ void EnsureNonEmptyContent(std::string* content) {
 }
 
 std::string ReplaceHtmlTemplateValues(const mojom::Theme theme,
-                                      const mojom::FontFamily font_family) {
+                                      const mojom::FontFamily font_family,
+                                      const std::string& csp_nonce) {
   std::string html_template =
       ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(
           IDR_DOM_DISTILLER_VIEWER_HTML);
@@ -156,26 +157,45 @@ std::string ReplaceHtmlTemplateValues(const mojom::Theme theme,
   // Now do other non-i18n string replacements.
   std::vector<std::string> substitutions;
 
+  std::ostringstream csp;
   std::ostringstream css;
   std::ostringstream svg;
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
   // On iOS the content is inlined as there is no API to detect those requests
   // and return the local data once a page is loaded.
   css << "<style>" << viewer::GetCss() << "</style>";
   svg << viewer::GetLoadingImage();
+
+  // iOS specific CSP policy to mitigate leaking of data from different
+  // origins.
+  csp << "<meta http-equiv=\"Content-Security-Policy\" content=\"";
+  csp << "default-src 'none'; ";
+  csp << "script-src 'nonce-" << csp_nonce << "'; ";
+  // YouTube videos are embedded as an iframe.
+  csp << "frame-src http://www.youtube.com; ";
+  csp << "style-src 'unsafe-inline' https://fonts.googleapis.com; ";
+  // Allows the fallback font-face from the main stylesheet.
+  csp << "font-src https://fonts.gstatic.com; ";
+  // Images will be inlined as data-uri if they are valid.
+  csp << "img-src data:; ";
+  csp << "form-action 'none'; ";
+  csp << "base-uri 'none'; ";
+  csp << "\">";
+
 #else
   css << "<link rel=\"stylesheet\" href=\"/" << kViewerCssPath << "\">";
   svg << "<img src=\"/" << kViewerLoadingImagePath << "\">";
-#endif  // defined(OS_IOS)
+#endif  // BUILDFLAG(IS_IOS)
 
-  substitutions.push_back(css.str());  // $1
+  substitutions.push_back(csp.str());  // $1
+  substitutions.push_back(css.str());  // $2
   substitutions.push_back(GetThemeCssClass(theme) + " " +
-                          GetFontCssClass(font_family));  // $2
+                          GetFontCssClass(font_family));  // $3
 
   substitutions.push_back(l10n_util::GetStringUTF8(
-      IDS_DOM_DISTILLER_JAVASCRIPT_DISABLED_CONTENT));  // $3
+      IDS_DOM_DISTILLER_JAVASCRIPT_DISABLED_CONTENT));  // $4
 
-  substitutions.push_back(svg.str());  // $4
+  substitutions.push_back(svg.str());  // $5
 
   return base::ReplaceStringPlaceholders(html_template, substitutions, nullptr);
 }
@@ -210,7 +230,7 @@ const std::string GetErrorPageJs() {
 }
 
 const std::string GetSetTitleJs(std::string title) {
-#if defined(OS_ANDROID) || defined(OS_IOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   base::Value suffixValue("");
 #else  // Desktop
   std::string suffix(
@@ -239,8 +259,9 @@ const std::string GetToggleLoadingIndicatorJs(bool is_last_page) {
 }
 
 const std::string GetArticleTemplateHtml(mojom::Theme theme,
-                                         mojom::FontFamily font_family) {
-  return ReplaceHtmlTemplateValues(theme, font_family);
+                                         mojom::FontFamily font_family,
+                                         const std::string& csp_nonce) {
+  return ReplaceHtmlTemplateValues(theme, font_family, csp_nonce);
 }
 
 const std::string GetUnsafeArticleContentJs(
@@ -296,7 +317,7 @@ std::unique_ptr<ViewerHandle> CreateViewRequest(
   if (has_valid_entry_id && has_valid_url) {
     // It is invalid to specify a query param for both |kEntryIdKey| and
     // |kUrlKey|.
-    return std::unique_ptr<ViewerHandle>();
+    return nullptr;
   }
 
   if (has_valid_entry_id) {
@@ -310,7 +331,7 @@ std::unique_ptr<ViewerHandle> CreateViewRequest(
   }
 
   // It is invalid to not specify a query param for |kEntryIdKey| or |kUrlKey|.
-  return std::unique_ptr<ViewerHandle>();
+  return nullptr;
 }
 
 const std::string GetDistilledPageThemeJs(mojom::Theme theme) {

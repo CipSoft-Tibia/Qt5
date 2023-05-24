@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSensors module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsensor.h"
 #include "qsensor_p.h"
@@ -280,7 +244,7 @@ void QSensorPrivate::init(const QByteArray &sensorType)
 
     Only use this constructor if there is no derived sensor class available. Note that all
     built-in sensors have a derived class, so using this constructor should only be necessary
-    when implementing custom sensors, like in the \l {Qt Sensors - Grue Sensor Example}{Grue sensor example}.
+    when implementing custom sensors.
 */
 QSensor::QSensor(const QByteArray &type, QObject *parent)
     : QObject(*new QSensorPrivate, parent)
@@ -313,7 +277,7 @@ QSensor::~QSensor()
 {
     Q_D(QSensor);
     stop();
-    Q_FOREACH (QSensorFilter *filter, d->filters)
+    for (QSensorFilter *filter : d->filters)
         filter->setSensor(0);
     delete d->backend;
     d->backend = 0;
@@ -364,7 +328,10 @@ void QSensor::setIdentifier(const QByteArray &identifier)
         qWarning() << "ERROR: Cannot call QSensor::setIdentifier while connected to a backend!";
         return;
     }
+    if (d->identifier == identifier)
+        return;
     d->identifier = identifier;
+    emit identifierChanged();
 }
 
 /*!
@@ -559,9 +526,6 @@ void QSensor::setSkipDuplicates(bool skipDuplicates)
     Entries in the list can represent discrete rates or a
     continuous range of rates.
     A discrete rate is noted by having both values the same.
-
-    See the sensor_explorer example for an example of how to interpret and use
-    this information.
 
     Note that this information is not mandatory as not all sensors have a rate at which
     they run. In such cases, the list will be empty.
@@ -847,7 +811,7 @@ void QSensor::setOutputRange(int index)
         return;
     }
     bool warn = true;
-    if (index >= 0 && index < d->outputRanges.count()) {
+    if (index >= 0 && index < d->outputRanges.size()) {
         warn = false;
         d->outputRange = index;
     }
@@ -1362,7 +1326,7 @@ void QSensorReading::copyValuesFrom(QSensorReading *other)
     \code
     class MyReading : public QSensorReading
     {
-        Q_OBJECT
+        \Q_OBJECT
         Q_PROPERTY(qreal myprop READ myprop)
         DECLARE_READING(MyReading)
     public:
@@ -1390,6 +1354,3 @@ void QSensorReading::copyValuesFrom(QSensorReading *other)
 */
 
 QT_END_NAMESPACE
-
-#include "moc_qsensor.cpp"
-

@@ -1,10 +1,16 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef GOOGLE_APIS_GAIA_OAUTH2_ACCESS_TOKEN_MANAGER_H_
 #define GOOGLE_APIS_GAIA_OAUTH2_ACCESS_TOKEN_MANAGER_H_
 
+#include <map>
+#include <set>
+
+#include "base/component_export.h"
+#include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/observer_list.h"
 #include "base/sequence_checker.h"
 #include "base/time/time.h"
@@ -19,22 +25,23 @@ class SharedURLLoaderFactory;
 class OAuth2AccessTokenFetcher;
 
 // Class that manages requests for OAuth2 access tokens.
-class OAuth2AccessTokenManager {
+class COMPONENT_EXPORT(GOOGLE_APIS) OAuth2AccessTokenManager {
  public:
   // A set of scopes in OAuth2 authentication.
   typedef std::set<std::string> ScopeSet;
   class RequestImpl;
 
-  class Delegate {
+  class COMPONENT_EXPORT(GOOGLE_APIS) Delegate {
    public:
     Delegate();
     virtual ~Delegate();
 
     // Creates and returns an OAuth2AccessTokenFetcher.
-    virtual std::unique_ptr<OAuth2AccessTokenFetcher> CreateAccessTokenFetcher(
+    [[nodiscard]] virtual std::unique_ptr<OAuth2AccessTokenFetcher>
+    CreateAccessTokenFetcher(
         const CoreAccountId& account_id,
         scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
-        OAuth2AccessTokenConsumer* consumer) WARN_UNUSED_RESULT = 0;
+        OAuth2AccessTokenConsumer* consumer) = 0;
 
     // Returns |true| if a refresh token is available for |account_id|, and
     // |false| otherwise.
@@ -73,7 +80,7 @@ class OAuth2AccessTokenManager {
   };
 
   // Class representing a request that fetches an OAuth2 access token.
-  class Request {
+  class COMPONENT_EXPORT(GOOGLE_APIS) Request {
    public:
     virtual ~Request();
     virtual CoreAccountId GetAccountId() const = 0;
@@ -84,7 +91,7 @@ class OAuth2AccessTokenManager {
 
   // Class representing the consumer of a Request passed to |StartRequest|,
   // which will be called back when the request completes.
-  class Consumer {
+  class COMPONENT_EXPORT(GOOGLE_APIS) Consumer {
    public:
     explicit Consumer(const std::string& id);
     virtual ~Consumer();
@@ -106,8 +113,9 @@ class OAuth2AccessTokenManager {
   // Implements a cancelable |OAuth2AccessTokenManager::Request|, which should
   // be operated on the UI thread.
   // TODO(davidroche): move this out of header file.
-  class RequestImpl : public base::SupportsWeakPtr<RequestImpl>,
-                      public Request {
+  class COMPONENT_EXPORT(GOOGLE_APIS) RequestImpl
+      : public base::SupportsWeakPtr<RequestImpl>,
+        public Request {
    public:
     // |consumer| is required to outlive this.
     RequestImpl(const CoreAccountId& account_id, Consumer* consumer);
@@ -126,7 +134,7 @@ class OAuth2AccessTokenManager {
    private:
     const CoreAccountId account_id_;
     // |consumer_| to call back when this request completes.
-    Consumer* const consumer_;
+    const raw_ptr<Consumer, DanglingUntriaged> consumer_;
 
     SEQUENCE_CHECKER(sequence_checker_);
   };
@@ -134,7 +142,7 @@ class OAuth2AccessTokenManager {
   // Classes that want to monitor status of access token and access token
   // request should implement this interface and register with the
   // AddDiagnosticsObserver() call.
-  class DiagnosticsObserver {
+  class COMPONENT_EXPORT(GOOGLE_APIS) DiagnosticsObserver {
    public:
     // Called when receiving request for access token.
     virtual void OnAccessTokenRequested(const CoreAccountId& account_id,
@@ -156,7 +164,7 @@ class OAuth2AccessTokenManager {
   };
 
   // The parameters used to fetch an OAuth2 access token.
-  struct RequestParameters {
+  struct COMPONENT_EXPORT(GOOGLE_APIS) RequestParameters {
     RequestParameters(const std::string& client_id,
                       const CoreAccountId& account_id,
                       const ScopeSet& scopes);
@@ -176,6 +184,10 @@ class OAuth2AccessTokenManager {
 
   explicit OAuth2AccessTokenManager(
       OAuth2AccessTokenManager::Delegate* delegate);
+
+  OAuth2AccessTokenManager(const OAuth2AccessTokenManager&) = delete;
+  OAuth2AccessTokenManager& operator=(const OAuth2AccessTokenManager&) = delete;
+
   virtual ~OAuth2AccessTokenManager();
 
   OAuth2AccessTokenManager::Delegate* GetDelegate();
@@ -223,6 +235,7 @@ class OAuth2AccessTokenManager {
       scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
       const std::string& client_id,
       const std::string& client_secret,
+      const std::string& consumer_name,
       const ScopeSet& scopes);
 
   // Returns a currently valid OAuth2 access token for the given set of scopes,
@@ -328,7 +341,7 @@ class OAuth2AccessTokenManager {
   // List of observers to notify when access token status changes.
   base::ObserverList<DiagnosticsObserver, true>::Unchecked
       diagnostics_observer_list_;
-  Delegate* delegate_;
+  raw_ptr<Delegate> delegate_;
   // A map from fetch parameters to a fetcher that is fetching an OAuth2 access
   // token using these parameters.
   std::map<RequestParameters, std::unique_ptr<Fetcher>> pending_fetchers_;
@@ -340,8 +353,6 @@ class OAuth2AccessTokenManager {
   FRIEND_TEST_ALL_PREFIXES(OAuth2AccessTokenManagerTest, ClearCache);
   FRIEND_TEST_ALL_PREFIXES(OAuth2AccessTokenManagerTest, ClearCacheForAccount);
   FRIEND_TEST_ALL_PREFIXES(OAuth2AccessTokenManagerTest, OnAccessTokenRemoved);
-
-  DISALLOW_COPY_AND_ASSIGN(OAuth2AccessTokenManager);
 };
 
 #endif  // GOOGLE_APIS_GAIA_OAUTH2_ACCESS_TOKEN_MANAGER_H_

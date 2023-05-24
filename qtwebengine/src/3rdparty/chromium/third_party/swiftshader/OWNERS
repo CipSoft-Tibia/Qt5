@@ -7,11 +7,15 @@
 # swiftshader.googlesource.com/SwiftShader has ownership and access control
 # seperate from those controlled by this OWNERS file.
 
-nicolascapens@google.com
-sugoi@google.com
-shannonwoods@google.com
-chrisforbes@google.com
-cwallez@google.com
-amaiorano@google.com
+jonahr@google.com
+syoussefi@google.com
+geofflang@google.com
 
-# COMPONENT: Internals>GPU>SwiftShader
+sugoi@google.com         #{LAST_RESORT_SUGGESTION}
+shannonwoods@google.com  #{LAST_RESORT_SUGGESTION}
+chrisforbes@google.com   #{LAST_RESORT_SUGGESTION}
+cwallez@google.com       #{LAST_RESORT_SUGGESTION}
+amaiorano@google.com     #{LAST_RESORT_SUGGESTION}
+natsu@google.com         #{LAST_RESORT_SUGGESTION}
+schuffelen@google.com    #{LAST_RESORT_SUGGESTION}
+bclayton@google.com      #{LAST_RESORT_SUGGESTION}

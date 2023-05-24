@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <QtTest/QSignalSpy>
@@ -33,9 +8,7 @@
 #include <Qt3DRender/QObjectPicker>
 #include <Qt3DRender/private/qobjectpicker_p.h>
 #include <Qt3DRender/QPickEvent>
-#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
-#include <Qt3DCore/qnodecreatedchange.h>
-#include "testpostmanarbiter.h"
+#include "testarbiter.h"
 
 class MyObjectPicker : public Qt3DRender::QObjectPicker
 {
@@ -44,11 +17,6 @@ public:
     MyObjectPicker(Qt3DCore::QNode *parent = nullptr)
         : Qt3DRender::QObjectPicker(parent)
     {}
-
-    void sceneChangeEvent(const Qt3DCore::QSceneChangePtr &change) final
-    {
-        Qt3DRender::QObjectPicker::sceneChangeEvent(change);
-    }
 
 private:
     friend class tst_ObjectPicker;
@@ -84,64 +52,6 @@ private Q_SLOTS:
         QCOMPARE(picker.isHoverEnabled(), false);
     }
 
-    void checkCreationData()
-    {
-        // GIVEN
-        Qt3DRender::QObjectPicker picker;
-
-        picker.setPriority(1584);
-        picker.setDragEnabled(true);
-        picker.setHoverEnabled(true);
-
-        // WHEN
-        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges;
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&picker);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            QCOMPARE(creationChanges.size(), 1);
-
-            const auto creationChangeData = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QObjectPickerData>>(creationChanges.first());
-            const Qt3DRender::QObjectPickerData cloneData = creationChangeData->data;
-
-            QCOMPARE(cloneData.priority, 1584);
-            QCOMPARE(cloneData.hoverEnabled, true);
-            QCOMPARE(cloneData.dragEnabled, true);
-            QCOMPARE(picker.id(), creationChangeData->subjectId());
-            QCOMPARE(picker.isEnabled(), true);
-            QCOMPARE(picker.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(picker.metaObject(), creationChangeData->metaObject());
-        }
-
-        // WHEN
-        picker.setEnabled(false);
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&picker);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            QCOMPARE(creationChanges.size(), 1);
-
-            const auto creationChangeData = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QObjectPickerData>>(creationChanges.first());
-            const Qt3DRender::QObjectPickerData cloneData = creationChangeData->data;
-
-            QCOMPARE(cloneData.priority, 1584);
-            QCOMPARE(cloneData.hoverEnabled, true);
-            QCOMPARE(cloneData.dragEnabled, true);
-            QCOMPARE(picker.id(), creationChangeData->subjectId());
-            QCOMPARE(picker.isEnabled(), false);
-            QCOMPARE(picker.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(picker.metaObject(), creationChangeData->metaObject());
-        }
-    }
-
     void checkPropertyUpdate()
     {
         // GIVEN
@@ -156,11 +66,10 @@ private Q_SLOTS:
                 QCoreApplication::processEvents();
 
                 // THEN
-                QCOMPARE(arbiter.events.size(), 0);
-                QCOMPARE(arbiter.dirtyNodes.size(), 1);
-                QCOMPARE(arbiter.dirtyNodes.front(), &picker);
+                QCOMPARE(arbiter.dirtyNodes().size(), 1);
+                QCOMPARE(arbiter.dirtyNodes().front(), &picker);
 
-                arbiter.dirtyNodes.clear();
+                arbiter.clear();
             }
 
             {
@@ -169,8 +78,7 @@ private Q_SLOTS:
                 QCoreApplication::processEvents();
 
                 // THEN
-                QCOMPARE(arbiter.events.size(), 0);
-                QCOMPARE(arbiter.dirtyNodes.size(), 0);
+                QCOMPARE(arbiter.dirtyNodes().size(), 0);
             }
         }
         {
@@ -180,11 +88,10 @@ private Q_SLOTS:
                 QCoreApplication::processEvents();
 
                 // THEN
-                QCOMPARE(arbiter.events.size(), 0);
-                QCOMPARE(arbiter.dirtyNodes.size(), 1);
-                QCOMPARE(arbiter.dirtyNodes.front(), &picker);
+                QCOMPARE(arbiter.dirtyNodes().size(), 1);
+                QCOMPARE(arbiter.dirtyNodes().front(), &picker);
 
-                arbiter.dirtyNodes.clear();
+                arbiter.clear();
             }
 
             {
@@ -193,8 +100,7 @@ private Q_SLOTS:
                 QCoreApplication::processEvents();
 
                 // THEN
-                QCOMPARE(arbiter.events.size(), 0);
-                QCOMPARE(arbiter.dirtyNodes.size(), 0);
+                QCOMPARE(arbiter.dirtyNodes().size(), 0);
             }
         }
         {
@@ -204,11 +110,10 @@ private Q_SLOTS:
                 QCoreApplication::processEvents();
 
                 // THEN
-                QCOMPARE(arbiter.events.size(), 0);
-                QCOMPARE(arbiter.dirtyNodes.size(), 1);
-                QCOMPARE(arbiter.dirtyNodes.front(), &picker);
+                QCOMPARE(arbiter.dirtyNodes().size(), 1);
+                QCOMPARE(arbiter.dirtyNodes().front(), &picker);
 
-                arbiter.dirtyNodes.clear();
+                arbiter.clear();
             }
 
             {
@@ -217,8 +122,7 @@ private Q_SLOTS:
                 QCoreApplication::processEvents();
 
                 // THEN
-                QCOMPARE(arbiter.events.size(), 0);
-                QCOMPARE(arbiter.dirtyNodes.size(), 0);
+                QCOMPARE(arbiter.dirtyNodes().size(), 0);
             }
         }
     }
@@ -248,11 +152,10 @@ private Q_SLOTS:
         QCoreApplication::processEvents();
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), objectPicker.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), objectPicker.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
     }
 };
 

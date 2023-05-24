@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,11 @@
 
 namespace ntp_snippets {
 
-CategoryInfo::CategoryInfo(const base::string16& title,
+CategoryInfo::CategoryInfo(const std::u16string& title,
                            ContentSuggestionsCardLayout card_layout,
                            ContentSuggestionsAdditionalAction additional_action,
                            bool show_if_empty,
-                           const base::string16& no_suggestions_message)
+                           const std::u16string& no_suggestions_message)
     : title_(title),
       card_layout_(card_layout),
       additional_action_(additional_action),

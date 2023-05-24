@@ -1,44 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <Qt3DRender/qrendercapture.h>
 #include <Qt3DRender/private/qrendercapture_p.h>
-#include <Qt3DCore/qscenechange.h>
-#include <Qt3DCore/qpropertyupdatedchange.h>
-#include <Qt3DRender/qframegraphnodecreatedchange.h>
 
 #include <QPointer>
 #include <QMutexLocker>
@@ -117,15 +81,6 @@ namespace Qt3DRender {
  * Returns true if the image was successfully saved; otherwise returns false.
  *
  * \since 5.9
- */
-
-/*!
- * \qmlmethod void Qt3D.Render::RenderCaptureReply::saveToFile(fileName)
- * \deprecated
- *
- * Saves the render capture result as an image to \a fileName.
- *
- * Deprecated in 5.9. Use saveImage().
  */
 
 /*!
@@ -224,19 +179,6 @@ bool QRenderCaptureReply::saveImage(const QString &fileName) const
         return d->m_image.save(fileName);
     }
     return false;
-}
-
-/*!
- * \deprecated
- * Saves the render capture result as an image to \a fileName.
- *
- * Deprecated in 5.9. Use saveImage().
- */
-void QRenderCaptureReply::saveToFile(const QString &fileName) const
-{
-    Q_D(const QRenderCaptureReply);
-    if (d->m_complete)
-        d->m_image.save(fileName);
 }
 
 /*!
@@ -370,41 +312,8 @@ Qt3DRender::QRenderCaptureReply *QRenderCapture::requestCapture()
     return requestCapture(QRect());
 }
 
-/*!
- * \internal
- */
-void QRenderCapture::sceneChangeEvent(const Qt3DCore::QSceneChangePtr &change)
-{
-    Q_D(QRenderCapture);
-    Qt3DCore::QPropertyUpdatedChangePtr propertyChange = qSharedPointerCast<Qt3DCore::QPropertyUpdatedChange>(change);
-    if (propertyChange->type() == Qt3DCore::PropertyUpdated) {
-        if (propertyChange->propertyName() == QByteArrayLiteral("renderCaptureData")) {
-            RenderCaptureDataPtr data = propertyChange->value().value<RenderCaptureDataPtr>();
-            QPointer<QRenderCaptureReply> reply = d->takeReply(data.data()->captureId);
-            if (!reply.isNull()) {
-                d->setImage(reply, data.data()->image);
-                emit reply->completed();
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-                if (reply)
-                    emit reply->completeChanged(true);
-QT_WARNING_POP
-            }
-        }
-    }
-}
-
-/*!
- * \internal
- */
-Qt3DCore::QNodeCreatedChangeBasePtr QRenderCapture::createNodeCreationChange() const
-{
-    auto creationChange = QFrameGraphNodeCreatedChangePtr<QRenderCaptureInitData>::create(this);
-    QRenderCaptureInitData &data = creationChange->data;
-    data.captureId = 0;
-    return creationChange;
-}
-
 } // Qt3DRender
 
 QT_END_NAMESPACE
+
+#include "moc_qrendercapture.cpp"

@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the demonstration applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "composition.h"
 #include <QBoxLayout>
@@ -266,6 +219,7 @@ CompositionRenderer::CompositionRenderer(QWidget *parent)
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 #if QT_CONFIG(opengl)
     m_pbuffer_size = 1024;
+    m_base_tex = 0;
 #endif
 }
 
@@ -361,6 +315,7 @@ void CompositionRenderer::paint(QPainter *painter)
 {
 #if QT_CONFIG(opengl)
     if (usesOpenGL() && glWindow()->isValid()) {
+        auto *funcs = QOpenGLContext::currentContext()->functions();
 
         if (!m_blitter.isCreated())
             m_blitter.create();
@@ -385,10 +340,13 @@ void CompositionRenderer::paint(QPainter *painter)
             p.setCompositionMode(QPainter::CompositionMode_SourceOver);
             drawBase(p);
             p.end();
+            if (m_base_tex)
+                funcs->glDeleteTextures(1, &m_base_tex);
             m_base_tex = m_fbo->takeTexture();
         }
 
         painter->beginNativePainting();
+        uint compositingTex;
         {
             QPainter p(m_fbo.get());
             p.beginNativePainting();
@@ -400,19 +358,18 @@ void CompositionRenderer::paint(QPainter *painter)
             p.endNativePainting();
             drawSource(p);
             p.end();
-            m_compositing_tex = m_fbo->takeTexture();
+            compositingTex = m_fbo->texture();
         }
         painter->endNativePainting();
 
         painter->beginNativePainting();
-        auto *funcs = QOpenGLContext::currentContext()->functions();
         funcs->glEnable(GL_BLEND);
         funcs->glBlendEquation(GL_FUNC_ADD);
         funcs->glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         m_blitter.bind();
         const QRect targetRect(QPoint(0, 0), m_fbo->size());
         const QMatrix4x4 target = QOpenGLTextureBlitter::targetTransform(targetRect, QRect(QPoint(0, 0), size()));
-        m_blitter.blit(m_compositing_tex, target, QOpenGLTextureBlitter::OriginBottomLeft);
+        m_blitter.blit(compositingTex, target, QOpenGLTextureBlitter::OriginBottomLeft);
         m_blitter.release();
         painter->endNativePainting();
     } else

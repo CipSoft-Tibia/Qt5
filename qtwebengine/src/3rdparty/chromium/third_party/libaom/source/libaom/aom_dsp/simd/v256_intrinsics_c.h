@@ -14,6 +14,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "config/aom_config.h"
 
@@ -70,10 +71,7 @@ SIMD_INLINE c_v256 c_v256_from_v64(c_v64 a, c_v64 b, c_v64 c, c_v64 d) {
 
 SIMD_INLINE c_v256 c_v256_load_unaligned(const void *p) {
   c_v256 t;
-  uint8_t *pp = (uint8_t *)p;
-  uint8_t *q = (uint8_t *)&t;
-  int c;
-  for (c = 0; c < 32; c++) q[c] = pp[c];
+  memcpy(&t, p, 32);
   return t;
 }
 
@@ -86,10 +84,7 @@ SIMD_INLINE c_v256 c_v256_load_aligned(const void *p) {
 }
 
 SIMD_INLINE void c_v256_store_unaligned(void *p, c_v256 a) {
-  uint8_t *pp = (uint8_t *)p;
-  uint8_t *q = (uint8_t *)&a;
-  int c;
-  for (c = 0; c < 32; c++) pp[c] = q[c];
+  memcpy(p, &a, 32);
 }
 
 SIMD_INLINE void c_v256_store_aligned(void *p, c_v256 a) {
@@ -385,7 +380,7 @@ SIMD_INLINE c_v256 c_v256_min_s8(c_v256 a, c_v256 b) {
 }
 
 SIMD_INLINE uint32_t c_v256_movemask_8(c_v256 a) {
-  return ((a.s8[31] < 0) << 31) | ((a.s8[30] < 0) << 30) |
+  return ((uint32_t)(a.s8[31] < 0) << 31) | ((a.s8[30] < 0) << 30) |
          ((a.s8[29] < 0) << 29) | ((a.s8[28] < 0) << 28) |
          ((a.s8[27] < 0) << 27) | ((a.s8[26] < 0) << 26) |
          ((a.s8[25] < 0) << 25) | ((a.s8[24] < 0) << 24) |

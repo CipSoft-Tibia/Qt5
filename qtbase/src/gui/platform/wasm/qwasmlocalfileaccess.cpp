@@ -1,94 +1,111 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwasmlocalfileaccess_p.h"
+#include "qlocalfileapi_p.h"
 #include <private/qstdweb_p.h>
 #include <emscripten.h>
 #include <emscripten/bind.h>
 #include <emscripten/html5.h>
 #include <emscripten/val.h>
 
+#include <QtCore/qregularexpression.h>
+
 QT_BEGIN_NAMESPACE
 
 namespace QWasmLocalFileAccess {
-
-void streamFile(const qstdweb::File &file, uint32_t offset, uint32_t length, char *buffer, const std::function<void ()> &completed)
+namespace FileDialog {
+namespace {
+bool hasLocalFilesApi()
 {
-    // Read file in chunks in order to avoid holding two copies in memory at the same time
-    const uint32_t chunkSize = 256 * 1024;
-    const uint32_t end = offset + length;
-    // assert end < file.size
-    auto fileReader = std::make_shared<qstdweb::FileReader>();
-
-    auto chunkCompleted = std::make_shared<std::function<void (uint32_t, char *buffer)>>();
-    *chunkCompleted = [=](uint32_t chunkBegin, char *chunkBuffer) mutable {
-
-        // Copy current chunk from JS memory to Wasm memory
-        qstdweb::ArrayBuffer result = fileReader->result();
-        qstdweb::Uint8Array(result).copyTo(chunkBuffer);
-
-        // Read next chunk if not at buffer end
-        uint32_t nextChunkBegin = std::min(chunkBegin + result.byteLength(), end);
-        uint32_t nextChunkEnd = std::min(nextChunkBegin + chunkSize, end);
-        if (nextChunkBegin == end) {
-            completed();
-            chunkCompleted.reset();
-            return;
-        }
-        char *nextChunkBuffer = chunkBuffer + result.byteLength();
-        fileReader->onLoad([=]() { (*chunkCompleted)(nextChunkBegin, nextChunkBuffer); });
-        qstdweb::Blob blob = file.slice(nextChunkBegin, nextChunkEnd);
-        fileReader->readAsArrayBuffer(blob);
-    };
-
-    // Read first chunk. First iteration is a dummy iteration with no available data.
-    (*chunkCompleted)(offset, buffer);
+    return !qstdweb::window()["showOpenFilePicker"].isUndefined();
 }
 
-void streamFile(const qstdweb::File &file, char *buffer, const std::function<void ()> &completed)
+void showOpenViaHTMLPolyfill(const QStringList &accept, FileSelectMode fileSelectMode,
+                             qstdweb::PromiseCallbacks onFilesSelected)
 {
-    streamFile(file, 0, file.size(), buffer, completed);
+    // Create file input html element which will display a native file dialog
+    // and call back to our onchange handler once the user has selected
+    // one or more files.
+    emscripten::val document = emscripten::val::global("document");
+    emscripten::val input = document.call<emscripten::val>("createElement", std::string("input"));
+    input.set("type", "file");
+    input.set("style", "display:none");
+    input.set("accept", LocalFileApi::makeFileInputAccept(accept));
+    Q_UNUSED(accept);
+    input.set("multiple", emscripten::val(fileSelectMode == FileSelectMode::MultipleFiles));
+
+    // Note: there is no event in case the user cancels the file dialog.
+    static std::unique_ptr<qstdweb::EventCallback> changeEvent;
+    auto callback = [=](emscripten::val) { onFilesSelected.thenFunc(input["files"]); };
+    changeEvent = std::make_unique<qstdweb::EventCallback>(input, "change", callback);
+
+    // Activate file input
+    emscripten::val body = document["body"];
+    body.call<void>("appendChild", input);
+    input.call<void>("click");
+    body.call<void>("removeChild", input);
 }
 
+void showOpenViaLocalFileApi(const QStringList &accept, FileSelectMode fileSelectMode,
+                             qstdweb::PromiseCallbacks callbacks)
+{
+    using namespace qstdweb;
+
+    auto options = LocalFileApi::makeOpenFileOptions(accept, fileSelectMode == FileSelectMode::MultipleFiles);
+
+    Promise::make(
+        window(), QStringLiteral("showOpenFilePicker"),
+        {
+            .thenFunc = [=](emscripten::val fileHandles) mutable {
+                std::vector<emscripten::val> filePromises;
+                filePromises.reserve(fileHandles["length"].as<int>());
+                for (int i = 0; i < fileHandles["length"].as<int>(); ++i)
+                    filePromises.push_back(fileHandles[i].call<emscripten::val>("getFile"));
+                Promise::all(std::move(filePromises), callbacks);
+            },
+            .catchFunc = callbacks.catchFunc,
+            .finallyFunc = callbacks.finallyFunc,
+        }, std::move(options));
+}
+
+void showSaveViaLocalFileApi(const std::string &fileNameHint, qstdweb::PromiseCallbacks callbacks)
+{
+    using namespace qstdweb;
+    using namespace emscripten;
+
+    auto options = LocalFileApi::makeSaveFileOptions(QStringList(), fileNameHint);
+
+    Promise::make(
+        window(), QStringLiteral("showSaveFilePicker"),
+        std::move(callbacks), std::move(options));
+}
+}  // namespace
+
+void showOpen(const QStringList &accept, FileSelectMode fileSelectMode,
+              qstdweb::PromiseCallbacks callbacks)
+{
+    hasLocalFilesApi() ?
+        showOpenViaLocalFileApi(accept, fileSelectMode, std::move(callbacks)) :
+        showOpenViaHTMLPolyfill(accept, fileSelectMode, std::move(callbacks));
+}
+
+bool canShowSave()
+{
+    return hasLocalFilesApi();
+}
+
+void showSave(const std::string &fileNameHint, qstdweb::PromiseCallbacks callbacks)
+{
+    Q_ASSERT(canShowSave());
+    showSaveViaLocalFileApi(fileNameHint, std::move(callbacks));
+}
+}  // namespace FileDialog
+
+namespace {
 void readFiles(const qstdweb::FileList &fileList,
-    const std::function<char *(uint64_t size, const std::string name)> &acceptFile,
-    const std::function<void ()> &fileDataReady)
+               const std::function<char *(uint64_t size, const std::string name)> &acceptFile,
+               const std::function<void ()> &fileDataReady)
 {
     auto readFile = std::make_shared<std::function<void(int)>>();
 
@@ -99,7 +116,7 @@ void readFiles(const qstdweb::FileList &fileList,
             return;
         }
 
-        const qstdweb::File file = fileList[fileIndex];
+        const qstdweb::File file = qstdweb::File(fileList[fileIndex]);
 
         // Ask caller if the file should be accepted
         char *buffer = acceptFile(file.size(), file.name());
@@ -109,7 +126,7 @@ void readFiles(const qstdweb::FileList &fileList,
         }
 
         // Read file data into caller-provided buffer
-        streamFile(file, buffer, [=]() {
+        file.stream(buffer, [readFile = readFile.get(), fileIndex, fileDataReady]() {
             fileDataReady();
             (*readFile)(fileIndex + 1);
         });
@@ -118,76 +135,30 @@ void readFiles(const qstdweb::FileList &fileList,
     (*readFile)(0);
 }
 
-typedef std::function<void (const qstdweb::FileList &fileList)> OpenFileDialogCallback;
-void openFileDialog(const std::string &accept, FileSelectMode fileSelectMode,
-                    const OpenFileDialogCallback &filesSelected)
+QStringList makeFilterList(const std::string &qtAcceptList)
 {
-    // Create file input html element which will display a native file dialog
-    // and call back to our onchange handler once the user has selected
-    // one or more files.
+    // copy of qt_make_filter_list() from qfiledialog.cpp
+    auto filter = QString::fromStdString(qtAcceptList); 
+    if (filter.isEmpty())
+        return QStringList();
+    QString sep(";;");
+    if (!filter.contains(sep) && filter.contains(u'\n'))
+        sep = u'\n';
+
+    return filter.split(sep);
+}
+}
+
+void downloadDataAsFile(const char *content, size_t size, const std::string &fileNameHint)
+{
+    // Save a file by creating programmatically clicking a download
+    // link to an object url to a Blob containing a copy of the file
+    // content. The copy is made so that the passed in content buffer
+    // can be released as soon as this function returns.
+    qstdweb::Blob contentBlob = qstdweb::Blob::copyFrom(content, size);
     emscripten::val document = emscripten::val::global("document");
-    emscripten::val input = document.call<emscripten::val>("createElement", std::string("input"));
-    input.set("type", "file");
-    input.set("style", "display:none");
-    input.set("accept", emscripten::val(accept));
-    input.set("multiple", emscripten::val(fileSelectMode == MultipleFiles));
-
-    // Note: there is no event in case the user cancels the file dialog.
-    static std::unique_ptr<qstdweb::EventCallback> changeEvent;
-    auto callback = [=]() { filesSelected(qstdweb::FileList(input["files"])); };
-    changeEvent.reset(new qstdweb::EventCallback(input, "change", callback));
-
-    // Activate file input
-    emscripten::val body = document["body"];
-    body.call<void>("appendChild", input);
-    input.call<void>("click");
-    body.call<void>("removeChild", input);
-}
-
-void openFiles(const std::string &accept, FileSelectMode fileSelectMode,
-    const std::function<void (int fileCount)> &fileDialogClosed,
-    const std::function<char *(uint64_t size, const std::string name)> &acceptFile,
-    const std::function<void()> &fileDataReady)
-{
-    openFileDialog(accept, fileSelectMode, [=](const qstdweb::FileList &files) {
-        fileDialogClosed(files.length());
-        readFiles(files, acceptFile, fileDataReady);
-    });
-}
-
-void openFile(const std::string &accept,
-    const std::function<void (bool fileSelected)> &fileDialogClosed,
-    const std::function<char *(uint64_t size, const std::string name)> &acceptFile,
-    const std::function<void()> &fileDataReady)
-{
-    auto fileDialogClosedWithInt = [=](int fileCount) { fileDialogClosed(fileCount != 0); };
-    openFiles(accept, FileSelectMode::SingleFile, fileDialogClosedWithInt, acceptFile, fileDataReady);
-}
-
-void saveFile(const char *content, size_t size, const std::string &fileNameHint)
-{
-    // Save a file by creating programatically clicking a download
-    // link to an object url to a Blob containing the file content.
-    // File content is copied once, so that the passed in content
-    // buffer can be released as soon as this function returns - we
-    // don't know for how long the browser will retain the TypedArray
-    // view used to create the Blob.
-
-    emscripten::val document = emscripten::val::global("document");
-    emscripten::val window = emscripten::val::global("window");
-
-    emscripten::val fileContentView = emscripten::val(emscripten::typed_memory_view(size, content));
-    emscripten::val fileContentCopy = emscripten::val::global("ArrayBuffer").new_(size);
-    emscripten::val fileContentCopyView = emscripten::val::global("Uint8Array").new_(fileContentCopy);
-    fileContentCopyView.call<void>("set", fileContentView);
-
-    emscripten::val contentArray = emscripten::val::array();
-    contentArray.call<void>("push", fileContentCopyView);
-    emscripten::val type = emscripten::val::object();
-    type.set("type","application/octet-stream");
-    emscripten::val contentBlob = emscripten::val::global("Blob").new_(contentArray, type);
-
-    emscripten::val contentUrl = window["URL"].call<emscripten::val>("createObjectURL", contentBlob);
+    emscripten::val window = qstdweb::window();
+    emscripten::val contentUrl = window["URL"].call<emscripten::val>("createObjectURL", contentBlob.val());
     emscripten::val contentLink = document.call<emscripten::val>("createElement", std::string("a"));
     contentLink.set("href", contentUrl);
     contentLink.set("download", fileNameHint);
@@ -199,6 +170,118 @@ void saveFile(const char *content, size_t size, const std::string &fileNameHint)
     body.call<void>("removeChild", contentLink);
 
     window["URL"].call<emscripten::val>("revokeObjectURL", contentUrl);
+}
+
+void openFiles(const std::string &accept, FileSelectMode fileSelectMode,
+    const std::function<void (int fileCount)> &fileDialogClosed,
+    const std::function<char *(uint64_t size, const std::string& name)> &acceptFile,
+    const std::function<void()> &fileDataReady)
+{
+    FileDialog::showOpen(makeFilterList(accept), fileSelectMode, {
+        .thenFunc = [=](emscripten::val result) {
+            auto files = qstdweb::FileList(result);
+            fileDialogClosed(files.length());
+            readFiles(files, acceptFile, fileDataReady);
+        },
+        .catchFunc = [=](emscripten::val) {
+            fileDialogClosed(0);
+        }
+    });
+}
+
+void openFile(const std::string &accept,
+    const std::function<void (bool fileSelected)> &fileDialogClosed,
+    const std::function<char *(uint64_t size, const std::string& name)> &acceptFile,
+    const std::function<void()> &fileDataReady)
+{
+    auto fileDialogClosedWithInt = [=](int fileCount) { fileDialogClosed(fileCount != 0); };
+    openFiles(accept, FileSelectMode::SingleFile, fileDialogClosedWithInt, acceptFile, fileDataReady);
+}
+
+void saveDataToFileInChunks(emscripten::val fileHandle, const QByteArray &data)
+{
+    using namespace emscripten;
+    using namespace qstdweb;
+
+    Promise::make(fileHandle, QStringLiteral("createWritable"), {
+        .thenFunc = [=](val writable) {
+            struct State {
+                size_t written;
+                std::function<void(val result)> continuation;
+            };
+
+            static constexpr size_t desiredChunkSize = 1024u;
+#if defined(__EMSCRIPTEN_SHARED_MEMORY__)
+            qstdweb::Uint8Array chunkArray(desiredChunkSize);
+#endif
+
+            auto state = std::make_shared<State>();
+            state->written = 0u;
+            state->continuation = [=](val) mutable {
+                const size_t remaining = data.size() - state->written;
+                if (remaining == 0) {
+                    Promise::make(writable, QStringLiteral("close"), { .thenFunc = [=](val) {} });
+                    state.reset();
+                    return;
+                }
+
+                const auto currentChunkSize = std::min(remaining, desiredChunkSize);
+
+#if defined(__EMSCRIPTEN_SHARED_MEMORY__)
+                // If shared memory is used, WebAssembly.Memory is instantiated with the 'shared'
+                // option on. Passing a typed_memory_view to SharedArrayBuffer to
+                // FileSystemWritableFileStream.write is disallowed by security policies, so we
+                // need to make a copy of the data to a chunk array buffer.
+                Promise::make(
+                    writable, QStringLiteral("write"),
+                    {
+                        .thenFunc = state->continuation,
+                    },
+                    chunkArray.copyFrom(data.constData() + state->written, currentChunkSize)
+                        .val()
+                        .call<emscripten::val>("subarray", emscripten::val(0),
+                                               emscripten::val(currentChunkSize)));
+#else
+                Promise::make(writable, QStringLiteral("write"),
+                    {
+                        .thenFunc = state->continuation,
+                    },
+                    val(typed_memory_view(currentChunkSize, data.constData() + state->written)));
+#endif
+                state->written += currentChunkSize;
+            };
+
+            state->continuation(val::undefined());
+        },
+    });
+}
+
+void saveFile(const QByteArray &data, const std::string &fileNameHint)
+{
+    if (!FileDialog::canShowSave()) {
+        downloadDataAsFile(data.constData(), data.size(), fileNameHint);
+        return;
+    }
+
+    FileDialog::showSave(fileNameHint, {
+        .thenFunc = [=](emscripten::val result) {
+            saveDataToFileInChunks(result, data);
+        },
+    });
+}
+
+void saveFile(const char *content, size_t size, const std::string &fileNameHint)
+{
+    if (!FileDialog::canShowSave()) {
+        downloadDataAsFile(content, size, fileNameHint);
+        return;
+    }
+
+    FileDialog::showSave(fileNameHint, {
+        .thenFunc = [=](emscripten::val result) {
+            saveDataToFileInChunks(result, QByteArray(content, size));
+        },
+    });
 }
 
 } // namespace QWasmLocalFileAccess

@@ -17,9 +17,8 @@
 #ifndef INCLUDE_PERFETTO_EXT_IPC_CLIENT_INFO_H_
 #define INCLUDE_PERFETTO_EXT_IPC_CLIENT_INFO_H_
 
-#include <unistd.h>
-
 #include "perfetto/base/logging.h"
+#include "perfetto/ext/base/utils.h"
 #include "perfetto/ext/ipc/basic_types.h"
 
 namespace perfetto {
@@ -29,8 +28,8 @@ namespace ipc {
 class ClientInfo {
  public:
   ClientInfo() = default;
-  ClientInfo(ClientID client_id, uid_t uid)
-      : client_id_(client_id), uid_(uid) {}
+  ClientInfo(ClientID client_id, uid_t uid, pid_t pid)
+      : client_id_(client_id), uid_(uid), pid_(pid) {}
 
   bool operator==(const ClientInfo& other) const {
     return (client_id_ == other.client_id_ && uid_ == other.uid_);
@@ -51,9 +50,13 @@ class ClientInfo {
   // Posix User ID. Comes from the kernel, can be trusted.
   uid_t uid() const { return uid_; }
 
+  // Posix process ID. Comes from the kernel and can be trusted.
+  int32_t pid() const { return pid_; }
+
  private:
   ClientID client_id_ = 0;
   uid_t uid_ = kInvalidUid;
+  pid_t pid_ = base::kInvalidPid;
 };
 
 }  // namespace ipc

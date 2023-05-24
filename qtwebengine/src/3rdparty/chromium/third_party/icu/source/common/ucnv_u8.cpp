@@ -56,7 +56,7 @@ static const uint32_t offsetsFromUTF8[5] = {0,
 static UBool hasCESU8Data(const UConverter *cnv)
 {
 #if UCONFIG_ONLY_HTML_CONVERSION
-    return FALSE;
+    return false;
 #else
     return (UBool)(cnv->sharedData == &_CESU8Data);
 #endif
@@ -707,9 +707,9 @@ ucnv_UTF8FromUTF8(UConverterFromUnicodeArgs *pFromUArgs,
 
         // Do not go back into the bytes that will be read for finishing a partial
         // sequence from the previous buffer.
-        int32_t length=count-toULimit;
+        int32_t length=count-toULength;
         U8_TRUNCATE_IF_INCOMPLETE(source, 0, length);
-        count=toULimit+length;
+        count=toULength+length;
     }
 
     if(c!=0) {
@@ -888,7 +888,7 @@ static const UConverterStaticData _UTF8StaticData={
     "UTF-8",
     1208, UCNV_IBM, UCNV_UTF8,
     1, 3, /* max 3 bytes per UChar from UTF-8 (4 bytes from surrogate _pair_) */
-    { 0xef, 0xbf, 0xbd, 0 },3,FALSE,FALSE,
+    { 0xef, 0xbf, 0xbd, 0 },3,false,false,
     0,
     0,
     { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } /* reserved */
@@ -931,7 +931,7 @@ static const UConverterStaticData _CESU8StaticData={
     "CESU-8",
     9400, /* CCSID for CESU-8 */
     UCNV_UNKNOWN, UCNV_CESU8, 1, 3,
-    { 0xef, 0xbf, 0xbd, 0 },3,FALSE,FALSE,
+    { 0xef, 0xbf, 0xbd, 0 },3,false,false,
     0,
     0,
     { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } /* reserved */

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNfc module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QNEARFIELDTARGET_P_H
 #define QNEARFIELDTARGET_P_H
@@ -51,15 +15,14 @@
 // We mean it.
 //
 
-#include "qtnfcglobal.h"
-
 #include "qnearfieldtarget.h"
 
-#include <QtCore/QMap>
+#include <QtCore/QByteArray>
+#include <QtCore/QList>
+#include <QtCore/QObject>
 #include <QtCore/QSharedData>
 #include <QtCore/QVariant>
-
-#define NEARFIELDTARGET_Q() NearFieldTarget * const q = reinterpret_cast<NearFieldTarget *>(q_ptr)
+#include <QtCore/QMap>
 
 QT_BEGIN_NAMESPACE
 
@@ -67,20 +30,51 @@ class QNearFieldTarget::RequestIdPrivate : public QSharedData
 {
 };
 
-class QNearFieldTargetPrivate
+class Q_AUTOTEST_EXPORT QNearFieldTargetPrivate : public QObject
 {
-    QNearFieldTarget *q_ptr;
-    Q_DECLARE_PUBLIC(QNearFieldTarget)
+    Q_OBJECT
 
 public:
-    QNearFieldTargetPrivate(QNearFieldTarget *q) : q_ptr(q) {}
+    QNearFieldTarget *q_ptr;
 
+    explicit QNearFieldTargetPrivate(QObject *parent = nullptr);
+    virtual ~QNearFieldTargetPrivate() = default;
+
+    virtual QByteArray uid() const;
+    virtual QNearFieldTarget::Type type() const;
+    virtual QNearFieldTarget::AccessMethods accessMethods() const;
+
+    virtual bool disconnect();
+
+    // NdefAccess
+    virtual bool hasNdefMessage();
+    virtual QNearFieldTarget::RequestId readNdefMessages();
+    virtual QNearFieldTarget::RequestId writeNdefMessages(const QList<QNdefMessage> &messages);
+
+    // TagTypeSpecificAccess
+    virtual int maxCommandLength() const;
+    virtual QNearFieldTarget::RequestId sendCommand(const QByteArray &command);
+
+    bool waitForRequestCompleted(const QNearFieldTarget::RequestId &id, int msecs = 5000);
+    QVariant requestResponse(const QNearFieldTarget::RequestId &id) const;
+
+Q_SIGNALS:
+    void disconnected();
+
+    void ndefMessageRead(const QNdefMessage &message);
+
+    void requestCompleted(const QNearFieldTarget::RequestId &id);
+
+    void error(QNearFieldTarget::Error error, const QNearFieldTarget::RequestId &id);
+
+protected:
     QMap<QNearFieldTarget::RequestId, QVariant> m_decodedResponses;
 
-    bool keepConnection() const;
-    bool setKeepConnection(bool isPersistent);
-    bool disconnect();
-    int maxCommandLength() const;
+    virtual void setResponseForRequest(const QNearFieldTarget::RequestId &id,
+                                       const QVariant &response,
+                                       bool emitRequestCompleted = true);
+
+    void reportError(QNearFieldTarget::Error error, const QNearFieldTarget::RequestId &id);
 };
 
 QT_END_NAMESPACE

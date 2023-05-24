@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -46,11 +46,11 @@ MenuItem* GetParent(MenuItem::Id parent_id,
   if (!parent) {
     *error = ErrorUtils::FormatErrorMessage(
         kCannotFindItemError, GetIDString(parent_id));
-    return NULL;
+    return nullptr;
   }
   if (parent->type() != MenuItem::NORMAL) {
     *error = kParentsMustBeNormalError;
-    return NULL;
+    return nullptr;
   }
   return parent;
 }
@@ -58,8 +58,8 @@ MenuItem* GetParent(MenuItem::Id parent_id,
 MenuItem::ContextList GetContexts(const std::vector<
     extensions::api::context_menus::ContextType>& in_contexts) {
   MenuItem::ContextList contexts;
-  for (size_t i = 0; i < in_contexts.size(); ++i) {
-    switch (in_contexts[i]) {
+  for (auto context : in_contexts) {
+    switch (context) {
       case extensions::api::context_menus::CONTEXT_TYPE_ALL:
         contexts.Add(extensions::MenuItem::ALL);
         break;
@@ -125,11 +125,6 @@ MenuItem::Type GetType(extensions::api::context_menus::ItemType type,
       return extensions::MenuItem::SEPARATOR;
   }
   return extensions::MenuItem::NORMAL;
-}
-
-bool HasLazyContext(const Extension* extension) {
-  return BackgroundInfo::HasLazyBackgroundPage(extension) ||
-         BackgroundInfo::IsServiceWorkerBased(extension);
 }
 
 }  // namespace context_menus_api_helpers

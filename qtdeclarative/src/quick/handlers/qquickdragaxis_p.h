@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKDRAGAXIS_P_H
 #define QQUICKDRAGAXIS_P_H
@@ -52,22 +16,28 @@
 //
 
 #include <QtQml/qqml.h>
+#include <QtQml/qqmlproperty.h>
 #include <private/qtquickglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
+class QQuickItem;
+class QQuickPointerHandler;
+
 class Q_QUICK_PRIVATE_EXPORT QQuickDragAxis : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(qreal minimum READ minimum WRITE setMinimum NOTIFY minimumChanged)
-    Q_PROPERTY(qreal maximum READ maximum WRITE setMaximum NOTIFY maximumChanged)
-    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
+    Q_PROPERTY(qreal minimum READ minimum WRITE setMinimum NOTIFY minimumChanged FINAL)
+    Q_PROPERTY(qreal maximum READ maximum WRITE setMaximum NOTIFY maximumChanged FINAL)
+    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged FINAL)
+    Q_PROPERTY(qreal activeValue READ activeValue NOTIFY activeValueChanged REVISION(6, 5) FINAL)
     QML_NAMED_ELEMENT(DragAxis)
-    QML_ADDED_IN_MINOR_VERSION(12)
-    QML_UNCREATABLE("DragAxis is only available as a grouped property of DragHandler.")
+    QML_ADDED_IN_VERSION(2, 12)
+    QML_UNCREATABLE("DragAxis is only available as a grouped property of DragHandler or PinchHandler.")
 
 public:
-    QQuickDragAxis();
+    QQuickDragAxis(QQuickPointerHandler *handler, const QString &propertyName,
+                   qreal initValue = 0);
 
     qreal minimum() const { return m_minimum; }
     void setMinimum(qreal minimum);
@@ -78,15 +48,32 @@ public:
     bool enabled() const { return m_enabled; }
     void setEnabled(bool enabled);
 
-signals:
+    qreal activeValue() const { return m_activeValue; }
+
+    qreal persistentValue() const { return m_accumulatedValue; }
+
+protected:
+    void onActiveChanged(bool active, qreal initActiveValue);
+    qreal targetValue();
+    void updateValue(qreal activeValue, qreal accumulatedValue, qreal delta = 0);
+
+Q_SIGNALS:
     void minimumChanged();
     void maximumChanged();
     void enabledChanged();
+    Q_REVISION(6, 5) void activeValueChanged(qreal delta);
 
 private:
-    qreal m_minimum;
-    qreal m_maximum;
-    bool m_enabled;
+    qreal m_minimum = std::numeric_limits<qreal>::lowest();
+    qreal m_maximum = std::numeric_limits<qreal>::max();
+    qreal m_startValue = 0;
+    qreal m_activeValue = 0;
+    qreal m_accumulatedValue = 0;
+    QString m_propertyName;
+    bool m_enabled = true;
+
+    friend class QQuickDragHandler;
+    friend class QQuickPinchHandler;
 };
 
 QT_END_NAMESPACE

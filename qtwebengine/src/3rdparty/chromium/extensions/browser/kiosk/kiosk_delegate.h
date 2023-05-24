@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,8 +17,8 @@ namespace extensions {
 // platforms.
 class KioskDelegate {
  public:
-  KioskDelegate();
-  virtual ~KioskDelegate();
+  KioskDelegate() = default;
+  virtual ~KioskDelegate() = default;
 
   virtual bool IsAutoLaunchedKioskApp(const ExtensionId& id) const = 0;
 };

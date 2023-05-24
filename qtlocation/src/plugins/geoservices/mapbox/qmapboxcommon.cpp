@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Mapbox, Inc.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Mapbox, Inc.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmapboxcommon.h"
 
@@ -67,7 +31,7 @@ QGeoLocation QMapboxCommon::parseGeoLocation(const QJsonObject &response)
     // 'address'. The former provides the street name, and the latter provides
     // the street number in that case.
     if (response.value(QStringLiteral("place_type")).isArray()) {
-        foreach (const QJsonValue &value, response.value(QStringLiteral("place_type")).toArray()) {
+        for (const QJsonValueConstRef value : response.value(QStringLiteral("place_type")).toArray()) {
             if (!value.isString())
                 continue;
             if (value.toString() == QStringLiteral("address")) {
@@ -89,7 +53,7 @@ QGeoLocation QMapboxCommon::parseGeoLocation(const QJsonObject &response)
     address.setStreet(streetAddress);
 
     if (response.value(QStringLiteral("context")).isArray()) {
-        foreach (const QJsonValue &value, response.value(QStringLiteral("context")).toArray()) {
+        for (const QJsonValueConstRef value : response.value(QStringLiteral("context")).toArray()) {
             if (!value.isObject())
                 continue;
 
@@ -131,7 +95,7 @@ QGeoLocation QMapboxCommon::parseGeoLocation(const QJsonObject &response)
     double left = bbox.at(0).toDouble();
     double bottom = bbox.at(1).toDouble();
     double right = bbox.at(2).toDouble();
-    location.setBoundingBox(QGeoRectangle(QGeoCoordinate(top, left), QGeoCoordinate(bottom, right)));
+    location.setBoundingShape(QGeoRectangle(QGeoCoordinate(top, left), QGeoCoordinate(bottom, right)));
 
     QJsonArray center = response.value(QStringLiteral("center")).toArray();
     location.setCoordinate(QGeoCoordinate(center.at(1).toDouble(), center.at(0).toDouble()));

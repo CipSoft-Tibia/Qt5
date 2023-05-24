@@ -1,4 +1,4 @@
-// Copyright (c) 2006-2008 The Chromium Authors. All rights reserved.
+// Copyright 2006-2008 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -371,6 +371,36 @@ TEST(StringTokenizerTest, ParseQuotedString_EscapedQuotes) {
 TEST(StringTokenizerTest, ParseQuotedString_EscapedQuotes2) {
   string input = "foo='a, b', bar";
   StringTokenizer t(input, ", ");
+  t.set_quote_chars("'");
+
+  EXPECT_TRUE(t.GetNext());
+  EXPECT_EQ("foo='a, b'", t.token());
+
+  EXPECT_TRUE(t.GetNext());
+  EXPECT_EQ("bar", t.token());
+
+  EXPECT_FALSE(t.GetNext());
+}
+
+TEST(StringTokenizerTest, ParseWithWhitespace_NoQuotes) {
+  string input = "\t\t\t     foo=a,\r\n b,\r\n\t\t\t      bar\t ";
+  StringTokenizer t(input, ",", StringTokenizer::WhitespacePolicy::kSkipOver);
+
+  EXPECT_TRUE(t.GetNext());
+  EXPECT_EQ("foo=a", t.token());
+
+  EXPECT_TRUE(t.GetNext());
+  EXPECT_EQ("b", t.token());
+
+  EXPECT_TRUE(t.GetNext());
+  EXPECT_EQ("bar", t.token());
+
+  EXPECT_FALSE(t.GetNext());
+}
+
+TEST(StringTokenizerTest, ParseWithWhitespace_Quotes) {
+  string input = "\t\t\t     foo='a, b',\t\t\t      bar\t ";
+  StringTokenizer t(input, ",", StringTokenizer::WhitespacePolicy::kSkipOver);
   t.set_quote_chars("'");
 
   EXPECT_TRUE(t.GetNext());

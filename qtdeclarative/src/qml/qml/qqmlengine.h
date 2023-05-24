@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLENGINE_H
 #define QQMLENGINE_H
@@ -46,21 +10,20 @@
 #include <QtQml/qjsengine.h>
 #include <QtQml/qqml.h>
 #include <QtQml/qqmlerror.h>
+#include <QtQml/qqmlabstracturlinterceptor.h>
 
 QT_BEGIN_NAMESPACE
 
-class QQmlAbstractUrlInterceptor;
-
-class Q_QML_EXPORT QQmlImageProviderBase
+class Q_QML_EXPORT QQmlImageProviderBase : public QObject
 {
+    Q_OBJECT
 public:
-    enum ImageType {
+    enum ImageType : int {
+        Invalid = 0,
         Image,
         Pixmap,
         Texture,
-        Invalid,
-        ImageResponse
-        // ### Qt6: reorder these, and give Invalid a fixed large value
+        ImageResponse,
     };
 
     enum Flag {
@@ -81,7 +44,6 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(QQmlImageProviderBase::Flags)
 
 class QQmlComponent;
 class QQmlEnginePrivate;
-class QQmlImportsPrivate;
 class QQmlExpression;
 class QQmlContext;
 class QQmlType;
@@ -93,7 +55,7 @@ class QQmlNetworkAccessManagerFactory;
 class QQmlIncubationController;
 class Q_QML_EXPORT QQmlEngine : public QJSEngine
 {
-    Q_PROPERTY(QString offlineStoragePath READ offlineStoragePath WRITE setOfflineStoragePath)
+    Q_PROPERTY(QString offlineStoragePath READ offlineStoragePath WRITE setOfflineStoragePath NOTIFY offlineStoragePathChanged)
     Q_OBJECT
 public:
     explicit QQmlEngine(QObject *p = nullptr);
@@ -103,6 +65,7 @@ public:
 
     void clearComponentCache();
     void trimComponentCache();
+    void clearSingletons();
 
     QStringList importPathList() const;
     void setImportPathList(const QStringList &paths);
@@ -112,10 +75,15 @@ public:
     void setPluginPathList(const QStringList &paths);
     void addPluginPath(const QString& dir);
 
-    bool addNamedBundle(const QString &name, const QString &fileName);
+#if QT_DEPRECATED_SINCE(6, 0)
+    QT_DEPRECATED bool addNamedBundle(const QString &, const QString &) { return false; }
+#endif
 
 #if QT_CONFIG(library)
+#if QT_DEPRECATED_SINCE(6, 4)
+    QT_DEPRECATED_VERSION_X_6_4("Import the module from QML instead")
     bool importPlugin(const QString &filePath, const QString &uri, QList<QQmlError> *errors);
+#endif
 #endif
 
 #if QT_CONFIG(qml_network)
@@ -125,8 +93,18 @@ public:
     QNetworkAccessManager *networkAccessManager() const;
 #endif
 
-    void setUrlInterceptor(QQmlAbstractUrlInterceptor* urlInterceptor);
-    QQmlAbstractUrlInterceptor* urlInterceptor() const;
+#if QT_DEPRECATED_SINCE(6, 0)
+    QT_DEPRECATED void setUrlInterceptor(QQmlAbstractUrlInterceptor* urlInterceptor)
+    {
+        addUrlInterceptor(urlInterceptor);
+    }
+    QT_DEPRECATED QQmlAbstractUrlInterceptor *urlInterceptor() const;
+#endif
+
+    void addUrlInterceptor(QQmlAbstractUrlInterceptor *urlInterceptor);
+    void removeUrlInterceptor(QQmlAbstractUrlInterceptor *urlInterceptor);
+    QList<QQmlAbstractUrlInterceptor *> urlInterceptors() const;
+    QUrl interceptUrl(const QUrl &url, QQmlAbstractUrlInterceptor::DataType type) const;
 
     void addImageProvider(const QString &id, QQmlImageProviderBase *);
     QQmlImageProviderBase *imageProvider(const QString &id) const;
@@ -145,19 +123,26 @@ public:
     bool outputWarningsToStandardError() const;
     void setOutputWarningsToStandardError(bool);
 
+    void markCurrentFunctionAsTranslationBinding();
+
     template<typename T>
     T singletonInstance(int qmlTypeId);
 
+    template<typename T>
+    T singletonInstance(QAnyStringView moduleName, QAnyStringView typeName);
+
+    void captureProperty(QObject *object, const QMetaProperty &property) const;
+
 public Q_SLOTS:
     void retranslate();
+
+Q_SIGNALS:
+    void offlineStoragePathChanged();
 
 public:
     static QQmlContext *contextForObject(const QObject *);
     static void setContextForObject(QObject *, QQmlContext *);
 
-    enum ObjectOwnership { CppOwnership, JavaScriptOwnership };
-    static void setObjectOwnership(QObject *, ObjectOwnership);
-    static ObjectOwnership objectOwnership(QObject *);
 protected:
     QQmlEngine(QQmlEnginePrivate &dd, QObject *p);
     bool event(QEvent *) override;
@@ -178,6 +163,15 @@ Q_QML_EXPORT QJSValue QQmlEngine::singletonInstance<QJSValue>(int qmlTypeId);
 template<typename T>
 T QQmlEngine::singletonInstance(int qmlTypeId) {
     return qobject_cast<T>(singletonInstance<QJSValue>(qmlTypeId).toQObject());
+}
+
+template<>
+Q_QML_EXPORT QJSValue QQmlEngine::singletonInstance<QJSValue>(QAnyStringView uri, QAnyStringView typeName);
+
+template<typename T>
+T QQmlEngine::singletonInstance(QAnyStringView uri, QAnyStringView typeName)
+{
+    return qobject_cast<T>(singletonInstance<QJSValue>(uri, typeName).toQObject());
 }
 
 QT_END_NAMESPACE

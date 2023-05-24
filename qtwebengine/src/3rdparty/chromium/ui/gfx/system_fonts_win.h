@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,7 @@ namespace win {
 
 // Represents an optional override of system font and scale.
 struct FontAdjustment {
-  base::string16 font_family_override;
+  std::wstring font_family_override;
   double font_scale = 1.0;
 };
 

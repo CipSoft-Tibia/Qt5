@@ -1,4 +1,4 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 When adding a new node type, you add to this mapping.
 '''
 
-from __future__ import print_function
 
 from grit import exception
 

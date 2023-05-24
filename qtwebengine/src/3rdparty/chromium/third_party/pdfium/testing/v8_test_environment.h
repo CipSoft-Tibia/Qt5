@@ -1,4 +1,4 @@
-// Copyright 2020 PDFium Authors. All rights reserved.
+// Copyright 2020 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,6 +12,7 @@
 #include <memory>
 
 #include "fxjs/cfx_v8.h"
+#include "fxjs/cfx_v8_array_buffer_allocator.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace v8 {

@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtCore/QScopedPointer>
 
 /*!
@@ -61,6 +36,11 @@ private Q_SLOTS:
     void comparison();
     void array();
     // TODO instanciate on const object
+
+    // Tests for deprecated APIs
+#if QT_DEPRECATED_SINCE(6, 1)
+    void deprecatedTake();
+#endif // QT_DEPRECATED_SINCE(6, 1)
 };
 
 void tst_QScopedPointer::defaultConstructor()
@@ -160,7 +140,7 @@ public:
 class SubClass : public AbstractClass
 {
 public:
-    virtual int member() const
+    virtual int member() const override
     {
         return 5;
     }
@@ -252,7 +232,7 @@ void tst_QScopedPointer::negationOperatorSignature()
     !p;
 
     /* The return value should be bool. */
-    static_cast<bool>(!p);
+    Q_UNUSED(static_cast<bool>(!p));
 }
 
 void tst_QScopedPointer::operatorBool()
@@ -302,7 +282,7 @@ void tst_QScopedPointer::isNullSignature()
     const QScopedPointer<int> p(new int(69));
 
     /* The signature should be const and return bool. */
-    static_cast<bool>(p.isNull());
+    Q_UNUSED(static_cast<bool>(p.isNull()));
 }
 
 void tst_QScopedPointer::objectSize()
@@ -367,44 +347,56 @@ void scopedPointerComparisonTest(const A1 &a1, const A2 &a2, const B &b)
     QVERIFY(a2 != b);
 }
 
+// tst_QScopedPointer::comparison creates two QScopedPointers referring to the
+// same memory. This will lead to double-deletion error during cleanup if we
+// use a default QScopedPointer{Array}Deleter. This DummyDeleter does nothing,
+// so we can safely reference the same memory from multiple QScopedPointer
+// instances, and manage the memory manually.
+// That is fine for the comparison() test, because its goal is to check the
+// object's (in)equality, not the memory management
+struct DummyDeleter
+{
+    static inline void cleanup(RefCounted *) noexcept {}
+    void operator()(RefCounted *pointer) const noexcept
+    {
+        cleanup(pointer);
+    }
+};
+
 void tst_QScopedPointer::comparison()
 {
     QCOMPARE( RefCounted::instanceCount.loadRelaxed(), 0 );
 
     {
-        RefCounted *a = new RefCounted;
-        RefCounted *b = new RefCounted;
+        auto a = std::make_unique<RefCounted>();
+        auto b = std::make_unique<RefCounted>();
 
         QCOMPARE( RefCounted::instanceCount.loadRelaxed(), 2 );
 
-        QScopedPointer<RefCounted> pa1(a);
-        QScopedPointer<RefCounted> pa2(a);
-        QScopedPointer<RefCounted> pb(b);
+        QScopedPointer<RefCounted, DummyDeleter> pa1(a.get());
+        QScopedPointer<RefCounted, DummyDeleter> pa2(a.get());
+        QScopedPointer<RefCounted, DummyDeleter> pb(b.get());
 
         scopedPointerComparisonTest(pa1, pa1, pb);
         scopedPointerComparisonTest(pa2, pa2, pb);
         scopedPointerComparisonTest(pa1, pa2, pb);
 
-        pa2.take();
-
         QCOMPARE( RefCounted::instanceCount.loadRelaxed(), 2 );
     }
 
     QCOMPARE( RefCounted::instanceCount.loadRelaxed(), 0 );
 
     {
-        RefCounted *a = new RefCounted[42];
-        RefCounted *b = new RefCounted[43];
+        auto a = std::make_unique<RefCounted[]>(42);
+        auto b = std::make_unique<RefCounted[]>(43);
 
         QCOMPARE( RefCounted::instanceCount.loadRelaxed(), 85 );
 
-        QScopedArrayPointer<RefCounted> pa1(a);
-        QScopedArrayPointer<RefCounted> pa2(a);
-        QScopedArrayPointer<RefCounted> pb(b);
+        QScopedArrayPointer<RefCounted, DummyDeleter> pa1(a.get());
+        QScopedArrayPointer<RefCounted, DummyDeleter> pa2(a.get());
+        QScopedArrayPointer<RefCounted, DummyDeleter> pb(b.get());
 
         scopedPointerComparisonTest(pa1, pa2, pb);
-
-        pa2.take();
 
         QCOMPARE( RefCounted::instanceCount.loadRelaxed(), 85 );
     }
@@ -412,8 +404,6 @@ void tst_QScopedPointer::comparison()
     QCOMPARE( RefCounted::instanceCount.loadRelaxed(), 0 );
 
     {
-        // QScopedSharedPointer is an internal helper class -- it is unsupported!
-
         RefCounted *a = new RefCounted;
         RefCounted *b = new RefCounted;
 
@@ -455,6 +445,23 @@ void tst_QScopedPointer::array()
     QCOMPARE(instCount, RefCounted::instanceCount.loadRelaxed());
 }
 
+#if QT_DEPRECATED_SINCE(6, 1)
+void tst_QScopedPointer::deprecatedTake()
+{
+    RefCounted *a = new RefCounted;
+
+    QScopedPointer<RefCounted> pa1(a);
+    QScopedPointer<RefCounted> pa2(a);
+
+    QCOMPARE(RefCounted::instanceCount.loadRelaxed(), 1);
+
+    QT_IGNORE_DEPRECATIONS(pa2.take();)
+
+    // check that pa2 holds nullptr, but the memory was not released
+    QVERIFY(pa2.isNull());
+    QCOMPARE(RefCounted::instanceCount.loadRelaxed(), 1);
+}
+#endif // QT_DEPRECATED_SINCE(6, 1)
 
 QTEST_MAIN(tst_QScopedPointer)
 #include "tst_qscopedpointer.moc"

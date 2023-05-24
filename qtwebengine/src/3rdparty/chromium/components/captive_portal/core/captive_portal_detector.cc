@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,33 +6,15 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/task_runner_util.h"
 #include "net/base/load_flags.h"
 #include "net/http/http_response_headers.h"
 #include "net/http/http_util.h"
-
-#if defined(OS_CHROMEOS)
-#include "chromeos/network/network_configuration_handler.h"
-#include "chromeos/network/network_handler.h"
-#include "chromeos/network/network_state_handler.h"
-#endif
-
-namespace {
-#if defined(OS_CHROMEOS)
-GURL GetProbeUrl(const GURL& default_url) {
-  DCHECK_EQ(chromeos::NetworkHandler::Get()->task_runner(),
-            base::ThreadTaskRunnerHandle::Get().get());
-  const chromeos::NetworkState* network = chromeos::NetworkHandler::Get()
-                                              ->network_state_handler()
-                                              ->DefaultNetwork();
-  return network && !network->probe_url().is_empty() ? network->probe_url()
-                                                     : default_url;
-}
-#endif
-}  // namespace
+#include "services/network/public/cpp/resource_request.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
+#include "url/gurl.h"
 
 namespace captive_portal {
 
@@ -41,13 +23,7 @@ const char CaptivePortalDetector::kDefaultURL[] =
 
 CaptivePortalDetector::CaptivePortalDetector(
     network::mojom::URLLoaderFactory* loader_factory)
-    : loader_factory_(loader_factory)
-#if defined(OS_CHROMEOS)
-      ,
-      weak_factory_(this)
-#endif
-{
-}
+    : loader_factory_(loader_factory) {}
 
 CaptivePortalDetector::~CaptivePortalDetector() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -59,21 +35,12 @@ void CaptivePortalDetector::DetectCaptivePortal(
     const net::NetworkTrafficAnnotationTag& traffic_annotation) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(!FetchingURL());
-  DCHECK(detection_callback_.is_null());
   DCHECK(!detection_callback.is_null());
 
+  if (!detection_callback_.is_null())
+    LOG(ERROR) << "DetectCaptivePortal called while request is pending.";
   detection_callback_ = std::move(detection_callback);
 
-#if defined(OS_CHROMEOS)
-  if (chromeos::NetworkHandler::IsInitialized()) {
-    base::PostTaskAndReplyWithResult(
-        chromeos::NetworkHandler::Get()->task_runner(), FROM_HERE,
-        base::BindOnce(&GetProbeUrl, url),
-        base::BindOnce(&CaptivePortalDetector::StartProbe,
-                       weak_factory_.GetWeakPtr(), traffic_annotation));
-    return;
-  }
-#endif
   StartProbe(traffic_annotation, url);
 }
 
@@ -100,6 +67,7 @@ void CaptivePortalDetector::StartProbe(
   simple_loader_->SetAllowHttpErrorResults(true);
   network::SimpleURLLoader::BodyAsStringCallback callback = base::BindOnce(
       &CaptivePortalDetector::OnSimpleLoaderComplete, base::Unretained(this));
+  state_ = State::kProbe;
   simple_loader_->DownloadToStringOfUnboundedSizeUntilCrashAndDie(
       loader_factory_, std::move(callback));
 }
@@ -107,16 +75,14 @@ void CaptivePortalDetector::StartProbe(
 void CaptivePortalDetector::Cancel() {
   simple_loader_.reset();
   detection_callback_.Reset();
-#if defined(OS_CHROMEOS)
-  // Cancel any pending calls to StartProbe().
-  weak_factory_.InvalidateWeakPtrs();
-#endif
+  state_ = State::kCancelled;
 }
 
 void CaptivePortalDetector::OnSimpleLoaderComplete(
     std::unique_ptr<std::string> response_body) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(FetchingURL());
+  CHECK_EQ(state_, State::kProbe);
+  CHECK(FetchingURL());
   DCHECK(!detection_callback_.is_null());
 
   int response_code = 0;
@@ -126,6 +92,7 @@ void CaptivePortalDetector::OnSimpleLoaderComplete(
     headers = simple_loader_->ResponseInfo()->headers.get();
     response_code = simple_loader_->ResponseInfo()->headers->response_code();
   }
+  state_ = State::kCompleted;
   OnSimpleLoaderCompleteInternal(simple_loader_->NetError(), response_code,
                                  simple_loader_->GetFinalURL(), headers);
 }

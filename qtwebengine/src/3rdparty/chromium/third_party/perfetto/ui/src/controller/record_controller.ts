@@ -14,37 +14,23 @@
 
 import {Message, Method, rpc, RPCImplCallback} from 'protobufjs';
 
-import {
-  base64Encode,
-} from '../base/string_utils';
+import {base64Encode} from '../base/string_utils';
 import {Actions} from '../common/actions';
+import {TRACE_SUFFIX} from '../common/constants';
 import {
-  AndroidLogConfig,
-  AndroidLogId,
-  AndroidPowerConfig,
-  BufferConfig,
-  ChromeConfig,
   ConsumerPort,
-  DataSourceConfig,
-  FtraceConfig,
-  HeapprofdConfig,
-  JavaContinuousDumpConfig,
-  JavaHprofConfig,
-  NativeContinuousDumpConfig,
-  ProcessStatsConfig,
-  SysStatsConfig,
   TraceConfig,
 } from '../common/protos';
-import {MeminfoCounters, VmstatCounters} from '../common/protos';
+import {genTraceConfig} from '../common/recordingV2/recording_config_utils';
+import {TargetInfo} from '../common/recordingV2/recording_interfaces_v2';
 import {
   AdbRecordingTarget,
   isAdbTarget,
-  isAndroidP,
   isChromeTarget,
-  MAX_TIME,
-  RecordConfig,
-  RecordingTarget
+  RecordingTarget,
 } from '../common/state';
+import {globals as frontendGlobals} from '../frontend/globals';
+import {publishBufferUsage, publishTrackData} from '../frontend/publish';
 
 import {AdbOverWebUsb} from './adb';
 import {AdbConsumerPort} from './adb_shell_controller';
@@ -53,441 +39,89 @@ import {ChromeExtensionConsumerPort} from './chrome_proxy_record_controller';
 import {
   ConsumerPortResponse,
   GetTraceStatsResponse,
+  isDisableTracingResponse,
   isEnableTracingResponse,
+  isFreeBuffersResponse,
   isGetTraceStatsResponse,
   isReadBuffersResponse,
 } from './consumer_port_types';
 import {Controller} from './controller';
 import {App, globals} from './globals';
+import {RecordConfig} from './record_config_types';
 import {Consumer, RpcConsumerPort} from './record_controller_interfaces';
 
 type RPCImplMethod = (Method|rpc.ServiceMethod<Message<{}>, Message<{}>>);
 
 export function genConfigProto(
     uiCfg: RecordConfig, target: RecordingTarget): Uint8Array {
-  return TraceConfig.encode(genConfig(uiCfg, target)).finish();
+  return TraceConfig.encode(convertToRecordingV2Input(uiCfg, target)).finish();
 }
 
-export function genConfig(
+// This method converts the 'RecordingTarget' to the 'TargetInfo' used by V2 of
+// the recording code. It is used so the logic is not duplicated and does not
+// diverge.
+// TODO(octaviant) delete this once we switch to RecordingV2.
+function convertToRecordingV2Input(
     uiCfg: RecordConfig, target: RecordingTarget): TraceConfig {
-  const protoCfg = new TraceConfig();
-  protoCfg.durationMs = uiCfg.durationMs;
-
-  let time = protoCfg.durationMs / 1000;
-
-  if (time > MAX_TIME) {
-    time = MAX_TIME;
+  let targetType: 'ANDROID'|'CHROME'|'CHROME_OS'|'LINUX';
+  let androidApiLevel!: number;
+  switch (target.os) {
+    case 'L':
+      targetType = 'LINUX';
+      break;
+    case 'C':
+      targetType = 'CHROME';
+      break;
+    case 'CrOS':
+      targetType = 'CHROME_OS';
+      break;
+    case 'S':
+      androidApiLevel = 31;
+      targetType = 'ANDROID';
+      break;
+    case 'R':
+      androidApiLevel = 30;
+      targetType = 'ANDROID';
+      break;
+    case 'Q':
+      androidApiLevel = 29;
+      targetType = 'ANDROID';
+      break;
+    case 'P':
+      androidApiLevel = 28;
+      targetType = 'ANDROID';
+      break;
+    default:
+      androidApiLevel = 26;
+      targetType = 'ANDROID';
   }
 
-  // Auxiliary buffer for slow-rate events.
-  // Set to 1/8th of the main buffer size, with reasonable limits.
-  let slowBufSizeKb = uiCfg.bufferSizeMb * (1024 / 8);
-  slowBufSizeKb = Math.min(slowBufSizeKb, 2 * 1024);
-  slowBufSizeKb = Math.max(slowBufSizeKb, 256);
-
-  // Main buffer for ftrace and other high-freq events.
-  const fastBufSizeKb = uiCfg.bufferSizeMb * 1024 - slowBufSizeKb;
-
-  protoCfg.buffers.push(new BufferConfig());
-  protoCfg.buffers.push(new BufferConfig());
-  protoCfg.buffers[1].sizeKb = slowBufSizeKb;
-  protoCfg.buffers[0].sizeKb = fastBufSizeKb;
-
-  if (uiCfg.mode === 'STOP_WHEN_FULL') {
-    protoCfg.buffers[0].fillPolicy = BufferConfig.FillPolicy.DISCARD;
-    protoCfg.buffers[1].fillPolicy = BufferConfig.FillPolicy.DISCARD;
+  let targetInfo: TargetInfo;
+  if (targetType === 'ANDROID') {
+    targetInfo = {
+      targetType,
+      androidApiLevel,
+      dataSources: [],
+      name: '',
+    };
+  } else if (targetType === 'CHROME' || targetType === 'CHROME_OS') {
+    targetInfo = {
+      targetType,
+      dataSources: [],
+      name: '',
+    };
   } else {
-    protoCfg.buffers[0].fillPolicy = BufferConfig.FillPolicy.RING_BUFFER;
-    protoCfg.buffers[1].fillPolicy = BufferConfig.FillPolicy.RING_BUFFER;
-    protoCfg.flushPeriodMs = 30000;
-    if (uiCfg.mode === 'LONG_TRACE') {
-      protoCfg.writeIntoFile = true;
-      protoCfg.fileWritePeriodMs = uiCfg.fileWritePeriodMs;
-      protoCfg.maxFileSizeBytes = uiCfg.maxFileSizeMb * 1e6;
-    }
+    targetInfo = {targetType, dataSources: [], name: ''};
   }
 
-  const ftraceEvents = new Set<string>(uiCfg.ftrace ? uiCfg.ftraceEvents : []);
-  const atraceCats = new Set<string>(uiCfg.atrace ? uiCfg.atraceCats : []);
-  const atraceApps = new Set<string>();
-  const chromeCategories = new Set<string>();
-  uiCfg.chromeCategoriesSelected.forEach(it => chromeCategories.add(it));
-
-  let procThreadAssociationPolling = false;
-  let procThreadAssociationFtrace = false;
-  let trackInitialOomScore = false;
-
-  if (uiCfg.cpuSched) {
-    procThreadAssociationPolling = true;
-    procThreadAssociationFtrace = true;
-    ftraceEvents.add('sched/sched_switch');
-    ftraceEvents.add('power/suspend_resume');
-    ftraceEvents.add('sched/sched_wakeup');
-    ftraceEvents.add('sched/sched_wakeup_new');
-    ftraceEvents.add('sched/sched_waking');
-    ftraceEvents.add('power/suspend_resume');
-  }
-
-  if (uiCfg.cpuFreq) {
-    ftraceEvents.add('power/cpu_frequency');
-    ftraceEvents.add('power/cpu_idle');
-    ftraceEvents.add('power/suspend_resume');
-  }
-
-  if (uiCfg.gpuFreq) {
-    ftraceEvents.add('power/gpu_frequency');
-  }
-
-  if (uiCfg.gpuMemTotal) {
-    ftraceEvents.add('gpu_mem/gpu_mem_total');
-
-    const ds = new TraceConfig.DataSource();
-    ds.config = new DataSourceConfig();
-    ds.config.name = 'android.gpu.memory';
-    protoCfg.dataSources.push(ds);
-  }
-
-  if (uiCfg.cpuSyscall) {
-    ftraceEvents.add('raw_syscalls/sys_enter');
-    ftraceEvents.add('raw_syscalls/sys_exit');
-  }
-
-  if (procThreadAssociationFtrace) {
-    ftraceEvents.add('sched/sched_process_exit');
-    ftraceEvents.add('sched/sched_process_free');
-    ftraceEvents.add('task/task_newtask');
-    ftraceEvents.add('task/task_rename');
-  }
-
-  if (uiCfg.batteryDrain) {
-    const ds = new TraceConfig.DataSource();
-    ds.config = new DataSourceConfig();
-    ds.config.name = 'android.power';
-    ds.config.androidPowerConfig = new AndroidPowerConfig();
-    ds.config.androidPowerConfig.batteryPollMs = uiCfg.batteryDrainPollMs;
-    ds.config.androidPowerConfig.batteryCounters = [
-      AndroidPowerConfig.BatteryCounters.BATTERY_COUNTER_CAPACITY_PERCENT,
-      AndroidPowerConfig.BatteryCounters.BATTERY_COUNTER_CHARGE,
-      AndroidPowerConfig.BatteryCounters.BATTERY_COUNTER_CURRENT,
-    ];
-    ds.config.androidPowerConfig.collectPowerRails = true;
-    protoCfg.dataSources.push(ds);
-  }
-
-  if (uiCfg.boardSensors) {
-    ftraceEvents.add('regulator/regulator_set_voltage');
-    ftraceEvents.add('regulator/regulator_set_voltage_complete');
-    ftraceEvents.add('power/clock_enable');
-    ftraceEvents.add('power/clock_disable');
-    ftraceEvents.add('power/clock_set_rate');
-    ftraceEvents.add('power/suspend_resume');
-  }
-
-  let sysStatsCfg: SysStatsConfig|undefined = undefined;
-
-  if (uiCfg.cpuCoarse) {
-    if (sysStatsCfg === undefined) sysStatsCfg = new SysStatsConfig();
-    sysStatsCfg.statPeriodMs = uiCfg.cpuCoarsePollMs;
-    sysStatsCfg.statCounters = [
-      SysStatsConfig.StatCounters.STAT_CPU_TIMES,
-      SysStatsConfig.StatCounters.STAT_FORK_COUNT,
-    ];
-  }
-
-  if (uiCfg.memHiFreq) {
-    procThreadAssociationPolling = true;
-    procThreadAssociationFtrace = true;
-    ftraceEvents.add('mm_event/mm_event_record');
-    ftraceEvents.add('kmem/rss_stat');
-    ftraceEvents.add('ion/ion_stat');
-    ftraceEvents.add('kmem/ion_heap_grow');
-    ftraceEvents.add('kmem/ion_heap_shrink');
-  }
-
-  if (uiCfg.meminfo) {
-    if (sysStatsCfg === undefined) sysStatsCfg = new SysStatsConfig();
-    sysStatsCfg.meminfoPeriodMs = uiCfg.meminfoPeriodMs;
-    sysStatsCfg.meminfoCounters = uiCfg.meminfoCounters.map(name => {
-      // tslint:disable-next-line no-any
-      return MeminfoCounters[name as any as number] as any as number;
-    });
-  }
-
-  if (uiCfg.vmstat) {
-    if (sysStatsCfg === undefined) sysStatsCfg = new SysStatsConfig();
-    sysStatsCfg.vmstatPeriodMs = uiCfg.vmstatPeriodMs;
-    sysStatsCfg.vmstatCounters = uiCfg.vmstatCounters.map(name => {
-      // tslint:disable-next-line no-any
-      return VmstatCounters[name as any as number] as any as number;
-    });
-  }
-
-  if (uiCfg.memLmk) {
-    // For in-kernel LMK (roughly older devices until Go and Pixel 3).
-    ftraceEvents.add('lowmemorykiller/lowmemory_kill');
-
-    // For userspace LMKd (newer devices).
-    // 'lmkd' is not really required because the code in lmkd.c emits events
-    // with ATRACE_TAG_ALWAYS. We need something just to ensure that the final
-    // config will enable atrace userspace events.
-    atraceApps.add('lmkd');
-
-    ftraceEvents.add('oom/oom_score_adj_update');
-    procThreadAssociationPolling = true;
-    trackInitialOomScore = true;
-  }
-
-  let heapprofd: HeapprofdConfig|undefined = undefined;
-  if (uiCfg.heapProfiling) {
-    // TODO(taylori): Check or inform user if buffer size are too small.
-    const cfg = new HeapprofdConfig();
-    cfg.samplingIntervalBytes = uiCfg.hpSamplingIntervalBytes;
-    if (uiCfg.hpSharedMemoryBuffer >= 8192 &&
-        uiCfg.hpSharedMemoryBuffer % 4096 === 0) {
-      cfg.shmemSizeBytes = uiCfg.hpSharedMemoryBuffer;
-    }
-    for (const value of uiCfg.hpProcesses.split('\n')) {
-      if (value === '') {
-        // Ignore empty lines
-      } else if (isNaN(+value)) {
-        cfg.processCmdline.push(value);
-      } else {
-        cfg.pid.push(+value);
-      }
-    }
-    if (uiCfg.hpContinuousDumpsInterval > 0) {
-      const cdc = cfg.continuousDumpConfig = new NativeContinuousDumpConfig();
-      cdc.dumpIntervalMs = uiCfg.hpContinuousDumpsInterval;
-      if (uiCfg.hpContinuousDumpsPhase > 0) {
-        cdc.dumpPhaseMs = uiCfg.hpContinuousDumpsPhase;
-      }
-    }
-    // TODO(fmayer): Add a toggle for this to the UI?
-    cfg.blockClient = true;
-    heapprofd = cfg;
-  }
-
-  let javaHprof: JavaHprofConfig|undefined = undefined;
-  if (uiCfg.javaHeapDump) {
-    const cfg = new JavaHprofConfig();
-    for (const value of uiCfg.jpProcesses.split('\n')) {
-      if (value === '') {
-        // Ignore empty lines
-      } else if (isNaN(+value)) {
-        cfg.processCmdline.push(value);
-      } else {
-        cfg.pid.push(+value);
-      }
-    }
-    if (uiCfg.jpContinuousDumpsInterval > 0) {
-      const cdc = cfg.continuousDumpConfig = new JavaContinuousDumpConfig();
-      cdc.dumpIntervalMs = uiCfg.jpContinuousDumpsInterval;
-      if (uiCfg.hpContinuousDumpsPhase > 0) {
-        cdc.dumpPhaseMs = uiCfg.jpContinuousDumpsPhase;
-      }
-    }
-    javaHprof = cfg;
-  }
-
-  if (uiCfg.procStats || procThreadAssociationPolling || trackInitialOomScore) {
-    const ds = new TraceConfig.DataSource();
-    ds.config = new DataSourceConfig();
-    ds.config.targetBuffer = 1;  // Aux
-    ds.config.name = 'linux.process_stats';
-    ds.config.processStatsConfig = new ProcessStatsConfig();
-    if (uiCfg.procStats) {
-      ds.config.processStatsConfig.procStatsPollMs = uiCfg.procStatsPeriodMs;
-    }
-    if (procThreadAssociationPolling || trackInitialOomScore) {
-      ds.config.processStatsConfig.scanAllProcessesOnStart = true;
-    }
-    protoCfg.dataSources.push(ds);
-  }
-
-  if (uiCfg.androidLogs) {
-    const ds = new TraceConfig.DataSource();
-    ds.config = new DataSourceConfig();
-    ds.config.name = 'android.log';
-    ds.config.androidLogConfig = new AndroidLogConfig();
-    ds.config.androidLogConfig.logIds = uiCfg.androidLogBuffers.map(name => {
-      // tslint:disable-next-line no-any
-      return AndroidLogId[name as any as number] as any as number;
-    });
-
-    protoCfg.dataSources.push(ds);
-  }
-
-  if (uiCfg.chromeLogs) {
-    chromeCategories.add('log');
-  }
-
-  if (uiCfg.taskScheduling) {
-    chromeCategories.add('toplevel');
-    chromeCategories.add('sequence_manager');
-    chromeCategories.add('disabled-by-default-toplevel.flow');
-  }
-
-  if (uiCfg.ipcFlows) {
-    chromeCategories.add('toplevel');
-    chromeCategories.add('disabled-by-default-ipc.flow');
-    chromeCategories.add('mojom');
-  }
-
-  if (uiCfg.jsExecution) {
-    chromeCategories.add('toplevel');
-    chromeCategories.add('v8');
-  }
-
-  if (uiCfg.webContentRendering) {
-    chromeCategories.add('toplevel');
-    chromeCategories.add('blink');
-    chromeCategories.add('cc');
-    chromeCategories.add('gpu');
-  }
-
-  if (uiCfg.uiRendering) {
-    chromeCategories.add('toplevel');
-    chromeCategories.add('cc');
-    chromeCategories.add('gpu');
-    chromeCategories.add('viz');
-    chromeCategories.add('ui');
-    chromeCategories.add('views');
-  }
-
-  if (uiCfg.inputEvents) {
-    chromeCategories.add('toplevel');
-    chromeCategories.add('benchmark');
-    chromeCategories.add('evdev');
-    chromeCategories.add('input');
-    chromeCategories.add('disabled-by-default-toplevel.flow');
-  }
-
-  if (uiCfg.navigationAndLoading) {
-    chromeCategories.add('loading');
-    chromeCategories.add('net');
-    chromeCategories.add('netlog');
-    chromeCategories.add('navigation');
-    chromeCategories.add('browser');
-  }
-
-  if (chromeCategories.size !== 0) {
-    let chromeRecordMode = '';
-    if (uiCfg.mode === 'STOP_WHEN_FULL') {
-      chromeRecordMode = 'record-until-full';
-    } else {
-      chromeRecordMode = 'record-continuously';
-    }
-    const traceConfigJson = JSON.stringify({
-      record_mode: chromeRecordMode,
-      included_categories: [...chromeCategories.values()],
-    });
-
-    const traceDs = new TraceConfig.DataSource();
-    traceDs.config = new DataSourceConfig();
-    traceDs.config.name = 'org.chromium.trace_event';
-    traceDs.config.chromeConfig = new ChromeConfig();
-    traceDs.config.chromeConfig.traceConfig = traceConfigJson;
-    protoCfg.dataSources.push(traceDs);
-
-
-    const metadataDs = new TraceConfig.DataSource();
-    metadataDs.config = new DataSourceConfig();
-    metadataDs.config.name = 'org.chromium.trace_metadata';
-    metadataDs.config.chromeConfig = new ChromeConfig();
-    metadataDs.config.chromeConfig.traceConfig = traceConfigJson;
-    protoCfg.dataSources.push(metadataDs);
-  }
-
-  if (uiCfg.screenRecord) {
-    atraceCats.add('gfx');
-  }
-
-  // Keep these last. The stages above can enrich them.
-
-  if (sysStatsCfg !== undefined) {
-    const ds = new TraceConfig.DataSource();
-    ds.config = new DataSourceConfig();
-    ds.config.name = 'linux.sys_stats';
-    ds.config.sysStatsConfig = sysStatsCfg;
-    protoCfg.dataSources.push(ds);
-  }
-
-  if (heapprofd !== undefined) {
-    const ds = new TraceConfig.DataSource();
-    ds.config = new DataSourceConfig();
-    ds.config.targetBuffer = 0;
-    ds.config.name = 'android.heapprofd';
-    ds.config.heapprofdConfig = heapprofd;
-    protoCfg.dataSources.push(ds);
-  }
-
-  if (javaHprof !== undefined) {
-    const ds = new TraceConfig.DataSource();
-    ds.config = new DataSourceConfig();
-    ds.config.targetBuffer = 0;
-    ds.config.name = 'android.java_hprof';
-    ds.config.javaHprofConfig = javaHprof;
-    protoCfg.dataSources.push(ds);
-  }
-
-  if (uiCfg.ftrace || uiCfg.atraceApps.length > 0 || ftraceEvents.size > 0 ||
-      atraceCats.size > 0 || atraceApps.size > 0) {
-    const ds = new TraceConfig.DataSource();
-    ds.config = new DataSourceConfig();
-    ds.config.name = 'linux.ftrace';
-    ds.config.ftraceConfig = new FtraceConfig();
-    // Override the advanced ftrace parameters only if the user has ticked the
-    // "Advanced ftrace config" tab.
-    if (uiCfg.ftrace) {
-      ds.config.ftraceConfig.bufferSizeKb = uiCfg.ftraceBufferSizeKb;
-      ds.config.ftraceConfig.drainPeriodMs = uiCfg.ftraceDrainPeriodMs;
-      for (const line of uiCfg.ftraceExtraEvents.split('\n')) {
-        if (line.trim().length > 0) ftraceEvents.add(line.trim());
-      }
-    }
-    for (const line of uiCfg.atraceApps.split('\n')) {
-      if (line.trim().length > 0) atraceApps.add(line.trim());
-    }
-
-    if (atraceCats.size > 0 || atraceApps.size > 0) {
-      ftraceEvents.add('ftrace/print');
-    }
-
-    let ftraceEventsArray: string[] = [];
-    if (isAndroidP(target)) {
-      for (const ftraceEvent of ftraceEvents) {
-        // On P, we don't support groups so strip all group names from ftrace
-        // events.
-        const groupAndName = ftraceEvent.split('/');
-        if (groupAndName.length !== 2) {
-          ftraceEventsArray.push(ftraceEvent);
-          continue;
-        }
-        // Filter out any wildcard event groups which was not supported
-        // before Q.
-        if (groupAndName[1] === '*') {
-          continue;
-        }
-        ftraceEventsArray.push(groupAndName[1]);
-      }
-    } else {
-      ftraceEventsArray = Array.from(ftraceEvents);
-    }
-
-    ds.config.ftraceConfig.ftraceEvents = ftraceEventsArray;
-    ds.config.ftraceConfig.atraceCategories = Array.from(atraceCats);
-    ds.config.ftraceConfig.atraceApps = Array.from(atraceApps);
-    protoCfg.dataSources.push(ds);
-  }
-
-  return protoCfg;
+  return genTraceConfig(uiCfg, targetInfo);
 }
 
 export function toPbtxt(configBuffer: Uint8Array): string {
   const msg = TraceConfig.decode(configBuffer);
   const json = msg.toJSON();
   function snakeCase(s: string): string {
-    return s.replace(/[A-Z]/g, c => '_' + c.toLowerCase());
+    return s.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
   }
   // With the ahead of time compiled protos we can't seem to tell which
   // fields are enums.
@@ -508,7 +142,7 @@ export function toPbtxt(configBuffer: Uint8Array): string {
       'maxFileSizeBytes',
       'samplingIntervalBytes',
       'shmemSizeBytes',
-      'pid'
+      'pid',
     ].includes(key);
   }
   function* message(msg: {}, indent: number): IterableIterator<string> {
@@ -545,12 +179,14 @@ export function toPbtxt(configBuffer: Uint8Array): string {
 export class RecordController extends Controller<'main'> implements Consumer {
   private app: App;
   private config: RecordConfig|null = null;
-  private extensionPort: MessagePort;
+  private readonly extensionPort: MessagePort;
   private recordingInProgress = false;
   private consumerPort: ConsumerPort;
   private traceBuffer: Uint8Array[] = [];
   private bufferUpdateInterval: ReturnType<typeof setTimeout>|undefined;
   private adb = new AdbOverWebUsb();
+  private recordedTraceSuffix = TRACE_SUFFIX;
+  private fetchedCategories = false;
 
   // We have a different controller for each targetOS. The correct one will be
   // created when needed, and stored here. When the key is a string, it is the
@@ -568,11 +204,13 @@ export class RecordController extends Controller<'main'> implements Consumer {
   run() {
     // TODO(eseckler): Use ConsumerPort's QueryServiceState instead
     // of posting a custom extension message to retrieve the category list.
-    if (this.app.state.updateChromeCategories === true) {
+    if (this.app.state.fetchChromeCategories && !this.fetchedCategories) {
+      this.fetchedCategories = true;
       if (this.app.state.extensionInstalled) {
         this.extensionPort.postMessage({method: 'GetCategories'});
       }
-      globals.dispatch(Actions.setUpdateChromeCategories({update: false}));
+      frontendGlobals.dispatch(
+          Actions.setFetchChromeCategories({fetch: false}));
     }
     if (this.app.state.recordConfig === this.config &&
         this.app.state.recordingInProgress === this.recordingInProgress) {
@@ -590,16 +228,17 @@ export class RecordController extends Controller<'main'> implements Consumer {
       adb shell "perfetto -c - -o /data/misc/perfetto-traces/trace" &&
       adb pull /data/misc/perfetto-traces/trace /tmp/trace
     `;
-    const traceConfig = genConfig(this.config, this.app.state.recordingTarget);
+    const traceConfig =
+        convertToRecordingV2Input(this.config, this.app.state.recordingTarget);
     // TODO(hjd): This should not be TrackData after we unify the stores.
-    this.app.publish('TrackData', {
+    publishTrackData({
       id: 'config',
       data: {
         commandline,
         pbBase64: configProtoBase64,
         pbtxt: configProtoText,
-        traceConfig
-      }
+        traceConfig,
+      },
     });
 
     // If the recordingInProgress boolean state is different, it means that we
@@ -643,14 +282,21 @@ export class RecordController extends Controller<'main'> implements Consumer {
       // TODO(nicomazz): handle this as intended by consumer_port.proto.
       console.assert(data.slices.length === 1);
       if (data.slices[0].data) this.traceBuffer.push(data.slices[0].data);
+      // The line underneath is 'misusing' the format ReadBuffersResponse.
+      // The boolean field 'lastSliceForPacket' is used as 'lastPacketInTrace'.
+      // See http://shortn/_53WB8A1aIr.
       if (data.slices[0].lastSliceForPacket) this.onTraceComplete();
     } else if (isEnableTracingResponse(data)) {
       this.readBuffers();
     } else if (isGetTraceStatsResponse(data)) {
       const percentage = this.getBufferUsagePercentage(data);
       if (percentage) {
-        globals.publish('BufferUsage', {percentage});
+        publishBufferUsage({percentage});
       }
+    } else if (isFreeBuffersResponse(data)) {
+      // No action required.
+    } else if (isDisableTracingResponse(data)) {
+      // No action required.
     } else {
       console.error('Unrecognized consumer port response:', data);
     }
@@ -658,16 +304,19 @@ export class RecordController extends Controller<'main'> implements Consumer {
 
   onTraceComplete() {
     this.consumerPort.freeBuffers({});
-    globals.dispatch(Actions.setRecordingStatus({status: undefined}));
+    frontendGlobals.dispatch(Actions.setRecordingStatus({status: undefined}));
     if (globals.state.recordingCancelled) {
-      globals.dispatch(
+      frontendGlobals.dispatch(
           Actions.setLastRecordingError({error: 'Recording cancelled.'}));
       this.traceBuffer = [];
       return;
     }
     const trace = this.generateTrace();
-    globals.dispatch(Actions.openTraceFromBuffer(
-        {title: 'Recorded trace', buffer: trace.buffer}));
+    frontendGlobals.dispatch(Actions.openTraceFromBuffer({
+      title: 'Recorded trace',
+      buffer: trace.buffer,
+      fileName: `recorded_trace${this.recordedTraceSuffix}`,
+    }));
     this.traceBuffer = [];
   }
 
@@ -697,14 +346,15 @@ export class RecordController extends Controller<'main'> implements Consumer {
   }
 
   onError(message: string) {
+    // TODO(octaviant): b/204998302
     console.error('Error in record controller: ', message);
-    globals.dispatch(
+    frontendGlobals.dispatch(
         Actions.setLastRecordingError({error: message.substr(0, 150)}));
-    globals.dispatch(Actions.stopRecording({}));
+    frontendGlobals.dispatch(Actions.stopRecording({}));
   }
 
   onStatus(message: string) {
-    globals.dispatch(Actions.setRecordingStatus({status: message}));
+    frontendGlobals.dispatch(Actions.setRecordingStatus({status: message}));
   }
 
   // Depending on the recording target, different implementation of the
@@ -717,7 +367,7 @@ export class RecordController extends Controller<'main'> implements Consumer {
   // protocol. Actually, there is no full consumer_port implementation, but
   // only the support to start tracing and fetch the file.
   async getTargetController(target: RecordingTarget): Promise<RpcConsumerPort> {
-    const identifier = this.getTargetIdentifier(target);
+    const identifier = RecordController.getTargetIdentifier(target);
 
     // The reason why caching the target 'record controller' Promise is that
     // multiple rcp calls can happen while we are trying to understand if an
@@ -751,13 +401,13 @@ export class RecordController extends Controller<'main'> implements Consumer {
     return controllerPromise;
   }
 
-  private getTargetIdentifier(target: RecordingTarget): string {
+  private static getTargetIdentifier(target: RecordingTarget): string {
     return isAdbTarget(target) ? target.serial : target.os;
   }
 
   private async hasSocketAccess(target: AdbRecordingTarget) {
     const devices = await navigator.usb.getDevices();
-    const device = devices.find(d => d.serialNumber === target.serial);
+    const device = devices.find((d) => d.serialNumber === target.serial);
     console.assert(device);
     if (!device) return Promise.resolve(false);
     return AdbSocketConsumerPort.hasSocketAccess(device, this.adb);
@@ -768,8 +418,12 @@ export class RecordController extends Controller<'main'> implements Consumer {
       _callback: RPCImplCallback) {
     try {
       const state = this.app.state;
-      (await this.getTargetController(state.recordingTarget))
-          .handleCommand(method.name, requestData);
+      // TODO(hjd): This is a bit weird. We implicity send each RPC message to
+      // whichever target is currently selected (creating that target if needed)
+      // it would be nicer if the setup/teardown was more explicit.
+      const target = await this.getTargetController(state.recordingTarget);
+      this.recordedTraceSuffix = target.getRecordedTraceSuffix();
+      target.handleCommand(method.name, requestData);
     } catch (e) {
       console.error(`error invoking ${method}: ${e.message}`);
     }

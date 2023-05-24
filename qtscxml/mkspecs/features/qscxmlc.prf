@@ -1,4 +1,4 @@
-qtPrepareTool(QMAKE_QSCXMLC, qscxmlc)
+qtPrepareLibExecTool(QMAKE_QSCXMLC, qscxmlc)
 
 isEmpty(QSCXMLC_DIR):QSCXMLC_DIR = .
 

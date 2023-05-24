@@ -11,11 +11,17 @@ if get_option('shell-ivi')
 	plugin_shell_ivi = shared_library(
 		'ivi-shell',
 		srcs_shell_ivi,
-		include_directories: include_directories('..', '../shared'),
-		dependencies: [ dep_lib_desktop, dep_libweston ],
+		include_directories: common_inc,
+		dependencies: [
+			dep_libm,
+			dep_libexec_weston,
+			dep_lib_desktop,
+			dep_libweston_public
+		],
 		name_prefix: '',
 		install: true,
-		install_dir: dir_module_weston
+		install_dir: dir_module_weston,
+		install_rpath: '$ORIGIN'
 	)
 	env_modmap += 'ivi-shell.so=@0@;'.format(plugin_shell_ivi.full_path())
 
@@ -29,11 +35,16 @@ if get_option('shell-ivi')
 	plugin_ivi_hmi = shared_library(
 		'hmi-controller',
 		srcs_ivi_hmi,
-		include_directories: include_directories('..', '../shared'),
-		dependencies: [ dep_libweston, dep_libshared ],
+		include_directories: common_inc,
+		dependencies: [
+			dep_libexec_weston,
+			dep_libweston_public,
+			dep_libshared
+		],
 		name_prefix: '',
 		install: true,
-		install_dir: dir_module_weston
+		install_dir: dir_module_weston,
+		install_rpath: '$ORIGIN'
 	)
 	env_modmap += 'hmi-controller.so=@0@;'.format(plugin_ivi_hmi.full_path())
 

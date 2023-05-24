@@ -1,15 +1,8 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 import("//components/captive_portal/core/features.gni")
 import("//third_party/protobuf/proto_library.gni")
-
-# This file depends on the legacy global sources assignment filter. It should
-# be converted to check target platform before assigning source files to the
-# sources variable. Remove this import and set_sources_assignment_filter call
-# when the file has been converted. See https://crbug.com/1018739 for details.
-import("//build/config/deprecated_default_sources_assignment_filter.gni")
-set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
 
 static_library("security_interstitial_page") {
   sources = [
@@ -20,9 +13,6 @@ static_library("security_interstitial_page") {
     "captive_portal_blocking_page.cc",
     "captive_portal_blocking_page.h",
     "captive_portal_helper.h",
-    "captive_portal_helper_android.cc",
-    "captive_portal_helper_android.h",
-    "captive_portal_helper_win.cc",
     "cert_report_helper.cc",
     "cert_report_helper.h",
     "certificate_error_report.cc",
@@ -33,6 +23,8 @@ static_library("security_interstitial_page") {
     "connection_help_ui.h",
     "content_metrics_helper.cc",
     "content_metrics_helper.h",
+    "https_only_mode_blocking_page.cc",
+    "https_only_mode_blocking_page.h",
     "insecure_form_blocking_page.cc",
     "insecure_form_blocking_page.h",
     "insecure_form_navigation_throttle.cc",
@@ -41,14 +33,8 @@ static_library("security_interstitial_page") {
     "insecure_form_tab_storage.h",
     "known_interception_disclosure_ui.cc",
     "known_interception_disclosure_ui.h",
-    "legacy_tls_blocking_page.cc",
-    "legacy_tls_blocking_page.h",
     "mitm_software_blocking_page.cc",
     "mitm_software_blocking_page.h",
-    "origin_policy_interstitial_page.cc",
-    "origin_policy_interstitial_page.h",
-    "origin_policy_ui.cc",
-    "origin_policy_ui.h",
     "security_blocking_page_factory.h",
     "security_interstitial_controller_client.cc",
     "security_interstitial_controller_client.h",
@@ -80,22 +66,25 @@ static_library("security_interstitial_page") {
 
   public_deps = [
     "//components/captive_portal/core:buildflags",
-    "//components/safe_browsing/core/db:hit_report",
+    "//components/safe_browsing/core/browser/db:hit_report",
   ]
 
   deps = [
     ":proto",
     "//base",
     "//build:branding_buildflags",
+    "//build:chromeos_buildflags",
     "//components/captive_portal/core",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/common",
     "//components/history/core/browser",
     "//components/keyed_service/core",
     "//components/network_time",
+    "//components/omnibox/common:common",
     "//components/pref_registry",
     "//components/prefs:prefs",
     "//components/resources",
+    "//components/safe_browsing/core/common:common",
     "//components/safe_browsing/core/common:safe_browsing_prefs",
     "//components/security_interstitials/core:core",
     "//components/security_interstitials/core:unsafe_resource",
@@ -108,6 +97,7 @@ static_library("security_interstitial_page") {
     "//content/public/browser",
     "//content/public/common",
     "//crypto",
+    "//services/cert_verifier/public/mojom",
     "//services/network/public/cpp:cpp",
     "//third_party/protobuf:protobuf_lite",
     "//third_party/re2",
@@ -121,13 +111,23 @@ static_library("security_interstitial_page") {
     deps += [ "//components/captive_portal/content" ]
   }
 
-  if (is_win || is_mac) {
+  if (is_win || is_mac || is_fuchsia) {
     deps += [ "//components/wifi" ]
   }
 
+  if (is_win) {
+    sources += [ "captive_portal_helper_win.cc" ]
+  }
+
   if (is_android) {
+    sources += [
+      "captive_portal_helper_android.cc",
+      "captive_portal_helper_android.h",
+    ]
     deps +=
         [ "//components/security_interstitials/content/android:jni_headers" ]
+  } else {
+    deps += [ "//components/guest_view/browser" ]
   }
 }
 
@@ -153,6 +153,7 @@ source_set("unit_tests") {
     ":security_interstitial_page",
     "//base",
     "//base/test:test_support",
+    "//build:chromeos_buildflags",
     "//components/captive_portal/content",
     "//components/captive_portal/core:test_support",
     "//components/embedder_support",

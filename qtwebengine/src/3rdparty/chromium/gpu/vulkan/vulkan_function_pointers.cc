@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -23,15 +23,33 @@ VulkanFunctionPointers* GetVulkanFunctionPointers() {
 VulkanFunctionPointers::VulkanFunctionPointers() = default;
 VulkanFunctionPointers::~VulkanFunctionPointers() = default;
 
-bool VulkanFunctionPointers::BindUnassociatedFunctionPointers() {
-  // vkGetInstanceProcAddr must be handled specially since it gets its function
-  // pointer through base::GetFunctionPOinterFromNativeLibrary(). Other Vulkan
-  // functions don't do this.
+bool VulkanFunctionPointers::BindUnassociatedFunctionPointersFromLoaderLib(
+    base::NativeLibrary lib) {
+  base::AutoLock lock(write_lock_);
+  loader_library_ = lib;
+
+  // vkGetInstanceProcAddr must be handled specially since it gets its
+  // function pointer through base::GetFunctionPointerFromNativeLibrary().
+  // Other Vulkan functions don't do this.
   vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(
-      base::GetFunctionPointerFromNativeLibrary(vulkan_loader_library,
+      base::GetFunctionPointerFromNativeLibrary(loader_library_,
                                                 "vkGetInstanceProcAddr"));
   if (!vkGetInstanceProcAddr)
     return false;
+  return BindUnassociatedFunctionPointersCommon();
+}
+
+bool VulkanFunctionPointers::BindUnassociatedFunctionPointersFromGetProcAddr(
+    PFN_vkGetInstanceProcAddr proc) {
+  DCHECK(proc);
+  DCHECK(!loader_library_);
+
+  base::AutoLock lock(write_lock_);
+  vkGetInstanceProcAddr = proc;
+  return BindUnassociatedFunctionPointersCommon();
+}
+
+bool VulkanFunctionPointers::BindUnassociatedFunctionPointersCommon() {
   vkEnumerateInstanceVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
       vkGetInstanceProcAddr(nullptr, "vkEnumerateInstanceVersion"));
   if (!vkEnumerateInstanceVersion) {
@@ -75,6 +93,7 @@ bool VulkanFunctionPointers::BindInstanceFunctionPointers(
     uint32_t api_version,
     const gfx::ExtensionSet& enabled_extensions) {
   DCHECK_GE(api_version, kVulkanRequiredApiVersion);
+  base::AutoLock lock(write_lock_);
   vkCreateDevice = reinterpret_cast<PFN_vkCreateDevice>(
       vkGetInstanceProcAddr(vk_instance, "vkCreateDevice"));
   if (!vkCreateDevice) {
@@ -146,6 +165,16 @@ bool VulkanFunctionPointers::BindInstanceFunctionPointers(
     return false;
   }
 
+  vkGetPhysicalDeviceFormatProperties2 =
+      reinterpret_cast<PFN_vkGetPhysicalDeviceFormatProperties2>(
+          vkGetInstanceProcAddr(vk_instance,
+                                "vkGetPhysicalDeviceFormatProperties2"));
+  if (!vkGetPhysicalDeviceFormatProperties2) {
+    DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
+                  << "vkGetPhysicalDeviceFormatProperties2";
+    return false;
+  }
+
   vkGetPhysicalDeviceImageFormatProperties2 =
       reinterpret_cast<PFN_vkGetPhysicalDeviceImageFormatProperties2>(
           vkGetInstanceProcAddr(vk_instance,
@@ -182,6 +211,15 @@ bool VulkanFunctionPointers::BindInstanceFunctionPointers(
   if (!vkGetPhysicalDeviceProperties) {
     DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
                   << "vkGetPhysicalDeviceProperties";
+    return false;
+  }
+
+  vkGetPhysicalDeviceProperties2 =
+      reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(
+          vkGetInstanceProcAddr(vk_instance, "vkGetPhysicalDeviceProperties2"));
+  if (!vkGetPhysicalDeviceProperties2) {
+    DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
+                  << "vkGetPhysicalDeviceProperties2";
     return false;
   }
 
@@ -260,30 +298,42 @@ bool VulkanFunctionPointers::BindInstanceFunctionPointers(
     }
   }
 
-#if defined(USE_VULKAN_XLIB)
   if (gfx::HasExtension(enabled_extensions,
-                        VK_KHR_XLIB_SURFACE_EXTENSION_NAME)) {
-    vkCreateXlibSurfaceKHR = reinterpret_cast<PFN_vkCreateXlibSurfaceKHR>(
-        vkGetInstanceProcAddr(vk_instance, "vkCreateXlibSurfaceKHR"));
-    if (!vkCreateXlibSurfaceKHR) {
+                        VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME)) {
+    vkCreateHeadlessSurfaceEXT =
+        reinterpret_cast<PFN_vkCreateHeadlessSurfaceEXT>(
+            vkGetInstanceProcAddr(vk_instance, "vkCreateHeadlessSurfaceEXT"));
+    if (!vkCreateHeadlessSurfaceEXT) {
       DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
-                    << "vkCreateXlibSurfaceKHR";
-      return false;
-    }
-
-    vkGetPhysicalDeviceXlibPresentationSupportKHR =
-        reinterpret_cast<PFN_vkGetPhysicalDeviceXlibPresentationSupportKHR>(
-            vkGetInstanceProcAddr(
-                vk_instance, "vkGetPhysicalDeviceXlibPresentationSupportKHR"));
-    if (!vkGetPhysicalDeviceXlibPresentationSupportKHR) {
-      DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
-                    << "vkGetPhysicalDeviceXlibPresentationSupportKHR";
+                    << "vkCreateHeadlessSurfaceEXT";
       return false;
     }
   }
-#endif  // defined(USE_VULKAN_XLIB)
 
-#if defined(OS_WIN)
+#if defined(USE_VULKAN_XCB)
+  if (gfx::HasExtension(enabled_extensions,
+                        VK_KHR_XCB_SURFACE_EXTENSION_NAME)) {
+    vkCreateXcbSurfaceKHR = reinterpret_cast<PFN_vkCreateXcbSurfaceKHR>(
+        vkGetInstanceProcAddr(vk_instance, "vkCreateXcbSurfaceKHR"));
+    if (!vkCreateXcbSurfaceKHR) {
+      DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
+                    << "vkCreateXcbSurfaceKHR";
+      return false;
+    }
+
+    vkGetPhysicalDeviceXcbPresentationSupportKHR =
+        reinterpret_cast<PFN_vkGetPhysicalDeviceXcbPresentationSupportKHR>(
+            vkGetInstanceProcAddr(
+                vk_instance, "vkGetPhysicalDeviceXcbPresentationSupportKHR"));
+    if (!vkGetPhysicalDeviceXcbPresentationSupportKHR) {
+      DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
+                    << "vkGetPhysicalDeviceXcbPresentationSupportKHR";
+      return false;
+    }
+  }
+#endif  // defined(USE_VULKAN_XCB)
+
+#if BUILDFLAG(IS_WIN)
   if (gfx::HasExtension(enabled_extensions,
                         VK_KHR_WIN32_SURFACE_EXTENSION_NAME)) {
     vkCreateWin32SurfaceKHR = reinterpret_cast<PFN_vkCreateWin32SurfaceKHR>(
@@ -304,9 +354,9 @@ bool VulkanFunctionPointers::BindInstanceFunctionPointers(
       return false;
     }
   }
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   if (gfx::HasExtension(enabled_extensions,
                         VK_KHR_ANDROID_SURFACE_EXTENSION_NAME)) {
     vkCreateAndroidSurfaceKHR = reinterpret_cast<PFN_vkCreateAndroidSurfaceKHR>(
@@ -317,9 +367,9 @@ bool VulkanFunctionPointers::BindInstanceFunctionPointers(
       return false;
     }
   }
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID)
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
   if (gfx::HasExtension(enabled_extensions,
                         VK_FUCHSIA_IMAGEPIPE_SURFACE_EXTENSION_NAME)) {
     vkCreateImagePipeSurfaceFUCHSIA =
@@ -332,7 +382,7 @@ bool VulkanFunctionPointers::BindInstanceFunctionPointers(
       return false;
     }
   }
-#endif  // defined(OS_FUCHSIA)
+#endif  // BUILDFLAG(IS_FUCHSIA)
 
   return true;
 }
@@ -342,6 +392,7 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
     uint32_t api_version,
     const gfx::ExtensionSet& enabled_extensions) {
   DCHECK_GE(api_version, kVulkanRequiredApiVersion);
+  base::AutoLock lock(write_lock_);
   // Device functions
   vkAllocateCommandBuffers = reinterpret_cast<PFN_vkAllocateCommandBuffers>(
       vkGetDeviceProcAddr(vk_device, "vkAllocateCommandBuffers"));
@@ -431,6 +482,14 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
     return false;
   }
 
+  vkCmdCopyImageToBuffer = reinterpret_cast<PFN_vkCmdCopyImageToBuffer>(
+      vkGetDeviceProcAddr(vk_device, "vkCmdCopyImageToBuffer"));
+  if (!vkCmdCopyImageToBuffer) {
+    DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
+                  << "vkCmdCopyImageToBuffer";
+    return false;
+  }
+
   vkCmdEndRenderPass = reinterpret_cast<PFN_vkCmdEndRenderPass>(
       vkGetDeviceProcAddr(vk_device, "vkCmdEndRenderPass"));
   if (!vkCmdEndRenderPass) {
@@ -509,6 +568,14 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
   if (!vkCreateFramebuffer) {
     DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
                   << "vkCreateFramebuffer";
+    return false;
+  }
+
+  vkCreateGraphicsPipelines = reinterpret_cast<PFN_vkCreateGraphicsPipelines>(
+      vkGetDeviceProcAddr(vk_device, "vkCreateGraphicsPipelines"));
+  if (!vkCreateGraphicsPipelines) {
+    DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
+                  << "vkCreateGraphicsPipelines";
     return false;
   }
 
@@ -782,6 +849,15 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
     return false;
   }
 
+  vkGetImageSubresourceLayout =
+      reinterpret_cast<PFN_vkGetImageSubresourceLayout>(
+          vkGetDeviceProcAddr(vk_device, "vkGetImageSubresourceLayout"));
+  if (!vkGetImageSubresourceLayout) {
+    DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
+                  << "vkGetImageSubresourceLayout";
+    return false;
+  }
+
   vkMapMemory = reinterpret_cast<PFN_vkMapMemory>(
       vkGetDeviceProcAddr(vk_device, "vkMapMemory"));
   if (!vkMapMemory) {
@@ -846,7 +922,7 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
     return false;
   }
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   if (gfx::HasExtension(
           enabled_extensions,
           VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME)) {
@@ -860,9 +936,9 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
       return false;
     }
   }
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID)
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#if BUILDFLAG(IS_POSIX)
   if (gfx::HasExtension(enabled_extensions,
                         VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME)) {
     vkGetSemaphoreFdKHR = reinterpret_cast<PFN_vkGetSemaphoreFdKHR>(
@@ -881,9 +957,9 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
       return false;
     }
   }
-#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_POSIX)
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   if (gfx::HasExtension(enabled_extensions,
                         VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME)) {
     vkGetSemaphoreWin32HandleKHR =
@@ -904,9 +980,9 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
       return false;
     }
   }
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#if BUILDFLAG(IS_POSIX)
   if (gfx::HasExtension(enabled_extensions,
                         VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME)) {
     vkGetMemoryFdKHR = reinterpret_cast<PFN_vkGetMemoryFdKHR>(
@@ -926,9 +1002,9 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
       return false;
     }
   }
-#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_POSIX)
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   if (gfx::HasExtension(enabled_extensions,
                         VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME)) {
     vkGetMemoryWin32HandleKHR = reinterpret_cast<PFN_vkGetMemoryWin32HandleKHR>(
@@ -949,9 +1025,9 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
       return false;
     }
   }
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
   if (gfx::HasExtension(enabled_extensions,
                         VK_FUCHSIA_EXTERNAL_SEMAPHORE_EXTENSION_NAME)) {
     vkImportSemaphoreZirconHandleFUCHSIA =
@@ -974,9 +1050,9 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
       return false;
     }
   }
-#endif  // defined(OS_FUCHSIA)
+#endif  // BUILDFLAG(IS_FUCHSIA)
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
   if (gfx::HasExtension(enabled_extensions,
                         VK_FUCHSIA_EXTERNAL_MEMORY_EXTENSION_NAME)) {
     vkGetMemoryZirconHandleFUCHSIA =
@@ -988,9 +1064,9 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
       return false;
     }
   }
-#endif  // defined(OS_FUCHSIA)
+#endif  // BUILDFLAG(IS_FUCHSIA)
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
   if (gfx::HasExtension(enabled_extensions,
                         VK_FUCHSIA_BUFFER_COLLECTION_EXTENSION_NAME)) {
     vkCreateBufferCollectionFUCHSIA =
@@ -1002,13 +1078,13 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
       return false;
     }
 
-    vkSetBufferCollectionConstraintsFUCHSIA =
-        reinterpret_cast<PFN_vkSetBufferCollectionConstraintsFUCHSIA>(
-            vkGetDeviceProcAddr(vk_device,
-                                "vkSetBufferCollectionConstraintsFUCHSIA"));
-    if (!vkSetBufferCollectionConstraintsFUCHSIA) {
+    vkSetBufferCollectionImageConstraintsFUCHSIA =
+        reinterpret_cast<PFN_vkSetBufferCollectionImageConstraintsFUCHSIA>(
+            vkGetDeviceProcAddr(
+                vk_device, "vkSetBufferCollectionImageConstraintsFUCHSIA"));
+    if (!vkSetBufferCollectionImageConstraintsFUCHSIA) {
       DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
-                    << "vkSetBufferCollectionConstraintsFUCHSIA";
+                    << "vkSetBufferCollectionImageConstraintsFUCHSIA";
       return false;
     }
 
@@ -1031,7 +1107,7 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
       return false;
     }
   }
-#endif  // defined(OS_FUCHSIA)
+#endif  // BUILDFLAG(IS_FUCHSIA)
 
   if (gfx::HasExtension(enabled_extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME)) {
     vkAcquireNextImageKHR = reinterpret_cast<PFN_vkAcquireNextImageKHR>(
@@ -1074,6 +1150,21 @@ bool VulkanFunctionPointers::BindDeviceFunctionPointers(
       return false;
     }
   }
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  if (gfx::HasExtension(enabled_extensions,
+                        VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME)) {
+    vkGetImageDrmFormatModifierPropertiesEXT =
+        reinterpret_cast<PFN_vkGetImageDrmFormatModifierPropertiesEXT>(
+            vkGetDeviceProcAddr(vk_device,
+                                "vkGetImageDrmFormatModifierPropertiesEXT"));
+    if (!vkGetImageDrmFormatModifierPropertiesEXT) {
+      DLOG(WARNING) << "Failed to bind vulkan entrypoint: "
+                    << "vkGetImageDrmFormatModifierPropertiesEXT";
+      return false;
+    }
+  }
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
   return true;
 }

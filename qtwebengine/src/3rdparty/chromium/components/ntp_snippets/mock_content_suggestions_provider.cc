@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/strings/utf_string_conversions.h"
 
 namespace ntp_snippets {
@@ -40,11 +40,9 @@ CategoryStatus MockContentSuggestionsProvider::GetCategoryStatus(
 
 CategoryInfo MockContentSuggestionsProvider::GetCategoryInfo(
     Category category) {
-  return CategoryInfo(base::ASCIIToUTF16("Section title"),
-                      ContentSuggestionsCardLayout::FULL_CARD,
+  return CategoryInfo(u"Section title", ContentSuggestionsCardLayout::FULL_CARD,
                       ContentSuggestionsAdditionalAction::FETCH,
-                      /*show_if_empty=*/false,
-                      base::ASCIIToUTF16("No suggestions message"));
+                      /*show_if_empty=*/false, u"No suggestions message");
 }
 
 void MockContentSuggestionsProvider::SetDestructorCallback(

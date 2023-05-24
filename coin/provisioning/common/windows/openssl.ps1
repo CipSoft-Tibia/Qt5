@@ -1,42 +1,12 @@
-#############################################################################
-##
-## Copyright (C) 2020 The Qt Company Ltd.
-## Contact: http://www.qt.io/licensing/
-##
-## This file is part of the provisioning scripts of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:LGPL21$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see http://www.qt.io/terms-conditions. For further
-## information use the contact form at http://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 2.1 or version 3 as published by the Free
-## Software Foundation and appearing in the file LICENSE.LGPLv21 and
-## LICENSE.LGPLv3 included in the packaging of this file. Please review the
-## following information to ensure the GNU Lesser General Public License
-## requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-## http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-##
-## As a special exception, The Qt Company gives you certain additional
-## rights. These rights are described in The Qt Company LGPL Exception
-## version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 . "$PSScriptRoot\helpers.ps1"
 
 # This script installs OpenSSL $version.
 # Both x86 and x64 versions needed when x86 integrations are done on x64 machine
 
-$version = "1_1_1g"
+$version = "3_0_7"
 $packagex64 = "C:\Windows\Temp\Win64OpenSSL-$version.exe"
 $packagex86 = "C:\Windows\Temp\Win32OpenSSL-$version.exe"
 
@@ -47,7 +17,7 @@ if (Is64BitWinHost) {
     $installFolder = "C:\openssl"
     $externalUrl = "https://slproweb.com/download/Win64OpenSSL-$version.exe"
     $internalUrl = "\\ci-files01-hki.intra.qt.io\provisioning\openssl\Win64OpenSSL-$version.exe"
-    $sha1 = "7643561c372720f55de51454a707ede334db086e"
+    $sha1 = "2fb73f233bc565939312782b8157bebc26a5e17b"
 
     Write-Host "Fetching from URL ..."
     Download $externalUrl $internalUrl $packagex64
@@ -56,11 +26,12 @@ if (Is64BitWinHost) {
     Run-Executable "$packagex64" "/SP- /SILENT /LOG /SUPPRESSMSGBOXES /NORESTART /DIR=$installFolder"
 
     Write-Host "Remove downloaded $packagex64 ..."
-    Remove-Item -Path $packagex64
+    Remove "$packagex64"
 
     Set-EnvironmentVariable "OPENSSL_CONF_x64" "$installFolder\bin\openssl.cfg"
     Set-EnvironmentVariable "OPENSSL_INCLUDE_x64" "$installFolder\include"
     Set-EnvironmentVariable "OPENSSL_LIB_x64" "$installFolder\lib"
+    Prepend-Path "$installFolder\bin"
 }
 
 # Install x86 bit version
@@ -74,7 +45,7 @@ if (Is64BitWinHost) {
 
 $externalUrl = "https://slproweb.com/download/Win32OpenSSL-$version.exe"
 $internalUrl = "\\ci-files01-hki.intra.qt.io\provisioning\openssl\Win32OpenSSL-$version.exe"
-$sha1 = "c7d4b096c2413d1af819ccb291214fa3c4cece07"
+$sha1 = "ddead693fa279ad6b1baf123b3af51a9ef289dc1"
 
 Write-Host "Fetching from URL ..."
 Download $externalUrl $internalUrl $packagex86
@@ -83,7 +54,7 @@ Write-Host "Installing $packagex86 ..."
 Run-Executable "$packagex86" "/SP- /SILENT /LOG /SUPPRESSMSGBOXES /NORESTART /DIR=$installFolder"
 
 Write-Host "Remove downloaded $packagex86 ..."
-Remove-Item -Path $packagex86
+Remove "$packagex86"
 
 Set-EnvironmentVariable "OPENSSL_CONF_x86" "$installFolder\bin\openssl.cfg"
 Set-EnvironmentVariable "OPENSSL_INCLUDE_x86" "$installFolder\include"

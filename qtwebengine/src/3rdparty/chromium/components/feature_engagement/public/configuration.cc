@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include <string>
 
 #include "base/notreached.h"
-#include "base/optional.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace feature_engagement {
 namespace {
@@ -103,6 +103,24 @@ SessionRateImpact::SessionRateImpact(const SessionRateImpact& other) = default;
 
 SessionRateImpact::~SessionRateImpact() = default;
 
+BlockedBy::BlockedBy() = default;
+
+BlockedBy::BlockedBy(const BlockedBy& other) = default;
+
+BlockedBy::~BlockedBy() = default;
+
+Blocking::Blocking() = default;
+
+Blocking::Blocking(const Blocking& other) = default;
+
+Blocking::~Blocking() = default;
+
+SnoozeParams::SnoozeParams() = default;
+
+SnoozeParams::SnoozeParams(const SnoozeParams& other) = default;
+
+SnoozeParams::~SnoozeParams() = default;
+
 std::ostream& operator<<(std::ostream& os, const SessionRateImpact& impact) {
   os << "{ type: " << impact.type << ", affected_features: ";
   if (!impact.affected_features.has_value())
@@ -126,7 +144,12 @@ bool operator==(const SessionRateImpact& lhs, const SessionRateImpact& rhs) {
          std::tie(rhs.type, rhs.affected_features);
 }
 
-FeatureConfig::FeatureConfig() : valid(false), tracking_only(false) {}
+bool operator==(const BlockedBy& lhs, const BlockedBy& rhs) {
+  return std::tie(lhs.type, lhs.affected_features) ==
+         std::tie(rhs.type, rhs.affected_features);
+}
+
+FeatureConfig::FeatureConfig() : valid(false) {}
 
 FeatureConfig::FeatureConfig(const FeatureConfig& other) = default;
 
@@ -176,6 +199,33 @@ std::ostream& operator<<(std::ostream& os,
   }
   return os << "], session_rate: " << feature_config.session_rate
             << ", availability: " << feature_config.availability << " }";
+}
+
+GroupConfig::GroupConfig() = default;
+
+GroupConfig::GroupConfig(const GroupConfig& other) = default;
+
+GroupConfig::~GroupConfig() = default;
+
+bool operator==(const GroupConfig& lhs, const GroupConfig& rhs) {
+  return std::tie(lhs.valid, lhs.trigger, lhs.event_configs,
+                  lhs.session_rate) ==
+         std::tie(rhs.valid, rhs.trigger, rhs.event_configs, rhs.session_rate);
+}
+
+std::ostream& operator<<(std::ostream& os, const GroupConfig& group_config) {
+  os << "{ valid: " << group_config.valid
+     << ", trigger: " << group_config.trigger << ", event_configs: [";
+  bool first = true;
+  for (const auto& event_config : group_config.event_configs) {
+    if (first) {
+      first = false;
+      os << event_config;
+    } else {
+      os << ", " << event_config;
+    }
+  }
+  return os << "], session_rate: " << group_config.session_rate << " }";
 }
 
 }  // namespace feature_engagement

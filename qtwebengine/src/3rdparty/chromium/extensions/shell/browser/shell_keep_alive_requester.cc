@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,9 @@ namespace extensions {
 
 ShellKeepAliveRequester::ShellKeepAliveRequester(
     content::BrowserContext* browser_context) {
-  extension_registry_observer_.Add(ExtensionRegistry::Get(browser_context));
-  app_lifetime_monitor_observer_.Add(
+  extension_registry_observation_.Observe(
+      ExtensionRegistry::Get(browser_context));
+  app_lifetime_monitor_observation_.Observe(
       apps::AppLifetimeMonitorFactory::GetForBrowserContext(browser_context));
 }
 

@@ -1,3 +1,5 @@
+#!/usr/bin/env vpython3
+#
 # Copyright 2018 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -30,4 +32,5 @@ with open(GENERATED_LOCATION, "w+") as f:
     f.write('// Use of this source code is governed by a BSD-style license that can be\n')
     f.write('// found in the LICENSE file.\n')
     f.write('\n')
-    f.write("export const config = %s;\n" % json.dumps(ARIA_PROPERTIES))
+    f.write("export const config = %s;\n" %
+            json.dumps(ARIA_PROPERTIES, sort_keys=True, indent=1))

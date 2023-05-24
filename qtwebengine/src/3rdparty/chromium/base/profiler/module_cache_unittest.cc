@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,17 +8,24 @@
 #include <utility>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/callback_helpers.h"
+#include "base/containers/adapters.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/profiler/module_cache.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_piece.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 #include "base/debug/proc_maps_linux.h"
 #endif
+
+// Note: The special-case IS_CHROMEOS code inside GetDebugBasenameForModule to
+// handle the interaction between that function and
+// SetProcessTitleFromCommandLine() is tested in
+// content/common/set_process_title_linux_unittest.cc due to dependency issues.
 
 namespace base {
 namespace {
@@ -93,8 +100,8 @@ const ModuleCache::Module* AddNonNativeModule(
   return module_ptr;
 }
 
-#if (defined(OS_POSIX) && !defined(OS_IOS) && !defined(ARCH_CPU_ARM64)) || \
-    (defined(OS_FUCHSIA) && !defined(ARCH_CPU_ARM64)) || defined(OS_WIN)
+#if (BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_IOS) && !defined(ARCH_CPU_ARM64)) || \
+    BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_WIN)
 #define MAYBE_TEST(TestSuite, TestName) TEST(TestSuite, TestName)
 #else
 #define MAYBE_TEST(TestSuite, TestName) TEST(TestSuite, DISABLED_##TestName)
@@ -105,7 +112,7 @@ MAYBE_TEST(ModuleCacheTest, GetDebugBasename) {
   const ModuleCache::Module* module =
       cache.GetModuleForAddress(reinterpret_cast<uintptr_t>(&AFunctionForTest));
   ASSERT_NE(nullptr, module);
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   EXPECT_EQ("libbase_unittests__library",
             // Different build configurations varyingly use .so vs. .cr.so for
             // the module extension. Remove all the extensions in both cases.
@@ -113,9 +120,9 @@ MAYBE_TEST(ModuleCacheTest, GetDebugBasename) {
                 .RemoveFinalExtension()
                 .RemoveFinalExtension()
                 .value());
-#elif defined(OS_POSIX)
+#elif BUILDFLAG(IS_POSIX)
   EXPECT_EQ("base_unittests", module->GetDebugBasename().value());
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
   EXPECT_EQ(L"base_unittests.exe.pdb", module->GetDebugBasename().value());
 #endif
 }
@@ -332,8 +339,8 @@ MAYBE_TEST(ModuleCacheTest, InvalidModule) {
 }
 
 // arm64 module support is not implemented.
-#if defined(OS_LINUX) || defined(OS_CHROMEOS) || \
-    (defined(OS_ANDROID) && !defined(ARCH_CPU_ARM64))
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
+    (BUILDFLAG(IS_ANDROID) && !defined(ARCH_CPU_ARM64))
 // Validates that, for the memory regions listed in /proc/self/maps, the modules
 // found via ModuleCache are consistent with those regions' extents.
 TEST(ModuleCacheTest, CheckAgainstProcMaps) {
@@ -351,9 +358,8 @@ TEST(ModuleCacheTest, CheckAgainstProcMaps) {
     path_regions[region.path].push_back(&region);
 
   const auto find_last_executable_region = [](const RegionVector& regions) {
-    const auto rloc = std::find_if(
-        regions.rbegin(), regions.rend(),
-        [](const debug::MappedMemoryRegion* region) {
+    const auto rloc = base::ranges::find_if(
+        base::Reversed(regions), [](const debug::MappedMemoryRegion* region) {
           return static_cast<bool>(region->permissions &
                                    debug::MappedMemoryRegion::EXECUTE);
         });
@@ -408,6 +414,79 @@ TEST(ModuleCacheTest, CheckAgainstProcMaps) {
   // Linux should have at least this module and ld-linux.so. Android should have
   // at least this module and system libraries.
   EXPECT_GE(module_count, 2);
+}
+#endif
+
+// Module provider that always return a fake module of size 1 for a given
+// |address|.
+class MockModuleProvider : public ModuleCache::AuxiliaryModuleProvider {
+ public:
+  explicit MockModuleProvider(size_t module_size = 1)
+      : module_size_(module_size) {}
+
+  std::unique_ptr<const ModuleCache::Module> TryCreateModuleForAddress(
+      uintptr_t address) override {
+    return std::make_unique<FakeModule>(address, module_size_);
+  }
+
+ private:
+  size_t module_size_;
+};
+
+// Check that auxiliary provider can inject new modules when registered.
+TEST(ModuleCacheTest, RegisterAuxiliaryModuleProvider) {
+  ModuleCache cache;
+  EXPECT_EQ(nullptr, cache.GetModuleForAddress(1));
+
+  MockModuleProvider auxiliary_provider;
+  cache.RegisterAuxiliaryModuleProvider(&auxiliary_provider);
+  auto* module = cache.GetModuleForAddress(1);
+  EXPECT_NE(nullptr, module);
+  EXPECT_EQ(1U, module->GetBaseAddress());
+  cache.UnregisterAuxiliaryModuleProvider(&auxiliary_provider);
+
+  // Even when unregistered, the module remains in the cache.
+  EXPECT_EQ(module, cache.GetModuleForAddress(1));
+}
+
+// Check that ModuleCache's own module creator is used preferentially over
+// auxiliary provider if possible.
+MAYBE_TEST(ModuleCacheTest, NativeModuleOverAuxiliaryModuleProvider) {
+  ModuleCache cache;
+
+  MockModuleProvider auxiliary_provider(/*module_size=*/100);
+  cache.RegisterAuxiliaryModuleProvider(&auxiliary_provider);
+
+  const ModuleCache::Module* module =
+      cache.GetModuleForAddress(reinterpret_cast<uintptr_t>(&AFunctionForTest));
+  ASSERT_NE(nullptr, module);
+
+  // The module should be a native module, which will have size greater than 100
+  // bytes.
+  EXPECT_NE(100u, module->GetSize());
+  cache.UnregisterAuxiliaryModuleProvider(&auxiliary_provider);
+}
+
+// Check that auxiliary provider is no longer used after being unregistered.
+TEST(ModuleCacheTest, UnregisterAuxiliaryModuleProvider) {
+  ModuleCache cache;
+
+  EXPECT_EQ(nullptr, cache.GetModuleForAddress(1));
+
+  MockModuleProvider auxiliary_provider;
+  cache.RegisterAuxiliaryModuleProvider(&auxiliary_provider);
+  cache.UnregisterAuxiliaryModuleProvider(&auxiliary_provider);
+
+  EXPECT_EQ(nullptr, cache.GetModuleForAddress(1));
+}
+
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX)
+TEST(ModuleCacheTest, TransformELFToSymbolServerFormat) {
+  // See explanation for the module_id mangling in
+  // base::TransformModuleIDToSymbolServerFormat implementation.
+  EXPECT_EQ(TransformModuleIDToSymbolServerFormat(
+                "7F0715C286F8B16C10E4AD349CDA3B9B56C7A773"),
+            "C215077FF8866CB110E4AD349CDA3B9B0");
 }
 #endif
 

@@ -16,12 +16,16 @@
 
 #include "src/profiling/memory/client.h"
 
-#include <inttypes.h>
 #include <signal.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include <algorithm>
+#include <atomic>
+#include <cinttypes>
+#include <new>
 
 #include <unwindstack/MachineArm.h>
 #include <unwindstack/MachineArm64.h>
@@ -32,19 +36,18 @@
 #include <unwindstack/Regs.h>
 #include <unwindstack/RegsGetLocal.h>
 
-#include <algorithm>
-#include <atomic>
-#include <new>
-
 #include "perfetto/base/compiler.h"
 #include "perfetto/base/logging.h"
 #include "perfetto/base/thread_utils.h"
 #include "perfetto/base/time.h"
+#include "perfetto/ext/base/file_utils.h"
 #include "perfetto/ext/base/scoped_file.h"
+#include "perfetto/ext/base/string_utils.h"
 #include "perfetto/ext/base/unix_socket.h"
 #include "perfetto/ext/base/utils.h"
 #include "src/profiling/memory/sampler.h"
 #include "src/profiling/memory/scoped_spinlock.h"
+#include "src/profiling/memory/shared_ring_buffer.h"
 #include "src/profiling/memory/wire_protocol.h"
 
 namespace perfetto {
@@ -165,7 +168,7 @@ std::shared_ptr<Client> Client::CreateAndHandshake(
     return nullptr;
   }
 
-  PERFETTO_DCHECK(sock.IsBlocking());
+  sock.DcheckIsBlocking(true);
 
   // We might be running in a process that is not dumpable (such as app
   // processes on user builds), in which case the /proc/self/mem will be chown'd
@@ -181,8 +184,6 @@ std::shared_ptr<Client> Client::CreateAndHandshake(
     prctl(PR_SET_DUMPABLE, 1);
   }
 
-  size_t num_send_fds = kHandshakeSize;
-
   base::ScopedFile maps(base::OpenFile("/proc/self/maps", O_RDONLY));
   if (!maps) {
     PERFETTO_DFATAL_OR_ELOG("Failed to open /proc/self/maps");
@@ -194,23 +195,16 @@ std::shared_ptr<Client> Client::CreateAndHandshake(
     return nullptr;
   }
 
-  base::ScopedFile page_idle(base::OpenFile("/proc/self/page_idle", O_RDWR));
-  if (!page_idle) {
-    PERFETTO_DLOG("Failed to open /proc/self/page_idle. Continuing.");
-    num_send_fds = kHandshakeSize - 1;
-  }
-
   // Restore original dumpability value if we overrode it.
   unset_dumpable.reset();
 
   int fds[kHandshakeSize];
   fds[kHandshakeMaps] = *maps;
   fds[kHandshakeMem] = *mem;
-  fds[kHandshakePageIdle] = *page_idle;
 
   // Send an empty record to transfer fds for /proc/self/maps and
   // /proc/self/mem.
-  if (sock.Send(kSingleByte, sizeof(kSingleByte), fds, num_send_fds) !=
+  if (sock.Send(kSingleByte, sizeof(kSingleByte), fds, kHandshakeSize) !=
       sizeof(kSingleByte)) {
     PERFETTO_DFATAL_OR_ELOG("Failed to send file descriptors.");
     return nullptr;
@@ -285,7 +279,8 @@ Client::~Client() {
 
 const char* Client::GetStackEnd(const char* stackptr) {
   StackRange thread_stack_range;
-  if (IsMainThread()) {
+  bool is_main_thread = IsMainThread();
+  if (is_main_thread) {
     thread_stack_range = main_thread_stack_range_;
   } else {
     thread_stack_range = GetThreadStackRange();
@@ -296,6 +291,13 @@ const char* Client::GetStackEnd(const char* stackptr) {
   StackRange sigalt_stack_range = GetSigAltStackRange();
   if (Contained(sigalt_stack_range, stackptr)) {
     return sigalt_stack_range.end;
+  }
+  // The main thread might have expanded since we read its bounds. We now know
+  // it is not the sigaltstack, so it has to be the main stack.
+  // TODO(fmayer): We should reparse maps here, because now we will keep
+  //               hitting the slow-path that calls the sigaltstack syscall.
+  if (is_main_thread && stackptr < thread_stack_range.end) {
+    return thread_stack_range.end;
   }
   return nullptr;
 }
@@ -370,6 +372,7 @@ bool Client::RecordMalloc(uint32_t heap_id,
   const char* stackend = GetStackEnd(stackptr);
   if (!stackend) {
     PERFETTO_ELOG("Failed to find stackend.");
+    shmem_.SetErrorState(SharedRingBuffer::kInvalidStackBounds);
     return false;
   }
   uint64_t stack_size = static_cast<uint64_t>(stackend - stackptr);
@@ -399,12 +402,16 @@ bool Client::RecordMalloc(uint32_t heap_id,
   if (SendWireMessageWithRetriesIfBlocking(msg) == -1)
     return false;
 
+  if (!shmem_.GetAndResetReaderPaused())
+    return true;
   return SendControlSocketByte();
 }
 
 int64_t Client::SendWireMessageWithRetriesIfBlocking(const WireMessage& msg) {
   for (uint64_t i = 0;
        max_shmem_tries_ == kInfiniteTries || i < max_shmem_tries_; ++i) {
+    if (shmem_.shutting_down())
+      return -1;
     int64_t res = SendWireMessage(&shmem_, msg);
     if (PERFETTO_LIKELY(res >= 0))
       return res;
@@ -416,7 +423,7 @@ int64_t Client::SendWireMessageWithRetriesIfBlocking(const WireMessage& msg) {
     }
   }
   if (IsConnected())
-    shmem_.SetHitTimeout();
+    shmem_.SetErrorState(SharedRingBuffer::kHitTimeout);
   PERFETTO_PLOG("Failed to write to shared ring buffer. Disconnecting.");
   return -1;
 }
@@ -441,20 +448,24 @@ bool Client::RecordFree(uint32_t heap_id, const uint64_t alloc_address) {
   if (bytes_free == -1)
     return false;
   // Seems like we are filling up the shmem with frees. Flush.
-  if (static_cast<uint64_t>(bytes_free) < shmem_.size() / 2)
+  if (static_cast<uint64_t>(bytes_free) < shmem_.size() / 2 &&
+      shmem_.GetAndResetReaderPaused()) {
     return SendControlSocketByte();
+  }
   return true;
 }
 
-bool Client::RecordHeapName(uint32_t heap_id, const char* heap_name) {
+bool Client::RecordHeapInfo(uint32_t heap_id,
+                            const char* heap_name,
+                            uint64_t interval) {
   if (PERFETTO_UNLIKELY(IsPostFork())) {
     return postfork_return_value_;
   }
 
   HeapName hnr;
   hnr.heap_id = heap_id;
-  strncpy(&hnr.heap_name[0], heap_name, sizeof(hnr.heap_name));
-  hnr.heap_name[sizeof(hnr.heap_name) - 1] = '\0';
+  base::StringCopy(&hnr.heap_name[0], heap_name, sizeof(hnr.heap_name));
+  hnr.sample_interval = interval;
 
   WireMessage msg = {};
   msg.record_type = RecordType::HeapName;
@@ -463,7 +474,7 @@ bool Client::RecordHeapName(uint32_t heap_id, const char* heap_name) {
 }
 
 bool Client::IsConnected() {
-  PERFETTO_DCHECK(!sock_.IsBlocking());
+  sock_.DcheckIsBlocking(false);
   char buf[1];
   ssize_t recv_bytes = sock_.Receive(buf, sizeof(buf), nullptr, 0);
   if (recv_bytes == 0)
@@ -482,7 +493,11 @@ bool Client::SendControlSocketByte() {
   // is how the service signals the tracing session was torn down.
   if (sock_.Send(kSingleByte, sizeof(kSingleByte)) == -1 &&
       !base::IsAgain(errno)) {
-    PERFETTO_PLOG("Failed to send control socket byte.");
+    if (shmem_.shutting_down()) {
+      PERFETTO_LOG("Profiling session ended.");
+    } else {
+      PERFETTO_PLOG("Failed to send control socket byte.");
+    }
     return false;
   }
   return true;

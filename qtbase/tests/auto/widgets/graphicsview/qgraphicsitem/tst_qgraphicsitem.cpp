@@ -1,44 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtTest/private/qtesthelpers_p.h>
 
 #include <private/qgraphicsitem_p.h>
 #include <private/qgraphicsview_p.h>
 #include <private/qgraphicsscene_p.h>
+#include <private/qinputdevice_p.h>
 #include <QRandomGenerator>
 #include <QStyleOptionGraphicsItem>
 #include <QAbstractTextDocumentLayout>
 #include <QBitmap>
 #include <QCursor>
-#include <QDesktopWidget>
 #include <QScreen>
 #include <QLabel>
 #include <QDial>
@@ -60,9 +35,15 @@
 #include <float.h>
 #include <QStyleHints>
 #include <QPainterPath>
+#include <QSignalSpy>
+#include <QTimer>
+
+#include <QtGui/private/qeventpoint_p.h>
+
+#include <QtWidgets/private/qapplication_p.h>
 
 using AbstractGraphicsShapeItemPtr = QSharedPointer<QAbstractGraphicsShapeItem>;
-using GraphicsItems = QVector<QGraphicsItem *>;
+using GraphicsItems = QList<QGraphicsItem *>;
 using GraphicsItemsList = QList<QGraphicsItem *>;
 
 Q_DECLARE_METATYPE(AbstractGraphicsShapeItemPtr)
@@ -71,8 +52,8 @@ Q_DECLARE_METATYPE(QPainterPath)
 Q_DECLARE_METATYPE(QSizeF)
 Q_DECLARE_METATYPE(QTransform)
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
-#include <windows.h>
+#if defined(Q_OS_WIN)
+#include <qt_windows.h>
 #define Q_CHECK_PAINTEVENTS \
     if (::SwitchDesktop(::GetThreadDesktop(::GetCurrentThreadId())) == 0) \
         QSKIP("The Graphics View doesn't get the paint events");
@@ -252,7 +233,7 @@ public:
         lastExposedRect = QRectF();
     }
 
-    QVector<QEvent::Type> events;
+    QList<QEvent::Type> events;
     QPainter::RenderHints hints;
     int repaints = 0;
     QRectF br = QRectF(-10, -10, 20, 20);
@@ -285,9 +266,6 @@ public:
 class tst_QGraphicsItem : public QObject
 {
     Q_OBJECT
-
-public:
-    static void initMain();
 
 private slots:
     void cleanup();
@@ -451,7 +429,9 @@ private slots:
     void modality_keyEvents();
     void itemIsInFront();
     void scenePosChange();
+#if QT_CONFIG(shortcut)
     void textItem_shortcuts();
+#endif
     void scroll();
     void focusHandling_data();
     void focusHandling();
@@ -489,16 +469,8 @@ private slots:
 
 private:
     GraphicsItems paintedItems;
-    QTouchDevice *m_touchDevice = nullptr;
+    QPointingDevice *m_touchDevice = QTest::createTouchDevice();
 };
-
-void tst_QGraphicsItem::initMain()
-{
-#ifdef Q_OS_WIN
-    // Ensure minimum size constraints of framed windows on High DPI screens
-    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-#endif
-}
 
 void tst_QGraphicsItem::cleanup()
 {
@@ -1021,7 +993,7 @@ void tst_QGraphicsItem::inputMethodHints()
     scene.addItem(item);
     scene.addItem(item2);
     QGraphicsView view(&scene);
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
@@ -1078,7 +1050,7 @@ void tst_QGraphicsItem::toolTip()
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     view.setFixedSize(200, 200);
     view.show();
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowExposed(&view));
     QVERIFY(QTest::qWaitForWindowActive(&view));
     {
@@ -1543,7 +1515,7 @@ class SelectChangeItem : public QGraphicsRectItem
 {
 public:
     SelectChangeItem() : QGraphicsRectItem(-50, -50, 100, 100) { setBrush(Qt::blue); }
-    QVector<bool> values;
+    QList<bool> values;
 
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant &value) override
@@ -2236,7 +2208,7 @@ void tst_QGraphicsItem::setTransform()
     scene.update(scene.sceneRect());
     QCoreApplication::processEvents();
 
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     item.setTransform(QTransform().rotate(qreal(12.34)));
     QRectF rotatedRect = scene.sceneRect();
@@ -2244,14 +2216,14 @@ void tst_QGraphicsItem::setTransform()
     scene.update(scene.sceneRect());
     QCoreApplication::processEvents();
 
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     item.setTransform(QTransform());
 
     scene.update(scene.sceneRect());
     QCoreApplication::processEvents();
 
-    QCOMPARE(spy.count(), 3);
+    QCOMPARE(spy.size(), 3);
     QList<QRectF> rlist = qvariant_cast<QList<QRectF> >(spy.last().at(0));
 
     QCOMPARE(rlist.size(), 2);
@@ -3631,7 +3603,7 @@ void tst_QGraphicsItem::group()
 
     view.fitInView(scene.itemsBoundingRect());
 
-    for (QGraphicsItem *item : qAsConst(newItems)) {
+    for (QGraphicsItem *item : std::as_const(newItems)) {
         group->addToGroup(item);
         QCOMPARE(item->group(), group);
     }
@@ -4481,7 +4453,7 @@ public:
     QVariant itemChangeReturnValue;
     QGraphicsScene *itemSceneChangeTargetScene;
 
-    QVector<GraphicsItemChange> changes;
+    QList<GraphicsItemChange> changes;
     QVariantList values;
     QVariantList oldValues;
 protected:
@@ -4495,22 +4467,9 @@ protected:
             break;
         case QGraphicsItem::ItemPositionHasChanged:
             break;
-#if QT_DEPRECATED_SINCE(5, 14)
-        case QGraphicsItem::ItemMatrixChange: {
-#if QT_DEPRECATED_SINCE(5, 13)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-            QVariant variant;
-            variant.setValue<QMatrix>(matrix());
-            oldValues << variant;
-QT_WARNING_POP
-#endif
-        }
-            break;
-#endif
         case QGraphicsItem::ItemTransformChange: {
             QVariant variant;
-            variant.setValue<QTransform>(transform());
+            variant.setValue(transform());
             oldValues << variant;
         }
             break;
@@ -4625,34 +4584,9 @@ void tst_QGraphicsItem::itemChange()
         QCOMPARE(tester.oldValues.constLast(), QVariant(true));
         QCOMPARE(tester.isEnabled(), true);
     }
-#if QT_DEPRECATED_SINCE(5, 13)
     {
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED // QDesktopWidget::screen()
-        // ItemMatrixChange / ItemTransformHasChanged
-        tester.itemChangeReturnValue.setValue<QMatrix>(QMatrix().rotate(90));
-        tester.setMatrix(QMatrix().translate(50, 0), true);
-        ++changeCount; // notification sent too
-        QCOMPARE(tester.changes.size(), ++changeCount);
-        QCOMPARE(int(tester.changes.at(tester.changes.size() - 2)), int(QGraphicsItem::ItemMatrixChange));
-        QCOMPARE(int(tester.changes.last()), int(QGraphicsItem::ItemTransformHasChanged));
-        QCOMPARE(qvariant_cast<QMatrix>(tester.values.at(tester.values.size() - 2)),
-                 QMatrix().translate(50, 0));
-        QCOMPARE(tester.values.constLast(), QVariant(QTransform(QMatrix().rotate(90))));
-        QVariant variant;
-        variant.setValue<QMatrix>(QMatrix());
-        QCOMPARE(tester.oldValues.constLast(), variant);
-        QCOMPARE(tester.matrix(), QMatrix().rotate(90));
-QT_WARNING_POP
-    }
-#endif
-    {
-        tester.resetTransform();
-        ++changeCount;
-        ++changeCount; // notification sent too
-
         // ItemTransformChange / ItemTransformHasChanged
-        tester.itemChangeReturnValue.setValue<QTransform>(QTransform().rotate(90));
+        tester.itemChangeReturnValue.setValue(QTransform().rotate(90));
         tester.setTransform(QTransform::fromTranslate(50, 0), true);
         ++changeCount; // notification sent too
         ++changeCount;
@@ -4664,7 +4598,7 @@ QT_WARNING_POP
         QCOMPARE(qvariant_cast<QTransform>(tester.values.at(tester.values.size() - 1)),
                  QTransform().rotate(90));
         QVariant variant;
-        variant.setValue<QTransform>(QTransform());
+        variant.setValue(QTransform());
         QCOMPARE(tester.oldValues.constLast(), variant);
         QCOMPARE(tester.transform(), QTransform().rotate(90));
     }
@@ -4799,7 +4733,7 @@ QT_WARNING_POP
     }
     {
         // ItemParentChange
-        tester.itemChangeReturnValue.setValue<QGraphicsItem *>(nullptr);
+        tester.itemChangeReturnValue.setValue(static_cast<QGraphicsItem *>(nullptr));
         tester.setParentItem(&testerHelper);
         QCOMPARE(tester.changes.size(), ++changeCount);
         QCOMPARE(tester.changes.constLast(), QGraphicsItem::ItemParentChange);
@@ -4983,9 +4917,9 @@ QT_WARNING_POP
 class EventFilterTesterItem : public QGraphicsLineItem
 {
 public:
-    QVector<QEvent::Type> filteredEvents;
+    QList<QEvent::Type> filteredEvents;
     GraphicsItems filteredEventReceivers;
-    QVector<QEvent::Type> receivedEvents;
+    QList<QEvent::Type> receivedEvents;
     bool handlesSceneEvents = false;
 
 protected:
@@ -5012,7 +4946,7 @@ void tst_QGraphicsItem::sceneEventFilter()
     QGraphicsView view(&scene);
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     view.show();
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowExposed(&view));
     QVERIFY(QTest::qWaitForWindowActive(&view));
 
@@ -5405,8 +5339,9 @@ void tst_QGraphicsItem::deleteItemInEventHandlers()
 
 #ifndef QT_NO_CONTEXTMENU
         if (!HarakiriItem::dead) {
-            QContextMenuEvent event(QContextMenuEvent::Other,
-                                    view.mapFromScene(item->scenePos()));
+            auto viewPos = view.mapFromScene(item->scenePos());
+            QContextMenuEvent event(QContextMenuEvent::Other, viewPos,
+                                    view.mapToGlobal(viewPos));
             QCoreApplication::sendEvent(view.viewport(), &event);
         }
 #endif // QT_NO_CONTEXTMENU
@@ -5632,7 +5567,7 @@ void tst_QGraphicsItem::itemClipsChildrenToShape4()
     scene.addEllipse( 100, 100, 100, 50 );   // <-- this is important to trigger the right codepath*
     //now the label is shown
     outerWidget->setFlag(QGraphicsItem::ItemClipsChildrenToShape, false );
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     view.show();
     QTRY_COMPARE(QApplication::activeWindow(), &view);
@@ -5748,7 +5683,7 @@ void tst_QGraphicsItem::itemClipsChildrenToShape5()
     }
 
     const QList<QGraphicsItem *> children = parent->childItems();
-    const int childrenCount = children.count();
+    const int childrenCount = children.size();
 
     for (int i = 0; i < 5; ++i) {
         QString clipString;
@@ -6976,8 +6911,10 @@ void tst_QGraphicsItem::opacityZeroUpdates()
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
+        view.window()->activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&view));
+    }
     QCoreApplication::processEvents(); // Process all queued paint events
     QTRY_VERIFY(view.repaints > 0);
 
@@ -6995,9 +6932,6 @@ void tst_QGraphicsItem::opacityZeroUpdates()
     QRegion expectedRegion = parentDeviceBoundingRect.adjusted(-2, -2, 2, 2);
     expectedRegion += childDeviceBoundingRect.adjusted(-2, -2, 2, 2);
 
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Fails on WinRT. Figure out why - QTBUG-68297", Abort);
-#endif
     COMPARE_REGIONS(view.paintedRegion, expectedRegion);
 }
 
@@ -7336,6 +7270,7 @@ void tst_QGraphicsItem::tabChangesFocus()
     widget.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     widget.setLayout(layout);
     widget.show();
+    view->window()->activateWindow();
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
     QTRY_VERIFY(scene.isActive());
@@ -7370,7 +7305,7 @@ void tst_QGraphicsItem::cacheMode()
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     view.resize(150, 150);
     view.show();
-    QApplication::setActiveWindow(&view);
+    view.window()->activateWindow();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
     QVERIFY(QTest::qWaitForWindowActive(&view));
     QCoreApplication::processEvents(); // Process all queued paint events
@@ -7554,7 +7489,7 @@ void tst_QGraphicsItem::cacheMode2()
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     view.resize(150, 150);
     view.show();
-    QApplication::setActiveWindow(&view);
+    view.window()->activateWindow();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
     QVERIFY(QTest::qWaitForWindowActive(&view));
     QCoreApplication::processEvents(); // Process all queued paint events
@@ -8015,21 +7950,9 @@ public:
             //Doesn't use the extended style option so the exposed rect is the boundingRect
             if (!(flags() & QGraphicsItem::ItemUsesExtendedStyleOption)) {
                 QCOMPARE(option->exposedRect, boundingRect());
-#if QT_DEPRECATED_SINCE(5, 13)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-                QCOMPARE(option->matrix, QMatrix());
-QT_WARNING_POP
-#endif
             } else {
                 QVERIFY(option->exposedRect != QRect());
                 QVERIFY(option->exposedRect != boundingRect());
-#if QT_DEPRECATED_SINCE(5, 13)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-                QCOMPARE(option->matrix, sceneTransform().toAffine());
-QT_WARNING_POP
-#endif
             }
         }
         QGraphicsRectItem::paint(painter, option, widget);
@@ -8120,20 +8043,22 @@ void tst_QGraphicsItem::itemSendsGeometryChanges()
     QCOMPARE(item.scale(), qreal(1.0));
     QCOMPARE(item.transformOriginPoint(), QPointF(0.0, 0.0));
 
-    const QVector<QGraphicsItem::GraphicsItemChange> expected{QGraphicsItem::ItemOpacityChange,
-                QGraphicsItem::ItemOpacityHasChanged,
-                QGraphicsItem::ItemFlagsChange,
-                QGraphicsItem::ItemFlagsHaveChanged,
-                QGraphicsItem::ItemTransformChange,
-                QGraphicsItem::ItemTransformHasChanged,
-                QGraphicsItem::ItemPositionChange,
-                QGraphicsItem::ItemPositionHasChanged,
-                QGraphicsItem::ItemRotationChange,
-                QGraphicsItem::ItemRotationHasChanged,
-                QGraphicsItem::ItemScaleChange,
-                QGraphicsItem::ItemScaleHasChanged,
-                QGraphicsItem::ItemTransformOriginPointChange,
-                QGraphicsItem::ItemTransformOriginPointHasChanged};
+    const QList<QGraphicsItem::GraphicsItemChange> expected {
+        QGraphicsItem::ItemOpacityChange,
+        QGraphicsItem::ItemOpacityHasChanged,
+        QGraphicsItem::ItemFlagsChange,
+        QGraphicsItem::ItemFlagsHaveChanged,
+        QGraphicsItem::ItemTransformChange,
+        QGraphicsItem::ItemTransformHasChanged,
+        QGraphicsItem::ItemPositionChange,
+        QGraphicsItem::ItemPositionHasChanged,
+        QGraphicsItem::ItemRotationChange,
+        QGraphicsItem::ItemRotationHasChanged,
+        QGraphicsItem::ItemScaleChange,
+        QGraphicsItem::ItemScaleHasChanged,
+        QGraphicsItem::ItemTransformOriginPointChange,
+        QGraphicsItem::ItemTransformOriginPointHasChanged
+    };
     QCOMPARE(item.changes, expected);
 }
 
@@ -8225,9 +8150,11 @@ void tst_QGraphicsItem::moveLineItem()
     MyGraphicsView view(&scene);
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
-    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
+        view.window()->activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&view));
+    }
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
     QCoreApplication::processEvents(); // Process all queued paint events
     view.reset();
 
@@ -8243,9 +8170,6 @@ void tst_QGraphicsItem::moveLineItem()
 
     // Make sure the calculated region is correct.
     item->update();
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Fails on WinRT. Figure out why - QTBUG-68297", Abort);
-#endif
     QTRY_COMPARE(view.paintedRegion, expectedRegion);
     view.reset();
 
@@ -8300,11 +8224,11 @@ void tst_QGraphicsItem::sorting()
     view.setFrameStyle(0);
     view.show();
     if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
-        qApp->setActiveWindow(&view);
+        view.window()->activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&view));
     }
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QTRY_VERIFY(_paintedItems.count() > 0);
+    QTRY_VERIFY(_paintedItems.size() > 0);
 
     _paintedItems.clear();
 
@@ -8334,7 +8258,7 @@ void tst_QGraphicsItem::itemHasNoContents()
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     view.show();
     if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
-        qApp->setActiveWindow(&view);
+        view.window()->activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&view));
     }
     QVERIFY(QTest::qWaitForWindowExposed(&view));
@@ -9354,7 +9278,7 @@ void tst_QGraphicsItem::ensureDirtySceneTransform()
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     view.show();
     if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
-        QApplication::setActiveWindow(&view);
+        view.window()->activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&view));
         QCOMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&view));
     }
@@ -9752,7 +9676,7 @@ void tst_QGraphicsItem::QTBUG_4233_updateCachedWithSceneRect()
     QGraphicsView view(&scene);
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     view.show();
-    QApplication::setActiveWindow(&view);
+    view.window()->activateWindow();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
     QVERIFY(QTest::qWaitForWindowActive(&view));
     QCOMPARE(QApplication::activeWindow(), &view);
@@ -10812,6 +10736,8 @@ void tst_QGraphicsItem::scenePosChange()
     QCOMPARE(child2->changes.count(QGraphicsItem::ItemScenePositionHasChanged), 0);
 }
 
+#if QT_CONFIG(shortcut)
+
 void tst_QGraphicsItem::textItem_shortcuts()
 {
     if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
@@ -10830,6 +10756,10 @@ void tst_QGraphicsItem::textItem_shortcuts()
     item->setFlag(QGraphicsItem::ItemIsFocusable);
     item->setTextInteractionFlags(Qt::TextEditorInteraction);
     w.show();
+    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
+        view.window()->activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&view));
+    }
     QVERIFY(QTest::qWaitForWindowExposed(&w));
 
     item->setFocus();
@@ -10850,6 +10780,8 @@ void tst_QGraphicsItem::textItem_shortcuts()
     QTest::keyClick(&view, Qt::Key_A, Qt::ControlModifier);
     QTRY_COMPARE(item->textCursor().selectedText(), item->toPlainText());
 }
+
+#endif // QT_CONFIG(shortcut)
 
 void tst_QGraphicsItem::scroll()
 {
@@ -10882,8 +10814,10 @@ void tst_QGraphicsItem::scroll()
     view.setFrameStyle(0);
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
+        view.window()->activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&view));
+    }
     QTRY_VERIFY(view.repaints > 0);
 
     view.reset();
@@ -10997,7 +10931,7 @@ void tst_QGraphicsItem::focusHandling()
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
 
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     QTRY_COMPARE(QApplication::activeWindow(), static_cast<QWidget *>(&view));
     QVERIFY(itemWithFocus->hasFocus());
 
@@ -11028,7 +10962,7 @@ void tst_QGraphicsItem::focusHandling()
 class TouchEventTestee : public QGraphicsRectItem
 {
 public:
-    using TouchPoints = QVector<QTouchEvent::TouchPoint>;
+    using TouchPoints = QList<QEventPoint>;
 
     TouchEventTestee(const QSizeF &size = QSizeF(100, 100)) :
         QGraphicsRectItem(QRectF(QPointF(), size))
@@ -11048,11 +10982,11 @@ protected:
     {
         switch (ev->type()) {
         case QEvent::TouchBegin:
-            m_touchBeginPoints.append(static_cast<const QTouchEvent *>(ev)->touchPoints().constFirst());
+            m_touchBeginPoints.append(static_cast<const QTouchEvent *>(ev)->points().constFirst());
             ev->accept();
             return true;
         case QEvent::TouchUpdate:
-            m_touchUpdatePoints.append(static_cast<const QTouchEvent *>(ev)->touchPoints().constFirst());
+            m_touchUpdatePoints.append(static_cast<const QTouchEvent *>(ev)->points().constFirst());
             ev->accept();
             return true;
         default:
@@ -11067,25 +11001,21 @@ private:
     TouchPoints m_touchUpdatePoints;
 };
 
-static QList<QTouchEvent::TouchPoint>
+static QList<QEventPoint>
     createTouchPoints(const QGraphicsView &view,
                       const QPointF &scenePos,
                       const QSizeF &ellipseDiameters,
-                      Qt::TouchPointState state = Qt::TouchPointPressed)
+                      QEventPoint::State state = QEventPoint::State::Pressed)
 {
-    QTouchEvent::TouchPoint tp(0);
-    tp.setState(state);
-    tp.setScenePos(scenePos);
-    tp.setStartScenePos(scenePos);
-    tp.setLastScenePos(scenePos);
     const QPointF screenPos = view.viewport()->mapToGlobal(view.mapFromScene(scenePos));
-    tp.setScreenPos(screenPos);
-    tp.setStartScreenPos(screenPos);
-    tp.setLastScreenPos(screenPos);
-    tp.setEllipseDiameters(ellipseDiameters);
-    const QSizeF screenSize = view.screen()->geometry().size();
-    tp.setNormalizedPos(QPointF(screenPos.x() / screenSize.width(), screenPos.y() / screenSize.height()));
-    return QList<QTouchEvent::TouchPoint>() << tp;
+    QEventPoint tp(0, state, scenePos, screenPos);
+    QMutableEventPoint::setState(tp, state);
+    QMutableEventPoint::setScenePosition(tp, scenePos);
+    QMutableEventPoint::setGlobalPosition(tp, screenPos);
+    QMutableEventPoint::setGlobalPressPosition(tp, screenPos);
+    QMutableEventPoint::setGlobalLastPosition(tp, screenPos);
+    QMutableEventPoint::setEllipseDiameters(tp, ellipseDiameters);
+    return QList<QEventPoint>() << tp;
 }
 
 static bool comparePointF(const QPointF &p1, const QPointF &p2)
@@ -11152,15 +11082,14 @@ void tst_QGraphicsItem::touchEventPropagation()
     view.setSceneRect(touchEventReceiver->boundingRect());
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
+    QInputDevicePrivate::get(m_touchDevice)->setAvailableVirtualGeometry(view.screen()->geometry());
 
     QCOMPARE(touchEventReceiver->touchBeginEventCount(), 0);
 
     const QPointF scenePos = view.sceneRect().center();
     sendMousePress(&scene, scenePos);
-    if (m_touchDevice == nullptr)
-        m_touchDevice = QTest::createTouchDevice();
-    QTouchEvent touchBegin(QEvent::TouchBegin, m_touchDevice, Qt::NoModifier, Qt::TouchPointPressed,
-                           createTouchPoints(view, scenePos, QSizeF(10, 10)));
+    QMutableTouchEvent touchBegin(QEvent::TouchBegin, m_touchDevice, Qt::NoModifier,
+                                  createTouchPoints(view, scenePos, QSizeF(10, 10)));
     touchBegin.setTarget(view.viewport());
 
     qApp->sendEvent(&scene, &touchBegin);
@@ -11213,39 +11142,36 @@ void tst_QGraphicsItem::touchEventTransformation()
     view.setTransform(viewTransform);
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
+    QInputDevicePrivate::get(m_touchDevice)->setAvailableVirtualGeometry(view.screen()->geometry());
 
     QCOMPARE(touchEventReceiver->touchBeginEventCount(), 0);
 
-    if (m_touchDevice == nullptr)
-        m_touchDevice = QTest::createTouchDevice();
-    QTouchEvent touchBegin(QEvent::TouchBegin, m_touchDevice, Qt::NoModifier, Qt::TouchPointPressed,
-                           createTouchPoints(view, touchScenePos, ellipseDiameters));
+    QMutableTouchEvent touchBegin(QEvent::TouchBegin, m_touchDevice, Qt::NoModifier,
+                                  createTouchPoints(view, touchScenePos, ellipseDiameters));
     touchBegin.setTarget(view.viewport());
-
     QCoreApplication::sendEvent(&scene, &touchBegin);
     QCOMPARE(touchEventReceiver->touchBeginEventCount(), 1);
 
-    const QTouchEvent::TouchPoint touchBeginPoint = touchEventReceiver->touchBeginPoints().constFirst();
+    const QEventPoint touchBeginPoint = touchEventReceiver->touchBeginPoints().constFirst();
 
-    COMPARE_POINTF(touchBeginPoint.scenePos(), touchScenePos);
-    COMPARE_POINTF(touchBeginPoint.startScenePos(), touchScenePos);
-    COMPARE_POINTF(touchBeginPoint.lastScenePos(), touchScenePos);
-    COMPARE_POINTF(touchBeginPoint.pos(), expectedItemPos);
+    COMPARE_POINTF(touchBeginPoint.scenePosition(), touchScenePos);
+    COMPARE_POINTF(touchBeginPoint.scenePressPosition(), touchScenePos);
+    COMPARE_POINTF(touchBeginPoint.sceneLastPosition(), touchScenePos);
+    COMPARE_POINTF(touchBeginPoint.position(), expectedItemPos);
     COMPARE_SIZEF(touchBeginPoint.ellipseDiameters(), ellipseDiameters); // Must remain untransformed
 
-    QTouchEvent touchUpdate(QEvent::TouchUpdate, m_touchDevice, Qt::NoModifier, Qt::TouchPointMoved,
-                           createTouchPoints(view, touchScenePos, ellipseDiameters,  Qt::TouchPointMoved));
+    QMutableTouchEvent touchUpdate(QEvent::TouchUpdate, m_touchDevice, Qt::NoModifier,
+                                   createTouchPoints(view, touchScenePos, ellipseDiameters, QEventPoint::State::Updated));
     touchUpdate.setTarget(view.viewport());
 
     QCoreApplication::sendEvent(&scene, &touchUpdate);
     QCOMPARE(touchEventReceiver->touchUpdateEventCount(), 1);
 
-    const QTouchEvent::TouchPoint touchUpdatePoint = touchEventReceiver->touchUpdatePoints().constFirst();
+    const QEventPoint touchUpdatePoint = touchEventReceiver->touchUpdatePoints().constFirst();
 
-    COMPARE_POINTF(touchUpdatePoint.scenePos(), touchScenePos);
-    COMPARE_POINTF(touchBeginPoint.startScenePos(), touchScenePos);
-    COMPARE_POINTF(touchUpdatePoint.lastScenePos(), touchScenePos);
-    COMPARE_POINTF(touchUpdatePoint.pos(), expectedItemPos);
+    COMPARE_POINTF(touchUpdatePoint.scenePosition(), touchScenePos);
+    COMPARE_POINTF(touchBeginPoint.scenePressPosition(), touchScenePos);
+    COMPARE_POINTF(touchUpdatePoint.position(), expectedItemPos);
     COMPARE_SIZEF(touchUpdatePoint.ellipseDiameters(), ellipseDiameters); // Must remain untransformed
 
 }
@@ -11410,7 +11336,7 @@ void tst_QGraphicsItem::QTBUG_6738_missingUpdateWithSetParent()
     view.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     view.show();
     if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
-        qApp->setActiveWindow(&view);
+        view.window()->activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&view));
     }
     QVERIFY(QTest::qWaitForWindowExposed(&view));
@@ -11464,8 +11390,10 @@ void tst_QGraphicsItem::QT_2653_fullUpdateDiscardingOpacityUpdate()
 
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
+        view.window()->activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&view));
+    }
     QCoreApplication::processEvents(); // Process all queued paint events
     view.reset();
 
@@ -11500,8 +11428,10 @@ void tst_QGraphicsItem::QTBUG_7714_fullUpdateDiscardingOpacityUpdate2()
     scene.addItem(parentGreen);
 
     origView.show();
-    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
+        view.window()->activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&origView));
+    }
     QVERIFY(QTest::qWaitForWindowExposed(&origView));
     QCoreApplication::processEvents(); // Process all queued paint events
 
@@ -11517,7 +11447,7 @@ void tst_QGraphicsItem::QTBUG_7714_fullUpdateDiscardingOpacityUpdate2()
 
     view.show();
     if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
-        qApp->setActiveWindow(&view);
+        QApplicationPrivate::setActiveWindow(&view);
         QVERIFY(QTest::qWaitForWindowActive(&view));
     }
     QVERIFY(QTest::qWaitForWindowExposed(&view));
@@ -11525,10 +11455,6 @@ void tst_QGraphicsItem::QTBUG_7714_fullUpdateDiscardingOpacityUpdate2()
     origView.reset();
 
     childYellow->setOpacity(1.0);
-
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Fails on WinRT. Figure out why - QTBUG-68297", Abort);
-#endif
 
     QTRY_VERIFY(origView.repaints > 0);
     QTRY_VERIFY(view.repaints > 0);
@@ -11662,6 +11588,7 @@ void tst_QGraphicsItem::doNotMarkFullUpdateIfNotInScene()
     item2->setParentItem(item);
     scene.addItem(item);
     view.show();
+    view.window()->activateWindow();
     QVERIFY(QTest::qWaitForWindowExposed(view.windowHandle()));
     QVERIFY(QTest::qWaitForWindowActive(view.windowHandle()));
     QCoreApplication::processEvents(); // Process all queued paint events
@@ -11696,7 +11623,7 @@ void tst_QGraphicsItem::itemDiesDuringDraggingOperation()
     scene.addItem(item);
     view.show();
     if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
-        QApplication::setActiveWindow(&view);
+        view.window()->activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&view));
         QCOMPARE(QApplication::activeWindow(), &view);
     }
@@ -11727,7 +11654,7 @@ void tst_QGraphicsItem::QTBUG_12112_focusItem()
 
     view.show();
     if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
-        QApplication::setActiveWindow(&view);
+        view.window()->activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&view));
         QCOMPARE(QApplication::activeWindow(), &view);
     }
@@ -11777,7 +11704,7 @@ public:
         QLatin1String wiseWords("AZ BUKI VEDI");
         QString sentence(wiseWords);
         QStringList words = sentence.split(QLatin1Char(' '), Qt::SkipEmptyParts);
-        for (int i = 0; i < words.count(); ++i) {
+        for (int i = 0; i < words.size(); ++i) {
             QGraphicsProxyWidget *proxy = new QGraphicsProxyWidget(this);
             QLabel *label = new QLabel(words.at(i));
             proxy->setWidget(label);

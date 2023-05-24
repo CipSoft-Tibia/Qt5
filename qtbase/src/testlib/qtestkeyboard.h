@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTESTKEYBOARD_H
 #define QTESTKEYBOARD_H
@@ -54,7 +18,9 @@
 #include <QtGui/qguiapplication.h>
 #include <QtGui/qwindow.h>
 #include <QtGui/qevent.h>
-#include <QtGui/qkeysequence.h>
+#if QT_CONFIG(shortcut)
+#  include <QtGui/qkeysequence.h>
+#endif
 
 #ifdef QT_WIDGETS_LIB
 #include <QtWidgets/qwidget.h>
@@ -91,7 +57,10 @@ namespace QTest
 
 
         if (action == Click) {
+            QPointer<QWindow> ptr(window);
             sendKeyEvent(Press, window, code, text, modifier, delay);
+            if (!ptr)
+                return;
             sendKeyEvent(Release, window, code, text, modifier, delay);
             return;
         }
@@ -153,25 +122,25 @@ namespace QTest
                                 Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
     { sendKeyEvent(action, window, key, keyToAscii(key), modifier, delay); }
 
-    Q_DECL_UNUSED inline static void keyClick(QWindow *window, Qt::Key key, Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
+    [[maybe_unused]] inline static void keyClick(QWindow *window, Qt::Key key, Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
     { keyEvent(Click, window, key, modifier, delay); }
-    Q_DECL_UNUSED inline static void keyClick(QWindow *window, char key, Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
+    [[maybe_unused]] inline static void keyClick(QWindow *window, char key, Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
     { keyEvent(Click, window, key, modifier, delay); }
-    Q_DECL_UNUSED inline static void keyRelease(QWindow *window, char key, Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
+    [[maybe_unused]] inline static void keyRelease(QWindow *window, char key, Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
     { keyEvent(Release, window, key, modifier, delay); }
-    Q_DECL_UNUSED inline static void keyRelease(QWindow *window, Qt::Key key, Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
+    [[maybe_unused]] inline static void keyRelease(QWindow *window, Qt::Key key, Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
     { keyEvent(Release, window, key, modifier, delay); }
-    Q_DECL_UNUSED inline static void keyPress(QWindow *window, char key, Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
+    [[maybe_unused]] inline static void keyPress(QWindow *window, char key, Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
     { keyEvent(Press, window, key, modifier, delay); }
-    Q_DECL_UNUSED inline static void keyPress(QWindow *window, Qt::Key key, Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
+    [[maybe_unused]] inline static void keyPress(QWindow *window, Qt::Key key, Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
     { keyEvent(Press, window, key, modifier, delay); }
 
 #if QT_CONFIG(shortcut)
-    Q_DECL_UNUSED inline static void keySequence(QWindow *window, const QKeySequence &keySequence)
+    [[maybe_unused]] inline static void keySequence(QWindow *window, const QKeySequence &keySequence)
     {
         for (int i = 0; i < keySequence.count(); ++i) {
-            const Qt::Key key = Qt::Key(keySequence[i] & ~Qt::KeyboardModifierMask);
-            const Qt::KeyboardModifiers modifiers = Qt::KeyboardModifiers(keySequence[i] & Qt::KeyboardModifierMask);
+            const Qt::Key key = keySequence[i].key();
+            const Qt::KeyboardModifiers modifiers = keySequence[i].keyboardModifiers();
             keyClick(window, key, modifiers);
         }
     }
@@ -195,7 +164,7 @@ namespace QTest
         if (press && qt_sendShortcutOverrideEvent(widget, a.timestamp(), code, modifier, text, repeat))
             return;
         if (!qApp->notify(widget, &a))
-            QTest::qWarn("Keyboard event not accepted by receiving widget");
+            qWarning("Keyboard event not accepted by receiving widget");
     }
 
     static void sendKeyEvent(KeyAction action, QWidget *widget, Qt::Key code,
@@ -290,7 +259,7 @@ namespace QTest
     inline static void keyClicks(QWidget *widget, const QString &sequence,
                                  Qt::KeyboardModifiers modifier = Qt::NoModifier, int delay=-1)
     {
-        for (int i=0; i < sequence.length(); i++)
+        for (int i=0; i < sequence.size(); i++)
             keyEvent(Click, widget, sequence.at(i).toLatin1(), modifier, delay);
     }
 
@@ -311,8 +280,8 @@ namespace QTest
     inline static void keySequence(QWidget *widget, const QKeySequence &keySequence)
     {
         for (int i = 0; i < keySequence.count(); ++i) {
-            const Qt::Key key = Qt::Key(keySequence[i] & ~Qt::KeyboardModifierMask);
-            const Qt::KeyboardModifiers modifiers = Qt::KeyboardModifiers(keySequence[i] & Qt::KeyboardModifierMask);
+            const Qt::Key key = keySequence[i].key();
+            const Qt::KeyboardModifiers modifiers = keySequence[i].keyboardModifiers();
             keyClick(widget, key, modifiers);
         }
     }

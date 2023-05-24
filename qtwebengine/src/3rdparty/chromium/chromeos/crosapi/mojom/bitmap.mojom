@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,10 @@ module crosapi.mojom;
 
 // Each pixel is represented by 4 bytes [RGBA].
 // NOTE: For UI images prefer gfx.mojom.ImageSkia, which supports high-DPI.
-// TODO(https://crbug.com/1094460): Use a more performant transport mechanism.
+// TODO(https://crbug.com/1156872): This struct is unused and should be deleted.
 [Stable]
 struct Bitmap {
-  uint32 width;
-  uint32 height;
-  array<uint8> pixels;
+  uint32 width@0;
+  uint32 height@1;
+  array<uint8> pixels@2;
 };

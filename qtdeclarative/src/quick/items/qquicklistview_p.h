@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKLISTVIEW_P_H
 #define QQUICKLISTVIEW_P_H
@@ -66,11 +30,12 @@ class QQuickListViewPrivate;
 class Q_QUICK_PRIVATE_EXPORT QQuickViewSection : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(QString property READ property WRITE setProperty NOTIFY propertyChanged)
-    Q_PROPERTY(SectionCriteria criteria READ criteria WRITE setCriteria NOTIFY criteriaChanged)
-    Q_PROPERTY(QQmlComponent *delegate READ delegate WRITE setDelegate NOTIFY delegateChanged)
-    Q_PROPERTY(int labelPositioning READ labelPositioning WRITE setLabelPositioning NOTIFY labelPositioningChanged)
+    Q_PROPERTY(QString property READ property WRITE setProperty NOTIFY propertyChanged FINAL)
+    Q_PROPERTY(SectionCriteria criteria READ criteria WRITE setCriteria NOTIFY criteriaChanged FINAL)
+    Q_PROPERTY(QQmlComponent *delegate READ delegate WRITE setDelegate NOTIFY delegateChanged FINAL)
+    Q_PROPERTY(int labelPositioning READ labelPositioning WRITE setLabelPositioning NOTIFY labelPositioningChanged FINAL)
     QML_NAMED_ELEMENT(ViewSection)
+    QML_ADDED_IN_VERSION(2, 0)
 public:
     QQuickViewSection(QQuickListView *parent=nullptr);
 
@@ -115,23 +80,24 @@ class Q_QUICK_PRIVATE_EXPORT QQuickListView : public QQuickItemView
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickListView)
 
-    Q_PROPERTY(qreal highlightMoveVelocity READ highlightMoveVelocity WRITE setHighlightMoveVelocity NOTIFY highlightMoveVelocityChanged)
-    Q_PROPERTY(qreal highlightResizeVelocity READ highlightResizeVelocity WRITE setHighlightResizeVelocity NOTIFY highlightResizeVelocityChanged)
-    Q_PROPERTY(int highlightResizeDuration READ highlightResizeDuration WRITE setHighlightResizeDuration NOTIFY highlightResizeDurationChanged)
+    Q_PROPERTY(qreal highlightMoveVelocity READ highlightMoveVelocity WRITE setHighlightMoveVelocity NOTIFY highlightMoveVelocityChanged FINAL)
+    Q_PROPERTY(qreal highlightResizeVelocity READ highlightResizeVelocity WRITE setHighlightResizeVelocity NOTIFY highlightResizeVelocityChanged FINAL)
+    Q_PROPERTY(int highlightResizeDuration READ highlightResizeDuration WRITE setHighlightResizeDuration NOTIFY highlightResizeDurationChanged FINAL)
 
-    Q_PROPERTY(qreal spacing READ spacing WRITE setSpacing NOTIFY spacingChanged)
-    Q_PROPERTY(Orientation orientation READ orientation WRITE setOrientation NOTIFY orientationChanged)
+    Q_PROPERTY(qreal spacing READ spacing WRITE setSpacing NOTIFY spacingChanged FINAL)
+    Q_PROPERTY(Orientation orientation READ orientation WRITE setOrientation NOTIFY orientationChanged FINAL)
 
-    Q_PROPERTY(QQuickViewSection *section READ sectionCriteria CONSTANT)
-    Q_PROPERTY(QString currentSection READ currentSection NOTIFY currentSectionChanged)
+    Q_PROPERTY(QQuickViewSection *section READ sectionCriteria CONSTANT FINAL)
+    Q_PROPERTY(QString currentSection READ currentSection NOTIFY currentSectionChanged FINAL)
 
-    Q_PROPERTY(SnapMode snapMode READ snapMode WRITE setSnapMode NOTIFY snapModeChanged)
+    Q_PROPERTY(SnapMode snapMode READ snapMode WRITE setSnapMode NOTIFY snapModeChanged FINAL)
 
-    Q_PROPERTY(HeaderPositioning headerPositioning READ headerPositioning WRITE setHeaderPositioning NOTIFY headerPositioningChanged REVISION 4)
-    Q_PROPERTY(FooterPositioning footerPositioning READ footerPositioning WRITE setFooterPositioning NOTIFY footerPositioningChanged REVISION 4)
+    Q_PROPERTY(HeaderPositioning headerPositioning READ headerPositioning WRITE setHeaderPositioning NOTIFY headerPositioningChanged REVISION(2, 4) FINAL)
+    Q_PROPERTY(FooterPositioning footerPositioning READ footerPositioning WRITE setFooterPositioning NOTIFY footerPositioningChanged REVISION(2, 4) FINAL)
 
     Q_CLASSINFO("DefaultProperty", "data")
     QML_NAMED_ELEMENT(ListView)
+    QML_ADDED_IN_VERSION(2, 0)
     QML_ATTACHED(QQuickListViewAttached)
 
 public:
@@ -191,19 +157,19 @@ Q_SIGNALS:
     void highlightResizeVelocityChanged();
     void highlightResizeDurationChanged();
     void snapModeChanged();
-    Q_REVISION(4) void headerPositioningChanged();
-    Q_REVISION(4) void footerPositioningChanged();
+    Q_REVISION(2, 4) void headerPositioningChanged();
+    Q_REVISION(2, 4) void footerPositioningChanged();
 
 protected:
     void viewportMoved(Qt::Orientations orient) override;
     void keyPressEvent(QKeyEvent *) override;
-    void geometryChanged(const QRectF &newGeometry,const QRectF &oldGeometry) override;
+    void geometryChange(const QRectF &newGeometry,const QRectF &oldGeometry) override;
     void initItem(int index, QObject *item) override;
     qreal maxYExtent() const override;
     qreal maxXExtent() const override;
 };
 
-class QQuickListViewAttached : public QQuickItemViewAttached
+class Q_QUICK_PRIVATE_EXPORT QQuickListViewAttached : public QQuickItemViewAttached
 {
     Q_OBJECT
 

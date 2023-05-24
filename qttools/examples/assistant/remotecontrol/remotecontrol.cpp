@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "remotecontrol.h"
 
@@ -54,30 +7,48 @@
 #include <QLibraryInfo>
 #include <QMessageBox>
 #include <QProcess>
-#include <QTextStream>
 
-RemoteControl::RemoteControl(QWidget *parent, Qt::WindowFlags flags)
-        : QMainWindow(parent, flags)
+using namespace Qt::StringLiterals;
+
+RemoteControl::RemoteControl()
 {
     ui.setupUi(this);
-    connect(ui.indexLineEdit, SIGNAL(returnPressed()),
-        this, SLOT(on_indexButton_clicked()));
-    connect(ui.identifierLineEdit, SIGNAL(returnPressed()),
-        this, SLOT(on_identifierButton_clicked()));
-    connect(ui.urlLineEdit, SIGNAL(returnPressed()),
-        this, SLOT(on_urlButton_clicked()));
+    connect(ui.launchButton, &QPushButton::clicked, this, &RemoteControl::onLaunchClicked);
 
-    QString rc;
-    QTextStream(&rc) << QLatin1String("qthelp://org.qt-project.qtdoc.")
-                     << (QT_VERSION >> 16) << ((QT_VERSION >> 8) & 0xFF)
-                     << (QT_VERSION & 0xFF)
-                     << QLatin1String("/qtdoc/index.html");
+    connect(ui.indexButton, &QPushButton::clicked, this, &RemoteControl::onIndexClicked);
+    connect(ui.indexLineEdit, &QLineEdit::returnPressed, this, &RemoteControl::onIndexClicked);
 
-    ui.startUrlLineEdit->setText(rc);
+    connect(ui.idButton, &QPushButton::clicked, this, &RemoteControl::onIdClicked);
+    connect(ui.idLineEdit, &QLineEdit::returnPressed, this, &RemoteControl::onIdClicked);
+
+    connect(ui.urlButton, &QPushButton::clicked, this, &RemoteControl::onUrlClicked);
+    connect(ui.urlLineEdit, &QLineEdit::returnPressed, this, &RemoteControl::onUrlClicked);
+
+    connect(ui.syncContentsButton, &QPushButton::clicked, this,
+            [this] { sendCommand("SyncContents"_L1); });
+
+    connect(ui.contentsCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+        sendCommand(checked ? "Show Contents"_L1 : "Hide Contents"_L1);
+    });
+    connect(ui.indexCheckBox, &QCheckBox::toggled, this,
+            [this](bool checked) { sendCommand(checked ? "Show Index"_L1 : "Hide Index"_L1); });
+    connect(ui.bookmarksCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+        sendCommand(checked ? "Show Bookmarks"_L1 : "Hide Bookmarks"_L1);
+    });
+
+    connect(ui.actionQuit, &QAction::triggered, this, &QMainWindow::close);
+
+    const QString versionString = QString::number(QT_VERSION_MAJOR)
+            + QString::number(QT_VERSION_MINOR) + QString::number(QT_VERSION_PATCH);
+    ui.startUrlLineEdit->setText("qthelp://org.qt-project.qtdoc."_L1 + versionString
+                                 + "/qdoc/qdoc-index.html"_L1);
 
     process = new QProcess(this);
-    connect(process, SIGNAL(finished(int,QProcess::ExitStatus)),
-        this, SLOT(helpViewerClosed()));
+    connect(process, &QProcess::finished, this, [this] {
+        ui.launchButton->setEnabled(true);
+        ui.startUrlLineEdit->setEnabled(true);
+        ui.actionGroupBox->setEnabled(false);
+    });
 }
 
 RemoteControl::~RemoteControl()
@@ -88,44 +59,50 @@ RemoteControl::~RemoteControl()
     }
 }
 
-void RemoteControl::on_actionQuit_triggered()
-{
-    close();
-}
-
-void RemoteControl::on_launchButton_clicked()
+void RemoteControl::onLaunchClicked()
 {
     if (process->state() == QProcess::Running)
         return;
 
-    QString app = QLibraryInfo::location(QLibraryInfo::BinariesPath);
+    QString app = QLibraryInfo::path(QLibraryInfo::BinariesPath);
 #if !defined(Q_OS_MAC)
-    app += QLatin1String("/assistant");
+    app += "/assistant"_L1;
 #else
-    app += QLatin1String("/Assistant.app/Contents/MacOS/Assistant");
+    app += "/Assistant.app/Contents/MacOS/Assistant"_L1;
 #endif
+
+    process->start(app, {"-enableRemoteControl"_L1});
+    if (!process->waitForStarted()) {
+        QMessageBox::critical(this, tr("Remote Control"),
+                tr("Could not start Qt Assistant from %1.").arg(QDir::toNativeSeparators(app)));
+        return;
+    }
 
     ui.contentsCheckBox->setChecked(true);
     ui.indexCheckBox->setChecked(true);
     ui.bookmarksCheckBox->setChecked(true);
 
-    QStringList args;
-    args << QLatin1String("-enableRemoteControl");
-    process->start(app, args);
-    if (!process->waitForStarted()) {
-        QMessageBox::critical(
-                this, tr("Remote Control"),
-                tr("Could not start Qt Assistant from %1.").arg(QDir::toNativeSeparators(app)));
-        return;
-    }
-
     if (!ui.startUrlLineEdit->text().isEmpty())
-        sendCommand(QLatin1String("SetSource ")
-            + ui.startUrlLineEdit->text());
+        sendCommand("SetSource "_L1 + ui.startUrlLineEdit->text());
 
     ui.launchButton->setEnabled(false);
     ui.startUrlLineEdit->setEnabled(false);
     ui.actionGroupBox->setEnabled(true);
+}
+
+void RemoteControl::onIndexClicked()
+{
+    sendCommand("ActivateKeyword "_L1 + ui.indexLineEdit->text());
+}
+
+void RemoteControl::onIdClicked()
+{
+    sendCommand("ActivateIdentifier "_L1 + ui.idLineEdit->text());
+}
+
+void RemoteControl::onUrlClicked()
+{
+    sendCommand("SetSource "_L1 + ui.urlLineEdit->text());
 }
 
 void RemoteControl::sendCommand(const QString &cmd)
@@ -133,52 +110,4 @@ void RemoteControl::sendCommand(const QString &cmd)
     if (process->state() != QProcess::Running)
         return;
     process->write(cmd.toLocal8Bit() + '\n');
-}
-
-void RemoteControl::on_indexButton_clicked()
-{
-    sendCommand(QLatin1String("ActivateKeyword ")
-        + ui.indexLineEdit->text());
-}
-
-void RemoteControl::on_identifierButton_clicked()
-{
-    sendCommand(QLatin1String("ActivateIdentifier ")
-        + ui.identifierLineEdit->text());
-}
-
-void RemoteControl::on_urlButton_clicked()
-{
-    sendCommand(QLatin1String("SetSource ")
-        + ui.urlLineEdit->text());
-}
-
-void RemoteControl::on_syncContentsButton_clicked()
-{
-    sendCommand(QLatin1String("SyncContents"));
-}
-
-void RemoteControl::on_contentsCheckBox_toggled(bool checked)
-{
-    sendCommand(checked ?
-        QLatin1String("Show Contents") : QLatin1String("Hide Contents"));
-}
-
-void RemoteControl::on_indexCheckBox_toggled(bool checked)
-{
-    sendCommand(checked ?
-        QLatin1String("Show Index") : QLatin1String("Hide Index"));
-}
-
-void RemoteControl::on_bookmarksCheckBox_toggled(bool checked)
-{
-    sendCommand(checked ?
-        QLatin1String("Show Bookmarks") : QLatin1String("Hide Bookmarks"));
-}
-
-void RemoteControl::helpViewerClosed()
-{
-    ui.launchButton->setEnabled(true);
-    ui.startUrlLineEdit->setEnabled(true);
-    ui.actionGroupBox->setEnabled(false);
 }

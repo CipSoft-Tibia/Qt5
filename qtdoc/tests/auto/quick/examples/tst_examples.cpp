@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QLibraryInfo>
@@ -35,6 +10,11 @@
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQmlError>
+
+#include <algorithm>
+#include <memory>
+
+using namespace Qt::StringLiterals;
 
 static QtMessageHandler testlibMsgHandler = nullptr;
 void msgHandlerFilter(QtMsgType type, const QMessageLogContext &ctxt, const QString &msg)
@@ -48,7 +28,6 @@ class tst_examples : public QObject
     Q_OBJECT
 public:
     tst_examples();
-    ~tst_examples();
 
 private slots:
     void init();
@@ -64,6 +43,7 @@ private:
 
     void namingConvention(const QDir &);
     QStringList findQmlFiles(const QDir &);
+    bool isExcluded(const QDir &d) const;
 
     QQmlEngine engine;
 };
@@ -71,48 +51,38 @@ private:
 tst_examples::tst_examples()
 {
     // Add files to exclude here
-    excludedFiles << "snippets/qml/listmodel/listmodel.qml"; //Just a ListModel, no root QQuickItem
-    excludedFiles << "examples/quick/demos/photosurface/photosurface.qml"; // root item is Window rather than Item
+    excludedFiles << "snippets/qml/listmodel/listmodel.qml"_L1 //Just a ListModel, no root QQuickItem
+        << "examples/quick/demos/photosurface/photosurface.qml"_L1; // root item is Window rather than Item
 
     // Add directories you want excluded here
-    excludedDirs << "shared"; //Not an example
-    excludedDirs << "snippets/qml/path"; //No root QQuickItem
-    excludedDirs << "examples/qml/qmlextensionplugins"; //Requires special import search path
-    excludedDirs << "examples/quick/tutorials/gettingStartedQml"; //C++ example, but no cpp files in root dir
+    excludedDirs << "shared"_L1 // Not an example
+        << "snippets/qml/path"_L1 // No root QQuickItem
+        << "examples/qml/qmlextensionplugins"_L1 // Requires special import search path
+        << "examples/quick/tutorials/gettingStartedQml"_L1; // C++ example, but no cpp files in root dir
 
     // These snippets are not expected to run on their own.
-    excludedDirs << "snippets/qml/visualdatamodel_rootindex";
-    excludedDirs << "snippets/qml/qtbinding";
-    excludedDirs << "snippets/qml/imports";
-    excludedFiles << "snippets/qml/image-ext.qml";
-    excludedFiles << "examples/quick/shapes/content/main.qml"; // relies on resources
-    excludedFiles << "examples/quick/shapes/content/interactive.qml"; // relies on resources
-
-#ifdef QT_NO_XMLPATTERNS
-    excludedDirs << "demos/twitter";
-    excludedDirs << "demos/flickr";
-    excludedDirs << "demos/photoviewer";
-    excludedFiles << "snippets/qml/xmlrole.qml";
-    excludedFiles << "particles/itemparticle/particleview.qml";
-    excludedFiles << "views/visualdatamodel/slideshow.qml";
-#endif
+    excludedDirs << "snippets/qml/visualdatamodel_rootindex"_L1
+        << "snippets/qml/qtbinding"_L1
+        << "snippets/qml/imports"_L1;
+    excludedFiles << "snippets/qml/image-ext.qml"_L1
+        << "examples/quick/shapes/content/main.qml"_L1 // relies on resources
+        << "examples/quick/shapes/content/interactive.qml"_L1 // relies on resources
+        << "examples/demos/addressbook/qml/main.qml"_L1 // relies on resources
+        << "examples/demos/robotarm/main.qml"_L1 // relies on custom import
+        << "examples/demos/FX_Material_Showroom/main.qml"_L1; // relies on custom import
 
 #if !QT_CONFIG(opengl)
     //No support for Particles
-    excludedFiles << "examples/qml/dynamicscene/dynamicscene.qml";
-    excludedFiles << "examples/quick/animation/basics/color-animation.qml";
-    excludedFiles << "examples/quick/particles/affectors/content/age.qml";
-    excludedFiles << "examples/quick/touchinteraction/multipointtouch/bearwhack.qml";
-    excludedFiles << "examples/quick/touchinteraction/multipointtouch/multiflame.qml";
-    excludedDirs << "examples/quick/particles";
+    excludedFiles << "examples/qml/dynamicscene/dynamicscene.qml"_L1
+        << "examples/quick/animation/basics/color-animation.qml"_L1
+        << "examples/quick/particles/affectors/content/age.qml"_L1
+        << "examples/quick/touchinteraction/multipointtouch/bearwhack.qml"_L1
+        << "examples/quick/touchinteraction/multipointtouch/multiflame.qml"_L1;
+    excludedDirs << "examples/quick/particles"_L1;
     // No Support for ShaderEffect
-    excludedFiles << "src/quick/doc/snippets/qml/animators.qml";
+    excludedFiles << "src/quick/doc/snippets/qml/animators.qml"_L1;
 #endif
 
-}
-
-tst_examples::~tst_examples()
-{
 }
 
 void tst_examples::init()
@@ -127,43 +97,47 @@ void tst_examples::cleanup()
         qInstallMessageHandler(testlibMsgHandler);
 }
 
+bool tst_examples::isExcluded(const QDir &d) const
+{
+    const QString absPath = d.absolutePath();
+    return std::any_of(excludedDirs.cbegin(), excludedDirs.cend(),
+                       [absPath](const QString &excludedDir) {
+                           return absPath.endsWith(excludedDir);
+                       });
+}
+
+static bool startsWithLower(const QString &file)
+{
+    return !file.isEmpty() && file.at(0).isLower();
+}
+
 /*
 This tests that the examples follow the naming convention required
 to have them tested by the examples() test.
 */
 void tst_examples::namingConvention(const QDir &d)
 {
-    for (int ii = 0; ii < excludedDirs.count(); ++ii) {
-        QString s = excludedDirs.at(ii);
-        if (d.absolutePath().endsWith(s))
+    if (isExcluded(d))
             return;
-    }
 
-    QStringList files = d.entryList(QStringList() << QLatin1String("*.qml"),
-                                    QDir::Files);
+    const QStringList files = d.entryList({"*.qml"_L1}, QDir::Files);
 
     bool seenQml = !files.isEmpty();
-    bool seenLowercase = false;
-
-    foreach (const QString &file, files) {
-        if (file.at(0).isLower())
-            seenLowercase = true;
-    }
+    const bool seenLowercase = std::any_of(files.cbegin(), files.cend(), startsWithLower);
 
     if (!seenQml) {
-        QStringList dirs = d.entryList(QDir::Dirs | QDir::NoDotAndDotDot |
-                QDir::NoSymLinks);
-        foreach (const QString &dir, dirs) {
+        const QStringList dirs = d.entryList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
+        for (const QString &dir : dirs) {
             QDir sub = d;
             sub.cd(dir);
             namingConvention(sub);
         }
     } else if (!seenLowercase) {
         // QTBUG-28271 don't fail, but rather warn only
-        qWarning() << QString(
+        qWarning() << QString::fromLatin1(
             "Directory %1 violates naming convention; expected at least one qml file "
             "starting with lower case, got: %2"
-        ).arg(d.absolutePath()).arg(files.join(","));
+        ).arg(d.absolutePath()).arg(files.join(u','));
 
 //        QFAIL(qPrintable(QString(
 //            "Directory %1 violates naming convention; expected at least one qml file "
@@ -174,12 +148,9 @@ void tst_examples::namingConvention(const QDir &d)
 
 void tst_examples::namingConvention()
 {
-    QStringList examplesLocations;
-    examplesLocations << QLibraryInfo::location(QLibraryInfo::ExamplesPath) + QLatin1String("/qml");
-    examplesLocations << QLibraryInfo::location(QLibraryInfo::ExamplesPath) + QLatin1String("/quick");
-
-    foreach (const QString &examples, examplesLocations) {
-        QDir d(examples);
+    const QString examplesPath = QLibraryInfo::path(QLibraryInfo::ExamplesPath);
+    for (const auto &examples : {"/qml"_L1, "/quick"_L1}) {
+        QDir d(examplesPath + examples);
         if (d.exists())
             namingConvention(d);
     }
@@ -187,28 +158,19 @@ void tst_examples::namingConvention()
 
 QStringList tst_examples::findQmlFiles(const QDir &d)
 {
-    for (int ii = 0; ii < excludedDirs.count(); ++ii) {
-        QString s = excludedDirs.at(ii);
-        if (d.absolutePath().endsWith(s))
-            return QStringList();
-    }
+    if (isExcluded(d))
+        return {};
 
     QStringList rv;
 
-    QStringList cppfiles = d.entryList(QStringList() << QLatin1String("*.cpp"), QDir::Files);
+    const QStringList cppfiles = d.entryList({"*.cpp"_L1}, QDir::Files);
     if (cppfiles.isEmpty()) {
-        QStringList files = d.entryList(QStringList() << QLatin1String("*.qml"),
-                                        QDir::Files);
-        foreach (const QString &file, files) {
-            if (file.at(0).isLower()) {
-                bool superContinue = false;
-                for (int ii = 0; ii < excludedFiles.count(); ++ii) {
-                    QString e = excludedFiles.at(ii);
-                    if (d.absoluteFilePath(file).endsWith(e)) {
-                        superContinue = true;
-                        break;
-                    }
-                }
+        const QStringList files = d.entryList({"*.qml"_L1}, QDir::Files);
+        for (const QString &file : files) {
+            if (startsWithLower(file)) {
+                const QString absPath = d.absoluteFilePath(file);
+                const bool superContinue = std::any_of(excludedFiles.cbegin(), excludedFiles.cend(),
+                                                       [absPath](const QString &e) { return absPath.endsWith(e); });
                 if (superContinue)
                     continue;
                 rv << d.absoluteFilePath(file);
@@ -217,9 +179,9 @@ QStringList tst_examples::findQmlFiles(const QDir &d)
     }
 
 
-    QStringList dirs = d.entryList(QDir::Dirs | QDir::NoDotAndDotDot |
-                                   QDir::NoSymLinks);
-    foreach (const QString &dir, dirs) {
+    const QStringList dirs = d.entryList(QDir::Dirs | QDir::NoDotAndDotDot |
+                                         QDir::NoSymLinks);
+    for (const QString &dir : dirs) {
         QDir sub = d;
         sub.cd(dir);
         rv << findQmlFiles(sub);
@@ -239,20 +201,26 @@ void tst_examples::sgexamples_data()
 {
     QTest::addColumn<QString>("file");
 
-    QString examples = QLatin1String(SRCDIR) + "/../../../../examples/";
+    QString examples = QLatin1StringView(SRCDIR) + "/../../../../examples/"_L1;
 
-    QStringList files;
-    files << findQmlFiles(QDir(examples));
+    const QStringList files = findQmlFiles(QDir(examples));
 
-    foreach (const QString &file, files)
+    for (const QString &file : files)
         QTest::newRow(qPrintable(file)) << file;
 }
 
 void tst_examples::sgexamples()
 {
+#ifdef Q_OS_ANDROID
+    QSKIP("The test needs changes to package examples files to the Android package (QTBUG-103597)");
+#endif
     QFETCH(QString, file);
     QQuickWindow window;
-    window.setPersistentOpenGLContext(true);
+    QString title = file;
+    if (auto slash = title.lastIndexOf(u'/'); slash != -1)
+        title.remove(0, slash + 1);
+    window.setTitle(title);
+    window.setPersistentGraphics(true);
     window.setPersistentSceneGraph(true);
 
     QQmlComponent component(&engine, QUrl::fromLocalFile(file));
@@ -260,8 +228,8 @@ void tst_examples::sgexamples()
         qWarning() << component.errors();
     QCOMPARE(component.status(), QQmlComponent::Ready);
 
-    QScopedPointer<QObject> object(component.beginCreate(engine.rootContext()));
-    QQuickItem *root = qobject_cast<QQuickItem *>(object.data());
+    std::unique_ptr<QObject> object(component.beginCreate(engine.rootContext()));
+    QQuickItem *root = qobject_cast<QQuickItem *>(object.get());
     if (!root)
         component.completeCreate();
     QVERIFY(root);
@@ -273,7 +241,7 @@ void tst_examples::sgexamples()
     root->setParentItem(window.contentItem());
     component.completeCreate();
 
-    qApp->processEvents();
+    QCoreApplication::processEvents();
 }
 
 QTEST_MAIN(tst_examples)

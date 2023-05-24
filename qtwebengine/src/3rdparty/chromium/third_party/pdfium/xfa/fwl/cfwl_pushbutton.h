@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,12 +9,12 @@
 
 #include "xfa/fwl/cfwl_widget.h"
 
-#define FWL_STATE_PSB_Hovered (1 << FWL_WGTSTATE_MAX)
-#define FWL_STATE_PSB_Pressed (1 << (FWL_WGTSTATE_MAX + 1))
+#define FWL_STATE_PSB_Hovered (1 << FWL_STATE_WGT_MAX)
+#define FWL_STATE_PSB_Pressed (1 << (FWL_STATE_WGT_MAX + 1))
+#define FWL_STATE_PSB_Default (1 << (FWL_STATE_WGT_MAX + 2))
 
+class CFWL_MessageKey;
 class CFWL_MessageMouse;
-class CFX_DIBitmap;
-class CFWL_Widget;
 
 class CFWL_PushButton final : public CFWL_Widget {
  public:
@@ -25,19 +25,20 @@ class CFWL_PushButton final : public CFWL_Widget {
   FWL_Type GetClassID() const override;
   void SetStates(uint32_t dwStates) override;
   void Update() override;
-  void DrawWidget(CXFA_Graphics* pGraphics, const CFX_Matrix& matrix) override;
+  void DrawWidget(CFGAS_GEGraphics* pGraphics,
+                  const CFX_Matrix& matrix) override;
   void OnProcessMessage(CFWL_Message* pMessage) override;
-  void OnDrawWidget(CXFA_Graphics* pGraphics,
+  void OnDrawWidget(CFGAS_GEGraphics* pGraphics,
                     const CFX_Matrix& matrix) override;
 
  private:
   explicit CFWL_PushButton(CFWL_App* pApp);
 
-  void DrawBkground(CXFA_Graphics* pGraphics,
-                    const CFX_Matrix* pMatrix);
-  uint32_t GetPartStates();
+  void DrawBkground(CFGAS_GEGraphics* pGraphics, const CFX_Matrix& mtMatrix);
+  Mask<CFWL_PartState> GetPartStates();
   void UpdateTextOutStyles();
-  void OnFocusChanged(CFWL_Message* pMsg, bool bSet);
+  void OnFocusGained();
+  void OnFocusLost();
   void OnLButtonDown(CFWL_MessageMouse* pMsg);
   void OnLButtonUp(CFWL_MessageMouse* pMsg);
   void OnMouseMove(CFWL_MessageMouse* pMsg);

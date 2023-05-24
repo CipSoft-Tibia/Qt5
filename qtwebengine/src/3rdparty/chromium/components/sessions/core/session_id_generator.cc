@@ -1,10 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/sessions/core/session_id_generator.h"
 
-#include "base/bind.h"
+#include <ostream>
+
+#include "base/functional/bind.h"
 #include "base/rand_util.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
@@ -98,6 +100,10 @@ void SessionIdGenerator::IncrementValueBy(int increment) {
     last_value_ = 0;
   }
   last_value_ += increment;
+}
+
+bool SessionIdGenerator::IsInitializedForTest() const {
+  return local_state_ != nullptr;
 }
 
 }  // namespace sessions

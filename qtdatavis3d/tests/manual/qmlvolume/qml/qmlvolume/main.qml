@@ -1,35 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-import QtQuick 2.1
-import QtQuick.Layouts 1.0
-import QtQuick.Controls 1.0
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
 import QtDataVisualization 1.2
 import "."
 
@@ -50,15 +24,7 @@ Item {
             width: dataView.width
             height: dataView.height
             orthoProjection: true
-            //measureFps: true
-
-            onCurrentFpsChanged: {
-                if (fps > 10)
-                    fpsText.text = "FPS: " + Math.round(surfaceGraph.currentFps)
-                else
-                    fpsText.text = "FPS: " + Math.round(surfaceGraph.currentFps * 10.0) / 10.0
-            }
-
+            measureFps : false
             Surface3DSeries {
                 id: surfaceSeries
                 drawMode: Surface3DSeries.DrawSurface;
@@ -68,7 +34,7 @@ Item {
                 itemLabelVisible: false
 
                 onItemLabelChanged: {
-                    if (surfaceSeries.selectedPoint === surfaceSeries.invalidSelectionPosition)
+                    if (surfaceSeries.selectedPoint == surfaceSeries.invalidSelectionPosition)
                         selectionText.text = "No selection"
                     else
                         selectionText.text = surfaceSeries.itemLabel
@@ -92,12 +58,9 @@ Item {
             anchors.fill: parent
             RowLayout {
                 id: sliderLayout
-                anchors.top: parent.top
-                Layout.fillHeight: true
-                Layout.fillWidth: true
-                Layout.minimumHeight: 150
+                Layout.fillHeight: false
                 spacing: 0
-
+                visible: surfaceGraph.measureFps
                 Rectangle {
                     Layout.fillHeight: true
                     Layout.fillWidth: true
@@ -116,19 +79,21 @@ Item {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
                         horizontalAlignment: Text.AlignHCenter
+                        text: {
+                            return "FPS: " + surfaceGraph.currentFps > 10
+                                    ? Math.round(surfaceGraph.currentFps)
+                                    : Math.round(surfaceGraph.currentFps * 10.0) / 10.0
+                        }
                     }
                 }
             }
 
             RowLayout {
                 id: buttonLayout
-                Layout.fillHeight: true
-                Layout.fillWidth: true
                 Layout.minimumHeight: 50
-                anchors.bottom: parent.bottom
                 spacing: 0
 
-                NewButton {
+                Button {
                     id: sliceButton
                     Layout.fillHeight: true
                     Layout.fillWidth: true
@@ -136,7 +101,7 @@ Item {
                     text: "Slice"
 
                     onClicked: {
-                        if (volumeItem.sliceIndexZ == -1) {
+                        if (volumeItem.sliceIndexZ === -1) {
                             volumeItem.sliceIndexZ = 128
                             volumeItem.drawSlices = true
                             volumeItem.drawSliceFrames = true
@@ -147,18 +112,38 @@ Item {
                         }
                     }
                 }
-                NewButton {
+                Button {
                     id: exitButton
                     Layout.fillHeight: true
                     Layout.fillWidth: true
 
                     text: "Quit"
 
-                    onClicked: Qt.quit(0);
+                    onClicked: Qt.quit();
                 }
             }
         }
+    }
 
+    SequentialAnimation {
+        running: volumeItem.drawSlices
+        loops: Animation.Infinite
+
+        PropertyAnimation {
+            target: volumeItem
+            property: "sliceIndexZ"
+            from: 0
+            to: 1024
+            duration: 5000
+        }
+
+        PropertyAnimation {
+            target: volumeItem
+            property: "sliceIndexZ"
+            from: 1024
+            to: 0
+            duration: 5000
+        }
     }
 
     Custom3DVolume {

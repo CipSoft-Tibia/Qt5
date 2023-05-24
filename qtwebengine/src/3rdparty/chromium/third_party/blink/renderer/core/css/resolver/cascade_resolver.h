@@ -1,11 +1,10 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_CSS_RESOLVER_CASCADE_RESOLVER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_RESOLVER_CASCADE_RESOLVER_H_
 
-#include "base/auto_reset.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/css_property_name.h"
 #include "third_party/blink/renderer/core/css/properties/css_property.h"
@@ -15,7 +14,6 @@
 
 namespace blink {
 
-class CascadePriority;
 class CSSProperty;
 class CSSVariableData;
 class CSSProperty;
@@ -52,23 +50,29 @@ class CORE_EXPORT CascadeResolver {
   // https://drafts.csswg.org/css-variables/#animation-tainted
   bool AllowSubstitution(CSSVariableData*) const;
 
-  // Sets the generation of the priority to zero, which has the effect of
-  // marking it as unapplied. (I.e. this can be used to force re-application of
-  // a declaration).
-  void MarkUnapplied(CascadePriority*) const;
-
-  // Sets the generation of the priority to the current generation,
-  // which has the effect of marking it as already applied. (I.e. this can be
-  // used to skip application of a declaration).
-  void MarkApplied(CascadePriority*) const;
-
-  // If the incoming origin is kAuthor, collect flags from 'property'.
-  // AuthorFlags() can then later be used to see which flags have been observed.
-  void CollectAuthorFlags(const CSSProperty& property, CascadeOrigin origin) {
-    author_flags_ |=
-        (origin == CascadeOrigin::kAuthor ? property.GetFlags() : 0);
+  bool Rejects(const CSSProperty& property) {
+    if (!filter_.Rejects(property)) {
+      return false;
+    }
+    rejected_flags_ |= property.GetFlags();
+    return true;
   }
+
+  // Collects CSSProperty::Flags from the given property. The Flags() function
+  // can then be used to see which flags have been observed..
+  void CollectFlags(const CSSProperty& property, CascadeOrigin origin) {
+    CSSProperty::Flags flags = property.GetFlags();
+    author_flags_ |= (origin == CascadeOrigin::kAuthor ? flags : 0);
+    flags_ |= flags;
+  }
+
+  CSSProperty::Flags Flags() const { return flags_; }
+
+  // Like Flags, but for the author origin only.
   CSSProperty::Flags AuthorFlags() const { return author_flags_; }
+
+  // The CSSProperty::Flags of all properties rejected by the CascadeFilter.
+  CSSProperty::Flags RejectedFlags() const { return rejected_flags_; }
 
   // Automatically locks and unlocks the given property. (See
   // CascadeResolver::IsLocked).
@@ -92,15 +96,13 @@ class CORE_EXPORT CascadeResolver {
       : filter_(filter), generation_(generation) {}
 
   // If the given property is already being applied, returns true.
-  // The return value is the same value you would get from InCycle(), and
-  // is just returned for convenience.
   //
-  // When a cycle has been detected, the CascadeResolver will *persist the cycle
-  // state* (i.e. InCycle() will continue to return true) until we reach
-  // the start of the cycle.
+  // When a cycle is detected, a portion of the stack is effecively marked
+  // as "in cycle". The function InCycle() may be used to check if we are
+  // currently inside a marked portion of the stack.
   //
-  // The cycle state is cleared by ~AutoLock, once we have moved far enough
-  // up the stack.
+  // The marked range of the stack shrinks during ~AutoLock, such that we won't
+  // be InCycle whenever we move outside that of that range.
   bool DetectCycle(const CSSProperty&);
   // Returns true whenever the CascadeResolver is in a cycle state.
   // This DOES NOT detect cycles; the caller must call DetectCycle first.
@@ -111,10 +113,18 @@ class CORE_EXPORT CascadeResolver {
   wtf_size_t Find(const CSSProperty&) const;
 
   PropertyStack stack_;
-  wtf_size_t cycle_depth_ = kNotFound;
+  // If we're in a cycle, cycle_start_ is the index of the stack_ item that
+  // "started" the cycle, i.e. the item in the cycle with the smallest index.
+  wtf_size_t cycle_start_ = kNotFound;
+  // If we're in a cycle, cycle_end_ is set to the size of stack_. This causes
+  // InCycle to return true while we're on the portion of the stack between
+  // cycle_start_ and cycle_end_.
+  wtf_size_t cycle_end_ = kNotFound;
   CascadeFilter filter_;
   const uint8_t generation_ = 0;
   CSSProperty::Flags author_flags_ = 0;
+  CSSProperty::Flags flags_ = 0;
+  CSSProperty::Flags rejected_flags_ = 0;
 
   // A very simple cache for CSSPendingSubstitutionValues. We cache only the
   // most recently parsed CSSPendingSubstitutionValue, such that consecutive
@@ -125,7 +135,7 @@ class CORE_EXPORT CascadeResolver {
 
    public:
     const cssvalue::CSSPendingSubstitutionValue* value = nullptr;
-    HeapVector<CSSPropertyValue, 256> parsed_properties;
+    HeapVector<CSSPropertyValue, 64> parsed_properties;
   } shorthand_cache_;
 };
 

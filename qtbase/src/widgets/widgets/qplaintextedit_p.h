@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLAINTEXTEDIT_P_H
 #define QPLAINTEXTEDIT_P_H
@@ -120,14 +84,14 @@ public:
     QPlainTextEditPrivate();
 
     void init(const QString &txt = QString());
-    void _q_repaintContents(const QRectF &contentsRect);
-    void _q_textChanged();
+    void repaintContents(const QRectF &contentsRect);
+    void updatePlaceholderVisibility();
 
     inline QPoint mapToContents(const QPoint &point) const
         { return QPoint(point.x() + horizontalOffset(), point.y() + verticalOffset()); }
 
-    void _q_adjustScrollbars();
-    void _q_verticalScrollbarActionTriggered(int action);
+    void adjustScrollbars();
+    void verticalScrollbarActionTriggered(int action);
     void ensureViewportLayouted();
     void relayoutDocument();
 
@@ -143,25 +107,29 @@ public:
 
     void updateDefaultTextOption();
 
-    QPlainTextEditControl *control;
-
-    bool tabChangesFocus;
-
     QBasicTimer autoScrollTimer;
+#ifdef QT_KEYPAD_NAVIGATION
+    QBasicTimer deleteAllTimer;
+#endif
     QPoint autoScrollDragPos;
+    QString placeholderText;
 
-    QPlainTextEdit::LineWrapMode lineWrap;
-    QTextOption::WrapMode wordWrap;
+    QPlainTextEditControl *control = nullptr;
+    qreal topLineFracture = 0; // for non-int sized fonts
+    qreal pageUpDownLastCursorY = 0;
+    QPlainTextEdit::LineWrapMode lineWrap = QPlainTextEdit::WidgetWidth;
+    QTextOption::WrapMode wordWrap = QTextOption::WrapAtWordBoundaryOrAnywhere;
+    int originalOffsetY = 0;
+    int topLine = 0;
 
+    uint tabChangesFocus : 1;
     uint showCursorOnInitialShow : 1;
     uint backgroundVisible : 1;
     uint centerOnScroll : 1;
     uint inDrag : 1;
     uint clickCausedFocus : 1;
-    uint placeholderVisible : 1;
-
-    int topLine;
-    qreal topLineFracture; // for non-int sized fonts
+    uint pageUpDownLastCursorYIsValid : 1;
+    uint placeholderTextShown : 1;
 
     void setTopLine(int visualTopLine, int dx = 0);
     void setTopBlock(int newTopBlock, int newTopLine, int dx = 0);
@@ -174,19 +142,13 @@ public:
 
     void append(const QString &text, Qt::TextFormat format = Qt::AutoText);
 
-    qreal pageUpDownLastCursorY;
-    bool pageUpDownLastCursorYIsValid;
-
-
-#ifdef QT_KEYPAD_NAVIGATION
-    QBasicTimer deleteAllTimer;
-#endif
-
-    void _q_cursorPositionChanged();
-    void _q_modificationChanged(bool);
-
-    int originalOffsetY;
-    QString placeholderText;
+    void cursorPositionChanged();
+    void modificationChanged(bool);
+    inline bool placeHolderTextToBeShown() const
+    {
+        Q_Q(const QPlainTextEdit);
+        return q->document()->isEmpty() && !q->placeholderText().isEmpty();
+    }
 };
 
 QT_END_NAMESPACE

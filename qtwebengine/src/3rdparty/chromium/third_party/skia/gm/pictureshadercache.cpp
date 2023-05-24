@@ -22,7 +22,7 @@
 #include "include/core/SkString.h"
 #include "include/core/SkSurface.h"
 #include "include/core/SkTileMode.h"
-#include "include/third_party/skcms/skcms.h"
+#include "modules/skcms/skcms.h"
 
 #include <utility>
 
@@ -67,7 +67,8 @@ public:
 
     void onDraw(SkCanvas* canvas) override {
         SkPaint paint;
-        paint.setShader(fPicture->makeShader(SkTileMode::kRepeat, SkTileMode::kRepeat));
+        paint.setShader(fPicture->makeShader(SkTileMode::kRepeat, SkTileMode::kRepeat,
+                                             SkFilterMode::kNearest));
 
         {
             // Render in a funny color space that converts green to yellow.

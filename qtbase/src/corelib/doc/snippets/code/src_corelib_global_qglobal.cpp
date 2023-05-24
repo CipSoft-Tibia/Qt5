@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 //! [0]
 label->setAlignment(Qt::AlignLeft | Qt::AlignTop);
@@ -79,17 +32,6 @@ Q_FLAG(Options)
 typedef QFlags<Enum> Flags;
 //! [2]
 
-
-//! [3]
-int myValue = 10;
-int minValue = 2;
-int maxValue = 6;
-
-int boundedValue = qBound(minValue, myValue, maxValue);
-// boundedValue == 6
-//! [3]
-
-
 //! [4]
 if (!driver()->isOpen() || driver()->isOpenError()) {
     qWarning("QSqlQuery::exec: database not open");
@@ -106,11 +48,6 @@ qint64 value = Q_INT64_C(932838457459459);
 //! [6]
 quint64 value = Q_UINT64_C(932838457459459);
 //! [6]
-
-
-//! [7]
-void myMsgHandler(QtMsgType, const char *);
-//! [7]
 
 
 //! [8]
@@ -203,7 +140,7 @@ int boundedValue = qBound(minValue, myValue, maxValue);
 
 
 //! [16]
-#if QT_VERSION >= 0x040100
+#if QT_VERSION >= QT_VERSION_CHECK(4, 1, 0)
     QIcon icon = style()->standardIcon(QStyle::SP_TrashIcon);
 #else
     QPixmap pixmap = style()->standardPixmap(QStyle::SP_TrashIcon);
@@ -273,37 +210,26 @@ const TInputType &myMin(const TInputType &value1, const TInputType &value2)
 
 
 //! [23]
-#include <qapplication.h>
+#include <QApplication>
 #include <stdio.h>
 #include <stdlib.h>
 
-void myMessageOutput(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+QtMessageHandler originalHandler = nullptr;
+
+void logToFile(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
-    QByteArray localMsg = msg.toLocal8Bit();
-    const char *file = context.file ? context.file : "";
-    const char *function = context.function ? context.function : "";
-    switch (type) {
-    case QtDebugMsg:
-        fprintf(stderr, "Debug: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-        break;
-    case QtInfoMsg:
-        fprintf(stderr, "Info: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-        break;
-    case QtWarningMsg:
-        fprintf(stderr, "Warning: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-        break;
-    case QtCriticalMsg:
-        fprintf(stderr, "Critical: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-        break;
-    case QtFatalMsg:
-        fprintf(stderr, "Fatal: %s (%s:%u, %s)\n", localMsg.constData(), file, context.line, function);
-        break;
-    }
+    QString message = qFormatLogMessage(type, context, msg);
+    static FILE *f = fopen("log.txt", "a");
+    fprintf(f, "%s\n", qPrintable(message));
+    fflush(f);
+
+    if (originalHandler)
+        *originalHandler(type, context, msg);
 }
 
 int main(int argc, char **argv)
 {
-    qInstallMessageHandler(myMessageOutput);
+    originalHandler = qInstallMessageHandler(logToFile);
     QApplication app(argc, argv);
     ...
     return app.exec();
@@ -339,8 +265,7 @@ void f(int c)
 
 
 //! [27]
-qWarning() << "Brush:" << myQBrush << "Other value:"
-<< i;
+qWarning() << "Brush:" << myQBrush << "Other value:" << i;
 //! [27]
 
 
@@ -355,8 +280,7 @@ void load(const QString &fileName)
 
 
 //! [29]
-qCritical() << "Brush:" << myQBrush << "Other
-value:" << i;
+qCritical() << "Brush:" << myQBrush << "Other value:" << i;
 //! [29]
 
 
@@ -514,16 +438,20 @@ void TheClass::addLabels()
 }
 //! [qttrid_noop]
 
+//! [qttrid_n_noop]
+static const char * const ids[] = {
+    //% "%n foo(s) found."
+    QT_TRID_N_NOOP("qtn_foo"),
+    //% "%n bar(s) found."
+    QT_TRID_N_NOOP("qtn_bar"),
+    0
+};
 
-//! [37]
-qWarning("%s: %s", qUtf8Printable(key), qUtf8Printable(value));
-//! [37]
-
-
-//! [qUtf16Printable]
-qWarning("%ls: %ls", qUtf16Printable(key), qUtf16Printable(value));
-//! [qUtf16Printable]
-
+QString result(int type, int n)
+{
+    return qtTrId(ids[type], n);
+}
+//! [qttrid_n_noop]
 
 //! [38]
 struct Point2D
@@ -553,7 +481,7 @@ private:
     int *data;
 };
 
-Q_DECLARE_TYPEINFO(Point2D, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(Point2D, Q_RELOCATABLE_TYPE);
 //! [39]
 
 
@@ -624,11 +552,6 @@ qFuzzyCompare(0.0, 1.0e-200); // This will return false
 qFuzzyCompare(1 + 0.0, 1 + 1.0e-200); // This will return true
 //! [46]
 
-//! [47]
-CApaApplication *myApplicationFactory();
-//! [47]
-
-
 //! [49]
 void myMessageHandler(QtMsgType, const QMessageLogContext &, const QString &);
 //! [49]
@@ -655,11 +578,6 @@ template<> class QTypeInfo<A> : public QTypeInfoMerger<A, B, C, D> {};
     ... qOverload<>(&Foo::overloadedFunction)
     ... qOverload<int, const QString &>(&Foo::overloadedFunction)
 //! [52]
-
-//! [53]
-    ... QOverload<>::of(&Foo::overloadedFunction)
-    ... QOverload<int, const QString &>::of(&Foo::overloadedFunction)
-//! [53]
 
 //! [54]
     struct Foo {
@@ -720,7 +638,7 @@ bool readConfiguration(const QFile &file)
 //! [qt-version-check]
 #include <QtGlobal>
 
-#if (QT_VERSION >= QT_VERSION_CHECK(5, 0, 0))
+#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
 #include <QtWidgets>
 #else
 #include <QtGui>

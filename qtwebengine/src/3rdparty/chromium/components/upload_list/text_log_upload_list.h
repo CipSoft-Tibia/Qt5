@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "base/files/file_path.h"
-#include "base/macros.h"
 #include "components/upload_list/upload_list.h"
 
 // Loads and parses an upload list text file of the line-based JSON format:
@@ -30,6 +29,9 @@ class TextLogUploadList : public UploadList {
   // Creates a new upload list that parses the log at |upload_log_path|.
   explicit TextLogUploadList(const base::FilePath& upload_log_path);
 
+  TextLogUploadList(const TextLogUploadList&) = delete;
+  TextLogUploadList& operator=(const TextLogUploadList&) = delete;
+
   const base::FilePath& upload_log_path() const { return upload_log_path_; }
 
  protected:
@@ -38,6 +40,7 @@ class TextLogUploadList : public UploadList {
   // UploadList:
   std::vector<UploadList::UploadInfo> LoadUploadList() override;
   void ClearUploadList(const base::Time& begin, const base::Time& end) override;
+  void RequestSingleUpload(const std::string& local_id) override;
 
   // Parses upload log lines, converting them to UploadInfo entries.
   // The method also reverse the order of the entries (the first entry in
@@ -46,8 +49,6 @@ class TextLogUploadList : public UploadList {
                        std::vector<UploadInfo>* uploads);
 
   const base::FilePath upload_log_path_;
-
-  DISALLOW_COPY_AND_ASSIGN(TextLogUploadList);
 };
 
 #endif  // COMPONENTS_UPLOAD_LIST_TEXT_LOG_UPLOAD_LIST_H_

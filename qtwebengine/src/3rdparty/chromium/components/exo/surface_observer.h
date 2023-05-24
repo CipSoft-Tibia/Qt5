@@ -1,9 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_EXO_SURFACE_OBSERVER_H_
 #define COMPONENTS_EXO_SURFACE_OBSERVER_H_
+
+#include <cstdint>
+#include <string>
+
+namespace gfx {
+class Rect;
+}
 
 namespace exo {
 class Surface;
@@ -19,11 +26,38 @@ class SurfaceObserver {
   // changes.
   virtual void OnWindowOcclusionChanged(Surface* surface) {}
 
+  // Called when frame is locked to normal state or unlocked from
+  // previously locked state.
+  virtual void OnFrameLockingChanged(Surface* surface, bool lock) {}
+
   // Called on each commit.
   virtual void OnCommit(Surface* surface) {}
 
   // Called when the content size changes.
   virtual void OnContentSizeChanged(Surface* surface) {}
+
+  // Called when desk state of the window changes.
+  // |state| is the index of the desk which the window moved to,
+  // or -1 for a window assigned to all desks.
+  virtual void OnDeskChanged(Surface* surface, int state) {}
+
+  // Called when the display of this surface has changed. Only called after
+  // successfully updating sub-surfaces.
+  virtual void OnDisplayChanged(Surface* surface,
+                                int64_t old_display,
+                                int64_t new_display) {}
+
+  // Starts or ends throttling.
+  virtual void ThrottleFrameRate(bool on) {}
+
+  // Called when tooltip is shown.
+  // `bounds` is relative to `surface`.
+  virtual void OnTooltipShown(Surface* surface,
+                              const std::u16string& text,
+                              const gfx::Rect& bounds) {}
+
+  // Called when tooltip is hidden.
+  virtual void OnTooltipHidden(Surface* surface) {}
 
  protected:
   virtual ~SurfaceObserver() {}

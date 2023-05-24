@@ -1,13 +1,15 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/webui/welcome/welcome_ui.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
+#include "base/values.h"
 #include "build/branding_buildflags.h"
+#include "build/build_config.h"
 #include "chrome/browser/signin/account_consistency_mode_manager.h"
 #include "chrome/browser/ui/webui/webui_util.h"
 #include "chrome/browser/ui/webui/welcome/bookmark_handler.h"
@@ -28,14 +30,7 @@
 #include "net/base/url_util.h"
 #include "ui/base/webui/web_ui_util.h"
 
-#if defined(OS_WIN)
-#include "base/win/windows_version.h"
-#endif
-
 namespace {
-
-constexpr char kGeneratedPath[] =
-    "@out_folder@/gen/chrome/browser/resources/welcome/";
 
 const char kPreviewBackgroundPath[] = "preview-background.jpg";
 
@@ -109,8 +104,10 @@ void AddStrings(content::WebUIDataSource* html_source) {
       {"landingDescription", IDS_WELCOME_LANDING_DESCRIPTION},
       {"landingNewUser", IDS_WELCOME_LANDING_NEW_USER},
       {"landingExistingUser", IDS_WELCOME_LANDING_EXISTING_USER},
+      {"landingPauseAnimations", IDS_WELCOME_LANDING_PAUSE_ANIMATIONS},
+      {"landingPlayAnimations", IDS_WELCOME_LANDING_PLAY_ANIMATIONS},
   };
-  AddLocalizedStringsBulk(html_source, kLocalizedStrings);
+  html_source->AddLocalizedStrings(kLocalizedStrings);
 }
 
 }  // namespace
@@ -121,7 +118,7 @@ WelcomeUI::WelcomeUI(content::WebUI* web_ui, const GURL& url)
 
   // This page is not shown to incognito or guest profiles. If one should end up
   // here, we return, causing a 404-like page.
-  if (!profile || !profile->IsRegularProfile()) {
+  if (!profile || profile->IsOffTheRecord()) {
     return;
   }
 
@@ -130,46 +127,21 @@ WelcomeUI::WelcomeUI(content::WebUI* web_ui, const GURL& url)
   web_ui->AddMessageHandler(std::make_unique<WelcomeHandler>(web_ui));
 
   content::WebUIDataSource* html_source =
-      content::WebUIDataSource::Create(url.host());
+      content::WebUIDataSource::CreateAndAdd(profile, url.host());
   webui::SetupWebUIDataSource(
       html_source, base::make_span(kWelcomeResources, kWelcomeResourcesSize),
-      kGeneratedPath, IDR_WELCOME_HTML);
+      IDR_WELCOME_WELCOME_HTML);
 
   // Add welcome strings.
   AddStrings(html_source);
 
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  // Load unscaled images.
-  static constexpr webui::ResourcePath kPaths[] = {
-      {"images/module_icons/google_dark.svg",
-       IDR_WELCOME_MODULE_ICONS_GOOGLE_DARK},
-      {"images/module_icons/google_light.svg",
-       IDR_WELCOME_MODULE_ICONS_GOOGLE_LIGHT},
-      {"images/module_icons/set_default_dark.svg",
-       IDR_WELCOME_MODULE_ICONS_SET_DEFAULT_DARK},
-      {"images/module_icons/set_default_light.svg",
-       IDR_WELCOME_MODULE_ICONS_SET_DEFAULT_LIGHT},
-      {"images/module_icons/wallpaper_dark.svg",
-       IDR_WELCOME_MODULE_ICONS_WALLPAPER_DARK},
-      {"images/module_icons/wallpaper_light.svg",
-       IDR_WELCOME_MODULE_ICONS_WALLPAPER_LIGHT},
-      {"images/ntp_thumbnails/art.jpg", IDR_WELCOME_NTP_THUMBNAILS_ART},
-      {"images/ntp_thumbnails/cityscape.jpg",
-       IDR_WELCOME_NTP_THUMBNAILS_CITYSCAPE},
-      {"images/ntp_thumbnails/earth.jpg", IDR_WELCOME_NTP_THUMBNAILS_EARTH},
-      {"images/ntp_thumbnails/geometric_shapes.jpg",
-       IDR_WELCOME_NTP_THUMBNAILS_GEOMETRIC_SHAPES},
-      {"images/ntp_thumbnails/landscape.jpg",
-       IDR_WELCOME_NTP_THUMBNAILS_LANDSCAPE},
-      {"images/set_default_dark.svg", IDR_WELCOME_SET_DEFAULT_DARK},
-      {"images/set_default_light.svg", IDR_WELCOME_SET_DEFAULT_LIGHT},
-  };
-  webui::AddResourcePathsBulk(html_source, kPaths);
-#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  html_source->AddResourcePath("images/background_svgs/logo.svg",
+                               IDR_PRODUCT_LOGO_128PX_SVG);
+#endif
 
-#if defined(OS_WIN)
-  html_source->AddBoolean("is_win10",
-                          base::win::GetVersion() >= base::win::Version::WIN10);
+#if BUILDFLAG(IS_WIN)
+  html_source->AddBoolean("is_win10", true);
 #endif
 
   // Add the shared bookmark handler for welcome modules.
@@ -187,10 +159,10 @@ WelcomeUI::WelcomeUI(content::WebUI* web_ui, const GURL& url)
 
   html_source->AddString(
       "newUserModules",
-      welcome::GetModules(profile).FindKey("new-user")->GetString());
+      welcome::GetModules(profile).Find("new-user")->GetString());
   html_source->AddString(
       "returningUserModules",
-      welcome::GetModules(profile).FindKey("returning-user")->GetString());
+      welcome::GetModules(profile).Find("returning-user")->GetString());
   html_source->AddBoolean(
       "signinAllowed", profile->GetPrefs()->GetBoolean(prefs::kSigninAllowed));
   html_source->SetRequestFilter(
@@ -198,8 +170,6 @@ WelcomeUI::WelcomeUI(content::WebUI* web_ui, const GURL& url)
                           weak_ptr_factory_.GetWeakPtr()),
       base::BindRepeating(&HandleRequestCallback,
                           weak_ptr_factory_.GetWeakPtr()));
-
-  content::WebUIDataSource::Add(profile, html_source);
 }
 
 WelcomeUI::~WelcomeUI() {}

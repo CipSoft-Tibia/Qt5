@@ -24,17 +24,22 @@
 #include "perfetto/base/compiler.h"
 #include "perfetto/base/export.h"
 
-#ifdef __GNUC__
+#if defined(__GNUC__) || defined(__clang__)
 // Ignore GCC warning about a missing argument for a variadic macro parameter.
 #pragma GCC system_header
 #endif
 
-// TODO(primiano): move this to base/build_config.h, turn into
-// PERFETTO_BUILDFLAG(DCHECK_IS_ON) and update call sites to use that instead.
-#if defined(NDEBUG) && !defined(DCHECK_ALWAYS_ON)
-#define PERFETTO_DCHECK_IS_ON() 0
-#else
+#if PERFETTO_BUILDFLAG(PERFETTO_FORCE_DCHECK_ON)
 #define PERFETTO_DCHECK_IS_ON() 1
+#elif PERFETTO_BUILDFLAG(PERFETTO_FORCE_DCHECK_OFF)
+#define PERFETTO_DCHECK_IS_ON() 0
+#elif defined(DCHECK_ALWAYS_ON) ||                                         \
+    (!defined(NDEBUG) && (PERFETTO_BUILDFLAG(PERFETTO_STANDALONE_BUILD) || \
+                          PERFETTO_BUILDFLAG(PERFETTO_CHROMIUM_BUILD) ||   \
+                          PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)))
+#define PERFETTO_DCHECK_IS_ON() 1
+#else
+#define PERFETTO_DCHECK_IS_ON() 0
 #endif
 
 #if PERFETTO_BUILDFLAG(PERFETTO_FORCE_DLOG_ON)
@@ -56,6 +61,24 @@
 #elif PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
 // Normal android logging.
 #include <android/log.h>
+#endif
+
+// Enable the "Print the most recent PERFETTO_LOG(s) before crashing" feature
+// on Android in-tree builds and on standalone builds (mainly for testing).
+// This is deliberately no PERFETTO_OS_ANDROID because we don't want this
+// feature when perfetto is embedded in other Android projects (e.g. SDK).
+// TODO(b/203795298): TFLite is using the client library in blaze builds and is
+// targeting API 19. For now disable the feature based on API level.
+#if defined(PERFETTO_ANDROID_ASYNC_SAFE_LOG)
+#define PERFETTO_ENABLE_LOG_RING_BUFFER() 0
+#elif PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)
+#define PERFETTO_ENABLE_LOG_RING_BUFFER() 1
+#elif PERFETTO_BUILDFLAG(PERFETTO_STANDALONE_BUILD) && \
+    (!PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID) ||       \
+     (defined(__ANDROID_API__) && __ANDROID_API__ >= 21))
+#define PERFETTO_ENABLE_LOG_RING_BUFFER() 1
+#else
+#define PERFETTO_ENABLE_LOG_RING_BUFFER() 0
 #endif
 
 namespace perfetto {
@@ -80,11 +103,42 @@ constexpr const char* Basename(const char* str) {
 
 enum LogLev { kLogDebug = 0, kLogInfo, kLogImportant, kLogError };
 
-PERFETTO_EXPORT void LogMessage(LogLev,
-                                const char* fname,
-                                int line,
-                                const char* fmt,
-                                ...) PERFETTO_PRINTF_FORMAT(4, 5);
+struct LogMessageCallbackArgs {
+  LogLev level;
+  int line;
+  const char* filename;
+  const char* message;
+};
+
+using LogMessageCallback = void (*)(LogMessageCallbackArgs);
+
+// This is not thread safe and must be called before using tracing from other
+// threads.
+PERFETTO_EXPORT_COMPONENT void SetLogMessageCallback(
+    LogMessageCallback callback);
+
+PERFETTO_EXPORT_COMPONENT void LogMessage(LogLev,
+                                          const char* fname,
+                                          int line,
+                                          const char* fmt,
+                                          ...) PERFETTO_PRINTF_FORMAT(4, 5);
+
+// This is defined in debug_crash_stack_trace.cc, but that is only linked in
+// standalone && debug builds, see enable_perfetto_stderr_crash_dump in
+// perfetto.gni.
+PERFETTO_EXPORT_COMPONENT void EnableStacktraceOnCrashForDebug();
+
+#if PERFETTO_ENABLE_LOG_RING_BUFFER()
+// Gets a snapshot of the logs from the internal log ring buffer and:
+// - On Android in-tree builds: Passes that to android_set_abort_message().
+//   That will attach the logs to the crash report.
+// - On standalone builds (all otther OSes) prints that on stderr.
+// This function must called only once, right before inducing a crash (This is
+// because android_set_abort_message() can only be called once).
+PERFETTO_EXPORT_COMPONENT void MaybeSerializeLastLogsForCrashReporting();
+#else
+inline void MaybeSerializeLastLogsForCrashReporting() {}
+#endif
 
 #if defined(PERFETTO_ANDROID_ASYNC_SAFE_LOG)
 #define PERFETTO_XLOG(level, fmt, ...)                                        \
@@ -94,55 +148,30 @@ PERFETTO_EXPORT void LogMessage(LogLev,
                           __LINE__, ##__VA_ARGS__);                           \
   } while (0)
 #elif defined(PERFETTO_DISABLE_LOG)
-#define PERFETTO_XLOG(...) ::perfetto::base::ignore_result(__VA_ARGS__)
+#define PERFETTO_XLOG(level, fmt, ...) ::perfetto::base::ignore_result(level, \
+                                fmt, ##__VA_ARGS__)
 #else
 #define PERFETTO_XLOG(level, fmt, ...)                                      \
   ::perfetto::base::LogMessage(level, ::perfetto::base::Basename(__FILE__), \
                                __LINE__, fmt, ##__VA_ARGS__)
 #endif
 
-#if PERFETTO_BUILDFLAG(PERFETTO_COMPILER_CLANG) || PERFETTO_BUILDFLAG(PERFETTO_COMPILER_GCC)
-#define PERFETTO_TRAP_SEQUENCE() __builtin_trap()
-#elif PERFETTO_BUILDFLAG(PERFETTO_COMPILER_MSVC)
-#define PERFETTO_TRAP_SEQUENCE() __debugbreak()
-#else
-#error Port
-#endif
-
-#if PERFETTO_BUILDFLAG(PERFETTO_COMPILER_CLANG) || PERFETTO_BUILDFLAG(PERFETTO_COMPILER_GCC)
-#define PERFETTO_IMMEDIATE_CRASH()    \
-  do {                                \
-    PERFETTO_TRAP_SEQUENCE();         \
-    __builtin_unreachable();          \
-  } while(false)
-#else
-// This is supporting non-chrome use of logging.h to build with MSVC.
-#define PERFETTO_IMMEDIATE_CRASH()  PERFETTO_TRAP_SEQUENCE()
-#endif
-
-#if PERFETTO_BUILDFLAG(PERFETTO_COMPILER_MSVC)
-#define CR_EXPAND_ARG(arg) arg
-#if PERFETTO_BUILDFLAG(PERFETTO_VERBOSE_LOGS)
-#define PERFETTO_LOG(fmt, ...) \
-  CR_EXPAND_ARG(PERFETTO_XLOG(::perfetto::base::kLogInfo, fmt, __VA_ARGS__))
-#else // PERFETTO_BUILDFLAG(PERFETTO_VERBOSE_LOGS)
-#define PERFETTO_LOG(...) ::perfetto::base::ignore_result(__VA_ARGS__)
-#endif // PERFETTO_BUILDFLAG(PERFETTO_VERBOSE_LOGS)
-
-#define PERFETTO_ILOG(fmt, ...) \
-  CR_EXPAND_ARG(                \
-      PERFETTO_XLOG(::perfetto::base::kLogImportant, fmt, __VA_ARGS__))
-#define PERFETTO_ELOG(fmt, ...) \
-  CR_EXPAND_ARG(PERFETTO_XLOG(::perfetto::base::kLogError, fmt, __VA_ARGS__))
-#define PERFETTO_FATAL(fmt, ...)       \
-  do {                                 \
-    CR_EXPAND_ARG(PERFETTO_ELOG(fmt, __VA_ARGS__)); \
-    PERFETTO_IMMEDIATE_CRASH();        \
+#if defined(_MSC_VER)
+#define PERFETTO_IMMEDIATE_CRASH()                               \
+  do {                                                           \
+    ::perfetto::base::MaybeSerializeLastLogsForCrashReporting(); \
+    __debugbreak();                                              \
+    __assume(0);                                                 \
   } while (0)
-
-#define PERFETTO_PLOG(x, ...) \
-  CR_EXPAND_ARG(PERFETTO_ELOG(x " (errno: %d, %s)", ##__VA_ARGS__, errno, strerror(errno)))
 #else
+#define PERFETTO_IMMEDIATE_CRASH()                               \
+  do {                                                           \
+    ::perfetto::base::MaybeSerializeLastLogsForCrashReporting(); \
+    __builtin_trap();                                            \
+    __builtin_unreachable();                                     \
+  } while (0)
+#endif
+
 #if PERFETTO_BUILDFLAG(PERFETTO_VERBOSE_LOGS)
 #define PERFETTO_LOG(fmt, ...) \
   PERFETTO_XLOG(::perfetto::base::kLogInfo, fmt, ##__VA_ARGS__)
@@ -160,8 +189,12 @@ PERFETTO_EXPORT void LogMessage(LogLev,
     PERFETTO_IMMEDIATE_CRASH();        \
   } while (0)
 
+#if defined(__GNUC__) || defined(__clang__)
 #define PERFETTO_PLOG(x, ...) \
   PERFETTO_ELOG(x " (errno: %d, %s)", ##__VA_ARGS__, errno, strerror(errno))
+#else
+// MSVC expands __VA_ARGS__ in a different order. Give up, not worth it.
+#define PERFETTO_PLOG PERFETTO_ELOG
 #endif
 
 #define PERFETTO_CHECK(x)                            \
@@ -173,17 +206,18 @@ PERFETTO_EXPORT void LogMessage(LogLev,
   } while (0)
 
 #if PERFETTO_DLOG_IS_ON()
-#if PERFETTO_BUILDFLAG(PERFETTO_COMPILER_MSVC)
-#define PERFETTO_DLOG(fmt, ...) \
-  CR_EXPAND_ARG(PERFETTO_XLOG(::perfetto::base::kLogDebug, fmt, __VA_ARGS__))
-#define PERFETTO_DPLOG(x, ...) \
-  CR_EXPAND_ARG(PERFETTO_DLOG(x " (errno: %d, %s)", __VA_ARGS__, errno, strerror(errno)))
-#else
+
 #define PERFETTO_DLOG(fmt, ...) \
   PERFETTO_XLOG(::perfetto::base::kLogDebug, fmt, ##__VA_ARGS__)
+
+#if defined(__GNUC__) || defined(__clang__)
 #define PERFETTO_DPLOG(x, ...) \
   PERFETTO_DLOG(x " (errno: %d, %s)", ##__VA_ARGS__, errno, strerror(errno))
-#endif // PERFETTO_BUILDFLAG(PERFETTO_COMPILER_MSVC)
+#else
+// MSVC expands __VA_ARGS__ in a different order. Give up, not worth it.
+#define PERFETTO_DPLOG PERFETTO_DLOG
+#endif
+
 #else  // PERFETTO_DLOG_IS_ON()
 
 #define PERFETTO_DLOG(...) ::perfetto::base::ignore_result(__VA_ARGS__)
@@ -194,13 +228,8 @@ PERFETTO_EXPORT void LogMessage(LogLev,
 #if PERFETTO_DCHECK_IS_ON()
 
 #define PERFETTO_DCHECK(x) PERFETTO_CHECK(x)
-#if PERFETTO_BUILDFLAG(PERFETTO_COMPILER_MSVC)
-#define PERFETTO_DFATAL(...) CR_EXPAND_ARG(PERFETTO_FATAL(__VA_ARGS__))
-#define PERFETTO_DFATAL_OR_ELOG(...) CR_EXPAND_ARG(PERFETTO_DFATAL(__VA_ARGS__))
-#else
 #define PERFETTO_DFATAL(...) PERFETTO_FATAL(__VA_ARGS__)
 #define PERFETTO_DFATAL_OR_ELOG(...) PERFETTO_DFATAL(__VA_ARGS__)
-#endif // PERFETTO_BUILDFLAG(PERFETTO_COMPILER_MSVC)
 
 #else  // PERFETTO_DCHECK_IS_ON()
 

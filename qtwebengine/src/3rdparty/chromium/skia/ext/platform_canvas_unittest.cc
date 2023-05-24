@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 
+#include "base/memory/raw_ref.h"
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/skia/include/core/SkBitmap.h"
@@ -17,7 +18,7 @@
 #include "third_party/skia/include/core/SkPixelRef.h"
 
 // Native drawing context is only used/supported on Windows.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 
 namespace skia {
 
@@ -75,7 +76,7 @@ bool VerifyRect(const SkCanvas& canvas,
   return true;
 }
 
-#if !defined(USE_AURA) && !defined(OS_MAC)
+#if !defined(USE_AURA) && !BUILDFLAG(IS_MAC)
 // Return true if canvas has something that passes for a rounded-corner
 // rectangle. Basically, we're just checking to make sure that the pixels in the
 // middle are of rect_color and pixels in the corners are of canvas_color.
@@ -149,13 +150,11 @@ class LayerSaver {
     SkRect bounds;
     bounds.setLTRB(SkIntToScalar(x_), SkIntToScalar(y_), SkIntToScalar(right()),
                    SkIntToScalar(bottom()));
-    canvas_.saveLayer(&bounds, NULL);
+    canvas_->saveLayer(&bounds, NULL);
     canvas.clear(SkColorSetARGB(0, 0, 0, 0));
   }
 
-  ~LayerSaver() {
-    canvas_.restore();
-  }
+  ~LayerSaver() { canvas_->restore(); }
 
   int x() const { return x_; }
   int y() const { return y_; }
@@ -167,7 +166,7 @@ class LayerSaver {
   int bottom() const { return y_ + h_; }
 
  private:
-  SkCanvas& canvas_;
+  const raw_ref<SkCanvas> canvas_;
   int x_, y_, w_, h_;
 };
 
@@ -367,4 +366,4 @@ TEST(PlatformCanvas, TranslateLayer) {
 
 }  // namespace skia
 
-#endif // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)

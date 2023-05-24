@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebSockets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \class QWebSocketServer
@@ -65,9 +29,7 @@
 
     Calling close() makes QWebSocketServer stop listening for incoming connections.
 
-    QWebSocketServer currently does not support
-    \l {WebSocket Extensions} and
-    \l {WebSocket Subprotocols}.
+    QWebSocketServer currently does not support \l {WebSocket Extensions}.
 
     \note When working with self-signed certificates, \l{Firefox bug 594502} prevents \l{Firefox} to
     connect to a secure WebSocket server. To work around this problem, first browse to the
@@ -84,7 +46,7 @@
 */
 
 /*!
-  \page echoserver.html example
+  \page echoserver.html
   \title WebSocket server example
   \brief A sample WebSocket server echoing back messages sent to it.
 
@@ -219,6 +181,47 @@
 */
 
 /*!
+    \fn void QWebSocketServer::alertSent(QSsl::AlertLevel level, QSsl::AlertType type, const QString &description)
+    \since 6.2
+
+    QWebSocketServer emits this signal if an alert message was sent to a peer. \a level
+    describes if it was a warning or a fatal error. \a type gives the code
+    of the alert message. When a textual description of the alert message is
+    available, it is supplied in \a description.
+
+    \note This signal is mostly informational and can be used for debugging
+    purposes, normally it does not require any actions from the application.
+    \note Not all backends support this functionality.
+
+    \sa alertReceived(), QSsl::AlertLevel, QSsl::AlertType
+*/
+/*!
+    \fn void QWebSocketServer::alertReceived(QSsl::AlertLevel level, QSsl::AlertType type, const QString &description)
+    \since 6.2
+
+    QWebSocketServer emits this signal if an alert message was received from a peer.
+    \a level tells if the alert was fatal or it was a warning. \a type is the
+    code explaining why the alert was sent. When a textual description of
+    the alert message is available, it is supplied in \a description.
+
+    \note The signal is mostly for informational and debugging purposes and does not
+    require any handling in the application. If the alert was fatal, underlying
+    backend will handle it and close the connection.
+    \note Not all backends support this functionality.
+
+    \sa alertSent(), QSsl::AlertLevel, QSsl::AlertType
+*/
+/*!
+    \fn void QWebSocketServer::handshakeInterruptedOnError(const QSslError &error)
+    \since 6.2
+
+    QWebSocketServer emits this signal if a certificate verification \a error was
+    found and if early error reporting was enabled in QSslConfiguration.
+
+    \sa sslErrors(), QSslConfiguration::setHandshakeMustInterruptOnError()
+*/
+
+/*!
   \enum QWebSocketServer::SslMode
   Indicates whether the server operates over wss (SecureMode) or ws (NonSecureMode)
 
@@ -263,7 +266,7 @@ QWebSocketServer::QWebSocketServer(const QString &serverName, SslMode secureMode
                                       )), parent)
 {
 #ifdef QT_NO_SSL
-    Q_UNUSED(secureMode)
+    Q_UNUSED(secureMode);
 #endif
     Q_D(QWebSocketServer);
     d->init();
@@ -496,6 +499,26 @@ QString QWebSocketServer::serverName() const
 }
 
 /*!
+    \brief Sets the list of protocols supported by the server to \a protocols.
+    \since 6.4
+ */
+void QWebSocketServer::setSupportedSubprotocols(const QStringList &protocols)
+{
+    Q_D(QWebSocketServer);
+    d->setSupportedSubprotocols(protocols);
+}
+
+/*!
+    \brief Returns the list of protocols supported by the server.
+    \since 6.4
+ */
+QStringList QWebSocketServer::supportedSubprotocols() const
+{
+    Q_D(const QWebSocketServer);
+    return d->supportedSubprotocols();
+}
+
+/*!
     Returns the server's address if the server is listening for connections; otherwise returns
     QHostAddress::Null.
 
@@ -624,7 +647,6 @@ void QWebSocketServer::setHandshakeTimeout(int msec)
     d->setHandshakeTimeout(msec);
 }
 
-#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
 /*!
     Sets the socket descriptor this server should use when listening for incoming connections to
     \a socketDescriptor.
@@ -656,71 +678,34 @@ qintptr QWebSocketServer::socketDescriptor() const
     return d->socketDescriptor();
 }
 
-#else // ### Qt 6: Remove leftovers
+#if QT_DEPRECATED_SINCE(6, 2)
 /*!
-    \deprecated
+    \fn bool QWebSocketServer::setNativeDescriptor(qintptr socketDescriptor)
 
+    \deprecated
     Sets the socket descriptor this server should use when listening for incoming connections to
     \a socketDescriptor.
 
     Returns true if the socket is set successfully; otherwise returns false.
     The socket is assumed to be in listening state.
 
-    \sa socketDescriptor(), setSocketDescriptor(), nativeDescriptor(), isListening()
-    \since 5.3
+    \sa nativeDescriptor(), setSocketDescriptor(), isListening()
+    \since 5.12
  */
-bool QWebSocketServer::setSocketDescriptor(int socketDescriptor)
-{
-    return setNativeDescriptor(socketDescriptor);
-}
 
 /*!
+    \fn qintptr QWebSocketServer::nativeDescriptor() const
+
     \deprecated
-
     Returns the native socket descriptor the server uses to listen for incoming instructions,
     or -1 if the server is not listening.
     If the server is using QNetworkProxy, the returned descriptor may not be usable with
     native socket functions.
 
-    \sa nativeDescriptor(), setNativeDescriptor(), setSocketDescriptor(), isListening()
-    \since 5.3
- */
-int QWebSocketServer::socketDescriptor() const
-{
-    return int(nativeDescriptor());
-}
-
-/*!
-    Sets the socket descriptor this server should use when listening for incoming connections to
-    \a socketDescriptor.
-
-    Returns true if the socket is set successfully; otherwise returns false.
-    The socket is assumed to be in listening state.
-
-    \sa nativeDescriptor(), isListening()
+    \sa setNativeDescriptor(), socketDescriptor(), isListening()
     \since 5.12
  */
-bool QWebSocketServer::setNativeDescriptor(qintptr socketDescriptor)
-{
-    Q_D(QWebSocketServer);
-    return d->setSocketDescriptor(socketDescriptor);
-}
-
-/*!
-    Returns the native socket descriptor the server uses to listen for incoming instructions,
-    or -1 if the server is not listening.
-    If the server is using QNetworkProxy, the returned descriptor may not be usable with
-    native socket functions.
-
-    \sa setNativeDescriptor(), isListening()
-    \since 5.12
- */
-qintptr QWebSocketServer::nativeDescriptor() const
-{
-    Q_D(const QWebSocketServer);
-    return d->socketDescriptor();
-}
-#endif // (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+#endif
 
 /*!
   Returns a list of WebSocket versions that this server is supporting.

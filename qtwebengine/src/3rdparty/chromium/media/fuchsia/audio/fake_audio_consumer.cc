@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,16 +11,8 @@
 
 namespace media {
 
-namespace {
-
-// Lead time range returned from WatchStatus();
-constexpr base::TimeDelta kMinLeadTime = base::TimeDelta::FromMilliseconds(100);
-constexpr base::TimeDelta kMaxLeadTime = base::TimeDelta::FromMilliseconds(500);
-
-}  // namespace
-
-// Buffering delay.
-constexpr base::TimeDelta kBufferDelay = base::TimeDelta::FromMilliseconds(30);
+const base::TimeDelta FakeAudioConsumer::kMinLeadTime = base::Milliseconds(100);
+const base::TimeDelta FakeAudioConsumer::kMaxLeadTime = base::Milliseconds(500);
 
 FakeAudioConsumer::FakeAudioConsumer(
     uint64_t session_id,
@@ -61,7 +53,7 @@ void FakeAudioConsumer::Start(fuchsia::media::AudioConsumerStartFlags flags,
   if (reference_time != fuchsia::media::NO_TIMESTAMP) {
     reference_time_ = base::TimeTicks::FromZxTime(reference_time);
   } else {
-    reference_time_ = base::TimeTicks::Now() + kBufferDelay;
+    reference_time_ = base::TimeTicks::Now() + kMinLeadTime;
   }
 
   if (media_time != fuchsia::media::NO_TIMESTAMP) {
@@ -79,7 +71,7 @@ void FakeAudioConsumer::Start(fuchsia::media::AudioConsumerStartFlags flags,
 }
 
 void FakeAudioConsumer::Stop() {
-  CHECK(state_ != State::kPlaying);
+  CHECK(state_ != State::kStopped);
 
   state_ = State::kStopped;
   OnStatusUpdate();

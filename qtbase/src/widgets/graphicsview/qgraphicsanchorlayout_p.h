@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGRAPHICSANCHORLAYOUT_P_H
 #define QGRAPHICSANCHORLAYOUT_P_H
@@ -59,6 +23,10 @@
 #include "qgraphicsanchorlayout.h"
 #include "qgraph_p.h"
 #include "qsimplex_p.h"
+
+#include <QtGui/private/qgridlayoutengine_p.h>
+
+#include <array>
 
 QT_REQUIRE_CONFIG(graphicsview);
 
@@ -126,7 +94,7 @@ struct AnchorData : public QSimplexVariable {
           sizeAtMinimum(0), sizeAtPreferred(0),
           sizeAtMaximum(0), item(nullptr), graphicsAnchor(nullptr),
           type(Normal), isLayoutAnchor(false),
-          isCenterAnchor(false), orientation(0),
+          isCenterAnchor(false), isVertical(false),
           dependency(Independent) {}
     virtual ~AnchorData();
 
@@ -165,7 +133,7 @@ struct AnchorData : public QSimplexVariable {
     qreal sizeAtMaximum;
 
     // References to the classes that represent this anchor in the public world
-    // An anchor may represent a LayoutItem, it may also be acessible externally
+    // An anchor may represent a LayoutItem, it may also be accessible externally
     // through a GraphicsAnchor "handler".
     QGraphicsLayoutItem *item;
     QGraphicsAnchor *graphicsAnchor;
@@ -173,7 +141,7 @@ struct AnchorData : public QSimplexVariable {
     uint type : 2;            // either Normal, Sequential or Parallel
     uint isLayoutAnchor : 1;  // if this anchor is an internal layout anchor
     uint isCenterAnchor : 1;
-    uint orientation : 1;
+    uint isVertical : 1;
     uint dependency : 2;      // either Independent, Master or Slave
 };
 
@@ -186,11 +154,11 @@ inline QString AnchorData::toString() const
 
 struct SequentialAnchorData : public AnchorData
 {
-    SequentialAnchorData(const QVector<AnchorVertex *> &vertices, const QVector<AnchorData *> &edges)
+    SequentialAnchorData(const QList<AnchorVertex *> &vertices, const QList<AnchorData *> &edges)
         : AnchorData(), m_children(vertices), m_edges(edges)
     {
         type = AnchorData::Sequential;
-        orientation = m_edges.at(0)->orientation;
+        isVertical = m_edges.at(0)->isVertical;
 #ifdef QT_DEBUG
         name = QString::fromLatin1("%1 -- %2").arg(vertices.first()->toString(), vertices.last()->toString());
 #endif
@@ -199,8 +167,8 @@ struct SequentialAnchorData : public AnchorData
     virtual void updateChildrenSizes() override;
     void calculateSizeHints();
 
-    QVector<AnchorVertex*> m_children;          // list of vertices in the sequence
-    QVector<AnchorData*> m_edges;               // keep the list of edges too.
+    QList<AnchorVertex *> m_children; // list of vertices in the sequence
+    QList<AnchorData *> m_edges; // keep the list of edges too.
 };
 
 struct ParallelAnchorData : public AnchorData
@@ -209,7 +177,7 @@ struct ParallelAnchorData : public AnchorData
         : AnchorData(), firstEdge(first), secondEdge(second)
     {
         type = AnchorData::Parallel;
-        orientation = first->orientation;
+        isVertical = first->isVertical;
 
         // This assert whether the child anchors share their vertices
         Q_ASSERT(((first->from == second->from) && (first->to == second->to)) ||
@@ -265,42 +233,44 @@ struct AnchorVertexPair : public AnchorVertex {
 #ifdef QT_DEBUG
 inline QString AnchorVertex::toString() const
 {
+    using namespace Qt::StringLiterals;
+
     if (!m_item)
         return QString::fromLatin1("NULL_%1").arg(quintptr(this));
 
     QString edge;
     switch (m_edge) {
     case Qt::AnchorLeft:
-        edge = QLatin1String("Left");
+        edge = "Left"_L1;
         break;
     case Qt::AnchorHorizontalCenter:
-        edge = QLatin1String("HorizontalCenter");
+        edge = "HorizontalCenter"_L1;
         break;
     case Qt::AnchorRight:
-        edge = QLatin1String("Right");
+        edge = "Right"_L1;
         break;
     case Qt::AnchorTop:
-        edge = QLatin1String("Top");
+        edge = "Top"_L1;
         break;
     case Qt::AnchorVerticalCenter:
-        edge = QLatin1String("VerticalCenter");
+        edge = "VerticalCenter"_L1;
         break;
     case Qt::AnchorBottom:
-        edge = QLatin1String("Bottom");
+        edge = "Bottom"_L1;
         break;
     default:
-        edge = QLatin1String("None");
+        edge = "None"_L1;
         break;
     }
     QString itemName;
     if (m_item->isLayout()) {
-        itemName = QLatin1String("layout");
+        itemName = "layout"_L1;
     } else {
         if (QGraphicsItem *item = m_item->graphicsItem()) {
             itemName = item->data(0).toString();
         }
     }
-    edge.insert(0, QLatin1String("%1_"));
+    edge.insert(0, "%1_"_L1);
     return edge.arg(itemName);
 }
 #endif
@@ -331,7 +301,7 @@ public:
 } // namespace QtGraphicsAnchorLayout
 using namespace QtGraphicsAnchorLayout;
 
-Q_DECLARE_TYPEINFO(GraphPath, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(GraphPath, Q_RELOCATABLE_TYPE);
 
 class QGraphicsAnchorLayoutPrivate;
 /*!
@@ -389,15 +359,9 @@ public:
         MaxPreferredToMaximum
     };
 
-    // Several structures internal to the layout are duplicated to handle
-    // both Horizontal and Vertical restrictions.
-    //
-    // Orientation is used to reference the right structure in each context
-    enum Orientation {
-        Horizontal = 0,
-        Vertical,
-        NOrientations
-    };
+    typedef Qt::Orientation Orientation [[deprecated]];
+    [[deprecated]] static inline constexpr Qt::Orientation Horizontal = Qt::Horizontal;
+    [[deprecated]] static inline constexpr Qt::Orientation Vertical = Qt::Vertical;
 
     QGraphicsAnchorLayoutPrivate();
 
@@ -409,13 +373,13 @@ public:
     static Qt::AnchorPoint oppositeEdge(
         Qt::AnchorPoint edge);
 
-    static Orientation edgeOrientation(Qt::AnchorPoint edge);
+    static Qt::Orientation edgeOrientation(Qt::AnchorPoint edge) noexcept;
 
-    static Qt::AnchorPoint pickEdge(Qt::AnchorPoint edge, Orientation orientation)
+    static Qt::AnchorPoint pickEdge(Qt::AnchorPoint edge, Qt::Orientation orientation)
     {
-        if (orientation == Vertical && int(edge) <= 2)
+        if (orientation == Qt::Vertical && int(edge) <= 2)
             return (Qt::AnchorPoint)(edge + 3);
-        else if (orientation == Horizontal && int(edge) >= 3) {
+        else if (orientation == Qt::Horizontal && int(edge) >= 3) {
             return (Qt::AnchorPoint)(edge - 3);
         }
         return edge;
@@ -427,7 +391,7 @@ public:
     void createItemEdges(QGraphicsLayoutItem *item);
     void createCenterAnchors(QGraphicsLayoutItem *item, Qt::AnchorPoint centerEdge);
     void removeCenterAnchors(QGraphicsLayoutItem *item, Qt::AnchorPoint centerEdge, bool substitute = true);
-    void removeCenterConstraints(QGraphicsLayoutItem *item, Orientation orientation);
+    void removeCenterConstraints(QGraphicsLayoutItem *item, Qt::Orientation orientation);
 
     QGraphicsAnchor *acquireGraphicsAnchor(AnchorData *data)
     {
@@ -474,40 +438,40 @@ public:
 
     // Activation
     void calculateGraphs();
-    void calculateGraphs(Orientation orientation);
+    void calculateGraphs(Qt::Orientation orientation);
 
     // Simplification
-    bool simplifyGraph(Orientation orientation);
-    bool simplifyVertices(Orientation orientation);
-    bool simplifyGraphIteration(Orientation orientation, bool *feasible);
+    bool simplifyGraph(Qt::Orientation orientation);
+    bool simplifyVertices(Qt::Orientation orientation);
+    bool simplifyGraphIteration(Qt::Orientation orientation, bool *feasible);
 
-    bool replaceVertex(Orientation orientation, AnchorVertex *oldV,
+    bool replaceVertex(Qt::Orientation orientation, AnchorVertex *oldV,
                        AnchorVertex *newV, const QList<AnchorData *> &edges);
 
 
-    void restoreSimplifiedGraph(Orientation orientation);
+    void restoreSimplifiedGraph(Qt::Orientation orientation);
     void restoreSimplifiedAnchor(AnchorData *edge);
     void restoreSimplifiedConstraints(ParallelAnchorData *parallel);
-    void restoreVertices(Orientation orientation);
+    void restoreVertices(Qt::Orientation orientation);
 
-    bool calculateTrunk(Orientation orientation, const GraphPath &trunkPath,
+    bool calculateTrunk(Qt::Orientation orientation, const GraphPath &trunkPath,
                         const QList<QSimplexConstraint *> &constraints,
                         const QList<AnchorData *> &variables);
     bool calculateNonTrunk(const QList<QSimplexConstraint *> &constraints,
                            const QList<AnchorData *> &variables);
 
     // Support functions for calculateGraph()
-    void refreshAllSizeHints(Orientation orientation);
-    void findPaths(Orientation orientation);
-    void constraintsFromPaths(Orientation orientation);
-    void updateAnchorSizes(Orientation orientation);
+    void refreshAllSizeHints(Qt::Orientation orientation);
+    void findPaths(Qt::Orientation orientation);
+    void constraintsFromPaths(Qt::Orientation orientation);
+    void updateAnchorSizes(Qt::Orientation orientation);
     QList<QSimplexConstraint *> constraintsFromSizeHints(const QList<AnchorData *> &anchors);
     struct GraphParts {
         QList<QSimplexConstraint *> trunkConstraints;
         QList<QSimplexConstraint *> nonTrunkConstraints;
     };
-    GraphParts getGraphParts(Orientation orientation);
-    void identifyFloatItems(const QSet<AnchorData *> &visited, Orientation orientation);
+    GraphParts getGraphParts(Qt::Orientation orientation);
+    void identifyFloatItems(const QSet<AnchorData *> &visited, Qt::Orientation orientation);
     void identifyNonFloatItems_helper(const AnchorData *ad, QSet<QGraphicsLayoutItem *> *nonFloatingItemsIdentifiedSoFar);
 
     inline AnchorVertex *internalVertex(const QPair<QGraphicsLayoutItem*, Qt::AnchorPoint> &itemEdge) const
@@ -520,7 +484,7 @@ public:
         return internalVertex(qMakePair(const_cast<QGraphicsLayoutItem *>(item), edge));
     }
 
-    inline void changeLayoutVertex(Orientation orientation, AnchorVertex *oldV, AnchorVertex *newV)
+    inline void changeLayoutVertex(Qt::Orientation orientation, AnchorVertex *oldV, AnchorVertex *newV)
     {
         if (layoutFirstVertex[orientation] == oldV)
             layoutFirstVertex[orientation] = newV;
@@ -537,8 +501,8 @@ public:
     // Geometry interpolation methods
     void setItemsGeometries(const QRectF &geom);
 
-    void calculateVertexPositions(Orientation orientation);
-    void setupEdgesInterpolation(Orientation orientation);
+    void calculateVertexPositions(Qt::Orientation orientation);
+    void setupEdgesInterpolation(Qt::Orientation orientation);
     void interpolateEdge(AnchorVertex *base, AnchorData *edge);
 
     // Linear Programming solver methods
@@ -553,12 +517,12 @@ public:
 #endif
 
 
-    qreal spacings[NOrientations];
+    QHVContainer<qreal> spacings = {-1, -1};
     // Size hints from simplex engine
-    qreal sizeHints[2][3];
+    QHVContainer<std::array<qreal, 3>> sizeHints = {{-1, -1, -1}, {-1, -1, -1}};
 
     // Items
-    QVector<QGraphicsLayoutItem *> items;
+    QList<QGraphicsLayoutItem *> items;
 
     // Mapping between high level anchorage points (Item, Edge) to low level
     // ones (Graph Vertices)
@@ -566,31 +530,31 @@ public:
     QHash<QPair<QGraphicsLayoutItem*, Qt::AnchorPoint>, QPair<AnchorVertex *, int> > m_vertexList;
 
     // Internal graph of anchorage points and anchors, for both orientations
-    Graph<AnchorVertex, AnchorData> graph[2];
+    QHVContainer<Graph<AnchorVertex, AnchorData>> graph;
 
-    AnchorVertex *layoutFirstVertex[2];
-    AnchorVertex *layoutCentralVertex[2];
-    AnchorVertex *layoutLastVertex[2];
+    QHVContainer<AnchorVertex *> layoutFirstVertex = {};
+    QHVContainer<AnchorVertex *> layoutCentralVertex = {};
+    QHVContainer<AnchorVertex *> layoutLastVertex = {};
 
     // Combined anchors in order of creation
-    QList<AnchorVertexPair *> simplifiedVertices[2];
-    QList<AnchorData *> anchorsFromSimplifiedVertices[2];
+    QHVContainer<QList<AnchorVertexPair *>> simplifiedVertices;
+    QHVContainer<QList<AnchorData *>> anchorsFromSimplifiedVertices;
 
     // Graph paths and constraints, for both orientations
-    QMultiHash<AnchorVertex *, GraphPath> graphPaths[2];
-    QList<QSimplexConstraint *> constraints[2];
-    QList<QSimplexConstraint *> itemCenterConstraints[2];
+    QHVContainer<QMultiHash<AnchorVertex *, GraphPath>> graphPaths;
+    QHVContainer<QList<QSimplexConstraint *>> constraints;
+    QHVContainer<QList<QSimplexConstraint *>> itemCenterConstraints;
 
     // The interpolation interval and progress based on the current size
     // as well as the key values (minimum, preferred and maximum)
-    Interval interpolationInterval[2];
-    qreal interpolationProgress[2];
+    QHVContainer<Interval> interpolationInterval;
+    QHVContainer<qreal> interpolationProgress = {-1, -1};
 
-    bool graphHasConflicts[2];
-    QSet<QGraphicsLayoutItem *> m_floatItems[2];
+    QHVContainer<bool> graphHasConflicts = {};
+    QHVContainer<QSet<QGraphicsLayoutItem *>> m_floatItems;
 
 #if defined(QT_DEBUG) || defined(QT_BUILD_INTERNAL)
-    bool lastCalculationUsedSimplex[2];
+    QHVContainer<bool> lastCalculationUsedSimplex;
 #endif
 
     uint calculateGraphCacheDirty : 1;

@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmodbusreply.h"
 
@@ -53,6 +20,7 @@ public:
     QString m_errorText;
     QModbusResponse m_response;
     QModbusReply::ReplyType m_type;
+    QList<QModbusDevice::IntermediateError> m_intermediateErrors;
 };
 
 /*!
@@ -82,7 +50,7 @@ public:
 /*!
     Constructs a QModbusReply object with a given \a type and the specified \a parent.
 
-    The reply will be send to the Modbus client represented by
+    The reply will be sent to the Modbus client represented by
     \a serverAddress.
 */
 QModbusReply::QModbusReply(ReplyType type, int serverAddress, QObject *parent)
@@ -148,7 +116,7 @@ void QModbusReply::setFinished(bool isFinished)
     request then the returned \l QModbusDataUnit instance is invalid.
 
     \note If the \l type() of the reply is \l QModbusReply::Broadcast, the
-    return value will always be invalid. If the l type() of the reply is
+    return value will always be invalid. If the \l type() of the reply is
     \l QModbusReply::Raw, the return value might be invalid depending on the
     implementation of \l QModbusClient::processPrivateResponse().
 
@@ -241,7 +209,6 @@ QString QModbusReply::errorString() const
     return d->m_errorText;
 }
 
-
 /*!
     Returns the type of the reply.
 
@@ -278,6 +245,41 @@ void QModbusReply::setRawResult(const QModbusResponse &response)
 {
     Q_D(QModbusReply);
     d->m_response = response;
+}
+
+/*!
+    \since 6.0
+    \fn void intermediateErrorOccurred(QModbusDevice::IntermediateError error)
+
+    This signal is emitted when an error has been detected in the processing of
+    this reply. The error will be described by the error code \a error.
+*/
+
+/*!
+    \since 6.0
+
+    Returns the list of intermediate errors that might have happened during
+    the send-receive cycle of a Modbus request until the QModbusReply reports
+    to be finished.
+*/
+QList<QModbusDevice::IntermediateError> QModbusReply::intermediateErrors() const
+{
+    Q_D(const QModbusReply);
+    return d->m_intermediateErrors;
+}
+
+/*!
+   \internal
+   \since 6.0
+
+    Adds an intermediate error to the list of intermediate errors.
+    This will also cause the \l intermediateErrorOccurred() signal to be emitted.
+*/
+void QModbusReply::addIntermediateError(QModbusDevice::IntermediateError error)
+{
+    Q_D(QModbusReply);
+    d->m_intermediateErrors.append(error);
+    emit intermediateErrorOccurred(error);
 }
 
 QT_END_NAMESPACE

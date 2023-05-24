@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@ import androidx.annotation.Nullable;
 /**
  * An interface that allows clients to handle error page interactions.
  */
-public abstract class ErrorPageCallback {
+abstract class ErrorPageCallback {
     /**
      * The user has attempted to back out of an error page, such as one warning of an SSL error.
      *
@@ -26,8 +26,6 @@ public abstract class ErrorPageCallback {
      * @param navigation The navigation that encountered the error.
      *
      * @return The error page.
-     *
-     * @since 86
      */
     public @Nullable ErrorPage getErrorPage(@NonNull Navigation navigation) {
         return null;

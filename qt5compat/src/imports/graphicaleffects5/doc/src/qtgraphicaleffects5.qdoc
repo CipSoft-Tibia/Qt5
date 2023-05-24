@@ -1,0 +1,74 @@
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+/*!
+    \qmlmodule Qt5Compat.GraphicalEffects
+    \title Qt 5 Compatibility APIs: Graphical Effect QML Types
+    \ingroup qmlmodules
+
+    \brief The Qt Graphical Effects module is provided for compatibility with
+    applications written for Qt 5.
+
+    The \l{qtgraphicaleffects5-index.html}{Qt Graphical Effects} module provides a set of QML types for
+    adding visually impressive and configurable effects to user
+    interfaces. Effects are visual items that can be added to Qt Quick
+    user interface as UI components.
+
+    To use the types in this module, import the module with the following line:
+    \qml
+    import Qt5Compat.GraphicalEffects
+    \endqml
+
+    \note The Qt Graphical Effects module is provided for compatibility with
+    applications written for Qt 5.
+ */
+
+/*!
+\title Qt 5 Compatibility APIs: Graphical Effects
+\page qtgraphicaleffects5-index.html
+\brief Qt Graphical Effects module is a Qt Quick Add-On module.
+
+The Qt Graphical Effects module is provided for compatibility with
+applications written for Qt 5.
+
+The Qt Graphical Effects module provides a set of QML types for adding visually
+impressive and configurable effects to user interfaces. Effects are visual
+items that can be added to Qt Quick user interface as UI components.
+
+The API consists of over 20 effects provided as separate QML types. The effects
+cover functional areas such as masking, blurring, coloring, and many more.
+
+\section1 Getting Started
+To load Qt Graphical Effects, add the following import statement to your .qml file:
+\snippet FastBlur-example.qml import
+
+To use the effects, simply add a specific effect declaration to the QML scene and
+configure the effects properties. Effects have one or more source properties for
+specifying the visual input for which the effect is applied to. The altered visual
+output is then presented in the effect item itself. The source can be another,
+often hidden, item in the QML scene. More complex effects can have multiple sources.
+The source item type can be any QML type, even video or another effect. Pipelining
+multiple effects together is a simple way to create even more impressive output.
+
+Each effect has a set of properties that can be used to configure the effect output.
+Properties can be animated just like any other QML properties. The QML type
+documentation contains property descriptions and basic usage examples.
+
+\note Effects are not available when running with the \c software
+backend of Qt Quick. For more information on Qt Quick scene graph
+backends, see \l{qtquick-visualcanvas-adaptations.html}{Scene Graph
+Adaptations}.
+
+\note Runtime-generated effects such as GaussianBlur will store the shader-files in temporary
+storage using QTemporaryFile, thus they require a writable file system.
+
+\section1 QML Types
+\generatelist {qmltypesbymodule Qt5Compat.GraphicalEffects}
+
+\section1 Reference
+
+\list
+\li \l {Qt 5 Compatibility APIs: Qt Graphical Effects}{QML Types}
+\endlist
+
+*/

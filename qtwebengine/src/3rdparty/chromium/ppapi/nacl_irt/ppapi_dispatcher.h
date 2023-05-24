@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 #include <string>
 
 #include "base/files/file.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/process/process_handle.h"
 #include "ipc/ipc_channel_handle.h"
 #include "ipc/ipc_listener.h"
@@ -74,7 +74,6 @@ class PpapiDispatcher : public proxy::PluginDispatcher::PluginDelegate,
   // PluginProxyDelegate implementation.
   IPC::Sender* GetBrowserSender() override;
   std::string GetUILanguage() override;
-  void PreCacheFontForFlash(const void* logfontw) override;
   void SetActiveURL(const std::string& url) override;
   PP_Resource CreateBrowserFont(proxy::Connection connection,
                                 PP_Instance instance,

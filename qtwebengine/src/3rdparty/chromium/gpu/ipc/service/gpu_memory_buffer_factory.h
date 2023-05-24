@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,8 @@
 #include <memory>
 #include <vector>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/unsafe_shared_memory_region.h"
+#include "base/task/single_thread_task_runner.h"
 #include "gpu/ipc/common/surface_handle.h"
 #include "gpu/ipc/service/gpu_ipc_service_export.h"
 #include "ui/gfx/geometry/size.h"
@@ -21,16 +21,18 @@ class VulkanContextProvider;
 
 namespace gpu {
 
-class ImageFactory;
-
 class GPU_IPC_SERVICE_EXPORT GpuMemoryBufferFactory {
  public:
+  GpuMemoryBufferFactory(const GpuMemoryBufferFactory&) = delete;
+  GpuMemoryBufferFactory& operator=(const GpuMemoryBufferFactory&) = delete;
+
   virtual ~GpuMemoryBufferFactory() = default;
 
   // Creates a new factory instance for native GPU memory buffers. Returns null
   // if native buffers are not supported.
   static std::unique_ptr<GpuMemoryBufferFactory> CreateNativeType(
-      viz::VulkanContextProvider* vulkan_context_provider);
+      viz::VulkanContextProvider* vulkan_context_provider,
+      scoped_refptr<base::SingleThreadTaskRunner> io_runner = nullptr);
 
   // Creates a new GPU memory buffer instance. A valid handle is returned on
   // success. This method is thread-safe but it should not be called on the IO
@@ -67,14 +69,13 @@ class GPU_IPC_SERVICE_EXPORT GpuMemoryBufferFactory {
   virtual void DestroyGpuMemoryBuffer(gfx::GpuMemoryBufferId id,
                                       int client_id) = 0;
 
-  // Type-checking downcast routine.
-  virtual ImageFactory* AsImageFactory() = 0;
+  // Fills |shared_memory| with the contents of the provided |buffer_handle|
+  virtual bool FillSharedMemoryRegionWithBufferContents(
+      gfx::GpuMemoryBufferHandle buffer_handle,
+      base::UnsafeSharedMemoryRegion shared_memory) = 0;
 
  protected:
   GpuMemoryBufferFactory() = default;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(GpuMemoryBufferFactory);
 };
 
 }  // namespace gpu

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef TST_QVARIANT_COMMON
 #define TST_QVARIANT_COMMON
@@ -56,16 +31,15 @@ protected:
         QVERIFY2(ok, (QString::fromLatin1("Message is not started correctly: '") + msg + '\'').toLatin1().constData());
         ok &= (currentId == QMetaType::UnknownType
              ? msg.contains("Invalid")
-             : msg.contains(QMetaType::typeName(currentId)));
+             : msg.contains(QMetaType(currentId).name()));
         QVERIFY2(ok, (QString::fromLatin1("Message doesn't contain type name: '") + msg + '\'').toLatin1().constData());
         if (currentId == QMetaType::Char || currentId == QMetaType::QChar) {
             // Chars insert '\0' into the qdebug stream, it is not possible to find a real string length
             return;
         }
-        if (QMetaType::typeFlags(currentId) & QMetaType::PointerToQObject) {
-            QByteArray currentName = QMetaType::typeName(currentId);
-            currentName.chop(1);
-            ok &= (msg.contains(", " + currentName) || msg.contains(", 0x0"));
+        if (QMetaType(currentId).flags() & QMetaType::IsPointer) {
+            QByteArray currentName = QMetaType(currentId).name();
+            ok &= msg.contains(currentName + ", 0x");
         }
         ok &= msg.endsWith(QLatin1Char(')'));
         QVERIFY2(ok, (QString::fromLatin1("Message is not correctly finished: '") + msg + '\'').toLatin1().constData());
@@ -73,11 +47,9 @@ protected:
     }
 
     QtMessageHandler oldMsgHandler;
-    static int currentId;
-    static bool ok;
+    inline static int currentId = {};
+    inline static bool ok = {};
 };
-bool MessageHandler::ok;
-int MessageHandler::currentId;
 
 #define TST_QVARIANT_CANCONVERT_DATATABLE_HEADERS \
     QTest::addColumn<QVariant>("val"); \
@@ -148,38 +120,38 @@ int MessageHandler::currentId;
     QFETCH(bool, ULongLongCast);
 
 #define TST_QVARIANT_CANCONVERT_COMPARE_DATA \
-    QCOMPARE(val.canConvert(QVariant::BitArray), BitArrayCast); \
-    QCOMPARE(val.canConvert(QVariant::Bitmap), BitmapCast); \
-    QCOMPARE(val.canConvert(QVariant::Bool), BoolCast); \
-    QCOMPARE(val.canConvert(QVariant::Brush), BrushCast); \
-    QCOMPARE(val.canConvert(QVariant::ByteArray), ByteArrayCast); \
-    QCOMPARE(val.canConvert(QVariant::Color), ColorCast); \
-    QCOMPARE(val.canConvert(QVariant::Cursor), CursorCast); \
-    QCOMPARE(val.canConvert(QVariant::Date), DateCast); \
-    QCOMPARE(val.canConvert(QVariant::DateTime), DateTimeCast); \
-    QCOMPARE(val.canConvert(QVariant::Double), DoubleCast); \
-    QCOMPARE(val.canConvert(QVariant::Type(QMetaType::Float)), DoubleCast); \
-    QCOMPARE(val.canConvert(QVariant::Font), FontCast); \
-    QCOMPARE(val.canConvert(QVariant::Image), ImageCast); \
-    QCOMPARE(val.canConvert(QVariant::Int), IntCast); \
-    QCOMPARE(val.canConvert(QVariant::Invalid), InvalidCast); \
-    QCOMPARE(val.canConvert(QVariant::KeySequence), KeySequenceCast); \
-    QCOMPARE(val.canConvert(QVariant::List), ListCast); \
-    QCOMPARE(val.canConvert(QVariant::LongLong), LongLongCast); \
-    QCOMPARE(val.canConvert(QVariant::Map), MapCast); \
-    QCOMPARE(val.canConvert(QVariant::Palette), PaletteCast); \
-    QCOMPARE(val.canConvert(QVariant::Pen), PenCast); \
-    QCOMPARE(val.canConvert(QVariant::Pixmap), PixmapCast); \
-    QCOMPARE(val.canConvert(QVariant::Point), PointCast); \
-    QCOMPARE(val.canConvert(QVariant::Rect), RectCast); \
-    QCOMPARE(val.canConvert(QVariant::Region), RegionCast); \
-    QCOMPARE(val.canConvert(QVariant::Size), SizeCast); \
-    QCOMPARE(val.canConvert(QVariant::SizePolicy), SizePolicyCast); \
-    QCOMPARE(val.canConvert(QVariant::String), StringCast); \
-    QCOMPARE(val.canConvert(QVariant::StringList), StringListCast); \
-    QCOMPARE(val.canConvert(QVariant::Time), TimeCast); \
-    QCOMPARE(val.canConvert(QVariant::UInt), UIntCast); \
-    QCOMPARE(val.canConvert(QVariant::ULongLong), ULongLongCast);
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QBitArray)), BitArrayCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QBitmap)), BitmapCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::Bool)), BoolCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QBrush)), BrushCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QByteArray)), ByteArrayCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QColor)), ColorCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QCursor)), CursorCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QDate)), DateCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QDateTime)), DateTimeCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::Double)), DoubleCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::Float)), DoubleCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QFont)), FontCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QImage)), ImageCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::Int)), IntCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::UnknownType)), InvalidCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QKeySequence)), KeySequenceCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QVariantList)), ListCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::LongLong)), LongLongCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QVariantMap)), MapCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QPalette)), PaletteCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QPen)), PenCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QPixmap)), PixmapCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QPoint)), PointCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QRect)), RectCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QRegion)), RegionCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QSize)), SizeCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QSizePolicy)), SizePolicyCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QString)), StringCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QStringList)), StringListCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::QTime)), TimeCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::UInt)), UIntCast); \
+    QCOMPARE(val.canConvert(QMetaType(QMetaType::ULongLong)), ULongLongCast);
 
 
 #endif

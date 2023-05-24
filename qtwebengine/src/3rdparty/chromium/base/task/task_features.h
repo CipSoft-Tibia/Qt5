@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,39 +6,69 @@
 #define BASE_TASK_TASK_FEATURES_H_
 
 #include "base/base_export.h"
+#include "base/feature_list.h"
 #include "base/metrics/field_trial_params.h"
 #include "build/build_config.h"
 
 namespace base {
 
-struct Feature;
+// Under this feature, a utility_thread_group will be created for
+// running USER_VISIBLE tasks.
+BASE_EXPORT BASE_DECLARE_FEATURE(kUseUtilityThreadGroup);
 
-extern const BASE_EXPORT Feature kAllTasksUserBlocking;
+// Under this feature, worker threads are not reclaimed after a timeout. Rather,
+// only excess workers are cleaned up immediately after finishing a task.
+BASE_EXPORT BASE_DECLARE_FEATURE(kNoWorkerThreadReclaim);
 
-// Under this feature, unused threads in ThreadGroup are only detached
-// if the total number of threads in the pool is above the initial capacity.
-extern const BASE_EXPORT Feature kNoDetachBelowInitialCapacity;
+// This feature controls whether wake ups are possible for canceled tasks.
+BASE_EXPORT BASE_DECLARE_FEATURE(kNoWakeUpsForCanceledTasks);
 
-// Under this feature, workers blocked with MayBlock are replaced immediately
-// instead of waiting for a threshold in the foreground thread group.
-extern const BASE_EXPORT Feature kMayBlockWithoutDelay;
+// Controls whether or not canceled delayed tasks are removed from task queues.
+BASE_EXPORT BASE_DECLARE_FEATURE(kRemoveCanceledTasksInTaskQueue);
 
-#if defined(OS_WIN) || defined(OS_APPLE)
-#define HAS_NATIVE_THREAD_POOL() 1
-#else
-#define HAS_NATIVE_THREAD_POOL() 0
-#endif
+// This feature controls whether or not the scheduled task is always abandoned
+// when a timer is stopped or reset. The re-use of the scheduled task is an
+// optimization that ensures a timer can not leave multiple canceled tasks in
+// the task queue. Meant to be used in conjunction with
+// kRemoveCanceledTasksInTaskQueue.
+BASE_EXPORT BASE_DECLARE_FEATURE(kAlwaysAbandonScheduledTask);
 
-#if HAS_NATIVE_THREAD_POOL()
-// Under this feature, ThreadPoolImpl will use a ThreadGroup backed by a
-// native thread pool implementation. The Windows Thread Pool API and
-// libdispatch are used on Windows and macOS/iOS respectively.
-extern const BASE_EXPORT Feature kUseNativeThreadPool;
-#endif
+// This feature controls whether ThreadPool WorkerThreads should hold off waking
+// up to purge partition alloc within the first minute of their lifetime. See
+// base::internal::GetSleepTimeBeforePurge.
+BASE_EXPORT BASE_DECLARE_FEATURE(kDelayFirstWorkerWake);
 
-// Whether threads in the ThreadPool should be reclaimed after being idle for 5
-// minutes, instead of 30 seconds.
-extern const BASE_EXPORT Feature kUseFiveMinutesThreadReclaimTime;
+// Under this feature, a non-zero leeway is added to delayed tasks. Along with
+// DelayPolicy, this affects the time at which a delayed task runs.
+BASE_EXPORT BASE_DECLARE_FEATURE(kAddTaskLeewayFeature);
+constexpr TimeDelta kDefaultLeeway = Milliseconds(8);
+extern const BASE_EXPORT base::FeatureParam<TimeDelta> kTaskLeewayParam;
+
+// Under this feature, wake ups are aligned at a 8ms boundary when allowed per
+// DelayPolicy.
+BASE_EXPORT BASE_DECLARE_FEATURE(kAlignWakeUps);
+
+// Under this feature, tasks that need high resolution timer are determined
+// based on explicit DelayPolicy rather than based on a threshold.
+BASE_EXPORT BASE_DECLARE_FEATURE(kExplicitHighResolutionTimerWin);
+
+// Feature to run tasks by batches before pumping out messages.
+BASE_EXPORT BASE_DECLARE_FEATURE(kRunTasksByBatches);
+
+// Feature to run tasks by batches before pumping out messages.
+BASE_EXPORT BASE_DECLARE_FEATURE(kBrowserPeriodicYieldingToNative);
+extern const BASE_EXPORT base::FeatureParam<TimeDelta>
+    kBrowserPeriodicYieldingToNativeNormalInputAfterMsParam;
+extern const BASE_EXPORT base::FeatureParam<TimeDelta>
+    kBrowserPeriodicYieldingToNativeFlingInputAfterMsParam;
+extern const BASE_EXPORT base::FeatureParam<TimeDelta>
+    kBrowserPeriodicYieldingToNativeNoInputAfterMsParam;
+extern const BASE_EXPORT base::FeatureParam<TimeDelta>
+    kBrowserPeriodicYieldingToNativeDelay;
+
+BASE_EXPORT void InitializeTaskLeeway();
+BASE_EXPORT TimeDelta GetTaskLeewayForCurrentThread();
+BASE_EXPORT TimeDelta GetDefaultTaskLeeway();
 
 }  // namespace base
 

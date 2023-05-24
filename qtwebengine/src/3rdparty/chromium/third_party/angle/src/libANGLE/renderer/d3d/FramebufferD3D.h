@@ -92,7 +92,7 @@ class FramebufferD3D : public FramebufferImpl
                        GLbitfield mask,
                        GLenum filter) override;
 
-    bool checkStatus(const gl::Context *context) const override;
+    gl::FramebufferStatus checkStatus(const gl::Context *context) const override;
 
     angle::Result syncState(const gl::Context *context,
                             GLenum binding,
@@ -136,7 +136,7 @@ class FramebufferD3D : public FramebufferImpl
     gl::DrawBufferMask mCurrentActiveProgramOutputs;
     gl::DrawBufferMask mColorAttachmentsForRenderMask;
 
-    gl::FramebufferAttachment mDummyAttachment;
+    gl::FramebufferAttachment mMockAttachment;
 };
 }  // namespace rx
 

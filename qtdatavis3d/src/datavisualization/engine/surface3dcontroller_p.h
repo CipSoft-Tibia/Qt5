@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //
 //  W A R N I N G
@@ -40,10 +14,10 @@
 #ifndef SURFACE3DCONTROLLER_P_H
 #define SURFACE3DCONTROLLER_P_H
 
-#include "abstract3dcontroller_p.h"
-#include "datavisualizationglobal_p.h"
+#include <private/abstract3dcontroller_p.h>
+#include <private/datavisualizationglobal_p.h>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 class Surface3DRenderer;
 class QSurface3DSeries;
@@ -65,7 +39,7 @@ struct Surface3DChangeBitField {
     }
 };
 
-class QT_DATAVISUALIZATION_EXPORT Surface3DController : public Abstract3DController
+class Q_DATAVISUALIZATION_EXPORT Surface3DController : public Abstract3DController
 {
     Q_OBJECT
 
@@ -86,36 +60,36 @@ private:
     QSurface3DSeries *m_selectedSeries; // Points to the series for which the point is selected in
                                         // single series selection cases.
     bool m_flatShadingSupported;
-    QVector<ChangeItem> m_changedItems;
-    QVector<ChangeRow> m_changedRows;
+    QList<ChangeItem> m_changedItems;
+    QList<ChangeRow> m_changedRows;
     bool m_flipHorizontalGrid;
-    QVector<QSurface3DSeries *> m_changedTextures;
+    QList<QSurface3DSeries *> m_changedTextures;
 
 public:
     explicit Surface3DController(QRect rect, Q3DScene *scene = 0);
     ~Surface3DController();
 
-    virtual void initializeOpenGL();
-    virtual void synchDataToRenderer();
+    void initializeOpenGL() override;
+    void synchDataToRenderer() override;
 
-    void setSelectionMode(QAbstract3DGraph::SelectionFlags mode);
+    void setSelectionMode(QAbstract3DGraph::SelectionFlags mode) override;
     void setSelectedPoint(const QPoint &position, QSurface3DSeries *series, bool enterSlice);
-    virtual void clearSelection();
+    void clearSelection() override;
 
     inline QSurface3DSeries *selectedSeries() const { return m_selectedSeries; }
 
-    virtual void handleAxisAutoAdjustRangeChangedInOrientation(
-            QAbstract3DAxis::AxisOrientation orientation, bool autoAdjust);
-    virtual void handleAxisRangeChangedBySender(QObject *sender);
-    virtual void handleSeriesVisibilityChangedBySender(QObject *sender);
-    virtual void handlePendingClick();
-    virtual void adjustAxisRanges();
+    void handleAxisAutoAdjustRangeChangedInOrientation(
+            QAbstract3DAxis::AxisOrientation orientation, bool autoAdjust) override;
+    void handleAxisRangeChangedBySender(QObject *sender) override;
+    void handleSeriesVisibilityChangedBySender(QObject *sender) override;
+    void handlePendingClick() override;
+    void adjustAxisRanges() override;
 
     static QPoint invalidSelectionPosition();
     bool isFlatShadingSupported();
 
-    virtual void addSeries(QAbstract3DSeries *series);
-    virtual void removeSeries(QAbstract3DSeries *series);
+    void addSeries(QAbstract3DSeries *series) override;
+    void removeSeries(QAbstract3DSeries *series) override;
     virtual QList<QSurface3DSeries *> surfaceSeriesList();
 
     void setFlipHorizontalGrid(bool flip);
@@ -141,6 +115,6 @@ private:
     Q_DISABLE_COPY(Surface3DController)
 };
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE
 
 #endif

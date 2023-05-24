@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -32,7 +32,7 @@ struct ScopedPathUnlinkerTraits {
 using ScopedPathUnlinker =
     ScopedGeneric<const FilePath*, ScopedPathUnlinkerTraits>;
 
-#if !defined(OS_NACL)
+#if !BUILDFLAG(IS_NACL)
 bool CheckFDAccessMode(int fd, int expected_mode) {
   int fd_status = fcntl(fd, F_GETFL);
   if (fd_status == -1) {
@@ -51,26 +51,11 @@ bool CheckFDAccessMode(int fd, int expected_mode) {
 
   return true;
 }
-#endif  // !defined(OS_NACL)
+#endif  // !BUILDFLAG(IS_NACL)
 
 }  // namespace
 
-ScopedFDPair::ScopedFDPair() = default;
-
-ScopedFDPair::ScopedFDPair(ScopedFDPair&&) = default;
-
-ScopedFDPair& ScopedFDPair::operator=(ScopedFDPair&&) = default;
-
-ScopedFDPair::~ScopedFDPair() = default;
-
-ScopedFDPair::ScopedFDPair(ScopedFD in_fd, ScopedFD in_readonly_fd)
-    : fd(std::move(in_fd)), readonly_fd(std::move(in_readonly_fd)) {}
-
-FDPair ScopedFDPair::get() const {
-  return {fd.get(), readonly_fd.get()};
-}
-
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 // static
 ScopedFD PlatformSharedMemoryRegion::ExecutableRegion::CreateFD(size_t size) {
   PlatformSharedMemoryRegion region =
@@ -79,7 +64,7 @@ ScopedFD PlatformSharedMemoryRegion::ExecutableRegion::CreateFD(size_t size) {
     return region.PassPlatformHandle().fd;
   return ScopedFD();
 }
-#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
 // static
 PlatformSharedMemoryRegion PlatformSharedMemoryRegion::Take(
@@ -115,9 +100,6 @@ PlatformSharedMemoryRegion PlatformSharedMemoryRegion::Take(
         return {};
       }
       break;
-    default:
-      DLOG(ERROR) << "Invalid permission mode: " << static_cast<int>(mode);
-      return {};
   }
 
   return PlatformSharedMemoryRegion(std::move(handle), mode, size, guid);
@@ -183,33 +165,15 @@ bool PlatformSharedMemoryRegion::ConvertToUnsafe() {
   return true;
 }
 
-bool PlatformSharedMemoryRegion::MapAtInternal(off_t offset,
-                                               size_t size,
-                                               void** memory,
-                                               size_t* mapped_size) const {
-  bool write_allowed = mode_ != Mode::kReadOnly;
-  *memory = mmap(nullptr, size, PROT_READ | (write_allowed ? PROT_WRITE : 0),
-                 MAP_SHARED, handle_.fd.get(), offset);
-
-  bool mmap_succeeded = *memory && *memory != MAP_FAILED;
-  if (!mmap_succeeded) {
-    DPLOG(ERROR) << "mmap " << handle_.fd.get() << " failed";
-    return false;
-  }
-
-  *mapped_size = size;
-  return true;
-}
-
 // static
 PlatformSharedMemoryRegion PlatformSharedMemoryRegion::Create(Mode mode,
                                                               size_t size
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
                                                               ,
                                                               bool executable
 #endif
 ) {
-#if defined(OS_NACL)
+#if BUILDFLAG(IS_NACL)
   // Untrusted code can't create descriptors or handles.
   return {};
 #else
@@ -227,13 +191,13 @@ PlatformSharedMemoryRegion PlatformSharedMemoryRegion::Create(Mode mode,
   // This function theoretically can block on the disk, but realistically
   // the temporary files we create will just go into the buffer cache
   // and be deleted before they ever make it out to disk.
-  ThreadRestrictions::ScopedAllowIO allow_io;
+  ScopedAllowBlocking scoped_allow_blocking;
 
   // We don't use shm_open() API in order to support the --disable-dev-shm-usage
   // flag.
   FilePath directory;
   if (!GetShmemTempDir(
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
           executable,
 #else
           false /* executable */,
@@ -301,14 +265,14 @@ PlatformSharedMemoryRegion PlatformSharedMemoryRegion::Create(Mode mode,
   return PlatformSharedMemoryRegion(
       {ScopedFD(shm_file.TakePlatformFile()), std::move(readonly_fd)}, mode,
       size, UnguessableToken::Create());
-#endif  // !defined(OS_NACL)
+#endif  // !BUILDFLAG(IS_NACL)
 }
 
 bool PlatformSharedMemoryRegion::CheckPlatformHandlePermissionsCorrespondToMode(
-    PlatformHandle handle,
+    PlatformSharedMemoryHandle handle,
     Mode mode,
     size_t size) {
-#if !defined(OS_NACL)
+#if !BUILDFLAG(IS_NACL)
   if (!CheckFDAccessMode(handle.fd,
                          mode == Mode::kReadOnly ? O_RDONLY : O_RDWR)) {
     return false;
@@ -330,7 +294,7 @@ bool PlatformSharedMemoryRegion::CheckPlatformHandlePermissionsCorrespondToMode(
   // We also cannot try to mmap() a region as writable and look at the return
   // status because the plugin process crashes if system mmap() fails.
   return true;
-#endif  // !defined(OS_NACL)
+#endif  // !BUILDFLAG(IS_NACL)
 }
 
 PlatformSharedMemoryRegion::PlatformSharedMemoryRegion(

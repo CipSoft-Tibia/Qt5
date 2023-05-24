@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,6 @@
 
 #include <stdint.h>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
 #include "content/renderer/pepper/pepper_media_stream_track_host_base.h"
 #include "media/base/video_frame.h"
@@ -44,6 +42,11 @@ class PepperMediaStreamVideoTrackHost : public PepperMediaStreamTrackHostBase,
                                   PP_Instance instance,
                                   PP_Resource resource);
 
+  PepperMediaStreamVideoTrackHost(const PepperMediaStreamVideoTrackHost&) =
+      delete;
+  PepperMediaStreamVideoTrackHost& operator=(
+      const PepperMediaStreamVideoTrackHost&) = delete;
+
   ~PepperMediaStreamVideoTrackHost() override;
 
   bool IsMediaStreamVideoTrackHost() override;
@@ -66,8 +69,10 @@ class PepperMediaStreamVideoTrackHost : public PepperMediaStreamTrackHostBase,
   // Sends frame with |index| to |track_|.
   int32_t SendFrameToTrack(int32_t index);
 
-  void OnVideoFrame(scoped_refptr<media::VideoFrame> frame,
-                    base::TimeTicks estimated_capture_time);
+  void OnVideoFrame(
+      scoped_refptr<media::VideoFrame> video_frame,
+      std::vector<scoped_refptr<media::VideoFrame>> scaled_video_frames,
+      base::TimeTicks estimated_capture_time);
 
   // ResourceHost overrides:
   void DidConnectPendingHostToResource() override;
@@ -117,8 +122,6 @@ class PepperMediaStreamVideoTrackHost : public PepperMediaStreamTrackHostBase,
   scoped_refptr<FrameDeliverer> frame_deliverer_;
 
   base::WeakPtrFactory<PepperMediaStreamVideoTrackHost> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(PepperMediaStreamVideoTrackHost);
 };
 
 }  // namespace content

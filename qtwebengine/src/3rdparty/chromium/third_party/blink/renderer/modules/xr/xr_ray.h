@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,10 @@
 
 #include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/geometry/float_point_3d.h"
 #include "third_party/blink/renderer/platform/heap/member.h"
-#include "third_party/blink/renderer/platform/transforms/transformation_matrix.h"
+#include "ui/gfx/geometry/point3_f.h"
+#include "ui/gfx/geometry/transform.h"
+#include "ui/gfx/geometry/vector3d_f.h"
 
 namespace blink {
 
@@ -38,7 +39,7 @@ class XRRay final : public ScriptWrappable {
 
   // Calling |RawMatrix()| is equivalent to calling |matrix()| w.r.t. the data
   // that will be returned, the only difference is the returned type.
-  TransformationMatrix RawMatrix();
+  gfx::Transform RawMatrix();
 
   static XRRay* Create(DOMPointInit* origin,
                        XRRayDirectionInit* direction,
@@ -49,15 +50,15 @@ class XRRay final : public ScriptWrappable {
   void Trace(Visitor*) const override;
 
  private:
-  void Set(const TransformationMatrix& matrix, ExceptionState& exception_state);
-  void Set(FloatPoint3D origin,
-           FloatPoint3D direction,
+  void Set(const gfx::Transform& matrix, ExceptionState& exception_state);
+  void Set(gfx::Point3F origin,
+           gfx::Vector3dF direction,
            ExceptionState& exception_state);
 
   Member<DOMPointReadOnly> origin_;
   Member<DOMPointReadOnly> direction_;
   Member<DOMFloat32Array> matrix_;
-  std::unique_ptr<TransformationMatrix> raw_matrix_;
+  std::unique_ptr<gfx::Transform> raw_matrix_;
 };
 
 }  // namespace blink

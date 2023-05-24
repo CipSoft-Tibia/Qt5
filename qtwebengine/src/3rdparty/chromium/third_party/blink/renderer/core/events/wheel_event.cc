@@ -31,6 +31,7 @@
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
+#include "third_party/blink/renderer/platform/wtf/math_extras.h"
 
 namespace blink {
 
@@ -86,21 +87,21 @@ WheelEvent* WheelEvent::Create(const WebMouseWheelEvent& event,
 WheelEvent::WheelEvent()
     : delta_x_(0), delta_y_(0), delta_z_(0), delta_mode_(kDomDeltaPixel) {}
 
+// crbug.com/1173525: tweak the initialization behavior.
 WheelEvent::WheelEvent(const AtomicString& type,
                        const WheelEventInit* initializer)
     : MouseEvent(type, initializer),
-      wheel_delta_(initializer->wheelDeltaX()
-                       ? initializer->wheelDeltaX()
-                       : static_cast<int32_t>(initializer->deltaX()),
-                   initializer->wheelDeltaY()
-                       ? initializer->wheelDeltaY()
-                       : static_cast<int32_t>(initializer->deltaY())),
-      delta_x_(initializer->deltaX()
-                   ? initializer->deltaX()
-                   : -static_cast<int32_t>(initializer->wheelDeltaX())),
-      delta_y_(initializer->deltaY()
-                   ? initializer->deltaY()
-                   : -static_cast<int32_t>(initializer->wheelDeltaY())),
+      wheel_delta_(
+          initializer->wheelDeltaX() ? initializer->wheelDeltaX()
+                                     : ClampTo<int32_t>(initializer->deltaX()),
+          initializer->wheelDeltaY() ? initializer->wheelDeltaY()
+                                     : ClampTo<int32_t>(initializer->deltaY())),
+      delta_x_(initializer->deltaX() ? initializer->deltaX()
+                                     : ClampTo<int32_t>(-static_cast<double>(
+                                           initializer->wheelDeltaX()))),
+      delta_y_(initializer->deltaY() ? initializer->deltaY()
+                                     : ClampTo<int32_t>(-static_cast<double>(
+                                           initializer->wheelDeltaY()))),
       delta_z_(initializer->deltaZ()),
       delta_mode_(initializer->deltaMode()) {}
 
@@ -151,7 +152,7 @@ void WheelEvent::preventDefault() {
     String message =
         "Unable to preventDefault inside passive event listener due to "
         "target being treated as passive. See "
-        "https://www.chromestatus.com/features/6662647093133312";
+        "https://www.chromestatus.com/feature/6662647093133312";
     auto* local_dom_window = DynamicTo<LocalDOMWindow>(view());
     if (local_dom_window && local_dom_window->GetFrame()) {
       Intervention::GenerateReport(local_dom_window->GetFrame(), id, message);

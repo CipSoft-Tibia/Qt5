@@ -1,11 +1,18 @@
-{
+HEAPPROFD_API_S { # introduced=S
   global:
-    AHeapInfo_create;
-    AHeapInfo_setCallback;
-    AHeapProfile_registerHeap;
+    AHeapProfileEnableCallbackInfo_getSamplingInterval; # systemapi
+    AHeapProfile_reportSample; # systemapi
+    AHeapProfile_reportFree; # systemapi
+    AHeapProfile_reportAllocation; # systemapi
+    AHeapProfile_registerHeap; # systemapi
+    AHeapInfo_setEnabledCallback; # systemapi
+    AHeapInfo_setDisabledCallback; # systemapi
+    AHeapInfo_create; # systemapi
+};
+
+PRIVATE {
+  global:
     AHeapProfile_initSession;
-    AHeapProfile_reportAllocation;
-    AHeapProfile_reportFree;
   local:
     *;
-};
+} HEAPPROFD_API_S;

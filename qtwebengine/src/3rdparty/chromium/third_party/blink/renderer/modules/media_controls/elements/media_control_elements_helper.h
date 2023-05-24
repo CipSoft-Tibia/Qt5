@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,10 @@
 
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
+
+namespace gfx {
+class Size;
+}  // namespace gfx
 
 namespace WTF {
 class AtomicString;
@@ -21,7 +25,6 @@ class HTMLDivElement;
 class HTMLMediaElement;
 class LayoutObject;
 class Node;
-struct WebSize;
 
 // Helper class for media control elements. It contains methods, constants or
 // concepts shared by more than one element.
@@ -46,8 +49,9 @@ class MediaControlElementsHelper final {
                                    ContainerNode* parent);
 
   // Utility function for getting the size in pixels of an element. If the
-  // element has not been layed out then returns the supplied default.
-  static WebSize GetSizeOrDefault(const Element&, const WebSize&);
+  // element has not been laid out then returns the supplied default.
+  MODULES_EXPORT static gfx::Size GetSizeOrDefault(const Element&,
+                                                   const gfx::Size&);
 
   // Utility function for quickly creating div elements with a predefined
   // element ID.

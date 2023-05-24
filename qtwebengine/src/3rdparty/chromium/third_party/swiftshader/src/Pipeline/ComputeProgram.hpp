@@ -17,9 +17,9 @@
 
 #include "SpirvShader.hpp"
 
-#include "Device/Context.hpp"
 #include "Reactor/Coroutine.hpp"
 #include "Vulkan/VkDescriptorSet.hpp"
+#include "Vulkan/VkPipeline.hpp"
 
 #include <functional>
 
@@ -36,7 +36,8 @@ class DescriptorSetsLayout;
 struct Constants;
 
 // ComputeProgram builds a SPIR-V compute shader.
-class ComputeProgram : public Coroutine<SpirvShader::YieldResult(
+class ComputeProgram : public Coroutine<SpirvEmitter::YieldResult(
+                           const vk::Device *device,
                            void *data,
                            int32_t workgroupX,
                            int32_t workgroupY,
@@ -46,7 +47,7 @@ class ComputeProgram : public Coroutine<SpirvShader::YieldResult(
                            int32_t subgroupCount)>
 {
 public:
-	ComputeProgram(vk::Device *device, SpirvShader const *spirvShader, vk::PipelineLayout const *pipelineLayout, const vk::DescriptorSet::Bindings &descriptorSets);
+	ComputeProgram(vk::Device *device, std::shared_ptr<SpirvShader> spirvShader, const vk::PipelineLayout *pipelineLayout, const vk::DescriptorSet::Bindings &descriptorSets);
 
 	virtual ~ComputeProgram();
 
@@ -55,10 +56,10 @@ public:
 
 	// run executes the compute shader routine for all workgroups.
 	void run(
-	    vk::DescriptorSet::Array const &descriptorSetObjects,
-	    vk::DescriptorSet::Bindings const &descriptorSetBindings,
-	    vk::DescriptorSet::DynamicOffsets const &descriptorDynamicOffsets,
-	    PushConstantStorage const &pushConstants,
+	    const vk::DescriptorSet::Array &descriptorSetObjects,
+	    const vk::DescriptorSet::Bindings &descriptorSetBindings,
+	    const vk::DescriptorSet::DynamicOffsets &descriptorDynamicOffsets,
+	    const vk::Pipeline::PushConstantStorage &pushConstants,
 	    uint32_t baseGroupX, uint32_t baseGroupY, uint32_t baseGroupZ,
 	    uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ);
 
@@ -71,18 +72,17 @@ protected:
 	{
 		vk::DescriptorSet::Bindings descriptorSets;
 		vk::DescriptorSet::DynamicOffsets descriptorDynamicOffsets;
-		uint4 numWorkgroups;               // [x, y, z, 0]
-		uint4 workgroupSize;               // [x, y, z, 0]
+		uint4 numWorkgroups;               // [x, y, z, -]
+		uint4 workgroupSize;               // [x, y, z, -]
 		uint32_t invocationsPerSubgroup;   // SPIR-V: "SubgroupSize"
 		uint32_t subgroupsPerWorkgroup;    // SPIR-V: "NumSubgroups"
 		uint32_t invocationsPerWorkgroup;  // Total number of invocations per workgroup.
-		PushConstantStorage pushConstants;
-		const Constants *constants;
+		vk::Pipeline::PushConstantStorage pushConstants;
 	};
 
 	vk::Device *const device;
-	SpirvShader const *const shader;
-	vk::PipelineLayout const *const pipelineLayout;
+	const std::shared_ptr<SpirvShader> shader;
+	const vk::PipelineLayout *const pipelineLayout;  // Reference held by vk::Pipeline
 	const vk::DescriptorSet::Bindings &descriptorSets;
 };
 

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,13 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/run_loop.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "base/test/mock_callback.h"
 #include "base/threading/thread.h"
+#include "build/chromeos_buildflags.h"
 #include "content/public/browser/video_capture_device_launcher.h"
 #include "content/public/browser/video_capture_service.h"
 #include "content/public/test/browser_task_environment.h"
@@ -38,8 +39,7 @@ namespace content {
 static const std::string kStubDeviceId = "StubDevice";
 static const media::VideoCaptureParams kArbitraryParams;
 static const base::WeakPtr<media::VideoFrameReceiver> kNullReceiver;
-static const auto kIgnoreLogMessageCB =
-    base::BindRepeating([](const std::string&) {});
+static const auto kIgnoreLogMessageCB = base::DoNothing();
 
 class MockVideoCaptureDeviceLauncherCallbacks
     : public VideoCaptureDeviceLauncher::Callbacks {
@@ -62,13 +62,18 @@ class ServiceVideoCaptureProviderTest : public testing::Test {
     OverrideVideoCaptureServiceForTesting(&mock_video_capture_service_);
   }
 
+  ServiceVideoCaptureProviderTest(const ServiceVideoCaptureProviderTest&) =
+      delete;
+  ServiceVideoCaptureProviderTest& operator=(
+      const ServiceVideoCaptureProviderTest&) = delete;
+
   ~ServiceVideoCaptureProviderTest() override {
     OverrideVideoCaptureServiceForTesting(nullptr);
   }
 
  protected:
   void SetUp() override {
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
     provider_ = std::make_unique<ServiceVideoCaptureProvider>(
         base::BindRepeating([]() {
           return std::unique_ptr<video_capture::mojom::AcceleratorFactory>();
@@ -77,7 +82,7 @@ class ServiceVideoCaptureProviderTest : public testing::Test {
 #else
     provider_ =
         std::make_unique<ServiceVideoCaptureProvider>(kIgnoreLogMessageCB);
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
     ON_CALL(mock_video_capture_service_, DoConnectToVideoSourceProvider(_))
         .WillByDefault(Invoke(
@@ -120,7 +125,9 @@ class ServiceVideoCaptureProviderTest : public testing::Test {
                                           std::move(subscription));
               std::move(callback).Run(
                   video_capture::mojom::CreatePushSubscriptionResultCode::
-                      kCreatedWithRequestedSettings,
+                      NewSuccessCode(video_capture::mojom::
+                                         CreatePushSubscriptionSuccessCode::
+                                             kCreatedWithRequestedSettings),
                   requested_settings);
             }));
   }
@@ -143,14 +150,11 @@ class ServiceVideoCaptureProviderTest : public testing::Test {
       video_capture::mojom::VideoSourceProvider::GetSourceInfosCallback>
       service_cb_;
   base::RunLoop wait_for_connection_to_service_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ServiceVideoCaptureProviderTest);
 };
 
 // Tests that if connection to the service is lost during an outstanding call
 // to GetDeviceInfos(), the callback passed into GetDeviceInfos() still gets
-// invoked.
+// invoked but with an error.
 TEST_F(ServiceVideoCaptureProviderTest,
        GetDeviceInfosAsyncInvokesCallbackWhenLosingConnection) {
   base::RunLoop run_loop;
@@ -169,13 +173,18 @@ TEST_F(ServiceVideoCaptureProviderTest,
             wait_for_call_to_arrive_at_service.Quit();
           }));
   base::RunLoop wait_for_callback_from_service;
-  EXPECT_CALL(results_cb_, Run(_))
-      .WillOnce(Invoke(
-          [&wait_for_callback_from_service](
-              const std::vector<media::VideoCaptureDeviceInfo>& results) {
-            EXPECT_EQ(0u, results.size());
-            wait_for_callback_from_service.Quit();
-          }));
+  EXPECT_CALL(results_cb_, Run(_, _))
+      .WillOnce(Invoke([&wait_for_callback_from_service](
+                           media::mojom::DeviceEnumerationResult result,
+                           const std::vector<media::VideoCaptureDeviceInfo>&
+                               results) {
+        // The disconnect should result in a failed result code.
+        EXPECT_EQ(
+            media::mojom::DeviceEnumerationResult::kErrorCaptureServiceCrash,
+            result);
+        EXPECT_EQ(0u, results.size());
+        wait_for_callback_from_service.Quit();
+      }));
 
   // Exercise
   provider_->GetDeviceInfosAsync(results_cb_.Get());
@@ -254,13 +263,13 @@ TEST_F(ServiceVideoCaptureProviderTest,
   base::RunLoop wait_for_get_device_infos_response_1;
   base::RunLoop wait_for_get_device_infos_response_2;
   provider_->GetDeviceInfosAsync(base::BindRepeating(
-      [](base::RunLoop* run_loop,
+      [](base::RunLoop* run_loop, media::mojom::DeviceEnumerationResult,
          const std::vector<media::VideoCaptureDeviceInfo>&) {
         run_loop->Quit();
       },
       &wait_for_get_device_infos_response_1));
   provider_->GetDeviceInfosAsync(base::BindRepeating(
-      [](base::RunLoop* run_loop,
+      [](base::RunLoop* run_loop, media::mojom::DeviceEnumerationResult,
          const std::vector<media::VideoCaptureDeviceInfo>&) {
         run_loop->Quit();
       },
@@ -322,11 +331,9 @@ TEST_F(ServiceVideoCaptureProviderTest,
 
   // Make initial call to GetDeviceInfosAsync(). The service does not yet
   // respond.
-  provider_->GetDeviceInfosAsync(base::BindRepeating(
-      [](const std::vector<media::VideoCaptureDeviceInfo>&) {}));
+  provider_->GetDeviceInfosAsync(base::DoNothing());
   // Make an additional call to GetDeviceInfosAsync().
-  provider_->GetDeviceInfosAsync(base::BindRepeating(
-      [](const std::vector<media::VideoCaptureDeviceInfo>&) {}));
+  provider_->GetDeviceInfosAsync(base::DoNothing());
   {
     base::RunLoop give_mojo_chance_to_process;
     give_mojo_chance_to_process.RunUntilIdle();

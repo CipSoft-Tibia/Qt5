@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,32 +6,21 @@
 
 #include "base/system/sys_info.h"
 #include "build/branding_buildflags.h"
+#include "chromeos/crosapi/cpp/crosapi_constants.h"
 #include "components/version_info/version_info.h"
+
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+#include "chromeos/crosapi/cpp/channel_to_enum.h"
+#endif
 
 namespace chrome {
 namespace {
 
 version_info::Channel g_chromeos_channel = version_info::Channel::UNKNOWN;
 
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-// Sets the |g_chromeos_channel|.
-void SetChannel(const std::string& channel) {
-  if (channel == "stable-channel")
-    g_chromeos_channel = version_info::Channel::STABLE;
-  else if (channel == "beta-channel")
-    g_chromeos_channel = version_info::Channel::BETA;
-  else if (channel == "dev-channel")
-    g_chromeos_channel = version_info::Channel::DEV;
-  else if (channel == "canary-channel")
-    g_chromeos_channel = version_info::Channel::CANARY;
-  else
-    g_chromeos_channel = version_info::Channel::UNKNOWN;
-}
-#endif
-
 }  // namespace
 
-std::string GetChannelName() {
+std::string GetChannelName(WithExtendedStable with_extended_stable) {
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
   switch (GetChannel()) {
     case version_info::Channel::STABLE:
@@ -45,8 +34,9 @@ std::string GetChannelName() {
     default:
       return "unknown";
   }
-#endif
+#else
   return std::string();
+#endif
 }
 
 version_info::Channel GetChannel() {
@@ -55,14 +45,18 @@ version_info::Channel GetChannel() {
     return g_chromeos_channel;
 
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  static const char kChromeOSReleaseTrack[] = "CHROMEOS_RELEASE_TRACK";
   std::string channel;
-  if (base::SysInfo::GetLsbReleaseValue(kChromeOSReleaseTrack, &channel)) {
-    SetChannel(channel);
+  if (base::SysInfo::GetLsbReleaseValue(crosapi::kChromeOSReleaseTrack,
+                                        &channel)) {
+    g_chromeos_channel = crosapi::ChannelToEnum(channel);
     is_channel_set = true;
   }
 #endif
   return g_chromeos_channel;
+}
+
+bool IsExtendedStableChannel() {
+  return false;  // Not supported on Chrome OS Ash.
 }
 
 std::string GetChannelSuffixForDataDir() {

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,6 +12,7 @@
 namespace blink {
 
 class ComputedStyle;
+class ComputedStyleBuilder;
 class CSSProperty;
 
 using SizeList = Vector<FillSize, 1>;
@@ -20,9 +21,12 @@ class SizeListPropertyFunctions {
   STATIC_ONLY(SizeListPropertyFunctions);
 
  public:
-  static SizeList GetInitialSizeList(const CSSProperty&);
+  static SizeList GetInitialSizeList(const CSSProperty&,
+                                     const ComputedStyle& initial_style);
   static SizeList GetSizeList(const CSSProperty&, const ComputedStyle&);
-  static void SetSizeList(const CSSProperty&, ComputedStyle&, const SizeList&);
+  static void SetSizeList(const CSSProperty&,
+                          ComputedStyleBuilder&,
+                          const SizeList&);
 };
 
 }  // namespace blink

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2009 Stephen Kelly <steveire@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2009 Stephen Kelly <steveire@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef DYNAMICTREEMODEL_H
 #define DYNAMICTREEMODEL_H
@@ -39,14 +14,14 @@ class DynamicTreeModel : public QAbstractItemModel
     Q_OBJECT
 
 public:
-    DynamicTreeModel(QObject *parent = 0);
+    DynamicTreeModel(QObject *parent = nullptr);
 
-    QModelIndex index(int row, int column, const QModelIndex &parent = QModelIndex()) const;
-    QModelIndex parent(const QModelIndex &index) const;
-    int rowCount(const QModelIndex &index = QModelIndex()) const;
-    int columnCount(const QModelIndex &index = QModelIndex()) const;
+    QModelIndex index(int row, int column, const QModelIndex &parent = QModelIndex()) const override;
+    QModelIndex parent(const QModelIndex &index) const override;
+    int rowCount(const QModelIndex &index = QModelIndex()) const override;
+    int columnCount(const QModelIndex &index = QModelIndex()) const override;
 
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const;
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
 
     void clear();
 
@@ -86,7 +61,7 @@ class ModelChangeCommand : public QObject
     Q_OBJECT
 public:
 
-    ModelChangeCommand(DynamicTreeModel *model, QObject *parent = 0);
+    ModelChangeCommand(DynamicTreeModel *model, QObject *parent = nullptr);
 
     virtual ~ModelChangeCommand()
     {
@@ -132,12 +107,12 @@ class ModelInsertCommand : public ModelChangeCommand
 
 public:
 
-    ModelInsertCommand(DynamicTreeModel *model, QObject *parent = 0);
+    ModelInsertCommand(DynamicTreeModel *model, QObject *parent = nullptr);
     virtual ~ModelInsertCommand()
     {
     }
 
-    virtual void doCommand();
+    virtual void doCommand() override;
 };
 
 class ModelMoveCommand : public ModelChangeCommand
@@ -153,7 +128,7 @@ public:
     virtual bool emitPreSignal(const QModelIndex &srcParent, int srcStart, int srcEnd,
                                const QModelIndex &destParent, int destRow);
 
-    virtual void doCommand();
+    virtual void doCommand() override;
 
     virtual void emitPostSignal();
 
@@ -179,13 +154,13 @@ class ModelResetCommand : public ModelMoveCommand
 {
     Q_OBJECT
 public:
-    ModelResetCommand(DynamicTreeModel *model, QObject *parent = 0);
+    ModelResetCommand(DynamicTreeModel *model, QObject *parent = nullptr);
 
     virtual ~ModelResetCommand();
 
     virtual bool emitPreSignal(const QModelIndex &srcParent, int srcStart, int srcEnd,
-                               const QModelIndex &destParent, int destRow);
-    virtual void emitPostSignal();
+                               const QModelIndex &destParent, int destRow) override;
+    virtual void emitPostSignal() override;
 };
 
 /**
@@ -195,13 +170,13 @@ class ModelResetCommandFixed : public ModelMoveCommand
 {
     Q_OBJECT
 public:
-    ModelResetCommandFixed(DynamicTreeModel *model, QObject *parent = 0);
+    ModelResetCommandFixed(DynamicTreeModel *model, QObject *parent = nullptr);
 
     virtual ~ModelResetCommandFixed();
 
     virtual bool emitPreSignal(const QModelIndex &srcParent, int srcStart, int srcEnd,
-                               const QModelIndex &destParent, int destRow);
-    virtual void emitPostSignal();
+                               const QModelIndex &destParent, int destRow) override;
+    virtual void emitPostSignal() override;
 };
 
 class ModelChangeChildrenLayoutsCommand : public ModelChangeCommand
@@ -214,7 +189,7 @@ public:
     {
     }
 
-    virtual void doCommand();
+    virtual void doCommand() override;
 
     void setSecondAncestorRowNumbers(QList<int> rows)
     {

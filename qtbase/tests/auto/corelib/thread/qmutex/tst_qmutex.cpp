@@ -1,40 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QSemaphore>
 
 #include <qatomic.h>
 #include <qcoreapplication.h>
 #include <qelapsedtimer.h>
 #include <qmutex.h>
 #include <qthread.h>
+#include <qvarlengtharray.h>
 #include <qwaitcondition.h>
+#include <private/qvolatile_p.h>
+
+using namespace std::chrono_literals;
 
 class tst_QMutex : public QObject
 {
@@ -46,11 +26,9 @@ public:
         Milliseconds,
         Seconds,
     };
-    Q_ENUM(TimeUnit);
+    Q_ENUM(TimeUnit)
 
 private slots:
-    void convertToMilliseconds_data();
-    void convertToMilliseconds();
     void tryLock_non_recursive();
     void try_lock_for_non_recursive();
     void try_lock_until_non_recursive();
@@ -68,11 +46,11 @@ private slots:
 
 static const int iterations = 100;
 
-QAtomicInt lockCount(0);
-QMutex normalMutex;
-QRecursiveMutex recursiveMutex;
-QSemaphore testsTurn;
-QSemaphore threadsTurn;
+static QAtomicInt lockCount(0);
+static QMutex normalMutex;
+static QRecursiveMutex recursiveMutex;
+static QSemaphore testsTurn;
+static QSemaphore threadsTurn;
 
 /*
     Depending on the OS, tryWaits may return early than expected because of the
@@ -89,122 +67,14 @@ enum {
     waitTime = 100
 };
 
-#if __has_include(<chrono>)
-static Q_CONSTEXPR std::chrono::milliseconds waitTimeAsDuration(waitTime);
-#endif
-
-void tst_QMutex::convertToMilliseconds_data()
-{
-    QTest::addColumn<TimeUnit>("unit");
-    QTest::addColumn<double>("doubleValue");
-    QTest::addColumn<qint64>("intValue");
-    QTest::addColumn<qint64>("expected");
-
-#if !__has_include(<chrono>)
-    QSKIP("This test requires <chrono>");
-#endif
-
-    auto add = [](TimeUnit unit, double d, long long i, qint64 expected) {
-        const QScopedArrayPointer<char> enumName(QTest::toString(unit));
-        QTest::addRow("%s:%f:%lld", enumName.data(), d, i)
-            << unit << d << qint64(i) << expected;
-    };
-
-    auto forAllUnitsAdd = [=](double d, long long i, qint64 expected) {
-        for (auto unit : {TimeUnit::Nanoseconds, TimeUnit::Microseconds, TimeUnit::Milliseconds, TimeUnit::Seconds})
-            add(unit, d, i, expected);
-    };
-
-    forAllUnitsAdd(-0.5, -1, 0);     // all negative values result in 0
-
-    forAllUnitsAdd(0, 0, 0);
-
-    add(TimeUnit::Nanoseconds,                 1,               1, 1);
-    add(TimeUnit::Nanoseconds, 1000 * 1000,       1000 * 1000,     1);
-    add(TimeUnit::Nanoseconds, 1000 * 1000 + 0.5, 1000 * 1000 + 1, 2);
-
-    add(TimeUnit::Microseconds,          1,        1, 1);
-    add(TimeUnit::Microseconds, 1000,       1000,     1);
-    add(TimeUnit::Microseconds, 1000 + 0.5, 1000 + 1, 2);
-
-    add(TimeUnit::Milliseconds, 1,   1, 1);
-    add(TimeUnit::Milliseconds, 1.5, 2, 2);
-
-    add(TimeUnit::Seconds, 0.9991, 1, 1000);
-
-    //
-    // overflowing int results in INT_MAX (equivalent to a spurious wakeup after ~24 days); check it:
-    //
-
-    // spot on:
-    add(TimeUnit::Nanoseconds,  INT_MAX * 1000. * 1000, INT_MAX * Q_INT64_C(1000) * 1000, INT_MAX);
-    add(TimeUnit::Microseconds, INT_MAX * 1000.,        INT_MAX * Q_INT64_C(1000),        INT_MAX);
-    add(TimeUnit::Milliseconds, INT_MAX,                INT_MAX,                          INT_MAX);
-
-    // minimally above:
-    add(TimeUnit::Nanoseconds,  INT_MAX * 1000. * 1000 + 1, INT_MAX * Q_INT64_C(1000) * 1000 + 1, INT_MAX);
-    add(TimeUnit::Microseconds, INT_MAX * 1000.        + 1, INT_MAX * Q_INT64_C(1000)        + 1, INT_MAX);
-    add(TimeUnit::Milliseconds, INT_MAX               + 1., INT_MAX               + Q_INT64_C(1), INT_MAX);
-    add(TimeUnit::Seconds,      INT_MAX / 1000.        + 1, INT_MAX / 1000                   + 1, INT_MAX);
-
-    // minimally below:
-    add(TimeUnit::Nanoseconds,  INT_MAX * 1000. * 1000 - 1, INT_MAX * Q_INT64_C(1000) * 1000 - 1, INT_MAX);
-    add(TimeUnit::Microseconds, INT_MAX * 1000.        - 1, INT_MAX * Q_INT64_C(1000)        - 1, INT_MAX);
-    add(TimeUnit::Milliseconds, INT_MAX              - 0.1, INT_MAX                             , INT_MAX);
-
-}
-
-void tst_QMutex::convertToMilliseconds()
-{
-#if !__has_include(<chrono>)
-    QSKIP("This test requires <chrono>");
-#else
-    QFETCH(TimeUnit, unit);
-    QFETCH(double, doubleValue);
-    QFETCH(qint64, intValue);
-    QFETCH(qint64, expected);
-
-    Q_CONSTEXPR qint64 maxShort = std::numeric_limits<short>::max();
-    Q_CONSTEXPR qint64 maxInt = std::numeric_limits<int>::max();
-    Q_CONSTEXPR qint64 maxUInt = std::numeric_limits<uint>::max();
-
-    switch (unit) {
-#define CASE(Unit, Period) \
-    case TimeUnit::Unit: \
-        DO(double,  Period, doubleValue); \
-        if (intValue < maxShort) \
-            DO(short,   Period, short(intValue)); \
-        if (intValue < maxInt) \
-            DO(int,     Period, int(intValue)); \
-        DO(qint64,  Period, intValue); \
-        if (intValue >= 0) { \
-            if (intValue < maxUInt) \
-                DO(uint,    Period, uint(intValue)); \
-            DO(quint64, Period, quint64(intValue)); \
-        } \
-        break
-#define DO(Rep, Period, val) \
-    do { \
-        const std::chrono::duration<Rep, Period> wait((val)); \
-        QCOMPARE(QMutex::convertToMilliseconds(wait), expected); \
-    } while (0)
-
-    CASE(Nanoseconds,  std::nano);
-    CASE(Microseconds, std::micro);
-    CASE(Milliseconds, std::milli);
-    CASE(Seconds,      std::ratio<1>);
-#undef DO
-#undef CASE
-    }
-#endif
-}
+static constexpr std::chrono::milliseconds waitTimeAsDuration(waitTime);
 
 void tst_QMutex::tryLock_non_recursive()
 {
     class Thread : public QThread
     {
     public:
-        void run()
+        void run() override
         {
             testsTurn.release();
 
@@ -315,7 +185,7 @@ void tst_QMutex::tryLock_non_recursive()
     testsTurn.acquire();
     normalMutex.lock();
     threadsTurn.release();
-    QThread::msleep(100);
+    QThread::sleep(100ms);
     normalMutex.unlock();
 
     // wait for thread to finish
@@ -324,14 +194,12 @@ void tst_QMutex::tryLock_non_recursive()
     thread.wait();
 }
 
-void tst_QMutex::try_lock_for_non_recursive() {
-#if !__has_include(<chrono>)
-    QSKIP("This test requires <chrono>");
-#else
+void tst_QMutex::try_lock_for_non_recursive()
+{
     class Thread : public QThread
     {
     public:
-        void run()
+        void run() override
         {
             testsTurn.release();
 
@@ -442,25 +310,21 @@ void tst_QMutex::try_lock_for_non_recursive() {
     testsTurn.acquire();
     normalMutex.lock();
     threadsTurn.release();
-    QThread::msleep(100);
+    QThread::sleep(100ms);
     normalMutex.unlock();
 
     // wait for thread to finish
     testsTurn.acquire();
     threadsTurn.release();
     thread.wait();
-#endif
 }
 
 void tst_QMutex::try_lock_until_non_recursive()
 {
-#if !__has_include(<chrono>)
-    QSKIP("This test requires <chrono>");
-#else
     class Thread : public QThread
     {
     public:
-        void run()
+        void run() override
         {
             const std::chrono::milliseconds systemTimersResolutionAsDuration(systemTimersResolution);
             testsTurn.release();
@@ -571,14 +435,13 @@ void tst_QMutex::try_lock_until_non_recursive()
     testsTurn.acquire();
     normalMutex.lock();
     threadsTurn.release();
-    QThread::msleep(100);
+    QThread::sleep(100ms);
     normalMutex.unlock();
 
     // wait for thread to finish
     testsTurn.acquire();
     threadsTurn.release();
     thread.wait();
-#endif
 }
 
 void tst_QMutex::tryLock_recursive()
@@ -586,7 +449,7 @@ void tst_QMutex::tryLock_recursive()
     class Thread : public QThread
     {
     public:
-        void run()
+        void run() override
         {
             testsTurn.release();
 
@@ -707,15 +570,11 @@ void tst_QMutex::tryLock_recursive()
 
 void tst_QMutex::try_lock_for_recursive()
 {
-#if !__has_include(<chrono>)
-    QSKIP("This test requires <chrono>");
-#else
     class Thread : public QThread
     {
     public:
-        void run()
+        void run() override
         {
-            const std::chrono::milliseconds systemTimersResolutionAsDuration(systemTimersResolution);
             testsTurn.release();
 
             threadsTurn.acquire();
@@ -831,18 +690,14 @@ void tst_QMutex::try_lock_for_recursive()
     testsTurn.acquire();
     threadsTurn.release();
     thread.wait();
-#endif
 }
 
 void tst_QMutex::try_lock_until_recursive()
 {
-#if !__has_include(<chrono>)
-    QSKIP("This test requires <chrono>");
-#else
     class Thread : public QThread
     {
     public:
-        void run()
+        void run() override
         {
             const std::chrono::milliseconds systemTimersResolutionAsDuration(systemTimersResolution);
             testsTurn.release();
@@ -960,7 +815,6 @@ void tst_QMutex::try_lock_until_recursive()
     testsTurn.acquire();
     threadsTurn.release();
     thread.wait();
-#endif
 }
 
 class mutex_Thread : public QThread
@@ -973,7 +827,7 @@ public:
 
     inline mutex_Thread(QMutex &m) : test_mutex(m) { }
 
-    void run()
+    void run() override
     {
         test_mutex.lock();
 
@@ -998,7 +852,7 @@ public:
 
     inline rmutex_Thread(QRecursiveMutex &m) : test_mutex(m) { }
 
-    void run()
+    void run() override
     {
         test_mutex.lock();
         test_mutex.lock();
@@ -1086,8 +940,8 @@ void tst_QMutex::lock_unlock_locked_tryLock()
     }
 }
 
-enum { one_minute = 6 * 1000, //not really one minute, but else it is too long.
-       threadCount = 10 };
+constexpr int one_minute = 6 * 1000; // not really one minute, but else it is too long.
+constexpr int threadCount = 10;
 
 class StressTestThread : public QThread
 {
@@ -1102,7 +956,7 @@ public:
         t.start();
         QThread::start();
     }
-    void run()
+    void run() override
     {
         while (t.elapsed() < one_minute) {
             mutex.lock();
@@ -1141,7 +995,7 @@ class TryLockRaceThread : public QThread
 public:
     static QMutex mutex;
 
-    void run()
+    void run() override
     {
         QElapsedTimer t;
         t.start();
@@ -1187,12 +1041,13 @@ void tst_QMutex::tryLockDeadlock()
     struct TrylockThread : QThread {
         TrylockThread(QMutex &mut) : mut(mut) {}
         QMutex &mut;
-        void run() {
+        void run() override
+        {
             for (int i = 0; i < 100000; ++i) {
                 if (mut.tryLock(0)) {
-                    if ((++tryLockDeadlockCounter) != 1)
+                    if (QtPrivate::volatilePreIncrement(tryLockDeadlockCounter) != 1)
                         ++tryLockDeadlockFailureCount;
-                    if ((--tryLockDeadlockCounter) != 0)
+                    if (QtPrivate::volatilePreDecrement(tryLockDeadlockCounter) != 0)
                         ++tryLockDeadlockFailureCount;
                     mut.unlock();
                 }
@@ -1209,9 +1064,9 @@ void tst_QMutex::tryLockDeadlock()
 
     for (int i = 0; i < 100000; ++i) {
         mut.lock();
-        if ((++tryLockDeadlockCounter) != 1)
+        if (QtPrivate::volatilePreIncrement(tryLockDeadlockCounter) != 1)
             ++tryLockDeadlockFailureCount;
-        if ((--tryLockDeadlockCounter) != 0)
+        if (QtPrivate::volatilePreDecrement(tryLockDeadlockCounter) != 0)
             ++tryLockDeadlockFailureCount;
         mut.unlock();
     }
@@ -1240,7 +1095,8 @@ void tst_QMutex::tryLockNegative()
         QMutex &mut;
         int timeout;
         int tryLockResult;
-        void run() {
+        void run() override
+        {
             tryLockResult = mut.tryLock(timeout);
             mut.unlock();
         }
@@ -1282,19 +1138,19 @@ public:
         t.start();
         QThread::start();
     }
-    void run()
+    void run() override
     {
         quint64 i = 0;
         while (t.elapsed() < one_minute) {
             i++;
-            uint nb = (i * 9 + lockCount.loadRelaxed() * 13) % threadCount;
+            uint nb = (i * 9 + uint(lockCount.loadRelaxed()) * 13) % threadCount;
             QMutexLocker locker(&mutex[nb]);
             if (sentinel[nb].loadRelaxed()) errorCount.ref();
             if (sentinel[nb].fetchAndAddRelaxed(5)) errorCount.ref();
             if (!sentinel[nb].testAndSetRelaxed(5, 0)) errorCount.ref();
             if (sentinel[nb].loadRelaxed()) errorCount.ref();
             lockCount.ref();
-            nb = (nb * 17 + i * 5 + lockCount.loadRelaxed() * 3) % threadCount;
+            nb = (nb * 17 + i * 5 + uint(lockCount.loadRelaxed()) * 3) % threadCount;
             if (mutex[nb].tryLock()) {
                 if (sentinel[nb].loadRelaxed()) errorCount.ref();
                 if (sentinel[nb].fetchAndAddRelaxed(16)) errorCount.ref();
@@ -1303,7 +1159,7 @@ public:
                 lockCount.ref();
                 mutex[nb].unlock();
             }
-            nb = (nb * 15 + i * 47 + lockCount.loadRelaxed() * 31) % threadCount;
+            nb = (nb * 15 + i * 47 + uint(lockCount.loadRelaxed()) * 31) % threadCount;
             if (mutex[nb].tryLock(2)) {
                 if (sentinel[nb].loadRelaxed()) errorCount.ref();
                 if (sentinel[nb].fetchAndAddRelaxed(53)) errorCount.ref();
@@ -1322,12 +1178,13 @@ QAtomicInt MoreStressTestThread::errorCount = 0;
 
 void tst_QMutex::moreStress()
 {
-    MoreStressTestThread threads[threadCount];
-    for (int i = 0; i < threadCount; ++i)
-        threads[i].start();
+    QVarLengthArray<MoreStressTestThread, threadCount> threads(qMin(QThread::idealThreadCount(),
+                                                                    int(threadCount)));
+    for (auto &thread : threads)
+        thread.start();
     QVERIFY(threads[0].wait(one_minute + 10000));
-    for (int i = 1; i < threadCount; ++i)
-        QVERIFY(threads[i].wait(10000));
+    for (auto &thread : threads)
+        QVERIFY(thread.wait(10000));
     qDebug("locked %d times", MoreStressTestThread::lockCount.loadRelaxed());
     QCOMPARE(MoreStressTestThread::errorCount.loadRelaxed(), 0);
 }

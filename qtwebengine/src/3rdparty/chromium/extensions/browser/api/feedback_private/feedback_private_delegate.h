@@ -1,11 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef EXTENSIONS_BROWSER_API_FEEDBACK_PRIVATE_FEEDBACK_PRIVATE_DELEGATE_H_
 #define EXTENSIONS_BROWSER_API_FEEDBACK_PRIVATE_FEEDBACK_PRIVATE_DELEGATE_H_
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
+#include "base/values.h"
 #include "components/feedback/feedback_data.h"
 #include "components/feedback/system_logs/system_logs_fetcher.h"
 #include "extensions/common/api/feedback_private.h"
@@ -13,9 +14,7 @@
 #include <memory>
 #include <string>
 
-namespace base {
-class DictionaryValue;
-}  // namespace base
+#include "build/chromeos_buildflags.h"
 
 namespace content {
 class BrowserContext;
@@ -26,7 +25,6 @@ class FeedbackUploader;
 }  // namespace feedback
 
 namespace system_logs {
-class SystemLogsFetcher;
 class SystemLogsSource;
 }  // namespace system_logs
 
@@ -44,15 +42,14 @@ class FeedbackPrivateDelegate {
   // extension.
   // Set |from_crash| to customize strings when the feedback UI was initiated
   // from a "sad tab" crash.
-  virtual std::unique_ptr<base::DictionaryValue> GetStrings(
-      content::BrowserContext* browser_context,
-      bool from_crash) const = 0;
+  virtual base::Value::Dict GetStrings(content::BrowserContext* browser_context,
+                                       bool from_crash) const = 0;
 
-  // Returns a SystemLogsFetcher for responding to a request for system logs.
-  virtual system_logs::SystemLogsFetcher* CreateSystemLogsFetcher(
-      content::BrowserContext* context) const = 0;
+  virtual void FetchSystemInformation(
+      content::BrowserContext* context,
+      system_logs::SysLogsFetcherCallback callback) const = 0;
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   // Creates a SystemLogsSource for the given type of log file.
   virtual std::unique_ptr<system_logs::SystemLogsSource> CreateSingleLogSource(
       api::feedback_private::LogSource source_type) const = 0;
@@ -65,15 +62,15 @@ class FeedbackPrivateDelegate {
       scoped_refptr<feedback::FeedbackData> feedback_data,
       FetchExtraLogsCallback callback) const = 0;
 
-  // Unloads the feedback extension from the current profile, should only be
-  // called when feedback is complete for the login profile.
-  virtual void UnloadFeedbackExtension(
-      content::BrowserContext* context) const = 0;
-
   // Returns the type of the landing page which is shown to the user when the
   // report is successfully sent.
   virtual api::feedback_private::LandingPageType GetLandingPageType(
       const feedback::FeedbackData& feedback_data) const = 0;
+
+  using GetHistogramsCallback = base::OnceCallback<void(const std::string&)>;
+  // Gets Lacros histograms in zip compressed format which will be attached
+  // as a file in unified feedback report.
+  virtual void GetLacrosHistograms(GetHistogramsCallback callback) = 0;
 #endif
 
   // Returns the normalized email address of the signed-in user associated with
@@ -88,6 +85,11 @@ class FeedbackPrivateDelegate {
   // feedback reports to the feedback server.
   virtual feedback::FeedbackUploader* GetFeedbackUploaderForContext(
       content::BrowserContext* context) const = 0;
+
+  // Opens the feedback report window.
+  virtual void OpenFeedback(
+      content::BrowserContext* context,
+      api::feedback_private::FeedbackSource source) const = 0;
 };
 
 }  // namespace extensions

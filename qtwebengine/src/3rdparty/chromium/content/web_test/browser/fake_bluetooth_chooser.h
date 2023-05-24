@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -41,6 +41,9 @@ class FakeBluetoothChooser : public mojom::FakeBluetoothChooser,
       mojo::PendingReceiver<mojom::FakeBluetoothChooser> receiver,
       mojo::PendingAssociatedRemote<mojom::FakeBluetoothChooserClient> client);
 
+  FakeBluetoothChooser(const FakeBluetoothChooser&) = delete;
+  FakeBluetoothChooser& operator=(const FakeBluetoothChooser&) = delete;
+
   // Resets the test scan duration to timeout immediately and sends a
   // |CHOOSER_CLOSED| event to the client.
   ~FakeBluetoothChooser() override;
@@ -61,7 +64,7 @@ class FakeBluetoothChooser : public mojom::FakeBluetoothChooser,
   void ShowDiscoveryState(DiscoveryState state) override;
   void AddOrUpdateDevice(const std::string& device_id,
                          bool should_update_name,
-                         const base::string16& device_name,
+                         const std::u16string& device_name,
                          bool is_gatt_connected,
                          bool is_paired,
                          int signal_strength_level) override;
@@ -75,8 +78,6 @@ class FakeBluetoothChooser : public mojom::FakeBluetoothChooser,
   // Stores the associated pointer to the client that will be receiving events
   // from FakeBluetoothChooser.
   mojo::AssociatedRemote<mojom::FakeBluetoothChooserClient> client_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakeBluetoothChooser);
 };
 
 }  // namespace content

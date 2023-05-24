@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@
 #include <algorithm>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_macros.h"
 #include "components/signin/internal/identity_manager/oauth_multilogin_token_fetcher.h"
@@ -21,6 +21,7 @@
 #include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "net/cookies/cookie_util.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "services/network/public/mojom/cookie_manager.mojom.h"
 
 namespace signin {
 
@@ -58,6 +59,7 @@ OAuthMultiloginHelper::OAuthMultiloginHelper(
     gaia::MultiloginMode mode,
     const std::vector<AccountIdGaiaIdPair>& accounts,
     const std::string& external_cc_result,
+    const gaia::GaiaSource& gaia_source,
     base::OnceCallback<void(SetAccountsInCookieResult)> callback)
     : signin_client_(signin_client),
       partition_delegate_(partition_delegate),
@@ -65,6 +67,7 @@ OAuthMultiloginHelper::OAuthMultiloginHelper(
       mode_(mode),
       accounts_(accounts),
       external_cc_result_(external_cc_result),
+      gaia_source_(gaia_source),
       callback_(std::move(callback)) {
   DCHECK(signin_client_);
   DCHECK(partition_delegate_);
@@ -129,8 +132,8 @@ void OAuthMultiloginHelper::OnAccessTokensFailure(
 
 void OAuthMultiloginHelper::StartFetchingMultiLogin() {
   DCHECK_EQ(gaia_id_token_pairs_.size(), accounts_.size());
-  gaia_auth_fetcher_ =
-      partition_delegate_->CreateGaiaAuthFetcherForPartition(this);
+  gaia_auth_fetcher_ = partition_delegate_->CreateGaiaAuthFetcherForPartition(
+      this, gaia_source_);
   gaia_auth_fetcher_->StartOAuthMultilogin(mode_, gaia_id_token_pairs_,
                                            external_cc_result_);
 }

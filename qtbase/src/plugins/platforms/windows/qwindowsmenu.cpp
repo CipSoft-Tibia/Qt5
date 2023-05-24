@@ -1,47 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwindowsmenu.h"
 #include "qwindowscontext.h"
 #include "qwindowswindow.h"
 
 #include <QtGui/qwindow.h>
+#include <QtGui/private/qpixmap_win_p.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qmetaobject.h>
@@ -56,7 +21,7 @@ QT_BEGIN_NAMESPACE
     \brief Windows native menu bar
 
     \list
-    \li \l{https://msdn.microsoft.com/de-de/library/windows/desktop/ms647553(v=vs.85).aspx#_win32_Menu_Creation_Functions},
+    \li \l{https://docs.microsoft.com/en-us/windows/win32/menurc/about-menus},
          \e{About Menus}
     \endlist
 
@@ -69,10 +34,10 @@ QT_BEGIN_NAMESPACE
 
 static uint nextId = 1;
 
-// Find a QPlatformMenu[Item]* in a vector of QWindowsMenu[Item], where
-// QVector::indexOf() cannot be used since it wants a QWindowsMenu[Item]*
+// Find a QPlatformMenu[Item]* in a list of QWindowsMenu[Item], where
+// QList::indexOf() cannot be used since it wants a QWindowsMenu[Item]*
 template <class Derived, class Needle>
-static int indexOf(const QVector<Derived *> &v, const Needle *needle)
+static int indexOf(const QList<Derived *> &v, const Needle *needle)
 {
     for (int i = 0, size = v.size(); i < size; ++i) {
         if (v.at(i) == needle)
@@ -81,9 +46,9 @@ static int indexOf(const QVector<Derived *> &v, const Needle *needle)
     return -1;
 }
 
-// Helper for inserting a QPlatformMenu[Item]* into a vector of QWindowsMenu[Item].
+// Helper for inserting a QPlatformMenu[Item]* into a list of QWindowsMenu[Item].
 template <class Derived, class Base>
-static int insertBefore(QVector<Derived *> *v, Base *newItemIn, const Base *before = nullptr)
+static int insertBefore(QList<Derived *> *v, Base *newItemIn, const Base *before = nullptr)
 {
     int index = before ? indexOf(*v, before) : -1;
     if (index != -1) {
@@ -175,7 +140,7 @@ static QWindowsMenu *findMenuByHandle(const Menu *menu, HMENU hMenu)
 }
 
 template <class MenuType>
-static int findNextVisibleEntry(const QVector<MenuType *> &entries, int pos)
+static int findNextVisibleEntry(const QList<MenuType *> &entries, int pos)
 {
     for (int i = pos, size = entries.size(); i < size; ++i) {
         if (entries.at(i)->isVisible())
@@ -264,8 +229,6 @@ void QWindowsMenuItem::setIcon(const QIcon &icon)
     if (m_parentMenu != nullptr)
         updateBitmap();
 }
-
-Q_GUI_EXPORT HBITMAP qt_pixmapToWinHBITMAP(const QPixmap &p, int hbitmapFormat = 0);
 
 void QWindowsMenuItem::updateBitmap()
 {
@@ -862,7 +825,7 @@ void QWindowsMenuBar::redraw() const
 #ifndef QT_NO_DEBUG_STREAM
 
 template <class M>  /* Menu[Item] */
-static void formatTextSequence(QDebug &d, const QVector<M *> &v)
+static void formatTextSequence(QDebug &d, const QList<M *> &v)
 {
     if (const int size = v.size()) {
         d << '[' << size << "](";

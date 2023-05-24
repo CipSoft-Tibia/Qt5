@@ -25,7 +25,7 @@ class FormattedValueStringBuilderImpl;
  *
  * <ol>
  * <li>Efficient prepend as well as append.
- * <li>Keeps tracks of Fields in an efficient manner.
+ * <li>Keeps track of Fields in an efficient manner.
  * </ol>
  *
  * See also FormattedValueStringBuilderImpl.
@@ -55,7 +55,6 @@ class U_I18N_API FormattedStringBuilder : public UMemory {
     // Convention: bottom 4 bits for field, top 4 bits for field category.
     // Field category 0 implies the number category so that the number field
     // literals can be directly passed as a Field type.
-    // See the helper functions in "StringBuilderFieldUtils" below.
     // Exported as U_I18N_API so it can be used by other exports on Windows.
     struct U_I18N_API Field {
         uint8_t bits;
@@ -219,15 +218,15 @@ class U_I18N_API FormattedStringBuilder : public UMemory {
 };
 
 static_assert(
-    std::is_pod<FormattedStringBuilder::Field>::value,
+    // std::is_pod<> is deprecated.
+    std::is_standard_layout<FormattedStringBuilder::Field>::value &&
+        std::is_trivial<FormattedStringBuilder::Field>::value,
     "Field should be a POD type for efficient initialization");
 
 constexpr FormattedStringBuilder::Field::Field(uint8_t category, uint8_t field)
     : bits((
-#if 0 // /ICU-21081
         U_ASSERT(category <= 0xf),
         U_ASSERT(field <= 0xf),
-#endif
         static_cast<uint8_t>((category << 4) | field)
     )) {}
 

@@ -1,6 +1,20 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import {assert} from 'chrome://resources/js/assert_ts.js';
+
+function $(id) {
+  // Disable getElementById restriction here, because this UI uses non valid
+  // selectors that don't work with querySelector().
+  // eslint-disable-next-line no-restricted-properties
+  const el = document.getElementById(id);
+  if (!el) {
+    return null;
+  }
+  assert(el instanceof HTMLElement);
+  return el;
+}
 
 const MIN_VERSION_TAB_CLOSE = 25;
 const MIN_VERSION_TARGET_ID = 26;
@@ -67,36 +81,22 @@ function removeChildren(element_id) {
   element.textContent = '';
 }
 
-function removeAdditionalChildren(element_id) {
-  const element = $(element_id);
-  const elements = element.querySelectorAll('.row.additional');
-  for (let i = 0; i != elements.length; i++) {
-    element.removeChild(elements[i]);
-  }
-}
-
-function removeChildrenExceptAdditional(element_id) {
-  const element = $(element_id);
-  const elements = element.querySelectorAll('.row:not(.additional)');
-  for (let i = 0; i != elements.length; i++) {
-    element.removeChild(elements[i]);
-  }
-}
-
 function onload() {
   const tabContents = document.querySelectorAll('#content > div');
-  for (let i = 0; i != tabContents.length; i++) {
+  for (let i = 0; i !== tabContents.length; i++) {
     const tabContent = tabContents[i];
     const tabName = tabContent.querySelector('.content-header').textContent;
 
     const tabHeader = document.createElement('div');
     tabHeader.className = 'tab-header';
+    tabHeader.id = 'tab-'.concat(tabContent.id);
     const button = document.createElement('button');
     button.textContent = tabName;
     tabHeader.appendChild(button);
     tabHeader.addEventListener('click', selectTab.bind(null, tabContent.id));
     $('navigation').appendChild(tabHeader);
   }
+  $('tab-native-ui').hidden = true;
   onHashChange();
   initSettings();
   sendCommand('init-ui');
@@ -117,10 +117,10 @@ function selectTab(id) {
   const tabContents = document.querySelectorAll('#content > div');
   const tabHeaders = $('navigation').querySelectorAll('.tab-header');
   let found = false;
-  for (let i = 0; i != tabContents.length; i++) {
+  for (let i = 0; i !== tabContents.length; i++) {
     const tabContent = tabContents[i];
     const tabHeader = tabHeaders[i];
-    if (tabContent.id == id) {
+    if (tabContent.id === id) {
       tabContent.classList.add('selected');
       tabHeader.classList.add('selected');
       found = true;
@@ -137,20 +137,29 @@ function selectTab(id) {
 }
 
 function populateTargets(source, data) {
-  if (source == 'local') {
+  if (source === 'local') {
     populateLocalTargets(data);
-  } else if (source == 'remote') {
+  } else if (source === 'remote') {
     populateRemoteTargets(data);
   } else {
     console.error('Unknown source type: ' + source);
   }
 }
 
-function populateAdditionalTargets(data) {
-  removeAdditionalChildren('others-list');
+function populateNativeUITargets(data) {
+  removeChildren('native-ui-list');
   for (let i = 0; i < data.length; i++) {
-    addAdditionalTargetsToOthersList(data[i]);
+    addToNativeUIList(data[i]);
   }
+}
+
+function showNativeUILaunchButton(enabled) {
+  $('native-ui').hidden = false;
+  $('tab-native-ui').hidden = false;
+  $('launch-ui-devtools').hidden = false;
+  $('launch-ui-devtools').disabled = !enabled;
+  $('ui-devtools-disabled-text').hidden = enabled;
+  $('ui-devtools-enabled-text').hidden = !enabled;
 }
 
 function populateLocalTargets(data) {
@@ -159,7 +168,7 @@ function populateLocalTargets(data) {
   removeChildren('apps-list');
   removeChildren('workers-list');
   removeChildren('service-workers-list');
-  removeChildrenExceptAdditional('others-list');
+  removeChildren('others-list');
 
   data.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -186,7 +195,7 @@ function showIncognitoWarning() {
 
 function alreadyDisplayed(element, data) {
   const json = JSON.stringify(data);
-  if (element.cachedJSON == json) {
+  if (element.cachedJSON === json) {
     return true;
   }
   element.cachedJSON = json;
@@ -232,10 +241,10 @@ function populateRemoteTargets(devices) {
   }
 
   function browserCompare(a, b) {
-    if (a.adbBrowserName != b.adbBrowserName) {
+    if (a.adbBrowserName !== b.adbBrowserName) {
       return a.adbBrowserName < b.adbBrowserName;
     }
-    if (a.adbBrowserVersion != b.adbBrowserVersion) {
+    if (a.adbBrowserVersion !== b.adbBrowserVersion) {
       return a.adbBrowserVersion < b.adbBrowserVersion;
     }
     return a.id < b.id;
@@ -388,7 +397,7 @@ function populateRemoteTargets(devices) {
             input.value = '';
           }.bind(null, browser.source, browser.id, newPageUrl);
           newPageUrl.addEventListener('keyup', function(handler, event) {
-            if (event.key == 'Enter' && event.target.value) {
+            if (event.key === 'Enter' && event.target.value) {
               handler();
             }
           }.bind(null, openHandler), true);
@@ -518,14 +527,14 @@ function addToOthersList(data) {
   addTargetToList(data, $('others-list'), ['url']);
 }
 
-function addAdditionalTargetsToOthersList(data) {
-  addTargetToList(data, $('others-list'), ['name', 'url']);
+function addToNativeUIList(data) {
+  addTargetToList(data, $('native-ui-list'), ['name', 'url']);
 }
 
 function formatValue(data, property) {
   let value = data[property];
 
-  if (property == 'name' && value == '') {
+  if (property === 'name' && value === '') {
     value = 'untitled';
   }
 
@@ -673,12 +682,8 @@ function addTargetToList(data, list, properties) {
   actionBox.className = 'actions';
   subrowBox.appendChild(actionBox);
 
-  if (data.isAdditional) {
-    addActionLink(
-        row, 'inspect', sendCommand.bind(null, 'inspect-additional', data.url),
-        false);
-    row.classList.add('additional');
-  } else if (!data.hasCustomInspectAction && data.type !== 'iframe') {
+  if (!data.isNative && !data.hasCustomInspectAction &&
+      data.type !== 'iframe') {
     addActionLink(
         row, 'inspect', sendTargetCommand.bind(null, 'inspect', data),
         data.hasNoUniqueId || data.adbAttachedForeign);
@@ -706,7 +711,7 @@ function addActionLink(row, text, handler, opt_disabled) {
   link.textContent = text;
   link.addEventListener('click', handler, true);
   function handleKey(e) {
-    if (e.key == 'Enter' || e.key == ' ') {
+    if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       handler();
     }
@@ -722,6 +727,8 @@ function initSettings() {
   checkboxSendsCommand(
       'discover-tcp-devices-enable', 'set-discover-tcp-targets-enabled');
 
+  $('launch-ui-devtools')
+      .addEventListener('click', sendCommand.bind(null, 'launch-ui-devtools'));
   $('port-forwarding-config-open')
       .addEventListener('click', openPortForwardingConfig);
   $('tcp-discovery-config-open').addEventListener('click', openTargetsConfig);
@@ -744,7 +751,7 @@ function handleKey(event) {
   switch (event.keyCode) {
     case 13:  // Enter
       const dialog = $('config-dialog');
-      if (event.target.nodeName == 'INPUT') {
+      if (event.target.nodeName === 'INPUT') {
         const line = event.target.parentNode;
         if (!line.classList.contains('fresh') ||
             line.classList.contains('empty')) {
@@ -864,7 +871,7 @@ function openTargetsConfig() {
 
 function filterList(fieldSelectors, callback) {
   const lines = $('config-dialog').querySelectorAll('.config-list-row');
-  for (let i = 0; i != lines.length; i++) {
+  for (let i = 0; i !== lines.length; i++) {
     const line = lines[i];
     const values = [];
     for (const selector of fieldSelectors) {
@@ -876,7 +883,7 @@ function filterList(fieldSelectors, callback) {
       }
       values.push(value);
     }
-    if (values.length == fieldSelectors.length) {
+    if (values.length === fieldSelectors.length) {
       callback.apply(null, values);
     }
   }
@@ -915,7 +922,7 @@ function updateTCPDiscoveryConfig(config) {
 function appendRow(list, lineFactory, key, value) {
   const line = lineFactory(key, value);
   line.lastElementChild.addEventListener('keydown', function(e) {
-    if (e.key == 'Tab' && !hasKeyModifiers(e) &&
+    if (e.key === 'Tab' && !hasKeyModifiers(e) &&
         line.classList.contains('fresh') && !line.classList.contains('empty')) {
       // Tabbing forward on the fresh line, try create a new empty one.
       if (commitFreshLineIfValid(true)) {
@@ -956,11 +963,11 @@ function validatePort(input) {
   }
 
   const inputs = document.querySelectorAll('input.port:not(.invalid)');
-  for (let i = 0; i != inputs.length; ++i) {
-    if (inputs[i] == input) {
+  for (let i = 0; i !== inputs.length; ++i) {
+    if (inputs[i] === input) {
       break;
     }
-    if (parseInt(inputs[i].value) == port) {
+    if (parseInt(inputs[i].value) === port) {
       return false;
     }
   }
@@ -1013,8 +1020,8 @@ function createConfigField(value, className, hint, validate) {
 function checkEmptyLine(line) {
   const inputs = line.querySelectorAll('input');
   let empty = true;
-  for (let i = 0; i != inputs.length; i++) {
-    if (inputs[i].value != '') {
+  for (let i = 0; i !== inputs.length; i++) {
+    if (inputs[i].value !== '') {
       empty = false;
     }
   }
@@ -1087,8 +1094,12 @@ function populatePortStatus(devicesStatusMap) {
       // status === 0 is the default (connected) state.
       if (status === -1 || status === -2) {
         portIcon.classList.add('transient');
+        portIcon.title = 'Attempting to forward port';
       } else if (status < 0) {
         portIcon.classList.add('error');
+        portIcon.title = 'Port forwarding failed';
+      } else {
+        portIcon.title = 'Successfully forwarded port';
       }
       devicePorts.appendChild(portIcon);
 
@@ -1135,6 +1146,20 @@ function populatePortStatus(devicesStatusMap) {
   Array.prototype.forEach.call(
       document.querySelectorAll('.device'), clearPorts);
 }
+
+// Expose functions on |window| since they are called from C++ by name.
+Object.assign(window, {
+  updateDiscoverUsbDevicesEnabled,
+  updatePortForwardingEnabled,
+  updatePortForwardingConfig,
+  updateTCPDiscoveryEnabled,
+  updateTCPDiscoveryConfig,
+  populateNativeUITargets,
+  populateTargets,
+  populatePortStatus,
+  showIncognitoWarning,
+  showNativeUILaunchButton,
+});
 
 document.addEventListener('DOMContentLoaded', onload);
 window.addEventListener('hashchange', onHashChange);

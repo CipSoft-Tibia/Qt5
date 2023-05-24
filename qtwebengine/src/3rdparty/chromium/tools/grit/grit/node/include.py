@@ -1,11 +1,10 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 """Handling of the <include> element.
 """
 
-from __future__ import print_function
 
 import os
 
@@ -19,7 +18,7 @@ class IncludeNode(base.Node):
   """An <include> element."""
 
   def __init__(self):
-    super(IncludeNode, self).__init__()
+    super().__init__()
 
     # Cache flattened data so that we don't flatten the same file
     # multiple times.
@@ -48,12 +47,13 @@ class IncludeNode(base.Node):
     """Attributes:
        translateable:         False if the node has contents that should not be
                               translated.
+       resource_path:         If provided, is used to populate the |path|
+                              property of the generated ResourcePath struct.
        preprocess:            Takes the same code path as flattenhtml, but it
                               disables any  processing/inlining outside of <if>
                               and <include>.
        compress:              The format to compress the data with, e.g. 'gzip'
                               or 'false' if data should not be compressed.
-       skip_minify:           If true, skips minifying the node's contents.
        skip_in_resource_map:  If true, do not add to the resource map.
     """
     return {
@@ -67,8 +67,8 @@ class IncludeNode(base.Node):
         'allowexternalscript': 'false',
         'relativepath': 'false',
         'use_base_dir': 'true',
-        'skip_minify': 'false',
         'skip_in_resource_map': 'false',
+        'resource_path': '',
     }
 
   def GetInputPath(self):
@@ -108,10 +108,9 @@ class IncludeNode(base.Node):
     else:
       data = util.ReadFile(filename, util.BINARY)
 
-    if self.attrs['skip_minify'] != 'true':
-      # Note that the minifier will only do anything if a minifier command
-      # has been set in the command line.
-      data = minifier.Minify(data, filename)
+    # Note that the minifier will only do anything if a minifier command
+    # has been set in the command line.
+    data = minifier.Minify(data, filename)
 
     # Include does not care about the encoding, because it only returns binary
     # data.

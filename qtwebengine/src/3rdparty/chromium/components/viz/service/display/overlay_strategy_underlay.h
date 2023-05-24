@@ -1,11 +1,14 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_VIZ_SERVICE_DISPLAY_OVERLAY_STRATEGY_UNDERLAY_H_
 #define COMPONENTS_VIZ_SERVICE_DISPLAY_OVERLAY_STRATEGY_UNDERLAY_H_
 
-#include "base/macros.h"
+#include <vector>
+
+#include "base/memory/raw_ptr.h"
+#include "components/viz/service/display/overlay_processor_strategy.h"
 #include "components/viz/service/display/overlay_processor_using_strategy.h"
 #include "components/viz/service/viz_service_export.h"
 
@@ -17,7 +20,7 @@ namespace viz {
 // hardware under the the scene. This is only valid for overlay contents that
 // are fully opaque.
 class VIZ_SERVICE_EXPORT OverlayStrategyUnderlay
-    : public OverlayProcessorUsingStrategy::Strategy {
+    : public OverlayProcessorStrategy {
  public:
   enum class OpaqueMode {
     // Require candidates to be |is_opaque|.
@@ -32,16 +35,35 @@ class VIZ_SERVICE_EXPORT OverlayStrategyUnderlay
   OverlayStrategyUnderlay(
       OverlayProcessorUsingStrategy* capability_checker,
       OpaqueMode opaque_mode = OpaqueMode::RequireOpaqueCandidates);
+
+  OverlayStrategyUnderlay(const OverlayStrategyUnderlay&) = delete;
+  OverlayStrategyUnderlay& operator=(const OverlayStrategyUnderlay&) = delete;
+
   ~OverlayStrategyUnderlay() override;
 
-  bool Attempt(const SkMatrix44& output_color_matrix,
+  void Propose(const SkM44& output_color_matrix,
                const OverlayProcessorInterface::FilterOperationsMap&
                    render_pass_backdrop_filters,
                DisplayResourceProvider* resource_provider,
-               AggregatedRenderPassList* render_pass,
+               AggregatedRenderPassList* render_pass_list,
+               SurfaceDamageRectList* surface_damage_rect_list,
                const PrimaryPlane* primary_plane,
-               OverlayCandidateList* candidate_list,
+               std::vector<OverlayProposedCandidate>* candidates,
                std::vector<gfx::Rect>* content_bounds) override;
+
+  bool Attempt(const SkM44& output_color_matrix,
+               const OverlayProcessorInterface::FilterOperationsMap&
+                   render_pass_backdrop_filters,
+               DisplayResourceProvider* resource_provider,
+               AggregatedRenderPassList* render_pass_list,
+               SurfaceDamageRectList* surface_damage_rect_list,
+               const PrimaryPlane* primary_plane,
+               OverlayCandidateList* candidates,
+               std::vector<gfx::Rect>* content_bounds,
+               const OverlayProposedCandidate& proposed_candidate) override;
+
+  void CommitCandidate(const OverlayProposedCandidate& proposed_candidate,
+                       AggregatedRenderPass* render_pass) override;
 
   void AdjustOutputSurfaceOverlay(
       OverlayProcessorInterface::OutputSurfaceOverlayPlane*
@@ -50,10 +72,8 @@ class VIZ_SERVICE_EXPORT OverlayStrategyUnderlay
   OverlayStrategy GetUMAEnum() const override;
 
  private:
-  OverlayProcessorUsingStrategy* capability_checker_;  // Weak.
+  raw_ptr<OverlayProcessorUsingStrategy> capability_checker_;  // Weak.
   OpaqueMode opaque_mode_;
-
-  DISALLOW_COPY_AND_ASSIGN(OverlayStrategyUnderlay);
 };
 
 }  // namespace viz

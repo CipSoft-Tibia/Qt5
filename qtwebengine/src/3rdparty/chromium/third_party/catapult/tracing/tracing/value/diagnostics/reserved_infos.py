@@ -25,11 +25,13 @@ class _Info(object):
     return self._entry_type
 
 
+ALERT_GROUPING = _Info('alertGrouping', 'GenericSet', str)
 ANGLE_REVISIONS = _Info('angleRevisions', 'GenericSet', str)
 ARCHITECTURES = _Info('architectures', 'GenericSet', str)
 BENCHMARKS = _Info('benchmarks', 'GenericSet', str)
 BENCHMARK_START = _Info('benchmarkStart', 'DateRange')
 BENCHMARK_DESCRIPTIONS = _Info('benchmarkDescriptions', 'GenericSet', str)
+BOT_ID = _Info('botId', 'GenericSet', str)
 BOTS = _Info('bots', 'GenericSet', str)
 BUG_COMPONENTS = _Info('bugComponents', 'GenericSet', str)
 BUILD_URLS = _Info('buildUrls', 'GenericSet', str)
@@ -54,6 +56,7 @@ MASTERS = _Info('masters', 'GenericSet', str)
 MEMORY_AMOUNTS = _Info('memoryAmounts', 'GenericSet', int)
 OS_NAMES = _Info('osNames', 'GenericSet', str)
 OS_VERSIONS = _Info('osVersions', 'GenericSet', str)
+OS_DETAILED_VERSIONS = _Info('osDetailedVersions', 'GenericSet', str)
 OWNERS = _Info('owners', 'GenericSet', str)
 POINT_ID = _Info('pointId', 'GenericSet', int)
 PRODUCT_VERSIONS = _Info('productVersions', 'GenericSet', str)
@@ -70,7 +73,16 @@ TRACE_URLS = _Info('traceUrls', 'GenericSet', str)
 V8_COMMIT_POSITIONS = _Info('v8CommitPositions', 'DateRange')
 V8_REVISIONS = _Info('v8Revisions', 'GenericSet', str)
 WEBRTC_REVISIONS = _Info('webrtcRevisions', 'GenericSet', str)
-WEBRTC_INTERNAL_REVISIONS = _Info('webrtcInternalRevisions', 'GenericSet', str)
+WEBRTC_INTERNAL_SIRIUS_REVISIONS = _Info(
+    'webrtcInternalSiriusRevisions', 'GenericSet', str)
+WEBRTC_INTERNAL_VEGA_REVISIONS = _Info(
+    'webrtcInternalVegaRevisions', 'GenericSet', str)
+WEBRTC_INTERNAL_CANOPUS_REVISIONS = _Info(
+    'webrtcInternalCanopusRevisions', 'GenericSet', str)
+WEBRTC_INTERNAL_ARCTURUS_REVISIONS = _Info(
+    'webrtcInternalArcturusRevisions', 'GenericSet', str)
+WEBRTC_INTERNAL_RIGEL_REVISIONS = _Info(
+    'webrtcInternalRigelRevisions', 'GenericSet', str)
 
 
 def _CreateCachedInfoTypes():
@@ -86,6 +98,7 @@ def GetTypeForName(name):
   info = _CACHED_INFO_TYPES.get(name)
   if info:
     return info.type
+  return None
 
 def AllInfos():
   for info in _CACHED_INFO_TYPES.values():

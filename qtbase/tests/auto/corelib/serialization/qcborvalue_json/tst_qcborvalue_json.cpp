@@ -1,44 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qcborvalue.h>
-#include <QtTest>
+#include <QTest>
+#include <QJsonValue>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QVariant>
+#include <QVariantMap>
+#include <QVariantList>
 
 Q_DECLARE_METATYPE(QCborValue)
 
@@ -80,7 +50,7 @@ void tst_QCborValue_Json::toVariant_data()
             if (v.type() == QCborValue::Double)
                 return QTest::addRow("Double:%g", exp.toDouble());
             if (v.type() == QCborValue::ByteArray || v.type() == QCborValue::String)
-                return QTest::addRow("%s:%d", typeString, exp.toString().size());
+                return QTest::addRow("%s:%zd", typeString, size_t(exp.toString().size()));
             if (v.type() >= 0x10000)
                 return QTest::newRow(exp.typeName());
             return QTest::newRow(typeString);
@@ -97,9 +67,12 @@ void tst_QCborValue_Json::toVariant_data()
     add(1, 1, 1);
     add(-1, -1, -1);
     add(0., 0., 0.);
+    add(2., 2., 2.);
     add(1.25, 1.25, 1.25);
     add(-1.25, -1.25, -1.25);
     add("Hello", "Hello", "Hello");
+    add(std::numeric_limits<qint64>::max(), std::numeric_limits<qint64>::max(), std::numeric_limits<qint64>::max());
+    add(std::numeric_limits<qint64>::min(), std::numeric_limits<qint64>::min(), std::numeric_limits<qint64>::min());
 
     // converts to string in JSON:
     add(QByteArray("Hello"), QByteArray("Hello"), "SGVsbG8");
@@ -123,14 +96,6 @@ void tst_QCborValue_Json::toVariant_data()
                                 << QVariant(qQNaN())
                                 << QJsonValue();
 
-    // large integral values lose precision in JSON
-    QTest::newRow("Integer:max") << QCborValue(std::numeric_limits<qint64>::max())
-                                 << QVariant(std::numeric_limits<qint64>::max())
-                                 << QJsonValue(std::numeric_limits<qint64>::max());
-    QTest::newRow("Integer:min") << QCborValue(std::numeric_limits<qint64>::min())
-                                 << QVariant(std::numeric_limits<qint64>::min())
-                                 << QJsonValue(std::numeric_limits<qint64>::min());
-
     // empty arrays and maps
     add(QCborArray(), QVariantList(), QJsonArray());
     add(QCborMap(), QVariantMap(), QJsonObject());
@@ -153,8 +118,8 @@ void tst_QCborValue_Json::toVariant()
     QCOMPARE(v.toVariant(), variant);
     if (variant.isValid()) {
         QVariant variant2 = QVariant::fromValue(v);
-        QVERIFY(variant2.canConvert(variant.userType()));
-        QVERIFY(variant2.convert(variant.userType()));
+        QVERIFY(variant2.canConvert(variant.metaType()));
+        QVERIFY(variant2.convert(variant.metaType()));
         QCOMPARE(variant2, variant);
     }
 
@@ -229,7 +194,7 @@ void tst_QCborValue_Json::fromVariant()
     QCOMPARE(QCborArray::fromVariantList({variant}), QCborArray{v});
     QCOMPARE(QCborArray::fromVariantList({variant, variant}), QCborArray({v, v}));
 
-    if (variant.type() == QVariant::String) {
+    if (variant.metaType() == QMetaType(QMetaType::QString)) {
         QString s = variant.toString();
         QCOMPARE(QCborArray::fromStringList({s}), QCborArray{v});
         QCOMPARE(QCborArray::fromStringList({s, s}), QCborArray({v, v}));
@@ -257,6 +222,10 @@ void tst_QCborValue_Json::fromJson_data()
     QTest::newRow("0") << QCborValue(0) << QJsonValue(0.);
     QTest::newRow("1") << QCborValue(1) << QJsonValue(1);
     QTest::newRow("1.5") << QCborValue(1.5) << QJsonValue(1.5);
+    QTest::newRow("Integer:max") << QCborValue(std::numeric_limits<qint64>::max())
+                                 << QJsonValue(std::numeric_limits<qint64>::max());
+    QTest::newRow("Integer:min") << QCborValue(std::numeric_limits<qint64>::min())
+                                 << QJsonValue(std::numeric_limits<qint64>::min());
     QTest::newRow("string") << QCborValue("Hello") << QJsonValue("Hello");
     QTest::newRow("array") << QCborValue(QCborValue::Array) << QJsonValue(QJsonValue::Array);
     QTest::newRow("map") << QCborValue(QCborValue::Map) << QJsonValue(QJsonValue::Object);

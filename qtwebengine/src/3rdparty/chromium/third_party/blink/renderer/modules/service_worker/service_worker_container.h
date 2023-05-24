@@ -33,9 +33,11 @@
 
 #include <memory>
 
+#include "third_party/blink/public/mojom/script/script_type.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker_registration.mojom-blink-forward.h"
 #include "third_party/blink/public/platform/modules/service_worker/web_service_worker_provider.h"
 #include "third_party/blink/public/platform/modules/service_worker/web_service_worker_provider_client.h"
+#include "third_party/blink/renderer/bindings/core/v8/callback_promise_adapter.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_property.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_registration_options.h"
@@ -47,7 +49,8 @@
 #include "third_party/blink/renderer/modules/service_worker/service_worker.h"
 #include "third_party/blink/renderer/modules/service_worker/service_worker_registration.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
@@ -56,6 +59,7 @@ namespace blink {
 class ExecutionContext;
 class ExceptionState;
 class LocalDOMWindow;
+class ServiceWorkerErrorForUpdate;
 
 class MODULES_EXPORT ServiceWorkerContainer final
     : public EventTargetWithInlineData,
@@ -124,6 +128,16 @@ class MODULES_EXPORT ServiceWorkerContainer final
  private:
   class DomContentLoadedListener;
 
+  void RegisterServiceWorkerInternal(
+      const KURL& scope_url,
+      const KURL& script_url,
+      absl::optional<mojom::blink::ScriptType> script_type,
+      mojom::blink::ServiceWorkerUpdateViaCache update_via_cache,
+      WebFetchClientSettingsObject fetch_client_settings_object,
+      std::unique_ptr<CallbackPromiseAdapter<ServiceWorkerRegistration,
+                                             ServiceWorkerErrorForUpdate>>
+          callbacks);
+
   using ReadyProperty =
       ScriptPromiseProperty<Member<ServiceWorkerRegistration>,
                             Member<ServiceWorkerRegistration>>;
@@ -143,15 +157,13 @@ class MODULES_EXPORT ServiceWorkerContainer final
   // ServiceWorkerRegistration object in current execution context.
   HeapHashMap<int64_t,
               WeakMember<ServiceWorkerRegistration>,
-              WTF::IntHash<int64_t>,
-              WTF::UnsignedWithZeroKeyHashTraits<int64_t>>
+              IntWithZeroKeyHashTraits<int64_t>>
       service_worker_registration_objects_;
   // Map from service worker version id to JavaScript ServiceWorker object in
   // current execution context.
   HeapHashMap<int64_t,
               WeakMember<ServiceWorker>,
-              WTF::IntHash<int64_t>,
-              WTF::UnsignedWithZeroKeyHashTraits<int64_t>>
+              IntWithZeroKeyHashTraits<int64_t>>
       service_worker_objects_;
 
   // For https://w3c.github.io/ServiceWorker/#dfn-client-message-queue

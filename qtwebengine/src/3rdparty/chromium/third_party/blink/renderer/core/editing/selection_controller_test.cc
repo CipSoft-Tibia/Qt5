@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,11 +13,16 @@
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/input/event_handler.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
+#include "third_party/blink/renderer/core/testing/core_unit_test_helper.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 
 namespace blink {
 
 class SelectionControllerTest : public EditingTestBase {
+ public:
+  SelectionControllerTest(const SelectionControllerTest&) = delete;
+  SelectionControllerTest& operator=(const SelectionControllerTest&) = delete;
+
  protected:
   using AppendTrailingWhitespace =
       SelectionController::AppendTrailingWhitespace;
@@ -33,16 +38,14 @@ class SelectionControllerTest : public EditingTestBase {
     return GetFrame().GetEventHandler().HitTestResultAtLocation(location);
   }
 
-  static PositionWithAffinity GetPositionFromHitTestResult(
-      const HitTestResult& hit_test_result) {
-    return hit_test_result.InnerNode()->GetLayoutObject()->PositionForPoint(
-        hit_test_result.LocalPoint());
+  HitTestResult HitTestResultAtLocation(int x, int y) {
+    HitTestLocation location(gfx::Point(x, y));
+    return HitTestResultAtLocation(location);
   }
 
-  PositionWithAffinity GetPositionAtLocation(const IntPoint& point) {
-    HitTestLocation location(point);
-    HitTestResult result = HitTestResultAtLocation(location);
-    return GetPositionFromHitTestResult(result);
+  static PositionWithAffinity GetPositionFromHitTestResult(
+      const HitTestResult& hit_test_result) {
+    return hit_test_result.GetPosition();
   }
 
   VisibleSelection VisibleSelectionInDOMTree() const {
@@ -60,9 +63,6 @@ class SelectionControllerTest : public EditingTestBase {
   void SetCaretAtHitTestResult(const HitTestResult&);
   void SetNonDirectionalSelectionIfNeeded(const SelectionInFlatTree&,
                                           TextGranularity);
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(SelectionControllerTest);
 };
 
 bool SelectionControllerTest::SelectClosestWordFromHitTestResult(
@@ -90,18 +90,6 @@ void SelectionControllerTest::SetNonDirectionalSelectionIfNeeded(
           SetSelectionOptions::Builder().SetGranularity(granularity).Build(),
           SelectionController::kDoNotAdjustEndpoints);
 }
-
-class ParameterizedSelectionControllerTest
-    : public SelectionControllerTest,
-      public testing::WithParamInterface<bool>,
-      private ScopedLayoutNGForTest {
- public:
-  ParameterizedSelectionControllerTest() : ScopedLayoutNGForTest(GetParam()) {}
-};
-
-INSTANTIATE_TEST_SUITE_P(SelectionControllerTest,
-                         ParameterizedSelectionControllerTest,
-                         testing::Bool());
 
 TEST_F(SelectionControllerTest, setNonDirectionalSelectionIfNeeded) {
   const char* body_content = "<span id=top>top</span><span id=host></span>";
@@ -168,7 +156,7 @@ TEST_F(SelectionControllerTest, setCaretAtHitTestResult) {
       "  event => elem.parentNode.removeChild(elem));");
   GetDocument().body()->AppendChild(script);
   UpdateAllLifecyclePhasesForTest();
-  HitTestLocation location((IntPoint(8, 8)));
+  HitTestLocation location((gfx::Point(8, 8)));
   GetFrame().GetEventHandler().GetSelectionController().HandleGestureLongPress(
       GetFrame().GetEventHandler().HitTestResultAtLocation(location));
 }
@@ -184,7 +172,7 @@ TEST_F(SelectionControllerTest, setCaretAtHitTestResultWithNullPosition) {
   UpdateAllLifecyclePhasesForTest();
 
   // Hit "&nbsp;" in before pseudo element of "sample".
-  HitTestLocation location((IntPoint(10, 10)));
+  HitTestLocation location((gfx::Point(10, 10)));
   SetCaretAtHitTestResult(
       GetFrame().GetEventHandler().HitTestResultAtLocation(location));
 
@@ -219,7 +207,7 @@ TEST_F(SelectionControllerTest,
       blink::WebInputEvent::GetStaticTimeStampForTests());
   // Frame scale defaults to 0, which would cause a divide-by-zero problem.
   mouse_event.SetFrameScale(1);
-  HitTestLocation location((IntPoint(0, 0)));
+  HitTestLocation location((gfx::Point(0, 0)));
   GetFrame().GetEventHandler().GetSelectionController().HandleMousePressEvent(
       MouseEventWithHitTestResults(
           mouse_event, location,
@@ -241,15 +229,14 @@ TEST_F(SelectionControllerTest, AdjustSelectionWithTrailingWhitespace) {
       "<div style='user-select:none'>abc</div>");
   Element* const input = GetDocument().QuerySelector("input");
 
-  const VisibleSelectionInFlatTree& selection =
-      CreateVisibleSelectionWithGranularity(
-          SelectionInFlatTree::Builder()
-              .Collapse(PositionInFlatTree::BeforeNode(*input))
-              .Extend(PositionInFlatTree::AfterNode(*input))
-              .Build(),
-          TextGranularity::kWord);
+  const SelectionInFlatTree& selection = ExpandWithGranularity(
+      SelectionInFlatTree::Builder()
+          .Collapse(PositionInFlatTree::BeforeNode(*input))
+          .Extend(PositionInFlatTree::AfterNode(*input))
+          .Build(),
+      TextGranularity::kWord);
   const SelectionInFlatTree& result =
-      AdjustSelectionWithTrailingWhitespace(selection.AsSelection());
+      AdjustSelectionWithTrailingWhitespace(selection);
 
   EXPECT_EQ(PositionInFlatTree::BeforeNode(*input),
             result.ComputeStartPosition());
@@ -263,7 +250,7 @@ TEST_F(SelectionControllerTest,
   SetBodyContent("<pre>(1)\n(2)</pre>");
 
   // Click/Tap after "(1)"
-  HitTestLocation location(IntPoint(40, 10));
+  HitTestLocation location(gfx::Point(40, 10));
   HitTestResult result =
       GetFrame().GetEventHandler().HitTestResultAtLocation(location);
   ASSERT_EQ("<pre>(1)|\n(2)</pre>",
@@ -292,7 +279,7 @@ TEST_F(SelectionControllerTest,
   SetBodyContent("<pre>ab:\ncd</pre>");
 
   // Click/Tap after "(1)"
-  HitTestLocation location(IntPoint(40, 10));
+  HitTestLocation location(gfx::Point(40, 10));
   HitTestResult result =
       GetFrame().GetEventHandler().HitTestResultAtLocation(location);
   ASSERT_EQ("<pre>ab:|\ncd</pre>",
@@ -327,7 +314,7 @@ TEST_F(SelectionControllerTest, SelectWordToEndOfLine) {
       blink::WebInputEvent::GetStaticTimeStampForTests());
   // Frame scale defaults to 0, which would cause a divide-by-zero problem.
   double_click.SetFrameScale(1);
-  HitTestLocation location((IntPoint(20, 5)));
+  HitTestLocation location((gfx::Point(20, 5)));
   double_click.button = blink::WebMouseEvent::Button::kLeft;
   double_click.click_count = 2;
   HitTestResult result =
@@ -353,7 +340,7 @@ TEST_F(SelectionControllerTest, SelectWordToEndOfLine) {
       blink::WebInputEvent::GetStaticTimeStampForTests());
   // Frame scale defaults to 0, which would cause a divide-by-zero problem.
   single_shift_click.SetFrameScale(1);
-  HitTestLocation single_click_location((IntPoint(400, 5)));
+  HitTestLocation single_click_location((gfx::Point(400, 5)));
   single_shift_click.button = blink::WebMouseEvent::Button::kLeft;
   single_shift_click.click_count = 1;
   HitTestResult single_click_result =
@@ -379,7 +366,7 @@ TEST_F(SelectionControllerTest, SelectWordToEndOfTableCell) {
       blink::WebInputEvent::GetStaticTimeStampForTests());
   // Frame scale defaults to 0, which would cause a divide-by-zero problem.
   double_click.SetFrameScale(1);
-  HitTestLocation location((IntPoint(20, 5)));
+  HitTestLocation location((gfx::Point(20, 5)));
   double_click.button = WebMouseEvent::Button::kLeft;
   double_click.click_count = 2;
   HitTestResult result =
@@ -405,7 +392,7 @@ TEST_F(SelectionControllerTest, SelectWordToEndOfTableCell) {
       blink::WebInputEvent::GetStaticTimeStampForTests());
   // Frame scale defaults to 0, which would cause a divide-by-zero problem.
   cell1_single_shift_click.SetFrameScale(1);
-  HitTestLocation cell1_single_click_location((IntPoint(175, 5)));
+  HitTestLocation cell1_single_click_location((gfx::Point(175, 5)));
   cell1_single_shift_click.button = blink::WebMouseEvent::Button::kLeft;
   cell1_single_shift_click.click_count = 1;
   HitTestResult cell1_single_click_result =
@@ -425,7 +412,7 @@ TEST_F(SelectionControllerTest, SelectWordToEndOfTableCell) {
       blink::WebInputEvent::GetStaticTimeStampForTests());
   // Frame scale defaults to 0, which would cause a divide-by-zero problem.
   cell2_single_shift_click.SetFrameScale(1);
-  HitTestLocation cell2_single_click_location((IntPoint(375, 5)));
+  HitTestLocation cell2_single_click_location((gfx::Point(375, 5)));
   cell2_single_shift_click.button = blink::WebMouseEvent::Button::kLeft;
   cell2_single_shift_click.click_count = 1;
   HitTestResult cell2_single_click_result =
@@ -439,17 +426,17 @@ TEST_F(SelectionControllerTest, SelectWordToEndOfTableCell) {
             GetSelectionTextFromBody());
 }
 
-TEST_P(ParameterizedSelectionControllerTest, Scroll) {
+TEST_F(SelectionControllerTest, Scroll) {
   SetBodyInnerHTML(R"HTML(
     <style>
     html, body {
       margin: 0;
       font-size: 50px;
-      line-height: 1;
+      line-height: 2;
     }
     #scroller {
       width: 400px;
-      height: 5em;
+      height: 600px;
       overflow: scroll;
     }
     </style>
@@ -458,21 +445,25 @@ TEST_P(ParameterizedSelectionControllerTest, Scroll) {
       <span>line2</span><br>
       <span>line3</span><br>
       <span>line4</span><br>
-      <span>line5</span><br>
-      <span>line6</span><br>
-      <span>line7</span><br>
-      <span>line8</span><br>
+      <span style="padding-left: 100px">line5</span><br>
+      <span style="border-left: 100px solid blue">line6</span><br>
+      <span style="margin-left: 100px">line7</span><br>
+      <span style="display: inline-block; width: 100px; height: 1em; line-height: 1">x</span>line8<br>
       <span>line9</span><br>
     </div>
   )HTML");
 
   // Scroll #scroller by 2 lines. "line3" should be at the top.
   Element* scroller = GetElementById("scroller");
-  scroller->setScrollTop(100);
+  scroller->setScrollTop(200);
 
   // Hit-test on the first visible line. This should be "line3".
-  PositionWithAffinity line3 = GetPositionAtLocation(IntPoint(5, 5));
-  EXPECT_EQ(line3.AnchorNode()->textContent(), "line3");
+  HitTestResult line3_result = HitTestResultAtLocation(5, 50);
+  EXPECT_EQ(line3_result.LocalPoint(), PhysicalOffset(5, 50));
+  PositionWithAffinity line3 = line3_result.GetPosition();
+  Node* line3_node = line3.AnchorNode();
+  EXPECT_EQ(line3_node->nodeName(), "#text");
+  EXPECT_EQ(line3_node->textContent(), "line3");
 
   // Then hit-test beyond the end of the first visible line. This should snap to
   // the end of the "line3".
@@ -480,8 +471,53 @@ TEST_P(ParameterizedSelectionControllerTest, Scroll) {
   // +------------
   // |line3   x <-- Click here
   // |line4
-  PositionWithAffinity line3_end = GetPositionAtLocation(IntPoint(300, 5));
-  EXPECT_EQ(line3_end.AnchorNode()->textContent(), "line3");
+  HitTestResult line3_end_result = HitTestResultAtLocation(300, 50);
+  EXPECT_EQ(line3_end_result.LocalPoint(), PhysicalOffset(300, 50));
+  PositionWithAffinity line3_end = line3_end_result.GetPosition();
+  Node* line3_end_node = line3_end.AnchorNode();
+  EXPECT_EQ(line3_end_node->nodeName(), "#text");
+  EXPECT_EQ(line3_end_node->textContent(), "line3");
+
+  // At the line-gap between line3 and line4.
+  // There is no |LayoutText| here, but it should snap to line4.
+  HitTestResult line4_over_result = HitTestResultAtLocation(5, 101);
+  EXPECT_EQ(line4_over_result.LocalPoint(), PhysicalOffset(5, 101));
+  PositionWithAffinity line4_over = line4_over_result.GetPosition();
+  Node* line4_over_node = line4_over.AnchorNode();
+  EXPECT_EQ(line4_over_node->nodeName(), "#text");
+  EXPECT_EQ(line4_over_node->textContent(), "line4");
+
+  // At the padding of an inline box.
+  HitTestResult line5_result = HitTestResultAtLocation(5, 250);
+  EXPECT_EQ(line5_result.LocalPoint(), PhysicalOffset(5, 250));
+  PositionWithAffinity line5 = line5_result.GetPosition();
+  Node* line5_node = line5.AnchorNode();
+  EXPECT_EQ(line5_node->nodeName(), "#text");
+  EXPECT_EQ(line5_node->textContent(), "line5");
+
+  // At the border of an inline box.
+  HitTestResult line6_result = HitTestResultAtLocation(5, 350);
+  EXPECT_EQ(line6_result.LocalPoint(), PhysicalOffset(5, 350));
+  PositionWithAffinity line6 = line6_result.GetPosition();
+  Node* line6_node = line6.AnchorNode();
+  EXPECT_EQ(line6_node->nodeName(), "#text");
+  EXPECT_EQ(line6_node->textContent(), "line6");
+
+  // At the margin of an inline box.
+  HitTestResult line7_result = HitTestResultAtLocation(5, 450);
+  EXPECT_EQ(line7_result.LocalPoint(), PhysicalOffset(5, 450));
+  PositionWithAffinity line7 = line7_result.GetPosition();
+  Node* line7_node = line7.AnchorNode();
+  EXPECT_EQ(line7_node->nodeName(), "#text");
+  EXPECT_EQ(line7_node->textContent(), "line7");
+
+  // At the inline-block.
+  HitTestResult line8_result = HitTestResultAtLocation(5, 550);
+  EXPECT_EQ(line8_result.LocalPoint(), PhysicalOffset(5, 25));
+  PositionWithAffinity line8 = line8_result.GetPosition();
+  Node* line8_node = line8.AnchorNode();
+  EXPECT_EQ(line8_node->nodeName(), "#text");
+  EXPECT_EQ(line8_node->textContent(), "x");
 }
 
 }  // namespace blink

@@ -1,14 +1,14 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/extensions/api/file_system/file_entry_picker.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "base/files/file_path.h"
-#include "base/strings/string16.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/ui/chrome_select_file_policy.h"
 #include "content/public/browser/web_contents.h"
@@ -31,14 +31,17 @@ FileEntryPicker::FileEntryPicker(
   CHECK(web_contents);
   gfx::NativeWindow owning_window =
       platform_util::GetTopLevel(web_contents->GetNativeView());
+  const GURL* caller =
+      &web_contents->GetPrimaryMainFrame()->GetLastCommittedURL();
   select_file_dialog_ = ui::SelectFileDialog::Create(
       this, std::make_unique<ChromeSelectFilePolicy>(web_contents));
+
   select_file_dialog_->SelectFile(
-      picker_type, base::string16(), suggested_name, &file_type_info, 0,
-      base::FilePath::StringType(), owning_window, nullptr);
+      picker_type, std::u16string(), suggested_name, &file_type_info, 0,
+      base::FilePath::StringType(), owning_window, /*params=*/nullptr, caller);
 }
 
-FileEntryPicker::~FileEntryPicker() {}
+FileEntryPicker::~FileEntryPicker() = default;
 
 void FileEntryPicker::FileSelected(const base::FilePath& path,
                                    int index,

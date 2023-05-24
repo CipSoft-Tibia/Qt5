@@ -38,26 +38,21 @@ class SyncHelper : public vk::Resource
 
     virtual void releaseToRenderer(RendererVk *renderer);
 
-    virtual angle::Result initialize(ContextVk *contextVk);
+    virtual angle::Result initialize(ContextVk *contextVk, bool isEGLSyncObject);
     virtual angle::Result clientWait(Context *context,
                                      ContextVk *contextVk,
                                      bool flushCommands,
                                      uint64_t timeout,
                                      VkResult *outResult);
     virtual angle::Result serverWait(ContextVk *contextVk);
-    virtual angle::Result getStatus(Context *context, bool *signaled) const;
+    virtual angle::Result getStatus(Context *context, ContextVk *contextVk, bool *signaled);
     virtual angle::Result dupNativeFenceFD(Context *context, int *fdOut) const
     {
         return angle::Result::Stop;
     }
 
   private:
-    // The vkEvent that's signaled on `init` and can be waited on in `serverWait`, or queried with
-    // `getStatus`.
-    Event mEvent;
-    // The fence is signaled once the CB including the `init` signal is executed.
-    // `clientWait` waits on this fence.
-    Shared<Fence> mFence;
+    angle::Result submitSyncIfDeferred(ContextVk *contextVk, RenderPassClosureReason reason);
 };
 
 // Implementation of sync types: EGLSync(EGL_SYNC_ANDROID_NATIVE_FENCE_ANDROID).
@@ -76,7 +71,7 @@ class SyncHelperNativeFence : public SyncHelper
                              uint64_t timeout,
                              VkResult *outResult) override;
     angle::Result serverWait(ContextVk *contextVk) override;
-    angle::Result getStatus(Context *context, bool *signaled) const override;
+    angle::Result getStatus(Context *context, ContextVk *contextVk, bool *signaled) override;
     angle::Result dupNativeFenceFD(Context *context, int *fdOut) const override;
 
   private:
@@ -136,7 +131,7 @@ class EGLSyncVk final : public EGLSyncImpl
   private:
     EGLenum mType;
     vk::SyncHelper *mSyncHelper;  // SyncHelper or SyncHelperNativeFence decided at run-time.
-    const egl::AttributeMap &mAttribs;
+    EGLint mNativeFenceFD;
 };
 }  // namespace rx
 

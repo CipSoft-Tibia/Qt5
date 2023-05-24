@@ -1,117 +1,72 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_HEAP_GARBAGE_COLLECTED_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_HEAP_GARBAGE_COLLECTED_H_
 
-#include "base/macros.h"
-#include "third_party/blink/renderer/platform/heap/thread_state.h"
-#include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
-#include "third_party/blink/renderer/platform/wtf/type_traits.h"
+#include <type_traits>
+
+#include "base/functional/unretained_traits.h"
+#include "third_party/blink/renderer/platform/heap/thread_state_storage.h"
+#include "v8/include/cppgc/allocation.h"
+#include "v8/include/cppgc/garbage-collected.h"
+#include "v8/include/cppgc/liveness-broker.h"
+#include "v8/include/cppgc/type-traits.h"
+
+namespace cppgc {
+class LivenessBroker;
+class Visitor;
+}  // namespace cppgc
 
 namespace blink {
 
 template <typename T>
-class GarbageCollected;
+using GarbageCollected = cppgc::GarbageCollected<T>;
 
-// GC_PLUGIN_IGNORE is used to make the plugin ignore a particular class or
-// field when checking for proper usage.  When using GC_PLUGIN_IGNORE
-// a bug-number should be provided as an argument where the bug describes
-// what needs to happen to remove the GC_PLUGIN_IGNORE again.
-#if defined(__clang__)
-#define GC_PLUGIN_IGNORE(bug) \
-  __attribute__((annotate("blink_gc_plugin_ignore")))
-#else
-#define GC_PLUGIN_IGNORE(bug)
-#endif
+using GarbageCollectedMixin = cppgc::GarbageCollectedMixin;
 
-// Template to determine if a class is a GarbageCollectedMixin by checking if it
-// has IsGarbageCollectedMixinMarker
-template <typename T>
-struct IsGarbageCollectedMixin {
- private:
-  typedef char YesType;
-  struct NoType {
-    char padding[8];
-  };
+using LivenessBroker = cppgc::LivenessBroker;
 
-  template <typename U>
-  static YesType CheckMarker(typename U::IsGarbageCollectedMixinMarker*);
-  template <typename U>
-  static NoType CheckMarker(...);
+using Visitor = cppgc::Visitor;
 
- public:
-  static const bool value = sizeof(CheckMarker<T>(nullptr)) == sizeof(YesType);
-};
+// Default MakeGarbageCollected: Constructs an instance of T, which is a garbage
+// collected type.
+template <typename T, typename... Args>
+T* MakeGarbageCollected(Args&&... args) {
+  return cppgc::MakeGarbageCollected<T>(
+      ThreadStateStorageFor<ThreadingTrait<T>::kAffinity>::GetState()
+          ->allocation_handle(),
+      std::forward<Args>(args)...);
+}
 
-// TraceDescriptor is used to describe how to trace an object.
-struct TraceDescriptor {
-  STACK_ALLOCATED();
+using AdditionalBytes = cppgc::AdditionalBytes;
 
- public:
-  // The adjusted base pointer of the object that should be traced.
-  const void* base_object_payload;
-  // A callback for tracing the object.
-  TraceCallback callback;
-};
-
-// The GarbageCollectedMixin interface can be used to automatically define
-// TraceTrait/ObjectAliveTrait on non-leftmost deriving classes which need
-// to be garbage collected.
-class PLATFORM_EXPORT GarbageCollectedMixin {
- public:
-  typedef int IsGarbageCollectedMixinMarker;
-  virtual void Trace(Visitor*) const {}
-};
-
-// Base class for objects allocated in the Blink garbage-collected heap.
-//
-// Instances of GarbageCollected will be finalized if they are non-trivially
-// destructible.
-template <typename T>
-class GarbageCollected;
-
-template <typename T,
-          bool = WTF::IsSubclassOfTemplate<typename std::remove_const<T>::type,
-                                           GarbageCollected>::value>
-class NeedsAdjustPointer;
-
-template <typename T>
-class NeedsAdjustPointer<T, true> {
-  static_assert(sizeof(T), "T must be fully defined");
-
- public:
-  static const bool value = false;
-};
-
-template <typename T>
-class NeedsAdjustPointer<T, false> {
-  static_assert(sizeof(T), "T must be fully defined");
-
- public:
-  static const bool value =
-      IsGarbageCollectedMixin<typename std::remove_const<T>::type>::value;
-};
-
-// TODO(sof): migrate to wtf/TypeTraits.h
-template <typename T>
-class IsFullyDefined {
-  using TrueType = char;
-  struct FalseType {
-    char dummy[2];
-  };
-
-  template <typename U, size_t sz = sizeof(U)>
-  static TrueType IsSizeofKnown(U*);
-  static FalseType IsSizeofKnown(...);
-  static T& t_;
-
- public:
-  static const bool value = sizeof(TrueType) == sizeof(IsSizeofKnown(&t_));
-};
+// Constructs an instance of T, which is a garbage collected type. This special
+// version takes size which enables constructing inline objects.
+template <typename T, typename... Args>
+T* MakeGarbageCollected(AdditionalBytes additional_bytes, Args&&... args) {
+  return cppgc::MakeGarbageCollected<T>(
+      ThreadStateStorageFor<ThreadingTrait<T>::kAffinity>::GetState()
+          ->allocation_handle(),
+      std::forward<AdditionalBytes>(additional_bytes),
+      std::forward<Args>(args)...);
+}
 
 }  // namespace blink
 
-#endif
+namespace base::internal {
+
+// Do not copy this code. Chromium code should just use DISALLOW_UNRETAINED()
+// directly. This is needed because v8 lives outside the Chromium repository and
+// does not want to even indirectly rely on //base concepts.
+template <typename T>
+struct TypeSupportsUnretained<
+    T,
+    std::enable_if_t<cppgc::IsGarbageCollectedOrMixinTypeV<T>>> {
+  static constexpr inline bool kValue = false;
+};
+
+}  // namespace base::internal
+
+#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_HEAP_GARBAGE_COLLECTED_H_

@@ -7,6 +7,7 @@
 
 #include "modules/sksg/include/SkSGPaint.h"
 
+#include "include/private/base/SkTPin.h"
 #include "modules/sksg/include/SkSGRenderEffect.h"
 
 namespace sksg {

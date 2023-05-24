@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 #ifndef XFA_FGAS_CRT_LOCALE_IFACE_H_
 #define XFA_FGAS_CRT_LOCALE_IFACE_H_
 
-#include "core/fxcrt/cfx_datetime.h"
-#include "core/fxcrt/fx_string.h"
+#include "core/fxcrt/widestring.h"
 
 class LocaleIface {
  public:
@@ -39,7 +38,7 @@ class LocaleIface {
   virtual WideString GetMonthName(int32_t nMonth, bool bAbbr) const = 0;
   virtual WideString GetDayName(int32_t nWeek, bool bAbbr) const = 0;
   virtual WideString GetMeridiemName(bool bAM) const = 0;
-  virtual FX_TIMEZONE GetTimeZone() const = 0;
+  virtual int GetTimeZoneInMinutes() const = 0;
   virtual WideString GetEraName(bool bAD) const = 0;
   virtual WideString GetDatePattern(DateTimeSubcategory eType) const = 0;
   virtual WideString GetTimePattern(DateTimeSubcategory eType) const = 0;

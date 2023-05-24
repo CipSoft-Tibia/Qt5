@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,22 +11,20 @@
 #include <utility>
 #include <vector>
 
-#include "base/callback.h"
 #include "base/files/file_path.h"
+#include "base/functional/callback.h"
 #include "base/gtest_prod_util.h"
+#include "base/memory/raw_ref.h"
 #include "base/memory/ref_counted.h"
-#include "base/optional.h"
 #include "base/sequence_checker.h"
 #include "base/time/time.h"
+#include "base/values.h"
 #include "base/version.h"
 #include "components/update_client/crx_downloader.h"
 #include "components/update_client/protocol_parser.h"
 #include "components/update_client/update_client.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
-
-namespace base {
-class Value;
-}  // namespace base
 
 namespace update_client {
 
@@ -55,14 +53,14 @@ class Component {
   CrxUpdateItem GetCrxUpdateItem() const;
 
   // Sets the uninstall state for this component.
-  void Uninstall(const base::Version& cur_version, int reason);
+  void Uninstall(const CrxComponent& crx_component, int reason);
 
   // Set the registration state for this component.
-  void Registration(const base::Version& cur_version);
+  void Registration(const CrxComponent& crx_component);
 
   // Called by the UpdateEngine when an update check for this component is done.
   void SetUpdateCheckResult(
-      const base::Optional<ProtocolParser::Result>& result,
+      const absl::optional<ProtocolParser::Result>& result,
       ErrorCategory error_category,
       int error);
 
@@ -84,7 +82,7 @@ class Component {
 
   std::string id() const { return id_; }
 
-  const base::Optional<CrxComponent>& crx_component() const {
+  const absl::optional<CrxComponent>& crx_component() const {
     return crx_component_;
   }
   void set_crx_component(const CrxComponent& crx_component) {
@@ -125,10 +123,10 @@ class Component {
 
   std::string session_id() const;
 
-  const std::vector<base::Value>& events() const { return events_; }
+  const std::vector<base::Value::Dict>& events() const { return events_; }
 
   // Returns a clone of the component events.
-  std::vector<base::Value> GetEvents() const;
+  std::vector<base::Value::Dict> GetEvents() const;
 
  private:
   friend class MockPingManagerImpl;
@@ -170,8 +168,8 @@ class Component {
     // can further occur.
     void EndState();
 
-    Component& component() { return component_; }
-    const Component& component() const { return component_; }
+    Component& component() { return *component_; }
+    const Component& component() const { return *component_; }
 
     SEQUENCE_CHECKER(sequence_checker_);
 
@@ -180,7 +178,7 @@ class Component {
    private:
     virtual void DoHandle() = 0;
 
-    Component& component_;
+    const raw_ref<Component> component_;
     CallbackNextState callback_next_state_;
   };
 
@@ -206,8 +204,6 @@ class Component {
    private:
     // State overrides.
     void DoHandle() override;
-
-    void UpdateCheckComplete();
   };
 
   class StateUpdateError : public State {
@@ -352,13 +348,15 @@ class Component {
   class StateRegistration : public State {
    public:
     explicit StateRegistration(Component* component);
+
+    StateRegistration(const StateRegistration&) = delete;
+    StateRegistration& operator=(const StateRegistration&) = delete;
+
     ~StateRegistration() override;
 
    private:
     // State overrides.
     void DoHandle() override;
-
-    DISALLOW_COPY_AND_ASSIGN(StateRegistration);
   };
 
   class StateRun : public State {
@@ -383,7 +381,7 @@ class Component {
   // by a downloader which can do bandwidth throttling on the client side.
   bool CanDoBackgroundDownload() const;
 
-  void AppendEvent(base::Value event);
+  void AppendEvent(base::Value::Dict event);
 
   // Changes the component state and notifies the caller of the |Handle|
   // function that the handling of this component state is complete.
@@ -399,21 +397,21 @@ class Component {
 
   // These functions return a specific event. Each data member of the event is
   // represented as a key-value pair in a dictionary value.
-  base::Value MakeEventUpdateComplete() const;
-  base::Value MakeEventDownloadMetrics(
+  base::Value::Dict MakeEventUpdateComplete() const;
+  base::Value::Dict MakeEventDownloadMetrics(
       const CrxDownloader::DownloadMetrics& download_metrics) const;
-  base::Value MakeEventUninstalled() const;
-  base::Value MakeEventRegistration() const;
-  base::Value MakeEventActionRun(bool succeeded,
-                                 int error_code,
-                                 int extra_code1) const;
+  base::Value::Dict MakeEventUninstalled() const;
+  base::Value::Dict MakeEventRegistration() const;
+  base::Value::Dict MakeEventActionRun(bool succeeded,
+                                       int error_code,
+                                       int extra_code1) const;
 
   std::unique_ptr<CrxInstaller::InstallParams> install_params() const;
 
   SEQUENCE_CHECKER(sequence_checker_);
 
   const std::string id_;
-  base::Optional<CrxComponent> crx_component_;
+  absl::optional<CrxComponent> crx_component_;
 
   // The status of the updatecheck response.
   std::string status_;
@@ -448,7 +446,7 @@ class Component {
   // The error reported by the update checker.
   int update_check_error_ = 0;
 
-  base::FilePath crx_path_;
+  base::FilePath payload_path_;
 
   // The byte counts below are valid for the current url being fetched.
   // |total_bytes| is equal to the size of the CRX file and |downloaded_bytes|
@@ -478,18 +476,15 @@ class Component {
   // the last update check.
   std::map<std::string, std::string> custom_attrs_;
 
-  // Contains the optional |run| and |arguments| values in the update response
-  // manifest. This data is provided as an argument to the |Install| call.
-  base::Optional<CrxInstaller::InstallParams> install_params_;
+  // Contains the optional install parameters from the update response.
+  absl::optional<CrxInstaller::InstallParams> install_params_;
 
   // Contains the events which are therefore serialized in the requests.
-  std::vector<base::Value> events_;
+  std::vector<base::Value::Dict> events_;
 
   CallbackHandleComplete callback_handle_complete_;
   std::unique_ptr<State> state_;
-  const UpdateContext& update_context_;
-
-  base::OnceClosure update_check_complete_;
+  const raw_ref<const UpdateContext> update_context_;
 
   ComponentState previous_state_ = ComponentState::kLastStatus;
 

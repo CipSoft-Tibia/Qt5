@@ -1,17 +1,18 @@
-// Copyright 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/webui/user_actions/user_actions_ui_handler.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/metrics/user_metrics.h"
+#include "base/time/time.h"
 #include "base/values.h"
 #include "content/public/browser/web_ui.h"
 
 UserActionsUIHandler::UserActionsUIHandler()
-    : action_callback_(base::Bind(&UserActionsUIHandler::OnUserAction,
-                                  base::Unretained(this))) {}
+    : action_callback_(base::BindRepeating(&UserActionsUIHandler::OnUserAction,
+                                           base::Unretained(this))) {}
 
 UserActionsUIHandler::~UserActionsUIHandler() {
   base::RemoveActionCallback(action_callback_);
@@ -23,7 +24,7 @@ void UserActionsUIHandler::RegisterMessages() {
                                         base::Unretained(this)));
 }
 
-void UserActionsUIHandler::HandlePageLoaded(const base::ListValue* args) {
+void UserActionsUIHandler::HandlePageLoaded(const base::Value::List& args) {
   AllowJavascript();
 }
 
@@ -40,6 +41,6 @@ void UserActionsUIHandler::OnUserAction(const std::string& action,
   if (!IsJavascriptAllowed())
     return;
   base::Value user_action_name(action);
-  web_ui()->CallJavascriptFunctionUnsafe("userActions.observeUserAction",
-                                         user_action_name);
+
+  FireWebUIListener("user-action", user_action_name);
 }

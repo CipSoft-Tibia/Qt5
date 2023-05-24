@@ -4,12 +4,14 @@
 
 #include "src/compiler/simplified-operator-reducer.h"
 
+#include "src/compiler/common-operator.h"
 #include "src/compiler/js-graph.h"
+#include "src/compiler/js-heap-broker.h"
 #include "src/compiler/machine-operator.h"
 #include "src/compiler/node-matchers.h"
+#include "src/compiler/opcodes.h"
 #include "src/compiler/operator-properties.h"
 #include "src/compiler/simplified-operator.h"
-#include "src/compiler/type-cache.h"
 #include "src/numbers/conversions-inl.h"
 
 namespace v8 {
@@ -20,8 +22,8 @@ namespace {
 
 Decision DecideObjectIsSmi(Node* const input) {
   NumberMatcher m(input);
-  if (m.HasValue()) {
-    return IsSmiDouble(m.Value()) ? Decision::kTrue : Decision::kFalse;
+  if (m.HasResolvedValue()) {
+    return IsSmiDouble(m.ResolvedValue()) ? Decision::kTrue : Decision::kFalse;
   }
   if (m.IsAllocate()) return Decision::kFalse;
   if (m.IsChangeBitToTagged()) return Decision::kFalse;
@@ -32,19 +34,20 @@ Decision DecideObjectIsSmi(Node* const input) {
 
 }  // namespace
 
-SimplifiedOperatorReducer::SimplifiedOperatorReducer(Editor* editor,
-                                                     JSGraph* jsgraph,
-                                                     JSHeapBroker* broker)
-    : AdvancedReducer(editor), jsgraph_(jsgraph), broker_(broker) {}
+SimplifiedOperatorReducer::SimplifiedOperatorReducer(
+    Editor* editor, JSGraph* jsgraph, JSHeapBroker* broker,
+    BranchSemantics branch_semantics)
+    : AdvancedReducer(editor),
+      jsgraph_(jsgraph),
+      broker_(broker),
+      branch_semantics_(branch_semantics) {}
 
 SimplifiedOperatorReducer::~SimplifiedOperatorReducer() = default;
 
 
 Reduction SimplifiedOperatorReducer::Reduce(Node* node) {
-  DisallowHeapAccess no_heap_access;
   switch (node->opcode()) {
     case IrOpcode::kBooleanNot: {
-      // TODO(neis): Provide HeapObjectRefMatcher?
       HeapObjectMatcher m(node->InputAt(0));
       if (m.Is(factory()->true_value())) return ReplaceBoolean(false);
       if (m.Is(factory()->false_value())) return ReplaceBoolean(true);
@@ -60,22 +63,24 @@ Reduction SimplifiedOperatorReducer::Reduce(Node* node) {
     }
     case IrOpcode::kChangeTaggedToBit: {
       HeapObjectMatcher m(node->InputAt(0));
-      if (m.HasValue()) {
-        return ReplaceInt32(m.Ref(broker()).BooleanValue());
+      if (m.HasResolvedValue()) {
+        base::Optional<bool> maybe_result =
+            m.Ref(broker()).TryGetBooleanValue(broker());
+        if (maybe_result.has_value()) return ReplaceInt32(*maybe_result);
       }
       if (m.IsChangeBitToTagged()) return Replace(m.InputAt(0));
       break;
     }
     case IrOpcode::kChangeFloat64ToTagged: {
       Float64Matcher m(node->InputAt(0));
-      if (m.HasValue()) return ReplaceNumber(m.Value());
+      if (m.HasResolvedValue()) return ReplaceNumber(m.ResolvedValue());
       if (m.IsChangeTaggedToFloat64()) return Replace(m.node()->InputAt(0));
       break;
     }
     case IrOpcode::kChangeInt31ToTaggedSigned:
     case IrOpcode::kChangeInt32ToTagged: {
       Int32Matcher m(node->InputAt(0));
-      if (m.HasValue()) return ReplaceNumber(m.Value());
+      if (m.HasResolvedValue()) return ReplaceNumber(m.ResolvedValue());
       if (m.IsChangeTaggedSignedToInt32()) {
         return Replace(m.InputAt(0));
       }
@@ -84,7 +89,7 @@ Reduction SimplifiedOperatorReducer::Reduce(Node* node) {
     case IrOpcode::kChangeTaggedToFloat64:
     case IrOpcode::kTruncateTaggedToFloat64: {
       NumberMatcher m(node->InputAt(0));
-      if (m.HasValue()) return ReplaceFloat64(m.Value());
+      if (m.HasResolvedValue()) return ReplaceFloat64(m.ResolvedValue());
       if (m.IsChangeFloat64ToTagged() || m.IsChangeFloat64ToTaggedPointer()) {
         return Replace(m.node()->InputAt(0));
       }
@@ -99,7 +104,8 @@ Reduction SimplifiedOperatorReducer::Reduce(Node* node) {
     case IrOpcode::kChangeTaggedSignedToInt32:
     case IrOpcode::kChangeTaggedToInt32: {
       NumberMatcher m(node->InputAt(0));
-      if (m.HasValue()) return ReplaceInt32(DoubleToInt32(m.Value()));
+      if (m.HasResolvedValue())
+        return ReplaceInt32(DoubleToInt32(m.ResolvedValue()));
       if (m.IsChangeFloat64ToTagged() || m.IsChangeFloat64ToTaggedPointer()) {
         return Change(node, machine()->ChangeFloat64ToInt32(), m.InputAt(0));
       }
@@ -110,7 +116,8 @@ Reduction SimplifiedOperatorReducer::Reduce(Node* node) {
     }
     case IrOpcode::kChangeTaggedToUint32: {
       NumberMatcher m(node->InputAt(0));
-      if (m.HasValue()) return ReplaceUint32(DoubleToUint32(m.Value()));
+      if (m.HasResolvedValue())
+        return ReplaceUint32(DoubleToUint32(m.ResolvedValue()));
       if (m.IsChangeFloat64ToTagged() || m.IsChangeFloat64ToTaggedPointer()) {
         return Change(node, machine()->ChangeFloat64ToUint32(), m.InputAt(0));
       }
@@ -119,12 +126,14 @@ Reduction SimplifiedOperatorReducer::Reduce(Node* node) {
     }
     case IrOpcode::kChangeUint32ToTagged: {
       Uint32Matcher m(node->InputAt(0));
-      if (m.HasValue()) return ReplaceNumber(FastUI2D(m.Value()));
+      if (m.HasResolvedValue())
+        return ReplaceNumber(FastUI2D(m.ResolvedValue()));
       break;
     }
     case IrOpcode::kTruncateTaggedToWord32: {
       NumberMatcher m(node->InputAt(0));
-      if (m.HasValue()) return ReplaceInt32(DoubleToInt32(m.Value()));
+      if (m.HasResolvedValue())
+        return ReplaceInt32(DoubleToInt32(m.ResolvedValue()));
       if (m.IsChangeInt31ToTaggedSigned() || m.IsChangeInt32ToTagged() ||
           m.IsChangeUint32ToTagged()) {
         return Replace(m.InputAt(0));
@@ -136,8 +145,9 @@ Reduction SimplifiedOperatorReducer::Reduce(Node* node) {
     }
     case IrOpcode::kCheckedFloat64ToInt32: {
       Float64Matcher m(node->InputAt(0));
-      if (m.HasValue() && IsInt32Double(m.Value())) {
-        Node* value = jsgraph()->Int32Constant(static_cast<int32_t>(m.Value()));
+      if (m.HasResolvedValue() && IsInt32Double(m.ResolvedValue())) {
+        Node* value =
+            jsgraph()->Int32Constant(static_cast<int32_t>(m.ResolvedValue()));
         ReplaceWithValue(node, value);
         return Replace(value);
       }
@@ -212,7 +222,8 @@ Reduction SimplifiedOperatorReducer::Reduce(Node* node) {
     }
     case IrOpcode::kNumberAbs: {
       NumberMatcher m(node->InputAt(0));
-      if (m.HasValue()) return ReplaceNumber(std::fabs(m.Value()));
+      if (m.HasResolvedValue())
+        return ReplaceNumber(std::fabs(m.ResolvedValue()));
       break;
     }
     case IrOpcode::kReferenceEqual: {
@@ -224,15 +235,16 @@ Reduction SimplifiedOperatorReducer::Reduce(Node* node) {
       // (x + a) + b => x + (a + b) where a and b are constants and have the
       // same sign.
       Int32BinopMatcher m(node);
-      if (m.right().HasValue()) {
+      if (m.right().HasResolvedValue()) {
         Node* checked_int32_add = m.left().node();
         if (checked_int32_add->opcode() == IrOpcode::kCheckedInt32Add) {
           Int32BinopMatcher n(checked_int32_add);
-          if (n.right().HasValue() &&
-              (n.right().Value() >= 0) == (m.right().Value() >= 0)) {
+          if (n.right().HasResolvedValue() &&
+              (n.right().ResolvedValue() >= 0) ==
+                  (m.right().ResolvedValue() >= 0)) {
             int32_t val;
             bool overflow = base::bits::SignedAddOverflow32(
-                n.right().Value(), m.right().Value(), &val);
+                n.right().ResolvedValue(), m.right().ResolvedValue(), &val);
             if (!overflow) {
               bool has_no_other_uses = true;
               for (Edge edge : checked_int32_add->use_edges()) {
@@ -269,7 +281,11 @@ Reduction SimplifiedOperatorReducer::Change(Node* node, const Operator* op,
 }
 
 Reduction SimplifiedOperatorReducer::ReplaceBoolean(bool value) {
-  return Replace(jsgraph()->BooleanConstant(value));
+  if (branch_semantics_ == BranchSemantics::kJS) {
+    return Replace(jsgraph()->BooleanConstant(value));
+  } else {
+    return ReplaceInt32(value);
+  }
 }
 
 Reduction SimplifiedOperatorReducer::ReplaceFloat64(double value) {

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_IIR_PROCESSOR_H_
 
 #include <memory>
+
 #include "third_party/blink/renderer/modules/webaudio/audio_node.h"
 #include "third_party/blink/renderer/platform/audio/audio_dsp_kernel.h"
 #include "third_party/blink/renderer/platform/audio/audio_dsp_kernel_processor.h"
@@ -19,16 +20,13 @@ class IIRProcessor final : public AudioDSPKernelProcessor {
  public:
   IIRProcessor(float sample_rate,
                uint32_t number_of_channels,
+               unsigned render_quantum_frames,
                const Vector<double>& feedforward_coef,
                const Vector<double>& feedback_coef,
                bool is_filter_stable);
   ~IIRProcessor() override;
 
   std::unique_ptr<AudioDSPKernel> CreateKernel() override;
-
-  void Process(const AudioBus* source,
-               AudioBus* destination,
-               uint32_t frames_to_process) override;
 
   // Get the magnitude and phase response of the filter at the given
   // set of frequencies (in Hz). The phase response is in radians.

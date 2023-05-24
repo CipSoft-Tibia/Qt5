@@ -1,11 +1,10 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//build/config/jumbo.gni")
 import("//media/gpu/args.gni")
 import("//media/media_options.gni")
-import("//third_party/libaom/options.gni")
 
 jumbo_source_set("filters") {
   # Do not expand the visibility here without double-checking with OWNERS, this
@@ -13,6 +12,7 @@ jumbo_source_set("filters") {
   # should be using //media and not directly DEP this roll-up target.
   visibility = [
     "//media",
+    "//media/fuchsia/audio",
     "//media/renderers",
   ]
 
@@ -39,6 +39,8 @@ jumbo_source_set("filters") {
     "decrypting_media_resource.h",
     "decrypting_video_decoder.cc",
     "decrypting_video_decoder.h",
+    "demuxer_manager.cc",
+    "demuxer_manager.h",
     "file_data_source.cc",
     "file_data_source.h",
     "frame_buffer_pool.cc",
@@ -78,14 +80,11 @@ jumbo_source_set("filters") {
     "wsola_internals.h",
   ]
 
-  configs += [
-    # TODO(crbug.com/167187): Fix size_t to int truncations.
-    "//build/config/compiler:no_size_t_to_int_warning",
-    "//media:subcomponent_config",
-  ]
+  configs += [ "//media:subcomponent_config" ]
 
   deps = [
-    "//base/util/type_safety:type_safety",
+    "//base",
+    "//build:chromeos_buildflags",
     "//cc/base",  # For MathUtil.
     "//media:media_buildflags",
     "//media/base",
@@ -103,6 +102,13 @@ jumbo_source_set("filters") {
       "h264_to_annex_b_bitstream_converter.cc",
       "h264_to_annex_b_bitstream_converter.h",
     ]
+
+    if (enable_platform_hevc) {
+      sources += [
+        "h265_to_annex_b_bitstream_converter.cc",
+        "h265_to_annex_b_bitstream_converter.h",
+      ]
+    }
   }
 
   if (media_use_ffmpeg) {
@@ -141,28 +147,12 @@ jumbo_source_set("filters") {
     deps += [ "//third_party/libvpx" ]
   }
 
-  if (enable_libaom) {
-    sources += [
-      "aom_video_decoder.cc",
-      "aom_video_decoder.h",
-    ]
-    deps += [ "//third_party/libaom" ]
-  }
-
   if (enable_dav1d_decoder) {
     sources += [
       "dav1d_video_decoder.cc",
       "dav1d_video_decoder.h",
     ]
     deps += [ "//third_party/dav1d" ]
-  }
-
-  if (enable_libgav1_decoder) {
-    sources += [
-      "gav1_video_decoder.cc",
-      "gav1_video_decoder.h",
-    ]
-    deps += [ "//third_party/libgav1" ]
   }
 
   if (media_use_ffmpeg) {
@@ -211,6 +201,44 @@ jumbo_source_set("filters") {
     deps += [ "//media/base/android" ]
   }
 
+  if (is_mac) {
+    sources += [
+      "mac/audio_toolbox_audio_decoder.cc",
+      "mac/audio_toolbox_audio_decoder.h",
+      "mac/audio_toolbox_audio_encoder.cc",
+      "mac/audio_toolbox_audio_encoder.h",
+    ]
+  }
+  if (is_win && enable_platform_dts_audio) {
+    sources += [
+      "passthrough_dts_audio_decoder.cc",
+      "passthrough_dts_audio_decoder.h",
+    ]
+  }
+  if (is_win) {
+    sources += [
+      "win/media_foundation_utils.cc",
+      "win/media_foundation_utils.h",
+    ]
+    deps += [ "//media/base/win:media_foundation_util" ]
+    if (enable_platform_dts_audio) {
+      sources += [
+        "win/media_foundation_audio_decoder.cc",
+        "win/media_foundation_audio_decoder.h",
+      ]
+      ldflags = [
+        "/DELAYLOAD:packages/Microsoft.VCRTForwarders.140.1.0.6/runtimes/win10-x64/native/release/concrt140_app.dll",
+        "/DELAYLOAD:packages/Microsoft.VCRTForwarders.140.1.0.6/runtimes/win10-x64/native/release/msvcp140_1_app.dll",
+        "/DELAYLOAD:packages/Microsoft.VCRTForwarders.140.1.0.6/runtimes/win10-x64/native/release/msvcp140_2_app.dll",
+        "/DELAYLOAD:packages/Microsoft.VCRTForwarders.140.1.0.6/runtimes/win10-x64/native/release/msvcp140_app.dll",
+        "/DELAYLOAD:packages/Microsoft.VCRTForwarders.140.1.0.6/runtimes/win10-x64/native/release/vcamp140_app.dll",
+        "/DELAYLOAD:packages/Microsoft.VCRTForwarders.140.1.0.6/runtimes/win10-x64/native/release/vccorlib140_app.dll",
+        "/DELAYLOAD:packages/Microsoft.VCRTForwarders.140.1.0.6/runtimes/win10-x64/native/release/vcomp140_app.dll",
+        "/DELAYLOAD:packages/Microsoft.VCRTForwarders.140.1.0.6/runtimes/win10-x64/native/release/vcruntime140_app.dll",
+      ]
+    }
+  }
+
   if (use_vaapi) {
     sources += [
       "h264_bitstream_buffer.cc",
@@ -218,22 +246,12 @@ jumbo_source_set("filters") {
     ]
   }
 
-  if (is_fuchsia) {
+  if (enable_hls_demuxer) {
     sources += [
-      "fuchsia/fuchsia_video_decoder.cc",
-      "fuchsia/fuchsia_video_decoder.h",
-    ]
-    deps += [
-      "//gpu/command_buffer/client",
-      "//gpu/command_buffer/common",
-      "//gpu/ipc/common",
-      "//media/fuchsia/cdm",
-      "//media/fuchsia/common",
-      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.media",
-      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.mediacodec",
-      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.sysmem",
-      "//third_party/fuchsia-sdk/sdk/pkg/sys_cpp",
-      "//ui/ozone",
+      "hls_data_source_provider.cc",
+      "hls_data_source_provider.h",
+      "hls_demuxer.cc",
+      "hls_demuxer.h",
     ]
   }
 }
@@ -266,11 +284,6 @@ static_library("test_support") {
     "fake_video_decoder.h",
     "ivf_parser.cc",
     "ivf_parser.h",
-  ]
-
-  configs += [
-    # TODO(crbug.com/167187): Fix size_t to int truncations.
-    "//build/config/compiler:no_size_t_to_int_warning",
   ]
 
   deps = [
@@ -307,19 +320,16 @@ source_set("unit_tests") {
     "video_renderer_algorithm_unittest.cc",
     "vp9_parser_unittest.cc",
     "vp9_raw_bits_reader_unittest.cc",
+    "vp9_uncompressed_header_parser_unittest.cc",
   ]
 
   deps = [
     "//base/test:test_support",
+    "//build:chromeos_buildflags",
     "//media:test_support",
     "//testing/gmock",
     "//testing/gtest",
     "//ui/gfx:test_support",
-  ]
-
-  configs += [
-    # TODO(crbug.com/167187): Fix size_t to int truncations.
-    "//build/config/compiler:no_size_t_to_int_warning",
   ]
 
   if (is_android) {
@@ -332,19 +342,9 @@ source_set("unit_tests") {
     deps += [ "//ui/gl" ]
   }
 
-  if (is_fuchsia) {
-    sources += [ "fuchsia/fuchsia_video_decoder_unittest.cc" ]
-    deps += [
-      "//components/viz/test:test_support",
-      "//gpu/command_buffer/client",
-      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.sysmem",
-      "//third_party/fuchsia-sdk/sdk/pkg/sys_cpp",
-    ]
-  }
-
   # libvpx for running vpx test on chromecast doesn't support high bit depth.
-  # This may cause some unit tests failure.
-  if (is_chromecast) {
+  # This may cause some unit tests failure. See b/65382374 for further context.
+  if (is_castos) {
     defines = [ "LIBVPX_NO_HIGH_BIT_DEPTH" ]
   }
 
@@ -381,16 +381,8 @@ source_set("unit_tests") {
     sources += [ "vpx_video_decoder_unittest.cc" ]
   }
 
-  if (enable_libaom) {
-    sources += [ "aom_video_decoder_unittest.cc" ]
-  }
-
   if (enable_dav1d_decoder) {
     sources += [ "dav1d_video_decoder_unittest.cc" ]
-  }
-
-  if (enable_libgav1_decoder) {
-    sources += [ "gav1_video_decoder_unittest.cc" ]
   }
 
   if (use_vaapi) {
@@ -400,12 +392,23 @@ source_set("unit_tests") {
   if (proprietary_codecs) {
     sources += [ "h264_to_annex_b_bitstream_converter_unittest.cc" ]
 
+    if (enable_platform_hevc) {
+      sources += [ "h265_to_annex_b_bitstream_converter_unittest.cc" ]
+    }
+
     if (media_use_ffmpeg) {
       sources += [
         "ffmpeg_aac_bitstream_converter_unittest.cc",
         "ffmpeg_h264_to_annex_b_bitstream_converter_unittest.cc",
       ]
     }
+  }
+
+  if (enable_hls_demuxer) {
+    sources += [
+      "hls_data_source_provider_unittest.cc",
+      "hls_demuxer_unittest.cc",
+    ]
   }
 
   if (media_use_ffmpeg) {

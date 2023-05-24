@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,14 +12,11 @@
 #include "third_party/blink/renderer/core/html/custom/custom_element_reaction_factory.h"
 #include "third_party/blink/renderer/core/html/custom/custom_element_reaction_stack.h"
 #include "third_party/blink/renderer/core/html/custom/custom_element_registry.h"
-#include "third_party/blink/renderer/core/html/custom/v0_custom_element.h"
-#include "third_party/blink/renderer/core/html/custom/v0_custom_element_registration_context.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/core/html/html_unknown_element.h"
 #include "third_party/blink/renderer/core/html_element_factory.h"
 #include "third_party/blink/renderer/core/html_element_type_helpers.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string_hash.h"
 
 namespace blink {
@@ -29,7 +26,7 @@ CustomElementRegistry* CustomElement::Registry(const Element& element) {
 }
 
 CustomElementRegistry* CustomElement::Registry(const Document& document) {
-  if (LocalDOMWindow* window = document.ExecutingWindow())
+  if (LocalDOMWindow* window = document.domWindow())
     return window->customElements();
   return nullptr;
 }
@@ -105,7 +102,7 @@ bool CustomElement::ShouldCreateCustomElement(const QualifiedName& tag_name) {
 bool CustomElement::ShouldCreateCustomizedBuiltinElement(
     const AtomicString& local_name,
     const Document& document) {
-  return htmlElementTypeForTag(local_name, &document) !=
+  return HtmlElementTypeForTag(local_name, &document) !=
          HTMLElementType::kHTMLUnknownElement;
 }
 
@@ -144,8 +141,7 @@ HTMLElement* CustomElement::CreateCustomElement(Document& document,
           document, tag_name, flags, g_null_atom));
 }
 
-// Step 7 of https://dom.spec.whatwg.org/#concept-create-element in
-// addition to Custom Element V0 handling.
+// Step 7 of https://dom.spec.whatwg.org/#concept-create-element
 template <CustomElement::CreateUUCheckLevel level>
 Element* CustomElement::CreateUncustomizedOrUndefinedElementTemplate(
     Document& document,
@@ -157,30 +153,11 @@ Element* CustomElement::CreateUncustomizedOrUndefinedElementTemplate(
     DCHECK(ShouldCreateCustomElement(tag_name)) << tag_name;
   }
 
-  Element* element;
-  if (RuntimeEnabledFeatures::CustomElementsV0Enabled(
-          document.GetExecutionContext())) {
-    if (V0CustomElement::IsValidName(tag_name.LocalName()) &&
-        document.RegistrationContext()) {
-      element = document.RegistrationContext()->CreateCustomTagElement(
-          document, tag_name);
-    } else {
-      element = document.CreateRawElement(tag_name, flags);
-      if (level == kCheckAll && !is_value.IsNull()) {
-        element->SetIsValue(is_value);
-        if (flags.IsCustomElementsV0()) {
-          V0CustomElementRegistrationContext::SetTypeExtension(element,
-                                                               is_value);
-        }
-      }
-    }
-  } else {
-    // 7.1. Let interface be the element interface for localName and namespace.
-    // 7.2. Set result to a new element that implements interface, with ...
-    element = document.CreateRawElement(tag_name, flags);
-    if (level == kCheckAll && !is_value.IsNull())
-      element->SetIsValue(is_value);
-  }
+  // 7.1. Let interface be the element interface for localName and namespace.
+  // 7.2. Set result to a new element that implements interface, with ...
+  Element* element = document.CreateRawElement(tag_name, flags);
+  if (level == kCheckAll && !is_value.IsNull())
+    element->SetIsValue(is_value);
 
   // 7.3. If namespace is the HTML namespace, and either localName is a
   // valid custom element name or is is non-null, then set result’s
@@ -226,16 +203,18 @@ void CustomElement::Enqueue(Element& element, CustomElementReaction& reaction) {
   // To enqueue an element on the appropriate element queue
   // https://html.spec.whatwg.org/C/#enqueue-an-element-on-the-appropriate-element-queue
 
+  CustomElementReactionStack& stack =
+      CustomElementReactionStack::From(element.GetDocument().GetAgent());
   // If the custom element reactions stack is not empty, then
   // Add element to the current element queue.
   if (CEReactionsScope* current = CEReactionsScope::Current()) {
-    current->EnqueueToCurrentQueue(element, reaction);
+    current->EnqueueToCurrentQueue(stack, element, reaction);
     return;
   }
 
   // If the custom element reactions stack is empty, then
   // Add element to the backup element queue.
-  CustomElementReactionStack::Current().EnqueueToBackupQueue(element, reaction);
+  stack.EnqueueToBackupQueue(element, reaction);
 }
 
 void CustomElement::EnqueueConnectedCallback(Element& element) {
@@ -295,10 +274,9 @@ void CustomElement::EnqueueFormDisabledCallback(Element& element,
   }
 }
 
-void CustomElement::EnqueueFormStateRestoreCallback(
-    Element& element,
-    const FileOrUSVStringOrFormData& value,
-    const String& mode) {
+void CustomElement::EnqueueFormStateRestoreCallback(Element& element,
+                                                    const V8ControlValue* value,
+                                                    const String& mode) {
   auto& definition = *DefinitionForElementWithoutCheck(element);
   if (definition.HasFormStateRestoreCallback()) {
     Enqueue(element, CustomElementReactionFactory::CreateFormStateRestore(

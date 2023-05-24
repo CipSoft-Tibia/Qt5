@@ -1,44 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-// TODO Remove in Qt6
-#include <QtCore/qcompilerdetection.h>
-QT_WARNING_DISABLE_DEPRECATED
-
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <Qt3DCore/qcomponent.h>
-#include <Qt3DRender/qgeometryfactory.h>
-#include <Qt3DRender/qgeometry.h>
+#include <Qt3DCore/qgeometry.h>
 #include <Qt3DRender/qmesh.h>
 #include <Qt3DRender/private/qmesh_p.h>
 #include <Qt3DCore/qaspectengine.h>
 
-class MeshFunctorA : public Qt3DRender::QGeometryFactory
+class MeshFunctorA : public Qt3DCore::QGeometryFactory
 {
 public:
     MeshFunctorA()
@@ -47,20 +17,20 @@ public:
     ~MeshFunctorA()
     {}
 
-    Qt3DRender::QGeometry *operator ()() override
+    Qt3DCore::QGeometry *operator ()() override
     {
         return nullptr;
     }
 
-    bool equals(const Qt3DRender::QGeometryFactory &other) const override
+    bool equals(const Qt3DCore::QGeometryFactory &other) const override
     {
-        return Qt3DRender::functor_cast<MeshFunctorA>(&other);
+        return Qt3DCore::functor_cast<MeshFunctorA>(&other);
     }
 
     QT3D_FUNCTOR(MeshFunctorA)
 };
 
-class MeshFunctorB : public Qt3DRender::QGeometryFactory
+class MeshFunctorB : public Qt3DCore::QGeometryFactory
 {
 public:
     MeshFunctorB()
@@ -69,14 +39,14 @@ public:
     ~MeshFunctorB()
     {}
 
-    Qt3DRender::QGeometry *operator ()() override
+    Qt3DCore::QGeometry *operator ()() override
     {
         return nullptr;
     }
 
-    bool equals(const Qt3DRender::QGeometryFactory &other) const override
+    bool equals(const Qt3DCore::QGeometryFactory &other) const override
     {
-        return Qt3DRender::functor_cast<MeshFunctorB>(&other);
+        return Qt3DCore::functor_cast<MeshFunctorB>(&other);
     }
 
     QT3D_FUNCTOR(MeshFunctorB)
@@ -91,9 +61,9 @@ public:
     ~MeshFunctorASub()
     {}
 
-    bool equals(const Qt3DRender::QGeometryFactory &other) const override
+    bool equals(const Qt3DCore::QGeometryFactory &other) const override
     {
-        return Qt3DRender::functor_cast<MeshFunctorASub>(&other);
+        return Qt3DCore::functor_cast<MeshFunctorASub>(&other);
     }
 
     QT3D_FUNCTOR(MeshFunctorASub)
@@ -190,7 +160,7 @@ private Q_SLOTS:
             Qt3DRender::MeshLoaderFunctor functor(&mesh);
 
             // WHEN
-            const Qt3DRender::QGeometry *g = functor();
+            const Qt3DCore::QGeometry *g = functor();
 
             // THEN
             QVERIFY(g == nullptr);
@@ -204,7 +174,7 @@ private Q_SLOTS:
             Qt3DRender::MeshLoaderFunctor functor(&mesh);
 
             // WHEN
-            const Qt3DRender::QGeometry *g = functor();
+            const Qt3DCore::QGeometry *g = functor();
 
             // THEN
             QVERIFY(g == nullptr);
@@ -218,7 +188,7 @@ private Q_SLOTS:
             Qt3DRender::MeshLoaderFunctor functor(&mesh);
 
             // WHEN
-            const Qt3DRender::QGeometry *g = functor();
+            const Qt3DCore::QGeometry *g = functor();
 
             // THEN
             QVERIFY(g == nullptr);

@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,6 +23,7 @@
 #include "fxbarcode/oned/BC_OnedCode39Writer.h"
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
 
 #include "core/fxcrt/fx_extension.h"
@@ -30,7 +31,6 @@
 #include "fxbarcode/BC_Writer.h"
 #include "fxbarcode/common/BC_CommonBitMatrix.h"
 #include "fxbarcode/oned/BC_OneDimWriter.h"
-#include "third_party/base/stl_util.h"
 
 namespace {
 
@@ -38,13 +38,13 @@ const char kOnedCode39Alphabet[] = {
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
     'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
     'U', 'V', 'W', 'X', 'Y', 'Z', '-', '.', ' ', '*', '$', '/', '+', '%'};
-constexpr size_t kOnedCode39AlphabetLen = pdfium::size(kOnedCode39Alphabet);
+constexpr size_t kOnedCode39AlphabetLen = std::size(kOnedCode39Alphabet);
 
 const char kOnedCode39Checksum[] = {
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
     'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
     'U', 'V', 'W', 'X', 'Y', 'Z', '-', '.', ' ', '$', '/', '+', '%'};
-static_assert(pdfium::size(kOnedCode39Checksum) == 43, "Wrong size");
+static_assert(std::size(kOnedCode39Checksum) == 43, "Wrong size");
 
 const int16_t kOnedCode39CharacterEncoding[] = {
     0x0034, 0x0121, 0x0061, 0x0160, 0x0031, 0x0130, 0x0070, 0x0025, 0x0124,
@@ -52,12 +52,32 @@ const int16_t kOnedCode39CharacterEncoding[] = {
     0x004C, 0x001C, 0x0103, 0x0043, 0x0142, 0x0013, 0x0112, 0x0052, 0x0007,
     0x0106, 0x0046, 0x0016, 0x0181, 0x00C1, 0x01C0, 0x0091, 0x0190, 0x00D0,
     0x0085, 0x0184, 0x00C4, 0x0094, 0x00A8, 0x00A2, 0x008A, 0x002A};
-static_assert(pdfium::size(kOnedCode39CharacterEncoding) == 44, "Wrong size");
+static_assert(std::size(kOnedCode39CharacterEncoding) == 44, "Wrong size");
 
 bool IsInOnedCode39Alphabet(wchar_t ch) {
   return FXSYS_IsDecimalDigit(ch) || (ch >= L'A' && ch <= L'Z') || ch == L'-' ||
          ch == L'.' || ch == L' ' || ch == L'*' || ch == L'$' || ch == L'/' ||
          ch == L'+' || ch == L'%';
+}
+
+char CalcCheckSum(const ByteString& contents) {
+  if (contents.GetLength() > 80)
+    return '*';
+
+  int32_t checksum = 0;
+  for (const auto& c : contents) {
+    size_t j = 0;
+    for (; j < kOnedCode39AlphabetLen; j++) {
+      if (kOnedCode39Alphabet[j] == c) {
+        if (c != '*')
+          checksum += j;
+        break;
+      }
+    }
+    if (j >= kOnedCode39AlphabetLen)
+      return '*';
+  }
+  return kOnedCode39Checksum[checksum % std::size(kOnedCode39Checksum)];
 }
 
 }  // namespace
@@ -107,13 +127,10 @@ WideString CBC_OnedCode39Writer::RenderTextContents(WideStringView contents) {
   return renderContents;
 }
 
-bool CBC_OnedCode39Writer::SetTextLocation(BC_TEXT_LOC location) {
-  if (location < BC_TEXT_LOC_NONE || location > BC_TEXT_LOC_BELOWEMBED) {
-    return false;
-  }
+void CBC_OnedCode39Writer::SetTextLocation(BC_TEXT_LOC location) {
   m_locTextLoc = location;
-  return true;
 }
+
 bool CBC_OnedCode39Writer::SetWideNarrowRatio(int8_t ratio) {
   if (ratio < 2 || ratio > 3)
     return false;
@@ -122,75 +139,45 @@ bool CBC_OnedCode39Writer::SetWideNarrowRatio(int8_t ratio) {
   return true;
 }
 
-uint8_t* CBC_OnedCode39Writer::EncodeWithHint(const ByteString& contents,
-                                              BCFORMAT format,
-                                              int32_t& outWidth,
-                                              int32_t& outHeight,
-                                              int32_t hints) {
-  if (format != BCFORMAT_CODE_39)
-    return nullptr;
-  return CBC_OneDimWriter::EncodeWithHint(contents, format, outWidth, outHeight,
-                                          hints);
-}
-
-void CBC_OnedCode39Writer::ToIntArray(int16_t a, int8_t* toReturn) {
-  for (int32_t i = 0; i < 9; i++) {
-    toReturn[i] = (a & (1 << i)) == 0 ? 1 : m_iWideNarrRatio;
+void CBC_OnedCode39Writer::ToIntArray(int16_t value,
+                                      uint8_t array[kArraySize]) const {
+  for (size_t i = 0; i < kArraySize; i++) {
+    array[i] = (value & (1 << i)) == 0 ? 1 : m_iWideNarrRatio;
   }
 }
 
-char CBC_OnedCode39Writer::CalcCheckSum(const ByteString& contents) {
-  if (contents.GetLength() > 80)
-    return '*';
-
-  int32_t checksum = 0;
-  for (const auto& c : contents) {
-    size_t j = 0;
-    for (; j < kOnedCode39AlphabetLen; j++) {
-      if (kOnedCode39Alphabet[j] == c) {
-        if (c != '*')
-          checksum += j;
-        break;
-      }
-    }
-    if (j >= kOnedCode39AlphabetLen)
-      return '*';
-  }
-  return kOnedCode39Checksum[checksum % pdfium::size(kOnedCode39Checksum)];
-}
-
-uint8_t* CBC_OnedCode39Writer::EncodeImpl(const ByteString& contents,
-                                          int32_t& outlength) {
+DataVector<uint8_t> CBC_OnedCode39Writer::Encode(const ByteString& contents) {
   char checksum = CalcCheckSum(contents);
   if (checksum == '*')
-    return nullptr;
+    return DataVector<uint8_t>();
 
-  int8_t widths[9] = {0};
-  int32_t wideStrideNum = 3;
-  int32_t narrStrideNum = 9 - wideStrideNum;
+  uint8_t widths[kArraySize] = {0};
+  constexpr int32_t kWideStrideNum = 3;
+  constexpr int32_t kNarrowStrideNum = kArraySize - kWideStrideNum;
   ByteString encodedContents = contents;
   if (m_bCalcChecksum)
     encodedContents += checksum;
   m_iContentLen = encodedContents.GetLength();
-  int32_t codeWidth = (wideStrideNum * m_iWideNarrRatio + narrStrideNum) * 2 +
-                      1 + m_iContentLen;
+  size_t code_width =
+      (kWideStrideNum * m_iWideNarrRatio + kNarrowStrideNum) * 2 + 1 +
+      m_iContentLen;
   for (size_t j = 0; j < m_iContentLen; j++) {
     for (size_t i = 0; i < kOnedCode39AlphabetLen; i++) {
       if (kOnedCode39Alphabet[i] != encodedContents[j])
         continue;
 
       ToIntArray(kOnedCode39CharacterEncoding[i], widths);
-      for (size_t k = 0; k < 9; k++)
-        codeWidth += widths[k];
+      for (size_t k = 0; k < kArraySize; k++)
+        code_width += widths[k];
     }
   }
-  outlength = codeWidth;
-  std::unique_ptr<uint8_t, FxFreeDeleter> result(FX_Alloc(uint8_t, codeWidth));
+  DataVector<uint8_t> result(code_width);
+  auto result_span = pdfium::make_span(result);
   ToIntArray(kOnedCode39CharacterEncoding[39], widths);
-  int32_t pos = AppendPattern(result.get(), 0, widths, 9, true);
+  result_span = AppendPattern(result_span, widths, true);
 
-  int8_t narrowWhite[] = {1};
-  pos += AppendPattern(result.get(), pos, narrowWhite, 1, false);
+  static constexpr uint8_t kNarrowWhite[] = {1};
+  result_span = AppendPattern(result_span, kNarrowWhite, false);
 
   for (int32_t l = m_iContentLen - 1; l >= 0; l--) {
     for (size_t i = 0; i < kOnedCode39AlphabetLen; i++) {
@@ -198,20 +185,19 @@ uint8_t* CBC_OnedCode39Writer::EncodeImpl(const ByteString& contents,
         continue;
 
       ToIntArray(kOnedCode39CharacterEncoding[i], widths);
-      pos += AppendPattern(result.get(), pos, widths, 9, true);
+      result_span = AppendPattern(result_span, widths, true);
     }
-    pos += AppendPattern(result.get(), pos, narrowWhite, 1, false);
+    result_span = AppendPattern(result_span, kNarrowWhite, false);
   }
   ToIntArray(kOnedCode39CharacterEncoding[39], widths);
-  pos += AppendPattern(result.get(), pos, widths, 9, true);
+  AppendPattern(result_span, widths, true);
 
-  auto* result_ptr = result.get();
-  for (int32_t i = 0; i < codeWidth / 2; i++) {
-    result_ptr[i] ^= result_ptr[codeWidth - 1 - i];
-    result_ptr[codeWidth - 1 - i] ^= result_ptr[i];
-    result_ptr[i] ^= result_ptr[codeWidth - 1 - i];
+  for (size_t i = 0; i < code_width / 2; i++) {
+    result[i] ^= result[code_width - 1 - i];
+    result[code_width - 1 - i] ^= result[i];
+    result[i] ^= result[code_width - 1 - i];
   }
-  return result.release();
+  return result;
 }
 
 bool CBC_OnedCode39Writer::encodedContents(WideStringView contents,
@@ -231,11 +217,9 @@ bool CBC_OnedCode39Writer::encodedContents(WideStringView contents,
 }
 
 bool CBC_OnedCode39Writer::RenderResult(WideStringView contents,
-                                        uint8_t* code,
-                                        int32_t codeLength) {
+                                        pdfium::span<const uint8_t> code) {
   WideString encodedCon;
   if (!encodedContents(contents, &encodedCon))
     return false;
-  return CBC_OneDimWriter::RenderResult(encodedCon.AsStringView(), code,
-                                        codeLength);
+  return CBC_OneDimWriter::RenderResult(encodedCon.AsStringView(), code);
 }

@@ -12,6 +12,7 @@ namespace google_breakpad {
   bool SymbolCollectorClient::CreateUploadUrl(
       wstring& api_url,
       wstring& api_key,
+      int* timeout_ms,
       UploadUrlResponse *uploadUrlResponse) {
     wstring url = api_url +
         L"/v1/uploads:create"
@@ -23,7 +24,7 @@ namespace google_breakpad {
         url,
         L"",
         L"",
-        NULL,
+        timeout_ms,
         &response,
         &response_code)) {
       wprintf(L"Failed to create upload url.\n");
@@ -66,17 +67,35 @@ namespace google_breakpad {
   CompleteUploadResult SymbolCollectorClient::CompleteUpload(
       wstring& api_url,
       wstring& api_key,
+      int* timeout_ms,
       const wstring& upload_key,
       const wstring& debug_file,
-      const wstring& debug_id) {
+      const wstring& debug_id,
+      const wstring& type,
+      const wstring& product_name) {
     wstring url = api_url +
         L"/v1/uploads/" + upload_key + L":complete"
         L"?key=" + api_key;
     wstring body =
         L"{ symbol_id: {"
-        L"debug_file: \"" + debug_file + L"\", "
-        L"debug_id: \"" + debug_id + L"\" "
-        L"} }";
+        L"debug_file: \"" +
+        debug_file +
+        L"\", "
+        L"debug_id: \"" +
+        debug_id +
+        L"\" "
+        L"}, ";
+    if (!product_name.empty()) {
+      body +=
+          L"metadata: {"
+          L"product_name: \"" +
+          product_name +
+          L"\""
+          L"},";
+    }
+    body += L"symbol_upload_type: \"" + type +
+            L"\", "
+            L"use_async_processing: true }";
     wstring response;
     int response_code;
 
@@ -84,7 +103,7 @@ namespace google_breakpad {
         url,
         body,
         L"application/json",
-        NULL,
+        timeout_ms,
         &response,
         &response_code)) {
       wprintf(L"Failed to complete upload.\n");
@@ -116,6 +135,7 @@ namespace google_breakpad {
   SymbolStatus SymbolCollectorClient::CheckSymbolStatus(
       wstring& api_url,
       wstring& api_key,
+      int* timeout_ms,
       const wstring& debug_file,
       const wstring& debug_id) {
     wstring response;
@@ -126,7 +146,7 @@ namespace google_breakpad {
 
     if (!HTTPUpload::SendGetRequest(
         url,
-        NULL,
+        timeout_ms,
         &response,
         &response_code)) {
       wprintf(L"Failed to check symbol status.\n");

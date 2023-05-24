@@ -1,41 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtSql/QtSql>
 #include <QTableView>
 #include <QComboBox>
 
 #include "../../kernel/qsqldatabase/tst_databases.h"
-
-const QString reltest1(qTableName("reltest1", __FILE__, QSqlDatabase())),
-              reltest2(qTableName("reltest2", __FILE__, QSqlDatabase()));
 
 class tst_QSqlRelationalDelegate : public QObject
 {
@@ -45,6 +17,7 @@ public:
     void recreateTestTables(QSqlDatabase);
 
     tst_Databases dbs;
+    tst_QSqlRelationalDelegate();
 
 public slots:
     void initTestCase_data();
@@ -59,6 +32,9 @@ private:
     void dropTestTables(QSqlDatabase db);
 };
 
+tst_QSqlRelationalDelegate::tst_QSqlRelationalDelegate()
+{
+}
 
 void tst_QSqlRelationalDelegate::initTestCase_data()
 {
@@ -69,11 +45,23 @@ void tst_QSqlRelationalDelegate::initTestCase_data()
 
 void tst_QSqlRelationalDelegate::recreateTestTables(QSqlDatabase db)
 {
+    const auto reltest1 = qTableName("reltest1", __FILE__, db);
+    const auto reltest2 = qTableName("reltest2", __FILE__, db);
+
     dropTestTables(db);
 
     QSqlQuery q(db);
+    const auto idField = db.driver()->escapeIdentifier(QLatin1String("id"), QSqlDriver::FieldName);
+    const auto nameField = db.driver()->escapeIdentifier(QLatin1String("name"), QSqlDriver::FieldName);
+    const auto titleKeyField = db.driver()->escapeIdentifier(QLatin1String("title_key"),
+                                                             QSqlDriver::FieldName);
+    const auto anotherTitleField = db.driver()->escapeIdentifier(QLatin1String("another_title_key"),
+                                                                 QSqlDriver::FieldName);
+    const auto titleField = db.driver()->escapeIdentifier(QLatin1String("title"),
+                                                          QSqlDriver::FieldName);
     QVERIFY_SQL(q, exec("create table " + reltest1 +
-            " (id int not null primary key, name varchar(20), title_key int, another_title_key int)"));
+            " (" + idField + " int not null primary key, " + nameField + " varchar(20), " +
+            titleKeyField + " int, " + anotherTitleField + "int)"));
     QVERIFY_SQL(q, exec("insert into " + reltest1 + " values(1, 'harry', 1, 2)"));
     QVERIFY_SQL(q, exec("insert into " + reltest1 + " values(2, 'trond', 2, 1)"));
     QVERIFY_SQL(q, exec("insert into " + reltest1 + " values(3, 'vohi', 1, 2)"));
@@ -81,23 +69,25 @@ void tst_QSqlRelationalDelegate::recreateTestTables(QSqlDatabase db)
     QVERIFY_SQL(q, exec("insert into " + reltest1 + " values(5, 'nat', NULL, NULL)"));
     QVERIFY_SQL(q, exec("insert into " + reltest1 + " values(6, 'ale', NULL, 2)"));
 
-    QVERIFY_SQL(q, exec("create table " + reltest2 + " (id int not null primary key, title varchar(20))"));
+    QVERIFY_SQL(q, exec("create table " + reltest2 + " (" + idField + " int not null primary key, "
+                        + titleKeyField + " varchar(20))"));
     QVERIFY_SQL(q, exec("insert into " + reltest2 + " values(1, 'herr')"));
     QVERIFY_SQL(q, exec("insert into " + reltest2 + " values(2, 'mister')"));
 }
 
 void tst_QSqlRelationalDelegate::initTestCase()
 {
-    foreach (const QString &dbname, dbs.dbNames) {
-        QSqlDatabase db=QSqlDatabase::database(dbname);
+    for (const QString &dbName : std::as_const(dbs.dbNames)) {
+        QSqlDatabase db = QSqlDatabase::database(dbName);
+        QSqlQuery q(db);
         QSqlDriver::DbmsType dbType = tst_Databases::getDatabaseType(db);
         if (dbType == QSqlDriver::Interbase) {
-            db.exec("SET DIALECT 3");
+            q.exec("SET DIALECT 3");
         } else if (dbType == QSqlDriver::MSSqlServer) {
-            db.exec("SET ANSI_DEFAULTS ON");
-            db.exec("SET IMPLICIT_TRANSACTIONS OFF");
+            q.exec("SET ANSI_DEFAULTS ON");
+            q.exec("SET IMPLICIT_TRANSACTIONS OFF");
         } else if (dbType == QSqlDriver::PostgreSQL) {
-            db.exec("set client_min_messages='warning'");
+            q.exec("set client_min_messages='warning'");
         }
         recreateTestTables(db);
     }
@@ -105,7 +95,7 @@ void tst_QSqlRelationalDelegate::initTestCase()
 
 void tst_QSqlRelationalDelegate::cleanupTestCase()
 {
-    foreach (const QString &dbName, dbs.dbNames) {
+    for (const QString &dbName : std::as_const(dbs.dbNames)) {
         QSqlDatabase db = QSqlDatabase::database(dbName);
         CHECK_DATABASE(db);
         dropTestTables(QSqlDatabase::database(dbName));
@@ -115,7 +105,7 @@ void tst_QSqlRelationalDelegate::cleanupTestCase()
 
 void tst_QSqlRelationalDelegate::dropTestTables(QSqlDatabase db)
 {
-    QStringList tableNames = { reltest1, reltest2 };
+    QStringList tableNames = { qTableName("reltest1", __FILE__, db), qTableName("reltest2", __FILE__, db) };
     tst_Databases::safeDropTables(db, tableNames);
 }
 
@@ -133,12 +123,18 @@ void tst_QSqlRelationalDelegate::comboBoxEditor()
     QSqlDatabase db = QSqlDatabase::database(dbName);
     CHECK_DATABASE(db);
 
+    const auto reltest1 = qTableName("reltest1", __FILE__, db);
+    const auto reltest2 = qTableName("reltest2", __FILE__, db);
+    const auto idField = db.driver()->escapeIdentifier(QLatin1String("id"), QSqlDriver::FieldName);
+    const auto nameField = db.driver()->escapeIdentifier(QLatin1String("name"), QSqlDriver::FieldName);
+    const auto titleKeyField = db.driver()->escapeIdentifier(QLatin1String("title_key"),
+                                                             QSqlDriver::FieldName);
     QTableView tv;
     QSqlRelationalTableModel model(0, db);
     model.setEditStrategy(QSqlTableModel::OnManualSubmit);
     model.setTable(reltest1);
-    model.setRelation(2, QSqlRelation(reltest2, "id", "title"));
-    model.setRelation(3, QSqlRelation(reltest2, "id", "title"));
+    model.setRelation(2, QSqlRelation(reltest2, idField, titleKeyField));
+    model.setRelation(3, QSqlRelation(reltest2, idField, titleKeyField));
     tv.setModel(&model);
     QVERIFY_SQL(model, select());
 
@@ -151,7 +147,7 @@ void tst_QSqlRelationalDelegate::comboBoxEditor()
     tv.setCurrentIndex(index);
     tv.edit(index);
     QList<QComboBox*> comboBoxes = tv.viewport()->findChildren<QComboBox *>();
-    QCOMPARE(comboBoxes.count(), 1);
+    QCOMPARE(comboBoxes.size(), 1);
 
     QComboBox *editor = comboBoxes.at(0);
     QCOMPARE(editor->currentText(), "herr");
@@ -162,7 +158,7 @@ void tst_QSqlRelationalDelegate::comboBoxEditor()
     QVERIFY_SQL(model, submitAll());
 
     QSqlQuery qry(db);
-    QVERIFY_SQL(qry, exec("SELECT title_key FROM " + reltest1 + " WHERE id=1"));
+    QVERIFY_SQL(qry, exec("SELECT " + titleKeyField + " FROM " + reltest1 + " WHERE " + idField + "=1"));
     QVERIFY(qry.next());
     QCOMPARE(qry.value(0).toString(), "2");
 }

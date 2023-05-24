@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,22 +17,28 @@
     activeDescendantChanged,
     alert,
     ariaAttributeChanged,
+    ariaCurrentChanged,
     atomicChanged,
     autoCompleteChanged,
     autocorrectionOccured,
+    autofillAvailabilityChanged,
     blur,
     busyChanged,
+    caretBoundsChanged,
     checkedStateChanged,
+    checkedStateDescriptionChanged,
     childrenChanged,
     classNameChanged,
     clicked,
     collapsed,
     controlsChanged,
+    detailsChanged,
     describedByChanged,
     descriptionChanged,
     documentSelectionChanged,
     documentTitleChanged,
     dropeffectChanged,
+    editableTextChanged,
     enabledChanged,
     endOfTest,
     expanded,
@@ -57,7 +63,7 @@
     labeledByChanged,
     languageChanged,
     layoutComplete,
-    layoutInvalidated,   // fired when aria-busy goes false
+    layoutInvalidated,  // fired when aria-busy goes false
     liveRegionChanged,
     liveRegionCreated,
     liveRegionNodeChanged,  // fired on a node within a live region.
@@ -70,7 +76,6 @@
     mediaStoppedPlaying,
     menuEnd,
     menuItemSelected,
-    menuListItemSelected,
     menuListValueChanged,
     menuPopupEnd,
     menuPopupStart,
@@ -85,9 +90,14 @@
     nameChanged,
     objectAttributeChanged,
     otherAttributeChanged,
+    parentChanged,
     placeholderChanged,
     portalActivated,
     positionInSetChanged,
+    rangeValueChanged,
+    rangeValueMaxChanged,
+    rangeValueMinChanged,
+    rangeValueStepChanged,
     readonlyChanged,
     relatedNodeChanged,
     requiredStateChanged,
@@ -101,6 +111,7 @@
     scrolledToAnchor,
     selectedChanged,
     selectedChildrenChanged,
+    selectedValueChanged,
     selection,
     selectionAdd,
     selectionRemove,
@@ -110,15 +121,13 @@
     stateChanged,
     subtreeCreated,
     textAttributeChanged,
-    textChanged,
     textSelectionChanged,
+    textChanged,
     tooltipClosed,
     tooltipOpened,
     treeChanged,
-    valueChanged,
-    valueMaxChanged,
-    valueMinChanged,
-    valueStepChanged,
+    valueInTextFieldChanged,
+    valueChanged,  // Deprecated.
     windowActivated,
     windowDeactivated,
     windowVisibilityChanged
@@ -129,7 +138,6 @@
     abbr,
     alert,
     alertDialog,
-    anchor,
     application,
     article,
     audio,
@@ -148,6 +156,7 @@
     columnHeader,
     comboBoxGrouping,
     comboBoxMenuButton,
+    comboBoxSelect,
     comment,
     complementary,
     contentDeletion,
@@ -197,6 +206,8 @@
     docNoteRef,
     docNotice,
     docPageBreak,
+    docPageFooter,
+    docPageHeader,
     docPageList,
     docPart,
     docPreface,
@@ -233,9 +244,7 @@
     heading,
     iframe,
     iframePresentational,
-    ignored,
     image,
-    imageMap,
     imeCandidate,
     inlineTextBox,
     inputTime,
@@ -258,6 +267,28 @@
     mark,
     marquee,
     math,
+    mathMLFraction,
+    mathMLIdentifier,
+    mathMLMath,
+    mathMLMultiscripts,
+    mathMLNoneScript,
+    mathMLNumber,
+    mathMLOperator,
+    mathMLOver,
+    mathMLPrescriptDelimiter,
+    mathMLRoot,
+    mathMLRow,
+    mathMLSquareRoot,
+    mathMLStringLiteral,
+    mathMLSub,
+    mathMLSubSup,
+    mathMLSup,
+    mathMLTable,
+    mathMLTableCell,
+    mathMLTableRow,
+    mathMLText,
+    mathMLUnder,
+    mathMLUnderOver,
     menu,
     menuBar,
     menuItem,
@@ -270,12 +301,12 @@
     note,
     pane,
     paragraph,
-    pdfActionableHighlight, // PDF specific highlight role.
+    pdfActionableHighlight,
+    pdfRoot,
     pluginObject,
     popUpButton,
     portal,
     pre,
-    presentational,
     progressIndicator,
     radioButton,
     radioGroup,
@@ -292,13 +323,14 @@
     searchBox,
     section,
     slider,
-    sliderThumb,
     spinButton,
     splitter,
     staticText,
     status,
     strong,
+    subscript,
     suggestion,
+    superscript,
     svgRoot,
     switch,
     tab,
@@ -320,7 +352,6 @@
     treeItem,
     unknown,
     video,
-    webArea,
     webView,
     window
   };
@@ -367,7 +398,9 @@
     increment,
     internalInvalidateTree,
     loadInlineTextBoxes,
+    longClick,
     replaceSelectedText,
+    resumeMedia,
     scrollBackward,
     scrollDown,
     scrollForward,
@@ -376,6 +409,7 @@
     scrollUp,
     scrollToMakeVisible,
     scrollToPoint,
+    scrollToPositionAtRowColumn,
     setAccessibilityFocus,
     setScrollOffset,
     setSelection,
@@ -383,7 +417,10 @@
     setValue,
     showContextMenu,
     signalEndOfTest,
-    showTooltip
+    showTooltip,
+    startDuckingMedia,
+    stopDuckingMedia,
+    suspendMedia
   };
 
   // Possible changes to the automation tree. For any given atomic change
@@ -428,7 +465,6 @@
 
   // Where the node's name is from.
   enum NameFromType {
-    uninitialized,
     attribute,
     attributeExplicitlyEmpty,
     caption,
@@ -440,10 +476,15 @@
   };
 
   enum DescriptionFromType {
-    uninitialized,
-    attribute,
-    contents,
+    ariaDescription,
+    attributeExplicitlyEmpty,
+    buttonLabel,
+    popoverAttribute,
     relatedElement,
+    rubyAnnotation,
+    summary,
+    svgDescElement,
+    tableCaption,
     title
   };
 
@@ -453,14 +494,32 @@
     readOnly
   };
 
-  // Indicates the availability and type of interactive popup element
+  // Availability and types for an interactive popup element.
   enum HasPopup {
+    false,
     true,
     menu,
     listbox,
     tree,
     grid,
     dialog
+  };
+
+  // Indicates the ARIA-current state.
+  enum AriaCurrentState {
+    false,
+    true,
+    page,
+    step,
+    location,
+    date,
+    time
+  };
+
+  // Lists the values that `invalidState` can take on.
+  enum InvalidState {
+    false,
+    true
   };
 
   // Describes possible actions when performing a do default action.
@@ -482,7 +541,8 @@ enum MarkerType {
   grammar,
   textMatch,
   activeSuggestion,
-  suggestion
+  suggestion,
+  highlight
 };
 
 // The following three enums are associated with an $(ref:automation.AutomationIntent).
@@ -551,7 +611,9 @@ enum IntentInputEventType {
 // A text boundary associated with an $(ref:automation.AutomationIntent).
 enum IntentTextBoundaryType {
   character,
-  format,
+  formatEnd,
+  formatStart,
+  formatStartOrEnd,
   lineEnd,
   lineStart,
   lineStartOrEnd,
@@ -561,6 +623,7 @@ enum IntentTextBoundaryType {
   pageStartOrEnd,
   paragraphEnd,
   paragraphStart,
+  paragraphStartSkippingEmptyParagraphs,
   paragraphStartOrEnd,
   sentenceEnd,
   sentenceStart,
@@ -583,6 +646,13 @@ enum SortDirectionType {
   ascending,
   descending,
   other
+};
+
+// A type of AutomationPosition.
+enum PositionType {
+  null,
+  text,
+  tree
 };
 
   dictionary Rect {
@@ -786,8 +856,10 @@ enum SortDirectionType {
     static void moveToPreviousLineStartPosition();
     static void moveToNextLineEndPosition();
     static void moveToPreviousLineEndPosition();
+    static void moveToNextFormatStartPosition();
     static void moveToPreviousFormatStartPosition();
     static void moveToNextFormatEndPosition();
+    static void moveToPreviousFormatEndPosition();
     static void moveToNextParagraphStartPosition();
     static void moveToPreviousParagraphStartPosition();
     static void moveToNextParagraphEndPosition();
@@ -824,7 +896,7 @@ enum SortDirectionType {
 
     // The rendered location (as a bounding box) of this node in global
     // screen coordinates.
-    Rect? location;
+    Rect location;
 
     // Determines the location of the text within the node specified by
     // |startIndex| and |endIndex|, inclusively. Invokes |callback| with the
@@ -849,6 +921,10 @@ enum SortDirectionType {
     // The purpose of the node, other than the role, if any.
     DOMString? description;
 
+    // Description of the state of the checkbox.
+    // Used only when the node is checkable.
+    DOMString? checkedStateDescription;
+
     // The placeholder for this text field, if any.
     DOMString? placeholder;
 
@@ -859,6 +935,12 @@ enum SortDirectionType {
     // <a href="http://www.w3.org/TR/wai-aria/#namecalculation">
     // Accessible Name Calculation</a> process.
     DOMString? name;
+
+    // Explains what will happen when the doDefault action is performed.
+    DOMString? doDefaultLabel;
+
+    // Explains what will happen when the long click action is performed.
+    DOMString? longClickLabel;
 
     // The tooltip of the node, if any.
     DOMString? tooltip;
@@ -881,9 +963,26 @@ enum SortDirectionType {
     // The level of a heading or tree item.
     long? hierarchicalLevel;
 
+    // The current caret bounds in screen coordinates.
+    Rect? caretBounds;
+
     // The start and end index of each word in an inline text box.
     long[]? wordStarts;
     long[]? wordEnds;
+
+    // The start indexes of each sentence within the node's name.
+    long[]? sentenceStarts;
+
+    // The end indexes of each sentence within the node's name. For most nodes,
+    // the size of sentenceStarts array should be equal to the size of
+    // sentenceEnds array. Two exceptions are (1) node at the begining of a
+    // paragraph but the end of the node's sentences is in its following node.
+    // Such a node has one more start index. (2) Node at the end of a paragraph
+    // but the start of the node's sentences is in its previous node. Such a
+    // node has one more end index. For example, <p><b>Hello</b> world.</p> has
+    // two nodes. The first one has one start index (i.e., 0) but no end index.
+    // The second node has one end index (i.e., 7) but no start index.
+    long[]? sentenceEnds;
 
     // The start index of each word within the node's name. This is different
     // from wordStarts because it is not restricted to inline text boxes and can
@@ -1011,9 +1110,6 @@ enum SortDirectionType {
     // The character index of the end of the selection within this editable
     // text element; -1 if no selection.
     long? textSelEnd;
-
-    // The input type, like email or number.
-    DOMString? textInputType;
 
     // An array of Marker objects for this node.
     Marker[]? markers;
@@ -1162,6 +1258,18 @@ enum SortDirectionType {
     // Miscellaneous attributes.
     //
 
+    // Whether or not this node is a button.
+    boolean isButton;
+
+  // Whether or not this node is a checkbox.
+    boolean isCheckBox;
+
+    // Whether or not this node is a combobox.
+    boolean isComboBox;
+
+    // Whether or not this node is an image.
+    boolean isImage;
+
     // Aria auto complete.
     DOMString? autoComplete;
 
@@ -1196,14 +1304,8 @@ enum SortDirectionType {
     // The detected language code for this subtree.
     DOMString? detectedLanguage;
 
-    // Indicates the availability and type of interactive popup element
-    // true - the popup is a menu
-    // menu - the popup is a menu
-    // listbox - the popup is a listbox
-    // tree - the popup is a tree
-    // grid - the popup is a grid
-    // dialog - the popup is a dialog
-    DOMString? hasPopup;
+    // Indicates the availability and type of an interactive popup element.
+    HasPopup? hasPopup;
 
     // Input restriction, if any, such as readonly or disabled:
     // undefined - enabled control or other object that is not disabled
@@ -1254,8 +1356,20 @@ enum SortDirectionType {
     // Indicates the font family.
     DOMString fontFamily;
 
-    // Indicates whether this is a root of an editable subtree.
-    boolean editableRoot;
+    // Indicates whether the object functions as a text field which exposes its
+    // descendants. Use cases include the root of a content-editable region, an
+    // ARIA textbox which isn't currently editable and which has interactive
+    // descendants, and a <body> element that has "design-mode" set to "on".
+    boolean nonAtomicTextFieldRoot;
+
+    // Indicates aria-current state.
+    AriaCurrentState? ariaCurrentState;
+
+    // Indicates invalid-state.
+    InvalidState? invalidState;
+
+    // The application id for a tree rooted at this node.
+    DOMString? appId;
 
     //
     // Walking the tree.
@@ -1271,6 +1385,8 @@ enum SortDirectionType {
     AutomationNode? nextOnLine;
     AutomationNode? previousFocus;
     AutomationNode? nextFocus;
+    AutomationNode? previousWindowFocus;
+    AutomationNode? nextWindowFocus;
 
     // The index of this node in its parent node's list of children. If this is
     // the root node, this will be undefined.
@@ -1278,6 +1394,9 @@ enum SortDirectionType {
 
     // The sort direction of this node.
     SortDirectionType sortDirection;
+
+    // Explicitly set to true when this node is clickable.
+    boolean clickable;
 
     //
     // Actions.
@@ -1356,6 +1475,9 @@ enum SortDirectionType {
     // Suspend any media playing within this tree.
     static void suspendMedia();
 
+    // Simulates long click on node.
+    static void longClick();
+
     // Scrolls this scrollable container backward.
     static void scrollBackward(optional PerformActionCallback callback);
 
@@ -1430,7 +1552,7 @@ enum SortDirectionType {
         DOMString attribute);
 
     // Creates a position object backed by Chrome's accessibility position support.
-    static AutomationPosition createPosition(long offset, optional boolean isUpstream);
+    static AutomationPosition createPosition(PositionType type, long offset, optional boolean isUpstream);
   };
 
   // Called when the <code>AutomationNode</code> for the page is available.

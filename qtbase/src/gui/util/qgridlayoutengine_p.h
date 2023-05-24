@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGRIDLAYOUTENGINE_P_H
 #define QGRIDLAYOUTENGINE_P_H
@@ -52,14 +16,15 @@
 //
 
 #include <QtGui/private/qtguiglobal_p.h>
-#include "qalgorithms.h"
-#include "qbitarray.h"
-#include "qlist.h"
-#include "qmap.h"
-#include "qpair.h"
-#include <QtCore/qvector.h>
+
+#include <QtCore/qalgorithms.h>
+#include <QtCore/qbitarray.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qmap.h>
+#include <QtCore/qpair.h>
 #include <QtCore/qsize.h>
 #include <QtCore/qrect.h>
+
 #include <float.h>
 #include "qlayoutpolicy_p.h"
 #include "qabstractlayoutstyleinfo_p.h"
@@ -80,13 +45,6 @@ enum {
 };
 
 // do not reorder
-enum {
-    Hor,
-    Ver,
-    NOrientations
-};
-
-// do not reorder
 enum LayoutSide {
     Left,
     Top,
@@ -100,6 +58,44 @@ enum {
     VerticalConstraint,     // Height depends on the width
     UnknownConstraint,      // need to update cache
     UnfeasibleConstraint    // not feasible, it be has some items with Vertical and others with Horizontal constraints
+};
+
+/*
+    Minimal container to store Qt::Orientation-discriminated values.
+
+    The salient feature is the indexing operator, which takes
+    Qt::Orientation (and assumes it's passed only Qt::Horizontal or Qt::Vertical).
+*/
+template <typename T>
+class QHVContainer {
+    T m_data[2];
+
+    static_assert(Qt::Horizontal == 0x1);
+    static_assert(Qt::Vertical == 0x2);
+    static constexpr int map(Qt::Orientation o) noexcept
+    {
+        return int(o) - 1;
+    }
+    static constexpr int mapOther(Qt::Orientation o) noexcept
+    {
+        return 2 - int(o);
+    }
+public:
+    constexpr QHVContainer(const T &h, const T &v)
+            noexcept(std::is_nothrow_copy_constructible_v<T>)
+        : m_data{h, v} {}
+    QHVContainer() = default;
+
+    constexpr T &operator[](Qt::Orientation o) noexcept { return m_data[map(o)]; }
+    constexpr const T &operator[](Qt::Orientation o) const noexcept { return m_data[map(o)]; }
+
+    constexpr T &other(Qt::Orientation o) noexcept { return m_data[mapOther(o)]; }
+    constexpr const T &other(Qt::Orientation o) const noexcept { return m_data[mapOther(o)]; }
+
+    constexpr void transpose() noexcept { qSwap(m_data[0], m_data[1]); }
+    constexpr QHVContainer transposed() const
+        noexcept(std::is_nothrow_copy_constructible_v<T>)
+    { return {m_data[1], m_data[0]}; }
 };
 
 template <typename T>
@@ -162,56 +158,27 @@ public:
     qreal q_minimumAscent;
     inline qreal &q_sizes(int which)
     {
-        qreal *t;
-        switch (which) {
-        case Qt::MinimumSize:
-            t = &q_minimumSize;
-            break;
-        case Qt::PreferredSize:
-            t = &q_preferredSize;
-            break;
-        case Qt::MaximumSize:
-            t = &q_maximumSize;
-            break;
-        case Qt::MinimumDescent:
-            t = &q_minimumDescent;
-            break;
-        case (Qt::MinimumDescent + 1):
-            t = &q_minimumAscent;
-            break;
-        default:
-            t = nullptr;
-            break;
-        }
-        return *t;
+        return const_cast<qreal&>(static_cast<const QGridLayoutBox*>(this)->q_sizes(which));
     }
     inline const qreal &q_sizes(int which) const
     {
-        const qreal *t;
         switch (which) {
         case Qt::MinimumSize:
-            t = &q_minimumSize;
-            break;
+            return q_minimumSize;
         case Qt::PreferredSize:
-            t = &q_preferredSize;
-            break;
+            return q_preferredSize;
         case Qt::MaximumSize:
-            t = &q_maximumSize;
-            break;
+            return q_maximumSize;
         case Qt::MinimumDescent:
-            t = &q_minimumDescent;
-            break;
+            return q_minimumDescent;
         case (Qt::MinimumDescent + 1):
-            t = &q_minimumAscent;
-            break;
+            return q_minimumAscent;
         default:
-            t = nullptr;
-            break;
+            Q_UNREACHABLE();
         }
-        return *t;
     }
 };
-Q_DECLARE_TYPEINFO(QGridLayoutBox, Q_MOVABLE_TYPE); // cannot be Q_PRIMITIVE_TYPE, as q_maximumSize, say, is != 0
+Q_DECLARE_TYPEINFO(QGridLayoutBox, Q_RELOCATABLE_TYPE); // cannot be Q_PRIMITIVE_TYPE, as q_maximumSize, say, is != 0
 
 bool operator==(const QGridLayoutBox &box1, const QGridLayoutBox &box2);
 inline bool operator!=(const QGridLayoutBox &box1, const QGridLayoutBox &box2)
@@ -246,10 +213,10 @@ public:
 #endif
 
     QBitArray ignore;   // ### rename q_
-    QVector<QGridLayoutBox> boxes;
+    QList<QGridLayoutBox> boxes;
     MultiCellMap multiCellMap;
-    QVector<int> stretches;
-    QVector<qreal> spacings;
+    QList<int> stretches;
+    QList<qreal> spacings;
     bool hasIgnoreFlag;
 };
 
@@ -265,10 +232,10 @@ public:
 #endif
 
     int count;
-    QVector<QStretchParameter> stretches;
-    QVector<QLayoutParameter<qreal> > spacings;
-    QVector<Qt::Alignment> alignments;
-    QVector<QGridLayoutBox> boxes;
+    QList<QStretchParameter> stretches;
+    QList<QLayoutParameter<qreal>> spacings;
+    QList<Qt::Alignment> alignments;
+    QList<QGridLayoutBox> boxes;
 };
 
 
@@ -279,10 +246,10 @@ public:
                     Qt::Alignment alignment = { });
     virtual ~QGridLayoutItem() {}
 
-    inline int firstRow() const { return q_firstRows[Ver]; }
-    inline int firstColumn() const { return q_firstRows[Hor]; }
-    inline int rowSpan() const { return q_rowSpans[Ver]; }
-    inline int columnSpan() const { return q_rowSpans[Hor]; }
+    inline int firstRow() const { return q_firstRows[Qt::Vertical]; }
+    inline int firstColumn() const { return q_firstRows[Qt::Horizontal]; }
+    inline int rowSpan() const { return q_rowSpans[Qt::Vertical]; }
+    inline int columnSpan() const { return q_rowSpans[Qt::Horizontal]; }
     inline int lastRow() const { return firstRow() + rowSpan() - 1; }
     inline int lastColumn() const { return firstColumn() + columnSpan() - 1; }
 
@@ -303,7 +270,7 @@ public:
 
     virtual QLayoutPolicy::Policy sizePolicy(Qt::Orientation orientation) const = 0;
     virtual QSizeF sizeHint(Qt::SizeHint which, const QSizeF &constraint) const = 0;
-    virtual bool isIgnored() const { return false; }
+    virtual bool isEmpty() const { return false; }
 
     virtual void setGeometry(const QRectF &rect) = 0;
     /*
@@ -329,9 +296,9 @@ public:
 #endif
 
 private:
-    int q_firstRows[NOrientations];
-    int q_rowSpans[NOrientations];
-    int q_stretches[NOrientations];
+    QHVContainer<int> q_firstRows;
+    QHVContainer<int> q_rowSpans;
+    QHVContainer<int> q_stretches;
     Qt::Alignment q_alignment;
 
 };
@@ -344,8 +311,8 @@ public:
 
     int rowCount(Qt::Orientation orientation) const;
     int columnCount(Qt::Orientation orientation) const;
-    inline int rowCount() const { return q_infos[Ver].count; }
-    inline int columnCount() const { return q_infos[Hor].count; }
+    inline int rowCount() const { return q_infos[Qt::Vertical].count; }
+    inline int columnCount() const { return q_infos[Qt::Horizontal].count; }
     // returns the number of items inserted, which may be less than (rowCount * columnCount)
     int itemCount() const;
     QGridLayoutItem *itemAt(int index) const;
@@ -366,6 +333,12 @@ public:
                         Qt::Orientation orientation = Qt::Vertical);
     qreal rowSizeHint(Qt::SizeHint which, int row,
                       Qt::Orientation orientation = Qt::Vertical) const;
+
+    bool uniformCellWidths() const;
+    void setUniformCellWidths(bool uniformCellWidths);
+
+    bool uniformCellHeights() const;
+    void setUniformCellHeights(bool uniformCellHeights);
 
     void setRowAlignment(int row, Qt::Alignment alignment, Qt::Orientation orientation);
     Qt::Alignment rowAlignment(int row, Qt::Orientation orientation) const;
@@ -440,28 +413,30 @@ protected:
     QList<QGridLayoutItem *> q_items;
 private:
     // User input
-    QVector<QGridLayoutItem *> q_grid;
-    QLayoutParameter<qreal> q_defaultSpacings[NOrientations];
-    QGridLayoutRowInfo q_infos[NOrientations];
+    QList<QGridLayoutItem *> q_grid;
+    QHVContainer<QLayoutParameter<qreal>> q_defaultSpacings;
+    QHVContainer<QGridLayoutRowInfo> q_infos;
     Qt::LayoutDirection m_visualDirection;
 
     // Configuration
     Qt::Alignment m_defaultAlignment;
     unsigned m_snapToPixelGrid : 1;
+    unsigned m_uniformCellWidths : 1;
+    unsigned m_uniformCellHeights : 1;
 
     // Lazily computed from the above user input
-    mutable int q_cachedEffectiveFirstRows[NOrientations];
-    mutable int q_cachedEffectiveLastRows[NOrientations];
+    mutable QHVContainer<int> q_cachedEffectiveFirstRows;
+    mutable QHVContainer<int> q_cachedEffectiveLastRows;
     mutable quint8 q_cachedConstraintOrientation : 3;
 
     // this is useful to cache
-    mutable QGridLayoutBox q_totalBoxes[NOrientations];
+    mutable QHVContainer<QGridLayoutBox> q_totalBoxes;
     enum {
         NotCached = -2,             // Cache is empty. Happens when the engine is invalidated.
         CachedWithNoConstraint = -1 // cache has a totalBox without any HFW/WFH constraints.
         // >= 0                     // cache has a totalBox with this specific constraint.
     };
-    mutable qreal q_totalBoxCachedConstraints[NOrientations];   // holds the constraint used for the cached totalBox
+    mutable QHVContainer<qreal> q_totalBoxCachedConstraints;   // holds the constraint used for the cached totalBox
 
     // Layout item input
     mutable QGridLayoutRowData q_columnData;
@@ -469,11 +444,11 @@ private:
 
     // Output
     mutable QSizeF q_cachedSize;
-    mutable QVector<qreal> q_xx;
-    mutable QVector<qreal> q_yy;
-    mutable QVector<qreal> q_widths;
-    mutable QVector<qreal> q_heights;
-    mutable QVector<qreal> q_descents;
+    mutable QList<qreal> q_xx;
+    mutable QList<qreal> q_yy;
+    mutable QList<qreal> q_widths;
+    mutable QList<qreal> q_heights;
+    mutable QList<qreal> q_descents;
 
     friend class QGridLayoutItem;
 };

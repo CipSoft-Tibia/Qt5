@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QV4PROFILING_H
 #define QV4PROFILING_H
@@ -51,7 +15,7 @@
 // We mean it.
 //
 
-#include "qv4global_p.h"
+#include <QtQml/private/qv4global_p.h>
 #include "qv4engine_p.h"
 #include "qv4function_p.h"
 
@@ -138,9 +102,7 @@ struct MemoryAllocationProperties {
 
 class FunctionCall {
 public:
-
-    FunctionCall() : m_function(nullptr), m_start(0), m_end(0)
-    { Q_ASSERT_X(false, Q_FUNC_INFO, "Cannot construct a function call without function"); }
+    FunctionCall() : m_function(nullptr), m_start(0), m_end(0) {}
 
     FunctionCall(Function *function, qint64 start, qint64 end) :
         m_function(function), m_start(start), m_end(end)
@@ -150,18 +112,38 @@ public:
         m_function(other.m_function), m_start(other.m_start), m_end(other.m_end)
     { m_function->executableCompilationUnit()->addref(); }
 
+    FunctionCall(FunctionCall &&other) noexcept
+        : m_function(std::exchange(other.m_function, nullptr))
+        , m_start(std::exchange(other.m_start, 0))
+        , m_end(std::exchange(other.m_end, 0))
+    {}
+
     ~FunctionCall()
-    { m_function->executableCompilationUnit()->release(); }
+    {
+        if (m_function)
+            m_function->executableCompilationUnit()->release();
+    }
 
     FunctionCall &operator=(const FunctionCall &other) {
         if (&other != this) {
-            other.m_function->executableCompilationUnit()->addref();
-            m_function->executableCompilationUnit()->release();
+            if (other.m_function)
+                other.m_function->executableCompilationUnit()->addref();
+            if (m_function)
+                m_function->executableCompilationUnit()->release();
             m_function = other.m_function;
             m_start = other.m_start;
             m_end = other.m_end;
         }
         return *this;
+    }
+
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(FunctionCall)
+
+    void swap(FunctionCall &other) noexcept
+    {
+        qt_ptr_swap(m_function, other.m_function);
+        std::swap(m_start, other.m_start);
+        std::swap(m_end, other.m_end);
     }
 
     Function *function() const
@@ -254,7 +236,7 @@ public:
     void reportData();
     void setTimer(const QElapsedTimer &timer) { m_timer = timer; }
 
-signals:
+Q_SIGNALS:
     void dataReady(const QV4::Profiling::FunctionLocationHash &,
                    const QVector<QV4::Profiling::FunctionCallProperties> &,
                    const QVector<QV4::Profiling::MemoryAllocationProperties> &);
@@ -276,7 +258,6 @@ public:
     // It's enough to ref() the function in the destructor as it will probably not disappear while
     // it's executing ...
     FunctionCallProfiler(ExecutionEngine *engine, Function *f)
-        : profiler(nullptr)
     {
         Profiler *p = engine->profiler();
         if (Q_UNLIKELY(p) && (p->featuresEnabled & (1 << Profiling::FeatureFunctionCall))) {
@@ -292,20 +273,20 @@ public:
             profiler->m_data.append(FunctionCall(function, startTime, profiler->m_timer.nsecsElapsed()));
     }
 
-    Profiler *profiler;
-    Function *function;
-    qint64 startTime;
+    Profiler *profiler = nullptr;
+    Function *function = nullptr;
+    qint64 startTime = 0;
 };
 
 
 } // namespace Profiling
 } // namespace QV4
 
-Q_DECLARE_TYPEINFO(QV4::Profiling::MemoryAllocationProperties, Q_MOVABLE_TYPE);
-Q_DECLARE_TYPEINFO(QV4::Profiling::FunctionCallProperties, Q_MOVABLE_TYPE);
-Q_DECLARE_TYPEINFO(QV4::Profiling::FunctionCall, Q_MOVABLE_TYPE);
-Q_DECLARE_TYPEINFO(QV4::Profiling::FunctionLocation, Q_MOVABLE_TYPE);
-Q_DECLARE_TYPEINFO(QV4::Profiling::Profiler::SentMarker, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QV4::Profiling::MemoryAllocationProperties, Q_RELOCATABLE_TYPE);
+Q_DECLARE_TYPEINFO(QV4::Profiling::FunctionCallProperties, Q_RELOCATABLE_TYPE);
+Q_DECLARE_TYPEINFO(QV4::Profiling::FunctionCall, Q_RELOCATABLE_TYPE);
+Q_DECLARE_TYPEINFO(QV4::Profiling::FunctionLocation, Q_RELOCATABLE_TYPE);
+Q_DECLARE_TYPEINFO(QV4::Profiling::Profiler::SentMarker, Q_RELOCATABLE_TYPE);
 
 QT_END_NAMESPACE
 Q_DECLARE_METATYPE(QV4::Profiling::FunctionLocationHash)

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,22 +7,21 @@
 
 #include <utility>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/memory/scoped_refptr.h"
 #include "cc/paint/node_id.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/platform/web_vector.h"
 #include "third_party/blink/renderer/core/content_capture/content_holder.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
-#include "third_party/blink/renderer/platform/heap/heap_allocator.h"
 #include "third_party/blink/renderer/platform/heap/member.h"
-#include "third_party/blink/renderer/platform/wtf/hash_map.h"
-#include "third_party/blink/renderer/platform/wtf/hash_set.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
 
 class Document;
-class SentNodes;
 
 // This class wraps the captured content and the detached nodes that need to be
 // sent out by the ContentCaptureTask, it has a Document to DocumentSession
@@ -48,23 +47,27 @@ class TaskSession final : public GarbageCollected<TaskSession> {
   class DocumentSession final : public GarbageCollected<DocumentSession> {
    public:
     // The callback for total_sent_nodes_ metrics.
-    using SentNodeCountCallback = base::RepeatingCallback<void(size_t)>;
+    using SentNodeCountCallback = base::RepeatingCallback<void(int)>;
 
     DocumentSession(const Document& document,
-                    SentNodes& sent_nodes,
                     SentNodeCountCallback& call_back);
     ~DocumentSession();
-    void AddCapturedNode(Node& node, const gfx::Rect& rect);
-    void AddDetachedNode(int64_t id);
-    void AddChangedNode(Node& node, const gfx::Rect& rect);
+    // Add the given |node| to changed node set if the node was sent, return
+    // true if succeed.
+    bool AddChangedNode(Node& node);
+    // Add the given |node| to detached node set if the node was sent, return
+    // true if succeed.
+    bool AddDetachedNode(const Node& node);
+    // Invoked on the content of this document is captured.
+    void OnContentCaptured(Node& node, const gfx::Rect& visual_rect);
+    // Invoked after TaskSession grouped all captured content.
+    void OnGroupingComplete();
     bool HasUnsentData() const {
       return HasUnsentCapturedContent() || HasUnsentChangedContent() ||
              HasUnsentDetachedNodes();
     }
-    bool HasUnsentCapturedContent() const {
-      return !captured_content_.IsEmpty();
-    }
-    bool HasUnsentChangedContent() const { return !changed_content_.IsEmpty(); }
+    bool HasUnsentCapturedContent() const { return !captured_content_.empty(); }
+    bool HasUnsentChangedContent() const { return !changed_content_.empty(); }
     bool HasUnsentDetachedNodes() const { return !detached_nodes_.empty(); }
     WebVector<int64_t> MoveDetachedNodes();
     const Document* GetDocument() const { return document_; }
@@ -84,25 +87,34 @@ class TaskSession final : public GarbageCollected<TaskSession> {
     void Trace(Visitor*) const;
 
    private:
-    // The captured content that belongs to this document.
+    // The list of captured content that needs to be sent.
     HeapHashMap<WeakMember<Node>, gfx::Rect> captured_content_;
-    // The list of content id of node that has been detached from the
-    // LayoutTree.
-    WebVector<int64_t> detached_nodes_;
-    WeakMember<const Document> document_;
-    Member<SentNodes> sent_nodes_;
     // The list of changed nodes that needs to be sent.
     HeapHashMap<WeakMember<Node>, gfx::Rect> changed_content_;
+    // The list of content id of node that has been detached from the
+    // LayoutTree and needs to be sent.
+    WebVector<int64_t> detached_nodes_;
+
+    WeakMember<const Document> document_;
+    // A set of weak reference of the node that has been sent.
+    HeapHashSet<WeakMember<const Node>> sent_nodes_;
+    // A set of node that has been sent in previous capturing and still visible
+    // now, it is only valid while TaskSession is groupping the captured
+    // content, the nodes are moved and replace the |sent_nodes_| in
+    // OnGroupingComplete().
+    HeapHashSet<WeakMember<const Node>> visible_sent_nodes_;
+    // A set of node whose value has been changed since last capture.
+    HeapHashSet<WeakMember<const Node>> changed_nodes_;
 
     bool first_data_has_sent_ = false;
     // This is for the metrics to record the total node that has been sent.
-    size_t total_sent_nodes_ = 0;
+    int total_sent_nodes_ = 0;
     // Histogram could be disabed in low time resolution OS, see
     // base::TimeTicks::IsHighResolution and ContentCaptureTask.
-    base::Optional<SentNodeCountCallback> callback_;
+    absl::optional<SentNodeCountCallback> callback_;
   };
 
-  TaskSession(SentNodes& sent_nodes);
+  TaskSession();
 
   // Returns the DocumentSession that hasn't been sent.
   DocumentSession* GetNextUnsentDocumentSession();
@@ -131,11 +143,6 @@ class TaskSession final : public GarbageCollected<TaskSession> {
       const Vector<cc::NodeInfo>& captured_content);
   DocumentSession& EnsureDocumentSession(const Document& doc);
   DocumentSession* GetDocumentSession(const Document& document) const;
-
-  Member<SentNodes> sent_nodes_;
-
-  // The list of node whose value has changed.
-  HeapHashSet<WeakMember<Node>> changed_nodes_;
 
   // This owns the DocumentSession which is released along with Document.
   HeapHashMap<WeakMember<const Document>, Member<DocumentSession>>

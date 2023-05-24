@@ -1,0 +1,61 @@
+--- ./test_messages_proto3.proto_orig	2023-05-09 19:49:43.045455610 +0200
++++ ./test_messages_proto3.proto	2023-05-09 19:58:47.832982370 +0200
+@@ -46,11 +46,6 @@
+ option optimize_for = SPEED;
+ 
+ import "google/protobuf/any.proto";
+-import "google/protobuf/duration.proto";
+-import "google/protobuf/field_mask.proto";
+-import "google/protobuf/struct.proto";
+-import "google/protobuf/timestamp.proto";
+-import "google/protobuf/wrappers.proto";
+ 
+ option cc_enable_arenas = true;
+ 
+@@ -203,46 +198,8 @@
+     float oneof_float = 117;
+     double oneof_double = 118;
+     NestedEnum oneof_enum = 119;
+-    google.protobuf.NullValue oneof_null_value = 120;
+   }
+ 
+-  // Well-known types
+-  google.protobuf.BoolValue optional_bool_wrapper = 201;
+-  google.protobuf.Int32Value optional_int32_wrapper = 202;
+-  google.protobuf.Int64Value optional_int64_wrapper = 203;
+-  google.protobuf.UInt32Value optional_uint32_wrapper = 204;
+-  google.protobuf.UInt64Value optional_uint64_wrapper = 205;
+-  google.protobuf.FloatValue optional_float_wrapper = 206;
+-  google.protobuf.DoubleValue optional_double_wrapper = 207;
+-  google.protobuf.StringValue optional_string_wrapper = 208;
+-  google.protobuf.BytesValue optional_bytes_wrapper = 209;
+-
+-  repeated google.protobuf.BoolValue repeated_bool_wrapper = 211;
+-  repeated google.protobuf.Int32Value repeated_int32_wrapper = 212;
+-  repeated google.protobuf.Int64Value repeated_int64_wrapper = 213;
+-  repeated google.protobuf.UInt32Value repeated_uint32_wrapper = 214;
+-  repeated google.protobuf.UInt64Value repeated_uint64_wrapper = 215;
+-  repeated google.protobuf.FloatValue repeated_float_wrapper = 216;
+-  repeated google.protobuf.DoubleValue repeated_double_wrapper = 217;
+-  repeated google.protobuf.StringValue repeated_string_wrapper = 218;
+-  repeated google.protobuf.BytesValue repeated_bytes_wrapper = 219;
+-
+-  google.protobuf.Duration optional_duration = 301;
+-  google.protobuf.Timestamp optional_timestamp = 302;
+-  google.protobuf.FieldMask optional_field_mask = 303;
+-  google.protobuf.Struct optional_struct = 304;
+-  google.protobuf.Any optional_any = 305;
+-  google.protobuf.Value optional_value = 306;
+-  google.protobuf.NullValue optional_null_value = 307;
+-
+-  repeated google.protobuf.Duration repeated_duration = 311;
+-  repeated google.protobuf.Timestamp repeated_timestamp = 312;
+-  repeated google.protobuf.FieldMask repeated_fieldmask = 313;
+-  repeated google.protobuf.Struct repeated_struct = 324;
+-  repeated google.protobuf.Any repeated_any = 315;
+-  repeated google.protobuf.Value repeated_value = 316;
+-  repeated google.protobuf.ListValue repeated_list_value = 317;
+-
+   // Test field-name-to-JSON-name convention.
+   // (protobuf says names can be any valid C/C++ identifier.)
+   int32 fieldname1 = 401;

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,8 @@
 
 #include <string>
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/run_loop.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings.h"
@@ -26,6 +25,12 @@
 
 class BackgroundSyncPermissionContextTest
     : public content::RenderViewHostTestHarness {
+ public:
+  BackgroundSyncPermissionContextTest(
+      const BackgroundSyncPermissionContextTest&) = delete;
+  BackgroundSyncPermissionContextTest& operator=(
+      const BackgroundSyncPermissionContextTest&) = delete;
+
  protected:
   BackgroundSyncPermissionContextTest() = default;
   ~BackgroundSyncPermissionContextTest() override = default;
@@ -38,13 +43,13 @@ class BackgroundSyncPermissionContextTest
     base::RunLoop run_loop;
 
     const permissions::PermissionRequestID id(
-        web_contents()->GetMainFrame()->GetProcess()->GetID(),
-        web_contents()->GetMainFrame()->GetRoutingID(), /* request_id= */ -1);
+        web_contents()->GetPrimaryMainFrame()->GetGlobalId(),
+        permissions::PermissionRequestID::RequestLocalId());
     permission_context->RequestPermission(
-        web_contents(), id, url, /* user_gesture= */ false,
-        base::AdaptCallbackForRepeating(base::BindOnce(
+        id, url, /* user_gesture= */ false,
+        base::BindOnce(
             &BackgroundSyncPermissionContextTest::TrackPermissionDecision,
-            base::Unretained(this), run_loop.QuitClosure())));
+            base::Unretained(this), run_loop.QuitClosure()));
 
     run_loop.Run();
   }
@@ -62,8 +67,6 @@ class BackgroundSyncPermissionContextTest
 
  private:
   bool permission_granted_;
-
-  DISALLOW_COPY_AND_ASSIGN(BackgroundSyncPermissionContextTest);
 };
 
 // Background sync permission should be allowed by default for a secure origin.
@@ -95,7 +98,7 @@ TEST_F(BackgroundSyncPermissionContextTest, TestBlockOrigin) {
       ->GetSettingsMap(browser_context())
       ->SetContentSettingDefaultScope(url1, GURL(),
                                       ContentSettingsType::BACKGROUND_SYNC,
-                                      std::string(), CONTENT_SETTING_BLOCK);
+                                      CONTENT_SETTING_BLOCK);
 
   NavigateAndRequestPermission(url1, &permission_context);
 

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,19 +21,9 @@ ppapi::Preferences PpapiPreferencesBuilder::Build(
   ppapi_prefs.default_font_size = prefs.default_font_size;
   ppapi_prefs.default_fixed_font_size = prefs.default_fixed_font_size;
   ppapi_prefs.number_of_cpu_cores = prefs.number_of_cpu_cores;
-  ppapi_prefs.is_3d_supported =
-      (prefs.flash_3d_enabled &&
-       (gpu_feature_info.status_values[gpu::GPU_FEATURE_TYPE_FLASH3D] ==
-        gpu::kGpuFeatureStatusEnabled));
-  ppapi_prefs.is_stage3d_supported =
-      (prefs.flash_stage3d_enabled &&
-       (gpu_feature_info.status_values[gpu::GPU_FEATURE_TYPE_FLASH_STAGE3D] ==
-        gpu::kGpuFeatureStatusEnabled));
-  ppapi_prefs.is_stage3d_baseline_supported =
-      (prefs.flash_stage3d_baseline_enabled &&
-       (gpu_feature_info
-            .status_values[gpu::GPU_FEATURE_TYPE_FLASH_STAGE3D_BASELINE] ==
-        gpu::kGpuFeatureStatusEnabled));
+  ppapi_prefs.is_3d_supported = false;
+  ppapi_prefs.is_stage3d_supported = false;
+  ppapi_prefs.is_stage3d_baseline_supported = false;
   ppapi_prefs.is_accelerated_video_decode_enabled =
       (prefs.accelerated_video_decode_enabled &&
        (gpu_feature_info

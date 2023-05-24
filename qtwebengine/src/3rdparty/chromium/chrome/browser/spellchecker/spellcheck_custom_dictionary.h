@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,11 +11,11 @@
 
 #include "base/cancelable_callback.h"
 #include "base/files/file_path.h"
-#include "base/macros.h"
+#include "base/gtest_prod_util.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
-#include "base/sequenced_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
 #include "components/spellcheck/browser/spellcheck_dictionary.h"
 #ifndef TOOLKIT_QT
 #include "components/sync/model/model_error.h"
@@ -28,7 +28,6 @@ class Location;
 }
 
 namespace syncer {
-class SyncErrorFactory;
 class SyncChangeProcessor;
 }
 
@@ -53,6 +52,10 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
   class Change {
    public:
     Change();
+
+    Change(const Change&) = delete;
+    Change& operator=(const Change&) = delete;
+
     ~Change();
 
     // Adds |word| in this change.
@@ -63,6 +66,10 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
 
     // Removes |word| in this change.
     void RemoveWord(const std::string& word);
+
+    // Clear the whole dictionary before doing other operations. When saved,
+    // also deletes the backup file.
+    void Clear();
 
     // Prepares this change to be applied to |words| by removing duplicate and
     // invalid words from words to be added and removing missing words from
@@ -77,8 +84,13 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
       return to_remove_;
     }
 
+    // Returns true if the dictionary should be cleared first.
+    bool clear() const { return clear_; }
+
     // Returns true if there are no changes to be made. Otherwise returns false.
-    bool empty() const { return to_add_.empty() && to_remove_.empty(); }
+    bool empty() const {
+      return !clear_ && to_add_.empty() && to_remove_.empty();
+    }
 
    private:
     // The words to be added.
@@ -87,7 +99,8 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
     // The words to be removed.
     std::set<std::string> to_remove_;
 
-    DISALLOW_COPY_AND_ASSIGN(Change);
+    // Whether to clear everything before adding words.
+    bool clear_ = false;
   };
 
   // Interface to implement for dictionary load and change observers.
@@ -102,6 +115,10 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
 
   struct LoadFileResult {
     LoadFileResult();
+
+    LoadFileResult(const LoadFileResult&) = delete;
+    LoadFileResult& operator=(const LoadFileResult&) = delete;
+
     ~LoadFileResult();
 
     // The contents of the custom dictionary file or its backup. Does not
@@ -111,14 +128,16 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
     // True when the custom dictionary file on disk has a valid checksum and
     // contains only valid words.
     bool is_valid_file;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(LoadFileResult);
   };
 
   // The dictionary will be saved in |dictionary_directory_name|.
   explicit SpellcheckCustomDictionary(
       const base::FilePath& dictionary_directory_name);
+
+  SpellcheckCustomDictionary(const SpellcheckCustomDictionary&) = delete;
+  SpellcheckCustomDictionary& operator=(const SpellcheckCustomDictionary&) =
+      delete;
+
   ~SpellcheckCustomDictionary() override;
 
   // Returns the in-memory cache of words in the custom dictionary.
@@ -136,6 +155,9 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
 
   // Returns true if the dictionary contains |word|. Otherwise returns false.
   bool HasWord(const std::string& word) const;
+
+  // Removes all words in the dictionary, and schedules a write to disk.
+  void Clear();
 
   // Adds |observer| to be notified of dictionary events and changes.
   void AddObserver(Observer* observer);
@@ -157,14 +179,13 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
 #ifndef TOOLKIT_QT
   // Overridden from syncer::SyncableService:
   void WaitUntilReadyToSync(base::OnceClosure done) override;
-  base::Optional<syncer::ModelError> MergeDataAndStartSyncing(
+  absl::optional<syncer::ModelError> MergeDataAndStartSyncing(
       syncer::ModelType type,
       const syncer::SyncDataList& initial_sync_data,
-      std::unique_ptr<syncer::SyncChangeProcessor> sync_processor,
-      std::unique_ptr<syncer::SyncErrorFactory> sync_error_handler) override;
+      std::unique_ptr<syncer::SyncChangeProcessor> sync_processor) override;
   void StopSyncing(syncer::ModelType type) override;
   syncer::SyncDataList GetAllSyncDataForTesting(syncer::ModelType type) const;
-  base::Optional<syncer::ModelError> ProcessSyncChanges(
+  absl::optional<syncer::ModelError> ProcessSyncChanges(
       const base::Location& from_here,
       const syncer::SyncChangeList& change_list) override;
 #endif
@@ -172,6 +193,9 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
  private:
   friend class DictionarySyncIntegrationTestHelper;
   friend class SpellcheckCustomDictionaryTest;
+
+  FRIEND_TEST_ALL_PREFIXES(ChromeBrowsingDataRemoverDelegateTest,
+                           WipeCustomDictionaryData);
 
   // Returns the list of words in the custom spellcheck dictionary at |path|.
   // Validates that the custom dictionary file does not have duplicates and
@@ -204,7 +228,7 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
   // Notifies the sync service of the |dictionary_change|. Syncs up to the
   // maximum syncable words on the server. Disables syncing of this dictionary
   // if the server contains the maximum number of syncable words.
-  base::Optional<syncer::ModelError> Sync(const Change& dictionary_change);
+  absl::optional<syncer::ModelError> Sync(const Change& dictionary_change);
 #endif
 
   // Notifies observers of the dictionary change if the dictionary has been
@@ -226,9 +250,6 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
 #ifndef TOOLKIT_QT
   // Used to send local changes to the sync infrastructure.
   std::unique_ptr<syncer::SyncChangeProcessor> sync_processor_;
-
-  // Used to send sync-related errors to the sync infrastructure.
-  std::unique_ptr<syncer::SyncErrorFactory> sync_error_handler_;
 #endif
 
   // True if the dictionary has been loaded. Otherwise false.
@@ -241,8 +262,6 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
 
   // Used to create weak pointers for an instance of this class.
   base::WeakPtrFactory<SpellcheckCustomDictionary> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(SpellcheckCustomDictionary);
 };
 
 #endif  // CHROME_BROWSER_SPELLCHECKER_SPELLCHECK_CUSTOM_DICTIONARY_H_

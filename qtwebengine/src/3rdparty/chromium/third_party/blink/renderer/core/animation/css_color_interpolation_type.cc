@@ -1,93 +1,46 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/animation/css_color_interpolation_type.h"
 
 #include <memory>
+#include <tuple>
 #include <utility>
 
-#include "base/memory/ptr_util.h"
 #include "third_party/blink/renderer/core/animation/color_property_functions.h"
+#include "third_party/blink/renderer/core/animation/interpolable_color.h"
 #include "third_party/blink/renderer/core/animation/interpolable_value.h"
-#include "third_party/blink/renderer/core/css/css_color_value.h"
+#include "third_party/blink/renderer/core/css/css_color.h"
 #include "third_party/blink/renderer/core/css/css_identifier_value.h"
+#include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/css/resolver/style_resolver_state.h"
-#include "third_party/blink/renderer/core/layout/layout_theme.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 
 namespace blink {
 
-enum InterpolableColorIndex : unsigned {
-  kRed,
-  kGreen,
-  kBlue,
-  kAlpha,
-  kCurrentcolor,
-  kWebkitActivelink,
-  kWebkitLink,
-  kQuirkInherit,
-  kInterpolableColorIndexCount,
-};
-
-static std::unique_ptr<InterpolableValue> CreateInterpolableColorForIndex(
-    InterpolableColorIndex index) {
-  DCHECK_LT(index, kInterpolableColorIndexCount);
-  auto list = std::make_unique<InterpolableList>(kInterpolableColorIndexCount);
-  for (unsigned i = 0; i < kInterpolableColorIndexCount; i++)
-    list->Set(i, std::make_unique<InterpolableNumber>(i == index));
-  return std::move(list);
-}
-
-std::unique_ptr<InterpolableValue>
+std::unique_ptr<InterpolableColor>
 CSSColorInterpolationType::CreateInterpolableColor(const Color& color) {
-  auto list = std::make_unique<InterpolableList>(kInterpolableColorIndexCount);
-  list->Set(kRed,
-            std::make_unique<InterpolableNumber>(color.Red() * color.Alpha()));
-  list->Set(kGreen, std::make_unique<InterpolableNumber>(color.Green() *
-                                                         color.Alpha()));
-  list->Set(kBlue,
-            std::make_unique<InterpolableNumber>(color.Blue() * color.Alpha()));
-  list->Set(kAlpha, std::make_unique<InterpolableNumber>(color.Alpha()));
-  list->Set(kCurrentcolor, std::make_unique<InterpolableNumber>(0));
-  list->Set(kWebkitActivelink, std::make_unique<InterpolableNumber>(0));
-  list->Set(kWebkitLink, std::make_unique<InterpolableNumber>(0));
-  list->Set(kQuirkInherit, std::make_unique<InterpolableNumber>(0));
-  return std::move(list);
+  return InterpolableColor::Create(color);
 }
 
-std::unique_ptr<InterpolableValue>
+std::unique_ptr<InterpolableColor>
 CSSColorInterpolationType::CreateInterpolableColor(CSSValueID keyword) {
-  switch (keyword) {
-    case CSSValueID::kCurrentcolor:
-      return CreateInterpolableColorForIndex(kCurrentcolor);
-    case CSSValueID::kWebkitActivelink:
-      return CreateInterpolableColorForIndex(kWebkitActivelink);
-    case CSSValueID::kWebkitLink:
-      return CreateInterpolableColorForIndex(kWebkitLink);
-    case CSSValueID::kInternalQuirkInherit:
-      return CreateInterpolableColorForIndex(kQuirkInherit);
-    case CSSValueID::kWebkitFocusRingColor:
-      return CreateInterpolableColor(LayoutTheme::GetTheme().FocusRingColor());
-    default:
-      DCHECK(StyleColor::IsColorKeyword(keyword));
-      // TODO(crbug.com/929098) Need to pass an appropriate color scheme here.
-      return CreateInterpolableColor(StyleColor::ColorFromKeyword(
-          keyword, ComputedStyle::InitialStyle().UsedColorScheme()));
-  }
+  return InterpolableColor::Create(keyword);
 }
 
-std::unique_ptr<InterpolableValue>
+std::unique_ptr<InterpolableColor>
 CSSColorInterpolationType::CreateInterpolableColor(const StyleColor& color) {
   if (!color.IsNumeric())
     return CreateInterpolableColor(color.GetColorKeyword());
   return CreateInterpolableColor(color.GetColor());
 }
 
-std::unique_ptr<InterpolableValue>
+std::unique_ptr<InterpolableColor>
 CSSColorInterpolationType::MaybeCreateInterpolableColor(const CSSValue& value) {
-  if (auto* color_value = DynamicTo<cssvalue::CSSColorValue>(value))
+  if (auto* color_value = DynamicTo<cssvalue::CSSColor>(value)) {
     return CreateInterpolableColor(color_value->Value());
+  }
   auto* identifier_value = DynamicTo<CSSIdentifierValue>(value);
   if (!identifier_value)
     return nullptr;
@@ -96,83 +49,133 @@ CSSColorInterpolationType::MaybeCreateInterpolableColor(const CSSValue& value) {
   return CreateInterpolableColor(identifier_value->GetValueID());
 }
 
-static void AddPremultipliedColor(double& red,
-                                  double& green,
-                                  double& blue,
-                                  double& alpha,
-                                  double fraction,
-                                  const Color& color) {
-  double color_alpha = color.Alpha();
-  red += fraction * color.Red() * color_alpha;
-  green += fraction * color.Green() * color_alpha;
-  blue += fraction * color.Blue() * color_alpha;
-  alpha += fraction * color_alpha;
+Color CSSColorInterpolationType::GetColor(const InterpolableValue& value) {
+  const InterpolableColor& color = To<InterpolableColor>(value);
+  return color.GetColor();
 }
+
+bool CSSColorInterpolationType::IsNonKeywordColor(
+    const InterpolableValue& value) {
+  if (!value.IsColor())
+    return false;
+
+  const InterpolableColor& color = To<InterpolableColor>(value);
+  return !color.IsKeywordColor();
+}
+
+namespace {
+std::tuple<double, double, double, double> AddPremultipliedColor(
+    double param0,
+    double param1,
+    double param2,
+    double alpha,
+    double fraction,
+    Color color,
+    Color::ColorInterpolationSpace color_interpolation_space) {
+  color.ConvertToColorInterpolationSpace(color_interpolation_space);
+  return std::make_tuple(
+      param0 + fraction * color.Param0() * color.FloatAlpha(),
+      param1 + fraction * color.Param1() * color.FloatAlpha(),
+      param2 + fraction * color.Param2() * color.FloatAlpha(),
+      alpha + fraction * color.FloatAlpha());
+}
+
+std::tuple<double, double, double> UnpremultiplyColor(double param0,
+                                                      double param1,
+                                                      double param2,
+                                                      double alpha) {
+  return std::make_tuple(param0 / alpha, param1 / alpha, param2 / alpha);
+}
+}  // namespace
 
 Color CSSColorInterpolationType::ResolveInterpolableColor(
     const InterpolableValue& interpolable_color,
     const StyleResolverState& state,
     bool is_visited,
     bool is_text_decoration) {
-  const auto& list = To<InterpolableList>(interpolable_color);
-  DCHECK_EQ(list.length(), kInterpolableColorIndexCount);
+  const InterpolableColor& color = To<InterpolableColor>(interpolable_color);
 
-  double red = To<InterpolableNumber>(list.Get(kRed))->Value();
-  double green = To<InterpolableNumber>(list.Get(kGreen))->Value();
-  double blue = To<InterpolableNumber>(list.Get(kBlue))->Value();
-  double alpha = To<InterpolableNumber>(list.Get(kAlpha))->Value();
+  double param0 = color.Param0();
+  double param1 = color.Param1();
+  double param2 = color.Param2();
+  double alpha = color.Alpha();
+  Color::ColorInterpolationSpace color_interpolation_space =
+      color.ColorInterpolationSpace();
 
-  if (double currentcolor_fraction =
-          To<InterpolableNumber>(list.Get(kCurrentcolor))->Value()) {
-    auto current_color_getter = is_visited
-                                    ? ColorPropertyFunctions::GetVisitedColor
-                                    : ColorPropertyFunctions::GetUnvisitedColor;
+  if (double currentcolor_fraction = color.GetColorFraction(
+          InterpolableColor::ColorKeyword::kCurrentcolor)) {
+    auto current_color_getter =
+        is_visited
+            ? ColorPropertyFunctions::GetVisitedColor<ComputedStyleBuilder>
+            : ColorPropertyFunctions::GetUnvisitedColor<ComputedStyleBuilder>;
     StyleColor current_style_color = StyleColor::CurrentColor();
     if (is_text_decoration) {
       current_style_color =
           current_color_getter(
               CSSProperty::Get(CSSPropertyID::kWebkitTextFillColor),
-              *state.Style())
-              .Access();
+              state.StyleBuilder())
+              .value();
     }
     if (current_style_color.IsCurrentColor()) {
       current_style_color =
           current_color_getter(CSSProperty::Get(CSSPropertyID::kColor),
-                               *state.Style())
-              .Access();
+                               state.StyleBuilder())
+              .value();
     }
-    AddPremultipliedColor(red, green, blue, alpha, currentcolor_fraction,
-                          current_style_color.GetColor());
+    std::tie(param0, param1, param2, alpha) = AddPremultipliedColor(
+        param0, param1, param2, alpha, currentcolor_fraction,
+        current_style_color.Resolve(Color(),
+                                    state.StyleBuilder().UsedColorScheme()),
+        color_interpolation_space);
   }
   const TextLinkColors& colors = state.GetDocument().GetTextLinkColors();
-  if (double webkit_activelink_fraction =
-          To<InterpolableNumber>(list.Get(kWebkitActivelink))->Value())
-    AddPremultipliedColor(red, green, blue, alpha, webkit_activelink_fraction,
-                          colors.ActiveLinkColor());
-  if (double webkit_link_fraction =
-          To<InterpolableNumber>(list.Get(kWebkitLink))->Value())
-    AddPremultipliedColor(
-        red, green, blue, alpha, webkit_link_fraction,
-        is_visited ? colors.VisitedLinkColor() : colors.LinkColor());
-  if (double quirk_inherit_fraction =
-          To<InterpolableNumber>(list.Get(kQuirkInherit))->Value())
-    AddPremultipliedColor(red, green, blue, alpha, quirk_inherit_fraction,
-                          colors.TextColor());
+  if (double webkit_activelink_fraction = color.GetColorFraction(
+          InterpolableColor::ColorKeyword::kWebkitActivelink)) {
+    std::tie(param0, param1, param2, alpha) = AddPremultipliedColor(
+        param0, param1, param2, alpha, webkit_activelink_fraction,
+        colors.ActiveLinkColor(), color_interpolation_space);
+  }
+  if (double webkit_link_fraction = color.GetColorFraction(
+          InterpolableColor::ColorKeyword::kWebkitLink)) {
+    std::tie(param0, param1, param2, alpha) = AddPremultipliedColor(
+        param0, param1, param2, alpha, webkit_link_fraction,
+        is_visited ? colors.VisitedLinkColor() : colors.LinkColor(),
+        color_interpolation_space);
+  }
+  if (double quirk_inherit_fraction = color.GetColorFraction(
+          InterpolableColor::ColorKeyword::kQuirkInherit)) {
+    std::tie(param0, param1, param2, alpha) = AddPremultipliedColor(
+        param0, param1, param2, alpha, quirk_inherit_fraction,
+        colors.TextColor(), color_interpolation_space);
+  }
 
-  alpha = clampTo<double>(alpha, 0, 255);
+  alpha = ClampTo<double>(alpha, 0, 1);
   if (alpha == 0)
     return Color::kTransparent;
+  std::tie(param0, param1, param2) =
+      UnpremultiplyColor(param0, param1, param2, alpha);
 
-  return MakeRGBA(
-      clampTo<int>(round(red / alpha)), clampTo<int>(round(green / alpha)),
-      clampTo<int>(round(blue / alpha)), clampTo<int>(round(alpha)));
+  switch (color_interpolation_space) {
+    case Color::ColorInterpolationSpace::kSRGB:
+      return Color::FromRGBAFloat(param0, param1, param2, alpha);
+    case Color::ColorInterpolationSpace::kOklab:
+      return Color::FromColorSpace(Color::ColorSpace::kOklab, param0, param1,
+                                   param2, alpha);
+    default:
+      // There is no way for the user to specify which color spaces should be
+      // used for interpolation, so sRGB (for legacy colors) and Oklab are
+      // the only possibilities.
+      // https://www.w3.org/TR/css-color-4/#interpolation-space
+      NOTREACHED();
+      return Color();
+  }
 }
 
 class InheritedColorChecker
     : public CSSInterpolationType::CSSConversionChecker {
  public:
   InheritedColorChecker(const CSSProperty& property,
-                        const OptionalStyleColor& color)
+                        const absl::optional<StyleColor>& color)
       : property_(property), color_(color) {}
 
  private:
@@ -183,7 +186,7 @@ class InheritedColorChecker
   }
 
   const CSSProperty& property_;
-  const OptionalStyleColor color_;
+  const absl::optional<StyleColor> color_;
 };
 
 InterpolationValue CSSColorInterpolationType::MaybeConvertNeutral(
@@ -194,13 +197,15 @@ InterpolationValue CSSColorInterpolationType::MaybeConvertNeutral(
 }
 
 InterpolationValue CSSColorInterpolationType::MaybeConvertInitial(
-    const StyleResolverState&,
+    const StyleResolverState& state,
     ConversionCheckers& conversion_checkers) const {
-  OptionalStyleColor initial_color =
-      ColorPropertyFunctions::GetInitialColor(CssProperty());
-  if (initial_color.IsNull())
+  absl::optional<StyleColor> initial_color =
+      ColorPropertyFunctions::GetInitialColor(
+          CssProperty(), state.GetDocument().GetStyleResolver().InitialStyle());
+  if (!initial_color.has_value()) {
     return nullptr;
-  return ConvertStyleColorPair(initial_color.Access(), initial_color.Access());
+  }
+  return ConvertStyleColorPair(initial_color.value(), initial_color.value());
 }
 
 InterpolationValue CSSColorInterpolationType::MaybeConvertInherit(
@@ -210,7 +215,7 @@ InterpolationValue CSSColorInterpolationType::MaybeConvertInherit(
     return nullptr;
   // Visited color can never explicitly inherit from parent visited color so
   // only use the unvisited color.
-  OptionalStyleColor inherited_color =
+  absl::optional<StyleColor> inherited_color =
       ColorPropertyFunctions::GetUnvisitedColor(CssProperty(),
                                                 *state.ParentStyle());
   conversion_checkers.push_back(
@@ -237,7 +242,7 @@ InterpolationValue CSSColorInterpolationType::MaybeConvertValue(
     }
   }
 
-  std::unique_ptr<InterpolableValue> interpolable_color =
+  std::unique_ptr<InterpolableColor> interpolable_color =
       MaybeCreateInterpolableColor(value);
   if (!interpolable_color)
     return nullptr;
@@ -248,17 +253,48 @@ InterpolationValue CSSColorInterpolationType::MaybeConvertValue(
   return InterpolationValue(std::move(color_pair));
 }
 
+PairwiseInterpolationValue CSSColorInterpolationType::MaybeMergeSingles(
+    InterpolationValue&& start,
+    InterpolationValue&& end) const {
+  DCHECK(!start.non_interpolable_value);
+  DCHECK(!end.non_interpolable_value);
+
+  InterpolableList& start_list =
+      To<InterpolableList>(*start.interpolable_value);
+  InterpolableList& end_list = To<InterpolableList>(*end.interpolable_value);
+  DCHECK_EQ(start_list.length(), end_list.length());
+
+  for (unsigned i = 0; i < start_list.length(); i++) {
+    InterpolableColor& start_color =
+        To<InterpolableColor>(*(start_list.GetMutable(i)));
+    InterpolableColor& end_color =
+        To<InterpolableColor>(*(end_list.GetMutable(i)));
+
+    // Confirm that both colors are in the same colorspace and adjust if
+    // necessary.
+    InterpolableColor::SetupColorInterpolationSpaces(start_color, end_color);
+  }
+
+  return PairwiseInterpolationValue(std::move(start.interpolable_value),
+                                    std::move(end.interpolable_value), nullptr);
+}
+
 InterpolationValue CSSColorInterpolationType::ConvertStyleColorPair(
-    const OptionalStyleColor& unvisited_color,
-    const OptionalStyleColor& visited_color) const {
-  if (unvisited_color.IsNull() || visited_color.IsNull()) {
+    const absl::optional<StyleColor>& unvisited_color,
+    const absl::optional<StyleColor>& visited_color) {
+  if (!unvisited_color.has_value() || !visited_color.has_value()) {
     return nullptr;
   }
+  return ConvertStyleColorPair(unvisited_color.value(), visited_color.value());
+}
+
+InterpolationValue CSSColorInterpolationType::ConvertStyleColorPair(
+    const StyleColor& unvisited_color,
+    const StyleColor& visited_color) {
   auto color_pair =
       std::make_unique<InterpolableList>(kInterpolableColorPairIndexCount);
-  color_pair->Set(kUnvisited,
-                  CreateInterpolableColor(unvisited_color.Access()));
-  color_pair->Set(kVisited, CreateInterpolableColor(visited_color.Access()));
+  color_pair->Set(kUnvisited, CreateInterpolableColor(unvisited_color));
+  color_pair->Set(kVisited, CreateInterpolableColor(visited_color));
   return InterpolationValue(std::move(color_pair));
 }
 
@@ -277,12 +313,12 @@ void CSSColorInterpolationType::ApplyStandardPropertyValue(
   const auto& color_pair = To<InterpolableList>(interpolable_value);
   DCHECK_EQ(color_pair.length(), kInterpolableColorPairIndexCount);
   ColorPropertyFunctions::SetUnvisitedColor(
-      CssProperty(), *state.Style(),
+      CssProperty(), state.StyleBuilder(),
       ResolveInterpolableColor(
           *color_pair.Get(kUnvisited), state, false,
           CssProperty().PropertyID() == CSSPropertyID::kTextDecorationColor));
   ColorPropertyFunctions::SetVisitedColor(
-      CssProperty(), *state.Style(),
+      CssProperty(), state.StyleBuilder(),
       ResolveInterpolableColor(
           *color_pair.Get(kVisited), state, true,
           CssProperty().PropertyID() == CSSPropertyID::kTextDecorationColor));
@@ -294,14 +330,14 @@ const CSSValue* CSSColorInterpolationType::CreateCSSValue(
     const StyleResolverState& state) const {
   const auto& color_pair = To<InterpolableList>(interpolable_value);
   Color color = ResolveInterpolableColor(*color_pair.Get(kUnvisited), state);
-  return cssvalue::CSSColorValue::Create(color.Rgb());
+  return cssvalue::CSSColor::Create(color);
 }
 
 void CSSColorInterpolationType::Composite(
     UnderlyingValueOwner& underlying_value_owner,
     double underlying_fraction,
     const InterpolationValue& value,
-    double interpolation_fraction) const {
+    double) const {
   DCHECK(!underlying_value_owner.Value().non_interpolable_value);
   DCHECK(!value.non_interpolable_value);
   auto& underlying_list = To<InterpolableList>(
@@ -310,20 +346,11 @@ void CSSColorInterpolationType::Composite(
   // Both lists should have kUnvisited and kVisited.
   DCHECK(underlying_list.length() == kInterpolableColorPairIndexCount);
   DCHECK(other_list.length() == kInterpolableColorPairIndexCount);
+
   for (wtf_size_t i = 0; i < underlying_list.length(); i++) {
-    auto& underlying = To<InterpolableList>(*underlying_list.GetMutable(i));
-    const auto& other = To<InterpolableList>(*other_list.Get(i));
-    DCHECK(underlying.length() == kInterpolableColorIndexCount);
-    DCHECK(other.length() == kInterpolableColorIndexCount);
-    for (wtf_size_t j = 0; j < underlying.length(); j++) {
-      DCHECK(underlying.Get(j)->IsNumber());
-      DCHECK(other.Get(j)->IsNumber());
-      auto& underlying_number =
-          To<InterpolableNumber>(*underlying.GetMutable(j));
-      const auto& other_number = To<InterpolableNumber>(*other.Get(j));
-      if (j != kAlpha || underlying_number.Value() != other_number.Value())
-        underlying_number.ScaleAndAdd(underlying_fraction, other_number);
-    }
+    auto& underlying = To<InterpolableColor>(*underlying_list.GetMutable(i));
+    const auto& other = To<InterpolableColor>(*other_list.Get(i));
+    underlying.Composite(other, underlying_fraction);
   }
 }
 

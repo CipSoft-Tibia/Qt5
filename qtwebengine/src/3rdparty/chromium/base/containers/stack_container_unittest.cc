@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,10 @@
 
 #include <stddef.h>
 
-#include <algorithm>
-
 #include "base/memory/aligned_memory.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
+#include "base/ranges/algorithm.h"
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -30,7 +30,7 @@ class Dummy : public RefCounted<Dummy> {
     --*alive_;
   }
 
-  int* const alive_;
+  const raw_ptr<int> alive_;
 };
 
 }  // namespace
@@ -93,7 +93,7 @@ TEST(StackContainer, VectorDoubleDelete) {
   dummy = nullptr;
   EXPECT_EQ(alive, 1);
 
-  auto itr = std::find(vect->begin(), vect->end(), dummy_unref);
+  auto itr = ranges::find(vect, dummy_unref);
   EXPECT_EQ(itr->get(), dummy_unref);
   vect->erase(itr);
   EXPECT_EQ(alive, 0);

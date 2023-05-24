@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
 
 #  Copyright 2017 The WebRTC project authors. All Rights Reserved.
 #
@@ -8,6 +8,7 @@
 #  in the file PATENTS.  All contributing project authors may
 #  be found in the AUTHORS file in the root of the source tree.
 
+from __future__ import absolute_import
 import os
 import shutil
 import tempfile
@@ -72,7 +73,6 @@ class CheckBugEntryFieldTest(unittest.TestCase):
 
 
 class CheckNewlineAtTheEndOfProtoFilesTest(unittest.TestCase):
-
   def setUp(self):
     self.tmp_dir = tempfile.mkdtemp()
     self.proto_file_path = os.path.join(self.tmp_dir, 'foo.proto')
@@ -85,9 +85,8 @@ class CheckNewlineAtTheEndOfProtoFilesTest(unittest.TestCase):
   def testErrorIfProtoFileDoesNotEndWithNewline(self):
     self._GenerateProtoWithoutNewlineAtTheEnd()
     self.input_api.files = [MockFile(self.proto_file_path)]
-    errors = PRESUBMIT.CheckNewlineAtTheEndOfProtoFiles(self.input_api,
-                                                        self.output_api,
-                                                        lambda x: True)
+    errors = PRESUBMIT.CheckNewlineAtTheEndOfProtoFiles(
+        self.input_api, self.output_api, lambda x: True)
     self.assertEqual(1, len(errors))
     self.assertEqual(
         'File %s must end with exactly one newline.' % self.proto_file_path,
@@ -96,14 +95,14 @@ class CheckNewlineAtTheEndOfProtoFilesTest(unittest.TestCase):
   def testNoErrorIfProtoFileEndsWithNewline(self):
     self._GenerateProtoWithNewlineAtTheEnd()
     self.input_api.files = [MockFile(self.proto_file_path)]
-    errors = PRESUBMIT.CheckNewlineAtTheEndOfProtoFiles(self.input_api,
-                                                        self.output_api,
-                                                        lambda x: True)
+    errors = PRESUBMIT.CheckNewlineAtTheEndOfProtoFiles(
+        self.input_api, self.output_api, lambda x: True)
     self.assertEqual(0, len(errors))
 
   def _GenerateProtoWithNewlineAtTheEnd(self):
     with open(self.proto_file_path, 'w') as f:
-      f.write(textwrap.dedent("""
+      f.write(
+          textwrap.dedent("""
         syntax = "proto2";
         option optimize_for = LITE_RUNTIME;
         package webrtc.audioproc;
@@ -111,14 +110,14 @@ class CheckNewlineAtTheEndOfProtoFilesTest(unittest.TestCase):
 
   def _GenerateProtoWithoutNewlineAtTheEnd(self):
     with open(self.proto_file_path, 'w') as f:
-      f.write(textwrap.dedent("""
+      f.write(
+          textwrap.dedent("""
         syntax = "proto2";
         option optimize_for = LITE_RUNTIME;
         package webrtc.audioproc;"""))
 
 
 class CheckNoMixingSourcesTest(unittest.TestCase):
-
   def setUp(self):
     self.tmp_dir = tempfile.mkdtemp()
     self.file_path = os.path.join(self.tmp_dir, 'BUILD.gn')
@@ -159,7 +158,8 @@ class CheckNoMixingSourcesTest(unittest.TestCase):
     self._AssertNumberOfErrorsWithSources(0, ['foo.m', 'bar.mm', 'bar.h'])
 
   def testNoErrorIfSourcesAreInExclusiveIfBranches(self):
-    self._GenerateBuildFile(textwrap.dedent("""
+    self._GenerateBuildFile(
+        textwrap.dedent("""
       rtc_library("bar_foo") {
         if (is_win) {
           sources = [
@@ -192,7 +192,8 @@ class CheckNoMixingSourcesTest(unittest.TestCase):
     self.assertEqual(0, len(errors))
 
   def testErrorIfSourcesAreNotInExclusiveIfBranches(self):
-    self._GenerateBuildFile(textwrap.dedent("""
+    self._GenerateBuildFile(
+        textwrap.dedent("""
       rtc_library("bar_foo") {
         if (is_win) {
           sources = [
@@ -238,7 +239,8 @@ class CheckNoMixingSourcesTest(unittest.TestCase):
 
   def _AssertNumberOfErrorsWithSources(self, number_of_errors, sources):
     assert len(sources) == 3, 'This function accepts a list of 3 source files'
-    self._GenerateBuildFile(textwrap.dedent("""
+    self._GenerateBuildFile(
+        textwrap.dedent("""
       rtc_static_library("bar_foo") {
         sources = [
           "%s",
@@ -267,6 +269,62 @@ class CheckNoMixingSourcesTest(unittest.TestCase):
   def _GenerateBuildFile(self, content):
     with open(self.file_path, 'w') as f:
       f.write(content)
+
+
+class CheckAssertUsageTest(unittest.TestCase):
+  def setUp(self):
+    self.input_api = MockInputApi()
+    self.output_api = MockOutputApi()
+    self._content_with_assert = ['void Foo() {', '    assert(true);', '}']
+    self._content_without_assert = ['void Foo() {', '    RTC_CHECK(true);', '}']
+
+  def testDetectsAssertInCcFile(self):
+    self.input_api.files = [
+        MockFile('with_assert.cc', self._content_with_assert),
+        MockFile('without_assert.cc', self._content_without_assert),
+    ]
+    errors = PRESUBMIT.CheckAssertUsage(self.input_api,
+                                        self.output_api, lambda x: True)
+    self.assertEqual(1, len(errors))
+    self.assertEqual('with_assert.cc', errors[0].items[0])
+
+  def testDetectsAssertInHeaderFile(self):
+    self.input_api.files = [
+        MockFile('with_assert.h', self._content_with_assert),
+        MockFile('without_assert.h', self._content_without_assert),
+    ]
+    errors = PRESUBMIT.CheckAssertUsage(self.input_api,
+                                        self.output_api, lambda x: True)
+    self.assertEqual(1, len(errors))
+    self.assertEqual('with_assert.h', errors[0].items[0])
+
+  def testDetectsAssertInObjCFile(self):
+    self.input_api.files = [
+        MockFile('with_assert.m', self._content_with_assert),
+        MockFile('without_assert.m', self._content_without_assert),
+    ]
+    errors = PRESUBMIT.CheckAssertUsage(self.input_api,
+                                        self.output_api, lambda x: True)
+    self.assertEqual(1, len(errors))
+    self.assertEqual('with_assert.m', errors[0].items[0])
+
+  def testDetectsAssertInObjCppFile(self):
+    self.input_api.files = [
+        MockFile('with_assert.mm', self._content_with_assert),
+        MockFile('without_assert.mm', self._content_without_assert),
+    ]
+    errors = PRESUBMIT.CheckAssertUsage(self.input_api,
+                                        self.output_api, lambda x: True)
+    self.assertEqual(1, len(errors))
+    self.assertEqual('with_assert.mm', errors[0].items[0])
+
+  def testDoesntDetectAssertInOtherFiles(self):
+    self.input_api.files = [
+        MockFile('with_assert.cpp', self._content_with_assert),
+    ]
+    errors = PRESUBMIT.CheckAssertUsage(self.input_api,
+                                        self.output_api, lambda x: True)
+    self.assertEqual(0, len(errors))
 
 
 if __name__ == '__main__':

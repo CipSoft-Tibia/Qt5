@@ -1,51 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSql module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsqlindex.h"
 
 #include "qsqlfield.h"
-#include "qstringlist.h"
 
 QT_BEGIN_NAMESPACE
 
-// ### Qt 6: remove the static assertion, the 'sorts' field was changed from QList to QVector in Qt 5.6
-Q_STATIC_ASSERT((sizeof(QList<bool>) == sizeof(QVector<bool>)));
+using namespace Qt::StringLiterals;
 
 /*!
     \class QSqlIndex
@@ -79,6 +41,25 @@ QSqlIndex::QSqlIndex(const QSqlIndex& other)
 {
 }
 
+/*! \fn QSqlIndex::QSqlIndex(QSqlIndex &&other)
+    Move-constructs a new QSqlIndex from \a other.
+
+    \note The moved-from object \a other is placed in a
+    partially-formed state, in which the only valid operations are
+    destruction and assignment of a new value.
+
+    \since 6.6
+*/
+/*! \fn QSqlIndex& QSqlIndex::operator=(QSqlIndex &&other)
+    Move-assigns \a other to this QSqlIndex instance.
+
+    \note The moved-from object \a other is placed in a
+    partially-formed state, in which the only valid operations are
+    destruction and assignment of a new value.
+
+    \since 6.6
+*/
+
 /*!
     Sets the index equal to \a other.
 */
@@ -91,6 +72,7 @@ QSqlIndex& QSqlIndex::operator=(const QSqlIndex& other)
     QSqlRecord::operator=(other);
     return *this;
 }
+
 
 /*!
     Destroys the object and frees any allocated resources.
@@ -176,11 +158,10 @@ QString QSqlIndex::createField(int i, const QString& prefix, bool verbose) const
 {
     QString f;
     if (!prefix.isEmpty())
-        f += prefix + QLatin1Char('.');
+        f += prefix + u'.';
     f += field(i).name();
     if (verbose)
-        f += QLatin1Char(' ') + QString((isDescending(i)
-                    ? QLatin1String("DESC") : QLatin1String("ASC")));
+        f += u' ' + QString((isDescending(i) ? "DESC"_L1 : "ASC"_L1));
     return f;
 }
 

@@ -1,35 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "q3dbars_p.h"
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 /*!
  * \class Q3DBars
@@ -88,7 +62,7 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  *
  * The scene can be rotated, zoomed into, and a bar can be selected to view its value,
  * but no other interaction is included in this minimal code example. You can learn more by
- * familiarizing yourself with the examples provided, like the \l{Bars Example}.
+ * familiarizing yourself with the examples provided, like the \l{Bar Graph}.
  *
  * \sa Q3DScatter, Q3DSurface, {Qt Data Visualization C++ Classes}
  */
@@ -157,7 +131,7 @@ QBar3DSeries *Q3DBars::primarySeries() const
  * to the axes. If the newly added series has specified a selected bar, it will be highlighted and
  * any existing selection will be cleared. Only one added series can have an active selection.
  *
- * \sa seriesList(), primarySeries
+ * \sa seriesList(), primarySeries, QAbstract3DGraph::hasSeries()
  */
 void Q3DBars::addSeries(QBar3DSeries *series)
 {
@@ -166,6 +140,8 @@ void Q3DBars::addSeries(QBar3DSeries *series)
 
 /*!
  * Removes the \a series from the graph.
+ *
+ * \sa QAbstract3DGraph::hasSeries()
  */
 void Q3DBars::removeSeries(QBar3DSeries *series)
 {
@@ -180,7 +156,7 @@ void Q3DBars::removeSeries(QBar3DSeries *series)
  * the new position in list is calculated as if the series was still in its old
  * index, so the final index is actually the \a index decremented by one.
  *
- * \sa addSeries(), seriesList()
+ * \sa addSeries(), seriesList(), QAbstract3DGraph::hasSeries()
  */
 void Q3DBars::insertSeries(int index, QBar3DSeries *series)
 {
@@ -189,6 +165,8 @@ void Q3DBars::insertSeries(int index, QBar3DSeries *series)
 
 /*!
  * Returns the list of series added to this graph.
+ *
+ * \sa QAbstract3DGraph::hasSeries()
  */
 QList<QBar3DSeries *> Q3DBars::seriesList() const
 {
@@ -247,7 +225,7 @@ float Q3DBars::barThickness() const
  * Preset to \c {(1.0, 1.0)} by default. Spacing is affected by the
  * barSpacingRelative property.
  *
- * \sa barSpacingRelative, multiSeriesUniform
+ * \sa barSpacingRelative, multiSeriesUniform, barSeriesMargin
  */
 void Q3DBars::setBarSpacing(const QSizeF &spacing)
 {
@@ -282,6 +260,31 @@ void Q3DBars::setBarSpacingRelative(bool relative)
 bool Q3DBars::isBarSpacingRelative() const
 {
     return dptrc()->m_shared->isBarSpecRelative();
+}
+
+/*!
+ * \property Q3DBars::barSeriesMargin
+ * \since 6.3
+ *
+ * \brief Margin between series columns in X and Z dimensions.
+ * Sensible values are on the range [0,1).
+ *
+ * Preset to \c {(0.0, 0.0)} by default. This property enables
+ * showing bars from different series side by side, but with space between columns.
+ *
+ * \sa barSpacing
+ */
+void Q3DBars::setBarSeriesMargin(const QSizeF &margin)
+{
+    if (margin != barSeriesMargin()) {
+        dptr()->m_shared->setBarSeriesMargin(margin);
+        emit barSeriesMarginChanged(margin);
+    }
+}
+
+QSizeF Q3DBars::barSeriesMargin() const
+{
+    return dptrc()->m_shared->barSeriesMargin();
 }
 
 /*!
@@ -469,4 +472,4 @@ Q3DBars *Q3DBarsPrivate::qptr()
     return static_cast<Q3DBars *>(q_ptr);
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

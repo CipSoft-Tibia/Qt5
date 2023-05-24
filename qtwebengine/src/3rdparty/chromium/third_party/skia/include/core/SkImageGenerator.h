@@ -12,9 +12,11 @@
 #include "include/core/SkColor.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkImageInfo.h"
-#include "include/core/SkYUVAIndex.h"
+#include "include/core/SkSurfaceProps.h"
 #include "include/core/SkYUVAPixmaps.h"
-#include "include/core/SkYUVASizeInfo.h"
+
+#include <memory>
+#include <optional>
 
 class GrRecordingContext;
 class GrSurfaceProxyView;
@@ -113,55 +115,10 @@ public:
      */
     bool getYUVAPlanes(const SkYUVAPixmaps& yuvaPixmaps);
 
-    /**
-     *  Deprecated. Use queryYUVAInfo instead for more structured YUVA plane specification.
-     *
-     *  If decoding to YUV is supported, this returns true.  Otherwise, this
-     *  returns false and does not modify any of the parameters.
-     *
-     *  @param sizeInfo    Output parameter indicating the sizes and required
-     *                     allocation widths of the Y, U, V, and A planes.
-     *  @param yuvaIndices How the YUVA planes are organized/used
-     *  @param colorSpace  Output parameter.
-     */
-    bool queryYUVA8(SkYUVASizeInfo* sizeInfo,
-                    SkYUVAIndex yuvaIndices[SkYUVAIndex::kIndexCount],
-                    SkYUVColorSpace* colorSpace) const;
-
-    /**
-     *  Deprecated. Use getYUVAPlanes instead for more structured YUVA plane retrieval.
-     *
-     *  Returns true on success and false on failure.
-     *  This always attempts to perform a full decode.  If the client only
-     *  wants size, it should call queryYUVA8().
-     *
-     *  @param sizeInfo    Needs to exactly match the values returned by the
-     *                     query, except the WidthBytes may be larger than the
-     *                     recommendation (but not smaller).
-     *  @param yuvaIndices Needs to exactly match the values returned by the query.
-     *  @param planes      Memory for the Y, U, V, and A planes. Note that, depending on the
-     *                     settings in yuvaIndices, anywhere from 1..4 planes could be returned.
-     */
-    bool getYUVA8Planes(const SkYUVASizeInfo& sizeInfo,
-                        const SkYUVAIndex yuvaIndices[SkYUVAIndex::kIndexCount],
-                        void* planes[]);
-
 #if SK_SUPPORT_GPU
     /**
      *  If the generator can natively/efficiently return its pixels as a GPU image (backed by a
      *  texture) this will return that image. If not, this will return NULL.
-     *
-     *  This routine also supports retrieving only a subset of the pixels. That subset is specified
-     *  by the following rectangle:
-     *
-     *      subset = SkIRect::MakeXYWH(origin.x(), origin.y(), info.width(), info.height())
-     *
-     *  If subset is not contained inside the generator's bounds, this returns false.
-     *
-     *      whole = SkIRect::MakeWH(getInfo().width(), getInfo().height())
-     *      if (!whole.contains(subset)) {
-     *          return false;
-     *      }
      *
      *  Regarding the GrRecordingContext parameter:
      *
@@ -169,7 +126,7 @@ public:
      *  - its internal context is the same
      *  - it can somehow convert its texture into one that is valid for the provided context.
      *
-     *  If the willNeedMipMaps flag is true, the generator should try to create a TextureProxy that
+     *  If the mipmapped parameter is kYes, the generator should try to create a TextureProxy that
      *  at least has the mip levels allocated and the base layer filled in. If this is not possible,
      *  the generator is allowed to return a non mipped proxy, but this will have some additional
      *  overhead in later allocating mips and copying of the base layer.
@@ -178,17 +135,28 @@ public:
      *  status) or whether this may (but is not required to) return a pre-existing texture that is
      *  retained by the generator (kDraw).
      */
-    GrSurfaceProxyView generateTexture(GrRecordingContext*, const SkImageInfo& info,
-                                       const SkIPoint& origin, GrMipmapped, GrImageTexGenPolicy);
+    GrSurfaceProxyView generateTexture(GrRecordingContext*,
+                                       const SkImageInfo& info,
+                                       skgpu::Mipmapped mipmapped,
+                                       GrImageTexGenPolicy);
+#endif
 
+#if SK_GRAPHITE_ENABLED
+    sk_sp<SkImage> makeTextureImage(skgpu::graphite::Recorder*,
+                                    const SkImageInfo&,
+                                    skgpu::Mipmapped);
 #endif
 
     /**
      *  If the default image decoder system can interpret the specified (encoded) data, then
      *  this returns a new ImageGenerator for it. Otherwise this returns NULL. Either way
      *  the caller is still responsible for managing their ownership of the data.
+     *  By default, images will be converted to premultiplied pixels. The alpha type can be
+     *  overridden by specifying kPremul_SkAlphaType or kUnpremul_SkAlphaType. Specifying
+     *  kOpaque_SkAlphaType is not supported, and will return NULL.
      */
-    static std::unique_ptr<SkImageGenerator> MakeFromEncoded(sk_sp<SkData>);
+    static std::unique_ptr<SkImageGenerator> MakeFromEncoded(
+            sk_sp<SkData>, std::optional<SkAlphaType> = std::nullopt);
 
     /** Return a new image generator backed by the specified picture.  If the size is empty or
      *  the picture is NULL, this returns NULL.
@@ -198,7 +166,8 @@ public:
     static std::unique_ptr<SkImageGenerator> MakeFromPicture(const SkISize&, sk_sp<SkPicture>,
                                                              const SkMatrix*, const SkPaint*,
                                                              SkImage::BitDepth,
-                                                             sk_sp<SkColorSpace>);
+                                                             sk_sp<SkColorSpace>,
+                                                             SkSurfaceProps props = {});
 
 protected:
     static constexpr int kNeedNewImageUniqueID = 0;
@@ -212,14 +181,22 @@ protected:
     virtual bool onQueryYUVAInfo(const SkYUVAPixmapInfo::SupportedDataTypes&,
                                  SkYUVAPixmapInfo*) const { return false; }
     virtual bool onGetYUVAPlanes(const SkYUVAPixmaps&) { return false; }
-    virtual bool onQueryYUVA8(SkYUVASizeInfo*, SkYUVAIndex[SkYUVAIndex::kIndexCount],
-                              SkYUVColorSpace*) const { return false; }
-    virtual bool onGetYUVA8Planes(const SkYUVASizeInfo&, const SkYUVAIndex[SkYUVAIndex::kIndexCount],
-                                  void*[4] /*planes*/) { return false; }
 #if SK_SUPPORT_GPU
     // returns nullptr
     virtual GrSurfaceProxyView onGenerateTexture(GrRecordingContext*, const SkImageInfo&,
-                                                 const SkIPoint&, GrMipmapped, GrImageTexGenPolicy);
+                                                 GrMipmapped, GrImageTexGenPolicy);
+
+    // Most internal SkImageGenerators produce textures and views that use kTopLeft_GrSurfaceOrigin.
+    // If the generator may produce textures with different origins (e.g.
+    // GrAHardwareBufferImageGenerator) it should override this function to return the correct
+    // origin.
+    virtual GrSurfaceOrigin origin() const { return kTopLeft_GrSurfaceOrigin; }
+#endif
+
+#if SK_GRAPHITE_ENABLED
+    virtual sk_sp<SkImage> onMakeTextureImage(skgpu::graphite::Recorder*,
+                                              const SkImageInfo&,
+                                              skgpu::Mipmapped);
 #endif
 
 private:
@@ -231,7 +208,8 @@ private:
     // This is our default impl, which may be different on different platforms.
     // It is called from NewFromEncoded() after it has checked for any runtime factory.
     // The SkData will never be NULL, as that will have been checked by NewFromEncoded.
-    static std::unique_ptr<SkImageGenerator> MakeFromEncodedImpl(sk_sp<SkData>);
+    static std::unique_ptr<SkImageGenerator> MakeFromEncodedImpl(sk_sp<SkData>,
+                                                                 std::optional<SkAlphaType>);
 
     SkImageGenerator(SkImageGenerator&&) = delete;
     SkImageGenerator(const SkImageGenerator&) = delete;

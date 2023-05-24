@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@ namespace blink {
 
 IndexedDBIndexMetadata::IndexedDBIndexMetadata() = default;
 
-IndexedDBIndexMetadata::IndexedDBIndexMetadata(const base::string16& name,
+IndexedDBIndexMetadata::IndexedDBIndexMetadata(const std::u16string& name,
                                                int64_t id,
                                                const IndexedDBKeyPath& key_path,
                                                bool unique,
@@ -40,7 +40,7 @@ bool IndexedDBIndexMetadata::operator==(
 }
 
 IndexedDBObjectStoreMetadata::IndexedDBObjectStoreMetadata(
-    const base::string16& name,
+    const std::u16string& name,
     int64_t id,
     const IndexedDBKeyPath& key_path,
     bool auto_increment,
@@ -75,7 +75,7 @@ bool IndexedDBObjectStoreMetadata::operator==(
 IndexedDBDatabaseMetadata::IndexedDBDatabaseMetadata() : version(NO_VERSION) {}
 
 IndexedDBDatabaseMetadata::IndexedDBDatabaseMetadata(
-    const base::string16& name,
+    const std::u16string& name,
     int64_t id,
     int64_t version,
     int64_t max_object_store_id)

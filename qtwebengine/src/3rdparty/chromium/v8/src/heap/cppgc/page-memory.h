@@ -13,10 +13,13 @@
 
 #include "include/cppgc/platform.h"
 #include "src/base/macros.h"
+#include "src/base/platform/mutex.h"
 #include "src/heap/cppgc/globals.h"
 
 namespace cppgc {
 namespace internal {
+
+class FatalOutOfMemoryHandler;
 
 class V8_EXPORT_PRIVATE MemoryRegion final {
  public:
@@ -79,9 +82,9 @@ class V8_EXPORT_PRIVATE PageMemoryRegion {
   virtual void UnprotectForTesting() = 0;
 
  protected:
-  PageMemoryRegion(PageAllocator*, MemoryRegion, bool);
+  PageMemoryRegion(PageAllocator&, MemoryRegion, bool);
 
-  PageAllocator* const allocator_;
+  PageAllocator& allocator_;
   const MemoryRegion reserved_region_;
   const bool is_large_;
 };
@@ -91,7 +94,7 @@ class V8_EXPORT_PRIVATE NormalPageMemoryRegion final : public PageMemoryRegion {
  public:
   static constexpr size_t kNumPageRegions = 10;
 
-  explicit NormalPageMemoryRegion(PageAllocator*);
+  NormalPageMemoryRegion(PageAllocator&, FatalOutOfMemoryHandler&);
   ~NormalPageMemoryRegion() override;
 
   const PageMemory GetPageMemory(size_t index) const {
@@ -105,7 +108,8 @@ class V8_EXPORT_PRIVATE NormalPageMemoryRegion final : public PageMemoryRegion {
 
   // Allocates a normal page at |writeable_base| address. Changes page
   // protection.
-  void Allocate(Address writeable_base);
+  // Returns true when the allocation was successful and false otherwise.
+  V8_WARN_UNUSED_RESULT bool TryAllocate(Address writeable_base);
 
   // Frees a normal page at at |writeable_base| address. Changes page
   // protection.
@@ -133,7 +137,7 @@ class V8_EXPORT_PRIVATE NormalPageMemoryRegion final : public PageMemoryRegion {
 // LargePageMemoryRegion serves a single large PageMemory object.
 class V8_EXPORT_PRIVATE LargePageMemoryRegion final : public PageMemoryRegion {
  public:
-  LargePageMemoryRegion(PageAllocator*, size_t);
+  LargePageMemoryRegion(PageAllocator&, FatalOutOfMemoryHandler&, size_t);
   ~LargePageMemoryRegion() override;
 
   const PageMemory GetPageMemory() const {
@@ -173,33 +177,32 @@ class V8_EXPORT_PRIVATE PageMemoryRegionTree final {
 // capabilities.
 class V8_EXPORT_PRIVATE NormalPageMemoryPool final {
  public:
-  static constexpr size_t kNumPoolBuckets = 16;
-
   using Result = std::pair<NormalPageMemoryRegion*, Address>;
 
   NormalPageMemoryPool();
   ~NormalPageMemoryPool();
 
-  void Add(size_t, NormalPageMemoryRegion*, Address);
-  Result Take(size_t);
+  void Add(NormalPageMemoryRegion*, Address);
+  Result Take();
 
  private:
-  std::vector<Result> pool_[kNumPoolBuckets];
+  std::vector<Result> pool_;
 };
 
 // A backend that is used for allocating and freeing normal and large pages.
 //
-// Internally maintaints a set of PageMemoryRegions. The backend keeps its used
+// Internally maintains a set of PageMemoryRegions. The backend keeps its used
 // regions alive.
 class V8_EXPORT_PRIVATE PageBackend final {
  public:
-  explicit PageBackend(PageAllocator*);
+  PageBackend(PageAllocator& normal_page_allocator,
+              PageAllocator& large_page_allocator, FatalOutOfMemoryHandler&);
   ~PageBackend();
 
   // Allocates a normal page from the backend.
   //
   // Returns the writeable base of the region.
-  Address AllocateNormalPageMemory(size_t);
+  Address TryAllocateNormalPageMemory();
 
   // Returns normal page memory back to the backend. Expects the
   // |writeable_base| returned by |AllocateNormalMemory()|.
@@ -208,7 +211,7 @@ class V8_EXPORT_PRIVATE PageBackend final {
   // Allocates a large page from the backend.
   //
   // Returns the writeable base of the region.
-  Address AllocateLargePageMemory(size_t size);
+  Address TryAllocateLargePageMemory(size_t size);
 
   // Returns large page memory back to the backend. Expects the |writeable_base|
   // returned by |AllocateLargePageMemory()|.
@@ -223,7 +226,11 @@ class V8_EXPORT_PRIVATE PageBackend final {
   PageBackend& operator=(const PageBackend&) = delete;
 
  private:
-  PageAllocator* allocator_;
+  // Guards against concurrent uses of `Lookup()`.
+  mutable v8::base::Mutex mutex_;
+  PageAllocator& normal_page_allocator_;
+  PageAllocator& large_page_allocator_;
+  FatalOutOfMemoryHandler& oom_handler_;
   NormalPageMemoryPool page_pool_;
   PageMemoryRegionTree page_memory_region_tree_;
   std::vector<std::unique_ptr<PageMemoryRegion>> normal_page_memory_regions_;
@@ -233,8 +240,9 @@ class V8_EXPORT_PRIVATE PageBackend final {
 
 // Returns true if the provided allocator supports committing at the required
 // granularity.
-inline bool SupportsCommittingGuardPages(PageAllocator* allocator) {
-  return kGuardPageSize % allocator->CommitPageSize() == 0;
+inline bool SupportsCommittingGuardPages(PageAllocator& allocator) {
+  return kGuardPageSize != 0 &&
+         kGuardPageSize % allocator.CommitPageSize() == 0;
 }
 
 Address NormalPageMemoryRegion::Lookup(ConstAddress address) const {
@@ -268,6 +276,7 @@ PageMemoryRegion* PageMemoryRegionTree::Lookup(ConstAddress address) const {
 }
 
 Address PageBackend::Lookup(ConstAddress address) const {
+  v8::base::MutexGuard guard(&mutex_);
   PageMemoryRegion* pmr = page_memory_region_tree_.Lookup(address);
   return pmr ? pmr->Lookup(address) : nullptr;
 }

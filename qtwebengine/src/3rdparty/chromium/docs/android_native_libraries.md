@@ -5,12 +5,6 @@ Chrome on Android.
 [TOC]
 
 ## Library Packaging
- * Android L & M (ChromeModernPublic.aab):
-   * `libchrome.so` is stored uncompressed within the apk (with the name
-     `crazy.libchrome.so` to avoid extraction).
-   * It is loaded directly from the apk via `libchromium_android_linker.so`.
-   * Only JNI_OnLoad is exported, since manual JNI registration is required
-     (see [//base/android/jni_generator/README.md]).
  * Android N, O & P (MonochromePublic.aab):
    * `libmonochrome.so` is stored uncompressed within the apk (an
      AndroidManifest.xml attribute disables extraction).
@@ -21,12 +15,10 @@ Chrome on Android.
  * Android Q (TrichromeChrome.aab + TrichromeLibrary.apk):
    * Trichrome uses the exact same native library as Monochrome:
      `libmonochrome.so`.
-   * `libmonochrome.so` is stored in the shared library (TrichromeLibrary.apk)
+   * `libmonochrome.so` is stored in the shared APK (TrichromeLibrary.apk)
      so that it can be shared with TrichromeWebView.
    * It is loaded by `libchromium_android_linker.so` using
      `android_dlopen_ext()` to enable RELRO sharing.
-
-[//base/android/jni_generator/README.md]: /base/android/jni_generator/README.md
 
 ## Build Variants (eg. monochrome_64_32_apk)
 The packaging above extends to cover both 32-bit and 64-bit device
@@ -147,7 +139,6 @@ Builds on | Variant | Chrome | Library | Webview
  * For ChromePublic.apk:
    * `JNI_OnLoad()` is the only exported symbol (enforced by a linker script).
    * Native methods registered explicitly during start-up by generated code.
-     * Explicit generation is required because the Android runtime uses the system's `dlsym()`, which doesn't know about Crazy-Linker-opened libraries.
  * For MonochromePublic.apk and TrichromeChrome.aab:
    * `JNI_OnLoad()` and `Java_*` symbols are exported by linker script.
    * No manual JNI registration is done. Symbols are resolved lazily by the runtime.
@@ -166,27 +157,17 @@ Builds on | Variant | Chrome | Library | Webview
 **What is it?**
  * RELRO refers to the ELF segment `GNU_RELRO`. It contains data that the linker marks as read-only after it applies relocations.
    * To inspect the size of the segment: `readelf --segments libchrome.so`
-   * For `lib(mono)chrome.so` on arm32, it's about 2mb.
+   * For `lib(mono)chrome.so` the region occupies about 2.4MiB on arm32 and 4.7 MiB on arm64
  * If two processes map this segment to the same virtual address space, then pages of memory within the segment which contain only relative relocations (99% of them) will be byte-for-byte identical.
-   * Note: For `fork()`ed processes, all pages are already shared (via `fork()`'s copy-on-write semantics), so RELRO sharing does not apply to them.
- * "RELRO sharing" is when this segment is copied into shared memory and shared by multiple processes.
+ * "RELRO sharing" is when this segment is moved into shared memory and shared by multiple processes.
+ * Processes `fork()`ed from the app zygote (where the library is loaded) share RELRO (via `fork()`'s copy-on-write semantics), but this region is not shared with other process types (privileged, utility, GPU)
 
 **How does it work?**
- * For Android < N (crazy linker):
-   1. Browser Process: `libchrome.so` loaded normally.
-   2. Browser Process: `GNU_RELRO` segment copied into `ashmem` (shared memory).
-   3. Browser Process (low-end only): RELRO private memory pages swapped out for ashmem ones (using `munmap()` & `mmap()`).
-   4. Browser Process: Load address and shared memory fd passed to renderers / gpu process.
-   5. Renderer Process: Crazy linker tries to load to the given load address.
-      * Loading can fail due to address space randomization causing something else to already by loaded at the address.
-   6. Renderer Process: If loading to the desired address succeeds:
-      * Linker puts `GNU_RELRO` into private memory and applies relocations as per normal.
-      * Afterwards, memory pages are compared against the shared memory and all identical pages are swapped out for ashmem ones (using `munmap()` & `mmap()`).
  * For a more detailed description, refer to comments in [Linker.java](https://cs.chromium.org/chromium/src/base/android/java/src/org/chromium/base/library_loader/Linker.java).
  * For Android N-P:
    * The OS maintains a RELRO file on disk with the contents of the GNU_RELRO segment.
    * All Android apps that contain a WebView load `libmonochrome.so` at the same virtual address and apply RELRO sharing against the memory-mapped RELRO file.
-   * Chrome uses `MonochromeLibraryPreloader` to call into the same WebView library loading code.
+   * Chrome uses `WebViewLibraryPreloader` to call into the same WebView library loading code.
      * When Monochrome is the WebView provider, `libmonochrome.so` is loaded with the system's cached RELRO's applied.
    * `System.loadLibrary()` is called afterwards.
      * When Monochrome is the WebView provider, this only calls JNI_OnLoad, since the library is already loaded. Otherwise, this loads the library and no RELRO sharing occurs.
@@ -204,6 +185,13 @@ Builds on | Variant | Chrome | Library | Webview
      app zygote. `libmonochrome.so` is loaded in the zygote before `fork()`.
      * Similar to O-P, app zygote provides copy-on-write memory semantics so
        RELRO sharing is redundant.
+ * For Android R+ (still Trichrome)
+   * The RELRO region is created in the App Zygote, picked up by the Browser
+     process, which then redistributes the region to all other processes. The
+     receiving of the region and remapping it on top of the non-shared RELRO
+     happens asynchronously after the library has been loaded. Native code is
+     generally already running at this point. Hence the replacement must be
+     atomic.
 
 ## Partitioned libraries
 Some Chrome code is placed in feature-specific libraries and delivered via
@@ -267,6 +255,13 @@ Partitioned libraries are usable when all of the following are true:
    * This was removed due to [poor performance](https://bugs.chromium.org/p/chromium/issues/detail?id=719977).
  * We used to use `relocation_packer` to pack relocations after linking, which complicated our build system and caused many problems for our tools because it caused logical addresses to differ from physical addresses.
    * We now link with `lld`, which supports packed relocations natively and doesn't have these problems.
+ * We used to use the Crazy Linker until Android M was deprecated
+   * It allowed storing `libchrome.so` uncompressed within the apk before the
+     system linker allowed it (with the name `crazy.libchrome.so` to avoid extraction).
+   * It was loaded directly from the apk via `libchromium_android_linker.so`.
+   * Only JNI_OnLoad was exported. Explicit JNI registration was required
+     because the Android runtime uses the system's `dlsym()`, which doesn't know
+     about Crazy-Linker-opened libraries. (see [//base/android/jni_generator/README.md]).
 
 ## See Also
  * [//docs/android_build_instructions.md#Multiple-Chrome-APK-Targets](android_build_instructions.md#Multiple-Chrome-APK-Targets)

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdesigner_toolbox_p.h"
 #include "qdesigner_command_p.h"
@@ -34,12 +9,14 @@
 
 #include <QtDesigner/abstractformwindow.h>
 
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qtoolbox.h>
 #include <QtWidgets/qmenu.h>
 #include <QtWidgets/qlayout.h>
 #include <QtWidgets/qapplication.h>
+
+#include <QtGui/qaction.h>
 #include <QtGui/qevent.h>
+
 #include <QtCore/qhash.h>
 
 QT_BEGIN_NAMESPACE
@@ -231,11 +208,11 @@ QMenu *QToolBoxHelper::addContextMenuActions(QMenu *popup) const
 
 // -------- QToolBoxWidgetPropertySheet
 
-static const char *currentItemTextKey = "currentItemText";
-static const char *currentItemNameKey = "currentItemName";
-static const char *currentItemIconKey = "currentItemIcon";
-static const char *currentItemToolTipKey = "currentItemToolTip";
-static const char *tabSpacingKey = "tabSpacing";
+static const char currentItemTextKey[] = "currentItemText";
+static const char currentItemNameKey[] = "currentItemName";
+static const char currentItemIconKey[] = "currentItemIcon";
+static const char currentItemToolTipKey[] = "currentItemToolTip";
+static const char tabSpacingKey[] = "tabSpacing";
 
 enum { tabSpacingDefault = -1 };
 
@@ -243,13 +220,13 @@ QToolBoxWidgetPropertySheet::QToolBoxWidgetPropertySheet(QToolBox *object, QObje
     QDesignerPropertySheet(object, parent),
     m_toolBox(object)
 {
-    createFakeProperty(QLatin1String(currentItemTextKey), QVariant::fromValue(qdesigner_internal::PropertySheetStringValue()));
-    createFakeProperty(QLatin1String(currentItemNameKey), QString());
-    createFakeProperty(QLatin1String(currentItemIconKey), QVariant::fromValue(qdesigner_internal::PropertySheetIconValue()));
+    createFakeProperty(QLatin1StringView(currentItemTextKey), QVariant::fromValue(qdesigner_internal::PropertySheetStringValue()));
+    createFakeProperty(QLatin1StringView(currentItemNameKey), QString());
+    createFakeProperty(QLatin1StringView(currentItemIconKey), QVariant::fromValue(qdesigner_internal::PropertySheetIconValue()));
     if (formWindowBase())
-        formWindowBase()->addReloadableProperty(this, indexOf(QLatin1String(currentItemIconKey)));
-    createFakeProperty(QLatin1String(currentItemToolTipKey), QVariant::fromValue(qdesigner_internal::PropertySheetStringValue()));
-    createFakeProperty(QLatin1String(tabSpacingKey), QVariant(tabSpacingDefault));
+        formWindowBase()->addReloadableProperty(this, indexOf(QLatin1StringView(currentItemIconKey)));
+    createFakeProperty(QLatin1StringView(currentItemToolTipKey), QVariant::fromValue(qdesigner_internal::PropertySheetStringValue()));
+    createFakeProperty(QLatin1StringView(tabSpacingKey), QVariant(tabSpacingDefault));
 }
 
 QToolBoxWidgetPropertySheet::ToolBoxProperty QToolBoxWidgetPropertySheet::toolBoxPropertyFromName(const QString &name)
@@ -257,11 +234,11 @@ QToolBoxWidgetPropertySheet::ToolBoxProperty QToolBoxWidgetPropertySheet::toolBo
     using ToolBoxPropertyHash = QHash<QString, ToolBoxProperty>;
     static ToolBoxPropertyHash toolBoxPropertyHash;
     if (toolBoxPropertyHash.isEmpty()) {
-        toolBoxPropertyHash.insert(QLatin1String(currentItemTextKey),    PropertyCurrentItemText);
-        toolBoxPropertyHash.insert(QLatin1String(currentItemNameKey),    PropertyCurrentItemName);
-        toolBoxPropertyHash.insert(QLatin1String(currentItemIconKey),    PropertyCurrentItemIcon);
-        toolBoxPropertyHash.insert(QLatin1String(currentItemToolTipKey), PropertyCurrentItemToolTip);
-        toolBoxPropertyHash.insert(QLatin1String(tabSpacingKey),         PropertyTabSpacing);
+        toolBoxPropertyHash.insert(QLatin1StringView(currentItemTextKey),    PropertyCurrentItemText);
+        toolBoxPropertyHash.insert(QLatin1StringView(currentItemNameKey),    PropertyCurrentItemName);
+        toolBoxPropertyHash.insert(QLatin1StringView(currentItemIconKey),    PropertyCurrentItemIcon);
+        toolBoxPropertyHash.insert(QLatin1StringView(currentItemToolTipKey), PropertyCurrentItemToolTip);
+        toolBoxPropertyHash.insert(QLatin1StringView(tabSpacingKey),         PropertyTabSpacing);
     }
     return toolBoxPropertyHash.value(name, PropertyToolBoxNone);
 }

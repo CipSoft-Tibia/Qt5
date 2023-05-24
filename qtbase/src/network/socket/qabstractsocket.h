@@ -1,46 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QABSTRACTSOCKET_H
 #define QABSTRACTSOCKET_H
 
 #include <QtNetwork/qtnetworkglobal.h>
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+#include <QtNetwork/qabstractsocket.h>
+#endif
+#ifdef Q_QDOC
+#include <QtNetwork/qhostaddress.h>
+#endif
 #include <QtCore/qiodevice.h>
 #include <QtCore/qobject.h>
 #ifndef QT_NO_DEBUG_STREAM
@@ -60,6 +30,8 @@ class QAuthenticator;
 class Q_NETWORK_EXPORT QAbstractSocket : public QIODevice
 {
     Q_OBJECT
+    Q_MOC_INCLUDE(<QtNetwork/qauthenticator.h>)
+
 public:
     enum SocketType {
         TcpSocket,
@@ -68,6 +40,8 @@ public:
         UnknownSocketType = -1
     };
     Q_ENUM(SocketType)
+
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     enum NetworkLayerProtocol {
         IPv4Protocol,
         IPv6Protocol,
@@ -75,6 +49,15 @@ public:
         UnknownNetworkLayerProtocol = -1
     };
     Q_ENUM(NetworkLayerProtocol)
+#else
+    // compatibility with Qt 4 to 6
+    using NetworkLayerProtocol = QHostAddress::NetworkLayerProtocol;
+    static constexpr auto IPv4Protocol = QHostAddress::IPv4Protocol;
+    static constexpr auto IPv6Protocol = QHostAddress::IPv6Protocol;
+    static constexpr auto AnyIPProtocol = QHostAddress::AnyIPProtocol;
+    static constexpr auto UnknownNetworkLayerProtocol = QHostAddress::UnknownNetworkLayerProtocol;
+#endif
+
     enum SocketError {
         ConnectionRefusedError,
         RemoteHostClosedError,
@@ -144,21 +127,25 @@ public:
     PauseModes pauseMode() const;
     void setPauseMode(PauseModes pauseMode);
 
-    // ### Qt6: make the first one virtual
-    bool bind(const QHostAddress &address, quint16 port = 0, BindMode mode = DefaultForPlatform);
+    virtual bool bind(const QHostAddress &address, quint16 port = 0,
+                      BindMode mode = DefaultForPlatform);
+#if QT_VERSION >= QT_VERSION_CHECK(7,0,0) || defined(Q_QDOC)
+    bool bind(QHostAddress::SpecialAddress addr, quint16 port = 0, BindMode mode = DefaultForPlatform)
+    { return bind(QHostAddress(addr), port, mode); }
+    bool bind(quint16 port = 0, BindMode mode = DefaultForPlatform)
+    { return bind(QHostAddress::Any, port, mode); }
+#else
     bool bind(quint16 port = 0, BindMode mode = DefaultForPlatform);
+#endif
 
-    // ### Qt6: de-virtualize connectToHost(QHostAddress) overload
     virtual void connectToHost(const QString &hostName, quint16 port, OpenMode mode = ReadWrite, NetworkLayerProtocol protocol = AnyIPProtocol);
-    virtual void connectToHost(const QHostAddress &address, quint16 port, OpenMode mode = ReadWrite);
+    void connectToHost(const QHostAddress &address, quint16 port, OpenMode mode = ReadWrite);
     virtual void disconnectFromHost();
 
     bool isValid() const;
 
     qint64 bytesAvailable() const override;
     qint64 bytesToWrite() const override;
-
-    bool canReadLine() const override; // ### Qt6: remove me
 
     quint16 localPort() const;
     QHostAddress localAddress() const;
@@ -185,7 +172,6 @@ public:
     // from QIODevice
     void close() override;
     bool isSequential() const override;
-    bool atEnd() const override; // ### Qt6: remove me
     bool flush();
 
     // for synchronous access
@@ -206,10 +192,6 @@ Q_SIGNALS:
     void connected();
     void disconnected();
     void stateChanged(QAbstractSocket::SocketState);
-#if QT_DEPRECATED_SINCE(5,15)
-    QT_DEPRECATED_NETWORK_API_5_15_X("Use QAbstractSocket::errorOccurred(QAbstractSocket::SocketError) instead")
-    void error(QAbstractSocket::SocketError);
-#endif
     void errorOccurred(QAbstractSocket::SocketError);
 #ifndef QT_NO_NETWORKPROXY
     void proxyAuthenticationRequired(const QNetworkProxy &proxy, QAuthenticator *authenticator);
@@ -218,6 +200,7 @@ Q_SIGNALS:
 protected:
     qint64 readData(char *data, qint64 maxlen) override;
     qint64 readLineData(char *data, qint64 maxlen) override;
+    qint64 skipData(qint64 maxSize) override;
     qint64 writeData(const char *data, qint64 len) override;
 
     void setSocketState(SocketState state);
@@ -232,7 +215,7 @@ protected:
 
 private:
     Q_DECLARE_PRIVATE(QAbstractSocket)
-    Q_DISABLE_COPY(QAbstractSocket)
+    Q_DISABLE_COPY_MOVE(QAbstractSocket)
 
     Q_PRIVATE_SLOT(d_func(), void _q_connectToNextAddress())
     Q_PRIVATE_SLOT(d_func(), void _q_startConnecting(const QHostInfo &))
@@ -251,7 +234,9 @@ Q_NETWORK_EXPORT QDebug operator<<(QDebug, QAbstractSocket::SocketState);
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE(QAbstractSocket::SocketState)
-Q_DECLARE_METATYPE(QAbstractSocket::SocketError)
+QT_DECL_METATYPE_EXTERN_TAGGED(QAbstractSocket::SocketState,
+                               QAbstractSocket__SocketState, Q_NETWORK_EXPORT)
+QT_DECL_METATYPE_EXTERN_TAGGED(QAbstractSocket::SocketError,
+                               QAbstractSocket__SocketError, Q_NETWORK_EXPORT)
 
 #endif // QABSTRACTSOCKET_H

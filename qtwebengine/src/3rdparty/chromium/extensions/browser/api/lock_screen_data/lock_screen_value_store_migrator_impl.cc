@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,14 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
-#include "base/sequenced_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
+#include "components/value_store/value_store.h"
 #include "extensions/browser/api/lock_screen_data/data_item.h"
 #include "extensions/browser/api/storage/local_value_store_cache.h"
-#include "extensions/browser/value_store/value_store.h"
 
 namespace extensions {
 namespace lock_screen_data {
@@ -34,11 +34,11 @@ LockScreenValueStoreMigratorImpl::~LockScreenValueStoreMigratorImpl() = default;
 
 void LockScreenValueStoreMigratorImpl::Run(
     const std::set<ExtensionId>& extensions_to_migrate,
-    const ExtensionMigratedCallback& callback) {
+    ExtensionMigratedCallback callback) {
   DCHECK(extensions_to_migrate_.empty());
   DCHECK(callback_.is_null());
 
-  callback_ = callback;
+  callback_ = std::move(callback);
   extensions_to_migrate_ = extensions_to_migrate;
 
   for (const auto& extension_id : extensions_to_migrate_)
@@ -52,13 +52,14 @@ bool LockScreenValueStoreMigratorImpl::IsMigratingExtensionData(
 
 void LockScreenValueStoreMigratorImpl::ClearDataForExtension(
     const ExtensionId& extension_id,
-    const base::Closure& callback) {
+    base::OnceClosure callback) {
   ClearMigrationData(extension_id);
 
   DataItem::DeleteAllItemsForExtension(
       context_, target_store_cache_, task_runner_, extension_id,
-      base::Bind(&LockScreenValueStoreMigratorImpl::DeleteItemsFromSourceStore,
-                 weak_ptr_factory_.GetWeakPtr(), extension_id, callback));
+      base::BindOnce(
+          &LockScreenValueStoreMigratorImpl::DeleteItemsFromSourceStore,
+          weak_ptr_factory_.GetWeakPtr(), extension_id, std::move(callback)));
 }
 
 LockScreenValueStoreMigratorImpl::MigrationData::MigrationData() = default;
@@ -68,14 +69,14 @@ void LockScreenValueStoreMigratorImpl::StartMigrationForExtension(
     const ExtensionId& extension_id) {
   DataItem::GetRegisteredValuesForExtension(
       context_, source_store_cache_, task_runner_, extension_id,
-      base::Bind(&LockScreenValueStoreMigratorImpl::OnGotItemsForExtension,
-                 weak_ptr_factory_.GetWeakPtr(), extension_id));
+      base::BindOnce(&LockScreenValueStoreMigratorImpl::OnGotItemsForExtension,
+                     weak_ptr_factory_.GetWeakPtr(), extension_id));
 }
 
 void LockScreenValueStoreMigratorImpl::OnGotItemsForExtension(
     const ExtensionId& extension_id,
     OperationResult result,
-    std::unique_ptr<base::DictionaryValue> items) {
+    base::Value::Dict items) {
   if (!IsMigratingExtensionData(extension_id))
     return;
 
@@ -85,10 +86,9 @@ void LockScreenValueStoreMigratorImpl::OnGotItemsForExtension(
     return;
   }
 
-  for (base::DictionaryValue::Iterator item_iter(*items); !item_iter.IsAtEnd();
-       item_iter.Advance()) {
+  for (const auto item : items) {
     migration_items_[extension_id].pending.emplace_back(
-        std::make_unique<DataItem>(item_iter.key(), extension_id, context_,
+        std::make_unique<DataItem>(item.first, extension_id, context_,
                                    source_store_cache_, task_runner_,
                                    crypto_key_));
   }
@@ -118,8 +118,8 @@ void LockScreenValueStoreMigratorImpl::MigrateNextForExtension(
       context_, target_store_cache_, task_runner_, crypto_key_);
 
   migration_items_[extension_id].current_source->Read(
-      base::Bind(&LockScreenValueStoreMigratorImpl::OnCurrentItemRead,
-                 weak_ptr_factory_.GetWeakPtr(), extension_id));
+      base::BindOnce(&LockScreenValueStoreMigratorImpl::OnCurrentItemRead,
+                     weak_ptr_factory_.GetWeakPtr(), extension_id));
 }
 
 void LockScreenValueStoreMigratorImpl::OnCurrentItemRead(
@@ -137,9 +137,9 @@ void LockScreenValueStoreMigratorImpl::OnCurrentItemRead(
   }
 
   if (result == OperationResult::kSuccess) {
-    migration_items_[extension_id].current_target->Register(base::Bind(
+    migration_items_[extension_id].current_target->Register(base::BindOnce(
         &LockScreenValueStoreMigratorImpl::OnTargetItemRegistered,
-        weak_ptr_factory_.GetWeakPtr(), extension_id, base::Passed(&data)));
+        weak_ptr_factory_.GetWeakPtr(), extension_id, std::move(data)));
   } else {
     OnTargetItemWritten(extension_id, OperationResult::kFailed);
   }
@@ -158,8 +158,8 @@ void LockScreenValueStoreMigratorImpl::OnTargetItemRegistered(
       result == OperationResult::kAlreadyRegistered) {
     migration_items_[extension_id].current_target->Write(
         *data,
-        base::Bind(&LockScreenValueStoreMigratorImpl::OnTargetItemWritten,
-                   weak_ptr_factory_.GetWeakPtr(), extension_id));
+        base::BindOnce(&LockScreenValueStoreMigratorImpl::OnTargetItemWritten,
+                       weak_ptr_factory_.GetWeakPtr(), extension_id));
   } else {
     OnTargetItemWritten(extension_id, OperationResult::kFailed);
   }
@@ -176,8 +176,8 @@ void LockScreenValueStoreMigratorImpl::OnTargetItemWritten(
     migration_items_[extension_id].current_target->Delete(base::DoNothing());
 
   migration_items_[extension_id].current_source->Delete(
-      base::Bind(&LockScreenValueStoreMigratorImpl::OnCurrentItemMigrated,
-                 weak_ptr_factory_.GetWeakPtr(), extension_id));
+      base::BindOnce(&LockScreenValueStoreMigratorImpl::OnCurrentItemMigrated,
+                     weak_ptr_factory_.GetWeakPtr(), extension_id));
 }
 
 void LockScreenValueStoreMigratorImpl::OnCurrentItemMigrated(
@@ -188,17 +188,17 @@ void LockScreenValueStoreMigratorImpl::OnCurrentItemMigrated(
 
 void LockScreenValueStoreMigratorImpl::DeleteItemsFromSourceStore(
     const ExtensionId& extension_id,
-    const base::Closure& callback) {
+    base::OnceClosure callback) {
   DataItem::DeleteAllItemsForExtension(
       context_, source_store_cache_, task_runner_, extension_id,
-      base::Bind(
+      base::BindOnce(
           &LockScreenValueStoreMigratorImpl::RunClearDataForExtensionCallback,
-          weak_ptr_factory_.GetWeakPtr(), callback));
+          weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
 }
 
 void LockScreenValueStoreMigratorImpl::RunClearDataForExtensionCallback(
-    const base::Closure& callback) {
-  callback.Run();
+    base::OnceClosure callback) {
+  std::move(callback).Run();
 }
 
 void LockScreenValueStoreMigratorImpl::ClearMigrationData(

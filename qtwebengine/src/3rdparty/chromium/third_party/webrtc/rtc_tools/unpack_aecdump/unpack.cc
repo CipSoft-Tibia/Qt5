@@ -25,12 +25,13 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "api/function_view.h"
+#include "common_audio/include/audio_util.h"
 #include "common_audio/wav_file.h"
 #include "modules/audio_processing/test/protobuf_utils.h"
-#include "modules/audio_processing/test/test_utils.h"
-#include "rtc_base/format_macros.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/ignore_wundef.h"
 #include "rtc_base/strings/string_builder.h"
+#include "rtc_base/system/arch.h"
 
 RTC_PUSH_IGNORING_WUNDEF()
 #include "modules/audio_processing/debug.pb.h"
@@ -59,7 +60,7 @@ ABSL_FLAG(std::string,
 ABSL_FLAG(std::string,
           level_file,
           "level.int32",
-          "The name of the level file.");
+          "The name of the applied input volume file.");
 ABSL_FLAG(std::string,
           keypress_file,
           "keypress.bool",
@@ -81,6 +82,10 @@ ABSL_FLAG(bool,
           text,
           false,
           "Write non-audio files as text files instead of binary files.");
+ABSL_FLAG(bool,
+          use_init_suffix,
+          false,
+          "Use init index instead of capture frame count as file name suffix.");
 
 #define PRINT_CONFIG(field_name)                                         \
   if (msg.has_##field_name()) {                                          \
@@ -100,15 +105,77 @@ using audioproc::ReverseStream;
 using audioproc::Stream;
 
 namespace {
+class RawFile final {
+ public:
+  explicit RawFile(const std::string& filename)
+      : file_handle_(fopen(filename.c_str(), "wb")) {}
+  ~RawFile() { fclose(file_handle_); }
+
+  RawFile(const RawFile&) = delete;
+  RawFile& operator=(const RawFile&) = delete;
+
+  void WriteSamples(const int16_t* samples, size_t num_samples) {
+#ifndef WEBRTC_ARCH_LITTLE_ENDIAN
+#error "Need to convert samples to little-endian when writing to PCM file"
+#endif
+    fwrite(samples, sizeof(*samples), num_samples, file_handle_);
+  }
+
+  void WriteSamples(const float* samples, size_t num_samples) {
+    fwrite(samples, sizeof(*samples), num_samples, file_handle_);
+  }
+
+ private:
+  FILE* file_handle_;
+};
+
+void WriteIntData(const int16_t* data,
+                  size_t length,
+                  WavWriter* wav_file,
+                  RawFile* raw_file) {
+  if (wav_file) {
+    wav_file->WriteSamples(data, length);
+  }
+  if (raw_file) {
+    raw_file->WriteSamples(data, length);
+  }
+}
+
+void WriteFloatData(const float* const* data,
+                    size_t samples_per_channel,
+                    size_t num_channels,
+                    WavWriter* wav_file,
+                    RawFile* raw_file) {
+  size_t length = num_channels * samples_per_channel;
+  std::unique_ptr<float[]> buffer(new float[length]);
+  Interleave(data, samples_per_channel, num_channels, buffer.get());
+  if (raw_file) {
+    raw_file->WriteSamples(buffer.get(), length);
+  }
+  // TODO(aluebs): Use ScaleToInt16Range() from audio_util
+  for (size_t i = 0; i < length; ++i) {
+    buffer[i] = buffer[i] > 0
+                    ? buffer[i] * std::numeric_limits<int16_t>::max()
+                    : -buffer[i] * std::numeric_limits<int16_t>::min();
+  }
+  if (wav_file) {
+    wav_file->WriteSamples(buffer.get(), length);
+  }
+}
+
+// Exits on failure; do not use in unit tests.
+FILE* OpenFile(const std::string& filename, const char* mode) {
+  FILE* file = fopen(filename.c_str(), mode);
+  RTC_CHECK(file) << "Unable to open file " << filename;
+  return file;
+}
 
 void WriteData(const void* data,
                size_t size,
                FILE* file,
                const std::string& filename) {
-  if (fwrite(data, size, 1, file) != 1) {
-    printf("Error when writing to %s\n", filename.c_str());
-    exit(1);
-  }
+  RTC_CHECK_EQ(fwrite(data, size, 1, file), 1)
+      << "Error when writing to " << filename.c_str();
 }
 
 void WriteCallOrderData(const bool render_call,
@@ -143,7 +210,7 @@ class RuntimeSettingWriter {
     return is_exporter_for_(event);
   }
 
-  // Writes to file the payload of |event| using |frame_count| to calculate
+  // Writes to file the payload of `event` using `frame_count` to calculate
   // timestamp.
   void WriteEvent(const Event& event, int frame_count) {
     RTC_DCHECK(is_exporter_for_(event));
@@ -161,7 +228,7 @@ class RuntimeSettingWriter {
   }
 
   // Handles an AEC dump initialization event, occurring at frame
-  // |frame_offset|.
+  // `frame_offset`.
   void HandleInitEvent(int frame_offset) {
     Flush();
     frame_offset_ = frame_offset;
@@ -224,6 +291,16 @@ std::vector<RuntimeSettingWriter> RuntimeSettingWriters() {
           })};
 }
 
+std::string GetWavFileIndex(int init_index, int frame_count) {
+  rtc::StringBuilder suffix;
+  if (absl::GetFlag(FLAGS_use_init_suffix)) {
+    suffix << "_" << init_index;
+  } else {
+    suffix << frame_count;
+  }
+  return suffix.str();
+}
+
 }  // namespace
 
 int do_main(int argc, char* argv[]) {
@@ -243,6 +320,7 @@ int do_main(int argc, char* argv[]) {
 
   Event event_msg;
   int frame_count = 0;
+  int init_count = 0;
   size_t reverse_samples_per_channel = 0;
   size_t input_samples_per_channel = 0;
   size_t output_samples_per_channel = 0;
@@ -390,10 +468,10 @@ int do_main(int argc, char* argv[]) {
           }
         }
 
-        if (msg.has_level()) {
+        if (msg.has_applied_input_volume()) {
           static FILE* level_file =
               OpenFile(absl::GetFlag(FLAGS_level_file), "wb");
-          int32_t level = msg.level();
+          int32_t level = msg.applied_input_volume();
           if (absl::GetFlag(FLAGS_text)) {
             fprintf(level_file, "%d\n", level);
           } else {
@@ -452,9 +530,11 @@ int do_main(int argc, char* argv[]) {
         return 1;
       }
 
+      ++init_count;
       const Init msg = event_msg.init();
       // These should print out zeros if they're missing.
-      fprintf(settings_file, "Init at frame: %d\n", frame_count);
+      fprintf(settings_file, "Init #%d at frame: %d\n", init_count,
+              frame_count);
       int input_sample_rate = msg.sample_rate();
       fprintf(settings_file, "  Input sample rate: %d\n", input_sample_rate);
       int output_sample_rate = msg.output_sample_rate();
@@ -463,14 +543,11 @@ int do_main(int argc, char* argv[]) {
       fprintf(settings_file, "  Reverse sample rate: %d\n",
               reverse_sample_rate);
       num_input_channels = msg.num_input_channels();
-      fprintf(settings_file, "  Input channels: %" RTC_PRIuS "\n",
-              num_input_channels);
+      fprintf(settings_file, "  Input channels: %zu\n", num_input_channels);
       num_output_channels = msg.num_output_channels();
-      fprintf(settings_file, "  Output channels: %" RTC_PRIuS "\n",
-              num_output_channels);
+      fprintf(settings_file, "  Output channels: %zu\n", num_output_channels);
       num_reverse_channels = msg.num_reverse_channels();
-      fprintf(settings_file, "  Reverse channels: %" RTC_PRIuS "\n",
-              num_reverse_channels);
+      fprintf(settings_file, "  Reverse channels: %zu\n", num_reverse_channels);
       if (msg.has_timestamp_ms()) {
         const int64_t timestamp = msg.timestamp_ms();
         fprintf(settings_file, "  Timestamp in millisecond: %" PRId64 "\n",
@@ -495,24 +572,24 @@ int do_main(int argc, char* argv[]) {
       if (!absl::GetFlag(FLAGS_raw)) {
         // The WAV files need to be reset every time, because they cant change
         // their sample rate or number of channels.
+
+        std::string suffix = GetWavFileIndex(init_count, frame_count);
         rtc::StringBuilder reverse_name;
-        reverse_name << absl::GetFlag(FLAGS_reverse_file) << frame_count
-                     << ".wav";
+        reverse_name << absl::GetFlag(FLAGS_reverse_file) << suffix << ".wav";
         reverse_wav_file.reset(new WavWriter(
             reverse_name.str(), reverse_sample_rate, num_reverse_channels));
         rtc::StringBuilder input_name;
-        input_name << absl::GetFlag(FLAGS_input_file) << frame_count << ".wav";
+        input_name << absl::GetFlag(FLAGS_input_file) << suffix << ".wav";
         input_wav_file.reset(new WavWriter(input_name.str(), input_sample_rate,
                                            num_input_channels));
         rtc::StringBuilder output_name;
-        output_name << absl::GetFlag(FLAGS_output_file) << frame_count
-                    << ".wav";
+        output_name << absl::GetFlag(FLAGS_output_file) << suffix << ".wav";
         output_wav_file.reset(new WavWriter(
             output_name.str(), output_sample_rate, num_output_channels));
 
         if (WritingCallOrderFile()) {
           rtc::StringBuilder callorder_name;
-          callorder_name << absl::GetFlag(FLAGS_callorder_file) << frame_count
+          callorder_name << absl::GetFlag(FLAGS_callorder_file) << suffix
                          << ".char";
           callorder_char_file = OpenFile(callorder_name.str(), "wb");
         }

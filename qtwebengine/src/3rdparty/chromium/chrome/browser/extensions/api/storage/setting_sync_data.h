@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,9 @@
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
 #include "base/values.h"
 #include "components/sync/model/sync_change.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace syncer {
 class SyncData;
@@ -25,42 +25,44 @@ class SettingSyncData {
   // Creates from a sync change.
   explicit SettingSyncData(const syncer::SyncChange& sync_change);
 
-  // Creates from sync data. |change_type| will be ACTION_INVALID.
+  // Creates from sync data. |change_type| will be absl::nullopt.
   explicit SettingSyncData(const syncer::SyncData& sync_data);
 
   // Creates explicitly.
   SettingSyncData(syncer::SyncChange::SyncChangeType change_type,
                   const std::string& extension_id,
                   const std::string& key,
-                  std::unique_ptr<base::Value> value);
+                  base::Value value);
+
+  SettingSyncData(const SettingSyncData&) = delete;
+  SettingSyncData& operator=(const SettingSyncData&) = delete;
 
   ~SettingSyncData();
 
-  // May return ACTION_INVALID if this object represents sync data that isn't
+  // May return absl::nullopt if this object represents sync data that isn't
   // associated with a sync operation.
-  syncer::SyncChange::SyncChangeType change_type() const {
+  const absl::optional<syncer::SyncChange::SyncChangeType>& change_type()
+      const {
     return change_type_;
   }
   const std::string& extension_id() const { return extension_id_; }
   const std::string& key() const { return key_; }
-  // value() cannot be called if PassValue() has been called.
+  // value() cannot be called if ExtractValue() has been called.
   const base::Value& value() const { return *value_; }
 
   // Releases ownership of the value to the caller. Neither value() nor
-  // PassValue() can be after this.
-  std::unique_ptr<base::Value> PassValue();
+  // ExtractValue() can be after this.
+  base::Value ExtractValue();
 
  private:
   // Populates the extension ID, key, and value from |sync_data|. This will be
   // either an extension or app settings data type.
   void ExtractSyncData(const syncer::SyncData& sync_data);
 
-  syncer::SyncChange::SyncChangeType change_type_;
+  absl::optional<syncer::SyncChange::SyncChangeType> change_type_;
   std::string extension_id_;
   std::string key_;
-  std::unique_ptr<base::Value> value_;
-
-  DISALLOW_COPY_AND_ASSIGN(SettingSyncData);
+  absl::optional<base::Value> value_;
 };
 
 using SettingSyncDataList = std::vector<std::unique_ptr<SettingSyncData>>;

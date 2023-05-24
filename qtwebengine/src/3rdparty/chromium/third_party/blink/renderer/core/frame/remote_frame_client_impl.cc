@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,19 +9,20 @@
 
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/mojom/blob/blob_url_store.mojom-blink.h"
-#include "third_party/blink/public/web/web_remote_frame_client.h"
+#include "third_party/blink/public/mojom/frame/frame_replication_state.mojom-blink.h"
 #include "third_party/blink/public/web/web_view.h"
 #include "third_party/blink/renderer/core/events/keyboard_event.h"
 #include "third_party/blink/renderer/core/events/mouse_event.h"
 #include "third_party/blink/renderer/core/events/web_input_event_conversion.h"
 #include "third_party/blink/renderer/core/events/wheel_event.h"
-#include "third_party/blink/renderer/core/exported/web_remote_frame_impl.h"
+#include "third_party/blink/renderer/core/exported/web_view_impl.h"
 #include "third_party/blink/renderer/core/frame/remote_frame.h"
 #include "third_party/blink/renderer/core/frame/remote_frame_view.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
+#include "third_party/blink/renderer/core/frame/web_remote_frame_impl.h"
 #include "third_party/blink/renderer/core/layout/layout_embedded_content.h"
 #include "third_party/blink/renderer/platform/exported/wrapped_resource_request.h"
-#include "third_party/blink/renderer/platform/geometry/int_rect.h"
+#include "ui/gfx/geometry/rect.h"
 
 namespace blink {
 
@@ -34,29 +35,30 @@ void RemoteFrameClientImpl::Trace(Visitor* visitor) const {
 }
 
 bool RemoteFrameClientImpl::InShadowTree() const {
-  return web_frame_->InShadowTree();
+  return web_frame_->GetTreeScopeType() == mojom::blink::TreeScopeType::kShadow;
 }
 
 void RemoteFrameClientImpl::Detached(FrameDetachType type) {
-  // Alert the client that the frame is being detached.
-  WebRemoteFrameClient* client = web_frame_->Client();
-  if (!client)
-    return;
-
   // We only notify the browser process when the frame is being detached for
   // removal, not after a swap.
-  if (type == FrameDetachType::kRemove)
+  if (type == FrameDetachType::kRemove &&
+      web_frame_->GetFrame()->IsRemoteFrameHostRemoteBound()) {
     web_frame_->GetFrame()->GetRemoteFrameHostRemote().Detach();
-
-  client->FrameDetached(static_cast<WebRemoteFrameClient::DetachType>(type));
+  }
+  web_frame_->Close();
 
   if (web_frame_->Parent()) {
     if (type == FrameDetachType::kRemove)
       WebFrame::ToCoreFrame(*web_frame_)->DetachFromParent();
-  } else if (web_frame_->View()) {
-    // If the RemoteFrame being detached is also the main frame in the renderer
-    // process, we need to notify the webview to allow it to clean things up.
-    web_frame_->View()->DidDetachRemoteMainFrame();
+  } else if (auto* view = web_frame_->View()) {
+    // This could be a RemoteFrame that doesn't have a parent (portals
+    // or fenced frames) but not actually the `view`'s main frame.
+    if (view->MainFrame() == web_frame_) {
+      // If the RemoteFrame being detached is also the main frame in the
+      // renderer process, we need to notify the webview to allow it to clean
+      // things up.
+      view->DidDetachRemoteMainFrame();
+    }
   }
 
   // Clear our reference to RemoteFrame at the very end, in case the client
@@ -64,96 +66,27 @@ void RemoteFrameClientImpl::Detached(FrameDetachType type) {
   web_frame_->SetCoreFrame(nullptr);
 }
 
-base::UnguessableToken RemoteFrameClientImpl::GetDevToolsFrameToken() const {
-  if (web_frame_->Client()) {
-    return web_frame_->Client()->GetDevToolsFrameToken();
-  }
-  return base::UnguessableToken::Create();
-}
-
-void RemoteFrameClientImpl::Navigate(
-    const ResourceRequest& request,
-    blink::WebLocalFrame* initiator_frame,
-    bool should_replace_current_entry,
-    bool is_opener_navigation,
-    bool initiator_frame_has_download_sandbox_flag,
-    bool initiator_frame_is_ad,
-    mojo::PendingRemote<mojom::blink::BlobURLToken> blob_url_token,
-    const base::Optional<WebImpression>& impression) {
-  bool blocking_downloads_in_sandbox_enabled =
-      RuntimeEnabledFeatures::BlockingDownloadsInSandboxEnabled();
-  if (web_frame_->Client()) {
-    web_frame_->Client()->Navigate(
-        WrappedResourceRequest(request), initiator_frame,
-        should_replace_current_entry, is_opener_navigation,
-        initiator_frame_has_download_sandbox_flag,
-        blocking_downloads_in_sandbox_enabled, initiator_frame_is_ad,
-        std::move(blob_url_token), impression);
-  }
+void RemoteFrameClientImpl::CreateRemoteChild(
+    const RemoteFrameToken& token,
+    const absl::optional<FrameToken>& opener_frame_token,
+    mojom::blink::TreeScopeType tree_scope_type,
+    mojom::blink::FrameReplicationStatePtr replication_state,
+    mojom::blink::FrameOwnerPropertiesPtr owner_properties,
+    bool is_loading,
+    const base::UnguessableToken& devtools_frame_token,
+    mojom::blink::RemoteFrameInterfacesFromBrowserPtr remote_frame_interfaces) {
+  WebFrame* opener = nullptr;
+  if (opener_frame_token)
+    opener = WebFrame::FromFrameToken(opener_frame_token.value());
+  web_frame_->CreateRemoteChild(
+      tree_scope_type, token, is_loading, devtools_frame_token, opener,
+      std::move(remote_frame_interfaces->frame_host),
+      std::move(remote_frame_interfaces->frame_receiver),
+      std::move(replication_state), std::move(owner_properties));
 }
 
 unsigned RemoteFrameClientImpl::BackForwardLength() {
-  // TODO(creis,japhet): This method should return the real value for the
-  // session history length. For now, return static value for the initial
-  // navigation and the subsequent one moving the frame out-of-process.
-  // See https://crbug.com/501116.
-  return 2;
-}
-
-void RemoteFrameClientImpl::FrameRectsChanged(
-    const IntRect& local_frame_rect,
-    const IntRect& screen_space_rect) {
-  web_frame_->Client()->FrameRectsChanged(local_frame_rect, screen_space_rect);
-}
-
-void RemoteFrameClientImpl::ZoomLevelChanged(double zoom_level) {
-  web_frame_->Client()->ZoomLevelChanged(zoom_level);
-}
-
-void RemoteFrameClientImpl::UpdateCaptureSequenceNumber(
-    uint32_t sequence_number) {
-  web_frame_->Client()->UpdateCaptureSequenceNumber(sequence_number);
-}
-
-void RemoteFrameClientImpl::PageScaleFactorChanged(
-    float page_scale_factor,
-    bool is_pinch_gesture_active) {
-  web_frame_->Client()->PageScaleFactorChanged(page_scale_factor,
-                                               is_pinch_gesture_active);
-}
-
-void RemoteFrameClientImpl::DidChangeScreenInfo(
-    const ScreenInfo& original_screen_info) {
-  web_frame_->Client()->DidChangeScreenInfo(original_screen_info);
-}
-
-void RemoteFrameClientImpl::DidChangeRootWindowSegments(
-    const std::vector<gfx::Rect>& root_widget_window_segments) {
-  web_frame_->Client()->DidChangeRootWindowSegments(
-      root_widget_window_segments);
-}
-
-void RemoteFrameClientImpl::DidChangeVisibleViewportSize(
-    const gfx::Size& visible_viewport_size) {
-  web_frame_->Client()->DidChangeVisibleViewportSize(visible_viewport_size);
-}
-
-void RemoteFrameClientImpl::UpdateRemoteViewportIntersection(
-    const ViewportIntersectionState& intersection_state) {
-  web_frame_->Client()->UpdateRemoteViewportIntersection(intersection_state);
-}
-
-AssociatedInterfaceProvider*
-RemoteFrameClientImpl::GetRemoteAssociatedInterfaces() {
-  return web_frame_->Client()->GetRemoteAssociatedInterfaces();
-}
-
-viz::FrameSinkId RemoteFrameClientImpl::GetFrameSinkId() {
-  return web_frame_->Client()->GetFrameSinkId();
-}
-
-void RemoteFrameClientImpl::WasEvicted() {
-  return web_frame_->Client()->WasEvicted();
+  return To<WebViewImpl>(web_frame_->View())->HistoryListLength();
 }
 
 }  // namespace blink

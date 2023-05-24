@@ -41,6 +41,7 @@
 struct DemuxerContext {
     DemuxerPriv *data;
     const Demuxer *impl;
+    uint64_t priv_data[];
 };
 
 extern const Demuxer ivf_demuxer;
@@ -109,12 +110,12 @@ int input_open(DemuxerContext **const c_out,
         }
     }
 
-    if (!(c = calloc(1, sizeof(DemuxerContext) + impl->priv_data_size))) {
+    if (!(c = calloc(1, offsetof(DemuxerContext, priv_data) + impl->priv_data_size))) {
         fprintf(stderr, "Failed to allocate memory\n");
         return DAV1D_ERR(ENOMEM);
     }
     c->impl = impl;
-    c->data = (DemuxerPriv *) &c[1];
+    c->data = (DemuxerPriv *) c->priv_data;
     if ((res = impl->open(c->data, filename, fps, num_frames, timebase)) < 0) {
         free(c);
         return res;
@@ -126,6 +127,10 @@ int input_open(DemuxerContext **const c_out,
 
 int input_read(DemuxerContext *const ctx, Dav1dData *const data) {
     return ctx->impl->read(ctx->data, data);
+}
+
+int input_seek(DemuxerContext *const ctx, const uint64_t pts) {
+    return ctx->impl->seek ? ctx->impl->seek(ctx->data, pts) : -1;
 }
 
 void input_close(DemuxerContext *const ctx) {

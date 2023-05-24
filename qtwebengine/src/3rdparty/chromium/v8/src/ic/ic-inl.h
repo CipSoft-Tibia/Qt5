@@ -29,16 +29,16 @@ bool IC::IsHandler(MaybeObject object) {
   HeapObject heap_object;
   return (object->IsSmi() && (object.ptr() != kNullAddress)) ||
          (object->GetHeapObjectIfWeak(&heap_object) &&
-          (heap_object.IsMap() || heap_object.IsPropertyCell())) ||
+          (heap_object.IsMap() || heap_object.IsPropertyCell() ||
+           heap_object.IsAccessorPair())) ||
          (object->GetHeapObjectIfStrong(&heap_object) &&
           (heap_object.IsDataHandler() || heap_object.IsCode()));
 }
 
 bool IC::vector_needs_update() {
-  if (state() == NO_FEEDBACK) return false;
-  return (!vector_set_ &&
-          (state() != MEGAMORPHIC ||
-           nexus()->GetFeedbackExtra().ToSmi().value() != ELEMENT));
+  if (state() == InlineCacheState::NO_FEEDBACK) return false;
+  return (!vector_set_ && (state() != InlineCacheState::MEGAMORPHIC ||
+                           nexus()->GetKeyType() != IcCheckType::kElement));
 }
 
 }  // namespace internal

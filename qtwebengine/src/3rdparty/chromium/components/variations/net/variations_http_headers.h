@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -30,9 +30,9 @@ namespace variations {
 // Denotes whether the top frame of a request-initiating frame is a Google-
 // owned web property, e.g. YouTube.
 //
-// kUnknownFromRenderer is used only in WebURLLoaderImpl::Context::Start() on
-// the render thread and kUnknown is used elsewhere. This distinction allows us
-// to tell how many non-render-thread-initiated subframe requests, if any, lack
+// kUnknownFromRenderer is used only in URLLoader::Context::Start() on the
+// render thread and kUnknown is used elsewhere. This distinction allows us to
+// tell how many non-render-thread-initiated subframe requests, if any, lack
 // TrustedParams.
 //
 // This enum is used to record UMA histogram values, and should not be
@@ -116,11 +116,13 @@ CreateSimpleURLLoaderWithVariationsHeaderUnknownSignedIn(
     InIncognito incognito,
     const net::NetworkTrafficAnnotationTag& annotation_tag);
 
-// Checks if |header_name| is one for the variations header.
-bool IsVariationsHeader(const std::string& header_name);
-
-// Checks if |request| contains the variations header.
+// Returns if |request| contains the variations header.
 bool HasVariationsHeader(const network::ResourceRequest& request);
+
+// Checks if |request| contains the variations header. If found, returns true
+// and writes the value to |out|.
+bool GetVariationsHeader(const network::ResourceRequest& request,
+                         std::string* out);
 
 // Calls the internal ShouldAppendVariationsHeader() for testing.
 bool ShouldAppendVariationsHeaderForTesting(

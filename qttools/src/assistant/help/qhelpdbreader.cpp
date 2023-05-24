@@ -1,48 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpdbreader_p.h"
 #include "qhelp_global.h"
 
-#include <QtCore/QVariant>
-#include <QtCore/QVector>
 #include <QtCore/QFile>
+#include <QtCore/QList>
+#include <QtCore/QMultiMap>
+#include <QtCore/QVariant>
 #include <QtSql/QSqlError>
 #include <QtSql/QSqlQuery>
 
@@ -146,7 +111,7 @@ QString QHelpDBReader::qtVersionHeuristic() const
     // We drop any non digit characters.
     const QChar dot(QLatin1Char('.'));
     QString tail;
-    for (int i = nameSpace.count(); i > 0; --i) {
+    for (int i = nameSpace.size(); i > 0; --i) {
         const QChar c = nameSpace.at(i - 1);
         if (c.isDigit() || c == dot)
             tail.prepend(c);
@@ -172,16 +137,16 @@ QString QHelpDBReader::qtVersionHeuristic() const
         tail.chop(1);
 
     if (tail.count(dot) == 0) {
-        if (tail.count() > 5)
+        if (tail.size() > 5)
             return tail;
 
         // When we have 3 digits, we split it like: ABC -> A.B.C
         // When we have 4 digits, we split it like: ABCD -> A.BC.D
         // When we have 5 digits, we split it like: ABCDE -> A.BC.DE
         const int major = tail.left(1).toInt();
-        const int minor = tail.count() == 3
+        const int minor = tail.size() == 3
                 ? tail.mid(1, 1).toInt() : tail.mid(1, 2).toInt();
-        const int patch = tail.count() == 5
+        const int patch = tail.size() == 5
                 ? tail.right(2).toInt() : tail.right(1).toInt();
 
         return QString::fromUtf8("%1.%2.%3").arg(major).arg(minor).arg(patch);
@@ -222,7 +187,7 @@ QHelpDBReader::IndexTable QHelpDBReader::indexTable() const
 
     // Maybe some are unused and specified erroneously in the named filter only,
     // like it was in case of qtlocation.qch <= qt 5.9
-    QVector<int> usedAttributeIds;
+    QList<int> usedAttributeIds;
     for (auto it = attributeIds.cbegin(), end = attributeIds.cend(); it != end; ++it) {
         const int attributeId = it.key();
         if (isAttributeUsed(m_query, QLatin1String("IndexFilterTable"), attributeId)
@@ -242,7 +207,7 @@ QHelpDBReader::IndexTable QHelpDBReader::indexTable() const
             ? QLatin1String("ContextName")
             : QLatin1String("Identifier");
 
-    const int usedAttributeCount = usedAttributeIds.count();
+    const int usedAttributeCount = usedAttributeIds.size();
 
     QMap<int, IndexItem> idToIndexItem;
 
@@ -308,13 +273,13 @@ QHelpDBReader::IndexTable QHelpDBReader::indexTable() const
 
         const bool mayOptimizeIndexTable
                 = filterDataCount(m_query, QLatin1String("IndexFilterTable"))
-                == idToIndexItem.count() * usedAttributeCount;
+                == idToIndexItem.size() * usedAttributeCount;
         const bool mayOptimizeFileTable
                 = filterDataCount(m_query, QLatin1String("FileFilterTable"))
-                == idToFileItem.count() * usedAttributeCount;
+                == idToFileItem.size() * usedAttributeCount;
         const bool mayOptimizeContentsTable
                 = filterDataCount(m_query, QLatin1String("ContentsFilterTable"))
-                == idToContentsItem.count() * usedAttributeCount;
+                == idToContentsItem.size() * usedAttributeCount;
         optimized = mayOptimizeIndexTable && mayOptimizeFileTable && mayOptimizeContentsTable;
 
         if (!optimized) {
@@ -481,11 +446,10 @@ QStringList QHelpDBReader::filterAttributes(const QString &filterName) const
     return lst;
 }
 
-QMap<QString, QByteArray> QHelpDBReader::filesData(
-        const QStringList &filterAttributes,
-        const QString &extensionFilter) const
+QMultiMap<QString, QByteArray> QHelpDBReader::filesData(const QStringList &filterAttributes,
+                                                        const QString &extensionFilter) const
 {
-    QMap<QString, QByteArray> result;
+    QMultiMap<QString, QByteArray> result;
     if (!m_query)
         return result;
 
@@ -507,7 +471,7 @@ QMap<QString, QByteArray> QHelpDBReader::filesData(
                                       "AND FileNameTable.FolderId = FolderTable.Id %1"))
             .arg(extension);
     } else {
-        for (int i = 0; i < filterAttributes.count(); ++i) {
+        for (int i = 0; i < filterAttributes.size(); ++i) {
             if (i > 0)
                 query.append(QLatin1String(" INTERSECT "));
             query.append(QString(QLatin1String(
@@ -525,8 +489,7 @@ QMap<QString, QByteArray> QHelpDBReader::filesData(
                                      "AND FileNameTable.FileId = FileFilterTable.FileId "
                                      "AND FileFilterTable.FilterAttributeId = FilterAttributeTable.Id "
                                      "AND FilterAttributeTable.Name = \'%1\' %2"))
-                         .arg(quote(filterAttributes.at(i)))
-                         .arg(extension));
+                         .arg(quote(filterAttributes.at(i)), extension));
         }
     }
     m_query->exec(query);
